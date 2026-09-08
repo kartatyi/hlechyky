@@ -1,4 +1,4 @@
-# Збирає сервер на кожен push у main і на кожен pull request. Зламана збірка = червоний хрестик у PR.
+# Збирає сервер і ганяє тести на кожен push у main і на кожен pull request. Зламана збірка чи червоний тест = хрестик у PR.
 name: build
 on:
   push:
@@ -13,3 +13,4 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet build src/Hlechyky/Hlechyky.csproj -c Release --nologo
+      - run: dotnet test tests/Hlechyky.Tests/Hlechyky.Tests.csproj -c Release --nologo

@@ -1,4 +1,6 @@
 ﻿using Hlechyky;
+using Hlechyky.Games;
+using Hlechyky.Games.Economy;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -36,12 +38,15 @@ builder.Services.AddSingleton<LastFmClient>();
 builder.Services.AddSingleton<LiquidsoapClient>();
 builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
-builder.Services.AddSingleton<Games>();
+builder.Services.AddSingleton<OldGames>();
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
 builder.Services.AddHostedService<SnakeEngine>();
 builder.Services.AddSingleton<DjBrain>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<DjBrain>());
+builder.Services.AddHlechykyGames();
+builder.Services.AddHlechykyEconomy();
+builder.Services.AddHlechykyWords();
 
 var port = cfg.GetValue<int?>("Site:ListenPort") ?? 8080;
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(port));
@@ -58,5 +63,7 @@ app.UseStaticFiles(new StaticFileOptions
     OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
 });
 app.MapHlechyky();
+app.MapHlechykyGames();
+app.MapHlechykyEconomy();
 app.MapHub<RadioHub>("/hub");
 app.Run();

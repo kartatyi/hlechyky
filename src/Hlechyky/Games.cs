@@ -73,7 +73,7 @@ public sealed record GameTableDto(string Id, string Game, int Width, int Height,
 public sealed record GameResult(bool Ok, string Message, string? Log = null);
 
 /// <summary>Столи для ігор.</summary>
-public sealed class Games
+public sealed class OldGames
 {
     /// <summary>Більше столів за раз усе одно не роздивитись.</summary>
     public const int MaxTables = 6;

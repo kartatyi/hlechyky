@@ -120,7 +120,7 @@ public sealed record SnakeUpdate(string Id, SnakeFrame Frame, string? Log, bool 
 /// Годинник для змійки: раз на TickMs рухає всі активні столи і шле кадр лише тим, хто на цей стіл дивиться
 /// (група SignalR), щоб решта радіо не отримувала десять повідомлень на секунду ні за що.
 /// </summary>
-public sealed class SnakeEngine(Games games, IHubContext<RadioHub> hub, Db db, IOptionsMonitor<SiteOptions> site, ILogger<SnakeEngine> log)
+public sealed class SnakeEngine(OldGames games, IHubContext<RadioHub> hub, Db db, IOptionsMonitor<SiteOptions> site, ILogger<SnakeEngine> log)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)

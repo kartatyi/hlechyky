@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Games games, IOptionsMonitor<SiteOptions> site, DjBrain brain) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, OldGames games, IOptionsMonitor<SiteOptions> site, DjBrain brain) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();

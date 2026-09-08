@@ -1,0 +1,36 @@
+# docs/games — ігрова платформа
+
+Читати в такому порядку:
+
+1. [ARCHITECTURE.md](ARCHITECTURE.md) — як усе влаштовано: кімнати, ігри, тик, розсилка, черепки, таблиці,
+   ачівки, щоденне, словники, клієнтський каркас, обмеження.
+2. [PROTOCOL.md](PROTOCOL.md) — контракт на дроті (хаб-методи, події, DTO) і контракт модуля гри в браузері.
+3. [TESTING.md](TESTING.md) — як тестуємо: проєкт, підтримка, що обов'язково для платформи і для кожної гри.
+4. [PLAN.md](PLAN.md) — робочі пакети, хвилі, правила для агентів, порти, порядок злиття.
+5. [specs/](specs/) — по файлу на гру: правила, дії, вид, клієнт, тести.
+
+| Spec | Пункт | Гра |
+|---|---|---|
+| specs/chess.md | 22 | Шахи (класика, Фішера, піддавки) |
+| specs/checkers.md | 13 | Шашки (російські) |
+| specs/battleship.md | 15 | Морський бій |
+| specs/mines.md | 17, 84 | Сапер-дуель і Сапер дня |
+| specs/scrabble.md | 23 | Ерудит |
+| specs/domino.md | 24 | Доміно |
+| specs/durak.md | 25 | Дурень підкидний |
+| specs/snake-modes.md | 28, 29 | Мотоцикли (Tron), Змійка на двох |
+| specs/pong.md | 32 | Понг |
+| specs/curve.md | 33 | Кривуля |
+| specs/bomber.md | 34 | Бомбер |
+| specs/duel.md | 37 | Дуель-вестерн на реакцію |
+| specs/territory.md | 38 | Земля (splix) |
+| specs/chat-commands.md | 39 | /coin, /choose, /8ball |
+| specs/hangman.md | 40 | Віселиця |
+| specs/wordle.md | 41 | Глек-слово |
+| specs/daily.md | 84 | Щоденний глек (каркас) |
+| specs/skilky.md | 44 | Скільки? |
+| specs/mafia.md | 46 | Мафія |
+| specs/ad-contest.md | 73 | Озвуч рекламу |
+| specs/clicker.md | 82 | Гончарне коло |
+| ARCHITECTURE §6–8 | 78, 80 | Черепки, ачівки, таблиці |
+| ARCHITECTURE §4.6, §4.4, §5 | 85, 86, 87 | Спільний тик, кімнати на N, види по місцях |
