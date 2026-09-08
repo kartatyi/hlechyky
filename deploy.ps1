@@ -40,27 +40,52 @@ function Write-Log([string]$Message) {
 
 function Short([string]$Sha) { if ($Sha.Length -gt 7) { $Sha.Substring(0, 7) } else { $Sha } }
 
-# Нативні команди пишуть службові рядки в stderr; з ErrorActionPreference=Stop PowerShell вважав би їх помилкою.
+# Вивід підпроцесів читаємо з файлів, а не з конвеєра: на Windows онуки успадковують хендли,
+# тому «& щось | ForEach-Object» висить вічно, якщо процес лишив по собі демона (сервер, MSBuild-ноду).
+# Демон, якого лишив по собі підпроцес, тримає й ці файли: читаємо з дозволом на спільний доступ.
+function Read-Output([string]$Path) {
+    if (-not (Test-Path $Path)) { return '' }
+    $bytes = $null
+    try {
+        $fs = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try { $ms = New-Object IO.MemoryStream; $fs.CopyTo($ms); $bytes = $ms.ToArray() } finally { $fs.Dispose() }
+    } catch { return '' }
+    if (-not $bytes -or $bytes.Length -eq 0) { return '' }
+    $strict = [Text.Encoding]::GetEncoding('utf-8', [Text.EncoderFallback]::ExceptionFallback, [Text.DecoderFallback]::ExceptionFallback)
+    try { return $strict.GetString($bytes) } catch { return [Console]::OutputEncoding.GetString($bytes) }
+}
+
+# Імена тимчасових файлів унікальні, бо старі може ще тримати живий сервер; прибираємо як вийде.
+$script:toolStep = 0
+Get-ChildItem (Join-Path $Root 'data') -Filter 'deploy.*.tmp' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+
+function Invoke-Tool {
+    param([string]$File, [string[]]$Arguments)
+    $script:toolStep++
+    $out = Join-Path $Root ('data\deploy.{0}.{1}.out.tmp' -f $PID, $script:toolStep)
+    $err = Join-Path $Root ('data\deploy.{0}.{1}.err.tmp' -f $PID, $script:toolStep)
+    $quoted = @($Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
+    $p = Start-Process -FilePath $File -ArgumentList $quoted -WorkingDirectory $Root -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput $out -RedirectStandardError $err
+    $null = $p.Handle   # без цього дотику ExitCode лишиться порожнім (пастка Start-Process -PassThru)
+    $p.WaitForExit()    # саме цього процесу, не всього дерева
+    $text = (((Read-Output $out) + "`n" + (Read-Output $err)) -replace "`r", '').Trim()
+    Remove-Item $out, $err -Force -ErrorAction SilentlyContinue
+    return [pscustomobject]@{ Code = $p.ExitCode; Text = $text }
+}
+
 function Invoke-Step {
     param([string]$File, [string[]]$Arguments, [switch]$AllowFail)
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $out = & $File @Arguments 2>&1 | ForEach-Object { "$_" }
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    foreach ($line in $out) { if ($line.Trim()) { Write-Log "    $line" } }
-    if ($code -ne 0 -and -not $AllowFail) { throw "$File $($Arguments -join ' ') → код $code" }
-    return $code
+    $r = Invoke-Tool $File $Arguments
+    foreach ($line in $r.Text -split "`n") { if ($line.Trim()) { Write-Log "    $($line.TrimEnd())" } }
+    if ($r.Code -ne 0 -and -not $AllowFail) { throw "$File $($Arguments -join ' ') → код $($r.Code)" }
+    return $r.Code
 }
 
 function Get-Git([string[]]$Arguments) {
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $out = & git -C $Root @Arguments 2>&1 | ForEach-Object { "$_" }
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    if ($code -ne 0) { throw "git $($Arguments -join ' ') → код $code`n$($out -join "`n")" }
-    return ($out -join "`n").Trim()
+    $r = Invoke-Tool 'git' (@('-C', $Root) + $Arguments)
+    if ($r.Code -ne 0) { throw "git $($Arguments -join ' ') → код $($r.Code)`n$($r.Text)" }
+    return $r.Text.Trim()
 }
 
 function Get-ListenPort {
@@ -88,7 +113,8 @@ function Test-Server([int]$TimeoutSeconds = 90) {
     return $false
 }
 
-function Invoke-Restart { Invoke-Step powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Start, 'restart') }
+# -Command замість -File лише заради [Console]::OutputEncoding: інакше кирилиця зі start.ps1 лягає в лог як «??????».
+function Invoke-Restart { Invoke-Step powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', "& { [Console]::OutputEncoding = [Text.UTF8Encoding]::new(); & '$Start' restart }") }
 
 function Invoke-Rollback([string]$To, [string]$Why, [bool]$ServerTouched) {
     Write-Log "ВІДКАТ на $(Short $To) — $Why"
@@ -130,7 +156,7 @@ try {
     $dirty = Get-Git @('status', '--porcelain')
     if ($dirty -and -not $Force) {
         Write-Log 'СТОП: у робочій копії є незакомічені зміни, нічого не чіпаю:'
-        foreach ($line in $dirty -split "`n") { if ($line.Trim()) { Write-Log "    $line" } }
+        foreach ($line in $dirty -split "`n") { if ($line.Trim()) { Write-Log "    $($line.TrimEnd())" } }
         Write-Log 'Закоміть або сховай їх (git stash) — і наступний коміт деплой підхопить сам. Дуже треба зараз: deploy.ps1 -Force'
         return
     }
@@ -138,7 +164,7 @@ try {
     if ($needPull) {
         $incoming = Get-Git @('log', '--oneline', '--no-decorate', "$before..$target")
         Write-Log "Новий код у origin/$Branch$(if ($Sha) { " (вебхук про $(Short $Sha))" }):"
-        foreach ($line in $incoming -split "`n") { if ($line.Trim()) { Write-Log "    $line" } }
+        foreach ($line in $incoming -split "`n") { if ($line.Trim()) { Write-Log "    $($line.TrimEnd())" } }
         Invoke-Step git @('-C', $Root, 'merge', '--ff-only', "origin/$Branch") | Out-Null
         Write-Log "Підтягнув $(Short $target)"
     } else {
@@ -147,7 +173,7 @@ try {
 
     # Пробна збірка, поки старий сервер працює: build\ зайнятий ним, тому збираємо в bin\ (як це робить CI).
     Write-Log 'Пробна збірка…'
-    try { Invoke-Step dotnet @('build', (Join-Path $Root 'src\Hlechyky\Hlechyky.csproj'), '-c', 'Release', '--nologo', '-v', 'q') | Out-Null }
+    try { Invoke-Step dotnet @('build', (Join-Path $Root 'src\Hlechyky\Hlechyky.csproj'), '-c', 'Release', '--nologo', '-v', 'q', '-nodeReuse:false') | Out-Null }
     catch { Invoke-Rollback $before "збірка впала: $($_.Exception.Message)" $false; return }
 
     Write-Log 'Перезапускаю сервер…'
