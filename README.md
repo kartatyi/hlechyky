@@ -101,6 +101,21 @@ powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 logs
 powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # кладе Hlechyky.vbs в автозапуск Windows
 ```
 
+### Автодеплой
+
+Коміт у `main` → GitHub Actions збирає (`.github/workflows/build.yml`) → збірка зелена → GitHub шле подію `workflow_run` на `https://hlechyky.pp.ua/api/github/deploy`. Сервер перевіряє підпис (HMAC-SHA256; `Deploy:WebhookSecret` в `appsettings.Local.json` мусить збігатися з секретом вебхука на GitHub) і запускає `deploy.ps1` окремим процесом — той переживає перезапуск сервера, який сам же й робить.
+
+`deploy.ps1` робить те, що раніше робилося руками, тільки обережніше:
+
+1. `git fetch`; нема нічого нового — виходить.
+2. У робочій копії є незакомічені зміни — виходить і нічого не чіпає, щоб не зіпсувати недороблене. Треба таки викотити — `deploy.ps1 -Force`.
+3. `git merge --ff-only origin/main`.
+4. Пробна збірка `dotnet build` (старий сервер ще працює, `build\` зайнятий ним і не чіпається). Впала — `git reset --hard` назад, сайт навіть не смикнувся.
+5. `start.ps1 restart` і перевірка `/api/me`. Не піднявся — відкат на попередній коміт і перезапуск уже на ньому.
+
+Один деплой за раз (`data\deploy.lock`), усе пишеться в `logs\deploy.log`. Руками: `powershell -File deploy.ps1`.
+
+Вимкнути — `Deploy:Enabled: false` в `appsettings.json`; при порожньому `WebhookSecret` ендпоінт узагалі відповідає 404. Що прилітало від GitHub і з якою відповіддю видно в Settings → Webhooks → Recent Deliveries, там же кнопка Redeliver, якщо сервер саме лежав.
 ### Домен і https (Caddy)
 
 `hlechyky.pp.ua` куплений на nic.ua, DNS там же (name servers NIC.UA, записи `@` і `www` типу A на 134.249.147.16). У name servers на nic.ua своя дата закінчення, окремо від домену: не дай їй проскочити.
@@ -116,7 +131,8 @@ Caddy (`tools\caddy\caddy.exe`, конфіг `Caddyfile`) слухає 80/443, �
 
 ```
 appsettings.json          налаштування (назва, ім'я DJ, ліміти, шляхи)
-appsettings.Local.json    секрети: Auth:AdminKey, LastFm:ApiKey, Liquidsoap:ApiKey, DjBot:ApiKey (не в гіті; шаблон appsettings.Local.example.json)
+appsettings.Local.json    секрети: Auth:AdminKey, LastFm:ApiKey, Liquidsoap:ApiKey, DjBot:ApiKey, Deploy:WebhookSecret (не в гіті; шаблон appsettings.Local.example.json)
+deploy.ps1                автодеплой: pull main, пробна збірка, restart, відкат при невдачі (лог logs/deploy.log)
 setup.ps1                 перший запуск після git clone: качає yt-dlp/ffmpeg, створює обидва файли з секретами
 CONTRIBUTING.md           як підняти свою копію і віддати зміни через Pull Request
 Caddyfile                 https-фронт: домен, куди що проксувати
@@ -128,7 +144,7 @@ liquidsoap/               radio.liq, docker-compose.yml, .env (пароль Icec
 tools/yt-dlp/             yt-dlp.exe, ffmpeg.exe, ffprobe.exe (setup.ps1 качає)
 cache/                    завантажені треки і голосові (voice-<id>.mp3)
 data/                     hlechyky.db (історія, лайки, чат, черга, плейлисти, кеш Last.fm), ключі cookie, data/caddy (сертифікати)
-.github/workflows/        GitHub Actions: dotnet build на кожен push у main і кожен PR
+.github/workflows/        GitHub Actions: dotnet build на кожен push у main і кожен PR (зелений build на main → автодеплой)
 ```
 
 ## Налаштування, які захочеться крутити

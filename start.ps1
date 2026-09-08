@@ -43,6 +43,9 @@ function Invoke-Build {
     Write-Host 'Збираю Release…'
     dotnet publish (Join-Path $Root 'src\Hlechyky\Hlechyky.csproj') -c Release -o $Build --nologo -v q
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish впав' }
+    # Позначка для deploy.ps1: з якого коміту зібрано те, що зараз лежить у build\
+    New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
+    try { Set-Content (Join-Path $Root 'data\built.sha') (git -C $Root rev-parse HEAD) -Encoding ASCII } catch { }
 }
 
 function Test-Icecast {

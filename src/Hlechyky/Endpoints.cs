@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
@@ -146,6 +147,9 @@ public static class Endpoints
             return Results.Ok(new { ok = true });
         });
 
+        // Автодеплой: сюди стукає GitHub, коли збірка на main позеленіла (Deploy.cs → deploy.ps1)
+        api.MapPost("/github/deploy", (HttpContext c, IOptionsMonitor<DeployOptions> opt, ILoggerFactory lf) =>
+            Deploy.HandleAsync(c, opt.CurrentValue, lf.CreateLogger("Hlechyky.Deploy")));
         api.MapPost("/liq/track", async (HttpContext c, RadioEngine e) =>
         {
             var node = await JsonNode.ParseAsync(c.Request.Body);

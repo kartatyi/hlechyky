@@ -121,3 +121,14 @@ public sealed class DjBotOptions
     public double CacheReadUsdPerMTok { get; set; } = 0.10;
     public double CacheWriteUsdPerMTok { get; set; } = 1.25;
 }
+
+public sealed class DeployOptions
+{
+    public bool Enabled { get; set; } = true;
+    /// <summary>Спільний секрет із вебхуком на GitHub. Порожній — ендпоінт /api/github/deploy просто не існує.</summary>
+    public string WebhookSecret { get; set; } = "";
+    public string Branch { get; set; } = "main";
+    /// <summary>Назва workflow в Actions, зеленої збірки якого чекаємо (порожньо — будь-якого).</summary>
+    public string Workflow { get; set; } = "build";
+    public string Script { get; set; } = "deploy.ps1";
+}
