@@ -264,12 +264,15 @@ body.view-games #colMain { display: none; }
 .gtabs button:not(.on) .gico { opacity: .6; }
 .gseats .gico { width: 16px; height: 16px; margin-right: 2px; }
 .games .gtabs .count { color: var(--muted); font-size: .85em; }
-.games .ghead { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.games .ghead { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .games .ghead .small { line-height: 1.35; }
+.games .gnew { display: flex; gap: 6px; flex: none; }
 .gtable { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
 .gtable.mine { border-color: var(--accent2); }
 .gseats { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .92em; flex-wrap: wrap; }
 .gseats .vs { color: var(--muted); font-size: .85em; }
+/* Під однією вкладкою стоять столи з різними правилами — підписуємо ті, що не класика. */
+.gmode { padding: 2px 8px; border-radius: 999px; border: 1px dashed var(--line); color: var(--muted); font-size: .78em; }
 .gseat { padding: 3px 9px; border-radius: 999px; background: var(--bg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42%; }
 .gseat.x { color: var(--accent); }
 .gseat.o { color: var(--ok); }
@@ -293,6 +296,8 @@ body.view-games #colMain { display: none; }
 .board .cell.x { color: var(--accent); }
 .board .cell.o { color: var(--ok); }
 .board .cell.win { background: #4a3a06; border-color: var(--accent2); }
+/* Зникаючі хрестики: мітка, яку наступний хід свого ж господаря змете з поля. */
+.board .cell.fading { animation: blink 1.4s infinite; }
 /* Змійка: канвас у розмір картки, хрестовина тільки під палець. */
 .snakeboard { width: 100%; max-width: 416px; aspect-ratio: 26 / 18; display: block; margin: 0 auto; border-radius: 10px; background: var(--bg2); }
 .gscore { font-variant-numeric: tabular-nums; font-size: .95em; color: var(--muted); white-space: nowrap; }

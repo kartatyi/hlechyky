@@ -6,7 +6,8 @@ namespace Hlechyky;
 /// </summary>
 /// <param name="Need">Скільки в ряд треба зібрати.</param>
 /// <param name="Gravity">Ходом називають колонку, а фішка падає на найнижче вільне місце.</param>
-public sealed record GridRules(int Width, int Height, int Need, bool Gravity)
+/// <param name="Keep">Скільки міток гравець тримає на полі: поставив ще одну — найстаріша щезає. 0 — не щезає нічого.</param>
+public sealed record GridRules(int Width, int Height, int Need, bool Gravity, int Keep = 0)
 {
     public int Cells => Width * Height;
 }
@@ -28,13 +29,15 @@ public sealed record GameRules(string Title, string XName, string OName, GridRul
 public sealed class GameTable
 {
     public string Id { get; init; } = Guid.NewGuid().ToString("N")[..8];
-    /// <summary>Яка гра за столом: "ttt", "c4" або "snake".</summary>
+    /// <summary>Яка гра за столом: "ttt", "ttt3", "c4" або "snake".</summary>
     public required string Game { get; init; }
     public required GameRules Rules { get; init; }
     /// <summary>Покрокові ігри: клітинки зліва направо, зверху вниз ("x", "o" або null).</summary>
     public string?[]? Cells { get; init; }
     /// <summary>Змійка: стан партії, який рухає SnakeEngine.</summary>
     public SnakeState? Snake { get; init; }
+    /// <summary>Зникаючий режим: зайняті клітинки в порядку появи, щоб знати, чия черга щезати.</summary>
+    public List<int>? Order { get; init; }
     public string? X { get; set; }
     public string? O { get; set; }
     /// <summary>Чий хід: "x" або "o".</summary>
@@ -55,6 +58,7 @@ public sealed class GameTable
     public void Reset()
     {
         if (Cells is not null) Array.Clear(Cells);
+        Order?.Clear();
         Snake?.Reset();
         Turn = "x";
         Winner = null;
@@ -62,7 +66,8 @@ public sealed class GameTable
     }
 }
 
-public sealed record GameTableDto(string Id, string Game, int Width, int Height, string?[]? Cells, string? X, string? O, string Turn, string? Winner, int[]? Line, SnakeFrame? Snake);
+/// <param name="Fading">Зникаючий режим: клітинка, яка щезне наступним ходом; null, коли щезати ще нема чому.</param>
+public sealed record GameTableDto(string Id, string Game, int Width, int Height, string?[]? Cells, string? X, string? O, string Turn, string? Winner, int[]? Line, SnakeFrame? Snake, int? Fading);
 
 /// <summary>Результат ходу: Message бачить той, хто натиснув, Log (якщо є) іде в Журнал для всіх.</summary>
 public sealed record GameResult(bool Ok, string Message, string? Log = null);
@@ -77,6 +82,8 @@ public sealed class Games
     static readonly Dictionary<string, GameRules> Known = new()
     {
         ["ttt"] = new("хрестики-нолики", "✕", "◯", new GridRules(3, 3, 3, false)),
+        // Те саме поле, але кожен тримає на ньому лише три мітки: нічия неможлива, партія триває, поки хтось не збере ряд.
+        ["ttt3"] = new("зникаючі хрестики-нолики", "✕", "◯", new GridRules(3, 3, 3, false, Keep: 3)),
         ["c4"] = new("чотири в ряд", "жовті", "зелені", new GridRules(7, 6, 4, true)),
         ["snake"] = new("змійка", "жовта", "зелена", RealTime: true, Acc: "змійку"),
     };
@@ -97,7 +104,8 @@ public sealed class Games
         t.Rules.Grid?.Width ?? SnakeState.W, t.Rules.Grid?.Height ?? SnakeState.H,
         t.Cells is null ? null : (string?[])t.Cells.Clone(),
         t.X, t.O, t.Turn, t.Winner, t.Line,
-        t.Snake is null ? null : Frame(t));
+        t.Snake is null ? null : Frame(t),
+        Fading(t));
 
     static SnakeFrame Frame(GameTable t)
     {
@@ -122,6 +130,7 @@ public sealed class Games
                 Game = game,
                 Rules = rules,
                 Cells = rules.Grid is { } grid ? new string?[grid.Cells] : null,
+                Order = rules.Grid is { Keep: > 0 } ? [] : null,
                 Snake = snake,
                 X = nick,
             });
@@ -174,6 +183,9 @@ public sealed class Games
             if (index < 0) return new(false, t.Rules.Grid!.Gravity ? "Ця колонка вже повна" : "Ця клітинка вже зайнята");
 
             t.Cells[index] = seat;
+            t.Order?.Add(index);
+            // Найстаріша мітка щезає ще до підрахунку ряду: виграти тим, чого вже нема на полі, не можна.
+            Vanish(t, seat);
             var other = seat == "x" ? "o" : "x";
             if (WinLine(t, index, seat) is { } line)
             {
@@ -272,6 +284,24 @@ public sealed class Games
             }
             return updates;
         }
+    }
+
+    /// <summary>Зникаючий режим: гравець поставив зайву мітку — найстаріша його щезає з поля.</summary>
+    static void Vanish(GameTable t, string seat)
+    {
+        if (t.Order is null) return;
+        var mine = t.Order.Where(c => t.Cells![c] == seat).ToList();
+        if (mine.Count <= t.Rules.Grid!.Keep) return;
+        t.Cells![mine[0]] = null;
+        t.Order.Remove(mine[0]);
+    }
+
+    /// <summary>Яка мітка щезне наступним ходом: найстаріша в того, хто ходить, коли він уже набрав ліміт.</summary>
+    static int? Fading(GameTable t)
+    {
+        if (t.Order is null || !t.Full || t.Winner is not null) return null;
+        var mine = t.Order.Where(c => t.Cells![c] == t.Turn).ToList();
+        return mine.Count >= t.Rules.Grid!.Keep ? mine[0] : null;
     }
 
     GameTable? Find(string id) => _tables.FirstOrDefault(t => t.Id == id);

@@ -20,10 +20,12 @@
   let tables = [];
   // Реєстр ігор у вкладці «Ігри»: додати нову — рядок сюди і рядок у Games.Known на сервері.
   // Дошку малює спільний код за розміром поля з сервера; discs — фішки падають у колонку.
+  // modes — кілька правил під однією вкладкою: у кожного свій id столу на сервері і своя кнопка «+».
   const GAMES = [
     {
       id: 'ttt', name: 'Хрестики-нолики', marks: { x: '✕', o: '◯' },
-      hint: 'Стіл рівно на двох: хто поставив — за ✕, хто сів другим — за ◯. Решта дивиться.',
+      modes: [{ id: 'ttt', add: '+ Стіл' }, { id: 'ttt3', add: '+ Зникаючий', chip: 'зникаючі' }],
+      hint: 'Стіл рівно на двох: хто поставив — за ✕, хто сів другим — за ◯. У зникаючому кожен тримає на полі лише три мітки: ставиш четверту — найстаріша щезає, тож нічиїх там не буває.',
       icon: `<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
         <path d="M2.3 2.3 6.9 6.9 M6.9 2.3 2.3 6.9" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" fill="none"/>
         <circle cx="11.1" cy="11.1" r="3" stroke="var(--ok)" stroke-width="1.8" fill="none"/>
@@ -50,7 +52,10 @@
       </svg>`,
     },
   ];
-  const gameOf = (id) => GAMES.find((g) => g.id === id) || GAMES[0];
+  const modesOf = (g) => g.modes || [{ id: g.id, add: '+ Стіл' }];
+  const gameOf = (id) => GAMES.find((g) => modesOf(g).some((m) => m.id === id)) || GAMES[0];
+  const modeOf = (id) => modesOf(gameOf(id)).find((m) => m.id === id);
+  const tablesOf = (g) => tables.filter((t) => modesOf(g).some((m) => m.id === t.game));
   const markOf = (t, m) => gameOf(t.game).marks[m];
   let gameTab = GAMES.some((g) => g.id === localStorage.getItem('gameTab')) ? localStorage.getItem('gameTab') : GAMES[0].id;
   let queueDur = [];
@@ -717,7 +722,8 @@
       const win = t.line && t.line.includes(i);
       const col = i % t.width;
       const free = g.discs ? !t.cells[col] : !c;
-      return `<button class="cell${c ? ' ' + c : ''}${win ? ' win' : ''}" data-id="${t.id}" data-i="${g.discs ? col : i}"`
+      const fade = i === t.fading;
+      return `<button class="cell${c ? ' ' + c : ''}${win ? ' win' : ''}${fade ? ' fading' : ''}" data-id="${t.id}" data-i="${g.discs ? col : i}"`
         + `${myTurn && free ? '' : ' disabled'}>${c && !g.discs ? markOf(t, c) : ''}</button>`;
     }).join('');
     const board = g.realtime
@@ -736,8 +742,9 @@
     if (seat && t.winner) btns.push(`<button class="primary" data-act="Rematch" data-id="${t.id}">Ще раз</button>`);
     if (seat) btns.push(`<button class="ghost" data-act="LeaveTable" data-id="${t.id}">Встати</button>`);
     else if (t.x && t.o) btns.push('<span class="muted small">Стіл зайнятий, дивишся збоку</span>');
+    const chip = modeOf(t.game)?.chip;
     return `<div class="gtable${seat ? ' mine' : ''}">
-        <div class="gseats">${g.icon}${seatHtml(t, 'x')}${score || '<span class="vs">проти</span>'}${seatHtml(t, 'o')}</div>
+        <div class="gseats">${g.icon}${chip ? `<span class="gmode">${esc(chip)}</span>` : ''}${seatHtml(t, 'x')}${score || '<span class="vs">проти</span>'}${seatHtml(t, 'o')}</div>
         ${board}
         <div class="gstatus${t.winner ? ' done' : ''}${myTurn ? ' my' : ''}">${esc(tableStatus(t))}</div>
         <div class="gbtns">${btns.join('')}</div>
@@ -753,19 +760,20 @@
   function renderGames() {
     const box = $('games');
     const g = GAMES.find((x) => x.id === gameTab) || GAMES[0];
-    const mine = tables.filter((t) => t.game === g.id);
+    const mine = tablesOf(g);
     box.innerHTML = `<div class="tabs gtabs">${GAMES.map((x) => {
-        const n = tables.filter((t) => t.game === x.id).length;
+        const n = tablesOf(x).length;
         return `<button data-game="${x.id}" class="${x.id === g.id ? 'on' : ''}">${x.icon}${esc(x.name)}${n ? ` <span class="count">${n}</span>` : ''}</button>`;
       }).join('')}</div>
       <div class="ghead">
         <div class="muted small">${esc(g.hint)}</div>
-        <button id="newTable" class="primary">+ Стіл</button>
+        <div class="gnew">${modesOf(g).map((m, i) =>
+          `<button data-new="${m.id}" class="${i ? 'ghost' : 'primary'}">${esc(m.add)}</button>`).join('')}</div>
       </div>` + (mine.length
         ? `<div class="gtables">${mine.map(tableHtml).join('')}</div>`
         : `<div class="empty">Столів поки нема. Постав перший і клич когось у балачках.</div>`);
     box.querySelectorAll('[data-game]').forEach((b) => b.onclick = () => setGameTab(b.dataset.game));
-    $('newTable').onclick = (e) => busy(e.currentTarget, 'ставлю…', () => game('CreateTable', g.id));
+    box.querySelectorAll('[data-new]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, 'ставлю…', () => game('CreateTable', b.dataset.new)));
     box.querySelectorAll('.cell').forEach((b) => b.onclick = () => game('PlayMove', b.dataset.id, +b.dataset.i));
     box.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => game(b.dataset.act, b.dataset.id));
     box.querySelectorAll('.dpad button').forEach((b) => b.onclick = () => steer(+b.dataset.dir));
