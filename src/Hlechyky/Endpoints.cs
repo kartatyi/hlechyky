@@ -33,6 +33,25 @@ public static class Endpoints
         api.MapPost("/queue/track/{trackId}", async (HttpContext c, string trackId, RadioEngine e, CancellationToken ct) =>
             Reply(await e.AddKnownAsync(trackId, Auth.Nick(c), Auth.IsAdmin(c), ct)));
 
+        // Голосове: тіло запиту — сирий запис із мікрофона, ffmpeg робить із нього mp3 у кеші,
+        // далі воно стає в чергу як звичайний трек (файл уже є, качати нема чого).
+        api.MapPost("/voice", async (HttpContext c, RadioEngine e, VoiceService voice, CancellationToken ct) =>
+        {
+            if (!voice.Enabled) return Fail("Голосові вимкнені");
+            if (c.Request.ContentLength > voice.MaxUploadBytes) return Fail($"Задовгий запис, ліміт {voice.MaxUploadBytes / (1024 * 1024)} МБ");
+            TrackInfo track;
+            string path;
+            try { (track, path) = await voice.SaveAsync(c.Request.Body, Auth.Nick(c), ct); }
+            catch (Exception ex) { return Fail("Не вийшло взяти голосове: " + ex.Message); }
+            return Reply(e.AddVoice(track, path, Auth.Nick(c)));
+        });
+
+        api.MapGet("/voice/{name}", (string name, VoiceService voice) =>
+        {
+            var path = voice.FilePath(name.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name);
+            return path is null ? Results.NotFound() : Results.File(path, "audio/mpeg", enableRangeProcessing: true);
+        });
+
         api.MapDelete("/queue/{itemId}", (HttpContext c, string itemId, RadioEngine e) =>
             Reply(e.Remove(itemId, Auth.Nick(c), Auth.IsAdmin(c))));
 

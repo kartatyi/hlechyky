@@ -39,6 +39,7 @@ public sealed class RadioEngine : BackgroundService
     readonly IOptionsMonitor<YtDlpOptions> _yt;
     readonly IOptionsMonitor<AutoDjOptions> _adj;
     readonly IOptionsMonitor<IcecastOptions> _ice;
+    readonly IOptionsMonitor<VoiceOptions> _voice;
 
     readonly object _lock = new();
     readonly List<QueueItem> _queue = new();
@@ -80,10 +81,10 @@ public sealed class RadioEngine : BackgroundService
     public RadioEngine(Db db, YtDlpService ytdlp, YtMusicClient ytm, LiquidsoapClient liq, AutoDj autoDj, LastFmClient lastFm,
         Presence presence, IHubContext<RadioHub> hub, ILogger<RadioEngine> log,
         IOptionsMonitor<SiteOptions> site, IOptionsMonitor<YtDlpOptions> yt, IOptionsMonitor<AutoDjOptions> adj,
-        IOptionsMonitor<IcecastOptions> ice)
+        IOptionsMonitor<IcecastOptions> ice, IOptionsMonitor<VoiceOptions> voice)
     {
         _db = db; _ytdlp = ytdlp; _ytm = ytm; _liq = liq; _autoDj = autoDj; _lastFm = lastFm; _presence = presence; _hub = hub; _log = log;
-        _site = site; _yt = yt; _adj = adj; _ice = ice;
+        _site = site; _yt = yt; _adj = adj; _ice = ice; _voice = voice;
     }
 
     string Dj => _site.CurrentValue.DjName;
@@ -118,6 +119,7 @@ public sealed class RadioEngine : BackgroundService
                 DjNameGen = DjGen,
                 StreamUrl = _site.CurrentValue.PublicStreamUrl,
                 LastFmEnabled = _lastFm.Enabled,
+                VoiceMaxSeconds = _voice.CurrentValue.Enabled ? Math.Clamp(_voice.CurrentValue.MaxSeconds, 5, 900) : 0,
             };
         }
     }
@@ -190,6 +192,21 @@ public sealed class RadioEngine : BackgroundService
             _log.LogWarning(ex, "resolve failed for {Input}", input);
             return (false, "Не вийшло розібрати: " + ex.Message);
         }
+        return Enqueue(track, nick, isAdmin, via, reason, quiet);
+    }
+
+    /// <summary>
+    /// Голосове вже лежить готовим файлом у кеші, тож стає в чергу одразу як Ready: качати нема чого,
+    /// тік просто відправить його в liquidsoap, коли дійде черга. Ліміт довжини в нього свій
+    /// (Voice:MaxSeconds, ріжеться ще при перегонці), тому загальний ліміт треку тут не питаємо.
+    /// </summary>
+    public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick) =>
+        Enqueue(track, nick, isAdmin: true, via: null, reason: null, quiet: false, filePath: filePath,
+            chat: $"{nick} записує голосове ({Mmss(track.DurationSec)})", reply: $"Голосове в черзі ({Mmss(track.DurationSec)})");
+
+    (bool Ok, string Message) Enqueue(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, bool quiet,
+        string? filePath = null, string? chat = null, string? reply = null)
+    {
         if (_db.IsBanned(track.Id)) return (false, "Цей трек у бан-листі");
         var max = _yt.CurrentValue.MaxDurationSeconds;
         if (!isAdmin && track.DurationSec > max) return (false, $"Задовгий трек ({track.DurationSec / 60} хв), ліміт {max / 60} хв");
@@ -197,15 +214,22 @@ public sealed class RadioEngine : BackgroundService
         {
             if (_queue.Any(q => q.Track.Id == track.Id)) return (false, "Уже в черзі");
             if (_now.Track?.Id == track.Id && _now.Source is "user" or "autodj") return (false, "Уже грає");
-            _queue.Add(new QueueItem { Track = track, RequestedBy = nick, Via = via, Reason = reason });
+            _queue.Add(new QueueItem
+            {
+                Track = track, RequestedBy = nick, Via = via, Reason = reason,
+                FilePath = filePath, Status = filePath is null ? ItemStatus.Queued : ItemStatus.Ready,
+            });
         }
         _db.UpsertTrack(track);
+        if (filePath is not null) _db.SetTrackFile(track.Id, filePath);
         PersistQueue();
-        if (!quiet) SystemChat(via == "suggestion" ? $"{nick} бере пораду {DjGen}: {track.Label}" : $"{nick} додає {track.Label}");
+        if (!quiet) SystemChat(chat ?? (via == "suggestion" ? $"{nick} бере пораду {DjGen}: {track.Label}" : $"{nick} додає {track.Label}"));
         Broadcast();
         _ = TickSafeAsync();
-        return (true, "Закинуто: " + track.Label);
+        return (true, reply ?? "Закинуто: " + track.Label);
     }
+
+    static string Mmss(int sec) => $"{sec / 60}:{sec % 60:00}";
 
     /// <summary>Queue a track we already know (from likes, history, playlists) by id.</summary>
     public Task<(bool Ok, string Message)> AddKnownAsync(string trackId, string nick, bool isAdmin, CancellationToken ct, bool quiet = false)
@@ -442,9 +466,14 @@ public sealed class RadioEngine : BackgroundService
         return r;
     }
 
-    /// <summary>What the suggestions follow: the track on air, else the Spotify fallback's title, else "none" (last played is used).</summary>
+    /// <summary>
+    /// What the suggestions follow: the track on air, else the Spotify fallback's title, else "none"
+    /// (last played is used). A voice message is nobody's musical taste: while one is on air the key
+    /// stays as it was, so the panel keeps the suggestions built from the last real track.
+    /// </summary>
     string CurrentSeedKey() =>
-        _now.Source is "user" or "autodj" && _now.Track is not null ? "t:" + _now.Track.Id
+        _now.Source is "user" or "autodj" && _now.Track is not null
+            ? VoiceService.IsVoice(_now.Track.Id) ? _suggestSeedKey ?? "none" : "t:" + _now.Track.Id
         : _spotifyLive && !string.IsNullOrWhiteSpace(_spotifyTitle) ? "s:" + _spotifyTitle
         : "none";
 
@@ -491,7 +520,7 @@ public sealed class RadioEngine : BackgroundService
                 if (_now.Track is not null) exclude.Add(_now.Track.Id);
                 if (_autoNext is not null) exclude.Add(_autoNext.Track.Id);
                 need = SuggestionTarget - _suggestions.Count;
-                seed = _now.Source is "user" or "autodj" ? _now.Track : null;
+                seed = _now.Source is "user" or "autodj" && !VoiceService.IsVoice(_now.Track?.Id) ? _now.Track : null;
                 spotifyTitle = seed is null && _spotifyLive ? _spotifyTitle : null;
             }
             if (need <= 0) return;

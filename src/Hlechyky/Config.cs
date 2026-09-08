@@ -52,6 +52,16 @@ public sealed class YtDlpOptions
     public int TimeoutSeconds { get; set; } = 240;
 }
 
+public sealed class VoiceOptions
+{
+    public bool Enabled { get; set; } = true;
+    /// <summary>Довші записи ріжуться при перегонці; браузер зупиняє запис сам на цій межі.</summary>
+    public int MaxSeconds { get; set; } = 120;
+    public long MaxUploadBytes { get; set; } = 10 * 1024 * 1024;
+    /// <summary>До якої гучності (LUFS) підтягнути голос, щоб він не тонув між треками.</summary>
+    public double LoudnessLufs { get; set; } = -14;
+}
+
 public sealed class LiquidsoapOptions
 {
     public string Host { get; set; } = "127.0.0.1";

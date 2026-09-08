@@ -27,12 +27,15 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
     AutoDjOptions O => options.CurrentValue;
     readonly Random _rng = new();
 
-    /// <summary>What to build on when nothing is on air: the last track that played, else a random liked one.</summary>
+    /// <summary>
+    /// What to build on when nothing is on air: the last track that played, else a random liked one.
+    /// Голосові пропускаємо — від чийогось «привіт усім» схожої музики не підбереш.
+    /// </summary>
     public TrackInfo? FallbackSeed()
     {
-        var recent = db.RecentDistinctTracks(1, excludeSkipped: false);
-        if (recent.Count > 0) return recent[0];
-        var liked = db.LikedTracks(50);
+        var recent = db.RecentDistinctTracks(5, excludeSkipped: false).FirstOrDefault(t => !VoiceService.IsVoice(t.Id));
+        if (recent is not null) return recent;
+        var liked = db.LikedTracks(50).Where(t => !VoiceService.IsVoice(t.Id)).ToList();
         return liked.Count > 0 ? liked[_rng.Next(liked.Count)] : null;
     }
 

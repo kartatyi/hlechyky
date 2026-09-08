@@ -73,4 +73,6 @@ public sealed class StateSnapshot
     public required string DjNameGen { get; init; }
     public required string StreamUrl { get; init; }
     public required bool LastFmEnabled { get; init; }
+    /// <summary>Скільки секунд можна писати голосове; 0 — голосові вимкнені.</summary>
+    public required int VoiceMaxSeconds { get; init; }
 }

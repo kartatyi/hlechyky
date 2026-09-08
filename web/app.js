@@ -6,6 +6,12 @@
   const isUrl = (s) => /^https?:\/\/\S+$/i.test(s.trim());
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
   const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+  // Голосове — такий самий трек у черзі, тільки з нашим id і без обкладинки: замість неї мікрофон.
+  const isVoice = (t) => !!t && String(t.id || '').startsWith('voice-');
+  const cover = (t, attrs) => (t && t.thumbUrl
+    ? `<img src="${esc(t.thumbUrl)}" alt=""${attrs ? ' ' + attrs : ''}>`
+    : `<div class="noimg${isVoice(t) ? ' voice' : ''}">${isVoice(t) ? '🎙' : ''}</div>`);
+  const voiceBtn = (t) => (isVoice(t) ? `<button class="ghost vplay" data-id="${esc(t.id)}" title="Послухати">▶</button>` : '');
   const EMOJIS = ['🔥', '❤️', '😂', '🕺', '🤘', '😴', '🤮', '🫠'];
 
   let me = { nick: localStorage.getItem('nick') || '', role: 'member' };
@@ -212,7 +218,7 @@
       const why = n.reason ? `<div class="why">${esc(n.reason)}</div>` : '';
       const pending = n.skipPending;
       box.innerHTML = `
-        <div class="coverwrap">${t.thumbUrl ? `<img class="cover" src="${esc(t.thumbUrl)}" alt="">` : '<div class="cover placeholder">♪</div>'}</div>
+        <div class="coverwrap">${t.thumbUrl ? `<img class="cover" src="${esc(t.thumbUrl)}" alt="">` : `<div class="cover placeholder">${isVoice(t) ? '🎙' : '♪'}</div>`}</div>
         <div style="min-width:0">
           <div class="title">${esc(t.title)}</div>
           <div class="artist">${esc(t.artist)}</div>
@@ -225,7 +231,7 @@
             <button id="likeBtn" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Лайкнути')}">❤ ${n.likers.length}</button>
             <button id="skipBtn" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭ Скіп</button>
             <button id="plBtn" title="Зберегти в плейлист">＋ плейлист</button>
-            ${t.sourceUrl ? `<a class="chip" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">джерело ↗</a>` : ''}
+            ${t.sourceUrl ? `<a class="chip" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${isVoice(t) ? 'послухати ↗' : 'джерело ↗'}</a>` : ''}
             ${me.role === 'admin' ? `<button id="banBtn" class="danger ghost" title="Забанити трек і скіпнути">бан</button>` : ''}
           </div>
           <div class="reacts" title="Реакція, яку побачать усі">${EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('')}</div>
@@ -328,13 +334,14 @@
         const fresh = now - new Date(it.addedAt).getTime() < 4000;
         return `<li class="qitem ${it.status} ${fresh ? 'fresh' : ''} ${canMove ? 'movable' : ''}" data-id="${it.itemId}">
           <div class="n">${i + 1}</div>
-          ${it.track.thumbUrl ? `<img src="${esc(it.track.thumbUrl)}" alt="" draggable="false">` : '<div class="noimg"></div>'}
+          ${cover(it.track, 'draggable="false"')}
           <div style="min-width:0">
             <div class="t">${esc(it.track.title)}</div>
             <div class="a">${esc(it.track.artist)} · ${fmt(it.track.durationSec)}</div>
             <div class="meta"><span>${esc(it.requestedBy)}</span>${it.via === 'suggestion' ? `<span class="chip dj">порада ${esc(djGen())}</span>` : ''}${statusChip(it)}<span class="eta" data-eta="${i}"></span></div>
           </div>
           <div class="btns">
+            ${voiceBtn(it.track)}
             ${canMove ? '<span class="grip" title="Тягни, щоб пересунути">⠿</span>' : ''}
             ${mine ? `<button class="icon danger rm" title="Прибрати">✕</button>` : ''}
           </div>
@@ -343,6 +350,7 @@
       ul.querySelectorAll('li').forEach((li) => {
         const id = li.dataset.id;
         li.querySelector('.rm')?.addEventListener('click', (e) => busy(e.currentTarget, '', () => api('DELETE', `/api/queue/${id}`).catch(fail)));
+        wireVoiceButtons(li);
         if (li.classList.contains('movable')) li.addEventListener('pointerdown', (e) => startDrag(e, li));
       });
     }
@@ -494,6 +502,7 @@
   function render() {
     if (!state) return;
     $('siteName').textContent = state.siteName;
+    $('micBtn').hidden = !state.voiceMaxSeconds || !canRecord();   // без https мікрофона браузер не дасть, нема чого й дражнити
     renderNow();
     renderQueue();
     renderOnline();
@@ -867,6 +876,179 @@
     catch (e) { t.remove(); fail(e); }
   }
 
+  // ---------- голосові: записати і поставити в чергу ----------
+  // MediaRecorder пише в тому форматі, який уміє браузер (webm/opus, у Safari mp4) — сервер сам
+  // перегонить його в mp3 і кладе в кеш, далі запис іде чергою як звичайний трек.
+  const recBox = $('rec');
+  const voiceMax = () => (state && state.voiceMaxSeconds) || 0;
+  const canRecord = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  const MIMES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  let recorder = null, recStream = null, recChunks = [], recStartedAt = 0, recTimer = 0, recTossed = false;
+  let recBlob = null, recUrl = null, recActx = null, recAnalyser = null, recRaf = 0;
+
+  async function startRec() {
+    if (recorder) return;
+    if (!voiceMax()) { toast('Голосові вимкнені', 'err'); return; }
+    if (!canRecord()) { toast('Цей браузер не вміє писати звук (потрібен https і свіжий Chrome, Firefox або Safari)', 'err'); return; }
+    if (!me.nick) { askNick(); return; }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+    catch (e) { toast(e.name === 'NotAllowedError' ? 'Мікрофон не дозволено — дозволь у браузері й спробуй ще' : 'Мікрофон не відкрився: ' + e.message, 'err'); return; }
+    dropRecBlob();
+    recStream = stream;
+    recChunks = [];
+    recTossed = false;
+    const type = MIMES.find((m) => MediaRecorder.isTypeSupported(m));
+    try { recorder = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 96000 } : undefined); }
+    catch { recorder = new MediaRecorder(stream); }
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = finishRec;
+    recorder.start();
+    recStartedAt = Date.now();
+    drawRecLive();
+    recTimer = setInterval(() => {
+      const sec = (Date.now() - recStartedAt) / 1000;
+      const el = $('recTime');
+      if (el) el.textContent = fmt(sec);
+      if (sec >= voiceMax()) stopRec();   // довше сервер усе одно відріже
+    }, 200);
+    startMeter(stream);
+  }
+
+  function stopRec() {
+    clearInterval(recTimer);
+    recTimer = 0;
+    if (recorder && recorder.state !== 'inactive') { try { recorder.stop(); } catch { /* уже стало */ } }
+  }
+  function cancelRec() { recTossed = true; stopRec(); }
+
+  function finishRec() {
+    const type = (recorder && recorder.mimeType) || 'audio/webm';
+    const sec = Math.round((Date.now() - recStartedAt) / 1000);
+    const blob = new Blob(recChunks, { type });
+    recorder = null;
+    recChunks = [];
+    stopMeter();
+    releaseMic();
+    if (recTossed) { closeRec(); return; }
+    if (blob.size < 1024) { closeRec(); toast('Нічого не записалось, спробуй ще раз', 'err'); return; }
+    recBlob = blob;
+    recUrl = URL.createObjectURL(blob);
+    drawRecPreview(sec);
+  }
+
+  function drawRecLive() {
+    recBox.hidden = false;
+    recBox.className = 'rec live';
+    recBox.innerHTML = `<span class="rec-dot"></span><span id="recTime" class="rec-time">0:00</span>
+      <div class="rec-bars">${'<i></i>'.repeat(16)}</div>
+      <span class="muted small">ліміт ${fmt(voiceMax())}</span>
+      <button id="recStop" class="primary">Готово</button>
+      <button id="recCancel" class="ghost icon" title="Викинути">✕</button>`;
+    $('recStop').onclick = stopRec;
+    $('recCancel').onclick = cancelRec;
+  }
+
+  function drawRecPreview(sec) {
+    recBox.hidden = false;
+    recBox.className = 'rec prev';
+    recBox.innerHTML = `<span class="rec-mic">🎙</span><audio controls src="${recUrl}"></audio><span class="chip">${fmt(sec)}</span>
+      <button id="recSend" class="primary">Закинути в чергу</button>
+      <button id="recAgain" class="ghost">Ще раз</button>
+      <button id="recDrop" class="ghost icon danger" title="Викинути">✕</button>`;
+    $('recSend').onclick = (e) => busy(e.currentTarget, 'несу…', sendRec);
+    $('recAgain').onclick = () => { closeRec(); startRec(); };
+    $('recDrop').onclick = closeRec;
+  }
+
+  async function sendRec() {
+    if (!recBlob) return;
+    try {
+      const r = await fetch('/api/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': recBlob.type || 'application/octet-stream', 'X-Nick': encodeURIComponent(me.nick) },
+        body: recBlob,
+      });
+      let data = null;
+      try { data = await r.json(); } catch { /* без тіла */ }
+      if (!r.ok) throw new Error((data && data.message) || `HTTP ${r.status}`);
+      ok(data);
+      closeRec();
+    } catch (e) { fail(e); }
+  }
+
+  function closeRec() {
+    clearInterval(recTimer);
+    recTimer = 0;
+    stopMeter();
+    releaseMic();
+    dropRecBlob();
+    recorder = null;
+    recBox.hidden = true;
+    recBox.innerHTML = '';
+  }
+  function dropRecBlob() {
+    if (recUrl) URL.revokeObjectURL(recUrl);
+    recUrl = null;
+    recBlob = null;
+  }
+  function releaseMic() {
+    if (recStream) recStream.getTracks().forEach((t) => t.stop());   // гасне і червона крапка у вкладці
+    recStream = null;
+  }
+
+  // Смужки рівня: видно, що мікрофон таки чує, а не пише тишу.
+  function startMeter(stream) {
+    try {
+      recActx = new (window.AudioContext || window.webkitAudioContext)();
+      recAnalyser = recActx.createAnalyser();
+      recAnalyser.fftSize = 256;
+      recActx.createMediaStreamSource(stream).connect(recAnalyser);
+      const data = new Uint8Array(recAnalyser.frequencyBinCount);
+      const step = () => {
+        if (!recAnalyser) return;
+        recAnalyser.getByteFrequencyData(data);
+        recBox.querySelectorAll('.rec-bars i').forEach((b, i) => {
+          b.style.transform = `scaleY(${Math.max(0.14, Math.min(1, (data[2 + i * 3] / 255) * 1.7))})`;
+        });
+        recRaf = requestAnimationFrame(step);
+      };
+      step();
+    } catch { /* без смужок теж пишеться */ }
+  }
+  function stopMeter() {
+    cancelAnimationFrame(recRaf);
+    recRaf = 0;
+    recAnalyser = null;
+    try { if (recActx) recActx.close(); } catch { /* уже закритий */ }
+    recActx = null;
+  }
+
+  $('micBtn').onclick = () => (recorder ? stopRec() : startRec());
+  window.addEventListener('pagehide', closeRec);
+
+  // ---------- послухати голосове до того, як воно піде в ефір ----------
+  function playVoice(id) {
+    const a = $('voiceAudio');
+    if (a.dataset.id === id && !a.paused) { a.pause(); return; }
+    a.dataset.id = id;
+    a.src = `/api/voice/${encodeURIComponent(id)}.mp3`;
+    a.play().catch((e) => toast('Не програлось: ' + e.message, 'err'));
+  }
+  function markVoiceButtons() {
+    const a = $('voiceAudio');
+    document.querySelectorAll('button.vplay').forEach((b) => {
+      const on = b.dataset.id === a.dataset.id && !a.paused;
+      b.textContent = on ? '⏸' : '▶';
+      b.classList.toggle('active', on);
+    });
+  }
+  function wireVoiceButtons(root) {
+    root.querySelectorAll('button.vplay').forEach((b) => b.onclick = () => playVoice(b.dataset.id));
+    markVoiceButtons();
+  }
+  ['play', 'pause', 'ended'].forEach((e) => $('voiceAudio').addEventListener(e, markVoiceButtons));
+
   // ---------- drop (or paste) a link anywhere on the page ----------
   const drop = $('drop');
   const dropTitle = drop.querySelector('.drop-title');
@@ -952,13 +1134,14 @@
     loadLib();
   });
   const trackRow = (t, right, extra) => `<li>
-      ${t.thumbUrl ? `<img src="${esc(t.thumbUrl)}" alt="">` : '<div class="noimg"></div>'}
+      ${cover(t)}
       <div style="min-width:0"><div class="t ${extra?.skipped ? 'skipped' : ''}">${esc(t.title)} <span class="muted">· ${esc(t.artist)}</span></div><div class="r">${right}</div></div>
-      <div class="btns"><button class="q" data-id="${esc(t.id)}" title="Закинути в чергу">в чергу</button><button class="ghost pl" data-id="${esc(t.id)}" data-title="${esc(t.title)}" title="У плейлист">＋</button></div>
+      <div class="btns">${voiceBtn(t)}<button class="q" data-id="${esc(t.id)}" title="Закинути в чергу">в чергу</button><button class="ghost pl" data-id="${esc(t.id)}" data-title="${esc(t.title)}" title="У плейлист">＋</button></div>
     </li>`;
   function wireRows(root) {
     root.querySelectorAll('button.q').forEach((b) => b.onclick = (e) => busy(e.currentTarget, '…', () => queueTrack(b.dataset.id)));
     root.querySelectorAll('button.pl').forEach((b) => b.onclick = () => openPlaylistPicker(b.dataset.id, b.dataset.title));
+    wireVoiceButtons(root);
   }
   async function loadLib() {
     const box = $('lib');
@@ -1018,7 +1201,7 @@
     try {
       const r = await api('GET', `/api/playlists/${id}`);
       box.innerHTML = `<ul class="list">${r.tracks.map((x) => `<li>
-          ${x.track.thumbUrl ? `<img src="${esc(x.track.thumbUrl)}" alt="">` : '<div class="noimg"></div>'}
+          ${cover(x.track)}
           <div style="min-width:0"><div class="t">${esc(x.track.title)} <span class="muted">· ${esc(x.track.artist)}</span></div><div class="r">${fmt(x.track.durationSec)} · додав ${esc(x.addedBy)}</div></div>
           <div class="btns"><button class="q" data-id="${esc(x.track.id)}">в чергу</button><button class="ghost danger rmt" data-id="${esc(x.track.id)}" title="Прибрати з плейлиста">✕</button></div>
         </li>`).join('') || '<li class="empty">порожньо</li>'}</ul>`;

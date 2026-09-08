@@ -41,9 +41,11 @@
         <div class="row">
           <input id="q" type="search" placeholder="Назва, виконавець або посилання (YouTube, YT Music, Spotify…)" autocomplete="off">
           <button id="addBtn" class="primary">Закинути</button>
+          <button id="micBtn" class="icon" title="Записати голосове в ефір">🎙</button>
         </div>
         <div id="results" class="results"></div>
-        <div class="hintline">Enter закидає перший результат. Клавіша <b>/</b> ставить курсор сюди.</div>
+        <div id="rec" class="rec" hidden></div>
+        <div class="hintline">Enter закидає перший результат. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — записати голосове, воно стане в чергу як звичайний трек.</div>
       </div>
     </section>
 
@@ -135,6 +137,7 @@
 </div>
 
 <audio id="audio" preload="none"></audio>
+<audio id="voiceAudio" preload="none"></audio>
 <script src="/static/signalr.min.js"></script>
 <script src="/app.js"></script>
 </body>
