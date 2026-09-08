@@ -32,7 +32,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Games
     {
         text = (text ?? "").Trim();
         if (text.Length == 0) return null;
-        if (text.Length > 500) text = text[..500];
+        // Обрізаємо по символах, але не посеред смайла: у .NET він займає дві клітинки рядка.
+        if (text.Length > 500) text = text[..(char.IsHighSurrogate(text[499]) ? 499 : 500)];
         var nick = Nick();
         var (chatText, kind) = (text, "chat");
         if (text.StartsWith('/'))

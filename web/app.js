@@ -13,6 +13,24 @@
     : `<div class="noimg${isVoice(t) ? ' voice' : ''}">${isVoice(t) ? '🎙' : ''}</div>`);
   const voiceBtn = (t) => (isVoice(t) ? `<button class="ghost vplay" data-id="${esc(t.id)}" title="Послухати">▶</button>` : '');
   const EMOJIS = ['🔥', '❤️', '😂', '🕺', '🤘', '😴', '🤮', '🫠'];
+  // Смайли для чату. Перша купка — ті самі, що літають над обкладинкою, далі просто по темах.
+  const EMOJI_GROUPS = [
+    { name: 'Ті, що літають', list: EMOJIS },
+    { name: 'Пики', list: ['😀', '😁', '😂', '🤣', '😊', '😉', '😍', '😘', '😜', '🤪', '🤨', '🧐', '😎', '🥳', '😏', '🤤', '😢', '😭', '😤', '😡', '🤯', '😱', '🥶', '🤢', '🤒', '🤠', '🥴', '🤔', '🤫', '🙄', '😬', '🫡', '🤗', '🥺', '😇', '🤡', '💀', '👻'] },
+    { name: 'Руки', list: ['👍', '👎', '👌', '🤙', '✌️', '🤝', '👏', '🙌', '🙏', '💪', '🫶', '👋', '🤌', '🖖', '☝️', '🤞'] },
+    { name: 'Музика', list: ['🎵', '🎶', '🎧', '🎤', '🎸', '🥁', '🎹', '🎺', '🎻', '📻', '💃', '🔊', '⚡', '✨', '🎉', '🎊'] },
+    { name: 'Всяке', list: ['🇺🇦', '🧡', '💛', '💚', '💙', '💜', '🖤', '💔', '⭐', '🌟', '🍺', '🍻', '☕', '🍕', '🌻', '🌚', '🌞', '🐈', '🐕', '⚽', '🏆', '🚀', '💩', '🥔'] },
+  ];
+  // «Тільки смайли» — таке повідомлення показуємо великим. Крім самих значків пускаємо пробіли,
+  // селектор емодзі (FE0F), склейку (200D), відтінки шкіри і пари літер прапора.
+  const EMOJI_TEXT = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[\u{1F3FB}-\u{1F3FF}\uFE0F\u200D\s])+$/u;
+  const EMOJI_SEQ = /\p{Extended_Pictographic}(?:[\u{1F3FB}-\u{1F3FF}]|\uFE0F)*(?:\u200D\p{Extended_Pictographic}(?:[\u{1F3FB}-\u{1F3FF}]|\uFE0F)*)*|\p{Regional_Indicator}{2}/gu;
+  /// Скільки смайлів у рядку, якщо в ньому взагалі нема нічого іншого; інакше 0.
+  function emojiCount(text) {
+    const t = String(text || '').trim();
+    if (!t || !EMOJI_TEXT.test(t)) return 0;
+    return (t.match(EMOJI_SEQ) || []).length;
+  }
 
   let me = { nick: localStorage.getItem('nick') || '', role: 'member' };
   let state = null;
@@ -561,12 +579,42 @@
     box.hidden = false;
   }
   const hideCmdHint = () => { $('cmdHint').hidden = true; };
-  $('cmdBtn').onclick = () => ($('cmdHint').hidden ? showCmdHint($('chatInput').value) : hideCmdHint());
+  $('cmdBtn').onclick = () => { hideEmoji(); $('cmdHint').hidden ? showCmdHint($('chatInput').value) : hideCmdHint(); };
   $('chatInput').addEventListener('input', () => {
     const v = $('chatInput').value;
     if (v.startsWith('/')) showCmdHint(v); else hideCmdHint();
   });
-  $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCmdHint(); });
+  $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideCmdHint(); hideEmoji(); } });
+
+  // ---------- смайли ----------
+  // Панель відкривається над рядком вводу; клік ставить смайл туди, де стоїть курсор,
+  // і панель лишається відкритою — щоб можна було накидати кілька підряд.
+  $('emojiPick').innerHTML = EMOJI_GROUPS.map((g) => `<div class="egroup">
+      <div class="muted small">${esc(g.name)}</div>
+      <div class="erow">${g.list.map((e) => `<button type="button" data-e="${esc(e)}">${e}</button>`).join('')}</div>
+    </div>`).join('');
+  $('emojiPick').querySelectorAll('button').forEach((b) => b.onclick = () => putEmoji(b.dataset.e));
+  const hideEmoji = () => { $('emojiPick').hidden = true; $('emojiBtn').classList.remove('on'); };
+  function showEmoji() {
+    hideCmdHint();
+    $('emojiPick').hidden = false;
+    $('emojiBtn').classList.add('on');
+    $('chatInput').focus();
+  }
+  function putEmoji(e) {
+    const inp = $('chatInput');
+    const [from, to] = [inp.selectionStart ?? inp.value.length, inp.selectionEnd ?? inp.value.length];
+    const text = inp.value.slice(0, from) + e + inp.value.slice(to);
+    if (text.length > inp.maxLength) { toast('Задовге повідомлення', 'err'); return; }
+    inp.value = text;
+    inp.focus();
+    inp.setSelectionRange(from + e.length, from + e.length);
+  }
+  $('emojiBtn').onclick = () => ($('emojiPick').hidden ? showEmoji() : hideEmoji());
+  document.addEventListener('click', (e) => {
+    // Поки клацаєш у самому чаті (вводиш, шлеш) — панель не зачиняється; клік по решті сторінки її прибирає.
+    if (!$('emojiPick').hidden && !e.target.closest('#emojiPick, #chatForm')) hideEmoji();
+  });
 
   // ---------- chat + log ----------
   const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, (m) => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
@@ -595,7 +643,10 @@
     } else if (isLog) {
       el.innerHTML = `<span class="time">${tm(m.at)}</span>${linkify(m.text)}`;
     } else {
-      el.innerHTML = `<span class="n">${esc(m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span>`;
+      // Саме лише «🔥» — не рядок тексту, а жест: показуємо на весь зріст, поки їх не набралося багато.
+      const big = emojiCount(m.text);
+      if (big && big <= 3) el.classList.add('big');
+      el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="t">${linkify(m.text)}</span><span class="time">${tm(m.at)}</span>`;
     }
     box.appendChild(el);
     while (box.children.length > 300) box.firstChild.remove();

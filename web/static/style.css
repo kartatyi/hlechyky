@@ -233,6 +233,17 @@ button.vplay { padding: 3px 8px; }
 #cmdBtn { font-weight: 700; color: var(--muted); }
 #cmdBtn:hover { color: var(--accent); }
 
+/* ---- смайли ---- */
+#emojiBtn.on { background: var(--panel2); color: var(--text); }
+.emojipick { margin-top: 8px; padding: 8px; border: 1px solid var(--line); background: var(--bg2); border-radius: 10px; max-height: 34vh; overflow: auto; }
+.emojipick .egroup + .egroup { margin-top: 8px; }
+.emojipick .erow { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
+.emojipick button { padding: 3px 5px; font-size: 1.25em; line-height: 1.1; background: transparent; border-color: transparent; }
+.emojipick button:hover { background: var(--panel2); transform: scale(1.15); }
+/* Повідомлення з самих смайлів: значок на весь зріст, нік і час лишаються дрібними. */
+.msg.big .t { font-size: 2.3em; line-height: 1.1; vertical-align: middle; }
+.msg.big .n, .msg.big .time { vertical-align: middle; }
+
 /* ---- кубик і команди ---- */
 .msg.dice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .msg.dice.mine .n { color: var(--ok); }
