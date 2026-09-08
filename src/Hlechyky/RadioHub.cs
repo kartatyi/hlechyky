@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Games games, IOptionsMonitor<SiteOptions> site) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Games games, IOptionsMonitor<SiteOptions> site, DjBrain brain) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
@@ -45,6 +45,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Games
             (chatText, kind) = (r.Text!, r.Kind);
         }
         await Clients.All.SendAsync("chat", db.AddChat(nick, chatText, kind));
+        if (kind == "chat") brain.OnChat(nick, chatText); // Глек вирішить сам, чи це до нього; кубик не його справа
         return null;
     }
 

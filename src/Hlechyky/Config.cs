@@ -82,3 +82,32 @@ public sealed class AutoDjOptions
     public int MaxDurationSeconds { get; set; } = 720;
     public string SeedQuery { get; set; } = "";
 }
+
+public sealed class DjBotOptions
+{
+    public bool Enabled { get; set; } = true;
+    /// <summary>Ключ з console.anthropic.com. Порожній — Глек просто мовчить, сайт працює як і працював.</summary>
+    public string ApiKey { get; set; } = "";
+    public string Model { get; set; } = "claude-haiku-4-5";
+    /// <summary>Жорстка стеля на календарний місяць; коли впирається — Глек мовчить до першого числа.</summary>
+    public double MonthlyBudgetUsd { get; set; } = 5;
+    /// <summary>Скільки разів одна людина може смикнути Глека за годину.</summary>
+    public int PerNickPerHour { get; set; } = 12;
+    /// <summary>Спонтанні репліки: не частіше ніж раз на стільки хвилин.</summary>
+    public int SpontaneousCooldownMinutes { get; set; } = 20;
+    /// <summary>Шанс кинути слівце, коли заграв новий трек.</summary>
+    public double ChanceOnTrackChange { get; set; } = 0.15;
+    /// <summary>Шанс встряти в жваву балачку.</summary>
+    public double ChanceOnLivelyChat { get; set; } = 0.25;
+    /// <summary>Скільки повідомлень за 3 хвилини вважати жвавою балачкою.</summary>
+    public int LivelyChatMessages { get; set; } = 4;
+    public int MaxToolRounds { get; set; } = 4;
+    public int MaxTokens { get; set; } = 400;
+    public int MaxReplyChars { get; set; } = 400;
+    public int TimeoutSeconds { get; set; } = 45;
+    // Ціни Haiku 4.5 станом на вересень 2026, $ за мільйон токенів — лише щоб рахувати стелю
+    public double InputUsdPerMTok { get; set; } = 1.0;
+    public double OutputUsdPerMTok { get; set; } = 5.0;
+    public double CacheReadUsdPerMTok { get; set; } = 0.10;
+    public double CacheWriteUsdPerMTok { get; set; } = 1.25;
+}

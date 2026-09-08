@@ -148,6 +148,12 @@ public sealed class RadioEngine : BackgroundService
     /// <summary>The DJ persona speaking in the chat.</summary>
     void DjChat(string text) => _ = ChatAsync(Dj, text, "dj");
 
+    /// <summary>The DJ persona speaking on behalf of the chat bot; awaited so the bot knows the line landed.</summary>
+    public Task SayAsync(string text) => ChatAsync(Dj, text, "dj");
+
+    /// <summary>A new track went on air. The chat bot listens in to decide whether to chip in.</summary>
+    public event Action<TrackInfo>? TrackStarted;
+
     /// <summary>Writes the queue (order + who/why) to SQLite off the hot path; the newest snapshot always wins.</summary>
     void PersistQueue()
     {
@@ -592,6 +598,11 @@ public sealed class RadioEngine : BackgroundService
             lock (_lock) _now.PlayId = pid;
         }
         if (kind == "autodj" && _now.Track is not null) DjChat(DjLine(_now.Track.Label, _now.Reason));
+        if (_now.Track is { } onAir)
+        {
+            try { TrackStarted?.Invoke(onAir); }
+            catch (Exception ex) { _log.LogWarning(ex, "track-started listener failed"); }
+        }
         try
         {
             // the file's real length beats the catalogue's; liquidsoap knows it once the track is on air

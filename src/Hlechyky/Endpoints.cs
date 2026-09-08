@@ -8,6 +8,7 @@ public static class Endpoints
     public sealed record MoveRequest(int ToIndex);
     public sealed record NameRequest(string? Name);
     public sealed record TrackRequest(string? TrackId);
+    public sealed record SayRequest(string? Text);
     public sealed record QueueAllRequest(bool Shuffle);
 
     static IResult Reply((bool Ok, string Message) r) =>
@@ -113,6 +114,17 @@ public static class Endpoints
             if (ids.Count == 0) return Fail("Плейлист порожній");
             var n = await e.AddManyAsync(ids, Auth.Nick(c), Auth.IsAdmin(c), req?.Shuffle ?? true, ct);
             return Results.Ok(new { ok = true, count = n, message = n == 0 ? "Усе з цього плейлиста вже в черзі або грає" : $"Закинуто {n} з плейлиста «{p.Name}»" });
+        });
+
+        // Голос Дядька Глека ззовні: адмін (або мозок бота під адмінським ключем) каже щось у чат від його імені.
+        api.MapPost("/dj/say", async (HttpContext c, SayRequest req, RadioEngine e) =>
+        {
+            if (!Auth.IsAdmin(c)) return Results.StatusCode(403);
+            var text = (req.Text ?? "").Trim();
+            if (text.Length == 0) return Fail("Порожнє повідомлення");
+            if (text.Length > 500) text = text[..500];
+            await e.SayAsync(text);
+            return Results.Ok(new { ok = true });
         });
 
         api.MapPost("/liq/track", async (HttpContext c, RadioEngine e) =>

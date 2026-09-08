@@ -1,4 +1,4 @@
-using Hlechyky;
+﻿using Hlechyky;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -21,6 +21,7 @@ builder.Services.Configure<LiquidsoapOptions>(cfg.GetSection("Liquidsoap"));
 builder.Services.Configure<IcecastOptions>(cfg.GetSection("Icecast"));
 builder.Services.Configure<LastFmOptions>(cfg.GetSection("LastFm"));
 builder.Services.Configure<AutoDjOptions>(cfg.GetSection("AutoDj"));
+builder.Services.Configure<DjBotOptions>(cfg.GetSection("DjBot"));
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Paths.Resolve("data/keys")));
@@ -36,6 +37,8 @@ builder.Services.AddSingleton<Games>();
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
 builder.Services.AddHostedService<SnakeEngine>();
+builder.Services.AddSingleton<DjBrain>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DjBrain>());
 
 var port = cfg.GetValue<int?>("Site:ListenPort") ?? 8080;
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(port));
