@@ -6,6 +6,7 @@
 <title>Глечики</title>
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/games/core.css">
 </head>
 <body class="view-main">
 <header>
@@ -141,6 +142,8 @@
 <audio id="audio" preload="none"></audio>
 <audio id="voiceAudio" preload="none"></audio>
 <script src="/static/signalr.min.js"></script>
+<!-- каркас ігор — до app.js: той кличе HGames.init() на старті -->
+<script src="/games/core.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

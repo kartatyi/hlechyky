@@ -41,47 +41,6 @@
   let unread = 0;
   let chatTab = 'chat';
   let libTab = 'history';
-  let tables = [];
-  // Реєстр ігор у вкладці «Ігри»: додати нову — рядок сюди і рядок у Games.Known на сервері.
-  // Дошку малює спільний код за розміром поля з сервера; discs — фішки падають у колонку.
-  // modes — кілька правил під однією вкладкою: у кожного свій id столу на сервері і своя кнопка «+».
-  const GAMES = [
-    {
-      id: 'ttt', name: 'Хрестики-нолики', marks: { x: '✕', o: '◯' },
-      modes: [{ id: 'ttt', add: '+ Стіл' }, { id: 'ttt3', add: '+ Зникаючий', chip: 'зникаючі' }],
-      hint: 'Стіл рівно на двох: хто поставив — за ✕, хто сів другим — за ◯. У зникаючому кожен тримає на полі лише три мітки: ставиш четверту — найстаріша щезає, тож нічиїх там не буває.',
-      icon: `<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M2.3 2.3 6.9 6.9 M6.9 2.3 2.3 6.9" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-        <circle cx="11.1" cy="11.1" r="3" stroke="var(--ok)" stroke-width="1.8" fill="none"/>
-      </svg>`,
-    },
-    {
-      id: 'snake', name: 'Змійка', marks: { x: 'жовта', o: 'зелена' }, realtime: true,
-      hint: 'Дуель на двох: стрілки або WASD, поле зі стінами. Врізався в стіну, у себе чи в суперника — програв.',
-      icon: `<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M2 13h4.2a2.6 2.6 0 0 0 0-5.2H5.2a2.6 2.6 0 0 1 0-5.2H9" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="13.2" cy="3.2" r="2.1" fill="var(--clay)"/>
-      </svg>`,
-    },
-    {
-      id: 'c4', name: 'Чотири в ряд', marks: { x: 'жовті', o: 'зелені' }, discs: true,
-      hint: 'Теж на двох: кидаєш фішку в колонку, вона падає вниз. Виграє той, хто перший збере чотири підряд.',
-      icon: `<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
-        <circle cx="2.6" cy="13.4" r="2.1" fill="var(--accent)"/>
-        <circle cx="6.4" cy="9.6" r="2.1" fill="var(--accent)"/>
-        <circle cx="10.2" cy="5.8" r="2.1" fill="var(--accent)"/>
-        <circle cx="14" cy="2" r="2.1" fill="var(--accent)"/>
-        <circle cx="2.6" cy="5.8" r="2.1" fill="var(--ok)"/>
-        <circle cx="6.4" cy="2" r="2.1" fill="var(--ok)"/>
-      </svg>`,
-    },
-  ];
-  const modesOf = (g) => g.modes || [{ id: g.id, add: '+ Стіл' }];
-  const gameOf = (id) => GAMES.find((g) => modesOf(g).some((m) => m.id === id)) || GAMES[0];
-  const modeOf = (id) => modesOf(gameOf(id)).find((m) => m.id === id);
-  const tablesOf = (g) => tables.filter((t) => modesOf(g).some((m) => m.id === t.game));
-  const markOf = (t, m) => gameOf(t.game).marks[m];
-  let gameTab = GAMES.some((g) => g.id === localStorage.getItem('gameTab')) ? localStorage.getItem('gameTab') : GAMES[0].id;
   let queueDur = [];
 
   const dj = () => state?.djName || 'Дядько Глек';
@@ -673,174 +632,6 @@
   }
   $('chatTabs').querySelectorAll('button').forEach((b) => b.onclick = () => setChatTab(b.dataset.tab));
 
-
-  // ---------- ігри ----------
-  const mySeat = (t) => (sameNick(t.x, me.nick) ? 'x' : sameNick(t.o, me.nick) ? 'o' : null);
-  const seated = () => tables.some((t) => mySeat(t));
-
-  async function game(method, ...args) {
-    if (!conn || conn.state !== 'Connected') { toast('Зв\'язку з сервером нема', 'err'); return; }
-    try {
-      const r = await conn.invoke(method, ...args);
-      if (!r.ok) toast(r.message, 'err');
-      else if (r.message) toast(r.message, 'ok');
-    } catch (e) { toast('Не вийшло: ' + e.message, 'err'); }
-  }
-
-  // ---------- змійка ----------
-  const SNAKE = { w: 26, h: 18, px: 16, tickMs: 120 };
-  const css = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-  const frames = {};          // останній кадр на стіл, щоб перемалювати після ререндера
-  const watched = new Set();  // столи, кадри яких ми зараз просимо
-
-  /// waiting — стіл ще чекає на другого гравця, тоді відлік не показуємо: він і не йде.
-  function drawSnake(f, waiting) {
-    const cv = $('snake-' + f.id);
-    if (!cv) return;
-    const ctx = cv.getContext('2d');
-    const { w, px } = SNAKE;
-    const at = (c) => [(c % w) * px, Math.floor(c / w) * px];
-    ctx.fillStyle = css('--bg2', '#16291f');
-    ctx.fillRect(0, 0, cv.width, cv.height);
-
-    const [ax, ay] = at(f.apple);
-    ctx.fillStyle = css('--clay', '#c5763a');
-    ctx.beginPath();
-    ctx.arc(ax + px / 2, ay + px / 2, px / 2 - 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    const snake = (cells, head, body) => cells.forEach((c, i) => {
-      const [x, y] = at(c);
-      ctx.fillStyle = i ? body : head;
-      ctx.beginPath();
-      ctx.roundRect(x + 1, y + 1, px - 2, px - 2, i ? 3 : 6);
-      ctx.fill();
-    });
-    snake(f.a, css('--accent', '#f4c542'), css('--accent2', '#d9a92f'));
-    snake(f.b, css('--ok', '#7bd389'), '#4f9a5e');
-
-    if ((f.startIn > 0 && !waiting) || f.winner) {
-      ctx.fillStyle = 'rgba(15, 31, 24, .62)';
-      ctx.fillRect(0, 0, cv.width, cv.height);
-      ctx.fillStyle = css('--text', '#ecf1ea');
-      ctx.font = '700 46px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const label = f.startIn > 0 ? String(Math.ceil((f.startIn * SNAKE.tickMs) / 1000)) : '';
-      if (label) ctx.fillText(label, cv.width / 2, cv.height / 2);
-    }
-  }
-
-  /// Кадри просимо лише для тих столів, які зараз видно: інакше сервер сипле десять повідомлень на секунду дарма.
-  function syncWatch() {
-    const want = new Set(document.body.classList.contains('view-games')
-      ? tables.filter((t) => t.snake).map((t) => t.id) : []);
-    for (const id of [...watched]) if (!want.has(id)) { watched.delete(id); conn?.invoke('UnwatchTable', id).catch(() => {}); }
-    for (const id of want) if (!watched.has(id)) { watched.add(id); conn?.invoke('WatchTable', id).catch(() => {}); }
-  }
-
-  const DIRS = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 };
-  function steer(dir) {
-    const t = tables.find((x) => x.snake && mySeat(x) && x.x && x.o && !x.winner);
-    if (!t || !conn) return false;
-    conn.invoke('SnakeTurn', t.id, dir).catch(() => {});
-    return true;
-  }
-  document.addEventListener('keydown', (e) => {
-    if (e.target.matches('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
-    const dir = DIRS[e.code];
-    if (dir !== undefined && steer(dir)) e.preventDefault();
-  });
-
-  function tableStatus(t) {
-    const seat = mySeat(t);
-    if (t.winner === 'draw') return gameOf(t.game).realtime ? 'Лоб у лоб — нічия' : 'Нічия';
-    if (t.winner) return `Перемога: ${t.winner === 'x' ? t.x : t.o}`;
-    if (!t.x || !t.o) return 'Чекаємо на другого гравця';
-    if (gameOf(t.game).realtime) {
-      if (t.snake && t.snake.startIn > 0) return 'Готуйсь…';
-      return seat ? 'Стрілки або WASD' : 'Дивишся збоку';
-    }
-    if (seat && t.turn === seat) return 'Твій хід';
-    return `Ходить ${t.turn === 'x' ? t.x : t.o}`;
-  }
-
-  function seatHtml(t, mark) {
-    const nick = mark === 'x' ? t.x : t.o;
-    const turn = t.x && t.o && !t.winner && t.turn === mark;
-    const chip = gameOf(t.game).discs ? '●' : markOf(t, mark);
-    return `<span class="gseat ${mark}${nick ? '' : ' free'}${turn ? ' turn' : ''}">${chip} ${esc(nick || 'вільно')}</span>`;
-  }
-
-  function tableHtml(t) {
-    const g = gameOf(t.game);
-    const seat = mySeat(t);
-    const myTurn = seat && t.x && t.o && !t.winner && t.turn === seat;
-    // У грі з фішками ходом називають колонку, а сервер сам кладе фішку на дно.
-    // У змійки клітинок нема взагалі — там канвас, тому сітку не рахуємо.
-    const cells = g.realtime ? '' : t.cells.map((c, i) => {
-      const win = t.line && t.line.includes(i);
-      const col = i % t.width;
-      const free = g.discs ? !t.cells[col] : !c;
-      const fade = i === t.fading;
-      return `<button class="cell${c ? ' ' + c : ''}${win ? ' win' : ''}${fade ? ' fading' : ''}" data-id="${t.id}" data-i="${g.discs ? col : i}"`
-        + `${myTurn && free ? '' : ' disabled'}>${c && !g.discs ? markOf(t, c) : ''}</button>`;
-    }).join('');
-    const board = g.realtime
-      ? `<canvas class="snakeboard" id="snake-${t.id}" width="${SNAKE.w * SNAKE.px}" height="${SNAKE.h * SNAKE.px}"></canvas>`
-        + (seat ? `<div class="dpad">
-            <button data-dir="3" aria-label="вгору">↑</button>
-            <button data-dir="2" aria-label="ліворуч">←</button>
-            <button data-dir="1" aria-label="вниз">↓</button>
-            <button data-dir="0" aria-label="праворуч">→</button>
-          </div>` : '')
-      : `<div class="board${g.discs ? ' discs' : ''}" style="--cols: ${t.width}">${cells}</div>`;
-    const score = g.realtime && t.snake
-      ? `<div class="gscore"><b>${t.snake.winsA}</b> : <b>${t.snake.winsB}</b></div>` : '';
-    const btns = [];
-    if (!seat && (!t.x || !t.o) && !seated()) btns.push(`<button class="primary" data-act="SitTable" data-id="${t.id}">Сісти за ${t.x ? markOf(t, 'o') : markOf(t, 'x')}</button>`);
-    if (seat && t.winner) btns.push(`<button class="primary" data-act="Rematch" data-id="${t.id}">Ще раз</button>`);
-    if (seat) btns.push(`<button class="ghost" data-act="LeaveTable" data-id="${t.id}">Встати</button>`);
-    else if (t.x && t.o) btns.push('<span class="muted small">Стіл зайнятий, дивишся збоку</span>');
-    const chip = modeOf(t.game)?.chip;
-    return `<div class="gtable${seat ? ' mine' : ''}">
-        <div class="gseats">${g.icon}${chip ? `<span class="gmode">${esc(chip)}</span>` : ''}${seatHtml(t, 'x')}${score || '<span class="vs">проти</span>'}${seatHtml(t, 'o')}</div>
-        ${board}
-        <div class="gstatus${t.winner ? ' done' : ''}${myTurn ? ' my' : ''}">${esc(tableStatus(t))}</div>
-        <div class="gbtns">${btns.join('')}</div>
-      </div>`;
-  }
-
-  function setGameTab(id) {
-    gameTab = id;
-    localStorage.setItem('gameTab', id);
-    renderGames();
-  }
-
-  function renderGames() {
-    const box = $('games');
-    const g = GAMES.find((x) => x.id === gameTab) || GAMES[0];
-    const mine = tablesOf(g);
-    box.innerHTML = `<div class="tabs gtabs">${GAMES.map((x) => {
-        const n = tablesOf(x).length;
-        return `<button data-game="${x.id}" class="${x.id === g.id ? 'on' : ''}">${x.icon}${esc(x.name)}${n ? ` <span class="count">${n}</span>` : ''}</button>`;
-      }).join('')}</div>
-      <div class="ghead">
-        <div class="muted small">${esc(g.hint)}</div>
-        <div class="gnew">${modesOf(g).map((m, i) =>
-          `<button data-new="${m.id}" class="${i ? 'ghost' : 'primary'}">${esc(m.add)}</button>`).join('')}</div>
-      </div>` + (mine.length
-        ? `<div class="gtables">${mine.map(tableHtml).join('')}</div>`
-        : `<div class="empty">Столів поки нема. Постав перший і клич когось у балачках.</div>`);
-    box.querySelectorAll('[data-game]').forEach((b) => b.onclick = () => setGameTab(b.dataset.game));
-    box.querySelectorAll('[data-new]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, 'ставлю…', () => game('CreateTable', b.dataset.new)));
-    box.querySelectorAll('.cell').forEach((b) => b.onclick = () => game('PlayMove', b.dataset.id, +b.dataset.i));
-    box.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => game(b.dataset.act, b.dataset.id));
-    box.querySelectorAll('.dpad button').forEach((b) => b.onclick = () => steer(+b.dataset.dir));
-    syncWatch();
-    mine.filter((t) => t.snake).forEach((t) => drawSnake(frames[t.id] || t.snake, !t.x || !t.o));
-  }
-
   // Ефір / Ігри / Балачки. На широкому екрані Ігри займають місце Ефіру, а балачки лишаються
   // збоку, щоб було з ким перемовитись; на телефоні видно рівно одну колонку.
   function setView(v) {
@@ -850,7 +641,7 @@
     $('mtabChat').classList.toggle('on', v === 'chat');
     $('vsMain').classList.toggle('on', v !== 'games');
     $('vsGames').classList.toggle('on', v === 'games');
-    if (v === 'games') renderGames(); else syncWatch();
+    if (v === 'games') HGames.show(); else HGames.hide();
     if (v === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
   }
@@ -1301,8 +1092,7 @@
     conn.on('state', (s) => { state = s; render(); });
     conn.on('chat', (m) => addMessage(m, true, true));
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
-    conn.on('games', (list) => { tables = list; renderGames(); });
-    conn.on('snake', (f) => { frames[f.id] = f; drawSnake(f); });
+    HGames.attach(conn);           // усе про ігри — у web/games/core.js
     conn.on('chatHistory', (list) => {
       $('messages').innerHTML = '';
       $('log').innerHTML = '';
@@ -1312,8 +1102,7 @@
     });
     conn.onreconnected(() => {
       conn.invoke('SetNick', me.nick).catch(() => {});
-      watched.clear();
-      syncWatch();
+      HGames.reconnected();
       toast('Знову на зв\'язку', 'ok');
     });
     conn.onreconnecting(() => toast('Зв\'язок зник, підключаюсь…', 'wait'));
@@ -1323,6 +1112,7 @@
 
   // ---------- boot ----------
   setPlayUi();
+  HGames.init({ $, esc, toast, busy, api, me, root: $('games') });
   api('GET', '/api/me').then((m) => { me.role = m.role; $('nickBtn').classList.toggle('admin', me.role === 'admin'); if (state) render(); }).catch(() => {});
   if (me.nick) { $('nickBtn').textContent = me.nick; connect(); } else { askNick(); }
 })();
