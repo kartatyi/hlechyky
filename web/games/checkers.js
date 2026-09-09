@@ -23,7 +23,8 @@
   }
 
   function state(root) {
-    if (!root._ck) root._ck = { path: [], sig: '' };
+    // sure — «Здатись» натиснули раз і чекаємо на підтвердження: здача незворотна й коштує партії.
+    if (!root._ck) root._ck = { path: [], sig: '', sure: false };
     return root._ck;
   }
 
@@ -50,7 +51,7 @@
 
     // Позиція змінилась (хтось походив) — недобудований ланцюг більше ні до чого.
     const sig = board + '|' + v.turn + '|' + last.join('');
-    if (st.sig !== sig) { st.sig = sig; st.path = []; }
+    if (st.sig !== sig) { st.sig = sig; st.path = []; st.sure = false; }
 
     // Ланцюги, що починаються з уже набраного шляху; з них і беремо, куди можна далі.
     const fit = legal.filter((c) => st.path.every((s, i) => c[i] === s));
@@ -91,12 +92,17 @@
         + '<button class="primary" data-ck="draw">Згода</button><button class="ghost" data-ck="decline">Ні</button>';
     } else if (mine) {
       html += '<button class="ghost" data-ck="draw"' + (offer === ctx.seat ? ' disabled' : '') + '>Нічия?</button>'
-        + '<button class="ghost" data-ck="resign">Здатись</button>';
+        + '<button class="' + (st.sure ? 'primary' : 'ghost') + '" data-ck="resign">'
+        + (st.sure ? 'Точно здатись?' : 'Здатись') + '</button>';
     }
     setHtml(acts, html);
     acts.querySelectorAll('[data-ck]').forEach((b) => b.onclick = () => {
       const what = b.dataset.ck;
-      if (what === 'reset') { st.path = []; paint(root, ctx); return; }
+      if (what === 'reset') { st.path = []; st.sure = false; paint(root, ctx); return; }
+      // Здача — єдина незворотна дія модуля, тож у два дотики. Без таймерів: прапорець знімає
+      // будь-який хід, клік по дошці, «Скинути вибір» або Escape.
+      if (what === 'resign' && !st.sure) { st.sure = true; paint(root, ctx); return; }
+      st.sure = false;
       ctx.act(what);
     });
   }
@@ -105,6 +111,7 @@
   function tap(root, ctx, name) {
     if (!ctx.myTurn) return;
     const st = state(root);
+    st.sure = false;                         // рука пішла на дошку — «Точно здатись?» більше не висить
     const legal = (ctx.view && ctx.view.legal) || [];
     const fit = legal.filter((c) => st.path.every((s, i) => c[i] === s));
     if (fit.some((c) => c[st.path.length] === name)) {
@@ -121,8 +128,11 @@
       paint(root, ctx);
       return;
     }
-    // Клік повз ланцюг: якщо це інша своя шашка — починаємо вибір із неї, інакше просто скидаємо.
-    st.path = legal.some((c) => c[0] === name) ? [name] : [];
+    // Клік повз ланцюг: тицьнув у вибрану шашку вдруге — знімаємо вибір (так поводиться будь-яка
+    // дошка, і на телефоні це єдиний спосіб передумати без кнопки); інша своя — вибір із неї.
+    st.path = st.path.length === 1 && st.path[0] === name
+      ? []
+      : legal.some((c) => c[0] === name) ? [name] : [];
     paint(root, ctx);
   }
 
@@ -136,8 +146,9 @@
     onKey(e, ctx) {
       if (e.key !== 'Escape' || !ctx._ckRoot) return false;
       const st = state(ctx._ckRoot);
-      if (!st.path.length) return false;
+      if (!st.path.length && !st.sure) return false;
       st.path = [];
+      st.sure = false;
       paint(ctx._ckRoot, ctx);
       return true;
     },

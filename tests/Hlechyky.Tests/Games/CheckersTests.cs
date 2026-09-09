@@ -286,6 +286,21 @@ public class CheckersTests
     }
 
     [Fact]
+    public void A_man_walking_a_ring_never_jumps_the_same_piece_twice()
+    {
+        // Турецький удар не лише для дамок: проста обходить чотири шашки по колу й вертається на своє
+        // поле. Побиті стоять до кінця ланцюга, тож із c3 бити вже нема кого. Дамкою вона теж не стає —
+        // e1 не її остання лінія.
+        var h = Table(0, ('w', "c3"), ('b', "d4"), ('b', "f4"), ('b', "f2"), ('b', "d2"), ('b', "a7"));
+        Assert.Contains("c3-e5-g3-e1-c3", LegalOf(h).Select(Chain));
+        Assert.True(Move(h, 0, "c3", "e5", "g3", "e1", "c3").Ok);
+
+        Assert.Equal('w', At(h, "c3"));
+        Assert.All(new[] { "d4", "f4", "f2", "d2" }, sq => Assert.Equal('.', At(h, sq)));
+        Assert.Equal(1, h.View(0).GetProperty("count").GetProperty("b").GetInt32());
+    }
+
+    [Fact]
     public void A_piece_captured_earlier_in_the_chain_still_blocks_the_way()
     {
         // e1-b4-d6-f4 могло б тривати взяттям e3 із приземленням на c1 — якби побита d2 щезала одразу.
@@ -382,6 +397,18 @@ public class CheckersTests
         Assert.Equal('.', At(h, "b6"));
     }
 
+    [Fact]
+    public void A_capture_that_ends_on_the_last_row_crowns_the_man()
+    {
+        // Третій випадок перетворення: ланцюг не проходить крізь останню лінію, а закінчується на ній.
+        var h = Table(0, ('w', "f6"), ('b', "g7"), ('b', "a3"));
+        Assert.Equal(["f6-h8"], LegalOf(h).Select(Chain));
+        Assert.True(Move(h, 0, "f6", "h8").Ok);
+
+        Assert.Equal('W', At(h, "h8"));
+        Assert.Equal('.', At(h, "g7"));
+    }
+
     // ---------- кінець партії ----------
 
     [Fact]
@@ -422,7 +449,7 @@ public class CheckersTests
     [Fact]
     public void Fifteen_king_moves_without_a_capture_are_a_draw()
     {
-        var h = Table(0, quiet: Checkers.QuietLimit - 1, men: [('W', "a1"), ('B', "h6")]);
+        var h = Table(0, quiet: Checkers.QuietLimit * 2 - 1, men: [('W', "a1"), ('B', "h6")]);
         Assert.True(Move(h, 0, "a1", "b2").Ok);
 
         Assert.True(h.Room.Result!.Draw);
@@ -432,9 +459,31 @@ public class CheckersTests
     }
 
     [Fact]
+    public void Fourteen_full_moves_by_kings_are_not_a_draw_but_the_fifteenth_is()
+    {
+        // «15 ходів» — це 15 ходів кожного, а не 15 півходів: виграш «дамка проти дамки» саме стільки
+        // й маневрує. Дамки ходять по паралельних діагоналях (a1-c3 і e3-h6), тож бити одна одну не
+        // можуть; періоди маршрутів різні (3 і 4), тож позиція не встигає повторитись утретє.
+        string[][] white = [["a1", "c3"], ["c3", "b2"], ["b2", "a1"]];
+        string[][] black = [["h6", "f4"], ["f4", "g5"], ["g5", "e3"], ["e3", "h6"]];
+        var h = Table(0, ('W', "a1"), ('B', "h6"));
+
+        for (var k = 0; k < Checkers.QuietLimit; k++)
+        {
+            Assert.Equal(RoomStatus.Playing, h.Room.Status);   // до 15-го повного ходу партія триває
+            Assert.True(Move(h, 0, white[k % 3]).Ok);
+            Assert.True(Move(h, 1, black[k % 4]).Ok);
+        }
+
+        Assert.True(h.Room.Result!.Draw);
+        Assert.Equal("kings15", h.View(0).GetProperty("result").GetProperty("reason").GetString());
+        Assert.Contains("15 ходів дамками", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
     public void A_man_move_resets_the_quiet_counter()
     {
-        var h = Table(0, quiet: Checkers.QuietLimit - 1, men: [('W', "a1"), ('w', "a3"), ('B', "h6")]);
+        var h = Table(0, quiet: Checkers.QuietLimit * 2 - 1, men: [('W', "a1"), ('w', "a3"), ('B', "h6")]);
         Assert.True(Move(h, 0, "a3", "b4").Ok);
 
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
@@ -445,7 +494,7 @@ public class CheckersTests
     [Fact]
     public void A_capture_resets_the_quiet_counter()
     {
-        var h = Table(0, quiet: Checkers.QuietLimit - 1, men: [('W', "a1"), ('b', "c3"), ('b', "h2")]);
+        var h = Table(0, quiet: Checkers.QuietLimit * 2 - 1, men: [('W', "a1"), ('b', "c3"), ('b', "h2")]);
         Assert.True(Move(h, 0, "a1", "d4").Ok);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
     }
@@ -696,14 +745,23 @@ public class CheckersTests
     }
 
     [Fact]
-    public void The_list_of_chains_stops_at_the_cap()
+    public void The_chain_cap_is_per_piece_so_no_piece_falls_out_of_the_view()
     {
-        // Дошка з чотирма дамками проти чотирьох шашок дає купу приземлень; вид мусить лишатись скінченним.
+        // Дошка з чотирма дамками проти чотирьох шашок дає купу приземлень; вид мусить лишатись
+        // скінченним — але стеля на ОДНУ шашку, інакше при спрацюванні в переліку були б усі ланцюги
+        // перших шашок і жодного від решти, і тими рештою гравець не походив би з UI.
         var b = Board([('W', "a1"), ('W', "c1"), ('W', "e1"), ('W', "g1"),
             ('b', "b4"), ('b', "d4"), ('b', "f4"), ('b', "h4")]).ToCharArray();
 
-        Assert.NotEmpty(CheckersRules.Legal(b, 0));
-        Assert.InRange(CheckersRules.Legal(b, 0).Count, 1, CheckersRules.MaxChains);
-        Assert.InRange(CheckersRules.Legal(b, 0, cap: 3).Count, 1, 3);
+        var all = CheckersRules.Legal(b, 0);
+        Assert.NotEmpty(all);
+        Assert.InRange(all.Count, 4, 4 * CheckersRules.ViewChains);
+
+        // Стеля в один ланцюг на шашку: з кожної, що вміє бити, лишається рівно один — і жодна не зникає.
+        var tight = CheckersRules.Legal(b, 0, cap: 1);
+        var startsOf = (List<CheckersMove> ms) => ms.Select(m => CheckersRules.Name(m.Path[0])).ToHashSet();
+        Assert.Equal(["a1", "c1", "e1", "g1"], startsOf(all).Order());
+        Assert.Equal(startsOf(all), startsOf(tight));
+        Assert.Equal(4, tight.Count);
     }
 }

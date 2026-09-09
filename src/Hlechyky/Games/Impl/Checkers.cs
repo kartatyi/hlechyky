@@ -23,9 +23,14 @@ public sealed record CheckersMove(int[] Path, int[] Taken, char End)
 /// </summary>
 public static class CheckersRules
 {
-    /// <summary>Скільки ланцюгів віддаємо клієнтові максимум. У живій партії їх одиниці; стеля рятує
-    /// вид від вибуху на штучній дошці з півдюжиною дамок, де варіантів приземлення сотні.</summary>
+    /// <summary>Стеля пошуку ланцюгів ОДНІЄЇ шашки. Практично недосяжна (найдовший перелік, який ми
+    /// бачили, — два десятки), але не дає зациклитись на штучній дошці.</summary>
     public const int MaxChains = 500;
+
+    /// <summary>Скільки ланцюгів віддаємо клієнтові з однієї шашки. Стеля саме на шашку, а не на весь
+    /// список: спільна віддала б усі ланцюги перших шашок і жодного від решти, і тими рештою гравець
+    /// не зміг би походити з UI, хоча сервер такий хід прийняв би.</summary>
+    public const int ViewChains = 64;
 
     /// <summary>Чотири діагоналі: 0 і 1 — угору (бік білих), 2 і 3 — униз (бік чорних).</summary>
     static readonly (int Dr, int Dc)[] Dirs = [(-1, -1), (-1, 1), (1, -1), (1, 1)];
@@ -174,12 +179,22 @@ public static class CheckersRules
         return false;
     }
 
-    /// <summary>Усі легальні ходи сторони. Є взяття — у списку лише взяття (бити обов'язково).</summary>
-    public static List<CheckersMove> Legal(char[] b, int side, int cap = MaxChains)
+    /// <summary>Чи є в сторони бодай один хід. Спиняємось на першому — це дешевше за повний перелік
+    /// і, на відміну від <see cref="Legal"/>, не залежить від жодної стелі.</summary>
+    public static bool HasMove(char[] b, int side)
+    {
+        for (var i = 0; i < 64; i++)
+            if (Own(b[i], side) && (Captures(b, i, cap: 1).Count > 0 || Quiet(b, i).Count > 0)) return true;
+        return false;
+    }
+
+    /// <summary>Усі легальні ходи сторони. Є взяття — у списку лише взяття (бити обов'язково).
+    /// <paramref name="cap"/> — стеля на ОДНУ шашку, тож у переліку є ланцюги від кожної, що вміє бити.</summary>
+    public static List<CheckersMove> Legal(char[] b, int side, int cap = ViewChains)
     {
         var caps = new List<CheckersMove>();
-        for (var i = 0; i < 64 && caps.Count < cap; i++)
-            if (Own(b[i], side)) caps.AddRange(Captures(b, i, cap - caps.Count));
+        for (var i = 0; i < 64; i++)
+            if (Own(b[i], side)) caps.AddRange(Captures(b, i, cap));
         if (caps.Count > 0) return caps;
         var quiet = new List<CheckersMove>();
         for (var i = 0; i < 64; i++)
@@ -205,8 +220,10 @@ public static class CheckersRules
 /// </summary>
 public sealed class Checkers : Game
 {
-    /// <summary>Скільки ходів поспіль самими дамками без взяття вважаємо нічиєю. Рахуємо півходи —
-    /// по одному на кожен Act, як каркас рахує Room.Moves (спрощене правило зі spec).</summary>
+    /// <summary>Скільки ПОВНИХ ходів поспіль самими дамками без взяття вважаємо нічиєю (спрощене
+    /// правило зі spec). «Хід» тут — як за дошкою: хід білих і хід чорних разом, тому лічильник
+    /// півходів порівнюємо з подвоєним порогом. Інакше виграш «три дамки проти однієї», якому
+    /// саме й треба з десяток ходів маневрування, обривався б нічиєю на половині.</summary>
     public const int QuietLimit = 15;
 
     /// <summary>Довший шлях фізично неможливий: 12 узять плюс поле старту.</summary>
@@ -225,6 +242,7 @@ public sealed class Checkers : Game
     /// <summary>Місце переможця; null — нічия (має сенс лише коли _over).</summary>
     int? _winner;
     string? _reason;
+    /// <summary>Півходи поспіль самими дамками без взяття; поріг нічиєї — <see cref="QuietLimit"/> * 2.</summary>
     int _quiet;
     /// <summary>Скільки разів позиція вже траплялась: триразове повторення — нічия.</summary>
     readonly Dictionary<string, int> _seen = new(StringComparer.Ordinal);
@@ -280,8 +298,8 @@ public sealed class Checkers : Game
         _turn = seat == 0 ? 1 : 0;
 
         if (CheckersRules.Count(_b, _turn) == 0) return Won(seat, "nopieces");
-        if (CheckersRules.Legal(_b, _turn, cap: 1).Count == 0) return Won(seat, "nomoves");
-        if (_quiet >= QuietLimit) return Drawn("kings15");
+        if (!CheckersRules.HasMove(_b, _turn)) return Won(seat, "nomoves");
+        if (_quiet >= QuietLimit * 2) return Drawn("kings15");   // _quiet рахує півходи
         var key = $"{new string(_b)}{_turn}";
         _seen[key] = _seen.GetValueOrDefault(key) + 1;
         if (_seen[key] >= 3) return Drawn("repetition");
