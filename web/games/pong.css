@@ -1,0 +1,31 @@
+/*
+  Понг: канвас 16:10 і дві кнопки-утримання під палець. Кольори — тільки змінними; свою
+  оголошуємо на :root, бо модуль читає її через ctx.css(), а той дивиться саме туди.
+*/
+:root {
+  --gpongpad: #2b4c3c;   /* кнопки керування ракеткою на телефоні; світліші за картку, щоб їх було видно */
+}
+
+/* Канвас уже має max-width із core.css; тут лише пропорція й поведінка пальця. */
+.pongboard { aspect-ratio: 16 / 10; }
+/* Гравцеві рух пальцем по полю — це ракетка, а не скрол сторінки; глядачеві скрол лишаємо. */
+.pongboard.play { touch-action: none; cursor: ns-resize; }
+
+/* Хрестовина каркаса тут не годиться: вона на клік, а ракетку треба тримати. */
+.pongpad { display: none; }
+@media (pointer: coarse) {
+  .pongpad {
+    display: grid; grid-template-columns: repeat(2, 96px); gap: 8px;
+    justify-content: center; margin-top: 4px;
+  }
+  .pongpad button {
+    justify-content: center; font-size: 1.3em; padding: 12px 0;
+    background: var(--gpongpad); border-color: var(--line); touch-action: none; user-select: none;
+  }
+  /* Кнопку тримають, а не тицяють, — тож видно має бути саме утримання. */
+  .pongpad button:active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+}
+
+@media (max-width: 480px) {
+  .pongpad { grid-template-columns: repeat(2, 1fr); width: 100%; }
+}
