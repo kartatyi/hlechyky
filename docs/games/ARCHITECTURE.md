@@ -103,7 +103,8 @@ public sealed record GameInfo(
     bool Rated = false,     // Ело (тільки MaxPlayers == 2)
     ScoreOrder Score = ScoreOrder.None,     // соло-таблиця: HigherIsBetter | LowerIsBetter
     GameOption[]? Options = null,           // що обирають при створенні (варіант, ставка додається каркасом)
-    string Hint = "");      // рядок під назвою в лобі
+    string Hint = "",       // рядок під назвою в лобі
+    string Client = "");    // ім'я модуля web/games/<Client>.js; порожньо — той самий, що Id
 ```
 
 `GameGroup` визначає вкладку лобі: **Настільні** (Board), **Швидкі** (Live), **Компанія** (Party), **Соло** (Solo).
@@ -115,7 +116,7 @@ public sealed record GameInfo(
 public abstract class Game
 {
     public abstract GameInfo Info { get; }
-    protected RoomContext Ctx { get; }              // виставляє Rooms до Configure()
+    public IRoomContext Ctx { get; set; }            // виставляє Rooms до Configure()
     public virtual string SeatName(int seat)        // «білі»/«чорні», «жовта»/«зелена»
     public virtual void Configure(IReadOnlyDictionary<string, string> options) { }
     public abstract void Start();                   // Lobby→Playing і кожен «Ще раз» (Ctx.Round уже збільшено)
@@ -142,8 +143,11 @@ public abstract class Game
 
 ### 4.3 `RoomContext` — що гра може просити в каркаса
 
+Гра бачить його як інтерфейс `IRoomContext` у властивості `Game.Ctx` (реалізацію тримає `Rooms`, у тестах —
+`RoomHarness`):
+
 ```csharp
-public sealed class RoomContext
+public interface IRoomContext
 {
     public string RoomId { get; }
     public int Players { get; }                       // скільки місць зайнято на старті
@@ -207,7 +211,9 @@ public sealed class RoomContext
 
 На старті сканує збірку: усі не-абстрактні нащадки `Game` з публічним конструктором без параметрів.
 Створює по одному «зразку» для читання `Info`, перевіряє унікальність `Id`, наявність клієнтського модуля
-`web/games/<id>.js` (попередження в лог, не падіння). Каталог віддається `GET /api/games/catalog` (лобі
+`web/games/<Module>.js` (попередження в лог, не падіння). `Module` — це `Info.Client`, а якщо він порожній,
+то `Info.Id`: родина ігор може жити в одному файлі (зникаючі хрестики малюються з `ttt.js`), і тоді ні реєстр
+не свариться на неіснуючий файл, ні завантажувач не ходить по 404. Каталог віддається `GET /api/games/catalog` (лобі
 будується з нього, а не з хардкоду в JS).
 
 ### 4.6 `TickEngine`
@@ -251,6 +257,10 @@ public sealed class RoomContext
 з'єднання) і розкладає по `Watchers` за `Presence.Get(connId)` → `room.SeatOf(nick)`.
 
 `Presence` розширюється методом `ConnectionsOf(nick)`.
+
+Сервіси беруть `IOutbox` через відкладену обгортку (`DeferredOutbox`): `Broadcaster` знаходиться при першому
+повідомленні, а не під час побудови графа DI. Без цього залежності замикаються в коло
+(`Rooms` → `IStakes` → `IOutbox` → `Broadcaster` → `Rooms`), і сервер завмирає на старті, не відкривши порт.
 
 Хто дивиться: клієнт кличе `WatchRoom(id)` для кімнат, які зараз видно на екрані, і `UnwatchRoom` — коли
 ні (так уже робить змійка, `syncWatch`). Гравець, який сидить у кімнаті, але не дивиться, кадрів не отримує —
@@ -296,8 +306,10 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 Лічильники стель — у `ledger` (COUNT за `reason LIKE` і день) або в окремій `economy_counters(nick_key, key, day, n)`;
 реалізація на вибір WP1, але з тестом на межу.
 
-Партія на двох, де обидва місця — той самий нік (неможливо за §4.4) або партія коротша за 3 ходи/10 с — не
-нагороджується (`MinRewardMoves` / `MinRewardSeconds` у spec кожної гри через `RoomFinishedEvent`).
+Партія на двох, де обидва місця — той самий нік (неможливо за §4.4) або надто коротка — не нагороджується.
+Межа спільна для всіх ігор і живе в налаштуваннях (`Economy:MinRewardMoves`, `Economy:MinRewardSeconds`):
+партія рахується, якщо ходів було не менше за перше АБО вона тривала не менше за друге. Реалтайм-ігри ходів
+не мають (`RoomFinishedEvent.Moves == 0`), тож для них працює лише час.
 
 ### 6.3 Витрати
 
@@ -311,7 +323,8 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 - `ratings(nick_key, game, elo, games, wins, losses, draws, updated_at)` — тільки для `Rated` ігор на двох.
   Ело: K=32 (K=48 для перших 10 партій), старт 1000, нічия 0.5. Поразка через вихід — звичайна поразка.
 - Таблиці (`GET /api/games/leaderboard?game=&period=day|week|all`):
-  - гра на двох: Ело, W/L/D, серія;
+  - гра на двох: Ело, W/L/D, серія. Ело — завжди за весь час: воно й так уже враховує всю історію, і
+    «Ело за вчора» не означало б нічого. `period` тут приймається, але на рядки не впливає;
   - соло-гра: найкращий результат за період (`ScoreOrder`), кількість спроб;
   - `game=shards`: баланс і зароблено за період;
   - `game=daily&day=`: хто розв'язав, за скільки спроб/секунд.
@@ -350,6 +363,11 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 | listener-10h | Слухач | 10 годин онлайн | 15 |
 | listener-100h | Меломан | 100 годин онлайн | 50 |
 | rich-100 | Сотня | 100 черепків на балансі | 10 |
+
+**«Настільний» (`all-boards`).** Умова — перемога в кожній настільній грі, яку знає платформа: список
+беруть із реєстру збірки (`GameNames`), а не з того, у що вже хтось грав. Планка однакова для всіх і не
+пливе від чужих партій; ціна — з новою настільною грою вона піднімається для тих, хто ачівки ще не має
+(здобуту ніхто не забирає). Поки настільних ігор у збірці менше трьох, ачівка не видається взагалі.
 
 **Ачівки, яких платформа сама не бачить.** Роль у мафії, слово на 30 очок, вдала перевірка комісара — про
 таке знає лише сама гра. Тому в кодах причин зарезервовано префікс `ach:`: гра кличе

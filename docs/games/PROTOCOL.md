@@ -72,9 +72,14 @@ type RoomView = {
 { games: { id, title, accusative, group: 'board'|'live'|'party'|'solo', minPlayers, maxPlayers,
            tickMs, start: 'whenFull'|'byHost'|'immediate', hidden, private, rated,
            options: { key, label, values: [value, label][], default }[], hint, hasCss: boolean,
-           daily: boolean }[],
+           daily: boolean, module: string }[],
   stakes: number[] }   // дозволені ставки, напр. [0, 5, 10, 25]
 ```
+
+`module` — ім'я файла модуля без розширення: каркас вантажить `/games/<module>.js` (і `/games/<module>.css`,
+якщо `hasCss`). Типово це `id`, але кілька ігор можуть ділити один файл (`ttt3` → `ttt`), і тоді він
+вантажиться один раз. Ставку каркас показує в попапі створення там само, де її приймає сервер: `maxPlayers == 2`
+і `rated`.
 
 Інші HTTP (WP1): `GET /api/games/leaderboard?game=&period=`, `GET /api/games/profile?nick=`,
 `GET /api/games/daily`, `GET /api/games/wallet` (свій баланс). Форми відповідей — у ARCHITECTURE §7 і в
@@ -119,6 +124,10 @@ type Ctx = {
 };
 ```
 
+`HGames` крім `register` має: `registerPanel({ id, title, icon, mount(host, ctx), update? })` — своя панель
+поруч із «Профілем» (окремого `registerTile` нема: плитки лобі каркас будує сам із каталогу), `has(id)`,
+`ui`, `call(method, ...args)` / `send(method, ...args)` (хаб напряму), `catalog`.
+
 `HGames.ui` (хелпери каркаса, реалізує WP2):
 - `grid(root, { cols, rows, cell(i) → html | { html, cls, disabled }, onCell(i), cls })` — кнопкова сітка як у хрестиків. Об'єктна форма `cell(i)` потрібна, щоб позначити виграшний ряд і заблокувати чужий хід.
 - `canvas(root, { w, h, cls })` — `<canvas>` із DPR-масштабом; повертає `{ el, ctx, w, h, resize() }`.
@@ -126,6 +135,7 @@ type Ctx = {
 - `keyboardUa(root, onKey(ch), state)` — екранна українська клавіатура (Глек-слово, віселиця).
 - `lerp(a, b, t)`, `Interp()` — інтерполятор кадрів для 25 Гц ігор: `push(f)` кладе кадр, `at()` віддає `{ a, b, t }` — два останні кадри й коефіцієнт на «зараз мінус один інтервал» (змішує поля сам модуль через `lerp`, бо форма кадра в кожної гри своя), `reset()` забуває обидва.
 - `timerArc(root, untilIso, totalMs)` — дуга-таймер фаз (мафія, «Скільки?», дуель). Кликати можна з кожного `update()`: повторний виклик лише переставляє час тій самій дузі. Повертає `{ el, set(untilIso, totalMs), stop() }`.
+- `css(varName, fallback)` — значення CSS-змінної з `:root` (те саме, що `ctx.css`), `coarse()` — чи це палець.
 - `hand(root, items, { onItem, selectable, multi?, render? })` — віяло карт (дурень) / кісток (доміно). `onItem(item, i, on)`; старе ім'я `onCard` теж працює. `multi` — можна вибрати кілька, `render(item, i)` — свій HTML картки. Повертає `{ el, selected(), clear() }`.
 
 Усі хелпери ідемпотентні: їх кличуть із `mount()` і з кожного `update()`, елемент при цьому один, а колбеки й
