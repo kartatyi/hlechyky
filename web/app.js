@@ -611,7 +611,10 @@
     el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj'
       : m.kind === 'dice' ? 'dice' : m.kind === 'coin' ? 'dice coin' : mine ? 'mine' : '');
     if (m.kind === 'coin') {
-      const [, side] = /🪙 (\S+)/.exec(m.text) || [];
+      // Бік читаємо хвостом рядка, а не першим словом: боків колись може стати більше («Стало ребром»),
+      // і двослівний не має лишити порожню плитку. Формат не впізнали — малюємо текст як є.
+      const hit = /🪙\s+(.+)$/.exec(m.text || '');
+      const side = hit ? hit[1].trim() : String(m.text || '').replace('🪙', '').trim();
       el.classList.toggle('mine', mine);
       el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="die"></span>`
         + `<span class="t">${esc(side || '')}</span><span class="time">${tm(m.at)}</span>`;

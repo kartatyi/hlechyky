@@ -138,7 +138,9 @@ public sealed class Hangman : Game
             _errors++;
             if (_errors < MaxErrors) return ActResult.Done;
             EndRound();
-            return ActResult.Accept("Шибениця готова, слово втекло");
+            // Мовчки: будь-який текст на вдалому ході каркас малює зеленим тостом «усе гаразд»
+            // (core.js, call()), а дорисована шибениця з відкритим словом — новина не з тих.
+            return ActResult.Done;
         }
 
         _right.Add(ch);
@@ -161,7 +163,9 @@ public sealed class Hangman : Game
             _out.Add(seat);
             Add(seat, -1);
             if (!Alive()) EndRound();
-            return ActResult.Accept("Не воно. Це слово вже без тебе");
+            // Теж мовчки, і з тієї самої причини: зелений тост на «не вгадав» збивав би з пантелику.
+            // Гравець і так бачить: клавіатура зникла, чіп рахунку потьмянів, статус це пояснює.
+            return ActResult.Done;
         }
 
         // Вгадав ціле: три очки зверху і всі літери, яких на полі ще не було.

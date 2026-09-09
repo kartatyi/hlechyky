@@ -17,28 +17,36 @@ public sealed class HangmanWords : IDisposable
     /// <summary>Слово єдиного списку: шість позицій, п'ять різних літер, «о» — двічі.</summary>
     public const string Word = "корова";
 
+    /// <summary>Слово, у якому є і «і», і «и»: на ньому видно, що це різні літери, а не одна.</summary>
+    public const string Tricky = "світлиця";
+
     public static readonly string[] Many =
     [
         "береза", "вишенька", "вулиця", "гарбуз", "глечик", "джерело", "дорога", "калина",
         "корова", "криниця", "полуниця", "смерека", "сонечко", "сопілка", "хатина", "яблуко",
     ];
 
-    readonly string _one, _many, _empty;
+    readonly string _one, _many, _empty, _tricky;
 
     public HangmanWords()
     {
         _one = Dir("one");
         _many = Dir("many");
         _empty = Dir("empty");
+        _tricky = Dir("tricky");
         File.WriteAllLines(Path.Combine(_one, "uk-hangman.txt"), [Word]);
         File.WriteAllLines(Path.Combine(_many, "uk-hangman.txt"), Many);
+        File.WriteAllLines(Path.Combine(_tricky, "uk-hangman.txt"), [Tricky]);
         One = new Words(_one);
         Lots = new Words(_many);
         None = new Words(_empty);
+        Pair = new Words(_tricky);
     }
 
     /// <summary>Список з одного слова: яке слово випаде, знає й тест.</summary>
     public Words One { get; }
+    /// <summary>Список зі «світлиці»: «і» й «и» стоять поруч в одному слові.</summary>
+    public Words Pair { get; }
     /// <summary>Шістнадцять слів: те, на чому видно детермінізм сіду.</summary>
     public Words Lots { get; }
     /// <summary>Порожній каталог: словника нема взагалі.</summary>
@@ -53,8 +61,8 @@ public sealed class HangmanWords : IDisposable
 
     public void Dispose()
     {
-        foreach (var w in new[] { One, Lots, None }) w.Dispose();
-        foreach (var dir in new[] { _one, _many, _empty })
+        foreach (var w in new[] { One, Lots, None, Pair }) w.Dispose();
+        foreach (var dir in new[] { _one, _many, _empty, _tricky })
             try { Directory.Delete(dir, recursive: true); } catch (IOException) { /* хай лежить у temp */ }
     }
 }
@@ -169,6 +177,23 @@ public class HangmanTests(HangmanWords fx) : IClassFixture<HangmanWords>
         Assert.Equal("_о_о__", Mask(h));
     }
 
+    [Fact]
+    public void I_and_yi_are_letters_of_their_own()
+    {
+        // «світлиця»: «і» на третій позиції, «и» на шостій. Одна за одну не рахується — spec про це прямо каже.
+        var h = Table(fx.Pair, 42, "Оля");
+        Assert.True(Guess(h, 0, "и").Ok);
+        Assert.Equal("_____и__", Mask(h));
+
+        Assert.True(Guess(h, 0, "і").Ok);
+        Assert.Equal("__і__и__", Mask(h));
+        Assert.Equal(0, h.View(0).GetProperty("errors").GetInt32());
+
+        Assert.True(Guess(h, 0, "ї").Ok);                   // «ї» — теж окрема літера, тут її нема
+        Assert.Equal("__і__и__", Mask(h));
+        Assert.Equal(1, h.View(0).GetProperty("errors").GetInt32());
+    }
+
     // ---------------------------------------------------------------- шибениця
 
     [Fact]
@@ -181,7 +206,9 @@ public class HangmanTests(HangmanWords fx) : IClassFixture<HangmanWords>
         Assert.Equal("play", Phase(h));
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("revealed").ValueKind);
 
-        Assert.True(Guess(h, 0, Misses[^1]).Ok);
+        var last = Guess(h, 0, Misses[^1]);
+        Assert.True(last.Ok);
+        Assert.Equal("", last.Message);                     // погана новина без зеленого тоста «усе гаразд»
         Assert.Equal(Hangman.MaxErrors, h.View(0).GetProperty("errors").GetInt32());
         Assert.Equal("between", Phase(h));
         Assert.Equal(HangmanWords.Word, h.View(0).GetProperty("revealed").GetString());
@@ -222,11 +249,43 @@ public class HangmanTests(HangmanWords fx) : IClassFixture<HangmanWords>
     {
         var h = Table("Оля", "Петро");
         Guess(h, 0, "о");                                   // два очки, щоб було що втрачати
-        Assert.True(Word(h, 0, "будинок").Ok);
+        var wrong = Word(h, 0, "будинок");
+        Assert.True(wrong.Ok);
+        Assert.Equal("", wrong.Message);                    // «не вгадав» зеленим тостом не показуємо
 
         Assert.Equal(new[] { 0 }, h.View(0).GetProperty("out").EnumerateArray().Select(x => x.GetInt32()).ToArray());
         Assert.Equal(1, Score(h, 0));
         Assert.Equal("play", Phase(h));                     // Петро ще грає — раунд триває
+        // Промах словом коштує очка і місця в раунді, але шибениці не додає: спільна кара — лише за літеру.
+        Assert.Equal(0, h.View(0).GetProperty("errors").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("я")]        // одна літера — це вже guess, а не слово
+    [InlineData("korova")]   // латиниця
+    [InlineData("кор'ова")]  // апостроф: у словнику таких слів нема
+    public void Only_a_real_word_counts_as_a_whole_word_call(string raw)
+    {
+        var h = Table("Оля");
+        Guess(h, 0, "о");
+        var before = Views.Text(h.View(0));
+
+        var r = Word(h, 0, raw);
+        Assert.False(r.Ok);
+        Assert.Equal("Це не схоже на слово", r.Message);
+        Assert.Equal(before, Views.Text(h.View(0)));
+    }
+
+    [Fact]
+    public void Spaces_and_capitals_do_not_spoil_a_whole_word()
+    {
+        var h = Table("Оля");
+        Assert.True(Word(h, 0, "  КОРОВА  ").Ok);
+
+        Assert.Equal("between", Phase(h));
+        Assert.Equal(Hangman.WordBonus + HangmanWords.Word.Length, Score(h, 0));
     }
 
     [Fact]

@@ -29,6 +29,37 @@
 
   const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 6);
 
+  // Сервер бере одну дію на місце на секунду (Impl/Hangman.cs, ActEveryMs) і кожну зайву відбиває
+  // текстом, який каркас малює червоним тостом. Набираючи літери в звичайному темпі, гравець зібрав
+  // би три-чотири такі тости підряд, тож те саме вікно клієнт тримає й сам: поки воно триває, до хаба
+  // нічого не летить, а клавіатура тьмяніє й сама повертається. Запас — на дорогу до сервера.
+  const COOL_MS = 1000, COOL_LAG = 120;
+
+  /// Хід із оглядкою на власний кулдаун. Повертає, чи справді пішло на сервер.
+  /// Стан живе на ctx (він у каркаса один на кімнату), тож два столи поруч не заважають одне одному.
+  function tryAct(ctx, action, payload) {
+    const now = Date.now();
+    const left = (ctx.hangmanCool || 0) - now;
+    if (left > 0) { cool(ctx, left); return false; }
+    // Сервер лічить вікно від будь-якої дії, навіть відмовленої («Уже було»), — лічимо так само.
+    ctx.hangmanCool = now + COOL_MS + COOL_LAG;
+    cool(ctx, COOL_MS + COOL_LAG);
+    ctx.act(action, payload);
+    return true;
+  }
+
+  /// Видимий кулдаун: анімація на стільки, скільки лишилось. Саме анімація, а не таймер, — тоді
+  /// нема чого чистити, коли картку приберуть посеред очікування.
+  function cool(ctx, ms) {
+    const root = ctx.hangmanRoot;
+    const kbd = root && root.querySelector(':scope > .gkbd');
+    if (!kbd) return;
+    kbd.classList.remove('hcool');
+    void kbd.offsetWidth;                 // перезапуск анімації на повторному натиску
+    kbd.style.animationDuration = Math.max(120, Math.round(ms)) + 'ms';
+    kbd.classList.add('hcool');
+  }
+
   /// Шибениця. Перемальовуємо лише коли додався промах: інакше SVG блимав би на кожен тик.
   function gallows(root, v) {
     const el = root.querySelector('.hgal');
@@ -92,12 +123,13 @@
       e.preventDefault();
       const text = input.value.trim();
       if (!text) return;
-      input.value = '';
-      ctx.act('word', { text });
+      // Слово теж під лімітом сервера. Поки кулдаун — набране не забираємо: хай спробує ще раз.
+      if (tryAct(ctx, 'word', { text })) input.value = '';
     };
   }
 
   function paint(root, ctx) {
+    ctx.hangmanRoot = root;          // onKey приходить без картки — беремо її з ctx
     const v = ctx.view || {};
     const out = v.out || [];
     const playable = !!ctx.mine && !!ctx.playing && v.phase === 'play' && out.indexOf(ctx.seat) < 0;
@@ -116,7 +148,7 @@
       HGames.ui.keyboardUa(root, (k) => {
         if (k === 'Enter') { const f = root.querySelector('.hword'); if (f) f.requestSubmit(); return; }
         if (k === 'Backspace') { const i = root.querySelector('.hword input'); if (i) i.value = i.value.slice(0, -1); return; }
-        ctx.act('guess', { letter: k });
+        tryAct(ctx, 'guess', { letter: k });
       }, state);
     } else {
       const kbd = root.querySelector(':scope > .gkbd');
@@ -150,13 +182,16 @@
       // літери читаємо з e.key: розкладка тут якраз і потрібна, це не WASD
       const ch = String(e.key || '').toLowerCase();
       if (ch.length !== 1 || ALPHABET.indexOf(ch) < 0) return false;
-      ctx.act('guess', { letter: ch });
-      return true;
+      // У кулдауні клавішу не з'їдаємо: хай сторінка робить із нею, що звикла.
+      return tryAct(ctx, 'guess', { letter: ch });
     },
 
     status(ctx) {
       const v = ctx.view || {};
-      if (v.phase === 'between') return 'Наступне слово через ' + (v.nextIn || 0) + '…';
+      // Після останнього слова наступного вже не буде: там рахунок, а не відлік.
+      if (v.phase === 'between') {
+        return v.round >= (v.of || 5) ? 'Рахуємо очки…' : 'Наступне слово через ' + (v.nextIn || 0) + '…';
+      }
       if (!ctx.playing) return '';
       if (!ctx.mine) return 'Дивишся збоку';
       if ((v.out || []).indexOf(ctx.seat) >= 0) return 'Це слово вже без тебе — чекай наступне';

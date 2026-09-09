@@ -39,6 +39,18 @@
 .hsc.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
 .hsc.off { opacity: .45; }
 
+/* ---- кулдаун клавіатури ---- */
+/* Сервер бере одну дію на секунду; клавіатура на цей час тьмяніє і сама повертається, щоб замість
+   червоного тоста «Не так швидко» гравець бачив, коли можна знову. Тривалість ставить модуль. */
+.gkbd.hcool { animation: hcool 1s linear; }
+@keyframes hcool {
+  from { opacity: .4; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gkbd.hcool { animation: none; }
+}
+
 /* ---- «назвати слово» ---- */
 .hword { display: flex; gap: 6px; width: 100%; max-width: 460px; }
 .hword[hidden] { display: none; }
