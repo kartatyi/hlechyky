@@ -34,6 +34,7 @@ public sealed class DjBrain : IHostedService
     readonly List<DateTime> _chatter = new();
     readonly SemaphoreSlim _one = new(1, 1);
     DateTime _lastSpoke = DateTime.MinValue;
+    DateTime _lastFlavor = DateTime.MinValue;
     AnthropicClient? _client;
     string _clientKey = "";
 
@@ -217,6 +218,53 @@ public sealed class DjBrain : IHostedService
         }
         catch (OperationCanceledException) { _log.LogWarning("Глек думав задовго і махнув рукою"); }
         catch (Exception ex) { _log.LogWarning(ex, "виклик моделі не вдався"); }
+        finally { _one.Release(); }
+    }
+
+    /// <summary>
+    /// Один рядок від Глека на замовлення гри: ведучий у мафії, суддя в конкурсі реклами, коментар до
+    /// партії. Без інструментів і без доступу до стану радіо — тільки персона й те, що просить гра.
+    /// У чат нічого не шле: що робити з відповіддю, вирішує той, хто покликав.
+    /// Повертає null, коли бот вимкнений, нема ключа, вичерпана місячна стеля, Глек саме зайнятий
+    /// розмовою в чаті або його смикали менш ніж 5 секунд тому — гра має жити далі й без слівця.
+    /// </summary>
+    public async Task<string?> FlavorAsync(string instruction, int maxChars, CancellationToken ct = default)
+    {
+        var o = _bot.CurrentValue;
+        if (!Enabled(o) || string.IsNullOrWhiteSpace(instruction) || maxChars <= 0) return null;
+        if (SpentThisMonth() >= o.MonthlyBudgetUsd) return null;
+        // черги не буде: зайнятий — значить, цього разу без коментаря
+        if (!await _one.WaitAsync(TimeSpan.Zero, ct)) return null;
+        try
+        {
+            lock (_lock)
+            {
+                if (DateTime.UtcNow - _lastFlavor < TimeSpan.FromSeconds(5)) return null;
+                _lastFlavor = DateTime.UtcNow;
+            }
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(o.TimeoutSeconds));
+            var response = await Client(o).Messages.Create(new MessageCreateParams
+            {
+                Model = o.Model,
+                MaxTokens = Math.Clamp(maxChars, 32, o.MaxTokens),
+                System = new List<TextBlockParam>
+                {
+                    new() { Text = SystemPrompt(), CacheControl = new CacheControlEphemeral() },
+                },
+                Messages = new List<MessageParam>
+                {
+                    new() { Role = Role.User, Content = instruction },
+                },
+            }, cancellationToken: cts.Token);
+            Charge(response.Usage, o);
+
+            var text = string.Join(" ", response.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text.Trim())).Trim();
+            if (text.Length == 0) return null;
+            return text.Length > maxChars ? text[..maxChars].TrimEnd() + "…" : text;
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (Exception ex) { _log.LogWarning(ex, "Глек-ведучий не відповів"); return null; }
         finally { _one.Release(); }
     }
 

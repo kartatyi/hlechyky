@@ -37,6 +37,52 @@ public sealed class Db
             PRIMARY KEY(playlist_id, track_id));
         """;
 
+    /// <summary>
+    /// Таблиці ігрової платформи (черепки, результати, рейтинги, ачівки, щоденне, збережені стани).
+    /// Тут — лише DDL: усі запити до них живуть у Games/Economy/Store.cs, щоб цей файл лишався тонким
+    /// і не збирав на собі конфлікти від кожної нової гри.
+    /// </summary>
+    const string GamesSchema = """
+        CREATE TABLE IF NOT EXISTS wallets(
+            nick_key TEXT PRIMARY KEY, nick TEXT NOT NULL, balance INTEGER NOT NULL DEFAULT 0,
+            earned INTEGER NOT NULL DEFAULT 0, spent INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS ledger(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, nick_key TEXT NOT NULL, delta INTEGER NOT NULL,
+            reason TEXT NOT NULL, ref TEXT, created_at TEXT NOT NULL);
+        -- ref — ключ ідемпотентності. У SQLite NULL-и в унікальному індексі вважаються різними, але
+        -- часткового індексу тут ще й дешевше: рядки без ref у нього просто не потрапляють.
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_ledger_ref ON ledger(ref) WHERE ref IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS ix_ledger_nick_created ON ledger(nick_key, created_at);
+        CREATE INDEX IF NOT EXISTS ix_ledger_created ON ledger(created_at);
+        CREATE TABLE IF NOT EXISTS economy_counters(
+            nick_key TEXT NOT NULL, key TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(nick_key, key, day));
+        CREATE TABLE IF NOT EXISTS game_results(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, room_id TEXT NOT NULL, game TEXT NOT NULL,
+            round INTEGER NOT NULL, nick_key TEXT NOT NULL, nick TEXT NOT NULL, outcome TEXT NOT NULL,
+            score INTEGER, opponents TEXT, stake INTEGER NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL);
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_results_room ON game_results(room_id, round, nick_key);
+        CREATE INDEX IF NOT EXISTS ix_results_game_created ON game_results(game, created_at);
+        CREATE INDEX IF NOT EXISTS ix_results_nick ON game_results(nick_key, id);
+        CREATE TABLE IF NOT EXISTS ratings(
+            nick_key TEXT NOT NULL, game TEXT NOT NULL, nick TEXT NOT NULL,
+            elo INTEGER NOT NULL DEFAULT 1000, games INTEGER NOT NULL DEFAULT 0,
+            wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
+            draws INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY(nick_key, game));
+        CREATE INDEX IF NOT EXISTS ix_ratings_game_elo ON ratings(game, elo DESC);
+        CREATE TABLE IF NOT EXISTS achievements(
+            nick_key TEXT NOT NULL, key TEXT NOT NULL, nick TEXT NOT NULL, unlocked_at TEXT NOT NULL,
+            PRIMARY KEY(nick_key, key));
+        CREATE TABLE IF NOT EXISTS daily_results(
+            day TEXT NOT NULL, game TEXT NOT NULL, nick_key TEXT NOT NULL, nick TEXT NOT NULL,
+            solved INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
+            ms INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+            PRIMARY KEY(day, game, nick_key));
+        CREATE INDEX IF NOT EXISTS ix_daily_game_day ON daily_results(game, day);
+        CREATE TABLE IF NOT EXISTS game_state(key TEXT PRIMARY KEY, json TEXT NOT NULL, updated_at TEXT NOT NULL);
+        """;
+
     const string TrackCols = "t.id, t.title, t.artist, t.duration_sec, t.thumb_url, t.source_url, t.album";
 
     public Db(string path)
@@ -45,6 +91,7 @@ public sealed class Db
         _cs = new SqliteConnectionStringBuilder { DataSource = path }.ToString();
         using var c = Open();
         Exec(c, Schema);
+        Exec(c, GamesSchema);
         // migrations for DBs created before these columns existed
         try { Exec(c, "ALTER TABLE plays ADD COLUMN via TEXT"); } catch (SqliteException) { /* exists */ }
     }
@@ -54,6 +101,31 @@ public sealed class Db
         var c = new SqliteConnection(_cs);
         c.Open();
         return c;
+    }
+
+    // ---- гачки для Games/Economy ----
+    // Економіка тримає свій SQL у себе (Store.cs), а сюди виносить тільки те, без чого не обійтись:
+    // з'єднання на час однієї короткої операції.
+
+    /// <summary>Виконати щось на власному з'єднанні (транзакції економіки — всередині f).</summary>
+    public T With<T>(Func<SqliteConnection, T> f)
+    {
+        using var c = Open();
+        return f(c);
+    }
+
+    /// <summary>Те саме без результату.</summary>
+    public void With(Action<SqliteConnection> a)
+    {
+        using var c = Open();
+        a(c);
+    }
+
+    /// <summary>Разовий запит без результату — щоб не писати With(c => ...) заради одного рядка.</summary>
+    public void Exec(string sql, params (string Name, object? Value)[] ps)
+    {
+        using var c = Open();
+        Exec(c, sql, ps);
     }
 
     static SqliteCommand Cmd(SqliteConnection c, string sql, params (string Name, object? Value)[] ps)

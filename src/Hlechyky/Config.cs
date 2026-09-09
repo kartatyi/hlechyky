@@ -122,6 +122,36 @@ public sealed class DjBotOptions
     public double CacheWriteUsdPerMTok { get; set; } = 1.25;
 }
 
+/// <summary>
+/// Черепки: скільки і за що. Числа з ARCHITECTURE §6.2; секція <c>Economy</c> в appsettings.json,
+/// підхоплюється без рестарту. Ставки (0/5/10/25) сюди не входять — це константа каркаса кімнат.
+/// </summary>
+public sealed class EconomyOptions
+{
+    /// <summary>Черепок за кожні стільки хвилин на сайті.</summary>
+    public int ListenEveryMinutes { get; set; } = 10;
+    public int ListenReward { get; set; } = 1;
+    /// <summary>Скільки черепків за день можна набути самим лише сидінням на сайті.</summary>
+    public int ListenDailyCap { get; set; } = 12;
+
+    public int WinReward { get; set; } = 5;
+    public int DrawReward { get; set; } = 2;
+    /// <summary>Програв, але дограв до кінця.</summary>
+    public int PlayReward { get; set; } = 1;
+    /// <summary>Скільки партій на день у ту саму гру ще нагороджуються (перемоги, нічиї й участь разом).</summary>
+    public int RewardedGamesPerDay { get; set; } = 10;
+    /// <summary>Партія, коротша і за стільки ходів, і за <see cref="MinRewardSeconds"/>, — без нагороди.</summary>
+    public int MinRewardMoves { get; set; } = 6;
+    public int MinRewardSeconds { get; set; } = 20;
+
+    /// <summary>Типова нагорода за розв'язану головоломку дня.</summary>
+    public int DailyReward { get; set; } = 5;
+    /// <summary>Скільки черепків на день можна виміняти в гончарному колі.</summary>
+    public int ClickerDailyCap { get; set; } = 20;
+    /// <summary>Скільки черепків на день можуть принести всі позастандартні нагороди разом.</summary>
+    public int AwardDailyCap { get; set; } = 30;
+}
+
 public sealed class DeployOptions
 {
     public bool Enabled { get; set; } = true;
