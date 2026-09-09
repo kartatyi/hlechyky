@@ -1,0 +1,49 @@
+/*
+  Бомбер. Поле малює канвас, тому тут лише рядок над ним і керування пальцем. Свої кольори — на :root,
+  бо модуль читає їх через ctx.css(), а той дивиться саме туди (як і в core.css).
+*/
+:root {
+  --bbomb: #12211a;   /* тіло бомби */
+  --bbox: #8f5527;    /* дошки на ящику */
+}
+
+.bboard { max-width: 420px; }
+
+/* ---- рядок над полем: хто скільки раундів узяв і що встиг підібрати ---- */
+.bhud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-size: .82em; }
+.bchip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.bchip b { color: var(--text); font-variant-numeric: tabular-nums; }
+.bchip .bups { color: var(--muted); font-size: .92em; }
+.bchip.out { opacity: .42; }
+.bchip.s0 { color: var(--accent); }
+.bchip.s1 { color: var(--ok); }
+.bchip.s2 { color: var(--clay); }
+.bchip.s3 { color: var(--muted); }
+
+/* ---- керування пальцем: напрямок тримають, тому це не .dpad каркаса ---- */
+.bpad { display: none; }
+@media (pointer: coarse) {
+  .bpad {
+    display: grid; grid-template-columns: auto auto; gap: 16px; align-items: center;
+    justify-content: center; margin-top: 4px; touch-action: none; user-select: none;
+  }
+  .bdirs { display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 40px); gap: 5px; }
+  .bdirs button { justify-content: center; font-size: 1.15em; }
+  .bdirs button[data-dir="3"] { grid-column: 2; grid-row: 1; }
+  .bdirs button[data-dir="2"] { grid-column: 1; grid-row: 2; }
+  .bdirs button[data-dir="0"] { grid-column: 3; grid-row: 2; }
+  .bdirs button[data-dir="1"] { grid-column: 2; grid-row: 3; }
+  .bbomb {
+    width: 72px; height: 72px; border-radius: 50%; justify-content: center; font-size: 1.7em;
+    background: var(--panel3);
+  }
+  .bbomb:active { background: var(--clay); }
+}
+@media (max-width: 380px) {
+  .bdirs { grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(3, 38px); }
+  .bbomb { width: 64px; height: 64px; font-size: 1.5em; }
+  .bpad { gap: 10px; }
+}
