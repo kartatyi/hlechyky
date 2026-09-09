@@ -5,7 +5,12 @@
   Запускати можна скільки завгодно: те, що вже є, не чіпає.
 
   powershell -ExecutionPolicy Bypass -File setup.ps1
+
+.PARAMETER KeepDictSource
+  Лишити розпакований dict_corp_vis.txt у data\words\ (318 МБ, у .gitignore). Потрібен лише тому,
+  хто перегенеровує малі списки через data\words\make-lists.py — див. data\words\LICENSE.txt §4.
 #>
+param([switch]$KeepDictSource)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # без прогрес-бару Invoke-WebRequest у PowerShell 5 качає в рази швидше
 $Root = $PSScriptRoot
@@ -85,7 +90,9 @@ function Find-Bzip2 {
     return $null
 }
 
-if ((Test-Path $ukAll) -or (Test-Path $ukDb)) { Write-Host 'Великий словник уже є' }
+$dictSrc = Join-Path $words 'dict_corp_vis.txt'
+$haveAll = (Test-Path $ukAll) -or (Test-Path $ukDb)
+if ($haveAll -and -not ($KeepDictSource -and -not (Test-Path $dictSrc))) { Write-Host 'Великий словник уже є' }
 else {
     $bz2 = Join-Path $env:TEMP 'hlechyky-dict-uk.txt.bz2'
     $raw = Join-Path $env:TEMP 'hlechyky-dict-uk.txt'
@@ -99,12 +106,21 @@ else {
         Write-Host 'Розпаковую (318 МБ на час обробки)…'
         # -dk кладе результат поруч, знявши .bz2 (hlechyky-dict-uk.txt.bz2 -> hlechyky-dict-uk.txt);
         # перенаправляти вивід через > не можна — PowerShell перекодував би текст
-        if ($bzip2) { & $bzip2 -dk $bz2 }
+        # $ErrorActionPreference на нативні програми не діє, тому код повернення читаємо самі:
+        # bzip2, що впав на середині (скінчилось місце), інакше лишив би обрізаний файл і Ерудит
+        # мовчки не знав би половини слів
+        if ($bzip2) {
+            & $bzip2 -dk $bz2
+            if ($LASTEXITCODE -ne 0) { throw "bzip2 вийшов з кодом $LASTEXITCODE" }
+        }
         elseif (Get-Command python -ErrorAction SilentlyContinue) {
             python -c "import bz2,shutil,sys;shutil.copyfileobj(bz2.open(sys.argv[1],'rb'),open(sys.argv[2],'wb'))" $bz2 $raw
+            if ($LASTEXITCODE -ne 0) { throw "python не розпакував архів (код $LASTEXITCODE)" }
         }
         else { throw 'нема чим розпакувати .bz2 (шукав bzip2.exe і python)' }
         if (-not (Test-Path $raw)) { throw 'розпакування не дало файлу' }
+        $rawMb = [int]((Get-Item $raw).Length / 1MB)
+        if ($rawMb -lt 300) { throw "розпакований словник підозріло малий ($rawMb МБ замість ~318)" }
 
         # Витягуємо словоформи: у dict_corp_vis рядок — «слово тег[ # коментар]», відступ означає похідну форму.
         # Беремо все, крім власних назв, абревіатур, лайки й латиниці; лишаємо тільки українські літери.
@@ -149,11 +165,15 @@ public static class HlechykyWords {
         Write-Host 'Складаю uk-all.txt…'
         $n = [HlechykyWords]::Extract($raw, $ukAll)
         Write-Host "Готово: $n словоформ у data\words\uk-all.txt (сервер збере з нього uk-all.db при першому старті)"
+        if ($KeepDictSource) {
+            Copy-Item $raw (Join-Path $words 'dict_corp_vis.txt') -Force
+            Write-Host 'Лишив data\words\dict_corp_vis.txt для make-lists.py (у гіті його нема)'
+        }
     }
     catch {
         Write-Warning "Великий словник не поставився: $_"
         Write-Warning 'Не біда: Ерудит гратиме в режимі «малий словник», решта ігор — без змін.'
-        if (Test-Path $ukAll) { Remove-Item $ukAll -Force }
+        if (-not $haveAll -and (Test-Path $ukAll)) { Remove-Item $ukAll -Force }   # був до нас — не чіпаємо
     }
     finally {
         foreach ($f in $bz2, $raw) { if (Test-Path $f) { Remove-Item $f -Force } }

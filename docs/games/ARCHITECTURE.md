@@ -76,7 +76,7 @@ tests/Hlechyky.Tests/
   Games/              по файлу на гру: ChessTests, CheckersTests, …
 docs/games/
   ARCHITECTURE.md (цей), PROTOCOL.md, PLAN.md, TESTING.md, specs/<id>.md
-data/words/           словники (uk-5.txt, uk-hangman.txt, uk-all.txt.gz — не всі в гіті, див. Words)
+data/words/           словники (uk-5.txt, uk-guess.txt, uk-hangman.txt; uk-all.txt і uk-all.db — не в гіті, див. Words)
 ```
 
 Старі `Games.cs`, `Snake.cs` (з `SnakeEngine`) і блок ігор у `app.js`/`style.css` **видаляються**: їхня логіка
