@@ -163,7 +163,10 @@
         g.font = '700 40px system-ui, sans-serif';
         g.textAlign = 'center';
         g.textBaseline = 'middle';
-        g.fillText(String(Math.ceil((f.startIn || 0) / 1000)), W / 2, H / 2);
+        // Стіл у лобі теж стоїть у фазі 'ready', але без відліку: велике біле «0» посеред поля
+        // читалось би як відлік, що застряг.
+        const left = Math.ceil((f.startIn || 0) / 1000);
+        if (left > 0) g.fillText(String(left), W / 2, H / 2);
       }
     }
   }
@@ -288,9 +291,12 @@
         st.prev = [];
         st.r = f.r;
         // Сервер на старті раунду забуває, хто що тримав, а браузер автоповтору вже не пришле:
-        // нагадуємо йому те, що палець і досі тримає, інакше кривуля поїде прямо.
-        st.sent = null;
-        send(ctx, st, want(st));
+        // нагадуємо йому те, що палець і досі тримає, інакше кривуля поїде прямо. Глядачеві
+        // нагадувати нема чого — його ввід сервер усе одно викине.
+        if (ctx.mine) {
+          st.sent = null;
+          send(ctx, st, want(st));
+        }
       }
       st.t = f.t;
       grow(st, ctx, f);

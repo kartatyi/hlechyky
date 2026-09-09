@@ -36,6 +36,21 @@ public class CurveTests
         h.Trail.Add(new CurvePoint(x, y, false));
     }
 
+    /// <summary>
+    /// Найгірший слід, який узагалі допускає запобіжник: кривуля в'ється всі <see cref="CurveCore.MaxRoundTicks"/>
+    /// тиків, жодна точка не лягає на пряму (стискати нічого), і кожні 2 с — дірка.
+    /// </summary>
+    static List<CurvePoint> Wiggly(int seat)
+    {
+        var trail = new List<CurvePoint>(CurveCore.MaxRoundTicks);
+        for (var t = 0; t < CurveCore.MaxRoundTicks; t++)
+            trail.Add(new CurvePoint(
+                150 + 140 * Math.Sin((t + seat) * 0.11),
+                100 + 90 * Math.Sin((t + seat) * 0.37),
+                t % 60 < CurveCore.GapTicks));
+        return trail;
+    }
+
     [Fact]
     public void A_curve_goes_forty_units_in_twenty_five_ticks()
     {
@@ -139,6 +154,30 @@ public class CurveTests
     }
 
     [Fact]
+    public void A_curve_that_catches_up_from_behind_dies_alone()
+    {
+        var core = new CurveCore(new Random(1), gaps: false);
+        core.Reset([true, true]);
+        Put(core, 0, 100, 100, 0);      // лідер їде праворуч і нічого не робить
+        Put(core, 1, 96.5, 100, 0);     // задній їде туди ж і в'їхав йому в спину
+
+        Assert.Equal([1], core.Step());
+        Assert.True(core.Heads[0].Alive, "лідера, якого наздогнали ззаду, не за що вбивати");
+    }
+
+    [Fact]
+    public void Two_curves_riding_side_by_side_do_not_bump_each_other()
+    {
+        var core = new CurveCore(new Random(1), gaps: false);
+        core.Reset([true, true]);
+        Put(core, 0, 100, 100, 0);
+        Put(core, 1, 100, 103.5, 0);    // пліч-о-пліч, ближче ніж 2r, але одне одному не спереду
+
+        Assert.Empty(core.Step());
+        Assert.Equal(2, core.AliveCount);
+    }
+
+    [Fact]
     public void Someone_elses_trail_kills_just_as_well_as_your_own()
     {
         var core = new CurveCore(new Random(1), gaps: false);
@@ -195,10 +234,11 @@ public class CurveTests
             if (runs.Count > 0 && runs[^1].On == f) runs[^1] = (f, runs[^1].Len + 1);
             else runs.Add((f, 1));
 
+        // Останній пробіг обрізаний кінцем вимірювання — його не рахуємо.
+        runs.RemoveAt(runs.Count - 1);
         Assert.Contains(runs, r => r.On);
         foreach (var r in runs.Where(r => r.On)) Assert.Equal(CurveCore.GapTicks, r.Len);
-        // Останній пробіг обрізаний кінцем вимірювання — його не рахуємо.
-        foreach (var r in runs.Where(r => !r.On).Take(runs.Count(r => !r.On) - 1))
+        foreach (var r in runs.Where(r => !r.On))
             Assert.InRange(r.Len, CurveCore.GapMinTicks - 1, CurveCore.GapMaxTicks);
     }
 
@@ -236,6 +276,36 @@ public class CurveTests
         Assert.Equal(100, pts[1]);
         Assert.Equal(104, pts[^2]);          // 10 + 59 * 1.6 = 104.4
         foreach (var i in gaps) Assert.InRange(i, 1, pts.Length / 2 - 1);
+    }
+
+    [Fact]
+    public void A_polyline_of_the_longest_round_is_thinned_to_the_budget()
+    {
+        var (pts, gaps) = CurveCore.Polyline(Wiggly(0));
+
+        Assert.InRange(pts.Length / 2, CurveCore.MaxPts / 2, CurveCore.MaxPts + 1);   // тут прорідження таки спрацювало
+        Assert.NotEmpty(gaps);                                  // дірки з викинутих точок не губляться
+        foreach (var i in gaps) Assert.InRange(i, 0, pts.Length / 2 - 1);
+    }
+
+    [Fact]
+    public void An_empty_table_does_not_touch_the_dice()
+    {
+        static string Deal(bool peeked)
+        {
+            var rng = new Random(7);
+            if (peeked)
+            {
+                // Стіл у лобі теж просить поле для вида — і не має зсувати роздачу.
+                var idle = new CurveCore(rng);
+                idle.Reset(new bool[CurveCore.Seats]);
+            }
+            var core = new CurveCore(rng);
+            core.Reset([true, true, true, true]);
+            return string.Join("|", core.Heads.Select(h => $"{h.X:F6},{h.Y:F6},{h.A:F6}"));
+        }
+
+        Assert.Equal(Deal(false), Deal(true));
     }
 
     [Fact]
@@ -387,7 +457,29 @@ public class CurveTests
     }
 
     [Fact]
-    public void A_long_round_still_fits_into_the_view()
+    public void The_longest_round_of_four_still_fits_into_the_view()
+    {
+        var h = Table(4);
+        Ready(h);
+        h.Tick(10);
+        // Підміняємо сліди найгіршими, які дозволяє запобіжник: наживо четверо стільки не проживуть,
+        // але межу «≤ 32 КБ при 4 гравцях» вид має тримати й тоді.
+        for (var s = 0; s < 4; s++)
+        {
+            var trail = Field(h).Heads[s].Trail;
+            trail.Clear();
+            trail.AddRange(Wiggly(s));
+        }
+
+        var v = h.View(null);
+        for (var s = 0; s < 4; s++)
+            Assert.InRange(v.GetProperty("segments")[s].GetProperty("pts").GetArrayLength() / 2, 2, CurveCore.MaxPts + 1);
+        var text = Views.Text(h.Room.Game.View(null));
+        Assert.True(text.Length < 32 * 1024, $"вид роздувся до {text.Length} байтів");
+    }
+
+    [Fact]
+    public void An_ordinary_round_keeps_every_bend_of_the_trail()
     {
         var h = Table(4);
         Ready(h);
@@ -396,6 +488,10 @@ public class CurveTests
 
         var text = Views.Text(h.Room.Game.View(null));
         Assert.True(text.Length < 32 * 1024, $"вид роздувся до {text.Length} байтів");
+        // Звичайний раунд у проріджування не впирається: у ньому точок на порядок менше за бюджет.
+        foreach (var seg in h.View(null).GetProperty("segments").EnumerateArray())
+            if (seg.ValueKind != JsonValueKind.Null)
+                Assert.True(seg.GetProperty("pts").GetArrayLength() / 2 < CurveCore.MaxPts, "звичайний раунд не мали прорідити");
     }
 
     [Fact]
@@ -549,10 +645,59 @@ public class CurveTests
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.False(Field(h).Heads[3].Alive);
         Assert.Equal(3, Field(h).AliveCount);
-        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("segments")[3].ValueKind);
+        Assert.False(h.View(0).GetProperty("heads")[3].GetProperty("alive").GetBoolean());
+        // Слід того, хто пішов, лишається в растрі до кінця раунду і далі вбиває — тож він має
+        // лишатись і на екрані, інакше решта гине об порожнє місце.
+        var gone = Field(h).Heads[3].Trail[0];
+        Assert.NotEqual(0, Field(h).Cell((int)gone.X, (int)gone.Y));
+        var seg = h.View(0).GetProperty("segments")[3];
+        Assert.NotEqual(JsonValueKind.Null, seg.ValueKind);
+        Assert.True(seg.GetProperty("pts").GetArrayLength() >= 2);
 
-        h.Tick(CurveCore.BetweenTicks + CurveCore.ReadyTicks);
+        // А от у наступному раунді місця вже нема.
+        Doom(h, 1);
+        Doom(h, 2);
+        h.Tick(1);
+        h.Tick(CurveCore.BetweenTicks);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(2, h.View(0).GetProperty("round").GetInt32());
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("segments")[3].ValueKind);
+    }
+
+    [Fact]
+    public void The_target_shrinks_with_the_table()
+    {
+        var h = Table(4);
+        Assert.Equal(CurveGame.PerRival * 3, h.View(0).GetProperty("target").GetInt32());
+
+        h.Leave("Ганна");
+        Assert.Equal(CurveGame.PerRival * 2, h.View(0).GetProperty("target").GetInt32());
+
+        h.Leave("Іван");
+        Assert.Equal(CurveGame.PerRival, h.View(0).GetProperty("target").GetInt32());
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void A_leader_who_already_passed_the_smaller_target_wins_at_once()
+    {
+        var h = Table(4);
+        for (var round = 1; round <= 4; round++)
+        {
+            Ready(h);
+            for (var s = 1; s <= 3; s++) Doom(h, s);
+            h.Tick(1);                                  // +3 Олі за раунд
+            h.Tick(CurveCore.BetweenTicks);
+        }
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);   // 12 очок із 30 — ще грати й грати
+
+        h.Leave("Ганна");
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);   // на трьох треба 20
+
+        h.Leave("Іван");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);  // на двох треба 10, а вже 12
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.Contains("Оля жовта 12", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]

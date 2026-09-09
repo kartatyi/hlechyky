@@ -103,8 +103,10 @@ public sealed class CurveCore(Random rng, bool gaps = true)
             h.Turn = 0;
             h.Gap = false;
             h.GapLeft = 0;
-            h.NextGapIn = NextGap();
+            // Генератор смикаємо лише за тих, хто справді їде: інакше порожній стіл у лобі (його вид
+            // теж просить поле) зсував би всю випадковість партії залежно від того, чи хтось глянув.
             if (!h.Present) continue;
+            h.NextGapIn = NextGap();
 
             var (x, y) = Spawn(placed);
             placed.Add((x, y));
@@ -153,8 +155,10 @@ public sealed class CurveCore(Random rng, bool gaps = true)
                 if (!Heads[a].Present || !Heads[a].Alive || !Heads[b].Present || !Heads[b].Alive) continue;
                 var (dx, dy) = (nx[a] - nx[b], ny[a] - ny[b]);
                 if (dx * dx + dy * dy >= 4 * R * R) continue;
-                if (!died.Contains(a)) died.Add(a);
-                if (!died.Contains(b)) died.Add(b);
+                // Гине лише той, у кого чужа голова спереду — те саме правило, що й у Hits(). Лоб у лоб
+                // це обидва, а от наздогнати ззаду — біда лише заднього: лідер нічого не робив.
+                if (-dx * Math.Cos(Heads[a].A) - dy * Math.Sin(Heads[a].A) > 0 && !died.Contains(a)) died.Add(a);
+                if (dx * Math.Cos(Heads[b].A) + dy * Math.Sin(Heads[b].A) > 0 && !died.Contains(b)) died.Add(b);
             }
 
         for (var s = 0; s < Seats; s++)
@@ -269,6 +273,13 @@ public sealed class CurveCore(Random rng, bool gaps = true)
     const int MaxRun = 40;
 
     /// <summary>
+    /// Скільки точок ламаної віддаємо на одну кривулю. Стиснення прямих ділянок нічого не дає тому,
+    /// хто в'ється всі <see cref="MaxRoundTicks"/> тиків: у нього лишається понад тисяча точок, і
+    /// вчотирьох вид перевалив би за обіцяні 32 КБ. Чотири по стільки — це 14 КБ.
+    /// </summary>
+    public const int MaxPts = 500;
+
+    /// <summary>
     /// Ламана для клієнта: цілі координати (растр усе одно цілий) і викинуті точки, що лежать на
     /// прямій. Пряма ділянка з двохсот точок так стискається до двох, і хвилина раунду вкладається
     /// в кілька кілобайтів замість десятків.
@@ -299,10 +310,34 @@ public sealed class CurveCore(Random rng, bool gaps = true)
             gapAt.Add(p.Gap);
             run = 0;
         }
+        if (gapAt.Count > MaxPts) (pts, gapAt) = Thin(pts, gapAt);
         var gaps = new List<int>();
         for (var i = 0; i < gapAt.Count; i++)
             if (gapAt[i]) gaps.Add(i);
         return ([.. pts], [.. gaps]);
+    }
+
+    /// <summary>
+    /// Занадто довгу ламану проріджуємо: лишаємо кожну k-ту точку. Дірку з викинутого шматка
+    /// переносимо на ту точку, що лишилась, — краще не домалювати кілька одиниць сліду, ніж
+    /// провести лінію крізь дірку, якої на полі нема.
+    /// </summary>
+    static (List<int> Pts, List<bool> GapAt) Thin(List<int> pts, List<bool> gapAt)
+    {
+        var k = (gapAt.Count + MaxPts - 1) / MaxPts;
+        var thinPts = new List<int>(MaxPts * 2 + 2);
+        var thinGap = new List<bool>(MaxPts + 1);
+        var gap = false;
+        for (var i = 0; i < gapAt.Count; i++)
+        {
+            gap |= gapAt[i];
+            if (i % k != 0 && i != gapAt.Count - 1) continue;
+            thinPts.Add(pts[2 * i]);
+            thinPts.Add(pts[2 * i + 1]);
+            thinGap.Add(gap);
+            gap = false;
+        }
+        return (thinPts, thinGap);
     }
 
     /// <summary>Чи лежить точка c на відрізку a→b з точністю до пів одиниці.</summary>
@@ -433,13 +468,19 @@ public sealed class CurveGame : Game
         var best = Leaders();
         if (best.Length > 0 && _scores[best[0]] >= _target)
         {
-            _winners = best;
-            _phase = "done";
-            Ctx.Finish(best, $"{Info.Title}: {Table()}");
+            EndGame(best);
             return;
         }
         _phase = "between";
         _phaseLeft = CurveCore.BetweenTicks;
+    }
+
+    /// <summary>Партію зіграно: рахунок усіх за столом іде в Журнал одним рядком.</summary>
+    void EndGame(int[] best)
+    {
+        _winners = best;
+        _phase = "done";
+        Ctx.Finish(best, $"{Info.Title}: {Table()}");
     }
 
     /// <summary>Місця з найбільшим рахунком серед тих, хто ще за столом.</summary>
@@ -464,10 +505,18 @@ public sealed class CurveGame : Game
     public override void OnLeave(int seat)
     {
         _seats[seat] = false;
-        Core.Heads[seat].Present = false;
+        // Present не чіпаємо: слід того, хто пішов, лишається в растрі до кінця раунду і далі вбиває,
+        // тож нехай його й видно. Місце прибере наступний Reset(_seats).
         Core.Heads[seat].Alive = false;
         var rest = Enumerable.Range(0, CurveCore.Seats).Where(s => s != seat && Ctx.Seated(s)).ToArray();
-        if (rest.Length >= 2) return;
+        if (rest.Length >= 2)
+        {
+            // Стіл поменшав — ліміт партії теж: «до 10 × (гравців − 1)» рахується від тих, хто лишився.
+            _target = PerRival * Math.Max(1, rest.Length - 1);
+            var best = Leaders();
+            if (best.Length > 0 && _scores[best[0]] >= _target) EndGame(best);
+            return;
+        }
         _winners = rest;
         _phase = "done";
         Ctx.Finish(rest, rest.Length == 1
