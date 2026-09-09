@@ -30,6 +30,15 @@
   const roleTitle = (r) => (ROLE[r] ? ROLE[r].title : '');
   const phaseTitle = (v) => (PHASE_TITLE[v.phase] || '') + (v.phase === 'night' || v.phase === 'day' ? ' ' + (v.day || 1) : '');
 
+  /// Дуга-таймер: заводимо на фазу, що йде, і гасимо, щойно партія стала. Схований вузол лишається
+  /// в DOM, тож сам цикл HGames.ui.timerArc не спиниться — його треба спинити руками.
+  function arcTo(host, v) {
+    if (!host) return;
+    if (v) { HGames.ui.timerArc(host, v.endsAt, PHASE_MS[v.phase] || 45000); return; }
+    const el = host.querySelector(':scope > .garc');
+    if (el && el._arc) el._arc.stop();
+  }
+
   /// Ніч, за яку вже все зроблено: комісару кнопки більше не потрібні (перевірка одна на ніч).
   const nightKey = (v) => v.phase + ':' + v.day;
 
@@ -124,7 +133,9 @@
     const running = v.phase !== 'lobby' && v.phase !== 'done';
     const arcHost = el.querySelector('.mf-arc');
     arcHost.hidden = !running;
-    if (running) HGames.ui.timerArc(arcHost, v.endsAt, PHASE_MS[v.phase] || 45000);
+    // Схований вузол лишається в DOM, тож сам цикл rAF не спиниться: дограна картка живе в лобі
+    // ще чверть години, і крутити її дугу весь цей час нема за що.
+    arcTo(arcHost, running ? v : null);
     el.querySelector('.mf-phase').textContent = phaseTitle(v);
     el.querySelector('.mf-hint').textContent = hint(v);
     const me = el.querySelector('.mf-me');
@@ -199,9 +210,10 @@
   };
 
   function hint(v) {
+    // Ранок буває тихий не лише тому, що лікар устиг: мафія могла й не назвати нікого. Сервер у
+    // хроніці ці випадки навмисне не розрізняє — не розрізняє їх і шапка.
     if (v.phase === 'day' && v.dayInfo) {
-      if (v.dayInfo.saved) return 'уночі всі вціліли';
-      if (v.dayInfo.killed != null) return nickOf(v, v.dayInfo.killed) + ' не прокинувся';
+      return v.dayInfo.killed != null ? nickOf(v, v.dayInfo.killed) + ' не прокинувся' : 'уночі всі вціліли';
     }
     if (v.phase === 'done' && v.result) return TEAM[v.result.team] || '';
     return '';
@@ -242,20 +254,22 @@
       const running = f.phase !== 'lobby' && f.phase !== 'done';
       const arc = el.querySelector('.mf-arc');
       arc.hidden = !running;
-      if (running) HGames.ui.timerArc(arc, f.endsAt, PHASE_MS[f.phase] || 45000);
+      arcTo(arc, running ? f : null);
       el.querySelector('.mf-phase').textContent = phaseTitle(f);
     },
 
     unmount(root) {
-      const arc = root.querySelector('.mf-arc > .garc');
-      if (arc && arc._arc) arc._arc.stop();
+      arcTo(root.querySelector('.mf-arc'), null);
     },
 
     status(ctx) {
       // Фазу беремо з кадра — він приходить першим. Але після «Ще раз» кадр ще з минулої партії
       // (нового не буде до зміни фази), тому «кінець» у кадрі посеред живої партії ігноруємо.
       const f = ctx.frame || {};
-      const src = f.phase && !(ctx.playing && f.phase === 'done') ? f : (ctx.view || {});
+      // Кімната вже не грає — а кадру з 'done' могло й не бути: партію, яку скінчив чийсь вихід
+      // з-за столу, завершує не тик, тож у кадрі так і лишилась учорашня фаза. Тоді віримо виду.
+      const over = !ctx.room || ctx.room.status !== 'playing';
+      const src = f.phase && !over && !(ctx.playing && f.phase === 'done') ? f : (ctx.view || {});
       if (!src.phase || src.phase === 'done' || src.phase === 'lobby') return '';
       return phaseTitle(src);
     },

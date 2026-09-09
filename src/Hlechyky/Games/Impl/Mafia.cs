@@ -307,7 +307,10 @@ public sealed class Mafia : Game
     void ResolveNight()
     {
         var target = KillTarget();
-        _saved = target is { } t && _heal == t;
+        // Рятує лише той лікар, який ще в селі: хто виїхав посеред ночі, той забрав свою допомогу з
+        // собою. Симетрично до мафії, чиї нічні голоси теж рахуються тільки від живих.
+        var healer = Alive().Any(s => _roles[s] == MafiaRole.Doctor);
+        _saved = healer && target is { } t && _heal == t;
         _killed = null;
         if (target is { } victim && !_saved)
         {
@@ -570,7 +573,10 @@ public sealed class Mafia : Game
 
         _revealed.Add(seat);
         _dirty = true;
-        _log.Add($"День {_day}: {Name(seat)} виїхав із села ({RoleName(role)})");
+        // Устати можна й посеред ночі, а хроніка має читатись послідовно: рядок називає ту фазу,
+        // у якій людина справді пішла, а не завжди «День».
+        var when = _phase == MafiaPhase.Night ? $"Ніч {_day}" : $"День {_day}";
+        _log.Add($"{when}: {Name(seat)} виїхав із села ({RoleName(role)})");
         Say(MafiaGlek.Pick(Ctx.Rng, MafiaGlek.Left, Name(seat), RoleName(role)));
         Over(leaving: true);
     }
@@ -582,21 +588,31 @@ public sealed class Mafia : Game
     public override object View(int? seat)
     {
         var done = _phase == MafiaPhase.Done;
+        // Дограний стіл каркас відкриває наново, і на вільне місце сідає хтось інший. Таке місце до
+        // цієї партії вже не має стосунку: ні роллю, ні ніком, ні смертю. Інакше новачок побачив би
+        // у своїй картці роль того, хто грав тут до нього.
+        bool Newcomer(int x) => _phase is MafiaPhase.Lobby or MafiaPhase.Done
+            && Ctx.NickOf(x) is { } now
+            && !string.Equals(now, _nicks.Length > x ? _nicks[x] : null, StringComparison.Ordinal);
+
         // Місце вважається гравцем цієї партії лише якщо йому роздали роль: той, хто підсів до
         // дограного столу, — такий самий глядач, як і решта.
-        var me = seat is { } s && _roles.ContainsKey(s) ? s : (int?)null;
+        var me = seat is { } s && _roles.ContainsKey(s) && !Newcomer(s) ? s : (int?)null;
         var myRole = me is { } m ? _roles[m] : (MafiaRole?)null;
         var dead = me is { } d && _dead.Contains(d);
         // Мертві бачать усе — інакше сидіти до кінця партії нецікаво (spec §Фази, п. 6).
         var seeAll = done || dead;
 
         // До старту ролей ще нема, але картку вже показують: беремо тих, хто просто сидить за столом.
-        int[] seats = _seats.Length > 0 ? _seats : Enumerable.Range(0, Info.MaxPlayers).Where(Ctx.Seated).ToArray();
+        // Після партії до складу дописуємо новачків — щоб людина бачила в селі хоч саму себе.
+        int[] seats = _seats.Length > 0
+            ? [.. _seats.Concat(Enumerable.Range(0, Info.MaxPlayers).Where(x => Ctx.Seated(x) && Newcomer(x))).Distinct().Order()]
+            : [.. Enumerable.Range(0, Info.MaxPlayers).Where(Ctx.Seated)];
         var players = seats.Select(x => new MafiaPlayerView(
             x,
-            _nicks.Length > x ? _nicks[x] ?? Ctx.NickOf(x) : Ctx.NickOf(x),
-            !_dead.Contains(x),
-            ShowsRole(x, me, myRole, seeAll) && _roles.TryGetValue(x, out var r) ? Wire(r) : null)).ToArray();
+            Newcomer(x) ? Ctx.NickOf(x) : _nicks.Length > x ? _nicks[x] ?? Ctx.NickOf(x) : Ctx.NickOf(x),
+            Newcomer(x) || !_dead.Contains(x),
+            !Newcomer(x) && ShowsRole(x, me, myRole, seeAll) && _roles.TryGetValue(x, out var r) ? Wire(r) : null)).ToArray();
 
         return new
         {
@@ -737,8 +753,7 @@ public sealed class Mafia : Game
         if (_brain is null || _flavors >= MaxFlavors) return;
         _flavors++;
         var brain = _brain;
-        int gen;
-        lock (_pending) gen = _gen;
+        var gen = Generation;
 
         var instruction = "Ти ведеш партію в мафію на сільському радіо. Скажи два речення, не більше. "
             + "Ролей не видавай, нікого не звинувачуй, імен не вигадуй. Ось що сталось: " + what;
@@ -747,13 +762,31 @@ public sealed class Mafia : Game
             string? line = null;
             try { line = await brain.FlavorAsync(instruction, MaxSayChars); }
             catch { /* Глек не в гуморі — партії від цього ні холодно, ні жарко */ }
-            if (string.IsNullOrWhiteSpace(line)) return;
-            lock (_pending)
-            {
-                if (gen != _gen) return;   // це слівце про минулу партію
-                _lines.Add(line.Trim());
-            }
+            QueueLine(line, gen);   // слівце про минулу партію відсіється за номером
         });
+    }
+
+    /// <summary>
+    /// Номер поточної партії. Шов для тестів: живого <c>DjBrain</c> у тесті не підмінити (sealed, важкий
+    /// конструктор), а чергу відкладених реплік перевірити треба.
+    /// </summary>
+    public int Generation { get { lock (_pending) return _gen; } }
+
+    /// <summary>Скільки слівець чекає найближчого тика (шов для тестів).</summary>
+    public int PendingLines { get { lock (_pending) return _lines.Count; } }
+
+    /// <summary>
+    /// Покласти в чергу готову репліку — рівно так, як це робить відповідь моделі у <see cref="Flavor"/>
+    /// (шов для тестів). Слівце з чужої партії (<paramref name="gen"/> не той) тихо викидається.
+    /// </summary>
+    public void QueueLine(string? text, int? gen = null)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        lock (_pending)
+        {
+            if (gen is { } g && g != _gen) return;
+            _lines.Add(text.Trim());
+        }
     }
 
     /// <summary>Злити те, що модель надумала. Кличеться з тика, тобто вже під замком кімнати.</summary>

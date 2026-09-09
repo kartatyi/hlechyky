@@ -186,6 +186,35 @@ public class MafiaTests
         Assert.Equal(Roles(Table(8, seed: 77)), Roles(Table(8, seed: 77)));
     }
 
+    [Fact]
+    public void The_same_seed_and_the_same_deeds_give_the_same_views()
+    {
+        // TESTING.md §4.3: та сама послідовність дій із тим самим сідом — той самий вид на дроті.
+        // У мафії від Ctx.Rng залежить не лише роздача, а й вибір реплік Глека, тож звіряємо і їх.
+        static RoomHarness Played()
+        {
+            var h = Table(6, seed: 7);
+            var mafia = SeatsOf(h, "mafia");
+            var doctor = Seat(h, "doctor");
+            To(h, "night");
+            h.Act(mafia[0], "say", new { text = "беремо старосту" });
+            PlayNight(h, OtherCivil(h, doctor), check: mafia[1], heal: doctor);
+            To(h, "vote");
+            PlayVote(h, AliveSeats(h).Take(3).ToDictionary(s => s, _ => (int?)mafia[0]));
+            return h;
+        }
+
+        var a = Played();
+        var b = Played();
+
+        for (var seat = 0; seat < 6; seat++)
+            Assert.Equal(Views.Text(a.Room.Game.View(seat)), Views.Text(b.Room.Game.View(seat)));
+        Assert.Equal(Views.Text(a.Room.Game.View(null)), Views.Text(b.Room.Game.View(null)));
+        Assert.Equal(
+            a.Outbox.OfType<DjSays>().Select(x => x.Text).ToArray(),
+            b.Outbox.OfType<DjSays>().Select(x => x.Text).ToArray());
+    }
+
     // =========================================================================================
     // Фази за годинником
     // =========================================================================================
@@ -364,6 +393,25 @@ public class MafiaTests
     }
 
     [Fact]
+    public void A_doctor_who_left_the_village_saves_nobody()
+    {
+        var h = Table(9);
+        To(h, "night");
+        var doctor = Seat(h, "doctor");
+        var victim = OtherCivil(h, doctor);
+        Assert.True(h.Act(doctor, "heal", new { seat = victim }).Ok);
+
+        // Лікар устав з-за столу вже після того, як показав, кого рятує: рятувати тепер нема кому.
+        h.Leave(h.NickOf(doctor));
+        foreach (var seat in SeatsOf(h, "mafia")) Assert.True(h.Act(seat, "kill", new { seat = victim }).Ok);
+        Until(h, () => Phase(h) != "night");
+
+        Assert.False(AliveAt(h, victim));
+        Assert.Contains(Log(h), l => l.Contains("не прокинувся"));
+        Assert.False(h.View(null).GetProperty("dayInfo").GetProperty("saved").GetBoolean());
+    }
+
+    [Fact]
     public void The_sheriff_checks_once_a_night()
     {
         var h = Table(6);
@@ -372,9 +420,13 @@ public class MafiaTests
         var mafia = SeatsOf(h, "mafia");
 
         Assert.True(h.Act(sheriff, "check", new { seat = mafia[0] }).Ok);
+        var before = Views.Text(h.Room.Game.View(sheriff));
+
         var second = h.Act(sheriff, "check", new { seat = mafia[1] });
         Assert.False(second.Ok);
         Assert.Equal("Цієї ночі ти вже перевіряв", second.Message);
+        // Відмова має бути повною: другий мафіозі не потрапив у список перевірених (TESTING.md §4.1).
+        Assert.Equal(before, Views.Text(h.Room.Game.View(sheriff)));
     }
 
     [Fact]
@@ -412,9 +464,13 @@ public class MafiaTests
         To(h, "night");
         var mafia = SeatsOf(h, "mafia");
 
+        var before = Views.Text(h.Room.Game.View(mafia[0]));
         var no = h.Act(mafia[0], "kill", new { seat = mafia[1] });
+
         Assert.False(no.Ok);
         Assert.Equal("Своїх не чіпаємо", no.Message);
+        // Ніж не має лягти в стан раніше за перевірку: вид до й після відмови однаковий (TESTING.md §4.1).
+        Assert.Equal(before, Views.Text(h.Room.Game.View(mafia[0])));
     }
 
     [Fact]
@@ -570,6 +626,44 @@ public class MafiaTests
         var alive = AliveSeats(h);
         var votes = new Dictionary<int, int?> { [alive[0]] = alive[2], [alive[1]] = alive[3] };
         PlayVote(h, votes);
+
+        Assert.Equal(alive.Length, AliveSeats(h).Length);
+        Assert.Contains(Log(h), l => l.Contains("не дійшло згоди"));
+    }
+
+    [Fact]
+    public void Exactly_half_the_village_is_not_a_majority()
+    {
+        var h = Table(6);
+        var doctor = Seat(h, "doctor");
+        var victim = OtherCivil(h, doctor);
+        // Лікар устиг, тож до голосування доживають усі шестеро — і половина села рівно три голоси.
+        PlayNight(h, victim, heal: victim);
+        To(h, "vote");
+
+        var alive = AliveSeats(h);
+        Assert.Equal(6, alive.Length);
+        PlayVote(h, alive.Take(3).ToDictionary(s => s, _ => (int?)alive[5]));
+
+        Assert.True(AliveAt(h, alive[5]));
+        Assert.Contains(Log(h), l => l.Contains("не дійшло згоди"));
+    }
+
+    [Fact]
+    public void The_loudest_group_still_needs_more_than_half()
+    {
+        var h = Table(6);
+        var mafia = SeatsOf(h, "mafia");
+        PlayNight(h, OtherCivil(h, Seat(h, "doctor")), check: mafia[0], heal: mafia[0]);
+        To(h, "vote");
+
+        // П'ятеро живих, два голоси проти одного: більше за всіх — ще не більшість села.
+        var alive = AliveSeats(h);
+        Assert.Equal(5, alive.Length);
+        PlayVote(h, new Dictionary<int, int?>
+        {
+            [alive[0]] = alive[2], [alive[1]] = alive[2], [alive[3]] = alive[4],
+        });
 
         Assert.Equal(alive.Length, AliveSeats(h).Length);
         Assert.Contains(Log(h), l => l.Contains("не дійшло згоди"));
@@ -750,6 +844,19 @@ public class MafiaTests
     }
 
     [Fact]
+    public void A_departure_at_night_is_written_down_as_a_night()
+    {
+        var h = Table(9);
+        To(h, "night");
+        var civil = Seat(h, "civil");
+
+        h.Leave(h.NickOf(civil));
+
+        Assert.Contains(Log(h), l => l.StartsWith("Ніч 1:") && l.Contains("виїхав із села"));
+        Assert.DoesNotContain(Log(h), l => l.StartsWith("День") && l.Contains("виїхав із села"));
+    }
+
+    [Fact]
     public void Leaving_can_hand_the_village_its_victory()
     {
         var h = Table(4);
@@ -888,6 +995,28 @@ public class MafiaTests
     // =========================================================================================
 
     [Fact]
+    public void A_newcomer_at_a_finished_table_gets_nobody_elses_role()
+    {
+        var h = Table(4);
+        var mafia = Seat(h, "mafia");
+        h.Leave(h.NickOf(mafia));                       // партія скінчилась, місце звільнилось
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+
+        Assert.True(h.Join("Дарина").Ok);               // каркас відкриває дограний стіл наново
+        var seat = Array.IndexOf(h.Room.Seats, "Дарина");
+        Assert.Equal(mafia, seat);
+
+        // Дарина за цим столом ще не грала: ні ролі, ні чужого ніка, ні чужої смерті.
+        var view = h.View(seat);
+        Assert.Equal(JsonValueKind.Null, view.GetProperty("me").ValueKind);
+        Assert.Equal(JsonValueKind.Null, view.GetProperty("night").ValueKind);
+        var mine = view.GetProperty("players").EnumerateArray().Single(p => p.GetProperty("seat").GetInt32() == seat);
+        Assert.Equal("Дарина", mine.GetProperty("nick").GetString());
+        Assert.Equal(JsonValueKind.Null, mine.GetProperty("role").ValueKind);
+        Assert.True(mine.GetProperty("alive").GetBoolean());
+    }
+
+    [Fact]
     public void The_view_has_the_shape_the_spec_asks_for()
     {
         var h = Table(6);
@@ -1003,15 +1132,79 @@ public class MafiaTests
     }
 
     [Fact]
-    public void Hlek_speaks_on_every_phase_change_and_never_twice_the_same_word()
+    public void Hlek_says_exactly_one_word_on_every_phase_change()
     {
         var h = Table(6);
-        var said = h.Outbox.OfType<DjSays>().Count();
+        int Said() => h.Outbox.OfType<DjSays>().Count();
+        Assert.Equal(1, Said());   // знайомство Глек оголосив уже на старті
+
+        To(h, "night");
+        Assert.Equal(2, Said());
+
         var mafia = SeatsOf(h, "mafia");
         PlayNight(h, OtherCivil(h, Seat(h, "doctor")), check: mafia[0], heal: mafia[0]);
+        Assert.Equal("day", Phase(h));
+        // Підсумок ночі приліплений першим реченням до ранкової репліки — тому все одно рівно одна.
+        Assert.Equal(3, Said());
 
-        Assert.True(h.Outbox.OfType<DjSays>().Count() > said);
+        To(h, "vote");
+        Assert.Equal(4, Said());
         Assert.All(h.Outbox.OfType<DjSays>(), s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+    }
+
+    [Fact]
+    public void A_word_left_in_the_queue_by_the_model_is_said_on_the_next_tick()
+    {
+        var h = Table(6);
+        var game = (Mafia)h.Room.Game;
+        var said = h.Outbox.OfType<DjSays>().Count();
+
+        // Так у чергу лягає відповідь DjBrain.FlavorAsync: не з тика й не під замком кімнати.
+        game.QueueLine("а я ж казав, що добром це не скінчиться");
+        Assert.Equal(1, game.PendingLines);
+        Assert.Equal(said, h.Outbox.OfType<DjSays>().Count());
+
+        h.Tick();
+
+        Assert.Equal(0, game.PendingLines);
+        Assert.Contains(h.Outbox.OfType<DjSays>(), x => x.Text == "а я ж казав, що добром це не скінчиться");
+    }
+
+    [Fact]
+    public void A_word_about_the_previous_game_never_reaches_the_new_one()
+    {
+        var h = Table(4);
+        var game = (Mafia)h.Room.Game;
+        var gen = game.Generation;
+        var sheriff = Seat(h, "sheriff");
+        PlayNight(h, OtherCivil(h, sheriff));
+        PlayVote(h, new Dictionary<int, int?>());
+        PlayNight(h, sheriff);
+        Assert.True(h.Rematch(Villagers[1]).Ok);
+
+        // Модель думала довго й відповіла вже після «Ще раз»: у новій партії це марення.
+        game.QueueLine("а вчора ви дивно мовчали", gen);
+
+        Assert.Equal(0, game.PendingLines);
+        h.Tick();
+        Assert.DoesNotContain(h.Outbox.OfType<DjSays>(), x => x.Text.Contains("а вчора ви дивно мовчали"));
+    }
+
+    [Fact]
+    public void A_word_that_came_after_the_last_word_is_never_said()
+    {
+        var h = Table(4);
+        var game = (Mafia)h.Room.Game;
+        h.Leave(h.NickOf(Seat(h, "mafia")));
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        var said = h.Outbox.OfType<DjSays>().Count();
+
+        game.QueueLine("а мені здається, це був не він");
+        h.Tick(5);
+
+        // Дограну партію ніхто не тикає, і слівце так і лишається в черзі — у Балачки воно не піде.
+        Assert.Equal(said, h.Outbox.OfType<DjSays>().Count());
+        Assert.Equal(1, game.PendingLines);
     }
 
     [Fact]
