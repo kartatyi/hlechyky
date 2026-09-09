@@ -1,7 +1,16 @@
 # secrets and local state
 appsettings.Local.json
 liquidsoap/.env
-data/
+# data/ — робочі файли сайту (база, ключі, кеш). Виняток — словники: малі списки лежать у гіті,
+# великий (uk-all.*) качає setup.ps1. Каталог доводиться відкривати покроково: git не заходить
+# усередину проігнорованого каталогу, тому спершу data/*, потім !data/words/ і далі.
+data/*
+!data/words/
+data/words/*
+!data/words/*.txt
+!data/words/*.py
+data/words/uk-all.txt
+data/words/uk-all.db*
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)

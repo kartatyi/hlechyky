@@ -5,3 +5,7 @@
 *.yml text eol=lf
 *.sh  text eol=lf
 *.png binary
+
+# словники: рівно LF на будь-якій машині — інакше в кінці кожного слова прилипає зайвий байт
+data/words/*.txt text eol=lf
+data/words/*.py  text eol=lf

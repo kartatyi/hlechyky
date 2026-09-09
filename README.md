@@ -134,7 +134,7 @@ Caddy (`tools\caddy\caddy.exe`, конфіг `Caddyfile`) слухає 80/443, �
 appsettings.json          налаштування (назва, ім'я DJ, ліміти, шляхи)
 appsettings.Local.json    секрети: Auth:AdminKey, LastFm:ApiKey, Liquidsoap:ApiKey, DjBot:ApiKey, Deploy:WebhookSecret (не в гіті; шаблон appsettings.Local.example.json)
 deploy.ps1                автодеплой: pull main, пробна збірка, restart, відкат при невдачі (лог logs/deploy.log)
-setup.ps1                 перший запуск після git clone: качає yt-dlp/ffmpeg, створює обидва файли з секретами
+setup.ps1                 перший запуск після git clone: качає yt-dlp/ffmpeg і словник, створює обидва файли з секретами
 CONTRIBUTING.md           як підняти свою копію і віддати зміни через Pull Request
 Caddyfile                 https-фронт: домен, куди що проксувати
 tools/caddy/              caddy.exe (https://caddyserver.com/api/download?os=windows&arch=amd64)
@@ -145,8 +145,21 @@ liquidsoap/               radio.liq, docker-compose.yml, .env (пароль Icec
 tools/yt-dlp/             yt-dlp.exe, ffmpeg.exe, ffprobe.exe (setup.ps1 качає)
 cache/                    завантажені треки і голосові (voice-<id>.mp3)
 data/                     hlechyky.db (історія, лайки, чат, черга, плейлисти, кеш Last.fm), ключі cookie, data/caddy (сертифікати)
+data/words/               українські словники для словесних ігор — єдине, що з data/ лежить у гіті
 .github/workflows/        GitHub Actions: dotnet build на кожен push у main і кожен PR (зелений build на main → автодеплой)
 ```
+
+### `data/words/` — словники
+
+Три списки, з яких живуть Глек-слово, Віселиця та Ерудит, і всі три в гіті: `uk-5.txt` — 1516 п'ятилітерних
+іменників, з яких береться слово дня (кожне має бути таким, щоб людина впізнала його без словника);
+`uk-guess.txt` — 31 565 п'ятилітерних форм, які приймаються як спроба; `uk-hangman.txt` — 5000 іменників
+5-12 літер для Віселиці. Усі — UTF-8 без BOM, LF, по слову на рядок. Великий словник для Ерудита
+(`uk-all.txt`, ~3.4 млн словоформ, 80 МБ) у гіт не кладемо: його качає `setup.ps1` з релізу
+[dict_uk](https://github.com/brown-uk/dict_uk), а сервер при першому старті збирає з нього
+`uk-all.db` (SQLite) у фоновому потоці. Без великого словника нічого не ламається — Ерудит просто
+вмикає режим «малий словник» з оскарженням ходу. Звідки взялись списки, під якою ліцензією і як їх
+перегенерувати — `data/words/LICENSE.txt` і `data/words/make-lists.py` поруч.
 
 ## Налаштування, які захочеться крутити
 
