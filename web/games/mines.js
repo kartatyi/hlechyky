@@ -125,22 +125,38 @@
     let timer = 0, from = null;
     const cellOf = (e) => (e.target.closest ? e.target.closest('.cell') : null);
     const stop = () => { clearTimeout(timer); timer = 0; from = null; };
+    /// Прапорець поставив жест, а не клік — тож клік, який іде слідом, треба проковтнути:
+    /// інакше та сама клітинка ще й відкриється.
+    const flagByGesture = (b) => {
+      board._meat = true;
+      if (board._mflag) board._mflag(+b.dataset.i);
+    };
 
     board.addEventListener('contextmenu', (e) => {
       const b = cellOf(e);
       if (!b) return;
       e.preventDefault();
-      if (!b.disabled && board._mflag) board._mflag(+b.dataset.i);
+      // На сенсорі браузер шле contextmenu приблизно тоді ж, коли спрацьовує наш довгий тап. Хто
+      // перший — той і ставить прапорець; другий лише гасить таймер, щоб не перемкнути прапорець назад.
+      const already = board._meat;
+      stop();
+      if (already || b.disabled) return;
+      flagByGesture(b);
     });
     board.addEventListener('pointerdown', (e) => {
+      // Новий жест — старий «з'їдач кліку» більше не діє. Скидаємо до всіх перевірок: після
+      // contextmenu кліку не буває, і зведений прапор інакше проковтнув би наступний тап.
+      board._meat = false;
       const b = cellOf(e);
       if (!b || b.disabled) return;
+      // Миші довгий тап не потрібен — у неї є права кнопка. А головне: повільний клік лівою (на
+      // клітинці 16×16 цілитись доводиться саме так) мусить лишатись кліком, а не ставати прапорцем.
+      if (e.pointerType === 'mouse') return;
       from = { x: e.clientX, y: e.clientY };
       clearTimeout(timer);
       timer = setTimeout(() => {
         timer = 0;
-        board._meat = true;              // клік після довгого тапу — то вже не клік
-        if (board._mflag) board._mflag(+b.dataset.i);
+        flagByGesture(b);
       }, LONG_MS);
     });
     // Палець поїхав — це гортання сторінки, а не прапорець.
@@ -160,6 +176,18 @@
     }, true);
   }
 
+  /// Поле живе у власній обгортці, а не просто в корені картки: на телефоні велике поле краще дати
+  /// прокрутити вбік, ніж стиснути до клітинки в палець завтовшки (решта — у mines.css).
+  function boardHost(root) {
+    let el = root.querySelector(':scope > .mwrap');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'mwrap';
+      root.appendChild(el);
+    }
+    return el;
+  }
+
   function paint(root, ctx, daily) {
     const v = ctx.view || {};
     const w = v.w || (daily ? 16 : 9);
@@ -171,7 +199,7 @@
     bar(root, ctx, daily);
     if (daily) clock(root, ctx);
 
-    const board = HGames.ui.grid(root, {
+    const board = HGames.ui.grid(boardHost(root), {
       cols: w,
       // до першого виду cells порожній: малюємо поле повного розміру, а не смужку в один ряд
       rows: cells.length ? Math.ceil(cells.length / w) : (v.h || w),

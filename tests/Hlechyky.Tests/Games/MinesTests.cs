@@ -182,6 +182,21 @@ public class MinesTests
     }
 
     [Fact]
+    public void An_opened_mine_shows_up_even_when_the_field_is_not_revealed()
+    {
+        var board = Mirror(5, 40);
+        var mine = Enumerable.Range(0, board.Cells).First(board.IsMine);
+        board.Open(mine);
+
+        // Каскад мін не відкриває, тож відкрита міна рівно одна — та, на яку наступили. Її й видно,
+        // а решта поля лишається закритою: інакше один клік роздавав би всю розкладку.
+        var text = board.Text(reveal: false);
+        Assert.Equal('*', text[mine]);
+        Assert.Equal(1, text.Count(c => c == '*'));
+        Assert.Equal(10, board.Text(reveal: true).Count(c => c == '*'));
+    }
+
+    [Fact]
     public void The_same_seed_gives_the_same_field_and_a_different_one_does_not()
     {
         Assert.Equal(Mirror(42, 40).Text(true), Mirror(42, 40).Text(true));
@@ -562,13 +577,39 @@ public class MinesTests
     }
 
     [Fact]
-    public void The_daily_view_hides_the_mines_until_the_end()
+    public void A_boom_shows_only_the_mine_that_was_stepped_on()
     {
         var h = DailyRoom();
         Assert.DoesNotContain('*', Cells(h, 0));
 
         var mirror = DailyMirror();
+        var mine = MineCell(mirror, Cells(h, 0));
+        h.Act(0, "open", new { cell = mine });
+
+        // Розкрити всі сорок означало б подарувати поле дня: «Спробувати ще» дає те саме поле, і
+        // навмисний клік по міні перетворив би головоломку на «розмінуй за десять секунд».
+        var cells = Cells(h, 0);
+        Assert.Equal('*', cells[mine]);
+        Assert.Equal(1, cells.Count(c => c == '*'));
+    }
+
+    [Fact]
+    public void A_retry_gives_the_day_back_unspoiled()
+    {
+        var h = DailyRoom();
+        var mirror = DailyMirror();
         h.Act(0, "open", new { cell = MineCell(mirror, Cells(h, 0)) });
+        Assert.True(h.Act(0, "restart").Ok);
+
+        Assert.DoesNotContain('*', Cells(h, 0));
+        Assert.Equal(DailyMirror().Text(false), Cells(h, 0));
+    }
+
+    [Fact]
+    public void The_solved_field_finally_shows_every_mine()
+    {
+        var h = DailyRoom();
+        SolveDaily(h, DailyMirror());
         Assert.Equal(40, Cells(h, 0).Count(c => c == '*'));
     }
 
@@ -627,6 +668,18 @@ public class MinesTests
         Assert.Equal("daily:mines-daily", award.Reason);
         Assert.Equal(0, award.Shards);   // нуль — «плати типову щоденну», не «нічого»
         Assert.Contains("розмінував поле дня", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void A_run_faster_than_a_second_is_still_written_as_milliseconds()
+    {
+        var h = DailyRoom();
+        h.Clock.Advance(TimeSpan.FromMilliseconds(200));
+        SolveDaily(h, DailyMirror());
+
+        // значення менше за тисячу щоденні читають як «спроби» (specs/daily.md), тож нижче не падаємо
+        Assert.Equal(1000, Assert.Single(h.Scores).Score);
+        Assert.Equal(1000, h.View(0).GetProperty("ms").GetInt64());
     }
 
     [Fact]

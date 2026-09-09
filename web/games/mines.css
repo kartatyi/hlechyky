@@ -18,6 +18,8 @@
 .mbar .mseat1 { color: var(--ok); }
 
 /* ---- поле ---- */
+/* Обгортка поля: на широкому екрані нічого не робить, на телефоні дає полю прокрутку вбік. */
+.mwrap { display: block; }
 .board.mines { width: min(400px, 100%); gap: 3px; }
 .board.mines .cell {
   font-size: 1.05em; font-weight: 700; border-radius: 6px;
@@ -52,4 +54,8 @@
   .board.mines .cell { border-radius: 5px; font-size: .95em; }
   .board.mines.tiny .cell { font-size: .7em; border-radius: 3px; }
   .mbar { gap: 7px; font-size: .88em; }
+  /* Велике поле в телефон цілим не лізе: 16 колонок у 310 px — це клітинка 17 px, учетверо дрібніша
+     за палець. Тож не стискаємо, а даємо прокрутити вбік: 16 × ~26 px + проміжки = 448 px. */
+  .mwrap { overflow: auto hidden; -webkit-overflow-scrolling: touch; }
+  .board.mines.tiny { width: max(100%, 448px); }
 }

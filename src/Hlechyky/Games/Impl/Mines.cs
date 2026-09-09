@@ -138,14 +138,16 @@ public sealed class MinesBoard
     }
 
     /// <summary>
-    /// Поле рядком для виду: '#' закрито, 'F' прапорець, '0'..'8' відкрито. Міни стають '*' лише при
-    /// <paramref name="reveal"/> — інакше вид, який летить у браузер, був би готовою підказкою.
+    /// Поле рядком для виду: '#' закрито, 'F' прапорець, '0'..'8' відкрито. Усі міни стають '*' лише при
+    /// <paramref name="reveal"/> — інакше вид, який летить у браузер, був би готовою підказкою. Міна, на
+    /// яку справді наступили, показується завжди: каскад мін не відкриває, тож така клітинка рівно одна,
+    /// і сховати її означало б намалювати гравцеві порожнє місце там, де він щойно підірвався.
     /// </summary>
     public string Text(bool reveal)
     {
         var sb = new StringBuilder(Cells);
         for (var c = 0; c < Cells; c++)
-            sb.Append(reveal && _mine[c] ? Bomb
+            sb.Append((reveal || _open[c]) && _mine[c] ? Bomb
                 : _open[c] ? (char)('0' + _near[c])
                 : _flag[c] ? Flagged
                 : Closed);
@@ -431,8 +433,10 @@ public sealed class MinesDaily : Game, IDailyGame
     ActResult Solved()
     {
         _solved = true;
-        _ms = Math.Max(1, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds);
-        // Подія несе одне число: за домовленістю щоденних велике значення — це мілісекунди (specs/daily.md).
+        // Подія несе одне число: за домовленістю щоденних (specs/daily.md) значення менше за тисячу — це
+        // спроби, більше — мілісекунди. Тож нижче секунди не опускаємось: інакше рекордний час записався б
+        // у таблицю дня як «дев'ятсот спроб і нуль часу», і ачівка за швидкість не спрацювала б.
+        _ms = Math.Max(1000, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds);
         Ctx.Score(0, _ms);
         Ctx.Award(0, 0, $"daily:{Info.Id}");
         Ctx.Finish([0], $"{Info.Title}: {Ctx.NickOf(0)} розмінував поле дня за {MinesWire.Seconds(_ms)}"
@@ -444,13 +448,16 @@ public sealed class MinesDaily : Game, IDailyGame
     {
         var over = _solved || _dead;
         var elapsed = _solved ? _ms : Math.Max(0, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds);
+        // Вибух поле НЕ розкриває: спроба провалилась, а головоломка дня — ні. Показали б усі сорок мін —
+        // і «Спробувати ще» на тому самому полі перетворилося б на «розмінуй за десять секунд».
+        // Видно лише ту міну, на яку наступили (її малює сам Text), решта лишається закритою.
         return new
         {
             w = _board.W,
             h = _board.H,
             mines = _board.Mines,
             turn = over ? (int?)null : 0,
-            cells = _board.Text(over),
+            cells = _board.Text(_solved),
             scores = new[] { _board.Opened },
             left = _board.Left,
             lastOpen = _last,
