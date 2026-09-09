@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Самоперевірка каркаса ігор</title>
+<link rel="stylesheet" href="../../../web/static/style.css">
+<link rel="stylesheet" href="../../../web/games/core.css">
+<style>
+  /* Стенд, не прод: сюди дивиться людина, а результат ще й лягає в document.title. */
+  body { padding: 0; }
+  #out { padding: 12px 14px; font: 13px/1.55 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+  #out .p { color: var(--ok); }
+  #out .f { color: var(--danger); font-weight: 700; }
+  #sum { padding: 10px 14px; border-bottom: 1px solid var(--line); font-weight: 700; position: sticky; top: 0; background: var(--panel); z-index: 3; }
+  #sandbox { position: absolute; left: -9999px; top: 0; width: 400px; }
+  #stage { padding: 0 14px 20px; }
+</style>
+</head>
+<body class="view-games">
+
+<div id="sum">біжу…</div>
+<pre id="out"></pre>
+
+<!-- сцена: справжній контейнер каркаса, каркас думає, що він у app.js -->
+<section class="panel" id="stage"><div id="games" class="games"></div></section>
+<div id="sandbox"></div>
+<div id="toasts" class="toasts"></div>
+
+<script>
+  // Панель і селекти каркас читає з localStorage ще на завантаженні — фіксуємо, щоб тести
+  // не залежали від того, що людина клікала в моку хвилину тому.
+  localStorage.setItem('gamesPanel', 'g:board');
+  localStorage.setItem('gamesLbGame', 'shards');
+  localStorage.setItem('gamesLbPeriod', 'week');
+</script>
+<script src="../../../web/games/core.js"></script>
+<script src="../../../web/games/ttt.js"></script>
+<script src="../../../web/games/c4.js"></script>
+<script src="../../../web/games/snake.js"></script>
+
+<script>
+(() => {
+  'use strict';
+  // =============================================================================================
+  // Крихітний бігун тестів: кожен тест — асинхронна функція, яка кидає на невдачі.
+  // =============================================================================================
+  const T = [];
+  const test = (name, fn) => T.push([name, fn]);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+  const j = (v) => JSON.stringify(v);
+  function eq(got, want, msg) {
+    if (j(got) !== j(want)) throw new Error((msg ? msg + ': ' : '') + 'очікував ' + j(want) + ', отримав ' + j(got));
+  }
+  function truthy(v, msg) { if (!v) throw new Error(msg || 'очікував істину'); }
+
+  const rejections = [];
+  window.addEventListener('unhandledrejection', (e) => rejections.push(String(e.reason && e.reason.message || e.reason)));
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const sandbox = $('sandbox');
+  const host = () => { const d = document.createElement('div'); sandbox.appendChild(d); return d; };
+  const ui = HGames.ui;
+
+  // =============================================================================================
+  // 1. Хелпери HGames.ui — колбеки й дані з ОСТАННЬОГО виклику
+  // =============================================================================================
+
+  test('grid: клік іде в onCell з останнього виклику', () => {
+    const h = host(), hits = [];
+    ui.grid(h, { cols: 3, rows: 3, onCell: (i) => hits.push(['first', i]) });
+    ui.grid(h, { cols: 3, rows: 3, onCell: (i) => hits.push(['second', i]) });
+    eq(h.querySelectorAll('.board').length, 1, 'сітка одна');
+    h.querySelectorAll('.cell')[4].click();
+    eq(hits, [['second', 4]]);
+  });
+
+  test('grid: cell(i) об\'єктною формою ставить клас і disabled', () => {
+    const h = host();
+    ui.grid(h, { cols: 2, rows: 1, cell: (i) => ({ html: '<b>' + i + '</b>', cls: i ? 'win' : '', disabled: i === 0 }) });
+    const b = h.querySelectorAll('.cell');
+    truthy(b[0].disabled, 'перша клітинка заблокована');
+    truthy(!b[1].disabled, 'друга вільна');
+    truthy(b[1].classList.contains('win'), 'клас win на другій');
+    eq(b[0].innerHTML, '<b>0</b>');
+  });
+
+  test('hand: клік віддає карту з поточної руки, а не з першої', () => {
+    const h = host(), hits = [];
+    ui.hand(h, ['A', 'B'], { onItem: (it, i) => hits.push(['first', it, i]) });
+    ui.hand(h, ['X', 'Y'], { onItem: (it, i) => hits.push(['second', it, i]) });
+    eq(h.querySelectorAll('.ghand').length, 1, 'віяло одне');
+    eq(h.querySelectorAll('.gcard')[0].textContent, 'X', 'на екрані нова рука');
+    h.querySelectorAll('.gcard')[0].click();
+    eq(hits, [['second', 'X', 0]]);
+  });
+
+  test('hand: старе ім\'я onCard із PROTOCOL §3 теж працює', () => {
+    const h = host(), hits = [];
+    ui.hand(h, ['К', 'Д'], { onCard: (it, i) => hits.push([it, i]) });
+    h.querySelectorAll('.gcard')[1].click();
+    eq(hits, [['Д', 1]]);
+  });
+
+  test('hand: selected() бере карти з поточної руки', () => {
+    const h = host();
+    const a = ui.hand(h, ['A', 'B'], { selectable: true });
+    h.querySelectorAll('.gcard')[1].click();
+    eq(a.selected(), ['B']);
+    ui.hand(h, ['X', 'Y'], { selectable: true });          // рука змінилась — вибір поїхав разом із нею
+    const b = ui.hand(h, ['X', 'Y'], { selectable: true }); // та сама рука вдруге нічого не перемальовує
+    eq(b.selected(), [], 'нова рука — порожній вибір');
+    h.querySelectorAll('.gcard')[1].click();
+    eq(b.selected(), ['Y'], 'вибрана карта — з поточної руки');
+  });
+
+  test('dpad: onDir теж із останнього виклику', () => {
+    const mm = window.matchMedia;
+    window.matchMedia = (q) => (String(q).indexOf('coarse') >= 0
+      ? { matches: true, media: q, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }
+      : mm.call(window, q));
+    try {
+      const h = host(), hits = [];
+      ui.dpad(h, (d) => hits.push('first:' + d));
+      ui.dpad(h, (d) => hits.push('second:' + d));
+      eq(h.querySelectorAll('.dpad').length, 1, 'хрестовина одна');
+      h.querySelector('.dpad button[data-dir="3"]').click();
+      eq(hits, ['second:3']);
+    } finally { window.matchMedia = mm; }
+  });
+
+  test('keyboardUa: onKey із останнього виклику, стани літер оновлюються', () => {
+    const h = host(), hits = [];
+    ui.keyboardUa(h, (k) => hits.push('first:' + k));
+    ui.keyboardUa(h, (k) => hits.push('second:' + k), { 'а': 'G' });
+    eq(h.querySelectorAll('.gkbd').length, 1, 'клавіатура одна');
+    truthy(h.querySelector('.gkey[data-k="а"]').classList.contains('g'), 'стан літери «а» підхопився');
+    h.querySelector('.gkey[data-k="й"]').click();
+    h.querySelector('.gkey[data-k="Enter"]').click();
+    eq(hits, ['second:й', 'second:Enter']);
+  });
+
+  test('timerArc: повторний виклик не заводить другий rAF-цикл, stop() гасить усе', async () => {
+    const h = host();
+    const orig = window.requestAnimationFrame;
+    let raf = 0;
+    window.requestAnimationFrame = function (cb) { raf++; return orig.call(window, cb); };
+    let handle;
+    try {
+      const until = new Date(Date.now() + 10000).toISOString();
+      const a = ui.timerArc(h, until, 10000);
+      const b = ui.timerArc(h, until, 10000);
+      handle = ui.timerArc(h, until, 10000);
+      eq(raf, 1, 'три виклики — один старт циклу');
+      eq(h.querySelectorAll('.garc').length, 1, 'дуга одна');
+      truthy(a === b && b === handle, 'повертається та сама ручка');
+      handle.stop();
+      const was = raf;
+      await sleep(200);
+      eq(raf, was, 'після stop() ніхто не крутиться');
+    } finally { if (handle) handle.stop(); window.requestAnimationFrame = orig; }
+  });
+
+  test('Interp: два кадри і коефіцієнт між ними', async () => {
+    const it = ui.Interp();
+    eq(it.at(), null, 'без кадрів — нічого');
+    it.push({ x: 0 });
+    await sleep(30);
+    it.push({ x: 10 });
+    const s = it.at();
+    eq(s.a, { x: 0 }); eq(s.b, { x: 10 });
+    truthy(s.t >= 0 && s.t <= 1, 't у межах 0..1, отримав ' + s.t);
+    eq(ui.lerp(0, 10, 0.5), 5);
+    it.reset();
+    eq(it.at(), null, 'reset() забув кадри');
+  });
+
+  test('кольори каркаса видно модулю через ui.css()', () => {
+    eq(ui.css('--gshade', 'нема'), 'rgba(15, 31, 24, .62)', 'затемнення поля');
+    eq(ui.css('--gsnake2', 'нема'), '#4f9a5e', 'тіло зеленої змійки');
+    eq(ui.css('--gwin', 'нема'), '#4a3a06', 'виграшний ряд');
+  });
+
+  // =============================================================================================
+  // 2. Каркас: підроблені app.js і хаб
+  // =============================================================================================
+  const me = { nick: 'Оля', role: 'member' };
+  const toasts = [];
+  const toast = (t, k) => toasts.push([t, k || '']);
+  const busy = async (btn, label, fn) => fn();
+
+  const apiCalls = [];
+  let catalogFails = true;
+  let profileBody = null;             // навмисно порожнє тіло: api() з app.js так і робить
+
+  const CAT = {
+    stakes: [0, 5, 10, 25],
+    games: [
+      { id: 'ttt', title: 'Хрестики-нолики', group: 'board', minPlayers: 2, maxPlayers: 2, start: 'whenFull',
+        private: false, rated: true, hasCss: false, daily: false, options: [], hint: 'стіл на двох' },
+      { id: 'snake', title: 'Змійка', group: 'live', minPlayers: 2, maxPlayers: 2, tickMs: 120, start: 'whenFull',
+        private: false, rated: true, hasCss: false, daily: false, options: [], hint: 'дуель' },
+      // приватна соло-гра: у 'rooms' її кімнат нема ніколи — плитка все одно має бути
+      { id: 'wordle', title: 'Глек-слово', group: 'solo', minPlayers: 1, maxPlayers: 1, start: 'immediate',
+        private: true, rated: false, hasCss: false, daily: true, options: [], hint: 'одне слово на день' },
+      // три гри без модулів — на них перевіряємо паралельність завантажувача
+      { id: 'p1', title: 'Пусто-1', group: 'board', minPlayers: 2, maxPlayers: 2, start: 'whenFull', private: false, options: [] },
+      { id: 'p2', title: 'Пусто-2', group: 'board', minPlayers: 2, maxPlayers: 2, start: 'whenFull', private: false, options: [] },
+      { id: 'p3', title: 'Пусто-3', group: 'board', minPlayers: 2, maxPlayers: 2, start: 'whenFull', private: false, options: [] },
+    ],
+  };
+
+  async function api(method, path) {
+    apiCalls.push(path);
+    await sleep(5);
+    if (path.indexOf('/api/games/catalog') === 0) {
+      if (catalogFails) throw new Error('HTTP 500');
+      return CAT;
+    }
+    if (path.indexOf('/api/games/wallet') === 0) return { balance: 42 };
+    if (path.indexOf('/api/games/profile') === 0) return profileBody;
+    if (path.indexOf('/api/games/leaderboard') === 0) return { rows: [{ nick: 'Оля', balance: 42, earned: 148 }] };
+    if (path.indexOf('/api/games/daily') === 0) return { day: '2026-09-09', puzzles: [{ game: 'wordle', me: { solved: false } }] };
+    throw new Error('стенд не знає ' + path);
+  }
+
+  // ---- підроблений хаб ----
+  const handlers = {};
+  const invokes = [];
+  let openReply = { ok: true, message: '', roomId: 'dead' };
+  const conn = {
+    state: 'Connected',
+    on(name, h) { (handlers[name] = handlers[name] || []).push(h); },
+    invoke(method, ...args) {
+      invokes.push([method, ...args]);
+      if (method === 'OpenSolo' || method === 'CreateRoom') return Promise.resolve(openReply);
+      return Promise.resolve({ ok: true, message: '' });
+    },
+  };
+  const emit = (name, arg) => (handlers[name] || []).forEach((h) => h(arg));
+  const sent = (method, id) => invokes.some((x) => x[0] === method && x[1] === id);
+
+  const seats = (...nicks) => nicks.map((n, i) => ({ i, nick: n }));
+  const room = (o) => Object.assign({
+    id: 'r1', game: 'ttt', status: 'lobby', seats: seats(null, null), seatNames: ['✕', '◯'],
+    host: 'Петро', minPlayers: 2, maxPlayers: 2, options: {}, stake: 0, round: 1, watchers: 0, result: null,
+    createdAt: new Date().toISOString(), startedAt: null, finishedAt: null,
+  }, o);
+
+  const gamesRoot = () => $('games');
+  const panelBtn = (id) => gamesRoot().querySelector('[data-panel="' + id + '"]');
+
+  // Лічильник паралельності: скільки <script> завантажувача вже висіло в head,
+  // коли перший із них відстрілявся помилкою. Послідовний цикл дав би 1.
+  let scriptsAtFirstSettle = -1;
+  const LOADER = /\/games\/(wordle|p1|p2|p3)\.js$/;
+  document.addEventListener('error', (e) => {
+    const el = e.target;
+    if (scriptsAtFirstSettle >= 0 || !el || el.tagName !== 'SCRIPT' || !LOADER.test(el.src)) return;
+    scriptsAtFirstSettle = [...document.querySelectorAll('script[src]')].filter((s) => LOADER.test(s.src)).length;
+  }, true);
+
+  test('init() не читає каталог — це робота show()', () => {
+    HGames.init({ $, esc, toast, busy, api, me, root: gamesRoot() });
+    HGames.attach(conn);
+    eq(apiCalls.filter((p) => p.indexOf('/api/games/catalog') === 0).length, 0,
+      'слухач, який у «Ігри» не заходить, каталог не тягне');
+    truthy(gamesRoot().querySelector('.gbar'), 'шапка намальована одразу');
+  });
+
+  test('каталог не прочитався: шапка ціла, є «Спробувати ще»', async () => {
+    HGames.show();
+    await sleep(60);
+    truthy(gamesRoot().querySelector('.gbar'), 'шапка на місці, а не знесена помилкою');
+    truthy(gamesRoot().querySelector('.gwallet'), 'гаманець на місці');
+    const b = gamesRoot().querySelector('[data-retry]');
+    truthy(b, 'кнопка повтору є');
+    eq(apiCalls.filter((p) => p.indexOf('/api/games/catalog') === 0).length, 1);
+  });
+
+  test('«Спробувати ще» перечитує каталог і малює лобі', async () => {
+    catalogFails = false;
+    gamesRoot().querySelector('[data-retry]').click();
+    await sleep(250);
+    truthy(gamesRoot().querySelector('.gtiles'), 'плитки з\'явились');
+    eq(apiCalls.filter((p) => p.indexOf('/api/games/catalog') === 0).length, 2);
+  });
+
+  test('завантажувач тягне модулі паралельно, а не один за одним', async () => {
+    for (let i = 0; i < 60 && scriptsAtFirstSettle < 0; i++) await sleep(50);
+    eq(scriptsAtFirstSettle, 4, 'усі чотири <script> висять у head, поки перший ще летить');
+  });
+
+  test('лобі: вкладка «Соло» і плитка приватної гри є (private — про кімнати, не про плитку)', async () => {
+    const solo = panelBtn('g:solo');
+    truthy(solo, 'вкладка «Соло» намальована');
+    solo.click();
+    await sleep(40);
+    const tile = gamesRoot().querySelector('[data-solo="wordle"]');
+    truthy(tile, 'плитка Глек-слова з кнопкою «Грати»');
+    eq(tile.textContent, 'Грати');
+  });
+
+  test('таблиця: приватна гра є в селекті', async () => {
+    panelBtn('leaders').click();
+    await sleep(80);
+    const sel = gamesRoot().querySelector('.glbgame');
+    truthy(sel, 'селект гри є');
+    const vals = [...sel.options].map((o) => o.value);
+    truthy(vals.indexOf('wordle') >= 0, 'Глек-слово в списку: ' + vals.join(','));
+    truthy(vals.indexOf('shards') >= 0, 'Черепки в списку');
+  });
+
+  test('профіль: порожнє тіло відповіді не вбиває панель', async () => {
+    profileBody = null;
+    panelBtn('profile').click();
+    await sleep(120);
+    const box = gamesRoot().querySelector('.gprofile');
+    truthy(box, 'профіль намальовано навіть на порожній відповіді');
+    truthy(box.textContent.indexOf('Рейтинги') >= 0, 'заголовки на місці');
+    eq(rejections, [], 'жодного необробленого reject');
+  });
+
+  test('хрестики до старту: дошка 3×3, а не смужка в один ряд', async () => {
+    panelBtn('g:board').click();
+    await sleep(20);
+    emit('rooms', [room({ id: 'tt', seats: seats('Петро', null) })]);
+    emit('room', { room: room({ id: 'tt', seats: seats('Петро', null) }), seat: null, view: { cells: [], width: 3, turn: null } });
+    await sleep(20);
+    const card = gamesRoot().querySelector('.gtable[data-room="tt"]');
+    truthy(card, 'картка кімнати є');
+    eq(card.querySelectorAll('.gbody .cell').length, 9, 'дев\'ять клітинок');
+  });
+
+  test('статус перераховується на кожен кадр, а не лише на «room»', async () => {
+    panelBtn('g:live').click();                     // змійка живе у «Швидких»
+    await sleep(20);
+    const r = room({ id: 'sn', game: 'snake', status: 'playing', seats: seats('Петро', 'Іван'),
+      seatNames: ['жовта', 'зелена'], startedAt: new Date().toISOString() });
+    emit('rooms', [r]);
+    emit('room', { room: r, seat: null, view: { a: [10], b: [20], apple: 5, winsA: 0, winsB: 0, startIn: 8, winner: null } });
+    await sleep(30);
+    const card = gamesRoot().querySelector('.gtable[data-room="sn"]');
+    truthy(card, 'картка змійки є');
+    eq(card.querySelector('.gstatus').textContent, 'Готуйсь…');
+    emit('frame', { id: 'sn', f: { a: [10, 11], b: [20, 21], apple: 5, winsA: 0, winsB: 0, startIn: 0, winner: null } });
+    eq(card.querySelector('.gstatus').textContent, 'Дивишся збоку', 'відлік у кадрі скинувся — статус теж');
+  });
+
+  test('активна кімната для клавіатури — перша за порядком на екрані', async () => {
+    panelBtn('g:board').click();
+    await sleep(20);
+    const keys = [];
+    HGames.register({
+      id: 'p1', icon: '', mount() {}, update() {},
+      onKey(e, ctx) { keys.push(ctx.room.id); return true; },
+    });
+    const A = room({ id: 'aaa', game: 'p1', seats: seats('Петро', null) });
+    const B = room({ id: 'bbb', game: 'p1', seats: seats('Іван', null) });
+    emit('rooms', [A, B]);                          // картки створюються в порядку A, B
+    await sleep(20);
+    const order1 = [...gamesRoot().querySelectorAll('.gtable')].map((e) => e.dataset.room);
+    eq(order1.filter((x) => x === 'aaa' || x === 'bbb'), ['aaa', 'bbb']);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowUp', bubbles: true }));
+    emit('rooms', [B, A]);                          // сервер переставив — DOM теж, а ключі об'єкта ні
+    await sleep(20);
+    const order2 = [...gamesRoot().querySelectorAll('.gtable')].map((e) => e.dataset.room);
+    eq(order2.filter((x) => x === 'aaa' || x === 'bbb'), ['bbb', 'aaa']);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowUp', bubbles: true }));
+    eq(keys, ['aaa', 'bbb'], 'другий раз клавіша пішла в ту кімнату, що тепер перша на екрані');
+    emit('rooms', []);
+    await sleep(20);
+  });
+
+  test('шпилька на кімнату, якої так і не було, знімається сама', async () => {
+    panelBtn('g:solo').click();
+    await sleep(30);
+    gamesRoot().querySelector('[data-solo="wordle"]').click();
+    await sleep(60);
+    truthy(sent('OpenSolo', 'wordle'), 'OpenSolo пішов');
+    truthy(sent('WatchRoom', 'dead'), 'підписались за roomId із відповіді');
+    truthy(!sent('UnwatchRoom', 'dead'), 'поки що тримаємо підписку');
+    await sleep(5400);                              // PIN_TTL = 5 с
+    truthy(sent('UnwatchRoom', 'dead'), 'кімната не прийшла — підписку зняли');
+  });
+
+  // =============================================================================================
+  // Поїхали
+  // =============================================================================================
+  (async () => {
+    const out = $('out');
+    let pass = 0;
+    for (const [name, fn] of T) {
+      let line;
+      try { await fn(); pass++; line = '<span class="p">✔</span> ' + esc(name); }
+      catch (e) { line = '<span class="f">✘ ' + esc(name) + '\n    ' + esc(e.message) + '</span>'; }
+      out.innerHTML += line + '\n';
+    }
+    const bad = T.length - pass;
+    $('sum').innerHTML = bad
+      ? '<span class="f">ЗАВАЛЕНО ' + bad + ' із ' + T.length + '</span>'
+      : '<span class="p">ЗЕЛЕНО — ' + pass + '/' + T.length + '</span>';
+    document.title = (bad ? 'FAIL ' : 'PASS ') + pass + '/' + T.length;
+    window.__selftest = { pass, total: T.length, rejections };
+  })();
+})();
+</script>
+</body>
+</html>

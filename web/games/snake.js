@@ -39,7 +39,7 @@
     snake(f.b, st.css('--ok', '#7bd389'), st.css('--gsnake2', '#4f9a5e'));
 
     if ((f.startIn > 0 && !waiting) || f.winner != null) {
-      ctx.fillStyle = 'rgba(15, 31, 24, .62)';
+      ctx.fillStyle = st.css('--gshade', 'rgba(15, 31, 24, .62)');
       ctx.fillRect(0, 0, c.w, c.h);
       if (f.startIn > 0) {
         ctx.fillStyle = st.css('--text', '#ecf1ea');
@@ -111,7 +111,10 @@
 
     status(ctx) {
       if (!ctx.playing) return '';
-      const f = ctx.view && ctx.view.startIn != null ? ctx.view : null;
+      // відлік іде в кадрах, а не у видах: беремо свіжіше з двох, інакше «Готуйсь…» висіло б
+      // на екрані ще довго після того, як змійки поїхали
+      const f = ctx.frame && ctx.frame.startIn != null ? ctx.frame
+        : (ctx.view && ctx.view.startIn != null ? ctx.view : null);
       if (f && f.startIn > 0) return 'Готуйсь…';
       return ctx.mine ? 'Стрілки або WASD' : 'Дивишся збоку';
     },

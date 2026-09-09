@@ -105,10 +105,14 @@
       el.innerHTML = html;
       el.addEventListener('click', (e) => {
         const b = e.target.closest('.cell');
-        if (b && !b.disabled && o.onCell) o.onCell(+b.dataset.i, b);
+        const opt = el._o || {};
+        if (b && !b.disabled && opt.onCell) opt.onCell(+b.dataset.i, b);
       });
       host.appendChild(el);
     }
+    // Слухач вішається один раз, а колбек модуль дає новий на кожен update — тримаємо
+    // свіжі опції на елементі, інакше кліки б назавжди пішли в onCell із першого виклику.
+    el._o = o;
     el.style.setProperty('--cols', cols);
     if (o.cell) {
       const kids = el.children;
@@ -154,7 +158,7 @@
     let el = host.querySelector(':scope > .dpad');
     if (!coarse()) { if (el) el.remove(); return null; }
     const want = (dirs || [3, 2, 1, 0]).join(',');
-    if (el && el.dataset.dirs === want) return el;
+    if (el && el.dataset.dirs === want) { el._onDir = onDir; return el; }
     if (el) el.remove();
     el = document.createElement('div');
     el.className = 'dpad';
@@ -164,8 +168,9 @@
     el.innerHTML = (dirs || [3, 2, 1, 0]).map((d) => '<button type="button" data-dir="' + d + '" aria-label="' + aria[d] + '">' + label[d] + '</button>').join('');
     el.addEventListener('click', (e) => {
       const b = e.target.closest('button');
-      if (b) onDir(+b.dataset.dir);
+      if (b && el._onDir) el._onDir(+b.dataset.dir);
     });
+    el._onDir = onDir;                 // колбек — завжди з останнього виклику, не з першого
     host.appendChild(el);
     return el;
   }
@@ -185,10 +190,11 @@
       }).join('');
       el.addEventListener('click', (e) => {
         const b = e.target.closest('.gkey');
-        if (b && onKey) onKey(b.dataset.k);
+        if (b && el._onKey) el._onKey(b.dataset.k);
       });
       host.appendChild(el);
     }
+    el._onKey = onKey;                 // так само, як у grid: живий колбек, а не той, що був на створенні
     const st = state || {};
     el.querySelectorAll('.gkey').forEach((b) => {
       const k = b.dataset.k;
@@ -225,8 +231,11 @@
   }
 
   /// Дуга-таймер фази: сама крутиться на rAF і сама вмирає, коли картку прибрали.
+  /// Кликати можна з кожного update(): другий виклик лише переставляє час, а не заводить
+  /// ще один rAF-цикл на тому самому елементі.
   function timerArc(host, untilIso, totalMs) {
     let el = host.querySelector(':scope > .garc');
+    if (el && el._arc) { el._arc.set(untilIso, totalMs); return el._arc; }
     if (!el) {
       el = document.createElement('div');
       el.className = 'garc';
@@ -247,17 +256,21 @@
       if (num.textContent !== s) num.textContent = s;
       st.raf = requestAnimationFrame(step);
     }
-    if (!st.raf) st.raf = requestAnimationFrame(step);
-    return {
+    st.raf = requestAnimationFrame(step);
+    const handle = {
       el,
       set(u, total) { st.until = Date.parse(u) || Date.now(); st.total = total || st.total; if (!st.raf) st.raf = requestAnimationFrame(step); },
-      stop() { cancelAnimationFrame(st.raf); st.raf = 0; },
+      stop() { cancelAnimationFrame(st.raf); st.raf = 0; if (el._arc === handle) el._arc = null; },
     };
+    el._arc = handle;
+    return handle;
   }
 
-  /// Віяло карт (дурень) або кісток (доміно).
+  /// Віяло карт (дурень) або кісток (доміно). Рука міняється щохода, тож актуальні картки
+  /// й колбек живуть на елементі: інакше клік віддавав би модулю карту з першого виклику.
   function hand(host, items, o) {
     o = o || {};
+    items = items || [];
     let el = host.querySelector(':scope > .ghand');
     if (!el) {
       el = document.createElement('div');
@@ -265,17 +278,21 @@
       el.addEventListener('click', (e) => {
         const c = e.target.closest('.gcard');
         if (!c || c.classList.contains('off')) return;
+        const list = el._items || [], opt = el._o || {};
+        const cb = opt.onItem || opt.onCard;      // onCard — старе ім'я з PROTOCOL §3
         const i = +c.dataset.i;
-        if (o.selectable) {
+        if (opt.selectable) {
           const on = c.classList.toggle('sel');
-          if (!o.multi) el.querySelectorAll('.gcard.sel').forEach((x) => { if (x !== c) x.classList.remove('sel'); });
-          if (o.onItem) o.onItem(items[i], i, on);
-        } else if (o.onItem) o.onItem(items[i], i, true);
+          if (!opt.multi) el.querySelectorAll('.gcard.sel').forEach((x) => { if (x !== c) x.classList.remove('sel'); });
+          if (cb) cb(list[i], i, on);
+        } else if (cb) cb(list[i], i, true);
       });
       host.appendChild(el);
     }
+    el._items = items;
+    el._o = o;
     const render = o.render || ((it) => esc(typeof it === 'object' ? (it.label || it.text || '') : it));
-    const html = (items || []).map((it, i) => {
+    const html = items.map((it, i) => {
       const off = it && typeof it === 'object' && it.disabled ? ' off' : '';
       const cls = it && typeof it === 'object' && it.cls ? ' ' + it.cls : '';
       return '<div class="gcard' + off + cls + '" data-i="' + i + '">' + render(it, i) + '</div>';
@@ -283,7 +300,7 @@
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
     return {
       el,
-      selected: () => [...el.querySelectorAll('.gcard.sel')].map((c) => items[+c.dataset.i]),
+      selected: () => [...el.querySelectorAll('.gcard.sel')].map((c) => (el._items || [])[+c.dataset.i]),
       clear: () => el.querySelectorAll('.gcard.sel').forEach((c) => c.classList.remove('sel')),
     };
   }
@@ -310,11 +327,22 @@
   }
   const send = (method, ...args) => { if (conn && conn.state === 'Connected') conn.invoke(method, ...args).catch(() => {}); };
 
+  const PIN_TTL = 5000;
+
   /// Соло і щоденні кімнати приватні: у списку лобі їх нема, тож єдиний спосіб їх побачити —
   /// підписатись за roomId із відповіді. Тримаємо його, поки не з'явиться картка.
   async function openRoom(method, ...args) {
     const r = await call(method, ...args);
-    if (r.ok && r.roomId) { pinned.add(r.roomId); syncWatch(); }
+    if (r.ok && r.roomId) {
+      const id = r.roomId;
+      pinned.add(id);
+      syncWatch();
+      // Кімнати може й не бути (сервер її вже прибрав, WatchRoom відмовив): щоб не тримати
+      // підписку на мертвий id вічно, знімаємо шпильку, якщо 'room' так і не прийшла.
+      setTimeout(() => {
+        if (pinned.has(id) && !cards[id] && !views[id]) { pinned.delete(id); syncWatch(); }
+      }, PIN_TTL);
+    }
     return r;
   }
 
@@ -343,9 +371,12 @@
     });
   }
 
+  /// Вантажимо всі модулі одразу: у каталозі їх буде два десятки, а послідовні await —
+  /// це два десятки round-trip-ів поспіль. Вердикт «не завантажився» ставимо лише коли все
+  /// відстрілялось: файл із кількома register (ttt+ttt3) інакше давав би фальшиве попередження.
   async function loadModules() {
-    for (const g of catalog.games) {
-      if (modules[g.id]) continue;           // кілька register в одному файлі — нормально, другий раз не тягнемо
+    const want = catalog.games.filter((g) => !modules[g.id]);
+    for (const g of want) {
       if (g.hasCss && !document.querySelector('link[data-game="' + g.id + '"]')) {
         const l = document.createElement('link');
         l.rel = 'stylesheet';
@@ -353,11 +384,12 @@
         l.dataset.game = g.id;
         document.head.appendChild(l);
       }
-      const ok = await loadScript('/games/' + g.id + '.js');
-      if (!modules[g.id]) {
-        failed.add(g.id);
-        console.warn('[games] модуль ' + g.id + ' не завантажився' + (ok ? ' (файл є, register не викликано)' : ' (нема файла)'));
-      }
+    }
+    const res = await Promise.all(want.map(async (g) => [g, await loadScript('/games/' + g.id + '.js')]));
+    for (const [g, ok] of res) {
+      if (modules[g.id]) continue;
+      failed.add(g.id);
+      console.warn('[games] модуль ' + g.id + ' не завантажився' + (ok ? ' (файл є, register не викликано)' : ' (нема файла)'));
     }
     refreshAll();
   }
@@ -373,7 +405,14 @@
     }).catch((e) => {
       loading = null;
       console.warn('[games] каталог не прочитався', e);
-      if (root) root.innerHTML = '<div class="gempty">Каталог ігор не прочитався: ' + esc(e.message) + '</div>';
+      // Помилку пишемо лише в тіло: знести шапку разом із кнопками означало б «повертайся через F5».
+      renderShell();
+      const v = root && root.querySelector('.gview');
+      if (!v) return;
+      v.innerHTML = '<div class="gempty">Каталог ігор не прочитався: ' + esc(e.message)
+        + ' <button class="ghost" data-retry>Спробувати ще</button></div>';
+      const b = v.querySelector('[data-retry]');
+      if (b) b.onclick = (ev) => busy(ev.currentTarget, 'читаю…', () => ensureCatalog());
     });
     return loading;
   }
@@ -403,7 +442,9 @@
     const tabs = root.querySelector('.gtabs');
     const counts = {};
     for (const r of rooms) counts[groupOf(r.game)] = (counts[groupOf(r.game)] || 0) + 1;
-    const alive = (id) => catalog.games.some((x) => x.group === id && !x.private) || !!counts[id];
+    // private — ознака КІМНАТИ (соло і щоденні не потрапляють у лобі, ARCHITECTURE §4.1/§4.4),
+    // а не гри: плитку такої гри показуємо, інакше вкладка «Соло» не з'явилась би ніколи.
+    const alive = (id) => catalog.games.some((x) => x.group === id) || !!counts[id];
     // збережена в localStorage вкладка може вказувати на групу, якої в цій збірці ще нема
     if (panel.startsWith('g:') && !alive(panel.slice(2))) {
       const first = GROUPS.find((g) => alive(g.id));
@@ -480,7 +521,7 @@
   const stale = (t) => t !== renderToken;
 
   function renderLobby(view, group) {
-    const list = catalog.games.filter((g) => g.group === group && !g.private);
+    const list = catalog.games.filter((g) => g.group === group);
     const tiles = list.map((g) => {
       const solo = group === 'solo' || g.maxPlayers === 1;
       const btn = solo
@@ -618,6 +659,7 @@
     ctx.room = room;
     ctx.seat = rv.seat;
     ctx.view = rv.view;
+    if (ctx.frame === undefined) ctx.frame = null;   // останній 'frame'; кадри не скидають вид і навпаки
     ctx.me = me;
     ctx.playing = room.status === 'playing';
     ctx.mine = rv.seat != null;
@@ -740,11 +782,18 @@
       catch (e) { console.warn('[games] update ' + rv.room.game, e); }
     }
 
+    paintStatus(card, rv);
+  }
+
+  /// Рядок статусу — тільки textContent, тому його не шкода перерахувати і на кожен кадр:
+  /// у реалтайм-іграх фаза й відлік живуть у кадрах, а не у видах.
+  function paintStatus(card, rv) {
     let text = '';
-    if (card.mod && card.mod.status) { try { text = card.mod.status(ctx) || ''; } catch { text = ''; } }
+    if (card.mod && card.mod.status) { try { text = card.mod.status(card.ctx) || ''; } catch { text = ''; } }
     if (!text) text = defaultStatus(rv);
-    card.statusEl.textContent = text;
-    card.statusEl.className = 'gstatus' + (rv.room.status === 'finished' ? ' done' : '') + (ctx.myTurn ? ' my' : '');
+    if (card.statusEl.textContent !== text) card.statusEl.textContent = text;
+    const cls = 'gstatus' + (rv.room.status === 'finished' ? ' done' : '') + (card.ctx && card.ctx.myTurn ? ' my' : '');
+    if (card.statusEl.className !== cls) card.statusEl.className = cls;
   }
 
   const refreshAll = () => { for (const id in cards) refreshCard(id); };
@@ -762,6 +811,7 @@
     try { p = await api('GET', '/api/games/profile?nick=' + encodeURIComponent(me.nick)); }
     catch (e) { if (!stale(token)) view.innerHTML = '<div class="gempty">Профіль не прочитався: ' + esc(e.message) + '</div>'; return; }
     if (stale(token)) return;
+    p = p || {};                     // api() віддає null, якщо тіла нема — панель від цього не має вмирати
     const bal = (p.wallet && p.wallet.balance != null) ? p.wallet.balance : (p.balance != null ? p.balance : wallet);
     const earned = (p.wallet && p.wallet.earned != null) ? p.wallet.earned : p.earned;
     const ratings = p.ratings || [];
@@ -802,7 +852,8 @@
     ['balance', '🏺'], ['earned', 'зароблено'], ['count', 'разів']];
 
   async function renderLeaders(view, token) {
-    const games = [{ id: 'shards', title: 'Черепки' }].concat(catalog.games.filter((g) => !g.private).map((g) => ({ id: g.id, title: g.title })));
+    // соло й щоденні теж мають таблиці — фільтрувати їх за private не можна (див. renderShell)
+    const games = [{ id: 'shards', title: 'Черепки' }].concat(catalog.games.map((g) => ({ id: g.id, title: g.title })));
     if (!games.some((g) => g.id === lbGame)) lbGame = 'shards';
     view.innerHTML = '<div class="glbbar">'
       + '<select class="glbgame">' + games.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === lbGame ? ' selected' : '') + '>' + esc(g.title) + '</option>').join('') + '</select>'
@@ -832,6 +883,7 @@
     try { d = await api('GET', '/api/games/daily'); }
     catch (e) { if (!stale(token)) view.innerHTML = '<div class="gempty">Щоденне не прочиталось: ' + esc(e.message) + '</div>'; return; }
     if (stale(token)) return;
+    d = d || {};
     const list = d.puzzles || [];
     view.innerHTML = '<div class="gdhead"><b>Щоденний глек</b>'
       + (d.no ? '<span class="chip">день №' + d.no + '</span>' : '')
@@ -860,7 +912,9 @@
 
   /// Активна кімната: та, де я сиджу і йде партія; інакше перша видима.
   function activeCard() {
-    const list = Object.keys(cards).map((id) => cards[id]).filter((c) => c.el.isConnected && c.ctx);
+    // Порядок беремо з DOM, а не з ключів об'єкта: «перша видима» — це перша на екрані.
+    const list = (root ? [...root.querySelectorAll('.gtable')] : [])
+      .map((el) => cards[el.dataset.room]).filter((c) => c && c.ctx);
     return list.find((c) => c.ctx.mine && c.ctx.playing) || list[0] || null;
   }
   document.addEventListener('keydown', (e) => {
@@ -924,7 +978,8 @@
       root = o.root || (o.$ ? o.$('games') : document.getElementById('games'));
       booted = true;
       renderShell();
-      ensureCatalog();
+      // Каталог і модуль кожної гри тягнемо в show(): слухачеві, який у «Ігри» не заходить,
+      // ці два десятки запитів ні до чого.
     },
 
     attach(c) {
@@ -959,9 +1014,14 @@
       c.on('frame', (f) => {
         if (!f || !f.id) return;
         const card = cards[f.id];
-        if (card && card.mod && card.mod.frame && card.mounted) {
+        if (!card || !card.mounted) return;
+        // Останній кадр кладемо в ctx: фаза й відлік реалтайм-ігор живуть саме тут,
+        // і без цього status() бачив би лише застарілий вид із рідкої події 'room'.
+        if (card.ctx) card.ctx.frame = f.f;
+        if (card.mod && card.mod.frame) {
           try { card.mod.frame(card.body, card.ctx, f.f); } catch (e) { console.warn('[games] frame', e); }
         }
+        if (views[f.id]) paintStatus(card, views[f.id]);
       });
       c.on('wallet', (w) => {
         if (!w) return;

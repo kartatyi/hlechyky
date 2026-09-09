@@ -22,7 +22,8 @@
     const line = v.line || [];
     HGames.ui.grid(root, {
       cols: w,
-      rows: Math.max(1, Math.round(cells.length / w)),
+      // до старту cells порожній — показуємо типову дошку 7×6, а не один ряд
+      rows: cells.length ? Math.ceil(cells.length / w) : 6,
       cls: 'discs',
       cell: (i) => ({
         html: '',

@@ -23,7 +23,8 @@
     const line = v.line || [];
     HGames.ui.grid(root, {
       cols: w,
-      rows: Math.max(1, Math.round(cells.length / w)),
+      // поки партія не почалась, cells порожній: малюємо квадрат w×w, а не смужку в один ряд
+      rows: cells.length ? Math.ceil(cells.length / w) : w,
       cell: (i) => ({
         html: markOf(cells[i]),
         cls: [clsOf(cells[i]), line.includes(i) ? 'win' : '', i === v.fading ? 'fading' : ''].filter(Boolean).join(' '),

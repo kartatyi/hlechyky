@@ -104,6 +104,7 @@ HGames.register({
 ```ts
 type Ctx = {
   room: RoomSummary; seat: number | null; view: any; me: { nick: string; role: string };
+  frame: any;                       // останній `frame` цієї кімнати (null, поки не було); для status() реалтайм-ігор
   playing: boolean;                 // room.status === 'playing'
   mine: boolean;                    // seat !== null
   myTurn: boolean;                  // якщо view.turn існує і === seat
@@ -118,13 +119,16 @@ type Ctx = {
 ```
 
 `HGames.ui` (хелпери каркаса, реалізує WP2):
-- `grid(root, { cols, rows, cell(i) → html|string, onCell(i), cls })` — кнопкова сітка як у хрестиків.
+- `grid(root, { cols, rows, cell(i) → html | { html, cls, disabled }, onCell(i), cls })` — кнопкова сітка як у хрестиків. Об'єктна форма `cell(i)` потрібна, щоб позначити виграшний ряд і заблокувати чужий хід.
 - `canvas(root, { w, h, cls })` — `<canvas>` із DPR-масштабом; повертає `{ el, ctx, w, h, resize() }`.
-- `dpad(root, onDir(0..3))` — хрестовина для телефона (з'являється лише при `pointer: coarse`).
+- `dpad(root, onDir(0..3), dirs?)` — хрестовина для телефона (з'являється лише при `pointer: coarse`). `dirs` — які саме кнопки показати, типово всі чотири.
 - `keyboardUa(root, onKey(ch), state)` — екранна українська клавіатура (Глек-слово, віселиця).
-- `lerp(a, b, t)`, `Interp()` — інтерполятор кадрів для 25 Гц ігор (тримає два останні кадри, віддає стан на «зараз мінус один інтервал»).
-- `timerArc(root, untilIso, totalMs)` — дуга-таймер фаз (мафія, «Скільки?», дуель).
-- `hand(root, cards, { onCard, selectable })` — віяло карт (дурень) / кісток (доміно).
+- `lerp(a, b, t)`, `Interp()` — інтерполятор кадрів для 25 Гц ігор: `push(f)` кладе кадр, `at()` віддає `{ a, b, t }` — два останні кадри й коефіцієнт на «зараз мінус один інтервал» (змішує поля сам модуль через `lerp`, бо форма кадра в кожної гри своя), `reset()` забуває обидва.
+- `timerArc(root, untilIso, totalMs)` — дуга-таймер фаз (мафія, «Скільки?», дуель). Кликати можна з кожного `update()`: повторний виклик лише переставляє час тій самій дузі. Повертає `{ el, set(untilIso, totalMs), stop() }`.
+- `hand(root, items, { onItem, selectable, multi?, render? })` — віяло карт (дурень) / кісток (доміно). `onItem(item, i, on)`; старе ім'я `onCard` теж працює. `multi` — можна вибрати кілька, `render(item, i)` — свій HTML картки. Повертає `{ el, selected(), clear() }`.
+
+Усі хелпери ідемпотентні: їх кличуть із `mount()` і з кожного `update()`, елемент при цьому один, а колбеки й
+дані беруться з останнього виклику — можна сміливо будувати `onCell`/`onItem` по свіжому стану.
 
 `HGames.register` до `attach` — нормально: модулі вантажаться асинхронно, каркас домальовує кімнати, коли
 модуль з'явився.
