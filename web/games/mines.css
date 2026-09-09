@@ -1,0 +1,61 @@
+/*
+  Сапер: спільні стилі дуелі (mines) і Сапера дня (mines-daily). Поле — та сама .board з core.css,
+  тільки клітинок на ній не дев'ять, а до двохсот п'ятдесяти шести, тож клітинка тут менша, щільніша
+  й без великого шрифту. Кольори — тільки змінними; свою оголошуємо на :root, як велить core.css.
+*/
+:root {
+  --gmine1: #6fa8ff;                 /* «одиничка» на полі — класичний синій */
+  --gmine-lid: rgba(0, 0, 0, .18);   /* тінь під закритою кришкою клітинки */
+}
+
+/* ---- рядок над полем: скільки мін лишилось, час або рахунок ---- */
+.mbar {
+  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums; font-size: .95em; color: var(--muted);
+}
+.mbar b { color: var(--text); }
+.mbar .mseat0 { color: var(--accent); }
+.mbar .mseat1 { color: var(--ok); }
+
+/* ---- поле ---- */
+/* Обгортка поля: на широкому екрані нічого не робить, на телефоні дає полю прокрутку вбік. */
+.mwrap { display: block; }
+.board.mines { width: min(400px, 100%); gap: 3px; }
+.board.mines .cell {
+  font-size: 1.05em; font-weight: 700; border-radius: 6px;
+  background: var(--panel3); box-shadow: inset 0 -2px 0 var(--gmine-lid);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+/* Велике поле 16×16 і в картку на 300 px, і в телефон лізе тільки дрібним кроком. */
+.board.mines.tiny { width: min(430px, 100%); gap: 2px; }
+.board.mines.tiny .cell { font-size: .8em; border-radius: 4px; }
+
+.board.mines .cell.open { background: var(--bg2); box-shadow: none; }
+.board.mines .cell.closed:not(:disabled):hover { filter: brightness(1.22); }
+.board.mines .cell.flag { color: var(--danger); font-size: .9em; }
+.board.mines.tiny .cell.flag { font-size: .68em; }
+.board.mines .cell.bomb { background: var(--danger); color: var(--accent-ink); box-shadow: none; font-size: .9em; }
+.board.mines.tiny .cell.bomb { font-size: .68em; }
+/* Куди щойно тиснули — щоб після каскаду було видно, з чого він пішов. */
+.board.mines .cell.last { box-shadow: 0 0 0 2px var(--accent2) inset; }
+
+.board.mines .cell.n1 { color: var(--gmine1); }
+.board.mines .cell.n2 { color: var(--ok); }
+.board.mines .cell.n3 { color: var(--danger); }
+.board.mines .cell.n4, .board.mines .cell.n5, .board.mines .cell.n6,
+.board.mines .cell.n7, .board.mines .cell.n8 { color: var(--accent); }
+
+/* ---- кнопки під полем ---- */
+.mbtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.mbtns .mflag.on { background: var(--clay); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+
+@media (max-width: 480px) {
+  .board.mines { gap: 2px; }
+  .board.mines .cell { border-radius: 5px; font-size: .95em; }
+  .board.mines.tiny .cell { font-size: .7em; border-radius: 3px; }
+  .mbar { gap: 7px; font-size: .88em; }
+  /* Велике поле в телефон цілим не лізе: 16 колонок у 310 px — це клітинка 17 px, учетверо дрібніша
+     за палець. Тож не стискаємо, а даємо прокрутити вбік: 16 × ~26 px + проміжки = 448 px. */
+  .mwrap { overflow: auto hidden; -webkit-overflow-scrolling: touch; }
+  .board.mines.tiny { width: max(100%, 448px); }
+}
