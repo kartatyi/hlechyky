@@ -27,6 +27,12 @@
   const boneHtml = (t, cls) => '<span class="dbone' + (t[0] === t[1] ? ' dbl' : '') + (cls ? ' ' + cls : '') + '">'
     + half(t[0]) + '<span class="dbar"></span>' + half(t[1]) + '</span>';
 
+  const TARGET = 100;   // Domino.Target на сервері: стільки очок закриває партію
+  /// «100 очок», «104 очки», «101 очко» — число в рядку має читатись по-людськи.
+  const pips = (n) => n + ' ' + (n % 100 >= 11 && n % 100 <= 14 ? 'очок'
+    : n % 10 === 1 ? 'очко'
+      : n % 10 >= 2 && n % 10 <= 4 ? 'очки' : 'очок');
+
   const same = (a, b) => a && b && ((a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]));
   const fits = (t, end) => end != null && (t[0] === end || t[1] === end);
 
@@ -36,16 +42,21 @@
   function paint(root, ctx) {
     const v = ctx.view || {};
     const st = stateOf(root);
-    const line = v.line || [];
+    // Стіл у лобі — тіло порожнє. Дограний стіл каркас віддає новому гравцеві (Rooms.Join, гілка
+    // reopen) і вертає кімнату в лобі, а вид гри до самого «Почати» тримає стару партію разом із
+    // result: без цього новачок бачив би залишки чужої роздачі й чужий рахунок. Тому дивимось саме
+    // на стан кімнати, а не на вид.
+    const idle = !ctx.playing && !(ctx.room && ctx.room.status === 'finished');
+    const line = idle ? [] : (v.line || []);
     const ends = v.ends || null;
-    const hand = v.hand || [];
-    const my = !!ctx.myTurn;
+    const hand = idle ? [] : (v.hand || []);
+    const my = !idle && !!ctx.myTurn;
     if (!my && st.pick) st.pick = null;          // не твій хід — нема чого й обирати бік
 
-    box(root, 'dhead', head(v, ctx));
-    box(root, 'dline', line.length
+    box(root, 'dhead', idle ? '' : head(v, ctx));
+    box(root, 'dline', idle ? '' : (line.length
       ? line.map((b) => boneHtml(b.tile)).join('')
-      : '<span class="muted small">кладіть першу кістку</span>');
+      : '<span class="muted small">кладіть першу кістку</span>'));
 
     // Рука — віяло каркаса: клік по кістці або ходить одразу, або питає, з якого боку класти.
     ctx.ui.hand(root, hand.map((t) => ({ t, disabled: !(my && (line.length === 0 || fits(t, ends[0]) || fits(t, ends[1]))) })), {
@@ -59,7 +70,7 @@
       },
     });
 
-    box(root, 'dctl', controls(v, ctx, st));
+    box(root, 'dctl', idle ? '' : controls(v, ctx, st));
     root.querySelectorAll('.dctl [data-do]').forEach((b) => b.onclick = () => {
       const what = b.dataset.do;
       if (what === 'left' || what === 'right') {
@@ -115,6 +126,8 @@
       root.appendChild(el);
     }
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
+    // Порожній блок ховаємо: у ланцюга своя підкладка, і в лобі вона світила б порожньою плитою.
+    el.hidden = !html;
     return el;
   }
 
@@ -123,14 +136,18 @@
     icon: ICON,
     seatNames: ['перший', 'другий', 'третій', 'четвертий'],
     seatClass: ['x', 'o', 'c', 'd'],
-    mount(root, ctx) { paint(root, ctx); },
+    // Свій маркер на тілі картки: під ним живуть усі правила, що чіпають спільні .ghand/.gcard,
+    // інакше вони поїхали б і в чужі ігри — файл стилів вантажиться на весь сайт.
+    mount(root, ctx) { root.classList.add('dgame'); paint(root, ctx); },
     update(root, ctx) { paint(root, ctx); },
     status(ctx) {
       const v = ctx.view || {};
-      // Партія зі ста очок — кажемо рахунок; перемога через те, що всі встали, очок не має, і там
-      // краще звучить типовий рядок каркаса «Перемога: X».
-      const won = v.result && (v.result.scores || [])[v.result.winner];
-      if (won) return 'Партію зіграно: ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner)) + ' — ' + won + ' очок';
+      // Рахунок кажемо лише тоді, коли партію справді догуляли до ста очок і стіл ще дограний.
+      // Перемога через те, що всі встали, стільки очок не має, а віддану новому гравцеві кімнату
+      // каркас уже вернув у лобі — в обох випадках краще звучить його ж рядок.
+      const won = (v.result && (v.result.scores || [])[v.result.winner]) || 0;
+      const done = ctx.room && ctx.room.status === 'finished';
+      if (done && won >= TARGET) return 'Партію зіграно: ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner)) + ' — ' + pips(won);
       if (!ctx.playing) return '';
       if (ctx.myTurn && v.mustDraw) return 'Нема чим ходити — тягни з базару';
       if (ctx.myTurn && !v.canPlay) return 'Ходити нема чим і базар порожній — пас';

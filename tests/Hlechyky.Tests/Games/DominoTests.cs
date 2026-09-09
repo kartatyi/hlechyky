@@ -24,7 +24,7 @@ public class DominoTests
 
     /// <summary>Точна позиція за столом: ланцюг, руки, базар, чия черга й рахунок партії.</summary>
     static void Position(RoomHarness h, int[][] line, int[][][] hands,
-        int[][]? yard = null, int turn = 0, int[]? scores = null, int round = 1)
+        int[][]? yard = null, int turn = 0, int[]? scores = null, int round = 1, int? lastWinner = null)
     {
         var state = new
         {
@@ -36,7 +36,7 @@ public class DominoTests
             Turn = turn,
             Round = round,
             Winner = (int?)null,
-            LastWinner = (int?)null,
+            LastWinner = lastWinner,
             LastRoundWinner = (int?)null,
             LastPoints = 0,
             LastReason = "",
@@ -61,6 +61,22 @@ public class DominoTests
         [.. h.View(seat).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32())];
 
     static int Yard(RoomHarness h, int? seat = 0) => h.View(seat).GetProperty("boneyard").GetInt32();
+
+    /// <summary>Найпростіший бот: кладе першу кістку, що підходить, а нема чим — тягне або пасує.</summary>
+    static void Autoplay(RoomHarness h, int moves)
+    {
+        for (var i = 0; i < moves && h.Room.Status == RoomStatus.Playing; i++)
+        {
+            var turn = h.View(null).GetProperty("turn");
+            if (turn.ValueKind != JsonValueKind.Number) return;
+            var seat = turn.GetInt32();
+            var ends = h.View(seat).GetProperty("ends");
+            int[]? open = ends.ValueKind == JsonValueKind.Array ? [.. ends.EnumerateArray().Select(x => x.GetInt32())] : null;
+            var bone = Hand(h, seat).FirstOrDefault(t => open is null || open.Any(e => t[0] == e || t[1] == e));
+            if (bone is not null) Play(h, seat, bone[0], bone[1]);
+            else if (!h.Act(seat, "draw").Ok) h.Act(seat, "pass");
+        }
+    }
 
     // ---------- роздача ----------
 
@@ -218,6 +234,35 @@ public class DominoTests
         Assert.Equal([[3, 3], [3, 1]], Line(h));
     }
 
+    [Fact]
+    public void A_side_the_bone_does_not_reach_is_refused_even_when_the_other_one_fits()
+    {
+        var h = Table();
+        // Кінці 3 і 2: кістка 5-2 лягає лише праворуч, і сказати «ліворуч» — не те саме, що не сказати нічого.
+        Position(h, [[3, 2]], [[[5, 2], [6, 6]], [[6, 0]]], yard: [[0, 0]]);
+        var before = Views.Text(h.Room.Game.View(0));
+
+        Assert.Equal("Ця кістка сюди не підходить", Play(h, 0, 5, 2, "left").Message);
+        Assert.Equal(before, Views.Text(h.Room.Game.View(0)));
+
+        Assert.True(Play(h, 0, 5, 2, "right").Ok);
+        Assert.Equal([[3, 2], [2, 5]], Line(h));
+    }
+
+    [Fact]
+    public void A_side_nobody_knows_is_refused_instead_of_being_guessed()
+    {
+        var h = Table();
+        Position(h, [[3, 2]], [[[5, 2], [6, 6]], [[6, 0]]], yard: [[0, 0]]);
+        var before = Views.Text(h.Room.Game.View(0));
+
+        // «Не сказали боку» — сервер підбирає сам, а от казна-що замість боку мовчки ковтати не можна.
+        Assert.Equal("Не зрозумів, з якого боку класти", Play(h, 0, 5, 2, "middle").Message);
+        Assert.Equal("Не зрозумів, з якого боку класти", Play(h, 0, 5, 2, "LEFT").Message);
+        Assert.Equal(before, Views.Text(h.Room.Game.View(0)));
+        Assert.Equal(0, h.Room.Moves);
+    }
+
     // ---------- базар і пас ----------
 
     [Fact]
@@ -300,7 +345,6 @@ public class DominoTests
         Assert.Equal(0, last.GetProperty("winner").GetInt32());
         Assert.Equal(12, last.GetProperty("points").GetInt32());
         Assert.Equal("out", last.GetProperty("reason").GetString());
-        Assert.Contains("рука порожня, +12", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -317,6 +361,8 @@ public class DominoTests
         Assert.Equal(0, last.GetProperty("winner").GetInt32());
         Assert.Equal("fish", last.GetProperty("reason").GetString());
         Assert.Equal(2, h.View(0).GetProperty("round").GetInt32());
+        // Раунд узяла Оля — їй і починати наступний.
+        Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
     }
 
     [Fact]
@@ -331,7 +377,50 @@ public class DominoTests
         var last = h.View(0).GetProperty("lastRound");
         Assert.Equal(JsonValueKind.Null, last.GetProperty("winner").ValueKind);
         Assert.Equal(0, last.GetProperty("points").GetInt32());
-        Assert.Contains("очки нікому", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("fish", last.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public void A_move_that_blocks_the_table_ends_the_round_as_a_fish_without_any_pass()
+    {
+        var h = Table();
+        // Оля кладе 4-1 — і після цього ходити нема кому: кінці 1 і 4, базар порожній.
+        Position(h, [[1, 1]], [[[1, 4], [6, 6]], [[6, 5], [3, 2]]]);
+
+        Assert.True(Play(h, 0, 4, 1, "right").Ok);
+        Assert.Equal([4, 0, 0, 0], Scores(h));      // 16 у Петра проти 12 в Олі
+
+        var last = h.View(0).GetProperty("lastRound");
+        Assert.Equal(0, last.GetProperty("winner").GetInt32());
+        Assert.Equal("fish", last.GetProperty("reason").GetString());
+        Assert.Equal(2, h.View(0).GetProperty("round").GetInt32());
+    }
+
+    [Fact]
+    public void A_fish_can_carry_the_match_past_a_hundred_too()
+    {
+        var h = Table();
+        Position(h, [[1, 1]], [[[1, 4], [6, 6]], [[6, 5], [6, 3]]], scores: [95, 0, 0, 0], round: 9);
+
+        Assert.True(Play(h, 0, 4, 1, "right").Ok);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([103, 0, 0, 0], Scores(h));    // 20 у Петра проти 12 в Олі
+        Assert.Equal("Доміно: Оля 103 : Петро 0 (за 9 раундів)", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void After_a_scoreless_fish_the_next_round_goes_back_to_the_highest_bone()
+    {
+        var h = Table();
+        // Минулий раунд узяв Петро, але цей став рибою з рівними руками — переможця нема,
+        // тож наступний раунд відкриває не він, а власник найстаршої кістки нової роздачі.
+        Position(h, [[0, 3]], [[[6, 6]], [[5, 5], [1, 1]]], round: 2, lastWinner: 1);
+        Assert.True(h.Act(0, "pass").Ok);
+
+        var opener = Enumerable.Range(0, 2)
+            .SelectMany(seat => Hand(h, seat).Select(t => (Seat: seat, new DominoBone(t[0], t[1]).Rank)))
+            .MaxBy(x => x.Rank).Seat;
+        Assert.Equal(opener, h.View(0).GetProperty("turn").GetInt32());
     }
 
     [Fact]
@@ -357,7 +446,7 @@ public class DominoTests
         Assert.True(Play(h, 0, 3, 3, "right").Ok);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Equal("Доміно: Оля 107 : Петро 0", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Доміно: Оля 107 : Петро 0 (за 4 раунди)", h.Outbox.OfType<Journal>().Last().Text);
 
         var v = h.View(0);
         Assert.Equal(JsonValueKind.Null, v.GetProperty("turn").ValueKind);
@@ -375,6 +464,42 @@ public class DominoTests
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.Equal([92, 0, 0, 0], Scores(h));
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("result").ValueKind);
+    }
+
+    [Fact]
+    public void Any_seat_can_take_the_match_and_the_scoreline_names_them_all()
+    {
+        var h = Table(3);
+        Position(h, [[6, 3]], [[[5, 4], [2, 1]], [[3, 3]], [[2, 2]]], yard: [[0, 0]],
+            turn: 1, scores: [0, 95, 0, 0], round: 3);
+
+        Assert.True(Play(h, 1, 3, 3, "right").Ok);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([1], h.Room.Result!.Winners);
+        Assert.Equal([0, 111, 0, 0], Scores(h));    // 12 в Олі та 4 в Івана
+        Assert.Equal("Доміно: Петро 111 : Оля 0 : Іван 0 (за 3 раунди)", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal(1, h.View(0).GetProperty("result").GetProperty("winner").GetInt32());
+    }
+
+    [Fact]
+    public void Round_summaries_live_in_the_card_and_never_touch_the_shared_journal()
+    {
+        var h = Table();
+        var before = h.Outbox.OfType<Journal>().Count();
+
+        // Три раунди поспіль: двічі «вийшов» і раз риба. Журнал спільний на весь сайт — там про це нічого.
+        Position(h, [[6, 3]], [[[3, 3]], [[5, 4], [2, 1]]], yard: [[0, 0]]);
+        Assert.True(Play(h, 0, 3, 3, "right").Ok);
+        Position(h, [[6, 3]], [[[3, 3]], [[5, 4], [2, 1]]], yard: [[0, 0]], scores: Scores(h), round: 2);
+        Assert.True(Play(h, 0, 3, 3, "right").Ok);
+        Position(h, [[1, 0], [0, 2]], [[[6, 6]], [[5, 5], [4, 4]]], scores: Scores(h), round: 3);
+        Assert.True(h.Act(0, "pass").Ok);
+
+        Assert.Equal([30, 0, 0, 0], Scores(h));     // 12 + 12 + 6
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(before, h.Outbox.OfType<Journal>().Count());
+        // А в картці підсумок останнього раунду є.
+        Assert.Equal("fish", h.View(0).GetProperty("lastRound").GetProperty("reason").GetString());
     }
 
     // ---------- вид і приховане ----------
@@ -516,6 +641,26 @@ public class DominoTests
         static string Deal(int seed) => Views.Text(Table(seed: seed).Room.Game.View(0));
         Assert.Equal(Deal(77), Deal(77));
         Assert.NotEqual(Deal(77), Deal(78));
+    }
+
+    [Fact]
+    public void The_same_seed_and_the_same_moves_give_the_same_table()
+    {
+        // Не лише роздача: та сама послідовність ходів на тому самому сіді має дати той самий стіл (TESTING.md §4.3).
+        static string Walk(int seed)
+        {
+            var h = Table(3, seed);
+            Autoplay(h, 40);
+            return string.Join(" | ", Enumerable.Range(0, 3).Select(seat => Views.Text(h.Room.Game.View(seat))));
+        }
+
+        Assert.Equal(Walk(5), Walk(5));
+        Assert.NotEqual(Walk(5), Walk(6));
+
+        // Перевірка самої перевірки: бот справді награв кілька раундів, а не тупцював на місці.
+        var h = Table(3, 5);
+        Autoplay(h, 40);
+        Assert.True(h.View(0).GetProperty("round").GetInt32() > 1);
     }
 
     [Fact]

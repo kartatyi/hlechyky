@@ -188,11 +188,12 @@ public sealed class Domino : Game
     ActResult Play(int seat, JsonElement payload)
     {
         if (ReadBone(payload) is not { } asked) return ActResult.Fail("Не зрозумів, яку кістку класти");
+        if (!ReadEnd(payload, out var end)) return ActResult.Fail("Не зрозумів, з якого боку класти");
         var index = _hands[seat].FindIndex(b => b.Same(asked));
         if (index < 0) return ActResult.Fail("Такої кістки в тебе нема");
 
         var bone = _hands[seat][index];
-        if (!Put(bone, ReadEnd(payload))) return ActResult.Fail("Ця кістка сюди не підходить");
+        if (!Put(bone, end)) return ActResult.Fail("Ця кістка сюди не підходить");
         _hands[seat].RemoveAt(index);
 
         if (_hands[seat].Count == 0)
@@ -280,12 +281,22 @@ public sealed class Domino : Game
         return new DominoBone(halves[0], halves[1]);
     }
 
-    static string? ReadEnd(JsonElement payload) =>
-        payload.ValueKind == JsonValueKind.Object
-        && payload.TryGetProperty("end", out var end)
-        && end.ValueKind == JsonValueKind.String
-            ? end.GetString()
-            : null;
+    /// <summary>
+    /// Бік із payload: <c>{ end: 'left'|'right' }</c>. Боку може й не бути — тоді сервер підбирає сам,
+    /// а от казна-що замість боку тихо ковтати не можна: краще сказати гравцеві правду, ніж покласти
+    /// кістку не туди, куди він просив.
+    /// </summary>
+    static bool ReadEnd(JsonElement payload, out string? end)
+    {
+        end = null;
+        if (payload.ValueKind != JsonValueKind.Object) return true;
+        if (!payload.TryGetProperty("end", out var raw) || raw.ValueKind == JsonValueKind.Null) return true;
+        if (raw.ValueKind != JsonValueKind.String) return false;
+        var side = raw.GetString();
+        if (side is not ("left" or "right")) return false;
+        end = side;
+        return true;
+    }
 
     void NextTurn()
     {
@@ -327,19 +338,14 @@ public sealed class Domino : Game
     void EndRound(int? winner, int points, string reason)
     {
         _last = new RoundEnd(winner, points, reason);
-        if (winner is { } seat)
-        {
-            _scores[seat] += points;
-            _lastWinner = seat;
-            Ctx.Log(reason == "out"
-                ? $"{Info.Title}, раунд {_round}: {Ctx.NickOf(seat)} — рука порожня, +{points}"
-                : $"{Info.Title}, раунд {_round}: риба, менше очок у {Ctx.NickOf(seat)} — +{points}");
-        }
-        else
-        {
-            Ctx.Log($"{Info.Title}, раунд {_round}: риба, очки нікому");
-        }
+        // Переможець раунду відкриває наступний. Після риби з рівними руками переможця нема — тоді
+        // _lastWinner теж стає порожнім, і знову діє правило найстаршого дубля.
+        _lastWinner = winner;
+        if (winner is { } seat) _scores[seat] += points;
 
+        // У Журнал підсумки раундів не пишемо: Журнал спільний на весь сайт (радіо й Балачки), а
+        // раундів у партії до ста очок буває під два десятки. Гравцям те саме каже картка через
+        // lastRound, а в Журнал іде один рядок на всю партію — з Ctx.Finish нижче.
         if (winner is { } champion && _scores[champion] >= Target)
         {
             _winner = champion;
@@ -349,12 +355,23 @@ public sealed class Domino : Game
         Deal();
     }
 
-    /// <summary>«Доміно: Оля 104 : Петро 61» — переможець першим, ніки в називному, бо відмінювати їх нема як.</summary>
+    /// <summary>
+    /// «Доміно: Оля 104 : Петро 61 (за 9 раундів)» — переможець першим, ніки в називному, бо відмінювати
+    /// їх нема як. Це єдиний слід партії в Журналі, тому раунди рахуємо тут же.
+    /// </summary>
     string Scoreline(int winner)
     {
         var order = Seats().OrderByDescending(s => s == winner).ThenByDescending(s => _scores[s]);
-        return $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{Ctx.NickOf(s)} {_scores[s]}"));
+        return $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{Ctx.NickOf(s)} {_scores[s]}"))
+            + $" (за {Rounds(_round)})";
     }
+
+    /// <summary>«1 раунд», «2 раунди», «11 раундів» — число в рядку має читатись по-людськи.</summary>
+    static string Rounds(int n) =>
+        n % 100 is >= 11 and <= 14 ? $"{n} раундів"
+        : n % 10 == 1 ? $"{n} раунд"
+        : n % 10 is >= 2 and <= 4 ? $"{n} раунди"
+        : $"{n} раундів";
 
     /// <summary>
     /// Хтось встав з-за столу: його кістки йдуть у базар, решта грає далі. Лишився один — партія його,
