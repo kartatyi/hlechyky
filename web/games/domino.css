@@ -1,0 +1,73 @@
+/*
+  Доміно: шапка з рахунком, ланцюг, рука й керування. Спільні кольори беремо зі style.css,
+  свої оголошуємо тут у :root — щоб модуль міг прочитати їх через ctx.css().
+*/
+:root {
+  --dface: #e8e2d2;   /* кістка світла, як справжня — на темному столі її видно здалеку */
+  --dpip: #23372b;    /* крапки на ній */
+  --dhalf: 19px;      /* сторона половинки: одна змінна на всю гру */
+}
+
+/* Блоки картки ставимо порядком, а не місцем у DOM: рука створюється каркасом (ui.hand), а не нами. */
+.dhead { order: 1; }
+.dline { order: 2; }
+.gtable .ghand { order: 3; }
+.dctl { order: 4; }
+
+/* ---- шапка: раунд, базар, рахунок кожного ---- */
+.dhead { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; width: 100%; }
+.dsc {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); color: var(--muted); font-size: .82em; white-space: nowrap;
+  max-width: 45%; overflow: hidden; text-overflow: ellipsis;
+}
+.dsc.on { box-shadow: 0 0 0 1px var(--accent2) inset; color: var(--text); }
+.dsc b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.dsc i { font-style: normal; font-size: .9em; opacity: .75; }
+.dlast { width: 100%; text-align: center; color: var(--muted); font-size: .82em; }
+
+/* ---- ланцюг ---- */
+.dline {
+  display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: center;
+  width: 100%; min-height: 52px; padding: 8px 6px; background: var(--bg2); border-radius: 10px;
+  max-height: 210px; overflow-y: auto;
+}
+.dline .muted { align-self: center; }
+
+/* ---- сама кістка ---- */
+.dbone {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  background: var(--dface); border: 1px solid var(--line); border-radius: 5px;
+}
+/* Дубль у справжньому доміно лежить поперек ланцюга — у нас він просто вертикальний. */
+.dbone.dbl { flex-direction: column; }
+.dbone.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.dhalf {
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  width: var(--dhalf); height: var(--dhalf);
+}
+.dhalf i { width: 4px; height: 4px; border-radius: 50%; margin: auto; background: transparent; }
+.dhalf i.on { background: var(--dpip); }
+.dbar { width: 1px; align-self: stretch; background: var(--line); opacity: .55; }
+.dbone.dbl .dbar { width: 100%; height: 1px; align-self: auto; }
+
+/* ---- рука ---- */
+.gtable .ghand .gcard { min-width: 0; padding: 5px 6px; }
+.gtable .ghand .dbone { border-color: transparent; }
+
+/* ---- керування: тягнути, пас, вибір боку ---- */
+.dctl { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; width: 100%; }
+.dctl button { padding: 9px 14px; }
+
+/* ---- палець і вузьке вікно ---- */
+@media (max-width: 480px) {
+  :root { --dhalf: 16px; }
+  .dhalf i { width: 3px; height: 3px; }
+  .dline { gap: 3px; padding: 6px 4px; max-height: 42vh; }
+  .dctl button { flex: 1 1 40%; justify-content: center; }
+  /* «З якого боку?» лишається окремим рядком, інакше воно тулиться збоку однієї з кнопок. */
+  .dctl > .muted { flex: 1 1 100%; text-align: center; }
+}
+@media (pointer: coarse) {
+  .gtable .ghand .gcard { padding: 8px; }
+}
