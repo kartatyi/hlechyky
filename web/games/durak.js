@@ -143,7 +143,7 @@
 
     const items = hand.map((c) => ({
       card: c,
-      cls: (isRed(c) ? 'red' : '') + (c === st.sel ? ' sel' : ''),
+      cls: [isRed(c) ? 'red' : '', c === st.sel ? 'sel' : ''].filter(Boolean).join(' '),
       disabled: !usable(c),
     }));
     HGames.ui.hand(el.querySelector('.dhand'), items, {
@@ -160,7 +160,8 @@
     // Слухач столу вішаємо раз, а свіжий стан беремо з елемента — так само, як це робить core.js.
     const tb = el.querySelector('.dtable');
     tb._on = (attack) => {
-      if (!defending) return;
+      // Побиту пару чіпати нема сенсу: сервер відповів би «Цю карту вже побито».
+      if (!defending || open.indexOf(attack) < 0) return;
       if (st.sel && beats(st.sel, attack, trump)) { ctx.act('defend', { attack, card: st.sel }); st.sel = null; st.atk = null; return; }
       st.atk = st.atk === attack ? null : attack;
       paint(root, ctx);
@@ -206,7 +207,8 @@
       const iAttack = ctx.seat === v.attacker;
       if (v.phase === 'defend') return iAttack ? 'Суперник відбивається' : 'Відбивайся або бери';
       if (v.phase === 'taking') return iAttack ? (v.canAdd ? 'Підкидай або «Досить»' : 'Досить') : 'Суперник добирає, що підкинути';
-      if (!iAttack) return 'Чекай, суперник заходить';
+      // Фаза attack із непорожнім столом — це «усе побито, атакуючий думає, чи підкидати».
+      if (!iAttack) return (v.table || []).length ? 'Відбився. Чекай, чи підкине' : 'Чекай, суперник заходить';
       return (v.table || []).length ? 'Підкидай або «Біто»' : 'Заходь картою';
     },
   });
