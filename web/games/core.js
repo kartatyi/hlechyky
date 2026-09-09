@@ -737,7 +737,9 @@
     const out = [];
     if (!solo && rv.seat == null && freeSeat(r) >= 0 && r.status !== 'finished' && !seatedElsewhere(r.id))
       out.push('<button class="primary" data-do="JoinRoom">Сісти</button>');
-    if (!solo && rv.seat != null && r.status === 'finished') out.push('<button class="primary" data-do="Rematch">Ще раз</button>');
+    // «Ще раз» пропонуємо лише коли є з ким: інакше кнопка є, а сервер відповідає «Замало гравців»
+    if (!solo && rv.seat != null && r.status === 'finished' && takenSeats(r) >= r.minPlayers)
+      out.push('<button class="primary" data-do="Rematch">Ще раз</button>');
     // щоденна головоломка одна на день — «Ще раз» там не пропонуємо
     if (solo && r.status === 'finished' && !(gameOf(r.game) || {}).daily) out.push('<button class="primary" data-do="Rematch">Ще раз</button>');
     if (rv.seat != null && r.status === 'lobby' && sameNick(r.host, me.nick) && (gameOf(r.game) || {}).start === 'byHost'
@@ -757,8 +759,11 @@
     const mod = modules[rv.room.game] || null;
     if (mod && card.mod !== mod) card.mod = mod;
 
+    // seatedElsewhere — стан ЧУЖОГО столу, але від нього залежить кнопка «Сісти» тут: без нього
+    // людина, яка щойно встала з іншого столу, лишалась би без кнопки, поки в цій кімнаті щось не зміниться
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
-      rv.room.options, rv.room.result, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
+      rv.room.options, rv.room.result, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
+      rv.seat == null && seatedElsewhere(rv.room.id)]);
     if (sig !== card.sig) {
       card.sig = sig;
       card.head.innerHTML = headHtml(rv);
@@ -932,8 +937,9 @@
   }
   document.addEventListener('keydown', (e) => {
     if (!shown || e.metaKey || e.ctrlKey || e.altKey) return;
+    // target може бути й самим document (подія, яку хтось згенерував сам) — у нього нема matches()
     const t = e.target;
-    if (t && (t.matches('input, textarea, select') || t.isContentEditable)) return;
+    if (t && ((t.matches && t.matches('input, textarea, select')) || t.isContentEditable)) return;
     const c = activeCard();
     if (!c || !c.mod || !c.mod.onKey) return;
     let handled = false;
@@ -1040,7 +1046,9 @@
         if (!w) return;
         wallet = w.balance;
         paintWallet();
-        if (w.delta) toast((w.delta > 0 ? '+' : '') + w.delta + ' 🏺' + (w.text ? ' ' + w.text : ''), w.delta > 0 ? 'ok' : '');
+        // сервер уже присилає готовий рядок «+5 черепків: перемога — Хрестики-нолики»;
+        // своє число ліпимо лише тоді, коли тексту нема, інакше виходило «+5 🏺 +5 черепків: …»
+        if (w.delta) toast('🏺 ' + (w.text || (w.delta > 0 ? '+' : '') + w.delta), w.delta > 0 ? 'ok' : '');
       });
       c.on('achievement', (a) => {
         if (!a) return;
