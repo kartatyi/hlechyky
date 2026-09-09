@@ -301,6 +301,21 @@ public class ChessTests
     }
 
     [Fact]
+    public void Mate_still_marks_the_king_as_being_under_attack()
+    {
+        // Саме матовий кадр гравці й розглядають; якби check згасав разом із партією, мат у браузері
+        // виглядав би як звичайний тихий хід — без червоного поля короля.
+        var h = Table();
+        Position(h, "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1");
+        Assert.True(Move(h, 0, "a1", "a8").Ok);
+
+        var v = h.View(1);
+        Assert.True(v.GetProperty("check").GetBoolean());
+        Assert.Equal("b", v.GetProperty("toMove").GetString());   // король під боєм — той, кому ходити
+        Assert.Empty(v.GetProperty("legal").EnumerateArray());    // але ходити нема чим
+    }
+
+    [Fact]
     public void Stalemate_is_a_draw()
     {
         var h = Table();
@@ -518,6 +533,11 @@ public class ChessTests
         Assert.Equal("Запропонував нічию", h.Act(0, "draw").Message);
         Assert.Equal(0, h.View(1).GetProperty("drawOffer").GetInt32());
 
+        // Двічі поспіль пропонувати нічого не дає: чекай відповіді.
+        Assert.Equal("Ти вже пропонував нічию", h.Act(0, "draw").Message);
+        Assert.Equal(0, h.View(1).GetProperty("drawOffer").GetInt32());
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+
         Assert.True(h.Act(1, "draw").Ok);
         Assert.True(h.Room.Result!.Draw);
         Assert.Contains("за згодою", Journal(h));
@@ -661,6 +681,42 @@ public class ChessTests
         Assert.Contains(("K", "g1"), castle);
         Assert.Contains(("Q", "a1"), castle);
         Assert.Contains(("Q", "c1"), castle);
+    }
+
+    [Fact]
+    public void The_browser_names_the_castling_by_word_and_the_server_takes_it()
+    {
+        // chess.js шле запис зі списку як є: пару полів плюс castle. Обидва поля рокіровки мають спрацювати
+        // однаково — і те, де стоїть тура, і звичне поле короля.
+        foreach (var to in new[] { "h1", "g1" }) Assert.Equal("R....RK.", CastleByWord("K", to));
+        foreach (var to in new[] { "a1", "c1" }) Assert.Equal("..KR...R", CastleByWord("Q", to));
+    }
+
+    static string CastleByWord(string side, string to)
+    {
+        var h = Table();
+        Position(h, EmptyRank);
+        Assert.True(h.Act(0, "move", new { from = "e1", to, castle = side }).Ok);
+        return h.View(0).GetProperty("board").GetString()![56..];
+    }
+
+    [Fact]
+    public void A_fischer_castle_record_goes_back_to_the_server_exactly_as_it_came()
+    {
+        // Той самий шлях, але в 960, де король нікуди не їде: єдиний запис зі списку повертаємо цілком.
+        var h = Table("960");
+        Position(h, "4k3/8/8/8/8/8/8/6KR w H - 0 1", ChessVariant.Fischer);
+        var m = h.View(0).GetProperty("legal").EnumerateArray()
+            .First(x => x.GetProperty("castle").ValueKind != JsonValueKind.Null);
+        var reply = h.Act(0, "move", new
+        {
+            from = m.GetProperty("from").GetString(),
+            to = m.GetProperty("to").GetString(),
+            castle = m.GetProperty("castle").GetString(),
+        });
+
+        Assert.True(reply.Ok, reply.Message);
+        Assert.Equal(".....RK.", h.View(0).GetProperty("board").GetString()![56..]);
     }
 
     [Fact]

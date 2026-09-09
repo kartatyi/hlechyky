@@ -6,7 +6,7 @@
   Вид із сервера (Impl/Chess.cs):
     { variant, board: 64 символи a8..h1, fen, turn, toMove, legal: [{from,to,promo,castle}],
       lastMove, check, captured: {w,b}, moves: SAN[], halfmove, fullmove, drawOffer, result }
-  Хід: act('move', { from: 'e2', to: 'e4', promo?: 'q' }).
+  Хід: act('move', { from: 'e2', to: 'e4', promo?: 'q', castle?: 'K'|'Q' }).
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -24,7 +24,10 @@
   const dark = (sq) => ((sq % 8) + (sq / 8 | 0)) % 2 === 1;
 
   function state(root) {
-    if (!root._chess) root._chess = { sel: null, promo: null, resign: false };
+    // resign — не прапорець, а FEN тієї позиції, у якій кнопку звели: щойно на дошці щось змінилось,
+    // перепитування знімається саме собою. Інакше один випадковий клік лишав би кнопку зведеною до кінця
+    // партії, і через десять ходів наступний дотик віддав би її без жодного питання.
+    if (!root._chess) root._chess = { sel: null, promo: null, resign: null };
     return root._chess;
   }
 
@@ -106,7 +109,12 @@
 
     setHtml(ensure(root, 'chesscap bottom'), pieces(flip ? cap.b : cap.w, flip ? 'wp' : 'bp'));
     promoBar(root, ctx);
-    setHtml(ensure(root, 'chessmoves'), movesHtml(v.moves || []));
+    // Список ходів вищий за своє віконце вже з десятого ходу, тож після кожного нового ходу дотягуємо
+    // прокрутку донизу: цікавий рівно останній рядок, а не початок партії.
+    const mv = ensure(root, 'chessmoves');
+    const before = mv.innerHTML;
+    setHtml(mv, movesHtml(v.moves || []));
+    if (mv.innerHTML !== before) mv.scrollTop = mv.scrollHeight;
     buttons(root, ctx);
   }
 
@@ -124,6 +132,9 @@
         st.sel = null;
       } else {
         const payload = { from: st.sel, to: nm };
+        // Рокіровку називаємо словом: у 960 пара полів сама по собі буває неоднозначною, а з castle
+        // серверу нема чого вгадувати. Ставимо тільки тоді, коли на це поле інших сенсів нема.
+        if (here.every((m) => m.castle)) payload.castle = here[0].castle;
         if (promos.length === 1) payload.promo = promos[0].promo;
         st.sel = null;
         ctx.act('move', payload);
@@ -156,11 +167,14 @@
     const v = ctx.view || {};
     const st = state(root);
     const el = ensure(root, 'chessacts');
-    if (!ctx.mine || !ctx.playing) { setHtml(el, ''); st.resign = false; return; }
+    if (!ctx.mine || !ctx.playing) { setHtml(el, ''); st.resign = null; return; }
+    const fen = v.fen || '';
+    const armed = st.resign !== null && st.resign === fen;   // звели в цій самій позиції — питання ще живе
 
     const offer = v.drawOffer;
     let html;
     if (offer != null && offer !== ctx.seat) {
+      st.resign = null;                       // кнопки зникли — зведене питання разом із ними
       html = '<span class="muted small">Пропонують нічию</span>'
         + '<button type="button" class="primary" data-do="draw">Згода</button>'
         + '<button type="button" class="ghost" data-do="decline">Ні</button>';
@@ -168,13 +182,13 @@
       html = '<button type="button" class="ghost" data-do="draw"' + (offer === ctx.seat ? ' disabled' : '') + '>'
         + (offer === ctx.seat ? 'Нічию запропоновано' : 'Нічия?') + '</button>'
         // Здатись з одного кліку — надто легко втратити партію мізинцем: питаємо ще раз.
-        + '<button type="button" class="ghost danger" data-do="' + (st.resign ? 'resign' : 'ask') + '">'
-        + (st.resign ? 'Точно здатись?' : 'Здатись') + '</button>';
+        + '<button type="button" class="ghost danger" data-do="' + (armed ? 'resign' : 'ask') + '">'
+        + (armed ? 'Точно здатись?' : 'Здатись') + '</button>';
     }
     setHtml(el, html);
     el.querySelectorAll('button').forEach((b) => b.onclick = () => {
-      if (b.dataset.do === 'ask') { st.resign = true; paint(root, ctx); return; }
-      st.resign = false;
+      if (b.dataset.do === 'ask') { st.resign = fen; paint(root, ctx); return; }
+      st.resign = null;
       ctx.act(b.dataset.do);
     });
   }

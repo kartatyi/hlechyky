@@ -280,7 +280,9 @@ public sealed class Chess : Game
         toMove = _core.WhiteToMove ? "w" : "b",
         legal = Wire(),
         lastMove = _last is { } l ? (object?)new { from = ChessCore.Name(l.From), to = ChessCore.Name(l.To) } : null,
-        check = _result is null && _core.InCheck(),
+        // Шах лишається шахом і після кінця партії: саме на матовій позиції червоне поле короля
+        // найпотрібніше — інакше мат виглядає як звичайний хід. Ходити все одно нема чим: legal порожній.
+        check = _core.InCheck(),
         // «w» — те, що збили білі (а це чорні фігури), «b» — навпаки: рядок малюють біля того, хто взяв.
         captured = new { w = _lostBlack.ToString(), b = _lostWhite.ToString() },
         moves = _sans.ToArray(),
