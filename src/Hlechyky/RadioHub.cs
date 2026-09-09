@@ -6,15 +6,11 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, DjBrain brain) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
     static readonly ConcurrentDictionary<string, DateTime> LastCommand = new();
-
-    /// <summary>Скільки дій і скільки реалтайм-вводу можна на секунду з одного з'єднання (ARCHITECTURE §9).</summary>
-    const int ActsPerSecond = 10, InputsPerSecond = 30;
-    static readonly ConcurrentDictionary<string, (long Second, int Acts, int Inputs)> Rates = new();
 
     public override async Task OnConnectedAsync()
     {
@@ -22,7 +18,11 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         presence.Set(Context.ConnectionId, nick);
         rooms.NoteOnline(nick);
         await Clients.Caller.SendAsync("chatHistory", db.RecentChat(100, 120));
-        await Clients.Caller.SendAsync("rooms", rooms.Snapshot());
+        // Лобі не має ціни підключення: якщо знімок чомусь не склався, людина все одно заходить слухати.
+        List<RoomSummary> lobby;
+        try { lobby = rooms.Snapshot(); }
+        catch (Exception) { lobby = []; }
+        await Clients.Caller.SendAsync("rooms", lobby);
         await Clients.All.SendAsync("state", engine.Snapshot());
     }
 
@@ -31,7 +31,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         var gone = presence.Get(Context.ConnectionId);
         presence.Remove(Context.ConnectionId);
         rooms.DropWatcher(Context.ConnectionId);
-        Rates.TryRemove(Context.ConnectionId, out _);
+        rates.Forget(Context.ConnectionId);
         // Місце тримається ще grace-час: F5 і провал зв'язку в метро не мають коштувати партії.
         if (gone is not null && !presence.IsOnline(gone)) rooms.NoteOffline(gone, clock.UtcNow);
         await Clients.All.SendAsync("state", engine.Snapshot());
@@ -83,8 +83,12 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
 
     // ---------- ігри (PROTOCOL §1) ----------
 
-    public Task<RoomReply> CreateRoom(string gameId, Dictionary<string, string>? options) =>
-        Act(() => rooms.Create(Nick(), gameId ?? "", options));
+    /// <summary>
+    /// Опції приходять сирим JSON: PROTOCOL §1 обіцяє <c>stake</c> числом, а <c>Dictionary&lt;string, string&gt;</c>
+    /// на <c>{"stake": 5}</c> просто впав би при прив'язці аргументів.
+    /// </summary>
+    public Task<RoomReply> CreateRoom(string gameId, Dictionary<string, JsonElement>? options) =>
+        Act(() => rooms.Create(Nick(), gameId ?? "", RoomOptions.From(options)));
 
     public async Task<RoomReply> OpenSolo(string gameId, string? key)
     {
@@ -115,6 +119,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     /// <summary>Види й кадри летять лише тим, хто на цю кімнату дивиться.</summary>
     public async Task WatchRoom(string roomId)
     {
+        if (!Allow(input: true)) return;   // підписка теж коштує розсилки, тож і вона під квотою
         var id = roomId ?? "";
         var outbox = rooms.Watch(id, Context.ConnectionId, Nick());
         if (outbox.Count == 0) return;   // кімнати нема або вона чужа приватна — мовчки нічого
@@ -124,6 +129,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
 
     public async Task UnwatchRoom(string roomId)
     {
+        if (!Allow(input: true)) return;
         rooms.Unwatch(roomId ?? "", Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(roomId ?? ""));
     }
@@ -136,22 +142,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         return outcome.Reply;
     }
 
-    /// <summary>Проста квота на секунду з одного з'єднання: десять дій, тридцять вводів.</summary>
-    bool Allow(bool input)
-    {
-        var second = clock.UtcNow.ToUnixTimeSeconds();
-        var allowed = true;
-        Rates.AddOrUpdate(Context.ConnectionId,
-            _ => (second, input ? 0 : 1, input ? 1 : 0),
-            (_, old) =>
-            {
-                if (old.Second != second) return (second, input ? 0 : 1, input ? 1 : 0);
-                if (input && old.Inputs >= InputsPerSecond) { allowed = false; return old; }
-                if (!input && old.Acts >= ActsPerSecond) { allowed = false; return old; }
-                return (second, old.Acts + (input ? 0 : 1), old.Inputs + (input ? 1 : 0));
-            });
-        return allowed;
-    }
+    /// <summary>Квота на секунду з одного з'єднання: десять дій, тридцять вводів (див. <see cref="RateGate"/>).</summary>
+    bool Allow(bool input) => rates.Allow(Context.ConnectionId, input, clock.UtcNow.ToUnixTimeSeconds());
 
     string Nick() => presence.Get(Context.ConnectionId) ?? "гість";
 }

@@ -74,6 +74,8 @@ public sealed class Room
     public DateTimeOffset LastActivity { get; set; }
     /// <summary>З кого цього раунду списано ставку — щоб виплата й повернення знали, кому й скільки.</summary>
     public List<string> Charged { get; } = [];
+    /// <summary>Склад, про який востаннє написали в Журнал «сіли грати». null — ще не писали жодного разу.</summary>
+    public string?[]? LoggedSeats { get; set; }
 
     public int? SeatOf(string? nick)
     {
@@ -92,6 +94,16 @@ public sealed class Room
     /// <summary>Перше вільне місце або -1.</summary>
     public int FreeSeat => Array.FindIndex(Seats, s => s is null);
 
+    /// <summary>
+    /// Назва місця від гри, але так, щоб крива гра не завалила лобі: одна помилка в одному з двадцяти
+    /// класів не має коштувати сайту ні знімка кімнат, ні розсилки (тому ж — SafeView у Rooms).
+    /// </summary>
+    public string SafeSeatName(int seat)
+    {
+        try { return Game.SeatName(seat); }
+        catch { return seat == 0 ? "перший" : seat == 1 ? "другий" : $"гравець {seat + 1}"; }
+    }
+
     /// <summary>Шапка кімнати для дроту. Кличеться під <see cref="Sync"/>.</summary>
     public RoomSummary Summary()
     {
@@ -100,7 +112,7 @@ public sealed class Room
         for (var i = 0; i < Seats.Length; i++)
         {
             slots[i] = new SeatSlot(i, Seats[i]);
-            names[i] = Game.SeatName(i);
+            names[i] = SafeSeatName(i);
         }
         return new RoomSummary(
             Id, Info.Id, Status.ToString().ToLowerInvariant(), slots, names, Host,

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Hlechyky.Games;
 using Hlechyky.Tests.Support;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Hlechyky.Tests.Platform;
 
@@ -136,8 +137,44 @@ public class BroadcasterTests
     [Fact]
     public void Posted_messages_from_services_are_not_lost()
     {
-        var outbox = new FakeOutbox();
-        outbox.Post(new WalletChanged("Оля", 1, 1, "listen", "за слухання"));
-        Assert.Single(outbox.Posted);
+        // Перевіряємо саме чергу Broadcaster'а, тому решта залежностей йому тут і не потрібна.
+        var b = new Broadcaster(null!, null!, null!, null!, null!, null!, NullLogger<Broadcaster>.Instance);
+        b.Post(new WalletChanged("Оля", 1, 1, "listen", "за слухання"));
+        b.Post(new LobbyChanged());
+
+        var alone = b.Drain([]);                       // своїх повідомлень нема, а чергу однаково злито
+        Assert.Equal(2, alone.Count);
+        Assert.Empty(b.Drain([]));                     // двічі та сама пачка не летить
+
+        b.Post(new LobbyChanged());
+        var mixed = b.Drain([new Journal("рядок")]);
+        Assert.Equal(2, mixed.Count);
+        Assert.IsType<Journal>(mixed[0]);              // своє йде першим, черга сервісів — слідом
+    }
+
+    [Fact]
+    public void A_failing_chat_write_costs_only_its_own_line()
+    {
+        var h = new RoomHarness("ttt");
+        h.Join("Оля");
+        var sends = Broadcaster.Plan(
+            [new Journal("рядок"), new LobbyChanged(), new RoomViews(h.RoomId)],
+            h.Rooms.Snapshot, h.Rooms.ViewsFor, _ => null, _ => [],
+            _ => throw new InvalidOperationException("база зайнята"));
+
+        Assert.DoesNotContain(sends, s => s.Event == "chat");
+        Assert.Single(sends, s => s.Event == "rooms");   // решта пачки летить як летіла
+        Assert.Single(sends, s => s.Event == "room");
+    }
+
+    [Fact]
+    public void A_broken_game_does_not_swallow_the_whole_batch()
+    {
+        var h = new RoomHarness("t-badseat");
+        h.Join("Оля");
+        var sends = Plan(h, [new LobbyChanged(), new RoomViews(h.RoomId), new Journal("рядок")]);
+
+        Assert.Single(sends, s => s.Event == "rooms");
+        Assert.Single(sends, s => s.Event == "chat");
     }
 }

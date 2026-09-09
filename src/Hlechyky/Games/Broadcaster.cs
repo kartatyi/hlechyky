@@ -44,9 +44,12 @@ public sealed class Broadcaster(
     /// <summary>Розіслати. Разом із чергою від сервісів, щоб нічого не зависало до наступного тика.</summary>
     public async Task FlushAsync(IEnumerable<Outgoing> messages, CancellationToken ct = default)
     {
-        var all = new List<Outgoing>(messages);
-        while (_posted.TryDequeue(out var extra)) all.Add(extra);
+        var all = Drain(messages);
         if (all.Count == 0) return;
+
+        // Дедлайн на всю пачку: один клієнт із забитим каналом (телефон у ліфті) не має тримати цикл тика.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(2));
 
         List<Send> sends;
         try
@@ -62,8 +65,9 @@ public sealed class Broadcaster(
 
         foreach (var send in sends)
         {
-            try { await Dispatch(send, ct); }
-            catch (OperationCanceledException) { return; }
+            try { await Dispatch(send, deadline.Token); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+            catch (OperationCanceledException) { log.LogWarning("розсилка {Event} не вклалась у дедлайн", send.Event); }
             catch (Exception ex) { log.LogWarning(ex, "не відправилось {Event}", send.Event); }
         }
 
@@ -72,6 +76,17 @@ public sealed class Broadcaster(
             try { await engine.SayAsync(say.Text); }
             catch (Exception ex) { log.LogWarning(ex, "Глек не сказав своє слово"); }
         }
+    }
+
+    /// <summary>
+    /// Пачка на відправку: те, що дала дія, плюс усе, що сервіси (WP1) поклали через <see cref="Post"/> з
+    /// інших потоків. Черга спорожняється навіть тоді, коли своїх повідомлень нема.
+    /// </summary>
+    public List<Outgoing> Drain(IEnumerable<Outgoing> messages)
+    {
+        var all = new List<Outgoing>(messages);
+        while (_posted.TryDequeue(out var extra)) all.Add(extra);
+        return all;
     }
 
     Task Dispatch(Send send, CancellationToken ct) => send.Target switch
@@ -115,7 +130,10 @@ public sealed class Broadcaster(
                     sends.Add(new Send(new ToGroup(RoomGroup(frame.RoomId)), "frame", new { id = frame.RoomId, f = frame.Frame }));
                     break;
                 case Journal line:
-                    sends.Add(new Send(new ToAll(), "chat", journal(line.Text)));
+                    // Рядок Журналу дорогою в чат заходить у SQLite. Впала база — це біда одного рядка,
+                    // а не всієї пачки: види, кадри й лобі мають полетіти однаково.
+                    try { sends.Add(new Send(new ToAll(), "chat", journal(line.Text))); }
+                    catch (Exception) { }
                     break;
                 case WalletChanged w:
                     sends.Add(new Send(new ToConnections(connectionsOf(w.Nick)), "wallet",

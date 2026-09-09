@@ -102,7 +102,7 @@ public sealed class TestTicker : Game
     int _boom;
 
     public override GameInfo Info { get; } = new(
-        "t-tick", "Тестовий тик", "тестовий тик", GameGroup.Live, 2, 2, TickMs: 100,
+        "t-tick", "Тестовий тик", "тестовий тик", GameGroup.Live, 2, 2, TickMs: 100, Rated: true,
         Options: [new GameOption("boom", "На якому тику вибухнути", [], "0")]);
 
     public int Ticks { get; private set; }
@@ -151,6 +151,35 @@ public sealed class TestDuel : Game
                 return ActResult.Fail("Тут так не ходять");
         }
     }
+
+    public override object View(int? seat) => new { turn = 0 };
+}
+
+/// <summary>Гра з типовою помилкою автора: масив назв коротший за кількість місць. Лобі має вижити.</summary>
+public sealed class TestBadSeats : Game
+{
+    static readonly string[] Names = ["єдина"];
+
+    public override GameInfo Info { get; } = new(
+        "t-badseat", "Тестова крива", "тестову криву", GameGroup.Board, 2, 2);
+
+    public override string SeatName(int seat) => Names[seat];
+
+    public override void Start() { }
+
+    public override object View(int? seat) => new { turn = 0 };
+}
+
+/// <summary>Гра, яка падає в Configure(): гравець має побачити український текст, а не виняток сервера.</summary>
+public sealed class TestBadConfigure : Game
+{
+    public override GameInfo Info { get; } = new(
+        "t-badconfig", "Тестова ламана", "тестову ламану", GameGroup.Board, 2, 2);
+
+    public override void Configure(IReadOnlyDictionary<string, string> options) =>
+        throw new InvalidOperationException("ключ бази даних не знайдено");
+
+    public override void Start() { }
 
     public override object View(int? seat) => new { turn = 0 };
 }

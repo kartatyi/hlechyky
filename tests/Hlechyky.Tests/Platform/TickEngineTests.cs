@@ -98,6 +98,27 @@ public class TickEngineTests
     }
 
     [Fact]
+    public void Deferred_work_of_a_broken_tick_runs_outside_the_room_lock()
+    {
+        var clock = new FakeClock();
+        var stakes = new FakeStakes().Set("Оля", 10).Set("Петро", 10);
+        var rooms = new Rooms(RoomHarness.NewRegistry(), clock, new GameEvents(), stakes, new FakeStore(),
+            RoomHarness.Empty()) { SeedOverride = 3 };
+        var id = Playing(rooms, options: new Dictionary<string, string> { ["boom"] = "2", ["stake"] = "5" });
+        var room = rooms.Find(id)!;
+        Assert.Equal(5, room.Stake);
+
+        var underLock = false;
+        stakes.OnGrant = () => underLock |= Monitor.IsEntered(room.Sync);
+        Run(rooms, clock, 20);
+
+        Assert.Equal(RoomStatus.Finished, room.Status);
+        Assert.True(room.Result!.Draw);
+        Assert.Equal(10, stakes.Balance("Оля"));            // ставку повернули
+        Assert.False(underLock, "виплату зробили, не відпустивши замка кімнати");
+    }
+
+    [Fact]
     public void Tick_result_decides_what_goes_on_the_wire()
     {
         var clock = new FakeClock();

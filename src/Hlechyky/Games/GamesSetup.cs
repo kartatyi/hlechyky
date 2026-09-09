@@ -17,6 +17,7 @@ public static class GamesSetup
         services.AddSingleton(sp => new Registry(sp.GetService<ILogger<Registry>>()));
         services.AddSingleton<Rooms>();
         services.AddSingleton<Broadcaster>();
+        services.AddSingleton<RateGate>();
         services.AddSingleton<IOutbox>(sp => sp.GetRequiredService<Broadcaster>());
         // Заглушки, щоб сервер піднімався без економіки. AddHlechykyGames кличеться раніше за
         // AddHlechykyEconomy, тому TryAdd тут завжди виграє — справжні реалізації WP1 ставить через

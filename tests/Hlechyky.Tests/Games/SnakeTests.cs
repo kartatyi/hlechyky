@@ -29,6 +29,19 @@ public class SnakeTests
     // ---------- кімната ----------
 
     [Fact]
+    public void A_table_waiting_for_a_rival_already_looks_like_a_field()
+    {
+        var h = new RoomHarness("snake");
+        h.Join("Оля");                                  // другого ще нема, партія не почалась
+
+        var v = h.View(null);
+        Assert.Equal(RoomStatus.Lobby, h.Room.Status);
+        Assert.Equal(3, v.GetProperty("a").GetArrayLength());
+        Assert.Equal(3, v.GetProperty("b").GetArrayLength());
+        Assert.NotEqual(-1, v.GetProperty("apple").GetInt32());
+    }
+
+    [Fact]
     public void Countdown_runs_before_anyone_moves()
     {
         var h = Table();

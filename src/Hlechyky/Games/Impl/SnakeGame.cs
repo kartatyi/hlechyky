@@ -137,7 +137,17 @@ public sealed class SnakeGame : Game
     /// <summary>«x», «o», «draw» або null — те саме, що бачив старий фронт.</summary>
     string? _winner;
 
-    SnakeCore Core => _core ??= new SnakeCore(Ctx.Rng);
+    /// <summary>Ядро готове ще до старту: стіл, що чекає на суперника, має виглядати як поле, а не як порожнеча.</summary>
+    SnakeCore Core
+    {
+        get
+        {
+            if (_core is not null) return _core;
+            _core = new SnakeCore(Ctx.Rng);
+            _core.Reset();
+            return _core;
+        }
+    }
 
     public override string SeatName(int seat) => seat == 0 ? "жовта" : "зелена";
 

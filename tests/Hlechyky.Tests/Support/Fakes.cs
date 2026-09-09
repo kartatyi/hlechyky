@@ -14,6 +14,9 @@ public sealed class FakeStakes : IStakes
     /// <summary>Усе, що каркас попросив: «spend:Оля:5:stake:room:1:оля», «grant:Оля:10:stake-win:…».</summary>
     public List<string> Calls { get; } = [];
 
+    /// <summary>Кличеться на кожній виплаті — щоб тест побачив, у якому оточенні каркас її робить.</summary>
+    public Action? OnGrant { get; set; }
+
     public FakeStakes Set(string nick, int balance)
     {
         _balances[nick] = balance;
@@ -33,6 +36,7 @@ public sealed class FakeStakes : IStakes
 
     public void Grant(string nick, int amount, string reason, string refKey)
     {
+        OnGrant?.Invoke();
         if (!_refs.Add(refKey)) return;
         _balances[nick] = Balance(nick) + amount;
         Calls.Add($"grant:{nick}:{amount}:{refKey}");

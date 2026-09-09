@@ -12,6 +12,29 @@ public sealed record RoomReply(bool Ok, string Message = "", string? RoomId = nu
 }
 
 /// <summary>
+/// Опції кімнати так, як вони приходять з браузера. PROTOCOL §1 обіцяє, що <c>stake</c> — число, а решта
+/// опцій — рядки, тож приймати треба сирий JSON: <c>{"stake": 5}</c> у <c>Dictionary&lt;string, string&gt;</c>
+/// не поклався б узагалі (System.Text.Json кидає на число в рядковому полі).
+/// </summary>
+public static class RoomOptions
+{
+    /// <summary>Зводить будь-яке значення до рядка: рядок лишається собою, число й решта — своїм текстом.</summary>
+    public static Dictionary<string, string>? From(IReadOnlyDictionary<string, JsonElement>? raw)
+    {
+        if (raw is null) return null;
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in raw)
+            result[key] = value.ValueKind switch
+            {
+                JsonValueKind.String => value.GetString() ?? "",
+                JsonValueKind.Null or JsonValueKind.Undefined => "",
+                _ => value.GetRawText(),
+            };
+        return result;
+    }
+}
+
+/// <summary>
 /// Що розіслати після дії. Крім самих повідомлень тримає роботу, яку не можна робити під замком кімнати
 /// (SQLite економіки, події сервісів): Rooms виконує її сама, щойно замок відпущено.
 /// </summary>
@@ -148,7 +171,10 @@ public sealed class Rooms
         foreach (var room in rooms)
         {
             if (room.Info.Private) continue;
-            lock (room.Sync) list.Add(room.Summary());
+            // Крива гра не має коштувати нам усього лобі: без цього виняток із Game.SeatName вилетів би
+            // аж в OnConnectedAsync, і до сайту не підключився б ніхто.
+            try { lock (room.Sync) list.Add(room.Summary()); }
+            catch (Exception ex) { _log.LogWarning(ex, "кімната {Room} не змогла показатись у лобі", room.Id); }
         }
         return list;
     }
@@ -175,31 +201,42 @@ public sealed class Rooms
         if (info.Solo) return OpenSolo(nick, gameId, null);
 
         var stake = ReadStake(info, options);
+        if (stake > 0 && _stakes.Balance(nick) < stake) return RoomOutcome.Fail(Say.NoShards);
+
+        // Гру будуємо до замка: Configure() — чужий код, під спільним замком йому не місце.
+        Room room;
+        try { room = Build(info, gameId, options, stake, null); }
+        catch (GameError ex) { return RoomOutcome.Fail(ex.Message); }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "гра {Game} не змогла налаштуватись", gameId);
+            return RoomOutcome.Fail(Say.NoGame);
+        }
+
+        room.Seats[0] = nick;
+        room.Host = nick;
+        // Перевірка й додавання — однією секцією: інакше дві вкладки одного ніка створять два столи,
+        // а дванадцятеро одночасних творців проб'ють MaxRooms.
         lock (_lock)
         {
             if (_rooms.Any(r => !r.Info.Solo && r.Has(nick))) return RoomOutcome.Fail(Say.Seated);
             if (_rooms.Count(r => !r.Info.Solo) >= MaxRooms) return RoomOutcome.Fail(Say.TooMany);
+            _rooms.Add(room);
         }
-        if (stake > 0 && _stakes.Balance(nick) < stake) return RoomOutcome.Fail(Say.NoShards);
-
-        Room room;
-        try { room = Build(info, gameId, options, stake, null); }
-        catch (GameError ex) { return RoomOutcome.Fail(ex.Message); }
-
-        room.Seats[0] = nick;
-        room.Host = nick;
-        lock (_lock) _rooms.Add(room);
 
         var outbox = new Outbox();
         var reply = new RoomReply(true, "Стіл готовий. Треба ще одного гравця", room.Id);
+        string? failed = null;
         lock (room.Sync)
         {
             if (info.Start == StartMode.Immediate || room.Full)
             {
-                if (StartRound(room, outbox) is { } no) { Drop(room); return new RoomOutcome(outbox, RoomReply.Fail(no)); }
-                reply = new RoomReply(true, "", room.Id);
+                failed = StartRound(room, outbox);
+                if (failed is null) reply = new RoomReply(true, "", room.Id);
             }
         }
+        // Drop бере спільний замок, тому робиться поза замком кімнати: один напрямок вкладення на весь файл.
+        if (failed is not null) { Drop(room); return new RoomOutcome(outbox, RoomReply.Fail(failed)); }
         if (!info.Private) outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
@@ -216,39 +253,56 @@ public sealed class Rooms
         if (_registry.Info(gameId) is not { } info) return RoomOutcome.Fail(Say.NoGame);
         if (!info.Solo) return Create(nick, gameId, null);
 
-        var game = _registry.Create(gameId)!;
-        var wanted = string.IsNullOrWhiteSpace(key) ? game.SoloKey(NickKey(nick), _clock) : key!;
-
-        lock (_lock)
+        Game game;
+        string wanted;
+        try
         {
-            var mine = _rooms.FirstOrDefault(r => r.Info.Solo && r.Key == wanted && r.Has(nick));
-            if (mine is not null)
-            {
-                var back = new Outbox();
-                back.Add(new RoomViews(mine.Id));
-                lock (mine.Sync) mine.LastActivity = _clock.UtcNow;
-                return new RoomOutcome(back, new RoomReply(true, "", mine.Id));
-            }
+            game = _registry.Create(gameId)!;
+            wanted = string.IsNullOrWhiteSpace(key) ? game.SoloKey(NickKey(nick), _clock) : key!;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "соло-гра {Game} не змогла назвати свій ключ", gameId);
+            return RoomOutcome.Fail(Say.NoGame);
+        }
+
+        Room? mine;
+        lock (_lock) mine = _rooms.FirstOrDefault(r => r.Info.Solo && r.Key == wanted && r.Has(nick));
+        if (mine is not null)
+        {
+            // Замок кімнати беремо вже поза спільним: _lock → room.Sync тут був би зворотним боком
+            // вкладення, яке є в Create, тобто готовим дедлоком.
+            lock (mine.Sync) mine.LastActivity = _clock.UtcNow;
+            var back = new Outbox();
+            back.Add(new RoomViews(mine.Id));
+            return new RoomOutcome(back, new RoomReply(true, "", mine.Id));
         }
 
         Room room;
         try { room = Build(info, gameId, null, 0, wanted, game); }
         catch (GameError ex) { return RoomOutcome.Fail(ex.Message); }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "гра {Game} не змогла налаштуватись", gameId);
+            return RoomOutcome.Fail(Say.NoGame);
+        }
         room.Seats[0] = nick;
         room.Host = nick;
         lock (_lock) _rooms.Add(room);
 
         var outbox = new Outbox();
+        string? failed;
         lock (room.Sync)
         {
-            if (StartRound(room, outbox) is { } no) { Drop(room); return new RoomOutcome(outbox, RoomReply.Fail(no)); }
+            failed = StartRound(room, outbox);
             // Persistent-гра могла лишити стан із минулого разу — тоді чиста партія одразу поверх нього.
-            if (info.Persistent && _store.LoadState(wanted) is { Length: > 0 } saved)
+            if (failed is null && info.Persistent && _store.LoadState(wanted) is { Length: > 0 } saved)
             {
                 try { room.Game.Load(saved); }
                 catch (Exception ex) { _log.LogWarning(ex, "не вдалось відновити стан {Key}, граємо з чистого", wanted); }
             }
         }
+        if (failed is not null) { Drop(room); return new RoomOutcome(outbox, RoomReply.Fail(failed)); }
         if (!info.Private) outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
@@ -318,24 +372,29 @@ public sealed class Rooms
         {
             if (room.Has(nick)) return RoomOutcome.Fail(Say.Already);
             // Хтось дограв і пішов, а стіл лишився: новий гравець відкриває кімнату наново, як було зі столами.
-            if (room.Status == RoomStatus.Finished && room.FreeSeat >= 0)
+            // Спершу — ВСІ перевірки: невдалий вхід не має псувати чужу дограну партію (результат зникав би
+            // з картки, а «Ще раз» переможцеві вже не натиснути).
+            var reopen = room.Status == RoomStatus.Finished && room.FreeSeat >= 0;
+            if (room.Status != RoomStatus.Lobby && !reopen) return RoomOutcome.Fail(Say.NoSeats);
+            var seat = room.FreeSeat;
+            if (seat < 0) return RoomOutcome.Fail(Say.NoSeats);
+            if (room.Stake > 0 && _stakes.Balance(nick) < room.Stake) return RoomOutcome.Fail(Say.NoShards);
+
+            var was = (room.Status, room.Result, room.FinishedAt, room.Round);
+            if (reopen)
             {
                 room.Status = RoomStatus.Lobby;
                 room.Result = null;
                 room.FinishedAt = null;
                 room.Round++;   // щоб ключі ставок наступної партії не збіглися з минулою
             }
-            if (room.Status != RoomStatus.Lobby) return RoomOutcome.Fail(Say.NoSeats);
-            var seat = room.FreeSeat;
-            if (seat < 0) return RoomOutcome.Fail(Say.NoSeats);
-            if (room.Stake > 0 && _stakes.Balance(nick) < room.Stake) return RoomOutcome.Fail(Say.NoShards);
-
             room.Seats[seat] = nick;
             room.LastActivity = _clock.UtcNow;
-            reply = new RoomReply(true, $"Сів за {room.Game.SeatName(seat)}", room.Id);
+            reply = new RoomReply(true, $"Сів за {room.SafeSeatName(seat)}", room.Id);
             if (room.Info.Start == StartMode.WhenFull && room.Full && StartRound(room, outbox) is { } no)
             {
                 room.Seats[seat] = null;
+                (room.Status, room.Result, room.FinishedAt, room.Round) = was;
                 return new RoomOutcome(outbox, RoomReply.Fail(no));
             }
         }
@@ -367,7 +426,9 @@ public sealed class Rooms
         room.LastActivity = _clock.UtcNow;
         // Місце звільняємо після OnLeave: типовий OnLeave пише в Журнал ім'я того, хто пішов, і рахує решту
         // сам (за «s != seat»), а RoomFinishedEvent має бачити повний склад — інакше рейтинг не знатиме, хто програв.
-        if (room.Status == RoomStatus.Playing)
+        // Соло — приватна головоломка: закрив вкладку з клікером — це не «встав з-за столу», і в спільні
+        // Балачки про це писати нема чого (та й RoomFinishedEvent рейтингам тут ні до чого).
+        if (room.Status == RoomStatus.Playing && !room.Info.Solo)
         {
             var ctx = (RoomContext)room.Game.Ctx;
             using (ctx.Collect(outbox))
@@ -383,7 +444,7 @@ public sealed class Rooms
         room.Seats[seat] = null;
         if (string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase))
             room.Host = room.Seats.FirstOrDefault(s => s is not null) ?? room.Host;
-        outbox.Add(new LobbyChanged());
+        if (!room.Info.Private) outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));
     }
 
@@ -392,7 +453,7 @@ public sealed class Rooms
     {
         if (room.Occupied > 0) return;
         Drop(room);
-        outbox.Add(new LobbyChanged());
+        if (!room.Info.Private) outbox.Add(new LobbyChanged());
     }
 
     void Drop(Room room)
@@ -485,9 +546,23 @@ public sealed class Rooms
             }
         }
 
-        if (!room.Info.Solo && room.Round == 1)
+        // Журнал пишемо на кожен НОВИЙ склад, а не лише в першому раунді: «Ще раз» тими самими двома
+        // (Rematch обертає місця) мовчить, а пара, що зібралась за тим самим столом наново, — оголошується.
+        if (!room.Info.Solo && !SameCrew(room.LoggedSeats, room.Seats))
+        {
+            room.LoggedSeats = (string?[])room.Seats.Clone();
             outbox.Add(new Journal($"{Nicks(room)} сіли грати в {room.Info.Accusative}"));
+        }
         return null;
+    }
+
+    /// <summary>Той самий склад за столом; порядок місць не рахується, бо «Ще раз» їх обертає.</summary>
+    static bool SameCrew(string?[]? was, string?[] now)
+    {
+        if (was is null) return false;
+        var a = was.Where(s => s is not null).Select(s => NickKey(s!)).Order(StringComparer.Ordinal).ToList();
+        var b = now.Where(s => s is not null).Select(s => NickKey(s!)).Order(StringComparer.Ordinal).ToList();
+        return a.SequenceEqual(b, StringComparer.Ordinal);
     }
 
     static string Nicks(Room room)
@@ -520,7 +595,10 @@ public sealed class Rooms
 
             var ctx = (RoomContext)room.Game.Ctx;
             var before = room.Status;
-            room.Moves++;   // хід рахуємо на вході, щоб Finish усередині Act бачив уже правильне число
+            // Реалтайм ходів не має: RoomFinishedEvent.Moves для нього — 0 (так каже Contracts.cs), а види
+            // після кожного повороту слати нема сенсу — кадри й так летять із тика.
+            var counts = !room.Info.RealTime;
+            if (counts) room.Moves++;   // хід рахуємо на вході, щоб Finish усередині Act бачив уже правильне число
             using (ctx.Collect(outbox))
             {
                 try { result = room.Game.Act(seat, action ?? "", payload); }
@@ -536,10 +614,10 @@ public sealed class Rooms
             {
                 room.LastActivity = _clock.UtcNow;
                 Persist(room, outbox);
-                outbox.Add(new RoomViews(room.Id));
+                if (counts) outbox.Add(new RoomViews(room.Id));
                 if (room.Status != before) outbox.Add(new LobbyChanged());
             }
-            else if (room.Status == before)
+            else if (counts && room.Status == before)
             {
                 room.Moves--;   // нелегальний хід ходом не був
             }
@@ -591,7 +669,9 @@ public sealed class Rooms
         var outbox = new Outbox();
         if (Find(id) is not { } room) return outbox;
         if (room.Info.Private && !string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase)) return outbox;
-        room.Watchers[connId] = 0;
+        // Повторний Watch тим самим з'єднанням — то вже підписаний: інакше клієнт у циклі множив би
+        // розсилку на всіх глядачів кімнати в обхід квот хаба.
+        if (!room.Watchers.TryAdd(connId, 0)) return outbox;
         outbox.Add(new RoomViews(room.Id));
         return outbox;
     }
@@ -613,17 +693,26 @@ public sealed class Rooms
     public RoomBroadcast? ViewsFor(string roomId)
     {
         if (Find(roomId) is not { } room) return null;
-        lock (room.Sync)
+        try
         {
-            var seatViews = new Dictionary<int, object?>();
-            for (var i = 0; i < room.Seats.Length; i++)
+            lock (room.Sync)
             {
-                if (room.Seats[i] is null) continue;
-                seatViews[i] = SafeView(room, i);
+                var seatViews = new Dictionary<int, object?>();
+                for (var i = 0; i < room.Seats.Length; i++)
+                {
+                    if (room.Seats[i] is null) continue;
+                    seatViews[i] = SafeView(room, i);
+                }
+                return new RoomBroadcast(
+                    room.Id, room.Summary(), room.Info.Hidden, (string?[])room.Seats.Clone(),
+                    seatViews, SafeView(room, null), [.. room.Watchers.Keys]);
             }
-            return new RoomBroadcast(
-                room.Id, room.Summary(), room.Info.Hidden, (string?[])room.Seats.Clone(),
-                seatViews, SafeView(room, null), [.. room.Watchers.Keys]);
+        }
+        catch (Exception ex)
+        {
+            // Пачку розсилки псувати не можна: одна крива кімната мовчки з'їдала б види й кадри всіх інших.
+            _log.LogWarning(ex, "не вдалось скласти розкладку кімнати {Room}", room.Id);
+            return null;
         }
     }
 
@@ -685,6 +774,9 @@ public sealed class Rooms
         if (!Named(nick)) return outbox;
         foreach (var room in Live())
         {
+            // Соло-кімната переживає зникнення вкладки: її прибирає Housekeeping за SoloLife, а стан
+            // Persistent-гри вже збережено. Інакше приватна головоломка гинула б через 20 с.
+            if (room.Info.Solo) continue;
             lock (room.Sync)
             {
                 if (room.SeatOf(nick) is not { } seat) continue;
@@ -729,10 +821,11 @@ public sealed class Rooms
                 try { result = room.Game.Tick(); }
                 catch (Exception ex)
                 {
+                    // Виходити звідси не можна: у _after уже лежать виплати, SaveState і подія для WP1,
+                    // а їх ми обіцяли виконувати поза замком кімнати.
                     _log.LogWarning(ex, "тик впав у кімнаті {Room}", room.Id);
                     ctx.Finish([], $"{room.Info.Title}: {Say.Broken}");
-                    outbox.RunAfter(_log);
-                    return outbox;
+                    result = TickResult.None;
                 }
             }
             if (result.Frame && SafeFrame(room) is { } frame) outbox.Add(new RoomFrame(room.Id, frame));
@@ -765,7 +858,7 @@ public sealed class Rooms
             {
                 drop =
                     room.Occupied == 0
-                    || (room.Status == RoomStatus.Lobby && room.Occupied < room.Info.MinPlayers && now - room.CreatedAt > LobbyLife)
+                    || (room.Status == RoomStatus.Lobby && room.Occupied < room.Info.MinPlayers && now - room.LastActivity > LobbyLife)
                     || (room.Status == RoomStatus.Finished && room.FinishedAt is { } at && now - at > FinishedLife)
                     || (room.Info.Solo && room.Watchers.IsEmpty && now - room.LastActivity > SoloLife);
             }
