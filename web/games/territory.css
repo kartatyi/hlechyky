@@ -1,0 +1,38 @@
+/* Земля: четвертий колір наділу і смуга площ. Решта — з core.css. */
+:root {
+  /* У теми сайту три акценти; на чотирьох гравців потрібен ще один, і він має читатись на темному полі */
+  --gterr4: #6aa9e9;
+}
+
+/* Поле 40×30 — воно варте кількох зайвих пікселів проти типових 416 у core.css */
+.gcanvas.territoryboard { max-width: 520px; }
+
+.gterr {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.gterr-p {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.gterr-p i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+/* Згорів — рядок пригасає, але з поля не зникає: за три секунди він повернеться */
+.gterr-p.out { opacity: .45; }
+.gterr-p.out b { text-decoration: line-through; }
+
+@media (max-width: 420px) {
+  .gterr { gap: 4px 10px; font-size: .88em; }
+}
