@@ -170,7 +170,9 @@ public sealed class PongCore(Random rng)
         // Де саме м'яч перетнув площину ракетки — там і вирішується, куди він полетить.
         var dx = Bx - x0;
         var k = Math.Abs(dx) < 1e-9 ? 0 : (plane - x0) / dx;
-        var y = y0 + (By - y0) * k;
+        // Стіни рахуємо вже після ракетки, тож пряма з y0 у By могла за той самий тик вилізти за поле:
+        // м'яч, що відскочив від стелі просто в ракетку, інакше «промазував» би повз неї — і в гол.
+        var y = Fold(y0 + (By - y0) * k);
         var off = y - P[seat];
         if (Math.Abs(off) > PaddleH / 2 + BallR) return;   // повз ракетку — це вже гол, не відбій
 
@@ -184,6 +186,13 @@ public sealed class PongCore(Random rng)
         Bx = plane + away * Math.Abs(Bx - plane);
         By = y;
     }
+
+    /// <summary>
+    /// Скласти точку назад у поле: за тик м'яч долає щонайбільше 5.6 одиниці по y, тож одного дзеркала
+    /// досить, а спрацьовує воно лише тоді, коли стіна трапилась раніше за площину ракетки.
+    /// </summary>
+    static double Fold(double y) =>
+        y < BallR ? 2 * BallR - y : y > H - BallR ? 2 * (H - BallR) - y : y;
 
     /// <summary>М'яч у центр і без руху: далі його підніме Launch, коли добіжить відлік.</summary>
     void Center()
@@ -217,8 +226,10 @@ public sealed class Pong : Game
         Hint: "Дві ракетки, м'ячик. До семи. Стрілки ↑↓ або W/S, на телефоні — тягни пальцем");
 
     PongCore? _core;
-    /// <summary>Місце переможця; null — ще граємо.</summary>
+    /// <summary>Місце переможця; null — ще граємо (або партія скінчилась без переможця).</summary>
     int? _winner;
+    /// <summary>Партію закрито — сьомим очком чи тим, що хтось встав з-за столу.</summary>
+    bool _over;
 
     /// <summary>Ядро готове ще до старту: стіл, що чекає на суперника, має виглядати як поле, а не як порожнеча.</summary>
     PongCore Core
@@ -237,7 +248,20 @@ public sealed class Pong : Game
     public override void Start()
     {
         _winner = null;
+        _over = false;
         Core.Reset();
+    }
+
+    /// <summary>
+    /// Техпоразка теж закриває партію: інакше вид і кадр лишились би у фазі «граємо», і клієнт не
+    /// намалював би підсумку — на полі просто застигла б картинка.
+    /// </summary>
+    public override void OnLeave(int seat)
+    {
+        var other = 1 - seat;
+        if (Ctx.Seated(other)) _winner = other;   // суперника вже нема — це не перемога, а обірвана партія
+        _over = true;
+        base.OnLeave(seat);
     }
 
     /// <summary>
@@ -270,7 +294,7 @@ public sealed class Pong : Game
 
     public override TickResult Tick()
     {
-        if (_winner is not null) return TickResult.None;
+        if (_over) return TickResult.None;
 
         var wasReady = Core.StartIn > 0;
         var scorer = Core.Step();
@@ -280,6 +304,7 @@ public sealed class Pong : Game
         if (Core.S[scorer.Value] < PongCore.Target) return TickResult.Both;
 
         _winner = scorer;
+        _over = true;
         var lost = 1 - scorer.Value;
         // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
         Ctx.Finish([scorer.Value],
@@ -292,7 +317,7 @@ public sealed class Pong : Game
     public override object View(int? seat) => new
     {
         scores = new[] { Core.S[0], Core.S[1] },
-        phase = _winner is not null ? "done" : Core.StartIn > 0 ? "ready" : "play",
+        phase = _over ? "done" : Core.StartIn > 0 ? "ready" : "play",
         startIn = Core.StartIn,
         winner = _winner,
         target = PongCore.Target,

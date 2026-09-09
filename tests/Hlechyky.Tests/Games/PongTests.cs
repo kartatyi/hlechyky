@@ -170,6 +170,60 @@ public class PongTests
     }
 
     [Fact]
+    public void A_ball_that_bounced_off_the_ceiling_still_reaches_the_paddle()
+    {
+        var core = Rally();
+        core.P[0] = 10;                  // ракетка вгорі: накриває y від 1 до 19
+        // За один тик м'яч спершу дістає стелі, а вже потім площини ракетки: пряма з початку в кінець
+        // проходить вище поля, хоча насправді м'яч перетинає площину по середині ракетки.
+        (core.Bx, core.By, core.Vx, core.Vy) = (9.5, 2.0, -100, -110);
+
+        core.Step();
+
+        Assert.True(core.Vx > 0, $"відскочив від стелі просто в ракетку, а йому зарахували промах: by={core.By}");
+    }
+
+    [Fact]
+    public void A_ball_that_bounced_off_the_floor_still_reaches_the_paddle()
+    {
+        var core = Rally();
+        core.P[0] = 90;                  // дзеркальний випадок: ракетка внизу
+        (core.Bx, core.By, core.Vx, core.Vy) = (9.5, PongCore.H - 2.0, -100, 110);
+
+        core.Step();
+
+        Assert.True(core.Vx > 0, $"відскочив від підлоги просто в ракетку, а йому зарахували промах: by={core.By}");
+    }
+
+    [Fact]
+    public void A_ball_that_grazes_the_very_corner_of_a_paddle_still_comes_back()
+    {
+        var core = Rally();
+        core.P[0] = 50;
+        // Рівно на межі зони попадання: половина ракетки плюс радіус м'яча.
+        (core.Bx, core.By, core.Vx, core.Vy) =
+            (8, 50 + PongCore.PaddleH / 2 + PongCore.BallR - 1e-6, -PongCore.StartSpeed, 0);
+
+        core.Step();
+
+        Assert.True(core.Vx > 0, "м'яч зачепив ракетку самим краєм — це відбій, а не гол");
+        Near(PongCore.BounceAngle, Angle(core), 1e-6);   // край віддає рівно 60°, не більше
+    }
+
+    [Fact]
+    public void A_ball_just_past_the_corner_of_a_paddle_is_a_goal()
+    {
+        var core = Rally();
+        core.P[0] = 50;
+        (core.Bx, core.By, core.Vx, core.Vy) =
+            (8, 50 + PongCore.PaddleH / 2 + PongCore.BallR + 0.5, -PongCore.StartSpeed, 0);
+
+        for (var i = 0; i < 10 && core.S[1] == 0; i++) core.Step();
+
+        Assert.Equal(1, core.S[1]);
+    }
+
+    [Fact]
     public void A_ball_past_the_left_edge_is_a_point_for_the_right()
     {
         var core = Rally();
@@ -500,6 +554,10 @@ public class PongTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        // Партія скінчилась — вид і кадр мають це показати, інакше на полі застигне «граємо» без підсумку.
+        var v = h.View(null);
+        Assert.Equal("done", v.GetProperty("phase").GetString());
+        Assert.Equal(0, v.GetProperty("winner").GetInt32());
     }
 
     [Fact]

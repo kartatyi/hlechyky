@@ -58,7 +58,7 @@
     if (!st) {
       st = root._pong = {
         cv: null, ctx, interp: HGames.ui.Interp(), last: null, trail: [],
-        raf: 0, want: null, sentAt: 0, sent: null,
+        raf: 0, want: null, sentAt: 0, sent: null, was: false,
       };
       live.add(st);
     }
@@ -184,6 +184,9 @@
   function aimAt(st, ev) {
     const ctx = st.ctx;
     if (!ctx || !ctx.mine || !ctx.playing || !st.cv) return;
+    // Клавіша в руці головніша за мишу: сервер від «to» гасить утримання, і випадковий рух
+    // курсором над полем інакше вбивав би керування з клавіатури до наступного натискання.
+    if (held.up || held.down) return;
     const r = st.cv.el.getBoundingClientRect();
     if (!r.height) return;
     st.want = Math.max(0, Math.min(H, ((ev.clientY - r.top) / r.height) * H));
@@ -202,7 +205,11 @@
   /// Дві кнопки-утримання під палець. ui.dpad тут не годиться: він на клік, а ракетку треба тримати.
   function pad(root, st) {
     let el = root.querySelector(':scope > .pongpad');
-    if (!st.ctx || !st.ctx.mine) { if (el) el.remove(); return; }
+    if (!st.ctx || !st.ctx.mine) {
+      // Кнопку могли тримати в мить, коли гравець устав з-за столу: разом із нею гасимо й утримання.
+      if (el) { el.remove(); held.up = held.down = false; pushDir(); }
+      return;
+    }
     if (el) return;
     el = document.createElement('div');
     el.className = 'pongpad';
@@ -212,12 +219,15 @@
       const b = e.target.closest('button');
       if (!b) return;
       e.preventDefault();
-      setHeld(+b.dataset.d, e.type === 'pointerdown');
+      const on = e.type === 'pointerdown';
+      // Захоплюємо вказівник самі: інакше «натиснув ↑ мишею, з'їхав із кнопки, відпустив» лишав би
+      // ракетку їхати в стіну (pointerleave не спливає, тож ловити його на контейнері марно).
+      if (on) { try { b.setPointerCapture(e.pointerId); } catch { /* стара миша без capture */ } }
+      setHeld(+b.dataset.d, on);
     };
     el.addEventListener('pointerdown', grab);
     el.addEventListener('pointerup', grab);
     el.addEventListener('pointercancel', grab);
-    el.addEventListener('pointerleave', grab);
     root.appendChild(el);
   }
 
@@ -234,9 +244,12 @@
       st.cv.el.addEventListener('pointerdown', (e) => aimAt(st, e));
       const loop = () => {
         if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
+        st.raf = requestAnimationFrame(loop);
+        // Пішли на «Ефір» — картка лишається в DOM під display:none. Малювати в невидимий канвас
+        // сто разів на секунду означає просто їсти акумулятор; цикл при цьому живий і сам прокинеться.
+        if (!st.cv.el.offsetParent) return;
         flush(st, performance.now());
         draw(st);
-        st.raf = requestAnimationFrame(loop);
       };
       st.raf = requestAnimationFrame(loop);
     },
@@ -251,6 +264,10 @@
       pad(root, st);
       st.cv.resize();
       if (!ctx.playing) { st.interp.reset(); st.trail.length = 0; st.sent = null; }
+      // Нова партія («Ще раз») починається з клавішею, яку так і не відпускали: сервер про неї не знає,
+      // бо в паузі ми напрямок не слали. Шлемо його заново, щойно за карткою знову можна грати.
+      else if (!st.was && (held.up || held.down)) { st.sent = null; pushDir(); }
+      st.was = !!ctx.playing;
     },
 
     frame(root, ctx, f) {
