@@ -37,6 +37,7 @@ public static class EconomySetup
         // Каркас реєструє заглушки через TryAdd і робить це раніше — тому саме Replace, а не TryAdd.
         services.Replace(ServiceDescriptor.Singleton<IStakes>(sp => sp.GetRequiredService<Economy>()));
         services.Replace(ServiceDescriptor.Singleton<IGameStore, SqliteGameStore>());
+        Impl.AdContestSetup.AddAdContest(services);   // конкурс реклами: сервіс, тікер, джингл і секція Ad
         return services;
     }
 
@@ -54,6 +55,7 @@ public static class EconomySetup
 
         api.MapGet("/daily", (HttpContext c, Daily daily) => daily.Status(Auth.Nick(c)));
 
+        Impl.AdContestSetup.MapAdContest(app);        // /api/ads — конкурс реклами
         return app;
     }
 }
