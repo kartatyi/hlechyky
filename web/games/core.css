@@ -93,7 +93,7 @@
 .board.discs .cell:not(:disabled):hover { background: var(--panel3); }
 
 /* ---- канвас реалтайму (змійка, понг, кривуля) ---- */
-.gcanvas, .snakeboard { width: 100%; max-width: 416px; display: block; margin: 0 auto; border-radius: 10px; background: var(--bg2); }
+.gcanvas { width: 100%; max-width: 416px; display: block; margin: 0 auto; border-radius: 10px; background: var(--bg2); }
 .gscore { font-variant-numeric: tabular-nums; font-size: .95em; color: var(--muted); white-space: nowrap; }
 .gscore b { color: var(--text); }
 

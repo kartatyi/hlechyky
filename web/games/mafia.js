@@ -101,7 +101,7 @@
     el.querySelector('.mf-players').addEventListener('click', async (e) => {
       const b = e.target.closest('.mf-do');
       if (!b || b.disabled) return;
-      const c = el._ctx;
+      const c = el._mfCtx;
       if (!c) return;
       const key = c.view ? nightKey(c.view) : '';
       const r = await c.act(b.dataset.act, { seat: +b.dataset.seat });
@@ -113,16 +113,16 @@
       const text = input.value.trim();
       if (!text) return;
       input.value = '';
-      const c = el._ctx;
+      const c = el._mfCtx;
       if (c) c.act('say', { text });
     });
-    el._ctx = ctx;
+    el._mfCtx = ctx;
     return el;
   }
 
   function paint(root, ctx) {
     const el = root.querySelector(':scope > .mafia') || build(root, ctx);
-    el._ctx = ctx;
+    el._mfCtx = ctx;
     const v = ctx.view || {};
     if (!v.phase) { el.querySelector('.mf-players').innerHTML = '<div class="gwait">чекаю на село…</div>'; return; }
 

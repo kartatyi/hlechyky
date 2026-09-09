@@ -176,20 +176,20 @@
     if (offer != null && offer !== ctx.seat) {
       st.resign = null;                       // кнопки зникли — зведене питання разом із ними
       html = '<span class="muted small">Пропонують нічию</span>'
-        + '<button type="button" class="primary" data-do="draw">Згода</button>'
-        + '<button type="button" class="ghost" data-do="decline">Ні</button>';
+        + '<button type="button" class="primary" data-act="draw">Згода</button>'
+        + '<button type="button" class="ghost" data-act="decline">Ні</button>';
     } else {
-      html = '<button type="button" class="ghost" data-do="draw"' + (offer === ctx.seat ? ' disabled' : '') + '>'
+      html = '<button type="button" class="ghost" data-act="draw"' + (offer === ctx.seat ? ' disabled' : '') + '>'
         + (offer === ctx.seat ? 'Нічию запропоновано' : 'Нічия?') + '</button>'
         // Здатись з одного кліку — надто легко втратити партію мізинцем: питаємо ще раз.
-        + '<button type="button" class="ghost danger" data-do="' + (armed ? 'resign' : 'ask') + '">'
+        + '<button type="button" class="ghost danger" data-act="' + (armed ? 'resign' : 'ask') + '">'
         + (armed ? 'Точно здатись?' : 'Здатись') + '</button>';
     }
     setHtml(el, html);
     el.querySelectorAll('button').forEach((b) => b.onclick = () => {
-      if (b.dataset.do === 'ask') { st.resign = fen; paint(root, ctx); return; }
+      if (b.dataset.act === 'ask') { st.resign = fen; paint(root, ctx); return; }
       st.resign = null;
-      ctx.act(b.dataset.do);
+      ctx.act(b.dataset.act);
     });
   }
 

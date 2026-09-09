@@ -14,7 +14,7 @@ public class DurakTests
 {
     // ---------- дрібний інструмент ----------
 
-    static int C(string card) => Cards.Parse(card) ?? throw new ArgumentException($"не карта: {card}");
+    static int C(string card) => DurakCards.Parse(card) ?? throw new ArgumentException($"не карта: {card}");
 
     static DurakCore Core(string trump, string[] hand0, string[] hand1, string[]? deck = null, int attacker = 0)
     {
@@ -26,11 +26,11 @@ public class DurakTests
     static string? Attack(DurakCore core, int seat, string card) => core.Attack(seat, C(card));
     static string? Defend(DurakCore core, int seat, string attack, string card) => core.Defend(seat, C(attack), C(card));
 
-    static string[] Hand(DurakCore core, int seat) => [.. core.Sorted(seat).Select(Cards.Text)];
+    static string[] Hand(DurakCore core, int seat) => [.. core.Sorted(seat).Select(DurakCards.Text)];
 
     /// <summary>Стіл у рядок: «7♠/K♠ 8♥/-» — так очима видно і атаки, і чим їх побили.</summary>
     static string Table(DurakCore core) =>
-        string.Join(" ", core.Table.Select(p => Cards.Text(p.Attack) + "/" + (p.Defend is { } d ? Cards.Text(d) : "-")));
+        string.Join(" ", core.Table.Select(p => DurakCards.Text(p.Attack) + "/" + (p.Defend is { } d ? DurakCards.Text(d) : "-")));
 
     static RoomHarness Sit(int seed = 7)
     {
@@ -50,18 +50,18 @@ public class DurakTests
     [Fact]
     public void Every_card_text_survives_a_round_trip()
     {
-        for (var card = 0; card < Cards.Count; card++) Assert.Equal(card, Cards.Parse(Cards.Text(card)));
-        Assert.Equal("6♠", Cards.Text(0));
-        Assert.Equal("A♣", Cards.Text(Cards.Count - 1));
+        for (var card = 0; card < DurakCards.Count; card++) Assert.Equal(card, DurakCards.Parse(DurakCards.Text(card)));
+        Assert.Equal("6♠", DurakCards.Text(0));
+        Assert.Equal("A♣", DurakCards.Text(DurakCards.Count - 1));
     }
 
     [Fact]
     public void Nonsense_is_not_a_card()
     {
         foreach (var text in new[] { null, "", "7", "♥", "Z♥", "7x", "11♦", "  " })
-            Assert.Null(Cards.Parse(text));
-        Assert.Equal(C("10♦"), Cards.Parse(" 10♦ "));
-        Assert.Equal(C("J♠"), Cards.Parse("j♠"));
+            Assert.Null(DurakCards.Parse(text));
+        Assert.Equal(C("10♦"), DurakCards.Parse(" 10♦ "));
+        Assert.Equal(C("J♠"), DurakCards.Parse("j♠"));
     }
 
     [Fact]
@@ -70,8 +70,8 @@ public class DurakTests
         var core = new DurakCore();
         core.Deal(new Random(1));
         var all = core.Hands[0].Concat(core.Hands[1]).Concat(core.Deck).ToList();
-        Assert.Equal(Cards.Count, all.Count);
-        Assert.Equal(Cards.Count, all.Distinct().Count());
+        Assert.Equal(DurakCards.Count, all.Count);
+        Assert.Equal(DurakCards.Count, all.Distinct().Count());
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class DurakTests
             var core = new DurakCore();
             core.Deal(new Random(seed));
             Assert.NotNull(core.TrumpCard);
-            Assert.Equal(core.Trump, Cards.Suit(core.TrumpCard!.Value));
+            Assert.Equal(core.Trump, DurakCards.Suit(core.TrumpCard!.Value));
         }
     }
 
@@ -114,7 +114,7 @@ public class DurakTests
         }
 
         static int Lowest(DurakCore core, int seat) => core.Hands[seat]
-            .Where(c => Cards.Suit(c) == core.Trump).Select(Cards.Rank).DefaultIfEmpty(int.MaxValue).Min();
+            .Where(c => DurakCards.Suit(c) == core.Trump).Select(DurakCards.Rank).DefaultIfEmpty(int.MaxValue).Min();
     }
 
     [Fact]
@@ -690,7 +690,7 @@ public class DurakTests
             var h = Sit(seed);
             var attacker = h.View(null).GetProperty("attacker").GetInt32();
             var defender = attacker == 0 ? 1 : 0;
-            var twins = HandOf(h, attacker).GroupBy(c => Cards.Rank(C(c))).FirstOrDefault(g => g.Count() > 1);
+            var twins = HandOf(h, attacker).GroupBy(c => DurakCards.Rank(C(c))).FirstOrDefault(g => g.Count() > 1);
             if (twins is null) continue;
 
             Assert.True(h.Act(attacker, "attack", new { card = twins.First() }).Ok);
@@ -867,7 +867,7 @@ public class DurakTests
 
             var counts = v.GetProperty("counts").EnumerateArray().Select(e => e.GetInt32()).ToArray();
             var discard = v.GetProperty("discard").GetInt32();
-            Assert.Equal(Cards.Count, counts[0] + counts[1] + discard);   // карти нікуди не діваються
+            Assert.Equal(DurakCards.Count, counts[0] + counts[1] + discard);   // карти нікуди не діваються
             Assert.Equal(JsonValueKind.Null, result.GetProperty("foolNick").ValueKind);   // обидва за столом — нік бере картка
             if (reason == "both") Assert.Equal(JsonValueKind.Null, result.GetProperty("winner").ValueKind);
             else Assert.Equal(0, counts[result.GetProperty("winner").GetInt32()]);
@@ -899,8 +899,8 @@ public class DurakTests
             if (phase == "defend")
             {
                 var pick = hand.Where(c => BeatsText(c, open[0], trump))
-                    .OrderBy(c => Cards.Suit(C(c)) == Cards.SuitOf(trump) ? 1 : 0)
-                    .ThenBy(c => Cards.Rank(C(c)))
+                    .OrderBy(c => DurakCards.Suit(C(c)) == DurakCards.SuitOf(trump) ? 1 : 0)
+                    .ThenBy(c => DurakCards.Rank(C(c)))
                     .FirstOrDefault();
                 step = pick is null ? h.Act(turn, "take") : h.Act(turn, "defend", new { attack = open[0], card = pick });
             }
@@ -921,6 +921,6 @@ public class DurakTests
     static bool BeatsText(string card, string against, string trump)
     {
         var (c, a) = (C(card), C(against));
-        return Cards.Suit(c) == Cards.Suit(a) ? Cards.Rank(c) > Cards.Rank(a) : Cards.Suit(c) == Cards.SuitOf(trump);
+        return DurakCards.Suit(c) == DurakCards.Suit(a) ? DurakCards.Rank(c) > DurakCards.Rank(a) : DurakCards.Suit(c) == DurakCards.SuitOf(trump);
     }
 }

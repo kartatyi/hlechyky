@@ -271,26 +271,26 @@
         const b = e.target.closest('button');
         if (!b) return;
         e.preventDefault();
-        if (b.classList.contains('bbomb')) { el._ctx.input('bomb'); return; }
+        if (b.classList.contains('bbomb')) { el._bomberCtx.input('bomb'); return; }
         // Захоплюємо вказівник: інакше палець (чи миша в мобільному вигляді), з'їхавши з кнопки,
         // забирає з собою pointerup — і бомбер біг би далі, поки не впреться.
         try { b.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер — переживемо */ }
         st.pid = e.pointerId;
         st.held = +b.dataset.dir;
-        el._ctx.input('move', { dir: st.held });
+        el._bomberCtx.input('move', { dir: st.held });
       });
       const release = (e) => {
         if (st.pid !== e.pointerId) return;
         st.pid = null;
         if (st.held < 0) return;
         st.held = -1;
-        el._ctx.input('move', { dir: -1 });
+        el._bomberCtx.input('move', { dir: -1 });
       };
       el.addEventListener('pointerup', release);
       el.addEventListener('pointercancel', release);
       root.appendChild(el);
     }
-    el._ctx = ctx;      // колбеки завжди з останнього update, а не з першого
+    el._bomberCtx = ctx;      // колбеки завжди з останнього update, а не з першого
   }
 
   // ---------------------------------------------------------------------------------------------

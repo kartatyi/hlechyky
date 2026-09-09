@@ -732,51 +732,51 @@ public class SnakeModesTests
             return 1;
         }
     }
-}
 
-/// <summary>
-/// Модель того, що робить із дельта-кадром <c>web/games/snake-modes.js</c>: тримає слід сама, дописує голови
-/// з кадрів і перекладає поле з виду лише тоді, коли вид справді новий. У браузері «новий» — це порівняння
-/// посилань (<c>ctx.view !== st.view</c>): каркас віддає в <c>ctx.view</c> кешований об'єкт останньої події
-/// <c>room</c>, а <c>update()</c> кличеться ще й на кожну <c>rooms</c>.
-/// </summary>
-sealed class TronTrail
-{
-    int[]? _view;
-    readonly HashSet<int> _seen = [];
-
-    public List<int> Cells { get; } = [];
-
-    public void ApplyView(int[] view)
+    /// <summary>
+    /// Модель того, що робить із дельта-кадром <c>web/games/snake-modes.js</c>: тримає слід сама, дописує голови
+    /// з кадрів і перекладає поле з виду лише тоді, коли вид справді новий. У браузері «новий» — це порівняння
+    /// посилань (<c>ctx.view !== st.view</c>): каркас віддає в <c>ctx.view</c> кешований об'єкт останньої події
+    /// <c>room</c>, а <c>update()</c> кличеться ще й на кожну <c>rooms</c>.
+    /// </summary>
+    sealed class TronTrail
     {
-        if (ReferenceEquals(view, _view)) return;
-        _view = view;
-        Cells.Clear();
-        Cells.AddRange(view);
-        _seen.Clear();
-        foreach (var cell in view) _seen.Add(cell);
+        int[]? _view;
+        readonly HashSet<int> _seen = [];
+
+        public List<int> Cells { get; } = [];
+
+        public void ApplyView(int[] view)
+        {
+            if (ReferenceEquals(view, _view)) return;
+            _view = view;
+            Cells.Clear();
+            Cells.AddRange(view);
+            _seen.Clear();
+            foreach (var cell in view) _seen.Add(cell);
+        }
+
+        /// <summary>Голову, яку вже бачили, не дописуємо: слід не зникає, тож двічі в одну клітинку не заїдеш.</summary>
+        public void AddHead(int cell)
+        {
+            if (_seen.Add(cell)) Cells.Insert(0, cell);
+        }
     }
 
-    /// <summary>Голову, яку вже бачили, не дописуємо: слід не зникає, тож двічі в одну клітинку не заїдеш.</summary>
-    public void AddHead(int cell)
+    /// <summary>Те саме для коопа: кадр там повний, і застарілий вид не має його перебивати.</summary>
+    sealed class CoopField
     {
-        if (_seen.Add(cell)) Cells.Insert(0, cell);
+        string? _view;
+
+        public string? Shown { get; private set; }
+
+        public void ApplyView(string view)
+        {
+            if (ReferenceEquals(view, _view)) return;
+            _view = view;
+            Shown = view;
+        }
+
+        public void ApplyFrame(string frame) => Shown = frame;
     }
-}
-
-/// <summary>Те саме для коопа: кадр там повний, і застарілий вид не має його перебивати.</summary>
-sealed class CoopField
-{
-    string? _view;
-
-    public string? Shown { get; private set; }
-
-    public void ApplyView(string view)
-    {
-        if (ReferenceEquals(view, _view)) return;
-        _view = view;
-        Shown = view;
-    }
-
-    public void ApplyFrame(string frame) => Shown = frame;
 }

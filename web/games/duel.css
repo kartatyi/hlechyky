@@ -2,45 +2,48 @@
   Сцена дуелі: полудень, курна вулиця, двоє силуетів. Усе чисто на CSS — канвас тут нічого не додав би,
   а от розтягуватись під картку в 300 px і під телефон у 380 px розмітці простіше.
   Свої кольори оголошуємо на :root: модуль читає їх лише через CSS, але правило одне для всіх ігор.
+  Префікс --duel- обов'язковий: :root у браузері один на всі стилі ігор, а лінки з них каркас чіпляє
+  всі одразу й назавжди (див. INTEGRATION-NOTES §6). Класи так само тримаємо під контейнером .duel —
+  без нього наш .dtop перебивав би шапку дурня, у якої історично те саме ім'я.
 */
 :root {
-  --dhaze: #e0954a;        /* марево між жовтим небом і глиною */
-  --dstreet: #c79b62;      /* пил на вулиці */
-  --dstreet2: #7d5c38;     /* тінь під ногами */
-  --dfig: #241608;         /* силует проти сонця майже чорний */
-  --dflash: #fff6de;       /* спалах пострілу і саме сонце */
+  --duel-haze: #e0954a;        /* марево між жовтим небом і глиною */
+  --duel-street: #c79b62;      /* пил на вулиці */
+  --duel-street2: #7d5c38;     /* тінь під ногами */
+  --duel-fig: #241608;         /* силует проти сонця майже чорний */
+  --duel-flash: #fff6de;       /* спалах пострілу і саме сонце */
 }
 
 .duel { display: flex; flex-direction: column; gap: 8px; align-items: center; width: 100%; }
-.dtop { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; justify-content: center; }
-.dwins b { font-size: 1.15em; }
+.duel .dtop { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; justify-content: center; }
+.duel .dwins b { font-size: 1.15em; }
 
-.dscene {
+.duel .dscene {
   position: relative; width: 100%; max-width: 416px; aspect-ratio: 16 / 9;
   border-radius: 10px; overflow: hidden; cursor: pointer; user-select: none;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-.dscene > * { position: absolute; }
+.duel .dscene > * { position: absolute; }
 
-.dsky { inset: 0; background: linear-gradient(180deg, var(--accent) 0%, var(--dhaze) 52%, var(--clay) 100%); }
-.dsun {
+.duel .dsky { inset: 0; background: linear-gradient(180deg, var(--accent) 0%, var(--duel-haze) 52%, var(--clay) 100%); }
+.duel .dsun {
   left: 50%; top: 9%; width: 26%; aspect-ratio: 1; transform: translateX(-50%); border-radius: 50%;
-  background: radial-gradient(circle, var(--dflash) 0%, var(--accent) 58%, rgba(255, 255, 255, 0) 72%);
+  background: radial-gradient(circle, var(--duel-flash) 0%, var(--accent) 58%, rgba(255, 255, 255, 0) 72%);
 }
-.dstreet {
+.duel .dstreet {
   left: 0; right: 0; bottom: 0; height: 34%;
-  background: linear-gradient(180deg, var(--dstreet) 0%, var(--dstreet2) 100%);
+  background: linear-gradient(180deg, var(--duel-street) 0%, var(--duel-street2) 100%);
   box-shadow: 0 -1px 0 rgba(0, 0, 0, .18);
 }
 
 /* Перекотиполе котиться лише поки цілимось: у «Готуйсь…» вулиця завмирає. */
-.dtumble {
+.duel .dtumble {
   bottom: 6%; left: -12%; width: 8%; aspect-ratio: 1; opacity: 0;
-  border: 2px solid var(--dfig); border-radius: 46% 54% 38% 62% / 52% 44% 56% 48%;
-  box-shadow: inset 0 0 0 2px var(--dfig);
+  border: 2px solid var(--duel-fig); border-radius: 46% 54% 38% 62% / 52% 44% 56% 48%;
+  box-shadow: inset 0 0 0 2px var(--duel-fig);
 }
-.dscene[data-phase="aim"] .dtumble { animation: droll 3.4s linear infinite; }
-@keyframes droll {
+.duel .dscene[data-phase="aim"] .dtumble { animation: duel-roll 3.4s linear infinite; }
+@keyframes duel-roll {
   0% { transform: translateX(0) rotate(0deg); opacity: 0; }
   8% { opacity: .55; }
   92% { opacity: .55; }
@@ -48,51 +51,51 @@
 }
 
 /* ---- стрільці ---- */
-.dguy {
-  bottom: 5%; height: 62%; color: var(--dfig);
+.duel .dguy {
+  bottom: 5%; height: 62%; color: var(--duel-fig);
   transform-origin: 50% 100%; transition: transform .3s ease-out, opacity .3s;
 }
-.dguy.sheriff { left: 7%; }
-.dguy.bandit { right: 7%; }
-.dfig { height: 100%; width: auto; display: block; }
-.dguy.bandit .dfig { transform: scaleX(-1); }
+.duel .dguy.sheriff { left: 7%; }
+.duel .dguy.bandit { right: 7%; }
+.duel .dfig { height: 100%; width: auto; display: block; }
+.duel .dguy.bandit .dfig { transform: scaleX(-1); }
 /* Рука з револьвером крутиться навколо плеча — координати ті самі, що у viewBox фігури. */
-.dfig .darm { transform-box: view-box; transform-origin: 25px 21px; transition: transform .25s ease-out; }
-.dguy.won .darm { transform: rotate(-125deg); }
-.dguy.lost { transform: rotate(74deg) translateY(6%); opacity: .8; }
-.dguy.bandit.lost { transform: rotate(-74deg) translateY(6%); }
+.duel .dfig .darm { transform-box: view-box; transform-origin: 25px 21px; transition: transform .25s ease-out; }
+.duel .dguy.won .darm { transform: rotate(-125deg); }
+.duel .dguy.lost { transform: rotate(74deg) translateY(6%); opacity: .8; }
+.duel .dguy.bandit.lost { transform: rotate(-74deg) translateY(6%); }
 
 /* ---- слово розпорядника ---- */
-.dcall {
+.duel .dcall {
   inset: 0; display: grid; place-items: center; pointer-events: none;
-  font-weight: 800; letter-spacing: .16em; font-size: 20px; color: var(--dfig);
+  font-weight: 800; letter-spacing: .16em; font-size: 20px; color: var(--duel-fig);
   text-shadow: 0 1px 0 rgba(255, 246, 222, .45);
 }
-.dcall.big { color: var(--danger); font-size: 30px; letter-spacing: .06em; text-shadow: 0 2px 10px rgba(0, 0, 0, .35); }
+.duel .dcall.big { color: var(--danger); font-size: 30px; letter-spacing: .06em; text-shadow: 0 2px 10px rgba(0, 0, 0, .35); }
 /* Розмір слова від ширини сцени, а не вікна: картка в лобі буває і 300 px, і 416 px. */
 @supports (container-type: inline-size) {
-  .dscene { container-type: inline-size; }
-  .dcall { font-size: 7cqw; }
-  .dcall.big { font-size: 11cqw; }
+  .duel .dscene { container-type: inline-size; }
+  .duel .dcall { font-size: 7cqw; }
+  .duel .dcall.big { font-size: 11cqw; }
 }
 
-.dflash { inset: 0; background: var(--dflash); opacity: 0; pointer-events: none; }
-.dscene.flash .dflash { animation: dflash .12s ease-out; }
-@keyframes dflash { from { opacity: .92; } to { opacity: 0; } }
+.duel .dflash { inset: 0; background: var(--duel-flash); opacity: 0; pointer-events: none; }
+.duel .dscene.flash .dflash { animation: duel-flash-anim .12s ease-out; }
+@keyframes duel-flash-anim { from { opacity: .92; } to { opacity: 0; } }
 
-.dmsg { color: var(--muted); text-align: center; min-height: 2.4em; line-height: 1.3; }
-.dfire { width: min(260px, 100%); justify-content: center; font-size: 1.05em; padding: 11px 16px; }
+.duel .dmsg { color: var(--muted); text-align: center; min-height: 2.4em; line-height: 1.3; }
+.duel .dfire { width: min(260px, 100%); justify-content: center; font-size: 1.05em; padding: 11px 16px; }
 
 /* Пальцем цілитись важче, ніж мишею: кнопка більша, а сцена все одно лишається головною мішенню. */
 @media (pointer: coarse) {
-  .dfire { padding: 15px 16px; font-size: 1.15em; }
+  .duel .dfire { padding: 15px 16px; font-size: 1.15em; }
 }
 @media (max-width: 480px) {
-  .dcall { letter-spacing: .1em; }
-  .dmsg { min-height: 3.4em; }
+  .duel .dcall { letter-spacing: .1em; }
+  .duel .dmsg { min-height: 3.4em; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dscene[data-phase="aim"] .dtumble { animation: none; }
-  .dscene.flash .dflash { animation: none; }
-  .dguy, .dfig .darm { transition: none; }
+  .duel .dscene[data-phase="aim"] .dtumble { animation: none; }
+  .duel .dscene.flash .dflash { animation: none; }
+  .duel .dguy, .duel .dfig .darm { transition: none; }
 }

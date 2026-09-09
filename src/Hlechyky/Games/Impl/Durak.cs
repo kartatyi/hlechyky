@@ -5,8 +5,10 @@ namespace Hlechyky.Games.Impl;
 /// <summary>
 /// Карта — це число 0..35: <c>номінал * 4 + масть</c>. Так колода тасується як звичайний масив чисел,
 /// порівняння старшинства — це порівняння номіналів, а рядок «7♥» потрібен лише на дроті й в очах гравця.
+/// Ім'я з префіксом гри навмисне: усі ігри лежать в одному <c>Hlechyky.Games.Impl</c>, і просте
+/// <c>Cards</c> забрало б у наступної карткової гри найочевидніше ім'я, а кодування 36 карт тут суто дурневе.
 /// </summary>
-public static class Cards
+public static class DurakCards
 {
     public const int Count = 36;
 
@@ -98,7 +100,7 @@ public sealed class DurakCore
     /// <summary>Нова партія: тасуємо, роздаємо по шість, козир — остання карта колоди.</summary>
     public void Deal(Random rng)
     {
-        var cards = new int[Cards.Count];
+        var cards = new int[DurakCards.Count];
         for (var i = 0; i < cards.Length; i++) cards[i] = i;
         for (var i = cards.Length - 1; i > 0; i--)
         {
@@ -114,7 +116,7 @@ public sealed class DurakCore
         Discard = 0;
         Over = null;
         Phase = DurakPhase.Attack;
-        Trump = Cards.Suit(Deck[^1]);
+        Trump = DurakCards.Suit(Deck[^1]);
         for (var i = 0; i < HandSize; i++) { Pull(0); Pull(1); }
         Attacker = FirstAttacker();
         Limit = Hands[Defender].Count;
@@ -127,7 +129,7 @@ public sealed class DurakCore
         var who = 0;
         for (var seat = 0; seat < 2; seat++)
             foreach (var card in Hands[seat])
-                if (Cards.Suit(card) == Trump && Cards.Rank(card) < best) { best = Cards.Rank(card); who = seat; }
+                if (DurakCards.Suit(card) == Trump && DurakCards.Rank(card) < best) { best = DurakCards.Rank(card); who = seat; }
         return who;
     }
 
@@ -137,7 +139,7 @@ public sealed class DurakCore
     /// </summary>
     public void Arrange(string trump, string[] hand0, string[] hand1, string[]? deck = null, int attacker = 0)
     {
-        Trump = Cards.SuitOf(trump) ?? throw new ArgumentException($"невідома масть «{trump}»", nameof(trump));
+        Trump = DurakCards.SuitOf(trump) ?? throw new ArgumentException($"невідома масть «{trump}»", nameof(trump));
         Fill(Hands[0], hand0);
         Fill(Hands[1], hand1);
         Fill(Deck, deck ?? []);
@@ -153,7 +155,7 @@ public sealed class DurakCore
     {
         to.Clear();
         foreach (var text in cards)
-            to.Add(Cards.Parse(text) ?? throw new ArgumentException($"невідома карта «{text}»", nameof(cards)));
+            to.Add(DurakCards.Parse(text) ?? throw new ArgumentException($"невідома карта «{text}»", nameof(cards)));
     }
 
     // ---------- ходи ----------
@@ -169,7 +171,7 @@ public sealed class DurakCore
         {
             if (Table.Count >= MaxAttacks) return "На стіл більше не влізе";
             if (Table.Count >= Limit) return "У суперника стільки карт нема";
-            if (!TableRanks().Contains(Cards.Rank(card))) return "Підкидати можна лише те, що вже на столі";
+            if (!TableRanks().Contains(DurakCards.Rank(card))) return "Підкидати можна лише те, що вже на столі";
         }
 
         Hands[seat].Remove(card);
@@ -239,15 +241,15 @@ public sealed class DurakCore
 
     /// <summary>Козир б'є будь-що не козирне; решта — тільки старшою тієї ж масті (козир козирем — теж «та сама масть»).</summary>
     public bool Beats(int card, int against) =>
-        Cards.Suit(card) == Cards.Suit(against)
-            ? Cards.Rank(card) > Cards.Rank(against)
-            : Cards.Suit(card) == Trump;
+        DurakCards.Suit(card) == DurakCards.Suit(against)
+            ? DurakCards.Rank(card) > DurakCards.Rank(against)
+            : DurakCards.Suit(card) == Trump;
 
     /// <summary>Рука в тому порядку, в якому її показують: масті купками, козир останній, у масті — від молодшої.</summary>
     public IEnumerable<int> Sorted(int seat) => Hands[seat]
-        .OrderBy(c => Cards.Suit(c) == Trump ? 1 : 0)
-        .ThenBy(Cards.Suit)
-        .ThenBy(Cards.Rank);
+        .OrderBy(c => DurakCards.Suit(c) == Trump ? 1 : 0)
+        .ThenBy(DurakCards.Suit)
+        .ThenBy(DurakCards.Rank);
 
     /// <summary>Чи є в атакуючого що покласти на стіл просто зараз — без огляду на фазу.</summary>
     bool HasMore()
@@ -256,7 +258,7 @@ public sealed class DurakCore
         if (Table.Count == 0) return true;
         if (Table.Count >= MaxAttacks || Table.Count >= Limit) return false;
         var ranks = TableRanks();
-        return Hands[Attacker].Any(c => ranks.Contains(Cards.Rank(c)));
+        return Hands[Attacker].Any(c => ranks.Contains(DurakCards.Rank(c)));
     }
 
     /// <summary>Номінали, які вже лежать на столі, — і серед атак, і серед захистів.</summary>
@@ -265,8 +267,8 @@ public sealed class DurakCore
         var ranks = new HashSet<int>();
         foreach (var pair in Table)
         {
-            ranks.Add(Cards.Rank(pair.Attack));
-            if (pair.Defend is { } card) ranks.Add(Cards.Rank(card));
+            ranks.Add(DurakCards.Rank(pair.Attack));
+            if (pair.Defend is { } card) ranks.Add(DurakCards.Rank(card));
         }
         return ranks;
     }
@@ -394,7 +396,7 @@ public sealed class Durak : Game
     {
         var over = _core.Over;
         int? turn = over is null ? _core.Turn : null;
-        string[]? hand = seat is { } s && s is 0 or 1 ? [.. _core.Sorted(s).Select(Cards.Text)] : null;
+        string[]? hand = seat is { } s && s is 0 or 1 ? [.. _core.Sorted(s).Select(DurakCards.Text)] : null;
         object? result = over is null ? null : new { winner = over.Winner, reason = over.Reason, foolNick = _foolNick };
         return new
         {
@@ -402,11 +404,11 @@ public sealed class Durak : Game
             attacker = _core.Attacker,
             defender = _core.Defender,
             phase = Phase(_core.Phase),
-            trump = Cards.SuitText(_core.Trump),
-            trumpCard = _core.TrumpCard is { } card ? Cards.Text(card) : null,
+            trump = DurakCards.SuitText(_core.Trump),
+            trumpCard = _core.TrumpCard is { } card ? DurakCards.Text(card) : null,
             deck = _core.Deck.Count,
             table = _core.Table
-                .Select(p => new { attack = Cards.Text(p.Attack), defend = p.Defend is { } d ? Cards.Text(d) : null })
+                .Select(p => new { attack = DurakCards.Text(p.Attack), defend = p.Defend is { } d ? DurakCards.Text(d) : null })
                 .ToArray(),
             hand,
             counts = new[] { _core.Hands[0].Count, _core.Hands[1].Count },
@@ -441,10 +443,10 @@ public sealed class Durak : Game
 
     static int? Named(JsonElement payload, string name) =>
         payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String
-            ? Cards.Parse(p.GetString())
+            ? DurakCards.Parse(p.GetString())
             : null;
 
     /// <summary>Заходити можна й голим рядком — з консолі так простіше, а шкоди нуль.</summary>
     static int? Bare(JsonElement payload) =>
-        payload.ValueKind == JsonValueKind.String ? Cards.Parse(payload.GetString()) : null;
+        payload.ValueKind == JsonValueKind.String ? DurakCards.Parse(payload.GetString()) : null;
 }

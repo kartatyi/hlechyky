@@ -71,8 +71,8 @@
     });
 
     box(root, 'dctl', idle ? '' : controls(v, ctx, st));
-    root.querySelectorAll('.dctl [data-do]').forEach((b) => b.onclick = () => {
-      const what = b.dataset.do;
+    root.querySelectorAll('.dctl [data-act]').forEach((b) => b.onclick = () => {
+      const what = b.dataset.act;
       if (what === 'left' || what === 'right') {
         const tile = st.pick;
         st.pick = null;
@@ -106,13 +106,13 @@
     if (st.pick) {
       const e = v.ends || [0, 0];
       return '<span class="muted small">З якого боку?</span>'
-        + '<button class="primary" data-do="left">◀ до ' + e[0] + '</button>'
-        + '<button class="primary" data-do="right">до ' + e[1] + ' ▶</button>'
-        + '<button class="ghost" data-do="cancel">Ні, іншу</button>';
+        + '<button class="primary" data-act="left">◀ до ' + e[0] + '</button>'
+        + '<button class="primary" data-act="right">до ' + e[1] + ' ▶</button>'
+        + '<button class="ghost" data-act="cancel">Ні, іншу</button>';
     }
     if (!ctx.myTurn) return '';
-    if (v.mustDraw) return '<button class="primary" data-do="draw">Тягнути (' + (v.boneyard || 0) + ')</button>';
-    if (!v.canPlay) return '<button class="primary" data-do="pass">Пас</button>';
+    if (v.mustDraw) return '<button class="primary" data-act="draw">Тягнути (' + (v.boneyard || 0) + ')</button>';
+    if (!v.canPlay) return '<button class="primary" data-act="pass">Пас</button>';
     return '<span class="muted small">Обери кістку</span>';
   }
 

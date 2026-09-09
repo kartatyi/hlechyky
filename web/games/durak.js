@@ -93,9 +93,9 @@
 
   function buttons(host, ctx, v, iAttack, iDefend, live) {
     const out = [];
-    if (live && iAttack && v.phase === 'attack' && (v.table || []).length) out.push('<button class="primary" data-do="done">Біто</button>');
-    if (live && iAttack && v.phase === 'taking') out.push('<button class="primary" data-do="done">Досить</button>');
-    if (live && iDefend && v.phase === 'defend') out.push('<button class="ghost" data-do="take">Беру</button>');
+    if (live && iAttack && v.phase === 'attack' && (v.table || []).length) out.push('<button class="primary" data-act="done">Біто</button>');
+    if (live && iAttack && v.phase === 'taking') out.push('<button class="primary" data-act="done">Досить</button>');
+    if (live && iDefend && v.phase === 'defend') out.push('<button class="ghost" data-act="take">Беру</button>');
     setHtml(host, out.join(''));
   }
 
@@ -180,8 +180,8 @@
     if (!bt._wired) {
       bt._wired = 1;
       bt.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-do]');
-        if (b && bt._act) bt._act(b.dataset.do);
+        const b = e.target.closest('[data-act]');
+        if (b && bt._act) bt._act(b.dataset.act);
       });
     }
   }
