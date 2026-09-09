@@ -191,8 +191,8 @@ static class MinesWire
         _ => null,
     };
 
-    /// <summary>«42,3 с» людською мовою. Кома тут не потрібна: рядок іде і в Журнал, і в тести.</summary>
-    public static string Seconds(long ms) => (ms / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " с";
+    /// <summary>«42,3 с» людською мовою. Культуру фіксуємо, а кому ставимо самі: рядок іде в Журнал.</summary>
+    public static string Seconds(long ms) => (ms / 1000.0).ToString("0.0", CultureInfo.InvariantCulture).Replace('.', ',') + " с";
 }
 
 /// <summary>

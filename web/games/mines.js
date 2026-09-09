@@ -38,9 +38,10 @@
     return { html: n ? String(n) : '', cls: 'open n' + n + mark, disabled: true };
   }
 
+  /// «42,3 с» до хвилини, далі «2:07». Кома, бо рядок читає людина українською.
   function timeText(ms) {
     const s = Math.max(0, ms) / 1000;
-    if (s < 60) return s.toFixed(1) + ' с';
+    if (s < 60) return s.toFixed(1).replace('.', ',') + ' с';
     return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
   }
 
