@@ -1,0 +1,31 @@
+/*
+  Кривуля: поле трохи ширше за змійчине (300×200 одиниць), рахунок кольорами місць і дві кнопки
+  утримання під палець. Кольори — тільки змінними зі style.css і core.css.
+*/
+
+/* Поле. Пропорція 3:2 задається канвасом, тут лише ширина й те, що під пальцем воно не гортається. */
+.curveboard { max-width: 460px; }
+.curveboard.hold { touch-action: none; }
+
+/* Рахунок раундів: по числу на місце, кольори — ті самі, що й у чіпах місць. */
+.cscore { display: flex; align-items: baseline; gap: 6px; }
+.cscore i { font-style: normal; color: var(--muted); }
+.cscore .c0 { color: var(--accent); }
+.cscore .c1 { color: var(--ok); }
+.cscore .c2 { color: var(--clay); }
+.cscore .c3 { color: var(--text); }
+.cscore .small { margin-left: 4px; }
+
+/* Кнопки повороту. Як і хрестовина каркаса, вони лише для пальця: на миші зручніші стрілки. */
+.cpad { display: none; }
+@media (pointer: coarse) {
+  .cpad {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    width: 100%; max-width: 460px; margin-top: 4px;
+  }
+  .cpad button {
+    justify-content: center; font-size: 1.4em; padding: 14px 0;
+    touch-action: none; user-select: none;
+  }
+  .cpad button:active { background: var(--panel3); border-color: var(--accent2); }
+}
