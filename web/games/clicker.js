@@ -3,11 +3,13 @@
 
   Правила рахує сервер (Impl/Clicker.cs). Клієнт понад малювання робить рівно дві речі:
   1) батчить кліки — рахує їх локально й шле Act('spin', { n }) раз на 700 мс, а не двадцять разів за секунду;
-  2) доліковує лічильник між подіями 'room' — від view.lastSync за view.perSecond, зі стелею 8 год, як на сервері.
-     Сервер лишається джерелом правди: прийшов новий вид — беремо його число, а не своє.
+  2) доліковує лічильник між подіями 'room' — за view.perSecond, зі стелею 8 год, як на сервері. Простій
+     беремо серверний (view.now − view.lastSync) і додаємо лише те, що натікало ВІД отримання виду, — так
+     збитий годинник у гравця не малює неіснуючих глеків. Сервер лишається джерелом правди: прийшов новий
+     вид — беремо його число, а не своє.
 
   Вид (Impl/Clicker.cs): { pots, total, perClick, perSecond, upgrades: { key: { level, price, name, desc, max } },
-                           canSellToday, soldToday, cap, rate, lastSync }.
+                           canSellToday, soldToday, cap, rate, lastSync, now }.
   Дії: spin { n }, buy { key }, sell { pots }.
 */
 (() => {
@@ -30,7 +32,7 @@
     if (!root._clk) {
       root._clk = {
         el: null, count: null, rate: null, wheel: null, pops: null, one: null, all: null, left: null, shop: null, buys: [],
-        base: 0, baseAt: Date.now(), perClick: 1, perSecond: 0, rateOf: 100, canSell: 0, mine: false,
+        base: 0, idleMs: 0, recvAt: Date.now(), perClick: 1, perSecond: 0, rateOf: 100, canSell: 0, mine: false,
         unsent: 0, inflight: 0, tokens: MAX_BATCH, tokensAt: Date.now(), shown: -1, raf: 0, timer: 0, ctx: null,
       };
     }
@@ -38,19 +40,24 @@
   }
 
   /// Пасив від мітки сервера, округлений УНИЗ: у сервера ще лежить дробовий залишок, тож це чесна нижня межа.
+  /// Простій = серверний (на момент виду) плюс те, що натікало на нашому годиннику ВІД отримання виду:
+  /// різниця годинників браузера й сервера в розрахунок не входить.
   function passive(st) {
-    const idle = Math.min(Math.max(0, Date.now() - st.baseAt), OFFLINE_CAP_MS);
+    const idle = Math.min(Math.max(0, st.idleMs + (Date.now() - st.recvAt)), OFFLINE_CAP_MS);
     return Math.floor((idle / 1000) * st.perSecond);
   }
 
-  /// Скільки глеків у нас просто зараз: серверне число, пасив і ще не підтверджені кліки.
-  const have = (st) => st.base + passive(st) + (st.unsent + st.inflight) * st.perClick;
+  /// Те, що сервер уже точно має: його число плюс пасив. Від нього рахуємо продаж.
+  const firm = (st) => st.base + passive(st);
 
   // ---------- малювання ----------
 
   /// Кличеться на кожен кадр: і число, і кнопки мусять оживати самі, поки коло крутиться без кліків.
   function paint(st) {
-    let n = have(st);
+    // Підтверджене число рахуємо один раз: від нього і лічильник (з нашими ще не відправленими кліками),
+    // і кнопки прилавка (уже без них).
+    const sure = firm(st);
+    let n = sure + (st.unsent + st.inflight) * st.perClick;
     // Дрібний відкат — це не витрата, а різниця округлень між нашим доліком і сервером: не смикаємо число.
     if (st.shown >= 0 && n < st.shown && st.shown - n <= 2) n = st.shown;
     if (n !== st.shown) {
@@ -61,7 +68,9 @@
       const off = b.dataset.maxed === '1' || !st.mine || n < +b.dataset.price;
       if (b.disabled !== off) b.disabled = off;
     }
-    const ready = Math.floor(n / st.rateOf);
+    // Продаж — від підтвердженого числа, а не від намальованого: у st.unsent може лежати хвіст кліків,
+    // які цієї миті ще не долетіли, і кнопка обіцяла б сервером не наліплені глеки.
+    const ready = Math.floor(sure / st.rateOf);
     const many = Math.min(ready, st.canSell);
     const one = !(st.mine && ready >= 1 && st.canSell >= 1);
     if (st.one.disabled !== one) st.one.disabled = one;
@@ -210,7 +219,10 @@
         // Усе, що вже полетіло, у цьому числі вже враховано — свій запас відпущених кліків обнуляємо.
         st.inflight = 0;
         st.base = v.pots;
-        st.baseAt = Date.parse(v.lastSync) || Date.now();
+        const sync = Date.parse(v.lastSync);
+        const now = Date.parse(v.now);
+        st.idleMs = Number.isFinite(sync) && Number.isFinite(now) ? Math.max(0, now - sync) : 0;
+        st.recvAt = Date.now();
         st.perClick = v.perClick || 1;
         st.perSecond = v.perSecond || 0;
         st.rateOf = v.rate || 100;
@@ -233,8 +245,10 @@
 
     onKey(e, ctx) {
       if (e.code !== 'Space' || !ctx.mine || !ctx.clk) return false;
-      // Коли фокус уже на колі, пробіл і так натисне кнопку — інакше клік порахувався б двічі.
-      if (document.activeElement === ctx.clk.wheel) return false;
+      // Фокус на будь-якій кнопці картки — пробіл належить їй: на колі він і так порахується (інакше клік
+      // пішов би двічі), а на верстаті чи прилавку ми б крутили коло замість покупки й продажу.
+      const on = document.activeElement;
+      if (on && on.tagName === 'BUTTON' && ctx.clk.el && ctx.clk.el.contains(on)) return false;
       spin(ctx.clk);
       return true;
     },

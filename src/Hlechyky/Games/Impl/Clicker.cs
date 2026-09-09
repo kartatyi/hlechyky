@@ -87,7 +87,19 @@ public sealed class Clicker : Game
     int _soldShards;
     /// <summary>Останнє число, яке вже пішло в таблицю: те саме слати вдруге — марно смикати базу.</summary>
     long _scored = -1;
+    DateTimeOffset _scoredAt;
     IOptionsMonitor<EconomyOptions>? _opts;
+
+    /// <summary>
+    /// Як часто число з таблиці оновлюється під час клацання. Кожна пачка кліків — це запис у ту саму
+    /// SQLite, у яку пише ефір, тож півхвилини затримки в таблиці «Гончарі» коштують дешевше, ніж
+    /// півтора запису на секунду з кожного гончаря.
+    /// </summary>
+    static readonly TimeSpan ScoreEvery = TimeSpan.FromSeconds(30);
+
+    /// <summary>Пороги ачівок «Гончар» і «Майстер-гончар»: платформа бачить їх саме з таблиці, тож ці
+    /// числа мусять летіти негайно, а не чекати своєї півхвилини.</summary>
+    static readonly long[] Milestones = [1_000, 100_000];
 
     // ---------- те, з чого складається дохід ----------
 
@@ -125,6 +137,7 @@ public sealed class Clicker : Game
         _total = 0;
         _carry = 0;
         _scored = -1;
+        _scoredAt = default;
         _levels.Clear();
         foreach (var up in Shop) _levels[up.Key] = 0;
         _soldDay = Days.Today(Ctx.Clock);
@@ -146,12 +159,28 @@ public sealed class Clicker : Game
             _ => ActResult.Fail("Тут так не ходять"),
         };
         // Таблиця «Гончарі» — це глеки за весь час; те саме число вдруге їй нічого не додасть.
-        if (result.Ok && _total != _scored)
+        if (result.Ok && WorthScoring())
         {
             _scored = _total;
+            _scoredAt = Ctx.Clock.UtcNow;
             Ctx.Score(0, _total);
         }
         return result;
+    }
+
+    /// <summary>
+    /// Чи варто зараз оновлювати рядок у таблиці. Клієнт шле пачку кліків раз на 700 мс, і <c>_total</c>
+    /// росте від кожної — писати в базу півтора рази на секунду задорого. Тому під час клацання число
+    /// оновлюється раз на <see cref="ScoreEvery"/>, а пороги ачівок ідуть одразу.
+    /// </summary>
+    bool WorthScoring()
+    {
+        if (_total == _scored) return false;
+        if (_scored < 0) return true;                                    // перше число після Start/Load
+        if (Ctx.Clock.UtcNow - _scoredAt >= ScoreEvery) return true;
+        foreach (var mark in Milestones)
+            if (_scored < mark && _total >= mark) return true;
+        return false;
     }
 
     /// <summary>
@@ -160,6 +189,7 @@ public sealed class Clicker : Game
     /// </summary>
     void Sync()
     {
+        RollDay();
         var now = Ctx.Clock.UtcNow;
         var idle = now - _lastSync;
         _lastSync = now;
@@ -174,6 +204,18 @@ public sealed class Clicker : Game
         _total += whole;
     }
 
+    /// <summary>
+    /// Перекинути лічильник обміну на новий день. Робиться одним місцем навмисно: доти, доки день чистили
+    /// «по дорозі», вчорашня сума встигала переїхати в сьогодні й з'їдала гравцеві цілу денну стелю.
+    /// </summary>
+    void RollDay()
+    {
+        var today = Days.Today(Ctx.Clock);
+        if (_soldDay == today) return;
+        _soldDay = today;
+        _soldShards = 0;
+    }
+
     // ---------- дії ----------
 
     /// <summary>
@@ -183,7 +225,11 @@ public sealed class Clicker : Game
     /// </summary>
     ActResult Spin(JsonElement payload)
     {
-        var asked = (int)Math.Clamp(Num(payload, "n") ?? 1, 1, MaxClicksPerSecond);
+        // «Поля нема» — це один клік (так шле кнопка), а от «n: 0» чи «n: −7» — це вже не клік, і мовчки
+        // домальовувати з нього глек не можна: чого не просили, того й не нараховуємо.
+        var raw = Num(payload, "n");
+        if (raw is <= 0) return ActResult.Fail("Кліків має бути хоч один");
+        var asked = (int)Math.Clamp(raw ?? 1, 1, MaxClicksPerSecond);
         var taken = Math.Min(asked, Allowance());
         _tokens -= taken;
 
@@ -222,18 +268,21 @@ public sealed class Clicker : Game
     /// <summary>Прилавок: сотня глеків за черепок, не більше <see cref="DailyCap"/> черепків на день.</summary>
     ActResult Sell(JsonElement payload)
     {
+        RollDay();   // після київської півночі лічильник дня чистий — і перевірка, і запис бачать нуль
         var pots = Num(payload, "pots") ?? 0;
         if (pots <= 0 || pots % Rate != 0) return ActResult.Fail($"Міняю сотнями: {Rate} глеків — один черепок");
         if (pots > _pots) return ActResult.Fail("Стільки глеків ще не наліплено");
 
-        var shards = (int)(pots / Rate);
-        var left = Math.Max(0, DailyCap - SoldToday);
+        var left = Math.Max(0, DailyCap - _soldShards);
         if (left <= 0) return ActResult.Fail("Сьогодні черепки скінчились, приходь завтра");
-        if (shards > left) return ActResult.Fail($"Сьогодні лишилось {left} — більше не візьму");
+        // Рахуємо в long і ріжемо стелею ДО приведення: глеків у стані може лежати скільки завгодно
+        // (стан — це JSON у базі), а (int) від такої частки мовчки загорнувся б у мінус.
+        var want = pots / Rate;
+        if (want > left) return ActResult.Fail($"Сьогодні лишилось {left} — більше не візьму");
+        var shards = (int)want;
 
         _pots -= pots;
-        _soldDay = Days.Today(Ctx.Clock);
-        _soldShards = SoldToday + shards;
+        _soldShards += shards;
         // Стеля дня в економіці своя (Economy:ClickerDailyCap) — наш лічильник лише показує її гравцеві наперед.
         Ctx.Award(0, shards, "clicker");
         return ActResult.Accept($"Обміняв {pots} глеків на {shards} {Shards(shards)}");
@@ -246,27 +295,37 @@ public sealed class Clicker : Game
 
     // ---------- вид ----------
 
-    public override object View(int? seat) => new
+    public override object View(int? seat)
     {
-        pots = _pots,
-        total = _total,
-        perClick = PerClick,
-        perSecond = PerSecond,
-        upgrades = Shop.ToDictionary(u => u.Key, u => (object)new
+        // Пасив рахуємо і на відкритті, а не лише при дії (так каже spec): гончар, який повернувся й
+        // просто дивиться на коло, мусить одразу бачити зароблене, а не чекати першого кліка. View
+        // каркас кличе під замком кімнати (Rooms.ViewsFor), тож синхронізувати тут безпечно.
+        Sync();
+        return new
         {
-            level = Level(u.Key),
-            price = u.Price(Level(u.Key)),
-            name = u.Name,
-            desc = u.Desc,
-            max = u.MaxLevel,
-        }, StringComparer.Ordinal),
-        canSellToday = Math.Max(0, DailyCap - SoldToday),
-        soldToday = SoldToday,
-        cap = DailyCap,
-        rate = Rate,
-        // Клієнт доліковує глеки від цієї мітки — тому вона мусить бути на дроті, а не лише в пам'яті.
-        lastSync = _lastSync,
-    };
+            pots = _pots,
+            total = _total,
+            perClick = PerClick,
+            perSecond = PerSecond,
+            upgrades = Shop.ToDictionary(u => u.Key, u => (object)new
+            {
+                level = Level(u.Key),
+                price = u.Price(Level(u.Key)),
+                name = u.Name,
+                desc = u.Desc,
+                max = u.MaxLevel,
+            }, StringComparer.Ordinal),
+            canSellToday = Math.Max(0, DailyCap - SoldToday),
+            soldToday = SoldToday,
+            cap = DailyCap,
+            rate = Rate,
+            // Клієнт доліковує глеки від цієї мітки — тому вона мусить бути на дроті, а не лише в пам'яті.
+            lastSync = _lastSync,
+            // І серверне «зараз» поруч: інакше клієнт міряв би серверну мітку своїм годинником, а збитий
+            // на кілька хвилин годинник малював би сотні глеків, яких на сервері нема.
+            now = Ctx.Clock.UtcNow,
+        };
+    }
 
     // ---------- збереження ----------
 
@@ -299,6 +358,7 @@ public sealed class Clicker : Game
         _carry = double.IsFinite(s.Carry) ? Math.Clamp(s.Carry, 0, 1) : 0;
         _lastSync = s.LastSync == default ? Ctx.Clock.UtcNow : s.LastSync;
         _scored = -1;
+        _scoredAt = default;
 
         _levels.Clear();
         foreach (var up in Shop)

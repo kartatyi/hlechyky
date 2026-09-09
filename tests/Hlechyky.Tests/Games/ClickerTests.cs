@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Hlechyky.Games;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
+using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Tests.Games;
 
@@ -110,6 +111,20 @@ public class ClickerTests
 
         Assert.Equal(1, Pots(h));
         Assert.Equal(1, Total(h));
+    }
+
+    [Fact]
+    public void A_spin_of_nothing_is_not_a_click()
+    {
+        // «Поля нема» — це один клік від кнопки, а от нуль і мінус — уже не клік: домальовувати з них глек
+        // не можна, бо тоді нелегальний ввід тихо стає ходом.
+        var h = Wheel();
+
+        Assert.Equal("Кліків має бути хоч один", Spin(h, 0).Message);
+        Assert.Equal("Кліків має бути хоч один", Spin(h, -7).Message);
+        Assert.Equal(0, Pots(h));
+        Assert.Equal(0, Total(h));
+        Assert.Empty(h.Scores);
     }
 
     [Fact]
@@ -243,9 +258,25 @@ public class ClickerTests
         h.Solo("Оля");
 
         Assert.Equal(3, PerSecond(h));
-        Assert.Equal(1, Pots(h));       // вид ще з мітки минулого разу — доліковує клієнт
+        // Пасив нараховано вже на відкритті, а не з першого кліка: гончар бачить зароблене одразу.
+        Assert.Equal(2 * 3600 * 3 + 1, Pots(h));
         Spin(h);
         Assert.Equal(2 * 3600 * 3 + 2, Pots(h));
+    }
+
+    [Fact]
+    public void The_open_workshop_pays_for_the_time_away_without_a_single_click()
+    {
+        var h = Wheel();
+        Give(h, 1_000);
+        Buy(h, "kiln");                 // глеки пішли за піч, лишився нуль
+        Assert.Equal(0, Pots(h));
+
+        h.Clock.Advance(TimeSpan.FromHours(2));
+
+        // Spec: пасив рахується «при кожній дії/відкритті» — саме тому Sync живе і у View.
+        Assert.Equal(2 * 3600 * 3, Pots(h));
+        Assert.Equal(1_000 + 2 * 3600 * 3, Total(h));   // за весь час: тисяча на піч і те, що вона наробила
     }
 
     // ---------- верстати ----------
@@ -397,8 +428,64 @@ public class ClickerTests
         h.Clock.Advance(TimeSpan.FromHours(12));   // 15:00 → 03:00 наступного дня за Києвом
         Assert.Equal(0, h.View(0).GetProperty("soldToday").GetInt32());
         Assert.Equal(20, h.View(0).GetProperty("canSellToday").GetInt32());
+
         Assert.True(Sell(h, 500).Ok);
         Assert.Equal(2, h.Awards.Count);
+        // Головне тут — не сам факт обміну, а лічильник ПІСЛЯ нього: доти, доки вчорашня сума переїжджала
+        // в сьогодні, перший же обмін нового дня закривав гончареві всю денну стелю.
+        Assert.Equal(5, h.View(0).GetProperty("soldToday").GetInt32());
+        Assert.Equal(15, h.View(0).GetProperty("canSellToday").GetInt32());
+    }
+
+    [Fact]
+    public void Yesterdays_sales_do_not_eat_todays_shards()
+    {
+        var h = Wheel();
+        Give(h, 100_000);
+        Assert.True(Sell(h, 2_000).Ok);            // учора вибрано всю стелю до останнього черепка
+
+        h.Clock.Advance(TimeSpan.FromHours(12));   // київська північ позаду
+
+        Assert.True(Sell(h, 100).Ok);
+        Assert.Equal(1, h.View(0).GetProperty("soldToday").GetInt32());
+        Assert.Equal(19, h.View(0).GetProperty("canSellToday").GetInt32());
+        Assert.True(Sell(h, 1_900).Ok);            // решта стелі того самого дня на місці
+        Assert.Equal(20, h.View(0).GetProperty("soldToday").GetInt32());
+        Assert.Equal(0, h.View(0).GetProperty("canSellToday").GetInt32());
+        Assert.Equal(new[] { 20, 1, 19 }, h.Awards.Select(a => a.Shards));
+    }
+
+    [Fact]
+    public void A_mountain_of_pots_does_not_wrap_the_count_into_a_minus()
+    {
+        // Чесною грою стільки глеків не наліпиш, але стан — це JSON у базі: одна правка руками, і прилавок
+        // мусить лишитись прилавком, а не роздавати від'ємні черепки.
+        var h = Wheel();
+        Give(h, 300_000_000_000);
+
+        Assert.Equal("Сьогодні лишилось 20 — більше не візьму", Sell(h, 300_000_000_000).Message);
+        Assert.Equal(300_000_000_000, Pots(h));
+        Assert.Empty(h.Awards);
+
+        Assert.True(Sell(h, 2_000).Ok);
+        Assert.Equal(20, Assert.Single(h.Awards).Shards);
+    }
+
+    [Fact]
+    public void The_daily_ceiling_comes_from_the_economy_settings()
+    {
+        // У проді стелю дає Economy:ClickerDailyCap — без цього тесту перевірявся б лише запасний шлях.
+        var h = new RoomHarness("clicker", services: RoomHarness.WithService<IOptionsMonitor<EconomyOptions>>(
+            new FixedOptions<EconomyOptions>(new EconomyOptions { ClickerDailyCap = 3 })));
+        h.Solo("Оля");
+        Give(h, 500);
+
+        Assert.Equal(3, h.View(0).GetProperty("cap").GetInt32());
+        Assert.Equal(3, h.View(0).GetProperty("canSellToday").GetInt32());
+        Assert.Equal("Сьогодні лишилось 3 — більше не візьму", Sell(h, 400).Message);
+        Assert.True(Sell(h, 300).Ok);
+        Assert.Equal("Сьогодні черепки скінчились, приходь завтра", Sell(h, 100).Message);
+        Assert.Equal(3, Assert.Single(h.Awards).Shards);
     }
 
     // ---------- таблиця, вид, збереження ----------
@@ -415,6 +502,41 @@ public class ClickerTests
         Assert.Equal("clicker", score.GameId);
         Assert.Equal("clicker:оля", score.Key);
         Assert.Equal(ScoreOrder.HigherIsBetter, score.Order);
+    }
+
+    [Fact]
+    public void The_table_is_not_poked_on_every_batch_of_clicks()
+    {
+        // Клієнт шле пачку раз на 700 мс: якби кожна йшла в таблицю, у SQLite (ту саму, у яку пише ефір)
+        // летіло б півтора запису на секунду з кожного гончаря, а колонка «спроб» рахувала б пачки.
+        var h = Wheel();
+        Click(h, 120);                  // десять пачок по дванадцять, десять секунд роботи
+
+        var first = Assert.Single(h.Scores);
+        Assert.Equal(12, first.Score);  // перше число після старту летить одразу
+
+        h.Clock.Advance(30);
+        Spin(h);
+        Assert.Equal(2, h.Scores.Count);
+        Assert.Equal(Total(h), h.Scores.Last().Score);
+    }
+
+    [Fact]
+    public void A_thousand_pots_reaches_the_table_at_once_so_the_achievement_is_not_late()
+    {
+        // Ачівку «Гончар» платформа роздає саме з таблиці (Economy/Achievements.cs), тож поріг мусить
+        // проскочити повз півхвилинну паузу.
+        var h = Wheel();
+        Give(h, 990);
+        Spin(h);
+        Assert.Equal(991, Assert.Single(h.Scores).Score);
+
+        Spin(h, 5);                     // 996 — таблиця почекає
+        Assert.Single(h.Scores);
+
+        Spin(h, 6);                     // 1002 — поріг перетнуто, число летить негайно
+        Assert.Equal(2, h.Scores.Count);
+        Assert.Equal(1_002, h.Scores.Last().Score);
     }
 
     [Fact]
@@ -444,6 +566,8 @@ public class ClickerTests
         Assert.Equal(20, v.GetProperty("canSellToday").GetInt32());
         Assert.Equal(0, v.GetProperty("soldToday").GetInt32());
         Assert.Equal(JsonValueKind.String, v.GetProperty("lastSync").ValueKind);
+        // Серверне «зараз» поруч із міткою: клієнт міряє простій ним, а не своїм годинником.
+        Assert.Equal(JsonValueKind.String, v.GetProperty("now").ValueKind);
 
         var ups = v.GetProperty("upgrades");
         foreach (var key in new[] { "wheel", "apprentice", "kiln", "clay" })
