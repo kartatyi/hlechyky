@@ -18,7 +18,9 @@ public static class GamesSetup
         services.AddSingleton<Rooms>();
         services.AddSingleton<Broadcaster>();
         services.AddSingleton<RateGate>();
-        services.AddSingleton<IOutbox>(sp => sp.GetRequiredService<Broadcaster>());
+        // Broadcaster знаходиться при першому Post, а не при побудові графа: інакше
+        // Rooms → IStakes (економіка) → IOutbox → Broadcaster → Rooms замикає коло (див. DeferredOutbox).
+        services.AddSingleton<IOutbox>(sp => new DeferredOutbox(sp.GetRequiredService<Broadcaster>));
         // Заглушки, щоб сервер піднімався без економіки. AddHlechykyGames кличеться раніше за
         // AddHlechykyEconomy, тому TryAdd тут завжди виграє — справжні реалізації WP1 ставить через
         // services.Replace(ServiceDescriptor.Singleton<IStakes, Economy>()).

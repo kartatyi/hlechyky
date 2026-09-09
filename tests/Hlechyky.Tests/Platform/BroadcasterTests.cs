@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Hlechyky.Games;
 using Hlechyky.Tests.Support;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -176,5 +176,23 @@ public class BroadcasterTests
 
         Assert.Single(sends, s => s.Event == "rooms");
         Assert.Single(sends, s => s.Event == "chat");
+    }
+
+    [Fact]
+    public void The_deferred_outbox_finds_the_broadcaster_only_on_the_first_message()
+    {
+        // Скринька, яку каркас дає сервісам, не сміє тягнути Broadcaster під час побудови графа:
+        // Rooms просить IStakes (економіка), економіка — IOutbox, Broadcaster — знову Rooms.
+        // На такому колі контейнер завмирає ще до того, як Kestrel відкриє порт.
+        var calls = 0;
+        var real = new FakeOutbox();
+        var outbox = new DeferredOutbox(() => { calls++; return real; });
+
+        Assert.Equal(0, calls);
+        outbox.Post(new Journal("перший"));
+        outbox.Post(new Journal("другий"));
+
+        Assert.Equal(1, calls);
+        Assert.Equal(2, real.Of<Journal>().Count);
     }
 }
