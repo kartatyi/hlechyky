@@ -189,9 +189,13 @@ public sealed class Battleship : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_phase == Phase.Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        // Час на розстановку перевіряємо і тут, а не лише в Tick: між тиками ціла секунда, і за неї
+        // ніхто не має права ані переставити кораблі, ані сказати «Готово» після дзвінка.
+        if (_phase == Phase.Placing && _placeUntil is { } until && Ctx.Clock.UtcNow >= until) ForceReady();
         return action switch
         {
             "place" => Place(seat, payload),
+            "clear" => Clear(seat),
             "random" => Scatter(seat),
             "ready" => Ready(seat),
             "shoot" => Shoot(seat, payload),
@@ -206,6 +210,20 @@ public sealed class Battleship : Game
         if (ReadShips(payload) is not { } ships) return ActResult.Fail("Не зрозумів розстановку");
         if (BattleshipRules.Invalid(ships) is { } why) return ActResult.Fail(why);
         _sides[seat].Ships = ships;
+        _dirty = true;
+        return ActResult.Done;
+    }
+
+    /// <summary>
+    /// «Скинути»: людина стерла свою розстановку в браузері — сервер має забути її разом з нею. Інакше
+    /// таймер дочекався б кінця й повів у бій із флотом, який гравець уже вважає стертим.
+    /// </summary>
+    ActResult Clear(int seat)
+    {
+        if (_phase != Phase.Placing) return ActResult.Fail("Бій уже почався, кораблі не рухаються");
+        if (_sides[seat].Ready) return ActResult.Fail("Ти вже сказав «Готово»");
+        if (_sides[seat].Ships.Count == 0) return ActResult.Done;
+        _sides[seat].Ships = [];
         _dirty = true;
         return ActResult.Done;
     }
@@ -342,6 +360,7 @@ public sealed class Battleship : Game
         if (late.Count > 0) Ctx.Log($"{Info.Title}: час на розстановку вийшов — {string.Join(" і ", late)} у бій як є");
         _phase = Phase.Battle;
         _turn = 0;
+        _dirty = true;   // фаза змінилась — види мусять піти, хоч би хто нас покликав: тик чи Act
     }
 
     // ---------- види ----------
@@ -357,6 +376,12 @@ public sealed class Battleship : Game
         misses = _sides[seat].Misses.Order().ToArray(),
     };
 
+    /// <summary>
+    /// Скільки кораблів поля ще на плаву. У розстановці — завжди весь флот: інакше з лічильника чужого
+    /// поля читалось би, чи суперник уже розставився (а на початку там стояв би відверто брехливий нуль).
+    /// </summary>
+    int LeftOf(int seat) => _phase == Phase.Placing ? BattleshipRules.Fleet.Length : _sides[seat].Left;
+
     /// <summary>Публічне знання про поле <paramref name="of"/>: куди по ньому влучили, де промахнулись, що вже потоплено.</summary>
     object Known(int of) => new
     {
@@ -364,7 +389,7 @@ public sealed class Battleship : Game
         misses = _sides[of].Misses.Order().ToArray(),
         sunk = _sides[of].Ships.Where(_sides[of].Sunk).Select(s => s.Order().ToArray()).ToArray(),
         ready = _sides[of].Ready,
-        left = _sides[of].Left,
+        left = LeftOf(of),
     };
 
     public override object View(int? seat)
@@ -395,7 +420,7 @@ public sealed class Battleship : Game
             ? Math.Max(0, (int)Math.Ceiling((until - Ctx.Clock.UtcNow).TotalSeconds))
             : (int?)null,
         ready = new[] { _sides[0].Ready, _sides[1].Ready },
-        left = new[] { _sides[0].Left, _sides[1].Left },
+        left = new[] { LeftOf(0), LeftOf(1) },
         shots = _sides[0].Shots + _sides[1].Shots,
         winner = _winner,
     };

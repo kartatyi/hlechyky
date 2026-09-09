@@ -88,6 +88,7 @@
         pick: 4,            // розмір обраного корабля зі списку
         horiz: true,
         adopt: true,        // взяти розстановку з сервера (після F5 або «Випадково»)
+        sent: false,        // сервер тримає мій флот (тобто є що скидати)
         pending: new Set(), // клітинки, куди постріл уже полетів, а відповідь ще ні
         phase: '',
         round: 0,
@@ -178,9 +179,17 @@
   // Розстановка
   // ---------------------------------------------------------------------------------------------
 
+  /// Тримає сервер у курсі: повний флот — 'place', неповний — 'clear', щоб таймер не повів у бій зі
+  /// старим флотом, який людина вже розібрала.
   function sendPlan(s, ctx) {
-    if (s.plan.length !== FLEET.length) return;
-    ctx.act('place', { ships: s.plan.map((sh) => ({ cells: sh.cells })) });
+    if (s.plan.length === FLEET.length) {
+      s.sent = true;
+      ctx.act('place', { ships: s.plan.map((sh) => ({ cells: sh.cells })) });
+      return;
+    }
+    if (!s.sent) return;
+    s.sent = false;
+    ctx.act('clear');
   }
 
   /// Клік по своєму полю у фазі розстановки: поставити обраний корабель або підняти той, що вже стоїть.
@@ -189,7 +198,11 @@
     const at = s.plan.findIndex((sh) => sh.cells.includes(cell));
     if (at >= 0) {
       const ship = s.plan[at];
-      const turned = fits(s.plan, ship.cells[0], ship.cells.length, !isHoriz(ship.cells), at);
+      // Однопалубний крутити нема як: для нього клік означає одразу «забрати назад», інакше корабель
+      // «повернувся» б сам у себе і зняти його з поля не вийшло б нічим.
+      const turned = ship.cells.length > 1
+        ? fits(s.plan, ship.cells[0], ship.cells.length, !isHoriz(ship.cells), at)
+        : null;
       if (turned) s.plan[at] = { cells: turned };
       else {
         // Повернути нема куди (або це однопалубний) — забираємо корабель назад у список.
@@ -257,7 +270,14 @@
         if (!b || b.disabled) return;
         const cur = state(root), o = acts._o || {};
         if (b.dataset.bs === 'random') { cur.adopt = true; o.ctx.act('random'); }
-        if (b.dataset.bs === 'clear') { cur.plan = []; cur.pick = FLEET[0]; paint(root, o.ctx); }
+        if (b.dataset.bs === 'clear') {
+          // adopt знімаємо: інакше найближче ж малювання наллє план назад із серверного виду.
+          cur.plan = [];
+          cur.pick = FLEET[0];
+          cur.adopt = false;
+          sendPlan(cur, o.ctx);
+          paint(root, o.ctx);
+        }
         if (b.dataset.bs === 'ready') o.ctx.act('ready');
       });
       host.insertBefore(acts, host.firstChild);
@@ -291,6 +311,7 @@
       s.pick = FLEET[0];
       s.horiz = true;
       s.adopt = true;
+      s.sent = false;
       s.pending.clear();
     }
 
@@ -306,9 +327,10 @@
     const me = v.me || {};
     const enemy = v.enemy || {};
     // У розстановці на своєму полі показуємо те, що людина совгає зараз; далі — те, що прийняв сервер.
-    if (phase === 'placing' && (s.adopt || !s.plan.length) && (me.ships || []).length) {
+    if (phase === 'placing' && s.adopt && (me.ships || []).length) {
       s.plan = me.ships.map((cells) => ({ cells: cells.slice() }));
       s.adopt = false;
+      s.sent = true;
     }
     const ships = phase === 'placing' ? s.plan.map((sh) => sh.cells) : (me.ships || []);
 
@@ -347,7 +369,9 @@
         });
         paint(root, ctx);
       },
-      (i) => ctx.myTurn && !theirs.has(i) && !s.pending.has(i));
+      // Поки постріл у польоті, поле замкнене цілком: вид (а з ним і ctx.myTurn) прийде аж із тиком, тож
+      // інакше другий клік поспіль летів би на сервер і повертався червоним «Зараз не твій хід».
+      (i) => ctx.myTurn && !s.pending.size && !theirs.has(i));
 
     tools(root, ctx, v);
   }

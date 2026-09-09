@@ -151,7 +151,23 @@ public class BattleshipTests
         Assert.NotEqual(JsonValueKind.Null, v.GetProperty("placeUntil").ValueKind);
         Assert.Empty(Prop(v, "me", "ships").EnumerateArray());
         Assert.False(Prop(v, "me", "ready").GetBoolean());
-        Assert.Equal(0, Prop(v, "enemy", "left").GetInt32());
+        // у розстановці «на плаву» завжди весь флот: нуль тут був би і брехнею, і підказкою
+        Assert.Equal(10, Prop(v, "enemy", "left").GetInt32());
+    }
+
+    [Fact]
+    public void The_rival_cannot_count_from_my_board_whether_i_have_placed_anything()
+    {
+        var h = Table();
+        var blind = h.View(1).GetProperty("enemy").ToString();
+
+        h.Act(0, "place", Fleet(Blue));
+        Assert.Equal(blind, h.View(1).GetProperty("enemy").ToString());
+
+        // і в кадрі, який летить усім одразу, теж
+        h.Tick(1);
+        var frame = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
+        Assert.Equal([10, 10], Ints(frame.GetProperty("left")));
     }
 
     [Fact]
@@ -213,6 +229,57 @@ public class BattleshipTests
         Assert.True(Prop(h.View(0), "me", "ready").GetBoolean());
         Assert.Equal("Ти вже сказав «Готово»", h.Act(0, "random").Message);
         Assert.Equal("Ти вже сказав «Готово»", h.Act(0, "place", Fleet(Blue)).Message);
+    }
+
+    [Fact]
+    public void Clear_wipes_my_fleet_so_there_is_nothing_left_to_lock()
+    {
+        // «Скинути» в браузері стирає розстановку — сервер мусить забути її разом із людиною
+        var h = Table();
+        h.Act(0, "place", Fleet(Blue));
+
+        Assert.True(h.Act(0, "clear").Ok);
+        Assert.Empty(Prop(h.View(0), "me", "ships").EnumerateArray());
+        Assert.Equal("Кораблів має бути рівно десять", h.Act(0, "ready").Message);
+
+        Assert.True(h.Act(0, "clear").Ok);   // скинути порожнє поле — не помилка, просто нічого не стається
+        Assert.True(h.Act(0, "place", Fleet(Blue)).Ok);
+        Assert.True(h.Act(0, "ready").Ok);
+        Assert.Equal("Ти вже сказав «Готово»", h.Act(0, "clear").Message);
+    }
+
+    [Fact]
+    public void The_timer_does_not_drag_a_cleared_fleet_into_the_battle()
+    {
+        var h = Table();
+        h.Act(0, "place", Fleet(Blue));
+        h.Act(0, "clear");
+        h.Act(1, "place", Fleet(Red));
+        h.Tick(BattleshipRules.PlaceSeconds);
+
+        var ships = Prop(h.View(0), "me", "ships").EnumerateArray().Select(Ints).ToArray();
+        Assert.Null(BattleshipRules.Invalid(ships));
+        Assert.NotEqual(Blue.Select(s => string.Join(",", s)), ships.Select(s => string.Join(",", s)));
+    }
+
+    [Fact]
+    public void After_the_bell_placing_is_over_even_without_a_tick()
+    {
+        // spec просить перевіряти час і в Act: тик іде щосекунди, і за цю секунду ніхто не має встигнути
+        var h = Table();
+        h.Act(0, "place", Fleet(Blue));
+        h.Clock.Advance(BattleshipRules.PlaceSeconds + 1);
+
+        Assert.Equal("Бій уже почався, кораблі не рухаються", h.Act(1, "random").Message);
+        Assert.Equal("Бій уже почався", h.Act(1, "ready").Message);
+
+        var v = h.View(1);
+        Assert.Equal("battle", v.GetProperty("phase").GetString());
+        Assert.True(Prop(v, "me", "ready").GetBoolean());
+        Assert.Null(BattleshipRules.Invalid(Prop(v, "me", "ships").EnumerateArray().Select(Ints).ToArray()));
+        // синій, що встиг розставитись, лишився зі своїм флотом і стріляє першим
+        Assert.Equal(Blue[0], Ints(Prop(h.View(0), "me", "ships")[0]));
+        Assert.True(h.Act(0, "shoot", new { cell = 0 }).Ok);
     }
 
     [Fact]
@@ -553,16 +620,21 @@ public class BattleshipTests
     [Trait("Category", "Perf")]
     public void A_thousand_ticks_of_one_room_are_instant()
     {
+        // Партію навмисне не дограємо до кінця: Rooms.TickDue обходить кімнати не в статусі Playing, і
+        // «тисяча тиків» після перемоги перетворилась би на тисячу порожніх обертів циклу.
         var h = Battle();
+        var cells = Red.SelectMany(s => s).Take(BattleshipRules.Decks - 1).ToArray();
         var sw = Stopwatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
-            if (i < 20) h.Act(0, "shoot", new { cell = Red.SelectMany(s => s).ElementAt(i) });
+            // перші тики збирають і кадр, і види (влучання лишає хід), решта — найдешевший шлях Tick()
+            if (i < cells.Length) Assert.True(h.Act(0, "shoot", new { cell = cells[i] }).Ok);
             h.Tick(1);
         }
         sw.Stop();
 
-        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(cells.Length, h.View(0).GetProperty("shots").GetInt32());
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"1000 тиків зайняли {sw.Elapsed}");
     }
 }
