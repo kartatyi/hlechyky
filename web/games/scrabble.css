@@ -1,0 +1,124 @@
+/*
+  Ерудит. Кольори — тільки змінними: спільні беруть зі static/style.css, свої оголошені тут на :root
+  (модулі читають їх через ctx.css(), а той дивиться саме в :root).
+*/
+:root {
+  --scr-tile: #e0cfa4;        /* дерев'яна фішка */
+  --scr-tile2: #c9b489;       /* її тінь-грань */
+  --scr-empty: #1b3227;       /* порожня клітинка дошки */
+  --scr-dl: #2b5b6e;          /* літера ×2 */
+  --scr-tl: #1d4152;          /* літера ×3 */
+  --scr-dw: #7c4633;          /* слово ×2 */
+  --scr-tw: #97382b;          /* слово ×3 */
+}
+
+/* Дошка 15×15 у колонці на 300 px не читається — така картка забирає цілий ряд сітки столів. */
+.gtables .scr-table { grid-column: 1 / -1; }
+
+.gbody > .scr-top,
+.gbody > .scr-board,
+.gbody > .scr-rack,
+.gbody > .scr-blank,
+.gbody > .scr-hint,
+.gbody > .scr-btns,
+.gbody > .scr-log { width: 100%; }
+
+/* Своя підказка: каркасний рядок статусу оновлюється лише на подію 'room', а ця — на кожен клік. */
+.scr-hint { text-align: center; color: var(--muted); font-size: .85em; min-height: 1.15em; }
+
+/* ---- шапка з рахунком ---- */
+.scr-top { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.scr-p {
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); font-size: .88em; max-width: 46%;
+}
+.scr-p i { font-style: normal; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scr-p b { font-variant-numeric: tabular-nums; }
+.scr-p u { text-decoration: none; color: var(--muted); font-size: .8em; }
+.scr-p u::after { content: ' фш'; }
+.scr-p.on { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.scr-p.me i { color: var(--text); }
+.scr-bag, .scr-warn {
+  padding: 3px 9px; border-radius: 999px; font-size: .8em; color: var(--muted);
+  border: 1px dashed var(--line); white-space: nowrap;
+}
+.scr-warn { color: var(--clay); border-style: solid; }
+
+/* ---- дошка ---- */
+.scr-board { display: flex; justify-content: center; }
+.board.sboard {
+  width: min(100%, 520px); gap: 2px; padding: 4px; background: var(--bg2); border-radius: 8px;
+}
+.board.sboard .cell {
+  font-size: 1em; border-radius: 3px; background: var(--scr-empty); border-color: transparent;
+  padding: 0; overflow: hidden; position: relative; line-height: 1;
+}
+.board.sboard .cell b { font-weight: 700; font-size: min(2.6vw, 15px); }
+.board.sboard .cell u { display: none; }
+.board.sboard .cell i { font-style: normal; font-size: min(1.7vw, 9px); color: var(--text); opacity: .72; }
+.board.sboard .cell:not(:disabled):hover { background: var(--panel3); }
+
+.board.sboard .cell.bl2 { background: var(--scr-dl); }
+.board.sboard .cell.bl3 { background: var(--scr-tl); }
+.board.sboard .cell.bw2 { background: var(--scr-dw); }
+.board.sboard .cell.bw3 { background: var(--scr-tw); }
+.board.sboard .cell.bc { background: var(--clay); }
+
+.board.sboard .cell.tile {
+  background: linear-gradient(160deg, var(--scr-tile), var(--scr-tile2));
+  color: var(--accent-ink); opacity: 1;
+}
+/* фішка, покладена цим ходом, але ще не відправлена на сервер */
+.board.sboard .cell.tile.pend { box-shadow: 0 0 0 2px var(--accent) inset; }
+/* останнє викладене слово */
+.board.sboard .cell.tile.last { box-shadow: 0 0 0 2px var(--accent2) inset; }
+/* порожня фішка: літера є, очок нема */
+.board.sboard .cell.tile.wild b { opacity: .72; font-style: italic; }
+
+/* ---- стійка ---- */
+.scr-rack { display: flex; justify-content: center; }
+.scr-rack .ghand { gap: 5px; }
+.scr-rack .gcard {
+  min-width: 34px; padding: 7px 6px 5px; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: linear-gradient(160deg, var(--scr-tile), var(--scr-tile2)); color: var(--accent-ink);
+  border-color: transparent;
+}
+.scr-rack .gcard b { font-size: 1.25em; line-height: 1; }
+.scr-rack .gcard u { text-decoration: none; font-size: .7em; opacity: .7; line-height: 1; }
+.scr-rack .gcard.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.scr-rack .gcard.off { opacity: .3; }
+
+/* ---- кнопки й попап літери ---- */
+.scr-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.scr-btns button:disabled { opacity: .45; }
+.scr-btns .warn { color: var(--clay); }
+.scr-pick {
+  display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 8px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+.scr-letters { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.scr-letters button {
+  min-width: 30px; padding: 6px 0; justify-content: center; background: var(--panel3);
+  border-color: transparent; font-size: .95em;
+}
+
+/* ---- журнал ходів ---- */
+.scr-log { display: flex; flex-direction: column; gap: 2px; font-size: .85em; }
+.scr-row { display: flex; gap: 8px; padding: 2px 8px; border-radius: 6px; background: var(--panel); }
+.scr-row i { font-style: normal; color: var(--muted); min-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scr-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- телефон ---- */
+@media (max-width: 480px) {
+  /* 15 колонок на 375 px дають клітинку в 19 px — для пальця замало. Даємо дошці власну прокрутку:
+     сторінка вбік не їде (прокручується тільки .scr-board), зате клітинка виростає до ~27 px.
+     justify-content: flex-start — інакше центрування ховає лівий край за початком прокрутки. */
+  .scr-board { overflow-x: auto; justify-content: flex-start; }
+  .board.sboard { width: max(100%, 420px); flex: none; margin: 0; gap: 1px; padding: 2px; }
+  .board.sboard .cell { border-radius: 2px; }
+  .board.sboard .cell b { font-size: min(3.1vw, 13px); }
+  .board.sboard .cell i { font-size: min(2vw, 8px); }
+  .scr-rack .gcard { min-width: 30px; padding: 6px 4px 4px; }
+  .scr-p { max-width: 100%; }
+  .scr-letters button { min-width: 26px; }
+}
