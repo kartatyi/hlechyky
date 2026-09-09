@@ -68,24 +68,17 @@ public class DuelTests
     [Fact]
     public void Aiming_never_takes_less_than_a_second_and_a_half_nor_more_than_five()
     {
+        // Міряємо не хелпер, а справжню машину фаз: скільки тиків від початку партії до «ВОГОНЬ!».
+        var lengths = new HashSet<int>();
         for (var seed = 1; seed <= 50; seed++)
         {
-            var ms = Duel.AimMs(new Random(seed));
-            Assert.InRange(ms, Duel.AimMinMs, Duel.AimMaxMs);
+            var ticks = TickUntil(Street(seed), "fire");
+            // 1.5 с «Готуйсь…» плюс 1.5–5 с «Цілься…», округлені вгору до сітки тиків
+            Assert.InRange(ticks, (Duel.ReadyMs + Duel.AimMinMs) / Duel.TickMs, (Duel.ReadyMs + Duel.AimMaxMs) / Duel.TickMs);
+            lengths.Add(ticks);
         }
         // сід кімнати справді щось міняє, інакше «випадковість» була б сталою
-        var lengths = Enumerable.Range(1, 50).Select(s => Duel.AimMs(new Random(s))).Distinct().Count();
-        Assert.True(lengths > 10, $"на 50 сідах вийшло лише {lengths} різних тривалостей");
-    }
-
-    [Fact]
-    public void Fire_comes_only_after_the_whole_ready_and_aim_are_over()
-    {
-        var h = Street();
-        var ticks = TickUntil(h, "fire");
-
-        // 1.5 с «Готуйсь…» плюс 1.5–5 с «Цілься…», округлені вгору до сітки тиків
-        Assert.InRange(ticks, (Duel.ReadyMs + Duel.AimMinMs) / Duel.TickMs, (Duel.ReadyMs + Duel.AimMaxMs) / Duel.TickMs);
+        Assert.True(lengths.Count > 10, $"на 50 сідах вийшло лише {lengths.Count} різних тривалостей");
     }
 
     [Fact]
@@ -216,6 +209,64 @@ public class DuelTests
     }
 
     [Fact]
+    public void A_shot_that_missed_the_window_does_not_take_the_round()
+    {
+        var h = Street();
+        TickUntil(h, "fire");
+
+        // вікно вже зачинилось, а тик, який оголосить «заснули», ще не настав
+        h.Clock.AdvanceMs(Duel.FireWindowMs + 10);
+        h.Input(0, "shoot");
+        h.Tick();
+
+        Assert.Equal("sleep", Last(h).GetProperty("reason").GetString());
+        Assert.Equal(JsonValueKind.Null, Last(h).GetProperty("ms")[0].ValueKind);
+        Assert.Equal([0, 0], Wins(h));
+        Assert.Empty(h.Scores);
+    }
+
+    [Fact]
+    public void Three_sleepy_rounds_in_a_row_close_the_empty_street()
+    {
+        var h = Street();
+        for (var i = 0; i < Duel.IdleRounds; i++)
+        {
+            TickUntil(h, "fire");
+            h.Tick(FireTicks);            // за столом нікого
+            Assert.Equal("sleep", Last(h).GetProperty("reason").GetString());
+            h.Tick(ResultTicks);
+        }
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal("done", Phase(h));
+        Assert.Empty(h.Room.Result!.Winners);      // нічия: ставки повертаються
+        Assert.Equal("Дуель: Оля і Петро так і не вистрілили — дуель не відбулась",
+            h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void One_shot_wakes_the_street_up_and_the_sleepy_count_starts_over()
+    {
+        var h = Street();
+        for (var i = 0; i < Duel.IdleRounds - 1; i++)
+        {
+            TickUntil(h, "fire");
+            h.Tick(FireTicks);
+            h.Tick(ResultTicks);
+        }
+
+        WinRound(h, 0);                   // хтось таки прокинувся
+
+        for (var i = 0; i < Duel.IdleRounds - 1; i++)
+        {
+            TickUntil(h, "fire");
+            h.Tick(FireTicks);
+            h.Tick(ResultTicks);
+        }
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
     public void A_shot_between_the_rounds_is_politely_refused()
     {
         var h = Street();
@@ -275,6 +326,39 @@ public class DuelTests
         Assert.Equal(240, h.Scores.Single(s => s.Nick == "Петро").Score);
         Assert.All(h.Scores, s => Assert.Equal(ScoreOrder.LowerIsBetter, s.Order));
         Assert.All(h.Scores, s => Assert.Equal("duel", s.GameId));
+    }
+
+    [Fact]
+    public void A_false_start_and_a_sleepy_round_leave_the_table_of_reactions_alone()
+    {
+        var h = Street();
+        h.Tick(ReadyTicks);
+        h.Input(1, "shoot");              // фальстарт: стріляли, але не в ту мить
+        h.Tick();
+        Assert.Equal("false", Last(h).GetProperty("reason").GetString());
+        Assert.Empty(h.Scores);
+
+        h.Tick(ResultTicks);
+        TickUntil(h, "fire");
+        h.Tick(FireTicks);                // і заснули обидва
+        Assert.Equal("sleep", Last(h).GetProperty("reason").GetString());
+        Assert.Empty(h.Scores);
+    }
+
+    [Fact]
+    public void A_reaction_no_human_has_takes_the_round_but_not_a_place_in_the_table()
+    {
+        var h = Street();
+        TickUntil(h, "fire");
+
+        h.Clock.AdvanceMs(Duel.HumanFloorMs - 1);
+        h.Input(0, "shoot");
+        h.Tick();
+
+        Assert.Equal(0, Last(h).GetProperty("winner").GetInt32());
+        Assert.Equal([1, 0], Wins(h));                                  // раунд усе одно його
+        Assert.Equal(Duel.HumanFloorMs - 1, Last(h).GetProperty("ms")[0].GetInt64());
+        Assert.Empty(h.Scores);                                         // а таблиця й ачівка — ні
     }
 
     [Fact]
@@ -352,12 +436,13 @@ public class DuelTests
         var h = Street();
         var v = h.View(0);
 
-        foreach (var name in new[] { "phase", "round", "wins", "last", "nextIn", "best", "turn" })
+        foreach (var name in new[] { "phase", "round", "wins", "last", "nextIn", "best" })
             Assert.True(Views.Has(v, name), name);
-        Assert.Equal(JsonValueKind.Null, v.GetProperty("turn").ValueKind);
+        Assert.False(Views.Has(v, "turn"));                  // дуель не покрокова, ходити нікому
         Assert.Equal(2, v.GetProperty("wins").GetArrayLength());
         Assert.Equal(2, v.GetProperty("best").GetArrayLength());
-        // глядач бачить те саме: ховати в дуелі нема чого
+        // обидва місця і глядач бачать те саме: ховати в дуелі нема чого
+        Assert.Equal(Views.Text(h.View(0)), Views.Text(h.View(1)));
         Assert.Equal(Views.Text(h.View(0)), Views.Text(h.View(null)));
     }
 
@@ -413,7 +498,12 @@ public class DuelTests
     {
         var h = Street();
         var sw = Stopwatch.StartNew();
-        h.Tick(1000);                                  // ніхто не стріляє: раунди переграються по колу
+        for (var i = 0; i < 1000; i++)
+        {
+            // обидва щоразу поспішають: раунд переграється, партія не кінчається — тик має справжню роботу
+            if (Phase(h) is "ready" or "aim") { h.Input(0, "shoot"); h.Input(1, "shoot"); }
+            h.Tick();
+        }
         sw.Stop();
 
         Assert.Equal(RoomStatus.Playing, h.Room.Status);

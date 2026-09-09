@@ -39,6 +39,18 @@ public sealed class Duel : Game
     public const int WinsNeeded = 3;
     /// <summary>50 мс — крок, на якому різниця в реакції ще чесна, а кадрів не забагато.</summary>
     public const int TickMs = 50;
+    /// <summary>
+    /// Стільки раундів поспіль «обидва заснули» — і стіл закривається нічиєю. Інакше покинута дуель
+    /// (вкладки відкриті, за клавіатурою нікого) крутила б раунди по колу, поки хтось не закриє браузер:
+    /// кімнату в статусі «грають» прибиральник каркаса не чіпає.
+    /// </summary>
+    public const int IdleRounds = 3;
+    /// <summary>
+    /// Швидше за це людина не встигає — це вже не рука, а скрипт у консолі. Раунд такому стрільцеві
+    /// зараховуємо (сервер напевно не знає, хто там тиснув), але в таблицю реакцій і до ачівки
+    /// «Швидка рука» такий час не пускаємо.
+    /// </summary>
+    public const int HumanFloorMs = 80;
 
     public override GameInfo Info { get; } = new(
         "duel", "Дуель", "дуель", GameGroup.Live, 2, 2, TickMs: TickMs, Rated: true,
@@ -51,6 +63,8 @@ public sealed class Duel : Game
     readonly int[] _wins = new int[2];
     /// <summary>Найшвидша реакція кожного за цю партію; null — ще жодного влучного пострілу.</summary>
     readonly long?[] _best = new long?[2];
+    /// <summary>Скільки раундів поспіль ніхто не вистрілив. Будь-який постріл обнуляє.</summary>
+    int _idle;
 
     /// <summary>Коли «Готуйсь…» стає «Цілься…».</summary>
     DateTimeOffset _aimAt;
@@ -82,6 +96,7 @@ public sealed class Duel : Game
         _wins[0] = _wins[1] = 0;
         _best[0] = _best[1] = null;
         _round = 1;
+        _idle = 0;
         _hasLast = false;
         _lastReason = null;
         _lastWinner = null;
@@ -123,6 +138,9 @@ public sealed class Duel : Game
     /// </summary>
     void Shoot(int seat, DateTimeOffset now)
     {
+        // Вікно вже зачинилось, а фазу міняє тільки Tick — тож між кінцем вікна і наступним тиком
+        // сюди ще може влетіти постріл. За правилом це вже «заснули обидва», і раунд переграється.
+        if (now >= _deadline) return;
         if (_ms[seat] is not null) return;   // двічі за раунд не стріляють
         _ms[seat] = (long)Math.Max(1, Math.Round((now - _fireAt).TotalMilliseconds));
         if (_reason is null)
@@ -195,9 +213,11 @@ public sealed class Duel : Game
             if (_ms[seat] is not { } ms) continue;
             if (_best[seat] is not { } best || ms < best) _best[seat] = ms;
             // Найшвидша рука йде в таблицю реакцій (Info.Score = LowerIsBetter); звідси ж WP1 сам бачить
-            // ачівку «Швидка рука», тож просити її через Ctx.Award не треба.
-            Ctx.Score(seat, ms);
+            // ачівку «Швидка рука», тож просити її через Ctx.Award не треба. Нелюдські мілісекунди
+            // (див. HumanFloorMs) у таблицю не пускаємо — інакше вона була б таблицею консолей.
+            if (ms >= HumanFloorMs) Ctx.Score(seat, ms);
         }
+        _idle = _reason == "sleep" ? _idle + 1 : 0;
         _hasLast = true;
         _lastReason = _reason;
         _lastWinner = _winner;
@@ -219,6 +239,13 @@ public sealed class Duel : Game
             _phase = DuelPhase.Done;
             // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
             Ctx.Finish([won], $"{Info.Title}: {Ctx.NickOf(won)} {SeatName(won)} {_wins[won]}:{_wins[lost]} {Ctx.NickOf(lost)} {SeatName(lost)}");
+            return TickResult.Both;
+        }
+        if (_idle >= IdleRounds)
+        {
+            // За столом нікого: три раунди поспіль ніхто навіть не смикнувся. Нічия — ставки назад.
+            _phase = DuelPhase.Done;
+            Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(0)} і {Ctx.NickOf(1)} так і не вистрілили — дуель не відбулась");
             return TickResult.Both;
         }
         // Перегравання номер раунду не рухає: у best of 5 «третій раунд» має бути справді третім.
@@ -244,8 +271,6 @@ public sealed class Duel : Game
         last = Last(),
         nextIn = NextIn(),
         best = (long?[])_best.Clone(),
-        // Дуель не покрокова, але поле каркас читає в кожної гри: без нього він писав би «Ходить X».
-        turn = (int?)null,
     };
 
     object? Last() => _hasLast

@@ -52,7 +52,7 @@
   function state(root, ctx) {
     let st = states.get(ctx);
     if (!st || st.root !== root) {
-      st = { root: root, last: null, phase: '', timer: 0, els: null };
+      st = { root: root, last: null, seen: null, phase: '', timer: 0, els: null };
       states.set(ctx, st);
     }
     return st;
@@ -61,6 +61,16 @@
   /// Кадр несе лише те, що змінилось за фазу, а рекорди приходять видом — тому не замінюємо
   /// стан кадром, а домішуємо його: інакше best зникав би між раундами.
   const merge = (prev, next) => Object.assign({}, prev || {}, next || {});
+
+  /// Домішати вид — але ТІЛЬКИ якщо він справді новий. Каркас перемальовує картку і на кожну подію
+  /// лобі (хтось створив стіл), причому тим самим, збереженим видом; а вид дуелі сервер шле лише на
+  /// межі раундів. Без цієї перевірки чужий стіл у лобі гасив би «ВОГОНЬ!» посеред вікна пострілу
+  /// й відкочував сцену на «Готуйсь…». Кожна подія 'room' приносить свіжий об'єкт — його й ловимо.
+  function take(st, ctx) {
+    if (!ctx.view || !ctx.view.phase || ctx.view === st.seen) return;
+    st.seen = ctx.view;
+    st.last = merge(st.last, ctx.view);
+  }
 
   function build(root, ctx) {
     const st = state(root, ctx);
@@ -80,7 +90,8 @@
     root.appendChild(wrap);
     st.els = {
       wrap: wrap,
-      wins: wrap.querySelector('.dwins'),
+      // Рахунок збираємо один раз, а далі правимо лише текст цифр: шлях кадру HTML не парсить.
+      wins: [...wrap.querySelectorAll('.dwins b')],
       round: wrap.querySelector('.dround'),
       scene: wrap.querySelector('.dscene'),
       call: wrap.querySelector('.dcall'),
@@ -145,8 +156,10 @@
     const wins = s.wins || [0, 0];
     const l = s.last;
 
-    const score = '<b>' + (wins[0] || 0) + '</b> : <b>' + (wins[1] || 0) + '</b>';
-    if (st.els.wins.innerHTML !== score) st.els.wins.innerHTML = score;
+    for (let i = 0; i < 2; i++) {
+      const w = String(wins[i] || 0);
+      if (st.els.wins[i].textContent !== w) st.els.wins[i].textContent = w;
+    }
     // Рядок під рахунком: який зараз раунд і чий рекорд руки. Чужий рекорд у картці ні до чого.
     const parts = [];
     if (phase === 'done') parts.push('дуель зіграно');
@@ -192,14 +205,12 @@
     seatClass: ['x', 'o'],
 
     mount(root, ctx) {
-      const st = build(root, ctx);
-      if (ctx.view && ctx.view.phase) st.last = merge(st.last, ctx.view);
+      take(build(root, ctx), ctx);
       render(root, ctx);
     },
 
     update(root, ctx) {
-      const st = build(root, ctx);
-      if (ctx.view && ctx.view.phase) st.last = merge(st.last, ctx.view);
+      take(build(root, ctx), ctx);
       render(root, ctx);
     },
 
