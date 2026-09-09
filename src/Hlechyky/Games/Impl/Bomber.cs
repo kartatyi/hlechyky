@@ -80,16 +80,22 @@ public sealed class Bomber : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (!_started) return ActResult.Fail("Партія ще не почалась");
-        if (_phase != PhaseGo) return ActResult.Fail("Зачекай, зараз почнемо");
         if (seat < 0 || seat >= BomberCore.Seats) return ActResult.Fail("Ти тут не граєш");
-        if (!Core.Players[seat].Alive) return ActResult.Fail("Тебе вже підірвали, чекай наступного раунду");
 
         switch (action)
         {
             case "move":
-                Core.Turn(seat, Dir(payload) ?? -1);
+                // «Тримаю напрямок» — це лише намір, і приймаємо його в будь-якій фазі: людина тисне
+                // стрілку ще на відліку, і бомбер має поїхати з першого тика раунду. Зрушити раніше
+                // нікому — у фазах «готуйсь» і «пауза» Core.Step() не кличеться взагалі.
+                if (_phase == PhaseOver) return ActResult.Fail("Партію вже зіграно");
+                var dir = Dir(payload);
+                if (dir is null or < -1 or > 3) return ActResult.Fail("Такого напрямку нема");
+                Core.Turn(seat, dir.Value);
                 return ActResult.Done;
             case "bomb":
+                if (_phase != PhaseGo) return ActResult.Fail("Зачекай, зараз почнемо");
+                if (!Core.Players[seat].Alive) return ActResult.Fail("Тебе вже підірвали, чекай наступного раунду");
                 return Core.Bomb(seat) ? ActResult.Done : ActResult.Fail("Бомби скінчились");
             default:
                 return ActResult.Fail("Тут так не ходять");

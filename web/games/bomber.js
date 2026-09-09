@@ -49,20 +49,38 @@
     g.fill();
   }
 
-  function drawWalls(st, g) {
-    const wall = st.css('--panel3', '#2b4c3c');
-    const edge = st.css('--line', '#2f4d3d');
-    for (const cell of st.walls) {
+  // Кожен ctx.css — це getComputedStyle(:root), а малюємо ми на rAF. Тому палітру збираємо рівно
+  // раз на кадр і передаємо вниз готовою, а не питаємо колір на кожен ящик і кожного бомбера.
+  function palette(st) {
+    return {
+      bg: st.css('--bg', '#0f1f18'),
+      bg2: st.css('--bg2', '#16291f'),
+      panel: st.css('--panel', '#1c3328'),
+      wall: st.css('--panel3', '#2b4c3c'),
+      edge: st.css('--line', '#2f4d3d'),
+      clay: st.css('--clay', '#c5763a'),
+      dark: st.css('--bbox', '#8f5527'),
+      bomb: st.css('--bbomb', '#12211a'),
+      accent: st.css('--accent', '#f4c542'),
+      danger: st.css('--danger', '#e57373'),
+      shade: st.css('--gshade', 'rgba(15, 31, 24, .62)'),
+      text: st.css('--text', '#ecf1ea'),
+      seats: SEATS.map(([name, fallback]) => st.css(name, fallback)),
+    };
+  }
+
+  function drawWalls(pal, g, walls) {
+    for (const cell of walls) {
       const [x, y] = at(cell);
-      box(g, x, y, 0, 3, wall);
-      g.fillStyle = edge;
+      box(g, x, y, 0, 3, pal.wall);
+      g.fillStyle = pal.edge;
       g.fillRect(x, y, PX, 3);
     }
   }
 
-  function drawBoxes(st, g, cells) {
-    const clay = st.css('--clay', '#c5763a');
-    const dark = st.css('--bbox', '#8f5527');
+  function drawBoxes(pal, g, cells) {
+    const clay = pal.clay;
+    const dark = pal.dark;
     for (const cell of cells || []) {
       const [x, y] = at(cell);
       box(g, x, y, 2, 4, clay);
@@ -78,10 +96,10 @@
     }
   }
 
-  function drawDrops(st, g, drops) {
+  function drawDrops(pal, g, drops) {
     for (const d of drops || []) {
       const x = d.x * PX, y = d.y * PX;
-      box(g, x, y, 4, 6, st.css('--panel', '#1c3328'));
+      box(g, x, y, 4, 6, pal.panel);
       g.font = '13px system-ui, sans-serif';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
@@ -89,10 +107,10 @@
     }
   }
 
-  function drawFlame(st, g, cells, now) {
+  function drawFlame(pal, g, cells, now) {
     // Червоне по краю й жовте всередині: інакше полум'я на цьому полі плутається з глиняними ящиками.
-    const outer = st.css('--danger', '#e57373');
-    const inner = st.css('--accent', '#f4c542');
+    const outer = pal.danger;
+    const inner = pal.accent;
     const beat = 0.88 + 0.12 * Math.sin(now / 70);
     g.globalAlpha = beat;
     for (const cell of cells || []) {
@@ -103,9 +121,9 @@
     g.globalAlpha = 1;
   }
 
-  function drawBombs(st, g, bombs, now) {
-    const body = st.css('--bbomb', '#12211a');
-    const spark = st.css('--accent', '#f4c542');
+  function drawBombs(pal, g, bombs, now) {
+    const body = pal.bomb;
+    const spark = pal.accent;
     for (const b of bombs || []) {
       const cx = b.x * PX + PX / 2, cy = b.y * PX + PX / 2;
       // що менше лишилось запалу, то швидше бомба «дихає» — це єдина підказка про час
@@ -114,7 +132,7 @@
       g.beginPath();
       g.arc(cx, cy + 1, (PX * 0.36) * beat, 0, Math.PI * 2);
       g.fill();
-      g.strokeStyle = st.css('--clay', '#c5763a');
+      g.strokeStyle = pal.clay;
       g.lineWidth = 1.6;
       g.beginPath();
       g.moveTo(cx + 3, cy - PX * 0.3);
@@ -127,23 +145,23 @@
     }
   }
 
-  function drawMen(st, g, men) {
+  function drawMen(pal, g, men) {
     for (let i = 0; i < men.length; i++) {
       const m = men[i];
       if (!m || !m.alive) continue;
       const cx = (m.x / SUB) * PX + PX / 2, cy = (m.y / SUB) * PX + PX / 2;
       const r = PX * 0.38;
-      g.fillStyle = st.css('--bg', '#0f1f18');
+      g.fillStyle = pal.bg;
       g.beginPath();
       g.ellipse(cx, cy + r * 0.85, r * 0.8, r * 0.3, 0, 0, Math.PI * 2);   // тінь під ногами
       g.globalAlpha = 0.35;
       g.fill();
       g.globalAlpha = 1;
-      g.fillStyle = st.css(SEATS[i][0], SEATS[i][1]);
+      g.fillStyle = pal.seats[i] || SEATS[i][1];
       g.beginPath();
       g.arc(cx, cy, r, 0, Math.PI * 2);
       g.fill();
-      g.fillStyle = st.css('--bg', '#0f1f18');
+      g.fillStyle = pal.bg;
       g.beginPath();
       g.arc(cx - r * 0.32, cy - r * 0.2, r * 0.17, 0, Math.PI * 2);
       g.arc(cx + r * 0.32, cy - r * 0.2, r * 0.17, 0, Math.PI * 2);
@@ -151,12 +169,12 @@
     }
   }
 
-  function drawShade(st, g, c, f, waiting) {
+  function drawShade(pal, g, c, f, waiting) {
     if (f.phase === 'go' || (f.phase === 'start' && waiting)) return;
-    g.fillStyle = st.css('--gshade', 'rgba(15, 31, 24, .62)');
+    g.fillStyle = pal.shade;
     g.fillRect(0, 0, c.w, c.h);
     if (f.phase !== 'start' || waiting) return;
-    g.fillStyle = st.css('--text', '#ecf1ea');
+    g.fillStyle = pal.text;
     g.font = '700 46px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
@@ -188,17 +206,18 @@
     const now = performance.now();
     const shot = men(st);
     const g = c.ctx;
-    g.fillStyle = st.css('--bg2', '#16291f');
+    const pal = palette(st);
+    g.fillStyle = pal.bg2;
     g.fillRect(0, 0, c.w, c.h);
-    drawWalls(st, g);
+    drawWalls(pal, g, st.walls);
     if (!shot) return;
     const f = shot.f;
-    drawBoxes(st, g, f.boxes);
-    drawDrops(st, g, f.pw);
-    drawBombs(st, g, f.b, now);
-    drawMen(st, g, shot.men);
-    drawFlame(st, g, f.f, now);
-    drawShade(st, g, c, f, waiting);
+    drawBoxes(pal, g, f.boxes);
+    drawDrops(pal, g, f.pw);
+    drawBombs(pal, g, f.b, now);
+    drawMen(pal, g, shot.men);
+    drawFlame(pal, g, f.f, now);
+    drawShade(pal, g, c, f, waiting);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -253,12 +272,17 @@
         if (!b) return;
         e.preventDefault();
         if (b.classList.contains('bbomb')) { el._ctx.input('bomb'); return; }
+        // Захоплюємо вказівник: інакше палець (чи миша в мобільному вигляді), з'їхавши з кнопки,
+        // забирає з собою pointerup — і бомбер біг би далі, поки не впреться.
+        try { b.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер — переживемо */ }
+        st.pid = e.pointerId;
         st.held = +b.dataset.dir;
         el._ctx.input('move', { dir: st.held });
       });
       const release = (e) => {
-        const b = e.target.closest('button');
-        if (!b || b.classList.contains('bbomb') || st.held !== +b.dataset.dir) return;
+        if (st.pid !== e.pointerId) return;
+        st.pid = null;
+        if (st.held < 0) return;
         st.held = -1;
         el._ctx.input('move', { dir: -1 });
       };
@@ -276,11 +300,35 @@
   /// Стан картки живе на її ж корені, але onKey отримує лише ctx — тому кладемо посилання і туди.
   function state(root, ctx) {
     if (!root._bomber) {
-      root._bomber = { cv: null, walls: [], last: null, held: -1, bombDown: false, raf: 0, keyup: null, css: ctx.css };
+      root._bomber = {
+        cv: null, walls: [], last: null, held: -1, pid: null, bombDown: false,
+        raf: 0, keyup: null, phase: '', round: 0, css: ctx.css,
+      };
     }
     root._bomber.ctx = ctx;
     ctx._bomber = root._bomber;
     return root._bomber;
+  }
+
+  /// Сервер бере новий раунд із чистими бомберами, тож напрямок, який людина досі тримає, треба
+  /// нагадати рівно на переході у «go» — інакше вона стоїть, поки не перетисне клавішу.
+  function syncHeld(st) {
+    const phase = (st.last && st.last.phase) || '';
+    if (phase === 'go' && st.phase !== 'go' && st.held >= 0 && st.ctx && st.ctx.mine && st.ctx.playing)
+      st.ctx.input('move', { dir: st.held });
+    st.phase = phase;
+  }
+
+  /// Цикл малювання. Помер разом із карткою; поки картку сховали під іншу вкладку (#colGames стає
+  /// display:none, тобто offsetParent зникає) — крутиться вхолосту, не перемальовуючи невидимий канвас.
+  function spin(st) {
+    if (st.raf) return;
+    const loop = () => {
+      if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
+      if (st.cv.el.offsetParent) draw(st, !(st.ctx && st.ctx.playing));
+      st.raf = requestAnimationFrame(loop);
+    };
+    st.raf = requestAnimationFrame(loop);
   }
 
   HGames.register({
@@ -301,12 +349,9 @@
         if (st.ctx && st.ctx.mine && st.ctx.playing) st.ctx.input('move', { dir: -1 });
       };
       document.addEventListener('keyup', st.keyup);
-      const loop = () => {
-        if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
-        draw(st, !(st.ctx && st.ctx.playing));
-        st.raf = requestAnimationFrame(loop);
-      };
-      st.raf = requestAnimationFrame(loop);
+      // Після F5 сервер може пам'ятати напрямок, якого свіжий клієнт уже не тримає — скидаємо.
+      if (ctx.mine && ctx.playing) ctx.input('move', { dir: -1 });
+      spin(st);
     },
 
     update(root, ctx) {
@@ -315,11 +360,20 @@
       if (!st.cv) return;
       const v = ctx.view;
       if (v && v.walls && v.walls.length) st.walls = v.walls;
-      // Вид приходить рідко, зате свіжіший за останній кадр — з ним і починаємо новий раунд.
-      if (v && v.p) { st.last = v; st.interp.reset(); st.interp.push(v); }
+      if (v && v.p) {
+        // Вид прилітає й на дрібниці (сів глядач, змінилось число очей) — інтерполяцію рвемо лише
+        // тоді, коли світ справді стрибнув: новий раунд або відлік тиків пішов назад.
+        const jump = !st.last || v.round !== st.round || v.t < (st.last.t || 0);
+        st.last = v;
+        st.round = v.round;
+        if (jump) st.interp.reset();
+        st.interp.push(v);
+      }
       pad(root, ctx, st);
       hud(root, ctx, st.last);
+      syncHeld(st);
       st.cv.resize();
+      spin(st);        // якщо картку колись перемонтують — цикл малювання не загубиться
     },
 
     frame(root, ctx, f) {
@@ -329,6 +383,8 @@
       st.last = f;
       st.interp.push(f);
       hud(root, ctx, f);
+      syncHeld(st);
+      spin(st);
     },
 
     onKey(e, ctx) {

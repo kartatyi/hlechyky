@@ -168,7 +168,9 @@ public sealed class BomberCore(Random rng)
                 Tiles[Cell(x, y)] = x == 0 || y == 0 || x == W - 1 || y == H - 1 || (x % 2 == 0 && y % 2 == 0)
                     ? BomberTile.Wall
                     : BomberTile.Free;
-        for (var i = 0; i < Seats; i++) Players[i] = new BomberMan { Cell = Corners[i] };
+        // Напрямок, який людина тримає пальцем чи клавішею, переживає новий раунд: інакше той, хто не
+        // відпускав стрілку на «Готуйсь», стояв би стовпом, поки не перетисне клавішу.
+        for (var i = 0; i < Seats; i++) Players[i] = new BomberMan { Cell = Corners[i], Want = Players[i].Want };
     }
 
     /// <summary>Новий раунд: свіже поле з ящиками і живі бомбери на тих місцях, які цього разу грають.</summary>
@@ -199,13 +201,15 @@ public sealed class BomberCore(Random rng)
 
     // ---------- наміри гравця ----------
 
-    /// <summary>Гравець тримає напрямок (0..3) або відпустив (-1). Дію застосує найближчий тик.</summary>
+    /// <summary>
+    /// Гравець тримає напрямок (0..3) або відпустив (-1). Це лише намір: рухає його найближчий тик, і
+    /// то лише якщо бомбер живий. Небіжчикові теж не відмовляємо — інакше клавіша, відпущена між
+    /// раундами, лишалась би «натиснутою» до самого нового поля.
+    /// </summary>
     public void Turn(int seat, int dir)
     {
         if (seat < 0 || seat >= Players.Length) return;
-        var p = Players[seat];
-        if (!p.Alive) return;
-        p.Want = dir is >= 0 and <= 3 ? dir : -1;
+        Players[seat].Want = dir is >= 0 and <= 3 ? dir : -1;
     }
 
     /// <summary>Покласти бомбу під себе. false — ліміт вичерпано або тут уже щось цокає.</summary>
@@ -260,6 +264,9 @@ public sealed class BomberCore(Random rng)
     {
         var queue = new Queue<BomberBomb>(first);
         var doomed = new HashSet<BomberBomb>(queue);
+        // Ящики, зламані цим самим вибухом. Весь ланцюг рахуємо проти поля, яким воно було до нього:
+        // інакше промінь сусідньої бомби проходив би крізь укриття, яке щойно розлетілось.
+        var broken = new HashSet<int>();
         while (queue.Count > 0)
         {
             var bomb = queue.Dequeue();
@@ -277,11 +284,13 @@ public sealed class BomberCore(Random rng)
                     if (x < 0 || x >= W || y < 0 || y >= H) break;
                     var cell = Cell(x, y);
                     if (Tiles[cell] == BomberTile.Wall) break;
+                    if (broken.Contains(cell)) break;   // цей ящик уже зламала сусідка по ланцюгу — далі не йдемо
                     if (Tiles[cell] == BomberTile.Box)
                     {
                         // Підпалюємо руками, а не через Burn: бонус, який щойно випав із цього ящика,
                         // не має згоріти в тому самому полум'ї, що його й відкрило.
                         Flame[cell] = FlameTicks;
+                        broken.Add(cell);
                         Break(cell);
                         break;
                     }

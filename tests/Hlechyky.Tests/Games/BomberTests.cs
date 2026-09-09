@@ -376,6 +376,51 @@ public class BomberTests
     }
 
     [Fact]
+    public void Two_fuses_burning_out_together_each_go_off_once()
+    {
+        // Обидві бомби потрапляють у вибух одним тиком, і кожна має зніматися рівно раз: якби ланцюг
+        // діставав ту саму бомбу двічі, лічильник «моїх бомб на полі» пішов би в мінус.
+        var core = Empty();
+        Put(core, 0, 1, 1);
+        Put(core, 1, 3, 1);
+        Assert.True(core.Bomb(0));
+        Assert.True(core.Bomb(1));
+        Steps(core, BomberCore.FuseTicks);
+
+        Assert.Empty(core.Bombs);
+        Assert.True(Burning(core, 1, 1));
+        Assert.True(Burning(core, 5, 1));
+        Assert.Equal(0, core.Players[0].Fused);
+        Assert.Equal(0, core.Players[1].Fused);
+
+        core.Players[0].Alive = true;      // згорів у власному вибуху — воскрешаємо, щоб перевірити ліміт
+        Assert.True(core.Bomb(0));
+    }
+
+    [Fact]
+    public void A_chain_blast_does_not_shoot_through_a_box_the_first_bomb_just_broke()
+    {
+        // Увесь ланцюг рахуємо проти поля, яким воно було до вибуху: ящик зупиняє і той промінь,
+        // що прийшов у ту саму клітинку вже після того, як ящик розлетівся.
+        var core = Empty();
+        core.Tiles[BomberCore.Cell(5, 1)] = BomberTile.Box;
+        var first = Put(core, 0, 1, 1);
+        first.Range = 4;
+        Assert.True(core.Bomb(0));
+        Steps(core, 5);
+
+        var second = Put(core, 1, 3, 1);
+        second.Range = 4;
+        Assert.True(core.Bomb(1));
+        Steps(core, BomberCore.FuseTicks - 5);
+
+        Assert.Empty(core.Bombs);
+        Assert.Equal(BomberTile.Free, core.Tiles[BomberCore.Cell(5, 1)]);
+        Assert.True(Burning(core, 5, 1));
+        Assert.False(Burning(core, 6, 1));
+    }
+
+    [Fact]
     public void A_player_caught_in_the_flame_dies()
     {
         var core = Empty();
@@ -513,6 +558,53 @@ public class BomberTests
     }
 
     [Fact]
+    public void A_direction_held_through_the_countdown_works_from_the_first_tick()
+    {
+        // Найприродніша річ за столом: затиснути стрілку ще на «Готуйсь». Намір має дочекатись раунду,
+        // а не пропасти разом із відмовою.
+        var h = Table();
+        Assert.Equal("start", Phase(h));
+        h.Input(0, "move", new { dir = 1 });
+        Ready(h);
+        var before = h.View(0).GetProperty("p")[0].GetProperty("y").GetInt32();
+
+        h.Tick(4);
+        Assert.Equal(before + BomberCore.Sub, h.View(0).GetProperty("p")[0].GetProperty("y").GetInt32());
+    }
+
+    [Fact]
+    public void A_direction_held_from_the_last_round_survives_the_fresh_field()
+    {
+        var h = Table();
+        Ready(h);
+        h.Input(0, "move", new { dir = 1 });
+        h.Input(1, "bomb");                       // Петро підриває сам себе — раунд бере Оля
+        h.Tick(BomberCore.FuseTicks);
+        Assert.Equal("pause", Phase(h));
+
+        Ready(h);                                 // новий раунд, нове поле, клавішу так і не відпускали
+        var before = h.View(0).GetProperty("p")[0].GetProperty("y").GetInt32();
+        h.Tick(4);
+        Assert.Equal(before + BomberCore.Sub, h.View(0).GetProperty("p")[0].GetProperty("y").GetInt32());
+    }
+
+    [Fact]
+    public void A_key_pressed_while_you_lie_dead_waits_for_the_new_round()
+    {
+        // Пауза між раундами — теж час: хтось саме тоді бере в руки клавіші. Намір мусить дочекатись
+        // свіжого поля, а не пропасти разом із відмовою «тебе вже підірвали».
+        var h = Table();
+        GiveRoundAway(h);
+        Assert.Equal("pause", Phase(h));
+        Assert.True(h.Act(0, "move", new { dir = 1 }).Ok);
+
+        Ready(h);
+        var before = h.View(0).GetProperty("p")[0].GetProperty("y").GetInt32();
+        h.Tick(4);
+        Assert.Equal(before + BomberCore.Sub, h.View(0).GetProperty("p")[0].GetProperty("y").GetInt32());
+    }
+
+    [Fact]
     public void Three_rounds_take_the_match()
     {
         var h = Table();
@@ -563,6 +655,38 @@ public class BomberTests
         Assert.Equal("pause", Phase(h));
         Assert.All(h.View(null).GetProperty("wins").EnumerateArray(), w => Assert.Equal(0, w.GetInt32()));
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void Nine_drawn_rounds_end_the_match_with_nobody_ahead()
+    {
+        // Запобіжник проти вічної партії: дев'ять нічиїх — і стіл розходиться внічию, а не грає далі.
+        var h = Table();
+        for (var i = 0; i < Bomber.MaxRounds && h.Room.Status == RoomStatus.Playing; i++)
+        {
+            Ready(h);
+            h.Tick(BomberCore.RoundTicks);
+        }
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Empty(h.Room.Result!.Winners);
+        Assert.Equal("Бомбер: Оля 0 : Петро 0 — нічия", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void After_nine_rounds_the_match_goes_to_whoever_is_ahead()
+    {
+        var h = Table();
+        GiveRoundAway(h);                       // перший раунд — Петрів
+        for (var i = 0; i < Bomber.MaxRounds - 1 && h.Room.Status == RoomStatus.Playing; i++)
+        {
+            Ready(h);
+            h.Tick(BomberCore.RoundTicks);      // решта — нічиї, до трьох перемог ніхто не дійде
+        }
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([1], h.Room.Result!.Winners);
+        Assert.StartsWith("Бомбер: Петро 1 : Оля 0", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -618,9 +742,26 @@ public class BomberTests
         Assert.Equal("Зачекай, зараз почнемо", h.Act(0, "bomb").Message);
 
         Ready(h);
+        var before = h.View(null).ToString();
         Assert.Equal("Тут так не ходять", h.Act(0, "jump").Message);
+        Assert.Equal(before, h.View(null).ToString());    // відмова нічого не змінила на полі
         Assert.True(h.Act(0, "move", new { dir = 1 }).Ok);
         Assert.True(h.Act(0, "move", 1).Ok);              // голе число теж приймаємо
+    }
+
+    [Fact]
+    public void A_direction_out_of_the_four_is_refused_and_changes_nothing()
+    {
+        var h = Table();
+        Ready(h);
+        var before = h.View(null).ToString();
+
+        Assert.Equal("Такого напрямку нема", h.Act(0, "move", new { dir = 7 }).Message);
+        Assert.Equal("Такого напрямку нема", h.Act(0, "move", new { dir = -2 }).Message);
+        Assert.Equal("Такого напрямку нема", h.Act(0, "move", "вгору").Message);
+        Assert.Equal("Такого напрямку нема", h.Act(0, "move").Message);
+        Assert.Equal(before, h.View(null).ToString());
+        Assert.True(h.Act(0, "move", new { dir = -1 }).Ok);   // «стоп» — це нормальний намір, а не сміття
     }
 
     [Fact]
@@ -736,5 +877,25 @@ public class BomberTests
         }
         sw.Stop();
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"2000 тиків зайняли {sw.Elapsed}");
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void A_whole_round_in_a_room_of_four_costs_next_to_nothing()
+    {
+        // Голе ядро — це пів справи: найдорожче в бомбері не крок світу, а кадр, який кімната будує
+        // 16 разів на секунду. Тому міряємо саме кімнатний тик разом із розсилкою (TESTING.md §4.4).
+        var h = Table(4);
+        Ready(h);
+        var sw = Stopwatch.StartNew();
+        for (var i = 0; i < BomberCore.RoundTicks; i++)
+        {
+            if (i % 9 == 0) h.Input(i % BomberCore.Seats, "move", new { dir = (i / 9) % 4 });
+            h.Tick(1);
+        }
+        sw.Stop();
+
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"2000 тиків кімнати зайняли {sw.Elapsed}");
     }
 }
