@@ -1,0 +1,65 @@
+/* Дурень: стіл, козир і рука. Кольори — тільки змінними; свої оголошуємо в :root, як велить core.css. */
+:root {
+  --dred: #e57373;            /* черва і бубна; той самий тон, що й --danger */
+  --dface: #f2f4ef;           /* сорочка карти догори лицем */
+  --dink: #21301f;            /* чорні масті на світлій карті */
+  --dhot: rgba(244, 197, 66, .22);  /* атака, яку можна взяти обраною картою */
+}
+
+.durak { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+
+/* ---- рядок козиря, колоди й відбою ---- */
+.durak .dtop { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.durak .dchip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: .88em; color: var(--muted);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+}
+.durak .dchip b { color: var(--text); font-variant-numeric: tabular-nums; }
+.durak .dsuit { font-size: 1.15em; line-height: 1; color: var(--dink); background: var(--dface); border-radius: 4px; padding: 0 4px; }
+.durak .dsuit.red { color: var(--dred); }
+
+/* ---- сама карта ---- */
+.durak .dcard {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+  min-width: 30px; padding: 6px 4px; border-radius: 6px; background: var(--dface); color: var(--dink);
+  border: 1px solid rgba(0, 0, 0, .25); font-weight: 700;
+}
+.durak .dcard i { font-style: normal; font-size: 1.05em; }
+.durak .dcard.red { color: var(--dred); }
+.durak .dcard.sm { min-width: 24px; padding: 3px 4px; font-size: .85em; }
+
+/* ---- стіл: атака, а поверх неї зі зсувом — захист ---- */
+.durak .dtable {
+  display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: flex-start;
+  min-height: 78px; width: 100%; padding: 8px; background: var(--bg2);
+  border: 1px solid var(--line); border-radius: 12px; box-sizing: border-box;
+}
+.durak .dempty { color: var(--muted); font-size: .9em; align-self: center; }
+.durak .dpair { position: relative; width: 44px; height: 62px; border-radius: 8px; }
+.durak .dpair .atk { position: absolute; left: 0; top: 0; width: 34px; box-sizing: border-box; }
+.durak .dpair .def { position: absolute; left: 10px; top: 14px; width: 34px; box-sizing: border-box; box-shadow: -2px -2px 6px rgba(0, 0, 0, .35); }
+.durak .dpair.hot { cursor: pointer; background: var(--dhot); box-shadow: 0 0 0 2px var(--accent2); }
+.durak .dpair.pick { background: var(--dhot); box-shadow: 0 0 0 3px var(--accent); }
+.durak .dpair.beaten { opacity: .85; }
+
+/* ---- рука: віяло каркаса (.ghand/.gcard), карти лише перефарбовуємо ---- */
+.durak .dhand { width: 100%; }
+.durak .ghand .gcard {
+  background: var(--dface); color: var(--dink); border-color: rgba(0, 0, 0, .25);
+  display: inline-flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1;
+  min-width: 42px; padding: 9px 6px; font-weight: 700;
+}
+.durak .ghand .gcard.red { color: var(--dred); }
+.durak .ghand .gcard i { font-style: normal; font-size: 1.15em; }
+.durak .ghand .gcard.off { opacity: .4; }
+.durak .ghand .gcard.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+.durak .dbtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.durak .dbtns:empty { display: none; }
+
+/* На телефоні стіл вужчий за шість пар — хай переносяться, а карти лишаються під палець. */
+@media (max-width: 480px) {
+  .durak .dtable { gap: 6px; padding: 6px; }
+  .durak .ghand { gap: 4px; }
+  .durak .ghand .gcard { min-width: 38px; padding: 8px 5px; }
+}
