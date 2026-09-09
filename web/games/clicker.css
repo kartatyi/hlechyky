@@ -1,0 +1,80 @@
+/*
+  Гончарне коло. Своє тут лише коло, «+N», що злітає, і полиця з верстатами — решта кольорів
+  спільна зі style.css. Свою змінну оголошуємо на :root, як і core.css, і завжди з фолбеком у коді.
+*/
+:root {
+  --clk-disc: #2b4c3c;      /* сам круг гончарного кола */
+  --clk-groove: #1c3328;    /* борозни на крузі */
+}
+
+.clk { display: flex; flex-direction: column; gap: 10px; width: 100%; align-items: center; }
+
+/* ---- лічильник ---- */
+.clk-head { display: flex; align-items: baseline; gap: 6px; }
+.clk-count {
+  font-size: 2.1em; font-weight: 700; color: var(--accent);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.clk-rate { text-align: center; }
+
+/* ---- коло ---- */
+.clk-wheelbox { position: relative; width: min(190px, 62%); aspect-ratio: 1; }
+.clk-wheel {
+  width: 100%; height: 100%; padding: 0; border: none; border-radius: 50%;
+  background: transparent; display: block; cursor: pointer;
+  transition: transform .08s ease-out;
+}
+.clk-wheel:hover { background: transparent; }
+.clk-wheel:active { transform: scale(.96); }
+.clk-wheel.hit { animation: clkhit .18s ease-out; }
+.clk-wheel svg { width: 100%; height: 100%; display: block; }
+.clk-turn { transform-origin: 50px 50px; animation: clkspin var(--clk-spin, 0s) linear infinite; }
+.clk-disc { fill: var(--clk-disc); stroke: var(--line); stroke-width: 2; }
+.clk-ring { fill: none; stroke: var(--clk-groove); stroke-width: 2; }
+.clk-speck { fill: var(--accent2); }
+.clk-jug { fill: var(--clay); }
+
+/* «+N», що злітає над колом; клікам воно не заважає — шар наскрізний. */
+.clk-pops { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.clk-pop {
+  position: absolute; bottom: 46%; color: var(--accent); font-weight: 700; font-size: .95em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .5); animation: clkpop .8s ease-out forwards;
+}
+
+@keyframes clkspin { to { transform: rotate(360deg); } }
+@keyframes clkhit { 40% { transform: scale(1.07); } }
+@keyframes clkpop {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-52px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .clk-turn, .clk-wheel.hit { animation: none; }
+  .clk-pop { animation-duration: .3s; }
+}
+
+/* ---- прилавок ---- */
+.clk-sell { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.clk-left { text-align: center; }
+
+/* ---- полиця з верстатами ---- */
+.clk-shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; width: 100%; }
+.clk-up {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  white-space: normal; padding: 8px 10px 26px; background: var(--panel); border-radius: 10px; position: relative;
+}
+.clk-up:not(:disabled):hover { background: var(--panel3); }
+.clk-up b { font-size: .95em; }
+.clk-lvl { color: var(--accent2); font-size: .8em; }
+.clk-price {
+  position: absolute; right: 8px; bottom: 7px; color: var(--clay); font-size: .82em;
+  font-variant-numeric: tabular-nums;
+}
+.clk-price::before { content: '🏺 '; filter: grayscale(1); opacity: .8; }
+
+/* ---- телефон: картка на 380 px не має розповзатись ---- */
+@media (max-width: 480px) {
+  .clk-count { font-size: 1.8em; }
+  .clk-wheelbox { width: min(160px, 58%); }
+  .clk-shop { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 6px; }
+  .clk-up { padding: 7px 8px 24px; }
+}
