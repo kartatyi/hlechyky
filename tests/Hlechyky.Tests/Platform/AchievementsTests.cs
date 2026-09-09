@@ -232,6 +232,26 @@ public class AchievementsTests
     }
 
     [Fact]
+    public void The_board_player_counts_only_the_games_the_platform_knows()
+    {
+        using var rig = new EconomyRig();
+        // Список ігор економіка бере ззовні (у проді — з реєстру), а не сканує збірку сама: інакше кожна
+        // нова гра в Impl/ мовчки міняла б умову ачівки і ламала б цей тест разом із чужими.
+        Assert.Empty(rig.Names.All);
+        foreach (var i in new[] { Ttt, EconomyRig.Info("c4", "Чотири в ряд", "чотири в ряд") }) rig.Names.Learn(i);
+        Assert.Equal(2, rig.Names.All.Count(i => i.Group == GameGroup.Board));
+    }
+
+    [Fact]
+    public void The_platform_list_of_games_comes_from_the_registry()
+    {
+        // те, що бачить сервер: реєстр уже просканував збірку, економіці лишається його список
+        var names = new GameNames(RoomHarness.NewRegistry());
+        Assert.Equal("Хрестики-нолики", names.Title("ttt"));
+        Assert.Contains(names.All, i => i.Id == "ttt3" && i.Group == GameGroup.Board);
+    }
+
+    [Fact]
     public void An_achievement_already_granted_does_not_touch_the_database_again()
     {
         using var rig = new EconomyRig();

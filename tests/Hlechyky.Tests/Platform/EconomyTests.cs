@@ -210,7 +210,7 @@ public class EconomyTests
         using var temp = new TempDb();
         var clock = new FakeClock();
         var store = new EconomyStore(temp.Db);
-        var economy = new Economy(store, new GameNames(), clock,
+        var economy = new Economy(store, new GameNames([]), clock,
             new FixedOptions<EconomyOptions>(new EconomyOptions()), new BrokenOutbox(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<Economy>.Instance);
 

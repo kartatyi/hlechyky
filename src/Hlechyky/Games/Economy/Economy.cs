@@ -4,32 +4,35 @@ using Microsoft.Extensions.Options;
 namespace Hlechyky.Games.Economy;
 
 /// <summary>
-/// Паспорти всіх ігор збірки — щоб людські тексти («перемога в шахах») і таблиці знали відмінок, групу
-/// і порядок соло-результату, не залежачи від реєстру каркаса (WP0). Скан робиться раз, а події з
-/// <see cref="RoomFinishedEvent"/> дозаповнюють мапу для ігор, які з'являться пізніше.
+/// Паспорти всіх ігор платформи — щоб людські тексти («перемога в шахах»), таблиці й ачівка «Настільний»
+/// знали відмінок, групу і порядок соло-результату. Список приходить ззовні (у проді — з
+/// <see cref="Registry"/>, який і так уже просканував збірку), а події з <see cref="RoomFinishedEvent"/>
+/// дозаповнюють мапу для ігор, яких у реєстрі не було.
+///
+/// Тести будують цей список явно (<c>new GameNames([])</c> і <see cref="Learn"/>): інакше кожна нова гра
+/// в збірці тихо міняла б умову ачівки «перемога в кожній настільній грі» і ламала чужі тести.
 /// </summary>
 public sealed class GameNames
 {
     readonly ConcurrentDictionary<string, GameInfo> _map = new(StringComparer.Ordinal);
     readonly List<string> _daily = new();
-    // скан збірки коштує дорого, а GET /daily і GET /profile ходять сюди на кожен запит: тримаємо
-    // готові списки й перебудовуємо їх лише тоді, коли мапа справді змінилась (Learn)
+    // GET /daily і GET /profile ходять сюди на кожен запит: тримаємо готові списки й перебудовуємо
+    // їх лише тоді, коли мапа справді змінилась (Learn)
     volatile IReadOnlyList<GameInfo>? _all;
 
-    public GameNames()
+    /// <param name="games">Паспорти ігор платформи; порожній список — «нічого не знаємо, вчимось із подій».</param>
+    /// <param name="daily">Id ігор «Щоденного глека» (маркер <see cref="IDailyGame"/>).</param>
+    public GameNames(IEnumerable<GameInfo> games, IEnumerable<string>? daily = null)
     {
-        foreach (var t in typeof(Game).Assembly.GetTypes())
-        {
-            if (t.IsAbstract || !typeof(Game).IsAssignableFrom(t) || t.GetConstructor(Type.EmptyTypes) is null) continue;
-            try
-            {
-                if (Activator.CreateInstance(t) is not Game g) continue;
-                _map[g.Info.Id] = g.Info;
-                if (g is IDailyGame && !_daily.Contains(g.Info.Id, StringComparer.Ordinal)) _daily.Add(g.Info.Id);
-            }
-            catch (Exception) { /* гра, яку не створити без каркаса, нам тут не потрібна */ }
-        }
+        foreach (var info in games) _map[info.Id] = info;
+        foreach (var id in daily ?? []) if (!_daily.Contains(id, StringComparer.Ordinal)) _daily.Add(id);
         _daily.Sort(StringComparer.Ordinal);
+    }
+
+    /// <summary>Список із реєстру каркаса: другий скан збірки тут ні до чого.</summary>
+    public GameNames(Registry registry)
+        : this(registry.Games, registry.Catalog.Where(c => c.Daily).Select(c => c.Id))
+    {
     }
 
     public void Learn(GameInfo info)

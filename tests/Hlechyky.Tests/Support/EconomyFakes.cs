@@ -71,7 +71,7 @@ public sealed class EconomyRig : IDisposable
     {
         var opts = new FixedOptions<EconomyOptions>(Options);
         Store = new EconomyStore(Db);
-        Names = new GameNames();
+        Names = new GameNames([]);
         Economy = new Economy(Store, Names, Clock, opts, Outbox, NullLogger<Economy>.Instance);
         Ratings = new Ratings(Store, Clock);
         Achievements = new Achievements(Store, Economy, Names, Clock, Outbox);

@@ -19,7 +19,9 @@ public static class EconomySetup
         // секція Economy — власність WP1, тому прив'язка живе тут, а не в Program.cs (спільному файлі)
         services.AddOptions<EconomyOptions>().BindConfiguration("Economy");
 
-        services.AddSingleton<GameNames>();
+        // Паспорти беремо з реєстру каркаса, а не з власного скану збірки: реєстр уже все знайшов,
+        // а без нього (ранні гілки, тести) лишається порожній список, який дозаповнять події партій.
+        services.AddSingleton(sp => sp.GetService<Registry>() is { } r ? new GameNames(r) : new GameNames([]));
         services.AddSingleton<EconomyStore>();
         services.AddSingleton<Economy>();
         services.AddSingleton<Ratings>();
