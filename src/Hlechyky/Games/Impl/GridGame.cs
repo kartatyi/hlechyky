@@ -170,7 +170,8 @@ public sealed class FadingTicTacToe : GridGame
 {
     public override GameInfo Info { get; } = new(
         "ttt3", "Зникаючі хрестики-нолики", "зникаючі хрестики-нолики", GameGroup.Board, 2, 2, Rated: true,
-        Hint: "Кожен тримає на полі лише три мітки: ставиш четверту — найстаріша щезає, тож нічиїх тут не буває.");
+        Hint: "Кожен тримає на полі лише три мітки: ставиш четверту — найстаріша щезає, тож нічиїх тут не буває.",
+        Client: "ttt");   // правила ті самі, тож малює їх той самий web/games/ttt.js
 
     protected override GridRules Rules { get; } = new(3, 3, 3, false, Keep: 3);
     protected override string[] Marks { get; } = ["✕", "◯"];

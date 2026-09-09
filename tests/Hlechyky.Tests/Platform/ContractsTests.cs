@@ -17,6 +17,21 @@ public class ContractsTests
     }
 
     [Fact]
+    public void The_client_module_defaults_to_the_game_id_and_can_be_shared()
+    {
+        Assert.Equal("ttt", new GameInfo("ttt", "Хрестики", "хрестики", GameGroup.Board, 2, 2).Module);
+        // родина ігор в одному файлі: зникаючі хрестики малює ttt.js, окремого ttt3.js нема
+        Assert.Equal("ttt", new GameInfo("ttt3", "Зникаючі", "зникаючі", GameGroup.Board, 2, 2, Client: "ttt").Module);
+
+        var registry = Support.RoomHarness.NewRegistry();
+        var ttt3 = registry.Catalog.Single(g => g.Id == "ttt3");
+        Assert.Equal("ttt", ttt3.Module);
+        // кожен модуль із каталогу справді лежить на диску — інакше лобі писало б «завантажую…» вічно
+        foreach (var g in registry.Catalog.Where(g => !g.Id.StartsWith("t-", StringComparison.Ordinal)))
+            Assert.True(File.Exists(Paths.Resolve($"web/games/{g.Module}.js")), $"нема web/games/{g.Module}.js для {g.Id}");
+    }
+
+    [Fact]
     public void ActResult_helpers_carry_message()
     {
         Assert.True(ActResult.Done.Ok);

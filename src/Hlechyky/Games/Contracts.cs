@@ -38,10 +38,18 @@ public sealed record GameInfo(
     bool Rated = false,
     ScoreOrder Score = ScoreOrder.None,
     IReadOnlyList<GameOption>? Options = null,
-    string Hint = "")
+    string Hint = "",
+    string Client = "")
 {
     public bool RealTime => TickMs > 0;
     public bool Solo => MaxPlayers == 1;
+    /// <summary>
+    /// Ім'я клієнтського модуля без розширення: <c>web/games/&lt;Module&gt;.js</c> (і <c>.css</c>). Типово — Id.
+    /// Родина ігор живе в одному файлі (зникаючі хрестики — у <c>ttt.js</c>, режими змійки — у <c>snake.js</c>):
+    /// там кілька <c>HGames.register</c>, а кожна гра, крім першої, каже <c>Client: "ttt"</c>. Інакше і реєстр
+    /// сварився б на відсутній файл, і завантажувач ходив би по 404.
+    /// </summary>
+    public string Module => string.IsNullOrEmpty(Client) ? Id : Client;
 }
 
 /// <summary>Відповідь на покроковий хід. Message бачить лише той, хто ходив; порожній — тоста нема.</summary>

@@ -371,25 +371,34 @@
     });
   }
 
+  /// Файл модуля гри: типово <id>.js, але родина ігор може жити в одному файлі
+  /// (зникаючі хрестики — у ttt.js), і тоді сервер каже це полем module каталогу.
+  const moduleOf = (g) => g.module || g.id;
+
   /// Вантажимо всі модулі одразу: у каталозі їх буде два десятки, а послідовні await —
-  /// це два десятки round-trip-ів поспіль. Вердикт «не завантажився» ставимо лише коли все
-  /// відстрілялось: файл із кількома register (ttt+ttt3) інакше давав би фальшиве попередження.
+  /// це два десятки round-trip-ів поспіль. Один файл вантажимо рівно раз, скільки б ігор у ньому
+  /// не реєструвалось. Вердикт «не завантажився» ставимо лише коли все відстрілялось.
   async function loadModules() {
     const want = catalog.games.filter((g) => !modules[g.id]);
+    const files = [...new Set(want.map(moduleOf))];
     for (const g of want) {
-      if (g.hasCss && !document.querySelector('link[data-game="' + g.id + '"]')) {
+      const f = moduleOf(g);
+      if (g.hasCss && !document.querySelector('link[data-game="' + f + '"]')) {
         const l = document.createElement('link');
         l.rel = 'stylesheet';
-        l.href = '/games/' + g.id + '.css';
-        l.dataset.game = g.id;
+        l.href = '/games/' + f + '.css';
+        l.dataset.game = f;
         document.head.appendChild(l);
       }
     }
-    const res = await Promise.all(want.map(async (g) => [g, await loadScript('/games/' + g.id + '.js')]));
-    for (const [g, ok] of res) {
+    const res = await Promise.all(files.map(async (f) => [f, await loadScript('/games/' + f + '.js')]));
+    const loaded = Object.fromEntries(res);
+    for (const g of want) {
       if (modules[g.id]) continue;
       failed.add(g.id);
-      console.warn('[games] модуль ' + g.id + ' не завантажився' + (ok ? ' (файл є, register не викликано)' : ' (нема файла)'));
+      const f = moduleOf(g);
+      console.warn('[games] модуль ' + g.id + ' не завантажився'
+        + (loaded[f] ? ' (є ' + f + '.js, але register(' + g.id + ') не викликано)' : ' (нема ' + f + '.js)'));
     }
     refreshAll();
   }
@@ -556,8 +565,9 @@
   // Попап створення столу
   // =============================================================================================
 
-  /// Ставки є лише в іграх на двох за настільним столом (і в дуелі-вестерні) — див. ARCHITECTURE §4.4.
-  const stakeable = (g) => !!g && ((g.group === 'board' && g.maxPlayers === 2) || g.id === 'duel');
+  /// Ставки є лише там, де є що ділити: рівно двоє і партія рейтингова (ARCHITECTURE §4.4).
+  /// Те саме правило на сервері (Rooms.ReadStake), тому змійка й дуель теж зі ставками.
+  const stakeable = (g) => !!g && g.maxPlayers === 2 && !!g.rated;
 
   function openCreate(g) {
     if (!g) return;
@@ -831,7 +841,8 @@
       + '<h4>Ачівки</h4>'
       + (achs.length
         ? '<div class="gachs">' + achs.map((a) => {
-          const on = a.unlocked != null ? a.unlocked : !!a.unlockedAt;
+          // сервер віддає лише здобуті, з датою в at (Leaderboards.Profile)
+          const on = a.unlocked != null ? a.unlocked : !!(a.unlockedAt || a.at);
           return '<div class="gach' + (on ? '' : ' locked') + '" title="' + esc(a.text || '') + '">'
             + '<span class="gicon">' + esc(a.icon || '🏅') + '</span><b>' + esc(a.title || a.key) + '</b>'
             + '<span class="muted small">' + esc(a.text || '') + '</span>'
@@ -847,9 +858,11 @@
       + '</div>';
   }
 
+  // ключі — як їх називає Leaderboards.cs: rated → elo/wins/losses/draws/games/streak,
+  // solo → best/tries, daily → attempts/ms, shards → balance/earned
   const LB_COLS = [['elo', 'Ело'], ['wins', 'В'], ['losses', 'П'], ['draws', 'Н'], ['games', 'партій'],
     ['streak', 'серія'], ['score', 'результат'], ['best', 'рекорд'], ['attempts', 'спроб'],
-    ['balance', '🏺'], ['earned', 'зароблено'], ['count', 'разів']];
+    ['tries', 'спроб'], ['ms', 'час'], ['balance', '🏺'], ['earned', 'зароблено'], ['count', 'разів']];
 
   async function renderLeaders(view, token) {
     // соло й щоденні теж мають таблиці — фільтрувати їх за private не можна (див. renderShell)

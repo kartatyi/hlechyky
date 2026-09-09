@@ -21,7 +21,9 @@ public sealed record CatalogGame(
     IReadOnlyList<CatalogOption> Options,
     string Hint,
     bool HasCss,
-    bool Daily);
+    bool Daily,
+    /// <summary>Ім'я файла модуля без розширення: завантажувач бере <c>/games/{Module}.js</c>. Кілька ігор можуть ділити один.</summary>
+    string Module);
 
 /// <summary>Відповідь каталогу: ігри й дозволені ставки.</summary>
 public sealed record Catalog(IReadOnlyList<CatalogGame> Games, IReadOnlyList<int> Stakes);
@@ -48,8 +50,8 @@ public sealed class Registry
         Games = [.. ordered.Select(g => g.Info)];
         Catalog = [.. ordered.Select(g => Describe(g.Type, g.Info))];
         foreach (var info in Games)
-            if (log is not null && !File.Exists(Paths.Resolve($"web/games/{info.Id}.js")))
-                log.LogWarning("гра {Id}: нема web/games/{Id}.js, у лобі вона так і писатиме «завантажую…»", info.Id, info.Id);
+            if (log is not null && !File.Exists(Paths.Resolve($"web/games/{info.Module}.js")))
+                log.LogWarning("гра {Id}: нема web/games/{Module}.js, у лобі вона так і писатиме «завантажую…»", info.Id, info.Module);
     }
 
     /// <summary>Паспорти всіх ігор, у порядку вкладок лобі.</summary>
@@ -71,8 +73,9 @@ public sealed class Registry
         Camel(i.Start.ToString()), i.Hidden, i.Private, i.Rated,
         [.. (i.Options ?? []).Select(o => new CatalogOption(o.Key, o.Label, [.. o.Values.Select(v => new[] { v.Value, v.Label })], o.Default))],
         i.Hint,
-        File.Exists(Paths.Resolve($"web/games/{i.Id}.css")),
-        typeof(IDailyGame).IsAssignableFrom(type));
+        File.Exists(Paths.Resolve($"web/games/{i.Module}.css")),
+        typeof(IDailyGame).IsAssignableFrom(type),
+        i.Module);
 
     /// <summary>«WhenFull» → «whenFull», «Board» → «board»: на дроті camelCase, як і решта JSON.</summary>
     static string Camel(string s) => char.ToLowerInvariant(s[0]) + s[1..];

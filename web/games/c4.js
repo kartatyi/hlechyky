@@ -31,7 +31,8 @@
         // вільна колонка = порожня клітинка у верхньому ряду
         disabled: !(ctx.myTurn && !cells[i % w]),
       }),
-      onCell: (i) => ctx.act('move', { col: i % w }),
+      // сервер (GridGame) чекає на { cell }; у грі з гравітацією cell — це номер колонки, а не клітинки
+      onCell: (i) => ctx.act('move', { cell: i % w }),
     });
   }
 

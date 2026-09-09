@@ -202,6 +202,17 @@ public class GridGameTests
     }
 
     [Fact]
+    public void The_move_payload_is_always_cell_even_when_it_means_a_column()
+    {
+        // Модуль c4 колись слав { col } — сервер такого поля не знає, і хід просто зникав.
+        // Поле завжди зветься cell; у грі з гравітацією його значення — номер колонки.
+        var h = Table("c4");
+        Assert.Equal("Не зрозумів, куди ходити", h.Act(0, "move", new { col = 3 }).Message);
+        Assert.True(h.Act(0, "move", new { cell = 3 }).Ok);
+        Assert.True(h.Act(1, "move", 3).Ok);      // голе число теж приймаємо
+    }
+
+    [Fact]
     public void Column_outside_the_board_is_refused()
     {
         var h = Table("c4");
