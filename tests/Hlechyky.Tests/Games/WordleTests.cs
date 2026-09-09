@@ -196,6 +196,16 @@ public class WordleTests(WordleWords fx) : IClassFixture<WordleWords>
     }
 
     [Fact]
+    public void A_word_typed_in_capitals_or_with_spaces_is_still_the_same_word()
+    {
+        var h = Solo();
+        var word = Wrong(1)[0];
+        Assert.True(Guess(h, "  " + word.ToUpperInvariant() + " ").Ok);
+        // у дошці лежить нормалізоване слово, а не те, що прийшло з дроту
+        Assert.Equal(word, V(h).GetProperty("rows")[0].GetProperty("word").GetString());
+    }
+
+    [Fact]
     public void An_unknown_action_is_refused()
     {
         var h = Solo();
@@ -260,6 +270,24 @@ public class WordleTests(WordleWords fx) : IClassFixture<WordleWords>
         var again = Guess(h, Wrong(1)[0]);
         Assert.False(again.Ok);
         Assert.Equal(1, V(h).GetProperty("attempts").GetInt32());
+    }
+
+    [Fact]
+    public void The_sixth_guess_can_still_win_the_day()
+    {
+        // межа, де сходяться обидві умови кінця: спроби вичерпані І слово вгадане. Перемога має бути
+        // сильнішою за вичерпання, інакше остання правильна спроба рахувалась би поразкою.
+        var h = Solo();
+        foreach (var w in Wrong(5)) Assert.True(Guess(h, w).Ok);
+        Assert.True(Guess(h, Answer).Ok);
+
+        var v = V(h);
+        Assert.True(v.GetProperty("solved").GetBoolean());
+        Assert.False(v.GetProperty("failed").GetBoolean());
+        Assert.Equal(6, v.GetProperty("attempts").GetInt32());
+        Assert.StartsWith("Глек-слово #1 6/6", v.GetProperty("share").GetString(), StringComparison.Ordinal);
+        Assert.Equal(6, Assert.Single(h.Scores).Score);
+        Assert.Single(h.Awards);
     }
 
     // ---------------------------------------------------------------------------------- поразка
@@ -413,6 +441,23 @@ public class WordleTests(WordleWords fx) : IClassFixture<WordleWords>
     }
 
     [Fact]
+    public void A_saved_state_with_the_answer_in_the_middle_comes_back_as_a_solved_day()
+    {
+        // прапорці зі сховища ми не читаємо, а рахуємо зі спроб; спроб після вгаданого слова у грі
+        // статись не могло, тому хвіст такого запису відрізаємо, а день піднімаємо розв'язаним
+        var h = Solo();
+        h.Room.Game.Load(JsonSerializer.Serialize(
+            new { day = Day, guesses = new[] { Answer, Wrong(1)[0] }, solved = false, failed = false }));
+
+        var v = V(h);
+        Assert.Equal(1, v.GetProperty("attempts").GetInt32());
+        Assert.True(v.GetProperty("solved").GetBoolean());
+        Assert.False(v.GetProperty("failed").GetBoolean());
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.False(Guess(h, Wrong(2)[1]).Ok);   // «вгадати» ще раз уже не вийде
+    }
+
+    [Fact]
     public void The_day_survives_closing_the_tab()
     {
         var h = Solo();
@@ -463,6 +508,38 @@ public class WordleTests(WordleWords fx) : IClassFixture<WordleWords>
     }
 
     [Fact]
+    public void Another_go_does_not_shout_into_the_shared_journal_a_second_time()
+    {
+        // кнопки «Ще раз» у щоденних на картці нема, але метод хаба відкритий кожному, хто сидить у
+        // кімнаті: без прапорця одна людина з консолі залила б спільний Журнал скільки завгодно разів
+        var h = Solo();
+        Guess(h, Answer);
+        var announced = h.Outbox.OfType<Journal>().Count(j => j.Text.Contains("слово дня", StringComparison.Ordinal));
+        Assert.Equal(1, announced);
+
+        for (var i = 0; i < 3; i++) Assert.True(h.Rematch("Оля").Ok);
+
+        Assert.Equal(1, h.Outbox.OfType<Journal>().Count(j => j.Text.Contains("слово дня", StringComparison.Ordinal)));
+        Assert.Single(h.Scores);
+        Assert.Single(h.Awards);
+        Assert.True(V(h).GetProperty("solved").GetBoolean());
+    }
+
+    [Fact]
+    public void A_day_lifted_from_the_store_is_not_announced_all_over_again()
+    {
+        var h = Solo();
+        Guess(h, Answer);
+        var announced = h.Outbox.OfType<Journal>().Count(j => j.Text.Contains("слово дня", StringComparison.Ordinal));
+
+        h.Leave("Оля");
+        h.Solo("Оля");
+        Assert.True(h.Rematch("Оля").Ok);
+
+        Assert.Equal(announced, h.Outbox.OfType<Journal>().Count(j => j.Text.Contains("слово дня", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public void A_new_day_is_a_new_room_with_a_clean_board()
     {
         var h = Solo();
@@ -486,12 +563,20 @@ public class WordleTests(WordleWords fx) : IClassFixture<WordleWords>
     {
         var h = Solo();
         Guess(h, Wrong(1)[0]);
+        // посеред партії «Ще раз» не проходить узагалі — це каркас, а не гра
+        Assert.False(h.Rematch("Оля").Ok);
+
+        Guess(h, Answer);
         h.Clock.Advance(TimeSpan.FromDays(1));
-        h.Rematch("Оля");
+        Assert.True(h.Rematch("Оля").Ok);   // тепер рематч законний — і Start() справді виконується
+
         // день кімнати стоїть у її ключі, і саме за ним запишеться результат — підміняти його
-        // посеред життя кімнати не можна
-        Assert.Equal(Day, V(h).GetProperty("day").GetString());
-        Assert.Equal(1, V(h).GetProperty("attempts").GetInt32());
+        // посеред життя кімнати не можна навіть після півночі
+        var v = V(h);
+        Assert.Equal(Day, v.GetProperty("day").GetString());
+        Assert.Equal(1, v.GetProperty("no").GetInt32());
+        Assert.Equal(2, v.GetProperty("attempts").GetInt32());
+        Assert.Equal($"daily:wordle:{Day}:оля", h.Room.Key);
     }
 
     // ------------------------------------------------------------------------------ нема словника

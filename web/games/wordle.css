@@ -20,8 +20,9 @@
 .board.wtiles .cell.y { background: var(--wy); border-color: var(--wy); color: #fff; }
 .board.wtiles .cell.b { background: var(--wb); border-color: var(--wb); color: var(--muted); }
 
-/* Переворот рядка: клас ставиться рівно раз, на щойно відкритий ряд. Затримка — по колонці,
-   тому й вибираємо колонки через nth-child: сітка каркаса пласка, стилів на клітинку в ній нема. */
+/* Переворот рядка: клас ставить сама сітка щойно відкритому ряду й лишає на ньому — анімація
+   одноразова, а от знімати клас не можна, бо наступний малюнок обірвав би її на середині. Затримка —
+   по колонці, тому й вибираємо колонки через nth-child: сітка каркаса пласка, стилів на клітинку в ній нема. */
 .board.wtiles .cell.flip { animation: wflip .5s ease both; }
 .board.wtiles .cell.flip:nth-child(5n + 1) { animation-delay: 0s; }
 .board.wtiles .cell.flip:nth-child(5n + 2) { animation-delay: .09s; }

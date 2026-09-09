@@ -81,7 +81,11 @@
   const roots = {};
 
   function state(root) {
-    if (!root._wordle) root._wordle = { draft: '', shown: null, bad: false, sending: false, timer: 0, ctx: null };
+    // flipFrom — з якого ряду починається переворот; клас віддаємо самій сітці, а не чіпляємо
+    // поверх неї (див. paint)
+    if (!root._wordle) {
+      root._wordle = { draft: '', flipFrom: null, bad: false, sending: false, timer: 0, ctx: null };
+    }
     return root._wordle;
   }
 
@@ -96,8 +100,11 @@
     const v = ctx.view || {};
     const rows = v.rows || [];
     const max = v.max || 6;
-    // перший малюнок нічого не перевертає: інакше після F5 уся дошка робила б сальто
-    if (st.shown === null) st.shown = rows.length;
+    // перший малюнок нічого не перевертає: інакше після F5 уся дошка робила б сальто. Усе, що
+    // відкрилось уже на наших очах, переворот дістає — і лишає клас назавжди: анімація одноразова, а
+    // ui.grid переписує className, коли той не збігається з бажаним, тож клас, доданий поверх сітки,
+    // злітав би з першої ж наступної набраної літери й обривав переворот на середині.
+    if (st.flipFrom === null) st.flipFrom = rows.length;
 
     HGames.ui.grid(root, {
       cols: LEN,
@@ -109,7 +116,7 @@
         if (row) {
           return {
             html: ctx.esc(row.word[c] || ''),
-            cls: CLS[(row.marks || '')[c]] || 'b',
+            cls: (CLS[(row.marks || '')[c]] || 'b') + (r >= st.flipFrom ? ' flip' : ''),
             disabled: true,
           };
         }
@@ -118,20 +125,6 @@
         return { html: ctx.esc(ch || ''), cls: (ch ? 'typed' : '') + (drafting && st.bad ? ' bad' : ''), disabled: true };
       },
     });
-    // клас перевороту ставимо лише щойно відкритому рядку — ui.grid міняє className лише коли
-    // він справді інший, тож анімація грає рівно раз
-    if (rows.length > st.shown) {
-      const board = root.querySelector(':scope > .board');
-      for (let i = st.shown * LEN; i < rows.length * LEN; i++) {
-        const b = board && board.children[i];
-        if (b) b.classList.add('flip');
-      }
-      for (let i = 0; i < st.shown * LEN; i++) {
-        const b = board && board.children[i];
-        if (b) b.classList.remove('flip');
-      }
-    }
-    st.shown = rows.length;
 
     HGames.ui.keyboardUa(root, (k) => press(root, k), v.keys || {});
     foot(root, ctx, v);
@@ -166,32 +159,35 @@
 
   // -------------------------------------------------------------------------------------- ввід
 
+  /// Повертає true, лише якщо клавіша справді щось зробила: за цим каркас вирішує, гасити подію чи ні
+  /// (див. onKey), а гасити зайве не можна — Enter на дограному дні має тиснути «Скопіювати результат».
   function press(root, key) {
     const st = state(root);
     const ctx = st.ctx;
-    if (!ctx || !ctx.mine) return;
+    if (!ctx || !ctx.mine) return false;
     const v = ctx.view || {};
-    if (v.noWords || over(v)) return;
+    if (v.noWords || over(v)) return false;
 
-    if (key === 'Enter') { submit(root); return; }
+    if (key === 'Enter') return submit(root);
     if (key === 'Backspace') {
-      if (!st.draft) return;
+      if (!st.draft) return false;
       st.draft = st.draft.slice(0, -1);
       paint(root, ctx);
-      return;
+      return true;
     }
     const ch = String(key || '').toLowerCase();
-    if (ch.length !== 1 || ALPHABET.indexOf(ch) < 0) return;
-    if (st.draft.length >= LEN) return;
+    if (ch.length !== 1 || ALPHABET.indexOf(ch) < 0) return false;
+    if (st.draft.length >= LEN) return false;
     st.draft += ch;
     paint(root, ctx);
+    return true;
   }
 
   function submit(root) {
     const st = state(root);
     const ctx = st.ctx;
-    if (!ctx || st.sending) return;
-    if (st.draft.length < LEN) { shake(root); ctx.toast('Треба п\'ять літер', 'err'); return; }
+    if (!ctx || st.sending || !st.draft) return false;
+    if (st.draft.length < LEN) { shake(root); ctx.toast('Треба п\'ять літер', 'err'); return true; }
     const word = st.draft;
     st.sending = true;
     ctx.act('guess', { word }).then((r) => {
@@ -200,6 +196,7 @@
       else shake(root);
       paint(root, st.ctx || ctx);
     }, () => { st.sending = false; });
+    return true;
   }
 
   function shake(root) {
@@ -223,7 +220,7 @@
 
     mount(root, ctx) {
       const st = state(root);
-      st.shown = null;
+      st.flipFrom = null;   // те, що вже стоїть на дошці, після F5 сальто не робить
       paint(root, ctx);
       // відлік до нового слова тікає сам; хвилини вистачає — година й хвилини й так змінюються повільно
       st.timer = setInterval(() => {
@@ -238,11 +235,12 @@
       // літери читаємо з e.key, а не з e.code: розкладка тут і є змістом гри
       const root = ctx.room && roots[ctx.room.id];
       if (!root || !ctx.mine) return false;
-      if (e.key === 'Enter' || e.key === 'Backspace') { press(root, e.key); return true; }
+      // віддаємо рівно те, що сталось: на true каркас робить preventDefault, а він гасить і Enter
+      // на сфокусованій кнопці картки
+      if (e.key === 'Enter' || e.key === 'Backspace') return press(root, e.key);
       const ch = String(e.key || '').toLowerCase();
       if (ch.length !== 1 || ALPHABET.indexOf(ch) < 0) return false;
-      press(root, ch);
-      return true;
+      return press(root, ch);
     },
 
     status(ctx) {

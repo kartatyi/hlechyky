@@ -41,6 +41,8 @@ public sealed class Wordle : Game, IDailyGame
     bool _failed;
     /// <summary>Соло-результат і щоденну нагороду за цей день уже відправлено — двічі не платимо.</summary>
     bool _reported;
+    /// <summary>Рядок у спільний Журнал за цей день уже пішов — удруге не кричимо (див. <see cref="Close"/>).</summary>
+    bool _announced;
 
     public override GameInfo Info { get; } = new(
         "wordle", "Глек-слово", "Глек-слово", GameGroup.Solo, 1, 1,
@@ -140,7 +142,12 @@ public sealed class Wordle : Game, IDailyGame
         foreach (var raw in saved.Guesses ?? [])
         {
             if (_guesses.Count >= MaxTries) break;
-            if (Words.Normalize(raw) is { Length: Len } w) _guesses.Add(w);
+            if (Words.Normalize(raw) is not { Length: Len } w) continue;
+            _guesses.Add(w);
+            // відповідь у списку — це кінець дня; усе, що стоїть за нею, у грі статись не могло, тож
+            // хвіст відрізаємо. Інакше зіпсований запис підняв би розв'язаний день як недограний, і
+            // людина «вгадала» б його ще раз — уже з більшою кількістю спроб.
+            if (w == _answer) break;
         }
         _solved = _guesses.Count > 0 && _guesses[^1] == _answer;
         _failed = !_solved && _guesses.Count >= MaxTries;
@@ -215,9 +222,12 @@ public sealed class Wordle : Game, IDailyGame
     }
 
     /// <summary>
-    /// Партія дня скінчилась. Соло-результат і щоденну нагороду шлемо рівно раз: <see cref="Load"/> і
-    /// «Ще раз» кличуть це саме на вже зіграному дні, і платити вдруге за той самий день нема за що.
-    /// Нуль черепків у <c>Award</c> — не «нічого», а «плати типову щоденну» (specs/daily.md).
+    /// Партія дня скінчилась. Соло-результат, щоденну нагороду і рядок Журналу шлемо рівно раз:
+    /// <see cref="Load"/> і «Ще раз» кличуть це саме на вже зіграному дні. Платити вдруге за той самий
+    /// день нема за що, а оголошувати — тим паче: «Ще раз» на дограному дні каркас пускає скільки
+    /// завгодно разів (у <c>core.js</c> кнопки для щоденних нема, але метод хаба відкритий), і без
+    /// прапорця одна людина залила б спільний Журнал усім. Нуль черепків у <c>Award</c> — не «нічого»,
+    /// а «плати типову щоденну» (specs/daily.md).
     /// </summary>
     void Close()
     {
@@ -229,9 +239,11 @@ public sealed class Wordle : Game, IDailyGame
         }
         // Теперішній час у рядку Журналу — щоб не вгадувати рід ніка («вгадав»/«вгадала»).
         // Програш не оголошуємо: у спільних Балачках це нікому не свято.
-        Ctx.Finish(
-            _solved ? [0] : [],
-            _solved ? $"{Info.Title}: {Ctx.NickOf(0)} вгадує слово дня з {Ordinal(_guesses.Count)} спроби" : "");
+        var log = _solved && !_announced
+            ? $"{Info.Title}: {Ctx.NickOf(0)} вгадує слово дня з {Ordinal(_guesses.Count)} спроби"
+            : "";
+        _announced = true;
+        Ctx.Finish(_solved ? [0] : [], log);
     }
 
     static string Ordinal(int n) => n switch
