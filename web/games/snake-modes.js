@@ -76,7 +76,11 @@
   // =============================================================================================
 
   function tronState(root, ctx) {
-    if (!root._tron) root._tron = { cv: null, a: [], b: [], sa: new Set(), sb: new Set(), startIn: 0, winner: null, css: ctx.css };
+    // view — той вид, з якого вже перекладено поле. Каркас віддає в ctx.view КЕШОВАНИЙ об'єкт останньої
+    // події 'room', а update() смикається ще й на кожну 'rooms' (будь-хто на сайті створив чи покинув стіл).
+    // Під час раунду 'room' не приходить узагалі — Tick віддає самі кадри, — тож без цієї позначки слід
+    // відкочувався б до трьох стартових клітинок, а середину його вже ніхто б не домалював: кадр несе лише голови.
+    if (!root._tron) root._tron = { cv: null, view: null, a: [], b: [], sa: new Set(), sb: new Set(), startIn: 0, winner: null, css: ctx.css };
     return root._tron;
   }
 
@@ -126,8 +130,10 @@
       if (!st.cv) return;
       pad(root, ctx);
       const v = ctx.view;
-      // 'room' приходить рідше за кадри, але вид завжди свіжіший за них: перекладаємо поле з нуля
-      if (v && Array.isArray(v.a)) {
+      // Новий вид (подія 'room': старт раунду, кінець, рематч, підключення глядача) — перекладаємо поле з
+      // нуля. Той самий об'єкт удруге — це вже застарілий кеш, і чіпати ним живий слід не можна.
+      if (v && Array.isArray(v.a) && v !== st.view) {
+        st.view = v;
         st.a = v.a.slice();
         st.b = (v.b || []).slice();
         st.sa = new Set(st.a);
@@ -174,7 +180,9 @@
   // =============================================================================================
 
   function coopState(root, ctx) {
-    if (!root._coop) root._coop = { cv: null, last: null, css: ctx.css };
+    // view — вид, який уже застосовано (див. пояснення в tronState): кадр коопа завжди свіжіший за
+    // кешований вид, тож давати виду перебивати його на кожну 'rooms' означало б смикати змійку назад.
+    if (!root._coop) root._coop = { cv: null, view: null, last: null, css: ctx.css };
     return root._coop;
   }
 
@@ -214,8 +222,11 @@
       if (!st.cv) return;
       // на пальці показуємо лише свої дві кнопки: чужу вісь сервер усе одно не прийме
       pad(root, ctx, ctx.seat === 0 ? [3, 1] : [2, 0]);
-      const f = (ctx.view && Array.isArray(ctx.view.s)) ? ctx.view : st.last;
-      if (f) st.last = f;
+      if (ctx.view && Array.isArray(ctx.view.s) && ctx.view !== st.view) {
+        st.view = ctx.view;
+        st.last = ctx.view;
+      }
+      const f = st.last;
       score(root, 'довжина <b>' + ((f && f.len) || 0) + '</b>');
       st.cv.resize();
       drawCoop(st, f, !ctx.playing);
@@ -231,8 +242,10 @@
 
     onKey(e, ctx) {
       const dir = DIRS[e.code];
-      // чужа вісь — не наша клавіша: віддаємо її далі, а не з'їдаємо мовчки
-      if (dir === undefined || !ctx.mine || !ctx.playing || !ownAxis(ctx.seat, dir)) return false;
+      if (dir === undefined || !ctx.mine || !ctx.playing) return false;
+      // Чужа вісь — не помилка, а домовленість; на сервер її не шлемо. Але клавішу все одно з'їдаємо:
+      // віддати браузеру ↑ чи ↓ посеред живого раунду означає прокрутити сторінку і зігнати поле з екрана.
+      if (!ownAxis(ctx.seat, dir)) return true;
       ctx.input('turn', { dir });
       return true;
     },

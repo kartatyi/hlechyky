@@ -214,8 +214,27 @@ public class SnakeModesTests
         h.Tick(23);
 
         var game = (TronGame)h.Room.Game;
-        Assert.Equal(23, game.Moves);                 // відлік «готуйсь» кроками не рахується
-        Assert.True(game.Moves < TronGame.MaxMoves);  // страховка на хвилину так і лишається страховкою
+        Assert.Equal(23, game.Moves);              // відлік «готуйсь» кроками не рахується
+        Assert.True(game.Moves < game.MaxMoves);   // страховка на хвилину так і лишається страховкою
+    }
+
+    [Fact]
+    public void The_safety_net_calls_a_draw_when_the_round_overstays_its_welcome()
+    {
+        var h = Tron();
+        // Двом слідам на полі в 468 клітинок хвилини не протриматись, тож справжню межу звичайною грою не
+        // дістати. Опускаємо її — і перевіряємо саму гілку, а не те, що вона десь там є.
+        var game = (TronGame)h.Room.Game;
+        game.MaxMoves = 3;
+        ReadyTron(h);
+        h.Tick(3);
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(h.Room.Result!.Draw);
+        Assert.Empty(h.Room.Result.Winners);
+        Assert.Equal("draw", h.View(null).GetProperty("winner").GetString());
+        Assert.Contains("хвилина минула", LastLog(h));
+        Assert.Equal(3, game.Moves);
     }
 
     [Fact]
@@ -253,6 +272,20 @@ public class SnakeModesTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Contains("встав з-за столу", LastLog(h));
+        // Раунд скінчився і в самій грі: без цього поле лишилось би яскравим, ніби партія триває.
+        Assert.Equal("x", h.View(null).GetProperty("winner").GetString());
+    }
+
+    [Fact]
+    public void Both_riders_and_a_watcher_see_the_same_track()
+    {
+        var h = Tron();
+        ReadyTron(h);
+        h.Tick(4);
+
+        // Ховати в мотоциклах нема чого: обидва сліди й так у всіх на очах (TESTING.md §4.2).
+        Assert.Equal(Views.Text(h.View(0)), Views.Text(h.View(1)));
+        Assert.Equal(Views.Text(h.View(0)), Views.Text(h.View(null)));
     }
 
     // =============================================================================================
@@ -280,17 +313,34 @@ public class SnakeModesTests
         ReadyTron(h);
         h.Tick(12);
 
-        // Рівно те, що робить web/games/snake-modes.js: дописуємо голову, якої ще не бачили.
-        var trail = new List<int>(start);
-        var seen = new HashSet<int>(trail);
+        var client = new TronTrail();
+        client.ApplyView(start);
         foreach (var frame in h.Outbox.OfType<RoomFrame>())
-        {
-            var head = Views.Json(frame.Frame).GetProperty("ha").GetInt32();
-            if (seen.Add(head)) trail.Insert(0, head);
-        }
+            client.AddHead(Views.Json(frame.Frame).GetProperty("ha").GetInt32());
 
-        Assert.Equal(Cells(h.View(null), "a"), trail);
-        Assert.Equal(15, trail.Count);
+        Assert.Equal(Cells(h.View(null), "a"), client.Cells);
+        Assert.Equal(15, client.Cells.Count);
+    }
+
+    [Fact]
+    public void The_same_view_handed_over_twice_does_not_eat_the_trail()
+    {
+        var h = Tron();
+        var start = Cells(h.View(null), "a");
+        ReadyTron(h);
+        h.Tick(12);
+        var whole = Cells(h.View(null), "a");
+
+        var client = new TronTrail();
+        client.ApplyView(start);
+        foreach (var frame in h.Outbox.OfType<RoomFrame>())
+            client.AddHead(Views.Json(frame.Frame).GetProperty("ha").GetInt32());
+        // Посеред раунду вид не приходить (Tick віддає самі кадри), але update() смикається на кожну подію
+        // 'rooms' — і приносить ТОЙ САМИЙ, стартовий вид із кешу. Застосувати його вдруге означало б
+        // відкотити слід до трьох клітинок, а середину вже ніхто не домалює: кадр несе лише голову.
+        client.ApplyView(start);
+
+        Assert.Equal(whole, client.Cells);
     }
 
     // =============================================================================================
@@ -417,10 +467,59 @@ public class SnakeModesTests
         h.Tick(1);
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.Equal([0, 1], h.Room.Result!.Winners);
-        Assert.False(h.Room.Result.Draw);
+        // Переможців у кооперативі нема — і це не формальність: за «перемогу» каркас видає ачівки
+        // («Перша перемога», «Серія», «Десять перемог») повз стелю черепків, і пара набивала б їх у грі,
+        // де програти неможливо. Довжина від цього не губиться, вона йде окремо, у Scores.
+        Assert.Empty(h.Room.Result!.Winners);
+        Assert.True(h.Room.Result.Draw);
         Assert.Equal($"Змійка на двох: Оля і Петро виростили змійку до {len}", LastLog(h));
         Assert.Equal("end", h.View(null).GetProperty("winner").GetString());
+    }
+
+    [Fact]
+    public void Leaving_the_pair_mid_round_ends_it_as_a_technical_loss()
+    {
+        var h = Coop();
+        ReadyCoop(h);
+        h.Tick(2);
+        h.Leave("Петро");
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.Contains("встав з-за столу", LastLog(h));
+        Assert.Equal("end", h.View(null).GetProperty("winner").GetString());   // поле треба притемнити
+    }
+
+    [Fact]
+    public void The_coop_knows_only_the_turn_action()
+    {
+        var h = Coop();
+        ReadyCoop(h);
+        var before = Views.Text(h.View(null));
+
+        var reply = h.Act(0, "move", new { cell = 1 });
+
+        Assert.False(reply.Ok);
+        Assert.Equal("Тут так не ходять", reply.Message);
+        Assert.Equal(before, Views.Text(h.View(null)));
+    }
+
+    [Fact]
+    public void A_stale_view_does_not_roll_the_coop_snake_back()
+    {
+        var h = Coop();
+        var start = Views.Text(h.View(null));      // вид зі старту раунду, як його закешував каркас
+        ReadyCoop(h);
+        h.Tick(5);
+        var newest = Views.Text(h.Outbox.OfType<RoomFrame>().Last().Frame);
+
+        var client = new CoopField();
+        client.ApplyView(start);
+        foreach (var frame in h.Outbox.OfType<RoomFrame>()) client.ApplyFrame(Views.Text(frame.Frame));
+        client.ApplyView(start);                   // подія 'rooms' принесла той самий вид із кешу
+
+        Assert.NotEqual(start, newest);            // за п'ять тиків змійка справді від'їхала
+        Assert.Equal(newest, client.Shown);        // і назад її ніхто не смикнув
     }
 
     [Fact]
@@ -600,25 +699,84 @@ public class SnakeModesTests
     [Trait("Category", "Perf")]
     public void A_thousand_ticks_of_both_modes_are_instant()
     {
-        var tron = new SnakeCore(new Random(11), tailShrinks: false, apples: false);
-        tron.Reset();
-        var coop = new CoopSnakeCore(new Random(11));
-        coop.Reset();
+        // Тик кімнати — це не лише крок ядра: до нього додаються кадр і вид, а вид мотоциклів копіює два
+        // сліди на сотні клітинок. Тому міряємо через кімнату на двох гравцях (TESTING.md §4.4).
+        var tron = Tron();
+        var coop = Coop();
 
+        var ticked = 0;
         var sw = Stopwatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
-            if (i % 17 == 0) tron.Turn(0, i / 17 % 4);
-            if (i % 19 == 0) tron.Turn(1, i / 19 % 4);
-            var (deadA, deadB) = tron.Step();
-            if (deadA || deadB) tron.Reset();
-
-            if (i % 13 == 0) coop.Turn(0, i % 2 == 0 ? 1 : 3);
-            if (i % 11 == 0) coop.Turn(1, i % 3 == 0 ? 0 : 2);
-            if (coop.Step()) coop.Reset();
+            ticked += Pump(tron, i);
+            ticked += Pump(coop, i);
         }
         sw.Stop();
 
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"1000 кроків зайняли {sw.Elapsed}");
+        // Раунди тут коротші за тисячу тиків, тож більшість ітерацій — це справжні тики, а не рематчі.
+        // Без цієї перевірки тест міг би тихо виродитись у тисячу невдалих «Ще раз» і нічого не міряти.
+        Assert.True(ticked > 1500, $"тиків насправді було {ticked}");
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"{ticked} тиків зайняли {sw.Elapsed}");
+
+        // Раунд мотоциклів фізично коротший за тисячу тиків, тож дограний стіл щоразу переставляємо наново.
+        static int Pump(RoomHarness h, int i)
+        {
+            if (h.Room.Status == RoomStatus.Finished) { h.Rematch(); return 0; }
+            if (i % 7 == 0) h.Input(i % 2, "turn", new { dir = i / 7 % 4 });
+            h.Tick(1);
+            lock (h.Room.Sync)
+            {
+                Views.Json(h.Room.Game.Frame());
+                Views.Json(h.Room.Game.View(null));
+            }
+            return 1;
+        }
     }
+}
+
+/// <summary>
+/// Модель того, що робить із дельта-кадром <c>web/games/snake-modes.js</c>: тримає слід сама, дописує голови
+/// з кадрів і перекладає поле з виду лише тоді, коли вид справді новий. У браузері «новий» — це порівняння
+/// посилань (<c>ctx.view !== st.view</c>): каркас віддає в <c>ctx.view</c> кешований об'єкт останньої події
+/// <c>room</c>, а <c>update()</c> кличеться ще й на кожну <c>rooms</c>.
+/// </summary>
+sealed class TronTrail
+{
+    int[]? _view;
+    readonly HashSet<int> _seen = [];
+
+    public List<int> Cells { get; } = [];
+
+    public void ApplyView(int[] view)
+    {
+        if (ReferenceEquals(view, _view)) return;
+        _view = view;
+        Cells.Clear();
+        Cells.AddRange(view);
+        _seen.Clear();
+        foreach (var cell in view) _seen.Add(cell);
+    }
+
+    /// <summary>Голову, яку вже бачили, не дописуємо: слід не зникає, тож двічі в одну клітинку не заїдеш.</summary>
+    public void AddHead(int cell)
+    {
+        if (_seen.Add(cell)) Cells.Insert(0, cell);
+    }
+}
+
+/// <summary>Те саме для коопа: кадр там повний, і застарілий вид не має його перебивати.</summary>
+sealed class CoopField
+{
+    string? _view;
+
+    public string? Shown { get; private set; }
+
+    public void ApplyView(string view)
+    {
+        if (ReferenceEquals(view, _view)) return;
+        _view = view;
+        Shown = view;
+    }
+
+    public void ApplyFrame(string frame) => Shown = frame;
 }

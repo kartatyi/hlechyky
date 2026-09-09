@@ -6,7 +6,7 @@ namespace Hlechyky.Games.Impl;
 /// Дрібниці, спільні для обох режимів змійки. Клієнт шле <c>{ dir: 2 }</c>, але голе число теж приймаємо —
 /// так само, як це робить дуель у <see cref="SnakeGame"/>: одна форма payload на всю родину.
 /// </summary>
-static class Turns
+static class SnakeModesTurns
 {
     public static int? Dir(JsonElement payload) => payload.ValueKind switch
     {
@@ -33,9 +33,11 @@ public sealed class TronGame : Game
     public const int StartTicks = 30;
     /// <summary>
     /// Хвилина на раунд. Двом слідам на полі в 468 клітинок стільки не протриматись — це страховка від
-    /// вічного раунду, а не правило, з яким доведеться рахуватись гравцям.
+    /// вічного раунду, а не правило, з яким доведеться рахуватись гравцям. Саме тому межа не константа:
+    /// звичайною грою її не дістати, а неперевіреної гілки в грі бути не має — тест опускає число і
+    /// проходить нічию по-справжньому.
     /// </summary>
-    public const int MaxMoves = 600;
+    public int MaxMoves { get; set; } = 600;
 
     public override GameInfo Info { get; } = new(
         "tron", "Мотоцикли", "мотоцикли", GameGroup.Live, 2, 2, TickMs: TickMs, Rated: true,
@@ -78,19 +80,30 @@ public sealed class TronGame : Game
     {
         var now = new[] { Ctx.NickOf(0), Ctx.NickOf(1) };
         // «Ще раз» обертає місця — разом з ними їде й рахунок; будь-яка інша зміна складу його обнуляє.
-        if (Turns.Same(_was, now)) { }
-        else if (_was.Length == 2 && Turns.Same([_was[1], _was[0]], now)) (Core.WinsA, Core.WinsB) = (Core.WinsB, Core.WinsA);
+        if (SnakeModesTurns.Same(_was, now)) { }
+        else if (_was.Length == 2 && SnakeModesTurns.Same([_was[1], _was[0]], now)) (Core.WinsA, Core.WinsB) = (Core.WinsB, Core.WinsA);
         else (Core.WinsA, Core.WinsB) = (0, 0);
         _was = now;
         _winner = null;
         NewRound();
     }
 
+    /// <summary>
+    /// Встав посеред раунду — техпоразка. Базовий <see cref="Game.OnLeave"/> сам порахує, кому дісталась
+    /// перемога, а нам лишається закрити раунд і в самій грі: без цього <c>winner</c> лишався б null, і
+    /// клієнт не притемнив би поле — воно застигло б яскравим, ніби партія ще триває.
+    /// </summary>
+    public override void OnLeave(int seat)
+    {
+        _winner = seat == 0 ? "o" : "x";
+        base.OnLeave(seat);
+    }
+
     /// <summary>Реалтайм-ввід: повороти. Помилки нікого не цікавлять, наступний кадр усе перемалює.</summary>
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (action != "turn") return ActResult.Fail("Тут так не ходять");
-        if (Turns.Dir(payload) is { } dir) Core.Turn(seat, dir);
+        if (SnakeModesTurns.Dir(payload) is { } dir) Core.Turn(seat, dir);
         return ActResult.Done;
     }
 
@@ -282,10 +295,17 @@ public sealed class SnakeCoopGame : Game
         Core.Reset();
     }
 
+    /// <summary>Напарник встав — раунд скінчився. Закриваємо його й тут, щоб клієнт притемнив поле.</summary>
+    public override void OnLeave(int seat)
+    {
+        _over = true;
+        base.OnLeave(seat);
+    }
+
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (action != "turn") return ActResult.Fail("Тут так не ходять");
-        if (Turns.Dir(payload) is not { } dir) return ActResult.Done;
+        if (SnakeModesTurns.Dir(payload) is not { } dir) return ActResult.Done;
         // Чужа вісь — не поламаний хід, а звичайне «це не твоя кнопка»: кажемо коротко й не міняємо стану.
         if (!CoopSnakeCore.OwnAxis(seat, dir))
             return ActResult.Fail(seat == 0 ? "Ти крутиш вгору-вниз" : "Ти крутиш вліво-вправо");
@@ -305,10 +325,15 @@ public sealed class SnakeCoopGame : Game
 
         _over = true;
         var len = Core.Len;
-        // Кооп: переможці обидва, а результатом партії йде довжина — з неї і збереться таблиця пар.
+        // Кооп: результатом партії йде довжина — з неї і збереться таблиця пар.
         Ctx.Score(0, len);
         Ctx.Score(1, len);
-        Ctx.Finish([0, 1],
+        // Переможців тут нема: у кооперативі програти одне одному неможливо, а «перемога» обом коштувала б
+        // дорого — ачівки перемог («Перша перемога», «Серія», «Десять перемог») каркас видає повз стелю
+        // черепків (Economy/Rewards.cs: цикл ачівок стоїть поза `if (rewarded)`), тож пара вибивала б їх
+        // за кілька хвилин у грі, де не можна програти. Порожній список — це нічия: DrawReward обом і
+        // жодних перемог. Довжина від цього не губиться, вона йде окремо, у Scores.
+        Ctx.Finish([],
             $"{Info.Title}: {Ctx.NickOf(0)} і {Ctx.NickOf(1)} виростили змійку до {len}",
             new Dictionary<int, long> { [0] = len, [1] = len });
         return TickResult.Both;
