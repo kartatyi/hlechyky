@@ -1,0 +1,58 @@
+/*
+  Глек-слово: плитки дошки й підвал картки. Клавіатура (.gkbd/.gkey) уже є в core.css — вона
+  спільна з віселицею, тут її не чіпаємо.
+*/
+:root {
+  --wg: #4c8c5a;   /* літера на своєму місці */
+  --wy: #b8912c;   /* літера є, але стоїть інде */
+  --wb: #2b3a31;   /* такої літери в слові нема */
+}
+
+/* Дошка вужча за звичайну (п'ять колонок на шість рядів), тож і плитка менша. */
+.board.wtiles { width: min(300px, 100%); gap: 6px; }
+.board.wtiles .cell {
+  font-size: 1.6em; font-weight: 700; text-transform: uppercase; border-radius: 8px;
+  background: var(--panel); border: 2px solid var(--line); color: var(--text);
+}
+/* Набрана, але ще не відправлена літера: рамка яскравіша, тла нема — плитка ще «порожня». */
+.board.wtiles .cell.typed { border-color: var(--panel3); }
+.board.wtiles .cell.g { background: var(--wg); border-color: var(--wg); color: #fff; }
+.board.wtiles .cell.y { background: var(--wy); border-color: var(--wy); color: #fff; }
+.board.wtiles .cell.b { background: var(--wb); border-color: var(--wb); color: var(--muted); }
+
+/* Переворот рядка: клас ставиться рівно раз, на щойно відкритий ряд. Затримка — по колонці,
+   тому й вибираємо колонки через nth-child: сітка каркаса пласка, стилів на клітинку в ній нема. */
+.board.wtiles .cell.flip { animation: wflip .5s ease both; }
+.board.wtiles .cell.flip:nth-child(5n + 1) { animation-delay: 0s; }
+.board.wtiles .cell.flip:nth-child(5n + 2) { animation-delay: .09s; }
+.board.wtiles .cell.flip:nth-child(5n + 3) { animation-delay: .18s; }
+.board.wtiles .cell.flip:nth-child(5n + 4) { animation-delay: .27s; }
+.board.wtiles .cell.flip:nth-child(5n + 5) { animation-delay: .36s; }
+@keyframes wflip {
+  0% { transform: rotateX(0); }
+  50% { transform: rotateX(90deg); }
+  100% { transform: rotateX(0); }
+}
+
+/* Слово не прийняли — рядок хитає головою. */
+.board.wtiles .cell.bad { animation: wshake .4s ease; border-color: var(--danger); }
+@keyframes wshake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+.wfoot { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.wfoot:empty { display: none; }
+.wfoot .wnext { text-align: center; }
+
+@media (max-width: 480px) {
+  .board.wtiles { gap: 5px; }
+  .board.wtiles .cell { font-size: 1.35em; border-width: 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board.wtiles .cell.flip, .board.wtiles .cell.bad { animation: none; }
+}
