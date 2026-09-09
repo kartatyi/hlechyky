@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hlechyky.Games;
 
 namespace Hlechyky.Tests.Platform;
@@ -36,9 +37,34 @@ public class ContractsTests
     {
         Assert.True(ActResult.Done.Ok);
         Assert.Equal("", ActResult.Done.Message);
+        var accept = ActResult.Accept("Запропонував нічию");
+        Assert.True(accept.Ok);
+        Assert.Equal("Запропонував нічию", accept.Message);
         var fail = ActResult.Fail("Зараз не твій хід");
         Assert.False(fail.Ok);
         Assert.Equal("Зараз не твій хід", fail.Message);
+        // ActResult.Ok(...) не існує — це bool у записі; документи мають називати лише справжні методи
+        foreach (var (file, text) in Docs())
+            Assert.False(text.Contains("ActResult.Ok(", StringComparison.Ordinal), $"{file}: ActResult.Ok(...) не збереться");
+    }
+
+    /// <summary>
+    /// Зразки з документів автор гри копіює цілком, тож вони мають бути справжнім JSON: «81xx» замість порту
+    /// клало б сервер на старті з розповіддю про JSON, а людина шукала б проблему в порту.
+    /// </summary>
+    [Fact]
+    public void Json_snippets_in_the_docs_really_parse()
+    {
+        var blocks = 0;
+        foreach (var (file, text) in Docs())
+            foreach (var block in Fenced(text, "json"))
+            {
+                blocks++;
+                var ex = Record.Exception(() => JsonDocument.Parse(block,
+                    new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }));
+                Assert.True(ex is null, $"{file}: блок ```json не розбирається — {ex?.Message}");
+            }
+        Assert.True(blocks >= 2, "у документах мали лишитись зразки json");
     }
 
     [Fact]
@@ -52,5 +78,25 @@ public class ContractsTests
         events.Raise(new RoomFinishedEvent("r1", "ttt", info, 1, ["Оля", "Петро"], new RoomResult([0], false, "x", null), 0, now, now, 5));
         Assert.NotNull(got);
         Assert.Equal("Оля", got!.Seats[0]);
+    }
+
+    static IEnumerable<(string File, string Text)> Docs() =>
+        Directory.EnumerateFiles(Paths.Resolve("docs/games"), "*.md")
+            .Select(p => (Path.GetFileName(p), File.ReadAllText(p)));
+
+    /// <summary>Тіла блоків ```<paramref name="lang"/> … ``` із markdown (з поправкою на відступ списку).</summary>
+    static IEnumerable<string> Fenced(string text, string lang)
+    {
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var open = lines[i].TrimStart();
+            if (!open.StartsWith("```" + lang, StringComparison.Ordinal)) continue;
+            var pad = lines[i].Length - open.Length;
+            var body = new List<string>();
+            while (++i < lines.Length && !lines[i].TrimStart().StartsWith("```", StringComparison.Ordinal))
+                body.Add(lines[i].Length > pad ? lines[i][pad..] : lines[i].TrimStart());
+            yield return string.Join("\n", body);
+        }
     }
 }

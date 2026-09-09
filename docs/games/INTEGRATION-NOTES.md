@@ -58,6 +58,9 @@ public sealed class Wordle : Game, IDailyGame
 - **`Act` один на два входи.** Покроковий хід приходить із `Act` (є відповідь, помилка стає тостом), а
   реалтайм-ввід — з `Input` (відповіді нема, `ActResult.Fail` і `GameError` мовчки ковтаються). Це той
   самий метод гри; розрізняйте за `action`.
+- **Що повертати з `Act`.** Хід прийнято — `ActResult.Done`. Прийнято, і є що сказати тому, хто ходив, —
+  `ActResult.Accept("Запропонував нічию")`. Відмова — `ActResult.Fail("Зараз не твій хід")`. Методу з іменем
+  `Ok` у `ActResult` нема — `Ok` там `bool`-поле запису.
 - **Нелегальний хід не рахується ходом.** `ActResult.Fail(...)` або `throw new GameError("…")` — стан не
   міняти. Каркас відкотить лічильник ходів; текст побачить лише той, хто ходив.
 - **Кінець партії — тільки `Ctx.Finish`.** Другий виклик у тій самій партії ігнорується з попередженням.
@@ -176,6 +179,10 @@ HGames.register({
 
 Заголовок, підказка, група, кількість гравців і опції беруть із каталогу сервера — у модулі їх не дублюють.
 
+`onKey(e, ctx)`: розкладконезалежні клавіші читайте з `e.code` (`KeyW`, `ArrowUp` — WASD працюватиме і на
+українській розкладці), літери — з `e.key`. Синтетичний `keydown` із панелі браузера приходить без `e.code`,
+тож обробник, зав'язаний на `code`, такою підробкою не перевіряється — тисніть кнопки `ui.dpad` або клавіші руками.
+
 `ctx` (той самий об'єкт живе, поки картка на екрані):
 
 ```
@@ -273,7 +280,9 @@ static string? Normalize(string word)  // нижній регістр; null, я�
 не станеться (і це не помилка).
 
 «Настільний» (`all-boards`) — перемога в кожній настільній грі реєстру. Нова настільна гра піднімає планку
-для тих, хто ачівки ще не має; здобуту ніхто не забирає.
+для тих, хто ачівки ще не має; здобуту ніхто не забирає. Поки настільних ігор у реєстрі менше трьох, ачівка
+не видається взагалі (`Achievements.cs`) — у своєму worktree з однією-двома настільними іграми ви її не
+побачите, і це не поламана ачівка.
 
 ---
 
@@ -281,9 +290,10 @@ static string? Normalize(string word)  // нижній регістр; null, я�
 
 1. `appsettings.Local.json` у своєму worktree (він у `.gitignore`). **Обов'язково відведіть ефір убік** —
    інакше ваш сервер знайде живий liquidsoap проду на `127.0.0.1:1234` і почне ним керувати:
+   Свій порт беріть із таблиці в [PLAN.md](PLAN.md) §6 (8100 + номер гри) — нижче для прикладу 8101.
    ```json
    {
-     "Site": { "ListenPort": 81xx },
+     "Site": { "ListenPort": 8101 },
      "YtDlp": { "FfmpegDir": "D:/or/tools/yt-dlp", "BinaryPath": "D:/or/tools/yt-dlp/yt-dlp.exe" },
      "Auth": { "AdminKey": "dev" },
      "Liquidsoap": { "Port": 11234 },
@@ -294,8 +304,10 @@ static string? Normalize(string word)  // нижній регістр; null, я�
    }
    ```
    Ефір покаже «↓» — так і має бути, ігор це не стосується.
-2. Запуск (PowerShell, зі свого worktree):
+2. Запуск (PowerShell, зі свого worktree). Каталог `logs/` у `.gitignore`, у свіжому worktree його нема —
+   без першого рядка `Start-Process` падає з «Could not find a part of the path»:
    ```powershell
+   New-Item -ItemType Directory -Force logs | Out-Null
    dotnet build src/Hlechyky/Hlechyky.csproj -nodeReuse:false
    $p = Start-Process dotnet -ArgumentList 'src/Hlechyky/bin/Debug/net10.0/Hlechyky.dll' `
         -WorkingDirectory <worktree> -PassThru `
