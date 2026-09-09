@@ -181,6 +181,14 @@ data/words/               українські словники для слов�
 | `DjBot:MonthlyBudgetUsd` | стеля витрат на місяць; уперлось — Глек мовчить до першого числа |
 | `DjBot:PerNickPerHour` | скільки разів одна людина може смикнути Глека за годину |
 | `DjBot:ChanceOnTrackChange`, `DjBot:ChanceOnLivelyChat` | як часто він встряє сам |
+| `Economy:ListenEveryMinutes`, `Economy:ListenReward` | черепок за кожні N хвилин на сайті |
+| `Economy:ListenDailyCap` | скільки черепків на день можна набути самим лише сидінням на сайті |
+| `Economy:WinReward`, `Economy:DrawReward`, `Economy:PlayReward` | скільки дає перемога, нічия й участь у партії |
+| `Economy:RewardedGamesPerDay` | скільки партій на день у ту саму гру ще нагороджуються |
+| `Economy:MinRewardMoves`, `Economy:MinRewardSeconds` | коротша і за ходами, і за часом партія черепків не дає |
+| `Economy:DailyReward` | нагорода за розв'язану головоломку «Щоденного глека», коли гра не називає суму сама |
+| `Economy:ClickerDailyCap` | скільки черепків на день можна виміняти в гончарному колі |
+| `Economy:AwardDailyCap` | стеля на всі позастандартні нагороди від ігор разом |
 
 Зміни в `appsettings*.json` підхоплюються без рестарту.
 
