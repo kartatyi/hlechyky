@@ -161,17 +161,15 @@ public sealed class AdContest(
                 myEntry = entries.FirstOrDefault(e => e.NickKey == key)?.Id,
             };
         }
-        var past = store.Past(10).Select(c =>
+        // Минулих переможців беремо одним запитом: панель питає снапшот кожні 15 с, і десяток окремих
+        // походів у базу на кожне опитування — це вантаж рівно нізащо.
+        var past = store.PastWinners(10).Select(c => new
         {
-            var win = c.WinnerNickKey is null ? null : store.Entries(c.Id).FirstOrDefault(e => e.NickKey == c.WinnerNickKey);
-            return new
-            {
-                id = c.Id,
-                winner = win?.Nick,
-                votes = win?.Votes ?? 0,
-                closedAt = c.ClosedAt ?? c.ClosesAt,
-                trackId = win?.TrackId,
-            };
+            id = c.Id,
+            winner = c.Winner,
+            votes = c.Votes,
+            closedAt = c.ClosedAt,
+            trackId = c.TrackId,
         }).ToArray();
         return new { active = now, past };
     }
@@ -188,7 +186,11 @@ public sealed class AdContest(
 
         var script = await ScriptAsync(ct);
         var now = clock.UtcNow;
+        // Сценарій Глек пише не миттєво, і за ці секунди конкурс міг відкрити хтось інший (друга вкладка
+        // адміна, тікер у понеділок). Тому вирішує не перевірка вище, а сама вставка: вона пише рядок лише
+        // тоді, коли відкритого нема, і повертає 0, якщо не встигла.
         var id = store.Open(script, now, now.AddDays(Math.Clamp(O.Days, 1, 30)));
+        if (id == 0) return (false, "Конкурс уже триває — спершу закрий той");
         outbox.Post(new Journal($"🎙 Новий конкурс: озвуч рекламу глека! Сценарій і мікрофон — у «Іграх», картка «Реклама глека». Приймаємо {Math.Clamp(O.Days, 1, 30)} дні."));
         log.LogInformation("конкурс реклами {Id} відкрито до {Till}", id, now.AddDays(Math.Clamp(O.Days, 1, 30)));
         return (true, "Конкурс відкрито");
@@ -201,11 +203,16 @@ public sealed class AdContest(
         catch (Exception ex) { log.LogWarning(ex, "Глек не написав сценарій — беремо шаблон"); }
         text = text?.Trim();
         if (!string.IsNullOrEmpty(text) && text.Length >= 40) return text;
-        // Шаблон не «випадковий», а прив'язаний до дня (та сама дата — той самий сценарій, і тест це
-        // бачить), плюс номер попереднього конкурсу: два конкурси за один день не почнуться однаково.
-        var n = Days.Seed("ad-contest", Days.Today(clock)) + (int)(store.Latest()?.Id ?? 0);
-        return Templates[n % Templates.Length];
+        return Template(Days.Seed("ad-contest", Days.Today(clock)), store.Latest()?.Id ?? 0);
     }
+
+    /// <summary>
+    /// Шаблон не «випадковий», а прив'язаний до дня (та сама дата — той самий сценарій, і тест це бачить),
+    /// плюс номер попереднього конкурсу: два конкурси за один день не почнуться однаково. Рахуємо в long:
+    /// <see cref="Days.Seed"/> дає майже <c>int.MaxValue</c>, і в int сума з id одного дня перевернулась би
+    /// в мінус — а від'ємний індекс поклав би відкриття конкурсу зовсім.
+    /// </summary>
+    public static string Template(int seed, long lastId) => Templates[(int)(((long)seed + lastId) % Templates.Length)];
 
     /// <summary>
     /// Закрити конкурс і роздати черепки. Переможець — найбільше голосів, при рівності — той, хто
@@ -231,11 +238,15 @@ public sealed class AdContest(
         if (winner is not null)
             Award(room, winner.Nick, O.WinnerReward, "ad:winner");
 
-        lock (_lock)
-        {
-            _winner = winner is null ? null : new AdWinner(contestId, winner.TrackId, winner.Nick, winner.Seconds);
-            _winnerKnown = true;
-        }
+        // Переможець тримається в ефірі, поки не з'явиться новий: конкурс, у якому ніхто не проголосував,
+        // не має лишати ефір без реклами. Кеш тут міняємо лише на свіжого переможця — інакше після
+        // перезапуску сервера холодний пошук (Winner) знайшов би старого й відповідь стала б іншою.
+        if (winner is not null)
+            lock (_lock)
+            {
+                _winner = new AdWinner(contestId, winner.TrackId, winner.Nick, winner.Seconds);
+                _winnerKnown = true;
+            }
 
         outbox.Post(new Journal(winner is not null
             ? $"🎙 Конкурс реклами: переміг {winner.Nick} — {Votes(winner.Votes)}. Його реклама тепер крутиться в ефірі"
@@ -270,14 +281,15 @@ public sealed class AdContest(
     /// </summary>
     public async Task TickAsync(CancellationToken ct = default)
     {
-        if (!O.Enabled) return;
         var now = clock.UtcNow;
+        // Прострочений конкурс доводимо до кінця навіть із вимкненим Ad:Enabled: люди вже записались і
+        // проголосували, і лишити їх без черепків до наступного вмикання гірше, ніж не послухатись прапорця.
         if (store.Active() is { } active)
         {
             if (now >= active.ClosesAt) Close(active.Id);
             return;
         }
-        if (!O.AutoOpen) return;
+        if (!O.Enabled || !O.AutoOpen) return;
         var kyiv = TimeZoneInfo.ConvertTime(now, Days.Kyiv);
         if (kyiv.DayOfWeek != DayOfWeek.Monday || kyiv.Hour < Math.Clamp(O.OpenHour, 0, 23)) return;
         // Адмін закрив конкурс у понеділок по обіді — не відкриваємо йому одразу наступний.
@@ -289,13 +301,26 @@ public sealed class AdContest(
     // Участь
     // =============================================================================================
 
+    /// <summary>
+    /// Конкурс, у якому ще можна щось робити. Одна перевірка на всі три дії, бо «вже дзвінок» —
+    /// це не тільки прапорець <c>closed</c>: його ставить хвилинний тікер, і між <c>closes_at</c> і його
+    /// кроком минає до хвилини (а як тікер спав — то й більше). Приймати голос після дзвінка не годиться.
+    /// </summary>
+    (AdContestRow? Contest, string Error) Running(long contestId)
+    {
+        if (!O.Enabled) return (null, "Конкурс реклами вимкнено");
+        if (store.Get(contestId) is not { } contest) return (null, "Такого конкурсу нема");
+        if (contest.Closed) return (null, "Цей конкурс уже закрито");
+        if (clock.UtcNow >= contest.ClosesAt) return (null, "Конкурс уже скінчився");
+        return (contest, "");
+    }
+
     /// <summary>Записати (або перезаписати) свою рекламу. Тіло запиту — сирий запис із мікрофона.</summary>
     public async Task<(bool Ok, string Message)> EnterAsync(long contestId, string nick, Stream body, CancellationToken ct)
     {
         if (!Named(nick)) return (false, "Спершу скажи, як тебе кликати");
         if (!voice.Enabled) return (false, "Голосові вимкнені");
-        if (store.Get(contestId) is not { } contest) return (false, "Такого конкурсу нема");
-        if (contest.Closed) return (false, "Цей конкурс уже закрито");
+        if (Running(contestId) is { Contest: null, Error: var why }) return (false, why);
 
         TrackInfo track;
         try { (track, _) = await voice.SaveAsync(body, nick, ct); }
@@ -308,17 +333,27 @@ public sealed class AdContest(
             return (false, $"Задовга реклама: {track.DurationSec} с, а треба до {Math.Max(5, O.MaxSeconds)}");
         }
 
+        // ffmpeg жує запис секунди, і за цей час конкурс міг закритись (тікер закриває рівно по closes_at,
+        // тобто саме тоді, коли всі дописують). Класти запис у закритий конкурс не можна: виплати вже
+        // пораховані, і людина лишилась би з «прийнято» без черепків, а mp3 — сиротою в кеші.
+        if (Running(contestId) is { Contest: null })
+        {
+            voice.Delete(track.Id);
+            return (false, "Не встиг: конкурс щойно закрився");
+        }
+
         var old = store.PutEntry(contestId, EconomyStore.Key(nick), nick, track.Id, track.DurationSec, clock.UtcNow);
         if (old is not null) voice.Delete(old);   // перезапис не має лишати по mp3 у кеші
-        return (true, old is null ? "Запис прийнято, тепер чекай на голоси" : "Перезаписав — стара версія пішла в небуття");
+        return (true, old is null
+            ? "Запис прийнято, тепер чекай на голоси"
+            : "Перезаписав — стара версія пішла в небуття разом із голосами за неї");
     }
 
     /// <summary>Забрати свій запис із конкурсу.</summary>
     public (bool Ok, string Message) DropEntry(long contestId, string nick)
     {
         if (!Named(nick)) return (false, "Спершу скажи, як тебе кликати");
-        if (store.Get(contestId) is not { } contest) return (false, "Такого конкурсу нема");
-        if (contest.Closed) return (false, "Цей конкурс уже закрито");
+        if (Running(contestId) is { Contest: null, Error: var why }) return (false, why);
         var old = store.DropEntry(contestId, EconomyStore.Key(nick));
         if (old is null) return (false, "Ти ще нічого не записував");
         voice.Delete(old);
@@ -329,8 +364,7 @@ public sealed class AdContest(
     public (bool Ok, string Message) Vote(long contestId, string nick, long entryId)
     {
         if (!Named(nick)) return (false, "Спершу скажи, як тебе кликати");
-        if (store.Get(contestId) is not { } contest) return (false, "Такого конкурсу нема");
-        if (contest.Closed) return (false, "Цей конкурс уже закрито");
+        if (Running(contestId) is { Contest: null, Error: var why }) return (false, why);
         if (store.EntryById(contestId, entryId) is not { } entry) return (false, "Такого запису нема");
         var key = EconomyStore.Key(nick);
         if (entry.NickKey == key) return (false, "За себе голосувати не можна");
@@ -350,12 +384,12 @@ public sealed class AdContest(
             if (_winnerKnown) return _winner;
             _winnerKnown = true;
             _winner = null;
-            foreach (var c in store.Past(10))
+            // Холодний старт: беремо найсвіжішого переможця з бази. Конкурси без переможця пропускаємо —
+            // так само, як їх пропускає Close, коли не чіпає кеш.
+            foreach (var c in store.PastWinners(10))
             {
-                if (c.WinnerNickKey is null) continue;
-                var e = store.Entries(c.Id).FirstOrDefault(x => x.NickKey == c.WinnerNickKey);
-                if (e is null) continue;
-                _winner = new AdWinner(c.Id, e.TrackId, e.Nick, e.Seconds);
+                if (c.TrackId is null || c.Winner is null) continue;
+                _winner = new AdWinner(c.Id, c.TrackId, c.Winner, c.Seconds);
                 break;
             }
             return _winner;

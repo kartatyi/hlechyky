@@ -29,9 +29,12 @@ public class AdContestTests
         public int Seconds { get; set; } = 18;
         public HashSet<string> Files { get; } = new(StringComparer.Ordinal);
         public List<string> Deleted { get; } = new();
+        /// <summary>Що встигає статись, поки ffmpeg жує запис (наприклад, тікер закриває конкурс).</summary>
+        public Action? OnSave { get; set; }
 
         public Task<(TrackInfo Track, string FilePath)> SaveAsync(Stream body, string nick, CancellationToken ct)
         {
+            OnSave?.Invoke();
             var id = "voice-" + (++_n).ToString("D6");
             Files.Add(id);
             return Task.FromResult((new TrackInfo(id, "Голосове", nick, Seconds, null, $"/api/voice/{id}.mp3", null), id + ".mp3"));
@@ -51,11 +54,14 @@ public class AdContestTests
     {
         public string? Text { get; set; }
         public int Calls { get; private set; }
+        /// <summary>Затримка «поки модель думає»: тест сам вирішує, коли сценарій буде готовий.</summary>
+        public TaskCompletionSource? Gate { get; set; }
 
-        public Task<string?> WriteAsync(string instruction, int maxChars, CancellationToken ct)
+        public async Task<string?> WriteAsync(string instruction, int maxChars, CancellationToken ct)
         {
             Calls++;
-            return Task.FromResult(Text);
+            if (Gate is not null) await Gate.Task;
+            return Text;
         }
     }
 
@@ -91,11 +97,14 @@ public class AdContestTests
         public AdRig()
         {
             Store = new AdContestStore(Eco.Db);
-            var opts = new FixedOptions<AdOptions>(Options);
-            Ads = new AdContest(Store, Clock, Eco.Events, Eco.Outbox, Writer, Voice, opts, NullLogger<AdContest>.Instance);
-            Jingle = new AdJingle(Ads, Air, Voice, Presence, Clock, opts, NullLogger<AdJingle>.Instance);
+            Ads = Cold();
+            Jingle = new AdJingle(Ads, Air, Voice, Presence, Clock, new FixedOptions<AdOptions>(Options), NullLogger<AdJingle>.Instance);
             Presence.Set("c1", "Оля");     // типово хтось на сайті є; тест, якому треба порожньо, чистить сам
         }
+
+        /// <summary>Той самий конкурс на тій самій базі, але без нічого в пам'яті — як після перезапуску сервера.</summary>
+        public AdContest Cold() => new(Store, Clock, Eco.Events, Eco.Outbox, Writer, Voice,
+            new FixedOptions<AdOptions>(Options), NullLogger<AdContest>.Instance);
 
         /// <summary>Відкрити конкурс і віддати його id.</summary>
         public long Open()
@@ -196,7 +205,7 @@ public class AdContestTests
         var (ok, message) = r.Enter(id, "Оля");
 
         Assert.True(ok);
-        Assert.Equal("Перезаписав — стара версія пішла в небуття", message);
+        Assert.Equal("Перезаписав — стара версія пішла в небуття разом із голосами за неї", message);
         Assert.Single(r.Store.Entries(id));
         Assert.Equal([first], r.Voice.Deleted);
         Assert.NotEqual(first, r.Store.Entries(id)[0].TrackId);
@@ -648,5 +657,160 @@ public class AdContestTests
         Assert.False(ok);
         Assert.Equal("Конкурс реклами вимкнено", message);
         Assert.Null(r.Store.Active());
+    }
+
+    // =============================================================================================
+    // Плитка, якою модуль потрапляє в браузер
+    // =============================================================================================
+
+    [Fact]
+    public void The_contest_tile_sits_in_the_catalog_with_the_module_that_draws_it()
+    {
+        var game = Assert.Single(new Registry().Catalog, g => g.Id == "ad-contest");
+
+        Assert.Equal("party", game.Group);
+        Assert.Equal("immediate", game.Start);
+        Assert.True(game.Private);
+        Assert.False(game.Rated);
+        Assert.Equal(1, game.MinPlayers);
+        Assert.Equal(1, game.MaxPlayers);
+        Assert.Equal(0, game.TickMs);          // не реалтайм: кадрів у конкурсу нема
+        Assert.NotEmpty(game.Hint);
+        // саме заради цього рядка плитка й існує: браузер вантажить модулі рівно з каталогу
+        Assert.Equal("ad-contest", game.Module);
+        Assert.True(game.HasCss);
+        Assert.True(File.Exists(Paths.Resolve($"web/games/{game.Module}.js")));
+    }
+
+    [Fact]
+    public void The_contest_tile_has_no_state_and_no_view_of_its_own()
+    {
+        var tile = new AdContestTile();
+
+        tile.Start();
+
+        Assert.Equal("{}", Views.Text(tile.View(0)));
+        Assert.Equal("{}", Views.Text(tile.View(null)));
+    }
+
+    // =============================================================================================
+    // Межі конкурсу: дзвінок, вимикач, гонки
+    // =============================================================================================
+
+    [Fact]
+    public async Task Two_contests_cannot_open_at_once_even_while_the_dj_is_still_writing()
+    {
+        using var r = new AdRig();
+        var gate = new TaskCompletionSource();
+        r.Writer.Gate = gate;
+
+        // Обидва виклики встигли побачити «активного нема» до того, як хтось написав сценарій.
+        var first = r.Ads.OpenAsync();
+        var second = r.Ads.OpenAsync();
+        gate.SetResult();
+        var done = await Task.WhenAll(first, second);
+
+        Assert.Single(done, x => x.Ok);
+        Assert.Contains(done, x => !x.Ok && x.Message == "Конкурс уже триває — спершу закрий той");
+        // другого відкритого рядка не лишилось: закрили той, що видно, — і активних більше нема
+        r.Ads.Close(r.Store.Active()!.Id);
+        Assert.Null(r.Store.Active());
+    }
+
+    [Fact]
+    public void After_the_bell_nothing_is_accepted_even_before_the_ticker_wakes_up()
+    {
+        using var r = new AdRig();
+        var id = r.Open();
+        r.Enter(id, "Оля");
+        var olya = r.EntryOf(id, "Оля");
+
+        r.Clock.Advance(TimeSpan.FromDays(3) + TimeSpan.FromMinutes(1));
+        Assert.False(r.Store.Get(id)!.Closed);         // хвилинний тікер ще спить
+
+        Assert.Equal("Конкурс уже скінчився", r.Enter(id, "Петро").Message);
+        Assert.Equal("Конкурс уже скінчився", r.Ads.Vote(id, "Петро", olya).Message);
+        Assert.Equal("Конкурс уже скінчився", r.Ads.DropEntry(id, "Оля").Message);
+        Assert.Single(r.Store.Entries(id));
+        Assert.Equal(0, r.Store.Entries(id)[0].Votes);
+    }
+
+    [Fact]
+    public async Task Turning_the_contest_off_shuts_the_doors_but_still_finishes_the_running_one()
+    {
+        using var r = new AdRig();
+        var id = r.Open();
+        r.Enter(id, "Оля");
+        r.Ads.Vote(id, "Петро", r.EntryOf(id, "Оля"));
+        r.Options.Enabled = false;
+
+        Assert.Equal("Конкурс реклами вимкнено", r.Enter(id, "Маруся").Message);
+        Assert.Equal("Конкурс реклами вимкнено", r.Ads.Vote(id, "Іван", r.EntryOf(id, "Оля")).Message);
+        Assert.Equal("Конкурс реклами вимкнено", r.Ads.DropEntry(id, "Оля").Message);
+
+        r.Clock.Advance(TimeSpan.FromDays(3) + TimeSpan.FromMinutes(1));
+        await r.Ads.TickAsync();
+
+        // вимикач не має лишати людей без черепків за те, що вони вже зробили
+        Assert.True(r.Store.Get(id)!.Closed);
+        Assert.Equal(25, r.Eco.Paid("Оля", "ad:winner"));
+        Assert.Equal(1, r.Eco.Paid("Петро", "ad:vote"));
+    }
+
+    [Fact]
+    public void A_recording_that_came_back_from_ffmpeg_after_the_close_is_thrown_away()
+    {
+        using var r = new AdRig();
+        var id = r.Open();
+        r.Voice.OnSave = () => r.Ads.Close(id);        // поки конвеєр жував запис, конкурс закрився
+
+        var (ok, message) = r.Enter(id, "Оля");
+
+        Assert.False(ok);
+        Assert.Equal("Не встиг: конкурс щойно закрився", message);
+        Assert.Empty(r.Store.Entries(id));
+        Assert.Single(r.Voice.Deleted);                // mp3 не лишився в кеші сиротою
+        Assert.Equal(0, r.Eco.Paid("Оля", "ad:entry"));
+    }
+
+    [Fact]
+    public void Re_recording_takes_the_votes_of_the_old_take_with_it()
+    {
+        using var r = new AdRig();
+        var id = r.Open();
+        r.Enter(id, "Оля");
+        r.Ads.Vote(id, "Петро", r.EntryOf(id, "Оля"));
+        Assert.Equal(1, r.Store.Entries(id)[0].Votes);
+
+        r.Enter(id, "Оля");                            // зібрав голоси — і підмінив запис
+
+        Assert.Equal(0, r.Store.Entries(id)[0].Votes);
+        Assert.Null(r.Store.VoteOf(id, "петро"));
+    }
+
+    [Fact]
+    public void The_template_index_survives_a_seed_at_the_very_edge_of_int()
+    {
+        // Days.Seed віддає майже int.MaxValue; у int сума з номером конкурсу перевернулась би в мінус,
+        // і конкурс не відкрився б узагалі — ні руками, ні тікером.
+        Assert.Contains(AdContest.Template(int.MaxValue, 7), AdContest.Templates);
+        Assert.Contains(AdContest.Template(int.MaxValue - 1, 1_000_000), AdContest.Templates);
+        Assert.Equal(AdContest.Templates[5], AdContest.Template(5, 0));
+    }
+
+    [Fact]
+    public void A_contest_nobody_voted_in_does_not_take_the_old_ad_off_the_air()
+    {
+        using var r = new AdRig();
+        WinnerReady(r);                                // переможець — Оля
+        var second = r.Open();
+        r.Enter(second, "Петро");
+        r.Ads.Close(second);                           // а тут не проголосував ніхто
+
+        var kept = r.Ads.Winner();
+
+        Assert.Equal("Оля", kept!.Nick);
+        // і після перезапуску сервера відповідь та сама: інакше реклама зникала б і поверталась сама собою
+        Assert.Equal(kept.TrackId, r.Cold().Winner()!.TrackId);
     }
 }

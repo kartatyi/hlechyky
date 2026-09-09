@@ -93,9 +93,20 @@
     const found = hosts.find((h) => h.el === el);
     if (found) { found.ctx = ctx; return; }
     hosts.push({ el, ctx });
-    if (!poll) poll = setInterval(() => { if (alive()) load(); else stop(); }, 15000);
+    if (!poll) poll = setInterval(() => {
+      if (!alive()) { stop(); return; }
+      // Панель лишається в дереві, коли людина пішла на «Ефір» (core.js DOM не чіпає, app.js лише
+      // перемикає класи на body) — тож питаємо сервер тільки поки нас справді видно.
+      if (visible()) load();
+    }, 15000);
     if (!tickTimer) tickTimer = setInterval(paintClocks, 30000);
   }
+
+  /// Чи видно нас на екрані: сховану вкладку браузера й закриту вкладку «Ігри» опитувати ні до чого.
+  const visible = () => !document.hidden && hosts.some((h) => h.el.offsetParent);
+
+  // Повернулись до вкладки — показуємо свіже, а не те, що було чверть години тому.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && alive() && visible()) load(); });
 
   function stop() {
     clearInterval(poll); poll = 0;
@@ -157,6 +168,15 @@
     rec.stage = 'live';
     paintAll();
     rec.timer = setInterval(() => {
+      // Хост міг зникнути з дерева: панель у core.js перемальовується без unmount (перемкнув вкладку —
+      // і в тілі вже новий div). Перевішуємо запис на живе місце, а як живого нема — гасимо мікрофон,
+      // інакше червона крапка горіла б до кінця ліміту, а записане лягло б у відірваний вузол.
+      if (rec.host && !rec.host.isConnected) {
+        const live = hosts.find((h) => h.el.isConnected);
+        if (!live) { rec.tossed = true; stopRec(); return; }
+        rec.host = live.el;
+        paintAll();
+      }
       const sec = (Date.now() - rec.startedAt) / 1000;
       const el = rec.host && rec.host.querySelector('.adrec-time');
       if (el) el.textContent = fmt(sec);
@@ -324,7 +344,9 @@
     return '<div class="adrec"><button class="primary" data-rec="start">🎙 '
       + (mine ? 'Перезаписати' : 'Записати рекламу') + '</button>'
       + (mine ? '<button class="ghost danger" data-drop="' + a.id + '">Забрати свій запис</button>' : '')
-      + '<span class="muted small">' + (mine ? 'Твій запис уже в конкурсі — новий замінить старий.' : 'Прочитай сценарій уголос. Можна своїми словами.') + '</span>'
+      + '<span class="muted small">' + (mine
+        ? 'Твій запис уже в конкурсі — новий замінить старий разом із голосами за нього.'
+        : 'Прочитай сценарій уголос. Можна своїми словами.') + '</span>'
       + '</div>';
   }
 
@@ -401,6 +423,9 @@
 
   function mount(host, ctx) {
     host.classList.add('adpanel');
+    // Той самий випадок, що й у тіку запису, але вже без чекання: панель перемалювалась, поки людина
+    // говорила в мікрофон — перевішуємо запис сюди, щоб було де натиснути «Готово» і «Подати».
+    if (rec.stage !== 'idle' && rec.host && !rec.host.isConnected) rec.host = host;
     attach(host, ctx);
     paint(host, ctx);
     load();
@@ -414,6 +439,27 @@
     update: (host, ctx) => { attach(host, ctx); paint(host, ctx); },
   });
 
+  /*
+    Штовхаємо каркас, коли запам'ятана вкладка — саме наша.
+
+    core.js у show() малює тіло панелі ДО того, як завантажаться модулі: renderExtra('ads') нашої
+    панелі ще не знає, пише «Панель зникла.» і запам'ятовує chromeFor = 'x:ads'. Далі модуль таки
+    приходить, registerPanel чесно кличе renderPanel(), але той бачить chromeFor === panel і вважає,
+    що тіло вже намальоване, — і напис лишається, поки людина сама не перемкне панель туди-сюди.
+    Робимо це перемикання за неї (сусідня вкладка лобі малюється без жодного запиту).
+    Прибрати, щойно registerPanel скидатиме chromeFor сам — див. «Потрібно від каркаса» у spec.
+  */
+  setTimeout(() => {
+    const bar = document.querySelector('.gbar');
+    const mine = bar && bar.querySelector('.gnav [data-panel="x:ads"].on');
+    const root = bar && bar.parentElement;
+    if (!mine || !root || root.querySelector('.gxpanel.adpanel')) return;
+    const other = root.querySelector('[data-panel^="g:"]') || root.querySelector('[data-panel]:not([data-panel="x:ads"])');
+    if (!other) return;
+    other.click();
+    (bar.querySelector('.gnav [data-panel="x:ads"]') || mine).click();
+  }, 0);
+
   HGames.register({
     id: 'ad-contest',
     icon: ICON,
@@ -425,9 +471,8 @@
       if (rec.host === host) closeRec();
       if (!hosts.length) stop();
     },
-    status() {
-      const a = state.data && state.data.active;
-      return a ? 'Конкурс триває: ' + left(a.closesAt) : 'Конкурсу зараз нема';
-    },
+    // status() тут свідомо нема: картку перемальовує наше опитування, а рядок статусу core.js чіпає
+    // лише на подіях кімнати — конкурс не реалтайм, подій нема, і рядок застигав би на першій
+    // відповіді назавжди. Відлік до закриття і так стоїть чипом у самому тілі.
   });
 })();
