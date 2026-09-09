@@ -494,6 +494,9 @@
   // Нова команда: рядок сюди і гілка в ChatCommands.Run на сервері.
   const COMMANDS = [
     { cmd: '/roll', args: '[N | A-B]', help: 'кинути кубик: /roll — 1–6, /roll 100 — 1–100, /roll 2-12 — свої межі' },
+    { cmd: '/coin', args: '', help: 'монетка: орел чи решка. Аліас — /монетка' },
+    { cmd: '/choose', args: 'а | б | в', help: 'обрати за тебе: /choose чай | кава | компот. Аліаси — /обери, /вибери' },
+    { cmd: '/8ball', args: 'питання', help: 'спитати Дядька Глека: /8ball чи буде дощ? Аліаси — /куля, /глек' },
   ];
   // Грані малюємо крапками самі: юнікодні ⚀⚁⚂ у кожному шрифті сидять у своєму квадраті по-своєму
   // і в плитці стоять криво. Індекси — клітинки сітки 3×3 зліва направо.
@@ -519,6 +522,22 @@
       setTimeout(tick, 70);
     };
     tick();
+  }
+
+  /// Монетка крутиться 0.8 с, і лише тоді видно, чим вона впала: результат приходить із сервера
+  /// одразу, тож інтрига — це єдине, що фронт тут може додати. Анімація — Web Animations API,
+  /// щоб не чіпати спільний style.css заради однієї команди.
+  const COIN_MS = 800;
+  function flipCoin(el, label) {
+    label.style.visibility = 'hidden';
+    if (el.animate) {
+      el.animate([
+        { transform: 'rotateX(0) scale(.8)' },
+        { transform: 'rotateX(900deg) scale(1.2)', offset: .55 },
+        { transform: 'rotateX(1800deg) scale(1)' },
+      ], { duration: COIN_MS, easing: 'cubic-bezier(.3, 1.1, .5, 1)' });
+    }
+    setTimeout(() => { label.style.visibility = ''; }, COIN_MS);
   }
 
   function showCmdHint(typed) {
@@ -587,8 +606,19 @@
     const box = isLog ? $('log') : $('messages');
     const el = document.createElement('div');
     const mine = sameNick(m.nick, me.nick);
-    el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj' : m.kind === 'dice' ? 'dice' : mine ? 'mine' : '');
-    if (m.kind === 'dice') {
+    // Монетка живе в тій самій розкладці, що й кубик (.msg.dice — рядок у флексі); /choose і /8ball
+    // це звичайні рядки з іконкою в самому тексті, тож їм окрема гілка ні до чого.
+    el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj'
+      : m.kind === 'dice' ? 'dice' : m.kind === 'coin' ? 'dice coin' : mine ? 'mine' : '');
+    if (m.kind === 'coin') {
+      const [, side] = /🪙 (\S+)/.exec(m.text) || [];
+      el.classList.toggle('mine', mine);
+      el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="die"></span>`
+        + `<span class="t">${esc(side || '')}</span><span class="time">${tm(m.at)}</span>`;
+      const coin = el.querySelector('.die');
+      coin.textContent = '🪙';
+      if (live) flipCoin(coin, el.querySelector('.t'));
+    } else if (m.kind === 'dice') {
       const [, value, min, max] = /🎲 (\d+) \((\d+)–(\d+)\)/.exec(m.text) || [];
       const [v, lo, hi] = [+value, +min, +max];
       el.classList.toggle('mine', mine);
