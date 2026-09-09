@@ -6,7 +6,7 @@
   тому нічого підкрутити з консолі не вийде: сервер однаково перевірить і стійку, і слова, і очки.
 
   Вид (Impl/Scrabble.cs): { board, bonuses, turn, players, scores, racks, rack, bag, last,
-                            passes, smallDict, moves, result }.
+                            passes, smallDict, canChallenge, moves, result }.
   Дії: play { tiles: [{ cell, letter, blank }] }, pass, swap { letters }, challenge.
 */
 (() => {
@@ -178,8 +178,9 @@
       if (st.pend.length) out.push('<button class="ghost" data-reset>Скинути</button>');
       out.push('<button class="ghost" data-pass>Пас</button>');
       if ((v.bag || 0) >= 7) out.push('<button class="ghost" data-swap>Обмін</button>');
-      if (v.smallDict && v.last && v.last.seat !== ctx.seat)
-        out.push('<button class="ghost warn" data-challenge>Не слово</button>');
+      // Вікно оскарження живе на сервері (його закриває будь-який пас чи обмін), тому кнопку
+      // показуємо строго за його прапорцем, а не за здогадкою «останній хід був не мій».
+      if (v.canChallenge) out.push('<button class="ghost warn" data-challenge>Не слово</button>');
     } else if (ctx.myTurn && st.mode === 'swap') {
       out.push('<button class="primary" data-doswap' + (st.swap.length ? '' : ' disabled') + '>Обміняти ' + (st.swap.length || '') + '</button>');
       out.push('<button class="ghost" data-cancel>Скасувати</button>');

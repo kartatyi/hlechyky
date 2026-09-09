@@ -57,6 +57,11 @@ public sealed class Scrabble : Game
     bool _small;
     LastPlay? _last;
     Undo? _undo;
+    /// <summary>
+    /// Ачівка, яку тримає відкрите вікно оскарження: у режимі малого словника слово ще можуть зняти
+    /// з дошки, а разом із ним має зникнути й нагорода за нього.
+    /// </summary>
+    (int Seat, string Word, int Score)? _pending;
     Outcome? _result;
 
     public override string SeatName(int seat) => seat switch
@@ -87,6 +92,7 @@ public sealed class Scrabble : Game
         _passes = 0;
         _last = null;
         _undo = null;
+        _pending = null;
         _result = null;
 
         for (var seat = 0; seat < _active.Length; seat++)
@@ -131,6 +137,8 @@ public sealed class Scrabble : Game
                 if (!Known(word.Text)) return ActResult.Fail($"Такого слова нема: {word.Text}");
 
         var added = play!.Words.Select(w => w.Text).Where(w => !_placed.Contains(w)).Distinct(StringComparer.Ordinal).ToArray();
+        // Новий хід закриває вікно оскарження попереднього: те слово вже нікому не знімати.
+        SettleWindow();
         _undo = new Undo(seat, play.Cells, new string([.. rack]), new string([.. _bag]), _scores[seat], _passes, added);
 
         foreach (var c in need) rack.Remove(c);
@@ -145,9 +153,10 @@ public sealed class Scrabble : Game
         var best = play.Words.MaxBy(w => w.Score)!;
         if (best.Score >= AchievementScore)
         {
-            // Платформа очок за слово не бачить — ачівку гра просить сама (нуль черепків: їх платить каталог).
-            Ctx.Award(seat, 0, "ach:scrabble-30");
-            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} виклав «{best.Text}» на {best.Score} очок");
+            // У малому словнику слово ще можуть зняти («Не слово») — тоді й ачівка не заслужена. Тому
+            // там нагорода чекає в тому самому вікні оскарження, а в повному словнику йде одразу.
+            if (_small) _pending = (seat, best.Text, best.Score);
+            else Grant(seat, best.Text, best.Score);
         }
 
         var message = tiles.Count == ScrabbleBoard.RackSize ? $"Бінго! +{play.Total} очок" : $"+{play.Total} очок";
@@ -163,7 +172,7 @@ public sealed class Scrabble : Game
     ActResult Pass(int seat)
     {
         _passes++;
-        _undo = null;
+        SettleWindow();
         Note(seat, "пас");
         if (_passes >= PassesToEnd)
         {
@@ -190,7 +199,7 @@ public sealed class Scrabble : Game
         ScrabbleBag.Shuffle(_bag, Ctx.Rng);
 
         _passes++;
-        _undo = null;
+        SettleWindow();
         Note(seat, $"обмін ({letters.Count})");
         if (_passes >= PassesToEnd)
         {
@@ -207,7 +216,11 @@ public sealed class Scrabble : Game
         if (_words is null) return ActResult.Fail("Словника нема, оскаржувати нічим");
         if (_undo is not { } undo || undo.Seat == seat || _last is null) return ActResult.Fail("Нема чого оскаржувати");
 
-        var bad = _last.Words.FirstOrDefault(w => !_words.IsWord(w.Text));
+        // Судимо тим самим правилом, що й повний словник (Known): слово законне, якщо
+        // словник його знає або воно вже стояло на дошці з чийогось не оскарженого ходу. Слова самого
+        // цього ходу теж уже лежать у _placed (їх щойно додав Play) — саме вони й перелічені в
+        // undo.Added, тож судимо тільки їх.
+        var bad = _last.Words.FirstOrDefault(w => !_words.IsWord(w.Text) && undo.Added.Contains(w.Text, StringComparer.Ordinal));
         if (bad is null) return ActResult.Fail("Таке слово в словнику є");
 
         // Знімаємо хід цілком: фішки з дошки, стійку, мішок і очки повертаємо в те, що було до нього.
@@ -219,6 +232,8 @@ public sealed class Scrabble : Game
         foreach (var w in undo.Added) _placed.Remove(w);
         _last = null;
         _undo = null;
+        // Слово знято — ачівка за нього теж: вона чекала саме цього суду.
+        _pending = null;
         Note(seat, $"оскаржив: «{bad.Text}» — не слово");
         // Хід лишається за тим, хто оскаржив: штрафу за оскарження в нас нема.
         return ActResult.Accept($"«{bad.Text}» знято з дошки");
@@ -253,6 +268,8 @@ public sealed class Scrabble : Game
 
     void Close(int[] final, string reason)
     {
+        // Партію зіграно — оскаржувати вже нема коли, тож відкладена ачівка стає заслуженою.
+        SettleWindow();
         _scores = final;
         var playing = Enumerable.Range(0, _active.Length).Where(s => _active[s]).ToArray();
         var best = playing.Length == 0 ? 0 : playing.Max(s => final[s]);
@@ -284,7 +301,9 @@ public sealed class Scrabble : Game
         ScrabbleBag.Shuffle(_bag, Ctx.Rng);
         _racks[seat].Clear();
         _active[seat] = false;
-        if (_undo?.Seat == seat) _undo = null;
+        // Вікно оскарження закриваємо завжди, а не лише тому, хто ходив: знімок у ньому пам'ятає мішок
+        // без щойно повернутих фішок, і відкат по ньому просто загубив би цілу стійку.
+        SettleWindow();
         Note(seat, "встав з-за столу");
 
         var left = Enumerable.Range(0, _active.Length).Where(s => _active[s]).ToArray();
@@ -324,6 +343,9 @@ public sealed class Scrabble : Game
         },
         passes = _passes,
         smallDict = _small,
+        // Чи має сенс кнопка «Не слово» саме для цього місця: інакше клієнт малював би її й тоді,
+        // коли сервер уже нічого не прийме (вікно закрилось пасом, обміном або чиїмось виходом).
+        canChallenge = CanChallenge(seat),
         // Журнал партії: spec його не описує полем, але без нього клієнту нема чого малювати збоку.
         moves = _moves.Select(m => new { seat = m.Seat, text = m.Text }).ToArray(),
         result = _result is null ? null : new
@@ -379,12 +401,36 @@ public sealed class Scrabble : Game
             : null;
         _result = s.Reason is null ? null : new Outcome(s.Winner, s.ResultScores, s.Reason);
         _undo = null;
+        _pending = null;
     }
 
     // ---------------------------------------------------------------------------------- дрібниці
 
     /// <summary>Слово законне: або словник його знає, або воно вже стоїть на дошці з чийогось ходу.</summary>
     bool Known(string word) => _words?.IsWord(word) == true || _placed.Contains(word);
+
+    /// <summary>Чи прийме сервер «Не слово» від цього місця просто зараз — рівно ті самі умови, що в <see cref="Challenge"/>.</summary>
+    bool CanChallenge(int? seat) =>
+        _small && _words is not null && _result is null && _last is not null && _undo is { } undo
+        && seat is { } s && s >= 0 && s < _active.Length && _active[s] && s == _turn && undo.Seat != s;
+
+    /// <summary>
+    /// Вікно оскарження закрилось без оскарження: слово лишається на дошці, тож відкладена ачівка
+    /// стає заслуженою. Закриває вікно будь-яка наступна дія — хід, пас, обмін, вихід гравця, кінець.
+    /// </summary>
+    void SettleWindow()
+    {
+        if (_pending is { } p) Grant(p.Seat, p.Word, p.Score);
+        _pending = null;
+        _undo = null;
+    }
+
+    /// <summary>Ачівка за дороге слово: платформа очок за слово не бачить, тому гра просить сама (нуль черепків — їх платить каталог).</summary>
+    void Grant(int seat, string word, int score)
+    {
+        Ctx.Award(seat, 0, "ach:scrabble-30");
+        Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} виклав «{word}» на {score} очок");
+    }
 
     /// <summary>Наступне зайняте місце по колу; якщо гравець лишився сам — він же.</summary>
     int Next(int seat)

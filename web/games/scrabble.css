@@ -110,7 +110,11 @@
 
 /* ---- телефон ---- */
 @media (max-width: 480px) {
-  .board.sboard { gap: 1px; padding: 2px; }
+  /* 15 колонок на 375 px дають клітинку в 19 px — для пальця замало. Даємо дошці власну прокрутку:
+     сторінка вбік не їде (прокручується тільки .scr-board), зате клітинка виростає до ~27 px.
+     justify-content: flex-start — інакше центрування ховає лівий край за початком прокрутки. */
+  .scr-board { overflow-x: auto; justify-content: flex-start; }
+  .board.sboard { width: max(100%, 420px); flex: none; margin: 0; gap: 1px; padding: 2px; }
   .board.sboard .cell { border-radius: 2px; }
   .board.sboard .cell b { font-size: min(3.1vw, 13px); }
   .board.sboard .cell i { font-size: min(2vw, 8px); }

@@ -63,6 +63,15 @@ public class ScrabbleTests
 
     static int[] Ints(JsonElement e) => [.. e.EnumerateArray().Select(x => x.GetInt32())];
 
+    /// <summary>Скільки фішок зараз у партії: мішок + усі стійки + те, що лежить на дошці.</summary>
+    static int Tiles(RoomHarness h)
+    {
+        var view = h.View(null);
+        return view.GetProperty("bag").GetInt32()
+            + Ints(view.GetProperty("racks")).Sum()
+            + view.GetProperty("board").GetString()!.Count(c => c != ScrabbleBoard.Free);
+    }
+
     /// <summary>
     /// Підміна мішка й стійок через Save/Load: так тест дістається до кінцівок і до рідкісних літер,
     /// не граючи сорока ходів наосліп. Решта стану (дошка, очки, черга) лишається як була.
@@ -333,6 +342,18 @@ public class ScrabbleTests
     }
 
     [Fact]
+    public void A_word_multiplier_doubles_the_perpendicular_word_too()
+    {
+        // нова «с» лягає на ×2 слова (4,4) — подвоюється і головне слово, і те, що склалось упоперек
+        var board = With(new ScrabbleTile(C(4, 5), 'а', false), new ScrabbleTile(C(5, 4), 'т', false));
+        var (play, error) = board.Check([new ScrabbleTile(C(4, 3), 'о', false), new ScrabbleTile(C(4, 4), 'с', false)]);
+        Assert.Null(error);
+        Assert.Equal(["оса", "ст"], play!.Words.Select(w => w.Text).ToArray());
+        Assert.Equal([6, 4], play.Words.Select(w => w.Score).ToArray());   // (1+1+1)×2 і (1+1)×2
+        Assert.Equal(10, play.Total);
+    }
+
+    [Fact]
     public void Seven_tiles_at_once_add_fifty()
     {
         var (play, error) = new ScrabbleBoard().Check(Across(7, 4, "оаиеноа"));
@@ -516,7 +537,8 @@ public class ScrabbleTests
     [Fact]
     public void A_word_of_thirty_points_asks_for_the_achievement()
     {
-        var h = Table();
+        using var dict = Dict.Full("ґща");
+        var h = Table(services: dict.Services);
         Rig(h, "оаиеноаоаи", "ґщаоаие", "оса");
         Assert.True(Play(h, 0, C(7, 6), "ґща").Ok);       // (10 + 8 + 1) × 2 = 38
 
@@ -525,6 +547,32 @@ public class ScrabbleTests
         Assert.Equal(0, award.Shards);
         Assert.Equal("Оля", award.Nick);
         Assert.Contains("38 очок", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void In_small_dictionary_mode_the_achievement_waits_for_the_challenge_window()
+    {
+        using var dict = Dict.Small("оса");
+        var h = Table(services: dict.Services);
+        Rig(h, "оаиеноаоаи", "ґщаоаие", "осаоаие");
+        Assert.True(Play(h, 0, C(7, 6), "ґща").Ok);
+        Assert.Empty(h.Awards);                          // слово ще можуть зняти з дошки
+
+        Assert.True(h.Act(1, "pass").Ok);                // вікно закрилось — слово лишилось
+        Assert.Equal("ach:scrabble-30", Assert.Single(h.Awards).Reason);
+    }
+
+    [Fact]
+    public void A_challenged_word_takes_its_achievement_with_it()
+    {
+        using var dict = Dict.Small("оса");
+        var h = Table(services: dict.Services);
+        Rig(h, "оаиеноаоаи", "ґщаоаие", "осаоаие");
+        Assert.True(Play(h, 0, C(7, 6), "ґща").Ok);
+        Assert.True(h.Act(1, "challenge").Ok);
+
+        Assert.Empty(h.Awards);                          // очки відкотились — і нагорода разом з ними
+        Assert.Equal(0, Ints(h.View(0).GetProperty("scores"))[0]);
     }
 
     [Fact]
@@ -607,6 +655,37 @@ public class ScrabbleTests
         var h = Table();
         Rig(h, "оаи", "кітоаие", "оса");
         Assert.Equal("У мішку замало фішок для обміну", h.Act(0, "swap", new { letters = new[] { "к" } }).Message);
+    }
+
+    [Fact]
+    public void A_swap_needs_seven_tiles_in_the_bag_and_seven_is_enough()
+    {
+        var enough = Table();
+        Rig(enough, "оаиеноа", "кітоаие", "оса");        // рівно сім — межа проходить
+        Assert.True(enough.Act(0, "swap", new { letters = new[] { "к" } }).Ok);
+        Assert.Equal(7, Int(enough, 0, "bag"));
+
+        var scarce = Table();
+        Rig(scarce, "оаиено", "кітоаие", "оса");         // шість — уже ні
+        Assert.Equal("У мішку замало фішок для обміну", scarce.Act(0, "swap", new { letters = new[] { "к" } }).Message);
+    }
+
+    [Fact]
+    public void Passes_and_swaps_count_into_the_same_six()
+    {
+        var h = Table();
+        Rig(h, "оаиеноаоаи", "кітоаие", "осаоаие");
+        for (var i = 0; i < 6; i++)
+        {
+            var seat = i % 2;
+            var step = seat == 0
+                ? h.Act(seat, "swap", new { letters = new[] { Rack(h, seat)[..1] } })
+                : h.Act(seat, "pass");
+            Assert.True(step.Ok);
+        }
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal("passes", h.View(0).GetProperty("result").GetProperty("reason").GetString());
     }
 
     [Fact]
@@ -774,6 +853,7 @@ public class ScrabbleTests
         Rig(h, "оаиеноаоаи", "кітоаие", "осаоаие");
         Assert.True(Play(h, 0, C(7, 6), "кіт").Ok);
         Assert.Equal("Тут повний словник — оскаржувати нема потреби", h.Act(1, "challenge").Message);
+        Assert.False(h.View(1).GetProperty("canChallenge").GetBoolean());
     }
 
     [Fact]
@@ -787,6 +867,39 @@ public class ScrabbleTests
         Assert.True(h.Act(1, "pass").Ok);
         Assert.Equal("кіт", h.View(0).GetProperty("board").GetString()!.Substring(C(7, 6), 3));
         Assert.Equal(8, Ints(h.View(0).GetProperty("scores"))[0]);
+    }
+
+    [Fact]
+    public void A_word_that_already_stood_on_the_board_survives_a_challenge()
+    {
+        using var dict = Dict.Small("оса");
+        var h = Table(services: dict.Services);
+        Rig(h, "оаиеноаоаи", "атаоаие", "осаоаие");
+        Assert.True(Play(h, 0, C(7, 7), "ат").Ok);       // «ат» словник не знає, але ніхто не оскаржив
+        Assert.True(h.Act(1, "pass").Ok);
+
+        // те саме «ат», тепер згори вниз: слово вже стояло на дошці, отже законне (spec, рядок 6)
+        Assert.True(Play(h, 0, C(6, 8), "а").Ok);
+        Assert.Equal("Таке слово в словнику є", h.Act(1, "challenge").Message);
+    }
+
+    [Fact]
+    public void The_view_says_when_the_challenge_button_makes_sense()
+    {
+        using var dict = Dict.Small("оса");
+        var h = Table(services: dict.Services);
+        Rig(h, "оаиеноаоаи", "кітоаие", "осаоаие");
+        Assert.False(h.View(0).GetProperty("canChallenge").GetBoolean());    // ще нічого не викладено
+        Assert.True(Play(h, 0, C(7, 6), "кіт").Ok);
+
+        Assert.True(h.View(1).GetProperty("canChallenge").GetBoolean());
+        Assert.False(h.View(0).GetProperty("canChallenge").GetBoolean());    // своє слово не оскаржують
+        Assert.False(h.View(null).GetProperty("canChallenge").GetBoolean()); // глядач і поготів
+
+        Assert.True(h.Act(1, "pass").Ok);
+        Assert.True(h.Act(0, "pass").Ok);
+        // хід знову за Петром і слово Олі на дошці — але вікно вже закрите, кнопці нема чого світитись
+        Assert.False(h.View(1).GetProperty("canChallenge").GetBoolean());
     }
 
     // ================================================================== приховане
@@ -828,7 +941,7 @@ public class ScrabbleTests
     {
         var h = Table();
         var view = h.View(0);
-        foreach (var name in new[] { "board", "bonuses", "turn", "players", "scores", "racks", "rack", "bag", "last", "passes", "smallDict", "moves", "result" })
+        foreach (var name in new[] { "board", "bonuses", "turn", "players", "scores", "racks", "rack", "bag", "last", "passes", "smallDict", "canChallenge", "moves", "result" })
             Assert.True(Views.Has(view, name), $"у виді нема поля {name}");
 
         Assert.Equal(225, view.GetProperty("bonuses").GetString()!.Length);
@@ -878,6 +991,23 @@ public class ScrabbleTests
         Assert.Equal(1, Int(h, 0, "turn"));
         Assert.True(h.Leave("Петро").Ok);
         Assert.Equal(2, Int(h, 2, "turn"));
+    }
+
+    [Fact]
+    public void A_player_who_leaves_inside_the_challenge_window_does_not_lose_his_tiles()
+    {
+        using var dict = Dict.Small("оса");
+        var h = Table(players: 3, services: dict.Services);
+        Assert.Equal(ScrabbleBag.Total, Tiles(h));
+
+        var letters = Rack(h, 0).Replace("*", "");           // порожню фішку сюди класти нічим
+        Assert.True(Play(h, 0, C(7, 7), letters[..2]).Ok);   // слово лягло, вікно оскарження відкрите
+        Assert.True(h.Leave("Іван").Ok);                     // встає ТРЕТІЙ, не той, хто ходив
+
+        // Знімок у вікні пам'ятає мішок без фішок Івана — тому вихід вікно й закриває.
+        Assert.Equal("Нема чого оскаржувати", h.Act(1, "challenge").Message);
+        Assert.False(h.View(1).GetProperty("canChallenge").GetBoolean());
+        Assert.Equal(ScrabbleBag.Total, Tiles(h));           // усі 104 фішки на місці
     }
 
     [Fact]
