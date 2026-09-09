@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
 namespace Hlechyky.Games;
 
 /// <summary>
@@ -10,11 +12,25 @@ public static class GamesSetup
     {
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<GameEvents>();
+        // Явна фабрика: у реєстру є ще один, необов'язковий параметр (додаткові збірки для тестів),
+        // і контейнер не вміє його вгадати.
+        services.AddSingleton(sp => new Registry(sp.GetService<ILogger<Registry>>()));
+        services.AddSingleton<Rooms>();
+        services.AddSingleton<Broadcaster>();
+        services.AddSingleton<IOutbox>(sp => sp.GetRequiredService<Broadcaster>());
+        // Заглушки, щоб сервер піднімався без економіки. AddHlechykyGames кличеться раніше за
+        // AddHlechykyEconomy, тому TryAdd тут завжди виграє — справжні реалізації WP1 ставить через
+        // services.Replace(ServiceDescriptor.Singleton<IStakes, Economy>()).
+        services.TryAddSingleton<IStakes, NoStakes>();
+        services.TryAddSingleton<IGameStore, MemoryGameStore>();
+        services.AddHostedService<TickEngine>();
         return services;
     }
 
     public static WebApplication MapHlechykyGames(this WebApplication app)
     {
+        // Лобі будується з каталогу, а не з хардкоду в JS: додав клас гри — вона з'явилась на сайті.
+        app.MapGet("/api/games/catalog", (Registry registry) => new Catalog(registry.Catalog, Rooms.Stakes));
         return app;
     }
 }

@@ -14,6 +14,12 @@ public sealed class Presence
     public string? Get(string connId) => _conns.TryGetValue(connId, out var n) ? n : null;
     public List<string> Online => _conns.Values.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
     public int Count => Online.Count;
+    /// <summary>Усі з'єднання ніка: гаманець, ачівка й персональний тост летять на всі відкриті вкладки.</summary>
+    public IReadOnlyList<string> ConnectionsOf(string nick) =>
+        string.IsNullOrEmpty(nick) ? [] : [.. _conns.Where(p => string.Equals(p.Value, nick, StringComparison.OrdinalIgnoreCase)).Select(p => p.Key)];
+    /// <summary>Чи є в цього ніка хоч одне живе з'єднання.</summary>
+    public bool IsOnline(string nick) =>
+        !string.IsNullOrEmpty(nick) && _conns.Values.Contains(nick, StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>

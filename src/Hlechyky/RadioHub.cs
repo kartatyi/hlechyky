@@ -1,21 +1,28 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
+using Hlechyky.Games;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, OldGames games, IOptionsMonitor<SiteOptions> site, DjBrain brain) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, DjBrain brain) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
     static readonly ConcurrentDictionary<string, DateTime> LastCommand = new();
 
+    /// <summary>Скільки дій і скільки реалтайм-вводу можна на секунду з одного з'єднання (ARCHITECTURE §9).</summary>
+    const int ActsPerSecond = 10, InputsPerSecond = 30;
+    static readonly ConcurrentDictionary<string, (long Second, int Acts, int Inputs)> Rates = new();
+
     public override async Task OnConnectedAsync()
     {
         var nick = Auth.SanitizeNick(Context.GetHttpContext()?.Request.Query["nick"].ToString());
         presence.Set(Context.ConnectionId, nick);
+        rooms.NoteOnline(nick);
         await Clients.Caller.SendAsync("chatHistory", db.RecentChat(100, 120));
-        await Clients.Caller.SendAsync("games", games.Snapshot());
+        await Clients.Caller.SendAsync("rooms", rooms.Snapshot());
         await Clients.All.SendAsync("state", engine.Snapshot());
     }
 
@@ -23,8 +30,11 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, OldGa
     {
         var gone = presence.Get(Context.ConnectionId);
         presence.Remove(Context.ConnectionId);
+        rooms.DropWatcher(Context.ConnectionId);
+        Rates.TryRemove(Context.ConnectionId, out _);
+        // Місце тримається ще grace-час: F5 і провал зв'язку в метро не мають коштувати партії.
+        if (gone is not null && !presence.IsOnline(gone)) rooms.NoteOffline(gone, clock.UtcNow);
         await Clients.All.SendAsync("state", engine.Snapshot());
-        await FreeSeatsAsync(gone);
     }
 
     /// <summary>Повертає текст помилки тому, хто писав (нікому більше), або null, якщо все гаразд.</summary>
@@ -65,40 +75,82 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, OldGa
     {
         var old = presence.Get(Context.ConnectionId);
         presence.Set(Context.ConnectionId, Auth.SanitizeNick(nick));
+        rooms.NoteOnline(Nick());
         await Clients.All.SendAsync("state", engine.Snapshot());
-        await FreeSeatsAsync(old);
+        // Свідома зміна ніка — це те саме, що встати з-за столу: grace тут ні до чого.
+        if (old is not null && !presence.IsOnline(old)) await broadcaster.FlushAsync(rooms.DropNick(old));
     }
 
-    // ---------- ігри ----------
+    // ---------- ігри (PROTOCOL §1) ----------
 
-    public Task<GameResult> CreateTable(string game) => ApplyAsync(games.Create(Nick(), game ?? ""));
-    public Task<GameResult> SitTable(string id) => ApplyAsync(games.Sit(id ?? "", Nick()));
-    public Task<GameResult> LeaveTable(string id) => ApplyAsync(games.Leave(id ?? "", Nick()));
-    public Task<GameResult> PlayMove(string id, int cell) => ApplyAsync(games.Move(id ?? "", Nick(), cell));
-    public Task<GameResult> Rematch(string id) => ApplyAsync(games.Rematch(id ?? "", Nick()));
+    public Task<RoomReply> CreateRoom(string gameId, Dictionary<string, string>? options) =>
+        Act(() => rooms.Create(Nick(), gameId ?? "", options));
 
-    /// <summary>Кадри змійки летять лише тим, хто на цей стіл дивиться.</summary>
-    public static string TableGroup(string id) => "table:" + id;
-    public Task WatchTable(string id) => Groups.AddToGroupAsync(Context.ConnectionId, TableGroup(id ?? ""));
-    public Task UnwatchTable(string id) => Groups.RemoveFromGroupAsync(Context.ConnectionId, TableGroup(id ?? ""));
-
-    /// <summary>Поворот змійки. Нічого не відповідаємо: наступний тик і так намалює, що вийшло.</summary>
-    public void SnakeTurn(string id, int dir) => games.Turn(id ?? "", Nick(), dir);
-
-    /// <summary>Вдалий хід бачать усі; те, чим варто похвалитись, іде ще й у Журнал.</summary>
-    async Task<GameResult> ApplyAsync(GameResult r)
+    public async Task<RoomReply> OpenSolo(string gameId, string? key)
     {
-        if (!r.Ok) return r;
-        await Clients.All.SendAsync("games", games.Snapshot());
-        if (r.Log is not null) await Clients.All.SendAsync("chat", db.AddChat(site.CurrentValue.Name, r.Log, "system"));
-        return r;
+        var reply = await Act(() => rooms.OpenSolo(Nick(), gameId ?? "", key));
+        // Особиста кімната нікуди не «видно»: щоб гравець одразу побачив свій вид, підписуємо його самі.
+        if (reply.Ok && reply.RoomId is { } id) await WatchRoom(id);
+        return reply;
     }
 
-    /// <summary>Пішов зі сторінки (або перейменувався) і більше ніде не онлайн — місце за столом звільняється.</summary>
-    async Task FreeSeatsAsync(string? nick)
+    public Task<RoomReply> JoinRoom(string roomId) => Act(() => rooms.Join(roomId ?? "", Nick()));
+
+    public Task<RoomReply> LeaveRoom(string roomId) => Act(() => rooms.Leave(roomId ?? "", Nick()));
+
+    public Task<RoomReply> StartRoom(string roomId) => Act(() => rooms.StartByHost(roomId ?? "", Nick()));
+
+    public Task<RoomReply> Rematch(string roomId) => Act(() => rooms.Rematch(roomId ?? "", Nick()));
+
+    public Task<RoomReply> Act(string roomId, string action, JsonElement payload) =>
+        Act(() => rooms.Act(roomId ?? "", Nick(), action ?? "", payload));
+
+    /// <summary>Реалтайм-ввід. Відповіді нема: наступний кадр і так намалює, що вийшло.</summary>
+    public async Task Input(string roomId, string action, JsonElement payload)
     {
-        if (string.IsNullOrEmpty(nick) || presence.Online.Contains(nick, StringComparer.OrdinalIgnoreCase)) return;
-        if (games.DropPlayer(nick)) await Clients.All.SendAsync("games", games.Snapshot());
+        if (!Allow(input: true)) return;   // зайве мовчки викидаємо, скаржитись тут нема на що
+        await broadcaster.FlushAsync(rooms.Input(roomId ?? "", Nick(), action ?? "", payload));
+    }
+
+    /// <summary>Види й кадри летять лише тим, хто на цю кімнату дивиться.</summary>
+    public async Task WatchRoom(string roomId)
+    {
+        var id = roomId ?? "";
+        var outbox = rooms.Watch(id, Context.ConnectionId, Nick());
+        if (outbox.Count == 0) return;   // кімнати нема або вона чужа приватна — мовчки нічого
+        await Groups.AddToGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(id));
+        await broadcaster.FlushAsync(outbox);
+    }
+
+    public async Task UnwatchRoom(string roomId)
+    {
+        rooms.Unwatch(roomId ?? "", Context.ConnectionId);
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(roomId ?? ""));
+    }
+
+    async Task<RoomReply> Act(Func<RoomOutcome> action)
+    {
+        if (!Allow(input: false)) return RoomReply.Fail(Games.Say.TooFast);
+        var outcome = action();
+        await broadcaster.FlushAsync(outcome.Out);
+        return outcome.Reply;
+    }
+
+    /// <summary>Проста квота на секунду з одного з'єднання: десять дій, тридцять вводів.</summary>
+    bool Allow(bool input)
+    {
+        var second = clock.UtcNow.ToUnixTimeSeconds();
+        var allowed = true;
+        Rates.AddOrUpdate(Context.ConnectionId,
+            _ => (second, input ? 0 : 1, input ? 1 : 0),
+            (_, old) =>
+            {
+                if (old.Second != second) return (second, input ? 0 : 1, input ? 1 : 0);
+                if (input && old.Inputs >= InputsPerSecond) { allowed = false; return old; }
+                if (!input && old.Acts >= ActsPerSecond) { allowed = false; return old; }
+                return (second, old.Acts + (input ? 0 : 1), old.Inputs + (input ? 1 : 0));
+            });
+        return allowed;
     }
 
     string Nick() => presence.Get(Context.ConnectionId) ?? "гість";
