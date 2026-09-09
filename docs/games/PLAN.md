@@ -98,9 +98,17 @@
 {
   "Site": { "ListenPort": 8091 },
   "YtDlp": { "FfmpegDir": "D:/or/tools/yt-dlp", "BinaryPath": "D:/or/tools/yt-dlp/yt-dlp.exe" },
-  "Auth": { "AdminKey": "dev" }
+  "Auth": { "AdminKey": "dev" },
+  "Liquidsoap": { "Port": 11234 },
+  "Icecast": { "StatusUrl": "http://127.0.0.1:18000/status-json.xsl" },
+  "AutoDj": { "Enabled": false },
+  "DjBot": { "Enabled": false },
+  "Deploy": { "Enabled": false }
 }
 ```
+
+Останні п'ять рядків обов'язкові: liquidsoap проду слухає `127.0.0.1:1234` на цій самій машині, і сервер
+із worktree без них знайде живий ефір і почне ним керувати. З ними ефір показує «↓» — саме те, що треба.
 Порт: WP0 8091, WP1 8092, WP2 8093, WP4 8094, ігри — 8100 + порядковий номер у таблиці (chess 8101, checkers
 8102, …, clicker 8119). Інтеграційний `D:\or-games` — 8090. Liquidsoap/Icecast у worktree не потрібні:
 ефір буде «↓», ігри це не зачіпає.
