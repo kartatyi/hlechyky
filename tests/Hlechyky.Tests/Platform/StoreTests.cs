@@ -116,4 +116,42 @@ public class StoreTests
         rig.Ticker.Minute();
         Assert.Empty(rig.Outbox.All);
     }
+
+    [Fact]
+    public void All_players_of_a_game_are_written_or_none_are()
+    {
+        using var temp = new TempDb();
+        var store = new EconomyStore(temp.Db);
+        var at = new DateTimeOffset(2026, 9, 10, 12, 0, 0, TimeSpan.Zero);
+        ResultRow Row(string nick, string outcome) =>
+            new("r1", "chess", 1, EconomyStore.Key(nick), nick, outcome, null, null, 0, at);
+
+        Assert.Equal([true, true], store.AddResults([Row("Оля", "win"), Row("Петро", "loss")]));
+        // друга та сама подія — жодного свіжого рядка, тож і Ело нема від чого рухати
+        Assert.Equal([false, false], store.AddResults([Row("Оля", "win"), Row("Петро", "loss")]));
+        Assert.Equal(1, store.CountResults("оля", "chess", null, DateTimeOffset.MinValue));
+    }
+
+    [Fact]
+    public void Win_streaks_of_many_nicks_come_in_one_query()
+    {
+        using var temp = new TempDb();
+        var store = new EconomyStore(temp.Db);
+        var at = new DateTimeOffset(2026, 9, 10, 12, 0, 0, TimeSpan.Zero);
+        void Add(string room, string nick, string outcome) => store.AddResult(
+            new ResultRow(room, "chess", 1, EconomyStore.Key(nick), nick, outcome, null, null, 0, at));
+
+        Add("r1", "Оля", "win");
+        Add("r2", "Оля", "loss");
+        Add("r3", "Оля", "win");
+        Add("r4", "Оля", "draw");
+        Add("r5", "Оля", "win");
+        Add("r1", "Петро", "loss");
+
+        var streaks = store.WinStreaks(["оля", "петро", "марта"], 50);
+        // нічия серію не рве, поразка — рве
+        Assert.Equal(2, streaks["оля"]);
+        Assert.Equal(0, streaks["петро"]);
+        Assert.Equal(0, streaks["марта"]);
+    }
 }

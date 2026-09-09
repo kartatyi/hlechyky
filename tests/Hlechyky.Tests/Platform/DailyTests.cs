@@ -148,4 +148,21 @@ public class DailyTests
         Assert.Equal(30_000, rig.Daily.MyResult("Оля", "mines-daily")!.Ms);
         Assert.Equal(1, rig.Store.DailySolvedCount(rig.Daily.Today(), "wordle"));
     }
+
+    [Fact]
+    public void Streaks_of_all_puzzles_match_the_single_game_answer()
+    {
+        using var rig = new EconomyRig();
+        var today = rig.Daily.Today();
+        var yesterday = DateOnly.ParseExact(today, "yyyy-MM-dd").AddDays(-1).ToString("yyyy-MM-dd");
+        rig.Daily.Record("wordle", "Оля", solved: true, 3, 0, yesterday);
+        rig.Daily.Record("wordle", "Оля", solved: true, 2, 0, today);
+        rig.Daily.Record("mines", "Оля", solved: true, 1, 40_000, today);
+
+        var all = rig.Daily.Streaks("Оля");
+        Assert.Equal(rig.Daily.Streak("Оля", "wordle"), all["wordle"]);
+        Assert.Equal(2, all["wordle"]);
+        Assert.Equal(1, all["mines"]);
+        Assert.Equal(0, all.GetValueOrDefault("skilky"));
+    }
 }

@@ -223,4 +223,55 @@ public class RewardsTests
         Assert.Equal(5, rig.Paid("Оля", "win:ttt"));
         Assert.Equal(-25, rig.Paid("Оля", "stake"));
     }
+
+    [Fact]
+    public void A_daily_award_without_a_sum_pays_the_configured_reward()
+    {
+        using var rig = new EconomyRig();
+        rig.Options.DailyReward = 7;
+        // головоломка не назвала суму — платимо типову з налаштувань, а не нуль
+        rig.Events.Raise(new AwardEvent("wordle", "daily:wordle:2026-09-10:оля", "Оля", 0, "daily:wordle"));
+        Assert.Equal(7, rig.Paid("Оля", "daily:wordle"));
+    }
+
+    [Fact]
+    public void A_broken_daily_key_is_kept_as_a_plain_solo_result()
+    {
+        using var rig = new EconomyRig();
+        rig.Events.Raise(new SoloScoreEvent("wordle", "Оля", 3, ScoreOrder.LowerIsBetter,
+            "daily:wordle:позавчора:оля", rig.Clock.UtcNow));
+
+        // «день», якого не буває, не має осідати в таблиці щоденного
+        Assert.Null(rig.Daily.MyResult("Оля", "wordle", "позавчора"));
+        Assert.Null(rig.Daily.MyResult("Оля", "wordle"));
+        Assert.Equal(1, rig.Store.CountResults("оля", "wordle", "solo", DateTimeOffset.MinValue));
+    }
+
+    [Fact]
+    public void A_broken_wallet_subscriber_does_not_rob_the_second_player()
+    {
+        using var rig = new EconomyRig();
+        rig.Economy.Changed += (nick, _) =>
+        {
+            if (Economy.Key(nick) == "оля") throw new InvalidOperationException("ачівка спіткнулась");
+        };
+        rig.Events.Raise(rig.Finished("r1", Ttt, ["Оля", "Петро"], [0]));
+
+        Assert.Equal(1, rig.Paid("Петро", "play:ttt"));
+        Assert.Equal(1, rig.Store.CountResults("петро", "ttt", null, DateTimeOffset.MinValue));
+        Assert.Equal(1, rig.Store.CountResults("оля", "ttt", null, DateTimeOffset.MinValue));
+    }
+
+    [Fact]
+    public void A_repeated_event_does_not_move_elo_a_second_time()
+    {
+        using var rig = new EconomyRig();
+        var e = rig.Finished("r1", Chess, ["Оля", "Петро"], [0]);
+        rig.Events.Raise(e);
+        var after = rig.Ratings.Of("Оля", "chess").Elo;
+        rig.Events.Raise(e);
+
+        Assert.Equal(after, rig.Ratings.Of("Оля", "chess").Elo);
+        Assert.Equal(1, rig.Ratings.Of("Оля", "chess").Games);
+    }
 }

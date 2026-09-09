@@ -16,6 +16,9 @@ public static class EconomySetup
         services.TryAddSingleton<GameEvents>();
         services.TryAddSingleton<IOutbox, NullOutbox>();
 
+        // секція Economy — власність WP1, тому прив'язка живе тут, а не в Program.cs (спільному файлі)
+        services.AddOptions<EconomyOptions>().BindConfiguration("Economy");
+
         services.AddSingleton<GameNames>();
         services.AddSingleton<EconomyStore>();
         services.AddSingleton<Economy>();

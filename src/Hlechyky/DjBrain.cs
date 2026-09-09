@@ -247,7 +247,9 @@ public sealed class DjBrain : IHostedService
             var response = await Client(o).Messages.Create(new MessageCreateParams
             {
                 Model = o.Model,
-                MaxTokens = Math.Clamp(maxChars, 32, o.MaxTokens),
+                // maxChars — це символи, а не токени: для кирилиці 1 токен ≈ 1–2 символи, тож беремо із
+                // запасом. Math.Clamp тут кидав би ArgumentException при DjBot:MaxTokens < 64
+                MaxTokens = Math.Min(o.MaxTokens, Math.Max(64, maxChars)),
                 System = new List<TextBlockParam>
                 {
                     new() { Text = SystemPrompt(), CacheControl = new CacheControlEphemeral() },

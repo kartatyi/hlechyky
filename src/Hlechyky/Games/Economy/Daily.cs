@@ -24,6 +24,9 @@ public sealed class Daily(EconomyStore store, GameNames names, IClock clock)
     /// <summary>Скільки днів назад дивимось, коли рахуємо серію.</summary>
     const int StreakWindow = 400;
 
+    /// <summary>Скільки рядків у топі дня однієї головоломки.</summary>
+    const int TopRows = 10;
+
     public string Today() => Days.Today(clock);
 
     /// <summary>Id ігор, що входять у щоденне (усі, хто позначився <see cref="IDailyGame"/>).</summary>
@@ -58,8 +61,28 @@ public sealed class Daily(EconomyStore store, GameNames names, IClock clock)
     public int Streak(string nick, string game)
     {
         var days = store.SolvedDays(Economy.Key(nick), game, StreakWindow).ToHashSet(StringComparer.Ordinal);
-        if (days.Count == 0) return 0;
-        var day = Today();
+        return StreakOf(days, Today());
+    }
+
+    /// <summary>
+    /// Серії в усіх головоломках одразу — одним запитом. Панель і профіль показують їх усі, а окремий
+    /// запит на кожну гру перетворював би HTTP-запит на десяток з'єднань до бази.
+    /// </summary>
+    public Dictionary<string, int> Streaks(string nick)
+    {
+        var byGame = store.SolvedDaysAll(Economy.Key(nick), StreakWindow);
+        var today = Today();
+        var result = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var game in Puzzles) result[game] = StreakOf(byGame.GetValueOrDefault(game), today);
+        foreach (var (game, days) in byGame) result[game] = StreakOf(days, today);
+        return result;
+    }
+
+    static int StreakOf(HashSet<string>? days, string today)
+    {
+        if (days is null || days.Count == 0) return 0;
+        var day = today;
+        // сьогодні ще не грав — серія тримається вчорашнім днем
         if (!days.Contains(day)) day = Prev(day);
         var n = 0;
         while (days.Contains(day)) { n++; day = Prev(day); }
@@ -72,22 +95,19 @@ public sealed class Daily(EconomyStore store, GameNames names, IClock clock)
     public List<DailyTopRow> Top(string game, string? day = null, int n = 10) =>
         store.DailyTop(day ?? Today(), game, n).Select(r => new DailyTopRow(r.Nick, r.Attempts, r.Ms)).ToList();
 
-    /// <summary>Панель «Щоденний глек» для одного ніка.</summary>
+    /// <summary>Панель «Щоденний глек» для одного ніка. Уся вибірка — двома походами в базу, не по чотири на гру.</summary>
     public DailyStatus Status(string nick)
     {
         var day = Today();
-        var puzzles = new List<DailyPuzzle>();
-        foreach (var game in Puzzles)
-        {
-            var mine = store.Daily(day, game, Economy.Key(nick));
-            puzzles.Add(new DailyPuzzle(
-                game,
-                names.Title(game),
-                mine is null ? null : new DailyMe(mine.Solved, mine.Attempts, mine.Ms),
-                Streak(nick, game),
-                store.DailySolvedCount(day, game),
-                Top(game, day)));
-        }
+        var games = Puzzles;
+        var streaks = Streaks(nick);
+        var puzzles = store.DailyPanel(day, Economy.Key(nick), games, TopRows).Select(p => new DailyPuzzle(
+            p.Game,
+            names.Title(p.Game),
+            p.Mine is null ? null : new DailyMe(p.Mine.Solved, p.Mine.Attempts, p.Mine.Ms),
+            streaks.GetValueOrDefault(p.Game),
+            p.SolvedCount,
+            p.Top.Select(r => new DailyTopRow(r.Nick, r.Attempts, r.Ms)).ToList())).ToList();
         return new DailyStatus(day, Days.Number(day), Days.NextMidnight(clock.UtcNow), puzzles);
     }
 }

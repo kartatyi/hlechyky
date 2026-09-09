@@ -61,31 +61,54 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
         var seconds = (e.FinishedAt - e.StartedAt).TotalSeconds;
         var rewarded = e.Moves >= o.MinRewardMoves || seconds >= o.MinRewardSeconds;
 
-        var written = new List<(string Nick, string Outcome)>();
-        foreach (var (nick, seat) in seated)
+        var rows = seated.Select(x =>
         {
-            var outcome = e.Result.Draw ? "draw" : e.Result.Winners.Contains(seat) ? "win" : "loss";
-            long? score = e.Result.Scores is not null && e.Result.Scores.TryGetValue(seat, out var s) ? s : null;
-            var opponents = string.Join(", ", seated.Where(x => x.Seat != seat).Select(x => x.Nick));
-            var fresh = store.AddResult(new ResultRow(e.RoomId, e.GameId, e.Round, Economy.Key(nick), nick,
-                outcome, score, opponents, e.Stake, e.FinishedAt));
-            if (!fresh) continue;   // подія прилетіла вдруге — нічого не подвоюємо
-            written.Add((nick, outcome));
+            var outcome = e.Result.Draw ? "draw" : e.Result.Winners.Contains(x.Seat) ? "win" : "loss";
+            long? score = e.Result.Scores is not null && e.Result.Scores.TryGetValue(x.Seat, out var s) ? s : null;
+            var opponents = string.Join(", ", seated.Where(y => y.Seat != x.Seat).Select(y => y.Nick));
+            return new ResultRow(e.RoomId, e.GameId, e.Round, Economy.Key(x.Nick), x.Nick,
+                outcome, score, opponents, e.Stake, e.FinishedAt);
+        }).ToList();
 
-            if (!rewarded) continue;
-            var (amount, reason) = outcome switch
+        // усі учасники — однією транзакцією: або партія записалась цілком, або жодного рядка. Інакше збій
+        // посеред списку лишив би її напівпорахованою, а повторна подія додала б Ело вдруге
+        var fresh = store.AddResults(rows);
+        var written = rows.Where((_, i) => fresh[i]).ToList();
+        if (written.Count == 0) return;   // подія прилетіла вдруге — нічого не подвоюємо
+
+        if (rewarded)
+            foreach (var row in written)
             {
-                "win" => (o.WinReward, $"win:{e.GameId}"),
-                "draw" => (o.DrawReward, $"draw:{e.GameId}"),
-                _ => (o.PlayReward, $"play:{e.GameId}"),
-            };
-            economy.GrantCapped(nick, amount, reason, $"game:{e.RoomId}:{e.Round}:{Economy.Key(nick)}",
-                $"game:{e.GameId}", o.RewardedGamesPerDay);
-        }
-        if (written.Count == 0) return;
+                var (amount, reason) = row.Outcome switch
+                {
+                    "win" => (o.WinReward, $"win:{e.GameId}"),
+                    "draw" => (o.DrawReward, $"draw:{e.GameId}"),
+                    _ => (o.PlayReward, $"play:{e.GameId}"),
+                };
+                // виняток на одному ніку не має лишати решту без черепків
+                try
+                {
+                    economy.GrantCapped(row.Nick, amount, reason, $"game:{e.RoomId}:{e.Round}:{row.NickKey}",
+                        $"game:{e.GameId}", o.RewardedGamesPerDay);
+                }
+                catch (Exception ex) { log.LogWarning(ex, "не виплатив за партію {Room} нікові {Nick}", e.RoomId, row.Nick); }
+            }
 
-        Elo(e);
-        foreach (var (nick, outcome) in written) achievements.OnRoomFinished(e, nick, outcome);
+        // Ело рахуємо тільки коли партія справді нова цілком: половина свіжих рядків — це або збій, або
+        // повтор події, і в обох випадках нуль-сумовий рейтинг чіпати не можна
+        if (written.Count == rows.Count)
+        {
+            try { Elo(e); }
+            catch (Exception ex) { log.LogWarning(ex, "не порахував Ело за партію {Room}", e.RoomId); }
+        }
+        else log.LogWarning("партія {Room} записалась частково ({Fresh} з {All}) — Ело пропущено",
+            e.RoomId, written.Count, rows.Count);
+
+        foreach (var row in written)
+        {
+            try { achievements.OnRoomFinished(e, row.Nick, row.Outcome); }
+            catch (Exception ex) { log.LogWarning(ex, "не перевірив ачівки для {Nick}", row.Nick); }
+        }
     }
 
     void Elo(RoomFinishedEvent e)
@@ -115,16 +138,21 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
     {
         var order = e.Order != ScoreOrder.None ? e.Order : names.Get(e.GameId)?.Score ?? ScoreOrder.HigherIsBetter;
         var key = e.Key ?? $"solo:{e.GameId}:{Economy.Key(e.Nick)}";
-        store.AddSolo(new ResultRow(key, e.GameId, 0, Economy.Key(e.Nick), e.Nick, "solo", e.Score, null, 0, e.At),
+        // день у ключі рядка — щоб «найкращий результат за період» був справді за період: без нього
+        // гончарне коло мало б один вічний рядок, і місячної давнини рекорд лежав би в топі за сьогодні
+        var room = $"{key}:{Days.Of(e.At)}";
+        store.AddSolo(new ResultRow(room, e.GameId, 0, Economy.Key(e.Nick), e.Nick, "solo", e.Score, null, 0, e.At),
             order == ScoreOrder.HigherIsBetter);
 
         if (e.Key is not null && e.Key.StartsWith("daily:", StringComparison.Ordinal))
         {
             var parts = e.Key.Split(':');
-            if (parts.Length >= 4)
+            var day = parts.Length >= 4 ? parts[2] : "";
+            // день беремо з ключа, який склала гра: зіпсований формат мовчки створив би «день», якого
+            // не побачить ні серія, ні панель, і він назавжди завис би в базі
+            if (parts.Length >= 4 && DateOnly.TryParseExact(day, "yyyy-MM-dd", out _))
             {
                 var game = parts[1];
-                var day = parts[2];
                 // подія несе одне число; за домовленістю (див. specs/daily.md, «Як реалізовано»)
                 // маленьке — це спроби, велике — мілісекунди
                 var (attempts, ms) = e.Score >= MsThreshold
@@ -133,6 +161,7 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
                 var row = daily.Record(game, e.Nick, solved: true, attempts, ms, day);
                 achievements.OnDaily(e.Nick, row, daily.Streak(e.Nick, game));
             }
+            else log.LogWarning("ключ щоденної кімнати {Key} не має вигляду daily:<гра>:<рррр-мм-дд>:<нік> — записав як звичайний соло-результат", e.Key);
         }
         achievements.OnSolo(e);
     }
@@ -151,12 +180,16 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
         var nickKey = Economy.Key(e.Nick);
         var day = Days.Today(clock);
 
-        if (e.Shards > 0)
+        if (e.Reason.StartsWith("daily:", StringComparison.Ordinal))
         {
-            if (e.Reason.StartsWith("daily:", StringComparison.Ordinal))
-                // раз на день на головоломку — це вже забезпечує сам ref
-                economy.Grant(e.Nick, e.Shards, e.Reason, $"{e.Reason}:{day}:{nickKey}");
-            else if (e.Reason == "clicker")
+            // головоломка може не називати суму — тоді платимо типову з налаштувань;
+            // раз на день на головоломку — це вже забезпечує сам ref
+            var shards = e.Shards > 0 ? e.Shards : o.DailyReward;
+            economy.Grant(e.Nick, shards, e.Reason, $"{e.Reason}:{day}:{nickKey}");
+        }
+        else if (e.Shards > 0)
+        {
+            if (e.Reason == "clicker")
                 economy.GrantSequenced(e.Nick, e.Shards, "clicker", n => $"clicker:{nickKey}:{day}:{n}",
                     "clicker", o.ClickerDailyCap, e.Shards);
             else if (e.Reason.StartsWith("ad:", StringComparison.Ordinal))

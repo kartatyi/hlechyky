@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Hlechyky.Games.Economy;
 
 /// <summary>Одна ачівка з каталогу. <see cref="Hidden"/> — не показувати, поки не здобув.</summary>
@@ -57,6 +59,9 @@ public sealed class Achievements
     readonly GameNames _names;
     readonly IClock _clock;
     readonly IOutbox _outbox;
+    /// <summary>Що вже видано цьому серверу: інакше «Сотня» і «Меломан» довбали б базу на кожен рух грошей
+    /// і на кожну хвилину онлайну — довічно, бо давно видана ачівка все одно щоразу йшла б у INSERT.</summary>
+    readonly ConcurrentDictionary<string, byte> _granted = new(StringComparer.Ordinal);
 
     public Achievements(EconomyStore store, Economy economy, GameNames names, IClock clock, IOutbox outbox)
     {
@@ -71,7 +76,14 @@ public sealed class Achievements
         if (a is null) return false;
         var nickKey = Economy.Key(nick);
         if (nickKey.Length == 0) return false;
-        if (!_store.Unlock(nickKey, nick, key, _clock.UtcNow)) return false;
+        // у пам'яті — і ті, що ми щойно видали, і ті, які база відбила як наявні: обидва випадки означають
+        // «більше сюди не ходимо». А от якщо база впала — мітку знімаємо, щоб наступна подія спробувала ще раз
+        var mark = $"{nickKey}|{key}";
+        if (!_granted.TryAdd(mark, 0)) return false;
+        bool granted;
+        try { granted = _store.Unlock(nickKey, nick, key, _clock.UtcNow); }
+        catch (Exception) { _granted.TryRemove(mark, out _); throw; }
+        if (!granted) return false;
 
         if (a.Reward > 0)
             _economy.Grant(nick, a.Reward, $"ach:{key}", $"ach:{key}:{nickKey}",
@@ -113,7 +125,8 @@ public sealed class Achievements
 
         // «Настільний» має сенс лише коли настільних ігор справді кілька: на порожньому реєстрі
         // (ранні гілки, тести) перша ж перемога інакше зачиняла б ачівку за 50 черепків
-        var boards = _names.All.Where(i => i.Group == GameGroup.Board && !i.Hidden && !i.Solo).Select(i => i.Id).ToList();
+        // приховані настільні (морський бій, доміно, дурень) — теж настільні: §8 каже «в кожній настільній грі»
+        var boards = _names.All.Where(i => i.Group == GameGroup.Board && !i.Solo).Select(i => i.Id).ToList();
         if (boards.Count >= 3)
         {
             var won = _store.GamesWon(nickKey);
@@ -126,12 +139,18 @@ public sealed class Achievements
         if (e.Stake >= 25) Unlock(nick, "high-roller");
     }
 
-    /// <summary>Соло-результат: гончарне коло рахує глеки за весь час.</summary>
+    /// <summary>
+    /// Соло-результат: гончарне коло рахує глеки за весь час, а дуель кладе сюди найкращу реакцію в
+    /// мілісекундах (specs/duel.md — «Швидка рука» перевіряється саме тут, а не в самій грі).
+    /// </summary>
     public void OnSolo(SoloScoreEvent e)
     {
-        if (e.GameId != "clicker") return;
-        if (e.Score >= 1_000) Unlock(e.Nick, "potter-1k");
-        if (e.Score >= 100_000) Unlock(e.Nick, "potter-100k");
+        if (e.GameId == "clicker")
+        {
+            if (e.Score >= 1_000) Unlock(e.Nick, "potter-1k");
+            if (e.Score >= 100_000) Unlock(e.Nick, "potter-100k");
+        }
+        if (e.GameId == "duel" && e.Score is > 0 and < 200) Unlock(e.Nick, "duel-fast");
     }
 
     /// <summary>Результат щоденної головоломки (уже записаний), <paramref name="streak"/> — серія разом із сьогодні.</summary>

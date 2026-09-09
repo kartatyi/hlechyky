@@ -11,6 +11,10 @@ namespace Hlechyky.Games.Economy;
 public sealed class GameNames
 {
     readonly ConcurrentDictionary<string, GameInfo> _map = new(StringComparer.Ordinal);
+    readonly List<string> _daily = new();
+    // скан збірки коштує дорого, а GET /daily і GET /profile ходять сюди на кожен запит: тримаємо
+    // готові списки й перебудовуємо їх лише тоді, коли мапа справді змінилась (Learn)
+    volatile IReadOnlyList<GameInfo>? _all;
 
     public GameNames()
     {
@@ -19,25 +23,29 @@ public sealed class GameNames
             if (t.IsAbstract || !typeof(Game).IsAssignableFrom(t) || t.GetConstructor(Type.EmptyTypes) is null) continue;
             try
             {
-                if (Activator.CreateInstance(t) is Game g) _map[g.Info.Id] = g.Info;
+                if (Activator.CreateInstance(t) is not Game g) continue;
+                _map[g.Info.Id] = g.Info;
+                if (g is IDailyGame && !_daily.Contains(g.Info.Id, StringComparer.Ordinal)) _daily.Add(g.Info.Id);
             }
             catch (Exception) { /* гра, яку не створити без каркаса, нам тут не потрібна */ }
         }
+        _daily.Sort(StringComparer.Ordinal);
     }
 
-    public void Learn(GameInfo info) => _map[info.Id] = info;
+    public void Learn(GameInfo info)
+    {
+        if (_map.TryGetValue(info.Id, out var was) && was == info) return;
+        _map[info.Id] = info;
+        _all = null;
+    }
+
     public GameInfo? Get(string id) => _map.TryGetValue(id, out var i) ? i : null;
     /// <summary>«шахи» — для «перемога в шахах». Нема паспорта — лишається Id, і це видно, а не падає.</summary>
     public string Accusative(string id) => Get(id)?.Accusative ?? id;
     public string Title(string id) => Get(id)?.Title ?? id;
-    public IReadOnlyList<GameInfo> All => _map.Values.OrderBy(i => i.Id, StringComparer.Ordinal).ToList();
-    /// <summary>Id ігор, що входять у «Щоденний глек».</summary>
-    public IReadOnlyList<string> Daily => typeof(Game).Assembly.GetTypes()
-        .Where(t => !t.IsAbstract && typeof(Game).IsAssignableFrom(t) && typeof(IDailyGame).IsAssignableFrom(t)
-                    && t.GetConstructor(Type.EmptyTypes) is not null)
-        .Select(t => { try { return (Activator.CreateInstance(t) as Game)?.Info.Id; } catch (Exception) { return null; } })
-        .Where(id => id is not null).Select(id => id!).Distinct(StringComparer.Ordinal)
-        .OrderBy(id => id, StringComparer.Ordinal).ToList();
+    public IReadOnlyList<GameInfo> All => _all ??= _map.Values.OrderBy(i => i.Id, StringComparer.Ordinal).ToList();
+    /// <summary>Id ігор, що входять у «Щоденний глек» (маркер <see cref="IDailyGame"/>).</summary>
+    public IReadOnlyList<string> Daily => _daily;
 }
 
 /// <summary>Куди складати повідомлення, поки каркас розсилки ще не піднявся (і в тестах, де він не потрібен).</summary>
@@ -52,7 +60,7 @@ public sealed class NullOutbox : IOutbox
 /// <see cref="IOutbox"/> як <see cref="WalletChanged"/> з людським текстом («+5 черепків: перемога в шахах»).
 /// </summary>
 public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
-    IOptionsMonitor<EconomyOptions> opts, IOutbox outbox) : IStakes
+    IOptionsMonitor<EconomyOptions> opts, IOutbox outbox, ILogger<Economy> log) : IStakes
 {
     /// <summary>Баланс змінився: нік і новий баланс. Слухають ачівки («Сотня»).</summary>
     public event Action<string, int>? Changed;
@@ -100,9 +108,10 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
     GrantResult Apply(string nick, int amount, string reason, string? refKey, Func<int, string>? refFor,
         string? capKey, int capLimit, int capUnits, string? text)
     {
-        if (amount <= 0) return GrantResult.Applied;
+        // нічого не рухаємо — і кажемо про це прямо: Applied тут ввів би в оману того, хто перевіряє виплату
+        if (amount <= 0) return GrantResult.Skipped;
         var key = Key(nick);
-        if (key.Length == 0) return GrantResult.Applied;
+        if (key.Length == 0) return GrantResult.Skipped;
         var (result, balance) = store.Grant(key, nick, amount, reason, refKey, refFor, capKey, Today, capLimit, capUnits, clock.UtcNow);
         if (result == GrantResult.Applied) Announce(nick, balance, amount, reason, text);
         return result;
@@ -124,10 +133,17 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
         return ok;
     }
 
+    /// <summary>
+    /// Розповісти про рух грошей. Гроші на цей момент уже закомічені, тому жоден підписник не має права
+    /// зробити операцію «невдалою»: виняток із розсилки чи з ачівок летів би з <see cref="TrySpend"/>
+    /// назовні, і каркас кімнат вирішив би, що ставку не списано, коли її вже списано.
+    /// </summary>
     void Announce(string nick, int balance, int delta, string reason, string? text)
     {
-        outbox.Post(new WalletChanged(nick, balance, delta, reason, text ?? Text(delta, reason)));
-        Changed?.Invoke(nick, balance);
+        try { outbox.Post(new WalletChanged(nick, balance, delta, reason, text ?? Text(delta, reason))); }
+        catch (Exception ex) { log.LogWarning(ex, "не розіслав зміну гаманця {Nick} ({Reason})", nick, reason); }
+        try { Changed?.Invoke(nick, balance); }
+        catch (Exception ex) { log.LogWarning(ex, "підписник на зміну балансу {Nick} спіткнувся", nick); }
     }
 
     // ---------- IStakes (те, що просить каркас кімнат) ----------

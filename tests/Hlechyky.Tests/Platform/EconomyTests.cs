@@ -1,6 +1,8 @@
 using Hlechyky.Games;
 using Hlechyky.Games.Economy;
 using Hlechyky.Tests.Support;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hlechyky.Tests.Platform;
 
@@ -187,5 +189,58 @@ public class EconomyTests
         Assert.Equal(10, stakes.Balance("Оля"));
         Assert.True(stakes.TrySpend("Оля", 10, "stake", "stake:r1:2:оля"));
         Assert.False(stakes.TrySpend("Оля", 1, "stake", "stake:r1:3:оля"));
+    }
+
+    [Fact]
+    public void A_broken_subscriber_does_not_undo_a_spend()
+    {
+        using var rig = new EconomyRig();
+        rig.Economy.Grant("Оля", 10, "listen");
+        rig.Economy.Changed += (_, _) => throw new InvalidOperationException("ачівка спіткнулась");
+
+        // гроші вже в леджері: виняток підписника не сміє перетворити вдале списання на невдале —
+        // інакше каркас кімнат вирішить, що ставку не взято, коли вона вже пішла з гаманця
+        Assert.True(rig.Economy.TrySpend("Оля", 4, "stake", "stake:r1:1:оля"));
+        Assert.Equal(6, rig.Economy.Balance("Оля"));
+    }
+
+    [Fact]
+    public void A_broken_outbox_does_not_undo_a_grant()
+    {
+        using var temp = new TempDb();
+        var clock = new FakeClock();
+        var store = new EconomyStore(temp.Db);
+        var economy = new Economy(store, new GameNames(), clock,
+            new FixedOptions<EconomyOptions>(new EconomyOptions()), new BrokenOutbox(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Economy>.Instance);
+
+        Assert.Equal(GrantResult.Applied, economy.Grant("Оля", 5, "win:chess", "game:r1:1:оля"));
+        Assert.Equal(5, economy.Balance("Оля"));
+    }
+
+    [Fact]
+    public void Grant_of_nothing_says_so_instead_of_pretending_it_paid()
+    {
+        using var rig = new EconomyRig();
+        Assert.Equal(GrantResult.Skipped, rig.Economy.Grant("Оля", 0, "ach:first-win"));
+        Assert.Equal(GrantResult.Skipped, rig.Economy.Grant("   ", 5, "listen"));
+        Assert.Equal(0, rig.Economy.Balance("Оля"));
+        Assert.Empty(rig.Outbox.Of<WalletChanged>());
+    }
+
+    [Fact]
+    public void Economy_section_binds_without_touching_program_cs()
+    {
+        var cfg = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Economy:WinReward"] = "9" })
+            .Build();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddSingleton<IConfiguration>(cfg);
+        services.AddHlechykyEconomy();
+
+        var o = services.BuildServiceProvider()
+            .GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<EconomyOptions>>().CurrentValue;
+        Assert.Equal(9, o.WinReward);
+        Assert.Equal(12, o.ListenDailyCap);   // те, чого в конфізі нема, лишається за замовчуванням
     }
 }

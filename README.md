@@ -173,7 +173,7 @@ data/                     hlechyky.db (історія, лайки, чат, че�
 | `Economy:WinReward`, `Economy:DrawReward`, `Economy:PlayReward` | скільки дає перемога, нічия й участь у партії |
 | `Economy:RewardedGamesPerDay` | скільки партій на день у ту саму гру ще нагороджуються |
 | `Economy:MinRewardMoves`, `Economy:MinRewardSeconds` | коротша і за ходами, і за часом партія черепків не дає |
-| `Economy:DailyReward` | нагорода за розв'язану головоломку «Щоденного глека» |
+| `Economy:DailyReward` | нагорода за розв'язану головоломку «Щоденного глека», коли гра не називає суму сама |
 | `Economy:ClickerDailyCap` | скільки черепків на день можна виміняти в гончарному колі |
 | `Economy:AwardDailyCap` | стеля на всі позастандартні нагороди від ігор разом |
 

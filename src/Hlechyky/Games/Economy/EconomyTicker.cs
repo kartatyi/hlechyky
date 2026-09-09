@@ -36,14 +36,19 @@ public sealed class EconomyTicker(Presence presence, Economy economy, EconomySto
             var key = Economy.Key(nick);
             if (key.Length == 0) continue;
 
-            var minutes = store.Bump(key, "online", day, 1);
-            var total = store.Bump(key, "online-total", AllDays, 1);
+            // спотикання на одному нікові не має забирати хвилину в усіх інших
+            try
+            {
+                var minutes = store.Bump(key, "online", day, 1);
+                var total = store.Bump(key, "online-total", AllDays, 1);
 
-            if (o.ListenEveryMinutes > 0 && minutes % o.ListenEveryMinutes == 0)
-                economy.GrantSequenced(nick, o.ListenReward, "listen",
-                    n => $"listen:{key}:{day}:{n}", "listen", o.ListenDailyCap);
+                if (o.ListenEveryMinutes > 0 && minutes % o.ListenEveryMinutes == 0)
+                    economy.GrantSequenced(nick, o.ListenReward, "listen",
+                        n => $"listen:{key}:{day}:{n}", "listen", o.ListenDailyCap);
 
-            achievements.OnOnlineMinutes(nick, total);
+                achievements.OnOnlineMinutes(nick, total);
+            }
+            catch (Exception ex) { log.LogWarning(ex, "хвилина для {Nick} не порахувалась", nick); }
         }
     }
 }

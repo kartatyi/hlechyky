@@ -195,4 +195,50 @@ public class AchievementsTests
         rig.Economy.Rebuild();
         Assert.Equal(25, rig.Economy.Balance("Оля"));
     }
+
+    [Fact]
+    public void A_shot_faster_than_two_hundred_milliseconds_is_a_quick_hand()
+    {
+        using var rig = new EconomyRig();
+        // дуель кладе найкращу реакцію в соло-таблицю (specs/duel.md) — «Швидка рука» перевіряється тут
+        rig.Events.Raise(new SoloScoreEvent("duel", "Оля", 180, ScoreOrder.LowerIsBetter, null, rig.Clock.UtcNow));
+        Assert.True(rig.Achievements.Has("Оля", "duel-fast"));
+    }
+
+    [Fact]
+    public void A_slower_shot_is_not_a_quick_hand()
+    {
+        using var rig = new EconomyRig();
+        rig.Events.Raise(new SoloScoreEvent("duel", "Петро", 250, ScoreOrder.LowerIsBetter, null, rig.Clock.UtcNow));
+        Assert.False(rig.Achievements.Has("Петро", "duel-fast"));
+    }
+
+    [Fact]
+    public void Hidden_board_games_count_towards_the_board_player()
+    {
+        using var rig = new EconomyRig();
+        // морський бій і доміно — теж настільні, хоч і з прихованими видами
+        var chess = EconomyRig.Info("chess", "Шахи", "шахи");
+        var ships = new GameInfo("battleship", "Морський бій", "морський бій", GameGroup.Board, 2, 2, Hidden: true);
+        var domino = new GameInfo("domino", "Доміно", "доміно", GameGroup.Board, 2, 2, Hidden: true);
+        foreach (var i in new[] { chess, ships, domino }) rig.Names.Learn(i);
+
+        rig.Events.Raise(rig.Finished("r1", chess, ["Оля", "Петро"], [0]));
+        rig.Events.Raise(rig.Finished("r2", ships, ["Оля", "Петро"], [0]));
+        Assert.False(rig.Achievements.Has("Оля", "all-boards"));
+
+        rig.Events.Raise(rig.Finished("r3", domino, ["Оля", "Петро"], [0]));
+        Assert.True(rig.Achievements.Has("Оля", "all-boards"));
+    }
+
+    [Fact]
+    public void An_achievement_already_granted_does_not_touch_the_database_again()
+    {
+        using var rig = new EconomyRig();
+        Assert.True(rig.Achievements.Unlock("Оля", "rich-100"));
+        // друга спроба відсікається в пам'яті, тож ані черепків, ані рядка в Журналі не додається
+        Assert.False(rig.Achievements.Unlock("Оля", "rich-100"));
+        Assert.Equal(10, rig.Economy.Balance("Оля"));
+        Assert.Single(rig.Outbox.Of<AchievementUnlocked>());
+    }
 }

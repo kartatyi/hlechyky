@@ -3,8 +3,12 @@ using Microsoft.Data.Sqlite;
 
 namespace Hlechyky.Games.Economy;
 
-/// <summary>Чим скінчилось нарахування: пройшло, вже було з таким ref, або впёрлось у стелю дня.</summary>
-public enum GrantResult { Applied, Duplicate, Capped }
+/// <summary>
+/// Чим скінчилось нарахування: пройшло, вже було з таким ref, вперлось у стелю дня, або нічого й не
+/// збиралось рухати (нуль черепків, порожній нік) — <see cref="Skipped"/> саме для того, щоб той, хто
+/// кликав, не порахував такий виклик за виплату.
+/// </summary>
+public enum GrantResult { Applied, Duplicate, Capped, Skipped }
 
 /// <summary>Гаманець одного ніка.</summary>
 public sealed record WalletRow(string NickKey, string Nick, int Balance, int Earned, int Spent);
@@ -18,6 +22,9 @@ public sealed record RatingRow(string NickKey, string Nick, string Game, int Elo
 
 /// <summary>Результат щоденної головоломки.</summary>
 public sealed record DailyRow(string Day, string Game, string NickKey, string Nick, bool Solved, int Attempts, int Ms);
+
+/// <summary>Рядок панелі «Щоденного глека» для однієї головоломки: мій результат, скільки розв'язало, топ дня.</summary>
+public sealed record DailyPanelRow(string Game, DailyRow? Mine, int SolvedCount, List<DailyRow> Top);
 
 /// <summary>Здобута ачівка.</summary>
 public sealed record UnlockedRow(string Key, DateTimeOffset At);
@@ -189,15 +196,21 @@ public sealed class EconomyStore(Db db)
     public int Counter(string nickKey, string key, string day) =>
         db.With(c => CounterIn(c, nickKey, key, day));
 
-    /// <summary>Таблиця «черепки»: баланс і скільки набігло за період.</summary>
+    /// <summary>
+    /// Таблиця «черепки»: баланс і скільки набігло за період. У таблиці за день чи тиждень рядки з нулем
+    /// не показуємо: інакше «сьогоднішній» топ забивають старі багатії, які сьогодні й не заходили.
+    /// </summary>
     public List<ShardRow> TopShards(int n, DateTimeOffset since, bool byBalance) => db.With(c =>
     {
+        var period = since > DateTimeOffset.MinValue;
         using var cmd = Cmd(c, $"""
-            SELECT w.nick, w.balance,
-                   (SELECT COALESCE(SUM(CASE WHEN l.delta > 0 THEN l.delta ELSE 0 END), 0)
-                    FROM ledger l WHERE l.nick_key = w.nick_key AND l.created_at >= $s) AS got
-            FROM wallets w
-            ORDER BY {(byBalance ? "w.balance DESC, got DESC" : "got DESC, w.balance DESC")}
+            SELECT nick, balance, got FROM (
+                SELECT w.nick AS nick, w.balance AS balance,
+                       (SELECT COALESCE(SUM(CASE WHEN l.delta > 0 THEN l.delta ELSE 0 END), 0)
+                        FROM ledger l WHERE l.nick_key = w.nick_key AND l.created_at >= $s) AS got
+                FROM wallets w)
+            WHERE {(period ? "got > 0" : "1 = 1")}
+            ORDER BY {(byBalance ? "balance DESC, got DESC" : "got DESC, balance DESC")}
             LIMIT $n
             """, ("$s", Iso(since)), ("$n", n));
         using var r = cmd.ExecuteReader();
@@ -208,17 +221,31 @@ public sealed class EconomyStore(Db db)
 
     // ---------- результати партій ----------
 
-    /// <summary>Записати результат партії. false — такий рядок уже був (подвійний Finish не подвоює нічого).</summary>
-    public bool AddResult(ResultRow row) => db.With(c => Exec(c, """
+    const string InsertResult = """
         INSERT OR IGNORE INTO game_results(room_id, game, round, nick_key, nick, outcome, score, opponents, stake, tries, created_at)
         VALUES($room, $g, $rd, $n, $nk, $o, $sc, $opp, $st, 1, $t)
-        """, ("$room", row.RoomId), ("$g", row.Game), ("$rd", row.Round), ("$n", row.NickKey), ("$nk", row.Nick),
-        ("$o", row.Outcome), ("$sc", row.Score), ("$opp", row.Opponents), ("$st", row.Stake), ("$t", Iso(row.At))) > 0);
+        """;
+
+    static bool AddResultIn(SqliteConnection c, ResultRow row) => Exec(c, InsertResult,
+        ("$room", row.RoomId), ("$g", row.Game), ("$rd", row.Round), ("$n", row.NickKey), ("$nk", row.Nick),
+        ("$o", row.Outcome), ("$sc", row.Score), ("$opp", row.Opponents), ("$st", row.Stake), ("$t", Iso(row.At))) > 0;
+
+    /// <summary>Записати результат партії. false — такий рядок уже був (подвійний Finish не подвоює нічого).</summary>
+    public bool AddResult(ResultRow row) => db.With(c => AddResultIn(c, row));
 
     /// <summary>
-    /// Соло-результат: один рядок на ключ кімнати (день щоденної гри, гончарне коло на все життя).
-    /// Гірший результат наявний не псує, спроби рахуються. Гончарне коло шле Score після кожної дії —
-    /// тому саме upsert, а не рядок на подію.
+    /// Записати результати всіх учасників партії однією транзакцією: або нова партія цілком, або нічого.
+    /// Інакше збій між учасниками лишив би партію напівзаписаною, і повторна подія порахувала б Ело вдруге.
+    /// Повертає на кожен рядок «свіжий?» (false — такий уже був).
+    /// </summary>
+    public List<bool> AddResults(IReadOnlyList<ResultRow> rows) => db.With(c => Write(c, () =>
+        rows.Select(r => AddResultIn(c, r)).ToList()));
+
+    /// <summary>
+    /// Соло-результат: один рядок на ключ кімнати і день (<c>room_id</c> уже містить день — див.
+    /// <c>Rewards.Solo</c>). Гірший результат наявний не псує, спроби рахуються. Гончарне коло шле Score
+    /// після кожної дії — тому саме upsert, а не рядок на подію; а день у ключі дає таблицям чесний
+    /// «найкращий результат за період»: місячної давнини рекорд у сьогоднішній топ не лізе.
     /// </summary>
     public void AddSolo(ResultRow row, bool higherIsBetter) => db.With(c => Write<object?>(c, () =>
     {
@@ -266,6 +293,41 @@ public sealed class EconomyStore(Db db)
                 r.GetString(5), r.IsDBNull(6) ? null : r.GetInt64(6), Str(r, 7), r.GetInt32(8), Ts(r.GetString(9)), r.GetInt32(10)));
         return list;
     });
+
+    /// <summary>
+    /// Серії перемог одразу для набору ніків (таблиця рейтингової гри — це двадцять рядків, і по запиту
+    /// на кожен було б двадцять з'єднань). Нічия серію не рве, поразка — рве.
+    /// </summary>
+    public Dictionary<string, int> WinStreaks(IReadOnlyList<string> nickKeys, int lookback)
+    {
+        var streaks = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (nickKeys.Count == 0) return streaks;
+        var ps = new List<(string, object?)>();
+        for (var i = 0; i < nickKeys.Count; i++) ps.Add(($"$k{i}", nickKeys[i]));
+        ps.Add(("$n", lookback));
+        var names = string.Join(", ", nickKeys.Select((_, i) => $"$k{i}"));
+        return db.With(c =>
+        {
+            using var cmd = Cmd(c, $"""
+                SELECT nick_key, outcome FROM (
+                    SELECT nick_key, outcome, ROW_NUMBER() OVER (PARTITION BY nick_key ORDER BY id DESC) AS rn
+                    FROM game_results WHERE nick_key IN ({names}) AND outcome <> 'solo')
+                WHERE rn <= $n ORDER BY nick_key, rn
+                """, ps.ToArray());
+            using var r = cmd.ExecuteReader();
+            var stopped = new HashSet<string>(StringComparer.Ordinal);
+            while (r.Read())
+            {
+                var key = r.GetString(0);
+                if (stopped.Contains(key)) continue;
+                var outcome = r.GetString(1);
+                if (outcome == "win") streaks[key] = streaks.GetValueOrDefault(key) + 1;
+                else if (outcome == "loss") stopped.Add(key);
+            }
+            foreach (var k in nickKeys) streaks.TryAdd(k, 0);
+            return streaks;
+        });
+    }
 
     /// <summary>Таблиця не-рейтингової гри: скільки перемог/нічиїх/поразок за період.</summary>
     public List<(string Nick, int Wins, int Draws, int Losses)> TopWins(string game, DateTimeOffset since, int n) => db.With(c =>
@@ -405,6 +467,9 @@ public sealed class EconomyStore(Db db)
         return null;
     }));
 
+    static DailyRow ReadDailyRow(SqliteDataReader r) => new(r.GetString(0), r.GetString(1), r.GetString(2),
+        r.GetString(3), r.GetInt32(4) == 1, r.GetInt32(5), r.GetInt32(6));
+
     public DailyRow? Daily(string day, string game, string nickKey) => db.With(c =>
     {
         using var cmd = Cmd(c, "SELECT day, game, nick_key, nick, solved, attempts, ms FROM daily_results WHERE day=$d AND game=$g AND nick_key=$n",
@@ -439,6 +504,63 @@ public sealed class EconomyStore(Db db)
         var list = new List<string>();
         while (r.Read()) list.Add(r.GetString(0));
         return list;
+    });
+
+    /// <summary>
+    /// Дні всіх головоломок ніка одним запитом: панель «Щоденного глека» і профіль рахують серії
+    /// для кожної гри, і окремий запит на кожну — це рівно те, чого не варто робити на HTTP-запиті.
+    /// </summary>
+    public Dictionary<string, HashSet<string>> SolvedDaysAll(string nickKey, int limitPerGame) => db.With(c =>
+    {
+        using var cmd = Cmd(c, """
+            SELECT game, day FROM (
+                SELECT game, day, ROW_NUMBER() OVER (PARTITION BY game ORDER BY day DESC) AS rn
+                FROM daily_results WHERE nick_key = $n AND solved = 1)
+            WHERE rn <= $k
+            """, ("$n", nickKey), ("$k", limitPerGame));
+        using var r = cmd.ExecuteReader();
+        var map = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        while (r.Read())
+        {
+            var game = r.GetString(0);
+            if (!map.TryGetValue(game, out var days)) map[game] = days = new HashSet<string>(StringComparer.Ordinal);
+            days.Add(r.GetString(1));
+        }
+        return map;
+    });
+
+    /// <summary>
+    /// Усе, що треба панелі «Щоденного глека», на одному з'єднанні: мій результат, скільки розв'язало
+    /// і топ дня — для всіх головоломок разом.
+    /// </summary>
+    public List<DailyPanelRow> DailyPanel(string day, string nickKey, IReadOnlyList<string> games, int topN) => db.With(c =>
+    {
+        var mine = new Dictionary<string, DailyRow>(StringComparer.Ordinal);
+        using (var cmd = Cmd(c, "SELECT day, game, nick_key, nick, solved, attempts, ms FROM daily_results WHERE day=$d AND nick_key=$n",
+                   ("$d", day), ("$n", nickKey)))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read()) { var row = ReadDailyRow(r); mine[row.Game] = row; }
+
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        using (var cmd = Cmd(c, "SELECT game, COUNT(*) FROM daily_results WHERE day=$d AND solved=1 GROUP BY game", ("$d", day)))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read()) counts[r.GetString(0)] = r.GetInt32(1);
+
+        var tops = new Dictionary<string, List<DailyRow>>(StringComparer.Ordinal);
+        using (var cmd = Cmd(c, """
+                   SELECT day, game, nick_key, nick, solved, attempts, ms FROM daily_results
+                   WHERE day = $d AND solved = 1 ORDER BY game, attempts ASC, ms ASC, created_at ASC
+                   """, ("$d", day)))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read())
+            {
+                var row = ReadDailyRow(r);
+                if (!tops.TryGetValue(row.Game, out var list)) tops[row.Game] = list = new List<DailyRow>();
+                if (list.Count < topN) list.Add(row);
+            }
+
+        return games.Select(g => new DailyPanelRow(g, mine.GetValueOrDefault(g), counts.GetValueOrDefault(g),
+            tops.TryGetValue(g, out var t) ? t : new List<DailyRow>())).ToList();
     });
 
     /// <summary>Усе розв'язане за день (для таблиці «щоденне» без розбивки за іграми).</summary>

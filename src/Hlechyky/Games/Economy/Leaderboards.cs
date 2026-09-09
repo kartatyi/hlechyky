@@ -9,6 +9,9 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
 {
     public const int Rows = 20;
 
+    /// <summary>Скільки останніх партій дивимось, коли рахуємо поточну серію.</summary>
+    public const int StreakLookback = 50;
+
     /// <summary>Межа періоду: «сьогодні» і «тиждень» — за київськими днями, а не за 24 годинами назад.</summary>
     DateTimeOffset Since(string period) => period switch
     {
@@ -23,7 +26,7 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
     public int WinStreak(string nickKey)
     {
         var n = 0;
-        foreach (var r in store.RecentResults(nickKey, 50, multiplayerOnly: true))
+        foreach (var r in store.RecentResults(nickKey, StreakLookback, multiplayerOnly: true))
         {
             if (r.Outcome == "win") n++;
             else if (r.Outcome == "loss") break;
@@ -74,9 +77,11 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
         var info = names.Get(game);
         var title = names.Title(game);
 
-        if (info is { Solo: true } || info?.Score is ScoreOrder.HigherIsBetter or ScoreOrder.LowerIsBetter)
+        // саме Solo, а не «має ScoreOrder»: гра на двох теж може виставляти Score (очки за партію,
+        // найкраща реакція в дуелі), але її таблиця — це перемоги чи Ело, а не соло-рекорди
+        if (info is { Solo: true })
         {
-            var higher = info!.Score != ScoreOrder.LowerIsBetter;
+            var higher = info.Score != ScoreOrder.LowerIsBetter;
             return new
             {
                 game, title, kind = "solo", period = p, order = higher ? "higher" : "lower",
@@ -86,15 +91,21 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
         }
 
         if (info is { Rated: true, MaxPlayers: 2 })
+        {
+            var top = ratings.Top(game, Rows);
+            // серії — одним запитом на всю таблицю: по запиту на рядок це двадцять з'єднань до бази,
+            // у яку тим часом пише живий ефір
+            var streaks = store.WinStreaks(top.Select(r => r.NickKey).ToList(), StreakLookback);
             return new
             {
                 game, title, kind = "rated", period = p,
-                rows = ratings.Top(game, Rows).Select(r => new
+                rows = top.Select(r => new
                 {
                     nick = r.Nick, elo = r.Elo, games = r.Games, wins = r.Wins, losses = r.Losses,
-                    draws = r.Draws, streak = WinStreak(r.NickKey),
+                    draws = r.Draws, streak = streaks.GetValueOrDefault(r.NickKey),
                 }),
             };
+        }
 
         return new
         {
@@ -131,8 +142,15 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
                 game = r.Game, title = names.Title(r.Game), outcome = r.Outcome, score = r.Score,
                 opponents = r.Opponents, stake = r.Stake, at = r.At,
             }),
-            daily = daily.Puzzles.Select(g => new { game = g, title = names.Title(g), streak = daily.Streak(nick, g) }),
+            daily = DailyStreaks(nick),
         };
+    }
+
+    /// <summary>Серії в щоденних головоломках — одним запитом на всі одразу.</summary>
+    object DailyStreaks(string nick)
+    {
+        var streaks = daily.Streaks(nick);
+        return daily.Puzzles.Select(g => new { game = g, title = names.Title(g), streak = streaks.GetValueOrDefault(g) }).ToList();
     }
 
     /// <summary>GET /api/games/wallet — свій гаманець.</summary>

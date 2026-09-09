@@ -45,12 +45,64 @@ public class LeaderboardsTests
         rig.Economy.Grant("Оля", 7, "listen");
         rig.Clock.Advance(TimeSpan.FromHours(24));
 
-        var today = Rows(rig.Boards.Leaderboard("shards", "day", null));
-        Assert.Equal(0, today[0].GetProperty("earned").GetInt32());
-        Assert.Equal(7, today[0].GetProperty("balance").GetInt32());
+        // за сьогодні вона не заробила нічого — і в таблиці за сьогодні її нема зовсім,
+        // інакше топ дня забивали б учорашні багатії з нулем
+        Assert.Empty(Rows(rig.Boards.Leaderboard("shards", "day", null)).EnumerateArray());
 
         var all = Rows(rig.Boards.Leaderboard("shards", "all", null));
         Assert.Equal(7, all[0].GetProperty("earned").GetInt32());
+        Assert.Equal(7, all[0].GetProperty("balance").GetInt32());
+    }
+
+    [Fact]
+    public void Todays_shard_table_keeps_whoever_earned_today()
+    {
+        using var rig = new EconomyRig();
+        rig.Economy.Grant("Оля", 7, "listen", "listen:оля:вчора");
+        rig.Clock.Advance(TimeSpan.FromHours(24));
+        rig.Economy.Grant("Петро", 2, "listen", "listen:петро:сьогодні");
+
+        var today = Rows(rig.Boards.Leaderboard("shards", "day", null));
+        Assert.Equal(1, today.GetArrayLength());
+        Assert.Equal("Петро", today[0].GetProperty("nick").GetString());
+        Assert.Equal(2, today[0].GetProperty("earned").GetInt32());
+    }
+
+    [Fact]
+    public void Solo_table_for_a_day_does_not_show_an_older_record()
+    {
+        using var rig = new EconomyRig();
+        rig.Names.Learn(Clicker);
+        rig.Events.Raise(new SoloScoreEvent("clicker", "Оля", 900, ScoreOrder.HigherIsBetter, "clicker:оля", rig.Clock.UtcNow));
+        rig.Clock.Advance(TimeSpan.FromDays(30));
+        rig.Events.Raise(new SoloScoreEvent("clicker", "Оля", 10, ScoreOrder.HigherIsBetter, "clicker:оля", rig.Clock.UtcNow));
+
+        // сьогодні вона накрутила лише десять глеків — місячної давнини рекорд у сьогоднішній топ не лізе
+        var today = Rows(rig.Boards.Leaderboard("clicker", "day", null));
+        Assert.Equal(10, today[0].GetProperty("best").GetInt64());
+        Assert.Equal(1, today[0].GetProperty("tries").GetInt32());
+
+        var all = Rows(rig.Boards.Leaderboard("clicker", "all", null));
+        Assert.Equal(900, all[0].GetProperty("best").GetInt64());
+        Assert.Equal(2, all[0].GetProperty("tries").GetInt32());
+        // а ачівки гончаря дивляться на найкраще за весь час
+        Assert.Equal(900, rig.Store.BestSolo("оля", "clicker", higherIsBetter: true));
+    }
+
+    [Fact]
+    public void Multiplayer_game_with_a_score_is_not_a_solo_table()
+    {
+        using var rig = new EconomyRig();
+        // ерудет чи дурень цілком природно виставлять Score: очки за партію є, але таблиця в них — перемоги
+        var scored = EconomyRig.Info("scrabble", "Ерудет", "ерудет", score: ScoreOrder.HigherIsBetter);
+        rig.Names.Learn(scored);
+        rig.Events.Raise(rig.Finished("r1", scored, ["Оля", "Петро"], [0],
+            scores: new Dictionary<int, long> { [0] = 240, [1] = 180 }));
+
+        var e = Json(rig.Boards.Leaderboard("scrabble", "all", null));
+        Assert.Equal("wins", e.GetProperty("kind").GetString());
+        Assert.Equal("Оля", e.GetProperty("rows")[0].GetProperty("nick").GetString());
+        Assert.Equal(1, e.GetProperty("rows")[0].GetProperty("wins").GetInt32());
     }
 
     [Fact]
