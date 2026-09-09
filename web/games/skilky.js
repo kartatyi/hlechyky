@@ -1,0 +1,205 @@
+/*
+  «Скільки?» — компанійська гра на відчуття числа. Клієнт тут нічого не вирішує: усі фази, час і очки
+  живуть на сервері (Impl/Skilky.cs), а модуль лише малює те, що прийшло, і шле наміри.
+
+  Вид (подія 'room', свій для кожного місця — гра Hidden):
+    { round, of, phase: 'between'|'ask'|'reveal'|'done', question, unit, endsAt,
+      answered: bool[], my: number|null,
+      reveal: null | { answer, rows: [{ seat, value, diff, points }] },
+      scores: number[], result: null | { winners, scores } }
+  Кадр (подія 'frame', раз на секунду, летить усій кімнаті — прихованого в ньому нема):
+    { round, of, phase, endsAt, answered, scores }
+  Хід: Act('answer', { value }) — число або рядок («10 000», «2,54» сервер розбере сам).
+*/
+(() => {
+  const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
+    + '<path d="M5.2 5.5a2.8 2.8 0 1 1 3.7 2.7c-.7.3-1 .8-1 1.5v.4" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round"/>'
+    + '<circle cx="7.9" cy="13" r="1.3" fill="var(--clay)"/></svg>';
+
+  const MS = { between: 3000, ask: 30000, reveal: 6000 };
+
+  /// Число для ока: ціле — з пробілами між тисячами, дробове — без хвоста нулів.
+  function num(v) {
+    if (v == null || isNaN(v)) return '—';
+    if (Math.abs(v - Math.round(v)) < 1e-9) return Math.round(v).toLocaleString('uk-UA');
+    return String(Math.round(v * 1000) / 1000);
+  }
+
+  function state(root) {
+    if (!root._sk) root._sk = { round: -1 };
+    return root._sk;
+  }
+
+  /// Чиї числа вже прийшли. Кадр свіжіший за вид (він летить щосекунди), але лише поки це той самий раунд.
+  function ticks(ctx, v) {
+    const f = ctx.frame;
+    if (f && f.answered && f.round === v.round && f.phase === v.phase) return f.answered;
+    return v.answered || [];
+  }
+
+  /// Місця, на яких хтось сидить. Порожні (стіл на дванадцятьох, грає четверо) не малюємо взагалі.
+  function seats(ctx) {
+    const room = ctx.room || {};
+    const list = [];
+    const n = (room.seats && room.seats.length) || 0;
+    for (let i = 0; i < n; i++) if (ctx.nickOf(i)) list.push(i);
+    return list;
+  }
+
+  function paintWho(root, ctx) {
+    const v = ctx.view || {};
+    const box = root.querySelector('.skwho');
+    if (!box) return;
+    const done = ticks(ctx, v);
+    // У лобі склад столу вже видно в шапці картки — другий раз його малювати нема чого.
+    const show = ctx.playing && (v.phase === 'ask' || v.phase === 'between');
+    const html = show ? seats(ctx).map((i) => '<span class="skchip' + (done[i] ? ' on' : '') + '">'
+      + (done[i] ? '✓ ' : '') + ctx.esc(ctx.nickOf(i)) + '</span>').join('') : '';
+    if (box.innerHTML !== html) box.innerHTML = html;
+  }
+
+  function paintScores(root, ctx) {
+    const v = ctx.view || {};
+    const f = ctx.frame;
+    const sc = (f && f.scores && f.scores.length) ? f.scores : (v.scores || []);
+    const box = root.querySelector('.skscore');
+    if (!box) return;
+    const win = (v.result && v.result.winners) || [];
+    // Рахунок з'являється разом із партією: у лобі всі нулі нікому нічого не кажуть.
+    const html = !ctx.playing && !v.result ? '' : seats(ctx)
+      .slice()
+      .sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b)
+      .map((i) => '<div class="sksrow' + (win.includes(i) ? ' win' : '') + '">'
+        + '<span>' + ctx.esc(ctx.nickOf(i)) + '</span><b>' + (sc[i] || 0) + '</b></div>').join('');
+    if (box.innerHTML !== html) box.innerHTML = html;
+  }
+
+  function revealHtml(ctx, v) {
+    const r = v.reveal;
+    if (!r) return '';
+    const rows = r.rows || [];
+    const head = '<div class="skans"><span class="muted small">Правильна відповідь</span>'
+      + '<b>' + num(r.answer) + '</b>' + (v.unit ? '<i>' + ctx.esc(v.unit) + '</i>' : '') + '</div>';
+    if (!rows.length) return head + '<div class="gempty">Ніхто не назвав жодного числа.</div>';
+    return head + '<div class="skrows">' + rows.map((x) =>
+      '<div class="skrow' + (x.points ? ' p' + x.points : '') + '">'
+      + '<span class="skn">' + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + '</span>'
+      + '<span class="skv">' + num(x.value) + '</span>'
+      + '<span class="skd muted small">різниця ' + num(x.diff) + '</span>'
+      + '<span class="skp">' + (x.points ? '+' + x.points : '') + '</span></div>').join('') + '</div>';
+  }
+
+  function answer(root, ctx) {
+    const input = root.querySelector('.skin');
+    if (!input) return;
+    const raw = (input.value || '').trim();
+    if (!raw) { ctx.toast('Напиши число', 'err'); input.focus(); return; }
+    // Шлемо рядком: «10 000» і «2,54» сервер прочитає сам, а число з input.value і так було б рядком.
+    ctx.act('answer', { value: raw });
+  }
+
+  function paint(root, ctx) {
+    const v = ctx.view || {};
+    const st = state(root);
+    const phase = v.phase || 'between';
+    const mine = ctx.mine && ctx.playing;
+
+    const no = root.querySelector('.skno');
+    const noText = v.of ? 'Питання ' + v.round + ' з ' + v.of : '';
+    if (no.textContent !== noText) no.textContent = noText;
+
+    // Дуга живе лише поки партія йде: у лобі та після кінця відліку нема.
+    const top = root.querySelector('.sktop');
+    if (ctx.playing && v.endsAt && phase !== 'done') {
+      HGames.ui.timerArc(top, v.endsAt, MS[phase] || 30000);
+    } else {
+      const arc = top.querySelector(':scope > .garc');
+      if (arc) { if (arc._arc) arc._arc.stop(); arc.remove(); }
+    }
+
+    const q = root.querySelector('.skq');
+    const qText = phase === 'between' && !v.reveal && !ctx.playing ? 'Стіл зібрався — господар тисне «Почати»'
+      : phase === 'between' ? 'Готуйсь…'
+      : (v.question || '');
+    if (q.textContent !== qText) q.textContent = qText;
+    q.classList.toggle('wait', phase === 'between');
+
+    // Нове запитання — чисте поле: чуже число з минулого раунду там висіти не має.
+    const ask = root.querySelector('.skask');
+    const input = root.querySelector('.skin');
+    if (st.round !== v.round) { st.round = v.round; input.value = ''; }
+    const canAsk = mine && phase === 'ask';
+    ask.hidden = !canAsk;
+    input.disabled = !canAsk;
+    const unit = root.querySelector('.skunit');
+    const unitText = v.unit || '';
+    if (unit.textContent !== unitText) unit.textContent = unitText;
+    unit.hidden = !unitText || !canAsk;
+
+    const my = root.querySelector('.skmy');
+    const myText = v.my != null && phase === 'ask' ? 'Твоє число: ' + num(v.my) + '. Можна змінити, поки є час'
+      : !ctx.mine && ctx.playing && phase === 'ask' ? 'Дивишся збоку'
+      : '';
+    if (my.textContent !== myText) my.textContent = myText;
+
+    const rev = root.querySelector('.skrev');
+    const html = phase === 'reveal' || phase === 'done' ? revealHtml(ctx, v) : '';
+    if (rev.innerHTML !== html) rev.innerHTML = html;
+
+    paintWho(root, ctx);
+    paintScores(root, ctx);
+  }
+
+  HGames.register({
+    id: 'skilky',
+    icon: ICON,
+    seatClass: ['x', 'o', 'c', 'd'],
+
+    mount(root, ctx) {
+      root._sk = { round: -1 };
+      root.innerHTML = '<div class="skwrap">'
+        + '<div class="sktop"><span class="skno muted small"></span></div>'
+        + '<div class="skq"></div>'
+        + '<div class="skask" hidden><input class="skin" type="text" inputmode="decimal" autocomplete="off"'
+        + ' placeholder="твоє число" aria-label="Твоє число"><span class="skunit muted small"></span>'
+        + '<button type="button" class="primary skgo">Відповісти</button></div>'
+        + '<div class="skmy muted small"></div>'
+        + '<div class="skrev"></div>'
+        + '<div class="skwho"></div>'
+        + '<div class="skscore"></div>'
+        + '</div>';
+      root.querySelector('.skgo').onclick = () => answer(root, ctx);
+      root.querySelector('.skin').addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        answer(root, ctx);
+      });
+      paint(root, ctx);
+    },
+
+    update(root, ctx) { paint(root, ctx); },
+
+    /// Кадр не чіпає ні питання, ні розкриття — лише те, що змінюється щосекунди.
+    frame(root, ctx) {
+      if (!root.querySelector('.skwho')) return;
+      paintWho(root, ctx);
+      paintScores(root, ctx);
+    },
+
+    status(ctx) {
+      if (!ctx.playing) return '';
+      // Фаза й відлік живуть у кадрах: вид приходить рідше, і з нього «Готуйсь…» висіло б довше, ніж треба.
+      const s = ctx.frame && ctx.frame.phase ? ctx.frame : (ctx.view || {});
+      if (s.phase === 'ask') return ctx.mine ? 'Пиши число й тисни Enter' : 'Гравці думають…';
+      if (s.phase === 'reveal') return 'Ось як було насправді';
+      if (s.phase === 'between') return 'Зараз буде питання…';
+      return '';
+    },
+
+    unmount(root) {
+      const arc = root.querySelector('.garc');
+      if (arc && arc._arc) arc._arc.stop();
+      root._sk = null;
+    },
+  });
+})();
