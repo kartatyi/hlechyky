@@ -1,0 +1,78 @@
+/*
+  Мафія. Кольори — тільки змінними: спільні зі style.css, свої оголошуємо тут, на :root,
+  щоб їх бачив і ctx.css(). Картка має вціліти на 380 px: список села — це рядки, а не таблиця.
+*/
+:root {
+  --mf-mafia: #e57373;      /* мафія — тривожний, той самий, що й --danger */
+  --mf-sheriff: #7bd389;    /* комісар */
+  --mf-doctor: #6fb6e0;     /* лікар — єдиний холодний колір у селі */
+  --mf-dead: rgba(157, 179, 165, .5);
+}
+
+.mafia { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+/* ---- шапка: дуга, фаза, моя роль ---- */
+.mf-top { display: flex; align-items: center; gap: 10px; width: 100%; }
+.mf-arc { flex: none; }
+.mf-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.mf-phase { font-size: 1.05em; }
+.mf-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mf-me { background: var(--bg2); white-space: nowrap; }
+.mf-me.mf-out { opacity: .55; text-decoration: line-through; }
+
+/* ---- село ---- */
+.mf-players { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.mf-p {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px;
+  background: var(--panel); min-height: 38px;
+}
+.mf-p.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.mf-p.dead { color: var(--mf-dead); background: transparent; }
+.mf-p.dead .mf-nick { text-decoration: line-through; }
+.mf-nick { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mf-tags { display: flex; gap: 4px; flex: none; }
+.mf-tag { font-size: .74em; padding: 2px 7px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.mf-count {
+  font-size: .78em; min-width: 22px; text-align: center; padding: 2px 6px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 600;
+}
+.mf-r-mafia { color: var(--mf-mafia); }
+.mf-r-sheriff { color: var(--mf-sheriff); }
+.mf-r-doctor { color: var(--mf-doctor); }
+.mf-r-civil { color: var(--muted); }
+.mf-me.mf-r-mafia, .mf-me.mf-r-sheriff, .mf-me.mf-r-doctor, .mf-me.mf-r-civil { color: var(--text); }
+.mf-do { flex: none; padding: 6px 10px; font-size: .85em; }
+.mf-do.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+
+/* ---- що робити зараз ---- */
+.mf-act { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; text-align: center; }
+.mf-act .ghost { padding: 5px 10px; font-size: .85em; }
+.mf-final { font-weight: 600; }
+
+/* ---- нічний чат мафії ---- */
+.mf-chat { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.mf-lines {
+  max-height: 130px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px;
+  background: var(--bg2); border-radius: 10px; padding: 7px 9px; font-size: .88em;
+}
+.mf-line b { color: var(--mf-mafia); font-weight: 600; margin-right: 4px; }
+.mf-say { display: flex; gap: 6px; }
+.mf-input {
+  flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg2);
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; outline: none;
+}
+.mf-input:focus { border-color: var(--accent2); }
+.mf-say button { flex: none; }
+
+/* ---- хроніка ---- */
+.mf-logbox { width: 100%; }
+.mf-logbox summary { cursor: pointer; }
+.mf-log { display: flex; flex-direction: column; gap: 2px; padding-top: 5px; font-size: .86em; color: var(--muted); }
+
+@media (max-width: 480px) {
+  .mf-p { padding: 5px 7px; gap: 6px; }
+  .mf-do { padding: 7px 9px; }
+  .mf-tag { font-size: .7em; padding: 2px 5px; }
+  .mf-lines { max-height: 110px; }
+  .mf-say button { padding: 8px 10px; }
+}
