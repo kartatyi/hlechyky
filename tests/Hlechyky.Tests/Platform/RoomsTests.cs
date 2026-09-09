@@ -523,6 +523,34 @@ public class RoomsTests
         Assert.False(Views.Has(json, "charged"));
     }
 
+    /// <summary>
+    /// Стіл після техпоразки лишається дограним із вільним місцем — і його має підхопити будь-хто ззовні,
+    /// інакше він висить у лобі до прибиральника. Кнопку «Сісти» клієнт малює саме за цим станом
+    /// (<c>core.js</c>, <c>btnsHtml</c>): статус там не питають, бо сервер його сам скидає в лобі.
+    /// </summary>
+    [Fact]
+    public void A_table_left_after_a_technical_loss_seats_a_newcomer()
+    {
+        var h = new RoomHarness("ttt");
+        h.Join("Оля");
+        h.Join("Петро");
+        h.Leave("Петро");                                  // техпоразка, місце ◯ звільнилось
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(1, h.Room.FreeSeat);                  // сервер тримає стіл відкритим
+        // і в лобі цей стіл видно з вільним місцем — саме з цього знімка клієнт вирішує, чи малювати «Сісти»
+        var json = Views.Json(h.Rooms.Snapshot().Single());
+        Assert.Equal("finished", json.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("seats")[1].GetProperty("nick").ValueKind);
+
+        var join = h.Rooms.Join(h.RoomId, "Ганна");         // глядач, який щойно бачив кінець партії
+        Assert.True(join.Reply.Ok);
+        Assert.Equal("Сів за ◯", join.Reply.Message);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);    // WhenFull → партія почалась одразу
+        Assert.Equal(2, h.Room.Round);
+        Assert.Null(h.Room.Result);
+    }
+
     // ---------- відмова нічого не псує ----------
 
     [Fact]

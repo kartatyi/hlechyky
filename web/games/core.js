@@ -450,12 +450,16 @@
     }
     const tabs = root.querySelector('.gtabs');
     const counts = {};
-    for (const r of rooms) counts[groupOf(r.game)] = (counts[groupOf(r.game)] || 0) + 1;
+    // Групу беремо лише в гри, яку вже знаємо з каталогу: до його приходу groupOf() віддає 'board'
+    // геть на все, і кімната змійки рахувалась би настільною (а вкладка «Швидкі» зникала).
+    for (const r of rooms) { const g = gameOf(r.game); if (g) counts[g.group] = (counts[g.group] || 0) + 1; }
     // private — ознака КІМНАТИ (соло і щоденні не потрапляють у лобі, ARCHITECTURE §4.1/§4.4),
     // а не гри: плитку такої гри показуємо, інакше вкладка «Соло» не з'явилась би ніколи.
     const alive = (id) => catalog.games.some((x) => x.group === id) || !!counts[id];
-    // збережена в localStorage вкладка може вказувати на групу, якої в цій збірці ще нема
-    if (panel.startsWith('g:') && !alive(panel.slice(2))) {
+    // збережена в localStorage вкладка може вказувати на групу, якої в цій збірці ще нема.
+    // Але тільки коли каталог уже прийшов: подія 'rooms' випереджає його, і без цієї умови
+    // запам'ятана вкладка губилась би на кожному F5 (усі групи здавались би порожніми).
+    if (catalog.games.length && panel.startsWith('g:') && !alive(panel.slice(2))) {
       const first = GROUPS.find((g) => alive(g.id));
       if (first) panel = 'g:' + first.id;
     }
@@ -735,8 +739,10 @@
     const r = rv.room;
     const solo = r.maxPlayers === 1;
     const out = [];
-    if (!solo && rv.seat == null && freeSeat(r) >= 0 && r.status !== 'finished' && !seatedElsewhere(r.id))
-      out.push('<button class="primary" data-do="JoinRoom">Сісти</button>');
+    // Дограний стіл із вільним місцем сервер віддає новому гравцеві (Rooms.Join, гілка reopen),
+    // тож статус тут не питаємо — інакше стіл висів би в лобі до прибиральника, і сісти нікому.
+    const canSit = !solo && rv.seat == null && freeSeat(r) >= 0 && !seatedElsewhere(r.id);
+    if (canSit) out.push('<button class="primary" data-do="JoinRoom">Сісти</button>');
     // «Ще раз» пропонуємо лише коли є з ким: інакше кнопка є, а сервер відповідає «Замало гравців»
     if (!solo && rv.seat != null && r.status === 'finished' && takenSeats(r) >= r.minPlayers)
       out.push('<button class="primary" data-do="Rematch">Ще раз</button>');
@@ -746,7 +752,8 @@
       && takenSeats(r) >= r.minPlayers)
       out.push('<button class="primary" data-do="StartRoom">Почати</button>');
     if (rv.seat != null) out.push('<button class="ghost" data-do="LeaveRoom">' + (solo ? 'Закрити' : 'Встати') + '</button>');
-    else if (!solo && freeSeat(r) < 0) out.push('<span class="muted small">Дивлюсь збоку</span>');
+    // сісти нема куди (або сидиш за іншим столом) — хоч скажемо, чому кнопок нема
+    else if (!solo && !canSit) out.push('<span class="muted small">Дивлюсь збоку</span>');
     return out.join('');
   }
 
