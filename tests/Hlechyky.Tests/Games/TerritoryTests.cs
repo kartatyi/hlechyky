@@ -161,6 +161,28 @@ public class TerritoryTests
     }
 
     [Fact]
+    public void A_pocket_inside_someone_elses_ring_is_not_stolen()
+    {
+        var core = Pair();
+        core.Wipe();
+        // Кільце Петра 5×5 із порожньою кишенею всередині: для заливки чужа земля — така сама «не моя»
+        // клітинка, як і порожня, тож заливка крізь кільце проходить і кишеню Оля не отримує.
+        for (var y = 20; y <= 24; y++)
+            for (var x = 20; x <= 24; x++)
+                if (x is 20 or 24 || y is 20 or 24) core.PaintOwner(Cell(x, y), 1);
+        // Оля тим часом замикає своє кільце в іншому кутку — і забирає лише те, що всередині нього.
+        for (var y = 5; y <= 9; y++)
+            for (var x = 5; x <= 9; x++)
+                if (x is 5 or 9 || y is 5 or 9) core.PaintOwner(Cell(x, y), 0);
+        core.Capture(0);
+
+        Assert.Equal(0, core.Owner[Cell(22, 22)]);
+        Assert.Equal(16, core.Area(1));               // кільце Петра ціле, кишеня всередині нічия
+        Assert.Equal(1, core.Owner[Cell(7, 7)]);      // а своя кишеня — своя
+        Assert.Equal(25, core.Area(0));
+    }
+
+    [Fact]
     public void A_trail_over_enemy_land_does_not_take_it()
     {
         var core = Pair();
@@ -203,6 +225,25 @@ public class TerritoryTests
         Assert.Equal(20, petro.X);
         Assert.Equal(15, petro.Y);
         Assert.Equal(2, core.Trail[Cell(20, 15)]);     // чужа мітка згасла, лягла своя
+    }
+
+    [Fact]
+    public void Cutting_each_others_trail_in_one_tick_burns_both()
+    {
+        var core = Pair();
+        core.PaintTrail(Cell(20, 15), 1);              // Петрів слід під носом в Олі
+        core.PaintTrail(Cell(21, 15), 0);              // Олин — під носом у Петра
+        var olya = core.Riders[0];
+        olya.X = 19; olya.Y = 15; olya.Dir = 0; olya.HasTrail = true;
+        var petro = core.Riders[1];
+        petro.X = 22; petro.Y = 15; petro.Dir = 2; petro.HasTrail = true;
+        core.Step();
+
+        // Тик одночасний: той, кому щойно перерізали слід, устигає перерізати чужий, тож горять обидва.
+        Assert.False(olya.Alive);
+        Assert.False(petro.Alive);
+        Assert.Equal(TerritoryCore.RespawnTicks, olya.RespawnIn);
+        Assert.Equal(TerritoryCore.RespawnTicks, petro.RespawnIn);
     }
 
     [Fact]
@@ -275,6 +316,11 @@ public class TerritoryTests
 
         Assert.False(petro.Alive);
         Assert.Equal(TerritoryCore.RespawnTicks, petro.RespawnIn);
+
+        // І повертається він як усі — за три секунди з новим наділом: інакше правило було б безглузде.
+        Walk(core, TerritoryCore.RespawnTicks);
+        Assert.True(petro.Alive);
+        Assert.Equal(9, core.Area(1));
     }
 
     // ---------- ядро: керування, площі, детермінізм ----------
@@ -308,6 +354,10 @@ public class TerritoryTests
         core.Wipe();
         for (var c = 0; c < 120; c++) core.PaintOwner(c, 0);
         Assert.Equal(10.0, core.Percent(0), 3);
+
+        core.Wipe();
+        for (var c = 0; c < 15; c++) core.PaintOwner(c, 0);
+        Assert.Equal(1.3, core.Percent(0), 3);         // рівно 1,25 % — половинку округлюємо вгору, не «до парного»
     }
 
     [Fact]
@@ -334,11 +384,12 @@ public class TerritoryTests
     [Trait("Category", "Perf")]
     public void Four_riders_for_a_whole_round_are_fast()
     {
+        const int ticks = 1000;                        // TESTING.md §4.4 просить саме тисячу — це довше за раунд
         var core = new TerritoryCore(new Random(11));
         core.Reset([true, true, true, true]);
         var dirs = new int[4];
         var sw = Stopwatch.StartNew();
-        for (var i = 0; i < TerritoryCore.RoundTicks; i++)
+        for (var i = 0; i < ticks; i++)
         {
             // Поворот праворуч кожні три тики — це маленькі петлі, тобто заливка й пожежі раз по раз,
             // а не одна на весь раунд: саме такий тик і треба міряти.
@@ -352,7 +403,7 @@ public class TerritoryTests
         }
         sw.Stop();
 
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"900 тиків на чотирьох зайняли {sw.Elapsed}");
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"{ticks} тиків на чотирьох зайняли {sw.Elapsed}");
     }
 
     // ---------- кімната ----------
@@ -447,6 +498,49 @@ public class TerritoryTests
     }
 
     [Fact]
+    public void A_tick_that_changes_almost_everything_travels_as_full_rows()
+    {
+        var h = Table();
+        var core = Core(h);
+        core.Wipe();
+        for (var c = 0; c < 900; c++) core.PaintOwner(c, 0);   // Оля тримає три чверті поля…
+        var olya = core.Riders[0];
+        olya.X = 0; olya.Y = 15; olya.Dir = 2;                 // …і наступним кроком іде в стіну: усе це згорить
+        h.Tick(1);
+        var frame = h.Outbox.OfType<RoomFrame>().Last().Frame;
+        var f = Views.Json(frame);
+
+        // Тисяча пар [клітинка, хто] важила б утричі більше за саме поле, тож такий тик іде рядками.
+        Assert.Equal(TerritoryCore.Cells, f.GetProperty("owner").GetString()!.Length);
+        Assert.Equal(TerritoryCore.Cells, f.GetProperty("trail").GetString()!.Length);
+        Assert.Equal(0, f.GetProperty("changes").GetArrayLength());
+        Assert.Equal(0, f.GetProperty("trails").GetArrayLength());
+        Assert.DoesNotContain('1', f.GetProperty("owner").GetString()!);   // земля Олі згоріла разом із нею
+        var bytes = System.Text.Encoding.UTF8.GetByteCount(Views.Text(frame));
+        Assert.True(bytes <= 4096, $"кадр на {bytes} Б, а ARCHITECTURE §12 просить ≤ 4 КБ");
+    }
+
+    [Fact]
+    public void The_heaviest_frame_of_pairs_still_fits_the_budget()
+    {
+        var h = Table();
+        var core = Core(h);
+        core.Wipe();
+        // Рівно стільки змін, скільки ще їде парами, і в найдорожчих номерах клітинок — це і є найгірший кадр.
+        for (var c = TerritoryCore.Cells - Territory.BigFrame + 10; c < TerritoryCore.Cells; c++) core.PaintOwner(c, 0);
+        var olya = core.Riders[0];
+        olya.X = 0; olya.Y = 15; olya.Dir = 2;
+        h.Tick(1);
+        var frame = h.Outbox.OfType<RoomFrame>().Last().Frame;
+        var f = Views.Json(frame);
+
+        Assert.Equal(JsonValueKind.Null, f.GetProperty("owner").ValueKind);   // рядків нема — самі зміни
+        Assert.Equal(Territory.BigFrame - 10, f.GetProperty("changes").GetArrayLength());
+        var bytes = System.Text.Encoding.UTF8.GetByteCount(Views.Text(frame));
+        Assert.True(bytes <= 4096, $"кадр на {bytes} Б, а ARCHITECTURE §12 просить ≤ 4 КБ");
+    }
+
+    [Fact]
     public void The_turn_payload_is_exactly_what_the_module_sends()
     {
         var h = Table();
@@ -456,6 +550,36 @@ public class TerritoryTests
 
         Assert.False(h.Act(0, "move", new { dir = 2 }).Ok);   // іншого ходу в цій грі нема
         Assert.Equal("Тут так не ходять", h.Reply.Message);
+    }
+
+    [Fact]
+    public void A_broken_turn_payload_changes_nothing()
+    {
+        var h = Table();
+        var before = Views.Text(h.View(null));
+
+        // З браузера може прилетіти що завгодно, і кривий поворот не має ні падати, ні щось міняти.
+        h.Input(0, "turn", new { dir = 99 });
+        h.Input(0, "turn", new { dir = -1 });
+        h.Input(0, "turn", "вгору");
+        h.Input(0, "turn", null);
+        h.Input(0, "turn", new { });
+
+        Assert.Equal(before, Views.Text(h.View(null)));
+        h.Tick(1);
+        Assert.Equal(0, Core(h).Riders[0].Dir);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void Every_seat_sees_the_same_field()
+    {
+        var h = Table("Оля", "Петро", "Ганна", "Іван");
+        h.Tick(5);
+        var mine = Views.Text(h.View(0));
+
+        // Ховати в цій грі нема чого: і сусід, і глядач бачать те саме поле, що і я.
+        foreach (var seat in new int?[] { 1, 2, 3, null }) Assert.Equal(mine, Views.Text(h.View(seat)));
     }
 
     [Fact]
@@ -478,8 +602,32 @@ public class TerritoryTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.False(h.Room.Result!.Draw);
-        Assert.Equal("Земля: Оля жовта 20%, Петро зелена 10%", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Земля: Оля жовта 20%, Петро зелена 10% — перемогла жовта", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Single(h.Finished);
+    }
+
+    [Fact]
+    public void A_lead_of_one_cell_is_a_win_and_the_journal_says_whose()
+    {
+        var h = Table();
+        EndWith(h, 244, 243);                          // 20,3 % проти 20,3 %: у табличці відсотки однакові
+
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.False(h.Room.Result!.Draw);
+        // Без імені переможця такий рядок читався б як нічия, якою він не є.
+        Assert.Equal("Земля: Оля жовта 20.3%, Петро зелена 20.3% — перемогла жовта",
+            h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void Two_equal_leaders_out_of_four_share_the_win()
+    {
+        var h = Table("Оля", "Петро", "Ганна", "Іван");
+        EndWith(h, 300, 300, 100, 50);
+
+        Assert.Equal([0, 1], h.Room.Result!.Winners);
+        Assert.False(h.Room.Result!.Draw);             // нічия — це коли порівну в усіх, а не в двох
+        Assert.EndsWith("— перемогли жовта і зелена", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -508,6 +656,42 @@ public class TerritoryTests
         Assert.Equal(9, core.Area(0));
         Assert.Equal(9, core.Area(1));
         Assert.All(core.Trail, t => Assert.Equal(0, t));
+    }
+
+    [Fact]
+    public void The_view_after_a_rematch_is_a_fresh_field()
+    {
+        var h = Table();
+        EndWith(h, 240, 120);
+        var last = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
+        h.Rematch("Оля");
+
+        var v = h.View(0);
+        // Лічильник тиків нового раунду знову нульовий, хоч останній кадр минулого був дев'ятисотим:
+        // саме тому web/games/territory.js не має права звіряти свіжість виду за t — інакше після
+        // «Ще раз» на полі лишалась би минула партія, а стартові наділи їдуть тільки у виді.
+        Assert.Equal(TerritoryCore.RoundTicks, last.GetProperty("t").GetInt32());
+        Assert.Equal(0, v.GetProperty("t").GetInt32());
+        Assert.Equal(9, Count(v, "owner", 0));
+        Assert.Equal(9, Count(v, "owner", 1));
+        Assert.Equal(18, v.GetProperty("owner").GetString()!.Count(c => c != '0'));
+        Assert.All(v.GetProperty("trail").GetString()!, c => Assert.Equal('0', c));
+    }
+
+    [Fact]
+    public void A_finished_table_reopened_by_a_newcomer_shows_the_new_plots()
+    {
+        var h = Table();
+        EndWith(h, 240, 120);
+        Assert.Equal(240, Count(h.View(null), "owner", 0));   // дограна партія лишається на столі
+
+        h.Leave("Петро");
+        h.Join("Ганна");                                      // стіл відкрився наново, раунд уже інший
+
+        var v = h.View(null);
+        Assert.Equal(RoomStatus.Lobby, h.Room.Status);
+        Assert.Equal(9, Count(v, "owner", 0));
+        Assert.Equal(9, Count(v, "owner", 1));                // а не поле минулої партії
     }
 
     [Fact]
@@ -554,14 +738,15 @@ public class TerritoryTests
     /// Догнати раунд до останнього тика і розкласти землю руками: голови зупиняємо, щоб цей тик уже нічого
     /// не міняв, — інакше підсумок залежав би від того, у яку стіну хто врізався по дорозі.
     /// </summary>
-    static void EndWith(RoomHarness h, int first, int second)
+    static void EndWith(RoomHarness h, params int[] areas)
     {
         h.Tick(TerritoryCore.RoundTicks - 1);
         var core = Core(h);
         foreach (var r in core.Riders) { r.Alive = false; r.RespawnIn = int.MaxValue; }
         core.Wipe();
-        for (var i = 0; i < first; i++) core.PaintOwner(i, 0);
-        for (var i = 0; i < second; i++) core.PaintOwner(TerritoryCore.Cells / 2 + i, 1);
+        var cell = 0;
+        for (var seat = 0; seat < areas.Length; seat++)
+            for (var i = 0; i < areas[seat]; i++) core.PaintOwner(cell++, seat);
         h.Tick(1);
     }
 }

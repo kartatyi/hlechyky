@@ -7,6 +7,8 @@
   Вид (Impl/Territory.cs): { width, height, t, owner, trail, heads, area, timeLeft }
     owner / trail — рядки з 1200 символів '0'..'4' ('0' — нічия, далі номер місця плюс один).
   Кадр:            { t, heads, area, changes: [[клітинка, хто], …], trails: [[клітинка, хто], …], timeLeft }
+    Тик, у якому змін більше, ніж саме поле (велика пожежа, замикання пів поля), приїжджає теж
+    повними рядками owner/trail — тоді changes і trails порожні.
   Ввід:            Input('turn', { dir }) — 0 праворуч, 1 вниз, 2 ліворуч, 3 вгору.
 */
 (() => {
@@ -23,7 +25,7 @@
   function state(root, ctx) {
     if (!root._terr) {
       root._terr = {
-        cv: null, css: ctx.css, t: -1,
+        cv: null, css: ctx.css, seen: null,
         own: new Uint8Array(N), trl: new Uint8Array(N),
         heads: [], area: [0, 0, 0, 0], left: 0,
       };
@@ -31,13 +33,22 @@
     return root._terr;
   }
 
-  /// Повні рядки з виду. Старіший вид не чіпає поле: кадри могли вже поїхати далі.
-  function fromView(st, v) {
+  /// Повні рядки поля: приходять і у виді, і у важкому кадрі. false — рядків нема, поле не чіпали.
+  function rows(st, v) {
     if (!v || typeof v.owner !== 'string' || v.owner.length !== N) return false;
-    if (typeof v.t === 'number' && v.t < st.t) return false;
     for (let i = 0; i < N; i++) st.own[i] = v.owner.charCodeAt(i) - 48;
     const t = typeof v.trail === 'string' && v.trail.length === N ? v.trail : null;
     for (let i = 0; i < N; i++) st.trl[i] = t ? t.charCodeAt(i) - 48 : 0;
+    return true;
+  }
+
+  /// Вид накладаємо рівно раз: core.js кличе update() на кожну подію 'rooms' із тим самим кешованим видом,
+  /// і без цієї перевірки він відкочував би поле назад, затираючи свіжі кадри. Звіряємось із самим об'єктом,
+  /// а не з його t: у нового раунду лічильник тиків знову нульовий, і після «Ще раз» його вид пройти МАЄ —
+  /// інакше на полі лишилась би минула партія (стартові наділи їдуть тільки у виді, кадром їх нема).
+  function fromView(st, v) {
+    if (!v || st.seen === v || !rows(st, v)) return false;
+    st.seen = v;
     take(st, v);
     return true;
   }
@@ -51,13 +62,14 @@
         if (p && p.length >= 2 && p[0] >= 0 && p[0] < N) map[p[0]] = p[1];
       }
     };
-    put(f.changes, st.own);
-    put(f.trails, st.trl);
+    if (!rows(st, f)) {              // важкий тик приїхав повними рядками, решта — парами
+      put(f.changes, st.own);
+      put(f.trails, st.trl);
+    }
     take(st, f);
   }
 
   function take(st, f) {
-    if (typeof f.t === 'number') st.t = f.t;
     if (Array.isArray(f.heads)) st.heads = f.heads;
     if (Array.isArray(f.area)) st.area = f.area;
     if (typeof f.timeLeft === 'number') st.left = f.timeLeft;

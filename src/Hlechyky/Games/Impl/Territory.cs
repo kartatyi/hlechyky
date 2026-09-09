@@ -86,8 +86,12 @@ public sealed class TerritoryCore(Random rng)
     /// <summary>Скільки клітинок належить місцю seat.</summary>
     public int Area(int seat) => seat >= 0 && seat < MaxPlayers ? _area[seat] : 0;
 
-    /// <summary>Частка поля у відсотках, з одним знаком: 9 клітинок на старті — це 0,8 %.</summary>
-    public double Percent(int seat) => Math.Round(Area(seat) * 100.0 / Cells, 1);
+    /// <summary>
+    /// Частка поля у відсотках, з одним знаком: 9 клітинок на старті — це 0,8 %. Половинку округлюємо
+    /// вгору, а не «до парного»: інакше 15 клітинок ставали б 1,2 %, а 45 — 3,8 %, і гравець не розумів би,
+    /// чому однакові півклітинки їдуть у різні боки.
+    /// </summary>
+    public double Percent(int seat) => Math.Round(Area(seat) * 100.0 / Cells, 1, MidpointRounding.AwayFromZero);
 
     /// <summary>Новий раунд. <paramref name="seated"/> — які місця зайняті; порожні на полі не з'являються.</summary>
     public void Reset(IReadOnlyList<bool> seated)
@@ -386,9 +390,17 @@ public sealed class Territory : Game
         TickMs: TerritoryCore.TickMs, Start: StartMode.ByHost,
         Hint: "Виїжджай зі своєї землі, обводь шматок поля і повертайся — обведене твоє. Перерізали твій слід — усе згоріло");
 
+    /// <summary>
+    /// Більше за стільки змін — і список пар стає дорожчим за все поле (два рядки по 1200 символів це
+    /// ~2,4 КБ), а кадр вилазить за 4 КБ з ARCHITECTURE §12. Такий тик шлемо повними рядками.
+    /// </summary>
+    public const int BigFrame = 300;
+
     TerritoryCore? _core;
-    /// <summary>Чи раунд уже стартував: до того поле показує наділи тих, хто встиг сісти.</summary>
-    bool _started;
+    /// <summary>Раунд, який уже стартував: усе, що не він, — це стіл, який ще чекає на «Почати».</summary>
+    int _startedRound = -1;
+    /// <summary>Раунд, під який зібране поле лобі: щоб не перекладати наділи на кожен вид.</summary>
+    int _laidRound = -1;
 
     /// <summary>
     /// Поле готове ще до старту: стіл, що чекає на гравців, має виглядати як поле з наділами, а не як
@@ -411,7 +423,7 @@ public sealed class Territory : Game
     public override void Start()
     {
         Core.Reset(SeatedMask());
-        _started = true;
+        _startedRound = Ctx.Round;
     }
 
     /// <summary>Реалтайм-ввід: самі повороти. Помилки нікого не цікавлять — наступний кадр усе перемалює.</summary>
@@ -461,20 +473,38 @@ public sealed class Territory : Game
         Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
     }
 
-    public override object? Frame() => new
+    /// <summary>
+    /// Кадр везе лише зміни — 1200 клітинок десять разів на секунду ніхто б не витримав. Виняток — тик,
+    /// у якому згорає великий гравець або хтось замикає пів поля: там змін під тисячу, і список пар важить
+    /// утричі більше за саме поле. Тоді кладемо повні рядки, і кадр лишається в межах ARCHITECTURE §12.
+    /// </summary>
+    public override object? Frame()
     {
-        t = Core.Ticks,
-        heads = Heads(),
-        area = Areas(),
-        changes = Pairs(Core.OwnerChanged, Core.Owner),
-        trails = Pairs(Core.TrailChanged, Core.Trail),
-        timeLeft = Core.TicksLeft * TerritoryCore.TickMs,
-    };
+        var heavy = Core.OwnerChanged.Count + Core.TrailChanged.Count > BigFrame;
+        return new
+        {
+            t = Core.Ticks,
+            heads = Heads(),
+            area = Areas(),
+            owner = heavy ? Core.OwnerRow() : null,
+            trail = heavy ? Core.TrailRow() : null,
+            changes = heavy ? Array.Empty<int[]>() : Pairs(Core.OwnerChanged, Core.Owner),
+            trails = heavy ? Array.Empty<int[]>() : Pairs(Core.TrailChanged, Core.Trail),
+            timeLeft = Core.TicksLeft * TerritoryCore.TickMs,
+        };
+    }
 
     public override object View(int? seat)
     {
-        // Поки чекаємо на гравців, поле показує рівно стільки наділів, скільки людей уже сіло.
-        if (!_started && !Core.SameSeats(SeatedMask())) Core.Reset(SeatedMask());
+        // Поки раунд не почався, поле показує рівно стільки наділів, скільки людей уже сіло: і у свіжому
+        // лобі, і за дограним столом, який новий гравець відкрив наново (там Ctx.Round уже інший, а склад
+        // може збігтися з минулим). Дограну партію, навпаки, лишаємо на столі — картці результату є що
+        // показати, аж поки хтось не сяде.
+        if (Ctx.Round != _startedRound && (Ctx.Round != _laidRound || !Core.SameSeats(SeatedMask())))
+        {
+            Core.Reset(SeatedMask());
+            _laidRound = Ctx.Round;
+        }
         return new
         {
             width = TerritoryCore.W,
@@ -532,8 +562,11 @@ public sealed class Territory : Game
         var board = string.Join(", ", seats
             .OrderByDescending(Core.Area)
             .Select(s => $"{Ctx.NickOf(s)} {SeatName(s)} {Core.Percent(s).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}%"));
-        // Ніки чужі, відмінювати їх нема як, тому в Журнал іде табличка відсотків.
+        // Ніки чужі, відмінювати їх нема як, тому в Журнал іде табличка відсотків. Переможця називаємо
+        // окремо кольором: різниця в одну клітинку — це 0,08 в. п., тож у табличці два однакові відсотки
+        // читались би як нічия, якою вони не є.
         if (winners.Length == seats.Length) Ctx.Finish([], $"{Info.Title}: {board} — нічия");
-        else Ctx.Finish(winners, $"{Info.Title}: {board}");
+        else if (winners.Length == 1) Ctx.Finish(winners, $"{Info.Title}: {board} — перемогла {SeatName(winners[0])}");
+        else Ctx.Finish(winners, $"{Info.Title}: {board} — перемогли {string.Join(" і ", winners.Select(SeatName))}");
     }
 }
