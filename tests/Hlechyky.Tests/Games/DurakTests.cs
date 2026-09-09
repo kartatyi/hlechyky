@@ -681,6 +681,42 @@ public class DurakTests
     }
 
     [Fact]
+    public void Taking_is_the_wire_word_and_canAdd_follows_the_phase()
+    {
+        // Треба роздача, де в атакуючого два однакові номінали: тільки тоді після «Беру» лишається
+        // що підкинути, і фаза справді зупиняється на taking, а не проскакує у відбій.
+        for (var seed = 1; seed <= 40; seed++)
+        {
+            var h = Sit(seed);
+            var attacker = h.View(null).GetProperty("attacker").GetInt32();
+            var defender = attacker == 0 ? 1 : 0;
+            var twins = HandOf(h, attacker).GroupBy(c => Cards.Rank(C(c))).FirstOrDefault(g => g.Count() > 1);
+            if (twins is null) continue;
+
+            Assert.True(h.Act(attacker, "attack", new { card = twins.First() }).Ok);
+            var fighting = h.View(null);
+            Assert.Equal("defend", fighting.GetProperty("phase").GetString());
+            Assert.False(fighting.GetProperty("canAdd").GetBoolean());   // поки б'ються — підкидати нема куди
+
+            Assert.True(h.Act(defender, "take").Ok);
+            var taking = h.View(null);
+            Assert.Equal("taking", taking.GetProperty("phase").GetString());
+            Assert.True(taking.GetProperty("canAdd").GetBoolean());
+            Assert.Equal(attacker, taking.GetProperty("turn").GetInt32());
+            return;
+        }
+        Assert.Fail("серед 40 сідів не знайшлось роздачі з двома однаковими номіналами в атакуючого");
+    }
+
+    [Fact]
+    public void All_four_phase_words_show_up_on_the_wire()
+    {
+        var seen = new HashSet<string>();
+        for (var seed = 1; seed <= 25; seed++) PlayOut(Sit(seed), seen);
+        Assert.Equal(["attack", "defend", "done", "taking"], seen.Order());
+    }
+
+    [Fact]
     public void A_hand_belongs_to_its_own_seat_only()
     {
         var h = Sit();
@@ -748,6 +784,8 @@ public class DurakTests
         var result = h.View(0).GetProperty("result");
         Assert.Equal(0, result.GetProperty("winner").GetInt32());
         Assert.Equal("left", result.GetProperty("reason").GetString());
+        // Місце вже звільнене, тож ім'я дурня має приїхати у виді — інакше картка напише «Дурень — другий».
+        Assert.Equal("Петро", result.GetProperty("foolNick").GetString());
         Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("turn").ValueKind);
         Assert.Single(h.Finished);
@@ -769,6 +807,23 @@ public class DurakTests
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("result").ValueKind);
         Assert.Equal(0, h.Room.Moves);
         Assert.NotEqual(was, string.Join("|", HandOf(h, 0)));
+    }
+
+    [Fact]
+    public void The_same_seed_plays_out_to_the_same_room()
+    {
+        var a = Sit(13);
+        var b = Sit(13);
+        Assert.Equal(Views.Text(a.Room.Game.View(0)), Views.Text(b.Room.Game.View(0)));
+
+        PlayOut(a);   // бот ходить лише з видів, тож однакові види дають однакову партію
+        PlayOut(b);
+
+        Assert.Equal(Views.Text(a.Room.Game.View(0)), Views.Text(b.Room.Game.View(0)));
+        Assert.Equal(Views.Text(a.Room.Game.View(null)), Views.Text(b.Room.Game.View(null)));
+        Assert.Equal(a.Room.Moves, b.Room.Moves);
+        // Інший сід — інша роздача: сід справді доходить до тасування, а не ігнорується.
+        Assert.NotEqual(Views.Text(a.Room.Game.View(0)), Views.Text(Sit(14).Room.Game.View(0)));
     }
 
     [Fact]
@@ -813,6 +868,7 @@ public class DurakTests
             var counts = v.GetProperty("counts").EnumerateArray().Select(e => e.GetInt32()).ToArray();
             var discard = v.GetProperty("discard").GetInt32();
             Assert.Equal(Cards.Count, counts[0] + counts[1] + discard);   // карти нікуди не діваються
+            Assert.Equal(JsonValueKind.Null, result.GetProperty("foolNick").ValueKind);   // обидва за столом — нік бере картка
             if (reason == "both") Assert.Equal(JsonValueKind.Null, result.GetProperty("winner").ValueKind);
             else Assert.Equal(0, counts[result.GetProperty("winner").GetInt32()]);
         }
@@ -824,12 +880,13 @@ public class DurakTests
     /// Грає партію до кінця найпростішою стратегією: заходить першою картою, б'є найдешевшим, чим може,
     /// не підкидає й не тягне час. Стратегія свідомо тупа — тут перевіряються правила, а не гра.
     /// </summary>
-    static void PlayOut(RoomHarness h, int cap = 2000)
+    static void PlayOut(RoomHarness h, HashSet<string>? phases = null, int cap = 2000)
     {
         for (var i = 0; i < cap && h.Room.Status == RoomStatus.Playing; i++)
         {
             var pub = h.View(null);
             var phase = pub.GetProperty("phase").GetString()!;
+            phases?.Add(phase);
             var turn = pub.GetProperty("turn").GetInt32();
             var trump = pub.GetProperty("trump").GetString()!;
             var hand = HandOf(h, turn);
@@ -858,6 +915,7 @@ public class DurakTests
             Assert.True(step.Ok, $"хід у фазі «{phase}» відбито: {step.Message}");
         }
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        phases?.Add(h.View(null).GetProperty("phase").GetString()!);
     }
 
     static bool BeatsText(string card, string against, string trump)

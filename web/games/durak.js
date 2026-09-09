@@ -4,7 +4,9 @@
   Вид (Hidden, свій на кожне місце):
     { turn, attacker, defender, phase: 'attack'|'defend'|'taking'|'done', trump: '♥', trumpCard: '7♥'|null,
       deck, table: [{ attack: '7♥', defend: '9♥'|null }], hand: string[]|null, counts: [n, n],
-      discard, canAdd, result: null | { winner: 0|1|null, reason: 'out'|'both'|'left' } }
+      discard, canAdd,
+      result: null | { winner: 0|1|null, reason: 'out'|'both'|'left', foolNick: string|null } }
+    foolNick є лише тоді, коли хтось встав з-за столу: його місце вже порожнє, і ctx.nickOf імені не дасть.
 
   Наміри: act('attack', { card }), act('defend', { attack, card }), act('take'), act('done').
 
@@ -201,7 +203,9 @@
         if (v.result.reason === 'both') return 'Вийшли разом — нічия';
         if (v.result.winner == null) return '';
         const fool = v.result.winner === 0 ? 1 : 0;
-        return ctx.seat === fool ? 'Дурень цього разу ти' : 'Дурень — ' + (ctx.nickOf(fool) || ctx.seatName(fool));
+        // Той, хто встав, уже не сидить — його нік бережемо у виді, інакше вийшло б «Дурень — перший».
+        const name = v.result.foolNick || ctx.nickOf(fool) || ctx.seatName(fool);
+        return ctx.seat === fool ? 'Дурень цього разу ти' : 'Дурень — ' + name;
       }
       if (!ctx.mine) return 'Дивишся збоку';
       const iAttack = ctx.seat === v.attacker;

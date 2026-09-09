@@ -334,6 +334,11 @@ public sealed class Durak : Game
     DurakCore _core = new();
     /// <summary>Чи вже сказали каркасові про кінець: Finish буває лише раз на партію.</summary>
     bool _announced;
+    /// <summary>
+    /// Нік дурня, запам'ятаний у мить виходу: каркас звільняє місце одразу після OnLeave, тож потім
+    /// імені того, хто пішов, уже нізвідки взяти, а рядок статусу називає саме дурня.
+    /// </summary>
+    string? _foolNick;
 
     public override string SeatName(int seat) => seat == 0 ? "перший" : "другий";
 
@@ -342,6 +347,7 @@ public sealed class Durak : Game
         _core = new DurakCore();
         _core.Deal(Ctx.Rng);
         _announced = false;
+        _foolNick = null;
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
@@ -379,6 +385,7 @@ public sealed class Durak : Game
         var winner = Ctx.Seated(other) ? other : (int?)null;
         _core.Quit(winner);
         _announced = true;
+        _foolNick = Ctx.NickOf(seat);
         Ctx.Finish(winner is { } w ? [w] : [],
             $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу — дурнем лишився він");
     }
@@ -388,7 +395,7 @@ public sealed class Durak : Game
         var over = _core.Over;
         int? turn = over is null ? _core.Turn : null;
         string[]? hand = seat is { } s && s is 0 or 1 ? [.. _core.Sorted(s).Select(Cards.Text)] : null;
-        object? result = over is null ? null : new { winner = over.Winner, reason = over.Reason };
+        object? result = over is null ? null : new { winner = over.Winner, reason = over.Reason, foolNick = _foolNick };
         return new
         {
             turn,
