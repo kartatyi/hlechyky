@@ -1,0 +1,222 @@
+/*
+  Стилі ігрового каркаса. Сюди переїхав блок «ігри» зі static/style.css (столи, дошка, змійка,
+  хрестовина) і додались лобі, плитки, попап столу, профіль, таблиці, щоденне, панелі, клавіатура
+  й таймер-дуга. Кольори — тільки змінними: спільні беремо зі style.css, свої оголошуємо тут.
+*/
+/* Свої кольори оголошуємо на :root, а не на .games: модулі читають їх через ctx.css(),
+   а той дивиться саме в :root — інакше канвас щоразу малював би фолбеком із коду. */
+:root {
+  --gwin: #4a3a06;          /* підсвітка виграшного ряду */
+  --gsnake2: #4f9a5e;       /* тіло зеленої змійки */
+  --gshade: rgba(15, 31, 24, .62); /* затемнення поля під відліком і кінцем раунду */
+}
+.games { display: flex; flex-direction: column; gap: 12px; }
+
+/* ---- шапка лобі: групи, панелі, гаманець ---- */
+.gbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gbar .gtabs { margin-bottom: 0; }
+.gnav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+.gnav button { padding: 5px 10px; font-size: .9em; background: transparent; border-color: transparent; color: var(--muted); }
+.gnav button.on { background: var(--panel2); color: var(--text); border-color: var(--line); }
+.gwallet { background: var(--panel2); color: var(--text); font-size: .9em; padding: 4px 10px; }
+.gwallet b { font-variant-numeric: tabular-nums; }
+.gemo { font-size: 1.05em; line-height: 1; }
+.gico { width: 15px; height: 15px; flex: none; }
+.gtabs button:not(.on) .gico { opacity: .6; }
+.games .gtabs .count { color: var(--muted); font-size: .85em; }
+.gview { display: flex; flex-direction: column; gap: 12px; }
+.gchrome { display: flex; flex-direction: column; gap: 12px; }
+.gempty { color: var(--muted); font-size: .92em; padding: 10px 2px; }
+.gwait { color: var(--muted); font-size: .9em; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 14px 0; }
+.gwait.err { color: var(--danger); }
+.games h4 { margin: 4px 0 0; font-size: .78em; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); font-weight: 600; }
+
+/* ---- плитки ігор ---- */
+.gtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.gtile {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.gtile:hover { border-color: var(--panel3); }
+.gt-head { display: flex; align-items: center; gap: 7px; font-size: 1.02em; }
+.gt-head .gico { width: 17px; height: 17px; }
+.gt-hint { line-height: 1.35; flex: 1; }
+.gt-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---- картка кімнати ---- */
+.gtables { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.gtable { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.gtable.mine { border-color: var(--accent2); }
+.gseats { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .92em; flex-wrap: wrap; }
+.gseats .vs { color: var(--muted); font-size: .85em; }
+.gseats .gtitle { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.gseats .gico { width: 16px; height: 16px; }
+.gwatchers { color: var(--muted); font-size: .8em; white-space: nowrap; }
+/* Варіант, обраний при створенні столу (зникаючі хрестики, ставка) — підписуємо чіпом. */
+.gmode { padding: 2px 8px; border-radius: 999px; border: 1px dashed var(--line); color: var(--muted); font-size: .78em; }
+.gmode.stake { color: var(--clay); border-style: solid; }
+.gseat { padding: 3px 9px; border-radius: 999px; background: var(--bg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42%; }
+.gseat i { font-style: normal; color: var(--muted); font-size: .82em; margin-right: 5px; }
+.gseat.x { color: var(--accent); }
+.gseat.o { color: var(--ok); }
+.gseat.c { color: var(--clay); }
+.gseat.d { color: var(--muted); }
+.gseat.free { color: var(--muted); border: 1px dashed var(--line); background: transparent; }
+.gseat.turn { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.gbody { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.gbody > * { max-width: 100%; }
+.gstatus { text-align: center; color: var(--muted); font-size: .9em; min-height: 1.2em; }
+.gstatus.my { color: var(--accent); }
+.gstatus.done { color: var(--text); font-weight: 600; }
+.gbtns { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+
+/* ---- дошка з клітинок (хрестики, чотири в ряд, сапер) ---- */
+.board { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 7px; width: min(280px, 100%); margin: 0 auto; }
+.board .cell {
+  aspect-ratio: 1; padding: 0; display: grid; place-items: center; font-size: 2.1em; font-weight: 700;
+  background: var(--bg2); border-radius: 12px; justify-content: center;
+}
+.board .cell:disabled { opacity: 1; }
+.board .cell:not(:disabled):hover { background: var(--panel3); }
+.board .cell.x { color: var(--accent); }
+.board .cell.o { color: var(--ok); }
+.board .cell.win { background: var(--gwin); border-color: var(--accent2); }
+/* Зникаючі хрестики: мітка, яку наступний хід свого ж господаря змете з поля. */
+.board .cell.fading { animation: blink 1.4s infinite; }
+/* Чотири в ряд: поле ширше, клітинки круглі, фішка це заливка. */
+.board.discs { width: min(360px, 100%); gap: 5px; padding: 6px; background: var(--bg2); border-radius: 12px; }
+.board.discs .cell { border-radius: 50%; background: var(--panel); border-color: transparent; font-size: 0; }
+.board.discs .cell.x { background: var(--accent); }
+.board.discs .cell.o { background: var(--ok); }
+.board.discs .cell.win { box-shadow: 0 0 0 3px var(--accent2), 0 0 12px rgba(244, 197, 66, .5); background: var(--accent); }
+.board.discs .cell.o.win { background: var(--ok); }
+.board.discs .cell:not(:disabled):hover { background: var(--panel3); }
+
+/* ---- канвас реалтайму (змійка, понг, кривуля) ---- */
+.gcanvas, .snakeboard { width: 100%; max-width: 416px; display: block; margin: 0 auto; border-radius: 10px; background: var(--bg2); }
+.gscore { font-variant-numeric: tabular-nums; font-size: .95em; color: var(--muted); white-space: nowrap; }
+.gscore b { color: var(--text); }
+
+/* ---- хрестовина: тільки під палець ---- */
+.dpad { display: none; }
+@media (pointer: coarse) {
+  .dpad {
+    display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(2, 44px);
+    gap: 6px; justify-content: center; margin-top: 4px;
+  }
+  .dpad button { justify-content: center; font-size: 1.2em; }
+  .dpad button[data-dir="3"] { grid-column: 2; grid-row: 1; }
+  .dpad button[data-dir="2"] { grid-column: 1; grid-row: 2; }
+  .dpad button[data-dir="1"] { grid-column: 2; grid-row: 2; }
+  .dpad button[data-dir="0"] { grid-column: 3; grid-row: 2; }
+}
+
+/* ---- екранна українська клавіатура (Глек-слово, віселиця) ---- */
+.gkbd { display: flex; flex-direction: column; gap: 5px; width: 100%; max-width: 460px; margin: 0 auto; }
+.gkrow { display: flex; gap: 4px; justify-content: center; }
+.gkey {
+  flex: 1 1 0; min-width: 0; padding: 9px 0; justify-content: center; font-size: .95em;
+  background: var(--panel3); border-color: transparent; text-transform: uppercase;
+}
+.gkey.wide { flex: 1.6 1 0; font-size: .8em; text-transform: none; }
+.gkey.g { background: var(--ok); color: var(--accent-ink); }
+.gkey.y { background: var(--accent); color: var(--accent-ink); }
+.gkey.b { background: var(--bg2); color: var(--muted); }
+
+/* ---- дуга-таймер фази ---- */
+.garc { position: relative; width: 46px; height: 46px; }
+.garc svg { width: 100%; height: 100%; }
+.garc circle { fill: none; stroke-width: 4; }
+.garc .bg { stroke: var(--bg2); }
+.garc .fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .1s linear; }
+.garc b { position: absolute; inset: 0; display: grid; place-items: center; font-size: .9em; font-variant-numeric: tabular-nums; }
+
+/* ---- віяло карт / кісток ---- */
+.ghand { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.gcard {
+  min-width: 44px; padding: 10px 8px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line);
+  cursor: pointer; text-align: center; user-select: none; transition: transform .1s, border-color .15s;
+}
+.gcard:hover { transform: translateY(-3px); }
+.gcard.sel { border-color: var(--accent); transform: translateY(-6px); }
+.gcard.off { opacity: .45; cursor: default; transform: none; }
+
+/* ---- попап «поставити стіл» ---- */
+.gmodal .card h3 { align-items: center; }
+.gmodal .card h3 .gico { width: 20px; height: 20px; }
+.gopt { display: flex; flex-direction: column; gap: 4px; }
+.gopt select {
+  font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 9px 10px; width: 100%; outline: none;
+}
+.gstakes { display: flex; gap: 6px; flex-wrap: wrap; }
+.gstake { padding: 6px 12px; }
+.gstake.on { background: var(--clay); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.grow { display: flex; gap: 8px; }
+.grow .primary { flex: 1; justify-content: center; }
+
+/* ---- профіль ---- */
+.gprofile { display: flex; flex-direction: column; gap: 10px; }
+.gp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 1.15em; }
+.gachs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.gach {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+}
+.gach .gicon { font-size: 1.5em; line-height: 1.1; }
+.gach.locked { opacity: .42; filter: grayscale(1); }
+
+/* ---- таблиці ---- */
+.glbbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.glbbar select {
+  font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 7px 10px; outline: none;
+}
+.glb { display: flex; flex-direction: column; gap: 3px; }
+.glbrow {
+  display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: var(--panel2);
+  font-size: .92em;
+}
+.glbrow > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.glbrow .n { color: var(--muted); min-width: 1.6em; font-variant-numeric: tabular-nums; }
+.glbrow.head { background: transparent; color: var(--muted); font-size: .8em; text-transform: uppercase; letter-spacing: .8px; padding-bottom: 0; }
+.glbrow.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.glb.wide .glbrow > span:not(:nth-child(2)) { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.glb.small .glbrow { padding: 3px 8px; font-size: .85em; background: transparent; }
+.glbrow .o-win { color: var(--ok); }
+.glbrow .o-loss { color: var(--danger); }
+
+/* ---- щоденний глек ---- */
+.gdhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gdaily { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; align-items: start; }
+.gdcard {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.gdcard.done { border-color: var(--ok); }
+.gdmeta { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---- панелі від ігор (конкурс реклами тощо) ---- */
+.gxpanel { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---- довгий тост (ачівка) ---- */
+.toast.gbig { max-width: 340px; display: block; line-height: 1.4; }
+.toast.gbig .gemo { font-size: 1.3em; margin-right: 4px; }
+
+/* ---- телефон ---- */
+@media (max-width: 900px) {
+  .gtables, .gtiles, .gdaily { grid-template-columns: 1fr; }
+  .gnav { margin-left: 0; width: 100%; }
+  .gbar { gap: 6px; }
+  .gwallet { order: -1; }
+}
+@media (max-width: 480px) {
+  .gtable { padding: 8px 9px 10px; }
+  .gseats { gap: 5px; font-size: .86em; }
+  .gseat { max-width: 100%; }
+  .board { gap: 5px; }
+  .board .cell { font-size: 1.7em; border-radius: 10px; }
+  .gkey { padding: 8px 0; font-size: .85em; }
+  .gtile { padding: 9px 10px; }
+  .glbrow { gap: 6px; padding: 5px 8px; }
+}

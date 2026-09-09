@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мок каркаса ігор</title>
+<link rel="stylesheet" href="../../../web/static/style.css">
+<link rel="stylesheet" href="../../../web/games/core.css">
+<style>
+  /* Сторінка не в проді — це стенд, тому трохи свого поверх спільних стилів. */
+  body { padding: 0; }
+  .mockbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 4; }
+  .mockbar b { margin-right: 6px; }
+  .mockwrap { padding: 14px; max-width: 1100px; margin: 0 auto; }
+  #colGames { display: block !important; }
+</style>
+</head>
+<body class="view-games">
+
+<div class="mockbar">
+  <b>Мок сервера</b>
+  <button id="mJoin">Петро сідає / встає</button>
+  <button id="mHost">Петро ставить стіл</button>
+  <button id="mMove">Хід за Петра</button>
+  <button id="mWallet">wallet +5</button>
+  <button id="mAch">achievement</button>
+  <button id="mToast">toast</button>
+  <button id="mDrop">Прибрати всі кімнати</button>
+  <span class="muted small">я — <b id="mNick">Оля</b></span>
+</div>
+
+<section class="panel mockwrap" id="colGames">
+  <div id="games" class="games"></div>
+</section>
+
+<div id="toasts" class="toasts"></div>
+
+<!-- модулі підключаємо руками: завантажувач каркаса ходить по абсолютних /games/*.js, яких на file:// нема -->
+<script src="../../../web/games/core.js"></script>
+<script src="../../../web/games/ttt.js"></script>
+<script src="../../../web/games/c4.js"></script>
+<script src="../../../web/games/snake.js"></script>
+
+<script>
+(() => {
+  'use strict';
+  // ===========================================================================================
+  // Підробки того, що дає app.js
+  // ===========================================================================================
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function toast(text, kind) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (kind || '');
+    el.innerHTML = (kind === 'wait' ? '<span class="spin"></span>' : '') + esc(text);
+    $('toasts').appendChild(el);
+    setTimeout(() => el.remove(), kind === 'err' ? 5000 : 3200);
+    return el;
+  }
+  async function busy(btn, label, fn) {
+    if (!btn || btn.disabled) return;
+    const html = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('busy');
+    btn.innerHTML = '<span class="spin"></span> ' + esc(label);
+    try { return await fn(); }
+    finally { if (btn.isConnected) { btn.disabled = false; btn.classList.remove('busy'); btn.innerHTML = html; } }
+  }
+  const me = { nick: 'Оля', role: 'member' };
+  const OTHER = 'Петро';
+
+  // ===========================================================================================
+  // Каталог і HTTP (замість fetch — просто підроблений api())
+  // ===========================================================================================
+  const CATALOG = {
+    stakes: [0, 5, 10, 25],
+    games: [
+      { id: 'ttt', title: 'Хрестики-нолики', accusative: 'хрестики', group: 'board', minPlayers: 2, maxPlayers: 2,
+        tickMs: 0, start: 'whenFull', hidden: false, private: false, rated: true, hasCss: false, daily: false,
+        options: [{ key: 'size', label: 'Поле', values: [['3', '3×3'], ['5', '5×5']], default: '3' }],
+        hint: 'Стіл рівно на двох: хто поставив — за ✕, хто сів другим — за ◯.' },
+      { id: 'ttt3', title: 'Зникаючі хрестики', accusative: 'зникаючі хрестики', group: 'board', minPlayers: 2, maxPlayers: 2,
+        tickMs: 0, start: 'whenFull', hidden: false, private: false, rated: true, hasCss: false, daily: false,
+        options: [], hint: 'Кожен тримає на полі лише три мітки: ставиш четверту — найстаріша щезає.' },
+      { id: 'c4', title: 'Чотири в ряд', accusative: 'чотири в ряд', group: 'board', minPlayers: 2, maxPlayers: 2,
+        tickMs: 0, start: 'whenFull', hidden: false, private: false, rated: true, hasCss: false, daily: false,
+        options: [], hint: 'Кидаєш фішку в колонку, вона падає вниз. Виграє той, хто перший збере чотири підряд.' },
+      { id: 'snake', title: 'Змійка', accusative: 'змійку', group: 'live', minPlayers: 2, maxPlayers: 2,
+        tickMs: 120, start: 'whenFull', hidden: false, private: false, rated: true, hasCss: false, daily: false,
+        options: [], hint: 'Дуель на двох: стрілки або WASD, поле зі стінами.' },
+      { id: 'mafia', title: 'Мафія', accusative: 'мафію', group: 'party', minPlayers: 4, maxPlayers: 8,
+        tickMs: 1000, start: 'byHost', hidden: true, private: false, rated: false, hasCss: false, daily: false,
+        options: [], hint: 'Компанія від чотирьох. Модуля ще нема — має чесно сказати про це.' },
+      { id: 'wordle', title: 'Глек-слово', accusative: 'глек-слово', group: 'solo', minPlayers: 1, maxPlayers: 1,
+        tickMs: 0, start: 'immediate', hidden: false, private: true, rated: false, hasCss: false, daily: true,
+        options: [], hint: 'Одне слово на день.' },
+    ],
+  };
+
+  async function api(method, path) {
+    await new Promise((r) => setTimeout(r, 60));       // хай видно спінери
+    if (path.startsWith('/api/games/catalog')) return CATALOG;
+    if (path.startsWith('/api/games/wallet')) return { balance: money };
+    if (path.startsWith('/api/games/profile')) return {
+      nick: me.nick,
+      wallet: { balance: money, earned: 148 },
+      ratings: [{ game: 'ttt', elo: 1042, games: 12, wins: 7, losses: 4, draws: 1 },
+                { game: 'c4', elo: 988, games: 5, wins: 2, losses: 3, draws: 0 }],
+      achievements: [
+        { key: 'first-game', title: 'Перший крок', text: 'дограв першу партію', icon: '🥇', reward: 5, unlocked: true },
+        { key: 'first-win', title: 'Перша перемога', text: 'перша перемога', icon: '🏅', reward: 10, unlocked: true },
+        { key: 'ten-wins', title: 'Десятка', text: '10 перемог', icon: '🔟', reward: 25, unlocked: false },
+        { key: 'all-boards', title: 'Настільний', text: 'перемога в кожній настільній грі', icon: '♟', reward: 50, unlocked: false },
+      ],
+      recent: [{ game: 'ttt', outcome: 'win', opponents: 'Петро', score: null },
+               { game: 'snake', outcome: 'loss', opponents: 'Петро', score: null },
+               { game: 'c4', outcome: 'draw', opponents: 'Петро', score: null }],
+    };
+    if (path.startsWith('/api/games/leaderboard')) {
+      const shards = path.indexOf('game=shards') >= 0;
+      return { rows: shards
+        ? [{ nick: 'Петро', balance: 210, earned: 260 }, { nick: 'Оля', balance: money, earned: 148 }, { nick: 'Іван', balance: 12, earned: 12 }]
+        : [{ nick: 'Оля', elo: 1042, wins: 7, losses: 4, draws: 1, games: 12 },
+           { nick: 'Петро', elo: 1010, wins: 5, losses: 5, draws: 2, games: 12 }] };
+    }
+    if (path.startsWith('/api/games/daily')) return {
+      day: '2026-09-09', no: 1, nextMidnight: new Date(Date.now() + 3600e3).toISOString(),
+      puzzles: [{ game: 'wordle', title: 'Глек-слово', me: { solved: true, attempts: 3, ms: 42000 },
+                  streak: 4, solvedCount: 6,
+                  top: [{ nick: 'Петро', attempts: 2, ms: 21000 }, { nick: 'Оля', attempts: 3, ms: 42000 }] }],
+    };
+    throw new Error('мок не знає ' + path);
+  }
+
+  // ===========================================================================================
+  // Підроблений хаб
+  // ===========================================================================================
+  const handlers = {};
+  const emit = (name, arg) => { (handlers[name] || []).forEach((h) => { try { h(arg); } catch (e) { console.error(e); } }); };
+  let money = 42;
+  const rooms = [];
+  const watching = new Set();
+  let seq = 0;
+  const rid = () => (++seq).toString(16).padStart(8, '0');
+  const info = (id) => CATALOG.games.find((g) => g.id === id);
+
+  const SEATN = { ttt: ['✕', '◯'], ttt3: ['✕', '◯'], c4: ['жовті', 'зелені'], snake: ['жовта', 'зелена'] };
+
+  function summary(r) {
+    return {
+      id: r.id, game: r.game, status: r.status,
+      seats: r.seats.map((n, i) => ({ i, nick: n })),
+      seatNames: SEATN[r.game] || r.seats.map((_, i) => 'гравець ' + (i + 1)),
+      host: r.host, minPlayers: info(r.game).minPlayers, maxPlayers: info(r.game).maxPlayers,
+      options: r.options, stake: r.stake, round: r.round,
+      watchers: watching.has(r.id) ? 1 : 0, result: r.result,
+      createdAt: r.createdAt, startedAt: r.startedAt, finishedAt: r.finishedAt,
+    };
+  }
+  const pub = () => rooms.filter((r) => !info(r.game).private).map(summary);
+  const lobby = () => emit('rooms', pub());
+  function pushRoom(r) {
+    if (!watching.has(r.id)) return;
+    const seat = r.seats.indexOf(me.nick);
+    emit('room', { room: summary(r), seat: seat < 0 ? null : seat, view: view(r) });
+  }
+  const ok = (m, id) => ({ ok: true, message: m || '', roomId: id });
+  const bad = (m) => ({ ok: false, message: m });
+
+  // ---- правила: хрестики / чотири в ряд ----
+  const LINES = (w, h, need) => {
+    const out = [];
+    const idx = (x, y) => y * w + x;
+    const dirs = [[1, 0], [0, 1], [1, 1], [1, -1]];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (const [dx, dy] of dirs) {
+      const line = [];
+      for (let k = 0; k < need; k++) {
+        const nx = x + dx * k, ny = y + dy * k;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) { line.length = 0; break; }
+        line.push(idx(nx, ny));
+      }
+      if (line.length === need) out.push(line);
+    }
+    return out;
+  };
+  function winner(r) {
+    const need = r.game === 'c4' ? 4 : 3;
+    for (const line of LINES(r.w, r.h, need)) {
+      const a = r.cells[line[0]];
+      if (a && line.every((i) => r.cells[i] === a)) return { mark: a, line };
+    }
+    return null;
+  }
+
+  function newBoard(r) {
+    if (r.game === 'c4') { r.w = 7; r.h = 6; }
+    else if (r.game === 'ttt') { r.w = +(r.options.size || 3); r.h = r.w; }
+    else { r.w = 3; r.h = 3; }
+    r.cells = new Array(r.w * r.h).fill(null);
+    r.turn = 0;
+    r.line = null;
+    r.fading = -1;
+    r.hist = [[], []];
+  }
+
+  function startRoom(r) {
+    r.status = 'playing';
+    r.startedAt = new Date().toISOString();
+    r.result = null;
+    if (r.game === 'snake') snakeReset(r); else newBoard(r);
+  }
+
+  function finish(r, winners, text) {
+    r.status = 'finished';
+    r.finishedAt = new Date().toISOString();
+    r.result = { winners, draw: !winners.length, text };
+  }
+
+  // ---- змійка ----
+  const SW = 26, SH = 18;
+  const D = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  function snakeReset(r) {
+    r.a = [3, 2, 1].map((x) => (SH / 2 - 3) * SW + x);
+    r.b = [SW - 4, SW - 3, SW - 2].map((x) => (SH / 2 + 3) * SW + x);
+    r.dirA = 0; r.dirB = 2;
+    r.apple = (SH / 2) * SW + SW / 2;
+    r.startIn = 25;
+    r.winsA = r.winsA || 0; r.winsB = r.winsB || 0;
+  }
+  function snakeStep(r) {
+    if (r.startIn > 0) { r.startIn--; return; }
+    const ahead = (head, dir) => {
+      const [dx, dy] = D[dir];
+      const x = (head % SW) + dx, y = Math.floor(head / SW) + dy;
+      return (x < 0 || x >= SW || y < 0 || y >= SH) ? -1 : y * SW + x;
+    };
+    const na = ahead(r.a[0], r.dirA), nb = ahead(r.b[0], r.dirB);
+    const growA = na === r.apple, growB = nb === r.apple;
+    const bodyA = new Set(r.a.slice(0, r.a.length - (growA ? 0 : 1)));
+    const bodyB = new Set(r.b.slice(0, r.b.length - (growB ? 0 : 1)));
+    const deadA = na < 0 || bodyA.has(na) || bodyB.has(na) || (nb >= 0 && na === nb);
+    const deadB = nb < 0 || bodyB.has(nb) || bodyA.has(nb) || (na >= 0 && na === nb);
+    if (na >= 0) { r.a.unshift(na); if (!growA) r.a.pop(); }
+    if (nb >= 0) { r.b.unshift(nb); if (!growB) r.b.pop(); }
+    if (growA || growB) { do { r.apple = Math.floor(Math.random() * SW * SH); } while (r.a.includes(r.apple) || r.b.includes(r.apple)); }
+    if (deadA || deadB) {
+      if (deadA && !deadB) { r.winsB++; finish(r, [1], 'змійка: перемога другого'); }
+      else if (deadB && !deadA) { r.winsA++; finish(r, [0], 'змійка: перемога першого'); }
+      else finish(r, [], 'змійка: лоб у лоб');
+    }
+  }
+  function snakeFrame(r) {
+    return { a: r.a, b: r.b, apple: r.apple, winsA: r.winsA, winsB: r.winsB, startIn: r.startIn,
+      winner: r.status === 'finished' ? (r.result.draw ? 'draw' : r.result.winners[0]) : null };
+  }
+
+  function view(r) {
+    if (r.game === 'snake') return Object.assign({ turn: null }, snakeFrame(r));
+    return { cells: r.cells, width: r.w, turn: r.status === 'playing' ? r.turn : null, line: r.line, fading: r.fading };
+  }
+
+  // ---- ходи ----
+  function move(r, seat, payload) {
+    if (r.status !== 'playing') return bad('Партію зіграно, тисни «Ще раз»');
+    if (r.turn !== seat) return bad('Зараз не твій хід');
+    let cell;
+    if (r.game === 'c4') {
+      const col = payload.col;
+      if (col == null || col < 0 || col >= r.w) return bad('Тут так не ходять');
+      let row = -1;
+      for (let y = r.h - 1; y >= 0; y--) if (!r.cells[y * r.w + col]) { row = y; break; }
+      if (row < 0) return bad('Колонка повна');
+      cell = row * r.w + col;
+    } else {
+      cell = payload.cell;
+      if (cell == null || cell < 0 || cell >= r.cells.length || r.cells[cell]) return bad('Тут так не ходять');
+    }
+    const mark = seat === 0 ? 'x' : 'o';
+    r.cells[cell] = mark;
+    if (r.game === 'ttt3') {
+      r.hist[seat].push(cell);
+      if (r.hist[seat].length > 3) r.cells[r.hist[seat].shift()] = null;
+      const other = r.hist[1 - seat];
+      r.fading = other.length === 3 ? other[0] : -1;
+    }
+    const win = winner(r);
+    if (win) { r.line = win.line; finish(r, [win.mark === 'x' ? 0 : 1], 'перемога'); }
+    else if (r.cells.every((c) => c) && r.game !== 'ttt3') finish(r, [], 'нічия');
+    else r.turn = 1 - seat;
+    return ok();
+  }
+
+  const conn = {
+    state: 'Connected',
+    on(name, fn) { (handlers[name] = handlers[name] || []).push(fn); },
+    invoke(method, ...a) {
+      return new Promise((res) => setTimeout(() => res(hub(method, a)), 40));
+    },
+  };
+
+  function hub(method, a) {
+    const find = (id) => rooms.find((r) => r.id === id);
+    if (method === 'CreateRoom') {
+      const g = info(a[0]);
+      if (!g) return bad('Такої гри тут нема');
+      if (rooms.some((r) => info(r.game).maxPlayers > 1 && r.seats.indexOf(me.nick) >= 0)) return bad('Ти вже за столом. Встань, якщо хочеш новий');
+      const o = Object.assign({}, a[1] || {});
+      const stake = +o.stake || 0;
+      delete o.stake;
+      const r = { id: rid(), game: g.id, status: 'lobby', seats: new Array(g.maxPlayers).fill(null),
+        host: me.nick, options: o, stake, round: 1, result: null, createdAt: new Date().toISOString(),
+        startedAt: null, finishedAt: null };
+      r.seats[0] = me.nick;
+      rooms.push(r);
+      if (g.start === 'immediate') startRoom(r);
+      lobby();
+      setTimeout(() => pushRoom(r), 10);
+      return ok('Стіл поставлено', r.id);
+    }
+    if (method === 'OpenSolo') {
+      const g = info(a[0]);
+      if (!g) return bad('Такої гри тут нема');
+      let r = rooms.find((x) => x.game === g.id && x.seats[0] === me.nick);
+      if (!r) {
+        r = { id: rid(), game: g.id, status: 'lobby', seats: [me.nick], host: me.nick, options: {}, stake: 0,
+          round: 1, result: null, createdAt: new Date().toISOString(), startedAt: null, finishedAt: null };
+        rooms.push(r);
+        startRoom(r);
+      }
+      lobby();
+      setTimeout(() => pushRoom(r), 10);
+      return ok('', r.id);
+    }
+    const r = find(a[0]);
+    if (!r) return bad('Такої кімнати вже нема');
+    const g = info(r.game);
+    const seat = r.seats.indexOf(me.nick);
+    if (method === 'WatchRoom') { watching.add(r.id); setTimeout(() => { pushRoom(r); lobby(); }, 5); return; }
+    if (method === 'UnwatchRoom') { watching.delete(r.id); return; }
+    if (method === 'JoinRoom') {
+      if (seat >= 0) return bad('Ти вже в цій кімнаті');
+      const free = r.seats.indexOf(null);
+      if (free < 0) return bad('Місць уже нема');
+      r.seats[free] = me.nick;
+      if (g.start === 'whenFull' && r.seats.every((s) => s)) startRoom(r);
+      lobby(); pushRoom(r);
+      return ok('');
+    }
+    if (method === 'LeaveRoom') {
+      if (seat < 0) return bad('Ти тут не граєш');
+      if (r.status === 'playing') finish(r, r.seats.map((_, i) => i).filter((i) => i !== seat && r.seats[i]), 'встав з-за столу');
+      r.seats[seat] = null;
+      if (!r.seats.some((s) => s)) { rooms.splice(rooms.indexOf(r), 1); watching.delete(r.id); }
+      lobby(); pushRoom(r);
+      return ok('');
+    }
+    if (method === 'StartRoom') {
+      if (r.host !== me.nick) return bad('Почати може лише господар');
+      if (r.seats.filter(Boolean).length < g.minPlayers) return bad('Замало гравців, треба щонайменше ' + g.minPlayers);
+      startRoom(r); lobby(); pushRoom(r);
+      return ok('');
+    }
+    if (method === 'Rematch') {
+      if (seat < 0) return bad('Ти тут не граєш');
+      r.round++;
+      if (g.maxPlayers === 2) r.seats.reverse();
+      startRoom(r);
+      lobby(); pushRoom(r);
+      return ok('');
+    }
+    if (method === 'Act') {
+      if (seat < 0) return bad('Ти тут не граєш');
+      const res = move(r, seat, a[2] || {});
+      if (res.ok) { lobby(); pushRoom(r); }
+      return res;
+    }
+    if (method === 'Input') {
+      if (seat < 0 || r.game !== 'snake' || r.status !== 'playing') return;
+      const dir = (a[2] || {}).dir;
+      if (dir == null) return;
+      const cur = seat === 0 ? r.dirA : r.dirB;
+      if (dir === cur || (dir + 2) % 4 === cur) return;
+      if (seat === 0) r.dirA = dir; else r.dirB = dir;
+      return;
+    }
+    return ok('');
+  }
+
+  // тик реалтайму
+  setInterval(() => {
+    let lobbyChanged = false;
+    for (const r of rooms) {
+      if (r.game !== 'snake' || r.status !== 'playing') continue;
+      const was = r.status;
+      snakeStep(r);
+      if (watching.has(r.id)) emit('frame', { id: r.id, f: snakeFrame(r) });
+      if (r.status !== was) { lobbyChanged = true; pushRoom(r); }
+    }
+    if (lobbyChanged) lobby();
+  }, 120);
+
+  // ===========================================================================================
+  // Кнопки стенда
+  // ===========================================================================================
+  $('mNick').textContent = me.nick;
+  $('mJoin').onclick = () => {
+    const r = rooms.find((x) => info(x.game).maxPlayers > 1);
+    if (!r) { toast('спершу постав стіл', 'err'); return; }
+    const at = r.seats.indexOf(OTHER);
+    if (at >= 0) {
+      if (r.status === 'playing') finish(r, r.seats.map((_, i) => i).filter((i) => i !== at && r.seats[i]), 'встав з-за столу');
+      r.seats[at] = null;
+    } else {
+      const free = r.seats.indexOf(null);
+      if (free < 0) { toast('місць нема', 'err'); return; }
+      r.seats[free] = OTHER;
+      if (info(r.game).start === 'whenFull' && r.seats.every((s) => s)) startRoom(r);
+    }
+    lobby(); pushRoom(r);
+  };
+  $('mHost').onclick = () => {
+    const g = info('ttt');
+    const r = { id: rid(), game: g.id, status: 'lobby', seats: [OTHER, null], host: OTHER, options: {}, stake: 5,
+      round: 1, result: null, createdAt: new Date().toISOString(), startedAt: null, finishedAt: null };
+    rooms.push(r);
+    lobby();
+  };
+  $('mMove').onclick = () => {
+    const r = rooms.find((x) => x.status === 'playing' && x.seats.indexOf(OTHER) >= 0 && x.game !== 'snake');
+    if (!r) { toast('нема куди ходити', 'err'); return; }
+    const seat = r.seats.indexOf(OTHER);
+    if (r.turn !== seat) { toast('зараз не його хід', 'err'); return; }
+    const free = [];
+    for (let i = 0; i < r.cells.length; i++) if (!r.cells[i]) free.push(i);
+    if (!free.length) return;
+    const pick = free[Math.floor(Math.random() * free.length)];
+    move(r, seat, r.game === 'c4' ? { col: pick % r.w } : { cell: pick });
+    lobby(); pushRoom(r);
+  };
+  $('mWallet').onclick = () => { money += 5; emit('wallet', { balance: money, delta: 5, reason: 'win:ttt', text: 'перемога в хрестиках' }); };
+  $('mAch').onclick = () => emit('achievement', { key: 'first-win', title: 'Перша перемога', text: 'перша перемога в мультиплеєрній партії', icon: '🏅', reward: 10 });
+  $('mToast').onclick = () => emit('toast', { text: 'Ставку повернуто', kind: 'ok' });
+  $('mDrop').onclick = () => { rooms.length = 0; watching.clear(); lobby(); };
+
+  // ===========================================================================================
+  // Поїхали
+  // ===========================================================================================
+  HGames.init({ $, esc, toast, busy, api, me, root: $('games') });
+  HGames.attach(conn);
+  HGames.show();
+  setTimeout(lobby, 100);
+})();
+</script>
+</body>
+</html>
