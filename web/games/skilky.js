@@ -22,7 +22,8 @@
   function num(v) {
     if (v == null || isNaN(v)) return '—';
     if (Math.abs(v - Math.round(v)) < 1e-9) return Math.round(v).toLocaleString('uk-UA');
-    return String(Math.round(v * 1000) / 1000);
+    // Дробове теж українською: людина набирала «2,5», і крапка поруч із «1 000 000» ріже око.
+    return v.toLocaleString('uk-UA', { maximumFractionDigits: 3 });
   }
 
   function state(root) {
@@ -30,11 +31,18 @@
     return root._sk;
   }
 
-  /// Чиї числа вже прийшли. Кадр свіжіший за вид (він летить щосекунди), але лише поки це той самий раунд.
-  function ticks(ctx, v) {
+  /// Кадр свіжіший за вид (він летить щосекунди), але вірити йому можна лише в межах того самого раунду
+  /// й фази: після «Ще раз» ctx.frame ще секунду тримає останній кадр минулої партії — з чужим рахунком
+  /// і зі старою розсадкою.
+  function fresh(ctx, v) {
     const f = ctx.frame;
-    if (f && f.answered && f.round === v.round && f.phase === v.phase) return f.answered;
-    return v.answered || [];
+    return f && f.round === v.round && f.phase === v.phase ? f : null;
+  }
+
+  /// Чиї числа вже прийшли.
+  function ticks(ctx, v) {
+    const f = fresh(ctx, v);
+    return (f && f.answered) || v.answered || [];
   }
 
   /// Місця, на яких хтось сидить. Порожні (стіл на дванадцятьох, грає четверо) не малюємо взагалі.
@@ -60,7 +68,7 @@
 
   function paintScores(root, ctx) {
     const v = ctx.view || {};
-    const f = ctx.frame;
+    const f = fresh(ctx, v);
     const sc = (f && f.scores && f.scores.length) ? f.scores : (v.scores || []);
     const box = root.querySelector('.skscore');
     if (!box) return;
@@ -157,7 +165,10 @@
 
     mount(root, ctx) {
       root._sk = { round: -1 };
+      // .skmain — усе, що стосується запитання; .skscore — рахунок партії, який на широкій картці
+      // від'їжджає праворуч (skilky.css), а на телефоні лягає під таблицю.
       root.innerHTML = '<div class="skwrap">'
+        + '<div class="skmain">'
         + '<div class="sktop"><span class="skno muted small"></span></div>'
         + '<div class="skq"></div>'
         + '<div class="skask" hidden><input class="skin" type="text" inputmode="decimal" autocomplete="off"'
@@ -166,6 +177,7 @@
         + '<div class="skmy muted small"></div>'
         + '<div class="skrev"></div>'
         + '<div class="skwho"></div>'
+        + '</div>'
         + '<div class="skscore"></div>'
         + '</div>';
       root.querySelector('.skgo').onclick = () => answer(root, ctx);
@@ -188,8 +200,9 @@
 
     status(ctx) {
       if (!ctx.playing) return '';
-      // Фаза й відлік живуть у кадрах: вид приходить рідше, і з нього «Готуйсь…» висіло б довше, ніж треба.
-      const s = ctx.frame && ctx.frame.phase ? ctx.frame : (ctx.view || {});
+      // Фазу беремо з виду: сервер міняє її тільки разом із видом (TickResult.Both), тож кадр її не
+      // випереджає — а от після «Ще раз» кадр ще секунду тримає фазу минулої партії.
+      const s = ctx.view || {};
       if (s.phase === 'ask') return ctx.mine ? 'Пиши число й тисни Enter' : 'Гравці думають…';
       if (s.phase === 'reveal') return 'Ось як було насправді';
       if (s.phase === 'between') return 'Зараз буде питання…';

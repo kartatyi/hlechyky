@@ -195,6 +195,25 @@ public class SkilkyTests
         Assert.Equal(1, stats.Value("tracksTotal"));
     }
 
+    [Fact]
+    public void A_counted_number_lives_a_few_minutes_and_only_then_goes_back_to_the_database()
+    {
+        using var temp = new TempDb();
+        var clock = new FakeClock { UtcNow = DateTimeOffset.UtcNow };
+        temp.Db.UpsertTrack(new TrackInfo("t1", "Пісня", "Гурт", 60, null, "https://x/1", null));
+
+        var stats = new SkilkyStats(temp.Db, clock);
+        Assert.Equal(1, stats.Value("tracksTotal"));
+
+        // «Ще раз» за столом трапляється часто, а вісім COUNT(*) по всій базі — ні до чого:
+        // поки кеш свіжий, у базу не ходимо, навіть якщо там уже щось змінилось.
+        temp.Db.UpsertTrack(new TrackInfo("t2", "Друга", "Гурт", 60, null, "https://x/2", null));
+        Assert.Equal(1, stats.Value("tracksTotal"));
+
+        clock.Advance(SkilkyStats.Ttl + TimeSpan.FromSeconds(1));
+        Assert.Equal(2, stats.Value("tracksTotal"));
+    }
+
     // ---------- кімната й фази ----------
 
     [Fact]
@@ -244,6 +263,8 @@ public class SkilkyTests
 
         Assert.True(h.Act(0, "answer", new { value = "2,54" }).Ok);
         Assert.Equal(2.54, h.View(0).GetProperty("my").GetDouble(), 6);
+        // Набирали з комою — з комою й підтверджуємо: крапка в українському тексті ріже око.
+        Assert.Equal("Записав: 2,54", h.Reply.Message);
     }
 
     [Fact]
@@ -312,6 +333,37 @@ public class SkilkyTests
         Assert.Equal(3, Score(h, 0));
         Assert.Equal(3, Score(h, 1));
         Assert.Equal(2, Score(h, 2));   // наступна відстань — це вже другий ярус, а не третій
+    }
+
+    [Fact]
+    public void Equal_distance_counts_as_equal_even_when_double_says_otherwise()
+    {
+        // Пастка живе на дробових цілях: |36.4 - 36.6| і |36.8 - 36.6| математично однакові, а в double —
+        // 0.20000000000000284 і 0.19999999999999574. Шукаємо сід, на якому випадає саме таке запитання:
+        // на цілій відповіді промах ±x рахується точно, і порівняння «в лоб» помилки не показує.
+        RoomHarness? h = null;
+        var off = 0.0;
+        for (var seed = 1; seed <= 300 && h is null; seed++)
+        {
+            var t = Table(3, seed);
+            Until(t, Skilky.PhaseAsk);
+            var c = Correct(t);
+            var d = Enumerable.Range(1, 99).Select(i => i / 100.0)
+                .FirstOrDefault(x => Math.Abs(c - x - c) != Math.Abs(c + x - c));
+            if (d != 0) { h = t; off = d; }
+        }
+        Assert.NotNull(h);
+
+        var correct = Correct(h);
+        h.Act(0, "answer", new { value = correct - off });
+        h.Act(1, "answer", new { value = correct + off });
+        h.Act(2, "answer", new { value = correct + 5 });
+        h.Tick(1);
+
+        // На екрані в обох однакова різниця — отже, й очки мають бути однакові.
+        Assert.Equal(3, Score(h, 0));
+        Assert.Equal(3, Score(h, 1));
+        Assert.Equal(2, Score(h, 2));   // наступна відстань — це вже другий ярус
     }
 
     [Fact]

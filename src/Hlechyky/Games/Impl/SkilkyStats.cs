@@ -1,5 +1,4 @@
 using System.Globalization;
-using Microsoft.Data.Sqlite;
 
 namespace Hlechyky.Games.Impl;
 
@@ -21,13 +20,35 @@ public sealed class SkilkyStats(Db? db, IClock clock)
         "voiceTotal", "chatTotal", "minutesPlayed30d", "topRequesterCount7d",
     ];
 
-    /// <summary>Скільки це в числах прямо зараз. Ніколи не кидає.</summary>
+    /// <summary>
+    /// Скільки живе вже порахуване число. Статистика радіо за кілька хвилин не змінюється, а «Ще раз» за
+    /// столом трапляється часто — і кожне з восьми чисел коштує окремого з'єднання й свого COUNT(*)
+    /// (по <c>tracks</c> ще й через LIKE, тобто повний скан). Тримати їх кілька хвилин дешевше, ніж
+    /// змушувати «Почати» чекати на базу.
+    /// </summary>
+    public static readonly TimeSpan Ttl = TimeSpan.FromMinutes(5);
+
+    /// <summary>Кеш на цей примірник (тобто на кімнату): між кімнатами й тестами нічого не тече.</summary>
+    readonly Dictionary<string, (DateTimeOffset At, long Value)> _cache = new(StringComparer.Ordinal);
+
+    /// <summary>Скільки це в числах прямо зараз. Ніколи не кидає — жодним винятком.</summary>
     public long Value(string? key)
     {
         if (db is null || string.IsNullOrWhiteSpace(key)) return 0;
-        try { return Read(key); }
-        catch (SqliteException) { return 0; }
-        catch (InvalidOperationException) { return 0; }
+        var now = clock.UtcNow;
+        lock (_cache)
+        {
+            if (_cache.TryGetValue(key, out var hit) && now - hit.At < Ttl) return hit.Value;
+        }
+
+        // Ловимо все: обіцянка «ніколи не кидає» — це обіцянка грі. Стара, зайнята чи покалічена база
+        // має коштувати одного нецікавого запитання, а не зламаної партії (Rooms закриє стіл).
+        long value;
+        try { value = Read(key); }
+        catch (Exception) { value = 0; }
+
+        lock (_cache) { _cache[key] = (now, value); }
+        return value;
     }
 
     long Read(string key) => key switch

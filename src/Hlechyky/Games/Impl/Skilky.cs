@@ -222,8 +222,17 @@ public sealed class Skilky : Game
                 rows.Add(new Row(s, v, Math.Abs(v - target), 0));
         rows = [.. rows.OrderBy(r => r.Diff).ThenBy(r => r.Seat)];
 
-        var tiers = rows.Select(r => r.Diff).Distinct().Take(3).ToList();
-        rows = [.. rows.Select(r => r with { Points = tiers.IndexOf(r.Diff) switch { 0 => 3, 1 => 2, 2 => 1, _ => 0 } })];
+        // Яруси очок рахуємо проходом по вже відсортованих рядках і з допуском, а не точною рівністю double:
+        // 36.4 і 36.8 промахнулись повз 36.6 однаково, але в бітах це 0.20000000000000284 і
+        // 0.19999999999999574. Гравці побачили б однакову різницю й різні очки — а spec обіцяє рівні.
+        var tier = 0;
+        var scored = new List<Row>(rows.Count);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (i > 0 && !SameDiff(rows[i - 1].Diff, rows[i].Diff)) tier++;
+            scored.Add(rows[i] with { Points = tier switch { 0 => 3, 1 => 2, 2 => 1, _ => 0 } });
+        }
+        rows = scored;
         foreach (var r in rows) _scores[r.Seat] += r.Points;
 
         _answer = target;
@@ -232,6 +241,13 @@ public sealed class Skilky : Game
         _phase = PhaseReveal;
         _endsAt = now.AddSeconds(RevealSeconds);
     }
+
+    /// <summary>
+    /// Чи це та сама відстань. Допуск відносний: на числах банку (від одиниць до мільярдів) абсолютний
+    /// поріг був би або надто грубим, або марним.
+    /// </summary>
+    static bool SameDiff(double a, double b) =>
+        Math.Abs(a - b) <= 1e-9 * Math.Max(1, Math.Max(Math.Abs(a), Math.Abs(b)));
 
     /// <summary>Кінець партії: лідери беруть перемогу, а якщо ніхто не набрав жодного очка — нічия.</summary>
     void Done()
@@ -359,9 +375,13 @@ public sealed class Skilky : Game
             Ctx.NickOf(best.Seat) ?? SeatName(best.Seat), Num(best.Diff));
     }
 
-    /// <summary>Число для людини: ціле — з пробілами між тисячами, дробове — без хвоста нулів.</summary>
+    /// <summary>
+    /// Число для людини: ціле — з пробілами між тисячами, дробове — з комою й без хвоста нулів. Кому
+    /// ставимо руками, а не культурою «uk-UA»: збірка може піти в режимі InvariantGlobalization, і тоді
+    /// культура мовчки віддала б крапку — а людина набирала «2,5» і чекає «2,5» назад.
+    /// </summary>
     static string Num(double v) =>
         Math.Abs(v - Math.Round(v)) < 1e-9 && Math.Abs(v) < 1e15
             ? Math.Round(v).ToString("#,##0", CultureInfo.InvariantCulture).Replace(",", " ")
-            : v.ToString("0.###", CultureInfo.InvariantCulture);
+            : v.ToString("#,##0.###", CultureInfo.InvariantCulture).Replace(",", " ").Replace('.', ',');
 }
