@@ -61,10 +61,4 @@ public sealed class FakeStore : IGameStore
     public void DeleteState(string key) => States.Remove(key);
 }
 
-/// <summary>Черга розсилки, яка нікуди не летить: тест просто дивиться, що в ній опинилось.</summary>
-public sealed class FakeOutbox : IOutbox
-{
-    public List<Outgoing> Posted { get; } = [];
-
-    public void Post(Outgoing message) => Posted.Add(message);
-}
+// FakeOutbox живе в EconomyFakes.cs (спільний для каркаса і сервісів).
