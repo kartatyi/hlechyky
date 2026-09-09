@@ -1,0 +1,97 @@
+/* Морський бій: два поля 10×10 з підписами колонок і рядків. Кольори — тільки зі змінних теми. */
+:root {
+  --bs-water: #14342a;      /* спокійна вода: трохи темніша за --panel */
+  --bs-ship: #47705c;       /* свій корабель на воді */
+  --bs-aim: rgba(244, 197, 66, .22);  /* підсвітка клітинки, куди можна стріляти */
+}
+
+.bs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  width: 100%;
+  justify-items: center;
+}
+
+.bs-side { width: min(300px, 100%); display: flex; flex-direction: column; gap: 5px; }
+.bs-cap { font-size: .85em; color: var(--muted); text-align: center; }
+.bs-cap b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.bs-grid {
+  display: grid;
+  grid-template-columns: 1.15em repeat(10, 1fr);
+  gap: 2px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.bs-lab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .62em;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.bs-cell {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: var(--bs-water);
+  position: relative;
+}
+.bs-cell:disabled { opacity: 1; }
+/* клітинка, куди зараз можна тицьнути (постріл або місце під корабель) */
+.bs-cell:not(:disabled) { background: var(--bs-aim); }
+
+/* свій корабель — після підсвітки, бо він важливіший за неї */
+.bs-cell.ship { background: var(--bs-ship); border-color: var(--panel3); }
+.bs-cell:not(:disabled):hover { background: var(--accent); }
+
+/* промах — маленька крапка; влучання — крапка глиною; потоплений — заливка */
+.bs-cell.miss::after,
+.bs-cell.hit::after,
+.bs-cell.wait::after {
+  content: '';
+  position: absolute;
+  inset: 38%;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.bs-cell.hit::after { inset: 22%; background: var(--clay); }
+.bs-cell.wait::after { inset: 30%; background: var(--accent); animation: bs-blink .8s infinite; }
+.bs-cell.sunk { background: var(--danger); border-color: var(--danger); }
+.bs-cell.sunk::after { content: none; }
+
+@keyframes bs-blink { 50% { opacity: .25; } }
+
+/* смуга розстановки: список кораблів, кнопки й дуга таймера */
+.bs-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; width: 100%; }
+.bs-tools .ghand { flex-wrap: wrap; justify-content: center; gap: 6px; }
+.bs-tools .gcard {
+  padding: 5px 7px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.bs-tools .gcard.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.bs-tools .gcard.off { opacity: .4; cursor: default; }
+
+.bs-ship { display: flex; gap: 2px; }
+.bs-ship.vert { flex-direction: column; }
+.bs-ship i { display: block; width: 9px; height: 9px; border-radius: 2px; background: var(--bs-ship); }
+
+.bs-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.bs-acts button { padding: 5px 10px; font-size: .9em; }
+
+/* вузьке вікно: поля лягають одне під одним, клітинки лишаються під палець */
+@media (max-width: 520px) {
+  .bs { grid-template-columns: 1fr; }
+  .bs-side { width: min(320px, 100%); }
+}
