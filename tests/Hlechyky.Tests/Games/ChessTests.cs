@@ -664,6 +664,38 @@ public class ChessTests
     }
 
     [Fact]
+    public void A_fischer_king_that_stays_put_is_offered_only_by_its_rook()
+    {
+        // Король уже на g1: «поле короля» тут збіглося б із полем, звідки він ходить, — такий запис зайвий.
+        var h = Table("960");
+        Position(h, "4k3/8/8/8/8/8/8/6KR w H - 0 1", ChessVariant.Fischer);
+        var castle = h.View(0).GetProperty("legal").EnumerateArray()
+            .Where(m => m.GetProperty("castle").ValueKind != JsonValueKind.Null)
+            .Select(m => m.GetProperty("to").GetString() ?? "").ToArray();
+        Assert.Equal(["h1"], castle);
+
+        Assert.True(Move(h, 0, "g1", "h1").Ok);
+        Assert.Equal(".....RK.", h.View(0).GetProperty("board").GetString()![56..]);
+    }
+
+    [Fact]
+    public void A_promotion_comes_to_the_browser_as_four_moves_with_letters()
+    {
+        // Саме з цього модуль розуміє, що треба спитати «у кого перетворити», і що написати на кнопках.
+        var h = Table();
+        Position(h, "4k3/P7/8/8/8/8/8/4K3 w - - 0 1");
+        var promos = h.View(0).GetProperty("legal").EnumerateArray()
+            .Where(m => m.GetProperty("to").GetString() == "a8")
+            .Select(m => m.GetProperty("promo").GetString() ?? "").Order().ToArray();
+        Assert.Equal(["b", "n", "q", "r"], promos);
+
+        var anti = Table("anti");
+        Position(anti, "4k3/P7/8/8/8/8/8/8 w - - 0 1", ChessVariant.Anti);
+        Assert.Contains("k", anti.View(0).GetProperty("legal").EnumerateArray()
+            .Select(m => m.GetProperty("promo").GetString()));
+    }
+
+    [Fact]
     public void The_captured_pieces_and_the_move_list_grow_as_the_game_goes()
     {
         var h = Table();

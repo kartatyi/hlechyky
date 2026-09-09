@@ -307,8 +307,10 @@ public sealed class Chess : Game
                 var from = ChessCore.Name(m.From);
                 wire.Add(new LegalMove(from, ChessCore.Name(m.To), null, side));
                 var king = KingTarget(m);
-                // Другий запис не потрібен, якщо поле те саме або якщо туди й так є простий хід короля.
-                if (king != m.To && !moves.Any(o => o.Kind != ChessMoveKind.Castle && o.From == m.From && o.To == king))
+                // Другий запис зайвий, коли поле те саме, коли король узагалі нікуди не їде (буває в 960)
+                // або коли туди й так є простий хід короля — тоді (from, to) означало б два різні ходи.
+                if (king != m.To && king != m.From
+                    && !moves.Any(o => o.Kind != ChessMoveKind.Castle && o.From == m.From && o.To == king))
                     wire.Add(new LegalMove(from, ChessCore.Name(king), null, side));
                 continue;
             }
