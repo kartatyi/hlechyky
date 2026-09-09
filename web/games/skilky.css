@@ -1,0 +1,94 @@
+/*
+  «Скільки?». Кольори — тільки змінними: спільні зі style.css, свої оголошені тут на :root
+  (модулі читають їх через ctx.css(), а той дивиться саме в :root).
+*/
+:root {
+  --skrow: rgba(244, 197, 66, .12);   /* підсвітка рядка, який узяв очки: те саме золото, що й акцент */
+}
+
+/*
+  Картка міряє себе сама (container-type), а не вікно: столи стоять у сітці
+  repeat(auto-fill, minmax(300px, 1fr)), тож на широкому екрані картка може бути вузькою.
+  Де є місце — рахунок стоїть праворуч, як просить spec; де нема — лягає під таблицю.
+  Браузер без @container просто лишається з нижнім рахунком, і нічого не ламається.
+*/
+.skwrap {
+  container-type: inline-size;
+  display: flex; flex-wrap: wrap; gap: 10px; width: 100%; align-items: flex-start;
+}
+.skmain { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.sktop { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 46px; }
+/* Без uppercase: «Питання 1 з 5» великими читається як «1 3 5» — «З» і трійка тут близнюки. */
+.skno { letter-spacing: .6px; }
+
+/* Питання — головне на картці, тому воно й найбільше. */
+.skq {
+  text-align: center; font-size: 1.15em; line-height: 1.35; font-weight: 600;
+  min-height: 2.6em; display: grid; place-items: center; padding: 0 2px;
+}
+.skq.wait { color: var(--muted); font-weight: 400; font-size: 1em; }
+
+.skask { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.skin {
+  flex: 1 1 130px; min-width: 0; padding: 9px 12px; font-size: 1.15em;
+  font-variant-numeric: tabular-nums; text-align: center;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+}
+.skin:focus { outline: none; border-color: var(--accent2); }
+.skunit { flex: none; }
+.skgo { flex: none; }
+.skmy { text-align: center; min-height: 1.1em; }
+
+/* ---- розкриття ---- */
+.skans { display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.skans b { font-size: 1.5em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.skans i { font-style: normal; color: var(--muted); font-size: .9em; }
+
+.skrows { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.skrow {
+  display: flex; align-items: center; gap: 8px; padding: 5px 9px;
+  background: var(--panel); border-radius: 8px; font-size: .92em;
+}
+.skrow.p3, .skrow.p2, .skrow.p1 { background: var(--skrow); }
+.skrow.p3 { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.skn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skv { font-variant-numeric: tabular-nums; font-weight: 600; }
+.skd { flex: none; }
+.skp { flex: none; min-width: 2.2em; text-align: right; color: var(--accent); font-weight: 600; }
+
+/* ---- хто вже відповів ---- */
+.skwho { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+.skchip {
+  padding: 3px 9px; border-radius: 999px; font-size: .82em; color: var(--muted);
+  border: 1px dashed var(--line); max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.skchip.on { color: var(--ok); border-style: solid; border-color: var(--ok); }
+
+/* ---- рахунок партії ---- */
+.skscore { flex: 1 1 100%; display: flex; flex-direction: column; gap: 2px; }
+/* У лобі рахунку ще нема — порожня колонка не має лишати по собі ні рамки, ні дірки. */
+.skscore:empty { display: none; }
+.sksrow {
+  display: flex; align-items: center; gap: 8px; padding: 3px 9px;
+  font-size: .88em; color: var(--muted); border-radius: 8px;
+}
+.sksrow > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sksrow b { color: var(--text); font-variant-numeric: tabular-nums; }
+.sksrow.win { color: var(--text); background: var(--skrow); }
+
+/* ---- широка картка: рахунок праворуч ---- */
+@container (min-width: 520px) {
+  .skscore { flex: 0 0 150px; padding-left: 12px; border-left: 1px solid var(--line); }
+}
+
+/* ---- телефон: кнопка під полем, нічого не вилазить за 380 px ---- */
+@media (max-width: 420px) {
+  .skq { font-size: 1.05em; }
+  .skin { flex: 1 1 100%; }
+  .skgo { flex: 1 1 100%; justify-content: center; }
+  .skunit { order: -1; width: 100%; text-align: center; }
+  .skchip { max-width: 100%; }
+  .skrow { gap: 6px; padding: 5px 7px; font-size: .86em; }
+  .skd { display: none; }
+}
