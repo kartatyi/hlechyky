@@ -997,9 +997,14 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         _out?.After(() => rooms.Events.Raise(e));
     }
 
+    /// <summary>
+    /// Нуль черепків — не «нічого не сталось», а домовлений сигнал: <c>Award(seat, 0, "ach:&lt;key&gt;")</c> —
+    /// це прохання видати ачівку, якої платформа сама не побачить (ARCHITECTURE §4.3, §8), а
+    /// <c>Award(seat, 0, "daily:&lt;гра&gt;")</c> — «заплати типову щоденну». Тому відсікаємо лише мінус.
+    /// </summary>
     public void Award(int seat, int shards, string reason)
     {
-        if (shards <= 0 || NickOf(seat) is not { } nick) return;
+        if (shards < 0 || string.IsNullOrWhiteSpace(reason) || NickOf(seat) is not { } nick) return;
         var e = new AwardEvent(room.Info.Id, room.Id, nick, shards, reason);
         _out?.After(() => rooms.Events.Raise(e));
     }

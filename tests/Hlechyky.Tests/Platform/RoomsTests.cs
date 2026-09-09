@@ -467,6 +467,22 @@ public class RoomsTests
         Assert.Equal(3, award.Shards);
     }
 
+    [Fact]
+    public void An_award_of_zero_shards_still_reaches_the_services()
+    {
+        // Домовленість ARCHITECTURE §4.3/§8: Award(seat, 0, "ach:<key>") — це прохання видати ачівку,
+        // якої платформа сама не побачить. Відсікати нуль каркасові не можна, інакше мафія й Ерудит
+        // мовчки лишаються без своїх ачівок.
+        var h = new RoomHarness("t-solo");
+        h.Solo("Оля");
+        h.Act(0, "ach");
+
+        var award = Assert.Single(h.Awards);
+        Assert.Equal(0, award.Shards);
+        Assert.Equal("ach:test-key", award.Reason);
+        Assert.Equal("Оля", award.Nick);
+    }
+
     // ---------- види ----------
 
     [Fact]

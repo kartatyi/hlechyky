@@ -80,6 +80,10 @@ public sealed class TestSolo : Game
             case "award":
                 Ctx.Award(seat, 3, "test");
                 return ActResult.Done;
+            case "ach":
+                // нуль черепків — це не «нічого», а прохання видати ачівку (ARCHITECTURE §4.3)
+                Ctx.Award(seat, 0, "ach:test-key");
+                return ActResult.Done;
             case "done":
                 Ctx.Score(seat, _value);
                 Ctx.Finish([seat], "соло: готово");
