@@ -1,0 +1,120 @@
+/*
+  Одяг для джойстика (web/static/pad.js): кільце фокуса, смужка підказок унизу, екранна клавіатура
+  й велика довідка. Нічого з цього не існує, поки пад не взяли в руки: js домальовує елементи сам.
+
+  Шари: вікна сайту — 30, кільце — 40 (має бути видно і у вікні), смужка — 42, клавіатура — 44,
+  довідка — 46.
+*/
+
+/* Кільце — окремий елемент поверх сторінки, а не рамка на кнопці: лобі й ігрові сітки
+   перемальовують свої кнопки десятки разів на хвилину, і рамка з них злітала б. */
+.padring {
+  position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 2px rgba(15, 31, 24, .75), 0 0 16px rgba(244, 197, 66, .45);
+  transition: transform .09s ease-out, width .09s ease-out, height .09s ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .padring { transition: none; } }
+
+/* Смужка підказок. Підписи кнопок ідуть кружечками, тож рядок читається одним поглядом. */
+.padhints {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 10px; z-index: 42;
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center;
+  max-width: min(96vw, 1100px);
+  padding: 6px 12px; border-radius: 999px;
+  background: rgba(22, 41, 31, .94); border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  font-size: 13px; color: var(--muted); line-height: 1.7;
+  backdrop-filter: blur(6px);
+}
+body.pad-kbd .padhints { display: none; }      /* під клавіатурою її власна легенда */
+
+/* Кружечок із підписом кнопки. */
+.pb {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 5px; margin: 0 2px;
+  border-radius: 999px; font-style: normal; font-size: 11px; font-weight: 700;
+  background: var(--panel3); color: var(--text); border: 1px solid var(--line);
+}
+.pb-a { background: var(--ok); color: #10291a; border-color: transparent; }
+.pb-b { background: var(--danger); color: #2a0d0d; border-color: transparent; }
+.pb-x { background: #6ea8e0; color: #0c1c2b; border-color: transparent; }
+.pb-y { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.pb-dpad, .pb-rstick { background: var(--panel2); font-size: 13px; }
+
+/* Поки кермуємо падом, прокрутка до елемента лишає місце під смужку. */
+body.pad-on { scroll-padding-bottom: 64px; }
+
+/* Курсор (R3): стік замість миші — для полиці Ока майстра, розпису й малювання. */
+.padcursor {
+  position: fixed; left: 0; top: 0; z-index: 43; pointer-events: none;
+  width: 22px; height: 22px; margin: -11px 0 0 -11px;
+  border-radius: 50%; border: 2px solid var(--accent);
+  box-shadow: 0 0 0 1px rgba(15, 31, 24, .8), 0 0 10px rgba(244, 197, 66, .5);
+}
+.padcursor::after {
+  content: ''; position: absolute; inset: 8px; border-radius: 50%; background: var(--accent);
+}
+.padcursor.down { border-color: var(--ok); transform-origin: center; }
+.padcursor.down::after { background: var(--ok); inset: 6px; }
+
+/* ---------- екранна клавіатура ---------- */
+
+.padkbd {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 44;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(15, 31, 24, .97); border-top: 1px solid var(--line);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, .5);
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
+}
+.padkbd .pk-head {
+  width: min(680px, 96vw); min-height: 34px; display: flex; align-items: center;
+  padding: 6px 12px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line);
+  font-size: 16px; overflow: hidden; white-space: nowrap;
+}
+.padkbd .pk-txt { overflow: hidden; text-overflow: ellipsis; }
+.padkbd .pk-txt.muted { color: var(--muted); }
+.padkbd .pk-txt::after {
+  content: ''; display: inline-block; width: 2px; height: 1.1em; margin-left: 2px;
+  background: var(--accent); vertical-align: -2px; animation: pkcaret 1s steps(2, start) infinite;
+}
+@keyframes pkcaret { 50% { opacity: 0; } }
+.padkbd .pk-row { display: flex; gap: 5px; }
+.padkbd .pk-key {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 9px;
+  background: var(--panel2); border: 1px solid var(--line);
+  font-size: 18px; text-transform: none;
+}
+.padkbd .pk-key.on {
+  background: var(--accent); color: var(--accent-ink); border-color: transparent;
+  box-shadow: 0 0 0 2px rgba(244, 197, 66, .35); transform: translateY(-1px);
+}
+.padkbd .pk-legend { color: var(--muted); font-size: 12px; line-height: 1.8; text-align: center; }
+
+/* ---------- велика довідка ---------- */
+
+.padhelp {
+  position: fixed; inset: 0; z-index: 46; display: grid; place-items: center; padding: 14px;
+  background: rgba(0, 0, 0, .62); backdrop-filter: blur(4px);
+}
+.padhelp .ph-card {
+  width: min(680px, 96vw); max-height: 92vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 18px; box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+}
+.padhelp h3 { font-family: var(--display); margin: 0 0 10px; font-size: 20px; }
+.padhelp h4 { font-family: var(--display); margin: 16px 0 6px; font-size: 15px; color: var(--accent); }
+.padhelp .ph-map { width: 100%; border-collapse: collapse; font-size: 14px; }
+.padhelp .ph-map td, .padhelp .ph-map th { padding: 5px 6px; vertical-align: top; text-align: left; border-top: 1px solid var(--line); }
+.padhelp .ph-map tr:first-child td, .padhelp .ph-map tr:first-child th { border-top: 0; }
+.padhelp .ph-map th { font-weight: 600; white-space: nowrap; width: 1%; }
+.padhelp .ph-map td:last-child { color: var(--muted); }
+.padhelp .ph-steps { margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--muted); line-height: 1.6; }
+.padhelp .ph-steps b { color: var(--text); }
+.padhelp .ph-foot { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+/* 🎮 у шапці: вхід у довідку. Його видно лише тим, у кого Дек або підключений пад (pad.js). */
+.padtip { border-color: var(--accent); }
+.padtip:hover { background: var(--panel3); }

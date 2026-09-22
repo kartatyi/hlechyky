@@ -119,6 +119,7 @@
     icon: TRON_ICON,
     seatNames: ['жовтий', 'зелений'],
     seatClass: ['x', 'o'],
+    pad: { dirs: true, hint: '{dpad} куди їхати' },
 
     mount(root, ctx) {
       const st = tronState(root, ctx);
@@ -211,6 +212,7 @@
     icon: COOP_ICON,
     seatNames: ['вгору-вниз', 'вліво-вправо'],
     seatClass: ['x', 'o'],
+    pad: { dirs: true, hint: '{dpad} своя вісь' },
 
     mount(root, ctx) {
       const st = coopState(root, ctx);

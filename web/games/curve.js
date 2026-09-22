@@ -249,6 +249,7 @@
     icon: ICON,
     seatNames: ['жовта', 'зелена', 'глиняна', 'біла'],
     seatClass: ['x', 'o', 'c', 'd'],
+    pad: { dirs: 'x', hint: '{dpad} повертати ліворуч-праворуч' },
 
     mount(root, ctx) {
       const st = state(root, ctx);

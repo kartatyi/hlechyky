@@ -18,6 +18,11 @@
   Перевірка дня й ночі: HClicker.sceneTime = '2026-12-20T22:00:00+02:00' (або ?clkTime=… в адресі) — сцена бере цей час.
 */
 (() => {
+  /// Натиск на джойстику — теж людина, просто не мишею: шар пада (web/static/pad.js) ставить
+  /// своїм подіям позначку, а ui.human() її впізнає. Скрізь, де Око майстра питало `isTrusted`,
+  /// тепер стоїть human() — скрипт зі сторони від цього ближче не став.
+  const human = HGames.ui.human;
+
   const SVGNS = 'http://www.w3.org/2000/svg';
   const REDUCED = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const SKY_MS = 20000;                   // як часто перераховуємо небо: сонце за 20 с зсувається на піксель
@@ -1248,7 +1253,7 @@
       closeAt = setTimeout(() => box.classList.remove('open'), 4000);
     };
     btn.addEventListener('click', (e) => {
-      if (!e.isTrusted) return;
+      if (!human(e)) return;
       if (!Snd.on) { Snd.setOn(true, api); openPop(); }
       else if (hover || box.classList.contains('open')) { Snd.setOn(false, api); box.classList.remove('open'); }
       else openPop();

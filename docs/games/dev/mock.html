@@ -6,6 +6,7 @@
 <title>Мок каркаса ігор</title>
 <link rel="stylesheet" href="../../../web/static/style.css">
 <link rel="stylesheet" href="../../../web/games/core.css">
+<link rel="stylesheet" href="../../../web/static/pad.css">
 <style>
   /* Сторінка не в проді — це стенд, тому трохи свого поверх спільних стилів. */
   body { padding: 0; }
@@ -36,6 +37,9 @@
 <div id="toasts" class="toasts"></div>
 
 <!-- модулі підключаємо руками: завантажувач каркаса ходить по абсолютних /games/*.js, яких на file:// нема -->
+<!-- джойстик: фейковий пад + сам шар, як у index.html (до каркаса ігор) -->
+<script src="fakepad.js"></script>
+<script src="../../../web/static/pad.js"></script>
 <script src="../../../web/games/core.js"></script>
 <script src="../../../web/games/ttt.js"></script>
 <script src="../../../web/games/c4.js"></script>

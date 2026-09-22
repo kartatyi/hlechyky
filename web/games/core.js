@@ -315,7 +315,12 @@
     };
   }
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, Interp, timerArc, hand, css: cssVar, coarse };
+  /// Подію зробила людина? Натиск на джойстику — теж людина, просто не мишею: шар пада
+  /// (web/static/pad.js) ставить своїм подіям позначку `hpad`. Скрізь, де захист від скриптів
+  /// питав саме `ev.isTrusted` (Око майстра Гончарного кола), має стояти оце.
+  const human = (ev) => !!ev && (ev.isTrusted || ev.hpad === true);
+
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, Interp, timerArc, hand, css: cssVar, coarse, human };
 
   // =============================================================================================
   // Хаб
@@ -1387,6 +1392,13 @@
       shown = false;
       setFull(false);
       syncWatch();
+    },
+
+    /// Активний стіл — той, що зараз на екрані (шар джойстика питає, чи не забрала гра напрямки собі).
+    /// null — ми не за столом або модуль гри ще не приїхав.
+    active() {
+      const c = activeCard();
+      return c && c.ctx ? { id: c.ctx.room.game, mod: c.mod, ctx: c.ctx, el: c.el } : null;
     },
 
     /// Стіл для рядка балачок: { id, game, icon, title, who, canSit, label } або null, якщо столу вже нема.

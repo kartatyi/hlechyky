@@ -12,6 +12,11 @@
   Звуки: api.sfx('wagon' | 'gift' | 'rank-up' | 'brag').
 */
 (() => {
+  /// Натиск на джойстику — теж людина, просто не мишею: шар пада (web/static/pad.js) ставить
+  /// своїм подіям позначку, а ui.human() її впізнає. Скрізь, де Око майстра питало `isTrusted`,
+  /// тепер стоїть human() — скрипт зі сторони від цього ближче не став.
+  const human = HGames.ui.human;
+
   const ROSTER_MS = 60000;
   const RANKS = ['Учень', 'Челядник', 'Майстер', 'Цехмістр'];
   const RANK_ICON = ['🧑‍🎓', '🛠️', '🏅', '🎖️'];
@@ -443,17 +448,17 @@
     }
     for (const b of body.querySelectorAll('[data-give]')) {
       b.onclick = (e) => {
-        if (!e.isTrusted) return;
+        if (!human(e)) return;
         act(st, api, { op: 'give', key: b.dataset.give, n: +b.dataset.n }, 'wagon').then((r) => { if (r && r.ok) st.guildRoll = Date.now(); });
       };
     }
     for (const b of body.querySelectorAll('[data-brag]')) {
-      b.onclick = (e) => { if (e.isTrusted) act(st, api, { op: 'brag', key: b.dataset.brag }, 'brag').then((r) => { if (r && r.ok) api.closeOverlay(st); }); };
+      b.onclick = (e) => { if (human(e)) act(st, api, { op: 'brag', key: b.dataset.brag }, 'brag').then((r) => { if (r && r.ok) api.closeOverlay(st); }); };
     }
     for (const b of body.querySelectorAll('[data-to]')) b.onclick = () => { st.guildGiftTo = b.dataset.to; renderPicker(st, api); };
     for (const b of body.querySelectorAll('[data-gift]')) {
       b.onclick = (e) => {
-        if (!e.isTrusted || !st.guildGiftTo) return;
+        if (!human(e) || !st.guildGiftTo) return;
         act(st, api, { op: 'gift', nick: st.guildGiftTo, key: b.dataset.gift }, 'gift');
       };
     }
@@ -477,7 +482,7 @@
     if (give) give.onclick = () => openPicker(st, api, 'give');
     for (const b of st.guildBody.querySelectorAll('[data-claim]')) {
       b.onclick = (e) => {
-        if (!e.isTrusted) return;
+        if (!human(e)) return;
         b.disabled = true;
         act(st, api, { op: 'claim', day: b.dataset.claim }, 'wagon').then((r) => {
           if (r && r.ok) api.sparks(st, null, 16, true, 50, 40);
@@ -491,7 +496,7 @@
     if (bragging) bragging.onclick = () => openPicker(st, api, 'brag');
     // Кнопка майстерштука тепер буває і в рядку рангу, і всередині «що потрібно» — вішаємо на обидві.
     for (const master of st.guildBody.querySelectorAll('.clkg-master')) {
-      master.onclick = (e) => { if (e.isTrusted) act(st, api, { op: 'masterpiece' }, null); };
+      master.onclick = (e) => { if (human(e)) act(st, api, { op: 'masterpiece' }, null); };
     }
     const auto = q('.clkg-autobox');
     if (auto) auto.onchange = () => act(st, api, { op: 'auto', on: auto.checked }, null);

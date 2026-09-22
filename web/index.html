@@ -6,6 +6,7 @@
 <title>Глечики</title>
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/pad.css">
 <link rel="stylesheet" href="/games/core.css">
 <link rel="stylesheet" href="/games/tournament.css">
 </head>
@@ -29,6 +30,7 @@
   <div class="who">
     <span id="hdrWallet" class="chip wallet" title="Черепки">🏺 <b>—</b></span>
     <span id="liqStatus" class="chip ok" title="Стан ефіру">ефір</span>
+    <button id="padTip" class="icon padtip" type="button" title="Як грати джойстиком" aria-label="Як грати джойстиком" hidden>🎮</button>
     <span id="nickBtn" class="nick" title="Змінити нік">…</span>
     <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
   </div>
@@ -206,6 +208,8 @@
 <audio id="audio" preload="none"></audio>
 <audio id="voiceAudio" preload="none"></audio>
 <script src="/static/signalr.min.js"></script>
+<!-- джойстик: сам по собі, до всіх — щоб кільце фокуса було вже на першому натиску -->
+<script src="/static/pad.js"></script>
 <!-- каркас ігор — до app.js: той кличе HGames.init() на старті -->
 <script src="/games/core.js"></script>
 <script src="/games/tournament.js"></script>

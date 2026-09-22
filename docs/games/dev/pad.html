@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стенд джойстика</title>
+<link rel="stylesheet" href="../../../web/static/style.css">
+<link rel="stylesheet" href="../../../web/static/pad.css">
+<style>
+  /* Сторінка не в проді — це стенд, тому трохи свого поверх спільних стилів. */
+  body { padding: 0 0 220px; }
+  .wrap { padding: 14px; max-width: 1100px; margin: 0 auto; display: grid; gap: 14px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .log { font: 12px/1.5 ui-monospace, monospace; color: var(--muted); max-height: 140px; overflow: auto; }
+</style>
+</head>
+<body class="route-efir">
+
+<header>
+  <div class="brand"><span id="siteName">Стенд пада</span></div>
+  <nav class="vswitch" id="mainNav" aria-label="Розділи">
+    <button data-route="efir" class="on"><span class="ico">📻</span><span class="lbl">Ефір</span></button>
+    <button data-route="lib"><span class="ico">🎵</span><span class="lbl">Бібліотека</span></button>
+    <button data-route="games"><span class="ico">🎮</span><span class="lbl">Ігри</span></button>
+  </nav>
+  <div class="who">
+    <button id="padTip" class="icon padtip" type="button" title="Як грати джойстиком" hidden>🎮</button>
+    <span id="nickBtn" class="nick">Оля</span>
+    <button id="chatToggle" class="icon" title="Балачки">💬</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="panel">
+    <h2>Кнопки</h2>
+    <div class="grid4">
+      <button>Перша</button><button>Друга</button><button class="primary">Третя</button><button>Четверта</button>
+      <button>П'ята</button><button disabled>Вимкнена</button><button>Сьома</button><button>Восьма</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Поля</h2>
+    <div class="row">
+      <input id="q" type="search" placeholder="знайти…" autocomplete="off">
+      <button class="primary" id="addBtn">Закинути</button>
+    </div>
+    <p class="muted small">Гучність — повзунок: ліворуч-праворуч мають його крутити, а не тікати на сусідню кнопку.</p>
+    <input id="volume" type="range" min="0" max="100" step="5" value="90">
+    <form id="chatForm" class="row" onsubmit="event.preventDefault(); say('submit: ' + chatInput.value); chatInput.value='';">
+      <input id="chatInput" type="text" maxlength="50" placeholder="Отут тяпати…">
+      <button class="primary" type="submit">→</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Полотно (курсор на R3)</h2>
+    <canvas id="cv" width="420" height="180" style="border:1px solid var(--line); border-radius:10px; touch-action:none;"></canvas>
+    <p class="muted small">Малює лише на pointerdown → pointermove → pointerup. Перевіряє режим курсора.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Вікно</h2>
+    <button id="openModal">Відкрити вікно</button>
+  </section>
+
+  <section class="panel">
+    <h2>Що сталось</h2>
+    <div class="log" id="log"></div>
+  </section>
+</div>
+
+<div id="modal" class="modal" hidden>
+  <div class="card">
+    <h3>Тестове вікно</h3>
+    <p class="muted small">Ⓑ має його закрити, кільце — не тікати за межі.</p>
+    <input type="text" placeholder="поле у вікні">
+    <div class="row"><button class="primary" data-ok>Гаразд</button><button class="ghost" data-close>Скасувати</button></div>
+  </div>
+</div>
+
+<script>
+  function say(t) {
+    document.getElementById('log').insertAdjacentHTML('afterbegin',
+      '<div>' + new Date().toLocaleTimeString() + ' — ' + t + '</div>');
+  }
+</script>
+<script src="fakepad.js"></script>
+<script src="../../../web/static/pad.js"></script>
+<script>
+  // Дрібна імітація сайту: маршрути, вікно, балачки, полотно.
+  document.querySelectorAll('#mainNav button').forEach((b) => b.onclick = () => {
+    document.querySelectorAll('#mainNav button').forEach((x) => x.classList.toggle('on', x === b));
+    for (const r of ['efir', 'lib', 'games']) document.body.classList.toggle('route-' + r, b.dataset.route === r);
+    say('розділ: ' + b.dataset.route);
+  });
+  document.getElementById('chatToggle').onclick = () => say('балачки перемкнуто');
+  document.getElementById('addBtn').onclick = () => say('закинуто: ' + document.getElementById('q').value);
+  document.getElementById('volume').oninput = (e) => say('гучність ' + e.target.value);
+  document.getElementById('q').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); say('Enter у пошуку: ' + e.target.value); } };
+  const modal = document.getElementById('modal');
+  document.getElementById('openModal').onclick = () => { modal.hidden = false; say('вікно відкрито'); };
+  modal.querySelector('[data-close]').onclick = () => { modal.hidden = true; say('вікно закрито'); };
+  modal.querySelector('[data-ok]').onclick = () => { modal.hidden = true; say('вікно: гаразд'); };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) { modal.hidden = true; say('вікно закрито Esc'); } });
+  document.querySelectorAll('.grid4 button').forEach((b) => b.onclick = () => say('натиснуто: ' + b.textContent));
+
+  const cv = document.getElementById('cv'), cx = cv.getContext('2d');
+  cx.strokeStyle = '#f4c542'; cx.lineWidth = 3; cx.lineCap = 'round';
+  let drawing = false;
+  const at = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  cv.addEventListener('pointerdown', (e) => { drawing = true; const [x, y] = at(e); cx.beginPath(); cx.moveTo(x, y); say('полотно: почали малювати'); });
+  cv.addEventListener('pointermove', (e) => { if (!drawing) return; const [x, y] = at(e); cx.lineTo(x, y); cx.stroke(); });
+  cv.addEventListener('pointerup', () => { if (drawing) say('полотно: штрих завершено'); drawing = false; });
+</script>
+</body>
+</html>

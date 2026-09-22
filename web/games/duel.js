@@ -203,6 +203,7 @@
     icon: ICON,
     seatNames: ['шериф', 'бандит'],
     seatClass: ['x', 'o'],
+    pad: { a: 'Space', anyBtn: true, hint: '{a} стріляти (будь-яка кнопка) — щойно побачиш сигнал' },
 
     mount(root, ctx) {
       take(build(root, ctx), ctx);

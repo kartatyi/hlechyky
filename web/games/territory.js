@@ -132,6 +132,7 @@
     icon: ICON,
     seatNames: SEATS,
     seatClass: ['x', 'o', 'c', 'd'],
+    pad: { dirs: true, hint: '{dpad} куди бігти' },
 
     mount(root, ctx) {
       const st = state(root, ctx);

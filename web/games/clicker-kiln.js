@@ -16,6 +16,11 @@
   Звуки: kiln-light, kiln-roar (кожні 3 с, поки палає), stoke, damper, crack, ding, open, brush.
 */
 (() => {
+  /// Натиск на джойстику — теж людина, просто не мишею: шар пада (web/static/pad.js) ставить
+  /// своїм подіям позначку, а ui.human() її впізнає. Скрізь, де Око майстра питало `isTrusted`,
+  /// тепер стоїть human() — скрипт зі сторони від цього ближче не став.
+  const human = HGames.ui.human;
+
   /// Та сама модель, що й KilnHeat.cs, — на випадок, коли каталогу ще нема (сервер його шле першим видом).
   const MODEL = {
     stepMs: 100, steps: 300, warm: 80, maxActs: 80, amb: 20, fuel0: 1, log: 0.4, fuelMax: 2.6, chill: 15,
@@ -233,11 +238,11 @@
       play: q('.clkk-play'), score: q('.clkk-score'), risk: q('.clkk-risk'), next: q('.clkk-next'),
       stoke: q('.clkk-stoke'), damp: q('.clkk-damp'), prep: q('.clkk-prep'), last: q('.clkk-last'), top: q('.clkk-top'),
     };
-    st.kUi.stoke.addEventListener('pointerdown', (e) => { if (e.isTrusted && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, STOKE); } });
-    st.kUi.damp.addEventListener('pointerdown', (e) => { if (e.isTrusted && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, st.kb && st.kb.sim.open ? CLOSE : OPEN); } });
+    st.kUi.stoke.addEventListener('pointerdown', (e) => { if (human(e) && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, STOKE); } });
+    st.kUi.damp.addEventListener('pointerdown', (e) => { if (human(e) && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, st.kb && st.kb.sim.open ? CLOSE : OPEN); } });
     for (const b of [st.kUi.stoke, st.kUi.damp]) b.addEventListener('contextmenu', (e) => e.preventDefault());
     st.kKey = (e) => {
-      if (!e.isTrusted || e.repeat || !kilnVisible(st) || !st.kb || api.overlayOpen(st)) return;
+      if (!human(e) || e.repeat || !kilnVisible(st) || !st.kb || api.overlayOpen(st)) return;
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); doAct(st, api, STOKE); }
@@ -691,7 +696,7 @@
       return [((e.clientX - r.left) / r.width) * 1000, ((e.clientY - r.top) / r.height) * 1000];
     };
     svg.addEventListener('pointerdown', (e) => {
-      if (!e.isTrusted || g.sent || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (!human(e) || g.sent || (e.pointerType === 'mouse' && e.button !== 0)) return;
       e.preventDefault();
       try { svg.setPointerCapture(e.pointerId); } catch { /* старий браузер */ }
       g.down = true;
@@ -700,7 +705,7 @@
       addPoint(st, api, g, e.timeStamp, x, y, true);
     });
     svg.addEventListener('pointermove', (e) => {
-      if (!e.isTrusted || !g.down || e.pointerId !== g.pointer || g.sent) return;
+      if (!human(e) || !g.down || e.pointerId !== g.pointer || g.sent) return;
       e.preventDefault();
       const [x, y] = pos(e);
       g.lastPos = [x, y];
@@ -708,7 +713,7 @@
       addPoint(st, api, g, e.timeStamp, x, y, false);
     });
     const up = (e) => {
-      if (!e.isTrusted || e.pointerId !== g.pointer) return;
+      if (!human(e) || e.pointerId !== g.pointer) return;
       g.down = false;
       g.lastPos = null;
       afterStroke(st, api, g);

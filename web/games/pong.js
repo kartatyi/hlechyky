@@ -236,6 +236,7 @@
     icon: ICON,
     seatNames: ['ліва', 'права'],
     seatClass: ['x', 'o'],
+    pad: { dirs: 'y', hint: '{dpad} ракетка вгору-вниз' },
 
     mount(root, ctx) {
       const st = state(root, ctx);

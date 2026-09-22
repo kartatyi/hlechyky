@@ -174,8 +174,27 @@ HGames.register({
   unmount(root, ctx) {},          // прибрати таймери/rAF
   onKey(e, ctx) { return false }, // keydown, коли ця кімната активна; true — оброблено
   status(ctx) { return '' },      // рядок під тілом; порожньо — каркас напише своє
+  pad: { dirs: true, a: 'Space', hint: '{dpad} бігати · {a} бомба' },   // джойстик, якщо грі потрібен стік
 });
 ```
+
+### Джойстик (Steam Deck)
+
+Шар пада живе в `web/static/pad.js` окремо від каркаса й сам водить кільце фокуса по кнопках — покроковій
+грі робити не треба нічого. Стік забирає собі лише та гра, що оголосила `pad` (повна таблиця полів —
+PROTOCOL §3): тоді, поки йде партія, стік і хрестовина шлють справжні `ArrowUp/Down/Left/Right` із `code`,
+а Ⓐ — задану клавішу. Тобто обробник, написаний під клавіатуру, працює з падом без єдиної правки.
+
+Підказку в смужці внизу пише сама гра — `hint`, кнопки у фігурних дужках (`{dpad}`, `{a}`, `{b}`…).
+
+Де раніше стояло `ev.isTrusted` (захист від скриптів), тепер має стояти `ui.human(ev)`: натиск на паді —
+теж людина. Кнопці, яка рахує тривалість натиску, ставлять `data-pad="press"` — Ⓐ шле їй пару
+`pointerdown`/`pointerup`, а не `click`.
+
+Перевіряти без пада: `docs/games/dev/pad.html` (стенд шару) і `docs/games/dev/mock.html` (каркас ігор) —
+обидва підключають `dev/fakepad.js`, який підміняє `navigator.getGamepads` і малює збоку панель із кнопками.
+З консолі: `padHit(0)` — Ⓐ, `padAxis(1, 1)` — стік униз, `padHold(5, true)` — затиснути RB. Ще `?deck=1`
+в адресі вмикає підказки для Деки на будь-якому комп'ютері (`?deck=0` — вимикає).
 
 Заголовок, підказка, група, кількість гравців і опції беруть із каталогу сервера — у модулі їх не дублюють.
 
@@ -204,7 +223,7 @@ ui.keyboardUa(host, onKey(ch), state)     // state: { 'а': 'G'|'Y'|'B' }
 ui.timerArc(host, untilIso, totalMs)      → { el, set(untilIso, totalMs), stop() }
 ui.hand(host, items, { onItem(item, i, on), selectable, multi?, render? }) → { el, selected(), clear() }
 ui.lerp(a, b, t);  ui.Interp() → { push(f), at() → { a, b, t }, reset() }
-ui.css(varName, fallback);  ui.coarse()
+ui.css(varName, fallback);  ui.coarse();  ui.human(ev)   // human: миша, палець, клавіатура або пад
 ```
 
 Усі вони ідемпотентні: кличте з `mount()` і з кожного `update()` — елемент буде один, а колбеки братимуться

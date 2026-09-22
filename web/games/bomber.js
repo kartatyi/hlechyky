@@ -336,6 +336,7 @@
     icon: ICON,
     seatNames: ['жовтий', 'зелений', 'рудий', 'сірий'],
     seatClass: ['x', 'o', 'c', 'd'],
+    pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} бігати · {a} бомба (будь-яка кнопка)' },
 
     mount(root, ctx) {
       const st = state(root, ctx);
@@ -410,7 +411,8 @@
         return alive.length === 1 ? 'Раунд узяв ' + (ctx.nickOf(alive[0]) || ctx.seatName(alive[0])) : 'Раунд нічий';
       }
       if (f.phase === 'over') return '';
-      return ctx.mine ? 'Стрілки або WASD, пробіл — бомба' : 'Дивишся збоку';
+      if (!ctx.mine) return 'Дивишся збоку';
+      return HGames.ui.coarse() ? 'Хрестовина — бігти, 💣 — бомба' : 'Стрілки або WASD, пробіл — бомба';
     },
 
     unmount(root) {

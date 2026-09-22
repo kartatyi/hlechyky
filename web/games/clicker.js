@@ -30,6 +30,11 @@
     wear { key }, answer { taps: [[x, y], …] }.
 */
 (() => {
+  /// Натиск на джойстику — теж людина, просто не мишею: шар пада (web/static/pad.js) ставить
+  /// своїм подіям позначку, а ui.human() її впізнає. Скрізь, де Око майстра питало `isTrusted`,
+  /// тепер стоїть human() — скрипт зі сторони від цього ближче не став.
+  const human = HGames.ui.human;
+
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<ellipse cx="8" cy="12.2" rx="6.2" ry="2.3" fill="none" stroke="var(--muted)" stroke-width="1.3"/>'
     + '<path d="M5.6 10.8V7.4c0-1 .8-1.3.8-2.1V3.6h3.2v1.7c0 .8.8 1.1.8 2.1v3.4z" fill="var(--clay)"/></svg>';
@@ -592,7 +597,7 @@
 
   /// Кнопка «Показати полицю»: лише справжній натиск і лише озброєної кнопки. Відтак торкання картинки рахуються.
   function openShelf(st, ev) {
-    if (!ev.isTrusted || !st.guard || st.eye.go.disabled) return;
+    if (!human(ev) || !st.guard || st.eye.go.disabled) return;
     st.eyeOpen = true;
     paintEye(st);
   }
@@ -602,7 +607,7 @@
   /// Координати — у пікселях картинки, як їх чекає сервер.
   function tapShelf(st, ev) {
     const g = st.guard;
-    if (!ev.isTrusted || !g || !g.png || !st.eyeOpen || st.eyeBusy || !st.ctx) return;
+    if (!human(ev) || !g || !g.png || !st.eyeOpen || st.eyeBusy || !st.ctx) return;
     if (g.lockUntil && g.lockUntil > serverNow(st)) return;
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
@@ -836,7 +841,7 @@
 
   /// Натиснули на коло: запам'ятовуємо мить і точку, а кліком це стане, коли відпустять.
   function pressWheel(st, ev) {
-    if (!ev.isTrusted || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    if (!human(ev) || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
     const [x, y] = spot(st, ev);
     st.downs.set(ev.pointerId, { t: ev.timeStamp, x, y, src: SRC[ev.pointerType] ?? SRC.mouse });
   }
@@ -847,7 +852,7 @@
     const d = st.downs.get(ev.pointerId);
     if (!d) return;
     st.downs.delete(ev.pointerId);
-    if (!ev.isTrusted || ev.type === 'pointercancel' || ev.timeStamp - d.t > HOLD_MS) return;
+    if (!human(ev) || ev.type === 'pointercancel' || ev.timeStamp - d.t > HOLD_MS) return;
     spin(st, d.t, ev.timeStamp - d.t, d.x, d.y, d.src);
   }
 
@@ -906,7 +911,7 @@
   }
 
   function catchGolden(st, ev) {
-    if (!ev.isTrusted || !st.golden || !st.mine || guardOn(st)) return;
+    if (!human(ev) || !st.golden || !st.mine || guardOn(st)) return;
     st.goldenGone = st.golden.at;      // ховаємо одразу: другий клік по тому самому глеку — лише червоний тост
     st.gold.hidden = true;
     order(st, 'catch');
@@ -914,7 +919,7 @@
 
   /// Спіймали глек з полиці: ховаємо, малюємо «+N» (суму знає вид — fall.gain) і золоті іскри там, де він був.
   function grabFall(st, ev) {
-    if (!ev.isTrusted || !st.fall || !st.mine || guardOn(st)) return;
+    if (!human(ev) || !st.fall || !st.mine || guardOn(st)) return;
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     const f = st.fall;
@@ -1456,6 +1461,22 @@
     seatNames: ['гончар'],
     seatClass: ['c'],
 
+    /// Джойстик. Напрямки собі не забираємо (`dirs` нема): стіком тут ходять по кнопках майстерні,
+    /// а коло крутить Ⓐ — воно позначене data-pad="press", тож натиск приходить парою pointerdown/up
+    /// зі справжньою тривалістю, як від пальця. Розписний глек і глек з полиці літають самі по собі
+    /// й кільцем їх не спіймаєш — вони на Ⓧ.
+    pad: {
+      hint: '{a} крутити коло · {x} ловити глек · {dpad} по майстерні',
+      on(btn, ctx) {
+        const st = ctx.clk;
+        if (btn !== 'x' || !st) return false;
+        const ev = { hpad: true, pointerType: 'mouse', button: 0, preventDefault() {} };
+        if (st.fall && !st.fallEl.hidden) { grabFall(st, ev); return true; }
+        if (st.golden && !st.gold.hidden) { catchGolden(st, ev); return true; }
+        return false;                       // ловити нема чого — хай Ⓧ відкриє балачки, як усюди
+      },
+    },
+
     mount(root, ctx) {
       const st = state(root);
       // Картка — на всю ширину сітки столів (див. .clk-wide у css): інакше сцена й полиці лягали б одним стовпчиком.
@@ -1477,7 +1498,7 @@
         + '<div class="clk-wheelbox">'
         + '<svg class="clk-heat" viewBox="0 0 100 100" aria-hidden="true"><circle class="bg" cx="50" cy="50" r="47"/>'
         + '<circle class="fg" cx="50" cy="50" r="47"/></svg>'
-        + '<button type="button" class="clk-wheel" aria-label="Крутити коло">'
+        + '<button type="button" class="clk-wheel" aria-label="Крутити коло" data-pad="press" data-pad-first>'
         // Крутиться сам круг із борознами й цяткою (без неї обертання ідеального кола не видно),
         // а глек стоїть рівно: гончар його тримає.
         + '<svg viewBox="0 0 100 100" aria-hidden="true">'
@@ -1624,7 +1645,7 @@
         if (e.code !== 'Space' || !st.keyDown) return;
         const down = st.keyDown;
         st.keyDown = 0;
-        if (!e.isTrusted || e.timeStamp - down > HOLD_MS) return;
+        if (!human(e) || e.timeStamp - down > HOLD_MS) return;
         spin(st, down, e.timeStamp - down, -1, -1, SRC.key);
       };
       document.addEventListener('keyup', st.onKeyUp);
@@ -1776,7 +1797,7 @@
       if (on && on !== st.wheel && st.el && st.el.contains(on) && on.closest('button,summary,a,input,select,textarea,[tabindex]')) return false;
       if (H.api.overlayOpen(st)) return false;
       // Затиснутий пробіл сипле keydown з repeat — це не клацання, а автоповтор клавіатури.
-      if (!e.isTrusted || e.repeat || guardOn(st)) return true;
+      if (!human(e) || e.repeat || guardOn(st)) return true;
       if (!st.keyDown) st.keyDown = e.timeStamp;
       return true;
     },

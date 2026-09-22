@@ -359,6 +359,7 @@
     icon: ICON,
     seatNames: ['жовтий', 'зелений', 'рудий', 'сірий', 'синій', 'рожевий'],
     seatClass: ['x', 'o', 'c', 'd', 'tb', 'tp'],
+    pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} їхати · {a} стріляти (будь-яка кнопка)' },
 
     mount(root, ctx) {
       const st = state(root, ctx);

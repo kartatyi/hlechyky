@@ -15,6 +15,11 @@
   Звуки: guest, coin, deal, refuse, event, rep-up.
 */
 (() => {
+  /// Натиск на джойстику — теж людина, просто не мишею: шар пада (web/static/pad.js) ставить
+  /// своїм подіям позначку, а ui.human() її впізнає. Скрізь, де Око майстра питало `isTrusted`,
+  /// тепер стоїть human() — скрипт зі сторони від цього ближче не став.
+  const human = HGames.ui.human;
+
   const CHRON_MS = 60000;                 // хроніка — раз на хвилину, і лише коли стрічка вільна
   const NOTE_MS = 7000;                   // скільки висить «відкрилось: …»
   const GRACE_MS = 2000;                  // той самий запас, що й на сервері (CatchGrace)
@@ -265,7 +270,7 @@
     if (api.swap(el, html)) {
       countdowns(st, api, el);
       const btn = el.querySelector('.clkf-fbtn');
-      if (btn && f.run) btn.onclick = (ev) => { if (ev.isTrusted) f.run(); };
+      if (btn && f.run) btn.onclick = (ev) => { if (human(ev)) f.run(); };
     }
   }
 
@@ -290,7 +295,7 @@
       + '</div>', { cls: 'clkf-evov' });
     for (const b of body.querySelectorAll('[data-pick]')) {
       b.onclick = (ev) => {
-        if (!ev.isTrusted || !e) return;
+        if (!human(ev) || !e) return;
         for (const x of body.querySelectorAll('[data-pick]')) x.disabled = true;
         api.act(st, 'fair', { op: 'choose', id: e.id, pick: +b.dataset.pick }).then((r) => {
           api.closeOverlay(st);
@@ -351,7 +356,7 @@
   function catchGuest(st, api, ev) {
     const k = st.fair;
     const g = k.guest;
-    if (!ev.isTrusted || !g || !st.mine || api.guardOn(st)) return;
+    if (!human(ev) || !g || !st.mine || api.guardOn(st)) return;
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     k.guestGone = g.at;
@@ -475,7 +480,7 @@
 
   function deliver(st, api, ev, id, bid) {
     const k = st.fair;
-    if (!ev || !ev.isTrusted || !st.mine) return;
+    if (!ev || !human(ev) || !st.mine) return;
     const card = k.ordersEl.querySelector('[data-order="' + id + '"]');
     for (const x of (card ? card.querySelectorAll('[data-bid]') : [])) x.disabled = true;
     api.act(st, 'fair', { op: 'deliver', id, bid }).then((r) => {

@@ -74,6 +74,7 @@
     icon: ICON,
     seatNames: ['жовта', 'зелена'],
     seatClass: ['x', 'o'],
+    pad: { dirs: true, hint: '{dpad} куди повзти' },
 
     mount(root, ctx) {
       const st = state(root, ctx);
