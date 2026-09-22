@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -25,7 +25,7 @@ public static class Deploy
 
     public static async Task<IResult> HandleAsync(HttpContext ctx, DeployOptions opt, ILogger log)
     {
-        if (!opt.Enabled || string.IsNullOrWhiteSpace(opt.WebhookSecret)) return Results.NotFound();
+        if (string.IsNullOrWhiteSpace(opt.WebhookSecret)) return Results.NotFound();
         if (ctx.Request.ContentLength > 1_000_000) return Results.StatusCode(413);
 
         using var buffer = new MemoryStream();
@@ -39,6 +39,14 @@ public static class Deploy
         }
 
         var evt = ctx.Request.Headers["X-GitHub-Event"].ToString();
+        // Вимкнений деплой мовчати не має права: 22.09.2026 його погасили на час роботи й забули ввімкнути,
+        // а зелена збірка так і не викотилась — шукали причину в вебхуку, GitHub і скрипті, хоч усе було в
+        // одному рядку налаштувань. Підпис уже перевірено, тож пишемо в лог і йдемо геть тим самим 404.
+        if (!opt.Enabled)
+        {
+            log.LogWarning("Деплой: вимкнено в налаштуваннях (Deploy:Enabled = false) — подію {Event} пропускаю", evt);
+            return Results.NotFound();
+        }
         if (evt == "ping") return Ignored("Глечики слухають");
         if (evt != "workflow_run") return Ignored($"Подія {evt} мене не обходить");
 

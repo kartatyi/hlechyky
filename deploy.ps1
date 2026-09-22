@@ -30,6 +30,8 @@ $Start = Join-Path $Root 'start.ps1'
 $LogFile = Join-Path $Root 'logs\deploy.log'
 $LockFile = Join-Path $Root 'data\deploy.lock'
 $BuiltFile = Join-Path $Root 'data\built.sha'
+$TriedFile = Join-Path $Root 'data\deploy.tried'
+$WaitFile = Join-Path $Root 'data\deploy.waiting'
 $Branch = 'main'
 
 New-Item -ItemType Directory -Force (Join-Path $Root 'logs'), (Join-Path $Root 'data') | Out-Null
@@ -167,13 +169,25 @@ try {
     }
 
     # Незакомічене чіпати не можна: merge його зіб'є, а restart зібрав би прод із недоробленого.
+    # Але це не провал деплою, а «не зараз»: позначку про спробу (data\deploy.tried) знімаємо, щоб опитувач
+    # повернувся до цього коміту, щойно робоча копія стане чистою. Без цього одна відмова ховала зелену
+    # збірку до самого наступного пуша, і виглядало це так, ніби автодеплою просто нема.
+    # Щоб лог не заповнювався тим самим щотри хвилини, повний список пишемо лише коли він змінився.
     $dirty = Get-Git @('status', '--porcelain')
     if ($dirty -and -not $Force) {
-        Write-Log 'СТОП: у робочій копії є незакомічені зміни, нічого не чіпаю:'
-        foreach ($line in $dirty -split "`n") { if ($line.Trim()) { Write-Log "    $($line.TrimEnd())" } }
-        Write-Log 'Закоміть або сховай їх (git stash) — і наступний коміт деплой підхопить сам. Дуже треба зараз: deploy.ps1 -Force'
+        $mark = "$target`n$dirty"
+        $seen = ''
+        if (Test-Path $WaitFile) { $seen = [string](Get-Content $WaitFile -Raw -Encoding UTF8) }   # порожній файл дає $null
+        if ($seen.Trim() -ne $mark.Trim()) {
+            Write-Log "СТОП: у робочій копії є незакомічені зміни, нічого не чіпаю (чекає $(Short $target)):"
+            foreach ($line in $dirty -split "`n") { if ($line.Trim()) { Write-Log "    $($line.TrimEnd())" } }
+            Write-Log 'Закоміть або сховай їх (git stash) — і деплой підхопить сам, без нового пуша. Дуже треба зараз: deploy.ps1 -Force'
+            try { Set-Content $WaitFile $mark -Encoding UTF8 } catch { }
+        }
+        Remove-Item $TriedFile -Force -ErrorAction SilentlyContinue
         return
     }
+    Remove-Item $WaitFile -Force -ErrorAction SilentlyContinue
 
     if ($needPull) {
         $incoming = Get-Git @('log', '--oneline', '--no-decorate', "$before..$target")
