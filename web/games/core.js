@@ -86,8 +86,9 @@
     for (let i = 0; i < seatCount(room); i++) if (sameNick(nickAt(room, i), me.nick)) return i;
     return null;
   }
-  /// Сидиш за одним мультиплеєрним столом — за інший не сядеш (соло не рахується).
-  const seatedElsewhere = (exceptId) => rooms.some((r) => r.id !== exceptId && (r.maxPlayers > 1) && seatOfMe(r) !== null);
+  /// Інший стіл, за яким ми вже сидимо, або null. Сервер тримає нас щонайбільше за одним
+  /// мультиплеєрним столом (Rooms.Join, Say.Seated), соло не рахується — тож він завжди один.
+  const seatedAt = (exceptId) => rooms.find((r) => r.id !== exceptId && r.maxPlayers > 1 && seatOfMe(r) !== null) || null;
 
   const gameOf = (id) => byId[id] || null;
   const titleOf = (id) => (byId[id] && byId[id].title) || id;
@@ -360,6 +361,60 @@
       }, PIN_TTL);
     }
     return r;
+  }
+
+  /// Так/ні окремим вікном. Проміс: true — натиснули дію, false — передумали (Скасувати, Esc, клік повз картку).
+  /// `html` уже екранований тим, хто його зібрав; `text` екрануємо самі.
+  function ask(o) {
+    return new Promise((done) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'modal gmodal gask';
+      wrap.innerHTML = '<div class="card">'
+        + '<h3>' + esc(o.title || 'Точно?') + '</h3>'
+        + '<div class="gask-text">' + (o.html || esc(o.text || '')) + '</div>'
+        + '<div class="grow"><button class="primary" type="button" data-yes data-pad-first>' + esc(o.ok || 'Гаразд') + '</button>'
+        + '<button class="ghost" type="button" data-close>' + esc(o.cancel || 'Скасувати') + '</button></div></div>';
+      const close = (v) => {
+        if (!wrap.isConnected) return;
+        wrap.remove();
+        document.removeEventListener('keydown', onKey, true);
+        done(v);
+      };
+      // Ловимо Esc раніше за всіх: інакше він вийшов би ще й зі столу, над яким висить це вікно.
+      const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); } };
+      wrap.addEventListener('click', (e) => { if (e.target === wrap) close(false); });
+      wrap.querySelector('[data-close]').onclick = () => close(false);
+      wrap.querySelector('[data-yes]').onclick = () => close(true);
+      document.body.appendChild(wrap);
+      document.addEventListener('keydown', onKey, true);
+      wrap.querySelector('[data-yes]').focus();
+    });
+  }
+
+  /// Сісти за стіл. Сидиш за іншим — раніше кнопки просто не було, і доводилось іти назад, вставати,
+  /// вертатись і сідати знову. Тепер питаємо тут і встаємо самі. true — сіли.
+  async function joinRoom(id, btn) {
+    const other = seatedAt(id);
+    if (other) {
+      const playing = other.status === 'playing';
+      const stake = playing && other.stake ? ', а ставка 🏺' + other.stake + ' лишиться суперникові' : '';
+      const ok = await ask({
+        title: 'Ти вже за столом',
+        html: '<b>' + iconOf(other.game) + esc(titleOf(other.game)) + '</b>'
+          + (playing
+            ? ' — там іде партія. Якщо встанеш зараз, вона зарахується як поразка' + stake + '.'
+            : ' — партія ще не почалась, встати можна без наслідків.'),
+        ok: playing ? 'Все одно встати й сісти' : 'Встати і сісти сюди',
+        cancel: 'Лишитись там',
+      });
+      if (!ok) return false;
+    }
+    // Кнопку крутимо лише навколо самих викликів: поки людина читає питання, «сідаю…» на ній недоречне.
+    const sit = async () => {
+      if (other && !(await call('LeaveRoom', other.id)).ok) return false;
+      return !!(await call('JoinRoom', id)).ok;
+    };
+    return btn ? !!(await busy(btn, 'сідаю…', sit)) : sit();
   }
 
   /// Кадри просимо лише для відкритого столу, щойно відкритих приватних кімнат і тих, де сидимо:
@@ -668,7 +723,7 @@
         : free ? 'чекає гравців' : 'ось-ось почнуть';
     const btns = mine
       ? '<button class="primary" data-open="' + esc(r.id) + '">Відкрити</button>'
-      : (free > 0 && !seatedElsewhere(r.id) ? '<button class="primary" data-sit="' + esc(r.id) + '">Сісти</button>' : '')
+      : (free > 0 ? '<button class="primary" data-sit="' + esc(r.id) + '">Сісти</button>' : '')
         + '<button data-open="' + esc(r.id) + '">Дивитись</button>';
     return '<div class="gsum' + (mine ? ' mine' : '') + '">'
       + '<div class="gs-head"><span class="gtitle">' + iconOf(r.game) + esc(titleOf(r.game)) + '</span>'
@@ -721,10 +776,9 @@
     box.querySelectorAll('[data-solo]').forEach((b) => b.onclick = (e) =>
       busy(e.currentTarget, 'відкриваю…', () => openRoom('OpenSolo', b.dataset.solo, null)));
     box.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => go('#games/room/' + encodeURIComponent(b.dataset.open)));
-    box.querySelectorAll('[data-sit]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, 'сідаю…', async () => {
-      const r = await call('JoinRoom', b.dataset.sit);
-      if (r.ok) go('#games/room/' + encodeURIComponent(b.dataset.sit));
-    }));
+    box.querySelectorAll('[data-sit]').forEach((b) => b.onclick = async (e) => {
+      if (await joinRoom(b.dataset.sit, e.currentTarget)) go('#games/room/' + encodeURIComponent(b.dataset.sit));
+    });
   }
 
   function renderExtra(box, id) {
@@ -945,7 +999,7 @@
     const out = [];
     // Дограний стіл із вільним місцем сервер віддає новому гравцеві (Rooms.Join, гілка reopen),
     // тож статус тут не питаємо — інакше стіл висів би в лобі до прибиральника, і сісти нікому.
-    const canSit = !solo && rv.seat == null && freeSeat(r) >= 0 && !seatedElsewhere(r.id);
+    const canSit = !solo && rv.seat == null && freeSeat(r) >= 0;
     if (canSit) out.push('<button class="primary" data-do="JoinRoom">Сісти</button>');
     // «Ще раз» пропонуємо лише коли є з ким: інакше кнопка є, а сервер відповідає «Замало гравців»
     if (!solo && rv.seat != null && r.status === 'finished' && takenSeats(r) >= r.minPlayers)
@@ -970,24 +1024,24 @@
     const mod = modules[rv.room.game] || null;
     if (mod && card.mod !== mod) card.mod = mod;
 
-    // seatedElsewhere — стан ЧУЖОГО столу, але від нього залежить кнопка «Сісти» тут: без нього
-    // людина, яка щойно встала з іншого столу, лишалась би без кнопки, поки в цій кімнаті щось не зміниться
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
-      rv.room.options, rv.room.result, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
-      rv.seat == null && seatedElsewhere(rv.room.id)]);
+      rv.room.options, rv.room.result, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
     if (sig !== card.sig) {
       card.sig = sig;
       card.head.innerHTML = headHtml(rv);
       card.btns.innerHTML = btnsHtml(rv);
-      card.btns.querySelectorAll('[data-do]').forEach((b) => b.onclick = (e) =>
-        busy(e.currentTarget, '…', async () => {
+      card.btns.querySelectorAll('[data-do]').forEach((b) => b.onclick = async (e) => {
+        // «Сісти» йде через joinRoom: він сам спитає, чи вставати з попереднього столу, і сам крутить кнопку.
+        if (b.dataset.do === 'JoinRoom') { await joinRoom(id, e.currentTarget); return; }
+        await busy(e.currentTarget, '…', async () => {
           const r = await call(b.dataset.do, id);
           if (r.ok && b.dataset.do === 'LeaveRoom') {
             // приватну соло-кімнату сервер із лобі не прибере — прибираємо картку самі
             if (views[id] && views[id].loose) { dropCard(id); delete views[id]; pinned.delete(id); }
             if (view.kind === 'room' && view.id === id) go('#games'); else renderView();
           }
-        }));
+        });
+      });
       card.el.classList.toggle('mine', rv.seat != null);
     }
 
@@ -1187,7 +1241,7 @@
     if (!r) return null;
     const all = seatCount(r), took = takenSeats(r), free = all - took;
     const mine = seatOfMe(r) != null;
-    const canSit = !mine && r.status === 'lobby' && free > 0 && !seatedElsewhere(id);
+    const canSit = !mine && r.status === 'lobby' && free > 0;
     return {
       id: r.id,
       game: r.game,
@@ -1201,10 +1255,10 @@
     };
   }
 
-  async function sitAt(id) {
-    const r = await call('JoinRoom', id);
-    if (r.ok) go('#games/room/' + encodeURIComponent(id));
-    return r;
+  async function sitAt(id, btn) {
+    const ok = await joinRoom(id, btn);
+    if (ok) go('#games/room/' + encodeURIComponent(id));
+    return { ok, message: '' };
   }
 
   const openAt = (id) => go('#games/room/' + encodeURIComponent(id));
@@ -1228,11 +1282,9 @@
       + '<span class="gi-text">' + esc(inv.text) + '<br><span class="muted small">' + esc(link.who) + '</span></span>'
       + '<button class="primary gi-sit">Сісти</button>'
       + '<button class="ghost gi-no" title="Не зараз" aria-label="Не зараз">✕</button>';
-    el.querySelector('.gi-sit').onclick = (e) => busy(e.currentTarget, 'сідаю…', async () => {
-      const r = await sitAt(inv.roomId);
-      if (r.ok) el.remove();
-      return r;
-    });
+    el.querySelector('.gi-sit').onclick = async (e) => {
+      if ((await sitAt(inv.roomId, e.currentTarget)).ok) el.remove();
+    };
     el.querySelector('.gi-no').onclick = () => el.remove();
     box.appendChild(el);
     ensureIcon(link.game, () => { const w = el.querySelector('.gi-what'); if (w) w.innerHTML = iconOf(link.game); });

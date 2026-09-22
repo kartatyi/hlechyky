@@ -965,7 +965,7 @@
     // Іконка гри приходить із її модулем, а він міг ще не завантажитись: домалюємо, щойно прилетить.
     if (HGames.ensureIcon) HGames.ensureIcon(link.game, paint);
     b.onclick = () => ((HGames.roomLink(id) || link).canSit
-      ? busy(b, 'сідаю…', () => HGames.sitAt(id))
+      ? HGames.sitAt(id, b)          // питання «встати з попереднього столу?» має бути видно до того, як кнопка закрутиться
       : HGames.openAt(id));
     return b;
   }

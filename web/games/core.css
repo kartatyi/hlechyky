@@ -217,6 +217,12 @@
 .grow { display: flex; gap: 8px; }
 .grow .primary { flex: 1; justify-content: center; }
 
+/* ---- попап «ти вже за столом» ---- */
+.gask .card { max-width: 380px; }
+.gask-text { color: var(--muted); font-size: .92em; line-height: 1.5; }
+.gask-text b { color: var(--text); display: inline-flex; align-items: center; gap: 4px; }
+.gask-text b .gico { width: 18px; height: 18px; }
+
 /* ---- профіль ---- */
 .gprofile { display: flex; flex-direction: column; gap: 10px; }
 .gp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 1.15em; }
