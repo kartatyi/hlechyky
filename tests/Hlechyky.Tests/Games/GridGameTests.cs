@@ -266,4 +266,172 @@ public class GridGameTests
             Assert.NotEmpty(game.Hint);
         }
     }
+
+    // ---------- нічний прохід 24.09: останній хід, здатись, серія ----------
+
+    [Fact]
+    public void The_view_points_at_the_last_move()
+    {
+        var h = Table("c4");
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("last").ValueKind);
+        Move(h, 0, 3);
+        Assert.Equal(5 * 7 + 3, h.View(0).GetProperty("last").GetInt32());   // клітинка, куди впала фішка, а не колонка
+        Assert.Equal(4, h.View(0).GetProperty("need").GetInt32());
+    }
+
+    [Fact]
+    public void Resigning_hands_the_game_to_the_opponent_even_out_of_turn()
+    {
+        var h = Table("c4");
+        Move(h, 0, 3);
+        Assert.Equal("Здався", h.Act(0, "resign").Message);
+        Assert.Equal([1], h.Room.Result!.Winners);
+        Assert.Equal("o", h.View(0).GetProperty("winner").GetString());
+        Assert.Contains("здався", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(1, "resign").Message);
+    }
+
+    [Fact]
+    public void Leaving_mid_game_still_is_a_technical_loss_on_two()
+    {
+        var h = Table();
+        Move(h, 0, 4);
+        h.Leave("Оля");
+        Assert.Equal([1], h.Room.Result!.Winners);
+        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void Series_score_rides_along_with_rematches()
+    {
+        var h = Table();
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("series").ValueKind);
+        foreach (var (seat, cell) in new[] { (0, 0), (1, 3), (0, 1), (1, 4), (0, 2) }) Move(h, seat, cell);   // Оля
+        h.Rematch();
+        foreach (var (seat, cell) in new[] { (0, 0), (1, 3), (0, 1), (1, 4), (0, 2) }) Move(h, seat, cell);   // Петро тепер ✕
+        var s = h.View(0).GetProperty("series");
+        Assert.Equal([1, 1], s.GetProperty("wins").EnumerateArray().Select(e => e.GetInt32()));
+        Assert.Equal(2, s.GetProperty("games").GetInt32());
+    }
+
+    // ---------- «Чотири в ряд» на компанію ----------
+
+    static RoomHarness Party(params string[] nicks)
+    {
+        var h = new RoomHarness("c4x");
+        foreach (var n in nicks) h.Join(n);
+        Assert.True(h.Start().Ok);
+        return h;
+    }
+
+    [Fact]
+    public void Party_table_is_three_or_four_and_waits_for_the_host()
+    {
+        var info = Assert.Single(new Registry().Catalog, g => g.Id == "c4x");
+        Assert.Equal(3, info.MinPlayers);
+        Assert.Equal(4, info.MaxPlayers);
+        Assert.Equal("byHost", info.Start);
+        Assert.Equal("c4", info.Module);
+
+        var h = new RoomHarness("c4x");
+        h.Join("Оля");
+        h.Join("Петро");
+        Assert.False(h.Start().Ok);                        // удвох — це класичні «Чотири в ряд»
+        h.Join("Марко");
+        Assert.True(h.Start().Ok);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void Board_grows_with_the_crew()
+    {
+        var three = Party("Оля", "Петро", "Марко");
+        Assert.Equal(9, three.View(0).GetProperty("width").GetInt32());
+        Assert.Equal(7, three.View(0).GetProperty("height").GetInt32());
+        var four = Party("Оля", "Петро", "Марко", "Іра");
+        Assert.Equal(10, four.View(0).GetProperty("width").GetInt32());
+        Assert.Equal(8, four.View(0).GetProperty("height").GetInt32());
+        Assert.Equal(["●", "▲", "■", "◆"], four.View(null).GetProperty("marks").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public void Party_turns_go_round_all_three_and_everyone_has_a_colour()
+    {
+        var h = Party("Оля", "Петро", "Марко");
+        Move(h, 0, 0);
+        Assert.Equal(1, h.View(0).GetProperty("turn").GetInt32());
+        Move(h, 1, 1);
+        Assert.Equal(2, h.View(0).GetProperty("turn").GetInt32());
+        Move(h, 2, 2);
+        Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
+        var cells = Cells(h);
+        Assert.Equal("x", cells[6 * 9 + 0]);
+        Assert.Equal("o", cells[6 * 9 + 1]);
+        Assert.Equal("c", cells[6 * 9 + 2]);
+        Assert.Equal("Зараз не твій хід", Move(h, 2, 5).Message);
+    }
+
+    [Fact]
+    public void Third_seat_can_win_the_party_game()
+    {
+        var h = Party("Оля", "Петро", "Марко");
+        // Марко складає вертикаль у колонці 8, решта кидає куди прийдеться, не заважаючи.
+        foreach (var (seat, col) in new[] { (0, 0), (1, 1), (2, 8), (0, 0), (1, 1), (2, 8), (0, 2), (1, 3), (2, 8), (0, 4), (1, 5), (2, 8) })
+            Move(h, seat, col);
+        Assert.Equal([2], h.Room.Result!.Winners);
+        Assert.Equal("c", h.View(0).GetProperty("winner").GetString());
+        Assert.Contains("Марко", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void Party_player_who_leaves_drops_out_and_the_rest_play_on()
+    {
+        var h = Party("Оля", "Петро", "Марко");
+        Move(h, 0, 0);
+        h.Leave("Петро");                                    // зараз якраз його черга
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(2, h.View(0).GetProperty("turn").GetInt32());
+        Assert.False(h.View(0).GetProperty("active")[1].GetBoolean());
+        Move(h, 2, 3);
+        Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());   // Петра черга оминає
+        Assert.Equal("x", Cells(h)[6 * 9 + 0]);
+    }
+
+    [Fact]
+    public void Last_one_standing_wins_the_party_game()
+    {
+        var h = Party("Оля", "Петро", "Марко");
+        Assert.True(h.Act(1, "resign").Ok);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal("Ти вже здався", h.Act(1, "resign").Message);
+        h.Leave("Оля");
+        Assert.Equal([2], h.Room.Result!.Winners);
+    }
+
+    [Fact]
+    public void Party_full_board_is_a_draw_for_everyone()
+    {
+        var h = Party("Оля", "Петро", "Марко");
+        // Послідовність колонок, за якої на 9×7 ні в кого не складається четвірки (знайдена перебором).
+        int[] cols = [1, 0, 4, 3, 2, 7, 0, 6, 3, 2, 1, 1, 2, 7, 1, 0, 6, 3, 0, 6, 0, 2, 5, 8, 8, 1, 0, 1, 1, 8, 8, 3, 5, 3, 8, 7, 8, 8,
+            2, 3, 3, 6, 5, 2, 2, 7, 5, 0, 5, 4, 6, 5, 4, 6, 5, 4, 4, 6, 4, 7, 7, 4, 7];
+        for (var i = 0; i < cols.Length; i++) Assert.True(Move(h, i % 3, cols[i]).Ok);
+
+        Assert.True(h.Room.Result!.Draw);
+        Assert.Equal("draw", h.View(0).GetProperty("winner").GetString());
+        Assert.Contains("Оля жовті, Петро зелені і Марко руді зіграли внічию", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
+    public void Party_rematch_rotates_who_starts()
+    {
+        var h = Party("Оля", "Петро", "Марко");
+        h.Act(0, "resign");
+        h.Act(1, "resign");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(h.Rematch().Ok);
+        Assert.Equal("Петро", h.Room.Seats[0]);
+        Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
+        Assert.All(Cells(h), c => Assert.Null(c));
+    }
 }

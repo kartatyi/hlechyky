@@ -21,13 +21,25 @@
   const FILES = 'abcdefgh';
 
   const nameOf = (sq) => FILES[sq % 8] + (8 - (sq / 8 | 0));
+  const sqOf = (nm) => (8 - +nm[1]) * 8 + FILES.indexOf(nm[0]);
+  const SLIDE_MS = 260;
+  const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /// Чим скінчилась партія — людськими словами (view.result.reason). Каркас сам пише лише «Перемога: X».
+  const REASON = {
+    mate: 'Мат!', stalemate: 'Пат — нічия', resign: 'Хтось здався', material: 'Нічия: матувати нічим',
+    fifty: 'Нічия: 50 ходів без взяття й без пішаків', repetition: 'Нічия: тричі та сама позиція',
+    agreed: 'Нічия за згодою', left: 'Хтось встав з-за столу', time: 'Упав прапорець — час вийшов',
+    'time-material': 'Прапорець упав, але матувати нічим — нічия',
+    'anti-nopieces': 'Піддавки: фігур не лишилось — це перемога', 'anti-nomoves': 'Піддавки: ходити нічим — це перемога',
+  };
   const dark = (sq) => ((sq % 8) + (sq / 8 | 0)) % 2 === 1;
 
   function state(root) {
     // resign — не прапорець, а FEN тієї позиції, у якій кнопку звели: щойно на дошці щось змінилось,
     // перепитування знімається саме собою. Інакше один випадковий клік лишав би кнопку зведеною до кінця
     // партії, і через десять ходів наступний дотик віддав би її без жодного питання.
-    if (!root._chess) root._chess = { sel: null, promo: null, resign: null };
+    if (!root._chess) root._chess = { sel: null, promo: null, resign: null, lastKey: undefined, slideUntil: 0 };
     return root._chess;
   }
 
@@ -79,6 +91,16 @@
 
     const last = v.lastMove || null;
     const checkSq = v.check ? kingSquare(board, v.toMove) : -1;
+    // Фігура, що щойно походила, доїжджає зі свого старого поля. Першу картинку не анімуємо.
+    const lastKey = last ? last.from + last.to + (v.moves || []).length : '';
+    if (st.lastKey !== undefined && last && lastKey !== st.lastKey && !reduced()) st.slideUntil = performance.now() + SLIDE_MS;
+    st.lastKey = lastKey;
+    let slide = null;
+    if (last && performance.now() < st.slideUntil) {
+      const a = sqOf(last.from), b = sqOf(last.to);
+      const da = flip ? 63 - a : a, db = flip ? 63 - b : b;
+      slide = { to: last.to, dx: (da % 8) - (db % 8), dy: (da >> 3) - (db >> 3) };
+    }
 
     const cap = v.captured || { w: '', b: '' };
     // Смугу «що я взяв» малюємо з мого боку дошки, а чужу — навпроти.
@@ -98,8 +120,17 @@
         if (last && (nm === last.from || nm === last.to)) cls.push('lm');
         if (sq === checkSq) cls.push('chk');
         if (targets[nm]) cls.push(ch === '.' ? 'dot' : 'cap');
+        // Координати по краю дошки: букви в нижньому ряду, цифри в лівому стовпчику (з боку того, хто дивиться).
+        let co = '';
+        if (i >= 56) co += '<span class="co f">' + nm[0] + '</span>';
+        if (i % 8 === 0) co += '<span class="co r">' + nm[1] + '</span>';
+        let pc = '';
+        if (ch !== '.') {
+          const mv = slide && slide.to === nm ? ' slide" style="--dx:' + slide.dx + ';--dy:' + slide.dy : '';
+          pc = '<span class="pc' + mv + '">' + GLYPH[ch.toLowerCase()] + '</span>';
+        }
         return {
-          html: ch === '.' ? '' : GLYPH[ch.toLowerCase()],
+          html: pc + co,
           cls: cls.join(' '),
           disabled: !ctx.myTurn,
         };
@@ -107,7 +138,9 @@
       onCell: (i) => tap(root, ctx, nameOf(at(i))),
     });
 
-    setHtml(ensure(root, 'chesscap bottom'), pieces(flip ? cap.b : cap.w, flip ? 'wp' : 'bp'));
+    const capBottom = ensure(root, 'chesscap bottom');
+    setHtml(capBottom, pieces(flip ? cap.b : cap.w, flip ? 'wp' : 'bp'));
+    clockPlates(root, ctx, root.querySelector(':scope > .chesscap.top'), capBottom, flip ? 0 : 1);
     promoBar(root, ctx);
     // Список ходів вищий за своє віконце вже з десятого ходу, тож після кожного нового ходу дотягуємо
     // прокрутку донизу: цікавий рівно останній рядок, а не початок партії.
@@ -167,7 +200,15 @@
     const v = ctx.view || {};
     const st = state(root);
     const el = ensure(root, 'chessacts');
-    if (!ctx.mine || !ctx.playing) { setHtml(el, ''); st.resign = null; return; }
+    if (!ctx.mine || !ctx.playing) {
+      st.resign = null;
+      let res = v.result && REASON[v.result.reason];
+      if (v.result && v.result.reason === 'resign' && v.result.winner != null) {
+        res = ctx.esc(ctx.nickOf(1 - v.result.winner) || ctx.seatName(1 - v.result.winner)) + ' здався';
+      }
+      setHtml(el, (res && ctx.room.status === 'finished' ? '<span class="chessres">' + res + '</span>' : '') + seriesHtml(ctx));
+      return;
+    }
     const fen = v.fen || '';
     const armed = st.resign !== null && st.resign === fen;   // звели в цій самій позиції — питання ще живе
 
@@ -185,12 +226,94 @@
         + '<button type="button" class="ghost danger" data-act="' + (armed ? 'resign' : 'ask') + '">'
         + (armed ? 'Точно здатись?' : 'Здатись') + '</button>';
     }
-    setHtml(el, html);
+    setHtml(el, html + seriesHtml(ctx));
     el.querySelectorAll('button').forEach((b) => b.onclick = () => {
       if (b.dataset.act === 'ask') { st.resign = fen; paint(root, ctx); return; }
       st.resign = null;
       ctx.act(b.dataset.act);
     });
+  }
+
+  // ---- годинник ---------------------------------------------------------------------------------
+  // Той самий шматок живе і в checkers.js: спільного файла для двох модулів каркас не вантажить.
+  // Сервер шле, скільки в кого лишилось на момент виду (clock.ms) і чий час іде (clock.running);
+  // решту відлічуємо тут самі. Коли в когось упав прапорець, браузер каже серверу flag — той звіряє
+  // зі своїм годинником. Суперник заявляє одразу, сам прострочений — трохи згодом (раптом суперник пішов).
+
+  function fmtMs(ms) {
+    ms = Math.max(0, ms);
+    if (ms < 10000) return (Math.floor(ms / 100) / 10).toFixed(1);
+    const s = Math.ceil(ms / 1000);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  function clockPlates(root, ctx, topAnchor, bottomAnchor, topSeat) {
+    const c = (ctx.view || {}).clock;
+    const st = root._clk || (root._clk = { key: '', base: null, at: 0, timer: 0, flagged: '' });
+    if (!c) {
+      root.querySelectorAll(':scope > .bclock').forEach((el) => el.remove());
+      clearInterval(st.timer);
+      st.timer = 0;
+      return;
+    }
+    const key = JSON.stringify(c);
+    if (key !== st.key) { st.key = key; st.base = c; st.at = performance.now(); }
+    for (const [anchor, pos, seat] of [[topAnchor, 'top', topSeat], [bottomAnchor, 'bottom', 1 - topSeat]]) {
+      let el = root.querySelector(':scope > .bclock.' + pos);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'bclock ' + pos;
+        anchor.insertAdjacentElement(pos === 'top' ? 'beforebegin' : 'afterend', el);
+      }
+      el.dataset.seat = String(seat);
+    }
+    tickClock(root, ctx);
+    if (!st.timer) st.timer = setInterval(() => tickClock(root, ctx), 200);
+  }
+
+  function tickClock(root, ctx) {
+    const st = root._clk;
+    if (!st || !st.base) return;
+    const c = st.base;
+    const now = performance.now();
+    root.querySelectorAll(':scope > .bclock').forEach((el) => {
+      const seat = +el.dataset.seat;
+      const run = ctx.playing && c.running === seat;
+      const left = (c.ms[seat] || 0) - (run ? now - st.at : 0);
+      const nick = ctx.nickOf(seat) || ctx.seatName(seat);
+      const html = '<span class="who">' + ctx.esc(nick) + (seat === ctx.seat ? ' <i>(ти)</i>' : '') + '</span>'
+        + '<b>' + fmtMs(left) + '</b>';
+      if (el.innerHTML !== html) el.innerHTML = html;
+      el.classList.toggle('run', run);
+      el.classList.toggle('low', run && left < 20000);
+      el.classList.toggle('out', left <= 0);
+      if (run && left <= 0 && ctx.mine) claimFlag(root, ctx, seat);
+    });
+  }
+
+  function claimFlag(root, ctx, seat) {
+    const st = root._clk;
+    if (st.flagged === st.key) return;
+    st.flagged = st.key;
+    setTimeout(() => {
+      if (!ctx.playing || !root._clk || root._clk.key !== st.flagged) return;
+      // Сервер каже «Час ще є», якщо наш відлік забіг уперед, — тоді спробуємо ще раз за секунду.
+      ctx.act('flag').then((r) => { if (r && !r.ok && root._clk) setTimeout(() => { root._clk.flagged = ''; }, 1000); });
+    }, seat === ctx.seat ? 2500 : 350);
+  }
+
+  function stopClock(root) {
+    if (root._clk) clearInterval(root._clk.timer);
+    root._clk = null;
+  }
+
+  /// Рахунок серії «Ще раз» тим самим складом: хто скільки виграв за цим столом.
+  function seriesHtml(ctx) {
+    const s = (ctx.view || {}).series;
+    if (!s || !s.wins) return '';
+    const parts = [0, 1].map((i) => ctx.esc(ctx.nickOf(i) || ctx.seatName(i)) + ' <b>' + (s.wins[i] || 0) + '</b>');
+    return '<span class="gserie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(' : ')
+      + (s.draws ? ' · нічиїх <b>' + s.draws + '</b>' : '') + '</span>';
   }
 
   HGames.register({
@@ -206,6 +329,9 @@
       // Партія скінчилась або пішов чужий хід — недовибраний намір тримати нема сенсу.
       if (!ctx.myTurn) { st.sel = null; st.promo = null; }
       paint(root, ctx);
+      // Коли фігура доїде — перемалювати без класу slide, щоб наступний кадр її вже не смикав.
+      clearTimeout(st.t);
+      if (performance.now() < st.slideUntil) st.t = setTimeout(() => root._chess && paint(root, ctx), SLIDE_MS + 30);
     },
 
     status(ctx) {
@@ -215,6 +341,17 @@
       return base + ' — шах!';
     },
 
-    unmount(root) { root._chess = null; },
+    unmount(root) { if (root._chess) clearTimeout(root._chess.t); root._chess = null; stopClock(root); },
+
+    news: {
+      v: '2026-09-24',
+      title: 'Шахи: годинник, координати і рахунок серії',
+      items: [
+        '⏱ Можна грати з годинником: 3, 5 або 10 хвилин із надбавкою за хід — обирається, коли ставиш стіл',
+        '🔠 На дошці тепер є координати, а фігура, що походила, доїжджає на місце — видно, що сталось',
+        '🤝 «Нічия?» більше не зникає від власного ходу: запропонуй і ходи, суперник вирішить у свою чергу',
+        '🏆 Під дошкою — чим скінчилась партія і рахунок серії, якщо тиснете «Ще раз»',
+      ],
+    },
   });
 })();

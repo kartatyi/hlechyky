@@ -1,0 +1,83 @@
+/*
+  Чотири в ряд (класика й на компанію). Основа дошки — у core.css (.board.discs); тут те, що додав
+  нічний прохід 24.09: падіння фішки, привид під мишею, остання фішка, кольори третього й четвертого
+  гравця з позначками, легенда і серія.
+*/
+:root {
+  --gc4-c: var(--clay);        /* руді */
+  --gc4-d: #dfe7e2;            /* білі */
+}
+
+.board.c4b { overflow: hidden; position: relative; }
+.board.c4b.party { width: min(560px, 100%); }
+.board.c4b .cell { position: relative; }
+.board.c4b .cell.c { background: var(--gc4-c); }
+.board.c4b .cell.d { background: var(--gc4-d); }
+.board.discs .cell.c.win { background: var(--gc4-c); }
+.board.discs .cell.d.win { background: var(--gc4-d); }
+
+/* Позначка всередині фішки (на компанію): темна, напівпрозора — видно форму, а не ще один колір. */
+.board.c4b .cell i {
+  font-style: normal; font-size: clamp(11px, 3.4vw, 20px); line-height: 1; font-weight: 700;
+  color: rgba(0, 0, 0, .45); pointer-events: none;
+}
+
+/* Остання кинута фішка — тонке світле кільце всередині. */
+.board.c4b .cell.last { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .55); }
+
+/* Привид: куди впаде фішка, якщо кинути в цю колонку. */
+.board.c4b .cell.ghost { opacity: 1; }
+.board.c4b .cell.ghost.x, .board.c4b .cell.ghost.x:not(:disabled):hover { background: color-mix(in srgb, var(--accent) 35%, var(--panel)); }
+.board.c4b .cell.ghost.o, .board.c4b .cell.ghost.o:not(:disabled):hover { background: color-mix(in srgb, var(--ok) 35%, var(--panel)); }
+.board.c4b .cell.ghost.c, .board.c4b .cell.ghost.c:not(:disabled):hover { background: color-mix(in srgb, var(--gc4-c) 35%, var(--panel)); }
+.board.c4b .cell.ghost.d, .board.c4b .cell.ghost.d:not(:disabled):hover { background: color-mix(in srgb, var(--gc4-d) 35%, var(--panel)); }
+.board.c4b .cell.ghost i { color: rgba(0, 0, 0, .25); }
+/* Каркас на :hover заливає клітинку своїм кольором — фішкам це стирало б колір. */
+.board.c4b .cell.x:not(:disabled):hover { background: var(--accent); }
+.board.c4b .cell.o:not(:disabled):hover { background: var(--ok); }
+.board.c4b .cell.c:not(:disabled):hover { background: var(--gc4-c); }
+.board.c4b .cell.d:not(:disabled):hover { background: var(--gc4-d); }
+
+/* Падіння: фішка стартує над дошкою на висоті свого ряду і з легким відскоком лягає на місце. */
+.board.c4b .cell.drop { animation: c4drop .5s cubic-bezier(.4, 0, .9, .6) both; z-index: 1; }
+@keyframes c4drop {
+  0% { transform: translateY(calc(var(--row, 1) * -112%)); }
+  78% { transform: translateY(0); }
+  88% { transform: translateY(-9%); }
+  100% { transform: translateY(0); }
+}
+
+/* Виграшна четвірка пульсує. */
+.board.c4b .cell.win { animation: c4win 1.1s ease-in-out infinite alternate; }
+@keyframes c4win { from { filter: brightness(1); } to { filter: brightness(1.35); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .board.c4b .cell.drop, .board.c4b .cell.win { animation: none; }
+}
+
+/* ---- легенда на компанію ---- */
+.c4legend { display: flex; gap: 6px 14px; justify-content: center; flex-wrap: wrap; font-size: .9em; }
+.c4legend[hidden] { display: none; }
+.c4who { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 3px; border-radius: 999px; }
+.c4who.turn { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.c4who.out { opacity: .5; text-decoration: line-through; }
+.c4dot {
+  width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center;
+  font-size: 11px; color: rgba(0, 0, 0, .5);
+}
+.c4dot.x { background: var(--accent); }
+.c4dot.o { background: var(--ok); }
+.c4dot.c { background: var(--gc4-c); }
+.c4dot.d { background: var(--gc4-d); }
+
+/* ---- серія і «Здатись» ---- */
+.c4foot { display: flex; gap: 8px 14px; align-items: center; justify-content: center; flex-wrap: wrap; font-size: .9em; }
+.c4foot:empty { display: none; }
+.c4foot button { font-size: .9em; padding: 5px 12px; min-height: 36px; }
+.c4foot .danger { color: var(--danger); border-color: var(--danger); }
+.gserie { color: var(--muted); font-variant-numeric: tabular-nums; }
+.gserie b { color: var(--text); }
+.gserie .x { color: var(--accent); }
+.gserie .o { color: var(--ok); }
+.gserie .c { color: var(--gc4-c); }
+.gserie .d { color: var(--gc4-d); }

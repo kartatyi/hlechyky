@@ -14,7 +14,7 @@
 
 .board.ck {
   gap: 0;
-  width: min(340px, 100%);
+  width: min(420px, 100%);
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -57,6 +57,38 @@
   border: 2px solid var(--accent);
 }
 
+/* Якими шашками можна ходити (поки нічого не вибрано); коли треба бити — яскравіше. */
+.board.ck .cell.can { box-shadow: inset 0 0 0 2px rgba(244, 197, 66, .45); }
+.board.ck .cell.can.must { box-shadow: inset 0 0 0 3px var(--accent); }
+/* Шашка доїжджає зі старого поля: зсув на ціле поле = 100% ширини клітинки, тож рахуємо від клітинки. */
+.board.ck .ckp.slide { animation: ckslide .3s ease-out both; z-index: 2; }
+@keyframes ckslide {
+  from { transform: translate(calc(var(--dx, 0) * 100% / .74), calc(var(--dy, 0) * 100% / .74)); }
+  to { transform: none; }
+}
+/* Слід побитої шашки. */
+.board.ck .ckp.ghost { opacity: .22; box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .board.ck .ckp.slide { animation: none; } }
+
+/* ---- годинник, чим скінчилось, серія (той самий вигляд, що в шахах) ---- */
+.bclock {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: min(92vw, 420px); padding: 4px 10px; border-radius: 8px; background: var(--bg2);
+  font-variant-numeric: tabular-nums; color: var(--muted); font-size: .92em;
+}
+.bclock .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bclock .who i { font-style: normal; opacity: .7; font-size: .9em; }
+.bclock b { font-size: 1.25em; color: var(--text); font-weight: 700; letter-spacing: .02em; }
+.bclock.run { background: var(--panel3); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent2); }
+.bclock.run b { color: var(--accent); }
+.bclock.low b { color: var(--danger); animation: bclow 1s steps(2, jump-none) infinite; }
+.bclock.out b { color: var(--danger); }
+@keyframes bclow { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .bclock.low b { animation: none; } }
+.ckres { color: var(--text); font-weight: 600; }
+.gserie { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .92em; }
+.gserie b { color: var(--text); }
+
 /* Смужка з рахунком шашок і попередженням «бити обов'язково». */
 .ckbar { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
 .ckbar .gscore { display: inline-flex; align-items: center; gap: 6px; }
@@ -69,6 +101,7 @@
 
 @media (max-width: 480px) {
   .board.ck { width: min(320px, 100%); }
+  .bclock { width: min(92vw, 320px); }
   /* Пальцем цілитись: «Здатись» стоїть поруч із «Нічия?», тож ціль має бути на всю подушечку. */
   .ckacts button { padding: 10px 12px; min-height: 44px; }
 }

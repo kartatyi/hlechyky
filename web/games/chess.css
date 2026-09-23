@@ -43,6 +43,41 @@
 }
 .board.chessb .cell.cap { box-shadow: inset 0 0 0 3px var(--gchess-dot); }
 
+/* Фігура — у своєму span на всю клітинку: так її можна посунути на ціле поле (transform у відсотках). */
+.board.chessb .pc { display: grid; place-items: center; width: 100%; height: 100%; pointer-events: none; }
+.board.chessb .pc.slide { animation: chslide .26s ease-out both; position: relative; z-index: 2; }
+@keyframes chslide {
+  from { transform: translate(calc(var(--dx, 0) * 100%), calc(var(--dy, 0) * 100%)); }
+  to { transform: none; }
+}
+/* Координати по краю дошки: дрібно й приглушено, щоб не заважали фігурам. */
+.board.chessb .co {
+  position: absolute; font-size: 10px; line-height: 1; font-weight: 600; color: var(--muted); opacity: .8;
+  pointer-events: none; text-shadow: none; font-family: system-ui, sans-serif;
+}
+.board.chessb .co.f { right: 3px; bottom: 2px; }
+.board.chessb .co.r { left: 3px; top: 2px; }
+@media (prefers-reduced-motion: reduce) { .board.chessb .pc.slide { animation: none; } }
+
+/* ---- годинник, чим скінчилось, серія ---- */
+.bclock {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: min(92vw, 420px); padding: 4px 10px; border-radius: 8px; background: var(--bg2);
+  font-variant-numeric: tabular-nums; color: var(--muted); font-size: .92em;
+}
+.bclock .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bclock .who i { font-style: normal; opacity: .7; font-size: .9em; }
+.bclock b { font-size: 1.25em; color: var(--text); font-weight: 700; letter-spacing: .02em; }
+.bclock.run { background: var(--panel3); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent2); }
+.bclock.run b { color: var(--accent); }
+.bclock.low b { color: var(--danger); animation: bclow 1s steps(2, jump-none) infinite; }
+.bclock.out b { color: var(--danger); }
+@keyframes bclow { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .bclock.low b { animation: none; } }
+.chessres { color: var(--text); font-weight: 600; }
+.gserie { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .92em; }
+.gserie b { color: var(--text); }
+
 /* ---- взяті фігури над дошкою і під нею ---- */
 .chesscap { min-height: 20px; display: flex; align-items: center; gap: 1px; font-size: 1.15em; line-height: 1; flex-wrap: wrap; }
 .chesscap i { font-style: normal; }
@@ -70,5 +105,6 @@
 
 @media (max-width: 480px) {
   .board.chessb { width: min(92vw, 340px); }
+  .bclock { width: min(92vw, 340px); }
   .chessmoves { max-height: 64px; }
 }

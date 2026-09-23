@@ -560,11 +560,13 @@ public class CheckersTests
     }
 
     [Fact]
-    public void A_move_takes_the_draw_offer_off_the_table()
+    public void The_opponents_move_takes_the_draw_offer_off_the_table()
     {
         var h = Table();
         Assert.True(h.Act(0, "draw").Ok);
         Assert.True(Move(h, 0, "c3", "d4").Ok);
+        Assert.Equal(0, h.View(1).GetProperty("drawOffer").GetInt32());   // свій хід пропозицію не знімає
+        Assert.True(Move(h, 1, "f6", "e5").Ok);
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("drawOffer").ValueKind);
     }
 

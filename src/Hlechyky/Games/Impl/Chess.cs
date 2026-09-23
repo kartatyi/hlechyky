@@ -22,7 +22,7 @@ public sealed class Chess : Game
     public override GameInfo Info { get; } = new(
         "chess", "Шахи", "шахи", GameGroup.Board, 2, 2, Rated: true,
         Options: [new GameOption("variant", "Варіант",
-            [("classic", "Класика"), ("960", "Шахи Фішера"), ("anti", "Піддавки")], "classic")],
+            [("classic", "Класика"), ("960", "Шахи Фішера"), ("anti", "Піддавки")], "classic"), BoardClock.Option],
         Hint: "Класика, шахи Фішера (фігури на першій лінії перетасовано) або піддавки (хто позбувся всіх фігур — виграв)");
 
     ChessVariant _variant = ChessVariant.Classic;
@@ -36,6 +36,8 @@ public sealed class Chess : Game
     (int From, int To)? _last;
     int? _drawOffer;
     Outcome? _result;
+    readonly BoardClock _clock = new();
+    readonly Series _series = new();
 
     public override string SeatName(int seat) => seat == 0 ? "білі" : "чорні";
 
@@ -52,12 +54,17 @@ public sealed class Chess : Game
             "anti" => ChessVariant.Anti,
             _ => ChessVariant.Classic,
         } : ChessVariant.Classic;
+        _clock.Configure(options);
         // Дошку ставимо вже тут: кімната показує вид ще в лобі, до першого Start(), і порожнеча
         // замість фігур виглядала б як зламана гра.
         NewGame();
     }
 
-    public override void Start() => NewGame();
+    public override void Start()
+    {
+        NewGame();
+        _series.Begin(Ctx, 2);
+    }
 
     void NewGame()
     {
@@ -69,6 +76,7 @@ public sealed class Chess : Game
         _last = null;
         _drawOffer = null;
         _result = null;
+        _clock.Reset();
     }
 
     // ------------------------------------------------------------------------------------------
@@ -78,8 +86,16 @@ public sealed class Chess : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_result is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        // Прапорець перевіряємо на кожній дії, а не лише на flag: хто просидів свій час, той уже не походить.
+        // Відповідь — «прийнято», інакше каркас не розіслав би вид із результатом (Rooms.Act шле види лише на Ok).
+        if (_clock.Flagged(Ctx.Clock.UtcNow) is { } flagged)
+        {
+            TimeOut(flagged);
+            return ActResult.Accept(flagged == seat ? "Твій час вийшов" : "У суперника впав прапорець");
+        }
         return action switch
         {
+            "flag" => ActResult.Fail("Час ще є"),
             "move" => Move(seat, payload),
             "resign" => Resign(seat),
             "draw" => Draw(seat),
@@ -107,7 +123,10 @@ public sealed class Chess : Game
         _core.Make(move, out _);
         if (captured != 0) (ChessCore.White(captured) ? _lostWhite : _lostBlack).Append(ChessCore.Letter(captured));
         _last = (move.From, move.To);
-        _drawOffer = null;
+        // Свій хід пропозицію не знімає: нічию за дошкою пропонують якраз разом зі своїм ходом. Знімає її
+        // хід суперника — він подумав і пішов грати далі.
+        if (_drawOffer != seat) _drawOffer = null;
+        _clock.Moved(seat, Ctx.Clock.UtcNow);
 
         var next = _core.Legal();
         if (_variant != ChessVariant.Anti)
@@ -161,13 +180,42 @@ public sealed class Chess : Game
     {
         _result = new Outcome(seat, reason);
         var lost = Other(seat);
-        Ctx.Finish([seat], $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(lost)} {SeatName(lost)} ({why})");
+        End([seat], $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(lost)} {SeatName(lost)} ({why})");
     }
 
     void Draw(string reason, string why)
     {
         _result = new Outcome(null, reason);
-        Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(0)} і {Ctx.NickOf(1)} зіграли внічию ({why})");
+        End([], $"{Info.Title}: {Ctx.NickOf(0)} і {Ctx.NickOf(1)} зіграли внічию ({why})");
+    }
+
+    /// <summary>Усі кінці партії йдуть сюди: зупинити годинник, дописати серію, сказати каркасу.</summary>
+    void End(int[] winners, string text)
+    {
+        _clock.Stop(Ctx.Clock.UtcNow);
+        _series.Record(Ctx, winners);
+        Ctx.Finish(winners, text);
+    }
+
+    /// <summary>
+    /// Упав прапорець. Як за правилами: програв той, у кого скінчився час, — але якщо в суперника лишився
+    /// сам король, матувати йому нічим, і це нічия. У піддавках матів нема, там просто поразка.
+    /// </summary>
+    void TimeOut(int seat)
+    {
+        var winner = Other(seat);
+        if (_variant != ChessVariant.Anti && BareKing(winner == 0)) { Draw("time-material", "прапорець упав, але матувати нічим"); return; }
+        Win(winner, "time", $"у {SeatName(seat)} скінчився час");
+    }
+
+    bool BareKing(bool white)
+    {
+        for (var sq = 0; sq < 64; sq++)
+        {
+            var p = _core.PieceAt(sq);
+            if (p != 0 && ChessCore.White(p) == white && Math.Abs(p) != ChessCore.King) return false;
+        }
+        return true;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -178,7 +226,7 @@ public sealed class Chess : Game
     {
         var winner = Other(seat);
         _result = new Outcome(winner, "resign");
-        Ctx.Finish([winner], $"{Info.Title}: {Ctx.NickOf(seat)} здався, {Ctx.NickOf(winner)} 1:0 {Ctx.NickOf(seat)}");
+        End([winner], $"{Info.Title}: {Ctx.NickOf(seat)} здався, {Ctx.NickOf(winner)} 1:0 {Ctx.NickOf(seat)}");
         return ActResult.Accept("Здався");
     }
 
@@ -207,11 +255,11 @@ public sealed class Chess : Game
         if (!Ctx.Seated(other))
         {
             _result = new Outcome(null, "left");
-            Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+            End([], $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
             return;
         }
         _result = new Outcome(other, "left");
-        Ctx.Finish([other], $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, {Ctx.NickOf(other)} 1:0 {Ctx.NickOf(seat)}");
+        End([other], $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, {Ctx.NickOf(other)} 1:0 {Ctx.NickOf(seat)}");
     }
 
     // ------------------------------------------------------------------------------------------
@@ -290,6 +338,9 @@ public sealed class Chess : Game
         fullmove = _core.Fullmove,
         drawOffer = _drawOffer,
         result = _result is { } r ? (object?)new { winner = r.Winner, reason = r.Reason } : null,
+        // Необов'язкові поля (старий клієнт їх просто не бачить): годинник, якщо його обрали, і рахунок серії.
+        clock = Ctx is null ? null : _clock.View(Ctx.Clock.UtcNow),
+        series = Ctx is null ? null : _series.View(Ctx, 2),
     };
 
     /// <summary>
@@ -328,14 +379,15 @@ public sealed class Chess : Game
     // ------------------------------------------------------------------------------------------
 
     sealed record Saved(string Variant, string Fen, string[] Moves, string LostWhite, string LostBlack,
-        Dictionary<string, int> Seen, int LastFrom, int LastTo, int? DrawOffer, int? Winner, string? Reason);
+        Dictionary<string, int> Seen, int LastFrom, int LastTo, int? DrawOffer, int? Winner, string? Reason,
+        BoardClock.Snapshot? Clock = null);
 
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.Never };
 
     public override string? Save() => JsonSerializer.Serialize(new Saved(
         _variant.ToString(), _core.Fen(), [.. _sans], _lostWhite.ToString(), _lostBlack.ToString(),
         new Dictionary<string, int>(_seen, StringComparer.Ordinal),
-        _last?.From ?? -1, _last?.To ?? -1, _drawOffer, _result?.Winner, _result?.Reason), Json);
+        _last?.From ?? -1, _last?.To ?? -1, _drawOffer, _result?.Winner, _result?.Reason, _clock.Save()), Json);
 
     public override void Load(string json)
     {
@@ -350,5 +402,6 @@ public sealed class Chess : Game
         _last = s.LastFrom < 0 ? null : (s.LastFrom, s.LastTo);
         _drawOffer = s.DrawOffer;
         _result = s.Reason is null ? null : new Outcome(s.Winner, s.Reason);
+        _clock.Load(s.Clock);
     }
 }

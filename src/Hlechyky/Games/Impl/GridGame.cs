@@ -15,13 +15,15 @@ public sealed record GridRules(int Width, int Height, int Need, bool Gravity, in
 }
 
 /// <summary>
-/// Спільна основа трьох наших покрокових ігор. Клітинки лишились рядками «x»/«o», як були: так вид
-/// читається очима в тестах і в консолі браузера, а перекласти їх у номер місця вміє будь-хто.
+/// Спільна основа наших покрокових ігор на сітці. Клітинки лишились рядками «x»/«o», як були: так вид
+/// читається очима в тестах і в консолі браузера. Для столу на компанію з'являються ще «c» і «d» — ті самі
+/// літери, що й класи чіпів місць у каркасі (x, o, c, d).
 /// </summary>
 public abstract class GridGame : Game
 {
     /// <summary>Напрямки, у яких шукаємо ряд: вправо, вниз і дві діагоналі.</summary>
     static readonly (int Dx, int Dy)[] Dirs = [(1, 0), (0, 1), (1, 1), (1, -1)];
+    static readonly string[] Letters = ["x", "o", "c", "d"];
 
     protected abstract GridRules Rules { get; }
     /// <summary>Що намальовано в клітинці кожного місця: ✕/◯ у хрестиках, фішки в «Чотирьох».</summary>
@@ -31,25 +33,42 @@ public abstract class GridGame : Game
     /// <summary>Зникаючий режим: зайняті клітинки в порядку появи, щоб знати, чия черга щезати.</summary>
     List<int>? _order;
     int _turn;
-    /// <summary>«x», «o», «draw» або null, поки грають — те саме, що бачив старий фронт.</summary>
+    /// <summary>«x», «o», … , «draw» або null, поки грають — те саме, що бачив старий фронт.</summary>
     string? _winner;
     int[]? _line;
+    /// <summary>Куди ліг останній хід — браузер його підсвічує, а в «Чотирьох» ще й кидає фішку згори.</summary>
+    int? _last;
+    /// <summary>Хто ще в грі. На двох — завжди обидва; за столом на компанію той, хто встав, випадає з черги.</summary>
+    bool[] _in = [];
+    readonly Series _series = new();
 
-    static string Mark(int seat) => seat == 0 ? "x" : "o";
+    static string Mark(int seat) => Letters[seat];
+
+    /// <summary>Скільки місць за цим столом (на двох — два, на компанію — до чотирьох).</summary>
+    int Seats => Info.MaxPlayers;
+
+    /// <summary>Перед кожною партією: стіл на компанію тут обирає розмір поля за кількістю гравців.</summary>
+    protected virtual void Prepare(int players) { }
 
     public override void Start()
     {
+        Prepare(Enumerable.Range(0, Seats).Count(Ctx.Seated));
         _cells = new string?[Rules.Cells];
         _order = Rules.Keep > 0 ? [] : null;
-        _turn = 0;
+        _in = [.. Enumerable.Range(0, Seats).Select(Ctx.Seated)];
+        // Починає перше зайняте місце: за столом на компанію, де сіли троє з чотирьох, «нульове» може пустувати.
+        _turn = Array.IndexOf(_in, true) is var first && first >= 0 ? first : 0;
         _winner = null;
         _line = null;
+        _last = null;
+        _series.Begin(Ctx, Seats);
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (action != "move") return ActResult.Fail("Тут так не ходять");
         if (_winner is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (action == "resign") return Resign(seat);
+        if (action != "move") return ActResult.Fail("Тут так не ходять");
         if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
         if (Cell(payload) is not { } cell) return ActResult.Fail("Не зрозумів, куди ходити");
 
@@ -59,26 +78,90 @@ public abstract class GridGame : Game
         var mark = Mark(seat);
         _cells[index] = mark;
         _order?.Add(index);
+        _last = index;
         // Найстаріша мітка щезає ще до підрахунку ряду: виграти тим, чого вже нема на полі, не можна.
         Vanish(mark);
 
-        var other = seat == 0 ? 1 : 0;
         if (WinLine(index, mark) is { } line)
         {
             _winner = mark;
             _line = line;
-            // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
-            Ctx.Finish([seat], $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(other)} {SeatName(other)}");
+            Finish([seat], Seats == 2
+                // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
+                ? $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(Other(seat))} {SeatName(Other(seat))}"
+                : $"{Info.Title}: {Ctx.NickOf(seat)} ({SeatName(seat)}) перший зібрав {Rules.Need} в ряд");
             return ActResult.Accept("Твоя взяла!");
         }
         if (_cells.All(c => c is not null))
         {
             _winner = "draw";
-            Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(0)} {SeatName(0)} і {Ctx.NickOf(1)} {SeatName(1)} зіграли внічию");
+            Finish([], $"{Info.Title}: {Players()} зіграли внічию");
             return ActResult.Accept("Нічия");
         }
-        _turn = other;
+        _turn = Next(seat);
         return ActResult.Done;
+    }
+
+    /// <summary>На двох — суперник; для рядка Журналу.</summary>
+    static int Other(int seat) => seat == 0 ? 1 : 0;
+
+    /// <summary>Наступне місце в черзі, що ще грає.</summary>
+    int Next(int seat)
+    {
+        for (var i = 1; i <= Seats; i++)
+        {
+            var s = (seat + i) % Seats;
+            if (_in[s]) return s;
+        }
+        return seat;
+    }
+
+    string Players()
+    {
+        var names = Enumerable.Range(0, Seats).Where(s => _in[s]).Select(s => $"{Ctx.NickOf(s)} {SeatName(s)}").ToList();
+        return names.Count <= 1 ? string.Join("", names) : string.Join(", ", names.Take(names.Count - 1)) + " і " + names[^1];
+    }
+
+    void Finish(int[] winners, string text)
+    {
+        _series.Record(Ctx, winners);
+        Ctx.Finish(winners, text);
+    }
+
+    /// <summary>
+    /// Здатись. На двох — перемога суперникові; за столом на компанію гравець просто випадає з черги,
+    /// а його фішки лишаються на полі перешкодою. Коли лишився один — він і виграв.
+    /// </summary>
+    ActResult Resign(int seat)
+    {
+        if (!_in[seat]) return ActResult.Fail("Ти вже здався");
+        Drop(seat, "здався");
+        return ActResult.Accept("Здався");
+    }
+
+    const string Left = "встав з-за столу";
+
+    void Drop(int seat, string why)
+    {
+        _in[seat] = false;
+        var left = Enumerable.Range(0, Seats).Where(s => _in[s]).ToArray();
+        if (left.Length <= 1)
+        {
+            _winner = left.Length == 1 ? Mark(left[0]) : "draw";
+            // На двох вихід пишемо так само, як каркас пише техпоразку в усіх іграх (Game.OnLeave).
+            Finish(left, left.Length == 1 && (Seats > 2 || why != Left)
+                ? $"{Info.Title}: {Ctx.NickOf(seat)} {why}, {Ctx.NickOf(left[0])} {SeatName(left[0])} перемагає"
+                : $"{Info.Title}: {Ctx.NickOf(seat)} {why}, партію не дограли");
+            return;
+        }
+        Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} {why}, решта грає далі");
+        if (_turn == seat) _turn = Next(seat);
+    }
+
+    public override void OnLeave(int seat)
+    {
+        if (_winner is not null || !_in[seat]) return;
+        Drop(seat, Left);
     }
 
     /// <summary>Хід приймаємо і як <c>{cell:4}</c>, і як голе число — клієнтам так простіше.</summary>
@@ -93,14 +176,18 @@ public abstract class GridGame : Game
     {
         width = Rules.Width,
         height = Rules.Height,
+        need = Rules.Need,
         cells = (string?[])_cells.Clone(),
         turn = _winner is null ? _turn : (int?)null,
         marks = (string[])Marks.Clone(),
         line = _line is null ? null : (int[])_line.Clone(),
         fading = Fading(),
         winner = _winner,
+        last = _last,
+        // Хто ще в грі (на компанію хтось міг здатись); на двох — завжди обидва, поки партія йде.
+        active = (bool[])_in.Clone(),
+        series = _series.View(Ctx, Seats),
     };
-
     /// <summary>Зникаючий режим: гравець поставив зайву мітку — найстаріша його щезає з поля.</summary>
     void Vanish(string mark)
     {
@@ -190,4 +277,28 @@ public sealed class ConnectFour : GridGame
     protected override string[] Marks { get; } = ["●", "●"];
 
     public override string SeatName(int seat) => seat == 0 ? "жовті" : "зелені";
+}
+
+/// <summary>
+/// «Чотири в ряд» на компанію: троє або четверо, поле ширше, кожен своїм кольором і своєю позначкою.
+/// Окрема гра, а не опція класичних «Чотирьох»: у тих лишаються ставка й рейтинг, які мають сенс лише на двох.
+/// Хто встав або здався — випадає з черги, його фішки лишаються на полі. Лишився один — він і виграв.
+/// </summary>
+public sealed class ConnectFourParty : GridGame
+{
+    /// <summary>Троє — 9×7, четверо — 10×8: на кожного приблизно стільки ж клітинок, скільки й на двох на 7×6.</summary>
+    static readonly GridRules Three = new(9, 7, 4, true), Four = new(10, 8, 4, true);
+
+    public override GameInfo Info { get; } = new(
+        "c4x", "Чотири в ряд: компанія", "чотири в ряд на компанію", GameGroup.Board, 3, 4, Start: StartMode.ByHost,
+        Hint: "Троє або четверо, поле ширше, кожен своїм кольором. Збери чотири підряд і не дай сусідам — блокують тут усі.",
+        Client: "c4");
+
+    GridRules _rules = Three;
+    protected override GridRules Rules => _rules;
+    protected override string[] Marks { get; } = ["●", "▲", "■", "◆"];
+
+    protected override void Prepare(int players) => _rules = players >= 4 ? Four : Three;
+
+    public override string SeatName(int seat) => seat switch { 0 => "жовті", 1 => "зелені", 2 => "руді", _ => "білі" };
 }
