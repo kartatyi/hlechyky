@@ -684,6 +684,58 @@ public class TanksTests
 
     // ---------- доступ до ядра ----------
 
+    // ---------- снаряди не проскакують (оновлення 24.09.2026) ----------
+
+    [Fact]
+    public void Head_on_shells_never_fly_through_each_other_whatever_the_gap()
+    {
+        // Раніше снаряди стрибали по 8 за тик і перевірялись лише в кінці стрибка: зустрічні зближуються
+        // на 16, а вікно зіткнення — 13, тож при деяких відстанях вони мовчки пролітали один крізь одного.
+        for (var shift = 0; shift < 16; shift++)
+        {
+            var core = Empty();
+            Put(core, 0, 2, 5, dir: 0);
+            Put(core, 1, 17, 5, dir: 2);
+            core.Fire(0);
+            core.Fire(1);
+            core.Shells[1].X -= shift;                  // перебираємо всі можливі «фази» зустрічі
+            Steps(core, 20);
+            Assert.True(core.Tanks[0].Alive, $"зсув {shift}: снаряд пролетів крізь зустрічний і влучив у жовтого");
+            Assert.True(core.Tanks[1].Alive, $"зсув {shift}: снаряд пролетів крізь зустрічний і влучив у зеленого");
+        }
+    }
+
+    [Fact]
+    public void A_rapid_shell_cannot_tunnel_through_an_oncoming_tank()
+    {
+        // 🚀 летить 12 за тик, танк їде назустріч ще 3–4: разом 16, а вікно влучання — 13.
+        for (var shift = 0; shift < 16; shift++)
+        {
+            var core = Empty();
+            var gun = Put(core, 0, 2, 5, dir: 0);
+            TanksCore.Apply(gun, TankBonus.Rapid);
+            var target = Put(core, 1, 18, 5, dir: 2);
+            TanksCore.Apply(target, TankBonus.Speed);
+            core.Turn(1, 2);                            // зелений жене назустріч
+            Assert.True(core.Fire(0));
+            core.Shells[0].X += shift;
+            Steps(core, 12);
+            Assert.False(target.Alive, $"зсув {shift}: снаряд проскочив крізь танк");
+            Assert.Equal(1, gun.Frags);
+        }
+    }
+
+    [Fact]
+    public void Shells_still_cover_their_full_speed_every_tick()
+    {
+        var core = Empty();
+        Put(core, 0, 2, 5, dir: 0);
+        core.Fire(0);
+        var x0 = core.Shells[0].X;
+        Steps(core, 3);
+        Assert.Equal(3 * TanksCore.ShellSpeed, core.Shells[0].X - x0);
+    }
+
     static TanksCore Core(RoomHarness h)
     {
         var game = (Tanks)h.Room.Game;

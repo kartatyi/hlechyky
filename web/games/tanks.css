@@ -10,6 +10,10 @@
 }
 
 .tboard { max-width: 620px; }
+/* Full HD: мапа росте, поки вміщається по висоті разом із рядком над нею */
+@media (min-width: 1500px) and (min-height: 860px) {
+  .tboard { max-width: min(860px, calc((100vh - 330px) * 1.4)); }
+}
 /* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
 .gseat.tb { color: var(--tblue); }
 .gseat.tp { color: var(--tpink); }
@@ -31,6 +35,19 @@
 .tchip.s4 { color: var(--tblue); }
 .tchip.s5 { color: var(--tpink); }
 .tchip.tclock { color: var(--muted); font-variant-numeric: tabular-nums; }
+.tchip.tclock.hot { color: var(--danger); animation: tpulse 1s ease-in-out infinite; }
+@keyframes tpulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .tchip.tclock.hot { animation: none; } }
+/* номер місця — той самий, що на башті танка */
+.tchip i {
+  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
+  display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
+}
+.tchip.me { box-shadow: 0 0 0 1px currentColor inset; }
+@media (max-width: 480px) {
+  .thud { gap: 4px; font-size: .76em; }
+  .tchip { padding: 2px 7px; gap: 4px; }
+}
 
 /* ---- керування пальцем: напрямок тримають, тому pointerdown/pointerup, а не клік ---- */
 .tpad { display: none; }

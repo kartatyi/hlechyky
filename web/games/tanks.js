@@ -37,6 +37,9 @@
   const PERK = { s: '⚡', t: '🔫', r: '🚀', p: '💥' };
 
   const at = (cell, W) => [(cell % W) * PX, Math.floor(cell / W) * PX];
+  /// На звичайному моніторі (DPR 1) мапа розтягується на 620+ пікселів і милиться — малюємо вдвічі щільніше.
+  /// На телефонах із DPR ≥ 2 це вже зробив каркас.
+  const scale = () => ((window.devicePixelRatio || 1) >= 2 ? 1 : 2);
   const lerp = (a, b, t) => a + (b - a) * t;
   const clock = (ticks) => {
     const s = Math.max(0, Math.ceil((ticks * TICK_MS) / 1000));
@@ -108,7 +111,9 @@
     }
   }
 
-  function drawTank(pal, g, m, color, now) {
+  /// i — місце (його номер пишемо на башті: шість кольорів близькі, а цифру не сплутає й дальтонік),
+  /// mine — це мій танк (кільце й стрілочка), start — іде відлік (тоді ще й «ти»).
+  function drawTank(pal, g, m, color, now, i, mine, start) {
     const px = (m.x / SUB) * PX, py = (m.y / SUB) * PX;
     const cx = px + PX / 2, cy = py + PX / 2;
     const [dx, dy] = DELTA[m.d] || DELTA[0];
@@ -123,10 +128,6 @@
     g.roundRect(px + 3, py + 3, PX - 6, PX - 6, 3);
     g.fill();
     // башта й дуло
-    g.fillStyle = pal.dark;
-    g.beginPath();
-    g.arc(cx, cy, PX * 0.2, 0, Math.PI * 2);
-    g.fill();
     g.strokeStyle = pal.dark;
     g.lineWidth = 3;
     g.lineCap = 'round';
@@ -134,6 +135,36 @@
     g.moveTo(cx, cy);
     g.lineTo(cx + dx * PX * 0.55, cy + dy * PX * 0.55);
     g.stroke();
+    g.fillStyle = pal.dark;
+    g.beginPath();
+    g.arc(cx, cy, PX * 0.24, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = color;
+    g.font = '700 7px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(String(i + 1), cx, cy + 0.5);
+    if (mine) {
+      // Своя стрілочка над танком: на шістьох «де я?» — перше питання після кожного повернення.
+      const top = py - 2;
+      g.fillStyle = pal.text;
+      g.beginPath();
+      g.moveTo(cx - 4, top - 5);
+      g.lineTo(cx + 4, top - 5);
+      g.lineTo(cx, top);
+      g.closePath();
+      g.fill();
+      if (start) {
+        g.strokeStyle = pal.text;
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.roundRect(px - 1, py - 1, PX + 2, PX + 2, 5);
+        g.stroke();
+        g.font = '700 10px system-ui, sans-serif';
+        g.textBaseline = 'bottom';
+        g.fillText('ти', cx, top - 6);
+      }
+    }
     if (m.shield > 0) {
       g.strokeStyle = pal.accent;
       g.lineWidth = 2;
@@ -225,20 +256,27 @@
     const cur = shot(st);
     const g = c.ctx;
     const pal = palette(st);
+    // Малюємо в логічних одиницях поля, а канвас щільніший у K разів (див. scale()).
+    const box = { w: st.W * PX, h: st.H * PX };
+    g.save();
+    g.scale(st.K, st.K);
     g.fillStyle = pal.bg2;
-    g.fillRect(0, 0, c.w, c.h);
+    g.fillRect(0, 0, box.w, box.h);
     drawWalls(pal, g, st.walls, st.W);
-    if (!cur) return;
-    const f = cur.f;
-    drawBricks(pal, g, f.bricks, st.W);
-    drawLoot(pal, g, f.pw, now);
-    for (let i = 0; i < cur.men.length; i++) {
-      const m = cur.men[i];
-      if (m && m.alive) drawTank(pal, g, m, pal.seats[i] || SEATS[i][1], now);
+    if (cur) {
+      const f = cur.f;
+      const me = st.ctx && st.ctx.mine ? st.ctx.seat : null;
+      drawBricks(pal, g, f.bricks, st.W);
+      drawLoot(pal, g, f.pw, now);
+      for (let i = 0; i < cur.men.length; i++) {
+        const m = cur.men[i];
+        if (m && m.alive) drawTank(pal, g, m, pal.seats[i] || SEATS[i][1], now, i, i === me, f.phase === 'start' && !waiting);
+      }
+      drawShells(pal, g, cur.shells);
+      drawBooms(pal, g, st.booms, now);
+      drawShade(pal, g, box, f, waiting);
     }
-    drawShells(pal, g, cur.shells);
-    drawBooms(pal, g, st.booms, now);
-    drawShade(pal, g, c, f, waiting);
+    g.restore();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -259,11 +297,11 @@
       if (!nick) continue;
       const m = men[i] || {};
       const perks = String(m.perks || '').split('').map((k) => PERK[k] || '').join('');
-      html += '<span class="tchip s' + i + (m.alive === false ? ' out' : '') + '">'
-        + ctx.esc(nick) + ' <b>' + (m.frags || 0) + '</b>' + (perks ? ' <span class="tperks">' + perks + '</span>' : '')
+      html += '<span class="tchip s' + i + (m.alive === false ? ' out' : '') + (i === ctx.seat ? ' me' : '') + '">'
+        + '<i>' + (i + 1) + '</i>' + ctx.esc(nick) + ' <b>' + (m.frags || 0) + '</b>' + (perks ? ' <span class="tperks">' + perks + '</span>' : '')
         + (m.back > 0 ? ' <span class="tback">⌛</span>' : '') + '</span>';
     }
-    if (f && f.phase === 'go') html += '<span class="tchip tclock">' + clock(f.left || 0) + '</span>';
+    if (f && f.phase === 'go') html += '<span class="tchip tclock' + ((f.left || 0) * TICK_MS <= 15000 ? ' hot' : '') + '">⏱ ' + clock(f.left || 0) + '</span>';
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
       el.innerHTML = html;
@@ -316,7 +354,7 @@
     if (!root._tanks) {
       root._tanks = {
         cv: null, walls: [], last: null, held: -1, pid: null, fireDown: false, booms: [],
-        raf: 0, keyup: null, phase: '', css: ctx.css, W: 21, H: 15,
+        raf: 0, keyup: null, phase: '', css: ctx.css, W: 21, H: 15, K: scale(),
       };
     }
     root._tanks.ctx = ctx;
@@ -360,11 +398,21 @@
     seatNames: ['жовтий', 'зелений', 'рудий', 'сірий', 'синій', 'рожевий'],
     seatClass: ['x', 'o', 'c', 'd', 'tb', 'tp'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} їхати · {a} стріляти (будь-яка кнопка)' },
+    news: {
+      v: '2026-09-24',
+      title: 'Танчики: снаряди більше не проскакують',
+      items: [
+        '💥 Зустрічні снаряди тепер завжди гасять один одного, а швидкий 🚀 не пролітає крізь танк, що мчить назустріч',
+        '🔢 На башті — номер місця, а над своїм танком стрілочка (на відліку ще й «ти»)',
+        '⏱ Годинник партії червоніє за 15 секунд до кінця',
+        '🔍 На великому моніторі мапа більша й чіткіша',
+      ],
+    },
 
     mount(root, ctx) {
       const st = state(root, ctx);
       st.interp = HGames.ui.Interp();
-      st.cv = HGames.ui.canvas(root, { w: st.W * PX, h: st.H * PX, cls: 'tboard' });
+      st.cv = HGames.ui.canvas(root, { w: st.W * PX * st.K, h: st.H * PX * st.K, cls: 'tboard' });
       st.keyup = (e) => {
         if (isFire(e)) { st.fireDown = false; return; }
         if (dirOf(e) !== st.held || st.held < 0) return;
@@ -385,7 +433,7 @@
       if (v && v.width && v.height && (v.width !== st.W || v.height !== st.H)) {
         st.W = v.width;
         st.H = v.height;
-        st.cv = HGames.ui.canvas(root, { w: st.W * PX, h: st.H * PX, cls: 'tboard' });
+        st.cv = HGames.ui.canvas(root, { w: st.W * PX * st.K, h: st.H * PX * st.K, cls: 'tboard' });
         st.interp.reset();
         st.booms = [];
       }
