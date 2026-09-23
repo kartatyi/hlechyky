@@ -11,10 +11,10 @@ public class CurfewTests
     static readonly DateTimeOffset Night = new(2026, 9, 23, 21, 30, 0, TimeSpan.Zero);
     static readonly DateTimeOffset Midnight = new(2026, 9, 23, 21, 0, 0, TimeSpan.Zero);
 
-    static (Curfew Curfew, FakeClock Clock) Make(DateTimeOffset now, string text = "")
+    static (Curfew Curfew, FakeClock Clock) Make(DateTimeOffset now, string text = "", string games = "clicker")
     {
         var clock = new FakeClock { UtcNow = now };
-        var options = new FixedOptions<CurfewOptions>(new CurfewOptions { Nicks = ["владік", "микола ( справжній )"], Text = text });
+        var options = new FixedOptions<CurfewOptions>(new CurfewOptions { Nicks = ["владік", "микола ( справжній )"], Games = games, Text = text });
         return (new Curfew(options, new EphemeralDataProtectionProvider(), clock), clock);
     }
 
@@ -44,20 +44,50 @@ public class CurfewTests
     public void Only_listed_players_are_sent_to_sleep_and_only_at_night()
     {
         var (curfew, clock) = Make(Night);
-        Assert.Contains("спати", curfew.Refusal("Владік", null));
-        Assert.StartsWith("🌙", curfew.Refusal("микола ( справжній )", null));
-        Assert.Null(curfew.Refusal("Назар", null));
-        Assert.Null(curfew.Refusal("микола", null));
-        Assert.Null(curfew.Refusal("гість владік", null));
+        Assert.Contains("спати", curfew.Refusal("Владік", null, "clicker"));
+        Assert.StartsWith("🌙", curfew.Refusal("микола ( справжній )", null, "clicker"));
+        Assert.Null(curfew.Refusal("Назар", null, "clicker"));
+        Assert.Null(curfew.Refusal("микола", null, "clicker"));
+        Assert.Null(curfew.Refusal("гість владік", null, "clicker"));
         clock.UtcNow = new DateTimeOffset(2026, 9, 24, 3, 1, 0, TimeSpan.Zero);   // 06:01
-        Assert.Null(curfew.Refusal("владік", null));
+        Assert.Null(curfew.Refusal("владік", null, "clicker"));
+    }
+
+    [Fact]
+    public void Only_the_potters_wheel_is_closed()
+    {
+        var (curfew, _) = Make(Night);
+        Assert.Contains("Гончарне коло", curfew.Text);
+        Assert.NotNull(curfew.Refusal("владік", null, "clicker"));
+        foreach (var other in new[] { "chess", "mafia", "wordle", "mines-daily", "", null })
+            Assert.Null(curfew.Refusal("владік", null, other));
+
+        var (more, _) = Make(Night, games: " clicker , mafia ");
+        Assert.NotNull(more.Refusal("владік", null, "mafia"));
+        Assert.Null(more.Refusal("владік", null, "chess"));
+    }
+
+    [Fact]
+    public void Moves_are_refused_only_on_the_wheel()
+    {
+        var (curfew, _) = Make(Night);
+        var wheel = new RoomHarness("clicker");
+        Assert.True(wheel.Solo("владік").Ok);
+        Assert.NotNull(curfew.MoveRefusal("владік", null, wheel.Room));
+        Assert.Null(curfew.MoveRefusal("Назар", null, wheel.Room));
+
+        var ttt = new RoomHarness("ttt");
+        ttt.Join("владік");
+        ttt.Join("микола ( справжній )");
+        Assert.Null(curfew.MoveRefusal("владік", null, ttt.Room));
+        Assert.Null(curfew.MoveRefusal("владік", null, null));
     }
 
     [Fact]
     public void Text_from_settings_is_what_they_see()
     {
         var (curfew, _) = Make(Night, "Пора спати! Лише для Владіка й Миколи.");
-        Assert.Equal("🌙 Пора спати! Лише для Владіка й Миколи.", curfew.Refusal("владік", null));
+        Assert.Equal("🌙 Пора спати! Лише для Владіка й Миколи.", curfew.Refusal("владік", null, "clicker"));
     }
 
     [Fact]
@@ -70,8 +100,6 @@ public class CurfewTests
         Assert.False(curfew.Finishing(RoomStatus.Playing, true, before, ["владік"], Midnight));
         Assert.False(curfew.Finishing(RoomStatus.Playing, false, Midnight.AddMinutes(5), ["владік", "Назар"], Midnight));
         Assert.False(curfew.Finishing(RoomStatus.Lobby, false, null, ["владік", "Назар"], Midnight));
-        Assert.Null(curfew.MoveRefusal("Назар", null, null));
-        Assert.NotNull(curfew.MoveRefusal("владік", null, null));
     }
 
     [Fact]
@@ -90,16 +118,16 @@ public class CurfewTests
         var guest = new DefaultHttpContext();
         guest.Request.Headers.Cookie = cookie;
         guest.Items["nick"] = "гість Влад";
-        Assert.NotNull(curfew.Refusal("гість Влад", guest));
+        Assert.NotNull(curfew.Refusal("гість Влад", guest, "clicker"));
         Assert.NotNull(curfew.ForMe(guest));
 
         // інший акаунт у тому ж браузері — вже інша людина
-        Assert.Null(curfew.Refusal("Назар", guest));
+        Assert.Null(curfew.Refusal("Назар", guest, "clicker"));
 
         // а без позначки гостя ніхто не чіпає, і про чужий відбій він нічого не знає
         var stranger = new DefaultHttpContext();
         stranger.Items["nick"] = "гість Влад";
-        Assert.Null(curfew.Refusal("гість Влад", stranger));
+        Assert.Null(curfew.Refusal("гість Влад", stranger, "clicker"));
         Assert.Null(curfew.ForMe(stranger));
         Assert.Equal("", stranger.Response.Headers.SetCookie.ToString());
     }

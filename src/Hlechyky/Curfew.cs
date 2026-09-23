@@ -6,24 +6,30 @@ namespace Hlechyky;
 
 /// <summary>
 /// Нічний відбій (секція Curfew). Ніки тримаємо в appsettings.Local.json, поза git: хто саме під відбоєм,
-/// знає лише сервер. Файл підхоплюється наживо, тож список і години міняються без рестарту.
+/// знає лише сервер. Файл підхоплюється наживо, тож список, ігри й години міняються без рестарту.
 /// </summary>
 public sealed class CurfewOptions
 {
-    /// <summary>Ніки акаунтів, яким уночі не можна в ігри. Регістр не має значення. Порожньо — відбою ні для кого.</summary>
+    /// <summary>Ніки акаунтів, яким уночі зачинено ці ігри. Регістр не має значення. Порожньо — відбою ні для кого.</summary>
     public List<string> Nicks { get; set; } = [];
+    /// <summary>
+    /// Які ігри зачиняються — id через кому. Рядком, а не списком: список прив'язка конфігурації дописала б
+    /// до типового, а не замінила б його.
+    /// </summary>
+    public string Games { get; set; } = "clicker";
     /// <summary>З котрої години й до котрої за Києвом. From більше за To — через північ (23 → 6).</summary>
     public int From { get; set; } = 0;
     public int To { get; set; } = 6;
-    /// <summary>Що бачать ті, кого це стосується: плашка на сайті й відмова за столом. Порожньо — загальний текст.</summary>
+    /// <summary>Що бачать ті, кого це стосується: плашка на сайті й відмова в грі. Порожньо — загальний текст.</summary>
     public string Text { get; set; } = "";
 }
 
 /// <summary>
 /// Нічний відбій: з <see cref="CurfewOptions.From"/> до <see cref="CurfewOptions.To"/> за київським часом гравцям
-/// зі списку не можна за стіл — ні відкрити соло, ні сісти, ні почати, ні ходити. Радіо, балачки й усі інші люди
-/// живуть як завжди. Один виняток — партія, яку почали ще до відбою разом із кимось, кого він не стосується: її
-/// дограємо, інакше заборона двох зупинила б гру всім за тим столом.
+/// зі списку зачинено ігри з <see cref="CurfewOptions.Games"/> (типово — лише Гончарне коло): ні відкрити, ні сісти,
+/// ні почати, ні ходити. Решта ігор, радіо, балачки й усі інші люди живуть як завжди. Якщо в списку колись опиниться
+/// гра на кількох, партію, яку почали ще до відбою разом із кимось, кого він не стосується, дограємо — інакше
+/// заборона двох зупинила б гру всім за тим столом.
 /// Вийти з акаунта й грати гостем не вийде: браузер гравця зі списку дістає позначку-куку, і гість із нею вночі
 /// теж не грає (інакше гостьове добро зранку переїхало б на акаунт — див. Accounts.Adopt).
 /// </summary>
@@ -36,10 +42,15 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
 
     /// <summary>Що кажемо гравцеві під відбоєм — і на плашці, і у відмові.</summary>
     public string Text => string.IsNullOrWhiteSpace(O.Text)
-        ? $"Пора спати! З {O.From:00}:00 до {O.To:00}:00 ігри для тебе закриті. Це нічне правило лише для кількох гравців — решта грає як звичайно."
+        ? $"Пора спати! З {O.From:00}:00 до {O.To:00}:00 Гончарне коло для тебе зачинене. Це нічне правило лише для кількох гравців — решта грає як звичайно."
         : O.Text.Trim();
 
     string Refused => "🌙 " + Text;
+
+    /// <summary>Чи зачиняє відбій цю гру.</summary>
+    public bool Covers(string? gameId) =>
+        !string.IsNullOrEmpty(gameId)
+        && O.Games.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(gameId, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Чи стоїть нік у списку (котра зараз година — байдуже).</summary>
     public bool Listed(string? nick)
@@ -74,17 +85,16 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
         return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(start, Days.Kyiv), TimeSpan.Zero);
     }
 
-    /// <summary>Сісти, відкрити, почати, ще раз: текст відмови, якщо цьому гравцеві зараз не можна; null — можна.</summary>
-    public string? Refusal(string nick, HttpContext? http) =>
-        NightStart() is not null && Applies(nick, http) ? Refused : null;
+    /// <summary>Відкрити, сісти, почати, ще раз у грі <paramref name="gameId"/>: текст відмови, якщо цьому гравцеві зараз не можна; null — можна.</summary>
+    public string? Refusal(string nick, HttpContext? http, string? gameId) =>
+        Covers(gameId) && NightStart() is not null && Applies(nick, http) ? Refused : null;
 
     /// <summary>Хід чи ввід за столом <paramref name="room"/>. Те саме, що <see cref="Refusal"/>, але партію до ночі з іншими дограємо.</summary>
     public string? MoveRefusal(string nick, HttpContext? http, Room? room)
     {
-        if (NightStart() is not { } start || !Applies(nick, http)) return null;
-        if (room is not null)
-            lock (room.Sync)
-                if (Finishing(room.Status, room.Info.Solo, room.StartedAt, room.Seats, start)) return null;
+        if (room is null || !Covers(room.Info.Id) || NightStart() is not { } start || !Applies(nick, http)) return null;
+        lock (room.Sync)
+            if (Finishing(room.Status, room.Info.Solo, room.StartedAt, room.Seats, start)) return null;
         return Refused;
     }
 
