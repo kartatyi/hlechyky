@@ -50,6 +50,8 @@
         local: [],          // шматки, які художник уже намалював, а сервер ще не повернув: [{ s, i, op }]
         feed: new Map(),
         lastSync: 0, dirty: true, raf: 0, timer: 0,
+        album: new Map(),   // turnNo → { word, drawer, url } — мініатюри малюнків партії для альбому наприкінці
+        albumRound: 0,
       };
       clearBuf(root._pc);
     }
@@ -277,7 +279,11 @@
     el.addEventListener('pointerdown', (e) => {
       const c = root._ctx;
       if (!c || !canDraw(c)) return;
+      // Другий палець (долоня на Steam Deck, щипок) і права кнопка миші штриха не починають.
+      if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       e.preventDefault();
+      // Штрих, що лишився недомальованим (палець зірвався без pointerup), закриваємо — а не губимо.
+      if (s.cur) flush(root, c, true);
       const [x, y] = point(el, e);
       if (s.tool === 'fill') {
         c.input('fill', { s: s.stroke++, c: s.color, x, y });
@@ -286,13 +292,14 @@
       try { el.setPointerCapture(e.pointerId); } catch { /* старі браузери */ }
       const color = s.tool === 'eraser' ? 0 : s.color;
       const w = SIZES[s.size] * (s.tool === 'eraser' ? 2 : 1);
-      s.cur = { s: s.stroke++, c: color, w, p: [x, y], sent: 0, chunks: 0 };
+      s.cur = { s: s.stroke++, c: color, w, p: [x, y], sent: 0, chunks: 0, id: e.pointerId };
       paintSoon(root);
     });
 
     el.addEventListener('pointermove', (e) => {
       const c = root._ctx;
-      if (!s.cur || !c) return;
+      // лише той палець, що почав штрих: інакше другий дотик малював би зиґзаґи через усе полотно
+      if (!s.cur || !c || e.pointerId !== s.cur.id) return;
       const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
       for (const ev of events.length ? events : [e]) {
         const [x, y] = point(el, ev);
@@ -306,9 +313,9 @@
       paintSoon(root);
     });
 
-    const end = () => {
+    const end = (e) => {
       const c = root._ctx;
-      if (!s.cur || !c) return;
+      if (!s.cur || !c || (e && e.pointerId !== s.cur.id)) return;
       flush(root, c, true);
     };
     el.addEventListener('pointerup', end);
@@ -447,7 +454,7 @@
     rows.sort((a, b) => b.score - a.score);
     const html = rows.map((r) => {
       const drawing = (v.phase === 'draw' || v.phase === 'pick') && r.i === v.drawer;
-      const ok = guessed.indexOf(r.i) >= 0;
+      const ok = v.phase !== 'done' && guessed.indexOf(r.i) >= 0;   // після партії галочки останнього ходу ні до чого
       const mark = drawing ? '✏️' : ok ? '✅' : '';
       const plus = v.phase === 'reveal' && r.gained ? '<em>+' + r.gained + '</em>' : '';
       return '<div class="pcsc' + (ok ? ' ok' : '') + (drawing ? ' drw' : '') + (r.i === ctx.seat ? ' me' : '')
@@ -556,6 +563,40 @@
     }
   }
 
+  // =========================================================================================
+  // Альбом партії: кожен малюнок на розкритті знімаємо мініатюрою, наприкінці показуємо всі разом
+  // =========================================================================================
+
+  const THUMB_W = 240, THUMB_H = 180;
+
+  function snap(ctx, s, v) {
+    const round = (ctx.room && ctx.room.round) || 0;
+    if (s.albumRound !== round) { s.album.clear(); s.albumRound = round; }
+    if (!v.word || !v.turnNo || !s.ops.length) return;
+    const c = document.createElement('canvas');
+    c.width = THUMB_W; c.height = THUMB_H;
+    c.getContext('2d').drawImage(s.buf, 0, 0, THUMB_W, THUMB_H);
+    let url = '';
+    try { url = c.toDataURL('image/jpeg', 0.82); } catch { return; }
+    s.album.set(v.turnNo, { word: v.word, drawer: ctx.nickOf(v.drawer) || '', url });
+  }
+
+  function album(root, ctx, v) {
+    const s = st(root);
+    const el = root.querySelector('.pcalbum');
+    const show = v.phase === 'done' && s.album.size > 0;
+    el.hidden = !show;
+    if (!show) { if (el._sig) { el._sig = ''; el.innerHTML = ''; } return; }
+    const items = [...s.album.entries()].sort((a, b) => a[0] - b[0]);
+    const sig = items.map((x) => x[0]).join(',');
+    if (el._sig === sig) return;
+    el._sig = sig;
+    el.innerHTML = '<div class="pctitle">🖼 Альбом партії</div><div class="pcthumbs">'
+      + items.map(([, a]) => '<figure><img alt="" src="' + a.url + '"><figcaption><b>' + ctx.esc(a.word) + '</b>'
+        + '<span class="muted small">' + ctx.esc(a.drawer) + '</span></figcaption></figure>').join('')
+      + '</div>';
+  }
+
   function render(root, ctx) {
     root._ctx = ctx;
     ctx.pcRoot = root;
@@ -564,7 +605,9 @@
     if (v.phase) {
       fromView(root, ctx, v);
       mergeFeed(s, v.feed, true);
+      if (v.phase === 'reveal') snap(ctx, s, v);
     }
+    album(root, ctx, v);
     head(root, ctx, v);
     wordLine(root, ctx, v);
     timer(root, ctx);
@@ -582,6 +625,15 @@
   HGames.register({
     id: 'pictionary',
     icon: ICON,
+    news: {
+      v: '2026-09-24',
+      title: 'Піктіонарі: альбом партії',
+      items: [
+        '🖼 Наприкінці партії — альбом усіх малюнків зі словами й художниками',
+        '🔥 «Гаряче!» тепер ловить і переставлені літери: «кажна» — майже кажан',
+        '✋ Малювати пальцем надійніше: другий дотик чи долоня більше не черкають лінію через усе полотно',
+      ],
+    },
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd', 'x', 'o'],
 
     mount(root, ctx) {
@@ -594,7 +646,7 @@
         + '<form class="pcguess"><input type="text" maxlength="40" autocomplete="off" spellcheck="false" enterkeyhint="send">'
         + '<button class="primary" type="submit">➤</button></form></div>'
         + '<div class="pctools" hidden></div>'
-        + '</div></div>';
+        + '</div><div class="pcalbum" hidden></div></div>';
       bindCanvas(root, ctx);
       const s = st(root);
       s.timer = setInterval(() => { if (root._ctx) timer(root, root._ctx); }, 200);
