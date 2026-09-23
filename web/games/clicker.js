@@ -367,6 +367,8 @@
       const text = big(n);
       st.count.textContent = text;
       // «999 999 999 999» на телефоні не влазить у звичний кегль — зменшуємо, а не переносимо.
+      // Висоту шапки .long більше не міняє (див. .clk-head у clicker.css: вона стала від --clk-num),
+      // а на картці від 900 px css узагалі лишає кегль незмінним — сцена під числом не ворухнеться.
       const long = text.length > 11;
       if (st.count.classList.contains('long') !== long) st.count.classList.toggle('long', long);
     }

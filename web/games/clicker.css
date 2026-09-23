@@ -32,7 +32,6 @@
     gap: 12px 18px; align-items: start; justify-items: stretch;
   }
   .clk-scene { gap: 8px; }
-  .clk-count { font-size: 2.4em; }
 }
 
 /* ---- шапка сцени: вивіска, лічильник, швидкість, суперник ---- */
@@ -41,13 +40,37 @@
   border-radius: 999px; padding: 2px 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .clk-sign:empty { display: none; }
-.clk-head { display: flex; align-items: baseline; gap: 6px; }
-.clk-count {
-  font-size: 2.1em; font-weight: 700; color: var(--accent);
-  font-variant-numeric: tabular-nums; line-height: 1.1;
+/* Шапка сцени має СТАЛУ висоту: інакше «99 999» → «100,001 трлн» перемикало клас .long (2,4em ↔ 1,6em),
+   рядок ставав на 14 px нижчим і вся сцена з колом стрибала під пальцем.
+   Рецепт: --clk-num — найбільший кегль числа, а висота шапки задана ним же (calc(var(--clk-num) * 1.08))
+   і від тексту вже не залежить. Самої line-height замало: рядок міряється по ВЕРХНЬОМУ виносу найбільшого
+   шрифту в ньому, тож дрібніше число дало б нижчий рядок навіть при сталій line-height.
+   Звідси й display: block замість flex: у флексі число й «глеків» — два елементи, а тут вони на спільному рядку. */
+.clk-head {
+  --clk-num: 2.1em;
+  display: block; text-align: center; white-space: nowrap; line-height: 1;
+  height: calc(var(--clk-num) * 1.08);
 }
-.clk-count.long { font-size: 1.6em; }
-.clk-rate { text-align: center; }
+.clk-head > span { margin-left: 6px; }
+.clk-count {
+  font-size: var(--clk-num); font-weight: 700; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.clk-count.long { font-size: calc(var(--clk-num) * .75); }
+/* Рядок «за клік … · без тебе …»: на телефоні він однаково у два рядки — тримаємо два завжди,
+   щоб перенос від нового розряду не смикав сцену. */
+.clk-rate {
+  text-align: center; line-height: 1.35; min-height: 2.7em;
+  /* Рівно два рядки: менше — добереться порожнім, більше — обріжеться трьома крапками. Коло не рухається. */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+/* Двостовпцева розкладка: число більше, а рядок швидкості вже влазить в один рядок сцени (міряно: 385 px
+   у сцені від 420 px) — замість запасу на два рядки три крапки на випадок зовсім довгих чисел.
+   Блок стоїть НИЖЧЕ за базові правила навмисно: @container ваги не додає, і раніший запит програв би. */
+@container clk (min-width: 640px) {
+  .clk-head { --clk-num: 2.4em; }
+  .clk-rate { display: block; min-height: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+}
 /* Ніки бувають довгі («микола ( справжній )»), а картка на ПК вузька — переносимо, а не обрізаємо. */
 .clk-rival {
   text-align: center; color: var(--text); background: var(--panel); border-radius: 10px; padding: 2px 10px;
@@ -429,7 +452,13 @@
 .clk-firebox { align-items: center; padding: 10px; border-radius: 12px; background: linear-gradient(180deg, #3a2412, var(--panel)); }
 .clk-bar { width: 100%; height: 8px; border-radius: 999px; background: var(--bg2); overflow: hidden; }
 .clk-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--clk-fire)); transition: width .3s; }
-.clk-next { text-align: center; }
+/* Рядок «наступне клеймо — на N глеків». Клас .clk-next з восьмого оновлення взяла ще й смуга «Шлях виробу»
+   (clicker-craft.css) — і зробила його СІТКОЮ 26px|1fr|auto з рамкою. Через це тут текст падав у вузький стовпчик
+   і читався по одному слову в рядок. Тому пишемо з батьком: у коробці обпалу це звичайний рядок. */
+.clk-firebox .clk-next {
+  display: block; text-align: center; max-width: 520px;
+  padding: 0; background: none; border: 0; border-radius: 0;
+}
 /* .clk перед класом — щоб перебити button.primary зі style.css */
 .clk .clk-fire { background: var(--clk-fire); color: #2a1203; }
 .clk .clk-fire:hover:not(:disabled) { background: #ffa05e; }
@@ -443,7 +472,7 @@
 
 /* ---- телефон: картка на 380 px не має розповзатись ---- */
 @media (max-width: 480px) {
-  .clk-count { font-size: 1.8em; }
+  .clk-head { --clk-num: 1.8em; }
   .clk-secrets { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 6px; }
   .clk-marks { grid-template-columns: minmax(0, 1fr); }
   .clk-styles { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
@@ -511,6 +540,64 @@
   .clk-side { max-height: calc(100vh - 120px); }
   /* Гортається лише полиця; min-height: 0 — щоб флекс дав їй стиснутись, інакше max-height вище не діє. */
   .clk-pane { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
+  /* Сцена тут щонайменше 420 px завширшки, а найдовше число («999 999 999 999») у 2,4em — це ~340 px
+     разом зі словом «глеків». Тож на ПК число взагалі не міняє кегля: найспокійніший вигляд лічильника. */
+  .clk-count.long { font-size: var(--clk-num); }
+}
+
+/* ---- полиця верстатів ширшає разом із карткою ----
+   Було на Full HD без балачок: полиця 1346 px, а в ній ДВА стовпці по 664 px (рядок верстата з порожнечею
+   посередині на пів метра екрана), знаряддя й прикраси — вісім колонок по 159 px із текстом у три рядки,
+   а вкладки розтягнуті padding'ом на всю ширину. Стало: від 760 px картки ширшають, від 1250 px полиця
+   верстатів — у три стовпці. */
+@container clkside (min-width: 760px) {
+  /* Ярлики вкладок більше не тягнемо на всю ширину: п'ять слів з великими проміжками читаються гірше,
+     ніж п'ять компактних ярликів ліворуч. Кегль більший — з відстані, з якої грають на великому екрані. */
+  .clk-tabs { justify-content: flex-start; }
+  .clk-tabs button { flex: 0 1 auto; padding: 8px 18px; font-size: .95em; }
+  .clk-secrets { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .clk-styles { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .clk-clays { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+  .clk-tools { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+}
+@container clkside (min-width: 1250px) {
+  /* auto-fill, а не два стовпці: на 1346 px виходить три по ~443, на 2560 — чотири. */
+  .clk-shop { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+  .clk-secrets { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .clk-styles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .clk-clays { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .clk-tools { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+}
+
+/* ---- Full HD і ширше (картка від 1500 px — це 1920 у режимі ⛶) ----
+   Скарга: «сцена дрібна, коло маленьке, шрифти дрібні». Сцена тут упирається не в ширину (її вдосталь),
+   а в ВИСОТУ вікна: сцена 4:5, і над нею ще лічильник, під нею — смуга «Шлях виробу», стрічка й прилавок.
+   Тому тут ми (а) звільняємо рядок, поклавши вивіску на небо сцени, (б) тиснемо проміжки з 8 до 6 px,
+   (в) міряємо сцену з меншим накладним числом. Разом: 1920×1080 дає сцену 520 замість 488 (коло 256
+   замість 240), а на 1440 px заввишки — стелю 760 замість 620 (коло 375 замість 306). */
+@container clk (min-width: 1500px) {
+  .clk-lay {
+    /* Кегль ставимо на .clk-lay, а не на .clk: @container міряє ПРЕДКА, тож сам контейнер собі не відповідає. */
+    font-size: 1.06em;
+    /* 430 px — виміряний накладний простір: 107 px над карткою (шапка сайту + рядок стола), 44 лічильник,
+       19 швидкість, 22 суперник, 98 смуга «Шлях виробу», 30 стрічка, 38 прилавок, 18 черепки й проміжки.
+       Нижня межа та сама, що й для 900-ки: на широкому, але низькому вікні (1920×900) сцена не має рости. */
+    --clk-stage-w: clamp(420px, calc((100vh - 430px) * .8), 760px);
+  }
+  .clk-scene { gap: 6px; }
+  /* Вивіска перестає займати окремий рядок і лягає на небо над хатою: order переставляє її перед сценою,
+     а від'ємний відступ знизу (своя висота + проміжок) піднімає сцену на її місце — сцені +29 px висоти.
+     Порядок: 0 — число, швидкість, суперник; 1 — вивіска; 2 — сцена й усе, що частини додають під нею. */
+  .clk-scene > * { order: 2; }
+  .clk-head, .clk-rate, .clk-rival { order: 0; }
+  .clk-sign {
+    order: 1; position: relative; z-index: 2; box-sizing: border-box;
+    height: 1.75em; line-height: 1.45; margin-bottom: calc(-1.75em - 6px);
+  }
+  /* Поки Око майстра стоїть замість сцени, класти вивіску нема на що — вертаємо їй рядок. */
+  .clk-scene:has(> .clk-stage[hidden]) .clk-sign { order: 0; margin-bottom: 0; }
+  /* Суперник лишається рядком, але в один: «микола ( справжній ) позаду на …» не має ставати абзацом. */
+  .clk-rival { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 /* Низьке вікно (ноутбук на 768 px) або зовсім високе — хай усе лишається як було: там прокрутка не образа. */
 @media (max-height: 699px) {
