@@ -691,6 +691,79 @@ public class RoomsTests
         Assert.Null(h.Rooms.Find(id));
     }
 
+    // ---------- хто зараз у соло (подія solo) ----------
+
+    [Fact]
+    public void A_solo_player_is_listed_only_while_the_game_is_on_screen()
+    {
+        var h = new RoomHarness("t-solo");
+        h.Solo("Оля");
+        Assert.Empty(h.Rooms.SoloNow());                                     // кімната є, а на екрані її ще нема
+
+        Assert.Single(h.Rooms.Focus("c1", "Оля", h.RoomId).OfType<SoloChanged>());
+        Assert.Equal([new SoloPlayer("t-solo", "Оля")], h.Rooms.SoloNow());
+        Assert.Empty(h.Rooms.Focus("c1", "Оля", h.RoomId));                  // повтор нікому нічого не шле
+
+        Assert.Single(h.Rooms.Focus("c1", "Оля", null).OfType<SoloChanged>());   // пішла в лобі
+        Assert.Empty(h.Rooms.SoloNow());
+        Assert.NotNull(h.Rooms.Find(h.RoomId));                              // а кімната живе далі, як і жила
+    }
+
+    [Fact]
+    public void Only_your_own_solo_room_counts_as_on_your_screen()
+    {
+        var h = new RoomHarness("t-solo");
+        h.Solo("Оля");
+        var table = h.Rooms.Create("Петро", "ttt", null).Reply.RoomId!;
+
+        Assert.Empty(h.Rooms.Focus("c-петро", "Петро", h.RoomId));           // чужа приватна
+        Assert.Empty(h.Rooms.Focus("c-петро", "Петро", table));              // стіл і так видно в лобі
+        Assert.Empty(h.Rooms.Focus("c-петро", "Петро", "00000000"));         // такої вже нема
+        Assert.Empty(h.Rooms.SoloNow());
+    }
+
+    [Fact]
+    public void A_tab_holds_one_game_at_a_time_and_two_tabs_are_still_one_player()
+    {
+        var clock = new FakeClock();
+        var rooms = New(clock);
+        var solo = rooms.OpenSolo("Оля", "t-solo", null).Reply.RoomId!;
+        var mines = rooms.OpenSolo("Оля", "mines-daily", null).Reply.RoomId!;
+
+        rooms.Focus("c1", "Оля", solo);
+        rooms.Focus("c2", "оля", solo);
+        Assert.Equal([new SoloPlayer("t-solo", "Оля")], rooms.SoloNow());
+
+        rooms.Focus("c1", "Оля", mines);                                     // перша вкладка перейшла в сапера
+        Assert.Equal(["mines-daily", "t-solo"], rooms.SoloNow().Select(p => p.Game));
+
+        Assert.Single(rooms.Focus("c2", "Оля", null).OfType<SoloChanged>());
+        Assert.Equal(["mines-daily"], rooms.SoloNow().Select(p => p.Game));
+    }
+
+    [Fact]
+    public void A_closed_tab_a_closed_game_and_housekeeping_all_take_the_player_off()
+    {
+        var h = new RoomHarness("t-solo");
+        h.Solo("Оля");
+        h.Rooms.Focus("c1", "Оля", h.RoomId);
+        Assert.Empty(h.Rooms.DropWatcher("c-чужа"));                         // чужа вкладка нічого не міняє — і не шле
+        Assert.Single(h.Rooms.DropWatcher("c1").OfType<SoloChanged>());
+        Assert.Empty(h.Rooms.SoloNow());
+
+        h.Rooms.Focus("c2", "Оля", h.RoomId);
+        Assert.Single(h.Rooms.Leave(h.RoomId, "Оля").Out.OfType<SoloChanged>());   // «Закрити»
+        Assert.Empty(h.Rooms.SoloNow());
+
+        // Дограна щоденна зникає за чверть години, навіть коли на неї ще дивляться.
+        h.Solo("Оля");
+        h.Rooms.Focus("c3", "Оля", h.RoomId);
+        h.Act(0, "done");
+        h.Clock.Advance(TimeSpan.FromMinutes(16));
+        Assert.Single(h.Rooms.Housekeeping(h.Clock.UtcNow).OfType<SoloChanged>());
+        Assert.Empty(h.Rooms.SoloNow());
+    }
+
     // ---------- Журнал ----------
 
     [Fact]

@@ -41,6 +41,9 @@
   const cards = {};             // id кімнати → картка на екрані
   const watched = new Set();    // на що зараз підписані WatchRoom
   const pinned = new Set();     // щойно відкриті соло/приватні кімнати: їх нема в лобі, дивимось за roomId
+  let soloNow = [];             // останній 'solo': хто зараз у своїй соло-грі — [{ game, nick }]
+  let focusSent;                // що востаннє сказали FocusRoom: id кімнати або null; undefined — ще нічого
+  let away = false;             // вкладка давно схована або людина давно нічого не чіпала
   let wallet = null;            // баланс черепків, null — ще не питали
   let newsSeen = null;          // гра → версія «що нового», яку вже бачили; null — ще не питали сервер
   const newsShown = new Set();  // кому вже показали в цій вкладці (щоб не вискакувало двічі, поки летить POST)
@@ -430,7 +433,50 @@
     }
     for (const id of [...watched]) if (!want.has(id)) { watched.delete(id); send('UnwatchRoom', id); }
     for (const id of want) if (!watched.has(id)) { watched.add(id); send('WatchRoom', id); }
+    syncFocus();
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // «Хто зараз грає» у соло. Соло-кімнати приватні, у лобі їх нема, а підписка на свою тримається й з лобі —
+  // тож сервер знає це лише з наших слів (FocusRoom): на екрані власна соло-гра, і людина справді тут.
+  // Лобі, інший підрозділ, радіо, вкладка, схована понад хвилину, чи п'ять хвилин без жодного руху — уже ні.
+  // ---------------------------------------------------------------------------------------------
+
+  const AWAY_HIDDEN_MS = 60 * 1000;
+  const AWAY_IDLE_MS = 5 * 60 * 1000;
+  let lastInput = Date.now();
+  let hiddenAt = document.hidden ? Date.now() : 0;
+
+  function syncFocus() {
+    const rv = shown && !away && view.kind === 'room' ? views[view.id] : null;
+    const want = rv && rv.seat != null && rv.room.maxPlayers === 1 ? rv.room.id : null;
+    if (want === focusSent) return;
+    focusSent = want;
+    send('FocusRoom', want);
+  }
+
+  function checkAway() {
+    const now = Date.now();
+    const was = away;
+    away = (!!hiddenAt && now - hiddenAt >= AWAY_HIDDEN_MS) || now - lastInput >= AWAY_IDLE_MS;
+    if (away !== was) syncFocus();
+  }
+  // Ловимо на спуску (capture): гра може зупинити свою подію, а пад (web/static/pad.js) шле ті самі keydown і pointer*.
+  ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach((type) =>
+    document.addEventListener(type, () => { lastInput = Date.now(); if (away) checkAway(); }, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    hiddenAt = document.hidden ? Date.now() : 0;
+    if (!document.hidden) lastInput = Date.now();      // повернувся у вкладку — отже, тут
+    checkAway();
+  });
+  setInterval(checkAway, 15000);
+
+  /// Хто зараз у соло-грі gameId — ніки з останньої події 'solo'.
+  const playingIn = (gameId) => soloNow.filter((p) => p.game === gameId).map((p) => p.nick);
+  /// «Оля, Петро, Ганна і ще 2»: на плитку довгий список не влазить, повний — у підказці.
+  const whoShort = (nicks, max) => (nicks.length <= max ? nicks.join(', ')
+    : nicks.slice(0, max).join(', ') + ' і ще ' + (nicks.length - max));
+  const whoTitle = (nicks) => (nicks.length > 1 ? 'Зараз грають: ' : 'Зараз грає: ') + nicks.join(', ');
 
   // =============================================================================================
   // Завантажувач модулів
@@ -805,19 +851,33 @@
       && (!want || (g.title + ' ' + (g.hint || '')).toLowerCase().includes(want)));
     const tiles = list.map((g) => {
       const solo = g.maxPlayers === 1;
-      return '<div class="gtile' + (hasNews(g.id) ? ' fresh' : '') + '"><div class="gt-head">' + iconOf(g.id) + '<b>' + esc(g.title) + '</b>'
+      const now = solo ? playingIn(g.id) : [];
+      return '<div class="gtile' + (hasNews(g.id) ? ' fresh' : '') + (now.length ? ' live' : '') + '"><div class="gt-head">' + iconOf(g.id) + '<b>' + esc(g.title) + '</b>'
         + (hasNews(g.id) ? '<span class="gnew" title="' + esc(newsOf(g.id).title || 'Оновлення') + '">✨ нове</span>' : '') + '</div>'
+        + (now.length ? '<div class="gt-now" title="' + esc(whoTitle(now)) + '"><i class="gdot"></i><span>' + esc(whoShort(now, 3))
+          + ' <span class="muted">' + (now.length > 1 ? 'грають' : 'грає') + '</span></span></div>' : '')
         + '<div class="gt-hint muted small">' + esc(g.hint || '') + '</div>'
         + '<div class="gt-btns"><span class="gt-pl muted small">' + playersLabel(g) + '</span>'
         + (solo ? '<button class="primary" data-solo="' + esc(g.id) + '">Грати</button>'
           : '<button data-new="' + esc(g.id) + '">+ Стіл</button>') + '</div></div>';
     }).join('');
+    // Соло-ігри в каталозі стоять останніми, аж під три десятки плиток, — тож хто в них зараз, видно й тут, нагорі.
+    // Натиск відкриває свою таку саму: побачив, що Оля крутить коло, — сів і собі.
+    const soloGames = [...new Set(soloNow.map((p) => p.game))];
+    const soloLine = soloGames.length
+      ? '<div class="gsolo"><span class="muted small">🏺 Соло зараз:</span>' + soloGames.map((id) => {
+        const who = playingIn(id);
+        return '<button class="chip gsolo-g" data-solo="' + esc(id) + '" title="' + esc(whoTitle(who) + ' — зіграй і ти') + '">'
+          + iconOf(id) + '<b>' + esc(titleOf(id)) + '</b><span class="gw">· ' + esc(whoShort(who, 3)) + '</span></button>';
+      }).join('') + '</div>'
+      : '';
 
     box.innerHTML = '<section class="gpanel"><h3>🔥 Живі столи'
       + (rooms.length ? ' <span class="muted small">· ' + rooms.length + '</span>' : '') + '</h3>'
       + (mineFirst.length
         ? '<div class="gsums">' + mineFirst.map(roomSummaryHtml).join('') + '</div>'
         : '<div class="gempty glek">Столів нема. Постав перший із каталогу нижче і клич когось у балачках.</div>')
+      + soloLine
       + '</section>'
       + '<section class="gpanel"><h3>Каталог <span class="muted small">· ' + catalog.games.length + ' ігор</span></h3>'
       + '<div class="gfilters">'
@@ -1427,6 +1487,11 @@
     attach(c) {
       conn = c;
       watched.clear();
+      focusSent = undefined;
+      c.on('solo', (list) => {
+        soloNow = Array.isArray(list) ? list : [];
+        if (shown && view.kind === 'lobby') renderView();
+      });
       c.on('rooms', (list) => {
         rooms = list || [];
         // Щойно столи взагалі є — беремо назви ігор: без них балачки писали б «mafia» замість «Мафія».
@@ -1494,9 +1559,10 @@
       loadWallet();          // черепки видно в шапці з будь-якого розділу, тож питаємо їх одразу
     },
 
-    /// Після реконекту підписки на сервері вже нема — просимо заново для видимих кімнат.
+    /// Після реконекту підписки на сервері вже нема — просимо заново для видимих кімнат (і кажемо, що на екрані).
     reconnected() {
       watched.clear();
+      focusSent = undefined;
       syncWatch();
       loadWallet();
     },

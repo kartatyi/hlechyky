@@ -305,6 +305,8 @@ public interface IGameStore
 /// <summary>Повідомлення для Broadcaster'а. Каркас збирає їх у список під замком і розсилає поза ним.</summary>
 public abstract record Outgoing;
 public sealed record LobbyChanged : Outgoing;
+/// <summary>Хтось зайшов у свою соло-гру або вийшов з неї: усім летить свіжий <see cref="Rooms.SoloNow"/> (подія <c>solo</c>).</summary>
+public sealed record SoloChanged : Outgoing;
 public sealed record RoomViews(string RoomId) : Outgoing;
 public sealed record RoomFrame(string RoomId, object Frame) : Outgoing;
 /// <summary>

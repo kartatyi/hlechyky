@@ -54,7 +54,7 @@ public sealed class Broadcaster(
         List<Send> sends;
         try
         {
-            sends = Plan(all, rooms.Snapshot, rooms.ViewsFor, presence.Get, presence.ConnectionsOf,
+            sends = Plan(all, rooms.Snapshot, rooms.SoloNow, rooms.ViewsFor, presence.Get, presence.ConnectionsOf,
                 (text, roomId) => db.AddChat(site.CurrentValue.Name, text, "system", roomId));
         }
         catch (Exception ex)
@@ -102,13 +102,14 @@ public sealed class Broadcaster(
 
     /// <summary>
     /// Розкладка без жодного SignalR — саме тому її можна перевірити тестом. Склеює повторення: кілька
-    /// <see cref="LobbyChanged"/> в одному Outbox стають одним, кілька <see cref="RoomViews"/> однієї кімнати —
-    /// теж (лишається останнє: воно й так рахується від свіжого стану), а з кадрів однієї кімнати лишається
-    /// останній. <see cref="DjSays"/> сюди не потрапляє: його вміє лише RadioEngine.
+    /// <see cref="LobbyChanged"/> (і так само <see cref="SoloChanged"/>) в одному Outbox стають одним, кілька
+    /// <see cref="RoomViews"/> однієї кімнати — теж (лишається останнє: воно й так рахується від свіжого стану), а з
+    /// кадрів однієї кімнати лишається останній. <see cref="DjSays"/> сюди не потрапляє: його вміє лише RadioEngine.
     /// </summary>
     public static List<Send> Plan(
         IReadOnlyList<Outgoing> messages,
         Func<List<RoomSummary>> snapshot,
+        Func<List<SoloPlayer>> soloNow,
         Func<string, RoomBroadcast?> viewsFor,
         Func<string, string?> nickOf,
         Func<string, IReadOnlyList<string>> connectionsOf,
@@ -126,6 +127,9 @@ public sealed class Broadcaster(
                     // (нижче). Інакше рядок «Оля і Петро сіли грати» доходив би до браузера раніше за
                     // новину, що за тим столом уже нема місця, і кнопка на ньому кликала б сідати.
                     lobby = new Send(new ToAll(), "rooms", snapshot());
+                    break;
+                case SoloChanged:
+                    sends.Add(new Send(new ToAll(), "solo", soloNow()));
                     break;
                 case RoomViews views:
                     if (viewsFor(views.RoomId) is { } b) sends.AddRange(ViewSends(b, nickOf));
@@ -159,16 +163,18 @@ public sealed class Broadcaster(
         return sends;
     }
 
-    /// <summary>Індекси повідомлень, які варто відправити: повторення лобі, видів і кадрів згортаються в останнє.</summary>
+    /// <summary>Індекси повідомлень, які варто відправити: повторення лобі, соло, видів і кадрів згортаються в останнє.</summary>
     static List<int> Coalesce(IReadOnlyList<Outgoing> messages)
     {
         var lobby = -1;
+        var solo = -1;
         var views = new Dictionary<string, int>(StringComparer.Ordinal);
         var frames = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var i = 0; i < messages.Count; i++)
             switch (messages[i])
             {
                 case LobbyChanged: lobby = i; break;
+                case SoloChanged: solo = i; break;
                 case RoomViews v: views[v.RoomId] = i; break;
                 case RoomFrame f: frames[f.RoomId] = i; break;
             }
@@ -179,6 +185,7 @@ public sealed class Broadcaster(
             var drop = messages[i] switch
             {
                 LobbyChanged => i != lobby,
+                SoloChanged => i != solo,
                 RoomViews v => views[v.RoomId] != i,
                 RoomFrame f => frames[f.RoomId] != i,
                 DjSays => true,

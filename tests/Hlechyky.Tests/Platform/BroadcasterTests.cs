@@ -17,6 +17,7 @@ public class BroadcasterTests
         return Broadcaster.Plan(
             messages,
             h.Rooms.Snapshot,
+            h.Rooms.SoloNow,
             h.Rooms.ViewsFor,
             id => byConn.TryGetValue(id, out var nick) ? nick : null,
             nick => [.. byConn.Where(p => string.Equals(p.Value, nick, StringComparison.OrdinalIgnoreCase)).Select(p => p.Key)],
@@ -153,13 +154,29 @@ public class BroadcasterTests
     }
 
     [Fact]
+    public void Who_plays_solo_goes_to_everyone_once_per_batch()
+    {
+        var h = new RoomHarness("t-solo");
+        h.Solo("Оля");
+        h.Rooms.Focus("c-оля", "Оля", h.RoomId);
+        var sends = Plan(h, [new SoloChanged(), new LobbyChanged(), new SoloChanged()]);
+
+        var solo = Assert.Single(sends, s => s.Event == "solo");
+        Assert.Equal(new ToAll(), solo.Target);
+        var who = Assert.Single(Body(solo).EnumerateArray());
+        Assert.Equal("t-solo", who.GetProperty("game").GetString());
+        Assert.Equal("Оля", who.GetProperty("nick").GetString());
+        Assert.Empty(Body(Assert.Single(sends, s => s.Event == "rooms")).EnumerateArray());   // у лобі приватна так і не з'явилась
+    }
+
+    [Fact]
     public void A_failing_chat_write_costs_only_its_own_line()
     {
         var h = new RoomHarness("ttt");
         h.Join("Оля");
         var sends = Broadcaster.Plan(
             [new Journal("рядок"), new LobbyChanged(), new RoomViews(h.RoomId)],
-            h.Rooms.Snapshot, h.Rooms.ViewsFor, _ => null, _ => [],
+            h.Rooms.Snapshot, h.Rooms.SoloNow, h.Rooms.ViewsFor, _ => null, _ => [],
             (_, _) => throw new InvalidOperationException("база зайнята"));
 
         Assert.DoesNotContain(sends, s => s.Event == "chat");
