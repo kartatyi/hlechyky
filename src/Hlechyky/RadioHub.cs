@@ -124,7 +124,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         }
         // Спершу — чи можна тут говорити взагалі (не за столом, мертві мовчать): на це флуд-лічильник не витрачаємо.
         if (rooms.TalkRefusal(roomId ?? "", Context.ConnectionId, nick) is { } why) return why;
-        if (flood.Check(nick, text, clock.UtcNow) is { } tooMuch) return tooMuch;
+        if (flood.Check(nick, text, clock.UtcNow, "table:" + roomId) is { } tooMuch) return tooMuch;
         var (outbox, error) = rooms.TableSay(roomId ?? "", Context.ConnectionId, nick, said, kind);
         if (error is not null) return error;
         await broadcaster.FlushAsync(outbox);
@@ -152,9 +152,12 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         await Clients.OthersInGroup(Broadcaster.RoomGroup(roomId)).SendAsync("typing", new { nick, room = roomId });
     }
 
-    /// <summary>Старіші повідомлення — коли людина гортає вгору Балачки (або Журнал, <paramref name="log"/>).</summary>
-    public List<ChatMessage> ChatBefore(long beforeId, bool log) =>
-        beforeId <= 1 || !Allow(input: false) ? [] : db.ChatBefore(beforeId, OlderBatch, log);
+    /// <summary>
+    /// Старіші повідомлення — коли людина гортає вгору Балачки (або Журнал, <paramref name="log"/>). null — «не зараз»
+    /// (квота на секунду вичерпана), а не «історія скінчилась»: порожній список браузер читає як «далі нічого нема».
+    /// </summary>
+    public List<ChatMessage>? ChatBefore(long beforeId, bool log) =>
+        !Allow(input: false) ? null : beforeId <= 1 ? [] : db.ChatBefore(beforeId, OlderBatch, log);
 
     /// <summary>Обрізаємо по символах, але не посеред смайла: у .NET він займає дві клітинки рядка.</summary>
     static string Cut(string? text)
@@ -280,6 +283,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         var outbox = rooms.Watch(id, Context.ConnectionId, Nick());
         if (outbox.Count == 0) return;   // кімнати нема або вона чужа приватна — мовчки нічого
         await Groups.AddToGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(id));
+        // Розмову столу знімаємо вже з групою: так між знімком і підпискою не загубиться жоден рядок.
+        if (rooms.TalkHistory(id, Context.ConnectionId) is { } history) outbox.Add(history);
         await broadcaster.FlushAsync(outbox);
     }
 

@@ -780,10 +780,18 @@ public sealed class Rooms
         // розсилку на всіх глядачів кімнати в обхід квот хаба.
         if (!room.Watchers.TryAdd(connId, 0)) return outbox;
         outbox.Add(new RoomViews(room.Id));
-        // Хто щойно підійшов (F5, реконект, зайшов подивитись), має побачити розмову, а не лише те, що скажуть далі.
-        if (room.Talks)
-            lock (room.Sync) outbox.Add(new TableHistory(room.Id, connId, [.. room.Talk]));
         return outbox;
+    }
+
+    /// <summary>
+    /// Уся розмова столу одному з'єднанню — для того, хто щойно підійшов (F5, реконект, зайшов подивитись). Хаб кличе
+    /// це вже ПІСЛЯ того, як з'єднання стало в групу столу: знімок, зроблений раніше, загубив би рядок, сказаний між
+    /// знімком і підпискою. Рядок, що встиг і туди, і туди, браузер відкидає за номером. null — балачки тут нема.
+    /// </summary>
+    public TableHistory? TalkHistory(string id, string connId)
+    {
+        if (Find(id) is not { } room || !room.Talks || !room.Watchers.ContainsKey(connId)) return null;
+        lock (room.Sync) return new TableHistory(room.Id, connId, [.. room.Talk]);
     }
 
     // ---------- балачка столу ----------
@@ -844,6 +852,9 @@ public sealed class Rooms
     {
         var seat = room.SeatOf(nick);
         if (seat is null && (connId is null || !room.Watchers.ContainsKey(connId))) return "Спершу підійди до столу";
+        // Гру питаємо лише посеред партії. Партію, яку закрив каркас (гра впала, всі розійшлись), гра могла не
+        // довести до свого кінця — і мовчання мертвих лишилось би за дограним столом, навіть для новачка на їхньому місці.
+        if (room.Status != RoomStatus.Playing) return null;
         try { return room.Game.TalkBlock(seat); }
         catch (Exception ex)
         {

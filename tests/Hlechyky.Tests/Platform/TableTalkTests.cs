@@ -69,7 +69,8 @@ public class TableTalkTests
 
         Assert.NotNull(Say(h, "Оля", "сам із собою").Error);
         Assert.Empty(h.Rooms.TableLines(h.RoomId));
-        Assert.DoesNotContain(h.Rooms.Watch(h.RoomId, "c1", "Оля"), m => m is TableHistory);
+        h.Rooms.Watch(h.RoomId, "c1", "Оля");
+        Assert.Null(h.Rooms.TalkHistory(h.RoomId, "c1"));
     }
 
     [Fact]
@@ -79,10 +80,39 @@ public class TableTalkTests
         Say(h, "Оля", "перша");
         Say(h, "Петро", "друга");
 
-        var history = Assert.Single(h.Rooms.Watch(h.RoomId, "c-ганна", "Ганна").OfType<TableHistory>());
+        h.Rooms.Watch(h.RoomId, "c-ганна", "Ганна");
+        var history = h.Rooms.TalkHistory(h.RoomId, "c-ганна")!;
 
         Assert.Equal("c-ганна", history.ConnectionId);
         Assert.Equal(["перша", "друга"], history.Lines.Select(l => l.Text));
+    }
+
+    [Fact]
+    public void Only_a_connection_that_watches_the_table_gets_its_conversation()
+    {
+        var h = Duel();
+        Say(h, "Оля", "секрет столу");
+
+        Assert.Null(h.Rooms.TalkHistory(h.RoomId, "c-чужий"));          // не підписаний — нічого
+        Assert.Null(h.Rooms.TalkHistory("такого-нема", "c-чужий"));
+        h.Rooms.Watch(h.RoomId, "c-чужий", "Ганна");
+        Assert.Single(h.Rooms.TalkHistory(h.RoomId, "c-чужий")!.Lines);
+    }
+
+    [Fact]
+    public void A_game_is_asked_who_keeps_quiet_only_while_its_round_is_on()
+    {
+        var h = new RoomHarness("t-quiet");
+        h.Join("Оля");
+        h.Join("Петро");
+        Assert.Null(Say(h, "Оля", "почнемо?").Error);                    // лобі — балакають усі
+
+        h.Start();
+        Assert.Equal(TestQuiet.Why, Say(h, "Оля", "а тепер?").Error);
+
+        h.Act(0, "win");                                                  // партія скінчилась — гра вже не питається
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Null(Say(h, "Оля", "добра гра").Error);
     }
 
     [Fact]
@@ -129,7 +159,8 @@ public class TableTalkTests
     {
         var h = Duel();
         var said = Say(h, "Оля", "ну що, ще раз?").Out;
-        var history = h.Rooms.Watch(h.RoomId, "c-ганна", "Ганна").OfType<TableHistory>().ToList();
+        h.Rooms.Watch(h.RoomId, "c-ганна", "Ганна");
+        List<Outgoing> history = [h.Rooms.TalkHistory(h.RoomId, "c-ганна")!];
 
         var sends = Broadcaster.Plan([.. said, .. history], h.Rooms.Snapshot, h.Rooms.SoloNow, h.Rooms.ViewsFor, _ => null, _ => [],
             (text, roomId) => new { text, roomId });

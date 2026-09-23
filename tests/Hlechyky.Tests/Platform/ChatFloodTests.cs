@@ -26,6 +26,25 @@ public class ChatFloodTests
     }
 
     [Fact]
+    public void The_same_line_in_another_chat_is_not_a_repeat()
+    {
+        var f = new ChatFlood();
+        Assert.Null(f.Check("Оля", "я за Петра", T0, "table:abc"));
+        Assert.Null(f.Check("Оля", "я за Петра", T0.AddSeconds(6), "chat"));
+        Assert.Equal(ChatFlood.Repeat, f.Check("Оля", "я за Петра", T0.AddSeconds(12), "table:abc"));
+    }
+
+    [Fact]
+    public void Short_answers_can_be_given_twice_in_a_row()
+    {
+        var f = new ChatFlood();
+        Assert.Null(f.Check("Оля", "так", T0));
+        Assert.Null(f.Check("Оля", "так", T0.AddSeconds(3)));
+        Assert.Null(f.Check("Оля", "+", T0.AddSeconds(6)));
+        Assert.Null(f.Check("Оля", "+", T0.AddSeconds(9)));
+    }
+
+    [Fact]
     public void Dice_can_be_rolled_twice_in_a_row()
     {
         var f = new ChatFlood();

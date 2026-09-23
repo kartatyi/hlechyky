@@ -328,6 +328,38 @@ public class AgentToolsTests
     }
 
     [Fact]
+    public async Task What_others_said_while_the_agent_was_thinking_is_not_lost_after_it_speaks()
+    {
+        var (v, room, agents) = await Village();
+        await v.Tools.StartGame(agents[0], room);
+        v.Tools.TableRead(agents[0], null, 40, onlyNew: true);          // дочитав усе, що було
+        await v.Tools.TableSay(agents[1], null, "це Петро, точно");       // поки агент думав, інші сказали своє
+        await v.Tools.TableSay(agents[0], null, "а я кажу — ні");         // агент нарешті сказав своє
+
+        var fresh = J(v.Tools.TableRead(agents[0], null, 40, onlyNew: true)).GetProperty("table").EnumerateArray()
+            .Select(l => l.GetProperty("text").GetString()).ToList();
+
+        Assert.Contains("це Петро, точно", fresh);
+    }
+
+    [Fact]
+    public async Task Looking_at_another_table_does_not_eat_the_unread_of_ones_own()
+    {
+        var (v, room, agents) = await Village();
+        var neighbour = await v.Agent("Ярина");
+        var other = J(await v.Tools.Create(neighbour, "ttt", null)).GetProperty("room").GetString()!;
+        v.Tools.TableRead(agents[0], room, 40, onlyNew: true);                 // своє дочитав
+        await v.Tools.TableSay(agents[1], room, "агов, починаємо?");             // у своєму — нове
+        await v.Tools.TableSay(neighbour, other, "а в нас тут хрестики");       // у чужому — ще новіше
+        v.Tools.TableRead(agents[0], other, 40, onlyNew: true);                 // зазирнув за чужий стіл
+
+        var mine = J(v.Tools.TableRead(agents[0], room, 40, onlyNew: true)).GetProperty("table").EnumerateArray()
+            .Select(l => l.GetProperty("text").GetString()).ToList();
+
+        Assert.Contains("агов, починаємо?", mine);
+    }
+
+    [Fact]
     public async Task A_spectator_agent_is_not_let_to_speak_during_the_game()
     {
         var (v, room, agents) = await Village();

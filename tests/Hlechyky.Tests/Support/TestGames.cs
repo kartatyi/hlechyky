@@ -46,6 +46,30 @@ public sealed class TestParty : Game
 }
 
 /// <summary>
+/// Гра, у якій посеред партії за столом мовчать усі (<see cref="Game.TalkBlock"/>): каркас має питати її лише тоді,
+/// коли партія справді йде, — ні в лобі, ні за дограним столом.
+/// </summary>
+public sealed class TestQuiet : Game
+{
+    public const string Why = "Тихо, йде гра";
+
+    public override GameInfo Info { get; } = new(
+        "t-quiet", "Тиха гра", "тиху гру", GameGroup.Party, 2, 4, Start: StartMode.ByHost);
+
+    public override void Start() { }
+
+    public override ActResult Act(int seat, string action, JsonElement payload)
+    {
+        if (action == "win") Ctx.Finish([seat], "тиха гра: виграв " + Ctx.NickOf(seat));
+        return ActResult.Done;
+    }
+
+    public override string? TalkBlock(int? seat) => Why;
+
+    public override object View(int? seat) => new { quiet = true };
+}
+
+/// <summary>
 /// Стіл, що починає сам, щойно його поставили, і вільного місця нікому вже не обіцяє. Живих таких ігор
 /// нема (усі Immediate у нас приватні), але гілка в <c>Rooms.Create</c> є: заклик «сідай» має мовчати там,
 /// де сідати нема куди.
