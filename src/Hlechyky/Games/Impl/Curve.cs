@@ -42,13 +42,31 @@ public sealed class CurveHead
 /// </summary>
 /// <param name="rng">Сідований генератор кімнати: та сама партія з тим самим сідом повторюється точка в точку.</param>
 /// <param name="gaps">Чи робити дірки самому. false — дірок нема (тести дивляться на суцільний слід).</param>
-public sealed class CurveCore(Random rng, bool gaps = true)
+/// <param name="w">Ширина поля; типово — звичні 300 (див. <see cref="SizeFor"/>).</param>
+/// <param name="h">Висота поля; типово — звичні 200.</param>
+public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.SmallW, int h = CurveCore.SmallH)
 {
+    /// <summary>Звичне поле на двох–чотирьох: 300 × 200 умовних одиниць.</summary>
+    public const int SmallW = 300, SmallH = 200;
+
     /// <summary>Поле в умовних одиницях; воно ж — растр зіткнень, одна одиниця на клітинку.</summary>
-    public const int W = 300, H = 200;
+    public int W { get; } = w;
+    public int H { get; } = h;
+
+    /// <summary>
+    /// Розмір поля під склад. До чотирьох — звичні 300×200 (відчуття гри не міняємо), на п'ятьох-шістьох —
+    /// 360×240, на сімох-вісьмох — 420×280: на кожного лишається приблизно стільки ж місця, як і вчотирьох.
+    /// </summary>
+    public static (int W, int H) SizeFor(int players) => players switch
+    {
+        <= 4 => (SmallW, SmallH),
+        <= 6 => (360, 240),
+        _ => (420, 280),
+    };
+
     public const int TickMs = 40;
-    /// <summary>Місць за столом (і довжина всіх масивів на дроті).</summary>
-    public const int Seats = 4;
+    /// <summary>Місць за столом (і довжина всіх масивів на дроті): як у класичній Achtung, die Kurve! — до восьми.</summary>
+    public const int Seats = 8;
     /// <summary>40 од/с при 25 тиках на секунду.</summary>
     public const double Speed = 1.6;
     /// <summary>180°/с — за секунду кривуля розвертається рівно назад.</summary>
@@ -75,7 +93,7 @@ public sealed class CurveCore(Random rng, bool gaps = true)
     /// <summary>Кут, у якому кривуля може дивитись на старті: ±90° від напрямку на центр поля.</summary>
     const double SpawnSpread = Math.PI;
 
-    readonly byte[] _grid = new byte[W * H];
+    readonly byte[] _grid = new byte[w * h];
 
     /// <summary>Голови за номерами місць; невзяті місця мають <c>Present == false</c>.</summary>
     public CurveHead[] Heads { get; } = [.. Enumerable.Range(0, Seats).Select(_ => new CurveHead())];
@@ -212,7 +230,7 @@ public sealed class CurveCore(Random rng, bool gaps = true)
     int NextGap() => rng.Next(GapMinTicks, GapMaxTicks + 1);
 
     /// <summary>Голова торкнулась стіни.</summary>
-    public static bool Wall(double x, double y) => x < R || y < R || x > W - R || y > H - R;
+    public bool Wall(double x, double y) => x < R || y < R || x > W - R || y > H - R;
 
     /// <summary>
     /// Чи є слід під передньою півкулею голови. Позаду завжди свій хвіст, тому дивимось лише туди,
@@ -264,9 +282,9 @@ public sealed class CurveCore(Random rng, bool gaps = true)
                 var y = SpawnMargin + rng.NextDouble() * (H - 2 * SpawnMargin);
                 if (placed.All(p => (p.X - x) * (p.X - x) + (p.Y - y) * (p.Y - y) >= apart * apart)) return (x, y);
             }
-        // Не пощастило (буває хіба що при зміні констант) — розводимо по кутах, аби раунд не завис.
-        var corner = placed.Count % 4;
-        return (corner % 2 == 0 ? W * 0.25 : W * 0.75, corner < 2 ? H * 0.25 : H * 0.75);
+        // Не пощастило (буває хіба що при зміні констант) — розводимо по сітці 4×2, аби раунд не завис.
+        var spot = placed.Count % Seats;
+        return (W * (0.125 + 0.25 * (spot % 4)), spot < 4 ? H * 0.3 : H * 0.7);
     }
 
     /// <summary>Максимум точок, які можна злити в один прямий пробіг: далі похибка вже помітна.</summary>
@@ -280,6 +298,12 @@ public sealed class CurveCore(Random rng, bool gaps = true)
     public const int MaxPts = 500;
 
     /// <summary>
+    /// Стеля точок на кривулю за столом на <paramref name="players"/>: весь вид тримаємо в тих самих ~2000
+    /// точок, що й учотирьох, — на вісьмох кожна кривуля отримує 250.
+    /// </summary>
+    public static int PtsFor(int players) => MaxPts * 4 / Math.Max(4, players);
+
+    /// <summary>
     /// Ламана для клієнта: цілі координати (растр усе одно цілий) і викинуті точки, що лежать на
     /// прямій. Пряма ділянка з двохсот точок так стискається до двох, і хвилина раунду вкладається
     /// в кілька кілобайтів замість десятків.
@@ -287,7 +311,9 @@ public sealed class CurveCore(Random rng, bool gaps = true)
     /// <returns>
     /// Pts — пари x,y підряд; Gaps — номери точок, у які слід НЕ веде (там дірка).
     /// </returns>
-    public static (int[] Pts, int[] Gaps) Polyline(IReadOnlyList<CurvePoint> trail)
+    /// <param name="trail">Слід однієї кривулі.</param>
+    /// <param name="maxPts">Стеля точок на кривулю; на повному столі її ділять на більше людей (<see cref="PtsFor"/>).</param>
+    public static (int[] Pts, int[] Gaps) Polyline(IReadOnlyList<CurvePoint> trail, int maxPts = MaxPts)
     {
         var pts = new List<int>(trail.Count * 2);
         var gapAt = new List<bool>(trail.Count);
@@ -310,7 +336,7 @@ public sealed class CurveCore(Random rng, bool gaps = true)
             gapAt.Add(p.Gap);
             run = 0;
         }
-        if (gapAt.Count > MaxPts) (pts, gapAt) = Thin(pts, gapAt);
+        if (gapAt.Count > maxPts) (pts, gapAt) = Thin(pts, gapAt, maxPts);
         var gaps = new List<int>();
         for (var i = 0; i < gapAt.Count; i++)
             if (gapAt[i]) gaps.Add(i);
@@ -322,11 +348,11 @@ public sealed class CurveCore(Random rng, bool gaps = true)
     /// переносимо на ту точку, що лишилась, — краще не домалювати кілька одиниць сліду, ніж
     /// провести лінію крізь дірку, якої на полі нема.
     /// </summary>
-    static (List<int> Pts, List<bool> GapAt) Thin(List<int> pts, List<bool> gapAt)
+    static (List<int> Pts, List<bool> GapAt) Thin(List<int> pts, List<bool> gapAt, int maxPts)
     {
-        var k = (gapAt.Count + MaxPts - 1) / MaxPts;
-        var thinPts = new List<int>(MaxPts * 2 + 2);
-        var thinGap = new List<bool>(MaxPts + 1);
+        var k = (gapAt.Count + maxPts - 1) / maxPts;
+        var thinPts = new List<int>(maxPts * 2 + 2);
+        var thinGap = new List<bool>(maxPts + 1);
         var gap = false;
         for (var i = 0; i < gapAt.Count; i++)
         {
@@ -352,7 +378,7 @@ public sealed class CurveCore(Random rng, bool gaps = true)
 }
 
 /// <summary>
-/// Кривуля на 2–4 гравців: їдеш уперед, лишаєш слід, повертати можна лише плавно. Партія — це низка
+/// Кривуля на 2–8 гравців: їдеш уперед, лишаєш слід, повертати можна лише плавно. Партія — це низка
 /// раундів у тій самій кімнаті: хто вибув, тому вже нема куди поспішати, а живі беруть по очку за
 /// кожного вибулого. Дограли до <c>10 × (гравців − 1)</c> — партія скінчилась.
 /// </summary>
@@ -361,7 +387,7 @@ public sealed class CurveGame : Game
     public override GameInfo Info { get; } = new(
         "curve", "Кривуля", "кривулю", GameGroup.Live, 2, CurveCore.Seats,
         TickMs: CurveCore.TickMs, Start: StartMode.ByHost,
-        Hint: "Їдеш уперед і лишаєш слід. Повертати можна тільки плавно. Врізався — вибув. Останній живий бере очко");
+        Hint: "Їдеш уперед і лишаєш слід. Повертати можна тільки плавно. Врізався — вибув. Останній живий бере очко. До восьми за столом");
 
     /// <summary>Скільки очок за партію треба на кожного суперника.</summary>
     public const int PerRival = 10;
@@ -397,14 +423,20 @@ public sealed class CurveGame : Game
         1 => "зелена",
         2 => "глиняна",
         3 => "біла",
+        4 => "синя",
+        5 => "рожева",
+        6 => "фіалкова",
+        7 => "червона",
         _ => "кривуля",
     };
 
     public override void Start()
     {
-        _core = new CurveCore(Ctx.Rng);
-        _scores = new int[CurveCore.Seats];
         _seats = [.. Enumerable.Range(0, CurveCore.Seats).Select(Ctx.Seated)];
+        // Поле — під склад: до чотирьох звичне, більшому столу — ширше (CurveCore.SizeFor).
+        var (w, h) = CurveCore.SizeFor(_seats.Count(x => x));
+        _core = new CurveCore(Ctx.Rng, true, w, h);
+        _scores = new int[CurveCore.Seats];
         _target = PerRival * Math.Max(1, _seats.Count(x => x) - 1);
         _round = 0;
         _winners = null;
@@ -553,8 +585,8 @@ public sealed class CurveGame : Game
 
     public override object View(int? seat) => new
     {
-        width = CurveCore.W,
-        height = CurveCore.H,
+        width = Core.W,
+        height = Core.H,
         turn = (int?)null,
         round = _round,
         target = _target,
@@ -567,7 +599,7 @@ public sealed class CurveGame : Game
         segments = (object?[])[.. Core.Heads.Select(h =>
         {
             if (!h.Present) return null;
-            var (pts, gaps) = CurveCore.Polyline(h.Trail);
+            var (pts, gaps) = CurveCore.Polyline(h.Trail, CurveCore.PtsFor(Core.Heads.Count(x => x.Present)));
             return (object)new { pts, gaps };
         })],
         winners = _winners,

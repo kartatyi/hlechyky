@@ -3,18 +3,52 @@
   утримання під палець. Кольори — тільки змінними зі style.css і core.css.
 */
 
+/* П'ята–восьма кривулі: у теми сайту чотирьох кольорів на всіх не вистачає */
+:root {
+  --cblue: #6fb3e8;
+  --cpink: #e88ac0;
+  --cviolet: #a98bef;
+  --cred: #ef5b5b;
+}
+
 /* Поле. Пропорція 3:2 задається канвасом, тут лише ширина й те, що під пальцем воно не гортається. */
 .curveboard { max-width: 460px; }
+.curveboard.big { max-width: 560px; }
 .curveboard.hold { touch-action: none; }
+/* Full HD: 460 px посеред порожньої картки — замало; даємо полю рости, поки воно вміщається по висоті */
+@media (min-width: 1500px) and (min-height: 860px) {
+  .curveboard, .curveboard.big { max-width: min(780px, calc((100vh - 320px) * 1.5)); }
+}
 
-/* Рахунок раундів: по числу на місце, кольори — ті самі, що й у чіпах місць. */
-.cscore { display: flex; align-items: baseline; gap: 6px; }
-.cscore i { font-style: normal; color: var(--muted); }
+/* Чипи місць у шапці картки: каркас знає лише x/o/c/d */
+.gseat.cb { color: var(--cblue); }
+.gseat.cp { color: var(--cpink); }
+.gseat.cv { color: var(--cviolet); }
+.gseat.cr { color: var(--cred); }
+
+/* Рахунок раундів: чіп на кожного — кружечок кольору його сліду, нік і очки. */
+.cscore { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px 6px; font-size: .86em; }
+.cchip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 6px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.cchip i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: none; }
+.cchip b { color: var(--text); font-variant-numeric: tabular-nums; }
+.cchip.me { box-shadow: 0 0 0 1px currentColor inset; }
+.cchip.out { opacity: .45; }
 .cscore .c0 { color: var(--accent); }
 .cscore .c1 { color: var(--ok); }
 .cscore .c2 { color: var(--clay); }
 .cscore .c3 { color: var(--text); }
+.cscore .c4 { color: var(--cblue); }
+.cscore .c5 { color: var(--cpink); }
+.cscore .c6 { color: var(--cviolet); }
+.cscore .c7 { color: var(--cred); }
 .cscore .small { margin-left: 4px; }
+@media (max-width: 480px) {
+  .cscore { font-size: .78em; gap: 4px; }
+  .cchip { padding: 2px 7px 2px 5px; }
+}
 
 /* Кнопки повороту. Як і хрестовина каркаса, вони лише для пальця: на миші зручніші стрілки. */
 .cpad { display: none; }

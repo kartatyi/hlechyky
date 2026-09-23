@@ -81,8 +81,11 @@ public sealed class BomberCore(Random rng)
     public const int BoxChance = 55;
     /// <summary>З якою ймовірністю ящик лишає по собі бонус.</summary>
     public const int DropChance = 30;
-    /// <summary>Місць за столом — стільки ж кутів на полі.</summary>
-    public const int Seats = 4;
+    /// <summary>
+    /// Місць за столом: чотири кути і ще двоє посередині верхнього й нижнього краю. Поле те саме 15×13 —
+    /// так грали вп'ятьох-ушістьох і в класиці, тісніше, зате весело.
+    /// </summary>
+    public const int Seats = 6;
 
     /// <summary>0 праворуч, 1 вниз, 2 ліворуч, 3 вгору — як скрізь на платформі.</summary>
     public static readonly (int Dx, int Dy)[] Deltas = [(1, 0), (0, 1), (-1, 0), (0, -1)];
@@ -92,6 +95,15 @@ public sealed class BomberCore(Random rng)
     /// одну стіну». Третій і четвертий добирають решту кутів.
     /// </summary>
     public static readonly int[] Corners = [Cell(1, 1), Cell(W - 2, H - 2), Cell(W - 2, 1), Cell(1, H - 2)];
+
+    /// <summary>
+    /// П'ятий і шостий старти — середина верхнього й нижнього краю (x = 7 непарний, тож це прохід, а не
+    /// стовп). Розчищаються лише тоді, коли на них хтось грає: на двох–чотирьох поле лишається тим самим.
+    /// </summary>
+    public static readonly int[] Mids = [Cell(W / 2, 1), Cell(W / 2, H - 2)];
+
+    /// <summary>Старт кожного місця: спершу кути, потім середини країв.</summary>
+    public static readonly int[] Starts = [.. Corners, .. Mids];
 
     public BomberTile[] Tiles { get; } = new BomberTile[W * H];
     /// <summary>Скільки тиків ще горіти в кожній клітинці; 0 — не горить.</summary>
@@ -170,7 +182,7 @@ public sealed class BomberCore(Random rng)
                     : BomberTile.Free;
         // Напрямок, який людина тримає пальцем чи клавішею, переживає новий раунд: інакше той, хто не
         // відпускав стрілку на «Готуйсь», стояв би стовпом, поки не перетисне клавішу.
-        for (var i = 0; i < Seats; i++) Players[i] = new BomberMan { Cell = Corners[i], Want = Players[i].Want };
+        for (var i = 0; i < Seats; i++) Players[i] = new BomberMan { Cell = Starts[i], Want = Players[i].Want };
     }
 
     /// <summary>Новий раунд: свіже поле з ящиками і живі бомбери на тих місцях, які цього разу грають.</summary>
@@ -179,8 +191,10 @@ public sealed class BomberCore(Random rng)
         Layout();
         // 3×3 навколо кожного кута лишаємо порожнім — і за чотирьох, і за двох гравців. Інакше той, кому
         // випав кут із ящиками під носом, першу ж свою бомбу ставив би собі в глухий кут.
+        // Середини країв — лише коли за столом більше чотирьох: на меншому столі там стоять ящики, як і раніше.
+        var crowd = plays.Skip(Corners.Length).Any(p => p);
         var safe = new HashSet<int>();
-        foreach (var corner in Corners)
+        foreach (var corner in crowd ? Starts : Corners)
             for (var dy = -1; dy <= 1; dy++)
                 for (var dx = -1; dx <= 1; dx++)
                     safe.Add(Cell(X(corner) + dx, Y(corner) + dy));

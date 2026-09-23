@@ -337,53 +337,74 @@ public sealed class TanksCore
         }
     }
 
+    /// <summary>
+    /// Скільки дванадцятих снаряд проходить за один підкрок. Раніше снаряд стрибав на всю швидкість за раз
+    /// і перевірявся лише в кінці стрибка: два зустрічні снаряди (8 + 8 = 16 за тик) або 🚀 назустріч танку
+    /// (12 + 4) могли проскочити один крізь одного — вікно влучання лише 13. Тепер снаряд летить підкроками
+    /// по 4, і між двома перевірками відстань змінюється щонайбільше на 8 — повз вікно не проскочиш.
+    /// </summary>
+    public const int ShellSubStep = 4;
+
     void Fly()
     {
         if (Shells.Count == 0) return;
         var gone = new HashSet<Shell>();
-        foreach (var s in Shells)
+        var most = Shells.Max(s => s.Speed);
+        for (var done = 0; done < most; done += ShellSubStep)
         {
-            var (dx, dy) = Deltas[s.Dir];
-            s.X += dx * s.Speed;
-            s.Y += dy * s.Speed;
-            // Снаряд — точка; клітинка, в якій вона зараз. За краєм поля він просто зникає.
-            var (cx, cy) = (s.X / Sub, s.Y / Sub);
-            if (s.X < 0 || s.Y < 0 || cx >= W || cy >= H) { gone.Add(s); continue; }
-            var cell = Cell(cx, cy);
-            var border = cx == 0 || cy == 0 || cx == W - 1 || cy == H - 1;
-            switch (Tiles[cell])
+            foreach (var s in Shells)
             {
-                case TankTile.Steel:
-                    if (s.Pierce && !border) Tiles[cell] = TankTile.Free;   // 💥 ламає сталь, але не рамку
-                    gone.Add(s);
-                    continue;
-                case TankTile.Brick:
-                    Break(cell);
-                    if (!s.Pierce) { gone.Add(s); continue; }               // 💥 летить далі крізь цеглу
-                    break;
+                if (gone.Contains(s) || done >= s.Speed) continue;
+                var (dx, dy) = Deltas[s.Dir];
+                var step = Math.Min(ShellSubStep, s.Speed - done);
+                s.X += dx * step;
+                s.Y += dy * step;
+                Strike(s, gone);
             }
-            foreach (var (t, i) in Tanks.Select((t, i) => (t, i)))
-            {
-                if (i == s.Owner || !t.Alive) continue;
-                if (Math.Abs(s.X - CenterX(t)) > Half || Math.Abs(s.Y - CenterY(t)) > Half) continue;
-                gone.Add(s);
-                if (t.Shield > 0) break;
-                Kill(t, s.Owner);
-                break;
-            }
+            // Два снаряди в одній точці гасять один одного — і лоб у лоб, і навздогін.
+            for (var a = 0; a < Shells.Count; a++)
+                for (var b = a + 1; b < Shells.Count; b++)
+                {
+                    var (p, q) = (Shells[a], Shells[b]);
+                    if (gone.Contains(p) || gone.Contains(q)) continue;
+                    if (Math.Abs(p.X - q.X) <= Half && Math.Abs(p.Y - q.Y) <= Half) { gone.Add(p); gone.Add(q); }
+                }
         }
-        // Два снаряди в одній точці гасять один одного — і лоб у лоб, і навздогін.
-        for (var a = 0; a < Shells.Count; a++)
-            for (var b = a + 1; b < Shells.Count; b++)
-            {
-                var (p, q) = (Shells[a], Shells[b]);
-                if (gone.Contains(p) || gone.Contains(q)) continue;
-                if (Math.Abs(p.X - q.X) <= Half && Math.Abs(p.Y - q.Y) <= Half) { gone.Add(p); gone.Add(q); }
-            }
         foreach (var s in gone)
         {
             Shells.Remove(s);
             Tanks[s.Owner].ShellsOut = Math.Max(0, Tanks[s.Owner].ShellsOut - 1);
+        }
+    }
+
+    /// <summary>Снаряд щойно зрушив: що він зачепив у новій точці — край, сталь, цеглу чи чужий танк.</summary>
+    void Strike(Shell s, HashSet<Shell> gone)
+    {
+        // Снаряд — точка; клітинка, в якій вона зараз. За краєм поля він просто зникає.
+        var (cx, cy) = (s.X / Sub, s.Y / Sub);
+        if (s.X < 0 || s.Y < 0 || cx >= W || cy >= H) { gone.Add(s); return; }
+        var cell = Cell(cx, cy);
+        var border = cx == 0 || cy == 0 || cx == W - 1 || cy == H - 1;
+        switch (Tiles[cell])
+        {
+            case TankTile.Steel:
+                if (s.Pierce && !border) Tiles[cell] = TankTile.Free;   // 💥 ламає сталь, але не рамку
+                gone.Add(s);
+                return;
+            case TankTile.Brick:
+                Break(cell);
+                if (!s.Pierce) { gone.Add(s); return; }                // 💥 летить далі крізь цеглу
+                break;
+        }
+        for (var i = 0; i < Tanks.Length; i++)
+        {
+            var t = Tanks[i];
+            if (i == s.Owner || !t.Alive) continue;
+            if (Math.Abs(s.X - CenterX(t)) > Half || Math.Abs(s.Y - CenterY(t)) > Half) continue;
+            gone.Add(s);
+            if (t.Shield > 0) return;
+            Kill(t, s.Owner);
+            return;
         }
     }
 

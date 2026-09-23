@@ -5,9 +5,20 @@
 :root {
   --bbomb: #12211a;   /* тіло бомби */
   --bbox: #8f5527;    /* дошки на ящику */
+  --bblue: #6fb3e8;   /* п'яте місце */
+  --bpink: #e88ac0;   /* шосте місце */
 }
 
 .bboard { max-width: 420px; }
+/* Full HD: поле 15×13 на 420 px губилось посеред порожньої картки — на великому екрані даємо йому рости,
+   але так, щоб разом із рядком над ним і статусом під ним уміщалось по висоті */
+@media (min-width: 1500px) and (min-height: 860px) {
+  .bboard { max-width: min(600px, calc((100vh - 330px) * 15 / 13)); }
+}
+
+/* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
+.gseat.bb { color: var(--bblue); }
+.gseat.bp { color: var(--bpink); }
 
 /* ---- рядок над полем: хто скільки раундів узяв і що встиг підібрати ---- */
 .bhud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; font-size: .82em; }
@@ -22,6 +33,18 @@
 .bchip.s1 { color: var(--ok); }
 .bchip.s2 { color: var(--clay); }
 .bchip.s3 { color: var(--muted); }
+.bchip.s4 { color: var(--bblue); }
+.bchip.s5 { color: var(--bpink); }
+/* номер місця — той самий, що намальований на пузі бомбера */
+.bchip i {
+  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
+  display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
+}
+.bchip.me { box-shadow: 0 0 0 1px currentColor inset; }
+.bchip.bclock { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bchip.bclock.hot { color: var(--danger); animation: bpulse 1s ease-in-out infinite; }
+@keyframes bpulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .bchip.bclock.hot { animation: none; } }
 
 /* ---- керування пальцем: напрямок тримають, тому це не .dpad каркаса ---- */
 .bpad { display: none; }
@@ -46,4 +69,12 @@
   .bdirs { grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(3, 38px); }
   .bbomb { width: 64px; height: 64px; font-size: 1.5em; }
   .bpad { gap: 10px; }
+}
+
+/* Вузький телефон і повний стіл: шість чіпів з апгрейдами ставали стовпчиком і штовхали поле за екран.
+   Тут у чужих чіпах лишаємо номер, нік і рахунок, апгрейди — лише свої */
+@media (max-width: 480px) {
+  .bhud { gap: 4px; font-size: .76em; }
+  .bchip { padding: 2px 7px; gap: 4px; }
+  .bchip:not(.me) .bups { display: none; }
 }

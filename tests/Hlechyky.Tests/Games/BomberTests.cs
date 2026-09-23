@@ -19,7 +19,7 @@ public class BomberTests
     static RoomHarness Table(int players = 2, int seed = 42)
     {
         var h = new RoomHarness("bomber", seed: seed);
-        foreach (var nick in new[] { "Оля", "Петро", "Ганна", "Іван" }.Take(players)) h.Join(nick);
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна", "Іван", "Марко", "Зоя" }.Take(players)) h.Join(nick);
         h.Start();
         return h;
     }
@@ -145,7 +145,7 @@ public class BomberTests
     {
         var core = new BomberCore(new Random(3));
         core.Reset(All(4));
-        for (var i = 0; i < BomberCore.Seats; i++)
+        for (var i = 0; i < BomberCore.Corners.Length; i++)
         {
             Assert.Equal(BomberCore.Corners[i], core.Players[i].Cell);
             Assert.True(core.Players[i].Alive);
@@ -612,7 +612,7 @@ public class BomberTests
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
-        Assert.Equal([0, 3, 0, 0], h.View(null).GetProperty("wins").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        Assert.Equal([0, 3, 0, 0, 0, 0], h.View(null).GetProperty("wins").EnumerateArray().Select(x => x.GetInt32()).ToArray());
         Assert.StartsWith("Бомбер: Петро 3 : Оля 0", h.Outbox.OfType<Journal>().Last().Text);
     }
 
@@ -881,11 +881,11 @@ public class BomberTests
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void A_whole_round_in_a_room_of_four_costs_next_to_nothing()
+    public void A_whole_round_in_a_room_of_six_costs_next_to_nothing()
     {
         // Голе ядро — це пів справи: найдорожче в бомбері не крок світу, а кадр, який кімната будує
         // 16 разів на секунду. Тому міряємо саме кімнатний тик разом із розсилкою (TESTING.md §4.4).
-        var h = Table(4);
+        var h = Table(6);
         Ready(h);
         var sw = Stopwatch.StartNew();
         for (var i = 0; i < BomberCore.RoundTicks; i++)
@@ -897,5 +897,137 @@ public class BomberTests
 
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"2000 тиків кімнати зайняли {sw.Elapsed}");
+    }
+
+    // ---------- п'ятеро й шестеро (оновлення 24.09.2026) ----------
+
+    [Fact]
+    public void Six_players_start_in_the_corners_and_in_the_middles_of_the_long_edges()
+    {
+        var core = new BomberCore(new Random(3));
+        core.Reset(All(6));
+
+        Assert.Equal(BomberCore.Cell(7, 1), core.Players[4].Cell);
+        Assert.Equal(BomberCore.Cell(7, BomberCore.H - 2), core.Players[5].Cell);
+        Assert.All(core.Players, p => Assert.True(p.Alive));
+        foreach (var mid in BomberCore.Mids)
+        {
+            Assert.False(IsWall(BomberCore.X(mid), BomberCore.Y(mid)));      // стоїмо в проході, а не в стовпі
+            for (var dy = -1; dy <= 1; dy++)
+                for (var dx = -1; dx <= 1; dx++)
+                    Assert.NotEqual(BomberTile.Box, core.Tiles[BomberCore.Cell(BomberCore.X(mid) + dx, BomberCore.Y(mid) + dy)]);
+        }
+    }
+
+    [Fact]
+    public void Up_to_four_players_the_middles_keep_their_boxes_as_before()
+    {
+        // На двох–чотирьох поле має лишитись тим самим, що люди вже знають: середини країв не розчищаємо.
+        var boxed = 0;
+        for (var seed = 1; seed <= 20; seed++)
+        {
+            var four = new BomberCore(new Random(seed));
+            four.Reset(All(4));
+            foreach (var mid in BomberCore.Mids)
+                if (four.Tiles[mid] == BomberTile.Box) boxed++;
+            Assert.False(four.Players[4].Alive);
+            Assert.False(four.Players[5].Alive);
+        }
+        Assert.True(boxed > 0, "на чотирьох середини країв мали б іноді стояти в ящиках");
+    }
+
+    [Fact]
+    public void The_same_seed_gives_the_same_field_for_four_whatever_the_seat_count_limit()
+    {
+        // Розчищення середин не з'їдає жодного числа з генератора — поле на чотирьох лишилось тим самим.
+        var a = new BomberCore(new Random(9));
+        a.Reset(All(4));
+        var b = new BomberCore(new Random(9));
+        b.Reset([true, true, true, true]);
+        Assert.Equal(a.BoxCells(), b.BoxCells());
+    }
+
+    [Fact]
+    public void A_table_of_six_starts_with_six_bombers_and_names_the_new_colours()
+    {
+        var h = Table(6);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(6, h.Room.Info.MaxPlayers);
+        Assert.Equal("синій", h.Room.Summary().SeatNames[4]);
+        Assert.Equal("рожевий", h.Room.Summary().SeatNames[5]);
+        var men = h.View(null).GetProperty("p");
+        Assert.Equal(6, men.GetArrayLength());
+        Assert.All(men.EnumerateArray(), m => Assert.True(m.GetProperty("alive").GetBoolean()));
+        Assert.Equal(BomberCore.RoundTicks, h.View(null).GetProperty("limit").GetInt32());
+    }
+
+    [Fact]
+    public void The_middle_starters_can_walk_and_bomb()
+    {
+        var h = Table(6);
+        Ready(h);
+        h.Input(4, "move", new { dir = 1 });   // синій іде вниз зі свого старту
+        h.Tick(4);
+        h.Input(4, "move", new { dir = -1 });
+        h.Tick(4);
+        var blue = h.View(null).GetProperty("p")[4];
+        Assert.Equal(7 * BomberCore.Sub, blue.GetProperty("x").GetInt32());
+        Assert.Equal(2 * BomberCore.Sub, blue.GetProperty("y").GetInt32());
+        Assert.True(h.Act(5, "bomb").Ok);
+        Assert.Single(h.View(null).GetProperty("b").EnumerateArray());
+    }
+
+    [Fact]
+    public void Five_leave_a_table_of_six_one_by_one_and_the_last_takes_the_match()
+    {
+        var h = Table(6);
+        Ready(h);
+        foreach (var nick in new[] { "Петро", "Ганна", "Іван", "Марко" })
+        {
+            h.Leave(nick);
+            Assert.Equal(RoomStatus.Playing, h.Room.Status);   // поки за столом двоє — грають далі
+        }
+        h.Leave("Зоя");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+    }
+
+    [Fact]
+    public void In_a_table_of_five_the_last_one_standing_takes_the_round()
+    {
+        var h = Table(5);
+        Ready(h);
+        // Четверо підривають себе самі; синій стоїть у своїй середині й дивиться.
+        for (var seat = 0; seat < 4; seat++) Assert.True(h.Act(seat, "bomb").Ok);
+        h.Tick(BomberCore.FuseTicks);
+
+        Assert.Equal("pause", Phase(h));
+        var wins = h.View(null).GetProperty("wins");
+        Assert.Equal(1, wins[4].GetInt32());
+        for (var seat = 0; seat < 4; seat++) Assert.Equal(0, wins[seat].GetInt32());
+    }
+
+    [Fact]
+    public void Rematch_of_a_crowded_table_puts_everyone_back_on_the_field()
+    {
+        var h = Table(6);
+        h.Leave("Петро");   // стіл не зупинився…
+        for (var i = 0; i < 200 && h.Room.Status == RoomStatus.Playing; i++)
+        {
+            // …тож доведемо партію до кінця: жовтий раз у раз підриває себе, решта стоїть
+            Ready(h);
+            if (h.Room.Status != RoomStatus.Playing) break;
+            for (var seat = 0; seat < 6; seat++)
+                if (seat != 2 && h.Room.Seats[seat] is not null) h.Act(seat, "bomb");
+            h.Tick(BomberCore.FuseTicks + Bomber.PauseTicks);
+        }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([2], h.Room.Result!.Winners);          // рудий у кутку єдиний не бомбив
+
+        h.Rematch("Оля");
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        var men = h.View(null).GetProperty("p");
+        Assert.Equal(5, men.EnumerateArray().Count(m => m.GetProperty("alive").GetBoolean()));   // усі, хто лишився
+        Assert.All(h.View(null).GetProperty("wins").EnumerateArray(), w => Assert.Equal(0, w.GetInt32()));
     }
 }
