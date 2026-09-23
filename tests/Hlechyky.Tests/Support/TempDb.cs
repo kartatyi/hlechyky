@@ -17,7 +17,10 @@ public sealed class TempDb : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // Лише свій пул (той самий рядок з'єднання, що в Db): ClearAllPools тут закривав з'єднання паралельних
+        // тестів посеред запиту — випадкові ObjectDisposedException і загублені записи в чужих тестах.
+        using (var c = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path }.ToString()))
+            Microsoft.Data.Sqlite.SqliteConnection.ClearPool(c);
         foreach (var suffix in new[] { "", "-wal", "-shm" })
             try { File.Delete(Path + suffix); } catch (IOException) { /* хай лежить у temp */ }
     }

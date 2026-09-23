@@ -90,7 +90,7 @@ public class ChatLikesRepliesTests
                     + "INSERT INTO chat(nick, text, kind, created_at) VALUES('Оля', 'стара репліка', 'chat', '2026-09-01T10:00:00.0000000+00:00');";
                 cmd.ExecuteNonQuery();
             }
-            SqliteConnection.ClearAllPools();
+            ClearOwnPool(path);
 
             var db = new Db(path);
             var old = db.RecentChat(10, 0).Single();
@@ -100,9 +100,16 @@ public class ChatLikesRepliesTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
+            ClearOwnPool(path);
             foreach (var suffix in new[] { "", "-wal", "-shm" })
                 try { File.Delete(path + suffix); } catch (IOException) { }
         }
+    }
+
+    /// <summary>Лише пул цього файлу, не ClearAllPools: той закривав з'єднання паралельних тестів (див. TempDb.Dispose).</summary>
+    static void ClearOwnPool(string path)
+    {
+        using var c = new SqliteConnection($"Data Source={path}");
+        SqliteConnection.ClearPool(c);
     }
 }
