@@ -225,9 +225,14 @@ public sealed class Pictionary : Game
         return Math.Abs(g.Length - w.Length) <= max && Distance(g, w, max) <= max;
     }
 
-    /// <summary>Левенштейн з раннім виходом: далі за <paramref name="max"/> рахувати нема чого.</summary>
+    /// <summary>
+    /// Відстань Левенштейна, де переставлені сусідні літери — одна помилка, а не дві («кажна» — «кажан»:
+    /// пальці на телефоні так помиляються найчастіше). З раннім виходом: далі за <paramref name="max"/>
+    /// рахувати нема чого.
+    /// </summary>
     static int Distance(string a, string b, int max)
     {
+        var before = new int[b.Length + 1];
         var prev = new int[b.Length + 1];
         var cur = new int[b.Length + 1];
         for (var j = 0; j <= b.Length; j++) prev[j] = j;
@@ -239,10 +244,12 @@ public sealed class Pictionary : Game
             {
                 var cost = a[i - 1] == b[j - 1] ? 0 : 1;
                 cur[j] = Math.Min(Math.Min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+                if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1])
+                    cur[j] = Math.Min(cur[j], before[j - 2] + 1);
                 best = Math.Min(best, cur[j]);
             }
             if (best > max) return best;
-            (prev, cur) = (cur, prev);
+            (before, prev, cur) = (prev, cur, before);
         }
         return prev[b.Length];
     }

@@ -39,6 +39,8 @@
   .pcmain { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "tools" "side"; }
   .pctop { grid-template-columns: 1fr auto; }
   .pcword { grid-column: 1 / -1; order: 3; }
+  /* у стовпці «auto» відсоткова ширина схлопувалась у нуль — таймер на телефоні просто зникав */
+  .pctime { width: 110px; }
   .pcfeed { max-height: 160px; }
 }
 
@@ -105,3 +107,17 @@
 .pcsz i { display: block; border-radius: 50%; background: var(--text); }
 .pcsz.on, .pct.on { border-color: var(--accent); background: var(--panel3); }
 .pcsep { width: 8px; }
+
+/* ---- альбом партії (оновлення 24.09) ---- */
+.pcalbum { display: flex; flex-direction: column; gap: 8px; }
+.pcalbum[hidden] { display: none; }
+.pcthumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.pcthumbs figure { margin: 0; background: var(--bg2); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.pcthumbs img { width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; background: var(--pcpaper); display: block; }
+.pcthumbs figcaption { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; min-width: 0; }
+.pcthumbs figcaption b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcthumbs figure { animation: pcin .4s ease-out both; }
+@keyframes pcin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pcthumbs figure { animation: none; } }
+/* Десять місць — це два рядки «вільно» над полотном. Сісти можна кнопкою каркаса, чіпи тут зайві. */
+.gtable:has(.pcwrap) .gseat.free { display: none; }

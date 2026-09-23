@@ -37,16 +37,22 @@ public sealed class Telephone : Game
     const string Step = "step", Reveal = "reveal", Done = "done";
     /// <summary>Що підставляємо за того, хто не встиг описати малюнок.</summary>
     public const string Shrug = "🤷 не встиг";
+    /// <summary>
+    /// Автор першого запису ланцюжка, коли фразу загадав Глек, а не гравець (партія на двох). ❤ йому не ставлять
+    /// і в рахунок він не йде.
+    /// </summary>
+    public const int Jug = -1;
 
     public override GameInfo Info { get; } = new(
-        "telephone", "Зіпсований телефон", "зіпсований телефон", GameGroup.Party, 3, Seats,
+        "telephone", "Зіпсований телефон", "зіпсований телефон", GameGroup.Party, 2, Seats,
         TickMs: TickMs, Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("tempo", "Темп", [("fast", "Швидкий"), ("normal", "Звичайний"), ("slow", "Спокійний")], "normal"),
             new GameOption("steps", "Кроків", [("all", "Скільки гравців"), ("4", "4"), ("6", "6"), ("8", "8")], "all"),
         ],
-        Hint: "Пишеш фразу — сусід її малює — наступний описує малюнок — і так по колу. А потім усі разом дивляться, що вийшло");
+        Hint: "Пишеш фразу — сусід її малює — наступний описує малюнок — і так по колу. А потім усі разом дивляться, що вийшло. "
+            + "Удвох фразу загадує Глек");
 
     sealed class Entry
     {
@@ -97,11 +103,21 @@ public sealed class Telephone : Game
         if (options.TryGetValue("steps", out var s) && int.TryParse(s, out var n) && n is 4 or 6 or 8) _stepsOption = n;
     }
 
+    /// <summary>
+    /// Удвох свою фразу не зіпсуєш: ланцюжок ходить між тими самими двома, і третім кроком ти описував би
+    /// малюнок власної фрази. Тому на двох фразу кожному ланцюжку загадує Глек (її бачить лише той, хто
+    /// малює), а кроків два: малюнок і опис. На показі видно, що було загадано і що з того вийшло.
+    /// </summary>
+    bool Duo => _order.Length == 2;
+
     public override void Start()
     {
         _order = [.. Enumerable.Range(0, Seats).Where(Ctx.Seated)];
         _chains = [.. _order.Select(_ => new List<Entry>())];
         _steps = Math.Min(_order.Length, _stepsOption ?? _order.Length);
+        if (Duo)
+            foreach (var chain in _chains)
+                chain.Add(new Entry { Seat = Jug, Kind = "text", Text = _phrases.Random(Ctx.Rng) });
         _left.Clear();
         _result = null;
         _chain = 0;
@@ -176,9 +192,12 @@ public sealed class Telephone : Game
 
     int NextChain(int after)
     {
-        for (var c = after + 1; c < _chains.Length; c++) if (_chains[c].Count > 0) return c;
+        for (var c = after + 1; c < _chains.Length; c++) if (HasPlayers(_chains[c])) return c;
         return -1;
     }
+
+    /// <summary>Ланцюжок, у якому є хоч один запис гравця: сама лише фраза Глека показу не варта.</summary>
+    static bool HasPlayers(List<Entry> chain) => chain.Any(e => e.Seat != Jug);
 
     // =========================================================================================
     // Дії
@@ -284,6 +303,7 @@ public sealed class Telephone : Game
         // лише те, що вже показали
         if (chain > _chain || chain == _chain && index >= _shown) return ActResult.Fail("Цього ще не показували");
         var entry = _chains[chain][index];
+        if (entry.Seat == Jug) return ActResult.Fail("Це загадав Глек — ❤ ставлять гравцям");
         if (entry.Seat == seat) return ActResult.Fail("Собі ❤ не ставлять 🙂");
         if (!entry.Likes.Remove(seat)) entry.Likes.Add(seat);
         _dirty = true;
@@ -309,7 +329,7 @@ public sealed class Telephone : Game
     int[] Likes()
     {
         var likes = new int[Seats];
-        foreach (var e in _chains.SelectMany(c => c)) likes[e.Seat] += e.Likes.Count;
+        foreach (var e in _chains.SelectMany(c => c)) if (e.Seat >= 0) likes[e.Seat] += e.Likes.Count;
         return likes;
     }
 
@@ -325,7 +345,7 @@ public sealed class Telephone : Game
         foreach (var s in seats) Ctx.Score(s, likes[s]);
         _result = new { winners, likes };
         var tail = winners.Length == 0 ? "без ❤, зате всі посміялись" : "найбільше ❤ у " + string.Join(" і ", winners.Select(Ctx.NickOf));
-        Ctx.Finish(winners, $"{Info.Title}: {_chains.Count(c => c.Count > 0)} ланцюжків — {tail}",
+        Ctx.Finish(winners, $"{Info.Title}: {Chains(_chains.Count(HasPlayers))} — {tail}",
             seats.ToDictionary(s => s, s => (long)likes[s]));
     }
 
@@ -376,6 +396,7 @@ public sealed class Telephone : Game
     public override object View(int? seat) => new
     {
         phase = _phase,
+        duo = Duo,
         step = Math.Min(_step + 1, _steps),
         steps = _steps,
         until = _until,
@@ -387,8 +408,8 @@ public sealed class Telephone : Game
         {
             chain = _chain,
             owner = _order[_chain],
-            no = _chains.Take(_chain + 1).Count(c => c.Count > 0),
-            chains = _chains.Count(c => c.Count > 0),
+            no = _chains.Take(_chain + 1).Count(HasPlayers),
+            chains = _chains.Count(HasPlayers),
             shown = _shown,
             total = _chains[_chain].Count,
             entries = _chains[_chain].Take(_shown).Select((e, i) => EntryView(e, i, seat)).ToArray(),
@@ -401,6 +422,10 @@ public sealed class Telephone : Game
     // =========================================================================================
     // Дрібниці
     // =========================================================================================
+
+    /// <summary>«1 ланцюжок», «3 ланцюжки», «5 ланцюжків».</summary>
+    static string Chains(int n) =>
+        $"{n} " + (n % 10 == 1 && n % 100 != 11 ? "ланцюжок" : n % 10 is >= 2 and <= 4 && n % 100 is < 12 or > 14 ? "ланцюжки" : "ланцюжків");
 
     static string Clean(string raw)
     {

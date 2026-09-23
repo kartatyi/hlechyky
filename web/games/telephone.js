@@ -208,7 +208,10 @@
     el.addEventListener('pointerdown', (e) => {
       const ctx = root._ctx;
       if (!ctx || !canDraw(ctx)) return;
+      // Другий палець (долоня на Steam Deck, щипок) і права кнопка миші штриха не починають.
+      if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
       e.preventDefault();
+      if (p.cur) flush(root, true);
       const [x, y] = point(el, e);
       if (p.tool === 'fill') {
         const op = [1, p.stroke++, p.color, 0, x, y];
@@ -220,12 +223,12 @@
       }
       try { el.setPointerCapture(e.pointerId); } catch { /* старі браузери */ }
       const eraser = p.tool === 'eraser';
-      p.cur = { s: p.stroke++, c: eraser ? 0 : p.color, w: SIZES[p.size] * (eraser ? 2 : 1), p: [x, y], fresh: true };
+      p.cur = { s: p.stroke++, c: eraser ? 0 : p.color, w: SIZES[p.size] * (eraser ? 2 : 1), p: [x, y], fresh: true, id: e.pointerId };
       paintSoon(root);
     });
 
     el.addEventListener('pointermove', (e) => {
-      if (!p.cur) return;
+      if (!p.cur || e.pointerId !== p.cur.id) return;
       const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
       for (const ev of events.length ? events : [e]) {
         const [x, y] = point(el, ev);
@@ -239,7 +242,7 @@
       paintSoon(root);
     });
 
-    const end = () => { if (p.cur) flush(root, true); };
+    const end = (e) => { if (p.cur && (!e || e.pointerId === p.cur.id)) flush(root, true); };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
     el.addEventListener('lostpointercapture', end);
@@ -331,7 +334,7 @@
     const t = v.task;
     const title = !t ? (ctx.mine ? 'Чекаємо, поки всі здадуть…' : 'Гравці працюють…')
       : t.kind === 'phrase' ? 'Напиши фразу, яку намалює сусід'
-        : t.kind === 'draw' ? 'Намалюй це'
+        : t.kind === 'draw' ? (v.duo && v.step === 1 ? 'Глек загадав — намалюй, а сусід угадає' : 'Намалюй це')
           : 'Опиши, що бачиш на малюнку';
     const key = [v.step, t ? t.kind + ':' + t.chain : 'none'].join('|');
     const body = root.querySelector('.tpbody');
@@ -435,12 +438,14 @@
   }
 
   function entryHtml(ctx, e, chain, last) {
-    const who = '<div class="tpby">' + nick(ctx, e.seat) + (e.kind === 'drawing' ? ' малює:' : e.index === 0 ? ' починає:' : ' бачить:') + '</div>';
+    // seat -1 — фраза від Глека (партія на двох): її автор не гравець, і ❤ їй не ставлять
+    const jug = e.seat < 0;
+    const who = '<div class="tpby">' + (jug ? '🏺 Глек загадав:' : nick(ctx, e.seat) + (e.kind === 'drawing' ? ' малює:' : e.index === 0 ? ' починає:' : ' бачить:')) + '</div>';
     const body = e.kind === 'drawing'
       ? '<canvas class="tpshow" data-chain="' + chain + '" data-index="' + e.index + '"></canvas>'
       : '<div class="tptext">«' + ctx.esc(e.text || '') + '»</div>';
     const own = e.seat === ctx.seat;
-    const like = '<button type="button" class="tplike' + (e.liked ? ' on' : '') + '" data-chain="' + chain + '" data-index="' + e.index + '"'
+    const like = jug ? '' : '<button type="button" class="tplike' + (e.liked ? ' on' : '') + '" data-chain="' + chain + '" data-index="' + e.index + '"'
       + (own || !ctx.mine || !ctx.playing ? ' disabled' : '') + '>❤ ' + (e.likes || 0) + '</button>';
     return '<div class="tpentry' + (last ? ' fresh' : '') + '">' + who + body + like + '</div>';
   }
@@ -527,6 +532,15 @@
   HGames.register({
     id: 'telephone',
     icon: ICON,
+    news: {
+      v: '2026-09-24',
+      title: 'Зіпсований телефон: тепер і вдвох',
+      items: [
+        '👫 Грати можна вже вдвох: фразу кожному загадує Глек, ти малюєш — сусід угадує, і навпаки',
+        '🏺 На показі видно, що саме Глек загадав і що з того вийшло',
+        '✋ Малювати пальцем надійніше: другий дотик чи долоня більше не черкають лінію через усе полотно',
+      ],
+    },
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd', 'x', 'o'],
 
     mount(root, ctx) {

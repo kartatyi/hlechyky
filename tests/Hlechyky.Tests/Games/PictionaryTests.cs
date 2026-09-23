@@ -229,6 +229,9 @@ public class PictionaryTests
     [InlineData("кіт", "кит", false)]              // коротке слово: одна літера — вже пів відповіді
     [InlineData("холодильник", "холодилник", true)]
     [InlineData("корова", "собака", false)]
+    [InlineData("кажан", "кажна", true)]            // переставлені сусідні літери — одна помилка, а не дві
+    [InlineData("холодильник", "холодлиьник", true)]
+    [InlineData("кажан", "ажкан", false)]
     public void Close_means_one_or_two_letters_away(string word, string guess, bool expected) =>
         Assert.Equal(expected, Pictionary.Close(guess, word));
 

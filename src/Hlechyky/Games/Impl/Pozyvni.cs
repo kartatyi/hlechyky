@@ -35,21 +35,32 @@ public sealed class Pozyvni : Game
     const int Unlimited = Cards;
 
     public static readonly int[] ClockChoices = [60, 90, 120];
+    /// <summary>Скільки людей треба на дві команди: у кожній капітан і щонайменше один польовий.</summary>
+    public const int TeamsMin = 4;
+
+    /// <summary>
+    /// Режим столу. <see cref="ModeAuto"/> — вирішуємо на старті: від чотирьох — дві команди, менше —
+    /// разом проти столу. Друзі часто сідають удвох-утрьох, а двох команд із трьох людей не складеш.
+    /// </summary>
+    public const string ModeAuto = "auto", ModeTeams = "teams", ModeCoop = "coop";
 
     const string Setup = "setup", Clue = "clue", Guess = "guess", Done = "done";
     const string Red = "red", Blue = "blue", Grey = "grey", Black = "black";
 
     public override GameInfo Info { get; } = new(
-        "pozyvni", "Позивні", "позивні", GameGroup.Party, 4, Seats,
+        "pozyvni", "Позивні", "позивні", GameGroup.Party, 2, Seats,
         TickMs: TickMs, Start: StartMode.ByHost, Hidden: true,
         Options:
         [
+            new GameOption("mode", "Хто проти кого",
+                [(ModeAuto, "Як збереться: 4+ — команди, менше — разом"), (ModeTeams, "Дві команди"), (ModeCoop, "Разом проти столу")], ModeAuto),
             new GameOption("topic", "Теми слів", PictionaryWords.Topics, PictionaryWords.AnyTopic, Multi: true),
             new GameOption("clock", "Годинник", [("off", "Без нього"), .. ClockChoices.Select(n => (n.ToString(), $"{n} с"))], "off"),
             new GameOption("black", "Чорних слів", [("1", "Одне"), ("2", "Двоє")], "1"),
             new GameOption("zero", "Підказка «нуль»", [("on", "Можна"), ("off", "Не можна")], "on"),
         ],
-        Hint: "Дві команди, два капітани. Капітан каже одне слово і число, команда вгадує свої слова. Чорне слово — миттєвий програш");
+        Hint: "Капітан каже одне слово і число, команда вгадує свої слова. Від чотирьох — дві команди, "
+            + "удвох-утрьох — разом проти столу. Чорне слово — миттєвий програш");
 
     // ---------- налаштування столу ----------
     PictionaryWords _words = null!;
@@ -58,6 +69,14 @@ public sealed class Pozyvni : Game
     bool _zero = true;
     /// <summary>0 — без годинника; інакше стільки мілісекунд на підказку і стільки ж на здогадки.</summary>
     int _clockMs;
+    string _mode = ModeAuto;
+    /// <summary>
+    /// Ця партія — разом проти столу: усі сидячі — одна (червона) команда, сині — сам стіл. Після кожного
+    /// ходу команди стіл забирає одне своє слово; забрав усі вісім раніше — команда програла.
+    /// </summary>
+    bool _coop;
+    /// <summary>Скільки підказок дав капітан за партію (у кооперативі це і є рахунок).</summary>
+    int _clues;
 
     // ---------- стіл ----------
     readonly string[] _board = new string[Cards];
@@ -101,13 +120,22 @@ public sealed class Pozyvni : Game
         if (options.TryGetValue("black", out var b) && b == "2") _blacks = 2;
         if (options.TryGetValue("zero", out var z)) _zero = z != "off";
         if (options.TryGetValue("clock", out var c) && int.TryParse(c, out var cn) && ClockChoices.Contains(cn)) _clockMs = cn * 1000;
+        if (options.TryGetValue("mode", out var m) && m is ModeTeams or ModeCoop) _mode = m;
         if (_words.Count < Cards) throw new GameError("Замало слів для столу, позивні відпочивають");
     }
+
+    /// <summary>«Дві команди» з трьома людьми не почнеш — кажемо це до старту, а не нічиєю після.</summary>
+    public override string? CanStart() =>
+        _mode == ModeTeams && Seated().Count() < TeamsMin
+            ? $"На дві команди треба щонайменше {TeamsMin}. Удвох-утрьох — стіл «Разом проти столу»"
+            : null;
 
     public override void Start()
     {
         _result = null;
         _clue = null;
+        _clues = 0;
+        _coop = _mode == ModeCoop || (_mode == ModeAuto && Seated().Count() < TeamsMin);
         _taken = 0;
         _fingers.Clear();
         _log.Clear();
@@ -129,7 +157,7 @@ public sealed class Pozyvni : Game
 
         // Першою ходить та команда, у якої дев'ять слів. Після «Ще раз» це ті, хто програв: реванш
         // має сенс лише тоді, коли фора дістається не переможцям.
-        _turn = _lastLoser ?? (Ctx.Rng.Next(2) == 0 ? Red : Blue);
+        _turn = _coop ? Red : _lastLoser ?? (Ctx.Rng.Next(2) == 0 ? Red : Blue);
         DealKey();
         Split();
 
@@ -164,7 +192,8 @@ public sealed class Pozyvni : Game
         var n = 0;
         foreach (var seat in Seated())
         {
-            var side = n++ % 2 == 0 ? Red : Blue;
+            // разом проти столу: усі — одна команда, капітан — перше місце (після «Ще раз» це вже інша людина)
+            var side = _coop || n++ % 2 == 0 ? Red : Blue;
             _side[seat] = side;
             if (_boss[side] < 0) _boss[side] = seat;
         }
@@ -186,6 +215,10 @@ public sealed class Pozyvni : Game
     public override string SeatName(int seat)
     {
         var side = seat >= 0 && seat < Seats ? _side[seat] : null;
+        if (_coop) return "команда";
+        // До старту: удвох-утрьох (чи стіл «разом») команд не буде — не обіцяємо «синіх», яких нема.
+        if (side is null && _side.All(x => x is null) && (_mode == ModeCoop || _mode == ModeAuto && Seated().Count() < TeamsMin))
+            return "команда";
         side ??= seat % 2 == 0 ? Red : Blue;   // до старту команд ще нема — показуємо типовий розкид
         return side == Red ? "червоні" : "сині";
     }
@@ -213,6 +246,7 @@ public sealed class Pozyvni : Game
     {
         if (_phase != Setup) return ActResult.Fail("Партія вже почалась, склад не міняють");
         var side = Str(payload, "side");
+        if (_coop) return ActResult.Fail("Тут усі в одній команді — проти столу");
         if (side != Red && side != Blue) return ActResult.Fail("Є лише червоні й сині");
         if (_side[seat] == side) return ActResult.Done;
         Unseat(seat);
@@ -252,6 +286,7 @@ public sealed class Pozyvni : Game
         if (count == 0 && !_zero) return ActResult.Fail("За цим столом «нуль» не кажуть");
 
         _clue = (word, count, count == 0 ? Unlimited : count + 1);
+        _clues++;
         _taken = 0;
         _fingers.Clear();
         Say($"{TeamName(_turn)}: «{word} {(count == 0 ? "нуль" : count.ToString())}»");
@@ -337,7 +372,8 @@ public sealed class Pozyvni : Game
 
         if (colour == Black)
         {
-            Win(Other(_turn), $"{TeamName(_turn)} наткнулись на чорне слово «{_board[i]}»", black: true);
+            Win(Other(_turn), _coop ? $"команда наткнулась на чорне слово «{_board[i]}» — стіл переміг"
+                : $"{TeamName(_turn)} наткнулись на чорне слово «{_board[i]}»", black: true);
             return ActResult.Done;
         }
         if (mine) _taken++;
@@ -346,9 +382,12 @@ public sealed class Pozyvni : Game
         if (LeftFor(colour) == 0 && colour != Grey)
         {
             if (mine) BigClue();
-            Win(colour, colour == _turn
-                ? $"{TeamName(colour)} знайшли всіх своїх (останнє — «{_board[i]}»)"
-                : $"{TeamName(colour)} перемогли чужими руками: останнє їхнє слово відкрили суперники",
+            Win(colour, _coop
+                    ? mine ? $"команда знайшла всіх своїх за {Clues(_clues)} (останнє — «{_board[i]}»)"
+                        : $"команда сама відкрила столові його останнє слово «{_board[i]}» — стіл переміг"
+                : colour == _turn
+                    ? $"{TeamName(colour)} знайшли всіх своїх (останнє — «{_board[i]}»)"
+                    : $"{TeamName(colour)} перемогли чужими руками: останнє їхнє слово відкрили суперники",
                 edge: mine && lastChance);
             return ActResult.Done;
         }
@@ -406,7 +445,9 @@ public sealed class Pozyvni : Game
         if (_phase == Done) return;
         _phase = Clue;
         StartPhase();
-        Say($"Стіл готовий. Першими ходять {TeamName(_turn)}");
+        Say(_coop
+            ? $"Стіл готовий. Знайдіть свої {FirstTeamWords} слів, поки стіл не забрав свої {SecondTeamWords}: після кожного вашого ходу він бере одне"
+            : $"Стіл готовий. Першими ходять {TeamName(_turn)}");
     }
 
     /// <summary>
@@ -415,8 +456,20 @@ public sealed class Pozyvni : Game
     /// </summary>
     void Balance()
     {
+        if (_coop)
+        {
+            // Разом проти столу: капітан і хоча б один, хто тикає. Сам на сам із собою не пограєш.
+            var all = Seated().ToArray();
+            if (all.Length < 2) { Fold(); return; }
+            foreach (var seat in all) _side[seat] = Red;
+            if (!all.Contains(_boss[Red])) _boss[Red] = all[0];
+            _boss[Blue] = -1;
+            _viewDirty = true;
+            return;
+        }
+
         // Менше чотирьох — двох команд не буде, хоч як їх переставляй (хтось устиг вийти під час складу).
-        if (Seated().Count() < Info.MinPlayers) { Fold(); return; }
+        if (Seated().Count() < TeamsMin) { Fold(); return; }
 
         foreach (var seat in Seated().Where(s => _side[s] is null))
             _side[seat] = SeatsOf(Red).Length <= SeatsOf(Blue).Length ? Red : Blue;
@@ -447,7 +500,8 @@ public sealed class Pozyvni : Game
         _phase = Done;
         _viewDirty = true;
         _result = new { winners = Array.Empty<int>(), side = (string?)null, black = false };
-        Ctx.Finish([], $"{Info.Title}: за столом не набралось двох команд");
+        Ctx.Finish([], _coop ? $"{Info.Title}: за столом лишилось замало людей, партії не буде"
+            : $"{Info.Title}: за столом не набралось двох команд");
     }
 
     void StartPhase()
@@ -463,17 +517,39 @@ public sealed class Pozyvni : Game
         if (why is not null) Say($"{TeamName(_turn)}: хід закінчено — {why}");
         _clue = null;
         _fingers.Clear();
-        _turn = Other(_turn);
+        if (_coop) { TableMove(); if (_phase == Done) return; }
+        else _turn = Other(_turn);
         _phase = Clue;
         StartPhase();
     }
+
+    /// <summary>
+    /// Хід столу в кооперативі: він забирає одне своє (синє) слово навмання. Забрав останнє — команда
+    /// не встигла, стіл переміг. Навмання — чесно: розклад знає лише капітан, а стіл «грає» наосліп.
+    /// </summary>
+    void TableMove()
+    {
+        var mine = Enumerable.Range(0, Cards).Where(i => _key[i] == Blue && !_open[i]).ToArray();
+        if (mine.Length == 0) return;
+        var i = mine[Ctx.Rng.Next(mine.Length)];
+        _open[i] = true;
+        var left = mine.Length - 1;
+        Say(left > 0 ? $"стіл забирає «{_board[i]}» — йому лишилось {left}" : $"стіл забирає «{_board[i]}» — це було його останнє");
+        if (left == 0) Win(Blue, $"стіл забрав усі свої слова раніше, ніж команда — свої (команді бракувало {LeftFor(Red)})");
+    }
+
+    /// <summary>«1 підказку», «3 підказки», «5 підказок».</summary>
+    static string Clues(int n) =>
+        $"{n} " + (n % 10 == 1 && n % 100 != 11 ? "підказку" : n % 10 is >= 2 and <= 4 && n % 100 is < 12 or > 14 ? "підказки" : "підказок");
 
     void Win(string side, string why, bool black = false, bool edge = false)
     {
         if (_phase == Done) return;
         _phase = Done;
         _clue = null;
-        _lastLoser = Other(side);
+        // Кооператив нічого не каже про те, хто починає наступну партію команд.
+        if (!_coop) _lastLoser = Other(side);
+        // Стіл (сині в кооперативі) нікого не садить — його перемога для каркаса нічия, текст пояснює.
         var winners = SeatsOf(side);
         Say(why);
         _result = new { winners, side, black };
@@ -514,7 +590,11 @@ public sealed class Pozyvni : Game
         if (_phase == Setup) return;   // склад вирівняється сам, коли фаза скінчиться
 
         var mine = SeatsOf(side);
-        if (mine.Length < 2) { Win(Other(side), $"{TeamName(side)} лишились без команди"); return; }
+        if (mine.Length < 2)
+        {
+            Win(Other(side), _coop ? "за столом лишився один — грати нікому" : $"{TeamName(side)} лишились без команди");
+            return;
+        }
         if (_boss[side] < 0) _boss[side] = mine[0];
         // Капітан пішов посеред свого ж ходу — підказка з ним і пішла, хід віддаємо суперникові.
         if (_phase == Clue && _turn == side) EndTurn(null);
@@ -531,11 +611,13 @@ public sealed class Pozyvni : Game
     // Вид
     // =========================================================================================
 
-    static string TeamName(string side) => side == Red ? "червоні" : "сині";
+    string TeamName(string side) => _coop ? (side == Red ? "команда" : "стіл") : side == Red ? "червоні" : "сині";
 
-    static string Mark(string colour) => colour switch
+    string Mark(string colour) => colour switch
     {
-        Red => "червоне", Blue => "синє", Black => "чорне", _ => "нейтральне",
+        Red => _coop ? "наше ✓" : "червоне",
+        Blue => _coop ? "столове ✗" : "синє",
+        Black => "чорне", _ => "нейтральне",
     };
 
     void Say(string line)
@@ -551,6 +633,8 @@ public sealed class Pozyvni : Game
     public override object View(int? seat) => new
     {
         phase = _phase,
+        mode = _coop ? ModeCoop : ModeTeams,
+        clues = _clues,
         turn = _phase == Clue && _boss[_turn] >= 0 ? _boss[_turn] : (int?)null,
         side = _turn,
         board = Enumerable.Range(0, Cards)

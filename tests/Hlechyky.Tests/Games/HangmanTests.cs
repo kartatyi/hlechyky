@@ -633,4 +633,173 @@ public class HangmanTests(HangmanWords fx) : IClassFixture<HangmanWords>
         sw.Stop();
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"1000 тиків зайняли {sw.Elapsed}");
     }
+
+    // ---------------------------------------------------------------- опції: по черзі, складність, кількість слів
+
+    RoomHarness TableWith(object options, params string[] nicks)
+    {
+        var h = new RoomHarness("hangman", options: options, seed: 42, services: RoomHarness.WithService(fx.One));
+        foreach (var nick in nicks) h.Join(nick);
+        h.Start();
+        return h;
+    }
+
+    static int? Turn(RoomHarness h)
+    {
+        var t = h.View(null).GetProperty("turn");
+        return t.ValueKind == JsonValueKind.Null ? null : t.GetInt32();
+    }
+
+    [Fact]
+    public void Race_mode_has_no_turn_as_before()
+    {
+        var h = Table("Оля", "Петро");
+        Assert.Equal("race", h.View(null).GetProperty("mode").GetString());
+        Assert.Null(Turn(h));
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("turnUntil").ValueKind);
+    }
+
+    [Fact]
+    public void In_turns_mode_only_the_one_whose_turn_it_is_may_guess()
+    {
+        var h = TableWith(new { mode = "turns" }, "Оля", "Петро", "Ганна");
+        Assert.Equal(0, Turn(h));
+
+        var r = h.Act(1, "guess", new { letter = "о" });
+        Assert.False(r.Ok);
+        Assert.Equal("Зараз не твій хід", r.Message);
+        Assert.Equal("______", Mask(h));
+    }
+
+    [Fact]
+    public void In_turns_mode_a_hit_keeps_the_turn_and_needs_no_cooldown()
+    {
+        var h = TableWith(new { mode = "turns" }, "Оля", "Петро");
+        Assert.True(h.Act(0, "guess", new { letter = "о" }).Ok);
+        Assert.True(h.Act(0, "guess", new { letter = "к" }).Ok);   // одразу, без паузи в секунду
+
+        Assert.Equal("ко_о__", Mask(h));
+        Assert.Equal(0, Turn(h));
+        Assert.Equal(3, Score(h, 0));
+    }
+
+    [Fact]
+    public void In_turns_mode_a_miss_passes_the_turn_round_the_table()
+    {
+        var h = TableWith(new { mode = "turns" }, "Оля", "Петро", "Ганна");
+        Assert.True(h.Act(0, "guess", new { letter = "б" }).Ok);
+        Assert.Equal(1, Turn(h));
+        Assert.True(h.Act(1, "guess", new { letter = "г" }).Ok);
+        Assert.Equal(2, Turn(h));
+        Assert.True(h.Act(2, "guess", new { letter = "д" }).Ok);
+        Assert.Equal(0, Turn(h));
+    }
+
+    [Fact]
+    public void In_turns_mode_a_wrong_word_drops_the_player_and_passes_the_turn()
+    {
+        var h = TableWith(new { mode = "turns" }, "Оля", "Петро", "Ганна");
+        Assert.True(h.Act(0, "word", new { text = "калина" }).Ok);
+
+        Assert.Equal(1, Turn(h));
+        Assert.Contains(0, h.View(null).GetProperty("out").EnumerateArray().Select(e => e.GetInt32()));
+        Assert.True(h.Act(1, "guess", new { letter = "б" }).Ok);
+        Assert.Equal(2, Turn(h));                                   // вибулу Олю черга обходить
+        Assert.True(h.Act(2, "guess", new { letter = "г" }).Ok);
+        Assert.Equal(1, Turn(h));
+    }
+
+    [Fact]
+    public void In_turns_mode_a_sleepy_turn_passes_on_its_own()
+    {
+        var h = TableWith(new { mode = "turns" }, "Оля", "Петро");
+        Assert.Equal(0, Turn(h));
+
+        h.Tick(Hangman.TurnMs / Hangman.TickMs);
+
+        Assert.Equal(1, Turn(h));
+        Assert.Equal("timeout", h.View(null).GetProperty("last").GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public void In_turns_mode_the_next_word_starts_with_the_next_player()
+    {
+        var h = TableWith(new { mode = "turns" }, "Оля", "Петро");
+        Assert.True(h.Act(0, "word", new { text = HangmanWords.Word }).Ok);
+        NextWord(h);
+
+        Assert.Equal(2, h.View(null).GetProperty("round").GetInt32());
+        Assert.Equal(1, Turn(h));
+    }
+
+    [Fact]
+    public void In_turns_mode_leaving_on_your_turn_hands_it_over()
+    {
+        var h = TableWith(new { mode = "turns" }, "Оля", "Петро", "Ганна");
+        h.Leave(h.NickOf(0));
+        h.Tick();
+
+        Assert.Equal(1, Turn(h));
+        Assert.Equal("playing", h.Room.Status.ToString().ToLowerInvariant());
+    }
+
+    [Fact]
+    public void Solo_in_turns_mode_keeps_the_turn_after_a_miss()
+    {
+        var h = TableWith(new { mode = "turns" }, "Оля");
+        Assert.True(h.Act(0, "guess", new { letter = "б" }).Ok);
+        Assert.Equal(0, Turn(h));
+        Assert.True(h.Act(0, "guess", new { letter = "о" }).Ok);
+    }
+
+    [Fact]
+    public void Easy_opens_the_first_and_last_letters_and_allows_ten_misses()
+    {
+        var h = TableWith(new { level = "easy" }, "Оля");
+        Assert.Equal("к____а", Mask(h));
+        Assert.Equal(Hangman.EasyErrors, h.View(0).GetProperty("maxErrors").GetInt32());
+        Assert.Equal("Уже було", Guess(h, 0, "к").Message);
+        Assert.Equal(0, Score(h, 0));
+    }
+
+    [Fact]
+    public void Hard_loses_the_word_after_six_misses()
+    {
+        var h = TableWith(new { level = "hard" }, "Оля");
+        for (var i = 0; i < Hangman.HardErrors - 1; i++) Guess(h, 0, Misses[i]);
+        Assert.Equal("play", Phase(h));
+
+        Guess(h, 0, Misses[Hangman.HardErrors - 1]);
+
+        Assert.Equal("between", Phase(h));
+        Assert.Equal(HangmanWords.Word, h.View(0).GetProperty("revealed").GetString());
+    }
+
+    [Fact]
+    public void Three_words_make_a_short_game()
+    {
+        var h = TableWith(new { words = "3" }, "Оля");
+        Assert.Equal(3, h.View(0).GetProperty("of").GetInt32());
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.True(Word(h, 0, HangmanWords.Word).Ok);
+            NextWord(h);
+        }
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(3 * (Hangman.WordBonus + 6), h.Scores.Single().Score);
+    }
+
+    [Fact]
+    public void The_last_event_says_who_opened_what()
+    {
+        var h = Table("Оля", "Петро");
+        Guess(h, 1, "о");
+
+        var last = h.View(null).GetProperty("last");
+        Assert.Equal(1, last.GetProperty("seat").GetInt32());
+        Assert.Equal("hit", last.GetProperty("kind").GetString());
+        Assert.Equal("о", last.GetProperty("text").GetString());
+        Assert.Equal(2, last.GetProperty("n").GetInt32());
+    }
 }

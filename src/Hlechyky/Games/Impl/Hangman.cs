@@ -15,10 +15,18 @@ namespace Hlechyky.Games.Impl;
 /// </summary>
 public sealed class Hangman : Game
 {
-    /// <summary>Скільки слів у партії.</summary>
+    /// <summary>Скільки слів у партії типово (опція <c>words</c>: 3, 5 або 7).</summary>
     public const int Rounds = 5;
-    /// <summary>Стільки промахів — і шибениця готова, слово програне всіма разом.</summary>
+    public static readonly int[] RoundChoices = [3, 5, 7];
+    /// <summary>Стільки промахів — і шибениця готова, слово програне всіма разом (типова складність).</summary>
     public const int MaxErrors = 8;
+    /// <summary>Промахів на слово за складністю: легко — 10 (і перша з останньою літерою вже відкриті), важко — 6.</summary>
+    public const int EasyErrors = 10, HardErrors = 6;
+    /// <summary>По черзі: стільки часу на хід, потім черга переходить сама.</summary>
+    public const int TurnMs = 25_000;
+
+    /// <summary>Режими: усі разом наввипередки (як було) або по черзі, як «Поле чудес».</summary>
+    public const string Race = "race", Turns = "turns";
     /// <summary>
     /// Крок тика. У spec стояла секунда, але тоді чужу літеру видно було б аж через секунду після
     /// натиску (види після Act каркас реалтайм-кімнатам не шле) — на чверть секунди це вже не помітно.
@@ -44,10 +52,27 @@ public sealed class Hangman : Game
     public override GameInfo Info { get; } = new(
         "hangman", "Віселиця", "віселицю", GameGroup.Party, 1, Seats,
         TickMs: TickMs, Start: StartMode.ByHost, Score: ScoreOrder.HigherIsBetter,
+        Options:
+        [
+            new GameOption("mode", "Як гадаємо", [(Race, "Усі разом, наввипередки"), (Turns, "По черзі: влучив — ходиш ще")], Race),
+            new GameOption("level", "Складність",
+                [("easy", "Легко: 10 промахів, крайні літери відкриті"), ("normal", "Звичайно: 8 промахів"), ("hard", "Важко: 6 промахів")], "normal"),
+            new GameOption("words", "Слів у партії", [.. RoundChoices.Select(n => (n.ToString(), n == 3 ? "3 слова" : $"{n} слів"))], Rounds.ToString()),
+        ],
         Hint: "Слово сховане рисками. Називаєш літери, за помилки домальовується шибениця. "
-            + "Хто відгадав більше — той і виграв");
+            + "Хто відгадав більше — той і виграв. Можна наввипередки або по черзі");
 
     Words? _words;
+    string _mode = Race;
+    bool _easy;
+    int _maxErrors = MaxErrors;
+    int _rounds = Rounds;
+    /// <summary>По черзі: чий зараз хід (-1 — нічий) і до якої миті.</summary>
+    int _turn = -1;
+    DateTimeOffset _turnUntil;
+    /// <summary>Остання подія слова — хто що назвав і чим це скінчилось. Клієнт малює рядок і анімацію.</summary>
+    object? _lastEvent;
+    int _eventNo;
     string _word = "";
     /// <summary>Літери, які вже відкриті у слові.</summary>
     readonly HashSet<char> _open = [];
@@ -78,6 +103,13 @@ public sealed class Hangman : Game
     {
         _words = Ctx.Services.GetService<Words>();
         if (_words is null || _words.Stats.Hangman == 0) throw new GameError("Нема словника, віселиця відпочиває");
+        if (options.TryGetValue("mode", out var m) && m == Turns) _mode = Turns;
+        if (options.TryGetValue("level", out var l))
+        {
+            _easy = l == "easy";
+            _maxErrors = l switch { "easy" => EasyErrors, "hard" => HardErrors, _ => MaxErrors };
+        }
+        if (options.TryGetValue("words", out var w) && int.TryParse(w, out var wn) && RoundChoices.Contains(wn)) _rounds = wn;
     }
 
     public override void Start()
@@ -102,7 +134,9 @@ public sealed class Hangman : Game
         if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
         if (_phase == Between) return ActResult.Fail("Пауза. Зараз буде нове слово");
         if (_out.Contains(seat)) return ActResult.Fail("Це слово вже без тебе, чекай наступне");
-        if (!Ready(seat)) return ActResult.Fail("Не так швидко");
+        // По черзі ліміт швидкості не потрібен: чужий хід і так не пройде, а свій — хай хоч блискавкою.
+        if (_mode == Turns) { if (seat != _turn) return ActResult.Fail("Зараз не твій хід"); }
+        else if (!Ready(seat)) return ActResult.Fail("Не так швидко");
         return action == "guess"
             ? Guess(seat, Read(payload, "letter"))
             : Word(seat, Read(payload, "text"));
@@ -132,11 +166,12 @@ public sealed class Hangman : Game
 
         _dirty = true;
         var hits = _word.Count(c => c == ch);
+        Event(seat, hits == 0 ? "miss" : "hit", ch.ToString(), hits);
         if (hits == 0)
         {
             _wrong.Add(ch);
             _errors++;
-            if (_errors < MaxErrors) return ActResult.Done;
+            if (_errors < _maxErrors) { PassTurn(); return ActResult.Done; }
             EndRound();
             // Мовчки: будь-який текст на вдалому ході каркас малює зеленим тостом «усе гаразд»
             // (core.js, call()), а дорисована шибениця з відкритим словом — новина не з тих.
@@ -146,7 +181,8 @@ public sealed class Hangman : Game
         _right.Add(ch);
         _open.Add(ch);
         Add(seat, hits);
-        if (!Opened()) return ActResult.Done;
+        // Влучив — ходиш ще, і годинник ходу заводиться наново.
+        if (!Opened()) { if (_mode == Turns) _turnUntil = Ctx.Clock.UtcNow.AddMilliseconds(TurnMs); return ActResult.Done; }
         EndRound();
         return ActResult.Accept("Слово відкрите!");
     }
@@ -162,7 +198,9 @@ public sealed class Hangman : Game
             // Не вгадав — цим словом уже не грає; мінус очко, але не в борг.
             _out.Add(seat);
             Add(seat, -1);
+            Event(seat, "wrong", word, 0);
             if (!Alive()) EndRound();
+            else PassTurn();
             // Теж мовчки, і з тієї самої причини: зелений тост на «не вгадав» збивав би з пантелику.
             // Гравець і так бачить: клавіатура зникла, чіп рахунку потьмянів, статус це пояснює.
             return ActResult.Done;
@@ -172,6 +210,7 @@ public sealed class Hangman : Game
         var hidden = _word.Count(c => !_open.Contains(c));
         foreach (var c in _word) _open.Add(c);
         Add(seat, WordBonus + hidden);
+        Event(seat, "word", _word, WordBonus + hidden);
         EndRound();
         return ActResult.Accept("Ціле слово! Твоя взяла");
     }
@@ -197,6 +236,29 @@ public sealed class Hangman : Game
 
     bool Alive() => Active().Any();
 
+    /// <summary>
+    /// По черзі: хід переходить до наступного, хто ще грає це слово (по колу місць). Нікого — нічого:
+    /// раунд закриє тик. У режимі наввипередки черги нема, і тут нема чого робити.
+    /// </summary>
+    void PassTurn()
+    {
+        if (_mode != Turns) return;
+        var active = Active().ToArray();
+        if (active.Length == 0) { _turn = -1; return; }
+        var next = active.FirstOrDefault(s => s > _turn, active[0]);
+        GiveTurn(next);
+    }
+
+    void GiveTurn(int seat)
+    {
+        _turn = seat;
+        _turnUntil = Ctx.Clock.UtcNow.AddMilliseconds(TurnMs);
+        _dirty = true;
+    }
+
+    void Event(int seat, string kind, string text, int n) =>
+        _lastEvent = new { no = ++_eventNo, seat, kind, text, n };
+
     // ---------------------------------------------------------------------------------------
     // Хід часу
     // ---------------------------------------------------------------------------------------
@@ -208,12 +270,18 @@ public sealed class Hangman : Game
             _pause--;
             var left = SecondsLeft();
             if (left != _shownIn) { _shownIn = left; _dirty = true; }
-            if (_pause <= 0) { if (_round >= Rounds) Over(); else NewWord(); }
+            if (_pause <= 0) { if (_round >= _rounds) Over(); else NewWord(); }
         }
         else if (_phase == Play && !Alive())
         {
             // усі, хто міг гадати, вибули або встали з-за столу — слово так і лишиться нерозгаданим
             EndRound();
+        }
+        else if (_phase == Play && _mode == Turns && (!Active().Contains(_turn) || Ctx.Clock.UtcNow >= _turnUntil))
+        {
+            // задумався надовго або встав посеред свого ходу — черга йде далі
+            if (Active().Contains(_turn)) Event(_turn, "timeout", "", 0);
+            PassTurn();
         }
         return Flush();
     }
@@ -236,6 +304,7 @@ public sealed class Hangman : Game
     {
         _revealed = _word;
         _phase = Between;
+        _turn = -1;
         _pause = PauseTicks;
         _shownIn = SecondsLeft();
         _dirty = true;
@@ -255,7 +324,20 @@ public sealed class Hangman : Game
         _pause = 0;
         _shownIn = 0;
         _word = _words?.RandomHangman(Ctx.Rng, MinLen, MaxLen) ?? "";
+        _lastEvent = null;
+        if (_easy && _word.Length > 0)
+        {
+            // Легко: перша й остання літери відкриті одразу (і всі їхні входження) — як у шкільній віселиці.
+            foreach (var c in new[] { _word[0], _word[^1] })
+                if (_open.Add(c)) _right.Add(c);
+        }
         _dirty = true;
+        if (_mode == Turns)
+        {
+            // Слово за словом першим ходить наступний: інакше перший за столом завжди мав би фору.
+            var seats = Active().ToArray();
+            if (seats.Length > 0) GiveTurn(seats[(_round - 1) % seats.Length]);
+        }
     }
 
     /// <summary>П'ять слів позаду: рахуємо очки, роздаємо результати в таблицю й закриваємо партію.</summary>
@@ -289,6 +371,7 @@ public sealed class Hangman : Game
     {
         _out.Add(seat);
         _dirty = true;
+        if (_phase == Play && seat == _turn) PassTurn();
     }
 
     // ---------------------------------------------------------------------------------------
@@ -303,12 +386,14 @@ public sealed class Hangman : Game
     public override object View(int? seat) => new
     {
         round = _round,
-        of = Rounds,
+        of = _rounds,
+        mode = _mode,
+        easy = _easy,
         mask = Mask(),
         wrong = _wrong.Select(c => c.ToString()).ToArray(),
         right = _right.Select(c => c.ToString()).ToArray(),
         errors = _errors,
-        maxErrors = MaxErrors,
+        maxErrors = _maxErrors,
         scores = Line(),
         @out = _out.Order().ToArray(),
         phase = _phase,
@@ -316,7 +401,10 @@ public sealed class Hangman : Game
         // слово показуємо лише тоді, коли раунд уже нічим не зіпсуєш
         revealed = _phase == Play ? null : _revealed,
         result = _result,
-        // черги тут нема: гадають усі одразу, тож «Твій хід» каркас не малює
-        turn = (int?)null,
+        // Наввипередки черги нема: гадають усі одразу, тож «Твій хід» каркас не малює. По черзі — є.
+        turn = _mode == Turns && _phase == Play && _turn >= 0 ? _turn : (int?)null,
+        turnUntil = _mode == Turns && _phase == Play && _turn >= 0 ? _turnUntil : (DateTimeOffset?)null,
+        turnMs = TurnMs,
+        last = _lastEvent,
     };
 }

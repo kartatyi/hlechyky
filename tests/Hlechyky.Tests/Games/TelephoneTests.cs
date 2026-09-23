@@ -321,4 +321,81 @@ public class TelephoneTests
         Assert.True(phrases.All.Count >= 150, $"фраз лише {phrases.All.Count}");
         Assert.All(phrases.All, p => Assert.InRange(p.Length, 5, Telephone.MaxText));
     }
+
+    // ---------------------------------------------------------------- удвох: фразу загадує Глек
+
+    [Fact]
+    public void Two_players_start_by_drawing_a_phrase_from_the_jug()
+    {
+        var h = Table(2);
+
+        Assert.Equal("step", Phase(h));
+        Assert.True(h.View(null).GetProperty("duo").GetBoolean());
+        Assert.Equal(2, h.View(null).GetProperty("steps").GetInt32());
+        for (var s = 0; s < 2; s++)
+        {
+            Assert.Equal(Telephone.Draw, Kind(h, s));
+            var prompt = Task(h, s).GetProperty("prompt");
+            Assert.Equal("text", prompt.GetProperty("kind").GetString());
+            Assert.Equal("кіт на даху", prompt.GetProperty("text").GetString());
+        }
+    }
+
+    [Fact]
+    public void Two_players_describe_each_others_drawing_and_see_no_own_chain()
+    {
+        var h = Table(2);
+        EveryoneSubmits(h, 2);
+
+        Assert.Equal(2, Step(h));
+        for (var s = 0; s < 2; s++)
+        {
+            Assert.Equal(Telephone.Describe, Kind(h, s));
+            Assert.Equal(1 - s, Task(h, s).GetProperty("chain").GetInt32());   // чужий ланцюжок
+        }
+    }
+
+    [Fact]
+    public void Two_players_reveal_the_jug_phrase_first_and_nobody_likes_it()
+    {
+        var h = Table(2);
+        EveryoneSubmits(h, 2);
+        EveryoneSubmits(h, 2);
+
+        Assert.Equal("reveal", Phase(h));
+        var reveal = h.View(0).GetProperty("reveal");
+        Assert.Equal(3, reveal.GetProperty("total").GetInt32());
+        Assert.Equal(2, reveal.GetProperty("chains").GetInt32());
+        var first = reveal.GetProperty("entries")[0];
+        Assert.Equal(Telephone.Jug, first.GetProperty("seat").GetInt32());
+
+        var r = h.Act(0, "like", new { chain = 0, index = 0 });
+        Assert.False(r.Ok);
+        Assert.Contains("Глек", r.Message);
+    }
+
+    [Fact]
+    public void Two_players_play_to_the_end_and_likes_decide()
+    {
+        var h = Table(2);
+        EveryoneSubmits(h, 2);
+        EveryoneSubmits(h, 2);
+
+        Next(h);                                                    // малюнок Олі в її ланцюжку
+        Assert.True(h.Act(1, "like", new { chain = 0, index = 1 }).Ok);
+        for (var i = 0; i < 6 && Phase(h) != "done"; i++) Next(h);
+
+        Assert.Equal("done", Phase(h));
+        var finished = Assert.Single(h.Finished);
+        Assert.Equal([0], finished.Result.Winners);
+        Assert.Contains("2 ланцюжки", finished.Result.Text);
+    }
+
+    [Fact]
+    public void Three_players_still_write_their_own_phrases()
+    {
+        var h = Table(3);
+        Assert.False(h.View(null).GetProperty("duo").GetBoolean());
+        Assert.Equal(Telephone.Phrase, Kind(h, 0));
+    }
 }
