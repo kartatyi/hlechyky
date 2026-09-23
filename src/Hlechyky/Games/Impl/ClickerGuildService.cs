@@ -151,6 +151,11 @@ public sealed class ClickerGuildService
         public string Nick { get; set; } = "";
         public int Rank { get; set; }
         public DateTimeOffset Seen { get; set; }
+        /// <summary>
+        /// Клейма гончаря — для науки майстра (<see cref="TopStamps"/>). null — ще не знаємо: рядок зі старого стану,
+        /// а гончар відтоді кола не відкривав; тоді одноразово читаємо з його збереження.
+        /// </summary>
+        public int? Stamps { get; set; }
     }
 
     sealed class SentRow
@@ -557,20 +562,81 @@ public sealed class ClickerGuildService
 
     // ---------- гончарі ----------
 
-    /// <summary>Гончар відкрив коло (чи дістав новий ранг): у список цеху. Пишемо, лише коли щось змінилось чи настав новий день.</summary>
-    public void Hello(string nickKey, string nick, int rank, DateTimeOffset now)
+    /// <summary>
+    /// Гончар відкрив коло, дістав новий ранг чи обпалив майстерню: у список цеху. Пишемо, лише коли щось змінилось
+    /// чи настав новий день. <paramref name="stamps"/> — його клейма (null — не чіпати те, що вже знаємо).
+    /// </summary>
+    public void Hello(string nickKey, string nick, int rank, DateTimeOffset now, int? stamps = null)
     {
         if (nickKey.Length == 0) return;
         lock (_lock)
         {
             var s = S();
-            if (s.Potters.TryGetValue(nickKey, out var p) && p.Nick == nick && p.Rank == rank && Days.Of(p.Seen) == Days.Of(now)) return;
-            s.Potters[nickKey] = new PotterRow { Nick = nick, Rank = rank, Seen = now };
+            s.Potters.TryGetValue(nickKey, out var p);
+            var known = stamps is { } n ? Math.Max(0, n) : p?.Stamps;
+            if (p is not null && p.Nick == nick && p.Rank == rank && p.Stamps == known && Days.Of(p.Seen) == Days.Of(now)) return;
+            s.Potters[nickKey] = new PotterRow { Nick = nick, Rank = rank, Seen = now, Stamps = known };
             if (s.Potters.Count > RosterMax)
                 foreach (var old in s.Potters.OrderBy(x => x.Value.Seen).Take(s.Potters.Count - RosterMax).Select(x => x.Key).ToList())
                     s.Potters.Remove(old);
             Save();
         }
+    }
+
+    /// <summary>Коли знову пробувати дочитати клейма зі збережень, якщо минулого разу база не відповіла.</summary>
+    DateTimeOffset _stampsRetryAt;
+
+    /// <summary>
+    /// Найкращий гончар округи, крім <paramref name="exceptKey"/>: нік і клейма — від них рахується наука майстра.
+    /// Кого список цеху ще не знає з клеймами (стан із часів до науки, а гончар відтоді кола не відкривав), читаємо
+    /// з його збереження один раз; далі число живе в списку й оновлюється його ж обпалами. Нікого — <c>("", 0)</c>.
+    /// Кличеться з-під замка кімнати (обпал, вид), тож базу чіпаємо лише для невідомих і не частіше, ніж раз на хвилину.
+    /// </summary>
+    public (string Nick, int Stamps) TopStamps(string exceptKey)
+    {
+        List<string> unknown;
+        lock (_lock)
+            unknown = _clock.UtcNow < _stampsRetryAt ? [] : S().Potters.Where(x => x.Value.Stamps is null).Select(x => x.Key).ToList();
+        if (unknown.Count > 0)
+        {
+            var read = new Dictionary<string, int>(StringComparer.Ordinal);
+            var failed = false;
+            foreach (var key in unknown)
+            {
+                try { read[key] = StampsOf(_store.LoadState("clicker:" + key)); }
+                catch (Exception ex)
+                {
+                    _log?.LogWarning(ex, "клейма гончаря {Nick} не прочитались", key);
+                    failed = true;
+                }
+            }
+            lock (_lock)
+            {
+                var s = S();
+                var changed = false;
+                foreach (var (key, n) in read)
+                    if (s.Potters.TryGetValue(key, out var p) && p.Stamps is null) { p.Stamps = n; changed = true; }
+                if (changed) Save();
+                if (failed) _stampsRetryAt = _clock.UtcNow.AddMinutes(1);
+            }
+        }
+        lock (_lock)
+        {
+            var best = S().Potters
+                .Where(x => x.Key != exceptKey && x.Value.Stamps > 0)
+                .OrderByDescending(x => x.Value.Stamps)
+                .ThenBy(x => x.Key, StringComparer.Ordinal)
+                .FirstOrDefault();
+            return best.Value is { } row ? (row.Nick, row.Stamps ?? 0) : ("", 0);
+        }
+    }
+
+    /// <summary>Клейма зі збереження кола: поле <c>stamps</c>, або 0, коли збереження нема чи воно зіпсоване.</summary>
+    static int StampsOf(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return 0;
+        try { return JsonNode.Parse(json) is JsonObject o ? Math.Max(0, Int(o["stamps"])) : 0; }
+        catch (JsonException) { return 0; }
     }
 
     /// <summary><c>GET /api/games/clicker/guild</c>: гончарі цеху (за абеткою) і сьогоднішній віз.</summary>

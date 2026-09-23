@@ -764,9 +764,9 @@ public class ClickerCoreTests
         // Новачок новин не бачить (для нього все нове); бачить той, чиє збереження старше за випуск — поле news у ньому порожнє.
         Assert.Equal(JsonValueKind.Null, View(h).GetProperty("news").ValueKind);
         Patch(h, s => s["news"] = "");
-        Assert.Equal("v9", View(h).GetProperty("news").GetString());
+        Assert.Equal(Clicker.NewsVersion, View(h).GetProperty("news").GetString());
 
-        Assert.True(Act(h, "news", new { v = "v9" }).Ok);
+        Assert.True(Act(h, "news", new { v = Clicker.NewsVersion }).Ok);
         Assert.Equal(JsonValueKind.Null, View(h).GetProperty("news").ValueKind);
 
         Patch(h, _ => { });                            // і після перезавантаження сторінки теж
@@ -779,7 +779,7 @@ public class ClickerCoreTests
         var h = Wheel();
         Patch(h, s => s["news"] = "");                 // збереження з часів до випуску
         Assert.False(Act(h, "news", new { v = "v8" }).Ok);
-        Assert.Equal("v9", View(h).GetProperty("news").GetString());
+        Assert.Equal(Clicker.NewsVersion, View(h).GetProperty("news").GetString());
     }
 
     // ---------- старе збереження ----------
@@ -797,7 +797,7 @@ public class ClickerCoreTests
         var v = View(h);
         Assert.Equal(0, v.GetProperty("lucky").GetInt64());
         Assert.False(v.GetProperty("starWish").GetBoolean());
-        Assert.Equal("v9", v.GetProperty("news").GetString());
+        Assert.Equal(Clicker.NewsVersion, v.GetProperty("news").GetString());
         Assert.Equal(0, v.GetProperty("events").GetProperty("petted").GetInt32());
         // Розклад подій — від «зараз»: старе збереження про них нічого не знало.
         var cat = (Events(h).GetProperty("cat").GetProperty("at").GetDateTimeOffset() - h.Clock.UtcNow).TotalSeconds;

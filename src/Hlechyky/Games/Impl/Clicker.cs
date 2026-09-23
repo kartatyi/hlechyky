@@ -184,8 +184,11 @@ public sealed partial class Clicker : Game
     public static readonly TimeSpan WindShown = TimeSpan.FromSeconds(45);
     public const double WindMult = 3;
 
-    /// <summary>Яку версію «Що нового» показуємо. Побачив — більше не показуємо ніколи й ні на якому пристрої.</summary>
-    public const string NewsVersion = "v9";
+    /// <summary>
+    /// Яку версію «Що нового» показуємо. Побачив — більше не показуємо ніколи й ні на якому пристрої. «v9.1» — клейма
+    /// після тисячі й наука майстра (docs/games/specs/clicker-stamps.md): бачили «v9» — побачать і це.
+    /// </summary>
+    public const string NewsVersion = "v9.1";
 
     // ---------- розгін кола ----------
 
@@ -222,6 +225,21 @@ public sealed partial class Clicker : Game
     /// <summary>Клейма рахуються від глеків за весь час: <c>⌊√(total / 1 млрд)⌋</c>.</summary>
     public const double StampUnit = 1e9;
     public const double StampBonus = 0.02, SealStampBonus = 0.03;
+    /// <summary>
+    /// Перша тисяча клейм дає бонус повністю, далі він росте як корінь: кожне нове клеймо важить дедалі менше, і
+    /// вчетверо більше клейм дають лише приблизно вдвічі більший бонус. Без цього клейма (корінь із глеків за весь
+    /// час) і драбина верстатів розганяли одне одного, і кожен обпал давав більше за попередній
+    /// (docs/games/specs/clicker-stamps.md).
+    /// </summary>
+    public const int StampSoftFrom = 1000;
+    /// <summary>
+    /// Наука майстра: раз на <see cref="ScienceEvery"/> обпал дає ще <see cref="ScienceShare"/> різниці з клеймами
+    /// найкращого гончаря округи, але не більше, ніж <see cref="ScienceCap"/> рази по власних клеймах за глеки —
+    /// щоб відсталі наздоганяли, а новачок не перестрибнув пів гри за один день.
+    /// </summary>
+    public static readonly TimeSpan ScienceEvery = TimeSpan.FromHours(20);
+    public const double ScienceShare = 0.25;
+    public const int ScienceCap = 2;
     public const double StyleBonus = 0.05;
     /// <summary>Скільки рівнів дає «Родинний круг» після обпалу.</summary>
     public const int KinLevels = 10;
@@ -285,7 +303,7 @@ public sealed partial class Clicker : Game
         new("longfair", "Довгий ярмарок", "Бонуси розписних глеків тривають удвічі довше", 12),
         new("recipe", "Бабусин рецепт", "Гарна глина не згорає при обпалі", 20),
         new("memory", "Пам'ять рук", "Віхи верстатів не згорають при обпалі", 40),
-        new("seal", "Родове клеймо", "Кожне клеймо дає +3 % замість +2 %", 80),
+        new("seal", "Родове клеймо", "Бонус клейм у півтора раза більший: +3 % замість +2 % за клеймо", 80),
         // Друге коло (дев'яте оновлення §A.5): дідівські секрети — на сотні клейм, кожен відмикає своє в майстерні.
         new("rack2", "Друга сушарня", "Під стріхою стає ще шість місць для сирцю", 150, Ring: 2),
         new("grandson", "Онук за колом", "Підмайстри ліплять до 0,8 роботи за секунду замість 0,5", 250, Ring: 2),
@@ -356,7 +374,15 @@ public sealed partial class Clicker : Game
     DateTimeOffset _fairUntil;
     DateTimeOffset _inspireUntil;
     int _caught;
+    /// <summary>Усі клейма: за глеки плюс <see cref="_stampsExtra"/>. Бонус, секрети й стеля черепків рахуються від них.</summary>
     int _stamps;
+    /// <summary>
+    /// Клейма понад ті, що за глеки: від Тавра майстра й науки майстра. Обпал рахує приріст від клейм за глеки, тож
+    /// окремий лічильник потрібен, щоб наступний обпал їх не «з'їдав» (раніше саме так губилось клеймо від тавра).
+    /// </summary>
+    int _stampsExtra;
+    /// <summary>Коли наука майстра дала клейма востаннє: наступна — через <see cref="ScienceEvery"/>.</summary>
+    DateTimeOffset _scienceAt;
     int _firings;
 
     /// <summary>
@@ -415,12 +441,13 @@ public sealed partial class Clicker : Game
     }
 
     /// <summary>
-    /// Множник до всього: глина (1,25^n), розписи (+5 % кожен) і клейма (+2 % кожне, з «Родовим клеймом» +3 %).
-    /// Складаються множенням між собою, а всередині кожного — додаванням, як і обіцяє підпис.
+    /// Множник до всього: глина (1,25^n), розписи (+5 % кожен) і клейма (+2 % за кожне з першої тисячі, з «Родовим
+    /// клеймом» +3 %, далі — див. <see cref="StampWeight"/>). Складаються множенням між собою, а всередині кожного —
+    /// додаванням, як і обіцяє підпис.
     /// </summary>
     double AllMult => Math.Pow(1.25, Level("clay"))
         * (1 + StyleBonus * _styles.Count)
-        * (1 + (Has("seal") ? SealStampBonus : StampBonus) * _stamps)
+        * StampMult
         * HouseAllMult
         // Пакети сьомого оновлення: альбом, кахлі, репутація сіл, цех (docs/games/specs/clicker-v7.md).
         * KilnAllMult * AlbumAllMult * FairAllMult * GuildAllMult;
@@ -550,6 +577,35 @@ public sealed partial class Clicker : Game
     /// <summary>Скільки глеків за весь час треба для n клейм.</summary>
     public static double TotalFor(int stamps) => ToPots((double)stamps * stamps * StampUnit);
 
+    /// <summary>
+    /// Скільки «повних» клейм важать <paramref name="stamps"/> клейм: до <see cref="StampSoftFrom"/> — усі, далі —
+    /// <c>1000·(2√(n/1000) − 1)</c>. На тисячі крива переходить у корінь без сходинки й без зламу: наступне клеймо
+    /// важить рівно одне, а далі дедалі менше (на 4000 — пів клейма, на 16 000 — чверть).
+    /// </summary>
+    public static double StampWeight(int stamps) =>
+        stamps <= StampSoftFrom ? Math.Max(0, stamps) : StampSoftFrom * (2 * Math.Sqrt((double)stamps / StampSoftFrom) - 1);
+
+    /// <summary>Множник від клейм: <c>1 + бонус за клеймо × вага клейм</c>.</summary>
+    double StampMult => 1 + (Has("seal") ? SealStampBonus : StampBonus) * StampWeight(_stamps);
+
+    /// <summary>Клейма за глеки — від них рахується приріст на обпалі (Тавро й наука лежать окремо).</summary>
+    int NaturalStamps => Math.Max(0, _stamps - _stampsExtra);
+
+    /// <summary>
+    /// Скільки дасть наука майстра на обпалі, якщо після нього клейм за глеки буде <paramref name="natural"/>, а
+    /// зверху — <paramref name="extra"/> (Тавро й наука, що вже є): чверть різниці з найкращим гончарем округи, не
+    /// більше ніж двічі по <paramref name="natural"/>. Нуль — коли ще не минуло 20 годин від минулої науки, коли
+    /// гончар сам найкращий або коли цеху (а з ним і округи) нема.
+    /// </summary>
+    int ScienceFor(int natural, int extra, int top, DateTimeOffset now)
+    {
+        if (_scienceAt != default && now - _scienceAt < ScienceEvery) return 0;
+        var gap = (double)top - natural - extra;
+        if (!(gap > 0)) return 0;
+        // У double і зі стелею: двічі по мільярду клейм уже не влазить в int.
+        return (int)Math.Clamp(Math.Min(Math.Floor(gap * ScienceShare), (double)ScienceCap * natural), 0, int.MaxValue / 4);
+    }
+
     int StampsSpent => Secrets.Where(s => _secrets.Contains(s.Key)).Sum(s => s.Price);
     /// <summary>Клейма, витрачені не на секрети (оздоби хати тощо, v9): бонус клейм вони не гублять, як і секрети.</summary>
     int _stampsUsed;
@@ -595,6 +651,8 @@ public sealed partial class Clicker : Game
         _inspireUntil = default;
         _caught = 0;
         _stamps = 0;
+        _stampsExtra = 0;
+        _scienceAt = default;
         _firings = 0;
         ScheduleGolden(_lastSync);
         _guard.Reset(Ctx.Rng);
@@ -1206,16 +1264,23 @@ public sealed partial class Clicker : Game
     /// <summary>
     /// Обпал: глеки, верстати й віхи згорають, а клейма за глеки за весь час лишаються назавжди. Клейма
     /// рахуються від усього наліпленого, тож ранній обпал нічого не губить: пізніше дорахується решта.
+    /// Зверху — Тавро майстра (+1) і раз на 20 годин наука майстра (<see cref="ScienceFor"/>); обидва лягають в
+    /// <see cref="_stampsExtra"/>, тож наступний обпал рахує приріст лише від клейм за глеки й нічого з них не забирає.
     /// </summary>
     ActResult Fire()
     {
-        var gain = StampsFor(_total) - _stamps;
+        var natural = StampsFor(_total);
+        var gain = natural - NaturalStamps;
         if (gain < 1)
-            return ActResult.Fail($"Ще рано: наступне клеймо — на {Short(TotalFor(StampsFor(_total) + 1))} глеків за весь час");
+            return ActResult.Fail($"Ще рано: наступне клеймо — на {Short(TotalFor(Math.Max(natural, NaturalStamps) + 1))} глеків за весь час");
 
+        var now = Ctx.Clock.UtcNow;
         // Тавро майстра — ще одне клеймо зверху, але лише коли обпал і так щось дає: інакше палили б щохвилини.
-        if (Tool("iron")) gain += IronStamps;
-        _stamps += gain;
+        var iron = Tool("iron") ? IronStamps : 0;
+        var science = ScienceFor(natural, _stampsExtra + iron, GuildTopStamps().Stamps, now);
+        _stamps += gain + iron + science;
+        _stampsExtra += iron + science;
+        if (science > 0) _scienceAt = now;
         _firings++;
         // v9: частина глеків переживає обпал — хата (гачок KeepShare) і дідова скриня зверху.
         _pots = Math.Floor(_pots * Math.Clamp(KeepShare, 0, 0.5));
@@ -1231,11 +1296,15 @@ public sealed partial class Clicker : Game
         FireAlbum(Ctx.Clock.UtcNow);
         FireFair(Ctx.Clock.UtcNow);
         FireGuild(Ctx.Clock.UtcNow);
+        // Цех мусить знати нові клейма: з них рахується наука майстра для решти округи.
+        GuildStampsChanged(now);
 
         if (_firings == 1) Ctx.Award(0, 0, "ach:potter-fire");
         Wonder("fire");
-        var bonus = (Has("seal") ? SealStampBonus : StampBonus) * _stamps * 100;
-        return ActResult.Accept($"🔥 Обпал! +{gain} {Stamps(gain)} — тепер +{bonus.ToString("0.#", Uk)} % до всього");
+        var bonus = (StampMult - 1) * 100;
+        return ActResult.Accept($"🔥 Обпал! +{gain + iron} {Stamps(gain + iron)}"
+            + (science > 0 ? $" і ще +{science} від науки майстра" : "")
+            + $" — тепер +{bonus.ToString("#,0.#", Uk)} % до всього");
     }
 
     /// <summary>Яка частка глеків переживає обпал: хата (v9) плюс дідова скриня — двадцята частина.</summary>
@@ -1484,9 +1553,16 @@ public sealed partial class Clicker : Game
             allMult = all,
             stamps = _stamps,
             stampsFree = FreeStamps,
-            stampsReady = Math.Max(0, stampsAll - _stamps),
+            // Приріст — від клейм за глеки: Тавро й наука (stampsExtra) лежать окремо, і обпал їх не забирає.
+            stampsReady = Math.Max(0, stampsAll - NaturalStamps),
+            stampsExtra = _stampsExtra,
             nextStampAt = TotalFor(stampsAll + 1),
             stampBonus = Has("seal") ? SealStampBonus : StampBonus,
+            // З якого клейма бонус росте як корінь (StampWeight): клієнт рахує «після обпалу» тією самою кривою.
+            stampSoft = StampSoftFrom,
+            stampMult = StampMult,
+            stampIron = Tool("iron") ? IronStamps : 0,
+            science = ScienceView(Ctx.Clock.UtcNow),
             stampCap = StampCap,
             firings = _firings,
             secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
@@ -1527,6 +1603,24 @@ public sealed partial class Clicker : Game
             catalog = CatalogView(),
             // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна), пауза й платня.
             guard = _guard.View(Ctx.Clock.UtcNow, EyeGain),
+        };
+    }
+
+    /// <summary>
+    /// Наука майстра для виду: найкращий гончар округи й скільки в нього клейм, частка, стеля і з якої миті наука
+    /// знову готова (null — готова вже). Скільки саме дасть обпал, клієнт рахує від живих глеків тією ж формулою,
+    /// що й <see cref="ScienceFor"/>.
+    /// </summary>
+    object ScienceView(DateTimeOffset now)
+    {
+        var top = GuildTopStamps();
+        return new
+        {
+            top = top.Stamps,
+            who = top.Nick,
+            share = ScienceShare,
+            cap = ScienceCap,
+            readyAt = _scienceAt != default && now - _scienceAt < ScienceEvery ? _scienceAt + ScienceEvery : (DateTimeOffset?)null,
         };
     }
 
@@ -1578,7 +1672,9 @@ public sealed partial class Clicker : Game
         // Дев'яте оновлення: щасливі кліки, випадковості на сцені, бажання на зірку, проспані під полицею глеки
         // й побачене «Що нового». Усе необов'язкове — старе збереження читається як «цього ще не було».
         long Lucky = 0, EventRow? Cat = null, EventRow? Star = null, EventRow? Wind = null,
-        int Petted = 0, bool StarWish = false, bool GoldenSlept = false, bool FallSlept = false, string? News = null);
+        int Petted = 0, bool StarWish = false, bool GoldenSlept = false, bool FallSlept = false, string? News = null,
+        // Клейма понад ті, що за глеки (Тавро й наука майстра), і остання наука. Старе збереження — «ще не було».
+        int StampsExtra = 0, DateTimeOffset ScienceAt = default);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -1589,7 +1685,8 @@ public sealed partial class Clicker : Game
             _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save(),
             _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse(),
             SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null, _stampsUsed,
-            _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news),
+            _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news,
+            _stampsExtra, _scienceAt),
         Wire);
 
     public override void Load(string json)
@@ -1629,6 +1726,10 @@ public sealed partial class Clicker : Game
         _wear = s.Wear is { } w && _styles.Contains(w) ? w : "";
 
         _stamps = Math.Max(0, s.Stamps);
+        // Старе збереження окремого лічильника не має — усі клейма вважаємо за глеки (тавро, що вже «з'їдене», не
+        // вертаємо). Наука з майбутнього (правлена база, збитий годинник) чекає не довше, ніж від «зараз».
+        _stampsExtra = Math.Clamp(s.StampsExtra, 0, _stamps);
+        _scienceAt = s.ScienceAt > Ctx.Clock.UtcNow ? Ctx.Clock.UtcNow : s.ScienceAt;
         _firings = Math.Max(0, s.Firings);
         _stampsUsed = Math.Max(0, s.StampsUsed);
         _caught = Math.Max(0, s.Caught);

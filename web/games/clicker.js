@@ -22,10 +22,11 @@
   Вид (Impl/Clicker.cs): { pots, total, perClick, clickBase, perSecond, baseSecond,
     upgrades: { key: { level, price, name, desc, max, kind, gain, growth, marks, open } }, marks: [...],
     canSellToday, soldToday, cap, rate, lastSync, now, offlineHours, golden: { at, until, x, y }, caught,
-    fair: { until, mult }, inspire: { until, mult, share }, allMult, stamps, stampsFree, stampsReady, nextStampAt,
-    stampBonus, stampCap, firings, secrets: [...], styles: [...], wear,
+    fair: { until, mult }, inspire: { until, mult, share }, allMult, stamps, stampsFree, stampsReady, stampsExtra,
+    nextStampAt, stampBonus, stampSoft, stampMult, stampIron, science: { top, who, share, cap, readyAt },
+    stampCap, firings, secrets: [...], styles: [...], wear,
     heat, heatFull, heatTau, momentum, momentumMax, fall: { at, until, x, streak, gain, bonus }, grabbed,
-    lucky, starWish, news: null | "v9",
+    lucky, starWish, news: null | "v9.1",
     events: { cat: { at, until, dir }, star: { at, until, x, y }, wind: { at, until, mult }, petted },
     guard: null | { serial, count, png, width, height, misses, maxMisses, lockUntil, why, pays, gain } }.
   Дії: spin { c }, buy { key, n }, mark { key }, sell { pots }, catch, grab, look, fire, secret { key }, paint { key },
@@ -52,7 +53,7 @@
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
-  const NEWS_VERSION = 'v9';              // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const NEWS_VERSION = 'v9.1';            // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
@@ -135,6 +136,11 @@
   };
   const shards = (n) => plural(n, 'черепок', 'черепки', 'черепків');
   const stampsWord = (n) => plural(n, 'клеймо', 'клейма', 'клейм');
+  /// Скільки «повних» клейм важать n клейм — та сама крива, що Clicker.StampWeight на сервері: до тисячі (soft)
+  /// усі, далі корінь — кожне нове клеймо важить дедалі менше (на 4000 — половину, на 16 000 — чверть).
+  const stampWeight = (n, soft) => (n <= soft ? Math.max(0, n) : soft * (2 * Math.sqrt(n / soft) - 1));
+  /// Бонус клейм «до всього» у відсотках для n клейм.
+  const stampPct = (st, n) => st.stampBonus * stampWeight(n, st.stampSoft) * 100;
   const potsWord = (n) => (n % 1 ? 'глека' : plural(n, 'глек', 'глеки', 'глеків'));
   /// «1,47 млн глеків», а не «1,47 млн глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
   const potsShort = (n) => short(n) + ' ' + (Math.abs(n) >= 1e6 ? 'глеків' : potsWord(n));
@@ -316,7 +322,7 @@
         houseBtns: [], clayBtns: [], orderBtns: [], cds: [],
         heat: 0, heatAt: Date.now(), heatFull: 18, heatTau: 3, momentumMax: 1,
         angle: 0, angleAt: 0, ringOff: -1, glow: -1, jugScale: -1,
-        stamps: 0, stampsFree: 0, stampBonus: 0.02, fireArmed: 0,
+        stamps: 0, stampsFree: 0, stampBonus: 0.02, stampsExtra: 0, stampSoft: 1000, stampIron: 0, science: null, fireArmed: 0,
         ups: {}, markList: [], styleList: [], secretList: [],
         tab: storeGet('clk.tab', 'shop'), mode: storeGet('clk.mode', '1'),
         hands: [], handsGain: 0, inflight: 0, inflightGain: 0, tokens: MAX_BATCH, tokensAt: Date.now(), shown: -1, slowAt: 0,
@@ -906,7 +912,8 @@
 
   function paintFire(st, liveTotal) {
     const all = Math.floor(Math.sqrt(Math.max(0, liveTotal) / STAMP_UNIT));
-    const gain = Math.max(0, all - st.stamps);
+    // Приріст — від клейм за глеки: Тавро й наука лежать окремо (stampsExtra), і обпал їх не забирає.
+    const gain = Math.max(0, all - Math.max(0, st.stamps - st.stampsExtra));
     const from = all * all * STAMP_UNIT;
     const to = (all + 1) * (all + 1) * STAMP_UNIT;
     const pct = Math.max(0, Math.min(100, ((liveTotal - from) / (to - from)) * 100));
@@ -925,8 +932,33 @@
     const off = !st.mine || gain < 1;
     if (f._btn.disabled !== off) f._btn.disabled = off;
     f._btn.classList.toggle('armed', !!armed);
-    const after = gain < 1 ? '' : 'після обпалу: +' + dec((st.stamps + gain) * st.stampBonus * 100) + ' % до всього назавжди';
+    const iron = gain < 1 ? 0 : st.stampIron;
+    const sci = gain < 1 ? 0 : scienceNow(st, all, st.stampsExtra + iron);
+    const after = gain < 1 ? '' : afterFire(st, gain + iron + sci, sci);
     if (f._after.textContent !== after) f._after.textContent = after;
+  }
+
+  /// Що обпал зробить із бонусом: «після обпалу: +174 % → +245 % до всього (дохід +40 %)» — щоб видно було, чи
+  /// варто палити, а не лише скільки клейм упаде. Після тисячі кожне нове клеймо важить дедалі менше.
+  function afterFire(st, add, sci) {
+    const was = stampPct(st, st.stamps);
+    const will = stampPct(st, st.stamps + add);
+    const ratio = (100 + will) / (100 + was);
+    const grow = ratio >= 2 ? '×' + dec(ratio) : '+' + dec((ratio - 1) * 100) + ' %';
+    return 'після обпалу: +' + dec(was) + ' % → +' + dec(will) + ' % до всього (дохід ' + grow + ')'
+      + (sci > 0 ? ' · 🎓 і ще +' + num(sci) + ' ' + stampsWord(sci) + ' від науки майстра' : '');
+  }
+
+  /// Скільки дасть наука майстра на обпалі просто зараз — та сама формула, що Clicker.ScienceFor на сервері:
+  /// чверть різниці з найкращим гончарем округи, не більше ніж двічі по клеймах за глеки. 0 — ще не минуло
+  /// 20 годин, нема від кого вчитись або ти й так попереду.
+  function scienceNow(st, natural, extra) {
+    const sc = st.science;
+    if (!sc || !sc.top) return 0;
+    if (sc.readyAt && Date.parse(sc.readyAt) > serverNow(st)) return 0;
+    const gap = sc.top - natural - extra;
+    if (!(gap > 0)) return 0;
+    return Math.min(Math.floor(gap * (sc.share || 0)), (sc.cap || 0) * natural);
   }
 
   /// Цикл живе від mount до unmount. Картку каркас монтує ще до того, як вставить у сторінку (повторне
@@ -1318,15 +1350,17 @@
   function firePane(st, ctx) {
     const esc = ctx.esc;
     const v = ctx.view || {};
-    const bonus = dec(st.stamps * st.stampBonus * 100);
+    const bonus = dec(stampPct(st, st.stamps));
     const cap = v.stampCap || 0;
     const head = '<div class="clk-stamps"><b>🔖 ' + num(st.stamps) + ' ' + stampsWord(st.stamps) + '</b>'
       + '<span>+' + bonus + ' % до всього</span>'
       + '<span class="muted small">вільних клейм: ' + num(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
       + info('Почати наново — це спалити глеки, верстати й віхи, а натомість узяти клейма майстра за все, що наліпив '
-        + 'за весь час: кожне дає +' + dec(st.stampBonus * 100) + ' % до всього назавжди. Розписи, секрети, альбом і таблиця '
+        + 'за весь час. Перша тисяча клейм дає по +' + dec(st.stampBonus * 100) + ' % до всього назавжди, далі кожне нове '
+        + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть. Розписи, секрети, альбом і таблиця '
         + 'лишаються. Кожні ' + STAMPS_PER_CAP + ' клейм — ще один черепок до денної стелі обміну'
-        + (cap ? ' (зараз +' + cap + ')' : '') + '.');
+        + (cap ? ' (зараз +' + cap + ')' : '') + '.')
+      + scienceLine(st, esc);
     // Два кола секретів (v9 §A.5): родинні — з першого дня, дідівські — на сотні клейм.
     const card = (s) => '<button type="button" class="clk-secret' + (s.owned ? ' owned' : '') + '" data-secret="' + esc(s.key)
       + '" data-price="' + s.price + '"' + (s.owned || !st.mine || st.stampsFree < s.price ? ' disabled' : '') + '>'
@@ -1339,13 +1373,28 @@
       : '');
     const secrets = block('Родинні секрети', 'за клейма, назавжди', ring(1))
       + block('Дідівські секрети', 'друге коло — те, що дід тримав у скрині', ring(2))
-      + '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: +'
-      + dec(st.stampBonus * 100) + ' % за кожне лишається, хоч витрать усі.</div>';
+      + '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: він лишається, хоч витрать усі.</div>';
     if (swap(st.fire._static, head + secrets)) {
       st.secretBtns = [...st.fire._static.querySelectorAll('[data-secret]')];
       for (const b of st.secretBtns) b.onclick = () => order(st, 'secret', { key: b.dataset.secret });
     }
     st.slowAt = 0;
+  }
+
+  /// Наука майстра у вкладці Клейма: від кого вчимось, скільки в нього клейм і коли наука знову готова. Хто сам
+  /// попереду всіх — тому вчитись нема в кого: це від нього вчиться решта. Без цеху (і округи) рядка нема.
+  function scienceLine(st, esc) {
+    const sc = st.science;
+    if (!sc || !sc.top || !sc.who) return '';
+    if (sc.top <= st.stamps) {
+      return '<div class="muted small clk-science">🎓 Ти найкращий гончар округи: від тебе вчиться решта — раз на '
+        + '20 годин їхній обпал підтягує їх на чверть різниці з тобою.</div>';
+    }
+    const left = sc.readyAt ? (Date.parse(sc.readyAt) - serverNow(st)) / 1000 : 0;
+    return '<div class="muted small clk-science">🎓 <b>Наука майстра.</b> Найкращий гончар округи — ' + esc(sc.who) + ': '
+      + num(sc.top) + ' ' + stampsWord(sc.top) + '. Раз на 20 годин обпал дає ще чверть різниці з ним, але не більше, '
+      + 'ніж удвічі твоїх клейм за глеки. ' + (left > 0 ? 'Знову — через ' + span(left) + '.' : 'Наступний обпал її принесе.')
+      + '</div>';
   }
 
   /// Глек на колі, глек на полиці й глечики над полицею: перемальовуємо лише тоді, коли гончар поставив інший
@@ -1583,22 +1632,15 @@
   // ---------- «Що нового» раз на гравця (v9 §A.9) ----------
 
   /// Текст показується один раз на гончаря: керує цим сервер (view.news), тож і з телефона, і з ноутбука
-  /// вікно відкриється рівно раз. Рядки — заглушка пакета «Коло»: остаточний список напише інтегратор,
-  /// коли зійдуться всі вісім пакетів дев'ятого оновлення.
+  /// вікно відкриється рівно раз. «v9.1» — клейма після тисячі й наука майстра (docs/games/specs/clicker-stamps.md);
+  /// великий список дев'ятого оновлення всі, хто грає, уже бачили.
   const NEWS = {
     title: '✨ Що нового в Гончарному колі',
-    lead: 'Дев’яте оновлення — «Округа». Коротко, що змінилось:',
+    lead: 'Клейма стали чесніші, а округа — дружніша:',
     lines: [
-      ['👁', '<b>Око майстра платить.</b> Пройшов спокійну полицю — майстер відсипле дві години роботи й десять тисяч кліків, а полиця більше не перебиває ярмарок, натхнення чи глек у польоті.'],
-      ['🖌', '<b>Розпис має сенс.</b> Кнопка «Розписати» відкриває вибір із восьми технік (три нові: пензлем, штампик, полива), а красива партія дає <b>розкішні</b> вироби — ×4,5 до ціни. Курсор у мінігрі тепер там, де мазок.'],
-      ['🔥', '<b>Палій не спить.</b> Прокачай «Палія» в Ремеслі — горно палитиме само, навіть поки тебе нема, і дедалі частіше видаватиме добрі й дзвінкі. Там же прокачуються сушарня, горно й комора, з поясненням ⓘ.'],
-      ['📒', '<b>Альбом без стелі.</b> Клітинки, рядки, стовпчики й зірки за дзвінкі дають далеко за сто відсотків; майстерність важить удвічі; кахлі в печі рахуються за якістю, і їх можна міняти. Три нові вироби: кухоль, тиква, плесканець.'],
-      ['🤝', '<b>Шана сіл до десятої зірки:</b> +3 % до всього за кожен рівень, дорожчі замовлення, а від шостої зірки села шлють гостинці. Нові гості й пригоди, базарний день.'],
-      ['🛒', '<b>Цех:</b> віз платить по паях (кожні 12 виробів — ще пай), а другові можна послати гостинець, підмайстра на добу чи похвалу. Понад цехмістра — Старійшина.'],
-      ['🏠', '<b>Хата росте:</b> вісім нових знарядь, шість прикрас, оздоба за клейма (стріха, стіни, тин, дерево, кіт), ім’я на вивісці й <b>дивовижі</b> — шістнадцять рідкісних речей із байками.'],
-      ['🤫', '<b>Друге коло секретів:</b> сім дідівських — від Другої сушарні до Дідової скрині, що рятує глеки від обпалу.'],
-      ['💪', '<b>Кліки в пізній грі:</b> Замашна рука, Гарт кола й Щасливий клік; серія глеків з полиці без стелі; купець і натхнення щедріші; кіт-мандрівник, зірка вночі та вітер із поля.'],
-      ['🏺', '<b>Драбина після Цар-глека:</b> Гончарна слобода, Контрактовий ярмарок і Гончарня на Січі. Глеки більше не впираються в стелю лічильника.'],
+      ['🔖', '<b>Клейма після тисячі важать менше.</b> Перша тисяча — як і була: +2 % до всього за клеймо (з Родовим клеймом +3 %). Далі кожне нове клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть. У кого клейм понад тисячу, бонус через це менший — зате обпалювати щогодини більше не треба.'],
+      ['🎓', '<b>Наука майстра.</b> Раз на 20 годин обпал дає ще чверть різниці між твоїми клеймами й клеймами найкращого гончаря округи — але не більше, ніж удвічі твоїх клейм за глеки. Хто позаду, той наздоганяє.'],
+      ['🔥', '<b>Кнопка обпалу</b> тепер показує, наскільки виросте дохід, а Тавро майстра справді додає клеймо до кожного обпалу.'],
     ],
     ok: 'Зрозуміло',
   };
@@ -2034,6 +2076,10 @@
         st.stamps = v.stamps || 0;
         st.stampsFree = v.stampsFree || 0;
         st.stampBonus = v.stampBonus || 0.02;
+        st.stampsExtra = v.stampsExtra || 0;
+        st.stampSoft = v.stampSoft || 1000;
+        st.stampIron = v.stampIron || 0;
+        st.science = v.science || null;
         // Розгін — серверний, плюс наші кліки, що ще не полетіли (сервер про них не знає).
         st.heatFull = v.heatFull || 18;
         st.heatTau = v.heatTau || 3;

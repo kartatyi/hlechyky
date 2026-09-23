@@ -593,6 +593,8 @@
 .clk-news .clk-news-ok { width: 100%; }
 /* Пояснення під секретами: клейма, витрачені на секрети, бонус не гублять. */
 .clk-secnote { margin: 6px 2px 0; line-height: 1.35; }
+/* Наука майстра під рядком клейм: від кого вчимось і коли знову. */
+.clk-science { margin: 4px 2px 8px; line-height: 1.35; text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
   /* Нижче правил вкладок, бо медіазапит сам по собі ваги не додає: нова вкладка не пульсує,
