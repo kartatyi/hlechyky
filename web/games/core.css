@@ -223,6 +223,27 @@
 .gask-text b { color: var(--text); display: inline-flex; align-items: center; gap: 4px; }
 .gask-text b .gico { width: 18px; height: 18px; }
 
+/* ---- «що нового» в грі ---- */
+.gnew {
+  margin-left: auto; flex: none; font-size: .72em; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+  background: var(--clay); color: var(--accent-ink); white-space: nowrap;
+}
+.gtile.fresh { border-color: var(--clay); }
+.gnews .card { max-width: 440px; }
+.gnews-kick { font-size: .78em; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--clay); }
+.gnews h3 { margin: 2px 0 4px; display: flex; gap: 6px; }
+.gnews-list { margin: 0 0 6px; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; line-height: 1.45; }
+.gnews-list li { background: var(--bg2); border-radius: 10px; padding: 8px 10px; }
+@media (prefers-reduced-motion: no-preference) {
+  .gnews .card { animation: gnews-in .28s cubic-bezier(.2, .9, .3, 1.2); }
+  .gnews-list li { animation: gnews-li .35s both; }
+  .gnews-list li:nth-child(2) { animation-delay: .06s; } .gnews-list li:nth-child(3) { animation-delay: .12s; }
+  .gnews-list li:nth-child(4) { animation-delay: .18s; } .gnews-list li:nth-child(5) { animation-delay: .24s; }
+  .gnews-list li:nth-child(6) { animation-delay: .3s; }
+}
+@keyframes gnews-in { from { transform: translateY(12px) scale(.96); opacity: 0; } }
+@keyframes gnews-li { from { transform: translateX(-8px); opacity: 0; } }
+
 /* ---- профіль ---- */
 .gprofile { display: flex; flex-direction: column; gap: 10px; }
 .gp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 1.15em; }

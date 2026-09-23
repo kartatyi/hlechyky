@@ -42,6 +42,8 @@
   const watched = new Set();    // на що зараз підписані WatchRoom
   const pinned = new Set();     // щойно відкриті соло/приватні кімнати: їх нема в лобі, дивимось за roomId
   let wallet = null;            // баланс черепків, null — ще не питали
+  let newsSeen = null;          // гра → версія «що нового», яку вже бачили; null — ще не питали сервер
+  const newsShown = new Set();  // кому вже показали в цій вкладці (щоб не вискакувало двічі, поки летить POST)
 
   // Групи більше не вкладки, а чипи-фільтри каталогу: столи видно з будь-якого фільтра.
   const GROUPS = [
@@ -516,6 +518,7 @@
 
   function ensureCatalog() {
     if (loading) return loading;
+    loadNews();
     loading = ensureNames().then(() => {
       renderShell();
       renderView();
@@ -533,6 +536,65 @@
       if (b) b.onclick = (ev) => busy(ev.currentTarget, 'читаю…', () => ensureCatalog());
     });
     return loading;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // «Що нового»: модуль гри каже news: { v, title, items }, сервер пам'ятає, яку версію нік бачив
+  // (/api/games/news). Вікно — один раз при першому заході на стіл цієї гри; на плитці лобі — «✨ нове».
+  // Гість (без збереження на сервері) пам'ятає в localStorage.
+  // ---------------------------------------------------------------------------------------------
+
+  const NEWS_LS = 'gamesNewsSeen';
+  function localNews() {
+    try { return JSON.parse(localStorage.getItem(NEWS_LS) || '{}') || {}; } catch { return {}; }
+  }
+  async function loadNews() {
+    let server = {};
+    try { const r = await api('GET', '/api/games/news'); server = (r && r.seen) || {}; }
+    catch { /* нема сервера — хоч локальне */ }
+    newsSeen = Object.assign(localNews(), server);
+    if (shown && view.kind === 'lobby') renderView();
+    if (shown && view.kind === 'room' && views[view.id]) maybeNews(views[view.id]);
+  }
+  const newsOf = (id) => { const m = modules[id]; return m && m.news && m.news.v && (m.news.items || []).length ? m.news : null; };
+  const hasNews = (id) => { const n = newsOf(id); return !!n && newsSeen != null && newsSeen[id] !== n.v; };
+
+  function markNews(id, v) {
+    if (newsSeen) newsSeen[id] = v;
+    try { const l = localNews(); l[id] = v; localStorage.setItem(NEWS_LS, JSON.stringify(l)); } catch { /* приватне вікно */ }
+    api('POST', '/api/games/news', { game: id, v }).catch(() => { /* наступного разу покажемо ще раз — не біда */ });
+  }
+
+  /// Показати «що нового» для столу, що зараз на екрані. Посеред власної партії не лізе поперед гри:
+  /// дочекається, поки вона скінчиться (refreshCard кличе нас на кожне оновлення).
+  function maybeNews(rv) {
+    if (!rv || !rv.room || !shown || view.kind !== 'room' || view.id !== rv.room.id) return;
+    const id = rv.room.game;
+    if (!hasNews(id) || newsShown.has(id)) return;
+    if (rv.seat != null && rv.room.status === 'playing' && rv.room.maxPlayers > 1) return;
+    if (document.querySelector('.modal.gmodal')) return;          // інше вікно вже висить — наступного разу
+    const n = newsOf(id);
+    newsShown.add(id);
+    const wrap = document.createElement('div');
+    wrap.className = 'modal gmodal gnews';
+    wrap.innerHTML = '<div class="card">'
+      + '<div class="gnews-kick">✨ Що нового</div>'
+      + '<h3>' + iconOf(id) + esc(n.title || titleOf(id)) + '</h3>'
+      + '<ul class="gnews-list">' + n.items.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>'
+      + '<div class="grow"><button class="primary" type="button" data-ok data-pad-first>Зрозуміло, грати!</button></div></div>';
+    const close = () => {
+      if (!wrap.isConnected) return;
+      wrap.remove();
+      document.removeEventListener('keydown', onKey, true);
+    };
+    const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close(); } };
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector('[data-ok]').onclick = close;
+    document.body.appendChild(wrap);
+    document.addEventListener('keydown', onKey, true);
+    wrap.querySelector('[data-ok]').focus();
+    markNews(id, n.v);                         // показали — значить бачив, навіть якщо закриє F5-ом
+    if (root && root.querySelector('.gtiles')) renderView();
   }
 
   async function loadWallet() {
@@ -742,7 +804,8 @@
       && (!want || (g.title + ' ' + (g.hint || '')).toLowerCase().includes(want)));
     const tiles = list.map((g) => {
       const solo = g.maxPlayers === 1;
-      return '<div class="gtile"><div class="gt-head">' + iconOf(g.id) + '<b>' + esc(g.title) + '</b></div>'
+      return '<div class="gtile' + (hasNews(g.id) ? ' fresh' : '') + '"><div class="gt-head">' + iconOf(g.id) + '<b>' + esc(g.title) + '</b>'
+        + (hasNews(g.id) ? '<span class="gnew" title="' + esc(newsOf(g.id).title || 'Оновлення') + '">✨ нове</span>' : '') + '</div>'
         + '<div class="gt-hint muted small">' + esc(g.hint || '') + '</div>'
         + '<div class="gt-btns"><span class="gt-pl muted small">' + playersLabel(g) + '</span>'
         + (solo ? '<button class="primary" data-solo="' + esc(g.id) + '">Грати</button>'
@@ -1058,6 +1121,7 @@
       }
       try { if (card.mod.update) card.mod.update(card.body, ctx); }
       catch (e) { console.warn('[games] update ' + rv.room.game, e); }
+      maybeNews(rv);
     }
 
     paintStatus(card, rv);
