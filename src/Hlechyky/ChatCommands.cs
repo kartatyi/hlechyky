@@ -87,7 +87,7 @@ public static class ChatCommands
     static Result Choose(string args)
     {
         var parts = SplitChoices(args);
-        if (parts.Count < 2) return new(Error: "Дай хоч два варіанти через |");
+        if (parts.Count < 2) return new(Error: "Дай хоч два варіанти: /обери чай або кава");
         if (parts.Count > MaxChoices) return new(Error: $"Забагато варіантів, більше {MaxChoices} я не перебираю");
         if (parts.Exists(p => p.Length > MaxChoiceLength)) return new(Error: $"Варіант задовгий — до {MaxChoiceLength} символів кожен");
         var pick = parts[Random.Shared.Next(parts.Count)];
@@ -95,14 +95,22 @@ public static class ChatCommands
     }
 
     /// <summary>
-    /// Скісна риска — головний роздільник; коли її нема, пробуємо кому. Порожні шматки викидаємо, щоб
-    /// «чай | | кава» не рахувалось за три варіанти, один з яких — ніщо.
+    /// Скісна риска — головний роздільник; коли її нема, пробуємо кому й людські «або»/«чи» («чай, кава або
+    /// компот»), а як і їх нема — пробіли: «/обери піца суші» з телефона пишуть саме так. Порожні шматки
+    /// викидаємо, щоб «чай | | кава» не рахувалось за три варіанти, один з яких — ніщо.
     /// </summary>
     public static List<string> SplitChoices(string args)
     {
-        var raw = (args ?? "").Contains('|') ? args!.Split('|') : (args ?? "").Split(',');
-        return [.. raw.Select(p => p.Trim()).Where(p => p.Length > 0)];
+        args ??= "";
+        static List<string> Clean(IEnumerable<string> raw) => [.. raw.Select(p => p.Trim()).Where(p => p.Length > 0)];
+        if (args.Contains('|')) return Clean(args.Split('|'));
+        var parts = Clean(OrWords.Split(args));
+        return parts.Count >= 2 ? parts : Clean(args.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
+
+    /// <summary>Кома або слово «або»/«чи» між варіантами (не всередині слова: «чипси» — це не «чи» + «пси»).</summary>
+    static readonly System.Text.RegularExpressions.Regex OrWords =
+        new(@",|\s+(?:або|чи)\s+", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>Настрій відповіді кулі: щоб куля не була ні надто доброю, ні надто злою.</summary>
     public enum BallMood { Yes, No, Fog }

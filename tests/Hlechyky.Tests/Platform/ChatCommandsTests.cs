@@ -76,6 +76,18 @@ public class ChatCommandsTests
         Assert.Equal(2, ChatCommands.SplitChoices("чай, міцний | кава").Count);
     }
 
+    [Theory]
+    [InlineData("чай або кава", new[] { "чай", "кава" })]
+    [InlineData("чай чи кава", new[] { "чай", "кава" })]
+    [InlineData("чай, кава або компот", new[] { "чай", "кава", "компот" })]
+    [InlineData("піца суші", new[] { "піца", "суші" })]
+    [InlineData("чипси чи горішки", new[] { "чипси", "горішки" })]
+    [InlineData("Червоне АБО біле вино", new[] { "Червоне", "біле вино" })]
+    public void Choose_understands_or_and_plain_spaces(string args, string[] expected)
+    {
+        Assert.Equal(expected, ChatCommands.SplitChoices(args));
+    }
+
     [Fact]
     public void Choose_picks_only_from_what_it_was_given()
     {
@@ -99,7 +111,7 @@ public class ChatCommandsTests
     public void Choose_needs_at_least_two_options(string text)
     {
         var r = ChatCommands.Run(text);
-        Assert.Equal("Дай хоч два варіанти через |", r.Error);
+        Assert.Equal("Дай хоч два варіанти: /обери чай або кава", r.Error);
         Assert.Null(r.Text);
     }
 

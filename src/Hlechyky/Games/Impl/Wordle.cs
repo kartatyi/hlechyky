@@ -190,12 +190,17 @@ public sealed class Wordle : Game, IDailyGame
     }
 
     /// <summary>Зведений стан літер для екранної клавіатури: зелена перекриває жовту, жовта — чорну.</summary>
-    Dictionary<string, string> Keys()
+    Dictionary<string, string> Keys() => KeysOf(_answer, _guesses);
+
+    /// <summary>
+    /// Те саме для будь-якого набору спроб — ним користується і гра наввипередки (<see cref="WordleRace"/>).
+    /// </summary>
+    public static Dictionary<string, string> KeysOf(string answer, IEnumerable<string> guesses)
     {
         var best = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var w in _guesses)
+        foreach (var w in guesses)
         {
-            var marks = Marks(_answer, w);
+            var marks = Marks(answer, w);
             for (var i = 0; i < Len; i++)
             {
                 var key = w[i].ToString();

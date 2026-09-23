@@ -782,6 +782,34 @@ public class AdContestTests
     }
 
     [Fact]
+    public void The_snapshot_tells_whether_a_new_contest_will_open_by_itself()
+    {
+        using var r = new AdRig();
+        var on = r.Snapshot("Петро");
+        Assert.True(on.GetProperty("enabled").GetBoolean());
+        Assert.True(on.GetProperty("autoOpen").GetBoolean());
+
+        r.Options.AutoOpen = false;
+        Assert.False(r.Snapshot("Петро").GetProperty("autoOpen").GetBoolean());
+
+        r.Options.AutoOpen = true;
+        r.Options.Enabled = false;
+        var off = r.Snapshot("Петро");
+        Assert.False(off.GetProperty("enabled").GetBoolean());
+        Assert.False(off.GetProperty("autoOpen").GetBoolean());
+    }
+
+    [Fact]
+    public void The_winner_line_does_not_guess_the_winner_gender()
+    {
+        using var r = new AdRig();
+        WinnerReady(r);
+        var line = Assert.Single(r.Eco.Outbox.Of<Journal>(), j => j.Text.Contains("переміг"));
+        Assert.DoesNotContain("Його", line.Text);
+        Assert.Contains("ця реклама", line.Text);
+    }
+
+    [Fact]
     public void A_closed_contest_leaves_no_active_one_but_shows_up_among_the_past_winners()
     {
         using var r = new AdRig();
