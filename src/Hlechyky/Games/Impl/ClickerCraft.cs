@@ -7,7 +7,7 @@ namespace Hlechyky.Games.Impl;
 /// підмайстрів) треба, <paramref name="Seconds"/> — чого він вартий у секундах пасиву, <paramref name="Unlock"/> —
 /// з яких глеків за весь час відкривається.
 /// </summary>
-public sealed record ClickerWare(string Key, string Name, int Work, double Seconds, long Unlock);
+public sealed record ClickerWare(string Key, string Name, int Work, double Seconds, double Unlock);
 
 /// <summary>Виріб у коморі: вид, розпис (порожній — простий) і якість (1 звичайний, 2 добрий, 3 дзвінкий).</summary>
 public sealed record ItemInfo(string Ware, string Style, int Quality);
@@ -144,7 +144,7 @@ public sealed partial class Clicker
     }
 
     /// <summary>Покласти в комору. Що не влізло — одразу продано на базарі; повертає, скільки глеків за це прийшло.</summary>
-    internal long PutItems(string ware, string style, int quality, int n)
+    internal double PutItems(string ware, string style, int quality, int n)
     {
         if (n <= 0 || WareOf(ware) is null || quality is < 1 or > 3) return 0;
         var room = Math.Max(0, StoreCap - ItemTotal);
@@ -156,7 +156,7 @@ public sealed partial class Clicker
         }
         var over = n - put;
         if (over <= 0) return 0;
-        var pots = Mul(ItemValue(ware, style, quality), over);
+        var pots = ItemValue(ware, style, quality) * over;
         Add(pots);
         return pots;
     }
@@ -185,13 +185,13 @@ public sealed partial class Clicker
     /// Ціна виробу в глеках: секунди пасиву × якість × розпис × множники пакетів, але не менше за половину кліків,
     /// що на нього пішли (інакше на голому колі без підмайстрів виріб нічого б не вартував).
     /// </summary>
-    internal long ItemValue(string ware, string style, int quality)
+    internal double ItemValue(string ware, string style, int quality)
     {
         if (WareOf(ware) is not { } w) return 0;
         var q = QualityMult[Math.Clamp(quality, 1, 3)];
         var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware);
-        var floor = (double)(_memoOn ? _memoClick : ClickBase) * WorkOf(w) * ValueFloorClicks * q;
-        return Math.Max(1, ToLong(Math.Max(byPassive, floor)));
+        var floor = (_memoOn ? _memoClick : ClickBase) * WorkOf(w) * ValueFloorClicks * q;
+        return Math.Max(1, ToPots(Math.Max(byPassive, floor)));
     }
 
     /// <summary>
@@ -200,7 +200,7 @@ public sealed partial class Clicker
     /// </summary>
     bool _memoOn;
     double _memoPassive;
-    long _memoClick;
+    double _memoClick;
 
     /// <summary>Простий — ×1, далі від гаварецького ×1,2 до трипільського ×1,9.</summary>
     internal static double StyleValue(string style)
@@ -260,7 +260,7 @@ public sealed partial class Clicker
         if (have <= 0) return ActResult.Fail("Такого виробу в коморі нема");
         var n = Math.Min(want, have);
         TakeItems(x => x == it, n);
-        var pots = Mul(ItemValue(it.Ware, it.Style, it.Quality), n);
+        var pots = ItemValue(it.Ware, it.Style, it.Quality) * n;
         Add(pots);
         return ActResult.Accept($"🧺 Продав {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()}: +{Short(pots)} {Pots(pots)}");
     }
@@ -273,10 +273,10 @@ public sealed partial class Clicker
     {
         var q = (int)Math.Clamp(Num(payload, "q") ?? 3, 1, 3);
         var sold = 0;
-        long sum = 0;
+        double sum = 0;
         foreach (var (item, count) in AllItems().Where(x => x.Item.Quality <= q).ToList())
         {
-            sum = Sum(sum, Mul(ItemValue(item.Ware, item.Style, item.Quality), count));
+            sum += ItemValue(item.Ware, item.Style, item.Quality) * count;
             sold += count;
             _items.Remove(ItemKey(item.Ware, item.Style, item.Quality));
         }
@@ -289,7 +289,7 @@ public sealed partial class Clicker
         return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{Short(sum)} {Pots(sum)}");
     }
 
-    static string WaresWord(long n) => Plural(n, "виріб", "вироби", "виробів");
+    static string WaresWord(double n) => Plural(n, "виріб", "вироби", "виробів");
 
     // ---------- ачівки з черги ----------
 
@@ -358,7 +358,7 @@ public sealed partial class Clicker
         _awayPotsFrom = _pots;
     }
 
-    long _awayPotsFrom;
+    double _awayPotsFrom;
 
     void AwayEnd(DateTimeOffset now, TimeSpan gap)
     {
@@ -450,7 +450,7 @@ public sealed partial class Clicker
 
     // ---------- збереження ----------
 
-    sealed record AwayRow(DateTimeOffset At, long Seconds, long Pots, int Formed, List<string> Notes);
+    sealed record AwayRow(DateTimeOffset At, long Seconds, double Pots, int Formed, List<string> Notes);
 
     sealed record CraftRow(
         string? Ware, double Work, List<RackRow>? Rack, Dictionary<string, int>? Items,

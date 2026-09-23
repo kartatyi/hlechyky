@@ -18,42 +18,49 @@ public sealed record ClickerMark(int Level, string Name);
 /// </summary>
 /// <param name="Rate">Глеків за секунду з одного рівня (для <see cref="ClickerKind.Idle"/>).</param>
 /// <param name="MaxLevel">0 — купуй скільки хочеш; більше нуля — далі цього рівня верстат не тягнеться.</param>
-public sealed record ClickerUpgrade(string Key, string Name, string Desc, long Base, ClickerKind Kind,
+public sealed record ClickerUpgrade(string Key, string Name, string Desc, double Base, ClickerKind Kind,
     double Rate = 0, int MaxLevel = 0, int GrowNum = 3, int GrowDen = 2, ClickerMark[]? Marks = null)
 {
     /// <summary>Віху купують за вісім цін того рівня, на якому вона відкривається.</summary>
     public const int MarkFactor = 8;
 
-    /// <summary>ln(long.MaxValue) з запасом: далі ціна однаково не влізе в long, і рахувати її нема сенсу.</summary>
-    const double LnCeiling = 43.6;
+    /// <summary>Доки ціна влазить у ціле число, рахуємо її цілими; далі точних цілих у double однаково не буває.</summary>
+    const double Exact = 9.0e18;
 
     public ClickerMark[] Steps => Marks ?? [];
 
     public bool Capped(int level) => MaxLevel > 0 && level >= MaxLevel;
 
     /// <summary>
-    /// Ціна наступного рівня: <c>ceil(Base × (GrowNum/GrowDen)^level)</c>. Рахуємо цілими, бо double на
-    /// високих рівнях промахується на одиницю, а ціна в магазині мусить бути та сама і в тесті, і на екрані.
+    /// Ціна наступного рівня: <c>ceil(Base × (GrowNum/GrowDen)^level)</c>. Поки ціна ціла, рахуємо цілими, бо
+    /// double на високих рівнях промахується на одиницю, а ціна в магазині мусить бути та сама і в тесті, і на
+    /// екрані. Далі — просто степінь: стелі в ціни більше нема (дев'яте оновлення), і вище за 1e300 вона
+    /// однаково означає «досить».
     /// </summary>
-    public long Price(int level)
+    public double Price(int level)
     {
         if (level < 0) level = 0;
-        if (Math.Log(Base) + level * Math.Log((double)GrowNum / GrowDen) > LnCeiling) return long.MaxValue;
-        var num = BigInteger.Pow(GrowNum, level) * Base;
+        var rough = Base * Math.Pow((double)GrowNum / GrowDen, level);
+        if (!double.IsFinite(rough)) return double.MaxValue;
+        if (rough > Exact) return Math.Ceiling(rough);
+        var num = BigInteger.Pow(GrowNum, level) * new BigInteger(Base);
         var den = BigInteger.Pow(GrowDen, level);
-        var price = (num + den - 1) / den;
-        return price > long.MaxValue ? long.MaxValue : (long)price;
+        return (double)((num + den - 1) / den);
     }
 
     /// <summary>Ціна i-ї віхи: вісім цін її рівня.</summary>
-    public long MarkPrice(int i) => Clicker.Mul(Price(Steps[i].Level), MarkFactor);
+    public double MarkPrice(int i)
+    {
+        var price = Price(Steps[i].Level);
+        return price > double.MaxValue / MarkFactor ? double.MaxValue : price * MarkFactor;
+    }
 }
 
 /// <summary>Родинний секрет: вічне покращення за клейма майстра, обпал його не забирає.</summary>
 public sealed record ClickerSecret(string Key, string Name, string Desc, int Price);
 
 /// <summary>Розпис для глека: колекція на всі обпали, кожен розпис — плюс п'ять відсотків до всього.</summary>
-public sealed record ClickerStyle(string Key, string Name, long Price);
+public sealed record ClickerStyle(string Key, string Name, double Price);
 
 /// <summary>
 /// Гончарне коло — соло-клікер на одного назавжди. Кімната приватна й persistent: закрив вкладку, прийшов
@@ -154,6 +161,12 @@ public sealed partial class Clicker : Game
     static readonly CultureInfo Uk = CultureInfo.GetCultureInfo("uk-UA");
 
     /// <summary>
+    /// Назви великих чисел — ті самі, що в клієнті (<c>web/games/clicker.js</c>, <c>BIG</c>): помилитись тут
+    /// означає показати гравцеві два різні числа на одному екрані. Теж ДО магазину — з тієї самої причини.
+    /// </summary>
+    static readonly string[] BigNames = ["млн", "млрд", "трлн", "квдрлн", "квнтлн", "скстлн", "сптлн", "октлн", "нонлн", "дцлн"];
+
+    /// <summary>
     /// Магазин. Порядок тут — це порядок кнопок на екрані. Перші чотири — ті, що були з першого дня (ціни ×1,5),
     /// далі драбина, прорахована симуляцією: новий верстат приблизно раз на кілька днів гри, останні — вже
     /// після обпалів.
@@ -180,7 +193,7 @@ public sealed partial class Clicker : Game
         Tier("tsar", "Цар-глек", 5_000_000_000_000_000, 45_000_000, "Глек на всю хату", "Глек на все село", "Глек видно з Місяця"),
     ];
 
-    static ClickerUpgrade Tier(string key, string name, long price, double rate, string m25, string m50, string m100) =>
+    static ClickerUpgrade Tier(string key, string name, double price, double rate, string m25, string m50, string m100) =>
         new(key, name, $"+{Short(rate)} {Pots(rate)} за секунду", price, ClickerKind.Idle, Rate: rate,
             GrowNum: 23, GrowDen: 20, Marks: [new(25, m25), new(50, m50), new(100, m100)]);
 
@@ -237,15 +250,19 @@ public sealed partial class Clicker : Game
     /// <summary>Око майстра: почерк кліків, перевірка картинкою й пауза кола (див. <see cref="ClickerGuard"/>).</summary>
     readonly ClickerGuard _guard = new();
 
-    long _pots;
-    long _total;
+    /// <summary>
+    /// Глеки. З дев'ятого оновлення — <c>double</c>, а не <c>long</c>: у лідерів за тиждень набігає квадрильйон,
+    /// і стеля <c>long</c> (9,2 квнтлн) була б місяцем-двома гри. Глеки завжди цілі (див. <see cref="Add"/>).
+    /// </summary>
+    double _pots;
+    double _total;
     /// <summary>Недоліплений глек: пасив рідко дає ціле число, а губити півглека щосекунди — це половина доходу.</summary>
     double _carry;
     DateTimeOffset _lastSync;
     string _soldDay = "";
     int _soldShards;
     /// <summary>Останнє число, яке вже пішло в таблицю: те саме слати вдруге — марно смикати базу.</summary>
-    long _scored = -1;
+    double _scored = -1;
     DateTimeOffset _scoredAt;
     IOptionsMonitor<EconomyOptions>? _opts;
 
@@ -341,19 +358,19 @@ public sealed partial class Clicker : Game
     /// екрані виглядало б як помилка, тож множник глини тут округлюємо, а дробову частину віддаємо пасиву,
     /// де вона рахується чесно.
     /// </summary>
-    long ClickBase
+    double ClickBase
     {
         get
         {
             var wheel = Shop[0];
             var hands = (1 + Level("wheel")) * (_marks.Contains(MarkKey(wheel, 0)) ? 2 : 1) * AllMult
                 * ClayNow.Click * (Tool("ribs") ? RibsClick : 1);
-            return Math.Max(1, ToLong(Math.Round(hands + PassiveBase * ClickShare, MidpointRounding.AwayFromZero)));
+            return Math.Max(1, ToPots(Math.Round(hands + PassiveBase * ClickShare, MidpointRounding.AwayFromZero)));
         }
     }
 
     /// <summary>Глеків за один клік просто зараз — з натхненням і ярмарком, якщо вони тривають.</summary>
-    public long PerClick => ToLong(ClickBase * (InspireOn ? InspireMult : 1) * (FairOn ? FairMult : 1));
+    public double PerClick => ToPots(ClickBase * (InspireOn ? InspireMult : 1) * (FairOn ? FairMult : 1));
 
     /// <summary>Глеків за секунду без тебе просто зараз.</summary>
     public double PerSecond => PassiveBase * (FairOn ? FairMult : 1);
@@ -375,12 +392,12 @@ public sealed partial class Clicker : Game
     /// Що дасть глек з полиці, якщо спіймати його просто зараз: дві хвилини пасиву й сотня кліків, помножені на
     /// кошик, серію і ярмарок, плюс дно. Ця сама сума їде у вид — клієнт малює її над спійманим глеком, не чекаючи відповіді.
     /// </summary>
-    long FallGain()
+    double FallGain()
     {
-        var raw = PassiveBase * FallSeconds + (double)ClickBase * FallClicks;
+        var raw = PassiveBase * FallSeconds + ClickBase * FallClicks;
         var mult = (1 + BasketBonus * Level("basket")) * (1 + StreakBonus * Math.Min(_fallStreak, StreakMax)) * (FairOn ? FairMult : 1)
             * ClayNow.Loot * HouseFallMult;
-        return Sum(ToLong(raw * mult), FallFloor);
+        return ToPots(raw * mult) + FallFloor;
     }
 
     TimeSpan OfflineNow => (Has("night") ? LongOfflineCap : OfflineCap) + (Tool("lantern") ? LanternHours : TimeSpan.Zero) + HouseOfflineExtra;
@@ -401,10 +418,11 @@ public sealed partial class Clicker : Game
     int SoldToday => _soldDay == Days.Today(Ctx.Clock) ? _soldShards : 0;
 
     /// <summary>Скільки клейм дають глеки за весь час — усього, а не «ще».</summary>
-    public static int StampsFor(long total) => total <= 0 ? 0 : (int)Math.Min(int.MaxValue, Math.Floor(Math.Sqrt(total / StampUnit)));
+    public static int StampsFor(double total) =>
+        !(total > 0) ? 0 : (int)Math.Min(int.MaxValue, Math.Floor(Math.Sqrt(total / StampUnit)));
 
     /// <summary>Скільки глеків за весь час треба для n клейм.</summary>
-    public static long TotalFor(int stamps) => ToLong((double)stamps * stamps * StampUnit);
+    public static double TotalFor(int stamps) => ToPots((double)stamps * stamps * StampUnit);
 
     int StampsSpent => Secrets.Where(s => _secrets.Contains(s.Key)).Sum(s => s.Price);
     /// <summary>Клейма, витрачені не на секрети (оздоби хати тощо, v9): бонус клейм вони не гублять, як і секрети.</summary>
@@ -517,7 +535,8 @@ public sealed partial class Clicker : Game
         {
             _scored = _total;
             _scoredAt = Ctx.Clock.UtcNow;
-            Ctx.Score(0, _total);
+            // Таблиця рахує в long, а глеків тепер буває й більше: вище за стелю long показуємо саму стелю.
+            Ctx.Score(0, (long)Math.Min(_total, 9.2e18));
         }
         return result;
     }
@@ -598,13 +617,19 @@ public sealed partial class Clicker : Game
         var whole = Math.Floor(_carry);
         _carry -= whole;
         if (!double.IsFinite(_carry) || _carry < 0 || _carry >= 1) _carry = 0;   // на трильйонах double уже не тримає дробів
-        Add(ToLong(whole));
+        Add(whole);
     }
 
-    void Add(long pots)
+    /// <summary>
+    /// Додати глеків. Глек — штука: половини не буває, тож округлюємо вниз. Що прийшло зіпсованим (NaN чи
+    /// нескінченність від чужої формули) — мовчки не рахуємо: краще нічого, ніж «NaN глеків» у лічильнику.
+    /// </summary>
+    void Add(double pots)
     {
-        _pots = Sum(_pots, pots);
-        _total = Sum(_total, pots);
+        if (!double.IsFinite(pots) || !(pots >= 1)) return;
+        pots = Math.Floor(pots);
+        _pots += pots;
+        _total += pots;
     }
 
     /// <summary>
@@ -821,7 +846,7 @@ public sealed partial class Clicker : Game
                 text = $"✨ Натхнення! Клік ×{InspireMult:0} на {(InspireFor * longer).TotalSeconds:0} с";
                 break;
             default:
-                var gain = Sum(ToLong(Math.Min(_pots * MerchantShare, PassiveBase * MerchantSeconds) * ClayNow.Loot), 13);
+                var gain = ToPots(Math.Min(_pots * MerchantShare, PassiveBase * MerchantSeconds) * ClayNow.Loot) + 13;
                 Add(gain);
                 text = $"🧺 Щедрий купець: +{Short(gain)} {Pots(gain)}";
                 break;
@@ -836,9 +861,9 @@ public sealed partial class Clicker : Game
     /// <summary>
     /// Глеків за пачку кліків з розгоном. Розгін спадає від останньої пачки, а множник беремо на середині цієї:
     /// перші її кліки холодніші за останні. Пачка, з якої відро нічого не віддало, кола не гріє. Без маховика
-    /// множник рівно один — і рахуємо, як рахували, цілими, без double.
+    /// множник рівно один — тоді просто множимо, без зайвого округлення.
     /// </summary>
-    long ClickGain(int taken)
+    double ClickGain(int taken)
     {
         var now = Ctx.Clock.UtcNow;
         var heat = HeatAt(now);
@@ -848,7 +873,7 @@ public sealed partial class Clicker : Game
             _heat = heat + taken;
             _heatAt = now;
         }
-        return mult <= 1 ? Mul(PerClick, taken) : ToLong((double)PerClick * taken * mult);
+        return mult <= 1 ? PerClick * taken : ToPots(PerClick * taken * mult);
     }
 
     /// <summary>
@@ -896,7 +921,7 @@ public sealed partial class Clicker : Game
         _stamps += gain;
         _firings++;
         // v9: частина глеків може пережити обпал (хата / секрети) — гачок KeepShare.
-        _pots = (long)Math.Floor(_pots * Math.Clamp(HouseKeepShare, 0, 0.5));
+        _pots = Math.Floor(_pots * Math.Clamp(HouseKeepShare, 0, 0.5));
         _carry = 0;
         foreach (var up in Shop)
             if (!(up.Key == "clay" && Has("recipe"))) _levels[up.Key] = 0;
@@ -955,19 +980,26 @@ public sealed partial class Clicker : Game
     static string Stamps(long n) => Plural(n, "клеймо", "клейма", "клейм");
 
     /// <summary>Глек / глеки / глеків; дробове число — «глека» («0,5 глека»).</summary>
-    static string Pots(double n) => n % 1 != 0 ? "глека" : Plural((long)Math.Min(n, long.MaxValue), "глек", "глеки", "глеків");
+    static string Pots(double n) => n % 1 != 0 ? "глека" : Plural(n, "глек", "глеки", "глеків");
 
-    static string Plural(long n, string one, string few, string many) =>
-        n % 100 is >= 11 and <= 14 ? many : (n % 10) switch { 1 => one, 2 or 3 or 4 => few, _ => many };
+    static string Plural(double n, string one, string few, string many)
+    {
+        if (!double.IsFinite(n)) return many;
+        if (n % 100 is >= 11 and <= 14) return many;
+        var d = n % 10;
+        return d == 1 ? one : d is >= 2 and <= 4 ? few : many;
+    }
 
-    /// <summary>«1,09 млн» замість «1 093 232»: мільярди цифрами не читаються. До мільйона — повне число.</summary>
+    /// <summary>«1,09 млн» замість «1 093 232»: мільярди цифрами не читаються. До мільйона — повне число,
+    /// за децильйоном слів уже нема — там «1,2e36».</summary>
     public static string Short(double n)
     {
+        if (!double.IsFinite(n)) return "∞";
         if (Math.Abs(n) < 1_000_000) return n % 1 == 0 ? n.ToString("#,0", Uk) : n.ToString("#,0.#", Uk);
-        string[] names = ["млн", "млрд", "трлн", "квдрлн", "квнтлн"];
-        var i = Math.Min(names.Length - 1, (int)Math.Floor(Math.Log10(Math.Abs(n)) / 3) - 2);
+        var i = (int)Math.Floor(Math.Log10(Math.Abs(n)) / 3) - 2;
+        if (i >= BigNames.Length) return n.ToString("0.#e0", Uk);
         var v = n / Math.Pow(1000, i + 2);
-        return $"{v.ToString(v < 10 ? "0.##" : v < 100 ? "0.#" : "0", Uk)} {names[i]}";
+        return $"{v.ToString(v < 10 ? "0.##" : v < 100 ? "0.#" : "0", Uk)} {BigNames[i]}";
     }
 
     // ---------- вид ----------
@@ -1132,7 +1164,7 @@ public sealed partial class Clicker : Game
     sealed record FallRow(DateTimeOffset At, DateTimeOffset Until, int X);
 
     sealed record Snapshot(
-        long Pots, long Total, double Carry, DateTimeOffset LastSync,
+        double Pots, double Total, double Carry, DateTimeOffset LastSync,
         Dictionary<string, int> Upgrades, SoldRow SoldToday, BucketRow Clicks,
         List<string>? Marks = null, GoldenRow? Golden = null,
         DateTimeOffset FairUntil = default, DateTimeOffset InspireUntil = default, int Caught = 0,
@@ -1160,8 +1192,10 @@ public sealed partial class Clicker : Game
         // лишаємо чистим, але партію через це не ламаємо.
         if (JsonSerializer.Deserialize<Snapshot>(json, Wire) is not { } s) return;
 
-        _pots = Math.Max(0, s.Pots);
-        _total = Math.Max(_pots, s.Total);
+        // Глеки в базі — число: старі збереження писали ціле (long), нові пишуть double. Читаються однаково;
+        // зіпсоване (NaN, нескінченність) — нуль, а не «∞ глеків» на екрані.
+        _pots = ToPots(s.Pots);
+        _total = Math.Max(_pots, ToPots(s.Total));
         _carry = double.IsFinite(s.Carry) ? Math.Clamp(s.Carry, 0, 1) : 0;
         _lastSync = s.LastSync == default ? Ctx.Clock.UtcNow : s.LastSync;
         _scored = -1;
@@ -1253,6 +1287,12 @@ public sealed partial class Clicker : Game
     /// <summary>double → long зі стелею: (long) від 1e19 у C# дає сміття, а не максимум.</summary>
     internal static long ToLong(double v) =>
         !(v > 0) ? 0 : v >= 9.2e18 ? long.MaxValue : (long)v;
+
+    /// <summary>
+    /// Число → глеки: цілі (глек — штука), невід'ємні, без NaN і нескінченності. Те саме, що робив
+    /// <see cref="ToLong"/> до дев'ятого оновлення, тільки без стелі long.
+    /// </summary>
+    internal static double ToPots(double v) => double.IsFinite(v) && v > 0 ? Math.Floor(v) : 0;
 
     static long? Num(JsonElement payload, string name) =>
         payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(name, out var v)

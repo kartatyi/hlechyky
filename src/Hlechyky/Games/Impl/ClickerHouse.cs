@@ -7,26 +7,26 @@ namespace Hlechyky.Games.Impl;
 /// ловця глеків. <paramref name="Events"/> множить проміжки між розписними й падаючими глеками (менше — частіше),
 /// <paramref name="Loot"/> — глек з полиці й щедрого купця. <paramref name="Body"/> — колір простого глека на колі.
 /// </summary>
-public sealed record ClickerClay(string Key, string Name, string Desc, long Price, double Click, double Passive, double Events, double Loot, string Body);
+public sealed record ClickerClay(string Key, string Name, string Desc, double Price, double Click, double Passive, double Events, double Loot, string Body);
 
 /// <summary>Знаряддя гончаря: одноразова покупка зі своїм ефектом, видима на стіні майстерні, обпал не спалює.</summary>
-public sealed record ClickerTool(string Key, string Name, string Desc, long Price);
+public sealed record ClickerTool(string Key, string Name, string Desc, double Price);
 
 /// <summary>Прикраса хати: краса, +2 % до всього, деякі ще щось уміють. Лишається назавжди.</summary>
-public sealed record ClickerDecor(string Key, string Name, string Desc, long Price);
+public sealed record ClickerDecor(string Key, string Name, string Desc, double Price);
 
 /// <summary>
 /// Замовлення на дошці купців. <c>invest</c> — купець бере глеки і за <paramref name="Minutes"/> повертає більше;
 /// <c>style</c> — бере глеки в розписі <paramref name="Style"/> і платить одразу. <paramref name="Until"/> — коли
 /// купець поїде (дошка оновлюється).
 /// </summary>
-public sealed record ClickerOrder(int Id, string Kind, string Merchant, long Need, long Pay, int Minutes, string Style, DateTimeOffset Until);
+public sealed record ClickerOrder(int Id, string Kind, string Merchant, double Need, double Pay, int Minutes, string Style, DateTimeOffset Until);
 
 /// <summary>Купець у дорозі: повернеться о <paramref name="PayAt"/> з <paramref name="Pay"/> глеками.</summary>
-public sealed record ClickerTaken(int Id, string Merchant, long Pay, DateTimeOffset PayAt);
+public sealed record ClickerTaken(int Id, string Merchant, double Pay, DateTimeOffset PayAt);
 
 /// <summary>Купець повернувся: клієнт малює «+N» над сценою, коли бачить новий запис.</summary>
-public sealed record ClickerPaid(int Id, string Merchant, long Pay, DateTimeOffset At);
+public sealed record ClickerPaid(int Id, string Merchant, double Pay, DateTimeOffset At);
 
 /// <summary>
 /// Хата гончаря: те, що купується не рівнями, а речами, і що видно на сцені — глина, знаряддя, прикраси — і
@@ -199,23 +199,23 @@ public sealed partial class Clicker
             {
                 var style = styles[Ctx.Rng.Next(styles.Count)];
                 var need = Nice(Math.Max(200, passive * StyleOrderSeconds));
-                _board.Add(new(++_orderId, "style", merchant, need, ToLong(need * StyleOrderPay), 0, style, _boardUntil));
+                _board.Add(new(++_orderId, "style", merchant, need, ToPots(need * StyleOrderPay), 0, style, _boardUntil));
                 continue;
             }
             var minutes = OrderMinutes[Ctx.Rng.Next(OrderMinutes.Length)];
             var seconds = InvestMinSeconds + Ctx.Rng.NextDouble() * (InvestMaxSeconds - InvestMinSeconds);
             var ask = Nice(Math.Max(100 + Ctx.Rng.Next(0, 300), passive * seconds));
-            _board.Add(new(++_orderId, "invest", merchant, ask, ToLong(ask * (InvestBase + minutes / 30.0 * InvestPerHalfHour)), minutes, "", _boardUntil));
+            _board.Add(new(++_orderId, "invest", merchant, ask, ToPots(ask * (InvestBase + minutes / 30.0 * InvestPerHalfHour)), minutes, "", _boardUntil));
         }
     }
 
     /// <summary>Округлити до двох значущих цифр: «12 000», а не «11 873».</summary>
-    public static long Nice(double v)
+    public static double Nice(double v)
     {
         if (!(v > 0)) return 0;
-        if (v < 100) return (long)Math.Ceiling(v);
+        if (v < 100) return Math.Ceiling(v);
         var mag = Math.Pow(10, Math.Floor(Math.Log10(v)) - 1);
-        return ToLong(Math.Round(v / mag) * mag);
+        return ToPots(Math.Round(v / mag) * mag);
     }
 
     /// <summary>Дошка й купці в дорозі: поїхали — нова дошка; повернулись — глеки на купу.</summary>
@@ -246,7 +246,7 @@ public sealed partial class Clicker
             return ActResult.Fail("Три купці вже в дорозі — почекай, поки хтось повернеться");
         if (_pots < order.Need) return ActResult.Fail($"Бракує глеків: треба ще {Short(order.Need - _pots)}");
 
-        var pay = Tool("scales") ? ToLong(order.Pay * (1 + ScalesBonus)) : order.Pay;
+        var pay = Tool("scales") ? ToPots(order.Pay * (1 + ScalesBonus)) : order.Pay;
         _pots -= order.Need;
         _board.Remove(order);
         if (order.Kind == "style")
@@ -298,7 +298,7 @@ public sealed partial class Clicker
             board = _board.Select(o => new
             {
                 id = o.Id, kind = o.Kind, merchant = o.Merchant, need = o.Need,
-                pay = Tool("scales") ? ToLong(o.Pay * (1 + ScalesBonus)) : o.Pay,
+                pay = Tool("scales") ? ToPots(o.Pay * (1 + ScalesBonus)) : o.Pay,
                 minutes = o.Minutes, style = o.Style,
                 styleName = Styles.FirstOrDefault(s => s.Key == o.Style)?.Name ?? "",
                 can = o.Kind != "style" || _styles.Contains(o.Style),

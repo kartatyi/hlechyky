@@ -22,6 +22,9 @@ public class ClickerProgressTests
     static JsonElement View(RoomHarness h) => h.View(0);
     static long Pots(RoomHarness h) => View(h).GetProperty("pots").GetInt64();
     static long Total(RoomHarness h) => View(h).GetProperty("total").GetInt64();
+    /// <summary>Глеки понад стелю long: у вид вони їдуть числом double (дев'яте оновлення).</summary>
+    static double BigPots(RoomHarness h) => View(h).GetProperty("pots").GetDouble();
+    static double BigTotal(RoomHarness h) => View(h).GetProperty("total").GetDouble();
     static long PerClick(RoomHarness h) => View(h).GetProperty("perClick").GetInt64();
     static double PerSecond(RoomHarness h) => View(h).GetProperty("perSecond").GetDouble();
     static JsonElement Up(RoomHarness h, string key) => View(h).GetProperty("upgrades").GetProperty(key);
@@ -43,7 +46,7 @@ public class ClickerProgressTests
         }
     }
 
-    static void Give(RoomHarness h, long pots, long? total = null) => Patch(h, s =>
+    static void Give(RoomHarness h, double pots, double? total = null) => Patch(h, s =>
     {
         s["pots"] = pots;
         s["total"] = total ?? pots;
@@ -130,12 +133,26 @@ public class ClickerProgressTests
     }
 
     [Fact]
-    public void A_price_that_does_not_fit_in_long_is_the_ceiling_not_garbage()
+    public void A_price_that_does_not_fit_in_long_keeps_growing_instead_of_stopping()
     {
+        // Дев'яте оновлення: стелі long у цін більше нема — ціна росте далі, і кожен рівень дорожчий за попередній.
         var tsar = Clicker.Shop.Single(u => u.Key == "tsar");
-        Assert.Equal(long.MaxValue, tsar.Price(400));
-        Assert.Equal(long.MaxValue, tsar.MarkPrice(2));
+        Assert.True(tsar.Price(400) > long.MaxValue);
+        Assert.True(tsar.Price(401) > tsar.Price(400));
+        Assert.Equal(tsar.Price(100) * ClickerUpgrade.MarkFactor, tsar.MarkPrice(2));
         Assert.True(tsar.Price(10) > tsar.Price(9));
+        Assert.True(double.IsFinite(tsar.Price(10_000)));
+    }
+
+    [Fact]
+    public void Prices_up_to_the_long_ceiling_are_still_counted_in_whole_numbers()
+    {
+        // Нижче за стелю цілих ціна лишилась тією самою до одиниці: інакше в куплених рівнів мінявся б цінник.
+        var tsar = Clicker.Shop.Single(u => u.Key == "tsar");
+        Assert.Equal(5_000_000_000_000_000d, tsar.Price(0));
+        Assert.Equal(5_750_000_000_000_000d, tsar.Price(1));
+        Assert.Equal(23d, Clicker.Shop[0].Price(1));
+        Assert.Equal(115_000d, Clicker.Shop.Single(u => u.Key == "workshop").Price(1));
     }
 
     [Fact]
@@ -144,7 +161,7 @@ public class ClickerProgressTests
         var h = Wheel();
         Give(h, 1_000);
         var wheel = Clicker.Shop[0];
-        long spent = 0;
+        double spent = 0;
         var fits = 0;
         while (spent + wheel.Price(fits) <= 1_000) spent += wheel.Price(fits++);
 
@@ -663,14 +680,18 @@ public class ClickerProgressTests
     }
 
     [Fact]
-    public void A_mountain_of_pots_stops_at_the_ceiling_instead_of_wrapping()
+    public void A_mountain_of_pots_above_the_long_ceiling_does_not_wrap()
     {
+        // Раніше тут була стеля long; тепер глеки — double, і гора стоїть вища за неї, а не загортається в мінус.
         var h = Wheel();
-        Give(h, long.MaxValue - 5);
+        Give(h, 9.3e18);
         Act(h, "spin", PotterHands.Human(12));
 
-        Assert.Equal(long.MaxValue, Pots(h));
-        Assert.Equal(long.MaxValue, Total(h));
+        Assert.Equal(9.3e18, BigPots(h));
+        Assert.True(BigPots(h) > long.MaxValue);
+        Assert.Equal(BigPots(h), BigTotal(h));
+        // У таблицю «Гончарі» летить те, що влазить у long, а не сміття від переповнення.
+        Assert.All(h.Scores, x => Assert.InRange(x.Score, 0, long.MaxValue));
     }
 
     [Fact]

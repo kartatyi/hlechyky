@@ -531,7 +531,7 @@ public sealed partial class Clicker
     sealed record KilnOutRow(string Ware, int Q);
 
     sealed record KilnLastRow(DateTimeOffset At, bool Helper, int Heat, int Over, int Beauty, string? Style, bool Straw,
-        List<KilnOutRow>? Items, long Shards, long Sold);
+        List<KilnOutRow>? Items, double Shards, double Sold);
 
     sealed record KilnRow(
         List<string>? Batch = null, string? Style = null, string? Tech = null, int Beauty = 0,
@@ -561,7 +561,7 @@ public sealed partial class Clicker
 
     bool TechOpen(ClickerTechnique t) => t.Fired <= 0 || FiredTotal >= t.Fired || (t.Home.Length > 0 && _styles.Contains(t.Home));
 
-    long StrawPrice => Math.Max(10, Mul(ItemValue("pot", "", 1), StrawPots));
+    double StrawPrice => Math.Max(10, ItemValue("pot", "", 1) * StrawPots);
 
     string KilnState(DateTimeOffset now) =>
         _litAt != default ? "burning" : now < _coolUntil ? "cooling" : _kiln.Count > 0 ? "loaded" : "cold";
@@ -716,9 +716,9 @@ public sealed partial class Clicker
         if (raw is <= 0) return ActResult.Fail("Скільки в'язок — хоч одну");
         var want = (int)Math.Clamp(raw ?? 1, 1, room);
         var price = StrawPrice;
-        var can = (int)Math.Min(want, _pots / price);
+        var can = (int)Math.Min(want, Math.Floor(_pots / price));
         if (can <= 0) return ActResult.Fail($"Бракує глеків: в'язка коштує {Short(price)}");
-        _pots -= Mul(price, can);
+        _pots -= price * can;
         _straw += can;
         return ActResult.Accept($"🌾 Солома: +{can} — тепер {_straw} {Plural(_straw, "в'язка", "в'язки", "в'язок")}");
     }
@@ -740,15 +740,15 @@ public sealed partial class Clicker
             if (crack > 0 && Ctx.Rng.NextDouble() < crack) { outs.Add(new KilnOutRow(ware, 0)); continue; }
             outs.Add(new KilnOutRow(ware, manual ? KilnHeat.Quality(heat, beauty, Ctx.Rng.NextDouble()) : 1));
         }
-        long sold = 0, shards = 0;
+        double sold = 0, shards = 0;
         foreach (var grp in outs.Where(o => o.Q > 0).GroupBy(o => (o.Ware, o.Q)))
         {
             var n = grp.Count();
-            sold = Sum(sold, PutItems(grp.Key.Ware, style, grp.Key.Q, n));
+            sold += PutItems(grp.Key.Ware, style, grp.Key.Q, n);
             AddFired(new ItemInfo(grp.Key.Ware, style, grp.Key.Q), n);
         }
         foreach (var o in outs.Where(o => o.Q == 0))
-            shards = Sum(shards, ToLong(ItemValue(o.Ware, "", 1) * ShardShare));
+            shards += ToPots(ItemValue(o.Ware, "", 1) * ShardShare);
         Add(shards);
 
         _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold);
