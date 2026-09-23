@@ -9,10 +9,14 @@
      купців-інвесторів із вкладки «Купці» переїжджає вниз комори секцією «Купці в дорогу»;
   5) хроніка — рядок сільських новин під сценою, змінюється раз на 12 с (лише клієнт).
 
-  Вид: v.market = { weather, season, holiday: {key,name}|null, weekend, dry, orders: [...], nextOrderAt, rep: [...],
+  Дев'яте оновлення («Село»): шана йде до десятої зірки й додає до плати за замовлення, села з шаною ≥ 6 раз на
+  день шлють гостинці, з'явились дяк / мандрівний гончар / поводир із ведмедем, базарний день і ярмарковий дзвін.
+
+  Вид: v.market = { weather, season, holiday: {key,name}|null, weekend, dry, orders: [...], nextOrderAt, boardMax,
+    bell, rep: [{key,pts,level,gifts}], gifts: [{village,text,at}], giftFrom, bazaar: {until,mult}|null, beauty, bear,
     allMult, guest: {kind,at,until,x,y}|null, guests, eventAt, event: {id,key,until,sure}|null, foresight, buffs, delivered }.
   Дія: fair { op: 'deliver', id, bid: 'down'|'as'|'up' } · fair { op: 'guest' } · fair { op: 'choose', id, pick }.
-  Звуки: guest, coin, deal, refuse, event, rep-up.
+  Звуки: guest, coin, deal, refuse, event, rep-up, gift, bazaar.
 */
 (() => {
   /// Натиск на джойстику — теж людина, просто не мишею: шар пада (web/static/pad.js) ставить
@@ -24,6 +28,7 @@
   const NOTE_MS = 7000;                   // скільки висить «відкрилось: …»
   const GRACE_MS = 2000;                  // той самий запас, що й на сервері (CatchGrace)
   const REACT_MS = 4500;                  // скільки висить реакція купця над замовленнями
+  const GIFT_MS = 6500;                   // скільки висить у стрічці один гостинець (їх буває до шести поспіль)
 
   const SEASON = { winter: '❄️ Зима', spring: '🌸 Весна', summer: '🌻 Літо', autumn: '🍂 Осінь' };
   const WEATHER = {
@@ -43,7 +48,10 @@
   };
   const KIND = { work: 'ліплення', dry: 'сушіння', value: 'ціни' };
   const Q_REQ = ['', '', 'добрі й дзвінкі', 'лише дзвінкі'];
-  const GUEST_NAME = { chumak: 'Чумак!', magpie: 'Сорока!', lord: 'Пан!', kobzar: 'Кобзар!', fortune: 'Ворожка!' };
+  const GUEST_NAME = {
+    chumak: 'Чумак!', magpie: 'Сорока!', lord: 'Пан!', kobzar: 'Кобзар!', fortune: 'Ворожка!',
+    dyak: 'Дяк!', wander: 'Гончар!', bear: 'Ведмідь!',
+  };
 
   // ---------- фігурки гостей (viewBox 0 0 60 80) ----------
 
@@ -93,6 +101,37 @@
       + '<path d="M19 33q11-21 22 0-3 4-5 1-6-11-12 0-2 3-5-1z" fill="#d7372b"/>'
       + '<g fill="#f2c230"><circle cx="21.5" cy="37" r="1.7"/><circle cx="38.5" cy="37" r="1.7"/></g>'
       + '<circle class="clkf-ball" cx="30" cy="60" r="7" fill="#9fd3ff" opacity=".9"/><circle cx="27.5" cy="57.5" r="2" fill="#fff" opacity=".7"/>',
+    // Дяк у довгій свиті тримає розгорнуту книгу з візерунками — сторінки перегортаються.
+    dyak: shadow
+      + '<path d="M17 76 19 44Q30 38 41 44L43 76Z" fill="#33333f"/><rect x="19" y="52" width="22" height="3" fill="#6b5a3a"/>'
+      + face(30, 31, '#e0b48a')
+      + '<path d="M21 28q9-12 18 0-9-5-18 0z" fill="#2a2a36"/>'
+      + '<path d="M24 36q6 7 12 0" stroke="#4a3a2a" stroke-width="2" fill="none" stroke-linecap="round"/>'
+      + '<g class="clkf-book"><path d="M17 58h12v13H17z" fill="#f4efe3" stroke="#b9b2a4"/>'
+      + '<path d="M31 58h12v13H31z" fill="#f4efe3" stroke="#b9b2a4"/><path d="M29 57h2v15h-2z" fill="#7a5230"/>'
+      + '<path d="M19 62h8M19 65h8M33 62h8M33 65h8" stroke="#b9b2a4" stroke-width=".7"/>'
+      + '<path d="M21 68q3-3 5 0M35 68q3-3 5 0" stroke="#d7372b" stroke-width=".9" fill="none"/></g>',
+    // Мандрівний гончар: клунок за плечима, ціпок у руці й глечик, якого він показує.
+    wander: shadow
+      + '<path d="M16 76 19 45Q30 39 41 45L44 76Z" fill="#6b7a4a"/><rect x="18" y="57" width="24" height="3.4" fill="#8a6a3a"/>'
+      + '<path d="M13 48q-4 8 1 14 6 2 8-5-2-8-9-9z" fill="#a98a5a" stroke="#6b5230"/>'
+      + face(30, 32, '#d9a77a')
+      + '<path d="M23 36q7 5 14 0" stroke="#3a2a1a" stroke-width="2" fill="none" stroke-linecap="round"/>'
+      + '<path d="M20 27q10-11 20 0z" fill="#8a7a4a"/><ellipse cx="30" cy="27" rx="12" ry="2.8" fill="#9a8a5a"/>'
+      + '<path d="M47 36 45 78" stroke="#6b4a24" stroke-width="2.4" stroke-linecap="round"/>'
+      + '<g class="clkf-pot"><path d="M38 60q-4 3-4 7 0 5 5 5t5-5q0-4-4-7z" fill="#c4763a" stroke="#7a3f18"/>'
+      + '<rect x="36.6" y="57.8" width="4.8" height="2.4" rx="1" fill="#d98a4a"/></g>',
+    // Поводир пішов по воду, а ведмідь у нашийнику танцює просто на подвір'ї.
+    bear: '<ellipse cx="30" cy="77" rx="16" ry="3.2" fill="rgba(0,0,0,.35)"/>'
+      + '<ellipse cx="30" cy="56" rx="14" ry="19" fill="#6b4a2a"/><ellipse cx="30" cy="60" rx="8" ry="12" fill="#8a6440"/>'
+      + '<circle cx="18" cy="32" r="4.2" fill="#6b4a2a"/><circle cx="42" cy="32" r="4.2" fill="#6b4a2a"/>'
+      + '<circle cx="30" cy="36" r="11" fill="#7a5433"/><ellipse cx="30" cy="41" rx="5.4" ry="4.2" fill="#c8a678"/>'
+      + '<circle cx="26" cy="34" r="1.4" fill="#1b1310"/><circle cx="34" cy="34" r="1.4" fill="#1b1310"/>'
+      + '<ellipse cx="30" cy="39.5" rx="2" ry="1.5" fill="#1b1310"/>'
+      + '<path d="M17 49h26v4H17z" fill="#b3342a"/><circle cx="30" cy="53" r="2.2" fill="#f2c230"/>'
+      + '<g class="clkf-paw"><path d="M15 50q-6 4-5 10" stroke="#6b4a2a" stroke-width="6" stroke-linecap="round" fill="none"/></g>'
+      + '<g class="clkf-paw p2"><path d="M45 50q6 4 5 10" stroke="#6b4a2a" stroke-width="6" stroke-linecap="round" fill="none"/></g>'
+      + '<text class="clkf-note" x="47" y="24" font-size="10" fill="#f2c230">♪</text>',
   };
   const guestSvg = (kind) => '<svg class="clkf-fig" viewBox="0 0 60 80" aria-hidden="true">' + (FIGURE[kind] || FIGURE.magpie) + '</svg>';
 
@@ -181,6 +220,15 @@
     (c) => c.caught > 0 ? c.nick + ' спіймав уже ' + c.api.num(c.caught) + ' розписних глеків. Руки — золоті' : null,
     (c) => c.grabbed > 0 ? 'З полиці ' + c.nick + ' зловив ' + c.api.num(c.grabbed) + ' ' + c.api.plural(c.grabbed, 'глек', 'глеки', 'глеків') + ' — кіт ображений' : null,
     (c) => c.firings > 0 ? c.nick + ' обпалював майстерню ' + c.firings + ' ' + c.api.plural(c.firings, 'раз', 'рази', 'разів') + ' — і щоразу вертався сильнішим' : null,
+    // v9 «Село»: про шану, гостинці й базарний день.
+    'Кажуть, у кого в селі десята зірка шани, тому й пан не торгується',
+    'Бабця Одарка щоранку пече й питає, кому з гончарів нести гостинця',
+    'На базарний день з усіх сіл з’їжджаються — хто не встиг, той і не продав',
+    'Поводир із ведмедем ішов через село: ведмідь танцював, тин не вцілів',
+    'Мандрівний гончар за день обходить три села й у кожному чогось навчається',
+    'Дяк із волості носить книгу з візерунками й дає подивитись — за узвар',
+    (c) => c.gifts > 0 ? 'До двору ' + c.nick + ' прийшло вже ' + c.api.num(c.gifts) + ' ' + c.api.plural(c.gifts, 'гостинець', 'гостинці', 'гостинців') + ' із сіл' : null,
+    (c) => c.top10 ? c.top10.in[0].toUpperCase() + c.top10.in.slice(1) + ' про ' + c.nick + ' кажуть: «Наш майстер на всю округу!»' : null,
   ];
 
   // ---------- дрібниці ----------
@@ -225,20 +273,33 @@
     // Підсумок щойно зробленого вибору — найсвіжіше, що є.
     if (k.result && Date.now() - k.result.at < 6000) return { ico: '📜', text: k.result.text, cls: 'res' };
 
+    // 0. Гостинець із села щойно приїхав — це буває раз на день, тож нехай його прочитають.
+    if (k.giftNow && Date.now() - k.giftNow.at < GIFT_MS) {
+      return { ico: '🎁', text: k.giftNow.text.replace(/^🎁\s*/, ''), cls: 'gift' };
+    }
+
     // 1. Пригода чекає — кнопка відкриває картку з двома відповідями.
     const e = k.event;
     const def = e && c && c.events.find((x) => x.key === e.key);
     if (def && st.mine && e.until > sn && !api.guardOn(st)) {
       return { ico: def.emoji, text: def.title, cd: e.until, btn: 'Глянути', cls: 'ev', run: () => openEvent(st, api) };
     }
-    // 2. Баф із відліком.
+    // 2. Базарний день — десять хвилин, коли варто здавати все, що є.
+    if (k.bazaar && k.bazaar.until > sn) {
+      return { ico: '🛒', cd: k.bazaar.until, cls: 'good',
+        text: 'Базарний день — замовлення платять ×' + api.dec(k.bazaar.mult) };
+    }
+    // 2а. Дяк лишив красу наступному розпису, ведмідь — подвійну плату наступному замовленню.
+    if (m && m.beauty > 0) return { ico: '📖', text: 'Дяк: наступний розпис +' + m.beauty + ' краси', cls: 'good' };
+    if (m && m.bear) return { ico: '🐻', text: 'Ведмідь наворожив: наступне замовлення ×2', cls: 'good' };
+    // 3. Баф із відліком.
     const b = k.buffs.filter((x) => x.until > sn).sort((x, y) => y.until - x.until)[0];
     if (b) {
       const good = (b.mult < 1) === (b.kind !== 'value');
       return { ico: BUFF[b.src] || '✨', cd: b.until, cls: good ? 'good' : 'bad',
         text: KIND[b.kind] + ' ' + (b.mult < 1 ? '−' : '+') + pct(b.mult) + ' %' };
     }
-    // 3. Погода, свято, вихідні — лише коли вони щось міняють.
+    // 4. Погода, свято, вихідні — лише коли вони щось міняють.
     if (m) {
       if (m.holiday) return { ico: '🎄', text: HOLIDAY[m.holiday.key] || m.holiday.name, cls: 'day' };
       if (m.weekend) return { ico: '🛍️', text: 'Вихідні — на базарі платять більше', cls: 'day' };
@@ -247,9 +308,9 @@
         return { ico: w.icon, text: w.text + ' — сирці сохнуть ' + (m.dry > 1 ? 'повільніше' : 'швидше'), cls: 'day' };
       }
     }
-    // 4. Щось відкрилось (вкладка, розділ) — ядро каже про це через api.feed.
+    // 5. Щось відкрилось (вкладка, розділ) — ядро каже про це через api.feed.
     if (k.note && Date.now() < k.note.until) return { ico: '🔓', text: k.note.text, cls: 'open' };
-    // 5. Хроніка — те, чим живе село, поки нічого не сталось.
+    // 6. Хроніка — те, чим живе село, поки нічого не сталось.
     if (k.chronText) return { ico: '📰', text: k.chronText, cls: 'chron' };
     return null;
   }
@@ -308,6 +369,18 @@
         });
       };
     }
+  }
+
+  /// Гостинці приходять пачкою (до шести сіл за раз) — показуємо їх по черзі, по одному на GIFT_MS.
+  function nextGift(st, api) {
+    const k = st.fair;
+    if (k.giftNow && Date.now() - k.giftNow.at < GIFT_MS) return;
+    const g = k.giftQueue.shift();
+    if (!g) return;
+    k.giftNow = { text: g.text, at: Date.now() };
+    api.sfx('gift');
+    api.popAt(st, '🎁', 'big', 50, 20);
+    api.sparks(st, st.fx, 12, true, 50, 26);
   }
 
   /// Нова пригода — один дзвіночок на неї (перший вид лише запам'ятовує).
@@ -370,7 +443,9 @@
       api.sparks(st, st.fx, 14, true, x, y);
       const info = cat(st) && cat(st).guests.find((q) => q.key === g.kind);
       api.popAt(st, ((info && info.emoji) || '✨') + ' ' + (GUEST_NAME[g.kind] || ''), 'big', Math.min(70, x), Math.max(6, y - 6));
-      api.sfx(g.kind === 'magpie' || g.kind === 'lord' ? 'coin' : 'deal');
+      // Ведмідь грає навпіл: перекинув полицю — це не «дзинь», а «ой».
+      api.sfx(text.includes('перекинув') ? 'refuse'
+        : g.kind === 'magpie' || g.kind === 'lord' || g.kind === 'bear' ? 'coin' : 'deal');
     });
   }
 
@@ -397,7 +472,11 @@
     const line = '<b>' + (o.lord ? '🎩 ' : '') + esc(who) + '</b>' + (v ? ' ' + esc(v.from) : '')
       + ' хоче <b>' + esc(wareName(st, o.ware).toLowerCase()) + ' ×' + o.n + '</b>'
       + (req.length ? ' <span class="clkf-oreq2">(' + req.join(' · ') + ')</span>' : '')
-      + ' · ≈' + api.potsShort(o.pay) + ' і шана';
+      + ' · ≈' + api.potsShort(o.pay) + ' і шана'
+      // Множник — головна відповідь на «а що мені з тієї шани»: у ньому вже і зірки села, і базарний день.
+      + ' <span class="clkf-omult" title="Стільки замовник платить понад базарну ціну: базові ×2…×4, плюс 0,1 за'
+      + ' кожну зірку шани села (панові — 0,2), Косів доплачує за розпис, базарний день — ще ×1,5.">×'
+      + api.dec(o.mult) + '</span>';
     return '<div class="clkf-order' + (o.lord ? ' lord' : '') + (ready ? ' ready' : '') + (o.sour ? ' sour' : '') + '" data-order="' + o.id + '">'
       + '<div class="clkf-oart">' + api.wareSvg(o.ware, { style: o.style, quality: o.q, cls: 'clkf-oware', slot: 'ord-' + o.id })
       + '<span class="clkf-on">×' + o.n + '</span></div>'
@@ -424,8 +503,14 @@
     const sn = api.serverNow(st);
     const live = k.orders.filter((o) => o.until > sn);
     const c = cat(st);
-    const head = '<div class="clk-sub clkf-title">📜 Замовлення' + (live.length ? ' · ' + live.length : '')
-      + '<span class="muted small"> · платять більше за базар і дають шану селу</span></div>';
+    const board = m.boardMax || 4;
+    const head = '<div class="clk-sub clkf-title">📜 Замовлення' + (live.length ? ' · ' + live.length + ' з ' + board : '')
+      + '<span class="muted small"> · платять більше за базар і дають шану селу'
+      + (m.bell ? ', ярмарковий дзвін кличе їх частіше' : '') + '</span></div>'
+      + (k.bazaar && k.bazaar.until > sn
+        ? '<div class="clkf-bazaar">🛒 <b>Базарний день!</b> усі замовлення платять ×' + api.dec(k.bazaar.mult)
+          + ' <i class="clkf-cd" data-at="' + k.bazaar.until + '" data-done="скінчився"></i></div>'
+        : '');
     const react = k.react && Date.now() - k.react.at < REACT_MS
       ? '<div class="clkf-react ' + k.react.cls + '"><span class="clkf-remoji">' + k.react.emoji + '</span><span>' + api.esc(st, k.react.text) + '</span></div>'
       : '';
@@ -437,7 +522,7 @@
     const cards = live.length
       ? '<div class="clkf-orders">' + live.map((o) => orderCard(st, api, o, sn)).join('') + '</div>'
       : '<div class="clk-teaser muted small">Замовників поки нема — новий прийде через <i class="clkf-cd" data-at="' + k.nextOrderAt + '" data-done="ось-ось"></i></div>';
-    const more = live.length && live.length < 4 && k.nextOrderAt > sn
+    const more = live.length && live.length < board && k.nextOrderAt > sn
       ? '<div class="muted small clkf-next">наступний замовник — через <i class="clkf-cd" data-at="' + k.nextOrderAt + '" data-done="ось-ось"></i></div>'
       : '';
     if (api.swap(k.ordersEl, head + react + cards + more)) {
@@ -458,22 +543,39 @@
     if (k.repEl.parentElement !== slot) slot.appendChild(k.repEl);
     const c = cat(st);
     if (!c) return;
-    const levels = (c && c.levels) || [0, 8, 25, 60, 120, 220];
+    const levels = (c && c.levels) || [0, 8, 25, 60, 120, 220, 380, 620, 1000, 1600, 2500];
+    const top = levels.length - 1;
+    const giftFrom = m.giftFrom || (c && c.giftFrom) || 6;
+    const pay = Math.round(((c && c.payPerLevel) || 0.1) * 100) / 100;
     const html = '<div class="clk-sub clkf-title">🤝 Шана сіл'
-      + (m.allMult > 1 ? '<span class="muted small"> · разом +' + api.dec((m.allMult - 1) * 100) + ' % до всього</span>' : '') + '</div>'
+      + (m.allMult > 1 ? '<span class="muted small"> · разом +' + api.dec((m.allMult - 1) * 100) + ' % до всього</span>' : '')
+      + api.info('Кожна зірка в будь-якому селі — +3 % до всього, а ще +' + api.dec(pay)
+        + ' до множника плати за замовлення цього села (панові — вдвічі більше). З ' + giftFrom
+        + '-ї зірки село раз на день шле гостинець: глеки, солому або дзвінкий виріб у своєму розписі.') + '</div>'
       + '<div class="clkf-reps">' + m.rep.map((r) => {
         const vv = villageOf(st, r.key);
         if (!vv) return '';
         const lvl = r.level;
         const from = levels[lvl];
-        const to = levels[Math.min(levels.length - 1, lvl + 1)];
-        const p = lvl >= levels.length - 1 ? 100 : Math.round(((r.pts - from) / Math.max(1, to - from)) * 100);
-        const title = lvl >= levels.length - 1 ? 'шана найвища' : r.pts + ' з ' + to + ' до наступної зірки';
-        return '<div class="clkf-rep l' + lvl + '" title="' + api.esc(st, title + ' · ' + vv.perk) + '">'
+        const to = levels[Math.min(top, lvl + 1)];
+        const p = lvl >= top ? 100 : Math.round(((r.pts - from) / Math.max(1, to - from)) * 100);
+        const title = (lvl >= top ? 'шана найвища: ' + r.pts + ' очок' : r.pts + ' з ' + to + ' до наступної зірки')
+          + ' · ' + vv.perk + ' · замовлення +' + api.dec(pay * lvl) + ' до множника';
+        // Що дасть наступна зірка — головна відповідь на «а нащо мені та шана».
+        const next = lvl >= top
+          ? '<span class="clkf-rtop-max">👑 вище нема куди</span>'
+          : 'ще <b>' + api.num(to - r.pts) + '</b> до ' + (lvl + 1) + '-ї зірки: +3 % до всього'
+            + (vv.step ? ', ' + api.esc(st, vv.step) : '');
+        const gift = lvl >= giftFrom
+          ? '🎁 гостинці щодня' + (r.gifts > 0 ? ' · отримано ' + api.num(r.gifts) : '')
+          : '🎁 з ' + giftFrom + '-ї зірки — гостинець щодня';
+        return '<div class="clkf-rep l' + lvl + (lvl >= giftFrom ? ' gifting' : '') + '" title="' + api.esc(st, title) + '">'
           + '<div class="clkf-rtop"><span>' + vv.emoji + ' <b>' + api.esc(st, vv.name) + '</b></span>'
-          + '<span class="clkf-stars">' + '★'.repeat(lvl) + '<i>' + '★'.repeat(levels.length - 1 - lvl) + '</i></span></div>'
+          + '<span class="clkf-stars">★<b>' + lvl + '</b><i>/' + top + '</i></span></div>'
           + '<div class="clkf-rbar"><i style="width:' + p + '%"></i></div>'
-          + '<div class="muted small clkf-perk">' + (lvl >= levels.length - 1 ? '👑 ' : '') + api.esc(st, shortPerk(vv.perk)) + '</div></div>';
+          + '<div class="muted small clkf-rnext">' + next + '</div>'
+          + '<div class="muted small clkf-perk">' + api.esc(st, shortPerk(vv.perk)) + '</div>'
+          + '<div class="small clkf-rgift">' + gift + '</div></div>';
       }).join('') + '</div>';
     api.swap(k.repEl, html);
   }
@@ -536,10 +638,13 @@
     const m = k.m || {};
     const rep = (m.rep || []).slice().sort((a, b) => b.level - a.level || b.pts - a.pts)[0];
     const topV = rep && rep.level > 0 ? villageOf(st, rep.key) : null;
+    const top10 = rep && rep.level >= 10 ? topV : null;
     const craft = v.craft || {};
     const c = {
       api, nick: (st.ctx && st.ctx.me && st.ctx.me.nick) || 'гончар', total: v.total || 0, formed: craft.formed || 0, fired: craft.fired || 0,
-      delivered: m.delivered || 0, guests: m.guests || 0, top: topV, weather: m.weather, holiday: m.holiday && m.holiday.key,
+      delivered: m.delivered || 0, guests: m.guests || 0, top: topV, top10,
+      gifts: (m.rep || []).reduce((s, r) => s + (r.gifts || 0), 0),
+      weather: m.weather, holiday: m.holiday && m.holiday.key,
       weekend: !!m.weekend, season: m.season, ware: craft.ware ? wareName(st, craft.ware) : '',
       items: (craft.items || []).reduce((s, it) => s + it.n, 0), orders: (m.orders || []).length, lord: (m.orders || []).some((o) => o.lord),
       stamps: v.stamps || 0, styles: (v.styles || []).filter((s) => s.owned).length, caught: v.caught || 0, grabbed: v.grabbed || 0, firings: v.firings || 0,
@@ -568,6 +673,8 @@
         m: null, orders: [], buffs: [], guest: null, nextOrderAt: 0, eventAt: 0,
         guestGone: 0, guestLooked: 0, guestSound: 0, eventSeen: null, eventLooked: 0, orderLooked: 0,
         react: null, result: null, levels: null, chronAt: 0, chronText: '', chronRecent: [], note: null,
+        // v9 «Село»: гостинці по черзі, базарний день.
+        bazaar: null, bazaarSeen: null, gifts: [], giftQueue: [], giftNow: null, giftLast: 0, giftSeen: false,
         feedEl: null, guestEl: null, ordersEl: null, repEl: null,
       };
       // Одна стрічка подій під смугою «Шлях виробу»: пригода, баф, погода, «відкрилось», хроніка — по черзі.
@@ -614,6 +721,24 @@
       k.eventAt = ms(m.eventAt);
       k.event = m.event ? Object.assign({}, m.event, { until: ms(m.event.until) }) : null;
       k.guest = m.guest ? { kind: m.guest.kind, at: ms(m.guest.at), until: ms(m.guest.until), x: m.guest.x || 0, y: m.guest.y || 0 } : null;
+      k.bazaar = m.bazaar ? { until: ms(m.bazaar.until), mult: m.bazaar.mult } : null;
+      // Базарний день починається без нашої дії — про нього має сказати сама гра.
+      if (k.bazaar && k.bazaarSeen !== k.bazaar.until) {
+        if (k.bazaarSeen != null) { api.sfx('bazaar'); api.popAt(st, '🛒 Базарний день!', 'big', 50, 22); }
+        k.bazaarSeen = k.bazaar.until;
+      }
+      // Гостинці: кожен новий стає в чергу й побуде в стрічці сам по собі. Найчастіше вони приходять
+      // рівно на першій синхронізації дня — тобто в тому самому виді, з яким гончар відкрив гру, — тож
+      // перший вид не мовчить, а показує все свіже (сервер тримає рядок десять хвилин).
+      const fresh = api.serverNow(st) - 60000;
+      for (const g of m.gifts || []) {
+        const at = ms(g.at);
+        if (at <= k.giftLast) continue;
+        k.giftLast = at;
+        if (k.giftSeen || at > fresh) k.giftQueue.push({ text: g.text, village: g.village, at: Date.now() });
+      }
+      k.giftSeen = true;
+      nextGift(st, api);
       // Шана виросла — зірочки й дзвін (перший вид лише запам'ятовує).
       const levels = {};
       for (const r of m.rep || []) levels[r.key] = r.level;
@@ -643,6 +768,7 @@
       const k = st.fair;
       if (!k || !k.m) return;
       ensureStore(st, api);
+      nextGift(st, api);
       countdowns(st, api, k.feedEl);
       paintFeed(st, api);
       if (st.tab === 'craft') {
