@@ -415,7 +415,9 @@
     // Кличе й смуга «Далі» (clicker-craft.js), коли панель горна ще навіть не на очах, — вікно однаково відкриється.
     if (!k || !st.mine) return;
     if (k.state === 'burning') { api.toast(st, 'Розписують до обпалу — горно вже палає', 'err'); return; }
-    if (!k.batch || !k.batch.length) { api.toast(st, 'Спершу склади партію в горно — тоді й розпишемо', 'err'); return; }
+    // Розписують те, що піде в горно наступним: партію в ньому або сухі з сушарні — їх складе «Обпалити».
+    const load = api.kilnLoad ? api.kilnLoad() : k.batch.length + (k.dry || 0);
+    if (!load) { api.toast(st, 'Розписують перед обпалом — спершу виліпи й висуши щось', 'err'); return; }
     const all = (cat(st) && cat(st).techs) || [];
     const open = all.filter((t) => k.techs.includes(t.key));
     if (!open.length) return;
@@ -454,10 +456,14 @@
     const counts = {};
     for (const w of k.batch) counts[w] = (counts[w] || 0) + 1;
     const inKiln = Object.keys(counts).map((w) => esc(wareName(st, w)).toLowerCase() + ' ×' + counts[w]).join(', ');
-    // Розпис партії — окрема опція, і лише коли є що класти. Техніка типова; «інша техніка» — за ▾.
+    // Скільки піде в горно зараз: партія в ньому плюс сухі, що влізуть. Рахує ремесло (смуга «Шлях виробу»).
+    const load = api.kilnLoad ? api.kilnLoad() : k.batch.length + Math.min(k.dry, Math.max(0, k.slots - k.batch.length));
+    // Розпис — окрема опція, щойно є хоч один куплений. Обраний розпис — побажання на наступні партії (сервер
+    // тримає його й після обпалу, палій пече в ньому теж), тому чипи видно завжди. «Обпалити» складає й розпалює за
+    // один дотик, тож стану «складено, не підпалено» чекати не можна — мінігру ж даємо, коли є що палити.
     const owned = (st.styleList || []).filter((x) => x.owned);
     let paint = '';
-    if (owned.length && k.batch.length) {
+    if (owned.length) {
       const styles = '<div class="clkk-chips">' + [{ key: '', name: 'Простий' }].concat(owned).map((x) => '<button type="button" class="clkk-chip'
         + (x.key === k.style ? ' on' : '') + '" data-style="' + esc(x.key) + '"' + (mine ? '' : ' disabled') + '>'
         + api.jugSvg(x.key, 'clkk-chipjug', 'kst-' + (x.key || 'plain')) + '<span>' + esc(x.name) + '</span></button>').join('') + '</div>';
@@ -480,17 +486,19 @@
       paint = '<div class="clkk-paint"><details class="clkk-styles"><summary>🎨 Розпис: <b>' + esc(styleName(st, k.style)) + '</b>' + beauty + '</summary>'
         + styles + '</details>' + row
         + (tech
-          ? '<button type="button" class="primary clkk-decor"' + (mine ? '' : ' disabled') + '>🖌 Розписати'
+          ? '<button type="button" class="primary clkk-decor"' + (mine && load > 0 ? '' : ' disabled') + '>🖌 Розписати'
             + (fresh.length ? '<i class="clkk-new">нове</i>' : '') + '</button>'
           : '')
-        + '<div class="muted small clkk-painthint">Розписана партія — дзвінкіші й розкішні вироби.'
+        + '<div class="muted small clkk-painthint">' + (load > 0
+          ? 'Розписана партія — дзвінкіші й розкішні вироби. Обраний розпис лишається й на наступні партії'
+          : 'Обраний розпис лишається на наступні партії')
+        + (k.autoCan ? ', палій пече в ньому теж' : '') + '.' + (load > 0 ? '' : ' Розписати мінігрою можна, коли є що палити.')
         + api.info('«Краса» 0–100 з мінігри підвищує шанс доброї (×1,6) і дзвінкої (×2,6) якості, а з красою від '
           + luxFrom(st) + ' у партії трапляються й розкішні (×4,5). Нерозписана партія від цього не гіршає.') + '</div>'
         + '</div>';
     }
 
-    // Головна кнопка: сама складає сухі й розпалює. Скільки саме — рахує ремесло (смуга «Шлях виробу»).
-    const load = api.kilnLoad ? api.kilnLoad() : k.batch.length + Math.min(k.dry, Math.max(0, k.slots - k.batch.length));
+    // Головна кнопка: сама складає сухі й розпалює.
     const can = mine && !cooling && load > 0;
     const mySelf = selfFire(api);
     const batchText = k.batch.length ? 'у горні ' + k.batch.length + ' з ' + k.slots + ': ' + inKiln : 'сухих на сушарні ' + k.dry;
@@ -520,8 +528,8 @@
       ? '<label class="clkk-auto small"><input type="checkbox" class="clkk-autobox"' + (k.auto ? ' checked' : '')
         + (mine ? '' : ' disabled') + '> 🧑‍🏭 Палій палить сам'
         + api.info('Коли горно холодне, партії ніхто не почав і сухих назбиралось хоч трохи (або горна не чіпали '
-          + Math.round((((cat(st) && cat(st).autoIdleMs) || 180000) / 60000)) + ' хв), палій розпалює сам — без тріщин і без '
-          + 'розпису. За ніч він так обпалює десятки партій. Прокачаний «Палій» пече дзвінкіше.') + '</label>'
+          + Math.round((((cat(st) && cat(st).autoIdleMs) || 180000) / 60000)) + ' хв), палій розпалює сам — без тріщин, '
+          + 'в обраному розписі, але без «краси» з мінігри. За ніч він так обпалює десятки партій. Прокачаний «Палій» пече дзвінкіше.') + '</label>'
       : '';
 
     if (!api.swap(ui.prep, paint + fire + straw + auto)) return;
