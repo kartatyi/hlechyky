@@ -244,7 +244,10 @@ public sealed class Rooms
         var outbox = new Outbox();
         var reply = new RoomReply(true, info.MinPlayers <= 1
             ? "Стіл готовий. Можна почати самому або дочекатись друзів"
-            : "Стіл готовий. Треба ще одного гравця", room.Id);
+            : "Стіл готовий. Треба ще " + ((info.MinPlayers - 1) switch
+            {
+                1 => "одного гравця", 2 => "двох гравців", 3 => "трьох гравців", var n => n + " гравців",
+            }), room.Id);
         string? failed = null;
         var waiting = true;
         lock (room.Sync)
@@ -451,7 +454,7 @@ public sealed class Rooms
             }
             room.Seats[seat] = nick;
             room.LastActivity = _clock.UtcNow;
-            reply = new RoomReply(true, $"Сів за {room.SafeSeatName(seat)}", room.Id);
+            reply = new RoomReply(true, $"Сів. Твоє місце — {room.SafeSeatName(seat)}", room.Id);
             if (room.Info.Start == StartMode.WhenFull && room.Full && StartRound(room, outbox) is { } no)
             {
                 room.Seats[seat] = null;

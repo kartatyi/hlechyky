@@ -786,7 +786,7 @@
         : free ? 'чекає гравців' : 'ось-ось почнуть';
     const btns = mine
       ? '<button class="primary" data-open="' + esc(r.id) + '">Відкрити</button>'
-      : (free > 0 ? '<button class="primary" data-sit="' + esc(r.id) + '">Сісти</button>' : '')
+      : (free > 0 && r.status !== 'playing' ? '<button class="primary" data-sit="' + esc(r.id) + '">Сісти</button>' : '')
         + '<button data-open="' + esc(r.id) + '">Дивитись</button>';
     return '<div class="gsum' + (mine ? ' mine' : '') + '">'
       + '<div class="gs-head"><span class="gtitle">' + iconOf(r.game) + esc(titleOf(r.game)) + '</span>'
@@ -1016,12 +1016,19 @@
     const solo = room.maxPlayers === 1;
     const chips = [];
     if (!solo) {
+      // На великих столах (мафія, піктіонарі — до 12) чіпи вільних місць займали на телефоні три рядки над грою:
+      // від трьох вільних показуємо їх одним «вільно ×N».
+      let free = 0;
+      for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i)) free++;
+      const fold = free > 2;
       for (let i = 0; i < seatCount(room); i++) {
         const nick = nickAt(room, i);
+        if (fold && !nick) continue;
         const turn = room.status === 'playing' && turnOf(rv) === i;
         chips.push('<span class="gseat ' + seatClassOf(rv, i) + (nick ? '' : ' free') + (turn ? ' turn' : '')
           + '"><i>' + esc(seatNameOf(rv, i)) + '</i>' + esc(nick || 'вільно') + '</span>');
       }
+      if (fold) chips.push('<span class="gseat free gfreeall">вільно ×' + free + '</span>');
     }
     // Варіант, обраний при створенні (зникаючі хрестики, розмір поля) — підписуємо, якщо він не типовий.
     const modes = [];
@@ -1063,7 +1070,7 @@
     const out = [];
     // Дограний стіл із вільним місцем сервер віддає новому гравцеві (Rooms.Join, гілка reopen),
     // тож статус тут не питаємо — інакше стіл висів би в лобі до прибиральника, і сісти нікому.
-    const canSit = !solo && rv.seat == null && freeSeat(r) >= 0;
+    const canSit = !solo && rv.seat == null && freeSeat(r) >= 0 && r.status !== 'playing';
     if (canSit) out.push('<button class="primary" data-do="JoinRoom">Сісти</button>');
     // «Ще раз» пропонуємо лише коли є з ким: інакше кнопка є, а сервер відповідає «Замало гравців»
     if (!solo && rv.seat != null && r.status === 'finished' && takenSeats(r) >= r.minPlayers)

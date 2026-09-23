@@ -581,7 +581,7 @@ public class RoomsTests
 
         var join = h.Rooms.Join(h.RoomId, "Ганна");         // глядач, який щойно бачив кінець партії
         Assert.True(join.Reply.Ok);
-        Assert.Equal("Сів за ◯", join.Reply.Message);
+        Assert.Equal("Сів. Твоє місце — ◯", join.Reply.Message);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);    // WhenFull → партія почалась одразу
         Assert.Equal(2, h.Room.Round);
         Assert.Null(h.Room.Result);
