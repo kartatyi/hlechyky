@@ -19,6 +19,7 @@ public class PongTests
         var h = new RoomHarness("pong", seed: seed);
         h.Join("Оля");
         h.Join("Петро");
+        h.Start();                      // ByHost: на двох теж тисне господар — за стіл може сісти й третій
         return h;
     }
 
@@ -434,10 +435,10 @@ public class PongTests
         var h = Table();
         h.Tick(3);
         Assert.Equal(3, h.Outbox.OfType<RoomFrame>().Count());
-        Assert.Equal(2, h.Outbox.OfType<RoomViews>().Count());   // по одному на кожен вхід; тики шлють лише кадри
+        Assert.Equal(3, h.Outbox.OfType<RoomViews>().Count());   // два входи й «Почати»; тики шлють лише кадри
 
         Ready(h);                                                 // тик, на якому «готуйсь» скінчився
-        Assert.Equal(3, h.Outbox.OfType<RoomViews>().Count());
+        Assert.Equal(4, h.Outbox.OfType<RoomViews>().Count());
     }
 
     [Fact]
@@ -617,7 +618,7 @@ public class PongTests
     }
 
     [Fact]
-    public void Pong_is_in_the_catalog_as_a_live_game_on_two()
+    public void Pong_is_in_the_catalog_as_a_live_game_for_two_to_four()
     {
         var game = Assert.Single(new Registry().Catalog, g => g.Id == "pong");
 
@@ -625,8 +626,10 @@ public class PongTests
         Assert.Equal("Понг", game.Title);
         Assert.Equal(PongCore.TickMs, game.TickMs);
         Assert.Equal(2, game.MinPlayers);
-        Assert.Equal(2, game.MaxPlayers);
-        Assert.True(game.Rated);                // ставка можлива лише при MaxPlayers == 2 і Rated
+        Assert.Equal(4, game.MaxPlayers);
+        // Рейтинг Ело й ставки платформа знає лише для ігор рівно на двох — понг на арені від них відмовився.
+        Assert.False(game.Rated);
+        Assert.Equal("byHost", game.Start);
         Assert.Equal("pong", game.Module);
         Assert.False(game.Private);
     }

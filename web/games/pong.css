@@ -1,15 +1,34 @@
 /*
-  Понг: канвас 16:10 і дві кнопки-утримання під палець. Кольори — тільки змінними; свою
-  оголошуємо на :root, бо модуль читає її через ctx.css(), а той дивиться саме туди.
+  Понг: канвас 16:10 (класика) або квадрат (арена), легенда арени і дві кнопки-утримання під палець.
+  Кольори — тільки змінними; свої оголошуємо на :root, бо модуль читає їх через ctx.css(), а той
+  дивиться саме туди. Префікс --pong- — бо :root один на всі ігри.
 */
 :root {
   --gpongpad: #2b4c3c;   /* кнопки керування ракеткою на телефоні; світліші за картку, щоб їх було видно */
+  --pong-blue: #6fb3e8;  /* четверте місце на арені */
 }
+
+.gseat.pb { color: var(--pong-blue); }
 
 /* Канвас уже має max-width із core.css; тут лише пропорція й поведінка пальця. */
 .pongboard { aspect-ratio: 16 / 10; }
+/* Арена квадратна: на ноутбуці 560 px заввишки вже не влазить разом із шапкою картки. */
+.pongboard.arena { aspect-ratio: 1; max-width: min(560px, calc(100vh - 290px)); min-width: min(280px, 100%); }
 /* Гравцеві рух пальцем по полю — це ракетка, а не скрол сторінки; глядачеві скрол лишаємо. */
 .pongboard.play { touch-action: none; cursor: ns-resize; }
+.pongboard.arena.play { cursor: ew-resize; }
+
+.ponglegend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin-top: 6px; }
+.ponglegend .pgl { white-space: nowrap; }
+.ponglegend .pgl.s0 .sh, .ponglegend .pgl.s0 .hp { color: var(--accent); }
+.ponglegend .pgl.s1 .sh, .ponglegend .pgl.s1 .hp { color: var(--ok); }
+.ponglegend .pgl.s2 .sh, .ponglegend .pgl.s2 .hp { color: var(--clay); }
+.ponglegend .pgl.s3 .sh, .ponglegend .pgl.s3 .hp { color: var(--pong-blue); }
+.ponglegend .pgl.me { font-weight: 700; }
+.ponglegend .pgl.out { opacity: .5; text-decoration: line-through; }
+.ponglegend .pgl.out .hp { text-decoration: none; }
+
+.pongsnd { display: block; margin: 6px auto 0; padding: 2px 10px; opacity: .75; }
 
 /* Хрестовина каркаса тут не годиться: вона на клік, а ракетку треба тримати. */
 .pongpad { display: none; }
@@ -28,4 +47,6 @@
 
 @media (max-width: 480px) {
   .pongpad { grid-template-columns: repeat(2, 1fr); width: 100%; }
+  .pongboard.arena { max-width: 100%; }
 }
+.ponglegend .sh { font-style: normal; }
