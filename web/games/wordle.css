@@ -57,3 +57,104 @@
 @media (prefers-reduced-motion: reduce) {
   .board.wtiles .cell.flip, .board.wtiles .cell.bad { animation: none; }
 }
+
+.wfoot .wracego { margin-top: 2px; }
+
+/* ================================================================================================
+   Глек-слово наввипередки: шапка з раундом і дугою часу, моя дошка, малі дошки суперників.
+   ================================================================================================ */
+.wr { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.wrhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 40px; }
+.wrhead .wrround { font-size: 1.05em; }
+.wrhead .wrmine { color: var(--muted); margin-left: auto; }
+.wrhead .garc { order: 3; }
+
+.wrmain { display: flex; gap: 18px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+.wrme { display: flex; flex-direction: column; align-items: center; gap: 10px; order: 1; }
+.wrrivals { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px;
+  order: 2; flex: 1 1 260px; max-width: 420px; align-content: start; }
+.wr.spect .wrrivals { max-width: 760px; }
+.wrrivals:empty { display: none; }
+
+.wrp { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px;
+  border-radius: 10px; background: var(--bg2, var(--panel)); border: 1px solid var(--line); min-width: 0; }
+.wrp.solved { border-color: var(--wg); }
+.wrp.gone { opacity: .45; }
+.wrp.flash { animation: wrflash 1.1s ease; }
+@keyframes wrflash {
+  0% { box-shadow: 0 0 0 0 rgba(76, 140, 90, .9); transform: scale(1); }
+  30% { box-shadow: 0 0 0 8px rgba(76, 140, 90, .35); transform: scale(1.05); }
+  100% { box-shadow: 0 0 0 0 rgba(76, 140, 90, 0); transform: scale(1); }
+}
+.wrpname { display: flex; gap: 6px; align-items: baseline; max-width: 100%; }
+.wrpname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.wrst { font-size: .8em; color: var(--muted); white-space: nowrap; }
+.wrst.ok { color: var(--wg); font-weight: 700; }
+.wrst.bad { color: var(--danger); }
+.wrptot { font-size: .85em; color: var(--muted); }
+.wrptot em { font-style: normal; color: var(--wg); font-weight: 700; }
+
+/* Мала дошка: кольори без літер. Жовта — кружечок, а не квадрат: щоб її не сплутав і той, хто
+   погано розрізняє зелене й жовте. */
+.wrmini { display: grid; grid-template-columns: repeat(5, 14px); gap: 3px; }
+.wrmini i { width: 14px; height: 14px; border-radius: 3px; border: 1px dashed var(--line); box-sizing: border-box;
+  font-style: normal; font-size: 10px; line-height: 12px; text-align: center; text-transform: uppercase; color: #fff; }
+.wrmini i.g { background: var(--wg); border-color: var(--wg); }
+.wrmini i.y { background: var(--wy); border-color: var(--wy); border-radius: 50%; }
+.wrmini i.b { background: #56625b; border: 1px solid #56625b; color: #e8ece9; }
+.wrmini i.g, .wrmini i.y { border-style: solid; }
+.wrmini.open { grid-template-columns: repeat(5, 17px); }
+.wrmini.open i { width: 17px; height: 17px; line-height: 15px; font-size: 11px; }
+
+.wrfoot { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.wrfoot:empty { display: none; }
+.wrword { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.wrword span { margin-right: 6px; }
+.wrword i { font-style: normal; font-weight: 800; text-transform: uppercase; width: 30px; height: 30px; line-height: 30px;
+  text-align: center; border-radius: 6px; background: var(--wg); color: #fff; animation: wflip .5s ease both; }
+.wrword i:nth-of-type(2) { animation-delay: .08s; }
+.wrword i:nth-of-type(3) { animation-delay: .16s; }
+.wrword i:nth-of-type(4) { animation-delay: .24s; }
+.wrword i:nth-of-type(5) { animation-delay: .32s; }
+.wrgot { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.wrtable { display: flex; flex-direction: column; gap: 4px; width: min(420px, 100%); }
+.wrrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--bg2, var(--panel)); }
+.wrrow.me { box-shadow: 0 0 0 1px var(--accent) inset; }
+.wrrow.gone { opacity: .5; }
+.wrrow .n { min-width: 1.8em; }
+.wrrow .nick { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (min-width: 1500px) {
+  .wrrivals { max-width: 640px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .wrmini, .wrmini.open { grid-template-columns: repeat(5, 21px); }
+  .wrmini i, .wrmini.open i { width: 21px; height: 21px; line-height: 19px; font-size: 12px; }
+}
+
+/* Телефон: суперники — стрічкою над дошкою, дрібніше. */
+@media (max-width: 560px) {
+  .wrmain { gap: 10px; }
+  .wr .board.wtiles { width: min(270px, 100%); }
+  .wrrivals { order: 0; flex-basis: 100%; max-width: none; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+  .wrp { padding: 5px 4px; }
+  .wrmini { grid-template-columns: repeat(5, 10px); gap: 2px; }
+  .wrmini i { width: 10px; height: 10px; font-size: 0; }
+  .wrmini.open { grid-template-columns: repeat(5, 13px); }
+  .wrmini.open i { width: 13px; height: 13px; font-size: 9px; line-height: 11px; }
+  .wrword i { width: 26px; height: 26px; line-height: 26px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wrp.flash, .wrword i { animation: none; }
+}
+
+.wrrules { max-width: 560px; margin: 0 auto; line-height: 1.45; }
+.wrrules ul { margin: 6px 0 8px; padding-left: 1.2em; }
+.wrrules li { margin: 2px 0; }
+.wrme { width: min(380px, 100%); }
+.wrme .gkbd { width: 100%; }
+/* Глядач своєї дошки не має — дошки гравців на всю ширину. */
+.wrme[hidden] { display: none; }
+.wr.spect .wrrivals { flex: 1 1 100%; max-width: 760px; }
+/* auto-fill бере кількість колонок із max-width, а min-width:auto не дає рядку стиснутись — без цього
+   на телефоні сітка суперників вилазила за екран */
+.wrrivals { min-width: 0; }
