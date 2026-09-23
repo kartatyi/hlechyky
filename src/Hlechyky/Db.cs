@@ -594,18 +594,32 @@ public sealed class Db
         return list;
     }
 
-    /// <summary>Liked tracks with who liked them, newest like first.</summary>
-    public List<(TrackInfo Track, List<string> Likers, DateTimeOffset LastLike)> LikedTracksDetailed(int n)
+    /// <summary>
+    /// Лайкнуті треки: хто й коли ставив ❤ (від першого лайка), згори — трек із найсвіжішим лайком.
+    /// <paramref name="n"/> = null — усі: зі стелею 200 «Улюблене» губило найстаріші лайки, щойно хтось
+    /// один налайкав пару сотень треків.
+    /// </summary>
+    public List<(TrackInfo Track, List<(string Nick, DateTimeOffset At)> Likes)> LikedTracksDetailed(int? n = null)
     {
         using var c = Open();
         using var cmd = Cmd(c, $"""
-            SELECT {TrackCols}, GROUP_CONCAT(l.nick, '\n'), MAX(l.created_at)
+            SELECT {TrackCols}, l.nick, l.created_at
             FROM likes l JOIN tracks t ON t.id = l.track_id
-            GROUP BY t.id ORDER BY MAX(l.created_at) DESC LIMIT $n
-            """, ("$n", n));
+            ORDER BY l.created_at DESC
+            """);
         using var r = cmd.ExecuteReader();
-        var list = new List<(TrackInfo, List<string>, DateTimeOffset)>();
-        while (r.Read()) list.Add((ReadTrack(r), r.GetString(7).Split('\n').ToList(), Ts(r.GetString(8))));
+        var list = new List<(TrackInfo, List<(string, DateTimeOffset)>)>();
+        var byTrack = new Dictionary<string, List<(string, DateTimeOffset)>>();
+        while (r.Read())
+        {
+            if (!byTrack.TryGetValue(r.GetString(0), out var likes))
+            {
+                if (list.Count == n) continue;
+                byTrack[r.GetString(0)] = likes = [];
+                list.Add((ReadTrack(r), likes));
+            }
+            likes.Insert(0, (r.GetString(7), Ts(r.GetString(8))));
+        }
         return list;
     }
 

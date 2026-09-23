@@ -149,7 +149,12 @@ public static class Endpoints
 
         api.MapGet("/history", (int? n, Db db) => db.History(Math.Clamp(n ?? 50, 1, 500)));
 
-        api.MapGet("/likes", (Db db) => db.LikedTracksDetailed(200).Select(x => new { track = x.Track, likers = x.Likers, lastLike = x.LastLike }));
+        // Усі лайки, без стелі: вкладка сама ділить їх на «Мої» й «Усі».
+        api.MapGet("/likes", (Db db) => db.LikedTracksDetailed().Select(x => new
+        {
+            track = x.Track,
+            likes = x.Likes.Select(l => new { nick = l.Nick, at = l.At }),
+        }));
 
         api.MapGet("/top", (int? days, Db db) => new { requesters = db.TopRequesters(Math.Clamp(days ?? 7, 1, 365)) });
 
