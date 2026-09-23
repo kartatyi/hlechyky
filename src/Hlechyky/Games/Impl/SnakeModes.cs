@@ -198,8 +198,53 @@ public sealed class CoopSnakeCore(Random rng)
     public int StartIn { get; set; } = StartTicks;
     public int Len => S.Count;
 
-    /// <summary>Чия це вісь: місце 0 крутить вгору-вниз (1 і 3), місце 1 — вліво-вправо (0 і 2).</summary>
+    /// <summary>Чия це вісь у парі: місце 0 крутить вгору-вниз (1 і 3), місце 1 — вліво-вправо (0 і 2).</summary>
     public static bool OwnAxis(int seat, int dir) => seat == 0 ? dir is 1 or 3 : seat == 1 && dir is 0 or 2;
+
+    /// <summary>Скільки місць за столом (1–4).</summary>
+    public const int Seats = 4;
+    const int Right = 1 << 0, Down = 1 << 1, Left = 1 << 2, Up = 1 << 3;
+
+    /// <summary>
+    /// Кнопки кожного місця — маска напрямків (біт 0 праворуч … біт 3 вгору). Роздаються за кількістю тих,
+    /// хто сидить: сам — усі чотири; двоє — вертикаль і горизонталь, як було завжди; троє — вертикаль, ліво,
+    /// право; четверо — по одній стрілці на брата. Типово — пара, щоб старі виклики поводились як раніше.
+    /// </summary>
+    public int[] Keys { get; } = [Up | Down, Left | Right, 0, 0];
+
+    /// <summary>Розкладка для тих, хто зараз за столом (у порядку місць). Порожні місця кнопок не мають.</summary>
+    public static int[] Layout(IReadOnlyList<int> seated)
+    {
+        int[] masks = seated.Count switch
+        {
+            <= 1 => [Up | Down | Left | Right],
+            2 => [Up | Down, Left | Right],
+            3 => [Up | Down, Left, Right],
+            _ => [Up, Right, Down, Left],
+        };
+        var keys = new int[Seats];
+        for (var i = 0; i < seated.Count && i < masks.Length; i++)
+            if (seated[i] is >= 0 and < Seats) keys[seated[i]] = masks[i];
+        return keys;
+    }
+
+    public void Assign(IReadOnlyList<int> seated) => Layout(seated).CopyTo(Keys, 0);
+
+    /// <summary>Чи це кнопка цього місця.</summary>
+    public bool Mine(int seat, int dir) => seat is >= 0 and < Seats && dir is >= 0 and <= 3 && (Keys[seat] & (1 << dir)) != 0;
+
+    /// <summary>Підпис місця за маскою — це і є вся інструкція в чіпі над полем.</summary>
+    public static string KeysName(int mask) => mask switch
+    {
+        Up | Down | Left | Right => "усі стрілки",
+        Up | Down => "вгору-вниз",
+        Left | Right => "вліво-вправо",
+        Up => "вгору",
+        Down => "вниз",
+        Left => "вліво",
+        Right => "вправо",
+        _ => "",
+    };
 
     /// <summary>Нова партія: змійка посеред поля, дивиться праворуч; яблуко — куди лягло з генератора.</summary>
     public void Reset()
@@ -221,7 +266,7 @@ public sealed class CoopSnakeCore(Random rng)
     /// </summary>
     public bool Turn(int seat, int dir)
     {
-        if (dir is < 0 or > 3 || !OwnAxis(seat, dir)) return false;
+        if (!Mine(seat, dir)) return false;
         if (_turns.Count >= MaxQueued) return false;
         var last = _turns.Count > 0 ? _turns.Last() : Dir;
         if (dir == last || (dir + 2) % 4 == last) return false;
@@ -259,21 +304,23 @@ public sealed class CoopSnakeCore(Random rng)
 }
 
 /// <summary>
-/// Змійка на двох: одна змійка, одне яблуко, двоє за кермом. Місце 0 відповідає за вертикаль, місце 1 — за
-/// горизонталь, тож повернути наліво без напарника не вийде. Партія не рейтингова: тут нема з ким змагатись,
-/// зате є спільний рекорд пари — довжина, з якою змійка врізалась.
+/// Змійка на всіх: одна змійка, одне яблуко, від одного до чотирьох за кермом. Кнопки діляться між тими,
+/// хто сидить (<see cref="CoopSnakeCore.Layout"/>): удвох — вертикаль і горизонталь, як було від початку,
+/// вчотирьох — по одній стрілці кожному. Партія не рейтингова: тут нема з ким змагатись, зате є спільний
+/// рекорд — довжина, з якою змійка врізалась.
 /// </summary>
 public sealed class SnakeCoopGame : Game
 {
     public override GameInfo Info { get; } = new(
-        "snake-coop", "Змійка на двох", "змійку на двох", GameGroup.Live, 2, 2,
-        TickMs: SnakeCore.TickMs, Rated: false, Score: ScoreOrder.HigherIsBetter,
-        Hint: "Одна змійка на двох: один крутить вгору-вниз, другий — вліво-вправо. Домовляйтесь!",
+        "snake-coop", "Змійка на всіх", "змійку на всіх", GameGroup.Live, 1, CoopSnakeCore.Seats,
+        TickMs: SnakeCore.TickMs, Start: StartMode.ByHost, Rated: false, Score: ScoreOrder.HigherIsBetter,
+        Hint: "Одна змійка на всіх: кожен крутить лише свої стрілки (удвох — вгору-вниз і вліво-вправо, вчотирьох — по одній). Домовляйтесь!",
         Client: "snake-modes");
 
     CoopSnakeCore? _core;
     /// <summary>Раунд дограно: змійка врізалась. Далі тикати нема чого.</summary>
     bool _over;
+    bool _started;
 
     CoopSnakeCore Core
     {
@@ -286,29 +333,52 @@ public sealed class SnakeCoopGame : Game
         }
     }
 
-    /// <summary>Підпис місця — це і є вся інструкція: людина бачить свою вісь у чіпі над полем.</summary>
-    public override string SeatName(int seat) => seat == 0 ? "вгору-вниз" : "вліво-вправо";
+    int[] Seated() => [.. Enumerable.Range(0, CoopSnakeCore.Seats).Where(Ctx.Seated)];
+
+    /// <summary>
+    /// Кнопки місця: у партії — роздані на старті (і перероздані, коли хтось встав), у лобі — такі, які
+    /// дістануться, якщо почати зараз. Так чіп над полем ще до старту каже, що кому крутити.
+    /// </summary>
+    int KeysOf(int seat) =>
+        _started ? Core.Keys[seat] : CoopSnakeCore.Layout(Seated())[seat];
+
+    /// <summary>Підпис місця — це і є вся інструкція: людина бачить свої стрілки в чіпі над полем.</summary>
+    public override string SeatName(int seat)
+    {
+        if (seat is < 0 or >= CoopSnakeCore.Seats) return base.SeatName(seat);
+        var mask = KeysOf(seat);
+        // вільне місце підписуємо тим, що дістанеться новенькому, якщо він сяде
+        if (mask == 0) mask = CoopSnakeCore.Layout([.. Seated().Append(seat).Order()])[seat];
+        return CoopSnakeCore.KeysName(mask);
+    }
 
     public override void Start()
     {
         _over = false;
+        _started = true;
         Core.Reset();
+        Core.Assign(Seated());
     }
 
-    /// <summary>Напарник встав — раунд скінчився. Закриваємо його й тут, щоб клієнт притемнив поле.</summary>
+    /// <summary>
+    /// Хтось встав — змійка не зупиняється: його стрілки перероздаються тим, хто лишився (останній отримує
+    /// всі чотири). Раніше вихід напарника закривав раунд і ще й записував тому, хто лишився, «перемогу» в
+    /// кооперативі, де перемагати нема кого. Місце ще зайняте (каркас звільнить його після нас), тож
+    /// рахуємо без нього.
+    /// </summary>
     public override void OnLeave(int seat)
     {
-        _over = true;
-        base.OnLeave(seat);
+        if (_over) return;
+        Core.Assign([.. Seated().Where(s => s != seat)]);
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (action != "turn") return ActResult.Fail("Тут так не ходять");
         if (SnakeModesTurns.Dir(payload) is not { } dir) return ActResult.Done;
-        // Чужа вісь — не поламаний хід, а звичайне «це не твоя кнопка»: кажемо коротко й не міняємо стану.
-        if (!CoopSnakeCore.OwnAxis(seat, dir))
-            return ActResult.Fail(seat == 0 ? "Ти крутиш вгору-вниз" : "Ти крутиш вліво-вправо");
+        // Чужа кнопка — не поламаний хід, а звичайне «це не твоє»: кажемо коротко й не міняємо стану.
+        if (!Core.Mine(seat, dir))
+            return ActResult.Fail("Ти крутиш " + CoopSnakeCore.KeysName(Core.Keys[seat]));
         Core.Turn(seat, dir);
         return ActResult.Done;
     }
@@ -325,17 +395,26 @@ public sealed class SnakeCoopGame : Game
 
         _over = true;
         var len = Core.Len;
-        // Кооп: результатом партії йде довжина — з неї і збереться таблиця пар.
-        Ctx.Score(0, len);
-        Ctx.Score(1, len);
-        // Переможців тут нема: у кооперативі програти одне одному неможливо, а «перемога» обом коштувала б
+        var seated = Seated();
+        // Кооп: результатом партії йде довжина — з неї і збереться таблиця.
+        foreach (var s in seated) Ctx.Score(s, len);
+        // Переможців тут нема: у кооперативі програти одне одному неможливо, а «перемога» всім коштувала б
         // дорого — ачівки перемог («Перша перемога», «Серія», «Десять перемог») каркас видає повз стелю
-        // черепків (Economy/Rewards.cs: цикл ачівок стоїть поза `if (rewarded)`), тож пара вибивала б їх
-        // за кілька хвилин у грі, де не можна програти. Порожній список — це нічия: DrawReward обом і
+        // черепків (Economy/Rewards.cs: цикл ачівок стоїть поза `if (rewarded)`), тож компанія вибивала б їх
+        // за кілька хвилин у грі, де не можна програти. Порожній список — це нічия: DrawReward усім і
         // жодних перемог. Довжина від цього не губиться, вона йде окремо, у Scores.
+        var names = seated.Select(s => Ctx.NickOf(s)!).ToList();
+        var who = names.Count switch
+        {
+            0 => "",
+            1 => names[0],
+            _ => string.Join(", ", names[..^1]) + " і " + names[^1],
+        };
         Ctx.Finish([],
-            $"{Info.Title}: {Ctx.NickOf(0)} і {Ctx.NickOf(1)} виростили змійку до {len}",
-            new Dictionary<int, long> { [0] = len, [1] = len });
+            names.Count == 1
+                ? $"{Info.Title}: {who} сам на сам — змійка доросла до {len}"
+                : $"{Info.Title}: {who} виростили змійку до {len}",
+            seated.ToDictionary(s => s, _ => (long)len));
         return TickResult.Both;
     }
 
@@ -361,6 +440,8 @@ public sealed class SnakeCoopGame : Game
         startIn = Core.StartIn,
         len = Core.Len,
         winner = Winner,
+        // маска стрілок кожного місця (біт 0 праворуч … біт 3 вгору): клієнт показує лише свої кнопки
+        keys = Enumerable.Range(0, CoopSnakeCore.Seats).Select(KeysOf).ToArray(),
     };
 
     /// <summary>Переможця тут нема — є кінець раунду. Клієнтові цього досить, щоб притемнити поле.</summary>

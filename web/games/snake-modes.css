@@ -19,3 +19,53 @@
   .dpad[data-dirs="2,0"] button[data-dir="2"] { grid-column: 1; grid-row: 1; }
   .dpad[data-dirs="2,0"] button[data-dir="0"] { grid-column: 2; grid-row: 1; }
 }
+
+/*
+  «Мотоцикли гуртом» і «Змійки гуртом» (2–4). Кольори місць — ті самі, що на полі (модуль читає їх через
+  ctx.css), а фігурка перед підписом — для тих, у кого кольори зливаються: ● жовтий, ■ зелений, ▲ синій,
+  ◆ рожевий, так само, як на голові кожного на полі.
+*/
+:root {
+  --moto2: #6fb3e8;   /* третє місце */
+  --moto3: #e88ac0;   /* четверте місце */
+}
+
+.gseat.ar0 { color: var(--accent); }
+.gseat.ar1 { color: var(--ok); }
+.gseat.ar2 { color: var(--moto2); }
+.gseat.ar3 { color: var(--moto3); }
+.gseat.ar0 i::before { content: '● '; color: var(--accent); }
+.gseat.ar1 i::before { content: '■ '; color: var(--ok); }
+.gseat.ar2 i::before { content: '▲ '; color: var(--moto2); }
+.gseat.ar3 i::before { content: '◆ '; color: var(--moto3); }
+
+/* Велике поле (34×24) ширше за змійчине — даємо йому трохи місця, але не на весь Full HD. */
+.arenaboard { max-width: 560px; }
+.arenaboard.big { max-width: 680px; }
+@media (min-width: 1600px) and (min-height: 900px) { .arenaboard.big { max-width: 780px; } }
+
+/* Табло над полем: хто скільки раундів узяв; вибулі — бліді й закреслені до кінця раунду. */
+.ascore {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px;
+  font-variant-numeric: tabular-nums; font-size: .95em; color: var(--muted);
+}
+.ascore span { white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; transition: opacity .3s; }
+.ascore i { font-style: normal; margin-right: 4px; }
+.ascore b { color: var(--text); }
+.ascore .ar0 i { color: var(--accent); }
+.ascore .ar1 i { color: var(--ok); }
+.ascore .ar2 i { color: var(--moto2); }
+.ascore .ar3 i { color: var(--moto3); }
+.ascore .me { color: var(--text); }
+.ascore .out { opacity: .45; text-decoration: line-through; }
+@media (prefers-reduced-motion: reduce) { .ascore span { transition: none; } }
+
+/* «Змійка на всіх» учотирьох: одна кнопка під палець — велика й одна, без дірок у сітці 3×2. */
+@media (pointer: coarse) {
+  .dpad[data-dirs="3"], .dpad[data-dirs="1"], .dpad[data-dirs="2"], .dpad[data-dirs="0"] {
+    grid-template-columns: 96px;
+    grid-template-rows: 52px;
+  }
+  .dpad[data-dirs="3"] button[data-dir], .dpad[data-dirs="1"] button[data-dir],
+  .dpad[data-dirs="2"] button[data-dir], .dpad[data-dirs="0"] button[data-dir] { grid-column: 1; grid-row: 1; }
+}
