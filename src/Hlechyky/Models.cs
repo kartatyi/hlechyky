@@ -67,6 +67,28 @@ public sealed record YtArtistRef(string Id, string Name);
 /// <summary>Сторінка артиста в YouTube Music: його найпопулярніші пісні і схожі виконавці.</summary>
 public sealed record YtArtist(string Id, string Name, List<SearchResult> TopSongs, List<YtArtistRef> Related);
 
+/// <summary>Альбом у видачі пошуку YouTube Music: browseId (MPREb_…), назва, виконавець, рік.</summary>
+public sealed record YtAlbumRef(string BrowseId, string Title, string Artist, string? Year);
+
+/// <summary>Альбом чи плейлист у YouTube Music: шапка й треки по порядку.</summary>
+public sealed record YtCollection(string Id, string Title, string Artist, string? Year, string? ThumbUrl, List<SearchResult> Tracks);
+
+/// <summary>
+/// Трек альбому чи плейлиста, як його показати людині: назва й виконавець — як у джерелі (Spotify чи YouTube Music),
+/// <paramref name="Match"/> — що саме з YouTube Music гратиме; null — не знайшлось.
+/// </summary>
+public sealed record AlbumTrack(int N, string Title, string Artist, int DurationSec, SearchResult? Match);
+
+/// <summary>
+/// Альбом чи плейлист, розібраний з посилання. <paramref name="Source"/> — spotify | ytmusic,
+/// <paramref name="Kind"/> — album | playlist, <paramref name="Url"/> — сторінка в джерелі.
+/// </summary>
+public sealed record Album(string Key, string Source, string Kind, string Title, string Artist, string? Year, string? ThumbUrl, string Url, List<AlbumTrack> Tracks)
+{
+    public int Found => Tracks.Count(t => t.Match is not null);
+    public int DurationSec => Tracks.Sum(t => t.Match?.DurationSec is > 0 ? t.Match.DurationSec : t.DurationSec);
+}
+
 public sealed record QueueItemDto(string ItemId, TrackInfo Track, string RequestedBy, string Status, string? Error, string Kind, string? Reason, string? Via, DateTimeOffset AddedAt);
 
 public sealed record HistoryEntry(long PlayId, TrackInfo Track, string Source, string? RequestedBy, DateTimeOffset StartedAt, int Likes, string? Via, bool Skipped);

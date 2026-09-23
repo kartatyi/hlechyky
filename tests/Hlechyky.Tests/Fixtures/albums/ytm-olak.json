@@ -1,0 +1,317 @@
+{
+ "contents": {
+  "twoColumnBrowseResultsRenderer": {
+   "tabs": [
+    {
+     "tabRenderer": {
+      "content": {
+       "sectionListRenderer": {
+        "targetId": "x_header"
+       }
+      }
+     }
+    }
+   ],
+   "secondaryContents": {
+    "sectionListRenderer": {
+     "contents": [
+      {
+       "musicPlaylistShelfRenderer": {
+        "contents": [
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "videoId": "ddBFNKBvKFM"
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "New York City (Ultimate Mix)"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "John Lennon",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "UCcSL2nYSJp_IgdzH0xBBdcg",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   }
+                  }
+                 }
+                },
+                {
+                 "text": ", "
+                },
+                {
+                 "text": "Yoko Ono",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "UCMz6c0j-Pp54_GrLKcKjIrw",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   }
+                  }
+                 }
+                },
+                {
+                 "text": ", "
+                },
+                {
+                 "text": "The Plastic Ono Band",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "UCD7w8pJEQulliDee2cM_oDw",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   }
+                  }
+                 }
+                },
+                {
+                 "text": " і "
+                },
+                {
+                 "text": "Elephant's Memory",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "UCLytGmzNMi8eV0NuqCsoHOQ",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   }
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "Power To The People (New York City - The Ultimate Mixes)",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "MPREb_XHt1jYJt0h9",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                    }
+                   }
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "4:41"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "thumbnail": {
+            "musicThumbnailRenderer": {
+             "thumbnail": {
+              "thumbnails": [
+               {
+                "url": "https://yt3.googleusercontent.com/D0h58OYH9fVhg5ki3EuJ0f1PVa6S490tDzol33KV2TNZvvL8KXj1UokbfJ9wnld7ppjiZeDILtA3eZYk=w60-h60-l90-rj",
+                "width": 60,
+                "height": 60
+               },
+               {
+                "url": "https://yt3.googleusercontent.com/D0h58OYH9fVhg5ki3EuJ0f1PVa6S490tDzol33KV2TNZvvL8KXj1UokbfJ9wnld7ppjiZeDILtA3eZYk=w120-h120-l90-rj",
+                "width": 120,
+                "height": 120
+               }
+              ]
+             },
+             "thumbnailCrop": "MUSIC_THUMBNAIL_CROP_UNSPECIFIED",
+             "thumbnailScale": "MUSIC_THUMBNAIL_SCALE_ASPECT_FIT",
+             "trackingParams": "CMoBEIS_AiITCOyCr8XKhJcDFTokcwkdWJI3Ig=="
+            }
+           }
+          }
+         },
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "videoId": "b8tPK7-l7b4"
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "Sisters, O Sisters (Ultimate Mix)"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "John Lennon",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "UCcSL2nYSJp_IgdzH0xBBdcg",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   }
+                  }
+                 }
+                },
+                {
+                 "text": ", "
+                },
+                {
+                 "text": "Yoko Ono",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "UCMz6c0j-Pp54_GrLKcKjIrw",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   }
+                  }
+                 }
+                },
+                {
+                 "text": ", "
+                },
+                {
+                 "text": "The Plastic Ono Band",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "UCD7w8pJEQulliDee2cM_oDw",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   }
+                  }
+                 }
+                },
+                {
+                 "text": " і "
+                },
+                {
+                 "text": "Elephant's Memory",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "UCLytGmzNMi8eV0NuqCsoHOQ",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                   }
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "Power To The People (New York City - The Ultimate Mixes)",
+                 "navigationEndpoint": {
+                  "browseEndpoint": {
+                   "browseId": "MPREb_XHt1jYJt0h9",
+                   "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                     "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                    }
+                   }
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "3:46"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "thumbnail": {
+            "musicThumbnailRenderer": {
+             "thumbnail": {
+              "thumbnails": [
+               {
+                "url": "https://yt3.googleusercontent.com/D0h58OYH9fVhg5ki3EuJ0f1PVa6S490tDzol33KV2TNZvvL8KXj1UokbfJ9wnld7ppjiZeDILtA3eZYk=w60-h60-l90-rj",
+                "width": 60,
+                "height": 60
+               },
+               {
+                "url": "https://yt3.googleusercontent.com/D0h58OYH9fVhg5ki3EuJ0f1PVa6S490tDzol33KV2TNZvvL8KXj1UokbfJ9wnld7ppjiZeDILtA3eZYk=w120-h120-l90-rj",
+                "width": 120,
+                "height": 120
+               }
+              ]
+             },
+             "thumbnailCrop": "MUSIC_THUMBNAIL_CROP_UNSPECIFIED",
+             "thumbnailScale": "MUSIC_THUMBNAIL_SCALE_ASPECT_FIT",
+             "trackingParams": "CLQBEIS_AiITCOyCr8XKhJcDFTokcwkdWJI3Ig=="
+            }
+           }
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}
