@@ -196,6 +196,28 @@ public sealed class Rooms
         .ThenBy(r => r.CreatedAt)
         .Select(r => r.Id)];
 
+    /// <summary>
+    /// Хто зараз у своїй соло-грі — для події <c>solo</c>. Сама кімната тут не показник: вона живе ще пів години
+    /// після того, як людина пішла, а браузер підписаний на неї навіть із лобі. Рахуємо лише ті, що в когось
+    /// на екрані (<see cref="Focus"/>). Порядок сталий — за грою, далі за ніком, — щоб плитки в лобі не стрибали.
+    /// </summary>
+    public List<SoloPlayer> SoloNow()
+    {
+        var list = new List<SoloPlayer>();
+        foreach (var room in Live())
+        {
+            if (!room.Info.Solo || room.OnScreen.IsEmpty) continue;
+            string? nick;
+            lock (room.Sync) nick = room.Seats[0];
+            if (nick is not null) list.Add(new SoloPlayer(room.Info.Id, nick));
+        }
+        // Дві кімнати однієї гри в одного ніка теж бувають: щоденна вчорашня й сьогоднішня в двох вкладках.
+        return [.. list
+            .DistinctBy(p => (p.Game, NickKey(p.Nick)))
+            .OrderBy(p => p.Game, StringComparer.Ordinal)
+            .ThenBy(p => p.Nick, StringComparer.OrdinalIgnoreCase)];
+    }
+
     /// <summary>Кімната за id; null — уже нема. Broadcaster і хаб більше нічого про список не знають.</summary>
     public Room? Find(string? id)
     {
@@ -509,6 +531,12 @@ public sealed class Rooms
         if (string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase))
             room.Host = room.Seats.FirstOrDefault(s => s is not null) ?? room.Host;
         if (!room.Info.Private) outbox.Add(new LobbyChanged());
+        // «Закрити» соло — це вихід із гри, навіть якщо вкладка ще не встигла сказати FocusRoom(null).
+        if (room.Info.Solo && !room.OnScreen.IsEmpty)
+        {
+            room.OnScreen.Clear();
+            outbox.Add(new SoloChanged());
+        }
         outbox.Add(new RoomViews(room.Id));
     }
 
@@ -760,10 +788,42 @@ public sealed class Rooms
         return outbox;
     }
 
-    /// <summary>З'єднання закрилось — прибрати його з усіх кімнат.</summary>
-    public void DropWatcher(string connId)
+    /// <summary>
+    /// З'єднання закрилось — прибрати його з усіх кімнат. Якщо в тій вкладці була відкрита чиясь соло-гра,
+    /// решта має про це дізнатись (<see cref="SoloChanged"/>).
+    /// </summary>
+    public Outbox DropWatcher(string connId)
     {
-        foreach (var room in Live()) room.Watchers.TryRemove(connId, out _);
+        var outbox = new Outbox();
+        var left = false;
+        foreach (var room in Live())
+        {
+            room.Watchers.TryRemove(connId, out _);
+            left |= room.OnScreen.TryRemove(connId, out _);
+        }
+        if (left) outbox.Add(new SoloChanged());
+        return outbox;
+    }
+
+    /// <summary>
+    /// Що зараз на екрані цієї вкладки (PROTOCOL §1, <c>FocusRoom</c>): з неї сервер знає, хто саме зараз у своїй
+    /// соло-грі. Рахується лише власна соло-кімната — столи й так видно в лобі. Чужа, мультиплеєрна чи null —
+    /// «ні в якій». У вкладки на екрані щонайбільше одна кімната, тож нова знімає її з попередньої.
+    /// </summary>
+    public Outbox Focus(string connId, string nick, string? roomId)
+    {
+        var outbox = new Outbox();
+        var room = Find(roomId);
+        var mine = false;
+        if (room is { Info.Solo: true }) lock (room.Sync) mine = room.Has(nick);
+        var target = mine ? room : null;
+
+        var changed = false;
+        foreach (var other in Live())
+            if (other != target && other.OnScreen.TryRemove(connId, out _)) changed = true;
+        if (target is not null && target.OnScreen.TryAdd(connId, 0)) changed = true;
+        if (changed) outbox.Add(new SoloChanged());
+        return outbox;
     }
 
     /// <summary>Готова розкладка кімнати для Broadcaster: види по місцях, вид глядача, список з'єднань.</summary>
@@ -928,6 +988,7 @@ public sealed class Rooms
         var outbox = new Outbox();
         var removed = 0;
         var lobbyChanged = false;
+        var soloChanged = false;
         foreach (var room in Live())
         {
             bool drop;
@@ -944,8 +1005,10 @@ public sealed class Rooms
             Drop(room);
             removed++;
             lobbyChanged |= !room.Info.Private;
+            soloChanged |= !room.OnScreen.IsEmpty;   // дограну щоденну прибрали просто з-перед очей
         }
         if (lobbyChanged) outbox.Add(new LobbyChanged());
+        if (soloChanged) outbox.Add(new SoloChanged());
         if (removed > 0) _log.LogDebug("прибрано кімнат: {Count}", removed);
         return outbox;
     }

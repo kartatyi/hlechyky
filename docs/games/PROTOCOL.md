@@ -17,6 +17,7 @@
 | `Act` | `roomId`, `action: string`, `payload: any` | `RoomReply` | Покроковий хід. Помилка — лише викликачу. |
 | `Input` | `roomId`, `action: string`, `payload: any` | (нічого) | Реалтайм-ввід. Без відповіді. |
 | `WatchRoom` / `UnwatchRoom` | `roomId` | (нічого) | Підписка на `room`/`frame` цієї кімнати. Після реконекту клієнт підписується заново. |
+| `FocusRoom` | `roomId: string\|null` | (нічого) | Яка кімната зараз на екрані вкладки (`null` — жодна). Сервер враховує лише власну соло-кімнату ніка і з цього складає подію `solo`. Браузер шле сам: відкрив свою соло-гру — її id; лобі, інший підрозділ, радіо, вкладка схована понад хвилину чи 5 хв без жодного руху — `null`. Після реконекту — заново. |
 
 ```ts
 type RoomReply = { ok: boolean; message: string; roomId?: string };
@@ -41,6 +42,7 @@ type RoomReply = { ok: boolean; message: string; roomId?: string };
 | Подія | Кому | Тіло |
 |---|---|---|
 | `rooms` | усім (і на підключенні) | `RoomSummary[]` — усі не-приватні кімнати |
+| `solo` | усім (і на підключенні) | `{ game: string, nick: string }[]` — хто зараз у своїй соло-грі (кімната на екрані за `FocusRoom`), за грою й ніком. Лобі малює це на плитках соло-ігор і рядком «🏺 Соло зараз» під живими столами |
 | `room` | глядачам кімнати | `RoomView` |
 | `frame` | глядачам кімнати | `{ id: string, f: any }` |
 | `wallet` | з'єднанням ніка | `{ balance: number, delta: number, reason: string, text: string }` |
@@ -198,5 +200,5 @@ type Ctx = {
 - `room:<id>` — глядачі кімнати (кадри й публічні види).
 - Per-seat вид `Hidden`-ігор іде `Clients.Client(connId)` на кожне з'єднання-глядача окремо.
 - `Presence.ConnectionsOf(nick)` — усі з'єднання ніка (для `wallet`, `achievement`, `toast`).
-- На `OnDisconnectedAsync`: з'єднання прибирається зі всіх `Watchers`; місця звільняються не одразу, а через
-  grace 20 с, якщо нік більше ніде не онлайн (`Rooms.DropIfGone` з `TickEngine`).
+- На `OnDisconnectedAsync`: з'єднання прибирається зі всіх `Watchers` (і з `OnScreen` — тоді летить `solo`); місця
+  звільняються не одразу, а через grace 20 с, якщо нік більше ніде не онлайн (`Rooms.DropIfGone` з `TickEngine`).

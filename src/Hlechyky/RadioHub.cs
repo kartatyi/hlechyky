@@ -27,6 +27,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         try { lobby = rooms.Snapshot(); }
         catch (Exception) { lobby = []; }
         await Clients.Caller.SendAsync("rooms", lobby);
+        // Хто зараз у своїй соло-грі — теж одразу, а не з першою зміною: плитки в лобі мають знати це з порога.
+        try { await Clients.Caller.SendAsync("solo", rooms.SoloNow()); } catch (Exception) { /* так само не привід не пустити */ }
         await Clients.All.SendAsync("state", engine.Snapshot());
         try { await Clients.Caller.SendAsync("tournament", tournament.Snapshot()); } catch (Exception) { /* турнір — не привід не пустити */ }
         tournament.PresenceChanged();
@@ -36,11 +38,13 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     {
         var gone = presence.Get(Context.ConnectionId);
         presence.Remove(Context.ConnectionId);
-        rooms.DropWatcher(Context.ConnectionId);
+        var left = rooms.DropWatcher(Context.ConnectionId);
         rates.Forget(Context.ConnectionId);
         // Місце тримається ще grace-час: F5 і провал зв'язку в метро не мають коштувати партії.
         if (gone is not null && !presence.IsOnline(gone)) rooms.NoteOffline(gone, clock.UtcNow);
         await Clients.All.SendAsync("state", engine.Snapshot());
+        // Закрив вкладку з відкритим Гончарним колом — з плиток лобі його ім'я теж зникає.
+        await broadcaster.FlushAsync(left);
         tournament.PresenceChanged();
     }
 
@@ -210,6 +214,16 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         if (!Allow(input: true)) return;
         rooms.Unwatch(roomId ?? "", Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(roomId ?? ""));
+    }
+
+    /// <summary>
+    /// Яка кімната зараз на екрані цієї вкладки (null — жодна). Так решта бачить, хто саме зараз у своїй соло-грі
+    /// (подія <c>solo</c>): браузер шле це сам, коли людина відкриває гру, іде в лобі чи надовго ховає вкладку.
+    /// </summary>
+    public async Task FocusRoom(string? roomId)
+    {
+        if (!Allow(input: true)) return;   // кожна зміна — розсилка всім, тож теж під квотою
+        await broadcaster.FlushAsync(rooms.Focus(Context.ConnectionId, Nick(), roomId));
     }
 
     async Task<RoomReply> Act(Func<RoomOutcome> action)

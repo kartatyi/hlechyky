@@ -9,6 +9,7 @@
   --gwin: #4a3a06;          /* підсвітка виграшного ряду */
   --gsnake2: #4f9a5e;       /* тіло зеленої змійки */
   --gshade: rgba(15, 31, 24, .62); /* затемнення поля під відліком і кінцем раунду */
+  --glive: rgba(123, 211, 137, .45); /* «зараз грає»: рамка плитки й хвиля від крапки (напівпрозорий --ok) */
 }
 .games { display: flex; flex-direction: column; gap: 12px; }
 
@@ -244,6 +245,24 @@
 @keyframes gnews-in { from { transform: translateY(12px) scale(.96); opacity: 0; } }
 @keyframes gnews-li { from { transform: translateX(-8px); opacity: 0; } }
 
+/* ---- хто зараз у соло (подія solo): зелена крапка, як «на сайті» в балачках ---- */
+.gtile.live { border-color: var(--glive); }
+.gt-now { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: .85em; color: var(--ok); }
+.gt-now > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+.gsolo { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.gsolo-g {
+  cursor: pointer; gap: 5px; max-width: 100%; min-width: 0; padding: 4px 11px; font-size: .86em;
+  color: var(--text); border: 1px solid var(--glive);
+}
+.gsolo-g:hover { background: var(--panel3); }
+.gsolo-g .gico { width: 14px; height: 14px; }
+.gsolo-g .gw { color: var(--ok); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: no-preference) {
+  .gdot { animation: gdot 1.8s ease-out infinite; }
+}
+@keyframes gdot { 0% { box-shadow: 0 0 0 0 var(--glive); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+
 /* ---- профіль ---- */
 .gprofile { display: flex; flex-direction: column; gap: 10px; }
 .gp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 1.15em; }
@@ -321,6 +340,9 @@
   .gtile .gt-hint { display: none; }
   .gtile .gt-btns { flex: none; }
   .gtile .gt-pl { display: none; }
+  /* «Хто грає» стає між назвою й кнопкою: лише ніки, «грає» тут зайве — і так видно. */
+  .gtile .gt-now { flex: 0 1 auto; max-width: 45%; }
+  .gtile .gt-now .muted { display: none; }
 }
 @media (max-width: 480px) {
   .gtable { padding: 8px 9px 10px; }

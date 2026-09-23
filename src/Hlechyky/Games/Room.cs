@@ -34,6 +34,12 @@ public sealed record RoomSummary(
 public sealed record RoomView(RoomSummary Room, int? Seat, object? View);
 
 /// <summary>
+/// Рядок події <c>solo</c>: хто зараз у своїй соло-грі. Приватні кімнати в лобі не потрапляють, тож без цього
+/// ніхто б і не знав, що Оля саме крутить Гончарне коло.
+/// </summary>
+public sealed record SoloPlayer(string Game, string Nick);
+
+/// <summary>
 /// Одна партія: гра, місця, статус, глядачі. Усе, що міняє стан кімнати, робиться під <see cref="Sync"/>;
 /// розсилка збирається в Outbox і йде вже поза замком. Кімната живе в пам'яті: партія — це п'ять хвилин
 /// на перекур, а не те, що варто переживати рестарт (див. ARCHITECTURE §4.4, §4.7).
@@ -61,6 +67,11 @@ public sealed class Room
     public DateTimeOffset? FinishedAt { get; set; }
     /// <summary>З'єднання, які зараз дивляться на цю кімнату. Ключ — connectionId, значення нікого не цікавить.</summary>
     public ConcurrentDictionary<string, byte> Watchers { get; } = new();
+    /// <summary>
+    /// Вкладки власника, у яких ця соло-кімната зараз на екрані (<see cref="Rooms.Focus"/>). Не те саме, що
+    /// <see cref="Watchers"/>: на свою кімнату браузер підписаний і з лобі, а тут — лише поки людина справді в грі.
+    /// </summary>
+    public ConcurrentDictionary<string, byte> OnScreen { get; } = new();
     /// <summary>Замок кімнати: хід, тик, вхід, вихід — усе під ним. Await під ним не буває.</summary>
     public object Sync { get; } = new();
     public required int Seed { get; init; }
