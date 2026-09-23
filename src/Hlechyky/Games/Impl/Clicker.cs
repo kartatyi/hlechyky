@@ -212,6 +212,8 @@ public sealed partial class Clicker : Game
     public const double StreakBonus = 0.1;
     public const int StreakMax = 10;
     public const int GrabsForAchievement = 100, StreakForAchievement = 10;
+    /// <summary>Раз на стільки щасливих кліків — кидок дивовижі (v9).</summary>
+    public const int LuckyWonderEvery = 25;
 
     // ---------- обпал ----------
 
@@ -1151,7 +1153,9 @@ public sealed partial class Clicker : Game
         {
             _lucky += lucky;
             if (_lucky >= LuckyForAchievement && _lucky - lucky < LuckyForAchievement) Achieve("potter-lucky");
-            Wonder("lucky");
+            // Дивовижу за щасливий клік кидаємо не на кожен (їх бувають десятки за хвилину), а раз на 25 — інакше
+            // «щасливі» дивовижі вичерпались би за перший вечір (v9, зауваження пакета «Хата»).
+            if (_lucky / LuckyWonderEvery != (_lucky - lucky) / LuckyWonderEvery) Wonder("lucky");
         }
         var clicks = taken + lucky * (LuckyMult - 1);
         return mult <= 1 ? ToPots(PerClick * clicks) : ToPots(PerClick * clicks * mult);

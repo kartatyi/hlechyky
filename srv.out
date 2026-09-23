@@ -1,0 +1,94 @@
+info: Hlechyky[0]
+      Глечики: root=D:\or-wt\clk-v9, port=8160
+info: Hlechyky.Games.Economy.Words[0]
+      Словники: відповіді 1506, спроби 31565, віселиця 4988, великий словник 3,379,950
+info: Hlechyky.DjBrain[0]
+      Глек-балакун: мовчить (нема ключа або вимкнений)
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://[::]:8160
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: D:\or-wt\clk-v9
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Кіт у мішку!»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Кіт у мішку! Це запитання доведеться комусь подарувати.»
+warn: Hlechyky.RadioEngine[0]
+      liquidsoap not reachable at start-up; restoring the queue only
+      System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+         at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+         at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+         at System.Net.Sockets.TcpClient.CompleteConnectAsync(ValueTask task)
+         at Hlechyky.LiquidsoapClient.SendAsync(String command, CancellationToken ct) in D:\or-wt\clk-v9\src\Hlechyky\LiquidsoapClient.cs:line 52
+         at Hlechyky.LiquidsoapClient.CommandAsync(String command, CancellationToken ct) in D:\or-wt\clk-v9\src\Hlechyky\LiquidsoapClient.cs:line 32
+         at Hlechyky.LiquidsoapClient.UptimeSecondsAsync(CancellationToken ct) in D:\or-wt\clk-v9\src\Hlechyky\LiquidsoapClient.cs:line 163
+         at Hlechyky.RadioEngine.AdoptAsync(CancellationToken ct) in D:\or-wt\clk-v9\src\Hlechyky\RadioEngine.cs:line 795
+info: Hlechyky.RadioEngine[0]
+      adopted: 0 queued, 0 alive in liquidsoap, on air: silence
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «О, кіт у мішку! Кому пощастить?»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Кіт у мішку. Обирайте, кому його віддати.»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Аукціон!»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Аукціон! Хто більше?»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Аукціон. Торгуємось!»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Аукціон! Робіть ставки.»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Партію зіграно. Ніхто не вийшов у плюс. Буває — наступного р…»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Все. У плюсі — ніхто. Це було складно, я знаю.»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Партію зіграно. Переможця нема, але вечір був гарний.»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Перший раунд. Теми: Футбол, Страви світу, Настільні ігри, Ол…»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Скільки гравців однієї команди одночасно перебуває на футбол…»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Правильна відповідь — 11.»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Який київський клуб двічі вигравав Кубок володарів кубків єв…»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Правильна відповідь — Динамо. У 1975 році кияни здобули ще й…»
+warn: Hlechyky.EdgeTtsEngine[0]
+      ffmpeg не стиснув паузи (-1): An error occurred trying to start process 'D:\or-wt\clk-v9\tools\yt-dlp\ffmpeg.exe' with working directory 'D:\or-wt\clk-v9'. The system cannot find the file specified. — репліка лишається як є
+info: Hlechyky.TtsService[0]
+      озвучка не вдалась: «Який український нападник, вихованець київського «Динамо», о…»

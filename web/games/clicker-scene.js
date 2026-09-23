@@ -270,6 +270,19 @@
       + '<path d="M8 15.5v10M13 15.5v10M19 15.5v10M24 15.5v10" stroke="#ebe2cf" stroke-width="2.6"/>',
     tsar: '<path d="' + JUG_32 + '" fill="#f2c14e" stroke="#9a6a1a" stroke-width=".8"/><path d="M9.5 17.5h13" stroke="#c62f25" stroke-width="1.3"/>'
       + '<path d="M11 6.5l1.2-4 2 2.2L16 1.5l1.8 3.2 2-2.2 1.2 4z" fill="#f2c14e" stroke="#9a6a1a" stroke-width=".6"/><circle cx="16" cy="22.5" r="1.6" fill="#c62f25"/>',
+    // Дев'яте оновлення: три Skill-верстати кліка й три щаблі драбини після Цар-глека.
+    swing: '<path d="M6 26c4-9 9-14 18-19" stroke="#e0b48a" stroke-width="4" fill="none" stroke-linecap="round"/>'
+      + '<circle cx="25" cy="6.5" r="3.5" fill="#e0b48a"/><path d="M4 27h8" stroke="#6b4423" stroke-width="2" stroke-linecap="round"/>',
+    temper: '<circle cx="16" cy="17" r="10" fill="none" stroke="#ff8a3d" stroke-width="3"/><circle cx="16" cy="17" r="4" fill="#ffb46b"/>'
+      + '<path d="M16 3v5M16 26v4M2 17h5M25 17h5" stroke="#ff8a3d" stroke-width="2" stroke-linecap="round"/>',
+    lucky: '<path d="M16 2l3.2 9.3 9.8.3-7.8 6 2.8 9.4L16 21.4 8 27l2.8-9.4-7.8-6 9.8-.3z" fill="#f2c14e" stroke="#9a6a1a" stroke-width=".8"/>'
+      + '<circle cx="16" cy="14" r="2" fill="#fff3c4"/>',
+    sloboda: '<path d="M2 27h28M4 27V17l5-5 5 5v10M18 27V16l5-5 5 5v11" stroke="#8a5a30" stroke-width="2" fill="#efe6d2" stroke-linejoin="round"/>'
+      + '<rect x="7" y="21" width="4" height="6" fill="#3a1e10"/><rect x="21" y="20" width="4" height="7" fill="#3a1e10"/><path d="M13 8h6" stroke="#d7372b" stroke-width="2"/>',
+    kontrakty: '<path d="M6 4h20v24H6z" fill="#f4efe3" stroke="#6b4423" stroke-width="1"/><path d="M9 9h14M9 13h14M9 17h10" stroke="#b9a58a" stroke-width="1.2"/>'
+      + '<circle cx="21" cy="23" r="3.2" fill="#d7372b"/><path d="M9 23h7" stroke="#6b4423" stroke-width="1.2"/>',
+    sich: '<path d="M16 3v26" stroke="#6b4423" stroke-width="2"/><path d="M17 5h10l-3 5 3 5H17z" fill="#d7372b"/>'
+      + '<path d="M6 29h20" stroke="#6b4423" stroke-width="2" stroke-linecap="round"/><path d="M4 22c4-4 8-4 12 0s8 4 12 0" stroke="#f2c14e" stroke-width="2" fill="none"/>',
     wheel: '<ellipse cx="16" cy="22" rx="13" ry="5" fill="#2b4c3c" stroke="#7a9a86" stroke-width="1"/><ellipse cx="16" cy="21" rx="8" ry="3" fill="none" stroke="#1c3328" stroke-width="1"/>'
       + '<path d="M12 20c0-6 2.4-7 2.4-9.5h3.2c0 2.5 2.4 3.5 2.4 9.5z" fill="#b5653a"/><path d="M14 10.5h4" stroke="#8a4a26" stroke-width="1.2"/><path d="M16 27v3" stroke="#6b4423" stroke-width="2"/>',
     apprentice: '<circle cx="16" cy="9" r="5" fill="#e0b48a"/><path d="M11 7.5q5-7 10 0q-5-2.5-10 0z" fill="#5a3a1e"/>'
