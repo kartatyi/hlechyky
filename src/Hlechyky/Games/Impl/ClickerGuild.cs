@@ -133,7 +133,7 @@ public sealed partial class Clicker
     /// <summary>Дарунок зі збереження чи скриньки: відомий виріб, розпис і якість; ім'я дарувальника — коротке.</summary>
     static GuildGift? ValidGift(GuildGift? g)
     {
-        if (g is null || WareOf(g.Ware) is null || g.Quality is < 1 or > 3) return null;
+        if (g is null || WareOf(g.Ware) is null || g.Quality is < 1 or > QualityMax) return null;
         var style = g.Style ?? "";
         if (style.Length > 0 && Styles.All(s => s.Key != style)) return null;
         var from = (g.From ?? "").Trim();
@@ -292,11 +292,11 @@ public sealed partial class Clicker
         var g = WareGender.GetValueOrDefault(it.Ware, 'm');
         string[] words = g switch
         {
-            'f' => ["", "звичайна", "добра", "дзвінка"],
-            'n' => ["", "звичайне", "добре", "дзвінке"],
-            _ => ["", "звичайний", "добрий", "дзвінкий"],
+            'f' => ["", "звичайна", "добра", "дзвінка", "розкішна"],
+            'n' => ["", "звичайне", "добре", "дзвінке", "розкішне"],
+            _ => ["", "звичайний", "добрий", "дзвінкий", "розкішний"],
         };
-        var head = $"{words[Math.Clamp(it.Quality, 1, 3)]} {name}";
+        var head = $"{words[Math.Clamp(it.Quality, 1, QualityMax)]} {name}";
         return style ? $"{head} — {StylePhrase.GetValueOrDefault(it.Style, it.Style)}" : head;
     }
 
@@ -311,7 +311,7 @@ public sealed partial class Clicker
     }
 
     static bool PieceMatch(ItemInfo x, (string Ware, string Style) piece) =>
-        x.Ware == piece.Ware && x.Quality == 3 && (piece.Style.Length == 0 || x.Style == piece.Style);
+        x.Ware == piece.Ware && x.Quality >= 3 && (piece.Style.Length == 0 || x.Style == piece.Style);
 
     /// <summary>Чого бракує до наступного рангу (без майстерштука); порожньо — готовий.</summary>
     List<string> RankMissing(ClickerGuildRank next)
@@ -350,7 +350,7 @@ public sealed partial class Clicker
 
     ActResult GuildAuto(JsonElement payload)
     {
-        if (_guildRank < GuildJourneyman) return ActResult.Fail("Автогорно — перк челядника");
+        if (!KilnAutoCan) return ActResult.Fail("Автогорно — перк челядника");
         var on = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("on", out var v) && v.ValueKind == JsonValueKind.True;
         _autoKilnOff = !on;
         return ActResult.Accept(on ? "🔥 Підмайстри палитимуть повну сушарню самі" : "🔥 Горно — лише твоїми руками");

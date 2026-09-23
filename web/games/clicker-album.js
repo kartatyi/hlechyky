@@ -18,7 +18,7 @@
   const MASTERY_AT = [5, 15, 40, 100, 250, 600, 1500, 4000, 10000, 25000];
   const RING_R = 16;
   const RING_LEN = 2 * Math.PI * RING_R;
-  const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий'];
+  const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
   const pc = (x) => { let n = 0; for (x >>>= 0; x; x &= x - 1) n++; return n; };
   const pct = (api, x) => api.dec(x * 100) + ' %';
 

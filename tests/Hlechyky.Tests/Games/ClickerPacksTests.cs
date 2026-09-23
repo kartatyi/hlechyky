@@ -55,8 +55,12 @@ public class ClickerPacksTests
         Assert.Equal(6, fired);
     }
 
+    /// <summary>
+    /// v9: без рангу (і без «Палія» в ремеслі) горно й далі холодне, а неповна сушарня чекає — але вже не вічно:
+    /// коли гончар не підходив до горна три хвилини, палій береться й за чотири сирці (контракт v9 §B1.5).
+    /// </summary>
     [Fact]
-    public void An_apprentice_rank_or_a_half_rack_does_not_light_the_kiln()
+    public void An_apprentice_rank_does_not_light_the_kiln_and_a_half_rack_waits_for_a_quiet_kiln()
     {
         var h = Wheel();
         FullDryRack(h, rank: 0);
@@ -64,7 +68,11 @@ public class ClickerPacksTests
 
         var j = Wheel();
         FullDryRack(j, rank: 1, count: 4);
+        Patch(j, s => s["kiln"] = new JsonObject { ["touch"] = j.Clock.UtcNow.ToString("O") });
         Assert.Equal("cold", View(j).GetProperty("kiln").GetProperty("state").GetString());
+
+        j.Clock.Advance(Clicker.KilnIdle + TimeSpan.FromSeconds(1));
+        Assert.Equal("burning", View(j).GetProperty("kiln").GetProperty("state").GetString());
     }
 
     [Fact]

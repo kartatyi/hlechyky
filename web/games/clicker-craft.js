@@ -216,8 +216,8 @@
     const s = (st.styleList || []).find((x) => x.key === key);
     return s ? s.name : key;
   };
-  const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий'];
-  const STARS = ['', '★', '★★', '★★★'];
+  const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
+  const STARS = ['', '★', '★★', '★★★', '👑'];
 
   function wareName(st, key) {
     const c = st.craft;

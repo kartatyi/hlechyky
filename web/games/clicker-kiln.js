@@ -32,11 +32,15 @@
   const OPEN_AFTER_MS = 350;                // після кінця обпалу — трохи зачекати, щоб серверне «зараз» точно дійшло
   const MAX_POINTS = 480;                   // сервер бере до 500
   const SAMPLE_MS = 24;                     // не частіше за стільки — інакше за 12 с упремось у стелю точок
-  const TECH_ICON = { rizh: '🌀', flyand: '🌲', marble: '💧', ryt: '✒️', losk: '🪨' };
+  const TECH_ICON = { rizh: '🌀', flyand: '🌲', marble: '💧', ryt: '✒️', losk: '🪨', brush: '🖌', stamp: '🔘', glaze: '🫗' };
+  /// Техніки дев'ятого оновлення: у старих гравців вони мусять світитись «нове», у нових — ні.
+  const NEW_TECHS = ['brush', 'stamp', 'glaze'];
   /// Хто палить: підмайстер (типово, без мінігри) чи сам гончар. Пам'ятаємо між заходами.
   const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
-  const STARS = ['💥', '', '★', '★★★'];
-  const QNAME = ['тріснув', 'звичайний', 'добрий', 'дзвінкий'];
+  const STARS = ['💥', '', '★', '★★★', '👑'];
+  const QNAME = ['тріснув', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
+  /// Полотно мінігор: клітинка лощіння й поливи, силует посудини.
+  const CELL = 40, GRID = 25, DRIP = 2;
   const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- модель жару ----------
@@ -227,8 +231,12 @@
       + 'смузі, тим більше добрих і дзвінких. Перегрів тріскає глину, солома ділить цей ризик на чотири. Після '
       + 'відкриття горно холоне хвилину.</p>'
       + '<p>Розпис лягає на всю партію. Техніка-мінігра дає «красу» 0–100: вона підвищує шанс доброї й дзвінкої якості '
-      + '(але не множить ціну). Дзвінкий виріб вартий ×2,6, добрий ×1,6. Косівське ритування й гаварецьке лощіння '
-      + 'в «рідному» розписі дають +10 краси.</p></details>'
+      + '(але не множить ціну). Дзвінкий виріб вартий ×2,6, добрий ×1,6. Косівське ритування, гаварецьке лощіння, '
+      + 'петриківський пензель, трипільський штампик і межигірська полива в «рідному» розписі дають +10 краси.</p>'
+      + '<p>Розкішний виріб (×4,5) буває лише з розписаної партії — і то коли вийшла й краса, і жар: при ідеальних '
+      + 'обох чверть партії виходить розкішною. Нерозписана партія від цього не втратила нічого.</p>'
+      + '<p>Палій (челядник цеху або прокачаний «Палій» у ремеслі) розпалює горно сам, коли гончар його не '
+      + 'чіпає: без тріщин, без розпису й без розкішних, зате хоч уночі.</p></details>'
       + '</div>';
     const q = (s) => pane.querySelector(s);
     st.kUi = {
@@ -374,8 +382,63 @@
     const k = st.kView;
     const open = ((cat(st) && cat(st).techs) || []).filter((t) => k.techs.includes(t.key));
     if (!open.length) return '';
+    // Що гравець обрав минулого разу — те й пропонуємо, поки воно відкрите.
+    const last = HClicker.api.storeGet('clk.tech', '');
+    const mine = open.find((t) => t.key === last);
     const home = open.find((t) => t.home && t.home === k.style);
-    return (home || open[open.length - 1]).key;
+    return (mine || home || open[open.length - 1]).key;
+  }
+
+  const rememberTech = (api, tech) => api.storeSet('clk.tech', tech || '');
+
+  /// Від якої краси в партії вже трапляються розкішні вироби (сервер шле це в каталозі).
+  const luxFrom = (st) => (cat(st) && cat(st).paintLux) || 50;
+
+  /// Техніки, яких гравець ще не бачив відкритими. Першого разу мовчки запам'ятовуємо все старе:
+  /// «нове» має світитись на дев'ятому оновленні, а не на всьому підряд у новачка.
+  function newTechs(st, api) {
+    const open = (st.kView && st.kView.techs) || [];
+    const raw = api.storeGet('clk.techseen', null);
+    if (raw === null) {
+      api.storeSet('clk.techseen', open.filter((t) => !NEW_TECHS.includes(t)).join(','));
+      return open.filter((t) => NEW_TECHS.includes(t));
+    }
+    const seen = raw.split(',').filter(Boolean);
+    return open.filter((t) => !seen.includes(t));
+  }
+
+  const markTechsSeen = (st, api) => api.storeSet('clk.techseen', ((st.kView && st.kView.techs) || []).join(','));
+
+  /// Вибір техніки: картки з малюнком і словом про те, як грається. «Навмання» — для тих, кому все одно.
+  function pickTech(st, api) {
+    const k = st && st.kView;
+    // Кличе й смуга «Далі» (clicker-craft.js), коли панель горна ще навіть не на очах, — вікно однаково відкриється.
+    if (!k || !st.mine) return;
+    if (k.state === 'burning') { api.toast(st, 'Розписують до обпалу — горно вже палає', 'err'); return; }
+    const all = (cat(st) && cat(st).techs) || [];
+    const open = all.filter((t) => k.techs.includes(t.key));
+    if (!open.length) return;
+    if (open.length === 1) { rememberTech(api, open[0].key); startPaint(st, api, open[0].key); return; }
+    const fresh = newTechs(st, api);
+    const esc = (x) => api.esc(st, x);
+    const last = api.storeGet('clk.tech', '');
+    const card = (t) => '<button type="button" class="clkk-card' + (t.key === last ? ' on' : '')
+      + (t.home && t.home === k.style ? ' home' : '') + '" data-pick="' + esc(t.key) + '">'
+      + '<span class="clkk-cicon">' + (TECH_ICON[t.key] || '🎨') + (fresh.includes(t.key) ? '<i class="clkk-new">нове</i>' : '') + '</span>'
+      + '<b>' + esc(t.name) + '</b><span class="muted small">' + esc(HOWTO[t.key] || t.desc) + '</span>'
+      + (t.home && t.home === k.style ? '<span class="clkk-home small">рідна техніка: +10 краси</span>' : '') + '</button>';
+    const locked = all.filter((t) => !k.techs.includes(t.key));
+    const body = api.overlay(st, '<div class="clkk-pick">'
+      + '<div class="clk-sub">🖌 Чим розписувати</div>'
+      + '<p class="muted small">Розпис лягає на всю партію: що краще вийде, то більше дзвінких і розкішних виробів.</p>'
+      + '<div class="clkk-cards">' + open.map(card).join('') + '</div>'
+      + '<div class="clkk-prow"><button type="button" class="ghost clkk-any">🎲 Навмання</button></div>'
+      + (locked.length ? '<div class="muted small clkk-locked">Ще попереду: ' + locked.map((t) => esc(t.name) + ' — ' + esc(t.unlock)).join(' · ') + '</div>' : '')
+      + '</div>', { cls: 'clkk-ov' });
+    markTechsSeen(st, api);
+    const go = (tech) => { rememberTech(api, tech); api.closeOverlay(st); startPaint(st, api, tech); };
+    for (const el of body.querySelectorAll('[data-pick]')) el.onclick = () => go(el.dataset.pick);
+    body.querySelector('.clkk-any').onclick = () => go(open[Math.floor(Math.random() * open.length)].key);
   }
 
   function paintPrep(st, api) {
@@ -397,20 +460,31 @@
       const styles = '<div class="clkk-chips">' + [{ key: '', name: 'Простий' }].concat(owned).map((x) => '<button type="button" class="clkk-chip'
         + (x.key === k.style ? ' on' : '') + '" data-style="' + esc(x.key) + '"' + (mine ? '' : ' disabled') + '>'
         + api.jugSvg(x.key, 'clkk-chipjug', 'kst-' + (x.key || 'plain')) + '<span>' + esc(x.name) + '</span></button>').join('') + '</div>';
+      // Рядок технік: відкриті — кнопки в один дотик, закриті — з підказкою, чим відкриються. Новеньку видно здалеку.
+      const fresh = newTechs(st, api);
       const allTechs = (cat(st) && cat(st).techs) || [];
-      const techs = '<div class="clkk-techs">' + allTechs.map((t) => {
+      const row = '<div class="clkk-techrow">' + allTechs.map((t) => {
         const on = k.techs.includes(t.key);
         const home = t.home && t.home === k.style;
-        return '<button type="button" class="clkk-tech' + (on ? '' : ' locked') + (k.tech === t.key ? ' on' : '') + '" data-tech="' + esc(t.key) + '"'
-          + (on && mine ? '' : ' disabled') + ' title="' + esc(on ? t.desc : 'Відкриється ' + t.unlock) + '">'
-          + '<span class="clkk-ticon">' + (on ? TECH_ICON[t.key] || '🎨' : '🔒') + '</span><b>' + esc(t.name) + '</b>'
-          + '<span class="muted small">' + (on ? (home ? 'рідна техніка +10' : 'мінігра') : esc(t.unlock)) + '</span></button>';
+        return '<button type="button" class="clkk-tbtn' + (on ? '' : ' locked') + (k.tech === t.key ? ' on' : '')
+          + (home ? ' home' : '') + '" data-tech="' + esc(t.key) + '"' + (on && mine ? '' : ' disabled')
+          + ' title="' + esc(t.name + (on ? (home ? ' · рідна техніка, +10 краси' : '') : ' — відкриється ' + t.unlock)) + '">'
+          + (on ? TECH_ICON[t.key] || '🎨' : '🔒')
+          + (on && fresh.includes(t.key) ? '<i class="clkk-new">нове</i>' : '') + '</button>';
       }).join('') + '</div>';
       const tech = defaultTech(st);
-      const beauty = k.beauty > 0 ? '<span class="clkk-beautyn small">краса ' + k.beauty + '</span>' : '';
+      const beauty = k.beauty > 0
+        ? '<span class="clkk-beautyn small' + (k.beauty >= luxFrom(st) ? ' lux' : '') + '">краса ' + k.beauty + '</span>'
+        : '';
       paint = '<div class="clkk-paint"><details class="clkk-styles"><summary>🎨 Розпис: <b>' + esc(styleName(st, k.style)) + '</b>' + beauty + '</summary>'
-        + styles + '<details class="clkk-other"><summary>інша техніка</summary>' + techs + '</details></details>'
-        + (tech ? '<button type="button" class="ghost small clkk-decor"' + (mine ? '' : ' disabled') + '>🖌 Розписати</button>' : '')
+        + styles + '</details>' + row
+        + (tech
+          ? '<button type="button" class="primary clkk-decor"' + (mine ? '' : ' disabled') + '>🖌 Розписати'
+            + (fresh.length ? '<i class="clkk-new">нове</i>' : '') + '</button>'
+          : '')
+        + '<div class="muted small clkk-painthint">Розписана партія — дзвінкіші й розкішні вироби.'
+        + api.info('«Краса» 0–100 з мінігри підвищує шанс доброї (×1,6) і дзвінкої (×2,6) якості, а з красою від '
+          + luxFrom(st) + ' у партії трапляються й розкішні (×4,5). Нерозписана партія від цього не гіршає.') + '</div>'
         + '</div>';
     }
 
@@ -430,20 +504,31 @@
       + '</div>';
 
     // Солома — дрібниця для тих, хто палить сам: ховаємо за ▾, щоб не займала екран.
+    const loft = k.strawMax || 20;
     const straw = mySelf
-      ? '<details class="clkk-strawsec"><summary>🌾 Солома: ' + k.straw + '</summary>'
+      ? '<details class="clkk-strawsec"><summary>🌾 Солома: ' + k.straw + ' з ' + loft + '</summary>'
         + '<div class="clkk-row"><div class="muted small">в\'язка в горні — тріщин учетверо менше</div>'
         + '<div class="clkk-strawbtns"><label class="small"><input type="checkbox" class="clkk-strawon"'
         + (api.storeGet('clk.kiln.straw', '1') === '1' ? ' checked' : '') + (k.straw > 0 ? '' : ' disabled') + '> класти</label>'
-        + '<button type="button" class="ghost small clkk-buystraw"' + (mine && k.straw < 20 ? '' : ' disabled') + '>+1 · '
+        + '<button type="button" class="ghost small clkk-buystraw"' + (mine && k.straw < loft ? '' : ' disabled') + '>+1 · '
         + esc(api.potsShort(k.strawPrice)) + '</button></div></div></details>'
       : '';
 
-    if (!api.swap(ui.prep, paint + fire + straw)) return;
+    // Палій: коли він доступний, гончар мусить бачити, що горно може палати й без нього — і вміти це спинити.
+    const auto = k.autoCan
+      ? '<label class="clkk-auto small"><input type="checkbox" class="clkk-autobox"' + (k.auto ? ' checked' : '')
+        + (mine ? '' : ' disabled') + '> 🧑‍🏭 Палій палить сам'
+        + api.info('Коли горно холодне, партії ніхто не почав і сухих назбиралось хоч трохи (або горна не чіпали '
+          + Math.round((((cat(st) && cat(st).autoIdleMs) || 180000) / 60000)) + ' хв), палій розпалює сам — без тріщин і без '
+          + 'розпису. За ніч він так обпалює десятки партій. Прокачаний «Палій» пече дзвінкіше.') + '</label>'
+      : '';
+
+    if (!api.swap(ui.prep, paint + fire + straw + auto)) return;
     const b = (sel) => ui.prep.querySelector(sel);
     for (const el of ui.prep.querySelectorAll('[data-style]')) el.onclick = () => api.order(st, 'kiln', { op: 'paint', style: el.dataset.style });
-    for (const el of ui.prep.querySelectorAll('[data-tech]')) el.onclick = () => startPaint(st, api, el.dataset.tech);
-    if (b('.clkk-decor')) b('.clkk-decor').onclick = () => startPaint(st, api, defaultTech(st));
+    for (const el of ui.prep.querySelectorAll('[data-tech]')) el.onclick = () => { rememberTech(api, el.dataset.tech); startPaint(st, api, el.dataset.tech); };
+    if (b('.clkk-decor')) b('.clkk-decor').onclick = () => pickTech(st, api);
+    if (b('.clkk-autobox')) b('.clkk-autobox').onchange = (e) => api.order(st, 'guild', { op: 'auto', on: e.target.checked });
     if (b('.clkk-buystraw')) b('.clkk-buystraw').onclick = () => api.order(st, 'kiln', { op: 'straw', n: 1 });
     if (b('.clkk-strawon')) b('.clkk-strawon').onchange = (e) => api.storeSet('clk.kiln.straw', e.target.checked ? '1' : '0');
     for (const el of ui.prep.querySelectorAll('[data-self]')) {
@@ -457,7 +542,7 @@
     const ui = st.kUi;
     const l = k && k.last;
     if (!l || k.state === 'burning') { api.swap(ui.last, ''); return; }
-    const cnt = [0, 0, 0, 0];
+    const cnt = [0, 0, 0, 0, 0];
     for (const it of l.items) cnt[it[1]]++;
     const html = '<div class="clkk-lastbox"><div class="clk-sub">Останнє горно</div><div class="clkk-lastitems">'
       + l.items.slice(0, 24).map((it, i) => '<span class="clkk-li q' + it[1] + '" title="' + api.esc(st, wareName(st, it[0]) + ' — ' + QNAME[it[1]]) + '">'
@@ -471,6 +556,7 @@
 
   function summary(cnt) {
     const parts = [];
+    if (cnt[4]) parts.push('👑 ' + cnt[4] + ' ' + HClicker.api.plural(cnt[4], 'розкішний', 'розкішні', 'розкішних'));
     if (cnt[3]) parts.push('★ ' + cnt[3] + ' ' + HClicker.api.plural(cnt[3], 'дзвінкий', 'дзвінкі', 'дзвінких'));
     if (cnt[2]) parts.push(cnt[2] + ' ' + HClicker.api.plural(cnt[2], 'добрий', 'добрі', 'добрих'));
     if (cnt[1]) parts.push(cnt[1] + ' ' + HClicker.api.plural(cnt[1], 'звичайний', 'звичайні', 'звичайних'));
@@ -632,6 +718,31 @@
           + '<path d="M' + m[0] + ' 290V710" class="clkk-fguide"/>').join('');
         return bands + marks + '<g class="clkk-trail"></g>';
       }
+      case 'brush': {
+        const ghosts = s.petals.map((p, i) => '<path class="clkk-petal" data-petal="' + i + '" d="' + petalPath(p) + '"/>').join('');
+        return PLATE(body, '#4a2615') + '<circle cx="500" cy="500" r="430" fill="rgba(255,255,255,.06)"/>'
+          + ghosts + '<circle cx="500" cy="500" r="52" fill="' + slip + '" opacity=".45"/>'
+          + '<g class="clkk-trail"></g>';
+      }
+      case 'stamp': {
+        const marks = s.marks.map((m, i) => '<g class="clkk-mk" data-mark="' + i + '" transform="translate(' + m[0] + ' ' + m[1] + ')">'
+          + '<circle class="clkk-mkdot" r="26"/><circle class="clkk-mkring" r="90" fill="none" opacity="0"/></g>').join('');
+        return PLATE(body, '#4a2615')
+          + '<path d="M462 300h76l-8 52c72 26 112 78 112 138 0 82-68 130-142 130s-142-48-142-130c0-60 40-112 112-138z" '
+          + 'fill="rgba(0,0,0,.22)" stroke="rgba(0,0,0,.3)" stroke-width="6"/>'
+          + '<path d="M452 286h96v20h-96z" fill="rgba(0,0,0,.26)"/>'
+          + '<g class="clkk-stamps">' + marks + '</g><g class="clkk-trail"></g>';
+      }
+      case 'glaze': {
+        // Полива тримається черепка: шар змочених клітинок підрізаємо силуетом, а пролите повз — ні, його видно.
+        const d = vesselPath(s);
+        return '<rect x="0" y="0" width="1000" height="1000" fill="#2a211c"/>'
+          + '<defs><clipPath id="clkk-vclip"><path d="' + d + '"/></clipPath></defs>'
+          + '<path class="clkk-vessel" d="' + d + '" fill="' + body + '" stroke="#31190c" stroke-width="8"/>'
+          + '<g class="clkk-spill"></g><g class="clkk-wet" clip-path="url(#clkk-vclip)"></g><g class="clkk-trail"></g>'
+          + '<g class="clkk-ladle" opacity="0"><ellipse rx="46" ry="16" fill="#cbb287" stroke="#7a5c33" stroke-width="5"/>'
+          + '<path d="M40-6l46-40" stroke="#7a5c33" stroke-width="9" fill="none" stroke-linecap="round"/></g>';
+      }
       case 'marble': {
         return PLATE('#3a2419', '#1e120b') + '<g class="clkk-swirl"><g class="clkk-trail"></g></g>'
           + s.drops.map((d) => '<circle class="clkk-drop" cx="' + d[0] + '" cy="' + d[1] + '" r="48"/>').join('')
@@ -647,21 +758,84 @@
 
   const api0 = () => HClicker.api;
 
+  /// Пелюстка — квадратична дуга від основи до кінчика (та сама формула, що й KilnPaint.PetalAt на сервері).
+  function petalCtrl(p) {
+    const dx = p[2] - p[0];
+    const dy = p[3] - p[1];
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const bow = p[4] || 0;
+    return [(p[0] + p[2]) / 2 - (bow * dy) / len, (p[1] + p[3]) / 2 + (bow * dx) / len];
+  }
+
+  function petalPath(p) {
+    const c = petalCtrl(p);
+    return 'M' + p[0] + ' ' + p[1] + 'Q' + c[0].toFixed(1) + ' ' + c[1].toFixed(1) + ' ' + p[2] + ' ' + p[3];
+  }
+
+  /// Силует посудини для поливи: з півширин на кожен рядок клітинок (сервер рахує красу по тих самих числах).
+  function vesselPath(s) {
+    const left = [];
+    const right = [];
+    for (let cy = s.top; cy <= s.bottom; cy++) {
+      const y = cy * CELL + CELL / 2;
+      left.push([500 - s.half[cy], y]);
+      right.push([500 + s.half[cy], y]);
+    }
+    if (!left.length) return '';
+    const top = s.top * CELL;
+    const bottom = (s.bottom + 1) * CELL;
+    let d = 'M' + left[0][0] + ' ' + top;
+    for (const p of left) d += 'L' + p[0] + ' ' + p[1];
+    d += 'L' + left[left.length - 1][0] + ' ' + bottom + 'L' + right[right.length - 1][0] + ' ' + bottom;
+    for (let i = right.length - 1; i >= 0; i--) d += 'L' + right[i][0] + ' ' + right[i][1];
+    return d + 'L' + right[0][0] + ' ' + top + 'Z';
+  }
+
+  const inVessel = (s, cx, cy) =>
+    cy >= s.top && cy <= s.bottom && Math.abs(cx * CELL + CELL / 2 - 500) <= s.half[cy];
+
+  function vesselCells(s) {
+    let n = 0;
+    for (let cy = 0; cy < GRID; cy++) for (let cx = 0; cx < GRID; cx++) if (inVessel(s, cx, cy)) n++;
+    return n;
+  }
+
   const HOWTO = {
     rizh: 'Торкнись біля ріжка й тримай: коло закрутиться. Веди палець угору-вниз, щоб ріжок ішов по пунктиру, — один оберт.',
     ryt: 'Проведи по пунктирному контуру, не відриваючи руки, — усе коло. Мимо контуру — подряпина на білому.',
     flyand: 'На кожній позначці протягни рівний штрих через усі смуги — у бік стрілки.',
     marble: 'Торкнись кожної позначки (крапля), а тоді різко крутни пальцем коло навколо центру.',
     losk: 'Натирай пунктирні смуги — водь пальцем туди-сюди, поки не заблищать. Поза смугами не три.',
+    brush: 'Проведи мазок по кожній примарній пелюстці — від серединки до кінчика. Швидше рука — тонша лінія.',
+    stamp: 'Торкнись першої позначки — і далі вони спалахуватимуть по черзі. Тисни, коли кільце стисне позначку.',
+    glaze: 'Води ополоником по черепку — полива стікає ще на два рядки вниз. Укрий усе й не лий повз.',
   };
 
-  /// Скільки часу мінігра дає на роботу. Ріжкування — один оберт кола, решта — 14 с.
-  const limitOf = (p) => (p.tech === 'rizh' ? p.shape.period + 1200 : 14000);
+  /// Скільки часу мінігра дає на роботу. Ріжкування — один оберт кола, штампик — поки не згаснуть усі позначки.
+  const limitOf = (p) => (p.tech === 'rizh' ? p.shape.period + 1200
+    : p.tech === 'stamp' ? p.shape.marks.length * p.shape.step + 1600
+      : p.tech === 'glaze' ? 16000 : 14000);
   /// Крок вибірки підбираємо під цей час: 480 точок мусять покрити ВСЮ мінігру, інакше вона обривалась на
   /// одинадцятій секунді з повним ріжком — «не дало домалювати».
   const sampleOf = (limit) => Math.max(SAMPLE_MS, Math.ceil((limit + 800) / (MAX_POINTS - 12)));
   /// Серверу треба хоч 12 точок і півтори секунди роботи — менше він однаково не зарахує.
   const ready = (g) => g.pts.length >= 12 && g.pts[g.pts.length - 1][0] - g.pts[0][0] >= 1600;
+
+  /// Полотно мусить лишатись КВАДРАТНИМ (інакше візерунок літербоксить) і вміщатись у вікно разом із кнопками.
+  /// Вікно ж обмежене висотою картки, а не екрана, тож рахуємо вільне місце самі: CSS такого не знає.
+  function fitCanvas(st, svg) {
+    try {
+      const wrap = svg.parentElement;
+      const paint = wrap.parentElement;
+      let used = 0;
+      for (const el of paint.children) if (el !== wrap) used += el.getBoundingClientRect().height + 8;
+      const room = ((st.ov && st.ov.el && st.ov.el.clientHeight) || window.innerHeight) - 56 - used;
+      // Ширина головна: якщо вільної висоти зовсім мало, краще трошки прокрутити вікно, ніж мінігра з поштову марку.
+      const wide = Math.min(460, Math.floor(wrap.clientWidth || 460));
+      const side = Math.max(240, Math.min(wide, Math.max(Math.floor(room), 300)));
+      svg.style.width = side + 'px';
+    } catch { /* не зміряли — лишаємо те, що дав CSS */ }
+  }
 
   function openPaint(st, api, p) {
     const info = techInfo(st, p.tech);
@@ -680,6 +854,7 @@
     });
     const svg = body.querySelector('.clkk-canvas');
     svg.style.setProperty('--clkk-slip', slipOf(st));
+    fitCanvas(st, svg);
     const limit = limitOf(p);
     const g = {
       p, svg, trail: svg.querySelector('.clkk-trail'), disc: svg.querySelector('.clkk-disc'), shine: svg.querySelector('.clkk-shine'),
@@ -687,11 +862,23 @@
       done: body.querySelector('.clkk-done'), howto: body.querySelector('.clkk-howto'), pts: [], t0: 0, last: null, down: false,
       pointer: null, strokes: 0, good: 0, drips: 0, sent: false, full: false, note: '',
       brushAt: 0, len: new Map(), limit, sample: sampleOf(limit), curStroke: null, curFrom: 0, curExtra: null,
+      // Дев'яте оновлення: пензель (стан пелюсток), штампик (позначки) і полива (змочені клітинки).
+      wet: new Map(), covered: 0, taps: 0, marks: [...svg.querySelectorAll('[data-mark]')],
+      petals: [...svg.querySelectorAll('[data-petal]')], wetG: svg.querySelector('.clkk-wet'),
+      spillG: svg.querySelector('.clkk-spill'), ladle: svg.querySelector('.clkk-ladle'),
+      bodyCells: p.tech === 'glaze' ? vesselCells(p.shape) : 0,
     };
     st.kPaint = g;
     body.querySelector('.clkk-again').onclick = () => startPaint(st, api, p.tech);
     g.done.onclick = () => submitPaint(st, api, true);
+    // Полотно 1000×1000 у боксі будь-якої форми: коли вікно нижче за ширину, preserveAspectRatio літербоксить
+    // картинку, і ділення на getBoundingClientRect клало штрих не під курсор. Матриця екрана знає правду завжди.
     const pos = (e) => {
+      const m = svg.getScreenCTM && svg.getScreenCTM();
+      if (m && typeof DOMPoint === 'function') {
+        const q = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+        return [q.x, q.y];
+      }
       const r = svg.getBoundingClientRect();
       return [((e.clientX - r.left) / r.width) * 1000, ((e.clientY - r.top) / r.height) * 1000];
     };
@@ -750,6 +937,14 @@
     g.drips = 0;
     g.full = false;
     g.len = new Map();
+    g.wet = new Map();
+    g.covered = 0;
+    g.taps = 0;
+    g.marks = [...g.svg.querySelectorAll('[data-mark]')];
+    g.petals = [...g.svg.querySelectorAll('[data-petal]')];
+    g.wetG = g.svg.querySelector('.clkk-wet');
+    g.spillG = g.svg.querySelector('.clkk-spill');
+    g.ladle = g.svg.querySelector('.clkk-ladle');
     g.curStroke = null;
     g.curExtra = null;
     g.curFrom = 0;
@@ -800,8 +995,62 @@
     }
     g.curStroke.setAttribute('points', g.curStroke.getAttribute('points') + ' ' + px.toFixed(0) + ',' + py.toFixed(0));
     if (g.p.tech === 'losk' && prev && !down) rub(g, prev[1], prev[2], x, y);
+    // Пензель: ширина мазка — від швидкості руки (швидко — тонко), тож кожен відрізок малюється окремо.
+    if (g.p.tech === 'brush' && prev && !down) {
+      const dt = Math.max(1, ms - prev[0]);
+      const v = Math.hypot(x - prev[1], y - prev[2]) / dt;
+      const w = Math.max(7, Math.min(32, 32 - 13 * v));
+      const seg = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      seg.setAttribute('x1', prev[1].toFixed(0));
+      seg.setAttribute('y1', prev[2].toFixed(0));
+      seg.setAttribute('x2', x.toFixed(0));
+      seg.setAttribute('y2', y.toFixed(0));
+      seg.setAttribute('stroke-width', w.toFixed(1));
+      seg.setAttribute('class', 'clkk-bseg');
+      g.trail.appendChild(seg);
+    }
+    if (g.p.tech === 'glaze') {
+      if (prev && !down) pour(g, prev[1], prev[2], x, y);
+      if (g.ladle) {
+        g.ladle.setAttribute('opacity', '1');
+        g.ladle.setAttribute('transform', 'translate(' + x.toFixed(0) + ' ' + y.toFixed(0) + ')');
+      }
+    }
     if (Date.now() - g.brushAt > 260) { g.brushAt = Date.now(); api.sfx('brush'); }
     if (g.pts.length >= MAX_POINTS) g.full = true;
+  }
+
+  /// Полива: ті самі клітинки 40×40, що й на сервері, і той самий патьок на два рядки вниз, поки тримається черепка.
+  function pour(g, x0, y0, x1, y1) {
+    const s = g.p.shape;
+    const d = Math.hypot(x1 - x0, y1 - y0);
+    if (d > 200) return;
+    const steps = Math.max(1, Math.ceil(d / 5));
+    for (let k = 0; k < steps; k++) {
+      const t = (k + 0.5) / steps;
+      const cx = Math.floor((x0 + (x1 - x0) * t) / CELL);
+      const cy = Math.floor((y0 + (y1 - y0) * t) / CELL);
+      if (cx < 0 || cy < 0 || cx >= GRID || cy >= GRID) continue;
+      wetCell(g, s, cx, cy, !inVessel(s, cx, cy));
+      for (let i = 1; i <= DRIP; i++) {
+        if (!inVessel(s, cx, cy + i)) break;
+        wetCell(g, s, cx, cy + i, false);
+      }
+    }
+  }
+
+  function wetCell(g, s, cx, cy, spill) {
+    const key = cy * GRID + cx;
+    if (g.wet.has(key)) return;
+    g.wet.set(key, spill ? -1 : 1);
+    if (!spill && inVessel(s, cx, cy)) g.covered++;
+    const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    r.setAttribute('x', cx * CELL);
+    r.setAttribute('y', cy * CELL);
+    r.setAttribute('width', CELL);
+    r.setAttribute('height', CELL);
+    r.setAttribute('class', spill ? 'clkk-gcell bad' : 'clkk-gcell');
+    (spill ? g.spillG || g.wetG : g.wetG).appendChild(r);
   }
 
   /// Лощіння: той самий розклад шляху по клітинках 40×40, що й на сервері, — клітинка блищить від 100 одиниць.
@@ -893,6 +1142,35 @@
         return;
       }
     }
+    // Штампик: короткий дотик — це відбиток. Позначка, у яку влучили, спалахує; коли всі відбито — годі.
+    if (p.tech === 'stamp') {
+      const span = s[s.length - 1][0] - s[0][0];
+      const w = Math.max(...s.map((q) => q[1])) - Math.min(...s.map((q) => q[1]));
+      const hgt = Math.max(...s.map((q) => q[2])) - Math.min(...s.map((q) => q[2]));
+      if (span <= 500 && w <= 70 && hgt <= 70) {
+        g.taps++;
+        let best = -1;
+        let near = 110;
+        p.shape.marks.forEach((m, i) => {
+          const d = Math.hypot(s[0][1] - m[0], s[0][2] - m[1]);
+          if (d <= near) { near = d; best = i; }
+        });
+        if (best >= 0 && g.marks[best]) g.marks[best].classList.add('hit');
+        api.sfx('tap');
+      } else note(g, 'Штампик — це короткий дотик, а не мазок.');
+      if (g.taps >= p.shape.marks.length && ready(g)) { setTimeout(() => submitPaint(st, api, false), 400); return; }
+    }
+    // Полива: черепок укритий — далі лити нема куди.
+    if (p.tech === 'glaze' && g.bodyCells > 0 && g.covered >= g.bodyCells * 0.97 && ready(g)) {
+      setTimeout(() => submitPaint(st, api, false), 300);
+      return;
+    }
+    // Пензель: по мазку на кожну пелюстку — і квітка готова.
+    if (p.tech === 'brush' && g.strokes >= p.shape.petals.length) {
+      if (!ready(g)) { note(g, 'Ще мазок — розпис це хоч півтори секунди роботи.'); return; }
+      setTimeout(() => submitPaint(st, api, false), 350);
+      return;
+    }
     // Фарба в ріжку скінчилась (уперлись у стелю точок) — домальовуємо цей штрих і здаємо роботу.
     if (g.full) submitPaint(st, api, true);
   }
@@ -910,8 +1188,25 @@
       const deg = g.t0 ? (g.p.shape.dir * 360 * t) / g.p.shape.period : 0;
       g.disc.setAttribute('transform', 'rotate(' + (deg % 360).toFixed(2) + ' 500 500)');
     }
+    // Штампик: кільце стискається до позначки й гасне — влучати треба саме в цю мить.
+    if (g.p.tech === 'stamp' && g.marks.length) {
+      const step = g.p.shape.step;
+      const ring = 900;
+      g.marks.forEach((el, i) => {
+        const r = el.querySelector('.clkk-mkring');
+        if (!r) return;
+        const k = (t - (i * step - ring)) / ring;
+        if (!g.t0 || k < 0 || k > 1.25) { r.setAttribute('opacity', '0'); el.classList.remove('now'); return; }
+        r.setAttribute('r', Math.max(22, 90 - 68 * Math.min(1, k)).toFixed(1));
+        r.setAttribute('opacity', (k > 1 ? 1 - (k - 1) * 4 : 0.35 + 0.65 * k).toFixed(2));
+        el.classList.toggle('now', k > 0.8 && k < 1.12);
+      });
+    }
     g.bar.style.width = Math.min(100, (t / g.limit) * 100).toFixed(1) + '%';
-    const info = g.t0 ? Math.max(0, Math.ceil((g.limit - t) / 1000)) + ' с' : 'чекаю на дотик';
+    let info = g.t0 ? Math.max(0, Math.ceil((g.limit - t) / 1000)) + ' с' : 'чекаю на дотик';
+    if (g.t0 && g.p.tech === 'glaze' && g.bodyCells > 0) info = 'укрито ' + Math.round((g.covered / g.bodyCells) * 100) + ' % · ' + info;
+    if (g.t0 && g.p.tech === 'stamp') info = 'відбитків ' + g.taps + ' з ' + g.p.shape.marks.length + ' · ' + info;
+    if (g.t0 && g.p.tech === 'brush') info = 'пелюсток ' + Math.min(g.strokes, g.p.shape.petals.length) + ' з ' + g.p.shape.petals.length + ' · ' + info;
     if (g.info.textContent !== info) g.info.textContent = info;
     if (g.t0 && t >= g.limit && !g.down) submitPaint(st, api, false);
     if (g.t0 && t >= g.limit + 3000) submitPaint(st, api, false);
@@ -978,7 +1273,7 @@
   }
 
   function reveal(st, api, l, replay) {
-    const cnt = [0, 0, 0, 0];
+    const cnt = [0, 0, 0, 0, 0];
     for (const it of l.items) cnt[it[1]]++;
     const quick = reduced();
     const step = quick ? 0 : Math.max(120, Math.min(320, 3200 / Math.max(1, l.items.length)));
@@ -994,7 +1289,7 @@
       + '<div class="clkk-rv-sum" style="animation-delay:' + (l.items.length * step + 200) + 'ms"><b>' + summary(cnt) + '</b>'
       + (l.shards ? '<div class="small muted">черепки на засипку: +' + api.potsShort(l.shards) + '</div>' : '')
       + (l.sold ? '<div class="small muted">комора повна — на базар: +' + api.potsShort(l.sold) + '</div>' : '')
-      + (!l.helper && l.items.length >= 4 && cnt[3] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
+      + (!l.helper && l.items.length >= 4 && cnt[3] + cnt[4] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
       + '<button type="button" class="primary clkk-tostore">🧺 В комору</button></div>'
       + '</div>', { cls: 'clkk-ov' });
     body.querySelector('.clkk-tostore').onclick = () => {
@@ -1013,7 +1308,7 @@
     if (quick) return;
     const timers = [];
     l.items.forEach((it, i) => {
-      if (it[1] === 3 || it[1] === 0) timers.push(setTimeout(() => api.sfx(it[1] === 3 ? 'ding' : 'crack'), i * step + 150));
+      if (it[1] >= 3 || it[1] === 0) timers.push(setTimeout(() => api.sfx(it[1] >= 3 ? 'ding' : 'crack'), i * step + 150));
     });
     const prev = st.ov.onClose;
     st.ov.onClose = () => { timers.forEach(clearTimeout); if (prev) prev(); };
@@ -1031,6 +1326,8 @@
       st.kPaint = null;
       st.kScene = null;
       st.kSeen = null;
+      // Смуга «Шлях виробу» (clicker-craft.js) кличе це на кроці «Розписати».
+      api.startPaint = (s) => pickTech(s || st, api);
       mountTab(st, api);
     },
 

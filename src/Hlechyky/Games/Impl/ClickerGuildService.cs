@@ -517,7 +517,7 @@ public sealed class ClickerGuildService
                 var ware = Str(g["ware"]);
                 var style = Str(g["style"]);
                 var q = Int(g["quality"]);
-                if (Clicker.WareOf(ware) is null || q is < 1 or > 3 || (style.Length > 0 && Clicker.Styles.All(x => x.Key != style))) continue;
+                if (Clicker.WareOf(ware) is null || q is < 1 or > Clicker.QualityMax || (style.Length > 0 && Clicker.Styles.All(x => x.Key != style))) continue;
                 gifts.Add(new { from = Str(g["from"]), ware, style, q, at = Str(g["at"]) });
                 if (gifts.Count >= ShelfSize) break;
             }

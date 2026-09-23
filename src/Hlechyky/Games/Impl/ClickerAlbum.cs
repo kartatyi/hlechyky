@@ -378,7 +378,7 @@ public sealed partial class Clicker
         // Зірка без клітинки — зіпсоване збереження: зірка й відкриває.
         for (var i = 0; i < _albumCells.Length; i++) _albumCells[i] |= _albumStars[i];
         foreach (var t in row.Stove ?? [])
-            if (t is not null && _stove.Count < StoveSlots && t.Quality is >= StoveMinQuality and <= 3 && AlbumStyleIndex(t.Style) >= 0)
+            if (t is not null && _stove.Count < StoveSlots && t.Quality is >= StoveMinQuality and <= QualityMax && AlbumStyleIndex(t.Style) >= 0)
                 _stove.Add(new StoveTile(t.Style ?? "", t.Quality));
         foreach (var key in row.Finds ?? [])
         {
