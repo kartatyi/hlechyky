@@ -31,6 +31,7 @@ public class SnakeModesTests
         var h = new RoomHarness("snake-coop", seed: 42);
         h.Join("Оля");
         h.Join("Петро");
+        h.Start();                 // від одного до чотирьох: стартує господар, а не повний стіл
         return h;
     }
 
@@ -472,22 +473,27 @@ public class SnakeModesTests
         // де програти неможливо. Довжина від цього не губиться, вона йде окремо, у Scores.
         Assert.Empty(h.Room.Result!.Winners);
         Assert.True(h.Room.Result.Draw);
-        Assert.Equal($"Змійка на двох: Оля і Петро виростили змійку до {len}", LastLog(h));
+        Assert.Equal($"Змійка на всіх: Оля і Петро виростили змійку до {len}", LastLog(h));
         Assert.Equal("end", h.View(null).GetProperty("winner").GetString());
     }
 
     [Fact]
-    public void Leaving_the_pair_mid_round_ends_it_as_a_technical_loss()
+    public void Leaving_the_pair_mid_round_hands_all_the_arrows_to_the_one_who_stayed()
     {
         var h = Coop();
         ReadyCoop(h);
         h.Tick(2);
         h.Leave("Петро");
 
-        Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("встав з-за столу", LastLog(h));
-        Assert.Equal("end", h.View(null).GetProperty("winner").GetString());   // поле треба притемнити
+        // Раніше вихід напарника закривав раунд і записував тому, хто лишився, «перемогу» в кооперативі.
+        // Тепер змійка повзе далі, а Оля крутить усі чотири стрілки.
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(15, h.View(0).GetProperty("keys")[0].GetInt32());
+        Assert.Equal("усі стрілки", h.Room.Game.SeatName(0));
+        Assert.True(h.Act(0, "turn", new { dir = 1 }).Ok);
+        h.Tick(1);
+        Assert.Equal(1, h.View(0).GetProperty("dir").GetInt32());
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("winner").ValueKind);
     }
 
     [Fact]
@@ -594,6 +600,7 @@ public class SnakeModesTests
             var h = new RoomHarness("snake-coop", seed: seed);
             h.Join("Оля");
             h.Join("Петро");
+            h.Start();
             ReadyCoop(h);
             for (var i = 0; i < 10; i++)
             {
