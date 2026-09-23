@@ -266,6 +266,28 @@ public class MelodyTests
     }
 
     [Fact]
+    public void Twelve_friends_fit_at_one_table_and_everyone_scores()
+    {
+        string[] twelve = ["Оля", "Петро", "Ганна", "Іван", "Марта", "Богдан", "Леся", "Остап", "Ніна", "Юрко", "Даша", "Тарас"];
+        var h = new RoomHarness("melody", seed: 3, services: RoomHarness.WithService<IMelodySource>(new FakeMelodySource(Songs)));
+        foreach (var n in twelve) Assert.True(h.Join(n).Ok);
+        // Тринадцятий уже не сідає.
+        Assert.False(h.Join("Зайвий").Ok);
+        h.Start();
+        Until(h, "play");
+        Assert.Equal(12, h.View(null).GetProperty("scores").GetArrayLength());
+        Assert.Equal("1", h.Room.Game.SeatName(0));
+        Assert.Equal("12", h.Room.Game.SeatName(11));
+
+        // Останній за столом вгадує першим — бонус першості його, решта бере без бонусу.
+        Assert.True(Guess(h, 11, "обійми").Ok);
+        Assert.True(Guess(h, 0, "обійми").Ok);
+        Assert.Equal(Melody.TitlePoints + Melody.TitleFirst, Score(h, 11));
+        Assert.Equal(Melody.TitlePoints, Score(h, 0));
+
+    }
+
+    [Fact]
     public void Rematch_starts_over_with_zero_scores()
     {
         var h = Table(new FakeMelodySource([Songs[0]]), new { rounds = "5", clip = "10" });

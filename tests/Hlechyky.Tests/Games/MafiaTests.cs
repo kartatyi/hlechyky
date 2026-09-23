@@ -1069,7 +1069,7 @@ public class MafiaTests
         Assert.True(game.Hidden);
         Assert.False(game.Rated);
         Assert.Equal("byHost", game.Start);
-        Assert.Equal(4, game.MinPlayers);
+        Assert.Equal(3, game.MinPlayers);
         Assert.Equal(12, game.MaxPlayers);
         Assert.Equal(Mafia.TickMs, game.TickMs);
         Assert.Equal("mafia", game.Module);

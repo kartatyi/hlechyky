@@ -350,6 +350,118 @@ public class MafiaOptionsTests
         Assert.True(h.Act(mafia, "kill", new { seat = victim }).Ok);
     }
 
+    [Fact]
+    public void A_quiet_night_with_a_lone_mafioso_ends_once_everyone_else_is_done()
+    {
+        // Шептатись одному нема з ким — тиха ніч на чотирьох (один мафіозі) не тягнеться дарма.
+        var h = Table(new { first = "quiet" }, 4);
+        To(h, "night");
+        var sheriff = Seat(h, "sheriff");
+        h.Act(sheriff, "check", new { seat = OtherCivil(h, sheriff) });
+        h.Tick(2);
+
+        Assert.Equal("day", Phase(h));
+        Assert.Equal(4, AliveSeats(h).Length);
+    }
+
+    // =========================================================================================
+    // Утрьох
+    // =========================================================================================
+
+    [Fact]
+    public void Three_friends_can_sit_down_to_a_short_game()
+    {
+        var h = Table(null, 3);
+
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        var roles = Roles(h);
+        Assert.Equal(3, roles.Count);
+        Assert.Single(roles.Values, r => r == "mafia");
+        Assert.Single(roles.Values, r => r == "sheriff");
+        Assert.Single(roles.Values, r => r == "civil");
+    }
+
+    [Fact]
+    public void Two_are_still_too_few()
+    {
+        var h = new RoomHarness("mafia");
+        h.Join(Villagers[0]);
+        h.Join(Villagers[1]);
+
+        Assert.False(h.Start().Ok);
+        Assert.Equal(RoomStatus.Lobby, h.Room.Status);
+    }
+
+    [Fact]
+    public void Three_never_get_a_bloody_first_night_even_when_the_table_asked_for_one()
+    {
+        var h = Table(new { first = "kill", doctor = "on", extra = "maniac,kuma" }, 3);
+        // Зайві ролі на трьох відпадають: лишається мафіозі, комісар і мирний.
+        Assert.Equal(new[] { "civil", "mafia", "sheriff" }, Roles(h).Values.Order().ToArray());
+        Assert.False(Rules(h).GetProperty("firstNightKill").GetBoolean());
+
+        To(h, "night");
+        var mafia = Seat(h, "mafia");
+        var r = h.Act(mafia, "kill", new { seat = Seat(h, "civil") });
+        Assert.False(r.Ok);
+
+        // Мафіозі один — шептатись нема з ким: ніч кінчається, щойно комісар перевірив.
+        var sheriff = Seat(h, "sheriff");
+        Assert.True(h.Act(sheriff, "check", new { seat = mafia }).Ok);
+        h.Tick(2);
+        Assert.Equal("day", Phase(h));
+        Assert.Equal(3, AliveSeats(h).Length);
+    }
+
+    [Fact]
+    public void Three_exile_the_mafioso_and_the_village_wins()
+    {
+        var h = Table(null, 3);
+        var mafia = Seat(h, "mafia");
+        var sheriff = Seat(h, "sheriff");
+        var civil = Seat(h, "civil");
+        To(h, "vote");
+        h.Act(sheriff, "vote", new { seat = mafia });
+        h.Act(civil, "vote", new { seat = mafia });
+        h.Act(mafia, "vote", new { seat = sheriff });
+        Until(h, () => h.Room.Status == RoomStatus.Finished);
+
+        Assert.Equal("civil", h.View(null).GetProperty("result").GetProperty("team").GetString());
+        Assert.Equal(new[] { civil, sheriff }.Order().ToArray(), h.Room.Result!.Winners.Order().ToArray());
+    }
+
+    [Fact]
+    public void Three_exile_an_honest_one_and_the_mafia_wins()
+    {
+        var h = Table(null, 3);
+        var mafia = Seat(h, "mafia");
+        var sheriff = Seat(h, "sheriff");
+        var civil = Seat(h, "civil");
+        To(h, "vote");
+        // Мафіозі переконав мирного, що комісар — то він сам.
+        h.Act(mafia, "vote", new { seat = sheriff });
+        h.Act(civil, "vote", new { seat = sheriff });
+        Until(h, () => h.Room.Status == RoomStatus.Finished);
+
+        Assert.Equal("mafia", h.View(null).GetProperty("result").GetProperty("team").GetString());
+        Assert.Equal([mafia], h.Room.Result!.Winners);
+    }
+
+    [Fact]
+    public void Three_who_cannot_agree_hand_the_night_to_the_mafia()
+    {
+        var h = Table(null, 3);
+        var mafia = Seat(h, "mafia");
+        var civil = Seat(h, "civil");
+        To(h, "vote");
+        // Ніхто нікого не вигнав — друга ніч уже справжня, і ніж її вирішує.
+        Until(h, () => Day(h) == 2 && Phase(h) == "night");
+        Assert.True(h.Act(mafia, "kill", new { seat = civil }).Ok);
+        Until(h, () => h.Room.Status == RoomStatus.Finished);
+
+        Assert.Equal([mafia], h.Room.Result!.Winners);
+    }
+
     // =========================================================================================
     // Дон
     // =========================================================================================

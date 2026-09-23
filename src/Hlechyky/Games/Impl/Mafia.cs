@@ -61,7 +61,7 @@ public sealed record MafiaRulesView(
     bool SelfHeal, bool OpenVotes, bool Reveal, bool FirstNightKill);
 
 /// <summary>
-/// Мафія на 4–12 душ. Уся сіль у тому, що обговорення йде у звичайних Балачках, а кімната тримає лише
+/// Мафія на 3–12 душ. Уся сіль у тому, що обговорення йде у звичайних Балачках, а кімната тримає лише
 /// те, чого в чаті не зробиш: таємні ролі, нічні дії наосліп і чесний підрахунок голосів. Партія
 /// рухається не ходами, а годинником: фази міняє <see cref="Tick"/> раз на секунду за <c>Ctx.Clock</c>,
 /// тож ніхто не може ні прискорити ніч, ні розтягнути голосування.
@@ -86,6 +86,12 @@ public sealed class Mafia : Game
     public const int MinAlive = 3;
     /// <summary>Скільки разів за партію можна смикнути модель. Партія має жити й без неї.</summary>
     public const int MaxFlavors = 4;
+    /// <summary>
+    /// Найменший стіл — утрьох (24.09.2026: друзі частіше збираються по двоє-четверо). Утрьох це коротка
+    /// партія-блеф: мафіозі, комісар і мирний, перша ніч завжди тиха (з ножем мафія вигравала б уже на
+    /// ранок), а вдень мирному треба вирішити, хто з двох «комісарів» справжній.
+    /// </summary>
+    public const int TrioSize = 3;
 
     /// <summary>Тривалості фаз для кожного темпу: знайомство / ніч / день / голосування.</summary>
     public static readonly IReadOnlyDictionary<string, (int Intro, int Night, int Day, int Vote)> Paces =
@@ -97,7 +103,7 @@ public sealed class Mafia : Game
         };
 
     public override GameInfo Info { get; } = new(
-        "mafia", "Мафія", "мафію", GameGroup.Party, 4, 12,
+        "mafia", "Мафія", "мафію", GameGroup.Party, TrioSize, 12,
         TickMs: TickMs, Start: StartMode.ByHost, Hidden: true, Rated: false,
         Options:
         [
@@ -329,7 +335,13 @@ public sealed class Mafia : Game
     public static bool IsMafia(MafiaRole role) => role is MafiaRole.Mafia or MafiaRole.Don;
 
     /// <summary>Ніч, у яку ножів не виймають: перша, якщо стіл про це домовився.</summary>
-    bool QuietNight => !_firstKill && _day == 1;
+    bool QuietNight => !FirstKill(_seats.Length) && _day == 1;
+
+    /// <summary>
+    /// Чи ллється кров першої ночі. Утрьох — ніколи, хоч би що обрали в лобі: мафіозі з ножем за першу ж
+    /// ніч лишався б сам на сам з одним мирним, тобто вигравав би, не сказавши й слова.
+    /// </summary>
+    bool FirstKill(int players) => _firstKill && players > TrioSize;
 
     // =========================================================================================
     // Фази
@@ -423,7 +435,18 @@ public sealed class Mafia : Game
     {
         if (_phase != MafiaPhase.Night) return false;
         // Тиху ніч не вкорочуємо: вона саме для того й потрібна, щоб недобрі люди встигли нашепотітись.
-        if (QuietNight) return false;
+        // Хіба що шептатись нема з ким — мафіозі один: тоді вона кінчається, щойно решта зробила своє.
+        if (QuietNight)
+        {
+            if (Alive().Count(s => IsMafia(_roles[s])) >= 2) return false;
+            return Alive().All(s => _roles[s] switch
+            {
+                MafiaRole.Sheriff => _checkedTonight,
+                MafiaRole.Doctor => _heal is not null,
+                MafiaRole.Kuma => _block is not null,
+                _ => true,
+            });
+        }
         var killers = false;
         foreach (var seat in Alive())
         {
@@ -880,11 +903,14 @@ public sealed class Mafia : Game
     /// <summary>Налаштування столу, зведені до чисел. Це не таємниця: усі за столом грають за одними правилами.</summary>
     MafiaRulesView Rules(int players)
     {
-        var cast = Plan(Math.Max(players, Info.MinPlayers));
+        // Поки за столом менше трьох, склад ще невідомий — показуємо звичайний стіл на чотирьох, а не урізаний
+        // утрьох (інакше лобі щойно поставленого столу казало б, що маньяка й першої крові не буде).
+        var n = players >= TrioSize ? players : TrioSize + 1;
+        var cast = Plan(n);
         return new MafiaRulesView(
             _pace, _introMs, _nightMs, _dayMs, _voteMs,
             cast.Mafia, cast.Don, cast.Sheriff > 0, cast.Doctor > 0, cast.Maniac > 0, cast.Kuma > 0,
-            _selfHeal, _openVotes, _reveal, _firstKill);
+            _selfHeal, _openVotes, _reveal, FirstKill(n));
     }
 
     /// <summary>

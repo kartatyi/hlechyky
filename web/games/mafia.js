@@ -31,6 +31,16 @@
     kuma: { title: 'Кума', cls: 'mf-r-kuma' },
     civil: { title: 'Мирний', cls: 'mf-r-civil' },
   };
+  /// Картка ролі на знайомстві: хто ти й чого хочеш — новачкові без цього нема за що вхопитись.
+  const ROLE_CARD = {
+    mafia: { icon: '🔪', text: 'Уночі разом зі своїми обираєте, хто не прокинеться, а вдень ти — найчесніший мирний у селі. Виграєте, коли вас не менше, ніж чесних.' },
+    don: { icon: '🎩', text: 'Голова мафії: уночі твоє слово вирішальне, а комісару ти здаєшся мирним. Удень — ні пари з вуст.' },
+    sheriff: { icon: '🔎', text: 'Щоночі перевіряєш одного: мафія чи ні. Удень переконай село — але обережно, мафія шукає саме тебе.' },
+    doctor: { icon: '💊', text: 'Щоночі рятуєш одного від ножа. Двічі поспіль ту саму людину не можна. Граєш за мирних.' },
+    maniac: { icon: '🪓', text: 'Сам проти всіх: ріжеш щоночі й виграєш, коли лишишся сам або з одним-єдиним мирним.' },
+    kuma: { icon: '🥧', text: 'Уночі йдеш у гості: до кого зайшла, той цієї ночі нічого не встигне. Граєш за мирних.' },
+    civil: { icon: '🌾', text: 'Уночі спиш, удень шукаєш мафію й голосуєш. Твоя зброя — язик і пильне око.' },
+  };
   const TEAM = { mafia: 'Перемогла мафія', civil: 'Перемогли мирні', maniac: 'Переміг маньяк', draw: 'Нічия' };
   const PACE = { calm: 'спокійний темп', fast: 'швидкий темп', slow: 'неспішний темп' };
 
@@ -182,6 +192,9 @@
       + (v.me && !v.me.alive ? ' mf-out' : '');
     me.textContent = v.me ? roleTitle(v.me.role) + (v.me.alive ? '' : ' (вибув)')
       : mySeat == null ? 'Дивишся збоку' : 'За столом';
+    // Забув, що вміє твоя роль, — наведи на чіп (картка з поясненням була лише на знайомстві).
+    const card = v.me && ROLE_CARD[v.me.role];
+    if (card) me.title = card.text; else me.removeAttribute('title');
     const rules = el.querySelector('.mf-rules');
     const rulesText = rulesLine(v);
     if (rules.dataset.sig !== rulesText) { rules.dataset.sig = rulesText; rules.textContent = rulesText; }
@@ -217,6 +230,9 @@
     // ---- що робити зараз ----
     const act = el.querySelector('.mf-act');
     const actHtml = advice(v, ctx);
+    // Картка ролі на знайомстві — одразу під шапкою, а не під списком села: на телефоні з дюжиною гравців
+    // її інакше довелось би шукати прокруткою.
+    act.classList.toggle('mf-first', v.phase === 'intro');
     if (act.dataset.sig !== actHtml) {
       act.dataset.sig = actHtml;
       act.innerHTML = actHtml;
@@ -249,6 +265,11 @@
     const log = (v.log || []).map((l) => '<div>' + ctx.esc(l) + '</div>').join('') || '<div class="muted small">Ще нічого не сталось.</div>';
     const logBox = el.querySelector('.mf-log');
     if (logBox.dataset.sig !== log) { logBox.dataset.sig = log; logBox.innerHTML = log; }
+    // Партію зіграно — хроніку розгортаємо самі: «а як воно було» — перше, що всі хочуть побачити.
+    // Лише раз на партію, щоб не розгортати те, що людина згорнула руками.
+    const logDetails = el.querySelector('.mf-logbox');
+    const endKey = v.phase === 'done' ? 'done:' + (v.log || []).length : '';
+    if (endKey && el._logOpened !== endKey) { el._logOpened = endKey; logDetails.open = true; }
   }
 
   const nickOf = (v, seat) => {
@@ -265,21 +286,34 @@
       if (fallen.length === 1) return nickOf(v, fallen[0]) + ' не прокинувся';
       return 'уночі всі вціліли';
     }
-    if (v.phase === 'done' && v.result) return TEAM[v.result.team] || '';
+    // Хто переміг, на дограній картці вже каже великий рядок унизу — у шапці вдруге не повторюємо.
     return '';
   }
 
   /// Рядок «що зараз робити» — головна підказка картки, бо правила гри тримає сервер.
   function advice(v, ctx) {
     const chat = '<button class="ghost" data-chat>До Балачок</button>';
-    if (v.phase === 'lobby') return '<span class="muted small">Чекаємо, поки господар почне. Треба щонайменше четверо.</span>';
+    if (v.phase === 'lobby') {
+      return '<span class="muted small">Чекаємо, поки господар почне. Треба щонайменше троє'
+        + ' (утрьох — коротка партія: перша ніч тиха, і все вирішує один день).</span>';
+    }
     if (v.phase === 'done') {
       const t = v.result ? (TEAM[v.result.team] || '') : '';
-      return '<span class="mf-final">' + ctx.esc(t) + '</span>';
+      const icon = { mafia: '🔪', civil: '🌾', maniac: '🪓', draw: '🤝' }[v.result && v.result.team] || '';
+      return '<span class="mf-final">' + (icon ? icon + ' ' : '') + ctx.esc(t) + '</span>';
     }
     if (!v.me) return '<span class="muted small">Дивишся збоку: ролі й нічні справи тобі не покажуть.</span>';
     if (!v.me.alive) return '<span class="muted small">Тебе вже нема серед живих. Дивись усе, але в кімнаті мовчи — так домовились.</span>';
-    if (v.phase === 'intro') return '<span class="muted small">Запам\'ятай, хто ти. Село ось-ось засне.</span>';
+    if (v.phase === 'intro') {
+      const card = ROLE_CARD[v.me.role];
+      const trio = (v.players || []).length === 3;
+      if (!card) return '<span class="muted small">Запам\'ятай, хто ти. Село ось-ось засне.</span>';
+      return '<div class="mf-card ' + roleCls(v.me.role) + '"><div class="mf-card-icon" aria-hidden="true">' + card.icon + '</div>'
+        + '<div class="mf-card-body"><b>Ти — ' + ctx.esc(roleTitle(v.me.role).toLowerCase()) + '</b>'
+        + '<span>' + ctx.esc(card.text) + '</span>'
+        + (trio ? '<span class="muted small">Утрьох: перша ніч тиха, а вдень одне голосування вирішує все.</span>' : '')
+        + '<span class="muted small">Запам\'ятай і нікому не кажи. Село ось-ось засне.</span></div></div>';
+    }
     if (v.phase === 'night') {
       const quiet = quietNight(v);
       if (isMafia(v.me.role)) {
@@ -310,6 +344,16 @@
 
   HGames.register({
     id: 'mafia',
+    news: {
+      v: '2026-09-24',
+      title: 'Мафія: можна й утрьох',
+      items: [
+        '👥 Стіл від трьох: мафіозі, комісар і мирний. Перша ніч тиха, а вдень мирний вирішує, котрий «комісар» справжній',
+        '🃏 На знайомстві — картка твоєї ролі: хто ти й чого хочеш (і підказка на чіпі ролі до кінця партії)',
+        '🌙 Тиха ніч з одним мафіозі закінчується, щойно решта зробила своє, — шептатись однаково нема з ким',
+        '📜 Після партії хроніка села розгортається сама',
+      ],
+    },
     icon: ICON,
     mount(root, ctx) { build(root, ctx); paint(root, ctx); },
     update(root, ctx) { paint(root, ctx); },

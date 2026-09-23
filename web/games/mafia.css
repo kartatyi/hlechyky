@@ -60,6 +60,24 @@
 .mf-act .ghost { padding: 5px 10px; font-size: .85em; }
 .mf-final { font-weight: 600; }
 
+.mf-final { font-size: 1.1em; }
+.mafia > .mf-top { order: -3; }
+.mafia > .mf-rules { order: -2; }
+.mafia > .mf-act.mf-first { order: -1; }
+
+/* Картка ролі на знайомстві: перевертається, як карта з колоди. */
+.mf-card {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; text-align: left;
+  background: var(--panel); border: 1px solid currentColor; border-radius: 14px;
+  animation: mfflip .6s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+.mf-card-icon { font-size: 2.4em; line-height: 1; flex: none; }
+.mf-card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: var(--text); }
+.mf-card-body b { font-size: 1.15em; }
+.mf-card.mf-r-civil { border-color: var(--line); }
+@keyframes mfflip { from { transform: perspective(600px) rotateY(80deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mf-card { animation: none; } }
+
 /* ---- нічний чат мафії ---- */
 .mf-chat { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .mf-lines {

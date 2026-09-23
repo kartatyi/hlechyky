@@ -587,6 +587,68 @@ public class SvoyaTests
             }
     }
 
+    /// <summary>Пакет на три звичайні раунди (по одній клітинці) і фінал — для коротких партій.</summary>
+    static SvoyaPack ThreeRounds()
+    {
+        var p = new SvoyaPack { Id = "b_three", Title = "Три раунди" };
+        for (var r = 1; r <= 3; r++)
+            p.Rounds.Add(new SvoyaRound
+            {
+                Name = $"Раунд {r}",
+                Themes = [new SvoyaTheme { Name = $"Тема {r}", Questions = [new SvoyaQuestion { Price = 100 * r, Text = $"Питання {r}", Answer = $"відповідь{r}" }] }],
+            });
+        p.Rounds.Add(new SvoyaRound
+        {
+            Name = "Фінал",
+            Type = SvoyaRound.Final,
+            Themes = [new SvoyaTheme { Name = "Ф1", Questions = [new SvoyaQuestion { Text = "Фінал один", Answer = "фінал1" }] },
+                      new SvoyaTheme { Name = "Ф2", Questions = [new SvoyaQuestion { Text = "Фінал два", Answer = "фінал2" }] }],
+        });
+        SvoyaBuiltin.Stamp(p, "three");
+        return p;
+    }
+
+    [Theory]
+    [InlineData(Svoya.LengthFull, new[] { "Раунд 1", "Раунд 2", "Раунд 3", "Фінал" })]
+    [InlineData(Svoya.LengthTwo, new[] { "Раунд 1", "Раунд 2", "Фінал" })]
+    [InlineData(Svoya.LengthOne, new[] { "Раунд 1", "Фінал" })]
+    public void A_short_game_keeps_the_first_rounds_and_the_final(string length, string[] rounds)
+    {
+        var pack = ThreeRounds();
+        var cut = Svoya.Cut(pack, length);
+
+        Assert.Equal(rounds, cut.Rounds.Select(r => r.Name).ToArray());
+        // Пакет із джерела спільний — укорочення його не чіпає.
+        Assert.Equal(4, pack.Rounds.Count);
+        Assert.Equal(pack.Id, cut.Id);
+    }
+
+    [Fact]
+    public void A_pack_shorter_than_asked_is_played_whole()
+    {
+        var mini = SvoyaPackTests.Mini();
+        Assert.Same(mini, Svoya.Cut(mini, Svoya.LengthTwo));
+    }
+
+    [Fact]
+    public void One_round_and_the_final_goes_straight_from_round_one_to_the_final()
+    {
+        var packs = new FakeSvoyaPacks();
+        packs.Packs["b_three"] = (ThreeRounds(), "");
+        var h = Table(new { length = Svoya.LengthOne }, packs: packs, pack: "b_three");
+
+        // Лобі й гра бачать уже укорочений пакет: раунд і фінал.
+        Assert.Equal(2, h.View(null).GetProperty("rounds").GetInt32());
+        Assert.Equal(Svoya.LengthOne, h.View(null).GetProperty("options").GetProperty("length").GetString());
+        Until(h, Svoya.Board);
+        h.Act(Chooser(h), "pick", new { theme = 0, q = 0 });
+        Assert.True(h.Act(0, "buzz").Ok);
+        h.Act(0, "answer", new { text = "відповідь1" });
+        // Після першого раунду — одразу фінал (Оля в плюсі, отже є кому грати).
+        Until(h, "strike");
+        Assert.Equal(2, h.View(null).GetProperty("round").GetInt32());
+    }
+
     [Fact]
     public void Game_ends_after_the_last_round_with_the_best_score_winning()
     {

@@ -71,6 +71,8 @@ public sealed partial class Svoya : Game
 
     public const string Auto = "auto", Live = "live";
     public const string EarlyOn = "on", EarlyOff = "off", EarlyLock = "lock";
+    /// <summary>Довжина партії: увесь пакет, два раунди й фінал, один раунд і фінал.</summary>
+    public const string LengthFull = "full", LengthTwo = "two", LengthOne = "one";
     public static readonly int[] AnswerChoices = [10, 15, 20];
     public static readonly int[] BuzzChoices = [5, 10, 15];
 
@@ -88,6 +90,8 @@ public sealed partial class Svoya : Game
             new GameOption("early", "Кнопка під час читання",
                 [(EarlyOn, "Можна одразу"), (EarlyOff, "Лише після читання"), (EarlyLock, $"Фальстарт: блок на {FalseStartMs / 1000} с")], EarlyOn),
             new GameOption("voice", "Голос ведучого", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
+            // Увесь пакет — це 75 запитань і година гри; на вечір «ще одну» друзям треба коротше.
+            new GameOption("length", "Довжина", [(LengthFull, "Увесь пакет"), (LengthTwo, "Два раунди й фінал"), (LengthOne, "Один раунд і фінал (~15 хв)")], LengthFull),
         ],
         Hint: "Поле тем і цін, хто перший натиснув — той відповідає. Пакет обирає господар; ведучий — автомат або ти сам");
 
@@ -101,6 +105,7 @@ public sealed partial class Svoya : Game
     int _answerSec = 15, _buzzSec = 10;
     string _early = EarlyOn;
     string _voiceName = "ostap";
+    string _length = LengthFull;
     /// <summary>Живий ведучий попросив, щоб запитання читав голос (тумблер на пульті).</summary>
     bool _liveVoice;
 
@@ -199,6 +204,24 @@ public sealed partial class Svoya : Game
         if (int.TryParse(options.GetValueOrDefault("buzz"), out var b) && BuzzChoices.Contains(b)) _buzzSec = b;
         _early = options.GetValueOrDefault("early") is EarlyOff or EarlyLock ? options["early"] : EarlyOn;
         _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
+        _length = options.GetValueOrDefault("length") is LengthTwo or LengthOne ? options["length"] : LengthFull;
+    }
+
+    /// <summary>
+    /// Пакет, укорочений до обраної довжини: перші звичайні раунди й фінал (якщо він є). Пакет із джерела —
+    /// спільний (вбудовані кешуються на процес), тому не чіпаємо його, а збираємо новий зі старими раундами.
+    /// </summary>
+    public static SvoyaPack Cut(SvoyaPack pack, string length)
+    {
+        var keep = length switch { LengthOne => 1, LengthTwo => 2, _ => int.MaxValue };
+        var normal = pack.Rounds.Where(r => !r.IsFinal).ToList();
+        if (normal.Count <= keep) return pack;
+        return new SvoyaPack
+        {
+            Id = pack.Id, Title = pack.Title, Description = pack.Description, Author = pack.Author, AuthorKey = pack.AuthorKey,
+            Public = pack.Public, Source = pack.Source, CreatedAt = pack.CreatedAt, UpdatedAt = pack.UpdatedAt,
+            Rounds = [.. normal.Take(keep), .. pack.Rounds.Where(r => r.IsFinal)],
+        };
     }
 
     // =========================================================================================
@@ -222,7 +245,7 @@ public sealed partial class Svoya : Game
         if (string.IsNullOrEmpty(id)) return ActResult.Fail("Оберіть пакет");
         var pack = _packs.Playable(id, Ctx.NickOf(seat) ?? "");
         if (pack is null) return ActResult.Fail("У цей пакет грати не можна — він чужий, прихований або ще не дороблений");
-        _pack = pack;
+        _pack = Cut(pack, _length);
         _dirty = true;
         return ActResult.Accept($"Пакет «{pack.Title}»");
     }
@@ -935,7 +958,7 @@ public sealed partial class Svoya : Game
             phase = _phase,
             mode = _mode,
             host = _mode == Live ? (_phase == Lobby ? Ctx.HostSeat : _host) : (int?)null,
-            options = new { answer = _answerSec, buzz = _buzzSec, early = _early, voice = _voiceName },
+            options = new { answer = _answerSec, buzz = _buzzSec, early = _early, voice = _voiceName, length = _length },
             voice = new { on = VoiceOn, available = _voiceName != "none" && _voice.Enabled },
             pack = _pack is null ? null : new
             {

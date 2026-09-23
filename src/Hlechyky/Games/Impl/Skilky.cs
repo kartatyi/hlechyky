@@ -73,6 +73,12 @@ public sealed class Skilky : Game
         public int Points => Accuracy + Bonus + Fast;
     }
 
+    /// <summary>
+    /// Одне зігране запитання для підсумку партії: що питали, яка правда і хто підібрався найближче.
+    /// Наприкінці люди хочуть не лише рахунок, а й «а пам'ятаєш Маттергорн?» — список усіх запитань.
+    /// </summary>
+    sealed record Recap(string Question, string? Unit, double Answer, bool Years, int[] Best, double? Value, int Points);
+
     // Мінімум — один: господар може почати й сам, а хто встигне підсісти до старту, грає разом.
     public override GameInfo Info { get; } = new(
         "skilky", "Скільки?", "«Скільки?»", GameGroup.Party, 1, MaxSeats,
@@ -100,6 +106,8 @@ public sealed class Skilky : Game
     /// <summary>Коли прийшло останнє число місця: за однакової відстані швидший бере <see cref="SpeedBonus"/>.</summary>
     readonly DateTimeOffset[] _answeredAt = new DateTimeOffset[MaxSeats];
     readonly long[] _scores = new long[MaxSeats];
+    /// <summary>Уже розкриті запитання цієї партії — для підсумку в кінці.</summary>
+    readonly List<Recap> _recap = [];
 
     int _at;
     string _phase = PhaseBetween;
@@ -145,6 +153,7 @@ public sealed class Skilky : Game
         Array.Clear(_answers);
         Array.Clear(_answeredAt);
         _asked.Clear();
+        _recap.Clear();
         _asked.AddRange(Pick());
         _at = 0;
         _reveal = null;
@@ -327,6 +336,10 @@ public sealed class Skilky : Game
             i = j;
         }
         foreach (var r in rows) _scores[r.Seat] += r.Points;
+        // Найближчі (однаково близьких може бути кілька) — у підсумок партії.
+        var best = rows.Count == 0 ? [] : rows.Where(r => SameDiff(r.Diff, rows[0].Diff)).Select(r => r.Seat).ToArray();
+        _recap.Add(new Recap(question.Q, question.Unit, target, years, best,
+            rows.Count == 0 ? null : rows[0].Value, rows.Count == 0 ? 0 : rows[0].Points));
 
         _answer = target;
         _years = years;
@@ -479,6 +492,12 @@ public sealed class Skilky : Game
         },
         scores = (long[])_scores.Clone(),
         result = _winners is null ? null : new { winners = (int[])_winners.Clone(), scores = (long[])_scores.Clone() },
+        // Підсумок усіх запитань — лише коли партію зіграно: посеред гри він лише відволікав би.
+        recap = _phase != PhaseDone ? null : _recap.Select(r => new
+        {
+            question = r.Question, unit = r.Unit, answer = r.Answer, years = r.Years,
+            best = r.Best, value = r.Value, points = r.Points,
+        }).ToArray(),
     };
 
     /// <summary>Кадр раз на секунду: відлік, галочки й рахунок. Нічого прихованого — кадр летить усій кімнаті.</summary>
@@ -545,6 +564,17 @@ public sealed class Skilky : Game
         "Порядок величин сьогодні не з нами: найближче — {0}, різниця {1}. Очко за першість, і все.",
     ];
 
+    /// <summary>
+    /// Самому й мимо: бонусу «найближчому» соло не дають, тож фрази з <see cref="Wide"/> («тримай очко втіхи»)
+    /// тут брехали б. Нік — так само в називному.
+    /// </summary>
+    static readonly string[] Lonely =
+    [
+        "Мимо: {0} повз на {1}. Цього разу без очок.",
+        "Далеченько — {1} убік. {0}, наступне буде ближче.",
+        "Ех, {0}: різниця {1}. Очок нема, зате тепер ти це знаєш.",
+    ];
+
     static readonly string[] Silence =
     [
         "Тиша. Ну добре, наступне.",
@@ -556,7 +586,8 @@ public sealed class Skilky : Game
     {
         if (rows.Count == 0) return Silence[Ctx.Rng.Next(Silence.Length)];
         var best = rows[0];
-        var bank = best.Accuracy == 0 ? Wide : SameDiff(best.Diff, 0) ? Exact : Flavors;
+        // Найближчий без жодного очка за точність: у компанії він бере бонус («очко втіхи»), самому — нічого.
+        var bank = best.Accuracy == 0 ? (best.Bonus > 0 ? Wide : Lonely) : SameDiff(best.Diff, 0) ? Exact : Flavors;
         return string.Format(CultureInfo.InvariantCulture, bank[Ctx.Rng.Next(bank.Length)],
             Ctx.NickOf(best.Seat) ?? SeatName(best.Seat), Num(best.Diff));
     }

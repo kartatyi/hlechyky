@@ -22,9 +22,9 @@
   background: radial-gradient(circle, var(--accent) 0 14%, var(--mgdisc) 15% 30%, #2b2b2b 31% 33%, var(--mgdisc) 34% 48%, #2b2b2b 49% 51%, var(--mgdisc) 52% 100%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
 }
-.mgdisc.spin { animation: mgspin 1.8s linear infinite; }
+.mgdisc.mgspinning { animation: mgspin 1.8s linear infinite; }
 @keyframes mgspin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .mgdisc.spin { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .mgdisc.mgspinning { animation: none; } }
 
 .mgwave { width: 100%; max-width: 320px; height: 6px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
 .mgwave i { display: block; height: 100%; width: 0; background: var(--accent); }
@@ -54,6 +54,7 @@
 .mgsc { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--bg2); border-radius: 8px; }
 .mgsc.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
 .mgsc.off { opacity: .45; }
+.mgsc.win { background: var(--mgok); }
 .mgn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mgsc em { font-style: normal; color: var(--ok); font-size: .85em; }
 .mgsc b { min-width: 2.6em; text-align: right; font-variant-numeric: tabular-nums; }
