@@ -17,6 +17,8 @@ public sealed class AgentSession
     public DateTimeOffset LastSeen { get; set; }
     /// <summary>Останній рядок Балачок, який агент уже бачив: далі йому віддають лише нове.</summary>
     public long SeenChatId { get; set; }
+    /// <summary>Те саме для балачки столу (номери наскрізні на весь сервер, тож одного лічильника досить).</summary>
+    public long SeenTableId { get; set; }
     /// <summary>Версія протоколу, про яку домовились на initialize.</summary>
     public string Protocol { get; set; } = "";
     public int Calls { get; set; }

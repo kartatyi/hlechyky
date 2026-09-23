@@ -644,8 +644,9 @@
     const b = document.getElementById('chatToggle') || document.getElementById('mtabChat');
     if (b) b.click();
     setTimeout(() => {
-      const inp = document.getElementById('chatInput');
-      if (inp && vis(inp)) setCur(inp);
+      // На вкладці «🎲 Стіл» свій рядок вводу — балачки столу.
+      const inp = [document.getElementById('chatInput'), document.querySelector('.tchat .tc-form input')].find((x) => x && vis(x));
+      if (inp) setCur(inp);
     }, 80);
   }
 

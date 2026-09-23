@@ -13,11 +13,14 @@ public interface IAdAir
     (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick);
 }
 
-/// <summary>Справжній ефір: той самий публічний метод, яким у чергу лягають звичайні голосові.</summary>
+/// <summary>
+/// Справжній ефір: той самий публічний метод, яким у чергу лягають звичайні голосові, лише без рядка в Журналі —
+/// реклама заходить щокілька треків, і «Дядько Глек записує голосове» засипало б Журнал.
+/// </summary>
 public sealed class RadioAir(RadioEngine engine) : IAdAir
 {
     public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick) =>
-        engine.AddVoice(track, filePath, nick);
+        engine.AddVoice(track, filePath, nick, journal: false);
 }
 
 /// <summary>

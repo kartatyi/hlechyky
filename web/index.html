@@ -145,13 +145,22 @@
   <aside class="panel chat" id="colChat">
     <div class="tabs" id="chatTabs">
       <button data-tab="chat" class="on">Балачки <span id="chatBadge" class="chip badge" hidden>0</span></button>
+      <!-- Балачка столу: вкладка є, лише поки ти на сторінці столу (на телефоні й у ⛶ — шторка знизу). -->
+      <button data-tab="table" id="tableTab" hidden title="Балачка столу, біля якого ти зараз">🎲 Стіл <span id="tableBadge" class="chip badge" hidden>0</span></button>
       <button data-tab="log">Журнал</button>
       <button id="pingBtn" class="icon chat-ping" type="button">🔔</button>
       <button id="chatClose" class="icon chat-close" type="button" title="Згорнути балачки — клавіша ]" aria-label="Згорнути балачки">✕</button>
     </div>
     <div id="online" class="online"></div>
+    <div id="logFilters" class="logfilters" hidden>
+      <button type="button" class="chip" data-lf="all">Усе</button>
+      <button type="button" class="chip" data-lf="radio">📻 Радіо</button>
+      <button type="button" class="chip" data-lf="games">🎮 Ігри</button>
+    </div>
     <div id="messages" class="messages"></div>
     <div id="log" class="messages" hidden></div>
+    <div id="tablePane" class="tpane" hidden></div>
+    <div id="typingLine" class="typing" hidden></div>
     <div id="cmdHint" class="cmdhint" hidden></div>
     <div id="emojiPick" class="emojipick" hidden></div>
     <div id="mentionPick" class="mentionpick" hidden></div>

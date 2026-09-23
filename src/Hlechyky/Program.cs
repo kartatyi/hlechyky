@@ -47,6 +47,7 @@ builder.Services.AddSingleton<RoomTaste>();
 builder.Services.AddSingleton<ArtistQuality>();
 builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
+builder.Services.AddSingleton<ChatFlood>();   // один лічильник флуду на Балачки, столи й агентів
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
 builder.Services.AddSingleton<IOnAir>(sp => sp.GetRequiredService<RadioEngine>());

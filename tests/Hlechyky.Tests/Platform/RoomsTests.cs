@@ -794,7 +794,9 @@ public class RoomsTests
         h.Join("Оля");
         h.Join("Петро");
 
-        Assert.Single(h.Rooms.Watch(h.RoomId, "c1", "Оля"));
+        var first = h.Rooms.Watch(h.RoomId, "c1", "Оля");
+        Assert.Single(first.OfType<RoomViews>());
+        Assert.Single(first.OfType<TableHistory>());           // і розмову за столом — щойно підійшов
         Assert.Empty(h.Rooms.Watch(h.RoomId, "c1", "Оля"));   // повтор нічого не розсилає
         Assert.Equal(1, h.Rooms.Snapshot()[0].Watchers);
 

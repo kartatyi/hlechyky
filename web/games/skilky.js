@@ -5,7 +5,7 @@
   Вид (подія 'room', свій для кожного місця — гра Hidden):
     { round, of, phase: 'between'|'ask'|'reveal'|'done', question, unit, endsAt,
       answered: bool[], my: number|null,
-      reveal: null | { answer, years, rows: [{ seat, value, diff, points, accuracy, bonus, fast }] },
+      reveal: null | { answer, years, say, rows: [{ seat, value, diff, points, accuracy, bonus, fast }] },
       scores: number[], result: null | { winners, scores } }
   points = accuracy (за точність) + bonus (найближчому) + fast (швидшому за однакової відстані).
   Кадр (подія 'frame', раз на секунду, летить усій кімнаті — прихованого в ньому нема):
@@ -156,7 +156,9 @@
     const rows = r.rows || [];
     const head = '<div class="skans"><span class="muted small">Правильна відповідь</span>'
       + '<b>' + yearOr(r.years, r.answer) + '</b>' + (v.unit ? '<i>' + ctx.esc(unitFor(r.answer, v.unit)) + '</i>' : '') + '</div>';
-    if (!rows.length) return head + '<div class="gempty">Ніхто не назвав жодного числа.</div>';
+    // Слово Глека про раунд — тут, під таблицею, а не в загальних Балачках (там за вечір їх були сотні).
+    const say = r.say ? '<div class="sksay"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(r.say) + '</span></div>' : '';
+    if (!rows.length) return head + '<div class="gempty">Ніхто не назвав жодного числа.</div>' + say;
     return head + '<div class="skrows">' + rows.map((x, n) => {
       const bonus = x.bonus || 0;
       const fast = x.fast || 0;
@@ -175,7 +177,7 @@
         + (x.points ? '+' + x.points : '0')
         + (parts.length > 1 ? '<small>' + parts.join('+') + '</small>' : '')
         + '</span></div>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' + say;
   }
 
   /// Підсумок партії: усі запитання, правда й хто був найближче. Наприкінці хочеться не лише рахунку,
@@ -280,9 +282,10 @@
   HGames.register({
     id: 'skilky',
     news: {
-      v: '2026-09-24',
+      v: '2026-09-24b',
       title: 'Скільки?: підсумок партії',
       items: [
+        '🏺 Дядько Глек коментує раунд прямо на картці, під таблицею, — у загальні Балачки більше не пише',
         '📜 Наприкінці — «Як це було»: усі запитання, правильні відповіді й хто влучив найближче',
         '✨ Розкриття ожило: правильна відповідь падає на стіл, а числа випливають по черзі від найближчого',
         '⌨ Щойно з’явилось запитання — курсор уже в полі, пиши число одразу',

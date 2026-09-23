@@ -2,7 +2,8 @@
   Каркас ігор у браузері. Один глобал — window.HGames.
 
   app.js про ігри більше нічого не знає: він кличе init() на старті, attach(conn) у connect(),
-  reconnected() після реконекту і show()/hide() при перемиканні вкладок. Усе інше — тут:
+  reconnected() після реконекту і show()/hide() при перемиканні вкладок. Навзаєм каркас каже йому через
+  init({ onTable }), біля якого столу ми стоїмо, — балачку столу малює вже app.js. Усе інше — тут:
   каталог із сервера, завантаження модулів, лобі, спільна картка кімнати, гаманець, профіль,
   таблиці, щоденний глек.
 
@@ -68,6 +69,8 @@
   let view = { kind: 'lobby', id: '' };
   let full = false;                                               // ⛶ «на весь екран»
   let go = (hash) => { location.hash = hash; };                   // app.js підміняє своїм у init()
+  let onTable = null;                                             // app.js: біля якого столу ми стоїмо (балачка столу)
+  let onOpenTable = null;                                         // app.js: розгорнути балачку столу
   let filter = localStorage.getItem('gamesFilter') || 'all';
   let find = '';
   let lbGame = localStorage.getItem('gamesLbGame') || 'shards';
@@ -708,6 +711,26 @@
   function setFull(on) {
     full = !!on && view.kind === 'room';
     document.body.classList.toggle('gfull', full);
+    notifyTable();   // на весь екран панелі нема — балачка столу переїжджає в шторку
+  }
+
+  /// Стіл, біля якого людина зараз стоїть: лише сторінка столу й лише стіл на кількох (соло говорити нема з ким).
+  /// main — гра, де розмова і є гра (мафія): балачку столу там розгортаємо самі.
+  function tableInfo() {
+    if (!shown || view.kind !== 'room' || !view.id) return null;
+    const rv = views[view.id];
+    if (!rv || !rv.room || rv.loose || (rv.room.maxPlayers || 0) <= 1) return null;
+    const g = rv.room.game;
+    return { id: rv.room.id, game: g, title: titleOf(g), main: !!(modules[g] && modules[g].talk === 'main'), seat: rv.seat, status: rv.room.status };
+  }
+  let tableSig = null;
+  /// Сказати app.js, що змінився стіл (або його стан, або ⛶). Однакове двічі не кажемо.
+  function notifyTable() {
+    const t = tableInfo();
+    const sig = JSON.stringify(t) + '|' + full;
+    if (sig === tableSig) return;
+    tableSig = sig;
+    if (onTable) { try { onTable(t, { full }); } catch (e) { console.warn('[games] onTable', e); } }
   }
 
   /// Картки лише переносяться між складом і сторінкою столу й ховаються через hidden.
@@ -725,6 +748,11 @@
   }
 
   function renderView() {
+    renderViewNow();
+    notifyTable();
+  }
+
+  function renderViewNow() {
     const v = root && root.querySelector('.gview');
     if (!v) return;
     const room = view.kind === 'room' ? view.id : null;
@@ -1455,6 +1483,7 @@
       for (const id in cards) if (views[id] && views[id].room.game === mod.id) refreshCard(id);
       if (shown && root && root.querySelector('.gtiles')) renderView();
       if (shown && view.kind === 'room') renderRoomHead(view.id);
+      notifyTable();   // модуль міг приїхати пізніше за стіл — і сказати, що розмова тут головна (talk: 'main')
     },
 
     registerPanel(p) {
@@ -1477,6 +1506,8 @@
       if (o.api) api = o.api;
       if (o.me) me = o.me;
       if (o.go) go = o.go;
+      if (o.onTable) onTable = o.onTable;
+      if (o.openTable) onOpenTable = o.openTable;
       root = o.root || (o.$ ? o.$('games') : document.getElementById('games'));
       booted = true;
       renderShell();
@@ -1528,6 +1559,7 @@
         else if (cards[id]) refreshCard(id);
         else if (view.kind === 'lobby') renderView();      // «твій хід» на резюме в лобі
         syncWatch();
+        notifyTable();                                      // сів, встав, партія почалась — балачці столу це важливо
       });
       c.on('frame', (f) => {
         if (!f || !f.id) return;
@@ -1599,6 +1631,8 @@
     sitAt,
     /// Просто відкрити сторінку столу.
     openAt,
+    /// Розгорнути балачку столу, біля якого стоїмо (вкладку «🎲 Стіл» або шторку) — кнопка «До суперечки» в мафії.
+    openTable() { if (onOpenTable) onOpenTable(); },
 
     /// Для модулів і панелей, яким треба смикнути хаб самим (конкурс реклами тощо).
     call,

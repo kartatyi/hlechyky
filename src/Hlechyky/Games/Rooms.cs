@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Games;
 
@@ -778,8 +780,98 @@ public sealed class Rooms
         // розсилку на всіх глядачів кімнати в обхід квот хаба.
         if (!room.Watchers.TryAdd(connId, 0)) return outbox;
         outbox.Add(new RoomViews(room.Id));
+        // Хто щойно підійшов (F5, реконект, зайшов подивитись), має побачити розмову, а не лише те, що скажуть далі.
+        if (room.Talks)
+            lock (room.Sync) outbox.Add(new TableHistory(room.Id, connId, [.. room.Talk]));
         return outbox;
     }
+
+    // ---------- балачка столу ----------
+
+    /// <summary>Скільки реплік тримає балачка столу. Старші випадають: це розмова за грою, а не архів.</summary>
+    public const int TalkLines = 100;
+    /// <summary>Найдовша репліка за столом — та сама межа, що й у Балачках.</summary>
+    public const int TalkChars = 500;
+    long _talkSeq;
+
+    /// <summary>
+    /// Репліка в балачці столу. Говорить той, хто за столом сидить, або той, хто дивиться на нього цим з'єднанням
+    /// (<paramref name="connId"/>; в агента з'єднання нема — йому треба сидіти). Гра може когось притримати
+    /// (<see cref="Game.TalkBlock"/>: мертві в мафії). Error null — сказано; інакше — чому ні, лише тому, хто писав.
+    /// </summary>
+    public (Outbox Out, string? Error) TableSay(string id, string? connId, string nick, string text, string kind = "chat")
+    {
+        var outbox = new Outbox();
+        if (!Named(nick)) return (outbox, Say.NoNick);
+        text = Cut(text);
+        if (text.Length == 0) return (outbox, "Порожнє нікому не цікаво");
+        if (Find(id) is not { } room || !room.Talks) return (outbox, Say.NoRoom);
+        lock (room.Sync)
+        {
+            if (Silenced(room, connId, nick) is { } why) return (outbox, why);
+            outbox.Add(new TableSaid(room.Id, AppendTalk(room, nick, text, kind)));
+        }
+        return (outbox, null);
+    }
+
+    /// <summary>
+    /// Чому цьому ніку (з цього з'єднання) зараз не можна говорити за столом; null — можна. Хаб питає це до
+    /// лічильника флуду, а «пише…» — щоб не видавати, скажімо, мертвих у мафії.
+    /// </summary>
+    public string? TalkRefusal(string id, string? connId, string nick)
+    {
+        if (!Named(nick)) return Say.NoNick;
+        if (Find(id) is not { } room || !room.Talks) return Say.NoRoom;
+        lock (room.Sync) return Silenced(room, connId, nick);
+    }
+
+    /// <summary>Балачка столу знімком (для агента: те саме, що браузер отримує при підписці).</summary>
+    public IReadOnlyList<TableLine> TableLines(string id)
+    {
+        if (Find(id) is not { } room || !room.Talks) return [];
+        lock (room.Sync) return [.. room.Talk];
+    }
+
+    /// <summary>Номер останньої репліки за столом; 0 — ще ніхто нічого не сказав. На це дивиться очікування агента.</summary>
+    public long TableLastId(string id)
+    {
+        if (Find(id) is not { } room || !room.Talks) return 0;
+        lock (room.Sync) return room.Talk.Count == 0 ? 0 : room.Talk[^1].Id;
+    }
+
+    /// <summary>Чому цьому ніку зараз не можна говорити за столом; null — можна. Під замком кімнати.</summary>
+    string? Silenced(Room room, string? connId, string nick)
+    {
+        var seat = room.SeatOf(nick);
+        if (seat is null && (connId is null || !room.Watchers.ContainsKey(connId))) return "Спершу підійди до столу";
+        try { return room.Game.TalkBlock(seat); }
+        catch (Exception ex)
+        {
+            // Крива гра не має затикати рота всім за столом.
+            _log.LogWarning(ex, "TalkBlock впав у кімнаті {Room}", room.Id);
+            return null;
+        }
+    }
+
+    /// <summary>Дописати рядок у балачку столу. Під замком кімнати.</summary>
+    internal TableLine AppendTalk(Room room, string nick, string text, string kind)
+    {
+        var line = new TableLine(Interlocked.Increment(ref _talkSeq), nick, text, kind, _clock.UtcNow);
+        room.Talk.Add(line);
+        if (room.Talk.Count > TalkLines) room.Talk.RemoveRange(0, room.Talk.Count - TalkLines);
+        return line;
+    }
+
+    /// <summary>Обрізати по символах, але не посеред смайла: у .NET він займає дві клітинки рядка.</summary>
+    static string Cut(string? text)
+    {
+        var t = (text ?? "").Trim();
+        return t.Length <= TalkChars ? t : t[..(char.IsHighSurrogate(t[TalkChars - 1]) ? TalkChars - 1 : TalkChars)];
+    }
+
+    /// <summary>Хто в балачці столу говорить за ведучого. Типово — ім'я з налаштувань сайту; тести обходяться без них.</summary>
+    internal string DjName => _services.GetService<IOptionsMonitor<SiteOptions>>()?.CurrentValue.DjName is { Length: > 0 } dj
+        ? dj : "Дядько Глек";
 
     public Outbox Unwatch(string id, string connId)
     {
@@ -1128,9 +1220,11 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         if (!string.IsNullOrWhiteSpace(text)) _out?.Add(new Journal(text));
     }
 
+    /// <summary>Глек-ведучий каже в балачку столу. У соло говорити нема кому — там і нема балачки.</summary>
     public void Say(string text)
     {
-        if (!string.IsNullOrWhiteSpace(text)) _out?.Add(new DjSays(text));
+        if (string.IsNullOrWhiteSpace(text) || _out is null || !room.Talks) return;
+        _out.Add(new TableSaid(room.Id, rooms.AppendTalk(room, rooms.DjName, text.Trim(), "dj")));
     }
 
     public void Score(int seat, long value, int? attempts = null)

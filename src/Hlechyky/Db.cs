@@ -112,6 +112,11 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE chat ADD COLUMN room_id TEXT"); } catch (SqliteException) { /* exists */ }
         // на яке повідомлення це відповідь, і хто яке лайкнув
         try { Exec(c, "ALTER TABLE chat ADD COLUMN reply_to INTEGER"); } catch (SqliteException) { /* exists */ }
+        // про що рядок Журналу: 'radio' чи 'games' — за цим Журнал фільтрується («📻 Радіо · 🎮 Ігри»)
+        try { Exec(c, "ALTER TABLE chat ADD COLUMN topic TEXT"); } catch (SqliteException) { /* exists */ }
+        Exec(c, "CREATE TABLE IF NOT EXISTS migrations(key TEXT PRIMARY KEY, done_at TEXT NOT NULL)");
+        Once(c, "chat-hide-glek-2026-09", HideGlekSql);
+        Once(c, "chat-topic-2026-09", TopicSql);
         // «👎 більше не давати» у «Вгадай мелодію»: такі треки (і та сама пісня з інших завантажень) гра не бере
         Exec(c, "CREATE TABLE IF NOT EXISTS melody_dislikes(track_id TEXT NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(track_id, nick))");
         Exec(c, "CREATE TABLE IF NOT EXISTS chat_likes(chat_id INTEGER NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(chat_id, nick))");
@@ -143,6 +148,66 @@ public sealed class Db
         foreach (var (id, key) in rows) Exec(c, "UPDATE tracks SET song_key=$k WHERE id=$id", ("$k", key), ("$id", id));
         tx.Commit();
     }
+
+    /// <summary>
+    /// Разова зміна даних: робиться один раз на базу й позначається в таблиці <c>migrations</c>. Без позначки
+    /// правило, яке шукає старі рядки за текстом, наступного рестарту зачепило б і новий рядок, що випадково так почався.
+    /// </summary>
+    static void Once(SqliteConnection c, string key, string sql)
+    {
+        using (var check = Cmd(c, "SELECT 1 FROM migrations WHERE key=$k", ("$k", key)))
+            if (check.ExecuteScalar() is not null) return;
+        using var tx = c.BeginTransaction();
+        using (var run = Cmd(c, sql)) { run.Transaction = tx; run.ExecuteNonQuery(); }
+        using (var mark = Cmd(c, "INSERT INTO migrations(key, done_at) VALUES($k, $now)", ("$k", key), ("$now", Now())))
+        {
+            mark.Transaction = tx;
+            mark.ExecuteNonQuery();
+        }
+        tx.Commit();
+    }
+
+    /// <summary>
+    /// Вересень 2026: Глек писав у Балачки на кожен свій трек («Моя черга. X — схоже на Y», 92 % його рядків,
+    /// сотні на день) і на кожне питання «Скільки?». Більше він так не робить, а старі рядки не стираємо —
+    /// лише ховаємо окремим видом (<see cref="HiddenKinds"/>): інакше вони ще тижнями займали б вікно історії,
+    /// і людей там не було б видно. Фрази «Скільки?» — з усіх версій її банку, тому шаблони беруть початок чи
+    /// хвіст, а не рядок цілком.
+    /// </summary>
+    const string HideGlekSql = """
+        UPDATE chat SET kind = 'dj-auto' WHERE kind = 'dj' AND (
+            text LIKE 'Черга порожня, тож ставлю %' OR text LIKE 'Тримайте: %' OR text LIKE 'Ніхто нічого не кинув, тому %'
+            OR text LIKE 'Витягнув з полиці %' OR text LIKE 'Моя черга. %');
+        UPDATE chat SET kind = 'dj-game' WHERE kind = 'dj' AND (
+            text LIKE 'Найближче — %: різниця %' OR text LIKE '% — найточніше око цього раунду%'
+            OR text LIKE 'Ближче за всіх — %' OR text LIKE 'Перше місце в цьому питанні — %'
+            OR text LIKE '% майже в яблучко: %' OR text LIKE 'Найточніше — %: % повз%'
+            OR text LIKE '% на першому місці, різниця %' OR text LIKE 'Точніше за всіх — %'
+            OR text LIKE 'Найкращий результат — %' OR text LIKE 'Найкраще чуття цього раунду — %'
+            OR text LIKE '% — переможець раунду з різницею %' OR text LIKE 'Пальма першості цього раунду — %'
+            OR text LIKE '% тримає марку: % різниці%' OR text LIKE 'Тут виграє % — % повз ціль%'
+            OR text LIKE 'Найближче до правди — %' OR text LIKE 'Точнісінько — %! Шапки геть%'
+            OR text LIKE '% — рівно в ціль, без жодної похибки%' OR text LIKE 'В яблучко, і не збоку, а в саму серцевину — %'
+            OR text LIKE 'Ех, ніхто навіть близько.%' OR text LIKE 'Мимо всі. Найменший промах — %'
+            OR text LIKE 'Порядок величин сьогодні не з нами:%' OR text LIKE 'Мимо: % повз на %'
+            OR text LIKE 'Далеченько — % убік.%' OR text LIKE 'Ех, %: різниця %. Очок нема%'
+            OR text = 'Тиша. Ну добре, наступне.' OR text = 'Жодного числа. Буває.'
+            OR text = 'Ніхто й не спробував — рахунок стоїть на місці.');
+        """;
+
+    /// <summary>
+    /// Старим рядкам Журналу тему ставимо за текстом: радіо пише їх лише кількома дієсловами (<see cref="RadioEngine"/>,
+    /// <see cref="TrackBans"/>), а все інше в Журналі — від ігор. Нові рядки тему несуть самі.
+    /// </summary>
+    const string TopicSql = """
+        UPDATE chat SET topic = CASE WHEN room_id IS NULL AND (
+            text LIKE '% додає %' OR text LIKE '% закидає %' OR text LIKE '% скіпає %' OR text LIKE '% ❤ %'
+            OR text LIKE '% прибирає %' OR text LIKE '% відхиляє %' OR text LIKE '% банить %' OR text LIKE '% розбанює %'
+            OR text LIKE '% викуповує %' OR text LIKE '% бере пораду %' OR text LIKE '% записує голосове%'
+            OR text LIKE 'Не вийшло завантажити %' OR text LIKE '% не зміг скачати %' OR text LIKE 'liquidsoap не взяв %'
+        ) THEN 'radio' ELSE 'games' END
+        WHERE kind = 'system' AND topic IS NULL;
+        """;
 
     SqliteConnection Open()
     {
@@ -744,7 +809,8 @@ public sealed class Db
     /// фронт малює біля нього кнопку до столу. Кімнати живуть у пам'яті й помирають із сервером, але id
     /// лежить у базі разом із рядком — інакше після F5 кнопка зникала б із історії ще за життя столу.
     /// </summary>
-    public ChatMessage AddChat(string nick, string text, string kind, string? roomId = null, long? replyTo = null)
+    /// <remarks><paramref name="topic"/> — лише для рядків Журналу: 'radio' чи 'games' (фільтр Журналу).</remarks>
+    public ChatMessage AddChat(string nick, string text, string kind, string? roomId = null, long? replyTo = null, string? topic = null)
     {
         var now = Now();
         using var c = Open();
@@ -752,16 +818,22 @@ public sealed class Db
         (string Nick, string Text)? parent = null;
         if (replyTo is { } pid)
         {
-            using var pc = Cmd(c, "SELECT nick, text FROM chat WHERE id=$id AND kind <> 'system'", ("$id", pid));
+            using var pc = Cmd(c, $"SELECT nick, text FROM chat WHERE id=$id AND {Talk}", ("$id", pid));
             using var pr = pc.ExecuteReader();
             if (pr.Read()) parent = (pr.GetString(0), pr.GetString(1));
             else replyTo = null;
         }
-        using var cmd = Cmd(c, "INSERT INTO chat(nick, text, kind, room_id, reply_to, created_at) VALUES($n, $t, $k, $r, $p, $now); SELECT last_insert_rowid();",
-            ("$n", nick), ("$t", text), ("$k", kind), ("$r", roomId), ("$p", replyTo), ("$now", now));
+        using var cmd = Cmd(c, "INSERT INTO chat(nick, text, kind, room_id, reply_to, created_at, topic) VALUES($n, $t, $k, $r, $p, $now, $topic); SELECT last_insert_rowid();",
+            ("$n", nick), ("$t", text), ("$k", kind), ("$r", roomId), ("$p", replyTo), ("$now", now), ("$topic", topic));
         var id = (long)cmd.ExecuteScalar()!;
-        return new ChatMessage(id, nick, text, Ts(now), kind, roomId, replyTo, parent?.Nick, Quote(parent?.Text), []);
+        return new ChatMessage(id, nick, text, Ts(now), kind, roomId, replyTo, parent?.Nick, Quote(parent?.Text), [], topic);
     }
+
+    /// <summary>Види рядків, які лежать у базі, але в Балачках не показуються (див. <see cref="HideGlekSql"/>).</summary>
+    public static readonly IReadOnlyList<string> HiddenKinds = ["dj-auto", "dj-game"];
+
+    /// <summary>Умова «це репліка в Балачках» (людина, Глек, кубик), а не рядок Журналу чи схований старий шум.</summary>
+    const string Talk = "kind NOT IN ('system', 'dj-auto', 'dj-game')";
 
     /// <summary>Уривок повідомлення для цитати над відповіддю: весь текст не потрібен, лише щоб упізнати.</summary>
     static string? Quote(string? text)
@@ -778,28 +850,51 @@ public sealed class Db
     public List<ChatMessage> RecentChat(int nChat, int nLog = 120)
     {
         using var c = Open();
-        using var cmd = Cmd(c, """
-            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text FROM (
-                SELECT id, nick, text, kind, created_at, room_id, reply_to FROM (
-                    SELECT * FROM chat WHERE kind <> 'system' ORDER BY id DESC LIMIT $nc)
+        using var cmd = Cmd(c, $"""
+            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic FROM (
+                SELECT id, nick, text, kind, created_at, room_id, reply_to, topic FROM (
+                    SELECT * FROM chat WHERE {Talk} ORDER BY id DESC LIMIT $nc)
                 UNION ALL
-                SELECT id, nick, text, kind, created_at, room_id, reply_to FROM (
+                SELECT id, nick, text, kind, created_at, room_id, reply_to, topic FROM (
                     SELECT * FROM chat WHERE kind = 'system' ORDER BY id DESC LIMIT $nl)
             ) m
             LEFT JOIN chat p ON p.id = m.reply_to
             ORDER BY m.id
             """, ("$nc", nChat), ("$nl", nLog));
-        var rows = new List<(long Id, string Nick, string Text, string Kind, string At, string? Room, long? ReplyTo, string? PNick, string? PText)>();
+        return ReadChat(c, cmd);
+    }
+
+    /// <summary>
+    /// Старіші за <paramref name="beforeId"/> рядки — коли людина гортає балачки вгору. <paramref name="log"/> — Журнал,
+    /// інакше самі репліки. Від старших до новіших, як і <see cref="RecentChat"/>.
+    /// </summary>
+    public List<ChatMessage> ChatBefore(long beforeId, int n, bool log)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic FROM (
+                SELECT * FROM chat WHERE id < $before AND {(log ? "kind = 'system'" : Talk)} ORDER BY id DESC LIMIT $n
+            ) m
+            LEFT JOIN chat p ON p.id = m.reply_to
+            ORDER BY m.id
+            """, ("$before", beforeId), ("$n", n));
+        return ReadChat(c, cmd);
+    }
+
+    static List<ChatMessage> ReadChat(SqliteConnection c, SqliteCommand cmd)
+    {
+        var rows = new List<(long Id, string Nick, string Text, string Kind, string At, string? Room, long? ReplyTo, string? PNick, string? PText, string? Topic)>();
         using (var r = cmd.ExecuteReader())
         {
             while (r.Read())
                 rows.Add((r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4),
                     r.IsDBNull(5) ? null : r.GetString(5), r.IsDBNull(6) ? null : r.GetInt64(6),
-                    r.IsDBNull(7) ? null : r.GetString(7), r.IsDBNull(8) ? null : r.GetString(8)));
+                    r.IsDBNull(7) ? null : r.GetString(7), r.IsDBNull(8) ? null : r.GetString(8),
+                    r.IsDBNull(9) ? null : r.GetString(9)));
         }
         var likes = LikesFor(c, rows.Where(x => x.Kind != "system").Select(x => x.Id).ToList());
         return [.. rows.Select(x => new ChatMessage(x.Id, x.Nick, x.Text, Ts(x.At), x.Kind, x.Room, x.ReplyTo, x.PNick, Quote(x.PText),
-            likes.TryGetValue(x.Id, out var l) ? [.. l] : []))];
+            likes.TryGetValue(x.Id, out var l) ? [.. l] : [], x.Topic))];
     }
 
     /// <summary>Хто лайкнув кожне з повідомлень — у порядку лайків.</summary>
@@ -830,7 +925,7 @@ public sealed class Db
         using var c = Open();
         using (var k = Cmd(c, "SELECT kind FROM chat WHERE id=$id", ("$id", chatId)))
         {
-            if (k.ExecuteScalar() is not string kind || kind == "system") return null;
+            if (k.ExecuteScalar() is not string kind || kind == "system" || HiddenKinds.Contains(kind)) return null;
         }
         // Лайк прив'язаний до ніка без регістру: «Оля» і «оля» — одна людина, як і скрізь на сайті. Порівнюємо в C#:
         // COLLATE NOCASE у SQLite знає лише латиницю.

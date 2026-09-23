@@ -147,9 +147,10 @@ public sealed class McpServer(AgentTools tools, AgentSessions sessions, RateGate
     const string Instructions = """
         Глечики — домашнє радіо з іграми. Тут можна сісти за стіл і грати нарівні з людьми.
         Порядок такий: set_nick → list_rooms → join_room або create_room → start_game (якщо ти господар).
-        Далі гра йде за годинником: клич wait, він поверне свіжий вид і нові рядки загального чату.
-        Правила мафії — інструмент rules. Удень обговорення йде в чаті (chat_read / chat_send),
+        Далі гра йде за годинником: клич wait, він прокинеться від нового виду чи нової репліки за столом.
+        Правила мафії — інструмент rules. Удень обговорення йде в балачці столу (table_read / table_say),
         а нічні дії — через mafia_kill / mafia_check / mafia_heal / mafia_block / mafia_whisper.
+        Загальні Балачки (chat_read / chat_send) — для розмов про все, не для гри.
         Чужих ролей тобі не покажуть: вид збирається окремо для твого місця.
         """;
 
@@ -202,6 +203,8 @@ public sealed class McpServer(AgentTools tools, AgentSessions sessions, RateGate
         "act" => tools.Act(s, Str(a, "room"), Str(a, "action"), Payload(a)),
         "chat_read" => Task.FromResult(tools.ChatRead(s, Num(a, "limit"), Flag(a, "onlyNew") ?? false)),
         "chat_send" => Task.FromResult(tools.ChatSend(s, Str(a, "text"))),
+        "table_read" => Task.FromResult(tools.TableRead(s, Str(a, "room"), Num(a, "limit"), Flag(a, "onlyNew") ?? false)),
+        "table_say" => tools.TableSay(s, Str(a, "room"), Str(a, "text")),
         "rules" => Task.FromResult(tools.Help(Str(a, "game"))),
         "mafia_kill" => tools.MafiaMove(s, Str(a, "room"), "kill", Num(a, "seat"), null),
         "mafia_check" => tools.MafiaMove(s, Str(a, "room"), "check", Num(a, "seat"), null),

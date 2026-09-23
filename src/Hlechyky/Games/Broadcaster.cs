@@ -54,8 +54,9 @@ public sealed class Broadcaster(
         List<Send> sends;
         try
         {
+            // Усе, що в Журнал пишуть ігри й сервіси (столи, підсумки, ачівки, турнір), — під фільтром «🎮 Ігри».
             sends = Plan(all, rooms.Snapshot, rooms.SoloNow, rooms.ViewsFor, presence.Get, presence.ConnectionsOf,
-                (text, roomId) => db.AddChat(site.CurrentValue.Name, text, "system", roomId));
+                (text, roomId) => db.AddChat(site.CurrentValue.Name, text, "system", roomId, topic: "games"));
         }
         catch (Exception ex)
         {
@@ -105,6 +106,7 @@ public sealed class Broadcaster(
     /// <see cref="LobbyChanged"/> (і так само <see cref="SoloChanged"/>) в одному Outbox стають одним, кілька
     /// <see cref="RoomViews"/> однієї кімнати — теж (лишається останнє: воно й так рахується від свіжого стану), а з
     /// кадрів однієї кімнати лишається останній. <see cref="DjSays"/> сюди не потрапляє: його вміє лише RadioEngine.
+    /// Балачка столу (<see cref="TableSaid"/>, <see cref="TableHistory"/>) не склеюється: кожна репліка — окрема.
     /// </summary>
     public static List<Send> Plan(
         IReadOnlyList<Outgoing> messages,
@@ -145,6 +147,14 @@ public sealed class Broadcaster(
                     break;
                 case Invite invite:
                     sends.Add(new Send(new ToAll(), "invite", new { roomId = invite.RoomId, by = invite.By, text = invite.Text }));
+                    break;
+                case TableSaid said:
+                    // Балачка столу — лише тим, хто на нього дивиться, як і види з кадрами.
+                    sends.Add(new Send(new ToGroup(RoomGroup(said.RoomId)), "tableChat", new { id = said.RoomId, line = said.Line }));
+                    break;
+                case TableHistory history:
+                    sends.Add(new Send(new ToConnections([history.ConnectionId]), "tableHistory",
+                        new { id = history.RoomId, lines = history.Lines }));
                     break;
                 case WalletChanged w:
                     sends.Add(new Send(new ToConnections(connectionsOf(w.Nick)), "wallet",

@@ -6,12 +6,17 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
     static readonly ConcurrentDictionary<string, DateTime> LastCommand = new();
     static readonly ConcurrentDictionary<string, DateTime> LastLike = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Коли з'єднання востаннє казало «пишу…» — частіше за <see cref="TypingGapMs"/> не пересилаємо.</summary>
+    static readonly ConcurrentDictionary<string, DateTime> LastTyping = new();
+    const int TypingGapMs = 1500;
+    /// <summary>Скільки старіших повідомлень віддавати за раз, коли людина гортає балачки вгору.</summary>
+    const int OlderBatch = 60;
 
     public override async Task OnConnectedAsync()
     {
@@ -40,6 +45,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         presence.Remove(Context.ConnectionId);
         var left = rooms.DropWatcher(Context.ConnectionId);
         rates.Forget(Context.ConnectionId);
+        LastTyping.TryRemove(Context.ConnectionId, out _);
         // Місце тримається ще grace-час: F5 і провал зв'язку в метро не мають коштувати партії.
         if (gone is not null && !presence.IsOnline(gone)) rooms.NoteOffline(gone, clock.UtcNow);
         await Clients.All.SendAsync("state", engine.Snapshot());
@@ -72,20 +78,15 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
 
     async Task<string?> Say(string text, long? replyTo)
     {
-        text = (text ?? "").Trim();
+        text = Cut(text);
         if (text.Length == 0) return null;
-        // Обрізаємо по символах, але не посеред смайла: у .NET він займає дві клітинки рядка.
-        if (text.Length > 500) text = text[..(char.IsHighSurrogate(text[499]) ? 499 : 500)];
         var nick = Nick();
         var (chatText, kind) = (text, "chat");
         if (text.StartsWith('/'))
         {
-            var now = DateTime.UtcNow;
-            if (LastCommand.TryGetValue(nick, out var last) && (now - last).TotalMilliseconds < 1200) return "Не так швидко";
-            if (text.StartsWith("/пароль", StringComparison.OrdinalIgnoreCase)) return ResetPassword(text);
-            var r = ChatCommands.Run(text, rooms.LiveIds);
-            if (r.Error is not null) return r.Error;   // на друкарську помилку паузу не вішаємо
-            LastCommand[nick] = now;
+            if (text.StartsWith("/пароль", StringComparison.OrdinalIgnoreCase)) return CommandTooFast(nick) ?? ResetPassword(text);
+            var r = Command(nick, text, rooms.LiveIds);
+            if (r.Error is not null) return r.Error;
             // /столи — погляд у лобі, не виходячи з балачок: відповідь бачить лише той, хто спитав, і в базу
             // вона не лягає. Самі столи браузер уже має з події rooms, тож звідси йдуть тільки їхні id.
             if (r.Rooms is { } tables)
@@ -96,10 +97,83 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
             }
             (chatText, kind) = (r.Text!, r.Kind);
         }
+        if (flood.Check(nick, text, clock.UtcNow) is { } tooMuch) return tooMuch;
         // Відповідь має сенс лише для звичайної репліки: кубик чи монетка «у відповідь» — це вже просто кубик.
         await Clients.All.SendAsync("chat", db.AddChat(nick, chatText, kind, replyTo: kind == "chat" ? replyTo : null));
         if (kind == "chat") brain.OnChat(nick, chatText); // Глек вирішить сам, чи це до нього; кубик не його справа
         return null;
+    }
+
+    /// <summary>
+    /// Репліка в балачці столу <paramref name="roomId"/>: чують ті, хто за ним сидить чи дивиться. Кубик і монетка
+    /// тут теж працюють — вирішити, хто ходить першим, найчастіше треба саме за столом. Помилку (не за столом,
+    /// мертві мовчать, флуд) бачить лише той, хто писав.
+    /// </summary>
+    public async Task<string?> TableSay(string roomId, string text)
+    {
+        text = Cut(text);
+        if (text.Length == 0) return null;
+        var nick = Nick();
+        var (said, kind) = (text, "chat");
+        if (text.StartsWith('/'))
+        {
+            // null замість столів: /столи тут ні до чого, стіл і так перед очима
+            var r = Command(nick, text, null);
+            if (r.Error is not null) return r.Error;
+            (said, kind) = (r.Text!, r.Kind);
+        }
+        // Спершу — чи можна тут говорити взагалі (не за столом, мертві мовчать): на це флуд-лічильник не витрачаємо.
+        if (rooms.TalkRefusal(roomId ?? "", Context.ConnectionId, nick) is { } why) return why;
+        if (flood.Check(nick, text, clock.UtcNow) is { } tooMuch) return tooMuch;
+        var (outbox, error) = rooms.TableSay(roomId ?? "", Context.ConnectionId, nick, said, kind);
+        if (error is not null) return error;
+        await broadcaster.FlushAsync(outbox);
+        return null;
+    }
+
+    /// <summary>
+    /// «Оля пише…». Браузер шле це раз на кілька секунд, поки людина набирає; <paramref name="roomId"/> — балачка
+    /// столу (чують лише ті, хто на нього дивиться), null — загальні Балачки. Відповіді нема: це не більше ніж натяк.
+    /// </summary>
+    public async Task Typing(string? roomId)
+    {
+        var now = DateTime.UtcNow;
+        if (LastTyping.TryGetValue(Context.ConnectionId, out var last) && (now - last).TotalMilliseconds < TypingGapMs) return;
+        LastTyping[Context.ConnectionId] = now;
+        var nick = Nick();
+        if (nick == Auth.Guest) return;   // безіменному «гостю» нема кого показувати
+        if (string.IsNullOrEmpty(roomId))
+        {
+            await Clients.Others.SendAsync("typing", new { nick, room = (string?)null });
+            return;
+        }
+        // Хто за столом говорити не може (мертвий у мафії, чужий), той і «пише…» не світить.
+        if (rooms.TalkRefusal(roomId, Context.ConnectionId, nick) is not null) return;
+        await Clients.OthersInGroup(Broadcaster.RoomGroup(roomId)).SendAsync("typing", new { nick, room = roomId });
+    }
+
+    /// <summary>Старіші повідомлення — коли людина гортає вгору Балачки (або Журнал, <paramref name="log"/>).</summary>
+    public List<ChatMessage> ChatBefore(long beforeId, bool log) =>
+        beforeId <= 1 || !Allow(input: false) ? [] : db.ChatBefore(beforeId, OlderBatch, log);
+
+    /// <summary>Обрізаємо по символах, але не посеред смайла: у .NET він займає дві клітинки рядка.</summary>
+    static string Cut(string? text)
+    {
+        var t = (text ?? "").Trim();
+        return t.Length <= 500 ? t : t[..(char.IsHighSurrogate(t[499]) ? 499 : 500)];
+    }
+
+    /// <summary>Команди — не частіше ніж раз на 1,2 с від ніка. null — можна.</summary>
+    static string? CommandTooFast(string nick) =>
+        LastCommand.TryGetValue(nick, out var last) && (DateTime.UtcNow - last).TotalMilliseconds < 1200 ? "Не так швидко" : null;
+
+    /// <summary>Кубик, монетка, куля, /столи. На друкарську помилку паузу не вішаємо — лише на вдалу команду.</summary>
+    static ChatCommands.Result Command(string nick, string text, Func<IReadOnlyList<string>>? live)
+    {
+        if (CommandTooFast(nick) is { } slow) return new(Error: slow);
+        var r = ChatCommands.Run(text, live);
+        if (r.Error is null) LastCommand[nick] = DateTime.UtcNow;
+        return r;
     }
 
     /// <summary>Emoji flying over the cover for everyone. Not persisted, lightly rate-limited per nick.</summary>

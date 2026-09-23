@@ -132,7 +132,10 @@ public interface IRoomContext
     void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null);
     /// <summary>Рядок у Журнал усім.</summary>
     void Log(string text);
-    /// <summary>Дядько Глек каже щось у Балачки.</summary>
+    /// <summary>
+    /// Дядько Глек каже щось у балачку цього столу: чують ті, хто за ним сидить чи дивиться. У загальні Балачки
+    /// з гри не йде нічого — там люди, а не ведучий чужої партії.
+    /// </summary>
     void Say(string text);
     /// <summary>
     /// Соло-результат у таблицю (порядок — Info.Score). <paramref name="attempts"/> — для щоденних, що міряють
@@ -187,6 +190,12 @@ public abstract class Game
 
     /// <summary>Компактний кадр для реалтайму; null — каркас візьме View(null).</summary>
     public virtual object? Frame() => null;
+
+    /// <summary>
+    /// Чи можна місцю <paramref name="seat"/> (null — глядачеві) зараз говорити в балачці столу: null — можна,
+    /// інакше чому ні («Мертві мовчать»). Кличеться під замком кімнати. Типово говорять усі й завжди.
+    /// </summary>
+    public virtual string? TalkBlock(int? seat) => null;
 
     /// <summary>Хтось встав посеред партії. Типово — техпоразка тому, хто пішов.</summary>
     public virtual void OnLeave(int seat)
@@ -314,7 +323,20 @@ public sealed record RoomFrame(string RoomId, object Frame) : Outgoing;
 /// нього кнопку «Сісти»/«Дивитись» (PROTOCOL §2). null — просто рядок.
 /// </summary>
 public sealed record Journal(string Text, string? RoomId = null) : Outgoing;
+/// <summary>Глек каже щось у загальні Балачки (привітання чемпіона турніру). Слова ведучого партії — <see cref="TableSaid"/>.</summary>
 public sealed record DjSays(string Text) : Outgoing;
+
+/// <summary>
+/// Рядок балачки столу. <paramref name="Id"/> наскрізний на весь сервер — за ним браузер не задвоює рядок і знає,
+/// що нове. <paramref name="Kind"/> — як у Балачках: chat, dj (Глек-ведучий), dice, coin, choose, 8ball.
+/// </summary>
+public sealed record TableLine(long Id, string Nick, string Text, string Kind, DateTimeOffset At);
+
+/// <summary>Нова репліка в балачці столу — усім, хто на цей стіл дивиться.</summary>
+public sealed record TableSaid(string RoomId, TableLine Line) : Outgoing;
+
+/// <summary>Уся балачка столу одному з'єднанню, щойно воно підписалось на стіл (F5, реконект, зайшов подивитись).</summary>
+public sealed record TableHistory(string RoomId, string ConnectionId, IReadOnlyList<TableLine> Lines) : Outgoing;
 public sealed record WalletChanged(string Nick, int Balance, int Delta, string Reason, string Text) : Outgoing;
 public sealed record AchievementUnlocked(string Nick, string Key, string Title, string Text, string Icon, int Reward) : Outgoing;
 public sealed record ToastFor(string Nick, string Text, string Kind) : Outgoing;

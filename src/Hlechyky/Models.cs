@@ -56,9 +56,10 @@ public sealed class NowPlaying
 /// <remarks>
 /// <c>ReplyTo</c> — id повідомлення, на яке це відповідь; <c>ReplyNick</c>/<c>ReplyText</c> — хто й що там писав (уривок),
 /// щоб браузер намалював цитату, навіть коли оригінал уже випав з історії. <c>Likes</c> — ніки тих, хто поставив ❤.
+/// <c>Topic</c> — лише в рядків Журналу: 'radio' чи 'games'; за ним Журнал фільтрується.
 /// </remarks>
 public sealed record ChatMessage(long Id, string Nick, string Text, DateTimeOffset At, string Kind, string? RoomId = null,
-    long? ReplyTo = null, string? ReplyNick = null, string? ReplyText = null, string[]? Likes = null);
+    long? ReplyTo = null, string? ReplyNick = null, string? ReplyText = null, string[]? Likes = null, string? Topic = null);
 
 public sealed record SearchResult(string Id, string Title, string Artist, string? Album, int DurationSec, string? ThumbUrl);
 

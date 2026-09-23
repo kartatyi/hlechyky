@@ -59,8 +59,9 @@ public sealed class SkilkyStats(Db? db, IClock clock)
         // Голосове — не трек: у списку «різних треків» його бути не повинно, зате воно має свій рядок банку.
         "tracksTotal" => Scalar("SELECT COUNT(*) FROM tracks WHERE id NOT LIKE $p", ("$p", VoicePrefix)),
         "voiceTotal" => Scalar("SELECT COUNT(*) FROM tracks WHERE id LIKE $p", ("$p", VoicePrefix)),
-        // Системні рядки Журналу — це не балачки, їх пише сам сервер.
-        "chatTotal" => Scalar("SELECT COUNT(*) FROM chat WHERE kind <> 'system'"),
+        // «Написано в балачках» — людьми: рядки Журналу пише сам сервер, а Глек за вересень наговорив
+        // тисячі анонсів своїх треків — з ними відповідь була б про нього, а не про нас.
+        "chatTotal" => Scalar("SELECT COUNT(*) FROM chat WHERE kind <> 'system' AND kind NOT LIKE 'dj%'"),
         "minutesPlayed30d" => Scalar("""
             SELECT COALESCE(SUM(t.duration_sec), 0) / 60
             FROM plays p JOIN tracks t ON t.id = p.track_id

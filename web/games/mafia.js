@@ -237,7 +237,7 @@
       act.dataset.sig = actHtml;
       act.innerHTML = actHtml;
       const toChat = act.querySelector('[data-chat]');
-      if (toChat) toChat.onclick = () => { const t = document.getElementById('mtabChat'); if (t) t.click(); };
+      if (toChat) toChat.onclick = () => HGames.openTable();
       const skip = act.querySelector('[data-skip]');
       if (skip) skip.onclick = () => ctx.act('vote', { seat: null });
     }
@@ -292,7 +292,7 @@
 
   /// Рядок «що зараз робити» — головна підказка картки, бо правила гри тримає сервер.
   function advice(v, ctx) {
-    const chat = '<button class="ghost" data-chat>До Балачок</button>';
+    const chat = '<button class="ghost" data-chat>💬 До суперечки</button>';
     if (v.phase === 'lobby') {
       return '<span class="muted small">Чекаємо, поки господар почне. Треба щонайменше троє'
         + ' (утрьох — коротка партія: перша ніч тиха, і все вирішує один день).</span>';
@@ -302,8 +302,8 @@
       const icon = { mafia: '🔪', civil: '🌾', maniac: '🪓', draw: '🤝' }[v.result && v.result.team] || '';
       return '<span class="mf-final">' + (icon ? icon + ' ' : '') + ctx.esc(t) + '</span>';
     }
-    if (!v.me) return '<span class="muted small">Дивишся збоку: ролі й нічні справи тобі не покажуть.</span>';
-    if (!v.me.alive) return '<span class="muted small">Тебе вже нема серед живих. Дивись усе, але в кімнаті мовчи — так домовились.</span>';
+    if (!v.me) return '<span class="muted small">Дивишся збоку: ролі й нічні справи тобі не покажуть, а поки йде партія — глядачі за столом мовчать.</span>';
+    if (!v.me.alive) return '<span class="muted small">Тебе вже нема серед живих. Дивись усе й читай суперечку, але слова тобі за столом до кінця партії не дадуть.</span>';
     if (v.phase === 'intro') {
       const card = ROLE_CARD[v.me.role];
       const trio = (v.players || []).length === 3;
@@ -335,7 +335,7 @@
       if (v.me.role === 'kuma') return '<span class="muted small">Іди в гості: до кого зайдеш, той цієї ночі нічого не встигне. Двічі поспіль в одну хату не ходять.</span>';
       return '<span class="muted small">Спи. Уночі за тебе працюють інші.</span>';
     }
-    if (v.phase === 'day') return '<span class="muted small">Сперечайтесь у Балачках — кімната лише рахує час.</span>' + chat;
+    if (v.phase === 'day') return '<span class="muted small">Сперечайтесь у балачці столу — картка лише рахує час.</span>' + chat;
     const secret = v.rules && !v.rules.openVotes;
     return '<span class="muted small">Тисни «Вигнати» біля когось. Передумати можна до кінця.'
       + (secret ? ' Голоси таємні: видно лише, хто вже визначився.' : '') + '</span>'
@@ -345,15 +345,17 @@
   HGames.register({
     id: 'mafia',
     news: {
-      v: '2026-09-24',
-      title: 'Мафія: можна й утрьох',
+      v: '2026-09-24b',
+      title: 'Мафія: суперечка — за столом',
       items: [
+        '💬 Село сперечається в балачці столу, а не в загальних Балачках: там і Глек-ведучий, і кнопка «До суперечки» на картці',
+        '🤐 Мертві й глядачі тепер справді мовчать, поки йде партія. До старту й після — балакають усі',
         '👥 Стіл від трьох: мафіозі, комісар і мирний. Перша ніч тиха, а вдень мирний вирішує, котрий «комісар» справжній',
         '🃏 На знайомстві — картка твоєї ролі: хто ти й чого хочеш (і підказка на чіпі ролі до кінця партії)',
-        '🌙 Тиха ніч з одним мафіозі закінчується, щойно решта зробила своє, — шептатись однаково нема з ким',
-        '📜 Після партії хроніка села розгортається сама',
       ],
     },
+    // Розмова тут і є гра: балачку столу каркас розгортає сам, щойно людина підійшла до столу.
+    talk: 'main',
     icon: ICON,
     mount(root, ctx) { build(root, ctx); paint(root, ctx); },
     update(root, ctx) { paint(root, ctx); },
