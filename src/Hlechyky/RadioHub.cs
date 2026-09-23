@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
@@ -230,8 +230,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     // ---------- турнір ----------
     // Кожен метод повертає текст відмови тому, хто тиснув, або null; зміни всім розсилає сам Tournament.
 
-    public Task<string?> TournamentCreate(string[] games) => Lead(() => tournament.Create(Nick(), games));
-    public Task<string?> TournamentJoin() => Lead(() => tournament.Join(Nick()));
+    public Task<string?> TournamentCreate(string[] games) => Lead(() => Asleep() ?? tournament.Create(Nick(), games));
+    public Task<string?> TournamentJoin() => Lead(() => Asleep() ?? tournament.Join(Nick()));
     public Task<string?> TournamentLeave() => Lead(() => tournament.Leave(Nick()));
     public Task<string?> TournamentNext() => Lead(() => tournament.Next(Nick()));
     public Task<string?> TournamentSkip() => Lead(() => tournament.Skip(Nick()));
@@ -247,31 +247,33 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     /// на <c>{"stake": 5}</c> просто впав би при прив'язці аргументів.
     /// </summary>
     public Task<RoomReply> CreateRoom(string gameId, Dictionary<string, JsonElement>? options) =>
-        Act(() => rooms.Create(Nick(), gameId ?? "", RoomOptions.From(options)));
+        Play(() => rooms.Create(Nick(), gameId ?? "", RoomOptions.From(options)));
 
     public async Task<RoomReply> OpenSolo(string gameId, string? key)
     {
-        var reply = await Act(() => rooms.OpenSolo(Nick(), gameId ?? "", key));
+        var reply = await Play(() => rooms.OpenSolo(Nick(), gameId ?? "", key));
         // Особиста кімната нікуди не «видно»: щоб гравець одразу побачив свій вид, підписуємо його самі.
         if (reply.Ok && reply.RoomId is { } id) await WatchRoom(id);
         return reply;
     }
 
-    public Task<RoomReply> JoinRoom(string roomId) => Act(() => rooms.Join(roomId ?? "", Nick()));
+    public Task<RoomReply> JoinRoom(string roomId) => Play(() => rooms.Join(roomId ?? "", Nick()));
 
     public Task<RoomReply> LeaveRoom(string roomId) => Act(() => rooms.Leave(roomId ?? "", Nick()));
 
-    public Task<RoomReply> StartRoom(string roomId) => Act(() => rooms.StartByHost(roomId ?? "", Nick()));
+    public Task<RoomReply> StartRoom(string roomId) => Play(() => rooms.StartByHost(roomId ?? "", Nick()));
 
-    public Task<RoomReply> Rematch(string roomId) => Act(() => rooms.Rematch(roomId ?? "", Nick()));
+    public Task<RoomReply> Rematch(string roomId) => Play(() => rooms.Rematch(roomId ?? "", Nick()));
 
     public Task<RoomReply> Act(string roomId, string action, JsonElement payload) =>
-        Act(() => rooms.Act(roomId ?? "", Nick(), action ?? "", payload));
+        Awake(roomId) is { } night ? Task.FromResult(RoomReply.Fail(night))
+            : Act(() => rooms.Act(roomId ?? "", Nick(), action ?? "", payload));
 
     /// <summary>Реалтайм-ввід. Відповіді нема: наступний кадр і так намалює, що вийшло.</summary>
     public async Task Input(string roomId, string action, JsonElement payload)
     {
         if (!Allow(input: true)) return;   // зайве мовчки викидаємо, скаржитись тут нема на що
+        if (Awake(roomId) is not null) return;   // під відбоєм теж мовчки: плашка на сайті вже все сказала
         await broadcaster.FlushAsync(rooms.Input(roomId ?? "", Nick(), action ?? "", payload));
     }
 
@@ -304,6 +306,16 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         if (!Allow(input: true)) return;   // кожна зміна — розсилка всім, тож теж під квотою
         await broadcaster.FlushAsync(rooms.Focus(Context.ConnectionId, Nick(), roomId));
     }
+
+    /// <summary>Нічний відбій (Curfew): текст відмови цьому гравцеві, null — можна грати.</summary>
+    string? Asleep() => curfew.Refusal(Nick(), Context.GetHttpContext());
+
+    /// <summary>Хід за столом під відбоєм: відмова, крім партії, яку почали ще до ночі з іншими людьми.</summary>
+    string? Awake(string? roomId) => curfew.MoveRefusal(Nick(), Context.GetHttpContext(), rooms.Find(roomId));
+
+    /// <summary>Усе, з чого гра починається (стіл, соло, сісти, почати, ще раз): під відбоєм — одразу відмова.</summary>
+    Task<RoomReply> Play(Func<RoomOutcome> action) =>
+        Asleep() is { } night ? Task.FromResult(RoomReply.Fail(night)) : Act(action);
 
     async Task<RoomReply> Act(Func<RoomOutcome> action)
     {

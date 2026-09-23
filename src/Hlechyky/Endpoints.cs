@@ -28,9 +28,10 @@ public static class Endpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/me", (HttpContext c, TrackBans bans, IGoogleVerifier google) => new
+        api.MapGet("/me", (HttpContext c, TrackBans bans, IGoogleVerifier google, Curfew curfew) => new
         {
             nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice,
+            night = curfew.ForMe(c),   // нічний відбій — лише тим, кого стосується; решті null
             account = Auth.IsUser(c),
             hasPassword = Auth.Me(c)?.HasPassword ?? false,
             google = Auth.Me(c)?.GoogleSub is not null,

@@ -29,6 +29,7 @@ builder.Services.Configure<AutoDjOptions>(cfg.GetSection("AutoDj"));
 builder.Services.Configure<DjBotOptions>(cfg.GetSection("DjBot"));
 builder.Services.Configure<DeployOptions>(cfg.GetSection("Deploy"));
 builder.Services.Configure<MelodyOptions>(cfg.GetSection("Melody"));
+builder.Services.Configure<CurfewOptions>(cfg.GetSection("Curfew"));
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Paths.Resolve("data/keys")));
@@ -47,6 +48,7 @@ builder.Services.AddSingleton<RoomTaste>();
 builder.Services.AddSingleton<ArtistQuality>();
 builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
+builder.Services.AddSingleton<Curfew>();      // нічний відбій для окремих гравців (Curfew.cs)
 builder.Services.AddSingleton<ChatFlood>();   // один лічильник флуду на Балачки, столи й агентів
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());

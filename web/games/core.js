@@ -335,13 +335,22 @@
   // Хаб
   // =============================================================================================
 
+  /// Та сама відмова раз за разом (коло під нічним відбоєм шле пачку кліків за пачкою) — один тост на кілька секунд, а не стос.
+  let lastErr = { text: '', at: 0 };
+  function errToast(text) {
+    const now = Date.now();
+    if (text === lastErr.text && now - lastErr.at < 4000) return;
+    lastErr = { text, at: now };
+    toast(text, 'err');
+  }
+
   /// Виклик хаба, що повертає RoomReply: помилку показуємо тостом, успіх — лише якщо є що сказати.
   async function call(method, ...args) {
     if (!conn || conn.state !== 'Connected') { toast('Зв\'язку з сервером нема', 'err'); return { ok: false, message: '' }; }
     try {
       const r = await conn.invoke(method, ...args);
       if (!r) return { ok: true, message: '' };
-      if (!r.ok) toast(r.message || 'Не вийшло', 'err');
+      if (!r.ok) errToast(r.message || 'Не вийшло');
       else if (r.message) toast(r.message, 'ok');
       return r;
     } catch (e) {

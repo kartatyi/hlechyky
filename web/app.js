@@ -2725,6 +2725,26 @@
     }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
   }
 
+  // ---------- нічний відбій ----------
+  // Кого він стосується, каже /api/me (night: { from, to, text }), решті там null. Котра година в Києві — рахуємо
+  // тут і щопівхвилини: плашка має з'явитись опівночі й зникнути о шостій без перезавантаження сторінки.
+  // Не пускає за стіл однаково сервер; плашка лише каже, чому.
+  function kyivHour() {
+    for (const timeZone of ['Europe/Kyiv', 'Europe/Kiev']) {
+      try { return Number(new Intl.DateTimeFormat('en-GB', { timeZone, hour: 'numeric', hourCycle: 'h23' }).format(new Date())); }
+      catch { /* стара база зон — пробуємо стару назву */ }
+    }
+    return new Date().getHours();
+  }
+  function paintNight() {
+    const n = me.night;
+    const h = kyivHour();
+    const on = !!n && (n.from <= n.to ? h >= n.from && h < n.to : h >= n.from || h < n.to);
+    if (on) $('nightBar').querySelector('.nb-text').textContent = n.text;
+    $('nightBar').hidden = !on;
+  }
+  setInterval(paintNight, 30000);
+
   // ---------- boot ----------
   setPlayUi();
   // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри.
@@ -2740,6 +2760,8 @@
     me.google = !!m.google;
     me.email = m.email || '';
     me.banPrice = m.banPrice || 0;
+    me.night = m.night || null;
+    paintNight();
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
     // на #lib/ads зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
