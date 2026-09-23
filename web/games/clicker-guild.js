@@ -391,10 +391,16 @@
     const esc = (x) => api.esc(st, x);
     const r = st.guildRoster;
     if (!r) return '<section class="clkg-card"><div class="clk-sub">👥 Гончарі цеху</div><div class="muted small">Кличемо гончарів…</div></section>';
+    // Значки звань (clicker-titles.md): до трьох біля ніка, «Перший гончар округи» — золотим ніком із короною.
+    const badges = (p) => {
+      // Корона вже стоїть перед золотим ніком — вдруге серед значків її не треба.
+      const list = (p.badges || []).filter((b) => !(p.first && b.key === 'first'));
+      return list.length ? ' <span class="clkg-badges">' + list.map((b) => '<span title="' + esc(b.name) + '">' + b.icon + '</span>').join('') + '</span>' : '';
+    };
     const rows = r.potters.length
-      ? r.potters.map((p) => '<div class="clkg-potter' + (p.me ? ' me' : '') + '">'
+      ? r.potters.map((p) => '<div class="clkg-potter' + (p.me ? ' me' : '') + (p.first ? ' first' : '') + '">'
         + '<span class="clkg-pico">' + RANK_ICON[p.rank] + '</span>'
-        + '<div class="clkg-pname"><b>' + esc(p.nick) + (p.me ? ' <span class="muted small">(ти)</span>' : '') + '</b>'
+        + '<div class="clkg-pname"><b>' + esc(p.nick) + (p.me ? ' <span class="muted small">(ти)</span>' : '') + badges(p) + '</b>'
         + '<span class="muted small">' + esc(rankName(st, p.rank)) + (p.gave ? ' · на возі ' + p.gave : '') + '</span></div>'
         + '<button type="button" class="ghost small" data-house="' + esc(p.nick) + '">🏠 Зазирнути в хату</button></div>').join('')
       : '<div class="muted small">Поки нікого — зайди пізніше.</div>';
@@ -502,6 +508,17 @@
     return '<div class="muted small clkg-kiln">' + api.esc(st, text) + (k.batches ? ' · партій за весь час: ' + api.short(k.batches) : '') + '</div>';
   }
 
+  /// Стіна звань у хаті друга (clicker-titles.md): що він має, найрідкісніші спершу, і пам'ятний глечик «Округа».
+  function wallHtml(st, api, d) {
+    const list = d.titles || [];
+    if (!list.length && !d.keepsake) return '';
+    const esc = (x) => api.esc(st, x);
+    return '<div class="clkg-wall"><span class="muted small">🎖 Стіна звань</span><div class="clkg-wallrow">'
+      + list.map((t) => '<span class="clkg-wallt k-' + esc(t.kind) + '" title="' + esc(t.desc) + '"><b>' + t.icon + '</b>' + esc(t.name) + '</span>').join('')
+      + (d.keepsake ? '<span class="clkg-wallt k-gift" title="Подарунок округи за оновлення зі званнями"><b>🏺</b>Пам\'ятний глечик «Округа»</span>' : '')
+      + '</div></div>';
+  }
+
   /// Три кнопки допомоги просто в хаті друга — саме там, де хочеться щось для нього зробити.
   function helpButtons(st, d) {
     if (!st.mine || !st.guild || !st.guild.enabled) return '';
@@ -540,6 +557,7 @@
           + stat('клейм', d.stamps)
           + '</div>'
           + (d.gifts.length ? '<div class="muted small">Дарунки від: ' + esc([...new Set(d.gifts.map((g) => g.from))].join(', ')) + '</div>' : '')
+          + wallHtml(st, api, d)
           + (mine ? '' : helpButtons(st, d))
           + (mine ? '' : '<div class="muted small">Хата — зі збереження; живе коло друга може бути трохи новішим.</div>');
         for (const b of body.querySelectorAll('[data-hhelp]')) {
@@ -550,7 +568,7 @@
           };
         }
       })
-      .catch(() => { if (body.isConnected) body.innerHTML = '<div class="muted">Не вийшло зазирнути — спробуй ще</div>'; });
+      .catch((e) => { console.error('[clicker:guild] хата друга', e); if (body.isConnected) body.innerHTML = '<div class="muted">Не вийшло зазирнути — спробуй ще</div>'; });
   }
 
   // ---------- вибір виробу (віз, дарунок, похвала) ----------

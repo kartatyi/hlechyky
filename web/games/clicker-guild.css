@@ -134,6 +134,20 @@
 .clkg-pname { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
 .clkg-pname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clkg-potter button { white-space: nowrap; }
+/* Звання (clicker-titles.md): значки біля ніка й «Перший гончар округи» — золотим. */
+.clkg-badges { font-weight: normal; letter-spacing: 1px; margin-left: 2px; }
+.clkg-potter.first .clkg-pname b { color: #f4c542; text-shadow: 0 0 6px rgba(244, 197, 66, .35); }
+.clkg-potter.first .clkg-pname b::before { content: '👑 '; }
+.clkg-wall { display: flex; flex-direction: column; gap: 4px; }
+.clkg-wallrow { display: flex; flex-wrap: wrap; gap: 4px; }
+.clkg-wallt {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px;
+  background: rgba(255, 255, 255, .06); border: 1px solid var(--line);
+}
+.clkg-wallt b { font-weight: normal; }
+.clkg-wallt.k-secret { border-color: #9a6bd1; }
+.clkg-wallt.k-rare { border-color: #c9a227; }
+.clkg-wallt.k-memory, .clkg-wallt.k-gift { border-color: #b86b3c; }
 
 /* ---- overlay: вибір виробу й хата друга ---- */
 .clkg-pick { margin-top: 8px; }

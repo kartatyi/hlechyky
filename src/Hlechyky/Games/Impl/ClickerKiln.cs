@@ -1046,11 +1046,14 @@ public sealed partial class Clicker
         _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold);
         _kilnBatches++;
         var whole = outs.Count(o => o.Q > 0);
-        if (manual && outs.Count >= PerfectMin && outs.All(o => o.Q >= 3))
+        var perfect = manual && outs.Count >= PerfectMin && outs.All(o => o.Q >= 3);
+        if (perfect)
         {
             Achieve("potter-kiln-perfect");
             Wonder("kiln-perfect");
         }
+        // Звання: «Бездоганне горно» — такі обпали поспіль, «Перепалив» — обпали з тріщинами (лише власноруч).
+        TitlesOnKiln(manual, perfect, outs.Any(o => o.Q == 0));
         if (outs.Any(o => o.Q == 4)) Achieve("potter-q4");
         if (!manual && ++_kilnAuto == AutoBatchesAch) Achieve("potter-stoker");
 
