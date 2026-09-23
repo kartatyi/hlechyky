@@ -46,7 +46,41 @@ public sealed partial class Clicker
         new("kumanets", "Куманець", 320, 32, 5_000_000_000),
         new("ram", "Баранець-свищик", 260, 27, 50_000_000_000),
         new("lion", "Лев-посудина", 500, 60, 1_000_000_000_000),
+        // Дев'яте оновлення: три вироби після лева, щоб і на трильйонах було що ліпити вперше. Ціна в секундах
+        // тримає ту саму ставку, що й уся драбина (~0,1 с пасиву на одиницю роботи), — баланс не зрушено.
+        new("kukhol", "Кухоль", 220, 22, 5_000_000_000_000),
+        new("tykva", "Тиква", 380, 40, 50_000_000_000_000),
+        new("pleskanets", "Плесканець", 450, 52, 500_000_000_000_000),
     ];
+
+    /// <summary>
+    /// Прокачка ремесла (дев'яте оновлення): не верстат, а будівля — за глеки, назавжди, обпал її не палить.
+    /// <paramref name="Base"/> — ціна першого рівня, кожен наступний у <see cref="CraftUpGrowth"/> разів дорожчий.
+    /// </summary>
+    public sealed record ClickerCraftUp(string Key, string Name, string Desc, int Max, double Base);
+
+    /// <summary>
+    /// П'ять постійних покращень майстерні. Порядок — той, у якому вони муляють: спершу сушарня (коло стає через
+    /// неї), потім горно, комора, швидше сушіння і палій.
+    /// </summary>
+    public static readonly ClickerCraftUp[] CraftUps =
+    [
+        new("rack", "Сушарня", "Ще +2 місця на сушарні — підмайстри довше не впираються", 10, 5_000_000),
+        new("kilnroom", "Горно", "Ще +1 місце в горні — партія більша", 12, 20_000_000),
+        new("store", "Комора", "Ще +50 виробів у коморі — менше йде на базар саме", 10, 2_000_000),
+        new("dryer", "Вітряна сушарня", "Сирець сохне на 5 % швидше", 6, 10_000_000),
+        new("stoker", "Палій", "Палій обпалює краще — і сам, поки тебе нема", 8, 50_000_000),
+    ];
+
+    /// <summary>Кожен рівень прокачки вчетверо дорожчий: десять рівнів сушарні — це від 5 млн до 1,3 трлн.</summary>
+    public const double CraftUpGrowth = 4;
+    public const int RackPerUp = 2, KilnPerUp = 1, StorePerUp = 50, Rack2Places = 6;
+    /// <summary>Скільки часу сушіння знімає один рівень вітряної сушарні.</summary>
+    public const double DryerPerUp = 0.05;
+    /// <summary>Стеля ліплення підмайстрів із секретом «Онук за колом».</summary>
+    public const double ApprenticeWorkGrandson = 0.8;
+
+    public static double CraftUpPrice(ClickerCraftUp up, int level) => up.Base * Math.Pow(CraftUpGrowth, Math.Max(0, level));
 
     /// <summary>Скільки сохне сирець (до погоди).</summary>
     public static readonly TimeSpan DryTime = TimeSpan.FromSeconds(90);
@@ -70,6 +104,10 @@ public sealed partial class Clicker
     readonly List<RackRow> _rack = [];
     readonly Dictionary<string, int> _items = new(StringComparer.Ordinal);
     readonly Dictionary<string, long> _firedBy = new(StringComparer.Ordinal);
+    /// <summary>Прокачка ремесла: ключ → рівень. Обпал її не чіпає.</summary>
+    readonly Dictionary<string, int> _craftUps = new(StringComparer.Ordinal);
+    /// <summary>Які вироби гончар хоч раз ліпив своїми руками — для ачівки «Усі вироби».</summary>
+    readonly HashSet<string> _formedBy = new(StringComparer.Ordinal);
     long _formed;
     AwayRow? _away;
     readonly List<string> _awayNotes = [];
@@ -91,15 +129,33 @@ public sealed partial class Clicker
 
     internal int RackSize => Math.Min(RackMax, RackBase + Level("workshop") / RackPerWorkshop) + KilnRackBonus() + Math.Max(0, CraftRackBonus);
 
-    // Гачки дев'ятого оновлення (пакет «Ремесло» замінює заглушки): прокачка сушарні, горна й комори.
-    /// <summary>Скільки місць сушарні додає прокачка ремесла (v9).</summary>
-    internal int CraftRackBonus => 0;
+    // Гачки дев'ятого оновлення: прокачка сушарні, горна й комори (контракт v9 §B2.1).
+    /// <summary>Скільки місць сушарні додає прокачка ремесла (v9) і «Друга сушарня».</summary>
+    internal int CraftRackBonus => RackPerUp * CraftLevel("rack") + (Has("rack2") ? Rack2Places : 0);
     /// <summary>Скільки місць горна додає прокачка ремесла (v9); горно додає їх до своїх.</summary>
-    internal int CraftKilnBonus => 0;
+    internal int CraftKilnBonus => KilnPerUp * CraftLevel("kilnroom");
     /// <summary>Місткість комори просто зараз (v9: прокачується); <see cref="StoreCap"/> — базова.</summary>
-    internal int StoreCapNow => StoreCap;
+    internal int StoreCapNow => StoreCap + StorePerUp * CraftLevel("store");
     /// <summary>Рівень прокачки ремесла за ключем (v9: rack/kilnroom/store/stoker/dryer); 0 — нема.</summary>
-    internal int CraftLevel(string key) => 0;
+    internal int CraftLevel(string key) => _craftUps.TryGetValue(key, out var n) ? n : 0;
+
+    /// <summary>Множник часу сушіння від вітряної сушарні: шість рівнів — сирець сохне на 30 % швидше.</summary>
+    internal double CraftDryMult => Math.Max(0.1, 1 - DryerPerUp * CraftLevel("dryer"));
+
+    /// <summary>Стеля ліплення підмайстрів: з «Онуком за колом» дід із онуком устигають більше.</summary>
+    internal double ApprenticeMax => Has("grandson") ? ApprenticeWorkGrandson : ApprenticeWorkMax;
+
+    /// <summary>«Зараз: 20 місць» — що прокачка дає просто цієї хвилини, тими самими словами, що й панель.</summary>
+    string CraftUpNow(ClickerCraftUp up) => up.Key switch
+    {
+        "rack" => $"сушарня на {RackSize} {Plural(RackSize, "місце", "місця", "місць")}",
+        "kilnroom" => $"горно на {KilnSlots} {Plural(KilnSlots, "місце", "місця", "місць")}",
+        "store" => $"комора на {StoreCapNow} {WaresWord(StoreCapNow)}",
+        "dryer" => $"сирець сохне {(DryTime.TotalSeconds * CraftDryMult).ToString("0.#", Uk)} с",
+        _ => CraftLevel("stoker") > 0
+            ? $"палій обпалює без тебе · вправність {CraftLevel("stoker")} з {CraftUps[^1].Max}"
+            : "палія ще нема — горно чекає твоїх рук",
+    };
 
     internal IReadOnlyList<RackRow> Rack => _rack;
 
@@ -147,7 +203,7 @@ public sealed partial class Clicker
     internal double PutItems(string ware, string style, int quality, int n)
     {
         if (n <= 0 || WareOf(ware) is null || quality is < 1 or > 3) return 0;
-        var room = Math.Max(0, StoreCap - ItemTotal);
+        var room = Math.Max(0, StoreCapNow - ItemTotal);
         var put = Math.Min(room, n);
         if (put > 0)
         {
@@ -224,11 +280,13 @@ public sealed partial class Clicker
             if (_rack.Count >= RackSize) { _formWork = need; break; }
             _formWork -= need;
             // Виліплене підмайстрами за довгий простій уже встигло висохнути.
-            _rack.Add(new RackRow(w.Key, _clay, dried ? now : now + TimeSpan.FromSeconds(DryTime.TotalSeconds * FairDryMult())));
+            _rack.Add(new RackRow(w.Key, _clay, dried ? now : now + TimeSpan.FromSeconds(DryTime.TotalSeconds * FairDryMult() * CraftDryMult)));
             _formed++;
             made++;
             if (_formed == 1) Achieve("potter-ware-1");
             if (_formed == WaresForAchievement) Achieve("potter-ware-1k");
+            // Кожен вид, що пройшов через твої руки: остання з п'ятнадцяти — ачівка.
+            if (_formedBy.Add(w.Key) && _formedBy.Count >= Wares.Length) Achieve("potter-ware-15");
             AlbumOnFormed(w.Key);
             if (made > 50) { _formWork = 0; break; }                   // запобіжник від зіпсованого збереження
         }
@@ -237,7 +295,7 @@ public sealed partial class Clicker
 
     int _awayFormed;
 
-    double ApprenticeRate => Math.Min(ApprenticeWorkMax, ApprenticeWork * Level("apprentice"));
+    double ApprenticeRate => Math.Min(ApprenticeMax, ApprenticeWork * Level("apprentice"));
 
     ActResult Form(JsonElement payload)
     {
@@ -255,7 +313,7 @@ public sealed partial class Clicker
     {
         if (Flag(payload, "all")) return BazaarAll(payload);
         if (ParseItem(Str(payload, "key")) is not { } it) return ActResult.Fail("Такого виробу в коморі нема");
-        var want = (int)Math.Clamp(Num(payload, "n") ?? 1, 1, StoreCap);
+        var want = (int)Math.Clamp(Num(payload, "n") ?? 1, 1, StoreCapNow);
         var have = ItemCount(x => x == it);
         if (have <= 0) return ActResult.Fail("Такого виробу в коморі нема");
         var n = Math.Min(want, have);
@@ -290,6 +348,32 @@ public sealed partial class Clicker
     }
 
     static string WaresWord(double n) => Plural(n, "виріб", "вироби", "виробів");
+
+    // ---------- прокачка ремесла ----------
+
+    /// <summary>Дія <c>craft</c>: поки що одна — <c>{ op: "up", key }</c>, прокачати будівлю майстерні.</summary>
+    ActResult ActCraft(JsonElement payload) => Str(payload, "op") switch
+    {
+        "up" => CraftUpBuy(payload),
+        _ => ActResult.Fail("Тут так не ходять"),
+    };
+
+    /// <summary>
+    /// Прокачати сушарню, горно, комору, вітряну сушарню чи палія. Рівень купується по одному: ціна росте вчетверо,
+    /// тож «×10» тут ні до чого — кожен рівень гравець вирішує окремо.
+    /// </summary>
+    ActResult CraftUpBuy(JsonElement payload)
+    {
+        if (CraftUps.FirstOrDefault(u => u.Key == Str(payload, "key")) is not { } up)
+            return ActResult.Fail("Такого в майстерні не прокачують");
+        var level = CraftLevel(up.Key);
+        if (level >= up.Max) return ActResult.Fail($"{up.Name}: більшої вже не буває");
+        var price = CraftUpPrice(up, level);
+        if (_pots < price) return ActResult.Fail($"Бракує глеків: треба ще {Short(price - _pots)}");
+        _pots -= price;
+        _craftUps[up.Key] = level + 1;
+        return ActResult.Accept($"🔧 {up.Name} — рівень {level + 1}: {CraftUpNow(up)}");
+    }
 
     // ---------- ачівки з черги ----------
 
@@ -382,12 +466,17 @@ public sealed partial class Clicker
         _rack.Clear();
         _items.Clear();
         _firedBy.Clear();
+        _craftUps.Clear();
+        _formedBy.Clear();
         _formed = 0;
         _away = null;
         _catalogWanted = true;
     }
 
-    /// <summary>Обпал (престиж): сирці й комора згорають разом із глеками; майстерність (лічильники) лишається.</summary>
+    /// <summary>
+    /// Обпал (престиж): сирці й комора згорають разом із глеками; майстерність (лічильники) лишається. Прокачка
+    /// ремесла теж лишається: сушарня, горно й комора — це стіни майстерні, а не верстати (контракт v9 §B2.1).
+    /// </summary>
     void FireCraft()
     {
         _formWork = 0;
@@ -409,7 +498,7 @@ public sealed partial class Clicker
             rack = _rack.Select(r => new { ware = r.Ware, clay = r.Clay, dryAt = r.DryAt }),
             rackSize = RackSize,
             rackFull = _rack.Count >= RackSize,
-            dryMs = DryTime.TotalMilliseconds * FairDryMult(),
+            dryMs = DryTime.TotalMilliseconds * FairDryMult() * CraftDryMult,
             wares = Wares.Select(x => new
             {
                 key = x.Key, name = x.Name, open = WareOpen(x.Key), unlock = x.Unlock, need = WorkOf(x), fired = FiredOf(x.Key),
@@ -420,7 +509,13 @@ public sealed partial class Clicker
                 key = ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality), ware = x.Item.Ware, style = x.Item.Style, q = x.Item.Quality,
                 n = x.Count, value = ItemValue(x.Item.Ware, x.Item.Style, x.Item.Quality),
             }),
-            storeCap = StoreCap,
+            storeCap = StoreCapNow,
+            // Прокачка ремесла: назва й опис їдуть поруч із рівнем — панель малюється з самого виду.
+            ups = CraftUps.Select(u => new
+            {
+                key = u.Key, name = u.Name, desc = u.Desc, level = CraftLevel(u.Key), max = u.Max,
+                price = CraftLevel(u.Key) >= u.Max ? 0 : CraftUpPrice(u, CraftLevel(u.Key)), now = CraftUpNow(u),
+            }),
             formed = _formed,
             fired = FiredTotal,
         };
@@ -454,25 +549,35 @@ public sealed partial class Clicker
 
     sealed record CraftRow(
         string? Ware, double Work, List<RackRow>? Rack, Dictionary<string, int>? Items,
-        Dictionary<string, long>? FiredBy, long Formed, AwayRow? Away);
+        Dictionary<string, long>? FiredBy, long Formed, AwayRow? Away,
+        Dictionary<string, int>? Ups = null, List<string>? FormedBy = null);
 
     CraftRow SaveCraft() => new(_formWare, _formWork, _rack.ToList(),
         new Dictionary<string, int>(_items, StringComparer.Ordinal), new Dictionary<string, long>(_firedBy, StringComparer.Ordinal),
-        _formed, _away);
+        _formed, _away,
+        _craftUps.Count > 0 ? new Dictionary<string, int>(_craftUps, StringComparer.Ordinal) : null,
+        _formedBy.Count > 0 ? _formedBy.Order(StringComparer.Ordinal).ToList() : null);
 
     void LoadCraft(CraftRow? row)
     {
         ResetCraft();
         if (row is null) return;
+        // Прокачка — найперша: від неї залежать і сушарня, і комора, а їх перевіряють рядки нижче.
+        foreach (var (key, n) in row.Ups ?? [])
+            if (n > 0 && CraftUps.FirstOrDefault(u => u.Key == key) is { } up) _craftUps[key] = Math.Min(n, up.Max);
         _formWare = row.Ware is { } k && WareOf(k) is not null ? k : "pot";
         _formWork = double.IsFinite(row.Work) ? Math.Max(0, row.Work) : 0;
         foreach (var r in row.Rack ?? [])
-            if (r is not null && WareOf(r.Ware) is not null && _rack.Count < RackMax + 8)
+            if (r is not null && WareOf(r.Ware) is not null && _rack.Count < Math.Max(RackMax, RackSize) + 8)
                 _rack.Add(r with { Clay = Clays.Any(c => c.Key == r.Clay) ? r.Clay : "" });
         foreach (var (key, n) in row.Items ?? [])
-            if (n > 0 && ParseItem(key) is not null && ItemTotal + n <= StoreCap * 2) _items[key] = n;
+            if (n > 0 && ParseItem(key) is not null && ItemTotal + n <= StoreCapNow * 2) _items[key] = n;
         foreach (var (key, n) in row.FiredBy ?? [])
             if (n > 0 && WareOf(key) is not null) _firedBy[key] = n;
+        foreach (var key in row.FormedBy ?? [])
+            if (key is not null && WareOf(key) is not null) _formedBy.Add(key);
+        // Старе збереження про «хто що ліпив» не знає, зате знає, що обпалено: обпалений виріб хтось таки виліпив.
+        foreach (var key in _firedBy.Keys) _formedBy.Add(key);
         _formed = Math.Max(0, row.Formed);
         _away = row.Away is { } a ? a with { Seconds = Math.Max(0, a.Seconds), Pots = Math.Max(0, a.Pots), Formed = Math.Max(0, a.Formed), Notes = a.Notes ?? [] } : null;
     }

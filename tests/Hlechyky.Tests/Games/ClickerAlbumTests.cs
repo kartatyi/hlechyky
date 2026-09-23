@@ -80,7 +80,7 @@ public class ClickerAlbumTests
     public void The_grid_is_twelve_wares_by_nine_styles()
     {
         Assert.Equal(9, Clicker.AlbumColumns);
-        Assert.Equal(108, Clicker.AlbumSize);
+        Assert.Equal(Clicker.Wares.Length * Clicker.AlbumColumns, Clicker.AlbumSize);
         Assert.Equal(0, Clicker.AlbumStyleIndex(""));
         Assert.Equal(0, Clicker.AlbumStyleIndex(null));
         Assert.Equal(1, Clicker.AlbumStyleIndex("gavarets"));
@@ -113,21 +113,21 @@ public class ClickerAlbumTests
     [Fact]
     public void A_full_column_adds_three_percent_on_top_of_its_cells()
     {
-        var cells = Enumerable.Repeat(1 << 4, 12).ToArray();       // косівський на всіх виробах
+        var cells = Enumerable.Repeat(1 << 4, Clicker.Wares.Length).ToArray();   // косівський на всіх виробах
         cells[3] |= 1;                                              // і одна проста макітра
         Assert.Equal(1, Clicker.AlbumFullColumns(cells));
         Assert.Equal(0, Clicker.AlbumFullRows(cells));
-        Assert.Equal(13 * 0.002 + 0.03, Clicker.AlbumBonusFor(cells, 0, 0), 9);
+        Assert.Equal((Clicker.Wares.Length + 1) * 0.002 + 0.03, Clicker.AlbumBonusFor(cells, 0, 0), 9);
     }
 
     [Fact]
     public void The_whole_grid_is_worth_about_seventy_three_percent()
     {
-        var cells = Full(12);
-        Assert.Equal(108, Clicker.AlbumOpenCount(cells));
-        Assert.Equal(12, Clicker.AlbumFullRows(cells));
+        var cells = Full(Clicker.Wares.Length);
+        Assert.Equal(Clicker.AlbumSize, Clicker.AlbumOpenCount(cells));
+        Assert.Equal(Clicker.Wares.Length, Clicker.AlbumFullRows(cells));
         Assert.Equal(9, Clicker.AlbumFullColumns(cells));
-        Assert.Equal(108 * 0.002 + 12 * 0.02 + 9 * 0.03, Clicker.AlbumBonusFor(cells, 0, 0), 9);
+        Assert.Equal(Clicker.AlbumSize * 0.002 + Clicker.Wares.Length * 0.02 + 9 * 0.03, Clicker.AlbumBonusFor(cells, 0, 0), 9);
     }
 
     [Fact]
@@ -195,10 +195,10 @@ public class ClickerAlbumTests
     public void A_new_game_has_an_empty_album()
     {
         var a = Album(Wheel());
-        Assert.Equal(12, a.GetProperty("cells").GetArrayLength());
+        Assert.Equal(Clicker.Wares.Length, a.GetProperty("cells").GetArrayLength());
         Assert.All(a.GetProperty("cells").EnumerateArray(), c => Assert.Equal(0, c.GetInt32()));
         Assert.Equal(0, a.GetProperty("open").GetInt32());
-        Assert.Equal(108, a.GetProperty("size").GetInt32());
+        Assert.Equal(Clicker.AlbumSize, a.GetProperty("size").GetInt32());
         Assert.Equal(0, a.GetProperty("stove").GetArrayLength());
         Assert.Equal(0, a.GetProperty("finds").GetInt32());
         Assert.Equal(0, a.GetProperty("shards").GetInt32());
@@ -260,7 +260,9 @@ public class ClickerAlbumTests
         Assert.Equal(39, Need("pot"));                              // ceil(40 × 0,96)
         Assert.Equal(30, Need("bowl"));                             // 50 × 0,6
         Assert.Equal(380, Need("lion"));                            // 500 × 0,76
-        Assert.Equal(new[] { 1, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6 }, Album(h).GetProperty("mastery").EnumerateArray().Select(x => x.GetInt32()));
+        var mastery = new int[Clicker.Wares.Length];
+        (mastery[0], mastery[1], mastery[11]) = (1, 10, 6);
+        Assert.Equal(mastery, Album(h).GetProperty("mastery").EnumerateArray().Select(x => x.GetInt32()));
 
         // Виріб на колі теж просить менше: 39 кліків — і горщик на сушарні.
         for (var i = 0; i < 39; i += 12) Click(h, Math.Min(12, 39 - i));
