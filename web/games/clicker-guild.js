@@ -171,9 +171,10 @@
       + '🛒 Забрати: ' + TIER_ICON[cl.tier] + ' ' + TIER[cl.tier] + (cl.day !== w.id ? ' (вчорашній віз)' : '')
       + ' · +' + api.potsShort(cl.pots) + ' <i class="clkg-pai">×' + pai(cl.share) + ' паю</i></button>').join('');
     // Пай (§E.1): що більше поклав — то більша нагорода. Показуємо і скільки маєш зараз, і скільки до наступного паю.
-    const share = Math.min(shareMax, Math.max(0.5, w.mine / per));
+    // Поки не поклав і п'яти — нагороди не буде взагалі, тож і «×0,5 паю» обіцяти нема чого.
+    const share = w.mine >= minGive ? Math.min(shareMax, Math.max(0.5, w.mine / per)) : 0;
     const toNext = w.mine < per * shareMax ? per - (w.mine % per) : 0;
-    const paiNote = '<div class="clkg-pai-box"><b>×' + pai(share) + '</b> твого паю'
+    const paiNote = '<div class="clkg-pai-box">' + (share > 0 ? '<b>×' + pai(share) + '</b> твого паю' : '<b>пай</b> почнеться з ' + minGive + ' виробів')
       + (toNext ? ' <span class="muted small">· ще ' + toNext + ' ' + api.plural(toNext, 'виріб', 'вироби', 'виробів') + ' — і пай більший</span>'
         : ' <span class="muted small">· більше вже не буває</span>')
       + info('Нагорода воза множиться на твій пай: кожні ' + per + ' виробів — ще один пай, до ' + shareMax
@@ -376,7 +377,7 @@
       + '<div class="clkg-piece' + (p.have ? ' have' : '') + '">'
       + api.wareSvg(p.ware, { style: p.style || 'kosiv', quality: Math.min(3, p.q || 3), cls: 'clkg-big', slot: 'piece' })
       + '<div><b>Майстерштук</b><span class="small">' + esc(pieceText) + '</span>'
-      + '<span class="muted small">' + (p.have ? '✓ лежить у коморі' : 'виліпи, обпали дзвінким — і принеси селу') + '</span></div></div>'
+      + '<span class="muted small">' + (p.have ? '✓ лежить у коморі' : 'виліпи, обпали ' + ((p.q || 3) >= 4 ? 'розкішним' : 'дзвінким') + ' — і принеси селу') + '</span></div></div>'
       + (perk ? '<div class="muted small">Перк: ' + esc(perk) + '</div>' : '')
       + (ready ? '' : '<button type="button" class="ghost clkg-master" disabled>🎓 Здати майстерштук</button>')
       + '</details>'

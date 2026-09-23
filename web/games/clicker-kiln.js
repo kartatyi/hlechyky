@@ -415,6 +415,7 @@
     // Кличе й смуга «Далі» (clicker-craft.js), коли панель горна ще навіть не на очах, — вікно однаково відкриється.
     if (!k || !st.mine) return;
     if (k.state === 'burning') { api.toast(st, 'Розписують до обпалу — горно вже палає', 'err'); return; }
+    if (!k.batch || !k.batch.length) { api.toast(st, 'Спершу склади партію в горно — тоді й розпишемо', 'err'); return; }
     const all = (cat(st) && cat(st).techs) || [];
     const open = all.filter((t) => k.techs.includes(t.key));
     if (!open.length) return;
@@ -456,7 +457,7 @@
     // Розпис партії — окрема опція, і лише коли є що класти. Техніка типова; «інша техніка» — за ▾.
     const owned = (st.styleList || []).filter((x) => x.owned);
     let paint = '';
-    if (owned.length) {
+    if (owned.length && k.batch.length) {
       const styles = '<div class="clkk-chips">' + [{ key: '', name: 'Простий' }].concat(owned).map((x) => '<button type="button" class="clkk-chip'
         + (x.key === k.style ? ' on' : '') + '" data-style="' + esc(x.key) + '"' + (mine ? '' : ' disabled') + '>'
         + api.jugSvg(x.key, 'clkk-chipjug', 'kst-' + (x.key || 'plain')) + '<span>' + esc(x.name) + '</span></button>').join('') + '</div>';
@@ -829,7 +830,8 @@
       const paint = wrap.parentElement;
       let used = 0;
       for (const el of paint.children) if (el !== wrap) used += el.getBoundingClientRect().height + 8;
-      const room = ((st.ov && st.ov.el && st.ov.el.clientHeight) || window.innerHeight) - 56 - used;
+      // Вікно обмежене і карткою, і екраном: міряти лише картку — на низькому вікні полотно вилазило за згин (рецензія v9).
+      const room = Math.min(window.innerHeight, (st.ov && st.ov.el && st.ov.el.clientHeight) || window.innerHeight) - 56 - used;
       // Ширина головна: якщо вільної висоти зовсім мало, краще трошки прокрутити вікно, ніж мінігра з поштову марку.
       const wide = Math.min(460, Math.floor(wrap.clientWidth || 460));
       const side = Math.max(240, Math.min(wide, Math.max(Math.floor(room), 300)));
@@ -901,6 +903,9 @@
     });
     const up = (e) => {
       if (!human(e) || e.pointerId !== g.pointer) return;
+      // Штампик: дотик без руху — одна точка, а серверу треба дванадцять на всю мінігру; відпускання дає другу точку
+      // того самого штриха (місце й мить штампа — перша), і 8 позначок стають 16 точками (рецензія v9).
+      if (g.down && g.p.tech === 'stamp' && !g.sent) { const [ux, uy] = pos(e); addPoint(st, api, g, e.timeStamp + 1, ux, uy, false); }
       g.down = false;
       g.lastPos = null;
       afterStroke(st, api, g);

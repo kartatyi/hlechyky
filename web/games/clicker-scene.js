@@ -1524,6 +1524,8 @@
     // Назви, які кличуть горно, альбом, ярмарок і цех (їхні звіти інтеграторові).
     'rank-up': 'rare', brag: 'pop', deal: 'coins', refuse: 'fail', event: 'catch', 'rep-up': 'done',
     find: 'rare', stove: 'done', glue: 'pop', 'kiln-light': 'kiln', 'kiln-roar': 'kiln', ding: 'rare',
+    // Дев'яте оновлення, пакет «Коло»: кіт, зірка, вітер і платня майстра.
+    cat: 'pop', star: 'catch', wind: 'crackle', 'eye-pay': 'coins',
   };
 
   // ---------- відчуття: пружина, руки, трус, спалах ----------

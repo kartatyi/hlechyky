@@ -249,7 +249,7 @@
 .clk-events { position: absolute; inset: 0; }
 /* Кіт іде по долівці зліва направо (або навпаки — .back) рівно стільки, скільки каже сервер. */
 .clk-cat {
-  position: absolute; z-index: 5; bottom: 5%; left: -12%; width: 13%; min-width: 46px; max-width: 82px; aspect-ratio: 52 / 34;
+  position: absolute; z-index: 5; bottom: .5%; left: -12%; width: 13%; min-width: 46px; max-width: 82px; aspect-ratio: 52 / 34;
   padding: 0; border: none; background: transparent; color: #c8813f; cursor: pointer; touch-action: manipulation;
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .5)); -webkit-user-select: none; user-select: none;
 }
@@ -274,7 +274,8 @@
 }
 .clk-star.run { animation: clkstar var(--clk-starms, 8000ms) ease-in forwards; }
 /* Вітер: листя летить через усю сцену, ловити його не треба. */
-.clk-wind { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+/* Вага (0,2,1) навмисно: правило «.clk-layer-front > div > *» вмикає натиски всім дітям шару, а листя — на всю сцену. */
+.clk-wind, .clk-layer-front > div > .clk-wind { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .clk-wind i {
   position: absolute; width: 9px; height: 6px; border-radius: 60% 20% 60% 20%; background: #7fa85a; opacity: .85;
   animation: clkleaf 2.6s linear infinite;
@@ -673,7 +674,8 @@
     /* 430 px — виміряний накладний простір: 107 px над карткою (шапка сайту + рядок стола), 44 лічильник,
        19 швидкість, 22 суперник, 98 смуга «Шлях виробу», 30 стрічка, 38 прилавок, 18 черепки й проміжки.
        Нижня межа та сама, що й для 900-ки: на широкому, але низькому вікні (1920×900) сцена не має рости. */
-    --clk-stage-w: clamp(420px, calc((100vh - 430px) * .8), 760px);
+    /* 480, не 430: над карткою ще рядок «← Лобі · Гончарне коло», і з 430 нижній край картки їхав під згин на 1080 (рецензія v9). */
+    --clk-stage-w: clamp(420px, calc((100vh - 480px) * .8), 760px);
   }
   .clk-scene { gap: 6px; }
   /* Вивіска перестає займати окремий рядок і лягає на небо над хатою: order переставляє її перед сценою,

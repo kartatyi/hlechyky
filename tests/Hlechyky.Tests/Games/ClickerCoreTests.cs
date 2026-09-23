@@ -761,6 +761,9 @@ public class ClickerCoreTests
     public void A_potter_is_told_what_is_new_exactly_once()
     {
         var h = Wheel();
+        // Новачок новин не бачить (для нього все нове); бачить той, чиє збереження старше за випуск — поле news у ньому порожнє.
+        Assert.Equal(JsonValueKind.Null, View(h).GetProperty("news").ValueKind);
+        Patch(h, s => s["news"] = "");
         Assert.Equal("v9", View(h).GetProperty("news").GetString());
 
         Assert.True(Act(h, "news", new { v = "v9" }).Ok);
@@ -774,6 +777,7 @@ public class ClickerCoreTests
     public void News_from_another_update_are_refused()
     {
         var h = Wheel();
+        Patch(h, s => s["news"] = "");                 // збереження з часів до випуску
         Assert.False(Act(h, "news", new { v = "v8" }).Ok);
         Assert.Equal("v9", View(h).GetProperty("news").GetString());
     }

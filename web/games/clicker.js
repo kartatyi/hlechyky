@@ -179,7 +179,8 @@
     if (sec < 36 * 3600) return dec(sec / 3600) + ' год';
     const d = Math.round(sec / 86400);
     // Окупність верстата в пізній грі — це мільярди днів: цифрами їх ніхто не читає, та й JS написав би «1e+26».
-    return (d >= 1e6 ? short(d) : num(d)) + ' ' + plural(d, 'день', 'дні', 'днів');
+    // Після скорочення слово узгоджується з «млн», а не з останньою цифрою: «11,5 млн днів», не «дні».
+    return d >= 1e6 ? short(d) + ' днів' : num(d) + ' ' + plural(d, 'день', 'дні', 'днів');
   }
 
   /// Довгий абзац у значок ⓘ: прочитати можна, займати екран — не мусить. Тим самим користуються частини.
@@ -776,6 +777,9 @@
     st.windEl = box.querySelector('.clk-wind');
     st.catEl.addEventListener('pointerdown', (e) => petCat(st, e));
     st.starEl.addEventListener('pointerdown', (e) => makeWish(st, e));
+    // Enter/пробіл з клавіатури дають click без pointerdown; повторний pet після миші відсіює st.catGone / st.starGone.
+    st.catEl.addEventListener('click', (e) => petCat(st, e));
+    st.starEl.addEventListener('click', (e) => makeWish(st, e));
     for (const b of [st.catEl, st.starEl]) b.addEventListener('contextmenu', (e) => e.preventDefault());
     return box;
   }

@@ -476,15 +476,19 @@
     const ui = st.craftUi;
     if (!c || !ui) return;
     const esc = (x) => api.esc(st, x);
-    const html = pathSteps(st, api).map((s) => '<button type="button" class="clk-step' + (s.on ? ' on' : '') + (s.hot ? ' hot' : '')
+    // Чип — кнопка, а ⓘ поруч — окрема кнопка (кнопка в кнопці недійсна, і з клавіатури до неї не дістатись):
+    // обидві в обгортці .clk-stepw, яка й стоїть у сітці кроків.
+    const html = pathSteps(st, api).map((s) => '<span class="clk-stepw' + (s.ups ? ' hasi' : '') + '"><button type="button" class="clk-step' + (s.on ? ' on' : '') + (s.hot ? ' hot' : '')
       + (s.ups ? ' hasi' : '') + '" data-step="' + s.key + '">'
       + '<span class="clk-stico">' + (s.ico.charAt(0) === '<' ? s.ico : esc(s.ico)) + '</span>'
       + '<span class="clk-sttxt"><b>' + esc(s.name) + '</b><span class="clk-stsub">' + esc(s.sub) + '</span></span>'
-      + (s.ups ? '<i class="clk-sti" data-ups="1" title="Звідки ця місткість і як її збільшити">ⓘ</i>' : '')
       + (s.pct != null ? '<i class="clk-stbar"><i style="width:' + Math.max(0, Math.min(100, s.pct)).toFixed(1) + '%"></i></i>' : '')
-      + '</button>').join('');
+      + '</button>'
+      + (s.ups ? '<button type="button" class="clk-sti" data-ups="1" aria-label="Звідки ця місткість і як її збільшити" title="Звідки ця місткість і як її збільшити">ⓘ</button>' : '')
+      + '</span>').join('');
     if (api.swap(ui.steps, html)) {
       for (const b of ui.steps.querySelectorAll('[data-step]')) b.onclick = (ev) => stepClick(st, api, b.dataset.step, ev);
+      for (const i of ui.steps.querySelectorAll('.clk-sti')) i.onclick = () => { api.sfx('tap'); showUps(st, api); };
     }
     paintNext(st, api);
   }
@@ -757,6 +761,10 @@
   function paintUps(st, api) {
     const c = st.craft;
     if (!c || !st.upsBody) return;
+    // Кличеться щокадру, а HTML міняється лише коли змінився рівень, стеля чи «по кишені»: інакше розгорнута ⓘ згорталась би сама.
+    const sig = (c.ups || []).map((u) => u.key + ':' + u.level + ':' + u.max + ':' + (st.shown >= u.price ? 1 : 0)).join(',');
+    if (st.upsBody._sig === sig) return;
+    st.upsBody._sig = sig;
     const esc = (x) => api.esc(st, x);
     const rows = (c.ups || []).map((u) => {
       const full = u.level >= u.max;

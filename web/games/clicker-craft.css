@@ -20,12 +20,14 @@
 /* ---- смуга «Шлях виробу» під сценою ---- */
 .clk-path { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
 .clk-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+/* Обгортка чипа: у ній сам чип (кнопка) і поруч ⓘ (теж кнопка) — кнопка в кнопці недійсна (рецензія v9). */
+.clk-stepw { position: relative; min-width: 0; display: flex; }
 .clk-step {
-  display: flex; align-items: center; gap: 5px; min-width: 0; padding: 4px 6px 6px; text-align: left; position: relative;
+  display: flex; align-items: center; gap: 5px; min-width: 0; width: 100%; padding: 4px 6px 6px; text-align: left; position: relative;
   border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); overflow: hidden;
 }
 /* Стрілка між кроками: шлях читається як шлях, а не як чотири окремі кнопки. */
-.clk-step + .clk-step::before {
+.clk-stepw + .clk-stepw > .clk-step::before {
   content: '→'; position: absolute; left: -7px; top: 50%; transform: translateY(-50%);
   font-size: 11px; color: var(--muted); opacity: .5; pointer-events: none;
 }
@@ -39,11 +41,13 @@
 .clk-sttxt b { font-size: .78em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clk-stsub { font-size: .68em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 /* ⓘ на чипі місткості: веде до секції «🔧 Прокачати», тож стоїть окремо від самого чипа. */
-.clk-step.hasi { padding-right: 14px; }
-.clk-sti {
-  position: absolute; top: 2px; right: 2px; font-style: normal; font-size: 10px; line-height: 1;
-  color: var(--muted); opacity: .6; padding: 1px 2px; border-radius: 6px;
+.clk-step.hasi { padding-right: 24px; }
+.clk .clk-sti {
+  position: absolute; top: 0; right: 0; min-width: 26px; min-height: 26px; display: grid; place-items: center; z-index: 1;
+  font-style: normal; font-size: 11px; line-height: 1; padding: 0; border: none; background: transparent;
+  color: var(--muted); opacity: .7; border-radius: 8px; cursor: pointer;
 }
+.clk .clk-sti:hover, .clk .clk-sti:focus-visible { opacity: 1; color: var(--accent); background: rgba(244, 197, 66, .12); }
 .clk-sti:hover { opacity: 1; color: var(--accent2); background: rgba(255, 255, 255, .08); }
 .clk-stbar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255, 255, 255, .06); }
 .clk-stbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--clay), #d99a5b); transition: width .12s linear; }

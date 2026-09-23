@@ -608,7 +608,8 @@ public sealed partial class Clicker : Game
         _starWish = false;
         _goldenSlept = false;
         _fallSlept = false;
-        _news = "";
+        // Новачкові «що нового» ні до чого — для нього нове все; новини бачить той, чиє збереження старше за випуск.
+        _news = NewsVersion;
         ScheduleCat(_lastSync);
         ScheduleStar(_lastSync);
         ScheduleWind(_lastSync);
