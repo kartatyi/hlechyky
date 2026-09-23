@@ -9,6 +9,7 @@ namespace Hlechyky.Tests.Games;
 /// Танчики: мапу, рух і снаряди перевіряємо на голому <see cref="TanksCore"/> (там танк можна поставити
 /// рівно туди, куди треба), а партію, фраги й кінець — через кімнату.
 /// </summary>
+[Collection(Hlechyky.Tests.Support.SerialPerf.Name)]
 public class TanksTests
 {
     // ---------- підмостки ----------
@@ -667,19 +668,26 @@ public class TanksTests
     [Fact]
     public void Four_tanks_shooting_for_two_minutes_stay_cheap()
     {
-        var h = Table(4);
-        Ready(h);
-        var sw = Stopwatch.StartNew();
-        for (var i = 0; i < TanksCore.MatchTicks && Phase(h) == "go"; i++)
+        // Стінний годинник у повному паралельному прогоні (2900+ тестів на всіх ядрах) буває втричі повільніший
+        // за спокійний — тож беремо найкращу з трьох спроб: справжнє сповільнення впаде у всіх трьох.
+        long best = long.MaxValue;
+        for (var attempt = 0; attempt < 3 && best >= 2000; attempt++)
         {
-            for (var s = 0; s < 4; s++)
+            var h = Table(4);
+            Ready(h);
+            var sw = Stopwatch.StartNew();
+            for (var i = 0; i < TanksCore.MatchTicks && Phase(h) == "go"; i++)
             {
-                h.Input(s, "move", new { dir = (i / 7 + s) % 4 });
-                h.Input(s, "fire");
+                for (var s = 0; s < 4; s++)
+                {
+                    h.Input(s, "move", new { dir = (i / 7 + s) % 4 });
+                    h.Input(s, "fire");
+                }
+                h.Tick(1);
             }
-            h.Tick(1);
+            best = Math.Min(best, sw.ElapsedMilliseconds);
         }
-        Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
+        Assert.True(best < 2000, $"{best} мс");
     }
 
     // ---------- доступ до ядра ----------
