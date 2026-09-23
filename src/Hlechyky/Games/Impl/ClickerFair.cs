@@ -7,7 +7,8 @@ namespace Hlechyky.Games.Impl;
 /// <param name="From">«з Опішні» — для підпису замовника.</param>
 /// <param name="In">«в Опішні» — для «шана в селі».</param>
 /// <param name="Style">Розпис, який це село любить найбільше (порожній — Сорочинцям годиться будь-який).</param>
-public sealed record FairVillage(string Key, string Name, string From, string In, string Emoji, string Style, string Perk, string[] People);
+/// <param name="Step">Що додає саме наступна зірка — одним рядком на картку села (v9).</param>
+public sealed record FairVillage(string Key, string Name, string From, string In, string Emoji, string Style, string Perk, string[] People, string Step = "");
 
 /// <summary>Гість біля вікна чи дверей: хто, що приніс і як часто заходить (вага в жеребку).</summary>
 public sealed record FairGuest(string Key, string Name, string Emoji, string Desc, int Weight);
@@ -57,12 +58,37 @@ public sealed partial class Clicker
     public const double FairOrderMult = 2, FairOrderStep = 0.25, FairLordMult = 4;
     /// <summary>Торг: поступитись — −15 % і вдвічі більше шани; накинути — +30 %, якщо купець погодиться.</summary>
     public const double FairDownPay = 0.85, FairUpPay = 1.3, FairUpChance = 0.45, FairUpPerLevel = 0.07, FairUpMax = 0.9;
-    /// <summary>Шана: пороги рівнів 0–5.</summary>
-    public static readonly int[] FairRepLevels = [0, 8, 25, 60, 120, 220];
-    /// <summary>Кожен рівень шани в будь-якому селі — +1 % до всього.</summary>
-    public const double FairRepAll = 0.01;
+    /// <summary>
+    /// Шана: пороги рівнів 0–10 (v9). Перші шість — ті самі, що були, тож наявні очки нікуди не діваються:
+    /// у кого назбиралось 300, той одразу на шостому рівні, а не «втратив прогрес».
+    /// </summary>
+    public static readonly int[] FairRepLevels = [0, 8, 25, 60, 120, 220, 380, 620, 1000, 1600, 2500];
+    /// <summary>Кожен рівень шани в будь-якому селі — +3 % до всього (v9: було +1 %, і шану ніхто не помічав).</summary>
+    public const double FairRepAll = 0.03;
+    /// <summary>Шана села додає до множника замовлення: +0,1 за рівень, а панові — +0,2.</summary>
+    public const double FairPayPerLevel = 0.1, FairLordPayPerLevel = 0.2;
     /// <summary>Пільги сіл за рівень: робота Опішні, ціна Бубнівки й Гавареччини, сушіння Василькова, розпис Косова, гості й торг Сорочинців.</summary>
     public const double FairPerkWork = 0.04, FairPerkValue = 0.05, FairPerkDry = 0.04, FairPerkStyle = 0.04, FairPerkGuests = 0.05, FairPerkHaggle = 0.03;
+    /// <summary>Рівень шани для ачівок: п'ятий — «Свій на ярмарку» (як було), десятий — «Шана на всю округу».</summary>
+    public const int FairRepAch = 5, FairRepTop = 10;
+
+    /// <summary>З якого рівня село шле гостинці й що саме в них: хвилини пасиву за рівень, в'язки соломи.</summary>
+    public const int FairGiftFrom = 6, FairGiftStraw = 5;
+    public const double FairGiftMinutes = 5;
+    /// <summary>Скільки гостинець висить у стрічці (далі його видно лише лічильником на картці села).</summary>
+    public static readonly TimeSpan FairGiftShown = TimeSpan.FromMinutes(10);
+
+    /// <summary>Ярмарковий дзвін (секрет <c>bell</c>): замовлень на дошці до п'яти, нове — кожні 4–7 хв.</summary>
+    public const int FairBellBoardMax = 5, FairBellGapMinSeconds = 240, FairBellGapMaxSeconds = 420;
+
+    /// <summary>Базарний день: раз на 3–6 год десять хвилин усі замовлення платять у півтора раза більше.</summary>
+    public const int FairBazaarMinSeconds = 3 * 3600, FairBazaarMaxSeconds = 6 * 3600;
+    public static readonly TimeSpan FairBazaarFor = TimeSpan.FromMinutes(10);
+    public const double FairBazaarMult = 1.5;
+
+    /// <summary>Нові гості: дяк додає красу наступному розпису, мандрівний гончар — обпалені до майстерності, ведмідь грає навпіл.</summary>
+    public const int FairDyakBeauty = 20, FairWanderFired = 25;
+    public const double FairBearPay = 2, FairBearLoss = 0.05;
 
     public const int FairGuestMinSeconds = 8 * 60, FairGuestMaxSeconds = 20 * 60;
     public static readonly TimeSpan FairGuestShown = TimeSpan.FromSeconds(20);
@@ -93,22 +119,28 @@ public sealed partial class Clicker
     [
         new("opishnia", "Опішня", "з Опішні", "в Опішні", "🏺", "opishnia",
             "Глечики й куманці ліпляться швидше: −4 % роботи за рівень",
-            ["Баба Одарка", "Дід Панас", "Кума Параска", "Шинкар Мусій", "Гончар Юхим"]),
+            ["Баба Одарка", "Дід Панас", "Кума Параска", "Шинкар Мусій", "Гончар Юхим"],
+            "глечики й куманці ще −4 % роботи"),
         new("kosiv", "Косів", "з Косова", "у Косові", "⛰", "kosiv",
             "Замовлення з розписом платять +4 % за рівень",
-            ["Ґазда Василь", "Ґаздиня Марічка", "Вівчар Юра", "Бабця Олена", "Різьбяр Дмитро"]),
+            ["Ґазда Василь", "Ґаздиня Марічка", "Вівчар Юра", "Бабця Олена", "Різьбяр Дмитро"],
+            "замовлення з розписом ще +4 %"),
         new("vasylkiv", "Васильків", "з Василькова", "у Василькові", "🌼", "vasylkiv",
             "Сирці сохнуть швидше: −4 % часу за рівень",
-            ["Писар Никифор", "Швачка Ганна", "Пекарка Люба", "Коваль Остап", "Вчителька Ніна"]),
+            ["Писар Никифор", "Швачка Ганна", "Пекарка Люба", "Коваль Остап", "Вчителька Ніна"],
+            "сирці сохнуть ще −4 % часу"),
         new("bubnivka", "Бубнівка", "з Бубнівки", "у Бубнівці", "🌀", "bubnivka",
             "Миски й полумиски дорожчі: +5 % ціни за рівень",
-            ["Тітка Христя", "Мельник Семен", "Молодиця Оксана", "Дід Трохим", "Пасічник Гнат"]),
+            ["Тітка Христя", "Мельник Семен", "Молодиця Оксана", "Дід Трохим", "Пасічник Гнат"],
+            "миски й полумиски ще +5 % ціни"),
         new("gavarets", "Гавареччина", "з Гавареччини", "у Гавареччині", "⚫", "gavarets",
             "Горщики, макітри й барила дорожчі: +5 % ціни за рівень",
-            ["Майстер Степан", "Ґаздиня Ірина", "Корчмар Лесь", "Бабця Настя", "Дударик Тарас"]),
+            ["Майстер Степан", "Ґаздиня Ірина", "Корчмар Лесь", "Бабця Настя", "Дударик Тарас"],
+            "горщики, макітри й барила ще +5 % ціни"),
         new("sorochyntsi", "Сорочинці", "із Сорочинців", "у Сорочинцях", "🎪", "",
             "Гості заходять частіше (−5 % чекання) і «накинути» вдається частіше (+3 %) — за рівень",
-            ["Солопій Черевик", "Хівря", "Параска", "Парубок Грицько", "Кум Цибуля"]),
+            ["Солопій Черевик", "Хівря", "Параска", "Парубок Грицько", "Кум Цибуля"],
+            "гості на 5 % швидше, «накинути» +3 %"),
     ];
 
     public static readonly FairGuest[] FairGuests =
@@ -118,6 +150,10 @@ public sealed partial class Clicker
         new("lord", "Пан із маєтку", "🎩", "Особливе замовлення ×4 на дошці", 15),
         new("kobzar", "Кобзар", "🎶", "Пісня під вікном: 2 хв вироби на базарі й у замовленнях +25 %", 20),
         new("fortune", "Ворожка з ярмарку", "🔮", "Нагадала долю: наслідки наступної події буде видно заздалегідь", 15),
+        // v9: більше людей на подвір'ї. Ваги менші за старих — старі гості мусять лишитись найчастішими.
+        new("dyak", "Дяк із книгою", "📖", "Показав візерунки зі старої книги: наступний розпис +20 краси", 12),
+        new("wander", "Мандрівний гончар", "🧭", "Постояв за колом і показав хват: одному виробу +25 обпалених до майстерності", 10),
+        new("bear", "Поводир із ведмедем", "🐻", "Ведмідь танцює: або наступне замовлення ×2, або перекине полицю", 10),
     ];
 
     public static readonly FairHoliday[] FairHolidays =
@@ -214,6 +250,33 @@ public sealed partial class Clicker
         new("rustle", "🌙", "Хтось шарудить біля комори", "Ніч, місяць, і щось тупцяє під дверима.",
             FxPick("Вийти з ціпком", FxOut("То був їжак. Тепер він живе під ґанком і ловить мишей: +2 хв пасиву", FxPots(120))),
             FxPick("Гукнути собаку", FxOut("Собака прогнав… кота. Кіт образився й скинув з полиці один виріб", new FairFx("take", 1)))),
+        // v9: ще шість пригод — у тому самому стилі й у тих самих межах наслідків.
+        new("bridge", "🌉", "Міст через річку підмило", "За мостом — глинище, а об'їзд на пів дня. Кидати кладку чи возити в об'їзд?",
+            FxPick("Кинути кладку",
+                FxOut("Кладка вийшла міцна, сусіди носять по ній глину й тобі: робота −20 % на 4 хв", FxWork(0.8, 240)),
+                FxOut("Кладку зробив, чоботи втопив. Зате глина є: робота −15 % на 3 хв", FxWork(0.85, 180), FxPots(-45))),
+            FxPick("Возити в об'їзд", FxOut("Дорогою наслухався базарних цін і підняв свої: ціни +20 % на 3 хв", FxPrice(1.2, 180)))),
+        new("fiddler", "🎻", "Скрипаль на вигоні розучує нову", "Грає те саме коліно вже годину. Кортить послухати.",
+            FxPick("Послухати з тину", FxOut("Під ритм коло крутиться саме собою: робота −25 % на 3 хв", FxWork(0.75, 180))),
+            FxPick("Кликати до хати",
+                FxOut("Грав цілий вечір, а вранці все село прийшло дивитись, у кого він ночував: шана +3", FxRep(3)),
+                FxOut("Грав цілий вечір і з'їв усю вечерю. Зате весело: +1 хв пасиву", FxPots(60)))),
+        new("horseshoe", "🧲", "Підкова в глині", "Копнув — дзенькнуло. У грудці глини стара підкова.",
+            FxPick("Прибити над дверима", FxOut("Над дверима — на щастя, і щастя вже пішло: +3 хв пасиву", FxPots(180))),
+            FxPick("Однести ковалеві", FxOut("Коваль викував гачок для кола й подякував на все село: шана +2 і робота −10 % на 4 хв", FxRep(2), FxWork(0.9, 240)))),
+        new("neighbour-kiln", "🧱", "Сусід кличе мурувати горно", "Своє горно в нього тріснуло. Просить руки на день.",
+            FxPick("Піти помогти",
+                FxOut("Змурували вдвох, а він віддячив в'язанкою хмизу й добрим словом: шана +3", FxRep(3)),
+                FxOut("Мурували до ночі, спину не розігнути. Сусід удячний: шана +2", FxRep(2), FxWork(1.1, 120))),
+            FxPick("Показати, як мурувати", FxOut("Пояснив на пальцях, сам тим часом ліпив: +2 хв пасиву", FxPots(120)))),
+        new("apprentice-girl", "👧", "Дівчина з сусіднього села проситься в науку", "Каже, що бачила твої глеки на ярмарку й відтоді спати не може.",
+            FxPick("Узяти в науку", FxOut("Учениця вже крутить коло — разом виліпили виріб, і про тебе говорять: шана +2", new FairFx("item", 1), FxRep(2))),
+            FxPick("Порадити свого майстра", FxOut("Відправив до кума в Опішню — там теж запам'ятали, хто порадив: шана +3 в Опішні", FxRep(3, "opishnia")))),
+        new("fog", "🌫", "Туман сів на село", "З хати не видно тину. Пекти в такому — все одно що наосліп.",
+            FxPick("Перечекати біля кола", FxOut("У тиші й тумані наліпив більше, ніж за пів дня: +3 хв пасиву", FxPots(180))),
+            FxPick("Винести сирці на вітер",
+                FxOut("На горбі вітер розігнав туман, сирці підсохли: сушіння −30 % на 4 хв", FxDry(0.7, 240)),
+                FxOut("Туман осів росою просто на сирцях: сушіння +30 % на 3 хв", FxDry(1.3, 180)))),
     ];
 
     static readonly string[] FairDownLines = ["Оце по-сусідськи!", "Дай тобі Боже здоров'я!", "Ну ти й добра душа!", "Усім розкажу, який ти щедрий!"];
@@ -232,12 +295,18 @@ public sealed partial class Clicker
 
     sealed record FairBuffRow(string Kind, double Mult, DateTimeOffset Until, string Src);
 
+    /// <summary>Гостинець із села: що прислали й коли (щоб рядок устиг побути в стрічці).</summary>
+    sealed record FairGiftRow(string Village, string Text, DateTimeOffset At);
+
     /// <summary>Збереження пакета: усе необов'язкове — старе збереження читається як «ярмарку ще не було».</summary>
     sealed record FairRow(
         List<FairOrderRow>? Orders = null, int OrderId = 0, DateTimeOffset OrderNext = default,
         Dictionary<string, int>? Rep = null, FairGuestRow? Guest = null, int Guests = 0,
         FairEventRow? Event = null, DateTimeOffset EventAt = default, int EventId = 0, bool Foresight = false,
-        List<FairBuffRow>? Buffs = null, int Delivered = 0);
+        List<FairBuffRow>? Buffs = null, int Delivered = 0,
+        // v9 «Село»: гостинці, дяк із книгою, ведмідь і базарний день. Усе нове — необов'язкове.
+        string? GiftDay = null, Dictionary<string, int>? Gifts = null, List<FairGiftRow>? GiftLog = null,
+        int Beauty = 0, bool Bear = false, DateTimeOffset BazaarUntil = default, DateTimeOffset BazaarNext = default);
 
     readonly List<FairOrderRow> _mktOrders = [];
     int _mktOrderId;
@@ -255,6 +324,16 @@ public sealed partial class Clicker
     int _mktDelivered;
     FairDay? _mktDay;
     long _mktDayMinute = -1;
+    /// <summary>Київський день, за який гостинці вже роздано: «раз на день» — це перша синхронізація нового дня.</summary>
+    string _mktGiftDay = "";
+    /// <summary>Скільки гостинців прийшло з кожного села — на картці села.</summary>
+    readonly Dictionary<string, int> _mktGifts = new(StringComparer.Ordinal);
+    readonly List<FairGiftRow> _mktGiftLog = [];
+    /// <summary>Дяк із книгою: скільки краси він додасть наступному розпису (0 — дяка не було).</summary>
+    int _mktBeauty;
+    /// <summary>Ведмідь витанцював удачу: наступне здане замовлення платить удвічі.</summary>
+    bool _mktBear;
+    DateTimeOffset _mktBazaarUntil, _mktBazaarNext;
 
     // ---------- календар ----------
 
@@ -362,7 +441,13 @@ public sealed partial class Clicker
         _mktRep[village] = Math.Max(0, after);
         var now = FairLevelOf(_mktRep[village]);
         MktRecountLevels();
-        if (now == FairRepLevels.Length - 1 && level < now) Achieve("potter-rep");
+        if (level < FairRepAch && now >= FairRepAch) Achieve("potter-rep");
+        if (level < FairRepTop && now >= FairRepTop)
+        {
+            Achieve("potter-rep10");
+            // Дивовижа — лише на першому селі, що дійшло до десятої зірки (друге вже не диво, а звичка).
+            if (FairVillages.Count(v => MktLevel(v.Key) >= FairRepTop) == 1) Wonder("rep-10");
+        }
         return now - level;
     }
 
@@ -421,6 +506,19 @@ public sealed partial class Clicker
     /// <summary>Косів доплачує за розпис.</summary>
     double MktStylePerk(FairOrderRow o) => o.Style.Length > 0 ? 1 + FairPerkStyle * MktLevel("kosiv") : 1;
 
+    /// <summary>
+    /// Шана села додає до множника замовлення (v9): +0,1 за рівень, а панові — +0,2. На десятій зірці звичайне
+    /// замовлення платить ×3…×3,75 замість ×2…×2,75, панське — ×6. Це і є «шана має вагу».
+    /// </summary>
+    double MktRepPay(FairOrderRow o) => (o.Lord ? FairLordPayPerLevel : FairPayPerLevel) * MktLevel(o.Village);
+
+    /// <summary>Базарний день: десять хвилин, коли всі замовлення платять у півтора раза більше.</summary>
+    bool MktBazaarOn(DateTimeOffset now) => now < _mktBazaarUntil;
+
+    /// <summary>Повний множник замовлення: базовий плюс шана села, ×Косів за розпис, ×базарний день.</summary>
+    double MktMult(FairOrderRow o) =>
+        (o.Mult + MktRepPay(o)) * MktStylePerk(o) * (MktBazaarOn(Ctx.Clock.UtcNow) ? FairBazaarMult : 1);
+
     double MktChance(FairOrderRow o) =>
         Math.Min(FairUpMax, FairUpChance + FairUpPerLevel * MktLevel(o.Village) + FairPerkHaggle * MktLevel("sorochyntsi"));
 
@@ -428,7 +526,7 @@ public sealed partial class Clicker
 
     /// <summary>Скільки замовлення заплатить «як є», якщо здати рівно те, що просять (у виді — як обіцянка).</summary>
     double MktPay(FairOrderRow o) =>
-        Math.Max(1, ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * o.Mult * MktStylePerk(o)));
+        Math.Max(1, ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * MktMult(o)));
 
     void MktAddOrder(DateTimeOffset now, bool lord = false)
     {
@@ -464,7 +562,16 @@ public sealed partial class Clicker
         _mktOrders.Add(new(++_mktOrderId, village.Key, who, ware.Key, style, quality, count, mult, now, now + life, lord));
     }
 
-    TimeSpan MktOrderGap() => TimeSpan.FromSeconds(FairOrderGapMinSeconds + Ctx.Rng.NextDouble() * (FairOrderGapMaxSeconds - FairOrderGapMinSeconds));
+    /// <summary>Скільки замовлень уміщає дошка: з ярмарковим дзвоном — п'ять замість чотирьох.</summary>
+    int MktBoardMax => Has("bell") ? FairBellBoardMax : FairBoardMax;
+
+    TimeSpan MktOrderGap()
+    {
+        var (min, max) = Has("bell")
+            ? (FairBellGapMinSeconds, FairBellGapMaxSeconds)
+            : (FairOrderGapMinSeconds, FairOrderGapMaxSeconds);
+        return TimeSpan.FromSeconds(min + Ctx.Rng.NextDouble() * (max - min));
+    }
 
     ActResult MktDeliver(JsonElement payload, DateTimeOffset now)
     {
@@ -503,14 +610,20 @@ public sealed partial class Clicker
         }
         TakeItems(match, o.Count);
         var haggle = bid switch { "down" => FairDownPay, "up" => FairUpPay, _ => 1 };
-        var pay = Math.Max(1, ToPots(sum * o.Mult * MktStylePerk(o) * haggle));
+        // Ведмідь витанцював удачу — і згорає на першому ж замовленні, скільки б його не берегли.
+        var bear = _mktBear;
+        _mktBear = false;
+        var pay = Math.Max(1, ToPots(sum * MktMult(o) * haggle * (bear ? FairBearPay : 1)));
         Add(pay);
         _mktOrders.RemoveAt(i);
         _mktDelivered++;
+        if (o.Lord) Wonder("lord-order");
         var rep = MktRepFor(o) * (bid == "down" ? 2 : 1);
         var up = MktRepAdd(o.Village, rep);
         var (emoji, lines) = bid switch { "down" => ("🥰", FairDownLines), "up" => ("💰", FairUpLines), _ => ("🤝", FairAsLines) };
         var text = $"{emoji} {who} {village.From}: «{lines[Ctx.Rng.Next(lines.Length)]}» +{Short(pay)} {Pots(pay)} · шана +{rep}";
+        if (bear) text += " · 🐻 ведмідь наворожив подвійну плату";
+        if (MktBazaarOn(now)) text += " · 🛒 базарний день";
         if (up > 0) text += $" · ⭐ {village.Name}: шана {MktLevel(o.Village)}";
         return ActResult.Accept(text);
     }
@@ -572,6 +685,37 @@ public sealed partial class Clicker
                 _mktForesight = true;
                 text = "🔮 Ворожка глянула на долоню: наслідки наступної пригоди буде видно заздалегідь";
                 break;
+            case "dyak":
+                _mktBeauty = FairDyakBeauty;
+                text = $"📖 Дяк розгорнув книгу з візерунками: наступний розпис +{FairDyakBeauty} краси";
+                break;
+            case "wander":
+            {
+                // Хват показують на тому, що гончар уже пік: майстерність росте, а нову клітинку альбому
+                // гість за гончаря не відкриває.
+                var known = Wares.Where(w => WareOpen(w.Key) && FiredOf(w.Key) > 0).ToList();
+                if (known.Count == 0) known = Wares.Where(w => WareOpen(w.Key)).ToList();
+                if (known.Count == 0) known = [Wares[0]];
+                var w2 = known[Ctx.Rng.Next(known.Count)];
+                AddFired(new ItemInfo(w2.Key, "", 1), FairWanderFired);
+                text = $"🧭 Мандрівний гончар став за коло: {w2.Name.ToLowerInvariant()} — ще {FairWanderFired} обпалених до майстерності";
+                break;
+            }
+            case "bear":
+                if (Ctx.Rng.Next(2) == 0)
+                {
+                    _mktBear = true;
+                    text = "🐻 Ведмідь витанцював удачу: наступне замовлення заплатить удвічі";
+                }
+                else
+                {
+                    var loss = ToPots(_pots * FairBearLoss);
+                    if (loss > 0) _pots -= loss;
+                    text = loss > 0
+                        ? $"🐻 Ведмідь перекинув полицю: −{Short(loss)} {Pots(loss)}"
+                        : "🐻 Ведмідь перекинув полицю — добре, що на ній нічого не стояло";
+                }
+                break;
             default:
                 // Сорока — і пан, чиє замовлення вже на дошці: той лишає на чай.
                 var gain = MktMagpie();
@@ -584,9 +728,74 @@ public sealed partial class Clicker
         _mktGuests++;
         GuardSpend(ClickerGuard.CatchWeight);
         if (_mktGuests == FairGuestsForAchievement) Achieve("potter-guest");
+        // Гість на свято — рідкісний збіг: у такі дні дивовижі й трапляються.
+        if (MktToday.Holiday is not null) Wonder("holiday-guest");
         MktScheduleGuest(now);
         return ActResult.Accept(text);
     }
+
+    // ---------- гостинці з сіл (v9) ----------
+
+    /// <summary>
+    /// Дяк із книгою: скільки краси він додає наступному розпису. Забирається один раз — горно кличе це рівно
+    /// там, де рахує красу (див. звіт, §правки чужих файлів).
+    /// </summary>
+    public int FairTakeBeauty()
+    {
+        var n = _mktBeauty;
+        _mktBeauty = 0;
+        return n;
+    }
+
+    /// <summary>
+    /// Гостинець із села, де шана вже ≥ 6: раз на київський день кожне таке село шле щось своє — гроші за поміч,
+    /// солому в клуню або дзвінкий виріб у своєму розписі. Без гравця нічого не накопичується: за пропущені дні
+    /// гостинець приходить один.
+    /// </summary>
+    void MktGifts(DateTimeOffset now)
+    {
+        foreach (var v in FairVillages)
+        {
+            var level = MktLevel(v.Key);
+            if (level < FairGiftFrom) continue;
+            string what;
+            switch (Ctx.Rng.Next(3))
+            {
+                case 0:
+                {
+                    // П'ять хвилин пасиву за рівень; на голому колі (пасиву ще нема) — кліками, як у сороки.
+                    var sec = FairGiftMinutes * 60 * level;
+                    var gain = Math.Max(FairMagpieFloor, ToPots(Math.Max(PassiveBase * sec, ClickBase * sec / 5)));
+                    Add(gain);
+                    what = $"+{Short(gain)} {Pots(gain)} за поміч селу";
+                    break;
+                }
+                case 1:
+                    StrawAdd(FairGiftStraw);
+                    what = $"{FairGiftStraw} {Plural(FairGiftStraw, "в'язка", "в'язки", "в'язок")} соломи в клуню";
+                    break;
+                default:
+                {
+                    var open = Wares.Where(w => WareOpen(w.Key)).ToList();
+                    if (open.Count == 0) open = [Wares[0]];
+                    var ware = open[open.Count - 1 - Ctx.Rng.Next(Math.Min(open.Count, 5))];
+                    var over = PutItems(ware.Key, v.Style, 3, 1);
+                    what = $"дзвінкий {ware.Name.ToLowerInvariant()}, {(v.Style.Length == 0 ? "простий" : StyleWord(v.Style))}"
+                        + (over > 0 ? " (комора повна — одразу на базар)" : "");
+                    break;
+                }
+            }
+            var text = $"🎁 Гостинець {v.From}: {what}";
+            _mktGifts[v.Key] = (_mktGifts.TryGetValue(v.Key, out var c) ? c : 0) + 1;
+            _mktGiftLog.Add(new FairGiftRow(v.Key, text, now));
+            AwayNote(text);
+        }
+        while (_mktGiftLog.Count > FairVillages.Length) _mktGiftLog.RemoveAt(0);
+    }
+
+    /// <summary>Базарний день: раз на 3–6 год десять хвилин усі замовлення платять у півтора раза більше.</summary>
+    TimeSpan MktBazaarGap() =>
+        TimeSpan.FromSeconds(FairBazaarMinSeconds + Ctx.Rng.NextDouble() * (FairBazaarMaxSeconds - FairBazaarMinSeconds));
 
     // ---------- події ----------
 
@@ -694,7 +903,9 @@ public sealed partial class Clicker
     FairRow? SaveFair() => new(
         _mktOrders.ToList(), _mktOrderId, _mktOrderNext,
         new Dictionary<string, int>(_mktRep, StringComparer.Ordinal), _mktGuest, _mktGuests,
-        _mktEvent, _mktEventAt, _mktEventId, _mktForesight, _mktBuffs.ToList(), _mktDelivered);
+        _mktEvent, _mktEventAt, _mktEventId, _mktForesight, _mktBuffs.ToList(), _mktDelivered,
+        _mktGiftDay, new Dictionary<string, int>(_mktGifts, StringComparer.Ordinal), _mktGiftLog.ToList(),
+        _mktBeauty, _mktBear, _mktBazaarUntil, _mktBazaarNext);
 
     void LoadFair(FairRow? row)
     {
@@ -709,7 +920,7 @@ public sealed partial class Clicker
         foreach (var o in row.Orders ?? [])
             if (o is not null && o.Style is not null && WareOf(o.Ware) is not null && FairVillages.Any(v => v.Key == o.Village) && o.Count is > 0 and <= 20
                 && o.Quality is >= 1 and <= 3 && (o.Style.Length == 0 || Styles.Any(s => s.Key == o.Style))
-                && double.IsFinite(o.Mult) && o.Mult is > 0 and <= FairLordMult && _mktOrders.Count < FairBoardMax + 2)
+                && double.IsFinite(o.Mult) && o.Mult is > 0 and <= FairLordMult && _mktOrders.Count < FairBellBoardMax + 2)
                 _mktOrders.Add(o);
         _mktOrderId = Math.Max(row.OrderId, _mktOrders.Count == 0 ? 0 : _mktOrders.Max(o => o.Id));
         _mktOrderNext = row.OrderNext;
@@ -732,6 +943,22 @@ public sealed partial class Clicker
                 && b.Until <= now + TimeSpan.FromSeconds(FairBuffMaxSeconds) && _mktBuffs.Count < 8)
                 _mktBuffs.Add(b);
         _mktDelivered = Math.Max(0, row.Delivered);
+        // v9. Старе збереження: гостинців ще не було — перша ж синхронізація віддасть те, що селу винне за сьогодні.
+        _mktGiftDay = row.GiftDay is { Length: 10 } d && DateOnly.TryParse(d, out _) ? d : "";
+        _mktGifts.Clear();
+        foreach (var (key, n) in row.Gifts ?? [])
+            if (n > 0 && FairVillages.Any(v => v.Key == key)) _mktGifts[key] = Math.Min(n, 1_000_000);
+        _mktGiftLog.Clear();
+        foreach (var gift in row.GiftLog ?? [])
+            if (gift is not null && gift.Text is { Length: > 0 and <= 200 } && FairVillages.Any(v => v.Key == gift.Village)
+                && gift.At <= now && _mktGiftLog.Count < FairVillages.Length)
+                _mktGiftLog.Add(gift);
+        _mktBeauty = Math.Clamp(row.Beauty, 0, FairDyakBeauty);
+        _mktBear = row.Bear;
+        _mktBazaarUntil = row.BazaarUntil > now + FairBazaarFor ? now + FairBazaarFor : row.BazaarUntil;
+        _mktBazaarNext = row.BazaarNext == default || row.BazaarNext > now + TimeSpan.FromSeconds(FairBazaarMaxSeconds)
+            ? now + MktBazaarGap()
+            : row.BazaarNext;
     }
 
     void ResetFair(DateTimeOffset now)
@@ -747,6 +974,13 @@ public sealed partial class Clicker
         _mktBuffs.Clear();
         _mktDelivered = 0;
         _mktDay = null;
+        _mktGiftDay = "";
+        _mktGifts.Clear();
+        _mktGiftLog.Clear();
+        _mktBeauty = 0;
+        _mktBear = false;
+        _mktBazaarUntil = default;
+        _mktBazaarNext = now + MktBazaarGap();
         for (var i = 0; i < FairBoardMin; i++) MktAddOrder(now);
         _mktOrderNext = now + MktOrderGap();
         MktScheduleGuest(now);
@@ -771,8 +1005,23 @@ public sealed partial class Clicker
             while (_mktOrders.Count(o => !o.Lord) < FairBoardMin) MktAddOrder(now);
         if (now >= _mktOrderNext)
         {
-            if (_mktOrders.Count(o => !o.Lord) < FairBoardMax) MktAddOrder(now);
+            if (_mktOrders.Count(o => !o.Lord) < MktBoardMax) MktAddOrder(now);
             _mktOrderNext = now + MktOrderGap();
+        }
+        // Гостинці — перша синхронізація нового київського дня.
+        _mktGiftLog.RemoveAll(g => now - g.At > FairGiftShown);
+        var day = Days.Of(now);
+        if (_mktGiftDay != day)
+        {
+            _mktGiftDay = day;
+            MktGifts(now);
+        }
+        // Базарний день: коротко й зрідка, щоб лишався святом, а не тлом.
+        if (now >= _mktBazaarNext)
+        {
+            _mktBazaarUntil = now + FairBazaarFor;
+            _mktBazaarNext = now + MktBazaarGap();
+            AwayNote("🛒 Базарний день: десять хвилин замовлення платили в півтора раза більше");
         }
         if (now > _mktGuest.Until + CatchGrace) MktScheduleGuest(now);
         if (_mktEvent is { } e && now > e.Until)
@@ -809,11 +1058,22 @@ public sealed partial class Clicker
             orders = _mktOrders.Select(o => new
             {
                 id = o.Id, village = o.Village, who = o.Who, ware = o.Ware, style = o.Style, q = o.Quality, n = o.Count,
-                have = ItemCount(MktMatch(o)), until = o.Until, mult = o.Mult * MktStylePerk(o), pay = MktPay(o),
+                have = ItemCount(MktMatch(o)), until = o.Until, mult = MktMult(o), pay = MktPay(o),
                 lord = o.Lord, sour = o.Sour, chance = MktChance(o), rep = MktRepFor(o),
             }),
             nextOrderAt = _mktOrderNext,
-            rep = FairVillages.Select(v => new { key = v.Key, pts = MktPoints(v.Key), level = MktLevel(v.Key) }),
+            boardMax = MktBoardMax,
+            bell = Has("bell"),
+            rep = FairVillages.Select(v => new
+            {
+                key = v.Key, pts = MktPoints(v.Key), level = MktLevel(v.Key),
+                gifts = _mktGifts.TryGetValue(v.Key, out var got) ? got : 0,
+            }),
+            gifts = _mktGiftLog.Select(g => new { village = g.Village, text = g.Text, at = g.At }),
+            giftFrom = FairGiftFrom,
+            bazaar = _mktBazaarUntil > now ? new { until = _mktBazaarUntil, mult = FairBazaarMult } : null,
+            beauty = _mktBeauty,
+            bear = _mktBear,
             allMult = FairAllMult,
             guest = _mktGuest.Kind.Length > 0
                 ? new { kind = _mktGuest.Kind, at = _mktGuest.At, until = _mktGuest.Until, x = _mktGuest.X, y = _mktGuest.Y }
@@ -831,8 +1091,11 @@ public sealed partial class Clicker
 
     object? CatalogFair() => new
     {
-        villages = FairVillages.Select(v => new { key = v.Key, name = v.Name, from = v.From, @in = v.In, emoji = v.Emoji, style = v.Style, perk = v.Perk, people = v.People }),
+        villages = FairVillages.Select(v => new { key = v.Key, name = v.Name, from = v.From, @in = v.In, emoji = v.Emoji, style = v.Style, perk = v.Perk, step = v.Step, people = v.People }),
         levels = FairRepLevels,
+        payPerLevel = FairPayPerLevel,
+        lordPayPerLevel = FairLordPayPerLevel,
+        giftFrom = FairGiftFrom,
         guests = FairGuests.Select(g => new { key = g.Key, name = g.Name, emoji = g.Emoji, desc = g.Desc }),
         events = FairEvents.Select(e => new
         {

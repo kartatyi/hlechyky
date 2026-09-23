@@ -384,19 +384,34 @@ public class ClickerFairTests
         Assert.Equal(2, Clicker.FairLevelOf(25));
         Assert.Equal(4, Clicker.FairLevelOf(219));
         Assert.Equal(5, Clicker.FairLevelOf(220));
-        Assert.Equal(5, Clicker.FairLevelOf(100_000));
+        // v9: шана йде далі п'ятої зірки — до десятої.
+        Assert.Equal(6, Clicker.FairLevelOf(380));
+        Assert.Equal(7, Clicker.FairLevelOf(620));
+        Assert.Equal(8, Clicker.FairLevelOf(1_000));
+        Assert.Equal(9, Clicker.FairLevelOf(1_600));
+        Assert.Equal(10, Clicker.FairLevelOf(2_500));
+        Assert.Equal(10, Clicker.FairLevelOf(100_000));
     }
 
     [Fact]
-    public void Every_level_anywhere_is_one_percent_to_everything()
+    public void Every_level_anywhere_is_three_percent_to_everything()
     {
         var h = Wheel();
         Patch(h, s => s["upgrades"]!["kiln"] = 10);
         var all = View(h).GetProperty("allMult").GetDouble();
         Rep(h, "opishnia", 25);                                      // 2
         Rep(h, "sorochyntsi", 220);                                  // 5
-        Assert.Equal(all * 1.07, View(h).GetProperty("allMult").GetDouble(), 9);
-        Assert.Equal(1.07, Market(h).GetProperty("allMult").GetDouble(), 9);
+        Assert.Equal(all * 1.21, View(h).GetProperty("allMult").GetDouble(), 9);
+        Assert.Equal(1.21, Market(h).GetProperty("allMult").GetDouble(), 9);
+    }
+
+    [Fact]
+    public void All_six_villages_at_the_tenth_level_give_almost_twice_as_much()
+    {
+        var h = Wheel();
+        foreach (var v in Clicker.FairVillages) Rep(h, v.Key, 2_500);
+        // Шістдесят рівнів × 3 % — +180 % до всього: шану тепер видно на лічильнику.
+        Assert.Equal(1 + 0.03 * 60, Market(h).GetProperty("allMult").GetDouble(), 9);
     }
 
     [Fact]
@@ -416,10 +431,10 @@ public class ClickerFairTests
 
         Rep(h, "bubnivka", 25);                                      // 2: миски +10 %
         Rep(h, "gavarets", 8);                                       // 1: горщики +5 %
-        // Шість рівнів — ще й +6 % до всього (множить пасив, а з ним і ціну кожного виробу).
-        Near(bowl * 1.10 * 1.06, WareView(h, "bowl").GetProperty("value").GetInt64());
-        Near(pot * 1.05 * 1.06, WareView(h, "pot").GetProperty("value").GetInt64());
-        Near(jug * 1.06, WareView(h, "jug").GetProperty("value").GetInt64());
+        // Шість рівнів — ще й +18 % до всього (множить пасив, а з ним і ціну кожного виробу).
+        Near(bowl * 1.10 * 1.18, WareView(h, "bowl").GetProperty("value").GetInt64());
+        Near(pot * 1.05 * 1.18, WareView(h, "pot").GetProperty("value").GetInt64());
+        Near(jug * 1.18, WareView(h, "jug").GetProperty("value").GetInt64());
 
         Rep(h, "vasylkiv", 120);                                     // 4: −16 % сушіння
         Assert.Equal(dry * 0.84, Market(h).GetProperty("dry").GetDouble(), 9);
@@ -432,8 +447,9 @@ public class ClickerFairTests
         Patch(h, s => s["styles"] = new JsonArray("kosiv"));
         Board(h, Order(h, 100, "kosiv", "pot", 1, 2, style: "kosiv", mult: 2.25), Order(h, 101, "kosiv", "pot", 1, 2));
         Rep(h, "kosiv", 120);                                        // 4
-        Assert.Equal(2.25 * 1.16, OrderView(h, 100)!.Value.GetProperty("mult").GetDouble(), 9);
-        Assert.Equal(2.0, OrderView(h, 101)!.Value.GetProperty("mult").GetDouble(), 9);
+        // v9: шана села ще й додає +0,1 до множника за рівень — обом замовленням.
+        Assert.Equal((2.25 + 0.4) * 1.16, OrderView(h, 100)!.Value.GetProperty("mult").GetDouble(), 9);
+        Assert.Equal(2.4, OrderView(h, 101)!.Value.GetProperty("mult").GetDouble(), 9);
     }
 
     [Fact]
@@ -683,9 +699,9 @@ public class ClickerFairTests
     {
         var h = Wheel();
         var fair = View(h).GetProperty("catalog").GetProperty("fair");
-        Assert.True(fair.GetProperty("events").GetArrayLength() >= 20);
+        Assert.True(fair.GetProperty("events").GetArrayLength() >= 27);
         Assert.Equal(6, fair.GetProperty("villages").GetArrayLength());
-        Assert.Equal(5, fair.GetProperty("guests").GetArrayLength());
+        Assert.Equal(8, fair.GetProperty("guests").GetArrayLength());
         Assert.All(Clicker.FairEvents, e => Assert.All(new[] { e.A, e.B }, c => Assert.InRange(c.Outcomes.Length, 1, 2)));
         Assert.Equal(Clicker.FairEvents.Length, Clicker.FairEvents.Select(e => e.Key).Distinct().Count());
     }

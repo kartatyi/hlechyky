@@ -18,6 +18,12 @@
 .clkf-feed.bad { background: #4a2612; color: #ffb27a; border-color: #8a4a2a; }
 .clkf-feed.open { border-color: var(--accent2); color: var(--accent); }
 .clkf-feed.res { color: var(--accent); border-color: var(--accent2); }
+/* Гостинець із села — раз на день, тож нехай трохи посвітить. */
+.clkf-feed.gift {
+  background: linear-gradient(100deg, rgba(123, 211, 137, .22), var(--panel) 75%); border-color: rgba(123, 211, 137, .6);
+  color: #d8f3dd; animation: clkfdrop .35s ease-out;
+}
+.clkf-feed.gift .clkf-fico { animation: clkfbob 1.6s ease-in-out infinite; display: inline-block; }
 /* Пригода чекає — рядок дзвенить, поки на нього не глянули. */
 .clkf-feed.ev {
   background: linear-gradient(100deg, rgba(244, 197, 66, .2), var(--panel) 70%); border-color: var(--accent2);
@@ -61,6 +67,13 @@
 .clkf-note { animation: clkfnote 1.6s ease-out infinite; }
 .clkf-note.n2 { animation-delay: .8s; }
 .clkf-ball { animation: clkfball 1.4s ease-in-out infinite alternate; }
+/* Дяк гортає книгу, мандрівний гончар показує глечик, ведмідь тупцяє лапами. */
+.clkf-book { transform-box: fill-box; transform-origin: 50% 100%; animation: clkfleaf 2.2s ease-in-out infinite alternate; }
+.clkf-pot { transform-box: fill-box; transform-origin: 50% 100%; animation: clkfbob 1.9s ease-in-out infinite; }
+.clkf-paw { transform-box: fill-box; transform-origin: 100% 0; animation: clkfwave .5s ease-in-out infinite alternate; }
+.clkf-paw.p2 { transform-origin: 0 0; animation-delay: .25s; }
+@keyframes clkfleaf { from { transform: rotate(-4deg) translateY(0); } to { transform: rotate(4deg) translateY(-2px); } }
+@keyframes clkfdrop { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes clkfarrive { from { transform: translateY(14px) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes clkfwave { from { transform: rotate(-10deg); } to { transform: rotate(12deg); } }
 @keyframes clkfflap { from { transform: rotate(0); } to { transform: rotate(-22deg); } }
@@ -127,26 +140,52 @@
 .clkf-react.no { background: #3a1c18; border-color: rgba(215, 55, 43, .45); }
 .clkf-remoji { font-size: 1.7em; font-style: normal; animation: clkfbob 1s ease-in-out infinite; }
 
+/* ---- базарний день ---- */
+.clkf-bazaar {
+  display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; font-size: .86em;
+  background: linear-gradient(100deg, rgba(244, 197, 66, .22), var(--panel2) 75%); border: 1px solid var(--accent2);
+  color: var(--accent); animation: clkfdrop .35s ease-out;
+}
+.clkf-bazaar i { font-style: normal; margin-left: auto; font-variant-numeric: tabular-nums; }
+/* Множник плати на картці замовлення: у ньому вже і шана села, і базарний день. */
+.clkf-omult {
+  font-size: .85em; font-weight: 700; color: var(--accent); background: rgba(244, 197, 66, .12);
+  border-radius: 999px; padding: 0 5px; white-space: nowrap; cursor: help;
+}
+
 /* ---- шана сіл ---- */
-.clkf-reps { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 5px; }
+.clkf-reps { display: grid; grid-template-columns: repeat(auto-fill, minmax(186px, 1fr)); gap: 5px; }
 .clkf-rep { padding: 5px 7px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.clkf-rep.l5 { border-color: var(--accent2); box-shadow: inset 0 0 16px rgba(244, 197, 66, .12); }
+.clkf-rep.gifting { border-color: rgba(123, 211, 137, .45); }
+.clkf-rep.l10 { border-color: var(--accent2); box-shadow: inset 0 0 16px rgba(244, 197, 66, .12); }
 .clkf-rtop { display: flex; justify-content: space-between; gap: 4px; align-items: baseline; }
-.clkf-stars { color: var(--accent); letter-spacing: -1px; font-size: .85em; white-space: nowrap; }
-.clkf-stars i { color: var(--line); font-style: normal; }
+/* Назва села — в один рядок: «⚫» окремо, а «Гавареччина» під ним виглядало б як дві різні картки. */
+.clkf-rtop > span:first-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clkf-rtop-max { color: var(--accent); }
+.clkf-stars { color: var(--accent); font-size: .85em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.clkf-stars b { font-size: 1.15em; }
+.clkf-stars i { color: var(--muted); font-style: normal; font-size: .9em; }
 .clkf-rbar { height: 5px; border-radius: 3px; background: rgba(0, 0, 0, .25); overflow: hidden; }
-.clkf-rbar i { display: block; height: 100%; background: var(--accent2); }
+.clkf-rbar i { display: block; height: 100%; background: var(--accent2); transition: width .4s; }
+.clkf-rep.l10 .clkf-rbar i { background: linear-gradient(90deg, var(--accent2), #ffe9b0); }
+.clkf-rnext { font-size: .7em; line-height: 1.25; }
+.clkf-rnext b { color: var(--text); }
 .clkf-perk { font-size: .68em; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.clkf-rgift { font-size: .68em; line-height: 1.25; color: var(--muted); }
+.clkf-rep.gifting .clkf-rgift { color: #9ad6a8; }
 
 
 /* Запит — до картки (clk), а не до полиці верстатів: дошка купців живе в clk-side, яка тепер теж контейнер. */
 @container clk (max-width: 420px) {
   .clkf-orders { grid-template-columns: minmax(0, 1fr); }
   .clkf-feed { grid-template-columns: auto minmax(0, 1fr) auto auto; padding: 4px 8px; }
+  /* На телефоні шість карток сіл в один стовпчик — читати легше, ніж стискати текст до трьох слів. */
+  .clkf-reps { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .clkf-feed.ev, .clkf-feed.ev .clkf-fico, .clkf-guest.run, .clkf-fig, .clkf-wave, .clkf-flap, .clkf-coin, .clkf-feather,
-  .clkf-strum, .clkf-note, .clkf-ball, .clkf-order.sour, .clkf-react, .clkf-remoji { animation: none; }
+  .clkf-strum, .clkf-note, .clkf-ball, .clkf-order.sour, .clkf-react, .clkf-remoji,
+  .clkf-feed.gift, .clkf-feed.gift .clkf-fico, .clkf-book, .clkf-pot, .clkf-paw, .clkf-bazaar { animation: none; }
   .clkf-guest.run .clkf-ring circle { animation: clkring var(--clkf-left, 20s) linear forwards; }
 }
