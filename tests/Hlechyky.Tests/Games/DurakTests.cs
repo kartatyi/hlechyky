@@ -32,13 +32,18 @@ public class DurakTests
     static string Table(DurakCore core) =>
         string.Join(" ", core.Table.Select(p => DurakCards.Text(p.Attack) + "/" + (p.Defend is { } d ? DurakCards.Text(d) : "-")));
 
-    static RoomHarness Sit(int seed = 7)
+    static readonly string[] Crew = ["Оля", "Петро", "Іра", "Влад", "Марко", "Соня"];
+
+    /// <summary>Стіл на <paramref name="players"/>: сіли по черзі, господар натиснув «Почати».</summary>
+    static RoomHarness Sit(int seed = 7, int players = 2)
     {
         var h = new RoomHarness("durak", seed: seed);
-        h.Join("Оля");
-        h.Join("Петро");
+        for (var i = 0; i < players; i++) h.Join(Crew[i]);
+        Assert.True(h.Start().Ok);
         return h;
     }
+
+    static int[] Counts(JsonElement v) => [.. v.GetProperty("counts").EnumerateArray().Select(e => e.GetInt32())];
 
     static string[] HandOf(RoomHarness h, int seat) =>
         [.. h.View(seat).GetProperty("hand").EnumerateArray().Select(e => e.GetString()!)];
@@ -621,12 +626,13 @@ public class DurakTests
         Assert.Equal("Дурень", game.Title);
         Assert.Equal("дурня", game.Accusative);
         Assert.Equal("board", game.Group);
-        Assert.Equal("whenFull", game.Start);
+        Assert.Equal("byHost", game.Start);
         Assert.True(game.Hidden);
-        Assert.True(game.Rated);
+        // На 2–6 Ело й ставки каркас однаково не рахує (лише MaxPlayers == 2), тож і прапорця нема.
+        Assert.False(game.Rated);
         Assert.False(game.Private);
         Assert.Equal(2, game.MinPlayers);
-        Assert.Equal(2, game.MaxPlayers);
+        Assert.Equal(6, game.MaxPlayers);
         Assert.Equal(0, game.TickMs);
         Assert.Equal("durak", game.Module);
         Assert.True(game.HasCss);
@@ -637,7 +643,7 @@ public class DurakTests
     public void The_seats_are_named_for_the_lobby()
     {
         var h = Sit();
-        Assert.Equal(["перший", "другий"], h.Room.Summary().SeatNames);
+        Assert.Equal(["перший", "другий", "третій", "четвертий", "п'ятий", "шостий"], h.Room.Summary().SeatNames);
     }
 
     [Fact]
@@ -659,7 +665,7 @@ public class DurakTests
         Assert.Equal(24, v.GetProperty("deck").GetInt32());
         Assert.Empty(v.GetProperty("table").EnumerateArray());
         Assert.Equal(6, v.GetProperty("hand").GetArrayLength());
-        Assert.Equal([6, 6], v.GetProperty("counts").EnumerateArray().Select(e => e.GetInt32()));
+        Assert.Equal([6, 6, 0, 0, 0, 0], Counts(v));
         Assert.Equal(0, v.GetProperty("discard").GetInt32());
         Assert.True(v.GetProperty("canAdd").GetBoolean());
         Assert.Equal(JsonValueKind.Null, v.GetProperty("result").ValueKind);
@@ -737,7 +743,7 @@ public class DurakTests
         var h = Sit();
         var v = h.View(null);
         Assert.Equal(JsonValueKind.Null, v.GetProperty("hand").ValueKind);
-        Assert.Equal([6, 6], v.GetProperty("counts").EnumerateArray().Select(e => e.GetInt32()));
+        Assert.Equal([6, 6, 0, 0, 0, 0], Counts(v));
 
         var seen = Views.Text(h.Room.Game.View(null));
         foreach (var card in HandOf(h, 0).Concat(HandOf(h, 1))) Assert.DoesNotContain(card, seen);
@@ -865,13 +871,407 @@ public class DurakTests
             Assert.Equal(0, v.GetProperty("deck").GetInt32());
             Assert.Empty(v.GetProperty("table").EnumerateArray());
 
-            var counts = v.GetProperty("counts").EnumerateArray().Select(e => e.GetInt32()).ToArray();
+            var counts = Counts(v);
             var discard = v.GetProperty("discard").GetInt32();
-            Assert.Equal(DurakCards.Count, counts[0] + counts[1] + discard);   // карти нікуди не діваються
+            Assert.Equal(DurakCards.Count, counts.Sum() + discard);   // карти нікуди не діваються
             Assert.Equal(JsonValueKind.Null, result.GetProperty("foolNick").ValueKind);   // обидва за столом — нік бере картка
             if (reason == "both") Assert.Equal(JsonValueKind.Null, result.GetProperty("winner").ValueKind);
             else Assert.Equal(0, counts[result.GetProperty("winner").GetInt32()]);
         }
+    }
+
+    // =========================================================================================
+    // Компанія: 3–6 гравців (оновлення 24.09.2026)
+    // =========================================================================================
+
+    static DurakCore Many(string trump, string[][] hands, string[]? deck = null, int attacker = 0)
+    {
+        var core = new DurakCore(DurakCore.MaxSeats);
+        core.Arrange(trump, hands, deck, attacker);
+        return core;
+    }
+
+    [Fact]
+    public void Three_players_get_six_each_and_eighteen_stay_in_the_deck()
+    {
+        var core = new DurakCore(DurakCore.MaxSeats);
+        core.Deal(new Random(3), [0, 1, 2]);
+        Assert.Equal([6, 6, 6, 0, 0, 0], core.Hands.Select(h => h.Count));
+        Assert.Equal(18, core.Deck.Count);
+        Assert.Equal(DurakCards.Count, core.Hands.SelectMany(h => h).Concat(core.Deck).Distinct().Count());
+        Assert.Equal([true, true, true, false, false, false], core.In);
+        Assert.NotEqual(core.Attacker, core.Defender);
+        Assert.True(core.In[core.Defender]);
+    }
+
+    [Fact]
+    public void Six_players_share_the_whole_deck_and_the_trump_card_goes_to_a_hand()
+    {
+        var core = new DurakCore(DurakCore.MaxSeats);
+        core.Deal(new Random(8), [0, 1, 2, 3, 4, 5]);
+        Assert.All(core.Hands, h => Assert.Equal(6, h.Count));
+        Assert.Empty(core.Deck);
+        Assert.Null(core.TrumpCard);
+        Assert.Null(core.Over);                        // порожня колода на старті — ще не кінець
+        Assert.InRange(core.Trump, 0, 3);
+    }
+
+    [Fact]
+    public void Empty_seats_are_skipped_round_the_table()
+    {
+        var core = new DurakCore(DurakCore.MaxSeats);
+        core.Deal(new Random(4), [1, 3, 5]);
+        Assert.Equal(0, core.Hands[0].Count + core.Hands[2].Count + core.Hands[4].Count);
+        Assert.Contains(core.Attacker, (int[])[1, 3, 5]);
+        Assert.Equal(core.Attacker == 5 ? 1 : core.Attacker + 2, core.Defender);
+    }
+
+    [Fact]
+    public void The_defender_is_the_next_one_after_the_attacker()
+    {
+        var core = Many("♣", [["7♠"], ["8♦"], ["9♥"]], attacker: 1);
+        Assert.Equal(1, core.Attacker);
+        Assert.Equal(2, core.Defender);
+        Assert.Equal([1, 0], core.Throwers());
+    }
+
+    [Fact]
+    public void Everyone_but_the_defender_may_add_once_the_table_is_beaten()
+    {
+        var core = Many("♣", [["7♠", "A♦"], ["K♠", "K♥", "K♦"], ["7♥", "Q♦"]]);
+        Assert.Null(Attack(core, 0, "7♠"));
+        Assert.Equal("Спершу дай суперникові відбитись", Attack(core, 2, "7♥"));   // поки б'ються — чекають
+        Assert.Null(Defend(core, 1, "7♠", "K♠"));
+
+        Assert.Equal(DurakPhase.Attack, core.Phase);
+        Assert.True(core.CanAddFor(2));
+        Assert.False(core.CanAddFor(0));              // у першого нема ні сімки, ні короля
+        Assert.Equal(2, core.Turn);                   // стіл чекає саме на третього
+        Assert.Equal("Ти відбиваєшся — підкидають інші", Attack(core, 1, "K♥"));
+        Assert.Equal("Підкидати можна лише те, що вже на столі", Attack(core, 2, "Q♦"));
+        Assert.Null(Attack(core, 2, "7♥"));
+        Assert.Equal("7♠/K♠ 7♥/-", Table(core));
+        Assert.Equal(DurakPhase.Defend, core.Phase);
+    }
+
+    [Fact]
+    public void The_bout_waits_until_every_thrower_has_passed()
+    {
+        var core = Many("♣", [["7♠", "7♦", "A♥"], ["K♠", "8♠", "9♥"], ["7♥", "Q♥"]], deck: ["6♠", "6♥", "6♦", "6♣", "8♣", "9♣"]);
+        Attack(core, 0, "7♠");
+        Defend(core, 1, "7♠", "K♠");
+        // У першого є сімка, у третього — теж: обидва мусять сказати своє.
+        Assert.Null(core.Done(0));
+        Assert.Equal(DurakPhase.Attack, core.Phase);
+        Assert.Single(core.Table);
+        Assert.Equal(2, core.Turn);
+        Assert.Equal(2, core.TurnFor(2));
+        Assert.Equal(2, core.TurnFor(0));             // перший уже сказав «Пас» — його ніхто не чекає
+        Assert.Null(core.Done(2));
+
+        // Усі сказали «Пас» — відбій, захисник заходить наступним, а захищається третій.
+        Assert.Empty(core.Table);
+        Assert.Equal(2, core.Discard);
+        Assert.Equal(1, core.Attacker);
+        Assert.Equal(2, core.Defender);
+    }
+
+    [Fact]
+    public void A_new_card_on_the_table_wakes_everyone_who_passed()
+    {
+        var core = Many("♣", [["7♠", "K♦"], ["K♠", "A♥", "8♥", "9♠"], ["7♥"]], deck: ["6♠", "6♥", "6♦", "6♣"]);
+        Attack(core, 0, "7♠");
+        Defend(core, 1, "7♠", "K♠");
+        Assert.Null(core.Done(0));                   // перший поки притримує свого короля
+        Assert.True(core.Passed[0]);
+        Assert.Null(Attack(core, 2, "7♥"));          // третій підкинув — позначки «Пас» скинуто
+        Assert.False(core.Passed[0]);
+        Assert.Null(Defend(core, 1, "7♥", "A♥"));
+        Assert.Equal(0, core.Turn);                   // перший знову при ділі: може підкинути короля
+        Assert.Null(Attack(core, 0, "K♦"));
+        Assert.Equal(3, core.Table.Count);
+    }
+
+    [Fact]
+    public void Nobody_with_a_matching_rank_means_the_bout_closes_by_itself()
+    {
+        var core = Many("♣", [["7♠", "A♦"], ["K♠", "8♥"], ["Q♥", "J♦"]], deck: ["6♠", "6♥", "6♦", "6♣"]);
+        Attack(core, 0, "7♠");
+        Assert.Null(Defend(core, 1, "7♠", "K♠"));
+        Assert.Empty(core.Table);                     // ні в кого ні сімки, ні короля — відбій сам
+        Assert.Equal(1, core.Attacker);
+        Assert.Equal(2, core.Defender);
+    }
+
+    [Fact]
+    public void A_taker_skips_his_turn_and_the_next_one_attacks()
+    {
+        var core = Many("♣", [["7♠", "A♦"], ["8♦", "9♥"], ["7♥", "J♦"], ["10♠"]],
+            deck: ["6♣", "7♣", "8♣", "9♣", "10♣", "J♣", "Q♣", "K♣", "A♣", "6♠", "6♥", "6♦", "Q♠", "J♠", "J♥", "Q♥"]);
+        Attack(core, 0, "7♠");
+        Assert.Null(core.Take(1));
+        Assert.Equal(DurakPhase.Taking, core.Phase);
+        Assert.Equal(2, core.Turn);                   // у третього є сімка — чекаємо на нього
+        Assert.Null(Attack(core, 2, "7♥"));
+
+        // Узяв другий — заходить третій, відбивається четвертий. Добирали по колу від атакуючого.
+        Assert.Equal(4, core.Hands[1].Count);
+        Assert.Equal(2, core.Attacker);
+        Assert.Equal(3, core.Defender);
+        Assert.Equal(6, core.Hands[0].Count);
+        Assert.Equal(6, core.Hands[2].Count);
+        Assert.Equal(6, core.Hands[3].Count);
+        Assert.Single(core.Deck);                      // 16 − 5 − 5 − 5: захисник, що взяв, не добирав
+    }
+
+    [Fact]
+    public void The_defenders_hand_caps_what_all_throwers_together_may_lay()
+    {
+        var core = Many("♣", [["7♠", "7♦"], ["K♠", "8♣"], ["7♥", "7♣"]]);
+        Assert.Equal(2, core.Limit);
+        Attack(core, 0, "7♠");
+        Assert.Null(core.Take(1));
+        Assert.Null(Attack(core, 2, "7♥"));
+        // Дві карти в захисника — дві на столі: відбій закрився, хоч сімки ще є в обох.
+        Assert.Empty(core.Table);
+        Assert.Equal(4, core.Hands[1].Count);
+    }
+
+    [Fact]
+    public void In_a_company_the_first_ones_out_are_safe_and_the_last_one_is_the_fool()
+    {
+        var core = Many("♣", [["7♠"], ["K♠", "8♥"], ["Q♥", "9♦"]]);
+        Attack(core, 0, "7♠");
+        Assert.Null(Defend(core, 1, "7♠", "K♠"));
+        // Перший вийшов (колода порожня, рука порожня) — граємо далі вдвох.
+        Assert.Null(core.Over);
+        Assert.False(core.In[0]);
+        Assert.Equal([0], core.Places);
+        Assert.Equal(1, core.Attacker);
+        Assert.Equal(2, core.Defender);
+
+        Assert.Null(Attack(core, 1, "8♥"));
+        Assert.Null(Defend(core, 2, "8♥", "Q♥"));
+        Assert.Equal([0, 1], core.Places);
+        Assert.NotNull(core.Over);
+        Assert.Equal(2, core.Over!.Fool);
+        Assert.Equal(0, core.Over.Winner);
+        Assert.Equal("out", core.Over.Reason);
+    }
+
+    [Fact]
+    public void When_the_last_two_go_out_together_there_is_no_fool()
+    {
+        var core = Many("♣", [["7♠"], ["8♠", "9♥"], ["10♥"]]);
+        Attack(core, 0, "7♠");
+        Defend(core, 1, "7♠", "8♠");
+        Assert.Equal([0], core.Places);               // перший вийшов, другий заходить на третього
+        Assert.Equal(1, core.Attacker);
+        Assert.Null(Attack(core, 1, "9♥"));
+        Assert.Null(Defend(core, 2, "9♥", "10♥"));
+        // Обидва лишились без карт одним відбоєм — дурня нема.
+        Assert.Equal([0, 1, 2], core.Places);
+        Assert.NotNull(core.Over);
+        Assert.Null(core.Over!.Fool);
+        Assert.Equal("both", core.Over.Reason);
+    }
+
+    [Fact]
+    public void A_defender_who_leaves_a_company_takes_the_bout_with_him()
+    {
+        var core = Many("♣", [["7♠", "8♠"], ["9♥", "10♥"], ["J♦", "Q♦"]], deck: ["6♠", "6♥", "6♦", "6♣"]);
+        Attack(core, 0, "7♠");
+        core.Leave(1);
+        Assert.False(core.In[1]);
+        Assert.Empty(core.Hands[1]);
+        Assert.Empty(core.Table);
+        Assert.Equal(3, core.Discard);                // 7♠ і дві карти того, хто пішов
+        Assert.Equal(2, core.Attacker);               // заходить наступний за ним
+        Assert.Equal(0, core.Defender);
+        Assert.Null(core.Over);
+    }
+
+    [Fact]
+    public void A_thrower_who_leaves_no_longer_holds_the_bout()
+    {
+        var core = Many("♣", [["7♠", "A♦"], ["K♠", "8♥"], ["7♥"], ["J♣"]], deck: ["6♠", "6♥", "6♦", "6♣"]);
+        Attack(core, 0, "7♠");
+        Defend(core, 1, "7♠", "K♠");
+        Assert.Equal(2, core.Turn);                   // чекаємо на третього з його сімкою
+        core.Leave(2);
+        Assert.Empty(core.Table);                     // більше чекати нема на кого — відбій
+        Assert.Equal(1, core.Attacker);
+        Assert.Equal(3, core.Defender);
+    }
+
+    [Fact]
+    public void An_attacker_who_leaves_before_his_first_card_hands_the_move_on()
+    {
+        var core = Many("♣", [["7♠"], ["K♠"], ["7♥"]]);
+        core.Leave(0);
+        Assert.Equal(2, core.Attacker);               // той, хто сидить перед захисником
+        Assert.Equal(1, core.Defender);
+        Assert.Null(Attack(core, 2, "7♥"));
+    }
+
+    [Fact]
+    public void Four_players_play_out_to_one_fool_and_three_winners()
+    {
+        for (var seed = 1; seed <= 12; seed++)
+        {
+            var h = Sit(seed, 4);
+            PlayOutGreedy(h);
+            Assert.Equal(RoomStatus.Finished, h.Room.Status);
+            var v = h.View(null);
+            Assert.Equal(DurakCards.Count, Counts(v).Sum() + v.GetProperty("discard").GetInt32());
+            var result = v.GetProperty("result");
+            var result2 = h.Room.Result!;
+            if (result.GetProperty("reason").GetString() == "both")
+            {
+                Assert.True(result2.Draw);
+                continue;
+            }
+            var fool = result.GetProperty("fool").GetInt32();
+            Assert.Equal(3, result2.Winners.Length);
+            Assert.DoesNotContain(fool, result2.Winners);
+            Assert.Equal(3, result.GetProperty("places").GetArrayLength());
+            Assert.Contains("дурень — " + h.NickOf(fool), h.Outbox.OfType<Journal>().Last().Text);
+            Assert.Contains("вчотирьох", h.Outbox.OfType<Journal>().Last().Text);
+        }
+    }
+
+    [Fact]
+    public void Six_players_play_out_too()
+    {
+        for (var seed = 1; seed <= 6; seed++)
+        {
+            var h = Sit(seed, 6);
+            Assert.Equal(0, h.View(null).GetProperty("deck").GetInt32());
+            Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("trumpCard").ValueKind);
+            PlayOutGreedy(h);
+            Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        }
+    }
+
+    [Fact]
+    public void In_a_company_each_hand_is_seen_only_by_its_owner()
+    {
+        var h = Sit(9, 4);
+        var hands = Enumerable.Range(0, 4).Select(s => HandOf(h, s)).ToArray();
+        for (var s = 0; s < 4; s++)
+        {
+            Assert.Equal(6, hands[s].Length);
+            var seen = Views.Text(h.Room.Game.View(s));
+            for (var o = 0; o < 4; o++)
+                if (o != s) foreach (var card in hands[o]) Assert.DoesNotContain(card, seen);
+        }
+        var watcher = Views.Text(h.Room.Game.View(null));
+        foreach (var card in hands.SelectMany(x => x)) Assert.DoesNotContain(card, watcher);
+    }
+
+    [Fact]
+    public void A_thrower_sees_that_the_move_is_his()
+    {
+        for (var seed = 1; seed <= 60; seed++)
+        {
+            var h = Sit(seed, 3);
+            var pub = h.View(null);
+            var attacker = pub.GetProperty("attacker").GetInt32();
+            var defender = pub.GetProperty("defender").GetInt32();
+            var third = 3 - attacker - defender;
+            var card = HandOf(h, attacker)[0];
+            var trump = pub.GetProperty("trump").GetString()!;
+            var beat = HandOf(h, defender).FirstOrDefault(c => BeatsText(c, card, trump));
+            if (beat is null) continue;
+            h.Act(attacker, "attack", new { card });
+            h.Act(defender, "defend", new { attack = card, card = beat });
+            var ranks = new[] { card, beat }.Select(c => DurakCards.Rank(C(c))).ToHashSet();
+            var fit = HandOf(h, third).Any(c => ranks.Contains(DurakCards.Rank(C(c))));
+            if (!fit || h.View(null).GetProperty("table").GetArrayLength() == 0) continue;
+
+            var mine = h.View(third);
+            Assert.Equal(third, mine.GetProperty("turn").GetInt32());
+            Assert.True(mine.GetProperty("canAdd").GetBoolean());
+            Assert.False(h.View(defender).GetProperty("canAdd").GetBoolean());
+            return;
+        }
+        Assert.Fail("не знайшлось роздачі, де третьому є що підкинути");
+    }
+
+    [Fact]
+    public void A_company_goes_on_when_one_leaves_and_ends_when_two_are_left()
+    {
+        var h = Sit(21, 3);
+        Assert.True(h.Leave("Іра").Ok);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        var v = h.View(null);
+        Assert.False(v.GetProperty("in")[2].GetBoolean());
+        Assert.Equal("Іра", v.GetProperty("names")[2].GetString());   // місце вільне, а ім'я картка ще покаже
+        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+
+        Assert.True(h.Leave("Петро").Ok);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        var result = h.View(0).GetProperty("result");
+        Assert.Equal("left", result.GetProperty("reason").GetString());
+        Assert.Equal("Петро", result.GetProperty("foolNick").GetString());
+        Assert.Equal(1, result.GetProperty("fool").GetInt32());
+    }
+
+    [Fact]
+    public void Rematch_in_a_company_moves_everyone_one_seat_on()
+    {
+        var h = Sit(2, 3);
+        PlayOutGreedy(h);
+        Assert.True(h.Rematch("Оля").Ok);
+        Assert.Equal(["Петро", "Іра", "Оля"], h.Room.Seats.Take(3));
+        Assert.Equal(18, h.View(0).GetProperty("deck").GetInt32());
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("result").ValueKind);
+        Assert.Equal(0, h.View(0).GetProperty("places").GetArrayLength());
+    }
+
+    /// <summary>
+    /// Жадібніший гравець для компаній: заходить наймолодшою, підкидає все, що пасує, б'є найдешевшим.
+    /// Так проходять і вікна підкидання кількох гравців, і «Беру» з підкиданням.
+    /// </summary>
+    static void PlayOutGreedy(RoomHarness h, int cap = 4000)
+    {
+        for (var i = 0; i < cap && h.Room.Status == RoomStatus.Playing; i++)
+        {
+            var pub = h.View(null);
+            var phase = pub.GetProperty("phase").GetString()!;
+            var turn = pub.GetProperty("turn").GetInt32();
+            var trump = pub.GetProperty("trump").GetString()!;
+            var hand = HandOf(h, turn);
+            var table = pub.GetProperty("table").EnumerateArray().ToArray();
+            var open = table.Where(t => t.GetProperty("defend").ValueKind == JsonValueKind.Null)
+                .Select(t => t.GetProperty("attack").GetString()!).ToArray();
+
+            ActResult step;
+            if (phase == "defend")
+            {
+                var pick = hand.Where(c => BeatsText(c, open[0], trump))
+                    .OrderBy(c => DurakCards.Suit(C(c)) == DurakCards.SuitOf(trump) ? 1 : 0)
+                    .ThenBy(c => DurakCards.Rank(C(c))).FirstOrDefault();
+                step = pick is null ? h.Act(turn, "take") : h.Act(turn, "defend", new { attack = open[0], card = pick });
+            }
+            else if (table.Length == 0)
+            {
+                step = h.Act(turn, "attack", new { card = hand.OrderBy(c => DurakCards.Rank(C(c))).First() });
+            }
+            else
+            {
+                var ranks = table.SelectMany(t => new[] { t.GetProperty("attack"), t.GetProperty("defend") })
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => DurakCards.Rank(C(e.GetString()!))).ToHashSet();
+                var add = h.View(turn).GetProperty("canAdd").GetBoolean()
+                    ? hand.FirstOrDefault(c => ranks.Contains(DurakCards.Rank(C(c))) && DurakCards.Suit(C(c)) != DurakCards.SuitOf(trump))
+                    : null;
+                step = add is null ? h.Act(turn, "done") : h.Act(turn, "attack", new { card = add });
+            }
+            Assert.True(step.Ok, $"хід у фазі «{phase}» відбито: {step.Message}");
+        }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
     }
 
     // ---------- простий гравець для наскрізних партій ----------

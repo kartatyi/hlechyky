@@ -41,15 +41,28 @@ public readonly record struct DominoBone(int A, int B)
 /// </summary>
 public sealed class Domino : Game
 {
-    /// <summary>Скільки очок треба набрати, щоб партія скінчилась.</summary>
+    /// <summary>Класична межа партії — сто очок. Стіл може обрати коротшу (опція «target»).</summary>
     public const int Target = 100;
+
+    /// <summary>
+    /// До скількох грати: «1» — один раунд (хто виграв роздачу, той і партію), 50 — коротка партія на
+    /// чверть години, 100 — класика. Типово 50: сотня на двох — це одинадцять раундів, і до кінця доживали не всі.
+    /// </summary>
+    static readonly (string Value, string Label)[] Targets = [("1", "Один раунд"), ("50", "До 50 очок"), ("100", "До 100 очок")];
 
     const int MaxSeats = 4;
 
     public override GameInfo Info { get; } = new(
         "domino", "Доміно", "доміно", GameGroup.Board, 2, MaxSeats,
         Start: StartMode.ByHost, Hidden: true,
-        Hint: "Класичне доміно: прикладай кістки однаковими половинками. Гра до 100 очок");
+        Options: [new GameOption("target", "Партія", Targets, "50")],
+        Hint: "Класичне доміно на 2–4: прикладай кістки однаковими половинками. Один раунд, до 50 або до 100 очок");
+
+    /// <summary>Скільки очок закриває партію; 1 — партія з одного раунду.</summary>
+    int _target = 50;
+
+    public override void Configure(IReadOnlyDictionary<string, string> options) =>
+        _target = options.TryGetValue("target", out var t) && int.TryParse(t, out var n) && Targets.Any(x => x.Value == t) ? n : 50;
 
     /// <summary>Рука кожного місця. Масив завжди на всі місця — індекс тут це номер місця, а не гравця.</summary>
     readonly List<DominoBone>[] _hands = [.. Enumerable.Range(0, MaxSeats).Select(_ => new List<DominoBone>())];
@@ -66,9 +79,14 @@ public sealed class Domino : Game
     /// <summary>Хто виграв минулий раунд — той і починає наступний.</summary>
     int? _lastWinner;
     RoundEnd? _last;
+    /// <summary>Партію з одного раунду закрила риба порівну — переможця нема.</summary>
+    bool _draw;
 
-    /// <summary>Чим скінчився минулий раунд — рядок для картки, а не для правил.</summary>
-    sealed record RoundEnd(int? Winner, int Points, string Reason);
+    /// <summary>
+    /// Чим скінчився минулий раунд — для картки, а не для правил. <paramref name="Left"/> — що в кого
+    /// лишилось на руках: після раунду кістки й так показують одне одному, а без них «+23» нічого не пояснює.
+    /// </summary>
+    sealed record RoundEnd(int? Winner, int Points, string Reason, int Round = 0, int[][][]? Left = null);
 
     public override string SeatName(int seat) => seat switch
     {
@@ -88,6 +106,7 @@ public sealed class Domino : Game
         _winner = null;
         _lastWinner = null;
         _last = null;
+        _draw = false;
         Deal();
     }
 
@@ -173,7 +192,7 @@ public sealed class Domino : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (action is not ("play" or "draw" or "pass")) return ActResult.Fail("Тут так не ходять");
-        if (_winner is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_winner is not null || _draw) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
         if (!_in[seat]) return ActResult.Fail("Ти вже не в цій партії");
         if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
 
@@ -337,7 +356,8 @@ public sealed class Domino : Game
 
     void EndRound(int? winner, int points, string reason)
     {
-        _last = new RoundEnd(winner, points, reason);
+        _last = new RoundEnd(winner, points, reason, _round,
+            [.. Enumerable.Range(0, MaxSeats).Select(s => _in[s] ? _hands[s].Select(b => b.Wire).ToArray() : [])]);
         // Переможець раунду відкриває наступний. Після риби з рівними руками переможця нема — тоді
         // _lastWinner теж стає порожнім, і знову діє правило найстаршого дубля.
         _lastWinner = winner;
@@ -346,10 +366,17 @@ public sealed class Domino : Game
         // У Журнал підсумки раундів не пишемо: Журнал спільний на весь сайт (радіо й Балачки), а
         // раундів у партії до ста очок буває під два десятки. Гравцям те саме каже картка через
         // lastRound, а в Журнал іде один рядок на всю партію — з Ctx.Finish нижче.
-        if (winner is { } champion && _scores[champion] >= Target)
+        if (winner is { } champion && (_scores[champion] >= _target || _target <= 1))
         {
             _winner = champion;
             Ctx.Finish([champion], Scoreline(champion));
+            return;
+        }
+        // Партія з одного раунду, а раунд скінчився рибою порівну: переможця нема — нічия.
+        if (_target <= 1)
+        {
+            _draw = true;
+            Ctx.Finish([], $"{Info.Title}: риба порівну — нічия");
             return;
         }
         Deal();
@@ -379,7 +406,7 @@ public sealed class Domino : Game
     /// </summary>
     public override void OnLeave(int seat)
     {
-        if (_winner is not null || seat < 0 || seat >= MaxSeats || !_in[seat]) return;
+        if (_winner is not null || _draw || seat < 0 || seat >= MaxSeats || !_in[seat]) return;
 
         _in[seat] = false;
         _boneyard.AddRange(_hands[seat]);
@@ -404,10 +431,12 @@ public sealed class Domino : Game
     public override object View(int? seat)
     {
         var me = seat is { } s && s >= 0 && s < MaxSeats ? s : -1;
-        var mine = me >= 0 && me == _turn && _winner is null && _in[me];
+        var over = _winner is not null || _draw;
+        var mine = me >= 0 && me == _turn && !over && _in[me];
         return new
         {
-            turn = _winner is null ? _turn : (int?)null,
+            turn = over ? null : (int?)_turn,
+            target = _target,
             players = Alive,
             round = _round,
             line = _line.Select(b => new { tile = b.Wire, @double = b.Double }).ToArray(),
@@ -419,8 +448,12 @@ public sealed class Domino : Game
             scores = (int[])_scores.Clone(),
             canPlay = mine && CanPlay(me),
             mustDraw = mine && !CanPlay(me) && _boneyard.Count > 0,
-            lastRound = _last is null ? null : new { winner = _last.Winner, points = _last.Points, reason = _last.Reason },
-            result = _winner is null ? null : new { winner = _winner.Value, scores = (int[])_scores.Clone() },
+            lastRound = _last is null ? null : new
+            {
+                winner = _last.Winner, points = _last.Points, reason = _last.Reason,
+                round = _last.Round, left = _last.Left,
+            },
+            result = !over ? null : new { winner = _winner, scores = (int[])_scores.Clone() },
         };
     }
 

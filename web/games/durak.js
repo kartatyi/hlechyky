@@ -1,14 +1,17 @@
 /*
-  Дурень підкидний на двох. Правила живуть на сервері (Impl/Durak.cs) — тут лише рендер і наміри.
+  Дурень підкидний на 2–6. Правила живуть на сервері (Impl/Durak.cs) — тут лише рендер і наміри.
 
-  Вид (Hidden, свій на кожне місце):
+  Вид (Hidden, свій на кожне місце; масиви — на всі шість місць, індекс = номер місця):
     { turn, attacker, defender, phase: 'attack'|'defend'|'taking'|'done', trump: '♥', trumpCard: '7♥'|null,
-      deck, table: [{ attack: '7♥', defend: '9♥'|null }], hand: string[]|null, counts: [n, n],
-      discard, canAdd,
-      result: null | { winner: 0|1|null, reason: 'out'|'both'|'left', foolNick: string|null } }
-    foolNick є лише тоді, коли хтось встав з-за столу: його місце вже порожнє, і ctx.nickOf імені не дасть.
+      deck, table: [{ attack: '7♥', defend: '9♥'|null }], hand: string[]|null,
+      counts: number[], dealt: bool[], in: bool[], passed: bool[], places: number[], names: (string|null)[],
+      discard, room, canAdd,
+      result: null | { winner, fool: number|null, reason: 'out'|'both'|'left', foolNick: string|null, places } }
+    turn — «чий хід» саме для мене: якщо мені є що підкинути, це я, навіть коли заходив інший.
+    foolNick є лише тоді, коли дурень встав з-за столу: його місце вже порожнє, і ctx.nickOf імені не дасть.
 
   Наміри: act('attack', { card }), act('defend', { attack, card }), act('take'), act('done').
+  'done' — це «Біто» головного атакуючого, «Пас» решти, хто підкидає, і «Досить» після «Беру».
 
   Захист двокроковий і в обидва боки: клік по своїй карті підсвічує атаки, які нею б'ються, клік по
   атаці — карти, якими її взяти. Другий клік ходить. Так само зручно і мишею, і пальцем.
@@ -21,11 +24,15 @@
 
   const RANKS = ['6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
   const RED = ['♥', '♦'];
+  const SEATS = ['перший', 'другий', 'третій', 'четвертий', "п'ятий", 'шостий'];
+  // Позначка місця — і колір, і форма: так гравців розрізнить і той, хто кольорів не бачить.
+  const MARKS = ['●', '▲', '■', '◆', '★', '✚'];
 
   const suitOf = (c) => String(c || '').slice(-1);
   const rankTextOf = (c) => String(c || '').slice(0, -1);
   const rankOf = (c) => RANKS.indexOf(rankTextOf(c));
   const isRed = (c) => RED.indexOf(suitOf(c)) >= 0;
+  const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /// Ті самі правила старшинства, що й на сервері — але лише щоб гасити недоступні карти.
   /// Сервер усе одно перевіряє сам: клієнт тут нічого не вирішує.
@@ -39,7 +46,7 @@
   }
 
   function state(root) {
-    if (!root._durak) root._durak = { sel: null, atk: null };
+    if (!root._durak) root._durak = { sel: null, atk: null, seen: {} };
     return root._durak;
   }
 
@@ -49,7 +56,8 @@
     if (el) return el;
     el = document.createElement('div');
     el.className = 'durak';
-    el.innerHTML = '<div class="dtop"></div><div class="dtable"></div><div class="dhand"></div><div class="dbtns"></div>';
+    el.innerHTML = '<div class="dfoes"></div><div class="dtop"></div><div class="dtable"></div>'
+      + '<div class="dsay"></div><div class="dhand"></div><div class="dbtns"></div>';
     root.appendChild(el);
     return el;
   }
@@ -58,9 +66,43 @@
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
   }
 
+  const nameOf = (ctx, i) => ctx.nickOf(i) || ((ctx.view || {}).names || [])[i] || SEATS[i] || ('гравець ' + (i + 1));
+
+  /// Хто за столом: кожен суперник — фішка з ніком, сорочками карт і роллю в цьому відбої.
+  function foes(host, ctx, v) {
+    const dealt = v.dealt || [];
+    const inn = v.in || [];
+    const passed = v.passed || [];
+    const places = v.places || [];
+    const counts = v.counts || [];
+    const n = dealt.length || 2;
+    const players = dealt.filter(Boolean).length;
+    const me = ctx.mine ? ctx.seat : -1;
+    const out = [];
+    // По колу від мене: так «наступний» справді сидить праворуч, як за живим столом.
+    for (let k = 1; k <= n; k++) {
+      const i = (me + k + n) % n;
+      if (!dealt[i] || i === me) continue;
+      const cnt = counts[i] || 0;
+      const place = places.indexOf(i);
+      let role = '';
+      let cls = 'dfoe s' + i;
+      if (v.result && v.result.fool === i) { role = '<em class="fool">🃏 дурень</em>'; cls += ' isfool'; }
+      else if (place >= 0) { role = '<em class="safe">✓ вийшов' + (players > 2 ? ' ' + (place + 1) + '-м' : '') + '</em>'; cls += ' gone'; }
+      else if (!inn[i]) { role = '<em class="left">встав</em>'; cls += ' gone'; }
+      else if (!v.result && i === v.defender) { role = '<em class="def">🛡 відбивається</em>'; cls += ' isdef'; }
+      else if (!v.result && i === v.attacker) role = '<em class="atk">⚔ заходить</em>';
+      if (!v.result && inn[i] && passed[i]) role += '<em class="pass">пас</em>';
+      const fan = '<span class="dbacks">' + '<i></i>'.repeat(Math.min(cnt, 8)) + '</span>';
+      out.push('<div class="' + cls + (!v.result && v.turn === i ? ' now' : '') + '">'
+        + '<span class="dwho"><u>' + MARKS[i] + '</u>' + ctx.esc(nameOf(ctx, i)) + '</span>'
+        + '<span class="dcnt">' + fan + '<b>' + cnt + '</b></span>'
+        + '<span class="drole">' + role + '</span></div>');
+    }
+    setHtml(host, out.join(''));
+  }
+
   function top(host, ctx, v) {
-    const other = ctx.seat === 0 ? 1 : 0;
-    const counts = v.counts || [0, 0];
     const bits = [];
     // Козирну карту показуємо, поки вона лежить під колодою; забрали — лишається сама масть.
     const trumpChip = v.trumpCard
@@ -69,32 +111,85 @@
     bits.push('<span class="dchip">козир ' + trumpChip + '</span>');
     bits.push('<span class="dchip">колода <b>' + (v.deck || 0) + '</b></span>');
     bits.push('<span class="dchip">відбій <b>' + (v.discard || 0) + '</b></span>');
-    if (ctx.mine) bits.push('<span class="dchip">у суперника <b>' + (counts[other] || 0) + '</b></span>');
-    else bits.push('<span class="dchip">на руках <b>' + counts[0] + '</b> : <b>' + counts[1] + '</b></span>');
+    if (ctx.mine && ctx.seat != null && (v.dealt || [])[ctx.seat]) {
+      bits.push('<span class="dchip me s' + ctx.seat + '"><u>' + MARKS[ctx.seat] + '</u>ти</span>');
+    }
+    if (!v.result && (v.table || []).length && v.phase !== 'done') {
+      bits.push('<span class="dchip" title="Не більше шести карт і не більше, ніж було в того, хто відбивається">ще влізе <b>' + (v.room || 0) + '</b></span>');
+    }
     setHtml(host, bits.join(''));
   }
 
   function board(host, ctx, v, st, hot) {
     const table = v.table || [];
-    if (!table.length) {
-      setHtml(host, '<span class="dempty">стіл порожній</span>');
+    if (v.result) {
+      setHtml(host, summary(ctx, v));
+      st.seen = {};
       return;
     }
+    if (!table.length) {
+      const who = v.attacker === ctx.seat ? 'заходь будь-якою картою' : nameOf(ctx, v.attacker) + ' заходить на ' + nameOf(ctx, v.defender);
+      setHtml(host, '<span class="dempty">стіл порожній — ' + ctx.esc(who) + '</span>');
+      st.seen = {};
+      return;
+    }
+    // Нові карти злітають на стіл — але лише ті, яких тут ще не було, інакше стіл блимав би щоходу.
+    const seen = {};
+    const fresh = (c) => { seen[c] = 1; return st.seen[c] || reduced() ? '' : ' fly'; };
     const html = table.map((p) => {
       const pick = hot.indexOf(p.attack) >= 0;
       const cls = 'dpair' + (p.defend ? ' beaten' : '') + (pick ? ' hot' : '') + (p.attack === st.atk ? ' pick' : '');
       return '<div class="' + cls + '" data-c="' + ctx.esc(p.attack) + '">'
-        + cardHtml(ctx, p.attack, 'atk')
-        + (p.defend ? cardHtml(ctx, p.defend, 'def') : '')
+        + cardHtml(ctx, p.attack, 'atk' + fresh(p.attack))
+        + (p.defend ? cardHtml(ctx, p.defend, 'def' + fresh(p.defend)) : '')
         + '</div>';
     }).join('');
+    st.seen = seen;
     setHtml(host, html);
   }
 
-  function buttons(host, ctx, v, iAttack, iDefend, live) {
+  /// Підсумок партії прямо на столі: хто вийшов першим, хто лишився дурнем.
+  function summary(ctx, v) {
+    const r = v.result;
+    const medals = ['🥇', '🥈', '🥉'];
+    const list = (r.places || v.places || []);
+    const places = list.length > 1 || (v.dealt || []).filter(Boolean).length > 2
+      ? list.map((i, k) => '<span class="dplace">' + (medals[k] || (k + 1) + '.') + ' ' + ctx.esc(nameOf(ctx, i)) + '</span>').join('')
+      : '';
+    let fool = '';
+    if (r.reason === 'both') fool = '<div class="dverdict">Вийшли разом — дурня цього разу нема 🤝</div>';
+    else if (r.fool != null) {
+      const who = r.foolNick || nameOf(ctx, r.fool);
+      fool = '<div class="dverdict">' + (ctx.seat === r.fool ? 'Дурень цього разу — ти 🃏' : '🃏 Дурень — ' + ctx.esc(who))
+        + (r.reason === 'left' ? ' <small>(встав з-за столу)</small>' : '') + '</div>';
+    }
+    return '<div class="dsum">' + fool + (places ? '<div class="dplaces">' + places + '</div>' : '') + '</div>';
+  }
+
+  /// Підказка простими словами — що мені робити просто зараз.
+  function say(host, ctx, v, iAttack, iDefend, canAdd) {
+    let text = '';
+    const table = v.table || [];
+    const playing = !v.result && ctx.mine && ctx.playing;
+    if (playing && (v.in || [])[ctx.seat] === false) {
+      if ((v.places || []).indexOf(ctx.seat) >= 0) text = 'Ти вже вийшов — дивись, кому дістанеться дурень';
+    } else if (playing) {
+      if (v.phase === 'defend' && iDefend) text = 'Тицьни свою карту, потім ту, яку б\'єш. Нема чим — «Беру»';
+      else if (v.phase === 'attack' && !table.length && iAttack) text = 'Заходь: тицьни будь-яку карту';
+      else if (canAdd && v.phase === 'taking') text = 'Бере! Можна докинути карту того ж номіналу, що на столі';
+      else if (canAdd) text = 'Можна підкинути карту того ж номіналу, що на столі, — або «' + (iAttack ? 'Біто' : 'Пас') + '»';
+    }
+    setHtml(host, text ? ctx.esc(text) : '');
+  }
+
+  function buttons(host, ctx, v, iDefend, canAdd, live) {
     const out = [];
-    if (live && iAttack && v.phase === 'attack' && (v.table || []).length) out.push('<button class="primary" data-act="done">Біто</button>');
-    if (live && iAttack && v.phase === 'taking') out.push('<button class="primary" data-act="done">Досить</button>');
+    const iAttack = ctx.mine && ctx.seat === v.attacker;
+    const table = v.table || [];
+    if (live && ctx.mine && !iDefend && table.length && canAdd) {
+      if (v.phase === 'taking') out.push('<button class="primary" data-act="done">Досить</button>');
+      else if (v.phase === 'attack') out.push('<button class="primary" data-act="done">' + (iAttack ? 'Біто' : 'Пас') + '</button>');
+    }
     if (live && iDefend && v.phase === 'defend') out.push('<button class="ghost" data-act="take">Беру</button>');
     setHtml(host, out.join(''));
   }
@@ -105,18 +200,23 @@
     const el = skeleton(root);
     const hand = v.hand || [];
     const table = v.table || [];
-    const counts = v.counts || [0, 0];
+    const counts = v.counts || [];
     const trump = v.trump || '';
+    // Стіл у лобі: або ще не грали, або дограний стіл каркас віддав новому гравцеві — тоді вид
+    // тримає стару партію, але показувати її новачкові нема чого.
+    const lobby = ctx.room && ctx.room.status === 'lobby';
     const live = ctx.playing && !v.result;
     const iAttack = ctx.mine && ctx.seat === v.attacker;
-    const iDefend = ctx.mine && ctx.seat === v.defender;
+    const iDefend = ctx.mine && ctx.seat === v.defender && (v.in || [])[ctx.seat] !== false;
     const defending = live && iDefend && v.phase === 'defend';
-    const attacking = live && iAttack && (v.phase === 'attack' || v.phase === 'taking') && !!v.canAdd;
+    const canAdd = live && !!v.canAdd;
 
-    // Карти роздають на старті: поки стіл порожній і колоди нема — партія ще не почалась.
-    if (!v.result && !v.deck && !counts[0] && !counts[1] && !table.length) {
+    if (lobby || (!v.result && !v.deck && !counts.some((c) => c > 0) && !table.length)) {
+      const seated = ((ctx.room && ctx.room.seats) || []).filter((s) => s.nick).length;
+      setHtml(el.querySelector('.dfoes'), '');
       setHtml(el.querySelector('.dtop'), '');
-      setHtml(el.querySelector('.dtable'), '<span class="dempty">карти ще не роздані</span>');
+      setHtml(el.querySelector('.dtable'), '<span class="dempty">За столом ' + seated + ' з 6. Грати можна вдвох і більше — господар тисне «Почати»</span>');
+      setHtml(el.querySelector('.dsay'), '');
       setHtml(el.querySelector('.dbtns'), '');
       HGames.ui.hand(el.querySelector('.dhand'), [], {});
       return;
@@ -128,20 +228,24 @@
     if (st.atk && open.indexOf(st.atk) < 0) st.atk = null;
     if (!defending) { st.sel = null; st.atk = null; }
 
-    // Що зараз можна класти: атакуючому — свій номінал, захисникові — те, чим б'ється хоч одна атака.
+    // Що зараз можна класти: хто підкидає — свій номінал, захисникові — те, чим б'ється хоч одна атака.
     const ranksOnTable = {};
     for (const p of table) { ranksOnTable[rankTextOf(p.attack)] = 1; if (p.defend) ranksOnTable[rankTextOf(p.defend)] = 1; }
     const usable = (card) => {
-      if (attacking) return !table.length || ranksOnTable[rankTextOf(card)] === 1;
+      if (canAdd && !iDefend) return !table.length || ranksOnTable[rankTextOf(card)] === 1;
       if (defending) return st.atk ? beats(card, st.atk, trump) : open.some((a) => beats(card, a, trump));
       return false;
     };
     // Підсвічуємо атаки, які беруться обраною картою (або всі живі, поки нічого не обрано).
     const hot = defending ? (st.sel ? open.filter((a) => beats(st.sel, a, trump)) : open) : [];
 
+    el.classList.toggle('many', (v.dealt || []).filter(Boolean).length > 3);
+    el.classList.toggle('idle', !defending && !(canAdd && !iDefend));
+    foes(el.querySelector('.dfoes'), ctx, v);
     top(el.querySelector('.dtop'), ctx, v);
     board(el.querySelector('.dtable'), ctx, v, st, hot);
-    buttons(el.querySelector('.dbtns'), ctx, v, iAttack, iDefend, live);
+    say(el.querySelector('.dsay'), ctx, v, iAttack, iDefend, canAdd);
+    buttons(el.querySelector('.dbtns'), ctx, v, iDefend, canAdd, live);
 
     const items = hand.map((c) => ({
       card: c,
@@ -151,9 +255,11 @@
     HGames.ui.hand(el.querySelector('.dhand'), items, {
       render: (it) => '<b>' + ctx.esc(rankTextOf(it.card)) + '</b><i>' + ctx.esc(suitOf(it.card)) + '</i>',
       onItem: (it) => {
-        if (attacking) { ctx.act('attack', { card: it.card }); return; }
+        if (canAdd && !iDefend) { ctx.act('attack', { card: it.card }); return; }
         if (!defending) return;
         if (st.atk && beats(it.card, st.atk, trump)) { ctx.act('defend', { attack: st.atk, card: it.card }); st.sel = null; st.atk = null; return; }
+        // Бити лишилось одну карту, і ця нею б'ється — не змушуємо тицяти двічі.
+        if (open.length === 1 && beats(it.card, open[0], trump)) { ctx.act('defend', { attack: open[0], card: it.card }); st.sel = null; return; }
         st.sel = st.sel === it.card ? null : it.card;
         paint(root, ctx);
       },
@@ -189,8 +295,19 @@
   HGames.register({
     id: 'durak',
     icon: ICON,
-    seatNames: ['перший', 'другий'],
-    seatClass: ['x', 'o'],
+    seatNames: SEATS,
+    seatClass: ['x', 'o', 'c', 'd', 'x', 'o'],
+    news: {
+      v: '2026-09-24',
+      title: 'Дурень: тепер компанією до шести',
+      items: [
+        '🃏 За стіл сідає 2–6 гравців — господар тисне «Почати», коли всі зібрались',
+        '🤲 Підкидають усі, крім того, хто відбивається; кому нема чого додати — тисне «Пас»',
+        '🛡 Узяв — пропускаєш хід: заходить наступний за тобою',
+        '🏁 Хто скинув карти, той вийшов; останній із картами — дурень, і стіл скаже це вголос',
+        '🚪 Встав посеред партії компанією — решта грає далі без тебе',
+      ],
+    },
 
     mount(root, ctx) { paint(root, ctx); },
     update(root, ctx) { paint(root, ctx); },
@@ -201,19 +318,28 @@
       if (!ctx.playing && !v.result) return '';
       if (v.result) {
         if (v.result.reason === 'both') return 'Вийшли разом — нічия';
-        if (v.result.winner == null) return '';
-        const fool = v.result.winner === 0 ? 1 : 0;
+        const fool = v.result.fool != null ? v.result.fool : (v.result.winner === 0 ? 1 : 0);
         // Той, хто встав, уже не сидить — його нік бережемо у виді, інакше вийшло б «Дурень — перший».
         const name = v.result.foolNick || ctx.nickOf(fool) || ctx.seatName(fool);
         return ctx.seat === fool ? 'Дурень цього разу ти' : 'Дурень — ' + name;
       }
       if (!ctx.mine) return 'Дивишся збоку';
-      const iAttack = ctx.seat === v.attacker;
-      if (v.phase === 'defend') return iAttack ? 'Суперник відбивається' : 'Відбивайся або бери';
-      if (v.phase === 'taking') return iAttack ? (v.canAdd ? 'Підкидай або «Досить»' : 'Досить') : 'Суперник добирає, що підкинути';
-      // Фаза attack із непорожнім столом — це «усе побито, атакуючий думає, чи підкидати».
-      if (!iAttack) return (v.table || []).length ? 'Відбився. Чекай, чи підкине' : 'Чекай, суперник заходить';
-      return (v.table || []).length ? 'Підкидай або «Біто»' : 'Заходь картою';
+      if ((v.in || [])[ctx.seat] === false) return 'Ти вийшов — чекай, хто лишиться дурнем';
+      const table = v.table || [];
+      const att = nameOf(ctx, v.attacker);
+      const def = nameOf(ctx, v.defender);
+      if (ctx.seat === v.defender) {
+        if (v.phase === 'defend') return 'Відбивайся або бери';
+        if (v.phase === 'taking') return 'Береш — чекай, чи докинуть';
+        return table.length ? 'Відбився! Чекай, чи підкинуть ще' : 'На тебе заходить ' + att;
+      }
+      if (v.phase === 'defend') return def + ' відбивається';
+      if (v.canAdd) {
+        if (!table.length) return 'Заходь на ' + def;
+        return v.phase === 'taking' ? def + ' бере — докидай або «Досить»' : 'Підкидай або «' + (ctx.seat === v.attacker ? 'Біто' : 'Пас') + '»';
+      }
+      if (!table.length) return att + ' заходить на ' + def;
+      return 'Чекаємо, чи підкинуть інші';
     },
   });
 })();
