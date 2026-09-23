@@ -69,7 +69,15 @@
 .skrow { animation: skrise .35s ease-out both; animation-delay: calc(.25s + var(--n, 0) * .12s); }
 @keyframes skpop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes skrise { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .skans b, .skrow { animation: none; } }
+
+/* Слово Глека про раунд — під таблицею, з'являється останнім, коли всі рядки вже випливли. */
+.sksay {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 10px;
+  background: #2a2210; border: 1px solid #4a3a12; border-radius: 10px; font-size: .9em;
+  animation: skrise .35s ease-out both; animation-delay: .9s;
+}
+.sksay img { width: 24px; height: 24px; flex: none; }
+@media (prefers-reduced-motion: reduce) { .skans b, .skrow, .sksay { animation: none; } }
 
 /* ---- підсумок партії: усі запитання ---- */
 .skrecap { margin-top: 10px; background: var(--panel); border-radius: 10px; padding: 6px 10px; }

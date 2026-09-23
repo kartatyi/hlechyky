@@ -980,11 +980,10 @@
       if (b) slot.appendChild(b);
     }
   }
-  function addMessage(m, scroll = true, live = false) {
+  /// Тіло рядка: нік, текст, кубик чи монетка, Глек з аватаркою, рядок Журналу. Спільне для Балачок і балачки
+  /// столу — рядки столу мають ті самі поля (nick, text, kind, at), лише без лайків і відповідей.
+  function fillMessage(el, m, mine, live) {
     const isLog = m.kind === 'system';
-    const box = isLog ? $('log') : $('messages');
-    const el = document.createElement('div');
-    const mine = sameNick(m.nick, me.nick);
     // Монетка живе в тій самій розкладці, що й кубик (.msg.dice — рядок у флексі); /choose і /8ball
     // це звичайні рядки з іконкою в самому тексті, тож їм окрема гілка ні до чого.
     el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj'
@@ -1029,6 +1028,18 @@
       if (big && big <= 3) el.classList.add('big');
       el.innerHTML = `<span class="n">${esc(m.nick)}${crownOf(m.nick)}</span><span class="t">${highlightMentions(linkify(m.text))}</span><span class="time">${tm(m.at)}</span>`;
     }
+    // Для днів, групування й гортання вгору: коли, хто і який це рядок у базі.
+    el.dataset.day = dayKey(m.at);
+    el.dataset.ts = String(new Date(m.at).getTime());
+    el.dataset.nick = m.nick || '';
+    el.dataset.grp = m.kind === 'chat' && !m.replyTo ? '1' : '';
+  }
+
+  /// Готовий рядок Балачок чи Журналу — ще не вставлений у скриньку.
+  function buildMessage(m, live) {
+    const isLog = m.kind === 'system';
+    const el = document.createElement('div');
+    fillMessage(el, m, sameNick(m.nick, me.nick), live);
     if (!isLog && m.kind !== 'tables' && m.id > 0) decorateMessage(el, m);
     // Рядок про живий стіл («Новий стіл: Мафія», «Оля і Петро сіли грати») носить його id — лишаємо
     // слот під кнопку, щоб до столу можна було дійти прямо звідси (PLAN.md §7.4).
@@ -1039,22 +1050,386 @@
       el.appendChild(slot);
       paintRoomSlots(el);
     }
-    box.appendChild(el);
-    while (box.children.length > 300) box.firstChild.remove();
-    if (scroll) box.scrollTop = box.scrollHeight;
+    el.dataset.mid = String(m.id || 0);
+    if (isLog) {
+      el.dataset.topic = m.topic || (m.roomId ? 'games' : 'radio');
+      el.dataset.text = m.text || '';
+      el.dataset.at = m.at;
+      const act = logAct(m);
+      if (act) el.dataset.act = act.key;
+    }
+    return el;
+  }
+
+  function addMessage(m, scroll = true, live = false) {
+    const isLog = m.kind === 'system';
+    const box = isLog ? $('log') : $('messages');
+    const mine = sameNick(m.nick, me.nick);
+    // Хто гортає історію вгору, того донизу не тягнемо: стрибок посеред читання гірший за «нове внизу».
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    const el = buildMessage(m, live);
+    const prev = lastMsg(box);
+    if (!(isLog && coalesce(prev, el, m))) {
+      if (!prev || prev.dataset.day !== el.dataset.day) box.appendChild(daySep(m.at));
+      else if (!isLog && groupable(prev, el)) el.classList.add('cont');
+      box.appendChild(el);
+    }
+    if (isLog) tidyDays(box);
+    if (!scroll || atBottom) trimTop(box, KEEP_LINES);
+    if (scroll && (atBottom || mine)) box.scrollTop = box.scrollHeight;
     if (!isLog) learnNick(m.nick);
     const repliedMe = !mine && !isLog && sameNick(m.replyNick, me.nick);
     const tagged = !mine && !isLog && m.kind === 'chat' && taggedMe(m.text);
     if (repliedMe || tagged) el.classList.add('tome');
     // звук — лише на живе повідомлення, не на історію після F5
     if (live && (repliedMe || tagged)) ping();
+    if (live && !isLog) typingGone('chat', m.nick);
     if (!isLog && scroll && !mine && !chatVisible()) {
-      setUnread(unread + 1);
+      // Непрочитане — це люди. Глек бейджа не смикає: інакше той не сходив би з екрана й нічого б не означав.
+      if (m.kind !== 'dj') setUnread(unread + 1);
       if (repliedMe) toast(`↩ ${m.nick} відповідає тобі: ${m.text}`.slice(0, 140));
       else if (tagged) toast(`@ ${m.nick} кличе тебе: ${m.text}`.slice(0, 140));
       else if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
     }
   }
+
+  // ---------- історія: дні, один нік на кілька реплік, гортання вгору ----------
+  const MONTHS = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
+  const dayKey = (at) => { const d = new Date(at); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); };
+  /// «Сьогодні», «Вчора», «19 вересня» (рік — лише коли не цьогорічне).
+  function dayLabel(at) {
+    const d = new Date(at), now = new Date();
+    const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const days = Math.round((start(now) - start(d)) / 86400000);
+    if (days === 0) return 'Сьогодні';
+    if (days === 1) return 'Вчора';
+    return d.getDate() + ' ' + MONTHS[d.getMonth()] + (d.getFullYear() !== now.getFullYear() ? ' ' + d.getFullYear() : '');
+  }
+  function daySep(at) {
+    const s = document.createElement('div');
+    s.className = 'msg-day';
+    s.dataset.day = dayKey(at);
+    s.dataset.at = at;
+    s.innerHTML = '<span>' + esc(dayLabel(at)) + '</span>';
+    return s;
+  }
+  // Опівночі «Сьогодні» стає «Вчора»: раз на годину перечитуємо підписи.
+  setInterval(() => document.querySelectorAll('.msg-day').forEach((s) => { s.firstElementChild.textContent = dayLabel(s.dataset.at); }), 3600e3);
+
+  const msgs = (box) => box.querySelectorAll(':scope > .msg');
+  const lastMsg = (box) => { const all = msgs(box); return all.length ? all[all.length - 1] : null; };
+  const firstMsg = (box) => box.querySelector(':scope > .msg');
+  /// Кілька реплік поспіль від одного — під одним ніком: той самий день, до п'яти хвилин між ними, без цитати.
+  const GROUP_MS = 5 * 60e3;
+  const groupable = (prev, el) => !!prev && prev.dataset.grp === '1' && el.dataset.grp === '1'
+    && sameNick(prev.dataset.nick, el.dataset.nick) && prev.dataset.day === el.dataset.day
+    && +el.dataset.ts - +prev.dataset.ts < GROUP_MS;
+
+  /// Скільки рядків тримати в скриньці, поки людина внизу. Нагорі — хоч скільки: вона ж сама їх підвантажила.
+  const KEEP_LINES = 400;
+  function trimTop(box, max) {
+    let drop = msgs(box).length - max;
+    if (drop <= 0) return;
+    while (drop > 0 && box.firstElementChild) {
+      const x = box.firstElementChild;
+      if (x.classList.contains('msg')) drop--;
+      x.remove();
+    }
+    // Голова скриньки знову мусить починатись із дня, а перший рядок — із ніка.
+    const head = firstMsg(box);
+    if (head) {
+      head.classList.remove('cont');
+      if (!box.firstElementChild.classList.contains('msg-day')) box.insertBefore(daySep(new Date(+head.dataset.ts).toISOString()), box.firstElementChild);
+    }
+    delete box.dataset.done;   // згори знову є що підвантажити
+  }
+
+  /// Скільки старшого просити за раз — стільки ж віддає сервер (RadioHub.ChatBefore).
+  const OLDER = 60;
+  async function loadOlder(box) {
+    if (!conn || box._loading || box.dataset.done === '1' || box.hidden) return;
+    const first = box.querySelector(':scope > .msg:not([data-mid="0"])');
+    const before = first ? +first.dataset.mid : 0;
+    if (!before) return;
+    box._loading = true;
+    try {
+      const list = await conn.invoke('ChatBefore', before, box.id === 'log');
+      if (list && list.length) prependOlder(box, list);
+      if (!list || list.length < OLDER) markTop(box);
+    } catch { /* зв'язку нема — спробуємо, коли гортатимуть знову */ }
+    finally { box._loading = false; }
+  }
+  function markTop(box) {
+    box.dataset.done = '1';
+    if (box.querySelector(':scope > .msg-top')) return;
+    const t = document.createElement('div');
+    t.className = 'msg-top muted small';
+    t.textContent = box.id === 'log' ? 'Далі Журнал не пам\'ятає' : 'Це найперше, що тут писали';
+    box.insertBefore(t, box.firstChild);
+  }
+  function prependOlder(box, list) {
+    const log = box.id === 'log';
+    const frag = document.createDocumentFragment();
+    let prev = null;
+    for (const m of list) {
+      const el = buildMessage(m, false);
+      if (log && coalesce(prev, el, m)) continue;
+      if (!prev || prev.dataset.day !== el.dataset.day) frag.appendChild(daySep(m.at));
+      else if (!log && groupable(prev, el)) el.classList.add('cont');
+      frag.appendChild(el);
+      prev = el;
+      if (!log) learnNick(m.nick);
+    }
+    // Шов зі старою головою: той самий день — її роздільник уже зайвий, а той самий автор — без ніка.
+    const head = firstMsg(box);
+    if (prev && head && prev.dataset.day === head.dataset.day) {
+      const sep = head.previousElementSibling;
+      if (sep && sep.classList.contains('msg-day')) sep.remove();
+      if (!log && groupable(prev, head)) head.classList.add('cont');
+    }
+    const h0 = box.scrollHeight, t0 = box.scrollTop;
+    box.insertBefore(frag, box.firstChild);
+    box.scrollTop = t0 + (box.scrollHeight - h0);   // те, що людина читала, лишається на місці
+    if (log) tidyDays(box);
+  }
+  for (const id of ['messages', 'log']) $(id).addEventListener('scroll', (e) => { if (e.target.scrollTop < 80) loadOlder(e.target); });
+
+  // ---------- Журнал: «📻 Радіо · 🎮 Ігри» і склеювання однакового ----------
+  let logFilter = (() => { try { return localStorage.getItem('logFilter') || 'all'; } catch { return 'all'; } })();
+  function setLogFilter(f) {
+    logFilter = ['radio', 'games'].includes(f) ? f : 'all';
+    try { localStorage.setItem('logFilter', logFilter); } catch { /* приватне вікно */ }
+    const box = $('log');
+    box.classList.toggle('lf-radio', logFilter === 'radio');
+    box.classList.toggle('lf-games', logFilter === 'games');
+    $('logFilters').querySelectorAll('[data-lf]').forEach((b) => b.classList.toggle('on', b.dataset.lf === logFilter));
+    tidyDays(box);
+    box.scrollTop = box.scrollHeight;
+  }
+  $('logFilters').querySelectorAll('[data-lf]').forEach((b) => b.onclick = () => setLogFilter(b.dataset.lf));
+  /// Роздільник дня, під яким під фільтром не лишилось жодного рядка, — зайвий.
+  function tidyDays(box) {
+    if (box.id !== 'log') return;
+    const shown = (x) => logFilter === 'all' || x.dataset.topic === logFilter;
+    let sep = null, any = false;
+    for (const x of box.children) {
+      if (x.classList.contains('msg-day')) { if (sep) sep.hidden = !any; sep = x; any = false; }
+      else if (x.classList.contains('msg') && shown(x)) any = true;
+    }
+    if (sep) sep.hidden = !any;
+  }
+
+  /// Хто, що і з чим: «Smaug скіпає X» → { who: Smaug, verb: скіпає, what: X }. Лише дії радіо — їх буває підряд багато.
+  const LOG_VERBS = /^(.+?) (скіпає|додає|закидає|❤|прибирає|відхиляє|банить|розбанює|викуповує|бере пораду [^:]+:) (.+)$/;
+  function logAct(m) {
+    const hit = LOG_VERBS.exec(m.text || '');
+    return hit ? { key: hit[1].toLowerCase() + '|' + hit[2], who: hit[1], verb: hit[2], what: hit[3] } : null;
+  }
+  /// Та сама дія тієї самої людини поспіль (у межах 15 хвилин і того самого дня) — одним рядком «Smaug скіпає ×4».
+  const COALESCE_MS = 15 * 60e3;
+  function coalesce(prev, el, m) {
+    if (!prev || !el.dataset.act || prev.dataset.act !== el.dataset.act || prev.dataset.day !== el.dataset.day) return false;
+    if (+el.dataset.ts - +prev.dataset.ts > COALESCE_MS) return false;
+    const act = logAct(m);
+    if (!prev._items) {
+      const first = logAct({ text: prev.dataset.text });
+      prev._items = [{ at: prev.dataset.at, what: first ? first.what : prev.dataset.text }];
+    }
+    prev._items.push({ at: m.at, what: act.what });
+    prev.dataset.ts = el.dataset.ts;
+    paintGroup(prev, act);
+    return true;
+  }
+  function paintGroup(el, act) {
+    const items = el._items;
+    const open = el.classList.contains('open');
+    el.classList.add('lgroup');
+    el.innerHTML = `<span class="time">${tm(items[items.length - 1].at)}</span>${linkify(act.who + ' ' + act.verb)} <b class="lg-n">×${items.length}</b>`
+      + ` <button type="button" class="ghost lg-more" aria-expanded="${open}">${open ? 'сховати' : 'що саме'}</button>`
+      + `<div class="lg-items"${open ? '' : ' hidden'}>${items.map((x) => `<div><span class="time">${tm(x.at)}</span>${linkify(x.what)}</div>`).join('')}</div>`;
+  }
+  $('log').addEventListener('click', (e) => {
+    const b = e.target.closest('.lg-more');
+    if (!b) return;
+    const row = b.closest('.msg');
+    row.classList.toggle('open');
+    const open = row.classList.contains('open');
+    row.querySelector('.lg-items').hidden = !open;
+    b.textContent = open ? 'сховати' : 'що саме';
+    b.setAttribute('aria-expanded', String(open));
+  });
+
+  // ---------- «Оля пише…» ----------
+  const TYPING_MS = 6000;
+  const typers = { chat: new Map(), table: new Map() };   // нік → коли забути
+  const typedAt = { chat: 0, table: 0 };
+  function typingSeen(t) {
+    if (!t || !t.nick || sameNick(t.nick, me.nick)) return;
+    const scope = t.room ? (t.room === table.id ? 'table' : null) : 'chat';
+    if (!scope) return;
+    typers[scope].set(t.nick, Date.now() + TYPING_MS);
+    paintTyping();
+  }
+  function typingGone(scope, nick) { if (typers[scope].delete(nick)) paintTyping(); }
+  function typingText(map) {
+    const now = Date.now();
+    for (const [n, until] of map) if (until < now) map.delete(n);
+    const names = [...map.keys()];
+    if (!names.length) return '';
+    if (names.length === 1) return names[0] + ' пише…';
+    if (names.length === 2) return names[0] + ' і ' + names[1] + ' пишуть…';
+    return names[0] + ', ' + names[1] + ' і ще ' + (names.length - 2) + ' пишуть…';
+  }
+  function paintTyping() {
+    const a = typingText(typers.chat), b = typingText(typers.table);
+    $('typingLine').textContent = a;
+    $('typingLine').hidden = !a || chatTab !== 'chat';
+    tc.typing.textContent = b;
+    tc.typing.hidden = !b;
+  }
+  setInterval(() => { if (typers.chat.size || typers.table.size) paintTyping(); }, 1000);
+  /// Сказати серверу «пишу» — не частіше ніж раз на 2,5 с; на команди (/кубик) не кажемо.
+  function sendTyping(scope, text) {
+    const now = Date.now();
+    if (!conn || !text.trim() || text.startsWith('/') || now - typedAt[scope] < 2500) return;
+    typedAt[scope] = now;
+    conn.invoke('Typing', scope === 'table' ? table.id : null).catch(() => {});
+  }
+  $('chatInput').addEventListener('input', () => sendTyping('chat', $('chatInput').value));
+
+  // ---------- балачка столу ----------
+  // Стіл, біля якого ти стоїш, має свою розмову: гравці, глядачі й Глек-ведучий. У загальні Балачки з гри
+  // не йде нічого. На широкому екрані розмова — вкладка «🎲 Стіл» у панелі; на телефоні, у ⛶ і коли панель
+  // згорнута — шторка знизу. Сам стіл і його зміни каже каркас ігор (HGames.init → onTable).
+  const table = { id: null, info: null, lines: new Map(), unread: 0, open: false, mode: null, full: false };
+  const tc = (() => {
+    const root = document.createElement('div');
+    root.className = 'tchat';
+    root.innerHTML = '<button type="button" class="tc-head" aria-expanded="false" title="Балачка столу">'
+      + '<span class="tc-ico">💬</span><span class="tc-last">Стіл</span><span class="chip badge tc-badge" hidden>0</span></button>'
+      + '<div class="tc-body">'
+      + '<div class="tc-top"><b class="tc-name"></b><button type="button" class="ghost icon tc-close" title="Згорнути" aria-label="Згорнути">✕</button></div>'
+      + '<div class="tc-lines messages"></div>'
+      + '<div class="tc-typing typing" hidden></div>'
+      + '<form class="tc-form"><input type="text" maxlength="500" autocomplete="off" placeholder="Сказати за столом…">'
+      + '<button class="primary" type="submit" title="Сказати">→</button></form></div>';
+    const q = (s) => root.querySelector(s);
+    const o = {
+      root, head: q('.tc-head'), last: q('.tc-last'), badge: q('.tc-badge'), name: q('.tc-name'),
+      lines: q('.tc-lines'), typing: q('.tc-typing'), form: q('.tc-form'), input: q('.tc-form input'),
+    };
+    o.head.onclick = () => setTableOpen(!table.open);
+    q('.tc-close').onclick = () => setTableOpen(false);
+    o.form.onsubmit = (e) => { e.preventDefault(); tableSend(); };
+    o.input.addEventListener('input', () => sendTyping('table', o.input.value));
+    // Esc у шторці — згорнути її, а не піти зі столу (каркас ловить Esc на рівні документа).
+    o.input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && table.mode === 'drawer') { e.stopPropagation(); setTableOpen(false); }
+    });
+    return o;
+  })();
+
+  /// Де зараз живе балачка столу: 'rail' — вкладка в панелі, 'drawer' — шторка, null — ми не біля столу.
+  const tableMode = () => (!table.id ? null : isMobile() || table.full || !chatOpen ? 'drawer' : 'rail');
+  function placeTable() {
+    const mode = tableMode();
+    const was = table.mode;
+    table.mode = mode;
+    $('tableTab').hidden = mode !== 'rail';
+    tc.root.classList.toggle('rail', mode === 'rail');
+    tc.root.classList.toggle('drawer', mode === 'drawer');
+    if (mode === 'rail') { if (tc.root.parentElement !== $('tablePane')) $('tablePane').appendChild(tc.root); }
+    else if (mode === 'drawer') { if (tc.root.parentElement !== document.body) document.body.appendChild(tc.root); }
+    else tc.root.remove();
+    if (mode !== 'rail' && chatTab === 'table') setChatTab('chat');
+    setTableOpen(table.open, true);
+    if (mode && mode !== was) scrollTable();
+    paintTableBadge();
+  }
+  function setTableOpen(on, quiet) {
+    table.open = !!on && table.mode === 'drawer';
+    tc.root.classList.toggle('open', table.open);
+    tc.head.setAttribute('aria-expanded', String(table.open));
+    if (!table.open) return;
+    table.unread = 0;
+    paintTableBadge();
+    scrollTable();
+    // На телефоні фокус підкинув би клавіатуру на пів екрана ще до того, як людина щось вирішила.
+    if (!quiet && !isMobile()) tc.input.focus();
+  }
+  const tableVisible = () => !document.hidden && (table.mode === 'rail' ? chatTab === 'table' && chatOpen : table.mode === 'drawer' && table.open);
+  const scrollTable = () => { tc.lines.scrollTop = tc.lines.scrollHeight; };
+  function paintTableBadge() {
+    const n = table.unread;
+    for (const b of [$('tableBadge'), tc.badge]) { b.hidden = !n; b.textContent = n; }
+  }
+  /// На згорнутій шторці — останнє, що сказали: видно, чи варто розгортати.
+  function paintTableLast() {
+    const list = (table.id && table.lines.get(table.id)) || [];
+    const l = list[list.length - 1];
+    tc.last.textContent = !l ? 'Стіл' : (l.kind === 'dj' ? '🏺 ' : l.nick + ': ') + l.text;
+  }
+  /// Розгорнути балачку столу: вкладку в панелі (розгорнувши саму панель) або шторку.
+  function openTable(focus) {
+    if (!table.id) return;
+    if (table.mode === 'rail') {
+      setChatTab('table');
+      if (focus && !isMobile()) tc.input.focus();
+    } else if (table.mode === 'drawer') setTableOpen(true, !focus);
+  }
+  function renderTableLines() {
+    const box = tc.lines;
+    box.innerHTML = '';
+    const list = (table.id && table.lines.get(table.id)) || [];
+    if (!list.length) box.innerHTML = '<div class="tc-empty muted small">Тут поки тихо. Скажи щось першим — почують усі, хто за столом і біля нього.</div>';
+    for (const l of list) appendTableLine(l, false);
+    scrollTable();
+    paintTableLast();
+  }
+  function appendTableLine(l, live) {
+    const box = tc.lines;
+    const empty = box.querySelector(':scope > .tc-empty');
+    if (empty) empty.remove();
+    const el = document.createElement('div');
+    fillMessage(el, l, sameNick(l.nick, me.nick), live);
+    if (l.kind === 'chat') {
+      const tagged = !sameNick(l.nick, me.nick) && taggedMe(l.text);
+      if (tagged) el.classList.add('tome');
+    }
+    if (groupable(lastMsg(box), el)) el.classList.add('cont');
+    box.appendChild(el);
+    while (msgs(box).length > 100) box.firstElementChild.remove();
+  }
+  function tableSend() {
+    const text = tc.input.value.trim();
+    if (!text || !conn || !table.id) return;
+    conn.invoke('TableSay', table.id, text)
+      .then((err) => { if (err) { toast(err, 'err'); return; } tc.input.value = ''; })
+      .catch((e) => toast('Не відправилось: ' + e.message, 'err'));
+  }
+  /// Каркас ігор каже, біля якого столу ми стоїмо (null — ні біля якого) і чи стіл на весь екран.
+  function onTable(info, layout) {
+    table.full = !!(layout && layout.full);
+    const id = info ? info.id : null;
+    const changed = id !== table.id;
+    table.info = info;
+    table.id = id;
+    if (changed) {
+      table.unread = 0;
+      table.open = false;
+      typers.table.clear();
+      tc.input.value = '';
+      renderTableLines();
+    }
+    tc.name.textContent = info ? info.title : '';
+    placeTable();
+    paintTyping();
+    // Мафія — гра, де розмова і є гра: щойно підійшов до такого столу, розмова вже перед очима. На телефоні
+    // шторку не розгортаємо самі — вона закрила б картку, а кнопка «До суперечки» на ній і так є.
+    if (changed && info && info.main && !isMobile()) openTable(false);
+  }
+  document.addEventListener('visibilitychange', () => { if (tableVisible()) { table.unread = 0; paintTableBadge(); } });
+  window.matchMedia('(max-width: 900px)').addEventListener('change', () => placeTable());
 
   // ---------- ❤ і відповіді в балачках ----------
   // Кожне повідомлення людини чи Глека (не рядок Журналу) можна лайкнути й на нього відповісти. Кнопки
@@ -1241,12 +1616,28 @@
       .catch((err) => toast('Не відправилось: ' + err.message, 'err'));
   };
   function setChatTab(tab) {
+    // «Стіл» є лише тоді, коли балачка столу живе в панелі; інакше вона — шторка, і вкладки нема.
+    if (tab === 'table' && table.mode !== 'rail') tab = 'chat';
     chatTab = tab;
     $('chatTabs').querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     $('messages').hidden = tab !== 'chat';
     $('log').hidden = tab !== 'log';
-    const box = tab === 'chat' ? $('messages') : $('log');
-    box.scrollTop = box.scrollHeight;
+    $('tablePane').hidden = tab !== 'table';
+    $('logFilters').hidden = tab !== 'log';
+    // У столу свій рядок вводу, а «хто на сайті» там лише займав би місце розмови.
+    const general = tab !== 'table';
+    $('chatForm').hidden = !general;
+    $('online').hidden = !general;
+    if (!general) { hideCmdHint(); hideEmoji(); hideMentions(); clearReply(); }
+    paintTyping();
+    if (tab === 'table') {
+      table.unread = 0;
+      paintTableBadge();
+      scrollTable();
+    } else {
+      const box = tab === 'chat' ? $('messages') : $('log');
+      box.scrollTop = box.scrollHeight;
+    }
     if (chatVisible()) setUnread(0);
   }
   // Лише вкладки: у тому ж рядку живуть 🔔 і ✕, у них свої обробники — інакше клік по дзвіночку «відкривав» порожню вкладку.
@@ -1314,7 +1705,9 @@
     chatOpen = on;
     try { localStorage.setItem('chatOpen', on ? '1' : '0'); } catch { /* приватне вікно */ }
     document.body.classList.toggle('chat-collapsed', !on);
-    if (on) { const box = chatTab === 'chat' ? $('messages') : $('log'); box.scrollTop = box.scrollHeight; }
+    // Згорнув панель біля столу — балачка столу переїжджає в шторку, розгорнув — назад у вкладку.
+    placeTable();
+    if (on && chatTab !== 'table') { const box = chatTab === 'chat' ? $('messages') : $('log'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
   }
   const toggleChat = () => (isMobile() ? go(route === 'chat' ? hashFor('efir') : '#chat') : setChatOpen(!chatOpen));
@@ -2253,11 +2646,41 @@
     // лишався б без кнопки аж до наступної новини з лобі.
     conn.on('rooms', () => paintRoomSlots());
     conn.on('chatHistory', (list) => {
-      $('messages').innerHTML = '';
-      $('log').innerHTML = '';
+      for (const id of ['messages', 'log']) { $(id).innerHTML = ''; delete $(id).dataset.done; }
       list.forEach((m) => addMessage(m, false));
       $('messages').scrollTop = $('messages').scrollHeight;
       $('log').scrollTop = $('log').scrollHeight;
+    });
+    conn.on('typing', typingSeen);
+    // Балачка столу: уся розмова — щойно підписались на стіл (F5, реконект), далі — по рядку.
+    conn.on('tableHistory', (x) => {
+      if (!x || !x.id) return;
+      table.lines.set(x.id, x.lines || []);
+      if (x.id === table.id) renderTableLines();
+    });
+    conn.on('tableChat', (x) => {
+      if (!x || !x.id || !x.line) return;
+      const list = table.lines.get(x.id) || [];
+      if (list.some((l) => l.id === x.line.id)) return;
+      list.push(x.line);
+      while (list.length > 100) list.shift();
+      table.lines.set(x.id, list);
+      if (x.id !== table.id) return;
+      const l = x.line;
+      const mine = sameNick(l.nick, me.nick);
+      const box = tc.lines;
+      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      appendTableLine(l, true);
+      if (atBottom || mine) scrollTable();
+      typingGone('table', l.nick);
+      paintTableLast();
+      const tagged = !mine && l.kind === 'chat' && taggedMe(l.text);
+      if (tagged) ping();
+      if (!mine && !tableVisible()) {
+        table.unread++;
+        paintTableBadge();
+        if (tagged) toast(`@ ${l.nick} кличе тебе за столом: ${l.text}`.slice(0, 140));
+      }
     });
     conn.onreconnected(() => {
       conn.invoke('SetNick', me.nick).catch(() => {});
@@ -2278,7 +2701,9 @@
 
   // ---------- boot ----------
   setPlayUi();
-  HGames.init({ $, esc, toast, busy, api, me, root: $('games'), go });
+  // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри.
+  HGames.init({ $, esc, toast, busy, api, me, root: $('games'), go, onTable, openTable: () => openTable(true) });
+  setLogFilter(logFilter);
   applyRoute();
   // Хто я — каже сервер: акаунт із куки або гість із приставкою до того, що лежить у localStorage.
   // Тому підключаємось до хабу лише після /api/me: інакше me.nick розійшовся б із тим, як нас звуть за столами.

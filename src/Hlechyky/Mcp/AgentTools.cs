@@ -40,7 +40,8 @@ public sealed class NoFlush : IAgentFlush
 /// Головне правило те саме, що й для браузера: агент не бачить нічого, чого йому не дав <c>Game.View</c>.
 /// Ролі, нічний чат і таємні голоси приходять рівно так, як людині за тим самим місцем.
 /// </summary>
-public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, IAgentFlush flush, Db? db = null)
+public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, IAgentFlush flush, Db? db = null,
+    ChatFlood? flood = null, IClock? clock = null)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -204,7 +205,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
     }
 
     /// <summary>
-    /// Дочекатись, поки в селі щось зміниться: новий вид, нова фаза або свіжий рядок у Балачках.
+    /// Дочекатись, поки в селі щось зміниться: новий вид, нова фаза, свіжий рядок у Балачках чи в балачці столу.
     /// Це головний інструмент агента: без нього довелось би крутити <c>look</c> у циклі й проґавити день.
     /// </summary>
     public async Task<object> Wait(AgentSession s, string? roomId, int? timeoutMs, CancellationToken ct)
@@ -236,7 +237,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
     // Балачки
     // =========================================================================================
 
-    /// <summary>Загальний чат села. Удень уся гра в мафію відбувається саме тут.</summary>
+    /// <summary>Загальний чат села — для розмов про все. Гра за столом іде в балачці столу (<see cref="TableRead"/>).</summary>
     public object ChatRead(AgentSession s, int? limit, bool onlyNew)
     {
         var lines = chat.Recent(Math.Clamp(limit ?? 40, 1, 200));
@@ -255,6 +256,52 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         if (!r.Ok) return Fail(r.Message);
         return new { ok = true, line = r.Line };
     }
+
+    // =========================================================================================
+    // Балачка столу
+    // =========================================================================================
+
+    /// <summary>
+    /// Балачка столу: що кажуть гравці й Глек-ведучий. Удень уся мафія відбувається саме тут. Бачить її той,
+    /// хто за столом сидить (агентові без місця дивитись на стіл нема чим — у нього нема з'єднання).
+    /// </summary>
+    public object TableRead(AgentSession s, string? roomId, int? limit, bool onlyNew)
+    {
+        if (Which(s, roomId) is not { } id) return NoRoom();
+        if (rooms.Find(id) is not { } room) return Fail(Hlechyky.Games.Say.NoRoom);
+        if (!room.Talks) return Fail("У цього столу балачки нема — тут граєш сам");
+        var all = rooms.TableLines(id);
+        var tail = all.Skip(Math.Max(0, all.Count - Math.Clamp(limit ?? 40, 1, Rooms.TalkLines))).ToList();
+        var fresh = onlyNew ? tail.Where(l => l.Id > s.SeenTableId).ToList() : tail;
+        if (all.Count > 0) s.SeenTableId = Math.Max(s.SeenTableId, all[^1].Id);
+        return new { room = id, table = fresh };
+    }
+
+    /// <summary>Сказати в балачку столу. Мертві в мафії мовчать — стіл сам не пустить.</summary>
+    public async Task<object> TableSay(AgentSession s, string? roomId, string? text)
+    {
+        if (string.IsNullOrEmpty(s.Nick)) return NeedNick();
+        if (Which(s, roomId) is not { } id) return NoRoom();
+        var said = (text ?? "").Trim();
+        if (said.Length == 0) return Fail("Порожнє нікому не цікаво");
+        var kind = "chat";
+        if (said.StartsWith('/'))
+        {
+            var r = ChatCommands.Run(said);
+            if (r.Error is not null) return Fail(r.Error);
+            (said, kind) = (r.Text!, r.Kind);
+        }
+        if (rooms.TalkRefusal(id, null, s.Nick) is { } why) return Fail(why);
+        if (flood?.Check(s.Nick, text ?? "", (clock ?? SystemTime).UtcNow) is { } tooMuch) return Fail(tooMuch);
+        var (outbox, error) = rooms.TableSay(id, null, s.Nick, said, kind);
+        if (error is not null) return Fail(error);
+        await flush.FlushAsync(outbox).ConfigureAwait(false);
+        var line = outbox.OfType<TableSaid>().Select(x => x.Line).FirstOrDefault();
+        if (line is not null) s.SeenTableId = Math.Max(s.SeenTableId, line.Id);
+        return new { ok = true, room = id, line };
+    }
+
+    static readonly IClock SystemTime = new SystemClock();
 
     // =========================================================================================
     // Довідка
@@ -276,7 +323,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
     /// клієнта, тому все, що людині малює екран, тут має бути словами.
     /// </summary>
     public const string MafiaGuide = """
-        МАФІЯ на Глечиках — 3–12 гравців (утрьох перша ніч завжди тиха), ведучий Дядько Глек, обговорення йде в загальному чаті (Балачки).
+        МАФІЯ на Глечиках — 3–12 гравців (утрьох перша ніч завжди тиха), ведучий Дядько Глек, обговорення йде в балачці столу (table_read / table_say).
 
         Як сісти грати:
           set_nick → create_room("mafia", {опції}) або join_room(game:"mafia") → коли всіх зібрано,
@@ -285,7 +332,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         Фази (тривалості залежать від опції pace, точні числа — у view.rules і view.phaseMs):
           intro  — усі дивляться свою роль;
           night  — нічні дії (див. нижче);
-          day    — оголошення ранку й СУПЕРЕЧКА В БАЛАЧКАХ (chat_send / chat_read). Кімната лише рахує час;
+          day    — оголошення ранку й СУПЕРЕЧКА В БАЛАЧЦІ СТОЛУ (table_say / table_read). Кімната лише рахує час;
           vote   — голосування; більшість від живих виганяє, рівність і утримання лишають усіх;
           done   — кінець.
 
@@ -304,9 +351,11 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
           Місця беруться з view.players[].seat. Чужих ролей у виді нема — і не буде.
 
         Перемога: мирні — коли не лишилось ні мафії, ні маньяка; мафія — коли її не менше, ніж мирних
-        (і маньяка в селі вже нема); маньяк — коли лишився сам. Мертві бачать усе й мовчать — це правило честі.
+        (і маньяка в селі вже нема); маньяк — коли лишився сам. Мертві бачать усе й мовчать: поки йде партія,
+        балачка столу пускає лише живих гравців (глядачам теж зась). Загальні Балачки (chat_*) — не для гри.
 
-        Порада: після кожного ходу клич wait — він повертає свіжий вид і нові рядки Балачок разом.
+        Порада: після кожного ходу клич wait — він прокидається і від нового виду, і від нової репліки за столом;
+        що саме сказали, дивись у table_read(onlyNew: true).
         """;
 
     /// <summary>«Своя гра» для агента: те, що людині показує поле й пульт, тут словами (specs/svoya.md).</summary>
@@ -419,7 +468,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
             ("night", "doctor") => ["heal(seat) — врятувати від нічного ножа"],
             ("night", "kuma") => ["block(seat) — піти в гості й зірвати чужу нічну справу"],
             ("night", _) => ["спи; уночі за тебе працюють інші"],
-            ("day", _) => ["chat_send(text) — сперечайся в Балачках", "chat_read() — читай, що кажуть інші"],
+            ("day", _) => ["table_say(text) — сперечайся за столом", "table_read() — читай, що кажуть інші"],
             ("vote", _) => ["vote(seat) — вигнати", "vote() без місця — утриматись"],
             ("intro", _) => ["запам'ятай свою роль і чекай ночі (wait)"],
             ("done", _) => ["rematch — зіграти ще раз", "leave_room — встати з-за столу"],
@@ -440,6 +489,6 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         if (rooms.ViewsFor(roomId) is not { } b) return null;
         var seat = b.SeatOf(s.Nick);
         var raw = seat is { } i && b.SeatViews.TryGetValue(i, out var mine) ? mine : b.WatcherView;
-        return $"{b.Summary.Status}|{b.Summary.Round}|{seat}|{chat.LastId()}|{JsonSerializer.Serialize(raw, Json)}";
+        return $"{b.Summary.Status}|{b.Summary.Round}|{seat}|{chat.LastId()}|{rooms.TableLastId(roomId)}|{JsonSerializer.Serialize(raw, Json)}";
     }
 }

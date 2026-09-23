@@ -5,9 +5,11 @@ namespace Hlechyky.Mcp;
 
 /// <summary>
 /// Балачки для агента. Робить рівно те саме, що <see cref="RadioHub.SendChat"/> для браузера: пише в базу,
-/// розсилає всім і дає Глеку почути. Інакше денна суперечка в мафії йшла б у двох різних чатах.
+/// розсилає всім, дає Глеку почути і стежить за флудом тим самим лічильником. Гра (мафія) у Балачки більше не йде —
+/// для неї є балачка столу (<see cref="AgentTools.TableSay"/>).
 /// </summary>
-public sealed class VillageChat(Db db, IHubContext<RadioHub> hub, DjBrain brain, IClock clock, ILogger<VillageChat> log) : IAgentChat
+public sealed class VillageChat(Db db, IHubContext<RadioHub> hub, DjBrain brain, IClock clock, ILogger<VillageChat> log,
+    ChatFlood? flood = null) : IAgentChat
 {
     /// <summary>Та сама пауза між командами, що й у хабі: /кубик від бота не має сипатись частіше, ніж від людини.</summary>
     static readonly TimeSpan CommandGap = TimeSpan.FromMilliseconds(1200);
@@ -57,6 +59,7 @@ public sealed class VillageChat(Db db, IHubContext<RadioHub> hub, DjBrain brain,
                 (said, kind) = (r.Text!, r.Kind);
             }
         }
+        if (flood?.Check(nick, text, clock.UtcNow) is { } tooMuch) return new ChatSendResult(false, tooMuch, null);
 
         var message = db.AddChat(nick, said, kind);
         var line = new AgentChatLine(message.Id, message.Nick, message.Text, message.Kind, message.At);

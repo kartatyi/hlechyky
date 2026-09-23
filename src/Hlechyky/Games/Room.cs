@@ -76,6 +76,13 @@ public sealed class Room
     public List<string> Charged { get; } = [];
     /// <summary>Склад, про який востаннє написали в Журнал «сіли грати». null — ще не писали жодного разу.</summary>
     public string?[]? LoggedSeats { get; set; }
+    /// <summary>
+    /// Балачка столу: останні <see cref="Rooms.TalkLines"/> реплік гравців, глядачів і Глека-ведучого. Під
+    /// <see cref="Sync"/>; живе й помирає разом зі столом, як і сама партія.
+    /// </summary>
+    public List<TableLine> Talk { get; } = [];
+    /// <summary>Чи є в цього столу своя балачка: у соло й приватній кімнаті говорити нема з ким.</summary>
+    public bool Talks => !Info.Solo && !Info.Private;
 
     public int? SeatOf(string? nick)
     {

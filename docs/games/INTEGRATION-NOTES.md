@@ -92,7 +92,7 @@ Ctx.RoomId; Ctx.Players; Ctx.Round; Ctx.Rng; Ctx.Clock; Ctx.Options; Ctx.Service
 Ctx.NickOf(seat); Ctx.Seated(seat);
 Ctx.Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null);
 Ctx.Log(text);      // рядок Журналу всім
-Ctx.Say(text);      // Дядько Глек у Балачки
+Ctx.Say(text);      // Глек-ведучий у балачку цього столу (у загальні Балачки з гри — нічого)
 Ctx.Score(seat, value);            // соло-результат у таблицю
 Ctx.Award(seat, shards, reason);   // черепки/ачівка поза стандартною виплатою
 ```

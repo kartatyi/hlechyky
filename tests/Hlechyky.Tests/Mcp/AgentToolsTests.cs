@@ -198,8 +198,9 @@ public class AgentToolsTests
 
         v.Until(() => Phase(v, agents[0]) == "day");
         Assert.DoesNotContain(victimSeat, Alive(v, agents[0]));
-        // Удень агент сперечається там само, де й люди, — у загальних Балачках.
-        Assert.True(Ok(v.Tools.ChatSend(agents[0], "мені здається, це Петро")));
+        // Удень агент сперечається там само, де й люди, — у балачці столу. Мертвого стіл не пускає.
+        Assert.True(Ok(await v.Tools.TableSay(sheriff, null, "мені здається, це Петро")));
+        Assert.False(Ok(await v.Tools.TableSay(victim, null, "я знаю, хто мене вбив")));
 
         v.Until(() => Phase(v, agents[0]) == "vote");
         var mafiaSeat = SeatOf(v, mafia);
@@ -308,6 +309,49 @@ public class AgentToolsTests
         Assert.True(Ok(v.Tools.ChatSend(s, "а хто мовчить, той і мафія")));
 
         Assert.Contains(v.Chat.Recent(10), l => l.Nick == "Оля" && l.Text.Contains("мовчить"));
+    }
+
+    [Fact]
+    public async Task At_the_table_agents_talk_in_the_table_talk_and_the_village_chat_stays_clean()
+    {
+        var (v, room, agents) = await Village();
+        await v.Tools.StartGame(agents[0], room);
+
+        var said = J(await v.Tools.TableSay(agents[1], null, "я мирний, клянусь"));
+        Assert.True(said.GetProperty("ok").GetBoolean(), said.ToString());
+
+        var lines = J(v.Tools.TableRead(agents[2], null, 40, onlyNew: true)).GetProperty("table").EnumerateArray().ToList();
+        Assert.Contains(lines, l => l.GetProperty("nick").GetString() == "Петро" && l.GetProperty("text").GetString()!.Contains("мирний"));
+        Assert.Contains(lines, l => l.GetProperty("kind").GetString() == "dj");   // Глек-ведучий теж тут
+        Assert.Empty(J(v.Tools.TableRead(agents[2], null, 40, onlyNew: true)).GetProperty("table").EnumerateArray());
+        Assert.Empty(v.Chat.Recent(10));                                        // у загальних Балачках — тиша
+    }
+
+    [Fact]
+    public async Task A_spectator_agent_is_not_let_to_speak_during_the_game()
+    {
+        var (v, room, agents) = await Village();
+        await v.Tools.StartGame(agents[0], room);
+        var watcher = await v.Agent("Стороння");
+
+        var r = await v.Tools.TableSay(watcher, room, "а я знаю, хто мафія");
+
+        Assert.False(Ok(r));
+        Assert.Contains("столу", Message(r));   // без місця агентові до столу не підійти
+    }
+
+    [Fact]
+    public async Task Wait_comes_back_the_moment_somebody_speaks_at_the_table()
+    {
+        var (v, room, agents) = await Village();
+        var waiting = v.Tools.Wait(agents[0], room, 5_000, default);
+        await Task.Delay(50);
+        await v.Tools.TableSay(agents[1], room, "агов, починаємо?");
+
+        var r = J(await waiting);
+
+        Assert.True(r.GetProperty("changed").GetBoolean());
+        Assert.True(r.GetProperty("waited").GetInt32() < 5_000);
     }
 
     [Fact]

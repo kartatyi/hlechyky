@@ -31,6 +31,10 @@ public class MafiaTests
 
     static string Phase(RoomHarness h) => h.View(null).GetProperty("phase").GetString()!;
 
+    /// <summary>Що Глек-ведучий сказав у балачку столу — за весь час, у порядку появи.</summary>
+    static IEnumerable<string> Hlek(RoomHarness h) =>
+        h.Outbox.OfType<TableSaid>().Where(x => x.Line.Kind == "dj").Select(x => x.Line.Text);
+
     static int Day(RoomHarness h) => h.View(null).GetProperty("day").GetInt32();
 
     static IEnumerable<JsonElement> Players(RoomHarness h, int? seat = null) =>
@@ -211,8 +215,8 @@ public class MafiaTests
             Assert.Equal(Views.Text(a.Room.Game.View(seat)), Views.Text(b.Room.Game.View(seat)));
         Assert.Equal(Views.Text(a.Room.Game.View(null)), Views.Text(b.Room.Game.View(null)));
         Assert.Equal(
-            a.Outbox.OfType<DjSays>().Select(x => x.Text).ToArray(),
-            b.Outbox.OfType<DjSays>().Select(x => x.Text).ToArray());
+            Hlek(a).ToArray(),
+            Hlek(b).ToArray());
     }
 
     // =========================================================================================
@@ -226,7 +230,8 @@ public class MafiaTests
 
         Assert.Equal("intro", Phase(h));
         Assert.Equal(1, Day(h));
-        Assert.NotEmpty(h.Outbox.OfType<DjSays>());
+        Assert.NotEmpty(Hlek(h));
+        Assert.Empty(h.Outbox.OfType<DjSays>());   // у загальні Балачки з партії — нічого
         Assert.All(Players(h), p => Assert.True(p.GetProperty("alive").GetBoolean()));
     }
 
@@ -1135,7 +1140,7 @@ public class MafiaTests
     public void Hlek_says_exactly_one_word_on_every_phase_change()
     {
         var h = Table(6);
-        int Said() => h.Outbox.OfType<DjSays>().Count();
+        int Said() => Hlek(h).Count();
         Assert.Equal(1, Said());   // знайомство Глек оголосив уже на старті
 
         To(h, "night");
@@ -1149,7 +1154,7 @@ public class MafiaTests
 
         To(h, "vote");
         Assert.Equal(4, Said());
-        Assert.All(h.Outbox.OfType<DjSays>(), s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        Assert.All(Hlek(h), s => Assert.False(string.IsNullOrWhiteSpace(s)));
     }
 
     [Fact]
@@ -1157,17 +1162,17 @@ public class MafiaTests
     {
         var h = Table(6);
         var game = (Mafia)h.Room.Game;
-        var said = h.Outbox.OfType<DjSays>().Count();
+        var said = Hlek(h).Count();
 
         // Так у чергу лягає відповідь DjBrain.FlavorAsync: не з тика й не під замком кімнати.
         game.QueueLine("а я ж казав, що добром це не скінчиться");
         Assert.Equal(1, game.PendingLines);
-        Assert.Equal(said, h.Outbox.OfType<DjSays>().Count());
+        Assert.Equal(said, Hlek(h).Count());
 
         h.Tick();
 
         Assert.Equal(0, game.PendingLines);
-        Assert.Contains(h.Outbox.OfType<DjSays>(), x => x.Text == "а я ж казав, що добром це не скінчиться");
+        Assert.Contains(Hlek(h), x => x == "а я ж казав, що добром це не скінчиться");
     }
 
     [Fact]
@@ -1187,7 +1192,7 @@ public class MafiaTests
 
         Assert.Equal(0, game.PendingLines);
         h.Tick();
-        Assert.DoesNotContain(h.Outbox.OfType<DjSays>(), x => x.Text.Contains("а вчора ви дивно мовчали"));
+        Assert.DoesNotContain(Hlek(h), x => x.Contains("а вчора ви дивно мовчали"));
     }
 
     [Fact]
@@ -1197,13 +1202,13 @@ public class MafiaTests
         var game = (Mafia)h.Room.Game;
         h.Leave(h.NickOf(Seat(h, "mafia")));
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        var said = h.Outbox.OfType<DjSays>().Count();
+        var said = Hlek(h).Count();
 
         game.QueueLine("а мені здається, це був не він");
         h.Tick(5);
 
-        // Дограну партію ніхто не тикає, і слівце так і лишається в черзі — у Балачки воно не піде.
-        Assert.Equal(said, h.Outbox.OfType<DjSays>().Count());
+        // Дограну партію ніхто не тикає, і слівце так і лишається в черзі — за стіл воно не піде.
+        Assert.Equal(said, Hlek(h).Count());
         Assert.Equal(1, game.PendingLines);
     }
 
@@ -1219,9 +1224,73 @@ public class MafiaTests
 
         // Партія скінчилась голосуванням — і про вигнаного Глек має сказати в тій самій репліці,
         // що й про переможця, інакше останнє вигнання так і лишилось би непроголошеним.
-        var last = h.Outbox.OfType<DjSays>().Last().Text;
+        var last = Hlek(h).Last();
         Assert.Contains(nick, last);
         Assert.Contains(MafiaGlek.CivilWin, line => last.EndsWith(line));
+    }
+
+    // =========================================================================================
+    // Балачка столу: суперечка села йде тут, а не в загальних Балачках
+    // =========================================================================================
+
+    /// <summary>Сказати в балачку столу так, як це робить хаб. Повертає відмову або null.</summary>
+    static string? Talk(RoomHarness h, string nick, string text, string? conn = null)
+    {
+        var (outbox, error) = h.Rooms.TableSay(h.RoomId, conn, nick, text);
+        h.Outbox.AddRange(outbox);
+        return error;
+    }
+
+    [Fact]
+    public void Hlek_leads_at_the_table_and_the_living_answer_him_there()
+    {
+        var h = Table(4);
+
+        Assert.All(h.Outbox.OfType<TableSaid>(), x => Assert.Equal(("Дядько Глек", "dj"), (x.Line.Nick, x.Line.Kind)));
+        Assert.Null(Talk(h, "Оля", "я мирна, чесно"));
+        Assert.Contains(h.Room.Talk, l => l.Nick == "Оля" && l.Text == "я мирна, чесно" && l.Kind == "chat");
+        Assert.Empty(h.Outbox.OfType<DjSays>());
+    }
+
+    [Fact]
+    public void The_dead_keep_quiet_at_the_table_until_the_game_is_over()
+    {
+        var h = Table(5);
+        var victim = OtherCivil(h, Seat(h, "sheriff"));
+        PlayNight(h, victim);
+        Assert.False(AliveAt(h, victim));
+        var dead = h.NickOf(victim);
+
+        Assert.Equal("Мертві мовчать — дочекайся кінця партії", Talk(h, dead, "це був Петро!"));
+        Assert.DoesNotContain(h.Room.Talk, l => l.Nick == dead);
+        Assert.NotNull(h.Rooms.TalkRefusal(h.RoomId, null, dead));
+        // Живі говорять і вдень, і вночі: вночі говорити нема про що, але й забороняти — нема за що.
+        Assert.Null(Talk(h, h.NickOf(AliveSeats(h)[0]), "хто це зробив?"));
+    }
+
+    [Fact]
+    public void A_spectator_watches_in_silence_while_the_game_is_on()
+    {
+        var h = Table(4);
+        h.Rooms.Watch(h.RoomId, "c-глядач", "Тарас");
+
+        Assert.Equal("Поки йде партія, глядачі мовчать", Talk(h, "Тарас", "а я знаю, хто мафія", "c-глядач"));
+    }
+
+    [Fact]
+    public void Before_and_after_the_game_everyone_at_the_table_talks()
+    {
+        var h = new RoomHarness("mafia");
+        foreach (var nick in Villagers.Take(4)) h.Join(nick);
+        h.Rooms.Watch(h.RoomId, "c-глядач", "Тарас");
+        Assert.Null(Talk(h, "Тарас", "коли вже почнете?", "c-глядач"));   // лобі
+
+        h.Start();
+        Assert.NotNull(Talk(h, "Тарас", "а я знаю", "c-глядач"));
+        h.Leave(h.NickOf(Seat(h, "mafia")));                             // мафія втекла — партія скінчилась
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Null(Talk(h, "Тарас", "оце так гра", "c-глядач"));
+        Assert.Null(Talk(h, h.Room.Seats.First(s => s is not null)!, "ще раз?"));
     }
 
     [Fact]

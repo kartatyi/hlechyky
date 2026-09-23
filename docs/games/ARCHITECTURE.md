@@ -167,13 +167,23 @@ public interface IRoomContext
     public int? HostSeat { get; }                     // місце господаря столу зараз (після його виходу — найстарше зайняте)
     public void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null);
     public void Log(string text);                     // рядок у Журнал усім
-    public void Say(string text);                     // Дядько Глек каже в Балачки (kind "dj")
+    public void Say(string text);                     // Глек-ведучий каже в балачку ЦЬОГО столу (kind "dj"), не в загальні Балачки
     public void Score(int seat, long value);          // соло-результат у таблицю (ScoreOrder із Info)
     public void Award(int seat, int shards, string reason); // додаткові черепки поза стандартною виплатою
 }
 ```
 
 `Finish` викликається рівно один раз на партію; повторний виклик — no-op із логом-попередженням.
+
+**Балачка столу** (вересень 2026). У кожного стола на кількох (`!Solo && !Private`) своя розмова: `Room.Talk`,
+останні `Rooms.TalkLines = 100` реплік `TableLine(Id, Nick, Text, Kind, At)` у пам'яті — живе й помирає разом зі
+столом. Говорить той, хто сидить, або той, хто дивиться цим з'єднанням (`Rooms.TableSay(id, connId, nick, text)`;
+в агента з'єднання нема — йому треба сидіти). `Ctx.Say` пише туди ж від імені ведучого (`Site:DjName`, kind `dj`),
+тож слова ведучого партії чують лише за столом, а загальні Балачки лишаються людям (там із гри лише привітання
+чемпіона турніру — `DjSays`). Гра може когось притримати: `Game.TalkBlock(seat)` → текст відмови або null
+(типово — говорять усі й завжди; мафія мовчить мертвим і глядачам, поки йде партія). Номери рядків наскрізні на
+весь сервер, тож браузер і агент не плутають, що нове. Підписався на стіл (`Rooms.Watch`) — отримав усю розмову
+(`TableHistory`). «Скільки?» свого слова в розмову не пише: вердикт раунду живе у виді (`reveal.say`) під таблицею.
 
 `Award(seat, shards, reason)` піднімає `AwardEvent` **завжди**, зокрема й при `shards == 0`: нульова
 нагорода — це домовлений спосіб попросити ачівку (`reason` виду `ach:<key>`, див. §8), і відсікати такий
@@ -254,8 +264,10 @@ public interface IRoomContext
 | `LobbyChanged` | усім | `rooms`: список `RoomSummary` (без Private) |
 | `RoomViews(roomId)` | глядачам кімнати | `room`: `{ room: RoomSummary, seat, view }`; для `Hidden` — свій вид кожному з'єднанню, інакше один вид у групу `room:<id>` |
 | `RoomFrame(roomId, frame)` | групі `room:<id>` | `frame`: `{ id, f }` |
-| `Journal(text, roomId?)` | усім | `chat` з kind `system` (через `Db.AddChat` від імені сайту); `roomId` — живий стіл, про який рядок, і браузер малює біля нього кнопку «Сісти»/«Дивитись» |
-| `DjSays(text)` | усім | `chat` kind `dj` (через `RadioEngine.SayAsync`) |
+| `Journal(text, roomId?)` | усім | `chat` з kind `system` і темою `games` (через `Db.AddChat` від імені сайту; фільтр Журналу «🎮 Ігри»); `roomId` — живий стіл, про який рядок, і браузер малює біля нього кнопку «Сісти»/«Дивитись» |
+| `DjSays(text)` | усім | `chat` kind `dj` (через `RadioEngine.SayAsync`) — лише те, що справді для всіх (чемпіон турніру) |
+| `TableSaid(roomId, line)` | групі `room:<id>` | `tableChat`: `{ id, line }` — нова репліка в балачці столу (гравця, глядача чи ведучого) |
+| `TableHistory(roomId, conn, lines)` | одному з'єднанню | `tableHistory`: `{ id, lines }` — уся розмова столу, щойно з'єднання підписалось (`WatchRoom`) |
 | `Wallet(nick, balance, delta, reason)` | усім з'єднанням ніка | `wallet` |
 | `Achievement(nick, key…)` | усім з'єднанням ніка + рядок у Журнал | `achievement` |
 | `Toast(nick, text, kind)` | усім з'єднанням ніка | `toast` (рідко: «ставку повернуто») |

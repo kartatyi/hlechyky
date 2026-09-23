@@ -113,6 +113,11 @@ public sealed class Skilky : Game
     string _phase = PhaseBetween;
     DateTimeOffset _endsAt;
     IReadOnlyList<Row>? _reveal;
+    /// <summary>
+    /// Слово Глека про цей раунд («Точнісінько — Оля! Шапки геть»). Живе у виді під таблицею розкриття, а не в
+    /// Балачках: раніше кожне питання кожної партії лягало туди окремим рядком, і за вечір це були сотні.
+    /// </summary>
+    string? _say;
     double _answer;
     bool _years;
     int[]? _winners;
@@ -157,6 +162,7 @@ public sealed class Skilky : Game
         _asked.AddRange(Pick());
         _at = 0;
         _reveal = null;
+        _say = null;
         _winners = null;
         _touched = false;
 
@@ -209,6 +215,7 @@ public sealed class Skilky : Game
         Array.Clear(_answers);
         Array.Clear(_answeredAt);
         _reveal = null;
+        _say = null;
         _touched = false;
         _phase = PhaseBetween;
         _endsAt = now.AddSeconds(BetweenSeconds);
@@ -344,7 +351,7 @@ public sealed class Skilky : Game
         _answer = target;
         _years = years;
         _reveal = rows;
-        Ctx.Say(Flavor(rows));
+        _say = Flavor(rows);
         _phase = PhaseReveal;
         _endsAt = now.AddSeconds(RevealSeconds);
     }
@@ -484,6 +491,8 @@ public sealed class Skilky : Game
             answer = _answer,
             // Клієнтові треба знати, як підписати промах: «на 12 % менше» чи просто «різниця 12» для років.
             years = _years,
+            // Глек коментує раунд прямо на картці, під таблицею.
+            say = _say,
             rows = _reveal.Select(r => new
             {
                 seat = r.Seat, value = r.Value, diff = r.Diff, points = r.Points,
@@ -525,7 +534,7 @@ public sealed class Skilky : Game
     // ---------------------------------------------------------------------------------------
 
     /// <summary>
-    /// Що Глек каже перед розкриттям. Фрази статичні (модель заради одного рядка не будимо), і нік у них
+    /// Що Глек каже на розкритті (під таблицею раунду). Фрази статичні (модель заради одного рядка не будимо), і нік у них
     /// завжди стоїть у називному — підметом або одразу після тире. Інакше вилазить «Пальма першості в
     /// Петро» і «промахнулась» на чоловічому ніку: чужі імена ми відмінювати не вміємо.
     /// </summary>

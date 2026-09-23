@@ -30,6 +30,8 @@ public class SkilkyTests
     static string Phase(RoomHarness h) => h.View(null).GetProperty("phase").GetString()!;
     static int Round(RoomHarness h) => h.View(null).GetProperty("round").GetInt32();
     static long Score(RoomHarness h, int seat) => h.View(null).GetProperty("scores")[seat].GetInt64();
+    /// <summary>Слово Глека про раунд — на картці, під таблицею розкриття (у Балачки воно більше не йде).</summary>
+    static string Word(RoomHarness h) => h.View(null).GetProperty("reveal").GetProperty("say").GetString()!;
 
     /// <summary>Тикати, поки не настане потрібна фаза (або поки партія не скінчиться).</summary>
     static void Until(RoomHarness h, string phase)
@@ -198,7 +200,9 @@ public class SkilkyTests
         db.StartPlay("t1", "user", "Петро", null, null);
         db.ToggleLike("t1", "Оля");
         db.AddChat("Оля", "привіт", "chat");
+        db.AddChat("Петро", "🎲 4 (1–6)", "dice");
         db.AddChat("Глечики", "хтось сів грати", "system");
+        db.AddChat("Дядько Глек", "Вітаю, Оля! Корона ваша", "dj");
 
         var stats = new SkilkyStats(db, clock);
         Assert.Equal(3, stats.Value("plays7d"));
@@ -206,7 +210,7 @@ public class SkilkyTests
         Assert.Equal(1, stats.Value("likesTotal"));
         Assert.Equal(1, stats.Value("tracksTotal"));    // голосове треком не рахується
         Assert.Equal(1, stats.Value("voiceTotal"));
-        Assert.Equal(1, stats.Value("chatTotal"));      // системний рядок — не балачки
+        Assert.Equal(2, stats.Value("chatTotal"));      // люди: Журнал і Глек — не наші балачки
         Assert.Equal(9, stats.Value("minutesPlayed30d"));
         Assert.Equal(2, stats.Value("topRequesterCount7d"));
     }
@@ -477,7 +481,7 @@ public class SkilkyTests
 
         Assert.Equal(Skilky.BestBonus, Score(h, 0));
         Assert.Equal(0, Score(h, 1));
-        Assert.Contains(h.Outbox.OfType<DjSays>(), s => s.Text.Contains("Оля"));
+        Assert.Contains("Оля", Word(h));
     }
 
     [Fact]
@@ -488,7 +492,7 @@ public class SkilkyTests
         h.Tick(1);
 
         Assert.Equal(0, Score(h, 0));
-        var line = h.Outbox.OfType<DjSays>().Last().Text;
+        var line = Word(h);
         Assert.Contains("Оля", line);
         Assert.DoesNotContain("очко", line, StringComparison.OrdinalIgnoreCase);
     }
@@ -728,15 +732,36 @@ public class SkilkyTests
     }
 
     [Fact]
-    public void Uncle_Hlek_says_a_word_before_every_reveal()
+    public void Uncle_Hlek_says_a_word_on_every_reveal_right_on_the_card()
     {
         var h = Table(2);
-        PlayAll(h, (0, 2), (1, 7));
+        var said = new List<string>();
+        for (var q = 0; q < Skilky.Questions && h.Room.Status == RoomStatus.Playing; q++)
+        {
+            Answer(h, (0, 2), (1, 7));
+            Until(h, Skilky.PhaseReveal);
+            said.Add(Word(h));
+            Close(h);
+        }
 
-        var said = h.Outbox.OfType<DjSays>().ToList();
         Assert.Equal(Skilky.Questions, said.Count);
-        Assert.All(said, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
-        Assert.Contains(said, s => s.Text.Contains("Оля"));
+        Assert.All(said, s => Assert.False(string.IsNullOrWhiteSpace(s)));
+        Assert.Contains(said, s => s.Contains("Оля"));
+        // Ні в загальні Балачки, ні за стіл: слово раунду живе на картці, а за вечір раундів — сотні.
+        Assert.Empty(h.Outbox.OfType<DjSays>());
+        Assert.Empty(h.Outbox.OfType<TableSaid>());
+    }
+
+    [Fact]
+    public void Between_questions_the_card_has_no_stale_word()
+    {
+        var h = Table(2);
+        Answer(h, (0, 2), (1, 7));
+        Until(h, Skilky.PhaseReveal);
+        Assert.False(string.IsNullOrWhiteSpace(Word(h)));
+
+        Until(h, Skilky.PhaseBetween);
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("reveal").ValueKind);
     }
 
     [Fact]

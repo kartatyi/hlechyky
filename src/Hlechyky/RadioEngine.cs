@@ -157,23 +157,26 @@ public sealed class RadioEngine : BackgroundService, IOnAir
 
     void Broadcast() => _ = BroadcastAsync();
 
-    async Task ChatAsync(string nick, string text, string kind)
+    async Task ChatAsync(string nick, string text, string kind, string? topic = null)
     {
         try
         {
-            var m = _db.AddChat(nick, text, kind);
+            var m = _db.AddChat(nick, text, kind, topic: topic);
             await _hub.Clients.All.SendAsync("chat", m);
         }
         catch (Exception ex) { _log.LogWarning(ex, "system chat failed"); }
     }
 
-    /// <summary>Event log line ("владік додає …"): shown in the log tab, not among people's messages.</summary>
-    void SystemChat(string text) => _ = ChatAsync(_site.CurrentValue.Name, text, "system");
+    /// <summary>
+    /// Рядок Журналу про радіо («владік додає …»): живе на вкладці Журналу, а не серед людських повідомлень,
+    /// і там його видно під фільтром «📻 Радіо».
+    /// </summary>
+    void SystemChat(string text) => _ = ChatAsync(_site.CurrentValue.Name, text, "system", "radio");
 
-    /// <summary>The DJ persona speaking in the chat.</summary>
-    void DjChat(string text) => _ = ChatAsync(Dj, text, "dj");
-
-    /// <summary>The DJ persona speaking on behalf of the chat bot; awaited so the bot knows the line landed.</summary>
+    /// <summary>
+    /// Глек каже щось у Балачки (чат-бот, привітання чемпіона турніру); await — щоб бот знав, що рядок ліг.
+    /// Про свої треки він у Балачки не пише: хто і чому поставив трек, видно в «Ефірі», а історію — у «Що вже було».
+    /// </summary>
     public Task SayAsync(string text) => ChatAsync(Dj, text, "dj");
 
     /// <summary>A new track went on air. The chat bot listens in to decide whether to chip in.</summary>
@@ -283,8 +286,12 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     /// тік просто відправить його в liquidsoap, коли дійде черга. Ліміт довжини в нього свій
     /// (Voice:MaxSeconds, ріжеться ще при перегонці), тому загальний ліміт треку тут не питаємо.
     /// </summary>
-    public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick) =>
-        Enqueue(track, nick, isAdmin: true, via: null, reason: null, quiet: false, filePath: filePath,
+    /// <remarks>
+    /// <paramref name="journal"/> = false — без рядка в Журналі: так у чергу лягає реклама, яку Глек сам ставить
+    /// щокілька треків. Інакше «Дядько Глек записує голосове» займало б Журнал частіше за всі людські дії разом.
+    /// </remarks>
+    public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick, bool journal = true) =>
+        Enqueue(track, nick, isAdmin: true, via: null, reason: null, quiet: !journal, filePath: filePath,
             chat: $"{nick} записує голосове ({Mmss(track.DurationSec)})", reply: $"Голосове в черзі ({Mmss(track.DurationSec)})");
 
     (bool Ok, string Message) Enqueue(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, bool quiet,
@@ -808,7 +815,6 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             var pid = _db.StartPlay(_now.Track.Id, kind, _now.RequestedBy, _now.Reason, _now.Via);
             lock (_lock) _now.PlayId = pid;
         }
-        if (kind == "autodj" && _now.Track is not null) DjChat(DjLine(_now.Track.Label, _now.Reason));
         if (_now.Track is { } onAir)
         {
             try { TrackStarted?.Invoke(onAir); }
@@ -826,20 +832,6 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         catch { /* cosmetic */ }
         await BroadcastAsync();
         await TickSafeAsync();
-    }
-
-    string DjLine(string label, string? reason)
-    {
-        var r = string.IsNullOrWhiteSpace(reason) ? "" : $" — {reason}";
-        string[] lines =
-        [
-            $"Черга порожня, тож ставлю {label}{r}.",
-            $"Тримайте: {label}{r}.",
-            $"Ніхто нічого не кинув, тому {label}{r}.",
-            $"Витягнув з полиці {label}{r}.",
-            $"Моя черга. {label}{r}.",
-        ];
-        return lines[_rng.Next(lines.Length)];
     }
 
     // ---------- background loop ----------
@@ -1028,7 +1020,8 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         else if (auto is { Status: ItemStatus.Failed })
         {
             lock (_lock) { _autoFailed.Add(auto.Track.Id); _autoNext = null; }
-            SystemChat($"{Dj} не зміг скачати {auto.Track.Label}: {auto.Error}");
+            // Людям у Журналі від цього ні холодно, ні жарко: Глек мовчки візьме інше. Причина потрібна лише адміну.
+            _log.LogInformation("{Dj} не зміг скачати {Track}: {Error}", Dj, auto.Track.Label, auto.Error);
             Broadcast();
         }
 
@@ -1277,7 +1270,11 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         }
         foreach (var f in failed) SystemChat($"liquidsoap не взяв {f.Track.Label}, прибираю з черги");
         if (failed.Count > 0) { PersistQueue(); Broadcast(); }
-        if (dropped is not null) { SystemChat($"liquidsoap не взяв {dropped.Track.Label}, {Dj} візьме інше"); Broadcast(); }
+        if (dropped is not null)
+        {
+            _log.LogWarning("liquidsoap не взяв {Track} (авто), {Dj} візьме інше", dropped.Track.Label, Dj);
+            Broadcast();
+        }
         if (changed)
         {
             _log.LogWarning("liquidsoap lost pending requests; re-dispatching");

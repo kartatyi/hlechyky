@@ -417,6 +417,33 @@ button.vplay { padding: 3px 8px; }
 .msg.system .n { display: none; }
 .msg.system .time { margin-left: 0; margin-right: 6px; }
 
+/* ---- дні, один нік на кілька реплік, початок історії ---- */
+.msg-day { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; color: var(--muted); font-size: .74em; letter-spacing: .02em; }
+.msg-day::before, .msg-day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.msg-day[hidden] { display: none; }
+.msg-top { text-align: center; padding: 4px 0 2px; }
+/* Друга й далі репліки того самого автора поспіль: ніка вже не повторюємо, рядки тулимо ближче. */
+.msg.cont { margin-top: -3px; }
+.msg.cont > .n { display: none; }
+.msg.cont.dice > .n { display: inline; }
+
+/* ---- Журнал: фільтри й склеєні дії ---- */
+.logfilters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.logfilters[hidden] { display: none; }
+.logfilters .chip { cursor: pointer; border: 1px solid var(--line); font-size: .8em; padding: 3px 10px; }
+.logfilters .chip:hover { color: var(--text); }
+.logfilters .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+#log.lf-radio .msg.system[data-topic="games"], #log.lf-games .msg.system[data-topic="radio"] { display: none; }
+.msg.lgroup .lg-n { color: var(--text); }
+.msg.lgroup .lg-more { padding: 0 6px; font-size: .92em; line-height: 1.5; color: var(--accent2); background: transparent; border-color: transparent; }
+.msg.lgroup .lg-more:hover { text-decoration: underline; }
+.msg.lgroup .lg-items { margin: 2px 0 2px 12px; padding-left: 8px; border-left: 2px solid var(--line); }
+.msg.lgroup .lg-items[hidden] { display: none; }
+
+/* ---- «Оля пише…» ---- */
+.typing { margin-top: 4px; min-height: 1.2em; font-size: .8em; font-style: italic; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.typing[hidden] { display: none; }
+
 /* ---- ❤ і відповіді ---- */
 .msg[data-id] { position: relative; border-radius: 8px; transition: background .15s; }
 .msg[data-id]:hover, .msg[data-id].act { background: var(--panel2); }
@@ -533,6 +560,35 @@ button.vplay { padding: 3px 8px; }
 #listeners { cursor: pointer; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 #listeners.on { color: var(--accent); }
 
+/* ---- балачка столу ---- */
+/* Одна й та сама розмова живе в двох місцях: вкладкою «🎲 Стіл» у панелі балачок (.rail) або шторкою знизу
+   (.drawer) — на телефоні, у ⛶ і коли панель згорнута. app.js переносить той самий вузол, а не малює два. */
+.tpane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tpane[hidden] { display: none; }
+.tchat { display: flex; flex-direction: column; min-height: 0; }
+.tchat .tc-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.tchat .tc-lines { flex: 1; min-height: 0; }
+.tchat .tc-form { display: flex; gap: 8px; margin-top: 10px; }
+.tchat .tc-form input { flex: 1; min-width: 0; }
+.tchat .tc-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.tchat .tc-top .tc-close { margin-left: auto; }
+.tchat .tc-empty { margin: auto 0; padding: 16px 12px; text-align: center; }
+.tchat.rail { flex: 1; }
+.tchat.rail .tc-head, .tchat.rail .tc-top { display: none; }
+.tchat.drawer { position: fixed; right: 16px; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; }
+.tchat.drawer .tc-head {
+  display: inline-flex; align-items: center; gap: 8px; max-width: min(360px, calc(100vw - 32px)); padding: 9px 14px;
+  border-radius: 999px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
+}
+.tchat.drawer .tc-head:hover { border-color: var(--accent2); }
+.tchat.drawer .tc-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88em; color: var(--muted); }
+.tchat.drawer .tc-body { display: none; }
+.tchat.drawer.open .tc-head { display: none; }
+.tchat.drawer.open .tc-body {
+  display: flex; width: min(420px, calc(100vw - 32px)); height: min(60vh, 520px); padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45);
+}
+
 /* ---- ігри ---- */
 /* Тут лишається тільки місце під розділ: усе, що всередині нього, — у web/games/core.css. */
 #colGames { min-width: 0; }
@@ -579,6 +635,10 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   .mtabs button .ico { font-size: 1.25em; line-height: 1; }
   .mtabs button.on { color: var(--accent); }
   .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); }
+  /* Шторка балачки столу — над міні-плеєром і вкладками; розгорнута — на всю ширину. */
+  .tchat.drawer { right: 12px; bottom: calc(var(--tabs-h) + var(--mini-h) + 10px); }
+  .tchat.drawer.open { left: 12px; }
+  .tchat.drawer.open .tc-body { width: 100%; height: min(62vh, 560px); }
   .sug .btns { grid-column: 1 / -1; }
   /* бокове меню бібліотеки на телефоні — рядок, що гортається; заголовок і пошук один під одним */
   .libhead { flex-wrap: wrap; gap: 8px; }

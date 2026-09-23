@@ -139,7 +139,7 @@ public class McpServerTests
         var names = tools.Select(t => t.GetProperty("name").GetString()).ToArray();
 
         foreach (var need in new[] { "set_nick", "list_rooms", "create_room", "join_room", "start_game", "look", "wait",
-            "act", "chat_read", "chat_send", "rules", "mafia_kill", "mafia_check", "mafia_heal", "mafia_block",
+            "act", "chat_read", "chat_send", "table_read", "table_say", "rules", "mafia_kill", "mafia_check", "mafia_heal", "mafia_block",
             "mafia_whisper", "mafia_vote" })
             Assert.Contains(need, names);
         // Схема потрібна кожному: без неї модель не знає, що взагалі можна передати.
