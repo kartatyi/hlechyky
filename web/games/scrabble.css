@@ -122,3 +122,34 @@
   .scr-p { max-width: 100%; }
   .scr-letters button { min-width: 26px; }
 }
+
+/* ---- оновлення 24.09.2026: курсор для друку, легенда, попередній рахунок, великий екран ---- */
+.gbody > .scr-legend { width: 100%; }
+.board.sboard .cell.cur { box-shadow: 0 0 0 2px var(--accent) inset; }
+.board.sboard .cell i.arrow { color: var(--accent); opacity: 1; font-size: min(3vw, 16px); font-weight: 700; }
+.scr-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: center; font-size: .78em; color: var(--muted); }
+.scr-legend:empty { display: none; }
+.scr-legend i {
+  font-style: normal; display: inline-block; min-width: 20px; padding: 1px 3px; margin-right: 3px;
+  border-radius: 3px; text-align: center; color: var(--text); font-size: .9em;
+}
+.scr-legend .bl2 { background: var(--scr-dl); } .scr-legend .bl3 { background: var(--scr-tl); }
+.scr-legend .bw2 { background: var(--scr-dw); } .scr-legend .bw3 { background: var(--scr-tw); }
+.scr-legend b { color: var(--accent); }
+.scr-hint b { color: var(--text); }
+.scr-hint .scr-bad { color: var(--clay); }
+/* Покладена цим ходом фішка з'являється не миттєво, а «лягає». */
+.board.sboard .cell.tile.pend, .board.sboard .cell.tile.last { animation: scr-drop .25s ease-out; }
+@keyframes scr-drop { from { transform: scale(.6); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .board.sboard .cell.tile.pend, .board.sboard .cell.tile.last { animation: none; } }
+
+/* Full HD: дошка на 520 px губилась посеред екрана — даємо їй вирости. */
+@media (min-width: 1600px) and (min-height: 900px) {
+  .board.sboard { width: min(100%, 680px, 60vh); }
+  .board.sboard .cell b { font-size: 19px; }
+  .board.sboard .cell i { font-size: 11px; }
+  .scr-rack .gcard { min-width: 42px; padding: 9px 8px 6px; }
+  .scr-rack .gcard b { font-size: 1.45em; }
+}
+.scr-hint .scr-end { font-size: 1.15em; color: var(--text); }
+.scr-hint .scr-end b { color: var(--accent); }

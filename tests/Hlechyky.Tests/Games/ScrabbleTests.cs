@@ -1107,4 +1107,51 @@ public class ScrabbleTests
         var h = Table(players: 4);
         Assert.Equal(["перший", "другий", "третій", "четвертий"], h.Room.Summary().SeatNames);
     }
+
+    // ------------------------------------------------------------------ швидка партія (оновлення 24.09.2026)
+
+    static RoomHarness Quick(int players = 2, int seed = 1)
+    {
+        var h = new RoomHarness("scrabble", options: new { bag = "half" }, seed: seed);
+        for (var i = 0; i < players; i++) h.Join(Nicks[i]);
+        h.Start();
+        return h;
+    }
+
+    [Fact]
+    public void A_quick_game_starts_with_half_a_bag()
+    {
+        var h = Quick();
+        Assert.Equal(52, Int(h, null, "bagTotal"));
+        Assert.Equal(52 - 14, Int(h, null, "bag"));
+        Assert.Equal(52, Tiles(h));
+        Assert.Equal(7, Rack(h, 0).Length);
+    }
+
+    [Fact]
+    public void A_full_game_is_still_the_default()
+    {
+        var h = Table();
+        Assert.Equal(ScrabbleBag.Total, Int(h, null, "bagTotal"));
+        Assert.Equal(ScrabbleBag.Total - 14, Int(h, null, "bag"));
+    }
+
+    [Fact]
+    public void A_quick_game_keeps_every_tile_when_someone_leaves()
+    {
+        var h = Quick(3, seed: 5);
+        Assert.Equal(52 - 21, Int(h, null, "bag"));
+        Assert.True(h.Leave("Іван").Ok);
+        Assert.Equal(52, Tiles(h));                    // стійка того, хто встав, повернулась у мішок
+        Assert.NotEqual(Rack(Quick(seed: 1), 0), Rack(Quick(seed: 2), 0));
+    }
+
+    [Fact]
+    public void The_bag_option_is_in_the_catalog()
+    {
+        var game = Assert.Single(new Registry().Catalog, g => g.Id == "scrabble");
+        var option = Assert.Single(game.Options);
+        Assert.Equal("bag", option.Key);
+        Assert.Equal("full", option.Default);
+    }
 }

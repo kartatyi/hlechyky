@@ -25,7 +25,14 @@ public sealed class Scrabble : Game
     public override GameInfo Info { get; } = new(
         "scrabble", "Ерудит", "ерудит", GameGroup.Board, 2, 4,
         Start: StartMode.ByHost, Hidden: true,
+        Options: [new GameOption("bag", "Партія", [("full", "Повна — 104 фішки"), ("half", "Швидка — 52 фішки")], "full")],
         Hint: "Складай слова з літер на дошці 15×15. Рідкісні літери дорожчі, кольорові клітинки множать очки");
+
+    /// <summary>
+    /// Швидка партія: у мішку половина фішок (які саме — вирішує тасування). Повна партія на двох —
+    /// це під годину, а за вечір компанія хоче зіграти не одну.
+    /// </summary>
+    bool _half;
 
     /// <summary>Рядок журналу ходів: хто і що зробив.</summary>
     sealed record Move(int Seat, string Text);
@@ -63,6 +70,8 @@ public sealed class Scrabble : Game
     /// </summary>
     (int Seat, string Word, int Score)? _pending;
     Outcome? _result;
+    /// <summary>Скільки фішок було в мішку на старті: 104, а в швидкій партії — 52.</summary>
+    int _bagTotal = ScrabbleBag.Total;
 
     public override string SeatName(int seat) => seat switch
     {
@@ -73,7 +82,11 @@ public sealed class Scrabble : Game
     };
 
     /// <summary>Словник беремо тут: ігри створюються без параметрів, тому залежності — із сервісів кімнати.</summary>
-    public override void Configure(IReadOnlyDictionary<string, string> options) => _words = Ctx.Services.GetService<Words>();
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        _words = Ctx.Services.GetService<Words>();
+        _half = options.TryGetValue("bag", out var bag) && bag == "half";
+    }
 
     public override void Start()
     {
@@ -84,6 +97,8 @@ public sealed class Scrabble : Game
 
         _board = new ScrabbleBoard();
         _bag = ScrabbleBag.Fresh(Ctx.Rng);
+        if (_half) _bag.RemoveRange(0, _bag.Count / 2);
+        _bagTotal = _bag.Count;
         _racks = [.. Enumerable.Range(0, Info.MaxPlayers).Select(_ => new List<char>())];
         _scores = new int[Info.MaxPlayers];
         _active = [.. Enumerable.Range(0, Info.MaxPlayers).Select(Ctx.Seated)];
@@ -334,6 +349,7 @@ public sealed class Scrabble : Game
             ? _racks[s].Select(c => c.ToString()).ToArray()
             : null,
         bag = _bag.Count,
+        bagTotal = _bagTotal,
         last = _last is null ? null : new
         {
             seat = _last.Seat,
