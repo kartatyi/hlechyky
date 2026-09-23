@@ -252,7 +252,8 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         var said = (text ?? "").Trim();
         if (said.Length == 0) return Fail("Порожнє нікому не цікаво");
         var r = chat.Send(s.Nick, said);
-        if (r.Line is { } line) s.SeenChatId = Math.Max(s.SeenChatId, line.Id);
+        // Курсор «докуди дочитав» тут не рухаємо: між останнім chat_read і цією реплікою могли написати інші, і
+        // їхні рядки мають менші номери — з курсором на своєму рядку агент їх так і не побачив би.
         if (!r.Ok) return Fail(r.Message);
         return new { ok = true, line = r.Line };
     }
@@ -272,8 +273,10 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         if (!room.Talks) return Fail("У цього столу балачки нема — тут граєш сам");
         var all = rooms.TableLines(id);
         var tail = all.Skip(Math.Max(0, all.Count - Math.Clamp(limit ?? 40, 1, Rooms.TalkLines))).ToList();
-        var fresh = onlyNew ? tail.Where(l => l.Id > s.SeenTableId).ToList() : tail;
-        if (all.Count > 0) s.SeenTableId = Math.Max(s.SeenTableId, all[^1].Id);
+        // Докуди дочитав — окремо для кожного столу: зазирнув за чужий стіл — своє непрочитане від цього не зникає.
+        var seen = s.SeenTable.GetValueOrDefault(id);
+        var fresh = onlyNew ? tail.Where(l => l.Id > seen).ToList() : tail;
+        if (all.Count > 0) s.SeenTable[id] = Math.Max(seen, all[^1].Id);
         return new { room = id, table = fresh };
     }
 
@@ -292,12 +295,12 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
             (said, kind) = (r.Text!, r.Kind);
         }
         if (rooms.TalkRefusal(id, null, s.Nick) is { } why) return Fail(why);
-        if (flood?.Check(s.Nick, text ?? "", (clock ?? SystemTime).UtcNow) is { } tooMuch) return Fail(tooMuch);
+        if (flood?.Check(s.Nick, text ?? "", (clock ?? SystemTime).UtcNow, "table:" + id) is { } tooMuch) return Fail(tooMuch);
         var (outbox, error) = rooms.TableSay(id, null, s.Nick, said, kind);
         if (error is not null) return Fail(error);
         await flush.FlushAsync(outbox).ConfigureAwait(false);
+        // Курсор не рухаємо (див. ChatSend): чужі репліки, сказані поки агент думав, мають лишитись непрочитаними.
         var line = outbox.OfType<TableSaid>().Select(x => x.Line).FirstOrDefault();
-        if (line is not null) s.SeenTableId = Math.Max(s.SeenTableId, line.Id);
         return new { ok = true, room = id, line };
     }
 
@@ -352,7 +355,8 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
 
         Перемога: мирні — коли не лишилось ні мафії, ні маньяка; мафія — коли її не менше, ніж мирних
         (і маньяка в селі вже нема); маньяк — коли лишився сам. Мертві бачать усе й мовчать: поки йде партія,
-        балачка столу пускає лише живих гравців (глядачам теж зась). Загальні Балачки (chat_*) — не для гри.
+        балачка столу пускає лише живих гравців (глядачам теж зась), а в загальних Балачках (chat_*) про партію
+        мовчать за правилом честі — вони взагалі не для гри.
 
         Порада: після кожного ходу клич wait — він прокидається і від нового виду, і від нової репліки за столом;
         що саме сказали, дивись у table_read(onlyNew: true).

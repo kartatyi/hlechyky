@@ -1113,8 +1113,14 @@
     s.innerHTML = '<span>' + esc(dayLabel(at)) + '</span>';
     return s;
   }
-  // Опівночі «Сьогодні» стає «Вчора»: раз на годину перечитуємо підписи.
-  setInterval(() => document.querySelectorAll('.msg-day').forEach((s) => { s.firstElementChild.textContent = dayLabel(s.dataset.at); }), 3600e3);
+  // Опівночі «Сьогодні» стає «Вчора»: щохвилини дивимось, чи не змінилась дата, і тоді перечитуємо підписи.
+  let labelsDay = new Date().toDateString();
+  setInterval(() => {
+    const today = new Date().toDateString();
+    if (today === labelsDay) return;
+    labelsDay = today;
+    document.querySelectorAll('.msg-day').forEach((s) => { s.firstElementChild.textContent = dayLabel(s.dataset.at); });
+  }, 60e3);
 
   const msgs = (box) => box.querySelectorAll(':scope > .msg');
   const lastMsg = (box) => { const all = msgs(box); return all.length ? all[all.length - 1] : null; };
@@ -1146,18 +1152,27 @@
 
   /// Скільки старшого просити за раз — стільки ж віддає сервер (RadioHub.ChatBefore).
   const OLDER = 60;
-  async function loadOlder(box) {
+  async function loadOlder(box, depth = 0) {
     if (!conn || box._loading || box.dataset.done === '1' || box.hidden) return;
     const first = box.querySelector(':scope > .msg:not([data-mid="0"])');
     const before = first ? +first.dataset.mid : 0;
     if (!before) return;
     box._loading = true;
-    try {
-      const list = await conn.invoke('ChatBefore', before, box.id === 'log');
-      if (list && list.length) prependOlder(box, list);
-      if (!list || list.length < OLDER) markTop(box);
-    } catch { /* зв'язку нема — спробуємо, коли гортатимуть знову */ }
+    let list;
+    try { list = await conn.invoke('ChatBefore', before, box.id === 'log'); }
+    catch { list = null; }   // зв'язку нема — спробуємо, коли гортатимуть знову
     finally { box._loading = false; }
+    // null — сервер попросив не так часто: це ще не кінець історії, просто не зараз.
+    if (list == null) return;
+    if (list.length) prependOlder(box, list);
+    if (list.length < OLDER) { markTop(box); return; }
+    // Під фільтром Журналу пачка могла не додати жодного видимого рядка, а короткий список — не дати смуги
+    // прокрутки: нової події scroll тоді не буде. Беремо ще кілька пачок, поки скринька не заповниться.
+    if (depth < 5 && box.offsetParent && (box.scrollTop < 80 || box.scrollHeight <= box.clientHeight + 40)) await loadOlder(box, depth + 1);
+  }
+  /// Скринька, яку нема чим гортати (фільтр сховав майже все), сама просить старіше.
+  function fillUp(box) {
+    if (box.offsetParent && box.scrollHeight <= box.clientHeight + 40) loadOlder(box);
   }
   function markTop(box) {
     box.dataset.done = '1';
@@ -1205,6 +1220,7 @@
     $('logFilters').querySelectorAll('[data-lf]').forEach((b) => b.classList.toggle('on', b.dataset.lf === logFilter));
     tidyDays(box);
     box.scrollTop = box.scrollHeight;
+    fillUp(box);
   }
   $('logFilters').querySelectorAll('[data-lf]').forEach((b) => b.onclick = () => setLogFilter(b.dataset.lf));
   /// Роздільник дня, під яким під фільтром не лишилось жодного рядка, — зайвий.
@@ -1301,7 +1317,8 @@
   // Стіл, біля якого ти стоїш, має свою розмову: гравці, глядачі й Глек-ведучий. У загальні Балачки з гри
   // не йде нічого. На широкому екрані розмова — вкладка «🎲 Стіл» у панелі; на телефоні, у ⛶ і коли панель
   // згорнута — шторка знизу. Сам стіл і його зміни каже каркас ігор (HGames.init → onTable).
-  const table = { id: null, info: null, lines: new Map(), unread: 0, open: false, mode: null, full: false };
+  // opened — для якого столу балачку вже розгортали самі (мафія): вдруге не нав'язуємо, людина могла її згорнути.
+  const table = { id: null, info: null, lines: new Map(), unread: 0, open: false, mode: null, full: false, opened: null };
   const tc = (() => {
     const root = document.createElement('div');
     root.className = 'tchat';
@@ -1417,6 +1434,7 @@
     if (changed) {
       table.unread = 0;
       table.open = false;
+      table.opened = null;
       typers.table.clear();
       tc.input.value = '';
       renderTableLines();
@@ -1424,9 +1442,13 @@
     tc.name.textContent = info ? info.title : '';
     placeTable();
     paintTyping();
-    // Мафія — гра, де розмова і є гра: щойно підійшов до такого столу, розмова вже перед очима. На телефоні
-    // шторку не розгортаємо самі — вона закрила б картку, а кнопка «До суперечки» на ній і так є.
-    if (changed && info && info.main && !isMobile()) openTable(false);
+    // Мафія — гра, де розмова і є гра: щойно підійшов до такого столу, розмова вже перед очима. Модуль гри може
+    // приїхати пізніше за сам стіл (F5, посилання) — тому дивимось не на «стіл змінився», а на «для цього столу ще
+    // не розгортали». На телефоні шторку не розгортаємо самі — вона закрила б картку, а «До суперечки» на ній є.
+    if (info && info.main && table.opened !== id && !isMobile()) {
+      table.opened = id;
+      openTable(false);
+    }
   }
   document.addEventListener('visibilitychange', () => { if (tableVisible()) { table.unread = 0; paintTableBadge(); } });
   window.matchMedia('(max-width: 900px)').addEventListener('change', () => placeTable());
@@ -1637,6 +1659,7 @@
     } else {
       const box = tab === 'chat' ? $('messages') : $('log');
       box.scrollTop = box.scrollHeight;
+      fillUp(box);   // під фільтром Журналу скринька може бути майже порожня — тоді старіше просимо самі
     }
     if (chatVisible()) setUnread(0);
   }
@@ -2655,7 +2678,10 @@
     // Балачка столу: уся розмова — щойно підписались на стіл (F5, реконект), далі — по рядку.
     conn.on('tableHistory', (x) => {
       if (!x || !x.id) return;
-      table.lines.set(x.id, x.lines || []);
+      // Зливаємо з тим, що вже є, за номером, а не замінюємо: рядок міг прилетіти подією раніше за історію.
+      const byId = new Map((table.lines.get(x.id) || []).map((l) => [l.id, l]));
+      for (const l of x.lines || []) byId.set(l.id, l);
+      table.lines.set(x.id, [...byId.values()].sort((a, b) => a.id - b.id).slice(-100));
       if (x.id === table.id) renderTableLines();
     });
     conn.on('tableChat', (x) => {
