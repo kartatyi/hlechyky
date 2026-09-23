@@ -32,10 +32,21 @@
   };
   const isBomb = (e) => e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar';
 
-  const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--muted', '#9db3a5']];
+  // П'ятий і шостий кольори — свої змінні з bomber.css: у теми сайту акцентів на шістьох не вистачає.
+  const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--muted', '#9db3a5'],
+    ['--bblue', '#6fb3e8'], ['--bpink', '#e88ac0']];
+  const SEATN = SEATS.length;
+  const BOOM_MS = 520;
+  const clock = (ticks) => {
+    const s = Math.max(0, Math.ceil((ticks * TICK_MS) / 1000));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  };
   const GLYPH = { range: '🔥', bomb: '💣', boots: '👟' };
 
   const at = (cell) => [(cell % W) * PX, Math.floor(cell / W) * PX];
+  /// На звичайному моніторі (DPR 1) поле на Full HD розтягується в півтора раза й милиться — малюємо
+  /// вдвічі щільніше. На телефонах із DPR ≥ 2 це вже зробив каркас.
+  const scale = () => ((window.devicePixelRatio || 1) >= 2 ? 1 : 2);
   const lerp = (a, b, t) => a + (b - a) * t;
 
   // ---------------------------------------------------------------------------------------------
@@ -145,7 +156,8 @@
     }
   }
 
-  function drawMen(pal, g, men) {
+  /// me — моє місце (або null для глядача), start — іде відлік «Готуйсь», тоді «ти» видно здалеку.
+  function drawMen(pal, g, men, me, start) {
     for (let i = 0; i < men.length; i++) {
       const m = men[i];
       if (!m || !m.alive) continue;
@@ -166,13 +178,102 @@
       g.arc(cx - r * 0.32, cy - r * 0.2, r * 0.17, 0, Math.PI * 2);
       g.arc(cx + r * 0.32, cy - r * 0.2, r * 0.17, 0, Math.PI * 2);
       g.fill();
+      // Номер місця на пузі: на шістьох кольори близькі, а цифру не сплутає і той, хто кольорів не розрізняє.
+      g.font = '700 8px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(String(i + 1), cx, cy + r * 0.45);
+      if (i === me) {
+        // Своя стрілочка над головою: на повному полі «де я?» — перше питання кожного раунду.
+        const top = cy - r - 2;
+        g.fillStyle = pal.text;
+        g.beginPath();
+        g.moveTo(cx - 4, top - 5);
+        g.lineTo(cx + 4, top - 5);
+        g.lineTo(cx, top);
+        g.closePath();
+        g.fill();
+        if (start) {
+          // На відліку ще й кільце довкола — щоб знайти себе за дві секунди, а не за пів раунду.
+          g.strokeStyle = pal.text;
+          g.lineWidth = 1.5;
+          g.beginPath();
+          g.arc(cx, cy, r + 3, 0, Math.PI * 2);
+          g.stroke();
+          g.font = '700 10px system-ui, sans-serif';
+          g.textBaseline = 'bottom';
+          g.fillText('ти', cx, top - 6);
+        }
+      }
     }
   }
 
-  function drawShade(pal, g, c, f, waiting) {
+  /// Підірваний бомбер не зникає мовчки: хмарка його кольору розлітається й тане.
+  function drawBooms(pal, g, booms, now) {
+    for (const b of booms) {
+      const k = (now - b.at) / BOOM_MS;
+      if (k < 0 || k >= 1) continue;
+      g.globalAlpha = 1 - k;
+      g.fillStyle = pal.seats[b.i] || pal.danger;
+      for (let j = 0; j < 6; j++) {
+        const a = (Math.PI * 2 * j) / 6 + b.i;
+        const d = PX * (0.15 + 0.55 * k);
+        g.beginPath();
+        g.arc(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d, PX * (0.2 - 0.1 * k), 0, Math.PI * 2);
+        g.fill();
+      }
+      g.strokeStyle = pal.text;
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(b.x, b.y, PX * (0.25 + 0.45 * k), 0, Math.PI * 2);
+      g.stroke();
+      g.globalAlpha = 1;
+    }
+  }
+
+  /// Хто щойно злетів у повітря: живий у попередньому кадрі, мертвий у цьому — того самого раунду.
+  /// Останнього в раунді ловимо теж: його кадр приходить уже з фазою 'pause'.
+  function noteBooms(st, f) {
+    const was = st.last;
+    const now = performance.now();
+    if (was && was.p && f && f.p && was.phase === 'go' && (f.phase === 'go' || f.phase === 'pause' || f.phase === 'over')
+      && f.t >= (was.t || 0)) {
+      for (let i = 0; i < f.p.length; i++) {
+        const a = was.p[i], b = f.p[i];
+        if (a && a.alive && b && !b.alive)
+          st.booms.push({ i, x: (a.x / SUB) * PX + PX / 2, y: (a.y / SUB) * PX + PX / 2, at: now });
+      }
+    }
+    st.booms = st.booms.filter((b) => now - b.at < BOOM_MS);
+  }
+
+  function drawShade(pal, g, c, f, waiting, st) {
     if (f.phase === 'go' || (f.phase === 'start' && waiting)) return;
     g.fillStyle = pal.shade;
     g.fillRect(0, 0, c.w, c.h);
+    if (f.phase === 'pause' || f.phase === 'over') {
+      // Хто взяв раунд (чи всю партію) — великими літерами просто на полі, а не лише дрібним рядком під ним.
+      const over = f.phase === 'over';
+      const res = over && st.ctx && st.ctx.room && st.ctx.room.result;
+      const alive = over ? ((res && res.winners) || []) : (f.p || []).map((m, i) => (m && m.alive ? i : -1)).filter((i) => i >= 0);
+      const who = alive.length === 1 ? alive[0] : -1;
+      const nick = who >= 0 && st.ctx ? (st.ctx.nickOf(who) || st.ctx.seatName(who)) : '';
+      g.fillStyle = pal.bomb;
+      g.globalAlpha = 0.85;
+      g.beginPath();
+      g.roundRect(20, c.h / 2 - 34, c.w - 40, 66, 14);
+      g.fill();
+      g.globalAlpha = 1;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '700 22px system-ui, sans-serif';
+      g.fillStyle = who >= 0 ? (pal.seats[who] || pal.text) : pal.text;
+      g.fillText(who >= 0 ? '🏆 ' + nick : 'Нічия', c.w / 2, c.h / 2 - 8, c.w - 24);
+      g.font = '13px system-ui, sans-serif';
+      g.fillStyle = pal.text;
+      g.fillText(over ? (who >= 0 ? 'бере партію!' : 'партія внічию') : (who >= 0 ? 'бере раунд' : 'цей раунд — нікому'), c.w / 2, c.h / 2 + 16);
+      return;
+    }
     if (f.phase !== 'start' || waiting) return;
     g.fillStyle = pal.text;
     g.font = '700 46px system-ui, sans-serif';
@@ -207,17 +308,25 @@
     const shot = men(st);
     const g = c.ctx;
     const pal = palette(st);
+    // Малюємо в логічних одиницях поля, а канвас щільніший у K разів (див. scale()).
+    const box = { w: W * PX, h: H * PX };
+    g.save();
+    g.scale(st.K, st.K);
     g.fillStyle = pal.bg2;
-    g.fillRect(0, 0, c.w, c.h);
+    g.fillRect(0, 0, box.w, box.h);
     drawWalls(pal, g, st.walls);
-    if (!shot) return;
-    const f = shot.f;
-    drawBoxes(pal, g, f.boxes);
-    drawDrops(pal, g, f.pw);
-    drawBombs(pal, g, f.b, now);
-    drawMen(pal, g, shot.men);
-    drawFlame(pal, g, f.f, now);
-    drawShade(pal, g, c, f, waiting);
+    if (shot) {
+      const f = shot.f;
+      drawBoxes(pal, g, f.boxes);
+      drawDrops(pal, g, f.pw);
+      drawBombs(pal, g, f.b, now);
+      const me = st.ctx && st.ctx.mine ? st.ctx.seat : null;
+      drawMen(pal, g, shot.men, me, f.phase === 'start' && !waiting);
+      drawFlame(pal, g, f.f, now);
+      drawShade(pal, g, box, f, waiting, st);
+      drawBooms(pal, g, st.booms, now);   // поверх тіні: останній вибух раунду теж має бути видно
+    }
+    g.restore();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -234,13 +343,19 @@
     const wins = (f && f.wins) || [];
     const men = (f && f.p) || [];
     let html = '';
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < SEATN; i++) {
       const nick = ctx.nickOf(i);
       if (!nick) continue;
       const m = men[i] || {};
       const ups = '💣' + (m.bombs || 1) + ' 🔥' + (m.range || 2) + (m.boots ? ' 👟' : '');
-      html += '<span class="bchip s' + i + (m.alive === false ? ' out' : '') + '">'
-        + ctx.esc(nick) + ' <b>' + (wins[i] || 0) + '</b> <span class="bups">' + ups + '</span></span>';
+      html += '<span class="bchip s' + i + (m.alive === false ? ' out' : '') + (i === ctx.seat ? ' me' : '') + '">'
+        + '<i>' + (i + 1) + '</i>' + ctx.esc(nick) + ' <b>' + (wins[i] || 0) + '</b> <span class="bups">' + ups + '</span></span>';
+    }
+    // Годинник раунду: за дві хвилини раунд нічий, і краще бачити це заздалегідь, ніж дивуватись.
+    if (f && f.phase === 'go') {
+      const limit = (ctx.view && ctx.view.limit) || 2000;
+      const left = Math.max(0, limit - (f.t || 0));
+      html += '<span class="bchip bclock' + (left * TICK_MS <= 15000 ? ' hot' : '') + '">⏱ ' + clock(left) + '</span>';
     }
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
@@ -301,8 +416,8 @@
   function state(root, ctx) {
     if (!root._bomber) {
       root._bomber = {
-        cv: null, walls: [], last: null, held: -1, pid: null, bombDown: false,
-        raf: 0, keyup: null, phase: '', round: 0, css: ctx.css,
+        cv: null, walls: [], last: null, held: -1, pid: null, bombDown: false, booms: [],
+        raf: 0, keyup: null, phase: '', round: 0, css: ctx.css, K: scale(),
       };
     }
     root._bomber.ctx = ctx;
@@ -334,14 +449,25 @@
   HGames.register({
     id: 'bomber',
     icon: ICON,
-    seatNames: ['жовтий', 'зелений', 'рудий', 'сірий'],
-    seatClass: ['x', 'o', 'c', 'd'],
+    seatNames: ['жовтий', 'зелений', 'рудий', 'сірий', 'синій', 'рожевий'],
+    seatClass: ['x', 'o', 'c', 'd', 'bb', 'bp'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} бігати · {a} бомба (будь-яка кнопка)' },
+    news: {
+      v: '2026-09-24',
+      title: 'Бомбер: тепер до шести за столом',
+      items: [
+        '👥 За столом 2–6 бомберів: п’ятий і шостий стартують посередині верхнього й нижнього краю',
+        '🔢 На кожному бомбері номер місця, над своїм — стрілочка, а на відліку ще й «ти»',
+        '💨 Підірваний бомбер розлітається хмаркою, а хто взяв раунд — написано просто на полі',
+        '⏱ Над полем годинник раунду: дві хвилини без переможця — нічия, тепер це видно заздалегідь',
+        '🔍 На великому моніторі поле більше й чіткіше, на телефоні рядок гравців компактніший',
+      ],
+    },
 
     mount(root, ctx) {
       const st = state(root, ctx);
       st.interp = HGames.ui.Interp();
-      st.cv = HGames.ui.canvas(root, { w: W * PX, h: H * PX, cls: 'bboard' });
+      st.cv = HGames.ui.canvas(root, { w: W * PX * st.K, h: H * PX * st.K, cls: 'bboard' });
       // Каркас віддає модулю лише keydown, а напрямок тут тримають — відпускання ловимо самі.
       st.keyup = (e) => {
         if (isBomb(e)) { st.bombDown = false; return; }
@@ -365,6 +491,7 @@
         // Вид прилітає й на дрібниці (сів глядач, змінилось число очей) — інтерполяцію рвемо лише
         // тоді, коли світ справді стрибнув: новий раунд або відлік тиків пішов назад.
         const jump = !st.last || v.round !== st.round || v.t < (st.last.t || 0);
+        if (!jump) noteBooms(st, v);
         st.last = v;
         st.round = v.round;
         if (jump) st.interp.reset();
@@ -381,6 +508,7 @@
       const st = state(root, ctx);
       st.ctx = ctx;
       if (!st.cv || !f) return;
+      noteBooms(st, f);
       st.last = f;
       st.interp.push(f);
       hud(root, ctx, f);
