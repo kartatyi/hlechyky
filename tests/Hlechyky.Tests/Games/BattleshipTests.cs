@@ -27,8 +27,12 @@ public class BattleshipTests
         var h = new RoomHarness("battleship", seed: seed);
         h.Join("Оля");
         h.Join("Петро");
+        h.Start();   // стіл тепер на 2–4, тож «Почати» тисне господар
         return h;
     }
+
+    /// <summary>Тик — чверть секунди: «пройшло N секунд» — це вчетверо більше тиків.</summary>
+    static void Secs(RoomHarness h, int seconds) => h.Tick(seconds * (1000 / Battleship.TickMillis));
 
     /// <summary>Обидва розставились руками й натиснули «Готово» — далі бій.</summary>
     static RoomHarness Battle(int seed = 42)
@@ -167,7 +171,7 @@ public class BattleshipTests
         // і в кадрі, який летить усім одразу, теж
         h.Tick(1);
         var frame = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
-        Assert.Equal([10, 10], Ints(frame.GetProperty("left")));
+        Assert.Equal([10, 10, 10, 10], Ints(frame.GetProperty("left")));
     }
 
     [Fact]
@@ -255,7 +259,7 @@ public class BattleshipTests
         h.Act(0, "place", Fleet(Blue));
         h.Act(0, "clear");
         h.Act(1, "place", Fleet(Red));
-        h.Tick(BattleshipRules.PlaceSeconds);
+        Secs(h, BattleshipRules.PlaceSeconds);
 
         var ships = Prop(h.View(0), "me", "ships").EnumerateArray().Select(Ints).ToArray();
         Assert.Null(BattleshipRules.Invalid(ships));
@@ -313,10 +317,10 @@ public class BattleshipTests
         h.Act(0, "place", Fleet(Blue));
         h.Act(0, "ready");
 
-        h.Tick(BattleshipRules.PlaceSeconds - 1);
+        Secs(h, BattleshipRules.PlaceSeconds - 1);
         Assert.Equal("placing", h.View(1).GetProperty("phase").GetString());
 
-        h.Tick(1);
+        Secs(h, 1);
         var v = h.View(1);
         Assert.Equal("battle", v.GetProperty("phase").GetString());
         Assert.True(Prop(v, "me", "ready").GetBoolean());
@@ -330,7 +334,7 @@ public class BattleshipTests
         var h = Table();
         h.Act(0, "place", Fleet(Blue));
         h.Act(1, "place", Fleet(Red));
-        h.Tick(BattleshipRules.PlaceSeconds);
+        Secs(h, BattleshipRules.PlaceSeconds);
 
         Assert.Equal("battle", h.View(0).GetProperty("phase").GetString());
         Assert.Equal(Blue[0], Ints(Prop(h.View(0), "me", "ships")[0]));
@@ -401,7 +405,7 @@ public class BattleshipTests
 
         var r = h.Act(0, "shoot", new { cell = 0 });
         Assert.False(r.Ok);
-        Assert.Equal("Сюди вже стріляв", r.Message);
+        Assert.Equal("Сюди вже стріляли", r.Message);
         Assert.Equal(before, h.View(0).ToString());
     }
 
@@ -417,7 +421,7 @@ public class BattleshipTests
         Assert.Equal([41, 42, 43, 51, 53, 61, 62, 63], Ints(Prop(v, "enemy", "misses")));
         Assert.Equal([52], Ints(Prop(v, "enemy", "sunk")[0]));
         Assert.Equal(9, Prop(v, "enemy", "left").GetInt32());
-        Assert.Equal("Сюди вже стріляв", h.Act(0, "shoot", new { cell = 51 }).Message);
+        Assert.Equal("Сюди вже стріляли", h.Act(0, "shoot", new { cell = 51 }).Message);
     }
 
     [Fact]
@@ -434,7 +438,7 @@ public class BattleshipTests
         var v = h.View(0);
         Assert.Equal("done", v.GetProperty("phase").GetString());
         Assert.Equal(0, Prop(v, "result", "winner").GetInt32());
-        Assert.Equal([20, 0], Ints(Prop(v, "result", "shots")));
+        Assert.Equal([20, 0, 0, 0], Ints(Prop(v, "result", "shots")));
         Assert.Equal(0, Prop(v, "enemy", "left").GetInt32());
     }
 
@@ -461,8 +465,9 @@ public class BattleshipTests
         // мій власний флот у моєму ж виді бути мусить — інакше не намалюєш своє поле
         Assert.Equal(10, Prop(v, "me", "ships").GetArrayLength());
         Assert.False(Views.Has(v.GetProperty("enemy"), "ships"));
-        // обидва поля разом дістаються лише глядачеві
-        Assert.Equal(JsonValueKind.Null, v.GetProperty("boards").ValueKind);
+        // публічні поля всіх бачать усі, але кораблів у них нема ні в чиєму
+        Assert.DoesNotContain("ships", v.GetProperty("boards").ToString());
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("boards")[0].GetProperty("reveal").ValueKind);
         // жодна клітинка синього флоту не витекла: у чужій частині виду взагалі нема слова ships
         Assert.DoesNotContain("ships", v.GetProperty("enemy").ToString());
     }
@@ -495,7 +500,8 @@ public class BattleshipTests
 
         var v = h.View(null);
         Assert.Equal(JsonValueKind.Null, v.GetProperty("me").ValueKind);
-        Assert.Equal(2, v.GetProperty("boards").GetArrayLength());
+        Assert.Equal(Battleship.Seats, v.GetProperty("boards").GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("boards")[2].ValueKind);   // за столом двоє — третього поля нема
         Assert.DoesNotContain("ships", v.ToString());
         Assert.Equal([0], Ints(Prop(v.GetProperty("boards")[1], "hits")));
         Assert.Equal([99], Ints(Prop(v.GetProperty("boards")[1], "misses")));
@@ -508,7 +514,7 @@ public class BattleshipTests
         var h = Table();
         h.Act(0, "place", Fleet(Blue));
         h.Act(0, "ready");
-        h.Tick(3);
+        Secs(h, 3);
 
         var frame = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
         foreach (var name in new[] { "phase", "turn", "placeLeft", "ready", "left", "shots", "winner" })
@@ -596,10 +602,12 @@ public class BattleshipTests
 
         Assert.Equal("board", game.Group);
         Assert.True(game.Hidden);
-        Assert.True(game.Rated);
-        Assert.Equal(1000, game.TickMs);
+        // на 2–4 Ело не рахується (Rewards.Elo лише для MaxPlayers == 2), тож і рейтинговою гру не звемо
+        Assert.False(game.Rated);
+        Assert.Equal(Battleship.TickMillis, game.TickMs);
         Assert.Equal(2, game.MinPlayers);
-        Assert.Equal(2, game.MaxPlayers);
+        Assert.Equal(4, game.MaxPlayers);
+        Assert.Equal("byHost", game.Start);
         Assert.Equal("battleship", game.Module);
     }
 
@@ -608,7 +616,7 @@ public class BattleshipTests
     {
         // TickMs > 0 → каркас не рахує ходів (Moves == 0), тож нагороду відмикає час: MinRewardSeconds = 20
         var h = Battle();
-        h.Tick(25);
+        Secs(h, 25);
         foreach (var cell in Red.SelectMany(s => s)) h.Act(0, "shoot", new { cell });
 
         var e = Assert.Single(h.Finished);
@@ -633,8 +641,340 @@ public class BattleshipTests
         }
         sw.Stop();
 
+        // 1000 тиків — це чотири хвилини гри: годинник ходу встигає кілька разів вистрілити сам
+        Assert.True(h.View(0).GetProperty("shots").GetInt32() > cells.Length);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"1000 тиків зайняли {sw.Elapsed}");
+    }
+
+    // ---------- компанія: 3–4 гравці, кожен проти кожного ----------
+
+    static readonly string[] Crew = ["Оля", "Петро", "Іра", "Марко"];
+
+    /// <summary>Стіл на n: усі розставились руками (синій і зелений — як Blue, червоний і жовтий — як Red), усі «Готово».</summary>
+    static RoomHarness Company(int n, int seed = 42, object? options = null)
+    {
+        var h = new RoomHarness("battleship", options: options, seed: seed);
+        foreach (var nick in Crew.Take(n)) h.Join(nick);
+        h.Start();
+        for (var s = 0; s < n; s++) h.Act(s, "place", Fleet(s % 2 == 0 ? Blue : Red));
+        for (var s = 0; s < n; s++) h.Act(s, "ready");
+        return h;
+    }
+
+    /// <summary>Потопити весь флот місця <paramref name="at"/> пострілами з <paramref name="by"/> (влучання лишають хід).</summary>
+    static void SinkAll(RoomHarness h, int by, int at)
+    {
+        foreach (var cell in (at % 2 == 0 ? Blue : Red).SelectMany(s => s))
+            Assert.True(h.Act(by, "shoot", new { cell, at }).Ok);
+    }
+
+    /// <summary>Клітинка, де нема кораблів ні в Blue, ні в Red: гарантований промах по будь-кому.</summary>
+    const int Water = 99;
+
+    [Fact]
+    public void Four_at_the_table_all_ready_starts_the_battle_with_the_first_seat()
+    {
+        var h = Company(4);
+        var v = h.View(2);
+        Assert.Equal("battle", v.GetProperty("phase").GetString());
+        Assert.Equal(0, v.GetProperty("turn").GetInt32());
+        Assert.Equal([0, 1, 2, 3], Ints(v.GetProperty("players")));
+        Assert.Equal(4, v.GetProperty("boards").GetArrayLength());
+        Assert.NotEqual(JsonValueKind.Null, v.GetProperty("turnUntil").ValueKind);
+    }
+
+    [Fact]
+    public void Battle_waits_until_every_captain_says_ready()
+    {
+        var h = new RoomHarness("battleship", seed: 3);
+        foreach (var nick in Crew.Take(3)) h.Join(nick);
+        h.Start();
+        h.Act(0, "random"); h.Act(0, "ready");
+        h.Act(1, "random"); h.Act(1, "ready");
+        Assert.Equal("placing", h.View(0).GetProperty("phase").GetString());
+        h.Act(2, "random"); h.Act(2, "ready");
+        Assert.Equal("battle", h.View(0).GetProperty("phase").GetString());
+    }
+
+    [Fact]
+    public void In_a_company_you_must_say_whom_you_shoot()
+    {
+        var h = Company(3);
+        Assert.Equal("Обери, по чиєму полю стріляти", h.Act(0, "shoot", new { cell = 0 }).Message);
+        Assert.Equal("По своєму флоту не стріляють", h.Act(0, "shoot", new { cell = 0, at = 0 }).Message);
+        Assert.Equal("Там нікого нема", h.Act(0, "shoot", new { cell = 0, at = 3 }).Message);
+        Assert.Equal("Там нікого нема", h.Act(0, "shoot", new { cell = 0, at = 9 }).Message);
+        Assert.Equal(0, h.View(0).GetProperty("shots").GetInt32());
+    }
+
+    [Fact]
+    public void A_shot_lands_on_the_chosen_board_only()
+    {
+        var h = Company(3);
+        Assert.Equal("Влучив! Стріляй ще", h.Act(0, "shoot", new { cell = 0, at = 2 }).Message);   // 0 — ніс Blue у зеленого
+        var v = h.View(1);
+        Assert.Equal([0], Ints(Prop(v.GetProperty("boards")[2], "hits")));
+        Assert.Empty(Ints(Prop(v.GetProperty("boards")[1], "hits")));
+        Assert.Empty(Ints(Prop(v, "me", "hits")));                                  // по червоному ніхто не стріляв
+        Assert.Equal([0], Ints(Prop(h.View(2), "me", "hits")));
+    }
+
+    [Fact]
+    public void A_miss_passes_the_turn_round_the_table()
+    {
+        var h = Company(4);
+        h.Act(0, "shoot", new { cell = Water, at = 1 });
+        Assert.Equal(1, h.View(0).GetProperty("turn").GetInt32());
+        h.Act(1, "shoot", new { cell = Water, at = 2 });
+        h.Act(2, "shoot", new { cell = Water, at = 3 });
+        Assert.Equal(3, h.View(0).GetProperty("turn").GetInt32());
+        h.Act(3, "shoot", new { cell = Water, at = 0 });
+        Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
+    }
+
+    [Fact]
+    public void A_sunk_fleet_drops_its_captain_out_and_the_game_goes_on()
+    {
+        var h = Company(3);
+        SinkAll(h, 0, 1);
+
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
-        Assert.Equal(cells.Length, h.View(0).GetProperty("shots").GetInt32());
+        var v = h.View(1);
+        Assert.True(v.GetProperty("boards")[1].GetProperty("out").GetBoolean());
+        Assert.Equal(0, v.GetProperty("boards")[1].GetProperty("left").GetInt32());
+        var feed = v.GetProperty("feed");
+        Assert.Equal("out", feed[feed.GetArrayLength() - 1].GetProperty("res").GetString());
+        // хто вибув, той не стріляє, і в черзі його більше нема
+        Assert.Equal("Цей флот уже на дні", h.Act(0, "shoot", new { cell = 5, at = 1 }).Message);
+        h.Act(0, "shoot", new { cell = Water, at = 2 });
+        Assert.Equal(2, h.View(0).GetProperty("turn").GetInt32());
+        Assert.Equal("Твій флот на дні — лишається дивитись", h.Act(1, "shoot", new { cell = 0, at = 0 }).Message);
+        h.Act(2, "shoot", new { cell = Water, at = 0 });
+        Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
+    }
+
+    [Fact]
+    public void The_last_fleet_afloat_wins_and_the_places_follow_the_sinking_order()
+    {
+        var h = Company(4);
+        SinkAll(h, 0, 2);
+        SinkAll(h, 0, 1);
+        SinkAll(h, 0, 3);
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        var v = h.View(null);
+        Assert.Equal([0, 3, 1, 2], Ints(Prop(v, "result", "places")));
+        Assert.Equal(30, Ints(Prop(v, "result", "sank"))[0]);
+        Assert.StartsWith("Морський бій: останній флот на плаву — Оля синій", h.Room.Result.Text);
+        Assert.Contains("далі Марко жовтий, Петро червоний, Іра зелений", h.Room.Result.Text);
+    }
+
+    [Fact]
+    public void After_the_end_every_fleet_is_shown_to_everybody()
+    {
+        var h = Company(3);
+        Assert.DoesNotContain("\"reveal\":[", h.View(null).ToString());
+        SinkAll(h, 0, 1);
+        SinkAll(h, 0, 2);
+        var v = h.View(null);
+        Assert.Equal(10, v.GetProperty("boards")[0].GetProperty("reveal").GetArrayLength());
+        Assert.Equal(Red[0], Ints(v.GetProperty("boards")[1].GetProperty("reveal")[0]));
+    }
+
+    [Fact]
+    public void In_a_company_nobody_sees_anybody_elses_ships()
+    {
+        var h = Company(4);
+        h.Act(0, "shoot", new { cell = 0, at = 1 });
+        for (var seat = 0; seat < 4; seat++)
+        {
+            var v = h.View(seat);
+            Assert.Equal(10, Prop(v, "me", "ships").GetArrayLength());
+            var rest = v.GetProperty("boards").ToString() + v.GetProperty("enemy") + v.GetProperty("feed");
+            Assert.DoesNotContain("ships", rest);
+            Assert.DoesNotContain("\"reveal\":[", rest);
+        }
+        Assert.DoesNotContain("ships", h.View(null).ToString());
+    }
+
+    [Fact]
+    public void Leaving_a_company_sinks_only_your_own_fleet()
+    {
+        var h = Company(3);
+        h.Act(0, "shoot", new { cell = Water, at = 1 });   // хід у червоного
+        h.Leave("Петро");
+
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        var v = h.View(0);
+        Assert.True(v.GetProperty("boards")[1].GetProperty("out").GetBoolean());
+        Assert.Equal(2, v.GetProperty("turn").GetInt32());          // черга перескочила на наступного живого
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("встав з-за столу, його флот пішов на дно"));
+
+        h.Leave("Іра");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+    }
+
+    [Fact]
+    public void A_captain_already_sunk_can_leave_without_breaking_the_game()
+    {
+        var h = Company(3);
+        SinkAll(h, 0, 1);
+        h.Leave("Петро");
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
+    }
+
+    [Fact]
+    public void When_the_last_rival_leaves_the_sunk_one_does_not_win()
+    {
+        var h = Company(3);
+        SinkAll(h, 0, 1);       // червоний на дні, але сидить і дивиться
+        h.Leave("Іра");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+    }
+
+    [Fact]
+    public void Leaving_while_the_rest_are_ready_starts_the_battle()
+    {
+        var h = new RoomHarness("battleship", seed: 5);
+        foreach (var nick in Crew.Take(3)) h.Join(nick);
+        h.Start();
+        h.Act(0, "random"); h.Act(0, "ready");
+        h.Act(1, "random"); h.Act(1, "ready");
+        h.Leave("Іра");
+        Assert.Equal("battle", h.View(0).GetProperty("phase").GetString());
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void A_captain_who_dozes_off_gets_a_shot_fired_for_him()
+    {
+        var h = Company(3);
+        Secs(h, BattleshipRules.TurnSeconds - 1);
+        Assert.Equal(0, h.View(0).GetProperty("shots").GetInt32());
+        Secs(h, 1);
+
+        var v = h.View(0);
+        Assert.Equal(1, v.GetProperty("shots").GetInt32());
+        var shot = v.GetProperty("feed")[0];
+        Assert.True(shot.GetProperty("auto").GetBoolean());
+        Assert.Equal(0, shot.GetProperty("by").GetInt32());
+        Assert.NotEqual(0, shot.GetProperty("at").GetInt32());
+    }
+
+    [Fact]
+    public void Two_players_on_a_four_seat_table_play_the_classic_duel()
+    {
+        // місця 0 і 2: Петро встав ще в лобі — гра мусить жити з дірою між місцями
+        var h = new RoomHarness("battleship", seed: 9);
+        h.Join("Оля"); h.Join("Петро"); h.Join("Іра");
+        h.Leave("Петро");
+        h.Start();
+        Assert.Equal([0, 2], Ints(h.View(0).GetProperty("players")));
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("boards")[1].ValueKind);
+        h.Act(0, "place", Fleet(Blue)); h.Act(2, "place", Fleet(Red));
+        h.Act(0, "ready"); h.Act(2, "ready");
+        foreach (var cell in Red.SelectMany(s => s)) Assert.True(h.Act(0, "shoot", new { cell }).Ok);   // ціль одна — «at» не треба
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.Equal("Морський бій: Оля синій 10:0 Іра зелений, пострілів 20", h.Room.Result.Text);
+    }
+
+    [Fact]
+    public void A_company_rematch_starts_everybody_from_an_empty_sea()
+    {
+        var h = Company(3);
+        SinkAll(h, 0, 1);
+        SinkAll(h, 0, 2);
+        Assert.True(h.Rematch("Петро").Ok);
+        var v = h.View(0);
+        Assert.Equal("placing", v.GetProperty("phase").GetString());
+        Assert.Equal([0, 1, 2], Ints(v.GetProperty("players")));
+        Assert.Empty(v.GetProperty("feed").EnumerateArray());
+        for (var s = 0; s < 3; s++) Assert.False(v.GetProperty("boards")[s].GetProperty("out").GetBoolean());
+    }
+
+    [Fact]
+    public void A_table_in_the_lobby_shows_the_lobby_phase_and_the_chosen_sea()
+    {
+        var h = new RoomHarness("battleship", options: new { fleet = "quick" });
+        h.Join("Оля");
+        h.Join("Петро");
+        var v = h.View(0);
+        Assert.Equal("lobby", v.GetProperty("phase").GetString());
+        Assert.Equal(8, Prop(v, "sea", "w").GetInt32());
+        Assert.Equal([3, 2, 2, 1, 1, 1], Ints(Prop(v, "sea", "fleet")));
+        Assert.Equal("Чекаємо на гравців", h.Act(0, "random").Message);   // до «Почати» ходів нема
+    }
+
+    // ---------- швидке море ----------
+
+    [Fact]
+    public void The_quick_sea_has_its_own_fleet_and_its_own_words()
+    {
+        var sea = BattleshipRules.Quick;
+        Assert.Null(BattleshipRules.Invalid(BattleshipRules.Canonical(sea), sea));
+        Assert.Equal("Кораблів має бути рівно шість", BattleshipRules.Invalid(Blue, sea));
+        Assert.Equal("Флот не той: один на три, два на два і три на одну клітинку",
+            BattleshipRules.Invalid([[0, 1], [4, 5], [16, 17], [19], [21], [23]], sea));
+        Assert.Equal("Корабель буває від однієї до трьох клітинок",
+            BattleshipRules.Invalid([[0, 1, 2, 3], [5, 6], [16, 17], [19], [21], [23]], sea));
+        // 7 і 8 сусіди за номером, але на полі 8×8 це різні краї
+        Assert.Equal("Корабель має бути прямий", BattleshipRules.Invalid([[7, 8], [0, 1, 2], [16, 17], [19], [21], [23]], sea));
+    }
+
+    [Fact]
+    public void Two_hundred_quick_fleets_are_all_legal()
+    {
+        for (var seed = 1; seed <= 200; seed++)
+        {
+            var fleet = BattleshipRules.RandomFleet(new Random(seed), BattleshipRules.Quick);
+            Assert.Null(BattleshipRules.Invalid(fleet, BattleshipRules.Quick));
+            Assert.True(fleet.SelectMany(s => s).All(c => c < 64));
+        }
+    }
+
+    [Fact]
+    public void A_quick_battle_ends_after_ten_hits_a_board()
+    {
+        var h = new RoomHarness("battleship", options: new { fleet = "quick" }, seed: 4);
+        h.Join("Оля"); h.Join("Петро"); h.Join("Іра");
+        h.Start();
+        var quick = BattleshipRules.Canonical(BattleshipRules.Quick);
+        for (var s = 0; s < 3; s++) Assert.True(h.Act(s, "place", Fleet([.. quick])).Ok);
+        for (var s = 0; s < 3; s++) h.Act(s, "ready");
+        Assert.Equal("Не зрозумів, куди стріляти", h.Act(0, "shoot", new { cell = 64, at = 1 }).Message);
+        foreach (var at in new[] { 1, 2 })
+            foreach (var cell in quick.SelectMany(x => x)) Assert.True(h.Act(0, "shoot", new { cell, at }).Ok);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.Equal(20, Ints(Prop(h.View(0), "result", "hits"))[0]);
+    }
+
+    [Fact]
+    public void Save_and_load_keep_a_company_battle_intact()
+    {
+        var h = Company(4);
+        SinkAll(h, 0, 3);
+        h.Act(0, "shoot", new { cell = 0, at = 1 });
+        h.Act(0, "shoot", new { cell = Water, at = 2 });
+
+        var copy = new Battleship();
+        copy.Load(h.Room.Game.Save()!);
+        for (var seat = 0; seat < 4; seat++)
+            Assert.Equal(Views.Text(h.Room.Game.View(seat)), Views.Text(copy.View(seat)));
+        Assert.Equal(Views.Text(h.Room.Game.View(null)), Views.Text(copy.View(null)));
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void A_thousand_ticks_of_a_full_table_are_instant()
+    {
+        var h = Company(4);
+        var sw = Stopwatch.StartNew();
+        h.Tick(1000);
+        sw.Stop();
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"1000 тиків зайняли {sw.Elapsed}");
     }
 }
