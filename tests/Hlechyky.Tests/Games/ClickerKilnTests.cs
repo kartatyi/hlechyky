@@ -211,7 +211,7 @@ public class ClickerKilnTests
     // ---------- підмайстер-палій ----------
 
     [Fact]
-    public void The_helper_fires_quality_one_without_cracks_and_opens_by_himself()
+    public void The_helper_fires_without_cracks_and_opens_by_himself()
     {
         var h = Wheel();
         Rack(h, dry: 6);
@@ -228,10 +228,10 @@ public class ClickerKilnTests
         var last = k.GetProperty("last");
         Assert.True(last.GetProperty("helper").GetBoolean());
         Assert.Equal(6, last.GetProperty("items").GetArrayLength());
-        Assert.All(last.GetProperty("items").EnumerateArray(), i => Assert.Equal(1, i[1].GetInt32()));
-        var items = Craft(h).GetProperty("items");
-        Assert.Equal("pot||1", items[0].GetProperty("key").GetString());
-        Assert.Equal(6, items[0].GetProperty("n").GetInt32());
+        // v9: ані тріщин (0), ані розкішних (4) — палій пече рівно, з власним малим «блиском».
+        Assert.All(last.GetProperty("items").EnumerateArray(), i => Assert.InRange(i[1].GetInt32(), 1, 3));
+        Assert.Equal(6, StoreCount(h));
+        Assert.StartsWith("pot||", Craft(h).GetProperty("items")[0].GetProperty("key").GetString());
         // AddFired: майстерність і альбом бачать кожен обпалений виріб.
         Assert.Equal(6, Craft(h).GetProperty("fired").GetInt64());
         Assert.Equal(0, k.GetProperty("straw").GetInt32());                   // солома підмайстрові не потрібна
@@ -395,7 +395,8 @@ public class ClickerKilnTests
         }
         Assert.Equal(1, Mult(0, 100), 6);
         Assert.InRange(Mult(1, 0), 1.30, 1.34);
-        Assert.InRange(Mult(1, 100), 1.70, 1.74);
+        // v9: краса тепер несе ще й розкішні (×4,5) — ідеальна партія коштує вдвічі, а не в півтора.
+        Assert.InRange(Mult(1, 100), 2.17, 2.22);
         Assert.InRange(Mult(0.5, 0), 1.10, 1.16);
         Assert.True(Mult(0.9, 60) > Mult(0.9, 0));
     }
@@ -676,6 +677,56 @@ public class ClickerKilnTests
                     ms += 14 + rnd.NextDouble() * 3;
                 }
                 break;
+            case "brush":
+                foreach (var pe in s.GetProperty("petals").EnumerateArray())
+                {
+                    var petal = pe.EnumerateArray().Select(x => x.GetInt32()).ToArray();
+                    for (var i = 0; i <= 20; i++)
+                    {
+                        var (x, y) = KilnPaint.PetalAt(petal, i / 20.0);
+                        pts.Add([ms, x + Shake(), y + Shake(), i == 0 ? 1 : 0]);
+                        Tick();
+                    }
+                    ms += 150;
+                }
+                break;
+            case "stamp":
+            {
+                var step = s.GetProperty("step").GetInt32();
+                var marks = s.GetProperty("marks").EnumerateArray().ToList();
+                for (var i = 0; i < marks.Count; i++)
+                {
+                    ms = i * (double)step + rnd.NextDouble() * 40 - 20;              // рука не метроном, але в ритмі
+                    for (var k = 0; k < 3; k++)
+                    {
+                        pts.Add([ms, marks[i][0].GetInt32() + Shake(), marks[i][1].GetInt32() + Shake(), k == 0 ? 1 : 0]);
+                        ms += 12 + rnd.NextDouble() * 5;
+                    }
+                }
+                break;
+            }
+            case "glaze":
+            {
+                var half = s.GetProperty("half").EnumerateArray().Select(x => x.GetInt32()).ToArray();
+                int gtop = s.GetProperty("top").GetInt32(), gbottom = s.GetProperty("bottom").GetInt32();
+                var first = true;
+                var right = true;
+                for (var cy = gtop; cy <= gbottom; cy++)
+                {
+                    var cols = Enumerable.Range(0, 25).Where(cx => Math.Abs(cx * 40 + 20 - 500) <= half[cy]).ToList();
+                    if (cols.Count == 0) continue;
+                    double x0 = cols.First() * 40 + 20, x1 = cols.Last() * 40 + 20;
+                    for (var i = 0; i <= 8; i++)
+                    {
+                        var t = right ? i / 8.0 : 1 - i / 8.0;
+                        pts.Add([ms, x0 + (x1 - x0) * t, cy * 40 + 20 + Shake(), first ? 1 : 0]);
+                        first = false;
+                        Tick();
+                    }
+                    right = !right;
+                }
+                break;
+            }
             default:
             {
                 int top = s.GetProperty("top").GetInt32(), bottom = s.GetProperty("bottom").GetInt32();
@@ -713,7 +764,7 @@ public class ClickerKilnTests
 
     static void OpenAllTechniques(RoomHarness h) => Patch(h, s =>
     {
-        s["craft"]!["firedBy"] = new JsonObject { ["pot"] = 1000 };
+        s["craft"]!["firedBy"] = new JsonObject { ["pot"] = 1500 };
         s["styles"] = new JsonArray("gavarets", "kosiv");
     });
 
@@ -751,6 +802,9 @@ public class ClickerKilnTests
     [InlineData("flyand")]
     [InlineData("marble")]
     [InlineData("losk")]
+    [InlineData("brush")]
+    [InlineData("stamp")]
+    [InlineData("glaze")]
     public void A_careful_hand_paints_beautifully(string tech)
     {
         var h = Wheel();
@@ -769,6 +823,9 @@ public class ClickerKilnTests
     [InlineData("flyand")]
     [InlineData("marble")]
     [InlineData("losk")]
+    [InlineData("brush")]
+    [InlineData("stamp")]
+    [InlineData("glaze")]
     public void A_careless_scribble_is_not_beautiful(string tech)
     {
         var h = Wheel();
@@ -1025,7 +1082,8 @@ public class ClickerKilnTests
             Patch(h, s => s["kiln"] = new JsonObject { ["beauty"] = 100 });
             Rack(h, dry: n);
             Assert.True(Burn(h).Ok);
-            var all = Kiln(h).GetProperty("last").GetProperty("items").EnumerateArray().All(i => i[1].GetInt32() == 3);
+            // v9: розкішний (4) — теж дзвінкий і навіть кращий, тож «усе горно дзвінке» — це Q ≥ 3.
+            var all = Kiln(h).GetProperty("last").GetProperty("items").EnumerateArray().All(i => i[1].GetInt32() >= 3);
             var got = h.Awards.Any(a => a.Reason == "ach:potter-kiln-perfect");
             if (n == 4)
             {
@@ -1060,5 +1118,335 @@ public class ClickerKilnTests
         Assert.True(K(h, new { op = "light", helper = true }).Ok);
         h.Clock.Advance(40);
         Assert.Equal(Views.Text(View(h)), Views.Text(View(h)));
+    }
+
+    // ---------- v9: розкішний ступінь ----------
+
+    [Theory]
+    [InlineData(1.0, 100, 0.24, 4)]
+    [InlineData(1.0, 100, 0.26, 3)]
+    [InlineData(1.0, 100, 0.29, 3)]
+    [InlineData(1.0, 100, 0.31, 2)]
+    [InlineData(1.0, 100, 0.71, 1)]
+    [InlineData(1.0, 50, 0.039, 4)]
+    [InlineData(1.0, 50, 0.05, 3)]
+    [InlineData(0.5, 100, 0.0, 4)]
+    [InlineData(1.0, 0, 0.0, 3)]
+    [InlineData(0.9, 0, 0.0, 3)]
+    public void A_luxury_ware_comes_only_out_of_a_painted_batch(double heat, int beauty, double u, int q)
+    {
+        Assert.Equal(q, KilnHeat.Quality(heat, beauty, u));
+    }
+
+    /// <summary>Розкішні беруться З ВЕРХУ дзвінких: шанси «хоч дзвінкий» і «хоч добрий» лишились ті самі, що й були.</summary>
+    [Fact]
+    public void The_old_grades_do_not_get_worse_from_the_new_one()
+    {
+        foreach (var beauty in new[] { 0, 30, 70, 100 })
+            foreach (var heat in new[] { 0.0, 0.4, 0.75, 1.0 })
+            {
+                var s = KilnHeat.Shine(heat, beauty);
+                Assert.Equal(heat * (0.6 + 0.4 * beauty / 100.0), s, 9);
+                for (var i = 0; i < 1000; i++)
+                {
+                    var u = (i + 0.5) / 1000;
+                    var q = KilnHeat.Quality(heat, beauty, u);
+                    Assert.Equal(u < 0.3 * s * s, q >= 3);
+                    Assert.Equal(u < 0.3 * s * s + 0.4 * s, q >= 2);
+                }
+            }
+    }
+
+    [Fact]
+    public void A_perfect_heat_with_a_perfect_painting_gives_a_quarter_of_luxury_wares()
+    {
+        int lux = 0, ring = 0, good = 0;
+        for (var i = 0; i < 10_000; i++)
+        {
+            var q = KilnHeat.Quality(1, 100, (i + 0.5) / 10_000);
+            if (q == 4) lux++;
+            else if (q == 3) ring++;
+            else if (q == 2) good++;
+        }
+        Assert.InRange(lux / 10_000.0, 0.249, 0.251);
+        Assert.InRange(ring / 10_000.0, 0.049, 0.051);
+        Assert.InRange(good / 10_000.0, 0.399, 0.401);
+        Assert.Equal(4.5, Clicker.QualityMult[4]);
+    }
+
+    [Fact]
+    public void A_painted_batch_puts_luxury_wares_in_the_store_and_earns_the_achievement()
+    {
+        var h = Wheel();
+        Patch(h, s =>
+        {
+            s["upgrades"]!["kiln"] = 180;                                   // 24 місця
+            s["kiln"] = new JsonObject { ["beauty"] = 100 };
+        });
+        Rack(h, dry: 24);
+        var r = Burn(h);
+        Assert.True(r.Ok, r.Message);
+        var items = Kiln(h).GetProperty("last").GetProperty("items").EnumerateArray().Select(i => i[1].GetInt32()).ToList();
+        var lux = items.Count(q => q == 4);
+        Assert.True(lux > 0, r.Message);
+        Assert.Contains("розкішн", r.Message);
+        var store = Craft(h).GetProperty("items").EnumerateArray().ToDictionary(x => x.GetProperty("key").GetString()!, x => x);
+        Assert.Equal(lux, store["pot||4"].GetProperty("n").GetInt32());
+        // Розкішний вартий рівно ×4,5 простого звичайного (до заокруглення глека вниз).
+        var ratio = store["pot||4"].GetProperty("value").GetDouble() / store["pot||1"].GetProperty("value").GetDouble();
+        Assert.InRange(ratio, 4.49, 4.51);
+        Assert.Contains(h.Awards, a => a.Reason == "ach:potter-q4");
+    }
+
+    [Fact]
+    public void A_luxury_ware_lives_in_the_store_and_in_the_save()
+    {
+        var h = Wheel();
+        Patch(h, s => s["craft"]!["items"] = new JsonObject { ["jug|kosiv|4"] = 2 });
+        var it = Craft(h).GetProperty("items").EnumerateArray().Single();
+        Assert.Equal("jug|kosiv|4", it.GetProperty("key").GetString());
+        Assert.Equal(4, it.GetProperty("q").GetInt32());
+        // Базар «крім дзвінких» розкішних не бере, а «все» — забирає.
+        Assert.Equal("У коморі самі дзвінкі — їх базар не бере", Act(h, "bazaar", new { all = true, q = 2 }).Message);
+        var sold = Act(h, "bazaar", new { all = true });
+        Assert.True(sold.Ok, sold.Message);
+        Assert.Equal(0, StoreCount(h));
+    }
+
+    // ---------- v9: палій ----------
+
+    [Theory]
+    [InlineData(0, false, 0.05)]
+    [InlineData(1, false, 0.10)]
+    [InlineData(4, false, 0.25)]
+    [InlineData(8, false, 0.45)]
+    [InlineData(20, false, 0.45)]
+    [InlineData(0, true, 0.075)]
+    [InlineData(8, true, 0.6)]
+    [InlineData(20, true, 0.6)]
+    public void The_stokers_shine_grows_with_his_level_and_the_family_fire(int level, bool ember, double shine)
+    {
+        Assert.Equal(shine, KilnHeat.AutoShine(level, ember), 9);
+    }
+
+    [Fact]
+    public void The_best_stoker_is_exactly_a_perfect_firing_without_a_painting()
+    {
+        var s = KilnHeat.AutoShine(8, true);
+        Assert.Equal(KilnHeat.Shine(1, 0), s, 9);
+        int ring = 0, good = 0, lux = 0;
+        for (var i = 0; i < 10_000; i++)
+        {
+            var q = KilnHeat.QualityOf(s, 0, (i + 0.5) / 10_000);
+            if (q == 4) lux++;
+            else if (q == 3) ring++;
+            else if (q == 2) good++;
+        }
+        Assert.Equal(0, lux);                                               // розкішних палій не робить ніколи
+        Assert.InRange(ring / 10_000.0, 0.10, 0.115);
+        Assert.InRange(good / 10_000.0, 0.235, 0.245);
+    }
+
+    [Fact]
+    public void The_stoker_without_the_upgrade_almost_always_gives_plain_wares()
+    {
+        var plain = 0;
+        var s = KilnHeat.AutoShine(0, false);
+        for (var i = 0; i < 10_000; i++) if (KilnHeat.QualityOf(s, 0, (i + 0.5) / 10_000) == 1) plain++;
+        Assert.InRange(plain / 10_000.0, 0.97, 0.98);                       // ~2 % добрих — приємна дрібниця, не баланс
+    }
+
+    // ---------- v9: автогорно ----------
+
+    /// <summary>Челядник із сухими сирцями; <paramref name="touched"/> — гончар щойно був біля горна.</summary>
+    static RoomHarness Stokery(int dry, bool touched = false)
+    {
+        var h = Wheel();
+        Patch(h, s => s["guild"] = new JsonObject { ["rank"] = 1 });
+        Rack(h, dry: dry);
+        if (touched) Patch(h, s => s["kiln"]!["touch"] = h.Clock.UtcNow.ToString("O"));
+        return h;
+    }
+
+    [Fact]
+    public void The_stoker_does_not_wait_for_a_full_rack_any_more()
+    {
+        Assert.Equal("burning", State(Stokery(6)));
+        Assert.Equal("burning", State(Stokery(3)));                          // горна не чіпали — досить і трьох
+    }
+
+    [Fact]
+    public void A_kiln_the_potter_just_touched_waits_three_quiet_minutes()
+    {
+        var h = Stokery(3, touched: true);
+        Assert.Equal("cold", State(h));
+        h.Clock.Advance(Clicker.KilnIdle - TimeSpan.FromSeconds(20));
+        Assert.Equal("cold", State(h));
+        h.Clock.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal("burning", State(h));
+
+        // А шести сухих палієві досить одразу — чіпав гончар горно чи ні.
+        Assert.Equal("burning", State(Stokery(6, touched: true)));
+    }
+
+    [Fact]
+    public void A_batch_the_potter_started_is_never_taken_by_the_stoker()
+    {
+        var h = Stokery(6);
+        Assert.Equal("burning", State(h));
+        h.Clock.Advance(Clicker.KilnBurn + Clicker.KilnCool + TimeSpan.FromSeconds(2));
+        Patch(h, s => s["styles"] = new JsonArray("kosiv"));
+        Assert.True(K(h, new { op = "paint", style = "kosiv" }).Ok);
+        Rack(h, dry: 6);
+        h.Clock.Advance(TimeSpan.FromMinutes(20));
+        Assert.Equal("cold", State(h));                                      // розпис обрано — партія гончарева
+    }
+
+    [Fact]
+    public void The_switch_stops_the_stoker_and_without_a_perk_there_is_no_switch()
+    {
+        var j = Wheel();
+        Patch(j, s => s["guild"] = new JsonObject { ["rank"] = 1, ["autoOff"] = true });
+        Rack(j, dry: 8);
+        Assert.Equal("cold", State(j));
+        Assert.False(Kiln(j).GetProperty("auto").GetBoolean());
+        Assert.True(Kiln(j).GetProperty("autoCan").GetBoolean());
+        // Без рангу й без «Палія» вимикача просто нема кому показувати.
+        var n = Wheel();
+        Rack(n, dry: 8);
+        Assert.Equal("cold", State(n));
+        Assert.False(Kiln(n).GetProperty("autoCan").GetBoolean());
+        Assert.False(Kiln(n).GetProperty("auto").GetBoolean());
+    }
+
+    // ---------- v9: офлайн-прогін майстерні ----------
+
+    [Fact]
+    public void A_night_with_apprentices_and_a_stoker_is_many_batches_not_one()
+    {
+        var h = Wheel();
+        Patch(h, s => { s["upgrades"]!["apprentice"] = 25; s["guild"] = new JsonObject { ["rank"] = 1 }; });
+        h.Clock.Advance(TimeSpan.FromHours(8));
+        var k = Kiln(h);
+        Assert.True(k.GetProperty("batches").GetInt32() > 50, $"партій: {k.GetProperty("batches").GetInt32()}");
+        Assert.True(k.GetProperty("autoBatches").GetInt32() > 50);
+        Assert.True(StoreCount(h) > 100, $"у коморі: {StoreCount(h)}");
+        Assert.True(Craft(h).GetProperty("fired").GetInt64() > 100);
+        var notes = View(h).GetProperty("away").GetProperty("notes").EnumerateArray().Select(x => x.GetString()!).ToList();
+        Assert.Contains(notes, n => n.StartsWith("🔥 Палій обпалив") && n.Contains("вироб"));
+        Assert.Single(notes.Where(n => n.StartsWith("🔥 Палій обпалив")));   // один підсумок, а не сорок записів
+        Assert.True(Act(h, "look").Ok);
+        Assert.Contains(h.Awards, a => a.Reason == "ach:potter-stoker");
+    }
+
+    [Fact]
+    public void A_night_without_a_stoker_stays_exactly_as_it_was()
+    {
+        var h = Wheel();
+        Patch(h, s => s["upgrades"]!["apprentice"] = 25);
+        h.Clock.Advance(TimeSpan.FromHours(8));
+        Assert.Equal("cold", State(h));
+        Assert.Equal(0, Kiln(h).GetProperty("batches").GetInt32());
+        Assert.Equal(0, StoreCount(h));
+        Assert.Equal(Clicker.RackBase, Craft(h).GetProperty("rack").GetArrayLength());
+    }
+
+    [Fact]
+    public void A_short_gap_is_one_step_and_the_helpers_batch_is_still_one_note()
+    {
+        var h = Wheel();
+        Rack(h, dry: 3);
+        Assert.True(K(h, new { op = "light", helper = true }).Ok);
+        h.Clock.Advance(TimeSpan.FromMinutes(10));
+        var notes = View(h).GetProperty("away").GetProperty("notes").EnumerateArray().Select(x => x.GetString()!).ToList();
+        Assert.Contains(notes, n => n.StartsWith("🔥 Підмайстер відкрив горно: 3 вироби"));
+    }
+
+    [Fact]
+    public void The_offline_run_never_loops_forever()
+    {
+        var h = Wheel();
+        Patch(h, s => { s["upgrades"]!["apprentice"] = 25; s["guild"] = new JsonObject { ["rank"] = 1 }; });
+        h.Clock.Advance(TimeSpan.FromDays(30));
+        // Стеля простою — вісім годин, кроків — 600: місяць відсутності рахується так само швидко, як ніч.
+        Assert.True(Kiln(h).GetProperty("batches").GetInt32() <= Clicker.WorkStepsMax);
+        Assert.Equal(Views.Text(View(h)), Views.Text(View(h)));
+    }
+
+    // ---------- v9: клуня, техніки, збереження ----------
+
+    [Fact]
+    public void The_barn_key_doubles_the_loft_and_halves_the_bundle()
+    {
+        Assert.Equal(Clicker.StrawMax, Clicker.StrawLoft(false));
+        Assert.Equal(Clicker.StrawBarnMax, Clicker.StrawLoft(true));
+        Assert.Equal(40, Clicker.StrawLoft(true));
+        Assert.Equal(200 * Clicker.StrawPots, Clicker.StrawCost(200, false));
+        Assert.Equal(200 * Clicker.StrawPots * 0.5, Clicker.StrawCost(200, true));
+        Assert.Equal(10, Clicker.StrawCost(1, true));                        // дешевше за десятку в'язка не буває
+        var h = Wheel();
+        Assert.Equal(Clicker.StrawMax, Kiln(h).GetProperty("strawMax").GetInt32());
+    }
+
+    [Fact]
+    public void The_new_techniques_open_with_their_own_styles_and_counts()
+    {
+        var h = Wheel();
+        Assert.Equal("Пензлем відкриється з петриківським розписом у колекції або після 250 обпалених",
+            K(h, new { op = "paint", style = "", tech = "brush" }).Message);
+        Patch(h, s => s["styles"] = new JsonArray("petrykivka", "trypillia"));
+        var techs = Kiln(h).GetProperty("techs").EnumerateArray().Select(x => x.GetString()).ToList();
+        Assert.Contains("brush", techs);
+        Assert.Contains("stamp", techs);
+        Assert.DoesNotContain("glaze", techs);
+        Patch(h, s => s["craft"]!["firedBy"] = new JsonObject { ["pot"] = 1200 });
+        Assert.Contains("glaze", Kiln(h).GetProperty("techs").EnumerateArray().Select(x => x.GetString()));
+    }
+
+    [Fact]
+    public void All_eight_techniques_are_an_achievement()
+    {
+        var h = Wheel();
+        h.Clock.Advance(1);
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:potter-tech-all");
+        OpenAllTechniques(h);
+        Assert.Equal(8, Kiln(h).GetProperty("techs").GetArrayLength());
+        Assert.True(Act(h, "look").Ok);
+        Assert.Contains(h.Awards, a => a.Reason == "ach:potter-tech-all");
+        Assert.True(SaveNode(h)["kiln"]!["techAll"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void An_old_save_knows_nothing_about_the_stoker_and_starts_clean()
+    {
+        var h = Wheel();
+        Patch(h, s =>
+        {
+            var kiln = s["kiln"]!.AsObject();
+            kiln.Remove("touch");
+            kiln.Remove("auto");
+            kiln.Remove("techAll");
+        });
+        var k = Kiln(h);
+        Assert.Equal(0, k.GetProperty("autoBatches").GetInt32());
+        Assert.False(k.GetProperty("auto").GetBoolean());
+        Assert.Equal(Clicker.StrawMax, k.GetProperty("strawMax").GetInt32());
+        Assert.Equal(KilnHeat.AutoShine(0, false), k.GetProperty("autoShine").GetDouble(), 9);
+        // Горна «не чіпали ніколи» — палієві це не завада, він береться за сухе одразу.
+        Patch(h, s => s["guild"] = new JsonObject { ["rank"] = 1 });
+        Rack(h, dry: 2);
+        Assert.Equal("burning", State(h));
+    }
+
+    [Fact]
+    public void The_stoker_counter_and_the_touch_survive_a_save()
+    {
+        var h = Stokery(6);
+        Assert.Equal("burning", State(h));
+        h.Clock.Advance(31);
+        Assert.Equal(1, Kiln(h).GetProperty("autoBatches").GetInt32());
+        Assert.Equal(1, SaveNode(h)["kiln"]!["auto"]!.GetValue<int>());
+        Patch(h, _ => { });
+        Assert.Equal(1, Kiln(h).GetProperty("autoBatches").GetInt32());
     }
 }

@@ -33,6 +33,10 @@ public static class KilnHeat
     public const double BurnClosed = 0.045, BurnOpen = 0.12, HeatClosed = 60, HeatOpen = 240, LossClosed = 0.12, LossOpen = 0.21, Gust = 2;
     public const double Lo = 830, Hi = 1010, Hi0 = 350, SoftUnder = 100, SoftOver = 60;
     public const double CrackFree = 300, CrackScale = 3000, CrackMax = 0.5;
+    /// <summary>Розкішний ступінь (v9): при ідеальному жарі й красі 100 — чверть партії; береться з верху дзвінких.</summary>
+    public const double LuxShare = 0.25;
+    /// <summary>Палій (v9): «блиск» сам по собі, від рівня прокачки «Палій», ×1,5 з «Вогнем роду», але не вище стелі.</summary>
+    public const double AutoBase = 0.05, AutoPerLevel = 0.05, AutoLevelMax = 0.45, AutoEmber = 1.5, AutoMax = 0.6;
 
     /// <summary>Підсумок партії: рахунок жару 0…1, перегрів у градусо-секундах, жар наприкінці, скільки полін згоріло.</summary>
     public readonly record struct Result(double Heat, double Over, double Temp, int Logs);
@@ -120,18 +124,40 @@ public static class KilnHeat
 
     public static double CrackChance(double over) => Math.Clamp((over - CrackFree) / CrackScale, 0, CrackMax);
 
+    /// <summary>«Блиск» партії: <c>S = H × (0,6 + 0,4 × краса/100)</c> — з нього й ростуть усі ступені якості.</summary>
+    public static double Shine(double heat, int beauty) =>
+        Math.Clamp(heat, 0, 1) * (0.6 + 0.4 * Math.Clamp(beauty, 0, 100) / 100.0);
+
+    /// <summary>
+    /// «Блиск» партії палія (v9): сам по собі малий — <c>0,05 + 0,05 × рівень «Палія»</c> (стеля рівнів — 0,45),
+    /// «Вогонь роду» множить його на півтора, але вище 0,6 палій не пече. На стелі це ~11 % дзвінких і 24 % добрих —
+    /// рівно як ідеальний ручний жар без розпису; рука з розписом однаково дає більше, та ще й розкішні.
+    /// </summary>
+    public static double AutoShine(int stoker, bool ember) =>
+        Math.Min(AutoMax, Math.Min(AutoLevelMax, AutoBase + AutoPerLevel * Math.Max(0, stoker)) * (ember ? AutoEmber : 1));
+
     /// <summary>
     /// Якість виробу за рахунком жару <paramref name="heat"/> (0…1), красою розпису (0…100) і кидком <paramref name="u"/>.
-    /// «Блиск» <c>S = H × (0,6 + 0,4 × краса/100)</c>; дзвінкий — з імовірністю <c>0,3·S²</c>, добрий — <c>0,4·S</c>.
-    /// Ідеальний жар без розпису: 11 % дзвінких і 24 % добрих (у середньому ×1,32 до ціни); з красою 100 —
-    /// 30 % і 40 % (×1,72). Недогріте горно (H = 0,5) — ×1,13. Підмайстер-палій — рівно ×1.
+    /// Дзвінкий — з імовірністю <c>0,3·S²</c>, добрий — <c>0,4·S</c>. Ідеальний жар без розпису: 11 % дзвінких і
+    /// 24 % добрих (у середньому ×1,32 до ціни). Недогріте горно (H = 0,5) — ×1,13.
     /// </summary>
-    public static int Quality(double heat, int beauty, double u)
+    public static int Quality(double heat, int beauty, double u) =>
+        QualityOf(Shine(heat, beauty), Math.Clamp(beauty, 0, 100) / 100.0, u);
+
+    /// <summary>
+    /// Якість із готового «блиску» <paramref name="s"/> і краси розпису <paramref name="paint"/> (0…1).
+    /// Розкішний (v9) буває ЛИШЕ з розписаної партії: <c>p4 = 0,25 · S² · краса²</c> — і береться він з верху
+    /// дзвінких, тож нерозписана партія лишається рівно такою, якою була до дев'ятого оновлення. При ідеальному
+    /// жарі й красі 100 — 25 % розкішних, 5 % дзвінких, 40 % добрих.
+    /// </summary>
+    public static int QualityOf(double s, double paint, double u)
     {
-        var s = Math.Clamp(heat, 0, 1) * (0.6 + 0.4 * Math.Clamp(beauty, 0, 100) / 100.0);
+        s = Math.Clamp(s, 0, 1);
+        paint = Math.Clamp(paint, 0, 1);
         var p3 = 0.3 * s * s;
         var p2 = 0.4 * s;
-        return u < p3 ? 3 : u < p3 + p2 ? 2 : 1;
+        var p4 = Math.Min(p3, LuxShare * s * s * paint * paint);
+        return u < p4 ? 4 : u < p3 ? 3 : u < p3 + p2 ? 2 : 1;
     }
 }
 
@@ -153,6 +179,14 @@ public static class KilnPaint
     public sealed record Flyand(int[][] Marks, int Bands);
     public sealed record Marble(int[][] Drops);
     public sealed record Losk(int[][] Stripes, int Top, int Bottom);
+    /// <summary>Пензлем: пелюстки-примари. Кожна — [основа x, y, кінчик x, y, вигин] (квадратична дуга).</summary>
+    public sealed record Brush(int[][] Petals);
+    /// <summary>Штампик: позначки навколо посудини по колу; <paramref name="Step"/> — через скільки мс спалахує наступна.</summary>
+    public sealed record Stamp(int[][] Marks, int Step);
+    /// <summary>Полива: силует посудини — півширина в одиницях полотна на кожен рядок клітинок (0 — поза посудиною).</summary>
+    public sealed record Glaze(int[] Half, int Top, int Bottom);
+
+    static double Lerp(double a, double b, double t) => a + (b - a) * t;
 
     /// <summary>Параметри візерунка техніки з зерна: ті самі і для виду, і для підрахунку краси.</summary>
     public static object Pattern(string tech, int seed)
@@ -160,6 +194,58 @@ public static class KilnPaint
         var r = new Random(seed);
         switch (tech)
         {
+            case "brush":
+            {
+                var n = 5 + r.Next(3);                                        // 5–7 пелюсток вінком
+                var start = r.Next(360);
+                var petals = new int[n][];
+                for (var i = 0; i < n; i++)
+                {
+                    var a = (start + 360.0 * i / n + r.Next(19) - 9) * Math.PI / 180;
+                    var len = 230 + r.Next(110);
+                    var bow = (r.Next(2) == 0 ? 1 : -1) * (40 + r.Next(50));
+                    petals[i] =
+                    [
+                        (int)Math.Round(500 + 95 * Math.Cos(a)), (int)Math.Round(500 + 95 * Math.Sin(a)),
+                        (int)Math.Round(500 + (95 + len) * Math.Cos(a)), (int)Math.Round(500 + (95 + len) * Math.Sin(a)), bow,
+                    ];
+                }
+                return new Brush(petals);
+            }
+            case "stamp":
+            {
+                var n = 8 + r.Next(5);                                        // 8–12 позначок
+                var start = r.Next(360);
+                var dir = r.Next(2) == 0 ? 1 : -1;
+                var marks = new int[n][];
+                for (var i = 0; i < n; i++)
+                {
+                    var a = (start + dir * 360.0 * i / n) * Math.PI / 180;
+                    var rad = 300 + r.Next(70);
+                    marks[i] = [(int)Math.Round(500 + rad * Math.Cos(a)), (int)Math.Round(500 + rad * Math.Sin(a))];
+                }
+                return new Stamp(marks, 720 + r.Next(280));
+            }
+            case "glaze":
+            {
+                // Силует глека: вінця, вузька шийка, плече, пузо й вужча ніжка — щоб полива лягала на посудину,
+                // а не на ромб. Числа цілі й прості: клієнт бере готовий масив півширин, нічого не перераховуючи.
+                var top = 3 + r.Next(2);
+                var bottom = 20 + r.Next(2);
+                double neck = 70 + r.Next(40), belly = 250 + r.Next(70), foot = 100 + r.Next(40);
+                var rim = neck + 24;
+                var half = new int[Grid];
+                for (var cy = top; cy <= bottom; cy++)
+                {
+                    var u = (cy - top) / (double)(bottom - top);
+                    var w = u < 0.1 ? Lerp(rim, neck, u / 0.1)
+                        : u < 0.42 ? Lerp(neck, belly, (u - 0.1) / 0.32)
+                        : u < 0.72 ? Lerp(belly, belly * 0.95, (u - 0.42) / 0.3)
+                        : Lerp(belly * 0.95, foot, (u - 0.72) / 0.28);
+                    half[cy] = (int)Math.Round(w);
+                }
+                return new Glaze(half, top, bottom);
+            }
             case "rizh":
                 return new Rizh(250 + r.Next(70), 45 + r.Next(35), 3 + r.Next(4), r.Next(360), 4200 + r.Next(1400), r.Next(2) == 0 ? 1 : -1);
             case "ryt":
@@ -308,6 +394,9 @@ public static class KilnPaint
             Flyand z => Pull(pts, z),
             Marble z => Drip(pts, z),
             Losk z => Rub(pts, z),
+            Brush z => Sweep(pts, z),
+            Stamp z => Tap(pts, z),
+            Glaze z => Pour(pts, z),
             _ => 0,
         };
         return (int)Math.Round(Math.Clamp(raw, 0, 100));
@@ -481,6 +570,148 @@ public static class KilnPaint
             }
         return zone == 0 ? 0 : 100.0 * inside / zone - 50.0 * outside / zone;
     }
+
+    // ---------- техніки дев'ятого оновлення ----------
+
+    public const int PetalSamples = 14;
+    public const double BrushTol = 62, BrushBlot = 130;
+
+    /// <summary>Точка на пелюстці: квадратична дуга від основи до кінчика з вигином убік.</summary>
+    public static (double X, double Y) PetalAt(int[] p, double t)
+    {
+        double x0 = p[0], y0 = p[1], x1 = p[2], y1 = p[3], bow = p.Length > 4 ? p[4] : 0;
+        var dx = x1 - x0;
+        var dy = y1 - y0;
+        var len = Math.Max(1, Math.Sqrt(dx * dx + dy * dy));
+        var cx = (x0 + x1) / 2 - bow * dy / len;
+        var cy = (y0 + y1) / 2 + bow * dx / len;
+        var s = 1 - t;
+        return (s * s * x0 + 2 * s * t * cx + t * t * x1, s * s * y0 + 2 * s * t * cy + t * t * y1);
+    }
+
+    /// <summary>
+    /// Пензлем: по кожній примарній пелюстці треба провести мазок. Пелюстку ділимо на 14 позначок; позначка
+    /// «закрита», якщо повз неї пройшов пензель ближче за 62. Краса = середнє покриття пелюсток, мінус 8 за кожен
+    /// мазок повз (той, що ніде не торкнувся квітки).
+    /// </summary>
+    static double Sweep(List<Pt> pts, Brush z)
+    {
+        var hits = new bool[z.Petals.Length][];
+        for (var i = 0; i < hits.Length; i++) hits[i] = new bool[PetalSamples];
+        var stray = 0;
+        foreach (var s in Strokes(pts))
+        {
+            int near = 0, far = 0;
+            foreach (var p in s)
+            {
+                var best = double.MaxValue;
+                int bi = -1, bj = -1;
+                for (var i = 0; i < z.Petals.Length; i++)
+                    for (var j = 0; j < PetalSamples; j++)
+                    {
+                        var (x, y) = PetalAt(z.Petals[i], (j + 0.5) / PetalSamples);
+                        var d = (p.X - x) * (p.X - x) + (p.Y - y) * (p.Y - y);
+                        if (d < best) { best = d; bi = i; bj = j; }
+                    }
+                best = Math.Sqrt(best);
+                if (best <= BrushTol) { hits[bi][bj] = true; near++; }
+                else if (best > BrushBlot) far++;
+            }
+            if (near == 0 && far >= 3) stray++;
+        }
+        var cov = hits.Sum(h => h.Count(b => b) / (double)PetalSamples) / Math.Max(1, hits.Length);
+        return 100 * cov - 8 * stray;
+    }
+
+    public const double StampNear = 110, StampGrace = 140, StampWindow = 520;
+    public const double TapMoved = 70, TapMs = 500;
+
+    /// <summary>
+    /// Штампик: позначки спалахують по черзі — перша від першого ж дотику, далі через <c>Step</c> мс. Зарахований
+    /// штамп — короткий дотик (до пів секунди й до 70 одиниць руху) біля позначки й вчасно: до 140 мс — точно,
+    /// далі оцінка спадає до нуля на 520 мс. Краса = середня оцінка позначок мінус 8 за кожен зайвий тик.
+    /// </summary>
+    static double Tap(List<Pt> pts, Stamp z)
+    {
+        var taps = Strokes(pts)
+            .Where(s => s[^1].Ms - s[0].Ms <= TapMs
+                && s.Max(p => p.X) - s.Min(p => p.X) <= TapMoved && s.Max(p => p.Y) - s.Min(p => p.Y) <= TapMoved)
+            .Select(s => s[0]).ToList();
+        var used = new bool[taps.Count];
+        double sum = 0;
+        for (var i = 0; i < z.Marks.Length; i++)
+        {
+            var due = (double)i * z.Step;
+            var pick = -1;
+            var best = 0.0;
+            for (var j = 0; j < taps.Count; j++)
+            {
+                if (used[j]) continue;
+                var d = Math.Sqrt((taps[j].X - z.Marks[i][0]) * (taps[j].X - z.Marks[i][0])
+                    + (taps[j].Y - z.Marks[i][1]) * (taps[j].Y - z.Marks[i][1]));
+                if (d > StampNear) continue;
+                var dt = Math.Abs(taps[j].Ms - due);
+                if (dt >= StampWindow) continue;
+                var time = dt <= StampGrace ? 1 : 1 - (dt - StampGrace) / (StampWindow - StampGrace);
+                var sc = time * (1 - 0.3 * d / StampNear);
+                if (sc > best) { best = sc; pick = j; }
+            }
+            if (pick < 0) continue;
+            used[pick] = true;
+            sum += best;
+        }
+        return 100 * sum / Math.Max(1, z.Marks.Length) - 8 * used.Count(u => !u);
+    }
+
+    /// <summary>Скільки рядків клітинок полива стікає вниз від того місця, де пройшов ополоник.</summary>
+    public const int GlazeDrip = 2;
+
+    /// <summary>Чи в силуеті посудини клітинка (cx; cy).</summary>
+    public static bool InVessel(Glaze z, int cx, int cy) =>
+        cy >= z.Top && cy <= z.Bottom && cy < z.Half.Length && Math.Abs(cx * Cell + Cell / 2 - Canvas / 2) <= z.Half[cy];
+
+    /// <summary>
+    /// Полива: ополоник іде за пальцем і змочує клітинки 40×40 під ним, а полива стікає ще на два рядки вниз —
+    /// поки тримається черепка. Краса = частка вкритого силуету мінус подвійна частка пролитого повз.
+    /// </summary>
+    static double Pour(List<Pt> pts, Glaze z)
+    {
+        var wet = new bool[Grid * Grid];
+        foreach (var s in Strokes(pts))
+            for (var i = 1; i < s.Count; i++)
+            {
+                var d = Dist(s[i], s[i - 1]);
+                if (d <= 0 || d > 200) continue;
+                var steps = (int)Math.Ceiling(d / 5);
+                for (var k = 0; k < steps; k++)
+                {
+                    var t = (k + 0.5) / steps;
+                    var cx = (int)Math.Floor((s[i - 1].X + (s[i].X - s[i - 1].X) * t) / Cell);
+                    var cy = (int)Math.Floor((s[i - 1].Y + (s[i].Y - s[i - 1].Y) * t) / Cell);
+                    if (cx >= 0 && cy >= 0 && cx < Grid && cy < Grid) wet[cy * Grid + cx] = true;
+                }
+            }
+        var cover = new bool[Grid * Grid];
+        for (var cy = 0; cy < Grid; cy++)
+            for (var cx = 0; cx < Grid; cx++)
+            {
+                if (!wet[cy * Grid + cx]) continue;
+                cover[cy * Grid + cx] = true;
+                for (var d = 1; d <= GlazeDrip && cy + d < Grid; d++)
+                {
+                    if (!InVessel(z, cx, cy + d)) break;
+                    cover[(cy + d) * Grid + cx] = true;
+                }
+            }
+        int body = 0, done = 0, spill = 0;
+        for (var cy = 0; cy < Grid; cy++)
+            for (var cx = 0; cx < Grid; cx++)
+            {
+                if (InVessel(z, cx, cy)) { body++; if (cover[cy * Grid + cx]) done++; }
+                else if (wet[cy * Grid + cx]) spill++;
+            }
+        return body == 0 ? 0 : 100.0 * done / body - 200.0 * spill / body;
+    }
 }
 
 /// <summary>
@@ -505,9 +736,23 @@ public sealed partial class Clicker
     /// <summary>Солома: множник шансу тріщини, скільки в'язок уміщає клуня і скільки простих горщиків коштує в'язка.</summary>
     public const double StrawCrack = 0.25;
     public const int StrawMax = 20, StrawPots = 2;
+    /// <summary>«Ключ від клуні» (v9): в'язок уміщається вдвічі більше, а коштує в'язка вдвічі менше.</summary>
+    public const int StrawBarnMax = 40;
+    public const double StrawBarnPrice = 0.5;
+    /// <summary>Палієві досить стількох сухих, щоб не чекати повної сушарні (або менше — коли горна давно не чіпали).</summary>
+    public const int AutoDryEnough = 6;
+    /// <summary>Скільки горно мусить стояти незайманим, щоб палій узявся й за один сухий сирець.</summary>
+    public static readonly TimeSpan KilnIdle = TimeSpan.FromMinutes(3);
+    /// <summary>Скільки партій палія — ачівка «Палій не спить».</summary>
+    public const int AutoBatchesAch = 100;
+    /// <summary>Офлайн-прогін майстерні (v9): крок не довший за це і не більше <see cref="WorkStepsMax"/> кроків.</summary>
+    public static readonly TimeSpan WorkStep = TimeSpan.FromSeconds(90);
+    public const int WorkStepsMax = 600;
     /// <summary>Тріснутий виріб — черепки на засипку доріжки: частка ціни простого звичайного.</summary>
     public const double ShardShare = 0.15;
     public const int HomeBonus = 10, PerfectMin = 4;
+    /// <summary>Від якої краси розпис — уже дивовижа, і від якої варто обіцяти розкішні вироби.</summary>
+    public const int PaintWonder = 90, PaintLux = 50;
 
     public static readonly ClickerTechnique[] Techniques =
     [
@@ -526,6 +771,15 @@ public sealed partial class Clicker
         new("losk", "Лощіння", "gavarets", 150,
             "Гаварецька техніка: натирай камінцем смуги на сирці до блиску — після чорного димлення вони сяють на матовому.",
             "з гаварецьким розписом у колекції або після 150 обпалених"),
+        new("brush", "Пензлем", "petrykivka", 250,
+            "Вільний мазок: веди пензель по примарних пелюстках — швидше рука, тонша лінія. Квітка з пуп'янком, як у петриківському розписі.",
+            "з петриківським розписом у колекції або після 250 обпалених"),
+        new("stamp", "Штампик", "trypillia", 800,
+            "Різьблений штампик по сирій глині: позначки спалахують по черзі, кільце стискається — тисни рівно у вікно. Так робили відбитки ще трипільці.",
+            "з трипільським орнаментом у колекції або після 800 обпалених"),
+        new("glaze", "Полива", "mezhyhirya", 1200,
+            "Ополоник із поливою йде за пальцем, а полива стікає вниз: укрий увесь черепок і не лий повз.",
+            "з межигірським фаянсом у колекції або після 1200 обпалених"),
     ];
 
     sealed record KilnOutRow(string Ware, int Q);
@@ -537,7 +791,9 @@ public sealed partial class Clicker
         List<string>? Batch = null, string? Style = null, string? Tech = null, int Beauty = 0,
         int PaintSeed = 0, DateTimeOffset PaintAt = default,
         DateTimeOffset LitAt = default, bool Helper = false, bool Straw = false, int FireSeed = 0,
-        DateTimeOffset CoolUntil = default, int StrawStock = 0, KilnLastRow? Last = null, int Batches = 0);
+        DateTimeOffset CoolUntil = default, int StrawStock = 0, KilnLastRow? Last = null, int Batches = 0,
+        // v9 — нові поля необов'язкові: старе збереження читається як «цього ще не було».
+        DateTimeOffset Touch = default, int Auto = 0, bool TechAll = false);
 
     /// <summary>Сирці в горні (ключі виробів).</summary>
     readonly List<string> _kiln = [];
@@ -555,13 +811,38 @@ public sealed partial class Clicker
     int _straw;
     KilnLastRow? _kilnLast;
     int _kilnBatches;
+    /// <summary>Коли гончар востаннє сам чіпав горно: від цього палій відлічує, чи можна братись за неповну сушарню.</summary>
+    DateTimeOffset _kilnTouch;
+    /// <summary>Скільки партій обпалив палій (автогорно й «хай підмайстер палить») — на ачівку.</summary>
+    int _kilnAuto;
+    /// <summary>Чи вже давали ачівку за всі техніки: інакше вона просилась би щосинхронізації.</summary>
+    bool _kilnTechAll;
 
     /// <summary>Місця горна: піч дає до стелі, ранг майстра цеху — ще два понад неї (ClickerGuild.cs).</summary>
     internal int KilnSlots => Math.Min(KilnSlotsMax, KilnSlotsBase + Level("kiln") / KilnPerLevel) + Math.Max(0, GuildKilnSlots) + Math.Max(0, CraftKilnBonus);
 
     bool TechOpen(ClickerTechnique t) => t.Fired <= 0 || FiredTotal >= t.Fired || (t.Home.Length > 0 && _styles.Contains(t.Home));
 
-    double StrawPrice => Math.Max(10, ItemValue("pot", "", 1) * StrawPots);
+    /// <summary>Скільки в'язок уміщає клуня: «Ключ від клуні» подвоює її.</summary>
+    public static int StrawLoft(bool barn) => barn ? StrawBarnMax : StrawMax;
+
+    /// <summary>Скільки коштує в'язка: дві ціни простого звичайного горщика, а з «Ключем від клуні» — удвічі менше.</summary>
+    public static double StrawCost(double potValue, bool barn) => Math.Max(10, potValue * StrawPots * (barn ? StrawBarnPrice : 1));
+
+    internal int StrawMaxNow => StrawLoft(Has("barn"));
+
+    double StrawPrice => StrawCost(ItemValue("pot", "", 1), Has("barn"));
+
+    /// <summary>
+    /// Чи палить палій сам: перк челядника цеху або прокачаний «Палій» у ремеслі. Вимикач — той самий
+    /// (<c>guild { op: "auto" }</c>), тож гончар, який любить палити руками, нічого не втрачає.
+    /// </summary>
+    internal bool KilnAutoCan => _guildRank >= GuildJourneyman || CraftLevel("stoker") >= 1;
+
+    bool KilnAutoOn => KilnAutoCan && !_autoKilnOff;
+
+    /// <summary>«Блиск» партії палія: рівень «Палія» і «Вогонь роду» (див. <see cref="KilnHeat.AutoShine"/>).</summary>
+    double AutoShine => KilnHeat.AutoShine(CraftLevel("stoker"), Has("ember"));
 
     string KilnState(DateTimeOffset now) =>
         _litAt != default ? "burning" : now < _coolUntil ? "cooling" : _kiln.Count > 0 ? "loaded" : "cold";
@@ -572,6 +853,8 @@ public sealed partial class Clicker
     {
         if (action != "kiln") return null;
         var now = Ctx.Clock.UtcNow;
+        // Гончар сам узявся за горно — палій відступає: наступні три хвилини він не забирає сирців з-під рук.
+        _kilnTouch = now;
         return Str(payload, "op") switch
         {
             "load" => KilnLoad(payload, now),
@@ -702,16 +985,22 @@ public sealed partial class Clicker
         var beauty = KilnPaint.Beauty(tech.Key, _paintSeed, pts);
         var home = tech.Home.Length > 0 && tech.Home == _kilnStyle;
         if (home) beauty = Math.Min(100, beauty + HomeBonus);
+        // Дяк із книгою (пакет «Село», v9 §D.4) лишив візерунки: надбавка одноразова й забирається тут.
+        var dyak = FairTakeBeauty();
+        if (dyak > 0) beauty = Math.Min(100, beauty + dyak);
         _kilnBeauty = beauty;
         _paintSeed = 0;
-        return ActResult.Accept($"🎨 {tech.Name}: краса {beauty}" + (home ? " (рідний осередок +10)" : ""));
+        if (beauty >= PaintWonder) Wonder("paint-90");
+        return ActResult.Accept($"🎨 {tech.Name}: краса {beauty}" + (home ? " (рідний осередок +10)" : "")
+            + (dyak > 0 ? $" (дяк із книгою +{dyak})" : "")
+            + (beauty >= PaintLux ? " — у такій партії трапляються розкішні вироби" : ""));
     }
 
     /// <summary>Солома: <c>{ n }</c> в'язок, скільки влізе в клуню й у глеки.</summary>
     ActResult KilnStraw(JsonElement payload)
     {
-        var room = StrawMax - _straw;
-        if (room <= 0) return ActResult.Fail($"Клуня повна: {StrawMax} в'язок");
+        var room = StrawMaxNow - _straw;
+        if (room <= 0) return ActResult.Fail($"Клуня повна: {StrawMaxNow} в'язок");
         var raw = Num(payload, "n");
         if (raw is <= 0) return ActResult.Fail("Скільки в'язок — хоч одну");
         var want = (int)Math.Clamp(raw ?? 1, 1, room);
@@ -733,12 +1022,15 @@ public sealed partial class Clicker
         var style = _kilnStyle.Length > 0 && _styles.Contains(_kilnStyle) ? _kilnStyle : "";
         var beauty = manual ? _kilnBeauty : 0;
         var crack = manual ? KilnHeat.CrackChance(over) * (_litStraw ? StrawCrack : 1) : 0;
+        // Палій пече без розпису й без тріщин, зате з власним невеликим «блиском» від прокачки (v9).
+        var shine = manual ? KilnHeat.Shine(heat, beauty) : AutoShine;
+        var paint = manual ? Math.Clamp(beauty, 0, 100) / 100.0 : 0;
         var outs = new List<KilnOutRow>(_kiln.Count);
         foreach (var ware in _kiln)
         {
             if (WareOf(ware) is null) continue;
             if (crack > 0 && Ctx.Rng.NextDouble() < crack) { outs.Add(new KilnOutRow(ware, 0)); continue; }
-            outs.Add(new KilnOutRow(ware, manual ? KilnHeat.Quality(heat, beauty, Ctx.Rng.NextDouble()) : 1));
+            outs.Add(new KilnOutRow(ware, KilnHeat.QualityOf(shine, paint, Ctx.Rng.NextDouble())));
         }
         double sold = 0, shards = 0;
         foreach (var grp in outs.Where(o => o.Q > 0).GroupBy(o => (o.Ware, o.Q)))
@@ -754,7 +1046,13 @@ public sealed partial class Clicker
         _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold);
         _kilnBatches++;
         var whole = outs.Count(o => o.Q > 0);
-        if (manual && outs.Count >= PerfectMin && outs.All(o => o.Q == 3)) Achieve("potter-kiln-perfect");
+        if (manual && outs.Count >= PerfectMin && outs.All(o => o.Q >= 3))
+        {
+            Achieve("potter-kiln-perfect");
+            Wonder("kiln-perfect");
+        }
+        if (outs.Any(o => o.Q == 4)) Achieve("potter-q4");
+        if (!manual && ++_kilnAuto == AutoBatchesAch) Achieve("potter-stoker");
 
         _kiln.Clear();
         _litAt = default;
@@ -772,14 +1070,37 @@ public sealed partial class Clicker
             var c = outs.Count(o => o.Q == q);
             if (c > 0) parts.Add($"{c} {Plural(c, one, few, many)}");
         }
+        Part(4, "розкішний", "розкішні", "розкішних");
         Part(3, "дзвінкий", "дзвінкі", "дзвінких");
         Part(2, "добрий", "добрі", "добрих");
         Part(1, "звичайний", "звичайні", "звичайних");
         Part(0, "тріснув", "тріснули", "тріснуло");
         var text = (manual ? "🔥 Горно відкрите: " : "🔥 Підмайстер відкрив горно: ") + string.Join(" · ", parts);
         if (sold > 0) text += $" · комора повна, на базар +{Short(sold)}";
-        if (!manual) AwayNote($"🔥 Підмайстер відкрив горно: {whole} {WaresWord(whole)} у коморі");
+        if (!manual)
+        {
+            _awayBatches++;
+            _awayFired += whole;
+            _awayGood += outs.Count(o => o.Q == 2);
+            _awayRing += outs.Count(o => o.Q >= 3);
+        }
         return text;
+    }
+
+    int _awayBatches, _awayFired, _awayGood, _awayRing;
+
+    /// <summary>Підсумок роботи палія в «поки тебе не було» — одним рядком, скільки б партій він не обпалив.</summary>
+    void AwayKilnNote()
+    {
+        if (_awayBatches <= 0) return;
+        var text = _awayBatches == 1
+            ? $"🔥 Підмайстер відкрив горно: {_awayFired} {WaresWord(_awayFired)} у коморі"
+            : $"🔥 Палій обпалив {_awayBatches} {Plural(_awayBatches, "партію", "партії", "партій")}: "
+                + $"{_awayFired} {WaresWord(_awayFired)}"
+                + (_awayGood > 0 ? $", {_awayGood} {Plural(_awayGood, "добрий", "добрі", "добрих")}" : "")
+                + (_awayRing > 0 ? $", {_awayRing} {Plural(_awayRing, "дзвінкий", "дзвінкі", "дзвінких")}" : "");
+        _awayBatches = _awayFired = _awayGood = _awayRing = 0;
+        AwayNoteFirst(text);
     }
 
     static List<(int Ms, int Act)>? Timeline(JsonElement payload)
@@ -815,19 +1136,25 @@ public sealed partial class Clicker
             else if (!_litHelper && now >= end + KilnAbandon) KilnFinish(end + KilnAbandon, 0, 0, manual: false);
         }
         AutoKiln(now);
+        if (!_kilnTechAll && Techniques.All(TechOpen))
+        {
+            _kilnTechAll = true;
+            Achieve("potter-tech-all");
+        }
     }
 
     /// <summary>
-    /// Автогорно челядника цеху: коли горно холодне й порожнє, а сушарня повна й уся суха — підмайстер сам розпалює
-    /// (якість 1, без тріщин, як «Хай підмайстер палить»). Лише повна суха сушарня: гравцеві, що палить сам, автогорно
-    /// не забирає сирців із-під рук, а за довгий простій крутить по одному обпалу на синхронізацію.
+    /// Автогорно (v9): палій не чекає повної сушарні. Горно холодне й порожнє, ручної партії нема — і або сухих
+    /// назбиралось на пів горна (до шести), або сухий хоч один, а гончар не підходив до горна три хвилини. Палить
+    /// підмайстер: без тріщин і без розпису, зате з власним «блиском» від прокачки «Палія».
     /// </summary>
     void AutoKiln(DateTimeOffset now)
     {
-        if (!GuildAutoKiln || _litAt != default || now < _coolUntil || _kiln.Count > 0) return;
+        if (!KilnAutoOn || _litAt != default || now < _coolUntil || _kiln.Count > 0) return;
         // Гравець уже взявся за партію (обрав розпис, малює чи намалював) — підмайстри не забирають її з-під рук.
         if (_paintSeed != 0 || _kilnBeauty > 0 || _kilnStyle.Length > 0) return;
-        if (_rack.Count < RackSize || _rack.Any(r => r.DryAt > now)) return;
+        var ready = _rack.Count(r => r.DryAt <= now);
+        if (ready < Math.Min(KilnSlots, AutoDryEnough) && !(ready >= 1 && now - _kilnTouch >= KilnIdle)) return;
         var dry = TakeDry(now, KilnSlots);
         if (dry.Count == 0) return;
         _kiln.AddRange(dry.Select(r => r.Ware));
@@ -836,7 +1163,7 @@ public sealed partial class Clicker
         _litStraw = false;
         _fireSeed = Ctx.Rng.Next(1, int.MaxValue);
         _paintSeed = 0;
-        AwayNote($"🔥 Автогорно: підмайстри самі розпалили {dry.Count} {WaresWord(dry.Count)}");
+        // Про роботу палія розповідає один підсумок (AwayKilnNote), а не запис на кожну з десятків нічних партій.
     }
 
     void ResetKiln(DateTimeOffset now)
@@ -855,6 +1182,10 @@ public sealed partial class Clicker
         _straw = 0;
         _kilnLast = null;
         _kilnBatches = 0;
+        _kilnTouch = default;
+        _kilnAuto = 0;
+        _kilnTechAll = false;
+        _awayBatches = _awayFired = _awayGood = _awayRing = 0;
     }
 
     /// <summary>Обпал-престиж: партія в горні (і та, що палає) згорає разом із соломою й недомальованим розписом.</summary>
@@ -874,22 +1205,28 @@ public sealed partial class Clicker
     }
 
     KilnRow? SaveKiln() => new([.. _kiln], _kilnStyle, _kilnTech, _kilnBeauty, _paintSeed, _paintAt, _litAt, _litHelper, _litStraw,
-        _fireSeed, _coolUntil, _straw, _kilnLast, _kilnBatches);
+        _fireSeed, _coolUntil, _straw, _kilnLast, _kilnBatches, _kilnTouch, _kilnAuto, _kilnTechAll);
 
     void LoadKiln(KilnRow? row)
     {
         ResetKiln(Ctx.Clock.UtcNow);
         if (row is null) return;
+        // Ріжемо по теперішній місткості, а не по базовій стелі: з прокачкою горна (v9) і рангами цеху місць
+        // буває більше за KilnSlotsMax, і складена партія не мусить зникати після F5.
+        var room = Math.Max(KilnSlotsMax, KilnSlots) + 8;
         foreach (var w in row.Batch ?? [])
-            if (w is not null && WareOf(w) is not null && _kiln.Count < KilnSlotsMax + 8) _kiln.Add(w);
+            if (w is not null && WareOf(w) is not null && _kiln.Count < room) _kiln.Add(w);
         _kilnStyle = row.Style is { } s && _styles.Contains(s) ? s : "";
         _kilnTech = row.Tech is { } t && Techniques.Any(x => x.Key == t) ? t : "";
         _kilnBeauty = Math.Clamp(row.Beauty, 0, 100);
         _paintSeed = _kilnTech.Length > 0 ? Math.Max(0, row.PaintSeed) : 0;
         _paintAt = row.PaintAt;
-        _straw = Math.Clamp(row.StrawStock, 0, StrawMax);
+        _straw = Math.Clamp(row.StrawStock, 0, StrawMaxNow);
         _coolUntil = row.CoolUntil;
         _kilnBatches = Math.Max(0, row.Batches);
+        _kilnTouch = row.Touch;
+        _kilnAuto = Math.Max(0, row.Auto);
+        _kilnTechAll = row.TechAll;
         if (row.LitAt != default && _kiln.Count > 0 && row.FireSeed > 0)
         {
             _litAt = row.LitAt;
@@ -900,7 +1237,7 @@ public sealed partial class Clicker
         if (row.Last is { } l)
             _kilnLast = l with
             {
-                Items = (l.Items ?? []).Where(o => o is not null && WareOf(o.Ware) is not null && o.Q is >= 0 and <= 3).Take(KilnSlotsMax + 8).ToList(),
+                Items = (l.Items ?? []).Where(o => o is not null && WareOf(o.Ware) is not null && o.Q is >= 0 and <= 4).Take(room).ToList(),
                 Style = l.Style is { } ls && Styles.Any(x => x.Key == ls) ? ls : "",
                 Heat = Math.Clamp(l.Heat, 0, 100), Beauty = Math.Clamp(l.Beauty, 0, 100),
             };
@@ -916,7 +1253,13 @@ public sealed partial class Clicker
             batch = _kiln,
             dry = _rack.Count(r => r.DryAt <= now),
             straw = _straw,
+            strawMax = StrawMaxNow,
             strawPrice = StrawPrice,
+            // Палій: чи палить сам, чи вимкнений вимикачем і який у нього «блиск» — панель горна це пояснює на місці.
+            auto = KilnAutoOn,
+            autoCan = KilnAutoCan,
+            autoShine = AutoShine,
+            autoBatches = _kilnAuto,
             style = _kilnStyle,
             tech = _kilnTech,
             beauty = _kilnBeauty,
@@ -947,7 +1290,10 @@ public sealed partial class Clicker
             KilnPaint.Ryt z => new { r0 = z.R0, amp = z.Amp, k = z.K, phase = z.Phase },
             KilnPaint.Flyand z => new { marks = z.Marks, bands = z.Bands },
             KilnPaint.Marble z => new { drops = z.Drops },
-            KilnPaint.Losk z => (object)new { stripes = z.Stripes, top = z.Top, bottom = z.Bottom },
+            KilnPaint.Losk z => new { stripes = z.Stripes, top = z.Top, bottom = z.Bottom },
+            KilnPaint.Brush z => new { petals = z.Petals },
+            KilnPaint.Stamp z => new { marks = z.Marks, step = z.Step },
+            KilnPaint.Glaze z => (object)new { half = z.Half, top = z.Top, bottom = z.Bottom, cell = 40 },
             _ => new { },
         };
         return new { tech = _kilnTech, at = _paintAt, shape = p };
@@ -961,6 +1307,9 @@ public sealed partial class Clicker
         patternMs = PatternLife.TotalMilliseconds,
         slotsBase = KilnSlotsBase, slotsMax = KilnSlotsMax, perLevel = KilnPerLevel,
         strawMax = StrawMax, strawCrack = StrawCrack, shardShare = ShardShare, homeBonus = HomeBonus, perfectMin = PerfectMin,
+        // Розпис і розкішний ступінь (v9): клієнт бере звідси, щоб не повторювати чисел.
+        luxShare = KilnHeat.LuxShare, paintLux = PaintLux, glazeDrip = KilnPaint.GlazeDrip,
+        stampGrace = KilnPaint.StampGrace, stampWindow = KilnPaint.StampWindow, autoIdleMs = KilnIdle.TotalMilliseconds,
         model = new
         {
             stepMs = KilnHeat.StepMs, steps = KilnHeat.Steps, warm = KilnHeat.WarmSteps, maxActs = KilnHeat.MaxActs,
@@ -974,17 +1323,52 @@ public sealed partial class Clicker
     };
 
     /// <summary>
-    /// v9: одна точка синхронізації майстерні — ліплення підмайстрів (ClickerCraft.SyncCraft) і горно (SyncKiln).
-    /// Пакет «Горно» перетворює її на покроковий прогін за довгий простій (палій обпалює партії, поки гончаря нема).
+    /// Одна точка синхронізації майстерні: ліплення підмайстрів (<see cref="SyncCraft"/>) і горно
+    /// (<see cref="SyncKiln"/>). За короткий проміжок — як було, одним кроком. За довгий (від повного циклу горна,
+    /// 30 с обпалу + 60 с холонення) — кроками, бо інакше палій устигав рівно одну партію за всю ніч: крок
+    /// обривається на найближчій події (сирець висох, горно догоріло, горно вихололо), але не довший за 90 с
+    /// і не більше 600 кроків. Що лишилось після стелі кроків — одним хвостом, як до дев'ятого оновлення.
     /// </summary>
     void SyncWorkshop(DateTimeOffset now, TimeSpan paid)
     {
-        SyncCraft(now, paid);
-        SyncKiln(now, paid);
+        if (paid < KilnBurn + KilnCool)
+        {
+            SyncCraft(now, paid);
+            SyncKiln(now, paid);
+            AwayKilnNote();
+            return;
+        }
+        var t = now - paid;
+        for (var i = 0; i < WorkStepsMax && t < now; i++)
+        {
+            var next = NextWorkStep(t, now);
+            SyncCraft(next, next - t);
+            SyncKiln(next, next - t);
+            t = next;
+        }
+        if (t < now)
+        {
+            SyncCraft(now, now - t);
+            SyncKiln(now, now - t);
+        }
+        AwayKilnNote();
+    }
+
+    /// <summary>Кінець наступного кроку прогону: найближча подія майстерні, але не далі як за 90 с і не далі «зараз».</summary>
+    DateTimeOffset NextWorkStep(DateTimeOffset t, DateTimeOffset now)
+    {
+        var next = t + WorkStep;
+        void At(DateTimeOffset x) { if (x > t && x < next) next = x; }
+        if (_litAt != default) At(_litAt + KilnBurn + (_litHelper ? TimeSpan.Zero : KilnAbandon));
+        At(_coolUntil);
+        foreach (var r in _rack) At(r.DryAt);
+        // Крок мусить рухати годинник уперед — інакше прогін топтався б на місці.
+        if (next <= t) next = t + TimeSpan.FromSeconds(1);
+        return next > now ? now : next;
     }
 
     /// <summary>v9: додати в'язок соломи в клуню (гостинці сіл, кіт тощо), не вище стелі.</summary>
-    internal void StrawAdd(int n) => _straw = Math.Clamp(_straw + Math.Max(0, n), 0, StrawMax);
+    internal void StrawAdd(int n) => _straw = Math.Clamp(_straw + Math.Max(0, n), 0, StrawMaxNow);
 
     double KilnAllMult => 1;
 

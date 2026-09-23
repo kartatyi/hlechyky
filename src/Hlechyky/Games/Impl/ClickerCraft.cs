@@ -9,7 +9,7 @@ namespace Hlechyky.Games.Impl;
 /// </summary>
 public sealed record ClickerWare(string Key, string Name, int Work, double Seconds, double Unlock);
 
-/// <summary>Виріб у коморі: вид, розпис (порожній — простий) і якість (1 звичайний, 2 добрий, 3 дзвінкий).</summary>
+/// <summary>Виріб у коморі: вид, розпис (порожній — простий) і якість (1 звичайний, 2 добрий, 3 дзвінкий, 4 розкішний).</summary>
 public sealed record ItemInfo(string Ware, string Style, int Quality);
 
 /// <summary>Сирець на сушарні: що це, з якої глини і коли висохне.</summary>
@@ -91,8 +91,10 @@ public sealed partial class Clicker
     public const double MinWorkShare = 0.4;
     /// <summary>Скільки виробів уміщає комора: що понад — одразу на базар (не губиться).</summary>
     public const int StoreCap = 200;
-    /// <summary>Якість множить ціну.</summary>
-    public static readonly double[] QualityMult = [0, 1, 1.6, 2.6];
+    /// <summary>Якість множить ціну (v9: четвертий ступінь — розкішний, лише з розписаної партії).</summary>
+    public static readonly double[] QualityMult = [0, 1, 1.6, 2.6, 4.5];
+    /// <summary>Найвищий ступінь якості: 1 звичайний, 2 добрий, 3 дзвінкий, 4 розкішний.</summary>
+    public const int QualityMax = 4;
     /// <summary>Дно ціни: на голому колі виріб вартий половини кліків, що на нього пішли.</summary>
     public const double ValueFloorClicks = 0.5;
     /// <summary>З якого простою показувати «поки тебе не було».</summary>
@@ -167,7 +169,7 @@ public sealed partial class Clicker
         var parts = key.Split('|');
         if (parts.Length != 3 || WareOf(parts[0]) is null) return null;
         if (parts[1].Length > 0 && Styles.All(s => s.Key != parts[1])) return null;
-        return int.TryParse(parts[2], out var q) && q is >= 1 and <= 3 ? new ItemInfo(parts[0], parts[1], q) : null;
+        return int.TryParse(parts[2], out var q) && q is >= 1 and <= QualityMax ? new ItemInfo(parts[0], parts[1], q) : null;
     }
 
     internal int ItemTotal => _items.Values.Sum();
@@ -202,7 +204,7 @@ public sealed partial class Clicker
     /// <summary>Покласти в комору. Що не влізло — одразу продано на базарі; повертає, скільки глеків за це прийшло.</summary>
     internal double PutItems(string ware, string style, int quality, int n)
     {
-        if (n <= 0 || WareOf(ware) is null || quality is < 1 or > 3) return 0;
+        if (n <= 0 || WareOf(ware) is null || quality is < 1 or > QualityMax) return 0;
         var room = Math.Max(0, StoreCapNow - ItemTotal);
         var put = Math.Min(room, n);
         if (put > 0)
@@ -244,7 +246,7 @@ public sealed partial class Clicker
     internal double ItemValue(string ware, string style, int quality)
     {
         if (WareOf(ware) is not { } w) return 0;
-        var q = QualityMult[Math.Clamp(quality, 1, 3)];
+        var q = QualityMult[Math.Clamp(quality, 1, QualityMax)];
         var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware);
         var floor = (_memoOn ? _memoClick : ClickBase) * WorkOf(w) * ValueFloorClicks * q;
         return Math.Max(1, ToPots(Math.Max(byPassive, floor)));
@@ -329,7 +331,7 @@ public sealed partial class Clicker
     /// </summary>
     ActResult BazaarAll(JsonElement payload)
     {
-        var q = (int)Math.Clamp(Num(payload, "q") ?? 3, 1, 3);
+        var q = (int)Math.Clamp(Num(payload, "q") ?? QualityMax, 1, QualityMax);
         var sold = 0;
         double sum = 0;
         foreach (var (item, count) in AllItems().Where(x => x.Item.Quality <= q).ToList())
@@ -343,7 +345,7 @@ public sealed partial class Clicker
                 ? q == 1 ? "Звичайних у коморі нема" : "У коморі самі дзвінкі — їх базар не бере"
                 : "У коморі порожньо — нічого везти на базар");
         Add(sum = ToPots(sum * HouseBazaarMult));
-        var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : "";
+        var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : q == 3 ? " (крім розкішних)" : "";
         return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{Short(sum)} {Pots(sum)}");
     }
 
@@ -420,9 +422,23 @@ public sealed partial class Clicker
     // ---------- поки тебе не було ----------
 
     /// <summary>Рядок для «поки тебе не було» від пакетів (купці, дарунки…). Лише під час довгого простою.</summary>
+    const int AwayNotesMax = 8;
+
+    /// <summary>Те саме, але рядок стає ПЕРШИМ і не програє стелі: підсумок палія важливіший за восьму знахідку з глинища (v9).</summary>
+    internal void AwayNoteFirst(string text)
+    {
+        if (_awayOpen)
+        {
+            _awayNotes.Insert(0, text);
+            if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
+            return;
+        }
+        AwayNote(text);
+    }
+
     internal void AwayNote(string text)
     {
-        if (_awayOpen) { if (_awayNotes.Count < 8) _awayNotes.Add(text); return; }
+        if (_awayOpen) { if (_awayNotes.Count < AwayNotesMax) _awayNotes.Add(text); return; }
         // Дещо з простою приїжджає вже після виду, що склав запис, — на першій дії (пошта цеху, ачівки): дописуємо в щойно
         // складений запис, поки клієнт його ще показує, а не губимо.
         if (_away is { } a && Ctx.Clock.UtcNow - a.At < AwayLate && a.Notes.Count < 8) _away = a with { Notes = [.. a.Notes, text] };
@@ -535,7 +551,7 @@ public sealed partial class Clicker
         {
             wares = Wares.Select(w => new { key = w.Key, name = w.Name, work = w.Work, seconds = w.Seconds, unlock = w.Unlock }),
             styles = Styles.Select((s, i) => new { key = s.Key, name = s.Name, value = StyleValue(s.Key) }),
-            quality = new[] { "", "звичайний", "добрий", "дзвінкий" },
+            quality = new[] { "", "звичайний", "добрий", "дзвінкий", "розкішний" },
             kiln = CatalogKiln(),
             album = CatalogAlbum(),
             fair = CatalogFair(),

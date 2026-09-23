@@ -23,8 +23,8 @@
   const TIER = ['', 'бронза', 'срібло', 'золото'];
   const TIER_ICON = ['', '🥉', '🥈', '🥇'];
   const TIER_COLOR = ['#8a6a4a', '#c07a3a', '#c9ced6', '#f4c542'];
-  const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий'];
-  const STARS = ['', '★', '★★', '★★★'];
+  const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
+  const STARS = ['', '★', '★★', '★★★', '👑'];
   const TOOL_ICON = { paddle: '🪵', string: '🧵', sponge: '🧽', ribs: '🦴', lantern: '🏮', apron: '🥼', bucket: '🪣', whistle: '🎶', scales: '⚖️', iron: '🔖' };
   const TIER_EMBLEM = { workshop: '🏠', fair: '🎪', artel: '🤝', chumaks: '🐂', pit: '⛏️', school: '📜', chaika: '⛵', museum: '🏛️', tsar: '👑' };
 
