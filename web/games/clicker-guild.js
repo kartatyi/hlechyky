@@ -1,13 +1,17 @@
 /*
-  Цех Гончарного кола (docs/games/specs/clicker-v7.md §4 B5; як зроблено — clicker-v7-guild.md). Частина ядра clicker.js.
+  Цех Гончарного кола (docs/games/specs/clicker-v7.md §4 B5, дев'яте оновлення — clicker-v9.md §E;
+  як зроблено — clicker-v7-guild.md і clicker-v9-guild.md). Частина ядра clicker.js.
 
-  Вкладка «Цех»:
+  Вкладка «Село»:
+  0) плашка діючих бафів від друзів (підмайстер у гостях, похвала) з відліком;
   1) віз дня — великий SVG-віз, що наповнюється виробами, смуга з порогами бронза/срібло/золото, підцілі, внески
-     друзів (за абеткою, без місць), «Покласти на віз» (вибір виробів із комори) і «Забрати нагороду»;
-  2) дарунки — скільки ще сьогодні, вибір друга й виробу, полиця дарунків «від Миколи»;
-  3) ранг — шлях учень → челядник → майстер → цехмістр, що бракує, майстерштук, перки й вимикач автогорна;
-  4) гончарі цеху (GET /api/games/clicker/guild) і «Зазирнути в хату» (GET /api/games/clicker/house) — хата в overlay;
-  5) «Похвалитись» виробом у Журнал.
+     друзів (за абеткою, без місць), пай («кожні 12 виробів — ще один пай, до трьох»), «Покласти на віз» і «Забрати»;
+  2) «Помогти другові» — гостинець (10/30/60 хв свого пасиву), підмайстер у гості, похвала;
+  3) дарунки — скільки ще сьогодні, вибір друга й виробу, полиця дарунків «від Миколи»;
+  4) ранг — шлях учень → челядник → майстер → цехмістр → старійшина, що бракує, майстерштук, перки, вимикач автогорна;
+  5) гончарі цеху (GET /api/games/clicker/guild) і «Зазирнути в хату» (GET /api/games/clicker/house) — хата в overlay
+     з альбомом, виставкою, станом горна, дивовижами й кнопками допомоги;
+  6) «Похвалитись» виробом у Журнал.
   Правила рахує сервер (Clicker.ActGuild / ClickerGuildService); тут — лише малюнок і дії guild { op, … }.
   Звуки: api.sfx('wagon' | 'gift' | 'rank-up' | 'brag').
 */
@@ -18,17 +22,26 @@
   const human = HGames.ui.human;
 
   const ROSTER_MS = 60000;
-  const RANKS = ['Учень', 'Челядник', 'Майстер', 'Цехмістр'];
-  const RANK_ICON = ['🧑‍🎓', '🛠️', '🏅', '🎖️'];
+  const RANKS = ['Учень', 'Челядник', 'Майстер', 'Цехмістр', 'Старійшина'];
+  const RANK_ICON = ['🧑‍🎓', '🛠️', '🏅', '🎖️', '🧓'];
   const TIER = ['', 'бронза', 'срібло', 'золото'];
   const TIER_ICON = ['', '🥉', '🥈', '🥇'];
   const TIER_COLOR = ['#8a6a4a', '#c07a3a', '#c9ced6', '#f4c542'];
-  const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий'];
-  const STARS = ['', '★', '★★', '★★★'];
+  const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
+  const STARS = ['', '★', '★★', '★★★', '✦✦✦✦'];
+  // Допомога другові (§E.2): що це, як зветься й чим пахне.
+  const HELP = {
+    treat: { icon: '🎁', name: 'Гостинець', what: 'віддаєш свої хвилини пасиву — друг дістає вдвічі більше своїх' },
+    lend: { icon: '🧑‍🎓', name: 'Підмайстер у гості', what: 'добу в друга ліплять удвічі швидше' },
+    cheer: { icon: '👏', name: 'Похвала', what: 'годину в друга все йде на 10 % краще' },
+  };
   const TOOL_ICON = { paddle: '🪵', string: '🧵', sponge: '🧽', ribs: '🦴', lantern: '🏮', apron: '🥼', bucket: '🪣', whistle: '🎶', scales: '⚖️', iron: '🔖' };
   const TIER_EMBLEM = { workshop: '🏠', fair: '🎪', artel: '🤝', chumaks: '🐂', pit: '⛏️', school: '📜', chaika: '⛵', museum: '🏛️', tsar: '👑' };
 
   // ---------- дрібниці ----------
+
+  /// «1», «1,25», «3» — пай із двома знаками й українською комою.
+  const pai = (n) => (Math.round(n * 100) / 100).toLocaleString('uk-UA', { maximumFractionDigits: 2 });
 
   const cat = (st) => (st.catalog && st.catalog.guild) || null;
   const rankName = (st, r) => {
@@ -152,9 +165,20 @@
       ? '<div class="clkg-givers">' + w.givers.map((g) => '<span class="clkg-chip' + (g.nick === myNick(st) ? ' me' : '') + '">'
         + esc(g.nick) + ' · ' + g.n + '</span>').join('') + '</div>'
       : '<div class="muted small">Віз ще порожній — хтось має покласти перший горщик.</div>';
+    const per = (c && c.perPotter) || 12;
+    const shareMax = (c && c.shareMax) || 3;
     const claims = (v.claims || []).map((cl) => '<button type="button" class="primary clkg-claim" data-claim="' + esc(cl.day) + '">'
       + '🛒 Забрати: ' + TIER_ICON[cl.tier] + ' ' + TIER[cl.tier] + (cl.day !== w.id ? ' (вчорашній віз)' : '')
-      + ' · +' + api.potsShort(cl.pots) + '</button>').join('');
+      + ' · +' + api.potsShort(cl.pots) + ' <i class="clkg-pai">×' + pai(cl.share) + ' паю</i></button>').join('');
+    // Пай (§E.1): що більше поклав — то більша нагорода. Показуємо і скільки маєш зараз, і скільки до наступного паю.
+    const share = Math.min(shareMax, Math.max(0.5, w.mine / per));
+    const toNext = w.mine < per * shareMax ? per - (w.mine % per) : 0;
+    const paiNote = '<div class="clkg-pai-box"><b>×' + pai(share) + '</b> твого паю'
+      + (toNext ? ' <span class="muted small">· ще ' + toNext + ' ' + api.plural(toNext, 'виріб', 'вироби', 'виробів') + ' — і пай більший</span>'
+        : ' <span class="muted small">· більше вже не буває</span>')
+      + info('Нагорода воза множиться на твій пай: кожні ' + per + ' виробів — ще один пай, до ' + shareMax
+        + '. Поклав ' + per + ' — повний пай, ' + (per * shareMax) + ' — три, п\'ять — половина. Рівень воза (бронза/срібло/золото) '
+        + 'цех бере разом, а платня — за внесок.') + '</div>';
     const mineNote = w.mine >= minGive
       ? 'ти поклав(ла) ' + w.mine + ' — нагорода твоя, щойно віз дійде до порогу'
       : 'поклади хоч ' + minGive + ' (' + w.mine + ' є) — і нагорода віза буде й твоя';
@@ -172,6 +196,7 @@
       + barHtml(w)
       + '<div class="clkg-subs">' + subs + '</div>'
       + givers
+      + paiNote
       + '<div class="clkg-btns"><button type="button" class="ghost clkg-give"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🧺 Покласти на віз</button>'
       + claims + '</div>'
       + '<div class="muted small">' + mineNote + '</div>'
@@ -202,6 +227,96 @@
       + '</section>';
   }
 
+  // ---------- допомога другові (§E.2) ----------
+
+  /// Плашка діючих бафів: що зараз гріє, від кого й доки. Порожньо — нічого не малюємо.
+  function buffsHtml(st, api, v) {
+    const esc = (x) => api.esc(st, x);
+    const rows = [];
+    const row = (kind, b, text) => '<span class="clkg-buff ' + kind + '"><b>' + HELP[kind].icon + '</b>'
+      + '<i>' + text + ' <span class="muted">від ' + esc(b.from || 'друга') + '</span></i>'
+      + '<u class="clkg-bufcd" data-at="' + (Date.parse(b.until) || 0) + '"></u></span>';
+    if (v.buffs.lend) rows.push(row('lend', v.buffs.lend, 'підмайстер у гостях — ліплення ×2'));
+    if (v.buffs.cheer) rows.push(row('cheer', v.buffs.cheer, 'похвала — +10 % до всього'));
+    return rows.length ? '<div class="clkg-buffs">' + rows.join('') + '</div>' : '';
+  }
+
+  function helpHtml(st, api, v) {
+    const c = cat(st);
+    const cap = (c && c.treatCap) || 120;
+    const h = v.help;
+    const can = (kind) => st.mine && (kind !== 'lend' || h.lendLeft);
+    const btn = (kind, note) => '<button type="button" class="ghost clkg-help" data-help="' + kind + '"' + (can(kind) ? '' : ' disabled') + '>'
+      + HELP[kind].icon + ' ' + HELP[kind].name + (note ? ' <span class="muted small">· ' + note + '</span>' : '') + '</button>';
+    return '<section class="clkg-card">'
+      + '<div class="clk-sub">🤝 Помогти другові'
+      + info('Село тримається на тому, що сильніший підставляє плече. Гостинець: платиш своїми хвилинами пасиву, '
+        + 'а друг дістає вдвічі більше хвилин СВОГО — тож твоя гора його гру не зламає, але день-два росту дасть '
+        + '(не більше ' + cap + ' хв на день на одного). Підмайстер — раз на день, і в друга добу ліплять удвічі швидше. '
+        + 'Похвала — раз на день на друга, і в нього годину все йде на 10 % краще.') + '</div>'
+      + '<div class="clkg-btns">'
+      + btn('treat', 'подаровано ' + (h.treats || 0))
+      + btn('lend', h.lendLeft ? 'один на день' : 'сьогодні вже пішов')
+      + btn('cheer', 'раз на день на друга')
+      + '</div>'
+      + '<div class="muted small">Тобі сьогодні ще можуть принести ' + h.treatLeft + ' хв гостинців із ' + cap + '.</div>'
+      + '</section>';
+  }
+
+  /// Вікно допомоги: обрати друга, а для гостинця — ще й розмір (і одразу видно, скільки це твоїх глеків).
+  function renderHelp(st, api) {
+    const kind = st.guildHelp;
+    const v = st.guild;
+    if (!kind || !v) return;
+    const esc = (x) => api.esc(st, x);
+    const roster = (st.guildRoster && st.guildRoster.potters) || [];
+    const friends = roster.filter((p) => !p.me);
+    if (!st.guildHelpTo || !friends.some((f) => f.nick === st.guildHelpTo)) st.guildHelpTo = friends.length ? friends[0].nick : '';
+    const cheered = (v.help.cheered || []).map((x) => String(x).toLowerCase());
+    const busy = kind === 'cheer' && cheered.includes(st.guildHelpTo.trim().toLowerCase());
+    let html = '<div class="clk-sub">' + HELP[kind].icon + ' ' + HELP[kind].name + '</div>'
+      + '<p class="muted small clk-note">' + HELP[kind].what + '.</p>';
+    html += friends.length
+      ? '<div class="clkg-friends">' + friends.map((f) => '<button type="button" class="ghost small' + (f.nick === st.guildHelpTo ? ' active' : '')
+        + '" data-hto="' + esc(f.nick) + '">' + RANK_ICON[f.rank] + ' ' + esc(f.nick) + '</button>').join('') + '</div>'
+      : '<div class="muted">У цеху поки нікого, крім тебе, — помагати нікому.</div>';
+    if (!friends.length) html += '';
+    else if (kind === 'treat') {
+      const sizes = (v.help.sizes || []).length ? v.help.sizes : [{ minutes: 10 }, { minutes: 30 }, { minutes: 60 }];
+      html += '<div class="clkg-sizes">' + sizes.map((s) => '<button type="button" class="ghost clkg-size" data-min="' + s.minutes + '">'
+        + '<b>' + s.minutes + ' хв</b><i>' + (s.pots != null ? '−' + api.potsShort(s.pots) : '') + '</i>'
+        + '<u>другові +' + s.minutes * 2 + ' хв його пасиву</u></button>').join('') + '</div>';
+    } else {
+      html += '<div class="clkg-btns"><button type="button" class="primary clkg-send"' + (busy ? ' disabled' : '') + '>'
+        + HELP[kind].icon + ' ' + (kind === 'lend' ? 'Відпустити підмайстра' : 'Сказати добре слово') + '</button>'
+        + (busy ? '<span class="muted small">сьогодні цього друга вже хвалив(ла)</span>' : '') + '</div>';
+    }
+    let body;
+    if (api.overlayOpen(st) && st.guildHelpBody && st.guildHelpBody.isConnected) {
+      body = st.guildHelpBody;
+      if (body._sig === html) return;
+      body._sig = html;
+      body.innerHTML = html;
+    } else {
+      body = api.overlay(st, html, { cls: 'clkg-ov', onClose: () => { st.guildHelp = null; st.guildHelpBody = null; } });
+      body._sig = html;
+      st.guildHelpBody = body;
+    }
+    for (const b of body.querySelectorAll('[data-hto]')) b.onclick = () => { st.guildHelpTo = b.dataset.hto; renderHelp(st, api); };
+    const send = (payload, sound) => act(st, api, payload, sound).then((r) => { if (r && r.ok) api.closeOverlay(st); });
+    for (const b of body.querySelectorAll('.clkg-size')) {
+      b.onclick = (e) => { if (human(e) && st.guildHelpTo) send({ op: 'treat', to: st.guildHelpTo, minutes: +b.dataset.min }, 'gift'); };
+    }
+    const one = body.querySelector('.clkg-send');
+    if (one) one.onclick = (e) => { if (human(e) && st.guildHelpTo) send({ op: kind, to: st.guildHelpTo }, kind === 'lend' ? 'wagon' : 'brag'); };
+  }
+
+  function openHelp(st, api, kind) {
+    st.guildHelp = kind;
+    loadRoster(st, api, true);
+    renderHelp(st, api);
+  }
+
   // ---------- ранг ----------
 
   function rankHtml(st, api, v) {
@@ -214,8 +329,10 @@
       perks.push('<label class="clkg-auto"><input type="checkbox" class="clkg-autobox"' + (v.autoOff ? '' : ' checked') + (st.mine ? '' : ' disabled') + '> '
         + '🔥 Автогорно: підмайстри самі палять повну сушарню (якість звичайна)</label>');
     }
-    if (v.rank >= 2) perks.push('<div class="small">🏺 +' + v.kilnSlots + ' місця в горні · наступний виріб відкривається на щабель раніше</div>');
-    if (v.rank >= 3) perks.push('<div class="small">🐴 Нагорода воза ×1,5 · титул «Цехмістр» у похвалах і в хаті</div>');
+    if (v.rank >= 2) perks.push('<div class="small">🏺 +' + v.kilnSlots + ' ' + api.plural(v.kilnSlots, 'місце', 'місця', 'місць')
+      + ' у горні · вироби відкриваються на ' + (v.rank - 1) + ' ' + api.plural(v.rank - 1, 'щабель', 'щаблі', 'щаблів') + ' раніше</div>');
+    if (v.rank >= 3) perks.push('<div class="small">🐴 Нагорода воза ×' + api.dec(v.wagonMult || 1.5)
+      + ' · титул «' + esc(rankName(st, v.rank)) + '» у похвалах і в хаті</div>');
     const perkBox = perks.length ? '<div class="clkg-perks">' + perks.join('') + '</div>' : '';
 
     // Цехмістр: вище нема куди — самий рядок і перки.
@@ -234,8 +351,11 @@
     const row = (label, have, need) => '<div class="clkg-req' + (have >= need ? ' ok' : '') + '"><span>' + label + '</span>'
       + '<div class="clkg-rbar"><i style="width:' + (share(have, need) * 100).toFixed(1) + '%"></i></div>'
       + '<b>' + api.short(Math.min(have, need)) + '/' + api.short(need) + '</b></div>';
-    const pieceText = 'дзвінк' + (['bowl', 'makitra', 'tile'].includes(p.ware) ? 'а' : p.ware === 'barrel' ? 'е' : 'ий') + ' '
-      + wareName(st, p.ware).toLowerCase() + (p.style ? ' — ' + ((c && c.styleWords && c.styleWords[p.style]) || styleName(st, p.style).toLowerCase()) : ' у будь-якому розписі');
+    // Прикметник якості, узгоджений з родом виробу (розкішний лев — майстерштук старійшини).
+    const gender = ['bowl', 'makitra', 'tile'].includes(p.ware) ? 1 : p.ware === 'barrel' ? 2 : 0;
+    const adj = [['дзвінкий', 'дзвінка', 'дзвінке'], ['розкішний', 'розкішна', 'розкішне']][(p.q || 3) >= 4 ? 1 : 0][gender];
+    const pieceText = adj + ' ' + wareName(st, p.ware).toLowerCase()
+      + (p.style ? ' — ' + ((c && c.styleWords && c.styleWords[p.style]) || styleName(st, p.style).toLowerCase()) : ' у будь-якому розписі');
     const perk = c && c.ranks && c.ranks[n.rank] ? c.ranks[n.rank].perk : '';
     const ready = n.ready && p.have;
     // Одним рядком: хто ти зараз, куди йдеш і як далеко зайшов. Умови — за «що потрібно ▾».
@@ -254,7 +374,7 @@
       + row('покладено на вози', n.given.have, n.given.need)
       + (n.styles.need ? row('розписів у колекції', n.styles.have, n.styles.need) : '')
       + '<div class="clkg-piece' + (p.have ? ' have' : '') + '">'
-      + api.wareSvg(p.ware, { style: p.style || 'kosiv', quality: 3, cls: 'clkg-big', slot: 'piece' })
+      + api.wareSvg(p.ware, { style: p.style || 'kosiv', quality: Math.min(3, p.q || 3), cls: 'clkg-big', slot: 'piece' })
       + '<div><b>Майстерштук</b><span class="small">' + esc(pieceText) + '</span>'
       + '<span class="muted small">' + (p.have ? '✓ лежить у коморі' : 'виліпи, обпали дзвінким — і принеси селу') + '</span></div></div>'
       + (perk ? '<div class="muted small">Перк: ' + esc(perk) + '</div>' : '')
@@ -290,6 +410,7 @@
         st.guildRoster = d;
         paint(st, api);
         if (st.guildOv === 'gift') renderPicker(st, api);
+        if (st.guildHelp) renderHelp(st, api);
       })
       .catch(() => { /* без списку просто не буде кому дарувати — спробуємо за хвилину */ });
   }
@@ -354,6 +475,41 @@
     return '<svg class="clkg-house clkg-shelves" viewBox="0 0 360 112" role="img" aria-label="Полиці гончаря ' + esc(h.nick) + '">' + s + '</svg>';
   }
 
+  /// «📌 Виставка» друга (§C.4): до трьох клітинок альбому, які він сам поставив на видноту.
+  function showHtml(st, api, d) {
+    if (!d.show || !d.show.length) return '';
+    return '<div class="clkg-show"><span class="muted small">📌 На видноті</span><div class="clkg-showrow">'
+      + d.show.map((x, i) => '<span class="clkg-showcell q' + x.q + '" title="' + api.esc(st, QUALITY[x.q] + ' '
+        + wareName(st, x.ware).toLowerCase() + ' · ' + styleName(st, x.style)) + '">'
+        + api.wareSvg(x.ware, { style: x.style, quality: x.q, cls: 'clkg-mid', slot: 'fshow-' + i }) + '</span>').join('')
+      + '</div></div>';
+  }
+
+  /// Стан горна друга: чи щось зараз пече і скільки партій він уже обпалив.
+  function kilnHtml(st, api, d) {
+    const k = d.kiln;
+    if (!k) return '';
+    const now = api.serverNow(st);
+    const cool = Date.parse(k.coolUntil) || 0;
+    const lit = Date.parse(k.litAt) || 0;
+    let text;
+    if (cool > now) text = '❄️ горно холоне після обпалу';
+    else if (lit && k.batch) text = '🔥 у горні горить: ' + k.batch + ' ' + api.plural(k.batch, 'виріб', 'вироби', 'виробів');
+    else if (k.batch) text = '🏺 у горні складено ' + k.batch + ' ' + api.plural(k.batch, 'виріб', 'вироби', 'виробів')
+      + (k.style ? ' · ' + styleName(st, k.style).toLowerCase() + ', краса ' + k.beauty : '');
+    else text = '🧱 горно холодне й порожнє';
+    return '<div class="muted small clkg-kiln">' + api.esc(st, text) + (k.batches ? ' · партій за весь час: ' + api.short(k.batches) : '') + '</div>';
+  }
+
+  /// Три кнопки допомоги просто в хаті друга — саме там, де хочеться щось для нього зробити.
+  function helpButtons(st, d) {
+    if (!st.mine || !st.guild || !st.guild.enabled) return '';
+    return '<div class="clkg-btns clkg-hhelp">'
+      + ['treat', 'lend', 'cheer'].map((k) => '<button type="button" class="ghost" data-hhelp="' + k + '">'
+        + HELP[k].icon + ' ' + HELP[k].name + '</button>').join('')
+      + '</div>';
+  }
+
   function openHouse(st, api, nick) {
     const body = api.overlay(st, '<div class="clk-sub">🏠 Хата: ' + api.esc(st, nick) + '</div><div class="muted small">Відчиняємо двері…</div>', { cls: 'clkg-ov' });
     fetch('/api/games/clicker/house?nick=' + encodeURIComponent(nick), { headers: headers(st) })
@@ -363,20 +519,35 @@
         if (!ok || !d) { body.innerHTML = '<div class="clk-sub">🏠 ' + api.esc(st, nick) + '</div><div class="muted">' + api.esc(st, (d && d.message) || 'Хата зачинена') + '</div>'; return; }
         const esc = (x) => api.esc(st, x);
         const stat = (label, val) => '<span class="clkg-stat"><b>' + val + '</b><i>' + label + '</i></span>';
-        body.innerHTML = '<div class="clk-sub">🏠 Хата: ' + esc(d.nick) + ' <span class="muted small">· ' + esc(rankName(st, d.rank)) + '</span></div>'
+        const mine = d.nick.toLowerCase() === myNick(st).toLowerCase();
+        const album = d.album != null && d.albumSize
+          ? stat('альбом', Math.round((d.album / d.albumSize) * 100) + ' %' + (d.stars ? ' <span class="clkg-stars">★' + d.stars + '</span>' : ''))
+          : '';
+        body.innerHTML = '<div class="clk-sub">🏠 ' + esc(d.houseName || 'Хата') + ': ' + esc(d.nick)
+          + ' <span class="muted small">· ' + RANK_ICON[d.rank] + ' ' + esc(rankName(st, d.rank)) + '</span></div>'
           + (api.houseSvg ? '<div class="clkg-fhouse">' + api.houseSvg(st, d) + '</div>' + friendShelvesSvg(st, api, d) : friendHouseSvg(st, api, d))
+          + showHtml(st, api, d)
+          + kilnHtml(st, api, d)
           + '<div class="clkg-stats">'
           + stat('глеків за весь час', api.potsShort(d.total))
           + stat('виліплено', api.short(d.formed))
           + stat('обпалено', api.short(d.fired))
           + stat('розписів', d.styles.length)
-          + (d.album != null ? stat('клітинок альбому', d.album) : '')
+          + album
           + (d.tiles != null ? stat('кахлів у печі', d.tiles) : '')
+          + (d.wonders != null ? stat('дивовиж знайдено', d.wonders) : '')
           + stat('клейм', d.stamps)
           + '</div>'
           + (d.gifts.length ? '<div class="muted small">Дарунки від: ' + esc([...new Set(d.gifts.map((g) => g.from))].join(', ')) + '</div>' : '')
-          + (d.nick.toLowerCase() !== myNick(st).toLowerCase()
-            ? '<div class="muted small">Хата — зі збереження; живе коло друга може бути трохи новішим.</div>' : '');
+          + (mine ? '' : helpButtons(st, d))
+          + (mine ? '' : '<div class="muted small">Хата — зі збереження; живе коло друга може бути трохи новішим.</div>');
+        for (const b of body.querySelectorAll('[data-hhelp]')) {
+          b.onclick = (e) => {
+            if (!human(e)) return;
+            st.guildHelpTo = d.nick;
+            openHelp(st, api, b.dataset.hhelp);
+          };
+        }
       })
       .catch(() => { if (body.isConnected) body.innerHTML = '<div class="muted">Не вийшло зазирнути — спробуй ще</div>'; });
   }
@@ -475,7 +646,8 @@
       api.swap(st.guildBody, '<div class="clk-teaser muted">🔒 Цех зараз зачинений. Твій ранг — ' + api.esc(st, rankName(st, v.rank || 0)) + '.</div>');
       return;
     }
-    const html = wagonHtml(st, api, v) + giftsHtml(st, api, v) + rankHtml(st, api, v) + rosterHtml(st, api);
+    const html = buffsHtml(st, api, v) + wagonHtml(st, api, v) + helpHtml(st, api, v)
+      + giftsHtml(st, api, v) + rankHtml(st, api, v) + rosterHtml(st, api);
     if (!api.swap(st.guildBody, html)) return;
     const q = (sel) => st.guildBody.querySelector(sel);
     const give = q('.clkg-give');
@@ -494,6 +666,7 @@
     if (gifting) gifting.onclick = () => { loadRoster(st, api, true); openPicker(st, api, 'gift'); };
     const bragging = q('.clkg-bragging');
     if (bragging) bragging.onclick = () => openPicker(st, api, 'brag');
+    for (const b of st.guildBody.querySelectorAll('[data-help]')) b.onclick = () => openHelp(st, api, b.dataset.help);
     // Кнопка майстерштука тепер буває і в рядку рангу, і всередині «що потрібно» — вішаємо на обидві.
     for (const master of st.guildBody.querySelectorAll('.clkg-master')) {
       master.onclick = (e) => { if (human(e)) act(st, api, { op: 'masterpiece' }, null); };
@@ -501,7 +674,7 @@
     const auto = q('.clkg-autobox');
     if (auto) auto.onchange = () => act(st, api, { op: 'auto', on: auto.checked }, null);
     for (const b of st.guildBody.querySelectorAll('[data-house]')) b.onclick = () => openHouse(st, api, b.dataset.house);
-    st.guildCds = [...st.guildBody.querySelectorAll('.clkg-cd, .clkg-bragcd')];
+    st.guildCds = [...st.guildBody.querySelectorAll('.clkg-cd, .clkg-bragcd, .clkg-bufcd')];
     // Щойно поклали — колеса віза крутнуться.
     if (Date.now() - (st.guildRoll || 0) < 4000) {
       const svg = q('.clkg-wagon');
@@ -514,7 +687,10 @@
     const now = api.serverNow(st);
     for (const el of st.guildCds || []) {
       const at = +el.dataset.at;
-      const t = el.classList.contains('clkg-bragcd') ? (at > now ? 'похвала за ' + api.mmss(at - now) : '') : left(api, at - now);
+      let t;
+      if (el.classList.contains('clkg-bragcd')) t = at > now ? 'похвала за ' + api.mmss(at - now) : '';
+      else if (el.classList.contains('clkg-bufcd')) t = at > now ? 'ще ' + left(api, at - now) : '';
+      else t = left(api, at - now);
       if (el.textContent !== t) el.textContent = t;
     }
   }
@@ -539,6 +715,27 @@
       api.popAt(st, RANK_ICON[v.rank] + ' ' + rankName(st, v.rank) + '!', 'big', 50, 30);
     }
     st.guildRank = v.rank;
+
+    // Нова допомога від друга — стрічка, тост і звук. «Нова» — та, про яку ще не казали: мить пам'ятається в
+    // localStorage, як і для дарунків, тож F5 нічого не повторює, а баф, що прилетів за секунду до входу, не губиться.
+    const news = (key, at, text) => {
+      const was = +api.storeGet(key, '0') || 0;
+      if (!(at > was)) return;
+      api.storeSet(key, String(at));
+      if (was === 0) return;                 // перший вид після встановлення — лише запам'ятовуємо
+      api.toast(st, text, 'ok');
+      api.feed(st, text);
+      api.sfx('gift');
+    };
+    for (const kind of ['lend', 'cheer']) {
+      const b = v.buffs[kind];
+      if (!b) continue;
+      news('clk.guild.' + kind + 'At', Date.parse(b.until) || 0, HELP[kind].icon + ' ' + (b.from || 'Друг') + ' помагає: '
+        + (kind === 'lend' ? 'підмайстер у гостях, ліплення вдвічі швидше' : '+10 % до всього на годину'));
+    }
+    // Гостинець — подія, а не баф: він не триває, але сказати про нього треба так само.
+    const t = v.buffs.treat;
+    if (t) news('clk.guild.treatAt', Date.parse(t.at) || 0, '🎁 ' + (t.from || 'Друг') + ' прислав гостинець: +' + api.potsShort(t.pots));
   }
 
   HClicker.part({
@@ -568,6 +765,8 @@
       st.guildRosterAt = 0;
       st.guildCds = [];
       st.guildOv = null;
+      st.guildHelp = null;
+      st.guildHelpTo = '';
     },
 
     update(st, v, api) {
@@ -577,12 +776,17 @@
         enabled: !!g.enabled, rank: g.rank || 0, day: g.day || null, prev: g.prev || null, claims: g.claims || [],
         gifts: g.gifts || { left: 0, sent: 0, got: 0 }, shelf: g.shelf || [], given: g.given || 0, next: g.next || null,
         autoKiln: !!g.autoKiln, autoOff: !!g.autoOff, kilnSlots: g.kilnSlots || 0, bragAt: g.bragAt || null,
+        wagonMult: g.wagonMult || 1,
+        help: g.help || { treatLeft: 0, lendLeft: false, cheered: [], sizes: [], treats: 0 },
+        buffs: g.buffs || { lend: null, cheer: null, treat: null },
       };
       if (st.guild.enabled && !st.guild.day) st.guild.enabled = false;
       if (st.guild.enabled) celebrate(st, api, st.guild);
       api.tabNote(st, 'guild', 'claim', st.guild.claims.length ? '🛒' : '', 1);
+      api.tabNote(st, 'guild', 'buff', st.guild.buffs.lend || st.guild.buffs.cheer ? '✨' : '', 2);
       paint(st, api);
       if (st.guildOv) renderPicker(st, api);
+      if (st.guildHelp) renderHelp(st, api);
     },
 
     slow(st, api) {
@@ -596,6 +800,8 @@
       st.guildBody = null;
       st.guildOv = null;
       st.guildOvBody = null;
+      st.guildHelp = null;
+      st.guildHelpBody = null;
     },
   });
 })();

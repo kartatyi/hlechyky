@@ -215,12 +215,13 @@ public class ClickerGuildTests
         Fill(h, g, "Оля", 1);
         var claim = G(h).GetProperty("claims")[0];
         Assert.Equal(1, claim.GetProperty("tier").GetInt32());
-        // Голе коло: пасиву нема, тож дно — 20 кліків на хвилину: 10 хв бронзи — 200 глеків.
-        Assert.Equal(200, claim.GetProperty("pots").GetInt64());
+        // Голе коло: пасиву нема, тож дно — 20 кліків на хвилину; хвилини множаться на паї (§E.1).
+        var bronze = (long)(10 * Clicker.WagonShare(claim.GetProperty("mine").GetInt32()) * 20);
+        Assert.Equal(bronze, claim.GetProperty("pots").GetInt64());
         var before = Pots(h);
         var r = Guild(h, new { op = "claim" });
         Assert.True(r.Ok, r.Message);
-        Assert.Equal(before + 200, Pots(h));
+        Assert.Equal(before + bronze, Pots(h));
         Assert.Single(h.Awards, a => a.Reason == "ach:potter-wagon");
         Assert.Equal("Нагороду за бронзу ти вже забрав", Guild(h, new { op = "claim" }).Message);
         Assert.Equal(0, G(h).GetProperty("claims").GetArrayLength());
@@ -228,9 +229,40 @@ public class ClickerGuildTests
         // Віз доріс до золота — добираємо різницю, ачівка вдруге не приходить.
         Fill(h, g, "Оля", 3);
         before = Pots(h);
+        var gold = G(h).GetProperty("claims")[0];
+        var add = (long)((35 - 10) * Clicker.WagonShare(gold.GetProperty("mine").GetInt32()) * 20);
         Assert.True(Guild(h, new { op = "claim", day = D10 }).Ok);
-        Assert.Equal(before + (35 - 10) * 20, Pots(h));
+        Assert.Equal(before + add, Pots(h));
         Assert.Single(h.Awards, a => a.Reason == "ach:potter-wagon");
+    }
+
+    [Fact]
+    public void The_wagon_pays_by_shares_so_a_hundred_wares_beat_fifteen()
+    {
+        // §E.1: кожні 12 виробів — ще один пай, пів паю — дно, три — стеля.
+        Assert.Equal(0.5, Clicker.WagonShare(5));
+        Assert.Equal(0.5, Clicker.WagonShare(0));
+        Assert.Equal(1, Clicker.WagonShare(12));
+        Assert.Equal(15 / 12.0, Clicker.WagonShare(15));
+        Assert.Equal(3, Clicker.WagonShare(36));
+        Assert.Equal(3, Clicker.WagonShare(100));
+
+        var g = new Tsekh();
+        var big = g.Potter("Оля");
+        var small = g.Potter("Петро");
+        Fill(big, g, "Оля", 3);                                     // Оля наповнила віз до золота сама
+        GiveN(small, "pot", ClickerGuildService.MinGive);            // Петро заскочив на п'ятірку
+        var mineBig = G(big).GetProperty("claims")[0].GetProperty("mine").GetInt32();
+        Assert.True(mineBig >= 36, $"Оля поклала {mineBig}");
+        Assert.Equal(3, G(big).GetProperty("claims")[0].GetProperty("share").GetDouble());
+        Assert.Equal(0.5, G(small).GetProperty("claims")[0].GetProperty("share").GetDouble());
+        // На тому самому возі внесок вирішує: шестеро паїв різниці.
+        Assert.Equal(6 * G(small).GetProperty("claims")[0].GetProperty("pots").GetInt64(),
+            G(big).GetProperty("claims")[0].GetProperty("pots").GetInt64());
+        var r = Guild(big, new { op = "claim" });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("3 паї", r.Message);
+        Assert.Contains("0,5 паю", Guild(small, new { op = "claim" }).Message);
     }
 
     [Fact]
@@ -241,9 +273,14 @@ public class ClickerGuildTests
         Patch(h, s => s["upgrades"]!["kiln"] = 100);                    // 300 глеків/с
         Fill(h, g, "Оля", 1);
         var passive = h.View(0).GetProperty("baseSecond").GetDouble();
-        Assert.Equal((long)(passive * 10 * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
+        var share = Clicker.WagonShare(G(h).GetProperty("claims")[0].GetProperty("mine").GetInt32());
+        Assert.Equal((long)(passive * (10 * 1.0 * share) * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
         Patch(h, s => GuildRow(s)["rank"] = 3);
-        Assert.Equal((long)(passive * 15 * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
+        Assert.Equal((long)(passive * (10 * 1.5 * share) * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
+        // Старійшині — вдвічі (§E.4).
+        Patch(h, s => GuildRow(s)["rank"] = 4);
+        Assert.Equal((long)(passive * (10 * 2.0 * share) * 60), G(h).GetProperty("claims")[0].GetProperty("pots").GetInt64());
+        Assert.Equal(2.0, G(h).GetProperty("wagonMult").GetDouble());
     }
 
     [Fact]
@@ -259,8 +296,9 @@ public class ClickerGuildTests
         Assert.Equal(D10, view.GetProperty("prev").GetProperty("id").GetString());
         Assert.Equal(D10, view.GetProperty("claims")[0].GetProperty("day").GetString());
         var before = Pots(h);
+        var share = Clicker.WagonShare(view.GetProperty("claims")[0].GetProperty("mine").GetInt32());
         Assert.True(Guild(h, new { op = "claim" }).Ok);
-        Assert.Equal(before + 20 * 20, Pots(h));
+        Assert.Equal(before + (long)(20 * share * 20), Pots(h));
 
         // Ще день — той віз поїхав назавжди.
         var g2 = new Tsekh();
@@ -393,6 +431,317 @@ public class ClickerGuildTests
         Assert.Equal(15, view.GetProperty("gifts").GetProperty("got").GetInt32());
     }
 
+    // ---------- допомога другові (§E.2) ----------
+
+    /// <summary>Пасив у гончаря: печей на рівень kiln, щоб було чим міряти хвилини.</summary>
+    static void Kiln(RoomHarness h, int level) => Patch(h, s => s["upgrades"]!["kiln"] = level);
+
+    static double Passive(RoomHarness h) => h.View(0).GetProperty("baseSecond").GetDouble();
+    static double PotsD(RoomHarness h) => h.View(0).GetProperty("pots").GetDouble();
+    static JsonElement Help(RoomHarness h) => G(h).GetProperty("help");
+
+    [Fact]
+    public void A_treat_costs_your_own_passive_and_pays_the_friends_own()
+    {
+        var g = new Tsekh();
+        var rich = g.Potter("Оля");
+        var poor = g.Potter("Петро");
+        Kiln(rich, 400);
+        Kiln(poor, 20);
+        Patch(rich, s => s["pots"] = 1e15);
+        var myPassive = Passive(rich);
+        var hisPassive = Passive(poor);
+        Assert.True(myPassive > hisPassive * 10, "багатий мусить бути справді багатшим");
+
+        var before = PotsD(rich);
+        var r = Guild(rich, new { op = "treat", to = "Петро", minutes = 30 });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("60 хв його власного пасиву", r.Message);
+        // Заплатив — рівно свої 30 хвилин пасиву.
+        Assert.Equal(before - Math.Floor(myPassive * 30 * 60), PotsD(rich));
+
+        // Петро дістає вдвічі більше хвилин, але СВОГО пасиву — тобто рівно день-два росту, а не чужу гору.
+        var his = PotsD(poor);
+        Assert.True(poor.Act(0, "look").Ok);
+        Assert.Equal(Math.Floor(hisPassive * 60 * 60), PotsD(poor) - his);
+        Assert.Equal(1, Help(rich).GetProperty("treats").GetInt32());
+
+        // Гостинець буває лише на 10/30/60 і лише тому, хто сідав за коло.
+        Assert.Equal("Гостинець буває на 10, 30 або 60 хвилин", Guild(rich, new { op = "treat", to = "Петро", minutes = 45 }).Message);
+        Assert.Equal("Самому собі помагати — то просто робота 🙂", Guild(rich, new { op = "treat", to = "Оля", minutes = 10 }).Message);
+        Assert.StartsWith("Кому помагати?", Guild(rich, new { op = "treat", to = " ", minutes = 10 }).Message);
+        Assert.Contains("ще не сідав за гончарне коло", Guild(rich, new { op = "treat", to = "Хтось", minutes = 10 }).Message);
+    }
+
+    [Fact]
+    public void A_treat_you_cannot_afford_does_not_leave_the_house()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        g.Potter("Петро");
+        Kiln(ola, 4000);
+        Patch(ola, s => s["pots"] = 0);
+        var r = Guild(ola, new { op = "treat", to = "Петро", minutes = 60 });
+        Assert.False(r.Ok);
+        Assert.StartsWith("Гостинець на 60 хв коштує", r.Message);
+        // Скринька друга порожня — відмова нічого не з'їла й нічого не послала.
+        Assert.Equal(ClickerGuildService.TreatCapMinutes, Help(ola).GetProperty("treatLeft").GetInt32());
+        Assert.Null(g.Svc.TakeBoosts("петро"));
+    }
+
+    [Fact]
+    public void Treats_stop_at_two_hours_a_day_for_one_receiver()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        var petro = g.Potter("Петро");
+        var mykola = g.Potter("Микола");
+        foreach (var h in new[] { ola, mykola }) { Kiln(h, 300); Patch(h, s => s["pots"] = 1e15); }
+        Kiln(petro, 20);
+
+        // Стеля — 120 хвилин ОТРИМАНОГО на день, а гостинець несе вдвічі більше, ніж коштує.
+        Assert.True(Guild(ola, new { op = "treat", to = "Петро", minutes = 30 }).Ok);
+        Assert.Equal(60, g.Svc.Help("петро", ola.Clock.UtcNow).TreatLeft);
+        Assert.True(Guild(mykola, new { op = "treat", to = "Петро", minutes = 10 }).Ok);
+        Assert.Equal(40, g.Svc.Help("петро", ola.Clock.UtcNow).TreatLeft);
+        // Тридцять хвилин дали б Петрові шістдесят — більше, ніж лишилось.
+        Assert.Equal("Петро сьогодні прийме ще 40 хв гостинців — пришли менший",
+            Guild(ola, new { op = "treat", to = "Петро", minutes = 30 }).Message);
+        Assert.True(Guild(ola, new { op = "treat", to = "Петро", minutes = 10 }).Ok);
+        Assert.True(Guild(mykola, new { op = "treat", to = "Петро", minutes = 10 }).Ok);
+        Assert.Equal(0, g.Svc.Help("петро", ola.Clock.UtcNow).TreatLeft);
+        Assert.Equal("Петро сьогодні вже наївся гостинців — завтра зголодніє знову",
+            Guild(ola, new { op = "treat", to = "Петро", minutes = 10 }).Message);
+        // Чужа стеля своєї не чіпає: Миколі гостинці ще йдуть.
+        Assert.Equal(ClickerGuildService.TreatCapMinutes, g.Svc.Help("микола", ola.Clock.UtcNow).TreatLeft);
+        Assert.True(Guild(ola, new { op = "treat", to = "Микола", minutes = 60 }).Ok);
+
+        // Київська північ — стеля знову повна.
+        ola.Clock.UtcNow = new DateTimeOffset(2026, 9, 10, 21, 1, 0, TimeSpan.Zero);
+        Assert.Equal(ClickerGuildService.TreatCapMinutes, g.Svc.Help("петро", ola.Clock.UtcNow).TreatLeft);
+        Assert.True(Guild(ola, new { op = "treat", to = "Петро", minutes = 60 }).Ok);
+    }
+
+    [Fact]
+    public void Ten_treats_are_an_achievement()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        g.Potter("Петро");
+        g.Potter("Микола");
+        Kiln(ola, 400);
+        Patch(ola, s => s["pots"] = 1e15);
+        var day = ola.Clock.UtcNow;
+        for (var i = 0; i < Clicker.TreatsForAchievement; i++)
+        {
+            // Стеля — на отримувача за день, тож щоразу новий день.
+            ola.Clock.UtcNow = day.AddDays(i);
+            Assert.True(Guild(ola, new { op = "treat", to = i % 2 == 0 ? "Петро" : "Микола", minutes = 60 }).Ok);
+        }
+        Assert.True(ola.Act(0, "look").Ok);                       // черга ачівок віддається наступною дією
+        Assert.Single(ola.Awards, a => a.Reason == "ach:potter-treat");
+        Assert.Equal(10, Help(ola).GetProperty("treats").GetInt32());
+    }
+
+    [Fact]
+    public void An_apprentice_visits_for_a_day_and_halves_the_work()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        var petro = g.Potter("Петро");
+        var work = Work(petro, "pot");
+        Assert.True(Guild(ola, new { op = "lend", to = "Петро" }).Ok);
+        Assert.False(Help(ola).GetProperty("lendLeft").GetBoolean());
+        // Підмайстер один — другого сьогодні не позичиш нікому.
+        Assert.Equal("Підмайстер у цеху один, і сьогодні він уже пішов у гості", Guild(ola, new { op = "lend", to = "Петро" }).Message);
+        g.Potter("Микола");
+        Assert.Equal("Підмайстер у цеху один, і сьогодні він уже пішов у гості", Guild(ola, new { op = "lend", to = "Микола" }).Message);
+
+        Assert.True(petro.Act(0, "look").Ok);
+        Assert.Equal(work / 2, Work(petro, "pot"));
+        var buff = G(petro).GetProperty("buffs").GetProperty("lend");
+        Assert.Equal("Оля", buff.GetProperty("from").GetString());
+        Assert.Equal(petro.Clock.UtcNow.AddHours(ClickerGuildService.LendHours), buff.GetProperty("until").GetDateTimeOffset());
+
+        // Доба минула — підмайстер пішов додому, і з нового дня його знову можна позичити.
+        petro.Clock.Advance(TimeSpan.FromHours(ClickerGuildService.LendHours + 1));
+        Assert.Equal(work, Work(petro, "pot"));
+        Assert.Equal(JsonValueKind.Null, G(petro).GetProperty("buffs").GetProperty("lend").ValueKind);
+        ola.Clock.Advance(TimeSpan.FromDays(1));
+        Assert.True(Help(ola).GetProperty("lendLeft").GetBoolean());
+        Assert.True(Guild(ola, new { op = "lend", to = "Петро" }).Ok);
+    }
+
+    static int Work(RoomHarness h, string ware) =>
+        h.View(0).GetProperty("craft").GetProperty("wares").EnumerateArray()
+            .First(w => w.GetProperty("key").GetString() == ware).GetProperty("need").GetInt32();
+
+    [Fact]
+    public void A_cheer_warms_everything_for_an_hour_once_a_day_per_friend()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        var petro = g.Potter("Петро");
+        var mykola = g.Potter("Микола");
+        var was = petro.View(0).GetProperty("allMult").GetDouble();
+
+        Assert.True(Guild(ola, new { op = "cheer", to = "Петро" }).Ok);
+        Assert.Equal(["петро"], Help(ola).GetProperty("cheered").EnumerateArray().Select(x => x.GetString()).ToArray());
+        Assert.Equal("Петро сьогодні вже чув(ла) від тебе добре слово — завтра скажеш ще",
+            Guild(ola, new { op = "cheer", to = "Петро" }).Message);
+        // А Миколу похвалити сьогодні ще можна — раз на день саме на друга.
+        Assert.True(Guild(ola, new { op = "cheer", to = "Микола" }).Ok);
+
+        Assert.True(petro.Act(0, "look").Ok);
+        Assert.Equal(was * ClickerGuildService.CheerMult, petro.View(0).GetProperty("allMult").GetDouble(), 9);
+        Assert.Equal("Оля", G(petro).GetProperty("buffs").GetProperty("cheer").GetProperty("from").GetString());
+        // Година минула — тепло вивітрилось.
+        petro.Clock.Advance(TimeSpan.FromMinutes(ClickerGuildService.CheerMinutes + 1));
+        Assert.Equal(was, petro.View(0).GetProperty("allMult").GetDouble(), 9);
+        Assert.Equal(JsonValueKind.Null, G(petro).GetProperty("buffs").GetProperty("cheer").ValueKind);
+        Assert.True(mykola.Act(0, "look").Ok);
+    }
+
+    [Fact]
+    public void Help_that_arrived_while_you_slept_is_written_into_the_away_note()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        var petro = g.Potter("Петро");
+        Kiln(ola, 300);
+        Patch(ola, s => s["pots"] = 1e15);
+        Assert.True(Guild(ola, new { op = "treat", to = "Петро", minutes = 10 }).Ok);
+        Assert.True(Guild(ola, new { op = "lend", to = "Петро" }).Ok);
+        Assert.True(Guild(ola, new { op = "cheer", to = "Петро" }).Ok);
+
+        petro.Clock.Advance(TimeSpan.FromHours(3));
+        Assert.True(petro.Act(0, "look").Ok);
+        var notes = petro.View(0).GetProperty("away").GetProperty("notes").EnumerateArray().Select(x => x.GetString()!).ToList();
+        Assert.Contains(notes, t => t.StartsWith("🎁 Гостинець від Оля"));
+        Assert.Contains(notes, t => t.StartsWith("🧑‍🎓 Підмайстер від Оля"));
+        Assert.Contains(notes, t => t.StartsWith("👏 Оля хвалить"));
+
+        // Гостинець — не баф, а подія: клієнтові треба знати, від кого й скільки, щоб сказати це в стрічці.
+        var treat = G(petro).GetProperty("buffs").GetProperty("treat");
+        Assert.Equal("Оля", treat.GetProperty("from").GetString());
+        Assert.Equal(petro.Clock.UtcNow, treat.GetProperty("at").GetDateTimeOffset());
+        Assert.True(treat.GetProperty("pots").GetDouble() > 0);
+        // І переживає перезавантаження, щоб «щойно прийшло» не показалось удруге після F5.
+        Patch(petro, _ => { });
+        Assert.Equal("Оля", G(petro).GetProperty("buffs").GetProperty("treat").GetProperty("from").GetString());
+    }
+
+    [Fact]
+    public void The_buffs_survive_a_reload_and_a_hand_edited_save_cannot_stretch_them()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        var petro = g.Potter("Петро");
+        Assert.True(Guild(ola, new { op = "lend", to = "Петро" }).Ok);
+        Assert.True(Guild(ola, new { op = "cheer", to = "Петро" }).Ok);
+        Assert.True(petro.Act(0, "look").Ok);
+        var before = G(petro).GetProperty("buffs").GetRawText();
+        Patch(petro, _ => { });
+        Assert.Equal(before, G(petro).GetProperty("buffs").GetRawText());
+
+        // Правлена руками база: вічного підмайстра не буде — баф обрізається своєю довжиною.
+        Patch(petro, s => GuildRow(s)["buffs"] = new JsonObject
+        {
+            ["lend"] = "2099-01-01T00:00:00+00:00",
+            ["lendFrom"] = new string('я', 40),
+            ["cheer"] = "2099-01-01T00:00:00+00:00",
+        });
+        var buffs = G(petro).GetProperty("buffs");
+        Assert.Equal(petro.Clock.UtcNow.AddHours(ClickerGuildService.LendHours), buffs.GetProperty("lend").GetProperty("until").GetDateTimeOffset());
+        Assert.Equal(24, buffs.GetProperty("lend").GetProperty("from").GetString()!.Length);
+        Assert.Equal(petro.Clock.UtcNow.AddMinutes(ClickerGuildService.CheerMinutes), buffs.GetProperty("cheer").GetProperty("until").GetDateTimeOffset());
+
+        // Старе збереження без бафів — просто нема бафів.
+        Patch(petro, s => GuildRow(s).Remove("buffs"));
+        Assert.Equal(JsonValueKind.Null, G(petro).GetProperty("buffs").GetProperty("lend").ValueKind);
+        Assert.Equal(JsonValueKind.Null, G(petro).GetProperty("buffs").GetProperty("cheer").ValueKind);
+    }
+
+    [Fact]
+    public void An_old_service_state_without_boosts_still_opens()
+    {
+        var store = new FakeStore();
+        var clock = new FakeClock();
+        // Стан сьомого оновлення: дні, гончарі, скриньки — і жодного слова про допомогу.
+        var old = new JsonObject
+        {
+            ["days"] = new JsonObject
+            {
+                [D10] = new JsonObject
+                {
+                    ["total"] = 7,
+                    ["wares"] = new JsonObject { ["pot"] = 7 },
+                    ["givers"] = new JsonObject { ["оля"] = new JsonObject { ["nick"] = "Оля", ["n"] = 7 } },
+                    ["claimed"] = new JsonObject(),
+                    ["logged"] = 0,
+                },
+            },
+            ["potters"] = new JsonObject { ["оля"] = new JsonObject { ["nick"] = "Оля", ["rank"] = 2, ["seen"] = "2026-09-10T12:00:00+00:00" } },
+            ["mail"] = new JsonObject(),
+            ["sent"] = new JsonObject(),
+        };
+        store.SaveState(ClickerGuildService.StoreKey, old.ToJsonString());
+        var svc = new ClickerGuildService(store, clock);
+        var help = svc.Help("оля", Thursday);
+        Assert.Equal(ClickerGuildService.TreatCapMinutes, help.TreatLeft);
+        Assert.True(help.LendLeft);
+        Assert.Empty(help.Cheered);
+        Assert.Null(svc.TakeBoosts("оля"));
+        Assert.Equal(7, svc.Summary("оля", Thursday).Today.Mine);
+
+        // Перша ж допомога лягає в стан поруч зі старим — і день із возом не губиться.
+        store.SaveState("clicker:петро", "{}");
+        Assert.Null(svc.Boost("оля", "Оля", "Петро", "cheer", 0, Thursday));
+        var saved = JsonNode.Parse(store.LoadState(ClickerGuildService.StoreKey)!)!.AsObject();
+        Assert.Equal(1, saved["boosts"]!["петро"]!.AsArray().Count);
+        Assert.Equal(7, saved["days"]!["2026-09-10"]!["total"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void Two_friends_in_one_guild_help_each_other_both_ways()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        var petro = g.Potter("Петро");
+        Kiln(ola, 300);
+        Kiln(petro, 300);
+        foreach (var h in new[] { ola, petro }) Patch(h, s => s["pots"] = 1e15);
+
+        Assert.True(Guild(ola, new { op = "treat", to = "Петро", minutes = 10 }).Ok);
+        Assert.True(Guild(petro, new { op = "treat", to = "Оля", minutes = 10 }).Ok);
+        Assert.True(Guild(ola, new { op = "lend", to = "Петро" }).Ok);
+        Assert.True(Guild(petro, new { op = "cheer", to = "Оля" }).Ok);
+
+        // Кожен дістає своє й нічого чужого: у Олі — похвала, у Петра — підмайстер.
+        Assert.True(ola.Act(0, "look").Ok);
+        Assert.True(petro.Act(0, "look").Ok);
+        Assert.Equal("Петро", G(ola).GetProperty("buffs").GetProperty("cheer").GetProperty("from").GetString());
+        Assert.Equal(JsonValueKind.Null, G(ola).GetProperty("buffs").GetProperty("lend").ValueKind);
+        Assert.Equal("Оля", G(petro).GetProperty("buffs").GetProperty("lend").GetProperty("from").GetString());
+        Assert.Equal(JsonValueKind.Null, G(petro).GetProperty("buffs").GetProperty("cheer").ValueKind);
+        // Скриньки спорожніли — удруге те саме не прилетить.
+        Assert.Null(g.Svc.TakeBoosts("оля"));
+        Assert.Null(g.Svc.TakeBoosts("петро"));
+    }
+
+    [Fact]
+    public void Without_a_guild_service_help_is_politely_refused()
+    {
+        var h = new RoomHarness("clicker");
+        h.Solo("Оля");
+        foreach (var op in new[] { "treat", "lend", "cheer" })
+            Assert.Equal("Цех зараз зачинений", h.Act(0, "guild", new { op, to = "Петро", minutes = 10 }).Message);
+        var store = new FakeStore();
+        store.SaveState("clicker:б", "{}");
+        Assert.Equal("Такої допомоги в цеху не знають",
+            new ClickerGuildService(store, new FakeClock()).Boost("а", "А", "б", "магія", 0, Thursday));
+    }
+
     // ---------- хата друга ----------
 
     [Fact]
@@ -442,6 +791,62 @@ public class ClickerGuildTests
         Assert.Equal(JsonValueKind.Null, snap.GetProperty("tiles").ValueKind);
         Assert.Equal("Петро", snap.GetProperty("gifts")[0].GetProperty("from").GetString());
         Assert.Equal("kumanets", snap.GetProperty("best")[0].GetProperty("ware").GetString());
+        // Чого ще не було в збереженні — того й у знімку нема (а не нулі й порожнеча).
+        Assert.Equal(JsonValueKind.Null, snap.GetProperty("stars").ValueKind);
+        Assert.Equal(JsonValueKind.Null, snap.GetProperty("wonders").ValueKind);
+        Assert.Empty(snap.GetProperty("show").EnumerateArray());
+        Assert.Equal(Clicker.AlbumSize, snap.GetProperty("albumSize").GetInt32());
+    }
+
+    [Fact]
+    public void The_friends_house_carries_the_album_the_show_the_kiln_and_the_wonders()
+    {
+        // §E.3: зірки й «виставка» — з пакета «Альбом», дивовижі й ім'я хати — з «Хати»; поля можуть іще
+        // не існувати, тож знімок читає їх обережно.
+        var save = new JsonObject
+        {
+            ["total"] = 1e21,
+            ["album"] = new JsonObject
+            {
+                ["cells"] = new JsonObject { ["pot"] = new JsonArray("", "kosiv"), ["jug"] = new JsonArray("kosiv") },
+                ["stars"] = new JsonObject { ["pot"] = new JsonArray("kosiv") },
+                ["show"] = new JsonArray("jug|kosiv|3", "pot|", "lion|petrykivka|4", "нема|kosiv|1", "bowl||1"),
+                ["stove"] = new JsonArray(new JsonObject { ["style"] = "kosiv", ["q"] = 3 }),
+            },
+            ["kiln"] = new JsonObject
+            {
+                ["batch"] = new JsonArray("pot", "pot", "гарбуз"),
+                ["style"] = "kosiv", ["beauty"] = 87, ["batches"] = 42,
+                ["litAt"] = "2026-09-10T12:00:00+00:00", ["coolUntil"] = "2026-09-10T12:05:00+00:00",
+            },
+            ["house"] = new JsonObject { ["wonders"] = new JsonArray("singing-jug", "horseshoe"), ["name"] = new string('х', 40) },
+        };
+        var snap = Views.Json(ClickerGuildService.HouseSnapshot("Оля", save.ToJsonString()));
+        Assert.Equal(3, snap.GetProperty("album").GetInt32());
+        Assert.Equal(1, snap.GetProperty("stars").GetInt32());
+        Assert.Equal(Clicker.AlbumSize, snap.GetProperty("albumSize").GetInt32());
+        Assert.Equal(1, snap.GetProperty("tiles").GetInt32());
+        Assert.Equal(2, snap.GetProperty("wonders").GetInt32());
+        Assert.Equal(24, snap.GetProperty("houseName").GetString()!.Length);
+        Assert.Equal(1e21, snap.GetProperty("total").GetDouble());
+
+        // Виставка: до трьох, невідоме викинуто, короткий ключ теж читається.
+        var show = snap.GetProperty("show").EnumerateArray().ToList();
+        Assert.Equal(3, show.Count);
+        Assert.Equal(["jug", "pot", "lion"], show.Select(x => x.GetProperty("ware").GetString()).ToArray());
+        Assert.Equal("", show[1].GetProperty("style").GetString());
+        Assert.Equal(4, show[2].GetProperty("q").GetInt32());
+
+        var kiln = snap.GetProperty("kiln");
+        Assert.Equal(2, kiln.GetProperty("batch").GetInt32());              // «гарбуза» серед виробів нема
+        Assert.Equal("kosiv", kiln.GetProperty("style").GetString());
+        Assert.Equal(87, kiln.GetProperty("beauty").GetInt32());
+        Assert.Equal(42, kiln.GetProperty("batches").GetInt32());
+        Assert.StartsWith("2026-09-10T12:05", kiln.GetProperty("coolUntil").GetString());
+
+        // Дивовижі числом (раптом «Хата» напише лічильник, а не список) — теж читаються.
+        save["house"]!["wonders"] = 5;
+        Assert.Equal(5, Views.Json(ClickerGuildService.HouseSnapshot("Оля", save.ToJsonString())).GetProperty("wonders").GetInt32());
     }
 
     [Fact]
@@ -565,9 +970,81 @@ public class ClickerGuildTests
             Assert.Equal(rank, G(h).GetProperty("rank").GetInt32());
         }
         Assert.Single(h.Awards, a => a.Reason == "ach:potter-rank");
-        Assert.Equal(JsonValueKind.Null, G(h).GetProperty("next").ValueKind);
-        Assert.Equal("Ти вже цехмістр — вище в цеху лише небо", Guild(h, new { op = "masterpiece" }).Message);
+        // Цехмістр — іще не вершина: за ним стоїть старійшина (§E.4).
+        Assert.Equal(4, G(h).GetProperty("next").GetProperty("rank").GetInt32());
+        Assert.StartsWith("До рангу «Старійшина» ще:", Guild(h, new { op = "masterpiece" }).Message);
     }
+
+    [Fact]
+    public void The_elder_asks_for_ten_thousand_fired_and_a_lavish_lion()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        Patch(h, s =>
+        {
+            s["craft"]!["firedBy"] = new JsonObject { ["pot"] = 10_000 };
+            s["styles"] = new JsonArray(Clicker.Styles.Select(x => (JsonNode?)x.Key).ToArray());
+            var row = GuildRow(s);
+            row["rank"] = 3; row["given"] = 1500;
+        });
+        var next = G(h).GetProperty("next");
+        Assert.Equal(4, next.GetProperty("rank").GetInt32());
+        Assert.Equal(10_000, next.GetProperty("fired").GetProperty("need").GetInt64());
+        Assert.Equal(1500, next.GetProperty("given").GetProperty("need").GetInt64());
+        Assert.Equal(8, next.GetProperty("styles").GetProperty("need").GetInt32());
+        Assert.Equal("lion", next.GetProperty("piece").GetProperty("ware").GetString());
+        Assert.Equal(4, next.GetProperty("piece").GetProperty("q").GetInt32());
+        Assert.True(next.GetProperty("ready").GetBoolean());
+        Assert.Contains("розкішний лев", Guild(h, new { op = "masterpiece" }).Message);
+
+        // Дзвінкий лев не годиться — потрібен розкішний (Q4). Сам Q4 приносить пакет «Горно»: у цій гілці
+        // ParseItem вище за трійку не пускає, тож здати майстерштук тут іще нема чим — перевіряємо відмову
+        // й перки рангу окремо.
+        Items(h, ("lion|kosiv|3", 1));
+        Assert.False(G(h).GetProperty("next").GetProperty("piece").GetProperty("have").GetBoolean());
+        Assert.StartsWith("Цех чекає майстерштук", Guild(h, new { op = "masterpiece" }).Message);
+
+        Patch(h, s => GuildRow(s)["rank"] = 4);
+        var v = G(h);
+        Assert.Equal(4, v.GetProperty("rank").GetInt32());
+        Assert.Equal(Clicker.ElderKilnSlots, v.GetProperty("kilnSlots").GetInt32());
+        Assert.Equal(Clicker.ElderWagon, v.GetProperty("wagonMult").GetDouble());
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("next").ValueKind);
+        Assert.Equal("Ти вже старійшина — вище в цеху лише небо", Guild(h, new { op = "masterpiece" }).Message);
+        // Титул старійшини стоїть і в похвалі.
+        Items(h, ("pot||1", 1));
+        Assert.True(Guild(h, new { op = "brag", key = "pot||1" }).Ok);
+        Assert.Contains(Journal(h), t => t.Contains("Старійшина Оля хвалиться"));
+    }
+
+    [Fact]
+    public void The_rank_opens_wares_a_step_ahead_and_the_elder_three()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        // Кухоль (нових виробів у цій гілці ще нема) — беремо останні щаблі наявної таблиці.
+        var i = Clicker.Wares.Length - 1;
+        Open(h, 0);
+        Assert.False(WareOpen(h, Clicker.Wares[i].Key));
+        // Учень: поріг рівно свій.
+        Open(h, Clicker.Wares[i].Unlock);
+        Assert.True(WareOpen(h, Clicker.Wares[i].Key));
+
+        foreach (var (rank, back) in new[] { (2, 1), (3, 2), (4, 3) })
+        {
+            Patch(h, s => GuildRow(s)["rank"] = rank);
+            Open(h, Clicker.Wares[i - back].Unlock);
+            Assert.True(WareOpen(h, Clicker.Wares[i].Key), $"ранг {rank} мав відкрити на {back} щаблів раніше");
+            Open(h, Clicker.Wares[i - back].Unlock - 1);
+            Assert.False(WareOpen(h, Clicker.Wares[i].Key), $"ранг {rank} відкрив зарано");
+        }
+    }
+
+    static void Open(RoomHarness h, double total) => Patch(h, s => s["total"] = total);
+
+    static bool WareOpen(RoomHarness h, string key) =>
+        h.View(0).GetProperty("craft").GetProperty("wares").EnumerateArray()
+            .First(w => w.GetProperty("key").GetString() == key).GetProperty("open").GetBoolean();
 
     [Fact]
     public void Masterpieces_differ_between_friends_but_stay_put_for_one_potter()
@@ -666,7 +1143,7 @@ public class ClickerGuildTests
         Assert.Equal(0, old.GetProperty("given").GetInt64());
         Assert.Equal(0, old.GetProperty("shelf").GetArrayLength());
         Patch(h, s => GuildRow(s)["rank"] = 99);
-        Assert.Equal(3, G(h).GetProperty("rank").GetInt32());
+        Assert.Equal(Clicker.GuildRanks.Length - 1, G(h).GetProperty("rank").GetInt32());
     }
 
     [Fact]
@@ -798,8 +1275,13 @@ public class ClickerGuildTests
         var h = new RoomHarness("clicker", services: RoomHarness.WithService(g.Svc));
         h.Solo("Оля");
         var cat = h.View(0).GetProperty("catalog").GetProperty("guild");
-        Assert.Equal(4, cat.GetProperty("ranks").GetArrayLength());
+        Assert.Equal(5, cat.GetProperty("ranks").GetArrayLength());
         Assert.Equal("Цехмістр", cat.GetProperty("ranks")[3].GetProperty("name").GetString());
+        Assert.Equal("Старійшина", cat.GetProperty("ranks")[4].GetProperty("name").GetString());
+        Assert.Equal(4, cat.GetProperty("ranks")[4].GetProperty("q").GetInt32());
+        Assert.Equal(ClickerGuildService.TreatCapMinutes, cat.GetProperty("treatCap").GetInt32());
+        Assert.Equal(ClickerGuildService.PerPotter, cat.GetProperty("perPotter").GetInt32());
+        Assert.Equal(Clicker.ShareMax, cat.GetProperty("shareMax").GetDouble());
         Assert.Equal(35, cat.GetProperty("tiers")[3].GetProperty("minutes").GetInt32());
         Assert.Equal(ClickerGuildService.MinGive, cat.GetProperty("minGive").GetInt32());
         Assert.Equal("косівський розпис", cat.GetProperty("styleWords").GetProperty("kosiv").GetString());

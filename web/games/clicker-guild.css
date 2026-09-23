@@ -51,6 +51,45 @@
 .clkg-claim { animation: clkgpulse 1.4s ease-in-out infinite alternate; }
 @keyframes clkgpulse { from { box-shadow: 0 0 0 0 rgba(244, 197, 66, .0); } to { box-shadow: 0 0 14px 2px rgba(244, 197, 66, .45); } }
 
+/* ---- пай воза (§E.1) ---- */
+.clkg-pai-box {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px; padding: 4px 8px; border-radius: 10px;
+  background: rgba(244, 197, 66, .08); font-size: .9em;
+}
+.clkg-pai-box > b { font-size: 1.15em; color: var(--accent); }
+.clkg-claim .clkg-pai { font-style: normal; opacity: .75; font-size: .85em; }
+
+/* ---- допомога другові (§E.2) ---- */
+.clkg-buffs { display: flex; flex-wrap: wrap; gap: 6px; }
+.clkg-buff {
+  display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: .85em;
+  background: var(--panel2); box-shadow: inset 0 0 0 1px rgba(244, 197, 66, .35);
+  animation: clkgglow 2.4s ease-in-out infinite alternate;
+}
+.clkg-buff b { font-size: 1.15em; font-weight: 400; }
+.clkg-buff i, .clkg-buff u { font-style: normal; text-decoration: none; }
+.clkg-buff u { color: var(--accent); white-space: nowrap; }
+@keyframes clkgglow { from { box-shadow: inset 0 0 0 1px rgba(244, 197, 66, .2); } to { box-shadow: inset 0 0 0 1px rgba(244, 197, 66, .7); } }
+
+.clkg-sizes { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.clkg-sizes .clkg-size {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; flex: 1 1 130px;
+  padding: 6px 10px; text-align: left; white-space: normal;
+}
+.clkg-size b { font-size: 1.05em; color: var(--accent); }
+.clkg-size i, .clkg-size u { font-style: normal; text-decoration: none; font-size: .8em; color: var(--muted); }
+
+/* ---- хата друга: виставка й горно ---- */
+.clkg-show { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.clkg-showrow {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 6px 2px; border-bottom: 5px solid #6b4423; border-radius: 2px;
+  background: linear-gradient(180deg, transparent 60%, rgba(0, 0, 0, .15));
+}
+.clkg-showcell.q3 svg, .clkg-showcell.q4 svg { filter: drop-shadow(0 0 6px rgba(244, 197, 66, .6)); }
+.clkg-kiln { margin-top: 4px; }
+.clkg-stars { color: var(--accent2); }
+.clkg-hhelp { margin-top: 8px; }
+
 /* ---- дарунки ---- */
 .clkg-shelf {
   display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 4px 2px; border-bottom: 5px solid #6b4423; border-radius: 2px;
@@ -107,15 +146,31 @@
 .clkg-stat b { color: var(--accent); }
 .clkg-stat i { font-style: normal; font-size: 11px; color: var(--muted); }
 
+/* Full HD без бічної панелі: картка воза ставала смугою на 1400 px, де віз висів посеред порожнечі.
+   Тепер віз лишається возом (до 520 px), а праворуч від нього стає все решта дня — смуга, підцілі, паї й кнопки. */
+@container clkside (min-width: 860px) {
+  .clkg-day {
+    display: grid; grid-template-columns: minmax(260px, 480px) minmax(0, 1fr);
+    gap: 6px 16px; align-items: start;
+  }
+  .clkg-day > .clk-sub { grid-column: 1 / -1; }
+  /* Віз — один на весь лівий стовпець; решта дня (смуга, підцілі, паї, кнопки) стає праворуч від нього. */
+  .clkg-day > .clkg-wagon { grid-row: 2 / span 20; align-self: center; justify-self: center; max-width: 480px; }
+  .clkg-day > :not(.clk-sub):not(.clkg-wagon) { grid-column: 2; }
+  .clkg-shelf, .clkg-subs, .clkg-givers { max-width: 900px; }
+}
+
 @media (max-width: 420px) {
   .clkg-card { padding: 8px; }
   .clkg-req { grid-template-columns: minmax(0, 1fr) 56px 64px; }
   .clkg-potter { flex-wrap: wrap; }
   .clkg-potter button { margin-left: auto; }
+  .clkg-buff { font-size: .8em; }
+  .clkg-sizes .clkg-size { flex: 1 1 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .clkg-ware, .clkg-wagon.roll .clkg-wheel, .clkg-flag, .clkg-claim, .clkg-fire { animation: none; }
+  .clkg-ware, .clkg-wagon.roll .clkg-wheel, .clkg-flag, .clkg-claim, .clkg-fire, .clkg-buff { animation: none; }
   .clkg-fill, .clkg-mine { transition: none; }
 }
 
