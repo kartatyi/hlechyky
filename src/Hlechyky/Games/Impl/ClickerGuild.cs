@@ -232,6 +232,21 @@ public sealed partial class Clicker
     /// <summary>Обпал цеху не чіпає: ранг, внески у вози, дарунки на полиці й лічильники — назавжди.</summary>
     void FireGuild(DateTimeOffset now) { }
 
+    /// <summary>Клейма змінились (обпал): кажемо цеху, щоб наука майстра в решти округи рахувалась від свіжого числа.</summary>
+    void GuildStampsChanged(DateTimeOffset now)
+    {
+        if (_guildSvc is not { } svc || GuildKey.Length == 0) return;
+        _guildHello = true;
+        svc.Hello(GuildKey, GuildNick, _guildRank, now, _stamps);
+    }
+
+    /// <summary>
+    /// Найкращий гончар округи, крім себе: його нік і клейма (наука майстра рахується від них). Без цеху — нікого:
+    /// тоді й науки нема.
+    /// </summary>
+    (string Nick, int Stamps) GuildTopStamps() =>
+        _guildSvc is { } svc && GuildKey.Length > 0 ? svc.TopStamps(GuildKey) : ("", 0);
+
     /// <summary>Кожна синхронізація: вперше — «я тут» у список цеху; і дарунки зі скриньки — на полицю.</summary>
     void SyncGuild(DateTimeOffset now, TimeSpan paid)
     {
@@ -239,7 +254,8 @@ public sealed partial class Clicker
         if (!_guildHello)
         {
             _guildHello = true;
-            svc.Hello(GuildKey, GuildNick, _guildRank, now);
+            // Разом із клеймами: з них решта округи рахує науку майстра.
+            svc.Hello(GuildKey, GuildNick, _guildRank, now, _stamps);
         }
         // Пошту забираємо лише на дії: забрана у виді жила б тільки в пам'яті кімнати (зберігає її каркас після дії), і
         // перезапуск сервера до першого кліка загубив би дарунок назавжди.
