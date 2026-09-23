@@ -14,9 +14,10 @@ public class DominoTests
 {
     static readonly string[] Nicks = ["Оля", "Петро", "Іван", "Ната"];
 
-    static RoomHarness Table(int players = 2, int seed = 1)
+    /// <summary>Стіл на класичну сотню: старі тести рахують саме до неї, а коротші партії мають свої тести.</summary>
+    static RoomHarness Table(int players = 2, int seed = 1, string target = "100")
     {
-        var h = new RoomHarness("domino", seed: seed);
+        var h = new RoomHarness("domino", options: new { target }, seed: seed);
         for (var i = 0; i < players; i++) h.Join(Nicks[i]);
         h.Start();
         return h;
@@ -717,5 +718,85 @@ public class DominoTests
         Assert.Equal(6, new DominoBone(6, 2).Other(2));
         Assert.True(new DominoBone(6, 2).Same(new DominoBone(2, 6)));
         Assert.Equal(100, Domino.Target);
+    }
+
+    // =========================================================================================
+    // Довжина партії (оновлення 24.09.2026)
+    // =========================================================================================
+
+    [Fact]
+    public void A_new_table_plays_to_fifty_by_default()
+    {
+        var h = new RoomHarness("domino", seed: 3);
+        h.Join("Оля");
+        h.Join("Петро");
+        h.Start();
+        Assert.Equal(50, h.View(0).GetProperty("target").GetInt32());
+        Position(h, [[6, 3]], [[[3, 3]], [[6, 6], [5, 5], [4, 4]]], yard: [[0, 0]], scores: [40, 0, 0, 0]);
+        Assert.True(Play(h, 0, 3, 3, "right").Ok);   // +30 → 70 ≥ 50
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+    }
+
+    [Fact]
+    public void A_target_nobody_offers_falls_back_to_fifty()
+    {
+        var h = new RoomHarness("domino", options: new { target = "7" });
+        h.Join("Оля");
+        h.Join("Петро");
+        h.Start();
+        Assert.Equal(50, h.View(0).GetProperty("target").GetInt32());
+    }
+
+    [Fact]
+    public void One_round_match_goes_to_whoever_goes_out()
+    {
+        var h = Table(target: "1");
+        Position(h, [[6, 3]], [[[3, 3]], [[0, 0], [1, 0]]], yard: [[2, 2]]);
+        Assert.True(Play(h, 0, 3, 3, "right").Ok);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);        // навіть якщо очок лише одне
+        Assert.Contains("за 1 раунд", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(1, "pass").Message);
+    }
+
+    [Fact]
+    public void One_round_match_with_an_even_fish_is_a_draw()
+    {
+        var h = Table(target: "1");
+        Position(h, [[0, 3]], [[[6, 6]], [[5, 5], [1, 1]]]);
+        Assert.True(h.Act(0, "pass").Ok);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(h.Room.Result!.Draw);
+        var result = h.View(0).GetProperty("result");
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("winner").ValueKind);
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("turn").ValueKind);
+    }
+
+    [Fact]
+    public void After_a_round_everybody_sees_what_was_left_in_the_hands()
+    {
+        var h = Table();
+        Position(h, [[6, 3]], [[[3, 3]], [[5, 4], [2, 1]]], yard: [[0, 0]]);
+        Assert.True(Play(h, 0, 3, 3, "right").Ok);
+
+        foreach (var seat in new int?[] { 0, 1, null })
+        {
+            var last = h.View(seat).GetProperty("lastRound");
+            Assert.Equal(1, last.GetProperty("round").GetInt32());
+            var left = last.GetProperty("left");
+            Assert.Equal(4, left.GetArrayLength());
+            Assert.Equal(0, left[0].GetArrayLength());
+            Assert.Equal("[[5,4],[2,1]]", left[1].GetRawText());
+        }
+    }
+
+    [Fact]
+    public void The_option_is_offered_in_the_catalog()
+    {
+        var game = Assert.Single(new Registry().Catalog, g => g.Id == "domino");
+        var option = Assert.Single(game.Options);
+        Assert.Equal("target", option.Key);
+        Assert.Equal("50", option.Default);
     }
 }

@@ -5,7 +5,8 @@
   Вид із сервера (гра Hidden, тож у кожного свій):
   { turn, players, round, line: [{ tile:[a,b], double }], ends: [l,r]|null, hand: [[a,b]]|null,
     counts: number[], boneyard, scores: number[], canPlay, mustDraw,
-    lastRound: { winner, points, reason }|null, result: { winner, scores }|null }
+    lastRound: { winner, points, reason, round, left: [a,b][][] }|null, result: { winner|null, scores }|null,
+    target: 1|50|100 }   // 1 — партія з одного раунду
 
   Ланцюг приходить уже орієнтованим (line[i].tile[1] === line[i+1].tile[0]), тому перевертати
   половинки самим не треба — малюємо як є, а дублі кладемо поперек.
@@ -27,7 +28,8 @@
   const boneHtml = (t, cls) => '<span class="dbone' + (t[0] === t[1] ? ' dbl' : '') + (cls ? ' ' + cls : '') + '">'
     + half(t[0]) + '<span class="dbar"></span>' + half(t[1]) + '</span>';
 
-  const TARGET = 100;   // Domino.Target на сервері: стільки очок закриває партію
+  const TARGET = 100;   // класична межа; стіл може грати коротше — тоді її каже view.target
+  const targetOf = (v) => (v && v.target) || TARGET;
   /// «100 очок», «104 очки», «101 очко» — число в рядку має читатись по-людськи.
   const pips = (n) => n + ' ' + (n % 100 >= 11 && n % 100 <= 14 ? 'очок'
     : n % 10 === 1 ? 'очко'
@@ -54,9 +56,12 @@
     if (!my && st.pick) st.pick = null;          // не твій хід — нема чого й обирати бік
 
     box(root, 'dhead', idle ? '' : head(v, ctx));
+    // Нова кістка в ланцюгу злітає на місце — ловимо її, порівнюючи з тим, що було до цього виду.
+    const fresh = idle ? '' : freshSide(st, line);
+    box(root, 'dround', idle ? '' : roundBox(v, ctx, line));
     box(root, 'dline', idle ? '' : (line.length
-      ? line.map((b) => boneHtml(b.tile)).join('')
-      : '<span class="muted small">кладіть першу кістку</span>'));
+      ? line.map((b, i) => boneHtml(b.tile, (fresh === 'left' && i === 0) || (fresh === 'right' && i === line.length - 1) ? 'fresh' : '')).join('')
+      : '<span class="muted small">' + (my ? 'Твій хід — клади будь-яку кістку' : 'Чекаємо першу кістку') + '</span>'));
 
     // Рука — віяло каркаса: клік по кістці або ходить одразу, або питає, з якого боку класти.
     ctx.ui.hand(root, hand.map((t) => ({ t, disabled: !(my && (line.length === 0 || fits(t, ends[0]) || fits(t, ends[1]))) })), {
@@ -84,6 +89,36 @@
     });
   }
 
+  /// З якого боку ланцюг виріс відтоді, як ми його бачили: 'left' | 'right' | ''.
+  function freshSide(st, line) {
+    const sig = line.map((b) => b.tile.join('')).join('|');
+    const was = st.line || '';
+    st.line = sig;
+    if (!was || sig === was || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
+    if (sig.endsWith('|' + was)) return 'left';
+    if (sig.startsWith(was + '|')) return 'right';
+    return '';
+  }
+
+  /// Підсумок щойно зіграного раунду — великим, поки в новому раунді ще ніхто не походив: хто вийшов
+  /// чи чия риба, скільки очок і що в кого лишилось на руках. Далі він стискається в рядок у шапці.
+  function roundBox(v, ctx, line) {
+    const last = v.lastRound;
+    // Наприкінці партії теж показуємо: останній раунд і є тим, що все вирішив.
+    if (!last || !last.reason || (line.length && !v.result)) return '';
+    const who = last.winner == null ? '' : ctx.esc(ctx.nickOf(last.winner) || ctx.seatName(last.winner));
+    const title = last.reason === 'out'
+      ? '🎉 ' + who + ' — усі кістки на столі! +' + last.points
+      : last.winner == null ? '🐟 Риба — порівну, очки нікому' : '🐟 Риба! Найлегша рука в ' + who + ': +' + last.points;
+    const left = (last.left || []).map((bones, i) => {
+      if (!bones || !bones.length || !ctx.nickOf(i)) return '';
+      const sum = bones.reduce((a, t) => a + t[0] + t[1], 0);
+      return '<div class="drl"><i>' + ctx.esc(ctx.nickOf(i)) + '</i>' + bones.map((t) => boneHtml(t, 'mini')).join('')
+        + '<b>' + pips(sum) + '</b></div>';
+    }).join('');
+    return '<div class="drt">Раунд ' + (last.round || Math.max(1, (v.round || 2) - 1)) + ': ' + title + '</div>' + left;
+  }
+
   function head(v, ctx) {
     const seats = (ctx.room && ctx.room.seats) || [];
     const scores = v.scores || [];
@@ -91,14 +126,17 @@
     const chips = seats.filter((s) => s.nick).map((s) => '<span class="dsc' + (s.i === v.turn ? ' on' : '') + '">'
       + ctx.esc(s.nick) + ' <b>' + (scores[s.i] || 0) + '</b>'
       + '<i>(' + (counts[s.i] || 0) + ')</i></span>').join('');
-    const last = v.lastRound && v.lastRound.reason
+    // Поки на столі великий підсумок раунду (новий ще не почався), рядок у шапці його лише дублював би.
+    const last = v.lastRound && v.lastRound.reason && (v.line || []).length && !v.result
       ? '<span class="dlast">' + (v.lastRound.winner == null
         ? 'минулий раунд: риба, очки нікому'
         : 'минулий раунд: ' + ctx.esc(ctx.nickOf(v.lastRound.winner) || ctx.seatName(v.lastRound.winner))
           + ' +' + v.lastRound.points) + '</span>'
       : '';
-    return '<span class="chip">раунд ' + (v.round || 1) + '</span>'
-      + '<span class="chip">базар ' + (v.boneyard || 0) + '</span>'
+    const goal = targetOf(v) <= 1 ? 'один раунд' : 'до ' + targetOf(v);
+    const ends = v.ends ? '<span class="chip dends" title="Вільні кінці ланцюга">кінці <b>' + v.ends[0] + '</b> · <b>' + v.ends[1] + '</b></span>' : '';
+    return '<span class="chip">раунд ' + (v.round || 1) + ' · ' + goal + '</span>'
+      + '<span class="chip">базар ' + (v.boneyard || 0) + '</span>' + ends
       + chips + last;
   }
 
@@ -136,18 +174,31 @@
     icon: ICON,
     seatNames: ['перший', 'другий', 'третій', 'четвертий'],
     seatClass: ['x', 'o', 'c', 'd'],
+    news: {
+      v: '2026-09-24',
+      title: 'Доміно: коротші партії й видно, чим скінчився раунд',
+      items: [
+        '⏱ Довжину партії обирають при створенні столу: один раунд, до 50 очок (типово) або класичні 100',
+        '🎉 Після раунду на столі видно, хто вийшов чи чия риба і які кістки в кого лишились',
+        '🧭 У шапці — вільні кінці ланцюга, а щойно покладена кістка підсвічується',
+      ],
+    },
     // Свій маркер на тілі картки: під ним живуть усі правила, що чіпають спільні .ghand/.gcard,
     // інакше вони поїхали б і в чужі ігри — файл стилів вантажиться на весь сайт.
     mount(root, ctx) { root.classList.add('dgame'); paint(root, ctx); },
     update(root, ctx) { paint(root, ctx); },
     status(ctx) {
       const v = ctx.view || {};
-      // Рахунок кажемо лише тоді, коли партію справді догуляли до ста очок і стіл ще дограний.
+      // Рахунок кажемо лише тоді, коли партію справді догуляли до межі (view.target) і стіл ще дограний.
       // Перемога через те, що всі встали, стільки очок не має, а віддану новому гравцеві кімнату
       // каркас уже вернув у лобі — в обох випадках краще звучить його ж рядок.
       const won = (v.result && (v.result.scores || [])[v.result.winner]) || 0;
       const done = ctx.room && ctx.room.status === 'finished';
-      if (done && won >= TARGET) return 'Партію зіграно: ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner)) + ' — ' + pips(won);
+      if (done && v.result && targetOf(v) <= 1) {
+        return v.result.winner == null ? 'Риба порівну — нічия'
+          : 'Раунд і партія — ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner));
+      }
+      if (done && won >= targetOf(v)) return 'Партію зіграно: ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner)) + ' — ' + pips(won);
       if (!ctx.playing) return '';
       if (ctx.myTurn && v.mustDraw) return 'Нема чим ходити — тягни з базару';
       if (ctx.myTurn && !v.canPlay) return 'Ходити нема чим і базар порожній — пас';

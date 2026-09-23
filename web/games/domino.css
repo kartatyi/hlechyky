@@ -13,11 +13,30 @@
    вішає модуль на тіло картки. Файл стилів вантажиться на весь сайт, тож без маркера ці правила
    поїхали б і в чужі ігри з рукою. */
 .dhead { order: 1; }
+.dround { order: 2; }
 .dline { order: 2; }
 .dgame .ghand { order: 3; }
 .dctl { order: 4; }
 /* Порожній блок (лобі) ховає модуль через hidden — своє display це б перебило. */
-.dhead[hidden], .dline[hidden], .dctl[hidden] { display: none; }
+.dhead[hidden], .dline[hidden], .dctl[hidden], .dround[hidden] { display: none; }
+
+/* ---- підсумок щойно зіграного раунду: поки в новому ніхто не походив ---- */
+.dround {
+  display: flex; flex-direction: column; gap: 6px; align-items: center; width: 100%; padding: 10px;
+  background: var(--panel2); border: 1px solid var(--accent2); border-radius: 12px; animation: dom-pop .35s ease-out;
+  box-sizing: border-box;
+}
+.dround .drt { font-weight: 700; text-align: center; }
+.dround .drl { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; justify-content: center; font-size: .85em; }
+.dround .drl i { font-style: normal; color: var(--muted); margin-right: 4px; }
+.dround .drl b { color: var(--accent); margin-left: 4px; font-weight: 600; }
+.dbone.mini { --dom-half: 11px; padding: 1px; gap: 1px; }
+.dbone.mini .dhalf i { width: 2px; height: 2px; }
+/* Щойно покладена кістка: легкий виліт і підсвітка, щоб було видно, куди пішов хід. */
+.dline .dbone.fresh { animation: dom-pop .4s ease-out; box-shadow: 0 0 0 2px var(--accent); }
+@keyframes dom-pop { from { transform: scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dround, .dline .dbone.fresh { animation: none; } }
+.dends b { color: var(--accent); }
 
 /* ---- шапка: раунд, базар, рахунок кожного ---- */
 .dhead { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; width: 100%; }
