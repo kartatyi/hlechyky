@@ -48,6 +48,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 a { color: var(--accent); }
+.noscript { max-width: 640px; margin: 32px auto; padding: 0 16px; color: var(--muted); line-height: 1.5; }
 button {
   font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--line);
   border-radius: 10px; padding: 7px 12px; cursor: pointer; transition: background .15s, transform .05s, opacity .15s;

@@ -1,0 +1,11 @@
+# Глечики: індексувати можна саму сторінку. Нижче те, що пошуковикам нема чого робити:
+# /api/ і /hub підтягують ефір, чат і нік гостя (бот з'являвся б у слухачах, а в заголовок потрапив би трек),
+# /mcp — для аі-агентів за столом, *.mp3 — нескінченний потік.
+User-agent: *
+Disallow: /api/
+Disallow: /hub
+Disallow: /mcp
+Disallow: /radio.mp3
+Disallow: /spotify.mp3
+
+Sitemap: https://hlechyky.pp.ua/sitemap.xml
