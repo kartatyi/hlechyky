@@ -208,6 +208,8 @@ public sealed partial class Clicker : Game
         new("recipe", "Бабусин рецепт", "Гарна глина не згорає при обпалі", 20),
         new("memory", "Пам'ять рук", "Віхи верстатів не згорають при обпалі", 40),
         new("seal", "Родове клеймо", "Кожне клеймо дає +3 % замість +2 %", 80),
+        // Друге коло секретів (v9) — решту шість рядків додає пакет «Коло»; обоз тут, бо його робить «Хата».
+        new("caravan", "Великий обоз", "Купців у дорозі п'ять, а на дошці — чотири замовлення", 400),
     ];
 
     /// <summary>Розписи — від чорнодимленого до трипільського. Колекція лишається назавжди.</summary>
@@ -512,7 +514,7 @@ public sealed partial class Clicker : Game
             "catch" => Catch(),
             "grab" => Grab(),
             // Клієнт питає свіжий вид, коли розписний глек утік чи глек з полиці розбився: наступний розклад знає лише сервер.
-            "look" => Look(payload),
+            "look" => LookHouse(payload) ?? Look(payload),
             "fire" => Fire(),
             "secret" => BuySecret(payload),
             "paint" => Paint(payload),
@@ -527,7 +529,7 @@ public sealed partial class Clicker : Game
             "form" => Form(payload),
             "bazaar" => Bazaar(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
-            _ => ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
+            _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
                 ?? ActResult.Fail("Тут так не ходять"),
         };
         // Таблиця «Гончарі» — це глеки за весь час; те саме число вдруге їй нічого не додасть.
