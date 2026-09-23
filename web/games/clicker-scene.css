@@ -194,5 +194,65 @@
   .clk-sparks .clk-spark:not(.gold) { animation: none; opacity: 0; }
 }
 
+/* ---- дев'яте оновлення: оздоба, дивовижі, вивіска ---- */
+
+/* Маятник ходиків і язичок дзвіночка — рух, який видно тільки як придивитись. */
+.clks-pend { transform-box: fill-box; transform-origin: 50% 0; animation: clks-pend 2s ease-in-out infinite alternate; }
+.clks-bellclap { transform-box: fill-box; transform-origin: 50% 0; animation: clks-pend 1.4s ease-in-out infinite alternate; }
+@keyframes clks-pend { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+/* Люстра з рогів ледь погойдується на ланцюгу. */
+.clks-lustra { transform-box: fill-box; transform-origin: 50% 0; animation: clks-sway 7s ease-in-out infinite alternate; }
+@keyframes clks-sway { from { transform: rotate(-.7deg); } to { transform: rotate(.7deg); } }
+
+/* Секція «Оздоба» в Хаті: гурт — рядок із чипами варіантів. */
+.clk-looks { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.clk-lookrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.clk-lookname { flex: 1 0 118px; font-size: .9em; font-weight: 600; }
+.clk-lookopts { display: flex; flex-wrap: wrap; gap: 6px; }
+.clk-lookopt {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: .85em;
+  border: 1px solid var(--line); background: var(--panel2); cursor: pointer;
+}
+.clk-lookopt:not(:disabled):hover { background: var(--panel3); }
+.clk-lookopt.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.clk-lookopt.owned:not(.on) { opacity: .85; }
+.clk-lookopt:disabled { cursor: default; }
+.clk-lookprice { color: var(--clk-fire); font-size: .92em; font-variant-numeric: tabular-nums; }
+.clk-lookrow.sign { margin-top: 2px; }
+.clk-signbox { display: flex; gap: 6px; flex: 1 1 200px; }
+.clk-signin {
+  flex: 1 1 auto; min-width: 0; padding: 5px 9px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel2); color: inherit; font: inherit; font-size: .9em;
+}
+.clk-signin:focus { outline: none; border-color: var(--accent); }
+
+/* Дивовижі: знайдене — з байкою, решта — силует із підказкою «звідки». */
+.clk-wonders { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 8px; width: 100%; }
+.clk-wonder {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 7px 9px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2);
+}
+.clk-wtop { display: flex; align-items: center; gap: 7px; }
+.clk-wonder b { font-size: .9em; }
+.clk-wonder .muted { line-height: 1.32; }
+.clk-wicon { flex: none; }
+.clk-wicon svg { width: 30px; height: 30px; display: block; }
+.clk-wicon.sil svg { filter: brightness(0) invert(.42); opacity: .7; }
+.clk-wonder.found { border-color: rgba(244, 197, 66, .45); background: rgba(244, 197, 66, .07); }
+
+/* Картка знайденої дивовижі. */
+.clks-wonderov .clk-ov-box { max-width: 340px; }
+.clks-wonder { display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center; }
+.clks-wart svg { width: 76px; height: 76px; display: block; filter: drop-shadow(0 0 14px rgba(244, 197, 66, .45)); }
+.clks-wtag { font-size: .82em; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.clks-whead { font-weight: 700; font-size: 1.12em; }
+.clks-wtale { font-size: .92em; line-height: 1.45; }
+.clks-wgo { min-width: 60%; margin-top: 4px; }
+
+@media (max-width: 560px) {
+  .clk-wonders { grid-template-columns: 1fr; }
+  .clk-lookname { flex-basis: 100%; }
+}
+
 /* Сцена поза екраном — анімації хати на паузі (перемикає IntersectionObserver у clicker-scene.js). */
 .clk-stage.clks-off *, .clk-stage.clks-off *::before, .clk-stage.clks-off *::after { animation-play-state: paused !important; }

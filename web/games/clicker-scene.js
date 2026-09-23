@@ -52,6 +52,9 @@
   // ---------- дрібні помічники ----------
 
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  /// Ім'я хати їде в <text> усередині SVG: сервер його вже чистить, але малювати чуже без екранування не годиться.
+  const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+  const esc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, (c) => ESC[c]);
   const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
   /// Колір як [r, g, b]: і «#a8402c», і «rgb(168,64,44)» (змішані кольори змішуються далі).
   const hex = (h) => {
@@ -118,6 +121,14 @@
   const DAY = { sky1: '#3d82c4', sky2: '#a8d3ee', far: '#6c957a', river: '#5b9ad0', road: '#a2835a', wall: '#6d513a', wall2: '#50392a',
     floor: '#45321f', thatch: '#b89150', disc: '#2b4c3c' };
   const GROUND = { spring: '#6aa94d', summer: '#88a743', autumn: '#a98b3d', winter: '#dce4ec' };
+  /// Оздоба за клейма (v9): чим її видно в кольорах. Порожнє — «як було», щоб стара хата не змінилась ні на піксель.
+  const LOOK_WALL = { white: '', blue: '#8fc0e0', yellow: '#e7c665', green: '#84b06e' };
+  const LOOK_DISC = { oakwood: '', cherrywood: '#6e2f2a', black: '#25231f', painted: '#3f5f8a' };
+  const LOOK_THATCH = { straw: '', reed: '#8d8a5a', shingle: '#8a6a44', tile: '#b4573a' };
+  const PET_FUR = { grey: '#3a3330', ginger: '#c07a38', black: '#211f1e', white: '#ddd6c6', patched: '#9a8a74' };
+  const PET_DOG = { grey: '#7a5a3e', ginger: '#c07a38', black: '#2a2624', white: '#ddd6c6', patched: '#9a8a74' };
+  /// Обране гравцем (або типове) — рівно те, що сервер тримає в house.look.
+  const lookOf = (v) => (v && v.house && v.house.look && typeof v.house.look === 'object') ? v.house.look : {};
   const FAR = { spring: '#5f9270', summer: '#6f9463', autumn: '#8f8a55', winter: '#b9c6d3' };
 
   /// Небо й світло сцени — CSS-змінні на .clk-stage. Лише рядки, що справді змінились.
@@ -144,6 +155,15 @@
     const q = sn.night >= 0 ? sn.night : 0.5;
     vars.moonx = Math.round(30 + 300 * q) + 'px';
     vars.moony = Math.round(100 - 76 * Math.max(0, -sn.alt)) + 'px';
+    // Оздоба: стіни беруть свій відтінок, коло — своє дерево. Ніч однаково лишається ніччю: мішаємо з тим, що вже є.
+    const look = lookOf(st.lastView);
+    const wall = LOOK_WALL[look.wall];
+    if (wall) { vars.wall = blendRgb(vars.wall, wall, 0.45 + L * 0.2); vars.wall2 = blendRgb(vars.wall2, wall, 0.3 + L * 0.2); }
+    const disc = LOOK_DISC[look.wheel];
+    if (disc) {
+      vars.disc = blendRgb(vars.disc, disc, 0.55 + L * 0.25);
+      vars.groove = shade(vars.disc, 0.62);          // борозни — те саме дерево, тільки в тіні
+    }
     const el = st.stage;
     const prev = st.scn.vars;
     for (const [k, val] of Object.entries(vars)) {
@@ -153,6 +173,8 @@
     }
     // Коло вночі темнішає разом із хатою (ядро фарбує його змінною --clk-disc).
     if (prev.discVar !== vars.disc) { prev.discVar = vars.disc; el.style.setProperty('--clk-disc', vars.disc); }
+    // Борозни фарбуємо лише тоді, коли гравець сам обрав дерево кола: без оздоби хай лишаються ті, що були.
+    if (vars.groove && prev.grooveVar !== vars.groove) { prev.grooveVar = vars.groove; el.style.setProperty('--clk-groove', vars.groove); }
     const tod = L > 0.6 ? 'day' : L < 0.15 ? 'night' : 'dusk';
     if (el.dataset.tod !== tod) el.dataset.tod = tod;
     return { season, moon: Math.round((moonAge(ms) / 29.530588) * 16) % 16, night: L < 0.35 };
@@ -185,8 +207,45 @@
       + '<path d="M-15 21h10q-1 4.5-5 4.5t-5-4.5zM5 21h10q-1 4.5-5 4.5t-5-4.5z" fill="#cda44a" stroke="#8a6a2a" stroke-width=".6"/><circle cy="8" r="1.4" fill="#cda44a"/>',
     iron: '<rect x="-2.2" y="1" width="4.4" height="10" rx="2" fill="#7a4a26"/><path d="M0 11v22" stroke="#4a4a4a" stroke-width="2.2"/>'
       + '<rect x="-7" y="32" width="14" height="8" rx="1.2" fill="#3a3a3a"/><path d="M0 33.6l1.1 2.3h2.5l-2 1.5.8 2.4L0 38.3l-2.4 1.5.8-2.4-2-1.5h2.5z" fill="#ff8a3d"/>',
+    // Другий ряд знарядь (дев'яте оновлення) — теж на кілочках, тільки полиця стає тіснішою.
+    abacus: '<path d="M0 0v6" stroke="#8a6a4a" stroke-width=".8"/><rect x="-8" y="6" width="16" height="20" rx="1.4" fill="' + WOOD + '" stroke="' + WOOD2 + '" stroke-width=".9"/>'
+      + '<g stroke="#7a5a3a" stroke-width=".6"><path d="M-8 11h16M-8 16h16M-8 21h16"/></g>'
+      + '<g fill="#d7372b"><circle cx="-5" cy="11" r="1.5"/><circle cx="-1.6" cy="11" r="1.5"/><circle cx="4" cy="16" r="1.5"/><circle cx="-4" cy="21" r="1.5"/><circle cx="-.6" cy="21" r="1.5"/></g>'
+      + '<g fill="#f2c230"><circle cx="5" cy="11" r="1.5"/><circle cx="-5" cy="16" r="1.5"/><circle cx="6" cy="21" r="1.5"/></g>',
+    cart: '<path d="M0 0v8" stroke="#8a6a4a" stroke-width=".8"/><path d="M-9 10h18l-2 10h-14z" fill="' + WOOD + '" stroke="' + WOOD2 + '" stroke-width=".9"/>'
+      + '<path d="M-7 13h14M-6 17h12" stroke="#7a5a3a" stroke-width=".7"/><path d="M9 11l5-3" stroke="#7a5a3a" stroke-width="1.2"/>'
+      + '<circle cx="-4.5" cy="23" r="4" fill="none" stroke="' + WOOD2 + '" stroke-width="1.6"/><circle cx="5" cy="23" r="4" fill="none" stroke="' + WOOD2 + '" stroke-width="1.6"/>'
+      + '<g fill="#c56b35"><circle cx="-3" cy="12" r="1.6"/><circle cx="1" cy="12" r="1.6"/></g>',
+    lamp: '<circle cy="20" r="13" fill="#ffd27a" class="clks-glow"/><path d="M0 0v4" stroke="#6a6a6a" stroke-width="1"/><path d="M-4 4h8l-1.5 4h-5z" fill="#4a4a4a"/>'
+      + '<path d="M-5.5 8h11l-1 6h-9z" fill="#b8b2a4" stroke="#6a6458" stroke-width=".7"/>'
+      + '<path d="M-6 14q6-3 12 0v9q-6 3-12 0z" fill="rgba(255,214,140,.5)" stroke="#6a6458" stroke-width=".8"/>'
+      + '<path class="clks-flick" d="M0 21c-2-2-2-5 0-7.6 2 2.6 2 5.6 0 7.6z" fill="#ffb83a"/>'
+      + '<path d="M-6.5 23h13l-1.5 5h-10z" fill="#9a9488" stroke="#6a6458" stroke-width=".7"/><path d="M-4 28h8v3h-8z" fill="#7a746a"/>',
+    clock: '<path d="M-7 6h14l-1 22h-12z" fill="#7d4c27" stroke="#4a2a12" stroke-width=".9"/><path d="M0 0v6" stroke="#8a6a4a" stroke-width=".8"/>'
+      + '<path d="M-9 8l9-7 9 7z" fill="#8a5a30" stroke="#4a2a12" stroke-width=".9"/><circle cy="15" r="4.6" fill="#f4efe3" stroke="#4a2a12" stroke-width=".7"/>'
+      + '<path d="M0 15v-3M0 15l2.4 1.6" stroke="#2a1a12" stroke-width=".8"/><circle cy="9.5" r="1.6" fill="#2a1a12"/>'
+      + '<path d="M0 22v7" stroke="#c9a04a" stroke-width=".8"/><circle cy="30" r="2.4" fill="#f2c230" stroke="#9a6a1a" stroke-width=".6"/>'
+      + '<path d="M-4 28l-1 6M4 28l1 6" stroke="#c9a04a" stroke-width=".7"/>',
+    lock: '<path d="M0 0v7" stroke="#8a6a4a" stroke-width=".8"/><rect x="-9" y="13" width="18" height="14" rx="1.6" fill="#7a4a26" stroke="#3a2010" stroke-width=".9"/>'
+      + '<path d="M-9 15a9 5 0 0 1 18 0v2h-18z" fill="#96582c" stroke="#3a2010" stroke-width=".8"/>'
+      + '<path d="M-9 19h18M-9 24h18" stroke="#5c5c60" stroke-width="1.2"/>'
+      + '<rect x="-3" y="18" width="6" height="6" rx="1" fill="#cda44a" stroke="#8a6a2a" stroke-width=".6"/><circle cy="21" r="1.1" fill="#3a2010"/>',
+    net: '<path d="M-8 2h16" stroke="#8a6a4a" stroke-width="1.2"/><path d="M0 0v2" stroke="#8a6a4a" stroke-width=".8"/>'
+      + '<path d="M-8 2q8 26 16 0" fill="rgba(180,200,170,.14)" stroke="#9ab08a" stroke-width=".8"/>'
+      + '<g stroke="#9ab08a" stroke-width=".55" fill="none"><path d="M-5.6 2q3.4 21 5.6 21M-2.8 2q1.6 23 2.8 23M2.8 2q-1.6 23-2.8 23M5.6 2q-3.4 21-5.6 21"/>'
+      + '<path d="M-7 7q7 4 14 0M-6 13q6 4 12 0M-4.6 19q4.6 3 9.2 0"/></g>'
+      + '<path d="M-1.4 12h2.8v.8c0 .5-.4.7-.4 1.2 0 .8 2.2 1.4 2.2 3.8 0 1.8-1 3-1.6 3.4h-3.2c-.6-.4-1.6-1.6-1.6-3.4 0-2.4 2.2-3 2.2-3.8 0-.5-.4-.7-.4-1.2z" fill="#c56b35"/>',
+    bell2: '<path d="M0 0v5" stroke="#8a6a4a" stroke-width=".8"/><path d="M-4 5h8v2h-8z" fill="#7a5a3a"/>'
+      + '<path d="M0 7c-6 0-9 6-9 14h18c0-8-3-14-9-14z" fill="#d9a92f" stroke="#8a6a1a" stroke-width=".9"/>'
+      + '<path d="M-10 21h20v2.4h-20z" fill="#c99a2a" stroke="#8a6a1a" stroke-width=".6"/><path d="M-5 11q2-2 4 0" stroke="#f4e2a0" stroke-width=".8" fill="none"/>'
+      + '<g class="clks-bellclap"><path d="M0 23.4v3" stroke="#8a6a1a" stroke-width=".8"/><circle cy="27.5" r="1.8" fill="#8a6a1a"/></g>',
+    mirror: '<path d="M0 0v6" stroke="#8a6a4a" stroke-width=".8"/><ellipse cy="16" rx="8.5" ry="10.5" fill="#5a3a1e" stroke="#3a2412" stroke-width=".9"/>'
+      + '<ellipse cy="16" rx="6.4" ry="8.4" fill="#cfe2ee"/><path d="M-4 12q4 3 7-2" stroke="#fff" stroke-width="1.4" fill="none" opacity=".8"/>'
+      + '<path d="M-2.2 26.5h4.4v10a2.2 2.2 0 0 1-4.4 0z" fill="#5a3a1e" stroke="#3a2412" stroke-width=".7"/>'
+      + '<path d="M0 6.5l1 2.4 2.4.3-1.8 1.7.5 2.4-2.1-1.2-2.1 1.2.5-2.4-1.8-1.7 2.4-.3z" fill="#f2c230" opacity=".9"/>',
   };
-  const TOOL_ORDER = ['paddle', 'string', 'sponge', 'ribs', 'lantern', 'apron', 'bucket', 'whistle', 'scales', 'iron'];
+  const TOOL_ORDER = ['paddle', 'string', 'sponge', 'ribs', 'lantern', 'apron', 'bucket', 'whistle', 'scales', 'iron',
+    'abacus', 'cart', 'lamp', 'clock', 'lock', 'net', 'bell2', 'mirror'];
 
   // ---------- емблеми (32×32): вивіска драбини в хаті й значки рядків верстатів ----------
 
@@ -237,9 +296,79 @@
     rooster: '<path d="M8 22q-6-8-1-15 1 7 6 10z" fill="#2f5fa8"/><ellipse cx="16" cy="20" rx="8" ry="6" fill="#6a3a1a"/><circle cx="23" cy="12" r="3.6" fill="#6a3a1a"/><path d="M21 8.5l1.5-4 1.5 4 1.5-3.5 1 4z" fill="#d7372b"/><path d="M26.5 12.5l3.5 1-3.5 1.4z" fill="#f2c230"/><path d="M14 26v3M18 26v3" stroke="#f2c230" stroke-width="1.4"/>',
     dog: '<path d="M6 17q-4-4-1-9" stroke="#7a5a3e" stroke-width="2.4" fill="none" stroke-linecap="round"/><ellipse cx="14" cy="21" rx="9" ry="5.5" fill="#7a5a3e"/><circle cx="23" cy="15" r="5" fill="#7a5a3e"/><path d="M24 11l3-5 1 7z" fill="#5a4030"/><circle cx="24.5" cy="14.5" r=".9" fill="#111"/><circle cx="27.6" cy="16.6" r="1" fill="#111"/><path d="M9 26v3M18 26v3" stroke="#5a4030" stroke-width="2"/>',
     chest: '<rect x="3" y="11" width="26" height="17" rx="2" fill="#8b3a22" stroke="#4a1e10"/><path d="M3 13a13 6 0 0 1 26 0v3H3z" fill="#a54a2c" stroke="#4a1e10" stroke-width=".8"/><circle cx="16" cy="21" r="3" fill="#f2c230"/><circle cx="9" cy="22" r="1.8" fill="#4c9a3f"/><circle cx="23" cy="22" r="1.8" fill="#4c9a3f"/><path d="M14.5 15.5h3v3h-3z" fill="#e2c26a"/>',
+    // Другий ряд прикрас (дев'яте оновлення).
+    plakhta: '<path d="M5 4h22v3H5z" fill="#6b4423"/><path d="M6 7h20v21H6z" fill="#8b3a22"/>'
+      + '<g fill="#f2c230"><path d="M6 11h20v2H6zM6 19h20v2H6z"/></g><g fill="#2f5fa8"><path d="M6 15h20v2H6zM6 23h20v2H6z"/></g>'
+      + '<g fill="#f4efe3"><path d="M9 8l2 2-2 2-2-2zM16 8l2 2-2 2-2-2zM23 8l2 2-2 2-2-2z"/></g>',
+    didukh: '<path d="M16 29c-5 0-8-2-8-4 0-3 3-4 8-4s8 1 8 4c0 2-3 4-8 4z" fill="#b8912f"/>'
+      + '<path d="M16 22L8 6M16 22L24 6M16 22V4M16 22l-5 -17M16 22l5 -17" stroke="#d9b445" stroke-width="2" stroke-linecap="round"/>'
+      + '<g fill="#efd066"><ellipse cx="8" cy="6" rx="2" ry="3"/><ellipse cx="24" cy="6" rx="2" ry="3"/><ellipse cx="16" cy="4" rx="2" ry="3"/><ellipse cx="11" cy="5" rx="1.8" ry="2.8"/><ellipse cx="21" cy="5" rx="1.8" ry="2.8"/></g>'
+      + '<path d="M6 21q10 4 20 0" stroke="#d7372b" stroke-width="2.2" fill="none"/>',
+    posag: '<rect x="4" y="9" width="24" height="19" rx="2" fill="#a86a2c" stroke="#5a3a12"/><path d="M4 12a12 4 0 0 1 24 0v3H4z" fill="#c98c3e" stroke="#5a3a12" stroke-width=".8"/>'
+      + '<path d="M4 20h24" stroke="#5a3a12" stroke-width="1.4"/><g fill="#d7372b"><circle cx="10" cy="24" r="2"/><circle cx="22" cy="24" r="2"/></g>'
+      + '<path d="M14 13h4v5h-4z" fill="#f4efe3"/><path d="M8 6q8-4 16 0" stroke="#4c9a3f" stroke-width="1.4" fill="none"/>',
+    khodyky: '<rect x="8" y="3" width="16" height="17" rx="1.5" fill="#7d4c27" stroke="#3a2010"/><path d="M5 4l11-3 11 3z" fill="#8a5a30" stroke="#3a2010" stroke-width=".8"/>'
+      + '<circle cx="16" cy="11" r="5.4" fill="#f4efe3" stroke="#3a2010" stroke-width=".8"/><path d="M16 11V7.4M16 11l3 2" stroke="#2a1a12" stroke-width="1"/>'
+      + '<path d="M16 20v6" stroke="#c9a04a" stroke-width="1"/><circle cx="16" cy="27" r="3" fill="#f2c230" stroke="#9a6a1a" stroke-width=".7"/>'
+      + '<path d="M12 20l-2 8M20 20l2 8" stroke="#c9a04a" stroke-width=".9"/>',
+    portret: '<rect x="6" y="5" width="20" height="22" rx="1.5" fill="#f4efe3" stroke="#6b4423" stroke-width="2.4"/>'
+      + '<circle cx="16" cy="14" r="5" fill="#e0b48a"/><path d="M11 12q1-6 5-6t5 6q-2-2-5-2t-5 2z" fill="#4a3a2a"/>'
+      + '<path d="M11 14q1 4 5 4t5-4" stroke="#4a3a2a" stroke-width="1.2" fill="none"/><path d="M9 27v-4c0-2 3-3 7-3s7 1 7 3v4z" fill="#2f2a26"/>'
+      + '<path d="M3 5h26v2H3z" fill="#f4efe3"/><path d="M3 6h26" stroke="#d7372b" stroke-width="1.4" stroke-dasharray="3 2"/>',
+    lustra: '<path d="M16 2v7" stroke="#6a6a6a" stroke-width="1.2"/><ellipse cx="16" cy="11" rx="7" ry="2.6" fill="#7a5a3e"/>'
+      + '<path d="M9 11q-6 1-6 7M23 11q6 1 6 7M12 12q-2 4-2 8M20 12q2 4 2 8" stroke="#c9a06a" stroke-width="1.8" fill="none" stroke-linecap="round"/>'
+      + '<g fill="#f6e3b0"><rect x="1.4" y="14" width="3.2" height="5" rx="1"/><rect x="27.4" y="14" width="3.2" height="5" rx="1"/>'
+      + '<rect x="8.4" y="17" width="3.2" height="5" rx="1"/><rect x="20.4" y="17" width="3.2" height="5" rx="1"/></g>'
+      + '<g fill="#ffb83a" class="clks-flick"><ellipse cx="3" cy="12.6" rx="1.1" ry="2"/><ellipse cx="29" cy="12.6" rx="1.1" ry="2"/><ellipse cx="10" cy="15.6" rx="1.1" ry="2"/><ellipse cx="22" cy="15.6" rx="1.1" ry="2"/></g>',
+  };
+
+  // ---------- дивовижі: шістнадцять дрібничок, що стоять на поличці (бокс 16×16, п'ята — в (0,0)) ----------
+
+  const WONDER_ART = {
+    singer: '<path d="M-3.5 -13h7v1.4c0 .9-.9 1.3-.9 2.2 0 1.6 4.4 2.6 4.4 6.6 0 2.6-1.4 4.8-3.4 4.8h-7.2c-2 0-3.4-2.2-3.4-4.8 0-4 4.4-5 4.4-6.6 0-.9-.9-1.3-.9-2.2z" fill="#c9a06a" stroke="#7a5a3a" stroke-width=".6"/>'
+      + '<path d="M0 -6.5q-1.6 3-.4 6" stroke="#5a3a1e" stroke-width=".7" fill="none"/><path d="M5 -11q2-1.4 3.4 0M6 -8.4q2.4-1.6 4 0" stroke="#f2c230" stroke-width=".7" fill="none"/>',
+    pawprint: '<rect x="-7" y="-13" width="14" height="13" rx="1" fill="#b3653a" stroke="#6b3a1a" stroke-width=".6"/>'
+      + '<g fill="#3a2a1e"><ellipse cx="0" cy="-4.6" rx="3" ry="2.4"/><circle cx="-3" cy="-8.4" r="1.1"/><circle cx="-.9" cy="-9.6" r="1.1"/><circle cx="1.3" cy="-9.4" r="1.1"/><circle cx="3.2" cy="-8" r="1"/></g>',
+    horseshoe: '<path d="M-5.6 0v-5c0-4 2.4-7 5.6-7s5.6 3 5.6 7v5h-3v-5c0-2.4-1.2-4-2.6-4s-2.6 1.6-2.6 4v5z" fill="#9aa3ad" stroke="#5c6168" stroke-width=".6"/>'
+      + '<g fill="#5c6168"><circle cx="-4.2" cy="-2" r=".6"/><circle cx="4.2" cy="-2" r=".6"/><circle cx="-4.4" cy="-5" r=".6"/><circle cx="4.4" cy="-5" r=".6"/><circle cx="0" cy="-10.6" r=".6"/></g>',
+    pipe: '<path d="M-7 -3c0-4 3.4-6.4 6-5.6.6-2.2 3-3 4.4-1.4l-1.4 1.4c1.6 2.2.8 6.6-3 8-3 1.2-6 .6-6-2.4z" fill="#c96d36" stroke="#6b3b1b" stroke-width=".6"/>'
+      + '<path d="M-5 -4.6q2.6 2 6 .6" stroke="#3f7d3a" stroke-width=".8" fill="none"/><circle cx="2.6" cy="-8.4" r=".6" fill="#1b1310"/><path d="M5 -11l1.8-1.4.4 2.2z" fill="#d7372b"/>',
+    salt: '<path d="M-4.6 -9h9.2l-1 9h-7.2z" fill="#a8845a" stroke="#6b4423" stroke-width=".6"/><path d="M-5.4 -10.4h10.8v1.6h-10.8z" fill="#8a5a30"/>'
+      + '<g fill="#f2f4f8"><path d="M-3.4 -8.6q3.4-2 6.8 0-1.6 2-3.4 2t-3.4-2z"/><circle cx="0" cy="-12" r="1"/><circle cx="-2.6" cy="-11.4" r=".8"/><circle cx="2.6" cy="-11.6" r=".7"/></g>',
+    'sky-stone': '<path d="M-5 -2.4l-1.6-4.6 3-3.6 4.6-1 4 3-.6 4.6-3.6 2.6z" fill="#6b6f78" stroke="#3e424a" stroke-width=".6"/>'
+      + '<g fill="#a8adb6"><circle cx="-1.6" cy="-6.6" r="1.2"/><circle cx="2.4" cy="-4.6" r=".9"/></g>'
+      + '<path d="M0 -13.4l.8 2 2.2.2-1.6 1.4.4 2.2-1.8-1.2-1.8 1.2.4-2.2-1.6-1.4 2.2-.2z" fill="#ffd45a" opacity=".85"/>',
+    mitten: '<path d="M-4.4 -1.6c-2.4-2.6-2.6-6.6-1-8.8 1.4-2 5-2.2 6.6-.4 1.2-1.4 3.4-.6 3 1.4-.4 1.8-1.6 2.2-2.4 2.6 1.4 2.4 1 5-.6 5.2z" fill="#b0302a" stroke="#6b1a16" stroke-width=".6"/>'
+      + '<path d="M-5.4 -2.6h9.6v2.6h-9.6z" fill="#f4efe3"/><path d="M-3.4 -7.6q3 1.4 5.4 0" stroke="#f4efe3" stroke-width=".8" fill="none"/>',
+    glass: '<ellipse cy="-8" rx="5.4" ry="6.6" fill="#5a3a1e" stroke="#3a2412" stroke-width=".6"/><ellipse cy="-8" rx="4" ry="5.2" fill="#cfe2ee"/>'
+      + '<path d="M-2.6 -11.4l3.4 6.4" stroke="#8fa8b8" stroke-width=".7"/><path d="M-2.6 -10q2.4 1.6 4-1" stroke="#fff" stroke-width=".9" fill="none" opacity=".8"/>'
+      + '<path d="M-1.4 -1.4h2.8v1.4h-2.8z" fill="#5a3a1e"/>',
+    thread: '<path d="M-4 -6.6q4-4 8 0 -4 4-8 0z" fill="none" stroke="#d7372b" stroke-width="1.2"/>'
+      + '<path d="M-5.6 -3q4 3 11.2-2.6" stroke="#d7372b" stroke-width="1" fill="none"/><path d="M-6.4 -9.6q6-5 12.8 1" stroke="#d7372b" stroke-width="1" fill="none"/>'
+      + '<path d="M-2 -1.6h4v1.6h-4z" fill="#8a5a30"/>',
+    coin: '<circle cy="-6.4" r="6.4" fill="#e0b64a" stroke="#9a6a1a" stroke-width=".8"/><circle cy="-6.4" r="4.6" fill="none" stroke="#9a6a1a" stroke-width=".5"/>'
+      + '<path d="M-3 -5.4q1.4-3 3-3t3 3" stroke="#7a5210" stroke-width=".8" fill="none"/><path d="M-2.6 -8.4l-1-2M2.6 -8.4l1-2" stroke="#7a5210" stroke-width=".8"/>'
+      + '<path d="M-1.6 -4.6h3.2v2.4h-3.2z" fill="#7a5210" opacity=".5"/>',
+    amber: '<path d="M-5 -1.6l-1.4-6 3.4-4.6 5.6-.8 3.4 4.4-1.4 7z" fill="#e09a2c" stroke="#9a6a1a" stroke-width=".6" opacity=".92"/>'
+      + '<g><ellipse cx="0" cy="-6" rx="1.8" ry="2.6" fill="#5a3a12"/><path d="M-1.8 -7.6q-2.4-1.6-3-.4 1.4 1.6 3 1.2zM1.8 -7.6q2.4-1.6 3-.4-1.4 1.6-3 1.2z" fill="rgba(255,255,255,.55)"/>'
+      + '<path d="M-1.8 -6.6h3.6M-1.8 -5.2h3.6" stroke="#e0b64a" stroke-width=".5"/></g>',
+    ash: '<path d="M-6 -.6h12v.6h-12z" fill="#4a4038"/><path d="M-1.2 -12.4h2.4v11.8h-2.4z" fill="#b8b0a4"/><path d="M-5.4 -8.6h10.8v2.4h-10.8z" fill="#b8b0a4"/>'
+      + '<g fill="#7a7268"><path d="M-1.2 -10.4h2.4v1h-2.4zM-4 -8h8v.8h-8z"/></g><path d="M4 -11q1.6 2 0 3.4" stroke="#8a8278" stroke-width=".7" fill="none" opacity=".7"/>',
+    moon: '<path d="M-4.6 -13h9.2v1.4c0 .9-1 1.4-1 2.4 0 1.8 3.6 3 3.6 7 0 2.4-1.6 4.2-3.6 4.2h-7.2c-2 0-3.6-1.8-3.6-4.2 0-4 3.6-5.2 3.6-7 0-1-1-1.5-1-2.4z" fill="#8fa8b8" stroke="#5a7282" stroke-width=".6"/>'
+      + '<ellipse cy="-4" rx="4" ry="2" fill="#1c2a3a"/><circle cx="1" cy="-4.2" r="1.8" fill="#f4f1e0"/><circle cx="1.8" cy="-4.6" r="1.6" fill="#1c2a3a"/>',
+    cuckoo: '<ellipse cx="-1" cy="-5" rx="5" ry="3.6" fill="#8a9aa8"/><circle cx="4" cy="-8.4" r="2.8" fill="#8a9aa8"/><path d="M6.4 -9l3 .8-3 1.2z" fill="#f2c230"/>'
+      + '<circle cx="4.6" cy="-9" r=".6" fill="#111"/><path d="M-6 -6q-4-1.4-5 1 3 1.6 5.4.6z" fill="#6b7a88"/><path d="M-2 -1.4v1.4M1 -1.4v1.4" stroke="#f2c230" stroke-width=".9"/>'
+      + '<path d="M-2.4 -6.6q2.4 1.4 4.6 0" stroke="#f4efe3" stroke-width=".7" fill="none"/>',
+    thumb: '<path d="M-5.4 -11.6h10.8l-1.2 11.6h-8.4z" fill="#a8683a" stroke="#6b3a1a" stroke-width=".6"/><path d="M-6 -12.6h12v1.4h-12z" fill="#8a5a30"/>'
+      + '<g fill="#5a3418"><ellipse cx="0" cy="-5.6" rx="2.4" ry="3.2"/></g>'
+      + '<g stroke="#c08a5a" stroke-width=".4" fill="none"><path d="M-1.6 -7.6q1.6 2 0 4M0 -8.2q1.8 2.6 0 5.2M1.6 -7.6q-1.6 2 0 4"/></g>',
+    ribbon: '<path d="M0 -8q-4-5-6.4-2.4Q-8 -7.6 0 -4q8-3.6 6.4-6.4Q4 -13 0 -8z" fill="#d7372b" stroke="#8a1a16" stroke-width=".6"/>'
+      + '<path d="M-1.4 -4.6l-3.4 4.6M1.4 -4.6l3.4 4.6" stroke="#d7372b" stroke-width="1.6" stroke-linecap="round"/><circle cy="-6.6" r="1.2" fill="#f2c230"/>',
   };
 
   const svg32 = (inner, cls) => '<svg viewBox="0 0 32 32" class="' + (cls || '') + '" aria-hidden="true">' + inner + '</svg>';
+  /// Значок дивовижі для полиці «Хата»: той самий малюнок, тільки в боксі 32×32.
+  const wonder32 = (key) => (WONDER_ART[key] ? svg32('<g transform="translate(16 27)">' + WONDER_ART[key] + '</g>') : '');
 
   // ---------- люди, звірі, речі ----------
 
@@ -295,12 +424,13 @@
     return s;
   }
 
-  function cat(night) {
+  function cat(night, fur) {
     // Сидить на правому краї полиці (верх полиці — y 176), хвіст звисає й гойдається.
     return '<g transform="translate(318 176)" class="clks-cat">'
-      + '<path class="clks-tail" d="M6 -2c6 2 6 12 2 18" stroke="#3a3330" stroke-width="3.2" fill="none" stroke-linecap="round"/>'
-      + '<path d="M-10 0c-1-9 2-15 8-16 6-1 10 4 10 10 0 3-1 5-2 6z" fill="#3a3330"/>'
-      + '<circle cx="-4" cy="-19" r="7" fill="#3a3330"/><path d="M-10 -23l1-8 5 5zM2 -23l-1-8-5 5z" fill="#3a3330"/>'
+      + '<path class="clks-tail" d="M6 -2c6 2 6 12 2 18" stroke="' + fur + '" stroke-width="3.2" fill="none" stroke-linecap="round"/>'
+      + '<path d="M-10 0c-1-9 2-15 8-16 6-1 10 4 10 10 0 3-1 5-2 6z" fill="' + fur + '"/>'
+      + '<circle cx="-4" cy="-19" r="7" fill="' + fur + '"/><path d="M-10 -23l1-8 5 5zM2 -23l-1-8-5 5z" fill="' + fur + '"/>'
+      + (fur === PET_FUR.patched ? '<path d="M-9 -3q4-4 8-1-3 4-8 1z" fill="#3a3330"/><path d="M-8 -22q4-3 7 1-4 3-7-1z" fill="#3a3330"/>' : '')
       + '<g class="clks-eyes"><ellipse cx="-6.5" cy="-19.5" rx="1.5" ry="' + (night ? '1.6' : '1.1') + '" fill="' + (night ? '#f6d23a' : '#b9d36a') + '"/>'
       + '<ellipse cx="-1.5" cy="-19.5" rx="1.5" ry="' + (night ? '1.6' : '1.1') + '" fill="' + (night ? '#f6d23a' : '#b9d36a') + '"/></g>'
       + '<path d="M-4 -16.5l-1 1h2z" fill="#d88a8a"/></g>';
@@ -451,14 +581,67 @@
     return '<g class="clks-fall1">' + s + '</g><g class="clks-fall2">' + s + '</g>';
   }
 
+  /// Що навколо двору — оздоба «тин»: плетений тин (типово), дощаний паркан або живопліт.
+  function fenceKind(e) {
+    const kind = e.look.fence || 'wattle';
+    if (kind === 'planks') {
+      let s = '<path d="M2 112h92v3.4H2zM2 122h92v3.4H2z" fill="#7a5a34"/>';
+      for (let x = 4; x <= 90; x += 8) s += '<path d="M' + x + ' 130v-28h6v26z" fill="#a07f4e" stroke="#6b4a2a" stroke-width=".5"/>';
+      return s + '<path d="M2 100h92v3H2z" fill="#6b4a2a"/>';
+    }
+    if (kind === 'hedge') {
+      let s = '<path d="M2 130V112q0-9 11-9t11 6q4-8 12-8t11 8q4-7 12-7t12 8q4-6 11-6t11 9v17z" fill="#3f7d3a"/>';
+      for (let i = 0; i < 18; i++) {
+        const x = 4 + (i % 9) * 10, y = 108 + Math.floor(i / 9) * 9;
+        s += '<ellipse cx="' + x + '" cy="' + y + '" rx="4.4" ry="3.2" fill="' + (i % 2 ? '#4c9a3f' : '#357032') + '"/>';
+      }
+      return s + '<g fill="#d7372b"><circle cx="18" cy="116" r="1.6"/><circle cx="52" cy="112" r="1.6"/><circle cx="80" cy="119" r="1.6"/></g>';
+    }
+    let s = '';
+    for (let x = 6; x <= 92; x += 14) s += '<path d="M' + x + ' 130V' + (102 - (x % 28 ? 0 : 3)) + '" stroke="#6b4a2a" stroke-width="2.6" stroke-linecap="round"/>';
+    return s + '<path d="M2 108q23 -3 46 0t46 0M2 114q23 3 46 0t46 0M2 120q23 -3 46 0t46 0M2 126q23 3 46 0t46 0" stroke="#8a6a3e" stroke-width="2" fill="none"/>';
+  }
+
+  /// Дерево коло хати (оздоба): вишня, дуб або верба. Зима — голі гілки зі снігом, решта пір — своє листя.
+  function treeArt(e, x) {
+    const winter = e.season === 'winter';
+    const leaf = winter ? '' : e.season === 'autumn' ? '#b5812f' : '#4c8a3a';
+    const kind = e.look.tree;
+    if (kind === 'willow') {
+      let hang = '';
+      for (let i = -14; i <= 14; i += 4) hang += '<path d="M' + i + ' -26q' + (i / 3).toFixed(1) + ' 12 ' + (i / 2).toFixed(1) + ' 22" stroke="' + (winter ? '#6b5a44' : leaf) + '" stroke-width="1.2" fill="none"/>';
+      return '<g transform="translate(' + x + ' 130)"><path d="M0 0v-24" stroke="#5a4a32" stroke-width="3.4"/>'
+        + (winter ? '' : '<ellipse cy="-28" rx="17" ry="7" fill="' + leaf + '" opacity=".9"/>')
+        + hang + (winter ? '<ellipse cy="-30" rx="15" ry="3" fill="#f4f7fb"/>' : '') + '</g>';
+    }
+    if (kind === 'oak') {
+      return '<g transform="translate(' + x + ' 130)"><path d="M0 0v-18M0 -12l-7-7M0 -16l7-8" stroke="#4a3a22" stroke-width="4" fill="none" stroke-linecap="round"/>'
+        + (winter
+          ? '<path d="M-9 -20l-4-7M9 -24l5-6M0 -26v-8" stroke="#4a3a22" stroke-width="2" fill="none"/><g fill="#f4f7fb"><ellipse cx="-8" cy="-22" rx="5" ry="2"/><ellipse cx="8" cy="-26" rx="5" ry="2"/></g>'
+          : '<g fill="' + leaf + '"><circle cx="-9" cy="-25" r="9"/><circle cx="8" cy="-28" r="10"/><circle cx="0" cy="-20" r="8"/><circle cx="-2" cy="-33" r="7"/></g>'
+            + '<g fill="#8a6a2a"><ellipse cx="-6" cy="-18" rx="1.6" ry="2.2"/><ellipse cx="6" cy="-20" rx="1.6" ry="2.2"/></g>')
+        + '</g>';
+    }
+    // вишня
+    return '<g transform="translate(' + x + ' 130)"><path d="M0 0v-20M0 -13l-6-6M0 -16l6-7" stroke="#5a3a24" stroke-width="2.6" fill="none" stroke-linecap="round"/>'
+      + (winter
+        ? '<path d="M-7 -20l-4-6M7 -23l5-5" stroke="#5a3a24" stroke-width="1.6" fill="none"/><g fill="#f4f7fb"><ellipse cx="-7" cy="-21" rx="4.4" ry="1.8"/><ellipse cx="7" cy="-24" rx="4.4" ry="1.8"/></g>'
+        : e.season === 'spring'
+          ? '<g fill="#f6e1ea"><circle cx="-8" cy="-25" r="7"/><circle cx="7" cy="-28" r="8"/><circle cx="0" cy="-21" r="6.4"/></g><g fill="#e7a8bf"><circle cx="-6" cy="-26" r="1.2"/><circle cx="8" cy="-29" r="1.2"/><circle cx="1" cy="-20" r="1.1"/></g>'
+          : '<g fill="' + leaf + '"><circle cx="-8" cy="-25" r="7.4"/><circle cx="7" cy="-28" r="8"/><circle cx="0" cy="-21" r="6.6"/></g>'
+            + '<g fill="#b0212a"><circle cx="-6" cy="-19" r="2"/><circle cx="3" cy="-18" r="2"/><circle cx="9" cy="-22" r="1.8"/></g>'
+            + '<g stroke="#3a6a2a" stroke-width=".6" fill="none"><path d="M-6 -21v-2.4M3 -20v-2.4M9 -24v-2"/></g>')
+      + '</g>';
+  }
+
   function fenceSvg(e) {
     let s = '<g class="clks-fence">';
-    // Кілки й плетіння тину.
-    for (let x = 6; x <= 92; x += 14) s += '<path d="M' + x + ' 130V' + (102 - (x % 28 ? 0 : 3)) + '" stroke="#6b4a2a" stroke-width="2.6" stroke-linecap="round"/>';
-    s += '<path d="M2 108q23 -3 46 0t46 0M2 114q23 3 46 0t46 0M2 120q23 -3 46 0t46 0M2 126q23 3 46 0t46 0" stroke="#8a6a3e" stroke-width="2" fill="none"/>';
-    // Глечики на кілках — так сушили посуд на тинах.
-    s += '<g transform="translate(20 99) scale(.34) translate(-16 -30)"><path d="' + JUG_32 + '" fill="#c56b35"/></g>'
-      + '<g transform="translate(76 99) scale(.34) translate(-16 -30)"><path d="' + JUG_32 + '" fill="#2b2a2f"/></g>';
+    s += fenceKind(e);
+    // Глечики на кілках — так сушили посуд на тинах (на живоплоті їм нема на чому стояти).
+    if ((e.look.fence || 'wattle') !== 'hedge') {
+      s += '<g transform="translate(20 99) scale(.34) translate(-16 -30)"><path d="' + JUG_32 + '" fill="#c56b35"/></g>'
+        + '<g transform="translate(76 99) scale(.34) translate(-16 -30)"><path d="' + JUG_32 + '" fill="#2b2a2f"/></g>';
+    }
     // Хвіртка.
     s += '<path d="M98 130V104h20v26" stroke="#6b4a2a" stroke-width="2" fill="none"/><path d="M100 110h16M100 118h16M100 110l16 8" stroke="#8a6a3e" stroke-width="1.4"/>';
     if (e.decor.rooster) {
@@ -467,8 +650,9 @@
         + '<path d="M10.4 -12l3.6 1-3.6 1.4z" fill="#f2c230"/><circle cx="8" cy="-12.6" r=".7" fill="#111"/><path d="M8 -9.5q1 2.5-.5 3" stroke="#d7372b" stroke-width="1.2" fill="none"/></g>'
         + '<path d="M-2 0v3M2 0v3" stroke="#f2c230" stroke-width="1.2"/></g>';
     }
-    // Пора року біля тину.
+    // Пора року біля тину. Оздоба «дерево» міняє те, що росте під вікном; калина — як було.
     const x0 = 132;
+    if ((e.look.tree || 'kalyna') !== 'kalyna') return s + treeArt(e, x0 + 12) + '</g>';
     if (e.season === 'summer') {
       for (const [dx, h] of [[0, 34], [12, 42], [24, 30]]) {
         s += '<g transform="translate(' + (x0 + dx) + ' 130)"><path d="M0 0V' + (-h) + '" stroke="#4c7a2a" stroke-width="1.6"/><path d="M0 ' + (-h / 2) + 'q-7-2-8 3 6 1 8-3z" fill="#5f9a3a"/>'
@@ -512,6 +696,38 @@
     return { d, straw };
   })();
 
+  /// Рівна покрівля (ґонт, черепиця): дугою від краю до краю замість кошлатої соломи.
+  const SMOOTH_ROOF = 'M-6 150V130Q180 119 366 130v20z';
+
+  /// Чим укрита хата — оздоба «стріха». Порожня оздоба (солома) малюється рівно як раніше.
+  function roofArt(e) {
+    const kind = e.look.roof || 'straw';
+    const fresh = e.workshop >= 25;
+    if (kind === 'shingle' || kind === 'tile') {
+      const tile = kind === 'tile';
+      const base = tile ? '#b4573a' : '#8a6a44';
+      const dark = tile ? '#8a3c26' : '#5f4526';
+      let rows = '';
+      for (let i = 0; i < 4; i++) {
+        const y = 128 + i * 5.6;
+        for (let x = -6; x < 366; x += tile ? 13 : 17) {
+          rows += tile
+            ? '<path d="M' + x + ' ' + (y + 6) + 'q6.5 -7 13 0z" fill="' + (i % 2 ? base : '#c2624a') + '" stroke="' + dark + '" stroke-width=".5"/>'
+            : '<path d="M' + x + ' ' + y + 'h17v6.4h-17z" fill="' + (i % 2 ? base : '#9a7a52') + '" stroke="' + dark + '" stroke-width=".4"/>';
+        }
+      }
+      return '<path d="' + SMOOTH_ROOF + '" fill="' + dark + '"/><g clip-path="url(#clks-roofclip)">' + rows + '</g>'
+        + '<path d="M-6 127Q180 116 366 127" stroke="' + (tile ? '#d3775c' : '#a98a5e') + '" stroke-width="3" fill="none"/>'
+        + '<path d="M-6 150h372" stroke="rgba(40,25,10,.45)" stroke-width="2"/>';
+    }
+    const reed = kind === 'reed';
+    const fill = reed ? '#8d8a5a' : fresh ? '#caa35c' : 'var(--clks-thatch)';
+    return '<path d="' + THATCH.d + '" style="fill:' + fill + '"/>'
+      + '<path d="' + THATCH.straw + '" stroke="' + (reed ? 'rgba(40,50,25,.5)' : fresh ? '#a98141' : 'rgba(60,40,15,.45)') + '" stroke-width="' + (reed ? '1.1' : '.8') + '" fill="none"/>'
+      + (reed ? '<path d="M-6 144h372" stroke="rgba(30,40,20,.35)" stroke-width="1.4"/>' : '')
+      + '<path d="M-6 150h372" stroke="rgba(40,25,10,.35)" stroke-width="2"/>';
+  }
+
   function roofSvg(e) {
     const t = e.tiers;
     let s = '';
@@ -522,16 +738,18 @@
       s += '<path d="M337 132V96h9v36" fill="#5a5a5e" stroke="#2e2e32" stroke-width="1"/><path d="M335 96h13v3h-13z" fill="#3e3e42"/>'
         + '<g class="clks-smoke kiln" transform="translate(341 92)"><circle r="3.4"/><circle r="3.4"/><circle r="3.4"/><circle r="3.4"/></g>';
     }
-    // Стріха: солом'яний навіс із нерівним краєм; «Новий дах» (Гончарня 25) — світліша й рівніша.
-    const fresh = e.workshop >= 25;
-    s += '<path d="' + THATCH.d + '" ' + (fresh ? 'fill="#caa35c"' : 'style="fill:var(--clks-thatch)"') + '/>'
-      + '<path d="' + THATCH.straw + '" stroke="' + (fresh ? '#a98141' : 'rgba(60,40,15,.45)') + '" stroke-width=".8" fill="none"/>'
-      + '<path d="M-6 150h372" stroke="rgba(40,25,10,.35)" stroke-width="2"/>';
+    // Стріха: солом'яний навіс із нерівним краєм; «Новий дах» (Гончарня 25) — світліша й рівніша. Оздоба міняє покрівлю.
+    s += roofArt(e);
     if (e.season === 'winter') s += '<path d="M-6 131Q60 120 120 126T240 125T366 128V133Q300 128 240 131T120 132T-6 136z" fill="#f4f7fb"/>';
-    // «Вивіска на всю вулицю» (Гончарня 100) — дошка з глечиком на стрісі.
-    if (e.workshop >= 100) {
-      s += '<g transform="translate(206 145)"><path d="M-26 -1h52v-12h-52z" fill="#6b4423" stroke="#3a2412"/><path d="M-22 -7h44" stroke="#d9a92f" stroke-width="1.2" stroke-dasharray="3 2"/>'
-        + '<g transform="translate(-6 -15) scale(.38)"><path d="' + JUG_32 + '" fill="#f2c14e"/></g></g>';
+    // «Вивіска на всю вулицю» (Гончарня 100) — дошка з глечиком на стрісі. Своє ім'я хати вішає дошку й без неї.
+    if (e.workshop >= 100 || e.name) {
+      const w = Math.max(52, Math.min(220, (e.name || '').length * 6.2 + 16));
+      s += '<g transform="translate(206 145)"><path d="M' + f1(-w / 2) + ' -1h' + w + 'v-13h' + (-w) + 'z" fill="#6b4423" stroke="#3a2412"/>'
+        + (e.name
+          ? '<text x="0" y="-4.2" text-anchor="middle" font-size="8.4" fill="#f2c14e" font-family="inherit">' + esc(e.name) + '</text>'
+          : '<path d="M-22 -7h44" stroke="#d9a92f" stroke-width="1.2" stroke-dasharray="3 2"/>'
+            + '<g transform="translate(-6 -15) scale(.38)"><path d="' + JUG_32 + '" fill="#f2c14e"/></g>')
+        + '</g>';
     }
     return s;
   }
@@ -558,13 +776,15 @@
         : '<circle cx="' + f1(x) + '" cy="' + f1(y) + '" r="6" fill="#3a2412" stroke="#6b4423" stroke-width=".6"/>';
     });
     s += '</g>';
-    // Знаряддя на кілочках: планка й два ряди по п'ять.
+    // Знаряддя на кілочках: планка й ряди. До десятка — по п'ять і великі; далі полиця тісниться до шести в ряд.
     const tools = TOOL_ORDER.filter((k) => e.tools[k]);
-    s += '<g transform="translate(0 ' + SCENE.tools.y + ')"><rect x="4" y="-3" width="90" height="4" rx="1.5" fill="#5a3a1e"/>'
-      + (tools.length > 5 ? '<rect x="4" y="55" width="90" height="4" rx="1.5" fill="#5a3a1e"/>' : '');
+    const wide = tools.length > 10;
+    const per = wide ? 6 : 5, pitch = wide ? 34 : 58, step = wide ? 14.6 : 17.5, scale = wide ? '.58' : '.9', x1 = wide ? 11 : 14;
+    s += '<g transform="translate(0 ' + SCENE.tools.y + ')">';
+    for (let r = 0; r * per < Math.max(1, tools.length); r++) s += '<rect x="4" y="' + (r * pitch - 3) + '" width="90" height="4" rx="1.5" fill="#5a3a1e"/>';
     tools.forEach((k, i) => {
-      const x = 14 + (i % 5) * 17.5, y = Math.floor(i / 5) * 58;
-      s += '<circle cx="' + f1(x) + '" cy="' + (y - 1) + '" r="1.3" fill="#2b1a0e"/><g class="clks-tool t-' + k + '" transform="translate(' + f1(x) + ' ' + y + ') scale(.9)">' + TOOL_ART[k] + '</g>';
+      const x = x1 + (i % per) * step, y = Math.floor(i / per) * pitch;
+      s += '<circle cx="' + f1(x) + '" cy="' + (y - 1) + '" r="1.3" fill="#2b1a0e"/><g class="clks-tool t-' + k + '" transform="translate(' + f1(x) + ' ' + y + ') scale(' + scale + ')">' + TOOL_ART[k] + '</g>';
     });
     s += '</g>';
     // Рушник над колом: під полицею, з червоною вишивкою й китицями.
@@ -611,13 +831,16 @@
         + '<path class="clk-flame f2" d="M317 377c-5-4.5-5-11 0-16 1.2 4.5 3.6 4.5 2.4 9 3.6-2.4 3.6-6 2.4-9 4.8 4.5 4.8 11-4.8 16z" fill="#f4c542"/></g>'
         + '<g class="clks-embers" fill="#ffb24a"><circle cx="312" cy="352" r="1"/><circle cx="321" cy="350" r=".8"/><circle cx="317" cy="348" r=".9"/></g>'
         + (e.kilnLvl >= 25 ? '<path d="M295 300h44" stroke="#5c4530" stroke-width="2"/><path d="M299 296h36" stroke="#b28a62" stroke-width="1"/>' : '')
+        + stoveTiles(e)
         + '<path d="M296 380h42v5h-42z" fill="#7a5a3e"/>';
     }
     // Лава (завжди), собака під нею, скриня.
     if (e.decor.dog) {
+      const fur = PET_DOG[e.look.pet] || PET_DOG.grey;
       s += '<g transform="translate(4 400)"><rect width="88" height="6" rx="1.5" fill="#7a5230"/><path d="M8 6v36M80 6v36" stroke="#5a3a1e" stroke-width="4"/></g>';
-      s += '<g transform="translate(46 428)" class="clks-dog"><path class="clks-dtail" d="M-18 -4q-9-4-8-12" stroke="#7a5a3e" stroke-width="3" fill="none" stroke-linecap="round"/>'
-        + '<ellipse cx="0" cy="-2" rx="19" ry="7" fill="#7a5a3e"/><circle cx="19" cy="-6" r="6.5" fill="#7a5a3e"/><path d="M20 -11l6-6 1 9z" fill="#5a4030"/>'
+      s += '<g transform="translate(46 428)" class="clks-dog"><path class="clks-dtail" d="M-18 -4q-9-4-8-12" stroke="' + fur + '" stroke-width="3" fill="none" stroke-linecap="round"/>'
+        + '<ellipse cx="0" cy="-2" rx="19" ry="7" fill="' + fur + '"/><circle cx="19" cy="-6" r="6.5" fill="' + fur + '"/><path d="M20 -11l6-6 1 9z" fill="#5a4030"/>'
+        + (e.look.pet === 'patched' ? '<ellipse cx="-6" cy="-3" rx="6" ry="4" fill="#4a4038"/>' : '')
         + '<path d="M18 -7q2 1.4 4 0" stroke="#111" stroke-width=".9" fill="none"/><circle cx="25" cy="-4.4" r="1.5" fill="#111"/>'
         + '<ellipse cx="-2" cy="5" rx="20" ry="2.4" fill="rgba(0,0,0,.25)"/></g>';
     }
@@ -629,9 +852,118 @@
         + '<circle cx="30" cy="27" r="5" fill="#f2c230"/><circle cx="30" cy="27" r="2.2" fill="#d7372b"/><circle cx="14" cy="24" r="2.6" fill="#d7372b"/><circle cx="46" cy="24" r="2.6" fill="#d7372b"/>'
         + '<path d="M27 16h6v5h-6z" fill="#e2c26a"/><path d="M0 40h60" stroke="#4a1e10" stroke-width="2"/></g>';
     }
-    if (e.cat) s += cat(e.night);
+    s += decor2Svg(e) + wonderShelf(e) + showShelf(e);
+    if (e.cat) s += cat(e.night, PET_FUR[e.look.pet] || PET_FUR.grey);
     s += apprentices(e.apprentice, e.night);
     return s;
+  }
+
+  /// Кахлі печі: те, що гравець виклав у панелі альбому (album.stove), видно й на горні в хаті — кожна в своєму розписі.
+  function stoveTiles(e) {
+    if (!e.stove.length) return '';
+    let s = '<g class="clks-tiles">';
+    e.stove.slice(0, 9).forEach((t, i) => {
+      const x = 293 + (i % 3) * 17, y = 292 + Math.floor(i / 3) * 17;
+      s += '<rect x="' + x + '" y="' + y + '" width="15" height="15" rx="1.4" fill="' + (t.body || '#c9a06a')
+        + '" stroke="' + (t.q >= 3 ? '#e0b64a' : '#8a7a5c') + '" stroke-width="' + (t.q >= 3 ? '1' : '.7') + '"/>'
+        // Вкладений <svg> сам обрізає розпис по кахлі — окремий clipPath на кожну був би дев'ять зайвих вузлів.
+        + (t.decor ? '<svg x="' + (x + 1) + '" y="' + (y + 1) + '" width="13" height="13" viewBox="34 28 32 34">' + t.decor + '</svg>' : '');
+    });
+    return s + '</g>';
+  }
+
+  /// Другий ряд прикрас на сцені (v9): кожну видно, і кожна має своє місце в хаті.
+  function decor2Svg(e) {
+    const d = e.decor;
+    let s = '';
+    // Люстра з рогів — на ланцюгу зі стелі в кутку над піччю.
+    if (d.lustra) {
+      // Роги розходяться вгору від маточини, свічки стоять на кінчиках — як воно й буває в хаті з рогів.
+      let horns = '';
+      for (const [dx, dy, tip] of [[-24, -8, -2], [24, -8, 2], [-13, -12, -1], [13, -12, 1]]) {
+        const x = 318 + dx, y = 254 + dy;
+        horns += '<path d="M318 254q' + (dx * 0.6) + ' ' + (dy * 0.2) + ' ' + dx + ' ' + dy + '" stroke="#c9a06a" stroke-width="2.8" fill="none" stroke-linecap="round"/>'
+          + '<path d="M' + (318 + dx * 0.55) + ' ' + (254 + dy * 0.4) + 'q' + (tip * 2) + ' -5 ' + (tip * 4) + ' -3" stroke="#c9a06a" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+          + '<rect x="' + (x - 2.6) + '" y="' + (y - 9) + '" width="5.2" height="9" rx="1.6" fill="#f6e3b0"/>'
+          + '<ellipse class="clks-flick" cx="' + x + '" cy="' + (y - 12) + '" rx="1.8" ry="3.2" fill="#ffb83a"/>';
+      }
+      s += '<g class="clks-lustra"><path d="M318 180v70" stroke="#6a6a6a" stroke-width="1.2"/>'
+        + '<ellipse cx="318" cy="254" rx="7" ry="3" fill="#7a5a3e"/><path d="M318 257v5" stroke="#7a5a3e" stroke-width="1.6"/>'
+        + '<circle cx="318" cy="264" r="2.4" fill="#7a5a3e"/>'
+        + horns
+        + '<ellipse cx="318" cy="248" rx="48" ry="30" fill="url(#clks-lampg)" style="opacity:calc(var(--clks-lamp) * .8)"/></g>';
+    }
+    // Портрет Тараса — у рамці з рушником, поряд з іконою.
+    if (d.portret) {
+      s += '<g transform="translate(330 188)"><rect x="-2" y="-2" width="26" height="40" rx="1.5" fill="#5a3a1e"/>'
+        + '<rect width="22" height="36" fill="#e8e2d2"/><circle cx="11" cy="14" r="6.4" fill="#e0b48a"/>'
+        + '<path d="M4.6 12q1-8 6.4-8t6.4 8q-2.6-3-6.4-3t-6.4 3z" fill="#3a3028"/><path d="M4.6 14.6q1.4 5.4 6.4 5.4t6.4-5.4" stroke="#3a3028" stroke-width="1.4" fill="none"/>'
+        + '<path d="M2 36v-6c0-3 4-4.4 9-4.4s9 1.4 9 4.4v6z" fill="#2f2a26"/>'
+        + '<path d="M-5 -4h32v4h-32z" fill="#f4efe3"/><path d="M-5 -2.4h32" stroke="#d7372b" stroke-width="1.4" stroke-dasharray="3 2"/></g>';
+    }
+    // Плахта — ткана, на лівій стіні під знаряддям.
+    if (d.plakhta) {
+      let rows = '';
+      for (let i = 0; i < 7; i++) {
+        rows += '<path d="M8 ' + (340 + i * 7) + 'h36v4H8z" fill="' + (i % 3 === 0 ? '#f2c230' : i % 3 === 1 ? '#2f5fa8' : '#f4efe3') + '"/>';
+      }
+      s += '<g><path d="M4 330h44v4H4z" fill="#6b4423"/><path d="M6 334h40v56H6z" fill="#8b3a22"/>' + rows
+        + '<g fill="#f4efe3"><path d="M14 386l3 3-3 3-3-3zM26 386l3 3-3 3-3-3zM38 386l3 3-3 3-3-3z"/></g></g>';
+    }
+    // Ходики з гирями — цокають на лівій стіні.
+    if (d.khodyky) {
+      s += '<g class="clks-khodyky"><rect x="56" y="330" width="34" height="30" rx="2" fill="#7d4c27" stroke="#3a2010"/>'
+        + '<path d="M52 331l21-8 21 8z" fill="#8a5a30" stroke="#3a2010" stroke-width=".8"/>'
+        + '<circle cx="73" cy="344" r="9" fill="#f4efe3" stroke="#3a2010" stroke-width=".8"/>'
+        + '<path d="M73 344v-6M73 344l4 3" stroke="#2a1a12" stroke-width="1.2"/><circle cx="73" cy="344" r="1.2" fill="#2a1a12"/>'
+        + '<path d="M66 360l-2 20M80 360l2 20" stroke="#c9a04a" stroke-width="1"/><g fill="#c9a04a"><rect x="62" y="378" width="4" height="8" rx="1.4"/><rect x="80" y="378" width="4" height="8" rx="1.4"/></g>'
+        + '<g class="clks-pend"><path d="M73 360v20" stroke="#c9a04a" stroke-width="1"/><circle cx="73" cy="382" r="4" fill="#f2c230" stroke="#9a6a1a" stroke-width=".7"/></g></g>';
+    }
+    // Скриня-посаг — стоїть при стіні над мальованою скринею.
+    if (d.posag) {
+      s += '<g transform="translate(294 364)"><rect y="6" width="58" height="30" rx="2.4" fill="#a86a2c" stroke="#5a3a12"/>'
+        + '<path d="M0 10a29 8 0 0 1 58 0v4H0z" fill="#c98c3e" stroke="#5a3a12" stroke-width=".8"/>'
+        + '<path d="M0 22h58" stroke="#5a3a12" stroke-width="1.6"/><path d="M25 12h8v8h-8z" fill="#f4efe3"/>'
+        + '<g fill="#d7372b"><circle cx="12" cy="28" r="2.6"/><circle cx="46" cy="28" r="2.6"/></g>'
+        + '<path d="M6 28q6-6 12 0M40 28q6-6 12 0" stroke="#4c9a3f" stroke-width="1.4" fill="none"/></g>';
+    }
+    // Дідух — сніп на покуті, коло скрині.
+    if (d.didukh) {
+      let ears = '';
+      for (const [dx, dy] of [[-16, 6], [16, 6], [0, 0], [-9, 2], [9, 2]]) {
+        ears += '<ellipse cx="' + dx + '" cy="' + (-48 + dy) + '" rx="2.6" ry="4.4" fill="#efd066"/>';
+      }
+      s += '<g transform="translate(266 440)"><path d="M0 0c-9 0-14-3.4-14-7 0-5 5-7 14-7s14 2 14 7c0 3.6-5 7-14 7z" fill="#b8912f"/>'
+        + '<path d="M0 -12L-16 -42M0 -12L16 -42M0 -12v-36M0 -12l-9 -34M0 -12l9 -34" stroke="#d9b445" stroke-width="2.6" stroke-linecap="round"/>'
+        + ears + '<path d="M-12 -14q12 5 24 0" stroke="#d7372b" stroke-width="2.6" fill="none"/></g>';
+    }
+    return s;
+  }
+
+  /// Поличка дивовиж: планка (чи дві) над колом, на ній — усе, що знайшлось. Порожня поличка не малюється.
+  function wonderShelf(e) {
+    if (!e.wonders.length) return '';
+    const two = e.wonders.length > 8;
+    let s = '<g class="clks-wshelf">';
+    if (two) s += '<path d="M76 219h152v3H76z" fill="#6b4423"/>';
+    s += '<path d="M76 240h152v3H76z" fill="#6b4423"/>';
+    e.wonders.forEach((key, i) => {
+      if (!WONDER_ART[key]) return;
+      const row = two ? Math.floor(i / 8) : 0;
+      const col = two ? i % 8 : i;
+      s += '<g transform="translate(' + (85 + col * 19) + ' ' + (two && row === 0 ? 219 : 240) + ')">' + WONDER_ART[key] + '</g>';
+    });
+    return s + '</g>';
+  }
+
+  /// Виставка: до трьох виробів з альбому на окремій поличці під вікном (album.show дає пакет «Альбом»).
+  function showShelf(e) {
+    if (!e.show.length) return '';
+    let s = '<g class="clks-show"><path d="M234 268h58v3.4h-58z" fill="#6b4423"/><path d="M238 271.4v5M288 271.4v5" stroke="#4a2f16" stroke-width="1.6"/>';
+    e.show.forEach((art, i) => {
+      s += '<g transform="translate(' + (250 + i * 18) + ' 268) scale(.2) translate(-50 -86)">' + art + '</g>';
+    });
+    return s + '</g>';
   }
 
   const DEFS = '<defs>'
@@ -640,6 +972,7 @@
     + '<radialGradient id="clks-lampg"><stop offset="0" stop-color="#ffc766" stop-opacity=".68"/><stop offset=".5" stop-color="#ffb04a" stop-opacity=".16"/><stop offset="1" stop-color="#ffb04a" stop-opacity="0"/></radialGradient>'
     + '<radialGradient id="clks-fireg"><stop offset="0" stop-color="#ff9a4a" stop-opacity=".7"/><stop offset=".6" stop-color="#ff7a2a" stop-opacity=".18"/><stop offset="1" stop-color="#ff7a2a" stop-opacity="0"/></radialGradient>'
     + '<clipPath id="clks-bandclip"><rect width="360" height="150"/></clipPath>'
+    + '<clipPath id="clks-roofclip"><path d="' + SMOOTH_ROOF + '"/></clipPath>'
     + '</defs>';
 
   /// Усе, від чого залежить малюнок хати, — сходинками, а не сирими числами: купівля ще одного рівня Підмайстра
@@ -657,8 +990,28 @@
     for (const d of hs.decor || []) if (d.owned) decor[d.key] = true;
     const a = lvl('apprentice');
     const weather = (v.market && typeof v.market.weather === 'string') ? v.market.weather : '';
+    // Дев'яте оновлення: оздоба, ім'я на вивісці, знайдені дивовижі, виставка й кахлі печі з альбому.
+    const look = lookOf(v);
+    const name = (hs.named || '').slice(0, 24);
+    const wonders = ((hs.wonders && hs.wonders.list) || []).filter((w) => w.found).map((w) => w.key);
+    const al = v.album || {};
+    const ware = (st && st.api && st.api.wareSvg) || null;
+    const art = (x) => {
+      if (!ware || !x) return '';
+      const o = typeof x === 'string' ? { ware: x.split('|')[0], style: x.split('|')[1] || '', quality: +(x.split('|')[2] || 1) } : x;
+      if (!o.ware) return '';
+      return ware(o.ware, { style: o.style || '', quality: o.quality || o.q || 1, slot: 'clkh-' + o.ware + '-' + (o.style || '') + '-' + (o.quality || o.q || 1), wrap: false });
+    };
+    const show = (Array.isArray(al.show) ? al.show : []).slice(0, 3).map(art).filter(Boolean);
+    // Кахля — це розпис і якість (album.stove): беремо з каталогу розписів тіло й візерунок.
+    const styles = (st && st.api && st.api.STYLE) || {};
+    const stove = (Array.isArray(al.stove) ? al.stove : []).slice(0, 9).map((t) => {
+      const sv = styles[(t && t.style) || ''] || styles[''] || {};
+      return { body: (t && t.style && sv.body) || '#c9a06a', decor: sv.decor || '', q: (t && (t.q || t.quality)) || 1 };
+    });
     return {
-      tiers, tools, decor, weather, season: sky.season, moon: sky.moon, night: sky.night,
+      tiers, tools, decor, weather, look, name, wonders, show, stove,
+      season: sky.season, moon: sky.moon, night: sky.night,
       apprentice: a >= 50 ? 50 : a >= 25 ? 25 : a >= 10 ? 10 : a >= 1 ? 1 : 0,
       kiln: lvl('kiln') >= 1 ? 1 : 0, kilnLvl: Math.min(60, Math.floor(lvl('kiln') / 5) * 5), workshop: step(lvl('workshop')),
       cat: (v.secrets || []).some((s) => s.key === 'cat' && s.owned),
@@ -1396,6 +1749,27 @@
       + '<path d="M2 -1c5 1 7-3 5-6" stroke="#3a3330" stroke-width="2" fill="none" stroke-linecap="round"/></g></svg>';
   }
 
+  // ---------- дивовижа знайшлась ----------
+
+  /// Картка з байкою — один раз на знахідку. Під Оком майстра й чужим вікном чекаємо, як і «поки тебе не було».
+  function showWonder(st, api, w) {
+    if (!api.visible(st) || api.guardOn(st) || api.overlayOpen(st)) return false;
+    const say = (x) => api.esc(st, x);
+    const body = api.overlay(st, '<div class="clks-wonder">'
+      + '<div class="clks-wart">' + wonder32(w.key) + '</div>'
+      + '<div class="clks-wtag">✨ Дивовижа в хаті</div>'
+      + '<div class="clks-whead">' + say(w.name) + '</div>'
+      + '<div class="clks-wtale">' + say(w.tale) + '</div>'
+      + '<div class="muted small">Стала на поличку над колом — і додала +1 % до всього</div>'
+      + '<button type="button" class="primary clks-wgo">Нехай стоїть</button></div>', { cls: 'clks-wonderov' });
+    const go = body.querySelector('.clks-wgo');
+    if (go) go.onclick = () => api.closeOverlay(st);
+    api.sfx('rare');
+    api.feed(st, 'дивовижа в хаті: ' + w.name, 'wonder');
+    api.toast(st, '✨ Дивовижа: ' + w.name, 'ok');
+    return true;
+  }
+
   // ---------- вкладки: активна завжди в полі зору ----------
 
   function scrollTabs(st) {
@@ -1417,6 +1791,7 @@
       st.scn = {
         vars: {}, sky: { season: 'summer', moon: 8, night: false }, skyAt: 0, houseSig: '', tab: '', clayAt: 0,
         handsOn: false, awayPending: false, clay: null, squash: st.el.querySelector('.clk-squash'),
+        lookSig: '', wonderSeen: null, wonderNew: null,
       };
       Snd.load(api);
       Mus.load(api);
@@ -1426,6 +1801,7 @@
       api.upIcon = (key) => svg32(EMBLEM[key] || EMBLEM.wheel);
       api.toolIcon = (key) => (TOOL_ART[key] ? '<svg viewBox="-16 -2 32 50" aria-hidden="true">' + TOOL_ART[key] + '</svg>' : '');
       api.decorIcon = (key) => (DECOR_ICON[key] ? svg32(DECOR_ICON[key]) : '');
+      api.wonderIcon = (key) => wonder32(key);
       api.scene = SCENE;
       // Сцена поза екраном (прокрутили до майстерні чи чату) — CSS-анімації хати на паузі: це основна робота картки без дій.
       if (window.IntersectionObserver && st.stage) {
@@ -1437,7 +1813,17 @@
         const ups = {};
         for (const l of (h && h.ladder) || []) ups[l.key] = { level: l.level };
         const owned = (keys) => (keys || []).map((key) => ({ key, owned: true }));
-        const fake = { upgrades: ups, house: { tools: owned(h && h.tools), decor: owned(h && h.decor) }, secrets: [] };
+        // Оздоба, ім'я й дивовижі друга — якщо сервіс цеху їх уже шле; нема — хата просто типова.
+        const fake = {
+          upgrades: ups,
+          house: {
+            tools: owned(h && h.tools), decor: owned(h && h.decor),
+            look: (h && h.look) || {}, named: (h && h.name) || '',
+            wonders: { list: ((h && h.wonders) || []).map((k) => ({ key: k, found: true })) },
+          },
+          album: { show: (h && h.show) || [], stove: (h && h.stove) || [] },
+          secrets: [],
+        };
         const sky = (st2 && st2.scn && st2.scn.sky) || st.scn.sky;
         // Свої id (градієнти хати друга не мусять зникати, коли головну сцену сховало Око майстра) і ті самі змінні неба.
         const vars = [...((st.stage && st.stage.style) || [])].filter((k) => k.startsWith('--clks-'))
@@ -1464,6 +1850,25 @@
     },
 
     update(st, v, api) {
+      // Оздоба змінилась — небо й коло беруть нові кольори (вони живуть у CSS-змінних, а не в малюнку).
+      const lk = JSON.stringify(lookOf(v));
+      if (st.scn.lookSig !== lk) {
+        st.scn.lookSig = lk;
+        st.scn.vars = {};
+        st.scn.sky = paintSky(st, sceneNow(st, api));
+      }
+      // Знайшлась нова дивовижа: перший вид лише запам'ятовує, що вже стояло на поличці.
+      const list = (v.house && v.house.wonders && v.house.wonders.list) || [];
+      const found = list.filter((w) => w.found);
+      if (!st.scn.wonderSeen) st.scn.wonderSeen = new Set(found.map((w) => w.key));
+      else {
+        for (const w of found) {
+          if (st.scn.wonderSeen.has(w.key)) continue;
+          st.scn.wonderSeen.add(w.key);
+          const at = Date.parse(w.at);
+          if (Number.isFinite(at) && api.serverNow(st) - at < 120000) st.scn.wonderNew = w;
+        }
+      }
       paintHouse(st);
       // Бризки й грудка — кольору глини на колі.
       const clay = st.clayBody || '';
@@ -1494,6 +1899,7 @@
       }
       if (st.tab !== scn.tab) { scn.tab = st.tab; scrollTabs(st); }
       if (scn.awayPending && showAway(st, api)) scn.awayPending = false;
+      if (scn.wonderNew && showWonder(st, api, scn.wonderNew)) scn.wonderNew = null;
     },
 
     unmount(st, api) {

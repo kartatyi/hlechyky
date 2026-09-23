@@ -1234,7 +1234,7 @@
         + '" data-house="adorn" data-key="' + esc(d.key) + '" data-price="' + d.price + '" data-owned="' + (d.owned ? 1 : 0) + '" disabled>'
         + (H.api.decorIcon ? '<span class="clk-ticon">' + H.api.decorIcon(d.key) + '</span>' : '') + '<b>' + esc(d.name) + '</b><span class="muted small">' + esc(d.desc) + '</span>'
         + '<span class="clk-price' + (d.owned ? ' done' : '') + '">' + (d.owned ? '✓ у хаті' : short(d.price)) + '</span></button>').join('') + '</div>';
-    if (swap(st.housePane, clays + tools + decor)) {
+    if (swap(st.housePane, clays + tools + decor + looksHtml(st, esc) + wondersHtml(st, esc))) {
       st.clayBtns = [...st.housePane.querySelectorAll('[data-clay]')];
       for (const b of st.clayBtns) {
         b._price = b.querySelector('.clk-price');
@@ -1242,9 +1242,80 @@
       }
       st.houseBtns = [...st.housePane.querySelectorAll('[data-house]')];
       for (const b of st.houseBtns) b.onclick = () => order(st, b.dataset.house, { key: b.dataset.key });
+      bindLooks(st);
       collectCountdowns(st);
       st.slowAt = 0;
     }
+    // Клейма міняються рідко, але розмітку оздоби вони не чіпають: інакше кожне клеймо стирало б недописану вивіску.
+    for (const b of st.lookBtns || []) {
+      const off = !st.mine || b.dataset.on === '1' || +b.dataset.stamp > (st.stampsFree || 0);
+      if (b.disabled !== off) b.disabled = off;
+    }
+  }
+
+  // ---------- Хата: оздоба за клейма, вивіска й дивовижі (дев'яте оновлення) ----------
+
+  /// Значок дивовижі малює жива хата (clicker-scene.js); поки її нема — проста зірочка.
+  const wonderIcon = (key) => (H.api.wonderIcon && H.api.wonderIcon(key)) || '✨';
+
+  /// Оздоба: гурт (стріха, стіни, тин…) — рядок вибору. Куплений варіант вдягається безплатно, новий бере клейма.
+  function looksHtml(st, esc) {
+    const hs = (st.lastView && st.lastView.house) || {};
+    const looks = hs.looks || [];
+    if (!looks.length) return '';
+    // Оздоба коштує клейм, тож новачкові, який ще не палив, показуємо саму вивіску: вона безплатна.
+    const paid = st.stamps > 0 || looks.some((g) => (g.options || []).some((o) => o.owned && o.price > 0));
+    const rows = !paid
+      ? '<div class="muted small">Хату можна перебрати під себе — стріха, стіни, тин, дерево, колір кола, масть кота з собакою. Платиться клеймами, тож спершу обпал.</div>'
+      : looks.map((g) => '<div class="clk-lookrow"><span class="clk-lookname">' + esc(g.name)
+      + '<span class="muted small"> · ' + esc(g.desc) + '</span></span><span class="clk-lookopts">'
+      + (g.options || []).map((o) => '<button type="button" class="clk-lookopt' + (g.value === o.value ? ' on' : '')
+        + (o.owned ? ' owned' : '') + '" data-look="' + esc(g.key) + '" data-val="' + esc(o.value)
+        + '" data-stamp="' + (o.owned ? 0 : o.price) + '" data-on="' + (g.value === o.value ? 1 : 0) + '" disabled>'
+        + esc(o.name) + (o.owned ? '' : '<span class="clk-lookprice">🔖' + o.price + '</span>') + '</button>').join('')
+      + '</span></div>').join('');
+    const sign = '<div class="clk-lookrow sign"><span class="clk-lookname">Вивіска<span class="muted small"> · як зветься твоя хата</span></span>'
+      + '<span class="clk-signbox"><input class="clk-signin" type="text" maxlength="' + (hs.nameMax || 24)
+      + '" value="' + esc(hs.named || '') + '" placeholder="Хата гончаря" aria-label="Ім\'я хати">'
+      + '<button type="button" class="ghost small clk-signgo">Написати</button></span></div>';
+    return '<div class="clk-sub">🎨 Оздоба<span class="muted small"> · за клейма, раз і назавжди</span>'
+      + info('Оздоба міняє вигляд хати на сцені й нічого не додає до доходу. Клейма на неї, як і на секрети, '
+        + 'не згорають і бонусу не гублять — просто їх стає менше на секрети. Вивіска безплатна, міняй скільки хочеш.')
+      + '</div><div class="clk-looks">' + rows + sign + '</div>';
+  }
+
+  /// Дивовижі: знайдене — з байкою, решта — силуети з підказкою, звідки їх ждати.
+  function wondersHtml(st, esc) {
+    const w = (st.lastView && st.lastView.house && st.lastView.house.wonders) || null;
+    // Дивовижі приходять із рідкісних подій пізньої гри: поки гончар не палив жодного разу, це просто шум.
+    if (!w || !w.list || (!w.found && !st.stamps)) return '';
+    const pct = Math.round((w.bonus || 0.01) * 100 * w.found);
+    const cells = w.list.map((x) => '<div class="clk-wonder' + (x.found ? ' found' : '') + '">'
+      + '<div class="clk-wtop"><span class="clk-wicon' + (x.found ? '' : ' sil') + '">' + wonderIcon(x.key) + '</span>'
+      + '<b>' + (x.found ? esc(x.name) : '· · ·') + '</b></div>'
+      + '<span class="muted small">' + esc(x.found ? x.tale : x.from) + '</span></div>').join('');
+    return '<div class="clk-sub">✨ Дивовижі · ' + w.found + '/' + w.total
+      + (w.found ? '<span class="muted small"> · +' + pct + ' % до всього</span>' : '')
+      + info('Дивовижі знаходяться самі, коли в хаті стається щось рідкісне: добрий обпал, довга серія, щедрий віз, '
+        + 'гість на свято. Кожна додає +1 % до всього й лишається в хаті назавжди. Люстро в знаряддях — удвічі частіше.')
+      + '</div><div class="clk-wonders">' + cells + '</div>';
+  }
+
+  /// Кнопки оздоби й вивіски: вибір гурту летить дією look, ім'я — дією name.
+  function bindLooks(st) {
+    st.lookBtns = [...st.housePane.querySelectorAll('[data-look]')];
+    for (const b of st.lookBtns) {
+      b.onclick = () => { H.api.sfx('buy'); order(st, 'look', { key: b.dataset.look, value: b.dataset.val }); };
+    }
+    const input = st.housePane.querySelector('.clk-signin');
+    const go = st.housePane.querySelector('.clk-signgo');
+    if (!input || !go) return;
+    // Недописану вивіску розмітка переживає: купівля оздоби перемальовує панель, а стерти чуже слово шкода.
+    if (st.signDraft != null) input.value = st.signDraft;
+    const write = () => { H.api.sfx('tap'); st.signDraft = null; order(st, 'name', { text: input.value }); input.blur(); };
+    input.oninput = () => { st.signDraft = input.value; };
+    go.onclick = write;
+    input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); write(); } };
   }
 
   // ---------- дошка купців ----------
@@ -1309,7 +1380,9 @@
       const u = st.ups[k];
       if (u.kind === 'idle' && u.level > 0) text = u.name + ' · ' + u.level;
     }
-    text = text ? '🏠 ' + text : '🏠 Хата гончаря';
+    // Своє ім'я хати (Хата → Оздоба → Вивіска) заступає і верстат, і типовий підпис.
+    const named = (st.lastView && st.lastView.house && st.lastView.house.named) || '';
+    text = named ? '🏠 ' + named : text ? '🏠 ' + text : '🏠 Хата гончаря';
     if (st.sign.textContent !== text) st.sign.textContent = text;
   }
 

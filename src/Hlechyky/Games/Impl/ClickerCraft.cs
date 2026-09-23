@@ -318,7 +318,7 @@ public sealed partial class Clicker
         if (have <= 0) return ActResult.Fail("Такого виробу в коморі нема");
         var n = Math.Min(want, have);
         TakeItems(x => x == it, n);
-        var pots = ItemValue(it.Ware, it.Style, it.Quality) * n;
+        var pots = ToPots(ItemValue(it.Ware, it.Style, it.Quality) * n * HouseBazaarMult);
         Add(pots);
         return ActResult.Accept($"🧺 Продав {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()}: +{Short(pots)} {Pots(pots)}");
     }
@@ -342,7 +342,7 @@ public sealed partial class Clicker
             return ActResult.Fail(ItemTotal > 0
                 ? q == 1 ? "Звичайних у коморі нема" : "У коморі самі дзвінкі — їх базар не бере"
                 : "У коморі порожньо — нічого везти на базар");
-        Add(sum);
+        Add(sum = ToPots(sum * HouseBazaarMult));
         var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : "";
         return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{Short(sum)} {Pots(sum)}");
     }
