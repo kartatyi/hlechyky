@@ -8,18 +8,35 @@ namespace Hlechyky.Games.Impl;
 /// </summary>
 public static class SvoyaAnswer
 {
+    /// <summary>
+    /// Скільки слів понад відповідь можна дописати: «Тарас Шевченко», «у 1991 році», «це, мабуть, Котляревський» —
+    /// так; «Франко Шевченко Котляревський Українка Леся» — ні. Відповідь «цілими словами всередині» зараховується,
+    /// а без межі перелік навздогад брав будь-яке запитання (24.09.2026).
+    /// </summary>
+    public const int MaxExtraWords = 3;
+
     public static bool Hits(string? text, IEnumerable<string> answers)
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
         var keys = answers.Select(MelodyAnswer.Key).Where(k => k.Length > 0).Distinct().ToList();
         if (keys.Count == 0) return false;
-        if (MelodyAnswer.Hits(text, keys)) return true;
+        var key = MelodyAnswer.Key(text);
+        if (Words(key) > keys.Max(Words) + MaxExtraWords) return false;
 
         var numbers = keys.Where(IsNumber).ToList();
+        var said = Numbers(key);
+        // Число навздогад («1990 1991 1992», «25 чи 26») — лотерея, а не відповідь. Інші числа поруч не заважають:
+        // «24 серпня 1991» на «1991» влучає, бо чотиризначне в тексті одне.
+        if (numbers.Count > 0 && numbers.Any(n => said.Count(x => Digits(x) == n.Length) > 1)) return false;
+        if (MelodyAnswer.Hits(text, keys)) return true;
+
         if (numbers.Count == 0) return false;
-        var said = Numbers(MelodyAnswer.Key(text));
         return numbers.Any(n => said.Contains(long.Parse(n)));
     }
+
+    static int Words(string key) => key.Length == 0 ? 0 : key.Count(c => c == ' ') + 1;
+
+    static int Digits(long n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs((double)n))) + 1;
 
     static bool IsNumber(string key) => key.Length is > 0 and <= 15 && key.All(char.IsAsciiDigit);
 

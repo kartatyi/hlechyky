@@ -79,12 +79,16 @@
       + '</button>';
   }
 
+  /// Коротка партія — підпис у лобі, щоб усі за столом знали, на скільки сідають. Увесь пакет — без підпису, як було.
+  const LENGTH = { two: '⏱ два раунди й фінал', one: '⏱ один раунд і фінал' };
+
   function lobbyHtml(root, ctx, v) {
     const s = st(root);
     const me = v.me || {};
     const head = '<div class="svmode muted small">Ведучий: ' + (v.mode === 'live'
       ? '🎙 жива людина — ' + esc(nick(ctx, v.host)) + ' (не грає, читає й судить)'
-      : '🤖 автомат' + (v.options && v.options.voice !== 'none' ? ' з голосом' : '')) + '</div>';
+      : '🤖 автомат' + (v.options && v.options.voice !== 'none' ? ' з голосом' : ''))
+      + (v.options && LENGTH[v.options.length] ? ' · ' + LENGTH[v.options.length] : '') + '</div>';
     const chosen = v.pack
       ? '<div class="svchosen"><div class="svptitle">' + esc(v.pack.title) + '</div>'
         + (v.pack.description ? '<div class="muted small">' + esc(v.pack.description) + '</div>' : '')
@@ -207,9 +211,10 @@
     const fs = v.falseStart || [];
     if (!p.length && !fs.length) return '';
     const wrong = v.wrong || [];
-    const early = fs.map((s) => '<span class="no">⛔ ' + esc(nick(ctx, s)) + ' <i>фальстарт</i></span>').join('');
+    const early = fs.map((s) => '<span class="svp-no">⛔ ' + esc(nick(ctx, s)) + ' <i>фальстарт</i></span>').join('');
     return '<div class="svpresses">🔔 ' + early + p.map((x, i) => {
-      const cls = x.seat === v.answering ? 'now' : x.seat === v.correct ? 'ok' : wrong.indexOf(x.seat) >= 0 ? 'no' : '';
+      // Класи з приставкою: голий .now у style.css — це сітка «зараз грає» радіо, і вона розсаджувала рядок черги.
+      const cls = x.seat === v.answering ? 'svp-now' : x.seat === v.correct ? 'svp-ok' : wrong.indexOf(x.seat) >= 0 ? 'svp-no' : '';
       return '<span' + (cls ? ' class="' + cls + '"' : '') + '>' + (i + 1) + '. ' + esc(nick(ctx, x.seat))
         + ' <i>' + (x.ms / 1000).toFixed(2) + ' с</i>' + (x.seat === v.answering ? ' 🎤' : '') + '</span>';
     }).join('') + '</div>';
@@ -640,6 +645,16 @@
 
   HGames.register({
     id: 'svoya',
+    news: {
+      v: '2026-09-24',
+      title: 'Своя гра: коротка партія',
+      items: [
+        '⏱ Нова опція «Довжина»: один раунд і фінал (~15 хв) або два раунди й фінал — коли на весь пакет нема години',
+        '🎮 Джойстик: поки кнопка відкрита, будь-яка кнопка під пальцем — «Я знаю!»',
+        '🎯 Перелік навздогад («1990 1991 1992» чи п’ять прізвищ підряд) більше не зараховується',
+        '🔧 Черга на кнопку більше не розповзається по всьому рядку',
+      ],
+    },
     icon: ICON,
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd', 'x'],
 
@@ -700,6 +715,15 @@
       const s = root._sv;
       if (s) clearInterval(s.timer);
       hush(root);
+    },
+
+    // Джойстик: поки кнопка відкрита для тебе — будь-яка кнопка під великим пальцем і є «Я знаю!» (шукати Ⓐ
+    // посеред гонки за першість ніхто не буде). Решту часу пад ходить по кнопках картки, як звичайно.
+    pad: {
+      a: 'Space',
+      anyBtn: true,
+      hint: '{a} — я знаю! (будь-яка кнопка)',
+      when: (ctx) => !!(ctx.mine && ctx.playing && ctx.view && ctx.view.me && ctx.view.me.canBuzz),
     },
 
     onKey(e, ctx) {

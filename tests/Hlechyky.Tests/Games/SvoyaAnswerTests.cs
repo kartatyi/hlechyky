@@ -78,6 +78,25 @@ public class SvoyaAnswerTests
     }
 
     [Fact]
+    public void A_list_of_guesses_is_a_lottery_and_does_not_count()
+    {
+        Assert.False(Hit("Франко Шевченко Українка Стус Котляревський", "Котляревський"));
+        Assert.False(Hit("1989 1990 1991 1992", "1991"));
+        Assert.False(Hit("25 чи 26", "25"));
+        Assert.False(Hit("двадцять п'ять або двадцять шість", "25"));
+    }
+
+    [Fact]
+    public void A_few_extra_words_and_other_numbers_around_still_count()
+    {
+        Assert.True(Hit("Іван Петрович Котляревський", "Котляревський"));
+        Assert.True(Hit("це, мабуть, Котляревський", "Котляревський"));
+        Assert.True(Hit("24 серпня 1991", "1991"));
+        Assert.True(Hit("у 1991 році", "1991"));
+        Assert.True(Hit("гурт Kalush Orchestra", "Kalush Orchestra"));
+    }
+
+    [Fact]
     public void Empty_text_never_hits()
     {
         Assert.False(Hit("", "Київ"));

@@ -113,9 +113,9 @@ audio.svmedia { width: min(420px, 100%); }
 
 /* ---------- черга на кнопку (усім) ---------- */
 .svpresses { display: flex; flex-wrap: wrap; gap: 8px; font-size: .9em; justify-content: center; }
-.svpresses span.now { color: var(--accent); font-weight: 700; }
-.svpresses span.ok { color: var(--ok); font-weight: 700; }
-.svpresses span.no { color: var(--muted); text-decoration: line-through; }
+.svpresses span.svp-now { color: var(--accent); font-weight: 700; }
+.svpresses span.svp-ok { color: var(--ok); font-weight: 700; }
+.svpresses span.svp-no { color: var(--muted); text-decoration: line-through; }
 .svpresses i { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- рахунок ---------- */

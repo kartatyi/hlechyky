@@ -276,7 +276,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
     /// клієнта, тому все, що людині малює екран, тут має бути словами.
     /// </summary>
     public const string MafiaGuide = """
-        МАФІЯ на Глечиках — 4–12 гравців, ведучий Дядько Глек, обговорення йде в загальному чаті (Балачки).
+        МАФІЯ на Глечиках — 3–12 гравців (утрьох перша ніч завжди тиха), ведучий Дядько Глек, обговорення йде в загальному чаті (Балачки).
 
         Як сісти грати:
           set_nick → create_room("mafia", {опції}) або join_room(game:"mafia") → коли всіх зібрано,
@@ -314,7 +314,8 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         СВОЯ ГРА на Глечиках — 1–9 місць, поле «теми × ціни», хто перший натиснув кнопку — той відповідає.
 
         Як сісти грати:
-          create_room("svoya", {host:"auto"}) або join_room(game:"svoya"). Господар ще в лобі обирає пакет:
+          create_room("svoya", {host:"auto"}) або join_room(game:"svoya"); коротка партія — {length:"one"} (раунд і фінал)
+          чи {length:"two"}. Господар ще в лобі обирає пакет:
           act("pack", {id}) — вбудовані: b_ukraina, b_kino, b_nauka, b_dozvillia, b_potrokhu (решта — з сайту).
           Потім господар — start_game. Далі гра йде за годинником: чекай змін через wait.
 
