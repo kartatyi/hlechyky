@@ -544,15 +544,28 @@ public class ChessTests
     }
 
     [Fact]
-    public void A_move_takes_the_draw_offer_back()
+    public void The_opponents_move_takes_the_draw_offer_back()
     {
         var h = Table();
         h.Act(0, "draw");
         Move(h, 0, "e2", "e4");
+        Move(h, 1, "e7", "e5");
         Assert.Equal(JsonValueKind.Null, h.View(1).GetProperty("drawOffer").ValueKind);
 
         Assert.Equal("Запропонував нічию", h.Act(1, "draw").Message);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void Offering_a_draw_and_then_moving_keeps_the_offer_for_the_opponent()
+    {
+        // Раніше свій же хід знімав щойно зроблену пропозицію, і суперник не встигав її навіть побачити.
+        var h = Table();
+        Assert.True(h.Act(0, "draw").Ok);
+        Move(h, 0, "e2", "e4");
+        Assert.Equal(0, h.View(1).GetProperty("drawOffer").GetInt32());
+        Assert.Equal("Нічия", h.Act(1, "draw").Message);
+        Assert.True(h.Room.Result!.Draw);
     }
 
     [Fact]
@@ -897,7 +910,8 @@ public class ChessTests
         Assert.Equal(2, info.MaxPlayers);
         Assert.True(info.Rated);                       // ставка можлива лише на двох і лише в рейтинговій
         Assert.Equal(0, info.TickMs);
-        var option = Assert.Single(info.Options!);
+        Assert.Equal(["variant", "clock"], info.Options!.Select(o => o.Key));
+        var option = info.Options![0];
         Assert.Equal("variant", option.Key);
         Assert.Equal("classic", option.Default);
         Assert.Equal(["classic", "960", "anti"], option.Values.Select(v => v.Value));

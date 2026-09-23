@@ -230,7 +230,7 @@ public sealed class Checkers : Game
     const int MaxPathLength = 13;
 
     public override GameInfo Info { get; } = new(
-        "checkers", "Шашки", "шашки", GameGroup.Board, 2, 2, Rated: true,
+        "checkers", "Шашки", "шашки", GameGroup.Board, 2, 2, Rated: true, Options: [BoardClock.Option],
         Hint: "Російські шашки: бити обов'язково, дамка ходить на всю діагональ");
 
     char[] _b = CheckersRules.Start();
@@ -246,11 +246,20 @@ public sealed class Checkers : Game
     int _quiet;
     /// <summary>Скільки разів позиція вже траплялась: триразове повторення — нічия.</summary>
     readonly Dictionary<string, int> _seen = new(StringComparer.Ordinal);
+    /// <summary>Поля шашок, побитих останнім ходом: браузер показує, звідки їх зняли.</summary>
+    string[]? _lastTaken;
+    readonly BoardClock _clock = new();
+    readonly Series _series = new();
 
     public override string SeatName(int seat) => seat == 0 ? "білі" : "чорні";
 
+    public override void Configure(IReadOnlyDictionary<string, string> options) => _clock.Configure(options);
+
     public override void Start()
     {
+        _clock.Reset();
+        _series.Begin(Ctx, 2);
+        _lastTaken = null;
         _b = CheckersRules.Start();
         _turn = 0;
         _last = null;
@@ -262,8 +271,23 @@ public sealed class Checkers : Game
         _seen.Clear();
     }
 
-    public override ActResult Act(int seat, string action, JsonElement payload) => action switch
+    public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        // Прапорець перевіряємо на кожній дії: хто просидів свій час, той уже не походить. Відповідь —
+        // «прийнято», інакше каркас не розіслав би вид із результатом (Rooms.Act шле види лише на Ok).
+        if (!_over && _clock.Flagged(Ctx.Clock.UtcNow) is { } flagged)
+        {
+            var win = Other(flagged);
+            Over(win, "time");
+            End([win], $"{Info.Title}: у {Ctx.NickOf(flagged)} скінчився час — {Ctx.NickOf(win)} {SeatName(win)} 1:0 {Ctx.NickOf(flagged)} {SeatName(flagged)}");
+            return ActResult.Accept(flagged == seat ? "Твій час вийшов" : "У суперника впав прапорець");
+        }
+        return Dispatch(seat, action, payload);
+    }
+
+    ActResult Dispatch(int seat, string action, JsonElement payload) => action switch
+    {
+        "flag" => ActResult.Fail(_over ? "Партію зіграно, тисни «Ще раз»" : "Час ще є"),
         "move" => Move(seat, payload),
         "resign" => Resign(seat),
         "draw" => Offer(seat),
@@ -291,7 +315,10 @@ public sealed class Checkers : Game
         var wasMan = !CheckersRules.King(_b[from]);
         CheckersRules.Apply(_b, move);
         _last = [.. move.Path.Select(CheckersRules.Name)];
-        _offer = null;                       // будь-який хід знімає пропозицію нічиєї
+        _lastTaken = [.. move.Taken.Select(CheckersRules.Name)];
+        // Свій хід пропозицію не знімає — нічию й пропонують разом зі своїм ходом; знімає хід суперника.
+        if (_offer != seat) _offer = null;
+        _clock.Moved(seat, Ctx.Clock.UtcNow);
         // Взяття і рух простої незворотні: після них ні «15 ходів дамками», ні повторення рахувати нема від чого.
         if (move.Capture || wasMan) { _quiet = 0; _seen.Clear(); }
         else _quiet++;
@@ -339,7 +366,7 @@ public sealed class Checkers : Game
         if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
         var win = Other(seat);
         Over(win, "resign");
-        Ctx.Finish([win], $"{Info.Title}: {Ctx.NickOf(seat)} здається — {Ctx.NickOf(win)} {SeatName(win)} 1:0 {Ctx.NickOf(seat)} {SeatName(seat)}");
+        End([win], $"{Info.Title}: {Ctx.NickOf(seat)} здається — {Ctx.NickOf(win)} {SeatName(win)} 1:0 {Ctx.NickOf(seat)} {SeatName(seat)}");
         return ActResult.Accept("Здався");
     }
 
@@ -372,19 +399,27 @@ public sealed class Checkers : Game
         _offer = null;
     }
 
+    /// <summary>Усі кінці партії: зупинити годинник, дописати серію, сказати каркасу.</summary>
+    void End(int[] winners, string text)
+    {
+        _clock.Stop(Ctx.Clock.UtcNow);
+        _series.Record(Ctx, winners);
+        Ctx.Finish(winners, text);
+    }
+
     ActResult Won(int seat, string reason)
     {
         Over(seat, reason);
         var lost = Other(seat);
         // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
-        Ctx.Finish([seat], $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(lost)} {SeatName(lost)}");
+        End([seat], $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(lost)} {SeatName(lost)}");
         return ActResult.Accept("Твоя взяла!");
     }
 
     ActResult Drawn(string reason)
     {
         Over(null, reason);
-        Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(0)} {SeatName(0)} і {Ctx.NickOf(1)} {SeatName(1)} зіграли внічию ({Said(reason)})");
+        End([], $"{Info.Title}: {Ctx.NickOf(0)} {SeatName(0)} і {Ctx.NickOf(1)} {SeatName(1)} зіграли внічию ({Said(reason)})");
         return ActResult.Accept("Нічия");
     }
 
@@ -401,7 +436,7 @@ public sealed class Checkers : Game
         var win = Other(seat);
         int[] winners = Ctx.Seated(win) ? [win] : [];
         Over(winners.Length > 0 ? win : null, "left");
-        Ctx.Finish(winners, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        End(winners, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
     }
 
     // ---------- вид ----------
@@ -421,6 +456,10 @@ public sealed class Checkers : Game
             count = new { w = CheckersRules.Count(_b, 0), b = CheckersRules.Count(_b, 1) },
             drawOffer = _offer,
             result = _over ? new { winner = _winner, reason = _reason } : null,
+            // Необов'язкові поля: побиті останнім ходом, годинник (якщо обрали) і рахунок серії.
+            lastTaken = _lastTaken is null ? null : (string[])_lastTaken.Clone(),
+            clock = Ctx is null ? null : _clock.View(Ctx.Clock.UtcNow),
+            series = Ctx is null ? null : _series.View(Ctx, 2),
         };
     }
 
@@ -429,10 +468,10 @@ public sealed class Checkers : Game
     /// <summary>Знімок партії. Гра не Persistent, але стан у неї цілком серіалізовний — і тестам так видніше.</summary>
     public sealed record Snapshot(
         string Board, int Turn, string[]? Last, int? Offer, bool Over, int? Winner, string? Reason,
-        int Quiet, Dictionary<string, int> Seen);
+        int Quiet, Dictionary<string, int> Seen, BoardClock.Snapshot? Clock = null, string[]? LastTaken = null);
 
     public override string? Save() =>
-        JsonSerializer.Serialize(new Snapshot(new string(_b), _turn, _last, _offer, _over, _winner, _reason, _quiet, new(_seen)));
+        JsonSerializer.Serialize(new Snapshot(new string(_b), _turn, _last, _offer, _over, _winner, _reason, _quiet, new(_seen), _clock.Save(), _lastTaken));
 
     public override void Load(string json)
     {
@@ -447,5 +486,7 @@ public sealed class Checkers : Game
         _quiet = s.Quiet;
         _seen.Clear();
         foreach (var (k, v) in s.Seen) _seen[k] = v;
+        _clock.Load(s.Clock);
+        _lastTaken = s.LastTaken;
     }
 }
