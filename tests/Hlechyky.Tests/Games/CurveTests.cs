@@ -12,7 +12,7 @@ namespace Hlechyky.Tests.Games;
 /// </summary>
 public class CurveTests
 {
-    static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван"];
+    static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марко", "Зоя", "Тарас", "Леся"];
 
     // ---------- ядро ----------
 
@@ -200,11 +200,11 @@ public class CurveTests
         {
             var core = new CurveCore(new Random(seed));
             core.Reset([true, true, true, true]);
-            var heads = core.Heads;
+            var heads = core.Heads.Take(4).ToArray();
             foreach (var h in heads)
             {
-                Assert.InRange(h.X, 30, CurveCore.W - 30);
-                Assert.InRange(h.Y, 30, CurveCore.H - 30);
+                Assert.InRange(h.X, 30, core.W - 30);
+                Assert.InRange(h.Y, 30, core.H - 30);
             }
             for (var a = 0; a < 4; a++)
                 for (var b = a + 1; b < 4; b++)
@@ -360,7 +360,7 @@ public class CurveTests
     {
         var head = Field(h).Heads[seat];
         head.X = CurveCore.R + 1;
-        head.Y = CurveCore.H / 2.0;
+        head.Y = Field(h).H / 2.0;
         head.A = Math.PI;
         head.Turn = 0;
     }
@@ -443,7 +443,7 @@ public class CurveTests
         var v = h.View(1);
         foreach (var name in new[] { "width", "height", "turn", "round", "target", "phase", "startIn", "scores", "heads", "segments", "winners" })
             Assert.True(Views.Has(v, name), name);
-        Assert.Equal(CurveCore.W, v.GetProperty("width").GetInt32());
+        Assert.Equal(CurveCore.SmallW, v.GetProperty("width").GetInt32());   // утрьох поле звичне
         Assert.Equal(JsonValueKind.Null, v.GetProperty("turn").ValueKind);
         Assert.Equal(20, v.GetProperty("target").GetInt32());          // 10 × (3 − 1)
         Assert.Equal(CurveCore.Seats, v.GetProperty("segments").GetArrayLength());
@@ -536,12 +536,12 @@ public class CurveTests
 
         Doom(h, 2);
         h.Tick(1);
-        Assert.Equal([1, 1, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        Assert.Equal([1, 1, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).Take(4).ToArray());
         Assert.Equal("play", h.View(0).GetProperty("phase").GetString());   // двоє живих — раунд триває
 
         Doom(h, 1);
         h.Tick(1);
-        Assert.Equal([2, 1, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        Assert.Equal([2, 1, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).Take(4).ToArray());
         Assert.Equal("between", h.View(0).GetProperty("phase").GetString());
     }
 
@@ -560,7 +560,7 @@ public class CurveTests
         Assert.Equal("ready", h.View(0).GetProperty("phase").GetString());
         Assert.Equal(2, Field(h).AliveCount);
         Assert.Equal(2, h.View(0).GetProperty("segments")[0].GetProperty("pts").GetArrayLength());
-        Assert.Equal([1, 0, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        Assert.Equal([1, 0, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).Take(4).ToArray());
     }
 
     [Fact]
@@ -618,7 +618,7 @@ public class CurveTests
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.Equal(1, h.View(0).GetProperty("round").GetInt32());
         Assert.Equal("ready", h.View(0).GetProperty("phase").GetString());
-        Assert.Equal([0, 0, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        Assert.Equal([0, 0, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).Take(4).ToArray());
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("winners").ValueKind);
     }
 
@@ -721,19 +721,19 @@ public class CurveTests
         }
 
         Assert.Equal("between", h.View(0).GetProperty("phase").GetString());
-        Assert.Equal([0, 0, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        Assert.Equal([0, 0, 0, 0], h.View(0).GetProperty("scores").EnumerateArray().Select(x => x.GetInt32()).Take(4).ToArray());
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
     }
 
     [Fact]
-    public void Curve_is_in_the_catalog_as_a_live_game_for_two_to_four()
+    public void Curve_is_in_the_catalog_as_a_live_game_for_two_to_eight()
     {
         var game = Assert.Single(new Registry().Catalog, g => g.Id == "curve");
 
         Assert.Equal("live", game.Group);
         Assert.Equal("byHost", game.Start);
         Assert.Equal(2, game.MinPlayers);
-        Assert.Equal(4, game.MaxPlayers);
+        Assert.Equal(8, game.MaxPlayers);
         Assert.Equal(CurveCore.TickMs, game.TickMs);
         Assert.False(game.Rated);            // ставки тут неможливі: їх дають лише рейтинговим іграм на двох
         Assert.Equal("curve", game.Module);
@@ -744,6 +744,149 @@ public class CurveTests
     public void Seat_names_are_the_four_colours()
     {
         var h = Table(4);
-        Assert.Equal(["жовта", "зелена", "глиняна", "біла"], h.Room.Summary().SeatNames);
+        Assert.Equal(["жовта", "зелена", "глиняна", "біла"], h.Room.Summary().SeatNames.Take(4));
+    }
+
+    // ---------- великий стіл: до восьми (оновлення 24.09.2026) ----------
+
+    [Theory]
+    [InlineData(2, 300, 200)]
+    [InlineData(4, 300, 200)]
+    [InlineData(5, 360, 240)]
+    [InlineData(6, 360, 240)]
+    [InlineData(7, 420, 280)]
+    [InlineData(8, 420, 280)]
+    public void The_field_grows_with_the_table_but_not_up_to_four(int players, int w, int hgt)
+    {
+        var h = Table(players);
+        Assert.Equal(w, Field(h).W);
+        Assert.Equal(hgt, Field(h).H);
+        var v = h.View(null);
+        Assert.Equal(w, v.GetProperty("width").GetInt32());
+        Assert.Equal(hgt, v.GetProperty("height").GetInt32());
+        Assert.Equal(10 * (players - 1), v.GetProperty("target").GetInt32());
+    }
+
+    [Fact]
+    public void Eight_curves_start_inside_the_big_field_and_apart()
+    {
+        for (var seed = 1; seed <= 30; seed++)
+        {
+            var core = new CurveCore(new Random(seed), true, 420, 280);
+            core.Reset([.. Enumerable.Repeat(true, 8)]);
+            foreach (var hd in core.Heads)
+            {
+                Assert.True(hd.Present && hd.Alive);
+                Assert.InRange(hd.X, 30, core.W - 30);
+                Assert.InRange(hd.Y, 30, core.H - 30);
+            }
+            for (var a = 0; a < 8; a++)
+                for (var b = a + 1; b < 8; b++)
+                {
+                    var (dx, dy) = (core.Heads[a].X - core.Heads[b].X, core.Heads[a].Y - core.Heads[b].Y);
+                    Assert.True(dx * dx + dy * dy >= 20 * 20, $"сід {seed}: {a} і {b} народились впритул");
+                }
+        }
+    }
+
+    [Fact]
+    public void The_big_field_has_its_walls_further_away()
+    {
+        var core = new CurveCore(new Random(1), false, 420, 280);
+        core.Reset([true]);
+        Put(core, 0, 350, 140, 0);                     // на звичному полі це вже за стіною
+        for (var i = 0; i < 25; i++) core.Step();
+        Assert.True(core.Heads[0].Alive);
+        Assert.True(core.Wall(419, 140));
+        Assert.False(core.Wall(310, 140));
+    }
+
+    [Fact]
+    public void Eight_riders_seven_crash_and_the_last_takes_seven_points()
+    {
+        var h = Table(8);
+        Ready(h);
+        for (var s = 1; s < 8; s++) Doom(h, s);
+        h.Tick(1);
+
+        var v = h.View(null);
+        Assert.Equal(7, v.GetProperty("scores")[0].GetInt32());   // по очку за кожного вибулого
+        for (var s = 1; s < 8; s++) Assert.Equal(0, v.GetProperty("scores")[s].GetInt32());
+        Assert.Equal("between", v.GetProperty("phase").GetString());
+        Assert.Equal(70, v.GetProperty("target").GetInt32());     // 10 × (8 − 1), як у класиці
+    }
+
+    [Fact]
+    public void Seat_names_of_eight_are_all_different_colours()
+    {
+        var h = Table(8);
+        var names = h.Room.Summary().SeatNames;
+        Assert.Equal(["жовта", "зелена", "глиняна", "біла", "синя", "рожева", "фіалкова", "червона"], names);
+    }
+
+    [Fact]
+    public void A_leaver_from_eight_lowers_the_target_and_the_rest_play_on()
+    {
+        var h = Table(8);
+        Ready(h);
+        h.Leave("Леся");
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(60, h.View(null).GetProperty("target").GetInt32());
+        Assert.False(Field(h).Heads[7].Alive);
+    }
+
+    [Fact]
+    public void The_longest_round_of_eight_still_fits_into_the_view()
+    {
+        var h = Table(8);
+        for (var s = 0; s < 8; s++)
+        {
+            var trail = Field(h).Heads[s].Trail;
+            trail.Clear();
+            trail.AddRange(Wiggly(s));
+        }
+        var bytes = System.Text.Encoding.UTF8.GetByteCount(Views.Text(h.View(null)));
+        Assert.True(bytes <= 32 * 1024, $"вид на {bytes} Б");
+        foreach (var seg in h.View(null).GetProperty("segments").EnumerateArray())
+            Assert.True(seg.GetProperty("pts").GetArrayLength() / 2 <= CurveCore.PtsFor(8) + 1);
+    }
+
+    [Fact]
+    public void Rematch_of_six_gets_the_big_field_again_and_four_get_the_small_one()
+    {
+        var h = Table(6);
+        for (var i = 0; i < 200 && h.Room.Status == RoomStatus.Playing; i++)
+        {
+            Ready(h);
+            for (var s = 1; s < 6; s++) if (Field(h).Heads[s].Alive) Doom(h, s);
+            h.Tick(CurveCore.BetweenTicks + 2);
+        }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        h.Rematch("Оля");
+        Assert.Equal(360, Field(h).W);
+
+        h.Leave("Марко");
+        h.Leave("Зоя");
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Eight_curves_and_two_thousand_five_hundred_ticks_are_instant()
+    {
+        var core = new CurveCore(new Random(3), true, 420, 280);
+        core.Reset([.. Enumerable.Repeat(true, 8)]);
+        var sw = Stopwatch.StartNew();
+        for (var t = 0; t < 2500; t++)
+        {
+            for (var s = 0; s < 8; s++)
+            {
+                core.Turn(s, (t / 20 + s) % 3 - 1);
+                if (!core.Heads[s].Alive) core.Heads[s].Alive = true;   // хай їздять до кінця
+            }
+            core.Step();
+        }
+        sw.Stop();
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"2500 тиків на вісьмох зайняли {sw.Elapsed}");
     }
 }
