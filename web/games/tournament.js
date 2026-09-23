@@ -56,7 +56,7 @@
   function results(ctx, s) {
     if (!s.results || !s.results.length) return '';
     return '<div class="trresults">' + s.results.slice().reverse().map((r) => '<div class="trres"><b>' + ctx.esc(r.title) + '</b> '
-      + (r.skipped ? '<span class="muted small">не дограли</span>'
+      + (r.skipped ? '<span class="muted small">пропущено</span>'
         : r.places.map((p) => '<span class="chip">' + p.place + '. ' + ctx.esc(p.nick) + ' <b>+' + p.points + '</b></span>').join(' '))
       + '</div>').join('') + '</div>';
   }
@@ -115,6 +115,7 @@
         + (mine ? '' : '<button type="button" class="primary" data-do="TournamentJoin">Я в турнірі</button>')
         + (lead ? '<button type="button" class="primary" data-do="TournamentNext">Почати: ' + ctx.esc(next.title) + ' ▸</button>' : '')
         + (mine ? '<button type="button" class="ghost" data-do="TournamentLeave">Вийти</button>' : '')
+        + (lead ? '<button type="button" class="ghost" data-do="TournamentSkip" title="Якщо в цю гру нинішній склад не влазить">Пропустити «' + ctx.esc(next.title) + '»</button>' : '')
         + (lead ? '<button type="button" class="ghost" data-do="TournamentCancel">Скасувати</button>' : '')
         + '</div>'
         + (lead ? '<div class="muted small">Коли всі зайшли — тисни «Почати»: сайт сам поставить стіл і посадить учасників, які зараз на сайті.</div>' : '');
@@ -133,6 +134,7 @@
         + '<div class="tract">'
         + (lead ? '<button type="button" class="primary" data-do="TournamentNext">Далі: ' + ctx.esc(next.title) + ' ▸</button>' : '<span class="muted">Чекаємо, поки ' + ctx.esc(s.host) + ' запустить наступну гру</span>')
         + (mine ? '' : '<button type="button" class="ghost" data-do="TournamentJoin">Я теж</button>')
+        + (lead ? '<button type="button" class="ghost" data-do="TournamentSkip" title="Якщо в цю гру нинішній склад не влазить">Пропустити «' + ctx.esc(next.title) + '»</button>' : '')
         + (lead ? '<button type="button" class="ghost" data-do="TournamentCancel">Завершити зараз</button>' : '')
         + '</div>'
         + standings(ctx, s) + results(ctx, s);

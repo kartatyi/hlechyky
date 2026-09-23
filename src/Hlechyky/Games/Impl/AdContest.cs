@@ -176,7 +176,9 @@ public sealed class AdContest(
             closedAt = c.ClosedAt,
             trackId = c.TrackId,
         }).ToArray();
-        return new { active = now, past };
+        // Панель має знати, чи чекати понеділка взагалі: з вимкненим конкурсом «новий відкривається щопонеділка»
+        // — неправда, і людина приходитиме в понеділок дарма.
+        return new { active = now, past, enabled = O.Enabled, autoOpen = O.Enabled && O.AutoOpen };
     }
 
     // =============================================================================================
@@ -254,7 +256,7 @@ public sealed class AdContest(
             }
 
         outbox.Post(new Journal(winner is not null
-            ? $"🎙 Конкурс реклами: переміг {winner.Nick} — {Votes(winner.Votes)}. Його реклама тепер крутиться в ефірі"
+            ? $"🎙 Конкурс реклами: переміг {winner.Nick} — {Votes(winner.Votes)}. Тепер ця реклама крутиться в ефірі"
             : entries.Count == 0
                 ? "🎙 Конкурс реклами скінчився, а мікрофон так ніхто й не взяв"
                 : "🎙 Конкурс реклами скінчився без переможця: ніхто не проголосував"));

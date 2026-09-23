@@ -188,17 +188,30 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         return null;
     }
 
-    /// <summary>Гра зависла (усі повставали, стіл прибрали) — рахуємо пропущеною й ідемо далі.</summary>
+    /// <summary>
+    /// Гра зависла (усі повставали, стіл прибрали) — рахуємо пропущеною й ідемо далі. Між іграми (і ще на зборі)
+    /// так само можна пропустити наступну: інакше гра, у яку нинішній склад не влазить (дуель на двох, а вас
+    /// троє), назавжди ставала б стіною, і турнір лишалось би хіба скасувати.
+    /// </summary>
     public string? Skip(string nick)
     {
+        Room? room = null;
         lock (_lock)
         {
-            if (_t is not { Stage: Playing } t) return "Зараз нема чого пропускати";
+            if (_t is not { Stage: not Done } t || t.Index >= t.Games.Count) return "Зараз нема чого пропускати";
             if (!CanLead(t, nick)) return "Пропустити гру може той, хто збирав турнір";
-            var room = t.Room is null ? null : rooms.Find(t.Room);
-            if (room is not null && room.Status == RoomStatus.Playing) foreach (var p in room.Seats.OfType<string>().ToList()) Flush(rooms.Leave(room.Id, p).Out);
-            // Leave посеред партії міг її закінчити — тоді результат уже порахував OnRoomFinished
-            if (t.Stage == Playing) Skipped(t);
+            // стіл поточної гри міг уже зникнути — тоді Refresh сам рахує її пропущеною, і вдруге (уже наступну) не пропускаємо
+            var index = t.Index;
+            Refresh(t);
+            if (t.Index == index && t.Stage != Done)
+            {
+                if (t.Stage == Playing && t.Room is not null) room = rooms.Find(t.Room);
+                // Спершу гра стає пропущеною, а вже потім учасники встають: інакше техпоразка того, хто встав
+                // першим, порахувалась би як справжній результат — очки за те, що сидів не на тому місці.
+                Skipped(t);
+            }
+            if (room is not null && room.Status == RoomStatus.Playing)
+                foreach (var p in room.Seats.OfType<string>().ToList()) Flush(rooms.Leave(room.Id, p).Out);
         }
         Changed();
         return null;
@@ -244,8 +257,8 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
     }
 
     /// <summary>
-    /// Місця й турнірні очки за одну гру. Є рахунок — місце за рахунком (рівний рахунок — рівне місце); нема — переможці
-    /// перші, решта другі, нічия — усі перші. Очки: гравців у грі − місце + 1 (утрьох: 3, 2, 1).
+    /// Місця й турнірні очки за одну гру. Є рахунок — переможці вище за решту, а всередині кожної купки місце за
+    /// рахунком (рівний рахунок — рівне місце); нема — переможці перші, решта другі, нічия — усі перші. Очки: гравців у грі − місце + 1 (утрьох: 3, 2, 1).
     /// </summary>
     public static List<TournamentPlace> Places(IReadOnlyList<string?> seats, IReadOnlyDictionary<int, long>? scores, int[] winners)
     {
@@ -255,7 +268,11 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         if (scores is { Count: > 0 })
         {
             long Of(int seat) => scores.TryGetValue(seat, out var v) ? v : long.MinValue;
-            ranked = [.. who.Select(x => (x.Nick!, 1 + who.Count(y => Of(y.Seat) > Of(x.Seat)), scores.TryGetValue(x.Seat, out var s) ? (long?)s : null))];
+            // Переможець — завжди вище за тих, хто програв, хай навіть рахунок у нього менший: у сапері
+            // той, хто наступив на міну, міг мати більше відкритих клітинок, але партію програв саме він.
+            bool Won(int seat) => winners.Length == 0 || winners.Contains(seat);
+            bool Above(int a, int b) => Won(a) != Won(b) ? Won(a) : Of(a) > Of(b);
+            ranked = [.. who.Select(x => (x.Nick!, 1 + who.Count(y => Above(y.Seat, x.Seat)), scores.TryGetValue(x.Seat, out var s) ? (long?)s : null))];
         }
         else
         {

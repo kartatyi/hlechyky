@@ -190,6 +190,67 @@ public class TournamentTests
     }
 
     [Fact]
+    public void A_winner_with_the_smaller_score_still_takes_first_place()
+    {
+        // сапер: Оля наступила на міну з рахунком 30:10 — партію виграв Петро, і в турнірі він перший
+        var places = Tournament.Places(["Оля", "Петро"], new Dictionary<int, long> { [0] = 30, [1] = 10 }, [1]);
+        Assert.Equal([("Петро", 1, 2), ("Оля", 2, 1)], places.Select(p => (p.Nick, p.Place, p.Points)));
+    }
+
+    [Fact]
+    public void Among_losers_the_score_still_decides()
+    {
+        var places = Tournament.Places(["Оля", "Петро", "Ганна", "Тарас"],
+            new Dictionary<int, long> { [0] = 5, [1] = 9, [2] = 7, [3] = 7 }, [0]);
+        Assert.Equal([("Оля", 1, 4), ("Петро", 2, 3), ("Ганна", 3, 2), ("Тарас", 3, 2)], places.Select(p => (p.Nick, p.Place, p.Points)));
+    }
+
+    [Fact]
+    public void Skipping_a_live_game_gives_nobody_points()
+    {
+        var s = new Setup("Оля", "Петро");
+        s.T.Create("Оля", ["ttt", "c4"]);
+        s.T.Join("Петро");
+        s.T.Next("Оля");
+        Assert.Null(s.T.Skip("Оля"));
+
+        var snap = s.Snap;
+        Assert.Equal("between", snap.GetProperty("stage").GetString());
+        var r = Assert.Single(snap.GetProperty("results").EnumerateArray());
+        Assert.True(r.GetProperty("skipped").GetBoolean());
+        Assert.Equal(0, s.Points("Оля"));
+        Assert.Equal(0, s.Points("Петро"));
+    }
+
+    [Fact]
+    public void A_game_that_does_not_fit_the_company_can_be_skipped_between_games()
+    {
+        var s = new Setup("Оля", "Петро", "Ганна");
+        s.T.Create("Оля", ["ttt", "c4", "ttt"]);
+        s.T.Join("Петро");
+        s.T.Join("Ганна");
+        Assert.NotNull(s.T.Next("Оля"));             // утрьох у хрестики не сісти
+        Assert.NotNull(s.T.Skip("Петро"));           // не господар
+        Assert.Null(s.T.Skip("Оля"));                // ще на зборі — пропускаємо першу ж
+        Assert.Equal("between", s.Stage);
+        Assert.Equal(1, s.Snap.GetProperty("index").GetInt32());
+
+        s.Presence.Remove("c-Ганна");
+        Assert.Null(s.T.Next("Оля"));                // удвох у чотири в ряд
+        s.H.Rooms.Leave(s.RoomId, "Петро");
+        Assert.Equal("between", s.Stage);
+
+        s.Presence.Set("c-Ганна", "Ганна");
+        Assert.NotNull(s.T.Next("Оля"));             // знову троє на хрестики
+        Assert.Null(s.T.Skip("Оля"));                // остання гра пропущена — турнір скінчився
+        var snap = s.Snap;
+        Assert.Equal("done", snap.GetProperty("stage").GetString());
+        Assert.True(snap.GetProperty("results")[2].GetProperty("skipped").GetBoolean());
+        Assert.Equal(["Оля"], snap.GetProperty("champions").EnumerateArray().Select(x => x.GetString()));
+        Assert.NotNull(s.T.Skip("Оля"));             // після кінця — нема чого
+    }
+
+    [Fact]
     public void Without_a_tournament_the_snapshot_still_has_the_crown()
     {
         var s = new Setup();

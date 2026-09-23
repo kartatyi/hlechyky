@@ -313,7 +313,11 @@
     }
     const a = state.data.active;
     const html = '<div class="rkbox">'
-      + (a ? active(a, ctx, esc, host) : '<div class="gempty">Зараз конкурсу нема. Новий відкривається щопонеділка опівдні.</div>')
+      + (a ? active(a, ctx, esc, host) : '<div class="gempty">' + (state.data.enabled === false
+        ? 'Конкурс реклами зараз на перерві — мікрофон відпочиває.'
+        : state.data.autoOpen === false
+          ? 'Зараз конкурсу нема. Новий відкриє господар — зазирни пізніше.'
+          : 'Зараз конкурсу нема. Новий відкривається щопонеділка опівдні.') + '</div>')
       + past(state.data.past || [], esc)
       + airBox(ctx, esc, host)
       + admin(a, ctx)
