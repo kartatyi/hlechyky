@@ -245,10 +245,94 @@
   from { transform: scaleY(1) scaleX(1); }
   to { transform: scaleY(1.22) scaleX(.92); }
 }
+/* ---- випадковості на сцені: кіт-мандрівник, зірка вночі, вітер із поля (v9 §A.6) ---- */
+.clk-events { position: absolute; inset: 0; }
+/* Кіт іде по долівці зліва направо (або навпаки — .back) рівно стільки, скільки каже сервер. */
+.clk-cat {
+  position: absolute; z-index: 5; bottom: 5%; left: -12%; width: 13%; min-width: 46px; max-width: 82px; aspect-ratio: 52 / 34;
+  padding: 0; border: none; background: transparent; color: #c8813f; cursor: pointer; touch-action: manipulation;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .5)); -webkit-user-select: none; user-select: none;
+}
+.clk-cat:hover { background: transparent; color: #e09a52; }
+.clk-cat svg { width: 100%; height: 100%; display: block; }
+.clk-cat.run { animation: clkcat var(--clk-catms, 6000ms) linear forwards; }
+.clk-cat.back.run { animation-name: clkcatback; }
+.clk-cat.back svg { transform: scaleX(-1); }
+.clk-cat-tail { animation: clkcattail .7s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 100% 50%; }
+/* Зірка: маленька, але з хвостом — і гасне, поки летить. */
+.clk-star {
+  position: absolute; z-index: 5; width: 8%; min-width: 26px; max-width: 46px; aspect-ratio: 1; margin: -2% 0 0 -4%;
+  padding: 0; border: none; background: transparent; color: #fff4c8; cursor: pointer; touch-action: manipulation;
+  filter: drop-shadow(0 0 10px rgba(255, 244, 200, .85));
+}
+.clk-star:hover { background: transparent; color: #fff; }
+.clk-star svg { width: 100%; height: 100%; display: block; }
+.clk-star::before {
+  content: ''; position: absolute; right: 55%; bottom: 55%; width: 220%; height: 3px; border-radius: 3px;
+  transform: rotate(35deg); transform-origin: 100% 50%;
+  background: linear-gradient(to left, rgba(255, 244, 200, .9), rgba(255, 244, 200, 0));
+}
+.clk-star.run { animation: clkstar var(--clk-starms, 8000ms) ease-in forwards; }
+/* Вітер: листя летить через усю сцену, ловити його не треба. */
+.clk-wind { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.clk-wind i {
+  position: absolute; width: 9px; height: 6px; border-radius: 60% 20% 60% 20%; background: #7fa85a; opacity: .85;
+  animation: clkleaf 2.6s linear infinite;
+}
+.clk-wind i:nth-child(2n) { background: #c8a04a; width: 7px; height: 5px; }
+.clk-wind i:nth-child(3n) { background: #9ab86a; }
+.clk-wind i:nth-child(1) { top: 12%; animation-delay: 0s; animation-duration: 2.2s; }
+.clk-wind i:nth-child(2) { top: 22%; animation-delay: .4s; animation-duration: 2.9s; }
+.clk-wind i:nth-child(3) { top: 33%; animation-delay: .8s; animation-duration: 2.4s; }
+.clk-wind i:nth-child(4) { top: 44%; animation-delay: 1.2s; animation-duration: 3.1s; }
+.clk-wind i:nth-child(5) { top: 55%; animation-delay: .2s; animation-duration: 2.6s; }
+.clk-wind i:nth-child(6) { top: 64%; animation-delay: 1.6s; animation-duration: 2.3s; }
+.clk-wind i:nth-child(7) { top: 74%; animation-delay: .6s; animation-duration: 3.3s; }
+.clk-wind i:nth-child(8) { top: 84%; animation-delay: 2s; animation-duration: 2.7s; }
+.clk-wind i:nth-child(9) { top: 18%; animation-delay: 1.4s; animation-duration: 3.5s; }
+.clk-buff.wind { background: #1f4238; color: #a8e6cd; }
+.clk-buff.wish { background: #33305c; color: #ded6ff; }
+.clk-pop.lucky { color: #ffe9a3; text-shadow: 0 0 16px var(--accent), 0 1px 3px rgba(0, 0, 0, .6); }
+
+/* Золотий дощ, коли майстер кивнув і заплатив (v9 §A.1). */
+.clk-rain {
+  position: absolute; top: -6%; width: 7px; height: 11px; border-radius: 50% 50% 45% 45%;
+  background: linear-gradient(#fff3c4, var(--accent)); box-shadow: 0 0 7px rgba(244, 197, 66, .8);
+  animation: clkrain var(--clk-rainms, 1200ms) cubic-bezier(.35, 0, .8, .6) forwards;
+}
+
+@keyframes clkcat { from { left: -12%; } to { left: 108%; } }
+@keyframes clkcatback { from { left: 108%; } to { left: -12%; } }
+@keyframes clkcattail { from { transform: rotate(-12deg); } to { transform: rotate(16deg); } }
+@keyframes clkstar {
+  0% { opacity: 0; transform: translate(-26px, -22px) scale(.6); }
+  14% { opacity: 1; transform: translate(0, 0) scale(1); }
+  82% { opacity: 1; }
+  100% { opacity: 0; transform: translate(34px, 30px) scale(.7); }
+}
+@keyframes clkleaf {
+  from { left: -8%; opacity: 0; transform: translateY(0) rotate(0); }
+  12% { opacity: .9; }
+  88% { opacity: .9; }
+  to { left: 106%; opacity: 0; transform: translateY(-26px) rotate(320deg); }
+}
+@keyframes clkrain {
+  from { opacity: 1; transform: translateY(0) rotate(8deg); }
+  to { opacity: 0; transform: translateY(88%) rotate(8deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .clk-wheel.hit, .clk-gold, .clk-buff, .clk-fall-jug, .clk-spark, .clk-shard, .clk-flame { animation: none; }
   .clk-pop { animation-duration: .3s; }
   .clk-fall.run { animation-timing-function: linear; }
+  /* Кіт і зірка нікуди не біжать — стоять там, де з'явились, і так само ловляться пальцем.
+     Листя вітру без руху лише миготіло б, тож його просто нема — плашка «🌬 Вітер із поля» лишається. */
+  .clk-cat.run { animation: none; left: 32%; }
+  .clk-cat.back.run { animation: none; left: 58%; }
+  .clk-cat-tail { animation: none; }
+  .clk-star.run { animation: none; opacity: 1; }
+  .clk-wind { display: none; }
+  .clk-rain { animation-duration: .4s; }
 }
 
 /* ---- Око майстра: стає на місце сцени, поки майстер чекає відповіді або коло стоїть ---- */
@@ -452,13 +536,9 @@
 .clk-firebox { align-items: center; padding: 10px; border-radius: 12px; background: linear-gradient(180deg, #3a2412, var(--panel)); }
 .clk-bar { width: 100%; height: 8px; border-radius: 999px; background: var(--bg2); overflow: hidden; }
 .clk-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--clk-fire)); transition: width .3s; }
-/* Рядок «наступне клеймо — на N глеків». Клас .clk-next з восьмого оновлення взяла ще й смуга «Шлях виробу»
-   (clicker-craft.css) — і зробила його СІТКОЮ 26px|1fr|auto з рамкою. Через це тут текст падав у вузький стовпчик
-   і читався по одному слову в рядок. Тому пишемо з батьком: у коробці обпалу це звичайний рядок. */
-.clk-firebox .clk-next {
-  display: block; text-align: center; max-width: 520px;
-  padding: 0; background: none; border: 0; border-radius: 0;
-}
+/* Рядок «наступне клеймо — на …» у вкладці Клейма. Клас саме такий, а не .clk-next: під цим ім'ям
+   у clicker-craft.css живе смуга «Далі», і її сітка 26px/1fr/auto тиснула цей рядок у 64 px (v9, пакет A). */
+.clk-nextstamp { text-align: center; }
 /* .clk перед класом — щоб перебити button.primary зі style.css */
 .clk .clk-fire { background: var(--clk-fire); color: #2a1203; }
 .clk .clk-fire:hover:not(:disabled) { background: #ffa05e; }
@@ -501,6 +581,17 @@
 }
 .clk-ov-x { position: absolute; top: 6px; right: 6px; padding: 2px 9px; }
 .clk-tabs button[hidden] { display: none; }
+
+/* ---- «Що нового» раз на гравця (v9 §A.9) ---- */
+.clk-newsbox .clk-ov-box { max-width: 560px; }
+.clk-news h3 { margin: 2px 0 4px; font-size: 1.15em; }
+.clk-news > p { margin: 0 0 10px; }
+.clk-news ul { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.clk-news li { display: flex; gap: 9px; align-items: flex-start; font-size: .92em; line-height: 1.4; }
+.clk-news-ico { flex: 0 0 auto; width: 1.5em; font-size: 1.15em; text-align: center; }
+.clk-news .clk-news-ok { width: 100%; }
+/* Пояснення під секретами: клейма, витрачені на секрети, бонус не гублять. */
+.clk-secnote { margin: 6px 2px 0; line-height: 1.35; }
 
 @media (prefers-reduced-motion: reduce) {
   /* Нижче правил вкладок, бо медіазапит сам по собі ваги не додає: нова вкладка не пульсує,

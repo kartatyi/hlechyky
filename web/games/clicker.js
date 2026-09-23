@@ -22,12 +22,14 @@
   Вид (Impl/Clicker.cs): { pots, total, perClick, clickBase, perSecond, baseSecond,
     upgrades: { key: { level, price, name, desc, max, kind, gain, growth, marks, open } }, marks: [...],
     canSellToday, soldToday, cap, rate, lastSync, now, offlineHours, golden: { at, until, x, y }, caught,
-    fair: { until, mult }, inspire: { until, mult }, allMult, stamps, stampsFree, stampsReady, nextStampAt,
+    fair: { until, mult }, inspire: { until, mult, share }, allMult, stamps, stampsFree, stampsReady, nextStampAt,
     stampBonus, stampCap, firings, secrets: [...], styles: [...], wear,
-    heat, heatFull, heatTau, momentum, momentumMax, fall: { at, until, x, streak, gain }, grabbed,
-    guard: null | { serial, count, png, width, height, misses, maxMisses, lockUntil, why } }.
+    heat, heatFull, heatTau, momentum, momentumMax, fall: { at, until, x, streak, gain, bonus }, grabbed,
+    lucky, starWish, news: null | "v9",
+    events: { cat: { at, until, dir }, star: { at, until, x, y }, wind: { at, until, mult }, petted },
+    guard: null | { serial, count, png, width, height, misses, maxMisses, lockUntil, why, pays, gain } }.
   Дії: spin { c }, buy { key, n }, mark { key }, sell { pots }, catch, grab, look, fire, secret { key }, paint { key },
-    wear { key }, answer { taps: [[x, y], …] }.
+    wear { key }, answer { taps: [[x, y], …] }, pet, wish, news { v }.
 */
 (() => {
   /// Натиск на джойстику — теж людина, просто не мишею: шар пада (web/static/pad.js) ставить
@@ -49,6 +51,8 @@
   const SLOW_MS = 200;                    // таймери бонусів, прогрес клейм — не частіше, ніж так
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
+  const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
+  const NEWS_VERSION = 'v9';              // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
@@ -298,7 +302,13 @@
         clickBase: 1, baseSecond: 0, fairUntil: 0, fairMult: 7, inspireUntil: 0, inspireMult: 25,
         rateOf: 100, canSell: 0, mine: false, wear: null,
         golden: null, goldenGone: 0, lookedFor: 0,
-        fall: null, fallGone: 0, fallBroke: 0, fallLooked: 0, fallGain: 0, fallStreak: 0,
+        fall: null, fallGone: 0, fallBroke: 0, fallLooked: 0, fallGain: 0, fallStreak: 0, streakBonus: 0,
+        // Дев'яте оновлення: вітер із поля (пасив ×3), натхнення з відсотком пасиву в кліку, щасливі кліки,
+        // кіт-мандрівник, зірка й бажання, «що нового».
+        windAt: 0, windUntil: 0, windMult: 3, inspireShare: 0,
+        lucky: 0, luckySeen: -1, starWish: false,
+        events: null, evBox: null, catEl: null, starEl: null, windEl: null, catGone: 0, starGone: 0, windRun: 0,
+        news: '', newsAsked: false, newsT: 0, eyeWas: null,
         // Хата: глина, знаряддя, прикраси, дошка купців (view.house) і сцена, що від них росте.
         house: null, housePane: null, ordersPane: null, clays: [], clay: '', clayBody: '', clayRestUntil: 0,
         tools: [], decorList: [], orders: [], taken: [], paidSeen: null, payLooked: new Set(), refreshAt: 0, maxTaken: 3,
@@ -332,17 +342,29 @@
     const idle = Math.min(Math.max(0, to - st.lastSync), st.offlineMs);
     let fair = st.fairUntil > st.lastSync ? Math.min(st.fairUntil, to) - st.lastSync : 0;
     fair = Math.min(Math.max(0, fair), idle);
-    return Math.floor(((idle + (st.fairMult - 1) * fair) / 1000) * st.baseSecond);
+    // Вітер із поля (v9): потроює пасив рівно ті секунди, які справді віяв. Сервер рахує його лише за
+    // короткий проміжок (гончар був біля кола) — тут той самий поріг, інакше лічильник обіцяв би зайве.
+    let wind = idle <= EVENT_GAP_MS ? Math.min(st.windUntil, to) - Math.max(st.windAt, st.lastSync) : 0;
+    wind = Math.min(Math.max(0, wind), idle);
+    return Math.floor(((idle + (st.fairMult - 1) * fair + (st.windMult - 1) * wind) / 1000) * st.baseSecond);
   }
 
   /// Те, що сервер уже точно має: його число плюс пасив. Від нього рахуємо продаж.
   const firm = (st) => st.base + passive(st);
 
+  /// Клік просто зараз. Під натхненням до нього додається ще три відсотки пасиву — і все це множиться на ×25:
+  /// рівно як PerClick на сервері (v9 §A.7).
   function clickNow(st) {
     const now = serverNow(st);
-    return st.clickBase * (now < st.inspireUntil ? st.inspireMult : 1) * (now < st.fairUntil ? st.fairMult : 1);
+    const ins = now < st.inspireUntil;
+    return (st.clickBase + (ins ? st.baseSecond * st.inspireShare : 0)) * (ins ? st.inspireMult : 1)
+      * (now < st.fairUntil ? st.fairMult : 1);
   }
-  const secondNow = (st) => st.baseSecond * (serverNow(st) < st.fairUntil ? st.fairMult : 1);
+  const windOn = (st, sn) => sn >= st.windAt && sn < st.windUntil;
+  const secondNow = (st) => {
+    const sn = serverNow(st);
+    return st.baseSecond * (sn < st.fairUntil ? st.fairMult : 1) * (windOn(st, sn) ? st.windMult : 1);
+  };
 
   /// Розгін просто зараз — той самий спад, що й на сервері: у e разів за heatTau секунд.
   const heatNow = (st) => st.heat * Math.exp(-Math.max(0, Date.now() - st.heatAt) / 1000 / st.heatTau);
@@ -486,8 +508,13 @@
     let buffs = '';
     if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + st.fairMult + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
     if (sn < st.inspireUntil) buffs += '<span class="clk-buff inspire">✨ Натхнення: клік ×' + st.inspireMult + ' · ' + Math.ceil((st.inspireUntil - sn) / 1000) + ' с</span>';
+    if (windOn(st, sn)) buffs += '<span class="clk-buff wind">🌬 Вітер із поля: без тебе ×' + dec(st.windMult) + ' · '
+      + Math.ceil((st.windUntil - sn) / 1000) + ' с</span>';
     if (st.momentumMax > 1 && mom > 1.05) buffs += '<span class="clk-buff heat">🌀 Розгін ×' + dec(mom) + '</span>';
-    if (st.fallStreak > 1) buffs += '<span class="clk-buff streak">🤲 Серія ' + st.fallStreak + ' · глек з полиці +' + Math.min(100, st.fallStreak * 10) + ' %</span>';
+    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
+    if (st.fallStreak > 1) buffs += '<span class="clk-buff streak">🤲 Серія ' + st.fallStreak + ' · глек з полиці +'
+      + Math.round(st.streakBonus * 100) + ' %</span>';
+    if (st.starWish) buffs += '<span class="clk-buff wish">🌠 Бажання: наступний глек з полиці ×3</span>';
     if (st.buffs._html !== buffs) { st.buffs._html = buffs; st.buffs.innerHTML = buffs; st.buffs.hidden = !buffs; }
     const fair = sn < st.fairUntil, inspire = sn < st.inspireUntil;
     if (st.stage.classList.contains('fair') !== fair) st.stage.classList.toggle('fair', fair);
@@ -508,6 +535,7 @@
       st.ctx.act('look');
     }
     paintEye(st);
+    paintEvents(st, sn);
     for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'slow', st, H.api, sn);
   }
 
@@ -582,9 +610,10 @@
       text = (DOUBT[g.why] || 'Майстер дивиться, чи коло крутить рука, а не автоклікер. ')
         + 'Як пройти: натисни «Показати полицю», а тоді торкнись на картинці кожного глечика — їх там ' + g.count
         + '. Глечик — той, що з вузькою шийкою; горщики, миски й черепки не чіпай. Торкнувся не туди — «Скинути торкання».'
-        + ' Три полиці поспіль не ті — коло стане на 10 хвилин. Поки не відповіси, кліки не рахуються.';
+        + ' Три полиці поспіль не ті — коло стане на 10 хвилин. Поки не відповіси, кліки не рахуються.' + eyePay(st, g);
     } else {
-      text = 'Торкнись кожного глечика — їх тут ' + g.count + '. Глечик — той, що з вузькою шийкою. Торкнувся не туди — «Скинути торкання».';
+      text = 'Торкнись кожного глечика — їх тут ' + g.count + '. Глечик — той, що з вузькою шийкою. Торкнувся не туди — «Скинути торкання».'
+        + eyePay(st, g);
     }
     if (e.text.textContent !== text) e.text.textContent = text;
     const tries = locked ? '' : g.misses ? 'не ті — ось інша полиця · спроба ' + (g.misses + 1) + ' з ' + g.maxMisses : '';
@@ -608,6 +637,13 @@
     const off = st.eyeBusy || !st.taps.length;
     if (e.reset.disabled !== off) e.reset.disabled = off;
     e.pic.classList.toggle('busy', st.eyeBusy);
+  }
+
+  /// Чи заплатить майстер за цю полицю (v9 §A.1). Промахи ріжуть платню навпіл — сервер уже це врахував у gain.
+  function eyePay(st, g) {
+    if (!g.pays || !(g.gain > 0)) return ' Цього разу без платні: майстер ще пильнує.';
+    return ' 🪙 За чесну руку майстер відсипле ' + potsShort(g.gain) + ' — дві години роботи й десять тисяч кліків'
+      + (g.misses ? ' (половину: рука вже раз промахнулась).' : '.');
   }
 
   /// Кнопка «Показати полицю»: лише справжній натиск і лише озброєної кнопки. Відтак торкання картинки рахуються.
@@ -705,6 +741,140 @@
       st.fallLooked = f.until;
       st.ctx.act('look');
     }
+  }
+
+  // ---------- випадковості на сцені: кіт, зірка, вітер (v9 §A.6) ----------
+
+  /// Кіт збоку: хвіст, тіло, голова з вухами й чотири лапи. Колір веде currentColor — на сцені він рудий.
+  const CAT_SVG = '<svg viewBox="0 0 52 34" aria-hidden="true">'
+    + '<path class="clk-cat-tail" d="M9 21c-5.5.6-7.6-4.6-4.2-7.6" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>'
+    + '<path d="M9 22h24c4.4 0 8-2.2 8-5.2S37.4 11 33 11H15c-3.6 0-6 2.2-6 5z" fill="currentColor"/>'
+    + '<circle cx="42.5" cy="12" r="6.8" fill="currentColor"/>'
+    + '<path d="M36.6 7.6l-1.2-5.2 4.9 2.7zM48.4 7.6l1.2-5.2-4.9 2.7z" fill="currentColor"/>'
+    + '<g class="clk-cat-legs" fill="currentColor"><rect x="12" y="20" width="3.4" height="10" rx="1.7"/>'
+    + '<rect x="19" y="20" width="3.4" height="10" rx="1.7"/><rect x="28" y="20" width="3.4" height="10" rx="1.7"/>'
+    + '<rect x="34.5" y="20" width="3.4" height="10" rx="1.7"/></g>'
+    + '<circle cx="45.2" cy="10.8" r="1.2" fill="#12100e"/><circle cx="39.6" cy="10.8" r="1.2" fill="#12100e"/>'
+    + '<path d="M42.5 14.2l-1.6 1.4h3.2z" fill="#12100e"/></svg>';
+
+  const STAR_SVG = '<svg viewBox="0 0 32 32" aria-hidden="true">'
+    + '<path d="M16 1.5l2.8 11.7L30 16l-11.2 2.8L16 30.5l-2.8-11.7L2 16l11.2-2.8z" fill="currentColor"/></svg>';
+
+  /// Один шар на всі три події: кіт і зірка — кнопки (їх ловлять), листя вітру — просто листя.
+  function eventsBox(st) {
+    if (st.evBox && st.evBox.isConnected) return st.evBox;
+    const box = H.api.layer(st, 'front', 'events');
+    box.className = 'clk-events';
+    box.innerHTML = '<button type="button" class="clk-cat" hidden title="Кіт-мандрівник — погладь його" aria-label="Погладити кота">'
+      + CAT_SVG + '</button>'
+      + '<button type="button" class="clk-star" hidden title="Зірка впала — загадай бажання" aria-label="Загадати бажання на зірку">'
+      + STAR_SVG + '</button>'
+      + '<div class="clk-wind" hidden aria-hidden="true">' + '<i></i>'.repeat(9) + '</div>';
+    st.evBox = box;
+    st.catEl = box.querySelector('.clk-cat');
+    st.starEl = box.querySelector('.clk-star');
+    st.windEl = box.querySelector('.clk-wind');
+    st.catEl.addEventListener('pointerdown', (e) => petCat(st, e));
+    st.starEl.addEventListener('pointerdown', (e) => makeWish(st, e));
+    for (const b of [st.catEl, st.starEl]) b.addEventListener('contextmenu', (e) => e.preventDefault());
+    return box;
+  }
+
+  /// Показати чи сховати кожну з трьох подій у її вікно. Розклад знає лише сервер (view.events).
+  function paintEvents(st, sn) {
+    if (!st.events || !st.el || !st.front) return;
+    eventsBox(st);
+    const on = st.mine && !guardOn(st);
+    const ev = st.events;
+
+    const c = ev.cat;
+    const catOn = on && !!c && sn >= c.at && sn <= c.until && st.catGone !== c.at;
+    if (st.catEl.hidden === catOn) {
+      st.catEl.hidden = !catOn;
+      if (catOn) {
+        st.catEl.style.setProperty('--clk-catms', (c.until - c.at) + 'ms');
+        st.catEl.classList.toggle('back', !!c.dir);
+        st.catEl.style.animationDelay = (-(sn - c.at)) + 'ms';
+        st.catEl.classList.remove('run');
+        void st.catEl.offsetWidth;
+        st.catEl.classList.add('run');
+        H.api.sfx('cat');
+      }
+    }
+
+    const s = ev.star;
+    const starOn = on && !!s && sn >= s.at && sn <= s.until && st.starGone !== s.at;
+    if (st.starEl.hidden === starOn) {
+      st.starEl.hidden = !starOn;
+      if (starOn) {
+        st.starEl.style.left = s.x + '%';
+        st.starEl.style.top = s.y + '%';
+        st.starEl.style.setProperty('--clk-starms', (s.until - s.at) + 'ms');
+        st.starEl.style.animationDelay = (-(sn - s.at)) + 'ms';
+        st.starEl.classList.remove('run');
+        void st.starEl.offsetWidth;
+        st.starEl.classList.add('run');
+        H.api.sfx('star');
+      }
+    }
+
+    const w = ev.wind;
+    const blowing = on && !!w && sn >= w.at && sn <= w.until;
+    if (st.windEl.hidden === blowing) st.windEl.hidden = !blowing;
+    if (blowing && st.windRun !== w.at) {
+      st.windRun = w.at;
+      H.api.sfx('wind');
+      H.api.feed(st, '🌬 Вітер із поля — глина сохне, коло само крутиться', 'wind');
+    }
+  }
+
+  /// Погладити кота: ховаємо одразу (другий натиск — лише червоний тост), гостинець назве сервер.
+  function petCat(st, ev) {
+    if (!human(ev) || !st.events || !st.events.cat || !st.mine || guardOn(st)) return;
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    ev.preventDefault();
+    const c = st.events.cat;
+    const sn = serverNow(st);
+    if (sn < c.at - 1000 || sn > c.until + CATCH_GRACE_MS) return;
+    st.catGone = c.at;
+    const r = st.catEl.getBoundingClientRect();
+    const sr = st.stage.getBoundingClientRect();
+    st.catEl.hidden = true;
+    if (sr.width && sr.height) {
+      const x = Math.min(88, Math.max(12, ((r.left + r.width / 2 - sr.left) / sr.width) * 100));
+      popAt(st, 'мур-р-р…', 'big', x, 68);
+      sparks(st, st.fx, 8, false, x, 76);
+    }
+    order(st, 'pet');
+  }
+
+  function makeWish(st, ev) {
+    if (!human(ev) || !st.events || !st.events.star || !st.mine || guardOn(st)) return;
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    ev.preventDefault();
+    const s = st.events.star;
+    const sn = serverNow(st);
+    if (sn < s.at - 1000 || sn > s.until + CATCH_GRACE_MS) return;
+    st.starGone = s.at;
+    st.starEl.hidden = true;
+    popAt(st, 'загадав!', 'big', Math.min(84, Math.max(14, s.x)), Math.max(6, s.y - 6));
+    sparks(st, st.fx, 14, true, s.x, s.y);
+    order(st, 'wish');
+  }
+
+  /// Майстер кивнув і заплатив: золотий дощ над колом і велике «+N» (v9 §A.1).
+  function eyeRain(st, gain) {
+    popAt(st, '+' + short(gain), 'big', 50, 26);
+    for (let i = 0; i < 24; i++) {
+      const el = document.createElement('i');
+      el.className = 'clk-rain';
+      el.style.left = (4 + Math.random() * 92) + '%';
+      el.style.animationDelay = Math.round(Math.random() * 700) + 'ms';
+      el.style.setProperty('--clk-rainms', Math.round(900 + Math.random() * 700) + 'ms');
+      fleeting(st.fx, el, 2400);
+    }
+    sparks(st, st.fx, 14, true, 50, 42);
+    H.api.sfx('eye-pay');
   }
 
   function paintRival(st, liveTotal) {
@@ -1148,17 +1318,25 @@
     const cap = v.stampCap || 0;
     const head = '<div class="clk-stamps"><b>🔖 ' + num(st.stamps) + ' ' + stampsWord(st.stamps) + '</b>'
       + '<span>+' + bonus + ' % до всього</span>'
-      + '<span class="muted small">вільних для секретів: ' + num(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
+      + '<span class="muted small">вільних клейм: ' + num(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
       + info('Почати наново — це спалити глеки, верстати й віхи, а натомість узяти клейма майстра за все, що наліпив '
         + 'за весь час: кожне дає +' + dec(st.stampBonus * 100) + ' % до всього назавжди. Розписи, секрети, альбом і таблиця '
         + 'лишаються. Кожні ' + STAMPS_PER_CAP + ' клейм — ще один черепок до денної стелі обміну'
         + (cap ? ' (зараз +' + cap + ')' : '') + '.');
-    const secrets = '<div class="clk-sub">Родинні секрети<span class="muted small"> · за клейма, назавжди</span></div><div class="clk-secrets">'
-      + st.secretList.map((s) => '<button type="button" class="clk-secret' + (s.owned ? ' owned' : '') + '" data-secret="' + esc(s.key)
-        + '" data-price="' + s.price + '"' + (s.owned || !st.mine || st.stampsFree < s.price ? ' disabled' : '') + '>'
-        + '<b>' + esc(s.name) + '</b><span class="muted small">' + esc(s.desc) + '</span>'
-        + '<span class="clk-price stamp' + (s.owned ? ' done' : '') + '">' + (s.owned ? '✓ знаєш' : '🔖 ' + s.price) + '</span></button>').join('')
-      + '</div>';
+    // Два кола секретів (v9 §A.5): родинні — з першого дня, дідівські — на сотні клейм.
+    const card = (s) => '<button type="button" class="clk-secret' + (s.owned ? ' owned' : '') + '" data-secret="' + esc(s.key)
+      + '" data-price="' + s.price + '"' + (s.owned || !st.mine || st.stampsFree < s.price ? ' disabled' : '') + '>'
+      + '<b>' + esc(s.name) + '</b><span class="muted small">' + esc(s.desc) + '</span>'
+      + '<span class="clk-price stamp' + (s.owned ? ' done' : '') + '">' + (s.owned ? '✓ знаєш' : '🔖 ' + s.price) + '</span></button>';
+    const ring = (n) => st.secretList.filter((s) => (s.ring || 1) === n);
+    const block = (title, note, list) => (list.length
+      ? '<div class="clk-sub">' + title + '<span class="muted small"> · ' + note + '</span></div>'
+        + '<div class="clk-secrets">' + list.map(card).join('') + '</div>'
+      : '');
+    const secrets = block('Родинні секрети', 'за клейма, назавжди', ring(1))
+      + block('Дідівські секрети', 'друге коло — те, що дід тримав у скрині', ring(2))
+      + '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: +'
+      + dec(st.stampBonus * 100) + ' % за кожне лишається, хоч витрать усі.</div>';
     if (swap(st.fire._static, head + secrets)) {
       st.secretBtns = [...st.fire._static.querySelectorAll('[data-secret]')];
       for (const b of st.secretBtns) b.onclick = () => order(st, 'secret', { key: b.dataset.secret });
@@ -1398,6 +1576,49 @@
       .catch(() => { /* без таблиці просто не буде рядка про суперника */ });
   }
 
+  // ---------- «Що нового» раз на гравця (v9 §A.9) ----------
+
+  /// Текст показується один раз на гончаря: керує цим сервер (view.news), тож і з телефона, і з ноутбука
+  /// вікно відкриється рівно раз. Рядки — заглушка пакета «Коло»: остаточний список напише інтегратор,
+  /// коли зійдуться всі вісім пакетів дев'ятого оновлення.
+  const NEWS = {
+    title: '✨ Що нового в Гончарному колі',
+    lead: 'Дев’яте оновлення — «Округа». Коротко, що змінилось:',
+    lines: [
+      ['👁', '<b>Око майстра платить.</b> Пройшов спокійну полицю — майстер відсипле дві години роботи й десять тисяч кліків. І більше не перебиває ярмарок, натхнення чи глек у польоті.'],
+      ['🤲', '<b>Серія без стелі.</b> Перші десять спійманих з полиці — по +10 %, далі по +2 % за кожен. Серія на 37 — це +154 %.'],
+      ['💪', '<b>Три нові верстати:</b> Замашна рука, Гарт кола й Щасливий клік — щоб клацати було варто й на квадрильйонах.'],
+      ['🤫', '<b>Друге коло секретів:</b> сім дідівських — від Другої сушарні до Дідової скрині, що рятує глеки від обпалу.'],
+      ['🐈', '<b>Живіша сцена:</b> кіт-мандрівник із гостинцем, зірка вночі й вітер із поля, що потроює пасив.'],
+      ['🧺', '<b>Розписні глеки щедріші:</b> купець платить шість хвилин роботи, натхнення триває 20 с і кладе пасив у кожен клік.'],
+      ['🏺', '<b>Драбина після Цар-глека:</b> Гончарна слобода, Контрактовий ярмарок і Гончарня на Січі.'],
+    ],
+    ok: 'Зрозуміло',
+  };
+
+  /// Вікно чекає своєї черги: «поки тебе не було», мінігра чи Око майстра важливіші за новини. Пробуємо, доки
+  /// не покажемо (чи доки сервер не скаже, що гончар уже бачив), — інакше той, хто хвилину читав «поки тебе не
+  /// було», новин так і не побачив би до першого кліка.
+  function newsLater(st) {
+    clearTimeout(st.newsT);
+    st.newsT = setTimeout(() => {
+      if (!st.el || st.news !== NEWS_VERSION) return;
+      if (!showNews(st)) newsLater(st);
+    }, 800);
+  }
+
+  function showNews(st) {
+    if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
+    const html = '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
+      + NEWS.lines.map((l) => '<li><span class="clk-news-ico">' + l[0] + '</span><span>' + l[1] + '</span></li>').join('')
+      + '</ul><button type="button" class="primary clk-news-ok">' + NEWS.ok + '</button></div>';
+    // Закрили кнопкою, хрестиком чи затемненням — байдуже: сервер однаково запише «бачив», і вдруге не покаже.
+    const body = H.api.overlay(st, html, { cls: 'clk-newsbox', onClose: () => order(st, 'news', { v: NEWS_VERSION }) });
+    const ok = body.querySelector('.clk-news-ok');
+    if (ok) ok.onclick = () => H.api.closeOverlay(st);
+    return true;
+  }
+
   // ---------- api для частин ----------
 
   /// Новий вузол вмісту вікна щоразу: відповідь сервера, що запізнилась (хата друга, мінігра), перевіряє
@@ -1561,6 +1782,9 @@
         const ev = { hpad: true, pointerType: 'mouse', button: 0, preventDefault() {} };
         if (st.fall && !st.fallEl.hidden) { grabFall(st, ev); return true; }
         if (st.golden && !st.gold.hidden) { catchGolden(st, ev); return true; }
+        // Кіт і зірка теж літають самі по собі — кільцем їх не спіймаєш, тож вони на тому самому Ⓧ.
+        if (st.starEl && !st.starEl.hidden) { makeWish(st, ev); return true; }
+        if (st.catEl && !st.catEl.hidden) { petCat(st, ev); return true; }
         return false;                       // ловити нема чого — хай Ⓧ відкриє балачки, як усюди
       },
     },
@@ -1639,7 +1863,7 @@
         + '<div class="clk-pane" data-pane="orders" hidden></div>'
         + '<div class="clk-pane" data-pane="styles" hidden></div>'
         + '<div class="clk-pane" data-pane="fire" hidden>'
-        + '<div class="clk-firebox"><div class="clk-bar"><i></i></div><div class="clk-next muted small"></div>'
+        + '<div class="clk-firebox"><div class="clk-bar"><i></i></div><div class="clk-nextstamp muted small"></div>'
         + '<button type="button" class="primary clk-fire" disabled></button><div class="clk-after small"></div></div>'
         + '<div class="clk-firestatic"></div></div>'
         + '</div>'
@@ -1698,7 +1922,7 @@
       st.house = q('.clk-house');
       st.fire = q('.clk-firebox');
       st.fire._bar = q('.clk-bar i');
-      st.fire._next = q('.clk-next');
+      st.fire._next = q('.clk-nextstamp');
       st.fire._btn = q('.clk-fire');
       st.fire._after = q('.clk-after');
       st.fire._static = q('.clk-firestatic');
@@ -1792,6 +2016,7 @@
         st.fairMult = (v.fair && v.fair.mult) || 7;
         st.inspireUntil = (v.inspire && Date.parse(v.inspire.until)) || 0;
         st.inspireMult = (v.inspire && v.inspire.mult) || 25;
+        st.inspireShare = (v.inspire && v.inspire.share) || 0;
         st.rateOf = v.rate || 100;
         st.canSell = v.canSellToday || 0;
         st.ups = v.upgrades || {};
@@ -1818,7 +2043,35 @@
           if (Number.isFinite(at) && Number.isFinite(until)) st.fall = { at, until, x: v.fall.x || 40 };
           st.fallGain = v.fall.gain || 0;
           st.fallStreak = v.fall.streak || 0;
+          st.streakBonus = v.fall.bonus || 0;
         }
+        // Дев'яте оновлення: кіт, зірка, вітер, щасливі кліки, бажання й «що нового».
+        const evs = v.events;
+        if (evs) {
+          const row = (r) => (r ? { at: Date.parse(r.at) || 0, until: Date.parse(r.until) || 0 } : null);
+          const cat = row(evs.cat);
+          const star = row(evs.star);
+          const wind = row(evs.wind);
+          st.events = {
+            cat: cat && { ...cat, dir: evs.cat.dir || 0 },
+            star: star && { ...star, x: evs.star.x || 40, y: evs.star.y || 16 },
+            wind: wind && { ...wind, mult: evs.wind.mult || 3 },
+          };
+          st.windAt = wind ? wind.at : 0;
+          st.windUntil = wind ? wind.until : 0;
+          st.windMult = (evs.wind && evs.wind.mult) || 3;
+        }
+        st.starWish = !!v.starWish;
+        const lucky = v.lucky || 0;
+        // «✨ ×50» малюємо за приростом серверного лічильника: кидок робить сервер, клієнт його не вгадує.
+        if (st.luckySeen >= 0 && lucky > st.luckySeen && visible(st)) {
+          for (let i = 0; i < Math.min(3, lucky - st.luckySeen); i++) {
+            popAt(st, '✨ ×50', 'big lucky', 24 + Math.random() * 52, 30 + Math.random() * 10);
+          }
+          sparks(st, st.fx, 10, true, 50, 44);
+          H.api.sfx('rare');
+        }
+        st.luckySeen = lucky;
         // Хата: глина, знаряддя, прикраси й купці. Старий сервер (хвилина деплою) house не шле — тоді все порожнє.
         const hs = v.house || {};
         st.clays = hs.clays || [];
@@ -1834,9 +2087,14 @@
         st.maxTaken = od.maxTaken || 3;
         paidLately(st, ctx, od.paid || []);
         const g = v.guard;
+        // Полиця зникла, а перед тим обіцяла платню — майстер кивнув і заплатив (v9 §A.1): золотий дощ над колом.
+        const was = st.eyeWas;
+        if (!g && was && was.pays && was.gain > 0 && visible(st)) eyeRain(st, was.gain);
+        st.eyeWas = g && g.pays ? { pays: true, gain: g.gain || 0 } : null;
         st.guard = g ? {
           serial: g.serial || 0, count: g.count || 0, png: g.png || '', width: g.width || 400, height: g.height || 250,
           misses: g.misses || 0, maxMisses: g.maxMisses || 3, lockUntil: (g.lockUntil && Date.parse(g.lockUntil)) || 0, why: g.why || '',
+          pays: !!g.pays, gain: g.gain || 0,
         } : null;
         // Майстер спитав — усе, що ще не полетіло, однаково не зарахується: не малюємо цих глеків на лічильнику.
         if (st.guard) { st.hands.length = 0; st.handsGain = 0; }
@@ -1848,6 +2106,13 @@
         if (v.catalog) st.catalog = v.catalog;
         else if (!st.catalog && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
         st.lastView = v;
+        // «Що нового» — раз на гончаря; сервер шле поле, поки не бачив. Чекаємо, поки картка стане видною:
+        // під час Ока майстра чи чужого вікна лізти поперед батька нема куди.
+        st.news = v.news || '';
+        if (st.news === NEWS_VERSION && !st.newsAsked && ctx.mine) {
+          st.newsAsked = true;
+          newsLater(st);
+        }
       }
       const one = 'Обміняти ' + num(st.rateOf) + ' → 🏺1';
       if (st.one.textContent !== one) st.one.textContent = one;
@@ -1902,6 +2167,7 @@
       if (!st) return;
       clearInterval(st.timer);
       clearTimeout(st.eyeArm);
+      clearTimeout(st.newsT);
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);

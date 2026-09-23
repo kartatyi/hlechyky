@@ -425,7 +425,7 @@ public class ClickerGuardTests
 
         var g = Guard(h);
         var keys = g.EnumerateObject().Select(p => p.Name).Order().ToArray();
-        Assert.Equal(["count", "height", "lockUntil", "maxMisses", "misses", "png", "serial", "why", "width"], keys);
+        Assert.Equal(["count", "gain", "height", "lockUntil", "maxMisses", "misses", "pays", "png", "serial", "why", "width"], keys);
         var png = Convert.FromBase64String(g.GetProperty("png").GetString()!["data:image/png;base64,".Length..]);
         Assert.Equal(ClickerPicture.Png(PotterHands.Shelf(h)!), png);
         Assert.DoesNotContain(Convert.ToBase64String(PotterHands.Shelf(h)!), Views.Text(View(h)));
@@ -553,9 +553,9 @@ public class ClickerGuardTests
         JugNow();
         Assert.True(h.Act(0, "catch").Ok);             // спійманий глек коштує CatchWeight кліків
         JugNow();
-        Assert.True(h.Act(0, "catch").Ok);             // лічильник пішов у мінус
+        // Лічильник пішов у мінус: глека майстер уже не забирає (v9 §A.2), але одразу по ньому питає.
+        Assert.EndsWith("· 👁 майстер хоче глянути на твої руки", h.Act(0, "catch").Message);
         JugNow();
-        Assert.Equal("👁 Майстер хоче глянути на твої руки — торкнись глечиків", h.Act(0, "catch").Message);
         Assert.Equal("Спершу Око майстра: покажи, що ти не автоклікер", h.Act(0, "catch").Message);
 
         PotterHands.Pass(h);

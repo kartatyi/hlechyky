@@ -310,26 +310,56 @@ public class ClickerProgressTests
         var h = Wheel();
         JugNow(h, Clicker.GoldenKind.Inspire);
 
-        Assert.Equal("✨ Натхнення! Клік ×25 на 15 с", Act(h, "catch").Message);
+        Assert.Equal("✨ Натхнення! Клік ×25 на 20 с", Act(h, "catch").Message);
         Assert.True(Act(h, "spin", PotterHands.Human(1)).Ok);
         Assert.Equal(25, Pots(h));
 
-        h.Clock.Advance(16);
+        h.Clock.Advance(21);
         Act(h, "spin", PotterHands.Human(1));
         Assert.Equal(26, Pots(h));
     }
 
     [Fact]
-    public void The_merchant_pays_a_share_of_the_pile_but_not_more_than_a_quarter_hour_of_work()
+    public void Inspiration_also_puts_three_percent_of_the_passive_into_every_click()
     {
+        // Дев'яте оновлення §A.7: без цього «Натхнення!» мовчало в того, хто ще не взяв «Руки майстра»,
+        // — ×25 від одного глека це все одно двадцять п'ять глеків проти мільярдів пасиву.
         var h = Wheel();
-        Levels(h, ("kiln", 1));                         // 3 глеки за секунду: чверть години — 2 700
+        Levels(h, ("kiln", 100));                        // 300 глеків за секунду
+        JugNow(h, Clicker.GoldenKind.Inspire);
+        Assert.True(Act(h, "catch").Ok);
+
+        var before = Pots(h);
+        Assert.True(Act(h, "spin", PotterHands.Human(1)).Ok);
+        // (клік 1 + 3 % від 300) × 25 = 250; розгону без маховика нема.
+        Assert.Equal(250, Pots(h) - before);
+    }
+
+    [Fact]
+    public void The_merchant_pays_six_minutes_of_work_and_a_tenth_of_the_pile_on_top()
+    {
+        // Дев'яте оновлення §A.7: було «15 % кишені, не більше чверті години» — і на квадрильйонах купець
+        // приносив копійки. Тепер шість хвилин роботи як дно плюс десята частина кишені (теж до шести хвилин).
+        var h = Wheel();
+        Levels(h, ("kiln", 1));                         // 3 глеки за секунду: шість хвилин — 1 080
         Give(h, 1_000_000);
         JugNow(h, Clicker.GoldenKind.Merchant);
 
-        Assert.Equal("🧺 Щедрий купець: +2 713 глеків", Plain(Act(h, "catch").Message));
-        Assert.Equal(1_000_000 + 2_713, Pots(h));
-        Assert.Equal(1_000_000 + 2_713, Total(h));
+        Assert.Equal("🧺 Щедрий купець: +2 173 глеки", Plain(Act(h, "catch").Message));
+        Assert.Equal(1_000_000 + 2_173, Pots(h));
+        Assert.Equal(1_000_000 + 2_173, Total(h));
+    }
+
+    [Fact]
+    public void The_merchants_share_of_the_pile_never_beats_six_more_minutes_of_work()
+    {
+        var h = Wheel();
+        Levels(h, ("kiln", 1));                         // 3 глеки за секунду
+        Give(h, 1_000_000_000);                         // десята частина — сто мільйонів, а це вже не шість хвилин
+        JugNow(h, Clicker.GoldenKind.Merchant);
+
+        Assert.True(Act(h, "catch").Ok);
+        Assert.Equal(1_000_000_000 + 1_080 + 1_080 + 13, Pots(h));
     }
 
     [Fact]
@@ -362,7 +392,7 @@ public class ClickerProgressTests
         Strings(h, "secrets", "longfair");
         Patch(h, s => s["stamps"] = 20);
         JugNow(h, Clicker.GoldenKind.Inspire);
-        Assert.Equal("✨ Натхнення! Клік ×25 на 30 с", Act(h, "catch").Message);
+        Assert.Equal("✨ Натхнення! Клік ×25 на 40 с", Act(h, "catch").Message);
     }
 
     [Fact]
