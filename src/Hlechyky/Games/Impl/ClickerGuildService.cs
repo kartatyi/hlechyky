@@ -8,6 +8,16 @@ namespace Hlechyky.Games.Impl;
 /// <summary>Дарунок у скриньці чи на полиці: від кого, що саме і коли.</summary>
 public sealed record GuildGift(string From, string Ware, string Style, int Quality, DateTimeOffset At);
 
+/// <summary>
+/// Допомога другові в дорозі (v9 §E.2): гостинець (<c>treat</c>), підмайстер у гості (<c>lend</c>) чи похвала
+/// (<c>cheer</c>). Лежить у скриньці отримувача, доки той не зайде: <see cref="Minutes"/> — скільки хвилин
+/// його власного пасиву відсипати (гостинець) або скільки триватиме баф (підмайстер, похвала).
+/// </summary>
+public sealed record GuildBoost(string From, string Kind, int Minutes, DateTimeOffset At);
+
+/// <summary>Що гончар може зробити для друзів сьогодні й скільки гостинців він сам уже прийняв (§E.2).</summary>
+public sealed record GuildHelp(int TreatLeft, bool LendLeft, IReadOnlyList<string> Cheered);
+
 /// <summary>Підціль воза: стільки виробів цього виду (будь-який розпис і якість).</summary>
 public sealed record WagonSub(string Ware, int Need, int Have);
 
@@ -22,14 +32,17 @@ public sealed record WagonInfo(
     string Day, DateTimeOffset EndsAt, int Potters, int Goal, int Total, IReadOnlyList<WagonSub> Subs,
     IReadOnlyList<WagonGiver> Givers, int Tier, int Mine, int Claimed);
 
-/// <summary>Усе, що кімнаті треба від цеху для виду: сьогоднішній віз, вчорашній і скільки дарунків лишилось сьогодні.</summary>
-public sealed record GuildSummary(WagonInfo Today, WagonInfo Prev, int GiftsLeft);
+/// <summary>Усе, що кімнаті треба від цеху для виду: сьогоднішній віз, вчорашній, скільки дарунків лишилось і допомога дня.</summary>
+public sealed record GuildSummary(WagonInfo Today, WagonInfo Prev, int GiftsLeft, GuildHelp Help);
 
 /// <summary>Що сталось після внеску: віз після нього і рівень, якого він щойно вперше досяг (0 — нічого нового).</summary>
 public sealed record WagonGive(WagonInfo Wagon, int Reached);
 
-/// <summary>Нагорода воза: за який день, який рівень і на який уже платили раніше. <c>Error</c> — відмова.</summary>
-public sealed record WagonClaim(string? Error, string Day, int Tier, int Was);
+/// <summary>
+/// Нагорода воза: за який день, який рівень, на який уже платили раніше і скільки виробів поклав сам гончар
+/// (з цього рахується його пай, §E.1). <c>Error</c> — відмова.
+/// </summary>
+public sealed record WagonClaim(string? Error, string Day, int Tier, int Was, int Mine = 0);
 
 /// <summary>
 /// Цех гончарів — спільне для всіх кімнат Гончарного кола: денний віз, скринька дарунків і список гончарів. Один
@@ -51,6 +64,20 @@ public sealed class ClickerGuildService
     /// <summary>Хто поклав на віз хоч стільки — забирає нагороду.</summary>
     public const int MinGive = 5;
     public const int GiftsPerDay = 3, ShelfSize = 12, MailMax = 40;
+
+    // ---------- допомога другові (v9 §E.2) ----------
+    /// <summary>Гостинець буває лише такий: 10, 30 чи 60 хвилин свого пасиву.</summary>
+    public static readonly int[] TreatSizes = [10, 30, 60];
+    /// <summary>Друг дістає вдвічі більше хвилин — але СВОГО пасиву: багатий не ламає гру бідному.</summary>
+    public const int TreatBack = 2;
+    /// <summary>Стеля на отримувача: стільки хвилин гостинців за київський день від усіх разом.</summary>
+    public const int TreatCapMinutes = 120;
+    /// <summary>Підмайстер гостює в друга стільки годин, і ліплення там іде вдвічі швидше.</summary>
+    public const int LendHours = 24;
+    public const double LendWork = 0.5;
+    /// <summary>Похвала: стільки хвилин +10 % до всього.</summary>
+    public const int CheerMinutes = 60;
+    public const double CheerMult = 1.1;
     /// <summary>Скільки днів тримати в стані: сьогоднішній, вчорашній (його нагорода ще забирається) і ще два про запас.</summary>
     public const int DaysKept = 4;
     public const int RosterMax = 100;
@@ -90,6 +117,13 @@ public sealed class ClickerGuildService
         public Dictionary<string, List<GuildGift>> Mail { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, SentRow> Sent { get; set; } = new(StringComparer.Ordinal);
 
+        /// <summary>Пошта допомоги (§E.2): скринька за ніком отримувача — він забере її на синхронізації.</summary>
+        public Dictionary<string, List<GuildBoost>> Boosts { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>Що гончар уже зробив для друзів сьогодні (підмайстер один, похвала — раз на друга).</summary>
+        public Dictionary<string, HelpRow> Helps { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>Скільки хвилин гостинців отримувач уже прийняв за день — стеля спільна на всіх дарувальників.</summary>
+        public Dictionary<string, TreatRow> Treats { get; set; } = new(StringComparer.Ordinal);
+
         /// <summary>Тижневі вози старого стану — лише щоб раз перенести останній з них у день (див. <c>Migrate</c>).</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<string, DayRow>? Weeks { get; set; }
@@ -123,6 +157,21 @@ public sealed class ClickerGuildService
     {
         public string Day { get; set; } = "";
         public int N { get; set; }
+    }
+
+    sealed class HelpRow
+    {
+        public string Day { get; set; } = "";
+        /// <summary>Підмайстер уже пішов у гості: він один, тож на день — одна позичка.</summary>
+        public bool Lend { get; set; }
+        /// <summary>Кого вже хвалив сьогодні (ключі ніків): кожному другові — раз на день.</summary>
+        public List<string> Cheer { get; set; } = [];
+    }
+
+    sealed class TreatRow
+    {
+        public string Day { get; set; } = "";
+        public int Minutes { get; set; }
     }
 
     /// <summary>Нік у ключ — так само, як <c>Rooms.NickKey</c>: без пробілів по краях, у нижньому регістрі.</summary>
@@ -177,6 +226,11 @@ public sealed class ClickerGuildService
         s.Potters = Clean(s.Potters);
         s.Mail = Clean(s.Mail);
         s.Sent = Clean(s.Sent);
+        // Допомоги в старому стані не було (v7/v8) — порожні скриньки, а не null.
+        s.Boosts = Clean(s.Boosts);
+        s.Helps = Clean(s.Helps);
+        s.Treats = Clean(s.Treats);
+        foreach (var h in s.Helps.Values) h.Cheer = h.Cheer?.Where(x => x is { Length: > 0 }).ToList() ?? [];
         foreach (var w in s.Days.Values)
         {
             w.Wares = Clean(w.Wares);
@@ -274,13 +328,14 @@ public sealed class ClickerGuildService
         return Info(s, DayOf(yesterday), DayBefore(yesterday), Days.NextMidnight(yesterday), nickKey);
     }
 
-    /// <summary>Сьогоднішній віз, учорашній і скільки дарунків ще можна сьогодні — для виду кімнати.</summary>
+    /// <summary>Сьогоднішній віз, учорашній, скільки дарунків ще можна сьогодні й допомога дня — для виду кімнати.</summary>
     public GuildSummary Summary(string nickKey, DateTimeOffset now)
     {
         lock (_lock)
         {
             var s = S();
-            return new GuildSummary(Current(s, now, nickKey), Previous(s, now, nickKey), GiftsLeftLocked(s, nickKey, now));
+            return new GuildSummary(Current(s, now, nickKey), Previous(s, now, nickKey),
+                GiftsLeftLocked(s, nickKey, now), HelpLocked(s, nickKey, now));
         }
     }
 
@@ -333,7 +388,7 @@ public sealed class ClickerGuildService
             if (!s.Days.TryGetValue(w.Day, out var row)) return new WagonClaim("Такого воза нема", w.Day, 0, 0);
             row.Claimed[nickKey] = w.Tier;
             Save();
-            return new WagonClaim(null, w.Day, w.Tier, w.Claimed);
+            return new WagonClaim(null, w.Day, w.Tier, w.Claimed, w.Mine);
         }
     }
 
@@ -344,6 +399,10 @@ public sealed class ClickerGuildService
     {
         var oldest = Days.Of(now.AddDays(-(DaysKept - 1)));
         foreach (var key in s.Days.Keys.Where(k => string.CompareOrdinal(k, oldest) < 0).ToList()) s.Days.Remove(key);
+        // Денні рядки допомоги живуть рівно день: учорашні однаково нічого не тримають.
+        var today = Days.Of(now);
+        foreach (var key in s.Helps.Where(x => x.Value.Day != today).Select(x => x.Key).ToList()) s.Helps.Remove(key);
+        foreach (var key in s.Treats.Where(x => x.Value.Day != today).Select(x => x.Key).ToList()) s.Treats.Remove(key);
     }
 
     // ---------- дарунки ----------
@@ -365,15 +424,7 @@ public sealed class ClickerGuildService
         var toKey = Key(toNick);
         if (toKey.Length == 0) return "Кому дарувати? Обери гончаря";
         if (toKey == fromKey) return "Собі дарувати — то вже не дарунок 🙂";
-        // База — поза замком: читати її довго, а скринька від цього не зміниться.
-        string? save;
-        try { save = _store.LoadState("clicker:" + toKey); }
-        catch (Exception ex)
-        {
-            _log?.LogWarning(ex, "не вдалось глянути, чи є збереження в {Nick}", toKey);
-            save = null;
-        }
-        if (string.IsNullOrEmpty(save)) return $"{toNick.Trim()} ще не сідав за гончарне коло — дарунку нікуди стати";
+        if (!SatDownAtWheel(toKey)) return $"{toNick.Trim()} ще не сідав за гончарне коло — дарунку нікуди стати";
         lock (_lock)
         {
             var s = S();
@@ -396,6 +447,109 @@ public sealed class ClickerGuildService
         {
             var s = S();
             if (!s.Mail.Remove(nickKey, out var box) || box.Count == 0) return null;
+            Save();
+            return box;
+        }
+    }
+
+    /// <summary>Чи сідав гончар за коло: дарувати й помагати в нікуди не даємо. База — поза замком, читати її довго.</summary>
+    bool SatDownAtWheel(string key)
+    {
+        try { return !string.IsNullOrEmpty(_store.LoadState("clicker:" + key)); }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "не вдалось глянути, чи є збереження в {Nick}", key);
+            return false;
+        }
+    }
+
+    // ---------- допомога другові (v9 §E.2) ----------
+
+    static HelpRow HelpRowFor(State s, string key, string day)
+    {
+        if (!s.Helps.TryGetValue(key, out var row) || row.Day != day) s.Helps[key] = row = new HelpRow { Day = day };
+        return row;
+    }
+
+    static TreatRow TreatRowFor(State s, string key, string day)
+    {
+        if (!s.Treats.TryGetValue(key, out var row) || row.Day != day) s.Treats[key] = row = new TreatRow { Day = day };
+        return row;
+    }
+
+    GuildHelp HelpLocked(State s, string nickKey, DateTimeOffset now)
+    {
+        var day = Days.Of(now);
+        var mine = s.Helps.TryGetValue(nickKey, out var h) && h.Day == day ? h : null;
+        var got = s.Treats.TryGetValue(nickKey, out var t) && t.Day == day ? t.Minutes : 0;
+        return new GuildHelp(Math.Max(0, TreatCapMinutes - got), mine is null || !mine.Lend, mine?.Cheer.ToList() ?? []);
+    }
+
+    /// <summary>Що гончар ще може зробити для друзів сьогодні (і скільки гостинців прийняв сам).</summary>
+    public GuildHelp Help(string nickKey, DateTimeOffset now)
+    {
+        lock (_lock) return HelpLocked(S(), nickKey, now);
+    }
+
+    /// <summary>
+    /// Послати другові допомогу: <c>treat</c> (гостинець на 10/30/60 хв), <c>lend</c> (підмайстер у гості на добу)
+    /// чи <c>cheer</c> (похвала на годину). null — пішло; інакше — чому ні. Глеки за гостинець кімната списує
+    /// лише після «так». Межі дня рахуються тут: гостинцю — стеля на ОТРИМУВАЧА, підмайстрові й похвалі —
+    /// на дарувальника.
+    /// </summary>
+    public string? Boost(string fromKey, string fromNick, string toNick, string kind, int minutes, DateTimeOffset now)
+    {
+        var toKey = Key(toNick);
+        var who = toNick.Trim();
+        if (toKey.Length == 0) return "Кому помагати? Обери гончаря";
+        if (toKey == fromKey) return "Самому собі помагати — то просто робота 🙂";
+        if (!SatDownAtWheel(toKey)) return $"{who} ще не сідав за гончарне коло — помагати нікому";
+        lock (_lock)
+        {
+            var s = S();
+            var day = Days.Of(now);
+            var help = HelpRowFor(s, fromKey, day);
+            int carry;
+            switch (kind)
+            {
+                case "treat":
+                    if (Array.IndexOf(TreatSizes, minutes) < 0) return "Гостинець буває на 10, 30 або 60 хвилин";
+                    carry = minutes * TreatBack;
+                    var treat = TreatRowFor(s, toKey, day);
+                    var left = TreatCapMinutes - treat.Minutes;
+                    if (left <= 0) return $"{who} сьогодні вже наївся гостинців — завтра зголодніє знову";
+                    if (carry > left) return $"{who} сьогодні прийме ще {left} хв гостинців — пришли менший";
+                    treat.Minutes += carry;
+                    break;
+                case "lend":
+                    if (help.Lend) return "Підмайстер у цеху один, і сьогодні він уже пішов у гості";
+                    help.Lend = true;
+                    carry = LendHours * 60;
+                    break;
+                case "cheer":
+                    if (help.Cheer.Contains(toKey, StringComparer.Ordinal))
+                        return $"{who} сьогодні вже чув(ла) від тебе добре слово — завтра скажеш ще";
+                    help.Cheer.Add(toKey);
+                    carry = CheerMinutes;
+                    break;
+                default:
+                    return "Такої допомоги в цеху не знають";
+            }
+            if (!s.Boosts.TryGetValue(toKey, out var box)) s.Boosts[toKey] = box = [];
+            box.Add(new GuildBoost(fromNick.Trim(), kind, carry, now));
+            if (box.Count > MailMax) box.RemoveRange(0, box.Count - MailMax);
+            Save();
+            return null;
+        }
+    }
+
+    /// <summary>Забрати всю допомогу зі скриньки (кличе Sync кімнати отримувача). Порожньо — null, і нічого не пишемо.</summary>
+    public List<GuildBoost>? TakeBoosts(string nickKey)
+    {
+        lock (_lock)
+        {
+            var s = S();
+            if (!s.Boosts.Remove(nickKey, out var box) || box.Count == 0) return null;
             Save();
             return box;
         }
@@ -494,6 +648,7 @@ public sealed class ClickerGuildService
         var craft = root["craft"] as JsonObject;
         var guild = root["guild"] as JsonObject;
         var album = root["album"] as JsonObject;
+        var kiln = root["kiln"] as JsonObject;
 
         var ladder = Clicker.Shop
             .Select(u => new { key = u.Key, name = u.Name, level = Math.Max(0, Int(upgrades?[u.Key])) })
@@ -535,7 +690,27 @@ public sealed class ClickerGuildService
             wear = Clicker.Styles.Any(s => s.Key == Str(root["wear"])) ? Str(root["wear"]) : "",
             // Альбом у збереженні — «виріб → список розписів»: клітинок стільки, скільки розписів у всіх списках.
             album = album?["cells"] is JsonObject cells ? cells.Sum(kv => kv.Value is JsonArray a ? a.Count : 0) : (int?)null,
+            // Скільки клітинок в альбомі всього — щоб хата друга показала «89 %», не знаючи правил альбому.
+            albumSize = Clicker.AlbumSize,
+            // Зірки (Q≥3 у клітинці) пише пакет «Альбом»; старе збереження їх не має — тоді null.
+            stars = album?["stars"] is JsonObject stars ? stars.Sum(kv => kv.Value is JsonArray a ? a.Count : 0) : (int?)null,
+            // «Виставка» (§C.4): до трьох клітинок, які гончар поставив на видноту.
+            show = Show(album?["show"]),
             tiles = CountOf(album?["stove"]),
+            // Стан горна — щоб було видно, чи щось зараз пече друг (час судить клієнт: сервер тут без годинника).
+            kiln = kiln is null ? null : new
+            {
+                batch = kiln["batch"] is JsonArray b ? b.Count(x => Clicker.WareOf(Str(x)) is not null) : 0,
+                style = Clicker.Styles.Any(x => x.Key == Str(kiln["style"])) ? Str(kiln["style"]) : "",
+                beauty = Math.Clamp(Int(kiln["beauty"]), 0, 100),
+                litAt = Str(kiln["litAt"]),
+                coolUntil = Str(kiln["coolUntil"]),
+                batches = Math.Max(0, Int(kiln["batches"])),
+            },
+            // Дивовижі (§F.4) — скільки знайдено; поля ще може не бути (старе збереження чи гілка без «Хати»).
+            wonders = CountOf(house?["wonders"]) ?? (house?["wonders"] is JsonValue ? Math.Max(0, Int(house["wonders"])) : (int?)null),
+            // Ім'я хати (§F.3) — на вивісці замість «Хата гончаря».
+            houseName = Cut(Str(house?["name"]), 24),
             rank = Math.Clamp(Int(guild?["rank"]), 0, Clicker.GuildRanks.Length - 1),
             gifts,
             formed = Math.Max(0, Long(craft?["formed"])),
@@ -559,6 +734,34 @@ public sealed class ClickerGuildService
         JsonObject o => o.Count,
         _ => null,
     };
+
+    /// <summary>
+    /// «Виставка» альбому (§C.4) — до трьох клітинок на видноті. Формат ключа пише пакет «Альбом»: беремо і
+    /// повний ключ виробу (<c>ware|style|q</c>), і коротку пару <c>ware|style</c>, щоб знімок не залежав від
+    /// того, котрий із них там опиниться.
+    /// </summary>
+    static List<object> Show(JsonNode? node)
+    {
+        var list = new List<object>();
+        if (node is not JsonArray a) return list;
+        foreach (var raw in a)
+        {
+            var key = Str(raw);
+            if (key.Length == 0) continue;
+            // Розбираємо самі, а не через ParseItem: той зараз не пускає розкішних (Q4), а виставка їх якраз і ждатиме.
+            var parts = key.Split('|');
+            var ware = parts[0];
+            var style = parts.Length > 1 ? parts[1] : "";
+            var q = parts.Length > 2 && int.TryParse(parts[2], out var n) ? n : 1;
+            if (Clicker.WareOf(ware) is null) continue;
+            if (style.Length > 0 && Clicker.Styles.All(x => x.Key != style)) continue;
+            list.Add(new { ware, style, q = Math.Clamp(q, 1, 4) });
+            if (list.Count >= 3) break;
+        }
+        return list;
+    }
+
+    static string Cut(string s, int max) => s.Length <= max ? s : s[..max];
 
     static string Str(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";
 
