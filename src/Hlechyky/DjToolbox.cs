@@ -229,7 +229,7 @@ public static class DjToolbox
                 var liked = db.LikedTracksDetailed(n);
                 if (liked.Count == 0) return "Поки нічого не лайкали.";
                 sb.AppendLine("Улюблене:");
-                foreach (var l in liked) sb.AppendLine($"  {l.Track.Label} — {string.Join(", ", l.Likers)}");
+                foreach (var l in liked) sb.AppendLine($"  {l.Track.Label} — {string.Join(", ", l.Likes.Select(x => x.Nick))}");
                 return sb.ToString();
 
             case "playlists":

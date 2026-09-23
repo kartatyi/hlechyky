@@ -1690,8 +1690,8 @@
           `${h.source === 'autodj' ? esc(dj()) : esc(h.requestedBy || '')}${h.via === 'suggestion' ? ' · порада' : ''}${h.likes ? ' · ❤' + h.likes : ''}${h.skipped ? ' · скіп' : ''} · ${tm(h.startedAt)}`,
           { skipped: h.skipped })).join('') || '<li class="empty glek">Ще нічого не грало. Закинь першу пісню — і тут почне збиратись історія.</li>'}</ul>`;
       } else if (libTab === 'likes') {
-        const list = await api('GET', '/api/likes');
-        box.innerHTML = `<ul class="list">${list.map((l) => trackRow(l.track, `❤ ${esc(l.likers.join(', '))}`)).join('') || '<li class="empty glek">Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі — і пісня осяде тут.</li>'}</ul>`;
+        await renderLikes();
+        return;
       } else if (libTab === 'rating') {
         await renderRating();
         return;
@@ -1713,6 +1713,36 @@
       wireRows(box);
     } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
+  // улюблене: типово — моє (згори те, що лайкнуто останнім), «Усі» — спільний список; вибір пам'ятаємо
+  let likesWho = 'mine';
+  try { if (localStorage.getItem('likesWho') === 'all') likesWho = 'all'; } catch { /* приватне вікно */ }
+  async function renderLikes() {
+    const box = $('lib');
+    const list = await api('GET', '/api/likes');
+    const mine = list
+      .map((l) => ({ ...l, my: l.likes.find((x) => sameNick(x.nick, me.nick)) }))
+      .filter((l) => l.my)
+      .sort((a, b) => new Date(b.my.at) - new Date(a.my.at));
+    const rows = likesWho === 'mine'
+      ? mine.map((l) => {
+        const others = l.likes.filter((x) => x !== l.my).map((x) => x.nick);
+        return trackRow(l.track, `❤ ${dayTime(l.my.at)}${others.length ? ` · і ${esc(others.join(', '))}` : ''}`);
+      })
+      : list.map((l) => trackRow(l.track, `❤ ${esc(l.likes.map((x) => x.nick).join(', '))}`));
+    const empty = likesWho === 'mine' && list.length
+      ? 'Твоїх сердечок тут ще нема: тисни ❤ під треком в ефірі — і пісня осяде тут. Що люблять інші — перемкни на «Усі».'
+      : 'Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі — і пісня осяде тут.';
+    box.innerHTML = `<div class="tabs seg">${[['mine', `Мої · ${mine.length}`], ['all', `Усі · ${list.length}`]].map(([v, label]) =>
+      `<button data-v="${v}" class="${likesWho === v ? 'on' : ''}">${label}</button>`).join('')}</div>` +
+      `<ul class="list">${rows.join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
+    box.querySelectorAll('.seg button').forEach((b) => b.onclick = () => {
+      likesWho = b.dataset.v;
+      try { localStorage.setItem('likesWho', likesWho); } catch { /* приватне вікно */ }
+      loadLib();
+    });
+    wireRows(box);
+  }
+
   // рейтинг: скільки грало, скільки дослуховують, хто слухав; період і сортування пам'ятаємо
   const ratingOpt = { days: localStorage.getItem('ratingDays') || '7', sort: localStorage.getItem('ratingSort') || 'plays' };
   const gb = (b) => (b / 1024 ** 3).toLocaleString('uk-UA', { maximumFractionDigits: 1 });
