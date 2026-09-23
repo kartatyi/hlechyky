@@ -56,7 +56,7 @@ public sealed record WagonClaim(string? Error, string Day, int Tier, int Was, in
 /// Дух: друзів 2–4, тож нічого змагального. Ціль воза росте з кількістю гончарів учорашнього дня, нагорода однакова
 /// кожному, хто поклав хоч п'ять виробів, пропущений день нічого не забирає.
 /// </summary>
-public sealed class ClickerGuildService
+public sealed partial class ClickerGuildService
 {
     public const string StoreKey = "clicker-guild";
     /// <summary>Скільки виробів на воза «важить» один гончар (бронза) за день. Мінімум — двоє, навіть коли грає один.</summary>
@@ -110,7 +110,7 @@ public sealed class ClickerGuildService
 
     // ---------- стан ----------
 
-    sealed class State
+    sealed partial class State
     {
         public Dictionary<string, DayRow> Days { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, PotterRow> Potters { get; set; } = new(StringComparer.Ordinal);
@@ -242,6 +242,8 @@ public sealed class ClickerGuildService
             w.Givers = Clean(w.Givers);
             w.Claimed = Clean(w.Claimed);
         }
+        // Звань у старому стані не було — порожні списки (ClickerGuildTitles.cs).
+        NormalizeTitles(s);
         return s;
     }
 
@@ -639,11 +641,15 @@ public sealed class ClickerGuildService
         catch (JsonException) { return 0; }
     }
 
-    /// <summary><c>GET /api/games/clicker/guild</c>: гончарі цеху (за абеткою) і сьогоднішній віз.</summary>
+    /// <summary>
+    /// <c>GET /api/games/clicker/guild</c>: гончарі цеху (за абеткою) зі значками звань, сьогоднішній віз і дошка звань
+    /// округи (хто що тримає, хто веде сьогодні, хто перший вибив таємне).
+    /// </summary>
     public object Roster(string? meNick)
     {
         var now = _clock.UtcNow;
         var me = Key(meNick);
+        EnsureTitleStats();
         lock (_lock)
         {
             var s = S();
@@ -658,8 +664,12 @@ public sealed class ClickerGuildService
                     {
                         nick = x.Value.Nick, rank = x.Value.Rank, seenAt = x.Value.Seen,
                         gave = row?.Givers.GetValueOrDefault(x.Key)?.N ?? 0, me = x.Key == me,
+                        // Звання (docs/games/specs/clicker-titles.md): до трьох значків і «перший гончар округи» — золотом.
+                        badges = BadgesOf(s, x.Key, now),
+                        first = s.TitleHolds.TryGetValue(Clicker.TitleFirst, out var f) && f.Key == x.Key,
                     })
                     .ToList(),
+                titles = TitleBoard(s, now),
             };
         }
     }
@@ -689,8 +699,16 @@ public sealed class ClickerGuildService
             return null;
         }
         string display;
-        lock (_lock) display = S().Potters.TryGetValue(key, out var p) ? p.Nick : (nick ?? "").Trim();
-        return HouseSnapshot(display, json);
+        object[] wall;
+        // Стіна звань: зароблене назавжди — зі збереження, «перші в окрузі» й звання дня — з цеху.
+        var earned = Clicker.TitleStatsFromSave(json).Earned;
+        lock (_lock)
+        {
+            var s = S();
+            display = s.Potters.TryGetValue(key, out var p) ? p.Nick : (nick ?? "").Trim();
+            wall = WallOf(s, key, _clock.UtcNow, earned);
+        }
+        return HouseSnapshot(display, json, wall);
     }
 
     /// <summary>
@@ -698,7 +716,7 @@ public sealed class ClickerGuildService
     /// знаряддя, розписи, альбом і кахлі — якщо такі поля є, ранг, полиця дарунків, вироби, найкращі з комори, глеки
     /// за весь час). Око майстра, глеки в кишені, купці, скринька — не йдуть. Зіпсований JSON — null.
     /// </summary>
-    public static object? HouseSnapshot(string nick, string? json)
+    public static object? HouseSnapshot(string nick, string? json, object[]? titles = null)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         JsonObject root;
@@ -775,6 +793,8 @@ public sealed class ClickerGuildService
             },
             // Дивовижі (§F.4) — скільки знайдено; поля ще може не бути (старе збереження чи гілка без «Хати»).
             wonders = CountOf(house?["wonders"]) ?? (house?["wonders"] is JsonValue ? Math.Max(0, Int(house["wonders"])) : (int?)null),
+            // Ключі знайдених дивовиж — сцена малює їх у хаті друга (раніше вона чекала список і падала на числі).
+            wonderKeys = house?["wonders"] is JsonObject found ? found.Select(kv => kv.Key).Where(k => Clicker.Wonders.Any(w => w.Key == k)).ToList() : [],
             // Ім'я хати (§F.3) — на вивісці замість «Хата гончаря».
             houseName = Cut(Str(house?["name"]), 24),
             rank = Math.Clamp(Int(guild?["rank"]), 0, Clicker.GuildRanks.Length - 1),
@@ -788,6 +808,9 @@ public sealed class ClickerGuildService
                 .Take(3)
                 .Select(x => new { ware = x.Item.Ware, style = x.Item.Style, q = x.Item.Quality, n = x.N })
                 .ToList(),
+            // Стіна звань (clicker-titles.md): що гончар має зараз, найрідкісніші спершу; і пам'ятний глечик «Округа».
+            titles = titles ?? [],
+            keepsake = Clicker.KeepsakeIn(root),
         };
     }
 

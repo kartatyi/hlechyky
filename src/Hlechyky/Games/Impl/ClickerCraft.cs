@@ -557,6 +557,7 @@ public sealed partial class Clicker
             album = CatalogAlbum(),
             fair = CatalogFair(),
             guild = CatalogGuild(),
+            titles = CatalogTitles(),
         };
     }
 

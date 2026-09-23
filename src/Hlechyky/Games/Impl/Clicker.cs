@@ -185,10 +185,11 @@ public sealed partial class Clicker : Game
     public const double WindMult = 3;
 
     /// <summary>
-    /// Яку версію «Що нового» показуємо. Побачив — більше не показуємо ніколи й ні на якому пристрої. «v9.1» — клейма
-    /// після тисячі й наука майстра (docs/games/specs/clicker-stamps.md): бачили «v9» — побачать і це.
+    /// Яку версію «Що нового» показуємо. Побачив — більше не показуємо ніколи й ні на якому пристрої. «v9.2» — звання
+    /// округи й подарунок (docs/games/specs/clicker-titles.md); хто не бачив «v9.1» (клейма після тисячі), тому клієнт
+    /// допише й ті рядки (вид шле newsSeen).
     /// </summary>
-    public const string NewsVersion = "v9.1";
+    public const string NewsVersion = "v9.2";
 
     // ---------- розгін кола ----------
 
@@ -677,6 +678,7 @@ public sealed partial class Clicker : Game
         ResetAlbum(_lastSync);
         ResetFair(_lastSync);
         ResetGuild(_lastSync);
+        ResetTitles();
         _achQueue.Clear();
         _viewVersion++;
     }
@@ -693,6 +695,8 @@ public sealed partial class Clicker : Game
     ActResult ActInner(int seat, string action, JsonElement payload)
     {
         Sync();
+        // Звання дня рахуються київськими днями: учорашнє — цехові, сьогоднішнє — з нуля (ClickerTitles.cs).
+        TitlesDayRoll(Ctx.Clock.UtcNow);
         // Ачівки, що назбирались у видах (офлайн-прогрес рахується вже на відкритті), — тепер, коли каркас їх прийме.
         FlushAchievements();
         // Каталоги їдуть у вид лише до першої дії (Look знову попросить, якщо клієнтові їх бракує).
@@ -727,8 +731,10 @@ public sealed partial class Clicker : Game
             "craft" => ActCraft(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
             _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
-                ?? ActResult.Fail("Тут так не ходять"),
+                ?? ActTitles(action, payload) ?? ActResult.Fail("Тут так не ходять"),
         };
+        // Звання: лічильники → звання, нові — у Журнал, звіт цехові (раз на хвилину або одразу, коли щось сталось).
+        TitlesAfterAct(Ctx.Clock.UtcNow);
         // Таблиця «Гончарі» — це глеки за весь час; те саме число вдруге їй нічого не додасть.
         if (result.Ok && WorthScoring())
         {
@@ -790,6 +796,7 @@ public sealed partial class Clicker : Game
         {
             // Під полицею Ока глек однаково не ловився: після «кивнув» перепланувати від «зараз» (§A.2).
             if (asked) _goldenSlept = true;
+            else _goldenMissed++;              // «Соня» (звання): утік неспійманим
             ScheduleGolden(now);
         }
         // Глек з полиці, якого ніхто не спіймав, — розбитий: серія обірвалась. Спійманий сюди не доходить —
@@ -797,6 +804,8 @@ public sealed partial class Clicker : Game
         if (now > _fall.Until + CatchGrace)
         {
             // Під полицею Ока ловити було нічим: серію за це не рвемо й дамо новий глек, щойно майстер кивне.
+            // «Руки-крюки» (звання): розбився, поки гончар клацав коло — останній клік припав на політ глека.
+            if (!asked && _heatAt >= _fall.At && _heatAt <= _fall.Until + CatchGrace) _brokenBusy++;
             if (asked) _fallSlept = true;
             // Шкіряний фартух вибачає один розбитий у серії; другий поспіль — серія таки обірвалась.
             else if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
@@ -984,6 +993,7 @@ public sealed partial class Clicker : Game
         var taken = Math.Min(hands.Count, Allowance());
         _tokens -= taken;
         Add(ClickGain(taken));
+        TitlesClicks(taken, now);
         // Кліки ще й ліплять виріб на колі (глеків це не додає — лише роботу, див. ClickerCraft.cs).
         if (taken > 0) FormBy(taken, now);
         _guard.SpendClicks(taken);
@@ -1088,6 +1098,8 @@ public sealed partial class Clicker : Game
         if (up.Capped(level)) return ActResult.Fail($"{up.Name}: кращої вже не буває");
 
         var bought = 0;
+        var last = 0.0;
+        var second = PassiveBase;              // «Остання копійка» міряє дохід ДО покупки: новий верстат його ще підніме
         while (bought < want && !up.Capped(level))
         {
             var price = up.Price(level);
@@ -1097,10 +1109,12 @@ public sealed partial class Clicker : Game
                 break;
             }
             _pots -= price;
+            last = price;
             level++;
             bought++;
         }
         _levels[up.Key] = level;
+        TitlesOnBuy(last, second);
         return ActResult.Accept(bought == 1 ? $"{up.Name} — рівень {level}" : $"{up.Name} +{bought} — рівень {level}");
     }
 
@@ -1164,6 +1178,8 @@ public sealed partial class Clicker : Game
         if (_guard.Locked(now) || _guard.Pending)
             return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
 
+        // «В останню мить» (звання): за пів секунди до втечі чи вже в запасі на дорогу.
+        if (now >= _golden.Until - LastMoment) TitleEarn("moment");
         var longer = Has("longfair") ? 2 : 1;
         string text;
         switch (_golden.Kind)
@@ -1228,6 +1244,8 @@ public sealed partial class Clicker : Game
             // Дивовижу за щасливий клік кидаємо не на кожен (їх бувають десятки за хвилину), а раз на 25 — інакше
             // «щасливі» дивовижі вичерпались би за перший вечір (v9, зауваження пакета «Хата»).
             if (_lucky / LuckyWonderEvery != (_lucky - lucky) / LuckyWonderEvery) Wonder("lucky");
+            // «Три сонця» (звання): щасливий клік, коли разом тривають натхнення і ярмарок.
+            if (InspireOn && FairOn) TitleEarn("suns");
         }
         var clicks = taken + lucky * (LuckyMult - 1);
         return mult <= 1 ? ToPots(PerClick * clicks) : ToPots(PerClick * clicks * mult);
@@ -1253,6 +1271,7 @@ public sealed partial class Clicker : Game
         StreakUp();
         _apronUsed = false;
         _grabbed++;
+        TitlesGrab(now);
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
         ScheduleFall(now);
@@ -1298,6 +1317,7 @@ public sealed partial class Clicker : Game
         FireGuild(Ctx.Clock.UtcNow);
         // Цех мусить знати нові клейма: з них рахується наука майстра для решти округи.
         GuildStampsChanged(now);
+        TitlesOnFire(now);
 
         if (_firings == 1) Ctx.Award(0, 0, "ach:potter-fire");
         Wonder("fire");
@@ -1342,6 +1362,7 @@ public sealed partial class Clicker : Game
                 break;
             case CatGift.Streak:
                 StreakUp();
+                _catKnocks++;                  // «Котяча жертва» (звання)
                 text = $"🐈 Кіт збив глек із полиці й сам його спіймав — серія {_fallStreak}";
                 break;
             default:
@@ -1382,7 +1403,8 @@ public sealed partial class Clicker : Game
     {
         if (Str(payload, "v") != NewsVersion) return ActResult.Fail("Це новини з іншого оновлення");
         _news = NewsVersion;
-        return ActResult.Done;
+        // Подарунок округи їде разом із новинами про звання — раз на гончаря (ClickerTitles.cs).
+        return TakeGift() ?? ActResult.Done;
     }
 
     ActResult BuySecret(JsonElement payload)
@@ -1590,6 +1612,10 @@ public sealed partial class Clicker : Game
             },
             // «Що нового»: поки гончар цього оновлення не бачив — версія, інакше нічого.
             news = _news == NewsVersion ? null : NewsVersion,
+            // Яку версію гончар бачив востаннє: хто пропустив «v9.1», тому клієнт допише й ті рядки.
+            newsSeen = _news == NewsVersion ? null : _news,
+            // Звання округи (ClickerTitles.cs): що маю, значки, мої числа, прогрес.
+            titles = TitlesView(Ctx.Clock.UtcNow),
             // Хата: глина, знаряддя, прикраси й дошка купців (ClickerHouse.cs).
             house = HouseView(Ctx.Clock.UtcNow),
             // Сьоме оновлення: ремесло й пакети (docs/games/specs/clicker-v7.md). Каталоги — лише коли просили.
@@ -1674,7 +1700,9 @@ public sealed partial class Clicker : Game
         long Lucky = 0, EventRow? Cat = null, EventRow? Star = null, EventRow? Wind = null,
         int Petted = 0, bool StarWish = false, bool GoldenSlept = false, bool FallSlept = false, string? News = null,
         // Клейма понад ті, що за глеки (Тавро й наука майстра), і остання наука. Старе збереження — «ще не було».
-        int StampsExtra = 0, DateTimeOffset ScienceAt = default);
+        int StampsExtra = 0, DateTimeOffset ScienceAt = default,
+        // Звання й подарунок округи. Старе збереження — null: тоді пам'ятні звання (див. LoadTitles).
+        TitlesRow? Titles = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -1686,7 +1714,7 @@ public sealed partial class Clicker : Game
             _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse(),
             SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null, _stampsUsed,
             _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news,
-            _stampsExtra, _scienceAt),
+            _stampsExtra, _scienceAt, SaveTitles()),
         Wire);
 
     public override void Load(string json)
@@ -1772,6 +1800,8 @@ public sealed partial class Clicker : Game
         LoadAlbum(s.Album);
         LoadFair(s.Fair);
         LoadGuild(s.Guild);
+        // Звання — останніми: пам'ятним потрібні глеки й клейма.
+        LoadTitles(s.Titles);
         _achQueue.Clear();
         foreach (var key in s.Achievements ?? []) if (key is { Length: > 0 and < 64 } && !_achQueue.Contains(key)) _achQueue.Add(key);
         _viewVersion++;

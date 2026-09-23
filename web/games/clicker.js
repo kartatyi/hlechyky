@@ -26,9 +26,10 @@
     nextStampAt, stampBonus, stampSoft, stampMult, stampIron, science: { top, who, share, cap, readyAt },
     stampCap, firings, secrets: [...], styles: [...], wear,
     heat, heatFull, heatTau, momentum, momentumMax, fall: { at, until, x, streak, gain, bonus }, grabbed,
-    lucky, starWish, news: null | "v9.1",
+    lucky, starWish, news: null | "v9.2", newsSeen: null | "<що бачив востаннє>",
     events: { cat: { at, until, dir }, star: { at, until, x, y }, wind: { at, until, mult }, petted },
-    guard: null | { serial, count, png, width, height, misses, maxMisses, lockUntil, why, pays, gain } }.
+    guard: null | { serial, count, png, width, height, misses, maxMisses, lockUntil, why, pays, gain },
+    titles: { mine, earned, show, badges, values, progress, secrets, gift } — звання (clicker-titles.js) }.
   Дії: spin { c }, buy { key, n }, mark { key }, sell { pots }, catch, grab, look, fire, secret { key }, paint { key },
     wear { key }, answer { taps: [[x, y], …] }, pet, wish, news { v }.
 */
@@ -53,7 +54,7 @@
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
-  const NEWS_VERSION = 'v9.1';            // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const NEWS_VERSION = 'v9.2';            // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
@@ -70,7 +71,7 @@
   /// Ремесло, жива хата, горно, альбом, ярмарок і цех живуть в окремих файлах clicker-<id>.js (+ .css): інакше
   /// цей файл виріс би втричі, а паралельні роботи бились би в одному місці. Частина кличе HClicker.part({...}) і
   /// дістає ті самі st, що й ядро, плюс спільний api. Каркас ігор знає лише clicker.js — частини вантажимо самі.
-  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild'];
+  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles'];
   const H = window.HClicker = window.HClicker || { parts: [], mounted: new Set(), loaded: false };
 
   /// Одна частина впала — решта гри живе далі: помилку в консоль, а не білу картку.
@@ -1614,6 +1615,8 @@
     // Своє ім'я хати (Хата → Оздоба → Вивіска) заступає і верстат, і типовий підпис.
     const named = (st.lastView && st.lastView.house && st.lastView.house.named) || '';
     text = named ? '🏠 ' + named : text ? '🏠 ' + text : '🏠 Хата гончаря';
+    // Значки звань біля імені хати (clicker-titles.js кладе їх у st.titleIcons): окремого рядка шапка не має.
+    if (st.titleIcons) text += ' · ' + st.titleIcons;
     if (st.sign.textContent !== text) st.sign.textContent = text;
   }
 
@@ -1632,17 +1635,29 @@
   // ---------- «Що нового» раз на гравця (v9 §A.9) ----------
 
   /// Текст показується один раз на гончаря: керує цим сервер (view.news), тож і з телефона, і з ноутбука
-  /// вікно відкриється рівно раз. «v9.1» — клейма після тисячі й наука майстра (docs/games/specs/clicker-stamps.md);
-  /// великий список дев'ятого оновлення всі, хто грає, уже бачили.
+  /// вікно відкриється рівно раз. «v9.2» — звання округи й подарунок (docs/games/specs/clicker-titles.md); закриття
+  /// вікна забирає подарунок. Хто пропустив «v9.1» (клейма після тисячі, docs/games/specs/clicker-stamps.md), тому
+  /// ті рядки йдуть слідом — сервер каже, що гончар бачив востаннє (view.newsSeen).
   const NEWS = {
     title: '✨ Що нового в Гончарному колі',
-    lead: 'Клейма стали чесніші, а округа — дружніша:',
+    lead: 'В окрузі з\'явились звання — і кожному подарунок:',
+    lines: [
+      ['🎖', '<b>Звання округи.</b> Тринадцять «перших в окрузі» — у кого найбільше клейм, спійманих розписних, гостей, дивовиж… Хто обжене — забирає звання собі.'],
+      ['⭐', '<b>Звання дня</b> — Бджілка, Нічна варта, Перший півень, Улов дня й Висхідна зірка: учорашні переможці тримають їх увесь день.'],
+      ['🏅', '<b>Рідкісні й таємні.</b> Рідкісні вибиває кожен, хто зможе, — назавжди. Таємні приховані, доки хтось в окрузі не здобуде їх першим — тоді їх видно всім.'],
+      ['🏷', '<b>Значки біля ніка</b> — до трьох, обираєш сам у «🤝 Селі» → «Звання»; їх видно у вивісці, у списку цеху й на стіні звань у хаті.'],
+      ['🎁', '<b>Подарунок округи:</b> три години твого «без тебе» глеками одразу — і пам\'ятний глечик «Округа» на стіні звань.'],
+    ],
+    ok: 'Забрати подарунок',
+  };
+  /// «v9.1» — для тих, хто його пропустив.
+  const NEWS_OLD = {
+    lead: 'А ще — з минулого оновлення:',
     lines: [
       ['🔖', '<b>Клейма після тисячі важать менше.</b> Перша тисяча — як і була: +2 % до всього за клеймо (з Родовим клеймом +3 %). Далі кожне нове клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть. У кого клейм понад тисячу, бонус через це менший — зате обпалювати щогодини більше не треба.'],
       ['🎓', '<b>Наука майстра.</b> Раз на 20 годин обпал дає ще чверть різниці між твоїми клеймами й клеймами найкращого гончаря округи — але не більше, ніж удвічі твоїх клейм за глеки. Хто позаду, той наздоганяє.'],
       ['🔥', '<b>Кнопка обпалу</b> тепер показує, наскільки виросте дохід, а Тавро майстра справді додає клеймо до кожного обпалу.'],
     ],
-    ok: 'Зрозуміло',
   };
 
   /// Вікно чекає своєї черги: «поки тебе не було», мінігра чи Око майстра важливіші за новини. Пробуємо, доки
@@ -1658,9 +1673,12 @@
 
   function showNews(st) {
     if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
+    const li = (l) => '<li><span class="clk-news-ico">' + l[0] + '</span><span>' + l[1] + '</span></li>';
+    const old = st.newsSeen && st.newsSeen !== 'v9.1'
+      ? '<p class="muted small">' + NEWS_OLD.lead + '</p><ul>' + NEWS_OLD.lines.map(li).join('') + '</ul>' : '';
     const html = '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
-      + NEWS.lines.map((l) => '<li><span class="clk-news-ico">' + l[0] + '</span><span>' + l[1] + '</span></li>').join('')
-      + '</ul><button type="button" class="primary clk-news-ok">' + NEWS.ok + '</button></div>';
+      + NEWS.lines.map(li).join('') + '</ul>' + old
+      + '<button type="button" class="primary clk-news-ok">' + NEWS.ok + '</button></div>';
     // Закрили кнопкою, хрестиком чи затемненням — байдуже: сервер однаково запише «бачив», і вдруге не покаже.
     const body = H.api.overlay(st, html, { cls: 'clk-newsbox', onClose: () => order(st, 'news', { v: NEWS_VERSION }) });
     const ok = body.querySelector('.clk-news-ok');
@@ -1739,6 +1757,8 @@
     },
     /// Стрічка подій під смугою (її веде ярмарок, clicker-fair.js): ядро лише каже, що відкрилось.
     feed: () => {},
+    /// Перемалювати вивіску (звання кладуть свої значки в st.titleIcons і просять показати їх одразу).
+    sign: (st) => { if (st.sign) paintSign(st); },
     /// Іменоване місце всередині чужої панелі: так горно, комора й замовлення живуть в одному «Ремеслі».
     slot: (st, name) => (st.el ? st.el.querySelector('[data-slot="' + name + '"]') : null),
     showTab: (st, key) => setTab(st, key),
@@ -2162,6 +2182,7 @@
         // «Що нового» — раз на гончаря; сервер шле поле, поки не бачив. Чекаємо, поки картка стане видною:
         // під час Ока майстра чи чужого вікна лізти поперед батька нема куди.
         st.news = v.news || '';
+        st.newsSeen = v.newsSeen || '';
         if (st.news === NEWS_VERSION && !st.newsAsked && ctx.mine) {
           st.newsAsked = true;
           newsLater(st);

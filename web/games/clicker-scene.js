@@ -1833,8 +1833,9 @@
           upgrades: ups,
           house: {
             tools: owned(h && h.tools), decor: owned(h && h.decor),
-            look: (h && h.look) || {}, named: (h && h.name) || '',
-            wonders: { list: ((h && h.wonders) || []).map((k) => ({ key: k, found: true })) },
+            look: (h && h.look) || {}, named: (h && (h.houseName || h.name)) || '',
+            // Знімок шле і лічильник дивовиж (wonders — число, для статистики), і їхні ключі (wonderKeys) — малюємо ключі.
+            wonders: { list: ((h && (h.wonderKeys || (Array.isArray(h.wonders) ? h.wonders : null))) || []).map((k) => ({ key: k, found: true })) },
           },
           album: { show: (h && h.show) || [], stove: (h && h.stove) || [] },
           secrets: [],

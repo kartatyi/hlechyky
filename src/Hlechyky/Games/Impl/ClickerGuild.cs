@@ -269,6 +269,7 @@ public sealed partial class Clicker
             // й продавали. Зате дарунок відкриває клітинку альбому (без зірки й майстерності — див. AlbumOnGift).
             _giftShelf.Insert(0, g with { At = now });
             _giftsGot++;
+            TitlesGiftFrom(g.From, now);
             AlbumOnGift(new ItemInfo(g.Ware, g.Style, g.Quality));
             AwayNote($"🎁 Дарунок від {g.From}: {ItemWords(new ItemInfo(g.Ware, g.Style, g.Quality))}");
         }
@@ -415,6 +416,7 @@ public sealed partial class Clicker
         if (svc.Gift(GuildKey, GuildNick, to, it, now) is { } why) return ActResult.Fail(why);
         TakeItems(x => x == it, 1);
         _giftsSent++;
+        TitlesGiftTo(to, now);
         if (_giftsSent == GiftsForAchievement) Achieve("potter-gift");
         return ActResult.Accept($"🎁 {Capital(ItemWords(it, style: false))} — дарунок для {to} уже в дорозі");
     }
