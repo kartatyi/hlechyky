@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Hlechyky;
 
-/// <summary>Thin SQLite layer. One connection per call, WAL mode; the DB is tiny and low-traffic.</summary>
+/// <summary>Thin SQLite layer. One connection per call, WAL mode (pragmas: see <see cref="ConnectionPragmas"/>).</summary>
 public sealed class Db
 {
     readonly string _cs;
@@ -209,10 +209,20 @@ public sealed class Db
         WHERE kind = 'system' AND topic IS NULL;
         """;
 
+    /// <summary>
+    /// Налаштування кожного з'єднання: без них база — стеля всього сайту (Гончарне коло пише збереження на кожну
+    /// пачку кліків, і вже 50 гравців чекали відповіді секундами). busy_timeout — на зайнятій базі SQLite сам чекає
+    /// дрібними кроками; без нього Microsoft.Data.Sqlite на кожне зіткнення записів спить рівно 150 мс.
+    /// synchronous=NORMAL — у WAL коміт не чекає fsync (диск скидає контрольна точка): падіння сервера не губить
+    /// нічого, раптове вимкнення світла — хіба останні секунду-дві записів, а цілість бази зберігається.
+    /// </summary>
+    const string ConnectionPragmas = "PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;";
+
     SqliteConnection Open()
     {
         var c = new SqliteConnection(_cs);
         c.Open();
+        Exec(c, ConnectionPragmas);
         return c;
     }
 
