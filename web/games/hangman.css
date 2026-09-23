@@ -65,3 +65,38 @@
   .hgal { width: 84px; }
   .hl { min-width: 18px; font-size: 1.3em; }
 }
+
+/* ---- оновлення 24.09: по черзі, остання подія, анімації ---- */
+.hwrap { position: relative; }
+.harc { position: absolute; top: 0; right: 0; }
+.harc[hidden] { display: none; }
+.hsc.turn { box-shadow: 0 0 0 2px var(--accent) inset; background: var(--panel3, var(--bg2)); }
+/* Не твій хід: клавіатура на місці, але притушена й глуха — щоб картка не стрибала щоходу. */
+.gkbd.hwait, .hword.hwait { opacity: .38; pointer-events: none; filter: saturate(.5); }
+.hlast { min-height: 1.3em; text-align: center; color: var(--muted); }
+.hlast.k-hit, .hlast.k-word { color: var(--ok); }
+.hlast.k-miss, .hlast.k-wrong { color: var(--danger); }
+.hl.pop { animation: hpop .45s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes hpop {
+  0% { transform: translateY(6px) scale(.6); opacity: 0; color: var(--accent); }
+  60% { transform: translateY(-4px) scale(1.15); opacity: 1; color: var(--accent); }
+  100% { transform: none; }
+}
+.hgal.hshake { animation: hshake .35s ease-in-out; }
+@keyframes hshake {
+  0%, 100% { transform: none; }
+  25% { transform: translateX(-4px) rotate(-2deg); }
+  75% { transform: translateX(4px) rotate(2deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hl.pop, .hgal.hshake { animation: none; }
+}
+
+/* Шість місць — це рядок «вільно» над шибеницею. Сісти можна кнопкою каркаса, чіпи тут зайві. */
+.gtable:has(.hwrap) .gseat.free { display: none; }
+
+/* Full HD: картка широка, а риски дрібні — робимо їх помітними з дивана. */
+@media (min-width: 1600px) {
+  .hgal { width: 136px; }
+  .hl { min-width: 30px; font-size: 2em; }
+}
