@@ -101,6 +101,9 @@ public sealed partial class Clicker
 
     double GuildAllMult => 1;
 
+    /// <summary>v9: множник роботи ліплення від цеху (підмайстер друга в гостях тощо); менше 1 — швидше.</summary>
+    internal double GuildWorkMult => 1;
+
     /// <summary>Ранг рахує обпалені з <see cref="FiredTotal"/>, тож окремий лічильник тут не потрібен.</summary>
     void GuildOnFired(ItemInfo item, int n) { }
 
@@ -214,7 +217,7 @@ public sealed partial class Clicker
         if (raw is <= 0) return ActResult.Fail("Скільки покласти — хоч один");
         var have = ItemCount(x => x == it);
         if (have <= 0) return ActResult.Fail("Такого виробу в коморі нема");
-        var n = TakeItems(x => x == it, (int)Math.Min(Math.Clamp(raw ?? 1, 1, StoreCap), have));
+        var n = TakeItems(x => x == it, (int)Math.Min(Math.Clamp(raw ?? 1, 1, StoreCapNow), have));
         var r = svc.Give(GuildKey, GuildNick, it.Ware, n, now);
         _guildGiven += n;
         if (r.Reached > 0)

@@ -85,11 +85,21 @@ public sealed partial class Clicker
     /// <summary>Скільки роботи просить виріб зараз: майстерність і бонуси пришвидшують, але не нижче 40 %.</summary>
     internal int WorkOf(ClickerWare w)
     {
-        var mult = Math.Max(MinWorkShare, AlbumWorkMult(w.Key) * FairWorkMult(w.Key));
+        var mult = Math.Max(MinWorkShare, AlbumWorkMult(w.Key) * FairWorkMult(w.Key) * GuildWorkMult);
         return Math.Max(1, (int)Math.Ceiling(w.Work * mult));
     }
 
-    internal int RackSize => Math.Min(RackMax, RackBase + Level("workshop") / RackPerWorkshop) + KilnRackBonus();
+    internal int RackSize => Math.Min(RackMax, RackBase + Level("workshop") / RackPerWorkshop) + KilnRackBonus() + Math.Max(0, CraftRackBonus);
+
+    // Гачки дев'ятого оновлення (пакет «Ремесло» замінює заглушки): прокачка сушарні, горна й комори.
+    /// <summary>Скільки місць сушарні додає прокачка ремесла (v9).</summary>
+    internal int CraftRackBonus => 0;
+    /// <summary>Скільки місць горна додає прокачка ремесла (v9); горно додає їх до своїх.</summary>
+    internal int CraftKilnBonus => 0;
+    /// <summary>Місткість комори просто зараз (v9: прокачується); <see cref="StoreCap"/> — базова.</summary>
+    internal int StoreCapNow => StoreCap;
+    /// <summary>Рівень прокачки ремесла за ключем (v9: rack/kilnroom/store/stoker/dryer); 0 — нема.</summary>
+    internal int CraftLevel(string key) => 0;
 
     internal IReadOnlyList<RackRow> Rack => _rack;
 

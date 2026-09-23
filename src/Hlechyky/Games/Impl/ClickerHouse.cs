@@ -138,6 +138,17 @@ public sealed partial class Clicker
 
     bool Adorned(string key) => _decor.Contains(key);
 
+    /// <summary>Множник хати до всього (v9 — гачок пакета «Хата»): прикраси, далі — що додасть пакет.</summary>
+    double HouseAllMult => 1 + DecorBonus * _decor.Count;
+    /// <summary>v9: множник глека з полиці від знарядь хати.</summary>
+    double HouseFallMult => 1;
+    /// <summary>v9: на скільки довше стоїть розписний глек від знарядь хати.</summary>
+    TimeSpan HouseGoldenExtra => TimeSpan.Zero;
+    /// <summary>v9: частка глеків, що переживає обпал (0…0,5). Секрет «Дідова скриня» пакет «Коло» додає тут же через Has("ashes").</summary>
+    double HouseKeepShare => 0;
+    /// <summary>v9: скільки ще годин офлайну додає хата.</summary>
+    TimeSpan HouseOfflineExtra => TimeSpan.Zero;
+
     ActResult Adorn(JsonElement payload)
     {
         if (Decor.FirstOrDefault(d => d.Key == Str(payload, "key")) is not { } decor) return ActResult.Fail("Такої прикраси нема");

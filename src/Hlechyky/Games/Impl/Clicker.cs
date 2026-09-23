@@ -302,7 +302,7 @@ public sealed partial class Clicker : Game
     double AllMult => Math.Pow(1.25, Level("clay"))
         * (1 + StyleBonus * _styles.Count)
         * (1 + (Has("seal") ? SealStampBonus : StampBonus) * _stamps)
-        * (1 + DecorBonus * _decor.Count)
+        * HouseAllMult
         // Пакети сьомого оновлення: альбом, кахлі, репутація сіл, цех (docs/games/specs/clicker-v7.md).
         * KilnAllMult * AlbumAllMult * FairAllMult * GuildAllMult;
 
@@ -379,11 +379,11 @@ public sealed partial class Clicker : Game
     {
         var raw = PassiveBase * FallSeconds + (double)ClickBase * FallClicks;
         var mult = (1 + BasketBonus * Level("basket")) * (1 + StreakBonus * Math.Min(_fallStreak, StreakMax)) * (FairOn ? FairMult : 1)
-            * ClayNow.Loot;
+            * ClayNow.Loot * HouseFallMult;
         return Sum(ToLong(raw * mult), FallFloor);
     }
 
-    TimeSpan OfflineNow => (Has("night") ? LongOfflineCap : OfflineCap) + (Tool("lantern") ? LanternHours : TimeSpan.Zero);
+    TimeSpan OfflineNow => (Has("night") ? LongOfflineCap : OfflineCap) + (Tool("lantern") ? LanternHours : TimeSpan.Zero) + HouseOfflineExtra;
 
     /// <summary>
     /// Стеля обміну на сьогодні: з налаштувань економіки (без неї — типова) плюс те, що заробили клейма, але
@@ -407,6 +407,19 @@ public sealed partial class Clicker : Game
     public static long TotalFor(int stamps) => ToLong((double)stamps * stamps * StampUnit);
 
     int StampsSpent => Secrets.Where(s => _secrets.Contains(s.Key)).Sum(s => s.Price);
+    /// <summary>Клейма, витрачені не на секрети (оздоби хати тощо, v9): бонус клейм вони не гублять, як і секрети.</summary>
+    int _stampsUsed;
+    /// <summary>Вільні клейма: усі мінус секрети мінус інші покупки за клейма.</summary>
+    internal int FreeStamps => _stamps - StampsSpent - _stampsUsed;
+
+    /// <summary>Витратити клейма на щось, крім секретів (v9). null — вдалось; інакше готова відмова.</summary>
+    internal ActResult? SpendStamps(int price)
+    {
+        if (price <= 0) return null;
+        if (FreeStamps < price) return ActResult.Fail($"Бракує клейм: треба ще {price - FreeStamps}");
+        _stampsUsed += price;
+        return null;
+    }
 
     // ---------- життя партії ----------
 
@@ -560,8 +573,8 @@ public sealed partial class Clicker : Game
         }
         SyncOrders(now);
         // Ремесло й пакети — після пасиву й купців: підмайстри ліплять за той самий оплачений проміжок.
-        SyncCraft(now, paid);
-        SyncKiln(now, paid);
+        // v9: ремесло й горно синхронізує майстерня (ClickerKiln.cs): за довгий простій — кроками, щоб палій устигав обпалювати.
+        SyncWorkshop(now, paid);
         SyncAlbum(now, paid);
         SyncFair(now, paid);
         SyncGuild(now, paid);
@@ -616,7 +629,7 @@ public sealed partial class Clicker : Game
         var kind = roll < 45 ? GoldenKind.Merchant : roll < 85 ? GoldenKind.Fair : GoldenKind.Inspire;
         // Де саме на сцені: лівий верхній кут у відсотках. Глек завширшки ~58 px, сцена на телефоні ~300 px —
         // тож праворуч лишаємо чверть, щоб він не вилазив за картку.
-        var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero);
+        var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero) + HouseGoldenExtra;
         _golden = new GoldenRow(at, at + shown, kind, Ctx.Rng.Next(4, 77), Ctx.Rng.Next(2, 70));
     }
 
@@ -882,7 +895,8 @@ public sealed partial class Clicker : Game
         if (Tool("iron")) gain += IronStamps;
         _stamps += gain;
         _firings++;
-        _pots = 0;
+        // v9: частина глеків може пережити обпал (хата / секрети) — гачок KeepShare.
+        _pots = (long)Math.Floor(_pots * Math.Clamp(HouseKeepShare, 0, 0.5));
         _carry = 0;
         foreach (var up in Shop)
             if (!(up.Key == "clay" && Has("recipe"))) _levels[up.Key] = 0;
@@ -906,7 +920,7 @@ public sealed partial class Clicker : Game
         if (Secrets.FirstOrDefault(s => s.Key == Str(payload, "key")) is not { } secret)
             return ActResult.Fail("Такого секрету в родині нема");
         if (_secrets.Contains(secret.Key)) return ActResult.Fail($"«{secret.Name}» уже знаєш");
-        var free = _stamps - StampsSpent;
+        var free = FreeStamps;
         if (free < secret.Price) return ActResult.Fail($"Бракує клейм: треба ще {secret.Price - free}");
         _secrets.Add(secret.Key);
         return ActResult.Accept($"🤫 {secret.Name}: {secret.Desc.ToLowerInvariant()}");
@@ -1054,7 +1068,7 @@ public sealed partial class Clicker : Game
             inspire = new { until = _inspireUntil, mult = InspireMult },
             allMult = all,
             stamps = _stamps,
-            stampsFree = _stamps - spent,
+            stampsFree = FreeStamps,
             stampsReady = Math.Max(0, stampsAll - _stamps),
             nextStampAt = TotalFor(stampsAll + 1),
             stampBonus = Has("seal") ? SealStampBonus : StampBonus,
@@ -1127,7 +1141,7 @@ public sealed partial class Clicker : Game
         FallRow? Fall = null, int FallStreak = 0, int Grabbed = 0, double Heat = 0, DateTimeOffset HeatAt = default,
         HouseRow? House = null,
         CraftRow? Craft = null, KilnRow? Kiln = null, AlbumRow? Album = null, FairRow? Fair = null, GuildRow? Guild = null,
-        List<string>? Achievements = null);
+        List<string>? Achievements = null, int StampsUsed = 0);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -1137,7 +1151,7 @@ public sealed partial class Clicker : Game
             _stamps, _firings, _secrets.Order(StringComparer.Ordinal).ToList(),
             _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save(),
             _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse(),
-            SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null),
+            SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null, _stampsUsed),
         Wire);
 
     public override void Load(string json)
@@ -1176,6 +1190,7 @@ public sealed partial class Clicker : Game
 
         _stamps = Math.Max(0, s.Stamps);
         _firings = Math.Max(0, s.Firings);
+        _stampsUsed = Math.Max(0, s.StampsUsed);
         _caught = Math.Max(0, s.Caught);
         _fairUntil = s.FairUntil;
         _inspireUntil = s.InspireUntil;
@@ -1217,6 +1232,15 @@ public sealed partial class Clicker : Game
         foreach (var k in from ?? [])
             if (k is not null && known(k)) set.Add(k);
     }
+
+    // ---------- гачки дев'ятого оновлення (docs/games/specs/clicker-v9.md) ----------
+
+    /// <summary>
+    /// «Дивовижа»: щось рідкісне сталось (ідеальний обпал, серія з полиці, золотий віз, замовлення пана, гість на свято…).
+    /// Реалізує пакет «Хата» (ClickerHouse.cs): кидок і колекція дивовиж. Без реалізації виклики просто зникають.
+    /// Тригери: див. контракт v9 §Дивовижі.
+    /// </summary>
+    partial void Wonder(string trigger);
 
     // ---------- дрібниці ----------
 

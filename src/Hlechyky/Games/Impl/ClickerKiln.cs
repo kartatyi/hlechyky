@@ -557,7 +557,7 @@ public sealed partial class Clicker
     int _kilnBatches;
 
     /// <summary>Місця горна: піч дає до стелі, ранг майстра цеху — ще два понад неї (ClickerGuild.cs).</summary>
-    internal int KilnSlots => Math.Min(KilnSlotsMax, KilnSlotsBase + Level("kiln") / KilnPerLevel) + Math.Max(0, GuildKilnSlots);
+    internal int KilnSlots => Math.Min(KilnSlotsMax, KilnSlotsBase + Level("kiln") / KilnPerLevel) + Math.Max(0, GuildKilnSlots) + Math.Max(0, CraftKilnBonus);
 
     bool TechOpen(ClickerTechnique t) => t.Fired <= 0 || FiredTotal >= t.Fired || (t.Home.Length > 0 && _styles.Contains(t.Home));
 
@@ -972,6 +972,19 @@ public sealed partial class Clicker
         },
         techs = Techniques.Select(t => new { key = t.Key, name = t.Name, home = t.Home, desc = t.Desc, unlock = t.Unlock }),
     };
+
+    /// <summary>
+    /// v9: одна точка синхронізації майстерні — ліплення підмайстрів (ClickerCraft.SyncCraft) і горно (SyncKiln).
+    /// Пакет «Горно» перетворює її на покроковий прогін за довгий простій (палій обпалює партії, поки гончаря нема).
+    /// </summary>
+    void SyncWorkshop(DateTimeOffset now, TimeSpan paid)
+    {
+        SyncCraft(now, paid);
+        SyncKiln(now, paid);
+    }
+
+    /// <summary>v9: додати в'язок соломи в клуню (гостинці сіл, кіт тощо), не вище стелі.</summary>
+    internal void StrawAdd(int n) => _straw = Math.Clamp(_straw + Math.Max(0, n), 0, StrawMax);
 
     double KilnAllMult => 1;
 

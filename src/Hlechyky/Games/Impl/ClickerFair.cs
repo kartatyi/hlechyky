@@ -370,6 +370,9 @@ public sealed partial class Clicker
 
     double FairAllMult => 1 + FairRepAll * _mktRepLevels;
 
+    /// <summary>Чи триває якийсь баф ярмарку (сіль, пісня, наслідок пригоди): Око майстра під ним не перебиває (v9).</summary>
+    internal bool FairBuffOn(DateTimeOffset now) => _mktBuffs.Any(b => b.Until > now);
+
     double MktBuff(string kind)
     {
         var now = Ctx.Clock.UtcNow;
