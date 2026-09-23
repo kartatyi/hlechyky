@@ -6,6 +6,8 @@
 
   Вид із сервера (Impl/Mines.cs):
     { w, h, mines, turn, cells, scores, left, lastOpen, result }
+    + для дуелі на 2–4: { mode: 'boom'|'hunt', players, out: [null|'boom'|'resign'|'left'] × 4, lastBy,
+      unclaimed, owners: рядок '0'..'3'/'.' (чия міна, лише в мисливців), result.winners, result.places }
     + для дня: { day, attempts, startedAt, solved, ms, elapsedMs }
   cells — рядок на w*h символів: '#' закрито, 'F' прапорець, '0'..'8' відкрито, '*' міна (після кінця).
   Дії: act('open', { cell }), act('flag', { cell }), act('resign'), act('restart').
@@ -22,20 +24,25 @@
   const LONG_MS = 500;
 
   const closed = (ch) => ch === '#' || ch === 'F';
+  /// Позначка місця поруч із кольором: форма — для тих, кому кольори зливаються.
+  const MARK = ['●', '▲', '■', '◆'];
+  const OUT = { boom: '💥', resign: '🏳', left: '🚪' };
 
   function state(root) {
     if (!root._mines) root._mines = { flagMode: false, base: 0, at: 0, frozen: true, timer: 0 };
     return root._mines;
   }
 
-  /// Як виглядає клітинка. Кольори цифр — у mines.css, тут лише клас.
-  function face(ch, last, live) {
-    const mark = last ? ' last' : '';
-    if (ch === '*') return { html: '💣', cls: 'bomb' + mark, disabled: true };
+  /// Як виглядає клітинка. Кольори цифр — у mines.css, тут лише клас. last — клас останнього ходу
+  /// (з кольором того, хто ходив), owner — чия це міна в мисливців.
+  function face(ch, last, live, owner, chord) {
+    const mark = last ? ' last' + last : '';
+    if (ch === '*') return { html: '💣', cls: 'bomb' + (owner != null ? ' own own' + owner : '') + mark, disabled: true };
     if (ch === 'F') return { html: '🚩', cls: 'closed flag' + mark, disabled: !live };
     if (ch === undefined || ch === '#') return { html: '', cls: 'closed' + mark, disabled: !live };
     const n = +ch || 0;
-    return { html: n ? String(n) : '', cls: 'open n' + n + mark, disabled: true };
+    // У дні відкрите число клікабельне: тиск по ньому відкриває сусідів, якщо прапорців довкола вже досить.
+    return { html: n ? String(n) : '', cls: 'open n' + n + mark + (chord && n ? ' chord' : ''), disabled: !(chord && n && live) };
   }
 
   /// «42,3 с» до хвилини, далі «2:07». Кома, бо рядок читає людина українською.
@@ -57,15 +64,55 @@
     const cells = v.cells || '';
     let flags = 0;
     for (let i = 0; i < cells.length; i++) if (cells[i] === 'F') flags++;
-    const left = '<span>🚩 <b>' + ((v.mines || 0) - flags) + '</b></span>';
+    const hunt = v.mode === 'hunt';
+    const left = hunt
+      ? '<span title="Мін ще ніхто не знайшов">💣 <b>' + (v.unclaimed == null ? v.mines : v.unclaimed) + '</b></span>'
+      : '<span>🚩 <b>' + ((v.mines || 0) - flags) + '</b></span>';
     const html = daily
       ? left + '<span class="mtime">⏱ <b>' + timeText(v.solved ? (v.ms || 0) : (v.elapsedMs || 0)) + '</b></span>'
         + (v.attempts > 1 ? '<span>спроба ' + v.attempts + '</span>' : '')
-      : left + '<span><b class="mseat0">' + ((v.scores && v.scores[0]) || 0) + '</b> : '
-        + '<b class="mseat1">' + ((v.scores && v.scores[1]) || 0) + '</b></span>'
-        + '<span>лишилось ' + (v.left == null ? '?' : v.left) + '</span>';
+      : left + scoresHtml(ctx, v) + (hunt ? '' : '<span>лишилось ' + (v.left == null ? '?' : v.left) + '</span>');
     if (el.innerHTML !== html) el.innerHTML = html;
     return el;
+  }
+
+  /// Рахунок дуелі: удвох — «3 : 5», як було; у компанії — кожен своїм кольором і позначкою, вибулі закреслені.
+  function scoresHtml(ctx, v) {
+    const seats = Array.isArray(v.players) && v.players.length ? v.players : [0, 1];
+    const sc = v.scores || [];
+    const out = v.out || [];
+    if (seats.length === 2 && !out.some(Boolean)) {
+      return '<span><b class="mseat' + seats[0] + '">' + (sc[seats[0]] || 0) + '</b> : '
+        + '<b class="mseat' + seats[1] + '">' + (sc[seats[1]] || 0) + '</b></span>';
+    }
+    return seats.map((i) => {
+      const nick = ctx.esc(ctx.nickOf(i) || ctx.seatName(i));
+      const gone = out[i];
+      return '<span class="mp mseat' + i + (gone ? ' gone' : '') + (v.turn === i ? ' now' : '') + '" title="' + nick + '">'
+        + MARK[i] + ' <i>' + nick + '</i> <b>' + (sc[i] || 0) + '</b>' + (gone ? ' ' + (OUT[gone] || '') : '') + '</span>';
+    }).join('');
+  }
+
+  /// Одне речення про правила над полем — у мисливців і в компанії вони не ті, що в класичному сапері.
+  function rule(root, ctx, v) {
+    let el = root.querySelector(':scope > .mrule');
+    const seats = (v.players || []).length;
+    let text = '';
+    if (ctx.playing && v.mode === 'hunt') text = '💣 Мисливці: знайшов міну — очко і ходиш ще; порожня клітинка — хід далі';
+    else if (ctx.playing && seats > 2) text = '💥 Міна — вибув. Останній, хто вцілів, або найбільше очок на чистому полі — перемога';
+    else if (!ctx.playing && v.result && (v.result.places || []).length > 2) {
+      const medals = ['🥇', '🥈', '🥉', '4.'];
+      text = v.result.places.map((i, n) => medals[n] + ' ' + ctx.esc(ctx.nickOf(i) || ctx.seatName(i))
+        + ' ' + ((v.scores || [])[i] || 0)).join(' · ');
+    }
+    if (!text) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'mrule';
+      const bar = root.querySelector(':scope > .mbar');
+      root.insertBefore(el, bar ? bar.nextSibling : root.firstChild);
+    }
+    if (el.textContent !== text) el.textContent = text;
   }
 
   /// Таймер дня цокає локально: вид приходить рідко, а секунди мають бігти.
@@ -103,12 +150,13 @@
     // Поле каркас міг перебудувати (змінився розмір) — тоді воно опиниться після кнопок.
     if (root.lastElementChild !== el) root.appendChild(el);
 
-    const dead = !!(v.result && v.result.reason === 'boom');
+    // у дуелі «мертвий» — той, хто вибув сам; у дні — спроба, що підірвалась
+    const dead = daily ? !!(v.result && v.result.reason === 'boom') : !!(ctx.mine && v.out && v.out[ctx.seat]);
     const out = [];
     if (ctx.mine && ctx.playing && !dead)
       out.push('<button type="button" class="ghost mflag' + (st.flagMode ? ' on' : '') + '" data-m="flag">🚩 Прапорець</button>');
     if (daily && ctx.mine && dead) out.push('<button type="button" class="primary" data-m="restart">Спробувати ще</button>');
-    if (!daily && ctx.mine && ctx.playing) out.push('<button type="button" class="ghost" data-m="resign">Здаюсь</button>');
+    if (!daily && ctx.mine && ctx.playing && !dead) out.push('<button type="button" class="ghost" data-m="resign">Здаюсь</button>');
     const html = out.join('');
     if (el.innerHTML !== html) el.innerHTML = html;
     el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
@@ -198,13 +246,17 @@
 
     bar(root, ctx, daily);
     if (daily) clock(root, ctx);
+    else rule(root, ctx, v);
+    const owners = v.owners || '';
+    const lastCls = v.lastBy != null ? ' by' + v.lastBy : '';
 
     const board = HGames.ui.grid(boardHost(root), {
       cols: w,
       // до першого виду cells порожній: малюємо поле повного розміру, а не смужку в один ряд
       rows: cells.length ? Math.ceil(cells.length / w) : (v.h || w),
-      cls: 'mines' + (w > 9 ? ' tiny' : ''),
-      cell: (i) => face(cells[i], i === v.lastOpen, live),
+      cls: 'mines' + (w > 9 ? ' tiny' : '') + (w > 12 ? ' huge' : ''),
+      cell: (i) => face(cells[i], i === v.lastOpen ? lastCls || ' ' : '', live,
+        owners[i] && owners[i] !== '.' ? +owners[i] : null, daily),
       onCell: (i) => {
         if (st.flagMode) { if (closed(cells[i])) ctx.act('flag', { cell: i }); return; }
         ctx.act('open', { cell: i });
@@ -218,8 +270,8 @@
   const mod = (id, daily) => ({
     id,
     icon: ICON,
-    seatNames: ['жовтий', 'зелений'],
-    seatClass: ['x', 'o'],
+    seatNames: ['жовтий', 'зелений', 'глиняний', 'сірий'],
+    seatClass: ['x', 'o', 'c', 'd'],
     mount(root, ctx) { paint(root, ctx, daily); },
     update(root, ctx) { paint(root, ctx, daily); },
     unmount(root) {
@@ -237,6 +289,27 @@
     },
   });
 
-  HGames.register(mod('mines', false));
-  HGames.register(mod('mines-daily', true));
+  HGames.register(Object.assign(mod('mines', false), {
+    news: {
+      v: '2026-09-24',
+      title: 'Сапер-дуель: тепер на компанію',
+      items: [
+        '👥 За одним полем 2–4 сапери, ходите по черзі — кожен своїм кольором і позначкою',
+        '💥 Підірвався — вибув, решта грають далі; останній, хто вцілів, виграв',
+        '💣 Новий режим «Мисливці»: міна — твоє очко і ще хід, хто назбирав більше — той і переміг',
+        '📐 Середнє поле 12×12 — якраз на трьох-чотирьох',
+      ],
+    },
+  }));
+  HGames.register(Object.assign(mod('mines-daily', true), {
+    news: {
+      v: '2026-09-24',
+      title: 'Сапер дня: швидше по числах',
+      items: [
+        '👆 Тисни на відкрите число, довкола якого вже стоять усі прапорці, — решта сусідів відкриється одним махом',
+        '💥 Прапорець стояв не там — бабах, як у справжньому сапері, тож став їх чесно',
+        '🔧 На ПК поле більше не стискається в дрібну сітку',
+      ],
+    },
+  }));
 })();

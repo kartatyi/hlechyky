@@ -1,30 +1,80 @@
-/* Морський бій: два поля 10×10 з підписами колонок і рядків. Кольори — тільки зі змінних теми. */
+/* Морський бій: від одного до чотирьох полів із підписами колонок і рядків. Кольори — змінними теми
+   плюс чотири кольори місць (синій, червоний, зелений, жовтий), бо назва місця мусить збігатись із кольором. */
 :root {
   --bs-water: #14342a;      /* спокійна вода: трохи темніша за --panel */
   --bs-ship: #47705c;       /* свій корабель на воді */
   --bs-aim: rgba(244, 197, 66, .22);  /* підсвітка клітинки, куди можна стріляти */
+  --bs-c0: #5aa9ff;         /* синій */
+  --bs-c1: #ff7a70;         /* червоний */
+  --bs-c2: #5fd38a;         /* зелений */
+  --bs-c3: #f4c542;         /* жовтий */
 }
 
-.bs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 12px;
+/* чіпи місць у голові картки: колір як у назві (у каркаса x/o/c/d інші) */
+.gseat.bsc0 { color: var(--bs-c0); }
+.gseat.bsc1 { color: var(--bs-c1); }
+.gseat.bsc2 { color: var(--bs-c2); }
+.gseat.bsc3 { color: var(--bs-c3); }
+
+/* Поля лягають сіткою, кількість колонок залежить від ширини картки, а не вікна: картка буває вузькою
+   і на широкому екрані (поруч балачки). */
+.bs { container-type: inline-size; width: 100%; }
+.bs-seas {
   width: 100%;
+  display: grid;
+  gap: 14px 12px;
   justify-items: center;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+@container (min-width: 440px) {
+  .bs-seas.n2, .bs-seas.n3, .bs-seas.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (min-width: 780px) {
+  .bs-seas.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (min-width: 1080px) {
+  .bs-seas.n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
-.bs-side { width: min(300px, 100%); display: flex; flex-direction: column; gap: 5px; }
-.bs-cap { font-size: .85em; color: var(--muted); text-align: center; }
+.bs-side {
+  --seat: var(--muted);
+  width: min(340px, 100%);
+  display: flex; flex-direction: column; gap: 5px;
+  border-radius: 12px;
+  transition: box-shadow .25s, opacity .25s;
+}
+.bs-seas.n1 .bs-side { width: min(360px, 100%); }
+.bs-side.s0 { --seat: var(--bs-c0); }
+.bs-side.s1 { --seat: var(--bs-c1); }
+.bs-side.s2 { --seat: var(--bs-c2); }
+.bs-side.s3 { --seat: var(--bs-c3); }
+.bs-side.turn .bs-grid { box-shadow: 0 0 0 2px var(--seat), 0 0 14px -2px var(--seat); }
+.bs-side.aim .bs-grid { border-color: var(--accent); }
+.bs-seas.battle .bs-side.out { opacity: .55; }
+.bs-seas.battle .bs-side.out .bs-grid { filter: saturate(.4); }
+
+.bs-cap { font-size: .85em; color: var(--muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-cap b { color: var(--text); font-variant-numeric: tabular-nums; }
+.bs-cap b.dead { color: var(--danger); }
+
+.bs-who { font-weight: 600; }
+.bs-who.s0 { color: var(--bs-c0); }
+.bs-who.s1 { color: var(--bs-c1); }
+.bs-who.s2 { color: var(--bs-c2); }
+.bs-who.s3 { color: var(--bs-c3); }
+.bs-who b { color: inherit; }
 
 .bs-grid {
+  --bs-cols: 10;
   display: grid;
-  grid-template-columns: 1.15em repeat(10, 1fr);
+  grid-template-columns: 1.15em repeat(var(--bs-cols), 1fr);
   gap: 2px;
   background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 4px;
+  transition: box-shadow .25s;
 }
 
 .bs-lab {
@@ -45,13 +95,15 @@
   background: var(--bs-water);
   position: relative;
 }
-.bs-cell:disabled { opacity: 1; }
+.bs-cell:disabled { opacity: 1; cursor: default; }
 /* клітинка, куди зараз можна тицьнути (постріл або місце під корабель) */
-.bs-cell:not(:disabled) { background: var(--bs-aim); }
+.bs-cell:not(:disabled) { background: var(--bs-aim); cursor: crosshair; }
 
 /* свій корабель — після підсвітки, бо він важливіший за неї */
 .bs-cell.ship { background: var(--bs-ship); border-color: var(--panel3); }
 .bs-cell:not(:disabled):hover { background: var(--accent); }
+/* після кінця: чужий корабель, що вцілів, — контуром */
+.bs-cell.ghost { border: 1px dashed var(--seat, var(--muted)); background: rgba(255, 255, 255, .06); }
 
 /* промах — маленька крапка; влучання — крапка глиною; потоплений — заливка */
 .bs-cell.miss::after,
@@ -67,11 +119,52 @@
 .bs-cell.wait::after { inset: 30%; background: var(--accent); animation: bs-blink .8s infinite; }
 .bs-cell.sunk { background: var(--danger); border-color: var(--danger); }
 .bs-cell.sunk::after { content: none; }
+/* куди влучив останній постріл — щоб у компанії було видно, де щойно гримнуло */
+.bs-cell.last { box-shadow: 0 0 0 2px var(--accent2) inset; }
 
 @keyframes bs-blink { 50% { opacity: .25; } }
 
-/* смуга розстановки: список кораблів, кнопки й дуга таймера */
+/* свіжий постріл: бризки на промах, спалах на влучання й потоплення */
+.bs-cell.fx.miss::before,
+.bs-cell.fx.hit::before,
+.bs-cell.fx.sunk::before,
+.bs-cell.fx.out::before {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 2px solid var(--muted);
+  animation: bs-ring .7s ease-out forwards;
+  z-index: 1;
+}
+.bs-cell.fx.hit::before { border-color: var(--clay); }
+.bs-cell.fx.sunk::before,
+.bs-cell.fx.out::before { border-color: var(--danger); background: rgba(255, 90, 60, .25); animation-duration: .9s; }
+.bs-cell.fx.hit, .bs-cell.fx.sunk, .bs-cell.fx.out { animation: bs-jolt .35s ease-out; }
+@keyframes bs-ring { from { transform: scale(.2); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+@keyframes bs-jolt { 30% { transform: scale(1.25); } }
+
+/* стрічка «хто кого» — у компанії без неї не зрозуміти, звідки гримнуло */
+.bs-feed {
+  display: flex; flex-direction: column; gap: 2px; align-items: center;
+  font-size: .88em; min-height: 1.4em; text-align: center; width: 100%;
+}
+.bs-feed .old { color: var(--muted); font-size: .92em; }
+.bs-feed .old .bs-who { font-weight: 500; }
+.bs-feed i { color: var(--muted); font-style: normal; font-size: .9em; }
+.bs-feed .new { animation: bs-in .3s ease-out; }
+@keyframes bs-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* смуга бою: чий хід і дуга на постріл */
+.bs-bar { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; width: 100%; font-size: .92em; color: var(--muted); }
+.bs-bar.mine { color: var(--text); font-weight: 600; }
+
+/* смуга розстановки: хто готовий, список кораблів, кнопки й дуга таймера */
 .bs-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; width: 100%; }
+.bs-crew { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: center; width: 100%; font-size: .86em; }
+.bs-mate i { color: var(--muted); font-style: normal; }
+.bs-mate.ok { color: var(--ok); }
 .bs-tools .ghand { flex-wrap: wrap; justify-content: center; gap: 6px; }
 .bs-tools .gcard {
   padding: 5px 7px;
@@ -90,8 +183,28 @@
 .bs-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .bs-acts button { padding: 5px 10px; font-size: .9em; }
 
-/* вузьке вікно: поля лягають одне під одним, клітинки лишаються під палець */
+/* стіл у лобі: що тут буде */
+.bs-lobby { display: flex; flex-direction: column; gap: 4px; align-items: center; text-align: center; max-width: 46em; margin: 6px auto; font-size: .92em; }
+.bs-lobby .muted { color: var(--muted); font-size: .9em; }
+
+/* підсумок партії */
+.bs-sum { width: 100%; display: flex; justify-content: center; }
+.bs-sum table { border-collapse: collapse; font-size: .9em; font-variant-numeric: tabular-nums; }
+.bs-sum th { color: var(--muted); font-weight: 500; font-size: .85em; padding: 2px 8px; text-align: left; }
+.bs-sum td { padding: 3px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+.bs-sum td i { color: var(--muted); font-style: normal; }
+.bs-sum tr.me td { background: var(--bg2); }
+
+/* вузьке вікно: поля лягають одне під одним, клітинки лишаються під палець; своє поле в бою — дрібніше,
+   бо стріляють по чужих */
 @media (max-width: 520px) {
-  .bs { grid-template-columns: 1fr; }
-  .bs-side { width: min(320px, 100%); }
+  .bs-side { width: min(340px, 100%); }
+  .bs-seas.battle .bs-side.mine { width: min(230px, 72%); order: 1; }   /* на телефоні ціль — угорі, своє поле — під нею */
+  .bs-feed { font-size: .82em; }
+  .bs-sum td, .bs-sum th { padding: 3px 5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bs-cell.wait::after, .bs-cell.fx::before, .bs-cell.fx, .bs-feed .new { animation: none; }
+  .bs-side, .bs-grid { transition: none; }
 }

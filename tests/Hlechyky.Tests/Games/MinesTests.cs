@@ -29,6 +29,7 @@ public class MinesTests
         var h = new RoomHarness("mines", options: new { size }, seed: seed);
         h.Join("Оля");
         h.Join("Петро");
+        h.Start();   // стіл на 2–4: «Почати» тисне господар
         var (w, height, mines) = size == "16x16-40" ? (16, 16, 40) : (9, 9, 10);
         var mirror = Mirror(seed, first, w, height, mines);
         h.Act(0, "open", new { cell = first });
@@ -408,7 +409,7 @@ public class MinesTests
         Assert.Equal(9, v.GetProperty("h").GetInt32());
         Assert.Equal(10, v.GetProperty("mines").GetInt32());
         Assert.Equal(81, v.GetProperty("cells").GetString()!.Length);
-        Assert.Equal(2, v.GetProperty("scores").GetArrayLength());
+        Assert.Equal(Mines.Seats, v.GetProperty("scores").GetArrayLength());
         Assert.Equal(40, v.GetProperty("lastOpen").GetInt32());
         Assert.Equal(JsonValueKind.Null, v.GetProperty("result").ValueKind);
         Assert.Equal(1, v.GetProperty("turn").GetInt32());
@@ -473,7 +474,7 @@ public class MinesTests
 
         Assert.Equal("Петро", h.Room.Seats[0]);
         Assert.Equal(new string('#', 81), Cells(h));
-        Assert.Equal([0, 0], Scores(h));
+        Assert.Equal([0, 0, 0, 0], Scores(h));
         Assert.Equal(0, Turn(h));
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("lastOpen").ValueKind);
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("result").ValueKind);
@@ -500,11 +501,15 @@ public class MinesTests
 
         var duel = Assert.Single(catalog, g => g.Id == "mines");
         Assert.Equal("board", duel.Group);
-        Assert.True(duel.Rated);
-        Assert.Equal(2, duel.MaxPlayers);
+        // на 2–4 Ело не рахується (Rewards.Elo — лише MaxPlayers == 2), тож і рейтинговою її не звемо
+        Assert.False(duel.Rated);
+        Assert.Equal(2, duel.MinPlayers);
+        Assert.Equal(4, duel.MaxPlayers);
+        Assert.Equal("byHost", duel.Start);
         Assert.Equal("mines", duel.Module);
         Assert.False(duel.Daily);
-        Assert.Equal(2, Assert.Single(duel.Options).Values.Count);
+        Assert.Equal(3, duel.Options.Single(o => o.Key == "size").Values.Count);
+        Assert.Equal("boom", duel.Options.Single(o => o.Key == "mode").Default);
 
         var daily = Assert.Single(catalog, g => g.Id == "mines-daily");
         Assert.Equal("solo", daily.Group);
@@ -779,5 +784,322 @@ public class MinesTests
 
         game.Load("це не json");
         Assert.Equal(clean, Views.Text(game.View(0)));
+    }
+
+    // ---------- компанія: 3–4 сапери ----------
+
+    static readonly string[] Crew = ["Оля", "Петро", "Іра", "Марко"];
+
+    /// <summary>Стіл на n із першим ходом місця 0 і дзеркалом поля; mode — «boom» або «hunt».</summary>
+    static (RoomHarness H, MinesBoard Mirror) Company(int n, int seed = 7, int first = 40, string mode = "boom", string size = "9x9-10")
+    {
+        var h = new RoomHarness("mines", options: new { size, mode }, seed: seed);
+        foreach (var nick in Crew.Take(n)) h.Join(nick);
+        h.Start();
+        var (w, height, careful, hunt) = size switch
+        {
+            "16x16-40" => (16, 16, 40, 51),
+            "12x12-22" => (12, 12, 22, 29),
+            _ => (9, 9, 10, 15),
+        };
+        var mirror = Mirror(seed, first, w, height, mode == "hunt" ? hunt : careful);
+        h.Act(0, "open", new { cell = first });
+        mirror.Open(first);
+        return (h, mirror);
+    }
+
+    static string? OutOf(RoomHarness h, int seat)
+    {
+        var e = h.View(null).GetProperty("out")[seat];
+        return e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+    }
+
+    [Fact]
+    public void Four_sappers_take_turns_round_the_table()
+    {
+        var (h, mirror) = Company(4);
+        Assert.Equal([0, 1, 2, 3], h.View(null).GetProperty("players").EnumerateArray().Select(e => e.GetInt32()));
+        foreach (var expected in new[] { 1, 2, 3, 0, 1 })
+        {
+            Assert.Equal(expected, Turn(h));
+            var cell = SafeCell(h, mirror);
+            Assert.True(h.Act(expected, "open", new { cell }).Ok);
+            mirror.Open(cell);
+            if (h.Room.Status != RoomStatus.Playing) return;
+        }
+    }
+
+    [Fact]
+    public void A_boom_in_a_company_drops_only_the_one_who_stepped()
+    {
+        var (h, mirror) = Company(3);
+        var reply = h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });
+
+        Assert.Equal("Бабах. Ти вибув — дивись, хто кого", reply.Message);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal("boom", OutOf(h, 1));
+        Assert.Equal(2, Turn(h));
+        Assert.Single(Cells(h), c => c == '*');            // видно лише ту міну, на яку наступили
+        Assert.Equal("Ти вже вибув — лишається дивитись", h.Act(1, "flag", new { cell = 0 }).Message);
+
+        var cell = SafeCell(h, mirror);
+        h.Act(2, "open", new { cell });
+        Assert.Equal(0, Turn(h));                             // вибулого черга оминає
+    }
+
+    [Fact]
+    public void The_last_survivor_wins_the_careful_game()
+    {
+        var (h, mirror) = Company(3);
+        h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });
+        var mine = MineCell(mirror, Cells(h));
+        Assert.Equal("Бабах. Це була міна", h.Act(2, "open", new { cell = mine }).Message);
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        var result = h.View(null).GetProperty("result");
+        Assert.Equal("boom", result.GetProperty("reason").GetString());
+        Assert.Equal([0, 2, 1], result.GetProperty("places").EnumerateArray().Select(e => e.GetInt32()));
+        Assert.Contains("наступив на міну", h.Room.Result.Text);
+    }
+
+    [Fact]
+    public void A_cleared_field_ranks_only_those_still_standing()
+    {
+        var (h, mirror) = Company(3, seed: 11);
+        h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });   // зелений вибув одразу
+        var turn = Turn(h);
+        for (var c = 0; c < mirror.Cells && h.Room.Status == RoomStatus.Playing; c++)
+        {
+            if (mirror.IsMine(c) || mirror.IsOpen(c)) continue;
+            h.Act(turn, "open", new { cell = c });
+            mirror.Open(c);
+            turn = Turn(h);
+        }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal("cleared", h.View(null).GetProperty("result").GetProperty("reason").GetString());
+        Assert.DoesNotContain(1, h.Room.Result!.Winners);
+        var e = Assert.Single(h.Finished);
+        Assert.Equal(3, e.Result.Scores!.Count);
+    }
+
+    [Fact]
+    public void Resigning_in_a_company_lets_the_rest_play_on()
+    {
+        var (h, _) = Company(3);
+        Assert.Equal(1, Turn(h));
+        Assert.Equal("Здався. Дивись, хто кого", h.Act(1, "resign").Message);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal("resign", OutOf(h, 1));
+        Assert.Equal(2, Turn(h));
+        Assert.Equal("Ти вже вибув — лишається дивитись", h.Act(1, "resign").Message);
+
+        h.Act(2, "resign");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+    }
+
+    [Fact]
+    public void Leaving_a_company_does_not_break_the_game()
+    {
+        var (h, _) = Company(4);
+        Assert.Equal(1, Turn(h));
+        h.Leave("Петро");
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal("left", OutOf(h, 1));
+        Assert.Equal(2, Turn(h));
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("встав з-за столу, решта грають далі"));
+    }
+
+    [Fact]
+    public void A_sapper_already_out_can_leave_quietly()
+    {
+        var (h, mirror) = Company(3);
+        h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });
+        h.Leave("Петро");
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal("boom", OutOf(h, 1));
+    }
+
+    [Fact]
+    public void A_company_rematch_gives_everybody_a_clean_start()
+    {
+        var (h, mirror) = Company(3);
+        h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });
+        h.Act(2, "open", new { cell = MineCell(mirror, Cells(h)) });
+        Assert.True(h.Rematch("Іра").Ok);
+
+        Assert.Equal(new string('#', 81), Cells(h));
+        Assert.Equal([0, 0, 0, 0], Scores(h));
+        for (var s = 0; s < 3; s++) Assert.Null(OutOf(h, s));
+        Assert.Equal(0, Turn(h));
+    }
+
+    [Fact]
+    public void Two_sappers_on_a_four_seat_table_play_the_old_duel()
+    {
+        var h = new RoomHarness("mines", seed: 7);
+        h.Join("Оля"); h.Join("Петро"); h.Join("Іра");
+        h.Leave("Петро");
+        h.Start();
+        var mirror = Mirror(7, 40);
+        h.Act(0, "open", new { cell = 40 });
+        mirror.Open(40);
+        Assert.Equal(2, Turn(h));
+        h.Act(2, "open", new { cell = MineCell(mirror, Cells(h)) });
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.Contains("Іра глиняний наступив на міну, Оля жовтий виграв", h.Room.Result.Text);
+    }
+
+    [Fact]
+    public void The_middle_field_is_twelve_by_twelve()
+    {
+        var (h, _) = Company(2, first: 6 * 12 + 6, size: "12x12-22");
+        var v = h.View(0);
+        Assert.Equal(12, v.GetProperty("w").GetInt32());
+        Assert.Equal(22, v.GetProperty("mines").GetInt32());
+        Assert.Equal(144, Cells(h).Length);
+    }
+
+    // ---------- мисливці ----------
+
+    [Fact]
+    public void Hunters_play_on_a_denser_field()
+    {
+        foreach (var (size, first, mines) in new[] { ("9x9-10", 40, 15), ("12x12-22", 78, 29), ("16x16-40", 136, 51) })
+        {
+            var (h, _) = Company(2, first: first, mode: "hunt", size: size);
+            Assert.Equal(mines, h.View(0).GetProperty("mines").GetInt32());
+            Assert.Equal("hunt", h.View(0).GetProperty("mode").GetString());
+        }
+    }
+
+    [Fact]
+    public void A_hunter_scores_a_mine_and_shoots_again()
+    {
+        var (h, mirror) = Company(2, mode: "hunt");
+        Assert.Equal([0, 0, 0, 0], Scores(h));             // відкриті клітинки мисливцям очок не дають
+        Assert.Equal(1, Turn(h));
+
+        var mine = MineCell(mirror, Cells(h));
+        var reply = h.Act(1, "open", new { cell = mine });
+        Assert.StartsWith("Міна твоя!", reply.Message);
+        Assert.Equal(1, Scores(h)[1]);
+        Assert.Equal(1, Turn(h));                           // знайшов міну — ходиш ще
+        Assert.Equal('*', Cells(h)[mine]);
+        Assert.Equal('1', h.View(null).GetProperty("owners").GetString()![mine]);
+        Assert.Equal(14, h.View(null).GetProperty("unclaimed").GetInt32());
+
+        var safe = SafeCell(h, mirror);
+        h.Act(1, "open", new { cell = safe });
+        Assert.Equal(0, Turn(h));                           // порожня клітинка — хід далі
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void The_hunt_ends_as_soon_as_nobody_can_catch_the_leader()
+    {
+        var (h, mirror) = Company(2, mode: "hunt");
+        h.Act(1, "open", new { cell = SafeCell(h, mirror) });   // хід переходить до жовтого
+        for (var i = 0; i < 7; i++)
+        {
+            h.Act(0, "open", new { cell = MineCell(mirror, Cells(h)) });
+            Assert.Equal(RoomStatus.Playing, h.Room.Status);   // 7 проти 0 при восьми, що лишились, — ще не вирішено
+        }
+        h.Act(0, "open", new { cell = MineCell(mirror, Cells(h)) });   // 8:0, а лишилось 7 — усе
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        var result = h.View(null).GetProperty("result");
+        Assert.Equal("hunted", result.GetProperty("reason").GetString());
+        Assert.Contains("полювання скінчено", h.Room.Result.Text);
+        Assert.Equal(15, Cells(h).Count(c => c == '*'));   // після кінця видно всі міни
+    }
+
+    [Fact]
+    public void The_hunt_view_is_the_same_for_every_seat_and_hides_unclaimed_mines()
+    {
+        var (h, mirror) = Company(3, mode: "hunt");
+        h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });
+        Assert.Single(Cells(h), c => c == '*');
+        Assert.Equal(Views.Text(h.Room.Game.View(0)), Views.Text(h.Room.Game.View(null)));
+        Assert.Equal(Views.Text(h.Room.Game.View(2)), Views.Text(h.Room.Game.View(null)));
+    }
+
+    [Fact]
+    public void The_careful_view_has_no_owners()
+    {
+        var (h, _) = Company(2);
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("owners").ValueKind);
+        Assert.Equal("boom", h.View(null).GetProperty("mode").GetString());
+    }
+
+    // ---------- сапер дня: тиск по числу ----------
+
+    /// <summary>Відкрите число поля дня, довкола якого є і закриті міни, і закриті безпечні клітинки.</summary>
+    static (int Cell, int[] Mines, int[] Safe) ChordSpot(MinesBoard mirror, Func<int, int[], int[], bool> want)
+    {
+        for (var c = 0; c < mirror.Cells; c++)
+        {
+            if (!mirror.IsOpen(c) || mirror.Near(c) == 0) continue;
+            var closed = mirror.Around(c).Where(n => !mirror.IsOpen(n)).ToArray();
+            var mines = closed.Where(mirror.IsMine).ToArray();
+            var safe = closed.Where(n => !mirror.IsMine(n)).ToArray();
+            if (want(mirror.Near(c), mines, safe)) return (c, mines, safe);
+        }
+        throw new InvalidOperationException("на полі дня нема потрібного числа");
+    }
+
+    [Fact]
+    public void Pressing_a_number_with_its_flags_in_place_opens_the_rest_around_it()
+    {
+        var h = DailyRoom();
+        var (cell, mines, safe) = ChordSpot(DailyMirror(), (_, m, s) => m.Length > 0 && s.Length > 0);
+        foreach (var m in mines) h.Act(0, "flag", new { cell = m });
+
+        Assert.True(h.Act(0, "open", new { cell }).Ok);
+        var cells = Cells(h, 0);
+        Assert.All(safe, c => Assert.NotEqual('#', cells[c]));
+        Assert.All(mines, c => Assert.Equal('F', cells[c]));
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("result").ValueKind);
+    }
+
+    [Fact]
+    public void Pressing_a_number_without_enough_flags_is_refused()
+    {
+        var h = DailyRoom();
+        var (cell, _, _) = ChordSpot(DailyMirror(), (_, m, s) => m.Length > 0 && s.Length > 0);
+        var before = Cells(h, 0);
+
+        var r = h.Act(0, "open", new { cell });
+        Assert.False(r.Ok);
+        Assert.StartsWith("Довкола має стояти прапорців", r.Message);
+        Assert.Equal(before, Cells(h, 0));
+        Assert.Equal("Тут уже відкрито", h.Act(0, "open", new { cell = MinesDaily.Center }).Message);   // нуль тиснути нема чого
+    }
+
+    [Fact]
+    public void A_wrong_flag_under_a_pressed_number_blows_up()
+    {
+        var h = DailyRoom();
+        var mirror = DailyMirror();
+        var (cell, mines, safe) = ChordSpot(mirror, (n, m, s) => m.Length > 0 && s.Length >= n);
+        var n = mirror.Near(cell);
+        foreach (var c in safe.Take(n)) h.Act(0, "flag", new { cell = c });
+
+        var r = h.Act(0, "open", new { cell });
+        Assert.Equal("Бабах. Один прапорець стояв не там", r.Message);
+        Assert.Equal("boom", h.View(0).GetProperty("result").GetProperty("reason").GetString());
+        Assert.Contains(mines, m => Cells(h, 0)[m] == '*');
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);   // день не зіпсовано — «Спробувати ще» працює
+    }
+
+    [Fact]
+    public void In_the_duel_a_pressed_number_is_still_just_an_open_cell()
+    {
+        var (h, _) = Duel();
+        var cells = Cells(h);
+        var number = Enumerable.Range(0, cells.Length).First(c => cells[c] is >= '1' and <= '8');
+        Assert.Equal("Тут уже відкрито", h.Act(1, "open", new { cell = number }).Message);
     }
 }
