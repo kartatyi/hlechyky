@@ -1,13 +1,25 @@
-/* Земля: четвертий колір наділу і смуга площ. Решта — з core.css. */
+/* Земля: четвертий–шостий кольори наділів і смуга площ. Решта — з core.css. */
 :root {
-  /* У теми сайту три акценти; на чотирьох гравців потрібен ще один, і він має читатись на темному полі */
+  /* У теми сайту три акценти; на шістьох гравців потрібні ще три, і всі мають читатись на темному полі */
   --gterr4: #6aa9e9;
+  --gterr5: #e88ac0;
+  --gterr6: #a98bef;
 }
 
 /* Поле 40×30 — воно варте кількох зайвих пікселів проти типових 416 у core.css */
 .gcanvas.territoryboard { max-width: 520px; }
+/* Full HD: даємо полю рости, поки воно разом зі смугою площ уміщається по висоті */
+@media (min-width: 1500px) and (min-height: 860px) {
+  .gcanvas.territoryboard { max-width: min(760px, calc((100vh - 330px) * 4 / 3)); }
+}
+
+/* Чипи місць у шапці картки: каркас знає лише x/o/c/d, а четвертий наділ — блакитний, не сірий */
+.gseat.tq { color: var(--gterr4); }
+.gseat.tr5 { color: var(--gterr5); }
+.gseat.tr6 { color: var(--gterr6); }
 
 .gterr {
+  justify-content: center;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 14px;
@@ -23,11 +35,19 @@
 }
 
 .gterr-p i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  display: inline-block;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  display: inline-grid;
+  place-items: center;
+  font-style: normal;
+  font-size: .72em;
+  font-weight: 700;
+  color: var(--bg);
 }
+
+/* своє місце — обведене, як і голова на полі */
+.gterr-p.me { box-shadow: 0 0 0 1px var(--text) inset; border-radius: 999px; padding: 1px 8px 1px 3px; }
 
 /* Згорів — рядок пригасає, але з поля не зникає: за три секунди він повернеться */
 .gterr-p.out { opacity: .45; }

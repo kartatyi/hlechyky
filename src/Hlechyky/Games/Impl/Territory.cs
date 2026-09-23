@@ -22,15 +22,31 @@ public sealed class TerritoryRider
 }
 
 /// <summary>
-/// Поле і правила загарбання — без жодного слова про кімнати й чат. Дві сітки на 40×30: <see cref="Owner"/>
-/// (чия земля) і <see cref="Trail"/> (чий слід). Обидві тримаємо байтами, де 0 — нічия, а 1..4 — номер місця
-/// плюс один: так вид їде на дріт рядком із 1200 символів, а кадр — списком змінених клітинок.
+/// Поле і правила загарбання — без жодного слова про кімнати й чат. Дві сітки: <see cref="Owner"/>
+/// (чия земля) і <see cref="Trail"/> (чий слід). Обидві тримаємо байтами, де 0 — нічия, а 1..6 — номер місця
+/// плюс один: так вид їде на дріт рядком по символу на клітинку, а кадр — списком змінених клітинок.
+/// Розмір — за складом (<see cref="SizeFor"/>): до чотирьох звичні 40×30, на п'ятьох-шістьох 48×36.
 /// </summary>
 /// <param name="rng">Сідований генератор кімнати: воскресіння на випадковому місці має відтворюватись у тестах.</param>
-public sealed class TerritoryCore(Random rng)
+/// <param name="w">Ширина поля в клітинках.</param>
+/// <param name="h">Висота поля в клітинках.</param>
+public sealed class TerritoryCore(Random rng, int w = TerritoryCore.SmallW, int h = TerritoryCore.SmallH)
 {
-    public const int W = 40, H = 30;
-    public const int Cells = W * H;
+    /// <summary>Звичне поле на двох–чотирьох.</summary>
+    public const int SmallW = 40, SmallH = 30;
+    /// <summary>Поле на п'ятьох-шістьох: на кожного приблизно стільки ж землі, як учотирьох на звичному.</summary>
+    public const int BigW = 48, BigH = 36;
+    public const int SmallCells = SmallW * SmallH;
+
+    public int W { get; } = w;
+    public int H { get; } = h;
+    public int Cells => W * H;
+
+    /// <summary>Розмір поля під стількох гравців.</summary>
+    public static (int W, int H) SizeFor(int players) => players > SmallSeats ? (BigW, BigH) : (SmallW, SmallH);
+
+    /// <summary>Скільки людей уміщає звичне поле; більше — велике.</summary>
+    public const int SmallSeats = 4;
     public const int TickMs = 100;
     /// <summary>Раунд — 90 секунд, тобто 900 тиків по 100 мс.</summary>
     public const int RoundTicks = 900;
@@ -38,7 +54,7 @@ public sealed class TerritoryCore(Random rng)
     public const int RespawnTicks = 30;
     /// <summary>Далі вже не пам'ять гравця, а хвіст лагу — як у змійки.</summary>
     public const int MaxQueued = 2;
-    public const int MaxPlayers = 4;
+    public const int MaxPlayers = 6;
     /// <summary>Наділ на старті — квадрат 3×3 навколо голови.</summary>
     public const int Plot = 1;
 
@@ -49,20 +65,29 @@ public sealed class TerritoryCore(Random rng)
     /// підібрані так, щоб жодні двоє не їхали назустріч по одному ряду: інакше четверо, які просто нічого не
     /// натиснули, згорали б лоб у лоб уже на першій секунді. Уздовж поля їхати теж є куди — до стіни двадцять
     /// із гаком клітинок, тобто дві секунди на подумати.
+    /// <para>
+    /// П'ятий і шостий стоять біля середини верхнього й нижнього краю й їдуть уздовж нього — поза «вітряком»,
+    /// який малюють чотири перші промені, тож і вони нікого не перетинають, поки всі їдуть прямо.
+    /// </para>
     /// </summary>
-    static readonly (int X, int Y, int Dir)[] Starts = [(8, 7, 0), (31, 22, 2), (31, 7, 1), (8, 22, 3)];
+    static readonly (int X, int Y, int Dir)[] SmallStarts = [(8, 7, 0), (31, 22, 2), (31, 7, 1), (8, 22, 3), (20, 3, 0), (19, 26, 2)];
+
+    /// <summary>Те саме на великому полі 48×36.</summary>
+    static readonly (int X, int Y, int Dir)[] BigStarts = [(9, 8, 0), (38, 27, 2), (38, 8, 1), (9, 27, 3), (24, 3, 0), (23, 32, 2)];
+
+    (int X, int Y, int Dir)[] Starts => W == SmallW && H == SmallH ? SmallStarts : BigStarts;
 
     readonly HashSet<int> _ownerChanged = [];
     readonly HashSet<int> _trailChanged = [];
     readonly int[] _area = new int[MaxPlayers];
-    readonly bool[] _seen = new bool[Cells];
+    readonly bool[] _seen = new bool[w * h];
     readonly Queue<int> _bfs = new();
 
     /// <summary>Чия це земля: 0 — нічия, інакше номер місця плюс один.</summary>
-    public byte[] Owner { get; } = new byte[Cells];
+    public byte[] Owner { get; } = new byte[w * h];
 
     /// <summary>Чий тут слід: 0 — чисто, інакше номер місця плюс один.</summary>
-    public byte[] Trail { get; } = new byte[Cells];
+    public byte[] Trail { get; } = new byte[w * h];
 
     /// <summary>Голови по місцях; довжина завжди <see cref="MaxPlayers"/>, щоб індекс дорівнював місцю.</summary>
     public TerritoryRider[] Riders { get; } = [.. Enumerable.Range(0, MaxPlayers).Select(_ => new TerritoryRider())];
@@ -81,7 +106,7 @@ public sealed class TerritoryCore(Random rng)
     /// <summary>Клітинки, у яких за останній тик з'явився або згас слід.</summary>
     public IReadOnlyCollection<int> TrailChanged => _trailChanged;
 
-    public static int Cell(int x, int y) => y * W + x;
+    public int Cell(int x, int y) => y * W + x;
 
     /// <summary>Скільки клітинок належить місцю seat.</summary>
     public int Area(int seat) => seat >= 0 && seat < MaxPlayers ? _area[seat] : 0;
@@ -295,12 +320,12 @@ public sealed class TerritoryCore(Random rng)
         foreach (var r in Riders) r.HasTrail = false;
     }
 
-    /// <summary>Поле рядком із 1200 символів '0'..'4' — саме так воно летить у виді після реконекту.</summary>
+    /// <summary>Поле рядком по символу на клітинку ('0'..'6') — саме так воно летить у виді після реконекту.</summary>
     public string OwnerRow() => Row(Owner);
 
     public string TrailRow() => Row(Trail);
 
-    static string Row(byte[] map) => string.Create(Cells, map, static (span, src) =>
+    static string Row(byte[] map) => string.Create(map.Length, map, static (span, src) =>
     {
         for (var i = 0; i < span.Length; i++) span[i] = (char)('0' + src[i]);
     });
@@ -377,18 +402,24 @@ public sealed class TerritoryCore(Random rng)
 }
 
 /// <summary>
-/// Загарбання землі на двох-чотирьох. Виїжджаєш зі свого наділу, обводиш шматок поля, вертаєшся — обведене
+/// Загарбання землі на двох–шістьох. Виїжджаєш зі свого наділу, обводиш шматок поля, вертаєшся — обведене
 /// твоє; перерізали слід — уся земля згоріла. Правила живуть тут, браузер лише малює кадри.
 /// </summary>
 public sealed class Territory : Game
 {
     /// <summary>Кольори наділів; вони ж — назви місць у чіпах і в Журналі.</summary>
-    static readonly string[] Colours = ["жовта", "зелена", "глиняна", "блакитна"];
+    static readonly string[] Colours = ["жовта", "зелена", "глиняна", "блакитна", "рожева", "фіалкова"];
 
     public override GameInfo Info { get; } = new(
         "territory", "Земля", "землю", GameGroup.Live, 2, TerritoryCore.MaxPlayers,
         TickMs: TerritoryCore.TickMs, Start: StartMode.ByHost,
-        Hint: "Виїжджай зі своєї землі, обводь шматок поля і повертайся — обведене твоє. Перерізали твій слід — усе згоріло");
+        Hint: "Виїжджай зі своєї землі, обводь шматок поля і повертайся — обведене твоє. Перерізали твій слід — усе згоріло. До шести за столом");
+
+    /// <summary>
+    /// «Готуйсь» перед раундом — три секунди. Без нього голови рушали тієї ж миті, коли господар тиснув
+    /// «Почати», і хтось із друзів уже горів, ще не знайшовши себе на полі.
+    /// </summary>
+    public const int ReadyTicks = 30;
 
     /// <summary>
     /// Більше за стільки змін — і список пар стає дорожчим за все поле (два рядки по 1200 символів це
@@ -401,6 +432,8 @@ public sealed class Territory : Game
     int _startedRound = -1;
     /// <summary>Раунд, під який зібране поле лобі: щоб не перекладати наділи на кожен вид.</summary>
     int _laidRound = -1;
+    /// <summary>Тиків «готуйсь», що лишились; 0 — уже їдемо.</summary>
+    int _ready;
 
     /// <summary>
     /// Поле готове ще до старту: стіл, що чекає на гравців, має виглядати як поле з наділами, а не як
@@ -411,10 +444,20 @@ public sealed class Territory : Game
         get
         {
             if (_core is not null) return _core;
-            _core = new TerritoryCore(Ctx.Rng);
-            _core.Reset(SeatedMask());
-            return _core;
+            Lay(SeatedMask());
+            return _core!;
         }
+    }
+
+    /// <summary>
+    /// Поле під склад: розмір за кількістю людей (<see cref="TerritoryCore.SizeFor"/>) і стартові наділи.
+    /// Нове ядро — лише коли розмір справді змінився; генератор при цьому не смикається.
+    /// </summary>
+    void Lay(bool[] seated)
+    {
+        var (w, h) = TerritoryCore.SizeFor(seated.Count(x => x));
+        if (_core is null || _core.W != w || _core.H != h) _core = new TerritoryCore(Ctx.Rng, w, h);
+        _core.Reset(seated);
     }
 
     public override string SeatName(int seat) =>
@@ -422,8 +465,9 @@ public sealed class Territory : Game
 
     public override void Start()
     {
-        Core.Reset(SeatedMask());
+        Lay(SeatedMask());
         _startedRound = Ctx.Round;
+        _ready = ReadyTicks;
     }
 
     /// <summary>Реалтайм-ввід: самі повороти. Помилки нікого не цікавлять — наступний кадр усе перемалює.</summary>
@@ -445,6 +489,12 @@ public sealed class Territory : Game
 
     public override TickResult Tick()
     {
+        if (_ready > 0)
+        {
+            // Відлік: поле стоїть, а повороти вже приймаються в чергу — хто натиснув заздалегідь, той і рушить першим.
+            _ready--;
+            return _ready == 0 ? TickResult.Both : TickResult.FrameOnly;
+        }
         Core.Step();
         if (Core.TicksLeft > 0) return TickResult.FrameOnly;
         FinishRound();
@@ -484,6 +534,8 @@ public sealed class Territory : Game
         return new
         {
             t = Core.Ticks,
+            phase = Phase,
+            startIn = _ready * TerritoryCore.TickMs,
             heads = Heads(),
             area = Areas(),
             owner = heavy ? Core.OwnerRow() : null,
@@ -502,15 +554,17 @@ public sealed class Territory : Game
         // показати, аж поки хтось не сяде.
         if (Ctx.Round != _startedRound && (Ctx.Round != _laidRound || !Core.SameSeats(SeatedMask())))
         {
-            Core.Reset(SeatedMask());
+            Lay(SeatedMask());
             _laidRound = Ctx.Round;
         }
         return new
         {
-            width = TerritoryCore.W,
-            height = TerritoryCore.H,
+            width = Core.W,
+            height = Core.H,
             turn = (int?)null,
             t = Core.Ticks,
+            phase = Phase,
+            startIn = _ready * TerritoryCore.TickMs,
             owner = Core.OwnerRow(),
             trail = Core.TrailRow(),
             heads = Heads(),
@@ -518,6 +572,9 @@ public sealed class Territory : Game
             timeLeft = Core.TicksLeft * TerritoryCore.TickMs,
         };
     }
+
+    /// <summary>«ready» — іде відлік, «play» — їдуть. Поле лобі теж «ready», але з нульовим відліком.</summary>
+    string Phase => _ready > 0 || Ctx.Round != _startedRound ? "ready" : "play";
 
     bool[] SeatedMask()
     {
