@@ -113,6 +113,7 @@ body.pad-on { scroll-padding-bottom: 64px; }
 .padhelp .ph-map td:last-child { color: var(--muted); }
 .padhelp .ph-steps { margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--muted); line-height: 1.6; }
 .padhelp .ph-steps b { color: var(--text); }
+.padhelp .ph-steps code { display: inline-block; margin-top: 2px; padding: 2px 8px; border-radius: 6px; background: var(--panel3); color: var(--text); font: 12px/1.6 ui-monospace, monospace; word-break: break-all; user-select: all; }
 .padhelp .ph-foot { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 
 /* 🎮 у шапці: вхід у довідку. Його видно лише тим, у кого Дек або підключений пад (pad.js). */
