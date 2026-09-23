@@ -178,8 +178,11 @@ public sealed class MinesBoard
     }
 }
 
-/// <summary>Розмір поля дуелі так, як його обирають у лобі.</summary>
-public sealed record MinesSize(string Key, string Label, int W, int H, int Mines);
+/// <summary>
+/// Розмір поля дуелі так, як його обирають у лобі. <paramref name="HuntMines"/> — скільки мін у режимі
+/// «Мисливці»: там міни — це очки, і їх має бути густіше (і непарно, щоб удвох не лишалось нічиєї).
+/// </summary>
+public sealed record MinesSize(string Key, string Label, int W, int H, int Mines, int HuntMines);
 
 /// <summary>Дрібниці, спільні обом саперам.</summary>
 static class MinesWire
@@ -198,63 +201,122 @@ static class MinesWire
 }
 
 /// <summary>
-/// Сапер-дуель: одне поле на двох, ходять по черзі. Відкрив число — стільки очок, скільки клітинок
-/// відкрилось; наступив на міну — програв одразу. Прапорці спільні й ходу не передають: вони тут не
-/// «я знаю, де міна», а «не тисни сюди випадково».
+/// Сапер на 2–4: одне поле на всіх, ходять по черзі. Два режими.
+/// <para>
+/// «Обережно» (типовий, як було): відкрив — стільки очок, скільки клітинок відкрилось, і хід далі;
+/// наступив на міну — вибув. Удвох це одразу поразка; у компанії решта грають далі, а коли живий лишився
+/// один — він і виграв. Поле чисте — перемога за очками серед тих, хто вцілів.
+/// </para>
+/// <para>
+/// «Мисливці» (як у старому «Minesweeper Flags»): міна — це очко, і після неї стріляєш ще; безпечна
+/// клітинка відкривається й передає хід. Хто назбирав більше мін — виграв; партія кінчається, щойно
+/// лідера вже ніхто не наздожене.
+/// </para>
+/// Прапорці спільні й ходу не передають: вони тут не «я знаю, де міна», а «не тисни сюди випадково».
 /// </summary>
 public sealed class Mines : Game
 {
+    public const int Seats = 4;
+
     static readonly MinesSize[] Sizes =
     [
-        new("9x9-10", "Маленьке (9×9, 10 мін)", 9, 9, 10),
-        new("16x16-40", "Велике (16×16, 40 мін)", 16, 16, 40),
+        new("9x9-10", "Маленьке (9×9, 10 мін)", 9, 9, 10, 15),
+        new("12x12-22", "Середнє (12×12, 22 міни)", 12, 12, 22, 29),
+        new("16x16-40", "Велике (16×16, 40 мін)", 16, 16, 40, 51),
     ];
 
+    public const string Careful = "boom", Hunt = "hunt";
+
+    static readonly string[] Names = ["жовтий", "зелений", "глиняний", "сірий"];
+
     public override GameInfo Info { get; } = new(
-        "mines", "Сапер-дуель", "сапер-дуель", GameGroup.Board, 2, 2, Rated: true,
-        Options: [new GameOption("size", "Поле", [.. Sizes.Select(s => (s.Key, s.Label))], Sizes[0].Key)],
-        Hint: "Одне поле на двох, ходите по черзі. Відкрив число — очко, підірвався — програв.");
+        "mines", "Сапер-дуель", "сапер-дуель", GameGroup.Board, 2, Seats, Start: StartMode.ByHost,
+        Options:
+        [
+            new GameOption("size", "Поле", [.. Sizes.Select(s => (s.Key, s.Label))], Sizes[0].Key),
+            new GameOption("mode", "Правила",
+                [(Careful, "Обережно: міна — вибув"), (Hunt, "Мисливці: міна — твоє очко")], Careful),
+        ],
+        Hint: "Одне поле на 2–4, ходите по черзі. Відкрив число — очко, підірвався — вибув. Або навпаки: полюй на міни");
 
     MinesSize _size = Sizes[0];
+    string _mode = Careful;
     MinesBoard _board = new(Sizes[0].W, Sizes[0].H, Sizes[0].Mines);
     int _turn;
-    readonly int[] _points = [0, 0];
+    readonly int[] _points = new int[Seats];
+    readonly bool[] _in = new bool[Seats];
+    /// <summary>Чому місце вибуло: boom | resign | left; null — ще грає (або не грало зовсім).</summary>
+    readonly string?[] _out = new string?[Seats];
+    /// <summary>Хто вибув, по порядку: перший тут — останнє місце.</summary>
+    readonly List<int> _gone = [];
+    /// <summary>Мисливці: чия міна (місце), -1 — нічия. Довжина — клітинки поля.</summary>
+    int[] _owner = [];
     int? _last;
-    /// <summary>Хто виграв; null — або ще грають, або нічия (розрізняє <see cref="_reason"/>).</summary>
-    int? _winner;
-    /// <summary>Чому партія скінчилась: boom | cleared | resign | left. null — партія триває.</summary>
+    int? _lastBy;
+    int[] _winners = [];
+    /// <summary>Чому партія скінчилась: boom | cleared | hunted | resign | left. null — партія триває.</summary>
     string? _reason;
 
-    public override string SeatName(int seat) => seat == 0 ? "жовтий" : "зелений";
+    bool Hunting => _mode == Hunt;
+
+    public override string SeatName(int seat) => seat >= 0 && seat < Seats ? Names[seat] : base.SeatName(seat);
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
-        // Каркас уже звів опцію до одного з дозволених значень — лишається знайти по ній розмір.
+        // Каркас уже звів опції до дозволених значень — лишається знайти по них розмір і режим.
         if (options.TryGetValue("size", out var key) && Sizes.FirstOrDefault(s => s.Key == key) is { } found)
             _size = found;
+        if (options.TryGetValue("mode", out var mode) && mode is Careful or Hunt) _mode = mode;
         // Поле збираємо вже тут: стіл, що чекає на суперника, має показувати ту дошку, яку обрали,
         // а не типову дев'ятку.
         Reset();
     }
 
-    public override void Start() => Reset();
+    public override void Start()
+    {
+        Reset();
+        for (var s = 0; s < Seats; s++) _in[s] = Ctx.Seated(s);
+        _turn = First();
+    }
 
     void Reset()
     {
-        _board = new MinesBoard(_size.W, _size.H, _size.Mines);
+        _board = new MinesBoard(_size.W, _size.H, Hunting ? _size.HuntMines : _size.Mines);
+        _owner = new int[_board.Cells];
+        Array.Fill(_owner, -1);
         _turn = 0;
-        _points[0] = _points[1] = 0;
+        Array.Clear(_points);
+        Array.Clear(_in);
+        Array.Clear(_out);
+        _gone.Clear();
         _last = null;
-        _winner = null;
+        _lastBy = null;
+        _winners = [];
         _reason = null;
     }
+
+    bool Alive(int seat) => seat >= 0 && seat < Seats && _in[seat] && _out[seat] is null;
+    IEnumerable<int> Players => Enumerable.Range(0, Seats).Where(s => _in[s]);
+    IEnumerable<int> Living => Enumerable.Range(0, Seats).Where(Alive);
+    int First() => Enumerable.Range(0, Seats).FirstOrDefault(Alive, 0);
+
+    int NextAlive(int seat)
+    {
+        for (var i = 1; i <= Seats; i++)
+            if (Alive((seat + i) % Seats)) return (seat + i) % Seats;
+        return seat;
+    }
+
+    string Nick(int seat) => Ctx.NickOf(seat) ?? SeatName(seat);
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_reason is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (seat < 0 || seat >= Seats || !_in[seat]) return ActResult.Fail("Ти тут не граєш");
         // Здатись можна й не в свою чергу: чекати ходу, щоб сказати «здаюсь», — знущання.
         if (action == "resign") return Resign(seat);
         if (action is not ("open" or "flag")) return ActResult.Fail("Тут так не ходять");
+        if (!Alive(seat)) return ActResult.Fail("Ти вже вибув — лишається дивитись");
         if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
         if (MinesWire.Cell(payload) is not { } cell || !_board.Valid(cell))
             return ActResult.Fail("Не зрозумів, куди тиснути");
@@ -275,75 +337,182 @@ public sealed class Mines : Game
         if (!_board.Ready) _board.Generate(Ctx.Rng, cell);
 
         _last = cell;
-        var other = 1 - seat;
-        if (_board.IsMine(cell))
-        {
-            _board.Open(cell);
-            _winner = other;
-            _reason = "boom";
-            Ctx.Finish([other], $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} наступив на міну, "
-                + $"{Ctx.NickOf(other)} {SeatName(other)} виграв {_points[other]}:{_points[seat]}", Scores());
-            return ActResult.Accept("Бабах. Це була міна");
-        }
+        _lastBy = seat;
+        if (_board.IsMine(cell)) return Hunting ? Claim(seat, cell) : Boom(seat, cell);
 
-        _points[seat] += _board.Open(cell);
-        if (_board.Left == 0) return Cleared();
-        _turn = other;
+        var opened = _board.Open(cell);
+        if (!Hunting) _points[seat] += opened;   // у мисливців очки — лише міни
+        if (!Hunting && _board.Left == 0) return Cleared();
+        _turn = NextAlive(seat);
         return ActResult.Done;
+    }
+
+    /// <summary>«Обережно»: наступив на міну — вибув. Удвох це кінець партії, у компанії — лише твоїй.</summary>
+    ActResult Boom(int seat, int cell)
+    {
+        _board.Open(cell);
+        Drop(seat, "boom");
+        var living = Living.ToArray();
+        if (living.Length >= 2)
+        {
+            _turn = NextAlive(seat);
+            return ActResult.Accept("Бабах. Ти вибув — дивись, хто кого");
+        }
+        _reason = "boom";
+        _winners = living;
+        if (Players.Count() == 2 && living.Length == 1)
+        {
+            var other = living[0];
+            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} наступив на міну, "
+                + $"{Ctx.NickOf(other)} {SeatName(other)} виграв {_points[other]}:{_points[seat]}", Scores());
+        }
+        else
+            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} наступив на міну — {Ranking()}", Scores());
+        return ActResult.Accept("Бабах. Це була міна");
+    }
+
+    /// <summary>«Мисливці»: знайшов міну — вона твоя, і стріляєш ще.</summary>
+    ActResult Claim(int seat, int cell)
+    {
+        _board.Open(cell);
+        _owner[cell] = seat;
+        _points[seat]++;
+        var left = _board.Mines - _points.Sum();
+        var ranked = Living.OrderByDescending(s => _points[s]).ToArray();
+        var lead = _points[ranked[0]];
+        var second = ranked.Length > 1 ? _points[ranked[1]] : 0;
+        // Лідера вже не наздогнати — нема сенсу докопувати решту поля.
+        if (left == 0 || lead - second > left)
+        {
+            _reason = "hunted";
+            _winners = [.. ranked.Where(s => _points[s] == lead)];
+            if (_winners.Length == ranked.Length && ranked.Length > 1)
+            {
+                _winners = [];
+                Ctx.Finish([], $"{Info.Title}: мисливці поділили міни порівну — {Ranking()}", Scores());
+                return ActResult.Accept("Міна! Усе поділено порівну");
+            }
+            Ctx.Finish(_winners, $"{Info.Title}: полювання скінчено — {Ranking()}", Scores());
+            return ActResult.Accept("Міна твоя — і полювання теж!");
+        }
+        return ActResult.Accept($"Міна твоя! Шукай ще (лишилось {left})");
     }
 
     ActResult Cleared()
     {
         _reason = "cleared";
-        var (a, b) = (_points[0], _points[1]);
-        if (a == b)
+        var living = Living.ToArray();
+        var top = living.Max(s => _points[s]);
+        var best = living.Where(s => _points[s] == top).ToArray();
+        if (best.Length == living.Length)
         {
-            Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(0)} і {Ctx.NickOf(1)} розмінували поле порівну, {a}:{b}", Scores());
+            _winners = [];
+            var text = living.Length == 2
+                ? $"{Info.Title}: {Ctx.NickOf(living[0])} і {Ctx.NickOf(living[1])} розмінували поле порівну, {top}:{top}"
+                : $"{Info.Title}: поле розміноване порівну — {Ranking()}";
+            Ctx.Finish([], text, Scores());
             return ActResult.Accept("Поле чисте. Нічия");
         }
-        var won = a > b ? 0 : 1;
-        _winner = won;
-        Ctx.Finish([won], $"{Info.Title}: {Ctx.NickOf(won)} {SeatName(won)} {Math.Max(a, b)}:{Math.Min(a, b)} "
-            + $"{Ctx.NickOf(1 - won)} {SeatName(1 - won)}", Scores());
+        _winners = best;
+        if (Players.Count() == 2)
+        {
+            var won = best[0];
+            var lost = Players.First(s => s != won);
+            Ctx.Finish(best, $"{Info.Title}: {Ctx.NickOf(won)} {SeatName(won)} {_points[won]}:{_points[lost]} "
+                + $"{Ctx.NickOf(lost)} {SeatName(lost)}", Scores());
+        }
+        else Ctx.Finish(best, $"{Info.Title}: поле чисте — {Ranking()}", Scores());
         return ActResult.Accept("Поле чисте!");
     }
 
     ActResult Resign(int seat)
     {
-        var other = 1 - seat;
+        if (!Alive(seat)) return ActResult.Fail("Ти вже вибув — лишається дивитись");
+        Drop(seat, "resign");
+        var living = Living.Where(Ctx.Seated).ToArray();
+        if (Living.Count() >= 2)
+        {
+            if (_turn == seat) _turn = NextAlive(seat);
+            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} здався, решта грають далі");
+            return ActResult.Accept("Здався. Дивись, хто кого");
+        }
         _reason = "resign";
-        _winner = Ctx.Seated(other) ? other : null;
+        _winners = living;
         _turn = seat;
-        if (_winner is { } won)
-            Ctx.Finish([won], $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} здався, "
-                + $"{Ctx.NickOf(won)} {SeatName(won)} виграв", Scores());
+        if (living.Length == 1)
+            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} здався, "
+                + $"{Ctx.NickOf(living[0])} {SeatName(living[0])} виграв", Scores());
         else
             Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(seat)} здався, а грати вже нема з ким", Scores());
         return ActResult.Accept("Здався");
     }
 
-    /// <summary>Вийшов посеред партії — техпоразка. Текст і Finish пише каркас, ми лише запам'ятовуємо причину для виду.</summary>
-    public override void OnLeave(int seat)
+    void Drop(int seat, string why)
     {
-        var other = 1 - seat;
-        _reason = "left";
-        _winner = Ctx.Seated(other) ? other : null;
-        base.OnLeave(seat);
+        _out[seat] = why;
+        _gone.Add(seat);
     }
 
-    Dictionary<int, long> Scores() => new() { [0] = _points[0], [1] = _points[1] };
+    /// <summary>
+    /// Вийшов посеред партії. Удвох — техпоразка, як і було (текст і Finish пише каркас). У компанії партія
+    /// не ламається: той, хто пішов, просто вибуває, решта грають далі.
+    /// </summary>
+    public override void OnLeave(int seat)
+    {
+        if (!Alive(seat) || _reason is not null) return;   // вибулий глядач може йти спокійно
+        Drop(seat, "left");
+        var living = Living.ToArray();
+        if (living.Length >= 2)
+        {
+            if (_turn == seat) _turn = NextAlive(seat);
+            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, решта грають далі");
+            return;
+        }
+        _reason = "left";
+        _winners = living;
+        Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли", Scores());
+    }
+
+    /// <summary>Місця від першого до останнього: хто вцілів — за очками, далі вибулі у зворотному порядку.</summary>
+    int[] Places() =>
+        [.. Living.OrderByDescending(s => _points[s]).Concat(Enumerable.Reverse(_gone))];
+
+    string Ranking() => string.Join(", ", Places().Select(s => $"{Nick(s)} {_points[s]}"));
+
+    Dictionary<int, long> Scores() => Players.ToDictionary(s => s, s => (long)_points[s]);
+
+    /// <summary>Мисливці: чиї міни — рядок на всі клітинки, '0'..'3' або '.', лише для відкритих мін.</summary>
+    string? Owners()
+    {
+        if (!Hunting) return null;
+        var chars = new char[_owner.Length];
+        for (var c = 0; c < chars.Length; c++) chars[c] = _owner[c] >= 0 ? (char)('0' + _owner[c]) : '.';
+        return new string(chars);
+    }
 
     public override object View(int? seat) => new
     {
         w = _board.W,
         h = _board.H,
         mines = _board.Mines,
+        mode = _mode,
         turn = _reason is null ? _turn : (int?)null,
         cells = _board.Text(_reason is not null),
-        scores = new[] { _points[0], _points[1] },
+        scores = _points.ToArray(),
         left = _board.Left,
+        unclaimed = _board.Mines - (Hunting ? _points.Sum() : 0),
+        owners = Owners(),
+        players = Players.ToArray(),
+        @out = _out.ToArray(),
         lastOpen = _last,
-        result = _reason is null ? null : new { winner = _winner, reason = _reason },
+        lastBy = _lastBy,
+        result = _reason is null ? null : new
+        {
+            winner = _winners.Length == 1 ? _winners[0] : (int?)null,
+            winners = _winners,
+            reason = _reason,
+            places = Places(),
+        },
     };
 }
 
@@ -416,7 +585,7 @@ public sealed class MinesDaily : Game, IDailyGame
             return ActResult.Fail("Не зрозумів, куди тиснути");
 
         if (action == "flag") return _board.Toggle(cell) ? ActResult.Done : ActResult.Fail("Тут уже відкрито");
-        if (_board.IsOpen(cell)) return ActResult.Fail("Тут уже відкрито");
+        if (_board.IsOpen(cell)) return Chord(cell);
         if (_board.IsFlag(cell)) return ActResult.Fail("Тут прапорець — спершу зніми його");
 
         _last = cell;
@@ -427,6 +596,31 @@ public sealed class MinesDaily : Game, IDailyGame
             _dead = true;
             return ActResult.Accept("Бабах. Спроба не вийшла");
         }
+        return _board.Left == 0 ? Solved() : ActResult.Done;
+    }
+
+    /// <summary>
+    /// Тиск по відкритому числу, довкола якого вже стоїть рівно стільки прапорців, — відкрити решту сусідів
+    /// одним махом, як у класичному сапері. На полі дня, де міряють час, це не забаганка: без цього
+    /// рахунок залежить від того, як швидко клацаєш, а не як думаєш. Прапорець не там — бабах, як і в класиці.
+    /// </summary>
+    ActResult Chord(int cell)
+    {
+        var n = _board.Near(cell);
+        if (_board.IsMine(cell) || n == 0) return ActResult.Fail("Тут уже відкрито");
+        var around = _board.Around(cell).ToArray();
+        if (around.Count(_board.IsFlag) != n) return ActResult.Fail($"Довкола має стояти прапорців: {n}");
+        var closed = around.Where(c => !_board.IsOpen(c) && !_board.IsFlag(c)).ToArray();
+        if (closed.Length == 0) return ActResult.Fail("Довкола вже все відкрито");
+        if (closed.FirstOrDefault(_board.IsMine, -1) is var mine and >= 0)
+        {
+            _last = mine;
+            _board.Open(mine);
+            _dead = true;
+            return ActResult.Accept("Бабах. Один прапорець стояв не там");
+        }
+        foreach (var c in closed) _board.Open(c);
+        _last = cell;
         return _board.Left == 0 ? Solved() : ActResult.Done;
     }
 
