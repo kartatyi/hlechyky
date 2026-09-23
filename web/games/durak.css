@@ -1,20 +1,65 @@
-/* Дурень: стіл, козир і рука. Кольори — тільки змінними; свої оголошуємо в :root, як велить core.css. */
+/* Дурень: суперники, стіл, козир і рука. Кольори — тільки змінними; свої оголошуємо в :root, як велить core.css. */
 :root {
   --durak-red: var(--danger);      /* черва і бубна — тим самим тоном, що й решта сайту */
   --durak-face: #f2f4ef;           /* сорочка карти догори лицем */
   --durak-ink: #21301f;            /* чорні масті на світлій карті */
   --durak-hot: rgba(244, 197, 66, .22);  /* атака, яку можна взяти обраною картою */
+  --durak-back: #3d5a8a;           /* сорочка карти суперника */
+  /* Шість місць — шість кольорів, а ще кожне має свою форму (● ▲ ■ ◆ ★ ✚), тож колір не єдина підказка. */
+  --durak-s0: var(--accent);
+  --durak-s1: var(--ok);
+  --durak-s2: var(--clay);
+  --durak-s3: #7aa7ff;
+  --durak-s4: #d58cf0;
+  --durak-s5: #5fd4c8;
 }
 
 .durak { display: flex; flex-direction: column; gap: 10px; align-items: center; }
 
+/* ---- суперники: нік, сорочки, роль у відбої ---- */
+.durak .dfoes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; width: 100%; }
+.durak .dfoes:empty { display: none; }
+.durak .dfoe {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 84px; max-width: 150px;
+  padding: 5px 8px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line);
+  transition: box-shadow .2s, opacity .2s;
+}
+.durak .dfoe.now { box-shadow: 0 0 0 2px var(--accent); }
+.durak .dfoe.isdef { border-color: var(--accent2); }
+.durak .dfoe.gone { opacity: .55; }
+.durak .dfoe.isfool { box-shadow: 0 0 0 2px var(--durak-red); opacity: 1; }
+.durak .dwho { display: flex; align-items: center; gap: 4px; max-width: 100%; font-size: .88em; font-weight: 600; }
+.durak .dwho, .durak .dchip.me { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.durak u { text-decoration: none; font-size: .9em; }
+.durak .s0 u { color: var(--durak-s0); } .durak .s1 u { color: var(--durak-s1); } .durak .s2 u { color: var(--durak-s2); }
+.durak .s3 u { color: var(--durak-s3); } .durak .s4 u { color: var(--durak-s4); } .durak .s5 u { color: var(--durak-s5); }
+.durak .dcnt { display: flex; align-items: center; gap: 5px; }
+.durak .dcnt b { font-variant-numeric: tabular-nums; font-size: .85em; color: var(--muted); }
+.durak .dbacks { display: inline-flex; height: 18px; }
+.durak .dbacks i {
+  width: 11px; height: 17px; margin-left: -6px; border-radius: 2px; background: var(--durak-back);
+  border: 1px solid rgba(255, 255, 255, .45); box-shadow: 1px 0 2px rgba(0, 0, 0, .35);
+}
+.durak .dbacks i:first-child { margin-left: 0; }
+.durak .drole { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; min-height: 1.1em; }
+.durak .drole em { font-style: normal; font-size: .76em; color: var(--muted); white-space: nowrap; }
+.durak .drole .def { color: var(--accent); }
+.durak .drole .atk { color: var(--text); }
+.durak .drole .safe { color: var(--ok); }
+.durak .drole .fool { color: var(--durak-red); font-weight: 700; }
+.durak .drole .pass { background: var(--bg2); border-radius: 999px; padding: 0 6px; }
+
 /* ---- рядок козиря, колоди й відбою ---- */
 .durak .dtop { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.durak .dtop:empty { display: none; }
 .durak .dchip {
   display: inline-flex; align-items: center; gap: 5px; font-size: .88em; color: var(--muted);
   background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
 }
 .durak .dchip b { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Козирна карта в чипі — своя карта з власними кольорами: без цього номінал білів на білому. */
+.durak .dchip .dcard b { color: inherit; }
+.durak .dchip.me { color: var(--text); }
 .durak .dsuit { font-size: 1.15em; line-height: 1; color: var(--durak-ink); background: var(--durak-face); border-radius: 4px; padding: 0 4px; }
 .durak .dsuit.red { color: var(--durak-red); }
 
@@ -34,13 +79,29 @@
   min-height: 78px; width: 100%; padding: 8px; background: var(--bg2);
   border: 1px solid var(--line); border-radius: 12px; box-sizing: border-box;
 }
-.durak .dempty { color: var(--muted); font-size: .9em; align-self: center; }
-.durak .dpair { position: relative; width: 44px; height: 62px; border-radius: 8px; }
+.durak .dempty { color: var(--muted); font-size: .9em; align-self: center; text-align: center; }
+.durak .dpair { position: relative; width: 46px; height: 66px; border-radius: 8px; }
 .durak .dpair .atk { position: absolute; left: 0; top: 0; width: 34px; box-sizing: border-box; }
-.durak .dpair .def { position: absolute; left: 10px; top: 14px; width: 34px; box-sizing: border-box; box-shadow: -2px -2px 6px rgba(0, 0, 0, .35); }
+.durak .dpair .def { position: absolute; left: 12px; top: 22px; width: 34px; box-sizing: border-box; box-shadow: -2px -2px 6px rgba(0, 0, 0, .35); }
 .durak .dpair.hot { cursor: pointer; background: var(--durak-hot); box-shadow: 0 0 0 2px var(--accent2); }
 .durak .dpair.pick { background: var(--durak-hot); box-shadow: 0 0 0 3px var(--accent); }
 .durak .dpair.beaten { opacity: .85; }
+/* Щойно покладена карта злітає на стіл; побита — лягає поверх із поворотом. */
+.durak .dcard.atk.fly { animation: durak-in .28s ease-out; }
+.durak .dcard.def.fly { animation: durak-beat .3s ease-out; }
+@keyframes durak-in { from { transform: translateY(26px) scale(.8); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes durak-beat { from { transform: translate(14px, 20px) rotate(18deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---- підсумок партії на столі ---- */
+.durak .dsum { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+.durak .dverdict { font-size: 1.15em; font-weight: 700; text-align: center; animation: durak-in .35s ease-out; }
+.durak .dverdict small { font-weight: 400; color: var(--muted); font-size: .75em; }
+.durak .dplaces { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.durak .dplace { background: var(--panel2); border-radius: 999px; padding: 3px 10px; font-size: .9em; }
+
+/* ---- підказка «що робити зараз» ---- */
+.durak .dsay { color: var(--muted); font-size: .88em; text-align: center; min-height: 1.2em; }
+.durak .dsay:empty { display: none; }
 
 /* ---- рука: віяло каркаса (.ghand/.gcard), карти лише перефарбовуємо ---- */
 .durak .dhand { width: 100%; }
@@ -52,14 +113,33 @@
 .durak .ghand .gcard.red { color: var(--durak-red); }
 .durak .ghand .gcard i { font-style: normal; font-size: 1.15em; }
 .durak .ghand .gcard.off { opacity: .4; }
+/* Не мій хід — карти просто лежать у руці, гасити їх нема чого: так легше думати наперед. */
+.durak.idle .ghand .gcard.off { opacity: .9; }
 .durak .ghand .gcard.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 
 .durak .dbtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .durak .dbtns:empty { display: none; }
+.durak .dbtns button { min-width: 96px; }
+
+/* Великий екран: карти більші, їх видно з дивана. */
+@media (min-width: 1600px) {
+  .durak .ghand .gcard { min-width: 50px; padding: 12px 8px; font-size: 1.1em; }
+  .durak .dpair { width: 54px; height: 80px; }
+  .durak .dpair .def { left: 14px; top: 26px; }
+  .durak .dpair .atk, .durak .dpair .def { width: 40px; }
+  .durak .dcard { font-size: 1.08em; }
+}
 
 /* На телефоні стіл вужчий за шість пар — хай переносяться, а карти лишаються під палець. */
 @media (max-width: 480px) {
   .durak .dtable { gap: 6px; padding: 6px; }
   .durak .ghand { gap: 4px; }
   .durak .ghand .gcard { min-width: 38px; padding: 8px 5px; }
+  .durak .dfoe { min-width: 0; flex: 1 1 28%; padding: 4px 5px; }
+  .durak.many .dbacks { display: none; }
+  .durak .dbtns button { flex: 1 1 40%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .durak .dcard.fly, .durak .dverdict { animation: none; }
 }
