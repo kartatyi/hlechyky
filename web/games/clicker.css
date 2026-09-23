@@ -23,6 +23,11 @@
 .clk { width: 100%; container: clk / inline-size; }
 .clk-lay { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; }
 .clk-scene { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+/* Ліва колонка — ігрове поле, тексту для копіювання в ній нема. Клік повз круглий край кола падає на сцену:
+   швидкі кліки там — це подвійний/потрійний клік, а протяг мишкою — виділення, і синім світилися «+N», написи
+   сцени й лічильник. Поле вводу, якщо колись з'явиться тут, лишається виділюваним (iOS інакше не дає в нього писати). */
+.clk-scene { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.clk-scene input, .clk-scene textarea { -webkit-user-select: text; user-select: text; }
 .clk-side { width: 100%; display: flex; flex-direction: column; gap: 8px; min-width: 0; container: clkside / inline-size; }
 
 @container clk (min-width: 640px) {
