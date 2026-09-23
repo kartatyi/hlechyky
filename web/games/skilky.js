@@ -41,6 +41,31 @@
     return years && v != null && Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : num(v);
   }
 
+  /// Одиниці в банку записані формою «багато» («років», «хвилин»): з 72 чи 1 це ріже вухо. Для найчастіших —
+  /// форми «один» і «два–чотири»; решта, дробові числа й одиниці з «млн»/«тис.» лишаються як є.
+  const UNIT_FORMS = {
+    'років': ['рік', 'роки'], 'хвилин': ['хвилина', 'хвилини'], 'днів': ['день', 'дні'], 'секунд': ['секунда', 'секунди'],
+    'разів': ['раз', 'рази'], 'годин': ['година', 'години'], 'місяців': ['місяць', 'місяці'], 'тижнів': ['тиждень', 'тижні'],
+    'людей': ['людина', 'людини'], 'літер': ['літера', 'літери'], 'символів': ['символ', 'символи'], 'серій': ['серія', 'серії'],
+    'зубів': ['зуб', 'зуби'], 'країн': ['країна', 'країни'], 'кісток': ['кістка', 'кістки'], 'альбомів': ['альбом', 'альбоми'],
+    'гравців': ['гравець', 'гравці'], 'треків': ['трек', 'треки'], 'слів': ['слово', 'слова'], 'доларів': ['долар', 'долари'],
+    'гривень': ['гривня', 'гривні'], 'діб': ['доба', 'доби'], 'цифр': ['цифра', 'цифри'], 'клітинок': ['клітинка', 'клітинки'],
+    'очок': ['очко', 'очки'], 'ударів': ['удар', 'удари'], 'струн': ['струна', 'струни'], 'рядків': ['рядок', 'рядки'],
+    'хромосом': ['хромосома', 'хромосоми'], 'хребців': ['хребець', 'хребці'], 'ніг': ['нога', 'ноги'], 'станцій': ['станція', 'станції'],
+    'пісень': ['пісня', 'пісні'], 'фільмів': ['фільм', 'фільми'], 'світлових років': ['світловий рік', 'світлові роки'],
+    'вершин': ['вершина', 'вершини'], 'планет': ['планета', 'планети'], 'кольорів': ['колір', 'кольори'], 'медалей': ['медаль', 'медалі'],
+  };
+
+  function unitFor(n, unit) {
+    const forms = UNIT_FORMS[unit];
+    if (!forms || n == null || Math.abs(n - Math.round(n)) > 1e-9) return unit;
+    const k = Math.abs(Math.round(n));
+    const d = k % 10, h = k % 100;
+    if (d === 1 && h !== 11) return forms[0];
+    if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return forms[1];
+    return unit;
+  }
+
   function state(root) {
     if (!root._sk) root._sk = { round: -1 };
     return root._sk;
@@ -105,7 +130,8 @@
 
   /// «Рази» після числа: дробове — «2,5 раза», ціле — «3 рази», «5 разів».
   function times(k) {
-    const r = Math.round(k * 10) / 10;
+    // Від десяти разів десяті частки вже шум: «у 1 804,8 раза» читається гірше за «у 1 805 разів».
+    const r = k >= 10 ? Math.round(k) : Math.round(k * 10) / 10;
     if (r !== Math.round(r)) return num(r) + ' раза';
     const n = Math.round(r) % 100;
     const word = n % 10 >= 2 && n % 10 <= 4 && (n < 12 || n > 14) ? 'рази' : 'разів';
@@ -129,9 +155,9 @@
     if (!r) return '';
     const rows = r.rows || [];
     const head = '<div class="skans"><span class="muted small">Правильна відповідь</span>'
-      + '<b>' + yearOr(r.years, r.answer) + '</b>' + (v.unit ? '<i>' + ctx.esc(v.unit) + '</i>' : '') + '</div>';
+      + '<b>' + yearOr(r.years, r.answer) + '</b>' + (v.unit ? '<i>' + ctx.esc(unitFor(r.answer, v.unit)) + '</i>' : '') + '</div>';
     if (!rows.length) return head + '<div class="gempty">Ніхто не назвав жодного числа.</div>';
-    return head + '<div class="skrows">' + rows.map((x) => {
+    return head + '<div class="skrows">' + rows.map((x, n) => {
       const bonus = x.bonus || 0;
       const fast = x.fast || 0;
       const acc = x.accuracy != null ? x.accuracy : x.points - bonus - fast;
@@ -139,7 +165,8 @@
       const parts = [acc].concat(bonus ? [bonus] : [], fast ? [fast] : []);
       const why = [acc ? acc + ' за точність' : '', bonus ? bonus + ' найближчому' : '', fast ? fast + ' за швидкість' : '']
         .filter(Boolean).join(', ');
-      return '<div class="skrow' + (x.points ? ' on' : '') + (bonus ? ' best' : '') + '">'
+      // --n — порядковий номер рядка: рядки випливають по черзі, від найближчого (skilky.css).
+      return '<div class="skrow' + (x.points ? ' on' : '') + (bonus ? ' best' : '') + '" style="--n:' + n + '">'
         + '<span class="skn">' + (bonus ? '🏆 ' : '') + (fast ? '⚡ ' : '')
         + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + '</span>'
         + '<span class="skv">' + yearOr(r.years, x.value) + '</span>'
@@ -149,6 +176,27 @@
         + (parts.length > 1 ? '<small>' + parts.join('+') + '</small>' : '')
         + '</span></div>';
     }).join('') + '</div>';
+  }
+
+  /// Підсумок партії: усі запитання, правда й хто був найближче. Наприкінці хочеться не лише рахунку,
+  /// а й «а пам'ятаєш, як ми з Маттергорном?».
+  function recapHtml(ctx, v) {
+    const list = v.recap || [];
+    if (!list.length) return '';
+    return '<details class="skrecap" open><summary>Як це було · ' + list.length + ' ' + plural(list.length, 'питання', 'питання', 'питань') + '</summary><ol>'
+      + list.map((r) => {
+        const who = (r.best || []).map((i) => ctx.esc(ctx.nickOf(i) || ctx.seatName(i))).join(', ');
+        const guess = r.value == null ? '<span class="muted">ніхто не відповів</span>'
+          : '🎯 ' + who + ' — ' + yearOr(r.years, r.value) + (r.points ? ' <b>+' + r.points + '</b>' : '');
+        return '<li><span class="skrq">' + ctx.esc(r.question) + '</span>'
+          + '<span class="skra"><b>' + yearOr(r.years, r.answer) + '</b>' + (r.unit ? ' ' + ctx.esc(unitFor(r.answer, r.unit)) : '') + '</span>'
+          + '<span class="skrb small">' + guess + '</span></li>';
+      }).join('') + '</ol></details>';
+  }
+
+  function plural(n, one, few, many) {
+    const d = n % 10, h = n % 100;
+    return d === 1 && h !== 11 ? one : d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many;
   }
 
   function answer(root, ctx) {
@@ -197,8 +245,15 @@
     const input = root.querySelector('.skin');
     if (st.round !== v.round) { st.round = v.round; input.value = ''; }
     const canAsk = mine && phase === 'ask';
+    const opened = canAsk && ask.hidden;
     ask.hidden = !canAsk;
     input.disabled = !canAsk;
+    // Запитання з'явилось — курсор одразу в полі, щоб не шукати його мишкою. На телефоні — ні: там
+    // фокус підкидає клавіатуру на пів екрана ще до того, як людина дочитала запитання.
+    if (opened && !HGames.ui.coarse() && !document.querySelector('.modal:not([hidden]) input:focus')) {
+      const busy = document.activeElement;
+      if (!busy || busy === document.body || !/^(INPUT|TEXTAREA|SELECT)$/.test(busy.tagName)) input.focus();
+    }
     const unit = root.querySelector('.skunit');
     const unitText = v.unit || '';
     if (unit.textContent !== unitText) unit.textContent = unitText;
@@ -213,6 +268,10 @@
     const rev = root.querySelector('.skrev');
     const html = phase === 'reveal' || phase === 'done' ? revealHtml(ctx, v) : '';
     if (rev.innerHTML !== html) rev.innerHTML = html;
+    const recap = root.querySelector('.skrecapbox');
+    const recapText = phase === 'done' ? recapHtml(ctx, v) : '';
+    // Порівнюємо з тим, що малювали, а не з innerHTML: інакше кожен кадр згортав би розгорнуте людиною.
+    if (recap.dataset.sig !== recapText) { recap.dataset.sig = recapText; recap.innerHTML = recapText; }
 
     paintWho(root, ctx);
     paintScores(root, ctx);
@@ -220,6 +279,16 @@
 
   HGames.register({
     id: 'skilky',
+    news: {
+      v: '2026-09-24',
+      title: 'Скільки?: підсумок партії',
+      items: [
+        '📜 Наприкінці — «Як це було»: усі запитання, правильні відповіді й хто влучив найближче',
+        '✨ Розкриття ожило: правильна відповідь падає на стіл, а числа випливають по черзі від найближчого',
+        '⌨ Щойно з’явилось запитання — курсор уже в полі, пиши число одразу',
+        '🔧 «72 роки» замість «72 років», «у 12 разів» замість «у 12,3 раза», а Дядько Глек більше не обіцяє очко втіхи, коли граєш сам',
+      ],
+    },
     icon: ICON,
     seatClass: ['x', 'o', 'c', 'd'],
 
@@ -237,6 +306,7 @@
         + '<button type="button" class="primary skgo">Відповісти</button></div>'
         + '<div class="skmy muted small"></div>'
         + '<div class="skrev"></div>'
+        + '<div class="skrecapbox"></div>'
         + '<div class="skwho"></div>'
         + '</div>'
         + '<div class="skscore"></div>'

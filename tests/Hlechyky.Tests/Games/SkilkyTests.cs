@@ -481,6 +481,19 @@ public class SkilkyTests
     }
 
     [Fact]
+    public void Alone_and_way_off_uncle_Hlek_does_not_promise_a_consolation_point()
+    {
+        var h = Asking(1, Big);
+        h.Act(0, "answer", new { value = Correct(h) * 10 });
+        h.Tick(1);
+
+        Assert.Equal(0, Score(h, 0));
+        var line = h.Outbox.OfType<DjSays>().Last().Text;
+        Assert.Contains("Оля", line);
+        Assert.DoesNotContain("очко", line, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void In_a_duel_off_by_one_is_close_to_exact()
     {
         // Той самий випадок, на який скаржились: правильна 9, один пише 9, другий 8. Було 7 : 2.
@@ -620,6 +633,66 @@ public class SkilkyTests
         Assert.Contains("Скільки?:", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Single(h.Finished);
         Assert.Equal(Skilky.Questions * Perfect, h.Finished[0].Result.Scores![0]);
+    }
+
+    [Fact]
+    public void The_finished_match_shows_every_question_with_the_truth_and_the_closest()
+    {
+        var h = Table(3);
+        var asked = new List<(string Q, double A)>();
+        for (var q = 0; q < Skilky.Questions && h.Room.Status == RoomStatus.Playing; q++)
+        {
+            Until(h, Skilky.PhaseAsk);
+            // Перед кінцем партії підсумку нема: посеред гри він лише відволікав би.
+            Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("recap").ValueKind);
+            var text = h.View(null).GetProperty("question").GetString()!;
+            var correct = Correct(h);
+            asked.Add((text, correct));
+            // Останнє запитання — у тиші: у підсумку воно має бути з «ніхто не відповів».
+            if (q < Skilky.Questions - 1)
+            {
+                h.Act(1, "answer", new { value = correct });
+                h.Act(2, "answer", new { value = correct * 3 });
+            }
+            Close(h);
+        }
+
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        var recap = h.View(null).GetProperty("recap");
+        Assert.Equal(Skilky.Questions, recap.GetArrayLength());
+        for (var i = 0; i < asked.Count; i++)
+        {
+            var r = recap[i];
+            Assert.Equal(asked[i].Q, r.GetProperty("question").GetString());
+            Assert.Equal(asked[i].A, r.GetProperty("answer").GetDouble(), 6);
+            if (i < asked.Count - 1)
+            {
+                Assert.Equal([1], r.GetProperty("best").EnumerateArray().Select(x => x.GetInt32()));
+                Assert.Equal(asked[i].A, r.GetProperty("value").GetDouble(), 6);
+                Assert.Equal(Perfect, r.GetProperty("points").GetInt32());
+            }
+            else
+            {
+                Assert.Equal(0, r.GetProperty("best").GetArrayLength());
+                Assert.Equal(JsonValueKind.Null, r.GetProperty("value").ValueKind);
+            }
+        }
+    }
+
+    [Fact]
+    public void Equally_close_players_share_the_line_in_the_recap()
+    {
+        var h = Table(2);
+        for (var q = 0; q < Skilky.Questions && h.Room.Status == RoomStatus.Playing; q++)
+        {
+            Until(h, Skilky.PhaseAsk);
+            var c = Correct(h);
+            h.Act(0, "answer", new { value = c * 0.99 });
+            h.Act(1, "answer", new { value = c * 1.01 });
+            Close(h);
+        }
+        var first = h.View(0).GetProperty("recap")[0];
+        Assert.Equal([0, 1], first.GetProperty("best").EnumerateArray().Select(x => x.GetInt32()));
     }
 
     [Fact]
