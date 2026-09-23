@@ -75,3 +75,6 @@
 .tpwrap .pcsz i { display: block; border-radius: 50%; background: var(--text); }
 .tpwrap .pcsz.on, .tpwrap .pct.on { border-color: var(--accent); background: var(--panel3); }
 .tpwrap .pcsep { width: 8px; }
+
+/* Шість (десять) місць — це рядки «вільно» над карткою. Сісти можна кнопкою каркаса, чіпи тут зайві. */
+.gtable:has(.tpwrap) .gseat.free { display: none; }
