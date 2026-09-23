@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 
@@ -6,6 +7,8 @@ namespace Hlechyky;
 public static class Endpoints
 {
     public sealed record AddRequest(string? Input, SearchResult? Pick);
+    /// <summary>Url — посилання на альбом чи плейлист; Ids — лише ці треки (null — усі, що знайшлися); Shuffle — упереміш.</summary>
+    public sealed record AlbumRequest(string? Url, bool Shuffle, List<string>? Ids);
     public sealed record MoveRequest(int ToIndex);
     public sealed record NameRequest(string? Name);
     public sealed record TrackRequest(string? TrackId);
@@ -90,6 +93,50 @@ public static class Endpoints
 
         api.MapPost("/queue/track/{trackId}", async (HttpContext c, string trackId, RadioEngine e, CancellationToken ct) =>
             Reply(await e.AddKnownAsync(trackId, Auth.Nick(c), Auth.IsAdmin(c), ct)));
+
+        // ---- альбоми й плейлисти з посилання: спершу трекліст на огляд, далі в чергу чи в плейлист сайту ----
+
+        // Розбір альбому триває секунду-дві, плейлиста на сотню треків — до пів хвилини; помилку віддаємо людською мовою.
+        static async Task<(Album? Album, IResult? Error)> OpenAlbum(Albums albums, string? url, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return (null, Fail("Нема посилання"));
+            try
+            {
+                var album = await albums.ResolveAsync(url, ct);
+                // notAlbum — щоб сторінка, яка спитала про коротке spotify.link, закинула його як звичайний трек
+                return album is null ? (null, Results.BadRequest(new { ok = false, message = "Це не схоже на альбом чи плейлист", notAlbum = true })) : (album, null);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+            {
+                return (null, Fail("Такого не знайшлось: посилання биті або плейлист приватний"));
+            }
+            catch (HttpRequestException ex) { return (null, Fail($"Сервіс відповів помилкою ({(int?)ex.StatusCode ?? 0}), спробуй ще раз")); }
+            catch (OperationCanceledException) { return (null, Fail("Не дочекався відповіді, спробуй ще раз")); }
+            catch (Exception ex) { return (null, Fail("Не вийшло відкрити: " + ex.Message)); }
+        }
+
+        api.MapGet("/album", async (string? url, Albums albums, CancellationToken ct) =>
+        {
+            var (album, error) = await OpenAlbum(albums, url, ct);
+            return error ?? Results.Ok(album);
+        });
+
+        api.MapPost("/album/queue", async (HttpContext c, AlbumRequest req, Albums albums, RadioEngine e, CancellationToken ct) =>
+        {
+            var (album, error) = await OpenAlbum(albums, req.Url, ct);
+            if (error is not null) return error;
+            var r = e.AddAlbum(album!, Auth.Nick(c), Auth.IsAdmin(c), req.Shuffle, req.Ids);
+            return r.Ok ? Results.Ok(new { ok = true, count = r.Count, message = r.Message }) : Fail(r.Message);
+        });
+
+        api.MapPost("/album/playlist", async (HttpContext c, AlbumRequest req, Albums albums, CancellationToken ct) =>
+        {
+            var (album, error) = await OpenAlbum(albums, req.Url, ct);
+            if (error is not null) return error;
+            var r = albums.SaveAsPlaylist(album!, Auth.Nick(c));
+            return r.Ok ? Results.Ok(new { ok = true, id = r.Id, message = r.Message }) : Fail(r.Message);
+        });
 
         // Голосове: тіло запиту — сирий запис із мікрофона, ffmpeg робить із нього mp3 у кеші,
         // далі воно стає в чергу як звичайний трек (файл уже є, качати нема чого).

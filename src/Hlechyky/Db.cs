@@ -715,7 +715,8 @@ public sealed class Db
     public List<(TrackInfo Track, string AddedBy)> PlaylistTracks(long id)
     {
         using var c = Open();
-        using var cmd = Cmd(c, $"SELECT {TrackCols}, x.added_by FROM playlist_tracks x JOIN tracks t ON t.id = x.track_id WHERE x.playlist_id=$p ORDER BY x.added_at", ("$p", id));
+        // rowid — на випадок однакового часу: альбом додається пачкою, і його треки мусять лишитись по порядку
+        using var cmd = Cmd(c, $"SELECT {TrackCols}, x.added_by FROM playlist_tracks x JOIN tracks t ON t.id = x.track_id WHERE x.playlist_id=$p ORDER BY x.added_at, x.rowid", ("$p", id));
         using var r = cmd.ExecuteReader();
         var list = new List<(TrackInfo, string)>();
         while (r.Read()) list.Add((ReadTrack(r), r.GetString(7)));

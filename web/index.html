@@ -51,13 +51,15 @@
         <h2>Закинути пісню</h2>
         <div class="add">
           <div class="row">
-            <input id="q" type="search" placeholder="Назва, виконавець або посилання (YouTube, YT Music, Spotify…)" autocomplete="off">
+            <input id="q" type="search" placeholder="Назва, виконавець або посилання: трек, альбом, плейлист (YouTube, YT Music, Spotify)" autocomplete="off">
             <button id="addBtn" class="primary">Закинути</button>
             <button id="micBtn" class="icon" title="Записати голосове в ефір">🎙</button>
           </div>
           <div id="results" class="results"></div>
+          <div id="adding" class="adding" hidden></div>
           <div id="rec" class="rec" hidden></div>
-          <div class="hintline">Enter закидає перший результат. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — записати голосове, воно стане в чергу як звичайний трек.</div>
+          <div id="album" class="album" hidden></div>
+          <div class="hintline">Enter закидає перший результат. Посилання можна кидати одне за одним, не чекаючи, — стануть у чергу по порядку; альбом чи плейлист спершу покаже трекліст. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — записати голосове, воно стане в чергу як звичайний трек.</div>
         </div>
       </section>
 

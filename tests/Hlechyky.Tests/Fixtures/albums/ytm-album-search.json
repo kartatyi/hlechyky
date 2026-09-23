@@ -1,0 +1,271 @@
+{
+ "contents": {
+  "tabbedSearchResultsRenderer": {
+   "tabs": [
+    {
+     "tabRenderer": {
+      "content": {
+       "sectionListRenderer": {
+        "contents": [
+         {
+          "musicShelfRenderer": {
+           "contents": [
+            {
+             "musicResponsiveListItemRenderer": {
+              "flexColumns": [
+               {
+                "musicResponsiveListItemFlexColumnRenderer": {
+                 "text": {
+                  "runs": [
+                   {
+                    "text": "Sometime In New York City"
+                   }
+                  ]
+                 }
+                }
+               },
+               {
+                "musicResponsiveListItemFlexColumnRenderer": {
+                 "text": {
+                  "runs": [
+                   {
+                    "text": "Альбом"
+                   },
+                   {
+                    "text": " • "
+                   },
+                   {
+                    "text": "John Lennon",
+                    "navigationEndpoint": {
+                     "browseEndpoint": {
+                      "browseId": "UCcSL2nYSJp_IgdzH0xBBdcg",
+                      "browseEndpointContextSupportedConfigs": {
+                       "browseEndpointContextMusicConfig": {
+                        "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                       }
+                      }
+                     }
+                    }
+                   },
+                   {
+                    "text": " і "
+                   },
+                   {
+                    "text": "Yoko Ono",
+                    "navigationEndpoint": {
+                     "browseEndpoint": {
+                      "browseId": "UCMz6c0j-Pp54_GrLKcKjIrw",
+                      "browseEndpointContextSupportedConfigs": {
+                       "browseEndpointContextMusicConfig": {
+                        "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                       }
+                      }
+                     }
+                    }
+                   },
+                   {
+                    "text": " • "
+                   },
+                   {
+                    "text": "1972"
+                   }
+                  ]
+                 }
+                }
+               }
+              ],
+              "fixedColumns": [],
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "MPREb_9NgGUhkV6rh",
+                "browseEndpointContextSupportedConfigs": {
+                 "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                 }
+                }
+               }
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemRenderer": {
+              "flexColumns": [
+               {
+                "musicResponsiveListItemFlexColumnRenderer": {
+                 "text": {
+                  "runs": [
+                   {
+                    "text": "Power To The People (New York City - The Ultimate Mixes)"
+                   }
+                  ]
+                 }
+                }
+               },
+               {
+                "musicResponsiveListItemFlexColumnRenderer": {
+                 "text": {
+                  "runs": [
+                   {
+                    "text": "Альбом"
+                   },
+                   {
+                    "text": " • "
+                   },
+                   {
+                    "text": "John Lennon",
+                    "navigationEndpoint": {
+                     "browseEndpoint": {
+                      "browseId": "UCcSL2nYSJp_IgdzH0xBBdcg",
+                      "browseEndpointContextSupportedConfigs": {
+                       "browseEndpointContextMusicConfig": {
+                        "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                       }
+                      }
+                     }
+                    }
+                   },
+                   {
+                    "text": ", "
+                   },
+                   {
+                    "text": "Yoko Ono",
+                    "navigationEndpoint": {
+                     "browseEndpoint": {
+                      "browseId": "UCMz6c0j-Pp54_GrLKcKjIrw",
+                      "browseEndpointContextSupportedConfigs": {
+                       "browseEndpointContextMusicConfig": {
+                        "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                       }
+                      }
+                     }
+                    }
+                   },
+                   {
+                    "text": ", "
+                   },
+                   {
+                    "text": "The Plastic Ono Band",
+                    "navigationEndpoint": {
+                     "browseEndpoint": {
+                      "browseId": "UCD7w8pJEQulliDee2cM_oDw",
+                      "browseEndpointContextSupportedConfigs": {
+                       "browseEndpointContextMusicConfig": {
+                        "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                       }
+                      }
+                     }
+                    }
+                   },
+                   {
+                    "text": " і "
+                   },
+                   {
+                    "text": "Elephant's Memory",
+                    "navigationEndpoint": {
+                     "browseEndpoint": {
+                      "browseId": "UCLytGmzNMi8eV0NuqCsoHOQ",
+                      "browseEndpointContextSupportedConfigs": {
+                       "browseEndpointContextMusicConfig": {
+                        "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                       }
+                      }
+                     }
+                    }
+                   },
+                   {
+                    "text": " • "
+                   },
+                   {
+                    "text": "2025"
+                   }
+                  ]
+                 }
+                }
+               }
+              ],
+              "fixedColumns": [],
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "MPREb_XHt1jYJt0h9",
+                "browseEndpointContextSupportedConfigs": {
+                 "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                 }
+                }
+               }
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemRenderer": {
+              "flexColumns": [
+               {
+                "musicResponsiveListItemFlexColumnRenderer": {
+                 "text": {
+                  "runs": [
+                   {
+                    "text": "Imagine (The Ultimate Collection)"
+                   }
+                  ]
+                 }
+                }
+               },
+               {
+                "musicResponsiveListItemFlexColumnRenderer": {
+                 "text": {
+                  "runs": [
+                   {
+                    "text": "Альбом"
+                   },
+                   {
+                    "text": " • "
+                   },
+                   {
+                    "text": "John Lennon",
+                    "navigationEndpoint": {
+                     "browseEndpoint": {
+                      "browseId": "UCcSL2nYSJp_IgdzH0xBBdcg",
+                      "browseEndpointContextSupportedConfigs": {
+                       "browseEndpointContextMusicConfig": {
+                        "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                       }
+                      }
+                     }
+                    }
+                   },
+                   {
+                    "text": " • "
+                   },
+                   {
+                    "text": "1971"
+                   }
+                  ]
+                 }
+                }
+               }
+              ],
+              "fixedColumns": [],
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "MPREb_TYyUYiVbkwk",
+                "browseEndpointContextSupportedConfigs": {
+                 "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                 }
+                }
+               }
+              }
+             }
+            }
+           ]
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+}

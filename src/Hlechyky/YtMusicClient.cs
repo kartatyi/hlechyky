@@ -129,15 +129,20 @@ public sealed partial class YtMusicClient(ILogger<YtMusicClient> log)
     /// <summary>Find the YouTube Music song for a Last.fm-style artist + title pair.</summary>
     public async Task<SearchResult?> ResolveAsync(string artist, string title, CancellationToken ct)
     {
-        var results = await SearchSongsAsync($"{artist} {title}", 8, ct);
+        var best = Pick(await SearchSongsAsync($"{artist} {title}", 8, ct), artist, title);
+        if (best is null) log.LogDebug("YTM resolve miss: {Artist} - {Title}", artist, title);
+        return best;
+    }
+
+    /// <summary>Та сама пісня серед результатів пошуку: назва й виконавець збігаються (без розділових знаків і регістру).</summary>
+    public static SearchResult? Pick(IReadOnlyList<SearchResult> results, string artist, string title)
+    {
         var nt = Norm(title);
         var na = Norm(FirstArtist(artist));
         if (nt.Length == 0) return null;
-        var best = results.FirstOrDefault(r => Norm(r.Title).Contains(nt) && Norm(r.Artist).Contains(na))
-                   ?? results.FirstOrDefault(r => Norm(r.Title) == nt)
-                   ?? results.FirstOrDefault(r => Norm(r.Artist).Contains(na) && (Norm(r.Title).Contains(nt) || nt.Contains(Norm(r.Title))));
-        if (best is null) log.LogDebug("YTM resolve miss: {Artist} - {Title}", artist, title);
-        return best;
+        return results.FirstOrDefault(r => Norm(r.Title).Contains(nt) && Norm(r.Artist).Contains(na))
+               ?? results.FirstOrDefault(r => Norm(r.Title) == nt)
+               ?? results.FirstOrDefault(r => Norm(r.Artist).Contains(na) && (Norm(r.Title).Contains(nt) || nt.Contains(Norm(r.Title))));
     }
 
     const string ArtistsFilter = "EgWKAQIgAWoKEAkQChAFEAMQBA==";
@@ -216,11 +221,154 @@ public sealed partial class YtMusicClient(ILogger<YtMusicClient> log)
         return new YtArtist(browseId, name, top, related);
     }
 
-    static string? ArtistBrowseId(JsonNode? nav)
+    static string? ArtistBrowseId(JsonNode? nav) => BrowseId(nav, "MUSIC_PAGE_TYPE_ARTIST");
+
+    static string? BrowseId(JsonNode? nav, string pageType)
     {
         var be = nav?["browseEndpoint"];
         var type = be?["browseEndpointContextSupportedConfigs"]?["browseEndpointContextMusicConfig"]?["pageType"]?.GetValue<string>();
-        return type == "MUSIC_PAGE_TYPE_ARTIST" ? be?["browseId"]?.GetValue<string>() : null;
+        return type == pageType ? be?["browseId"]?.GetValue<string>() : null;
+    }
+
+    // ---------- альбоми й плейлисти ----------
+
+    const string AlbumsFilter = "EgWKAQIYAWoKEAkQAxAEEAoQBQ%3D%3D";
+
+    /// <summary>Альбоми за запитом «виконавець назва»: так Spotify-альбом знаходиться в YouTube Music цілим, а не трек за треком.</summary>
+    public async Task<List<YtAlbumRef>> SearchAlbumsAsync(string query, int limit, CancellationToken ct)
+    {
+        var body = Body();
+        body["query"] = query;
+        body["params"] = AlbumsFilter;
+        return ParseAlbumSearch(await PostAsync("search", body, ct), limit);
+    }
+
+    public static List<YtAlbumRef> ParseAlbumSearch(JsonNode? root, int limit)
+    {
+        var list = new List<YtAlbumRef>();
+        var sections = root?["contents"]?["tabbedSearchResultsRenderer"]?["tabs"]?.AsArray().FirstOrDefault()
+            ?["tabRenderer"]?["content"]?["sectionListRenderer"]?["contents"]?.AsArray();
+        foreach (var sec in sections ?? [])
+            foreach (var it in sec?["musicShelfRenderer"]?["contents"]?.AsArray() ?? [])
+            {
+                var r = it?["musicResponsiveListItemRenderer"];
+                var id = BrowseId(r?["navigationEndpoint"], "MUSIC_PAGE_TYPE_ALBUM");
+                var cols = r?["flexColumns"]?.AsArray();
+                var title = Col(cols, 0);
+                if (id is null || title.Length == 0) continue;
+                // «Альбом • John Lennon і Yoko Ono • 1972»; у синглів і EP лише перше слово інше
+                var segs = Col(cols, 1).Split(" • ", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+                var year = segs.Count > 0 && YearRx().IsMatch(segs[^1]) ? segs[^1] : null;
+                if (year is not null) segs.RemoveAt(segs.Count - 1);
+                list.Add(new YtAlbumRef(id, title, segs.Count > 1 ? segs[1] : segs.FirstOrDefault() ?? "", year));
+                if (list.Count >= limit) return list;
+            }
+        return list;
+    }
+
+    /// <summary>Сторінка альбому (MPREb_…): шапка й треки по порядку.</summary>
+    public async Task<YtCollection?> AlbumAsync(string browseId, CancellationToken ct)
+    {
+        var body = Body();
+        body["browseId"] = browseId;
+        return ParseAlbum(browseId, await PostAsync("browse", body, ct));
+    }
+
+    /// <summary>
+    /// Колонка виконавця в треку альбому порожня, коли це виконавець самого альбому; заповнена — у збірниках.
+    /// Недоступні треки (без videoId) пропускаємо: качати там нічого.
+    /// </summary>
+    public static YtCollection? ParseAlbum(string browseId, JsonNode? root)
+    {
+        var header = Find(root?["contents"], "musicResponsiveHeaderRenderer") ?? root?["header"]?["musicDetailHeaderRenderer"];
+        var shelf = Find(root?["contents"], "musicShelfRenderer");
+        if (header is null || shelf is null) return null;
+        var title = RunsText(header["title"]);
+        var subtitle = RunsText(header["subtitle"]).Split(" • ", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var artist = RunsText(header["straplineTextOne"]);
+        if (artist.Length == 0 && subtitle.Length > 2) artist = subtitle[1];   // стара шапка: «Альбом • Виконавець • 2020»
+        var year = subtitle.LastOrDefault(s => YearRx().IsMatch(s));
+        var thumb = LastThumb(header["thumbnail"]?["musicThumbnailRenderer"]?["thumbnail"]?["thumbnails"]
+                              ?? header["thumbnail"]?["croppedSquareThumbnailRenderer"]?["thumbnail"]?["thumbnails"]);
+        var tracks = new List<SearchResult>();
+        foreach (var it in shelf["contents"]?.AsArray() ?? [])
+        {
+            var r = it?["musicResponsiveListItemRenderer"];
+            var id = r?["playlistItemData"]?["videoId"]?.GetValue<string>();
+            var cols = r?["flexColumns"]?.AsArray();
+            var name = Col(cols, 0);
+            if (id is null || name.Length == 0) continue;
+            var by = Col(cols, 1);
+            tracks.Add(new SearchResult(id, name, by.Length > 0 ? by : artist, title, ParseDuration(FixedCol(r, 0)), thumb));
+        }
+        return new YtCollection(browseId, title, artist, year, thumb, tracks);
+    }
+
+    /// <summary>Плейлист (PL…, або OLAK5uy_… — так YouTube Music віддає альбом посиланням): перша сторінка, це до сотні треків.</summary>
+    public async Task<YtCollection?> PlaylistAsync(string playlistId, CancellationToken ct)
+    {
+        var body = Body();
+        body["browseId"] = "VL" + playlistId;
+        return ParsePlaylist(playlistId, await PostAsync("browse", body, ct));
+    }
+
+    /// <summary>
+    /// Шапки в альбомного плейлиста (OLAK5uy_…) нема — тоді назва й виконавець беруться з самих треків,
+    /// які там усі з одного альбому.
+    /// </summary>
+    public static YtCollection? ParsePlaylist(string playlistId, JsonNode? root)
+    {
+        var shelf = Find(root?["contents"], "musicPlaylistShelfRenderer");
+        if (shelf is null) return null;
+        var tracks = new List<SearchResult>();
+        foreach (var it in shelf["contents"]?.AsArray() ?? [])
+        {
+            var r = it?["musicResponsiveListItemRenderer"];
+            var id = r?["playlistItemData"]?["videoId"]?.GetValue<string>();
+            var cols = r?["flexColumns"]?.AsArray();
+            var name = Col(cols, 0);
+            if (id is null || name.Length == 0) continue;
+            if (r!["musicItemRendererDisplayPolicy"]?.GetValue<string>() == "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT") continue;
+            var from = Col(cols, 2);
+            tracks.Add(new SearchResult(id, name, Col(cols, 1), from.Length > 0 ? from : null, ParseDuration(FixedCol(r, 0)),
+                LastThumb(r["thumbnail"]?["musicThumbnailRenderer"]?["thumbnail"]?["thumbnails"])));
+        }
+        var header = Find(root?["contents"], "musicResponsiveHeaderRenderer") ?? root?["header"]?["musicDetailHeaderRenderer"];
+        var title = RunsText(header?["title"]);
+        var owner = RunsText(header?["straplineTextOne"]);
+        if (owner.Length == 0) owner = header?["facepile"]?["avatarStackViewModel"]?["text"]?["content"]?.GetValue<string>() ?? "";
+        var thumb = LastThumb(header?["thumbnail"]?["musicThumbnailRenderer"]?["thumbnail"]?["thumbnails"]);
+        if (title.Length == 0 && tracks.Select(t => t.Album).Distinct().ToList() is [{ } album])
+        {
+            title = album;
+            owner = tracks[0].Artist;
+        }
+        if (title.Length == 0) title = "Плейлист";
+        return new YtCollection(playlistId, title, owner, null, thumb ?? tracks.FirstOrDefault()?.ThumbUrl, tracks);
+    }
+
+    static string Col(JsonArray? cols, int i) =>
+        cols is not null && i < cols.Count ? RunsText(cols[i]?["musicResponsiveListItemFlexColumnRenderer"]?["text"]) : "";
+
+    static string FixedCol(JsonNode? r, int i) =>
+        r?["fixedColumns"] is JsonArray f && i < f.Count ? RunsText(f[i]?["musicResponsiveListItemFixedColumnRenderer"]?["text"]) : "";
+
+    /// <summary>Перший вузол із таким ключем, углиб: розкладка сторінок YouTube Music час від часу переїжджає, а назви рендерерів лишаються.</summary>
+    static JsonNode? Find(JsonNode? n, string key)
+    {
+        switch (n)
+        {
+            case JsonObject o:
+                if (o[key] is { } hit) return hit;
+                foreach (var kv in o)
+                    if (Find(kv.Value, key) is { } deep) return deep;
+                break;
+            case JsonArray a:
+                foreach (var x in a)
+                    if (Find(x, key) is { } deep) return deep;
+                break;
+        }
+        return null;
     }
 
     static string RunsText(JsonNode? textNode)

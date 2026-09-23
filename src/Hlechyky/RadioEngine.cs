@@ -43,6 +43,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     readonly Db _db;
     readonly YtDlpService _ytdlp;
     readonly YtMusicClient _ytm;
+    readonly Albums _albums;
     readonly LiquidsoapClient _liq;
     readonly AutoDj _autoDj;
     readonly RoomTaste _taste;
@@ -72,6 +73,8 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     string? _spotifyTitle;
     readonly SemaphoreSlim _dlGate = new(2, 2);
     readonly SemaphoreSlim _tickGate = new(1, 1);
+    /// <summary>Тік попросили, поки інший ще йшов: той, хто тримає ворота, пройде ще раз (див. <see cref="TickAsync"/>).</summary>
+    volatile bool _tickAgain;
     DateTime _lastIcecast = DateTime.MinValue;
     DateTime _lastReconcile = DateTime.MinValue;
     long _liqUptime = -1;
@@ -95,12 +98,12 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     string _suggestSeedNote = "";
     (string Title, TrackInfo? Seed)? _spotifySeed;
 
-    public RadioEngine(Db db, YtDlpService ytdlp, YtMusicClient ytm, LiquidsoapClient liq, AutoDj autoDj, RoomTaste taste, LastFmClient lastFm,
+    public RadioEngine(Db db, YtDlpService ytdlp, YtMusicClient ytm, Albums albums, LiquidsoapClient liq, AutoDj autoDj, RoomTaste taste, LastFmClient lastFm,
         Presence presence, IHubContext<RadioHub> hub, ILogger<RadioEngine> log,
         IOptionsMonitor<SiteOptions> site, IOptionsMonitor<YtDlpOptions> yt, IOptionsMonitor<AutoDjOptions> adj,
         IOptionsMonitor<IcecastOptions> ice, IOptionsMonitor<VoiceOptions> voice)
     {
-        _db = db; _ytdlp = ytdlp; _ytm = ytm; _liq = liq; _autoDj = autoDj; _taste = taste; _lastFm = lastFm; _presence = presence; _hub = hub; _log = log;
+        _db = db; _ytdlp = ytdlp; _ytm = ytm; _albums = albums; _liq = liq; _autoDj = autoDj; _taste = taste; _lastFm = lastFm; _presence = presence; _hub = hub; _log = log;
         _site = site; _yt = yt; _adj = adj; _ice = ice; _voice = voice;
     }
 
@@ -202,9 +205,19 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     public async Task<(bool Ok, string Message)> AddAsync(string nick, bool isAdmin, string? input, SearchResult? pick, CancellationToken ct,
         string? via = null, string? reason = null, bool quiet = false)
     {
+        // Кілька посилань одним шматком (чи посилання посеред слів) — кожне окремо, по порядку, а не пошук по всьому рядку.
+        if (pick is null && Links.Split(input) is { Count: > 0 } links && (links.Count > 1 || links[0] != (input ?? "").Trim()))
+            return await AddLinksAsync(nick, isAdmin, links, ct);
         TrackInfo track;
         try
         {
+            // Посилання на альбом чи плейлист тут — від Глека-балакуна чи зі старої вкладки: сайт спершу показує
+            // трекліст, а цей шлях закидає все по порядку.
+            if (pick is null && await _albums.ResolveAsync(input ?? "", ct) is { } album)
+            {
+                var (ok, message, _) = AddAlbum(album, nick, isAdmin, shuffle: false);
+                return (ok, message);
+            }
             track = pick is not null ? AutoDj.ToTrack(pick) : await ResolveInputAsync(input ?? "", ct);
         }
         catch (Exception ex)
@@ -213,6 +226,56 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             return (false, "Не вийшло розібрати: " + ex.Message);
         }
         return Enqueue(track, nick, isAdmin, via, reason, quiet);
+    }
+
+    /// <summary>Посилання по одному, у тому порядку, як їх вставили: у черзі вони стануть так само.</summary>
+    async Task<(bool Ok, string Message)> AddLinksAsync(string nick, bool isAdmin, List<string> links, CancellationToken ct)
+    {
+        var done = new List<string>();
+        var failed = new List<string>();
+        foreach (var link in links)
+        {
+            var (ok, message) = await AddAsync(nick, isAdmin, link, null, ct);
+            (ok ? done : failed).Add(message);
+        }
+        if (links.Count == 1) return (done.Count == 1, (done.Count == 1 ? done : failed)[0]);
+        if (done.Count == 0) return (false, $"Жодне з {links.Count} посилань не зайшло: {failed[0]}");
+        return (true, failed.Count == 0 ? $"Закинуто всі {links.Count}" : $"Закинуто {done.Count} з {links.Count}; не вийшло: {string.Join("; ", failed)}");
+    }
+
+    /// <summary>
+    /// Альбом чи плейлист у чергу — по порядку або впереміш. Кожен трек проходить ті самі перевірки, що й звичайне
+    /// замовлення (бан, ліміт довжини, «уже в черзі»), а в Журнал іде один рядок на весь альбом, не дюжина.
+    /// <paramref name="only"/> — id треків, які людина лишила відміченими; null — усі, що знайшлися.
+    /// </summary>
+    public (bool Ok, string Message, int Count) AddAlbum(Album album, string nick, bool isAdmin, bool shuffle, IReadOnlyCollection<string>? only = null)
+    {
+        var picks = album.Tracks.Select(t => t.Match).OfType<SearchResult>()
+            .Where(m => only is null || only.Contains(m.Id)).DistinctBy(m => m.Id).ToList();
+        if (picks.Count == 0) return (false, album.Found == 0 ? "Жоден трек звідти не знайшовся в YouTube Music" : "Не вибрано жодного треку", 0);
+        if (shuffle) picks = picks.OrderBy(_ => Random.Shared.Next()).ToList();
+        var added = 0;
+        var refused = new Dictionary<Refusal, int>();
+        foreach (var p in picks)
+        {
+            var track = AutoDj.ToTrack(p);
+            _db.UpsertTrack(track);   // до черги, щоб скачаний файл було куди записати
+            if (Admit(track, nick, isAdmin, via: null, reason: null) is { } no) refused[no] = refused.GetValueOrDefault(no) + 1;
+            else added++;
+        }
+        var notes = new List<string>();
+        if (refused.GetValueOrDefault(Refusal.InQueue) is > 0 and var inQueue) notes.Add($"{inQueue} уже в черзі");
+        if (refused.GetValueOrDefault(Refusal.OnAir) > 0) notes.Add("1 уже грає");
+        if (refused.GetValueOrDefault(Refusal.Banned) is > 0 and var banned) notes.Add($"{banned} у бані");
+        if (refused.GetValueOrDefault(Refusal.TooLong) is > 0 and var tooLong) notes.Add($"{tooLong} задовгі, ліміт {_yt.CurrentValue.MaxDurationSeconds / 60} хв");
+        if (only is null && album.Tracks.Count - album.Found is > 0 and var missing) notes.Add($"{missing} не знайшлось у YouTube Music");
+        var tail = notes.Count > 0 ? $" ({string.Join(", ", notes)})" : "";
+        var from = album.Kind == "album" ? "альбому" : "плейлиста";
+        if (added == 0) return (false, $"З {from} «{album.Title}» нічого не закинуто{tail}", 0);
+        var what = album.Kind == "album" ? "альбом" : "плейлист";
+        var by = album.Kind == "album" && album.Artist.Length > 0 ? $" — {album.Artist}" : "";
+        Queued($"{nick} закидає {what} «{album.Title}»{by}: {Albums.Tracks(added)}{(shuffle ? " впереміш" : "")}");
+        return (true, $"Закинуто {Albums.Tracks(added)} з {from} «{album.Title}»{tail}", added);
     }
 
     /// <summary>
@@ -227,26 +290,48 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     (bool Ok, string Message) Enqueue(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, bool quiet,
         string? filePath = null, string? chat = null, string? reply = null)
     {
-        if (_db.IsBanned(track.Id)) return (false, "Цей трек у бані. Викупити можна у вкладці «🚫 Бан»");
-        var max = _yt.CurrentValue.MaxDurationSeconds;
-        if (!isAdmin && track.DurationSec > max) return (false, $"Задовгий трек ({track.DurationSec / 60} хв), ліміт {max / 60} хв");
+        switch (Admit(track, nick, isAdmin, via, reason, filePath))
+        {
+            case Refusal.Banned: return (false, "Цей трек у бані. Викупити можна у вкладці «🚫 Бан»");
+            case Refusal.TooLong:
+                var max = _yt.CurrentValue.MaxDurationSeconds;
+                return (false, $"Задовгий трек ({track.DurationSec / 60} хв), ліміт {max / 60} хв");
+            case Refusal.InQueue: return (false, "Уже в черзі");
+            case Refusal.OnAir: return (false, "Уже грає");
+        }
+        _db.UpsertTrack(track);
+        if (filePath is not null) _db.SetTrackFile(track.Id, filePath);
+        Queued(quiet ? null : chat ?? (via == "suggestion" ? $"{nick} бере пораду {DjGen}: {track.Label}" : $"{nick} додає {track.Label}"));
+        return (true, reply ?? "Закинуто: " + track.Label);
+    }
+
+    enum Refusal { Banned, TooLong, InQueue, OnAir }
+
+    /// <summary>Перевірки замовлення і місце в кінці черги. null — трек став; інакше чому ні.</summary>
+    Refusal? Admit(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, string? filePath = null)
+    {
+        if (_db.IsBanned(track.Id)) return Refusal.Banned;
+        if (!isAdmin && track.DurationSec > _yt.CurrentValue.MaxDurationSeconds) return Refusal.TooLong;
         lock (_lock)
         {
-            if (_queue.Any(q => q.Track.Id == track.Id)) return (false, "Уже в черзі");
-            if (_now.Track?.Id == track.Id && _now.Source is "user" or "autodj") return (false, "Уже грає");
+            if (_queue.Any(q => q.Track.Id == track.Id)) return Refusal.InQueue;
+            if (_now.Track?.Id == track.Id && _now.Source is "user" or "autodj") return Refusal.OnAir;
             _queue.Add(new QueueItem
             {
                 Track = track, RequestedBy = nick, Via = via, Reason = reason,
                 FilePath = filePath, Status = filePath is null ? ItemStatus.Queued : ItemStatus.Ready,
             });
         }
-        _db.UpsertTrack(track);
-        if (filePath is not null) _db.SetTrackFile(track.Id, filePath);
+        return null;
+    }
+
+    /// <summary>Черга поповнилась: зберегти, сказати в Журнал (якщо є що), показати всім і штовхнути тік — хай качає.</summary>
+    void Queued(string? journal)
+    {
         PersistQueue();
-        if (!quiet) SystemChat(chat ?? (via == "suggestion" ? $"{nick} бере пораду {DjGen}: {track.Label}" : $"{nick} додає {track.Label}"));
+        if (journal is not null) SystemChat(journal);
         Broadcast();
         _ = TickSafeAsync();
-        return (true, reply ?? "Закинуто: " + track.Label);
     }
 
     static string Mmss(int sec) => $"{sec / 60}:{sec % 60:00}";
@@ -278,13 +363,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         {
             var sp = await SpotifyResolver.ResolveAsync(input, ct);
             var label = string.IsNullOrWhiteSpace(sp.Artist) ? sp.Title : $"{sp.Artist} — {sp.Title}";
-            var r = await _ytm.ResolveAsync(sp.Artist, sp.Title, ct);
-            if (r is null)
-            {
-                // loose match: the first search hit of about the same length
-                var hits = await _ytm.SearchSongsAsync(string.IsNullOrWhiteSpace(sp.Artist) ? sp.Title : $"{sp.Artist} {sp.Title}", 5, ct);
-                r = hits.FirstOrDefault(f => sp.DurationSec == 0 || f.DurationSec == 0 || Math.Abs(f.DurationSec - sp.DurationSec) <= 20) ?? hits.FirstOrDefault();
-            }
+            var r = await _albums.MatchTrackAsync(sp, strict: false, ct);
             if (r is null) throw new InvalidOperationException($"не знайшов «{label}» на YouTube Music");
             _log.LogInformation("spotify {Id} = {Label} -> YTM {Yt} ({YtLabel})", sp.Id, label, r.Id, $"{r.Artist} — {r.Title}");
             return AutoDj.ToTrack(r);
@@ -879,64 +958,81 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         catch (Exception ex) { _log.LogWarning(ex, "tick failed"); }
     }
 
+    /// <summary>
+    /// Тік не стоїть у черзі за іншим тіком: зайнято — ставимо прапорець і йдемо, а той, хто тримає ворота, пройде ще раз.
+    /// Раніше такий виклик просто губився: трек, закинутий, поки тік відправляв попередній, чекав наступного
+    /// тіку з циклу, а то й кількох. Прапорець ставимо ДО спроби зайти — тоді власник воріт, відпустивши їх,
+    /// побачить його напевно.
+    /// </summary>
     async Task TickAsync(CancellationToken ct)
     {
-        if (!await _tickGate.WaitAsync(0, ct)) return;
-        try
+        _tickAgain = true;
+        // кілька проходів поспіль, не більше: решту підбере цикл за три секунди, а зациклитись тут не вийде
+        for (var pass = 0; pass < 4 && _tickAgain && !ct.IsCancellationRequested; pass++)
         {
-            List<QueueItem> toDownload;
-            lock (_lock) toDownload = _queue.Where(q => q.Status == ItemStatus.Queued).Take(2).ToList();
-            foreach (var item in toDownload) StartDownload(item);
-
-            QueueItem? head;
-            bool anyDispatched;
-            lock (_lock)
+            if (!await _tickGate.WaitAsync(0, ct)) return;
+            try
             {
-                anyDispatched = _queue.Any(q => q.Status == ItemStatus.Dispatched);
-                head = _queue.FirstOrDefault();
+                _tickAgain = false;
+                await TickOnceAsync(ct);
             }
-            if (!anyDispatched && head is not null)
+            finally
             {
-                if (head.Status == ItemStatus.Failed)
-                {
-                    lock (_lock) _queue.Remove(head);
-                    PersistQueue();
-                    SystemChat($"Не вийшло завантажити {head.Track.Label}: {head.Error}");
-                    Broadcast();
-                }
-                else if (head.Status == ItemStatus.Ready)
-                {
-                    await DispatchAsync("userq", head, ct);
-                }
+                _tickGate.Release();
             }
+        }
+    }
 
-            QueueItem? first = null;
-            lock (_lock)
-            {
-                var needAuto = _adj.CurrentValue.Enabled && _autoNext is null && DateTime.UtcNow >= _autoRetryAt
-                               && _queue.All(q => q.Status == ItemStatus.Dispatched)
-                               && (_autoPrepare is null || _autoPrepare.IsCompleted);
-                // the queue is about to run dry: the first suggestion becomes the auto-DJ's next track
-                if (needAuto && _suggestions.Count > 0) { first = _suggestions[0]; _suggestions.RemoveAt(0); }
-            }
-            if (first is not null) _autoPrepare = PrepareAutoAsync(first);
+    async Task TickOnceAsync(CancellationToken ct)
+    {
+        List<QueueItem> toDownload;
+        lock (_lock) toDownload = _queue.Where(q => q.Status == ItemStatus.Queued).Take(2).ToList();
+        foreach (var item in toDownload) StartDownload(item);
 
-            QueueItem? auto;
-            lock (_lock) auto = _autoNext;
-            if (auto is { Status: ItemStatus.Ready }) await DispatchAsync("autoq", auto, ct);
-            else if (auto is { Status: ItemStatus.Failed })
+        QueueItem? head;
+        bool anyDispatched;
+        lock (_lock)
+        {
+            anyDispatched = _queue.Any(q => q.Status == ItemStatus.Dispatched);
+            head = _queue.FirstOrDefault();
+        }
+        if (!anyDispatched && head is not null)
+        {
+            if (head.Status == ItemStatus.Failed)
             {
-                lock (_lock) { _autoFailed.Add(auto.Track.Id); _autoNext = null; }
-                SystemChat($"{Dj} не зміг скачати {auto.Track.Label}: {auto.Error}");
+                lock (_lock) _queue.Remove(head);
+                PersistQueue();
+                SystemChat($"Не вийшло завантажити {head.Track.Label}: {head.Error}");
                 Broadcast();
             }
+            else if (head.Status == ItemStatus.Ready)
+            {
+                await DispatchAsync("userq", head, ct);
+            }
+        }
 
-            EnsureSuggestions();
-        }
-        finally
+        QueueItem? first = null;
+        lock (_lock)
         {
-            _tickGate.Release();
+            var needAuto = _adj.CurrentValue.Enabled && _autoNext is null && DateTime.UtcNow >= _autoRetryAt
+                           && _queue.All(q => q.Status == ItemStatus.Dispatched)
+                           && (_autoPrepare is null || _autoPrepare.IsCompleted);
+            // the queue is about to run dry: the first suggestion becomes the auto-DJ's next track
+            if (needAuto && _suggestions.Count > 0) { first = _suggestions[0]; _suggestions.RemoveAt(0); }
         }
+        if (first is not null) _autoPrepare = PrepareAutoAsync(first);
+
+        QueueItem? auto;
+        lock (_lock) auto = _autoNext;
+        if (auto is { Status: ItemStatus.Ready }) await DispatchAsync("autoq", auto, ct);
+        else if (auto is { Status: ItemStatus.Failed })
+        {
+            lock (_lock) { _autoFailed.Add(auto.Track.Id); _autoNext = null; }
+            SystemChat($"{Dj} не зміг скачати {auto.Track.Label}: {auto.Error}");
+            Broadcast();
+        }
+
+        EnsureSuggestions();
     }
 
     async Task DispatchAsync(string queue, QueueItem item, CancellationToken ct)

@@ -239,6 +239,51 @@ h2 .count { font-weight: 400; color: var(--muted); font-size: .88em; }
 .result .d { color: var(--muted); font-size: .8em; font-variant-numeric: tabular-nums; }
 .results .hint { padding: 10px 12px; color: var(--muted); font-size: .9em; display: flex; gap: 8px; align-items: center; }
 
+/* ---- закидання по черзі: що розбирається, що чекає, чим скінчилось ---- */
+.adding { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.add-job { display: flex; align-items: center; gap: 8px; padding: 6px 10px; min-width: 0; font-size: .9em; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; animation: fadein .2s ease-out; }
+.add-job .aj-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.add-job .aj-note { flex: none; color: var(--muted); font-size: .85em; }
+.add-job .aj-ico { flex: none; width: 1em; text-align: center; }
+.add-job .aj-x { padding: 2px 6px; }
+.add-job.wait { color: var(--muted); }
+.add-job.run { border-color: var(--accent2); }
+.add-job.ok { border-color: rgba(123, 211, 137, .45); }
+.add-job.ok .aj-ico { color: var(--ok); }
+.add-job.err { border-color: var(--danger); }
+.add-job.err .aj-ico { color: var(--danger); }
+.add-job.err .aj-text { white-space: normal; }
+
+/* ---- альбом чи плейлист з посилання: трекліст перед тим, як закинути ---- */
+.album { margin-top: 10px; padding: 12px; background: var(--bg2); border: 1px solid var(--accent2); border-radius: 12px; animation: fadein .25s ease-out; }
+.album-head { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center; }
+.album-head img, .album-head .noimg { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: var(--panel); display: flex; align-items: center; justify-content: center; font-size: 1.8em; }
+.album-meta { min-width: 0; }
+.album-kind { color: var(--accent); font-size: .75em; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.album-title { font-family: var(--display); font-weight: 700; font-size: 1.1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-sub { color: var(--muted); font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 8px; }
+.album-btns .album-src { margin-left: auto; text-decoration: none; padding: 5px 10px; }
+.album-tracks { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.album-tracks li { display: grid; grid-template-columns: 46px 1fr auto auto; gap: 8px; align-items: center; min-height: 34px; padding: 3px 6px; border-radius: 8px; }
+.album-tracks li:hover { background: var(--panel); }
+.album-tracks .n { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: .85em; font-variant-numeric: tabular-nums; cursor: pointer; }
+.album-tracks .n input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.album-tracks .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .92em; }
+.album-tracks .d { color: var(--muted); font-size: .8em; font-variant-numeric: tabular-nums; }
+.album-tracks li.off .t, .album-tracks li.off .d { opacity: .45; }
+.album-tracks li.miss { opacity: .55; cursor: default; }
+.album-tracks li.miss .n { padding-left: 18px; cursor: default; }
+.album-tracks button.q1 { padding: 3px 8px; font-size: .85em; }
+.album-foot { color: var(--muted); font-size: .8em; margin-top: 8px; }
+@media (max-width: 560px) {
+  .album-head { grid-template-columns: 56px 1fr auto; }
+  .album-head img, .album-head .noimg { width: 56px; height: 56px; }
+  .album-btns .album-src { margin-left: 0; }
+  .album-tracks li { grid-template-columns: 42px 1fr auto; }
+  .album-tracks .d { display: none; }
+}
+
 /* ---- голосові ---- */
 #micBtn { font-size: 1.05em; }
 .rec { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding: 8px 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; }

@@ -3,7 +3,8 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (sec) => { sec = Math.max(0, Math.floor(sec || 0)); const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, '0')}`; };
   const tm = (iso) => new Date(iso).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-  const isUrl = (s) => /^https?:\/\/\S+$/i.test(s.trim());
+  const plural = (n, one, few, many) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many}`;
+  const tracksN = (n) => plural(n, 'трек', 'треки', 'треків');
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
   const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
   // Голосове — такий самий трек у черзі, тільки з нашим id і без обкладинки: замість неї мікрофон.
@@ -83,7 +84,7 @@
     });
     let data = null;
     try { data = await r.json(); } catch { /* no body */ }
-    if (!r.ok) throw new Error((data && data.message) || `HTTP ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error((data && data.message) || `HTTP ${r.status}`), { data });
     return data;
   }
   const queueTrack = (id) => api('POST', `/api/queue/track/${id}`).then(ok).catch(fail);
@@ -759,6 +760,7 @@
     renderQueue();
     renderOnline();
     renderSuggestions();
+    if (album && albumSig() !== album.sig) drawAlbum();   // «у черзі» біля треків альбому
     if (state.now.playId !== lastPlayId) {
       lastPlayId = state.now.playId;
       if (route === 'lib' && (libTab === 'history' || libTab === 'bans' || libTab === 'ads')) loadLib();
@@ -1337,7 +1339,15 @@
   async function search(text) {
     if (text === lastQuery) return;
     lastQuery = text;
-    if (!text || isUrl(text)) { results.innerHTML = ''; lastResults = []; return; }
+    if (!text) { results.innerHTML = ''; lastResults = []; return; }
+    const links = splitLinks(text);
+    if (links.length) {
+      // посилання не шукаємо, лише кажемо, що буде на Enter
+      lastResults = [];
+      showResults([], links.length > 1 ? `Enter — закину всі ${plural(links.length, 'посилання', 'посилання', 'посилань')} по черзі`
+        : maybeAlbum(links[0]) ? 'Enter — покажу трекліст: закинеш усе або вибрані' : 'Enter — закину за посиланням');
+      return;
+    }
     showResults([], 'шукаю…', true);
     try {
       const list = await api('GET', `/api/search?q=${encodeURIComponent(text)}`);
@@ -1362,7 +1372,7 @@
   });
   document.addEventListener('click', (e) => { if (!e.target.closest('.add')) results.innerHTML = ''; });
   q.addEventListener('focus', () => { if (lastResults.length && q.value.trim() === lastQuery) showResults(lastResults); });
-  $('addBtn').onclick = (e) => busy(e.currentTarget, 'закидаю…', addFromInput);
+  $('addBtn').onclick = addFromInput;
   // Каркас ігор слухає document раніше за нас (core.js підключений вище за app.js), тож клавішу,
   // яку вже з'їла гра, він позначає preventDefault — і ми в неї не лізимо.
   document.addEventListener('keydown', (e) => {
@@ -1376,23 +1386,242 @@
     else if (e.key === '3') { e.preventDefault(); go(hashFor('games')); }
   });
 
-  async function addPick(r) {
-    results.innerHTML = '';
+  // Поле звільняється одразу, як тільки закинув: наступне посилання можна вставляти, поки сайт розбирає попереднє.
+  // (Раніше поле чистила відповідь на старий запит — і стирала вже вставлене нове посилання.)
+  function takeInput() {
+    const text = q.value.trim();
     q.value = '';
     lastQuery = '';
     lastResults = [];
-    const t = toast(`Закидаю ${r.artist} — ${r.title}…`, 'wait');
-    try { const res = await api('POST', '/api/queue', { pick: r }); t.remove(); ok(res); }
-    catch (e) { t.remove(); fail(e); }
+    results.innerHTML = '';
+    return text;
   }
-  async function addFromInput() {
+  function addPick(r) {
+    takeInput();
+    queueAdd({ pick: r }, `${r.artist} — ${r.title}`, 'input');
+  }
+  function addFromInput() {
     const text = q.value.trim();
     if (!text) { q.focus(); return; }
-    if (!isUrl(text) && lastResults.length && lastQuery === text) return addPick(lastResults[0]);
-    results.innerHTML = '';
-    const t = toast(isUrl(text) ? 'Розбираю посилання, це може зайняти кілька секунд…' : 'Шукаю…', 'wait');
-    try { const res = await api('POST', '/api/queue', { input: text }); t.remove(); ok(res); q.value = ''; lastQuery = ''; lastResults = []; }
-    catch (e) { t.remove(); fail(e); }
+    const links = splitLinks(text);
+    if (!links.length && lastResults.length && lastQuery === text) return addPick(lastResults[0]);
+    takeInput();
+    if (links.length) submitLinks(links, 'input');
+    else queueAdd({ input: text }, `«${text}»`, 'input');
+    if (!isMobile()) q.focus();   // на телефоні фокус знову відкрив би клавіатуру
+  }
+
+  // ---------- закидання по черзі ----------
+  // Кожне посилання чи пошук — окреме завдання, і на сервер вони йдуть по одному, у тому порядку, як їх кидали:
+  // так і в черзі вони стануть так само, а друге, кинуте поки сайт розбирає перше, не губиться і не ламає першого.
+  // Під пошуком видно, що саме зараз розбирається, що чекає і чим скінчилось.
+  const LINK_RX = /(?:https?:\/\/|spotify:(?:track|album|playlist):)\S+?(?=https?:\/\/|spotify:(?:track|album|playlist):|\s|$)/gi;
+  /// Посилання з тексту: через пробіл, з нового рядка чи зліплені докупи (друге вставили за першим) — кожне окремо.
+  const splitLinks = (text) => (String(text || '').match(LINK_RX) || []).map((s) => s.replace(/[.,;!?)\]»"']+$/, '')).filter(Boolean);
+  /// Альбом чи плейлист: Spotify, альбом YouTube Music (browse/MPREb_…) і ?list= без v= — крім міксів RD… (див. Albums.Detect).
+  function isAlbumLink(s) {
+    if (/^spotify:(album|playlist):/i.test(s) || /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(?:embed\/)?(album|playlist)\//i.test(s)) return true;
+    let u;
+    try { u = new URL(s); } catch { return false; }
+    if (!/(^|\.)youtube\.com$/i.test(u.hostname)) return false;
+    if (/^\/browse\/MPREb_/.test(u.pathname)) return true;
+    const list = u.searchParams.get('list');
+    return !!list && !u.searchParams.has('v') && !/^RD/.test(list) && !['LL', 'WL', 'LM'].includes(list);
+  }
+  /// Коротке spotify.link з телефона може вести і на трек, і на альбом — це скаже тільки сервер.
+  const maybeAlbum = (s) => isAlbumLink(s) || /^https?:\/\/spotify\.link\//i.test(s);
+  /// open.spotify.com/track/6UWIAE… — щоб рядок не розтягувався на пів екрана.
+  function shortUrl(s) {
+    let t = s;
+    try {
+      const u = new URL(s);
+      const id = u.searchParams.get('v') ? '?v=' + u.searchParams.get('v') : u.searchParams.get('list') ? '?list=' + u.searchParams.get('list') : '';
+      t = (u.hostname.replace(/^www\./, '') + u.pathname).replace(/\/$/, '') + id;
+    } catch { /* spotify:track:… */ }
+    return t.length > 52 ? t.slice(0, 51) + '…' : t;
+  }
+
+  const adds = [];                 // { id, kind: add|album, body, label, from: input|drop|album, state: wait|run|ok|err|handoff, msg }
+  let addSeq = 0, addBusy = false;
+
+  /// run — кидок, за яким стежить оверлей (див. dropText): завдання прив'язується до нього ще до першого малювання.
+  function submitLinks(links, from, run) {
+    return links.map((link) => (maybeAlbum(link) ? openAlbum(link, from, run) : queueAdd({ input: link }, shortUrl(link), from, run)));
+  }
+  function newJob(kind, label, from, run, extra) {
+    const job = { id: ++addSeq, kind, label, from, state: kind === 'album' ? 'run' : 'wait', msg: '', run, ...extra };
+    if (run) run.jobs.push(job);
+    adds.push(job);
+    drawAdds();
+    return job;
+  }
+  function queueAdd(body, label, from, run) {
+    const job = newJob('add', label, from, run, { body });
+    pumpAdds();
+    return job;
+  }
+  async function pumpAdds() {
+    if (addBusy) return;
+    addBusy = true;
+    try {
+      for (let job; (job = adds.find((j) => j.kind === 'add' && j.state === 'wait'));) {
+        job.state = 'run';
+        drawAdds();
+        try {
+          const res = await api('POST', '/api/queue', job.body);
+          job.state = 'ok';
+          job.msg = res.message || 'Закинуто';
+        } catch (e) {
+          job.state = 'err';
+          job.msg = e.message;
+        }
+        settle(job);
+      }
+    } finally { addBusy = false; }
+  }
+  /// Скінчене ще трохи видно (помилку — довше, щоб встигнути прочитати), далі рядок зникає сам.
+  function settle(job) {
+    drawAdds();
+    setTimeout(() => dropJob(job), job.state === 'err' ? 10000 : 4000);
+  }
+  function dropJob(job) {
+    const i = adds.indexOf(job);
+    if (i >= 0) { adds.splice(i, 1); drawAdds(); }
+  }
+  function drawAdds() {
+    const box = $('adding');
+    const shown = adds.filter((j) => j.state !== 'handoff');
+    box.hidden = !shown.length;
+    box.innerHTML = shown.map((j) => {
+      const icon = j.state === 'run' ? '<span class="spin"></span>' : `<span class="aj-ico">${{ wait: '⏳', ok: '✓', err: '✕' }[j.state]}</span>`;
+      const text = j.state === 'ok' ? j.msg : j.state === 'err' ? `${j.label}: ${j.msg}` : j.label;
+      const note = j.state === 'wait' ? 'чекає' : j.state === 'run' ? (j.kind === 'album' ? 'тягну трекліст…' : 'розбираю…') : '';
+      return `<div class="add-job ${j.state}" data-id="${j.id}">${icon}<span class="aj-text">${esc(text)}</span>`
+        + `${note ? `<span class="aj-note">${note}</span>` : ''}${j.state === 'err' ? '<button class="ghost icon aj-x" title="Сховати">✕</button>' : ''}</div>`;
+    }).join('');
+    box.querySelectorAll('.aj-x').forEach((b) => b.onclick = () => dropJob(adds.find((j) => j.id === +b.closest('.add-job').dataset.id)));
+    drawDropProgress();
+  }
+
+  // ---------- альбом чи плейлист з посилання ----------
+  // Наосліп не закидаємо: спершу трекліст під пошуком — тоді все в чергу по порядку, впереміш, лише вибрані,
+  // по одному, або зберегти плейлистом сайту. Сервер шукає Spotify-альбом у YouTube Music цілим, тож гратимуть
+  // саме альбомні версії; що не знайшлось — видно одразу, а не посеред вечора.
+  let album = null;                // { url, data, off: Set(id) — зняті галочки, sig }
+
+  function openAlbum(url, from, run) {
+    const job = newJob('album', shortUrl(url), from, run);
+    loadAlbum(job, url);
+    return job;
+  }
+  async function loadAlbum(job, url) {
+    try {
+      const data = await api('GET', '/api/album?url=' + encodeURIComponent(url));
+      job.state = 'ok';
+      job.msg = `${data.kind === 'album' ? 'Альбом' : 'Плейлист'} «${data.title}»: ${tracksN(data.tracks.length)} — трекліст під пошуком`;
+      showAlbum(url, data);
+    } catch (e) {
+      if (e.data && e.data.notAlbum) {
+        // коротке spotify.link вело на трек — закидаємо як звичайне посилання
+        job.state = 'handoff';
+        queueAdd({ input: url }, job.label, job.from, job.run);
+        dropJob(job);
+        return;
+      }
+      job.state = 'err';
+      job.msg = e.message;
+    }
+    settle(job);
+  }
+  function showAlbum(url, data) {
+    album = { url, data, off: new Set(), sig: '' };
+    drawAlbum();
+    if (route !== 'efir') go(hashFor('efir'));
+    setTimeout(() => $('album').scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 80);
+  }
+  function closeAlbum() {
+    album = null;
+    drawAlbum();
+  }
+  /// Що з альбому вже в черзі чи грає: панель перемальовуємо, лише коли це змінилось, а не на кожен стан.
+  function albumSig() {
+    if (!album || !state) return '';
+    const ids = new Set(album.data.tracks.filter((t) => t.match).map((t) => t.match.id));
+    return state.queue.filter((x) => ids.has(x.track.id)).map((x) => x.track.id).join(',') + '|' + (state.now.track && ids.has(state.now.track.id) ? state.now.track.id : '');
+  }
+  function albumRow(t, a) {
+    const m = t.match;
+    // виконавця треку показуємо, лише коли він не той, що в альбому: у збірнику чи плейлисті, а не дев'ять разів «John Lennon, Yoko Ono…»
+    const lead = String(a.artist || '').split(/,\s|\s&\s|\sі\s/)[0].trim().toLowerCase();
+    const by = t.artist && (a.kind !== 'album' || !lead || !t.artist.toLowerCase().includes(lead)) ? ` <span class="muted">· ${esc(t.artist)}</span>` : '';
+    if (!m) {
+      return `<li class="miss" title="Не знайшлось у YouTube Music — пропущу"><span class="n"><span>${t.n}</span></span>`
+        + `<div class="t">${esc(t.title)}${by}</div><span class="d">${fmt(t.durationSec)}</span><span class="chip">нема</span></li>`;
+    }
+    const off = album.off.has(m.id);
+    const onAir = state && state.now.track && state.now.track.id === m.id;
+    const queued = state && state.queue.some((x) => x.track.id === m.id);
+    return `<li class="${off ? 'off' : ''}" data-id="${esc(m.id)}">
+        <label class="n" title="${off ? 'Повернути до вибраних' : 'Прибрати з вибраних'}"><input type="checkbox" ${off ? '' : 'checked'}><span>${t.n}</span></label>
+        <div class="t">${esc(t.title)}${by}</div>
+        <span class="d">${fmt(m.durationSec || t.durationSec)}</span>
+        ${onAir ? '<span class="chip ok">грає</span>' : queued ? '<span class="chip ok">у черзі</span>' : '<button class="ghost q1" title="Закинути лише цей трек">в чергу</button>'}
+      </li>`;
+  }
+  function drawAlbum() {
+    const box = $('album');
+    if (!album) { box.hidden = true; box.innerHTML = ''; return; }
+    const a = album.data;
+    const found = a.tracks.filter((t) => t.match);
+    const picked = found.filter((t) => !album.off.has(t.match.id));
+    const src = a.source === 'spotify' ? 'Spotify' : 'YouTube Music';
+    const sub = [a.artist, a.year, tracksN(a.tracks.length), `${Math.max(1, Math.round(a.durationSec / 60))} хв`].filter(Boolean).join(' · ');
+    const missing = a.tracks.length - found.length;
+    const scroll = box.querySelector('.album-tracks')?.scrollTop || 0;
+    album.sig = albumSig();
+    box.hidden = false;
+    box.innerHTML = `<div class="album-head">
+        ${a.thumbUrl ? `<img src="${esc(a.thumbUrl)}" alt="">` : '<div class="noimg">💿</div>'}
+        <div class="album-meta">
+          <div class="album-kind">${a.kind === 'album' ? 'Альбом' : 'Плейлист'} · ${src}</div>
+          <div class="album-title" title="${esc(a.title)}">${esc(a.title)}</div>
+          <div class="album-sub">${esc(sub)}</div>
+        </div>
+        <button class="ghost icon album-x" title="Закрити">✕</button>
+      </div>
+      <div class="album-btns">
+        <button class="primary" data-go="order" ${picked.length ? '' : 'disabled'} title="По порядку, як в ${a.kind === 'album' ? 'альбомі' : 'плейлисті'}">▶ ${picked.length === found.length ? 'Усе' : 'Вибрані'} в чергу · ${picked.length}</button>
+        <button data-go="shuffle" ${picked.length > 1 ? '' : 'disabled'}>🔀 Упереміш</button>
+        <button class="ghost" data-go="save" ${found.length ? '' : 'disabled'} title="Зберегти плейлистом сайту: він з'явиться в Бібліотеці">＋ У плейлисти</button>
+        <a class="chip album-src" href="${esc(a.url)}" target="_blank" rel="noopener" title="Відкрити в ${src}">↗ ${src}</a>
+      </div>
+      <ol class="album-tracks">${a.tracks.map((t) => albumRow(t, a)).join('')}</ol>
+      ${missing ? `<div class="album-foot">${missing === a.tracks.length ? 'Жоден трек' : plural(missing, 'трек', 'треки', 'треків')} не знайшлось у YouTube Music — ${missing === a.tracks.length ? 'закидати нема чого' : 'їх пропущу'}. Спробуй пошукати ${missing === 1 ? 'його' : 'їх'} за назвою.</div>` : ''}
+      ${a.kind === 'playlist' && a.tracks.length >= 100 ? '<div class="album-foot">Тут перші 100 треків плейлиста: більше за раз не віддають.</div>' : ''}`;
+    box.querySelector('.album-tracks').scrollTop = scroll;
+    box.querySelector('.album-x').onclick = closeAlbum;
+    box.querySelectorAll('.album-tracks li[data-id]').forEach((li) => {
+      const id = li.dataset.id;
+      li.querySelector('input').onchange = (e) => { if (e.target.checked) album.off.delete(id); else album.off.add(id); drawAlbum(); };
+      li.querySelector('.q1')?.addEventListener('click', () => {
+        const t = a.tracks.find((x) => x.match && x.match.id === id);
+        queueAdd({ pick: t.match }, `${t.match.artist} — ${t.match.title}`, 'album');
+      });
+    });
+    const url = album.url;
+    box.querySelectorAll('[data-go="order"], [data-go="shuffle"]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, 'закидаю…', async () => {
+      const ids = picked.length === found.length ? null : picked.map((t) => t.match.id);
+      try {
+        ok(await api('POST', '/api/album/queue', { url, shuffle: b.dataset.go === 'shuffle', ids }));
+        if (album && album.url === url) closeAlbum();   // далі все видно в черзі
+      } catch (err) { fail(err); }
+    }));
+    box.querySelector('[data-go="save"]').onclick = (e) => busy(e.currentTarget, 'зберігаю…', async () => {
+      try {
+        ok(await api('POST', '/api/album/playlist', { url }));
+        if (route === 'lib' && libTab === 'playlists') renderPlaylists();
+      } catch (err) { fail(err); }
+    });
   }
 
   // ---------- голосові: записати і поставити в чергу ----------
@@ -1573,8 +1802,10 @@
   const dropTitle = drop.querySelector('.drop-title');
   const dropSub = drop.querySelector('.drop-sub');
   const dropUrl = drop.querySelector('.drop-url');
-  let dragDepth = 0, dropBusy = false, dropTimer = null;
-  const isLink = (s) => isUrl(s) || /^spotify:track:/i.test(s);
+  let dragDepth = 0, dropTimer = null;
+  // Кидки й вставки, за якими зараз стежить оверлей. Поки він показує «Закидаю…», нові посилання стають у ту
+  // саму чергу закидань (раніше друге посилання в цей час просто губилось).
+  let dropRun = null;              // { jobs: [...] }
   const hasText = (dt) => !!dt && [...(dt.types || [])].some((t) => t === 'text/uri-list' || t === 'text/plain' || t === 'text' || t === 'Text');
 
   function showDrop(kind, title, sub, url) {
@@ -1596,7 +1827,7 @@
   document.addEventListener('dragenter', (e) => {
     if (!hasText(e.dataTransfer)) return;
     e.preventDefault();
-    if (dragDepth++ === 0 && !dropBusy) showDrop('over', 'Кидай сюди', 'YouTube, YT Music, Spotify — закину в чергу');
+    if (dragDepth++ === 0 && !dropRun) showDrop('over', 'Кидай сюди', 'YouTube, YT Music, Spotify — трек, альбом чи плейлист');
   });
   document.addEventListener('dragover', (e) => {
     if (!hasText(e.dataTransfer)) return;
@@ -1605,44 +1836,63 @@
   });
   document.addEventListener('dragleave', (e) => {
     if (!hasText(e.dataTransfer)) return;
-    if (--dragDepth <= 0) { dragDepth = 0; if (!dropBusy) hideDrop(); }
+    if (--dragDepth <= 0) { dragDepth = 0; if (!dropRun) hideDrop(); }
   });
   document.addEventListener('drop', (e) => {
     if (!hasText(e.dataTransfer)) return;
     e.preventDefault();
     dragDepth = 0;
     const dt = e.dataTransfer;
-    const uri = (dt.getData('text/uri-list') || '').split('\n').map((s) => s.trim()).find((s) => s && !s.startsWith('#'));
-    dropText((uri || dt.getData('text/plain') || dt.getData('text') || '').trim());
+    // кілька треків, перетягнутих разом (скажімо, зі Spotify), приходять кожен своїм рядком
+    const uris = (dt.getData('text/uri-list') || '').split('\n').map((s) => s.trim()).filter((s) => s && !s.startsWith('#'));
+    dropText((uris.join('\n') || dt.getData('text/plain') || dt.getData('text') || '').trim());
   });
   document.addEventListener('paste', (e) => {
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
     const text = (e.clipboardData?.getData('text/plain') || '').trim();
-    if (isLink(text)) { e.preventDefault(); dropText(text); }
+    if (splitLinks(text).length) { e.preventDefault(); dropText(text); }
   });
-  async function dropText(text) {
-    if (!text) { hideDrop(); return; }
-    if (!isLink(text)) {
+  function dropText(text) {
+    const links = splitLinks(text);
+    if (!links.length) {
       // plain words are a search, not a link
-      hideDrop();
+      if (!dropRun) hideDrop();
+      if (!text) return;
       q.value = text.slice(0, 120);
       q.focus();
       search(q.value);
       return;
     }
-    if (dropBusy) return;
-    dropBusy = true;
-    showDrop('busy', 'Закидаю…', 'розбираю посилання, це може зайняти кілька секунд', text);
-    try {
-      const res = await api('POST', '/api/queue', { input: text });
-      showDrop('done', 'Закинуто!', String(res.message || '').replace(/^Закинуто:\s*/, ''), '');
+    submitLinks(links, 'drop', dropRun || (dropRun = { jobs: [] }));
+    drawDropProgress();
+  }
+  /// Оверлей за чергою закидань: «Закидаю…» (і скільки ще чекає), поки з кинутого щось не скінчилось, тоді підсумок.
+  function drawDropProgress() {
+    const run = dropRun;
+    if (!run) return;
+    const jobs = run.jobs.filter((j) => j.state !== 'handoff');
+    if (!jobs.length) return;
+    const live = jobs.filter((j) => j.state === 'wait' || j.state === 'run');
+    if (live.length) {
+      const cur = live.find((j) => j.state === 'run') || live[0];
+      const more = live.length - 1;
+      showDrop('busy', cur.kind === 'album' ? 'Відкриваю…' : 'Закидаю…',
+        (cur.kind === 'album' ? 'тягну трекліст, це кілька секунд' : 'розбираю посилання, це може зайняти кілька секунд')
+        + (more ? ` · ще ${more} чекає` : ''), cur.label);
+      return;
+    }
+    dropRun = null;
+    const done = jobs.filter((j) => j.state === 'ok');
+    const bad = jobs.filter((j) => j.state === 'err');
+    if (!bad.length) {
+      const one = done.length === 1 ? done[0] : null;
+      showDrop('done', one && one.kind === 'album' ? 'Ось трекліст' : 'Закинуто!',
+        one ? String(one.msg).replace(/^Закинуто:\s*/, '').replace(/ — трекліст під пошуком$/, '') : `усі ${done.length} по черзі`, '');
       hideDrop(1600);
-    } catch (err) {
-      showDrop('err', 'Не вийшло', err.message, text);
+    } else {
+      showDrop('err', done.length ? `Закинуто ${done.length} з ${jobs.length}` : 'Не вийшло', bad[0].msg, bad[0].label);
       hideDrop(3500);
-    } finally {
-      dropBusy = false;
     }
   }
 

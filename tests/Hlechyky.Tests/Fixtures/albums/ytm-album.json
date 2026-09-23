@@ -1,0 +1,356 @@
+{
+ "contents": {
+  "twoColumnBrowseResultsRenderer": {
+   "tabs": [
+    {
+     "tabRenderer": {
+      "content": {
+       "sectionListRenderer": {
+        "contents": [
+         {
+          "musicResponsiveHeaderRenderer": {
+           "title": {
+            "runs": [
+             {
+              "text": "Power To The People (New York City - The Ultimate Mixes)"
+             }
+            ]
+           },
+           "subtitle": {
+            "runs": [
+             {
+              "text": "Альбом"
+             },
+             {
+              "text": " • "
+             },
+             {
+              "text": "2025"
+             }
+            ]
+           },
+           "straplineTextOne": {
+            "runs": [
+             {
+              "text": "John Lennon",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCcSL2nYSJp_IgdzH0xBBdcg",
+                "browseEndpointContextSupportedConfigs": {
+                 "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                 }
+                }
+               }
+              }
+             },
+             {
+              "text": ", "
+             },
+             {
+              "text": "Yoko Ono",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCMz6c0j-Pp54_GrLKcKjIrw",
+                "browseEndpointContextSupportedConfigs": {
+                 "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                 }
+                }
+               }
+              }
+             },
+             {
+              "text": ", "
+             },
+             {
+              "text": "The Plastic Ono Band",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCD7w8pJEQulliDee2cM_oDw",
+                "browseEndpointContextSupportedConfigs": {
+                 "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                 }
+                }
+               }
+              }
+             },
+             {
+              "text": " і "
+             },
+             {
+              "text": "Elephant's Memory",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCLytGmzNMi8eV0NuqCsoHOQ",
+                "browseEndpointContextSupportedConfigs": {
+                 "browseEndpointContextMusicConfig": {
+                  "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                 }
+                }
+               }
+              }
+             }
+            ]
+           },
+           "secondSubtitle": {
+            "runs": [
+             {
+              "text": "9 пісень"
+             },
+             {
+              "text": " • "
+             },
+             {
+              "text": "41 хвилина"
+             }
+            ]
+           },
+           "thumbnail": {
+            "musicThumbnailRenderer": {
+             "thumbnail": {
+              "thumbnails": [
+               {
+                "url": "https://yt3.googleusercontent.com/D0h58OYH9fVhg5ki3EuJ0f1PVa6S490tDzol33KV2TNZvvL8KXj1UokbfJ9wnld7ppjiZeDILtA3eZYk=w60-h60-l90-rj",
+                "width": 60,
+                "height": 60
+               },
+               {
+                "url": "https://yt3.googleusercontent.com/D0h58OYH9fVhg5ki3EuJ0f1PVa6S490tDzol33KV2TNZvvL8KXj1UokbfJ9wnld7ppjiZeDILtA3eZYk=w120-h120-l90-rj",
+                "width": 120,
+                "height": 120
+               },
+               {
+                "url": "https://yt3.googleusercontent.com/D0h58OYH9fVhg5ki3EuJ0f1PVa6S490tDzol33KV2TNZvvL8KXj1UokbfJ9wnld7ppjiZeDILtA3eZYk=w226-h226-l90-rj",
+                "width": 226,
+                "height": 226
+               },
+               {
+                "url": "https://yt3.googleusercontent.com/D0h58OYH9fVhg5ki3EuJ0f1PVa6S490tDzol33KV2TNZvvL8KXj1UokbfJ9wnld7ppjiZeDILtA3eZYk=w544-h544-l90-rj",
+                "width": 544,
+                "height": 544
+               }
+              ]
+             },
+             "thumbnailCrop": "MUSIC_THUMBNAIL_CROP_UNSPECIFIED",
+             "thumbnailScale": "MUSIC_THUMBNAIL_SCALE_UNSPECIFIED",
+             "trackingParams": "CBYQhL8CIhMImLOT68mElwMV2-NCBR0sxzBs"
+            }
+           }
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   ],
+   "secondaryContents": {
+    "sectionListRenderer": {
+     "contents": [
+      {
+       "musicShelfRenderer": {
+        "contents": [
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "videoId": "ddBFNKBvKFM"
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "New York City (Ultimate Mix)"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {}
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "62 тис. відтворень"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "4:41"
+                }
+               ]
+              }
+             }
+            }
+           ]
+          }
+         },
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "videoId": "b8tPK7-l7b4"
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "Sisters, O Sisters (Ultimate Mix)"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {}
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "12 тис. відтворень"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "3:46"
+                }
+               ]
+              }
+             }
+            }
+           ]
+          }
+         },
+         {
+          "musicResponsiveListItemRenderer": {
+           "playlistItemData": {
+            "videoId": "nBHdAFZd6sc"
+           },
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "Attica State (Ultimate Mix)"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {}
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "23 тис. відтворень"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "2:55"
+                }
+               ]
+              }
+             }
+            }
+           ]
+          }
+         },
+         {
+          "musicResponsiveListItemRenderer": {
+           "flexColumns": [
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "Недоступний у регіоні"
+                }
+               ]
+              }
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {}
+             }
+            },
+            {
+             "musicResponsiveListItemFlexColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "23 тис. відтворень"
+                }
+               ]
+              }
+             }
+            }
+           ],
+           "fixedColumns": [
+            {
+             "musicResponsiveListItemFixedColumnRenderer": {
+              "text": {
+               "runs": [
+                {
+                 "text": "2:55"
+                }
+               ]
+              }
+             }
+            }
+           ]
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}
