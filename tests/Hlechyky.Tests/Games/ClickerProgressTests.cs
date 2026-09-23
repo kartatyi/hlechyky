@@ -339,15 +339,15 @@ public class ClickerProgressTests
     public void The_merchant_pays_six_minutes_of_work_and_a_tenth_of_the_pile_on_top()
     {
         // Дев'яте оновлення §A.7: було «15 % кишені, не більше чверті години» — і на квадрильйонах купець
-        // приносив копійки. Тепер шість хвилин роботи як дно плюс десята частина кишені (теж до шести хвилин).
+        // приносив копійки. Тепер шість хвилин роботи як дно плюс 15 % кишені (до ще дев'яти хвилин — стеля 900 с, як була).
         var h = Wheel();
         Levels(h, ("kiln", 1));                         // 3 глеки за секунду: шість хвилин — 1 080
         Give(h, 1_000_000);
         JugNow(h, Clicker.GoldenKind.Merchant);
 
-        Assert.Equal("🧺 Щедрий купець: +2 173 глеки", Plain(Act(h, "catch").Message));
-        Assert.Equal(1_000_000 + 2_173, Pots(h));
-        Assert.Equal(1_000_000 + 2_173, Total(h));
+        Assert.Equal("🧺 Щедрий купець: +2 713 глеків", Plain(Act(h, "catch").Message));
+        Assert.Equal(1_000_000 + 2_713, Pots(h));
+        Assert.Equal(1_000_000 + 2_713, Total(h));
     }
 
     [Fact]
@@ -355,11 +355,11 @@ public class ClickerProgressTests
     {
         var h = Wheel();
         Levels(h, ("kiln", 1));                         // 3 глеки за секунду
-        Give(h, 1_000_000_000);                         // десята частина — сто мільйонів, а це вже не шість хвилин
+        Give(h, 1_000_000_000);                         // 15 % — сто п'ятдесят мільйонів, а це вже не дев'ять хвилин
         JugNow(h, Clicker.GoldenKind.Merchant);
 
         Assert.True(Act(h, "catch").Ok);
-        Assert.Equal(1_000_000_000 + 1_080 + 1_080 + 13, Pots(h));
+        Assert.Equal(1_000_000_000 + 1_080 + 1_620 + 13, Pots(h));
     }
 
     [Fact]

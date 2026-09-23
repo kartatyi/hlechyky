@@ -780,7 +780,7 @@ public sealed partial class Clicker
                     if (open.Count == 0) open = [Wares[0]];
                     var ware = open[open.Count - 1 - Ctx.Rng.Next(Math.Min(open.Count, 5))];
                     var over = PutItems(ware.Key, v.Style, 3, 1);
-                    what = $"дзвінкий {ware.Name.ToLowerInvariant()}, {(v.Style.Length == 0 ? "простий" : StyleWord(v.Style))}"
+                    what = $"{QualityWord(ware.Key, 3)} {ware.Name.ToLowerInvariant()}, {(v.Style.Length == 0 ? "простий" : StyleWord(v.Style))}"
                         + (over > 0 ? " (комора повна — одразу на базар)" : "");
                     break;
                 }
@@ -1019,9 +1019,18 @@ public sealed partial class Clicker
         // Базарний день: коротко й зрідка, щоб лишався святом, а не тлом.
         if (now >= _mktBazaarNext)
         {
-            _mktBazaarUntil = now + FairBazaarFor;
-            _mktBazaarNext = now + MktBazaarGap();
-            AwayNote("🛒 Базарний день: десять хвилин замовлення платили в півтора раза більше");
+            if (now - _mktBazaarNext > FairBazaarFor)
+            {
+                // Проспали свято (ніч офлайну): воно було без нас, а наступне — ближче, ніж звичайно, щоб застати в сеансі.
+                // Інакше кожен ранок починався б гарантованим базарним днем, і свято стало б тлом (рецензія v9).
+                _mktBazaarNext = now + MktBazaarGap() / 4;
+            }
+            else
+            {
+                _mktBazaarUntil = now + FairBazaarFor;
+                _mktBazaarNext = now + MktBazaarGap();
+                AwayNote("🛒 Базарний день: десять хвилин замовлення платили в півтора раза більше");
+            }
         }
         if (now > _mktGuest.Until + CatchGrace) MktScheduleGuest(now);
         if (_mktEvent is { } e && now > e.Until)

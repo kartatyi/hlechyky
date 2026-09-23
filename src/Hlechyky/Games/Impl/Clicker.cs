@@ -123,7 +123,9 @@ public sealed partial class Clicker : Game
     /// Щедрий купець (дев'яте оновлення): шість хвилин роботи як дно плюс десята частина того, що лежить, але
     /// теж не більше шести хвилин. Було «15 % кишені, не більше чверті години» — у пізній грі це майже нічого.
     /// </summary>
-    public const double MerchantShare = 0.10;
+    public const double MerchantShare = 0.15;
+    /// <summary>Стеля частки кишені — ще півтори «плоскі» частини: разом 360…900 с пасиву, як і до v9 у найкращому разі.</summary>
+    public const double MerchantCapShare = 1.5;
     public const double MerchantSeconds = 360;
     public const int GoldenForAchievement = 50;
 
@@ -925,7 +927,7 @@ public sealed partial class Clicker : Game
         Add(ClickGain(taken));
         // Кліки ще й ліплять виріб на колі (глеків це не додає — лише роботу, див. ClickerCraft.cs).
         if (taken > 0) FormBy(taken, now);
-        _guard.Spend(taken);
+        _guard.SpendClicks(taken);
         // Поки на сцені хоч щось діється, не перебиваємо: бонус тікає секундами, а перевірка почекає (§A.2).
         if (_guard.Due && !BonusOn(now)) _guard.Check();
         return ActResult.Done;
@@ -960,7 +962,9 @@ public sealed partial class Clicker : Game
         // Платить лише спокійна полиця, і лише поки її ще не пройдено: беремо це до відповіді.
         var calm = _guard.Calm;
         var missed = _guard.Misses > 0;
-        var gain = calm ? ToPots(EyeGain * (missed ? ClickerGuard.MissedShare : 1)) : 0;
+        // Платня — за зараховані кліки від минулої полиці (Share), а не за спійманих котів і глеків: інакше ловець
+        // із чорною глиною доїв би майстра, не торкаючись кола (рецензія v9).
+        var gain = calm ? ToPots(EyeGain * _guard.Share * (missed ? ClickerGuard.MissedShare : 1)) : 0;
         if (_guard.Answer(taps, now, Ctx.Rng) != ClickerGuard.Verdict.Passed) return ActResult.Done;
 
         // Проспаний під полицею глек чи розписний вертаємо: гравець не мусить платити за чесність (§A.2).
@@ -982,6 +986,15 @@ public sealed partial class Clicker : Game
     /// інакше автоклікер із господарем при ньому доїв би майстра щодві хвилини.
     /// </summary>
     double EyeGain => PassiveBase * EyeSeconds + ClickBase * EyeClicks;
+
+    /// <summary>Серія стала довшою на один — спійманим глеком чи котом: ачівки й дивовижі одні на обох.</summary>
+    void StreakUp()
+    {
+        _fallStreak++;
+        if (_fallStreak == StreakForAchievement) Ctx.Award(0, 0, "ach:potter-streak");
+        if (_fallStreak == LongStreakForAchievement) Achieve("potter-streak-50");
+        if (Array.IndexOf(StreakWonders, _fallStreak) >= 0) Wonder("streak");
+    }
 
     /// <summary>«9:05» — скільки ще стояти колу.</summary>
     static string Wait(TimeSpan left)
@@ -1108,7 +1121,7 @@ public sealed partial class Clicker : Game
                 // Шість хвилин роботи як дно плюс десята частина кишені (теж не більше шести хвилин): купець
                 // мусить щось важити і на голому колі, і на квадрильйонах.
                 var flat = PassiveBase * MerchantSeconds;
-                var gain = ToPots((flat + Math.Min(_pots * MerchantShare, flat)) * ClayNow.Loot) + 13;
+                var gain = ToPots((flat + Math.Min(_pots * MerchantShare, flat * MerchantCapShare)) * ClayNow.Loot) + 13;
                 Add(gain);
                 text = $"🧺 Щедрий купець: +{PotsShort(gain)}";
                 break;
@@ -1178,14 +1191,11 @@ public sealed partial class Clicker : Game
         var gain = FallGain();
         Add(gain);
         _starWish = false;                 // бажання тримається, доки глек не спіймано, і згоряє на ньому
-        _fallStreak++;
+        StreakUp();
         _apronUsed = false;
         _grabbed++;
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
-        if (_fallStreak == StreakForAchievement) Ctx.Award(0, 0, "ach:potter-streak");
-        if (_fallStreak == LongStreakForAchievement) Achieve("potter-streak-50");
-        if (Array.IndexOf(StreakWonders, _fallStreak) >= 0) Wonder("streak");
         ScheduleFall(now);
         return ActResult.Accept($"🤲 Спіймав! +{PotsShort(gain)}"
             + (wished ? " · зірка не збрехала (×3)" : "")
@@ -1258,10 +1268,10 @@ public sealed partial class Clicker : Game
                 var open = Wares.Where(w => WareOpen(w.Key)).ToList();
                 var ware = open.Count > 0 ? open[Ctx.Rng.Next(open.Count)] : Wares[0];
                 PutItems(ware.Key, "", 3, 1);
-                text = $"🐈 Кіт приніс дзвінкий {ware.Name.ToLowerInvariant()} — де взяв, не каже";
+                text = $"🐈 Кіт приніс {QualityWord(ware.Key, 3)} {ware.Name.ToLowerInvariant()} — де взяв, не каже";
                 break;
             case CatGift.Streak:
-                _fallStreak++;
+                StreakUp();
                 text = $"🐈 Кіт збив глек із полиці й сам його спіймав — серія {_fallStreak}";
                 break;
             default:

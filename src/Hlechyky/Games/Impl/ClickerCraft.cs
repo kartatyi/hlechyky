@@ -125,7 +125,8 @@ public sealed partial class Clicker
     /// <summary>Скільки роботи просить виріб зараз: майстерність і бонуси пришвидшують, але не нижче 40 %.</summary>
     internal int WorkOf(ClickerWare w)
     {
-        var mult = Math.Max(MinWorkShare, AlbumWorkMult(w.Key) * FairWorkMult(w.Key) * GuildWorkMult);
+        // Підмайстер друга (GuildWorkMult) іде поверх підлоги: інакше ветеранові з майстерністю 10 він не давав би нічого.
+        var mult = Math.Max(MinWorkShare, AlbumWorkMult(w.Key) * FairWorkMult(w.Key)) * GuildWorkMult;
         return Math.Max(1, (int)Math.Ceiling(w.Work * mult));
     }
 
@@ -342,7 +343,7 @@ public sealed partial class Clicker
         }
         if (sold == 0)
             return ActResult.Fail(ItemTotal > 0
-                ? q == 1 ? "Звичайних у коморі нема" : "У коморі самі дзвінкі — їх базар не бере"
+                ? q == 1 ? "Звичайних у коморі нема" : q == 3 ? "У коморі самі розкішні — базар до них не дотягнеться" : "У коморі самі дзвінкі — їх базар не бере"
                 : "У коморі порожньо — нічого везти на базар");
         Add(sum = ToPots(sum * HouseBazaarMult));
         var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : q == 3 ? " (крім розкішних)" : "";
@@ -409,7 +410,7 @@ public sealed partial class Clicker
     internal ActResult? GuardGate(DateTimeOffset now)
     {
         if (_guard.Locked(now) || _guard.Pending) return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
-        if (_guard.Due && !FairOn && !InspireOn)
+        if (_guard.Due && !BonusOn(now))
         {
             _guard.Check();
             return ActResult.Accept("👁 Майстер хоче глянути на твої руки — торкнись глечиків");

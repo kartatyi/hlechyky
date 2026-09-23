@@ -228,6 +228,18 @@ public sealed class ClickerGuard
     /// <summary>Порахувати зараховані кліки (чи спійманий глек) до наступної перевірки.</summary>
     public void Spend(int clicks) => Left = Math.Max(int.MinValue / 2, Left - clicks);
 
+    /// <summary>Зараховані кліки від минулої полиці: платить майстер саме за них, а не за спійманих котів (рецензія v9).</summary>
+    public int Clicks { get; private set; }
+    /// <summary>Частка платні спокійної полиці: кліків від минулої полиці проти <see cref="CalmMin"/>, не більше 1.</summary>
+    public double Share { get; private set; }
+
+    /// <summary>Те саме, що <see cref="Spend"/>, але для справжніх кліків: вони ще й рахуються в платню.</summary>
+    public void SpendClicks(int clicks)
+    {
+        Clicks = Math.Min(int.MaxValue / 2, Clicks + Math.Max(0, clicks));
+        Spend(clicks);
+    }
+
     public bool Due => Left <= 0;
 
     /// <summary>Звичайна перевірка раз на кілька тисяч кліків (після підозри — сотень). Довіра до ритму на ній і кінчається.</summary>
@@ -236,6 +248,8 @@ public sealed class ClickerGuard
         Why = "";
         // Спокійна — лише та, що дочекалась спокійного кроку: пильний відлік після підозри платні не приносить.
         Calm = !Wary && Doubt == "";
+        Share = Calm ? Math.Clamp(Clicks / (double)CalmMin, 0, 1) : 0;
+        Clicks = 0;
         RhythmTrusted = false;
         Ask();
     }
@@ -246,6 +260,8 @@ public sealed class ClickerGuard
         Why = why;
         Doubt = why;
         Calm = false;
+        Share = 0;
+        Clicks = 0;
         _window.Clear();
         Ask();
     }
@@ -336,7 +352,7 @@ public sealed class ClickerGuard
     public object? View(DateTimeOffset now, double gain = 0)
     {
         if (!Pending && !Locked(now)) return null;
-        var pays = Pending && Calm && !Locked(now);
+        var pays = Pending && Calm && Share > 0 && !Locked(now);
         return new
         {
             serial = Serial,
@@ -350,7 +366,7 @@ public sealed class ClickerGuard
             why = Why,
             // Дев'яте оновлення §A.1: за пройдену спокійну полицю майстер відсипає глеків. Промахи ріжуть платню навпіл.
             pays,
-            gain = pays ? (Misses > 0 ? Clicker.ToPots(gain * MissedShare) : Clicker.ToPots(gain)) : 0,
+            gain = pays ? Clicker.ToPots(gain * Share * (Misses > 0 ? MissedShare : 1)) : 0,
         };
     }
 
@@ -373,11 +389,11 @@ public sealed class ClickerGuard
 
     public sealed record Row(int Left, string? Shelf, int Serial, int Misses, DateTimeOffset LockUntil, string? Why, int Passed,
         List<int[]>? Hands, bool PressTrusted = false, bool RhythmTrusted = false, string? Doubt = null,
-        bool Calm = false, int CalmPassed = 0, bool Wary = false);
+        bool Calm = false, int CalmPassed = 0, bool Wary = false, int Clicks = 0, double Share = 0);
 
     public Row Save() => new(Left, Shelf is null ? null : Convert.ToBase64String(Shelf), Serial, Misses, LockUntil, Why, Passed,
         _window.Select(h => new[] { h.Dt, h.Press, h.X, h.Y, (int)h.Src }).ToList(), PressTrusted, RhythmTrusted, Doubt,
-        Calm, CalmPassed, Wary);
+        Calm, CalmPassed, Wary, Clicks, Share);
 
     /// <summary>
     /// Відновити з бази. Старе збереження (до Ока майстра) — чистий аркуш із повним лічильником. Пауза й
@@ -403,6 +419,8 @@ public sealed class ClickerGuard
         Calm = row.Calm && Shelf is not null;
         Wary = row.Wary;
         CalmPassed = Math.Max(0, row.CalmPassed);
+        Clicks = Math.Max(0, row.Clicks);
+        Share = double.IsFinite(row.Share) ? Math.Clamp(row.Share, 0, 1) : 0;
         PressTrusted = row.PressTrusted;
         RhythmTrusted = row.RhythmTrusted;
         foreach (var h in row.Hands ?? [])

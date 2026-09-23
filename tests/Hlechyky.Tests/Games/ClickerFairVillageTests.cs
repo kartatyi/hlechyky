@@ -618,9 +618,18 @@ public class ClickerFairVillageTests
         Assert.Equal(JsonValueKind.Null, m.GetProperty("bazaar").ValueKind);
         Assert.Empty(m.GetProperty("gifts").EnumerateArray());
         Assert.All(m.GetProperty("rep").EnumerateArray(), r => Assert.Equal(0, r.GetProperty("gifts").GetInt32()));
-        // Базарний день таки прийде — просто за новим розкладом від «зараз».
-        h.Clock.Advance(TimeSpan.FromHours(7));
-        Assert.NotEqual(JsonValueKind.Null, Market(h).GetProperty("bazaar").ValueKind);
+        // Базарний день таки прийде — за новим розкладом від «зараз», якщо гончар у грі (синхронізації йдуть що кілька хвилин).
+        var came = false;
+        for (var i = 0; i < 7 * 12 && !came; i++)
+        {
+            h.Clock.Advance(TimeSpan.FromMinutes(5));
+            came = Market(h).GetProperty("bazaar").ValueKind != JsonValueKind.Null;
+        }
+        Assert.True(came);
+        // А хто проспав свято на сім годин, той не дістає його гарантовано зранку (рецензія v9).
+        var g = Wheel();
+        g.Clock.Advance(TimeSpan.FromHours(7));
+        Assert.Equal(JsonValueKind.Null, Market(g).GetProperty("bazaar").ValueKind);
     }
 
     [Fact]

@@ -1082,7 +1082,7 @@ public sealed partial class Clicker
             _awayBatches++;
             _awayFired += whole;
             _awayGood += outs.Count(o => o.Q == 2);
-            _awayRing += outs.Count(o => o.Q >= 3);
+            _awayRing += outs.Count(o => o.Q == 3);
         }
         return text;
     }
@@ -1152,7 +1152,9 @@ public sealed partial class Clicker
     {
         if (!KilnAutoOn || _litAt != default || now < _coolUntil || _kiln.Count > 0) return;
         // Гравець уже взявся за партію (обрав розпис, малює чи намалював) — підмайстри не забирають її з-під рук.
-        if (_paintSeed != 0 || _kilnBeauty > 0 || _kilnStyle.Length > 0) return;
+        // Обраний розпис сам по собі партією не є: після KilnFinish він лишається як побажання «пали в косівському»,
+        // і без цієї поправки палій офлайн не вмикався б ніколи в того, хто хоч раз розписав партію (рецензія v9).
+        if (_paintSeed != 0 || _kilnBeauty > 0 || (_kilnStyle.Length > 0 && _kilnTouch != default && now - _kilnTouch < KilnIdle)) return;
         var ready = _rack.Count(r => r.DryAt <= now);
         if (ready < Math.Min(KilnSlots, AutoDryEnough) && !(ready >= 1 && now - _kilnTouch >= KilnIdle)) return;
         var dry = TakeDry(now, KilnSlots);

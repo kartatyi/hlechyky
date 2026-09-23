@@ -305,6 +305,8 @@ public sealed partial class Clicker
     ActResult? ActGuild(string action, JsonElement payload)
     {
         if (action != "guild") return null;
+        // Вимикач палія — річ горна, а не цеху: працює й без сервісу (прокачаний «Палій» без рангу).
+        if (Str(payload, "op") == "auto") return GuildAuto(payload);
         if (_guildSvc is not { } svc || GuildKey.Length == 0) return ActResult.Fail("Цех зараз зачинений");
         var now = Ctx.Clock.UtcNow;
         return Str(payload, "op") switch
@@ -530,7 +532,7 @@ public sealed partial class Clicker
 
     ActResult GuildAuto(JsonElement payload)
     {
-        if (!KilnAutoCan) return ActResult.Fail("Автогорно — перк челядника");
+        if (!KilnAutoCan) return ActResult.Fail("Автогорно — перк челядника або прокачаного Палія");
         var on = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("on", out var v) && v.ValueKind == JsonValueKind.True;
         _autoKilnOff = !on;
         return ActResult.Accept(on ? "🔥 Підмайстри палитимуть повну сушарню самі" : "🔥 Горно — лише твоїми руками");
@@ -576,7 +578,7 @@ public sealed partial class Clicker
             rank = _guildRank,
             given = _guildGiven,
             next = NextRankView(),
-            autoKiln = GuildAutoKiln,
+            autoKiln = KilnAutoOn,
             autoOff = _autoKilnOff,
             kilnSlots = GuildKilnSlots,
             wagonMult = WagonRank,

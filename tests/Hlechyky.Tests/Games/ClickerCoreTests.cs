@@ -59,7 +59,7 @@ public class ClickerCoreTests
     });
 
     /// <summary>Полиця от-от: наступний зарахований клік покличе майстра.</summary>
-    static void ShelfDue(RoomHarness h) => Patch(h, s => s["guard"]!["left"] = 0);
+    static void ShelfDue(RoomHarness h) => Patch(h, s => { s["guard"]!["left"] = 0; s["guard"]!["clicks"] = ClickerGuard.CalmMin; });
 
     /// <summary>Поставити подію сцени просто зараз: <paramref name="field"/> — cat, star чи wind.</summary>
     static void EventNow(RoomHarness h, string field, TimeSpan shown, int a = 0, int b = 0) => Patch(h, s =>
@@ -691,7 +691,7 @@ public class ClickerCoreTests
         Assert.InRange(passive, 9e11, 1.1e12);
 
         var flat = passive * Clicker.MerchantSeconds;
-        var merchant = flat + Math.Min(1e13 * Clicker.MerchantShare, flat);
+        var merchant = flat + Math.Min(1e13 * Clicker.MerchantShare, flat * Clicker.MerchantCapShare);
         // Ярмарок: 66 секунд усе ×7 — чистий приріст пасиву (кліки зверху).
         var fair = Clicker.FairFor.TotalSeconds * passive * (Clicker.FairMult - 1);
         // Натхнення: 20 секунд по 6 кліків із розгоном ×5, і кожен клік несе ще три відсотки пасиву — теж ×25.

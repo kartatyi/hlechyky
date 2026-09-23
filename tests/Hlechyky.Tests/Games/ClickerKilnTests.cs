@@ -1298,8 +1298,15 @@ public class ClickerKilnTests
         Patch(h, s => s["styles"] = new JsonArray("kosiv"));
         Assert.True(K(h, new { op = "paint", style = "kosiv" }).Ok);
         Rack(h, dry: 6);
-        h.Clock.Advance(TimeSpan.FromMinutes(20));
-        Assert.Equal("cold", State(h));                                      // розпис обрано — партія гончарева
+        h.Clock.Advance(TimeSpan.FromMinutes(2));
+        Assert.Equal("cold", State(h));                                      // розпис щойно обрано — партія гончарева
+        // Три хвилини тиші — гончар пішов, і обраний розпис став лише побажанням: палій пече в ньому (рецензія v9:
+        // інакше палій офлайн не вмикався б ніколи в того, хто хоч раз розписав партію).
+        h.Clock.Advance(TimeSpan.FromMinutes(2));
+        Assert.NotEqual("cold", State(h));
+        var last = Kiln(h).GetProperty("last");
+        Assert.True(last.GetProperty("helper").GetBoolean());
+        Assert.Equal("kosiv", last.GetProperty("style").GetString());
     }
 
     [Fact]

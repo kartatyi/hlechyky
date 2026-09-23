@@ -1085,7 +1085,7 @@ public class ClickerGuildTests
         var g = new Tsekh();
         var h = g.Potter("Оля");
         Assert.False(G(h).GetProperty("autoKiln").GetBoolean());
-        Assert.Equal("Автогорно — перк челядника", Guild(h, new { op = "auto", on = true }).Message);
+        Assert.Equal("Автогорно — перк челядника або прокачаного Палія", Guild(h, new { op = "auto", on = true }).Message);
         Patch(h, s => GuildRow(s)["rank"] = 1);
         Assert.True(G(h).GetProperty("autoKiln").GetBoolean());
         Assert.True(Guild(h, new { op = "auto", on = false }).Ok);
@@ -1106,8 +1106,10 @@ public class ClickerGuildTests
         var view = G(h);
         Assert.False(view.GetProperty("enabled").GetBoolean());
         Items(h, ("pot||1", 5));
-        foreach (var op in new[] { "give", "claim", "gift", "brag", "masterpiece", "auto" })
+        foreach (var op in new[] { "give", "claim", "gift", "brag", "masterpiece" })
             Assert.Equal("Цех зараз зачинений", h.Act(0, "guild", new { op, key = "pot||1", nick = "Петро" }).Message);
+        // Вимикач палія — річ горна: без цеху він відповідає по суті (рангу нема — і Палія нема).
+        Assert.Equal("Автогорно — перк челядника або прокачаного Палія", h.Act(0, "guild", new { op = "auto", on = true }).Message);
         Assert.True(h.Act(0, "spin", PotterHands.Human(5)).Ok);
         Assert.True(h.Act(0, "look", new { catalog = true }).Ok);
         Assert.Equal(JsonValueKind.Object, h.View(0).GetProperty("catalog").GetProperty("guild").ValueKind);

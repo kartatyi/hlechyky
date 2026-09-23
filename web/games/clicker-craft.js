@@ -654,13 +654,15 @@
   /// Кнопки продажу: «все» завжди, а вужчі — лише коли вони справді щось лишають у коморі. Ніяких перемикачів і
   /// пам'яті: кожна кнопка сама каже, що забере й скільки за це дадуть.
   function sellButtons(items) {
-    const all = sellUpTo(items, 3);
+    const all = sellUpTo(items, 4);
     if (!all.n) return [];
-    const out = [{ q: 3, n: all.n, sum: all.sum, label: 'Продати все' }];
+    const out = [{ q: 4, n: all.n, sum: all.sum, label: 'Продати все' }];
     const one = sellUpTo(items, 1);
     const two = sellUpTo(items, 2);
+    const three = sellUpTo(items, 3);
     if (one.n > 0 && one.n < all.n) out.push({ q: 1, n: one.n, sum: one.sum, label: 'Лише ★ звичайні' });
     if (two.n > one.n && two.n < all.n) out.push({ q: 2, n: two.n, sum: two.sum, label: 'Усе, крім ★★★ дзвінких' });
+    if (three.n > two.n && three.n < all.n) out.push({ q: 3, n: three.n, sum: three.sum, label: 'Усе, крім 👑 розкішних' });
     return out;
   }
 
@@ -729,7 +731,7 @@
         let armed = 0;
         b.onclick = () => {
           // «Продати все» питаємо двічі: дзвінкі й розписні теж поїдуть. Вужчі кнопки дороге лишають — там натиск один.
-          if (q === 3 && (!armed || Date.now() > armed)) {
+          if (q === 4 && (!armed || Date.now() > armed)) {
             armed = Date.now() + 3000;
             const was = b.textContent;
             b.textContent = 'Точно все? Ще раз';
