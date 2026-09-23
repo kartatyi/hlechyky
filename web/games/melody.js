@@ -20,7 +20,7 @@
     + '<path d="M6 12.5V3.2l7-1.4v9.2" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/>'
     + '<circle cx="4.3" cy="12.4" r="1.9" fill="var(--clay)"/><circle cx="11.3" cy="11" r="1.9" fill="var(--clay)"/></svg>';
 
-  const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 8);
+  const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 12);
 
   function st(root) {
     if (!root._mg) root._mg = { clip: '', timer: 0, radioMuted: null, played: false, disliked: {} };
@@ -101,7 +101,8 @@
     const playing = !a.paused && !a.ended;
     btn.textContent = playing ? '⏸ Пауза' : st(root).played ? '↻ Ще раз' : '▶ Слухати';
     const disc = root.querySelector('.mgdisc');
-    if (disc) disc.classList.toggle('spin', playing);
+    // Не голий .spin: у style.css це кружальце завантаження з рамкою, і платівка брала його обідок.
+    if (disc) disc.classList.toggle('mgspinning', playing);
   }
 
   function progress(root) {
@@ -216,8 +217,17 @@
     const me = v.me || {};
     const all = me.artist && me.title;
     const can = !!ctx.mine && !!ctx.playing && v.phase === 'play' && !all;
+    const opened = can && input.disabled;
     input.disabled = !can;
+    // Новий трек — курсор одразу в полі: вгадують наввипередки, і шукати поле мишкою — програти секунду.
+    // На телефоні — ні: клавіатура закрила б пів екрана ще до першої ноти.
+    if (opened && !HGames.ui.coarse()) {
+      const busy = document.activeElement;
+      if (!busy || busy === document.body || busy === input || !/^(INPUT|TEXTAREA|SELECT)$/.test(busy.tagName)) setTimeout(() => input.focus(), 0);
+    }
     form.querySelector('button').disabled = !can;
+    // Після партії поле «Чекаємо на трек…» лише вводило в оману: треків більше не буде.
+    form.hidden = v.phase === 'done';
     input.placeholder = !ctx.mine ? 'Дивишся збоку'
       : v.phase !== 'play' ? 'Чекаємо на трек…'
         : all ? 'Усе вгадав! 🎉' : 'виконавець або назва…';
@@ -276,8 +286,10 @@
     }
     rows.sort((a, b) => b.score - a.score);
     const left = v.left || [];
-    const html = rows.map((r) => '<div class="mgsc' + (r.i === ctx.seat ? ' me' : '') + (left.indexOf(r.i) >= 0 ? ' off' : '') + '">'
-      + '<span class="mgn">' + ctx.esc(r.nick) + '</span>'
+    const win = (v.phase === 'done' && v.result && v.result.winners) || [];
+    const html = rows.map((r) => '<div class="mgsc' + (r.i === ctx.seat ? ' me' : '') + (left.indexOf(r.i) >= 0 ? ' off' : '')
+      + (win.indexOf(r.i) >= 0 ? ' win' : '') + '">'
+      + '<span class="mgn">' + (win.indexOf(r.i) >= 0 ? '🏆 ' : '') + ctx.esc(r.nick) + '</span>'
       + '<span class="mgf">' + (r.f && r.f.artist ? '🎤' : '') + (r.f && r.f.title ? '🎵' : '')
       + (v.phase === 'play' && (v.skip || []).indexOf(r.i) >= 0 ? '⏭' : '') + '</span>'
       + (r.f && r.f.points && v.phase !== 'done' ? '<em>+' + r.f.points + '</em>' : '')
@@ -303,8 +315,18 @@
 
   HGames.register({
     id: 'melody',
+    news: {
+      v: '2026-09-24',
+      title: 'Вгадай мелодію: тепер до дванадцяти',
+      items: [
+        '👥 За стіл сідає до 12 гравців — кличте всю компанію',
+        '⌨ Новий трек — курсор одразу в полі відповіді, не треба шукати його мишкою',
+        '🏆 Після партії переможець підсвічений, а зайве поле «Чекаємо на трек…» зникає',
+        '🔧 Платівка крутиться без дивного обідка, а місця звуться просто номерами',
+      ],
+    },
     icon: ICON,
-    seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd'],
+    seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd', 'x', 'o', 'c', 'd'],
 
     mount(root, ctx) {
       root.innerHTML = '<div class="mgwrap">'

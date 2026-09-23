@@ -24,7 +24,11 @@ public sealed class Melody : Game
     public const int ArtistPoints = 50, TitlePoints = 100, ArtistFirst = 20, TitleFirst = 30;
     /// <summary>Скільки зайвих треків беремо про запас — на випадок, коли уривок не наріжеться.</summary>
     const int Spare = 4;
-    const int Seats = 8;
+    /// <summary>
+    /// Скільки місць за столом. Було вісім; дванадцять — як у «Скільки?»: на велику компанію гра так само годиться
+    /// (кожен вгадує сам, черги нема), а стіл на вісім лишав решту глядачами.
+    /// </summary>
+    public const int Seats = 12;
     const int MaxGuess = 80;
 
     public static readonly int[] RoundChoices = [5, 10, 15];
@@ -42,6 +46,12 @@ public sealed class Melody : Game
             new GameOption("cat", "Пісні", MelodyCategories.Values(MelodyClassics.Default), MelodyCategories.All, Multi: true),
         ],
         Hint: "Звучить уривок пісні — з радіо або зі світової класики. Пиши виконавця й назву — хто перший, той бере більше");
+
+    /// <summary>
+    /// Місця — просто номерами, як у «Скільки?»: типове каркасне «перший», «другий», «гравець 3» на столі з
+    /// дванадцяти місць давало різнобій, а довгі чіпи вільних місць з'їдали пів шапки.
+    /// </summary>
+    public override string SeatName(int seat) => (seat + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     sealed record Prepared(MelodyTrack Track, string Token);
 
