@@ -526,6 +526,7 @@ public sealed partial class Clicker : Game
             // Ремесло: що ліпити на колі й продаж виробів на базарі (ClickerCraft.cs).
             "form" => Form(payload),
             "bazaar" => Bazaar(payload),
+            "craft" => ActCraft(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
             _ => ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
                 ?? ActResult.Fail("Тут так не ходять"),

@@ -305,6 +305,258 @@ public class ClickerCraftTests
         Assert.Equal(JsonValueKind.Null, View(h).GetProperty("catalog").ValueKind);
     }
 
+    // ---------- прокачка ремесла (дев'яте оновлення, §B2.1) ----------
+
+    /// <summary>Глеки в кишеню (і за весь час не менше, ніж у кишені, — інакше збереження саме підтягне total).</summary>
+    static void Give(RoomHarness h, double pots, double? total = null) => Patch(h, s =>
+    {
+        s["pots"] = pots;
+        s["total"] = Math.Max(pots, total ?? pots);
+    });
+
+    static JsonElement Up(RoomHarness h, string key) =>
+        Craft(h).GetProperty("ups").EnumerateArray().First(u => u.GetProperty("key").GetString() == key);
+
+    static ActResult BuyUp(RoomHarness h, string key) => Act(h, "craft", new { op = "up", key });
+
+    static int RackSize(RoomHarness h) => Craft(h).GetProperty("rackSize").GetInt32();
+
+    [Fact]
+    public void The_rack_upgrade_adds_two_places_a_level_and_stops_at_ten()
+    {
+        var h = Wheel();
+        Assert.Equal(Clicker.RackBase, RackSize(h));
+        Give(h, 1e15);
+        for (var i = 0; i < 10; i++) Assert.True(BuyUp(h, "rack").Ok);
+        Assert.Equal(Clicker.RackBase + 20, RackSize(h));
+        Assert.Equal(10, Up(h, "rack").GetProperty("level").GetInt32());
+        Assert.Equal("Сушарня: більшої вже не буває", BuyUp(h, "rack").Message);
+        // Стеля 20 місць стосується лише гончарні: прокачка кладеться зверху.
+        Patch(h, s => s["upgrades"]!["workshop"] = 500);
+        Assert.Equal(Clicker.RackMax + 20, RackSize(h));
+    }
+
+    [Fact]
+    public void Every_level_of_an_upgrade_costs_four_times_the_last()
+    {
+        var h = Wheel();
+        var up = Clicker.CraftUps.First(u => u.Key == "rack");
+        Assert.Equal(5_000_000, Clicker.CraftUpPrice(up, 0));
+        Assert.Equal(20_000_000, Clicker.CraftUpPrice(up, 1));
+        Assert.Equal(5_000_000 * Math.Pow(4, 9), Clicker.CraftUpPrice(up, 9));
+
+        Give(h, 25_000_000);
+        Assert.Equal(5_000_000, Up(h, "rack").GetProperty("price").GetDouble());
+        Assert.True(BuyUp(h, "rack").Ok);
+        Assert.Equal(20_000_000, Pots(h));
+        Assert.Equal(20_000_000, Up(h, "rack").GetProperty("price").GetDouble());
+        Assert.True(BuyUp(h, "rack").Ok);
+        Assert.Equal(0, Pots(h));
+        Assert.Equal("Бракує глеків: треба ще 80 млн", BuyUp(h, "rack").Message);
+        // Куплена стеля ціни не має: остання ціна лишається видимою, поки є що купувати.
+        Assert.Equal(0, Up(h, "store").GetProperty("level").GetInt32());
+        Assert.Equal("Такого в майстерні не прокачують", BuyUp(h, "veranda").Message);
+        Assert.Equal("Тут так не ходять", Act(h, "craft", new { op = "down", key = "rack" }).Message);
+    }
+
+    [Fact]
+    public void The_kiln_room_the_store_and_the_windy_rack_do_what_they_promise()
+    {
+        var h = Wheel();
+        Give(h, 1e15);
+        var slots = View(h).GetProperty("kiln").GetProperty("slots").GetInt32();
+        Assert.True(BuyUp(h, "kilnroom").Ok);
+        Assert.True(BuyUp(h, "kilnroom").Ok);
+        Assert.Equal(slots + 2, View(h).GetProperty("kiln").GetProperty("slots").GetInt32());
+
+        Assert.Equal(Clicker.StoreCap, Craft(h).GetProperty("storeCap").GetInt32());
+        Assert.True(BuyUp(h, "store").Ok);
+        Assert.Equal(Clicker.StoreCap + 50, Craft(h).GetProperty("storeCap").GetInt32());
+
+        // Погода села теж множить сушіння, тож міряємо від того, що є зараз: два рівні — це рівно −10 %.
+        var dry = Craft(h).GetProperty("dryMs").GetDouble();
+        Assert.True(BuyUp(h, "dryer").Ok);
+        Assert.True(BuyUp(h, "dryer").Ok);
+        Assert.Equal(dry * 0.9, Craft(h).GetProperty("dryMs").GetDouble(), 6);
+        Click(h, 40);
+        var dryAt = Craft(h).GetProperty("rack")[0].GetProperty("dryAt").GetDateTimeOffset();
+        // Сирець став на сушарню на секунду раніше за «зараз» (пачки кліків ідуть по секунді).
+        Assert.InRange((dryAt - h.Clock.UtcNow).TotalSeconds, dry * 0.9 / 1000 - 2, dry * 0.9 / 1000);
+
+        // Палій — це поки що лише рівень: якість і автогорно рахує горно (§B1.6).
+        Assert.True(BuyUp(h, "stoker").Ok);
+        Assert.Equal(1, Up(h, "stoker").GetProperty("level").GetInt32());
+        Assert.Contains("палій", Up(h, "stoker").GetProperty("now").GetString());
+    }
+
+    [Fact]
+    public void A_bigger_store_keeps_more_wares_before_the_bazaar_takes_them()
+    {
+        var h = Wheel();
+        Give(h, 1e15);
+        Assert.True(BuyUp(h, "store").Ok);
+        Patch(h, s => s["craft"]!["items"] = new JsonObject { ["pot||1"] = 245 });
+        Assert.Equal(245, Craft(h).GetProperty("items").EnumerateArray().Sum(x => x.GetProperty("n").GetInt32()));
+        // 250 — стеля прокачаної комори: п'ять уліземо, шостий поїде на базар сам.
+        Assert.True(Act(h, "bazaar", new { key = "pot||1", n = 1 }).Ok);
+        Assert.Equal(244, Craft(h).GetProperty("items").EnumerateArray().Sum(x => x.GetProperty("n").GetInt32()));
+    }
+
+    [Fact]
+    public void The_upgrades_are_walls_and_the_firing_does_not_burn_them()
+    {
+        var h = Wheel();
+        Give(h, 1e15, 2e9);
+        Assert.True(BuyUp(h, "rack").Ok);
+        Assert.True(BuyUp(h, "store").Ok);
+        Assert.True(Act(h, "fire").Ok);
+        Assert.Equal(1, Up(h, "rack").GetProperty("level").GetInt32());
+        Assert.Equal(1, Up(h, "store").GetProperty("level").GetInt32());
+        Assert.Equal(Clicker.RackBase + 2, RackSize(h));
+        Assert.Equal(Clicker.StoreCap + 50, Craft(h).GetProperty("storeCap").GetInt32());
+    }
+
+    [Fact]
+    public void The_upgrades_survive_a_reload_and_an_old_save_simply_has_none()
+    {
+        var h = Wheel();
+        Give(h, 1e15);
+        var dry = Craft(h).GetProperty("dryMs").GetDouble();
+        Assert.True(BuyUp(h, "dryer").Ok);
+        Assert.True(BuyUp(h, "kilnroom").Ok);
+        var before = Views.Text(Craft(h));
+        Patch(h, _ => { });
+        Assert.Equal(before, Views.Text(Craft(h)));
+
+        // Збереження з проду про прокачку не знає — і це просто «цього ще не було».
+        Patch(h, s => s["craft"]!.AsObject().Remove("ups"));
+        Assert.All(Craft(h).GetProperty("ups").EnumerateArray(), u => Assert.Equal(0, u.GetProperty("level").GetInt32()));
+        Assert.Equal(Clicker.RackBase, RackSize(h));
+        Assert.Equal(dry, Craft(h).GetProperty("dryMs").GetDouble());
+    }
+
+    [Fact]
+    public void A_made_up_upgrade_in_a_save_is_dropped_and_a_huge_one_is_trimmed()
+    {
+        var h = Wheel();
+        Patch(h, s => s["craft"]!["ups"] = new JsonObject { ["rack"] = 99, ["veranda"] = 5, ["store"] = -3 });
+        Assert.Equal(10, Up(h, "rack").GetProperty("level").GetInt32());
+        Assert.Equal(0, Up(h, "store").GetProperty("level").GetInt32());
+        Assert.Equal(Clicker.CraftUps.Length, Craft(h).GetProperty("ups").GetArrayLength());
+        Assert.Equal(Clicker.RackBase + 20, RackSize(h));
+    }
+
+    [Fact]
+    public void A_full_rack_of_a_maxed_workshop_is_read_back_whole()
+    {
+        var h = Wheel();
+        Give(h, 1e15);
+        Patch(h, s => s["upgrades"]!["workshop"] = 500);
+        for (var i = 0; i < 10; i++) Assert.True(BuyUp(h, "rack").Ok);
+        var size = RackSize(h);
+        Assert.Equal(Clicker.RackMax + 20, size);
+        Patch(h, s =>
+        {
+            var rack = new JsonArray();
+            for (var i = 0; i < size; i++) rack.Add(new JsonObject { ["ware"] = "pot", ["clay"] = "", ["dryAt"] = h.Clock.UtcNow });
+            s["craft"]!["rack"] = rack;
+        });
+        Assert.Equal(size, RackCount(h));
+    }
+
+    // ---------- три нові вироби (§B2.2) ----------
+
+    [Fact]
+    public void The_three_new_wares_close_the_catalog_of_fifteen()
+    {
+        Assert.Equal(15, Clicker.Wares.Length);
+        var late = Clicker.Wares[^3..];
+        Assert.Equal(new[] { "kukhol", "tykva", "pleskanets" }, late.Select(w => w.Key));
+        Assert.Equal(new[] { 220, 380, 450 }, late.Select(w => w.Work));
+        Assert.Equal(new[] { 22d, 40, 52 }, late.Select(w => w.Seconds));
+        Assert.Equal(new[] { 5e12, 5e13, 5e14 }, late.Select(w => w.Unlock));
+        // Каталог лише дописується в кінець: старі дванадцять стоять на своїх місцях (маски альбому — за ключами).
+        Assert.Equal("pot", Clicker.Wares[0].Key);
+        Assert.Equal("lion", Clicker.Wares[11].Key);
+    }
+
+    [Fact]
+    public void A_mug_opens_on_five_trillion_and_asks_for_two_hundred_and_twenty()
+    {
+        var h = Wheel();
+        Assert.Equal("Кухоль відкриється на 5 трлн глеків за весь час", Act(h, "form", new { ware = "kukhol" }).Message);
+        Give(h, 0, 5e12);
+        Assert.True(Act(h, "form", new { ware = "kukhol" }).Ok);
+        Assert.Equal(220, Craft(h).GetProperty("need").GetInt32());
+        Assert.Equal("Плесканець відкриється на 500 трлн глеків за весь час", Act(h, "form", new { ware = "pleskanets" }).Message);
+
+        // Ціна виробу — секунди пасиву, як і в усієї драбини: тиква вдвічі дорожча за кухоль.
+        Patch(h, s => s["upgrades"]!["kiln"] = 1000);
+        var passive = View(h).GetProperty("baseSecond").GetDouble();
+        var wares = Craft(h).GetProperty("wares").EnumerateArray().ToDictionary(x => x.GetProperty("key").GetString()!, x => x.GetProperty("value").GetDouble());
+        Assert.Equal(Math.Floor(passive * 22), wares["kukhol"]);
+        Assert.Equal(Math.Floor(passive * 40), wares["tykva"]);
+        Assert.Equal(Math.Floor(passive * 52), wares["pleskanets"]);
+    }
+
+    /// <summary>Виліпити виріб, що стоїть на колі, скільки б роботи він не просив.</summary>
+    static void FormOne(RoomHarness h, string ware)
+    {
+        Assert.True(Act(h, "form", new { ware }).Ok);
+        Click(h, Craft(h).GetProperty("need").GetInt32());
+    }
+
+    [Fact]
+    public void Forming_the_fifteenth_ware_is_an_achievement()
+    {
+        var h = Wheel();
+        Give(h, 0, 1e16);
+        Patch(h, s => s["craft"]!["formedBy"] =
+            new JsonArray([.. Clicker.Wares.Take(Clicker.Wares.Length - 1).Select(w => (JsonNode)w.Key!)]));
+        Click(h, 40);
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:potter-ware-15");
+        FormOne(h, "pleskanets");
+        Assert.Contains(h.Awards, a => a.Reason == "ach:potter-ware-15");
+    }
+
+    [Fact]
+    public void An_old_save_gets_credit_for_everything_it_has_already_fired()
+    {
+        var h = Wheel();
+        Give(h, 0, 1e16);
+        // Збереження з проду про «хто що ліпив» не знає, зате знає, що обпалено: обпалений виріб хтось таки
+        // виліпив. Ветеранові лишається виліпити три нові вироби, а не всі п'ятнадцять наново.
+        Patch(h, s =>
+        {
+            var fired = new JsonObject();
+            foreach (var w in Clicker.Wares[..12]) fired[w.Key] = 3;
+            s["craft"]!["firedBy"] = fired;
+            s["craft"]!.AsObject().Remove("formedBy");
+        });
+        FormOne(h, "kukhol");
+        FormOne(h, "tykva");
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:potter-ware-15");
+        FormOne(h, "pleskanets");
+        Assert.Contains(h.Awards, a => a.Reason == "ach:potter-ware-15");
+    }
+
+    // ---------- секрети другого кола (§1) ----------
+
+    [Fact]
+    public void The_second_rack_adds_six_places_and_the_grandson_speeds_the_apprentices()
+    {
+        var h = Wheel();
+        Patch(h, s => s["upgrades"]!["apprentice"] = 100);
+        var rack = RackSize(h);
+        Assert.Equal(Clicker.ApprenticeWorkMax, Craft(h).GetProperty("apprentice").GetDouble());
+        Patch(h, s => s["secrets"] = new JsonArray("rack2", "grandson"));
+        // Каталог секретів другого кола приносить пакет «Коло» (контракт §A.5). Поки його нема, ключ із збереження
+        // відсівається й нічого не міняється, а щойно він з'явиться — ті самі +6 місць і 0,8 роботи за секунду.
+        var known = Clicker.Secrets.Any(s => s.Key == "rack2");
+        Assert.Equal(known ? rack + 6 : rack, RackSize(h));
+        Assert.Equal(known ? Clicker.ApprenticeWorkGrandson : Clicker.ApprenticeWorkMax, Craft(h).GetProperty("apprentice").GetDouble());
+    }
+
     [Fact]
     public void While_the_master_waits_the_wheel_forms_nothing()
     {

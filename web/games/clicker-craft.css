@@ -38,17 +38,24 @@
 .clk-sttxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
 .clk-sttxt b { font-size: .78em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clk-stsub { font-size: .68em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+/* ⓘ на чипі місткості: веде до секції «🔧 Прокачати», тож стоїть окремо від самого чипа. */
+.clk-step.hasi { padding-right: 14px; }
+.clk-sti {
+  position: absolute; top: 2px; right: 2px; font-style: normal; font-size: 10px; line-height: 1;
+  color: var(--muted); opacity: .6; padding: 1px 2px; border-radius: 6px;
+}
+.clk-sti:hover { opacity: 1; color: var(--accent2); background: rgba(255, 255, 255, .08); }
 .clk-stbar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255, 255, 255, .06); }
 .clk-stbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--clay), #d99a5b); transition: width .12s linear; }
 .clk-step.hot .clk-stbar i { background: var(--accent2); }
 
 /* Рядок «Далі» — єдина порада й єдина кнопка. */
-.clk-next {
+.clkc-next {
   display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; position: relative;
   padding: 6px 10px 8px; border-radius: 12px; overflow: hidden;
   background: linear-gradient(100deg, rgba(217, 169, 47, .16), var(--panel) 60%); border: 1px solid rgba(217, 169, 47, .35);
 }
-.clk-next[hidden] { display: none; }
+.clkc-next[hidden] { display: none; }
 .clk-nxico { font-size: 17px; line-height: 1; text-align: center; }
 .clk-nxsvg { width: 26px; height: 26px; display: block; }
 .clk-nxtxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
@@ -60,7 +67,7 @@
 .clk-nxbtn.armed { background: var(--bad, #b5453a); color: #fff; }
 .clk-nxbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .06); }
 .clk-nxbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .6s ease-out; }
-.clk-path.full .clk-next { border-color: var(--accent); }
+.clk-path.full .clkc-next { border-color: var(--accent); }
 
 /* Підказка «перший раз»: одна за раз, на смузі, зникає сама. */
 .clk-path { position: relative; }
@@ -75,6 +82,10 @@
 @keyframes clk-tipin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes clk-tipout { to { opacity: 0; transform: translateY(-4px); } }
 
+/* Смуга лишається двома рядами й на Full HD: у лівому стовпці вона завширшки рівно зі сценою (ширину веде
+   --clk-stage-w — на 1920×1080 це 490–545 px), тож в одному ряду кроки стискаються до ~60 px, а назви й рядок
+   «Далі» з'їдає багатокрапка. Сорок п'ять пікселів висоти того не варті — пробували, знімок у звіті пакета. */
+
 /* Вузька картка: чотири плитки лишаються в рядок, але без назв — лише значок і число. */
 @media (max-width: 460px) {
   .clk-steps { gap: 3px; }
@@ -83,7 +94,7 @@
   .clk-sttxt { align-items: center; max-width: 100%; }
   .clk-sttxt b { font-size: .7em; }
   .clk-stsub { font-size: .64em; }
-  .clk-next { grid-template-columns: 22px minmax(0, 1fr) auto; padding: 5px 8px 8px; gap: 6px; }
+  .clkc-next { grid-template-columns: 22px minmax(0, 1fr) auto; padding: 5px 8px 8px; gap: 6px; }
   .clk-nxtext { font-size: .86em; }
 }
 
@@ -125,6 +136,27 @@
 .clkw-q { color: var(--accent2); }
 .clkw-btns { display: flex; gap: 4px; flex: none; }
 .clkw-btns button { padding: 2px 8px; }
+/* ---- прокачка ремесла: сушарня, горно, комора, вітряна сушарня, палій ---- */
+.clkw-upsec { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; border-radius: 12px; }
+.clkw-upsec.flash { animation: clkw-upflash 1.4s ease-out; }
+@keyframes clkw-upflash {
+  0%, 100% { box-shadow: none; }
+  30% { box-shadow: 0 0 0 2px rgba(244, 197, 66, .55); }
+}
+.clkw-ups { display: flex; flex-direction: column; gap: 4px; }
+.clkw-up {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.clkw-up.done { opacity: .7; border-color: rgba(244, 197, 66, .35); }
+.clkw-uptxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.clkw-uphead { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.clkw-uphead b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clkw-uplv { color: var(--muted); font-size: .8em; font-variant-numeric: tabular-nums; flex: none; }
+.clkw-upnow { color: var(--accent2); }
+.clkw-upbtn { margin-left: auto; flex: none; white-space: nowrap; }
+.clkw-up .clk-price { margin-left: auto; flex: none; }
+
 .clkw-rackrow { display: flex; flex-wrap: wrap; gap: 6px; }
 .clkw-rackitem { display: flex; flex-direction: column; align-items: center; min-width: 40px; }
 .clkw-rackitem.dry .small { color: var(--accent2); }
@@ -133,6 +165,6 @@
 @keyframes clkw-stepflash { 0%, 100% { box-shadow: none; } 40% { box-shadow: 0 0 12px rgba(244, 197, 66, .55); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .clkw-rack.dry svg, .clkw-flame, .clk-step.flash, .clk-tip { animation: none; }
-  .clk-step, .clk-next, .clk-stbar i, .clk-nxbar i { transition: none; }
+  .clkw-rack.dry svg, .clkw-flame, .clk-step.flash, .clk-tip, .clkw-upsec.flash { animation: none; }
+  .clk-step, .clkc-next, .clk-stbar i, .clk-nxbar i { transition: none; }
 }
