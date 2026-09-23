@@ -525,7 +525,7 @@ public sealed class ClickerGuildService
         return new
         {
             nick,
-            total = Math.Max(0, Long(root["total"])),
+            total = Math.Max(0, Pots(root["total"])),
             stamps = Math.Max(0, Int(root["stamps"])),
             firings = Math.Max(0, Int(root["firings"])),
             ladder,
@@ -562,8 +562,10 @@ public sealed class ClickerGuildService
 
     static string Str(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";
 
-    static long Long(JsonNode? n) => n is JsonValue v && v.TryGetValue<long>(out var l) ? l
-        : n is JsonValue d && d.TryGetValue<double>(out var x) && double.IsFinite(x) ? (long)Math.Clamp(x, long.MinValue, long.MaxValue) : 0;
+    static long Long(JsonNode? n) => n is JsonValue v && v.TryGetValue<long>(out var l) ? l : (long)Math.Clamp(Pots(n), -9.2e18, 9.2e18);
+
+    /// <summary>Глеки з чужого збереження: з дев'ятого оновлення вони double і бувають більші за long.</summary>
+    static double Pots(JsonNode? n) => n is JsonValue v && v.TryGetValue<double>(out var x) && double.IsFinite(x) ? x : 0;
 
     static int Int(JsonNode? n) => (int)Math.Clamp(Long(n), int.MinValue, int.MaxValue);
 }

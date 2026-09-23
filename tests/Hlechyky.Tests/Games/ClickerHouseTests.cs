@@ -41,7 +41,7 @@ public class ClickerHouseTests
         }
     }
 
-    static void Give(RoomHarness h, long pots, long? total = null) => Patch(h, s =>
+    static void Give(RoomHarness h, double pots, double? total = null) => Patch(h, s =>
     {
         s["pots"] = pots;
         s["total"] = Math.Max(pots, total ?? pots);

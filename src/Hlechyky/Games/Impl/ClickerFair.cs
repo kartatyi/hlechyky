@@ -427,8 +427,8 @@ public sealed partial class Clicker
     static int MktRepFor(FairOrderRow o) => (2 + o.Count + 2 * (o.Quality - 1) + (o.Style.Length > 0 ? 2 : 0)) * (o.Lord ? 2 : 1);
 
     /// <summary>Скільки замовлення заплатить «як є», якщо здати рівно те, що просять (у виді — як обіцянка).</summary>
-    long MktPay(FairOrderRow o) =>
-        Math.Max(1, ToLong((double)ItemValue(o.Ware, o.Style, o.Quality) * o.Count * o.Mult * MktStylePerk(o)));
+    double MktPay(FairOrderRow o) =>
+        Math.Max(1, ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * o.Mult * MktStylePerk(o)));
 
     void MktAddOrder(DateTimeOffset now, bool lord = false)
     {
@@ -497,13 +497,13 @@ public sealed partial class Clicker
         foreach (var (item, n) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList())
         {
             var take = Math.Min(n, left);
-            sum += (double)ItemValue(item.Ware, item.Style, item.Quality) * take;
+            sum += ItemValue(item.Ware, item.Style, item.Quality) * take;
             left -= take;
             if (left <= 0) break;
         }
         TakeItems(match, o.Count);
         var haggle = bid switch { "down" => FairDownPay, "up" => FairUpPay, _ => 1 };
-        var pay = Math.Max(1, ToLong(sum * o.Mult * MktStylePerk(o) * haggle));
+        var pay = Math.Max(1, ToPots(sum * o.Mult * MktStylePerk(o) * haggle));
         Add(pay);
         _mktOrders.RemoveAt(i);
         _mktDelivered++;
@@ -537,8 +537,8 @@ public sealed partial class Clicker
         _mktGuest = new FairGuestRow(kind, at, at + FairGuestShown, x, y);
     }
 
-    long MktMagpie() =>
-        Math.Max(FairMagpieFloor, ToLong(Math.Max(PassiveBase * FairMagpieSeconds, (double)ClickBase * FairMagpieClicks)));
+    double MktMagpie() =>
+        Math.Max(FairMagpieFloor, ToPots(Math.Max(PassiveBase * FairMagpieSeconds, ClickBase * FairMagpieClicks)));
 
     void MktBuffAdd(string kind, double mult, TimeSpan span, string src, DateTimeOffset now)
     {
@@ -633,13 +633,13 @@ public sealed partial class Clicker
                     if (sec > 0)
                     {
                         // На голому колі пасиву нема — тоді кліками: хвилина ≈ дванадцять.
-                        var gain = Math.Max(5, ToLong(Math.Max(PassiveBase * sec, (double)ClickBase * sec / 5)));
+                        var gain = Math.Max(5, ToPots(Math.Max(PassiveBase * sec, ClickBase * sec / 5)));
                         Add(gain);
                         notes.Add($"+{Short(gain)} {Pots(gain)}");
                     }
                     else if (sec < 0)
                     {
-                        var loss = Math.Min(ToLong(PassiveBase * -sec), ToLong(_pots * FairEventLoss));
+                        var loss = Math.Min(ToPots(PassiveBase * -sec), ToPots(_pots * FairEventLoss));
                         if (loss > 0)
                         {
                             _pots -= loss;

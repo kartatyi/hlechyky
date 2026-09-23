@@ -135,12 +135,22 @@
   /// «1,47 млн глеків», а не «1,47 млн глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
   const potsShort = (n) => short(n) + ' ' + (Math.abs(n) >= 1e6 ? 'глеків' : potsWord(n));
 
-  const BIG = ['млн', 'млрд', 'трлн', 'квдрлн', 'квнтлн'];
+  /// Назви великих чисел — ті самі, що на сервері (Impl/Clicker.cs, BigNames): гравець бачить обидва
+  /// числа на одному екрані, і різні слова читались би як помилка. За децильйоном слів уже нема — там «1,2e36».
+  const BIG = ['млн', 'млрд', 'трлн', 'квдрлн', 'квнтлн', 'скстлн', 'сптлн', 'октлн', 'нонлн', 'дцлн'];
+  /// «1,2e36»: степінь із українською комою, як у сервера («0.#e0»).
+  function expo(n) {
+    let e = Math.floor(Math.log10(Math.abs(n)));
+    let m = Math.round((n / Math.pow(10, e)) * 10) / 10;
+    if (Math.abs(m) >= 10) { m /= 10; e += 1; }            // 9,99e36 — це 1e37, а не «10e36»
+    return m.toLocaleString('uk-UA', { maximumFractionDigits: 1 }) + 'e' + e;
+  }
   /// «1,09 млн» замість «1 093 232»: мільярди цифрами не читаються. До мільйона — повне число, як на сервері.
   function short(n) {
     if (!Number.isFinite(n)) return '∞';
     if (Math.abs(n) < 1e6) return n % 1 ? dec(n) : num(n);
-    const i = Math.min(BIG.length - 1, Math.floor(Math.log10(Math.abs(n)) / 3) - 2);
+    const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
+    if (i >= BIG.length) return expo(n);
     const v = n / Math.pow(1000, i + 2);
     const digits = v < 10 ? 2 : v < 100 ? 1 : 0;
     return (Math.floor(v * Math.pow(10, digits)) / Math.pow(10, digits)).toLocaleString('uk-UA', { maximumFractionDigits: digits })
@@ -149,8 +159,10 @@
   /// Великий лічильник: до трильйона кожна цифра (видно, як коло крутиться; «3 млрд» стояло б годинами),
   /// далі — коротко, але з трьома знаками.
   function big(n) {
+    if (!Number.isFinite(n)) return '∞';
     if (n < 1e12) return num(n);
-    const i = Math.min(BIG.length - 1, Math.floor(Math.log10(n) / 3) - 2);
+    const i = Math.floor(Math.log10(n) / 3) - 2;
+    if (i >= BIG.length) return expo(n);
     const v = n / Math.pow(1000, i + 2);
     return (Math.floor(v * 1000) / 1000).toLocaleString('uk-UA', { maximumFractionDigits: 3 }) + ' ' + BIG[i];
   }
@@ -162,7 +174,8 @@
     if (sec < 90 * 60) return Math.round(sec / 60) + ' хв';
     if (sec < 36 * 3600) return dec(sec / 3600) + ' год';
     const d = Math.round(sec / 86400);
-    return d + ' ' + plural(d, 'день', 'дні', 'днів');
+    // Окупність верстата в пізній грі — це мільярди днів: цифрами їх ніхто не читає, та й JS написав би «1e+26».
+    return (d >= 1e6 ? short(d) : num(d)) + ' ' + plural(d, 'день', 'дні', 'днів');
   }
 
   /// Довгий абзац у значок ⓘ: прочитати можна, займати екран — не мусить. Тим самим користуються частини.

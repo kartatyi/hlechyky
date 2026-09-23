@@ -234,14 +234,14 @@ public sealed partial class Clicker
     static string Pct(WagonInfo w) => w.Goal > 0 ? Math.Floor(100.0 * w.Total / w.Goal).ToString("0", Uk) : "0";
 
     /// <summary>Скільки глеків дасть нагорода воза за рівні від <paramref name="was"/> до <paramref name="tier"/>.</summary>
-    long WagonReward(int tier, int was, out double minutes)
+    double WagonReward(int tier, int was, out double minutes)
     {
         minutes = (ClickerGuildService.TierMinutes[Math.Clamp(tier, 0, 3)] - ClickerGuildService.TierMinutes[Math.Clamp(was, 0, 3)])
             * (_guildRank >= GuildMasterOfGuild ? GuildmasterWagon : 1);
         if (minutes <= 0) return 0;
         var byPassive = PassiveBase * minutes * 60;
-        var floor = (double)ClickBase * minutes * WagonClicksPerMinute;
-        return ToLong(Math.Max(byPassive, floor));
+        var floor = ClickBase * minutes * WagonClicksPerMinute;
+        return ToPots(Math.Max(byPassive, floor));
     }
 
     ActResult GuildClaim(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)
