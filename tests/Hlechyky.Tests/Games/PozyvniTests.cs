@@ -742,4 +742,167 @@ public class PozyvniTests
         Assert.Equal("done", Phase(h));
         Assert.Equal(team.Length, h.Awards.Count(a => a.Reason == "ach:pozyvni-edge"));
     }
+
+    // ---------------------------------------------------------------- разом проти столу (2–3 гравці)
+
+    [Fact]
+    public void Two_players_can_sit_and_start()
+    {
+        var h = Table(nicks: 2);
+
+        Assert.Equal("clue", Phase(h));
+        Assert.Equal("coop", h.View(null).GetProperty("mode").GetString());
+        Assert.Equal([0, 1], Seats(h, "red"));
+        Assert.Empty(Seats(h, "blue"));
+        Assert.Equal(0, Boss(h, "red"));
+        Assert.Equal("red", Side(h));
+        Assert.Equal("команда", h.Room.Game.SeatName(1));
+    }
+
+    [Fact]
+    public void Auto_mode_plays_teams_from_four()
+    {
+        var h = Table(nicks: 4);
+        Assert.Equal("teams", h.View(null).GetProperty("mode").GetString());
+        Assert.Equal(2, Seats(h, "red").Length);
+        Assert.Equal(2, Seats(h, "blue").Length);
+    }
+
+    [Fact]
+    public void Coop_can_be_chosen_for_a_big_table_too()
+    {
+        var h = Table(new { mode = "coop" }, nicks: 5);
+        Assert.Equal("coop", h.View(null).GetProperty("mode").GetString());
+        Assert.Equal(5, Seats(h, "red").Length);
+    }
+
+    [Fact]
+    public void Teams_mode_refuses_to_start_with_three()
+    {
+        var h = new RoomHarness("pozyvni", options: new { mode = "teams" }, seed: 7, services: RoomHarness.WithService(Words()));
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна" }) h.Join(nick);
+
+        Assert.False(h.Start().Ok);
+        Assert.Contains("щонайменше 4", h.Reply.Message);
+        Assert.Equal(RoomStatus.Lobby, h.Room.Status);
+    }
+
+    [Fact]
+    public void In_coop_nobody_switches_teams_but_the_captain_can_change()
+    {
+        var h = Setup(nicks: 3);
+
+        Assert.False(h.Act(1, "team", new { side = "blue" }).Ok);
+        Assert.True(h.Act(2, "boss").Ok);
+        Assert.True(h.Act(0, "go").Ok);
+
+        Assert.Equal(2, Boss(h, "red"));
+        Assert.Equal(3, Seats(h, "red").Length);
+    }
+
+    [Fact]
+    public void In_coop_the_table_takes_one_of_its_words_after_every_turn()
+    {
+        var h = Table(nicks: 2);
+        Assert.Equal(8, h.View(null).GetProperty("left").GetProperty("blue").GetInt32());
+
+        Assert.True(Clue(h, count: 1).Ok);
+        Assert.True(Pick(h, "grey").Ok);                 // промах — хід закінчено, стіл бере своє
+
+        Assert.Equal("clue", Phase(h));
+        Assert.Equal("red", Side(h));                     // знову наша підказка
+        Assert.Equal(7, h.View(null).GetProperty("left").GetProperty("blue").GetInt32());
+        Assert.Contains(h.View(null).GetProperty("log").EnumerateArray(), l => l.GetString()!.StartsWith("стіл забирає"));
+    }
+
+    [Fact]
+    public void In_coop_passing_also_lets_the_table_move()
+    {
+        var h = Table(nicks: 3);
+        Assert.True(Clue(h, count: 2).Ok);
+        Assert.True(Pick(h, "red").Ok);
+        // двоє польових: один показав пальцем, слово ще не відкрилось — і команда каже «досить»
+        Assert.True(h.Act(Field(h, "red"), "pass").Ok);
+
+        Assert.Equal(7, h.View(null).GetProperty("left").GetProperty("blue").GetInt32());
+    }
+
+    [Fact]
+    public void In_coop_finding_all_own_words_is_a_win_for_everybody()
+    {
+        var h = Table(nicks: 2);
+        Assert.True(Clue(h, count: 0).Ok);
+        for (var i = 0; i < 9; i++) Assert.True(Pick(h, "red").Ok);
+
+        Assert.Equal("done", Phase(h));
+        var finished = Assert.Single(h.Finished);
+        Assert.Equal([0, 1], finished.Result.Winners.Order());
+        Assert.Contains("1 підказку", finished.Result.Text);
+        Assert.Equal(1, h.View(null).GetProperty("clues").GetInt32());
+    }
+
+    [Fact]
+    public void In_coop_the_table_wins_when_it_takes_its_last_word()
+    {
+        var h = Table(nicks: 2);
+        for (var turn = 0; turn < 8; turn++)
+        {
+            Assert.True(Clue(h, "натяк" + (char)('а' + turn), 1).Ok);
+            Assert.True(h.Act(1, "pass").Ok);
+        }
+
+        Assert.Equal("done", Phase(h));
+        var finished = Assert.Single(h.Finished);
+        Assert.True(finished.Result.Draw);                // стіл нікого не садить — перемоги нема ні в кого
+        Assert.Contains("стіл забрав", finished.Result.Text);
+        Assert.Equal("blue", h.View(null).GetProperty("result").GetProperty("side").GetString());
+    }
+
+    [Fact]
+    public void In_coop_the_black_word_loses_the_game()
+    {
+        var h = Table(nicks: 2);
+        Assert.True(Clue(h, count: 1).Ok);
+        Assert.True(Pick(h, "black").Ok);
+
+        var finished = Assert.Single(h.Finished);
+        Assert.True(finished.Result.Draw);
+        Assert.Contains("стіл переміг", finished.Result.Text);
+    }
+
+    [Fact]
+    public void In_coop_the_field_player_still_does_not_see_the_key()
+    {
+        var h = Table(nicks: 3);
+        Assert.NotEqual(JsonValueKind.Null, h.View(0).GetProperty("key").ValueKind);
+        Assert.Equal(JsonValueKind.Null, h.View(1).GetProperty("key").ValueKind);
+        Assert.Equal(JsonValueKind.Null, h.View(2).GetProperty("key").ValueKind);
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("key").ValueKind);
+    }
+
+    [Fact]
+    public void In_coop_a_player_leaving_a_pair_ends_the_game()
+    {
+        var h = Table(nicks: 2);
+        h.Leave(h.NickOf(1));
+
+        Assert.Equal("done", Phase(h));
+        Assert.Single(h.Finished);
+    }
+
+    [Fact]
+    public void Coop_rematch_moves_the_captain_to_another_player()
+    {
+        var h = Table(nicks: 2);
+        var captain = h.NickOf(Boss(h, "red"));
+        Assert.True(Clue(h, count: 1).Ok);
+        Assert.True(Pick(h, "black").Ok);
+
+        Assert.True(h.Rematch().Ok);
+        Assert.True(h.Act(0, "go").Ok);
+
+        Assert.Equal("coop", h.View(null).GetProperty("mode").GetString());
+        Assert.Equal("red", Side(h));
+        Assert.NotEqual(captain, h.NickOf(Boss(h, "red")));
+    }
 }

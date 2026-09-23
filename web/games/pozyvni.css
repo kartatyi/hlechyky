@@ -168,8 +168,10 @@
 @media (max-width: 480px) {
   .pz-grid { gap: 4px; }
   .pz-card { min-height: 50px; padding: 5px 3px; font-size: .74em; border-radius: 8px; box-shadow: 0 2px 0 var(--pz-edge), 0 3px 6px rgba(0, 0, 0, .3); }
-  .pz-card.xlong { font-size: .62em; }
+  .pz-card.long { font-size: .64em; }
+  .pz-card.xlong { font-size: .56em; }
   .pz-teams { gap: 6px; }
   .pz-col { flex: 1 1 100%; padding: 7px 9px; }
   .pz-clue b { font-size: 1.15em; }
 }
+.pz-table .muted { line-height: 1.3; }
