@@ -203,13 +203,29 @@ public class ClickerLiveTests
     }
 
     [Fact]
-    public void The_streak_bonus_stops_at_ten()
+    public void The_streak_keeps_growing_past_ten_but_slower()
     {
+        // Дев'яте оновлення §A.3: перші десять спійманих по +10 %, далі по +2 % — і стелі більше нема.
         var h = Wheel();
         Levels(h, ("apprentice", 10));
         Patch(h, s => s["fallStreak"] = 25);
         FallNow(h);
-        Assert.Equal(1420, Fall(h).GetProperty("gain").GetInt64());  // 700 × 2 + 20
+        Assert.Equal(1629, Fall(h).GetProperty("gain").GetInt64());  // 700 × (1 + 1 + 0,3) + 20
+        Assert.Equal(1.3, Fall(h).GetProperty("bonus").GetDouble(), 3);
+
+        Patch(h, s => s["fallStreak"] = 37);
+        Assert.Equal(1.54, Fall(h).GetProperty("bonus").GetDouble(), 3);   // плашка «Серія 37 · +154 %»
+    }
+
+    [Fact]
+    public void A_fiftieth_jug_in_a_row_is_an_achievement()
+    {
+        var h = Wheel();
+        Patch(h, s => s["fallStreak"] = 49);
+        FallNow(h);
+        Assert.True(Act(h, "grab").Ok);
+        Assert.Equal(50, Streak(h));
+        Assert.Contains(h.Awards, a => a.Reason == "ach:potter-streak-50");
     }
 
     [Fact]
@@ -279,17 +295,20 @@ public class ClickerLiveTests
     [Fact]
     public void The_masters_eye_watches_the_shelf_as_well()
     {
-        // Перевірка вже назріла: замість глеків — прохання торкнутись полиці, і доки не відповіси, глек не ловиться.
+        // Перевірка назріла — але глека в польоті вона вже не забирає (v9 §A.2): спершу глек, тоді полиця.
+        // Доки не відповіси, наступний не ловиться, тож бот на цьому однаково спиняється.
         var h = Wheel();
         Patch(h, s => s["guard"]!["left"] = 0);
         FallNow(h);
         var before = Pots(h);
         var r = Act(h, "grab");
         Assert.True(r.Ok);
-        Assert.Contains("Майстер", r.Message);
-        Assert.Equal(before, Pots(h));
-        Assert.Equal(0, Streak(h));
+        Assert.Contains("Спіймав", r.Message);
+        Assert.Contains("майстер", r.Message);
+        Assert.True(Pots(h) > before);
+        Assert.Equal(1, Streak(h));
 
+        FallNow(h);
         var again = Act(h, "grab");
         Assert.False(again.Ok);
         Assert.Contains("Око майстра", again.Message);

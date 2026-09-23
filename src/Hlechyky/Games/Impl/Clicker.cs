@@ -56,8 +56,11 @@ public sealed record ClickerUpgrade(string Key, string Name, string Desc, double
     }
 }
 
-/// <summary>Родинний секрет: вічне покращення за клейма майстра, обпал його не забирає.</summary>
-public sealed record ClickerSecret(string Key, string Name, string Desc, int Price);
+/// <summary>
+/// Родинний секрет: вічне покращення за клейма майстра, обпал його не забирає. <paramref name="Ring"/> — коло:
+/// перше (родинні, з першого оновлення) чи друге (дідівські, дев'яте оновлення — сотні клейм).
+/// </summary>
+public sealed record ClickerSecret(string Key, string Name, string Desc, int Price, int Ring = 1);
 
 /// <summary>Розпис для глека: колекція на всі обпали, кожен розпис — плюс п'ять відсотків до всього.</summary>
 public sealed record ClickerStyle(string Key, string Name, double Price);
@@ -110,14 +113,77 @@ public sealed partial class Clicker : Game
     public const double FairMult = 7;
     public static readonly TimeSpan FairFor = TimeSpan.FromSeconds(66);
     public const double InspireMult = 25;
-    public static readonly TimeSpan InspireFor = TimeSpan.FromSeconds(15);
-    /// <summary>Щедрий купець: п'ятнадцять відсотків того, що лежить, але не більше ніж чверть години роботи.</summary>
-    public const double MerchantShare = 0.15;
-    public const double MerchantSeconds = 900;
+    public static readonly TimeSpan InspireFor = TimeSpan.FromSeconds(20);
+    /// <summary>
+    /// Дев'яте оновлення: під натхненням кожен клік несе ще три відсотки пасиву — і вже потім усе це множиться
+    /// на ×25 і на розгін. Без цього натхнення мовчало в того, хто ще не купив «Легку руку» з «Руками майстра».
+    /// </summary>
+    public const double InspireShare = 0.03;
+    /// <summary>
+    /// Щедрий купець (дев'яте оновлення): шість хвилин роботи як дно плюс десята частина того, що лежить, але
+    /// теж не більше шести хвилин. Було «15 % кишені, не більше чверті години» — у пізній грі це майже нічого.
+    /// </summary>
+    public const double MerchantShare = 0.10;
+    public const double MerchantSeconds = 360;
     public const int GoldenForAchievement = 50;
 
     /// <summary>Що буде в розписному глеку. Вирішується, коли глек з'являється, а гравцеві показується, лише коли впіймав.</summary>
     public enum GoldenKind { Merchant, Fair, Inspire }
+
+    // ---------- дев'яте оновлення: Око платить, серія без стелі, випадковості на сцені ----------
+
+    /// <summary>Платня за пройдену спокійну полицю: дві години пасиву й десять тисяч кліків.</summary>
+    public const double EyeSeconds = 7200;
+    public const int EyeClicks = 10_000;
+    /// <summary>Скільки спокійних полиць треба пройти для ачівки «Майстер кивнув».</summary>
+    public const int CalmShelvesForAchievement = 10;
+
+    /// <summary>Серія глеків з полиці: перші десять по +10 %, далі +2 % за кожен — і без стелі.</summary>
+    public const double StreakFarBonus = 0.02;
+    /// <summary>Скільки спійманих поспіль варті дивовижі.</summary>
+    public static readonly int[] StreakWonders = [10, 25, 50, 100];
+    public const int LongStreakForAchievement = 50;
+
+    /// <summary>Від якої ціни верстат вправності ховається, поки гончар до нього не доріс, і з якої частки ціни з'являється.</summary>
+    public const double SkillHideFrom = 1_000_000, SkillShowShare = 20;
+
+    /// <summary>Щасливий клік: за кожен рівень верстата один відсоток кліків приносить у п'ятдесят разів більше.</summary>
+    public const double LuckyChance = 0.01;
+    public const double LuckyMult = 50;
+    public const int LuckyForAchievement = 100;
+
+    /// <summary>Кіт-мандрівник: раз на 6–14 хвилин пробігає сценою за шість секунд.</summary>
+    public const int CatMinWait = 360, CatMaxWait = 840;
+    public static readonly TimeSpan CatShown = TimeSpan.FromSeconds(6);
+    /// <summary>Скільки кліків «коштує» погладжений кіт для Ока майстра.</summary>
+    public const int PetWeight = 150;
+    public const int CatsForAchievement = 25;
+    /// <summary>Гостинець від кота: п'ять хвилин пасиву, три в'язки соломи, дзвінкий виріб або плюс один до серії.</summary>
+    public enum CatGift { Passive, Straw, Ware, Streak }
+    public const double CatPassiveSeconds = 300;
+    public const int CatStraw = 3;
+
+    /// <summary>Зірка падає лише вночі за київським часом — сцена й так темна.</summary>
+    public const int NightFrom = 21, NightTo = 5;
+    public const int StarMinWait = 1200, StarMaxWait = 2400;
+    public static readonly TimeSpan StarShown = TimeSpan.FromSeconds(8);
+    /// <summary>Загадав бажання: наступний глек з полиці втричі щедріший, а розписний прийде за пів хвилини.</summary>
+    public const double StarFallMult = 3;
+    public const double StarGoldenSeconds = 30;
+
+    /// <summary>
+    /// Довший простій — і гончар уже не біля кола: випадковості на сцені його не чекають, а починаються наново.
+    /// Дві хвилини — бо вид летить щопачки кліків, а вкладку відкритою лишають і без кліків.
+    /// </summary>
+    public static readonly TimeSpan EventGap = TimeSpan.FromMinutes(2);
+
+    /// <summary>Вітер із поля: раз на 25–50 хвилин на три чверті хвилини потроює пасив.</summary>
+    public const int WindMinWait = 1500, WindMaxWait = 3000;
+    public static readonly TimeSpan WindShown = TimeSpan.FromSeconds(45);
+    public const double WindMult = 3;
+
+    /// <summary>Яку версію «Що нового» показуємо. Побачив — більше не показуємо ніколи й ні на якому пристрої.</summary>
+    public const string NewsVersion = "v9";
 
     // ---------- розгін кола ----------
 
@@ -182,6 +248,10 @@ public sealed partial class Clicker : Game
         new("clay", "Гарна глина", "×1,25 до всього", 10_000, ClickerKind.Mult, MaxLevel: 5),
         new("flywheel", "Маховик", "Швидкі кліки поспіль розкручують коло: +0,5 до стелі розгону", 250, ClickerKind.Skill, MaxLevel: 8),
         new("basket", "Кошик під полицею", "+20 % до глеків, що падають з полиці", 2_500, ClickerKind.Skill, MaxLevel: 10),
+        // Дев'яте оновлення: три верстати, щоб клацати було варто й на квадрильйонах (docs/games/specs/clicker-v9.md §A.4).
+        new("swing", "Замашна рука", "Клік бере ще +1 % пасиву за рівень", 50_000_000, ClickerKind.Skill, MaxLevel: 10),
+        new("temper", "Гарт кола", "Розгін спадає повільніше: +1 с за рівень", 500_000_000, ClickerKind.Skill, MaxLevel: 5),
+        new("lucky", "Щасливий клік", "1 % кліків за рівень б'є в ×50", 5_000_000_000, ClickerKind.Skill, MaxLevel: 5),
         Tier("workshop", "Гончарня", 100_000, 25, "Новий дах", "Полиці до стелі", "Вивіска на всю вулицю"),
         Tier("fair", "Ярмарок у Сорочинцях", 2_000_000, 150, "Намет із прапорцем", "Ярмаркові зазивали", "Гоголь приїхав"),
         Tier("artel", "Артіль в Опішні", 50_000_000, 900, "Спільна глина", "Артільний кошовий", "Знак Опішні"),
@@ -191,6 +261,10 @@ public sealed partial class Clicker : Game
         Tier("chaika", "Чайка до Царграда", 12_000_000_000_000, 1_200_000, "Козацька чайка", "Попутний вітер", "Царградський базар"),
         Tier("museum", "Музей гончарства", 250_000_000_000_000, 7_000_000, "Екскурсовод", "Вітрина скарбів", "Ніч у музеї"),
         Tier("tsar", "Цар-глек", 5_000_000_000_000_000, 45_000_000, "Глек на всю хату", "Глек на все село", "Глек видно з Місяця"),
+        // Дев'яте оновлення: три щаблі після Цар-глека — ×22 ціни й ×6,5 доходу, щоб було заради чого грати далі.
+        Tier("sloboda", "Гончарна слобода", 1e17, 3e8, "Своя вулиця", "Ярмарок під хатою", "Слобідський герб"),
+        Tier("kontrakty", "Контрактовий ярмарок", 2.5e18, 2e9, "Контракт із Києвом", "Гостиний двір", "Лаврські купці"),
+        Tier("sich", "Гончарня на Січі", 6e19, 1.3e10, "Курінь гончарів", "Козацька печатка", "Клейнод"),
     ];
 
     static ClickerUpgrade Tier(string key, string name, double price, double rate, string m25, string m50, string m100) =>
@@ -208,6 +282,14 @@ public sealed partial class Clicker : Game
         new("recipe", "Бабусин рецепт", "Гарна глина не згорає при обпалі", 20),
         new("memory", "Пам'ять рук", "Віхи верстатів не згорають при обпалі", 40),
         new("seal", "Родове клеймо", "Кожне клеймо дає +3 % замість +2 %", 80),
+        // Друге коло (дев'яте оновлення §A.5): дідівські секрети — на сотні клейм, кожен відмикає своє в майстерні.
+        new("rack2", "Друга сушарня", "Під стріхою стає ще шість місць для сирцю", 150, Ring: 2),
+        new("grandson", "Онук за колом", "Підмайстри ліплять до 0,8 роботи за секунду замість 0,5", 250, Ring: 2),
+        new("caravan", "Великий обоз", "У дорозі буває п'ять купців, а на дошці — чотири", 400, Ring: 2),
+        new("barn", "Ключ від клуні", "Клуня тримає 40 в'язок соломи, і в'язка вдвічі дешевша", 600, Ring: 2),
+        new("bell", "Ярмарковий дзвін", "На дошці села до п'яти замовлень, нове — кожні 4–7 хвилин", 900, Ring: 2),
+        new("ember", "Вогонь роду", "Палій пече якісніше: «блиск» його партії в півтора раза більший", 1_200, Ring: 2),
+        new("ashes", "Дідова скриня", "Після обпалу в скрині лишається двадцята частина глеків", 2_000, Ring: 2),
     ];
 
     /// <summary>Розписи — від чорнодимленого до трипільського. Колекція лишається назавжди.</summary>
@@ -285,6 +367,22 @@ public sealed partial class Clicker : Game
     int _fallStreak;
     int _grabbed;
 
+    // ---------- дев'яте оновлення ----------
+
+    /// <summary>Скільки кліків уже влучило в ×50 — лічильник для клієнта («✨ ×50» над колом) і для ачівки.</summary>
+    long _lucky;
+    /// <summary>Кіт, зірка й вітер на сцені: коли приходять, доки видно і що з собою несуть (§A.6).</summary>
+    EventRow _cat = new(default, default, 0, 0);
+    EventRow _star = new(default, default, 0, 0);
+    EventRow _wind = new(default, default, 0, 0);
+    int _petted;
+    /// <summary>Бажання на падаючу зірку: наступний спійманий глек з полиці втричі щедріший.</summary>
+    bool _starWish;
+    /// <summary>Розписний глек чи глек з полиці проспали під полицею Ока — після «кивнув» їх переплановують.</summary>
+    bool _goldenSlept, _fallSlept;
+    /// <summary>Яку версію «Що нового» гончар уже бачив.</summary>
+    string _news = "";
+
     /// <summary>
     /// Як часто число з таблиці оновлюється під час клацання. Кожна пачка кліків — це запис у ту саму
     /// SQLite, у яку пише ефір, тож півхвилини затримки в таблиці «Гончарі» коштують дешевше, ніж
@@ -342,16 +440,23 @@ public sealed partial class Clicker : Game
     bool FairOn => Ctx.Clock.UtcNow < _fairUntil;
     bool InspireOn => Ctx.Clock.UtcNow < _inspireUntil;
 
-    /// <summary>Скільки пасиву йде в кожен клік: «Легка рука» — один відсоток, «Руки майстра» — ще два.</summary>
+    /// <summary>
+    /// Скільки пасиву йде в кожен клік: «Легка рука» — один відсоток, «Руки майстра» — ще два, гончарський
+    /// шнурок — ще один, «Замашна рука» — по одному за рівень (дев'яте оновлення: без неї клік у пізній грі
+    /// нічого не важив).
+    /// </summary>
     double ClickShare
     {
         get
         {
             var wheel = Shop[0];
             return (_marks.Contains(MarkKey(wheel, 1)) ? 0.01 : 0) + (_marks.Contains(MarkKey(wheel, 2)) ? 0.02 : 0)
-                + (Tool("string") ? 0.01 : 0);
+                + (Tool("string") ? 0.01 : 0) + SwingShare * Level("swing");
         }
     }
+
+    /// <summary>Скільки пасиву додає до кліка один рівень «Замашної руки».</summary>
+    public const double SwingShare = 0.01;
 
     /// <summary>
     /// Глеків за один клік без бонусів розписного глека. Клік мусить бути цілим числом — «+1,25 глека» на
@@ -369,17 +474,28 @@ public sealed partial class Clicker : Game
         }
     }
 
-    /// <summary>Глеків за один клік просто зараз — з натхненням і ярмарком, якщо вони тривають.</summary>
-    public double PerClick => ToPots(ClickBase * (InspireOn ? InspireMult : 1) * (FairOn ? FairMult : 1));
+    /// <summary>
+    /// Глеків за один клік просто зараз — з натхненням і ярмарком, якщо вони тривають. Натхнення понад ×25
+    /// кладе в кожен клік ще три відсотки пасиву (дев'яте оновлення §A.7), і ці відсотки теж множаться на ×25:
+    /// інакше на квадрильйонах «Натхнення!» було б порожнім словом у того, хто ще не взяв «Руки майстра».
+    /// </summary>
+    public double PerClick =>
+        ToPots((ClickBase + (InspireOn ? PassiveBase * InspireShare : 0)) * (InspireOn ? InspireMult : 1) * (FairOn ? FairMult : 1));
 
-    /// <summary>Глеків за секунду без тебе просто зараз.</summary>
-    public double PerSecond => PassiveBase * (FairOn ? FairMult : 1);
+    /// <summary>Глеків за секунду без тебе просто зараз — з ярмарком і вітром із поля, якщо вони тривають.</summary>
+    public double PerSecond => PassiveBase * (FairOn ? FairMult : 1) * (WindOn ? WindMult : 1);
 
     /// <summary>Стеля розгону: ×1 без маховика (коло не розганяється), +0,5 за кожен його рівень — до ×5.</summary>
     public double MomentumMax => 1 + FlywheelStep * Level("flywheel");
 
-    /// <summary>За скільки секунд розгін спадає в e разів: <see cref="HeatTau"/>, з лопаткою — удвічі довше.</summary>
-    double Tau => Tool("paddle") ? HeatTau * PaddleTau : HeatTau;
+    /// <summary>
+    /// За скільки секунд розгін спадає в e разів: <see cref="HeatTau"/>, з лопаткою — удвічі довше, і ще по
+    /// секунді за кожен рівень «Гарту кола» (дев'яте оновлення): коло тримає розгін, поки рука переводить подих.
+    /// </summary>
+    double Tau => (Tool("paddle") ? HeatTau * PaddleTau : HeatTau) + TemperTau * Level("temper");
+
+    /// <summary>Скільки секунд до згасання розгону додає один рівень «Гарту кола».</summary>
+    public const double TemperTau = 1;
 
     /// <summary>Розгін на мить <paramref name="now"/>: те, що було, спадає в e разів за <see cref="Tau"/> секунд.</summary>
     double HeatAt(DateTimeOffset now) =>
@@ -395,10 +511,16 @@ public sealed partial class Clicker : Game
     double FallGain()
     {
         var raw = PassiveBase * FallSeconds + ClickBase * FallClicks;
-        var mult = (1 + BasketBonus * Level("basket")) * (1 + StreakBonus * Math.Min(_fallStreak, StreakMax)) * (FairOn ? FairMult : 1)
-            * ClayNow.Loot * HouseFallMult;
+        var mult = (1 + BasketBonus * Level("basket")) * (1 + StreakMult) * (FairOn ? FairMult : 1)
+            * ClayNow.Loot * HouseFallMult * (_starWish ? StarFallMult : 1);
         return ToPots(raw * mult) + FallFloor;
     }
+
+    /// <summary>
+    /// Що додає серія: перші десять спійманих по +10 %, далі по +2 % за кожен — і стелі більше нема
+    /// (дев'яте оновлення §A.3). Серія на 37 — це +154 %.
+    /// </summary>
+    double StreakMult => StreakBonus * Math.Min(_fallStreak, StreakMax) + StreakFarBonus * Math.Max(0, _fallStreak - StreakMax);
 
     TimeSpan OfflineNow => (Has("night") ? LongOfflineCap : OfflineCap) + (Tool("lantern") ? LanternHours : TimeSpan.Zero) + HouseOfflineExtra;
 
@@ -477,6 +599,15 @@ public sealed partial class Clicker : Game
         _fallStreak = 0;
         _grabbed = 0;
         ScheduleFall(_lastSync);
+        _lucky = 0;
+        _petted = 0;
+        _starWish = false;
+        _goldenSlept = false;
+        _fallSlept = false;
+        _news = "";
+        ScheduleCat(_lastSync);
+        ScheduleStar(_lastSync);
+        ScheduleWind(_lastSync);
         ResetHouse(_lastSync);
         ResetCraft();
         ResetKiln(_lastSync);
@@ -511,6 +642,10 @@ public sealed partial class Clicker : Game
             "sell" => Sell(payload),
             "catch" => Catch(),
             "grab" => Grab(),
+            // Випадковості на сцені (v9): погладити кота, загадати бажання на зірку, «бачив, що нового».
+            "pet" => Pet(),
+            "wish" => Wish(),
+            "news" => SeenNews(payload),
             // Клієнт питає свіжий вид, коли розписний глек утік чи глек з полиці розбився: наступний розклад знає лише сервер.
             "look" => Look(payload),
             "fire" => Fire(),
@@ -569,6 +704,8 @@ public sealed partial class Clicker : Game
         _lastSync = now;
         var gap = now > from ? now - from : TimeSpan.Zero;
         var paid = gap > OfflineNow ? OfflineNow : gap;
+        // Кіт, зірка й вітер — це те, що видно на сцені: поки гончаря не було, вони його не чекали (§A.6).
+        var watching = gap <= EventGap;
         AwayBegin(gap);
         if (now > from)
         {
@@ -576,20 +713,36 @@ public sealed partial class Clicker : Game
             // за from: досить обрізати його кінцем проміжку.
             var fair = _fairUntil > from ? (_fairUntil < now ? _fairUntil : now) - from : TimeSpan.Zero;
             if (fair > paid) fair = paid;
-            Earn(PassiveBase * (paid.TotalSeconds + (FairMult - 1) * fair.TotalSeconds));
+            // Вітер із поля потроює пасив рівно ті секунди, які справді віяв — і лише поки гончар був біля кола
+            // (§A.6: це подія на сцені, а не погода в базі).
+            var wind = watching ? Overlap(from, now, _wind.At, _wind.Until) : TimeSpan.Zero;
+            if (wind > paid) wind = paid;
+            Earn(PassiveBase * (paid.TotalSeconds + (FairMult - 1) * fair.TotalSeconds + (WindMult - 1) * wind.TotalSeconds));
         }
         // Утік — наступний. Від «зараз», а не від кінця старого: хто повернувся за добу, не мусить
         // перебирати пропущені глеки, щоб дійти до сьогоднішнього.
-        if (now > _golden.Until + CatchGrace) ScheduleGolden(now);
+        var asked = _guard.Pending || _guard.Locked(now);
+        if (now > _golden.Until + CatchGrace)
+        {
+            // Під полицею Ока глек однаково не ловився: після «кивнув» перепланувати від «зараз» (§A.2).
+            if (asked) _goldenSlept = true;
+            ScheduleGolden(now);
+        }
         // Глек з полиці, якого ніхто не спіймав, — розбитий: серія обірвалась. Спійманий сюди не доходить —
         // Grab одразу ставить на полицю наступний.
         if (now > _fall.Until + CatchGrace)
         {
+            // Під полицею Ока ловити було нічим: серію за це не рвемо й дамо новий глек, щойно майстер кивне.
+            if (asked) _fallSlept = true;
             // Шкіряний фартух вибачає один розбитий у серії; другий поспіль — серія таки обірвалась.
-            if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
+            else if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
             else _fallStreak = 0;
             ScheduleFall(now);
         }
+        // Пробігли — наступні від «зараз»; гончаря не було — теж від «зараз». Зірка ще й чекає ночі (§A.6).
+        if (!watching || now > _cat.Until) ScheduleCat(now);
+        if (!watching || now > _star.Until) ScheduleStar(now);
+        if (!watching || now > _wind.Until) ScheduleWind(now);
         SyncOrders(now);
         // Ремесло й пакети — після пасиву й купців: підмайстри ліплять за той самий оплачений проміжок.
         // v9: ремесло й горно синхронізує майстерня (ClickerKiln.cs): за довгий простій — кроками, щоб палій устигав обпалювати.
@@ -644,14 +797,16 @@ public sealed partial class Clicker : Game
         _soldShards = 0;
     }
 
-    void ScheduleGolden(DateTimeOffset from)
+    /// <summary><paramref name="seconds"/> — чекати рівно стільки (бажання на зірку кличе глек за пів хвилини).</summary>
+    void ScheduleGolden(DateTimeOffset from, double? seconds = null)
     {
         var (min, max) = Has("omen") ? (OmenMinSeconds, OmenMaxSeconds) : (GoldenMinSeconds, GoldenMaxSeconds);
         // Чорна глина й глиняний свисток скорочують чекання; собака під лавою стереже глек трохи довше.
-        var wait = (min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * (Tool("whistle") ? WhistleEvents : 1);
+        var wait = seconds ?? (min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * (Tool("whistle") ? WhistleEvents : 1);
         var at = from + TimeSpan.FromSeconds(wait);
+        // Дев'яте оновлення §A.7: кидок 40/30/30 — купець уже не переважає, бо тепер він платить по-справжньому.
         var roll = Ctx.Rng.Next(100);
-        var kind = roll < 45 ? GoldenKind.Merchant : roll < 85 ? GoldenKind.Fair : GoldenKind.Inspire;
+        var kind = roll < 40 ? GoldenKind.Merchant : roll < 70 ? GoldenKind.Fair : GoldenKind.Inspire;
         // Де саме на сцені: лівий верхній кут у відсотках. Глек завширшки ~58 px, сцена на телефоні ~300 px —
         // тож праворуч лишаємо чверть, щоб він не вилазив за картку.
         var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero) + HouseGoldenExtra;
@@ -664,6 +819,76 @@ public sealed partial class Clicker : Game
         var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
         var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events);
         _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown), Ctx.Rng.Next(8, 80));
+    }
+
+    // ---------- випадковості на сцені: кіт, зірка, вітер (§A.6) ----------
+
+    /// <summary>Подія на сцені: коли приходить, доки видно і двоє чисел на свій розсуд (гостинець і напрямок, місце в небі).</summary>
+    sealed record EventRow(DateTimeOffset At, DateTimeOffset Until, int A, int B);
+
+    static bool During(EventRow row, DateTimeOffset now) => now >= row.At && now <= row.Until;
+
+    bool CatOn(DateTimeOffset now) => During(_cat, now);
+    bool StarOn(DateTimeOffset now) => During(_star, now);
+    bool WindOn => During(_wind, Ctx.Clock.UtcNow);
+
+    /// <summary>Кіт-мандрівник: раз на 6–14 хв, шість секунд сценою. Гостинець і напрямок вирішуються тут, при появі.</summary>
+    void ScheduleCat(DateTimeOffset from)
+    {
+        var at = from + TimeSpan.FromSeconds(CatMinWait + Ctx.Rng.NextDouble() * (CatMaxWait - CatMinWait));
+        _cat = new EventRow(at, at + CatShown, Ctx.Rng.Next(0, 4), Ctx.Rng.Next(0, 2));
+    }
+
+    /// <summary>
+    /// Зірка падає лише вночі за київським часом (21:00–05:00) — на світлій сцені її однаково не видно. Випала
+    /// денна мить — чекаємо вечора й трохи згодом: рівно о дев'ятій зірки не падають.
+    /// </summary>
+    void ScheduleStar(DateTimeOffset from)
+    {
+        var at = from + TimeSpan.FromSeconds(StarMinWait + Ctx.Rng.NextDouble() * (StarMaxWait - StarMinWait));
+        if (!NightIn(at)) at = NextNight(at) + TimeSpan.FromSeconds(Ctx.Rng.NextDouble() * (StarMaxWait - StarMinWait));
+        _star = new EventRow(at, at + StarShown, Ctx.Rng.Next(8, 80), Ctx.Rng.Next(6, 34));
+    }
+
+    void ScheduleWind(DateTimeOffset from)
+    {
+        var at = from + TimeSpan.FromSeconds(WindMinWait + Ctx.Rng.NextDouble() * (WindMaxWait - WindMinWait));
+        _wind = new EventRow(at, at + WindShown, 0, 0);
+    }
+
+    /// <summary>Ніч за київським часом: 21:00–05:00.</summary>
+    static bool NightIn(DateTimeOffset now)
+    {
+        var hour = TimeZoneInfo.ConvertTime(now, Days.Kyiv).Hour;
+        return hour >= NightFrom || hour < NightTo;
+    }
+
+    /// <summary>Найближча мить, коли над хатою вже ніч: сама <paramref name="now"/> уночі, інакше сьогоднішні 21:00.</summary>
+    static DateTimeOffset NextNight(DateTimeOffset now)
+    {
+        if (NightIn(now)) return now;
+        var local = TimeZoneInfo.ConvertTime(now, Days.Kyiv);
+        var at = new DateTimeOffset(local.Date.AddHours(NightFrom), local.Offset);
+        return at > now ? at : now;
+    }
+
+    /// <summary>
+    /// Що на сцені зараз коштує гравцеві секунд: ярмарок, натхнення, розписний глек, глек у польоті, бафи села
+    /// й три випадковості дев'ятого оновлення. Поки триває хоч одне — Око майстра не перебиває (§A.2): полиця
+    /// з'їдала б саме ті секунди, заради яких гравець і сидить біля кола.
+    /// </summary>
+    bool BonusOn(DateTimeOffset now) =>
+        FairOn || InspireOn || FairBuffOn(now)
+        || (now >= _golden.At - EarlyGrace && now <= _golden.Until + CatchGrace)
+        || (now >= _fall.At - EarlyGrace && now <= _fall.Until + CatchGrace)
+        || CatOn(now) || StarOn(now) || During(_wind, now);
+
+    /// <summary>Скільки з проміжку [from, to] припало на вікно події.</summary>
+    static TimeSpan Overlap(DateTimeOffset from, DateTimeOffset to, DateTimeOffset at, DateTimeOffset until)
+    {
+        var start = from > at ? from : at;
+        var end = to < until ? to : until;
+        return end > start ? end - start : TimeSpan.Zero;
     }
 
     // ---------- дії ----------
@@ -698,9 +923,24 @@ public sealed partial class Clicker : Game
         // Кліки ще й ліплять виріб на колі (глеків це не додає — лише роботу, див. ClickerCraft.cs).
         if (taken > 0) FormBy(taken, now);
         _guard.Spend(taken);
-        // Під ярмарком і натхненням не перебиваємо: бонус тікає секундами, а перевірка почекає до його кінця.
-        if (_guard.Due && !FairOn && !InspireOn) _guard.Check();
+        // Поки на сцені хоч щось діється, не перебиваємо: бонус тікає секундами, а перевірка почекає (§A.2).
+        if (_guard.Due && !BonusOn(now)) _guard.Check();
         return ActResult.Done;
+    }
+
+    /// <summary>
+    /// Скільки кліків із пачки влучило в ×50. Кидаємо на сервері й одразу на всю пачку (біноміально, по кліку):
+    /// клієнт малює «✨ ×50» уже за приростом лічильника, а не вгадує наперед.
+    /// </summary>
+    int LuckyIn(int taken)
+    {
+        var level = Level("lucky");
+        if (level <= 0 || taken <= 0) return 0;
+        var chance = LuckyChance * level;
+        var hits = 0;
+        for (var i = 0; i < taken; i++)
+            if (Ctx.Rng.NextDouble() < chance) hits++;
+        return hits;
     }
 
     /// <summary>
@@ -714,10 +954,31 @@ public sealed partial class Clicker : Game
         if (!_guard.Pending) return ActResult.Fail("Майстер ні про що не питає — крути коло");
         if (_guard.Locked(now)) return ActResult.Fail($"Коло стоїть ще {Wait(_guard.LockUntil - now)}");
         if (ClickerGuard.Taps(payload) is not { } taps) return ActResult.Fail("Торкання прийшли зіпсовані");
-        return _guard.Answer(taps, now, Ctx.Rng) == ClickerGuard.Verdict.Passed
-            ? ActResult.Accept("👁 Майстер кивнув — крути далі")
-            : ActResult.Done;
+        // Платить лише спокійна полиця, і лише поки її ще не пройдено: беремо це до відповіді.
+        var calm = _guard.Calm;
+        var missed = _guard.Misses > 0;
+        var gain = calm ? ToPots(EyeGain * (missed ? ClickerGuard.MissedShare : 1)) : 0;
+        if (_guard.Answer(taps, now, Ctx.Rng) != ClickerGuard.Verdict.Passed) return ActResult.Done;
+
+        // Проспаний під полицею глек чи розписний вертаємо: гравець не мусить платити за чесність (§A.2).
+        if (_goldenSlept) { _goldenSlept = false; ScheduleGolden(now); }
+        if (_fallSlept) { _fallSlept = false; ScheduleFall(now); }
+        if (gain <= 0) return ActResult.Accept("👁 Майстер кивнув — крути далі");
+
+        Add(gain);
+        if (_guard.CalmPassed >= CalmShelvesForAchievement && _guard.CalmPassed - 1 < CalmShelvesForAchievement)
+            Achieve("potter-eye");
+        Wonder("eye");
+        return ActResult.Accept($"👁 Майстер кивнув і відсипав {PotsShort(gain)}"
+            + (missed ? " — половину: рука таки вагалась" : " за чесну руку"));
     }
+
+    /// <summary>
+    /// Скільки платить майстер за пройдену спокійну полицю: дві години пасиву й десять тисяч кліків. Це не
+    /// подарунок, а плата за руку: полиця, що прийшла через підозру, пильний крок чи паузу, не платить нічого,
+    /// інакше автоклікер із господарем при ньому доїв би майстра щодві хвилини.
+    /// </summary>
+    double EyeGain => PassiveBase * EyeSeconds + ClickBase * EyeClicks;
 
     /// <summary>«9:05» — скільки ще стояти колу.</summary>
     static string Wait(TimeSpan left)
@@ -827,11 +1088,6 @@ public sealed partial class Clicker : Game
         // перевірку. Хто лише ловить глеки й не клацає, зустріне майстра тут, а не в Spin.
         if (_guard.Locked(now) || _guard.Pending)
             return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
-        if (_guard.Due && !FairOn && !InspireOn)
-        {
-            _guard.Check();
-            return ActResult.Accept("👁 Майстер хоче глянути на твої руки — торкнись глечиків");
-        }
 
         var longer = Has("longfair") ? 2 : 1;
         string text;
@@ -846,16 +1102,31 @@ public sealed partial class Clicker : Game
                 text = $"✨ Натхнення! Клік ×{InspireMult:0} на {(InspireFor * longer).TotalSeconds:0} с";
                 break;
             default:
-                var gain = ToPots(Math.Min(_pots * MerchantShare, PassiveBase * MerchantSeconds) * ClayNow.Loot) + 13;
+                // Шість хвилин роботи як дно плюс десята частина кишені (теж не більше шести хвилин): купець
+                // мусить щось важити і на голому колі, і на квадрильйонах.
+                var flat = PassiveBase * MerchantSeconds;
+                var gain = ToPots((flat + Math.Min(_pots * MerchantShare, flat)) * ClayNow.Loot) + 13;
                 Add(gain);
-                text = $"🧺 Щедрий купець: +{Short(gain)} {Pots(gain)}";
+                text = $"🧺 Щедрий купець: +{PotsShort(gain)}";
                 break;
         }
         _caught++;
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_caught == GoldenForAchievement) Ctx.Award(0, 0, "ach:potter-golden");
         ScheduleGolden(now);
-        return ActResult.Accept(text);
+        return ActResult.Accept(text + AskAfter(now));
+    }
+
+    /// <summary>
+    /// Майстер питає ПІСЛЯ спійманого, а не замість нього (дев'яте оновлення §A.2): перевірка, що коштує глека
+    /// в польоті, — це покарання за чесність. Бот нічого не виграв: наступного глека він уже не спіймає, доки
+    /// не пройде полицю. І не питаємо, поки на сцені триває бонус: ярмарок і натхнення біжать секундами.
+    /// </summary>
+    string AskAfter(DateTimeOffset now)
+    {
+        if (!_guard.Due || _guard.Pending || _guard.Locked(now) || BonusOn(now)) return "";
+        _guard.Check();
+        return " · 👁 майстер хоче глянути на твої руки";
     }
 
     /// <summary>
@@ -873,7 +1144,16 @@ public sealed partial class Clicker : Game
             _heat = heat + taken;
             _heatAt = now;
         }
-        return mult <= 1 ? PerClick * taken : ToPots(PerClick * taken * mult);
+        // «Щасливий клік»: кожен влучений іде не за один, а за п'ятдесят (v9 §A.4).
+        var lucky = LuckyIn(taken);
+        if (lucky > 0)
+        {
+            _lucky += lucky;
+            if (_lucky >= LuckyForAchievement && _lucky - lucky < LuckyForAchievement) Achieve("potter-lucky");
+            Wonder("lucky");
+        }
+        var clicks = taken + lucky * (LuckyMult - 1);
+        return mult <= 1 ? ToPots(PerClick * clicks) : ToPots(PerClick * clicks * mult);
     }
 
     /// <summary>
@@ -888,22 +1168,23 @@ public sealed partial class Clicker : Game
             return ActResult.Fail("Глек уже розбився");
         if (_guard.Locked(now) || _guard.Pending)
             return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
-        if (_guard.Due && !FairOn && !InspireOn)
-        {
-            _guard.Check();
-            return ActResult.Accept("👁 Майстер хоче глянути на твої руки — торкнись глечиків");
-        }
 
+        var wished = _starWish;
         var gain = FallGain();
         Add(gain);
+        _starWish = false;                 // бажання тримається, доки глек не спіймано, і згоряє на ньому
         _fallStreak++;
         _apronUsed = false;
         _grabbed++;
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
         if (_fallStreak == StreakForAchievement) Ctx.Award(0, 0, "ach:potter-streak");
+        if (_fallStreak == LongStreakForAchievement) Achieve("potter-streak-50");
+        if (Array.IndexOf(StreakWonders, _fallStreak) >= 0) Wonder("streak");
         ScheduleFall(now);
-        return ActResult.Accept($"🤲 Спіймав! +{Short(gain)} {Pots(gain)}" + (_fallStreak > 1 ? $" · серія {_fallStreak}" : ""));
+        return ActResult.Accept($"🤲 Спіймав! +{PotsShort(gain)}"
+            + (wished ? " · зірка не збрехала (×3)" : "")
+            + (_fallStreak > 1 ? $" · серія {_fallStreak}" : "") + AskAfter(now));
     }
 
     /// <summary>
@@ -920,8 +1201,8 @@ public sealed partial class Clicker : Game
         if (Tool("iron")) gain += IronStamps;
         _stamps += gain;
         _firings++;
-        // v9: частина глеків може пережити обпал (хата / секрети) — гачок KeepShare.
-        _pots = Math.Floor(_pots * Math.Clamp(HouseKeepShare, 0, 0.5));
+        // v9: частина глеків переживає обпал — хата (гачок KeepShare) і дідова скриня зверху.
+        _pots = Math.Floor(_pots * Math.Clamp(KeepShare, 0, 0.5));
         _carry = 0;
         foreach (var up in Shop)
             if (!(up.Key == "clay" && Has("recipe"))) _levels[up.Key] = 0;
@@ -936,8 +1217,87 @@ public sealed partial class Clicker : Game
         FireGuild(Ctx.Clock.UtcNow);
 
         if (_firings == 1) Ctx.Award(0, 0, "ach:potter-fire");
+        Wonder("fire");
         var bonus = (Has("seal") ? SealStampBonus : StampBonus) * _stamps * 100;
         return ActResult.Accept($"🔥 Обпал! +{gain} {Stamps(gain)} — тепер +{bonus.ToString("0.#", Uk)} % до всього");
+    }
+
+    /// <summary>Яка частка глеків переживає обпал: хата (v9) плюс дідова скриня — двадцята частина.</summary>
+    double KeepShare => HouseKeepShare + (Has("ashes") ? AshesShare : 0);
+
+    /// <summary>«Дідова скриня»: після обпалу лишається п'ять відсотків глеків.</summary>
+    public const double AshesShare = 0.05;
+
+    // ---------- випадковості на сцені (§A.6) ----------
+
+    /// <summary>
+    /// Погладити кота. Гостинець вирішився ще при появі (щоб кидок не залежав від миті натиску), а гравцеві
+    /// кажеться аж тепер. Око майстра рахує кота як півтори сотні кліків: бот, що ловить самих котів, теж
+    /// зустріне майстра.
+    /// </summary>
+    ActResult Pet()
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (now < _cat.At - EarlyGrace || now > _cat.Until + CatchGrace) return ActResult.Fail("Кіт уже побіг своєю дорогою");
+        if (_guard.Locked(now) || _guard.Pending)
+            return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
+
+        string text;
+        switch ((CatGift)Math.Clamp(_cat.A, 0, 3))
+        {
+            case CatGift.Straw:
+                StrawAdd(CatStraw);
+                text = $"🐈 Кіт приволік {CatStraw} в'язки соломи — і дивиться, наче так і треба";
+                break;
+            case CatGift.Ware:
+                var open = Wares.Where(w => WareOpen(w.Key)).ToList();
+                var ware = open.Count > 0 ? open[Ctx.Rng.Next(open.Count)] : Wares[0];
+                PutItems(ware.Key, "", 3, 1);
+                text = $"🐈 Кіт приніс дзвінкий {ware.Name.ToLowerInvariant()} — де взяв, не каже";
+                break;
+            case CatGift.Streak:
+                _fallStreak++;
+                text = $"🐈 Кіт збив глек із полиці й сам його спіймав — серія {_fallStreak}";
+                break;
+            default:
+                var gain = ToPots(PassiveBase * CatPassiveSeconds);
+                Add(gain);
+                text = gain > 0
+                    ? $"🐈 Кіт намуркотів на {PotsShort(gain)} — п'ять хвилин роботи задарма"
+                    : "🐈 Кіт намуркотів на цілих п'ять хвилин роботи — шкода, що працювати ще нікому";
+                break;
+        }
+        _petted++;
+        _guard.Spend(PetWeight);
+        if (_petted == CatsForAchievement) Achieve("potter-cat");
+        Wonder("cat");
+        ScheduleCat(now);
+        return ActResult.Accept(text + AskAfter(now));
+    }
+
+    /// <summary>Загадати бажання на падаючу зірку: наступний глек з полиці втричі щедріший, а розписний прийде за пів хвилини.</summary>
+    ActResult Wish()
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (now < _star.At - EarlyGrace || now > _star.Until + CatchGrace) return ActResult.Fail("Зірка вже згасла");
+        if (_guard.Locked(now) || _guard.Pending)
+            return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
+
+        _starWish = true;
+        ScheduleGolden(now, StarGoldenSeconds);
+        _guard.Spend(ClickerGuard.CatchWeight);
+        Wonder("star");
+        ScheduleStar(now);
+        return ActResult.Accept($"🌠 Загадав! Наступний глек з полиці ×{StarFallMult:0}, а розписний — за {StarGoldenSeconds:0} с"
+            + AskAfter(now));
+    }
+
+    /// <summary>«Бачив, що нового»: показ керує сервер, тож вікно відкриється рівно раз на гончаря, з будь-якого пристрою.</summary>
+    ActResult SeenNews(JsonElement payload)
+    {
+        if (Str(payload, "v") != NewsVersion) return ActResult.Fail("Це новини з іншого оновлення");
+        _news = NewsVersion;
+        return ActResult.Done;
     }
 
     ActResult BuySecret(JsonElement payload)
@@ -981,6 +1341,12 @@ public sealed partial class Clicker : Game
 
     /// <summary>Глек / глеки / глеків; дробове число — «глека» («0,5 глека»).</summary>
     static string Pots(double n) => n % 1 != 0 ? "глека" : Plural(n, "глек", "глеки", "глеків");
+
+    /// <summary>
+    /// Число зі словом: «14,5 квдрлн глеків», а не «14,5 квдрлн глеки». Після скорочення слово узгоджується
+    /// з «млн», а не з останньою цифрою — її на екрані однаково не видно. Те саме робить клієнтський potsShort.
+    /// </summary>
+    static string PotsShort(double n) => $"{Short(n)} {(Math.Abs(n) >= 1_000_000 ? "глеків" : Pots(n))}";
 
     static string Plural(double n, string one, string few, string many)
     {
@@ -1097,7 +1463,8 @@ public sealed partial class Clicker : Game
             golden = new { at = _golden.At, until = _golden.Until, x = _golden.X, y = _golden.Y },
             caught = _caught,
             fair = new { until = _fairUntil, mult = FairMult },
-            inspire = new { until = _inspireUntil, mult = InspireMult },
+            // share — ті самі три відсотки пасиву, що натхнення кладе в кожен клік: клієнт мусить рахувати так само.
+            inspire = new { until = _inspireUntil, mult = InspireMult, share = InspireShare },
             allMult = all,
             stamps = _stamps,
             stampsFree = FreeStamps,
@@ -1106,7 +1473,7 @@ public sealed partial class Clicker : Game
             stampBonus = Has("seal") ? SealStampBonus : StampBonus,
             stampCap = StampCap,
             firings = _firings,
-            secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, owned = _secrets.Contains(s.Key) }),
+            secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
             styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key) }),
             wear = _wear,
             // Розгін: скільки гарячих кліків зараз і що з них виходить. Клієнт веде той самий рахунок між видами.
@@ -1116,8 +1483,21 @@ public sealed partial class Clicker : Game
             momentum = MomentumOf(heat),
             momentumMax = MomentumMax,
             // Наступний глек з полиці і скільки він дасть, якщо спіймати просто зараз.
-            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain() },
+            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult },
             grabbed = _grabbed,
+            // Дев'яте оновлення: щасливі кліки за весь час (клієнт малює «✨ ×50» за приростом) і бажання на зірку.
+            lucky = _lucky,
+            starWish = _starWish,
+            // Три випадковості на сцені: кіт, зірка й вітер із поля (§A.6). A/B — гостинець і напрямок, місце в небі.
+            events = new
+            {
+                cat = new { at = _cat.At, until = _cat.Until, dir = _cat.B },
+                star = new { at = _star.At, until = _star.Until, x = _star.A, y = _star.B },
+                wind = new { at = _wind.At, until = _wind.Until, mult = WindMult },
+                petted = _petted,
+            },
+            // «Що нового»: поки гончар цього оновлення не бачив — версія, інакше нічого.
+            news = _news == NewsVersion ? null : NewsVersion,
             // Хата: глина, знаряддя, прикраси й дошка купців (ClickerHouse.cs).
             house = HouseView(Ctx.Clock.UtcNow),
             // Сьоме оновлення: ремесло й пакети (docs/games/specs/clicker-v7.md). Каталоги — лише коли просили.
@@ -1129,8 +1509,8 @@ public sealed partial class Clicker : Game
             guild = ViewGuild(Ctx.Clock.UtcNow),
             away = AwayView(),
             catalog = CatalogView(),
-            // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна) і/або пауза.
-            guard = _guard.View(Ctx.Clock.UtcNow),
+            // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна), пауза й платня.
+            guard = _guard.View(Ctx.Clock.UtcNow, EyeGain),
         };
     }
 
@@ -1141,6 +1521,11 @@ public sealed partial class Clicker : Game
     bool Opened(int index)
     {
         var up = Shop[index];
+        // Вправність за мільйони (дев'яте оновлення: Замашна рука, Гарт кола, Щасливий клік) — не для першого
+        // дня: поки гончар не наліпив і двадцятої частини ціни, картка лише лякала б мільярдами поруч із
+        // «+1 глек за клік». Маховик і кошик (сотні глеків) видно, як і було.
+        if (up.Kind == ClickerKind.Skill)
+            return Level(up.Key) > 0 || up.Base < SkillHideFrom || _total * SkillShowShare >= up.Base;
         if (up.Kind != ClickerKind.Idle || Level(up.Key) > 0) return true;
         for (var i = index - 1; i >= 0; i--)
             if (Shop[i].Kind == ClickerKind.Idle) return Level(Shop[i].Key) > 0;
@@ -1173,7 +1558,11 @@ public sealed partial class Clicker : Game
         FallRow? Fall = null, int FallStreak = 0, int Grabbed = 0, double Heat = 0, DateTimeOffset HeatAt = default,
         HouseRow? House = null,
         CraftRow? Craft = null, KilnRow? Kiln = null, AlbumRow? Album = null, FairRow? Fair = null, GuildRow? Guild = null,
-        List<string>? Achievements = null, int StampsUsed = 0);
+        List<string>? Achievements = null, int StampsUsed = 0,
+        // Дев'яте оновлення: щасливі кліки, випадковості на сцені, бажання на зірку, проспані під полицею глеки
+        // й побачене «Що нового». Усе необов'язкове — старе збереження читається як «цього ще не було».
+        long Lucky = 0, EventRow? Cat = null, EventRow? Star = null, EventRow? Wind = null,
+        int Petted = 0, bool StarWish = false, bool GoldenSlept = false, bool FallSlept = false, string? News = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -1183,7 +1572,8 @@ public sealed partial class Clicker : Game
             _stamps, _firings, _secrets.Order(StringComparer.Ordinal).ToList(),
             _styles.Order(StringComparer.Ordinal).ToList(), _wear, _guard.Save(),
             _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse(),
-            SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null, _stampsUsed),
+            SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null, _stampsUsed,
+            _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news),
         Wire);
 
     public override void Load(string json)
@@ -1245,6 +1635,18 @@ public sealed partial class Clicker : Game
             _fall = f with { X = Math.Clamp(f.X, 0, 90) };
         else
             ScheduleFall(Ctx.Clock.UtcNow);
+
+        // Дев'яте оновлення. Старе збереження цих полів не знає — тоді розклад подій від «зараз», а «Що нового»
+        // гончар ще не бачив (і мусить побачити).
+        _lucky = Math.Max(0, s.Lucky);
+        _petted = Math.Max(0, s.Petted);
+        _starWish = s.StarWish;
+        _goldenSlept = s.GoldenSlept;
+        _fallSlept = s.FallSlept;
+        _news = s.News is { Length: <= 16 } news ? news : "";
+        if (Sane(s.Cat) is { } cat) _cat = cat; else ScheduleCat(Ctx.Clock.UtcNow);
+        if (Sane(s.Star) is { } star) _star = star; else ScheduleStar(Ctx.Clock.UtcNow);
+        if (Sane(s.Wind) is { } wind) _wind = wind; else ScheduleWind(Ctx.Clock.UtcNow);
         // Хата — після розписів (замовлення на розпис мусять бачити колекцію) і після рівнів (дошка рахується від пасиву).
         LoadHouse(s.House);
         // Ремесло й пакети — наприкінці: їм потрібні рівні, розписи й глина.
@@ -1259,6 +1661,10 @@ public sealed partial class Clicker : Game
         // Після Load каталогів у виді нема (вид до збереження й після мусить збігатись): клієнт без них сам попросить look { catalog: true }.
         _catalogWanted = false;
     }
+
+    /// <summary>Подія зі збереження: або ціле вікно з числами в межах сцени, або null — і тоді розклад від «зараз».</summary>
+    static EventRow? Sane(EventRow? row) =>
+        row is { } r && r.Until > r.At ? r with { A = Math.Clamp(r.A, 0, 100), B = Math.Clamp(r.B, 0, 100) } : null;
 
     static void Fill(HashSet<string> set, List<string>? from, Func<string, bool> known)
     {
