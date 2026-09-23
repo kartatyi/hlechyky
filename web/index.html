@@ -3,7 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Глечики</title>
+<!-- Для пошуку й прев'ю посилань. Потім app.js пише в заголовок трек, що грає, але пошуковику
+     /api/ і /hub закриті в robots.txt, тож він лишається з цим заголовком, а не з випадковою піснею. -->
+<title>Глечики — радіо та ігри з друзями</title>
+<meta name="description" content="Спільне онлайн-радіо: музику ставлять самі слухачі, а коли черга порожня — Дядько Глек. Поруч чат та ігри на компанію: Мафія, Своя гра, Вгадай мелодію й інші.">
+<link rel="canonical" href="https://hlechyky.pp.ua/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Глечики">
+<meta property="og:locale" content="uk_UA">
+<meta property="og:url" content="https://hlechyky.pp.ua/">
+<meta property="og:title" content="Глечики — радіо та ігри з друзями">
+<meta property="og:description" content="Спільне онлайн-радіо: музику ставлять самі слухачі, а поруч чат та ігри на компанію.">
+<meta property="og:image" content="https://hlechyky.pp.ua/static/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Глечики — радіо, яке ставлять самі слухачі, та ігри на компанію">
+<meta name="twitter:card" content="summary_large_image">
+<!-- Підтвердження власника в Google Search Console: не прибирати, Google перевіряє його й надалі. -->
+<meta name="google-site-verification" content="smYfGI9p3Vq_vVpdUlioWLcNolk0kJa4TWAkQruSCGU">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Глечики","alternateName":"Hlechyky","url":"https://hlechyky.pp.ua/","inLanguage":"uk"}</script>
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/pad.css">
@@ -36,6 +54,7 @@
   </div>
   <div class="hdrprog" id="hdrProg" title="Скільки лишилось треку"><div id="hdrBar"></div></div>
 </header>
+<noscript><p class="noscript">Глечики — спільне онлайн-радіо, де музику ставлять самі слухачі, а поруч чат та ігри на компанію: Мафія, Своя гра, Вгадай мелодію й інші. Щоб слухати й грати, увімкни JavaScript.</p></noscript>
 
 <main>
   <div class="col" id="colMain">
