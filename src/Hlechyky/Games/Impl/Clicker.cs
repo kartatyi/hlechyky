@@ -740,8 +740,9 @@ public sealed partial class Clicker : Game
         {
             _scored = _total;
             _scoredAt = Ctx.Clock.UtcNow;
-            // Таблиця рахує в long, а глеків тепер буває й більше: вище за стелю long показуємо саму стелю.
-            Ctx.Score(0, (long)Math.Min(_total, 9.2e18));
+            // Число як є, без стелі long: колись тут стояла стеля 9,2·10¹⁸, і всі, хто її переріс, у таблиці
+            // зрівнялись — кожен із них бачив «ти перший», хоч справжній перший був один.
+            Ctx.Score(0, _total);
         }
         return result;
     }

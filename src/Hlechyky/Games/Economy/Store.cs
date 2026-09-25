@@ -15,7 +15,7 @@ public sealed record WalletRow(string NickKey, string Nick, int Balance, int Ear
 
 /// <summary>Рядок історії партій (одна на кожного учасника). Для соло — один рядок на ключ кімнати, з лічильником спроб.</summary>
 public sealed record ResultRow(string RoomId, string Game, int Round, string NickKey, string Nick,
-    string Outcome, long? Score, string? Opponents, int Stake, DateTimeOffset At, int Tries = 1);
+    string Outcome, double? Score, string? Opponents, int Stake, DateTimeOffset At, int Tries = 1);
 
 /// <summary>Рейтинг ніка в одній грі.</summary>
 public sealed record RatingRow(string NickKey, string Nick, string Game, int Elo, int Games, int Wins, int Losses, int Draws);
@@ -290,7 +290,7 @@ public sealed class EconomyStore(Db db)
         var list = new List<ResultRow>();
         while (r.Read())
             list.Add(new ResultRow(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetString(4),
-                r.GetString(5), r.IsDBNull(6) ? null : r.GetInt64(6), Str(r, 7), r.GetInt32(8), Ts(r.GetString(9)), r.GetInt32(10)));
+                r.GetString(5), r.IsDBNull(6) ? null : r.GetDouble(6), Str(r, 7), r.GetInt32(8), Ts(r.GetString(9)), r.GetInt32(10)));
         return list;
     });
 
@@ -347,7 +347,7 @@ public sealed class EconomyStore(Db db)
     });
 
     /// <summary>Таблиця соло-гри: найкращий результат за період і скільки було спроб.</summary>
-    public List<(string Nick, long Best, int Tries)> TopSolo(string game, DateTimeOffset since, bool higherIsBetter, int n) => db.With(c =>
+    public List<(string Nick, double Best, int Tries)> TopSolo(string game, DateTimeOffset since, bool higherIsBetter, int n) => db.With(c =>
     {
         using var cmd = Cmd(c, $"""
             SELECT nick, {(higherIsBetter ? "MAX(score)" : "MIN(score)")}, SUM(tries)
@@ -355,20 +355,20 @@ public sealed class EconomyStore(Db db)
             GROUP BY nick_key ORDER BY 2 {(higherIsBetter ? "DESC" : "ASC")} LIMIT $n
             """, ("$g", game), ("$s", Iso(since)), ("$n", n));
         using var r = cmd.ExecuteReader();
-        var list = new List<(string, long, int)>();
-        while (r.Read()) list.Add((r.GetString(0), r.GetInt64(1), r.GetInt32(2)));
+        var list = new List<(string, double, int)>();
+        while (r.Read()) list.Add((r.GetString(0), r.GetDouble(1), r.GetInt32(2)));
         return list;
     });
 
     /// <summary>Найкращий соло-результат ніка (для ачівок гончаря).</summary>
-    public long? BestSolo(string nickKey, string game, bool higherIsBetter) => db.With<long?>(c =>
+    public double? BestSolo(string nickKey, string game, bool higherIsBetter) => db.With<double?>(c =>
     {
         using var cmd = Cmd(c, $"""
             SELECT {(higherIsBetter ? "MAX(score)" : "MIN(score)")} FROM game_results
             WHERE nick_key = $n AND game = $g AND outcome = 'solo' AND score IS NOT NULL
             """, ("$n", nickKey), ("$g", game));
         var v = cmd.ExecuteScalar();
-        return v is null or DBNull ? null : Convert.ToInt64(v, CultureInfo.InvariantCulture);
+        return v is null or DBNull ? null : Convert.ToDouble(v, CultureInfo.InvariantCulture);
     });
 
     // ---------- рейтинги ----------

@@ -141,7 +141,7 @@ public interface IRoomContext
     /// Соло-результат у таблицю (порядок — Info.Score). <paramref name="attempts"/> — для щоденних, що міряють
     /// і час, і спроби: тоді value — мілісекунди, а спроби йдуть окремо, а не вгадуються з величини числа.
     /// </summary>
-    void Score(int seat, long value, int? attempts = null);
+    void Score(int seat, double value, int? attempts = null);
     /// <summary>Черепки поза стандартною виплатою за партію (переможець «Скільки?», конкурс). Проходить через стелі економіки.</summary>
     void Award(int seat, int shards, string reason);
 }
@@ -274,7 +274,7 @@ public sealed record RoomFinishedEvent(
     DateTimeOffset StartedAt, DateTimeOffset FinishedAt,
     int Moves);                         // скільки Act прийнято за партію (0 для реалтайму)
 
-public sealed record SoloScoreEvent(string GameId, string Nick, long Score, ScoreOrder Order, string? Key, DateTimeOffset At,
+public sealed record SoloScoreEvent(string GameId, string Nick, double Score, ScoreOrder Order, string? Key, DateTimeOffset At,
     int? Attempts = null);
 
 public sealed record AwardEvent(string GameId, string RoomId, string Nick, int Shards, string Reason);

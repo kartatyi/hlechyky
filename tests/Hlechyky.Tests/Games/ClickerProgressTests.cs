@@ -720,8 +720,8 @@ public class ClickerProgressTests
         Assert.Equal(9.3e18, BigPots(h));
         Assert.True(BigPots(h) > long.MaxValue);
         Assert.Equal(BigPots(h), BigTotal(h));
-        // У таблицю «Гончарі» летить те, що влазить у long, а не сміття від переповнення.
-        Assert.All(h.Scores, x => Assert.InRange(x.Score, 0, long.MaxValue));
+        // У таблицю «Гончарі» летить саме число, а не стеля long і не сміття від переповнення.
+        Assert.Equal(BigTotal(h), h.Scores.Last().Score);
     }
 
     [Fact]

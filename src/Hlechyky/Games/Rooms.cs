@@ -1238,7 +1238,7 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         _out.Add(new TableSaid(room.Id, rooms.AppendTalk(room, rooms.DjName, text.Trim(), "dj")));
     }
 
-    public void Score(int seat, long value, int? attempts = null)
+    public void Score(int seat, double value, int? attempts = null)
     {
         if (NickOf(seat) is not { } nick) return;
         var e = new SoloScoreEvent(room.Info.Id, nick, value, room.Info.Score, room.Key, rooms.Clock.UtcNow, attempts);

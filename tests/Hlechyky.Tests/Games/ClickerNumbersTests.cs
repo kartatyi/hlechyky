@@ -208,14 +208,15 @@ public class ClickerNumbersTests
     // ---------- таблиця «Гончарі» ----------
 
     [Fact]
-    public void The_table_gets_the_long_ceiling_instead_of_a_wrapped_number()
+    public void The_table_gets_the_real_number_above_the_long_ceiling()
     {
+        // Зі стелею 9,2·10¹⁸ Микола (3,6·10²¹) і Владік (4,2·10¹⁹) у таблиці зрівнялись, і обоє бачили «ти перший».
         var h = Wheel();
         Give(h, 1e21);
         Act(h, "spin", PotterHands.Human(3));
 
         Assert.NotEmpty(h.Scores);
-        Assert.Equal((long)9.2e18, h.Scores.Last().Score);
+        Assert.True(h.Scores.Last().Score >= 1e21);
     }
 
     // ---------- прилавок ----------

@@ -90,6 +90,25 @@ public class LeaderboardsTests
     }
 
     [Fact]
+    public void Solo_table_orders_scores_above_the_long_ceiling()
+    {
+        using var rig = new EconomyRig();
+        rig.Names.Learn(Clicker);
+        var now = rig.Clock.UtcNow;
+        // ще вчора в базі лежала стеля long — сьогоднішнє більше число мусить її переписати
+        rig.Events.Raise(new SoloScoreEvent("clicker", "Микола", 9.2e18, ScoreOrder.HigherIsBetter, "clicker:микола", now));
+        rig.Events.Raise(new SoloScoreEvent("clicker", "Владік", 4.2e19, ScoreOrder.HigherIsBetter, "clicker:владік", now));
+        rig.Events.Raise(new SoloScoreEvent("clicker", "Микола", 3.6e21, ScoreOrder.HigherIsBetter, "clicker:микола", now));
+
+        var all = Rows(rig.Boards.Leaderboard("clicker", "all", null));
+        Assert.Equal("Микола", all[0].GetProperty("nick").GetString());
+        Assert.Equal(3.6e21, all[0].GetProperty("best").GetDouble());
+        Assert.Equal("Владік", all[1].GetProperty("nick").GetString());
+        Assert.Equal(4.2e19, all[1].GetProperty("best").GetDouble());
+        Assert.Equal(3.6e21, rig.Store.BestSolo("микола", "clicker", higherIsBetter: true));
+    }
+
+    [Fact]
     public void Multiplayer_game_with_a_score_is_not_a_solo_table()
     {
         using var rig = new EconomyRig();
