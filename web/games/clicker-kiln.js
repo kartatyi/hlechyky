@@ -906,7 +906,9 @@
       e.preventDefault();
       const [x, y] = pos(e);
       g.lastPos = [x, y];
-      if (g.last && e.timeStamp - g.last[0] < g.sample) return;
+      // g.last[0] — мс від початку мінігри, а не e.timeStamp: без «- g.t0» проріджування не спрацьовувало ніколи,
+      // і миша на 1–8 кГц за секунди з'їдала всі 480 точок — лінія обривалась на півдорозі.
+      if (g.last && e.timeStamp - g.t0 - g.last[0] < g.sample) return;
       addPoint(st, api, g, e.timeStamp, x, y, false);
     });
     const up = (e) => {
