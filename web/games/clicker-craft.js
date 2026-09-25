@@ -722,7 +722,7 @@
           + '<span class="clkw-btns"><button type="button" class="ghost small" data-sell="' + esc(it.key) + '" data-n="1"' + (st.mine ? '' : ' disabled') + '>Продати</button>'
           + (it.n > 1 ? '<button type="button" class="ghost small" data-sell="' + esc(it.key) + '" data-n="' + it.n + '"' + (st.mine ? '' : ' disabled') + '>Усі ' + it.n + '</button>' : '')
           + '</span></div>').join('');
-        return '<details class="clkw-group' + (g.best >= 3 ? ' star' : '') + '"><summary>'
+        return '<details class="clkw-group' + (g.best >= 3 ? ' star' : '') + '" data-key="' + esc(g.ware) + '"><summary>'
           + api.wareSvg(g.ware, { style: g.rows[0].style, quality: g.best, cls: 'clkw-mid', slot: 'st-' + g.ware })
           + '<span class="clkw-gtxt"><b>' + esc(wareName(st, g.ware)) + (g.best >= 3 ? ' <span class="clkw-q">★</span>' : '') + '</b>'
           + '<span class="muted small">×' + g.n + ' · ~' + api.short(g.sum) + '</span></span></summary>' + rows + '</details>';
