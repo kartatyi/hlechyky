@@ -1301,6 +1301,24 @@
     ['streak', 'серія'], ['score', 'результат'], ['best', 'рекорд'], ['attempts', 'спроб'],
     ['tries', 'спроб'], ['ms', 'час'], ['balance', '🏺'], ['earned', 'зароблено'], ['count', 'разів']];
 
+  /// Число в клітинці таблиці. Від мільйона — коротко, як у Гончарному колі: «3,6 скстлн», а за словами — «1,2e36»;
+  /// інакше глеки гончарів стояли б у таблиці як «3.601004441162112e+21».
+  const LB_BIG = ['млн', 'млрд', 'трлн', 'квдрлн', 'квнтлн', 'скстлн', 'сптлн', 'октлн', 'нонлн', 'дцлн'];
+  function lbNum(n) {
+    if (typeof n !== 'number' || !Number.isFinite(n) || Math.abs(n) < 1e6) return n;
+    const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
+    if (i >= LB_BIG.length) {
+      let e = Math.floor(Math.log10(Math.abs(n)));
+      let m = Math.round((n / Math.pow(10, e)) * 10) / 10;
+      if (Math.abs(m) >= 10) { m /= 10; e += 1; }
+      return m.toLocaleString('uk-UA', { maximumFractionDigits: 1 }) + 'e' + e;
+    }
+    const v = n / Math.pow(1000, i + 2);
+    const digits = v < 10 ? 2 : v < 100 ? 1 : 0;
+    return (Math.floor(v * Math.pow(10, digits)) / Math.pow(10, digits)).toLocaleString('uk-UA', { maximumFractionDigits: digits })
+      + ' ' + LB_BIG[i];
+  }
+
   async function renderLeaders(view, token) {
     // соло й щоденні теж мають таблиці — фільтрувати їх за private не можна (див. renderShell)
     const games = [{ id: 'shards', title: 'Черепки' }].concat(catalog.games.map((g) => ({ id: g.id, title: g.title })));
@@ -1323,7 +1341,7 @@
       + cols.map(([, l]) => '<span>' + esc(l) + '</span>').join('') + '</div>'
       + rows.map((x, i) => '<div class="glbrow' + (sameNick(x.nick, me.nick) ? ' me' : '') + '"><span class="n">' + (i + 1) + '</span>'
         + '<span>' + esc(x.nick || '') + '</span>'
-        + cols.map(([k]) => '<span>' + esc(k === 'ms' ? secs(x[k]) : (x[k] == null ? '—' : x[k])) + '</span>').join('')
+        + cols.map(([k]) => '<span>' + esc(k === 'ms' ? secs(x[k]) : (x[k] == null ? '—' : lbNum(x[k]))) + '</span>').join('')
         + '</div>').join('') + '</div>';
   }
 
