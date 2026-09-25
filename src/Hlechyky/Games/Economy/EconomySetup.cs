@@ -33,6 +33,8 @@ public static class EconomySetup
         services.AddHostedService(sp => sp.GetRequiredService<Rewards>());
         services.AddSingleton<EconomyTicker>();
         services.AddHostedService(sp => sp.GetRequiredService<EconomyTicker>());
+        services.AddSingleton<PlayClock>();
+        services.AddHostedService(sp => sp.GetRequiredService<PlayClock>());
 
         // Каркас реєструє заглушки через TryAdd і робить це раніше — тому саме Replace, а не TryAdd.
         services.Replace(ServiceDescriptor.Singleton<IStakes>(sp => sp.GetRequiredService<Economy>()));
@@ -52,6 +54,13 @@ public static class EconomySetup
             boards.Profile(string.IsNullOrWhiteSpace(nick) ? Auth.Nick(c) : nick.Trim()));
 
         api.MapGet("/wallet", (HttpContext c, Leaderboards boards) => boards.Wallet(Auth.Nick(c)));
+
+        // Перед відповіддю дописуємо хвилину, що ще в пам'яті: інакше щойно зіграні хвилини з'являлись би із запізненням.
+        api.MapGet("/time", (string? period, Leaderboards boards, PlayClock clock) =>
+        {
+            clock.Flush();
+            return boards.Time(period);
+        });
 
         api.MapGet("/daily", (HttpContext c, Daily daily) => daily.Status(Auth.Nick(c)));
 

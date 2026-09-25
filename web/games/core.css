@@ -294,6 +294,72 @@
 .glbrow .o-win { color: var(--ok); }
 .glbrow .o-loss { color: var(--danger); }
 
+/* ---- ⏱ час: хто де скільки провів ---- */
+.gtime { display: flex; flex-direction: column; gap: 10px; }
+.gt-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gt-per { display: flex; gap: 4px; }
+.gt-per button { padding: 5px 11px; font-size: .92em; background: transparent; border-color: var(--line); color: var(--muted); }
+.gt-per button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.gt-sum4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.gt-sum4 > div {
+  background: var(--panel2); border-radius: 12px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.gt-sum4 b { font-size: 1.3em; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-sum4 span { color: var(--muted); font-size: .82em; }
+.gt-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: .82em; color: var(--muted); }
+.gt-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.gt-dot { display: inline-block; width: .7em; height: .7em; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.gt-play { background: var(--clay); }
+.gt-watch { background: var(--accent); }
+.gt-lobby { background: var(--ok); }
+.gt-page { background: var(--muted); opacity: .55; }
+.gt-bar { display: flex; height: 12px; border-radius: 6px; background: var(--bg2); overflow: hidden; min-width: 0; }
+.gt-bar > i { display: block; height: 100%; }
+.gt-bar.thin { height: 8px; }
+.gt-people { display: flex; flex-direction: column; gap: 4px; }
+.gt-person { background: var(--panel2); border-radius: 10px; }
+.gt-person.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.gt-person > summary {
+  list-style: none; cursor: pointer; padding: 8px 10px;
+  display: grid; grid-template-columns: 1.6em minmax(90px, 11em) 1fr 6.5em 6.5em; align-items: center; gap: 10px;
+}
+.gt-person > summary::-webkit-details-marker { display: none; }
+.gt-person .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.gt-nick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.gt-total { text-align: right; font-variant-numeric: tabular-nums; }
+.gt-radio { text-align: right; color: var(--muted); font-size: .85em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gt-detail { padding: 0 10px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.gt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.gt-games { display: flex; flex-direction: column; gap: 4px; }
+.gt-grow {
+  display: grid; grid-template-columns: minmax(120px, 13em) 1fr 6em 5.5em; align-items: center; gap: 10px;
+  font-size: .92em; padding: 3px 0;
+}
+.gt-games.wide .gt-grow { grid-template-columns: minmax(120px, 13em) 1fr 6em 5.5em minmax(0, 16em); background: var(--panel2); padding: 6px 10px; border-radius: 8px; }
+.gt-gname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-gname .gemo { margin-right: 4px; }
+.gt-gsum { text-align: right; font-variant-numeric: tabular-nums; }
+.gt-eye { color: var(--muted); font-size: .85em; white-space: nowrap; }
+.gt-who { display: flex; gap: 8px; flex-wrap: wrap; font-size: .85em; min-width: 0; }
+.gt-who .me { color: var(--accent); }
+.gprofile h4 .gt-more { margin-left: 8px; padding: 2px 9px; font-size: .8em; background: transparent; border-color: var(--line); color: var(--muted); }
+@media (max-width: 640px) {
+  .gt-person > summary { grid-template-columns: 1.4em 1fr auto; grid-template-areas: 'n nick total' 'bar bar bar' 'radio radio radio'; row-gap: 6px; }
+  .gt-person .n { grid-area: n; }
+  .gt-nick { grid-area: nick; }
+  .gt-total { grid-area: total; }
+  .gt-person > summary > .gt-bar { grid-area: bar; }
+  .gt-radio { grid-area: radio; text-align: left; }
+  .gt-radio:empty { display: none; }
+  .gt-grow, .gt-games.wide .gt-grow { grid-template-columns: 1fr auto auto; grid-template-areas: 'name sum eye' 'bar bar bar' 'who who who'; row-gap: 4px; }
+  .gt-gname { grid-area: name; }
+  .gt-grow > .gt-bar { grid-area: bar; }
+  .gt-gsum { grid-area: sum; }
+  .gt-eye { grid-area: eye; }
+  .gt-who { grid-area: who; }
+}
+
 /* ---- щоденний глек ---- */
 .gdhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .gdaily { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; align-items: start; }

@@ -29,6 +29,12 @@ public sealed record DailyPanelRow(string Game, DailyRow? Mine, int SolvedCount,
 /// <summary>Здобута ачівка.</summary>
 public sealed record UnlockedRow(string Key, DateTimeOffset At);
 
+/// <summary>Скільки секунд нік провів у місці (<see cref="PlayClock"/>) за день (київський).</summary>
+public sealed record TimeRow(string NickKey, string Place, string Day, int Seconds);
+
+/// <summary>Сума секунд ніка в місці за період; <see cref="Nick"/> — як нік пишеться (з гаманця), інакше ключ.</summary>
+public sealed record TimeTotal(string NickKey, string Nick, string Place, int Seconds);
+
 /// <summary>Скільки заробив за період (для таблиці «черепки»).</summary>
 public sealed record ShardRow(string Nick, int Balance, int Earned);
 
@@ -195,6 +201,51 @@ public sealed class EconomyStore(Db db)
 
     public int Counter(string nickKey, string key, string day) =>
         db.With(c => CounterIn(c, nickKey, key, day));
+
+    // ---------- хто де скільки часу ----------
+
+    /// <summary>Лічильник часу: <c>time:&lt;місце&gt;</c>, секунди за день (місця — у <see cref="PlayClock"/>).</summary>
+    public const string TimePrefix = "time:";
+
+    /// <summary>
+    /// Секунди однією транзакцією — одна на хвилину на весь сайт, а не на кожного. Поправка вниз
+    /// (відрізаний хвіст бездіяльності) не заводить лічильник нижче нуля.
+    /// </summary>
+    public void AddTime(IReadOnlyCollection<TimeRow> rows)
+    {
+        if (rows.Count == 0) return;
+        db.With(c => Write(c, () =>
+        {
+            foreach (var r in rows)
+                Exec(c, """
+                    INSERT INTO economy_counters(nick_key, key, day, n) VALUES($n, $k, $d, MAX(0, $u))
+                    ON CONFLICT(nick_key, key, day) DO UPDATE SET n = MAX(0, n + $u)
+                    """, ("$n", r.NickKey), ("$k", TimePrefix + r.Place), ("$d", r.Day), ("$u", r.Seconds));
+            return 0;
+        }));
+    }
+
+    /// <summary>Сума секунд кожного ніка в кожному місці від дня <paramref name="fromDay"/> включно (null — за весь час).</summary>
+    public List<TimeTotal> TimeTotals(string? fromDay = null, string? nickKey = null) => db.With(c =>
+    {
+        using var cmd = Cmd(c, """
+            SELECT e.nick_key, COALESCE(w.nick, e.nick_key), substr(e.key, 6), SUM(e.n) FROM economy_counters e
+            LEFT JOIN wallets w ON w.nick_key = e.nick_key
+            WHERE e.key LIKE 'time:%' AND ($f IS NULL OR e.day >= $f) AND ($k IS NULL OR e.nick_key = $k)
+            GROUP BY e.nick_key, e.key HAVING SUM(e.n) > 0
+            """, ("$f", fromDay), ("$k", nickKey));
+        using var r = cmd.ExecuteReader();
+        var list = new List<TimeTotal>();
+        while (r.Read()) list.Add(new TimeTotal(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
+        return list;
+    });
+
+    /// <summary>Перший день, за який час узагалі є (з нього сторінка «Час» і рахує), або null.</summary>
+    public string? TimeSince() => db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT MIN(day) FROM economy_counters WHERE key LIKE 'time:%'");
+        return cmd.ExecuteScalar() as string;
+    });
 
     /// <summary>
     /// Таблиця «черепки»: баланс і скільки набігло за період. У таблиці за день чи тиждень рядки з нулем

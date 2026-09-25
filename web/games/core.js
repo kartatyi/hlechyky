@@ -61,6 +61,7 @@
     { id: 'profile', title: 'Профіль', icon: '👤' },
     { id: 'leaders', title: 'Таблиця', icon: '🏆' },
     { id: 'daily', title: 'Щоденний глек', icon: '🫙' },
+    { id: 'time', title: 'Час', icon: '⏱' },
   ];
   const PERIODS = [['day', 'за день'], ['week', 'за тиждень'], ['all', 'за весь час']];
 
@@ -75,6 +76,7 @@
   let find = '';
   let lbGame = localStorage.getItem('gamesLbGame') || 'shards';
   let lbPeriod = localStorage.getItem('gamesLbPeriod') || 'week';
+  let timePeriod = localStorage.getItem('gamesTimePeriod') || 'week';
   try { localStorage.removeItem('gamesPanel'); } catch { /* вкладка переїхала в адресу */ }
 
   const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
@@ -446,6 +448,7 @@
     for (const id of [...watched]) if (!want.has(id)) { watched.delete(id); send('UnwatchRoom', id); }
     for (const id of want) if (!watched.has(id)) { watched.add(id); send('WatchRoom', id); }
     syncFocus();
+    syncHere();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -472,6 +475,7 @@
     const was = away;
     away = (!!hiddenAt && now - hiddenAt >= AWAY_HIDDEN_MS) || now - lastInput >= AWAY_IDLE_MS;
     if (away !== was) syncFocus();
+    syncHere();
   }
   // Ловимо на спуску (capture): гра може зупинити свою подію, а пад (web/static/pad.js) шле ті самі keydown і pointer*.
   ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach((type) =>
@@ -482,6 +486,42 @@
     checkAway();
   });
   setInterval(checkAway, 15000);
+
+  // ---------------------------------------------------------------------------------------------
+  // Де людина (Here) — для сторінки «⏱ Час»: стіл на екрані, розділ «Ігри» поза столом, решта сайту — або ніде.
+  // Рахується лише видима вкладка, і лише поки людина щось робить: схована вкладка вимикається одразу, а не за
+  // хвилину, як «соло зараз». Коли вимикаємось через бездіяльність, кажемо, скільки її вже було, — цей хвіст
+  // сервер не зарахує. Сидимо за столом чи дивимось — сервер вирішує сам; ми лише шлемо заново, коли місце змінилось.
+  // ---------------------------------------------------------------------------------------------
+
+  const HERE_IDLE_SOLO_MS = 5 * 60 * 1000;
+  const HERE_IDLE_LOBBY_MS = 5 * 60 * 1000;
+  const HERE_IDLE_LONG_MS = 10 * 60 * 1000;   // за столом і на радіо можна довго лише дивитись і слухати
+  let hereSent;                               // останній підпис сказаного Here; undefined — ще нічого
+
+  function syncHere() {
+    let where = null;
+    let room = null;
+    let limit = HERE_IDLE_LONG_MS;
+    let seated = false;
+    if (!document.hidden) {
+      if (!shown) where = 'page';
+      else if (view.kind === 'room' && view.id) {
+        const rv = views[view.id];
+        where = 'room';
+        room = view.id;
+        seated = !!(rv && rv.seat != null);
+        if (seated && rv.room && rv.room.maxPlayers === 1) limit = HERE_IDLE_SOLO_MS;
+      } else { where = 'lobby'; limit = HERE_IDLE_LOBBY_MS; }
+    }
+    let idle = 0;
+    const quiet = Date.now() - lastInput;
+    if (where && quiet >= limit) { where = null; room = null; idle = quiet; }
+    const sig = where ? where + '|' + (room || '') + '|' + (seated ? 1 : 0) : '';
+    if (sig === hereSent) return;
+    hereSent = sig;
+    send('Here', where, room, Math.round(idle));
+  }
 
   /// Хто зараз у соло-грі gameId — ніки з останньої події 'solo'.
   const playingIn = (gameId) => soloNow.filter((p) => p.game === gameId).map((p) => p.nick);
@@ -806,6 +846,7 @@
       else if (view.id === 'profile') renderProfile(v, token);
       else if (view.id === 'leaders') renderLeaders(v, token);
       else if (view.id === 'daily') renderDaily(v, token);
+      else if (view.id === 'time') renderTime(v, token);
       else if (view.id.startsWith('x:')) renderExtra(v, view.id.slice(2));
       else renderLobby(v);
       if (keep != null) { const n = v.querySelector('.gfind'); if (n) { n.focus(); n.setSelectionRange(keep, keep); } }
@@ -1268,6 +1309,7 @@
       + '<div class="gp-head"><b>' + esc(p.nick || me.nick) + '</b>'
       + '<span class="chip">🏺 ' + (bal == null ? '—' : bal) + '</span>'
       + (earned != null ? '<span class="chip">зароблено ' + earned + '</span>' : '') + '</div>'
+      + profileTime(p.time)
       + '<h4>Рейтинги</h4>'
       + (ratings.length
         ? '<div class="glb">' + ratings.map((r) => '<div class="glbrow"><span>' + esc(titleOf(r.game)) + '</span>'
@@ -1293,6 +1335,119 @@
           + '<span class="muted small">' + esc(x.opponents || '') + (x.score != null ? ' · ' + x.score : '') + '</span></div>').join('') + '</div>'
         : '<div class="gempty">Порожньо.</div>')
       + '</div>';
+    const more = view.querySelector('.gt-more');
+    if (more) more.onclick = () => go('#games/time');
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // ⏱ Час: хто де скільки провів (Leaderboards.Time). Секунди рахує сервер із того, що каже Here, тож тут лише
+  // малюємо: смужка людини — у масштабі найдовшої, щоб різних людей можна було порівняти оком.
+  // ---------------------------------------------------------------------------------------------
+
+  /// «2 год 5 хв», «45 хв», «<1 хв».
+  function dur(sec) {
+    const s = Math.max(0, Math.round(sec || 0));
+    if (s < 60) return s ? '<1 хв' : '0 хв';
+    const m = Math.round(s / 60);
+    if (m < 60) return m + ' хв';
+    const h = Math.floor(m / 60);
+    const rest = m % 60;
+    return h + ' год' + (rest && h < 100 ? ' ' + rest + ' хв' : '');
+  }
+
+  // [поле відповіді, підпис, клас кольору]
+  const TIME_PARTS = [['play', 'у грі', 'gt-play'], ['watch', 'глядачем', 'gt-watch'],
+    ['lobby', 'лобі й таблиці', 'gt-lobby'], ['page', 'радіо й балачки', 'gt-page']];
+  const timeTotal = (x) => Math.max(x.site || 0, TIME_PARTS.reduce((s, [k]) => s + (x[k] || 0), 0));
+  const pct = (v, max) => (100 * (v || 0) / max).toFixed(2) + '%';
+
+  function timeBar(x, max) {
+    return '<div class="gt-bar">' + TIME_PARTS.map(([k, label, cls]) => (x[k] > 0
+      ? '<i class="' + cls + '" style="width:' + pct(x[k], max) + '" title="' + esc(label + ': ' + dur(x[k])) + '"></i>' : '')).join('') + '</div>';
+  }
+
+  /// Рядок гри: назва, смужка (грав + дивився), скільки грав; <tail> — що ще дописати праворуч.
+  function timeGameRow(g, max, tail) {
+    return '<div class="gt-grow"><span class="gt-gname">' + iconOf(g.game) + esc(g.title || titleOf(g.game)) + '</span>'
+      + '<div class="gt-bar thin">' + (g.play > 0 ? '<i class="gt-play" style="width:' + pct(g.play, max) + '"></i>' : '')
+      + (g.watch > 0 ? '<i class="gt-watch" style="width:' + pct(g.watch, max) + '"></i>' : '') + '</div>'
+      + '<b class="gt-gsum">' + (g.play > 0 ? dur(g.play) : '—') + '</b>'
+      + (g.watch > 0 ? '<span class="gt-eye" title="дивився чужі столи">👀 ' + dur(g.watch) + '</span>' : '<span class="gt-eye"></span>')
+      + (tail || '') + '</div>';
+  }
+
+  /// Блок у профілі: весь час, найбільше в чому, і стежка на сторінку «Час».
+  function profileTime(t) {
+    if (!t) return '<h4>⏱ Час</h4><div class="gempty">Ще не натікало — хвилини пишуться, поки вкладка на екрані й ти щось робиш.</div>';
+    const top = (t.games || []).filter((g) => g.play > 0).slice(0, 5);
+    const max = Math.max(1, ...top.map((g) => g.play + (g.watch || 0)));
+    return '<h4>⏱ Час <button class="gt-more">усі →</button></h4>'
+      + '<div class="gt-chips"><span class="chip">на сайті ' + dur(timeTotal(t)) + '</span>'
+      + TIME_PARTS.filter(([k]) => t[k] > 0).map(([k, l, cls]) => '<span class="chip"><i class="gt-dot ' + cls + '"></i>' + l + ' ' + dur(t[k]) + '</span>').join('')
+      + (t.listen > 0 ? '<span class="chip">📻 радіо грало ' + dur(t.listen) + '</span>' : '') + '</div>'
+      + (top.length ? '<div class="gt-games">' + top.map((g) => timeGameRow(g, max)).join('') + '</div>' : '');
+  }
+
+  async function renderTime(view, token) {
+    view.innerHTML = '<div class="gwait"><span class="spin"></span> рахую хвилини…</div>';
+    let r;
+    // Іконки ігор живуть у модулях: зайшли прямо на #games/time — чекаємо їх разом із цифрами, а не малюємо 🎲.
+    try { [r] = await Promise.all([api('GET', '/api/games/time?period=' + encodeURIComponent(timePeriod)), ensureCatalog().catch(() => {})]); }
+    catch (e) { if (!stale(token)) view.innerHTML = '<div class="gempty">Час не прочитався: ' + esc(e.message) + '</div>'; return; }
+    if (stale(token)) return;
+    r = r || {};
+    const people = r.people || [];
+    const games = r.games || [];
+    const max = Math.max(1, ...people.map(timeTotal));
+    const gmax = Math.max(1, ...games.map((g) => (g.play || 0) + (g.watch || 0)));
+    const since = r.since ? new Date(r.since + 'T12:00:00').toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' }) : '';
+    const sum = (k) => people.reduce((s, x) => s + (x[k] || 0), 0);
+    const all = people.reduce((s, x) => s + timeTotal(x), 0);
+
+    const head = '<div class="gt-top"><div class="gt-per">' + PERIODS.map(([k, l]) => '<button data-p="' + k + '"'
+      + (k === timePeriod ? ' class="on"' : '') + '>' + l + '</button>').join('') + '</div>'
+      + '<span class="muted small">' + (since ? 'рахуємо з ' + esc(since) + ' · ' : '')
+      + 'лише поки вкладка на екрані й людина щось робить; радіо — поки грає плеєр</span></div>';
+
+    const body = !people.length
+      ? '<div class="gempty glek">За цей час ще нічого не натікало. Хвилини пишуться, поки вкладка на екрані й ти щось робиш.</div>'
+      : '<div class="gt-sum4">'
+        + '<div><b>' + dur(all) + '</b><span>усі разом на сайті</span></div>'
+        + '<div><b>' + dur(sum('play')) + '</b><span>у іграх</span></div>'
+        + '<div><b>' + dur(sum('listen')) + '</b><span>📻 грало радіо</span></div>'
+        + (games[0] ? '<div><b>' + iconOf(games[0].game) + esc(games[0].title) + '</b><span>найдовше грали · ' + dur(games[0].play) + '</span></div>' : '')
+        + '</div>'
+        + '<h4>Хто скільки</h4>'
+        + '<div class="gt-legend">' + TIME_PARTS.map(([, l, cls]) => '<span><i class="gt-dot ' + cls + '"></i>' + l + '</span>').join('')
+        + '<span class="muted">натисни на людину — розкладу по іграх</span></div>'
+        + '<div class="gt-people">' + people.map((x, i) => {
+          const mine = sameNick(x.nick, me.nick);
+          const gl = x.games || [];
+          const pmax = Math.max(1, ...gl.map((g) => (g.play || 0) + (g.watch || 0)));
+          return '<details class="gt-person' + (mine ? ' me' : '') + '"' + (mine ? ' open' : '') + '><summary>'
+            + '<span class="n">' + (i + 1) + '</span><span class="gt-nick">' + esc(x.nick) + '</span>'
+            + timeBar(x, max)
+            + '<b class="gt-total">' + dur(timeTotal(x)) + '</b>'
+            + '<span class="gt-radio" title="скільки грав плеєр радіо">' + (x.listen > 0 ? '📻 ' + dur(x.listen) : '') + '</span>'
+            + '</summary><div class="gt-detail">'
+            + '<div class="gt-chips">' + TIME_PARTS.filter(([k]) => x[k] > 0).map(([k, l, cls]) =>
+              '<span class="chip"><i class="gt-dot ' + cls + '"></i>' + l + ' ' + dur(x[k]) + '</span>').join('') + '</div>'
+            + (gl.length ? '<div class="gt-games">' + gl.map((g) => timeGameRow(g, pmax)).join('') + '</div>'
+              : '<div class="gempty">За цей час в ігри не заходив.</div>')
+            + '</div></details>';
+        }).join('') + '</div>'
+        + (games.length
+          ? '<h4>Ігри</h4><div class="gt-games wide">' + games.map((g) => timeGameRow(g, gmax,
+            '<span class="gt-who">' + (g.people || []).slice(0, 3).map((p) => '<span' + (sameNick(p.nick, me.nick) ? ' class="me"' : '') + '>'
+              + esc(p.nick) + ' <span class="muted">' + dur(p.sec) + '</span></span>').join('') + '</span>')).join('') + '</div>'
+          : '');
+
+    view.innerHTML = '<div class="gtime">' + head + body + '</div>';
+    view.querySelectorAll('.gt-per [data-p]').forEach((b) => b.onclick = () => {
+      timePeriod = b.dataset.p;
+      try { localStorage.setItem('gamesTimePeriod', timePeriod); } catch { /* не запам'ятаємо — не біда */ }
+      renderTime(view, token);
+    });
   }
 
   // ключі — як їх називає Leaderboards.cs: rated → elo/wins/losses/draws/games/streak,
@@ -1546,6 +1701,7 @@
       conn = c;
       watched.clear();
       focusSent = undefined;
+      hereSent = undefined;
       c.on('solo', (list) => {
         soloNow = Array.isArray(list) ? list : [];
         if (shown && view.kind === 'lobby') renderView();
@@ -1622,6 +1778,7 @@
     reconnected() {
       watched.clear();
       focusSent = undefined;
+      hereSent = undefined;
       syncWatch();
       loadWallet();
     },

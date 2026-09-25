@@ -929,6 +929,13 @@ public sealed class Rooms
         return outbox;
     }
 
+    /// <summary>У яку гру нік грає за цим столом: id гри, якщо він там сидить; глядач, чужий стіл чи нема столу — null.</summary>
+    public string? SeatedGame(string? roomId, string nick)
+    {
+        if (Find(roomId) is not { } room) return null;
+        lock (room.Sync) return room.Has(nick) ? room.Info.Id : null;
+    }
+
     /// <summary>Готова розкладка кімнати для Broadcaster: види по місцях, вид глядача, список з'єднань.</summary>
     public RoomBroadcast? ViewsFor(string roomId)
     {

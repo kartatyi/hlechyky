@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
@@ -44,6 +44,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         var gone = presence.Get(Context.ConnectionId);
         presence.Remove(Context.ConnectionId);
         var left = rooms.DropWatcher(Context.ConnectionId);
+        playClock.Drop(Context.ConnectionId);
         rates.Forget(Context.ConnectionId);
         LastTyping.TryRemove(Context.ConnectionId, out _);
         // Місце тримається ще grace-час: F5 і провал зв'язку в метро не мають коштувати партії.
@@ -193,6 +194,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     /// <summary>Вкладка каже, що її плеєр грає чи замовк: так рейтинг знає, хто саме слухав трек.</summary>
     public async Task SetListening(bool on)
     {
+        playClock.Set(Context.ConnectionId, Nick(), Games.Economy.PlayClock.Listen, on ? Games.Economy.PlayClock.Listen : null);
         // Решта кімнати бачить, хто саме зараз у навушниках.
         if (presence.SetListening(Context.ConnectionId, on)) await Clients.All.SendAsync("state", engine.Snapshot());
     }
@@ -305,6 +307,28 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     {
         if (!Allow(input: true)) return;   // кожна зміна — розсилка всім, тож теж під квотою
         await broadcaster.FlushAsync(rooms.Focus(Context.ConnectionId, Nick(), roomId));
+    }
+
+    /// <summary>
+    /// Де зараз людина (PROTOCOL §1, <c>Here</c>) — для сторінки «Час»: <c>room</c> (стіл <paramref name="roomId"/>
+    /// на екрані), <c>lobby</c> (розділ «Ігри» поза столом), <c>page</c> (решта сайту) чи null (вкладка схована або
+    /// людини давно нема). За столом гру й «сидить чи дивиться» беремо з сервера, а не зі слів вкладки.
+    /// <paramref name="idleMs"/> — скільки вже не було жодного руху, коли вкладка вимкнулась через бездіяльність: цей
+    /// хвіст не рахується. Без квоти: це лише запис у пам'ять, а відкинуте «я пішов» рахувало б час, доки вкладка жива.
+    /// </summary>
+    public void Here(string? where, string? roomId, int idleMs)
+    {
+        var nick = Nick();
+        var place = where switch
+        {
+            "room" => rooms.SeatedGame(roomId, nick) is { } game ? Games.Economy.PlayClock.Game(game)
+                : rooms.Find(roomId) is { } room ? Games.Economy.PlayClock.Watch(room.Info.Id) : null,
+            "lobby" => Games.Economy.PlayClock.Lobby,
+            "page" => Games.Economy.PlayClock.Page,
+            _ => null,
+        };
+        playClock.Set(Context.ConnectionId, nick, Games.Economy.PlayClock.Where, place, idleMs);
+        playClock.Set(Context.ConnectionId, nick, Games.Economy.PlayClock.Site, place is null ? null : Games.Economy.PlayClock.Site, idleMs);
     }
 
     /// <summary>Нічний відбій (Curfew): текст відмови цьому гравцеві в грі <paramref name="gameId"/>, null — можна грати.</summary>

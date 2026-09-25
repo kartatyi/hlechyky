@@ -143,8 +143,79 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
                 opponents = r.Opponents, stake = r.Stake, at = r.At,
             }),
             daily = DailyStreaks(nick),
+            time = TimeOf(store.TimeTotals(null, key)).FirstOrDefault(),
         };
     }
+
+    // ---------- хто де скільки часу ----------
+
+    /// <summary>
+    /// GET /api/games/time?period= — сторінка «⏱ Час»: для кожного, скільки був на сайті, у яких іграх грав і дивився,
+    /// скільки в лобі, на решті сайту й під радіо; і кожна гра — з тими, хто в ній найбільше сидів.
+    /// </summary>
+    public object Time(string? period)
+    {
+        var p = Norm(period);
+        var today = Days.Today(clock);
+        var from = p switch
+        {
+            "day" => today,
+            "week" => DateOnly.ParseExact(today, "yyyy-MM-dd").AddDays(-6).ToString("yyyy-MM-dd"),
+            _ => null,
+        };
+        var rows = store.TimeTotals(from);
+        var games = rows
+            .Select(r => (r, Game: GameOfPlace(r.Place)))
+            .Where(x => x.Game is not null)
+            .GroupBy(x => x.Game!)
+            .Select(g => new
+            {
+                game = g.Key, title = names.Title(g.Key),
+                play = g.Where(x => x.r.Place.StartsWith("game:", StringComparison.Ordinal)).Sum(x => x.r.Seconds),
+                watch = g.Where(x => x.r.Place.StartsWith("watch:", StringComparison.Ordinal)).Sum(x => x.r.Seconds),
+                people = g.Where(x => x.r.Place.StartsWith("game:", StringComparison.Ordinal))
+                    .OrderByDescending(x => x.r.Seconds).Select(x => new { nick = x.r.Nick, sec = x.r.Seconds }).ToList(),
+            })
+            .OrderByDescending(g => g.play + g.watch)
+            .ToList();
+        return new { period = p, since = store.TimeSince(), people = TimeOf(rows), games };
+    }
+
+    /// <summary>«game:clicker» і «watch:clicker» → «clicker»; решта місць — не гра.</summary>
+    static string? GameOfPlace(string place) =>
+        place.StartsWith("game:", StringComparison.Ordinal) ? place[5..]
+        : place.StartsWith("watch:", StringComparison.Ordinal) ? place[6..] : null;
+
+    /// <summary>Рядки ніків для «Часу» й профілю: від того, хто найдовше був на сайті.</summary>
+    List<object> TimeOf(List<TimeTotal> rows) => rows
+        .GroupBy(r => r.NickKey)
+        .Select(g =>
+        {
+            int At(string place) => g.Where(r => r.Place == place).Sum(r => r.Seconds);
+            int Prefixed(string prefix) => g.Where(r => r.Place.StartsWith(prefix, StringComparison.Ordinal)).Sum(r => r.Seconds);
+            return new
+            {
+                nick = g.First().Nick,
+                site = At(PlayClock.Site), listen = At(PlayClock.Listen),
+                lobby = At(PlayClock.Lobby), page = At(PlayClock.Page),
+                play = Prefixed("game:"), watch = Prefixed("watch:"),
+                games = g.Select(r => (r, Game: GameOfPlace(r.Place)))
+                    .Where(x => x.Game is not null)
+                    .GroupBy(x => x.Game!)
+                    .Select(x => new
+                    {
+                        game = x.Key, title = names.Title(x.Key),
+                        play = x.Where(y => y.r.Place.StartsWith("game:", StringComparison.Ordinal)).Sum(y => y.r.Seconds),
+                        watch = x.Where(y => y.r.Place.StartsWith("watch:", StringComparison.Ordinal)).Sum(y => y.r.Seconds),
+                    })
+                    .OrderByDescending(x => x.play + x.watch)
+                    .ToList(),
+            };
+        })
+        .OrderByDescending(x => Math.Max(x.site, x.play + x.watch + x.lobby + x.page))
+        .ThenByDescending(x => x.listen)
+        .Cast<object>()
+        .ToList();
 
     /// <summary>Серії в щоденних головоломках — одним запитом на всі одразу.</summary>
     object DailyStreaks(string nick)
