@@ -486,7 +486,7 @@
       + '<div class="clkf-obtns">'
       + '<button type="button" class="primary small" data-bid="as" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🤝 Здати</button>'
       + '<span class="clkf-otime small muted">⏳ <i class="clkf-cd" data-at="' + o.until + '" data-done="поїхав"></i></span>'
-      + '<details class="clkf-bid"><summary>торг</summary>'
+      + '<details class="clkf-bid" data-key="' + o.id + '"><summary>торг</summary>'
       + '<button type="button" class="ghost small" data-bid="down" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🙇 Поступитись · менше плати, вдвічі більше шани</button>'
       + '<button type="button" class="ghost small" data-bid="up" data-id="' + o.id + '"' + (off || o.sour ? ' disabled' : '') + '>💰 Накинути · вийде в ' + chance + ' % випадків</button>'
       + '</details>'

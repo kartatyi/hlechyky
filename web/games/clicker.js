@@ -1229,10 +1229,20 @@
   // ---------- полиці ----------
 
   /// Перемалювати секцію лише тоді, коли її HTML справді змінився: кнопки під пальцем не мають зникати щопачки.
+  /// Розгорнуте ▾ (<details>) лишається розгорнутим: раніше кожна зміна числа всередині згортала його — і все,
+  /// що нижче, стрибало. Ключ — data-key, а без нього — клас і порядковий номер серед таких самих.
   function swap(el, html) {
     if (el._sig === html) return false;
     el._sig = html;
+    const keyOf = (d, i) => d.dataset.key || d.className + '#' + i;
+    const keys = (fn) => {
+      const seen = {};
+      for (const d of el.querySelectorAll('details')) { const i = (seen[d.className] = (seen[d.className] || 0) + 1); fn(d, keyOf(d, i)); }
+    };
+    const open = new Set();
+    keys((d, k) => { if (d.open) open.add(k); });
     el.innerHTML = html;
+    if (open.size) keys((d, k) => { if (open.has(k)) d.open = true; });
     return true;
   }
 
@@ -1833,6 +1843,42 @@
     }, 150);
   }
 
+  /// Погляд стоїть на місці, коли вище щось виросло чи зникло. Chrome і Firefox тримають його самі (scroll anchoring),
+  /// а Safari — ні: на айфоні палій розпалював горно, «підготовка» й «Останнє горно» вгорі «Ремесла» ховались
+  /// (~500 px), після обпалу вертались — і комора з ярмарком, які людина гортала внизу, підстрибували вгору.
+  /// Тут те саме вручну: на кожну прокрутку запам'ятовуємо елемент посеред екрана з усіма предками до картки
+  /// й де кожен стояв. Зміна вище міняє розмір когось із предків — ResizeObserver кличе нас ще до малювання,
+  /// і ми вертаємо першого живого й видного з ланцюжка на його місце. Там, де браузер уміє сам, — нічого не робимо.
+  function steadyView(st) {
+    if (!window.ResizeObserver || (window.CSS && CSS.supports && CSS.supports('overflow-anchor', 'auto'))) return null;
+    let chain = [];                                   // [[елемент, top у вікні]] від найглибшого до картки
+    const shown = (e) => e.isConnected && e.getClientRects().length > 0;
+    const ro = new ResizeObserver(() => {
+      const link = chain.find(([e]) => shown(e));
+      if (!link) return;
+      const d = link[0].getBoundingClientRect().top - link[1];
+      if (Math.abs(d) < 1) return;
+      window.scrollBy(0, d);
+      for (const l of chain) if (shown(l[0])) l[1] = l[0].getBoundingClientRect().top;
+    });
+    function pick() {
+      ro.disconnect();
+      chain = [];
+      const card = (st.root.closest && st.root.closest('.gtable')) || st.root;
+      // Нагорі сторінки якір не потрібен (так само й у Chrome), а на прихованій картці — нема чого тримати.
+      if (window.scrollY <= 0 || card.hidden || !card.isConnected) return;
+      const hit = document.elementFromPoint(window.innerWidth / 2, window.innerHeight * 0.4);
+      if (!hit || !card.contains(hit)) return;
+      for (let e = hit; e; e = e === card ? null : e.parentElement) {
+        chain.push([e, e.getBoundingClientRect().top]);
+        ro.observe(e);
+      }
+    }
+    // Синхронно, не через кадр: app.js на зміну адреси спершу гортає вгору, а вже потім ховає картку.
+    window.addEventListener('scroll', pick, { passive: true });
+    return { stop() { window.removeEventListener('scroll', pick); ro.disconnect(); chain = []; } };
+  }
+
   const MOD = {
     id: 'clicker',
     icon: ICON,
@@ -2053,6 +2099,7 @@
       st.ov.el.addEventListener('pointerdown', (e) => { st.ovDownBack = e.target === st.ov.el; });
       st.ov.el.addEventListener('click', (e) => { if (e.target === st.ov.el && st.ovDownBack !== false) H.api.closeOverlay(st); });
       st.root = root;
+      st.steady = steadyView(st);
       H.mounted.add(st);
       for (const p of H.parts) mountPart(st, p);
       if (!st.raf) loop(st);
@@ -2244,6 +2291,7 @@
       clearTimeout(st.newsT);
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
+      if (st.steady) st.steady.stop();
       for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);
       H.mounted.delete(st);
       if (st.ov) H.api.closeOverlay(st);
