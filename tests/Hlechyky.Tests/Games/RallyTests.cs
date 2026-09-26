@@ -945,7 +945,12 @@ public class RallyTests(ITestOutputHelper output)
         var h = Table(2);
         Green(h);
         Core(h).Cars[1].Next = 3;
-        h.Tick(RallyCore.MaxRaceTicks - 1);
+        // хтось усі 4 хвилини смикає ручник на місці — інакше гонку зняла б тиша за кермом (Rally.IdleTicks)
+        for (var i = 0; i < RallyCore.MaxRaceTicks - 1; i++)
+        {
+            if (i % 500 == 0) Ctl(h, 0, i / 500 % 2 == 0 ? 16 : 0);
+            h.Tick();
+        }
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         h.Tick();
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
@@ -1120,7 +1125,8 @@ public class RallyTests(ITestOutputHelper output)
         var c = Core(h).Cars[0];
         Assert.Equal(1, c.Fin);
         var line = LastJournal(h);
-        Assert.Equal($"Сільське ралі · Село, 3 кола: Оля наодинці з секундоміром — {Rally.Clock(c.FinishMs, 1)}, найкраще коло {Rally.Clock(c.BestMs, 2)}", line);
+        Assert.Equal($"Сільське ралі · Село, 3 кола: Оля наодинці з секундоміром — {Rally.Clock(c.FinishMs, 1)}, найкраще коло {Rally.Clock(c.BestMs, 2)}"
+            + $" · новий рекорд траси: Оля, {Rally.Clock(c.BestMs, 2)}", line);
         // перше коло в порожніх рекордах — новий рекорд траси; про фініш соло Глек мовчить
         var said = h.Outbox.OfType<TableSaid>().Select(s => s.Line.Text).ToList();
         Assert.DoesNotContain(said, s => s.Contains("на фініші"));
@@ -1168,7 +1174,7 @@ public class RallyTests(ITestOutputHelper output)
         var core = Core(h);
         Assert.False(core.Cars[1].Present);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
-        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text == "Сільське ралі: Петро — сход з траси");
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text == "Сільське ралі: Петро сходить з траси");
         h.Tick();
         var f = h.View(null).GetProperty("f");
         Assert.Equal(-1, f.GetProperty("c")[1 * Rally.Stride + 10].GetInt32());
@@ -1242,6 +1248,130 @@ public class RallyTests(ITestOutputHelper output)
         var fixedTrack = Table(2, new { track = "nich", laps = "5" });
         Assert.Equal("nich", Game(fixedTrack).Track.Id);
         Assert.Equal(5, fixedTrack.View(null).GetProperty("laps").GetInt32());
+    }
+
+    /// <summary>Усі n — на фініші (підсумок), не чекаючи таймауту.</summary>
+    static void FinishAll(RoomHarness h, int n)
+    {
+        var core = Core(h);
+        for (var s = 0; s < n; s++) { core.Cars[s].Fin = s + 1; core.Cars[s].Ghost = true; }
+        core.Finished = n;
+        h.Tick();
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+    }
+
+    [Fact]
+    public void A_finished_table_reopened_by_a_newcomer_is_a_fresh_lobby()
+    {
+        var h = Table(3, start: false);
+        Assert.True(h.Act(2, "car", new { car = "viz" }).Ok);
+        h.Start();
+        Green(h);
+        FinishAll(h, 3);
+        Assert.Equal(Rally.PhOver, h.View(null).GetProperty("ph").GetInt32());
+        // Ганна встала з-за дограного столу, на її місце сіла Нова — каркас відкрив стіл наново
+        h.Leave("Ганна");
+        Assert.True(h.Join("Нова").Ok);
+        Assert.Equal(RoomStatus.Lobby, h.Room.Status);
+        var v = h.View(2);
+        Assert.Equal(Rally.PhLobby, v.GetProperty("ph").GetInt32());
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("results").ValueKind);
+        var f = v.GetProperty("f");
+        Assert.Equal(Rally.PhLobby, f.GetProperty("ph").GetInt32());
+        Assert.Equal(0, f.GetProperty("t").GetInt32());
+        Assert.Equal(RallyTracks.Get("selo").SlotX[2], f.GetProperty("c")[2 * Rally.Stride].GetInt32());
+        // на місці Ганни — не її віз, а типова машина місця (Нова ще не обирала)
+        Assert.Equal(Rally.Cars[2].Id, v.GetProperty("cars")[2].GetString());
+        Assert.Null(Game(h).Core);
+        // і машину обирати можна всім — і новенькій, і тим, хто лишився
+        Assert.True(h.Act(2, "car", new { car = "kopiyka" }).Ok);
+        Assert.True(h.Act(0, "car", new { car = "motoblok" }).Ok);
+        Assert.Equal("kopiyka", h.View(null).GetProperty("cars")[2].GetString());
+        // нова гонка — з нуля
+        Assert.True(h.Start().Ok);
+        Assert.Equal(Rally.PhCount, Game(h).Phase);
+        Assert.Equal(0, Core(h).T);
+        Assert.Equal("kopiyka", Core(h).Cars[2].Car);
+        Assert.Equal("motoblok", Core(h).Cars[0].Car);
+        Green(h);
+        FinishAll(h, 3);
+        Assert.Equal(2, h.Finished.Count);
+        // дограна партія без новачків лишається на столі: картці результату є що показати
+        Assert.Equal(Rally.PhOver, h.View(null).GetProperty("ph").GetInt32());
+        Assert.Equal(3, h.View(null).GetProperty("results").GetArrayLength());
+    }
+
+    [Fact]
+    public void Village_champion_needs_three_at_the_green_light_and_a_rival_to_the_end()
+    {
+        // двоє «статистів» встали ще на світлофорі — на зеленому лише Оля
+        var h = Table(3);
+        h.Tick(10);
+        h.Leave("Петро");
+        h.Leave("Ганна");
+        Green(h);
+        ReadyToFinish(Core(h), 0, 2);
+        h.Tick(5);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:rally-win3");
+        // троє рушили, але обоє суперників встали посеред гонки — перемагати нема кого
+        var gone = Table(3);
+        Green(gone);
+        gone.Tick(10);
+        gone.Leave("Петро");
+        gone.Leave("Ганна");
+        ReadyToFinish(Core(gone), 0, 2);
+        gone.Tick(5);
+        Assert.Equal(RoomStatus.Finished, gone.Room.Status);
+        Assert.DoesNotContain(gone.Awards, a => a.Reason == "ach:rally-win3");
+        // троє рушили, один встав, другий доїздив до кінця — чесна перемога
+        var fair = Table(3);
+        Green(fair);
+        fair.Tick(10);
+        fair.Leave("Петро");
+        ReadyToFinish(Core(fair), 0, 2);
+        fair.Tick(5);
+        fair.Tick(RallyCore.TimeoutTicks);
+        Assert.Equal(RoomStatus.Finished, fair.Room.Status);
+        Assert.Contains(fair.Awards, a => a.Nick == "Оля" && a.Reason == "ach:rally-win3");
+    }
+
+    [Fact]
+    public void Half_a_minute_without_any_input_ends_the_race()
+    {
+        // ніхто нічого не тисне: не 4 хвилини, а 30 секунд — і нічия, бо ніхто й перших воріт не взяв
+        var h = Table(2);
+        Green(h);
+        h.Tick(Rally.IdleTicks - 1);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        h.Tick();
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Empty(h.Room.Result!.Winners);
+        Assert.Equal("Сільське ралі · Село: пів хвилини ніхто не торкався керма — нічия", LastJournal(h));
+        // ручник на місці — теж ввід: відлік тиші починається наново з тика, коли маска лягла
+        var busy = Table(2);
+        Green(busy);
+        busy.Tick(700);
+        Ctl(busy, 1, 16);
+        busy.Tick(Rally.IdleTicks);
+        Assert.Equal(RoomStatus.Playing, busy.Room.Status);
+        busy.Tick();
+        Assert.Equal(RoomStatus.Finished, busy.Room.Status);
+        // хтось проїхав кілька воріт і відійшов — найдалі він, як і після стелі в 4 хвилини
+        var far = Table(2);
+        Green(far);
+        Core(far).Cars[1].Next = 3;
+        far.Tick(Rally.IdleTicks);
+        Assert.Equal(RoomStatus.Finished, far.Room.Status);
+        Assert.Equal([1], far.Room.Result!.Winners);
+        Assert.Equal("Сільське ралі · Село: пів хвилини ніхто не торкався керма — найдалі Петро, 0 кіл з 3", LastJournal(far));
+        // соло
+        var solo = Table(1);
+        Green(solo);
+        solo.Tick(Rally.IdleTicks);
+        Assert.Equal(RoomStatus.Finished, solo.Room.Status);
+        Assert.Equal("Сільське ралі · Село, 3 кола: Оля наодинці з секундоміром — пів хвилини без керма, фінішу нема", LastJournal(solo));
     }
 
     [Fact]
@@ -1449,6 +1579,16 @@ public class RallyTests(ITestOutputHelper output)
         h.Tick(4);
         Assert.Equal(2, core.Cars[0].Lap);
         Assert.Equal(n, h.Awards.Count(a => a.Reason == "ach:rally-record"));
+        // наприкінці Глек каже, чий рекорд упав (навіть коли Оля потім покращила вже свій), і це ж — у Журналі
+        h.Leave("Петро");
+        ReadyToFinish(core, 0, 2);
+        h.Tick(4);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        var rec = laps.Top("selo")[0];
+        Assert.Equal("Оля", rec.Nick);
+        var line = $"Оля, {Rally.Clock(rec.Ms, 2)} (було — Петро, 1:39,00)";
+        Assert.Contains(h.Outbox.OfType<TableSaid>(), s => s.Line.Text == $"⏱ Новий рекорд «Село»: {line}!");
+        Assert.EndsWith($" · новий рекорд траси: {line}", LastJournal(h));
     }
 
     [Fact]
@@ -1669,6 +1809,9 @@ public class RallyTests(ITestOutputHelper output)
         sw.Stop();
         var us = sw.Elapsed.TotalMilliseconds * 1000 / 3000;
         output.WriteLine($"тик на шістьох із кадром: {us:0.00} мкс");
+        // гонка ще йде: якби вона скінчилась, Tick() повертав би одразу, і число було б порожнім
+        Assert.Equal(Rally.PhRace, game.Phase);
+        Assert.Equal(3200, core.T);
         Assert.True(sw.ElapsedMilliseconds < 1000, $"3000 тиків за {sw.ElapsedMilliseconds} мс");
         Assert.True(us < 250, $"тик {us:0.0} мкс");
     }
