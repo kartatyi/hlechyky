@@ -70,7 +70,7 @@
       grass2: c('--freeze-grass2', '#669443'),
       sky: c('--freeze-sky', '#bcd9ea'),
       wood: c('--freeze-wood', '#8a5a33'),
-      cold: c('--freeze-cold', 'rgba(150, 200, 255, .20)'),
+      cold: c('--freeze-cold', 'rgba(110, 170, 255, .30)'),
       shadow: 'rgba(20, 30, 15, .30)',
       text: c('--text', '#ecf1ea'),
       accent: c('--accent', '#f4c542'),

@@ -7,7 +7,7 @@
   --freeze-grass2: #669443;   /* плями на лузі */
   --freeze-sky: #bcd9ea;      /* небо над гаєм */
   --freeze-wood: #8a5a33;     /* тин, кілки, двері */
-  --freeze-cold: rgba(150, 200, 255, .20);   /* «Замри!» — екран холоне */
+  --freeze-cold: rgba(110, 170, 255, .30);   /* «Замри!» — екран холоне */
   --freeze-blue: #6fb3e8;     /* п'яте місце */
   --freeze-pink: #e88ac0;     /* шосте */
   --freeze-violet: #b48ae8;   /* сьоме */
