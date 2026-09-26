@@ -326,34 +326,267 @@ public class CrowdTests(ITestOutputHelper output)
     // =============================================================================================
 
     [Fact]
-    public void Bots_stand_between_twelve_and_seventy_five_ticks_and_face_the_stall_at_a_counter()
+    public void Bots_stand_from_half_a_second_to_twenty_and_face_the_stall_only_at_their_counter()
     {
         var core = new CrowdCore(new Random(21));
         core.Deal([], 40);
-        var before = new int[core.N];
+        var target = new int[core.N];
+        var stall = new int[core.N];
+        var dir = new int[core.N];
         var lens = new List<int>();
-        int counter = 0, facing = 0;
-        for (var t = 0; t < 3000; t++)
+        int counter = 0, facing = 0, elsewhere = 0, turned = 0, buys = 0;
+        for (var t = 0; t < 6000; t++)
         {
-            for (var i = 0; i < core.N; i++) before[i] = core.V[i].Stand;
+            for (var i = 0; i < core.N; i++) (target[i], stall[i], dir[i]) = (core.V[i].Target, core.V[i].TargetStall, core.V[i].Dir);
+            core.TimersAll();
             core.ThinkAll();
             core.StepAll();
             foreach (var v in core.V)
             {
-                if (before[v.Id] != 0 || v.Stand == 0) continue;
-                lens.Add(v.Stand);                             // щойно прийшов: стоятиме рівно стільки
-                if (CrowdMap.CounterOf[CrowdMap.CellOf(v.X, v.Y)] is var k and >= 0)
+                if (target[v.Id] < 0 || v.Target >= 0 || v.Moving || (v.Stand == 0 && v.Haggle == 0)) continue;     // лише щойно дійшов до цілі
+                if (v.Haggle > 0) { buys++; continue; }
+                lens.Add(v.Stand);
+                if (stall[v.Id] >= 0)
                 {
                     counter++;
-                    if (v.Dir == CrowdMap.Stalls[k].Face) facing++;
+                    if (v.Dir == CrowdMap.Stalls[stall[v.Id]].Face) facing++;
+                }
+                else
+                {
+                    // деінде — обличчя не міняє: людина на місці не повертається (хіба впершись у перешкоду)
+                    elsewhere++;
+                    if (v.Dir != dir[v.Id]) turned++;
                 }
             }
         }
-        Assert.True(lens.Count > 300);
-        Assert.All(lens, s => Assert.InRange(s, CrowdCore.StandMin, CrowdCore.StandMax));
-        Assert.True(lens.Min() <= 15 && lens.Max() >= 72, "стояння не розкидане на весь проміжок");
-        Assert.True(counter > 100);
-        Assert.True(facing * 10 >= counter * 9, $"обличчям до лотка {facing} з {counter}");
+        Assert.True(lens.Count > 800, $"{lens.Count}");
+        Assert.All(lens, s => Assert.InRange(s, CrowdCore.StandMin, CrowdCore.LongStandMax));
+        var share = (int from, int to) => lens.Count(s => s >= from && s <= to) * 100 / lens.Count;
+        Assert.InRange(share(CrowdCore.StandMin, CrowdCore.StandMax), 65, 82);            // звичайно 0,5–3 с
+        Assert.InRange(share(CrowdCore.StandMax + 1, 300), 14, 32);                         // задивились
+        Assert.InRange(share(301, CrowdCore.LongStandMax), 1, 8);                           // роззяви
+        Assert.True(counter > 300 && facing == counter, $"обличчям до лотка {facing} з {counter}");
+        Assert.True(elsewhere > 200 && turned == 0, $"повернулись на місці {turned} з {elsewhere}");
+        Assert.True(buys > 0, "жоден бот не купив");
+    }
+
+    [Fact]
+    public void Bots_buy_now_and_then_and_the_stall_flashes_exactly_as_after_a_player()
+    {
+        // бот: від першого тика стояння біля прилавка до спалаху — рівно стільки ж, скільки в гравця
+        var core = new CrowdCore(new Random(31));
+        core.Deal([], 40);
+        var since = new int[core.N];
+        var gaps = new List<int>();
+        var flashes = 0;
+        for (var t = 0; t < 2250 * 4; t++)
+        {
+            core.TimersAll();
+            foreach (var id in core.Haggled)
+            {
+                flashes++;
+                gaps.Add(t - since[id]);
+            }
+            core.ThinkAll();
+            core.StepAll();
+            foreach (var v in core.V)
+                if (v.Haggle == CrowdCore.HaggleTicks - 1) since[v.Id] = t;
+        }
+        output.WriteLine($"спалахів від ботів за 4 раунди по 90 с на 40 ботів: {flashes}");
+        Assert.InRange(flashes, 12, 60);                    // ≈ раз на 6–30 с на всю юрму
+        Assert.All(gaps, g => Assert.Equal(CrowdCore.HaggleTicks - 1, g));
+
+        // гравець: ішов уздовж прилавка, натиснув E — стоїть із наступного тика, спалах через ті самі 24 тики
+        var h = Table(2, seed: 18);
+        Go(h);
+        var me = Me(h, 0);
+        Park(h, me.Id, Me(h, 1).Id);
+        var k = Seat0Stall(h, 0);
+        AtCounter(h, 0, k);
+        me.X -= 8;
+        h.Input(0, "move", new { dir = 0 });
+        h.Tick();
+        Assert.True(me.Moving);
+        Assert.True(h.Act(0, "buy", new { }).Ok, h.Reply.Message);
+        var first = -1;
+        for (var t = 0; t < 40; t++)
+        {
+            h.Tick();
+            var f = LastFrame(h);
+            if (first < 0 && f.GetProperty("v")[me.Id * 4 + 3].GetInt32() == 0) first = t;
+            if (f.GetProperty("ev").EnumerateArray().Any(e => e[0].GetInt32() == 2))
+            {
+                Assert.Equal(CrowdCore.HaggleTicks - 1, t - first);
+                return;
+            }
+        }
+        Assert.Fail("спалаху нема");
+    }
+
+    [Fact]
+    public void A_bot_flash_sends_views_like_a_purchase_and_nobody_learns_whose_it_was()
+    {
+        var h = Table(3, seed: 33);
+        Go(h);
+        Park(h, Me(h, 0).Id, Me(h, 1).Id, Me(h, 2).Id);
+        var bot = Core(h).V.First(v => v.Owner < 0);
+        var st = CrowdMap.Stalls[3];
+        Put(bot, st.C0 % CrowdMap.W, st.C0 / CrowdMap.W);
+        bot.Stand = 0;
+        bot.Haggle = 3;
+        bot.HaggleStall = 3;
+        var views = h.Outbox.OfType<RoomViews>().Count();
+        h.Tick(3);
+        Assert.Contains(LastFrame(h).GetProperty("ev").EnumerateArray(), e => e[0].GetInt32() == 2 && e[1].GetInt32() == 3);
+        Assert.True(h.Outbox.OfType<RoomViews>().Count() > views, "бот купив — види мають полетіти, як після покупки гравця");
+
+        // гравець купив зі списку — а глядач бачить той самий вид, що й до того: ні «+1», ні «🧺»
+        var seatsBefore = h.View(null).GetProperty("seats").ToString();
+        Buy(h, 1, Seat0Stall(h, 1));
+        Assert.Equal(1, S(h, 1).Bought);
+        Assert.Equal(seatsBefore, h.View(null).GetProperty("seats").ToString());
+        Assert.All(h.View(2).GetProperty("seats").EnumerateArray(), s => Assert.Equal(JsonValueKind.Null, s.GetProperty("bought").ValueKind));
+    }
+
+    [Fact]
+    public void Round_points_stay_hidden_until_the_reveal_so_a_kill_does_not_name_the_shooter()
+    {
+        var h = Table(3, seed: 35, options: new { rounds = "3" });
+        Go(h);
+        var hunter = Me(h, 0);
+        var prey = Me(h, 1);
+        Park(h, hunter.Id, prey.Id, Me(h, 2).Id);
+        Put(hunter, 10, 3, dir: 0);
+        Put(prey, 12, 3);
+        Assert.True(h.Act(0, "shoot", new { }).Ok, h.Reply.Message);
+        h.Tick();
+        Assert.Equal(Crowd.PtKill, S(h, 0).Total);
+        // усі бачать, що Петро вибув і який селянин стрельнув, але не чиє це місце: очки в усіх ті самі, що на старті раунду
+        foreach (int? seat in new int?[] { null, 1, 2 })
+        {
+            var seats = h.View(seat).GetProperty("seats").EnumerateArray().ToList();
+            Assert.All(seats, s => Assert.Equal(0, s.GetProperty("total").GetInt32()));
+            Assert.All(seats, s => Assert.Equal(JsonValueKind.Null, s.GetProperty("bought").ValueKind));
+            Assert.False(seats.Single(s => s.GetProperty("seat").GetInt32() == 1).GetProperty("alive").GetBoolean());
+        }
+        // розкриття: тепер усе
+        while (G(h).Phase == Crowd.PhaseGo) h.Tick();
+        var open = h.View(null).GetProperty("seats").EnumerateArray().ToList();
+        Assert.Equal(S(h, 0).Total, open.Single(s => s.GetProperty("seat").GetInt32() == 0).GetProperty("total").GetInt32());
+        Assert.Equal(0, open.Single(s => s.GetProperty("seat").GetInt32() == 0).GetProperty("bought").GetInt32());
+        // новий раунд: видно очки на його початок, а покупки знову сховані
+        h.Tick(Crowd.RevealTicks);
+        Assert.Equal(Crowd.PhaseStart, G(h).Phase);
+        var next = h.View(2).GetProperty("seats").EnumerateArray().ToList();
+        Assert.Equal(S(h, 0).Total, next.Single(s => s.GetProperty("seat").GetInt32() == 0).GetProperty("total").GetInt32());
+        Assert.All(next, s => Assert.Equal(JsonValueKind.Null, s.GetProperty("bought").ValueKind));
+    }
+
+    [Fact]
+    public void A_held_arrow_that_is_not_confirmed_for_three_seconds_is_let_go()
+    {
+        var h = Table(2, seed: 37);
+        Go(h);
+        var me = Me(h, 0);
+        Park(h, me.Id, Me(h, 1).Id);
+        Put(me, 2, 3);
+        h.Input(0, "move", new { dir = 0 });
+        // модуль підтверджує затиснуту стрілку раз на секунду — селянин іде й іде
+        for (var i = 0; i < 4; i++)
+        {
+            h.Tick(25);
+            h.Input(0, "move", new { dir = 0 });
+        }
+        Assert.True(me.Moving);
+        var x = me.X;
+        // зв'язок обірвався: за 3 с без підтвердження — стоп, а не 20 с у паркан
+        h.Tick(Crowd.MoveHoldTicks + 1);
+        Assert.Equal(-1, me.Want);
+        Assert.False(me.Moving);
+        Assert.True(me.X > x);
+        var at = me.X;
+        h.Tick(100);
+        Assert.Equal(at, me.X);
+    }
+
+    [Fact]
+    public void When_everyone_leaves_the_match_ends_with_a_reveal_of_who_was_who()
+    {
+        var h = Table(2, seed: 39);
+        Go(h);
+        h.Tick(300);
+        var petro = S(h, 1).Me;
+        h.Leave("Петро");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        var v = h.View(0);
+        Assert.Equal("over", v.GetProperty("phase").GetString());
+        Assert.Equal("left", v.GetProperty("result").GetProperty("why").GetString());
+        var reveal = v.GetProperty("reveal");
+        Assert.Equal("left", reveal.GetProperty("why").GetString());
+        Assert.Equal([0], reveal.GetProperty("winners").EnumerateArray().Select(e => e.GetInt32()));
+        var ids = reveal.GetProperty("ids").EnumerateArray().ToDictionary(e => e.GetProperty("seat").GetInt32(), e => e.GetProperty("id").GetInt32());
+        Assert.Equal(petro, ids[1]);                          // і той, хто пішов: ким він був
+        Assert.Equal(S(h, 0).Me, ids[0]);
+        Assert.All(Core(h).V, q => Assert.False(q.Moving));   // юрма завмерла
+        Assert.All(v.GetProperty("v").EnumerateArray().Where((_, i) => i % 4 == 3), s => Assert.NotEqual(1, s.GetInt32()));
+        // дограли як слід — «end»
+        var g = Table(2, seed: 41, options: new { rounds = "1" });
+        Go(g);
+        g.Tick(Crowd.RoundTicks + Crowd.RevealTicks);
+        Assert.Equal("end", g.View(null).GetProperty("result").GetProperty("why").GetString());
+    }
+
+    [Fact]
+    public void The_reveal_shows_where_each_player_walked_but_not_a_tick_earlier()
+    {
+        var h = Table(2, seed: 43);
+        Go(h);
+        var me = Me(h, 0);
+        Park(h, me.Id, Me(h, 1).Id);
+        Put(me, 2, 3);
+        var path = new List<(int, int)>();
+        for (var t = 0; G(h).Phase == Crowd.PhaseGo; t++)
+        {
+            if (t < 2000 && t % 20 == 0) h.Input(0, "move", new { dir = t / 150 % 2 == 0 ? 0 : 2 });
+            h.Tick();
+            path.Add((me.X, me.Y));
+            if (G(h).Phase != Crowd.PhaseGo || t % 50 != 0) continue;
+            Assert.DoesNotContain("\"trails\"", Views.Text(h.View(null)));
+            Assert.DoesNotContain("\"trails\"", Views.Text(h.View(1)));
+        }
+        var trails = h.View(null).GetProperty("reveal").GetProperty("trails").EnumerateArray().ToList();
+        Assert.Equal([0, 1], trails.Select(t => t.GetProperty("seat").GetInt32()));
+        var pts = trails[0].GetProperty("pts").EnumerateArray().Select(e => e.GetInt32()).ToArray();
+        Assert.Equal(Crowd.TrailLen * 2, pts.Length);                    // останні ≈ 20 с
+        // точки сліду — справді ті місця, де він ішов у кінці раунду
+        var tail = path.Skip(path.Count - Crowd.TrailLen * Crowd.TrailEvery - Crowd.TrailEvery).ToHashSet();
+        for (var i = 0; i < pts.Length; i += 2)
+            Assert.True(tail.Contains((pts[i], pts[i + 1])), $"точки ({pts[i]},{pts[i + 1]}) на шляху нема");
+        Assert.True(Views.Text(h.View(null)).Length < 12_000);
+    }
+
+    [Fact]
+    public void Bots_pause_on_the_way_and_fidget_while_standing()
+    {
+        var core = new CrowdCore(new Random(23));
+        core.Deal([], 40);
+        int pauses = 0, fidgets = 0;
+        var target = new int[core.N];
+        var stand = new int[core.N];
+        for (var t = 0; t < 6000; t++)
+        {
+            for (var i = 0; i < core.N; i++) (target[i], stand[i]) = (core.V[i].Target, core.V[i].Stand);
+            core.TimersAll();
+            core.ThinkAll();
+            foreach (var v in core.V)
+            {
+                if (target[v.Id] >= 0 && v.Target == target[v.Id] && v.Want < 0 && stand[v.Id] == 0) pauses++;   // завагався, ціль та сама
+                if (stand[v.Id] > 3 && v.Want >= 0) fidgets++;                                                      // стояв і переступив
+            }
+            core.StepAll();
+        }
+        Assert.True(pauses > 200, $"зупинок посеред дороги {pauses}");
+        Assert.True(fidgets > 50, $"переступань {fidgets}");
     }
 
     [Fact]
@@ -376,25 +609,33 @@ public class CrowdTests(ITestOutputHelper output)
     [Fact]
     public void Bots_reach_their_targets_and_never_get_stuck_in_corridors()
     {
-        var core = new CrowdCore(new Random(4));
-        core.Deal([], 48);
         var arrivals = 0;
-        var blocked = 0;
-        var stand = new int[core.N];
-        for (var t = 0; t < 3000; t++)
+        var blocked = new List<string>();
+        for (var seed = 4; seed <= 6; seed++)
         {
-            for (var i = 0; i < core.N; i++) stand[i] = core.V[i].Stand;
-            core.ThinkAll();
-            core.StepAll();
-            foreach (var v in core.V)
+            var core = new CrowdCore(new Random(seed));
+            core.Deal([], 48);
+            var stand = new int[core.N];
+            var target = new int[core.N];
+            var wander = new int[core.N];
+            for (var t = 0; t < 3000; t++)
             {
-                if (v.Blocked && v.Target >= 0) blocked++;          // уперся, ідучи до цілі, — отже, застряг би
-                if (stand[v.Id] == 0 && v.Stand > 0 && v.Wander == 0) arrivals++;
-                Assert.True(CrowdMap.BoxFits(v.X, v.Y));
+                for (var i = 0; i < core.N; i++) (stand[i], target[i], wander[i]) = (core.V[i].Stand, core.V[i].Target, core.V[i].Wander);
+                core.TimersAll();
+                core.ThinkAll();
+                core.StepAll();
+                foreach (var v in core.V)
+                {
+                    // уперся, ідучи до цілі, — отже, застряг би; переступити стоячи чи тинятись у паркан — можна
+                    var fidget = stand[v.Id] > 0 || wander[v.Id] > 0 || v.Wander > 0;
+                    if (v.Blocked && v.Target >= 0 && !fidget) blocked.Add($"сід {seed} тик {t} id {v.Id} ({v.X},{v.Y}) ціль {v.Target} → ({v.Tx},{v.Ty}) хоче {v.Want}");
+                    if (target[v.Id] >= 0 && v.Target < 0 && (v.Stand > 0 || v.Haggle > 0)) arrivals++;
+                    Assert.True(CrowdMap.BoxFits(v.X, v.Y));
+                }
             }
         }
-        Assert.Equal(0, blocked);
-        Assert.True(arrivals > 300, $"дійшли лише {arrivals} разів");
+        Assert.True(blocked.Count == 0, string.Join("\n", blocked.Take(10)));
+        Assert.True(arrivals > 900, $"дійшли лише {arrivals} разів");
     }
 
     [Fact]
@@ -721,6 +962,7 @@ public class CrowdTests(ITestOutputHelper output)
     {
         var h = Table(seed: 18);
         Go(h);
+        Park(h, Me(h, 0).Id, Me(h, 1).Id);          // боти теж купують — хай не спалахують під руку
         var k = Seat0Stall(h, 0);
         var me = AtCounter(h, 0, k);
         h.Input(0, "move", new { dir = 0 });           // тримає стрілку — під час торгу не рушить
@@ -760,6 +1002,7 @@ public class CrowdTests(ITestOutputHelper output)
     {
         var h = Table(seed: 22);
         Go(h);
+        Park(h, Me(h, 0).Id, Me(h, 1).Id);          // боти теж купують — хай не спалахують під руку
         var k = Seat0Stall(h, 1);
         var victim = AtCounter(h, 1, k);
         Assert.True(h.Act(1, "buy", new { }).Ok, h.Reply.Message);
@@ -1201,8 +1444,6 @@ public class CrowdTests(ITestOutputHelper output)
         var core = Core(h);
         var botSteps = new HashSet<(int, int, int)>();
         var playerSteps = new HashSet<(int, int, int)>();
-        var botPos = new HashSet<(int, int)>();
-        var playerPos = new HashSet<(int, int)>();
         var was = core.V.Select(v => (v.X, v.Y)).ToArray();
         for (var t = 0; t < 2000 && G(h).Phase is Crowd.PhaseStart or Crowd.PhaseGo; t++)
         {
@@ -1213,13 +1454,150 @@ public class CrowdTests(ITestOutputHelper output)
             {
                 var step = (v.X - was[v.Id].X, v.Y - was[v.Id].Y, v.State);
                 (v.Owner >= 0 ? playerSteps : botSteps).Add(step);
-                // остача від клітинки — «квантування» позиції: і в тих, і в тих будь-яка з 32×32
-                (v.Owner >= 0 ? playerPos : botPos).Add((v.X % 32, v.Y % 32));
                 was[v.Id] = (v.X, v.Y);
             }
         }
+        // крок і стан; де саме в клітинці стоять і ходять, і як довго стоять — окремі тести нижче
         Assert.Subset(botSteps, playerSteps);
-        Assert.True(botPos.Count > 200, $"боти стоять лише на {botPos.Count} остачах");
+    }
+
+    /// <summary>
+    /// Людина за клавіатурою: тримає стрілку 5–41 тик (інколи одразу перемикає на іншу), відпускає на 1–31 тик,
+    /// зрідка задумується на 4–10 с (роздивляється юрму, читає список). Так і ходять, і стоять живі гравці.
+    /// </summary>
+    sealed class CrowdHuman(Random rng)
+    {
+        int _left, _dir = -1;
+
+        public int Next()
+        {
+            if (_left-- > 0) return _dir;
+            if (_dir >= 0 && rng.Next(100) >= 35)
+            {
+                _dir = -1;
+                _left = rng.Next(100) < 6 ? rng.Next(100, 251) : rng.Next(0, 31);
+            }
+            else
+            {
+                _dir = rng.Next(4);
+                _left = rng.Next(4, 41);
+            }
+            return _dir;
+        }
+    }
+
+    /// <summary>Що видно в кадрах про одну сторону (гравців чи ботів): де стоять, скільки стоять, якою смугою ходять.</summary>
+    sealed class CrowdTrace
+    {
+        /// <summary>Стоїть (s = 0 і не зрушив): остача від клітинки, 4×4 одиниці в кошику — 8×8 кошиків.</summary>
+        public readonly HashSet<(int, int)> Spots = [];
+        public long Standing, StandingOff;
+        /// <summary>Довжини серій стояння, кошиками (<see cref="RunBin"/>).</summary>
+        public readonly Dictionary<int, int> Runs = [];
+        public int RunCount;
+        /// <summary>Іде: остача поперек руху (y для ходи вбік, x для ходи вгору-вниз), кошиками по 4.</summary>
+        public readonly HashSet<(int, int)> Lanes = [];
+        public long Moving, MovingOff;
+
+        public static int RunBin(int len) => len switch { <= 3 => 0, <= 7 => 1, <= 11 => 2, <= 24 => 3, <= 50 => 4, <= 100 => 5, <= 200 => 6, _ => 7 };
+        public static bool Off(int r) => Math.Abs(r - 16) > 8;
+
+        public int Share(int from, int to) => Runs.Where(p => p.Key >= from && p.Key <= to).Sum(p => p.Value) * 1000 / Math.Max(1, RunCount);
+    }
+
+    /// <summary>
+    /// Ярмарок на голому ядрі: 4 «людини» і 40 ботів, 6000 тиків на сід. Порядок тика — як у грі: годинники, мозок
+    /// ботів, крок усіх. Для кожного селянина пишемо, де він стоїть і скільки, і якою смугою йде.
+    /// </summary>
+    static (CrowdTrace Players, CrowdTrace Bots) Observe(int seeds, int ticks = 6000)
+    {
+        var players = new CrowdTrace();
+        var bots = new CrowdTrace();
+        for (var seed = 1; seed <= seeds; seed++)
+        {
+            var core = new CrowdCore(new Random(seed));
+            core.Deal([0, 1, 2, 3], 40);
+            var humans = Enumerable.Range(0, 4).Select(i => new CrowdHuman(new Random(seed * 10 + i))).ToArray();
+            var n = core.N;
+            var px = core.V.Select(v => v.X).ToArray();
+            var py = core.V.Select(v => v.Y).ToArray();
+            var run = new int[n];
+            for (var t = 0; t < ticks; t++)
+            {
+                foreach (var v in core.V)
+                    if (v.Owner >= 0) v.Want = humans[v.Owner].Next();
+                core.TimersAll();
+                core.ThinkAll();
+                core.StepAll();
+                foreach (var v in core.V)
+                {
+                    var side = v.Owner >= 0 ? players : bots;
+                    int rx = v.X % 32, ry = v.Y % 32;
+                    var still = v.State == 0 && v.X == px[v.Id] && v.Y == py[v.Id];
+                    if (still)
+                    {
+                        side.Standing++;
+                        if (CrowdTrace.Off(rx) || CrowdTrace.Off(ry)) side.StandingOff++;
+                        side.Spots.Add((rx / 4, ry / 4));
+                        run[v.Id]++;
+                    }
+                    else
+                    {
+                        if (run[v.Id] > 0 && t > 200)          // перші 8 с — стартове стояння, не рахуємо
+                        {
+                            var bin = CrowdTrace.RunBin(run[v.Id]);
+                            side.Runs[bin] = side.Runs.GetValueOrDefault(bin) + 1;
+                            side.RunCount++;
+                        }
+                        run[v.Id] = 0;
+                        if (v.State == 1)
+                        {
+                            var across = v.Dir is 0 or 2 ? ry : rx;
+                            side.Moving++;
+                            if (CrowdTrace.Off(across)) side.MovingOff++;
+                            side.Lanes.Add((v.Dir & 1, across / 4));
+                        }
+                    }
+                    px[v.Id] = v.X;
+                    py[v.Id] = v.Y;
+                }
+            }
+        }
+        return (players, bots);
+    }
+
+    [Fact]
+    public void Players_stand_on_spots_where_bots_stand_too()
+    {
+        var (players, bots) = Observe(3);
+        output.WriteLine($"стоять поза квадратом ±8: гравці {players.StandingOff * 100 / players.Standing}%, боти {bots.StandingOff * 100 / bots.Standing}%; кошиків: гравці {players.Spots.Count}, боти {bots.Spots.Count}");
+        Assert.Subset(bots.Spots, players.Spots);
+        // і не «колись одного разу», а звично: хто став поза центром клітинки — ще не гравець
+        Assert.True(bots.StandingOff * 2 >= players.StandingOff * bots.Standing / players.Standing,
+            $"боти стоять поза центром {bots.StandingOff}/{bots.Standing}, гравці — {players.StandingOff}/{players.Standing}");
+    }
+
+    [Fact]
+    public void Players_walk_the_same_lanes_as_bots()
+    {
+        var (players, bots) = Observe(3);
+        output.WriteLine($"ідуть поза смугою ±8: гравці {players.MovingOff * 100 / players.Moving}%, боти {bots.MovingOff * 100 / bots.Moving}%");
+        Assert.Subset(bots.Lanes, players.Lanes);
+        Assert.True(bots.MovingOff * 2 >= players.MovingOff * bots.Moving / players.Moving,
+            $"боти йдуть поза смугою {bots.MovingOff}/{bots.Moving}, гравці — {players.MovingOff}/{players.Moving}");
+    }
+
+    [Fact]
+    public void Players_stand_as_long_or_as_short_as_bots_do()
+    {
+        var (players, bots) = Observe(3);
+        string Show(CrowdTrace s) => string.Join(" ", Enumerable.Range(0, 8).Select(b => $"{b}:{s.Share(b, b) / 10.0:F1}%"));
+        output.WriteLine($"серії стояння, гравці: {Show(players)}");
+        output.WriteLine($"серії стояння, боти:   {Show(bots)}");
+        Assert.Subset(bots.Runs.Keys.ToHashSet(), players.Runs.Keys.ToHashSet());
+        // коротко зупинитись (до 11 тиків) і задивитись надовго (понад 4 с) — у ботів не рідше, ніж удвічі, ніж у людей
+        Assert.True(bots.Share(0, 2) * 2 >= players.Share(0, 2), $"коротких зупинок: боти {bots.Share(0, 2) / 10.0}%, гравці {players.Share(0, 2) / 10.0}%");
+        Assert.True(bots.Share(6, 7) * 2 >= players.Share(6, 7), $"довгих стоянь: боти {bots.Share(6, 7) / 10.0}%, гравці {players.Share(6, 7) / 10.0}%");
     }
 
     // =============================================================================================

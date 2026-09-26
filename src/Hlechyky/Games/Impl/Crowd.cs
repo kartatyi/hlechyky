@@ -16,11 +16,21 @@ public sealed class CrowdSeat
     public readonly int[] List = new int[4];
     public readonly bool[] Done = new bool[4];
     public int Stones, ShotCool, BuyCool;
-    /// <summary>Списочних покупок за раунд (публічно).</summary>
+    /// <summary>Списочних покупок за раунд — таємниця до розкриття, як і очки раунду.</summary>
     public int Bought;
     public int Kills;
     public int Total;
+    /// <summary>
+    /// Очки на початок раунду — їх і видно всім, поки раунд іде. Інакше «+2 Олі» в ту саму мить, коли селянин
+    /// №17 когось збив, назвав би стрільця, а «+1» після спалаху — покупця.
+    /// </summary>
+    public int ShownTotal;
     public int Shots;
+    /// <summary>Тик (наскрізний, <c>Crowd._clock</c>) останнього <c>move</c>: затиснута стрілка без підтвердження гасне.</summary>
+    public int MoveAt;
+    /// <summary>Слід за раунд для розкриття: кільце останніх позицій свого селянина.</summary>
+    public readonly int[] TrailX = new int[Crowd.TrailLen], TrailY = new int[Crowd.TrailLen];
+    public int TrailHead, TrailCount;
     /// <summary>Перший камінець раунду влучив у гравця — на ачівку «Око-алмаз».</summary>
     public bool Eye;
     /// <summary>Тик раунду, коли список скуплено; -1 — ще ні.</summary>
@@ -49,11 +59,18 @@ public sealed class Crowd : Game
     public const int RevealTicks = 150;
     public const int Stones = 3;
     public const int ShotCoolTicks = 25;
-    public const int HaggleTicks = 25;
+    public const int HaggleTicks = CrowdCore.HaggleTicks;
     public const int BuyCoolTicks = 50;
     public const int PtBuy = 1, PtKill = 2, PtRound = 3;
     /// <summary>У розкритті кадр летить раз на стільки тиків (усі стоять — частіше нема чого).</summary>
     public const int RevealFrameEvery = 5;
+    /// <summary>
+    /// Затиснуту стрілку модуль підтверджує раз на секунду; не чули 3 с — зв'язок обірвався, селянин зупиняється, а не
+    /// тисне 20 с у паркан (так стоїть лише живий).
+    /// </summary>
+    public const int MoveHoldTicks = 75;
+    /// <summary>Слід на розкритті: точка раз на 12 тиків, 42 точки — останні ≈ 20 с.</summary>
+    public const int TrailEvery = 12, TrailLen = 42;
 
     /// <summary>«Як на ярмарку»: на двох — 24 боти, далі більше, на вісьмох — 40.</summary>
     public static int BotsFor(int players) => players switch
@@ -89,8 +106,12 @@ public sealed class Crowd : Game
     int _left;
     /// <summary>Тик раунду (з «роздивись» включно).</summary>
     int _t;
+    /// <summary>Наскрізний тик партії — для «коли востаннє чули стрілку».</summary>
+    int _clock;
     int _n;
     bool _dirty;
+    /// <summary>Чим скінчилась партія: «end» — дограли, «left» — усі розійшлись.</summary>
+    string _endWhy = "end";
     /// <summary>Події з дій між тиками — підуть у наступний кадр.</summary>
     readonly List<int[]> _pending = [];
     /// <summary>Події цього тика — рівно ті, що в кадрі.</summary>
@@ -99,7 +120,7 @@ public sealed class Crowd : Game
     CrowdReveal? _reveal;
     int[]? _winners;
 
-    sealed record CrowdReveal(int[] Winners, string Why, (int Seat, int Id)[] Ids, CrowdRow[] Rows);
+    sealed record CrowdReveal(int[] Winners, string Why, (int Seat, int Id)[] Ids, CrowdRow[] Rows, (int Seat, int[] Pts)[] Trails);
     sealed record CrowdRow(int Seat, int Buy, int Kills, bool Win, int Pts);
 
     CrowdCore Core => _core ??= new CrowdCore(Ctx.Rng);
@@ -131,6 +152,8 @@ public sealed class Crowd : Game
     {
         _started = true;
         _round = 0;
+        _clock = 0;
+        _endWhy = "end";
         _winners = null;
         _reveal = null;
         _pending.Clear();
@@ -143,7 +166,7 @@ public sealed class Crowd : Game
             s.Plays = Ctx.Seated(i);
             s.Out = false;
             s.Nick = Ctx.NickOf(i) ?? "";
-            s.Total = 0;
+            s.Total = s.ShownTotal = 0;
             if (s.Plays) players++;
         }
         _n = players + BotsForTable(players);
@@ -161,6 +184,7 @@ public sealed class Crowd : Game
         for (var i = 0; i < Seats; i++)
             if (_s[i].Active) owners.Add(i);
         Core.Deal(owners, Math.Max(0, _n - owners.Count));
+        Core.Trading = false;
         foreach (var v in Core.V)
             if (v.Owner >= 0) _s[v.Owner].Me = v.Id;
         var rng = Ctx.Rng;
@@ -171,6 +195,9 @@ public sealed class Crowd : Game
             s.Stones = Stones;
             s.ShotCool = s.BuyCool = 0;
             s.Bought = s.Kills = s.Shots = 0;
+            s.ShownTotal = s.Total;
+            s.MoveAt = _clock;
+            s.TrailHead = s.TrailCount = 0;
             s.Eye = false;
             s.CompletedAt = -1;
             DealList(rng, s);
@@ -229,6 +256,7 @@ public sealed class Crowd : Game
         // Мертвому й у розкритті — приймаємо й мовчки не застосовуємо: тост нічого не мусить викривати.
         if (!s.Alive || _phase == PhaseReveal || s.Me < 0) return ActResult.Done;
         Core.V[s.Me].Want = dir.Value;
+        s.MoveAt = _clock;
         return ActResult.Done;
     }
 
@@ -353,27 +381,35 @@ public sealed class Crowd : Game
             case PhaseStart:
                 OpenEvents();
                 _t++;
+                _clock++;
+                HeldKeys();
                 Core.ThinkAll();
                 Core.StepAll();
+                Trail();
                 if (--_left <= 0)
                 {
                     _phase = PhaseGo;
                     _left = RoundTicks;
+                    Core.Trading = true;
                     _dirty = true;
                 }
                 return Flush(true);
             case PhaseGo:
                 OpenEvents();
                 _t++;
+                _clock++;
+                HeldKeys();
                 Timers();
                 Core.ThinkAll();
                 Core.StepAll();
+                Trail();
                 _left--;
                 EndCheck();
                 return Flush(true);
             case PhaseReveal:
                 OpenEvents();
                 _t++;
+                _clock++;
                 if (--_left <= 0)
                 {
                     if (_round < _rounds) NewRound();
@@ -401,6 +437,48 @@ public sealed class Crowd : Game
         return new TickResult(frame, view);
     }
 
+    /// <summary>Стрілку, яку давно не підтверджували (обрив зв'язку), відпускаємо самі.</summary>
+    void HeldKeys()
+    {
+        for (var i = 0; i < Seats; i++)
+        {
+            var s = _s[i];
+            if (!s.Active || !s.Alive || s.Me < 0) continue;
+            var v = Core.V[s.Me];
+            if (v.Want >= 0 && _clock - s.MoveAt > MoveHoldTicks) v.Want = -1;
+        }
+    }
+
+    /// <summary>Раз на <see cref="TrailEvery"/> тиків — точка в слід кожного живого гравця (для розкриття).</summary>
+    void Trail()
+    {
+        if (_t % TrailEvery != 0) return;
+        for (var i = 0; i < Seats; i++)
+        {
+            var s = _s[i];
+            if (!s.Active || !s.Alive || s.Me < 0) continue;
+            var v = Core.V[s.Me];
+            s.TrailX[s.TrailHead] = v.X;
+            s.TrailY[s.TrailHead] = v.Y;
+            s.TrailHead = (s.TrailHead + 1) % TrailLen;
+            if (s.TrailCount < TrailLen) s.TrailCount++;
+        }
+    }
+
+    /// <summary>Слід місця від найстарішої точки до найновішої: x, y, x, y…</summary>
+    static int[] TrailOf(CrowdSeat s)
+    {
+        var a = new int[s.TrailCount * 2];
+        var start = (s.TrailHead - s.TrailCount + TrailLen) % TrailLen;
+        for (var i = 0; i < s.TrailCount; i++)
+        {
+            var j = (start + i) % TrailLen;
+            a[i * 2] = s.TrailX[j];
+            a[i * 2 + 1] = s.TrailY[j];
+        }
+        return a;
+    }
+
     void Timers()
     {
         for (var i = 0; i < Seats; i++)
@@ -410,23 +488,25 @@ public sealed class Crowd : Game
             if (s.ShotCool > 0) s.ShotCool--;
             if (s.BuyCool > 0) s.BuyCool--;
         }
-        foreach (var v in Core.V)
-        {
-            if (v.Haggle > 0 && --v.Haggle == 0) Bought(v);
-            if (v.Fallen > 0 && --v.Fallen == 0) CrowdCore.Forget(v);
-        }
+        Core.TimersAll();
+        foreach (var id in Core.Haggled) Bought(Core.V[id]);
     }
 
-    /// <summary>Торг скінчився: лоток спалахує для всіх; зі списку — зараховано.</summary>
+    /// <summary>
+    /// Торг скінчився: лоток спалахує для всіх — хоч купив гравець, хоч бот, хоч хтось збрехав покупкою не зі списку.
+    /// Вид розсилаємо щоразу однаково, а чиї очки й покупки — видно лише на розкритті, тож спалах каже тільки «тут
+    /// хтось стояв». Гравцеві зі списку — зараховано.
+    /// </summary>
     void Bought(CrowdVillager v)
     {
         var stall = v.HaggleStall;
         v.HaggleStall = -1;
-        if (v.Owner < 0 || stall < 0) return;
-        var s = _s[v.Owner];
-        s.BuyCool = BuyCoolTicks;
+        if (stall < 0) return;
         _ev.Add([2, stall]);
         _dirty = true;
+        if (v.Owner < 0) return;
+        var s = _s[v.Owner];
+        s.BuyCool = BuyCoolTicks;
         for (var i = 0; i < 4; i++)
         {
             if (s.List[i] != stall || s.Done[i]) continue;
@@ -476,18 +556,9 @@ public sealed class Crowd : Game
             _s[w].Total += PtRound;
             if (why == "list" && _s[w].Shots == 0) Ctx.Award(w, 0, "ach:crowd-quiet");
         }
-        var ids = new List<(int, int)>();
-        var rows = new List<CrowdRow>();
         for (var i = 0; i < Seats; i++)
-        {
-            var s = _s[i];
-            if (!s.Active) continue;
-            if (s.Eye) Ctx.Award(i, 0, "ach:crowd-eye");
-            var win = Array.IndexOf(winners, i) >= 0;
-            ids.Add((i, s.Me));
-            rows.Add(new CrowdRow(i, s.Bought, s.Kills, win, s.Bought * PtBuy + s.Kills * PtKill + (win ? PtRound : 0)));
-        }
-        _reveal = new CrowdReveal(winners, why, [.. ids], [.. rows]);
+            if (_s[i].Active && _s[i].Eye) Ctx.Award(i, 0, "ach:crowd-eye");
+        _reveal = RevealOf(winners, why, s => s.Active);
         foreach (var v in Core.V)
         {
             v.Want = -1;
@@ -498,6 +569,24 @@ public sealed class Crowd : Game
         _phase = PhaseReveal;
         _left = RevealTicks;
         _dirty = true;
+    }
+
+    /// <summary>Розкриття: хто ким був, рядки раунду й сліди — для місць, що пройшли фільтр.</summary>
+    CrowdReveal RevealOf(int[] winners, string why, Func<CrowdSeat, bool> who)
+    {
+        var ids = new List<(int, int)>();
+        var rows = new List<CrowdRow>();
+        var trails = new List<(int, int[])>();
+        for (var i = 0; i < Seats; i++)
+        {
+            var s = _s[i];
+            if (!s.Plays || s.Me < 0 || !who(s)) continue;
+            var win = Array.IndexOf(winners, i) >= 0;
+            ids.Add((i, s.Me));
+            rows.Add(new CrowdRow(i, s.Bought, s.Kills, win, s.Bought * PtBuy + s.Kills * PtKill + (win ? PtRound : 0)));
+            trails.Add((i, TrailOf(s)));
+        }
+        return new CrowdReveal(winners, why, [.. ids], [.. rows], [.. trails]);
     }
 
     void FinishMatch()
@@ -542,8 +631,19 @@ public sealed class Crowd : Game
         for (var i = 0; i < Seats; i++)
             if (i != seat && _s[i].Active && Ctx.Seated(i)) rest.Add(i);
         if (rest.Count > 1) return;
+        // Партія скінчилась посеред раунду: юрма завмирає, а всім показуємо, хто ким був, — і того, хто пішов. Якщо
+        // раунд уже розкрито, лишаємо його підсумок.
+        if (!(_phase == PhaseReveal && _reveal is not null)) _reveal = RevealOf([.. rest], "left", x => x.Me >= 0);
+        foreach (var v in Core.V)
+        {
+            v.Want = -1;
+            v.Moving = false;
+            v.Haggle = 0;
+            v.HaggleStall = -1;
+        }
         _phase = PhaseOver;
         _left = 0;
+        _endWhy = "left";
         _winners = [.. rest];
         foreach (var i in rest) Ctx.Score(i, _s[i].Total);
         Ctx.Finish([.. rest], rest.Count == 1
@@ -588,14 +688,17 @@ public sealed class Crowd : Game
     {
         var live = _started;
         var me = seat is { } k && k >= 0 && k < Seats && _s[k].Active && live && _s[k].Me >= 0 ? MeOf(k) : null;
+        // Покупки й очки раунду — лише на розкритті: посеред раунду «+1» чи «+2» комусь назвав би того, хто щойно
+        // купив чи влучив. Поки раунд іде, видно очки на його початок і «bought: null».
+        var open = _phase is PhaseReveal or PhaseOver;
         var seats = new List<object>();
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
             if (live && s.Plays)
-                seats.Add(new { seat = i, nick = s.Nick, alive = s.Alive, @out = s.Out, bought = s.Bought, total = s.Total });
+                seats.Add(new { seat = i, nick = s.Nick, alive = s.Alive, @out = s.Out, bought = open ? s.Bought : (int?)null, total = open ? s.Total : s.ShownTotal });
             else if (!live && Ctx.Seated(i))
-                seats.Add(new { seat = i, nick = Ctx.NickOf(i) ?? "", alive = true, @out = false, bought = 0, total = 0 });
+                seats.Add(new { seat = i, nick = Ctx.NickOf(i) ?? "", alive = true, @out = false, bought = (int?)null, total = 0 });
         }
         var dead = new List<object>();
         if (live)
@@ -629,10 +732,11 @@ public sealed class Crowd : Game
                     why = r.Why,
                     ids = r.Ids.Select(p => new { seat = p.Seat, id = p.Id }).ToArray(),
                     rows = r.Rows.Select(x => new { seat = x.Seat, buy = x.Buy, kills = x.Kills, win = x.Win, pts = x.Pts }).ToArray(),
+                    trails = r.Trails.Select(p => new { seat = p.Seat, pts = p.Pts }).ToArray(),
                 }
                 : null,
             result = _phase == PhaseOver && _winners is { } w
-                ? new { winners = w, totals = _s.Select(x => x.Total).ToArray() }
+                ? new { winners = w, totals = _s.Select(x => x.Total).ToArray(), why = _endWhy }
                 : null,
             turn = (int?)null,
         };

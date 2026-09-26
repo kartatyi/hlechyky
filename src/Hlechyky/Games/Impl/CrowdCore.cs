@@ -31,7 +31,7 @@ public sealed class CrowdVillager
     // ---- мозок бота ----
     /// <summary>Клітинка цілі; -1 — треба обрати.</summary>
     public int Target = -1;
-    /// <summary>Точка цілі в клітинці (центр ± 6) — вона ж «смуга», якою бот повертає на перехрестях.</summary>
+    /// <summary>Точка цілі в клітинці (центр ± до 15) — її зсув від центру й «смуга», якою бот іде й повертає.</summary>
     public int Tx, Ty;
     /// <summary>Ціль — прилавок цього лотка; -1 — просто кудись.</summary>
     public int TargetStall = -1;
@@ -67,11 +67,31 @@ public sealed class CrowdCore(Random rng)
     public const int ShotRangeMax = 190;
     /// <summary>cos²35° ≈ 0,671 — у тисячних, щоб рахувати конус на цілих.</summary>
     public const int ConeCos2Milli = 671;
-    public const int StandMin = 12, StandMax = 75;
+    /// <summary>
+    /// Скільки бот стоїть, коли дійшов: звичайно 0,5–3 с, але кожен четвертий задивляється довше — до 6 с,
+    /// до 12 с, а зрідка й до 20 («роззяви»). Людина, що завмерла роздивитись юрму, так не виділяється.
+    /// </summary>
+    public const int StandMin = 12, StandMax = 75, LongStandMax = 500;
+    /// <summary>Посеред дороги бот інколи зупиняється на 1–20 тиків — «завагався», як людина, що відпустила клавішу.</summary>
+    public const int PauseMilli = 9, PauseMax = 20;
+    /// <summary>Стоячи, бот інколи переступає: 1–3 тики кроку в випадковий бік (біля перешкоди — лише обертається).</summary>
+    public const int FidgetMilli = 8;
     /// <summary>Відсоток «тиняння» після стояння і скільки воно триває.</summary>
     public const int WanderChance = 15, WanderMin = 8, WanderMax = 24;
     /// <summary>Відсоток цілей-прилавків (решта — випадкова клітинка).</summary>
     public const int StallPick = 60;
+    /// <summary>
+    /// Бот, що дійшов до прилавка, у стількох тисячних випадків і справді купує: секунду торгується, і лоток
+    /// спалахує, як від гравця. Тож спалах — не вирок «тут живий», а лише привід придивитись.
+    /// </summary>
+    public const int BotBuyMilli = 25;
+    /// <summary>Торг триває секунду — однаково в гравця й бота.</summary>
+    public const int HaggleTicks = 25;
+    /// <summary>
+    /// Де в клітинці селянин стає чи якою смугою йде: зсув від центру до ±15 (уся клітинка), коли коробка
+    /// влазить; де тісно — до ±7. Так само, як людина, що зупиняється будь-де.
+    /// </summary>
+    public const int SpotMax = 15, TightMax = 7;
     /// <summary>Збитий бот лежить 3 с.</summary>
     public const int FallTicks = 75;
     /// <summary>
@@ -88,6 +108,9 @@ public sealed class CrowdCore(Random rng)
 
     public CrowdVillager[] V { get; private set; } = [];
     public int N => V.Length;
+
+    /// <summary>Ярмарок відкрито (фаза «go»): лише тоді й боти купують — гравцям на «роздивись» теж не можна.</summary>
+    public bool Trading { get; set; } = true;
 
     // ---------------------------------------------------------------------------------------------
     // Крок — один на всіх
@@ -129,6 +152,29 @@ public sealed class CrowdCore(Random rng)
         for (var i = 0; i < v.Length; i++) Step(v[i]);
     }
 
+    int[] _haggled = [];
+
+    /// <summary>Кому цього тика скінчився торг (id за зростанням) — після <see cref="TimersAll"/>.</summary>
+    public ReadOnlySpan<int> Haggled => _haggled.AsSpan(0, HaggledCount);
+    public int HaggledCount { get; private set; }
+
+    /// <summary>
+    /// Годинники селян: торг і лежання. Кому торг скінчився — у <see cref="Haggled"/> (спалах і покупку рахує гра);
+    /// хто відлежав — встає й думає з чистого аркуша.
+    /// </summary>
+    public void TimersAll()
+    {
+        var v = V;
+        if (_haggled.Length < v.Length) _haggled = new int[v.Length];
+        HaggledCount = 0;
+        for (var i = 0; i < v.Length; i++)
+        {
+            var q = v[i];
+            if (q.Haggle > 0 && --q.Haggle == 0) _haggled[HaggledCount++] = i;
+            if (q.Fallen > 0 && --q.Fallen == 0) Forget(q);
+        }
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Мозок бота
     // ---------------------------------------------------------------------------------------------
@@ -142,18 +188,31 @@ public sealed class CrowdCore(Random rng)
     }
 
     /// <summary>
-    /// Бот виставляє <see cref="CrowdVillager.Want"/>: іде до цілі (прилавок чи випадкова клітинка), прийшов — стоїть
-    /// 12–75 тиків обличчям до лотка, інколи потім тиняється. Між клітинками повертає лише тоді, коли
-    /// вирівнявся на свою «смугу» (центр клітинки + зсув цілі): коробка тоді точно вміщається в коридор, а
-    /// повороти не лягають на одну решітку.
+    /// Бот виставляє <see cref="CrowdVillager.Want"/> так, щоб у кадрах його не відрізнити від людини. Іде до цілі
+    /// (прилавок чи випадкова клітинка) своєю «смугою» — зсувом цілі від центру клітинки, аж до краю клітинки, де
+    /// коробка влазить; посеред дороги інколи завагається на мить; дійшов — стоїть де завгодно в клітинці, звичайно
+    /// 0,5–3 с, а кожен четвертий задивляється довше; стоячи, інколи переступає; після стояння інколи тиняється.
+    /// Біля прилавка обертається до лотка й зрідка справді купує (спалах, як від гравця).
     /// </summary>
     public void Think(CrowdVillager v)
     {
-        if (v.Dead || v.Fallen > 0) return;
+        if (v.Dead || v.Fallen > 0 || v.Haggle > 0) return;     // лежить чи торгується — Step і так не рушить
+        if (v.Wander > 0)
+        {
+            v.Wander--;          // Want уже стоїть; біля стіни Step сам зупинить (лише обернеться)
+            return;
+        }
         if (v.Stand > 0)
         {
             v.Stand--;
             v.Want = -1;
+            if (v.Stand > 3 && _rng.Next(1000) < FidgetMilli)
+            {
+                // переступив з ноги на ногу — і стоїть далі
+                v.Wander = _rng.Next(0, 3);
+                v.Want = _rng.Next(4);
+                return;
+            }
             if (v.Stand == 0 && v.WanderNext)
             {
                 v.WanderNext = false;
@@ -162,60 +221,121 @@ public sealed class CrowdCore(Random rng)
             }
             return;
         }
-        if (v.Wander > 0)
-        {
-            v.Wander--;          // Want уже стоїть; біля стіни Step сам зупинить
-            return;
-        }
         if (v.Blocked)
         {
-            // уперся (таке буває з колишнім гравцем, що стояв криво) — ціль геть, наступного тика нова
+            // уперся (після тиняння чи колишній гравець, що стояв криво) — ціль геть, наступного тика нова
             v.Blocked = false;
             v.Target = -1;
+            v.TargetStall = -1;
             v.Want = -1;
             return;
         }
         if (v.Target < 0) PickTarget(v);
+        if (_rng.Next(1000) < PauseMilli)
+        {
+            // завагався: зупинка на 1–20 тиків, ціль та сама
+            v.Stand = _rng.Next(0, PauseMax);
+            v.Want = -1;
+            return;
+        }
 
         var cell = CrowdMap.CellOf(v.X, v.Y);
         if (cell == v.Target)
         {
-            int dx = v.Tx - v.X, dy = v.Ty - v.Y;
-            if (Math.Abs(dx) <= 2 && Math.Abs(dy) <= 2)
-            {
-                v.Stand = _rng.Next(StandMin, StandMax + 1);
-                v.Dir = v.TargetStall >= 0 ? CrowdMap.Stalls[v.TargetStall].Face : _rng.Next(4);
-                v.WanderNext = _rng.Next(100) < WanderChance;
-                v.Want = -1;
-                v.Target = -1;
-                v.TargetStall = -1;
-                return;
-            }
-            v.Want = Math.Abs(dx) > Math.Abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+            Approach(v);
             return;
         }
-
         var hop = CrowdMap.NextHop[v.Target * CrowdMap.Cells + cell];
         if (hop == CrowdMap.NoHop)
         {
             v.Target = -1;
+            v.TargetStall = -1;
             v.Want = -1;
             return;
         }
-        // Вирівнятись на смугу поперек напрямку кроку, потім іти.
+        // Вирівнятись на смугу поперек напрямку кроку, потім іти. Смуга — зсув цілі від центру; де з таким зсувом
+        // коробка не пролізе (тут або в наступній клітинці), — ближче до центру, ±7 пролазить завжди.
         if (hop is 0 or 2)
         {
-            var lane = cell / CrowdMap.W * CrowdMap.Cell + CrowdMap.Cell / 2 + (v.Ty - CrowdMap.CenterY(v.Target));
+            int mid = CrowdMap.CenterY(cell), off = v.Ty - CrowdMap.CenterY(v.Target), next = CrowdMap.CenterX(cell) + DX[hop] * CrowdMap.Cell;
+            var lane = mid + off;
+            if (!Fits4(v.X, next, lane, true)) lane = mid + Math.Clamp(off, -TightMax, TightMax);
             if (v.Y < lane - 1) { v.Want = 1; return; }
             if (v.Y > lane + 1) { v.Want = 3; return; }
         }
         else
         {
-            var lane = cell % CrowdMap.W * CrowdMap.Cell + CrowdMap.Cell / 2 + (v.Tx - CrowdMap.CenterX(v.Target));
+            int mid = CrowdMap.CenterX(cell), off = v.Tx - CrowdMap.CenterX(v.Target), next = CrowdMap.CenterY(cell) + DY[hop] * CrowdMap.Cell;
+            var lane = mid + off;
+            if (!Fits4(v.Y, next, lane, false)) lane = mid + Math.Clamp(off, -TightMax, TightMax);
             if (v.X < lane - 1) { v.Want = 0; return; }
             if (v.X > lane + 1) { v.Want = 2; return; }
         }
         v.Want = hop;
+    }
+
+    /// <summary>
+    /// Чи пролізе коробка смугою <paramref name="lane"/> (±1 — стільки лишає крок 3) і тут (<paramref name="at"/> уздовж
+    /// руху), і в центрі наступної клітинки (<paramref name="next"/>). Тоді вільне й усе між ними: коробка на півдорозі
+    /// накриває лише ті клітинки, що вже накривали ці.
+    /// </summary>
+    static bool Fits4(int at, int next, int lane, bool horizontal) => horizontal
+        ? CrowdMap.BoxFits(at, lane - 1) && CrowdMap.BoxFits(at, lane + 1) && CrowdMap.BoxFits(next, lane - 1) && CrowdMap.BoxFits(next, lane + 1)
+        : CrowdMap.BoxFits(lane - 1, at) && CrowdMap.BoxFits(lane + 1, at) && CrowdMap.BoxFits(lane - 1, next) && CrowdMap.BoxFits(lane + 1, next);
+
+    static bool CanStep(CrowdVillager v, int d) => CrowdMap.BoxFits(v.X + DX[d] * Speed, v.Y + DY[d] * Speed);
+
+    /// <summary>У клітинці цілі — до своєї точки: спершу по довшій осі, де не пролізти — по іншій; ніяк — стає тут.</summary>
+    void Approach(CrowdVillager v)
+    {
+        int dx = v.Tx - v.X, dy = v.Ty - v.Y;
+        if (Math.Abs(dx) <= 2 && Math.Abs(dy) <= 2)
+        {
+            Arrive(v);
+            return;
+        }
+        int hx = dx > 2 ? 0 : dx < -2 ? 2 : -1, hy = dy > 2 ? 1 : dy < -2 ? 3 : -1;
+        int first = Math.Abs(dx) > Math.Abs(dy) ? hx : hy, second = first == hx ? hy : hx;
+        if (first >= 0 && CanStep(v, first)) v.Want = first;
+        else if (second >= 0 && CanStep(v, second)) v.Want = second;
+        else Arrive(v);
+    }
+
+    /// <summary>
+    /// Дійшов. Біля свого прилавка обертається до лотка (як гравець, що торгується) і зрідка купує: торг рівно такий,
+    /// як у гравця, — від першого тика стояння до спалаху 24 тики. Деінде обличчя не міняє: на місці повернутись
+    /// людина не може. Стоїть <see cref="StandTicks"/>.
+    /// </summary>
+    void Arrive(CrowdVillager v)
+    {
+        var k = v.TargetStall;
+        v.Target = -1;
+        v.TargetStall = -1;
+        v.Want = -1;
+        v.WanderNext = false;
+        if (k >= 0 && CounterAt(v) == k)
+        {
+            v.Dir = CrowdMap.Stalls[k].Face;
+            if (_rng.Next(1000) < BotBuyMilli && Trading)
+            {
+                v.Haggle = HaggleTicks - 1;     // гравець: Act між тиками, і таймер тикає вже в першому тику стояння
+                v.HaggleStall = k;
+                v.Stand = _rng.Next(0, 41);
+                return;
+            }
+        }
+        v.Stand = StandTicks();
+        v.WanderNext = _rng.Next(100) < WanderChance;
+    }
+
+    /// <summary>Скільки стояти: 74 % — 0,5–3 с, 14 % — 3–6 с, 8 % — 6–12 с, 4 % — 12–20 с.</summary>
+    int StandTicks()
+    {
+        var r = _rng.Next(100);
+        return r < 74 ? _rng.Next(StandMin, StandMax + 1)
+            : r < 88 ? _rng.Next(StandMax + 1, 151)
+            : r < 96 ? _rng.Next(151, 301)
+            : _rng.Next(301, LongStandMax + 1);
     }
 
     void PickTarget(CrowdVillager v)
@@ -234,11 +354,25 @@ public sealed class CrowdCore(Random rng)
             v.TargetStall = -1;
         }
         v.Target = cell;
-        v.Tx = CrowdMap.CenterX(cell) + _rng.Next(-6, 7);
-        v.Ty = CrowdMap.CenterY(cell) + _rng.Next(-6, 7);
+        (v.Tx, v.Ty) = Spot(cell);
     }
 
-    /// <summary>Бот устав після падіння чи став ботом після виходу гравця: думає з чистого аркуша.</summary>
+    /// <summary>
+    /// Точка в клітинці, де стати: зсув до ±15 по обох осях (уся клітинка), якщо коробка там влазить; три спроби, далі
+    /// — до ±7 (влазить завжди). Нею ж і ходять (смуга), і так само ставлять на старті раунду й ботів, і гравців.
+    /// </summary>
+    (int X, int Y) Spot(int cell)
+    {
+        int cx = CrowdMap.CenterX(cell), cy = CrowdMap.CenterY(cell);
+        for (var i = 0; i < 3; i++)
+        {
+            int x = cx + _rng.Next(-SpotMax, SpotMax), y = cy + _rng.Next(-SpotMax, SpotMax);
+            if (CrowdMap.BoxFits(x, y)) return (x, y);
+        }
+        return (cx + _rng.Next(-TightMax, TightMax + 1), cy + _rng.Next(-TightMax, TightMax + 1));
+    }
+
+    /// <summary>Бот устав після падіння чи став ботом після виходу гравця: думає з чистого аркуша, недоторгованого не купує.</summary>
     public static void Forget(CrowdVillager v)
     {
         v.Target = -1;
@@ -248,6 +382,8 @@ public sealed class CrowdCore(Random rng)
         v.Wander = 0;
         v.WanderNext = false;
         v.Blocked = false;
+        v.Haggle = 0;
+        v.HaggleStall = -1;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -320,8 +456,7 @@ public sealed class CrowdCore(Random rng)
                 if (v.Owner >= 0 && TooClose(list, i, cell)) continue;
                 break;
             }
-            v.X = CrowdMap.CenterX(cell) + _rng.Next(-6, 7);
-            v.Y = CrowdMap.CenterY(cell) + _rng.Next(-6, 7);
+            (v.X, v.Y) = Spot(cell);
             v.Dir = _rng.Next(4);
             list[i] = v;
         }
