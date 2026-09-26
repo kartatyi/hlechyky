@@ -703,7 +703,7 @@ public class ClickerCoreTests
     }
 
     [Fact]
-    public void The_golden_jug_rolls_forty_thirty_thirty()
+    public void The_golden_jug_rolls_fair_forty_merchant_and_inspire_thirty()
     {
         var h = Wheel(seed: 11);
         var kinds = new int[3];
@@ -713,8 +713,8 @@ public class ClickerCoreTests
             Act(h, "look");
             lock (h.Room.Sync) kinds[JsonNode.Parse(h.Room.Game.Save()!)!["golden"]!["kind"]!.GetValue<int>()]++;
         }
-        Assert.InRange(kinds[(int)Clicker.GoldenKind.Merchant] / 400.0, 0.30, 0.50);
-        Assert.InRange(kinds[(int)Clicker.GoldenKind.Fair] / 400.0, 0.21, 0.39);
+        Assert.InRange(kinds[(int)Clicker.GoldenKind.Fair] / 400.0, 0.30, 0.50);
+        Assert.InRange(kinds[(int)Clicker.GoldenKind.Merchant] / 400.0, 0.21, 0.39);
         Assert.InRange(kinds[(int)Clicker.GoldenKind.Inspire] / 400.0, 0.21, 0.39);
     }
 

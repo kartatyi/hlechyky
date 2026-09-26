@@ -878,9 +878,9 @@ public sealed partial class Clicker : Game
         // Чорна глина й глиняний свисток скорочують чекання; собака під лавою стереже глек трохи довше.
         var wait = seconds ?? (min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * (Tool("whistle") ? WhistleEvents : 1);
         var at = from + TimeSpan.FromSeconds(wait);
-        // Дев'яте оновлення §A.7: кидок 40/30/30 — купець уже не переважає, бо тепер він платить по-справжньому.
+        // Кидок 40/30/30 на користь ярмарку (26.09): купець і натхнення по 30.
         var roll = Ctx.Rng.Next(100);
-        var kind = roll < 40 ? GoldenKind.Merchant : roll < 70 ? GoldenKind.Fair : GoldenKind.Inspire;
+        var kind = roll < 40 ? GoldenKind.Fair : roll < 70 ? GoldenKind.Merchant : GoldenKind.Inspire;
         // Де саме на сцені: лівий верхній кут у відсотках. Глек завширшки ~58 px, сцена на телефоні ~300 px —
         // тож праворуч лишаємо чверть, щоб він не вилазив за картку.
         var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero) + HouseGoldenExtra;
