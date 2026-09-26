@@ -1849,7 +1849,8 @@
       const w = tw + r * 2 + 6 * ck;
       const x = s.x * k;
       let y = s.y * k - 20 * k - 6 * ck;
-      const lx = x - w / 2;
+      // мітка не вилазить за канвас: по боках притискаємо до краю, згори — див. нижче
+      const lx = Math.max(2, Math.min(st.pxW - w - 2, x - w / 2));
       // не налазити на вже поставлені (вони вище): піднімаємо, поки є перетин
       for (let tries = 0; tries < 4; tries++) {
         let hit = false;
@@ -1862,6 +1863,8 @@
         }
         if (!hit) break;
       }
+      // машина на самій верхній прямій (чи купа підняла мітку за край) — підпис під машиною
+      if (y - h / 2 < 2) y = Math.max(y, s.y * k + 20 * k + 6 * ck);
       box[q * 4] = lx; box[q * 4 + 1] = y; box[q * 4 + 2] = w;
       g.fillStyle = 'rgba(10,16,12,.55)';
       g.beginPath(); g.roundRect(lx, y - fs * 0.7, w, h, fs * 0.7); g.fill();
@@ -1990,13 +1993,33 @@
     g.fillText(text, W / 2, 12 * ck + fs * 1.1);
   }
 
+  /// Таблиця результатів не міняється, поки не прийде новий вид чи стіл: малюємо її раз в offscreen-канвас
+  /// (емодзі й текст у канвасі дорогі) і далі щокадру лише копіюємо.
   function results(st, g) {
-    const v = st.view, rows = v.results || [], W = st.pxW, H = st.pxH, ck = st.cssK, pal = st.pal;
-    const fs = Math.max(11, Math.round(14 * ck));
-    const lh = fs * 1.9;
-    const rec = v.records && v.records[0];
-    const w = Math.min(W - 20 * ck, 460 * ck), h = lh * (rows.length + (rec ? 2.5 : 1.6));
-    const x = W / 2 - w / 2, y = Math.max(8 * ck, H / 2 - h / 2);
+    const v = st.view, W = st.pxW, H = st.pxH, room = st.ctx && st.ctx.room;
+    const rc = st.resC;
+    if (!rc || rc.v !== v || rc.room !== room || rc.W !== W || rc.H !== H || rc.pal !== st.pal) {
+      const rows = v.results || [], ck = st.cssK;
+      const fs = Math.max(11, Math.round(14 * ck));
+      const lh = fs * 1.9;
+      const rec = v.records && v.records[0];
+      const w = Math.min(W - 20 * ck, 460 * ck), h = lh * (rows.length + (rec ? 2.5 : 1.6));
+      const x = W / 2 - w / 2, y = Math.max(8 * ck, H / 2 - h / 2);
+      const x0 = Math.floor(x), y0 = Math.floor(y), cw = Math.ceil(w) + 2, chh = Math.ceil(h) + 2;
+      const cv = rc && rc.cv.width === cw && rc.cv.height === chh ? rc.cv : offscreen(cw, chh);
+      const c = cv.getContext('2d');
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, cw, chh);
+      c.setTransform(1, 0, 0, 1, -x0, -y0);
+      c.textBaseline = 'middle';
+      paintResults(st, c, rows, rec, x, y, w, h, fs, lh);
+      st.resC = { cv, x: x0, y: y0, v, room, W, H, pal: st.pal };
+    }
+    g.drawImage(st.resC.cv, st.resC.x, st.resC.y);
+  }
+
+  function paintResults(st, g, rows, rec, x, y, w, h, fs, lh) {
+    const v = st.view, W = st.pxW, ck = st.cssK, pal = st.pal;
     g.fillStyle = 'rgba(10,16,12,.84)';
     g.beginPath(); g.roundRect(x, y, w, h, 14 * ck); g.fill();
     g.textAlign = 'center';
@@ -2147,9 +2170,39 @@
       st.ro = new ResizeObserver(() => { layout(st); ensureTrack(st); if (st.centred) centreCanvas(st); });
       st.ro.observe(wrap);
     }
+    st.onResize = () => { st.fitDirty = true; };
+    window.addEventListener('resize', st.onResize);
   }
 
   const phoneLandscape = () => !!(window.matchMedia && window.matchMedia('(pointer: coarse) and (orientation: landscape) and (max-height: 500px)').matches);
+
+  /// Від низу картки столу до низу вікна (поле сторінки під карткою).
+  const FIT_PAD = 18;
+
+  /// Канвас по висоті вікна (мишка, пад, Steam Deck; не телефон — там ⛶ і centreCanvas). CSS тримає грубий
+  /// резерв «100vh − 250 px», а з 4–6 гравцями рядок місць каркаса й HUD переносяться в два рядки, і на
+  /// 1280×800 «Ще раз» ховався під низом екрана. Тут міряємо, що справді стоїть над канвасом (шапка сайту,
+  /// заголовок, місця, HUD) і під ним (статус, кнопки; у лобі — ще вибір машини й рекорди), і підтискаємо канвас.
+  /// Ці рядки — на всю ширину картки, від ширини канваса не залежать, тож петлі нема. У гонці канвас лише
+  /// меншає: чіп, що перескочив на другий рядок посеред кола, не має смикати трасу туди-сюди.
+  function fitHeight(st) {
+    const wrap = st.wrap, table = wrap && wrap.closest('.gtable');
+    let px = 0;
+    if (table && !coarse() && window.innerHeight > 500) {
+      const r = wrap.getBoundingClientRect(), tb = table.getBoundingClientRect();
+      const above = r.top + window.scrollY, below = tb.bottom - r.bottom + FIT_PAD;
+      const room = (st.root && st.root.clientWidth) || r.width;
+      px = Math.max(Math.min(480, room), Math.floor((window.innerHeight - above - below) * 16 / 9));
+    }
+    const ph = st.f ? st.f.ph : 0;
+    const racing = ph === 1 || ph === 2;
+    const same = st.fitPh === ph;
+    st.fitPh = ph;
+    if (px && st.fitPx && racing && same && px > st.fitPx) return;
+    if (!!px === !!st.fitPx && Math.abs(px - (st.fitPx || 0)) < 6) return;
+    st.fitPx = px;
+    wrap.style.maxWidth = px ? 'min(1280px, ' + px + 'px)' : '';
+  }
 
   /// Прокрутити сторінку так, щоб канвас став посередині видимого: під липкою шапкою сайту, над вкладками й
   /// міні-плеєром (їхні висоти — змінні сайту --tabs-h/--mini-h; у ⛶ плеєра нема).
@@ -2199,7 +2252,7 @@
       let extra = '';
       if (f && f.ph >= 1) {
         if (!present) extra = ' <span class="rl-x">✕</span>';
-        else if (fin > 0) extra = ' <b>' + place(fin) + '</b> ⌛';
+        else if (fin > 0) extra = ' <b>' + place(fin) + '</b> 🏁';
         else if (f.ph >= 2 && pos) extra = ' <b>' + place(pos) + '</b> ' + Math.min(v.laps, lap + 1) + '/' + v.laps;
       }
       html += '<span class="rl-chip s' + i + (i === ctx.seat ? ' me' : '') + (!present && f && f.ph >= 1 ? ' out' : '') + '"><i>' + (i + 1) + '</i>'
@@ -2211,7 +2264,7 @@
     if (rec && !(v.random && v.ph === 0)) html += '<span class="rl-chip rl-info">⏱ ' + ctx.esc(rec.nick) + ' ' + clock(rec.ms, 2) + '</span>';
     html += '<button type="button" class="rl-tog" data-t="sound" title="Звук (типово вимкнено — на сайті грає радіо)">' + (st.sound ? '🔈' : '🔇') + '</button>';
     if (coarse()) html += '<button type="button" class="rl-tog' + (st.autogas ? ' on' : '') + '" data-t="gas" title="Газ завжди натиснуто">⛽ автогаз</button>';
-    if (html !== st.hudSig) { st.hudSig = html; st.hud.innerHTML = html; }
+    if (html !== st.hudSig) { st.hudSig = html; st.hud.innerHTML = html; st.fitDirty = true; }
   }
 
   function paintLower(st) {
@@ -2260,7 +2313,9 @@
     // фаза змінилась: відлік — стерти сліди; зелене — звук і спалах; кінець — стоп симуляції
     if (f.ph !== st.lastPh) {
       if (f.ph === 1 && st.skidG) st.skidG.clearRect(0, 0, WU, HU);
-      if (f.ph === 2 && st.lastPh === 1) { st.greenAt = performance.now(); sfx(st, 'green'); }
+      // лише справжній старт: після ⛶, F5 чи входу глядачем перший кадр береться з виду, а вид сервер шле лише
+      // на подіях — він буває ще з відліку, і наступний живий кадр посеред гонки вдавав би «Руш!» ще раз
+      if (f.ph === 2 && st.lastPh === 1 && f.t - S.COUNT <= 6) { st.greenAt = performance.now(); sfx(st, 'green'); }
       if (f.ph === 3 || f.ph === 0) { st.sim = null; st.others = []; }
       st.lastPh = f.ph;
     }
@@ -2330,6 +2385,7 @@
       st.raf = 0;
       if (!st.cv || !st.cv.isConnected) return;
       if (!document.hidden && st.cv.offsetParent) {
+        if (st.fitDirty) { st.fitDirty = false; fitHeight(st); }
         draw(st, now);
         engineSound(st);
       }
@@ -2354,6 +2410,8 @@
     paintHud(st);
     paintLower(st);
     paintTouch(st);
+    // висоти над і під канвасом міряємо в наступному кадрі: каркас домальовує статус і кнопки після update
+    st.fitDirty = true;
     loop(st);
   }
 
@@ -2466,6 +2524,7 @@
       if (st.blur) window.removeEventListener('blur', st.blur);
       if (st.vis) document.removeEventListener('visibilitychange', st.vis);
       if (st.ro) st.ro.disconnect();
+      if (st.onResize) window.removeEventListener('resize', st.onResize);
       if (st.audio) st.audio.close();
       root._rally = null;
     },
