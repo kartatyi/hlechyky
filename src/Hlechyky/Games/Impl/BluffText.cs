@@ -165,8 +165,25 @@ public static class BluffText
     }
 
     /// <summary>
+    /// Службові слова, що не міняють брехню: «у хвості» і «хвості» — одна картка (у питанні й так стоїть «в ___»).
+    /// </summary>
+    static readonly HashSet<string> Small = new(StringComparer.Ordinal)
+    {
+        "в", "у", "на", "з", "із", "зі", "зо", "до", "по", "за", "під", "над", "від", "о", "об", "при", "про", "для",
+        "і", "й", "та", "а", "ж", "же",
+    };
+
+    /// <summary>Слова без службових; якщо нічого не лишилось — як були.</summary>
+    static List<string> Meaningful(List<string> tokens)
+    {
+        var list = tokens.FindAll(t => !Small.Contains(t));
+        return list.Count > 0 ? list : tokens;
+    }
+
+    /// <summary>
     /// Дві брехні — одна картка? Однакові після <see cref="Norm"/> або слово в слово з відмінками й одруківками, у тому
-    /// самому порядку. Брехня з самих смайликів нормалізується в порожнечу — такі порівнюємо як написано.
+    /// самому порядку, без службових слів («у хвості» = «хвості»). Брехня з самих смайликів нормалізується в порожнечу —
+    /// такі порівнюємо як написано.
     /// </summary>
     public static bool LooksSame(string? a, string? b)
     {
@@ -175,8 +192,8 @@ public static class BluffText
         if (na.Length == 0 || nb.Length == 0)
             return string.Equals(Clean(a), Clean(b), StringComparison.OrdinalIgnoreCase);
         if (na == nb) return true;
-        var ta = Tokens(a);
-        var tb = Tokens(b);
+        var ta = Meaningful(Tokens(a));
+        var tb = Meaningful(Tokens(b));
         if (ta.Count != tb.Count || ta.Count == 0) return false;
         for (var i = 0; i < ta.Count; i++)
             if (!TokenMatch(ta[i], tb[i])) return false;

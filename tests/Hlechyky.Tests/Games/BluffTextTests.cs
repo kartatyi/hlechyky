@@ -103,6 +103,10 @@ public class BluffTextTests
         Assert.False(BluffText.LooksSame("салі", "салі свинячому"));
         Assert.False(BluffText.LooksSame("салі свинячому", "свинячому салі"));
         Assert.False(BluffText.LooksSame("в Римі", "в Криму"));
+        // Службові слова не роблять брехню новою: у питанні й так стоїть «в ___».
+        Assert.True(BluffText.LooksSame("у хвості", "хвості"));
+        Assert.True(BluffText.LooksSame("на гасі", "Гасі"));
+        Assert.False(BluffText.LooksSame("кіт і пес", "пес і кіт"));
         Assert.False(BluffText.LooksSame("1854", "1855"));
         // Самі смайлики нормалізуються в порожнечу — тоді порівнюємо як написано.
         Assert.True(BluffText.LooksSame("🙂", "🙂"));
