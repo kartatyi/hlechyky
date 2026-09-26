@@ -21,6 +21,8 @@
   position: relative; width: 100%; margin: 0 auto;
   max-width: min(1280px, calc((100vh - 250px) * 16 / 9));
 }
+/* у лобі під канвасом ще вибір машини й рекорди (~150 px), а «Почати» має лишитись на екрані */
+.rl-body.rl-lobby .rl-wrap { max-width: min(1280px, calc((100vh - 430px) * 16 / 9)); min-width: min(100%, 320px); }
 .rl-wrap.rl-live { touch-action: none; user-select: none; -webkit-user-select: none; }
 .rl-cv.gcanvas { width: 100%; max-width: none; aspect-ratio: 16 / 9; height: auto; display: block; border-radius: 10px; background: var(--rl-grass); }
 
@@ -55,11 +57,11 @@
 .rl-pick { flex: 1 1 360px; max-width: 520px; display: flex; flex-direction: column; gap: 6px; }
 .rl-cars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
 .rl-cars button {
-  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px; font-size: .8em;
-  border-radius: 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding: 5px 6px; font-size: .8em;
+  border-radius: 10px; min-width: 0; min-height: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .rl-cars button.on { background: var(--accent2); color: var(--accent-ink); box-shadow: 0 0 0 2px var(--accent) inset; }
-.rl-emo { font-size: 1.6em; line-height: 1.1; }
+.rl-emo { font-size: 1.45em; line-height: 1.1; flex: none; }
 .rl-note { text-align: center; }
 .rl-records { flex: 1 1 320px; max-width: 540px; background: var(--bg2); border-radius: 10px; padding: 8px 12px; font-size: .86em; }
 .rl-rh { font-weight: 700; margin-bottom: 4px; }
@@ -126,6 +128,7 @@
   .rl-records { display: none; }
 }
 @media (max-width: 480px) {
+  .rl-cars button { flex-direction: column; gap: 0; font-size: .74em; padding: 4px 2px; }
   .rl-hud { gap: 4px; font-size: .74em; }
   .rl-chip { padding: 2px 7px; gap: 4px; }
 }

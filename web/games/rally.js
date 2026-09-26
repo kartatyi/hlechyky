@@ -2170,7 +2170,11 @@
     st.touchEl.classList.toggle('show', !!on);
     st.touchOn = !!on && coarse();
     const racing = !!(st.f && (st.f.ph === 1 || st.f.ph === 2));
-    if (st.root) st.root.classList.toggle('rl-racing', racing);
+    if (st.root) {
+      st.root.classList.toggle('rl-racing', racing);
+      // лобі: канвас — лише показ траси, тож менший, щоб вибір машини, рекорди й «Почати» влізли в екран
+      st.root.classList.toggle('rl-lobby', !!(st.view && st.view.ph === 0));
+    }
     // телефон боком: канвас сам стає між шапкою сайту й тим, що прибито внизу, щойно почався відлік
     if (on && !st.centred && phoneLandscape()) {
       st.centred = true;
