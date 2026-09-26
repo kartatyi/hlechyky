@@ -351,7 +351,7 @@
       n.styles.need ? share(n.styles.have, n.styles.need) : 1, p.have ? 1 : 0.999);
     const row = (label, have, need) => '<div class="clkg-req' + (have >= need ? ' ok' : '') + '"><span>' + label + '</span>'
       + '<div class="clkg-rbar"><i style="width:' + (share(have, need) * 100).toFixed(1) + '%"></i></div>'
-      + '<b>' + api.short(Math.min(have, need)) + '/' + api.short(need) + '</b></div>';
+      + '<b>' + api.count(Math.min(have, need)) + '/' + api.count(need) + '</b></div>';
     // Прикметник якості, узгоджений з родом виробу (розкішний лев — майстерштук старійшини).
     const gender = ['bowl', 'makitra', 'tile'].includes(p.ware) ? 1 : p.ware === 'barrel' ? 2 : 0;
     const adj = [['дзвінкий', 'дзвінка', 'дзвінке'], ['розкішний', 'розкішна', 'розкішне']][(p.q || 3) >= 4 ? 1 : 0][gender];
@@ -505,7 +505,7 @@
     else if (k.batch) text = '🏺 у горні складено ' + k.batch + ' ' + api.plural(k.batch, 'виріб', 'вироби', 'виробів')
       + (k.style ? ' · ' + styleName(st, k.style).toLowerCase() + ', краса ' + k.beauty : '');
     else text = '🧱 горно холодне й порожнє';
-    return '<div class="muted small clkg-kiln">' + api.esc(st, text) + (k.batches ? ' · партій за весь час: ' + api.short(k.batches) : '') + '</div>';
+    return '<div class="muted small clkg-kiln">' + api.esc(st, text) + (k.batches ? ' · партій за весь час: ' + api.count(k.batches) : '') + '</div>';
   }
 
   /// Стіна звань у хаті друга (clicker-titles.md): що він має, найрідкісніші спершу, і пам'ятний глечик «Округа».
@@ -548,13 +548,13 @@
           + kilnHtml(st, api, d)
           + '<div class="clkg-stats">'
           + stat('глеків за весь час', api.potsShort(d.total))
-          + stat('виліплено', api.short(d.formed))
-          + stat('обпалено', api.short(d.fired))
+          + stat('виліплено', api.count(d.formed))
+          + stat('обпалено', api.count(d.fired))
           + stat('розписів', d.styles.length)
           + album
           + (d.tiles != null ? stat('кахлів у печі', d.tiles) : '')
           + (d.wonders != null ? stat('дивовиж знайдено', d.wonders) : '')
-          + stat('клейм', d.stamps)
+          + stat('клейм', api.count(d.stamps || 0))
           + '</div>'
           + (d.gifts.length ? '<div class="muted small">Дарунки від: ' + esc([...new Set(d.gifts.map((g) => g.from))].join(', ')) + '</div>' : '')
           + wallHtml(st, api, d)

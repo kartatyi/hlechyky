@@ -821,9 +821,28 @@ public sealed partial class Clicker : Game
     internal ActResult? SpendStamps(long price)
     {
         if (price <= 0) return null;
-        if (FreeStamps < price) return ActResult.Fail($"Бракує клейм: треба ще {price - FreeStamps}");
+        if (FreeStamps < price) return ActResult.Fail($"Бракує клейм: треба ще {Count(price - FreeStamps)}");
         _stampsUsed += price;
         return null;
+    }
+
+    // ---------- сумісність клієнтів (десяте оновлення) ----------
+
+    /// <summary>
+    /// Версія протоколу клієнта: з v10 вид «худий» (тексти магазину — у <c>shopCatalog</c>, клієнт доповнює вид сам).
+    /// Вкладка, відкрита до деплою, тримає старий clicker.js і доповнювати не вміє, а сайт сам сторінку не
+    /// перезавантажує (друзі тримають радіо відкритим добами). Тож поки клієнт не сказав <c>pv ≥ 10</c> (у кліках і в
+    /// запиті каталогу), вид повний — такий, як до v10; щойно сказав — худий.
+    /// </summary>
+    public const int ProtocolVersion = 10;
+    bool _slim;
+
+    /// <summary>Що каже клієнт про себе: <c>pv</c> у payload. Старий клік без нього — старий клієнт.</summary>
+    void SeeClient(JsonElement payload, bool oldIfMissing)
+    {
+        var pv = Num(payload, "pv");
+        if (pv is { } v) _slim = v >= ProtocolVersion;
+        else if (oldIfMissing) _slim = false;
     }
 
     // ---------- життя партії ----------
@@ -1042,6 +1061,7 @@ public sealed partial class Clicker : Game
     {
         if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("catalog", out var c) && c.ValueKind == JsonValueKind.True)
             _catalogWanted = true;
+        SeeClient(payload, oldIfMissing: false);
         return ActResult.Done;
     }
 
@@ -1192,6 +1212,7 @@ public sealed partial class Clicker : Game
         // тут — їй досить перезавантажитись.
         if (ClickerGuard.Parse(payload) is not { } hands)
             return ActResult.Fail("Коло оновилось — перезавантаж сторінку");
+        SeeClient(payload, oldIfMissing: true);
         var now = Ctx.Clock.UtcNow;
         if (_guard.Locked(now) || _guard.Pending) return ActResult.Done;
 
@@ -1398,6 +1419,35 @@ public sealed partial class Clicker : Game
         };
     }
 
+    /// <summary>
+    /// Верстат у виді. Для нового клієнта (<see cref="_slim"/>) — лише те, що міняється: рівень, ціна, стеля, приріст,
+    /// ×2 від віх, наступна віха й чи відкритий. Для вкладки, відкритої до v10, — ще й назва, опис, вид і ріст ціни, як
+    /// і було: інакше в неї порожні верстати до перезавантаження.
+    /// </summary>
+    object UpgradeView(ClickerUpgrade up, int index, double passive)
+    {
+        var level = Level(up.Key);
+        var price = up.Price(level);
+        // Скільки глеків за секунду додасть наступний рівень — для підказки «окупиться за».
+        var gain = up.Kind switch
+        {
+            ClickerKind.Idle => GainOf(up),
+            ClickerKind.Mult when !CappedNow(up, level) => passive * 0.25,
+            _ => 0,
+        };
+        // Справжній множник від віх: у пасивних ×2 за кожну, а в колі ×2 дає лише перша (решта — відсоток пасиву).
+        var boost = up.Kind == ClickerKind.Click
+            ? (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1)
+            : Math.Pow(2, MarksOf(up));
+        if (_slim)
+            return new { level, price, max = MaxOf(up), gain, marks = MarksOf(up), boost, nextMark = NextMark(up), open = Opened(index) };
+        return new
+        {
+            level, price, name = up.Name, desc = up.Desc, max = MaxOf(up), kind = up.Kind.ToString().ToLowerInvariant(), gain,
+            growth = (double)up.GrowNum / up.GrowDen, marks = MarksOf(up), boost, nextMark = NextMark(up), open = Opened(index),
+        };
+    }
+
     /// <summary>Рівень наступної віхи верстата, яку ще не куплено (null — усі куплені).</summary>
     int? NextMark(ClickerUpgrade up)
     {
@@ -1421,7 +1471,11 @@ public sealed partial class Clicker : Game
                 desc = u.Desc,
                 kind = u.Kind.ToString().ToLowerInvariant(),
                 growth = (double)u.GrowNum / u.GrowDen,
-                marks = u.Steps.Select((m, i) => new { level = m.Level, name = m.Name, desc = MarkDesc(u, i), price = u.MarkPrice(i) }),
+                marks = u.Steps.Select((m, i) => new
+                {
+                    level = m.Level, name = m.Name, desc = MarkDesc(u, i), price = u.MarkPrice(i),
+                    effect = m.Effect.ToString().ToLowerInvariant(), amount = m.Amount,
+                }),
             }, StringComparer.Ordinal),
             secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring }),
             styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price }),
@@ -1747,7 +1801,7 @@ public sealed partial class Clicker : Game
             return ActResult.Fail("Такого секрету в родині нема");
         if (_secrets.Contains(secret.Key)) return ActResult.Fail($"«{secret.Name}» уже знаєш");
         var free = FreeStamps;
-        if (free < secret.Price) return ActResult.Fail($"Бракує клейм: треба ще {secret.Price - free}");
+        if (free < secret.Price) return ActResult.Fail($"Бракує клейм: треба ще {Count(secret.Price - free)}");
         _secrets.Add(secret.Key);
         return ActResult.Accept($"🤫 {secret.Name}: {secret.Desc.ToLowerInvariant()}");
     }
@@ -1815,8 +1869,9 @@ public sealed partial class Clicker : Game
     {
         if (!double.IsFinite(n)) return "∞";
         // Від тисячі дробова частина — шум («14 091,8 ₴»): лише цілі, відтяті.
+        // Запас у трильйонну частку — як у Shown: 6·10³⁰ / 10²⁷ у double — це 5 999,99…, а показати треба 6 000.
         if (Math.Abs(n) < 1_000_000)
-            return n % 1 == 0 || Math.Abs(n) >= 1000 ? Math.Truncate(n).ToString("#,0", Uk) : n.ToString("#,0.#", Uk);
+            return n % 1 == 0 || Math.Abs(n) >= 1000 ? Math.Truncate(n * (1 + 1e-12)).ToString("#,0", Uk) : n.ToString("#,0.#", Uk);
         var i = (int)Math.Floor(Math.Log10(Math.Abs(n)) / 3) - 2;
         if (i >= BigNames.Length) return n.ToString("0.#e0", Uk);
         var v = Shown(n / Math.Pow(1000, i + 2));
@@ -1852,8 +1907,8 @@ public sealed partial class Clicker : Game
     static string GoldWord(double g)
     {
         if (!double.IsFinite(g) || Math.Abs(g) >= 1_000_000) return "золотих";
-        // Слово — за тим, що видно: Count до мільйона пише один знак після коми з округленням.
-        var shown = Math.Round(g, 1, MidpointRounding.AwayFromZero);
+        // Слово — за тим, що видно: до тисячі Count пише один знак після коми з округленням, від тисячі — ціле відтяте.
+        var shown = Math.Abs(g) >= 1000 ? Math.Truncate(g * (1 + 1e-12)) : Math.Round(g, 1, MidpointRounding.AwayFromZero);
         return shown % 1 != 0 ? "золотого" : Plural(shown, "золотий", "золоті", "золотих");
     }
 
@@ -1908,31 +1963,13 @@ public sealed partial class Clicker : Game
             baseSecond = passive,
             // Лише те, що міняється: назви, описи, вид верстата, ріст ціни й віхи — у shopCatalog (десяте оновлення §10:
             // вид летить щопачки кліків, а незмінні тексти двадцяти семи верстатів важили кілобайти щоразу).
-            upgrades = Shop.Select((u, index) => (u, index)).ToDictionary(x => x.u.Key, x => (object)new
-            {
-                level = Level(x.u.Key),
-                price = x.u.Price(Level(x.u.Key)),
-                max = MaxOf(x.u),
-                // Скільки глеків за секунду додасть наступний рівень — для підказки «окупиться за».
-                gain = x.u.Kind switch
-                {
-                    ClickerKind.Idle => GainOf(x.u),
-                    ClickerKind.Mult when !CappedNow(x.u, Level(x.u.Key)) => passive * 0.25,
-                    _ => 0,
-                },
-                marks = MarksOf(x.u),
-                // Справжній множник від віх: у пасивних ×2 за кожну, а в колі ×2 дає лише перша (решта — відсоток пасиву).
-                boost = x.u.Kind == ClickerKind.Click
-                    ? (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1)
-                    : Math.Pow(2, MarksOf(x.u)),
-                // Наступна віха (v10) — рівень; назву й що дасть клієнт бере з shopCatalog.
-                nextMark = NextMark(x.u),
-                open = Opened(x.index),
-            }, StringComparer.Ordinal),
+            upgrades = Shop.Select((u, index) => (u, index)).ToDictionary(x => x.u.Key, x => UpgradeView(x.u, x.index, passive), StringComparer.Ordinal),
             // Лише відкриті й ще не куплені віхи — ключем; назву, підпис і ціну клієнт бере з shopCatalog.
             marks = Shop.SelectMany(u => u.Steps.Select((m, i) => (u, m, i)))
-                .Where(x => !_marks.Contains(MarkKey(x.u, x.i)) && Level(x.u.Key) >= x.m.Level)
-                .Select(x => new { key = MarkKey(x.u, x.i) })
+                .Where(x => Level(x.u.Key) >= x.m.Level && !_marks.Contains(MarkKey(x.u, x.i)))
+                .Select(x => _slim
+                    ? (object)new { key = MarkKey(x.u, x.i) }
+                    : new { key = MarkKey(x.u, x.i), on = x.u.Key, level = x.m.Level, name = x.m.Name, desc = MarkDesc(x.u, x.i), price = x.u.MarkPrice(x.i) })
                 .ToList(),
             // Скільки віх уже є і скільки всього (v10): «Віхи · 12 із 162».
             marksOwned = _marks.Count,
@@ -1971,8 +2008,12 @@ public sealed partial class Clicker : Game
             stampCap = StampCap,
             firings = _firings,
             // Секрети й розписи — лише «чи є»; тексти й ціни — у shopCatalog.
-            secrets = Secrets.Select(s => new { key = s.Key, owned = _secrets.Contains(s.Key) }),
-            styles = Styles.Select(s => new { key = s.Key, owned = _styles.Contains(s.Key) }),
+            secrets = Secrets.Select(s => _slim
+                ? (object)new { key = s.Key, owned = _secrets.Contains(s.Key) }
+                : new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
+            styles = Styles.Select(s => _slim
+                ? (object)new { key = s.Key, owned = _styles.Contains(s.Key) }
+                : new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key) }),
             wear = _wear,
             // Розгін: скільки гарячих кліків зараз і що з них виходить. Клієнт веде той самий рахунок між видами.
             heat,

@@ -55,6 +55,7 @@
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
   const NEWS_VERSION = 'v10';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const PV = 10;                          // версія протоколу (Clicker.ProtocolVersion): ми вміємо доповнювати худий вид
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
@@ -86,7 +87,11 @@
     callPart(p, 'mount', st, H.api);
     // Частина догнала вже відкриту картку: віддати їй останній вид і перемалювати картку — ремесло й хата дають
     // іншим частинам силуети й значки, і без цього гравець без дій так і дивився б на заглушки.
-    if (st.lastView) { callPart(p, 'update', st, st.lastView, H.api); refreshCard(st); }
+    // Недоповнений худий вид частинам не віддаємо — назв розписів і верстатів у ньому ще нема.
+    if (st.lastView && (st.shopCat || Object.values(st.lastView.upgrades || {}).some((u) => u && u.name))) {
+      callPart(p, 'update', st, st.lastView, H.api);
+      refreshCard(st);
+    }
   }
 
   /// Перемалювати картку з останнім видом: скинути підписи swap() і прогнати update ядра й частин. Раз на пачку запізнілих.
@@ -176,7 +181,7 @@
   function count(n) {
     if (!Number.isFinite(n)) return '∞';
     // Від тисячі дробова частина — шум («14 091,8 ₴»): лише цілі, відтяті.
-    if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? dec(n) : num(Math.trunc(n));
+    if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? dec(n) : num(cut(n, 0));
     const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
     if (i >= BIG.length) return expo(n);
     const v = n / Math.pow(1000, i + 2);
@@ -186,7 +191,8 @@
   /// Золотий / золоті / золотих; дробове — «золотого». Після скорочення («1,2 млн») — «золотих», як і глеки.
   const goldWord = (g) => {
     if (!Number.isFinite(g) || Math.abs(g) >= 1e6) return 'золотих';
-    const shown = Math.round(g * 10) / 10;
+    // Слово — за тим, що видно: до тисячі — один знак після коми, від тисячі — ціле відтяте.
+    const shown = Math.abs(g) >= 1000 ? cut(g, 0) : Math.round(g * 10) / 10;
     return shown % 1 ? 'золотого' : plural(shown, 'золотий', 'золоті', 'золотих');
   };
   /// Сума глеків коротко: до квадрильйона — число («5,5 трлн»), далі «5,93 млн ₴», від 10²⁷ — «60 000 золотих».
@@ -215,7 +221,7 @@
     const v = n / u.div;
     if (u.div === 1 && v < 1e12) return num(v);
     if (u.div > 1 && v < 1000) return nf(2).format(cut(v, 2));
-    if (u.div > 1 && v < 1e9) return num(Math.floor(v));
+    if (u.div > 1 && v < 1e9) return num(cut(v, 0));
     const i = Math.floor(Math.log10(v) / 3) - 2;
     if (i >= BIG.length) return expo(v);
     return nf(3).format(cut(v / Math.pow(1000, i + 2), 3)) + ' ' + BIG[i];
@@ -561,7 +567,7 @@
     if (st.rate.textContent !== rate) st.rate.textContent = rate;
 
     let buffs = '';
-    if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + st.fairMult + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
+    if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + dec(st.fairMult) + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
     if (sn < st.inspireUntil) buffs += '<span class="clk-buff inspire">✨ Натхнення: клік ×' + st.inspireMult + ' · ' + Math.ceil((st.inspireUntil - sn) / 1000) + ' с</span>';
     if (windOn(st, sn)) buffs += '<span class="clk-buff wind">🌬 Вітер із поля: без тебе ×' + dec(st.windMult) + ' · '
       + Math.ceil((st.windUntil - sn) / 1000) + ' с</span>';
@@ -1098,7 +1104,8 @@
     // Кліки, що вже полетіли, знімає з рахунку сам вид (див. update): вид і відповідь приходять різними
     // кадрами вебсокета, і якби ми чекали відповіді, між ними лічильник встигав би показати їх двічі.
     // Лишається тільки невдача: тоді виду не буде взагалі, і порахувати назад мусимо ми.
-    st.ctx.act('spin', { c: wire }).then((r) => { if (!r || !r.ok) back(); }, back);
+    // pv — сервер тоді шле худий вид (тексти магазину — раз, у shopCatalog).
+    st.ctx.act('spin', { c: wire, pv: PV }).then((r) => { if (!r || !r.ok) back(); }, back);
   }
 
   /// Точка на колі 0…1000 — так її чекає сервер.
@@ -1636,7 +1643,7 @@
         return '<div class="clk-order' + (invest ? '' : ' style') + '"><div class="clk-oname">' + (invest ? '🐴 ' : '🧺 ') + esc(o.merchant) + '</div>'
           + '<div class="small clk-otext">' + text + '</div>'
           + '<button type="button" class="primary small clk-take" data-take="' + o.id + '" data-kind="' + esc(o.kind) + '" data-need="' + o.need
-          + '" data-can="' + (o.can ? 1 : 0) + '" disabled>' + (invest ? 'Відправити' : 'Продати') + ' · ' + short(o.need) + ' 🏺</button></div>';
+          + '" data-can="' + (o.can ? 1 : 0) + '" disabled>' + (invest ? 'Відправити' : 'Продати') + ' · ' + short(o.need) + (o.need >= HRYVNIA ? '' : ' 🏺') + '</button></div>';
       }).join('') + '</div>'
       : '<div class="clk-teaser muted small">Усіх купців уже взято — нові прийдуть із новою дошкою</div>';
     const taken = st.taken.length
@@ -1809,7 +1816,9 @@
   function hydrate(st, v) {
     if (v.shopCatalog) st.shopCat = v.shopCatalog;
     const c = st.shopCat;
-    if (!c) return false;
+    // Повний вид (сервер ще до v10 — хвилина деплою — або сервер ще не знає, що ми нові): доповнювати нема чого.
+    const fat = Object.values(v.upgrades || {}).some((u) => u && u.name);
+    if (!c) return fat;
     const ups = v.upgrades || {};
     for (const k of Object.keys(ups)) {
       const u = ups[k];
@@ -1827,7 +1836,8 @@
         const [on, lv] = String(m.key).split(':');
         const s = c.upgrades && c.upgrades[on];
         const mk = s && (s.marks || []).find((x) => x.level === +lv);
-        return mk ? { key: m.key, on, level: +lv, name: mk.name, desc: mk.desc, price: mk.price } : null;
+        if (m.name) return m;                                   // повний вид — віха вже з назвою й ціною
+        return mk ? { key: m.key, on, level: +lv, name: mk.name, desc: mk.desc, price: mk.price, effect: mk.effect, amount: mk.amount } : null;
       }).filter(Boolean);
     }
     const owned = (list) => new Set((list || []).filter((x) => x.owned).map((x) => x.key));
@@ -2591,7 +2601,14 @@
         if (st.guard && H.api.overlayOpen(st) && !H.api.overlayBusy(st)) H.api.closeOverlay(st);
         // Каталоги (тексти виробів, подій…) сервер шле лише до першої дії — кешуємо; нема в кеші — просимо раз.
         if (v.catalog) st.catalog = v.catalog;
-        if ((!st.catalog || !st.shopCat) && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
+        if ((!st.catalog || !st.shopCat) && !st.catalogAsked && ctx.mine && ctx.act) {
+          // pv — ми клієнт v10, що вміє доповнювати худий вид. Каталог міг загубитись (ліміт дій, клік з іншого
+          // пристрою між look і видом) — тоді за три секунди питаємо знову.
+          st.catalogAsked = true;
+          ctx.act('look', { catalog: true, pv: PV });
+          clearTimeout(st.catalogT);
+          st.catalogT = setTimeout(() => { if (!st.catalog || !st.shopCat) st.catalogAsked = false; }, 3000);
+        }
         st.lastView = v;
         // «Що нового» — раз на гончаря; сервер шле поле, поки не бачив. Чекаємо, поки картка стане видною:
         // під час Ока майстра чи чужого вікна лізти поперед батька нема куди.

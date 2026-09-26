@@ -2393,9 +2393,17 @@
       const left = m.price - pots;
       const on = m.on || String(m.key).split(':')[0];
       const g = { icon: EMBLEM[on] || EMBLEM.wheel, text: 'Віха «' + m.name + '» · ' + m.desc, pct: (pots / m.price) * 100, eta: eta(left), tab: 'shop', row: '[data-mark="' + m.key + '"]' };
-      // Віха ×2 — найвигідніше, що буває: якщо вже по кишені, пропонуємо першою.
+      // Віха ×2 — найвигідніше, що буває: якщо вже по кишені, пропонуємо першою. Модифікатор (v10) — за його силою:
+      // «пасив +25 %» окуповується як чверть пасиву, решта — наче двадцята частина; підпис — що вона справді дає.
       if (left <= 0) {
-        if (!bestNow || bestNow.pay !== -1 || m.price < bestNow.price) bestNow = Object.assign(g, { pay: -1, price: m.price, sub: 'уже можна купити — ×2 назавжди' });
+        const dbl = !m.effect || m.effect === 'double';
+        if (dbl) {
+          if (!bestNow || bestNow.pay !== -1 || m.price < bestNow.price) bestNow = Object.assign(g, { pay: -1, price: m.price, sub: 'уже можна купити — ×2 назавжди' });
+        } else {
+          const share = m.effect === 'passive' ? (m.amount || 0.25) : 0.05;
+          const pay = rate > 0 ? m.price / (share * rate) : Infinity;
+          if (!bestNow || (bestNow.pay !== -1 && pay < bestNow.pay)) bestNow = Object.assign(g, { pay, price: m.price, sub: 'уже можна купити — ' + m.desc });
+        }
       }
       else if (!near || g.eta < near.eta) near = g;
     }

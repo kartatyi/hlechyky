@@ -765,7 +765,7 @@ public sealed partial class ClickerGuildService
         {
             nick,
             total = Math.Max(0, Pots(root["total"])),
-            stamps = Math.Max(0, Int(root["stamps"])),
+            stamps = Math.Max(0, Long(root["stamps"])),
             firings = Math.Max(0, Int(root["firings"])),
             ladder,
             decor = Known(house?["decor"], k => Clicker.Decor.Any(d => d.Key == k)),

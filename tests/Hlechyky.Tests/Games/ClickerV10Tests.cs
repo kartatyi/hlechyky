@@ -519,7 +519,7 @@ public class ClickerV10Tests
     public void The_shop_texts_travel_once_and_the_view_carries_only_state()
     {
         var h = Rich(("sich", 50), ("baturyn", 5));
-        Assert.True(Act(h, "look").Ok);                                    // після дії каталогів у виді нема
+        Assert.True(Act(h, "look", new { pv = Clicker.ProtocolVersion }).Ok);   // після дії каталогів у виді нема
         var v = View(h);
         Assert.Equal(JsonValueKind.Null, v.GetProperty("shopCatalog").ValueKind);
         var u = Up(h, "baturyn");
@@ -530,6 +530,30 @@ public class ClickerV10Tests
         Assert.True(shop < 6_000, $"магазин у виді важить {shop} Б");
         Assert.True(Act(h, "look", new { catalog = true }).Ok);
         Assert.Equal(JsonValueKind.Object, View(h).GetProperty("shopCatalog").ValueKind);
+    }
+
+    [Fact]
+    public void A_tab_opened_before_the_update_gets_the_full_view_until_it_says_it_is_new()
+    {
+        // Вкладка з clicker.js до v10 (радіо відкрите добами, сайт сам не перезавантажується) доповнювати худий вид не
+        // вміє: доки клієнт не сказав pv ≥ 10, вид повний, як до v10.
+        var h = Rich(("sich", 50));
+        var fat = Up(h, "sich");
+        Assert.Equal("Гончарня на Січі", fat.GetProperty("name").GetString());
+        Assert.Equal("idle", fat.GetProperty("kind").GetString());
+        Assert.True(View(h).GetProperty("secrets")[0].TryGetProperty("desc", out _));
+        Assert.True(View(h).GetProperty("marks")[0].TryGetProperty("price", out _));
+
+        Assert.True(Act(h, "spin", PotterHands.Human(1)).Ok);                // старий клік без pv — лишається повний
+        Assert.Equal("Гончарня на Січі", Up(h, "sich").GetProperty("name").GetString());
+
+        Assert.True(Act(h, "look", new { pv = Clicker.ProtocolVersion }).Ok); // новий клієнт — худий
+        Assert.False(Up(h, "sich").TryGetProperty("name", out _));
+        Assert.False(View(h).GetProperty("secrets")[0].TryGetProperty("desc", out _));
+
+        h.Clock.Advance(1);
+        Assert.True(Act(h, "spin", PotterHands.Human(1)).Ok);                // той самий гончар відкрив стару вкладку
+        Assert.Equal("Гончарня на Січі", Up(h, "sich").GetProperty("name").GetString());
     }
 
     // ---------- «Що нового» v10 і подарунок ----------

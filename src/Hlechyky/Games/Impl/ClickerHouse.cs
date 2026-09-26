@@ -549,7 +549,7 @@ public sealed partial class Clicker
             return ActResult.Accept($"🧺 {order.Merchant} забрав {PotsShort(order.Need)} «{styleName}» і заплатив {Short(pay)}");
         }
         _taken.Add(new(order.Id, order.Merchant, pay, now + TimeSpan.FromMinutes(order.Minutes)));
-        return ActResult.Accept($"🐴 {order.Merchant} поїхав із {PotsShort(order.Need)}, повернеться за {order.Minutes} хв із {Short(pay)}");
+        return ActResult.Accept($"🐴 {order.Merchant} узяв у дорогу {PotsShort(order.Need)} і повернеться за {order.Minutes} хв — привезе {Short(pay)}");
     }
 
     // ---------- життя хати ----------
