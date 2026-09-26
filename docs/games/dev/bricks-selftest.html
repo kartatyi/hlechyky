@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Цеглини: детермінізм C# ↔ JS</title>
+<style>
+  /* Стенд, не прод: результат — на сторінці, у document.title і з runAll() для cdp2.py --eval. */
+  body { margin: 0; background: #0f1f18; color: #ecf1ea; font: 14px/1.5 system-ui, sans-serif; }
+  #sum { padding: 10px 14px; font-weight: 700; border-bottom: 1px solid #2f4d3d; position: sticky; top: 0; background: #1c3328; }
+  #out { padding: 12px 14px; font: 13px/1.55 ui-monospace, Consolas, monospace; white-space: pre-wrap; margin: 0; }
+  .p { color: #7bd389; } .f { color: #e57373; font-weight: 700; } .m { color: #9db3a5; }
+</style>
+</head>
+<body>
+<div id="sum">біжу…</div>
+<pre id="out"></pre>
+
+<!--
+  Ті самі журнали, що й у tests/Hlechyky.Tests/Games/BricksFixtures.cs, і ті самі зафіксовані хеші (з C#).
+  xUnit (Selftest_stand_carries_the_same_fixtures_and_pins_as_the_tests) звіряє цей блок із тестами, тож
+  правити його руками не треба: змінились правила — перезапусти тест, він покладе новий блок у %TEMP%/bricks-fx.json.
+  Запуск: python D:/or-wt/_tools/cdp2.py --port 9651 --url "file:///D:/or-wt/w2-bricks/docs/games/dev/bricks-selftest.html" --eval "runAll()"
+-->
+<script id="bricks-fx" type="application/json">
+{"xorshift":[270369,67634689,2647435461,307599695,2398689233,745495504,632435482,435756210],"spawnT":3627329965,"suite":2647798469,"fixtures":[
+{"name":"random_play","seed":7,"mode":0,"stage":300,"gen":[7,300],"end":1400,"hash":3375459698,"lines":0},
+{"name":"das_wall_slides","seed":3,"mode":0,"stage":1800,"events":[5,1,40,2,41,3,60,1,70,2,90,4,91,10,100,3,140,1,141,4,170,2,171,10,180,1,181,3,230,4,231,2,232,10,240,5,250,1,290,2,291,6,300,10],"end":330,"hash":243030528,"lines":0},
+{"name":"srs_kicks_and_tspins","seed":10,"mode":0,"stage":1800,"rows":["8888088888","8880008888","8888000000"],"events":[0,7,1,5,45,6,46,7,47,10,70,3,71,4,72,7,80,10,95,1,96,2,100,8,105,10,120,3,150,4,151,7,160,7,170,10,180,7,181,10,190,7,191,1,230,2,231,7,232,7,240,10,250,8,255,10],"end":300,"hash":3359725442,"lines":2},
+{"name":"lock_delay_and_reset_budget","seed":5,"mode":0,"stage":1800,"events":[0,5,50,6,52,1,53,2,57,3,58,4,62,1,63,2,67,3,68,4,72,1,73,2,77,3,78,4,82,1,83,2,87,3,88,4,92,1,93,2,97,3,98,4,102,1,103,2,107,3,108,4,112,1,113,2,117,3,118,4,122,1,123,2,127,3,128,4,132,1,133,2,150,10],"end":220,"hash":2797007215,"lines":0},
+{"name":"garbage_and_top_out","seed":11,"mode":0,"stage":1800,"rows":["8888888880","8888888880","8888888880","8888888880"],"events":[0,7,1,3,2,4,3,3,4,4,5,3,6,4,7,3,8,4,9,10,30,10,40,1,41,2,42,10,60,3,61,4,62,10,80,11,90,10,110,1,111,2,112,10,130,10,150,10,170,10,190,10,210,10,230,10,250,10,270,10,290,10],"credits":[0,0,3,2,1,12,0,5,7,1,14,8,8,0,-1,17,0,8,4,2,20,10,8,9,-1,22,5,8,5,1],"end":400,"hash":3401156079,"lines":4},
+{"name":"hard_mode_with_credits","seed":99,"mode":1,"stage":600,"gen":[99,240],"credits":[5,4,2,3,0,30,2,1,6,2,60,9,4,1,3,90,1,2,8,-1],"end":1200,"hash":2907322712,"lines":0},
+{"name":"bot_game","seed":21,"mode":0,"stage":600,"credits":[3,11,3,7,3,74,7,4,1,-1,145,16,5,2,3,216,16,3,5,2,287,0,5,4,3,358,7,3,5,3,429,6,3,1,3,500,8,2,2,0,571,14,4,7,3,642,8,6,2,0,713,1,4,9,2,784,15,6,0,-1,855,17,1,8,2],"bot":150,"end":0,"hash":2852983956,"lines":29},
+{"name":"bot_hard_fast","seed":5,"mode":1,"stage":150,"credits":[3,16,5,9,3,74,0,6,7,0,145,10,5,8,0,216,16,1,9,-1,287,12,5,7,1,358,3,3,8,3,429,12,1,4,2,500,7,1,5,2,571,11,5,1,-1,642,0,3,6,2,713,9,6,3,-1,784,2,2,6,3,855,7,1,2,-1],"bot":120,"end":0,"hash":1417207665,"lines":37}
+]}</script>
+
+<!-- HGames нема — модуль виставить лише рушій (window.BricksCore) і тихо вийде -->
+<script src="../../../web/games/bricks.js"></script>
+<script>
+  function runAll() {
+    const B = window.BricksCore;
+    const fx = JSON.parse(document.getElementById('bricks-fx').textContent);
+    const res = [];
+    // xorshift від 1 і хеш порожньої стіни з T на появі
+    let x = 1;
+    const xs = [];
+    for (let i = 0; i < 8; i++) { x = B.nextRand(x); xs.push(x); }
+    res.push({ name: 'xorshift', got: xs.join(','), want: fx.xorshift.join(','), ok: xs.join(',') === fx.xorshift.join(',') });
+    const c = new B.Core();
+    c.reset(1, 0, 1800);
+    c.spawn(2);
+    res.push({ name: 'spawnT', got: c.hash(), want: fx.spawnT, ok: c.hash() === fx.spawnT });
+    for (const f of fx.fixtures) {
+      const r = B.run(f);
+      res.push({ name: f.name, got: r.hash, want: f.hash, lines: r.lines, ok: r.hash === f.hash && r.lines === f.lines });
+    }
+    const s = B.suite();
+    res.push({ name: 'suite', got: s, want: fx.suite, ok: s === fx.suite });
+
+    // Швидкодія рушія в браузері: крок стіни й відкат на 60 подій (spec §8.5: ≤ 20 мкс і ≤ 2 мс).
+    const w = new B.Core();
+    w.reset(3, 0, 60);
+    const keys = [1, 2, 3, 4, 7, 8, 5, 6, 10, 11, 0];
+    let t0 = performance.now(), n = 0;
+    for (let i = 0; i < 200000; i++) {
+      if (!w.alive) w.reset(i + 3, 0, 60);
+      if (i % 7 === 0) w.apply(keys[(i / 7 | 0) % keys.length]);
+      w.step();
+      w.clearN = 0;
+      n++;
+    }
+    const stepUs = (performance.now() - t0) * 1000 / n;
+    const base = new B.Core();
+    base.reset(9, 0, 600);
+    const snap = new B.Core().copyFrom(base);
+    const ev = B.gen(9, 60);
+    t0 = performance.now();
+    const R = 200;
+    for (let rep = 0; rep < R; rep++) {
+      base.copyFrom(snap);
+      for (let i = 0; i < ev.length; i += 2) { base.advanceTo(ev[i]); base.apply(ev[i + 1]); }
+    }
+    const rollbackMs = (performance.now() - t0) / R;
+
+    const bad = res.filter((r) => !r.ok);
+    const sum = bad.length ? 'FAIL ' + bad.length + ' з ' + res.length : 'OK ' + res.length + '/' + res.length;
+    document.title = sum;
+    document.getElementById('sum').textContent = sum + ' · крок ' + stepUs.toFixed(2) + ' мкс · відкат 60 подій ' + rollbackMs.toFixed(3) + ' мс';
+    document.getElementById('out').innerHTML = res.map((r) => '<span class="' + (r.ok ? 'p' : 'f') + '">' + (r.ok ? '✓ ' : '✗ ') + r.name
+      + '</span> <span class="m">' + r.got + (r.ok ? '' : ' ≠ ' + r.want) + (r.lines != null ? ' · рядів ' + r.lines : '') + '</span>').join('\n');
+    return { ok: !bad.length, total: res.length, failed: bad.map((r) => r.name), stepUs: +stepUs.toFixed(3), rollbackMs: +rollbackMs.toFixed(3), results: res };
+  }
+  window.addEventListener('load', () => { try { runAll(); } catch (e) { document.getElementById('sum').textContent = 'ВПАЛО: ' + e; throw e; } });
+</script>
+</body>
+</html>
