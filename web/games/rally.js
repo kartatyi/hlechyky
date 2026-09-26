@@ -548,17 +548,43 @@
     return out;
   }
 
-  /// Напрямок руху в клітинці (0..3: праворуч, вниз, ліворуч, вгору) — куди спадає відстань до наступних воріт.
-  function flowDir(tr, fields, cell) {
-    let best = -1, bestG = -1;
-    for (let g = 0; g < tr.K; g++) {
-      const v = fields[g][cell];
-      if (v > 0 && (best < 0 || v < best)) { best = v; bestG = g; }
+  /// Сектор кожної клітинки — номер воріт, до яких вона веде (ділянка між воротами g−1 і g). R_g — куди
+  /// дістанешся від воріт g, не перетнувши ні g−1, ні g+1 (тобто сектори обабіч воріт g); сектор g — спільне
+  /// R_g і R_{g−1}. Клітинки самих воріт g ведуть до g+1. Без цього ближчими «здавались» попередні ворота, і
+  /// шеврони турбо на Ярмарку дивились убік.
+  function sectors(tr) {
+    const N = S.COLS * S.ROWS, K = tr.K, reach = [];
+    for (let g = 0; g < K; g++) {
+      const a = (g + K - 1) % K, b = (g + 1) % K;
+      const seen = new Uint8Array(N), q = [];
+      for (let c = 0; c < N; c++) if (tr.gateAt[c] === g && !S.isWall(tr.tile[c])) { seen[c] = 1; q.push(c); }
+      for (let qi = 0; qi < q.length; qi++) {
+        const c = q[qi], x = c % S.COLS, y = (c / S.COLS) | 0;
+        const nb = [x > 0 ? c - 1 : -1, x < S.COLS - 1 ? c + 1 : -1, y > 0 ? c - S.COLS : -1, y < S.ROWS - 1 ? c + S.COLS : -1];
+        for (const n of nb) {
+          if (n < 0 || seen[n] || S.isWall(tr.tile[n]) || tr.gateAt[n] === a || tr.gateAt[n] === b) continue;
+          seen[n] = 1;
+          q.push(n);
+        }
+      }
+      reach.push(seen);
     }
-    if (bestG < 0) return 0;
-    const f = fields[bestG], x = cell % S.COLS, y = (cell / S.COLS) | 0;
+    const sec = new Int16Array(N).fill(-1);
+    for (let c = 0; c < N; c++) {
+      if (tr.gateAt[c] !== 255) { sec[c] = (tr.gateAt[c] + 1) % K; continue; }
+      for (let g = 0; g < K; g++) if (reach[g][c] && reach[(g + K - 1) % K][c]) { sec[c] = g; break; }
+    }
+    return sec;
+  }
+
+  /// Напрямок руху в клітинці (0..3: праворуч, вниз, ліворуч, вгору) — куди спадає відстань до воріт її сектора.
+  function flowDir(fields, sec, cell) {
+    const g = sec[cell];
+    if (g < 0) return 0;
+    const f = fields[g], x = cell % S.COLS, y = (cell / S.COLS) | 0;
+    const best = f[cell];
     const cand = [[1, 0, 0], [0, 1, 1], [-1, 0, 2], [0, -1, 3]];
-    let dir = 0, low = best;
+    let dir = 0, low = best < 0 ? 1e9 : best;
     for (const [dx, dy, d] of cand) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= S.COLS || ny >= S.ROWS) continue;
@@ -588,7 +614,7 @@
   }
 
   /// Статичний фон траси у світових одиницях (u): викликається раз на трасу й розмір канваса.
-  function paintTrack(g, tr, td, fields) {
+  function paintTrack(g, tr, td, fields, sec) {
     const look = lookOf(td.id);
     const C = 32, tile = tr.tile, code = (x, y) => tr.codeAt(x, y);
     g.fillStyle = look.grass;
@@ -642,7 +668,7 @@
         for (let x = 0; x < S.COLS; x++) {
           const k = code(x, y);
           if (k !== S.ROAD) continue;
-          const d = flowDir(tr, fields, y * S.COLS + x);
+          const d = flowDir(fields, sec, y * S.COLS + x);
           if (d === 0 || d === 2) { g.fillRect(x * C, y * C + 9, C, 3); g.fillRect(x * C, y * C + 21, C, 3); }
           else { g.fillRect(x * C + 9, y * C, 3, C); g.fillRect(x * C + 21, y * C, 3, C); }
         }
@@ -686,7 +712,7 @@
           g.fillStyle = gr;
           g.beginPath(); g.ellipse(cx, cy, 16, 13, 0.5, 0, Math.PI * 2); g.fill();
         } else if (k === S.BOOST || k === S.RAMP) {
-          const d = flowDir(tr, fields, y * S.COLS + x);
+          const d = flowDir(fields, sec, y * S.COLS + x);
           g.save();
           g.translate(cx, cy);
           g.rotate(d * Math.PI / 2);
@@ -1179,10 +1205,11 @@
     st.trackKey = key;
     st.track = S.buildTrack(td);
     st.fields = distFields(st.track);
+    st.sectors = sectors(st.track);
     st.bg = offscreen(st.pxW, st.pxH);
     const g = st.bg.getContext('2d');
     g.setTransform(st.k, 0, 0, st.k, 0, 0);
-    paintTrack(g, st.track, td, st.fields);
+    paintTrack(g, st.track, td, st.fields, st.sectors);
     st.cornTop = null;
     if (td.corn) {
       st.cornTop = offscreen(st.pxW, st.pxH);
@@ -1900,19 +1927,21 @@
       }
       const text = st.timerText;
       const w = st.timerW + 16 * ck;
+      // під пальцем унизу — кнопки керма й газу: тоді таймер і «⌛» угорі (праворуч угорі — гудок і ↺)
+      const ty = st.touchOn ? 6 * ck : H - 30 * ck, tr = st.touchOn ? W - 92 * ck : W - 8 * ck;
       g.fillStyle = 'rgba(10,16,12,.6)';
-      g.beginPath(); g.roundRect(8 * ck, H - 30 * ck, w, 22 * ck, 8 * ck); g.fill();
+      g.beginPath(); g.roundRect(8 * ck, ty, w, 22 * ck, 8 * ck); g.fill();
       g.fillStyle = '#fff';
       g.textAlign = 'left';
-      g.fillText(text, 16 * ck, H - 19 * ck);
+      g.fillText(text, 16 * ck, ty + 11 * ck);
       if (f.s > 0 && f.ph === 2) {
         g.textAlign = 'right';
         const left = '⌛ ' + Math.ceil(f.s * TICK / 1000) + ' с';
         g.fillStyle = 'rgba(10,16,12,.6)';
         const w2 = g.measureText(left).width + 16 * ck;
-        g.beginPath(); g.roundRect(W - 8 * ck - w2, H - 30 * ck, w2, 22 * ck, 8 * ck); g.fill();
+        g.beginPath(); g.roundRect(tr - w2, ty, w2, 22 * ck, 8 * ck); g.fill();
         g.fillStyle = f.s * TICK <= 5000 ? pal.danger : '#fff';
-        g.fillText(left, W - 16 * ck, H - 19 * ck);
+        g.fillText(left, tr - 8 * ck, ty + 11 * ck);
       }
     }
     // спалахи (коло, фініш)
@@ -2006,6 +2035,7 @@
 
   function build(root, st) {
     root.classList.add('rl-body');
+    st.root = root;
     const hud = document.createElement('div');
     hud.className = 'rl-hud';
     const wrap = document.createElement('div');
@@ -2114,14 +2144,39 @@
     window.addEventListener('blur', st.blur);
     document.addEventListener('visibilitychange', st.vis);
     if (window.ResizeObserver) {
-      st.ro = new ResizeObserver(() => { layout(st); ensureTrack(st); });
+      st.ro = new ResizeObserver(() => { layout(st); ensureTrack(st); if (st.centred) centreCanvas(st); });
       st.ro.observe(wrap);
     }
+  }
+
+  const phoneLandscape = () => !!(window.matchMedia && window.matchMedia('(pointer: coarse) and (orientation: landscape) and (max-height: 500px)').matches);
+
+  /// Прокрутити сторінку так, щоб канвас став посередині видимого: під липкою шапкою сайту, над вкладками й
+  /// міні-плеєром (їхні висоти — змінні сайту --tabs-h/--mini-h; у ⛶ плеєра нема).
+  function centreCanvas(st) {
+    try {
+      const cs = getComputedStyle(document.body);
+      const px = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
+      const head = document.querySelector('header');
+      const top = head ? head.getBoundingClientRect().bottom : 0;
+      const bottom = window.innerHeight - px('--tabs-h') - px('--mini-h');
+      const r = st.wrap.getBoundingClientRect();
+      window.scrollBy(0, r.top - (top + Math.max(0, (bottom - top - r.height) / 2)));
+    } catch { /* без прокрутки теж можна грати */ }
   }
 
   function paintTouch(st) {
     const on = st.ctx && st.ctx.mine && st.ctx.playing && st.f && (st.f.ph === 1 || st.f.ph === 2);
     st.touchEl.classList.toggle('show', !!on);
+    st.touchOn = !!on && coarse();
+    const racing = !!(st.f && (st.f.ph === 1 || st.f.ph === 2));
+    if (st.root) st.root.classList.toggle('rl-racing', racing);
+    // телефон боком: канвас сам стає між шапкою сайту й тим, що прибито внизу, щойно почався відлік
+    if (on && !st.centred && phoneLandscape()) {
+      st.centred = true;
+      centreCanvas(st);
+    }
+    if (!racing) st.centred = false;
     st.touchEl.classList.toggle('auto', st.autogas);
     st.wrap.classList.toggle('rl-live', !!on);
   }
@@ -2308,11 +2363,12 @@
       on(btn, ctx) {
         const st = ctx._rally;
         if (!st) return false;
-        if (btn === 'y') { horn(st); return true; }
+        // Ⓨ лишаємо каркасу (він пише «Ⓨ підказки» в кожній грі), Ⓑ — щоб вийти
+        if (btn === 'lb') { horn(st); return true; }
         if (btn === 'rb') { resetCar(st); return true; }
         return false;
       },
-      hint: '{dpad} кермо (стік убік) · {a} газ · {x} ручник · {y} гудок · {rb} на трасу',
+      hint: '{dpad} кермо (стік убік) · {a} газ · {x} ручник · {lb} гудок · {rb} на трасу',
     },
     news: {
       v: '2026-09-27',

@@ -79,6 +79,10 @@
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   .rl-fullhint { display: inline-block; font-size: .8em; padding: 3px 10px; border-radius: 999px; }
   body.gfull .rl-fullhint { display: none; }
+  /* між липкою шапкою сайту (~57 px) і тим, що прибито внизу (вкладки, міні-плеєр; у ⛶ плеєра нема) */
+  .rl-wrap { max-width: calc((100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px)) * 16 / 9); }
+  /* у гонці чіпи місць — зайвий рядок (ніки й так над машинами, коло й місце — на канвасі й у статусі) */
+  .rl-body.rl-racing .rl-hud .rl-chip { display: none; }
 }
 
 /* ---- керування пальцем: великі напівпрозорі кнопки поверх канваса ---- */
@@ -116,7 +120,7 @@
 
 /* ---- телефон у ландшафті: канвас на всю висоту, HUD компактний, рекорди сховані ---- */
 @media (max-height: 500px) {
-  .rl-wrap { max-width: calc((100vh - 120px) * 16 / 9); }
+  .rl-wrap { max-width: calc((100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px)) * 16 / 9); }
   .rl-hud { font-size: .72em; gap: 4px; min-height: 0; }
   .rl-chip { padding: 1px 7px; }
   .rl-records { display: none; }

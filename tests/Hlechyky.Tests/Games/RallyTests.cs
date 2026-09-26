@@ -950,7 +950,7 @@ public class RallyTests(ITestOutputHelper output)
         h.Tick();
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
-        Assert.Equal("Сільське ралі · Село: за 4 хвилини ніхто не доїхав — найдалі Петро, 0 з 3 кола", LastJournal(h));
+        Assert.Equal("Сільське ралі · Село: за 4 хвилини ніхто не доїхав — найдалі Петро, 0 кіл з 3", LastJournal(h));
     }
 
     [Fact]

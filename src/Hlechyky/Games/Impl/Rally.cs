@@ -344,7 +344,7 @@ public sealed class Rally : Game
         if (first < 0)
         {
             var lead = core.Cars[ranked[0]];
-            return $"{Info.Title} · {_track.Title}: за 4 хвилини ніхто не доїхав — найдалі {Nick(ranked[0])}, {Math.Min(lead.Lap, _laps)} з {LapsWord(_laps)}";
+            return $"{Info.Title} · {_track.Title}: за 4 хвилини ніхто не доїхав — найдалі {Nick(ranked[0])}, {LapsWord(Math.Min(lead.Lap, _laps))} з {_laps}";
         }
         var parts = new List<string>();
         var winMs = core.Cars[first].FinishMs;
@@ -371,7 +371,7 @@ public sealed class Rally : Game
         return $"{head}: {string.Join(" · ", parts)}{tail}";
     }
 
-    static string LapsWord(int n) => n switch { 1 => "1 коло", 2 or 3 or 4 => $"{n} кола", _ => $"{n} кіл" };
+    static string LapsWord(int n) => n switch { 1 => "1 коло", 2 or 3 or 4 => $"{n} кола", _ => $"{n} кіл" };   // 0 кіл, 5 кіл, 7 кіл
 
     /// <summary>м:сс,д (digits = 1) або м:сс,сс (digits = 2) — десяті чи соті частки відкидаємо, не округлюємо.</summary>
     public static string Clock(int ms, int digits)
