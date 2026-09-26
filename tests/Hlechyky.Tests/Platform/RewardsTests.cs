@@ -253,13 +253,17 @@ public class RewardsTests
     }
 
     [Fact]
-    public void Ad_contest_pays_the_winner_outside_the_award_cap()
+    public void An_ad_award_is_an_ordinary_capped_award_now_that_the_contest_is_gone()
     {
+        // Конкурс реклами (прибрано 26.09.2026) платив за «ad:*» поза стелею й вішав за перемогу «Голос села».
+        // Окремої дороги більше нема: така нагорода — звичайна, під спільною денною стелею, і без ачівки.
         using var rig = new EconomyRig();
         rig.Events.Raise(new AwardEvent("ad", "room1", "Оля", 25, "ad:winner"));
         rig.Events.Raise(new AwardEvent("ad", "room2", "Оля", 25, "ad:winner"));
-        Assert.Equal(50, rig.Paid("Оля", "ad:winner"));
-        Assert.True(rig.Achievements.Has("Оля", "ad-winner"));
+
+        Assert.Equal(0, rig.Paid("Оля", "ad:winner"));
+        Assert.Equal(25, rig.Paid("Оля", "award:ad:winner"));    // AwardDailyCap = 30, друга не влізла
+        Assert.False(rig.Achievements.Has("Оля", "ad-winner"));
     }
 
     [Fact]

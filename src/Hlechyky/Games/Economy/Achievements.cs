@@ -26,7 +26,9 @@ public static class AchievementCatalog
         new("mafia-win",    "Мафіозі",         "Перемога за мафію", "🕶", 15),
         new("sheriff",      "Комісар",         "Знайшов мафію перевіркою", "🔎", 15),
         new("mafia-maniac", "Маньяк",          "Пересидів у мафії і село, і мафію", "🔪", 25),
-        new("ad-winner",    "Голос села",      "Виграв конкурс реклами", "📢", 25),
+        // Конкурс реклами прибрано 26.09.2026, і нових «Голосів села» вже не буде. Рядок лишається: здобуті лежать
+        // у базі, а профіль показує лише те, що є в каталозі. Hidden — щоб недосяжну ачівку ніде не обіцяли.
+        new("ad-winner",    "Голос села",      "Виграв конкурс реклами", "📢", 25, Hidden: true),
         new("svoya-win",    "Знавець",         "Перемога у «Своїй грі» на двох і більше", "🎓", 15),
         new("pozyvni-4",    "Одним словом",    "Підказка на чотири слова, і команда взяла всі", "🗝", 25),
         new("pozyvni-edge", "На волосині",     "Виграли в позивні останньою дозволеною здогадкою", "🪢", 20),
@@ -220,11 +222,7 @@ public sealed class Achievements
     public void OnAward(AwardEvent e)
     {
         if (e.Reason.StartsWith("ach:", StringComparison.Ordinal))
-        {
             Unlock(e.Nick, e.Reason[4..]);
-            return;
-        }
-        if (e.Reason is "ad:winner") Unlock(e.Nick, "ad-winner");
     }
 
     /// <summary>Хвилини на сайті всього (не за день) — кличе EconomyTicker.</summary>

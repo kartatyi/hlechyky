@@ -19,7 +19,7 @@ public sealed record SvoyaRow(
 }
 
 /// <summary>
-/// Пакети «Своєї гри» в SQLite (specs/svoya.md §6). Як <see cref="AdContestStore"/>: свій DDL і весь SQL тут,
+/// Пакети «Своєї гри» в SQLite (specs/svoya.md §6). Як <see cref="AdLibraryStore"/>: свій DDL і весь SQL тут,
 /// від <see cref="Db"/> — лише з'єднання на одну коротку операцію. Вбудовані пакети сюди не пишуться: вони
 /// живуть файлами (<see cref="SvoyaBuiltin"/>); лічильник партій — спільний для всіх (<c>svoya_plays</c>).
 /// </summary>
