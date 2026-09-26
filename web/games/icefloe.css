@@ -1,0 +1,116 @@
+/*
+  Крижина: ставок малює канвас, тут — рядок над ним, віртуальний стік і кнопки під палець. Свої кольори —
+  на :root з префіксом --if-, бо модуль читає їх через HGames.ui.css(), а та дивиться саме туди.
+*/
+:root {
+  --if-ice: #9fd7ff;       /* крижина */
+  --if-ice2: #e2f4ff;      /* відсвіт посередині криги */
+  --if-edge: #f1fbff;      /* обідок криги, скалки */
+  --if-water: #1d4a63;     /* вода біля криги */
+  --if-water2: #0f2a3b;    /* вода біля берега */
+  --if-snow: #dfe9ee;      /* сніг на березі */
+  --if-snow2: #b9cbd4;     /* замети */
+  --if-reed: #6e7f45;      /* очерет */
+  --if-crack: #ff6b5a;     /* тріщина перед відколом */
+  --if-jug: #8a5a3b;       /* глек на спині */
+  /* вісім місць: колір для ока, номер на шапці — для тих, кому кольори зливаються */
+  --if-s0: #5aa9ff;
+  --if-s1: #d9825b;
+  --if-s2: #7bd389;
+  --if-s3: #f4c542;
+  --if-s4: #b48cf2;
+  --if-s5: #6fd6c2;
+  --if-s6: #f08cb8;
+  --if-s7: #b7c2bd;
+}
+
+/* чипи місць у шапці картки: каркас знає лише x/o/c/d */
+.gseat.if0 { color: var(--if-s0); }
+.gseat.if1 { color: var(--if-s1); }
+.gseat.if2 { color: var(--if-s2); }
+.gseat.if3 { color: var(--if-s3); }
+.gseat.if4 { color: var(--if-s4); }
+.gseat.if5 { color: var(--if-s5); }
+.gseat.if6 { color: var(--if-s6); }
+.gseat.if7 { color: var(--if-s7); }
+
+/* Ставок квадратний; на ноутбуці мусить влізти разом із шапкою картки й рядком над полем. */
+.ifboard { aspect-ratio: 1; max-width: min(600px, calc(100vh - 320px)); min-width: min(300px, 100%); background: var(--if-water2); }
+/* на п'ятьох+ шапка з місцями й рядок над полем — по два ряди */
+.ifboard.many { max-width: min(600px, calc(100vh - 360px)); }
+@media (min-width: 1500px) and (min-height: 860px) {
+  .ifboard { max-width: min(720px, calc(100vh - 330px)); }
+  .ifboard.many { max-width: min(720px, calc(100vh - 380px)); }
+}
+/* Гравцеві тягнути по ставку — це тяга, а не скрол сторінки; глядачеві скрол лишаємо. */
+.ifboard.play { touch-action: none; cursor: crosshair; }
+
+/* ---- рядок над полем ---- */
+.ifhud { display: flex; gap: 4px 5px; flex-wrap: wrap; justify-content: center; font-size: .82em; max-width: 100%; }
+.ifchip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.ifchip i {
+  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
+  display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
+}
+.ifchip .ifdots { letter-spacing: 1px; font-weight: 700; }
+.ifchip .ifpush, .ifchip .ifst { color: var(--text); }
+.ifchip.out { opacity: .6; }
+.ifchip.me { box-shadow: 0 0 0 1px currentColor inset; }
+.ifchip.if0 { color: var(--if-s0); }
+.ifchip.if1 { color: var(--if-s1); }
+.ifchip.if2 { color: var(--if-s2); }
+.ifchip.if3 { color: var(--if-s3); }
+.ifchip.if4 { color: var(--if-s4); }
+.ifchip.if5 { color: var(--if-s5); }
+.ifchip.if6 { color: var(--if-s6); }
+.ifchip.if7 { color: var(--if-s7); }
+.ifchip.ifclock, .ifchip.ifround { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ifchip.ifclock.hot { color: var(--danger); animation: ifpulse 1s ease-in-out infinite; }
+@keyframes ifpulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .ifchip.ifclock.hot { animation: none; } }
+
+.ifchip.ifsnd { border: 0; cursor: pointer; color: var(--muted); font: inherit; padding: 3px 8px; }
+.ifchip.ifsnd:hover { color: var(--text); }
+
+/* ---- палець: стік ліворуч, ривок і сніжка праворуч ---- */
+.ifctl { display: none; }
+@media (pointer: coarse) {
+  .ifctl {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 420px;
+    padding: 2px 8px; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .ifstick {
+    position: relative; width: 120px; height: 120px; border-radius: 50%; flex: none;
+    background: radial-gradient(circle, var(--panel3) 0 30%, var(--bg2) 72%); border: 2px solid var(--line);
+    touch-action: none;
+  }
+  .ifknob {
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: var(--if-s0); opacity: .85; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); pointer-events: none;
+  }
+  .ifbtns { display: flex; gap: 12px; }
+  .ifbtn {
+    position: relative; width: 72px; height: 72px; border-radius: 50%; justify-content: center; font-size: 1.7em;
+    background: var(--panel3); border-color: var(--line); touch-action: none;
+  }
+  .ifbtn:active { background: var(--accent); color: var(--accent-ink); }
+  .ifthrow { opacity: .45; }
+  .ifthrow.has { opacity: 1; }
+  .ifthrow b {
+    position: absolute; right: 4px; top: 2px; font-size: .5em; color: var(--text); font-variant-numeric: tabular-nums;
+  }
+  /* у воді ривка нема: головна кнопка кидає сніжку */
+  .ifctl.wet .ifdash { background: var(--if-water); }
+}
+@media (max-width: 480px) {
+  .ifhud { gap: 4px; font-size: .74em; }
+  .ifchip { padding: 2px 7px; gap: 4px; }
+  .ifboard { max-width: 100%; }
+}
+@media (max-width: 380px) {
+  .ifstick { width: 108px; height: 108px; }
+  .ifbtn { width: 64px; height: 64px; font-size: 1.5em; }
+}
