@@ -494,21 +494,54 @@ public class StorksTests
     }
 
     [Fact]
-    public void Storks_clean_is_not_awarded_after_a_forgiven_hit()
+    public void Storks_clean_counts_the_minute_from_the_last_forgiven_hit()
     {
         var h = Table(2);
         ToRun(h);
         var sim = Sim(h);
         sim.ClearCourse();
+        for (var i = 0; i < 250; i++) { Keep(h); h.Tick(); }      // 500 кроків чистого польоту
         Keep(h);
         sim.P[0].Y = 0;                // Оля торкнулась землі — пір'я пропало, але вона летить далі
         sim.P[0].Vy = -8;
         h.Tick();
         Assert.Equal(1, sim.P[0].Hits);
         Assert.False(sim.P[0].Down);
-        for (var i = 0; i < 1600; i++) { Keep(h); h.Tick(); }
-        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:storks-clean" && a.Nick == "Оля");
+        for (var i = 0; i < 1300; i++) { Keep(h); h.Tick(); }     // ≈ 3100 кроків від старту, ≈ 2600 від зачепу
         Assert.Contains(h.Awards, a => a.Reason == "ach:storks-clean" && a.Nick == "Петро");
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:storks-clean" && a.Nick == "Оля");
+        for (var i = 0; i < 300; i++) { Keep(h); h.Tick(); }      // хвилина від зачепу минула — небо чисте й для Олі
+        Assert.Single(h.Awards, a => a.Reason == "ach:storks-clean" && a.Nick == "Оля");
+        Assert.Single(h.Awards, a => a.Reason == "ach:storks-clean" && a.Nick == "Петро");
+    }
+
+    [Fact]
+    public void Storks_clean_is_not_lost_when_the_round_ends_inside_the_rewind_window()
+    {
+        var h = Table(2);
+        ToRun(h);
+        var sim = Sim(h);
+        sim.ClearCourse();
+        while (sim.S - 1 - RunnerParty.ReadySteps < 3002) { Keep(h); h.Tick(); }
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:storks-clean");   // ще чекаємо на вікно перемотування
+        Down(h, 1);                                                               // Петро падає — раунд Олі
+        Assert.Equal("over", Ph(h));
+        Assert.Single(h.Awards, a => a.Reason == "ach:storks-clean" && a.Nick == "Оля");
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:storks-clean" && a.Nick == "Петро");
+    }
+
+    [Fact]
+    public void Everyone_down_on_the_same_step_is_a_draw_not_a_win_for_all()
+    {
+        var h = Table(2, options: new { rounds = "1" });
+        ToRun(h);
+        Down(h, 0, 1);
+        ThroughOver(h);
+        var fin = h.Finished.Single().Result;
+        Assert.True(fin.Draw);
+        Assert.Empty(fin.Winners);
+        Assert.Equal("Лелеки: нічия — Оля 6 · Петро 6", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.True(h.View(null).GetProperty("result").GetProperty("draw").GetBoolean());
     }
 
     [Fact]

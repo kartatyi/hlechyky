@@ -261,15 +261,34 @@ public class DinoTests
     }
 
     [Fact]
-    public void Tied_leaders_are_all_winners()
+    public void Tied_leaders_are_all_winners_when_someone_is_behind_them()
     {
-        var h = Table(2, options: new { rounds = "1" });
+        var h = Table(3, options: new { rounds = "1" });
         ToRun(h);
-        Catch(h, 0, 1);                          // обох одним кроком — обидва перші
+        Catch(h, 2);
+        Catch(h, 0, 1);                          // Олю й Петра одним кроком — обидва другі, Ганна третя
         ThroughOver(h);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0, 1], h.Finished.Single().Result.Winners);
         Assert.False(h.Finished.Single().Result.Draw);
+    }
+
+    [Fact]
+    public void Everyone_caught_on_the_same_step_is_a_draw_not_a_win_for_all()
+    {
+        // Двоє нічого не тиснуть — лавина забирає обох одним кроком. Раніше це були «дві перемоги» з черепками й
+        // ачівками за перемогу; тепер — нічия.
+        var h = Table(2, options: new { rounds = "1" });
+        ToRun(h);
+        Catch(h, 0, 1);
+        ThroughOver(h);
+        var fin = h.Finished.Single().Result;
+        Assert.True(fin.Draw);
+        Assert.Empty(fin.Winners);
+        Assert.Equal("Стрибозаври: нічия — Оля 6 · Петро 6", h.Outbox.OfType<Journal>().Last().Text);
+        var result = h.View(null).GetProperty("result");
+        Assert.True(result.GetProperty("draw").GetBoolean());
+        Assert.Empty(Ints(result, "winners"));
     }
 
     [Fact]
@@ -353,7 +372,7 @@ public class DinoTests
     }
 
     [Fact]
-    public void A_throw_targets_the_least_lagging_rival_and_says_so_in_the_table_talk()
+    public void A_throw_targets_the_least_lagging_rival_and_puts_the_target_in_the_frame_not_in_the_table_talk()
     {
         var h = Table(3);
         ToRun(h);
@@ -370,13 +389,13 @@ public class DinoTests
         Assert.Equal(sim.PaceX(sim.Run) + 300 + RunnerDino.SnowAhead, block.X);
         Assert.Equal(0, block.By);
         Assert.Equal(0, sim.P[0].Snow);
-        var said = h.Outbox.OfType<TableSaid>().Last().Line.Text;
-        Assert.Equal("❄ Оля кидає сніжку під ноги — Ганна, стрибай!", said);
-        // у кадрі — брила з тим, хто кинув, і з кроком, з якого б'є
+        // балачку столу сніжки не засмічують (за партію їх десятки)
+        Assert.Empty(h.Outbox.OfType<TableSaid>());
+        // у кадрі — брила з тим, хто кинув, з кроком, з якого б'є, і з ціллю (для «❄ від Олі» над Ганною)
         h.Tick();
         var frame = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
         var sn = frame.GetProperty("sn")[0].EnumerateArray().Select(x => x.GetInt32()).ToArray();
-        Assert.Equal([block.X, 0, block.Id, block.Since], sn);
+        Assert.Equal([block.X, 0, block.Id, block.Since, 2], sn);
         Assert.Contains(frame.GetProperty("ev").EnumerateArray(), e => e[0].GetString() == "throw");
     }
 
@@ -393,6 +412,54 @@ public class DinoTests
         Assert.Equal(1, sim.P[1].Hits);
         var award = Assert.Single(h.Awards, a => a.Reason == "ach:dino-snow");
         Assert.Equal("Оля", award.Nick);
+    }
+
+    [Fact]
+    public void A_hit_just_before_the_round_ends_still_awards_dino_snow_and_counts_for_the_sniper()
+    {
+        // Сніжка збила Петра, а лавина забрала його раніше, ніж минуло вікно перемотування (15 кроків): раунд
+        // скінчився — ввід уже не приймається, тож влучання зараховується одразу, а не губиться.
+        var h = Table(2);
+        ToRun(h);
+        var sim = Sim(h);
+        sim.ClearCourse();
+        sim.P[0].Snow = 1;
+        Assert.True(h.Act(0, "throw").Ok);
+        for (var i = 0; i < 80 && sim.P[1].Hits == 0; i++) { sim.P[0].Lag = 0; h.Tick(); }
+        Assert.Equal(1, sim.P[1].Hits);
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:dino-snow");     // ще чекає на вікно
+        Catch(h, 1);
+        Assert.Equal("over", Ph(h));
+        var award = Assert.Single(h.Awards, a => a.Reason == "ach:dino-snow");
+        Assert.Equal("Оля", award.Nick);
+        Assert.Equal([0, 1, 1], Ints(h.View(null), "sniper"));
+    }
+
+    [Fact]
+    public void The_sniper_of_the_round_and_of_the_party_are_in_the_view_only_after_the_round()
+    {
+        var h = Table(2, options: new { rounds = "1" });
+        ToRun(h);
+        var sim = Sim(h);
+        sim.ClearCourse();
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("sniper").ValueKind);
+        // Петро кидає двічі й влучає раз: друга брила лягає перед Олею, яку вже забирає лавина, — «у молоко»
+        sim.P[1].Snow = 1;
+        Assert.True(h.Act(1, "throw").Ok);
+        for (var i = 0; i < 80 && sim.P[0].Hits == 0; i++) { sim.P[1].Lag = 0; h.Tick(); }
+        Assert.Equal(1, sim.P[0].Hits);
+        for (var i = 0; i < 20; i++) { sim.P[1].Lag = 0; h.Tick(); }
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("sniper").ValueKind);   // посеред раунду — не видно
+        sim.P[1].Snow = 1;
+        sim.P[0].Lag = 50000;
+        Assert.True(h.Act(1, "throw").Ok);
+        h.Tick();
+        Assert.Equal("over", Ph(h));
+        Assert.Equal([1, 1, 2], Ints(h.View(null), "sniper"));
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("sniperParty").ValueKind);
+        ThroughOver(h);
+        Assert.Equal("done", Ph(h));
+        Assert.Equal([1, 1, 2], Ints(h.View(null), "sniperParty"));
     }
 
     [Fact]
@@ -725,5 +792,42 @@ public class DinoTests
         var ms = sw.Elapsed.TotalMilliseconds;
         Console.WriteLine($"[perf] dino 8 гравців: 3000 тиків за {ms:F1} мс, {ms / 3000:F4} мс на тик");
         Assert.True(ms < 1000, $"3000 тиків за {ms} мс");
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Rewinds_of_eight_runners_every_tick_stay_within_the_tick_budget()
+    {
+        // Найгірший чесний випадок: кожен із вісьмох на кожному тику шле ввід, датований на край вікна
+        // перемотування (15 кроків тому), — це ≈ 25 вводів на секунду з кожного, під самою квотою каркаса.
+        // Міряємо Input разом із тиком: перемотування — частина бюджету кімнати.
+        var h = Table(8, seed: 13, options: new { rounds = "5" });
+        ToRun(h);
+        var room = h.Room;
+        var held = new int[8];
+        for (var i = 0; i < 50; i++) h.Rooms.Tick(room);
+        var sw = new Stopwatch();
+        var measured = 0;
+        for (var guard = 0; measured < 3000 && guard < 20000; guard++)
+        {
+            var game = Game(h);
+            var sim = game.World!;
+            if (game.PhaseName != "run") { h.Rooms.Tick(room); continue; }
+            for (var s = 0; s < 8; s++) if (sim.P[s].Lag > 3000) sim.P[s].Lag = 0;
+            sw.Start();
+            for (var s = 0; s < 8; s++)
+            {
+                held[s] = (held[s] + 1) % 3;                                  // 1 → 2 → 0: стрибок, пригнувся, відпустив
+                var k = held[s] | (held[s] == 1 ? 4 : 0);
+                h.Rooms.Input(room.Id, room.Seats[s]!, "in", Views.Payload(new { s = sim.S - RunnerSim.RewindMax, k }));
+            }
+            h.Rooms.Tick(room);
+            sw.Stop();
+            measured++;
+        }
+        Assert.Equal(3000, measured);
+        var ms = sw.Elapsed.TotalMilliseconds;
+        Console.WriteLine($"[perf] dino 8 гравців з перемотуванням на кожному тику: 3000 тиків за {ms:F1} мс, {ms / 3000:F4} мс на тик");
+        Assert.True(ms < 750, $"3000 тиків із перемотуванням за {ms} мс (бюджет 0,25 мс на тик)");
     }
 }

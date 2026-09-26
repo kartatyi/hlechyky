@@ -231,6 +231,9 @@ public abstract class RunnerParty : Game
     {
         var sim = Sim!;
         var run = sim.S - 1 - ReadySteps;
+        // Після кінця раунду ввід не приймається й перемотувань більше не буде: те, що чекало на вікно
+        // перемотування (влучання сніжкою, «Чисте небо»), можна вирішити вже зараз, а не губити.
+        OnRoundEnd(run);
         for (var i = 0; i < Seats; i++)
         {
             var p = sim.P[i];
@@ -258,6 +261,9 @@ public abstract class RunnerParty : Game
         _overLeft = OverSteps;
     }
 
+    /// <summary>Раунд скінчився (ще до місць і очок): вирішити все, що чекало на вікно перемотування.</summary>
+    protected virtual void OnRoundEnd(int run) { }
+
     /// <summary>Чим ранжувати тих, хто дожив до стелі раунду: менше — краще. Типово всі рівні.</summary>
     protected virtual int Rank(RunnerPlayer p) => 0;
 
@@ -280,12 +286,17 @@ public abstract class RunnerParty : Game
         var order = seated.OrderByDescending(s => _points[s]).ThenBy(s => s).ToList();
         var best = order.Count > 0 ? _points[order[0]] : 0;
         var winners = order.Where(s => _points[s] == best).ToArray();
+        // Усі за столом порівну (найчастіше — усі разом вибули, нічого не тиснувши): це нічия, а не перемога
+        // кожного. Інакше двоє, що просто стоять, щопартії брали б черепки й ачівки за перемогу.
+        var draw = winners.Length == order.Count && order.Count >= 2;
+        if (draw) winners = [];
         _result = new
         {
             winners,
+            draw,
             table = order.Select(s => new { seat = s, points = _points[s], eggs = _eggsParty[s] }).ToArray(),
         };
-        Ctx.Finish(winners, $"{Info.Title}: " + string.Join(" · ", order.Select(s => $"{Ctx.NickOf(s)} {_points[s]}")));
+        Ctx.Finish(winners, $"{Info.Title}: {(draw ? "нічия — " : "")}" + string.Join(" · ", order.Select(s => $"{Ctx.NickOf(s)} {_points[s]}")));
     }
 
     // ---------- вихід ----------

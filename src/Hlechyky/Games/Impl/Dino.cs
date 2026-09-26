@@ -30,7 +30,22 @@ public sealed class Dino : RunnerParty
     /// <summary>Влучання сніжкою чекає, поки вийде вікно перемотування: запізнілий стрибок ще може його скасувати.</summary>
     readonly List<(int Seat, int Id, int By, int At)> _pending = [];
 
-    protected override void OnRoundStart() => _pending.Clear();
+    /// <summary>Сніжки раунду й партії: скільки кинув і скільки влучило — для «Снайпера» в таблиці (не в балачці).</summary>
+    readonly int[] _throws = new int[RunnerSim.Seats], _snipes = new int[RunnerSim.Seats];
+    readonly int[] _throwsParty = new int[RunnerSim.Seats], _snipesParty = new int[RunnerSim.Seats];
+
+    protected override void OnPartyStart()
+    {
+        Array.Clear(_throwsParty);
+        Array.Clear(_snipesParty);
+    }
+
+    protected override void OnRoundStart()
+    {
+        _pending.Clear();
+        Array.Clear(_throws);
+        Array.Clear(_snipes);
+    }
 
     protected override int Rank(RunnerPlayer p) => p.Lag;
 
@@ -63,17 +78,37 @@ public sealed class Dino : RunnerParty
         }
     }
 
-    protected override void OnStepDone(int run)
+    protected override void OnStepDone(int run) => Settle(false);
+
+    /// <summary>Кінець раунду: ввід уже не приймається — влучання, що ще чекали на вікно, вирішуються зараз.</summary>
+    protected override void OnRoundEnd(int run) => Settle(true);
+
+    void Settle(bool all)
     {
         if (_pending.Count == 0) return;
         var sim = Sim!;
         for (var i = _pending.Count - 1; i >= 0; i--)
         {
             var (seat, id, by, at) = _pending[i];
-            if (sim.S - at <= RunnerSim.RewindMax) continue;
+            if (!all && sim.S - at <= RunnerSim.RewindMax) continue;
             _pending.RemoveAt(i);
-            if (sim.P[seat].HasPassed(id)) Ctx.Award(by, 0, "ach:dino-snow");
+            if (!sim.P[seat].HasPassed(id)) continue;
+            _snipes[by]++;
+            _snipesParty[by]++;
+            Ctx.Award(by, 0, "ach:dino-snow");
         }
+    }
+
+    /// <summary>Найвлучніший: [місце, влучних, кинуто]; рівно — хто менше кидав, далі — менше місце. null — ніхто не влучив.</summary>
+    static int[]? Sniper(int[] snipes, int[] throws)
+    {
+        var best = -1;
+        for (var i = 0; i < RunnerSim.Seats; i++)
+        {
+            if (snipes[i] == 0) continue;
+            if (best < 0 || snipes[i] > snipes[best] || (snipes[i] == snipes[best] && throws[i] < throws[best])) best = i;
+        }
+        return best < 0 ? null : [best, snipes[best], throws[best]];
     }
 
     /// <summary>Кинути сніжку: брила лягає за 320 px перед тим, хто найменше відстав (dino.md §2.6).</summary>
@@ -95,9 +130,12 @@ public sealed class Dino : RunnerParty
         if (target < 0) return ActResult.Fail("Кидати нема в кого");
         var run = sim.Run;
         var x = sim.PaceX(run) - sim.P[target].Lag + RunnerDino.SnowAhead;
-        sim.PlaceSnow(x, seat, run);
+        sim.PlaceSnow(x, seat, run, target);
         sim.ConsumeSnow(seat);
-        Ctx.Say($"❄ {Ctx.NickOf(seat)} кидає сніжку під ноги — {Ctx.NickOf(target)}, стрибай!");
+        _throws[seat]++;
+        _throwsParty[seat]++;
+        // У балачку столу — нічого: кидків за партію десятки, посеред забігу їх ніхто не читає. Хто кинув і в кого,
+        // показує сцена (брила з ціллю в кадрі, «❄ від …» над ціллю), а найвлучнішого — таблиця раунду.
         return ActResult.Done;
     }
 
@@ -123,6 +161,8 @@ public sealed class Dino : RunnerParty
             p = Players(),
             d = RunnerRules.AvD(run),
             m = sim is null ? 0 : sim.PaceX(run) / RunnerDino.SubPerMetre,
+            sniper = Phase is Over or Done ? Sniper(_snipes, _throws) : null,
+            sniperParty = Phase == Done ? Sniper(_snipesParty, _throwsParty) : null,
             result = Result,
         };
     }
@@ -181,7 +221,21 @@ public sealed class DinoDaily : Game
 
     public override void Start()
     {
-        _day ??= Days.Today(Ctx.Clock);
+        var today = Days.Today(Ctx.Clock);
+        if (_day != today)
+        {
+            // «Ще раз» після київської півночі: кімната ще вчорашня, але біжимо вже сьогоднішню кризу. Рядок
+            // таблиці каркас однаково пише в сьогодні (за часом запису), тож і траса, і рекорд, і нагорода дня —
+            // сьогоднішні, а не вчорашня криза з метрами в сьогоднішній таблиці.
+            if (_day is not null)
+            {
+                _best = _runs = _eggs = 0;
+                _paid = false;
+                _loggedAt = null;
+                _last = null;
+            }
+            _day = today;
+        }
         _seed = Days.Seed("dino-daily", _day);
         _sim = new RunnerSim(RunnerMode.Dino, _seed, [true], 0, PmCapDaily, snowOn: false);
         _phase = Wait;
@@ -255,7 +309,7 @@ public sealed class DinoDaily : Game
         var now = Ctx.Clock.UtcNow;
         if (metres > before && metres >= LogFrom && (_loggedAt is null || now - _loggedAt.Value >= LogEvery))
         {
-            log = $"Забіг дня: {Ctx.NickOf(0)} — {metres} м, найкращий сьогодні";
+            log = $"Забіг дня: {Ctx.NickOf(0)} — {metres} м, особистий рекорд дня";
             _loggedAt = now;
         }
         _last = new { m = metres, eggs = p.Eggs, record = metres > before };

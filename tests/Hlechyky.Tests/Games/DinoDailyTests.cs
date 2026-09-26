@@ -236,7 +236,7 @@ public class DinoDailyTests
     {
         var h = Open();
         var m = RunTo(h, 1100);
-        Assert.Equal($"Забіг дня: Оля — {m} м, найкращий сьогодні", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal($"Забіг дня: Оля — {m} м, особистий рекорд дня", h.Outbox.OfType<Journal>().Last().Text);
         h.Rematch();
         RunTo(h, 1200);                  // краще, але хвилини ще не минуло
         Assert.Single(h.Outbox.OfType<Journal>(), j => j.Text.StartsWith("Забіг дня"));
@@ -280,6 +280,35 @@ public class DinoDailyTests
         Assert.Equal(m, h.View(null).GetProperty("best").GetInt32());
         Assert.Equal(2, h.View(null).GetProperty("runs").GetInt32());
         Assert.Equal(2, h.Scores.Count);
+    }
+
+    [Fact]
+    public void Rematch_after_kyiv_midnight_runs_the_new_day_with_a_fresh_record_and_reward()
+    {
+        // Кімнату відкрито о 23:58 за Києвом; «Ще раз» — уже після півночі. Рядок у таблицю каркас однаково пише
+        // в сьогодні (за часом запису), тож і траса мусить бути сьогоднішня, і рекорд, і нагорода дня.
+        var h = new RoomHarness("dino-daily", seed: 3);
+        h.Clock.UtcNow = new DateTimeOffset(2026, 9, 10, 20, 58, 0, TimeSpan.Zero);
+        Open("Оля", h);
+        Assert.Equal("2026-09-10", h.View(null).GetProperty("day").GetString());
+        var m1 = RunTo(h, 600);
+        Assert.Single(h.Awards, a => a.Reason == "daily:dino-daily");
+        h.Clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.True(h.Rematch().Ok);
+        var v = h.View(null);
+        Assert.Equal("2026-09-11", v.GetProperty("day").GetString());
+        Assert.Equal(Days.Seed("dino-daily", "2026-09-11"), v.GetProperty("seed").GetInt32());
+        var fresh = new RunnerSim(RunnerMode.Dino, Days.Seed("dino-daily", "2026-09-11"), [true], 0, DinoDaily.PmCapDaily, snowOn: false);
+        Assert.Equal(fresh.Obstacle(0).X, Sim(h).Obstacle(0).X);             // і курс у світі — сьогоднішній
+        Assert.Equal(fresh.Obstacle(0).Kind, Sim(h).Obstacle(0).Kind);
+        Assert.Equal(0, v.GetProperty("best").GetInt32());
+        Assert.Equal(0, v.GetProperty("runs").GetInt32());
+        var m2 = RunTo(h, 550);
+        Assert.True(m2 < m1);
+        Assert.Equal(m2, h.View(null).GetProperty("best").GetInt32());      // рекорд нового дня — з нуля
+        Assert.True(h.View(null).GetProperty("last").GetProperty("record").GetBoolean());
+        Assert.Equal(2, h.Awards.Count(a => a.Reason == "daily:dino-daily"));   // нагорода нового дня проситься знову
+        Assert.Contains("\"day\":\"2026-09-11\"", h.Room.Game.Save());
     }
 
     [Fact]

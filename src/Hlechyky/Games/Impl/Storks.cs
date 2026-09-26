@@ -7,7 +7,7 @@ namespace Hlechyky.Games.Impl;
 /// </summary>
 public sealed class Storks : RunnerParty
 {
-    /// <summary>«Чисте небо»: хвилина польоту без жодного зачепу.</summary>
+    /// <summary>«Чисте небо»: хвилина польоту без жодного зачепу (від старту раунду чи від останнього зачепу).</summary>
     public const int CleanRun = 3000;
     static readonly string[] SeatNames = ["зелена", "жовта", "руда", "сіра", "синя", "рожева", "фіалкова", "червона"];
 
@@ -26,18 +26,37 @@ public sealed class Storks : RunnerParty
     protected override string[] Names => SeatNames;
     protected override string ExtraKey => "feather";
 
-    /// <summary>
-    /// Ачівку даємо, коли хвилина без зачепу вже не може стати «з зачепом»: вікно перемотування (15 кроків)
-    /// минуло, і запізнілий ввід цього не переграє.
-    /// </summary>
-    protected override void OnStepDone(int run)
+    /// <summary>Крок бігу останнього зачепу кожного місця в цьому раунді (−1 — зачепів не було).</summary>
+    readonly int[] _lastHit = new int[RunnerSim.Seats];
+
+    protected override void OnRoundStart() => Array.Fill(_lastHit, -1);
+
+    /// <summary>Зачеп, прощений пір'ям: з нього «хвилина без зачепу» починається знову.</summary>
+    protected override void OnEvent(in RunnerEvent e)
     {
-        if (run < CleanRun + RunnerSim.RewindMax) return;
+        // Перемотування могло скасувати пізніший зачеп і дати раніший — беремо пізніший: ачівка хіба трохи
+        // забариться, але не прийде раніше, ніж треба.
+        if (e.Kind == RunnerEvent.Hit && e.Seat is >= 0 and < RunnerSim.Seats && e.A > _lastHit[e.Seat]) _lastHit[e.Seat] = e.A;
+    }
+
+    /// <summary>
+    /// «Чисте небо» — хвилина польоту без жодного зачепу: від старту раунду або від останнього зачепу, прощеного
+    /// пір'ям. Даємо, коли вікно перемотування (15 кроків) минуло і запізнілий ввід цього вже не переграє.
+    /// </summary>
+    protected override void OnStepDone(int run) => Clean(run, RunnerSim.RewindMax);
+
+    /// <summary>Кінець раунду: перемотувань більше не буде — запас на вікно не потрібен.</summary>
+    protected override void OnRoundEnd(int run) => Clean(run, 0);
+
+    void Clean(int run, int margin)
+    {
+        if (run < CleanRun + margin) return;
         var sim = Sim!;
         for (var i = 0; i < RunnerSim.Seats; i++)
         {
             var p = sim.P[i];
-            if (Awarded[i] || !p.Plays || p.Out || p.Down || p.Hits > 0) continue;
+            if (Awarded[i] || !p.Plays || p.Out || p.Down) continue;
+            if (p.Hits > 0 && (_lastHit[i] < 0 || run - _lastHit[i] < CleanRun + margin)) continue;
             Awarded[i] = true;
             Ctx.Award(i, 0, "ach:storks-clean");
         }
