@@ -522,7 +522,7 @@ public class ChessTests
         Assert.True(h.Act(1, "resign").Ok);
 
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Equal("Шахи: Петро здався, Оля 1:0 Петро", Journal(h));
+        Assert.Equal("Шахи: Петро здається — Оля 1:0 Петро", Journal(h));
         Assert.Equal("resign", Result(h, "reason"));
     }
 
@@ -530,11 +530,11 @@ public class ChessTests
     public void Two_draw_offers_make_a_draw()
     {
         var h = Table();
-        Assert.Equal("Запропонував нічию", h.Act(0, "draw").Message);
+        Assert.Equal("Нічию запропоновано — слово за суперником", h.Act(0, "draw").Message);
         Assert.Equal(0, h.View(1).GetProperty("drawOffer").GetInt32());
 
         // Двічі поспіль пропонувати нічого не дає: чекай відповіді.
-        Assert.Equal("Ти вже пропонував нічию", h.Act(0, "draw").Message);
+        Assert.Equal("Пропозиція вже висить — слово за суперником", h.Act(0, "draw").Message);
         Assert.Equal(0, h.View(1).GetProperty("drawOffer").GetInt32());
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
 
@@ -552,7 +552,7 @@ public class ChessTests
         Move(h, 1, "e7", "e5");
         Assert.Equal(JsonValueKind.Null, h.View(1).GetProperty("drawOffer").ValueKind);
 
-        Assert.Equal("Запропонував нічию", h.Act(1, "draw").Message);
+        Assert.Equal("Нічию запропоновано — слово за суперником", h.Act(1, "draw").Message);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
     }
 
@@ -564,7 +564,7 @@ public class ChessTests
         Assert.True(h.Act(0, "draw").Ok);
         Move(h, 0, "e2", "e4");
         Assert.Equal(0, h.View(1).GetProperty("drawOffer").GetInt32());
-        Assert.Equal("Нічия", h.Act(1, "draw").Message);
+        Assert.Equal("Нічия! Ану ще раз?", h.Act(1, "draw").Message);
         Assert.True(h.Room.Result!.Draw);
     }
 
@@ -601,7 +601,7 @@ public class ChessTests
         var h = Table();
         var before = Views.Text(h.Room.Game.View(null));
 
-        Assert.Equal("Зараз не твій хід", Move(h, 1, "e7", "e5").Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", Move(h, 1, "e7", "e5").Message);
         Assert.Equal("Так не ходять", Move(h, 0, "e2", "e5").Message);
         Assert.Equal("Так не ходять", Move(h, 0, "d1", "d5").Message);
         Assert.Equal("Не зрозумів, куди ходити", h.Act(0, "move", new { from = "z9", to = "e4" }).Message);

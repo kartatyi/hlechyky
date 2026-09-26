@@ -412,7 +412,7 @@ public class HangmanTests(HangmanWords fx) : IClassFixture<HangmanWords>
 
         var r = Guess(h, 0, "к");
         Assert.False(r.Ok);
-        Assert.Equal("Пауза. Зараз буде нове слово", r.Message);
+        Assert.Equal("Мить — зараз буде нове слово", r.Message);
     }
 
     // ---------------------------------------------------------------- ліміт, вид, тик
@@ -667,7 +667,7 @@ public class HangmanTests(HangmanWords fx) : IClassFixture<HangmanWords>
 
         var r = h.Act(1, "guess", new { letter = "о" });
         Assert.False(r.Ok);
-        Assert.Equal("Зараз не твій хід", r.Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", r.Message);
         Assert.Equal("______", Mask(h));
     }
 

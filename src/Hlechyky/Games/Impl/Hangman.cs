@@ -132,10 +132,10 @@ public sealed class Hangman : Game
     {
         if (action is not ("guess" or "word")) return ActResult.Fail("Тут так не ходять");
         if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
-        if (_phase == Between) return ActResult.Fail("Пауза. Зараз буде нове слово");
+        if (_phase == Between) return ActResult.Fail("Мить — зараз буде нове слово");
         if (_out.Contains(seat)) return ActResult.Fail("Це слово вже без тебе, чекай наступне");
         // По черзі ліміт швидкості не потрібен: чужий хід і так не пройде, а свій — хай хоч блискавкою.
-        if (_mode == Turns) { if (seat != _turn) return ActResult.Fail("Зараз не твій хід"); }
+        if (_mode == Turns) { if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід"); }
         else if (!Ready(seat)) return ActResult.Fail("Не так швидко");
         return action == "guess"
             ? Guess(seat, Read(payload, "letter"))
@@ -184,7 +184,7 @@ public sealed class Hangman : Game
         // Влучив — ходиш ще, і годинник ходу заводиться наново.
         if (!Opened()) { if (_mode == Turns) _turnUntil = Ctx.Clock.UtcNow.AddMilliseconds(TurnMs); return ActResult.Done; }
         EndRound();
-        return ActResult.Accept("Слово відкрите!");
+        return ActResult.Accept("Є! Слово відкрите!");
     }
 
     ActResult Word(int seat, string raw)

@@ -792,7 +792,7 @@ public class DurakTests
         Assert.Equal("left", result.GetProperty("reason").GetString());
         // Місце вже звільнене, тож ім'я дурня має приїхати у виді — інакше картка напише «Дурень — другий».
         Assert.Equal("Петро", result.GetProperty("foolNick").GetString());
-        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("встає з-за столу", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("turn").ValueKind);
         Assert.Single(h.Finished);
     }
@@ -1207,7 +1207,7 @@ public class DurakTests
         var v = h.View(null);
         Assert.False(v.GetProperty("in")[2].GetBoolean());
         Assert.Equal("Іра", v.GetProperty("names")[2].GetString());   // місце вільне, а ім'я картка ще покаже
-        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("встає з-за столу", h.Outbox.OfType<Journal>().Last().Text);
 
         Assert.True(h.Leave("Петро").Ok);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);

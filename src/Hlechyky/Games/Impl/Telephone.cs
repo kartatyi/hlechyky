@@ -36,7 +36,7 @@ public sealed class Telephone : Game
     public const string Phrase = "phrase", Draw = "draw", Describe = "describe";
     const string Step = "step", Reveal = "reveal", Done = "done";
     /// <summary>Що підставляємо за того, хто не встиг описати малюнок.</summary>
-    public const string Shrug = "🤷 не встиг";
+    public const string Shrug = "🤷 часу забракло";
     /// <summary>
     /// Автор першого запису ланцюжка, коли фразу загадав Глек, а не гравець (партія на двох). ❤ йому не ставлять
     /// і в рахунок він не йде.
@@ -239,7 +239,7 @@ public sealed class Telephone : Game
         if (task.Kind != Draw)
         {
             var text = Clean(Str(payload, "text"));
-            if (text.Length == 0) return ActResult.Fail(task.Kind == Phrase ? "Напиши фразу або тисни 🎲" : "Напиши, що бачиш на малюнку");
+            if (text.Length == 0) return ActResult.Fail(task.Kind == Phrase ? "Тяпни фразу або тисни 🎲" : "Тяпни, що бачиш на малюнку");
             task.Text = text;
         }
         else
@@ -255,7 +255,7 @@ public sealed class Telephone : Game
         }
         task.Ready = true;
         _dirty = true;
-        return ActResult.Accept("Здано!");
+        return ActResult.Accept("Є! Здано");
     }
 
     ActResult Edit(int seat)
@@ -344,7 +344,7 @@ public sealed class Telephone : Game
         int[] winners = best > 0 ? [.. seats.Where(s => likes[s] == best)] : [];
         foreach (var s in seats) Ctx.Score(s, likes[s]);
         _result = new { winners, likes };
-        var tail = winners.Length == 0 ? "без ❤, зате всі посміялись" : "найбільше ❤ у " + string.Join(" і ", winners.Select(Ctx.NickOf));
+        var tail = winners.Length == 0 ? "без ❤, зате всі посміялись" : "найбільше ❤ у " + string.Join(" і ", winners.Select(s => NickCases.Genitive(Ctx.NickOf(s))));
         Ctx.Finish(winners, $"{Info.Title}: {Chains(_chains.Count(HasPlayers))} — {tail}",
             seats.ToDictionary(s => s, s => (long)likes[s]));
     }

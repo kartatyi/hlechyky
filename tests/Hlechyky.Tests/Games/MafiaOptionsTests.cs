@@ -290,7 +290,7 @@ public class MafiaOptionsTests
         var watcher = alive[1];
         h.Leave(h.NickOf(gone));
 
-        Assert.Contains(Log(h), l => l.Contains("виїхав із села") && !l.Contains('('));
+        Assert.Contains(Log(h), l => l.Contains("виїжджає з села") && !l.Contains('('));
         Assert.Equal(JsonValueKind.Null,
             Players(h, watcher).First(p => p.GetProperty("seat").GetInt32() == gone).GetProperty("role").ValueKind);
     }

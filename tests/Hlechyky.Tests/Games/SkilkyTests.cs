@@ -328,13 +328,13 @@ public class SkilkyTests
         var h = Table();
         Assert.Equal(Skilky.PhaseBetween, Phase(h));
         Assert.False(h.Act(0, "answer", new { value = 5 }).Ok);
-        Assert.Equal("Зачекай на запитання", h.Reply.Message);
+        Assert.Equal("Мить — зараз буде запитання", h.Reply.Message);
 
         Until(h, Skilky.PhaseAsk);
         // Годинник переводимо без тика: фаза ще «ask», але час на неї вже вийшов.
         h.Clock.Advance(TimeSpan.FromSeconds(Skilky.AskSeconds + 1));
         Assert.False(h.Act(0, "answer", new { value = 5 }).Ok);
-        Assert.Equal("Час вийшов", h.Reply.Message);
+        Assert.Equal("От халепа — час вийшов", h.Reply.Message);
     }
 
     [Fact]

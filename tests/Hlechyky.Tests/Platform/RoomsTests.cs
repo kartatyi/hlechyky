@@ -166,7 +166,7 @@ public class RoomsTests
         Assert.Equal("Чекаємо на гравців", h.Act(0, "move", new { cell = 0 }).Message);
 
         h.Join("Петро");
-        Assert.Equal("Зараз не твій хід", h.Act(1, "move", new { cell = 0 }).Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", h.Act(1, "move", new { cell = 0 }).Message);
         Assert.Equal("Ти тут не граєш", h.Rooms.Act(h.RoomId, "Чужий", "move", Views.Payload(new { cell = 0 })).Reply.Message);
 
         foreach (var (seat, cell) in new[] { (0, 0), (1, 3), (0, 1), (1, 4), (0, 2) }) h.Act(seat, "move", new { cell });

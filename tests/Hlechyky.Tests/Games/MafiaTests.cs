@@ -365,7 +365,7 @@ public class MafiaTests
 
         Assert.False(AliveAt(h, victim));
         Assert.Equal(victim, h.View(null).GetProperty("dayInfo").GetProperty("killed").GetInt32());
-        Assert.Contains("не прокинувся", Log(h)[0]);
+        Assert.Contains("не стало", Log(h)[0]);
     }
 
     [Fact]
@@ -393,7 +393,7 @@ public class MafiaTests
 
         var again = h.Act(doctor, "heal", new { seat = doctor });
         Assert.False(again.Ok);
-        Assert.Equal("Цю людину ти рятував минулої ночі", again.Message);
+        Assert.Equal("Двічі поспіль одну людину не рятують", again.Message);
         Assert.True(h.Act(doctor, "heal", new { seat = mafia[0] }).Ok);
     }
 
@@ -412,7 +412,7 @@ public class MafiaTests
         Until(h, () => Phase(h) != "night");
 
         Assert.False(AliveAt(h, victim));
-        Assert.Contains(Log(h), l => l.Contains("не прокинувся"));
+        Assert.Contains(Log(h), l => l.Contains("не стало"));
         Assert.False(h.View(null).GetProperty("dayInfo").GetProperty("saved").GetBoolean());
     }
 
@@ -429,7 +429,7 @@ public class MafiaTests
 
         var second = h.Act(sheriff, "check", new { seat = mafia[1] });
         Assert.False(second.Ok);
-        Assert.Equal("Цієї ночі ти вже перевіряв", second.Message);
+        Assert.Equal("Одна перевірка за ніч — решта завтра", second.Message);
         // Відмова має бути повною: другий мафіозі не потрапив у список перевірених (TESTING.md §4.1).
         Assert.Equal(before, Views.Text(h.Room.Game.View(sheriff)));
     }
@@ -518,7 +518,7 @@ public class MafiaTests
 
         var no = h.Act(mafia[0], "kill", new { seat = victim });
         Assert.False(no.Ok);
-        Assert.Equal("Його вже нема серед живих", no.Message);
+        Assert.Equal("Цієї людини вже нема серед живих", no.Message);
     }
 
     [Fact]
@@ -685,7 +685,7 @@ public class MafiaTests
         var alive = AliveSeats(h);
         var reply = h.Act(alive[0], "vote", null);
         Assert.True(reply.Ok);
-        Assert.Equal("Утримався", reply.Message);
+        Assert.Equal("Ти утримуєшся", reply.Message);
         Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("votes").GetProperty(alive[0].ToString()).ValueKind);
 
         Until(h, () => Phase(h) != "vote");
@@ -745,7 +745,7 @@ public class MafiaTests
 
         var no = h.Act(AliveSeats(h)[0], "vote", new { seat = victim });
         Assert.False(no.Ok);
-        Assert.Equal("Його вже нема серед живих", no.Message);
+        Assert.Equal("Цієї людини вже нема серед живих", no.Message);
     }
 
     // =========================================================================================
@@ -842,7 +842,7 @@ public class MafiaTests
         h.Leave(h.NickOf(civil));
 
         Assert.False(AliveAt(h, civil));
-        Assert.Contains(Log(h), l => l.Contains("виїхав із села"));
+        Assert.Contains(Log(h), l => l.Contains("виїжджає з села"));
         var seen = Players(h, watcher).First(p => p.GetProperty("seat").GetInt32() == civil);
         Assert.Equal("civil", seen.GetProperty("role").GetString());
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
@@ -857,8 +857,8 @@ public class MafiaTests
 
         h.Leave(h.NickOf(civil));
 
-        Assert.Contains(Log(h), l => l.StartsWith("Ніч 1:") && l.Contains("виїхав із села"));
-        Assert.DoesNotContain(Log(h), l => l.StartsWith("День") && l.Contains("виїхав із села"));
+        Assert.Contains(Log(h), l => l.StartsWith("Ніч 1:") && l.Contains("виїжджає з села"));
+        Assert.DoesNotContain(Log(h), l => l.StartsWith("День") && l.Contains("виїжджає з села"));
     }
 
     [Fact]

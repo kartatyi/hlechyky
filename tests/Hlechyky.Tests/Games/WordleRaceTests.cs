@@ -214,7 +214,7 @@ public class WordleRaceTests(WordleWords fx) : IClassFixture<WordleWords>
         Guess(h, 1, wrong[1]);
         var first = Guess(h, 1, Answer(h));        // третя спроба, перший: 4 + 1
         Assert.True(first.Ok);
-        Assert.Contains("Перший", first.Message);
+        Assert.Contains("Раніше за всіх", first.Message);
         var second = Guess(h, 0, Answer(h));       // перша спроба, але другий: 6
         Assert.Contains("+6", second.Message);
 

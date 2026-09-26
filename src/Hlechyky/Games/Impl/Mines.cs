@@ -316,8 +316,8 @@ public sealed class Mines : Game
         // Здатись можна й не в свою чергу: чекати ходу, щоб сказати «здаюсь», — знущання.
         if (action == "resign") return Resign(seat);
         if (action is not ("open" or "flag")) return ActResult.Fail("Тут так не ходять");
-        if (!Alive(seat)) return ActResult.Fail("Ти вже вибув — лишається дивитись");
-        if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
+        if (!Alive(seat)) return ActResult.Fail("Ти вже поза грою — лишається дивитись");
+        if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
         if (MinesWire.Cell(payload) is not { } cell || !_board.Valid(cell))
             return ActResult.Fail("Не зрозумів, куди тиснути");
         return action == "flag" ? Flag(cell) : Open(seat, cell);
@@ -356,18 +356,18 @@ public sealed class Mines : Game
         if (living.Length >= 2)
         {
             _turn = NextAlive(seat);
-            return ActResult.Accept("Бабах. Ти вибув — дивись, хто кого");
+            return ActResult.Accept("Бабах! Ти поза грою — дивись, хто кого");
         }
         _reason = "boom";
         _winners = living;
         if (Players.Count() == 2 && living.Length == 1)
         {
             var other = living[0];
-            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} наступив на міну, "
-                + $"{Ctx.NickOf(other)} {SeatName(other)} виграв {_points[other]}:{_points[seat]}", Scores());
+            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} підривається на міні — "
+                + $"{Ctx.NickOf(other)} {SeatName(other)} бере партію {_points[other]}:{_points[seat]}", Scores());
         }
         else
-            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} наступив на міну — {Ranking()}", Scores());
+            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} підривається на міні — {Ranking()}", Scores());
         return ActResult.Accept("Бабах. Це була міна");
     }
 
@@ -395,7 +395,7 @@ public sealed class Mines : Game
             Ctx.Finish(_winners, $"{Info.Title}: полювання скінчено — {Ranking()}", Scores());
             return ActResult.Accept("Міна твоя — і полювання теж!");
         }
-        return ActResult.Accept($"Міна твоя! Шукай ще (лишилось {left})");
+        return ActResult.Accept($"Є! Міна твоя — шукай ще (лишилось {left})");
     }
 
     ActResult Cleared()
@@ -411,7 +411,7 @@ public sealed class Mines : Game
                 ? $"{Info.Title}: {Ctx.NickOf(living[0])} і {Ctx.NickOf(living[1])} розмінували поле порівну, {top}:{top}"
                 : $"{Info.Title}: поле розміноване порівну — {Ranking()}";
             Ctx.Finish([], text, Scores());
-            return ActResult.Accept("Поле чисте. Нічия");
+            return ActResult.Accept("Поле чисте — нічия! Ану ще раз?");
         }
         _winners = best;
         if (Players.Count() == 2)
@@ -427,24 +427,24 @@ public sealed class Mines : Game
 
     ActResult Resign(int seat)
     {
-        if (!Alive(seat)) return ActResult.Fail("Ти вже вибув — лишається дивитись");
+        if (!Alive(seat)) return ActResult.Fail("Ти вже поза грою — лишається дивитись");
         Drop(seat, "resign");
         var living = Living.Where(Ctx.Seated).ToArray();
         if (Living.Count() >= 2)
         {
             if (_turn == seat) _turn = NextAlive(seat);
-            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} здався, решта грають далі");
-            return ActResult.Accept("Здався. Дивись, хто кого");
+            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} здається, решта грають далі");
+            return ActResult.Accept("Ти поза грою — дивись, хто кого");
         }
         _reason = "resign";
         _winners = living;
         _turn = seat;
         if (living.Length == 1)
-            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} здався, "
-                + $"{Ctx.NickOf(living[0])} {SeatName(living[0])} виграв", Scores());
+            Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} здається — "
+                + $"{Ctx.NickOf(living[0])} {SeatName(living[0])} бере партію", Scores());
         else
-            Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(seat)} здався, а грати вже нема з ким", Scores());
-        return ActResult.Accept("Здався");
+            Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(seat)} здається, а грати вже нема з ким", Scores());
+        return ActResult.Accept("Партію віддано — ану ще раз?");
     }
 
     void Drop(int seat, string why)
@@ -465,7 +465,7 @@ public sealed class Mines : Game
         if (living.Length >= 2)
         {
             if (_turn == seat) _turn = NextAlive(seat);
-            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, решта грають далі");
+            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, решта грають далі");
             return;
         }
         _reason = "left";
@@ -577,9 +577,9 @@ public sealed class MinesDaily : Game, IDailyGame
         {
             _attempts++;
             Deal();
-            return ActResult.Accept($"Спроба {_attempts}. Час пішов заново");
+            return ActResult.Accept($"Спроба {_attempts} — гайда, час пішов заново");
         }
-        if (_dead) return ActResult.Fail("Підірвався. Тисни «Спробувати ще»");
+        if (_dead) return ActResult.Fail("Бабах уже був — тисни «Спробувати ще»");
         if (action is not ("open" or "flag")) return ActResult.Fail("Тут так не ходять");
         if (MinesWire.Cell(payload) is not { } cell || !_board.Valid(cell))
             return ActResult.Fail("Не зрозумів, куди тиснути");
@@ -633,9 +633,9 @@ public sealed class MinesDaily : Game, IDailyGame
         _ms = Math.Max(1000, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds);
         Ctx.Score(0, _ms, _attempts);
         Ctx.Award(0, 0, $"daily:{Info.Id}");
-        Ctx.Finish([0], $"{Info.Title}: {Ctx.NickOf(0)} розмінував поле дня за {MinesWire.Seconds(_ms)}"
+        Ctx.Finish([0], $"{Info.Title}: {Ctx.NickOf(0)} — поле дня чисте за {MinesWire.Seconds(_ms)}"
             + (_attempts > 1 ? $" (спроба {_attempts})" : ""));
-        return ActResult.Accept($"Чисто! {MinesWire.Seconds(_ms)}");
+        return ActResult.Accept($"Є! Чисто за {MinesWire.Seconds(_ms)}");
     }
 
     public override object View(int? seat)

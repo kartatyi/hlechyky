@@ -225,8 +225,8 @@ public sealed class Skilky : Game
     {
         if (action != "answer") return ActResult.Fail("Тут так не ходять");
         if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
-        if (_phase != PhaseAsk) return ActResult.Fail("Зачекай на запитання");
-        if (Ctx.Clock.UtcNow >= _endsAt) return ActResult.Fail("Час вийшов");
+        if (_phase != PhaseAsk) return ActResult.Fail("Мить — зараз буде запитання");
+        if (Ctx.Clock.UtcNow >= _endsAt) return ActResult.Fail("От халепа — час вийшов");
         if (Number(payload) is not { } value) return ActResult.Fail("Тут треба число");
         if (double.IsNaN(value) || double.IsInfinity(value)) return ActResult.Fail("Тут треба число");
         if (Math.Abs(value) > 1e15) return ActResult.Fail("Це вже занадто велике число");
@@ -446,7 +446,7 @@ public sealed class Skilky : Game
     /// <summary>Рядок Журналу: рахунок усіх за столом від більшого, бо ніки відмінювати нема як.</summary>
     string Summary(List<int> seats, long best)
     {
-        if (seats.Count == 0) return $"{Info.Title}: за столом уже нікого";
+        if (seats.Count == 0) return $"{Info.Title}: за столом уже ні душі";
         var line = string.Join(", ", seats
             .OrderByDescending(s => _scores[s]).ThenBy(s => s)
             .Select(s => $"{Ctx.NickOf(s)} {_scores[s]}"));
@@ -548,7 +548,7 @@ public sealed class Skilky : Game
         "Найточніше — {0}: {1} повз.",
         "{0} на першому місці, різниця {1}. Непогано.",
         "Точніше за всіх — {0}: лише {1} убік.",
-        "Найкращий результат — {0}, і той повз на {1}.",
+        "Найкращий результат — {0}, та й то повз на {1}.",
         "Найкраще чуття цього раунду — {0}, різниця {1}.",
         "{0} — переможець раунду з різницею {1}.",
         "Пальма першості цього раунду — {0}, {1} убік.",
@@ -561,14 +561,14 @@ public sealed class Skilky : Game
     static readonly string[] Exact =
     [
         "Точнісінько — {0}! Шапки геть.",
-        "{0} — рівно в ціль, без жодної похибки.",
+        "Овва! {0} — рівно в ціль, без жодної похибки.",
         "В яблучко, і не збоку, а в саму серцевину — {0}.",
     ];
 
     /// <summary>Найближчий і той нічого не взяв за точність: хвалити нема за що, хіба одним очком за першість.</summary>
     static readonly string[] Wide =
     [
-        "Ех, ніхто навіть близько. Найближче — {0}, і той повз на {1}. Одне очко — за сміливість.",
+        "Ех, ніхто навіть близько. Найближче — {0}, та й то повз на {1}. Одне очко — за сміливість.",
         "Мимо всі. Найменший промах — {0}: {1} убік. Тримай одне очко втіхи.",
         "Порядок величин сьогодні не з нами: найближче — {0}, різниця {1}. Очко за першість, і все.",
     ];
