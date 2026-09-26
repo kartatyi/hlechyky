@@ -181,7 +181,9 @@ async def main():
     t0 = time.time()
     while time.time() - t0 < a.seconds:
         await asyncio.sleep(1)
-        if all(b.stats["result"] for b in bots if not b.watch and b.leave is None):
+        # Кінець — коли підсумок бачать усі гравці (і ті, що встали: вони лишаються дивитись).
+        players = [b for b in bots if not b.watch]
+        if players and all(b.stats["result"] for b in players):
             break
     for b in bots:
         try:

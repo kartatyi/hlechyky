@@ -116,7 +116,7 @@
   const shown = (t) => String(t || '').replace(/[\s.!?…]+$/u, '') || String(t || '');
 
   function state(root) {
-    if (!root._bf) root._bf = { sig: '', q: -1, opened: new Set(), primed: false, writeQ: -1, auto: null, opt: null, lastOpen: -1 };
+    if (!root._bf) root._bf = { opened: new Set(), primed: false, writeQ: -1, auto: null, opt: null, padKey: '' };
     return root._bf;
   }
 
@@ -136,7 +136,10 @@
 
     // ---- шапка: номер, тема, ×2, дуга ----
     const no = root.querySelector('.bluff-no');
-    const noText = lobby ? '' : done ? 'Партію зіграно · ' + v.of + ' ' + plural(v.of, 'питання', 'питання', 'питань')
+    const played = done && v.result ? (v.result.recap || []).length : 0;
+    const noText = lobby ? ''
+      : done && v.result.left ? 'Партію обірвано · зіграно ' + played + ' з ' + v.of
+      : done ? 'Партію зіграно · ' + v.of + ' ' + plural(v.of, 'питання', 'питання', 'питань')
       : v.of ? 'Питання ' + v.q + ' з ' + v.of + (v.catLabel ? ' · ' + v.catLabel : '') : '';
     if (no.textContent !== noText) no.textContent = noText;
     root.querySelector('.bluff-x2').hidden = !(ctx.playing && v.final && !done);
@@ -146,7 +149,7 @@
       const arc = arcHost.querySelector('.garc');
       if (arc) { if (arc._arc) arc._arc.stop(); arc.remove(); }
     }
-    root.querySelector('.bluff-snd').textContent = muted() ? '🔇' : '🔈';
+    setText(root.querySelector('.bluff-snd'), muted() ? '🔇' : '🔈');
 
     // ---- питання з пропуском ----
     const qBox = root.querySelector('.bluff-q');
@@ -288,7 +291,6 @@
     st.opened = new Set();
     st.primed = false;
     st.opt = null;
-    st.lastOpen = -1;
     box.innerHTML = cards.map((o, i) => '<div class="bluff-cell" data-i="' + i + '">'
       + '<button type="button" class="bluff-opt" data-i="' + i + '" aria-label="Картка ' + (i + 1) + ': ' + ctx.esc(o.text) + '">'
       + '<span class="bluff-n">' + (i + 1) + '</span>'
