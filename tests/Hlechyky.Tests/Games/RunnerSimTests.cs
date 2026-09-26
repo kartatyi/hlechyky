@@ -642,14 +642,14 @@ public class RunnerSimTests
     }
 
     [Fact]
-    public void Inputs_older_than_fifteen_steps_are_dropped_and_future_ones_clamped_to_plus_four()
+    public void Inputs_older_than_fifteen_steps_are_dropped_and_future_ones_clamped_to_plus_eight()
     {
         var sim = Bare();
         Run(sim, 40);
         Assert.False(sim.Input(0, sim.S - 16, 5));
         Assert.True(sim.Input(0, sim.S - 15, 0));
-        Assert.True(sim.Input(0, sim.S + 50, 5));   // ляже на S+4
-        for (var i = 0; i < 4; i++)
+        Assert.True(sim.Input(0, sim.S + 50, 5));   // ляже на S+8: клієнт іде попереду на ~rtt/20 + 3 кроки
+        for (var i = 0; i < 8; i++)
         {
             sim.Step();
             Assert.False(sim.P[0].Air);

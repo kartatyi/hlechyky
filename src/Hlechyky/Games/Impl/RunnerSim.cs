@@ -282,7 +282,7 @@ public sealed class RunnerPlayer
 public sealed class RunnerSim
 {
     public const int Sub = 16, StepMs = 20, StepsPerTick = 2, TickMs = 40, Seats = 8;
-    public const int FutureMax = 4, RewindMax = 15;
+    public const int FutureMax = 8, RewindMax = 15;
     public const int NoGround = int.MinValue;
     /// <summary>Кинуті сніжки мають свою нумерацію: клієнт не знає про кидки наперед, а курс мусить збігатись.</summary>
     public const int SnowIdBase = 1 << 20;
@@ -1019,7 +1019,7 @@ public sealed class RunnerSim
 
     /// <summary>
     /// Ввід гравця <c>{ s, k }</c>: k — біти (1 стрибок тримають, 2 ↓ тримають, 4 ребро натиску), s — крок,
-    /// на якому клієнт його застосував. Майбутнє ріжемо до +4, старше за 15 кроків відкидаємо, минуле —
+    /// на якому клієнт його застосував. Майбутнє ріжемо до +8 (клієнт свідомо йде попереду сервера, щоб ввід приходив «вчасно»), старше за 15 кроків відкидаємо, минуле —
     /// перемотуємо: гравця відновлюємо зі знімка й проганяємо ще раз із виправленим журналом.
     /// </summary>
     public bool Input(int seat, int s, int k)
