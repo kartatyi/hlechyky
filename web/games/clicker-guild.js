@@ -41,7 +41,9 @@
   // ---------- дрібниці ----------
 
   /// «1», «1,25», «3» — пай із двома знаками й українською комою.
-  const pai = (n) => (Math.round(n * 100) / 100).toLocaleString('uk-UA', { maximumFractionDigits: 2 });
+  /// Форматер один на всю частину: toLocaleString будує новий Intl.NumberFormat на кожен виклик (v10 §10).
+  const PAI = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 });
+  const pai = (n) => PAI.format(Math.round(n * 100) / 100);
 
   const cat = (st) => (st.catalog && st.catalog.guild) || null;
   const rankName = (st, r) => {

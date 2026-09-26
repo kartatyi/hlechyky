@@ -705,3 +705,71 @@
   .clk-scene, .clk-side { position: static; max-height: none; }
   .clk-pane { overflow: visible; }
 }
+
+/* ---- швидкість (v10 §10) ----
+   Десяте оновлення, пакет «Швидкість» (docs/games/specs/clicker-v10-b.md). Гра часом лагала: кожен кадр змушував
+   браузер перераховувати розкладку сторінки. Більшість лікується в clicker.js (видимість без getClientRects, кнопки
+   чотири рази на секунду), а тут — те, що дешевшає саме від CSS. Блок окремий і стоїть останнім навмисно: верстку
+   цього файла водночас переробляє інший пакет. */
+
+/* Сцена — окремий світ і для розкладки, і для малювання: «+N», бризки, кіт, глеки, що з'являються й зникають щоклацання,
+   не змушують браузер перемальовувати чи перекладати решту сторінки. Розкладку сцена вже й так тримала в собі
+   (container-type), тепер ще й малюнок: усе, що вилазить за її округлі краї (кіт, що заходить збоку), обрізається по сцені. */
+.clk-stage { contain: layout paint; }
+
+/* Смужки «скільки ціни вже є», крок «коло» у «Шляху виробу» й «Далі» ростуть масштабом, а не шириною: transform не
+   чіпає розкладки, а ширина щокадру (крок «коло» тягнеться за кожним кліком і підмайстром) перераховувала її 60 разів
+   на секунду. Клас .clk попереду — щоб переважити правила частин (їхні файли підвантажуються пізніше). */
+.clk .clk-ubar i, .clk .clk-stbar i, .clk .clk-nxbar i {
+  width: 100%; transform: scaleX(0); transform-origin: 0 50%;
+}
+.clk .clk-ubar i { transition: transform .3s; }
+.clk .clk-stbar i { transition: transform .12s linear; }
+.clk .clk-nxbar i { transition: transform .6s ease-out; }
+
+/* Круг кола — окремий шар композитора: крутиться шар, а не SVG-група всередині спільного <svg> (та щокадру змушувала
+   перекомпоновувати шари сторінки й перемальовувати коло). Диск стоїть під першим <svg> кола (глек, руки, «пружина»):
+   обидва позиціоновані, і z-index тримає той самий порядок, що й був у спільному малюнку. */
+.clk .clk-wheel > svg:not(.clk-disc-layer) { position: relative; z-index: 1; }
+.clk .clk-disc-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; will-change: transform; }
+/* Крок «коло» в «Шляху виробу» тягнеться щокадру (кліки й підмайстри) — теж своїм шаром. */
+.clk .clk-stbar i { will-change: transform; }
+
+/* Шари, у які щоклацання падають «+N», бризки глини, золоті іскри й черепки (і шар частин над сценою — кіт, зірка,
+   гість). Кожна така вставка чи зникнення, що протікає до кореня, — повна розкладка документа, а під час клацання їх
+   десятки на секунду. Розмір шару дають відступи (inset: 0), тож size-обмеження нічого не міняє, а шар стає межею
+   розкладки. Без paint: «+N» і бризки мусять і далі вилітати за край кола. */
+.clk .clk-pops, .clk .clk-sparks, .clk .clk-fx, .clk .clk-layer-front { contain: size layout style; }
+
+/* Сяйво розгону (--clk-glow) міняється щокадру, поки коло гаряче. Звичайна змінна успадковується — і кожна її зміна
+   перераховувала стилі всього кола (глек, руки гончаря). Читає її лише сама кнопка кола (box-shadow), тож не успадковуємо. */
+@property --clk-glow { syntax: '<number>'; inherits: false; initial-value: 0; }
+
+/* Лічильник — межа розкладки. Число міняється до 60 разів на секунду, і кожна нова цифра протікала крізь флекс і грід
+   до кореня — повна розкладка документа (~9 мс на ПК) щокадру. Тепер цифри живуть в абсолютному шарі .clk-cnum із
+   size/layout-обмеженням (Blink перекладає лише його), а місце під число тримає ::before з «найширшим текстом розряду»
+   (data-shape: цифри — нулі, дріб — найдовший; пише clicker.js, countText). Флекс-елемент сам межею бути не може —
+   тому межа саме тут, усередині рядка. Базова лінія та сама: inline-block бере її з тексту ::before. */
+.clk .clk-count { display: inline-block; position: relative; }
+.clk .clk-count::before { content: attr(data-shape); visibility: hidden; }
+.clk .clk-cnum { position: absolute; inset: 0; text-align: right; contain: size layout style; }
+
+/* Те, чого зараз не видно (прокручене за край панелі чи сторінки), браузер не розкладає й не малює. Рядки полиці —
+   кожен окремо: у значках знарядь і верстатів живуть нескінченні анімації (полум'я ліхтаря й лампи, дзвіночок), і
+   навіть за краєм прокрутки вони щокадру перекладали свої SVG. auto в contain-intrinsic-block-size пам'ятає справжню
+   висоту, щойно рядок раз побував на екрані; числа нижче — виміряні висоти (1920×1080 і 390×844), щоб до першого
+   показу прокрутка майже не стрибала. Ширину рядкам дає сітка чи флекс розділу, тож її не чіпаємо. */
+.clk .clk-up { content-visibility: auto; contain-intrinsic-block-size: auto 50px; }
+.clk .clk-mark { content-visibility: auto; contain-intrinsic-block-size: auto 44px; }
+.clk .clk-clay { content-visibility: auto; contain-intrinsic-block-size: auto 170px; }
+.clk .clk-tool { content-visibility: auto; contain-intrinsic-block-size: auto 140px; }
+.clk .clk-wonder { content-visibility: auto; contain-intrinsic-block-size: auto 110px; }
+.clk .clk-style { content-visibility: auto; contain-intrinsic-block-size: auto 126px; }
+/* Цілі розділи інших вкладок: комора, прокачка, замовлення, розділи альбому після першого. */
+.clk .clkw-store, .clk .clkw-upsec, .clk .clkf-store, .clk .clka-sec + .clka-sec {
+  content-visibility: auto; contain-intrinsic-block-size: auto 480px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clk .clk-ubar i, .clk .clk-stbar i, .clk .clk-nxbar i { transition: none; }
+}

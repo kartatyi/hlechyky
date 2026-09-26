@@ -327,7 +327,9 @@
       + '<span class="clkf-ftext">' + api.esc(st, f.text || '') + '</span>'
       + (f.cd ? '<span class="clkf-fcd small muted"><i class="clkf-cd" data-at="' + f.cd + '"></i></span>' : '')
       + (f.btn ? '<button type="button" class="ghost small clkf-fbtn">' + api.esc(st, f.btn) + '</button>' : '');
-    el.className = 'clkf-feed ' + (f.cls || '');
+    // Стрічку slow малює п'ять разів на секунду — клас пишемо, лише коли він інший (v10 §10).
+    const cls = 'clkf-feed ' + (f.cls || '');
+    if (el.className !== cls) el.className = cls;
     if (api.swap(el, html)) {
       countdowns(st, api, el);
       const btn = el.querySelector('.clkf-fbtn');

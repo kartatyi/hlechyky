@@ -517,10 +517,11 @@ public sealed partial class Clicker
             rackSize = RackSize,
             rackFull = _rack.Count >= RackSize,
             dryMs = DryTime.TotalMilliseconds * FairDryMult() * CraftDryMult,
+            // Вироби — лише те, що міняється: відкритий, скільки роботи, скільки обпалено, чого вартий простий. Назва й
+            // «відкриється на» — у каталозі (catalog.wares): вид летить щопачки кліків (десяте оновлення, §10).
             wares = Wares.Select(x => new
             {
-                key = x.Key, name = x.Name, open = WareOpen(x.Key), unlock = x.Unlock, need = WorkOf(x), fired = FiredOf(x.Key),
-                value = ItemValue(x.Key, "", 1),
+                key = x.Key, open = WareOpen(x.Key), need = WorkOf(x), fired = FiredOf(x.Key), value = ItemValue(x.Key, "", 1),
             }),
             items = AllItems().Select(x => new
             {
@@ -528,10 +529,11 @@ public sealed partial class Clicker
                 n = x.Count, value = ItemValue(x.Item.Ware, x.Item.Style, x.Item.Quality),
             }),
             storeCap = StoreCapNow,
-            // Прокачка ремесла: назва й опис їдуть поруч із рівнем — панель малюється з самого виду.
+            // Прокачка ремесла: рівень зі стелею, ціна наступного й «зараз: …» (воно від стану майстерні). Назва й
+            // опис — у каталозі (catalog.craftUps).
             ups = CraftUps.Select(u => new
             {
-                key = u.Key, name = u.Name, desc = u.Desc, level = CraftLevel(u.Key), max = u.Max,
+                key = u.Key, level = CraftLevel(u.Key), max = u.Max,
                 price = CraftLevel(u.Key) >= u.Max ? 0 : CraftUpPrice(u, CraftLevel(u.Key)), now = CraftUpNow(u),
             }),
             formed = _formed,
@@ -552,6 +554,9 @@ public sealed partial class Clicker
         return new
         {
             wares = Wares.Select(w => new { key = w.Key, name = w.Name, work = w.Work, seconds = w.Seconds, unlock = w.Unlock }),
+            // Прокачка ремесла й хата (десяте оновлення): незмінні тексти й ціни, які раніше їхали щопачки кліків.
+            craftUps = CraftUps.Select(u => new { key = u.Key, name = u.Name, desc = u.Desc }),
+            house = CatalogHouse(),
             styles = Styles.Select((s, i) => new { key = s.Key, name = s.Name, value = StyleValue(s.Key) }),
             quality = new[] { "", "звичайний", "добрий", "дзвінкий", "розкішний" },
             kiln = CatalogKiln(),

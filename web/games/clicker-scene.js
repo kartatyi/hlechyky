@@ -998,15 +998,21 @@
     for (const k of TIERS) tiers[k] = step(lvl(k));
     const hs = v.house || {};
     const tools = {};
-    for (const t of hs.tools || []) if (t.owned) tools[t.key] = true;
     const decor = {};
-    for (const d of hs.decor || []) if (d.owned) decor[d.key] = true;
+    // Десяте оновлення: куплене — ключами (house.own), назви й ціни — у каталозі. Старий сервер шле рядки з owned.
+    if (hs.own) {
+      for (const k of hs.own.tools || []) tools[k] = true;
+      for (const k of hs.own.decor || []) decor[k] = true;
+    } else {
+      for (const t of hs.tools || []) if (t.owned) tools[t.key] = true;
+      for (const d of hs.decor || []) if (d.owned) decor[d.key] = true;
+    }
     const a = lvl('apprentice');
     const weather = (v.market && typeof v.market.weather === 'string') ? v.market.weather : '';
     // Дев'яте оновлення: оздоба, ім'я на вивісці, знайдені дивовижі, виставка й кахлі печі з альбому.
     const look = lookOf(v);
     const name = (hs.named || '').slice(0, 24);
-    const wonders = ((hs.wonders && hs.wonders.list) || []).filter((w) => w.found).map((w) => w.key);
+    const wonders = foundWonders(hs).map((w) => w.key);
     const al = v.album || {};
     const ware = (st && st.api && st.api.wareSvg) || null;
     const art = (x) => {
@@ -1029,6 +1035,23 @@
       kiln: lvl('kiln') >= 1 ? 1 : 0, kilnLvl: Math.min(60, Math.floor(lvl('kiln') / 5) * 5), workshop: step(lvl('workshop')),
       cat: (v.secrets || []).some((s) => s.key === 'cat' && s.owned),
     };
+  }
+
+  /// Знайдені дивовижі з виду: [{ key, at }]. Десяте оновлення шле їх мапою «ключ → коли» (house.wonders) у порядку
+  /// каталогу — так вони й стоять на поличці; старий сервер — списком із found.
+  function foundWonders(hs) {
+    const w = hs && hs.wonders;
+    if (!w || typeof w !== 'object') return [];
+    if (Array.isArray(w.list)) return w.list.filter((x) => x && x.found).map((x) => ({ key: x.key, at: x.at }));
+    return Object.keys(w).map((key) => ({ key, at: w[key] }));
+  }
+
+  /// Назва й байка знайденої дивовижі — з хати, яку ядро склало з каталогу (clicker.js, houseFrom). Каталог шле їх
+  /// лише знайдених, тож на свіжу знахідку ядро допитує каталог наново; доти — null, і картка чекає.
+  function wonderText(st, key) {
+    const list = (st.houseView && st.houseView.wonders && st.houseView.wonders.list) || [];
+    const w = list.find((x) => x.key === key);
+    return w && w.name && w.tale ? w : null;
   }
 
   function houseSvg(e) {
@@ -1685,9 +1708,10 @@
       else if (!near || g.eta < near.eta) near = g;
     }
     if (bestNow) list.push(Object.assign(bestNow, { prio: 1 }));
-    // Новий виріб на колі.
-    if (c && c.wares) {
-      const next = c.wares.filter((w) => !w.open && w.unlock > total).sort((a, b) => a.unlock - b.unlock)[0];
+    // Новий виріб на колі. Вироби — з ремесла (clicker-craft.js): там назва й «відкриється на» вже зведені з каталогом.
+    const wares = (st.craft && st.craft.wares) || [];
+    if (wares.length) {
+      const next = wares.filter((w) => !w.open && w.unlock > total).sort((a, b) => a.unlock - b.unlock)[0];
       if (next) {
         const left = next.unlock - total;
         const g = { icon: '<g transform="translate(16 30) scale(.36) translate(-50 -86)">' + (api.wareSvg(next.key, { wrap: false, quality: 1, slot: 'goal-' + next.key }) || '') + '</g>',
@@ -1767,8 +1791,10 @@
   // ---------- дивовижа знайшлась ----------
 
   /// Картка з байкою — один раз на знахідку. Під Оком майстра й чужим вікном чекаємо, як і «поки тебе не було».
-  function showWonder(st, api, w) {
+  function showWonder(st, api, found) {
     if (!api.visible(st) || api.guardOn(st) || api.overlayOpen(st)) return false;
+    const w = wonderText(st, found.key);
+    if (!w) return false;
     const say = (x) => api.esc(st, x);
     const body = api.overlay(st, '<div class="clks-wonder">'
       + '<div class="clks-wart">' + wonder32(w.key) + '</div>'
@@ -1827,15 +1853,16 @@
       api.houseSvg = (st2, h) => {
         const ups = {};
         for (const l of (h && h.ladder) || []) ups[l.key] = { level: l.level };
-        const owned = (keys) => (keys || []).map((key) => ({ key, owned: true }));
-        // Оздоба, ім'я й дивовижі друга — якщо сервіс цеху їх уже шле; нема — хата просто типова.
+        // Оздоба, ім'я й дивовижі друга — якщо сервіс цеху їх уже шле; нема — хата просто типова. Форма та сама, що в
+        // нашому виді (десяте оновлення): куплене ключами в own, знайдені дивовижі — мапою.
+        const wonderKeys = (h && (h.wonderKeys || (Array.isArray(h.wonders) ? h.wonders : null))) || [];
         const fake = {
           upgrades: ups,
           house: {
-            tools: owned(h && h.tools), decor: owned(h && h.decor),
+            own: { tools: (h && h.tools) || [], decor: (h && h.decor) || [] },
             look: (h && h.look) || {}, named: (h && (h.houseName || h.name)) || '',
             // Знімок шле і лічильник дивовиж (wonders — число, для статистики), і їхні ключі (wonderKeys) — малюємо ключі.
-            wonders: { list: ((h && (h.wonderKeys || (Array.isArray(h.wonders) ? h.wonders : null))) || []).map((k) => ({ key: k, found: true })) },
+            wonders: Object.fromEntries(wonderKeys.map((k) => [k, ''])),
           },
           album: { show: (h && h.show) || [], stove: (h && h.stove) || [] },
           secrets: [],
@@ -1874,8 +1901,7 @@
         st.scn.sky = paintSky(st, sceneNow(st, api));
       }
       // Знайшлась нова дивовижа: перший вид лише запам'ятовує, що вже стояло на поличці.
-      const list = (v.house && v.house.wonders && v.house.wonders.list) || [];
-      const found = list.filter((w) => w.found);
+      const found = foundWonders(v.house);
       if (!st.scn.wonderSeen) st.scn.wonderSeen = new Set(found.map((w) => w.key));
       else {
         for (const w of found) {

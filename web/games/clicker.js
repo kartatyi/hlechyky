@@ -50,7 +50,10 @@
   const STAMPS_PER_CAP = 10;              // +1 черепок до денної стелі за кожні 10 клейм
   const CATCH_GRACE_MS = 2000;            // той самий запас, що й на сервері: після нього глек уже не спіймати
   const BOARD_MS = 60 * 1000;             // як часто перепитуємо таблицю «Гончарне коло» для рядка про суперника
-  const SLOW_MS = 200;                    // таймери бонусів, прогрес клейм — не частіше, ніж так
+  /// Кнопки полиць і прилавка, таймери бонусів, прогрес клейм — чотири рази на секунду й одним кадром (v10 §10): кожна
+  /// зміна тексту поза сценою — це розкладка сторінки, і зміни одного такту мусять злитися в одну.
+  const SLOW_MS = 250;
+  const RIVAL_MS = 1000;                  // «суперник попереду на …» — не частіше, ніж так (різниця міняється щотакту)
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
@@ -368,14 +371,41 @@
         guard: null, eye: null, taps: [], eyeBusy: false, eyeKey: '', eyeOpen: false, eyeAt: 0, eyeArm: 0,
         raf: 0, timer: 0, boardAt: 0, board: null, ctx: null,
         // Частини (clicker-<id>.js): які вже змонтовані, підписи їхніх вкладок, останній вид для запізнілих.
-        parts: new Set(), tabText: {}, lastView: null, catalog: null, catalogAsked: false, front: null, back: null, ov: null,
+        parts: new Set(), tabText: {}, lastView: null, catalog: null, front: null, back: null, ov: null,
+        // Десяте оновлення (§10): видимість від IntersectionObserver, полиці чотири рази на секунду, хата з каталогу,
+        // дозапит каталогу, коли в ньому чогось бракує.
+        io: null, onScreen: true, secEls: null, knockAnim: null, rivalAt: 0, rivalKey: '',
+        houseView: null, houseSig: '', houseCat: null, catalogGap: '', catalogAskAt: 0, catalogTries: {},
       };
     }
     return root._clk;
   }
 
-  /// Картку справді видно: вона в документі, панель ігор не схована і вкладка браузера на передньому плані.
-  const visible = (st) => !!st.el && st.el.isConnected && !document.hidden && st.el.getClientRects().length > 0;
+  /// Картку справді видно: вона в документі, вкладка браузера на передньому плані й картка хоч краєм у вікні.
+  /// Розкладку тут не питаємо (десяте оновлення, docs/games/specs/clicker-v10.md §10): visible() кличуть щокадру, а
+  /// getClientRects() після будь-якої зміни DOM у тому самому кадрі змушував браузер синхронно перераховувати всю
+  /// сторінку (11–13 тис. вузлів) — чверть часу головного потоку. «У вікні» каже IntersectionObserver (watchCard): він
+  /// відповідає сам, після розкладки, яку браузер і так робить, а схована картка (hidden на столі) для нього «поза».
+  const visible = (st) => !!st.el && st.el.isConnected && !document.hidden
+    && (st.io ? st.onScreen : st.el.getClientRects().length > 0);
+
+  /// Спостерігач для visible(). Картку каркас монтує ще до вставки в сторінку й потім лише ховає (hidden), тож
+  /// спостерігаємо від mount до unmount: відповідь приходить і на вставку, і на кожне «сховали/показали». Запас 200 px —
+  /// щоб лічильник ожив ще до того, як картку догорнули до краю екрана. Щойно знову видно — полиці й повільні рядки
+  /// малюються одразу, а не за чверть секунди.
+  function watchCard(st) {
+    if (st.io) st.io.disconnect();
+    st.io = null;
+    st.onScreen = true;
+    if (!window.IntersectionObserver || !st.el) return;
+    st.io = new IntersectionObserver((entries) => {
+      const on = entries[entries.length - 1].isIntersecting;
+      if (on === st.onScreen) return;
+      st.onScreen = on;
+      if (on) st.slowAt = 0;
+    }, { rootMargin: '200px 0px' });
+    st.io.observe(st.el);
+  }
 
   /// Серверне «зараз» у мс: мітка з виду плюс те, що минуло на нашому годиннику від його отримання.
   const serverNow = (st) => st.viewNow + (Date.now() - st.recvAt);
@@ -433,7 +463,10 @@
 
   // ---------- малювання ----------
 
-  /// Кличеться на кожен кадр: і число, і кнопки мусять оживати самі, поки коло крутиться без кліків.
+  /// Кличеться на кожен кадр, але щокадру живуть лише лічильник і коло (розписний глек, глек з полиці, frame частин).
+  /// Кнопки полиць і прилавка — чотири рази на секунду (paintShop), рядки й бонуси — п'ять (paintSlow): «вже по
+  /// кишені» око швидше однаково не ловить, а 24 верстати × afford() × short() щокадру на телефоні з'їдали десяту
+  /// частину часу (десяте оновлення, docs/games/specs/clicker-v10.md §10).
   function paint(st) {
     const now0 = Date.now();
     // Підтверджене число рахуємо один раз: від нього і лічильник (з нашими ще не відправленими кліками),
@@ -445,7 +478,7 @@
     if (n !== st.shown) {
       st.shown = n;
       const text = big(n);
-      st.count.textContent = text;
+      countText(st, text);
       // Одиниця поруч із числом: глеки, гривні чи золоті (десяте оновлення). Міняється рідко — лише на порогах.
       const u = unit(n);
       if (u.key !== st.unitKey) { st.unitKey = u.key; st.unit.textContent = u.word; }
@@ -456,39 +489,91 @@
       if (st.count.classList.contains('long') !== long) st.count.classList.toggle('long', long);
     }
 
-    for (const b of st.buys) {
-      const u = st.ups[b.dataset.buy];
-      if (!u) continue;
-      const maxed = u.max > 0 && u.level >= u.max;
-      const a = afford(u, n, st.mode);
-      const off = maxed || !st.mine || a.n < 1 || (st.mode !== 'max' && n < a.cost);
-      if (b.disabled !== off) b.disabled = off;
-      const label = maxed ? 'досить' : (a.n > 1 ? '×' + a.n + ' · ' : '') + short(Math.ceil(a.cost));
-      if (b._price.textContent !== label) b._price.textContent = label;
-      // Смужка «скільки ціни вже є» — кроком у 2 %, щоб не писати стиль щокадру.
-      if (b._bar) {
-        const pct = maxed ? 100 : Math.min(100, Math.floor((n / Math.max(1, st.mode === 'max' ? u.price : a.cost)) * 50) * 2);
-        if (b._pct !== pct) { b._pct = pct; b._bar.style.width = pct + '%'; }
+    paintWheel(st);
+    paintGolden(st);
+    paintFall(st);
+    for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'frame', st, H.api, now0);
+
+    const now = Date.now();
+    if (now - st.slowAt >= SLOW_MS) {
+      st.slowAt = now;
+      paintShop(st, n, sure);
+      paintSlow(st, n);
+    }
+  }
+
+  /// Число лічильника — в окремому абсолютному шарі .clk-cnum усередині .clk-count, а місце під нього тримає
+  /// «найширший текст розряду» (data-shape → ::before, clicker.css, блок «швидкість»). Шар — межа розкладки: нова
+  /// цифра перекладає лише його. Раніше кожна зміна числа протікала крізь флекс і грід до кореня й коштувала повної
+  /// розкладки документа — ~9 мс на ПК, а число міняється до 60 разів на секунду (десяте оновлення, §10).
+  /// Розряд — текст без цифр і без дробу: цифри однакової ширини (tabular-nums), а дріб big() відкидає нулі в кінці
+  /// («1,5 млн» → «1,523 млн»), тож місце тримаємо під найдовший дріб, який уже бачили в цьому розряді.
+  function countText(st, text) {
+    const c = st.count;
+    let t = st.countNum;
+    if (!t || t.parentNode !== c) {
+      c.textContent = '';
+      t = st.countNum = document.createElement('span');
+      t.className = 'clk-cnum';
+      c.appendChild(t);
+      st.countKey = null;
+      st.countShape = null;
+    }
+    t.textContent = text;
+    const z = text.replace(/\d/g, '0');
+    const key = z.replace(/,0*/, '');
+    const shape = key === st.countKey && st.countShape && st.countShape.length >= z.length ? st.countShape : z;
+    st.countKey = key;
+    if (shape !== st.countShape) { st.countShape = shape; c.dataset.shape = shape; }
+  }
+
+  /// Кнопки полиць і прилавка: «по кишені чи ні», ціна за ×1/×10/макс, смужка «скільки ціни вже є». Лише те, що
+  /// видно: на «Майстерні» — верстати й віхи, а розділи хати, розписів і купців — коли розгорнуті; решту вкладок
+  /// малюють їхні частини. Прилавок (лівий стовпчик) видно завжди. Перемкнули вкладку чи розгорнули розділ —
+  /// st.slowAt скидається, і кнопки оживають того ж кадру.
+  function paintShop(st, n, sure) {
+    if (st.tab === 'shop') {
+      for (const b of st.buys) {
+        const u = st.ups[b.dataset.buy];
+        if (!u) continue;
+        const maxed = u.max > 0 && u.level >= u.max;
+        const a = afford(u, n, st.mode);
+        const off = maxed || !st.mine || a.n < 1 || (st.mode !== 'max' && n < a.cost);
+        if (b.disabled !== off) b.disabled = off;
+        const label = maxed ? 'досить' : (a.n > 1 ? '×' + a.n + ' · ' : '') + short(Math.ceil(a.cost));
+        if (b._price.textContent !== label) b._price.textContent = label;
+        // Смужка «скільки ціни вже є» — кроком у 2 %, щоб не писати стиль на кожну дрібницю. Масштаб, а не ширина:
+        // transform не чіпає розкладки (clicker.css, блок «швидкість»).
+        if (b._bar) {
+          const pct = maxed ? 100 : Math.min(100, Math.floor((n / Math.max(1, st.mode === 'max' ? u.price : a.cost)) * 50) * 2);
+          if (b._pct !== pct) { b._pct = pct; b._bar.style.transform = 'scaleX(' + pct / 100 + ')'; }
+        }
       }
-    }
-    for (const b of st.markBtns) {
-      const off = !st.mine || n < +b.dataset.price;
-      if (b.disabled !== off) b.disabled = off;
-    }
-    for (const b of st.styleBtns) {
-      const off = !st.mine || (b.dataset.owned !== '1' && n < +b.dataset.price);
-      if (b.disabled !== off) b.disabled = off;
-    }
-    // Знаряддя й прикраси — одноразові: куплене лишається сірим, некуплене чекає глеків.
-    for (const b of st.houseBtns) {
-      const off = !st.mine || b.dataset.owned === '1' || n < +b.dataset.price;
-      if (b.disabled !== off) b.disabled = off;
-    }
-    // Купці: замовлення на розпис — лише за розпис із колекції; купців у дорозі — не більше трьох.
-    for (const b of st.orderBtns) {
-      const invest = b.dataset.kind === 'invest';
-      const off = !st.mine || b.dataset.can !== '1' || n < +b.dataset.need || (invest && st.taken.length >= st.maxTaken);
-      if (b.disabled !== off) b.disabled = off;
+      for (const b of st.markBtns) {
+        const off = !st.mine || n < +b.dataset.price;
+        if (b.disabled !== off) b.disabled = off;
+      }
+      if (secOpen(st, 'styles')) {
+        for (const b of st.styleBtns) {
+          const off = !st.mine || (b.dataset.owned !== '1' && n < +b.dataset.price);
+          if (b.disabled !== off) b.disabled = off;
+        }
+      }
+      // Знаряддя й прикраси — одноразові: куплене лишається сірим, некуплене чекає глеків.
+      if (secOpen(st, 'house')) {
+        for (const b of st.houseBtns) {
+          const off = !st.mine || b.dataset.owned === '1' || n < +b.dataset.price;
+          if (b.disabled !== off) b.disabled = off;
+        }
+      }
+      // Купці: замовлення на розпис — лише за розпис із колекції; купців у дорозі — не більше трьох.
+      if (secOpen(st, 'orders')) {
+        for (const b of st.orderBtns) {
+          const invest = b.dataset.kind === 'invest';
+          const off = !st.mine || b.dataset.can !== '1' || n < +b.dataset.need || (invest && st.taken.length >= st.maxTaken);
+          if (b.disabled !== off) b.disabled = off;
+        }
+      }
     }
 
     // Продаж — від підтвердженого числа, а не від намальованого: у st.hands може лежати хвіст кліків,
@@ -503,17 +588,42 @@
     if (st.all.dataset.pots !== pots) st.all.dataset.pots = pots;
     const label = 'Обміняти все (' + num(many) + ' 🏺)';
     if (st.all.textContent !== label) st.all.textContent = label;
+  }
 
-    paintWheel(st);
-    paintGolden(st);
-    paintFall(st);
-    for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'frame', st, H.api, now0);
-
-    const now = Date.now();
-    if (now - st.slowAt >= SLOW_MS) {
-      st.slowAt = now;
-      paintSlow(st, n);
+  /// Розділи Майстерні (<details>), знайдені раз на картку. Розгорнули розділ — його кнопки й відліки оживають
+  /// того ж кадру: toggle скидає st.slowAt.
+  function secEls(st) {
+    if (!st.secEls) {
+      st.secEls = {};
+      for (const x of SECTIONS) {
+        const el = st.el.querySelector('.clk-sec[data-sec="' + x.key + '"]');
+        st.secEls[x.key] = el;
+        if (el) el.addEventListener('toggle', () => { st.slowAt = 0; });
+      }
     }
+    return st.secEls;
+  }
+  /// Розділ Майстерні розгорнутий? Згорнутого гравець не бачить — і кнопок у ньому не малюємо.
+  const secOpen = (st, key) => { const el = secEls(st)[key]; return !el || el.open; };
+
+  /// Круг кола (диск, борозни, цятка) — в окремому <svg> під рештою кола, окремим шаром композитора (will-change у
+  /// clicker.css, блок «швидкість»), і крутиться сам шар. Поворот SVG-групи всередині спільного <svg> щокадру міняв
+  /// дерево властивостей малювання: Chrome перекомпоновував шари всієї сторінки й перемальовував коло — ~5 % головного
+  /// потоку навіть без кліків (десяте оновлення, §10). Глек, руки гончаря й «пружина» глини лишаються в першому
+  /// <svg> кола, як і були, — тож і querySelector('svg') частин знаходить саме його: круг додаємо після нього.
+  function discLayer(st) {
+    if (st.discSvg && st.discSvg.parentNode === st.wheel) return st.discSvg;
+    const turn = st.wheel && st.wheel.querySelector('.clk-turn');
+    if (!turn) return null;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', 'clk-disc-layer');
+    turn.style.transform = '';
+    svg.appendChild(turn);
+    st.wheel.appendChild(svg);
+    st.discSvg = svg;
+    return svg;
   }
 
   /// Коло крутиться від пасиву й від розгону, кільце навколо нього — це розгін, сяйво — теж. Усе за кадр і
@@ -528,7 +638,8 @@
     const speed = (sec > 0 ? 30 + 30 * Math.log10(1 + sec) : 0) + 420 * frac;
     if (speed > 0 && dt > 0) {
       st.angle = (st.angle + speed * dt) % 360;
-      st.turn.style.transform = 'rotate(' + st.angle.toFixed(1) + 'deg)';
+      const disc = discLayer(st) || st.turn;
+      disc.style.transform = 'rotate(' + st.angle.toFixed(1) + 'deg)';
     }
     const off = Math.round(RING * (1 - frac) * 10) / 10;
     if (off !== st.ringOff) { st.ringOff = off; st.heatRing.style.strokeDashoffset = off; }
@@ -573,7 +684,7 @@
     paintRival(st, liveTotal);
     if (st.tab === 'fire') paintFire(st, liveTotal);
     // Хата й дошка купців — розділи Майстерні (v8), а не свої вкладки: ціни глини, «замісити» й відліки
-    // малюються, поки відкрита Майстерня.
+    // малюються, поки відкрита Майстерня й розгорнутий їхній розділ.
     if (st.tab === 'shop') paintCountdowns(st, sn, shown);
     // Купець повернувся, а гончар нічого не робив: сервер рахує повернення лише при дії чи виді, тож питаємо вид
     // самі — раз на купця, з запасом у дві секунди й лише коли картку видно (як look для глеків).
@@ -589,12 +700,16 @@
 
   /// Відліки в хаті й на дошці: глина відлежується, купець повертається, дошка оновлюється.
   function paintCountdowns(st, sn, shown) {
+    const house = secOpen(st, 'house');
+    const orders = secOpen(st, 'orders');
     for (const el of st.cds) {
+      if (!(el._sec === 'house' ? house : orders)) continue;
       const at = +el.dataset.at;
       const left = at - sn;
       const text = left > 0 ? mmss(left) : el.dataset.done || '0:00';
       if (el.textContent !== text) el.textContent = text;
     }
+    if (!house) return;
     const resting = sn < st.clayRestUntil;
     for (const b of st.clayBtns) {
       const owned = b.dataset.owned === '1';
@@ -948,7 +1063,16 @@
         }
       }
     }
-    if (st.rival.textContent !== text) { st.rival.textContent = text; st.rival.hidden = !text; }
+    // Різниця з суперником міняється щотакту, а кожен новий текст над сценою — розкладка сторінки: пишемо не частіше
+    // разу на секунду. Змінилось місце чи суперник (ключ — усе до «на …») — одразу.
+    const key = text.replace(/ на .*$/, '');
+    const now = Date.now();
+    if (st.rival.textContent !== text && (key !== st.rivalKey || now - st.rivalAt >= RIVAL_MS)) {
+      st.rivalKey = key;
+      st.rivalAt = now;
+      st.rival.textContent = text;
+      if (st.rival.hidden !== !text) st.rival.hidden = !text;
+    }
   }
 
   function paintFire(st, liveTotal) {
@@ -1152,10 +1276,21 @@
     const sn = serverNow(st);
     const ends = [st.inspireUntil, st.fairUntil].filter((t) => t > sn);
     if (ends.length && Math.min(...ends) - sn < 1500) flush(st);
-    st.wheel.classList.remove('hit');
-    void st.wheel.offsetWidth;         // перезапуск анімації «стуку»: без цього другий клік поспіль її не покаже
-    st.wheel.classList.add('hit');
+    knock(st);
     paint(st);
+  }
+
+  const REDUCED_MQ = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  /// «Стук» кола на клік — ті самі кадри, що clkhit у clicker.css, але через WAAPI: перезапуск CSS-класу вимагав
+  /// void offsetWidth, тобто синхронної розкладки всієї сторінки на кожен клік (десяте оновлення, §10).
+  const KNOCK = [{ transform: 'none', easing: 'ease-out' }, { transform: 'scale(1.07)', offset: 0.4, easing: 'ease-out' }, { transform: 'none' }];
+  function knock(st) {
+    const w = st.wheel;
+    if (!w || !w.animate || (REDUCED_MQ && REDUCED_MQ.matches)) return;
+    try {
+      if (st.knockAnim) st.knockAnim.cancel();
+      st.knockAnim = w.animate(KNOCK, { duration: 180 });
+    } catch { /* браузер без WAAPI — коло просто без стуку */ }
   }
 
   /// Який звук дає дія гравця (жива хата озвучує; без неї — тиша).
@@ -1263,6 +1398,7 @@
     st.mode = mode;
     storeSet('clk.mode', mode);
     for (const b of st.modes.querySelectorAll('[data-mode]')) b.classList.toggle('active', b.dataset.mode === mode);
+    st.slowAt = 0;                     // ціни за ×1/×10/макс — того ж кадру
     paint(st);
   }
 
@@ -1483,7 +1619,7 @@
       orders: st.taken.length ? '🐴' + st.taken.length : '',
     };
     for (const x of SECTIONS) {
-      const sec = st.el.querySelector('.clk-sec[data-sec="' + x.key + '"]');
+      const sec = secEls(st)[x.key];
       if (!sec) continue;
       const sum = String(count[x.key] || '');
       const text = x.title + (sum ? ' · ' + sum : '');
@@ -1498,8 +1634,57 @@
     }
   }
 
+  /// Хата для полиць і сцени: каталог (назви, описи, ціни) + стан із виду (куплене, обране, знайдене) у тих самих
+  /// рядках, що й до десятого оновлення, — st.clays / st.tools / st.decorList і st.houseView (оздоба, дивовижі,
+  /// вивіска). Перебудовуємо лише тоді, коли стан чи каталог справді змінились (st.houseVer росте): вид летить щопачки
+  /// кліків, а хата міняється раз на хвилини. Старий сервер (хвилина деплою) шле повні рядки прямо у виді — беремо як є.
+  function houseFrom(st, hs) {
+    const cat = (st.catalog && st.catalog.house) || null;
+    const sig = JSON.stringify(hs);
+    if (sig === st.houseSig && cat === st.houseCat) return;
+    st.houseSig = sig;
+    st.houseCat = cat;
+    st.houseVer = (st.houseVer || 0) + 1;
+    const own = hs.own;
+    if (!own) {
+      st.clays = hs.clays || [];
+      st.tools = hs.tools || [];
+      st.decorList = hs.decor || [];
+      st.houseView = { named: hs.named || '', nameMax: hs.nameMax || 24, looks: hs.looks || [],
+        wonders: hs.wonders && hs.wonders.list ? hs.wonders : null };
+      return;
+    }
+    const has = (list) => { const set = new Set(list || []); return (k) => set.has(k); };
+    const clay = has(own.clays), tool = has(own.tools), decor = has(own.decor), look = has(own.looks);
+    const c = cat || {};
+    st.clays = (c.clays || []).map((x) => ({ key: x.key, name: x.name, desc: x.desc, price: x.price, body: x.body,
+      owned: !x.key || clay(x.key), on: (hs.clay || '') === x.key }));
+    st.tools = (c.tools || []).map((x) => ({ key: x.key, name: x.name, desc: x.desc, price: x.price, owned: tool(x.key) }));
+    st.decorList = (c.decor || []).map((x) => ({ key: x.key, name: x.name, desc: x.desc, price: x.price, bonus: x.bonus, owned: decor(x.key) }));
+    const chosen = hs.look || {};
+    const found = hs.wonders || {};
+    // Назва й байка є в каталозі лише знайдених (решта — секрет); свіжознайдену дочекаємось із новим каталогом.
+    const list = (c.wonders || []).map((w) => ({ key: w.key, found: !!found[w.key], at: found[w.key] || null,
+      name: found[w.key] ? w.name || '' : '', tale: found[w.key] ? w.tale || '' : '', from: w.from || '' }));
+    st.houseView = {
+      named: hs.named || '',
+      nameMax: c.nameMax || 24,
+      looks: (c.looks || []).map((g) => {
+        const opts = g.options || [];
+        return { key: g.key, name: g.name, desc: g.desc, value: chosen[g.key] || (opts[0] && opts[0].value) || '',
+          options: opts.map((o) => ({ value: o.value, name: o.name, price: o.price, owned: !(o.price > 0) || look(g.key + ':' + o.value) })) };
+      }),
+      wonders: cat ? { found: Object.keys(found).length, total: list.length, bonus: c.wonderBonus || 0.01, list } : null,
+    };
+  }
+
   function housePane(st, ctx) {
     const esc = ctx.esc;
+    // Розмітку складаємо лише тоді, коли хата змінилась (houseFrom), гончар уперше обпалився (відкрилась оздоба) чи
+    // хтось скинув підпис панелі — запізніла частина принесла значки знарядь і дивовиж.
+    const inputs = st.houseVer + '|' + (st.stamps > 0 ? 1 : 0) + '|' + (H.api.toolIcon ? 1 : 0) + (H.api.decorIcon ? 1 : 0) + (H.api.wonderIcon ? 1 : 0);
+    if (st.housePane._sig != null && st.housePane._in === inputs) { lookButtons(st); return; }
+    st.housePane._in = inputs;
     const clays = '<div class="clk-sub">Глина на колі<span class="muted small"> · купується раз; замішана відлежується 10 хв</span></div>'
       + '<div class="clk-clays">' + st.clays.map((c) => '<button type="button" class="clk-clay' + (c.on ? ' on' : '') + (c.owned ? ' owned' : '')
         + '" data-clay="' + esc(c.key) + '" data-price="' + c.price + '" data-owned="' + (c.owned ? 1 : 0) + '" data-on="' + (c.on ? 1 : 0) + '" disabled>'
@@ -1528,7 +1713,11 @@
       collectCountdowns(st);
       st.slowAt = 0;
     }
-    // Клейма міняються рідко, але розмітку оздоби вони не чіпають: інакше кожне клеймо стирало б недописану вивіску.
+    lookButtons(st);
+  }
+
+  /// Клейма міняються рідко, але розмітку оздоби вони не чіпають: інакше кожне клеймо стирало б недописану вивіску.
+  function lookButtons(st) {
     for (const b of st.lookBtns || []) {
       const off = !st.mine || b.dataset.on === '1' || +b.dataset.stamp > (st.stampsFree || 0);
       if (b.disabled !== off) b.disabled = off;
@@ -1542,7 +1731,7 @@
 
   /// Оздоба: гурт (стріха, стіни, тин…) — рядок вибору. Куплений варіант вдягається безплатно, новий бере клейма.
   function looksHtml(st, esc) {
-    const hs = (st.lastView && st.lastView.house) || {};
+    const hs = st.houseView || {};
     const looks = hs.looks || [];
     if (!looks.length) return '';
     // Оздоба коштує клейм, тож новачкові, який ще не палив, показуємо саму вивіску: вона безплатна.
@@ -1568,13 +1757,13 @@
 
   /// Дивовижі: знайдене — з байкою, решта — силуети з підказкою, звідки їх ждати.
   function wondersHtml(st, esc) {
-    const w = (st.lastView && st.lastView.house && st.lastView.house.wonders) || null;
+    const w = (st.houseView && st.houseView.wonders) || null;
     // Дивовижі приходять із рідкісних подій пізньої гри: поки гончар не палив жодного разу, це просто шум.
     if (!w || !w.list || (!w.found && !st.stamps)) return '';
     const pct = Math.round((w.bonus || 0.01) * 100 * w.found);
     const cells = w.list.map((x) => '<div class="clk-wonder' + (x.found ? ' found' : '') + '">'
       + '<div class="clk-wtop"><span class="clk-wicon' + (x.found ? '' : ' sil') + '">' + wonderIcon(x.key) + '</span>'
-      + '<b>' + (x.found ? esc(x.name) : '· · ·') + '</b></div>'
+      + '<b>' + (x.found && x.name ? esc(x.name) : '· · ·') + '</b></div>'
       + '<span class="muted small">' + esc(x.found ? x.tale : x.from) + '</span></div>').join('');
     return '<div class="clk-sub">✨ Дивовижі · ' + w.found + '/' + w.total
       + (w.found ? '<span class="muted small"> · +' + pct + ' % до всього</span>' : '')
@@ -1604,6 +1793,10 @@
 
   function ordersPane(st, ctx) {
     const esc = ctx.esc;
+    // Як і хата: розмітку складаємо лише на новий стан дошки (він — частина хати) чи на щойно приїжджий каталог розписів.
+    const inputs = st.houseVer + '|' + (st.catalog ? 1 : 0);
+    if (st.ordersPane._sig != null && st.ordersPane._in === inputs) return;
+    st.ordersPane._in = inputs;
     const note = info('Купець у дорозі повертає більше, ніж узяв: що довша дорога, то щедріше (5 хв — ×1,4, 30 хв — ×2,2). '
       + 'За розпис із колекції платить одразу ×1,6. Дошка оновлюється раз на 4 хвилини, кого не взяв — поїхав. '
       + 'Клейма спалюють купців у дорозі разом із глеками.'
@@ -1614,7 +1807,7 @@
         const invest = o.kind === 'invest';
         const text = invest
           ? 'Візьме ' + potsShort(o.need) + ' у дорогу і за ' + o.minutes + ' хв поверне <b>' + short(o.pay) + '</b>'
-          : 'Купить ' + potsShort(o.need) + ' у розписі «' + esc(o.styleName) + '» за <b>' + short(o.pay) + '</b> одразу'
+          : 'Купить ' + potsShort(o.need) + ' у розписі «' + esc(o.styleName || styleNameOf(st, o.style)) + '» за <b>' + short(o.pay) + '</b> одразу'
             + (o.can ? '' : ' <span class="clk-no">(цього розпису ще нема)</span>');
         return '<div class="clk-order' + (invest ? '' : ' style') + '"><div class="clk-oname">' + (invest ? '🐴 ' : '🧺 ') + esc(o.merchant) + '</div>'
           + '<div class="small clk-otext">' + text + '</div>'
@@ -1635,9 +1828,50 @@
     }
   }
 
-  /// Усі відліки обох панелей — щоб paintCountdowns не шукав їх щоп'ятої секунди.
+  /// Назва розпису за ключем: вид купця шле лише ключ. З каталогу розписів, а без нього — з полиці розписів у виді.
+  function styleNameOf(st, key) {
+    const find = (list) => (Array.isArray(list) ? list.find((s) => s && s.key === key) : null);
+    const s = find(st.catalog && st.catalog.styles) || find(st.styleList);
+    return (s && s.name) || key || '';
+  }
+
+  // ---------- каталог: чого бракує й дозапит ----------
+
+  /// Чого бракує закешованому каталогу для цього виду: самого каталогу (після F5 сервер шле його лише на прохання),
+  /// хати чи прокачки ремесла в ньому (каталог зі старого сервера) або назви й байки щойно знайденої дивовижі — їх
+  /// каталог шле лише знайдених, решта секрет. '' — усього досить.
+  function catalogGap(st, v) {
+    const c = st.catalog;
+    if (!c) return 'all';
+    const hs = v.house;
+    if (hs && hs.own) {
+      if (!c.house) return 'house';
+      const known = new Set((c.house.wonders || []).filter((w) => w.tale).map((w) => w.key));
+      for (const key of Object.keys(hs.wonders || {})) if (!known.has(key)) return 'wonder:' + key;
+    }
+    const ups = v.craft && v.craft.ups;
+    if (ups && ups.length && ups[0].name == null && !c.craftUps) return 'craft';
+    return '';
+  }
+
+  /// Попросити каталог (look { catalog: true }): на кожну нестачу не більше трьох разів і не частіше, ніж раз на 5 с —
+  /// відповідь могла розминутись із пачкою кліків, а сервер без клієнта сам каталогу не пришле.
+  function askCatalog(st, ctx, gap) {
+    if (!gap || !ctx.mine || !ctx.act) return;
+    const now = Date.now();
+    if (st.catalogGap === gap && now - st.catalogAskAt < 5000) return;
+    const tries = st.catalogTries[gap] || 0;
+    if (tries >= 3) return;
+    st.catalogTries[gap] = tries + 1;
+    st.catalogGap = gap;
+    st.catalogAskAt = now;
+    ctx.act('look', { catalog: true });
+  }
+
+  /// Усі відліки обох панелей — щоб paintCountdowns не шукав їх щоп'ятої секунди. _sec — чий розділ: згорнутий не малюємо.
   function collectCountdowns(st) {
-    st.cds = [...st.housePane.querySelectorAll('.clk-cd'), ...st.ordersPane.querySelectorAll('.clk-cd')];
+    const of = (pane, sec) => [...pane.querySelectorAll('.clk-cd')].map((el) => { el._sec = sec; return el; });
+    st.cds = [...of(st.housePane, 'house'), ...of(st.ordersPane, 'orders')];
   }
 
   /// Купець повернувся між видами: «+N» над сценою й тост. Перший вид лише запам'ятовує, що вже було.
@@ -2144,6 +2378,7 @@
       st.ov.el.addEventListener('click', (e) => { if (e.target === st.ov.el && st.ovDownBack !== false) H.api.closeOverlay(st); });
       st.root = root;
       st.steady = steadyView(st);
+      watchCard(st);
       H.mounted.add(st);
       for (const p of H.parts) mountPart(st, p);
       if (!st.raf) loop(st);
@@ -2236,14 +2471,15 @@
           H.api.sfx('rare');
         }
         st.luckySeen = lucky;
+        // Каталоги (тексти виробів, хати, подій…) сервер шле лише до першої дії — кешуємо. Спершу каталог, потім
+        // хата: її назви й ціни (десяте оновлення, §10) потрібні вже цьому виду.
+        if (v.catalog) st.catalog = v.catalog;
         // Хата: глина, знаряддя, прикраси й купці. Старий сервер (хвилина деплою) house не шле — тоді все порожнє.
         const hs = v.house || {};
-        st.clays = hs.clays || [];
         st.clay = hs.clay || '';
         st.clayBody = hs.clayBody || '';
         st.clayRestUntil = Date.parse(hs.clayRestUntil) || 0;
-        st.tools = hs.tools || [];
-        st.decorList = hs.decor || [];
+        houseFrom(st, hs);
         const od = hs.orders || {};
         st.orders = od.board || [];
         st.taken = (od.taken || []).map((t) => ({ id: t.id, merchant: t.merchant, pay: t.pay, payAt: Date.parse(t.payAt) || 0 }));
@@ -2266,9 +2502,8 @@
         // Виняток — мінігра розпису, де вже водять пальцем: вона однаково скінчиться за кілька секунд, а обірвати
         // її посеред штриха означало б згаяти всю роботу. Майстер зачекає — кола ми в ці секунди й не крутимо.
         if (st.guard && H.api.overlayOpen(st) && !H.api.overlayBusy(st)) H.api.closeOverlay(st);
-        // Каталоги (тексти виробів, подій…) сервер шле лише до першої дії — кешуємо; нема в кеші — просимо раз.
-        if (v.catalog) st.catalog = v.catalog;
-        else if (!st.catalog && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
+        // Бракує каталогу (після F5 сервер його сам не шле), хати в ньому чи байки щойно знайденої дивовижі — просимо.
+        askCatalog(st, ctx, catalogGap(st, v));
         st.lastView = v;
         // «Що нового» — раз на гончаря; сервер шле поле, поки не бачив. Чекаємо, поки картка стане видною:
         // під час Ока майстра чи чужого вікна лізти поперед батька нема куди.
@@ -2302,6 +2537,7 @@
       firePane(st, ctx);
       if (v && v.pots != null) for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'update', st, v, H.api);
       gateTabs(st, v);
+      // Новий вид — і кнопки, і повільні рядки одразу: полиці могли щойно перемалюватись із вимкненими кнопками.
       st.slowAt = 0;
       paint(st);
     },
@@ -2336,6 +2572,7 @@
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       if (st.steady) st.steady.stop();
+      if (st.io) { st.io.disconnect(); st.io = null; }
       for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);
       H.mounted.delete(st);
       if (st.ov) H.api.closeOverlay(st);

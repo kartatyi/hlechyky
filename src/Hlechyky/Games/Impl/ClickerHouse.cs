@@ -296,12 +296,10 @@ public sealed partial class Clicker
 
     /// <summary>Довше однаково не влізе на вивіску, та й вивіска не для повісті.</summary>
     public const int HouseNameMax = 24;
+    /// <summary>Що написано на вивісці, поки гончар не назвав хату сам (клієнт малює те саме, коли named порожнє).</summary>
     const string HouseNameDefault = "Хата гончаря";
 
     string _houseName = "";
-
-    /// <summary>Що написано на вивісці: своє ім'я або типове.</summary>
-    string HouseName => _houseName.Length > 0 ? _houseName : HouseNameDefault;
 
     /// <summary>
     /// Ім'я хати: <c>name { text }</c>, безплатно й скільки завгодно разів. Розмітки, керівних знаків і
@@ -333,7 +331,7 @@ public sealed partial class Clicker
         var name = CleanName(Str(payload, "text"));
         if (name == _houseName) return ActResult.Fail("Вивіска вже така");
         _houseName = name;
-        return ActResult.Accept(name.Length > 0 ? $"🏠 На вивісці тепер «{name}»" : "🏠 На вивісці знову «Хата гончаря»");
+        return ActResult.Accept(name.Length > 0 ? $"🏠 На вивісці тепер «{name}»" : $"🏠 На вивісці знову «{HouseNameDefault}»");
     }
 
     // ---------- дивовижі ----------
@@ -579,60 +577,76 @@ public sealed partial class Clicker
         RefreshBoard(now);
     }
 
+    /// <summary>
+    /// Хата у виді — лише стан: що куплено й знайдено, що обране, глина на колі й дошка купців. Назви, описи й ціни
+    /// (вони не міняються) їдуть у каталозі — <see cref="CatalogHouse"/>: вид летить щопачки кліків (раз на 700 мс),
+    /// і тексти хати були половиною його ваги (десяте оновлення, docs/games/specs/clicker-v10.md §10).
+    /// </summary>
     object HouseView(DateTimeOffset now) => new
     {
-        name = HouseName,
         named = _houseName,
-        nameMax = HouseNameMax,
-        clays = Clays.Select(c => new
-        {
-            key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body,
-            owned = c.Key.Length == 0 || _clays.Contains(c.Key), on = _clay == c.Key,
-        }),
         clay = _clay,
         clayBody = ClayNow.Body,
         clayRestUntil = _clayRestUntil,
-        tools = Tools.Select(t => new { key = t.Key, name = t.Name, desc = t.Desc, price = t.Price, owned = _tools.Contains(t.Key) }),
-        decor = Decor.Select(d => new { key = d.Key, name = d.Name, desc = d.Desc, price = d.Price, bonus = d.Bonus, owned = _decor.Contains(d.Key) }),
-        // Оздоба: що обране й що з варіантів уже куплене. Ціни — у клеймах (вільні клейма вид уже шле як stampsFree).
-        look = Looks.ToDictionary(l => l.Key, LookOf, StringComparer.Ordinal),
-        looks = Looks.Select(l => new
+        // Куплене — ключами в порядку каталогу. Звичайна глина й безплатні варіанти оздоби — у всіх, їх тут нема.
+        own = new
         {
-            key = l.Key, name = l.Name, desc = l.Desc, value = LookOf(l),
-            options = l.Options.Select(o => new { value = o.Value, name = o.Name, price = o.Price, owned = LookOwned(l, o) }),
-        }),
-        // Дивовижі: знайдені — з байкою, решта — самі силуети й підказка, звідки їх ждати.
-        wonders = new
-        {
-            found = _wonders.Count,
-            total = Wonders.Length,
-            list = Wonders.Select(w => new
-            {
-                key = w.Key,
-                found = _wonders.ContainsKey(w.Key),
-                at = _wonders.TryGetValue(w.Key, out var at) ? at : (DateTimeOffset?)null,
-                name = _wonders.ContainsKey(w.Key) ? w.Name : "",
-                tale = _wonders.ContainsKey(w.Key) ? w.Tale : "",
-                from = string.Join(" або ", w.Triggers.Select(t => WonderFrom.TryGetValue(t, out var f) ? f : t)),
-            }),
-            bonus = WonderBonus,
+            clays = Clays.Where(c => c.Key.Length > 0 && _clays.Contains(c.Key)).Select(c => c.Key),
+            tools = Tools.Where(t => _tools.Contains(t.Key)).Select(t => t.Key),
+            decor = Decor.Where(d => _decor.Contains(d.Key)).Select(d => d.Key),
+            looks = Looks.SelectMany(l => l.Options.Where(o => o.Price > 0 && LookOwned(l, o)).Select(o => LookKey(l.Key, o.Value))),
         },
+        // Оздоба: що обране в кожному гурті (сцена фарбує хату саме з цього).
+        look = Looks.ToDictionary(l => l.Key, LookOf, StringComparer.Ordinal),
+        // Знайдені дивовижі: ключ → коли, у порядку каталогу (так вони й стоять на поличці). Назву й байку знайденої
+        // шле каталог; клієнт, якому їх бракує, просить каталог наново.
+        wonders = Wonders.Where(w => _wonders.ContainsKey(w.Key)).ToDictionary(w => w.Key, w => _wonders[w.Key], StringComparer.Ordinal),
         orders = new
         {
+            // Назву розпису клієнт бере зі своїх розписів — у виді лише ключ.
             board = _board.Select(o => new
             {
                 id = o.Id, kind = o.Kind, merchant = o.Merchant, need = o.Need,
                 pay = ToPots(o.Pay * MerchantMult),
                 minutes = o.Minutes, style = o.Style,
-                styleName = Styles.FirstOrDefault(s => s.Key == o.Style)?.Name ?? "",
                 can = o.Kind != "style" || _styles.Contains(o.Style),
             }),
             taken = _taken.Select(t => new { id = t.Id, merchant = t.Merchant, pay = t.Pay, payAt = t.PayAt }),
-            paid = _paid.Select(p => new { id = p.Id, merchant = p.Merchant, pay = p.Pay, at = p.At }),
+            // Лише свіжі повернення: старші клієнт однаково не показує (paidLately — дві хвилини).
+            paid = _paid.Where(p => now - p.At < PaidShown).Select(p => new { id = p.Id, merchant = p.Merchant, pay = p.Pay, at = p.At }),
             refreshAt = _boardUntil,
             maxTaken = MaxTakenNow,
         },
     };
+
+    /// <summary>Скільки повернення купця лишається у виді: клієнт малює «+N» лише за останні дві хвилини.</summary>
+    static readonly TimeSpan PaidShown = TimeSpan.FromMinutes(3);
+
+    /// <summary>
+    /// Незмінне про хату — для каталогу (іде у вид лише до першої дії, клієнт кешує): глина, знаряддя, прикраси й
+    /// оздоба з назвами, описами й цінами, дивовижі з підказкою «звідки ждати». Назва й байка дивовижі — лише
+    /// знайденої: решта лишається секретом до знахідки, як і було, коли все їхало у виді.
+    /// </summary>
+    object CatalogHouse() => new
+    {
+        clays = Clays.Select(c => new { key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body }),
+        tools = Tools.Select(t => new { key = t.Key, name = t.Name, desc = t.Desc, price = t.Price }),
+        decor = Decor.Select(d => new { key = d.Key, name = d.Name, desc = d.Desc, price = d.Price, bonus = d.Bonus }),
+        looks = Looks.Select(l => new
+        {
+            key = l.Key, name = l.Name, desc = l.Desc,
+            options = l.Options.Select(o => new { value = o.Value, name = o.Name, price = o.Price }),
+        }),
+        wonders = Wonders.Select(w => _wonders.ContainsKey(w.Key)
+            ? (object)new { key = w.Key, from = WonderHint(w), name = w.Name, tale = w.Tale }
+            : new { key = w.Key, from = WonderHint(w) }),
+        wonderBonus = WonderBonus,
+        nameMax = HouseNameMax,
+    };
+
+    /// <summary>«коли майстер кивне на полицю або за щасливий клік» — звідки ждати дивовижу, словами.</summary>
+    static string WonderHint(ClickerWonder w) =>
+        string.Join(" або ", w.Triggers.Select(t => WonderFrom.TryGetValue(t, out var f) ? f : t));
 
     sealed record HouseRow(
         List<string>? Clays, string? Clay, DateTimeOffset ClayRestUntil,
