@@ -68,9 +68,11 @@ public sealed class SkilkyStats(Db? db, IClock clock)
             FROM plays p JOIN tracks t ON t.id = p.track_id
             WHERE p.started_at >= $s
             """, ("$s", Since(30))),
+        // INDEXED BY — бо з індексом ніків (Db, ix_plays_requested) планувальник, аби не сортувати групи, пішов би
+        // ним через усі програвання замість тижневого проміжку часу
         "topRequesterCount7d" => Scalar("""
             SELECT COALESCE(MAX(n), 0) FROM (
-                SELECT COUNT(*) AS n FROM plays
+                SELECT COUNT(*) AS n FROM plays INDEXED BY ix_plays_started
                 WHERE source = 'user' AND requested_by IS NOT NULL AND started_at >= $s
                 GROUP BY requested_by)
             """, ("$s", Since(7))),

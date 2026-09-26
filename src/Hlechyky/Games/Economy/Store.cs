@@ -38,6 +38,15 @@ public sealed record TimeTotal(string NickKey, string Nick, string Place, int Se
 /// <summary>Скільки заробив за період (для таблиці «черепки»).</summary>
 public sealed record ShardRow(string Nick, int Balance, int Earned);
 
+/// <summary>Рух гаманця для «Мого гаманця»: скільки, за що (код причини), коли.</summary>
+public sealed record LedgerRow(int Delta, string Reason, DateTimeOffset At);
+
+/// <summary>Скільки прийшло й скільки пішло з однією причиною за період.</summary>
+public sealed record LedgerSum(string Reason, int Earned, int Spent);
+
+/// <summary>Гра за вікно: скільки різних столів дограли, скільки різних людей грало і коли востаннє.</summary>
+public sealed record PopularRow(string Game, int Rooms, int Players, DateTimeOffset Last);
+
 /// <summary>
 /// Увесь SQL економіки в одному місці. Db тримає лише DDL і гачок <see cref="Db.With{T}"/>: так нові таблиці
 /// не тягнуть за собою десятки методів у спільний файл, який правлять усі.
@@ -270,6 +279,37 @@ public sealed class EconomyStore(Db db)
         return list;
     });
 
+    // ---------- гаманець детально («Я»: звідки прийшли, куди пішли) ----------
+
+    /// <summary>
+    /// Останні рухи гаманця, найсвіжіші згори. Порядок — за часом, а не за id: так його дає індекс
+    /// (nick_key, created_at) і LIMIT зупиняється на n-му рядку, не сортуючи тисячі хвилин слухання.
+    /// </summary>
+    public List<LedgerRow> LedgerOf(string nickKey, int n) => db.With(c =>
+    {
+        using var cmd = Cmd(c, """
+            SELECT delta, reason, created_at FROM ledger WHERE nick_key = $n
+            ORDER BY created_at DESC, id DESC LIMIT $k
+            """, ("$n", nickKey), ("$k", n));
+        using var r = cmd.ExecuteReader();
+        var list = new List<LedgerRow>();
+        while (r.Read()) list.Add(new LedgerRow(r.GetInt32(0), r.GetString(1), Ts(r.GetString(2))));
+        return list;
+    });
+
+    /// <summary>Прихід і розхід за кожною причиною від <paramref name="since"/> — теж одним проходом по індексу ніка.</summary>
+    public List<LedgerSum> LedgerSums(string nickKey, DateTimeOffset since) => db.With(c =>
+    {
+        using var cmd = Cmd(c, """
+            SELECT reason, SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), SUM(CASE WHEN delta < 0 THEN -delta ELSE 0 END)
+            FROM ledger WHERE nick_key = $n AND created_at >= $s GROUP BY reason
+            """, ("$n", nickKey), ("$s", Iso(since)));
+        using var r = cmd.ExecuteReader();
+        var list = new List<LedgerSum>();
+        while (r.Read()) list.Add(new LedgerSum(r.GetString(0), r.GetInt32(1), r.GetInt32(2)));
+        return list;
+    });
+
     // ---------- результати партій ----------
 
     const string InsertResult = """
@@ -420,6 +460,44 @@ public sealed class EconomyStore(Db db)
             """, ("$n", nickKey), ("$g", game));
         var v = cmd.ExecuteScalar();
         return v is null or DBNull ? null : Convert.ToDouble(v, CultureInfo.InvariantCulture);
+    });
+
+    /// <summary>
+    /// Ряд «Часто граємо» в лобі: скільки різних столів кожної гри дограли від <paramref name="since"/> і скільки
+    /// різних людей за ними сиділо. Соло теж рахується: у нього «стіл» — людина за день (ключ кімнати несе день).
+    /// </summary>
+    public List<PopularRow> Popular(DateTimeOffset since) => db.With(c =>
+    {
+        using var cmd = Cmd(c, """
+            SELECT game, COUNT(DISTINCT room_id), COUNT(DISTINCT nick_key), MAX(created_at) FROM game_results
+            WHERE created_at >= $s GROUP BY game ORDER BY 2 DESC, 3 DESC, 4 DESC
+            """, ("$s", Iso(since)));
+        using var r = cmd.ExecuteReader();
+        var list = new List<PopularRow>();
+        while (r.Read()) list.Add(new PopularRow(r.GetString(0), r.GetInt32(1), r.GetInt32(2), Ts(r.GetString(3))));
+        return list;
+    });
+
+    /// <summary>Ігри, у які нік хоч раз грав (для «що нового» — лише тим, кому є що оновлювати).</summary>
+    public List<string> GamesPlayed(string nickKey) => db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT DISTINCT game FROM game_results WHERE nick_key = $n ORDER BY game", ("$n", nickKey));
+        using var r = cmd.ExecuteReader();
+        var list = new List<string>();
+        while (r.Read()) list.Add(r.GetString(0));
+        return list;
+    });
+
+    /// <summary>
+    /// Чи лишив нік слід в іграх: партію, соло-результат чи бодай хвилину на сайті (лічильники часу й стель).
+    /// Nick — як він писався в останній партії; null — партій не було, а лічильники написання не пам'ятають.
+    /// </summary>
+    public (bool Seen, string? Nick) Trace(string nickKey) => db.With<(bool, string?)>(c =>
+    {
+        using (var cmd = Cmd(c, "SELECT nick FROM game_results WHERE nick_key = $n ORDER BY id DESC LIMIT 1", ("$n", nickKey)))
+            if (cmd.ExecuteScalar() is string nick) return (true, nick);
+        using var any = Cmd(c, "SELECT 1 FROM economy_counters WHERE nick_key = $n LIMIT 1", ("$n", nickKey));
+        return (any.ExecuteScalar() is not null, null);
     });
 
     // ---------- рейтинги ----------

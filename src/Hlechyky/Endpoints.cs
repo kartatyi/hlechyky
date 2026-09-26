@@ -7,8 +7,12 @@ namespace Hlechyky;
 public static class Endpoints
 {
     public sealed record AddRequest(string? Input, SearchResult? Pick);
-    /// <summary>Url — посилання на альбом чи плейлист; Ids — лише ці треки (null — усі, що знайшлися); Shuffle — упереміш.</summary>
-    public sealed record AlbumRequest(string? Url, bool Shuffle, List<string>? Ids);
+    /// <summary>
+    /// Url — посилання на альбом чи плейлист; Ids — лише ці треки (null — усі, що знайшлися); Shuffle — упереміш.
+    /// Для «зберегти плейлистом»: Name — своя назва нового плейлиста (порожня — «Виконавець — Альбом»),
+    /// PlaylistId — дописати в уже наявний плейлист сайту.
+    /// </summary>
+    public sealed record AlbumRequest(string? Url, bool Shuffle, List<string>? Ids, string? Name = null, long? PlaylistId = null);
     public sealed record MoveRequest(int ToIndex);
     public sealed record NameRequest(string? Name);
     public sealed record TrackRequest(string? TrackId);
@@ -131,11 +135,13 @@ public static class Endpoints
             return r.Ok ? Results.Ok(new { ok = true, count = r.Count, message = r.Message }) : Fail(r.Message);
         });
 
-        api.MapPost("/album/playlist", async (HttpContext c, AlbumRequest req, Albums albums, CancellationToken ct) =>
+        api.MapPost("/album/playlist", async (HttpContext c, AlbumRequest req, Albums albums, Db db, CancellationToken ct) =>
         {
+            // куди дописувати, видно одразу — не варто пів хвилини розбирати плейлист, щоб потім сказати «нема такого»
+            if (req.PlaylistId is { } pid && db.GetPlaylist(pid) is null) return Fail("Нема такого плейлиста");
             var (album, error) = await OpenAlbum(albums, req.Url, ct);
             if (error is not null) return error;
-            var r = albums.SaveAsPlaylist(album!, Auth.Nick(c));
+            var r = albums.SaveAsPlaylist(album!, Auth.Nick(c), req.Name, req.Ids, req.PlaylistId);
             return r.Ok ? Results.Ok(new { ok = true, id = r.Id, message = r.Message }) : Fail(r.Message);
         });
 
@@ -195,7 +201,7 @@ public static class Endpoints
         api.MapPost("/suggest/{itemId}/skip", (HttpContext c, string itemId, RadioEngine e) =>
             Reply(e.DismissSuggestion(itemId, Auth.Nick(c))));
 
-        api.MapGet("/history", (int? n, Db db) => db.History(Math.Clamp(n ?? 50, 1, 500)));
+        // /history, /top і /rating — у PeopleEndpoints.cs, разом з рештою «Хто скільки».
 
         // Усі лайки, без стелі: вкладка сама ділить їх на «Мої» й «Усі».
         api.MapGet("/likes", (Db db) => db.LikedTracksDetailed().Select(x => new
@@ -203,19 +209,6 @@ public static class Endpoints
             track = x.Track,
             likes = x.Likes.Select(l => new { nick = l.Nick, at = l.At }),
         }));
-
-        api.MapGet("/top", (int? days, Db db) => new { requesters = db.TopRequesters(Math.Clamp(days ?? 7, 1, 365)) });
-
-        // Рейтинг треків: програвання, скільки дослуховують, хто слухав; заразом — скільки займає кеш
-        api.MapGet("/rating", (int? days, string? sort, Db db, TrackCache cache) =>
-        {
-            var (bytes, files) = cache.Usage();
-            return new
-            {
-                tracks = db.TrackRatings(Math.Clamp(days ?? 7, 1, 3650), sort ?? "plays", 100),
-                cache = new { bytes, files, limitBytes = cache.LimitBytes },
-            };
-        });
 
         // ---- playlists: shared, anyone can add; only the creator or an admin can delete ----
 

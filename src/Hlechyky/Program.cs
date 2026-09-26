@@ -82,6 +82,7 @@ app.UseStaticFiles(new StaticFileOptions
     OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
 });
 app.MapHlechyky();
+app.MapPeople();   // люди й статистика: картка людини, «Хто скільки», історія, свій гаманець, «Часто граємо»
 app.MapHlechykyGames();
 app.MapHlechykyEconomy();
 app.MapHlechykyMcp();
