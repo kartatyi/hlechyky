@@ -63,6 +63,7 @@
 .rl-cars button.on { background: var(--accent2); color: var(--accent-ink); box-shadow: 0 0 0 2px var(--accent) inset; }
 .rl-emo { font-size: 1.45em; line-height: 1.1; flex: none; }
 .rl-note { text-align: center; }
+.rl-legend { text-align: center; color: var(--muted); line-height: 1.35; }
 .rl-records { flex: 1 1 320px; max-width: 540px; background: var(--bg2); border-radius: 10px; padding: 8px 12px; font-size: .86em; }
 .rl-rh { font-weight: 700; margin-bottom: 4px; }
 /* десятка — двома стовпчиками по п'ять */
@@ -72,6 +73,12 @@
 .rl-records li .rl-rn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rl-records li b { font-variant-numeric: tabular-nums; }
 .rl-records li.me { background: var(--panel3); color: var(--accent); }
+/* низький екран (Дека 1280×800, ноут): десятка вузькішими стовпчиками поруч — у лобі на 4–6 гравців
+   канвас-показ траси не стискався до 350 px, а «Почати» лишалась на екрані */
+@media (max-height: 860px) {
+  .rl-records ol { columns: 2 150px; }
+  .rl-records li { font-size: .95em; }
+}
 
 /* ---- підказки для телефона ---- */
 .rl-turn, .rl-fullhint { display: none; }
@@ -79,7 +86,11 @@
   .rl-turn { display: block; font-size: .82em; color: var(--muted); text-align: center; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
-  .rl-fullhint { display: inline-block; font-size: .8em; padding: 3px 10px; border-radius: 999px; }
+  /* у рамці канваса, згори посередині (на полях — див. .rl-side нижче) */
+  .rl-fullhint {
+    display: inline-block; position: absolute; z-index: 2; top: 6px; left: 50%; transform: translateX(-50%);
+    font-size: .8em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; min-height: 0;
+  }
   body.gfull .rl-fullhint { display: none; }
   /* між липкою шапкою сайту (~57 px) і тим, що прибито внизу (вкладки, міні-плеєр; у ⛶ плеєра нема) */
   .rl-wrap { max-width: calc((100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px)) * 16 / 9); }
@@ -109,6 +120,33 @@
   .rl-tr .rl-sm[data-a="horn"] { right: 52px; }
   .rl-tr .rl-sm[data-a="reset"] { right: 6px; }
 }
+/* ---- телефон боком: кнопки на порожніх полях обабіч канваса, траса нічим не закрита (rally.js sideCheck).
+   --rl-m — ширина поля, --rl-bt — розмір кнопки, --rl-lift — наскільки підняти праву купку над бульбашкою балачки ---- */
+.rl-body.rl-side .rl-touch.show { left: calc(-1 * var(--rl-m, 0px)); right: calc(-1 * var(--rl-m, 0px)); }
+.rl-body.rl-side .rl-touch button { width: var(--rl-bt, 64px); height: var(--rl-bt, 64px); font-size: 1.45em; }
+.rl-body.rl-side .rl-tl button[data-k="l"] { left: 10px; bottom: 6px; }
+.rl-body.rl-side .rl-tl button[data-k="r"] { left: calc(18px + var(--rl-bt, 64px)); bottom: 6px; }
+.rl-body.rl-side .rl-br .rl-gas { right: 10px; bottom: calc(6px + var(--rl-lift, 0px)); }
+.rl-body.rl-side .rl-br .rl-brake,
+.rl-body.rl-side .rl-br .rl-hb { width: calc(var(--rl-bt, 64px) * .85); height: calc(var(--rl-bt, 64px) * .85); font-size: 1.2em; }
+.rl-body.rl-side .rl-br .rl-brake { right: calc(18px + var(--rl-bt, 64px)); bottom: calc(6px + var(--rl-lift, 0px)); }
+.rl-body.rl-side .rl-br .rl-hb { right: 10px; bottom: calc(14px + var(--rl-bt, 64px) + var(--rl-lift, 0px)); }
+.rl-body.rl-side .rl-touch.auto .rl-br .rl-brake { right: 10px; }
+.rl-body.rl-side .rl-touch.auto .rl-br .rl-hb { right: calc(18px + var(--rl-bt, 64px)); bottom: calc(6px + var(--rl-lift, 0px)); }
+/* гудок і ↺ — угорі лівого поля (праве знизу підпирає бульбашка) */
+.rl-body.rl-side .rl-tr .rl-sm { width: 44px; height: 44px; font-size: 1em; top: 2px; right: auto; }
+.rl-body.rl-side .rl-tr .rl-sm[data-a="horn"] { left: 10px; }
+.rl-body.rl-side .rl-tr .rl-sm[data-a="reset"] { left: 60px; }
+.rl-body.rl-side .rl-fullhint {
+  top: 54px; left: calc(10px - var(--rl-m, 0px)); transform: none; width: calc(var(--rl-m, 0px) - 20px);
+  white-space: normal; text-align: center; line-height: 1.25; padding: 5px 8px; border-radius: 12px;
+}
+
+/* Бульбашка балачки столу (каркас, fixed праворуч унизу) з текстом останньої репліки завширшки до 360 px лягала
+   на правий нижній кут траси. Лише поки йде ралі на телефоні боком — сама 💬 з лічильником: балачка під рукою,
+   траса відкрита. Правої купки кнопок вона не накриває — rally.js підіймає купку над нею. */
+body:has(.rl-body.rl-side) .tchat.drawer:not(.open) .tc-last { display: none; }
+
 /* дрібний канвас (телефон портретом): кнопки менші, щоб не закривали трасу */
 @media (pointer: coarse) and (max-width: 480px) {
   .rl-touch button { width: 48px; height: 48px; font-size: 1.15em; }

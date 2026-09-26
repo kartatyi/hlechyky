@@ -483,6 +483,7 @@
   const STRIDE = 15, SEATS = 6, TICK = 40;
   const EXTRAPOLATE = true;                      // чужі — екстраполяція (spec §5.6); false — інтерполяція назад
   const LEAD0 = 2, LEAD_MIN = 1, LEAD_MAX = 8;
+  const GMAX = 1500;                             // привид: коло до 60 с (довше — не пишемо)
   // іконка: «запорожець» збоку, що курить пилом
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<circle cx="1.9" cy="11.4" r="1.4" fill="var(--clay)" opacity=".5"/>'
@@ -518,6 +519,22 @@
   }
   const lapsWord = (n) => (n === 1 ? '1 коло' : n >= 2 && n <= 4 ? n + ' кола' : n + ' кіл');
   const place = (n) => n + '-й';
+  /// Відставання «+0,4 с» / «+1:02,3»: десяті частки відкидаємо, як сервер.
+  const gap = (ms) => (ms >= 60000 ? '+' + clock(ms, 1) : '+' + Math.floor(ms / 1000) + ',' + Math.floor((ms % 1000) / 100) + ' с');
+  /// Скільки машин у кадрі й чи хтось уже взяв перші ворота: доти місця — лише порядок на решітці, і «1-й» у
+  /// того, хто стоїть ближче до воріт, а не на пол-позиції, тільки плутав би. Соло місць не показує взагалі.
+  function field(f) {
+    let cars = 0, moved = false;
+    if (f) {
+      for (let i = 0; i < SEATS; i++) {
+        const o = i * STRIDE;
+        if (f.c[o + 10] < 0) continue;
+        cars++;
+        if (f.c[o + 6] > 0 || f.c[o + 7] !== 1 || f.c[o + 10] > 0) moved = true;
+      }
+    }
+    return cars > 1 && moved ? 2 : cars > 1 ? 1 : 0;   // 2 — місця показуємо, 1 — ще ні, 0 — соло
+  }
   const wrapA = (d) => ((d + 512) & 1023) - 512;
   const blank = () => ({ x: 0, y: 0, a: 0, vf: 0, vl: 0, air: 0, oil: 0, stall: 0, boostT: 0, boostCd: 0, cell: 0, mask: 0, t: -1 });
 
@@ -908,6 +925,9 @@
   // ===============================================================================================
 
   const SIZE = { traktor: [36, 22], zapor: [32, 18], moped: [30, 12], viz: [44, 18], motoblok: [30, 16], kopiyka: [36, 18] };
+  /// Спрайти малюємо в 1,2 раза більшими за їхні розміри в u: на 1280 і Деці машина була 12–16 px і губилась у купі.
+  /// Фізика (коло 24 u) від цього не міняється — лише картинка.
+  const SPR = 1.2;
   const DARK = '#1d1b19', GLASS = 'rgba(30,45,60,.85)';
 
   function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); }
@@ -1138,7 +1158,7 @@
         // чужі
         others: [], oT: [], oOff: [],
         // ефекти
-        ps: particles(), flashes: [], shakeUntil: 0, lastEv: new Int32Array(6), skidPrev: [], wrongN: 0,
+        ps: particles(), flashes: [], shakeUntil: 0, lastEv: new Int32Array(6), skidPrev: new Float64Array(24), skidOk: new Uint8Array(6), wrongN: 0,
         horns: new Float64Array(6), audio: null, sound: store.get('rally.sound', '0') === '1',
         autogas: store.get('rally.autogas', '1') === '1',
         perf: new Float64Array(300), perfN: 0, perfI: 0, hudSig: '', lowerSig: '', lastT: -1, lastDraw: 0,
@@ -1148,11 +1168,12 @@
         cs: { x: 0, y: 0, a: 0, vf: 0, vl: 0, air: 0, mask: 0, stall: 0, boostT: 0, cell: 0 },
         efx: { x: 0, y: 0, a: 0, vf: 0, vl: 0, air: 0, mask: 0, stall: 0, boostT: 0, cell: 0, ev: 0 },
         rm: reduced() ? 0.5 : 1, fixes: 0, jumps: 0, lbox: new Float64Array(24), lord: new Int32Array(6), labW: [],
+        // привид найкращого кола (соло): запис поточного кола й сам привид траси
+        gRec: new Float32Array(GMAX * 3), gRecN: 0, gLapT: -1, ghost: null, ghostTried: '', solo: false,
       };
       for (let i = 0; i < SEATS; i++) {
         root._rally.drawn.push({ x: 0, y: 0, a: 0, ok: false });
         root._rally.oOff.push({ x: 0, y: 0, a: 0 });
-        root._rally.skidPrev.push(null);
         root._rally.oPrev.push(blank());
       }
     }
@@ -1185,7 +1206,7 @@
     st.cv.width = pxW; st.cv.height = pxH;
     st.k = pxW / WU;
     st.cssK = pxW / cssW;
-    st.sprK = Math.max(1, Math.round(st.k * 2) / 2 * 1.25);
+    st.sprK = Math.max(1, Math.round(st.k * SPR * 2) / 2 * 1.25);
     st.sprites.clear();
     st.trackKey = '';
     st.skid = null;
@@ -1344,6 +1365,72 @@
     return s;
   }
 
+  // ---------- привид найкращого кола (соло) ----------
+  // Заїзд на час: своя симуляція щокроку пише позицію в буфер поточного кола; закрилось коло, кращe за привида
+  // траси, — буфер стає привидом і лягає в localStorage (x, y у чвертях u, курс — ціле; ~1–2 тис. чисел).
+  // Наступні кола напівпрозорий привид їде поруч: видно, де саме програєш. Лише клієнт — сервер про нього не знає.
+
+  function saveGhost(st, ms) {
+    const n = st.gRecN, id = st.td && st.td.id;
+    if (!id || n < 10) return;
+    st.ghost = { id, ms, n, d: st.gRec.slice(0, n * 3) };
+    try {
+      const a = new Array(n * 3);
+      for (let i = 0; i < n * 3; i++) a[i] = Math.round(st.ghost.d[i] * (i % 3 === 2 ? 1 : 4));
+      store.set('rally.ghost.' + id, JSON.stringify({ ms, n, d: a }));
+    } catch { /* повне сховище — привид лишиться до кінця сесії */ }
+  }
+
+  function loadGhost(st) {
+    const id = st.td && st.td.id;
+    if (!id || st.ghostTried === id) return;
+    st.ghostTried = id;
+    st.ghost = null;
+    try {
+      const j = JSON.parse(store.get('rally.ghost.' + id, '') || 'null');
+      if (!j || !(j.ms > 0) || !Array.isArray(j.d) || !(j.n > 10) || j.n > GMAX || j.d.length !== j.n * 3) return;
+      const d = new Float32Array(j.n * 3);
+      for (let i = 0; i < d.length; i++) d[i] = j.d[i] / (i % 3 === 2 ? 1 : 4);
+      st.ghost = { id, ms: j.ms, n: j.n, d };
+    } catch { /* кривий запис — без привида */ }
+  }
+
+  /// Крок своєї симуляції t: коло закрилось — може, це новий привид; далі — позиція в буфер поточного кола.
+  function ghostRec(st, car, t) {
+    if (!st.solo) return;
+    if (car.ev & S.EV.lap) {
+      // перше коло — з місця, з решітки: привидом стає лише коло з ходу (друге й далі)
+      if (st.gLapT >= 0 && car.lap >= 2 && car.lastMs > 0 && (!st.ghost || car.lastMs < st.ghost.ms)) saveGhost(st, car.lastMs);
+      st.gLapT = t;
+      st.gRecN = 0;
+    }
+    if (st.gLapT < 0) return;
+    const i = t - st.gLapT;
+    if (i < 0 || i >= GMAX) return;
+    const d = st.gRec, o = i * 3;
+    d[o] = car.x / SUB; d[o + 1] = car.y / SUB; d[o + 2] = car.a;
+    st.gRecN = i + 1;
+  }
+
+  function drawGhost(st, g, rt) {
+    const gh = st.ghost, f = st.f;
+    if (!st.solo || !gh || f.ph !== 2 || st.gLapT < 0 || st.mine < 0 || f.c[st.mine * STRIDE + 10] !== 0) return;
+    const gi = rt - st.gLapT;
+    if (gi < 0 || gi >= gh.n - 1) return;
+    const i0 = gi | 0, fr = gi - i0, d = gh.d, o = i0 * 3;
+    const x = d[o] + (d[o + 3] - d[o]) * fr, y = d[o + 1] + (d[o + 4] - d[o + 1]) * fr;
+    const a = d[o + 2] + wrapA(d[o + 5] - d[o + 2]) * fr;
+    const id = (st.view && st.view.cars && st.view.cars[st.mine]) || 'traktor';
+    const spr = sprite(st, id, st.mine, 0);
+    g.save();
+    g.globalAlpha = 0.36;
+    g.translate(x, y);
+    g.rotate(a / 1024 * Math.PI * 2);
+    g.scale(SPR, SPR);
+    g.drawImage(spr, -spr.uw / 2, -spr.uh / 2, spr.uw, spr.uh);
+    g.restore();
+  }
+
   /// Своя машина: симуляція лише з нею (без чужих — зіткнення виправить сервер), кільце станів на 64 тики.
   function startSim(st, f) {
     const seat = st.mine;
@@ -1360,6 +1447,9 @@
     st.cur = c.mask;
     snapInto(st.prevOwn, c);
     st.off.x = st.off.y = st.off.a = 0;
+    // коло привида — лише з самого старту чи з наступної лінії: після F5 посеред кола початку не знаємо
+    st.gLapT = f.t <= S.COUNT ? S.COUNT : -1;
+    st.gRecN = 0;
   }
 
   /// Кадр сервера про свою машину: збіглось — нічого; ні — переписати історію й переграти свої маски.
@@ -1412,6 +1502,7 @@
       st.sim.tick();
       snapInto(st.ring[t & 63], car).t = t;
       n++;
+      ghostRec(st, car, t);
       effects(st, seat, car, true);
     }
   }
@@ -1557,7 +1648,7 @@
     if (sliding && c.air === 0 && code === S.ICE && Math.random() < 0.7 * rm)
       spawn(ps, rx, ry, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8, 0.35, 2.5, '#ffffff', 0);
     if (sliding && c.air === 0 && (code === S.ROAD || code === S.ICE || code === S.PUDDLE || code === S.OIL || code === S.BOOST)) skid(st, i, c, code === S.ICE);
-    else st.skidPrev[i] = null;
+    else st.skidOk[i] = 0;
     if (c.stall > 0 && Math.random() < 0.5 * rm) spawn(ps, x, y, (Math.random() - 0.5) * 0.4, -0.5, 0.6, 4, 'rgba(150,150,150,.7)', 0);
     if (c.boostT > 0 && Math.random() < 0.9 * rm) spawn(ps, rx - ca * 4, ry - sa * 4, -ca * 1.5, -sa * 1.5, 0.2, 3.5, '#ff9a3c', 1);
     if (!ev) return;
@@ -1583,16 +1674,18 @@
     const x = c.x / SUB, y = c.y / SUB;
     const bx = x - ca * 10, by = y - sa * 10;
     const w1x = bx - sa * 6, w1y = by + ca * 6, w2x = bx + sa * 6, w2y = by - ca * 6;
-    const prev = st.skidPrev[i];
-    if (prev && Math.abs(prev[0] - w1x) < 30 && Math.abs(prev[1] - w1y) < 30) {
+    // попередні точки коліс — у готовому масиві по 4 числа на місце: занос не смітить щокроку
+    const p = st.skidPrev, o = i * 4;
+    if (st.skidOk[i] && Math.abs(p[o] - w1x) < 30 && Math.abs(p[o + 1] - w1y) < 30) {
       g.strokeStyle = ice ? 'rgba(255,255,255,.45)' : 'rgba(20,15,10,.35)';
       g.lineWidth = 2.2;
       g.beginPath();
-      g.moveTo(prev[0], prev[1]); g.lineTo(w1x, w1y);
-      g.moveTo(prev[2], prev[3]); g.lineTo(w2x, w2y);
+      g.moveTo(p[o], p[o + 1]); g.lineTo(w1x, w1y);
+      g.moveTo(p[o + 2], p[o + 3]); g.lineTo(w2x, w2y);
       g.stroke();
     }
-    st.skidPrev[i] = [w1x, w1y, w2x, w2y];
+    p[o] = w1x; p[o + 1] = w1y; p[o + 2] = w2x; p[o + 3] = w2y;
+    st.skidOk[i] = 1;
   }
 
   function sfx(st, kind, arg) {
@@ -1682,6 +1775,7 @@
       while (j > 0 && (f.c[order[j - 1] * STRIDE + 9] & 15) > air) { order[j] = order[j - 1]; j--; }
       order[j] = i;
     }
+    drawGhost(st, g, rt);
     for (let j = 0; j < n; j++) drawCar(st, g, order[j], rt, now);
 
     tickParticles(st, g, dt);
@@ -1729,13 +1823,24 @@
     const id = (st.view && st.view.cars && st.view.cars[i]) || 'traktor';
     const ghost = f.c[o + 10] > 0 && f.ph === 2;
     const air = s.air;
-    const scale = 1 + 0.35 * (air / 14);
+    const scale = SPR * (1 + 0.35 * (air / 14));
     const phase = id === 'viz' ? (Math.floor(s.x / 7) & 1) : 0;
     const spr = sprite(st, id, i, phase);
     const ang = s.a / 1024 * Math.PI * 2;
+    if (i === st.mine) {
+      // своя машина завжди з кільцем кольору місця — у купі з шести себе видно одразу, не лише за кольором
+      const px = st.cssK / st.k, rr2 = 25 + 3 * (air / 14);
+      g.fillStyle = 'rgba(255,255,255,.14)';
+      g.strokeStyle = st.pal.seats[i];
+      g.lineWidth = 2.4 * px;
+      g.beginPath(); g.arc(s.x, s.y, rr2, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,.9)';
+      g.lineWidth = 1.1 * px;
+      g.beginPath(); g.arc(s.x, s.y, rr2 + 2 * px, 0, Math.PI * 2); g.stroke();
+    }
     if (air > 0) {
       g.fillStyle = 'rgba(0,0,0,.25)';
-      g.beginPath(); g.ellipse(s.x + 6 * scale, s.y + 8 * scale, 16, 10, ang, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(s.x + 6 * scale, s.y + 8 * scale, 16 * SPR, 10 * SPR, ang, 0, Math.PI * 2); g.fill();
     }
     g.save();
     g.globalAlpha = ghost ? 0.5 : 1;
@@ -1822,8 +1927,17 @@
     return w;
   }
 
+  /// З якою з уже поставлених міток (0..q−1) перетинається прямокутник; −1 — ні з якою.
+  function labelHit(box, q, lx, y, w, h) {
+    for (let p = 0; p < q; p++) {
+      const b = p * 4;
+      if (lx < box[b] + box[b + 2] && lx + w > box[b] && y - h / 2 < box[b + 1] + h / 2 + 1 && y + h / 2 > box[b + 1] - h / 2 - 1) return p;
+    }
+    return -1;
+  }
+
   /// Ніки, номери місць, «ти», гудки — у пікселях, щоб текст не милився й не залежав від масштабу.
-  /// У купі машин підписи не лізуть один на одного: хто нижче на екрані, той підсувається вгору.
+  /// Своя мітка — «ти» й першою; у купі чужі підписи стискаються до номера й підсуваються вгору.
   function labels(st, g, now) {
     const f = st.f, k = st.k, ck = st.cssK, pal = st.pal, F = fonts(st), fs = F.fs;
     const box = st.lbox, ord = st.lord;
@@ -1839,35 +1953,45 @@
       while (j > 0 && st.drawn[ord[j - 1]].y > s.y) { ord[j] = ord[j - 1]; j--; }
       ord[j] = i;
     }
+    // своя мітка — першою: її ніщо не підсуває й не стискає
+    for (let q = 1; q < n; q++) {
+      if (ord[q] !== st.mine) continue;
+      for (let j = q; j > 0; j--) ord[j] = ord[j - 1];
+      ord[0] = st.mine;
+      break;
+    }
+    const lift = 24 * k * SPR / 1.2;
     for (let q = 0; q < n; q++) {
       const i = ord[q], s = st.drawn[i];
       const mine = i === st.mine;
       const nick = st.ctx.nickOf(i) || SEAT_NAMES[i];
-      const text = mine && f.ph <= 1 ? 'ти' : nick;
-      const maxW = (mine ? 110 : 76) * ck;
+      const text = mine ? 'ти' : nick;
+      const maxW = 76 * ck;
       const tw = Math.min(labelWidth(st, g, i, text), maxW);
-      const w = tw + r * 2 + 6 * ck;
+      let w = tw + r * 2 + 6 * ck;
       const x = s.x * k;
-      let y = s.y * k - 20 * k - 6 * ck;
+      let y = s.y * k - lift - 6 * ck;
       // мітка не вилазить за канвас: по боках притискаємо до краю, згори — див. нижче
-      const lx = Math.max(2, Math.min(st.pxW - w - 2, x - w / 2));
-      // не налазити на вже поставлені (вони вище): піднімаємо, поки є перетин
+      let lx = Math.max(2, Math.min(st.pxW - w - 2, x - w / 2));
+      // у купі чужа мітка стискається до кружка з номером: шість плашок з ніками закривали машини одна одній
+      let compact = false;
+      if (!mine && labelHit(box, q, lx, y, w, h) >= 0) {
+        compact = true;
+        w = r * 2 + 4 * ck;
+        lx = Math.max(2, Math.min(st.pxW - w - 2, x - w / 2));
+      }
+      // не налазити на вже поставлені: піднімаємо, поки є перетин
       for (let tries = 0; tries < 4; tries++) {
-        let hit = false;
-        for (let p = 0; p < q; p++) {
-          const b = p * 4;
-          if (lx < box[b] + box[b + 2] && lx + w > box[b] && y - h / 2 < box[b + 1] + h / 2 + 1 && y + h / 2 > box[b + 1] - h / 2 - 1) {
-            y = box[b + 1] - h - 1;
-            hit = true;
-          }
-        }
-        if (!hit) break;
+        const hit = labelHit(box, q, lx, y, w, h);
+        if (hit < 0) break;
+        y = box[hit * 4 + 1] - h - 1;
       }
       // машина на самій верхній прямій (чи купа підняла мітку за край) — підпис під машиною
-      if (y - h / 2 < 2) y = Math.max(y, s.y * k + 20 * k + 6 * ck);
+      if (y - h / 2 < 2) y = Math.max(y, s.y * k + lift + 6 * ck);
       box[q * 4] = lx; box[q * 4 + 1] = y; box[q * 4 + 2] = w;
-      g.fillStyle = 'rgba(10,16,12,.55)';
+      g.fillStyle = mine ? 'rgba(10,16,12,.78)' : 'rgba(10,16,12,.55)';
       g.beginPath(); g.roundRect(lx, y - fs * 0.7, w, h, fs * 0.7); g.fill();
+      if (mine) { g.strokeStyle = pal.seats[i]; g.lineWidth = 1.4 * ck; g.stroke(); }
       g.fillStyle = pal.seats[i];
       g.beginPath(); g.arc(lx + r + 2 * ck, y, r, 0, Math.PI * 2); g.fill();
       if (mine) { g.strokeStyle = '#fff'; g.lineWidth = 1.6 * ck; g.stroke(); }
@@ -1875,10 +1999,12 @@
       g.fillStyle = '#10150f';
       g.font = F.num;
       g.fillText(SEAT_NUM[i], lx + r + 2 * ck, y + 0.5);
-      g.fillStyle = '#fff';
       g.font = F.nick;
-      g.textAlign = 'left';
-      g.fillText(text, lx + r * 2 + 5 * ck, y + 0.5, maxW);
+      if (!compact) {
+        g.fillStyle = '#fff';
+        g.textAlign = 'left';
+        g.fillText(text, lx + r * 2 + 5 * ck, y + 0.5, maxW);
+      }
       if (now - st.horns[i] < 400) {
         g.font = F.horn;
         g.textAlign = 'center';
@@ -1921,11 +2047,17 @@
       const laps = (st.view && st.view.laps) || 3;
       const shown = mine >= 0 ? Math.min(laps, mine + (f.c[st.mine * STRIDE + 10] > 0 ? 0 : 1)) : 0;
       g.font = F.hud;
+      // доїхав — годинник стоїть на своєму часі (у підсумку — рівно той, що в таблиці), а не біжить за іншими
+      let ms = st.raceMs;
+      if (mine >= 0 && f.c[st.mine * STRIDE + 10] > 0) {
+        const row = f.ph === 3 && st.view && st.view.results ? st.view.results.find((r) => r.seat === st.mine) : null;
+        ms = row && row.fin ? row.ms : st.finMs || ms;
+      }
       // рядок міняється раз на десяту секунди — тоді й складаємо та міряємо
-      const key = ((st.raceMs / 100) | 0) * 64 + shown * 8 + laps + (mine >= 0 ? 0.5 : 0);
+      const key = ((ms / 100) | 0) * 64 + shown * 8 + laps + (mine >= 0 ? 0.5 : 0);
       if (key !== st.timerKey) {
         st.timerKey = key;
-        st.timerText = clock(st.raceMs, 1) + (mine >= 0 ? '   Коло ' + shown + '/' + laps : '');
+        st.timerText = clock(ms, 1) + (mine >= 0 ? '   Коло ' + shown + '/' + laps : '');
         st.timerW = g.measureText(st.timerText).width;
       }
       const text = st.timerText;
@@ -1984,13 +2116,22 @@
     else if (!ctx.mine) text = 'Чекаємо на гонщиків';
     else if (ctx.room && ctx.room.host && ctx.me && ctx.room.host.toLowerCase() === String(ctx.me.nick || '').toLowerCase()) text = 'Обери машину — і тисни «Почати»';
     else text = 'Обери машину, господар тисне «Почати»';
+    // посеред поля, а не згори: старт на всіх трасах — на верхній прямій, і плашка закривала пол-позицію з міткою «ти»
     g.font = '700 ' + fs + 'px system-ui, sans-serif';
     g.textAlign = 'center';
-    const w = g.measureText(text).width + 34 * ck;
-    g.fillStyle = 'rgba(10,16,12,.72)';
-    g.beginPath(); g.roundRect(W / 2 - w / 2, 12 * ck, w, fs * 2.2, 12 * ck); g.fill();
+    let tw = g.measureText(text).width, f2 = fs;
+    const room = W - 16 * ck - 34 * ck;
+    if (tw > room) {
+      // вузький канвас (телефон): шрифт менший, щоб плашка не вилазила за край
+      f2 = Math.max(9, Math.floor(fs * room / tw));
+      g.font = '700 ' + f2 + 'px system-ui, sans-serif';
+      tw = g.measureText(text).width;
+    }
+    const w = tw + 34 * ck, h = f2 * 2.2, y = st.pxH / 2 - h / 2;
+    g.fillStyle = 'rgba(10,16,12,.78)';
+    g.beginPath(); g.roundRect(W / 2 - w / 2, y, w, h, 12 * ck); g.fill();
     g.fillStyle = '#fff';
-    g.fillText(text, W / 2, 12 * ck + fs * 1.1);
+    g.fillText(text, W / 2, y + h / 2, room);
   }
 
   /// Таблиця результатів не міняється, поки не прийде новий вид чи стіл: малюємо її раз в offscreen-канвас
@@ -2018,37 +2159,83 @@
     g.drawImage(st.resC.cv, st.resC.x, st.resC.y);
   }
 
+  /// Текст, що не ширший за max: обрізаємо з трикрапкою (у підсумку — раз на вид, тож цикл не страшний).
+  function fitText(g, text, max) {
+    if (g.measureText(text).width <= max) return text;
+    let t = text;
+    while (t.length > 1 && g.measureText(t + '…').width > max) t = t.slice(0, -1);
+    return t + '…';
+  }
+
+  /// Таблиця підсумку. Колонки рахуються від справжньої ширини текстів: на телефоні нік не лізе на час.
+  /// Переможець — з часом, решта — відставанням «+0,4 с»; ⚡ — найшвидше коло гонки, ★ — рекорд траси.
+  /// Соло — заїзд на час: без медалі самому собі, зате з різницею до рекорду траси.
   function paintResults(st, g, rows, rec, x, y, w, h, fs, lh) {
-    const v = st.view, W = st.pxW, ck = st.cssK, pal = st.pal;
-    g.fillStyle = 'rgba(10,16,12,.84)';
+    const v = st.view, W = st.pxW, ck = st.cssK, pal = st.pal, L = v.laps || 3;
+    const room = st.ctx && st.ctx.room;
+    const solo = rows.length === 1 && !!(room && room.result && room.result.draw);
+    const win = rows.find((r) => r.fin === 1);
+    let fast = 0;
+    for (const r of rows) if (r.best && (!fast || r.best < fast)) fast = r.best;
+    if (rows.length < 2) fast = 0;
+    const narrow = w < 380 * ck;
+    const me = String((st.ctx && st.ctx.me && st.ctx.me.nick) || '').toLowerCase();
+    g.fillStyle = 'rgba(10,16,12,.93)';
     g.beginPath(); g.roundRect(x, y, w, h, 14 * ck); g.fill();
     g.textAlign = 'center';
     g.fillStyle = '#fff';
     g.font = '800 ' + Math.round(fs * 1.15) + 'px system-ui, sans-serif';
-    g.fillText('🏁 ' + ((v.track && v.track.title) || '') + ' · ' + lapsWord(v.laps || 3), W / 2, y + lh * 0.7);
+    g.fillText(fitText(g, (solo ? '⏱ Заїзд на час · ' : '🏁 ') + ((v.track && v.track.title) || '') + ' · ' + lapsWord(L), w - 20 * ck), W / 2, y + lh * 0.7);
+    const nickOf = (r) => st.ctx.nickOf(r.seat) || SEAT_NAMES[r.seat];
+    const timeOf = (r) => (!r.fin ? (narrow ? '✕ ' : 'без фінішу · ') + r.laps + '/' + L
+      : solo || r === win || !win ? clock(r.ms, 1) : gap(r.ms - win.ms));
+    const bestOf = (r) => {
+      if (!r.best) return '';
+      const star = rec && rec.ms === r.best && (rec.nick || '').toLowerCase() === String(nickOf(r)).toLowerCase() ? '★' : '';
+      return (narrow ? '' : '⏱ ') + clock(r.best, 2) + (r.best === fast ? '⚡' : '') + star;
+    };
+    // ширини колонок — за найдовшим текстом
+    g.font = '600 ' + fs + 'px system-ui, sans-serif';
+    let tw = 0, bw = 0;
+    for (const r of rows) {
+      tw = Math.max(tw, g.measureText(timeOf(r)).width);
+      bw = Math.max(bw, g.measureText(bestOf(r)).width);
+    }
+    const bestR = x + w - 12 * ck, timeR = bestR - bw - 14 * ck, nickX = x + 16 * ck + fs * 1.7;
+    const nickMax = Math.max(30 * ck, timeR - tw - 10 * ck - nickX);
     rows.forEach((r, n) => {
       const ry = y + lh * (n + 1.5);
-      const nick = st.ctx.nickOf(r.seat) || SEAT_NAMES[r.seat];
+      const nick = nickOf(r);
       const car = CAR[(v.cars && v.cars[r.seat]) || 'traktor'];
       g.textAlign = 'left';
       g.font = '700 ' + fs + 'px system-ui, sans-serif';
       g.fillStyle = pal.seats[r.seat];
-      g.fillText(r.fin ? (r.fin === 1 ? '🥇' : r.fin === 2 ? '🥈' : r.fin === 3 ? '🥉' : r.fin + '.') : '—', x + 16 * ck, ry);
-      g.fillText((car ? car.emoji + ' ' : '') + nick, x + 50 * ck, ry, w * 0.42);
+      const medal = solo ? (r.fin ? '🏁' : '—') : r.fin ? (r.fin === 1 ? '🥇' : r.fin === 2 ? '🥈' : r.fin === 3 ? '🥉' : r.fin + '.') : '—';
+      g.fillText(medal, x + 14 * ck, ry);
+      g.fillText(fitText(g, (car ? car.emoji + ' ' : '') + nick, nickMax), nickX, ry);
       g.textAlign = 'right';
-      g.fillStyle = '#fff';
       g.font = '600 ' + fs + 'px system-ui, sans-serif';
-      g.fillText(r.fin ? clock(r.ms, 1) : 'без фінішу · ' + r.laps + '/' + (v.laps || 3), x + w * 0.74, ry);
-      g.fillStyle = pal.muted;
-      const star = rec && r.best && rec.ms === r.best && (rec.nick || '').toLowerCase() === String(nick).toLowerCase() ? ' ★' : '';
-      g.fillText(r.best ? '⏱ ' + clock(r.best, 2) + star : '', x + w - 14 * ck, ry);
+      g.fillStyle = r.fin && (solo || r === win) ? '#fff' : r.fin ? '#e8ecd9' : pal.muted;
+      g.fillText(timeOf(r), timeR, ry);
+      g.fillStyle = r.best && r.best === fast ? '#ffe27a' : pal.muted;
+      g.fillText(bestOf(r), bestR, ry);
     });
-    // рекорд траси — одним рядком унизу (повна десятка — у лобі, щоб «Ще раз» лишався на екрані)
+    // рекорд траси — одним рядком унизу (повна десятка — у лобі, щоб «Ще раз» лишався на екрані);
+    // соло — ще й скільки бракує до нього (або що він твій)
     if (rec) {
       g.textAlign = 'center';
       g.fillStyle = pal.accent;
       g.font = '600 ' + Math.round(fs * 0.92) + 'px system-ui, sans-serif';
-      g.fillText('⏱ Рекорд траси: ' + rec.nick + ' ' + clock(rec.ms, 2), W / 2, y + lh * (rows.length + 1.75), w - 20 * ck);
+      let line = '⏱ Рекорд траси: ' + rec.nick + ' ' + clock(rec.ms, 2);
+      const r0 = rows[0];
+      if (solo && r0 && r0.best && st.ctx.mine) {
+        if ((rec.nick || '').toLowerCase() === me && rec.ms === r0.best) line = '🏆 Рекорд траси твій: ' + clock(rec.ms, 2);
+        else if (r0.best > rec.ms) {
+          const d = r0.best - rec.ms;   // кола — до сотих, як і сам рекорд
+          line += ' · тобі до нього ' + Math.floor(d / 1000) + ',' + String(Math.floor((d % 1000) / 10)).padStart(2, '0') + ' с';
+        }
+      }
+      g.fillText(fitText(g, line, w - 20 * ck), W / 2, y + lh * (rows.length + 1.75));
     }
   }
 
@@ -2087,7 +2274,8 @@
         if (b && !document.body.classList.contains('gfull')) b.click();
         full.remove();
       };
-      root.appendChild(full);
+      // не над HUD: посеред гонки сторінку прокручено до канваса, і рядок над ним ховався під липкою шапкою сайту
+      wrap.appendChild(full);
     }
     const lower = document.createElement('div');
     lower.className = 'rl-lower';
@@ -2169,8 +2357,17 @@
     if (window.ResizeObserver) {
       st.ro = new ResizeObserver(() => { layout(st); ensureTrack(st); if (st.centred) centreCanvas(st); });
       st.ro.observe(wrap);
+      // ширина тіла картки (⛶ ховає балачки й розсуває стіл) від канваса не залежить — петлі нема
+      st.ro2 = new ResizeObserver(() => {
+        const w = root.clientWidth;
+        if (w === st.rootW) return;
+        st.rootW = w;
+        st.fitDirty = true;
+        st.fitGrow = true;
+      });
+      st.ro2.observe(root);
     }
-    st.onResize = () => { st.fitDirty = true; };
+    st.onResize = () => { st.fitDirty = true; st.fitGrow = true; };
     window.addEventListener('resize', st.onResize);
   }
 
@@ -2192,13 +2389,18 @@
       const r = wrap.getBoundingClientRect(), tb = table.getBoundingClientRect();
       const above = r.top + window.scrollY, below = tb.bottom - r.bottom + FIT_PAD;
       const room = (st.root && st.root.clientWidth) || r.width;
-      px = Math.max(Math.min(480, room), Math.floor((window.innerHeight - above - below) * 16 / 9));
+      // у лобі канвас — лише показ траси: хай менший, аби «Почати» лишалась на екрані Деки й з шістьма
+      const floor = st.view && st.view.ph === 0 ? 320 : 480;
+      px = Math.max(Math.min(floor, room), Math.floor((window.innerHeight - above - below) * 16 / 9));
     }
     const ph = st.f ? st.f.ph : 0;
     const racing = ph === 1 || ph === 2;
     const same = st.fitPh === ph;
     st.fitPh = ph;
-    if (px && st.fitPx && racing && same && px > st.fitPx) return;
+    // у гонці канвас сам лише меншає (чіп, що перескочив рядок, не смикає трасу), а ⛶ чи нове вікно — явна дія гравця
+    const grow = st.fitGrow;
+    st.fitGrow = false;
+    if (px && st.fitPx && racing && same && px > st.fitPx && !grow) return;
     if (!!px === !!st.fitPx && Math.abs(px - (st.fitPx || 0)) < 6) return;
     st.fitPx = px;
     wrap.style.maxWidth = px ? 'min(1280px, ' + px + 'px)' : '';
@@ -2218,6 +2420,49 @@
     } catch { /* без прокрутки теж можна грати */ }
   }
 
+  /// Телефон боком: обабіч канваса по 190–240 px порожнього поля — кнопки переїздять туди й не закривають трасу
+  /// (ліворуч ◀ ▶ і гудок з ↺, праворуч газ, гальмо й ручник). Бульбашка балачки столу (каркас, fixed праворуч
+  /// унизу) накривала ручник і гальмо — праву купку піднімаємо над нею. Її ширина міняється з кожною реплікою,
+  /// тож перевіряємо двічі на секунду з циклу малювання (лише getBoundingClientRect, без перебудови DOM).
+  function sideCheck(st) {
+    const root = st.root, wrap = st.wrap;
+    if (!root || !wrap) return;
+    const on = phoneLandscape() && st.touchEl.classList.contains('show');
+    const m = on ? Math.floor((root.clientWidth - wrap.clientWidth) / 2) : 0;
+    const side = on && m >= 130;
+    root.classList.toggle('rl-side', side);
+    if (!side) return;
+    const wr = wrap.getBoundingClientRect();
+    let lift = 0;
+    const head = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    if (head && head.offsetParent !== null) {
+      const hb = head.getBoundingClientRect();
+      if (hb.width && hb.left < wr.right + m && hb.right > wr.right && hb.top < wr.bottom) lift = Math.ceil(wr.bottom - hb.top + 6);
+    }
+    lift = Math.max(0, Math.min(lift, wr.height - 120));
+    const bt = Math.max(44, Math.min(76, Math.floor((m - 28) / 2), Math.floor((wr.height - 24 - lift) / 1.9)));
+    const key = m + ':' + bt + ':' + lift;
+    if (key === st.sideKey) return;
+    st.sideKey = key;
+    wrap.style.setProperty('--rl-m', m + 'px');
+    wrap.style.setProperty('--rl-bt', bt + 'px');
+    wrap.style.setProperty('--rl-lift', lift + 'px');
+  }
+
+  /// Телефон боком, гонка скінчилась: «Ще раз» стоїть під нижніми вкладками й міні-плеєром — прокрутити до нього.
+  function revealButtons(st) {
+    try {
+      const table = st.root && st.root.closest('.gtable');
+      const btns = table && table.querySelector('.gbtns');
+      if (!btns || !btns.firstElementChild) return;
+      const cs = getComputedStyle(document.body);
+      const px = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
+      const bottom = window.innerHeight - px('--tabs-h') - px('--mini-h') - 6;
+      const r = btns.getBoundingClientRect();
+      if (r.bottom > bottom) window.scrollBy(0, r.bottom - bottom);
+    } catch { /* без прокрутки кнопку теж видно — трохи нижче */ }
+  }
+
   function paintTouch(st) {
     const on = st.ctx && st.ctx.mine && st.ctx.playing && st.f && (st.f.ph === 1 || st.f.ph === 2);
     st.touchEl.classList.toggle('show', !!on);
@@ -2234,6 +2479,10 @@
       centreCanvas(st);
     }
     if (!racing) st.centred = false;
+    if (st.f && st.f.ph === 3 && !st.revealed && st.ctx && st.ctx.mine && phoneLandscape()) {
+      st.revealed = true;
+      st.revealAt = performance.now() + 250;   // каркас домальовує кнопки після update
+    }
     st.touchEl.classList.toggle('auto', st.autogas);
     st.wrap.classList.toggle('rl-live', !!on);
   }
@@ -2242,7 +2491,10 @@
     const ctx = st.ctx, f = st.f, v = st.view;
     if (!ctx || !v) return;
     let html = '';
-    for (let i = 0; i < SEATS; i++) {
+    // у лобі ніки є в рядку місць каркаса, а машини — на решітці: другий ряд чіпів лише штовхав «Почати» за екран
+    const lobby = v.ph === 0 || !f || f.ph === 0;
+    const fl = field(f);
+    for (let i = 0; !lobby && i < SEATS; i++) {
       const nick = ctx.nickOf(i);
       const o = i * STRIDE;
       const present = f && f.c[o + 10] >= 0;
@@ -2252,8 +2504,8 @@
       let extra = '';
       if (f && f.ph >= 1) {
         if (!present) extra = ' <span class="rl-x">✕</span>';
-        else if (fin > 0) extra = ' <b>' + place(fin) + '</b> 🏁';
-        else if (f.ph >= 2 && pos) extra = ' <b>' + place(pos) + '</b> ' + Math.min(v.laps, lap + 1) + '/' + v.laps;
+        else if (fin > 0) extra = (fl ? ' <b>' + place(fin) + '</b>' : '') + ' 🏁';
+        else if (f.ph >= 2) extra = (fl === 2 && pos ? ' <b>' + place(pos) + '</b>' : '') + ' ' + Math.min(v.laps, lap + 1) + '/' + v.laps;
       }
       html += '<span class="rl-chip s' + i + (i === ctx.seat ? ' me' : '') + (!present && f && f.ph >= 1 ? ' out' : '') + '"><i>' + (i + 1) + '</i>'
         + (car ? car.emoji + ' ' : '') + '<span class="rl-nk">' + ctx.esc(nick || SEAT_NAMES[i]) + '</span>' + extra + '</span>';
@@ -2267,6 +2519,21 @@
     if (html !== st.hudSig) { st.hudSig = html; st.hud.innerHTML = html; st.fitDirty = true; }
   }
 
+  /// Що є на трасі й що воно робить — рядком під вибором машини: новачок не знає, що жовті кружки — копиці.
+  const LEGEND = [
+    ['H', '🌾 копиця гальмує'], ['~', '💧 калюжа — бризки й занос'], ['o', '⚫ мастило — ковзко'], ['*', '🧊 лід — ковзко'],
+    ['+', '»» турбо'], ['J', '🪵 трамплін — розженись і летиш'], ['M', '🟫 багнюка — в\'язне'], ['c', '🌽 кукурудза гальмує'], ['.', '🌱 трава гальмує'],
+  ];
+  function legend(st) {
+    const td = st.td;
+    if (!td || !td.map) return '';
+    if (st.legendId === td.id) return st.legendText;
+    const all = td.map.join('');
+    st.legendId = td.id;
+    st.legendText = LEGEND.filter(([c]) => all.includes(c)).map(([, t]) => t).join(' · ');
+    return st.legendText;
+  }
+
   function paintLower(st) {
     const ctx = st.ctx, v = st.view;
     if (!ctx || !v) return;
@@ -2275,7 +2542,8 @@
       const mine = v.cars && v.cars[ctx.seat];
       html += '<div class="rl-pick"><div class="rl-cars">' + CARS.map((c) => '<button type="button" data-car="' + c.id + '"' + (c.id === mine ? ' class="on" aria-pressed="true"' : '')
         + '><span class="rl-emo">' + c.emoji + '</span><span>' + c.title + '</span></button>').join('') + '</div>'
-        + '<div class="muted small rl-note">Фізика в усіх однакова — різняться виглядом і гудком</div></div>';
+        + '<div class="muted small rl-note">Фізика в усіх однакова — різняться виглядом і гудком</div>'
+        + (v.random ? '' : '<div class="small rl-legend">' + ctx.esc(legend(st)) + '</div>') + '</div>';
     }
     const recs = v.records || [];
     if (v.ph === 0 && !v.random) {
@@ -2297,12 +2565,17 @@
     st.sim = null; st.others = []; st.clockOn = false; st.mountCtl = false; st.seenFin = 0; st.lateSeen = -1; st.late = [];
     st.lead = LEAD0; st.sent = 0; st.sentT = 0; st.cur = 0; st.planT.fill(-1); st.flashes = []; st.lastPh = -1; st.wrongN = 0; st.wrong = false;
     for (const d of st.drawn) d.ok = false;
+    st.skidOk.fill(0);
+    st.finMs = 0; st.gLapT = -1; st.gRecN = 0; st.revealed = false;
     if (st.skidG) st.skidG.clearRect(0, 0, WU, HU);
   }
 
   function takeFrame(st, f, now) {
     const was = st.f;
     if (was && (f.t < was.t || (was.ph === 3 && f.ph !== 3))) newRound(st);
+    // вид несе той самий кадр, що щойно прийшов окремо (сервер шле кадр і вид одним тиком): стан оновити
+    // можна, а події (коло, фініш, гудок, «світлофор») — лише раз
+    const fresh = !was || f.t !== was.t || f.ph !== was.ph;
     st.prevF = was;
     st.f = f;
     st.fAt = now;
@@ -2310,17 +2583,23 @@
     if (!st.track) return;
     const ctx = st.ctx;
     st.mine = ctx && ctx.mine && ctx.seat != null && f.c[ctx.seat * STRIDE + 10] >= 0 ? ctx.seat : -1;
+    st.solo = st.mine >= 0 && field(f) === 0;
+    if (st.solo) loadGhost(st);
     // фаза змінилась: відлік — стерти сліди; зелене — звук і спалах; кінець — стоп симуляції
     if (f.ph !== st.lastPh) {
       if (f.ph === 1 && st.skidG) st.skidG.clearRect(0, 0, WU, HU);
       // лише справжній старт: після ⛶, F5 чи входу глядачем перший кадр береться з виду, а вид сервер шле лише
       // на подіях — він буває ще з відліку, і наступний живий кадр посеред гонки вдавав би «Руш!» ще раз
-      if (f.ph === 2 && st.lastPh === 1 && f.t - S.COUNT <= 6) { st.greenAt = performance.now(); sfx(st, 'green'); }
+      if (f.ph === 2 && st.lastPh === 1 && f.t - S.COUNT <= 6) {
+        st.greenAt = performance.now();
+        sfx(st, 'green');
+        if (st.solo && st.ghost) st.flashes.push({ text: '👻 Наздожени привида: ' + clock(st.ghost.ms, 2), at: now, ms: 2400, col: '#dfe8ff' });
+      }
       if (f.ph === 3 || f.ph === 0) { st.sim = null; st.others = []; }
       st.lastPh = f.ph;
     }
     if (f.ph === 1 && was && was.ph === 1 && Math.ceil(was.s / 25) !== Math.ceil(f.s / 25)) sfx(st, 'light');
-    for (let i = 0; i < SEATS; i++) {
+    for (let i = 0; fresh && i < SEATS; i++) {
       if (!(f.c[i * STRIDE + 8] & S.EV.horn) || f.c[i * STRIDE + 10] < 0) continue;
       st.horns[i] = now;
       sfx(st, 'horn', st.view && st.view.cars && st.view.cars[i]);
@@ -2330,7 +2609,7 @@
       if (st.mine >= 0) {
         adaptLead(st, f.c, st.mine * STRIDE, now);
         reconcile(st, f, now);
-        ownEvents(st, f, now);
+        if (fresh) ownEvents(st, f, now);
         if (!st.mountCtl) {
           st.mountCtl = true;
           // F5 посеред гонки: машина не має газувати сама — «нічого не тисну» (чи що тисну) з поточного тика
@@ -2351,9 +2630,21 @@
       st.flashes.push({ text: 'Коло ' + clock(ll, 2) + (ll === bl ? ' · найкраще!' : ''), at: now, ms: 1200, col: ll === bl ? '#ffe27a' : '#fff' });
       sfx(st, 'lap');
     }
+    if (ev & S.EV.lap) {
+      const ll = f.c[o + 12], v = st.view, recs = v && v.records;
+      if (recs && !v.random && ll > 0) {
+        const rec = recs[0], me = String((st.ctx.me && st.ctx.me.nick) || '').toLowerCase();
+        // вид із новою десяткою може прийти й раніше за кадр — тоді рекорд уже наш і рівно цей
+        if (!rec || ll < rec.ms || (ll === rec.ms && String(rec.nick).toLowerCase() === me)) {
+          st.flashes.push({ text: '🏆 Новий рекорд траси! ' + clock(ll, 2), at: now, ms: 2600, col: '#ffe27a' });
+        }
+      }
+    }
     if (fin > 0 && st.seenFin !== fin) {
       st.seenFin = fin;
-      st.flashes.push({ text: '🏁 Фініш — ' + place(fin) + '!', at: now, ms: 2000, col: fin === 1 ? '#ffe27a' : '#fff' });
+      const own = st.sim && st.sim.cars[st.mine];
+      st.finMs = own && own.fin > 0 && own.finishMs > 0 ? own.finishMs : st.raceMs;
+      st.flashes.push({ text: field(f) ? '🏁 Фініш — ' + place(fin) + '!' : '🏁 Фініш — ' + clock(st.finMs, 1), at: now, ms: 2000, col: fin === 1 ? '#ffe27a' : '#fff' });
       sfx(st, 'finish');
     }
     // «не туди»: понад 40 кадрів поспіль ніс дивиться проти «течії» траси до наступних воріт, а ми їдемо вперед.
@@ -2386,6 +2677,8 @@
       if (!st.cv || !st.cv.isConnected) return;
       if (!document.hidden && st.cv.offsetParent) {
         if (st.fitDirty) { st.fitDirty = false; fitHeight(st); }
+        if (now - (st.sideAt || 0) > 500) { st.sideAt = now; sideCheck(st); }
+        if (st.revealAt && now > st.revealAt) { st.revealAt = 0; revealButtons(st); }
         draw(st, now);
         engineSound(st);
       }
@@ -2442,7 +2735,7 @@
         '⌨️ Стрілки або WASD: ↑ газ, ↓ гальмо й задній хід, ← → кермо, пробіл — ручник для заносу, R — назад на трасу. На паді: стік убік, Ⓐ газ, Ⓧ ручник',
         '🏁 Три кола (або 5/7), невидимі ворота проти зрізів, хто перший — той і взяв. Після першого фінішера решті 20 секунд',
         '🌧 П\'ять трас: Село з калюжами, Крижане озеро, Нічна з фарами, Кукурудзяне поле й Ярмарок із трампліном і турбо',
-        '⏱ Сам — заїзд на час: найкращі кола кожної траси лишаються в рекордах. Перебий чужий рекорд — буде ачівка',
+        '⏱ Сам — заїзд на час: найкращі кола кожної траси лишаються в рекордах, а привид твого найкращого кола їде поруч. Перебий чужий рекорд — буде ачівка',
       ],
     },
 
@@ -2496,10 +2789,13 @@
       if (f.ph === 2) {
         if (ctx.mine && ctx.seat != null) {
           const o = ctx.seat * STRIDE, fin = f.c[o + 10];
-          if (fin > 0) return 'Фініш — ' + place(fin) + (f.s > 0 ? ' · решті ' + Math.ceil(f.s * TICK / 1000) + ' с' : '');
-          if (fin < 0) return 'Ти зійшов з траси — дивишся збоку';
+          const fl = field(f);
+          if (fin > 0) return 'Фініш' + (fl ? ' — ' + place(fin) : '') + (f.s > 0 ? ' · решті ' + Math.ceil(f.s * TICK / 1000) + ' с' : '');
+          if (fin < 0) return 'Твоєї машини на трасі нема — дивишся збоку';
           const lap = Math.min(laps, f.c[o + 6] + 1), pos = f.r ? f.r[ctx.seat] : 0;
-          let s = 'Коло ' + lap + '/' + laps + (pos ? ' · ' + place(pos) : '');
+          let s = 'Коло ' + lap + '/' + laps + (fl === 2 && pos ? ' · ' + place(pos) : '');
+          // хтось уже доїхав — тому, хто ще на трасі, цей відлік потрібніший за все
+          if (f.s > 0) return s + ' · ⌛ ' + Math.ceil(f.s * TICK / 1000) + ' с до кінця гонки';
           if (coarse()) s += ' · ◀ ▶ кермо, 🅷 ручник';
           else if (!document.body.classList.contains('pad-on')) s += ' · ← → кермо, ↑ газ, пробіл — ручник, R — на трасу';
           return s;
@@ -2524,6 +2820,7 @@
       if (st.blur) window.removeEventListener('blur', st.blur);
       if (st.vis) document.removeEventListener('visibilitychange', st.vis);
       if (st.ro) st.ro.disconnect();
+      if (st.ro2) st.ro2.disconnect();
       if (st.onResize) window.removeEventListener('resize', st.onResize);
       if (st.audio) st.audio.close();
       root._rally = null;
