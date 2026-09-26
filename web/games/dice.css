@@ -84,12 +84,22 @@
 .di-die.sm { --s: 22px; }
 .di-die.md { --s: 40px; }
 
-/* рахуються в розкритті — світяться; решта блідне */
-.di-die.hit { box-shadow: 0 0 0 2px var(--ok), 0 0 14px var(--di-glow); animation: di-hit .5s ease-out .55s both; }
+/* рахуються в розкритті — світяться; решта блідне. Підрахунок уголос: рахункові спалахують по одній
+   (--k — номер серед рахункових, --di-t0/--di-step ставить dice.js з одного плану з лічильником і печаткою) */
+.di-die.hit {
+  box-shadow: 0 0 0 2px var(--ok), 0 0 14px var(--di-glow);
+  animation: di-hit .45s ease-out both;
+  animation-delay: calc(var(--di-t0, 550ms) + var(--k, 0) * var(--di-step, 0ms));
+}
 .di-die.miss { opacity: .42; filter: saturate(.5); }
-.di-die.fall { animation: di-fall .4s ease-in 1.2s forwards; }
-.di-die.hit.fall { animation: di-hit .5s ease-out .55s both, di-fall .4s ease-in 1.2s forwards; }
-.di-die.rise { animation: di-rise .45s ease-out 1.2s both; box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(244, 197, 66, .5); }
+.di-die.fall { animation: di-fall .4s ease-in var(--di-fall, 1.2s) forwards; }
+/* падає кісточка, що рахувалась (інших у руці нема): зелена рамка лишається поруч із червоною, щоб світних
+   на столі було рівно «на столі N» */
+.di-die.hit.fall {
+  animation: di-hit .45s ease-out both, di-fall-hit .4s ease-in var(--di-fall, 1.2s) forwards;
+  animation-delay: calc(var(--di-t0, 550ms) + var(--k, 0) * var(--di-step, 0ms)), var(--di-fall, 1.2s);
+}
+.di-die.rise { animation: di-rise .45s ease-out var(--di-fall, 1.2s) both; box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(244, 197, 66, .5); }
 /* кісточка, що повертається після влучного «Точно!», — сорочка з «+», а не порожня клітинка */
 .di-die.rise::before {
   content: '+'; display: grid; place-items: center; background: none;
@@ -100,6 +110,7 @@
 @keyframes di-hit { from { transform: scale(.7); box-shadow: 0 0 0 0 var(--ok); } 60% { transform: scale(1.12); } to { transform: none; } }
 /* кісточка, що впала, лишається блідою тінню: інакше рахунок «на столі 3» не зійдеться з тим, що видно */
 @keyframes di-fall { to { transform: translateY(8px) rotate(28deg); opacity: .4; box-shadow: 0 0 0 2px var(--danger); } }
+@keyframes di-fall-hit { to { transform: translateY(8px) rotate(28deg); opacity: .7; box-shadow: 0 0 0 2px var(--ok), 0 0 0 4px var(--danger); } }
 @keyframes di-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes di-tumble {
   0% { transform: rotate(0) translateY(0); }
@@ -152,11 +163,36 @@
 .di-pb.none { visibility: hidden; }
 .di-pb .di-q { font-size: 1.05em; }
 .di-p.me { background: var(--panel3); }
-.di-p.turn { box-shadow: 0 0 0 2px var(--accent); animation: di-pulse 1.6s ease-in-out infinite; }
+.di-p.turn { box-shadow: 0 0 0 2px var(--accent); }
+/* пульс того, хто ходить: тінь живе на псевдоелементі, а блимає його opacity — це віддається компоновнику,
+   і чіп не перемальовується щокадру всю фазу ставок (на Деці поруч ще й дуга крутиться) */
+.di-p.turn::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 5px rgba(244, 197, 66, .35); opacity: 0;
+  animation: di-pulse 1.6s ease-in-out infinite; will-change: opacity;
+}
 .di-p.out { opacity: .5; }
 .di-p.out .di-pn { text-decoration: line-through; text-decoration-color: var(--danger); }
 .di-p.champ { box-shadow: 0 0 0 2px var(--accent), 0 0 20px rgba(244, 197, 66, .45); animation: di-winpop .6s ease-out; }
-@keyframes di-pulse { 50% { box-shadow: 0 0 0 4px rgba(244, 197, 66, .35); } }
+@keyframes di-pulse { 50% { opacity: 1; } }
+.di-pn .di-zz { margin-left: 4px; font-size: .9em; }
+/* реакція — наліпка просто на чіпі (над ним — рядок місць каркаса, туди не лізе): вискакує, трохи пливе вгору й тане */
+.di-rx {
+  position: absolute; left: 50%; top: 50%; z-index: 2; pointer-events: none;
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px 3px 7px; white-space: nowrap;
+  border-radius: 999px; background: var(--panel); border: 1px solid var(--di-c, var(--line));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45);
+  transform: translate(-50%, -50%); animation: di-rx 1.8s ease-out both;
+}
+.di-rx b { font-size: 1.35em; line-height: 1; }
+.di-rx small { font-size: .8em; font-weight: 600; }
+@keyframes di-rx {
+  0% { transform: translate(-50%, -30%) scale(.5); opacity: 0; }
+  14% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+  24% { transform: translate(-50%, -50%) scale(1); }
+  78% { transform: translate(-50%, -62%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -75%) scale(1); opacity: 0; }
+}
 
 /* ---------------------------------------------------------------- ставка на столі */
 .di-center { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 92px; }
@@ -169,6 +205,12 @@
 .di-val.pop { animation: di-pop .25s ease-out; }
 .di-x { color: var(--muted); font-weight: 400; margin: 0 1px; }
 .di-prob { color: var(--ok); font-weight: 600; font-size: .92em; }
+/* шанс за порогом: ≥ 60 % зелений, 30–60 % жовтий, менше — червоний («пахне брехнею») */
+.di-prob.mid, .di-qp.mid { color: var(--accent); }
+.di-prob.lo, .di-qp.lo { color: var(--danger); }
+/* реакції — стовпчик маленьких кнопок праворуч від ставки: висоти столу не додають */
+.di-react { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.di-rxb { width: 34px; height: 30px; padding: 0; justify-content: center; font-size: 1.05em; border-radius: 10px; }
 /* печатка розкриття: «✓ правда» / «✗ брехня» / «🎯 рівно» — ставиться, коли глеки вже підняли */
 .di-stamp {
   font-size: .42em; font-weight: 800; padding: 3px 10px; border-radius: 8px; margin-left: 6px; white-space: nowrap;
@@ -232,6 +274,7 @@
 .di-win[hidden] { display: none; }
 .di-champ { font-size: 1.6em; font-weight: 800; animation: di-winpop .6s ease-out; }
 .di-podium { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; }
+.di-fun { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: .9em; color: var(--muted); }
 @keyframes di-winpop { from { transform: scale(.7); opacity: 0; } 70% { transform: scale(1.06); } to { transform: none; opacity: 1; } }
 
 /* ---------------------------------------------------------------- мої кісточки і конструктор */
@@ -291,6 +334,11 @@
 .di-foot[hidden] { display: none; }
 .di-tg { font-size: .8em; padding: 3px 10px; }
 
+/* Плаваюча пігулка балачки столу («💬 Стіл», каркас) на телефоні, у ⛶ і при згорнутій панелі лежить унизу
+   праворуч — просто на «Точно!», статусі й вердикті. Даємо столу низ на її висоту. Клас ставить dice.js
+   (body:has(.tchat.drawer) коштував ~0,4 мс перерахунку стилів на кожен вид). */
+.dice.di-pill { padding-bottom: 60px; }
+
 .dice.di-shudder { animation: di-shudder .1s linear 2; }
 @keyframes di-shudder { 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
 
@@ -325,6 +373,15 @@
   .di-row2 button { min-height: 42px; }
   .di-me { min-height: 0; padding: 8px 12px; }
   .di-rows { gap: 4px; }
+  /* розкриття на шістьох на Деці: руки щільніше, а перемикачі внизу — геть, щоб смужка пада не лягала на
+     рядок «Далі» й вердикт (у фазі ставок перемикачі на місці) */
+  .dice[data-phase="reveal"] .di-foot { display: none; }
+  .dice[data-phase="reveal"] .di-reveal { padding: 6px 10px; gap: 5px; }
+  .dice[data-phase="reveal"] .di-rows { gap: 3px; }
+  .dice[data-phase="reveal"] .di-row { padding: 2px 8px; }
+  .dice[data-phase="reveal"] .di-rdice { --di-s: 26px; gap: 4px; }
+  .dice[data-phase="reveal"] .di-center { min-height: 64px; }
+  .dice[data-phase="reveal"] .di-next { min-height: 38px; }
 }
 
 /* ---------------------------------------------------------------- телефон */
@@ -350,11 +407,17 @@
   .di-mecup .di-cup.big { width: 36px; height: 40px; }
   .di-melabel { font-size: .8em; }
   .di-act { gap: 6px; }
+  /* на телефоні пігулка «Стіл» є завжди — і там, де :has ще не вміють */
+  .dice { padding-bottom: 60px; }
+  .di-rxb { width: 32px; height: 28px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .dice, .dice * { animation: none !important; transition: none !important; }
   .di-die.tumble { filter: none; }
   .di-die.fall { opacity: .4; box-shadow: 0 0 0 2px var(--danger); }
+  .di-die.hit.fall { opacity: .7; box-shadow: 0 0 0 2px var(--ok), 0 0 0 4px var(--danger); }
   .di-cup.lift { transform: translateY(-35%) rotate(-14deg); }
+  .di-p.turn::after { animation: none !important; opacity: 1; }   /* «.dice *» псевдоелементів не бере */
+  .di-rx { transform: translate(-50%, -50%); }
 }

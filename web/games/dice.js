@@ -6,15 +6,15 @@
   Вид (подія 'room', свій кожному місцю — гра Hidden; чужі грані є лише в reveal.dice):
     { turn, phase: 'shake'|'bid'|'reveal'|'done', round, endsAt, phaseMs,
       rules: { dice, turnMs, exact, palifico }, palifico, wild, starter, total,
-      players: [{ seat, nick, dice, alive, left, palificoUsed, wasAtOne }],
+      players: [{ seat, nick, dice, alive, left, palificoUsed, wasAtOne, sleepy }],
       my: number[]|null, bid: { seat, q, f, auto }|null, history: [{ seat, q, f, auto }],
-      canExact, ready: number[], note: string|null,
+      canExact, ready: number[], note: string|null, react: number[6], reactN: number[6],
       reveal: null | { kind: 'liar'|'exact'|'timeout', caller, bid, count, jokers, dice: number[][6],
                        loser, gainer, out, next, say },
-      result: null | { winner, places, rounds, say } }
-  Кадр { ph, turn, endsAt, n } летить лише разом із видами — модуль його не читає.
+      result: null | { winner, places, rounds, say, fun: string[] } }
+  Кадрів тик не шле зовсім: усе потрібне є у виді.
 
-  Наміри: act('bid', { q, f }), act('liar', { q, f }), act('exact', { q, f }), act('ready').
+  Наміри: act('bid', { q, f }), act('liar', { q, f }), act('exact', { q, f }), act('ready'), act('react', { e }).
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -33,8 +33,8 @@
   const GUARD_MS = 600;
   /// «Далі» оживає не одразу: хай спершу всі (і глядачі) побачать руки, печатку й кісточку, що падає.
   const NEXT_MS = 1500;
-  /// Кісточка падає через стільки після підняття глеків (dice.css — той самий delay).
-  const FALL_MS = 1200;
+  /// Реакції — не частіше (сервер: Dice.ReactGapMs).
+  const REACT_GAP_MS = 2000;
 
   const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const store = {
@@ -62,8 +62,9 @@
   }
 
   /// Біноміальна: P(X ≥ m) або P(X = m) для X ~ Bin(n, p). n ≤ 30 — цикл миттєвий.
+  /// m < 0 — у мене вже більше, ніж у ставці: «щонайменше» — напевно, а «рівно» — напевно ні.
   function binom(n, p, m, exact) {
-    if (m < 0) m = 0;
+    if (m < 0) { if (exact) return 0; m = 0; }
     if (m > n) return 0;
     if (!exact && m === 0) return 1;
     let term = Math.pow(1 - p, n), sum = 0;
@@ -85,7 +86,10 @@
     return { p: binom(unknown, wild ? 1 / 3 : 1 / 6, q - k, exact), sure: !exact && q - k <= 0 };
   }
 
-  const pct = (p) => (p >= 0.995 ? '> 99 %' : p > 0 && p < 0.01 ? '< 1 %' : '≈ ' + Math.round(p * 100) + ' %');
+  const pct = (p) => (p <= 0 ? '0 %' : p >= 0.995 ? '> 99 %' : p < 0.01 ? '< 1 %' : '≈ ' + Math.round(p * 100) + ' %');
+  /// Колір шансу: зелене — ставка, найпевніше, правдива; жовте — пів на пів; червоне — пахне брехнею.
+  /// Новачок читає зелене як «добре», тож «< 1 %» зеленим був би підказкою навиворіт.
+  const tone = (p) => (p >= 0.6 ? 'hi' : p >= 0.3 ? 'mid' : 'lo');
 
   function plural(n, one, few, many) {
     const d = n % 10, h = n % 100;
@@ -126,6 +130,7 @@
       root._dice = {
         f: 2, q: 1, key: '', guardUntil: 0, nextAt: 0, guardTimer: 0, busy: false, lockKey: '', lockTimer: 0,
         prev: { phase: '', round: -1, hist: -1, reveal: '' }, timers: [], rep: null, lastEnds: '', arcUntil: '',
+        rxSeen: null, rxTimers: [], rxUntil: 0, rxTimer: 0, count: null,
       };
     }
     return root._dice;
@@ -149,7 +154,9 @@
     el.innerHTML = '<div class="di-lobby" hidden></div>'
       + '<div class="di-table">'
       + '<div class="di-others"></div>'
-      + '<div class="di-center"><div class="di-arcbox"></div><div class="di-bid"></div></div>'
+      + '<div class="di-center"><div class="di-arcbox"></div><div class="di-bid"></div>'
+      + '<div class="di-react" hidden>' + REACTS.map((r, i) => '<button type="button" class="ghost di-rxb" data-rx="' + i + '"'
+        + ' title="' + r[1] + '" aria-label="реакція: ' + r[1] + '">' + r[0] + '</button>').join('') + '</div></div>'
       + '<div class="di-pal" hidden></div>'
       + '<div class="di-hist"></div>'
       + '<div class="di-reveal" hidden></div>'
@@ -191,7 +198,34 @@
 
   /// Чіпи гравців. Скелет чіпів ставимо раз на склад, далі міняємо лише класи й ті частини, що справді
   /// змінились: хід переходить щоставки, і перебудовувати шість глеків-SVG заради рамки — марна праця.
-  function paintOthers(el, ctx, v) {
+  /// Реакції 🤨 / 😏 / 😂 — бульбашка над чіпом на 1,8 с. Сервер рахує їх лічильником на місце: бульбашку
+  /// показуємо, лише коли лічильник виріс (перший вид після входу чи F5 — лише запам'ятовуємо).
+  const REACTS = [['🤨', 'не вірю'], ['😏', 'є!'], ['😂', 'ха!']];
+
+  function paintReacts(el, ctx, v, st) {
+    const n = v.reactN || [];
+    const e = v.react || [];
+    const seen = st.rxSeen;
+    st.rxSeen = n.slice();
+    if (!seen) return;
+    for (let s = 0; s < 6; s++) {
+      if (!((n[s] | 0) > (seen[s] | 0))) continue;
+      const chip = el.querySelector(':scope > .di-p.s' + s);
+      const rx = REACTS[e[s] | 0];
+      if (!chip || !rx) continue;
+      const old = chip.querySelector(':scope > .di-rx');
+      if (old) old.remove();
+      const b = document.createElement('span');
+      b.className = 'di-rx';
+      b.innerHTML = '<b>' + rx[0] + '</b><small>' + rx[1] + '</small>';
+      chip.appendChild(b);
+      // Свій список таймерів: st.timers чистить кожне нове розкриття, і бульбашка лишилась би висіти.
+      const t = setTimeout(() => { b.remove(); st.rxTimers = st.rxTimers.filter((x) => x !== t); }, 1900);
+      st.rxTimers.push(t);
+    }
+  }
+
+  function paintOthers(el, ctx, v, st) {
     const phase = v.phase;
     const res = v.result;
     const lift = phase === 'reveal' || phase === 'done';
@@ -210,16 +244,19 @@
       c.classList.toggle('out', !p.alive);
       c.classList.toggle('turn', phase === 'bid' && v.turn === p.seat);
       c.classList.toggle('champ', !!res && res.winner === p.seat);
+      // 😴 — двічі поспіль проспав: тепер у нього 10 с на хід, поки не прокинеться.
       setHtml(c.children[0], '<u>' + MARKS[p.seat] + '</u>' + ctx.esc(nameOf(ctx, v, p.seat))
+        + (p.sleepy ? '<small class="di-zz" title="Двічі проспав — тепер 10 с на хід">😴</small>' : '')
         + (p.seat === ctx.seat ? '<small>ти</small>' : ''));
       const pc = c.children[1];
       const cupEl = pc.children[0];
       const cc = 'di-cup' + (!p.alive ? ' gone' : lift ? ' lift' : phase === 'shake' ? ' shaking' : '');
       if (cupEl.className !== cc) cupEl.className = cc;
       const n = Math.max(0, p.dice | 0);
+      // Без роду: «Оля ✕ вибув» чи «Оксана встав» ріже вухо, а рід гравця нам невідомий.
       setHtml(pc.children[1], p.alive
         ? '<span class="di-backs">' + '<i></i>'.repeat(n) + '</span><b>' + n + '</b>'
-        : '<em>' + (p.left ? 'встав' : '✕ вибув') + '</em>');
+        : '<em>' + (p.left ? '🚪 поза столом' : '✕ поза грою') + '</em>');
       const last = phase === 'bid' || phase === 'reveal' ? lastBidOf(v, p.seat) : null;
       const pb = c.children[2];
       const pbc = 'di-pb' + (!last ? ' none' : last.auto ? ' auto' : '');
@@ -231,7 +268,26 @@
   function probLine(v, ctx, q, f) {
     if (!hintOn() || !ctx.mine || !alive(v, ctx.seat) || !v.my) return '';
     const c = chance(v, q, f, false);
-    return c.sure ? 'є напевно — бачу свої' : pct(c.p) + ', що є';
+    return '<div class="di-prob ' + (c.sure ? 'hi' : tone(c.p)) + '">' + (c.sure ? 'є напевно — бачу свої' : pct(c.p) + ', що є') + '</div>';
+  }
+
+  /// Розкриття — підрахунок уголос: спершу в'їжджають руки, далі рахункові кісточки спалахують по одній разом із
+  /// лічильником «на столі 1… 2… 3…», і лише на останній падає печатка «правда/брехня», а за нею — кісточка
+  /// того, хто програв. Усе — від одного плану, щоб CSS-затримки, лічильник і звук не розійшлись.
+  function revealPlan(v) {
+    const r = v.reveal;
+    let rows = 0, hits = 0;
+    for (let s = 0; s < 6; s++) {
+      const hand = (r.dice || [])[s] || [];
+      if (!hand.length) continue;
+      rows++;
+      for (let i = 0; i < hand.length; i++) if (counts(v, hand[i], r.bid.f)) hits++;
+    }
+    if (reduced()) return { t0: 0, step: 0, hits, end: 0, fall: 0 };
+    const t0 = 450 + rows * 80 + 100;                        // останній рядок рук уже на столі
+    const step = hits ? Math.min(120, Math.floor(1200 / hits)) : 0;   // на шістьох рахунок — не довше за 1,2 с
+    const end = t0 + hits * step;
+    return { t0, step, hits, end, fall: end + 350 };
   }
 
   function paintBid(el, ctx, v) {
@@ -243,12 +299,13 @@
     } else if ((phase === 'reveal' || phase === 'done') && v.reveal) {
       // Розкриття: велика ставка, яку перевіряють, і печатка «правда/брехня» — головна мить раунду.
       const r = v.reveal, b = r.bid;
+      const plan = revealPlan(v);
       const what = r.kind === 'exact' ? '«Точно!»' : r.kind === 'timeout' ? '⏰ час вийшов — «Брешеш!»' : '«Брешеш!»';
       const ok = r.kind === 'exact' ? r.count === b.q : r.count >= b.q;
       const stamp = r.kind === 'exact' ? (ok ? '🎯 рівно' : '✗ не рівно') : (ok ? '✓ правда' : '✗ брехня');
       const jugs = r.jokers ? ' <span class="muted">(з них ' + r.jokers + ' ' + plural(r.jokers, 'глечик', 'глечики', 'глечиків') + ')</span>' : '';
       html = '<div class="di-who">' + nick(ctx, v, r.caller) + ' — ' + what + '</div>'
-        + '<div class="di-val">' + bidHtml(b, 'md') + '<span class="di-stamp ' + (ok ? 'yes' : 'no') + '">' + stamp + '</span></div>'
+        + '<div class="di-val">' + bidHtml(b, 'md') + '<span class="di-stamp ' + (ok ? 'yes' : 'no') + '" style="animation-delay:' + (plan.end + 80) + 'ms">' + stamp + '</span></div>'
         + '<div class="di-sub">на столі <b class="di-cnt">' + r.count + '</b>' + jugs + ' · ставка ' + nick(ctx, v, b.seat) + '</div>';
     } else if (phase === 'bid' && !v.bid) {
       const mine = v.turn === ctx.seat;
@@ -256,10 +313,9 @@
         + '<div class="di-sub muted">На всьому столі ' + v.total + ' ' + plural(v.total, 'кісточка', 'кісточки', 'кісточок') + '</div>';
     } else if (v.bid && phase === 'bid') {
       const b = v.bid;
-      const p = probLine(v, ctx, b.q, b.f);
-      html = '<div class="di-who">' + nick(ctx, v, b.seat) + (b.auto ? ' <span class="muted">⏰ за нього годинник</span>' : ' каже:') + '</div>'
+      html = '<div class="di-who">' + nick(ctx, v, b.seat) + (b.auto ? ' <span class="muted">— ⏰ ставить годинник</span>' : ' каже:') + '</div>'
         + '<div class="di-val pop">' + bidHtml(b, 'md') + '</div>'
-        + (p ? '<div class="di-prob">' + p + '</div>' : '');
+        + probLine(v, ctx, b.q, b.f);
     } else if (phase === 'done') {
       html = '<div class="di-note">Партію зіграно</div>';
     }
@@ -319,17 +375,29 @@
     const [rowsEl, verdictEl, sayEl, nextEl] = el.children;
     if (!show) { setHtml(rowsEl, ''); nextEl.hidden = true; return; }
     const b = r.bid;
+    const plan = revealPlan(v);
+    rowsEl.style.setProperty('--di-t0', plan.t0 + 'ms');
+    rowsEl.style.setProperty('--di-step', plan.step + 'ms');
+    rowsEl.style.setProperty('--di-fall', plan.fall + 'ms');
     // Хто що сказав і скільки нарахували — велике по центру (paintBid); тут — самі руки й вердикт.
     const rows = [];
-    let row = 0;
+    let row = 0, k = 0;
     for (let s = 0; s < 6; s++) {
       const hand = (r.dice || [])[s] || [];
       if (!hand.length) continue;
+      // Яка кісточка «падає» в того, хто програв: краще та, що не рахувалась, — тоді світних рівно «на столі N».
+      // Рахувались усі — падає остання, але зі своєю зеленою рамкою (dice.css: .hit.fall).
+      let fallAt = -1;
+      if (r.loser === s) {
+        for (let i = hand.length - 1; i >= 0 && fallAt < 0; i--) if (!counts(v, hand[i], b.f)) fallAt = i;
+        if (fallAt < 0) fallAt = hand.length - 1;
+      }
       const dice = hand.map((d, i) => {
-        let cls = counts(v, d, b.f) ? 'hit' : 'miss';
+        const hit = counts(v, d, b.f);
+        let cls = hit ? 'hit' : 'miss';
         if (d === 1 && !v.wild) cls += ' plain';
-        if (r.loser === s && i === hand.length - 1) cls += ' fall';
-        return die(d, cls);
+        if (i === fallAt) cls += ' fall';
+        return die(d, cls, hit ? '--k:' + k++ : '');
       }).join('') + (r.gainer === s ? die(0, 'back rise') : '');
       rows.push('<div class="di-row s' + s + (r.loser === s ? ' lose' : '') + (r.gainer === s ? ' gain' : '')
         + (s === ctx.seat ? ' me' : '') + '" style="--n:' + row++ + '">'
@@ -366,9 +434,12 @@
     const podium = [res.winner].concat((res.places || []).slice().reverse());
     const medals = ['🥇', '🥈', '🥉'];
     const list = podium.map((s, i) => '<li class="s' + s + '">' + (medals[i] || (i + 1) + '.') + ' ' + nick(ctx, v, s) + '</li>').join('');
+    // Смішні нагороди (сервер рахує з розкриттів і таймаутів) — привід для балачки й реваншу.
+    const fun = (res.fun || []).map((l) => '<li>' + ctx.esc(l) + '</li>').join('');
     setHtml(el, '<div class="di-champ">🏆 ' + nick(ctx, v, res.winner) + '</div>'
       + (res.say ? '<div class="di-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(res.say) + '</span></div>' : '')
       + '<ol class="di-podium">' + list + '</ol>'
+      + (fun ? '<ul class="di-fun">' + fun + '</ul>' : '')
       + '<div class="muted small">' + res.rounds + ' ' + plural(res.rounds, 'раунд', 'раунди', 'раундів') + '</div>');
   }
 
@@ -397,21 +468,37 @@
     setHtml(el, html);
   }
 
+  /// Скільки триватиме партія, хвилин: ≈ 0,55 хв на кожну кісточку на столі (живі заміри: шестеро на п'ятьох —
+  /// 22 раунди, ~15 хв; дуель на п'ятьох — 5–7 хв). Господар бачить це до «Почати» й вибирає свідомо.
+  const minutes = (players, dice) => Math.max(2, Math.round(players * dice * 0.55));
+
+  function seatedCount(room) {
+    let n = 0;
+    for (const s of (room && room.seats) || []) if (s && (typeof s === 'string' ? s : s.nick)) n++;
+    return n;
+  }
+
   function paintLobby(el, ctx) {
     const o = (ctx.room && ctx.room.options) || {};
-    const n = o.dice === '3' ? 'три' : 'п’ять';
+    const three = o.dice === '3';
+    const n = three ? 'три кісточки' : 'п’ять кісточок';
     const bits = ['⏱ ' + (o.turn || '30') + ' с на хід'];
     bits.push(o.exact === 'off' ? 'без «Точно!»' : '🎯 «Точно!» є');
     bits.push(o.palifico === 'off' ? 'без паліфіко' : '🏺 паліфіко є');
+    const players = Math.min(6, Math.max(2, seatedCount(ctx.room)));
+    const together = ['', '', 'удвох', 'утрьох', 'вчотирьох', 'уп’ятьох', 'ушістьох'][players];
+    let long = '⏳ партія ' + together + ' — ≈ ' + minutes(players, three ? 3 : 5) + ' хв';
+    if (!three && players >= 4) long += ' (з трьома кісточками було б ≈ ' + minutes(players, 3) + ')';
     setHtml(el, '<div class="di-how">'
       + '<div class="di-howcup">' + cup('shaking big') + '<span class="di-mine">' + die(1) + die(3) + die(5) + '</span></div>'
       + '<ol>'
-      + '<li>У кожного ' + n + ' кісточок під глеком — бачиш лише свої.</li>'
+      + '<li>У кожного ' + n + ' під глеком — бачиш лише свої.</li>'
       + '<li>По колу кажи, скільки кісточок із такою гранню на <b>всьому</b> столі. Кожна ставка — вища за попередню.</li>'
       + '<li>' + die(1, 'xs') + ' Глечики — джокери. На глечики — від половини, з глечиків — удвоє плюс один.</li>'
       + '<li>Не віриш — «Брешеш!». Глеки догори: хто помилився — губить кісточку. Останній із кісточками виграє.</li>'
       + '</ol>'
       + '<div class="di-rules muted small">' + bits.join(' · ') + '</div>'
+      + '<div class="di-rules muted small">' + long + '</div>'
       + '<div class="gwait">Господар тисне «Почати»</div></div>');
   }
 
@@ -479,14 +566,21 @@
     box.querySelector('.di-plus').disabled = !mine || st.q >= v.total;
     const go = box.querySelector('.di-go');
     go.disabled = !mine || !legal;
-    // Не мій хід — на кнопці, хто думає, а не чужа для мене «ставка», яку зараз однаково не зробиш.
+    // Не мій хід — на кнопці, хто думає, а не чужа для мене «ставка», яку зараз однаково не зробиш. І кнопка тоді
+    // нейтральна: велика жовта «Ходить Петро…» виглядала як дія, рука тягнулась натиснути. Жовтіє — коли мій хід.
+    const turnMine = v.turn === ctx.seat;
+    go.classList.toggle('primary', turnMine);
+    go.classList.toggle('ghost', !turnMine);
     const goHtml = st.busy && st.sent === 'bid' ? '…'
-      : v.turn !== ctx.seat ? '<span class="di-gowait">Ходить ' + nick(ctx, v, v.turn) + '…</span>'
+      : !turnMine ? '<span class="di-gowait">Ходить ' + nick(ctx, v, v.turn) + '…</span>'
         : 'Ставлю ' + bidHtml({ q: st.q, f: st.f }, 'sm');
     if (go.dataset.sig !== goHtml) { go.dataset.sig = goHtml; go.innerHTML = goHtml; }
     const qp = box.querySelector('.di-qp');
-    const pt = mine && hintOn() ? probText(v, st) : '';
+    const c = mine && hintOn() ? chance(v, st.q, st.f, false) : null;
+    const pt = !c ? '' : c.sure ? 'напевно' : pct(c.p);
+    const qc = 'di-qp' + (c ? ' ' + (c.sure ? 'hi' : tone(c.p)) : '');
     if (qp.textContent !== pt) qp.textContent = pt;
+    if (qp.className !== qc) qp.className = qc;
     const g = guarded(st);
     const liar = box.querySelector('.di-liar');
     liar.disabled = !mine || !v.bid || g;
@@ -505,9 +599,25 @@
     box.classList.toggle('wait', !mine);
   }
 
-  function probText(v, st) {
-    const c = chance(v, st.q, st.f, false);
-    return c.sure ? 'напевно' : pct(c.p);
+  /// Кнопки реакцій — кожному, хто грає за цим столом (і тому, хто вже без кісточок: він же дивиться далі).
+  function paintRx(el, ctx, v, st) {
+    const seated = ctx.playing && ctx.mine && (v.players || []).some((p) => p.seat === ctx.seat);
+    const show = seated && (v.phase === 'shake' || v.phase === 'bid' || v.phase === 'reveal');
+    el.hidden = !show;
+    if (!show) return;
+    const wait = performance.now() < st.rxUntil;
+    for (const b of el.children) b.disabled = wait;
+  }
+
+  function react(root, ctx, e) {
+    const st = state(root);
+    if (performance.now() < st.rxUntil) return;
+    st.rxUntil = performance.now() + REACT_GAP_MS;
+    const el = root.querySelector('.di-react');
+    paintRx(el, ctx, ctx.view || {}, st);
+    clearTimeout(st.rxTimer);
+    st.rxTimer = setTimeout(() => { if (root._dice) paintRx(el, ctx, ctx.view || {}, st); }, REACT_GAP_MS + 30);
+    ctx.act('react', { e }).catch(() => {});
   }
 
   /// Моя черга щойно настала (або змінилась ставка): конструктор — на найнижчу законну ставку.
@@ -654,6 +764,12 @@
         g.gain.setValueAtTime(0.14, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
         o.start(t); o.stop(t + 0.26);
+      } else if (kind === 'count') {
+        // рахуємо вголос: тихий дерев'яний «тік» на кожну кісточку, що спалахнула
+        o.frequency.value = 880;
+        g.gain.setValueAtTime(0.05, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+        o.start(t); o.stop(t + 0.03);
       } else if (kind === 'thud') {
         o.frequency.value = 90;
         g.gain.setValueAtTime(0.15, t);
@@ -717,10 +833,20 @@
     if (revKey && revKey !== p.reveal && v.phase === 'reveal') {
       st.timers.forEach(clearTimeout);   // минуле розкриття вже не «тукне»
       st.timers.length = 0;
-      st.nextAt = performance.now() + NEXT_MS;
-      st.timers.push(setTimeout(() => { if (root._dice) paintReveal(root.querySelector('.di-reveal'), ctx, ctx.view || {}, st); }, NEXT_MS + 20));
+      const plan = revealPlan(v);
+      // «Далі» оживає, коли вже порахували й печатка впала: не раніше NEXT_MS і не раніше кінця рахунку.
+      const wait = Math.max(NEXT_MS, plan.end + 400);
+      st.nextAt = performance.now() + wait;
+      st.timers.push(setTimeout(() => { if (root._dice) paintReveal(root.querySelector('.di-reveal'), ctx, ctx.view || {}, st); }, wait + 20));
       sound(root, 'whoosh');
-      if (v.reveal.loser != null && !reduced()) st.timers.push(setTimeout(() => sound(root, 'thud'), FALL_MS));
+      // Лічильник «на столі 1… 2… 3…» іде в ногу з кісточками, що спалахують (dice.css: затримка --k × --di-step).
+      st.count = plan.hits && plan.step ? { at: performance.now(), plan, to: v.reveal.count } : null;
+      if (st.count) {
+        for (let i = 1; i <= plan.hits; i++) {
+          st.timers.push(setTimeout(() => { syncCount(root, st); sound(root, 'count'); }, plan.t0 + (i - 1) * plan.step + 200));
+        }
+      }
+      if (v.reveal.loser != null && !reduced()) st.timers.push(setTimeout(() => sound(root, 'thud'), plan.fall));
       if (v.reveal.kind !== 'exact' && !reduced()) {
         const box = root.querySelector('.dice');
         box.classList.remove('di-shudder');
@@ -729,6 +855,21 @@
       }
     }
     st.prev = { phase: v.phase, round: v.round, hist, reveal: revKey || p.reveal };
+  }
+
+  /// Скільки рахункових кісточок уже «спалахнуло»: лічильник на картці показує саме стільки, а наприкінці — усе.
+  function syncCount(root, st) {
+    const el = root.querySelector('.di-cnt');
+    if (!el) return;
+    const c = st.count;
+    let n = c ? c.to : null;
+    if (c) {
+      const t = performance.now() - c.at - c.plan.t0 - 200;
+      const lit = t < 0 ? 0 : Math.min(c.plan.hits, Math.floor(t / c.plan.step) + 1);
+      if (lit >= c.plan.hits) st.count = null;
+      else n = lit;
+    }
+    if (n != null && el.textContent !== String(n)) el.textContent = String(n);
   }
 
   function paint(root, ctx) {
@@ -749,9 +890,13 @@
       return;
     }
     transitions(root, ctx, v, st);
-    paintOthers(box.querySelector('.di-others'), ctx, v);
+    const others = box.querySelector('.di-others');
+    paintOthers(others, ctx, v, st);
+    paintReacts(others, ctx, v, st);
     paintArc(root, ctx, v, st);
     paintBid(box.querySelector('.di-bid'), ctx, v);
+    syncCount(root, st);
+    paintRx(box.querySelector('.di-react'), ctx, v, st);
     paintPal(box.querySelector('.di-pal'), ctx, v);
     paintHist(box.querySelector('.di-hist'), ctx, v);
     paintReveal(box.querySelector('.di-reveal'), ctx, v, st);
@@ -760,6 +905,9 @@
     paintAct(box.querySelector('.di-act'), ctx, v, st);
     paintFoot(box.querySelector('.di-foot'), ctx);
     box.dataset.phase = v.phase || '';
+    // Пігулка «💬 Стіл» (шторка балачки) лежить унизу праворуч — даємо столу низ, щоб не накрила «Точно!».
+    const pill = !!document.querySelector('.tchat.drawer');
+    if (box.classList.contains('di-pill') !== pill) box.classList.toggle('di-pill', pill);
   }
 
   // =============================================================================================
@@ -782,6 +930,7 @@
       else if (t.classList.contains('di-liar')) liar(root, ctx);
       else if (t.classList.contains('di-exact')) exact(root, ctx);
       else if (t.classList.contains('di-next')) ready(root, ctx);
+      else if (t.dataset.rx != null) react(root, ctx, +t.dataset.rx);
       else if (t.dataset.tg) toggle(root, ctx, t.dataset.tg);
     });
     // Звук увімкнули ще до F5 — контекст WebAudio оживає з першим же дотиком до столу (браузер дозволяє лише після жесту).
@@ -848,7 +997,7 @@
       v: '2026-09-27',
       title: 'Нова гра: Під глеком',
       items: [
-        '🏺 У кожного п’ять кісточок під глеком — бачиш лише свої',
+        '🏺 У кожного під глеком п’ять кісточок (у швидкій партії — три) — бачиш лише свої',
         '🗣 По колу кажи, скільки кісточок із такою гранню на всьому столі: кожна наступна ставка — вища',
         '⚀ Одиниці — глечики-джокери: рахуються за будь-яку грань. На глечики — від половини, з глечиків — удвоє плюс один',
         '🤥 Не віриш — тисни «Брешеш!»: глеки піднімаються, хто помилився — губить кісточку',
@@ -862,14 +1011,16 @@
       on(btn, ctx) {
         const root = roots.get(ctx);
         if (!root) return false;
-        // Ⓨ — «Точно!», але лише коли його справді можна сказати; інакше Ⓨ лишається каркасу (довідка пада).
-        if (btn === 'y') { if (!(ctx.view && ctx.view.canExact && ctx.view.phase === 'bid')) return false; exact(root, ctx); return true; }
+        // «Точно!» — на LB, у пару до «шансів» на RB. Ⓨ лишаємо каркасу: він завжди підписує його «підказки», і
+        // одна кнопка з двома значеннями в смужці плутала. LB забираємо й тоді, коли «Точно!» зараз не можна:
+        // інакше каркас перегорнув би розділ сайту посеред партії.
+        if (btn === 'lb') { if (ctx.view && ctx.view.canExact && ctx.view.phase === 'bid') exact(root, ctx); return true; }
         if (btn === 'rb') { toggle(root, ctx, 'hint'); return true; }
         return false;
       },
-      // Смужку пад перечитує сам кожні ~400 мс: «{y} Точно!» з'являється, лише поки «Точно!» можна сказати.
+      // Смужку пад перечитує сам кожні ~400 мс: «{lb} Точно!» з'являється, лише поки «Точно!» можна сказати.
       get hint() {
-        return '{dpad} грань і кількість · {a} ставка / далі · {x} Брешеш!' + (padExact ? ' · {y} Точно!' : '') + ' · {rb} шанси';
+        return '{dpad} грань і кількість · {a} ставка / далі · {x} Брешеш!' + (padExact ? ' · {lb} Точно!' : '') + ' · {rb} шанси';
       },
       when: (ctx) => ctx.mine && ctx.playing && !!ctx.view && alive(ctx.view, ctx.seat)
         && (ctx.view.phase === 'bid' || ctx.view.phase === 'reveal'),
@@ -901,8 +1052,9 @@
       if (v.phase !== 'bid') return '';
       if (!ctx.mine) return 'Дивишся збоку';
       if (!alive(v, ctx.seat)) return 'Ти без кісточок — дивись і вболівай';
-      if (v.turn === ctx.seat) return 'Твій хід: став вище або кажи «Брешеш!»';
-      return 'Думає ' + nameOf(ctx, v, v.turn) + '…';
+      const sleepy = (v.players || []).some((p) => p.seat === v.turn && p.sleepy);
+      if (v.turn === ctx.seat) return 'Твій хід: став вище або кажи «Брешеш!»' + (sleepy ? ' — 😴 лише 10 с' : '');
+      return 'Думає ' + nameOf(ctx, v, v.turn) + (sleepy ? '… 😴 10 с' : '…');
     },
 
     unmount(root) {
@@ -910,8 +1062,10 @@
       if (st) {
         clearTimeout(st.guardTimer);
         clearTimeout(st.lockTimer);
+        clearTimeout(st.rxTimer);
         if (st.rep) clearTimeout(st.rep.t);
         st.timers.forEach(clearTimeout);
+        st.rxTimers.forEach(clearTimeout);
       }
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
