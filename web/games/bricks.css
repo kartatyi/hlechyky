@@ -27,11 +27,16 @@
   position: relative; width: 100%; display: flex; gap: 18px; justify-content: center; align-items: flex-start;
   user-select: none; -webkit-user-select: none;
 }
-.bricks-narrow { flex-direction: column; align-items: center; gap: 8px; }
+.bricks-narrow { flex-wrap: wrap; gap: 6px; }
+.bricks-narrow > .bricks-hud, .bricks-narrow > .bricks-touch { flex: 0 0 100%; }
+.bricks-narrow > .bricks-touch { max-width: none; }
+.bricks-narrow .bricks-lbl { font-size: .68em; min-height: 1.3em; }
+.bricks-narrow .bricks-l2 { display: none; }   /* на телефоні чужа стіна вузька: лише нік, ціль — у своєму HUD */
+.bricks-narrow .bricks-others { gap: 6px; }
 .bricks-watch { flex-wrap: wrap; }
 
 .bricks-me { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.bricks-cv { display: block; border-radius: 8px; background: var(--bg); }
+.bricks-cv { display: block; }
 .bricks-mine { touch-action: none; }
 
 .bricks-hud {
@@ -48,19 +53,19 @@
 }
 
 .bricks-others { display: grid; gap: 10px 12px; align-content: start; justify-content: center; }
-.bricks-narrow .bricks-others { grid-auto-flow: column; }
 .bricks-watch .bricks-others { grid-auto-flow: column; }
 @media (max-width: 639px) { .bricks-watch .bricks-others { grid-auto-flow: row; grid-template-columns: repeat(2, auto); } }
 
 .bricks-bd { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
 .bricks-lbl {
-  font-size: .8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
-  display: flex; gap: 5px; align-items: center; min-height: 1.4em;
+  font-size: .8em; line-height: 1.3; max-width: 100%; min-height: 2.6em;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
 }
-.bricks-lbl b { overflow: hidden; text-overflow: ellipsis; }
+.bricks-l1, .bricks-l2 { display: flex; gap: 5px; align-items: center; white-space: nowrap; overflow: hidden; max-width: 100%; }
+.bricks-l1 b { overflow: hidden; text-overflow: ellipsis; }
+.bricks-l2 { font-size: .92em; }
 .bricks-lbl .bricks-n { color: var(--muted); font-variant-numeric: tabular-nums; }
-.bricks-lbl .bricks-n::after { content: ' ряд.'; font-size: .85em; }
-.bricks-lbl .bricks-w { color: var(--accent); }
+.bricks-lbl .bricks-w, .bricks-sumbox .bricks-w { color: var(--accent); }
 .bricks-dot { width: .72em; height: .72em; border-radius: 50%; display: inline-block; background: currentColor; flex: none; }
 .bricks-bd.bk0 .bricks-lbl, .bricks-to.bk0, tr.bk0 .bricks-dot { color: var(--bk-seat0); }
 .bricks-bd.bk1 .bricks-lbl, .bricks-to.bk1, tr.bk1 .bricks-dot { color: var(--bk-seat1); }
@@ -95,6 +100,7 @@
 .bricks-sumbox table { border-collapse: collapse; margin: 0 auto; font-variant-numeric: tabular-nums; }
 .bricks-sumbox th { font-weight: 500; color: var(--muted); font-size: .78em; padding: 2px 8px; }
 .bricks-sumbox td { padding: 3px 8px; text-align: right; }
+.bricks-sumbox td:first-child { white-space: nowrap; }
 .bricks-sumbox td:nth-child(2) { text-align: left; font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bricks-sumbox td:nth-child(2) .bricks-dot { margin-right: 6px; }
 .bricks-next { color: var(--muted); font-size: .82em; margin-top: 6px; }

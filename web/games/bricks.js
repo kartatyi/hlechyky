@@ -882,6 +882,8 @@
   const GLAZE = [['--bk-i', '#4fc3c7'], ['--bk-o', '#e6c15a'], ['--bk-t', '#9a6fc9'], ['--bk-s', '#7bb661'],
     ['--bk-z', '#d9534f'], ['--bk-j', '#4f78d1'], ['--bk-l', '#e08a3c'], ['--bk-g', '#7a6a5e']];
   const ROWS = 22;           // малюємо ряди 0..21: два над стіною — там з'являються фігурки
+  const LBL_H = 40;          // підпис чужої стіни: два рядки (нік і ★; ряди й ціль)
+  const cssPx = (name) => { try { return parseFloat(getComputedStyle(document.body).getPropertyValue(name)) || 0; } catch { return 0; } };
   const TICK_MS = 1000 / 60;
 
   const KEYS = {
@@ -903,6 +905,11 @@
     const cs = Math.max(0, Math.floor(ticks * 100 / 60));
     const m = Math.floor(cs / 6000), s = Math.floor(cs / 100) % 60, f = cs % 100;
     return m + ':' + String(s).padStart(2, '0') + (frac ? ',' + String(f).padStart(2, '0') : '');
+  };
+  /// 54.87 → «0:54,87» — рівно як у рядку Журналу.
+  const secText = (sec) => {
+    const cs = Math.round(sec * 100);
+    return Math.floor(cs / 6000) + ':' + String(Math.floor(cs / 100) % 60).padStart(2, '0') + ',' + String(cs % 100).padStart(2, '0');
   };
   const rowsWord = (n) => {
     const t = n % 100, o = n % 10;
@@ -1081,30 +1088,42 @@
     const vh = document.documentElement.clientHeight || window.innerHeight || 800;
     const narrow = W < 640;
     const touch = mine && coarse() && ctx.playing;
-    // місце під статус і кнопки картки (каркас малює їх під тілом) і HUD над стіною
-    const below = 74 + (touch ? 118 : 0), hud = 30;
+    // Унизу: на телефоні — міні-плеєр і вкладки сайту (фіксовані, стіна під ними не видна) і кнопки під палець,
+    // статус і «Встати» можна догорнути; на ПК — статус і кнопки картки, щоб усе було в одному екрані.
+    const chrome = cssPx('--tabs-h') + cssPx('--mini-h');
+    const below = (narrow && touch ? chrome + 10 : 86 + chrome) + (touch ? 64 : 0), hud = 30;
     let hAvail = Math.max(260, vh - Math.max(0, top) - below - hud);
     let c;
     let kind;
+    let mini = 0;
     if (!mine) {
       kind = 'watch';
       const n = Math.max(1, others.length);
       const perRow = narrow ? Math.min(n, 2) : n;
       const rows = Math.ceil(n / perRow);
-      c = Math.floor(Math.min((W - 16 * perRow) / (perRow * 10.4), (hAvail - rows * 26) / (rows * ROWS)));
+      c = Math.floor(Math.min((W - 16 * perRow) / (perRow * 10.4), (hAvail - rows * LBL_H) / (rows * ROWS)));
     } else if (narrow) {
+      // Телефон: своя стіна з кишенею праворуч, поруч — чужі дрібно (одна або дві колонки), кнопки — рядком під усім.
       kind = 'narrow';
-      const miniH = others.length ? 26 + ROWS * Math.max(6, Math.min(8, Math.floor((W - 24) / (others.length * 10.6)))) : 0;
-      c = Math.floor(Math.min((W - 12) / 14.4, (hAvail - miniH - 8) / ROWS));
+      const n = others.length, cols = n <= 1 ? 1 : 2;
+      const k = n === 0 ? 0 : n === 1 ? 0.5 : 0.33;
+      const minisW = (m) => (n ? cols * (Math.max(3, Math.round(m * 0.36)) + 10 * m) + (cols - 1) * 6 + 6 : 0);
+      c = Math.floor(hAvail / ROWS);
+      for (let i = 0; i < 3; i++) {
+        const byW = Math.floor((W - 4 - minisW(Math.max(4, Math.floor(c * k)))) / 13.3);
+        if (byW < c) c = byW;
+      }
+      c = Math.max(10, c);
+      mini = Math.max(4, Math.floor(c * k));
     } else {
       kind = 'wide';
       const extra = others.length === 0 ? 0 : others.length === 1 ? 10.8 : 11.2;
-      c = Math.floor(Math.min((W - 40) / (15.6 + extra), hAvail / ROWS));
+      // три чужі стіни — у два ряди, і кожен ряд має ще й підпис: своя стіна мусить лишити їм місце
+      const extraH = others.length > 2 ? 2 * LBL_H + 12 - 30 : 0;
+      c = Math.floor(Math.min((W - 40) / (15.6 + extra), (hAvail - extraH) / ROWS));
     }
-    c = Math.max(12, Math.min(34, c | 0));
-    let mini = c;
-    if (kind === 'wide' && others.length > 1) mini = Math.max(6, Math.floor(c / 2));
-    if (kind === 'narrow') mini = Math.max(6, Math.min(8, Math.floor((W - 24) / (Math.max(1, others.length) * 10.6))));
+    c = Math.max(kind === 'narrow' ? 10 : 12, Math.min(34, c | 0));
+    if (kind === 'wide') mini = others.length > 1 ? Math.max(6, Math.floor(c / 2)) : c;
     if (kind === 'watch') mini = c;
     const sig = [kind, c, mini, seats.join(','), mine ? ctx.seat : -1, touch, st.sprint].join('|');
     return { kind, c, mini, mine, others, seats, touch, sig, narrow };
@@ -1128,13 +1147,16 @@
     if (L.mine) {
       const me = document.createElement('div');
       me.className = 'bricks-me';
-      me.innerHTML = '<div class="bricks-hud"></div>';
+      const hudEl = document.createElement('div');
+      hudEl.className = 'bricks-hud';
+      // на телефоні HUD — рядком над усією сценою, інакше в стовпчику стіни він переноситься в три рядки
+      (L.kind === 'narrow' ? scene : me).appendChild(hudEl);
       const cv = document.createElement('canvas');
       cv.className = 'bricks-cv bricks-mine';
       me.appendChild(cv);
       scene.appendChild(me);
       st.el.me = me;
-      st.el.hud = me.querySelector('.bricks-hud');
+      st.el.hud = hudEl;
       const pc = Math.max(7, Math.round(L.c * 0.56));
       const side = Math.round(pc * 4.6);
       const bar = Math.max(4, Math.round(L.c * 0.36));
@@ -1147,7 +1169,7 @@
       geo.barW = bar;
       sizeCanvas(cv, geo.w, geo.h, dpr);
       st.el.mine = { cv, g: cv.getContext('2d'), geo };
-      if (L.touch) buildTouch(me, st);
+      if (L.touch && L.kind !== 'narrow') buildTouch(me, st);
       if (coarse()) gestures(cv, st);
     }
     if (L.others.length) {
@@ -1167,11 +1189,13 @@
         const bar = Math.max(3, Math.round(c * 0.36));
         const geo = { c, x0: bar, bar: 0, barW: bar, w: bar + 10 * c, h: ROWS * c, mini: true };
         sizeCanvas(cv, geo.w, geo.h, dpr);
+        bd.style.width = geo.w + 'px';   // довгий підпис не розпирає колонку — обрізається трьома крапками
         st.el.boards[s] = { bd, cv, g: cv.getContext('2d'), geo, lbl: bd.querySelector('.bricks-lbl') };
         other(st, s).dirty = true;
       }
-      if (L.kind === 'wide' && L.others.length > 1) box.style.gridTemplateColumns = 'repeat(2, auto)';
+      if ((L.kind === 'wide' || L.kind === 'narrow') && L.others.length > 1) box.style.gridTemplateColumns = 'repeat(2, auto)';
     }
+    if (L.mine && L.touch && L.kind === 'narrow') buildTouch(scene, st);
     const sum = document.createElement('div');
     sum.className = 'bricks-summary';
     sum.hidden = true;
@@ -1410,7 +1434,7 @@
     if (loaded) {
       drawCells(g, geo, spr, core.cells, dead);
       // ряди, що зараз знімаються, — блимають
-      if (core.clearing > 0 && !dead) {
+      if (core.clearing > 0 && !dead && st.phase === 'go') {
         const k = core.clearing / CLEART;
         g.fillStyle = 'rgba(255,255,255,' + (0.15 + 0.6 * k).toFixed(3) + ')';
         for (let y = 0; y < ROWS; y++) if (core.mask[y] === FULL) g.fillRect(geo.x0, rowY(geo, y), 10 * geo.c, geo.c);
@@ -1430,7 +1454,7 @@
     }
     drawParticles(g, st, now, geo);
     g.restore();
-    drawBar(g, geo, loaded ? core.pending : 0, loaded ? core.ripe : 0, pal);
+    drawBar(g, geo, loaded && !dead ? core.pending : 0, loaded && !dead ? core.ripe : 0, pal);
     // кишеня й наступні
     const pc = geo.pc, sp = st.sprPc;
     g.font = '600 ' + Math.max(9, Math.round(pc * 0.9)) + 'px system-ui, sans-serif';
@@ -1440,21 +1464,27 @@
     const hx = geo.holdX, nx = geo.nextX, sw = geo.side;
     const holdY = 0;
     g.fillText('сховано', hx + sw / 2, holdY + 2);
-    g.fillStyle = pal.panel;
-    g.beginPath(); g.roundRect(hx, holdY + pc * 1.4, sw, pc * 3.2, 6); g.fill();
+    box(g, hx, holdY + pc * 1.4, sw, pc * 3.2, pal);
     if (loaded) drawPreview(g, sp, core.hold, hx, holdY + pc * 1.4, sw, pc * 3.2, pc, core.holdUsed ? 0.35 : 1);
     const nextY = st.L && st.L.kind === 'wide' ? 0 : holdY + pc * 5.2;
     g.fillStyle = pal.muted;
     g.fillText('далі', nx + sw / 2, nextY + 2);
-    g.fillStyle = pal.panel;
-    g.beginPath(); g.roundRect(nx, nextY + pc * 1.4, sw, pc * 8.6, 6); g.fill();
+    box(g, nx, nextY + pc * 1.4, sw, pc * 8.6, pal);
     if (loaded) for (let i = 0; i < 3; i++) drawPreview(g, sp, core.pieceAt(core.pi + i), nx, nextY + pc * 1.6 + i * pc * 2.8, sw, pc * 2.6, pc, i ? 0.8 : 1);
     drawOverlay(g, st, geo, now, dead);
     drawLabels(g, st, now, geo);
   }
 
+  /// Рамка кишені й черги: канвас прозорий, тож коробочка мусить бути видно на будь-якому тлі картки.
+  function box(g, x, y, w, h, pal) {
+    g.fillStyle = pal.bg2;
+    g.strokeStyle = pal.line;
+    g.lineWidth = 1;
+    g.beginPath(); g.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, 6); g.fill(); g.stroke();
+  }
+
   function drawOverlay(g, st, geo, now, dead) {
-    const pal = st.pal, cx = geo.x0 + 5 * geo.c, cy = geo.h / 2;
+    const pal = st.pal, cx = geo.x0 + 5 * geo.c, cy = geo.h / 2, hi = geo.h * 0.3;   // hi — над підсумком раунду
     const text = (s, size, color, y) => {
       g.font = '800 ' + size + 'px system-ui, sans-serif';
       g.textAlign = 'center';
@@ -1483,9 +1513,9 @@
     const rank = st.net.rank || (st.view && myBoard(st) && myBoard(st).rk);
     if (dead) {
       shade(g, geo, 0.45);
-      text(rank && rank > 1 ? '✗ ' + rank + '-й' : '✗', Math.round(c * 1.6), pal.danger, cy);
+      text(rank && rank > 1 ? '✗ ' + rank + '-й' : '✗', Math.round(c * 1.6), pal.danger, hi);
     } else if (rank === 1 && st.phase !== 'go') {
-      text('🏆', Math.round(c * 2.4), pal.accent, cy);
+      text('🏆', Math.round(c * 2.4), pal.accent, hi);
     }
   }
 
@@ -1536,14 +1566,14 @@
       if (gy !== by) drawPiece(g, geo, spr, t, bx, gy, rot, true);
       drawPiece(g, geo, spr, t, bx, by, rot, false);
     }
-    drawBar(g, geo, o.pd, o.rp, pal);
+    drawBar(g, geo, dead ? 0 : o.pd, dead ? 0 : o.rp, pal);
     if (dead || (o.rk === 1 && st.phase !== 'go')) {
       if (dead) shade(g, geo, 0.45);
       g.font = '800 ' + Math.round(geo.c * 1.8) + 'px system-ui, sans-serif';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       g.fillStyle = dead ? pal.danger : pal.accent;
-      g.fillText(dead ? (o.rk > 1 ? '✗ ' + o.rk + '-й' : '✗') : '🏆', geo.x0 + 5 * geo.c, geo.h / 2, 10 * geo.c);
+      g.fillText(dead ? (o.rk > 1 ? '✗ ' + o.rk + '-й' : '✗') : '🏆', geo.x0 + 5 * geo.c, geo.h * 0.3, 10 * geo.c);
     }
     o.dirty = false;
   }
@@ -1701,8 +1731,10 @@
     const net = st.net, core = net.core, v = st.view || {};
     let html;
     if (st.sprint) {
-      const t = st.phase === 'go' && net.loaded ? core.tick : st.phase === 'over' && v.result && v.result.sec != null ? Math.round(v.result.sec * 60) : 0;
-      html = '<span class="bricks-big">⏱ ' + clockText(t, true) + '</span><span class="bricks-big">'
+      // після фінішу — офіційний час сервера (сотими, як у таблиці), доти — свій годинник стіни
+      const done = st.phase === 'over' && v.result && v.result.sec != null;
+      const t = done ? secText(v.result.sec) : clockText(st.phase === 'go' && net.loaded ? core.tick : st.phase === 'over' && net.loaded ? core.tick : 0, true);
+      html = '<span class="bricks-big">⏱ ' + t + '</span><span class="bricks-big">'
         + Math.min(SPRINT_LINES, net.loaded ? core.lines : 0) + '<small>/' + SPRINT_LINES + '</small></span>';
     } else {
       const bits = [];
@@ -1739,10 +1771,14 @@
       const i = +s;
       const t = v.target ? v.target[i] : -1;
       const wins = (v.wins || [])[i] || 0;
-      const html = '<span class="bricks-dot"></span><b>' + st.ctx.esc(o.nick || nickOf(st, i)) + '</b>'
-        + ((v.need || 1) > 1 ? ' <span class="bricks-w">★' + wins + '</span>' : '')
-        + ' <span class="bricks-n">' + o.l + '</span>'
-        + (t >= 0 && o.a && v.garbage !== 'none' && st.phase === 'go' ? ' <span class="bricks-to bk' + t + '">→ ' + st.ctx.esc(nickOf(st, t)) + '</span>' : '');
+      // на телефоні чужа стіна завширшки з палець: «гість Ярина» → «Ярина», інакше видно лише «гіст…»
+      let nick = o.nick || nickOf(st, i);
+      if (st.L && st.L.kind === 'narrow') nick = nick.replace(/^гість\s+/i, '') || nick;
+      const html = '<span class="bricks-l1"><span class="bricks-dot"></span><b>' + st.ctx.esc(nick) + '</b>'
+        + ((v.need || 1) > 1 ? '<span class="bricks-w">★' + wins + '</span>' : '') + '</span>'
+        + '<span class="bricks-l2"><span class="bricks-n">' + rowsWord(o.l) + '</span>'
+        + (t >= 0 && o.a && v.garbage !== 'none' && st.phase === 'go' ? '<span class="bricks-to bk' + t + '">→ ' + st.ctx.esc(nickOf(st, t)) + '</span>' : '')
+        + '</span>';
       if (e.lbl.dataset.sig !== html) { e.lbl.dataset.sig = html; e.lbl.innerHTML = html; }
     }
   }
@@ -1761,12 +1797,15 @@
     const win = rows.filter((r) => r.rk === 1);
     const head = win.length
       ? '🏆 ' + win.map((r) => st.ctx.esc(r.nick)).join(', ') + (over ? (win.length > 1 ? ' беруть партію' : ' бере партію') : (win.length > 1 ? ' ділять раунд' : ' бере раунд'))
-      : 'Раунд нікому';
-    const score = (v.need || 1) > 1 ? '<div class="bricks-score">Рахунок ' + rows.slice().sort((a, b) => a.s - b.s).map((r) => r.wins).join(' : ') + '</div>' : '';
+      : over ? 'Партію не дограли' : 'Раунд нікому';
+    // рахунок раундів: на двох — «Рахунок 1 : 1» рядком, на трьох-чотирьох — стовпчиком ★ біля кожного
+    const multi = (v.need || 1) > 1, pair = rows.length === 2;
+    const score = multi && pair ? '<div class="bricks-score">Рахунок ' + rows.slice().sort((a, b) => a.s - b.s).map((r) => r.wins).join(' : ') + '</div>' : '';
+    const star = multi && !pair;
     const html = '<div class="bricks-sumbox"><div class="bricks-sumhead">' + head + '</div>' + score
-      + '<table><tr><th></th><th></th><th>' + (over ? 'рядів за партію' : 'рядів') + '</th>' + (over ? '' : '<th>вислав</th><th>отримав</th>') + '</tr>'
+      + '<table><tr><th></th><th></th>' + (star ? '<th>раундів</th>' : '') + '<th>' + (over ? 'рядів за партію' : 'рядів') + '</th>' + (over ? '' : '<th>вислав</th><th>отримав</th>') + '</tr>'
       + rows.map((r) => '<tr class="bk' + r.s + '"><td>' + (r.rk === 1 ? '🏆' : r.rk < 99 ? r.rk + '-й' : '') + '</td><td><span class="bricks-dot"></span>'
-        + st.ctx.esc(r.nick) + '</td><td>' + r.lines + '</td>' + (over ? '' : '<td>' + r.sn + '</td><td>' + r.rc + '</td>') + '</tr>').join('')
+        + st.ctx.esc(r.nick) + '</td>' + (star ? '<td class="bricks-w">★' + r.wins + '</td>' : '') + '<td>' + r.lines + '</td>' + (over ? '' : '<td>' + r.sn + '</td><td>' + r.rc + '</td>') + '</tr>').join('')
       + '</table>' + (over ? '' : '<div class="bricks-next">новий раунд за кілька секунд…</div>') + '</div>';
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
     el.hidden = false;

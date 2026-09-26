@@ -1429,6 +1429,11 @@ public class BricksTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
         Assert.Contains("Оля встав з-за столу", h.Room.Result.Text);
+        // підсумок на картці: той, хто лишився, — перший, а не «Раунд нікому»
+        var v = h.View(null);
+        Assert.Equal([2, 1, 0, 0], v.GetProperty("result").GetProperty("ranks").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal(1, v.GetProperty("boards")[1].GetProperty("rk").GetInt32());
+        Assert.Equal(0L, h.Room.Result.Scores![1]);
     }
 
     [Fact]

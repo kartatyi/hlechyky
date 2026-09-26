@@ -332,11 +332,35 @@ public sealed class Bricks : Game
         var others = Enumerable.Range(0, Seats).Where(s => s != seat && Ctx.Seated(s)).ToArray();
         if (others.Length <= 1)
         {
-            _phase = PhaseOver;
-            Ctx.Finish(others, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+            FinishLeft(others, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
             return;
         }
         CheckRound();
+    }
+
+    /// <summary>
+    /// За столом лишився один — партія його, скільки б раундів хто не виграв: у підсумку він перший, решта
+    /// (і той, хто встав) — за ним у звичайному порядку. Інакше підсумок писав би «Раунд нікому».
+    /// </summary>
+    void FinishLeft(int[] stay, string log)
+    {
+        _phase = PhaseOver;
+        _finalRanks = new int[Seats];
+        var rest = new List<int>();
+        for (var s = 0; s < Seats; s++)
+        {
+            if (_seats[s].Nick is null) continue;
+            if (Array.IndexOf(stay, s) >= 0)
+            {
+                _finalRanks[s] = 1;
+                if (_seats[s].Core.Alive) _seats[s].Rank = 1;
+            }
+            else rest.Add(s);
+        }
+        foreach (var s in rest) _finalRanks[s] = 1 + stay.Length + rest.Count(o => Better(o, s));
+        var scores = new Dictionary<int, long>();
+        for (var s = 0; s < Seats; s++) if (_seats[s].Nick is not null) scores[s] = _seats[s].MatchLines;
+        Ctx.Finish(stay, log, scores);
     }
 
     // ---------- тик ----------
