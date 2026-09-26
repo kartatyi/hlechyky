@@ -11,6 +11,9 @@
   --di-clay-dark: #86491f;       /* обведення глека */
   --di-ornament: #f6e6c6;        /* зигзаг-орнамент */
   --di-glow: rgba(123, 211, 137, .55);
+  /* одна крапка кісточки; оголошена тут раз, а не на кожній кісточці: на шістьох це п'ять десятків
+     однакових довгих рядків у перерахунку стилів на кожне розкриття */
+  --di-pipg: radial-gradient(circle closest-side, #435349 0, var(--di-pip) 55%, var(--di-pip) 80%, transparent 90%);
   /* Шість місць — шість кольорів і шість фігурок (● ▲ ■ ◆ ★ ✚), тож колір не єдина підказка. */
   --di-s0: var(--accent);
   --di-s1: var(--ok);
@@ -44,7 +47,6 @@
    і розкриття на шістьох будувало три сотні вузлів на кожен вид). Центри крапок — на 24/50/76 % грані. */
 .di-die {
   --s: var(--di-s);
-  --di-pipg: radial-gradient(circle closest-side, #435349 0, var(--di-pip) 55%, var(--di-pip) 80%, transparent 90%);
   position: relative; flex: none; box-sizing: border-box; display: inline-block;
   width: var(--s); height: var(--s);
   border-radius: calc(var(--s) * .22); vertical-align: middle;
@@ -88,6 +90,11 @@
 .di-die.fall { animation: di-fall .4s ease-in 1.2s forwards; }
 .di-die.hit.fall { animation: di-hit .5s ease-out .55s both, di-fall .4s ease-in 1.2s forwards; }
 .di-die.rise { animation: di-rise .45s ease-out 1.2s both; box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(244, 197, 66, .5); }
+/* кісточка, що повертається після влучного «Точно!», — сорочка з «+», а не порожня клітинка */
+.di-die.rise::before {
+  content: '+'; display: grid; place-items: center; background: none;
+  color: var(--accent); font-weight: 800; font-size: calc(var(--s) * .62); line-height: 1;
+}
 .di-die.tumble { animation: di-tumble .5s linear infinite; animation-delay: calc(var(--i, 0) * -90ms); filter: blur(1.4px); }
 
 @keyframes di-hit { from { transform: scale(.7); box-shadow: 0 0 0 0 var(--ok); } 60% { transform: scale(1.12); } to { transform: none; } }

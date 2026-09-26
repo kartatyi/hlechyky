@@ -784,6 +784,8 @@
       else if (t.classList.contains('di-next')) ready(root, ctx);
       else if (t.dataset.tg) toggle(root, ctx, t.dataset.tg);
     });
+    // Звук увімкнули ще до F5 — контекст WebAudio оживає з першим же дотиком до столу (браузер дозволяє лише після жесту).
+    box.addEventListener('pointerdown', () => { if (soundOn()) audio(); }, { passive: true });
     // Колесо над кількістю: вгору — більше. Сторінку гортаємо лише тоді, коли колесо нічого не зробило.
     box.querySelector('.di-qrow').addEventListener('wheel', (e) => {
       const v = ctx.view || {};
@@ -817,6 +819,7 @@
     if (!ctx.playing || !ctx.mine || !alive(v, ctx.seat) || (v.phase !== 'bid' && v.phase !== 'reveal')) return false;
     const code = e.code || '';
     const key = e.key || '';
+    if (soundOn() && !actx) audio();
     if (v.phase === 'reveal') {
       if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') { if (!e.repeat) ready(root, ctx); return true; }
       return /^(Arrow|Digit|Numpad|Backspace|Key[WASD])/.test(code);
