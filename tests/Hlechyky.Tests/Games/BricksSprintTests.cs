@@ -156,7 +156,7 @@ public class BricksSprintTests
         var fin = Assert.Single(h.Finished);
         Assert.Empty(fin.Result.Winners);
         Assert.Equal("Цеглини: Оля — стіна впала, 23 ряди з 40", fin.Result.Text);
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(0, "j", new { q = 2, e = new[] { 1, 1 } }).Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(0, "j", new { q = 2, e = new[] { 1, 1 } }).Message);
     }
 
     [Fact]
