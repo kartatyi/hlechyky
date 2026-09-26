@@ -75,6 +75,9 @@ public static class AchievementCatalog
         new("listener-10h", "Слухач",          "Десять годин на сайті", "🎧", 15),
         new("listener-100h","Меломан",         "Сто годин на сайті", "📻", 50),
         new("rich-100",     "Сотня",           "Сто черепків на балансі", "🏦", 10),
+        // хвиля 2: spy — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("spy-guess",    "Шпигун-віртуоз",  "Шпигун назвав локацію правильно", "🕵", 20),
+        new("spy-catch",    "Контррозвідка",   "Висунув підозру, яка спіймала шпигуна", "🔦", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
