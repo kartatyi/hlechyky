@@ -75,6 +75,9 @@ public static class AchievementCatalog
         new("listener-10h", "Слухач",          "Десять годин на сайті", "🎧", 15),
         new("listener-100h","Меломан",         "Сто годин на сайті", "📻", 50),
         new("rich-100",     "Сотня",           "Сто черепків на балансі", "🏦", 10),
+        // хвиля 2: vohnyk — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("vohnyk-duo",  "Вогонь і вода",     "Пройшли рівень «Вогника і Краплі» удвох", "🔥", 15),
+        new("vohnyk-cave", "Кришталева печера", "Усі п'ятнадцять рівнів «Вогника і Краплі» на три зірки", "💎", 60),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

@@ -128,7 +128,9 @@ public sealed class VohnykWorld
             var (c, r) = Level.Spawn[i];
             X[i] = c * TileSu + 8 * Px;
             Y[i] = (r + 1) * TileSu - HeroH;
-            Vx[i] = 0; Vy[i] = 0; K[i] = 0;
+            // K не чіпаємо: утримуване лишається утримуваним, і стрибок, затиснутий під час «смерті», не
+            // стріляє сам собою першим кроком після скидання (стрибок — лише на натиск).
+            Vx[i] = 0; Vy[i] = 0;
             Grounded[i] = 1; Facing[i] = 1; CoyoteLeft[i] = Coyote; Buffer[i] = 0; JumpAge[i] = -1;
             WantCut[i] = 0; InExit[i] = 0; Died[i] = 0; LeverIn[i] = 0;
         }
@@ -300,7 +302,7 @@ public sealed class VohnykWorld
     {
         if (TileSolidIn(x, y, HeroW, HeroH, h)) return true;
         for (var d = 0; d < _nd; d++)
-            if (Overlap(x, y, HeroW, HeroH, _doorX[d], _doorY[d], TileSu, _doorH[d] - DoorO[d])) return true;
+            if (_doorH[d] > DoorO[d] && Overlap(x, y, HeroW, HeroH, _doorX[d], _doorY[d], TileSu, _doorH[d] - DoorO[d])) return true;
         for (var f = 0; f < _nf; f++)
             if (f != lift && Overlap(x, y, HeroW, HeroH, LiftX[f], LiftY[f], _liftW[f], LiftH)) return true;
         for (var b = 0; b < _nx; b++)
@@ -312,7 +314,7 @@ public sealed class VohnykWorld
     {
         if (TileSolidIn(x, y, BoxSize, BoxSize, -1)) return true;
         for (var d = 0; d < _nd; d++)
-            if (Overlap(x, y, BoxSize, BoxSize, _doorX[d], _doorY[d], TileSu, _doorH[d] - DoorO[d])) return true;
+            if (_doorH[d] > DoorO[d] && Overlap(x, y, BoxSize, BoxSize, _doorX[d], _doorY[d], TileSu, _doorH[d] - DoorO[d])) return true;
         for (var f = 0; f < _nf; f++)
             if (f != lift && Overlap(x, y, BoxSize, BoxSize, LiftX[f], LiftY[f], _liftW[f], LiftH)) return true;
         for (var b = 0; b < _nx; b++)
@@ -413,6 +415,7 @@ public sealed class VohnykWorld
         var limit = x0 + dx;
         var r0 = FloorDiv(y0, TileSu);
         var r1 = FloorDiv(y0 + HeroH - 1, TileSu);
+        var pushed = false;
         if (dx > 0)
         {
             var front = x0 + HeroW;
@@ -436,7 +439,9 @@ public sealed class VohnykWorld
             if (box >= 0)
             {
                 var push = Math.Min(limit + HeroW - BoxX[box], BoxPush);
+                var was = BoxX[box];
                 PushBox(box, push, i);
+                pushed = BoxX[box] != was;
                 limit = Math.Min(limit, BoxX[box] - HeroW);
             }
         }
@@ -468,11 +473,15 @@ public sealed class VohnykWorld
             if (box >= 0)
             {
                 var push = Math.Max(limit - (BoxX[box] + BoxSize), -BoxPush);
+                var was = BoxX[box];
                 PushBox(box, push, i);
+                pushed = BoxX[box] != was;
                 limit = Math.Max(limit, BoxX[box] + BoxSize);
             }
         }
-        if (limit != x0 + dx) Vx[i] = 0;
+        // Уперся — стоп. Штовхає скриню, що поїхала, — біжить її швидкістю (інакше розгін 12→24→36 і знову з нуля
+        // смикав би скриню ривками); скриня стала — теж стоп.
+        if (limit != x0 + dx) Vx[i] = pushed ? Clamp(Vx[i], -BoxPush, BoxPush) : 0;
         X[i] = limit;
     }
 
@@ -686,6 +695,24 @@ public sealed class VohnykWorld
             }
             LeverIn[h] = mask;
         }
+    }
+
+    /// <summary>Від чого гине герой i: плитка у зоні ніг (болото — першим), або повітря, якщо він живий.</summary>
+    public byte DeathTile(int i)
+    {
+        var fx0 = X[i] + FeetInset;
+        var fx1 = X[i] + HeroW - FeetInset;
+        var fy1 = Y[i] + HeroH;
+        var fy0 = fy1 - FeetH;
+        byte found = VohnykLevel.Air;
+        for (var r = FloorDiv(fy0, TileSu); r <= FloorDiv(fy1 - 1, TileSu); r++)
+            for (var c = FloorDiv(fx0, TileSu); c <= FloorDiv(fx1 - 1, TileSu); c++)
+            {
+                var t = Level.Tile(c, r);
+                if (t == VohnykLevel.Mud) return t;
+                if ((t == VohnykLevel.Water && i == 0) || (t == VohnykLevel.Lava && i == 1)) found = t;
+            }
+        return found;
     }
 
     bool FeetInDanger(int i)

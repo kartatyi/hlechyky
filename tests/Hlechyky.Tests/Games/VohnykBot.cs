@@ -31,14 +31,55 @@ public sealed class VohnykBot(VohnykLevel level)
         Log.Add([Steps + 1, h, keys]);
     }
 
+    /// <summary>Останні кроки коротким рядком — щоб у повідомленні про падіння плану було видно, як до цього дійшло.</summary>
+    readonly Queue<string> _trace = new();
+
+    public string Trace => string.Join("\n", _trace);
+
     /// <summary>Один крок світу з поточними клавішами. Смерть чи зайвий «пройдено» — одразу виняток.</summary>
     public void Step()
     {
         Steps++;
         W.Step(_k[0], _k[1]);
+        if (Steps % 5 == 0)
+        {
+            var box = W.BoxX.Length > 0 ? $" B{W.BoxX[0] / Px},{W.BoxY[0] / Px}" : "";
+            _trace.Enqueue($"{Steps}: F{CenterPx(0)},{FeetPx(0)} v{W.Vx[0]},{W.Vy[0]} k{_k[0]}  A{CenterPx(1)},{FeetPx(1)} v{W.Vx[1]},{W.Vy[1]} k{_k[1]}{box}");
+            if (_trace.Count > 40) _trace.Dequeue();
+            if (Environment.GetEnvironmentVariable("VOHNYK_TRACE") is { Length: > 0 } dir)
+                File.AppendAllText(Path.Combine(dir, $"trace-{level.N}.txt"), _trace.Last() + "\n");
+        }
         if (W.AnyDied)
             throw new InvalidOperationException($"рівень {level.N}: загинув герой {(W.Died[0] != 0 ? 0 : 1)} на кроці {Steps} " +
-                $"(Вогник {CenterPx(0)},{FeetPx(0)}; Крапля {CenterPx(1)},{FeetPx(1)})");
+                $"(Вогник {CenterPx(0)},{FeetPx(0)}; Крапля {CenterPx(1)},{FeetPx(1)})\n{Dump()}\n{Trace}");
+    }
+
+    /// <summary>Мапа зараз, по плитці на символ: F/A — герої (центр), B — скриня, D — зачинені двері, = — ліфт.</summary>
+    public string Dump()
+    {
+        var g = new char[level.H][];
+        for (var r = 0; r < level.H; r++) g[r] = level.Rows[r].ToCharArray();
+        void Put(int xSu, int ySu, char ch)
+        {
+            var c = xSu / VohnykWorld.TileSu;
+            var r = ySu / VohnykWorld.TileSu;
+            if (r >= 0 && r < level.H && c >= 0 && c < level.W) g[r][c] = ch;
+        }
+        for (var i = 0; i < level.Doors.Length; i++)
+        {
+            var d = level.Doors[i];
+            var solid = d.Tiles * VohnykWorld.TileSu - W.DoorO[i];
+            for (var y = 0; y < solid; y += VohnykWorld.TileSu) Put(d.Col * VohnykWorld.TileSu, d.Row * VohnykWorld.TileSu + y, 'D');
+        }
+        for (var i = 0; i < level.Lifts.Length; i++)
+            for (var x = 0; x < level.Lifts[i].Tiles; x++) Put(W.LiftX[i] + x * VohnykWorld.TileSu, W.LiftY[i], '=');
+        for (var i = 0; i < level.Boxes.Length; i++) Put(W.BoxX[i] + VohnykWorld.TileSu / 2, W.BoxY[i] + VohnykWorld.TileSu / 2, 'B');
+        Put(W.X[0] + VohnykWorld.HeroW / 2, W.Y[0] + VohnykWorld.HeroH / 2, 'F');
+        Put(W.X[1] + VohnykWorld.HeroW / 2, W.Y[1] + VohnykWorld.HeroH / 2, 'A');
+        var sb = new System.Text.StringBuilder();
+        for (var r = 0; r < level.H; r++) sb.Append(r.ToString("00")).Append(' ').Append(g[r]).Append('\n');
+        sb.Append($"сигнали {Convert.ToString(W.SignalMask, 2)} двері [{string.Join(",", W.DoorO.Select(o => o / 16))}] ліфти [{string.Join(",", W.LiftX.Zip(W.LiftY, (x, y) => $"{x / 16}:{y / 16}"))}] самоцвіти {Convert.ToString(W.Gems, 2)}");
+        return sb.ToString();
     }
 
     /// <summary>
@@ -67,7 +108,7 @@ public sealed class VohnykBot(VohnykLevel level)
             if (!more) continue;
             Step();
             if (++n > Patience) throw new InvalidOperationException($"рівень {level.N}: дія не скінчилась за {Patience} кроків (крок {Steps}; " +
-                $"Вогник {CenterPx(0)},{FeetPx(0)}; Крапля {CenterPx(1)},{FeetPx(1)})");
+                $"Вогник {CenterPx(0)},{FeetPx(0)}; Крапля {CenterPx(1)},{FeetPx(1)})\n{Dump()}");
         }
         return this;
     }
@@ -139,6 +180,8 @@ public sealed class VohnykBot(VohnykLevel level)
     {
         var dk = dir > 0 ? R : dir < 0 ? L : 0;
         for (var i = 0; i < runUp; i++) yield return dk;
+        // стрибок — лише на натиск: якщо стрибок ще затиснутий із минулого разу, спершу відпускаємо
+        if ((_k[h] & J) != 0) yield return _k[h] & ~J;
         var age = 0;
         var left = false;
         while (true)
