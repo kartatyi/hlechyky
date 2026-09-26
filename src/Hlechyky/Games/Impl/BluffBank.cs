@@ -182,11 +182,12 @@ public static partial class BluffBank
         var accept = Strs(e, "accept");
         var forms = new List<string>(accept.Count + 1) { answer };
         forms.AddRange(accept);
-        // Заготовка, що «схожа на правду» за нашою ж перевіркою, — помилка банку: вона сиділа б на столі поруч із
-        // правдою, як її близнюк. Дублікати теж геть.
+        // Заготовку, що слово в слово збігається з правдою (у будь-якому написанні, з відмінком чи одруківкою), — геть:
+        // вона сиділа б на столі близнюком правди. Грубішого сита гравців (правда всередині фрази, шматок) тут нема:
+        // заготовки пишуть і звіряють люди, а «сорок центів» при правді «сорокова формула» — чесна брехня.
         var decoys = new List<string>();
         foreach (var d in Strs(e, "decoys"))
-            if (!BluffText.LooksTrue(d, forms) && !decoys.Any(x => BluffText.LooksSame(x, d)) && d.Length <= Bluff.MaxLie)
+            if (!forms.Any(f => BluffText.LooksSame(d, f)) && !decoys.Any(x => BluffText.LooksSame(x, d)) && d.Length <= Bluff.MaxLie)
                 decoys.Add(d);
         return new BluffQuestion
         {

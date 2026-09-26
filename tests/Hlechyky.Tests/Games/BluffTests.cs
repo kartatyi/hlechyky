@@ -187,8 +187,8 @@ public class BluffTests(ITestOutputHelper output)
             Assert.False(string.IsNullOrWhiteSpace(q.Answer));
             Assert.True(q.Decoys.Count >= 2, $"«{q.Q}»: заготовок {q.Decoys.Count}");
             Assert.True(q.Answer.Length <= Bluff.MaxLie, $"«{q.Q}»: правда довша за брехню");
-            // Жодна заготовка не схожа на правду (банк це відсіює, але автори мають знати, що їх відсіяло).
-            Assert.All(q.Decoys, d => Assert.False(BluffText.LooksTrue(d, q), $"«{q.Q}»: заготовка «{d}» схожа на правду"));
+            // Жодна заготовка не близнюк правди (банк таких відсіює мовчки).
+            Assert.All(q.Decoys, d => Assert.DoesNotContain(q.Forms, f => BluffText.LooksSame(d, f)));
         });
     }
 
@@ -242,7 +242,7 @@ public class BluffTests(ITestOutputHelper output)
               { "q": "Без пропуску взагалі", "answer": "так" },
               { "q": "Два ___ пропуски ___", "answer": "ні" },
               { "q": "Без правди ___", "answer": "" },
-              { "q": "Заготовка-правда ___", "answer": "гасі", "decoys": ["гасу", "салі", "Салі!", 5] },
+              { "q": "Заготовка-правда ___", "answer": "гасі", "decoys": ["гасу", "салі", "Салі!", 5, "на гасі й сірниках"] },
               "не об'єкт" ]
             """);
         Assert.Equal(2, bank.Count);
@@ -252,8 +252,9 @@ public class BluffTests(ITestOutputHelper output)
         Assert.Empty(first.Accept);
         Assert.Empty(first.Decoys);
         Assert.Equal("", first.Note);
-        // «гасу» — сама правда з одруківкою, «Салі!» — дубль «салі», 5 — не рядок.
-        Assert.Equal(["салі"], bank[1].Decoys);
+        // «гасу» — сама правда з одруківкою, «Салі!» — дубль «салі», 5 — не рядок; фраза, де правда лише всередині,
+        // лишається: заготовки звіряють люди, грубе сито — для гравців.
+        Assert.Equal(["салі", "на гасі й сірниках"], bank[1].Decoys);
     }
 
     [Fact]
@@ -1087,6 +1088,7 @@ public class BluffTests(ITestOutputHelper output)
         Assert.Equal(Bluff.PhaseDone, Phase(h));
         Assert.Equal("", V(h).GetProperty("text").GetString());
         Assert.Equal([0], Ints(V(h).GetProperty("result").GetProperty("winners")));
+        Assert.False(V(h).GetProperty("result").GetProperty("left").GetBoolean());
     }
 
     [Fact]
@@ -1211,6 +1213,7 @@ public class BluffTests(ITestOutputHelper output)
         Assert.Empty(result.Winners);
         Assert.Equal("Байкарі: гравці розійшлись, партію не дограли", result.Text);
         Assert.Equal(Bluff.PhaseDone, Phase(h));
+        Assert.True(V(h).GetProperty("result").GetProperty("left").GetBoolean());   // клієнт пише «розійшлись», а не «ніхто не переграв»
     }
 
     [Fact]

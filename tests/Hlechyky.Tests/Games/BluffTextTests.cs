@@ -107,6 +107,7 @@ public class BluffTextTests
         Assert.True(BluffText.LooksSame("у хвості", "хвості"));
         Assert.True(BluffText.LooksSame("на гасі", "Гасі"));
         Assert.False(BluffText.LooksSame("кіт і пес", "пес і кіт"));
+        Assert.False(BluffText.LooksSame("нахилитися до сонця", "нахилитися від сонця"));   // напрямок — не службове слово
         Assert.False(BluffText.LooksSame("1854", "1855"));
         // Самі смайлики нормалізуються в порожнечу — тоді порівнюємо як написано.
         Assert.True(BluffText.LooksSame("🙂", "🙂"));
@@ -135,6 +136,19 @@ public class BluffTextTests
     }
 
     [Fact]
+    public void A_long_accept_phrase_does_not_turn_its_every_word_into_the_truth()
+    {
+        // Банк: «овоч» з формою «овоч, а не фрукт» — «фрукт» лишається чесною брехнею.
+        string[] tomato = ["овоч", "овочі", "овоч, а не фрукт"];
+        Assert.False(BluffText.LooksTrue("фрукт", tomato));
+        Assert.True(BluffText.LooksTrue("овочем", tomato));
+        // Слово, що лише починається з правди, — не відмінок: «hollywoodhills» ≠ «hollywood».
+        string[] sign = ["HOLLYWOODLAND", "hollywood land"];
+        Assert.False(BluffText.LooksTrue("HOLLYWOODHILLS", sign));
+        Assert.True(BluffText.LooksTrue("Hollywood-Land", sign));
+    }
+
+    [Fact]
     public void Token_rules_catch_typos_and_endings_but_not_short_words()
     {
         Assert.True(BluffText.TokenMatch("гасі", "гасу"));          // одна правка на чотирьох літерах
@@ -143,6 +157,7 @@ public class BluffTextTests
         Assert.True(BluffText.TokenMatch("лампи", "лампами"));
         Assert.False(BluffText.TokenMatch("кіт", "кит"));           // три літери — лише точно
         Assert.False(BluffText.TokenMatch("гасі", "салі"));
+        Assert.False(BluffText.TokenMatch("hollywood", "hollywoodhills"));   // різниця довша за закінчення
         Assert.Equal(3, BluffText.Lev("kitten", "sitting"));
         Assert.Equal(0, BluffText.Lev("", ""));
         Assert.Equal(4, BluffText.Lev("", "гасі"));

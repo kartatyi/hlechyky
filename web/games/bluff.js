@@ -12,7 +12,7 @@
       my: null | { lie, auto, pick, likes: number[] },
       options: null | [{ i, text, mine, by: number[]|null, picks: number[]|null, truth: bool|null, decoy: bool|null, likes }],
       revealed: number[], note, quip, scores[8], delta[8], likeDelta[8], victims[8],
-      result: null | { winners, scores, best: null | { q, text, by, victims, likes },
+      result: null | { winners, left, scores, best: null | { q, text, by, victims, likes },
                        recap: [{ q, text, answer, note, best: null | { text, by, victims } }] } }
   Кадр { phase, q, step, endsAt, wrote, picked, scores } летить лише разом із видами — модуль його не читає.
 
@@ -382,8 +382,10 @@
       html += win.length
         ? '<div class="bluff-win">🏆 ' + win.map((i) => '<b class="bluff-c' + i + '">' + ctx.esc(nick(ctx, v, i)) + '</b>').join(' і ')
           + ' — ' + num(sc[win[0]]) + '</div>'
+        : r.left ? '<div class="bluff-win draw">🚪 Гравці розійшлись — партію не дограли</div>'
         : '<div class="bluff-win draw">🤝 Нічия — ніхто нікого не переграв</div>';
-      if (r.best)
+      if (r.left && !r.best) { /* про «нікого не надурили» мовчимо: партія просто обірвалась */ }
+      else if (r.best)
         html += '<div class="bluff-best"><span class="muted small">Найкраща брехня партії</span>'
           + '<b>«' + ctx.esc(r.best.text) + '»</b>'
           + '<span>' + ctx.esc(names(ctx, v, r.best.by)) + ' · ' + victims(r.best.victims) + (r.best.likes ? ' · ❤ ' + r.best.likes : '') + '</span></div>';

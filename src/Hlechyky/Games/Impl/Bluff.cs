@@ -559,7 +559,7 @@ public sealed class Bluff : Game
         if (_asked.Count >= 5 && seats.Count >= 2 && _played.Count == _asked.Count)
             foreach (var s in seats)
                 if (_hits[s] == _asked.Count) Ctx.Award(s, 0, "ach:bluff-nose");
-        _result = Result(winners);
+        _result = Result(winners, left: false);
         Ctx.Finish(winners, Summary(seats), seats.ToDictionary(s => s, s => _scores[s]));
     }
 
@@ -578,7 +578,7 @@ public sealed class Bluff : Game
             for (var s = 0; s < Seats; s++)
                 if (_pick[s] >= 0 && _pick[s] < _cards.Count) _cards[_pick[s]].Picks.Add(s);
         _phase = PhaseDone;
-        _result = Result([]);
+        _result = Result([], left: true);
         Ctx.Finish([], $"{Info.Title}: гравці розійшлись, партію не дограли");
     }
 
@@ -609,12 +609,14 @@ public sealed class Bluff : Game
             foreach (var c in _played[n].Cards) yield return (n, c);
     }
 
-    object Result(int[] winners)
+    /// <summary>Підсумок партії для виду. <paramref name="left"/> — скінчилась тому, що гравці розійшлись (нічия).</summary>
+    object Result(int[] winners, bool left)
     {
         var best = BestOf(AllCards());
         return new
         {
             winners,
+            left,
             scores = (long[])_scores.Clone(),
             best = best is not { } b ? null : new
             {
