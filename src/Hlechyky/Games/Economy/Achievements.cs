@@ -114,6 +114,9 @@ public static class AchievementCatalog
         // хвиля 2: hockey
         new("hockey-dry",      "Сухий рахунок", "Виграв аерохокей, не пропустивши жодного гола", "🧤", 20),
         new("hockey-comeback", "Камбек",        "Виграв аерохокей, програючи три голи", "🔁", 25),
+        // хвиля 3: kupala — гра просить їх сама через Ctx.Award(seat, 0, "ach:<key>") на кінці раунду
+        new("kupala-fern",  "Цвіт папороті", "Купальська ніч: знайшов і зірвав квітку папороті", "🌺", 20),
+        new("kupala-blind", "Навпомацки",    "Купальська ніч: вибив гравця ляпасом, коли обидва стояли в темряві", "✋", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
