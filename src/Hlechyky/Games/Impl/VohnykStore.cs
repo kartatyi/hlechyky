@@ -30,7 +30,7 @@ public sealed class VohnykStore : BackgroundService
     readonly ILogger<VohnykStore>? _log;
     readonly ConcurrentDictionary<(string Key, int Level), int> _done = new();
     readonly ConcurrentDictionary<(string Key, int Level), VohnykBest> _best = new();
-    readonly Channel<Row> _rows = Channel.CreateUnbounded<Row>(new UnboundedChannelOptions { SingleReader = true });
+    readonly Channel<Row> _rows = Channel.CreateUnbounded<Row>();
     readonly object _gate = new();
 
     /// <summary>Рядок для бази: або «пройшов» (done), або рекорд пари (best).</summary>

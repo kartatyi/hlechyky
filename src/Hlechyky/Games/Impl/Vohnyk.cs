@@ -51,12 +51,24 @@ public sealed class Vohnyk : Game
     readonly int[][] _jStep = [new int[JournalSize], new int[JournalSize]];
     readonly int[][] _jK = [new int[JournalSize], new int[JournalSize]];
     readonly int[] _jCount = new int[2];
-    readonly int[] _ack = new int[2];
     // що бачив клієнт востаннє: кадр шлемо лише на зміну (плюс keepalive)
     uint _sentHash;
     int _sentPhase = int.MinValue, _sentActive = -1, _ticks;
 
     static readonly string[] SeatNames = ["Вогник", "Крапля"];
+
+    // ---------- лише читання: для тестів і заміру швидкодії ----------
+    public VohnykWorld? World => _world;
+    public int StepNo => _s;
+    public int PhaseNo => _phase;
+    public int ClockSteps => _t;
+    public int Deaths => _deaths;
+    public bool SoloMode => _solo;
+    public int ActiveHero => _active;
+    public int LevelNo => _level?.N ?? 0;
+    public int AckOf(int c) => Ack(c);
+    public int KeysAt(int c, int step) => KAt(c, step);
+    public VohnykStore StoreService => Store;
 
     public override string SeatName(int seat) => seat is 0 or 1 ? SeatNames[seat] : base.SeatName(seat);
 
@@ -124,7 +136,6 @@ public sealed class Vohnyk : Game
         _cause = CauseNone;
         _result = null;
         _jCount[0] = _jCount[1] = 0;
-        _ack[0] = _ack[1] = 0;
         var len = _world.StateLength;
         _snap = new int[Rewind + 1][];
         for (var i = 0; i < _snap.Length; i++)
@@ -199,7 +210,6 @@ public sealed class Vohnyk : Game
         if (n > _s + Future) n = _s + Future;
         if (n < 1) n = 1;
         if (!Record(c, n, k)) return;
-        Ack(c);
         if (_phase == PhGo && n <= _s) Replay(n);
     }
 
@@ -238,11 +248,13 @@ public sealed class Vohnyk : Game
         return 0;
     }
 
-    void Ack(int c)
+    /// <summary>Останній уже застосований ввід героя c: найбільший крок запису журналу, що не пізніший за поточний.</summary>
+    int Ack(int c)
     {
         var steps = _jStep[c];
         for (var i = _jCount[c] - 1; i >= 0; i--)
-            if (steps[i] <= _s) { _ack[c] = steps[i]; return; }
+            if (steps[i] <= _s) return steps[i];
+        return 0;
     }
 
     int[] Snap(int step) => _snap[((step % _snap.Length) + _snap.Length) % _snap.Length];
@@ -457,7 +469,7 @@ public sealed class Vohnyk : Game
                 }
                 _active = other;
                 // герой того, хто пішов, відпускає клавіші — інакше біг би в стіну, доки його не підхоплять
-                if (Record(seat, _s + 1, 0)) Ack(seat);
+                Record(seat, _s + 1, 0);
                 return;
             }
             if (_phase == PhClear)
@@ -502,7 +514,7 @@ public sealed class Vohnyk : Game
             a = _active,
             lv = _level.N,
             dc = _cause,
-            ack = new[] { _ack[0], _ack[1] },
+            ack = new[] { Ack(0), Ack(1) },
             w,
         };
     }
