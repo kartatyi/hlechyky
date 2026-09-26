@@ -140,7 +140,7 @@ public sealed class Pictionary : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         return action switch
         {
             "pick" => PickWord(seat, payload),
@@ -166,13 +166,13 @@ public sealed class Pictionary : Game
 
     ActResult Guess(int seat, JsonElement payload)
     {
-        if (_phase != Draw) return ActResult.Fail(_phase == Pick ? "Художник ще обирає слово" : "Зараз не вгадують");
+        if (_phase != Draw) return ActResult.Fail(_phase == Pick ? "Мить — художник ще обирає слово" : "Зараз не вгадують");
         if (seat == _drawer) return ActResult.Fail("Ти малюєш — словами не підказуй 🙂");
-        if (_left.Contains(seat)) return ActResult.Fail("Ти вже встав з-за столу");
-        if (_guessed.Contains(seat)) return ActResult.Fail("Ти вже вгадав — дай іншим");
+        if (_left.Contains(seat)) return ActResult.Fail("Ти вже не за столом");
+        if (_guessed.Contains(seat)) return ActResult.Fail("Слово вже твоє — дай іншим");
 
         var raw = Str(payload, "text").Trim();
-        if (raw.Length == 0) return ActResult.Fail("Напиши здогадку");
+        if (raw.Length == 0) return ActResult.Fail("Тяпни здогадку");
         if (raw.Length > MaxGuessLength) raw = raw[..MaxGuessLength];
 
         var now = Now;
@@ -191,11 +191,11 @@ public sealed class Pictionary : Game
             AddFeed(seat, "ok", null);
             _viewDirty = true;
             if (!Guessers().Any(s => !_guessed.Contains(s))) EndTurn();
-            return ActResult.Accept($"Вгадав! +{points}");
+            return ActResult.Accept($"Є! Лови +{points}");
         }
 
         // Майже вгадав — кажемо лише йому, у стрічку не пишемо: інакше решта отримала б підказку задарма.
-        if (Close(raw, _word)) return ActResult.Fail("Гаряче! Майже вгадав");
+        if (Close(raw, _word)) return ActResult.Fail("Гаряче! Ще трошки");
 
         AddFeed(seat, "guess", raw);
         return ActResult.Done;

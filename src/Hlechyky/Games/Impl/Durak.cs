@@ -57,7 +57,7 @@ public enum DurakPhase { Attack, Defend, Taking, Done }
 
 /// <summary>
 /// Чим скінчилось: <c>out</c> — лишився один дурень, <c>both</c> — останні вийшли разом і дурня нема,
-/// <c>left</c> — дурень встав з-за столу. <see cref="Winner"/> — хто вийшов першим (на двох це й є
+/// <c>left</c> — дурень встає з-за столу. <see cref="Winner"/> — хто вийшов першим (на двох це й є
 /// переможець), <see cref="Fool"/> — хто лишився з картами.
 /// </summary>
 public sealed record DurakOver(int? Winner, string Reason)
@@ -101,7 +101,7 @@ public sealed class DurakCore
     public int Seats => Hands.Length;
     /// <summary>Кому роздавали на початку партії.</summary>
     public bool[] Dealt { get; }
-    /// <summary>Хто ще грає: має карти (або ще добере) і не встав з-за столу.</summary>
+    /// <summary>Хто ще грає: має карти (або ще добере) і не встає з-за столу.</summary>
     public bool[] In { get; }
     /// <summary>У якому порядку виходили з гри: перший — найкраще місце.</summary>
     public List<int> Places { get; } = [];
@@ -262,7 +262,7 @@ public sealed class DurakCore
     public string? Attack(int seat, int card)
     {
         if (Over is not null) return "Партію зіграно";
-        if (!Valid(seat) || !In[seat]) return "Ти вже вийшов з гри";
+        if (!Valid(seat) || !In[seat]) return "Ти вже поза грою — дивись, хто лишиться дурнем";
         if (seat == Defender) return Table.Count == 0 ? "Зараз ходить суперник" : "Ти відбиваєшся — підкидають інші";
         if (Table.Count == 0 && seat != Attacker) return "Зараз ходить суперник";
         if (Phase is not (DurakPhase.Attack or DurakPhase.Taking)) return "Спершу дай суперникові відбитись";
@@ -326,7 +326,7 @@ public sealed class DurakCore
     public string? Done(int seat)
     {
         if (Over is not null) return "Партію зіграно";
-        if (!Valid(seat) || !In[seat]) return "Ти вже вийшов з гри";
+        if (!Valid(seat) || !In[seat]) return "Ти вже поза грою — дивись, хто лишиться дурнем";
         if (seat == Defender) return "«Біто» каже той, хто ходить";
         if (Phase == DurakPhase.Defend) return "Спершу дай суперникові відбитись";
         if (Table.Count == 0) return seat == Attacker ? "Спершу зайди картою" : "Зараз ходить суперник";
@@ -604,7 +604,7 @@ public sealed class Durak : Game
         if (_core.Playing > 2)
         {
             _core.Leave(seat);
-            Ctx.Log($"{Info.Title}: {nick} встав з-за столу, його карти пішли у відбій — грають далі");
+            Ctx.Log($"{Info.Title}: {nick} встає з-за столу, карти йдуть у відбій — грають далі");
             Announce();
             return;
         }
@@ -615,7 +615,7 @@ public sealed class Durak : Game
         _announced = true;
         _foolNick = nick;
         var winners = Enumerable.Range(0, _core.Seats).Where(s => s != seat && _core.Dealt[s] && Ctx.Seated(s)).ToArray();
-        Ctx.Finish(winners, $"{Info.Title}: {nick} встав з-за столу — дурнем лишився він");
+        Ctx.Finish(winners, $"{Info.Title}: {nick} встає з-за столу — і лишається дурнем");
     }
 
     public override object View(int? seat)
@@ -692,7 +692,7 @@ public sealed class Durak : Game
             return;
         }
         var first = _core.Places.Count > 0 ? Ctx.NickOf(_core.Places[0]) : null;
-        Ctx.Finish(winners, $"{Info.Title}: дурень — {Ctx.NickOf(fool)}" + (first is null ? "" : $", першим вийшов {first}")
+        Ctx.Finish(winners, $"{Info.Title}: дурень — {Ctx.NickOf(fool)}" + (first is null ? "" : $", перше місце — {first}")
             + $" (грали {Company(dealt.Length)})");
     }
 

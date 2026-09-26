@@ -10,23 +10,25 @@ public static class AchievementCatalog
 {
     public static readonly IReadOnlyList<Achievement> All =
     [
-        new("first-game",   "Перший крок",     "Дограв першу партію з людиною", "🚪", 5),
-        new("first-win",    "Перша перемога",  "Виграв уперше", "🥇", 10),
+        new("first-game",   "Перший крок",     "Дограти першу партію з людиною", "🚪", 5),
+        new("first-win",    "Перша перемога",  "Вхопити першу перемогу", "🥇", 10),
         new("ten-wins",     "Десятка",         "Десять перемог", "🔟", 25),
         new("chess-5",      "Шахіст",          "П'ять перемог у шахах", "♟", 30),
         new("checkers-5",   "Шашист",          "П'ять перемог у шашках", "⛀", 30),
         new("all-boards",   "Настільний",      "Перемога в кожній настільній грі", "🎲", 50),
         new("streak-3",     "Серія",           "Три перемоги поспіль", "🔥", 15),
-        new("scrabble-30",  "Ерудит",          "Слово на 30 очок і більше", "🔤", 20),
+        new("scrabble-30",  "Ерудит",          "Бахнути слово на 30 очок і більше", "🔤", 20),
         new("mines-fast",   "Сапер",           "Сапер дня швидше за хвилину", "💣", 20),
         new("wordle-2",     "З двох спроб",    "Глек-слово з двох спроб", "🎯", 20),
         new("wordle-7",     "Тиждень слів",    "Сім днів Глек-слова поспіль", "📅", 30),
         new("duel-fast",    "Швидка рука",     "Постріл швидше за 200 мс", "🤠", 15),
         new("duel-10",      "Ковбой",          "Десять перемог у дуелі", "🔫", 20),
         new("mafia-win",    "Мафіозі",         "Перемога за мафію", "🕶", 15),
-        new("sheriff",      "Комісар",         "Знайшов мафію перевіркою", "🔎", 15),
-        new("mafia-maniac", "Маньяк",          "Пересидів у мафії і село, і мафію", "🔪", 25),
-        new("ad-winner",    "Голос села",      "Виграв конкурс реклами", "📢", 25),
+        new("sheriff",      "Комісар",         "Спіймати мафію на перевірці", "🔎", 15),
+        new("mafia-maniac", "Маньяк",          "Пересидіти в мафії і село, і мафію", "🔪", 25),
+        // Конкурс реклами прибрано 26.09.2026, і нових «Голосів села» вже не буде. Рядок лишається: здобуті лежать
+        // у базі, а профіль показує лише те, що є в каталозі. Hidden — щоб недосяжну ачівку ніде не обіцяли.
+        new("ad-winner",    "Голос села",      "Виграти конкурс реклами", "📢", 25, Hidden: true),
         new("svoya-win",    "Знавець",         "Перемога у «Своїй грі» на двох і більше", "🎓", 15),
         new("pozyvni-4",    "Одним словом",    "Підказка на чотири слова, і команда взяла всі", "🗝", 25),
         new("pozyvni-edge", "На волосині",     "Виграли в позивні останньою дозволеною здогадкою", "🪢", 20),
@@ -72,8 +74,8 @@ public static class AchievementCatalog
         new("potter-wonders",     "Кунсткамера",       "Усі шістнадцять дивовиж", "🏛", 80),
         new("potter-look",        "Хата під себе",     "Перша оздоба хати за клейма", "🎨", 10),
         new("high-roller",  "Ставка",          "Виграв партію зі ставкою 25", "💰", 15),
-        new("listener-10h", "Слухач",          "Десять годин на сайті", "🎧", 15),
-        new("listener-100h","Меломан",         "Сто годин на сайті", "📻", 50),
+        new("listener-10h", "Слухач",          "Десять годин тусні на сайті", "🎧", 15),
+        new("listener-100h","Меломан",         "Сто годин тусні на сайті", "📻", 50),
         new("rich-100",     "Сотня",           "Сто черепків на балансі", "🏦", 10),
     ];
 
@@ -132,7 +134,7 @@ public sealed class Achievements
             _economy.Grant(nick, a.Reward, $"ach:{key}", $"ach:{key}:{nickKey}",
                 $"+{a.Reward} {Economy.Shards(a.Reward)}: ачівка «{a.Title}»");
         _outbox.Post(new AchievementUnlocked(nick, a.Key, a.Title, a.Text, a.Icon, a.Reward));
-        _outbox.Post(new Journal($"🏅 {nick}: ачівка «{a.Title}»" +
+        _outbox.Post(new Journal($"🏅 {nick} хапає ачівку «{a.Title}»" +
             (a.Reward > 0 ? $" (+{a.Reward} {Economy.Shards(a.Reward)})" : "")));
         return true;
     }
@@ -220,11 +222,7 @@ public sealed class Achievements
     public void OnAward(AwardEvent e)
     {
         if (e.Reason.StartsWith("ach:", StringComparison.Ordinal))
-        {
             Unlock(e.Nick, e.Reason[4..]);
-            return;
-        }
-        if (e.Reason is "ad:winner") Unlock(e.Nick, "ad-winner");
     }
 
     /// <summary>Хвилини на сайті всього (не за день) — кличе EconomyTicker.</summary>

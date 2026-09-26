@@ -394,10 +394,11 @@
 
   HGames.register({
     id: 'tanks',
+    added: '2026-09-18',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     seatNames: ['жовтий', 'зелений', 'рудий', 'сірий', 'синій', 'рожевий'],
     seatClass: ['x', 'o', 'c', 'd', 'tb', 'tp'],
-    pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} їхати · {a} стріляти (будь-яка кнопка)' },
+    pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} їхати · {a} бахнути (будь-яка кнопка)' },
     news: {
       v: '2026-09-24',
       title: 'Танчики: снаряди більше не проскакують',
@@ -483,7 +484,7 @@
       if (f.phase === 'start') return 'Готуйсь…';
       if (f.phase === 'over') return '';
       const need = (ctx.view && ctx.view.need) || 5;
-      const how = HGames.ui.coarse() ? 'Хрестовина — їхати, 💥 — постріл' : 'Стрілки або WASD, пробіл — постріл';
+      const how = HGames.ui.coarse() ? 'Хрестовина — їхати, 💥 — бахнути' : 'Стрілки або WASD, пробіл — бахнути';
       return (ctx.mine ? how : 'Дивишся збоку') + ' · до ' + need + ' фрагів';
     },
 

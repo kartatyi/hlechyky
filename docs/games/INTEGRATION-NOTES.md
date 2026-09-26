@@ -105,8 +105,8 @@ Ctx.Award(seat, shards, reason);   // черепки/ачівка поза ст�
   30 очок). Нуль тут не «нічого», а сигнал: черепки платить сама ачівка з каталогу. **У WP1 каркас нуль
   відсікав — виправлено у WP3, тест `An_award_of_zero_shards_still_reaches_the_services`.**
 - `Award(seat, n, "daily:<гра>")` — щоденна нагорода (нуль → типова з налаштувань, `Economy:DailyReward`),
-  `"clicker"` — обмін глеків, `"ad:winner"`/`"ad:vote"` — конкурс реклами, решта причин ідуть через
-  спільну добову стелю `Economy:AwardDailyCap`.
+  `"clicker"` — обмін глеків, решта причин ідуть через спільну добову стелю `Economy:AwardDailyCap`
+  (окрема дорога `"ad:*"` пішла разом із конкурсом реклами 26.09.2026).
 - `Ctx.Services` — сервіси сервера: `Ctx.Services.GetRequiredService<Words>()` і т. ін. Ігри створюються
   без параметрів, тому залежності беруть тут, у `Configure()`/`Start()`.
 

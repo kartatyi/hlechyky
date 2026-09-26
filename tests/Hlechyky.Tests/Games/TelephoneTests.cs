@@ -249,7 +249,7 @@ public class TelephoneTests
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
-        Assert.Contains("найбільше ❤ у Петро", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("найбільше ❤ у Петра", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Equal(3, h.Scores.Count);
     }
 

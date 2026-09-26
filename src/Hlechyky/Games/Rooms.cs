@@ -103,21 +103,21 @@ static class Say
 {
     public const string NoNick = "Спершу скажи, як тебе кликати";
     public const string NoGame = "Такої гри тут нема";
-    public const string NoRoom = "Такої кімнати вже нема";
+    public const string NoRoom = "Такого столу вже нема";
     public const string Seated = "Ти вже за столом. Встань, якщо хочеш новий";
     public const string TooMany = "Столів уже задосить, дограйте ті, що є";
-    public const string Already = "Ти вже в цій кімнаті";
-    public const string NoSeats = "Місць уже нема";
+    public const string Already = "Ти вже за цим столом";
+    public const string NoSeats = "От халепа — місць уже нема";
     public const string Waiting = "Чекаємо на гравців";
-    public const string Played = "Партію зіграно, тисни «Ще раз»";
+    public const string Played = "Партію зіграно, тисни «Ану ще раз»";
     public const string NotPlaying = "Ти тут не граєш";
-    public const string NoShards = "Бракує черепків на ставку";
+    public const string NoShards = "Халепа: бракує черепків на ставку";
     public const string TooFast = "Не так швидко";
     public const string HostOnly = "Почати може лише господар";
     public const string NotFinished = "Партія ще не скінчилась";
     public const string TooBig = "Забагато даних";
-    public static string TooFew(int n) => $"Замало гравців, треба щонайменше {n}";
-    public const string Broken = "партія зламалась, вибачте";
+    public static string TooFew(int n) => $"Замало гравців, треба щонайменше {n} — гукни когось";
+    public const string Broken = "ой-йой, партія зламалась — вибачте";
 }
 
 /// <summary>
@@ -267,13 +267,14 @@ public sealed class Rooms
 
         var outbox = new Outbox();
         var reply = new RoomReply(true, info.MinPlayers <= 1
-            ? "Стіл готовий. Можна почати самому або дочекатись друзів"
+            ? "Стіл готовий. Можна почати вже, а можна гукнути друзів"
             : "Стіл готовий. Треба ще " + ((info.MinPlayers - 1) switch
             {
                 1 => "одного гравця", 2 => "двох гравців", 3 => "трьох гравців", var n => n + " гравців",
-            }), room.Id);
+            }) + " — гукни когось", room.Id);
         string? failed = null;
         var waiting = true;
+        var now = _clock.UtcNow;
         lock (room.Sync)
         {
             if (info.Start == StartMode.Immediate || room.Full)
@@ -282,17 +283,20 @@ public sealed class Rooms
                 if (failed is null) reply = new RoomReply(true, "", room.Id);
             }
             waiting = room.Status == RoomStatus.Lobby;
+            // Створення столу — уже заклик: «Покликати ще раз» відлічує свою паузу від нього (Calls.AgainGap).
+            if (waiting && !info.Private) room.CalledAt = now;
         }
         // Drop бере спільний замок, тому робиться поза замком кімнати: один напрямок вкладення на весь файл.
         if (failed is not null) { Drop(room); return new RoomOutcome(outbox, RoomReply.Fail(failed)); }
         if (!info.Private) outbox.Add(new LobbyChanged());
-        // Стіл мають побачити й ті, хто зараз не в «Іграх»: рядок у Журналі з кнопкою до столу і заклик
-        // тостом. Коли партія стартувала одразу (повний стіл із першого разу), кликати вже нікого — про
-        // початок напише StartRound своїм рядком, і кнопка на ньому веде туди ж.
+        // Стіл мають побачити й ті, хто зараз не в «Іграх»: рядок у Журналі з кнопкою до столу, заклик тостом і
+        // рядок-заклик у Балачках (Журнал — окрема вкладка, а тост живе десять секунд: хто відволікся, той пропустив).
+        // Коли партія стартувала одразу (повний стіл із першого разу), кликати вже нікого — про початок напише
+        // StartRound своїм рядком, і кнопка на ньому веде туди ж.
         if (!info.Private && waiting)
         {
             outbox.Add(new Journal($"Новий стіл: {info.Title} ({PlayersLabel(info)}) · господар {nick}", room.Id));
-            outbox.Add(new Invite(room.Id, nick, $"{nick} кличе в {info.Accusative}"));
+            Calls.Everyone(outbox, room.Id, info, nick, now);
         }
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
@@ -478,7 +482,7 @@ public sealed class Rooms
             }
             room.Seats[seat] = nick;
             room.LastActivity = _clock.UtcNow;
-            reply = new RoomReply(true, $"Сів. Твоє місце — {room.SafeSeatName(seat)}", room.Id);
+            reply = new RoomReply(true, $"Є! Твоє місце — {room.SafeSeatName(seat)}", room.Id);
             if (room.Info.Start == StartMode.WhenFull && room.Full && StartRound(room, outbox) is { } no)
             {
                 room.Seats[seat] = null;
@@ -504,7 +508,7 @@ public sealed class Rooms
         }
         Sweep(room, outbox);
         outbox.RunAfter(_log);
-        return new RoomOutcome(outbox, new RoomReply(true, "Встав з-за столу", room.Id));
+        return new RoomOutcome(outbox, new RoomReply(true, "Ти вже не за столом", room.Id));
     }
 
     /// <summary>Звільнити місце. Кличеться під замком кімнати.</summary>
@@ -514,7 +518,7 @@ public sealed class Rooms
         room.LastActivity = _clock.UtcNow;
         // Місце звільняємо після OnLeave: типовий OnLeave пише в Журнал ім'я того, хто пішов, і рахує решту
         // сам (за «s != seat»), а RoomFinishedEvent має бачити повний склад — інакше рейтинг не знатиме, хто програв.
-        // Соло — приватна головоломка: закрив вкладку з клікером — це не «встав з-за столу», і в спільні
+        // Соло — приватна головоломка: закрив вкладку з клікером — це не «встає з-за столу», і в спільні
         // Балачки про це писати нема чого (та й RoomFinishedEvent рейтингам тут ні до чого).
         if (room.Status == RoomStatus.Playing && !room.Info.Solo)
         {
@@ -605,7 +609,7 @@ public sealed class Rooms
         outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
-        return new RoomOutcome(outbox, new RoomReply(true, "Нова партія", room.Id));
+        return new RoomOutcome(outbox, new RoomReply(true, "Нова партія — гайда!", room.Id));
     }
 
     /// <summary>Старт партії під замком кімнати. Повертає текст помилки або null, якщо все гаразд.</summary>
@@ -647,8 +651,10 @@ public sealed class Rooms
         if (!room.Info.Solo && !SameCrew(room.LoggedSeats, room.Seats))
         {
             room.LoggedSeats = (string?[])room.Seats.Clone();
-            // З id столу цей рядок стає ще й запрошенням подивитись: у Журналі біля нього — кнопка.
-            outbox.Add(new Journal($"{Nicks(room)} сіли грати в {room.Info.Accusative}", room.Info.Private ? null : room.Id));
+            // З id столу цей рядок стає ще й запрошенням подивитись: у Журналі біля нього — кнопка. Теперішній час, як
+            // у решти Журналу, і однина для одного: «Скільки?» і «Свою гру» господар може почати й сам.
+            var sit = room.Occupied == 1 ? "сідає" : "сідають";
+            outbox.Add(new Journal($"{Nicks(room)} {sit} грати в {room.Info.Accusative}", room.Info.Private ? null : room.Id));
         }
         return null;
     }
@@ -1134,7 +1140,7 @@ public sealed class Rooms
 
     internal static string NickKey(string nick) => nick.Trim().ToLowerInvariant();
 
-    static bool Named(string? nick) => !string.IsNullOrWhiteSpace(nick) && nick != "гість";
+    internal static bool Named(string? nick) => !string.IsNullOrWhiteSpace(nick) && nick != "гість";
 }
 
 /// <summary>

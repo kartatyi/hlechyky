@@ -66,10 +66,10 @@ public abstract class GridGame : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_winner is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_winner is not null) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (action == "resign") return Resign(seat);
         if (action != "move") return ActResult.Fail("Тут так не ходять");
-        if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
+        if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
         if (Cell(payload) is not { } cell) return ActResult.Fail("Не зрозумів, куди ходити");
 
         var index = Place(cell);
@@ -89,14 +89,14 @@ public abstract class GridGame : Game
             Finish([seat], Seats == 2
                 // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
                 ? $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(Other(seat))} {SeatName(Other(seat))}"
-                : $"{Info.Title}: {Ctx.NickOf(seat)} ({SeatName(seat)}) перший зібрав {Rules.Need} в ряд");
+                : $"{Info.Title}: {Ctx.NickOf(seat)} ({SeatName(seat)}) збирає {Rules.Need} в ряд і бере партію");
             return ActResult.Accept("Твоя взяла!");
         }
         if (_cells.All(c => c is not null))
         {
             _winner = "draw";
             Finish([], $"{Info.Title}: {Players()} зіграли внічию");
-            return ActResult.Accept("Нічия");
+            return ActResult.Accept("Нічия! Ану ще раз?");
         }
         _turn = Next(seat);
         return ActResult.Done;
@@ -134,12 +134,12 @@ public abstract class GridGame : Game
     /// </summary>
     ActResult Resign(int seat)
     {
-        if (!_in[seat]) return ActResult.Fail("Ти вже здався");
-        Drop(seat, "здався");
-        return ActResult.Accept("Здався");
+        if (!_in[seat]) return ActResult.Fail("Ти вже поза грою — дивись, хто кого");
+        Drop(seat, "здається");
+        return ActResult.Accept(_winner is null ? "Ти вибуваєш — решта грає далі" : "Партію віддано — ану ще раз?");
     }
 
-    const string Left = "встав з-за столу";
+    const string Left = "встає з-за столу";
 
     void Drop(int seat, string why)
     {

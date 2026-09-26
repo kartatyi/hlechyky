@@ -23,6 +23,11 @@
 <meta name="google-site-verification" content="smYfGI9p3Vq_vVpdUlioWLcNolk0kJa4TWAkQruSCGU">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Глечики","alternateName":"Hlechyky","url":"https://hlechyky.pp.ua/","inLanguage":"uk"}</script>
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<!-- «На головний екран» з телефона — як застосунок: своя іконка, темна смуга зверху, без адресного рядка. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f1f18">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<meta name="apple-mobile-web-app-title" content="Глечики">
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/pad.css">
 <link rel="stylesheet" href="/games/core.css">
@@ -32,9 +37,10 @@
 <header>
   <div class="brand"><img src="/static/icon.svg" alt=""><span id="siteName">Глечики</span></div>
   <nav class="vswitch" id="mainNav" aria-label="Розділи">
-    <button data-route="efir" class="on" title="Що зараз грає, черга, закинути пісню"><span class="ico">📻</span><span class="lbl">Ефір</span></button>
-    <button data-route="lib" title="Що вже було, улюблене, плейлисти, статистика"><span class="ico">🎵</span><span class="lbl">Бібліотека</span></button>
-    <button data-route="games" title="Столи, ігри, профіль"><span class="ico">🎮</span><span class="lbl">Ігри</span><span id="navGames" class="count" hidden></span></button>
+    <button data-route="efir" class="on" title="Що зараз грає, черга, закинути пісню — клавіша 1"><span class="ico">📻</span><span class="lbl">Ефір</span></button>
+    <button data-route="lib" title="Що вже було, улюблене, плейлисти — клавіша 2"><span class="ico">🎵</span><span class="lbl">Бібліотека</span></button>
+    <button data-route="games" title="Столи й ігри — клавіша 3"><span class="ico">🎮</span><span class="lbl">Ігри</span><span id="navGames" class="count" hidden></span></button>
+    <button data-route="stats" title="Хто скільки закидає, грає й тусить — клавіша 4"><span class="ico">📊</span><span class="lbl">Хто скільки</span></button>
   </nav>
   <span id="hdrTitle" class="hdrtitle">Ефір</span>
   <div class="mini" id="mini">
@@ -42,14 +48,24 @@
          #nowMini — display: contents, тому порядок усього рядка задає order у style.css -->
     <div id="nowMini"></div>
     <button id="playBtn" class="primary" title="Слухати ефір прямо тут">▶ Врубити</button>
-    <input id="volume" type="range" min="0" max="100" step="1" value="90" title="Гучність">
+    <!-- На широкому екрані повзунок стоїть у рядку, на вужчому ховається за 🔊 і випадає під кнопкою. -->
+    <div class="volwrap" id="volWrap">
+      <button id="volBtn" class="icon ghost" type="button" title="Гучність" aria-label="Гучність" aria-expanded="false">🔊</button>
+      <input id="volume" type="range" min="0" max="100" step="1" value="90" title="Гучність" aria-label="Гучність">
+    </div>
     <span id="listeners" class="chip" title="Скільки людей слухає потік">🎧 0</span>
   </div>
   <div class="who">
-    <span id="hdrWallet" class="chip wallet" title="Черепки">🏺 <b>—</b></span>
-    <span id="liqStatus" class="chip ok" title="Стан ефіру">ефір</span>
+    <span id="liqStatus" class="chip ok" title="Стан ефіру" hidden>ефір</span>
     <button id="padTip" class="icon padtip" type="button" title="Як грати джойстиком" aria-label="Як грати джойстиком" hidden>🎮</button>
-    <span id="nickBtn" class="nick" title="Змінити нік">…</span>
+    <!-- Усе своє — одним чипом: хто я і скільки черепків. Клік веде на сторінку «Я». -->
+    <a id="meBtn" class="mechip" href="#who" title="Твій профіль: черепки, ачівки, акаунт">
+      <span id="meAva" class="ava" aria-hidden="true"></span>
+      <span id="nickBtn" class="nick">…</span>
+      <span id="hdrWallet" class="wallet" title="Черепки">🏺 <b>—</b></span>
+    </a>
+    <!-- «💡 Розробнику»: пропозиції й баги. Бейдж — нові записки (адміну) або свіжа відповідь розробника (решті). -->
+    <button id="fbBtn" class="icon fbbtn" type="button" title="Пропозиції й баги — розробнику" aria-label="Написати розробнику">💡<span id="fbBadge" class="chip badge" hidden>0</span></button>
     <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
   </div>
   <div class="hdrprog" id="hdrProg" title="Скільки лишилось треку"><div id="hdrBar"></div></div>
@@ -57,6 +73,12 @@
 <noscript><p class="noscript">Глечики — спільне онлайн-радіо, де музику ставлять самі слухачі, а поруч чат та ігри на компанію: Мафія, Своя гра, Вгадай мелодію й інші. Щоб слухати й грати, увімкни JavaScript.</p></noscript>
 <!-- Нічний відбій: бачать лише ті, кого він стосується (app.js, paintNight) -->
 <div id="nightBar" class="nightbar" role="status" hidden><div><span class="nb-moon" aria-hidden="true">🌙</span><span class="nb-text"></span></div></div>
+<!-- Хто ще не назвався, бачить сайт одразу — лише подивитись; а тут одна кнопка, щоб долучитись. -->
+<div id="hello" class="hellobar" role="status" hidden><div>
+  <img src="/static/glek.svg" alt="">
+  <span class="hb-text"><b>Здоров, ти тут уперше?</b> Тут слухають радіо, яке ставлять самі, тяпають у балачках і граються за столами. Назвись — і долучайся.</span>
+  <button id="helloGo" class="primary" type="button">Назватись</button>
+</div></div>
 
 <main>
   <div class="col" id="colMain">
@@ -72,15 +94,16 @@
         <h2>Закинути пісню</h2>
         <div class="add">
           <div class="row">
-            <input id="q" type="search" placeholder="Назва, виконавець або посилання: трек, альбом, плейлист (YouTube, YT Music, Spotify)" autocomplete="off">
+            <input id="q" type="search" placeholder="Що врубаємо? Назва, виконавець або посилання (YouTube, YT Music, Spotify)" autocomplete="off">
             <button id="addBtn" class="primary">Закинути</button>
             <button id="micBtn" class="icon" title="Записати голосове в ефір">🎙</button>
           </div>
           <div id="results" class="results"></div>
+          <!-- Підказка — лише поки курсор у полі й лише з клавіатурою: на телефоні ні Enter, ні «/» немає. -->
+          <div class="hintline">Enter закидає перший результат. Посилання можна кидати одне за одним — стануть у чергу по порядку; альбом чи плейлист спершу покаже трекліст. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — голосове в ефір.</div>
           <div id="adding" class="adding" hidden></div>
           <div id="rec" class="rec" hidden></div>
           <div id="album" class="album" hidden></div>
-          <div class="hintline">Enter закидає перший результат. Посилання можна кидати одне за одним, не чекаючи, — стануть у чергу по порядку; альбом чи плейлист спершу покаже трекліст. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — записати голосове, воно стане в чергу як звичайний трек.</div>
         </div>
       </section>
 
@@ -95,7 +118,7 @@
             <img src="/static/glek.svg" alt="">
             <div>
               <h2><span id="djName">Дядько Глек</span> радить</h2>
-              <div class="sub" id="djSub">Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради</div>
+              <div class="sub" id="djSub">Підбирає під те, що зараз шкварить. Зміниться трек — зміняться й поради</div>
             </div>
           </div>
           <div id="sugCards" class="sug-cards"></div>
@@ -106,25 +129,23 @@
         <a href="#lib/history">🕘 Що вже було</a><span>·</span>
         <a href="#lib/likes">❤ Улюблене</a><span>·</span>
         <a href="#lib/playlists">📂 Плейлисти</a><span>·</span>
-        <a href="#lib/rating">📈 Рейтинг</a>
+        <a href="#stats/music">📈 Що крутили найбільше</a>
         <a class="all" href="#lib/history">уся Бібліотека →</a>
       </div>
     </div>
 
     <div class="view" id="viewLib">
-      <!-- На широкому екрані це бокове меню, на вузькому — рядок вкладок, що гортається.
-           app.js бачить тут ті самі button[data-tab], що й раніше. -->
+      <!-- На широкому екрані це бокове меню, на вузькому — чипи у два ряди (без гортання вбік).
+           app.js бачить тут ті самі button[data-tab], що й раніше. Рейтинг і «хто скільки» переїхали в «📊 Хто скільки». -->
       <nav class="libmenu" id="libTabs" aria-label="Бібліотека">
         <div class="libgrp">Музика</div>
         <button data-tab="history" class="on"><span class="ico">🕘</span>Що вже було</button>
         <button data-tab="likes"><span class="ico">❤</span>Улюблене</button>
         <button data-tab="playlists"><span class="ico">📂</span>Плейлисти</button>
-        <div class="libgrp">Статистика</div>
-        <button data-tab="rating"><span class="ico">📈</span>Рейтинг</button>
-        <button data-tab="top"><span class="ico">🏅</span>Хто скільки</button>
         <div class="libgrp">Керування</div>
         <button data-tab="bans"><span class="ico">🚫</span>Бан</button>
         <button data-tab="ads" id="adsTab" hidden><span class="ico">📣</span>Реклама</button>
+        <button data-tab="feedback" id="fbTab" hidden><span class="ico">💡</span>Пропозиції <span id="fbTabBadge" class="chip badge" hidden>0</span></button>
       </nav>
       <section class="panel libpage">
         <div class="libhead">
@@ -136,12 +157,22 @@
     </div>
 
     <div class="view" id="viewGames">
-      <!-- Розділ «Ігри» сам малює свої секції-панелі (лобі, стіл, профіль), тож обгортки-панелі
+      <!-- Розділ «Ігри» сам малює свої секції-панелі (лобі, стіл, турнір), тож обгортки-панелі
            тут нема: інакше вийшла б панель усередині панелі. -->
       <div id="colGames">
         <div id="games" class="games"></div>
       </div>
     </div>
+
+    <!-- «📊 Хто скільки»: музика, ігри й час з одним перемикачем періоду. Малює web/people.js. -->
+    <div class="view" id="viewStats"><div id="stats" class="stats"></div></div>
+
+    <!-- Профіль людини (#who/<нік>) — і свій, «Я», і будь-чий. Малює web/people.js. -->
+    <div class="view" id="viewWho"><div id="who" class="who-page"></div></div>
+
+    <!-- Лавка Дядька Глека (#lavka/<полиця>, #lavka/gift/<нік>): значки, рамки, колір ніка, титули, тло, вміння —
+         усе назавжди, за черепки. Малює web/lavka.js. -->
+    <div class="view" id="viewLavka"><div id="lavka" class="lavka"></div></div>
   </div>
 
   <aside class="panel chat" id="colChat">
@@ -168,10 +199,10 @@
     <div id="mentionPick" class="mentionpick" hidden></div>
     <div id="replyBar" class="replybar" hidden><span class="rb-text"></span><button id="replyCancel" class="ghost icon" type="button" title="Не відповідати (Esc)">✕</button></div>
     <form id="chatForm">
-      <button id="cmdBtn" class="ghost icon" type="button" title="Команди чату">/</button>
+      <button id="cmdBtn" class="ghost icon" type="button" title="Команди балачок: жбурнути кубик, монетку й інше">/</button>
       <button id="emojiBtn" class="ghost icon" type="button" title="Смайли">🙂</button>
-      <input id="chatInput" type="text" placeholder="Отут тяпати… або / для команд" maxlength="500" autocomplete="off">
-      <button class="primary" type="submit" title="Відправити">→</button>
+      <input id="chatInput" type="text" placeholder="Отут тяпати…" maxlength="500" autocomplete="off">
+      <button class="primary" type="submit" title="Тяпнути (Enter)">→</button>
     </form>
   </aside>
 </main>
@@ -179,7 +210,8 @@
 <nav class="mtabs" aria-label="Розділи">
   <button data-route="efir" class="on"><span class="ico">📻</span>Ефір</button>
   <button data-route="lib"><span class="ico">🎵</span>Бібліотека</button>
-  <button data-route="games"><span class="ico">🎮</span>Ігри</button>
+  <button data-route="games"><span class="ico">🎮</span>Ігри <span id="mNavGames" class="chip badge turn" hidden>хід</span></button>
+  <button data-route="stats"><span class="ico">📊</span>Хто скільки</button>
   <button data-route="chat" id="mtabChat"><span class="ico">💬</span>Балачки <span id="mChatBadge" class="chip badge" hidden>0</span></button>
 </nav>
 
@@ -192,9 +224,9 @@
   <form id="nickForm" class="card">
     <h3><img src="/static/glek.svg" alt=""><span id="nickTitle">Хто прийшов?</span></h3>
     <div class="tabs seg" id="nickTabs">
+      <button type="button" data-mode="guest">Як гість</button>
       <button type="button" data-mode="login">Зайти</button>
       <button type="button" data-mode="register">Новий нік</button>
-      <button type="button" data-mode="guest">Як гість</button>
     </div>
     <p id="meInfo" class="small" hidden></p>
     <input id="nickInput" type="text" maxlength="24" placeholder="як тебе кликати" autocomplete="nickname">
@@ -226,6 +258,46 @@
   </div>
 </div>
 
+<!-- «💡 Розробнику»: що додати, що змінити, що зламалось. Своє з відповідями — у «Моїх записках» знизу. -->
+<div id="fbModal" class="modal" hidden>
+  <form id="fbForm" class="card fbcard">
+    <h3>💡 Розробнику</h3>
+    <p class="muted small">Що додати, що змінити, що зламалось — пиши як є. Читає той, хто робить сайт, і відповідає просто тут.</p>
+    <div class="tabs seg" id="fbKinds">
+      <button type="button" data-k="idea" class="on">💡 Додати</button>
+      <button type="button" data-k="change">✏ Змінити</button>
+      <button type="button" data-k="bug">🐞 Баг</button>
+    </div>
+    <textarea id="fbText" maxlength="2000" rows="5" autocomplete="off"></textarea>
+    <div class="muted small" id="fbNote"></div>
+    <div class="row fbrow">
+      <button class="primary" type="submit" id="fbSend">Надіслати</button>
+      <button class="ghost" type="button" id="fbClose">Закрити</button>
+      <span class="muted small fbcount" id="fbCount">0 / 2000</span>
+    </div>
+    <details id="fbMine" hidden><summary>Мої записки <span id="fbMineN" class="muted small"></span></summary><div id="fbMineList" class="fbmine"></div></details>
+  </form>
+</div>
+
+<!-- «?» — шпаргалка клавіш: раніше вони жили лише в підказках кнопок. -->
+<div id="keysModal" class="modal" hidden>
+  <div class="card keys">
+    <h3>⌨ Клавіші</h3>
+    <div class="keylist">
+      <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd><span>Ефір · Бібліотека · Ігри · Хто скільки</span></div>
+      <div><kbd>/</kbd> або <kbd>.</kbd><span>курсор у пошук пісні</span></div>
+      <div><kbd>]</kbd><span>показати чи сховати балачки</span></div>
+      <div><kbd>Esc</kbd><span>зі столу назад у лобі, закрити віконце</span></div>
+      <div><kbd>?</kbd><span>ця шпаргалка</span></div>
+      <div><kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd><span>вибрати в пошуку, у підказці команд чи ніків</span></div>
+      <div><kbd>Tab</kbd><span>дописати команду чи нік у балачках</span></div>
+    </div>
+    <div class="muted small">Команди в балачках: набери <b>/</b> (або <b>.</b> з української розкладки) чи тисни кнопку <b>/</b> поруч із полем — кубик і монетку жбурляє одним натиском.</div>
+    <div class="muted small">Щось не так чи є ідея — кнопка <b>💡</b> у шапці: записка йде просто розробнику.</div>
+    <button id="keysClose" class="ghost" type="button">Закрити</button>
+  </div>
+</div>
+
 <!-- drop a link anywhere on the page -->
 <div id="drop" class="drop" hidden>
   <div class="drop-card">
@@ -245,6 +317,10 @@
 <!-- каркас ігор — до app.js: той кличе HGames.init() на старті -->
 <script src="/games/core.js"></script>
 <script src="/games/tournament.js"></script>
+<!-- люди й цифри: профілі, картка по кліку на нік, «📊 Хто скільки» — до app.js, той кличе HPeople.init() -->
+<script src="/people.js"></script>
+<!-- Лавка: хто як вбраний (людям — кольори й значки) і сама вітрина — до app.js, той кличе HLavka.init() -->
+<script src="/lavka.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

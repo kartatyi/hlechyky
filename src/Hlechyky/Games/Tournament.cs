@@ -65,12 +65,12 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         }
         lock (_lock)
         {
-            if (_t is { Stage: not Done }) return "Турнір уже йде — приєднуйся до нього";
+            if (_t is { Stage: not Done }) return "Турнір уже йде — гайда до нього!";
             _t = new State { Id = Guid.NewGuid().ToString("N")[..8], Host = nick, Games = list, CreatedAt = clock.UtcNow };
             _t.Players.Add(nick);
             _t.Points[nick] = 0;
         }
-        outbox.Post(new Journal($"🏆 {nick} збирає турнір: {string.Join(" → ", list.Select(Title))}. Приєднуйтесь у «Іграх» → «Турнір»"));
+        outbox.Post(new Journal($"🏆 {nick} збирає турнір: {string.Join(" → ", list.Select(Title))}. Гайда в «Ігри» → «Турнір»!"));
         Changed();
         return null;
     }
@@ -152,6 +152,9 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
                 foreach (var p in here.Where(p => At(r, p))) outs.Adopt(rooms.Leave(r.Id, p).Out);
 
             var created = rooms.Create(here[0], gameId, null);
+            // Турнір садить усіх сам, тож кликати за цей стіл нікого: інакше в Балачках лишився б рядок «кличе в …»
+            // за стіл, на якому вже нема місця.
+            created.Out.RemoveAll(m => m is Invite or InviteLine);
             outs.Adopt(created.Out);
             if (!created.Reply.Ok || created.Reply.RoomId is not { } id) return created.Reply.Message;
             foreach (var p in here.Skip(1))
@@ -162,7 +165,7 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
                 {
                     foreach (var q in here) outs.Adopt(rooms.Leave(id, q).Out);
                     Flush(outs);
-                    return $"{p} не зміг сісти: {joined.Reply.Message}";
+                    return $"{p} не може сісти: {joined.Reply.Message}";
                 }
             }
             if (info.Start == StartMode.ByHost)
@@ -182,7 +185,7 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
             no = t.Index + 1;
             of = t.Games.Count;
         }
-        outs.Add(new Journal($"🏆 Турнір, гра {no} з {of}: {gameTitle}. За стіл!", roomId));
+        outs.Add(new Journal($"🏆 Турнір, гра {no} з {of}: {gameTitle}. Гайда за стіл!", roomId));
         Flush(outs);
         Changed();
         return null;
@@ -314,7 +317,7 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         try { store.SaveState(CrownKey, json); } catch (Exception ex) { log.LogWarning(ex, "корону не збережено"); }
         var who = string.Join(" і ", t.Champions);
         var table = string.Join(", ", t.Points.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value}"));
-        outbox.Post(new Journal($"👑 {(early ? "Турнір закінчили достроково. " : "")}Чемпіон турніру — {who}! Таблиця: {table}"));
+        outbox.Post(new Journal($"👑 {(early ? "Турнір закінчили достроково. " : "Овва! ")}Чемпіон турніру — {who}! Таблиця: {table}"));
         outbox.Post(new DjSays($"Вітаю, {who}! Корона ваша до наступного турніру 👑"));
     }
 

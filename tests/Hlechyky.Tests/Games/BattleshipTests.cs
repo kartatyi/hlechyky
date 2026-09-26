@@ -231,8 +231,8 @@ public class BattleshipTests
 
         Assert.True(h.Act(0, "ready").Ok);
         Assert.True(Prop(h.View(0), "me", "ready").GetBoolean());
-        Assert.Equal("Ти вже сказав «Готово»", h.Act(0, "random").Message);
-        Assert.Equal("Ти вже сказав «Готово»", h.Act(0, "place", Fleet(Blue)).Message);
+        Assert.Equal("«Готово» вже сказано — чекаємо решту", h.Act(0, "random").Message);
+        Assert.Equal("«Готово» вже сказано — чекаємо решту", h.Act(0, "place", Fleet(Blue)).Message);
     }
 
     [Fact]
@@ -249,7 +249,7 @@ public class BattleshipTests
         Assert.True(h.Act(0, "clear").Ok);   // скинути порожнє поле — не помилка, просто нічого не стається
         Assert.True(h.Act(0, "place", Fleet(Blue)).Ok);
         Assert.True(h.Act(0, "ready").Ok);
-        Assert.Equal("Ти вже сказав «Готово»", h.Act(0, "clear").Message);
+        Assert.Equal("«Готово» вже сказано — чекаємо решту", h.Act(0, "clear").Message);
     }
 
     [Fact]
@@ -357,7 +357,7 @@ public class BattleshipTests
         var r = h.Act(1, "shoot", new { cell = 0 });
 
         Assert.False(r.Ok);
-        Assert.Equal("Зараз не твій хід", r.Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", r.Message);
         Assert.Equal(0, h.View(0).GetProperty("shots").GetInt32());
     }
 
@@ -378,7 +378,7 @@ public class BattleshipTests
         var r = h.Act(0, "shoot", new { cell = 0 });   // 0 — ніс червоного чотирипалубного
 
         Assert.True(r.Ok);
-        Assert.Equal("Влучив! Стріляй ще", r.Message);
+        Assert.Equal("Є влучання! Стріляй ще", r.Message);
         Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
         Assert.Equal([0], Ints(Prop(h.View(0), "enemy", "hits")));
         Assert.Equal(1, h.View(0).GetProperty("shots").GetInt32());
@@ -390,7 +390,7 @@ public class BattleshipTests
         var h = Battle();
         var r = h.Act(0, "shoot", new { cell = 99 });
 
-        Assert.Equal("Мимо", r.Message);
+        Assert.Equal("Бульк — мимо", r.Message);
         Assert.Equal(1, h.View(0).GetProperty("turn").GetInt32());
         Assert.Equal([99], Ints(Prop(h.View(0), "enemy", "misses")));
         Assert.True(h.Act(1, "shoot", new { cell = 99 }).Ok);   // по своєму полю стріляти можна: воно чуже для нього
@@ -415,7 +415,7 @@ public class BattleshipTests
         var h = Battle();
         var r = h.Act(0, "shoot", new { cell = 52 });   // однопалубний червоного
 
-        Assert.Equal("Потопив! Стріляй ще", r.Message);
+        Assert.Equal("Є! Корабель на дні — стріляй ще", r.Message);
         var v = h.View(0);
         Assert.Equal([52], Ints(Prop(v, "enemy", "hits")));
         Assert.Equal([41, 42, 43, 51, 53, 61, 62, 63], Ints(Prop(v, "enemy", "misses")));
@@ -702,8 +702,8 @@ public class BattleshipTests
         var h = Company(3);
         Assert.Equal("Обери, по чиєму полю стріляти", h.Act(0, "shoot", new { cell = 0 }).Message);
         Assert.Equal("По своєму флоту не стріляють", h.Act(0, "shoot", new { cell = 0, at = 0 }).Message);
-        Assert.Equal("Там нікого нема", h.Act(0, "shoot", new { cell = 0, at = 3 }).Message);
-        Assert.Equal("Там нікого нема", h.Act(0, "shoot", new { cell = 0, at = 9 }).Message);
+        Assert.Equal("Там ні душі", h.Act(0, "shoot", new { cell = 0, at = 3 }).Message);
+        Assert.Equal("Там ні душі", h.Act(0, "shoot", new { cell = 0, at = 9 }).Message);
         Assert.Equal(0, h.View(0).GetProperty("shots").GetInt32());
     }
 
@@ -711,7 +711,7 @@ public class BattleshipTests
     public void A_shot_lands_on_the_chosen_board_only()
     {
         var h = Company(3);
-        Assert.Equal("Влучив! Стріляй ще", h.Act(0, "shoot", new { cell = 0, at = 2 }).Message);   // 0 — ніс Blue у зеленого
+        Assert.Equal("Є влучання! Стріляй ще", h.Act(0, "shoot", new { cell = 0, at = 2 }).Message);   // 0 — ніс Blue у зеленого
         var v = h.View(1);
         Assert.Equal([0], Ints(Prop(v.GetProperty("boards")[2], "hits")));
         Assert.Empty(Ints(Prop(v.GetProperty("boards")[1], "hits")));
@@ -809,7 +809,7 @@ public class BattleshipTests
         var v = h.View(0);
         Assert.True(v.GetProperty("boards")[1].GetProperty("out").GetBoolean());
         Assert.Equal(2, v.GetProperty("turn").GetInt32());          // черга перескочила на наступного живого
-        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("встав з-за столу, його флот пішов на дно"));
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("встає з-за столу, флот іде на дно"));
 
         h.Leave("Іра");
         Assert.Equal(RoomStatus.Finished, h.Room.Status);

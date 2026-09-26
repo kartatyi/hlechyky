@@ -60,7 +60,7 @@ public sealed class NullOutbox : IOutbox
 /// <summary>
 /// Черепки: гаманці, леджер, стелі, ідемпотентність. Леджер — істина, wallets — кеш, який
 /// <see cref="Rebuild"/> завжди може перерахувати. Кожен успішний рух грошей іде в
-/// <see cref="IOutbox"/> як <see cref="WalletChanged"/> з людським текстом («+5 черепків: перемога в шахах»).
+/// <see cref="IOutbox"/> як <see cref="WalletChanged"/> з людським текстом («Лови +5 черепків: перемога в шахах»).
 /// </summary>
 public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
     IOptionsMonitor<EconomyOptions> opts, IOutbox outbox, ILogger<Economy> log) : IStakes
@@ -143,7 +143,7 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
     /// </summary>
     void Announce(string nick, int balance, int delta, string reason, string? text)
     {
-        try { outbox.Post(new WalletChanged(nick, balance, delta, reason, text ?? Text(delta, reason))); }
+        try { outbox.Post(new WalletChanged(nick, balance, delta, reason, Toast(delta, text ?? Text(delta, reason)))); }
         catch (Exception ex) { log.LogWarning(ex, "не розіслав зміну гаманця {Nick} ({Reason})", nick, reason); }
         try { Changed?.Invoke(nick, balance); }
         catch (Exception ex) { log.LogWarning(ex, "підписник на зміну балансу {Nick} спіткнувся", nick); }
@@ -159,6 +159,12 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
     public string Text(int delta, string reason) =>
         $"{(delta < 0 ? "−" : "+")}{Math.Abs(delta)} {Shards(delta)}: {Reason(reason)}";
 
+    /// <summary>
+    /// Рядок тоста гаманця: прихід — із «Лови» попереду («Лови +5 черепків: перемога — Шахи»), витрата — як є
+    /// («−10 черепків: ставка»). Сума й причина лишаються дослівно: це гроші, смак — лише у вигуку на початку.
+    /// </summary>
+    static string Toast(int delta, string text) => delta > 0 ? "Лови " + text : text;
+
     /// <summary>Черепок / черепки / черепків — бо «+2 черепків» ріже око.</summary>
     public static string Shards(int n)
     {
@@ -170,7 +176,7 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
     /// <summary>
     /// Код причини → те, що людина прочитає в тості. Назва гри йде через тире в називному відмінку:
     /// «перемога в шахах» вимагає місцевого відмінка, якого в <see cref="GameInfo"/> нема (там знахідний,
-    /// «сіли грати в шахи»), а вигадувати відмінювання на льоту — гарантовано наступити на «дурня» і «Глек-слово».
+    /// «сідають грати в шахи»), а вигадувати відмінювання на льоту — гарантовано наступити на «дурня» і «Глек-слово».
     /// </summary>
     public string Reason(string reason)
     {
@@ -200,6 +206,9 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "ban" => "бан треку",
             "unban" => "викуп треку з бану",
             "ban-refund" => "бан не записався, повертаю",
+            // Лавка Дядька Глека: купівля собі й подарунок (хвіст — id речі з LavkaCatalog)
+            "shop" => $"Лавка — {LavkaCatalog.Label(tail)}",
+            "gift" => $"подарунок — {LavkaCatalog.Label(tail)}",
             _ => reason,
         };
     }

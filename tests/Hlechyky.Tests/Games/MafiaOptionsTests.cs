@@ -290,7 +290,7 @@ public class MafiaOptionsTests
         var watcher = alive[1];
         h.Leave(h.NickOf(gone));
 
-        Assert.Contains(Log(h), l => l.Contains("виїхав із села") && !l.Contains('('));
+        Assert.Contains(Log(h), l => l.Contains("виїжджає з села") && !l.Contains('('));
         Assert.Equal(JsonValueKind.Null,
             Players(h, watcher).First(p => p.GetProperty("seat").GetInt32() == gone).GetProperty("role").ValueKind);
     }
@@ -626,7 +626,7 @@ public class MafiaOptionsTests
         To(h, "night");
         h.Act(mafia, "kill", new { seat = sheriff });
         To(h, "day");
-        // Мафіозі встав з-за столу, і в селі лишились маньяк та один мирний. Це не перемога, це неявка.
+        // Мафіозі встає з-за столу, і в селі лишились маньяк та один мирний. Це не перемога, це неявка.
         h.Leave(h.NickOf(mafia));
 
         Assert.Equal("done", Phase(h));

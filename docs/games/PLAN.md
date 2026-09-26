@@ -67,7 +67,7 @@
 | G-wordle | 41 + 84 | specs/wordle.md, specs/daily.md | середня (Persistent, Daily) |
 | G-skilky | 44 | specs/skilky.md | середня (банк запитань) |
 | G-mafia | 46 | specs/mafia.md | велика (Hidden, фази, Глек) |
-| G-adcontest | 73 | specs/ad-contest.md | середня (голосові, гачок ефіру) |
+| ~~G-adcontest~~ | 73 | — (конкурс реклами прибрано 26.09.2026, лишилась бібліотека; spec видалено) | середня (голосові, гачок ефіру) |
 | G-clicker | 82 | specs/clicker.md | середня (Persistent) |
 
 Кожна гра проходить конвеєр: **реалізація → два незалежні рецензенти (правила; інтеграція/UX/безпека) →

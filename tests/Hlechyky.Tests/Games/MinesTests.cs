@@ -276,7 +276,7 @@ public class MinesTests
         var before = Cells(h);
         var safe = SafeCell(h, mirror);
 
-        Assert.Equal("Зараз не твій хід", h.Act(0, "open", new { cell = safe }).Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", h.Act(0, "open", new { cell = safe }).Message);
         Assert.Equal("Тут уже відкрито", h.Act(1, "open", new { cell = 40 }).Message);
         Assert.Equal("Не зрозумів, куди тиснути", h.Act(1, "open", new { nope = 1 }).Message);
         Assert.Equal("Не зрозумів, куди тиснути", h.Act(1, "open", new { cell = 999 }).Message);
@@ -311,7 +311,7 @@ public class MinesTests
         var result = h.View(null).GetProperty("result");
         Assert.Equal("boom", result.GetProperty("reason").GetString());
         Assert.Equal(0, result.GetProperty("winner").GetInt32());
-        Assert.Contains("наступив на міну", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("підривається на міні", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -319,7 +319,7 @@ public class MinesTests
     {
         var (h, mirror) = Duel();
         h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(0, "open", new { cell = 0 }).Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(0, "open", new { cell = 0 }).Message);
     }
 
     [Fact]
@@ -381,7 +381,7 @@ public class MinesTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
         Assert.Equal("resign", h.View(null).GetProperty("result").GetProperty("reason").GetString());
-        Assert.Contains("здався", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("здається", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -628,7 +628,7 @@ public class MinesTests
         Assert.True(reply.Ok);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);   // кімнату не закриваємо
         Assert.Equal("boom", h.View(0).GetProperty("result").GetProperty("reason").GetString());
-        Assert.Equal("Підірвався. Тисни «Спробувати ще»", h.Act(0, "open", new { cell = 0 }).Message);
+        Assert.Equal("Бабах уже був — тисни «Спробувати ще»", h.Act(0, "open", new { cell = 0 }).Message);
         Assert.Empty(h.Scores);
     }
 
@@ -672,7 +672,7 @@ public class MinesTests
         var award = Assert.Single(h.Awards);
         Assert.Equal("daily:mines-daily", award.Reason);
         Assert.Equal(0, award.Shards);   // нуль — «плати типову щоденну», не «нічого»
-        Assert.Contains("розмінував поле дня", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("поле дня чисте", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -835,12 +835,12 @@ public class MinesTests
         var (h, mirror) = Company(3);
         var reply = h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });
 
-        Assert.Equal("Бабах. Ти вибув — дивись, хто кого", reply.Message);
+        Assert.Equal("Бабах! Ти поза грою — дивись, хто кого", reply.Message);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.Equal("boom", OutOf(h, 1));
         Assert.Equal(2, Turn(h));
         Assert.Single(Cells(h), c => c == '*');            // видно лише ту міну, на яку наступили
-        Assert.Equal("Ти вже вибув — лишається дивитись", h.Act(1, "flag", new { cell = 0 }).Message);
+        Assert.Equal("Ти вже поза грою — лишається дивитись", h.Act(1, "flag", new { cell = 0 }).Message);
 
         var cell = SafeCell(h, mirror);
         h.Act(2, "open", new { cell });
@@ -860,7 +860,7 @@ public class MinesTests
         var result = h.View(null).GetProperty("result");
         Assert.Equal("boom", result.GetProperty("reason").GetString());
         Assert.Equal([0, 2, 1], result.GetProperty("places").EnumerateArray().Select(e => e.GetInt32()));
-        Assert.Contains("наступив на міну", h.Room.Result.Text);
+        Assert.Contains("підривається на міні", h.Room.Result.Text);
     }
 
     [Fact]
@@ -888,11 +888,11 @@ public class MinesTests
     {
         var (h, _) = Company(3);
         Assert.Equal(1, Turn(h));
-        Assert.Equal("Здався. Дивись, хто кого", h.Act(1, "resign").Message);
+        Assert.Equal("Ти поза грою — дивись, хто кого", h.Act(1, "resign").Message);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.Equal("resign", OutOf(h, 1));
         Assert.Equal(2, Turn(h));
-        Assert.Equal("Ти вже вибув — лишається дивитись", h.Act(1, "resign").Message);
+        Assert.Equal("Ти вже поза грою — лишається дивитись", h.Act(1, "resign").Message);
 
         h.Act(2, "resign");
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
@@ -908,7 +908,7 @@ public class MinesTests
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.Equal("left", OutOf(h, 1));
         Assert.Equal(2, Turn(h));
-        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("встав з-за столу, решта грають далі"));
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("встає з-за столу, решта грають далі"));
     }
 
     [Fact]
@@ -948,7 +948,7 @@ public class MinesTests
         Assert.Equal(2, Turn(h));
         h.Act(2, "open", new { cell = MineCell(mirror, Cells(h)) });
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("Іра глиняний наступив на міну, Оля жовтий виграв", h.Room.Result.Text);
+        Assert.Contains("Іра глиняний підривається на міні — Оля жовтий бере партію", h.Room.Result.Text);
     }
 
     [Fact]
@@ -983,7 +983,7 @@ public class MinesTests
 
         var mine = MineCell(mirror, Cells(h));
         var reply = h.Act(1, "open", new { cell = mine });
-        Assert.StartsWith("Міна твоя!", reply.Message);
+        Assert.StartsWith("Є! Міна твоя", reply.Message);
         Assert.Equal(1, Scores(h)[1]);
         Assert.Equal(1, Turn(h));                           // знайшов міну — ходиш ще
         Assert.Equal('*', Cells(h)[mine]);

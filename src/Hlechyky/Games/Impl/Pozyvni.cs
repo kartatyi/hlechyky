@@ -127,7 +127,7 @@ public sealed class Pozyvni : Game
     /// <summary>«Дві команди» з трьома людьми не почнеш — кажемо це до старту, а не нічиєю після.</summary>
     public override string? CanStart() =>
         _mode == ModeTeams && Seated().Count() < TeamsMin
-            ? $"На дві команди треба щонайменше {TeamsMin}. Удвох-утрьох — стіл «Разом проти столу»"
+            ? $"На дві команди треба щонайменше {TeamsMin} — гукни ще когось. Удвох-утрьох — стіл «Разом проти столу»"
             : null;
 
     public override void Start()
@@ -229,7 +229,7 @@ public sealed class Pozyvni : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         return action switch
         {
             "team" => JoinTeam(seat, payload),
@@ -276,7 +276,7 @@ public sealed class Pozyvni : Game
     ActResult GiveClue(int seat, JsonElement payload)
     {
         if (_phase != Clue) return ActResult.Fail(_phase == Setup ? "Спершу розберіться зі складом" : "Підказка вже є");
-        if (_side[seat] != _turn) return ActResult.Fail("Зараз ходить не твоя команда");
+        if (_side[seat] != _turn) return ActResult.Fail("Не так швидко — зараз ходить не твоя команда");
         if (!IsBoss(seat)) return ActResult.Fail("Підказку дає капітан");
 
         var word = Str(payload, "word").Trim();
@@ -302,7 +302,7 @@ public sealed class Pozyvni : Game
     /// </summary>
     string? CheckClue(string word)
     {
-        if (word.Length == 0) return "Напиши підказку";
+        if (word.Length == 0) return "Тяпни підказку";
         if (word.Length > MaxClueLength) return "Задовга підказка";
         if (word.Length < MinClueLength) return "Закоротка підказка";
         if (word.Any(c => c is ' ' or '-' or '—')) return "Підказка — одне слово";
@@ -334,7 +334,7 @@ public sealed class Pozyvni : Game
     ActResult Pick(int seat, JsonElement payload)
     {
         if (_phase != Guess) return ActResult.Fail(_phase == Setup ? "Партія ще не почалась" : "Чекаємо на підказку капітана");
-        if (_side[seat] != _turn) return ActResult.Fail("Зараз ходить не твоя команда");
+        if (_side[seat] != _turn) return ActResult.Fail("Не так швидко — зараз ходить не твоя команда");
         if (IsBoss(seat)) return ActResult.Fail("Капітан свого розкладу не тикає");
         var i = Int(payload, "i", -1);
         if (i < 0 || i >= Cards) return ActResult.Fail("Нема такого слова");
@@ -372,8 +372,8 @@ public sealed class Pozyvni : Game
 
         if (colour == Black)
         {
-            Win(Other(_turn), _coop ? $"команда наткнулась на чорне слово «{_board[i]}» — стіл переміг"
-                : $"{TeamName(_turn)} наткнулись на чорне слово «{_board[i]}»", black: true);
+            Win(Other(_turn), _coop ? $"Отакої — команда наткнулась на чорне слово «{_board[i]}», стіл переміг"
+                : $"Отакої — {TeamName(_turn)} наткнулись на чорне слово «{_board[i]}»", black: true);
             return ActResult.Done;
         }
         if (mine) _taken++;
@@ -383,8 +383,8 @@ public sealed class Pozyvni : Game
         {
             if (mine) BigClue();
             Win(colour, _coop
-                    ? mine ? $"команда знайшла всіх своїх за {Clues(_clues)} (останнє — «{_board[i]}»)"
-                        : $"команда сама відкрила столові його останнє слово «{_board[i]}» — стіл переміг"
+                    ? mine ? $"Є! Команда знайшла всіх своїх за {Clues(_clues)} (останнє — «{_board[i]}»)"
+                        : $"От халепа — команда сама відкрила столові його останнє слово «{_board[i]}», стіл переміг"
                 : colour == _turn
                     ? $"{TeamName(colour)} знайшли всіх своїх (останнє — «{_board[i]}»)"
                     : $"{TeamName(colour)} перемогли чужими руками: останнє їхнє слово відкрили суперники",
@@ -404,7 +404,7 @@ public sealed class Pozyvni : Game
     ActResult Pass(int seat)
     {
         if (_phase != Guess) return ActResult.Fail("Зараз не ваш хід");
-        if (_side[seat] != _turn) return ActResult.Fail("Зараз ходить не твоя команда");
+        if (_side[seat] != _turn) return ActResult.Fail("Не так швидко — зараз ходить не твоя команда");
         if (IsBoss(seat)) return ActResult.Fail("Капітан хід не здає — це справа команди");
         EndTurn("самі сказали «досить»");
         return ActResult.Done;
@@ -446,8 +446,8 @@ public sealed class Pozyvni : Game
         _phase = Clue;
         StartPhase();
         Say(_coop
-            ? $"Стіл готовий. Знайдіть свої {FirstTeamWords} слів, поки стіл не забрав свої {SecondTeamWords}: після кожного вашого ходу він бере одне"
-            : $"Стіл готовий. Першими ходять {TeamName(_turn)}");
+            ? $"Стіл готовий — гайда! Знайдіть свої {FirstTeamWords} слів, поки стіл не забрав свої {SecondTeamWords}: після кожного вашого ходу він бере одне"
+            : $"Стіл готовий — гайда! Першими ходять {TeamName(_turn)}");
     }
 
     /// <summary>
@@ -585,7 +585,7 @@ public sealed class Pozyvni : Game
         Unseat(seat);
         _viewDirty = true;
         if (side is null) return;
-        Say($"{Ctx.NickOf(seat)} встав з-за столу");
+        Say($"{Ctx.NickOf(seat)} встає з-за столу");
 
         if (_phase == Setup) return;   // склад вирівняється сам, коли фаза скінчиться
 

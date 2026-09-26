@@ -54,7 +54,7 @@ public sealed class Scrabble : Game
     List<char> _bag = [];
     List<char>[] _racks = [];
     int[] _scores = [];
-    /// <summary>Місця, які зараз грають: хто встав з-за столу, той із черги випадає.</summary>
+    /// <summary>Місця, які зараз грають: хто встає з-за столу, той із черги випадає.</summary>
     bool[] _active = [];
     readonly List<Move> _moves = [];
     /// <summary>Слова, які вже стояли на дошці: у режимі малого словника вони лишаються законними.</summary>
@@ -119,9 +119,9 @@ public sealed class Scrabble : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_result is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_result is not null) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (seat < 0 || seat >= _active.Length || !_active[seat]) return ActResult.Fail("Ти тут не граєш");
-        if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
+        if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
         return action switch
         {
             "play" => Play(seat, payload),
@@ -174,7 +174,7 @@ public sealed class Scrabble : Game
             else Grant(seat, best.Text, best.Score);
         }
 
-        var message = tiles.Count == ScrabbleBoard.RackSize ? $"Бінго! +{play.Total} очок" : $"+{play.Total} очок";
+        var message = tiles.Count == ScrabbleBoard.RackSize ? $"Бінго! +{Points(play.Total)}" : $"Лови +{Points(play.Total)}";
         if (_bag.Count == 0 && rack.Count == 0)
         {
             FinishOut(seat);
@@ -249,9 +249,9 @@ public sealed class Scrabble : Game
         _undo = null;
         // Слово знято — ачівка за нього теж: вона чекала саме цього суду.
         _pending = null;
-        Note(seat, $"оскаржив: «{bad.Text}» — не слово");
+        Note(seat, $"оскарження: «{bad.Text}» — не слово");
         // Хід лишається за тим, хто оскаржив: штрафу за оскарження в нас нема.
-        return ActResult.Accept($"«{bad.Text}» знято з дошки");
+        return ActResult.Accept($"Є! «{bad.Text}» знято з дошки");
     }
 
     // ---------------------------------------------------------------------------------- кінець
@@ -304,7 +304,7 @@ public sealed class Scrabble : Game
     }
 
     /// <summary>
-    /// Хтось встав з-за столу. Його фішки йдуть у мішок (інакше решті не буде чим дограти), а партія
+    /// Хтось встає з-за столу. Його фішки йдуть у мішок (інакше решті не буде чим дограти), а партія
     /// триває, поки за столом лишається щонайменше двоє.
     /// </summary>
     public override void OnLeave(int seat)
@@ -319,7 +319,7 @@ public sealed class Scrabble : Game
         // Вікно оскарження закриваємо завжди, а не лише тому, хто ходив: знімок у ньому пам'ятає мішок
         // без щойно повернутих фішок, і відкат по ньому просто загубив би цілу стійку.
         SettleWindow();
-        Note(seat, "встав з-за столу");
+        Note(seat, "встає з-за столу");
 
         var left = Enumerable.Range(0, _active.Length).Where(s => _active[s]).ToArray();
         if (left.Length >= 2)
@@ -329,8 +329,8 @@ public sealed class Scrabble : Game
         }
         _result = new Outcome(left.Length == 1 ? left[0] : null, (int[])_scores.Clone(), "left");
         var text = left.Length == 1
-            ? $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партія лишилась за {Ctx.NickOf(left[0])}"
-            : $"{Info.Title}: за столом нікого не лишилось";
+            ? $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу — партію бере {Ctx.NickOf(left[0])}"
+            : $"{Info.Title}: за столом не лишилось ні душі";
         Ctx.Finish(left, text, left.ToDictionary(s => s, s => (long)_scores[s]));
     }
 
@@ -445,8 +445,12 @@ public sealed class Scrabble : Game
     void Grant(int seat, string word, int score)
     {
         Ctx.Award(seat, 0, "ach:scrabble-30");
-        Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} виклав «{word}» на {score} очок");
+        Ctx.Log($"{Info.Title}: отакої — {Ctx.NickOf(seat)} викладає «{word}» на {Points(score)}");
     }
+
+    /// <summary>«1 очко», «3 очки», «12 очок» — так само, як рахує модуль гри (web/games/scrabble.js).</summary>
+    static string Points(int n) =>
+        $"{n} " + (n % 100 is >= 11 and <= 14 ? "очок" : n % 10 == 1 ? "очко" : n % 10 is >= 2 and <= 4 ? "очки" : "очок");
 
     /// <summary>Наступне зайняте місце по колу; якщо гравець лишився сам — він же.</summary>
     int Next(int seat)

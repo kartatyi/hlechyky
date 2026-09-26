@@ -508,7 +508,7 @@ public sealed class Mafia : Game
         }
         else if (fallen.Count == 1)
         {
-            _log.Add($"Ніч {_day}: {Name(fallen[0])} не прокинувся");
+            _log.Add($"Ніч {_day}: не стало {NickCases.Genitive(Name(fallen[0]))}");
             _lead = MafiaGlek.Pick(Ctx.Rng, MafiaGlek.Killed, Name(fallen[0]));
         }
         else if (QuietNight)
@@ -664,7 +664,7 @@ public sealed class Mafia : Game
         _team = "draw";
         _phase = MafiaPhase.Done;
         _dirty = true;
-        _log.Add("Село спорожніло — нічия");
+        _log.Add("У селі ні душі — нічия");
         Say(Lead(MafiaGlek.Pick(Ctx.Rng, MafiaGlek.Draw)));
         Ctx.Finish([], $"{Info.Title}: у селі не лишилось кому судити — нічия");
     }
@@ -675,7 +675,7 @@ public sealed class Mafia : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_phase == MafiaPhase.Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == MafiaPhase.Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase == MafiaPhase.Lobby) return ActResult.Fail("Партія ще не почалась");
         if (!_roles.TryGetValue(seat, out var role)) return ActResult.Fail("Ти тут не граєш");
         if (_dead.Contains(seat)) return ActResult.Fail("Мертві мовчать");
@@ -698,7 +698,7 @@ public sealed class Mafia : Game
         if (_phase != MafiaPhase.Night) return ActResult.Fail("Зараз не час");
         if (QuietNight) return ActResult.Fail("Перша ніч тиха — сьогодні тільки придивляємось");
         if (Target(payload) is not { } t || !_roles.ContainsKey(t)) return ActResult.Fail("Не зрозумів, на кого");
-        if (_dead.Contains(t)) return ActResult.Fail("Його вже нема серед живих");
+        if (_dead.Contains(t)) return ActResult.Fail("Цієї людини вже нема серед живих");
 
         if (role == MafiaRole.Maniac)
         {
@@ -719,10 +719,10 @@ public sealed class Mafia : Game
     {
         if (role != MafiaRole.Sheriff) return ActResult.Fail("Це не твоя справа");
         if (_phase != MafiaPhase.Night) return ActResult.Fail("Зараз не час");
-        if (_checkedTonight) return ActResult.Fail("Цієї ночі ти вже перевіряв");
+        if (_checkedTonight) return ActResult.Fail("Одна перевірка за ніч — решта завтра");
         if (Target(payload) is not { } t || !_roles.ContainsKey(t)) return ActResult.Fail("Не зрозумів, кого");
         if (t == seat) return ActResult.Fail("Себе ти й так знаєш");
-        if (_dead.Contains(t)) return ActResult.Fail("Його вже нема серед живих");
+        if (_dead.Contains(t)) return ActResult.Fail("Цієї людини вже нема серед живих");
 
         // Дон на те й дон, що папери в нього чисті: комісару він показується мирним.
         var mafia = _roles[t] == MafiaRole.Mafia;
@@ -734,7 +734,7 @@ public sealed class Mafia : Game
             _sheriffAwarded = true;
             Ctx.Award(seat, 0, "ach:sheriff");
         }
-        return ActResult.Accept(mafia ? $"{Name(t)} — мафія" : $"{Name(t)} не мафія");
+        return ActResult.Accept(mafia ? $"Овва! {Name(t)} — мафія" : $"{Name(t)} не мафія");
     }
 
     ActResult Heal(int seat, MafiaRole role, JsonElement payload)
@@ -742,9 +742,9 @@ public sealed class Mafia : Game
         if (role != MafiaRole.Doctor) return ActResult.Fail("Це не твоя справа");
         if (_phase != MafiaPhase.Night) return ActResult.Fail("Зараз не час");
         if (Target(payload) is not { } t || !_roles.ContainsKey(t)) return ActResult.Fail("Не зрозумів, кого");
-        if (_dead.Contains(t)) return ActResult.Fail("Його вже нема серед живих");
+        if (_dead.Contains(t)) return ActResult.Fail("Цієї людини вже нема серед живих");
         if (t == seat && !_selfHeal) return ActResult.Fail("Себе рятувати за цим столом не домовлялись");
-        if (_healedLast == t) return ActResult.Fail("Цю людину ти рятував минулої ночі");
+        if (_healedLast == t) return ActResult.Fail("Двічі поспіль одну людину не рятують");
 
         _heal = t;
         _dirty = true;
@@ -756,7 +756,7 @@ public sealed class Mafia : Game
         if (role != MafiaRole.Kuma) return ActResult.Fail("Це не твоя справа");
         if (_phase != MafiaPhase.Night) return ActResult.Fail("Зараз не час");
         if (Target(payload) is not { } t || !_roles.ContainsKey(t)) return ActResult.Fail("Не зрозумів, до кого");
-        if (_dead.Contains(t)) return ActResult.Fail("Його вже нема серед живих");
+        if (_dead.Contains(t)) return ActResult.Fail("Цієї людини вже нема серед живих");
         if (t == seat) return ActResult.Fail("Сама до себе в гості не ходиш");
         if (_blockedLast == t) return ActResult.Fail("У цій хаті ти ночувала минулої ночі");
 
@@ -786,10 +786,10 @@ public sealed class Mafia : Game
         {
             _votes[seat] = null;
             _dirty = true;
-            return ActResult.Accept("Утримався");
+            return ActResult.Accept("Ти утримуєшся");
         }
         if (Target(payload) is not { } t || !_roles.ContainsKey(t)) return ActResult.Fail("Не зрозумів, за кого");
-        if (_dead.Contains(t)) return ActResult.Fail("Його вже нема серед живих");
+        if (_dead.Contains(t)) return ActResult.Fail("Цієї людини вже нема серед живих");
 
         _votes[seat] = t;
         _dirty = true;
@@ -839,12 +839,12 @@ public sealed class Mafia : Game
         if (_reveal)
         {
             _revealed.Add(seat);
-            _log.Add($"{when}: {Name(seat)} виїхав із села ({RoleName(role)})");
+            _log.Add($"{when}: {Name(seat)} виїжджає з села ({RoleName(role)})");
             Say(MafiaGlek.Pick(Ctx.Rng, MafiaGlek.Left, Name(seat), RoleName(role)));
         }
         else
         {
-            _log.Add($"{when}: {Name(seat)} виїхав із села");
+            _log.Add($"{when}: {Name(seat)} виїжджає з села");
             Say(MafiaGlek.Pick(Ctx.Rng, MafiaGlek.LeftQuiet, Name(seat)));
         }
         Over(leaving: true);

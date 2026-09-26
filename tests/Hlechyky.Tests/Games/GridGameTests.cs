@@ -43,7 +43,7 @@ public class GridGameTests
         Move(h, 0, 4);
         var before = Views.Text(h.Room.Game.View(null));
 
-        Assert.Equal("Зараз не твій хід", Move(h, 0, 0).Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", Move(h, 0, 0).Message);
         Assert.Equal("Ця клітинка вже зайнята", Move(h, 1, 4).Message);
         Assert.Equal("Не зрозумів, куди ходити", h.Act(1, "move", new { nope = 1 }).Message);
         Assert.Equal("Ця клітинка вже зайнята", Move(h, 1, 99).Message);
@@ -284,11 +284,11 @@ public class GridGameTests
     {
         var h = Table("c4");
         Move(h, 0, 3);
-        Assert.Equal("Здався", h.Act(0, "resign").Message);
+        Assert.Equal("Партію віддано — ану ще раз?", h.Act(0, "resign").Message);
         Assert.Equal([1], h.Room.Result!.Winners);
         Assert.Equal("o", h.View(0).GetProperty("winner").GetString());
-        Assert.Contains("здався", h.Outbox.OfType<Journal>().Last().Text);
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(1, "resign").Message);
+        Assert.Contains("здається", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(1, "resign").Message);
     }
 
     [Fact]
@@ -298,7 +298,7 @@ public class GridGameTests
         Move(h, 0, 4);
         h.Leave("Оля");
         Assert.Equal([1], h.Room.Result!.Winners);
-        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("встає з-за столу", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -368,7 +368,7 @@ public class GridGameTests
         Assert.Equal("x", cells[6 * 9 + 0]);
         Assert.Equal("o", cells[6 * 9 + 1]);
         Assert.Equal("c", cells[6 * 9 + 2]);
-        Assert.Equal("Зараз не твій хід", Move(h, 2, 5).Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", Move(h, 2, 5).Message);
     }
 
     [Fact]
@@ -403,7 +403,7 @@ public class GridGameTests
         var h = Party("Оля", "Петро", "Марко");
         Assert.True(h.Act(1, "resign").Ok);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
-        Assert.Equal("Ти вже здався", h.Act(1, "resign").Message);
+        Assert.Equal("Ти вже поза грою — дивись, хто кого", h.Act(1, "resign").Message);
         h.Leave("Оля");
         Assert.Equal([2], h.Room.Result!.Winners);
     }

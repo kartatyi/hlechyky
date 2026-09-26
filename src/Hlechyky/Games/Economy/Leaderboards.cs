@@ -12,15 +12,11 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
     /// <summary>Скільки останніх партій дивимось, коли рахуємо поточну серію.</summary>
     public const int StreakLookback = 50;
 
-    /// <summary>Межа періоду: «сьогодні» і «тиждень» — за київськими днями, а не за 24 годинами назад.</summary>
-    DateTimeOffset Since(string period) => period switch
-    {
-        "day" => Daily.StartOfDayUtc(Days.Today(clock)),
-        "week" => Daily.StartOfDayUtc(DateOnly.ParseExact(Days.Today(clock), "yyyy-MM-dd").AddDays(-6).ToString("yyyy-MM-dd")),
-        _ => DateTimeOffset.MinValue,
-    };
+    /// <summary>Межа періоду: «сьогодні», «тиждень» і «місяць» — за київськими днями, а не за 24 годинами назад (<see cref="Periods"/>).</summary>
+    DateTimeOffset Since(string period) => Periods.Since(period, clock);
 
-    static string Norm(string? period) => period is "day" or "week" ? period : "all";
+    /// <summary>Невідомий чи порожній період — «за весь час», як таблиці робили завжди.</summary>
+    static string Norm(string? period) => Periods.Known(period) ? period! : "all";
 
     /// <summary>Скільки перемог поспіль у ніка просто зараз (нічия серію не рве, поразка — рве).</summary>
     public int WinStreak(string nickKey)
@@ -46,7 +42,7 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
         return best;
     }
 
-    /// <summary>GET /api/games/leaderboard?game=&amp;period=day|week|all[&amp;day=]</summary>
+    /// <summary>GET /api/games/leaderboard?game=&amp;period=day|week|month|all[&amp;day=]</summary>
     public object Leaderboard(string? game, string? period, string? day)
     {
         var p = Norm(period);
@@ -156,14 +152,7 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
     public object Time(string? period)
     {
         var p = Norm(period);
-        var today = Days.Today(clock);
-        var from = p switch
-        {
-            "day" => today,
-            "week" => DateOnly.ParseExact(today, "yyyy-MM-dd").AddDays(-6).ToString("yyyy-MM-dd"),
-            _ => null,
-        };
-        var rows = store.TimeTotals(from);
+        var rows = store.TimeTotals(Periods.FirstDay(p, clock));
         var games = rows
             .Select(r => (r, Game: GameOfPlace(r.Place)))
             .Where(x => x.Game is not null)

@@ -576,7 +576,7 @@ public class TanksTests
         two.Leave("Петро");
         var done = Assert.Single(two.Finished);
         Assert.Equal([0], done.Result.Winners);
-        Assert.Contains("встав з-за столу", done.Result.Text);
+        Assert.Contains("встає з-за столу", done.Result.Text);
     }
 
     [Fact]

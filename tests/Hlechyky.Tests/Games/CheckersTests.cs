@@ -132,7 +132,7 @@ public class CheckersTests
         var h = Table();
         var before = Views.Text(Game(h).View(null));
 
-        Assert.Equal("Зараз не твій хід", Move(h, 1, "d6", "c5").Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", Move(h, 1, "d6", "c5").Message);
         Assert.Equal(before, Views.Text(Game(h).View(null)));
         Assert.Equal(0, h.Room.Moves);
     }
@@ -532,9 +532,9 @@ public class CheckersTests
     public void Two_draw_offers_make_a_draw()
     {
         var h = Table();
-        Assert.Equal("Запропонував нічию", h.Act(0, "draw").Message);
+        Assert.Equal("Нічию запропоновано — слово за суперником", h.Act(0, "draw").Message);
         Assert.Equal(0, h.View(1).GetProperty("drawOffer").GetInt32());
-        Assert.Equal("Нічия", h.Act(1, "draw").Message);
+        Assert.Equal("Нічия! Ану ще раз?", h.Act(1, "draw").Message);
 
         Assert.True(h.Room.Result!.Draw);
         Assert.Equal("agreed", h.View(0).GetProperty("result").GetProperty("reason").GetString());
@@ -545,7 +545,7 @@ public class CheckersTests
     {
         var h = Table();
         Assert.True(h.Act(0, "draw").Ok);
-        Assert.Equal("Пропозиція вже висить", h.Act(0, "draw").Message);
+        Assert.Equal("Пропозиція вже висить — слово за суперником", h.Act(0, "draw").Message);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
     }
 
@@ -554,7 +554,7 @@ public class CheckersTests
     {
         var h = Table();
         Assert.True(h.Act(0, "draw").Ok);
-        Assert.Equal("Пропозицію знято", h.Act(1, "decline").Message);
+        Assert.Equal("Нічию відхилено — граємо далі", h.Act(1, "decline").Message);
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("drawOffer").ValueKind);
         Assert.Equal("Нічиєї ніхто не пропонував", h.Act(1, "decline").Message);
     }
@@ -579,7 +579,7 @@ public class CheckersTests
 
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Equal("left", Views.Json(Game(h).View(0)).GetProperty("result").GetProperty("reason").GetString());
-        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("встає з-за столу", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]

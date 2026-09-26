@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock, Calls calls, Lavka lavka) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
@@ -72,7 +72,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         // подвійний клік і дрібний спам: одна зміна на ніка за 250 мс
         if (LastLike.TryGetValue(nick, out var last) && (now - last).TotalMilliseconds < 250) return null;
         LastLike[nick] = now;
-        if (db.ToggleChatLike(id, nick) is not { } likes) return "Це повідомлення не лайкнути";
+        if (db.ToggleChatLike(id, nick) is not { } likes) return "Сюди вподобайку не поставиш";
         await Clients.All.SendAsync("chatLikes", new { id, likes });
         return null;
     }
@@ -82,11 +82,14 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         text = Cut(text);
         if (text.Length == 0) return null;
         var nick = Nick();
+        // «.кубик 20» з української розкладки — та сама /кубик. Далі все, і лічильник флуду теж, бачить уже скісну:
+        // інакше «.кубик» двічі поспіль упирався б у «Це вже тяпнуто», а /кубик — ні.
+        text = ChatCommands.FromDot(text) ?? text;
         var (chatText, kind) = (text, "chat");
         if (text.StartsWith('/'))
         {
             if (text.StartsWith("/пароль", StringComparison.OrdinalIgnoreCase)) return CommandTooFast(nick) ?? ResetPassword(text);
-            var r = Command(nick, text, rooms.LiveIds);
+            var r = Command(nick, text, rooms.LiveIds, who => calls.Command(nick, who));
             if (r.Error is not null) return r.Error;
             // /столи — погляд у лобі, не виходячи з балачок: відповідь бачить лише той, хто спитав, і в базу
             // вона не лягає. Самі столи браузер уже має з події rooms, тож звідси йдуть тільки їхні id.
@@ -96,6 +99,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
                     new { id = 0L, nick, text = r.Text, at = DateTimeOffset.UtcNow, kind = r.Kind, rooms = tables });
                 return null;
             }
+            if (await Called(r, nick)) return null;
             (chatText, kind) = (r.Text!, r.Kind);
         }
         if (flood.Check(nick, text, clock.UtcNow) is { } tooMuch) return tooMuch;
@@ -115,12 +119,15 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         text = Cut(text);
         if (text.Length == 0) return null;
         var nick = Nick();
+        text = ChatCommands.FromDot(text) ?? text;   // «.кубик» — те саме, що й у Балачках
         var (said, kind) = (text, "chat");
         if (text.StartsWith('/'))
         {
-            // null замість столів: /столи тут ні до чого, стіл і так перед очима
-            var r = Command(nick, text, null);
+            // null замість столів: /столи тут ні до чого, стіл і так перед очима. /клич — за цей самий стіл, якщо
+            // автор за ним сидить.
+            var r = Command(nick, text, null, who => calls.Command(nick, who, roomId));
             if (r.Error is not null) return r.Error;
+            if (await Called(r, nick)) return null;
             (said, kind) = (r.Text!, r.Kind);
         }
         // Спершу — чи можна тут говорити взагалі (не за столом, мертві мовчать): на це флуд-лічильник не витрачаємо.
@@ -171,13 +178,28 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     static string? CommandTooFast(string nick) =>
         LastCommand.TryGetValue(nick, out var last) && (DateTime.UtcNow - last).TotalMilliseconds < 1200 ? "Не так швидко" : null;
 
-    /// <summary>Кубик, монетка, куля, /столи. На друкарську помилку паузу не вішаємо — лише на вдалу команду.</summary>
-    static ChatCommands.Result Command(string nick, string text, Func<IReadOnlyList<string>>? live)
+    /// <summary>
+    /// Кубик, монетка, куля, /столи, /клич. На друкарську помилку паузу не вішаємо — лише на вдалу команду (невдалий
+    /// заклик — «Оля зараз не на сайті» — теж не рахується).
+    /// </summary>
+    static ChatCommands.Result Command(string nick, string text, Func<IReadOnlyList<string>>? live, Func<string, ChatCommands.Result>? call)
     {
         if (CommandTooFast(nick) is { } slow) return new(Error: slow);
-        var r = ChatCommands.Run(text, live);
+        var r = ChatCommands.Run(text, live, call);
         if (r.Error is null) LastCommand[nick] = DateTime.UtcNow;
         return r;
+    }
+
+    /// <summary>
+    /// /клич удався: заклик летить тому, кого кличуть, а авторові — особистий рядок у Балачки («📣 Заклик у мафію
+    /// полетів: Оля»), який у базу не лягає, як і відповідь на /столи. false — це була не /клич.
+    /// </summary>
+    async Task<bool> Called(ChatCommands.Result r, string nick)
+    {
+        if (r.Kind != "note") return false;
+        if (r.Out is { } called) await broadcaster.FlushAsync(called);
+        await Clients.Caller.SendAsync("chat", new { id = 0L, kind = r.Kind, nick, text = r.Text, at = clock.UtcNow });
+        return true;
     }
 
     /// <summary>Emoji flying over the cover for everyone. Not persisted, lightly rate-limited per nick.</summary>
@@ -189,6 +211,17 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         if (LastReaction.TryGetValue(nick, out var last) && (now - last).TotalMilliseconds < 400) return;
         LastReaction[nick] = now;
         await Clients.All.SendAsync("reaction", new { nick, emoji });
+    }
+
+    /// <summary>
+    /// 🎆 Феєрверк — вміння з Лавки (раз на 10 хв): усім подія <c>fireworks</c> і рядок у Балачки, який у базу не лягає.
+    /// Повертає текст відмови тому, хто запускав, або null. Правила — у <see cref="Lavka.Fireworks"/>.
+    /// </summary>
+    public string? Fireworks()
+    {
+        if (!Allow(input: false)) return Games.Say.TooFast;
+        var http = Context.GetHttpContext();
+        return lavka.Fireworks(Nick(), http is not null && Auth.IsUser(http));
     }
 
     /// <summary>Вкладка каже, що її плеєр грає чи замовк: так рейтинг знає, хто саме слухав трек.</summary>
@@ -266,6 +299,16 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     public Task<RoomReply> StartRoom(string roomId) => Play(GameOf(roomId), () => rooms.StartByHost(roomId ?? "", Nick()));
 
     public Task<RoomReply> Rematch(string roomId) => Play(GameOf(roomId), () => rooms.Rematch(roomId ?? "", Nick()));
+
+    /// <summary>
+    /// «📣 Покликати» одну людину за стіл, за яким сидиш: тост і рядок-заклик у Балачках отримає лише вона. Відповідь
+    /// («📣 Заклик полетів: Оля» чи чому ні) — тост тому, хто кликав. Перевірки й паузи — у <see cref="Calls"/>.
+    /// Відбій тут не питаємо: кликати — не грати, а за стіл того, кому вночі не можна, не пустить уже JoinRoom.
+    /// </summary>
+    public Task<RoomReply> InviteTo(string roomId, string nick) => Act(() => calls.Invite(Nick(), roomId ?? "", nick ?? ""));
+
+    /// <summary>Покликати всіх ще раз: тост усім і рядок-заклик у Балачках, як при створенні столу. Раз на дві хвилини на стіл.</summary>
+    public Task<RoomReply> CallAgain(string roomId) => Act(() => calls.Again(Nick(), roomId ?? ""));
 
     public Task<RoomReply> Act(string roomId, string action, JsonElement payload) =>
         NightAt(roomId) is { } night ? Task.FromResult(RoomReply.Fail(night))

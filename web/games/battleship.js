@@ -285,14 +285,14 @@
         // Повернути нема куди (або це однопалубний) — забираємо корабель назад у список.
         s.plan.splice(at, 1);
         s.pick = ship.cells.length;
-        ctx.toast('Забрав корабель назад', '');
+        ctx.toast('Гоп — корабель знову в списку', '');
       }
     } else {
       const left = rest(g, s.plan);
       if (!left.length) return;
       const size = left.includes(s.pick) ? s.pick : left[0];
       const cells = fits(g, s.plan, cell, size, s.horiz, -1);
-      if (!cells) { ctx.toast('Сюди він не стане: кораблі не торкаються навіть кутами', 'err'); return; }
+      if (!cells) { ctx.toast('Халепа: сюди він не стане — кораблі не торкаються навіть кутами', 'err'); return; }
       s.plan.push({ cells });
       const still = rest(g, s.plan);
       if (!still.includes(s.pick)) s.pick = still[0] || 0;
@@ -434,7 +434,7 @@
       return '<tr' + (seat === ctx.seat ? ' class="me"' : '') + '><td>' + medals[i] + '</td><td>' + who(ctx, seat) + '</td>'
         + '<td>🔥 ' + sank + '</td><td>🎯 ' + hits + '/' + shots + ' <i>' + pct + '%</i></td></tr>';
     }).join('');
-    const html = '<table><thead><tr><th></th><th>капітан</th><th title="Скільки кораблів потопив">потопив</th>'
+    const html = '<table><thead><tr><th></th><th>капітан</th><th title="Скільки чужих кораблів пущено на дно">потоплено</th>'
       + '<th title="Влучань із пострілів">влучність</th></tr></thead><tbody>' + rows + '</tbody></table>';
     if (el.innerHTML !== html) el.innerHTML = html;
   }

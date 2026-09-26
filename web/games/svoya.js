@@ -65,7 +65,7 @@
     if (s.loadingPacks || (!force && s.packs && Date.now() - s.packsAt < 30000)) return;
     s.loadingPacks = true;
     try { s.packs = await api(ctx, 'GET', '/api/games/svoya/packs'); s.packsAt = Date.now(); }
-    catch (e) { ctx.toast('Пакети не завантажились: ' + e.message, 'err'); }
+    catch (e) { ctx.toast('От халепа — пакети не завантажились: ' + e.message, 'err'); }
     finally { s.loadingPacks = false; }
     if (root._ctx) render(root, root._ctx);
   }
@@ -98,7 +98,7 @@
         + '</div>'
       : '<div class="svwait">' + (me.canChoosePack ? 'Обери пакет запитань нижче' : 'Господар обирає пакет…') + '</div>';
     if (!me.canChoosePack) return head + chosen;
-    if (!s.packs) { loadPacks(root, ctx); return head + chosen + '<div class="svwait"><span class="spin"></span> завантажую пакети…</div>'; }
+    if (!s.packs) { loadPacks(root, ctx); return head + chosen + '<div class="svwait"><span class="spin"></span> мить, дістаю пакети…</div>'; }
     const q = s.query.trim().toLowerCase();
     const fits = (p) => !q || (p.title + ' ' + p.author + ' ' + (p.rounds || []).map((r) => r.themes.join(' ')).join(' ')).toLowerCase().includes(q);
     const group = (title, list) => {
@@ -108,7 +108,7 @@
     };
     const list = group('Від Глечиків', s.packs.builtin) + group('Мої', s.packs.mine) + group('Публічні', s.packs.public);
     return head + chosen + '<div class="svpicker">'
-      + (list || '<div class="svwait">' + (q ? 'Нічого не знайшлось' : 'Пакетів ще нема — зроби свій у «🎯 Своя гра» праворуч') + '</div>')
+      + (list || '<div class="svwait">' + (q ? 'Овва, нічого не знайшлось' : 'Пакетів ще нема — зроби свій у «🎯 Своя гра» праворуч') + '</div>')
       + '</div>';
   }
 
@@ -168,7 +168,7 @@
   function appealsHtml(ctx, v) {
     const me = v.me || {};
     let html = '';
-    if (me.canAppeal) html += '<button type="button" class="ghost" data-do="appeal">⚖️ Оскаржити — я ж правильно написав</button>';
+    if (me.canAppeal) html += '<button type="button" class="ghost" data-do="appeal">⚖️ Оскаржити — у мене ж правильно</button>';
     for (const a of v.appeals || []) {
       html += '<div class="svappeal">⚖️ ' + esc(nick(ctx, a.seat)) + ' просить зарахувати «' + esc(a.text) + '»'
         + (me.canJudge ? ' <button type="button" class="primary small" data-do="judge" data-seat="' + a.seat + '" data-ok="1">Зарахувати</button>'
@@ -200,7 +200,7 @@
     if (v.phase === 'intro' || v.phase === 'reveal' || v.phase === 'finale') row.push(btn('next', 'Далі ▶', 'primary'));
     row.push(v.paused ? btn('resume', '▶ Далі гра', 'primary') : btn('pause', '⏸ Пауза'));
     if (v.voice && v.voice.available)
-      row.push(btn('voice', v.voice.on ? '🗣 Читає голос — вимкнути' : '🗣 Хай читає голос', 'ghost', ' data-on="' + (v.voice.on ? '0' : '1') + '"'));
+      row.push(btn('voice', v.voice.on ? '🗣 Читає голос — вирубити' : '🗣 Хай читає голос', 'ghost', ' data-on="' + (v.voice.on ? '0' : '1') + '"'));
     html += '<div class="svrow">' + row.join('') + '</div>';
     return html + '</div>';
   }
@@ -377,7 +377,7 @@
     const on = speakerOn(ctx);
     const text = on ? '🔊 Ведучий тут' : '🔇 Ведучий';
     if (b.textContent !== text) b.textContent = text;
-    b.title = on ? 'Голос ведучого звучить на цьому пристрої. Натисни — вимкнути' : 'Голос ведучого тут мовчить. Натисни — хай звучить тут (телевізор, колонка)';
+    b.title = on ? 'Голос ведучого звучить на цьому пристрої. Натисни — вирубити' : 'Голос ведучого тут мовчить. Натисни — хай звучить тут (телевізор, колонка)';
     b.classList.toggle('on', on);
   }
 
@@ -523,7 +523,7 @@
     if (v.phase === 'done') {
       const res = v.result || {};
       const w = (res.winners || []).map((i) => esc(nick(ctx, i))).join(' і ');
-      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w : 'Ніхто не вийшов у плюс') + '</div></div>'
+      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w : 'Отакої — ніхто не вийшов у плюс') + '</div></div>'
         + sayHtml(v)
         + (v.final && (v.final.rows || []).length ? '<div class="muted small">Фінал</div>' + finalHtml(ctx, v) : '');
     }
@@ -623,7 +623,7 @@
         const el = document.createElement('script');
         el.src = '/games/svoya-packs.js';
         el.onload = ok;
-        el.onerror = () => { packsModule = null; fail(new Error('конструктор не завантажився')); };
+        el.onerror = () => { packsModule = null; fail(new Error('Ой-йой, конструктор не завантажився')); };
         document.head.appendChild(el);
       });
     }
@@ -636,7 +636,7 @@
     icon: '🎯',
     mount(host, ctx) {
       if (window.SvoyaPacks) { window.SvoyaPacks.mount(host, ctx); return; }
-      host.innerHTML = '<div class="svwait"><span class="spin"></span> відкриваю конструктор…</div>';
+      host.innerHTML = '<div class="svwait"><span class="spin"></span> мить, відкриваю конструктор…</div>';
       loadConstructor().then(() => window.SvoyaPacks.mount(host, ctx))
         .catch((e) => { host.innerHTML = '<div class="svwait">' + esc(e.message) + '</div>'; });
     },
@@ -645,6 +645,7 @@
 
   HGames.register({
     id: 'svoya',
+    added: '2026-09-19',  // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     news: {
       v: '2026-09-24',
       title: 'Своя гра: коротка партія',
@@ -758,7 +759,7 @@
         case 'answering':
           if (v.answering === ctx.seat) return v.mode === 'live' ? 'Кажи відповідь уголос!' : 'Пиши відповідь!';
           return me.isHost ? nick(ctx, v.answering) + ' відповідає — суди' : 'Відповідає ' + nick(ctx, v.answering);
-        case 'reveal': return v.correct != null ? 'Правильно: ' + nick(ctx, v.correct) : 'Ніхто не відповів';
+        case 'reveal': return v.correct != null ? (v.correct === ctx.seat ? 'Є! ' : '') + 'Правильно: ' + nick(ctx, v.correct) : 'Ніхто не відповів';
         case 'cat': return 'Кіт у мішку';
         case 'auction': return v.auction && v.auction.turn === ctx.seat ? 'Твій хід у торгах' : 'Аукціон';
         case 'strike': return 'Фінал: викреслюємо теми';

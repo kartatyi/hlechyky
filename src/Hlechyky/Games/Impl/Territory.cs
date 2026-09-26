@@ -517,10 +517,10 @@ public sealed class Territory : Game
         }
         if (rest.Length >= Info.MinPlayers)
         {
-            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, земля згоріла");
+            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу — земля згоріла");
             return;
         }
-        Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
     /// <summary>

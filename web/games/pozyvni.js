@@ -221,7 +221,7 @@
           + (boss ? '<i class="pz-mic" aria-hidden="true">🎙</i>' : '')
           + ctx.esc(ctx.nickOf(seat) || ('гравець ' + (seat + 1)))
           + (boss ? '<i class="pz-role">капітан</i>' : '') + '</span>';
-      }).join('') || '<span class="muted small">поки нікого</span>';
+      }).join('') || '<span class="muted small">поки ні душі</span>';
       const acts = !setup || !ctx.mine ? ''
         : '<div class="pz-acts">'
           + (mine(v) === t || coop(v) ? '' : '<button class="ghost" data-act="team" data-side="' + t + '">До ' + OF[t] + '</button>')
@@ -245,10 +245,10 @@
       if (!v.result || !v.result.side) return 'Партії не вийшло';
       if (coop(v)) {
         return v.result.side === 'red'
-          ? '🎉 Усі свої знайдено — за ' + (v.clues || 0) + ' ' + cluesWord(v.clues || 0)
+          ? '🎉 Є! Усі свої знайдено — за ' + (v.clues || 0) + ' ' + cluesWord(v.clues || 0)
           : 'Стіл переміг' + (v.result.black ? ' — чорне слово' : '');
       }
-      return 'Перемогли ' + TEAM[v.result.side] + (v.result.black ? ' — чорне слово' : '');
+      return (mine(v) === v.result.side ? 'Є! ' : '') + 'Перемогли ' + TEAM[v.result.side] + (v.result.black ? ' — чорне слово' : '');
     }
     return coop(v) ? 'Ваш хід · підказка ' + ((v.clues || 0) + (v.phase === 'clue' ? 1 : 0)) : 'Ходять ' + TEAM[side(v)];
   }
@@ -325,6 +325,7 @@
 
   HGames.register({
     id: 'pozyvni',
+    added: '2026-09-17',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     news: {
       v: '2026-09-24',

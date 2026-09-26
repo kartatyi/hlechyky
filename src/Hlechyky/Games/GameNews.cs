@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Hlechyky.Games.Economy;
 
 namespace Hlechyky.Games;
 
@@ -55,8 +56,18 @@ public sealed partial class GameNews(IGameStore store)
 
     public static void Map(WebApplication app)
     {
-        app.MapGet("/api/games/news", (HttpContext c, GameNews news) => Results.Ok(new { seen = news.Seen(Auth.Nick(c)) }));
+        app.MapGet("/api/games/news", Get);
         app.MapPost("/api/games/news", (HttpContext c, MarkBody body, GameNews news) =>
             Results.Ok(new { ok = news.Mark(Auth.Nick(c), body.Game, body.V) }));
+    }
+
+    /// <summary>
+    /// GET /api/games/news: які версії нік уже бачив і в які ігри хоч раз грав (<c>played</c>, гість теж) —
+    /// «що нового» показують лише тим, хто в цю гру вже грав: новенькому нема з чим порівнювати.
+    /// </summary>
+    public static IResult Get(HttpContext c, GameNews news, EconomyStore store)
+    {
+        var nick = Auth.Nick(c);
+        return Results.Ok(new { seen = news.Seen(nick), played = store.GamesPlayed(EconomyStore.Key(nick)) });
     }
 }

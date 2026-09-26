@@ -552,7 +552,7 @@ public sealed class CurveGame : Game
         _winners = rest;
         _phase = "done";
         Ctx.Finish(rest, rest.Length == 1
-            ? $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, {Ctx.NickOf(rest[0])} лишився сам"
+            ? $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу — {Ctx.NickOf(rest[0])} лишається наодинці"
             : $"{Info.Title}: партію не дограли");
     }
 

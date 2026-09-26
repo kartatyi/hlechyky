@@ -54,7 +54,7 @@
   async function loadList() {
     S.loading = true;
     try { S.list = await api('GET', ROOT); }
-    catch (e) { toast('Пакети не завантажились: ' + e.message, 'err'); }
+    catch (e) { toast('От халепа — пакети не завантажились: ' + e.message, 'err'); }
     finally { S.loading = false; }
     if (S.mode === 'list') render();
   }
@@ -81,14 +81,14 @@
   }
 
   function listHtml() {
-    if (!S.list) return '<div class="svwait"><span class="spin"></span> завантажую пакети…</div>';
+    if (!S.list) return '<div class="svwait"><span class="spin"></span> мить, дістаю пакети…</div>';
     const admin = S.ctx && S.ctx.me && S.ctx.me.role === 'admin';
     const q = S.query.trim().toLowerCase();
     const fits = (p) => !q || (p.title + ' ' + p.author + ' ' + (p.rounds || []).map((r) => r.themes.join(' ')).join(' ')).toLowerCase().includes(q);
     const group = (title, items, empty) => {
       const list = (items || []).filter(fits);
       return '<div class="spk-group"><h4>' + title + '</h4>'
-        + (list.length ? list.map((p) => rowHtml(p, admin)).join('') : '<div class="muted small">' + (q ? 'нічого не знайшлось' : empty) + '</div>') + '</div>';
+        + (list.length ? list.map((p) => rowHtml(p, admin)).join('') : '<div class="muted small">' + (q ? 'овва, нічого не знайшлось' : empty) + '</div>') + '</div>';
     };
     return '<div class="spk-head"><h3>🎯 Своя гра — пакети запитань</h3>'
       + (S.list.canCreate
@@ -106,7 +106,7 @@
   async function play(id, live) {
     try {
       const r = await HGames.call('CreateRoom', 'svoya', live ? { host: 'live' } : {});
-      if (!r || !r.ok) { toast((r && r.message) || 'Стіл не поставився', 'err'); return; }
+      if (!r || !r.ok) { toast((r && r.message) || 'Халепа: стіл не поставився', 'err'); return; }
       const p = await HGames.call('Act', r.roomId, 'pack', { id });
       if (p && !p.ok) toast(p.message, 'err');
       location.hash = '#games/room/' + encodeURIComponent(r.roomId);
@@ -150,7 +150,7 @@
       render();
     } catch (e) {
       S.importing = false;
-      toast('Не імпортувалось: ' + e.message, 'err');
+      toast('От халепа — не імпортувалось: ' + e.message, 'err');
       render();
     }
   }
@@ -217,7 +217,7 @@
     } catch (e) {
       S.dirty = true;
       S.statusErr = true;
-      S.status = 'не зберіглось: ' + e.message + (e.errors && e.errors.length ? ' — ' + e.errors.slice(0, 3).join('; ') : '');
+      S.status = 'халепа, не зберіглось: ' + e.message + (e.errors && e.errors.length ? ' — ' + e.errors.slice(0, 3).join('; ') : '');
     } finally {
       S.saving = false;
       paintStatus();
@@ -387,7 +387,7 @@
       await save();                      // одразу: інакше файл, на який ще ніхто не посилається, могло б прибрати
     } catch (e) {
       S.uploading = '';
-      toast('Не завантажилось: ' + e.message, 'err');
+      toast('От халепа — не завантажилось: ' + e.message, 'err');
       render();
     }
   }
@@ -484,7 +484,7 @@
       case 'check': return check();
       case 'tts': return tts();
       case 'playThis':
-        return flush().then(() => (S.ready ? play(p.id, false) : toast('Пакет ще не готовий — подивись зауваження', 'err')));
+        return flush().then(() => (S.ready ? play(p.id, false) : toast('Халепа: пакет ще не готовий — подивись зауваження', 'err')));
     }
   }
 

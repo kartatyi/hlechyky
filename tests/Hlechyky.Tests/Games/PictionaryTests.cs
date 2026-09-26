@@ -115,7 +115,7 @@ public class PictionaryTests
         var r = Guess(h, 1, "  КІТ ");
 
         Assert.True(r.Ok);
-        Assert.Contains("Вгадав", r.Message);
+        Assert.Contains("Лови", r.Message);
         Assert.True(Score(h, 1) >= Pictionary.MaxGuessPoints);          // майже весь час лишався + перший
         Assert.Equal("кіт", h.View(1).GetProperty("word").GetString());
         Assert.Equal(JsonValueKind.Null, h.View(2).GetProperty("word").ValueKind);

@@ -158,7 +158,7 @@
       + '<b>' + yearOr(r.years, r.answer) + '</b>' + (v.unit ? '<i>' + ctx.esc(unitFor(r.answer, v.unit)) + '</i>' : '') + '</div>';
     // Слово Глека про раунд — тут, під таблицею, а не в загальних Балачках (там за вечір їх були сотні).
     const say = r.say ? '<div class="sksay"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(r.say) + '</span></div>' : '';
-    if (!rows.length) return head + '<div class="gempty">Ніхто не назвав жодного числа.</div>' + say;
+    if (!rows.length) return head + '<div class="gempty">Отакої — ніхто не назвав жодного числа.</div>' + say;
     return head + '<div class="skrows">' + rows.map((x, n) => {
       const bonus = x.bonus || 0;
       const fast = x.fast || 0;
@@ -205,7 +205,7 @@
     const input = root.querySelector('.skin');
     if (!input) return;
     const raw = (input.value || '').trim();
-    if (!raw) { ctx.toast('Напиши число', 'err'); input.focus(); return; }
+    if (!raw) { ctx.toast('Ану, напиши число', 'err'); input.focus(); return; }
     // Шлемо рядком: «10 000» і «2,54» сервер прочитає сам, а число з input.value і так було б рядком.
     ctx.act('answer', { value: raw });
   }

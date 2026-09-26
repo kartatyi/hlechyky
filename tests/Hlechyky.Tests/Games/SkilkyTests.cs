@@ -203,6 +203,7 @@ public class SkilkyTests
         db.AddChat("Петро", "🎲 4 (1–6)", "dice");
         db.AddChat("Глечики", "хтось сів грати", "system");
         db.AddChat("Дядько Глек", "Вітаю, Оля! Корона ваша", "dj");
+        db.AddChat("Оля", "кличе в мафію", "invite", "abcd1234");   // заклик за стіл пише сервер, а не Оля
 
         var stats = new SkilkyStats(db, clock);
         Assert.Equal(3, stats.Value("plays7d"));
@@ -327,13 +328,13 @@ public class SkilkyTests
         var h = Table();
         Assert.Equal(Skilky.PhaseBetween, Phase(h));
         Assert.False(h.Act(0, "answer", new { value = 5 }).Ok);
-        Assert.Equal("Зачекай на запитання", h.Reply.Message);
+        Assert.Equal("Мить — зараз буде запитання", h.Reply.Message);
 
         Until(h, Skilky.PhaseAsk);
         // Годинник переводимо без тика: фаза ще «ask», але час на неї вже вийшов.
         h.Clock.Advance(TimeSpan.FromSeconds(Skilky.AskSeconds + 1));
         Assert.False(h.Act(0, "answer", new { value = 5 }).Ok);
-        Assert.Equal("Час вийшов", h.Reply.Message);
+        Assert.Equal("От халепа — час вийшов", h.Reply.Message);
     }
 
     [Fact]
@@ -828,7 +829,7 @@ public class SkilkyTests
     {
         var h = new RoomHarness("skilky");
         h.Join("Оля");
-        Assert.Contains("самому", h.Reply.Message);
+        Assert.Contains("почати вже", h.Reply.Message);
         Assert.True(h.Start().Ok);
 
         PlayAll(h, (0, 0));

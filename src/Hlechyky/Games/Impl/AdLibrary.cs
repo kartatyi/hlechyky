@@ -5,18 +5,60 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Games.Impl;
 
+/// <summary>
+/// Те, що рекламі треба від <see cref="VoiceService"/>. Окремий інтерфейс тут не заради краси:
+/// живий VoiceService запускає ffmpeg, а тестам потрібен запис, який «уже готовий».
+/// </summary>
+public interface IVoiceSaver
+{
+    bool Enabled { get; }
+    long MaxUploadBytes { get; }
+    Task<(TrackInfo Track, string FilePath)> SaveAsync(Stream body, string nick, CancellationToken ct);
+    /// <summary>Файл готового запису або null, якщо його вже нема в кеші.</summary>
+    string? FilePath(string id);
+    void Delete(string id);
+}
+
+/// <summary>Справжній конвеєр голосових: файл → ffmpeg → mp3 у кеші.</summary>
+public sealed class VoiceSaver(VoiceService voice) : IVoiceSaver
+{
+    public bool Enabled => voice.Enabled;
+    public long MaxUploadBytes => voice.MaxUploadBytes;
+
+    public Task<(TrackInfo Track, string FilePath)> SaveAsync(Stream body, string nick, CancellationToken ct) =>
+        voice.SaveAsync(body, nick, ct);
+
+    public string? FilePath(string id) => voice.FilePath(id);
+
+    public void Delete(string id)
+    {
+        if (voice.FilePath(id) is not { } path) return;
+        try { File.Delete(path); } catch (IOException) { /* хай полежить, кеш переживе */ }
+    }
+}
+
 /// <summary>Одна реклама в бібліотеці господаря. <c>Enabled</c> — чи бере її ротація.</summary>
 public sealed record AdClip(long Id, string TrackId, string Title, int Seconds, bool Enabled, int Plays,
     DateTimeOffset? LastPlayedAt, DateTimeOffset CreatedAt);
 
-/// <summary>Таблиця бібліотеки реклам. Як і в конкурсу, DDL і SQL живуть тут, а від <see cref="Db"/> — лише з'єднання.</summary>
+/// <summary>
+/// Таблиці реклами: бібліотека і частота. DDL і SQL живуть тут, а від <see cref="Db"/> — лише з'єднання
+/// на одну коротку операцію.
+/// </summary>
 public sealed class AdLibraryStore
 {
+    // Частота живе в тому самому рядку ad_air (id = 1), що й за конкурсу реклами (прибрано 26.09.2026): те, що
+    // господар поставив тоді, читається й пишеться далі без жодного переносу. У старих базах цей рядок має ще
+    // track_id/nick/dur_sec/own — «рекламу господаря» з панелі конкурсу. Їх ніхто більше не читає, але й не
+    // стирає; нова база обходиться без цих стовпців, а SQL нижче не чіпає нічого, крім частоти, тож
+    // однаково працює з обома.
     const string Schema = """
         CREATE TABLE IF NOT EXISTS ad_library(
             id INTEGER PRIMARY KEY AUTOINCREMENT, track_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
             dur_sec INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1,
             plays INTEGER NOT NULL DEFAULT 0, last_played_at TEXT, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS ad_air(
+            id INTEGER PRIMARY KEY CHECK(id = 1), every_tracks INTEGER, min_minutes INTEGER, updated_at TEXT);
         """;
     const string Cols = "id, track_id, title, dur_sec, enabled, plays, last_played_at, created_at";
 
@@ -52,6 +94,22 @@ public sealed class AdLibraryStore
     public void MarkPlayed(string trackId, DateTimeOffset now) => _db.With(c =>
         Exec(c, "UPDATE ad_library SET plays = plays + 1, last_played_at = $now WHERE track_id = $t", ("$now", Iso(now)), ("$t", trackId)));
 
+    /// <summary>Частота, яку поставив господар; null — не ставив, береться типова з <c>Ad:*</c>.</summary>
+    public (int? EveryTracks, int? MinMinutes) Frequency() => _db.With<(int?, int?)>(c =>
+    {
+        using var cmd = Cmd(c, "SELECT every_tracks, min_minutes FROM ad_air WHERE id = 1");
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return (null, null);
+        return (r.IsDBNull(0) ? null : r.GetInt32(0), r.IsDBNull(1) ? null : r.GetInt32(1));
+    });
+
+    public void SetFrequency(int everyTracks, int minMinutes, DateTimeOffset now) => _db.With(c =>
+        Exec(c, """
+            INSERT INTO ad_air(id, every_tracks, min_minutes, updated_at) VALUES(1, $e, $m, $now)
+            ON CONFLICT(id) DO UPDATE SET every_tracks = excluded.every_tracks, min_minutes = excluded.min_minutes,
+                updated_at = excluded.updated_at
+            """, ("$e", everyTracks), ("$m", minMinutes), ("$now", Iso(now))));
+
     static List<AdClip> Read(SqliteConnection c, string sql, params (string, object?)[] ps)
     {
         using var cmd = Cmd(c, sql, ps);
@@ -86,7 +144,7 @@ public sealed class AdLibraryStore
 /// реклама з живим файлом грає по разу, потім колода тасується знову — і та, що грала останньою, першою
 /// в новій колоді не стане. Колода живе в пам'яті: після рестарту просто тасується наново.
 /// </summary>
-public sealed class AdLibrary(AdLibraryStore store, IVoiceSaver voice, AdContestStore contest, IClock clock, ILogger<AdLibrary> log)
+public sealed class AdLibrary(AdLibraryStore store, IVoiceSaver voice, IClock clock, ILogger<AdLibrary> log)
 {
     public const int MaxTitle = 60;
 
@@ -138,12 +196,12 @@ public sealed class AdLibrary(AdLibraryStore store, IVoiceSaver voice, AdContest
         if (!voice.Enabled) return (false, "Голосові вимкнені");
         TrackInfo track;
         try { (track, _) = await voice.SaveAsync(body, nick, ct); }
-        catch (Exception ex) { return (false, "Не вийшло взяти файл: " + ex.Message); }
+        catch (Exception ex) { return (false, "Халепа: не вийшло взяти файл — " + ex.Message); }
         var name = Clean(title) ?? $"Реклама {clock.UtcNow.ToLocalTime():dd.MM HH:mm}";
         store.Add(track.Id, name, track.DurationSec, enabled: true, clock.UtcNow);
         Forget();
         log.LogInformation("у бібліотеку реклам лягла «{Title}» ({Track}, {Sec} с)", name, track.Id, track.DurationSec);
-        return (true, $"«{name}» у бібліотеці й у ротації");
+        return (true, $"Є! «{name}» у бібліотеці й у ротації");
     }
 
     public (bool Ok, string Message) Rename(long id, string? title)
@@ -171,8 +229,7 @@ public sealed class AdLibrary(AdLibraryStore store, IVoiceSaver voice, AdContest
         if (store.Get(id) is not { } clip) return (false, "Такої реклами нема");
         store.Delete(id);
         Forget();
-        // файл, який ще потрібен конкурсу чи ефіру господаря, лишаємо — бібліотека його лише позичала
-        if (!contest.IsEntryTrack(clip.TrackId) && contest.Air().TrackId != clip.TrackId) voice.Delete(clip.TrackId);
+        voice.Delete(clip.TrackId);     // файл бібліотека заливала сама, тож і прибирає його сама
         return (true, $"«{clip.Title}» видалено");
     }
 

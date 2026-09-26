@@ -490,7 +490,7 @@
         case 'left': return '<div class="pcf muted">' + who(it.seat) + ' встає з-за столу</div>';
         default: return '<div class="pcf"><b>' + who(it.seat) + ':</b> ' + ctx.esc(it.text || '') + '</div>';
       }
-    }).join('') || '<div class="pcf muted">Тут з\'являться здогадки</div>';
+    }).join('') || '<div class="pcf muted">Поки тиша — тут з\'являться здогадки</div>';
     const el = root.querySelector('.pcfeed');
     if (el.innerHTML !== html) {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
@@ -509,9 +509,9 @@
     const drawer = ctx.mine && v.drawer === ctx.seat && v.phase === 'draw';
     input.disabled = !can;
     form.querySelector('button').disabled = !can;
-    input.placeholder = can ? 'Твоя здогадка…'
+    input.placeholder = can ? 'Тяпни здогадку…'
       : drawer ? 'Ти малюєш — вгадують інші'
-        : guessed.indexOf(ctx.seat) >= 0 && v.phase === 'draw' ? 'Вгадано! Чекаємо інших'
+        : guessed.indexOf(ctx.seat) >= 0 && v.phase === 'draw' ? 'Є! Вгадано — чекаємо інших'
           : !ctx.mine ? 'Дивишся збоку' : 'Зараз не вгадують';
     form.onsubmit = (e) => {
       e.preventDefault();
@@ -541,7 +541,7 @@
       html = '<div class="pcbox"><div class="muted small">Слово було</div><div class="pcbig">' + ctx.esc(v.word || '—') + '</div>'
         + (got.length
           ? '<div class="pcgot">' + got.map((x) => '<span class="chip">' + ctx.esc(ctx.nickOf(x.i) || '') + ' <b>+' + x.g + '</b></span>').join('') + '</div>'
-          : '<div class="muted">Ніхто не вгадав</div>')
+          : '<div class="muted">Отакої — ніхто не вгадав</div>')
         + '</div>';
     } else if (v.phase === 'done') {
       const rows = [];
@@ -624,6 +624,7 @@
 
   HGames.register({
     id: 'pictionary',
+    added: '2026-09-17',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     news: {
       v: '2026-09-24',
@@ -689,13 +690,13 @@
       if (!ctx.playing) return v.phase === 'done' ? 'Партію зіграно' : '';
       // Секунд тут нема: статус перемальовується лише з кадрами, а відлік живе на смужці таймера.
       if (v.phase === 'pick') return v.drawer === ctx.seat && ctx.mine ? 'Обери слово' : 'Художник обирає слово…';
-      if (v.phase === 'reveal') return v.turnNo >= v.turns ? 'Рахуємо очки…' : 'Зараз малюватиме наступний…';
+      if (v.phase === 'reveal') return v.turnNo >= v.turns ? 'Глек рахує очки…' : 'Зараз малюватиме наступний…';
       if (v.phase !== 'draw') return '';
       if (!ctx.mine) return 'Дивишся збоку';
       if (v.drawer === ctx.seat) return 'Малюй! Вгадують інші';
       const f = fresh(ctx, v);
       const guessed = (f && f.guessed) || v.guessed || [];
-      return guessed.indexOf(ctx.seat) >= 0 ? 'Вгадано! Чекаємо решту' : 'Вгадуй, що малюють';
+      return guessed.indexOf(ctx.seat) >= 0 ? 'Є! Вгадано — чекаємо решту' : 'Вгадуй, що малюють';
     },
   });
 })();

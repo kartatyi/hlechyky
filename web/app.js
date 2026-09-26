@@ -7,6 +7,13 @@
   const tracksN = (n) => plural(n, 'трек', 'треки', 'треків');
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
   const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+  /// Нік, по якому можна клацнути: колір свій у кожного (web/people.js), клік — картка людини. badge — значок, куплений
+  /// у Лавці, перед ніком: у балачках, де людей багато й хочеться впізнати одразу (data-nb — щоб перемалювати на льоту).
+  /// shown — як нік написати, якщо не в називному: «від Олі» (відмінок дає HLavka.genitive), клікається все одно на «Оля».
+  const nickHtml = (n, cls, badge, shown) => `<span class="${cls || 'n'} who-n${HPeople.nickCls(n)}" data-who="${esc(n)}"${badge ? ' data-nb="1"' : ''} style="--h:${HPeople.hue(n)}">${badge ? HPeople.badge(n) : ''}${esc(shown == null ? n : shown)}</span>`;
+  /// Для «від Олі» замість «закинув Оля» (рід людини невідомий): родовий відмінок ніка. «хтось» — так сервер зве
+  /// замовника, якого не пам'ятає після перезапуску, це не нік.
+  const fromNick = (n) => (n === 'хтось' ? 'когось' : HLavka.genitive(n));
   // Голосове — такий самий трек у черзі, тільки з нашим id і без обкладинки: замість неї мікрофон.
   const isVoice = (t) => !!t && String(t.id || '').startsWith('voice-');
   const cover = (t, attrs) => (t && t.thumbUrl
@@ -77,6 +84,11 @@
 
   // ---------- api ----------
   async function api(method, path, body) {
+    // Лише дивишся (ще не назвався) — дивитись можна все, а робити щось — спершу назвись.
+    if (!me.nick && method !== 'GET' && !path.startsWith('/api/account/')) {
+      askNick(true);
+      throw new Error('Агов, спершу назвись — тоді й тисни');
+    }
     const r = await fetch(path, {
       method,
       headers: { 'Content-Type': 'application/json', 'X-Nick': encodeURIComponent(me.nick) },
@@ -142,21 +154,27 @@
   }
   function askNick(force, mode, prefill) {
     if (me.nick && !force) return;
-    setNickMode(mode || (me.account ? 'me' : me.nick ? 'login' : 'register'));
+    // Новенькому — найпростіше: гостем, одним полем. Акаунт і пароль — поруч, для тих, кому треба.
+    setNickMode(mode || (me.account ? 'me' : me.nick ? 'login' : 'guest'));
     $('nickInput').value = prefill !== undefined ? prefill : guestBody(me.nick);
     $('passInput').value = '';
     $('passCurrent').value = '';
-    $('nickLater').hidden = !me.nick;   // без ніка на сайті робити нічого — картку не закрити
+    // Без ніка сайт однаково видно — лише подивитись, тож і картку можна закрити: вона не стіна.
+    $('nickLater').hidden = false;
+    $('nickLater').textContent = me.nick ? 'Не зараз' : 'Лише подивлюсь';
     $('nickModal').hidden = false;
     if (!$('nickInput').hidden) setTimeout(() => $('nickInput').focus(), 50);
     else if (nickMode === 'password') setTimeout(() => ($('passCurrent').hidden ? $('passInput') : $('passCurrent')).focus(), 50);
   }
   function paintNick() {
-    const b = $('nickBtn');
-    b.textContent = me.nick;
+    const b = $('meBtn');
+    $('nickBtn').textContent = me.nick || 'назватись';
+    $('meAva').outerHTML = me.nick ? HPeople.ava(me.nick, 'ava', 'meAva') : '<span id="meAva" class="ava none" aria-hidden="true">?</span>';
     b.classList.toggle('admin', me.role === 'admin');
     b.classList.toggle('guest', !me.account);
-    b.title = me.account ? 'Твій акаунт' : 'Зайти в акаунт, зареєструвати нік або змінити гостьовий';
+    b.href = me.nick ? '#who/' + encodeURIComponent(me.nick) : '#who';
+    b.title = !me.nick ? 'Назватись, щоб тяпати й грати'
+      : me.account ? 'Твій профіль: черепки, ачівки, акаунт' : 'Твій профіль. Гість — зареєструй нік, щоб він був лише твій';
   }
   function showNickError(text) { $('nickErr').textContent = text; $('nickErr').hidden = false; }
   async function saveNick() {
@@ -175,14 +193,14 @@
         await busy($('nickSave'), 'Зберігаю…', () => api('POST', '/api/account/password', { current: $('passCurrent').value, password }));
         me.hasPassword = true;
         $('nickModal').hidden = true;
-        toast('Пароль збережено', 'ok');
+        toast('Є! Пароль збережено', 'ok');
         return;
       }
       if (!n) return;
       if (nickMode === 'guest') { await becomeGuest(n); return; }
       if (nickMode === 'gnick') {
         const r = await busy($('nickSave'), 'Заходжу…', () => api('POST', '/api/account/google', { credential: pendingGoogle, nick: n }));
-        if (!r.ok) { showNickError(r.message || 'Не вийшло'); return; }
+        if (!r.ok) { showNickError(r.message || 'Халепа: не вийшло'); return; }
         localStorage.setItem('nick', r.nick);
         location.reload();
         return;
@@ -213,7 +231,8 @@
   $('nickTabs').querySelectorAll('button').forEach((b) => b.onclick = () => { setNickMode(b.dataset.mode); $('nickInput').focus(); });
   $('nickPass').onclick = () => askNick(true, 'password');
   $('nickLater').onclick = () => { $('nickModal').hidden = true; };
-  $('nickBtn').onclick = () => askNick(true);
+  // Без ніка профільний чип — це «назватись», а не сторінка порожнього профілю.
+  $('meBtn').addEventListener('click', (e) => { if (!me.nick) { e.preventDefault(); askNick(true); } });
 
   // ---------- вхід через Google ----------
   // Бібліотеку Google тягнемо лише коли сервер дав Client ID; вона сама малює кнопку в наш контейнер
@@ -256,13 +275,13 @@
     try {
       if (me.account) {
         await api('POST', '/api/account/google/link', { credential });
-        toast('Google прив\'язано', 'ok');
+        toast('Файно! Google прив\'язано', 'ok');
         location.reload();
         return;
       }
       const r = await api('POST', '/api/account/google', { credential });
       if (r.needNick) { pendingGoogle = credential; askNick(true, 'gnick', r.suggest || ''); return; }
-      if (!r.ok) { showNickError(r.message || 'Не вийшло'); return; }
+      if (!r.ok) { showNickError(r.message || 'Халепа: не вийшло'); return; }
       localStorage.setItem('nick', r.nick);
       location.reload();
     } catch (e) { showNickError(e.message); }
@@ -298,12 +317,22 @@
     wheelAcc -= steps * 100;
     setVolPos(parseInt(vol.value, 10) + steps, true);
   }, { passive: false });
+  // На вужчому екрані повзунок ховається за 🔊 і випадає під ним — шапка не лізе у два рядки.
+  const volWrap = $('volWrap');
+  const setVolOpen = (on) => { volWrap.classList.toggle('open', on); $('volBtn').setAttribute('aria-expanded', String(on)); };
+  $('volBtn').onclick = (e) => { e.stopPropagation(); setVolOpen(!volWrap.classList.contains('open')); };
+  document.addEventListener('click', (e) => { if (volWrap.classList.contains('open') && !e.target.closest('#volWrap')) setVolOpen(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setVolOpen(false); });
+  const paintVolIcon = () => { const p = +vol.value; $('volBtn').textContent = p === 0 ? '🔇' : p < 45 ? '🔉' : '🔊'; };
+  vol.addEventListener('input', paintVolIcon);
+  vol.addEventListener('wheel', paintVolIcon);
+  paintVolIcon();
   let playState = 'idle'; // idle | connecting | live
   function setPlayUi() {
     const b = $('playBtn');
     if (playState === 'idle') { b.className = 'primary'; b.textContent = '▶ Врубити'; b.title = 'Слухати ефір прямо тут'; }
-    else if (playState === 'connecting') { b.className = 'primary busy'; b.innerHTML = '<span class="spin"></span> Підключаю…'; }
-    else { b.className = 'live'; b.innerHTML = '<span class="dot"></span> В ефірі · Стоп'; b.title = 'Вимкнути'; }
+    else if (playState === 'connecting') { b.className = 'primary busy'; b.innerHTML = '<span class="spin"></span> Врубаю…'; }
+    else { b.className = 'live'; b.innerHTML = '<span class="dot"></span> В ефірі · Вирубити'; b.title = 'Вирубити звук'; }
   }
   // сервер записує, хто слухав кожен трек (вкладка «Рейтинг»); ETS2 і VLC він бачить лише числом у потоці
   let listening = false;
@@ -323,18 +352,18 @@
   $('playBtn').onclick = async () => {
     if (playState !== 'idle') { stopAudio(); return; }
     const url = state?.streamUrl || '';
-    if (!url) { toast('Адреса потоку не налаштована', 'err'); return; }
+    if (!url) { toast('Халепа: адреса потоку не налаштована', 'err'); return; }
     playState = 'connecting';
     setPlayUi();
     audio.src = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
     try { await audio.play(); }
-    catch (e) { playState = 'idle'; setPlayUi(); toast('Не вдалося запустити потік: ' + e.message, 'err'); }
+    catch (e) { playState = 'idle'; setPlayUi(); toast('Халепа: потік не врубився — ' + e.message, 'err'); }
   };
   audio.addEventListener('playing', () => { playState = 'live'; setPlayUi(); updateMediaSession(); tellListening(true); });
   audio.addEventListener('pause', () => tellListening(false));
   audio.addEventListener('waiting', () => { if (playState === 'live') { playState = 'connecting'; setPlayUi(); } });
-  audio.addEventListener('error', () => { if (playState !== 'idle') { stopAudio(); toast('Потік обірвався. Натисни «Врубити» ще раз', 'err'); } });
-  audio.addEventListener('ended', () => { if (playState !== 'idle') { stopAudio(); toast('Потік закінчився', 'err'); } });
+  audio.addEventListener('error', () => { if (playState !== 'idle') { stopAudio(); toast('Ой-йой, потік обірвався. Натисни «Врубити» ще раз', 'err'); } });
+  audio.addEventListener('ended', () => { if (playState !== 'idle') { stopAudio(); toast('Ой-йой, потік закінчився. Натисни «Врубити» ще раз', 'err'); } });
   function updateMediaSession() {
     if (!('mediaSession' in navigator) || !state) return;
     const n = state.now, t = n.track;
@@ -371,10 +400,14 @@
   let dragging = null, pendingQueueRender = false; // queue drag-to-reorder state
 
   const reactsHtml = () => EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('');
+  /// Феєрверк — вміння з Лавки: хто купив, у того поруч із реакціями ще й 🎆.
+  const fwHtml = () => (HLavka.perk('fireworks')?.owned
+    ? '<button type="button" class="fwbtn" title="Бахнути феєрверк над обкладинкою в усіх — твоє вміння з Лавки, раз на 10 хвилин">🎆</button>' : '');
   function wireReacts(box) {
     box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => {
       if (conn) conn.invoke('React', b.dataset.e).catch(() => {});
     });
+    box.querySelector('.fwbtn')?.addEventListener('click', (e) => launchFireworks(e.currentTarget));
   }
   const skipNow = () => api('POST', '/api/skip').then(ok).catch(fail);
 
@@ -405,16 +438,16 @@
     if (!live) {
       const spot = n.spotifyLive;
       const title = spot ? 'Spotify-резерв' : 'Тиша';
-      const sub = spot ? (n.spotifyTitle || '') : `${dj()} шукає щось на полиці…`;
+      const sub = spot ? (n.spotifyTitle || '') : `${dj()} думає, що б його врубити…`;
       box.innerHTML = mini
         ? `<a class="mini-cv" href="#efir" title="Перейти в Ефір"><img src="/static/glek.svg" alt=""></a>
            <a class="mini-tt" href="#efir" title="${esc(title)}"><b>${esc(title)}</b><small>${esc(sub)}</small></a>`
         : `<div class="coverwrap"><img class="cover dj" src="/static/glek.svg" alt=""></div>
-        <div>
+        <div class="nowinfo">
           <div class="title">${esc(title)}</div>
-          <div class="artist">${esc(sub)}</div>
-          <div class="by">${spot ? 'грає резервний потік, поки в черзі порожньо' : 'закинь щось або зачекай'}</div>
-          <div class="reacts">${reactsHtml()}</div>
+          <div class="artist"><span class="art">${esc(sub)}</span></div>
+          <div class="why">${spot ? 'грає резервний потік, поки в черзі порожньо' : 'закинь щось або зачекай'}</div>
+          <div class="actions"><span class="reacts">${reactsHtml()}</span>${fwHtml()}</div>
         </div>`;
       if (!mini) wireReacts(box);
       return;
@@ -422,8 +455,8 @@
     const t = n.track || {};
     const liked = n.likers.some((x) => sameNick(x, me.nick));
     const pending = n.skipPending;
-    const like = `<button data-act="like" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Лайкнути')}">❤ ${n.likers.length}</button>`;
-    const skip = `<button data-act="skip" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭${mini ? '' : ' Скіп'}</button>`;
+    const like = `<button data-act="like" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Вподобати')}">❤ ${n.likers.length}</button>`;
+    const skip = `<button data-act="skip" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭${mini ? '' : '<span class="lbl"> Скіп</span>'}</button>`;
     if (mini) {
       box.innerHTML = `<a class="mini-cv" href="#efir" title="Перейти в Ефір">${cover(t)}</a>
         <a class="mini-tt" href="#efir" title="${esc(`${t.title} — ${t.artist}`)}"><b>${esc(t.title)}</b><small>${esc(t.artist)}</small></a>
@@ -432,28 +465,28 @@
       return;
     }
     const by = n.source === 'user'
-      ? `закинув <b>${esc(n.requestedBy)}</b>${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
+      ? `від ${nickHtml(n.requestedBy, 'bynick', false, fromNick(n.requestedBy))}${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
       : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
     // адмін банить безкоштовно; решта — за черепки, і голосові не банять
     const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
     const canBan = me.role === 'admin' || (banPrice > 0 && !isVoice(t));
+    // Щільно, щоб на ноутбуці під панеллю одразу було видно чергу й поради: хто закинув — у рядку з виконавцем,
+    // час — по краях смужки, реакції — у тому ж рядку, що й кнопки (на вузькому самі перейдуть нижче).
     box.innerHTML = `
       <div class="coverwrap">${t.thumbUrl ? `<img class="cover" src="${esc(t.thumbUrl)}" alt="">` : `<div class="cover placeholder">${isVoice(t) ? '🎙' : '♪'}</div>`}</div>
-      <div style="min-width:0">
+      <div class="nowinfo">
         <div class="title">${esc(t.title)}</div>
-        <div class="artist">${esc(t.artist)}</div>
-        <div class="by">${by}</div>
+        <div class="artist"><span class="art">${esc(t.artist)}</span><span class="by">${by}</span></div>
         ${n.reason ? `<div class="why">${esc(n.reason)}</div>` : ''}
-        <div class="progress ${pending ? 'pending' : ''}"><div id="bar"></div></div>
-        <div class="times"><span id="tElapsed">0:00</span><span>${fmt(n.durationSec)}</span></div>
+        <div class="progline"><span id="tElapsed">0:00</span><div class="progress ${pending ? 'pending' : ''}"><div id="bar"></div></div><span>${fmt(n.durationSec)}</span></div>
         ${pending ? `<div class="pending-note"><span class="spin"></span> Перемикаю, в ефірі зміниться за кілька секунд</div>` : ''}
         <div class="actions">
           ${like}${skip}
-          <button data-act="pl" title="Зберегти в плейлист">＋ плейлист</button>
-          ${t.sourceUrl ? `<a class="chip" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${isVoice(t) ? 'послухати ↗' : 'джерело ↗'}</a>` : ''}
-          ${canBan ? `<button data-act="ban" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫 бан${banPrice ? ` · ${banPrice} 🏺` : ''}</button>` : ''}
+          <button data-act="pl" title="Зберегти в плейлист">📂＋</button>
+          ${t.sourceUrl ? `<a class="chip src" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener" title="${isVoice(t) ? 'Послухати голосове' : 'Відкрити джерело'}">↗</a>` : ''}
+          ${canBan ? `<button data-act="ban" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫${banPrice ? ` ${banPrice} 🏺` : ' бан'}</button>` : ''}
+          <span class="reacts" title="Реакція — полетить над обкладинкою в усіх">${reactsHtml()}</span>${fwHtml()}
         </div>
-        <div class="reacts" title="Реакція, яку побачать усі">${reactsHtml()}</div>
       </div>`;
     wireNow(box, t, o);
     wireReacts(box);
@@ -462,12 +495,13 @@
   function renderNow() {
     const n = state.now;
     const sig = JSON.stringify([n.playId, n.itemId, n.source, n.track?.id, n.likers, n.skipPending, n.requestedBy, n.via, n.reason,
-      n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName]);
+      n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName,
+      !!HLavka.perk('fireworks')?.owned]);
     if (sig === nowSig) return;
     nowSig = sig;
     const banner = $('banner');
     banner.hidden = state.liquidsoapOk;
-    banner.textContent = 'Ефір не відповідає (liquidsoap). Черга збережеться, треки підуть, щойно він оживе.';
+    banner.textContent = 'Ой-йой: ефір не відповідає (liquidsoap). Черга збережеться, треки підуть, щойно він оживе.';
     // Зелений чіп «ефір» у шапці — шум: показуємо лише тоді, коли з ефіром щось не так.
     $('liqStatus').hidden = !!state.liquidsoapOk;
     $('liqStatus').className = 'chip err';
@@ -526,14 +560,104 @@
     setTimeout(() => el.remove(), 2500);
   }
 
+  // ---------- 🎆 феєрверк і 💌 присвята (вміння з Лавки Дядька Глека, web/lavka.js) ----------
+  function launchFireworks(btn) {
+    if (!conn) return;
+    const p = HLavka.perk('fireworks');
+    if (p && p.readyAt && Date.parse(p.readyAt) > Date.now()) { toast('Феєрверк ще заряджається: ' + HLavka.readyIn(p.readyAt), 'err'); return; }
+    busy(btn, '', () => conn.invoke('Fireworks').then((err) => {
+      if (err) toast(err, 'err'); else HLavka.usedPerk('fireworks', 10);
+    }).catch(fail));
+  }
+  /// Три спалахи над обкладинкою, кожен — кільце іскор свого кольору, і підпис, хто запустив.
+  function fireworks(nick) {
+    const layer = $('flyLayer');
+    if (!layer || document.hidden) return;
+    const cover = document.querySelector('#now .cover');
+    const pr = layer.parentElement.getBoundingClientRect();
+    const cr = cover ? cover.getBoundingClientRect() : pr;
+    for (let b = 0; b < 3; b++) {
+      const burst = document.createElement('div');
+      burst.className = 'fw';
+      burst.style.left = (cr.left - pr.left + cr.width * (0.2 + Math.random() * 0.6)) + 'px';
+      burst.style.top = (cr.top - pr.top + cr.height * (0.15 + Math.random() * 0.45)) + 'px';
+      const hue0 = Math.floor(Math.random() * 360);
+      const delay = b * 320;
+      let html = '';
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2 + Math.random() * 0.2;
+        const r = 45 + Math.random() * 35;
+        html += `<i style="--dx:${(Math.cos(a) * r).toFixed(1)}px;--dy:${(Math.sin(a) * r).toFixed(1)}px;--c:hsl(${(hue0 + i * 9) % 360} 95% 66%);animation-delay:${delay}ms"></i>`;
+      }
+      burst.innerHTML = html;
+      layer.appendChild(burst);
+      setTimeout(() => burst.remove(), 1700 + delay);
+    }
+    const tag = document.createElement('div');
+    tag.className = 'fly';
+    tag.style.left = (cr.left - pr.left + cr.width * 0.5 - 20) + 'px';
+    tag.style.top = (cr.top - pr.top + cr.height * 0.7) + 'px';
+    tag.innerHTML = `🎆<small>${esc(nick || '')}</small>`;
+    layer.appendChild(tag);
+    setTimeout(() => tag.remove(), 2500);
+  }
+
+  /// Кому й як присвятити — віконце з кнопок (без вільного тексту: Глек читає це вголос на всіх).
+  function openDedication(it) {
+    if (!it) return;
+    const p = HLavka.perk('dedication');
+    if (p && p.readyAt && Date.parse(p.readyAt) > Date.now()) { toast('Присвята ще відпочиває: ' + HLavka.readyIn(p.readyAt), 'err'); return; }
+    const phrases = HLavka.phrases();
+    const people = ((state && state.online) || []).filter((n) => !sameNick(n, me.nick));
+    let to = '*';
+    let phrase = phrases[0] ? phrases[0].key : '';
+    const wrap = document.createElement('div');
+    wrap.className = 'modal dedmodal';
+    wrap.innerHTML = `<div class="card">
+        <h3>💌 Присвятити пісню</h3>
+        <div class="muted small">Перед «${esc(it.track.title)}» ${esc(dj())} скаже в ефір, кому ти її присвячуєш. Присвята — раз на 3 години.</div>
+        <div class="ded-h">Кому</div>
+        <div class="ded-chips" data-k="to">${['*'].concat(people).map((n) => `<button type="button" class="chip${n === '*' ? ' on' : ''}" data-v="${esc(n)}">${n === '*' ? '🌍 усім, хто слухає' : esc(n)}</button>`).join('')}</div>
+        ${people.length ? '' : '<div class="muted small">Зараз на сайті більше ні душі — присвяти всім, хто слухає.</div>'}
+        <div class="ded-h">Як</div>
+        <div class="ded-chips" data-k="phrase">${phrases.map((x, i) => `<button type="button" class="chip${i === 0 ? ' on' : ''}" data-v="${esc(x.key)}">${esc(x.text)}</button>`).join('')}</div>
+        <div class="ded-say"></div>
+        <div class="row"><button type="button" class="primary" data-yes>Присвятити</button><button type="button" class="ghost" data-no>Не треба</button></div>
+      </div>`;
+    const say = () => {
+      const ph = phrases.find((x) => x.key === phrase);
+      wrap.querySelector('.ded-say').textContent = `🎙 «Цю пісню ${me.nick} присвячує ${to === '*' ? 'всім, хто слухає' : HLavka.dative(to)}${ph ? ' — ' + ph.text : ''}»`;
+    };
+    const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    wrap.querySelectorAll('.ded-chips').forEach((box) => box.querySelectorAll('button').forEach((b) => b.onclick = () => {
+      box.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      if (box.dataset.k === 'to') to = b.dataset.v; else phrase = b.dataset.v;
+      say();
+    }));
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector('[data-no]').onclick = close;
+    wrap.querySelector('[data-yes]').onclick = (e) => busy(e.currentTarget, 'присвячую…', async () => {
+      try {
+        const r = await api('POST', '/api/lavka/dedicate', { to, phrase });
+        toast(r.message || 'Присвята полетіла', 'ok');
+        HLavka.usedPerk('dedication', 180);
+        close();
+      } catch (err) { fail(err); }
+    });
+    say();
+    document.body.appendChild(wrap);
+    document.addEventListener('keydown', onKey, true);
+    wrap.querySelector('[data-yes]').focus();
+  }
+
   // ---------- queue ----------
+  /// Чип стану — лише коли щось не так чи ще не готово: «готово» й «чекає» людям нічого не кажуть,
+  /// їм важливо, коли заграє, а це й так видно (ETA в рядку).
   function statusChip(it) {
     switch (it.status) {
-      case 'queued': return '<span class="chip">чекає</span>';
       case 'downloading': return '<span class="chip warn"><span class="spin"></span> качається</span>';
-      case 'ready': return '<span class="chip ok">готово</span>';
-      case 'dispatched': return '<span class="chip ok">наступний</span>';
-      case 'failed': return `<span class="chip err">${esc(it.error || 'помилка')}</span>`;
+      case 'failed': return `<span class="chip err">${esc(it.error || 'халепа')}</span>`;
     }
     return '';
   }
@@ -544,7 +668,10 @@
     const q = state.queue;
     queueDur = q.map((it) => it.track.durationSec || 0);
     const sug0 = (state.suggestions || [])[0];
-    const sig = JSON.stringify([q.map((it) => [it.itemId, it.status, it.error, it.requestedBy, it.via]), me.role, me.nick, state.djName, !q.length && sug0 && sug0.itemId]);
+    // Присвята лягає перед МОЄЮ найближчою піснею, що ще не пішла в ефір, — тож і 💌 лише на ній.
+    const dedId = HLavka.perk('dedication')?.owned
+      ? (q.find((it) => sameNick(it.requestedBy, me.nick) && it.status !== 'dispatched' && it.status !== 'failed' && !isVoice(it.track)) || {}).itemId : null;
+    const sig = JSON.stringify([q.map((it) => [it.itemId, it.status, it.error, it.requestedBy, it.via]), me.role, me.nick, state.djName, !q.length && sug0 && sug0.itemId, dedId]);
     if (sig === queueSig) { tick(); return; }
     queueSig = sig;
     $('queueCount').textContent = q.length ? `· ${q.length} · ${fmt(queueDur.reduce((a, b) => a + b, 0))}` : '';
@@ -568,10 +695,11 @@
           <div style="min-width:0">
             <div class="t">${esc(it.track.title)}</div>
             <div class="a">${esc(it.track.artist)} · ${fmt(it.track.durationSec)}</div>
-            <div class="meta"><span>${esc(it.requestedBy)}</span>${it.via === 'suggestion' ? `<span class="chip dj">порада ${esc(djGen())}</span>` : ''}${statusChip(it)}<span class="eta" data-eta="${i}"></span></div>
+            <div class="meta">${nickHtml(it.requestedBy, 'qnick')}${it.via === 'suggestion' ? `<span class="chip dj">порада ${esc(djGen())}</span>` : ''}${statusChip(it)}<span class="eta" data-eta="${i}"></span></div>
           </div>
           <div class="btns">
             ${voiceBtn(it.track)}
+            ${it.itemId === dedId ? `<button class="icon ded" title="Присвятити цю пісню — ${esc(dj())} скаже в ефір, кому, перед тим як вона заграє">💌</button>` : ''}
             ${canMove ? '<span class="grip" title="Тягни, щоб пересунути">⠿</span>' : ''}
             ${mine ? `<button class="icon danger rm" title="Прибрати">✕</button>` : ''}
           </div>
@@ -580,6 +708,7 @@
       ul.querySelectorAll('li').forEach((li) => {
         const id = li.dataset.id;
         li.querySelector('.rm')?.addEventListener('click', (e) => busy(e.currentTarget, '', () => api('DELETE', `/api/queue/${id}`).catch(fail)));
+        li.querySelector('.ded')?.addEventListener('click', () => openDedication(q.find((x) => String(x.itemId) === id)));
         wireVoiceButtons(li);
         if (li.classList.contains('movable')) li.addEventListener('pointerdown', (e) => startDrag(e, li));
       });
@@ -696,25 +825,27 @@
     const label = (t) => (t.artist ? `${t.artist} — ${t.title}` : t.title);
     const onAir = seed && state.now.track && state.now.track.id === seed.id;
     $('djSub').textContent = seed
-      ? `Підбирає під ${state.suggestSeedNote || (onAir ? 'те, що зараз грає' : 'останнє, що грало')}: ${label(seed)}`
-      : 'Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради';
+      ? `Підбирає під ${state.suggestSeedNote || (onAir ? 'те, що зараз шкварить' : 'останнє, що грало')}: ${label(seed)}`
+      : 'Підбирає під те, що зараз шкварить. Зміниться трек — зміняться й поради';
+    // Картка — один рядок: обкладинка, назва, дві кнопки праворуч. Раніше це був блок на 118 px із кнопками
+    // під назвою, і на ноутбуці поради опинялись аж на другому екрані.
     const card = (s, next) => `<div class="sug ${next ? 'next' : ''} ${sugSeen.has(s.itemId) ? '' : 'fade'}" data-id="${s.itemId}">
         ${s.track.thumbUrl ? `<img src="${esc(s.track.thumbUrl)}" alt="">` : '<div class="noimg"></div>'}
-        <div style="min-width:0">
-          <div class="t">${esc(s.track.title)}</div>
+        <div class="st">
+          <div class="t" title="${esc(label(s.track))}">${esc(s.track.title)}</div>
           <div class="a">${esc(s.track.artist)} · ${fmt(s.track.durationSec)}</div>
           ${next
-            ? `<div class="r">${state.queue.length ? 'Після черги' : 'Наступний'} · <span data-eta-after></span> · якщо ніхто нічого не закине${s.reason && !onAir ? ' · ' + esc(s.reason) : ''}</div>`
+            ? `<div class="r">${state.queue.length ? 'Після черги' : 'Далі'} <span data-eta-after></span>, якщо ніхто нічого не закине${s.reason && !onAir ? ' · ' + esc(s.reason) : ''}</div>`
             : (s.reason && !onAir ? `<div class="r">${esc(s.reason)}</div>` : '')}
         </div>
         <div class="btns">
-          ${next ? statusChip(s) : '<button class="primary add" title="Закинути в чергу">👍 Беру!</button>'}
-          <button class="skip" title="${next ? 'Хай поставить щось інше' : 'Прибрати, хай запропонує інше'}">👎 Не те</button>
+          ${next ? statusChip(s) : '<button class="primary add" title="Закинути в чергу">👍 Беру</button>'}
+          <button class="skip" title="${next ? 'Хай поставить щось інше' : 'Прибрати, хай запропонує інше'}">👎${next ? ' Не те' : ''}</button>
         </div>
       </div>`;
     const cards = (a ? [card(a, true)] : []).concat(list.map((s) => card(s, false)));
-    const slot = (i) => `<div class="sug empty"><span class="spin"></span> ${cards.length ? `${esc(dj())} шукає ще…` : (i === 0 ? `${esc(dj())} порпається на полицях…` : '')}</div>`;
-    while (cards.length < SLOTS) cards.push(slot(cards.length));
+    // Порожнє місце крутить спінер лише тоді, коли порад нема зовсім: вічне «шукає ще…» поряд із готовими — шум.
+    if (!cards.length) cards.push(`<div class="sug empty"><span class="spin"></span> ${esc(dj())} порпається на полицях…</div>`);
     box.innerHTML = cards.slice(0, SLOTS).join('');
     sugSeen = new Set((a ? [a.itemId] : []).concat(list.map((s) => s.itemId)));
     box.querySelectorAll('.sug[data-id]').forEach((el) => {
@@ -733,7 +864,7 @@
     if (nicks.length) parts.push('Слухають: ' + nicks.join(', '));
     if (others && state.listeningTabs !== undefined) parts.push(`${nicks.length ? 'ще ' : 'Слухають '}${others} через ETS2/VLC/інший плеєр`);
     else if (others) parts.push(`Слухають ${others}`);
-    return parts.join('; ') || 'Зараз ніхто не слухає';
+    return parts.join('; ') || 'У навушниках — ні душі';
   }
 
   function renderOnline() {
@@ -746,9 +877,11 @@
     chip.classList.toggle('on', shown > 0);
     state.online.forEach(learnNick);
     const people = state.online.slice().sort((a, b) => listens(b) - listens(a));
+    // Клік по людині — її картка (web/people.js ловить data-who на всій сторінці).
     $('online').innerHTML = people.map((n) => listens(n)
-      ? `<span class="chip listening" title="${esc(n)} зараз слухає ефір">🎧 ${esc(n)}${crownOf(n)}</span>`
-      : `<span class="chip" title="на сайті, але плеєр вимкнений">${esc(n)}${crownOf(n)}</span>`).join('') || '<span class="muted small">нікого</span>';
+      ? `<button type="button" class="chip listening who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="${esc(n)} зараз слухає ефір">🎧 ${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`
+      : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="тусить на сайті, але плеєр вирублений">${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">ні душі</span>';
+    HPeople.refreshWhere();          // на відкритому профілі «на сайті / слухає» — живе
   }
   $('listeners').onclick = () => { if (state) toast(listenersText()); };
 
@@ -768,15 +901,27 @@
   }
 
   // ---------- кубик і команди чату ----------
-  // Нова команда: рядок сюди і гілка в ChatCommands.Run на сервері.
+  // Нова команда: рядок сюди і гілка в ChatCommands.Run на сервері. Головне ім'я — українське: з української
+  // розкладки латинські /roll і /coin набирати незручно. quick — кнопки палітри, що кидають одним натиском;
+  // template — що підставити в поле для команд з аргументами.
   const COMMANDS = [
-    { cmd: '/roll', args: '[N | A-B]', help: 'кинути кубик: /roll — 1–6, /roll 100 — 1–100, /roll 2-12 — свої межі' },
-    { cmd: '/coin', args: '', help: 'монетка: орел чи решка. Аліас — /монетка' },
-    { cmd: '/choose', args: 'а | б | в', help: 'обрати за тебе: /обери чай або кава, /choose чай | кава | компот. Аліаси — /обери, /вибери' },
-    { cmd: '/8ball', args: 'питання', help: 'спитати Дядька Глека: /8ball чи буде дощ? Аліаси — /куля, /глек' },
-    { cmd: '/столи', args: '', help: 'які столи зараз живі — з кнопками. Бачиш лише ти. Аліас — /tables' },
-    { cmd: '/пароль', args: 'нік новий_пароль', help: 'поставити людині новий пароль, коли вона свій забула. Лише адмін', admin: true },
+    { cmd: '/кубик', alias: ['/roll'], args: '[N | A-B]', help: 'жбурнути кубик 1–6; «/кубик 100» — до ста, «/кубик 2-12» — свої межі',
+      quick: [['🎲 1–6', '/кубик'], ['🎲 до 100', '/кубик 100']] },
+    { cmd: '/монетка', alias: ['/coin'], args: '', help: 'жбурнути монетку: орел чи решка', quick: [['🪙 Монетка', '/монетка']] },
+    { cmd: '/обери', alias: ['/вибери', '/choose'], args: 'а, б або в', help: 'обрати за тебе: «/обери чай, кава або компот»', template: '/обери ' },
+    { cmd: '/куля', alias: ['/глек', '/8ball'], args: 'питання', help: 'спитати Дядька Глека: «/куля чи буде дощ?»', template: '/куля ' },
+    { cmd: '/клич', alias: ['/поклич', '/invite'], args: '@нік', help: 'гукнути людину за твій стіл, що чекає гравців', template: '/клич @' },
+    { cmd: '/столи', alias: ['/стіл', '/tables'], args: '', help: 'живі столи з кнопками — бачиш лише ти', quick: [['🎲 Столи', '/столи']] },
+    { cmd: '/пароль', args: 'нік новий_пароль', help: 'поставити людині новий пароль, коли вона свій забула. Лише адмін', admin: true, template: '/пароль ' },
   ];
+  const cmdNames = (c) => [c.cmd, ...(c.alias || [])];
+  /// «.кубик 20» з української розкладки — це «/кубик 20»: крапка там, де в англійській «/». Лише для назв команд.
+  function dotToSlash(text) {
+    const m = /^\.(\p{L}+)(?=\s|$)/u.exec(text || '');
+    if (!m) return text;
+    const name = '/' + m[1].toLowerCase();
+    return COMMANDS.some((c) => cmdNames(c).includes(name)) ? '/' + text.slice(1) : text;
+  }
   // Грані малюємо крапками самі: юнікодні ⚀⚁⚂ у кожному шрифті сидять у своєму квадраті по-своєму
   // і в плитці стоять криво. Індекси — клітинки сітки 3×3 зліва направо.
   const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
@@ -819,29 +964,95 @@
     setTimeout(() => { label.style.visibility = ''; }, COIN_MS);
   }
 
-  function showCmdHint(typed) {
-    const box = $('cmdHint');
-    const q = (typed || '/').toLowerCase();
-    const list = COMMANDS.filter((c) => (!c.admin || me.role === 'admin') && (c.cmd.startsWith(q.split(' ')[0]) || q === '/'));
-    if (!list.length) { box.hidden = true; return; }
-    box.innerHTML = list.map((c) => `<div class="cmd" data-cmd="${c.cmd}">
+  // ---------- палітра й підказка команд ----------
+  // Кнопка «/» — палітра: кубик, монетка й столи кидаються одним натиском (з телефона набирати їх незручно),
+  // решта ставить у поле заготовку. Набираєш «/ку» чи «.ку» — список звужується, ↑↓ вибирають, Tab чи Enter
+  // дописують назву; коли назва вже повна, Enter просто шле.
+  let cmdList = [];          // що зараз у списку (для ↑↓/Tab)
+  let cmdSel = 0;
+  const cmdAllowed = (c) => !c.admin || me.role === 'admin';
+  /// Команди, що підходять під перше слово поля: «/» — усі, «/ку» — кубик і куля, «.ку» — те саме з крапкою.
+  function cmdMatches(word) {
+    const w = word.toLowerCase();
+    const dot = w.startsWith('.');
+    const q = w.slice(1);
+    if (dot && !/^\p{L}+$/u.test(q)) return [];          // «...» чи «.5» — це не команда
+    return COMMANDS.filter((c) => cmdAllowed(c) && cmdNames(c).some((n) => n.slice(1).startsWith(q)));
+  }
+  function sendCommand(text) {
+    if (!conn) { askNick(true); return; }
+    conn.invoke('SendChat', text).then((err) => { if (err) toast(err, 'err'); }).catch((e) => toast('Халепа: не відправилось — ' + e.message, 'err'));
+  }
+  function cmdRow(c, i) {
+    return `<div class="cmd${i === cmdSel ? ' on' : ''}" data-i="${i}">
         <b>${esc(c.cmd)}</b> <span class="muted small">${esc(c.args)}</span>
-        <div class="muted small">${esc(c.help)}</div>
-      </div>`).join('');
-    box.querySelectorAll('.cmd').forEach((el) => el.onclick = () => {
-      $('chatInput').value = el.dataset.cmd + ' ';
-      $('chatInput').focus();
-      showCmdHint(el.dataset.cmd);
-    });
+        <div class="muted small">${esc(c.help)}${c.alias ? ` · ще ${esc(c.alias.join(', '))}` : ''}</div>
+      </div>`;
+  }
+  /// Палітра по кнопці: швидкі кидки згори, під ними всі команди.
+  function showPalette() {
+    const box = $('cmdHint');
+    cmdList = COMMANDS.filter(cmdAllowed);
+    cmdSel = -1;
+    const quick = COMMANDS.filter(cmdAllowed).flatMap((c) => c.quick || []);
+    box.innerHTML = `<div class="cmdquick">${quick.map(([label, text]) => `<button type="button" data-send="${esc(text)}">${esc(label)}</button>`).join('')}</div>`
+      + cmdList.map(cmdRow).join('');
+    wireCmdBox(box);
     box.hidden = false;
   }
-  const hideCmdHint = () => { $('cmdHint').hidden = true; };
-  $('cmdBtn').onclick = () => { hideEmoji(); $('cmdHint').hidden ? showCmdHint($('chatInput').value) : hideCmdHint(); };
+  /// Підказка під час набору: лише ті, що підходять, або — коли вже пишуться аргументи — як ними користуватись.
+  function showCmdHint(typed) {
+    const box = $('cmdHint');
+    const word = typed.split(' ')[0];
+    const list = cmdMatches(word);
+    if (!list.length) { hideCmdHint(); return; }
+    const args = typed.includes(' ');
+    cmdList = args ? [] : list;
+    if (!args) cmdSel = Math.min(Math.max(cmdSel, 0), list.length - 1);
+    box.innerHTML = (args ? list.slice(0, 1).map((c) => cmdRow(c, -1)) : list.map(cmdRow)).join('');
+    wireCmdBox(box);
+    box.hidden = false;
+  }
+  function wireCmdBox(box) {
+    box.querySelectorAll('[data-send]').forEach((b) => b.onclick = () => { sendCommand(b.dataset.send); hideCmdHint(); });
+    box.querySelectorAll('.cmd[data-i]').forEach((el) => el.onmousedown = (e) => { e.preventDefault(); pickCmd(cmdList[+el.dataset.i] || COMMANDS.find(cmdAllowed)); });
+  }
+  /// Вибрали команду: без аргументів (монетка, столи) — одразу кидаємо; з ними — заготовка в поле.
+  function pickCmd(c) {
+    if (!c) return;
+    const inp = $('chatInput');
+    if (!c.args) { inp.value = ''; hideCmdHint(); sendCommand(c.cmd); return; }
+    inp.value = c.template || c.cmd + ' ';
+    inp.focus();
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+    showCmdHint(inp.value);
+  }
+  const hideCmdHint = () => { $('cmdHint').hidden = true; cmdList = []; cmdSel = 0; };
+  $('cmdBtn').onclick = () => { hideEmoji(); $('cmdHint').hidden ? showPalette() : hideCmdHint(); };
   $('chatInput').addEventListener('input', () => {
     const v = $('chatInput').value;
-    if (v.startsWith('/')) showCmdHint(v); else hideCmdHint();
+    if (/^[/.]/.test(v)) showCmdHint(v); else hideCmdHint();
   });
-  $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideCmdHint(); hideEmoji(); } });
+  $('chatInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { hideCmdHint(); hideEmoji(); return; }
+    if ($('cmdHint').hidden || !cmdList.length) return;
+    const inp = $('chatInput');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      cmdSel = (Math.max(cmdSel, 0) + (e.key === 'ArrowDown' ? 1 : -1) + cmdList.length) % cmdList.length;
+      $('cmdHint').querySelectorAll('.cmd[data-i]').forEach((el) => el.classList.toggle('on', +el.dataset.i === cmdSel));
+      return;
+    }
+    const word = inp.value.split(' ')[0].toLowerCase().replace(/^\./, '/');
+    const exact = COMMANDS.some((c) => cmdAllowed(c) && cmdNames(c).includes(word));
+    // Tab дописує завжди; Enter — лише коли назва ще неповна, інакше це «відправити» (обробляє форма).
+    // У палітрі з порожнім полем обидва чекають, поки людина стрілками щось вибере.
+    if ((e.key === 'Tab' || (e.key === 'Enter' && !exact)) && (cmdSel >= 0 || inp.value)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      pickCmd(cmdList[Math.max(cmdSel, 0)]);
+    }
+  });
 
   // ---------- смайли ----------
   // Панель відкривається над рядком вводу; клік ставить смайл туди, де стоїть курсор,
@@ -862,7 +1073,7 @@
     const inp = $('chatInput');
     const [from, to] = [inp.selectionStart ?? inp.value.length, inp.selectionEnd ?? inp.value.length];
     const text = inp.value.slice(0, from) + e + inp.value.slice(to);
-    if (text.length > inp.maxLength) { toast('Задовге повідомлення', 'err'); return; }
+    if (text.length > inp.maxLength) { toast('Халепа: задовге повідомлення', 'err'); return; }
     inp.value = text;
     inp.focus();
     inp.setSelectionRange(from + e.length, from + e.length);
@@ -886,8 +1097,20 @@
     for (const id of ['chatBadge', 'mChatBadge', 'hdrChatBadge']) { const b = $(id); b.hidden = !n; b.textContent = n; }
     paintTitle();
   }
-  /// Заголовок вкладки: трек плюс «(3)», поки непрочитане нікуди не поділось.
-  function paintTitle() { document.title = (unread ? `(${unread}) ` : '') + baseTitle; }
+  /// Заголовок вкладки: трек плюс «(3)», поки непрочитане нікуди не поділось, і «🎲 Твій хід», коли за
+  /// якимось столом чекають на тебе, а ти деінде.
+  let turnRooms = [];
+  function paintTitle() { document.title = (turnRooms.length ? '🎲 Твій хід · ' : '') + (unread ? `(${unread}) ` : '') + baseTitle; }
+  /// Каркас ігор каже, за якими столами зараз мій хід, а я не дивлюсь на них. Новий такий стіл — дзінь.
+  function onTurn(list) {
+    const was = new Set(turnRooms.map((x) => x.id));
+    turnRooms = list || [];
+    paintTitle();
+    const nav = document.querySelector('#mainNav button[data-route="games"]');
+    if (nav) { nav.classList.toggle('turn', turnRooms.length > 0); nav.title = turnRooms.length ? 'Твій хід: ' + turnRooms.map((x) => x.title).join(', ') : 'Столи й ігри — клавіша 3'; }
+    $('mNavGames').hidden = !turnRooms.length;
+    if (turnRooms.some((x) => !was.has(x.id))) ping();
+  }
   /// Кличуть на ім'я — навіть коли балачки згорнуті, це має долетіти.
   const mentionsMe = (text) => !!me.nick && me.nick.length > 1 && String(text || '').toLowerCase().includes(me.nick.toLowerCase());
   /// Тегнули саме через @ — це вже не просто згадка в розмові, а поклик: на нього й звук.
@@ -941,7 +1164,7 @@
   function paintPing() {
     const b = $('pingBtn');
     b.textContent = pingOn ? '🔔' : '🔕';
-    b.title = pingOn ? 'Звук, коли тебе тегнули чи відповіли — увімкнено' : 'Звук на @ і відповіді вимкнено';
+    b.title = pingOn ? 'Дзінь, коли тебе гукнули чи відповіли, — увімкнено' : 'Дзінь на @ і відповіді вирублено';
   }
   $('pingBtn').onclick = () => {
     pingOn = !pingOn;
@@ -978,18 +1201,84 @@
       const b = roomBtn(slot.dataset.room, slot.dataset.named === '1');
       slot.textContent = '';
       if (b) slot.appendChild(b);
+      // Рядок-заклик живе, поки за стіл можна сісти (або це твій стіл): заповнився чи зник — рядок ховається.
+      const row = slot.closest('.msg.invite');
+      if (row) {
+        const link = window.HGames && HGames.roomLink(slot.dataset.room);
+        row.hidden = !link || !(link.canSit || link.mine);
+      }
     }
   }
   /// Тіло рядка: нік, текст, кубик чи монетка, Глек з аватаркою, рядок Журналу. Спільне для Балачок і балачки
   /// столу — рядки столу мають ті самі поля (nick, text, kind, at), лише без лайків і відповідей.
+  /// Одна кісточка чи монетка для рядка кидків. Кілька кидків одного ніка поспіль стають одним рядком
+  /// (rollInto) — раніше дванадцять /кубик займали пів панелі.
+  function rollEl(m, live) {
+    const s = document.createElement('span');
+    if (m.kind === 'coin') {
+      // Бік читаємо хвостом рядка, а не першим словом: боків колись може стати більше («Стало ребром»),
+      // і двослівний не має лишити порожню плитку. Формат не впізнали — малюємо текст як є.
+      const hit = /🪙\s+(.+)$/.exec(m.text || '');
+      const side = hit ? hit[1].trim() : String(m.text || '').replace('🪙', '').trim();
+      s.className = 'die coin';
+      s.innerHTML = '<i class="cf">🪙</i><b class="cs"></b>';
+      s.querySelector('.cs').textContent = side;
+      if (live) flipCoin(s.querySelector('.cf'), s.querySelector('.cs'));
+      return s;
+    }
+    const [, value, min, max] = /🎲 (\d+) \((\d+)–(\d+)\)/.exec(m.text) || [];
+    const [v, lo, hi] = [+value, +min, +max];
+    s.className = 'die' + (isFace(lo, hi) ? ' face' : '');
+    s.dataset.rng = lo + '–' + hi;
+    s.title = 'з ' + lo + '–' + hi;
+    paintDie(s, v, lo, hi);
+    if (live) rollDie(s, lo, hi, v);
+    return s;
+  }
+  /// Під рядком кидків — межі, якщо вони в усіх однакові («з 1–6»); різні — видно в підказці кожної кісточки.
+  function paintRollRange(el) {
+    const rngs = [...new Set([...el.querySelectorAll('.dies .die[data-rng]')].map((d) => d.dataset.rng))];
+    const coins = el.querySelectorAll('.dies .die.coin').length;
+    el.querySelector('.rng').textContent = rngs.length === 1 && !coins ? 'з ' + rngs[0] : '';
+  }
+  const ROLL_MS = 3 * 60e3;
+  const ROLL_MAX = 12;
+  /// Той самий нік кидає ще раз невдовзі — дописуємо кісточку в його рядок, а не заводимо новий.
+  const rollable = (prev, m) => !!prev && prev.classList.contains('dice') && (m.kind === 'dice' || m.kind === 'coin')
+    && sameNick(prev.dataset.nick, m.nick) && prev.dataset.day === dayKey(m.at)
+    && new Date(m.at).getTime() - +prev.dataset.ts < ROLL_MS && prev.querySelectorAll('.dies > .die').length < ROLL_MAX;
+  function rollInto(prev, m, live) {
+    prev.querySelector('.dies').appendChild(rollEl(m, live));
+    paintRollRange(prev);
+    prev.querySelector('.time').textContent = tm(m.at);
+    prev.dataset.ts = String(new Date(m.at).getTime());
+  }
+
+  /// Що зроблено в Лавці — рядком у балачках: «🎁 Оля дарує Петрові …», «💌 Оля присвячує …», «🎆 Оля запускає феєрверк!».
+  const DEEDS = { gift: '🎁', dedication: '💌', fx: '🎆' };
   function fillMessage(el, m, mine, live) {
     const isLog = m.kind === 'system';
     // Монетка живе в тій самій розкладці, що й кубик (.msg.dice — рядок у флексі); /choose і /8ball
     // це звичайні рядки з іконкою в самому тексті, тож їм окрема гілка ні до чого.
     el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj'
-      : m.kind === 'dice' ? 'dice' : m.kind === 'coin' ? 'dice coin'
-        : m.kind === 'tables' ? 'tables' : mine ? 'mine' : '');
-    if (m.kind === 'tables') {
+      : m.kind === 'dice' || m.kind === 'coin' ? 'dice'
+        : m.kind === 'tables' ? 'tables' : m.kind === 'invite' ? 'invite' : m.kind === 'note' ? 'note'
+          : DEEDS[m.kind] ? 'deed ' + m.kind : mine ? 'mine' : '');
+    if (DEEDS[m.kind]) {
+      // Подарували чи присвятили мені — підсвічуємо, як особистий заклик.
+      if (m.to && sameNick(m.to, me.nick)) el.classList.add('tome');
+      el.innerHTML = `<span class="iv-ico">${DEEDS[m.kind]}</span>${nickHtml(m.nick, 'n', true)}`
+        + `<span class="t">${esc(String(m.text || '').replace(/^\s*(🎁|💌|🎆)\s*/u, ''))}</span><span class="time">${tm(m.at)}</span>`;
+      if (live && m.kind === 'fx') el.classList.add('flash');
+    } else if (m.kind === 'invite') {
+      // «📣 Влад кличе в Мафію [Сісти]» — живий рядок: кнопку домальовує paintRoomSlots, а щойно сісти вже нікуди,
+      // рядок ховається сам. Особистий заклик (personal) бачить лише той, кого кликали, — його й підсвічуємо.
+      if (m.personal) el.classList.add('tome');
+      el.innerHTML = `<span class="iv-ico">📣</span>${nickHtml(m.nick, 'n', true)}<span class="t">${esc(m.text)}</span><span class="time">${tm(m.at)}</span>`;
+    } else if (m.kind === 'note') {
+      // Особиста відповідь сервера («📣 Покликав Олю») — як /столи: бачиш лише ти, у базі її нема.
+      el.innerHTML = `<span class="t">${linkify(m.text)}</span><span class="time">лише тобі</span>`;
+    } else if (m.kind === 'tables') {
       // Відповідь на /столи бачить лише той, хто спитав: це погляд у лобі, не виходячи з балачок,
       // а не репліка. Тому вона й у базу не лягає — після F5 її не буде, і це правильно.
       el.innerHTML = '<span class="n">🎲 ' + esc(m.text) + '</span><span class="time">лише тобі</span>'
@@ -998,26 +1287,11 @@
         + '</div>';
       paintRoomSlots(el);
       if (!el.querySelector('.roomlink')) el.querySelector('.tlist').innerHTML = '<span class="muted small">Столи щойно розібрали.</span>';
-    } else if (m.kind === 'coin') {
-      // Бік читаємо хвостом рядка, а не першим словом: боків колись може стати більше («Стало ребром»),
-      // і двослівний не має лишити порожню плитку. Формат не впізнали — малюємо текст як є.
-      const hit = /🪙\s+(.+)$/.exec(m.text || '');
-      const side = hit ? hit[1].trim() : String(m.text || '').replace('🪙', '').trim();
+    } else if (m.kind === 'coin' || m.kind === 'dice') {
       el.classList.toggle('mine', mine);
-      el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="die"></span>`
-        + `<span class="t">${esc(side || '')}</span><span class="time">${tm(m.at)}</span>`;
-      const coin = el.querySelector('.die');
-      coin.textContent = '🪙';
-      if (live) flipCoin(coin, el.querySelector('.t'));
-    } else if (m.kind === 'dice') {
-      const [, value, min, max] = /🎲 (\d+) \((\d+)–(\d+)\)/.exec(m.text) || [];
-      const [v, lo, hi] = [+value, +min, +max];
-      el.classList.toggle('mine', mine);
-      el.innerHTML = `<span class="n">${esc(m.nick)}</span><span class="die${isFace(lo, hi) ? ' face' : ''}"></span>`
-        + `<span class="muted small">з ${lo}–${hi}</span><span class="time">${tm(m.at)}</span>`;
-      const die = el.querySelector('.die');
-      paintDie(die, v, lo, hi);
-      if (live) rollDie(die, lo, hi, v);
+      el.innerHTML = `${nickHtml(m.nick, 'n', true)}<span class="dies"></span><span class="rng muted small"></span><span class="time">${tm(m.at)}</span>`;
+      el.querySelector('.dies').appendChild(rollEl(m, live));
+      paintRollRange(el);
     } else if (m.kind === 'dj') {
       el.innerHTML = `<img src="/static/glek.svg" alt=""><div><span class="n">${esc(m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span></div>`;
     } else if (isLog) {
@@ -1026,7 +1300,9 @@
       // Саме лише «🔥» — не рядок тексту, а жест: показуємо на весь зріст, поки їх не набралося багато.
       const big = emojiCount(m.text);
       if (big && big <= 3) el.classList.add('big');
-      el.innerHTML = `<span class="n">${esc(m.nick)}${crownOf(m.nick)}</span><span class="t">${highlightMentions(linkify(m.text))}</span><span class="time">${tm(m.at)}</span>`;
+      // корона — всередині ніка: repaintCrowns() переставляє її саме там
+      el.innerHTML = `<span class="n who-n${HPeople.nickCls(m.nick)}" data-who="${esc(m.nick)}" data-nb="1" style="--h:${HPeople.hue(m.nick)}">${HPeople.badge(m.nick)}${esc(m.nick)}${crownOf(m.nick)}</span>`
+        + `<span class="t">${highlightMentions(linkify(m.text))}</span><span class="time">${tm(m.at)}</span>`;
     }
     // Для днів, групування й гортання вгору: коли, хто і який це рядок у базі.
     el.dataset.day = dayKey(m.at);
@@ -1040,7 +1316,7 @@
     const isLog = m.kind === 'system';
     const el = document.createElement('div');
     fillMessage(el, m, sameNick(m.nick, me.nick), live);
-    if (!isLog && m.kind !== 'tables' && m.id > 0) decorateMessage(el, m);
+    if (!isLog && m.kind !== 'tables' && m.kind !== 'invite' && m.id > 0) decorateMessage(el, m);
     // Рядок про живий стіл («Новий стіл: Мафія», «Оля і Петро сіли грати») носить його id — лишаємо
     // слот під кнопку, щоб до столу можна було дійти прямо звідси (PLAN.md §7.4).
     if (m.roomId && m.kind !== 'tables') {
@@ -1067,8 +1343,15 @@
     const mine = sameNick(m.nick, me.nick);
     // Хто гортає історію вгору, того донизу не тягнемо: стрибок посеред читання гірший за «нове внизу».
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-    const el = buildMessage(m, live);
     const prev = lastMsg(box);
+    if (!isLog && rollable(prev, m)) {
+      // ще один кидок того самого ніка — у його рядок, а не новим рядком
+      rollInto(prev, m, live);
+      if (scroll && (atBottom || mine)) box.scrollTop = box.scrollHeight;
+      if (live) typingGone('chat', m.nick);
+      return;
+    }
+    const el = buildMessage(m, live);
     if (!(isLog && coalesce(prev, el, m))) {
       if (!prev || prev.dataset.day !== el.dataset.day) box.appendChild(daySep(m.at));
       else if (!isLog && groupable(prev, el)) el.classList.add('cont');
@@ -1078,7 +1361,8 @@
     if (!scroll || atBottom) trimTop(box, KEEP_LINES);
     if (scroll && (atBottom || mine)) box.scrollTop = box.scrollHeight;
     if (!isLog) learnNick(m.nick);
-    const repliedMe = !mine && !isLog && sameNick(m.replyNick, me.nick);
+    // Порожнє з порожнім теж «збігається» — без цього той, хто ще не назвався, бачив би кожен рядок як відповідь собі.
+    const repliedMe = !mine && !isLog && !!me.nick && !!m.replyNick && sameNick(m.replyNick, me.nick);
     const tagged = !mine && !isLog && m.kind === 'chat' && taggedMe(m.text);
     if (repliedMe || tagged) el.classList.add('tome');
     // звук — лише на живе повідомлення, не на історію після F5
@@ -1088,7 +1372,7 @@
       // Непрочитане — це люди. Глек бейджа не смикає: інакше той не сходив би з екрана й нічого б не означав.
       if (m.kind !== 'dj') setUnread(unread + 1);
       if (repliedMe) toast(`↩ ${m.nick} відповідає тобі: ${m.text}`.slice(0, 140));
-      else if (tagged) toast(`@ ${m.nick} кличе тебе: ${m.text}`.slice(0, 140));
+      else if (tagged) toast(`@ ${m.nick} гукає тебе: ${m.text}`.slice(0, 140));
       else if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
     }
   }
@@ -1179,7 +1463,7 @@
     if (box.querySelector(':scope > .msg-top')) return;
     const t = document.createElement('div');
     t.className = 'msg-top muted small';
-    t.textContent = box.id === 'log' ? 'Далі Журнал не пам\'ятає' : 'Це найперше, що тут писали';
+    t.textContent = box.id === 'log' ? 'Далі Журнал не пам\'ятає' : 'Це найперше, що тут тяпнули';
     box.insertBefore(t, box.firstChild);
   }
   function prependOlder(box, list) {
@@ -1187,6 +1471,7 @@
     const frag = document.createDocumentFragment();
     let prev = null;
     for (const m of list) {
+      if (!log && rollable(prev, m)) { rollInto(prev, m, false); continue; }
       const el = buildMessage(m, false);
       if (log && coalesce(prev, el, m)) continue;
       if (!prev || prev.dataset.day !== el.dataset.day) frag.appendChild(daySep(m.at));
@@ -1275,7 +1560,7 @@
     b.setAttribute('aria-expanded', String(open));
   });
 
-  // ---------- «Оля пише…» ----------
+  // ---------- «Оля тяпає…» ----------
   const TYPING_MS = 6000;
   const typers = { chat: new Map(), table: new Map() };   // нік → коли забути
   const typedAt = { chat: 0, table: 0 };
@@ -1292,9 +1577,9 @@
     for (const [n, until] of map) if (until < now) map.delete(n);
     const names = [...map.keys()];
     if (!names.length) return '';
-    if (names.length === 1) return names[0] + ' пише…';
-    if (names.length === 2) return names[0] + ' і ' + names[1] + ' пишуть…';
-    return names[0] + ', ' + names[1] + ' і ще ' + (names.length - 2) + ' пишуть…';
+    if (names.length === 1) return names[0] + ' тяпає…';
+    if (names.length === 2) return names[0] + ' і ' + names[1] + ' тяпають…';
+    return names[0] + ', ' + names[1] + ' і ще ' + (names.length - 2) + ' тяпають…';
   }
   function paintTyping() {
     const a = typingText(typers.chat), b = typingText(typers.table);
@@ -1328,8 +1613,8 @@
       + '<div class="tc-top"><b class="tc-name"></b><button type="button" class="ghost icon tc-close" title="Згорнути" aria-label="Згорнути">✕</button></div>'
       + '<div class="tc-lines messages"></div>'
       + '<div class="tc-typing typing" hidden></div>'
-      + '<form class="tc-form"><input type="text" maxlength="500" autocomplete="off" placeholder="Сказати за столом…">'
-      + '<button class="primary" type="submit" title="Сказати">→</button></form></div>';
+      + '<form class="tc-form"><input type="text" maxlength="500" autocomplete="off" placeholder="Тяпни щось за столом…">'
+      + '<button class="primary" type="submit" title="Тяпнути (Enter)">→</button></form></div>';
     const q = (s) => root.querySelector(s);
     const o = {
       root, head: q('.tc-head'), last: q('.tc-last'), badge: q('.tc-badge'), name: q('.tc-name'),
@@ -1398,7 +1683,7 @@
     const box = tc.lines;
     box.innerHTML = '';
     const list = (table.id && table.lines.get(table.id)) || [];
-    if (!list.length) box.innerHTML = '<div class="tc-empty muted small">Тут поки тихо. Скажи щось першим — почують усі, хто за столом і біля нього.</div>';
+    if (!list.length) box.innerHTML = '<div class="tc-empty muted small">Тут поки тихо. Тяпни щось першим — почують усі, хто за столом і біля нього.</div>';
     for (const l of list) appendTableLine(l, false);
     scrollTable();
     paintTableLast();
@@ -1418,11 +1703,11 @@
     while (msgs(box).length > 100) box.firstElementChild.remove();
   }
   function tableSend() {
-    const text = tc.input.value.trim();
+    const text = dotToSlash(tc.input.value.trim());
     if (!text || !conn || !table.id) return;
     conn.invoke('TableSay', table.id, text)
       .then((err) => { if (err) { toast(err, 'err'); return; } tc.input.value = ''; })
-      .catch((e) => toast('Не відправилось: ' + e.message, 'err'));
+      .catch((e) => toast('Халепа: не відправилось — ' + e.message, 'err'));
   }
   /// Каркас ігор каже, біля якого столу ми стоїмо (null — ні біля якого) і чи стіл на весь екран.
   function onTable(info, layout) {
@@ -1472,7 +1757,7 @@
     }
     const acts = document.createElement('span');
     acts.className = 'macts';
-    acts.innerHTML = '<button type="button" class="ghost" data-a="like" title="❤ (подвійний клік — теж)">❤</button>'
+    acts.innerHTML = '<button type="button" class="ghost" data-a="like" title="❤ Вподобати (подвійний клік — теж)">❤</button>'
       + '<button type="button" class="ghost" data-a="reply" title="Відповісти">↩</button>';
     el.appendChild(acts);
     const likes = document.createElement('button');
@@ -1559,7 +1844,7 @@
     mentionSel = Math.min(mentionSel, list.length - 1);
     const online = new Set(((state && state.online) || []).map((n) => n.toLowerCase()));
     box.innerHTML = list.map((n, i) => `<button type="button" class="${i === mentionSel ? 'on' : ''}" data-nick="${esc(n)}">`
-      + `@${esc(n)}${crownOf(n)}${online.has(n.toLowerCase()) ? ' <span class="dot" title="на сайті"></span>' : ''}</button>`).join('');
+      + `@${esc(n)}${crownOf(n)}${online.has(n.toLowerCase()) ? ' <span class="dot" title="тусить на сайті"></span>' : ''}</button>`).join('');
     box.hidden = false;
     box.querySelectorAll('button').forEach((b) => b.onmousedown = (e) => { e.preventDefault(); insertMention(b.dataset.nick); });
   }
@@ -1596,6 +1881,7 @@
   $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Escape' && replyTo) clearReply(); });
 
   $('messages').addEventListener('click', (e) => {
+    if (e.target.closest('[data-who]')) return;      // клік по ніку — картка людини (web/people.js), а не кнопки повідомлення
     const el = e.target.closest('.msg[data-id]');
     if (!el) return;
     const btn = e.target.closest('[data-a], .mlikes');
@@ -1623,19 +1909,20 @@
   });
   $('messages').addEventListener('dblclick', (e) => {
     const el = e.target.closest('.msg[data-id]');
-    if (!el || e.target.closest('a, button, .rq')) return;
+    if (!el || e.target.closest('a, button, .rq, [data-who]')) return;
     window.getSelection()?.removeAllRanges();
     likeMessage(+el.dataset.id);
   });
   $('chatForm').onsubmit = (e) => {
     e.preventDefault();
-    const text = $('chatInput').value.trim();
-    if (!text || !conn) return;
+    const text = dotToSlash($('chatInput').value.trim());
+    if (!text) return;
+    if (!conn) { askNick(true); return; }   // лише дивишся — спершу назвись
     if (chatTab !== 'chat') setChatTab('chat');
     const call = replyTo ? conn.invoke('SendReply', text, replyTo.id) : conn.invoke('SendChat', text);
     call
       .then((err) => { if (err) { toast(err, 'err'); return; } $('chatInput').value = ''; hideCmdHint(); clearReply(); })
-      .catch((err) => toast('Не відправилось: ' + err.message, 'err'));
+      .catch((err) => toast('Халепа: не відправилось — ' + err.message, 'err'));
   };
   function setChatTab(tab) {
     // «Стіл» є лише тоді, коли балачка столу живе в панелі; інакше вона — шторка, і вкладки нема.
@@ -1646,11 +1933,12 @@
     $('log').hidden = tab !== 'log';
     $('tablePane').hidden = tab !== 'table';
     $('logFilters').hidden = tab !== 'log';
-    // У столу свій рядок вводу, а «хто на сайті» там лише займав би місце розмови.
+    // У столу свій рядок вводу, а «хто на сайті» там лише займав би місце розмови. У Журналі писати нікуди:
+    // рядок вводу там лише вводив в оману (написав у Журналі — полетіло в Балачки).
     const general = tab !== 'table';
-    $('chatForm').hidden = !general;
+    $('chatForm').hidden = tab !== 'chat';
     $('online').hidden = !general;
-    if (!general) { hideCmdHint(); hideEmoji(); hideMentions(); clearReply(); }
+    if (tab !== 'chat') { hideCmdHint(); hideEmoji(); hideMentions(); clearReply(); }
     paintTyping();
     if (tab === 'table') {
       table.unread = 0;
@@ -1667,14 +1955,19 @@
   $('chatTabs').querySelectorAll('button[data-tab]').forEach((b) => b.onclick = () => setChatTab(b.dataset.tab));
 
   // ---------- маршрути ----------
-  // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #chat (вкладка балачок на телефоні).
-  // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
-  const ROUTES = ['efir', 'lib', 'games', 'chat'];
-  const LIB_TABS = ['history', 'likes', 'playlists', 'rating', 'top', 'bans', 'ads'];
-  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', chat: 'Балачки' };
-  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', rating: 'Рейтинг', top: 'Хто скільки', bans: 'Бан-лист', ads: 'Реклама' };
-  // Вкладки зі списком рядків уміють шукати по собі; у плейлистах і «Хто скільки» шукати нічого.
-  const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', rating: 'знайти трек', bans: 'знайти в бан-листі', ads: 'знайти рекламу' };
+  // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
+  // балачок на телефоні). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
+  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat'];
+  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback'];
+  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки' };
+  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги' };
+  // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
+  const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках' };
+  // Старі адреси (закладки, посилання в балачках) ведуть туди, куди переїхали їхні сторінки.
+  const MOVED = {
+    'lib/rating': '#stats/music', 'lib/top': '#stats/music',
+    'games/leaders': '#stats/games', 'games/time': '#stats/time', 'games/daily': '#games',
+  };
   let libShown = null;    // яку вкладку бібліотеки вже намалювали: щоб не смикати API на кожен маршрут
 
   function parseHash() {
@@ -1682,14 +1975,20 @@
     const i = raw.indexOf('/');
     return i < 0 ? { head: raw, tail: '' } : { head: raw.slice(0, i), tail: raw.slice(i + 1) };
   }
-  const hashFor = (r) => (r === 'lib' ? '#lib/' + libTab : '#' + r);
+  const hashFor = (r) => (r === 'lib' ? '#lib/' + libTab : r === 'stats' ? HPeople.statsHash()
+    : r === 'who' ? '#who/' + encodeURIComponent(me.nick || '') : '#' + r);
   function go(hash) {
     if (location.hash === hash) applyRoute(); else location.hash = hash;
   }
 
   let lastHash = null;
   function applyRoute() {
-    const { head, tail } = parseHash();
+    let { head, tail } = parseHash();
+    const moved = MOVED[head + '/' + tail] || (head === 'games' && tail === 'profile' ? '#who/' + encodeURIComponent(me.nick || '') : null);
+    if (moved) {
+      history.replaceState(null, '', moved);
+      ({ head, tail } = parseHash());
+    }
     // Перейшов кудись — починаємо згори: інакше з довгого лобі потрапляєш на стіл уже прогорнутим.
     if (lastHash !== null && lastHash !== location.hash) window.scrollTo(0, 0);
     lastHash = location.hash;
@@ -1708,13 +2007,22 @@
       $('libFind').hidden = !LIB_FIND[libTab];
       $('libFind').placeholder = LIB_FIND[libTab] || '';
     }
+    // #who без ніка — це «я»; хто ще не назвався, тому спершу картка «Хто прийшов?».
+    if (r === 'who' && !tail) {
+      if (!me.nick) { askNick(true); history.replaceState(null, '', hashFor('efir')); r = 'efir'; }
+      else { history.replaceState(null, '', hashFor('who')); tail = encodeURIComponent(me.nick); }
+    }
     route = r;
-    $('hdrTitle').textContent = ROUTE_TITLE[r];    // на телефоні в шапці лишається сама назва розділу
+    const whoNick = r === 'who' ? decodeURIComponent(tail) : '';
+    $('hdrTitle').textContent = r === 'who' && !sameNick(whoNick, me.nick) ? whoNick : r === 'who' ? 'Я' : ROUTE_TITLE[r];
     for (const name of ROUTES) document.body.classList.toggle('route-' + name, r === name);
     document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.classList.toggle('on',
       b.dataset.route === r || (r === 'chat' && b.dataset.route === 'chat')));
+    $('meBtn').classList.toggle('on', r === 'who' && sameNick(whoNick, me.nick));
     $('libTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === libTab));
     if (r === 'games') HGames.show(head === 'games' ? tail : ''); else HGames.hide();
+    if (r === 'stats' || r === 'who') HPeople.show(r, tail); else HPeople.hide();
+    if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
     if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
     if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
@@ -1770,7 +2078,7 @@
       if (lastQuery !== text) return;
       lastResults = list;
       showResults(list, list.length ? null : 'нічого не знайшов, спробуй інакше або кинь посилання');
-    } catch (e) { showResults([], 'пошук впав: ' + e.message); }
+    } catch (e) { showResults([], 'ой-йой, пошук упав: ' + e.message); }
   }
   q.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => search(q.value.trim()), 350); });
   q.addEventListener('keydown', (e) => {
@@ -1795,12 +2103,103 @@
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     const t = e.target;
     if (t && ((t.matches && t.matches('input, textarea, select')) || t.isContentEditable)) return;
-    if (e.key === '/') { e.preventDefault(); go(hashFor('efir')); q.focus(); return; }
-    if (e.key === ']') { e.preventDefault(); toggleChat(); return; }
+    // Українська розкладка: на місці «/» там «.», а на місці «]» — «ї». Хай працюють обидві.
+    if (e.key === '/' || e.key === '.') { e.preventDefault(); go(hashFor('efir')); q.focus(); return; }
+    if (e.key === ']' || e.key === 'ї' || e.key === 'Ї') { e.preventDefault(); toggleChat(); return; }
+    if (e.key === '?') { e.preventDefault(); showKeys(); return; }
     if (e.key === '1') { e.preventDefault(); go(hashFor('efir')); }
     else if (e.key === '2') { e.preventDefault(); go(hashFor('lib')); }
     else if (e.key === '3') { e.preventDefault(); go(hashFor('games')); }
+    else if (e.key === '4') { e.preventDefault(); go(hashFor('stats')); }
   });
+  // ---------- «💡 Розробнику»: пропозиції й баги ----------
+  // Записка йде в базу (Feedback.cs) разом із тим, де людина на сайті, розміром екрана й браузером — так баг легше
+  // відтворити. Свої записки з відповіддю розробника видно тут же, у «Моїх записках»; свіжа відповідь — бейдж на 💡.
+  const FB_KINDS = {
+    idea: { ph: 'Що варто додати? Наприклад: «щоб у балачках можна було закріпити повідомлення»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
+    change: { ph: 'Що змінити й чому? Наприклад: «на телефоні черга завелика — хай згортається»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
+    bug: { ph: 'Що робиш → що стається → що мало б статися. Наприклад: «тисну Скіп — нічого, а мало перемкнути»', note: 'Разом із текстом піде, де ти на сайті, розмір екрана й браузер — так баг легше знайти.' },
+  };
+  const FB_STATUS = { new: ['нове', ''], seen: ['переглянуто', ''], planned: ['у планах', 'warn'], done: ['зроблено', 'ok'], nope: ['не буде', 'err'] };
+  const FB_ICON = { idea: '💡', change: '✏', bug: '🐞' };
+  let fbKind = 'idea';
+  const fbSeenAt = () => { try { return +(localStorage.getItem('fbSeenAt') || 0); } catch { return 0; } };
+  function setFbKind(k) {
+    fbKind = FB_KINDS[k] ? k : 'idea';
+    $('fbKinds').querySelectorAll('[data-k]').forEach((b) => b.classList.toggle('on', b.dataset.k === fbKind));
+    $('fbText').placeholder = FB_KINDS[fbKind].ph;
+    $('fbNote').textContent = FB_KINDS[fbKind].note;
+  }
+  const fbStatusChip = (s) => { const [l, cls] = FB_STATUS[s] || [s, '']; return `<span class="chip ${cls}">${esc(l)}</span>`; };
+  async function loadMyFeedback(open) {
+    if (!me.nick) return;
+    let r;
+    try { r = await api('GET', '/api/feedback/mine'); } catch { return; }
+    const items = (r && r.items) || [];
+    const seen = fbSeenAt();
+    // Свіжа відповідь — розробник щось зробив із запискою відтоді, як людина востаннє дивилась свої.
+    const isFresh = (x) => x.status !== 'new' && Date.parse(x.updatedAt) > seen;
+    const fresh = items.filter(isFresh).length;
+    if (me.role !== 'admin') { $('fbBadge').hidden = !fresh; $('fbBadge').textContent = fresh ? '•' : ''; }
+    $('fbMine').hidden = !items.length;
+    $('fbMineN').textContent = items.length ? `· ${items.length}` + (fresh ? ` · нових відповідей ${fresh}` : '') : '';
+    $('fbMineList').innerHTML = items.map((x) => `<div class="fbm${isFresh(x) ? ' fresh' : ''}">
+        <div class="fbm-head">${FB_ICON[x.kind] || '💬'} ${fbStatusChip(x.status)}<span class="muted small">${esc(dayTime(x.at))}</span></div>
+        <div class="fbm-text">${esc(x.text)}</div>
+        ${x.reply ? `<div class="fbm-reply">↪ <b>Розробник:</b> ${linkify(x.reply)}</div>` : ''}
+      </div>`).join('');
+    if (open) $('fbMine').open = true;
+  }
+  $('fbMine').addEventListener('toggle', () => {
+    if (!$('fbMine').open) return;
+    try { localStorage.setItem('fbSeenAt', String(Date.now())); } catch { /* приватне вікно */ }
+    if (me.role !== 'admin') $('fbBadge').hidden = true;
+  });
+  function openFeedback() {
+    setFbKind(fbKind);
+    $('fbCount').textContent = `${$('fbText').value.length} / 2000`;
+    $('fbModal').hidden = false;
+    setTimeout(() => $('fbText').focus(), 50);
+    loadMyFeedback(!$('fbBadge').hidden && me.role !== 'admin');
+  }
+  $('fbBtn').onclick = openFeedback;
+  $('fbClose').onclick = () => { $('fbModal').hidden = true; };
+  $('fbModal').addEventListener('click', (e) => { if (e.target === $('fbModal')) $('fbModal').hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('fbModal').hidden) $('fbModal').hidden = true; });
+  $('fbKinds').querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { setFbKind(b.dataset.k); $('fbText').focus(); });
+  $('fbText').addEventListener('input', () => { $('fbCount').textContent = `${$('fbText').value.length} / 2000`; });
+  $('fbForm').onsubmit = (e) => {
+    e.preventDefault();
+    const text = $('fbText').value.trim();
+    if (text.length < 5) { toast('Тяпни трохи більше — хоч кілька слів', 'err'); $('fbText').focus(); return; }
+    busy($('fbSend'), 'надсилаю…', async () => {
+      try {
+        const r = await api('POST', '/api/feedback', {
+          kind: fbKind, text, place: location.hash || '#efir', screen: `${window.innerWidth}×${window.innerHeight}`,
+          ua: navigator.userAgent.slice(0, 300),
+        });
+        ok(r);
+        $('fbText').value = '';
+        $('fbCount').textContent = '0 / 2000';
+        loadMyFeedback(true);
+        if (me.role === 'admin') loadFeedbackCount();
+      } catch (err) { fail(err); }
+    });
+  };
+  /// Адміну — скільки нових записок чекає: бейдж на 💡 і на вкладці «Пропозиції».
+  async function loadFeedbackCount() {
+    if (me.role !== 'admin') return;
+    let n = 0;
+    try { n = ((await api('GET', '/api/feedback/new-count')) || {}).count || 0; } catch { return; }
+    for (const id of ['fbBadge', 'fbTabBadge']) { $(id).hidden = !n; $(id).textContent = n; }
+    $('fbBtn').title = n ? `Нових записок: ${n}` : 'Пропозиції й баги — розробнику';
+  }
+
+  // ---------- шпаргалка клавіш ----------
+  function showKeys() { $('keysModal').hidden = false; $('keysClose').focus(); }
+  $('keysClose').onclick = () => { $('keysModal').hidden = true; };
+  $('keysModal').addEventListener('click', (e) => { if (e.target === $('keysModal')) $('keysModal').hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('keysModal').hidden) $('keysModal').hidden = true; });
 
   // Поле звільняється одразу, як тільки закинув: наступне посилання можна вставляти, поки сайт розбирає попереднє.
   // (Раніше поле чистила відповідь на старий запит — і стирала вже вставлене нове посилання.)
@@ -2052,12 +2451,12 @@
 
   async function startRec() {
     if (recorder) return;
-    if (!voiceMax()) { toast('Голосові вимкнені', 'err'); return; }
-    if (!canRecord()) { toast('Цей браузер не вміє писати звук (потрібен https і свіжий Chrome, Firefox або Safari)', 'err'); return; }
+    if (!voiceMax()) { toast('Халепа: голосові вимкнені', 'err'); return; }
+    if (!canRecord()) { toast('Халепа: цей браузер не вміє писати звук (потрібен https і свіжий Chrome, Firefox або Safari)', 'err'); return; }
     if (!me.nick) { askNick(); return; }
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
-    catch (e) { toast(e.name === 'NotAllowedError' ? 'Мікрофон не дозволено — дозволь у браузері й спробуй ще' : 'Мікрофон не відкрився: ' + e.message, 'err'); return; }
+    catch (e) { toast(e.name === 'NotAllowedError' ? 'Халепа: мікрофон не дозволено — дозволь у браузері й спробуй ще' : 'Халепа: мікрофон не відкрився — ' + e.message, 'err'); return; }
     dropRecBlob();
     recStream = stream;
     recChunks = [];
@@ -2095,7 +2494,7 @@
     stopMeter();
     releaseMic();
     if (recTossed) { closeRec(); return; }
-    if (blob.size < 1024) { closeRec(); toast('Нічого не записалось, спробуй ще раз', 'err'); return; }
+    if (blob.size < 1024) { closeRec(); toast('Халепа: нічого не записалось — ану ще раз', 'err'); return; }
     recBlob = blob;
     recUrl = URL.createObjectURL(blob);
     drawRecPreview(sec);
@@ -2118,7 +2517,7 @@
     recBox.className = 'rec prev';
     recBox.innerHTML = `<span class="rec-mic">🎙</span><audio controls src="${recUrl}"></audio><span class="chip">${fmt(sec)}</span>
       <button id="recSend" class="primary">Закинути в чергу</button>
-      <button id="recAgain" class="ghost">Ще раз</button>
+      <button id="recAgain" class="ghost">Ану ще раз</button>
       <button id="recDrop" class="ghost icon danger" title="Викинути">✕</button>`;
     $('recSend').onclick = (e) => busy(e.currentTarget, 'несу…', sendRec);
     $('recAgain').onclick = () => { closeRec(); startRec(); };
@@ -2197,7 +2596,7 @@
     if (a.dataset.id === id && !a.paused) { a.pause(); return; }
     a.dataset.id = id;
     a.src = `/api/voice/${encodeURIComponent(id)}.mp3`;
-    a.play().catch((e) => toast('Не програлось: ' + e.message, 'err'));
+    a.play().catch((e) => toast('Халепа: не програлось — ' + e.message, 'err'));
   }
   function markVoiceButtons() {
     const a = $('voiceAudio');
@@ -2303,11 +2702,12 @@
     const bad = jobs.filter((j) => j.state === 'err');
     if (!bad.length) {
       const one = done.length === 1 ? done[0] : null;
-      showDrop('done', one && one.kind === 'album' ? 'Ось трекліст' : 'Закинуто!',
-        one ? String(one.msg).replace(/^Закинуто:\s*/, '').replace(/ — трекліст під пошуком$/, '') : `усі ${done.length} по черзі`, '');
+      // Префікс «Закинуто:» у відповіді сервера ріжемо разом із вигуком перед ним («Є! Закинуто: …»), якщо він там буде.
+      showDrop('done', one && one.kind === 'album' ? 'Лови трекліст' : 'Є! Закинуто',
+        one ? String(one.msg).replace(/^(?:\S+!\s+)?Закинуто:\s*/, '').replace(/ — трекліст під пошуком$/, '') : `усі ${done.length} по черзі`, '');
       hideDrop(1600);
     } else {
-      showDrop('err', done.length ? `Закинуто ${done.length} з ${jobs.length}` : 'Не вийшло', bad[0].msg, bad[0].label);
+      showDrop('err', done.length ? `Закинуто ${done.length} з ${jobs.length}` : 'От халепа — не вийшло', bad[0].msg, bad[0].label);
       hideDrop(3500);
     }
   }
@@ -2318,7 +2718,9 @@
   function filterLib() {
     const box = $('lib');
     const want = $('libFind').value.trim().toLowerCase();
-    const rows = box.querySelectorAll('.list > li');
+    const rows = box.querySelectorAll('.list > li:not(.lday)');
+    // підписи днів під час пошуку лише заважають: знайдене з різних днів стоїть підряд
+    box.querySelectorAll('.list > li.lday').forEach((li) => { li.hidden = !!want; });
     let shown = 0;
     rows.forEach((li) => {
       const hit = !want || li.textContent.toLowerCase().includes(want);
@@ -2336,7 +2738,7 @@
   const trackRow = (t, right, extra) => `<li>
       ${cover(t)}
       <div style="min-width:0"><div class="t ${extra?.skipped ? 'skipped' : ''}">${esc(t.title)} <span class="muted">· ${esc(t.artist)}</span></div><div class="r">${right}</div></div>
-      <div class="btns">${voiceBtn(t)}<button class="q" data-id="${esc(t.id)}" title="Закинути в чергу">в чергу</button><button class="ghost pl" data-id="${esc(t.id)}" data-title="${esc(t.title)}" title="У плейлист">＋</button></div>
+      <div class="btns">${voiceBtn(t)}<button class="q" data-id="${esc(t.id)}" title="Закинути в чергу">в чергу</button><button class="ghost pl" data-id="${esc(t.id)}" data-title="${esc(t.title)}" title="Зберегти в плейлист">📂＋</button></div>
     </li>`;
   function wireRows(root) {
     root.querySelectorAll('button.q').forEach((b) => b.onclick = (e) => busy(e.currentTarget, '…', () => queueTrack(b.dataset.id)));
@@ -2347,25 +2749,65 @@
     await drawLib();
     filterLib();
   }
+  // «Що вже було»: дні підписані, як у балачках («13:16» — а якого дня?), «Мої» — лише те, що закинув я,
+  // «Показати ще» тягне старіше пачками (сервер уміє before=<id>).
+  let histWho = (() => { try { return localStorage.getItem('histWho') === 'mine' ? 'mine' : 'all'; } catch { return 'all'; } })();
+  const HIST_N = 80;
+  function histRows(list) {
+    let day = null;
+    return list.map((h) => {
+      const d = dayKey(h.startedAt);
+      const sep = d !== day ? `<li class="lday"><span>${esc(dayLabel(h.startedAt))}</span></li>` : '';
+      day = d;
+      const who = h.source === 'autodj' ? esc(dj()) : h.requestedBy ? nickHtml(h.requestedBy, 'rnick') : '';
+      return sep + trackRow(h.track,
+        `${who}${h.via === 'suggestion' ? ' · порада' : ''}${h.likes ? ' · ❤' + h.likes : ''}${h.skipped ? ' · скіп' : ''} · ${tm(h.startedAt)}`,
+        { skipped: h.skipped });
+    }).join('');
+  }
+  async function renderHistory(more) {
+    const box = $('lib');
+    const ul = box.querySelector('ul.hist');
+    const last = more && ul ? +(ul.dataset.last || 0) : 0;
+    const qs = `n=${HIST_N}` + (histWho === 'mine' && me.nick ? '&by=' + encodeURIComponent(me.nick) : '') + (last ? '&before=' + last : '');
+    let list = await api('GET', '/api/history?' + qs);
+    // Сервер, що ще не знає by, віддасть усе — тоді «Мої» відбираємо тут, у тому, що прийшло.
+    if (histWho === 'mine') list = list.filter((h) => h.source === 'user' && sameNick(h.requestedBy, me.nick));
+    const moreBtn = (n) => (n >= HIST_N || (histWho === 'mine' && list.length) ? '<button class="ghost histmore" type="button">Гортнути ще</button>' : '');
+    if (more && ul) {
+      ul.insertAdjacentHTML('beforeend', histRows(list));
+      // роздільник дня на шві двох пачок: той самий день — другий заголовок зайвий
+      const seps = [...ul.querySelectorAll('li.lday')];
+      for (let i = 1; i < seps.length; i++) if (seps[i].textContent === seps[i - 1].textContent) seps[i].remove();
+      if (list.length) ul.dataset.last = String(list[list.length - 1].id);
+      box.querySelector('.histmore')?.remove();
+      if (list.length) ul.insertAdjacentHTML('afterend', moreBtn(list.length));
+    } else {
+      const seg = `<div class="tabs seg">${[['all', 'Усі'], ['mine', 'Мої']].map(([v, l]) =>
+        `<button data-v="${v}" class="${histWho === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+      const empty = histWho === 'mine'
+        ? 'Від тебе тут ще жодної пісні. Закинь щось в «Ефірі» — і тут почне збиратись твоє.'
+        : 'Ще нічого не грало. Закинь першу пісню — і тут почне збиратись історія.';
+      box.innerHTML = seg + `<ul class="list hist" data-last="${list.length ? list[list.length - 1].id : ''}">${histRows(list) || `<li class="empty glek">${empty}</li>`}</ul>` + moreBtn(list.length);
+      box.querySelectorAll('.seg button').forEach((b) => b.onclick = () => {
+        histWho = b.dataset.v;
+        try { localStorage.setItem('histWho', histWho); } catch { /* приватне вікно */ }
+        loadLib();
+      });
+    }
+    wireRows(box);
+    const mb = box.querySelector('.histmore');
+    if (mb) mb.onclick = (e) => busy(e.currentTarget, 'тягну…', () => renderHistory(true).then(filterLib));
+  }
   async function drawLib() {
     const box = $('lib');
     try {
       if (libTab === 'history') {
-        const list = await api('GET', '/api/history?n=80');
-        box.innerHTML = `<ul class="list">${list.map((h) => trackRow(h.track,
-          `${h.source === 'autodj' ? esc(dj()) : esc(h.requestedBy || '')}${h.via === 'suggestion' ? ' · порада' : ''}${h.likes ? ' · ❤' + h.likes : ''}${h.skipped ? ' · скіп' : ''} · ${tm(h.startedAt)}`,
-          { skipped: h.skipped })).join('') || '<li class="empty glek">Ще нічого не грало. Закинь першу пісню — і тут почне збиратись історія.</li>'}</ul>`;
+        await renderHistory(false);
+        return;
       } else if (libTab === 'likes') {
         await renderLikes();
         return;
-      } else if (libTab === 'rating') {
-        await renderRating();
-        return;
-      } else if (libTab === 'top') {
-        const r = await api('GET', '/api/top?days=7');
-        const max = Math.max(1, ...r.requesters.map((x) => x.count));
-        box.innerHTML = `<div class="muted small" style="margin-bottom:8px">Хто скільки закинув за останній тиждень</div>` +
-          (r.requesters.map((x) => `<div class="stat"><span>${esc(x.nick)}</span><b>${x.count}</b><div class="bar" style="width:${Math.round(x.count / max * 100)}%"></div></div>`).join('') || '<div class="empty">поки тиша</div>');
       } else if (libTab === 'playlists') {
         await renderPlaylists();
         return;
@@ -2375,9 +2817,59 @@
       } else if (libTab === 'ads') {
         await renderAds();
         return;
+      } else if (libTab === 'feedback') {
+        await renderFeedbackAdmin();
+        return;
       }
       wireRows(box);
-    } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    } catch (e) { box.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
+  }
+
+  // ---------- «💡 Пропозиції й баги» — вкладка розробника (адміна) ----------
+  // Усі записки зі станом і відповіддю. Відповідь бачить автор у своїх «Моїх записках»; нова відповідь без зміни стану
+  // переводить «нове» в «переглянуто», щоб у фільтрі «нові» лишалось лише непрочитане.
+  let fbFilter = (() => { try { return localStorage.getItem('fbFilter') || 'new'; } catch { return 'new'; } })();
+  /// «Chrome 140 · Windows» — з рядка браузера досить цього; повний — у підказці.
+  function shortUa(ua) {
+    const s = String(ua || '');
+    const b = /Edg\/(\d+)/.exec(s) ? 'Edge ' + /Edg\/(\d+)/.exec(s)[1] : /Firefox\/(\d+)/.exec(s) ? 'Firefox ' + /Firefox\/(\d+)/.exec(s)[1]
+      : /Chrome\/(\d+)/.exec(s) ? 'Chrome ' + /Chrome\/(\d+)/.exec(s)[1] : /Safari\//.test(s) ? 'Safari' : '';
+    const p = /Android/.test(s) ? 'Android' : /iPhone|iPad/.test(s) ? 'iOS' : /Windows/.test(s) ? 'Windows' : /Mac OS X/.test(s) ? 'Mac' : /Linux/.test(s) ? 'Linux' : '';
+    return [b, p].filter(Boolean).join(' · ');
+  }
+  async function renderFeedbackAdmin() {
+    const box = $('lib');
+    if (me.role !== 'admin') { box.innerHTML = '<div class="empty">Це бачить лише розробник</div>'; return; }
+    const r = await api('GET', '/api/feedback' + (fbFilter === 'all' ? '' : '?status=' + encodeURIComponent(fbFilter)));
+    const c = r.counts || {};
+    const total = Object.values(c).reduce((a, b) => a + b, 0);
+    const seg = [['new', 'нові'], ['seen', 'переглянуті'], ['planned', 'у планах'], ['done', 'зроблені'], ['nope', 'не буде'], ['all', 'усі']]
+      .map(([v, l]) => `<button data-v="${v}" class="${fbFilter === v ? 'on' : ''}">${l} · ${v === 'all' ? total : (c[v] || 0)}</button>`).join('');
+    const row = (x) => `<li class="fbi fb-${esc(x.kind)}" data-id="${x.id}">
+        <div class="fbi-head">${FB_ICON[x.kind] || '💬'} ${nickHtml(x.nick, 'rnick')}<span class="muted small">${esc(dayTime(x.at))}</span>
+          <select class="fbi-st" aria-label="Стан">${Object.entries(FB_STATUS).map(([k, [l]]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="fbi-text">${esc(x.text)}</div>
+        <div class="fbi-ctx muted small">${x.place ? '📍 ' + esc(x.place) : ''}${x.screen ? ' · ' + esc(x.screen) : ''}${x.ua ? ` · <span title="${esc(x.ua)}">${esc(shortUa(x.ua))}</span>` : ''}</div>
+        <form class="fbi-reply"><input type="text" maxlength="500" placeholder="Відповідь — побачить автор у своїх записках" value="${esc(x.reply || '')}"><button class="ghost" type="submit">Відповісти</button></form>
+      </li>`;
+    const empty = fbFilter === 'new' ? 'Нових записок нема — усе прочитано.' : 'Тут поки порожньо.';
+    box.innerHTML = `<div class="tabs seg fbseg">${seg}</div><ul class="list fblist">${(r.items || []).map(row).join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
+    box.querySelectorAll('.fbseg [data-v]').forEach((b) => b.onclick = () => {
+      fbFilter = b.dataset.v;
+      try { localStorage.setItem('fbFilter', fbFilter); } catch { /* приватне вікно */ }
+      loadLib();
+    });
+    const save = async (li, body) => {
+      try { await api('PATCH', `/api/feedback/${li.dataset.id}`, body); loadFeedbackCount(); loadLib(); } catch (err) { fail(err); }
+    };
+    box.querySelectorAll('.fbi').forEach((li) => {
+      li.querySelector('.fbi-st').onchange = (e) => save(li, { status: e.target.value });
+      li.querySelector('.fbi-reply').onsubmit = (e) => {
+        e.preventDefault();
+        const st = li.querySelector('.fbi-st').value;
+        busy(e.target.querySelector('button'), '…', () => save(li, { reply: e.target.querySelector('input').value, status: st === 'new' ? 'seen' : st }));
+      };
+    });
   }
   // улюблене: типово — моє (згори те, що лайкнуто останнім), «Усі» — спільний список; вибір пам'ятаємо
   let likesWho = 'mine';
@@ -2396,8 +2888,8 @@
       })
       : list.map((l) => trackRow(l.track, `❤ ${esc(l.likes.map((x) => x.nick).join(', '))}`));
     const empty = likesWho === 'mine' && list.length
-      ? 'Твоїх сердечок тут ще нема: тисни ❤ під треком в ефірі — і пісня осяде тут. Що люблять інші — перемкни на «Усі».'
-      : 'Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі — і пісня осяде тут.';
+      ? 'Твоїх вподобайок тут ще нема: тисни ❤ під треком в ефірі — і пісня осяде тут. Що люблять інші — перемкни на «Усі».'
+      : 'Ще жодної вподобайки. Тисни ❤ під треком в ефірі — і пісня осяде тут.';
     box.innerHTML = `<div class="tabs seg">${[['mine', `Мої · ${mine.length}`], ['all', `Усі · ${list.length}`]].map(([v, label]) =>
       `<button data-v="${v}" class="${likesWho === v ? 'on' : ''}">${label}</button>`).join('')}</div>` +
       `<ul class="list">${rows.join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
@@ -2406,37 +2898,6 @@
       try { localStorage.setItem('likesWho', likesWho); } catch { /* приватне вікно */ }
       loadLib();
     });
-    wireRows(box);
-  }
-
-  // рейтинг: скільки грало, скільки дослуховують, хто слухав; період і сортування пам'ятаємо
-  const ratingOpt = { days: localStorage.getItem('ratingDays') || '7', sort: localStorage.getItem('ratingSort') || 'plays' };
-  const gb = (b) => (b / 1024 ** 3).toLocaleString('uk-UA', { maximumFractionDigits: 1 });
-  async function renderRating() {
-    const box = $('lib');
-    const r = await api('GET', `/api/rating?days=${ratingOpt.days}&sort=${ratingOpt.sort}`);
-    const seg = (key, items) => `<div class="tabs seg" data-key="${key}">${items.map(([v, label]) =>
-      `<button data-v="${v}" class="${ratingOpt[key] === v ? 'on' : ''}">${label}</button>`).join('')}</div>`;
-    const c = r.cache;
-    const cacheLine = `Кеш треків: ${gb(c.bytes)}${c.limitBytes ? ' з ' + gb(c.limitBytes) : ''} ГБ · ${c.files} файлів`;
-    const row = (x) => {
-      const bits = [`▶ ${x.plays}`];
-      if (x.completion != null) bits.push(`<span title="у середньому дослуховують">до кінця ${x.completion}%</span>`);
-      if (x.listeners) bits.push(`<span title="${esc(x.listenerNicks.join(', '))}">🎧 ${x.listeners}</span>`);
-      if (x.streamPeak > x.listeners) bits.push(`<span title="найбільше підключень до потоку разом з ETS2 і VLC">потік ${x.streamPeak}</span>`);
-      if (x.likes) bits.push(`❤ ${x.likes}`);
-      if (x.skips) bits.push(`скіп ${x.skips}`);
-      return trackRow(x.track, bits.join(' · '));
-    };
-    box.innerHTML = seg('days', [['7', '7 днів'], ['30', '30 днів'], ['3650', 'весь час']]) +
-      seg('sort', [['plays', 'частіше грали'], ['completion', 'дослуховують'], ['listeners', 'більше слухачів'], ['likes', 'лайки']]) +
-      `<div class="muted small" style="margin:2px 0 8px">${cacheLine}. 🎧 — скільки людей слухало на сайті (рахується з 13.09)</div>` +
-      `<ul class="list">${r.tracks.map(row).join('') || '<li class="empty">за цей час нічого не грало</li>'}</ul>`;
-    box.querySelectorAll('.seg').forEach((s) => s.querySelectorAll('button').forEach((b) => b.onclick = () => {
-      ratingOpt[s.dataset.key] = b.dataset.v;
-      try { localStorage.setItem(s.dataset.key === 'days' ? 'ratingDays' : 'ratingSort', b.dataset.v); } catch { /* приватне вікно */ }
-      loadLib();
-    }));
     wireRows(box);
   }
 
@@ -2458,7 +2919,7 @@
     const row = (b) => `<li>
         ${cover(b.track)}
         <div style="min-width:0"><div class="t">${esc(b.track.title)}${b.track.artist ? ` <span class="muted">· ${esc(b.track.artist)}</span>` : ''}</div>
-          <div class="r">забанив ${esc(b.by || '?')}${b.price ? ` за ${b.price} 🏺` : ''} · ${dayTime(b.createdAt)}</div></div>
+          <div class="r">бан від ${esc(fromNick(b.by || '?'))}${b.price ? ` за ${b.price} 🏺` : ''} · ${dayTime(b.createdAt)}</div></div>
         <div class="btns">${b.track.sourceUrl && !isVoice(b.track) ? `<a class="chip" href="${esc(b.track.sourceUrl)}" target="_blank" rel="noopener" title="Що це було">↗</a>` : ''}${unbanBtn(b.track)}</div>
       </li>`;
     box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${how}</div>` +
@@ -2483,7 +2944,8 @@
     if (me.role !== 'admin') { box.innerHTML = '<div class="empty">Це бачить лише адмін</div>'; return; }
     const r = await api('GET', '/api/ads/library');
     const on = r.items.filter((a) => a.enabled && !a.missing).length;
-    const fb = r.fallback ? `крутиться ${r.fallback.house ? 'реклама господаря' : 'переможець конкурсу'} (${esc(r.fallback.nick)})` : 'реклами в ефірі не буде';
+    // Конкурсу реклами більше нема (26.09.2026), а з ним і запасної: порожня ротація — просто без реклами.
+    const fb = 'реклами в ефірі не буде';
     const head = `<div class="ads-head">
         <div class="ads-row"><b>У ротації ${on} з ${r.items.length}</b>
           <span class="muted small">випадково без повторів · від останньої реклами ${r.since} тр.${r.jingle ? '' : ' · ⚠ джингл вимкнено в Ad:Jingle'}</span></div>
@@ -2522,7 +2984,7 @@
     const again = () => loadLib();
     $('adsSaveEvery').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/air/every',
       { everyTracks: +$('adsEvery').value, minMinutes: +$('adsMins').value }).then(ok).then(again).catch(fail));
-    $('adsNow').onclick = (e) => busy(e.currentTarget, 'ставлю…', () => api('POST', '/api/ads/air/now').then(ok).catch(fail));
+    $('adsNow').onclick = (e) => busy(e.currentTarget, 'закидаю…', () => api('POST', '/api/ads/air/now').then(ok).catch(fail));
     $('adsAllOn').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/library/all', { enabled: true }).then(ok).then(again).catch(fail));
     $('adsAllOff').onclick = (e) => confirm('Вимкнути всі реклами з ротації?') && busy(e.currentTarget, '…',
       () => api('POST', '/api/ads/library/all', { enabled: false }).then(ok).then(again).catch(fail));
@@ -2557,16 +3019,126 @@
     wireVoiceButtons(box);
   }
 
+  // ---------- імпорт плейлиста з посилання ----------
+  // Раніше це вміло лише поле «Закинути пісню», і про це ніхто не здогадувався. Тепер — окремий блок у «Плейлистах»:
+  // посилання → трекліст із галочками → назва (або дописати в наявний) → зберегти чи одразу в чергу.
+  let imp = null;                  // { url, data, off: Set(id), busy }
+  const IMP_HELP = 'Встав посилання на плейлист чи альбом — покажу трекліст. Збережеш його своїм плейлистом тут або одразу закинеш у чергу. '
+    + 'Приватний плейлист не відкриється — зроби його доступним за посиланням. З довгих плейлистів беремо перші 100 треків.';
+  const impName = (a) => {
+    const lead = String(a.artist || '').split(/,\s|\s&\s|\sі\s/)[0].trim();
+    const name = a.kind === 'album' && lead ? `${lead} — ${a.title}` : a.title;
+    return name.length <= 40 ? name : name.slice(0, 39).trimEnd() + '…';
+  };
+  function impBlock() {
+    return `<section class="plimp">
+        <div class="plimp-head"><b>📥 Перенести плейлист звідкись</b><span class="muted small">Spotify · YouTube Music · YouTube</span></div>
+        <div class="muted small">${esc(IMP_HELP)}</div>
+        <form class="plimp-row" id="plImpForm">
+          <input type="text" inputmode="url" placeholder="https://open.spotify.com/playlist/…  або  music.youtube.com/playlist?list=…" autocomplete="off" value="${imp ? esc(imp.url) : ''}">
+          <button class="primary" type="submit">Відкрити</button>
+        </form>
+        <div id="plImpView"></div>
+      </section>`;
+  }
+  function drawImport(playlists) {
+    const view = $('plImpView');
+    if (!view) return;
+    if (!imp) { view.innerHTML = ''; return; }
+    if (imp.busy) { view.innerHTML = '<div class="muted small plimp-wait"><span class="spin"></span> тягну трекліст і шукаю пісні в YouTube Music — це кілька секунд…</div>'; return; }
+    if (imp.error) { view.innerHTML = `<div class="plimp-err">${esc(imp.error)}</div>`; return; }
+    const a = imp.data;
+    const found = a.tracks.filter((t) => t.match);
+    const picked = found.filter((t) => !imp.off.has(t.match.id));
+    const missing = a.tracks.length - found.length;
+    const src = a.source === 'spotify' ? 'Spotify' : 'YouTube Music';
+    const sub = [a.artist, a.year, tracksN(a.tracks.length), `${Math.max(1, Math.round((a.durationSec || 0) / 60))} хв`].filter(Boolean).join(' · ');
+    const lead = String(a.artist || '').split(/,\s|\s&\s|\sі\s/)[0].trim().toLowerCase();
+    const row = (t) => {
+      const by = t.artist && (a.kind !== 'album' || !lead || !t.artist.toLowerCase().includes(lead)) ? ` <span class="muted">· ${esc(t.artist)}</span>` : '';
+      if (!t.match) return `<li class="miss" title="Не знайшлось у YouTube Music — пропущу"><span class="n"><span>${t.n}</span></span><div class="t">${esc(t.title)}${by}</div><span class="d">${fmt(t.durationSec)}</span><span class="chip">нема</span></li>`;
+      const off = imp.off.has(t.match.id);
+      return `<li class="${off ? 'off' : ''}" data-id="${esc(t.match.id)}"><label class="n"><input type="checkbox" ${off ? '' : 'checked'}><span>${t.n}</span></label>`
+        + `<div class="t">${esc(t.title)}${by}</div><span class="d">${fmt(t.match.durationSec || t.durationSec)}</span></li>`;
+    };
+    const to = imp.to || '';
+    view.innerHTML = `<div class="album imp">
+        <div class="album-head">
+          ${a.thumbUrl ? `<img src="${esc(a.thumbUrl)}" alt="">` : '<div class="noimg">💿</div>'}
+          <div class="album-meta">
+            <div class="album-kind">${a.kind === 'album' ? 'Альбом' : 'Плейлист'} · ${src}</div>
+            <div class="album-title" title="${esc(a.title)}">${esc(a.title)}</div>
+            <div class="album-sub">${esc(sub)}</div>
+          </div>
+          <button class="ghost icon imp-x" type="button" title="Закрити">✕</button>
+        </div>
+        <div class="plimp-save">
+          <select id="plImpTo" title="Куди зберегти">
+            <option value="">у новий плейлист</option>
+            ${(playlists || []).map((p) => `<option value="${p.id}" ${String(p.id) === to ? 'selected' : ''}>дописати в «${esc(p.name)}»</option>`).join('')}
+          </select>
+          <input id="plImpName" type="text" maxlength="40" placeholder="назва плейлиста" value="${esc(imp.name != null ? imp.name : impName(a))}" ${to ? 'hidden' : ''}>
+        </div>
+        <div class="album-btns">
+          <button class="primary" data-go="save" ${picked.length ? '' : 'disabled'}>📂 Зберегти · ${picked.length}</button>
+          <button data-go="order" ${picked.length ? '' : 'disabled'} title="По порядку">▶ У чергу</button>
+          <button class="ghost" data-go="shuffle" ${picked.length > 1 ? '' : 'disabled'}>🔀 Упереміш</button>
+          <a class="chip album-src" href="${esc(a.url)}" target="_blank" rel="noopener" title="Відкрити в ${src}">↗ ${src}</a>
+        </div>
+        <ol class="album-tracks">${a.tracks.map(row).join('')}</ol>
+        ${missing ? `<div class="album-foot">${missing === a.tracks.length ? 'Жоден трек' : plural(missing, 'трек', 'треки', 'треків')} не знайшлось у YouTube Music — ${missing === a.tracks.length ? 'зберігати нема чого' : 'їх пропущу'}.</div>` : ''}
+        ${a.kind === 'playlist' && a.tracks.length >= 100 ? '<div class="album-foot">Тут перші 100 треків плейлиста: більше за раз не віддають.</div>' : ''}
+      </div>`;
+    view.querySelector('.imp-x').onclick = () => { imp = null; drawImport(playlists); const f = $('plImpForm'); if (f) f.querySelector('input').value = ''; };
+    view.querySelectorAll('.album-tracks li[data-id] input').forEach((c) => c.onchange = () => {
+      const id = c.closest('li').dataset.id;
+      if (c.checked) imp.off.delete(id); else imp.off.add(id);
+      imp.name = $('plImpName').value;
+      drawImport(playlists);
+    });
+    $('plImpTo').onchange = (e) => { imp.to = e.target.value; imp.name = $('plImpName').value; drawImport(playlists); };
+    const ids = () => (picked.length === found.length ? null : picked.map((t) => t.match.id));
+    view.querySelector('[data-go="save"]').onclick = (e) => busy(e.currentTarget, 'зберігаю…', async () => {
+      const body = { url: imp.url, ids: ids() };
+      if (imp.to) body.playlistId = +imp.to; else body.name = $('plImpName').value.trim() || impName(a);
+      try { ok(await api('POST', '/api/album/playlist', body)); imp = null; renderPlaylists(); } catch (err) { fail(err); }
+    });
+    view.querySelectorAll('[data-go="order"], [data-go="shuffle"]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, 'закидаю…', async () => {
+      try { ok(await api('POST', '/api/album/queue', { url: imp.url, shuffle: b.dataset.go === 'shuffle', ids: ids() })); } catch (err) { fail(err); }
+    }));
+  }
+  async function openImport(url, playlists) {
+    const links = splitLinks(url);
+    const link = links[0] || url.trim();
+    if (!link) return;
+    imp = { url: link, data: null, off: new Set(), busy: true, to: '', name: null };
+    drawImport(playlists);
+    try {
+      imp.data = await api('GET', '/api/album?url=' + encodeURIComponent(link));
+    } catch (e) {
+      imp.error = e.data && e.data.notAlbum
+        ? 'Це посилання на один трек, а не на плейлист. Його можна закинути в «Ефірі» або зберегти кнопкою 📂＋ під треком.'
+        : e.message;
+    }
+    if (imp) { imp.busy = false; drawImport(playlists); }
+  }
+
   const openPl = new Set();
   async function renderPlaylists() {
     const box = $('lib');
     const list = await api('GET', '/api/playlists');
-    box.innerHTML = `<form class="pl-new" id="plCreate"><input type="text" maxlength="40" placeholder="Новий плейлист: назва…" autocomplete="off"><button class="primary" type="submit">Створити</button></form>` +
+    box.innerHTML = impBlock() + `<form class="pl-new" id="plCreate"><input type="text" maxlength="40" placeholder="Або порожній: назва нового плейлиста…" autocomplete="off"><button type="submit">Створити</button></form>` +
       (list.map((p) => `<div class="pl" data-id="${p.id}">
           ${p.thumbUrl ? `<img src="${esc(p.thumbUrl)}" alt="">` : '<div class="noimg">🎵</div>'}
           <div style="min-width:0"><div class="name" title="Показати треки">${esc(p.name)}</div><div class="r muted small">${p.count} трек${p.count % 10 === 1 && p.count % 100 !== 11 ? '' : (p.count % 10 >= 2 && p.count % 10 <= 4 && (p.count % 100 < 10 || p.count % 100 >= 20)) ? 'и' : 'ів'} · ${esc(p.createdBy)}</div></div>
           <div class="btns"><button class="primary go" title="Закинути весь плейлист у чергу впереміш">▶ у чергу</button>${(me.role === 'admin' || sameNick(p.createdBy, me.nick)) ? `<button class="ghost danger del" title="Видалити плейлист">✕</button>` : ''}</div>
-        </div><div class="pl-tracks" data-for="${p.id}" hidden></div>`).join('') || '<div class="empty glek">Плейлистів ще нема. Створи перший: назва вище, а треки додаються кнопкою «＋ плейлист» під тим, що грає, або «＋» в історії та улюбленому.</div>');
+        </div><div class="pl-tracks" data-for="${p.id}" hidden></div>`).join('') || '<div class="empty glek">Плейлистів ще нема. Перенеси готовий посиланням вище або створи порожній — треки додаються кнопкою «📂＋» під тим, що грає, в історії та в улюбленому.</div>');
+    box.querySelector('#plImpForm').onsubmit = (e) => {
+      e.preventDefault();
+      if (!me.nick) { askNick(true); return; }
+      openImport(e.target.querySelector('input').value, list);
+    };
+    drawImport(list);
     box.querySelector('#plCreate').onsubmit = async (e) => {
       e.preventDefault();
       const inp = e.target.querySelector('input');
@@ -2588,19 +3160,19 @@
     if (!box) return;
     if (!openPl.has(id)) { box.hidden = true; return; }
     box.hidden = false;
-    box.innerHTML = '<div class="muted small"><span class="spin"></span></div>';
+    box.innerHTML = '<div class="muted small"><span class="spin"></span> мить…</div>';
     try {
       const r = await api('GET', `/api/playlists/${id}`);
       box.innerHTML = `<ul class="list">${r.tracks.map((x) => `<li>
           ${cover(x.track)}
-          <div style="min-width:0"><div class="t">${esc(x.track.title)} <span class="muted">· ${esc(x.track.artist)}</span></div><div class="r">${fmt(x.track.durationSec)} · додав ${esc(x.addedBy)}</div></div>
+          <div style="min-width:0"><div class="t">${esc(x.track.title)} <span class="muted">· ${esc(x.track.artist)}</span></div><div class="r">${fmt(x.track.durationSec)} · від ${esc(fromNick(x.addedBy))}</div></div>
           <div class="btns"><button class="q" data-id="${esc(x.track.id)}">в чергу</button><button class="ghost danger rmt" data-id="${esc(x.track.id)}" title="Прибрати з плейлиста">✕</button></div>
         </li>`).join('') || '<li class="empty">порожньо</li>'}</ul>`;
       wireRows(box);
       box.querySelectorAll('.rmt').forEach((b) => b.onclick = async () => {
         try { ok(await api('DELETE', `/api/playlists/${id}/tracks/${b.dataset.id}`)); renderPlaylists(); } catch (err) { fail(err); }
       });
-    } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    } catch (e) { box.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
   }
 
   // ---------- playlist picker modal ----------
@@ -2610,12 +3182,12 @@
     $('plModal').hidden = false;
     $('plModal').querySelector('h3').textContent = `«${title}» — у який плейлист?`;
     const pick = $('plPick');
-    pick.innerHTML = '<span class="spin"></span>';
+    pick.innerHTML = '<div class="muted small"><span class="spin"></span> мить…</div>';
     try {
       const list = await api('GET', '/api/playlists');
       pick.innerHTML = list.map((p) => `<button data-id="${p.id}"><span>${esc(p.name)}</span><span class="muted small">${p.count}</span></button>`).join('') || '<div class="muted small">Плейлистів ще нема, створи перший нижче.</div>';
       pick.querySelectorAll('button').forEach((b) => b.onclick = () => addToPlaylist(b.dataset.id));
-    } catch (e) { pick.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    } catch (e) { pick.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
     setTimeout(() => $('plNewName').focus(), 50);
   }
   async function addToPlaylist(id) {
@@ -2632,14 +3204,52 @@
   $('plClose').onclick = () => { $('plModal').hidden = true; };
   $('plModal').addEventListener('click', (e) => { if (e.target === $('plModal')) $('plModal').hidden = true; });
 
+  // ---------- «лише подивитись»: хто ще не назвався ----------
+  // Раніше новенький бачив порожню сторінку під карткою «Хто прийшов?». Тепер ефір, черга й балачки видно одразу:
+  // без хаба, звичайним GET /api/state раз на кілька секунд. Писати, закидати й грати — коли назвешся.
+  let previewTimer = 0;
+  let previewLast = 0;             // найбільший id рядка балачок, який уже намалювали
+  async function previewTick() {
+    if (conn) return;
+    let r;
+    try { r = await api('GET', '/api/state'); } catch { return; }
+    if (conn || !r) return;
+    state = r.state;
+    render();
+    const fresh = (r.chat || []).filter((m) => m.id > previewLast).sort((a, b) => a.id - b.id);
+    fresh.forEach((m) => addMessage(m, !!previewLast, false));
+    if (!previewLast) { $('messages').scrollTop = $('messages').scrollHeight; $('log').scrollTop = $('log').scrollHeight; }
+    if (fresh.length) previewLast = fresh[fresh.length - 1].id;
+  }
+  function startPreview() {
+    $('hello').hidden = false;
+    document.body.classList.add('preview');
+    paintNick();
+    previewTick();
+    clearInterval(previewTimer);
+    previewTimer = setInterval(previewTick, 5000);
+  }
+  function stopPreview() {
+    clearInterval(previewTimer);
+    previewTimer = 0;
+    $('hello').hidden = true;
+    document.body.classList.remove('preview');
+  }
+  $('helloGo').onclick = () => askNick(true);
+
   // ---------- realtime ----------
   function connect() {
+    stopPreview();
     conn = new signalR.HubConnectionBuilder()
       .withUrl('/hub?nick=' + encodeURIComponent(me.nick))
       .withAutomaticReconnect()
       .build();
     conn.on('state', (s) => { state = s; render(); });
-    conn.on('chat', (m) => addMessage(m, true, true));
+    conn.on('chat', (m) => {
+      addMessage(m, true, true);
+      // Мені щось подарували — оновити шафу: раптом це вміння (🎆 чи 💌), і кнопка має з'явитись одразу.
+      if (m && m.kind === 'gift' && m.to && sameNick(m.to, me.nick) && me.account) HLavka.loadMine().then(lavkaChanged);
+    });
     let tourRoom = null;
     if (window.HTournament) HTournament.connect((...a) => conn.invoke(...a));
     conn.on('tournament', (t) => {
@@ -2653,7 +3263,7 @@
       if (room && room !== tourRoom && mineT) {
         if (tourRoom !== null || route === 'games') {
           if (route === 'games') go('#games/room/' + encodeURIComponent(room));
-          else toast('🏆 Турнір: наступна гра почалась — зазирни в «Ігри»', 'ok');
+          else toast('🏆 Турнір: наступна гра почалась — гайда в «Ігри»!', 'ok');
         }
       }
       tourRoom = room || (tourRoom === null ? '' : tourRoom);
@@ -2663,6 +3273,8 @@
       if (el) paintLikes(el, x.likes || []);
     });
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
+    conn.on('fireworks', (x) => fireworks(x && x.nick));
+    conn.on('look', (x) => HLavka.onLook(x));
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
     // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
@@ -2705,24 +3317,25 @@
       if (!mine && !tableVisible()) {
         table.unread++;
         paintTableBadge();
-        if (tagged) toast(`@ ${l.nick} кличе тебе за столом: ${l.text}`.slice(0, 140));
+        if (tagged) toast(`@ ${l.nick} гукає тебе за столом: ${l.text}`.slice(0, 140));
       }
     });
     conn.onreconnected(() => {
       conn.invoke('SetNick', me.nick).catch(() => {});
+      HLavka.loadLooks();            // поки зв'язку не було, хтось міг перевдягтись
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       HGames.reconnected();
-      toast('Знову на зв\'язку', 'ok');
+      toast('Є! Знову на зв\'язку', 'ok');
     });
-    conn.onreconnecting(() => toast('Зв\'язок зник, підключаюсь…', 'wait'));
-    conn.onclose(() => toast('Зв\'язок із сервером втрачено, онови сторінку', 'err'));
+    conn.onreconnecting(() => toast('Ой-йой, зв\'язок зник — підключаюсь…', 'wait'));
+    conn.onclose(() => toast('Ой-йой: зв\'язок із сервером втрачено — онови сторінку', 'err'));
     conn.start().then(() => {
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       // Перші 'rooms' прилітають ще до того, як start() віддасть 'Connected', тож підписки на
       // кімнати треба попросити заново — як після реконекту.
       HGames.reconnected();
       if (route === 'lib') { libShown = libTab; loadLib(); }
-    }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
+    }).catch((e) => { toast('Халепа: не з\'єдналось — ' + e.message + '. Пробую ще раз', 'err'); setTimeout(connect, 4000); });
   }
 
   // ---------- нічний відбій ----------
@@ -2747,8 +3360,25 @@
 
   // ---------- boot ----------
   setPlayUi();
-  // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри.
-  HGames.init({ $, esc, toast, busy, api, me, root: $('games'), go, onTable, openTable: () => openTable(true) });
+  // Люди й цифри (web/people.js): профіль, картка по кліку на нік, «📊 Хто скільки». Їм потрібні ті самі рядки
+  // треків і ті самі дні/час, що й Бібліотеці, — віддаємо свої, щоб не завести других.
+  HPeople.init({
+    $, esc, api, toast, busy, me, go, askNick, fmt, tm, dayTime, dayLabel, plural, cover, trackRow, wireRows, nickHtml, isMobile,
+    dj, sameNick, state: () => state,
+    ping: () => ping(),
+    mention: (nick) => { const inp = $('chatInput'); inp.value = (inp.value ? inp.value.replace(/\s*$/, ' ') : '') + '@' + nick + ' '; if (isMobile()) go('#chat'); else setChatOpen(true); setChatTab('chat'); inp.focus(); },
+  });
+  // Лавка Дядька Глека (web/lavka.js): вітрина, а ще — хто як вбраний. Своє купив чи вдягнув — перемалювати шапку,
+  // ефір (🎆) і чергу (💌): там кнопки вмінь.
+  const lavkaChanged = () => { paintNick(); nowSig = ''; queueSig = ''; if (state) render(); };
+  HLavka.init({ $, esc, api, toast, busy, me, go, askNick, onMine: lavkaChanged, onLooks: () => { if (state) renderOnline(); } });
+  HLavka.loadLooks();
+  // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри,
+  // onTurn — за якими столами мій хід (заголовок вкладки й «Ігри»), online — хто на сайті (кого покликати за стіл).
+  HGames.init({
+    $, esc, toast, busy, api, me, root: $('games'), go, onTable, openTable: () => openTable(true),
+    onTurn, ping: () => ping(), online: () => (state && state.online) || [], askNick: () => askNick(true),
+  });
   setLogFilter(logFilter);
   applyRoute();
   // Хто я — каже сервер: акаунт із куки або гість із приставкою до того, що лежить у localStorage.
@@ -2764,8 +3394,9 @@
     paintNight();
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
-    // на #lib/ads зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
-    if (libTab === 'ads' && me.role !== 'admin') go('#lib/history');
+    $('fbTab').hidden = me.role !== 'admin';
+    // на #lib/ads чи записки зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
+    if ((libTab === 'ads' || libTab === 'feedback') && me.role !== 'admin') go('#lib/history');
     if (me.account || me.nick) {
       // Нік без приставки з часів до акаунтів: сервер уже зве нас «гість …» — запропонуємо закріпити його паролем.
       const plain = !me.account && me.nick && m.nick !== me.nick ? me.nick : null;
@@ -2773,10 +3404,13 @@
       localStorage.setItem('nick', m.nick);
       paintNick();
       connect();
+      if (me.account) HLavka.loadMine().then(lavkaChanged);
       if (plain) askNick(true, 'register', plain);
-    } else askNick();
+      // «💡»: адміну — скільки нових записок, решті — чи є свіжа відповідь розробника на свої.
+      if (me.role === 'admin') loadFeedbackCount(); else loadMyFeedback(false);
+    } else startPreview();
     if (state) render();
   }).catch(() => {
-    if (me.nick) { paintNick(); connect(); } else askNick();
+    if (me.nick) { paintNick(); connect(); } else startPreview();
   });
 })();

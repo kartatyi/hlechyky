@@ -280,14 +280,14 @@ public sealed class Checkers : Game
             var win = Other(flagged);
             Over(win, "time");
             End([win], $"{Info.Title}: у {Ctx.NickOf(flagged)} скінчився час — {Ctx.NickOf(win)} {SeatName(win)} 1:0 {Ctx.NickOf(flagged)} {SeatName(flagged)}");
-            return ActResult.Accept(flagged == seat ? "Твій час вийшов" : "У суперника впав прапорець");
+            return ActResult.Accept(flagged == seat ? "От халепа — твій час вийшов" : "Овва! У суперника впав прапорець");
         }
         return Dispatch(seat, action, payload);
     }
 
     ActResult Dispatch(int seat, string action, JsonElement payload) => action switch
     {
-        "flag" => ActResult.Fail(_over ? "Партію зіграно, тисни «Ще раз»" : "Час ще є"),
+        "flag" => ActResult.Fail(_over ? "Партію зіграно, тисни «Ану ще раз»" : "Час ще є"),
         "move" => Move(seat, payload),
         "resign" => Resign(seat),
         "draw" => Offer(seat),
@@ -299,8 +299,8 @@ public sealed class Checkers : Game
 
     ActResult Move(int seat, JsonElement payload)
     {
-        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
-        if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
+        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
+        if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
         if (ReadPath(payload) is not { } path) return ActResult.Fail("Не зрозумів, куди ходити");
 
         var from = path[0];
@@ -363,28 +363,28 @@ public sealed class Checkers : Game
 
     ActResult Resign(int seat)
     {
-        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         var win = Other(seat);
         Over(win, "resign");
         End([win], $"{Info.Title}: {Ctx.NickOf(seat)} здається — {Ctx.NickOf(win)} {SeatName(win)} 1:0 {Ctx.NickOf(seat)} {SeatName(seat)}");
-        return ActResult.Accept("Здався");
+        return ActResult.Accept("Партію віддано — ану ще раз?");
     }
 
     ActResult Offer(int seat)
     {
-        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
-        if (_offer == seat) return ActResult.Fail("Пропозиція вже висить");
+        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
+        if (_offer == seat) return ActResult.Fail("Пропозиція вже висить — слово за суперником");
         if (_offer == Other(seat)) return Drawn("agreed");
         _offer = seat;
-        return ActResult.Accept("Запропонував нічию");
+        return ActResult.Accept("Нічию запропоновано — слово за суперником");
     }
 
     ActResult Decline(int seat)
     {
-        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_offer != Other(seat)) return ActResult.Fail("Нічиєї ніхто не пропонував");
         _offer = null;
-        return ActResult.Accept("Пропозицію знято");
+        return ActResult.Accept("Нічию відхилено — граємо далі");
     }
 
     // ---------- кінець партії ----------
@@ -420,7 +420,7 @@ public sealed class Checkers : Game
     {
         Over(null, reason);
         End([], $"{Info.Title}: {Ctx.NickOf(0)} {SeatName(0)} і {Ctx.NickOf(1)} {SeatName(1)} зіграли внічию ({Said(reason)})");
-        return ActResult.Accept("Нічия");
+        return ActResult.Accept("Нічия! Ану ще раз?");
     }
 
     static string Said(string reason) => reason switch
@@ -436,7 +436,7 @@ public sealed class Checkers : Game
         var win = Other(seat);
         int[] winners = Ctx.Seated(win) ? [win] : [];
         Over(winners.Length > 0 ? win : null, "left");
-        End(winners, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        End(winners, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
     // ---------- вид ----------

@@ -149,7 +149,7 @@ public class ChatCommandsTests
     public void Ball_wants_a_real_question(string text)
     {
         var r = ChatCommands.Run(text);
-        Assert.Equal("Спитай щось довше: /8ball чи буде дощ?", r.Error);
+        Assert.Equal("Спитай щось довше: /куля чи буде дощ?", r.Error);
     }
 
     [Fact]
@@ -231,7 +231,7 @@ public class ChatCommandsTests
     {
         var r = ChatCommands.Run("/столи", () => []);
 
-        Assert.Equal("Живих столів нема. Постав свій у розділі «Ігри»", r.Error);
+        Assert.Equal("За столами ні душі. Постав свій у розділі «Ігри»", r.Error);
         Assert.Null(r.Rooms);
     }
 
@@ -254,13 +254,124 @@ public class ChatCommandsTests
         Assert.Equal($"Живих столів: {many.Count}", r.Text);   // рахуємо всі, показуємо скільки влізло
     }
 
+    // ---------------------------------------------------------------------------- /клич
+
+    [Theory]
+    [InlineData("/клич Оля")]
+    [InlineData("/клич @Оля")]
+    [InlineData("/клич   @Оля  ")]
+    [InlineData("/поклич Оля")]
+    [InlineData("/invite @Оля")]
+    [InlineData("/Клич Оля")]
+    public void Klych_hands_the_nick_without_the_at_sign_to_whoever_calls(string text)
+    {
+        string? asked = null;
+        var r = ChatCommands.Run(text, null, who => { asked = who; return new(Text: "📣 гаразд", Kind: "note"); });
+
+        Assert.Equal("Оля", asked);
+        Assert.Null(r.Error);
+        Assert.Equal("note", r.Kind);
+    }
+
+    [Theory]
+    [InlineData("/клич")]
+    [InlineData("/клич   ")]
+    [InlineData("/клич @")]
+    public void Klych_needs_a_nick(string text)
+    {
+        var called = false;
+        var r = ChatCommands.Run(text, null, _ => { called = true; return new(); });
+
+        Assert.Equal("Кого гукнути? Так: /клич Оля", r.Error);
+        Assert.False(called);
+    }
+
+    [Fact]
+    public void Klych_passes_the_callers_refusal_on_as_an_ordinary_command_error()
+    {
+        var r = ChatCommands.Run("/клич Оля", null, _ => new(Error: "Оля зараз не на сайті"));
+
+        Assert.Equal("Оля зараз не на сайті", r.Error);
+        Assert.Null(r.Text);
+    }
+
+    [Fact]
+    public void Without_anyone_to_call_the_command_says_so()
+    {
+        // Так /клич виглядає для агента: у нього нема ні з'єднання, ні кнопки «📣 Покликати».
+        Assert.Equal("Звідси кликати не вийде", ChatCommands.Run("/клич Оля").Error);
+    }
+
+    // ---------------------------------------------------------------------------- крапка замість скісної
+
+    [Theory]
+    [InlineData(".кубик 20", "/кубик 20")]
+    [InlineData(".обери чай або кава", "/обери чай або кава")]
+    [InlineData(".монетка", "/монетка")]
+    [InlineData(".Кубик", "/Кубик")]
+    [InlineData(".вибери а | б", "/вибери а | б")]
+    [InlineData(".куля чи буде дощ", "/куля чи буде дощ")]
+    [InlineData(".глек чи буде дощ", "/глек чи буде дощ")]
+    [InlineData(".столи", "/столи")]
+    [InlineData(".стіл", "/стіл")]
+    [InlineData(".клич Оля", "/клич Оля")]
+    [InlineData(".поклич @Оля", "/поклич @Оля")]
+    [InlineData(".пароль Оля нове123", "/пароль Оля нове123")]   // інакше новий пароль ліг би в Балачки реплікою
+    public void A_dot_before_a_ukrainian_command_name_is_the_same_command(string typed, string command)
+    {
+        Assert.Equal(command, ChatCommands.FromDot(typed));
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData(".ну")]
+    [InlineData(".ну що, граємо?")]
+    [InlineData(". кубик")]
+    [InlineData(".кубики")]
+    [InlineData(".кубик,")]
+    [InlineData(".roll")]
+    [InlineData(".")]
+    [InlineData("")]
+    [InlineData("кубик")]
+    [InlineData("/кубик")]
+    public void Any_other_dot_is_just_a_line(string typed)
+    {
+        Assert.Null(ChatCommands.FromDot(typed));
+    }
+
+    [Fact]
+    public void A_dotted_command_rolls_and_chooses_like_the_slashed_one()
+    {
+        Assert.Equal("dice", ChatCommands.Run(ChatCommands.FromDot(".кубик 20")!).Kind);
+        var pick = ChatCommands.Run(ChatCommands.FromDot(".обери чай або кава")!);
+        Assert.Equal("choose", pick.Kind);
+        Assert.Contains("(з: чай, кава)", pick.Text);
+    }
+
+    [Fact]
+    public void A_dotted_command_twice_is_no_repeat_for_the_flood_guard()
+    {
+        // Хаб перетворює крапку на скісну ще до лічильника флуду: команди на повтор не перевіряються, і кинути
+        // «.кубик» двічі поспіль — так само нормально, як і /кубик. Без цього друга спроба впиралась би в «Це вже тяпнуто».
+        var flood = new ChatFlood();
+        var now = DateTimeOffset.UtcNow;
+        var text = ChatCommands.FromDot(".кубик")!;
+
+        Assert.Null(flood.Check("Оля", text, now));
+        Assert.Null(flood.Check("Оля", text, now.AddSeconds(1)));
+
+        var raw = new ChatFlood();                                    // а сира крапка — звичайний текст, і повтор ловиться
+        Assert.Null(raw.Check("Оля", ".кубик", now));
+        Assert.Equal(ChatFlood.Repeat, raw.Check("Оля", ".кубик", now.AddSeconds(1)));
+    }
+
     // ---------------------------------------------------------------------------- решта
 
     [Fact]
     public void An_unknown_command_names_the_ones_that_exist()
     {
         var r = ChatCommands.Run("/фігня");
-        Assert.Equal("Команди /фігня нема. Є /roll, /coin, /choose, /8ball і /столи", r.Error);
+        Assert.Equal("Команди /фігня нема. Є /кубик, /монетка, /обери, /куля, /столи і /клич", r.Error);
         Assert.Null(r.Text);
     }
 

@@ -107,9 +107,39 @@ header #nowMini { display: contents; }
 .mini-tt:hover b { color: var(--accent); }
 .mini-acts { order: 4; flex: none; display: flex; gap: 4px; }
 .mini-acts button { padding: 5px 9px; font-size: .9em; }
+/* На «Ефірі» ❤ і ⏭ стоять просто під шапкою, у великій панелі — удруге в шапці вони лише шум. */
+body.route-efir header .mini-acts { display: none; }
 header #playBtn { order: 3; flex: none; }
-header #volume { order: 5; flex: none; width: 110px; accent-color: var(--accent); }
+/* Гучність: на широкому — повзунок у рядку (🔊 лише як значок), на вужчому — ховається за 🔊 і випадає під ним. */
+header .volwrap { order: 5; flex: none; position: relative; display: flex; align-items: center; gap: 2px; }
+header #volume { width: 110px; accent-color: var(--accent); }
+header #volBtn { padding: 5px 6px; font-size: .95em; pointer-events: none; }
 header #listeners { order: 6; flex: none; }
+
+/* ---- «я» в шапці: аватарка, нік і черепки одним чипом ---- */
+.ava {
+  --h: 200; display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: hsl(var(--h) 42% 30%); color: hsl(var(--h) 85% 88%); font-weight: 700; font-size: .8em; line-height: 1;
+  box-shadow: inset 0 0 0 1px hsl(var(--h) 50% 45% / .6); font-family: var(--display); user-select: none;
+}
+.ava.sm { width: 20px; height: 20px; font-size: .68em; }
+.ava.xl { width: 44px; height: 44px; font-size: 1.15em; }
+.ava.xxl { width: 72px; height: 72px; font-size: 1.9em; }
+.ava.none { background: var(--panel3); color: var(--muted); box-shadow: none; }
+header .mechip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 3px; border-radius: 999px;
+  background: var(--panel2); color: var(--text); text-decoration: none; max-width: 260px; border: 1px solid transparent;
+}
+header .mechip:hover { background: var(--panel3); }
+header .mechip.on { border-color: var(--accent2); }
+header .mechip .nick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+header .mechip.guest .nick { color: var(--muted); }
+header .mechip.admin .nick::after { content: " · адмін"; color: var(--accent); }
+header .mechip .wallet { color: var(--accent); font-size: .9em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Хід у покроковій грі, поки ти деінде: «Ігри» в шапці тихенько світяться. */
+header .vswitch button.turn { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent2); }
+@media (prefers-reduced-motion: no-preference) { header .vswitch button.turn { animation: turnGlow 1.6s ease-in-out infinite; } }
+@keyframes turnGlow { 50% { box-shadow: inset 0 0 0 1px var(--accent2), 0 0 12px rgba(244, 197, 66, .35); } }
 
 /* тонка смужка прогресу треку по всій ширині — видно, скільки лишилось, із будь-якого розділу */
 .hdrprog { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--bg2); }
@@ -123,41 +153,64 @@ header .vswitch button.on { background: var(--panel2); color: var(--text); }
 header .vswitch .ico { font-size: 1.05em; line-height: 1; }
 header .vswitch .count { color: var(--accent); font-weight: 700; font-size: .85em; }
 header .hdrtitle { display: none; font-weight: 700; font-size: 1.05em; }
-header .who { display: flex; align-items: center; gap: 8px; flex: none; }
-header .chip.wallet { background: var(--panel2); color: var(--accent); font-size: .9em; padding: 4px 10px; }
-header .chip.wallet b { font-variant-numeric: tabular-nums; }
+header .who { display: flex; align-items: center; gap: 8px; flex: none; min-width: 0; }
 /* Кнопка балачок: бейдж непрочитаного сидить у ній же, тож ширина не стрибає на порожньому бейджі. */
 header .chat-toggle { position: relative; font-size: 1.05em; padding: 6px 9px; }
 body:not(.chat-collapsed) header .chat-toggle { background: var(--panel3); }
 header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
-header .nick { cursor: pointer; padding: 5px 10px; border-radius: 999px; background: var(--panel2); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-header .nick:hover { background: var(--panel3); }
-header .nick.admin::after { content: " · адмін"; color: var(--accent); }
-header .nick.guest { color: var(--muted); }
 #playBtn { min-width: 118px; justify-content: center; }
 #playBtn.live { background: var(--panel2); color: var(--text); border-color: var(--accent2); }
 #playBtn.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.4s infinite; }
 @keyframes blink { 50% { opacity: .25; } }
 
-/* Шапка на середніх ширинах не має лізти у два рядки. Ховаємо по черзі: спершу підписи
-   розділів (лишаються іконки з title), потім гучність, потім виконавця в міні-плеєрі. */
+/* Шапка на середніх ширинах не має лізти у два рядки. Ховаємо по черзі: спершу повзунок гучності (за 🔊),
+   далі підписи розділів (лишаються іконки з title), далі назву сайту, виконавця в міні-плеєрі й нік.
+   На «Ефірі» трек і так видно у великій панелі, тож там обкладинка й назва в шапці ховаються, а підписи
+   розділів лишаються до 1000 px — раніше на планшеті 1024 px від них лишались самі значки. */
+@media (min-width: 901px) {
+  body.route-efir header .mini-cv, body.route-efir header .mini-tt { display: none; }
+}
+@media (max-width: 1440px) {
+  header #volBtn { pointer-events: auto; }
+  header #volume {
+    display: none; position: absolute; top: calc(100% + 8px); right: -8px; width: 160px; padding: 12px 10px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); z-index: 8;
+  }
+  header .volwrap.open #volume { display: block; }
+  header .volwrap.open #volBtn { background: var(--panel2); }
+}
 @media (max-width: 1300px) {
-  header .vswitch .lbl { display: none; }
-  header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
+  body:not(.route-efir) header .vswitch .lbl { display: none; }
+  body:not(.route-efir) header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
+}
+@media (max-width: 1200px) {
+  header .brand span { display: none; }
 }
 @media (max-width: 1150px) {
-  header #volume { display: none; }
   header { gap: 10px; }
   #playBtn { min-width: 0; }
+  header .mechip .nick { max-width: 90px; }
+  /* На «Ефірі» тут стоять ще й підписи розділів: 🎧 з лічильником поступається їм місцем — хто слухає,
+     видно в балачках (🎧 біля ніків). Інакше разом із чипом «ефір ↓» шапка наповзала сама на себе. */
+  body.route-efir header #listeners { display: none; }
 }
 @media (max-width: 1000px) {
+  header .vswitch .lbl { display: none; }
+  header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
   .mini-tt small { display: none; }
-  header .brand span { display: none; }
   header #listeners { max-width: 92px; }
 }
 
 /* ---- нічний відбій: плашку бачать лише ті, кого він стосується ---- */
-.nightbar { max-width: 1500px; margin: 14px auto 0; padding: 0 18px; }
+.nightbar, .hellobar { max-width: 1600px; margin: 14px auto 0; padding: 0 18px; }
+/* ---- «лише подивитись»: плашка для того, хто ще не назвався ---- */
+.hellobar > div {
+  display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: var(--radius);
+  background: linear-gradient(100deg, #2a2210, #3a2d0a); border: 1px solid #5a4614; line-height: 1.4;
+}
+.hellobar img { width: 38px; height: 38px; flex: none; }
+.hellobar .hb-text { flex: 1; min-width: 0; }
+.hellobar button { flex: none; }
 .nightbar > div {
   display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-radius: var(--radius);
   background: linear-gradient(100deg, #151d38, #232f5c); border: 1px solid #3b4a86; color: #e4e8ff; line-height: 1.4;
@@ -167,7 +220,7 @@ header .nick.guest { color: var(--muted); }
 /* ---- layout ---- */
 main {
   display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); column-gap: var(--rail-gap);
-  padding: 18px; max-width: 1500px; margin: 0 auto; align-items: start;
+  padding: 18px; max-width: 1600px; margin: 0 auto; align-items: start;
   transition: grid-template-columns .2s ease, column-gap .2s ease;
 }
 body.chat-collapsed { --rail: 0px; --rail-gap: 0px; }
@@ -177,7 +230,8 @@ body.chat-collapsed #colChat { padding: 0; visibility: hidden; transition: paddi
 @media (prefers-reduced-motion: reduce) { main, #colChat { transition: none; } }
 /* Розділ = один вид у лівій колонці. Перемикає їх лише клас маршруту на body. */
 .view { display: none; flex-direction: column; gap: 18px; min-width: 0; }
-body.route-efir #viewEfir, body.route-lib #viewLib, body.route-games #viewGames { display: flex; animation: fadein .15s ease-out; }
+body.route-efir #viewEfir, body.route-lib #viewLib, body.route-games #viewGames,
+body.route-stats #viewStats, body.route-who #viewWho, body.route-lavka #viewLavka { display: flex; animation: fadein .15s ease-out; }
 /* Один рівень карток: секція — панель без рамки, з тонким світлом ізсередини;
    усе, що всередині неї, сидить на bg2 без власних рамок. Подвійних рамок не лишилось.
    Балачки — теж панель, хоч і aside: без нього вони висять прозорі просто на тлі сторінки. */
@@ -197,8 +251,9 @@ h2 .count { font-weight: 400; color: var(--muted); font-size: .88em; }
    Міряємо саме зміст (контейнер), а не вікно: згорнули балачки — колонки з'являються
    раніше, розгорнули — пізніше, і це завжди чесно. */
 .efir-two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
-@container (min-width: 1000px) {
-  .efir-two { grid-template-columns: 3fr 2fr; align-items: start; }
+/* Поради поруч із чергою вже з 820 px змісту: на ноутбуці з відкритими балачками вони інакше падали на другий екран. */
+@container (min-width: 820px) {
+  .efir-two { grid-template-columns: 11fr 9fr; align-items: start; }
 }
 /* рядок-посилання в Бібліотеку замість сімох вкладок унизу «Ефіру» */
 .libline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: .9em; padding: 2px 4px; }
@@ -207,8 +262,30 @@ h2 .count { font-weight: 400; color: var(--muted); font-size: .88em; }
 .libline .all { margin-left: auto; color: var(--accent); }
 
 /* ---- now playing ---- */
-.now { display: grid; grid-template-columns: 160px 1fr; gap: 18px; align-items: start; }
-@media (max-width: 560px) { .now { grid-template-columns: 104px 1fr; gap: 12px; } }
+/* Щільно: обкладинка 136 px, хто закинув — у рядку з виконавцем, час — по краях смужки, реакції — у рядку кнопок.
+   Так на ноутбуці 1366×768 під панеллю одразу видно чергу й поради, а не лише поле пошуку. */
+.now { display: grid; grid-template-columns: 136px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 560px) { .now { grid-template-columns: 96px 1fr; gap: 12px; } }
+.nowinfo { min-width: 0; }
+.now .artist .art { margin-right: 10px; }
+.now .artist .by { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 0; color: var(--muted); font-size: .86em; vertical-align: 1px; }
+.now .artist .by .bynick { font-weight: 600; }
+.progline { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: .8em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.progline .progress { flex: 1; margin-top: 0; }
+.now .actions { margin-top: 10px; gap: 6px; }
+.now .actions .chip.src { text-decoration: none; padding: 5px 10px; font-size: .85em; }
+.now .actions .reacts { margin: 0 0 0 4px; padding-left: 6px; border-left: 1px solid var(--line); }
+.now .actions .reacts button { padding: 3px 6px; }
+/* Телефон: обкладинка менша, «Скіп» — лише ⏭, «джерело» ховаємо (воно є в Бібліотеці), реакції — один рядок.
+   Інакше кнопки з реакціями розтягували панель на чотири рядки. */
+@media (max-width: 560px) {
+  .now { grid-template-columns: 76px 1fr; }
+  .now .title { font-size: 1.2em; }
+  .now .actions .lbl, .now .actions .chip.src { display: none; }
+  .now .actions button { padding: 6px 9px; }
+  .now .actions .reacts { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0; }
+  .now .actions .reacts button { padding: 3px 3px; font-size: 1.05em; }
+}
 .coverwrap { position: relative; }
 .now-panel { position: relative; }
 #flyLayer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: var(--radius); }
@@ -238,7 +315,9 @@ h2 .count { font-weight: 400; color: var(--muted); font-size: .88em; }
 /* ---- add / search ---- */
 .add { position: relative; }
 .add .row { display: flex; gap: 8px; }
-.add .hintline { color: var(--muted); font-size: .8em; margin-top: 8px; }
+/* Підказка про Enter і «/» — лише коли курсор у полі і є клавіатура з мишею: на телефоні вона ні до чого. */
+.add .hintline { color: var(--muted); font-size: .8em; margin-top: 8px; display: none; }
+@media (hover: hover) and (pointer: fine) { .add:focus-within .hintline { display: block; } }
 .results { position: absolute; left: 0; right: 0; top: 100%; margin-top: 6px; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; z-index: 4; max-height: 380px; overflow: auto; box-shadow: 0 14px 40px rgba(0,0,0,.45); }
 .results:empty { display: none; }
 .result { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; cursor: pointer; }
@@ -348,16 +427,18 @@ button.vplay { padding: 3px 8px; }
 .dj-head h2 { display: block; margin: 0; font-size: 1.05em; color: var(--text); font-weight: 600; }
 .dj-head .sub { color: var(--muted); font-size: .85em; margin-top: 2px; }
 .dj-panel { container-type: inline-size; }
-.sug-cards { display: grid; grid-template-columns: 1fr; gap: 10px; }
-@container (min-width: 560px) { .sug-cards { grid-template-columns: 1fr 1fr; } }
-/* every slot is the same height, so the panel never jumps when a card leaves or arrives */
-.sug { display: grid; grid-template-columns: 56px 1fr; grid-template-rows: 1fr auto; gap: 6px 12px; height: 118px; overflow: hidden; background: var(--bg2); border-radius: 12px; padding: 10px 12px; min-width: 0; border: 1px solid transparent; }
-.sug img, .sug .noimg { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--panel); grid-row: 1 / span 2; align-self: start; }
+.sug-cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
+@container (min-width: 760px) { .sug-cards { grid-template-columns: 1fr 1fr; } }
+/* Порада — один рядок: обкладинка, назва, кнопки праворуч. Висота однакова, щоб панель не стрибала, коли картка
+   йде чи приходить. Раніше тут був блок на 118 px із кнопками під назвою. */
+.sug { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 64px; background: var(--bg2); border-radius: 12px; padding: 8px 10px; min-width: 0; border: 1px solid transparent; }
+.sug img, .sug .noimg { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--panel); }
+.sug .st { min-width: 0; }
 .sug .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sug .a { color: var(--muted); font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sug .r { color: var(--accent); font-size: .82em; margin-top: 2px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sug .btns { display: flex; gap: 6px; grid-column: 2; align-self: end; }
-.sug .btns button { padding: 6px 12px; }
+.sug .r { color: var(--accent); font-size: .8em; margin-top: 1px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sug .btns { display: flex; gap: 6px; align-items: center; }
+.sug .btns button { padding: 6px 10px; }
 .sug.empty { display: flex; gap: 10px; align-items: center; justify-content: center; color: var(--muted); padding: 14px 12px; border-style: dashed; opacity: .75; }
 
 /* ---- Бібліотека: бокове меню на широкому, рядок вкладок на вузькому ---- */
@@ -395,7 +476,7 @@ button.vplay { padding: 3px 8px; }
 .list img, .list .noimg { width: 36px; height: 36px; border-radius: 5px; object-fit: cover; background: var(--panel); }
 .list .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list .t.skipped { text-decoration: line-through; opacity: .7; }
-.list .r { color: var(--muted); font-size: .82em; white-space: nowrap; }
+.list .r { color: var(--muted); font-size: .82em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list .btns { display: flex; gap: 4px; }
 .list .btns button { padding: 3px 7px; font-size: .9em; }
 .list .btns button.ghost { padding: 3px 6px; }
@@ -408,6 +489,27 @@ button.vplay { padding: 3px 8px; }
 .stat { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 4px 6px; font-size: .95em; }
 .stat b { color: var(--accent); font-variant-numeric: tabular-nums; }
 .bar { height: 6px; background: var(--accent2); border-radius: 999px; grid-column: 1 / -1; opacity: .7; }
+/* «Що вже було»: підписи днів між рядками, як у балачках, і «Показати ще» знизу. */
+.list li.lday { display: flex; align-items: center; gap: 10px; padding: 8px 4px 2px; color: var(--muted); font-size: .76em; letter-spacing: .02em; background: none; }
+.list li.lday::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.list li.lday:hover { background: none; }
+.histmore { display: flex; margin: 8px auto 0; }
+.list .r .rnick, .qitem .qnick { font-weight: 600; }
+
+/* ---- «Плейлисти»: перенести плейлист звідкись ---- */
+.plimp { display: flex; flex-direction: column; gap: 8px; padding: 12px; margin-bottom: 12px; border-radius: 12px; background: var(--bg2); border: 1px dashed var(--accent2); }
+.plimp-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.plimp-head b { font-family: var(--display); }
+.plimp-row { display: flex; gap: 8px; }
+.plimp-wait { display: flex; gap: 8px; align-items: center; padding: 6px 2px; }
+.plimp-err { color: var(--danger); font-size: .9em; padding: 4px 2px; }
+.album.imp { margin-top: 2px; border-style: solid; background: var(--panel); }
+.plimp-save { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.plimp-save select {
+  font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; outline: none; flex: 0 1 260px; min-width: 0;
+}
+.plimp-save input { flex: 1 1 200px; }
+.pl-new button { flex: none; }
 
 /* ---- chat ---- */
 .chat { display: flex; flex-direction: column; height: calc(100vh - 100px); min-height: 380px; position: sticky; top: 72px; min-width: 0; }
@@ -416,9 +518,12 @@ button.vplay { padding: 3px 8px; }
 .chat .chat-close:hover { background: var(--panel2); color: var(--text); }
 .messages { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
 .msg { line-height: 1.35; overflow-wrap: anywhere; }
+/* Кожен нік — свого кольору (web/people.js, --h): людину впізнаєш оком. Клік — її картка. */
 .msg .n { font-weight: 700; color: var(--accent); margin-right: 6px; }
+.who-n { --h: 45; color: hsl(var(--h) 72% 72%); cursor: pointer; }
+.who-n:hover { text-decoration: underline; text-underline-offset: 2px; }
+.msg .n.who-n { color: hsl(var(--h) 72% 72%); }
 .msg .time { color: var(--muted); font-size: .75em; margin-left: 6px; white-space: nowrap; }
-.msg.mine .n { color: var(--ok); }
 .msg.dj { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; background: #2a2210; border: 1px solid #4a3a12; border-radius: 10px; padding: 6px 8px; }
 .msg.dj img { width: 28px; height: 28px; }
 .msg.dj .n { color: var(--clay); }
@@ -515,6 +620,15 @@ button.vplay { padding: 3px 8px; }
 .msg.tables .n { color: var(--clay); }
 .msg.tables .time { float: right; margin: 0; font-style: italic; }
 .msg.tables .tlist { display: flex; flex-wrap: wrap; gap: 0 4px; margin-top: 2px; }
+/* «📣 Влад кличе в Мафію [Сісти]» — живий рядок; заповнився стіл — рядок ховається сам (app.js). */
+.msg.invite { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; padding: 4px 8px; border-radius: 10px; background: #2a2210; border: 1px solid #4a3a12; }
+.msg.invite .n { margin-right: 0; }
+.msg.invite .t { color: var(--text); }
+.msg.invite .roomlink { margin: 2px 0; }
+.msg.invite.tome { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+/* Особиста відповідь сервера («📣 Покликав Олю») — як /столи: бачиш лише ти. */
+.msg.note { background: var(--bg2); border-radius: 10px; padding: 5px 8px; font-size: .92em; }
+.msg.note .time { font-style: italic; }
 .chat form { display: flex; gap: 8px; margin-top: 10px; }
 #cmdBtn { font-weight: 700; color: var(--muted); }
 #cmdBtn:hover { color: var(--accent); }
@@ -531,8 +645,13 @@ button.vplay { padding: 3px 8px; }
 .msg.big .n, .msg.big .time { vertical-align: middle; }
 
 /* ---- кубик і команди ---- */
+/* Кидки одного ніка поспіль — один рядок: кісточки й монетки стають у .dies одна за одною. */
 .msg.dice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.msg.dice.mine .n { color: var(--ok); }
+.msg.dice .dies { display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.msg.dice .rng:empty { display: none; }
+.die.coin { gap: 5px; padding: 0 9px 0 6px; grid-auto-flow: column; font-size: .95em; color: var(--text); }
+.die.coin .cf { font-style: normal; font-size: 1.05em; }
+.die.coin .cs { font-weight: 700; color: var(--accent); }
 .die {
   display: inline-grid; place-items: center; min-width: 32px; height: 32px; padding: 0 7px;
   border-radius: 9px; background: var(--panel2); border: 1px solid var(--line);
@@ -557,14 +676,18 @@ button.vplay { padding: 3px 8px; }
   from { box-shadow: 0 0 0 7px rgba(244, 197, 66, .28); border-color: var(--accent2); }
   to { box-shadow: 0 0 0 0 rgba(244, 197, 66, 0); }
 }
-.cmdhint { margin-top: 8px; padding: 5px; border: 1px solid var(--line); background: var(--bg2); border-radius: 10px; }
+.cmdhint { margin-top: 8px; padding: 5px; border: 1px solid var(--line); background: var(--bg2); border-radius: 10px; max-height: 40vh; overflow: auto; }
 .cmdhint .cmd { padding: 6px 8px; border-radius: 8px; cursor: pointer; line-height: 1.35; }
-.cmdhint .cmd:hover { background: var(--panel2); }
+.cmdhint .cmd:hover, .cmdhint .cmd.on { background: var(--panel2); }
 .cmdhint b { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* Палітра: кидки одним натиском згори */
+.cmdquick { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 4px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.cmdquick button { padding: 6px 11px; font-size: .95em; }
 .online { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
-.online .chip { background: var(--panel2); color: var(--text); }
+.online .chip { background: var(--panel2); color: hsl(var(--h) 72% 76%); border: 0; font: inherit; font-size: .78em; padding: 2px 8px; cursor: pointer; }
+.online .chip:hover { background: var(--panel3); }
 .online .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
-.online .chip.listening { color: var(--accent); background: #3a2d0a; }
+.online .chip.listening { background: #3a2d0a; }
 .online .chip.listening::before { display: none; }
 #listeners { cursor: pointer; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 #listeners.on { color: var(--accent); }
@@ -601,8 +724,7 @@ button.vplay { padding: 3px 8px; }
 /* ---- ігри ---- */
 /* Тут лишається тільки місце під розділ: усе, що всередині нього, — у web/games/core.css. */
 #colGames { min-width: 0; }
-/* Столу віддаємо більше ширини, ніж решті розділів: клікеру й дошкам є куди розгорнутись. */
-body.route-games main { max-width: 1600px; }
+/* Ширина однакова в усіх розділах (1600): раніше «Ігри» були ширші, і балачки стрибали вбік на 50 px. */
 /* ⛶ — стіл на весь екран: балачки згортаються, лишається лише шапка сайту. */
 body.gfull { --rail: 0px; --rail-gap: 0px; }
 body.gfull #colChat { display: none; }
@@ -629,9 +751,15 @@ body.gfull main { max-width: none; padding: 10px 12px; }
      Лайк і лічильник слухачів є на панелі «В ефірі», а тут вони з'їдали б назву. */
   header #listeners, .mini-acts [data-act="like"] { display: none; }
   .mini-tt small { display: block; }
-  /* Стіл на весь екран — плеєр не заважає грати. */
-  body.gfull { --mini-h: 0px; }
-  body.gfull header .mini { display: none; }
+  /* Гучність на телефоні — кнопками самого телефона. */
+  header .volwrap { display: none; }
+  body.route-efir header .mini-acts { display: flex; }
+  /* Стіл на весь екран, стіл узагалі чи балачки — плеєр не заважає: внизу лишаються самі вкладки. */
+  body.gfull, body.g-room, body.route-chat { --mini-h: 0px; }
+  body.gfull header .mini, body.g-room header .mini, body.route-chat header .mini { display: none; }
+  /* «Я» в шапці на телефоні — аватарка й черепки, без ніка: нік і так видно в профілі. */
+  header .mechip .nick { display: none; }
+  header .mechip { padding-right: 8px; }
   /* На телефоні балачки — окрема вкладка внизу, тож рейка тут не потрібна взагалі. */
   main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); gap: 12px; --rail: 0px; --rail-gap: 0px; }
   section.panel, aside.panel { padding: 12px; }
@@ -642,19 +770,28 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   .chat .chat-close { display: none; }
   header .vswitch, header .chat-toggle { display: none; }
   .mtabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: var(--tabs-h); z-index: 6; background: rgba(15, 31, 24, .96); backdrop-filter: blur(8px); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
-  .mtabs button { flex: 1; min-width: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .82em; justify-content: center; flex-direction: column; gap: 1px; padding: 6px 2px; }
-  .mtabs button .ico { font-size: 1.25em; line-height: 1; }
+  .mtabs button { flex: 1; min-width: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .74em; justify-content: center; flex-direction: column; gap: 1px; padding: 6px 1px; position: relative; white-space: nowrap; }
+  .mtabs button .ico { font-size: 1.35em; line-height: 1; }
   .mtabs button.on { color: var(--accent); }
+  .mtabs button .chip.badge { position: absolute; top: 3px; left: calc(50% + 8px); }
+  .mtabs .badge.turn { background: var(--accent); }
   .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); }
   /* Шторка балачки столу — над міні-плеєром і вкладками; розгорнута — на всю ширину. */
   .tchat.drawer { right: 12px; bottom: calc(var(--tabs-h) + var(--mini-h) + 10px); }
   .tchat.drawer.open { left: 12px; }
   .tchat.drawer.open .tc-body { width: 100%; height: min(62vh, 560px); }
-  .sug .btns { grid-column: 1 / -1; }
-  /* бокове меню бібліотеки на телефоні — рядок, що гортається; заголовок і пошук один під одним */
+  /* бокове меню бібліотеки на телефоні — чипи, що переносяться (без гортання вбік, де половину не видно);
+     заголовок і пошук один під одним */
+  .libmenu { flex-wrap: wrap; overflow: visible; gap: 6px; }
+  .libmenu button { background: var(--panel); border-color: var(--line); padding: 6px 11px; }
   .libhead { flex-wrap: wrap; gap: 8px; }
   #libFind { margin-left: 0; max-width: none; flex: 1 1 140px; }
-  .libpage .list { max-height: calc(100vh - 260px); }
+  /* Списки на телефоні гортаються разом зі сторінкою: друга прокрутка всередині першої лише плутала палець. */
+  .libpage .list, .list { max-height: none; overflow: visible; }
+  .hellobar { margin-top: 10px; padding: 0 10px; }
+  .hellobar > div { flex-wrap: wrap; gap: 10px; padding: 10px 12px; font-size: .92em; }
+  .hellobar button { width: 100%; justify-content: center; }
+  .now .actions .reacts { border-left: 0; padding-left: 0; margin-left: 0; width: 100%; }
 }
 @media (max-width: 480px) {
   .qitem .btns { flex-direction: column; }
@@ -756,3 +893,334 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .ads-title:hover { text-decoration: underline dotted; }
 .ads-switch { display: inline-flex; align-items: center; gap: 3px; font-size: .8em; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .ads-list .btns { flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---- шпаргалка клавіш («?») ---- */
+.modal .card.keys { width: min(92vw, 460px); }
+.keylist { display: flex; flex-direction: column; gap: 7px; }
+.keylist > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.keylist span { color: var(--muted); margin-left: 6px; }
+kbd {
+  display: inline-block; min-width: 1.7em; padding: 2px 6px; border-radius: 6px; text-align: center;
+  background: var(--bg2); border: 1px solid var(--line); border-bottom-width: 2px; font: 600 .85em ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text);
+}
+
+/* ---- картка людини (клік по ніку) ---- */
+.pcard {
+  position: fixed; z-index: 26; width: 320px; max-width: calc(100vw - 16px); padding: 12px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 14px 40px rgba(0, 0, 0, .55);
+  display: flex; flex-direction: column; gap: 10px; animation: pop .12s ease-out;
+}
+.pcard.sheet { left: 8px; right: 8px; bottom: calc(var(--tabs-h) + 8px); top: auto; width: auto; max-width: none; }
+.pc-head { display: flex; align-items: center; gap: 10px; }
+.pc-who { flex: 1; min-width: 0; }
+.pc-who b { display: block; font-family: var(--display); font-size: 1.08em; color: hsl(var(--h) 72% 76%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-where, .wh-where { font-size: .85em; color: var(--text); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pc-where .gico, .wh-where .gico { width: 14px; height: 14px; }
+.wdot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
+.wdot.on { background: var(--ok); }
+.pc-x { padding: 4px 7px; }
+.pc-stats { display: flex; gap: 6px; flex-wrap: wrap; min-height: 22px; align-items: center; }
+.pc-stats .chip { font-size: .8em; color: var(--text); }
+.pc-stats .gico { width: 13px; height: 13px; }
+.pc-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.pc-acts button { padding: 6px 11px; font-size: .9em; }
+
+/* ---- профіль людини (#who/<нік>) ---- */
+.who-page { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.who-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.wh-main { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px; }
+.wh-main h2 { margin: 0; font-size: 1.5em; color: hsl(var(--h) 72% 78%); }
+.wh-main h2 .muted { color: var(--muted); font-family: var(--font); font-weight: 400; }
+.wh-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.who-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; align-items: start; }
+.wcard { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wcard.wide { grid-column: 1 / -1; }
+.wcard h3 { margin: 0; font-family: var(--display); font-size: 1.05em; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.wcard h4 { margin: 6px 0 0; font-family: var(--display); font-size: .95em; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.wc-more { margin-left: auto; padding: 2px 9px; font-size: .78em; }
+.wc-big { font-size: 1.9em; font-weight: 800; font-family: var(--display); color: var(--accent); font-variant-numeric: tabular-nums; }
+.wc-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.wc-pair > div { background: var(--bg2); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wc-pair b { font-size: 1.15em; font-variant-numeric: tabular-nums; }
+.wc-pair span { color: var(--muted); font-size: .8em; }
+.wc-cats, .wc-pls { display: flex; gap: 6px; flex-wrap: wrap; }
+.wc-cats .chip { color: var(--text); font-size: .82em; padding: 3px 9px; }
+.wc-pls .chip { cursor: pointer; border: 0; font: inherit; font-size: .82em; color: var(--text); }
+.plus { color: var(--ok); }
+.minus { color: var(--danger); }
+.wc-led { display: flex; flex-direction: column; gap: 3px; font-size: .88em; }
+.wc-led > div { display: grid; grid-template-columns: 4.2em 1fr auto; gap: 8px; align-items: baseline; padding: 3px 6px; border-radius: 6px; background: var(--bg2); }
+.wc-led b { font-variant-numeric: tabular-nums; text-align: right; }
+.wc-how { margin-top: 4px; }
+.wcard .list { max-height: none; }
+.wcard .glb .gico { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; }
+
+/* ---- «📊 Хто скільки» ---- */
+.stats { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.sthead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; }
+.sttabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.sttabs button { background: transparent; border-color: transparent; color: var(--muted); padding: 7px 13px; font-size: .98em; }
+.sttabs button:hover { background: var(--panel2); color: var(--text); }
+.sttabs button.on { background: var(--panel); border-color: var(--line); color: var(--text); }
+/* Один перемикач періоду на всі сторінки цифр: день · тиждень · місяць · весь час. */
+.stper { display: inline-flex; gap: 2px; padding: 3px; background: var(--bg2); border-radius: 11px; border: 1px solid var(--line); }
+.stper button { padding: 5px 11px; font-size: .9em; background: transparent; border: 0; color: var(--muted); border-radius: 8px; }
+.stper button:hover { color: var(--text); }
+.stper button.on { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.stgrid { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.stbox { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stbox h3 { margin: 0; font-family: var(--display); font-size: 1.05em; font-weight: 600; display: flex; align-items: baseline; gap: 8px; }
+.stbox-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.stbox-head .stfind { margin-left: auto; max-width: 240px; padding: 6px 10px; font-size: .9em; }
+.stpeople { display: flex; flex-direction: column; gap: 4px; }
+.stp { display: grid; grid-template-columns: 1.6em 20px minmax(70px, 9em) 1fr auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; font-size: .93em; }
+.stp.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.stp .n { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.stp-nick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.stp-bar { height: 8px; border-radius: 999px; background: var(--bg2); overflow: hidden; }
+.stp-bar i { display: block; height: 100%; border-radius: 999px; background: hsl(var(--h) 60% 55%); }
+.stp b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.stdj { padding: 2px 6px; }
+.strating { max-height: calc(100vh - 300px); }
+.stcache { margin-top: 2px; }
+.glb-who { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; }
+.glb-who .who-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-nick { display: inline-flex; align-items: center; gap: 7px; }
+@media (max-width: 1100px) { .stgrid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .who-grid { grid-template-columns: 1fr; }
+  .who-head { gap: 12px; }
+  .wh-acts { width: 100%; }
+  .sthead { justify-content: flex-start; }
+  .stper { width: 100%; justify-content: space-between; }
+  .stper button { flex: 1; padding: 6px 4px; }
+  .strating { max-height: none; }
+  .stp { grid-template-columns: 1.4em 20px minmax(60px, 7em) 1fr auto; }
+}
+
+/* ---- лише дивишся (ще не назвався): черепків ще нема, тож і «🏺 —» у шапці ні до чого ---- */
+body.preview header .mechip .wallet { display: none; }
+/* У «Тиші» кнопок нема — реакції стоять першими, і розділювач зліва від них зайвий. */
+.now .actions .reacts:first-child { border-left: 0; padding-left: 0; margin-left: 0; }
+/* Довгий нік у «⏱ Час» — з трикрапкою, а не обрізаний посеред літери. */
+.gt-nick { min-width: 0; overflow: hidden; }
+.gt-nick .who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- «💡 Розробнику»: кнопка в шапці, вікно записки, «Мої записки» ---- */
+header .fbbtn { position: relative; padding: 6px 9px; font-size: 1.05em; }
+header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
+.modal .card.fbcard { width: min(94vw, 520px); max-height: 92vh; overflow: auto; }
+.fbcard textarea {
+  font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; width: 100%; min-height: 120px; resize: vertical; outline: none; line-height: 1.45;
+}
+.fbcard textarea:focus { border-color: var(--accent2); }
+.fbrow { align-items: center; }
+.fbcount { margin-left: auto; font-variant-numeric: tabular-nums; }
+.fbcard details summary { cursor: pointer; color: var(--text); font-weight: 600; padding: 4px 0; }
+.fbmine { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-height: 40vh; overflow: auto; }
+.fbm { background: var(--bg2); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; border: 1px solid transparent; }
+.fbm.fresh { border-color: var(--accent2); }
+.fbm-head { display: flex; align-items: center; gap: 6px; }
+.fbm-head .muted { margin-left: auto; }
+.fbm-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92em; }
+.fbm-reply { font-size: .9em; padding: 4px 8px; border-left: 3px solid var(--accent2); background: var(--panel); border-radius: 6px; }
+
+/* ---- вкладка розробника «💡 Пропозиції й баги» ---- */
+.fbseg { flex-wrap: wrap; }
+.list.fblist { max-height: none; overflow: visible; gap: 8px; }
+.list.fblist li.fbi { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px; background: var(--bg2); border-radius: 12px; border-left: 3px solid var(--line); font-size: .95em; }
+.list.fblist li.fbi:hover { background: var(--bg2); }
+.list.fblist li.fb-bug { border-left-color: var(--danger); }
+.list.fblist li.fb-idea { border-left-color: var(--accent2); }
+.list.fblist li.fb-change { border-left-color: var(--ok); }
+.fbi-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fbi-head .fbi-st { margin-left: auto; font: inherit; font-size: .85em; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.fbi-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.fbi-ctx:empty { display: none; }
+.fbi-reply { display: flex; gap: 6px; }
+.fbi-reply input { padding: 6px 10px; font-size: .9em; }
+
+/* =====================================================================================================
+   Лавка Дядька Глека: вбрання людей (значок, рамка, колір ніка, титул, тло) і сама вітрина (web/lavka.js).
+   ===================================================================================================== */
+/* ---- аватарка: значок замість літери, фон через --ava-bg (щоб рамка й «веселка» лягали шарами) ----
+   --ava-bg — завжди зображення, не колір: у шарах background колір дозволено лише в останньому, і
+   «hsl(…) padding-box, рамка border-box» вбивав увесь фон — аватарка з рамкою лишалась без кружечка. */
+.ava { --ava-bg: linear-gradient(hsl(var(--h) 42% 30%), hsl(var(--h) 42% 30%)); background: var(--ava-bg); }
+.ava.ico { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; font-weight: 400; font-size: .95em; }
+.ava.sm.ico { font-size: .72em; }
+.ava.xl.ico { font-size: 1.45em; }
+.ava.xxl.ico { font-size: 2.3em; }
+.ava.rainbow { --ava-bg: conic-gradient(from 20deg, hsl(0 55% 34%), hsl(45 60% 32%), hsl(120 45% 28%), hsl(195 55% 32%), hsl(260 45% 36%), hsl(320 50% 34%), hsl(360 55% 34%)); color: #fff; }
+/* ---- рамки: кільце — другим шаром фону під border ---- */
+.ava.fr { border: 2px solid transparent; box-shadow: none; }
+.ava.xl.fr { border-width: 2.5px; }
+.ava.xxl.fr { border-width: 3.5px; }
+.ava.fr-copper { background: var(--ava-bg) padding-box, linear-gradient(135deg, #f0b07a, #8a4b22 45%, #d98d57 70%, #6e3a18) border-box; }
+.ava.fr-silver { background: var(--ava-bg) padding-box, linear-gradient(135deg, #ffffff, #8d98a3 40%, #e6ecf1 65%, #6f7a85) border-box; box-shadow: 0 0 6px rgba(220, 232, 240, .35); }
+.ava.fr-gold { background: var(--ava-bg) padding-box, linear-gradient(135deg, #fff4bf, #d99a16 40%, #ffd75e 65%, #a86d07) border-box; box-shadow: 0 0 9px rgba(255, 200, 60, .5); }
+@property --lv-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.ava.fr-alive {
+  background: var(--ava-bg) padding-box, conic-gradient(from var(--lv-a), #ff6b6b, #ffd166, #06d6a0, #4cc9f0, #b388ff, #ff6b6b) border-box;
+  box-shadow: 0 0 10px rgba(255, 255, 255, .22); animation: lv-spin 3.2s linear infinite;
+}
+@keyframes lv-spin { to { --lv-a: 360deg; } }
+
+/* ---- нік «Веселка»: дрібні ніки переливаються кольором, великі (профіль, картка, вітрина) — смугою ---- */
+@keyframes lv-rainbow {
+  0% { color: hsl(0 85% 72%); } 17% { color: hsl(38 92% 64%); } 33% { color: hsl(105 65% 64%); }
+  50% { color: hsl(185 78% 64%); } 67% { color: hsl(228 88% 76%); } 83% { color: hsl(290 72% 74%); } 100% { color: hsl(360 85% 72%); }
+}
+.who-n.rainbow, .msg .n.who-n.rainbow, .online .chip.rainbow { animation: lv-rainbow 6s linear infinite; }
+.wh-main h2 .rainbow, .pc-who b.rainbow, .lv-nick.rainbow {
+  background: linear-gradient(90deg, hsl(0 85% 70%), hsl(38 92% 62%), hsl(105 65% 62%), hsl(185 78% 62%), hsl(228 88% 74%), hsl(290 72% 72%), hsl(360 85% 70%)) 0 0 / 200% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: lv-slide 5s linear infinite;
+}
+@keyframes lv-slide { to { background-position: 200% 0; } }
+@media (prefers-reduced-motion: reduce) { .rainbow, .ava.fr-alive { animation: none !important; } }
+/* значок перед ніком у балачках */
+.nico { font-style: normal; margin-right: 3px; font-size: .95em; -webkit-text-fill-color: initial; }
+/* 🇺🇦 малюємо самі: Windows прапорів-емодзі не має і показує замість нього літери «UA» */
+.fl-ua { display: inline-block; width: 1.25em; height: .85em; border-radius: .14em; vertical-align: -.08em;
+  background: linear-gradient(#1f5fd6 50%, #ffd23f 50%); box-shadow: 0 0 0 1px rgba(0, 0, 0, .25) inset; }
+.ava .fl-ua { width: 1.1em; height: .76em; }
+.online .chip .nico { margin-right: 2px; }
+/* титул — під ніком у картці, профілі й вітрині */
+.lv-titlechip {
+  display: inline-block; align-self: flex-start; margin: 1px 0; padding: 1px 9px; border-radius: 999px; font-size: .78em; font-weight: 600;
+  color: #ffe7a8; background: linear-gradient(90deg, #5a3d10, #3d2a0c); border: 1px solid #7a5a1c; letter-spacing: .01em;
+}
+
+/* ---- тло профілю ---- */
+.who-head.lv-bgd { position: relative; overflow: hidden; }
+.who-head.lv-bgd > * { position: relative; }
+.who-head.lv-bgd::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10, 14, 12, .72) 0%, rgba(10, 14, 12, .45) 55%, rgba(10, 14, 12, .15)); pointer-events: none; }
+.who-head.lv-bgd h2, .who-head.lv-bgd .wh-where, .who-head.lv-bgd .muted { text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
+.bg-stars {
+  background:
+    radial-gradient(1.4px 1.4px at 22px 18px, #fff 98%, transparent) 0 0 / 97px 83px,
+    radial-gradient(1px 1px at 60px 50px, #cfe0ff 98%, transparent) 0 0 / 131px 107px,
+    radial-gradient(1.8px 1.8px at 90px 70px, #fff6d0 98%, transparent) 0 0 / 173px 149px,
+    radial-gradient(1.1px 1.1px at 40px 90px, #fff 98%, transparent) 0 0 / 151px 121px,
+    radial-gradient(120% 100% at 85% -10%, #3a4796 0%, transparent 55%),
+    linear-gradient(180deg, #0c1230, #1c1442) !important;
+}
+.bg-stripes {
+  background: repeating-linear-gradient(135deg, #3a2448 0 16px, #24324a 16px 32px, #1f3d33 32px 48px, #4a3320 48px 64px) !important;
+}
+.bg-vyshyvanka {
+  background:
+    linear-gradient(45deg, transparent 38%, #d32f2f 38% 62%, transparent 62%) 0 6px / 14px 14px repeat-x,
+    linear-gradient(-45deg, transparent 38%, #d32f2f 38% 62%, transparent 62%) 0 6px / 14px 14px repeat-x,
+    linear-gradient(45deg, transparent 38%, #111 38% 62%, transparent 62%) 7px 22px / 14px 14px repeat-x,
+    linear-gradient(-45deg, transparent 38%, #111 38% 62%, transparent 62%) 7px 22px / 14px 14px repeat-x,
+    linear-gradient(45deg, transparent 38%, #d32f2f 38% 62%, transparent 62%) 0 calc(100% - 6px) / 14px 14px repeat-x,
+    linear-gradient(-45deg, transparent 38%, #d32f2f 38% 62%, transparent 62%) 0 calc(100% - 6px) / 14px 14px repeat-x,
+    linear-gradient(45deg, transparent 38%, #111 38% 62%, transparent 62%) 7px calc(100% - 22px) / 14px 14px repeat-x,
+    linear-gradient(-45deg, transparent 38%, #111 38% 62%, transparent 62%) 7px calc(100% - 22px) / 14px 14px repeat-x,
+    linear-gradient(180deg, #3b302a, #2c231f) !important;
+}
+.bg-petrykivka {
+  background:
+    radial-gradient(circle at 90% 32%, #ffd54f 0 5px, transparent 6px),
+    radial-gradient(circle at 90% 32%, #e53935 0 14px, transparent 15px),
+    radial-gradient(circle at 90% 32%, #ffb300 0 21px, transparent 22px),
+    radial-gradient(circle at 78% 72%, #fdd835 0 4px, transparent 5px),
+    radial-gradient(circle at 78% 72%, #fb8c00 0 10px, transparent 11px),
+    radial-gradient(circle at 78% 72%, #c62828 0 15px, transparent 16px),
+    radial-gradient(circle at 66% 22%, #d81b60 0 6px, transparent 7px),
+    radial-gradient(circle at 97% 82%, #ff7043 0 8px, transparent 9px),
+    radial-gradient(ellipse 26px 9px at 80% 45%, #43a047 97%, transparent),
+    radial-gradient(ellipse 22px 8px at 97% 55%, #2e7d32 97%, transparent),
+    radial-gradient(ellipse 18px 7px at 70% 58%, #66bb6a 97%, transparent),
+    radial-gradient(ellipse 20px 7px at 86% 12%, #388e3c 97%, transparent),
+    linear-gradient(180deg, #161210, #0f0c0b) !important;
+}
+.bg-trypillia {
+  background:
+    radial-gradient(circle at 100% 50%, transparent 20%, #c0703a 21% 33%, transparent 34% 49%, #c0703a 50% 62%, transparent 63%) 0 0 / 48px 48px,
+    radial-gradient(circle at 0 50%, transparent 20%, #8a4a1f 21% 33%, transparent 34% 49%, #8a4a1f 50% 62%, transparent 63%) 24px 24px / 48px 48px,
+    linear-gradient(180deg, #2a1a10, #1e130c) !important;
+}
+
+/* ---- рядки балачок: подарунок, присвята, феєрверк ---- */
+/* Суцільним реченням, як звичайна репліка: «🎁 Оля дарує Петрові …» — флекс розносив нік і текст на різні рядки. */
+.msg.deed { display: block; padding: 4px 8px; border-radius: 10px; background: #241a2e; border: 1px solid #45305a; }
+.msg.deed .iv-ico { margin-right: 4px; }
+.msg.deed.dedication { background: #2e1a24; border-color: #5a3045; }
+.msg.deed.fx { background: transparent; border-style: dashed; }
+.msg.deed .n { margin-right: 4px; }
+.msg.deed .t { color: var(--text); }
+.msg.deed.tome { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
+/* ---- 🎆 над обкладинкою ---- */
+.fwbtn { font-size: 1.05em; padding: 4px 8px; border-color: #7a5a1c; background: linear-gradient(135deg, #3a2a10, #2a1d0c); }
+.fwbtn:hover { border-color: var(--accent); }
+.fw { position: absolute; width: 0; height: 0; pointer-events: none; }
+.fw i {
+  position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--c);
+  box-shadow: 0 0 8px var(--c); opacity: 0; animation: lv-burst 1.3s cubic-bezier(.15, .7, .3, 1) forwards;
+}
+@keyframes lv-burst {
+  0% { opacity: 1; transform: translate(0, 0) scale(1.2); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 24px)) scale(.4); }
+}
+@media (prefers-reduced-motion: reduce) { .fw i { animation-duration: .01s; } }
+/* 💌 на моїй найближчій пісні в черзі */
+.qitem .ded { font-size: .95em; }
+.dedmodal .card { width: min(94vw, 460px); }
+.ded-h { font-weight: 700; font-family: var(--display); margin-top: 2px; }
+.ded-chips { display: flex; gap: 6px; flex-wrap: wrap; max-height: 30vh; overflow: auto; }
+.ded-chips .chip { border: 1px solid var(--line); cursor: pointer; font: inherit; font-size: .88em; color: var(--text); background: var(--bg2); }
+.ded-chips .chip.on { border-color: var(--accent); background: var(--panel3); color: var(--accent); }
+.ded-say { background: var(--bg2); border-left: 3px solid var(--accent2); border-radius: 6px; padding: 8px 10px; font-size: .92em; }
+
+/* ---- вітрина ---- */
+.lavka { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.lv-head { display: flex; flex-direction: column; gap: 12px; }
+.lv-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: space-between; }
+.lv-sign { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lv-sign img { width: 52px; height: 52px; flex: none; }
+.lv-sign h2 { margin: 0; font-family: var(--display); font-size: 1.4em; }
+.lv-bal { background: var(--bg2); border-radius: 12px; padding: 8px 14px; white-space: nowrap; }
+.lv-bal b { color: var(--accent); font-size: 1.25em; font-variant-numeric: tabular-nums; }
+.lv-gift, .lv-guest { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: #2a2210; border: 1px solid #4a3a12; }
+.lv-gift button, .lv-guest button { margin-left: auto; }
+.lv-preview { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px; border-radius: 12px; background: var(--bg2); position: relative; overflow: hidden; }
+.lv-preview > * { position: relative; }
+.lv-preview[class*=' bg-']::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10, 14, 12, .7), rgba(10, 14, 12, .2)); }
+.lv-pv-who { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.lv-pv-who .lv-nick { font-family: var(--display); font-size: 1.35em; }
+.lv-nick { color: hsl(var(--h) 72% 76%); }
+.lv-preview .lv-pv-reset { margin-left: auto; background: var(--panel); border: 1px solid var(--line); }
+.lv-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+.lv-tabs button { padding: 6px 12px; font-size: .92em; }
+.lv-tabs button.on { background: var(--panel3); border-color: var(--accent2); color: var(--accent); }
+.lv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+.lv-item {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 12px 10px;
+  background: var(--bg2); border-radius: 12px; border: 1px solid transparent; min-width: 0;
+}
+.lv-item.owned { border-color: #3d6a4d; }
+.lv-item.worn { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2) inset; }
+.lv-item.trying { border-color: var(--accent); border-style: dashed; }
+.lv-item.locked { opacity: .72; }
+.lv-art { height: 76px; display: grid; place-items: center; width: 100%; }
+.lv-emoji { font-size: 2.5em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.lv-art .lv-nick { font-family: var(--display); font-size: 1.15em; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-bg { display: block; width: 100%; height: 64px; border-radius: 10px; }
+.lv-art .lv-titlechip { align-self: center; font-size: .95em; padding: 3px 12px; }
+.lv-btns .ghost { border: 1px solid var(--line); }
+.lv-name { font-weight: 700; }
+.lv-desc { line-height: 1.35; }
+.lv-state { font-size: .88em; color: var(--muted); }
+.lv-item.owned .lv-state { color: var(--ok); }
+.lv-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: auto; }
+.lv-btns button { padding: 5px 11px; font-size: .88em; }
+@media (max-width: 600px) {
+  .lv-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .lv-sign img { width: 40px; height: 40px; }
+  .lv-sign h2 { font-size: 1.2em; }
+}

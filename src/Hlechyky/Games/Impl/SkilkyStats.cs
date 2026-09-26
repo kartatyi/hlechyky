@@ -60,16 +60,19 @@ public sealed class SkilkyStats(Db? db, IClock clock)
         "tracksTotal" => Scalar("SELECT COUNT(*) FROM tracks WHERE id NOT LIKE $p", ("$p", VoicePrefix)),
         "voiceTotal" => Scalar("SELECT COUNT(*) FROM tracks WHERE id LIKE $p", ("$p", VoicePrefix)),
         // «Написано в балачках» — людьми: рядки Журналу пише сам сервер, а Глек за вересень наговорив
-        // тисячі анонсів своїх треків — з ними відповідь була б про нього, а не про нас.
-        "chatTotal" => Scalar("SELECT COUNT(*) FROM chat WHERE kind <> 'system' AND kind NOT LIKE 'dj%'"),
+        // тисячі анонсів своїх треків — з ними відповідь була б про нього, а не про нас. Рядок-заклик за стіл
+        // («кличе в мафію») теж пише сервер, хоч і від імені того, хто поставив стіл.
+        "chatTotal" => Scalar("SELECT COUNT(*) FROM chat WHERE kind NOT IN ('system', 'invite') AND kind NOT LIKE 'dj%'"),
         "minutesPlayed30d" => Scalar("""
             SELECT COALESCE(SUM(t.duration_sec), 0) / 60
             FROM plays p JOIN tracks t ON t.id = p.track_id
             WHERE p.started_at >= $s
             """, ("$s", Since(30))),
+        // INDEXED BY — бо з індексом ніків (Db, ix_plays_requested) планувальник, аби не сортувати групи, пішов би
+        // ним через усі програвання замість тижневого проміжку часу
         "topRequesterCount7d" => Scalar("""
             SELECT COALESCE(MAX(n), 0) FROM (
-                SELECT COUNT(*) AS n FROM plays
+                SELECT COUNT(*) AS n FROM plays INDEXED BY ix_plays_started
                 WHERE source = 'user' AND requested_by IS NOT NULL AND started_at >= $s
                 GROUP BY requested_by)
             """, ("$s", Since(7))),

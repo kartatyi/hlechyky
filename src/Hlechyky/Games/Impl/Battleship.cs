@@ -195,7 +195,7 @@ public sealed class Battleship : Game
     {
         /// <summary>Сидів за столом на старті партії — тобто має поле.</summary>
         public bool In { get; set; }
-        /// <summary>Вибув: флот на дні або встав з-за столу.</summary>
+        /// <summary>Вибув: флот на дні або встає з-за столу.</summary>
         public bool Out { get; set; }
         public List<int[]> Ships { get; set; } = [];
         public bool Ready { get; set; }
@@ -295,7 +295,7 @@ public sealed class Battleship : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_phase == Phase.Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == Phase.Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (seat < 0 || seat >= Seats || !_sides[seat].In) return ActResult.Fail("Ти тут не граєш");
         // Час на розстановку перевіряємо і тут, а не лише в Tick: між тиками є проміжок, і за нього
         // ніхто не має права ані переставити кораблі, ані сказати «Готово» після дзвінка.
@@ -314,7 +314,7 @@ public sealed class Battleship : Game
     ActResult Place(int seat, JsonElement payload)
     {
         if (_phase != Phase.Placing) return ActResult.Fail("Бій уже почався, кораблі не рухаються");
-        if (_sides[seat].Ready) return ActResult.Fail("Ти вже сказав «Готово»");
+        if (_sides[seat].Ready) return ActResult.Fail("«Готово» вже сказано — чекаємо решту");
         if (ReadShips(payload) is not { } ships) return ActResult.Fail("Не зрозумів розстановку");
         if (BattleshipRules.Invalid(ships, _sea) is { } why) return ActResult.Fail(why);
         _sides[seat].Ships = ships;
@@ -329,7 +329,7 @@ public sealed class Battleship : Game
     ActResult Clear(int seat)
     {
         if (_phase != Phase.Placing) return ActResult.Fail("Бій уже почався, кораблі не рухаються");
-        if (_sides[seat].Ready) return ActResult.Fail("Ти вже сказав «Готово»");
+        if (_sides[seat].Ready) return ActResult.Fail("«Готово» вже сказано — чекаємо решту");
         if (_sides[seat].Ships.Count == 0) return ActResult.Done;
         _sides[seat].Ships = [];
         _dirty = true;
@@ -339,16 +339,16 @@ public sealed class Battleship : Game
     ActResult Scatter(int seat)
     {
         if (_phase != Phase.Placing) return ActResult.Fail("Бій уже почався, кораблі не рухаються");
-        if (_sides[seat].Ready) return ActResult.Fail("Ти вже сказав «Готово»");
+        if (_sides[seat].Ready) return ActResult.Fail("«Готово» вже сказано — чекаємо решту");
         _sides[seat].Ships = BattleshipRules.RandomFleet(Ctx.Rng, _sea);
         _dirty = true;
-        return ActResult.Accept("Розставив за тебе");
+        return ActResult.Accept("Гоп — розставив за тебе");
     }
 
     ActResult Ready(int seat)
     {
         if (_phase != Phase.Placing) return ActResult.Fail("Бій уже почався");
-        if (_sides[seat].Ready) return ActResult.Fail("Ти вже сказав «Готово»");
+        if (_sides[seat].Ready) return ActResult.Fail("«Готово» вже сказано — чекаємо решту");
         if (BattleshipRules.Invalid(_sides[seat].Ships, _sea) is { } why) return ActResult.Fail(why);
         _sides[seat].Ready = true;
         _dirty = true;
@@ -368,7 +368,7 @@ public sealed class Battleship : Game
     {
         if (_phase != Phase.Battle) return ActResult.Fail("Спершу розстав кораблі");
         if (_sides[seat].Out) return ActResult.Fail("Твій флот на дні — лишається дивитись");
-        if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
+        if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
         if (ReadCell(payload) is not { } cell || cell < 0 || cell >= _sea.Cells)
             return ActResult.Fail("Не зрозумів, куди стріляти");
 
@@ -376,7 +376,7 @@ public sealed class Battleship : Game
         if (ReadTarget(payload) is { } asked)
         {
             if (asked == seat) return ActResult.Fail("По своєму флоту не стріляють");
-            if (asked < 0 || asked >= Seats || !_sides[asked].In) return ActResult.Fail("Там нікого нема");
+            if (asked < 0 || asked >= Seats || !_sides[asked].In) return ActResult.Fail("Там ні душі");
             if (_sides[asked].Out) return ActResult.Fail("Цей флот уже на дні");
             at = asked;
         }
@@ -407,7 +407,7 @@ public sealed class Battleship : Game
             foe.Misses.Add(cell);
             Note(new Shot(seat, at, cell, "miss", 0, auto));
             _turn = NextAlive(seat);
-            return ActResult.Accept("Мимо");
+            return ActResult.Accept("Бульк — мимо");
         }
 
         foe.Hits.Add(cell);
@@ -415,7 +415,7 @@ public sealed class Battleship : Game
         if (!foe.Sunk(ship))
         {
             Note(new Shot(seat, at, cell, "hit", 0, auto));
-            return ActResult.Accept("Влучив! Стріляй ще");
+            return ActResult.Accept("Є влучання! Стріляй ще");
         }
 
         me.Sank++;
@@ -424,17 +424,17 @@ public sealed class Battleship : Game
         if (foe.Left > 0)
         {
             Note(new Shot(seat, at, cell, "sunk", ship.Length, auto));
-            return ActResult.Accept("Потопив! Стріляй ще");
+            return ActResult.Accept("Є! Корабель на дні — стріляй ще");
         }
 
         // Флот цього поля скінчився: господар вибуває і далі тільки дивиться.
         foe.Out = true;
         _sunkOrder.Add(at);
         Note(new Shot(seat, at, cell, "out", ship.Length, auto));
-        if (Alive.Count() > 1) return ActResult.Accept($"Флот {Nick(at)} на дні! Стріляй ще");
+        if (Alive.Count() > 1) return ActResult.Accept($"Є! Флот {NickCases.Genitive(Nick(at))} на дні — стріляй ще");
 
         Win(seat);
-        return ActResult.Accept(Players.Count() > 2 ? "Останній флот на плаву — твій!" : "Флот суперника на дні!");
+        return ActResult.Accept(Players.Count() > 2 ? "Є! Останній флот на плаву — твій!" : "Є! Флот суперника на дні — твоя взяла!");
     }
 
     void Note(Shot shot)
@@ -461,7 +461,7 @@ public sealed class Battleship : Game
         }
         var rest = Places().Skip(1).Select(s => $"{Nick(s)} {SeatName(s)}");
         Ctx.Finish([seat],
-            $"{Info.Title}: останній флот на плаву — {Ctx.NickOf(seat)} {SeatName(seat)} (потопив {_sides[seat].Sank}); "
+            $"{Info.Title}: останній флот на плаву — {Ctx.NickOf(seat)} {SeatName(seat)} (потоплено: {_sides[seat].Sank}); "
             + $"далі {string.Join(", ", rest)}", scores);
     }
 
@@ -593,7 +593,7 @@ public sealed class Battleship : Game
         _dirty = true;
         if (rest.Length >= 2)
         {
-            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, його флот пішов на дно — решта б'ються далі");
+            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, флот іде на дно — решта б'ються далі");
             Note(new Shot(seat, seat, -1, "left", 0, false));
             if (_phase == Phase.Placing && rest.All(s => _sides[s].Ready)) Battle();
             else if (_phase == Phase.Battle && _turn == seat)
@@ -606,7 +606,7 @@ public sealed class Battleship : Game
         _phase = Phase.Done;
         _winner = rest.Length == 1 ? rest[0] : null;
         _turnUntil = null;
-        Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
     // ---------- види ----------

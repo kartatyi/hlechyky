@@ -272,7 +272,7 @@ public class SnakeModesTests
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("встав з-за столу", LastLog(h));
+        Assert.Contains("з-за столу", LastLog(h));
         // Раунд скінчився і в самій грі: без цього поле лишилось би яскравим, ніби партія триває.
         Assert.Equal("x", h.View(null).GetProperty("winner").GetString());
     }

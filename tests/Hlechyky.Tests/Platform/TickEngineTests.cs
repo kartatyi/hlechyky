@@ -93,7 +93,7 @@ public class TickEngineTests
         var broken = rooms.Find(bad)!;
         Assert.Equal(RoomStatus.Finished, broken.Status);
         Assert.True(broken.Result!.Draw);
-        Assert.Contains("партія зламалась, вибачте", broken.Result.Text);
+        Assert.Contains("ой-йой, партія зламалась — вибачте", broken.Result.Text);
         Assert.Equal(10, ((TestTicker)rooms.Find(good)!.Game).Ticks);
     }
 

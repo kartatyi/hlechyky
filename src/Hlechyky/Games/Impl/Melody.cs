@@ -171,7 +171,7 @@ public sealed class Melody : Game
             case Loading:
                 if (_ready.ContainsKey(_round + 1)) BeginRound();
                 else if (_available >= 0 && _round >= _available) Over(_available == 0 ? NoTracks() : null);
-                else if ((now - _loadStarted).TotalMilliseconds > LoadTimeoutMs) Over(_round == 0 ? "Уривки не нарізались — ffmpeg мовчить" : null);
+                else if ((now - _loadStarted).TotalMilliseconds > LoadTimeoutMs) Over(_round == 0 ? "Ой-йой — уривки не нарізались, ffmpeg мовчить" : null);
                 break;
             case Play:
                 var players = Present().ToList();
@@ -240,7 +240,7 @@ public sealed class Melody : Game
         foreach (var s in seats) Ctx.Score(s, _scores[s]);
         _result = new { winners, scores = (int[])_scores.Clone() };
         var parts = seats.OrderByDescending(s => _scores[s]).Select(s => $"{Ctx.NickOf(s)} {_scores[s]}");
-        var tail = winners.Length == 0 ? "жодної пісні не впізнали" : "найкраще вухо в " + string.Join(" і ", winners.Select(Ctx.NickOf));
+        var tail = winners.Length == 0 ? "жодної пісні не впізнали" : "найкраще вухо в " + string.Join(" і ", winners.Select(s => NickCases.Genitive(Ctx.NickOf(s))));
         Ctx.Finish(winners, $"{Info.Title}: {string.Join(", ", parts)} — {tail}", seats.ToDictionary(s => s, s => (long)_scores[s]));
     }
 
@@ -259,13 +259,13 @@ public sealed class Melody : Game
     {
         if (action == "skip") return Skip(seat);
         if (action != "guess") return ActResult.Fail("Тут так не ходять");
-        if (_phase != Play) return ActResult.Fail(_phase == Done ? "Партію зіграно, тисни «Ще раз»" : "Зараз не вгадують");
-        if (_left.Contains(seat)) return ActResult.Fail("Ти вже встав з-за столу");
+        if (_phase != Play) return ActResult.Fail(_phase == Done ? "Партію зіграно, тисни «Ану ще раз»" : "Зараз не вгадують");
+        if (_left.Contains(seat)) return ActResult.Fail("Ти вже не за столом");
 
         var text = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
             ? t.GetString() ?? "" : payload.ValueKind == JsonValueKind.String ? payload.GetString() ?? "" : "";
         text = text.Trim();
-        if (text.Length == 0) return ActResult.Fail("Напиши виконавця або назву");
+        if (text.Length == 0) return ActResult.Fail("Тяпни виконавця або назву");
         if (text.Length > MaxGuess) text = text[..MaxGuess];
 
         var now = Now;
@@ -273,7 +273,7 @@ public sealed class Melody : Game
         _lastGuess[seat] = now;
 
         if (!_found.TryGetValue(seat, out var mine)) _found[seat] = mine = new Found();
-        if (mine.Artist && mine.Title) return ActResult.Fail("Ти вже все вгадав 🎉");
+        if (mine.Artist && mine.Title) return ActResult.Fail("Усе вже вгадано 🎉");
 
         var track = _ready[_round].Track;
         var said = new List<string>();
@@ -299,15 +299,15 @@ public sealed class Melody : Game
         mine.Points += points;
         _scores[seat] += points;
         _dirty = true;
-        return ActResult.Accept(string.Join(", ", said));
+        return ActResult.Accept("Є! " + string.Join(", ", said));
     }
 
     /// <summary>«Готовий пропустити» — перемикач: натиснув ще раз — передумав.</summary>
     ActResult Skip(int seat)
     {
         if (_phase != Play) return ActResult.Fail("Зараз нема чого пропускати");
-        if (_left.Contains(seat)) return ActResult.Fail("Ти вже встав з-за столу");
-        if (Finished(seat)) return ActResult.Fail("Ти вже все вгадав — чекаємо інших");
+        if (_left.Contains(seat)) return ActResult.Fail("Ти вже не за столом");
+        if (Finished(seat)) return ActResult.Fail("Усе вже вгадано — чекаємо інших");
         if (!_skip.Remove(seat)) _skip.Add(seat);
         _dirty = true;
         return ActResult.Done;

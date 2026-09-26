@@ -309,7 +309,7 @@ public class PongArenaTests
         h.Tick(1);
         var f = LastFrame(h);
         Assert.Equal(0, f.GetProperty("l")[2].GetInt32());
-        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("встає з-за столу", h.Outbox.OfType<Journal>().Last().Text);
 
         h.Leave("Петро");
         Assert.Equal(RoomStatus.Finished, h.Room.Status);

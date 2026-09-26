@@ -106,8 +106,8 @@ public sealed class Shootout : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (seat is < 0 or >= Seats) return ActResult.Fail("Ти тут не граєш");
-        if (_phase is DuelPhase.Result) return ActResult.Fail("Раунд уже скінчився, чекай наступного");
-        if (_phase is DuelPhase.Done) return ActResult.Fail("Перестрілку зіграно, тисни «Ще раз»");
+        if (_phase is DuelPhase.Result) return ActResult.Fail("Раунд уже скінчився — мить, і буде наступний");
+        if (_phase is DuelPhase.Done) return ActResult.Fail("Перестрілку зіграно, тисни «Ану ще раз»");
         if (!_plays[seat]) return ActResult.Fail("Ти в цьому раунді не граєш");
         if (!_alive[seat]) return ActResult.Fail("Ти вже лежиш у пилюці — чекай наступного раунду");
 
@@ -139,7 +139,7 @@ public sealed class Shootout : Game
         }
         else if (payload.ValueKind == JsonValueKind.Number && payload.TryGetInt32(out var n)) want = n;
         if (want is not { } t || t is < 0 or >= Seats || t == seat) return ActResult.Fail("У себе не цілься");
-        if (!_alive[t]) return ActResult.Fail("Там уже нікого");
+        if (!_alive[t]) return ActResult.Fail("Там уже ні душі");
         if (_aim[seat] != t) { _aim[seat] = t; _dirty = true; }
         return ActResult.Done;
     }
@@ -284,7 +284,7 @@ public sealed class Shootout : Game
         if (others.Length <= 1)
         {
             _phase = DuelPhase.Done;
-            Ctx.Finish(others, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+            Ctx.Finish(others, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
             return;
         }
         _plays[seat] = false;
@@ -294,7 +294,7 @@ public sealed class Shootout : Game
         for (var s = 0; s < Seats; s++)
             if (_aim[s] == seat) _aim[s] = NextTarget(s, 1, seat);
         _dirty = true;
-        Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} пішов з вулиці, решта стріляється далі");
+        Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} іде з вулиці — решта стріляється далі");
     }
 
     public override object? Frame() => Shot(false);

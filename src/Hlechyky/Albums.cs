@@ -297,15 +297,32 @@ public sealed partial class Albums(YtMusicClient ytm, Db db, ILogger<Albums> log
     }
 
     /// <summary>
-    /// «Зберегти плейлистом»: спільний плейлист сайту з назвою «Виконавець — Альбом» і треками по порядку.
-    /// Плейлист з такою назвою вже є — докидаємо в нього, чого там бракує, а не плодимо двійників.
+    /// «Зберегти плейлистом»: спільний плейлист сайту з треками по порядку. Назва — «Виконавець — Альбом» або своя
+    /// (<paramref name="ownName"/>; довша за 40 символів ріжеться, порожня — як без неї). Плейлист з такою назвою вже є —
+    /// докидаємо в нього, чого там бракує, а не плодимо двійників. <paramref name="ids"/> — лише ці знайдені треки
+    /// (решту людина зняла галочками, як у черзі), null — усі. <paramref name="playlistId"/> — дописати в уже наявний
+    /// плейлист; тоді й назва не потрібна.
     /// </summary>
-    public (bool Ok, string Message, long Id) SaveAsPlaylist(Album album, string nick)
+    public (bool Ok, string Message, long Id) SaveAsPlaylist(Album album, string nick, string? ownName = null,
+        IReadOnlyCollection<string>? ids = null, long? playlistId = null)
     {
-        var found = album.Tracks.Where(t => t.Match is not null).Select(t => t.Match!).ToList();
-        if (found.Count == 0) return (false, "Жоден трек не знайшовся в YouTube Music — нема що зберегти", 0);
-        var name = PlaylistName(album);
-        var existing = db.Playlists().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        var found = album.Tracks.Select(t => t.Match).OfType<SearchResult>()
+            .Where(m => ids is null || ids.Contains(m.Id)).DistinctBy(m => m.Id).ToList();
+        if (found.Count == 0)
+            return (false, album.Found == 0 ? "Жоден трек не знайшовся в YouTube Music — нема що зберегти" : "Не вибрано жодного треку", 0);
+        Db.Playlist? existing;
+        string name;
+        if (playlistId is { } pid)
+        {
+            existing = db.GetPlaylist(pid);
+            if (existing is null) return (false, "Нема такого плейлиста", 0);
+            name = existing.Name;
+        }
+        else
+        {
+            name = (ownName ?? "").Trim() is { Length: > 0 } own ? FitName(own) : PlaylistName(album);
+            existing = db.Playlists().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        }
         var id = existing?.Id ?? db.CreatePlaylist(name, nick);
         var added = 0;
         foreach (var m in found)
@@ -314,18 +331,21 @@ public sealed partial class Albums(YtMusicClient ytm, Db db, ILogger<Albums> log
             if (db.AddToPlaylist(id, m.Id, nick)) added++;
         }
         return existing is null
-            ? (true, $"Плейлист «{name}»: {Tracks(added)}", id)
-            : (true, added == 0 ? $"У плейлисті «{name}» це все вже є" : $"У плейлист «{name}» додано ще {Tracks(added)}", id);
+            ? (true, $"Є! Плейлист «{name}»: {Tracks(added)}", id)
+            : (true, added == 0 ? $"У плейлисті «{name}» це все вже є" : $"У плейлист «{name}» докинуто ще {Tracks(added)}", id);
     }
 
     /// <summary>«1 трек», «3 треки», «12 треків».</summary>
     public static string Tracks(int n) =>
         $"{n} " + (n % 10 == 1 && n % 100 != 11 ? "трек" : n % 10 is >= 2 and <= 4 && n % 100 is < 12 or > 14 ? "треки" : "треків");
 
-    /// <summary>Назва плейлиста сайту — до 40 символів, як і в тих, що створюють руками.</summary>
-    public static string PlaylistName(Album a)
+    /// <summary>Назва плейлиста сайту з альбому: «Виконавець — Альбом» чи назва плейлиста, до 40 символів.</summary>
+    public static string PlaylistName(Album a) =>
+        FitName(a.Kind == "album" && a.Artist.Length > 0 ? $"{YtMusicClient.FirstArtist(a.Artist)} — {a.Title}" : a.Title);
+
+    /// <summary>Назва плейлиста сайту — до 40 символів, як і в тих, що створюють руками: довша ріжеться з «…».</summary>
+    public static string FitName(string name)
     {
-        var name = a.Kind == "album" && a.Artist.Length > 0 ? $"{YtMusicClient.FirstArtist(a.Artist)} — {a.Title}" : a.Title;
         if (name.Length <= 40) return name;
         var cut = char.IsHighSurrogate(name[38]) ? 38 : 39;
         return name[..cut].TrimEnd() + "…";

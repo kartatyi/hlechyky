@@ -88,8 +88,8 @@
       let role = '';
       let cls = 'dfoe s' + i;
       if (v.result && v.result.fool === i) { role = '<em class="fool">🃏 дурень</em>'; cls += ' isfool'; }
-      else if (place >= 0) { role = '<em class="safe">✓ вийшов' + (players > 2 ? ' ' + (place + 1) + '-м' : '') + '</em>'; cls += ' gone'; }
-      else if (!inn[i]) { role = '<em class="left">встав</em>'; cls += ' gone'; }
+      else if (place >= 0) { role = '<em class="safe">✓ ' + (players > 2 ? (place + 1) + '-е місце' : 'без карт') + '</em>'; cls += ' gone'; }
+      else if (!inn[i]) { role = '<em class="left">поза столом</em>'; cls += ' gone'; }
       else if (!v.result && i === v.defender) { role = '<em class="def">🛡 відбивається</em>'; cls += ' isdef'; }
       else if (!v.result && i === v.attacker) role = '<em class="atk">⚔ заходить</em>';
       if (!v.result && inn[i] && passed[i]) role += '<em class="pass">пас</em>';
@@ -161,7 +161,7 @@
     else if (r.fool != null) {
       const who = r.foolNick || nameOf(ctx, r.fool);
       fool = '<div class="dverdict">' + (ctx.seat === r.fool ? 'Дурень цього разу — ти 🃏' : '🃏 Дурень — ' + ctx.esc(who))
-        + (r.reason === 'left' ? ' <small>(встав з-за столу)</small>' : '') + '</div>';
+        + (r.reason === 'left' ? ' <small>(втеча з-за столу)</small>' : '') + '</div>';
     }
     return '<div class="dsum">' + fool + (places ? '<div class="dplaces">' + places + '</div>' : '') + '</div>';
   }
@@ -172,7 +172,7 @@
     const table = v.table || [];
     const playing = !v.result && ctx.mine && ctx.playing;
     if (playing && (v.in || [])[ctx.seat] === false) {
-      if ((v.places || []).indexOf(ctx.seat) >= 0) text = 'Ти вже вийшов — дивись, кому дістанеться дурень';
+      if ((v.places || []).indexOf(ctx.seat) >= 0) text = 'Є! Карти скинуто — дивись, кому дістанеться дурень';
     } else if (playing) {
       if (v.phase === 'defend' && iDefend) text = 'Тицьни свою карту, потім ту, яку б\'єш. Нема чим — «Беру»';
       else if (v.phase === 'attack' && !table.length && iAttack) text = 'Заходь: тицьни будь-яку карту';
@@ -321,17 +321,18 @@
         const fool = v.result.fool != null ? v.result.fool : (v.result.winner === 0 ? 1 : 0);
         // Той, хто встав, уже не сидить — його нік бережемо у виді, інакше вийшло б «Дурень — перший».
         const name = v.result.foolNick || ctx.nickOf(fool) || ctx.seatName(fool);
-        return ctx.seat === fool ? 'Дурень цього разу ти' : 'Дурень — ' + name;
+        // Для гравця за столом «не дурень» — це й є перемога: «Є!»; глядачеві — просто хто.
+        return ctx.seat === fool ? 'Отакої — дурень цього разу ти' : (ctx.mine ? 'Є! ' : '') + 'Дурень — ' + name;
       }
       if (!ctx.mine) return 'Дивишся збоку';
-      if ((v.in || [])[ctx.seat] === false) return 'Ти вийшов — чекай, хто лишиться дурнем';
+      if ((v.in || [])[ctx.seat] === false) return 'Є! Ти без карт — чекай, хто лишиться дурнем';
       const table = v.table || [];
       const att = nameOf(ctx, v.attacker);
       const def = nameOf(ctx, v.defender);
       if (ctx.seat === v.defender) {
         if (v.phase === 'defend') return 'Відбивайся або бери';
         if (v.phase === 'taking') return 'Береш — чекай, чи докинуть';
-        return table.length ? 'Відбився! Чекай, чи підкинуть ще' : 'На тебе заходить ' + att;
+        return table.length ? 'Є! Відбито — чекай, чи підкинуть ще' : 'На тебе заходить ' + att;
       }
       if (v.phase === 'defend') return def + ' відбивається';
       if (v.canAdd) {

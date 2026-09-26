@@ -292,7 +292,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     /// </remarks>
     public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick, bool journal = true) =>
         Enqueue(track, nick, isAdmin: true, via: null, reason: null, quiet: !journal, filePath: filePath,
-            chat: $"{nick} записує голосове ({Mmss(track.DurationSec)})", reply: $"Голосове в черзі ({Mmss(track.DurationSec)})");
+            chat: $"{nick} записує голосове ({Mmss(track.DurationSec)})", reply: $"Голосове закинуто ({Mmss(track.DurationSec)})");
 
     (bool Ok, string Message) Enqueue(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, bool quiet,
         string? filePath = null, string? chat = null, string? reply = null)
@@ -304,11 +304,11 @@ public sealed class RadioEngine : BackgroundService, IOnAir
                 var max = _yt.CurrentValue.MaxDurationSeconds;
                 return (false, $"Задовгий трек ({track.DurationSec / 60} хв), ліміт {max / 60} хв");
             case Refusal.InQueue: return (false, "Уже в черзі");
-            case Refusal.OnAir: return (false, "Уже грає");
+            case Refusal.OnAir: return (false, "Уже шкварить в ефірі");
         }
         _db.UpsertTrack(track);
         if (filePath is not null) _db.SetTrackFile(track.Id, filePath);
-        Queued(quiet ? null : chat ?? (via == "suggestion" ? $"{nick} бере пораду {DjGen}: {track.Label}" : $"{nick} додає {track.Label}"));
+        Queued(quiet ? null : chat ?? (via == "suggestion" ? $"{nick} бере пораду {DjGen}: {track.Label}" : $"{nick} закидає {track.Label}"));
         return (true, reply ?? "Закинуто: " + track.Label);
     }
 
@@ -481,7 +481,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         lock (_lock)
         {
             if (_now.Source is not ("user" or "autodj")) return (false, "Зараз нема що скіпати");
-            if (_now.SkipPending) return (true, "Уже перемикаю");
+            if (_now.SkipPending) return (true, "Уже перемикаю — ще мить");
             queue = _now.Source == "user" ? "userq" : "autoq";
             label = _now.Track?.Label;
             // авто-трек скіпнули, ледь він заграв — це «не те», а не «вже набридло»
@@ -491,7 +491,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             seedId = _now.SeedId;
         }
         try { await _liq.SkipAsync(queue); }
-        catch (Exception ex) { return (false, "liquidsoap не відповідає: " + ex.Message); }
+        catch (Exception ex) { return (false, "Ой-йой, liquidsoap не відповідає: " + ex.Message); }
         lock (_lock)
         {
             _now.SkipPending = true;
@@ -574,13 +574,13 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             s = _suggestions.FirstOrDefault(x => x.ItemId == itemId);
             if (s is not null) _suggestions.Remove(s);
             else if (_autoNext?.ItemId == itemId) { s = auto = _autoNext; _autoNext = null; }
-            if (s is null) return (false, "Ця пропозиція вже зникла");
+            if (s is null) return (false, "Гульк — і цієї пропозиції вже нема");
             _dismissed[s.Track.Id] = DateTime.UtcNow;
         }
         if (auto is not null) DropFromLiquidsoap("autoq", auto);
         _log.LogInformation("{Nick} dismissed {What} {Label}", nick, auto is null ? "suggestion" : "auto-next", s.Track.Label);
         if (s.Reason != "з нашого архіву") _autoDj.Reject(s.Track, s.SeedId, "dismiss", nick);
-        if (auto is not null) SystemChat($"{nick} відхиляє {s.Track.Label}, {Dj} шукає інше");
+        if (auto is not null) SystemChat($"{nick} відхиляє {s.Track.Label}, {Dj} порпається далі");
         EnsureSuggestions();
         Broadcast();
         _ = TickSafeAsync();
@@ -591,7 +591,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     {
         QueueItem? s;
         lock (_lock) s = _suggestions.FirstOrDefault(x => x.ItemId == itemId);
-        if (s is null) return (false, "Ця пропозиція вже зникла");
+        if (s is null) return (false, "Гульк — і цієї пропозиції вже нема");
         var t = s.Track;
         var r = await AddAsync(nick, isAdmin, null, new SearchResult(t.Id, t.Title, t.Artist, t.Album, t.DurationSec, t.ThumbUrl), ct, via: "suggestion", reason: s.Reason);
         if (r.Ok)
@@ -994,7 +994,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             {
                 lock (_lock) _queue.Remove(head);
                 PersistQueue();
-                SystemChat($"Не вийшло завантажити {head.Track.Label}: {head.Error}");
+                SystemChat($"От халепа — не вийшло завантажити {head.Track.Label}: {head.Error}");
                 Broadcast();
             }
             else if (head.Status == ItemStatus.Ready)
@@ -1268,7 +1268,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
                 changed = true;
             }
         }
-        foreach (var f in failed) SystemChat($"liquidsoap не взяв {f.Track.Label}, прибираю з черги");
+        foreach (var f in failed) SystemChat($"Ой-йой, liquidsoap не взяв {f.Track.Label} — прибираю з черги");
         if (failed.Count > 0) { PersistQueue(); Broadcast(); }
         if (dropped is not null)
         {

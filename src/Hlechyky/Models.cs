@@ -92,7 +92,11 @@ public sealed record Album(string Key, string Source, string Kind, string Title,
 
 public sealed record QueueItemDto(string ItemId, TrackInfo Track, string RequestedBy, string Status, string? Error, string Kind, string? Reason, string? Via, DateTimeOffset AddedAt);
 
-public sealed record HistoryEntry(long PlayId, TrackInfo Track, string Source, string? RequestedBy, DateTimeOffset StartedAt, int Likes, string? Via, bool Skipped);
+public sealed record HistoryEntry(long PlayId, TrackInfo Track, string Source, string? RequestedBy, DateTimeOffset StartedAt, int Likes, string? Via, bool Skipped)
+{
+    /// <summary>Той самий id програвання, що й <see cref="PlayId"/>, під коротшим ім'ям: з нього «Показати ще» бере before.</summary>
+    public long Id => PlayId;
+}
 
 public sealed record PersistedQueueItem(string ItemId, TrackInfo Track, string RequestedBy, string Kind, string? Reason, string? Via, DateTimeOffset AddedAt);
 

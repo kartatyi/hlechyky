@@ -133,9 +133,10 @@
     switch (e.kind) {
       case 'hit': return who + ': «' + L + '»' + (e.n > 1 ? ' ×' + e.n : '') + ' ✓ +' + e.n;
       case 'miss': return who + ': «' + L + '» — нема ✗';
-      case 'word': return who + ' називає слово цілком! +' + e.n;
+      // «Ти називає» ріже вухо, а «задумався» ще й має рід: про себе — «Є!», про інших — без минулого часу.
+      case 'word': return (e.seat === ctx.seat ? 'Є! Слово вгадано цілком' : who + ' називає слово цілком!') + ' +' + e.n;
       case 'wrong': return who + ': «' + e.text + '» — ні, мінус очко';
-      case 'timeout': return who + ' задумався — хід далі';
+      case 'timeout': return who + ' в задумі — хід далі';
       default: return '';
     }
   }
@@ -276,7 +277,7 @@
       const v = ctx.view || {};
       // Після останнього слова наступного вже не буде: там рахунок, а не відлік.
       if (v.phase === 'between') {
-        return v.round >= (v.of || 5) ? 'Рахуємо очки…' : 'Наступне слово через ' + (v.nextIn || 0) + '…';
+        return v.round >= (v.of || 5) ? 'Глек рахує очки…' : 'Наступне слово через ' + (v.nextIn || 0) + '…';
       }
       if (!ctx.playing) return '';
       if (!ctx.mine) return 'Дивишся збоку';
