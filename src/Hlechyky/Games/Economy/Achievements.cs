@@ -114,6 +114,9 @@ public static class AchievementCatalog
         // хвиля 2: hockey
         new("hockey-dry",      "Сухий рахунок", "Виграв аерохокей, не пропустивши жодного гола", "🧤", 20),
         new("hockey-comeback", "Камбек",        "Виграв аерохокей, програючи три голи", "🔁", 25),
+        // хвиля 3: dance
+        new("dance-ribbon", "Перша на вечорницях", "Вечорниці: витанцював стрічку в колі, нікого не вдаривши", "🎀", 15),
+        new("dance-slap",   "Ляпас у яблучко",     "Вечорниці: першим же ляпасом раунду вивів гравця", "✋", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

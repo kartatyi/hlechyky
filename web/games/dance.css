@@ -1,0 +1,186 @@
+/*
+  Вечорниці. Подвір'я малює канвас; тут — рядок фішок над ним, новини, підсумок раунду і панель керування під мапою:
+  кнопки фігур (і мишкою, і пальцем), ляпас, а на тачі — ще й хрестовина. Свої кольори — на :root, бо модуль читає їх
+  через ctx.css(). Усі класи з префіксом dance-.
+*/
+:root {
+  --dance-grass: #557f3e;     /* спориш на подвір'ї (вечір — трохи темніший за ярмарок) */
+  --dance-grass2: #4a7236;    /* плями на споришеві */
+  --dance-path: #b89868;      /* стежка від хати */
+  --dance-wood: #7a4f2c;      /* лави, поміст, стіл */
+  --dance-wall: #f3ecdc;      /* білені стіни хати */
+  --dance-thatch: #c9a24e;    /* солом'яна стріха */
+  --dance-ring: #a58a5c;      /* утоптане коло, де танцюють */
+  --dance-shadow: rgba(20, 25, 10, .34);
+  --dance-blue: #6fb3e8;      /* п'яте місце */
+  --dance-pink: #e88ac0;      /* шосте */
+  --dance-violet: #b48ae8;    /* сьоме */
+  --dance-red: #e86a6a;       /* восьме */
+  --dance-f0: #f0b429;        /* плескай */
+  --dance-f1: #5fb0e8;        /* присядь */
+  --dance-f2: #b48ae8;        /* крутись */
+  --dance-f3: #7bd389;        /* руки вгору */
+}
+
+/* місця 5–8: чіпи в шапці картки каркас знає лише x/o/c/d */
+.gseat.dance-b { color: var(--dance-blue); }
+.gseat.dance-p { color: var(--dance-pink); }
+.gseat.dance-v { color: var(--dance-violet); }
+.gseat.dance-r { color: var(--dance-red); }
+
+.dance-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* Мапа 3:2; точну ширину модуль рахує сам від того, де сцена починається і скільки під нею (кнопки фігур, статус). */
+.dance-stage {
+  position: relative;
+  width: 100%;
+  max-width: min(960px, calc((100vh - 340px) * 1.5));
+  align-self: center;
+}
+.dance-board {
+  width: 100%;
+  max-width: none;
+  border-radius: 10px;
+  background: #4a7236;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dance-board.dance-port { touch-action: none; }
+
+/* ---- фішки над мапою ---- */
+.dance-hud, .dance-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
+.dance-chips { display: contents; }
+.dance-hud .dance-seats { display: contents; }
+.dance-body > .dance-seats { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; font-size: .76em; }
+.dance-chip, .dance-seat {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.dance-clock { color: var(--muted); min-width: 4.4em; justify-content: center; }
+.dance-clock.hot { color: var(--danger); animation: dance-pulse 1s ease-in-out infinite; }
+.dance-tempo { color: var(--muted); }
+.dance-tempo.fast { color: var(--accent); animation: dance-pulse .5s ease-in-out infinite; }
+@keyframes dance-pulse { 50% { opacity: .55; } }
+.dance-streak span { display: inline-flex; gap: 3px; }
+.dance-streak i { width: .55em; height: .55em; border-radius: 50%; background: var(--panel3); display: inline-block; }
+.dance-streak i.on { background: var(--dance-pink); box-shadow: 0 0 0 1px rgba(255, 255, 255, .35) inset; }
+.dance-seat i { width: .7em; height: .7em; border-radius: 50%; background: currentColor; display: inline-block; }
+.dance-seat b { color: var(--text); }
+.dance-seat small { color: var(--muted); font-size: .92em; }
+.dance-seat.dead { text-decoration: line-through; opacity: .7; }
+.dance-seat.out { opacity: .45; }
+.dance-seat.me { box-shadow: 0 0 0 1px currentColor inset; }
+.dance-mute { padding: 2px 8px; border-radius: 999px; background: var(--bg2); border: 0; cursor: pointer; font-size: 1em; line-height: 1.4; }
+
+.dance-s0 { color: var(--accent); }
+.dance-s1 { color: var(--ok); }
+.dance-s2 { color: var(--clay); }
+.dance-s3 { color: var(--muted); }
+.dance-s4 { color: var(--dance-blue); }
+.dance-s5 { color: var(--dance-pink); }
+.dance-s6 { color: var(--dance-violet); }
+.dance-s7 { color: var(--dance-red); }
+
+/* ---- новини: смужкою поверх низу мапи ---- */
+.dance-news {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 3px; font-size: .84em; text-align: center;
+}
+.dance-ni {
+  animation: dance-fade 6s ease-in forwards; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 11px; border-radius: 999px; background: rgba(14, 18, 12, .8); color: #eef3ea;
+}
+.dance-ni + .dance-ni { opacity: .72; }
+.dance-portmode .dance-news { bottom: 5px; left: 5px; right: 5px; font-size: .7em; }
+.dance-portmode .dance-ni { padding: 1px 8px; }
+.dance-portmode .dance-ni + .dance-ni { display: none; }
+.dance-stage.dance-open .dance-news { display: none; }
+@keyframes dance-fade { 0% { opacity: 0; transform: translateY(-3px); } 6% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- підсумок раунду й партії ---- */
+.dance-sum { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; font-size: .84em; font-variant-numeric: tabular-nums; }
+.dance-stage > .dance-sum { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none; }
+.dance-sc {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  background: rgba(14, 18, 12, .86); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.dance-body > .dance-sum .dance-sc { background: var(--bg2); }
+.dance-sc b { font-weight: 700; }
+.dance-sc em { font-style: normal; font-weight: 800; color: #eef3ea; }
+.dance-body > .dance-sum .dance-sc em { color: var(--text); }
+.dance-sc small { color: #b9c7b4; font-size: .88em; }
+.dance-body > .dance-sum .dance-sc small { color: var(--muted); }
+.dance-sc.win { box-shadow: 0 0 0 1.5px currentColor inset; }
+
+/* ---- панель керування: кнопки фігур рядком (мишка) або ромбом (палець), ляпас, хрестовина на тачі ---- */
+.dance-ctl { display: flex; gap: 14px; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; }
+.dance-ctl.dance-off { display: none !important; }
+.dance-dirs { display: none; }
+.dance-figs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.dance-figs button {
+  display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 12px; min-width: 0;
+  background: var(--panel3); color: var(--text); border: 2px solid transparent; font-size: .9em; line-height: 1.2;
+  touch-action: manipulation; cursor: pointer;
+}
+.dance-figs button b { font-size: 1.25em; font-weight: 400; }
+.dance-figs button kbd {
+  font: inherit; font-size: .78em; color: var(--muted); padding: 0 5px; border-radius: 6px; background: var(--bg2);
+  font-variant-numeric: tabular-nums;
+}
+.dance-f0 { --f: var(--dance-f0); }
+.dance-f1 { --f: var(--dance-f1); }
+.dance-f2 { --f: var(--dance-f2); }
+.dance-f3 { --f: var(--dance-f3); }
+/* кличуть цю фігуру — кнопка світиться, на такт — заливається кольором */
+.dance-figs .dance-f.on { border-color: var(--f); animation: dance-call .4s ease-in-out infinite alternate; }
+.dance-figs .dance-f.hop { background: var(--f); color: #14170f; }
+.dance-figs .dance-f.hop kbd { color: #14170f; background: rgba(255, 255, 255, .45); }
+@keyframes dance-call { to { box-shadow: 0 0 0 3px var(--f); } }
+.dance-figs .dance-slap { border-color: rgba(229, 115, 115, .45); }
+.dance-figs button:active { filter: brightness(1.25); }
+/* порядок рядком: 1 2 3 4, потім ляпас */
+.dance-f0 { order: 1; } .dance-f1 { order: 2; } .dance-f2 { order: 3; } .dance-f3 { order: 4; } .dance-slap { order: 5; margin-left: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dance-clock.hot, .dance-tempo.fast, .dance-ni, .dance-figs .dance-f.on { animation: none; }
+}
+
+@media (pointer: coarse) {
+  .dance-ctl { touch-action: none; margin-top: 2px; gap: 16px; }
+  .dance-dirs {
+    display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); gap: 4px;
+    touch-action: none; border-radius: 50%;
+  }
+  .dance-arr {
+    display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.2em;
+    background: var(--panel3); color: var(--text); pointer-events: none;
+  }
+  .dance-arr.on { background: var(--clay); }
+  .dance-arr[data-dir="3"] { grid-column: 2; grid-row: 1; }
+  .dance-arr[data-dir="2"] { grid-column: 1; grid-row: 2; }
+  .dance-arr[data-dir="0"] { grid-column: 3; grid-row: 2; }
+  .dance-arr[data-dir="1"] { grid-column: 2; grid-row: 3; }
+  .dance-peek { grid-column: 2; grid-row: 2; justify-content: center; border-radius: 50%; font-size: 1.05em; padding: 0; min-width: 0; }
+  /* ромб, як на паді: угорі — руки вгору, ліворуч — плескай, праворуч — крутись, унизу — присядь, у серці — ляпас */
+  .dance-figs {
+    display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 50px); gap: 4px; flex-wrap: nowrap;
+  }
+  .dance-figs button { flex-direction: column; justify-content: center; gap: 0; padding: 0; border-radius: 14px; font-size: .62em; }
+  .dance-figs button b { font-size: 2.1em; line-height: 1.05; }
+  .dance-figs button kbd { display: none; }
+  .dance-f3 { grid-column: 2; grid-row: 1; }
+  .dance-f0 { grid-column: 1; grid-row: 2; }
+  .dance-slap { grid-column: 2; grid-row: 2; margin-left: 0; border-radius: 50%; }
+  .dance-f2 { grid-column: 3; grid-row: 2; }
+  .dance-f1 { grid-column: 2; grid-row: 3; }
+}
+@media (pointer: coarse) and (max-width: 380px) {
+  .dance-ctl { gap: 10px; }
+  .dance-dirs { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); }
+  .dance-figs { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 46px); }
+}
+@media (max-width: 480px) {
+  .dance-hud { font-size: .76em; gap: 4px; }
+  .dance-chip, .dance-seat { padding: 2px 7px; }
+}
