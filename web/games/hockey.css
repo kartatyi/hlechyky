@@ -1,0 +1,51 @@
+/*
+  Аерохокей: стіл малює канвас, тут — рядок над ним і розміри. Свої кольори — на :root з префіксом --hk-,
+  бо модуль читає їх через HGames.ui.css(). Руді — це спільний --clay, сині — свій --hk-blue.
+*/
+:root {
+  --hk-blue: #5aa9ff;      /* сині (ворота x = 0) */
+  --hk-felt: #1f6a52;      /* поле */
+  --hk-felt2: #185540;     /* поле в дальньому куті */
+  --hk-rail: #cfd9d4;      /* борт */
+  --hk-rail2: #8fa39b;     /* фаска борту */
+  --hk-goal: #0b1712;      /* проріз воріт */
+  --hk-line: rgba(236, 241, 234, .35);
+}
+
+.gseat.hkb { color: var(--hk-blue); }
+
+/* Ландшафт 5:3: на ноутбуці мусить влізти разом із шапкою картки й рядком над полем. */
+.hkboard { aspect-ratio: 5 / 3; max-width: min(800px, calc((100vh - 290px) * 5 / 3)); min-width: min(320px, 100%); }
+@media (min-width: 1500px) and (min-height: 860px) {
+  .hkboard { max-width: min(1000px, calc((100vh - 320px) * 5 / 3)); }
+}
+/* Портрет 3:5 — телефон: стіл стоїть, мої ворота внизу. */
+.hkboard.port { aspect-ratio: 3 / 5; max-width: min(480px, calc((100vh - 240px) * 3 / 5)); min-width: 0; }
+/* Гравцеві рух пальцем по столу — це біта, а не скрол сторінки; глядачеві скрол лишаємо. */
+.hkboard.play { touch-action: none; }
+/* Над своєю половиною біта і є курсор. */
+.hkboard.play.own { cursor: none; }
+
+.hkhud { display: flex; gap: 4px 5px; flex-wrap: wrap; justify-content: center; font-size: .82em; max-width: 100%; }
+.hkchip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.hkchip i {
+  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
+  display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
+}
+.hkchip b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.hkchip .hkown { color: var(--muted); }
+.hkchip.t0 { color: var(--hk-blue); }
+.hkchip.t1 { color: var(--clay); }
+.hkchip.tx { color: var(--muted); }
+.hkchip.me { box-shadow: 0 0 0 1px currentColor inset; }
+.hkchip.hkscore { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.hkchip.hksnd { border: 0; cursor: pointer; color: var(--muted); font: inherit; padding: 3px 8px; }
+.hkchip.hksnd:hover { color: var(--text); }
+
+@media (max-width: 480px) {
+  .hkhud { gap: 4px; font-size: .74em; }
+  .hkchip { padding: 2px 7px; gap: 4px; }
+}

@@ -1387,6 +1387,20 @@
     el.addEventListener('pointercancel', up);
   }
 
+  /// Телефон: на старті партії підкручуємо сторінку так, щоб ставок і стік із кнопками стали між шапкою й
+  /// нижніми панелями. Раз на партію (і після F5) — далі людина гортає сама.
+  function fitView(root, st) {
+    if (!st.cv || !HGames.ui.coarse()) return;
+    const a = st.cv.el.getBoundingClientRect();
+    const ctl = root.querySelector(':scope > .ifctl');
+    const bottomEl = ctl ? ctl.getBoundingClientRect().bottom : a.bottom;
+    const h = bottomEl - a.top;
+    const top = 60, bottom = window.innerHeight - 116;
+    const want = h <= bottom - top ? top + (bottom - top - h) / 2 : bottom - h;
+    const d = a.top - want;
+    if (Math.abs(d) > 24) window.scrollBy({ top: d, behavior: reduced() ? 'auto' : 'smooth' });
+  }
+
   function spin(root, st) {
     if (st.raf) return;
     const loop = () => {
@@ -1459,7 +1473,7 @@
       hud(root, st);
       controls(root, st);
       // «Ще раз» і F5: сервер не знає про клавішу, яку не відпускали — досилаємо намір
-      if (ctx.playing && ctx.mine && !st.was) { st.sent = null; push(st, true); }
+      if (ctx.playing && ctx.mine && !st.was) { st.sent = null; push(st, true); setTimeout(() => fitView(root, st), 60); }
       if (!ctx.playing) { st.sent = null; st.meOk = false; }
       st.was = !!(ctx.playing && ctx.mine);
       spin(root, st);
