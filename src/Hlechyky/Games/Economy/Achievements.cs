@@ -75,6 +75,10 @@ public static class AchievementCatalog
         new("listener-10h", "Слухач",          "Десять годин на сайті", "🎧", 15),
         new("listener-100h","Меломан",         "Сто годин на сайті", "📻", 50),
         new("rich-100",     "Сотня",           "Сто черепків на балансі", "🏦", 10),
+        // хвиля 2: runner (Стрибозаври, Забіг дня, Лелеки) — гра просить їх сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("dino-far",     "Далекий забіг",   "Два кілометри від лавини за один забіг", "🦖", 20),
+        new("dino-snow",    "Сніжкою в спину", "Твоя сніжка збила з ніг того, хто попереду", "❄", 10),
+        new("storks-clean", "Чисте небо",      "Хвилина польоту в Лелеках без жодного зачепу", "🪽", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
