@@ -64,6 +64,8 @@
 }
 .gk-wind .gk-arrow { color: var(--accent); letter-spacing: -2px; }
 .gk-wind.calm { color: var(--muted); }
+/* «штиль» — слово, а не стрілка: стиснуті літери злипались у кашу */
+.gk-wind.calm .gk-arrow { color: var(--text); letter-spacing: normal; font-weight: 600; }
 .gk-clock { display: flex; align-items: center; gap: 6px; }
 .gk-clock .garc { width: 38px; height: 38px; }
 .gk-clock[hidden] { display: none; }
