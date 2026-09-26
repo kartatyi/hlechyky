@@ -107,7 +107,7 @@ public sealed class Dice : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (action is not ("bid" or "liar" or "exact" or "ready")) return ActResult.Fail("Тут так не ходять");
-        if (_phase == DicePhase.Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == DicePhase.Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase == DicePhase.Shake) return ActResult.Fail("Ще трусимо глеки");
         if (seat is < 0 or >= DiceCore.MaxSeats || !_core.Dealt[seat] || !_core.Alive[seat])
             return ActResult.Fail("Ти без кісточок — дивись і вболівай");

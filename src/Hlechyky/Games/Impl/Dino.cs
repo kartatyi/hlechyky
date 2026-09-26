@@ -206,7 +206,7 @@ public sealed class DinoDaily : Game
                     _sim.Input(0, 0, k);
                     return ActResult.Done;
                 }
-                if (_phase != Running) return ActResult.Fail("Забіг скінчився — тисни «Ще раз»");
+                if (_phase != Running) return ActResult.Fail("Забіг скінчився — тисни «Ану ще раз»");
                 return _sim.Input(0, s, k) ? ActResult.Done : ActResult.Fail("Запізно");
             case "ping":
                 if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("t", out var t)
