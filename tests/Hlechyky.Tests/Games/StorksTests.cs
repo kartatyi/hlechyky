@@ -623,13 +623,16 @@ public class StorksTests
     {
         var h = Table(8);
         ToRun(h);
-        var max = 0;
+        int max = 0, sum = 0;
         for (var i = 0; i < 300; i++)
         {
             Keep(h);
             h.Tick();
-            max = Math.Max(max, System.Text.Encoding.UTF8.GetByteCount(Views.Text(h.Outbox.OfType<RoomFrame>().Last().Frame)));
+            var n = System.Text.Encoding.UTF8.GetByteCount(Views.Text(h.Outbox.OfType<RoomFrame>().Last().Frame));
+            max = Math.Max(max, n);
+            sum += n;
         }
+        Console.WriteLine($"[size] storks 8 гравців: кадр у середньому {sum / 300} Б, найбільший {max} Б");
         Assert.True(max < 1024, $"кадр {max} Б");
         var f = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
         Assert.Equal(6, f.GetProperty("p")[0].GetArrayLength());

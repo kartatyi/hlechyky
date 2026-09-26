@@ -610,6 +610,7 @@ public class DinoTests
         var h = Table(8, options: new { rounds = "5" });
         for (var r = 0; r < 5; r++) { Win(h, r); if (r < 4) ThroughOver(h); }
         var text = Views.Text(h.Room.Game.View(null));
+        Console.WriteLine($"[size] dino 8 гравців, 5 раундів: вид {Encoding(text)} Б");
         Assert.True(Encoding(text) < 4096, $"вид {Encoding(text)} Б");
     }
 
@@ -620,14 +621,17 @@ public class DinoTests
     {
         var h = Table(8);
         ToRun(h);
-        var max = 0;
+        int max = 0, sum = 0;
         var sim = Sim(h);
         for (var i = 0; i < 400; i++)
         {
             for (var s = 0; s < 8; s++) { sim.P[s].Lag = Math.Min(sim.P[s].Lag, 3000); sim.P[s].Eggs = 12; }
             h.Tick();
-            max = Math.Max(max, Encoding(Views.Text(h.Outbox.OfType<RoomFrame>().Last().Frame)));
+            var n = Encoding(Views.Text(h.Outbox.OfType<RoomFrame>().Last().Frame));
+            max = Math.Max(max, n);
+            sum += n;
         }
+        Console.WriteLine($"[size] dino 8 гравців: кадр у середньому {sum / 400} Б, найбільший {max} Б");
         Assert.True(max < 1024, $"кадр {max} Б");
     }
 

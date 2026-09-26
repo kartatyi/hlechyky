@@ -836,7 +836,7 @@
   // =============================================================================================
 
   const ui = HGames.ui;
-  const VIEW_H = 300, GROUND = 240, HIST_N = 64, FR_N = 24;
+  const VIEW_H = 300, GROUND = 240, HIST_N = 64, FR_N = 24, STORK_OY = 52;
   const THIN = String.fromCharCode(0x2009);
   const SEAT_VARS = [['--ok', '#7bd389'], ['--accent', '#f4c542'], ['--clay', '#c5763a'], ['--muted', '#9db3a5'],
     ['--rnr-b', '#6fb3e8'], ['--rnr-p', '#e88ac0'], ['--rnr-v', '#b08cf0'], ['--rnr-r', '#e05a5a']];
@@ -1245,12 +1245,13 @@
   function buildScene(st) {
     const pal = st.pal, W = st.viewW, s = st.dpr * st.K;
     const sc = {};
-    const sky = off(W, VIEW_H, s), g = sky.g;
+    const VH = st.vh, oy = st.oy;
+    const sky = off(W, VH, s), g = sky.g;
     const rnd = Lcg(st.mode === STORKS ? 77 : 42);
     if (st.mode === DINO) {
-      const grd = g.createLinearGradient(0, 0, 0, GROUND);
+      const grd = g.createLinearGradient(0, 0, 0, GROUND + oy);
       grd.addColorStop(0, pal.sky1); grd.addColorStop(1, pal.sky2);
-      g.fillStyle = grd; g.fillRect(0, 0, W, VIEW_H);
+      g.fillStyle = grd; g.fillRect(0, 0, W, VH);
       for (let i = 0; i < 40; i++) {
         g.globalAlpha = 0.35 + rnd() * 0.6;
         g.fillStyle = '#ffffff';
@@ -1310,16 +1311,16 @@
         });
       });
     } else {
-      const grd = g.createLinearGradient(0, 0, 0, GROUND);
+      const grd = g.createLinearGradient(0, 0, 0, GROUND + oy);
       grd.addColorStop(0, pal.dusk1); grd.addColorStop(1, pal.dusk2);
-      g.fillStyle = grd; g.fillRect(0, 0, W, VIEW_H);
-      const sx = W * 0.72, sy = 196;
+      g.fillStyle = grd; g.fillRect(0, 0, W, VH);
+      const sx = W * 0.72, sy = 196 + oy;
       const glow = g.createRadialGradient(sx, sy, 14, sx, sy, 110);
       glow.addColorStop(0, 'rgba(255, 214, 140, .55)'); glow.addColorStop(1, 'rgba(255, 190, 120, 0)');
       g.fillStyle = glow; g.fillRect(sx - 110, sy - 110, 220, 220);
       g.fillStyle = '#ffd98a'; g.beginPath(); g.arc(sx, sy, 30, 0, 7); g.fill();
       for (let i = 0; i < 6; i++) {
-        const cx = rnd() * W, cy = 30 + rnd() * 90, w = 40 + rnd() * 50;
+        const cx = rnd() * W, cy = 30 + oy / 2 + rnd() * 90, w = 40 + rnd() * 50;
         g.fillStyle = 'rgba(255, 228, 210, ' + (0.18 + rnd() * 0.18).toFixed(2) + ')';
         g.beginPath(); g.ellipse(cx, cy, w, 8, 0, 0, 7); g.ellipse(cx + w * 0.3, cy - 6, w * 0.45, 8, 0, 0, 7); g.fill();
       }
@@ -1468,19 +1469,21 @@
     return {
       root, ctx, kind, mode: kind === 'storks' ? STORKS : DINO, daily: kind === 'daily',
       el: {}, cv: null, viewW: 800, K: 1, dpr: 1, pal: null, spr: null, scene: null, sizeSig: '',
+      // Лелеки літають до 290 px над землею, а в кризі над землею лише 240: їхня сцена вища на 52 px
+      oy: kind === 'storks' ? STORK_OY : 0, vh: VIEW_H + (kind === 'storks' ? STORK_OY : 0),
       sim: null, simArgs: null, key: '', me: null, ph: '', running: false, waitView: false,
       acc: 0, lastT: 0, adj: 0, adjUntil: 0, eAvg: 0, rate: 1 / STEP_MS, arr: [],
       lead: 5, rtt: 80, rtts: [], slow: 0, pingAt: 0,
       hist: Array.from({ length: HIST_N }, () => new Player()), histAt: new Int32Array(HIST_N).fill(-1),
-      held: 0, edge: false, lastHeld: 0, pend: [], sent: 0, fixes: 0, snaps: 0, snapWhy: {},
+      held: 0, edge: false, lastHeld: 0, pend: [], sent: 0, fixes: 0, snaps: 0, snapWhy: {}, snapLog: [], fixLog: [],
       fr: new Array(FR_N).fill(null), frN: 0, frHead: 0,
       latest: null, latestAt: 0, snowWire: new Map(),
-      vis: { lag: 0, y: 0 }, camBias: 0, lastCam: 0,
+      vis: { lag: 0, y: 0 }, camBias: 0, lastCam: 0, camFocus: null, wasLive: null,
       prevMode: new Int8Array(SEATS).fill(-1), outAt: new Float64Array(SEATS), pops: [],
       goAt: 0, ownOutAt: 0, throwAt: 0, rematchAt: 0, lastLand: 0, lastDraw: 0, ownSx: null,
       ptr: null, ptrY: 0, ptrDuck: false, rmb: false,
       raf: 0, hudAt: 0, stripAt: 0, hudSig: '', overSig: '', perf: { frames: 0, ms: 0, max: 0 },
-      flakes: null, dust: null, board: null, boardAt: 0, boardBusy: false,
+      flakes: null, dust: null, board: null, boardAt: 0, boardBusy: false, boardRuns: -1,
       listeners: [], ro: null,
     };
   }
@@ -1532,6 +1535,16 @@
     return sim;
   }
 
+  /// Телефон боком (чи інший низький екран): шапка й нижні панелі сайту з'їдають висоту, і сцена опиняється
+  /// під ними. На старті раунду/спроби підкручуємо сторінку так, щоб сцена була на видноті.
+  function showStage(st) {
+    if (!ui.coarse() || window.innerHeight > 520 || !st.el.stage) return;
+    const r = st.el.stage.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight - 70) {
+      try { st.el.stage.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }); } catch (_) { /* старий браузер */ }
+    }
+  }
+
   function newRound(st, v) {
     const ctx = st.ctx, me = meOf(ctx, v);
     const plays = new Array(SEATS).fill(false);
@@ -1543,7 +1556,7 @@
     st.key = keyOf(ctx, v);
     st.histAt.fill(-1);
     st.frN = 0; st.frHead = 0;
-    st.vis.lag = st.vis.y = 0; st.camBias = 0;
+    st.vis.lag = st.vis.y = 0; st.camBias = 0; st.camFocus = null; st.wasLive = null;
     st.prevMode.fill(-1); st.outAt.fill(0); st.pops.length = 0;
     st.goAt = 0; st.ownOutAt = 0; st.waitView = false; st.pend.length = 0;
     st.lastHeld = 0; st.edge = false;
@@ -1559,8 +1572,9 @@
     st.running = isRunPhase(st, st.ph) && ctx.playing;
     st.acc = 0; st.adj = 0; st.eAvg = 0; st.lastT = performance.now();
     if (st.running) { const target = s + st.lead; while (st.sim.S < target) stepOnce(st, false); }
-    st.overSig = '';
+    st.overSig = null;
     if (canSend(st)) { send(st, st.sim.S, st.held); st.lastHeld = st.held; }   // після F5: сервер дізнається, що зараз тримають
+    if (me != null && ctx.playing) setTimeout(() => showStage(st), 60);
   }
 
   /// Кинута брила з кадру — у курс (клієнт дізнається про кидок лише з кадру, dino.md §9).
@@ -1640,12 +1654,8 @@
   function ownOut(st) {
     if (st.ownOutAt) return;
     st.ownOutAt = performance.now();
-    if (st.mode === DINO) {
-      Snd.out();
-      const W = st.viewW, lo = W >= 800 ? -80 : -60, hi = W >= 800 ? 200 : 120;
-      const lagPx = st.sim.P[st.me].lag / SUB;
-      st.camBias = -lagPx + clamp(lagPx, lo, hi);        // камера плавно повертається до лінії темпу
-    } else Snd.fall();
+    if (st.mode === DINO) Snd.out();                     // камера сама плавно перейде на лідера (draw)
+    else Snd.fall();
   }
 
   function applyFrame(st, f) {
@@ -1699,7 +1709,7 @@
       if (st.me != null && f.p && f.p[st.me]) st.sim.P[st.me].fromWire(st.mode, f.p[st.me]);
       st.histAt.fill(-1);
       st.vis.lag = st.vis.y = 0;
-      st.overSig = '';
+      st.overSig = null;
       return;
     }
     if (!st.running && st.ctx.playing) { st.running = true; snap(st, f, 'start'); }
@@ -1734,6 +1744,8 @@
     if (Math.abs(dl) > 48 * SUB || Math.abs(dy) > 48 * SUB) { st.vis.lag = 0; st.vis.y = 0; }
     else { st.vis.lag += dl; st.vis.y += dy; }
     if (!(p.out || p.down)) st.ownOutAt = 0;
+    if (st.fixLog.length >= 16) st.fixLog.shift();
+    st.fixLog.push([Math.round(performance.now()), f.s, S, Math.round(dl / SUB), Math.round(dy / SUB)]);
     if (DEBUG) console.log('[runner] виправлення на кроці', f.s, 'зсув', dl / SUB, dy / SUB);
   }
 
@@ -1756,6 +1768,9 @@
     st.acc = 0; st.adj = 0; st.eAvg = 0;
     st.snaps++;
     st.snapWhy[why || '?'] = (st.snapWhy[why || '?'] || 0) + 1;
+    if (st.snapLog.length >= 16) st.snapLog.shift();
+    st.snapLog.push([Math.round(performance.now()), why, f.s, sim.S, +st.eAvg.toFixed(1)]);
+    if (DEBUG) console.log('[runner] снап', why, 'кадр', f.s, 'свій', sim.S);
     if (st.running) { const target = f.s + st.lead; while (sim.S < target) stepOnce(st, false); }
   }
 
@@ -1830,6 +1845,9 @@
     st.acc = 0; st.adj = 0; st.eAvg = 0; st.lastT = performance.now();
     st.goAt = performance.now();
     stepOnce(st, true);
+    // Сервер почне крокувати, лише коли отримає цей ввід, і перший його тик одразу дасть два кроки. Щоб годинник
+    // не «снапався» вже на першому кадрі, одразу стаємо на своє випередження, як після відліку в партії.
+    while (sim.S < st.lead) stepOnce(st, false);
   }
 
   function doThrow(st) {
@@ -1897,8 +1915,13 @@
 
   const ORDER = new Int8Array(SEATS);
   const SX = new Float64Array(SEATS), SY = new Float64Array(SEATS), HEAD = new Float64Array(SEATS);
-  const ROWS = [new Float64Array(8), new Float64Array(8), new Float64Array(8), new Float64Array(8)];
-  const ROWN = new Int8Array(4);
+  const LABEL_ROWS = 6;
+  const ROWS = Array.from({ length: LABEL_ROWS }, () => new Float64Array(8));
+  const ROWN = new Int8Array(LABEL_ROWS);
+  // Чужі — «табун» навколо лінії: хто не спотикався, у того відставання рівно 0, і вісім динозаврів злипались
+  // в одного. Тож кожне місце малюємо з невеликим сталим зсувом (лише малюнок, не правила): трохи вбік і
+  // трохи «вглиб» кризи (вище); глибші малюються першими. Лелекам — лише вбік: висота в них — сама гра.
+  const GHOST_DX = [0, 14, -12, 24, -22, 6, -6, 18], GHOST_DY = [0, 6, 12, 3, 9, 15, 2, 10];
 
   function draw(st, now) {
     const t0 = performance.now();
@@ -1918,7 +1941,10 @@
     let othersT = st.running ? ownT - st.lead - 2 : newest;
     if (othersT > newest) othersT = newest;
     const me = st.me, p = me != null ? sim.P[me] : null;
-    const wt = me != null ? ownT : othersT;
+    // Свій герой живе на своєму годиннику (попереду сервера); хто вибув чи дивиться збоку — на годиннику чужих,
+    // інакше лавина й камера були б на кілька кроків «у майбутньому» відносно тих, хто ще біжить.
+    const ownLive = !!p && p.plays && !((p.out || p.down) && st.ownOutAt && now - st.ownOutAt > 900);
+    const wt = ownLive ? ownT : othersT;
     const runT = wt - ready;
 
     let ownLag = 0, ownY = 0;
@@ -1936,11 +1962,23 @@
     // ---- камера ----
     const anchor = W >= 800 ? 260 : 180, lo = W >= 800 ? -80 : -60, hi = W >= 800 ? 200 : 120;
     const paceW = paceF(R, ready, wt) / SUB;
+    const br = st.frN ? bracket(st, othersT) : null;
     let camPx;
     if (mode === DINO && p && !ownGone && !(p.out && st.ownOutAt)) {
       const lagPx = ownLag / SUB;
       camPx = paceW - lagPx - (anchor - clamp(lagPx, lo, hi));
+      st.camFocus = lagPx;
+    } else if (mode === DINO && !lobby) {
+      // вибув чи глядач: камера — за лідером серед тих, хто ще біжить (плавно, щоб не смикалась на спотиках)
+      const f = leaderLag(br, me);
+      st.camFocus = st.camFocus == null ? f : st.camFocus + (f - st.camFocus) * 0.08;
+      camPx = paceW - st.camFocus - (anchor - clamp(st.camFocus, lo, hi));
     } else camPx = paceW - anchor;
+    if (st.wasLive !== ownLive) {
+      // свій щойно вибув: перемикаємось на годинник чужих без стрибка сцени — зсув гасне за кілька кадрів
+      if (st.wasLive && st.lastCam) st.camBias += st.lastCam - camPx;
+      st.wasLive = ownLive;
+    }
     st.camBias *= 0.9;
     if (Math.abs(st.camBias) < 0.5) st.camBias = 0;
     camPx += st.camBias;
@@ -1957,7 +1995,8 @@
     if (shake) g.translate((Math.random() - 0.5) * 2 * shake, (Math.random() - 0.5) * 2 * shake);
 
     // ---- 1–5: небо, паралакс, земля ----
-    g.drawImage(st.scene.sky, 0, 0, W, VIEW_H);
+    g.drawImage(st.scene.sky, 0, 0, W, st.vh);
+    g.translate(0, st.oy);            // далі — світ: земля на GROUND, над нею в Лелек 290 px неба
     drawBand(g, st.scene.far, camPx, 0.10, W);
     drawBand(g, st.scene.mid, camPx, mode === DINO ? 0.30 : 0.35, W);
     drawBand(g, st.scene.near, camPx, 0.60, W);
@@ -1995,9 +2034,10 @@
     }
 
     // ---- 8: чужі — за кадрами, прозорі, з бирками ----
-    for (let r = 0; r < 4; r++) ROWN[r] = 0;
+    for (let r = 0; r < LABEL_ROWS; r++) ROWN[r] = 0;
+    // над своїм — стрілка й «ти»: перший ряд бирок там зайнятий, чужі бирки піднімаються вище
+    if (p && p.plays) { ROWS[0][0] = (lobby ? 70 + me * ((W - 140) / 8) : paceW - ownLag / SUB - camPx) + 15 - 30; ROWN[0] = 1; }
     let n = 0;
-    const br = st.frN ? bracket(st, othersT) : null;
     const paceO = paceF(R, ready, othersT) / SUB;
     for (let i = 0; i < SEATS; i++) {
       HEAD[i] = -1;
@@ -2009,16 +2049,17 @@
       if (md === 4 && !(now - st.outAt[i] < 650)) continue;
       if (mode === DINO) {
         const lag = A[0] + (B[0] - A[0]) * k;
-        SX[i] = lobby ? 70 + i * ((W - 140) / 8) : paceO - lag / SUB - camPx;
-        SY[i] = A[1] + (B[1] - A[1]) * k;
+        SX[i] = lobby ? 70 + i * ((W - 140) / 8) : paceO - lag / SUB - camPx + GHOST_DX[i];
+        SY[i] = A[1] + (B[1] - A[1]) * k + (lobby ? 0 : GHOST_DY[i] * SUB);
       } else {
-        SX[i] = lobby ? 70 + i * ((W - 140) / 8) : paceO - camPx;
+        SX[i] = lobby ? 70 + i * ((W - 140) / 8) : paceO - camPx + GHOST_DX[i] * 1.4;
         SY[i] = A[0] + (B[0] - A[0]) * k;
       }
       ORDER[n++] = i;
     }
-    // хто далі позаду — малюється першим
-    for (let a = 1; a < n; a++) { const v = ORDER[a]; let b = a - 1; while (b >= 0 && SX[ORDER[b]] > SX[v]) { ORDER[b + 1] = ORDER[b]; b--; } ORDER[b + 1] = v; }
+    // хто глибше в кризі (Стрибозаври) чи далі позаду — малюється першим
+    const depth = (i) => (mode === DINO && !lobby ? GHOST_DY[i] * 1000 : 0) - SX[i];
+    for (let a = 1; a < n; a++) { const v = ORDER[a]; let b = a - 1; while (b >= 0 && depth(ORDER[b]) < depth(v)) { ORDER[b + 1] = ORDER[b]; b--; } ORDER[b + 1] = v; }
     for (let q = 0; q < n; q++) {
       const i = ORDER[q];
       const w = br.k < 0.5 ? (br.a.p[i] || br.b.p[i]) : (br.b.p[i] || br.a.p[i]);
@@ -2032,14 +2073,18 @@
       if (!nick || HEAD[i] < 0) continue;
       const lb = label(st, i, nick), lx = SX[i] + 15 - lb._w / 2;
       let row = 0;
-      for (; row < 3; row++) {
+      for (; row < LABEL_ROWS; row++) {
         let free = true;
         for (let z = 0; z < ROWN[row]; z++) if (Math.abs(ROWS[row][z] - lx) < 64) { free = false; break; }
         if (free) break;
       }
+      if (row === LABEL_ROWS) continue;          // бирок більше, ніж місця над табуном, — решту видно в чіпах
       if (ROWN[row] < 8) ROWS[row][ROWN[row]++] = lx;
+      // під самою стелею (Лелеки) бирка вилізла б за кадр — тоді вона під птахом
+      let ly = HEAD[i] - 18 - row * 14;
+      if (ly < 2 - st.oy) ly = GROUND - SY[i] / SUB + 6 + row * 14;
       g.globalAlpha = 0.9;
-      g.drawImage(lb, lx, HEAD[i] - 18 - row * 14, lb._w, 15);
+      g.drawImage(lb, lx, ly, lb._w, 15);
       g.globalAlpha = 1;
     }
 
@@ -2062,7 +2107,14 @@
         const md = p.modeOf(STORKS);
         g.fillStyle = 'rgba(0,0,0,.22)'; g.beginPath(); g.ellipse(sx + 16, GROUND + 3, 14, 3, 0, 0, 7); g.fill();
         const head = drawStork(st, g, me, sx, ownY, p.vy, md, p.feather ? 1 : 0, now, st.ownOutAt, true);
-        if (md !== 4) arrow(g, sx + 16, head - 6, pal.text, isReady(st, ownT) || lobby);
+        if (md !== 4) {
+          if (head - 24 > -st.oy) arrow(g, sx + 16, head - 6, pal.text, isReady(st, ownT) || lobby);
+          else {
+            // під стелею стрілка «ти» дивиться знизу вгору
+            const y = GROUND - ownY / SUB + 6;
+            g.fillStyle = pal.text; g.beginPath(); g.moveTo(sx + 11.5, y + 6); g.lineTo(sx + 20.5, y + 6); g.lineTo(sx + 16, y); g.closePath(); g.fill();
+          }
+        }
       }
     }
 
@@ -2076,7 +2128,7 @@
       g.fillStyle = mode === DINO ? 'rgba(242, 248, 255, .8)' : 'rgba(255, 236, 200, .35)';
       for (const f of st.flakes) {
         f.y += f.v * dt; f.x -= camMove * (0.3 + f.r * 0.25) + Math.sin(now / 900 + f.ph) * 0.2;
-        if (f.y > VIEW_H) { f.y = -4; f.x = Math.random() * W; }
+        if (f.y > VIEW_H) { f.y = -4 - st.oy; f.x = Math.random() * W; }
         if (f.x < -4) f.x += W + 8; else if (f.x > W + 4) f.x -= W + 8;
         if (mode === DINO || f.r > 2) g.fillRect(f.x, f.y, f.r, f.r);
       }
@@ -2094,6 +2146,7 @@
     drawPops(st, g, now, camPx, paceO);
 
     // ---- 12: накладки ----
+    g.translate(0, -st.oy);
     overlays(st, g, now, ownT, othersT, lobby);
     g.restore();
 
@@ -2103,6 +2156,20 @@
   }
 
   const isReady = (st, t) => st.ph === 'ready' && t < st.sim.readySteps;
+
+  /// Відставання (px) того, хто з живих найменше відстав, — за кадрами чужих; нікого — лінія темпу.
+  function leaderLag(br, me) {
+    if (!br || !br.a) return 0;
+    let best = Infinity;
+    for (let i = 0; i < SEATS; i++) {
+      if (i === me) continue;
+      const A = br.a.p[i] || br.b.p[i], B = br.b.p[i] || br.a.p[i];
+      if (!A || A[3] === 4 || B[3] === 4) continue;
+      const lag = A[0] + (B[0] - A[0]) * br.k;
+      if (lag < best) best = lag;
+    }
+    return best === Infinity ? 0 : best / SUB;
+  }
 
   function arrow(g, x, y, col, you) {
     g.fillStyle = col;
@@ -2297,37 +2364,41 @@
   }
 
   function overlays(st, g, now, ownT, othersT, lobby) {
-    const W = st.viewW, pal = st.pal, sim = st.sim;
+    const W = st.viewW, pal = st.pal, sim = st.sim, VH = st.vh;
     const t = st.me != null ? ownT : othersT;
+    // на телефоні сцена стискається до ~0,57 — написи на ній робимо більшими, щоб читались
+    const z = W < 800 ? 1.3 : 1, font = (w, px) => w + ' ' + Math.round(px * z) + 'px system-ui, sans-serif';
     if (st.ph === 'ready' && st.ctx.room.status === 'playing' && t < sim.readySteps) {
-      g.fillStyle = pal.shade; g.fillRect(0, 0, W, VIEW_H);
-      g.fillStyle = pal.text; g.font = '700 46px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(String(Math.max(1, Math.ceil((sim.readySteps - t) / 50))), W / 2, VIEW_H / 2 - 10);
-      g.font = '600 15px system-ui, sans-serif';
+      g.fillStyle = pal.shade; g.fillRect(0, 0, W, VH);
+      g.fillStyle = pal.text; g.font = font(700, 46); g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(String(Math.max(1, Math.ceil((sim.readySteps - t) / 50))), W / 2, VH / 2 - 10);
+      g.font = font(600, 15);
       const v = st.ctx.view || {};
       const rnd = v.rounds > 1 ? 'Раунд ' + v.round + ' з ' + v.rounds : v.n0 === 1 ? 'Тренування' : '';
-      if (rnd) g.fillText(rnd, W / 2, VIEW_H / 2 + 28);
+      if (rnd) g.fillText(rnd, W / 2, VH / 2 + 28 * z);
       return;
     }
     if (st.goAt && now - st.goAt < 450 && st.ph === 'run' && !st.daily) {
-      g.fillStyle = pal.text; g.font = '800 40px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = pal.text; g.font = font(800, 40); g.textAlign = 'center'; g.textBaseline = 'middle';
       g.globalAlpha = 1 - (now - st.goAt) / 450;
-      g.fillText(st.mode === DINO ? 'Біжи!' : 'Лети!', W / 2, VIEW_H / 2 - 20);
+      g.fillText(st.mode === DINO ? 'Біжи!' : 'Лети!', W / 2, VH / 2 - 20);
       g.globalAlpha = 1;
     }
     if (st.daily && st.ph === 'wait' && st.ctx.room.status === 'playing') {
-      g.fillStyle = 'rgba(8, 16, 24, .55)'; g.beginPath(); g.roundRect(W / 2 - 190, 70, 380, 58, 12); g.fill();
+      const bw = Math.min(W - 40, 380 * z), bh = 58 * z;
+      g.fillStyle = 'rgba(8, 16, 24, .55)'; g.beginPath(); g.roundRect(W / 2 - bw / 2, 70, bw, bh, 12); g.fill();
       g.fillStyle = pal.text; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.font = '700 16px system-ui, sans-serif'; g.fillText(ui.coarse() ? 'Тап — і побігли!' : 'Пробіл, ↑ або тап — і побігли!', W / 2, 90);
-      g.font = '500 13px system-ui, sans-serif'; g.fillText('Тримай довше — стрибнеш вище', W / 2, 111);
+      g.font = font(700, 16); g.fillText(ui.coarse() ? 'Тап — і побігли!' : 'Пробіл, ↑ або тап — і побігли!', W / 2, 70 + bh * 0.34);
+      g.font = font(500, 13); g.fillText('Тримай довше — стрибнеш вище', W / 2, 70 + bh * 0.72);
     }
     if (st.ctx.room.status === 'finished' || st.ph === 'over') {
-      g.fillStyle = pal.shade; g.fillRect(0, 0, W, VIEW_H);
+      g.fillStyle = pal.shade; g.fillRect(0, 0, W, VH);
     }
     if (lobby && st.me != null && !st.ctx.playing) {
-      g.fillStyle = 'rgba(8, 16, 24, .5)'; g.beginPath(); g.roundRect(W / 2 - 170, 26, 340, 34, 10); g.fill();
-      g.fillStyle = pal.text; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '600 14px system-ui, sans-serif';
-      g.fillText(st.mode === DINO ? 'Розминаємо лапи — чекаємо на старт' : 'Розправляємо крила — чекаємо на старт', W / 2, 43);
+      const bw = Math.min(W - 40, 340 * z), bh = 34 * z;
+      g.fillStyle = 'rgba(8, 16, 24, .5)'; g.beginPath(); g.roundRect(W / 2 - bw / 2, 26, bw, bh, 10); g.fill();
+      g.fillStyle = pal.text; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = font(600, 14);
+      g.fillText(st.mode === DINO ? 'Розминаємо лапи — чекаємо на старт' : 'Розправляємо крила — чекаємо на старт', W / 2, 26 + bh / 2);
     }
   }
 
@@ -2349,6 +2420,8 @@
         + '</div><span class="rnr-sico">🏁</span></div>' : '')
       + '<div class="rnr-stage"><div class="rnr-over" hidden></div></div>'
       + '<div class="rnr-touch">'
+      // лівий великий палець — стрибок (тап по сцені теж стрибає), правий — пригнутись; сніжка — посередині
+      + (st.mode === DINO ? '<button type="button" class="rnr-tbtn rnr-jump">⬆<small>Стрибок</small></button>' : '')
       + (st.kind === 'dino' ? '<button type="button" class="rnr-tbtn rnr-throw" hidden>❄<small>Кинути</small></button>' : '')
       + (st.mode === DINO ? '<button type="button" class="rnr-tbtn rnr-duck">⬇<small>Пригнись</small></button>'
         : '<button type="button" class="rnr-tbtn rnr-flap">🪽<small>Змах</small></button>')
@@ -2359,7 +2432,8 @@
       wrap, hud: q('.rnr-hud'), chips: q('.rnr-chips'), round: q('.rnr-round'), m: q('.rnr-m'), clock: q('.rnr-clock'),
       sub: q('.rnr-sub'), eggs: q('.rnr-eggs'), snd: q('.rnr-snd'), strip: q('.rnr-strip'), bar: q('.rnr-avabar'),
       dots: [...wrap.querySelectorAll('.rnr-dot')], stage: q('.rnr-stage'), over: q('.rnr-over'),
-      touch: q('.rnr-touch'), throwBtn: q('.rnr-throw'), duckBtn: q('.rnr-duck'), flapBtn: q('.rnr-flap'), how: q('.rnr-how'),
+      touch: q('.rnr-touch'), throwBtn: q('.rnr-throw'), duckBtn: q('.rnr-duck'), flapBtn: q('.rnr-flap'), jumpBtn: q('.rnr-jump'),
+      how: q('.rnr-how'),
     };
     st.el.snd.textContent = Snd.on ? '🔊' : '🔈';
     st.el.snd.onclick = () => { Snd.set(!Snd.on); st.el.snd.textContent = Snd.on ? '🔊' : '🔈'; };
@@ -2379,6 +2453,7 @@
     };
     hold(st.el.duckBtn, 2);
     hold(st.el.flapBtn, 1);
+    hold(st.el.jumpBtn, 1);
     if (st.el.throwBtn) st.el.throwBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); doThrow(st); });
     st.el.over.addEventListener('pointerdown', (e) => {
       if (e.target.closest('a, button')) return;
@@ -2397,7 +2472,7 @@
     if (sig === st.sizeSig && st.cv) return;
     st.sizeSig = sig;
     st.viewW = viewW; st.K = K; st.dpr = dpr;
-    st.cv = ui.canvas(st.el.stage, { w: viewW * K, h: VIEW_H * K, cls: 'rnr-cv' });
+    st.cv = ui.canvas(st.el.stage, { w: viewW * K, h: st.vh * K, cls: 'rnr-cv' });
     st.pal = palette();
     buildSprites(st);
     buildScene(st);
@@ -2555,7 +2630,8 @@
         + '<p class="rnr-ovsub">' + (st.mode === DINO ? 'Для таблиці рекордів є «Забіг дня» в Соло. ' : '') + 'Клич друзів — удвох веселіше.</p></div>';
     } else if (done && v.result && v.result.table && v.result.table.length) {
       const t = v.result.table, wn = v.result.winners || [];
-      const top = wn.map(nick).join(' й ');
+      const names = wn.map(nick);
+      const top = names.length > 1 ? names.slice(0, -1).join(', ') + ' й ' + names[names.length - 1] : names.join('');
       html = '<div class="rnr-ovbox"><h3>🏆 ' + top + ' — ' + (wn.length > 1 ? 'по ' : '') + t[0].points + ' ' + points(t[0].points) + '</h3>'
         + '<table><tr><th>#</th><th>хто</th><th>очки</th>' + (st.mode === DINO ? '<th>🥚</th>' : '') + '</tr>'
         + t.map((r, k) => '<tr class="s' + r.seat + (r.seat === ctx.seat ? ' me' : '') + '"><td>' + (k + 1) + '</td><td><i></i>' + nick(r.seat) + '</td><td>' + r.points + '</td>'
@@ -2595,16 +2671,21 @@
         + esc(r.nick || '') + '</td><td>' + fmtNum(r.best || 0) + '</td><td>' + (r.tries || 0) + '</td></tr>').join('') + '</table>';
   }
 
+  /// Таблиця «сьогодні»: не частіше ніж раз на 10 с, але нова спроба (runs змінився) — привід перечитати одразу,
+  /// інакше щойно поставлений рекорд не видно. Рядок у базу пише каркас уже після Finish — тож із запасом 0,7 с.
   function loadBoard(st) {
-    const now = Date.now();
-    if (st.boardBusy || now - st.boardAt < 10000) return;
+    const now = Date.now(), runs = (st.ctx.view && st.ctx.view.runs) || 0;
+    const fresh = runs !== st.boardRuns;
+    if (st.boardBusy || (!fresh && now - st.boardAt < 10000)) return;
     st.boardBusy = true;
+    st.boardRuns = runs;
     const nick = (st.ctx.me && st.ctx.me.nick) || '';
-    fetch('/api/games/leaderboard?game=dino-daily&period=day', { headers: { 'X-Nick': encodeURIComponent(nick) } })
+    const go = () => fetch('/api/games/leaderboard?game=dino-daily&period=day', { headers: { 'X-Nick': encodeURIComponent(nick) } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { st.board = d && Array.isArray(d.rows) ? d.rows : []; st.boardAt = Date.now(); st.overSig = ''; })
+      .then((d) => { st.board = d && Array.isArray(d.rows) ? d.rows : []; st.boardAt = Date.now(); st.overSig = null; })
       .catch(() => { st.board = st.board || []; })
       .finally(() => { st.boardBusy = false; });
+    if (fresh) setTimeout(go, 700); else go();
   }
 
   // =============================================================================================
@@ -2773,7 +2854,8 @@
       st,
       get perf() { return st.perf; },
       resetPerf() { st.perf = { frames: 0, ms: 0, max: 0 }; },
-      net() { return { lead: st.lead, rtt: st.rtt, sent: st.sent, fixes: st.fixes, snaps: st.snaps, why: st.snapWhy, e: st.eAvg, cs: st.sim && st.sim.S, fs: st.latest && st.latest.s, ph: st.ph, running: st.running }; },
+      net() { return { lead: st.lead, rtt: st.rtt, rate: +st.rate.toFixed(4), sent: st.sent, fixes: st.fixes, snaps: st.snaps, why: st.snapWhy, e: st.eAvg, cs: st.sim && st.sim.S, fs: st.latest && st.latest.s, ph: st.ph, running: st.running }; },
+      log() { return { now: Math.round(performance.now()), snaps: st.snapLog, fixes: st.fixLog }; },
       /// Що попереду свого героя: перешкоди в px від переднього краю хітбокса.
       next() {
         const sim = st.sim;
