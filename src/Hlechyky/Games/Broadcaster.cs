@@ -55,8 +55,10 @@ public sealed class Broadcaster(
         try
         {
             // Усе, що в Журнал пишуть ігри й сервіси (столи, підсумки, ачівки, турнір), — під фільтром «🎮 Ігри».
+            // Рядок-заклик — не Журнал, а репліка в Балачках від імені того, хто кличе (kind invite).
             sends = Plan(all, rooms.Snapshot, rooms.SoloNow, rooms.ViewsFor, presence.Get, presence.ConnectionsOf,
-                (text, roomId) => db.AddChat(site.CurrentValue.Name, text, "system", roomId, topic: "games"));
+                (text, roomId) => db.AddChat(site.CurrentValue.Name, text, "system", roomId, topic: "games"),
+                (by, text, roomId) => db.AddChat(by, text, "invite", roomId));
         }
         catch (Exception ex)
         {
@@ -107,6 +109,8 @@ public sealed class Broadcaster(
     /// <see cref="RoomViews"/> однієї кімнати — теж (лишається останнє: воно й так рахується від свіжого стану), а з
     /// кадрів однієї кімнати лишається останній. <see cref="DjSays"/> сюди не потрапляє: його вміє лише RadioEngine.
     /// Балачка столу (<see cref="TableSaid"/>, <see cref="TableHistory"/>) не склеюється: кожна репліка — окрема.
+    /// <paramref name="inviteLine"/> — записати в базу загальний рядок-заклик (хто кличе, текст, стіл) і віддати те, що
+    /// полетить у <c>chat</c>; null — загальних рядків-закликів ця розсилка не пише.
     /// </summary>
     public static List<Send> Plan(
         IReadOnlyList<Outgoing> messages,
@@ -115,7 +119,8 @@ public sealed class Broadcaster(
         Func<string, RoomBroadcast?> viewsFor,
         Func<string, string?> nickOf,
         Func<string, IReadOnlyList<string>> connectionsOf,
-        Func<string, string?, object> journal)
+        Func<string, string?, object> journal,
+        Func<string, string, string, object>? inviteLine = null)
     {
         var keep = Coalesce(messages);
         var sends = new List<Send>();
@@ -146,7 +151,25 @@ public sealed class Broadcaster(
                     catch (Exception) { }
                     break;
                 case Invite invite:
-                    sends.Add(new Send(new ToAll(), "invite", new { roomId = invite.RoomId, by = invite.By, text = invite.Text }));
+                    // Особистий заклик — лише на з'єднання того, кого кличуть; загальний — усім (свій браузер відкине сам).
+                    sends.Add(invite.To is { } to
+                        ? new Send(new ToConnections(connectionsOf(to)), "invite",
+                            new { roomId = invite.RoomId, by = invite.By, text = invite.Text, personal = true })
+                        : new Send(new ToAll(), "invite",
+                            new { roomId = invite.RoomId, by = invite.By, text = invite.Text, personal = false }));
+                    break;
+                case InviteLine line when line.To is { } whom:
+                    // Особистий рядок у базу не лягає: id 0, як у відповіді на /столи, і лише тому, кого кличуть.
+                    sends.Add(new Send(new ToConnections(connectionsOf(whom)), "chat", new
+                    {
+                        id = 0L, kind = "invite", nick = line.By, text = line.Text, at = line.At, roomId = line.RoomId, personal = true,
+                    }));
+                    break;
+                case InviteLine line:
+                    // Той самий захист, що й у Журналу: зайнята база коштує одного рядка, а не всієї пачки.
+                    if (inviteLine is null) break;
+                    try { sends.Add(new Send(new ToAll(), "chat", inviteLine(line.By, line.Text, line.RoomId))); }
+                    catch (Exception) { }
                     break;
                 case TableSaid said:
                     // Балачка столу — лише тим, хто на нього дивиться, як і види з кадрами.

@@ -60,8 +60,9 @@ public sealed class SkilkyStats(Db? db, IClock clock)
         "tracksTotal" => Scalar("SELECT COUNT(*) FROM tracks WHERE id NOT LIKE $p", ("$p", VoicePrefix)),
         "voiceTotal" => Scalar("SELECT COUNT(*) FROM tracks WHERE id LIKE $p", ("$p", VoicePrefix)),
         // «Написано в балачках» — людьми: рядки Журналу пише сам сервер, а Глек за вересень наговорив
-        // тисячі анонсів своїх треків — з ними відповідь була б про нього, а не про нас.
-        "chatTotal" => Scalar("SELECT COUNT(*) FROM chat WHERE kind <> 'system' AND kind NOT LIKE 'dj%'"),
+        // тисячі анонсів своїх треків — з ними відповідь була б про нього, а не про нас. Рядок-заклик за стіл
+        // («кличе в мафію») теж пише сервер, хоч і від імені того, хто поставив стіл.
+        "chatTotal" => Scalar("SELECT COUNT(*) FROM chat WHERE kind NOT IN ('system', 'invite') AND kind NOT LIKE 'dj%'"),
         "minutesPlayed30d" => Scalar("""
             SELECT COALESCE(SUM(t.duration_sec), 0) / 60
             FROM plays p JOIN tracks t ON t.id = p.track_id

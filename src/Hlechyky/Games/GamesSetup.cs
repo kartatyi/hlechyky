@@ -16,6 +16,7 @@ public static class GamesSetup
         // і контейнер не вміє його вгадати.
         services.AddSingleton(sp => new Registry(sp.GetService<ILogger<Registry>>()));
         services.AddSingleton<Rooms>();
+        services.AddSingleton<Calls>();                    // заклики за стіл: «📣 Покликати», /клич, «покликати ще раз»
         services.AddSingleton<Broadcaster>();
         services.AddSingleton<RateGate>();
         // Broadcaster знаходиться при першому Post, а не при побудові графа: інакше
