@@ -2632,10 +2632,11 @@
     const sim = st.sim, f = st.latest;
     if (!sim || !f || !f.p) return;
     const run = Math.max(0, sim.S - sim.readySteps);
-    const Dv = avD(run);
+    const Dv = avD(run), plays = st.ctx.view && st.ctx.view.plays;
     for (let i = 0; i < SEATS; i++) {
       const dot = el.dots[i], w = f.p[i];
-      const show = !!w && w[3] !== 4 && st.ctx.room.status !== 'lobby';
+      // хто встав з-за столу, того вже нема в «plays» виду, хоч останній кадр його ще пам'ятає
+      const show = !!w && w[3] !== 4 && st.ctx.room.status !== 'lobby' && !(plays && !plays[i]);
       if (dot.hidden === show) dot.hidden = !show;
       if (!show) continue;
       const lag = i === st.me ? sim.P[i].lag : w[0];
