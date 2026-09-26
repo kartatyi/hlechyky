@@ -126,6 +126,7 @@ public class DiceTests
         Assert.False(info.Rated);
         Assert.Equal(250, info.TickMs);
         Assert.Equal("«Під глеком»", info.Accusative);
+        Assert.DoesNotContain("п'ять", info.Hint);   // з опцією «3 — швидка партія» п'яти кісточок нема
         var opts = info.Options!.ToDictionary(o => o.Key, o => o.Default);
         Assert.Equal(new Dictionary<string, string> { ["dice"] = "5", ["turn"] = "30", ["exact"] = "on", ["palifico"] = "on" }, opts);
         var cat = registry.Catalog.Single(g => g.Id == "dice");
@@ -440,6 +441,7 @@ public class DiceTests
         Ok(h.Act(0, "bid", Raw("{\"q\":2,\"f\":3}")));
         Ok(h.Act(2, "exact", Raw("{\"q\":2,\"f\":3}")));
         Assert.Equal("exact", Reveal(h).GetProperty("kind").GetString());
+        Ok(h.Act(1, "react", Raw("{\"e\":1}")));   // act('react', { e })
     }
 
     // =========================================================================================
@@ -856,7 +858,7 @@ public class DiceTests
         Assert.Equal("shake", Phase(h));
         Assert.Equal(0, h.View(null).GetProperty("starter").GetInt32());
         Assert.True(h.View(null).GetProperty("palifico").GetBoolean());
-        Assert.Contains("Ганна встав з-за столу — перетрушуємо", h.View(null).GetProperty("note").GetString());
+        Assert.Contains("Ганна встає з-за столу — перетрушуємо", h.View(null).GetProperty("note").GetString());
     }
 
     // =========================================================================================
@@ -894,6 +896,9 @@ public class DiceTests
         Assert.Equal(new[] { 1, 2 }, Ints(res.GetProperty("places")));
         Assert.Equal(2, res.GetProperty("rounds").GetInt32());
         Assert.False(string.IsNullOrEmpty(res.GetProperty("say").GetString()));
+        // Петро загнув 5 четвірок при нулі — найнахабніший блеф партії (Ганнині 2 × ⚄ при нулі скромніші)
+        Assert.Equal(new[] { "🤥 Найнахабніший блеф — Петро: 5 × ⚃, а було 0" },
+            res.GetProperty("fun").EnumerateArray().Select(x => x.GetString()).ToArray());
         Assert.Equal(JsonValueKind.Object, h.View(null).GetProperty("reveal").ValueKind);   // останнє розкриття лишається на столі
     }
 
@@ -937,14 +942,16 @@ public class DiceTests
         Core(h).SetTurn(0);
         Ok(h.Act(0, "bid", new { q = 2, f = 3 }));
         var round = h.View(null).GetProperty("round").GetInt32();
+        var starter = Core(h).Starter;
         h.Leave("Петро");
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         var v = h.View(null);
         Assert.Equal("shake", v.GetProperty("phase").GetString());
         Assert.Equal(0, v.GetProperty("history").GetArrayLength());
         Assert.Equal(JsonValueKind.Null, v.GetProperty("bid").ValueKind);
-        Assert.Contains("Петро встав з-за столу — перетрушуємо", v.GetProperty("note").GetString());
-        Assert.Equal(2, v.GetProperty("starter").GetInt32());
+        Assert.Contains("Петро встає з-за столу — перетрушуємо", v.GetProperty("note").GetString());
+        // починає той самий стартер; якщо пішов саме він — наступний за ним
+        Assert.Equal(starter == 1 ? 2 : starter, v.GetProperty("starter").GetInt32());
         Assert.Equal(round, v.GetProperty("round").GetInt32());
         Assert.Equal(10, v.GetProperty("total").GetInt32());
         var p = Player(h, 1);
@@ -979,9 +986,189 @@ public class DiceTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         var fin = Assert.Single(h.Finished);
         Assert.Equal(new[] { 0 }, fin.Result.Winners);
-        Assert.Equal("Під глеком: Петро встав з-за столу, перемога — Оля", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Під глеком: Петро встає з-за столу, перемога — Оля", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Equal("done", Phase(h));
+        Assert.Equal("За столом лишається тільки Оля — перемога.", h.View(null).GetProperty("result").GetProperty("say").GetString());
         Assert.Equal(0, h.View(null).GetProperty("result").GetProperty("winner").GetInt32());
+    }
+
+    [Fact]
+    public void Leaving_mid_round_keeps_the_starter_and_the_palifico_wherever_the_leaver_sits()
+    {
+        // Рецензія: на чотирьох Оля (0) на одній кісточці відкриває свій раунд паліфіко, а встає Петро чи Ганна —
+        // не той, хто сидить просто перед нею. Раніше старт діставався сусідові того, хто встав, і Олине
+        // паліфіко згорало назавжди (palificoUsed уже true), а «хто програв — той починає» ламалось.
+        foreach (var leaver in new[] { "Петро", "Ганна" })
+        {
+            var h = Arranged([[2, 3], [4, 4, 4, 6, 6], [5, 5, 5], [2, 2, 2]]);
+            Ok(h.Act(0, "bid", new { q = 5, f = 6 }));   // брехня: шісток лише дві
+            Ok(h.Act(1, "liar"));
+            Assert.Equal(1, DiceOf(h, 0));
+            Until(h, "bid");
+            Assert.True(h.View(null).GetProperty("palifico").GetBoolean());
+            Assert.Equal(0, h.View(null).GetProperty("starter").GetInt32());
+
+            h.Leave(leaver);
+            var v = h.View(null);
+            Assert.Equal("shake", v.GetProperty("phase").GetString());
+            Assert.Equal(0, v.GetProperty("starter").GetInt32());
+            Assert.True(v.GetProperty("palifico").GetBoolean());
+            Assert.StartsWith($"{leaver} встає з-за столу — перетрушуємо. Паліфіко! Оля", v.GetProperty("note").GetString());
+            Until(h, "bid");
+            Assert.Equal(0, h.View(null).GetProperty("turn").GetInt32());
+            Ok(h.Act(0, "bid", new { q = 1, f = 1 }));   // паліфіко живе: глечиками відкриватись можна
+        }
+    }
+
+    [Fact]
+    public void When_the_starter_leaves_mid_round_the_next_seat_opens_the_reshake()
+    {
+        var h = Arranged([[2, 3, 4], [4, 4, 4], [5, 5, 5], [2, 2, 2]]);
+        Ok(h.Act(0, "bid", new { q = 3, f = 6 }));   // шісток нема — Оля губить і починає наступний
+        Ok(h.Act(1, "liar"));
+        Until(h, "bid");
+        Assert.Equal(0, h.View(null).GetProperty("starter").GetInt32());
+        h.Leave("Оля");
+        Assert.Equal(1, h.View(null).GetProperty("starter").GetInt32());
+        Assert.False(h.View(null).GetProperty("palifico").GetBoolean());
+    }
+
+    [Fact]
+    public void A_win_because_the_rival_left_gives_no_comeback_achievement()
+    {
+        // «Я спускаюсь до однієї, ти встаєш» — і ачівка за 25? Ні: лише за партію, дограну до розкриття.
+        var h = Arranged([[4], [2, 3, 5]]);
+        Assert.True(Player(h, 0).GetProperty("wasAtOne").GetBoolean());
+        h.Leave("Петро");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(new[] { 0 }, Assert.Single(h.Finished).Result.Winners);
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:dice-comeback");
+    }
+
+    [Fact]
+    public void A_table_won_by_a_leave_shows_no_unrevealed_hand_even_after_it_reopens()
+    {
+        // Партію дограно виходом посеред ставок — руки ніхто не піднімав. Не світимо їх ні глядачеві, ні в
+        // перевідкритому лобі тому, хто сів на місце переможця.
+        var h = Arranged([[2, 3, 3, 5, 6], [1, 4, 4, 4, 6], []]);
+        static void NoHands(RoomHarness h)
+        {
+            for (var s = 0; s <= DiceCore.MaxSeats; s++)
+            {
+                int? seat = s == DiceCore.MaxSeats ? null : s;
+                var text = Views.Text(h.Room.Game.View(seat));
+                Assert.DoesNotContain("[2,3,3,5,6]", text);
+                Assert.DoesNotContain("[1,4,4,4,6]", text);
+                Assert.Contains("\"reveal\":null", text);
+            }
+        }
+        h.Leave("Петро");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal("done", Phase(h));
+        NoHands(h);
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("my").ValueKind);
+
+        h.Leave("Оля");                        // переможець теж пішов, Ганна (вибула раніше) лишилась
+        Assert.True(h.Join("Марта").Ok);       // стіл перевідкрився, Марта сіла на Олине місце
+        Assert.Equal(RoomStatus.Lobby, h.Room.Status);
+        Assert.Equal("Марта", h.NickOf(0));
+        NoHands(h);
+    }
+
+    [Fact]
+    public void A_bid_after_the_turn_ran_out_is_refused_and_counts_as_the_timeout()
+    {
+        // Годинник уже за межею ходу, а тик ще не прийшов (до 250 мс): дуга в людини на нулі — ставку не беремо.
+        var h = Table(2);
+        ToBid(h);
+        var t = Core(h).Turn;
+        h.Clock.AdvanceMs(30_000);
+        Refused(h, h.Act(t, "bid", new { q = 1, f = 3 }), "Час вийшов — хід пішов далі");
+        var bid = h.View(null).GetProperty("bid");
+        Assert.True(bid.GetProperty("auto").GetBoolean());   // ⏰ 1 × ⚁ за того, хто не встиг
+        Assert.Equal(t, bid.GetProperty("seat").GetInt32());
+        Assert.Equal(Core(h).NextAlive(t), h.View(null).GetProperty("turn").GetInt32());
+
+        var u = Core(h).Turn;
+        h.Clock.AdvanceMs(30_000);
+        Refused(h, h.Act(u, "bid", new { q = 2, f = 3 }), "Час вийшов — глеки вже піднімають");
+        Assert.Equal("reveal", Phase(h));
+        Assert.Equal("timeout", Reveal(h).GetProperty("kind").GetString());
+        Assert.Equal(u, Reveal(h).GetProperty("caller").GetInt32());
+    }
+
+    [Fact]
+    public void A_player_who_sleeps_through_two_turns_gets_ten_seconds_until_waking_up()
+    {
+        var h = Arranged([[2, 3, 4], [2, 3, 4]]);
+        h.Tick(120);                                  // Оля проспала відкриття — ⏰ 1 × ⚁ за неї
+        Assert.Equal(1, h.View(null).GetProperty("turn").GetInt32());
+        Ok(h.Act(1, "bid", new { q = 2, f = 3 }));
+        Assert.Equal(30_000, h.View(null).GetProperty("phaseMs").GetInt32());   // проспала лише раз — повний час
+        Assert.False(Player(h, 0).GetProperty("sleepy").GetBoolean());
+        h.Tick(120);                                  // знов мовчить — «Брешеш!» за неї, трійок таки дві
+        Assert.Equal("timeout", Reveal(h).GetProperty("kind").GetString());
+        Assert.Equal(0, Reveal(h).GetProperty("loser").GetInt32());
+
+        Until(h, "bid");                              // починає вона ж (програла) — і вже сонна
+        Assert.Equal(0, h.View(null).GetProperty("turn").GetInt32());
+        Assert.Equal(10_000, h.View(null).GetProperty("phaseMs").GetInt32());
+        Assert.True(Player(h, 0).GetProperty("sleepy").GetBoolean());
+        Assert.False(Player(h, 1).GetProperty("sleepy").GetBoolean());
+
+        Ok(h.Act(0, "bid", new { q = 1, f = 4 }));    // прокинулась
+        Assert.False(Player(h, 0).GetProperty("sleepy").GetBoolean());
+        Ok(h.Act(1, "bid", new { q = 2, f = 4 }));
+        Assert.Equal(0, h.View(null).GetProperty("turn").GetInt32());
+        Assert.Equal(30_000, h.View(null).GetProperty("phaseMs").GetInt32());
+    }
+
+    [Fact]
+    public void The_summary_names_the_boldest_bluff_and_the_sniper()
+    {
+        var h = Arranged([[6, 6, 6], [2, 2], [3, 3]], turn: 1, options: new { palifico = "off" });
+        Ok(h.Act(1, "bid", new { q = 5, f = 4 }));   // четвірок нема зовсім — загин на п'ять
+        Ok(h.Act(2, "liar"));
+        Until(h, "bid");
+        Core(h).Arrange([[6, 6, 6], [2], [3, 3]]);
+        Core(h).SetTurn(1);
+        Ok(h.Act(1, "bid", new { q = 3, f = 6 }));
+        Ok(h.Act(2, "exact", new { q = 3, f = 6 }));  // рівно три шістки — Ганна влучила
+        h.Leave("Петро");
+        h.Leave("Ганна");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        var fun = h.View(null).GetProperty("result").GetProperty("fun").EnumerateArray().Select(x => x.GetString()).ToArray();
+        Assert.Equal(new[]
+        {
+            "🤥 Найнахабніший блеф — Петро: 5 × ⚃, а було 0",
+            "🎯 Снайпер — Ганна: 1 влучне «Точно!»",
+        }, fun);
+    }
+
+    [Fact]
+    public void Reactions_reach_everyone_but_change_nothing_in_the_game()
+    {
+        var h = Arranged([[1, 5, 5], [5, 2, 2], []]);   // Ганна вже без кісточок — але реагувати може
+        Ok(h.Act(0, "bid", new { q = 2, f = 5 }));
+        h.Tick();
+        var before = StripReacts(AllViews(h));
+        var sent = h.Outbox.Count(o => o is RoomViews);
+        Ok(h.Act(2, "react", new { e = 1 }));
+        Ok(h.Act(1, "react", new { e = 0 }));
+        Assert.Equal(before, StripReacts(AllViews(h)));   // ставка, хід, таймер — усе як було
+        Assert.Equal(new[] { 0, 0, 1, 0, 0, 0 }, Ints(h.View(null).GetProperty("react")));
+        Assert.Equal(new[] { 0, 1, 1, 0, 0, 0 }, Ints(h.View(null).GetProperty("reactN")));
+        h.Tick();
+        Assert.Equal(sent + 1, h.Outbox.Count(o => o is RoomViews));   // бульбашку везе найближчий тик
+
+        Refused(h, h.Act(1, "react", new { e = 2 }), "Не так часто");
+        h.Clock.AdvanceMs(Dice.ReactGapMs);
+        Ok(h.Act(1, "react", new { e = 2 }));
+        Assert.Equal(2, Ints(h.View(null).GetProperty("reactN"))[1]);
+        Assert.Equal(2, Ints(h.View(null).GetProperty("react"))[1]);
+        h.Clock.AdvanceMs(Dice.ReactGapMs);
+        foreach (var bad in new object?[] { null, "x", new { e = 3 }, new { e = -1 }, new { e = "1" }, new { q = 1 } })
+            Refused(h, h.Act(0, "react", bad), "Не зрозумів реакції");
     }
 
     [Fact]
@@ -1051,6 +1238,9 @@ public class DiceTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         var w = h.View(null).GetProperty("result").GetProperty("winner").GetInt32();
         Assert.True(DiceOf(h, w) > 0);
+        // хтось таки проспав найбільше — підсумок каже, хто
+        var fun = h.View(null).GetProperty("result").GetProperty("fun").EnumerateArray().Select(x => x.GetString()!).ToList();
+        Assert.Contains(fun, l => l.StartsWith("😴 Соня — ") && l.EndsWith(" проспано"));
     }
 
     [Fact]
@@ -1114,6 +1304,9 @@ public class DiceTests
         }
     }
 
+    /// <summary>Вид без лічильників реакцій — для «граней нема» і «стан не змінився».</summary>
+    static string StripReacts(string s) => Regex.Replace(s, @"""react(N)?"":\[[^\]]*\]", "");
+
     static void BotBid(RoomHarness h)
     {
         var c = Core(h);
@@ -1131,7 +1324,8 @@ public class DiceTests
         Assert.False(v.GetProperty("canExact").GetBoolean());
         Assert.Equal(JsonValueKind.Null, v.GetProperty("reveal").ValueKind);
         // ні єдиного масиву граней у тексті: лише ready і history (порожні/об'єкти)
-        var text = Views.Text(h.Room.Game.View(null));
+        // (лічильники реакцій — теж масиви чисел, але граней у них нема)
+        var text = StripReacts(Views.Text(h.Room.Game.View(null)));
         Assert.DoesNotMatch(new Regex(@"\[\d+(,\d+)+\]"), text);
     }
 
@@ -1168,12 +1362,14 @@ public class DiceTests
         var h = Table(3);
         var shake = h.View(0);
         foreach (var key in new[] { "turn", "phase", "round", "endsAt", "phaseMs", "rules", "palifico", "wild", "starter", "total",
-                     "players", "my", "bid", "history", "canExact", "ready", "note", "reveal", "result" })
+                     "players", "my", "bid", "history", "canExact", "ready", "note", "react", "reactN", "reveal", "result" })
             Assert.True(Views.Has(shake, key), $"нема поля {key}");
         Assert.Equal(JsonValueKind.Null, shake.GetProperty("turn").ValueKind);
         Assert.Equal(1500, shake.GetProperty("phaseMs").GetInt32());
         Assert.False(string.IsNullOrEmpty(shake.GetProperty("note").GetString()));
-        foreach (var key in new[] { "seat", "nick", "dice", "alive", "left", "palificoUsed", "wasAtOne" })
+        Assert.Equal(6, shake.GetProperty("react").GetArrayLength());
+        Assert.Equal(6, shake.GetProperty("reactN").GetArrayLength());
+        foreach (var key in new[] { "seat", "nick", "dice", "alive", "left", "palificoUsed", "wasAtOne", "sleepy" })
             Assert.True(Views.Has(shake.GetProperty("players")[0], key), $"нема players[].{key}");
         foreach (var key in new[] { "dice", "turnMs", "exact", "palifico" })
             Assert.True(Views.Has(shake.GetProperty("rules"), key));
@@ -1211,24 +1407,24 @@ public class DiceTests
     }
 
     [Fact]
-    public void A_quiet_tick_sends_nothing_and_a_move_makes_the_next_tick_carry_views()
+    public void A_quiet_tick_sends_nothing_and_a_move_makes_the_next_tick_carry_views_without_a_frame()
     {
         var h = Table(2);
         ToBid(h);
         h.Tick();
         int Frames() => h.Outbox.Count(o => o is RoomFrame);
         int ViewsSent() => h.Outbox.Count(o => o is RoomViews);
-        var (f0, v0) = (Frames(), ViewsSent());
+        var v0 = ViewsSent();
+        Assert.Equal(0, Frames());   // кадр модуль не читає — тик його й не шле (усе це є у виді)
         h.Tick(3);
-        Assert.Equal(f0, Frames());
         Assert.Equal(v0, ViewsSent());
         Ok(h.Act(Core(h).Turn, "bid", new { q = 1, f = 3 }));
         Assert.Equal(v0, ViewsSent());   // з Act реалтайм-кімната видів не шле — їх везе тик
         h.Tick();
-        Assert.Equal(f0 + 1, Frames());
         Assert.Equal(v0 + 1, ViewsSent());
         h.Tick(3);
-        Assert.Equal(f0 + 1, Frames());
+        Assert.Equal(v0 + 1, ViewsSent());
+        Assert.Equal(0, Frames());
     }
 
     [Fact]
@@ -1269,6 +1465,54 @@ public class DiceTests
         Assert.Equal("1 кісточку", DiceSay.DiceLeft(1));
     }
 
+    /// <summary>Усі фрази банку для такого розкриття (сід перебирає вибір фрази).</summary>
+    static HashSet<string> AllLines(string kind, int caller, DiceBid bid, int count, int? loser, int? gainer, bool @out, Func<int, string> nick)
+    {
+        var lines = new HashSet<string>();
+        for (var seed = 0; seed < 64; seed++)
+        {
+            var o = new DiceOutcome(kind, caller, bid, count, 0, new int[DiceCore.MaxSeats][], loser, gainer, @out, 0);
+            lines.Add(DiceSay.Reveal(new Random(seed), o, nick));
+        }
+        return lines;
+    }
+
+    [Fact]
+    public void Glek_never_says_only_none_when_the_face_is_missing()
+    {
+        // Рецензія: «На столі лише жодної шістки» — у паліфіко й без глечиків нуль потрібної грані звичайна річ.
+        static string Nick(int s) => s == 0 ? "Оля" : "Петро";
+        var bid = new DiceBid(1, 2, 6);
+        var liar = AllLines("liar", 0, bid, 0, 1, null, false, Nick);
+        var sleep = AllLines("timeout", 0, bid, 0, 1, null, false, Nick);
+        Assert.All(liar.Concat(sleep), l => Assert.DoesNotContain("лише жодн", l));
+        Assert.Contains("Розкусили! На столі жодної шістки. Петро платить кісточкою.", liar);
+        Assert.Contains(sleep, l => l.EndsWith("А мовчання врятувало: на столі жодної шістки. Петро платить кісточкою."));
+        // а коли щось таки є — «лише» на місці
+        Assert.Contains("Розкусили! На столі лише 1 шістка. Петро платить кісточкою.", AllLines("liar", 0, bid, 1, 1, null, false, Nick));
+    }
+
+    [Fact]
+    public void A_guest_nick_opening_a_sentence_gets_a_capital_letter()
+    {
+        // «гість Ярина загинає…» — гостьові ніки з малої, а речення Глека — з великої.
+        static string Nick(int s) => s == 0 ? "гість ярина" : "гість петро";
+        var all = new List<string>();
+        all.AddRange(AllLines("liar", 0, new DiceBid(1, 2, 6), 5, 0, null, false, Nick));   // правда — губить той, хто не повірив
+        all.AddRange(AllLines("liar", 0, new DiceBid(1, 2, 6), 0, 1, null, true, Nick));    // брехня — автор, і вибуває
+        all.AddRange(AllLines("exact", 0, new DiceBid(1, 2, 6), 2, null, 0, false, Nick));
+        all.AddRange(AllLines("exact", 0, new DiceBid(1, 2, 6), 3, 0, null, false, Nick));
+        all.AddRange(AllLines("timeout", 0, new DiceBid(1, 2, 6), 0, 1, null, true, Nick));
+        for (var seed = 0; seed < 16; seed++) all.Add(DiceSay.Victory(new Random(seed), "гість ярина", 7, 2, duel: false));
+        var sentenceStart = new Regex(@"(^|[.!?]\s)\p{Ll}");
+        Assert.All(all, l => Assert.DoesNotMatch(sentenceStart, l));
+        Assert.Contains(all, l => l.Contains("Гість петро лишається без кісточок"));
+        Assert.Contains(all, l => l.Contains("мовчить"));   // «Час вийшов: гість ярина мовчить» — після двокрапки мала ок
+        Assert.Equal("Гість ярина", DiceSay.Cap("гість ярина"));
+        Assert.Equal("Оля", DiceSay.Cap("Оля"));
+        Assert.Equal("", DiceSay.Cap(""));
+    }
+
     /// <summary>
     /// Клієнт дублює таблицю <see cref="DiceCore.MinQ"/> (підказки конструктора, погашені грані). Обидва боки звіряються
     /// з тим самим знімком <c>DiceRuleTable.json</c>: тут — C#, у браузері — <c>dice.js</c> (qa-скрипт живої перевірки).
@@ -1288,6 +1532,32 @@ public class DiceTests
             }));
         using var doc = JsonDocument.Parse(File.ReadAllText(path));
         Assert.Equal(table, Ints(doc.RootElement.GetProperty("table")));
+    }
+
+    /// <summary>
+    /// Той самий знімок — проти <c>minQ</c> з <c>web/games/dice.js</c>: функцію читаємо з файлу модуля й проганяємо
+    /// крихітним інтерпретатором (<see cref="DiceJsRule"/>) через усі 4344 випадки. Розбіжність JS тепер ловить
+    /// сам <c>dotnet test</c>, а не лише ручний qa-скрипт.
+    /// </summary>
+    [Fact]
+    public void The_client_minQ_in_dice_js_gives_the_same_table()
+    {
+        var js = DiceJsRule.Load(File.ReadAllText(Paths.Resolve("web/games/dice.js")), "minQ");
+        var table = RuleTable();
+        var i = 0;
+        for (var p = 0; p <= 180; p++)
+        {
+            var prev = p == 0 ? null : new Dictionary<string, object?> { ["q"] = (double)((p - 1) / 6 + 1), ["f"] = (double)((p - 1) % 6 + 1) };
+            for (var f = 1; f <= 6; f++)
+                for (var pal = 0; pal < 2; pal++)
+                    for (var one = 0; one < 2; one++, i++)
+                    {
+                        var got = js.Call(prev, (double)f, pal == 1, one == 1 ? 1.0 : 2.0);
+                        Assert.True(table[i] == got,
+                            $"dice.js minQ({(prev is null ? "null" : $"{prev["q"]}×{prev["f"]}")}, {f}, pal={pal == 1}, myDice={(one == 1 ? 1 : 2)}) = {got}, а сервер каже {table[i]}");
+                    }
+        }
+        Assert.Equal(table.Length, i);
     }
 
     internal static int[] RuleTable()
@@ -1354,4 +1624,292 @@ public class DicePerfTests(ITestOutputHelper output)
         output.WriteLine($"кадр: {Encoding.UTF8.GetByteCount(frame)} Б — {frame}");
         Assert.True(quiet.Elapsed.TotalMilliseconds / N < 0.25);
     }
+}
+
+/// <summary>
+/// Крихітний інтерпретатор рівно того JS, яким написано правило <c>minQ</c> у <c>dice.js</c>: <c>if (…) return …;</c>,
+/// блоки, тернарний оператор, <c>&amp;&amp; || ! === !== &lt; &gt; &lt;= &gt;= + - * / %</c>, поле <c>prev.q</c> і
+/// <c>Math.floor</c>. Числа — double, як у JS. Щось інше в правилі — тест упаде з назвою незнайомого, і тоді
+/// або навчити інтерпретатор, або звірити руками <c>docs/games/dev/dice-check.py --what rules</c>.
+/// Виконання — рекурсивний спуск просто по токенах; гілки, які не беруться, проходимо «холосто» (run = false).
+/// </summary>
+internal sealed class DiceJsRule
+{
+    readonly string[] _params;
+    readonly List<string> _tok;
+    Dictionary<string, object?> _env = [];
+    int _p;
+
+    DiceJsRule(string[] ps, List<string> tok) { _params = ps; _tok = tok; }
+
+    public static DiceJsRule Load(string source, string name)
+    {
+        var m = Regex.Match(source, @"function\s+" + name + @"\s*\(([^)]*)\)\s*\{");
+        if (!m.Success) throw new InvalidOperationException($"у модулі нема function {name}(…)");
+        var ps = m.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        // тіло — до парної дужки
+        var start = m.Index + m.Length;
+        var depth = 1;
+        var k = start;
+        for (; k < source.Length && depth > 0; k++) depth += source[k] == '{' ? 1 : source[k] == '}' ? -1 : 0;
+        return new DiceJsRule(ps, Lex("{" + source[start..k]));
+    }
+
+    static List<string> Lex(string s)
+    {
+        var list = new List<string>();
+        var i = 0;
+        string[] ops = ["===", "!==", ">=", "<=", "&&", "||", "=>"];
+        while (i < s.Length)
+        {
+            var c = s[i];
+            if (char.IsWhiteSpace(c)) { i++; continue; }
+            if (c == '/' && i + 1 < s.Length && s[i + 1] == '/') { while (i < s.Length && s[i] != '\n') i++; continue; }
+            if (c == '/' && i + 1 < s.Length && s[i + 1] == '*') { i = s.IndexOf("*/", i + 2, StringComparison.Ordinal) + 2; continue; }
+            if (char.IsDigit(c))
+            {
+                var j = i;
+                while (j < s.Length && (char.IsDigit(s[j]) || s[j] == '.')) j++;
+                list.Add(s[i..j]);
+                i = j;
+                continue;
+            }
+            if (char.IsLetter(c) || c is '_' or '$')
+            {
+                var j = i;
+                while (j < s.Length && (char.IsLetterOrDigit(s[j]) || s[j] is '_' or '$')) j++;
+                list.Add(s[i..j]);
+                i = j;
+                continue;
+            }
+            var op = ops.FirstOrDefault(o => string.CompareOrdinal(s, i, o, 0, o.Length) == 0);
+            if (op is not null) { list.Add(op); i += op.Length; continue; }
+            list.Add(c.ToString());
+            i++;
+        }
+        return list;
+    }
+
+    sealed class Ret(object? value) : Exception { public object? Value { get; } = value; }
+
+    public int Call(params object?[] args)
+    {
+        _env = new Dictionary<string, object?>();
+        for (var i = 0; i < _params.Length; i++) _env[_params[i]] = i < args.Length ? args[i] : null;
+        _p = 0;
+        try { Block(true); }
+        catch (Ret r) { return (int)Num(r.Value); }
+        throw new InvalidOperationException("minQ нічого не повернула");
+    }
+
+    string Peek => _p < _tok.Count ? _tok[_p] : "";
+
+    void Eat(string t)
+    {
+        if (Peek != t) throw new InvalidOperationException($"чекали «{t}», а там «{Peek}» (токен {_p})");
+        _p++;
+    }
+
+    void Block(bool run)
+    {
+        Eat("{");
+        while (Peek != "}") Statement(run);
+        Eat("}");
+    }
+
+    void Statement(bool run)
+    {
+        switch (Peek)
+        {
+            case "{":
+                Block(run);
+                return;
+            case "if":
+            {
+                _p++;
+                Eat("(");
+                var cond = Expr(run);
+                Eat(")");
+                var yes = run && Truthy(cond);
+                Statement(yes);
+                if (Peek == "else")
+                {
+                    _p++;
+                    Statement(run && !yes);
+                }
+                return;
+            }
+            case "return":
+            {
+                _p++;
+                var v = Expr(run);
+                if (Peek == ";") _p++;
+                if (run) throw new Ret(v);
+                return;
+            }
+            default:
+                throw new InvalidOperationException($"незнайомий оператор «{Peek}» у правилі");
+        }
+    }
+
+    object? Expr(bool run)
+    {
+        var cond = Or(run);
+        if (Peek != "?") return cond;
+        _p++;
+        var take = run && Truthy(cond);
+        var a = Expr(take);
+        Eat(":");
+        var b = Expr(run && !take);
+        return take ? a : b;
+    }
+
+    object? Or(bool run)
+    {
+        var l = And(run);
+        while (Peek == "||")
+        {
+            _p++;
+            var done = run && Truthy(l);
+            var r = And(run && !done);
+            if (run && !done) l = r;
+        }
+        return l;
+    }
+
+    object? And(bool run)
+    {
+        var l = Eq(run);
+        while (Peek == "&&")
+        {
+            _p++;
+            var go = run && Truthy(l);
+            var r = Eq(go);
+            if (go) l = r;
+        }
+        return l;
+    }
+
+    object? Eq(bool run)
+    {
+        var l = Rel(run);
+        while (Peek is "===" or "!==")
+        {
+            var op = _tok[_p++];
+            var r = Rel(run);
+            if (run) l = (op == "===") == Equals(l, r);
+        }
+        return l;
+    }
+
+    object? Rel(bool run)
+    {
+        var l = Add(run);
+        while (Peek is "<" or ">" or "<=" or ">=")
+        {
+            var op = _tok[_p++];
+            var r = Add(run);
+            if (!run) continue;
+            double a = Num(l), b = Num(r);
+            l = op switch { "<" => a < b, ">" => a > b, "<=" => a <= b, _ => a >= b };
+        }
+        return l;
+    }
+
+    object? Add(bool run)
+    {
+        var l = Mul(run);
+        while (Peek is "+" or "-")
+        {
+            var op = _tok[_p++];
+            var r = Mul(run);
+            if (run) l = op == "+" ? Num(l) + Num(r) : Num(l) - Num(r);
+        }
+        return l;
+    }
+
+    object? Mul(bool run)
+    {
+        var l = Unary(run);
+        while (Peek is "*" or "/" or "%")
+        {
+            var op = _tok[_p++];
+            var r = Unary(run);
+            if (run) l = op switch { "*" => Num(l) * Num(r), "/" => Num(l) / Num(r), _ => Num(l) % Num(r) };
+        }
+        return l;
+    }
+
+    object? Unary(bool run)
+    {
+        if (Peek == "!")
+        {
+            _p++;
+            var v = Unary(run);
+            return run ? !Truthy(v) : null;
+        }
+        if (Peek == "-")
+        {
+            _p++;
+            var v = Unary(run);
+            return run ? -Num(v) : null;
+        }
+        return Postfix(run);
+    }
+
+    object? Postfix(bool run)
+    {
+        var t = _tok[_p++];
+        if (t == "(")
+        {
+            var v = Expr(run);
+            Eat(")");
+            return v;
+        }
+        if (double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n)) return n;
+        if (t == "Math")
+        {
+            Eat(".");
+            var fn = _tok[_p++];
+            Eat("(");
+            var a = Expr(run);
+            Eat(")");
+            if (!run) return null;
+            return fn switch
+            {
+                "floor" => Math.Floor(Num(a)),
+                "ceil" => Math.Ceiling(Num(a)),
+                _ => throw new InvalidOperationException($"незнайома Math.{fn}"),
+            };
+        }
+        if (t is "true" or "false") return t == "true";
+        if (t == "null") return null;
+        if (!_env.TryGetValue(t, out var val)) throw new InvalidOperationException($"незнайоме ім'я «{t}» у правилі");
+        while (Peek == ".")
+        {
+            _p++;
+            var field = _tok[_p++];
+            if (!run) continue;
+            val = val is Dictionary<string, object?> o && o.TryGetValue(field, out var fv)
+                ? fv
+                : throw new InvalidOperationException($"поле {field} у {t}, якого нема");
+        }
+        return run ? val : null;
+    }
+
+    static bool Truthy(object? v) => v switch
+    {
+        null => false,
+        bool b => b,
+        double d => d != 0 && !double.IsNaN(d),
+        _ => true,
+    };
+
+    static double Num(object? v) => v switch
+    {
+        double d => d,
+        bool b => b ? 1 : 0,
+        null => 0,
+        _ => double.NaN,
+    };
 }

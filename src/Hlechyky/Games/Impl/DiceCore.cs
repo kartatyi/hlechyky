@@ -197,7 +197,9 @@ public sealed class DiceCore
     /// Найменша законна кількість для грані <paramref name="f"/> після ставки <paramref name="prev"/>; 0 — цю
     /// грань зараз не можна взагалі (глечики на відкритті звичайного раунду, чужа грань у паліфіко).
     /// Стелю «не більше, ніж кісточок на столі» перевіряє <see cref="Higher"/> окремо. Ту саму таблицю
-    /// дублює клієнт (<c>web/games/dice.js</c>, <c>minQ</c>) — тест <c>DiceRuleTable.json</c> тримає їх однаковими.
+    /// дублює клієнт (<c>web/games/dice.js</c>, <c>minQ</c>). Обидва звіряються зі знімком <c>DiceRuleTable.json</c>:
+    /// C# — тест <c>The_rule_table_the_client_duplicates_matches_the_server</c>, JS — тест
+    /// <c>The_client_minQ_in_dice_js_gives_the_same_table</c> (читає функцію з модуля й виконує її).
     /// </summary>
     public static int MinQ(DiceBid? prev, int f, bool palifico, int bidderDice)
     {
