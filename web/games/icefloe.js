@@ -61,6 +61,8 @@
     + '<circle cx="6" cy="7" r="2.1" fill="var(--clay)"/><circle cx="10.2" cy="9" r="2.1" fill="var(--ok)"/>'
     + '<path d="M1 15c1.5-1.2 2.5-1.2 4 0s2.5 1.2 4 0 2.5-1.2 4 0" stroke="var(--text)" stroke-width="1.1" fill="none"/></svg>';
 
+  /// Грають падом (Steam Deck чи джойстик) — підказки в статусі кнопками пада, а не клавіатурою.
+  const padOn = () => !!(window.HPad && HPad.pads > 0);
   const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const scale = () => ((window.devicePixelRatio || 1) >= 2 ? 1 : 2);   // на DPR 1 малюємо вдвічі щільніше
   const clock = (ticks) => {
@@ -1622,11 +1624,12 @@
       if (!ctx.mine) return 'Дивишся збоку · раунд ' + (v.round || 1) + ' · до ' + need + (need > 1 ? ' перемог' : ' перемоги');
       const q = f.p && f.p[ctx.seat];
       if (q && !(q[5] & 1)) {
-        return q[7] > 0 ? '🌊 Ти у воді — ' + (HGames.ui.coarse() ? 'стік цілить, ❄ кидає' : 'стрілки чи мишка цілять, пробіл кидає') + ' сніжку (лишилось ' + q[7] + ')'
+        return q[7] > 0 ? '🌊 Ти у воді — ' + (padOn() ? 'стік цілить, Ⓐ кидає' : HGames.ui.coarse() ? 'стік цілить, ❄ кидає' : 'стрілки чи мишка цілять, пробіл кидає') + ' сніжку (лишилось ' + q[7] + ')'
           : '🌊 Ти у воді, сніжки скінчились — дивись, хто кого';
       }
       const extra = q ? ((q[5] & 2) ? ' · 🥾 шипи' : '') + ((q[5] & 4) ? ' · 🏺 глек' : '') : '';
-      const how = HGames.ui.coarse() ? 'Стік — ковзати, 💨 ривок, ❄ сніжка' : 'Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка';
+      const how = padOn() ? 'Стік — ковзати, Ⓐ ривок, Ⓧ сніжка'
+        : HGames.ui.coarse() ? 'Стік — ковзати, 💨 ривок, ❄ сніжка' : 'Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка';
       return how + ' · раунд ' + (v.round || 1) + ' · до ' + need + extra;
     },
 

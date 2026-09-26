@@ -926,7 +926,8 @@
       const t = myTeam(st);
       const where = st.land ? 'ліворуч' : 'внизу';
       const mineScore = s[t] + ':' + s[1 - t];
-      return (HGames.ui.coarse() ? 'Тягни біту пальцем' : 'Мишка або стрілки') + ' · твої ворота ' + where + ' · до ' + target + ' (' + mineScore + ')';
+      const how = window.HPad && HPad.pads > 0 ? 'Стік — біта' : HGames.ui.coarse() ? 'Тягни біту пальцем' : 'Мишка або стрілки';
+      return how + ' · твої ворота ' + where + ' · до ' + target + ' (' + mineScore + ')';
     },
 
     unmount(root) {
