@@ -1005,9 +1005,15 @@
     if (!playing && room && room.status === 'lobby') {
       g.fillStyle = 'rgba(10, 20, 12, .45)';
       g.fillRect(0, 0, w, h);
-      const msg = 'Ярмарок відчиниться, щойно господар натисне «Почати»';
-      fitFont(g, msg, w * 0.9, Math.round(w / 34), 700);
-      outlined(g, msg, w / 2, h / 2, pal.text, pal.ink);
+      if (st.mode === 'port') {   // вузько — двома рядками, щоб не дрібнити шрифт
+        fitFont(g, 'щойно господар натисне «Почати»', w * 0.9, 22, 700);
+        outlined(g, 'Ярмарок відчиниться,', w / 2, h / 2 - 14, pal.text, pal.ink);
+        outlined(g, 'щойно господар натисне «Почати»', w / 2, h / 2 + 14, pal.text, pal.ink);
+      } else {
+        const msg = 'Ярмарок відчиниться, щойно господар натисне «Почати»';
+        fitFont(g, msg, w * 0.9, Math.round(w / 34), 700);
+        outlined(g, msg, w / 2, h / 2, pal.text, pal.ink);
+      }
       return;
     }
     if (phase === 'start') {
