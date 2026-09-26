@@ -115,7 +115,8 @@ public sealed class Dice : Game
         var now = Ctx.Clock.UtcNow;
         if (_phase == DicePhase.Reveal)
         {
-            if (action != "ready") return ActResult.Fail(action == "exact" ? Stale : "Глеки вже підняли — рахуємо");
+            // Два «Точно!» одночасно — звична справа: другий не встиг, і так йому й кажемо (не «ставка змінилась»).
+            if (action != "ready") return ActResult.Fail(action == "exact" ? "Не встиг — глеки вже підняли" : "Глеки вже підняли — рахуємо");
             if (_core.MarkReady(seat)) _dirty = true;
             return ActResult.Done;
         }

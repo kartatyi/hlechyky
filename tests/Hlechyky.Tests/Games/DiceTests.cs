@@ -603,9 +603,11 @@ public class DiceTests
         Refused(h, h.Act(2, "exact"), "Ставка вже змінилась");
         Refused(h, h.Act(2, "exact", "5x5"), "Ставка вже змінилась");
         Assert.Equal(before, AllViews(h));
-        // другий «Точно!» після першого — теж «ставка вже змінилась»: глеки вже підняли
+        // другий «Точно!» за мить після першого: не встиг — глеки вже підняли, стан не міняється
         Ok(h.Act(0, "exact", new { q = 5, f = 5 }));
-        Refused(h, h.Act(2, "exact", new { q = 5, f = 5 }), "Ставка вже змінилась");
+        var revealed = AllViews(h);
+        Refused(h, h.Act(2, "exact", new { q = 5, f = 5 }), "Не встиг — глеки вже підняли");
+        Assert.Equal(revealed, AllViews(h));
     }
 
     [Fact]

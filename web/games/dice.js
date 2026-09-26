@@ -31,6 +31,8 @@
   const GLYPH = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
   /// Захист від подвійного натиску: палець, що добивав «+», не має сказати «Брешеш!».
   const GUARD_MS = 600;
+  /// «Далі» оживає не одразу: хай спершу всі (і глядачі) побачать руки, печатку й кісточку, що падає.
+  const NEXT_MS = 1500;
   /// Кісточка падає через стільки після підняття глеків (dice.css — той самий delay).
   const FALL_MS = 1200;
 
@@ -122,7 +124,7 @@
   function state(root) {
     if (!root._dice) {
       root._dice = {
-        f: 2, q: 1, key: '', guardUntil: 0, guardTimer: 0, busy: false, lockKey: '', lockTimer: 0,
+        f: 2, q: 1, key: '', guardUntil: 0, nextAt: 0, guardTimer: 0, busy: false, lockKey: '', lockTimer: 0,
         prev: { phase: '', round: -1, hist: -1, reveal: '' }, timers: [], rep: null, lastEnds: '', arcUntil: '',
       };
     }
@@ -302,7 +304,7 @@
     return d === f || (v.wild && f !== 1 && d === 1);
   }
 
-  function paintReveal(el, ctx, v) {
+  function paintReveal(el, ctx, v, st) {
     const r = v.reveal;
     const show = !!r && (v.phase === 'reveal' || v.phase === 'done');
     el.hidden = !show;
@@ -328,13 +330,15 @@
     let verdict = '';
     if (r.loser != null) verdict = nick(ctx, v, r.loser) + ' губить кісточку' + (r.out ? ' — і вибуває' : '');
     if (r.gainer != null) verdict = nick(ctx, v, r.gainer) + ' повертає кісточку 🎯';
-    const say = r.say ? '<div class="di-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(r.say) + '</span></div>' : '';
+    // Партію дограно — слово Глека про останнє розкриття поступається місцем підсумку партії (так і Дека вміщає).
+    const say = r.say && v.phase !== 'done' ? '<div class="di-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(r.say) + '</span></div>' : '';
     let next = '';
     if (v.phase === 'reveal' && ctx.playing && ctx.mine && alive(v, ctx.seat)) {
       const living = (v.players || []).filter((p) => p.alive).length;
       const ready = (v.ready || []).length;
       const mine = (v.ready || []).indexOf(ctx.seat) >= 0;
-      next = '<button type="button" class="primary di-next"' + (mine ? ' disabled' : '') + '>Далі ▸ ' + ready + '/' + living + '</button>';
+      const early = performance.now() < st.nextAt;
+      next = '<button type="button" class="primary di-next"' + (mine || early ? ' disabled' : '') + '>Далі ▸ ' + ready + '/' + living + '</button>';
     }
     setHtml(el, '<div class="di-rows">' + rows.join('') + '</div>'
       + (verdict ? '<div class="di-verdict">' + verdict + '</div>' : '') + say + next);
@@ -395,6 +399,7 @@
   }
 
   function paintFoot(el, ctx) {
+    el.hidden = !!(ctx.room && ctx.room.status === 'finished');
     const html = '<button type="button" class="ghost di-tg" data-tg="hint" aria-pressed="' + hintOn() + '">🎲 підказка: '
       + (hintOn() ? 'увімк' : 'вимк') + '</button>'
       + '<button type="button" class="ghost di-tg" data-tg="sound" aria-pressed="' + soundOn() + '">' + (soundOn() ? '🔊' : '🔈')
@@ -433,7 +438,7 @@
   function paintAct(box, ctx, v, st) {
     const show = ctx.playing && ctx.mine && v.phase === 'bid' && alive(v, ctx.seat);
     box.hidden = !show;
-    if (!show) return;
+    if (!show) { padExact = false; return; }
     const md = myDice(v, ctx);
     const mine = canBidNow(ctx, v, st);
     const faces = box.querySelectorAll('.di-face');
@@ -470,6 +475,7 @@
     const exactRule = !v.rules || v.rules.exact !== false;
     ex.hidden = !exactRule;
     ex.disabled = !v.canExact || g || st.busy;
+    padExact = !!v.canExact;
     // Чому «Точно!» погашене — пишемо просто на кнопці: інакше новачок тисне й не розуміє.
     const full = md >= ((v.rules && v.rules.dice) || 5);
     const exHtml = st.busy && st.sent === 'exact' ? '…'
@@ -570,6 +576,7 @@
   function ready(root, ctx) {
     const v = ctx.view || {};
     if (!ctx.playing || v.phase !== 'reveal' || !alive(v, ctx.seat) || (v.ready || []).indexOf(ctx.seat) >= 0) return;
+    if (performance.now() < state(root).nextAt) return;
     send(root, ctx, 'ready');
   }
 
@@ -689,6 +696,8 @@
     if (revKey && revKey !== p.reveal && v.phase === 'reveal') {
       st.timers.forEach(clearTimeout);   // минуле розкриття вже не «тукне»
       st.timers.length = 0;
+      st.nextAt = performance.now() + NEXT_MS;
+      st.timers.push(setTimeout(() => { if (root._dice) paintReveal(root.querySelector('.di-reveal'), ctx, ctx.view || {}, st); }, NEXT_MS + 20));
       sound(root, 'whoosh');
       if (v.reveal.loser != null && !reduced()) st.timers.push(setTimeout(() => sound(root, 'thud'), FALL_MS));
       if (v.reveal.kind !== 'exact' && !reduced()) {
@@ -723,7 +732,7 @@
     paintBid(box.querySelector('.di-bid'), ctx, v);
     paintPal(box.querySelector('.di-pal'), ctx, v);
     paintHist(box.querySelector('.di-hist'), ctx, v);
-    paintReveal(box.querySelector('.di-reveal'), ctx, v);
+    paintReveal(box.querySelector('.di-reveal'), ctx, v, st);
     paintWin(box.querySelector('.di-win'), ctx, v);
     paintMe(box.querySelector('.di-me'), ctx, v);
     paintAct(box.querySelector('.di-act'), ctx, v, st);
@@ -736,6 +745,8 @@
   // =============================================================================================
 
   const roots = new WeakMap();   // ctx → root: пад віддає лише ctx
+  /// Чи можна зараз сказати «Точно!» за видимим столом — для смужки підказок пада (вона не знає ctx).
+  let padExact = false;
 
   function wire(root, ctx) {
     const box = skeleton(root);
@@ -826,11 +837,15 @@
       on(btn, ctx) {
         const root = roots.get(ctx);
         if (!root) return false;
-        if (btn === 'y') { exact(root, ctx); return true; }
+        // Ⓨ — «Точно!», але лише коли його справді можна сказати; інакше Ⓨ лишається каркасу (довідка пада).
+        if (btn === 'y') { if (!(ctx.view && ctx.view.canExact && ctx.view.phase === 'bid')) return false; exact(root, ctx); return true; }
         if (btn === 'rb') { toggle(root, ctx, 'hint'); return true; }
         return false;
       },
-      hint: '{dpad} грань і кількість · {a} ставка / далі · {x} Брешеш! · {y} Точно! · {rb} підказка',
+      // Смужку пад перечитує сам кожні ~400 мс: «{y} Точно!» з'являється, лише поки «Точно!» можна сказати.
+      get hint() {
+        return '{dpad} грань і кількість · {a} ставка / далі · {x} Брешеш!' + (padExact ? ' · {y} Точно!' : '') + ' · {rb} підказка';
+      },
       when: (ctx) => ctx.mine && ctx.playing && !!ctx.view && alive(ctx.view, ctx.seat)
         && (ctx.view.phase === 'bid' || ctx.view.phase === 'reveal'),
     },
@@ -851,6 +866,9 @@
     onKey,
 
     status(ctx) {
+      const v0 = ctx.view || {};
+      // Дограли: каркас написав би «Перемога: третій», якщо переможець уже встав, — ніки ж у нас є.
+      if (ctx.room && ctx.room.status === 'finished' && v0.result) return 'Перемога: ' + nameOf(ctx, v0, v0.result.winner);
       if (!ctx.playing) return '';
       const v = ctx.view || {};
       if (v.phase === 'shake') return 'Трусимо глеки…';

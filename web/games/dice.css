@@ -135,6 +135,7 @@
 .di-pc { display: flex; align-items: flex-end; gap: 5px; height: 24px; }
 .di-pc b { font-size: .92em; font-variant-numeric: tabular-nums; line-height: 1; }
 .di-pc em { font-style: normal; font-size: .82em; color: var(--muted); align-self: center; }
+.di-pcn { display: inline-flex; align-items: flex-end; gap: 5px; }
 .di-backs { display: inline-flex; gap: 2px; padding-bottom: 2px; }
 .di-backs i { width: 7px; height: 7px; border-radius: 2px; background: var(--di-face); opacity: .75; }
 .di-pb {
@@ -280,6 +281,7 @@
 .di-how ol { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; line-height: 1.4; }
 .di-how .di-die.xs { margin-right: 2px; }
 .di-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.di-foot[hidden] { display: none; }
 .di-tg { font-size: .8em; padding: 3px 10px; }
 
 .dice.di-shudder { animation: di-shudder .1s linear 2; }
