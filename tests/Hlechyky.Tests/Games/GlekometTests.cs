@@ -11,7 +11,7 @@ namespace Hlechyky.Tests.Games;
 /// рівно туди, куди треба), а черги, пропуски, кінець партії й вид — через кімнату (spec glekomet.md §8).
 /// </summary>
 [Collection(SerialPerf.Name)]
-public class GlekometTests
+public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марта", "Тарас"];
 
@@ -1264,6 +1264,7 @@ public class GlekometTests
         core.MovedMask = 0b111111;
         core.HpChanged = true;
         var text = Views.Text(Game(h).Frame());
+        output.WriteLine($"Глекомети: найбільший кадр (4 скалки + 4 вибухи + 6 хат + здоров'я) — {text.Length} Б");
         Assert.True(text.Length < 1500, $"{text.Length}: {text}");
     }
 
@@ -1353,7 +1354,7 @@ public class GlekometTests
     public void Perf_three_thousand_ticks_of_six_huts_firing_nonstop_stay_under_a_second()
     {
         var best = double.MaxValue;
-        long frames = 0, bytes = 0, biggest = 0;
+        long frames = 0, bytes = 0, biggest = 0, view = 0;
         for (var attempt = 0; attempt < 3; attempt++)
         {
             var h = Table(6, seed: 17 + attempt);
@@ -1384,8 +1385,9 @@ public class GlekometTests
                     }
             }
             best = Math.Min(best, sw.Elapsed.TotalMilliseconds);
+            view = Math.Max(view, Views.Text(game.View(null)).Length);
         }
-        Console.WriteLine($"Глекомети: 3000 тиків на шістьох — {best:F1} мс ({best / 3000:F4} мс/тик); кадрів {frames}, у середньому {bytes / Math.Max(1, frames)} Б, найбільший {biggest} Б");
+        output.WriteLine($"Глекомети: 3000 тиків на шістьох — {best:F1} мс ({best / 3000:F4} мс/тик); кадрів {frames}, у середньому {bytes / Math.Max(1, frames)} Б, найбільший {biggest} Б; вид до {view} Б");
         Assert.True(best < 1000, $"{best} мс");
         Assert.True(best / 3000 < 0.25, $"{best / 3000} мс/тик");
     }

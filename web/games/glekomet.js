@@ -297,9 +297,15 @@
     if (vh < 460 || window.innerWidth < 700) { if (el.style.maxWidth) el.style.maxWidth = ''; return; }
     const cr = el.getBoundingClientRect();
     let bottom = card.getBoundingClientRect().bottom;
-    for (const x of [st.els.sum, st.els.tip]) if (x && !x.hidden) bottom -= x.getBoundingClientRect().height + 8;
+    // Підказку про телефон не рахуємо (вона на хвилинку). Підсумок рахуємо, але поле заради нього меншає не
+    // більше ніж на третину: на Full HD «Ще раз» тоді видно без прокрутки, а на Deck поле не стискається в марку
+    // (там таблицю на шістьох трохи догортаємо).
+    const tip = st.els.tip, sum = st.els.sum;
+    if (tip && !tip.hidden) bottom -= tip.getBoundingClientRect().height + 8;
+    const sumH = sum && !sum.hidden ? sum.getBoundingClientRect().height + 8 : 0;
     const other = bottom + window.scrollY - cr.height + 10;
-    const want = Math.floor(clamp((vh - other) * 2, 480, 1200));
+    const full = clamp((vh - other + sumH) * 2, 480, 1200);
+    const want = Math.floor(sumH ? Math.max(clamp((vh - other) * 2, 480, 1200), full * 0.66) : full);
     const cur = parseFloat(el.style.maxWidth) || 0;
     if (Math.abs(want - cur) >= 6) el.style.maxWidth = want + 'px';
   }
@@ -1283,6 +1289,7 @@
     const r = st.result;
     if (!r || !r.winners || !r.winners.length) return 'Нічия';
     const names = r.winners.map((i) => nickOf(st, i)).join(' + ');
+    if (r.reason === 'left') return '🏆 ' + names + ' — решта встали з-за столу';
     return '🏆 ' + names + (r.winners.length > 1 ? ' — останні хати' : ' — остання хата');
   }
 
