@@ -12,7 +12,12 @@
   --hk-line: rgba(236, 241, 234, .35);
 }
 
-.gseat.hkb { color: var(--hk-blue); }
+/* Чипи місць у шапці картки: колір — справжньої команди місця (модуль ставить --hk-sN на картку), а без
+   модуля — за парністю. Вільне місце лишається сірим, як у каркасі. */
+.gseat.hks0:not(.free) { color: var(--hk-s0, var(--hk-blue)); }
+.gseat.hks1:not(.free) { color: var(--hk-s1, var(--clay)); }
+.gseat.hks2:not(.free) { color: var(--hk-s2, var(--hk-blue)); }
+.gseat.hks3:not(.free) { color: var(--hk-s3, var(--clay)); }
 
 /* Ландшафт 5:3: на ноутбуці мусить влізти разом із шапкою картки й рядком над полем. */
 .hkboard { aspect-ratio: 5 / 3; max-width: min(800px, calc((100vh - 322px) * 5 / 3)); min-width: min(320px, 100%); }

@@ -24,6 +24,11 @@ public sealed class HockeyCore(Random rng)
     public const int StartTicks = 75, ServeTicks = 30;
     /// <summary>Шайба повільніша за 15 три секунди поспіль — сервер штовхає її до центру.</summary>
     public const int IdleTicks = 75;
+    /// <summary>
+    /// «Притримав»: шайбу три секунди затискають біля борта, у кутку чи між бітами — подача суперникам (у справжньому
+    /// аерохокеї — сім секунд). Без цього дві біти, що тиснуть шайбу в кут, тримали б її там вічно.
+    /// </summary>
+    public const int HoldTicks = 75;
     public const double IdleSpeed = 15, NudgeSpeed = 150, NudgeAngle = 20;
     /// <summary>
     /// Стартовий розіграш — лагідний: 110 під кутом 15…35° у бік випадкової команди. Так шайба щоразу б'ється об
@@ -78,10 +83,24 @@ public sealed class HockeyCore(Random rng)
     readonly int[] _teamTouch = [-1, -1];
     /// <summary>Команда, що забила в цьому тику.</summary>
     public int? GoalBy { get; private set; }
+    /// <summary>Останній гол — автогол (забивна команда шайби не торкалась).</summary>
+    public bool GoalOwn { get; private set; }
+    /// <summary>Останній гол — «з-під борту»: після останнього удару біти шайба ще відбилась від борта чи торця.</summary>
+    public bool GoalRail { get; private set; }
+    /// <summary>Шайба відбилась від борта після останнього дотику біти.</summary>
+    bool _rail;
     /// <summary>У цьому тику сервер штовхнув застиглу шайбу.</summary>
     public bool Nudged { get; private set; }
     /// <summary>У цьому тику нічого не зрушило: ні біти, ні шайба (тоді кадр можна не слати).</summary>
     public bool Still { get; private set; }
+    /// <summary>Скільки тиків шайбу затискають (росте щотика затиску, на волі швидко спадає).</summary>
+    public int Held { get; set; }
+    /// <summary>У цьому тику шайбу забрали за притримування — подача цій команді.</summary>
+    public int? FoulTo { get; private set; }
+    /// <summary>У цьому тику шайба була затиснута хоч раз.</summary>
+    bool _pinched;
+    /// <summary>Біта торкалась шайби на минулому підкроці: довгий дотик (притиснув, веде) — один удар, а не п'ять на тик.</summary>
+    readonly bool[] _contact = new bool[Seats], _contactNow = new bool[Seats];
 
     public static double MinX(int team) => team == 0 ? PadR : Mid + PadR;
     public static double MaxX(int team) => team == 0 ? Mid - PadR : W - PadR;
@@ -118,9 +137,13 @@ public sealed class HockeyCore(Random rng)
         N = 0;
         Rally = 0;
         HitBy = LastTouch = GoalBy = null;
+        GoalOwn = GoalRail = _rail = false;
         _teamTouch[0] = _teamTouch[1] = -1;
         Nudged = false;
         Still = false;
+        Held = 0;
+        FoulTo = null;
+        Array.Clear(_contact);
         Puck = new ArenaBody(Mid, TableH / 2, PuckR, 1);
         Place();
     }
@@ -226,6 +249,8 @@ public sealed class HockeyCore(Random rng)
         HitBy = null;
         GoalBy = null;
         Nudged = false;
+        FoulTo = null;
+        _pinched = false;
         if (StartIn > 0)
         {
             StartIn--;
@@ -242,9 +267,15 @@ public sealed class HockeyCore(Random rng)
         {
             moved |= MovePads();
             if (live && scored < 0) scored = PuckSub();
+            else if (!live) Rest();
         }
-        if (live && scored < 0) Stall();
-        Still = !moved && scored < 0 && Puck.Vx == 0 && Puck.Vy == 0;
+        if (live && scored < 0)
+        {
+            Held = _pinched ? Held + 1 : Math.Max(0, Held - 3);
+            if (Held >= HoldTicks) Foul();
+            else Stall();
+        }
+        Still = !moved && scored < 0 && FoulTo is null && Puck.Vx == 0 && Puck.Vy == 0;
         return scored;
     }
 
@@ -309,8 +340,14 @@ public sealed class HockeyCore(Random rng)
             var j = ArenaPhysics.Collide(ref Pads[i], ref Puck, EPad);
             if (j <= 0) continue;
             LastTouch = i;
-            HitBy = i;
-            Rally++;
+            _rail = false;
+            _contactNow[i] = true;
+            // удар — новий дотик; біта, що тисне чи веде шайбу, б'є один раз, а не щопідкроку
+            if (!_contact[i])
+            {
+                HitBy = i;
+                Rally++;
+            }
             // Застій дотиком не скидається — лише швидкістю: інакше шайбу можна «пасти» біля борта вічно.
         }
         ArenaPhysics.Cap(ref Puck, VMax);
@@ -319,10 +356,40 @@ public sealed class HockeyCore(Random rng)
         ArenaPhysics.ReflectY(ref Puck, PuckR, TableH - PuckR, EWall);
         // Торці — стіна скрізь, крім прорізу воріт: центр шайби в прорізі торця не бачить.
         if (Puck.Y < GoalLo || Puck.Y > GoalHi) ArenaPhysics.ReflectX(ref Puck, PuckR, W - PuckR, EWall);
+        if (Puck.X != bx || Puck.Y != by) _rail = true;
         Pinch(bx, by);
+        for (var i = 0; i < Seats; i++)
+        {
+            _contact[i] = _contactNow[i];
+            _contactNow[i] = false;
+        }
         if (Puck.X <= 0) return Goal(1);
         if (Puck.X >= W) return Goal(0);
         return -1;
+    }
+
+    /// <summary>
+    /// Шайба чекає подачі чи свистка й стоїть: біти ходять, але на неї не наїжджають — упираються на дотик. Інакше
+    /// біта, що стояла на місці подачі, накривала шайбу всю паузу, а зі свистком виштовхувала її куди прийдеться.
+    /// </summary>
+    void Rest()
+    {
+        const double rr = PadR + PuckR;
+        for (var i = 0; i < Seats; i++)
+        {
+            if (!Plays[i]) continue;
+            ref var p = ref Pads[i];
+            var dx = p.X - Puck.X;
+            var dy = p.Y - Puck.Y;
+            var d2 = dx * dx + dy * dy;
+            if (d2 >= rr * rr - 1e-9) continue;
+            var d = Math.Sqrt(d2);
+            // біта рівно в центрі шайби — відступає до своїх воріт
+            var (nx, ny) = d > 1e-9 ? (dx / d, dy / d) : (Team[i] == 0 ? -1.0 : 1.0, 0.0);
+            Yield(ref p, Team[i], nx, ny, rr);
+            p.Vx = (p.X - _x0[i]) / H;
+            p.Vy = (p.Y - _y0[i]) / H;
+        }
     }
 
     /// <summary>
@@ -336,7 +403,7 @@ public sealed class HockeyCore(Random rng)
     void Pinch(double bx, double by)
     {
         const double rr = PadR + PuckR;
-        for (var pass = 0; pass < 3; pass++)
+        for (var pass = 0; pass < 4; pass++)
         {
             var any = false;
             for (var i = 0; i < Seats; i++)
@@ -348,6 +415,8 @@ public sealed class HockeyCore(Random rng)
                 var d2 = dx * dx + dy * dy;
                 if (d2 >= rr * rr - 1e-9) continue;
                 any = true;
+                _pinched = true;
+                _contactNow[i] = true;
                 if (pass == 0)
                 {
                     // замість дзеркала — упритул до борта (не було борта — позиція та сама: між двома бітами)
@@ -373,6 +442,17 @@ public sealed class HockeyCore(Random rng)
                 Yield(ref p, Team[i], nx, ny, rr);
                 p.Vx = (p.X - _x0[i]) / H;
                 p.Vy = (p.Y - _y0[i]) / H;
+                // Біта в самому кутку своєї половини й відступити не може — тоді вже шайба відходить від неї
+                // (упритул до борта); якщо наступить на іншу біту, розберемось на наступному проході.
+                dx = p.X - Puck.X;
+                dy = p.Y - Puck.Y;
+                d2 = dx * dx + dy * dy;
+                if (d2 >= rr * rr - 1e-9) continue;
+                d = Math.Sqrt(d2);
+                if (d > 1e-9) (nx, ny) = (dx / d, dy / d);
+                Puck.X = p.X - nx * rr;
+                Puck.Y = Math.Clamp(p.Y - ny * rr, PuckR, TableH - PuckR);
+                if (Puck.Y < GoalLo || Puck.Y > GoalHi) Puck.X = Math.Clamp(Puck.X, PuckR, W - PuckR);
             }
             if (!any) return;
         }
@@ -416,8 +496,15 @@ public sealed class HockeyCore(Random rng)
     {
         S[team]++;
         var scorer = _teamTouch[team];
+        GoalOwn = false;
+        GoalRail = _rail;
+        _rail = false;
         if (scorer >= 0 && Plays[scorer]) Goals[scorer]++;
-        else if (LastTouch is { } lt && Plays[lt] && Team[lt] != team) Own[lt]++;
+        else if (LastTouch is { } lt && Plays[lt] && Team[lt] != team)
+        {
+            Own[lt]++;
+            GoalOwn = true;
+        }
         LastTouch = null;
         _teamTouch[0] = _teamTouch[1] = -1;
         Rally = 0;
@@ -425,8 +512,30 @@ public sealed class HockeyCore(Random rng)
         ServeIn = ServeTicks;
         N++;
         Idle = 0;
+        Held = 0;
+        Array.Clear(_contact);
         Puck = new ArenaBody(team == 1 ? Mid / 2 : Mid + Mid / 2, TableH / 2, PuckR, 1);
         return team;
+    }
+
+    /// <summary>
+    /// Притримав: шайбу три секунди затискали на одній половині — подача команді з іншої (як після гола, але без
+    /// очка). Особистих дотиків розіграшу більше нема, лічильник ударів з нуля.
+    /// </summary>
+    void Foul()
+    {
+        var to = Puck.X < Mid ? 1 : 0;
+        FoulTo = to;
+        Held = 0;
+        Idle = 0;
+        Rally = 0;
+        LastTouch = null;
+        _teamTouch[0] = _teamTouch[1] = -1;
+        _rail = false;
+        Array.Clear(_contact);
+        ServeIn = ServeTicks;
+        N++;
+        Puck = new ArenaBody(to == 0 ? Mid / 2 : Mid + Mid / 2, TableH / 2, PuckR, 1);
     }
 
     /// <summary>Застій: три секунди шайба ледь повзе — поштовх 150 до центру стола з відхиленням ±20°.</summary>

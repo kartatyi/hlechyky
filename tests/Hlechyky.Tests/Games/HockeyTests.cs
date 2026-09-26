@@ -240,10 +240,10 @@ public class HockeyTests(ITestOutputHelper output)
         Assert.True(Core(h).StartIn > 0);
         Score(h, 0);
         Assert.True(Core(h).ServeIn > 0);
-        h.Input(1, "move", new { dx = -1, dy = 0 });
-        var x = Core(h).Pads[1].X;
+        h.Input(1, "move", new { dx = 0, dy = -1 });             // угору, повз шайбу на подачі (150, 60)
+        var y = Core(h).Pads[1].Y;
         h.Tick();
-        Assert.Equal(x - 16.8, Core(h).Pads[1].X, 9);
+        Assert.Equal(y - 16.8, Core(h).Pads[1].Y, 9);
     }
 
     // ---------- шайба ----------
@@ -1009,7 +1009,13 @@ public class HockeyTests(ITestOutputHelper output)
                 c.Aim(s, tx + rng.NextDouble() * 4 - 2, ty + rng.NextDouble() * 4 - 2);
             }
             c.Step();
-            if (c.ServeIn > 0) { c.ServeIn = 0; c.Puck = new ArenaBody(20 + rng.NextDouble() * 160, 10 + rng.NextDouble() * 100, HockeyCore.PuckR, 1); }
+            if (c.ServeIn > 0)
+            {
+                // гол чи «притримав» — шайбу кидаємо деінде й одразу в гру (на цей тик інваріант не міряємо)
+                c.ServeIn = 0;
+                c.Puck = new ArenaBody(20 + rng.NextDouble() * 160, 10 + rng.NextDouble() * 100, HockeyCore.PuckR, 1);
+                continue;
+            }
             for (var i = 0; i < HockeyCore.Seats; i++)
             {
                 var dx = c.Puck.X - c.Pads[i].X;
@@ -1019,5 +1025,129 @@ public class HockeyTests(ITestOutputHelper output)
             Assert.InRange(c.Puck.Y, HockeyCore.PuckR - 1e-6, HockeyCore.TableH - HockeyCore.PuckR + 1e-6);
         }
         Assert.Equal(0, inside);
+    }
+
+    [Fact] // 52 (ідея плейтесту): гол із підписом — автогол і «з-під борту» сервер знає сам і кладе у вид
+    public void Last_goal_knows_own_goals_and_bank_shots()
+    {
+        var h = Table(2);
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("lastGoal").ValueKind);
+        Score(h, 0, toucher: 1);                                 // Петро (руді) сам заштовхав у свої
+        var lg = h.View(null).GetProperty("lastGoal");
+        Assert.Equal((0, 1, true, false),
+            (lg.GetProperty("team").GetInt32(), lg.GetProperty("n").GetInt32(), lg.GetProperty("own").GetBoolean(), lg.GetProperty("rail").GetBoolean()));
+
+        // від борта в ворота — «з-під борту»
+        var c = Bare(0, 1);
+        Put(c, 1, 180, 20);
+        c.Puck = new ArenaBody(140, 100, HockeyCore.PuckR, 1) { Vx = 300, Vy = 300 };
+        c.LastTouch = 0;
+        var scored = -1;
+        for (var t = 0; t < 20 && scored < 0; t++) scored = c.Step();
+        Assert.Equal(0, scored);
+        Assert.True(c.GoalRail);
+        Assert.False(c.GoalOwn);
+
+        // просто в ворота — без борту
+        c.ServeIn = 0;
+        c.Puck = new ArenaBody(180, 60, HockeyCore.PuckR, 1) { Vx = 400 };
+        Put(c, 1, 180, 100);
+        scored = -1;
+        for (var t = 0; t < 20 && scored < 0; t++) scored = c.Step();
+        Assert.Equal(0, scored);
+        Assert.False(c.GoalRail);
+    }
+
+    [Fact] // 53: шайба на подачі й на відліку стоїть — біта на неї не наїжджає, а впирається на дотик
+    public void Paddles_do_not_cover_the_puck_waiting_for_the_serve_or_the_whistle()
+    {
+        var h = Table(2);
+        var c = Core(h);
+        // на відліку синя біта рветься до центральної лінії, де лежить шайба (дотягується до 92 + 12.5 > 100)
+        c.Aim(0, 100, 60);
+        for (var t = 0; t < 40; t++)
+        {
+            h.Tick();
+            PuckOutsidePads(c, $"відлік, тик {t}");
+        }
+        Assert.Equal((100.0, 60.0), (c.Puck.X, c.Puck.Y));      // шайба на місці, біти її не зсунули
+        Score(h, 1);                                            // гол синім — подача з (50, 60)
+        Assert.True(c.ServeIn > 0);
+        c.Aim(0, 50, 60);                                       // синій стає просто на місце подачі
+        for (var t = 0; t < HockeyCore.ServeTicks - 1; t++)
+        {
+            h.Tick();
+            PuckOutsidePads(c, $"подача, тик {t}");
+        }
+        Assert.Equal((50.0, 60.0), (c.Puck.X, c.Puck.Y));
+        Assert.Equal(HockeyCore.PadR + HockeyCore.PuckR, Math.Sqrt(Math.Pow(c.Pads[0].X - 50, 2) + Math.Pow(c.Pads[0].Y - 60, 2)), 6);
+    }
+
+    [Fact] // 54 (жива перевірка): напарники затисли шайбу в кутку — за три секунди подача суперникам, гра не стоїть
+    public void Teammates_trapping_the_puck_in_a_corner_lose_the_serve_to_the_rivals()
+    {
+        var c = Bare(0, 1, 2, 3);
+        Put(c, 1, 180, 60);
+        Put(c, 3, 170, 90);
+        Put(c, 0, 30, 8);
+        Put(c, 2, 8, 30);
+        c.Puck = new ArenaBody(HockeyCore.PuckR, HockeyCore.PuckR, HockeyCore.PuckR, 1);
+        c.Aim(0, 0, 0);                                         // обидві сині тиснуть шайбу в лівий верхній кут:
+        c.Aim(2, 0, 0);                                         // одна вздовж борта, друга вздовж торця
+        var n = c.N;
+        var t = 0;
+        for (; t < HockeyCore.HoldTicks + 40 && c.FoulTo is null; t++)
+        {
+            Assert.Equal(-1, c.Step());
+            if (c.FoulTo is null) PuckOutsidePads(c, $"тик {t}");
+        }
+        Assert.Equal(1, c.FoulTo);                              // шайбу забрали — подача рудим
+        Assert.InRange(t, HockeyCore.HoldTicks - 5, HockeyCore.HoldTicks + 20);
+        Assert.Equal((150.0, 60.0), (c.Puck.X, c.Puck.Y));
+        Assert.Equal(HockeyCore.ServeTicks, c.ServeIn);
+        Assert.Equal(n + 1, c.N);
+        Assert.Equal([0, 0], c.S);
+        Assert.Null(c.LastTouch);
+        c.Step();
+        Assert.Null(c.FoulTo);                                  // подія — лише в тому тику
+    }
+
+    [Fact] // 55: довгий дотик — один удар: біта, що тисне шайбу в борт, не набиває «удари» щопідкроку
+    public void A_long_press_is_one_hit_and_holding_it_for_three_seconds_gives_the_serve_away()
+    {
+        var c = Bare(0, 1);
+        Put(c, 1, 180, 110);
+        Put(c, 0, 50, 30);
+        c.Puck = new ArenaBody(50, 10, HockeyCore.PuckR, 1);
+        c.Aim(0, 50, HockeyCore.PadR);
+        var hits = 0;
+        for (var t = 0; t < 40; t++)
+        {
+            c.Step();
+            if (c.HitBy == 0) hits++;
+        }
+        Assert.Equal(1, hits);
+        Assert.Equal(1, c.Rally);
+        for (var t = 0; t < HockeyCore.HoldTicks && c.FoulTo is null; t++) c.Step();
+        Assert.Equal(1, c.FoulTo);                              // синій притримав на своїй половині — подача рудим
+        Assert.Equal((150.0, 60.0), (c.Puck.X, c.Puck.Y));
+    }
+
+    [Fact] // 56: кадр каже, кому віддали шайбу за притримування
+    public void Frame_carries_the_foul_only_in_its_tick()
+    {
+        var h = Table(2);
+        Live(h);
+        var c = Core(h);
+        Assert.Equal(JsonValueKind.Null, Frame(h).GetProperty("foul").ValueKind);
+        c.Puck = new ArenaBody(50, 4.5, HockeyCore.PuckR, 1);
+        c.Pads[0].X = 50;
+        c.Pads[0].Y = 17;
+        c.Aim(0, 50, HockeyCore.PadR);
+        c.Held = HockeyCore.HoldTicks - 1;
+        h.Tick();
+        Assert.Equal(1, Frame(h).GetProperty("foul").GetInt32());
+        h.Tick();
+        Assert.Equal(JsonValueKind.Null, Frame(h).GetProperty("foul").ValueKind);
     }
 }
