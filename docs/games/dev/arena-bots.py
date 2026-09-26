@@ -30,6 +30,7 @@ class Bot:
         self.status = None
         self.rng = random.Random(idx * 7919)
         self.sent = None
+        self.sent_at = 0.0
         self.last_dash = 0
         self.last_throw = 0
         self.left = False
@@ -52,6 +53,15 @@ class Bot:
 
     async def input(self, action, payload=None):
         await self.send("Input", [self.a.room, action, payload if payload is not None else {}])
+
+    async def aim(self, a):
+        """Намір Крижини: шлемо зміну, а той самий напрямок — раз на 0.4 с, як браузер (сервер без підтвердження
+        гасить тягу за 1.2 с — Icefloe.KeepTicks)."""
+        now = time.time()
+        if a != self.sent or (a >= 0 and now - self.sent_at >= 0.4):
+            self.sent = a
+            self.sent_at = now
+            await self.input("move", {"a": a})
 
     async def reader(self):
         try:
@@ -114,9 +124,7 @@ class Bot:
             C = (self.view or {}).get("pond", 2600) / 2
             dx, dy = C - me[0], C - me[1]
             a = round(math.atan2(dy, dx) / (math.pi / 8)) % 16 if math.hypot(dx, dy) > 250 else -1
-            if a != self.sent:
-                self.sent = a
-                await self.input("move", {"a": a})
+            await self.aim(a)
             return
         p = f.get("p") or []
         me = p[self.seat] if self.seat < len(p) else None
@@ -139,9 +147,7 @@ class Bot:
                 tx, ty = best[0], best[1]
             dx, dy = tx - me[0], ty - me[1]
             a = -1 if math.hypot(dx, dy) < 60 else round(math.atan2(dy, dx) / (math.pi / 8)) % 16
-            if a != self.sent:
-                self.sent = a
-                await self.input("move", {"a": a})
+            await self.aim(a)
             if f.get("ph") == 1 and best is not None and bd < 260 and me[6] == 0 and now - self.last_dash > 1.1 \
                     and self.rng.random() < 0.5:
                 self.last_dash = now
@@ -150,9 +156,7 @@ class Bot:
             if best is None:
                 return
             a = round(math.atan2(best[1] - me[1], best[0] - me[0]) / (math.pi / 8)) % 16
-            if a != self.sent:
-                self.sent = a
-                await self.input("move", {"a": a})
+            await self.aim(a)
             if me[7] > 0 and me[6] == 0 and now - self.last_throw > 2.2:
                 self.last_throw = now
                 await self.input("throw")

@@ -33,6 +33,8 @@ public sealed class Hockey : Game
     readonly int[] _deficit = new int[2];
     string[] _startNicks = [];
     readonly Series _series = new();
+    /// <summary>Останній гол партії — для підпису під «ГОЛ!» (автогол, з-під борту): команда, номер розіграшу, прапорці.</summary>
+    (int Team, int N, bool Own, bool Rail)? _lastGoal;
 
     public HockeyCore Core
     {
@@ -81,6 +83,7 @@ public sealed class Hockey : Game
         _golden = false;
         _left = MatchTicks;
         _deficit[0] = _deficit[1] = 0;
+        _lastGoal = null;
         _startNicks = [.. Enumerable.Range(0, HockeyCore.Seats).Where(Ctx.Seated).Select(s => Ctx.NickOf(s) ?? "")];
         _series.Begin(Ctx, HockeyCore.Seats);
         Core.Reset(Seated());
@@ -136,6 +139,7 @@ public sealed class Hockey : Game
         _left--;
         if (scored >= 0)
         {
+            _lastGoal = (scored, c.N, c.GoalOwn, c.GoalRail);
             var other = 1 - scored;
             _deficit[other] = Math.Max(_deficit[other], c.S[scored] - c.S[other]);
             if (_golden || c.S[scored] >= _target) return Over(scored);
@@ -250,6 +254,7 @@ public sealed class Hockey : Game
             left = lobby ? MatchTicks : _left,
             golden = !lobby && _golden,
             winner = lobby ? null : _winner,
+            lastGoal = lobby || _lastGoal is not { } lg ? null : new { team = lg.Team, n = lg.N, own = lg.Own, rail = lg.Rail },
             series = _series.View(Ctx, HockeyCore.Seats),
             table = new
             {
@@ -304,6 +309,7 @@ public sealed class Hockey : Game
             goal = c.GoalBy,
             rally = c.Rally,
             nudge = c.Nudged,
+            foul = c.FoulTo,
             golden = !lobby && _golden,
         };
     }

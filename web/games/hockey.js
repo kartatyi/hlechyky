@@ -51,6 +51,7 @@
   const MARGIN = 14;
   const SEND_MS = 50;
   const TRAIL = 10;
+  const DASH3 = [3, 3], NO_DASH = [];       // setLineDash без нового масиву щокадру
   const TEAM_VARS = [['--hk-blue', '#5aa9ff'], ['--clay', '#d9825b']];
   const TEAM_NAME = ['сині', 'руді'];
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -132,12 +133,12 @@
         // своя біта
         mine: { x: 0, y: 0 }, mineOk: false, acc: 0, at: 0, aim: false, tx: 0, ty: 0, mdx: 0, mdy: 0, rtt: 60,
         // шайба
-        vis: { x: MID, y: WD / 2 }, lastAt: 0, trail: [], lastN: -1,
+        vis: { x: MID, y: WD / 2 }, lastAt: 0, trail: new Float64Array(TRAIL * 2), trailHead: 0, trailN: 0, lastN: -1,
         // ввід
         sentMove: null, want: null, sentTo: null, sentAt: 0, was: false,
         // соки
         sparks: new Float32Array(SP * SF), spN: 0, flash: new Float64Array(4), rail: [0, 0, 0, 0], goalAt: 0, goalTeam: 0,
-        shake: 0, drawMs: [], lastDraw: 0, nicks: [],
+        shake: 0, drawMs: [], lastDraw: 0, nicks: [], seatTeam: [-1, -1, -1, -1], hudS0: -1, hudS1: -1,
         px: new Float64Array(4), py: new Float64Array(4),
       };
       live.add(st);
@@ -194,7 +195,7 @@
     st.oy = (st.ch - sh * st.k) / 2;
     st.cv = HGames.ui.canvas(root, { w: st.cw * st.K, h: st.ch * st.K, cls: 'hkboard' + (land ? '' : ' port') });
     st.table = null;
-    st.trail.length = 0;
+    st.trailN = 0;
     st.interp.reset();
     if (st.last) st.interp.push(st.last);
     wireCanvas(root, st);
@@ -254,7 +255,8 @@
       cy += ((my - cy) / d) * 14;
     }
     const w = toWorld(st, ((cx - r.left) / r.width) * st.cw, ((cy - r.top) / r.height) * st.ch);
-    const t = { x: w[0], y: w[1] };
+    // Округлюємо одразу до сотих — рівно те число, що полетить на сервер: передбачення веде біту до тієї ж цілі.
+    const t = { x: Math.round(w[0] * 100) / 100, y: Math.round(w[1] * 100) / 100 };
     clampAim(myTeam(st), t);
     st.aim = true;
     st.tx = t.x;
@@ -269,7 +271,7 @@
     st.want = null;
     st.sentAt = now;
     st.sentTo = t;
-    st.ctx.input('to', { x: Math.round(t.x * 100) / 100, y: Math.round(t.y * 100) / 100 });
+    st.ctx.input('to', { x: t.x, y: t.y });
   }
 
   // ---- передбачення своєї біти ----
@@ -297,6 +299,37 @@
       stepPad(st.mine, team, st.aim, st.tx, st.ty, st.mdx, st.mdy);
       st.acc -= SUB_MS;
     }
+    apart(st, team);
+  }
+
+  /// Своя біта не залазить ні під напарника, ні в затиснуту шайбу. Сервер розводить напарників навпіл
+  /// (HockeyCore.MovePads) і не пускає біту крізь шайбу, притиснуту до борта (HockeyCore.Pinch); передбачення про це
+  /// не знає, тож підправляємо лише те, що малюємо, — суддя однаково сервер, кадр поправить решту.
+  function apart(st, team) {
+    const me = mySeat(st), f = st.last;
+    if (me < 0 || !f || !f.p) return;
+    let moved = false;
+    for (let i = 0; i < 4; i++) {
+      if (i === me || f.p[2 * i] == null || teamOf(st, i) !== team) continue;
+      const dx = st.mine.x - st.px[i], dy = st.mine.y - st.py[i], d = Math.hypot(dx, dy);
+      if (d >= 2 * PAD_R || d < 1e-6) continue;
+      const k = (2 * PAD_R - d) / 2 / d;          // як на сервері: кожному по половині
+      st.mine.x += dx * k;
+      st.mine.y += dy * k;
+      moved = true;
+    }
+    // шайба чекає подачі (чи свистка) або стоїть притиснута до борта — біта впирається в неї, а не пірнає
+    const pk = st.vis, rr = PAD_R + PUCK_R, e = 0.6;
+    const atRail = pk.y <= PUCK_R + e || pk.y >= WD - PUCK_R - e
+      || ((pk.y < GOAL_LO || pk.y > GOAL_HI) && (pk.x <= PUCK_R + e || pk.x >= L - PUCK_R - e));
+    const resting = f.serveIn > 0 || f.startIn > 0;
+    if (resting || (atRail && f.ph === 1 && Math.hypot(f.vx || 0, f.vy || 0) < 60)) {
+      const dx = st.mine.x - pk.x, dy = st.mine.y - pk.y, d = Math.hypot(dx, dy);
+      if (d < rr && d > 1e-6) { st.mine.x = pk.x + (dx / d) * rr; st.mine.y = pk.y + (dy / d) * rr; moved = true; }
+    }
+    if (!moved) return;
+    st.mine.x = clamp(st.mine.x, minX(team), maxX(team));
+    st.mine.y = clamp(st.mine.y, PAD_R, WD - PAD_R);
   }
 
   // ---- шайба: легка екстраполяція проти затримки ----
@@ -308,7 +341,7 @@
     let x = f.x + f.vx * dt, y = f.y + f.vy * dt;
     if (y < PUCK_R) y = 2 * PUCK_R - y; else if (y > WD - PUCK_R) y = 2 * (WD - PUCK_R) - y;
     if (y < GOAL_LO || y > GOAL_HI) { if (x < PUCK_R) x = 2 * PUCK_R - x; else if (x > L - PUCK_R) x = 2 * (L - PUCK_R) - x; }
-    if (f.n !== st.lastN) { st.vis.x = x; st.vis.y = y; st.lastN = f.n; st.trail.length = 0; return st.vis; }
+    if (f.n !== st.lastN) { st.vis.x = x; st.vis.y = y; st.lastN = f.n; st.trailN = 0; return st.vis; }
     st.vis.x += (x - st.vis.x) * 0.5;
     st.vis.y += (y - st.vis.y) * 0.5;
     return st.vis;
@@ -368,15 +401,24 @@
       if ((prev.vy > 0) !== (f.vy > 0) && f.vy !== 0) { st.rail[f.y < WD / 2 ? 0 : 1] = now; Snd.wall(); }
       else if ((prev.vx > 0) !== (f.vx > 0) && f.vx !== 0) { st.rail[f.x < MID ? 2 : 3] = now; Snd.wall(); }
     }
+    if (f.foul != null && f.foul >= 0) {
+      // шайбу три секунди тримали затиснутою — сервер віддав подачу іншій команді
+      st.foulAt = now;
+      st.foulTo = f.foul;
+      st.trailN = 0;
+      Snd.whistle();
+    }
     if (f.goal != null && f.goal >= 0) {
       st.goalAt = now;
       st.goalTeam = f.goal;
+      st.goalRally = prev.rally || 0;
+      st.goalN = f.n;
       st.shake = now;
       Snd.goal();
       // іскри з прорізу тих, хто пропустив
       toScreen(st, f.goal === 0 ? L : 0, WD / 2, tmp);
       spark(st, tmp[0], tmp[1], 24, f.goal, 160);
-      st.trail.length = 0;
+      st.trailN = 0;
     }
   }
 
@@ -488,10 +530,19 @@
     return b;
   }
 
+  /// Шайба розжарюється зі швидкістю: біла → світло-жовта → жовта. Не червона: руді й так теплого кольору.
   function puckColor(pal, sp) {
     if (sp < 200) return pal.text;
-    if (sp < 600) return pal.accent;
-    return pal.danger;
+    if (sp < 600) return '#ffe9a3';
+    return pal.accent;
+  }
+
+  /// Напис, що не вилазить за maxW: шрифт меншає, доки влізе (не дрібніше за 16) — «🏆 Петро і хокеїст2» на телефоні.
+  function fitTxt(g, pal, t, x, y, size, color, weight, maxW) {
+    g.font = (weight || 800) + ' ' + size + 'px ' + pal.font;
+    const w = g.measureText(t).width;
+    if (w > maxW) size = Math.max(16, Math.floor((size * maxW) / w));
+    txt(g, pal, t, x, y, size, color, weight);
   }
 
   function txt(g, pal, t, x, y, size, color, weight, align) {
@@ -549,21 +600,25 @@
       g.beginPath(); g.moveTo(tmp[0], tmp[1]); g.lineTo(tmp2[0], tmp2[1]); g.stroke();
       g.globalAlpha = 1;
     }
-    scoreboard(st, g, pal, f, v);
+    if (ph !== 3) scoreboard(st, g, pal, f, v);      // на підсумку рахунок і так великий посередині
     // шайба зі слідом
     const puck = puckNow(st, f, now);
     const sp = Math.hypot(f.vx || 0, f.vy || 0);
     const flying = ph === 1 && !f.serveIn && !f.startIn;
-    if (!flying) st.trail.length = 0;
+    if (!flying) st.trailN = 0;
     else {
-      st.trail.push(puck.x, puck.y);
-      if (st.trail.length > TRAIL * 2) st.trail.splice(0, 2);
+      // кільце: найстаріша точка — на st.trailHead, нова стає на її місце
+      st.trail[2 * st.trailHead] = puck.x;
+      st.trail[2 * st.trailHead + 1] = puck.y;
+      st.trailHead = (st.trailHead + 1) % TRAIL;
+      if (st.trailN < TRAIL) st.trailN++;
     }
     const colr = puckColor(pal, sp);
     g.fillStyle = colr;
-    const nT = st.trail.length / 2;
+    const nT = st.trailN;
     for (let i = 0; i < nT; i++) {
-      toScreen(st, st.trail[2 * i], st.trail[2 * i + 1], tmp);
+      const k = (st.trailHead - nT + i + TRAIL) % TRAIL;
+      toScreen(st, st.trail[2 * k], st.trail[2 * k + 1], tmp);
       g.globalAlpha = 0.05 + 0.22 * (i / nT);
       g.beginPath();
       g.arc(tmp[0], tmp[1], PUCK_R * k * (0.4 + 0.6 * (i / nT)), 0, Math.PI * 2);
@@ -575,7 +630,7 @@
     if (!(goalK > 0.78 && ph === 1)) {
       toScreen(st, puck.x, puck.y, tmp);
       g.shadowColor = colr;
-      g.shadowBlur = 10;
+      g.shadowBlur = sp >= 600 ? 16 : 10;
       g.fillStyle = colr;
       g.beginPath();
       g.arc(tmp[0], tmp[1], PUCK_R * k, 0, Math.PI * 2);
@@ -586,10 +641,11 @@
       g.arc(tmp[0], tmp[1], PUCK_R * k * 0.45, 0, Math.PI * 2);
       g.fill();
     }
-    // біти
+    // біти: своя — останньою, завжди згори (у двоє на двоє напарник інакше накривав її)
     const me = mySeat(st);
-    for (let i = 0; i < 4; i++) {
-      if (!f.p || f.p[2 * i] == null) continue;
+    for (let k = 0; k < 5; k++) {
+      const i = k < 4 ? k : me;
+      if (i < 0 || (k < 4 && i === me) || !f.p || f.p[2 * i] == null) continue;
       const team = teamOf(st, i);
       const x = i === me && st.mineOk && ph !== 4 ? st.mine.x : st.px[i], y = i === me && st.mineOk && ph !== 4 ? st.mine.y : st.py[i];
       paddle(st, g, pal, i, team == null ? i % 2 : team, x, y, now, i === me);
@@ -635,12 +691,19 @@
     if (mine) {
       g.strokeStyle = pal.accent;
       g.lineWidth = 1.5;
-      g.setLineDash([3, 3]);
+      g.setLineDash(DASH3);
       g.beginPath();
       g.arc(tmp[0], tmp[1], R + 5, 0, Math.PI * 2);
       g.stroke();
-      g.setLineDash([]);
+      g.setLineDash(NO_DASH);
     }
+  }
+
+  /// «12 ударів без гола»: скільки разів шайбу відбили в цьому розіграші (обидві команди разом).
+  function rallyText(n) {
+    const m10 = n % 10, m100 = n % 100;
+    const w = m10 === 1 && m100 !== 11 ? 'удар' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'удари' : 'ударів';
+    return n + ' ' + w + ' без гола';
   }
 
   function scoreboard(st, g, pal, f, v) {
@@ -657,7 +720,7 @@
       g.globalAlpha = 1;
       if (clk) txt(g, pal, clk, st.cw / 2, st.oy + 18, 16, hot ? pal.danger : pal.muted, 700);
       if (f.golden) txt(g, pal, 'золотий гол', st.cw / 2, st.oy + 38, 15, pal.accent, 700);
-      if (f.rally >= 6 && f.ph === 1) txt(g, pal, 'серія ' + f.rally + (f.rally >= 15 ? ' 🔥' : ''), st.cw / 2, st.ch - st.oy - 16, 16, pal.muted, 600);
+      if (f.rally >= 6 && f.ph === 1) txt(g, pal, rallyText(f.rally) + (f.rally >= 15 ? ' 🔥' : ''), st.cw / 2, st.ch - st.oy - 16, 16, pal.muted, 600);
     } else {
       // портрет: рахунок збоку від центральної лінії — суперник над нею, свої під нею (як на справжньому столі)
       const cy = st.ch / 2, x = st.ox + 30;
@@ -667,7 +730,7 @@
       const rx = st.cw - st.ox - 12;
       if (clk) txt(g, pal, clk, rx, cy - 16, 15, hot ? pal.danger : pal.muted, 700, 'right');
       if (f.golden) txt(g, pal, 'золотий гол', rx, cy + 16, 14, pal.accent, 700, 'right');
-      else if (f.rally >= 6 && f.ph === 1) txt(g, pal, 'серія ' + f.rally, rx, cy + 16, 14, pal.muted, 600, 'right');
+      else if (f.rally >= 6 && f.ph === 1) txt(g, pal, rallyText(f.rally), rx, cy + 16, 14, pal.muted, 600, 'right');
     }
     g.globalAlpha = 1;
   }
@@ -699,15 +762,27 @@
       g.translate(st.cw / 2, st.ch / 2);
       g.scale(sc, sc);
       txt(g, pal, 'ГОЛ!', 0, 0, 72, pal.team[st.goalTeam]);
+      const cap = goalCaption(st, v);
+      if (cap) txt(g, pal, cap, 0, 56, 22, pal.text, 700);
       g.restore();
+    }
+    // «притримав»: три секунди шайба затиснута — подача суперникам
+    const fk = (now - (st.foulAt || -1e9)) / 1600;
+    if (ph === 1 && fk < 1) {
+      g.globalAlpha = fk < 0.7 ? 1 : (1 - fk) / 0.3;
+      const mine = myTeam(st);
+      const who = mine == null ? TEAM_NAME[st.foulTo] : st.foulTo === mine ? 'вам' : 'суперникам';
+      txt(g, pal, '✋ Притримали — подача ' + who, st.cw / 2, st.ch / 2, 24, pal.team[st.foulTo] || pal.text, 800);
+      g.globalAlpha = 1;
     }
     if (ph === 3) {
       g.fillStyle = pal.shade;
       g.fillRect(0, 0, st.cw, st.ch);
       const w = v.winner;
       const s = v.score || f.s || [0, 0];
+      const maxW = st.cw - 2 * st.ox - 24;
       if (w === 0 || w === 1) {
-        txt(g, pal, '🏆 ' + teamNames(st, w), st.cw / 2, st.ch / 2 - 60, 34, pal.team[w]);
+        fitTxt(g, pal, '🏆 ' + teamNames(st, w), st.cw / 2, st.ch / 2 - 60, 34, pal.team[w], 800, maxW);
         txt(g, pal, s[w] + ':' + s[1 - w], st.cw / 2, st.ch / 2 - 10, 44, pal.text);
       } else {
         txt(g, pal, 'Нічия', st.cw / 2, st.ch / 2 - 60, 34);
@@ -720,10 +795,26 @@
       for (const i of rows) {
         const team = teamOf(st, i);
         const own = v.own && v.own[i] ? ' (авто ' + v.own[i] + ')' : '';
-        txt(g, pal, nick(st, i) + ' — ⚽ ' + v.goals[i] + own, st.cw / 2, y, 17, team == null ? pal.text : pal.team[team], 700);
+        fitTxt(g, pal, nick(st, i) + ' — 🥅 ' + v.goals[i] + own, st.cw / 2, y, 17, team == null ? pal.text : pal.team[team], 700, maxW);
         y += 26;
       }
     }
+  }
+
+  /// Дядько Глек коментує гол одним рядком — лише коли є що сказати: автогол, «сухар», від борта, довгий розіграш.
+  function goalCaption(st, v) {
+    const lg = v && v.lastGoal;
+    if (!lg || lg.team !== st.goalTeam || lg.n !== st.goalN) return '';     // вид цього гола ще не доїхав
+    if (st.capFor === lg) return st.cap;
+    const s = v.score || [0, 0];
+    let cap = '';
+    if (lg.own) cap = 'у свої ворота, красень 🙃';
+    else if (s[lg.team] >= 3 && s[1 - lg.team] === 0) cap = 'сухар! ' + s[lg.team] + ':0 🍞';
+    else if (lg.rail) cap = 'з-під борту! 🎱';
+    else if (st.goalRally >= 10) cap = 'нарешті! після ' + rallyText(st.goalRally).replace(' без гола', '');
+    st.capFor = lg;
+    st.cap = cap;
+    return cap;
   }
 
   // ---- рядок над полем ----
@@ -757,7 +848,7 @@
       const own = v.own && v.own[i] ? ' <span class="hkown">(авто ' + v.own[i] + ')</span>' : '';
       const short = narrow && i !== ctx.seat;
       html += '<span class="hkchip t' + (team == null ? 'x' : team) + (i === ctx.seat ? ' me' : '') + '" title="' + ctx.esc(n) + '"><i>' + (i + 1) + '</i>'
-        + (short ? '' : ctx.esc(n)) + (g != null ? ' <b>⚽ ' + g + '</b>' + own : '') + '</span>';
+        + (short ? '' : ctx.esc(n)) + (g != null ? ' <b>🥅 ' + g + '</b>' + own : '') + '</span>';
     }
     if (v.phase !== 'lobby') html += '<span class="hkchip hkscore" aria-live="polite">' + s[0] + ':' + s[1] + ' · до ' + (v.target || 7) + '</span>';
     html += '<button type="button" class="hkchip hksnd" data-snd data-pad-skip title="' + (Snd.on ? 'Вимкнути звук' : 'Увімкнути звук') + '">' + (Snd.on ? '🔊' : '🔇') + '</button>';
@@ -765,6 +856,32 @@
       el.dataset.sig = html;
       el.innerHTML = html;
     }
+  }
+
+  /// Колір чипа місця в шапці картки. Каркас бере клас зі статичного seatClass, а команда залежить від складу
+  /// (на двох пара на місцях 0 і 2 грає одне проти одного, і місце 2 — руде). Тож клас лише каже «місце N», а колір
+  /// береться зі змінної --hk-sN, яку ставимо на картку за справжньою командою.
+  function seatColors(root, st) {
+    const card = root.parentElement;
+    if (!card) return;
+    for (let i = 0; i < 4; i++) {
+      const t = teamOf(st, i);
+      const team = t == null ? i % 2 : t;
+      if (st.seatTeam[i] === team) continue;
+      st.seatTeam[i] = team;
+      card.style.setProperty('--hk-s' + i, team === 1 ? 'var(--clay)' : 'var(--hk-blue)');
+    }
+  }
+
+  /// Пад: партію зіграно — рамку на «Ще раз». Інакше вона лишалась там, куди її поставило перше пробудження пада
+  /// (на першу кнопку сторінки — «📻 Ефір»), і Ⓐ після партії виносило зі столу.
+  function padToRematch(root) {
+    if (!window.HPad || !HPad.on || !HPad.focus) return;
+    setTimeout(() => {
+      const card = root.parentElement;
+      const b = (card && card.querySelector('.gbtns [data-do="Rematch"]')) || document.querySelector('.grback');
+      if (b && b.isConnected) HPad.focus(b);
+    }, 80);
   }
 
   function wireCanvas(root, st) {
@@ -823,8 +940,9 @@
     id: 'hockey',
     icon: ICON,
     seatNames: ['синій', 'рудий', 'синій', 'рудий'],
-    seatClass: ['hkb', 'c', 'hkb', 'c'],
-    pad: { dirs: true, hint: '{dpad} біта' },
+    seatClass: ['hks0', 'hks1', 'hks2', 'hks3'],
+    // Ⓐ забираємо собі й нічого нею не робимо: інакше посеред партії вона тиснула б кнопку, на якій стоїть рамка
+    pad: { dirs: true, a: 'Space', hint: '{dpad} біта' },
     news: {
       v: '2026-09-27',
       title: 'Нова гра: Аерохокей',
@@ -833,7 +951,7 @@
         '🥅 Ворота вузькі — гол береться кутом від борта, а не силою',
         '👥 На двох — класика, на чотирьох — двоє на двоє на одній половині',
         '⏱ До 7 (або 5 чи 10); чотири хвилини без переможця — золотий гол',
-        '🔊 Шайба клацає, борти дзвенять, на гол стіл труситься',
+        '✋ Притиснув шайбу до борта — бий за три секунди, бо подача піде суперникам',
       ],
     },
 
@@ -862,6 +980,13 @@
       st.cv.el.classList.toggle('play', !!(ctx.mine && ctx.playing));
       st.cv.resize();
       hud(root, st);
+      seatColors(root, st);
+      const status = ctx.room && ctx.room.status;
+      if (status === 'finished' && st.status === 'playing' && ctx.mine) padToRematch(root);
+      st.status = status;
+      // глядач на телефоні теж бачить стіл цілком, а не без низу під міні-плеєром
+      if (ctx.playing && !ctx.mine && !st.watchFit) { st.watchFit = true; setTimeout(() => fitView(st.cv && st.cv.el), 60); }
+      if (!ctx.playing) st.watchFit = false;
       if (ctx.playing && ctx.mine && !st.was) {
         setTimeout(() => fitView(st.cv && st.cv.el), 60);
         // «Ще раз» і F5: сервер не знає, що клавішу так і не відпускали
@@ -893,12 +1018,16 @@
         st.prevX = x;
       }
       correct(st, f);
-      hud(root, st);
+      // рядок над полем — лише коли змінився рахунок (решту міняє вид), а не 25 разів на секунду
+      const sc = f.s;
+      if (sc && (sc[0] !== st.hudS0 || sc[1] !== st.hudS1)) { st.hudS0 = sc[0]; st.hudS1 = sc[1]; hud(root, st); }
     },
 
     onKey(e, ctx) {
       const st = [...live].find((s) => s.ctx === ctx);
       if (!st || !ctx.mine) return false;
+      // пробіл (і Ⓐ пада) посеред партії нічого не робить — і сторінку не гортає
+      if (e.code === 'Space' || e.key === ' ') return !!ctx.playing;
       const k = keyOf(e);
       if (!k) return false;
       if (!held[k]) { held[k] = true; pushMove(st); }

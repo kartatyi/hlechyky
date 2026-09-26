@@ -16,7 +16,7 @@
   // ---- фізика: ті самі числа й той самий порядок операцій, що в IcefloeCore/ArenaPhysics ----
   const H = 0.02, SUB_MS = 20, TICK_MS = 40;
   const VMAX = 1100, MU = 2.0, SPIKE_MU = 5.0, THRUST = 1800, JUG_THRUST = 1400, DASH = 520, DASH_CD = 25;
-  const CAP_TICKS = 1875;
+  const CAP_TICKS = 1875, MELT_FROM = 1300;   // IcefloeCore.CapTicks, IcefloeCore.MeltFrom
   const C1 = 0.9238795325112867, S1 = 0.3826834323650898, D = 0.7071067811865476;
   const COS16 = [1, C1, D, S1, 0, -S1, -D, -C1, -1, -C1, -D, -S1, 0, S1, D, C1];
   const SIN16 = [0, S1, D, C1, 1, C1, D, S1, 0, -S1, -D, -C1, -1, -C1, -D, -S1];
@@ -48,6 +48,9 @@
   // ---- вигляд ----
   const SIZE = 600;                    // логічний канвас: увесь ставок
   const SEND_MS = 50;                  // наміри — не частіше 20/с
+  // Поки напрямок тримають, досилаємо його раз на 0.4 с: сервер без підтвердження гасить тягу за 1.2 с
+  // (Icefloe.KeepTicks) — зв'язок пропав, а тіло не їде саме у воду.
+  const KEEP_MS = 400;
   // Камера наближається, коли крига меншає: наприкінці раунду п'ятачок льоду — на весь канвас, а не цятка.
   const CAM_MARGIN = 170;              // см від найдальшого краю криги (чи тіла) до краю кадру
   const ZOOM_MAX = 2.2;
@@ -55,6 +58,8 @@
   const SEAT_VARS = [['--if-s0', '#5aa9ff'], ['--if-s1', '#d9825b'], ['--if-s2', '#7bd389'], ['--if-s3', '#f4c542'],
     ['--if-s4', '#b48cf2'], ['--if-s5', '#6fd6c2'], ['--if-s6', '#f08cb8'], ['--if-s7', '#b7c2bd']];
   const PICK_GLYPH = ['🥾', '🏺', '❄'];
+  const DASH3 = [3, 3], DASH5 = [5, 5], NO_DASH = [];
+  const ringDash = [0, 0];                                 // рятувальне коло: довжини залежать від розміру
   const PICK_NAME = ['🥾 шипи', '🏺 глек', '❄ сніжка'];
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<path d="M4 2.5 10.5 2 14 5.5 13.5 11 9.5 14 3.5 13 1.5 8.5 2 4.5Z" fill="var(--if-ice, #9fd7ff)"/>'
@@ -147,9 +152,11 @@
   const isThrow = (e) => e.code === 'KeyX' || e.code === 'KeyE' || e.code === 'ShiftLeft';
   const keySector = () => sectorOf((held.right ? 1 : 0) - (held.left ? 1 : 0), (held.down ? 1 : 0) - (held.up ? 1 : 0));
 
-  function releaseAll() {
+  /// Усе відпустили. force — шлемо одразу, навіть якщо щойно слали: сторінка ховається чи перезавантажується
+  /// (F5 із затиснутою стрілкою — blur перед цим не приходить), і другого шансу не буде.
+  function releaseAll(force) {
     held.up = held.down = held.left = held.right = false;
-    for (const st of live) { st.stickA = null; st.mouseA = null; st.mouseDown = false; push(st); }
+    for (const st of live) { st.stickA = null; st.mouseA = null; st.mouseDown = false; st.padA = null; push(st, force === true); }
   }
   document.addEventListener('keyup', (e) => {
     const k = keyOf(e);
@@ -157,7 +164,9 @@
     held[k] = false;
     for (const st of live) push(st);
   });
-  window.addEventListener('blur', releaseAll);
+  window.addEventListener('blur', () => releaseAll(false));
+  window.addEventListener('pagehide', () => releaseAll(true));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(true); });
 
   // ---- стан картки ----
   function state(root, ctx) {
@@ -279,16 +288,17 @@
 
   /// Нік над тілом — у спрайт один раз (fillText із тінню щокадру на вісьмох — дорого).
   function label(st, pal, seat, nick) {
-    const key = nick + '|' + st.K;
+    const px = st.labelPx || 12;
+    const key = nick + '|' + st.K + '|' + px;
     let l = st.labels[seat];
     if (l && l.key === key) return l;
     const dpr = Math.min(3, window.devicePixelRatio || 1) * st.K;
     const cv = document.createElement('canvas');
     const g = cv.getContext('2d');
-    const font = '700 12px ' + pal.font;
+    const font = '700 ' + px + 'px ' + pal.font;
     g.font = font;
     const text = nick.length > 14 ? nick.slice(0, 13) + '…' : nick;
-    const w = Math.ceil(g.measureText(text).width) + 8, h = 18;
+    const w = Math.ceil(g.measureText(text).width) + 8, h = Math.round(px * 1.5);
     cv.width = w * dpr;
     cv.height = h * dpr;
     g.scale(dpr, dpr);
@@ -403,23 +413,31 @@
       const x = p[o], y = p[o + 1], s = p[o + 7];
       g.globalAlpha = Math.max(0, Math.min(1, k * 1.2));
       if (kind === K_SHARD) {
+        // біла скалка з темнішим обідком — інакше на світлій кризі її майже не видно
         g.fillStyle = pal.edge;
+        g.strokeStyle = 'rgba(30, 80, 115, 0.55)';
+        g.lineWidth = 1;
         g.beginPath();
         g.moveTo(x, y - s);
         g.lineTo(x + s * 0.8, y + s * 0.6);
         g.lineTo(x - s * 0.7, y + s * 0.5);
         g.closePath();
         g.fill();
+        g.stroke();
       } else if (kind === K_DROP) {
         g.fillStyle = pal.ice;
         g.beginPath();
         g.arc(x, y, s, 0, Math.PI * 2);
         g.fill();
       } else if (kind === K_RING) {
-        g.strokeStyle = pal.ice2;
-        g.lineWidth = 1.5;
+        const rr = s * (1 + (1 - k) * 3);
+        g.strokeStyle = 'rgba(30, 80, 115, 0.4)';
+        g.lineWidth = 3.5;
         g.beginPath();
-        g.arc(x, y, s * (1 + (1 - k) * 3), 0, Math.PI * 2);
+        g.arc(x, y, rr, 0, Math.PI * 2);
+        g.stroke();
+        g.strokeStyle = '#ffffff';
+        g.lineWidth = 1.8;
         g.stroke();
       } else {
         g.fillStyle = '#ffffff';
@@ -565,8 +583,9 @@
     const ctx = st.ctx;
     return !!(ctx && ctx.mine && ctx.playing && phaseOf(st) <= 2);
   }
-  /// Шлемо лише зміну сектора і не частіше 20/с; остання зміна досилається з rAF.
-  function push(st, force) {
+  /// Шлемо лише зміну сектора і не частіше 20/с; остання зміна досилається з rAF. keep — те саме ще раз, щоб
+  /// сервер знав, що напрямок і досі тримають (відлуння для RTT тоді не міряємо: сервер уже показує цей сектор).
+  function push(st, force, keep) {
     if (!canSend(st)) { st.sent = null; return; }
     const a = currentWant(st);
     st.want = a;
@@ -576,7 +595,7 @@
     st.sent = a;
     st.sentAt = now;
     st.ctx.input('move', { a });
-    if (a >= 0) st.echo = { a, at: now };
+    if (a >= 0 && !keep) st.echo = { a, at: now };
   }
   function dash(st) {
     if (!canSend(st)) return;
@@ -670,11 +689,17 @@
     for (const e of f.ev) {
       switch (e[0]) {
         case 1: {           // зіткнення
-          const s = e[5] || 0;
-          burst(st, K_SHARD, e[3] * sc, e[4] * sc, 6 + Math.min(6, s / 120), 90, 400, 2.4);
+          const s = e[5] || 0, x = e[3] * sc, y = e[4] * sc;
+          // скалки льоду віялом, біле кільце й пил на місці удару — видно навіть на вісьмох на Деці
+          burst(st, K_SHARD, x, y, 12 + Math.min(16, s / 50), 150, 520, 4.4);
+          burst(st, K_PUFF, x, y, 4 + Math.min(6, s / 150), 60, 380, 3);
+          spawn(st, K_RING, x, y, 0, 0, 380, 7);
+          if (s >= 450) spawn(st, K_RING, x, y, 0, 0, 520, 12);
           Snd.bump(s);
           st.hitFlash[e[1]] = st.hitFlash[e[2]] = now;
-          if (s >= 500 && (e[1] === me || e[2] === me)) { st.shake = now; st.shakeAmp = 3; st.shakeMs = 150; }
+          if (e[1] === me || e[2] === me) {
+            if (s >= 300) { st.shake = now; st.shakeAmp = Math.min(7, 3 + s / 250); st.shakeMs = 200; }
+          } else if (s >= 650 && !(now - st.shake < (st.shakeMs || 0))) { st.shake = now; st.shakeAmp = 2; st.shakeMs = 140; }
           break;
         }
         case 2: {           // шубовсь
@@ -804,7 +829,7 @@
   }
 
   function drawCrack(st, g, pal, f, sc, now, melt) {
-    const [s0, L] = f.crack;
+    const s0 = f.crack[0], L = f.crack[1];
     const cx = st.C * sc;
     const pulse = reduced() ? 1 : 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(now / 80));
     const steps = L * 3 + 1;
@@ -934,10 +959,12 @@
   }
 
   /// Кругляш у кожусі кольору місця: згори видно шапку з помпоном і номером, а спереду визирають валянки.
-  function drawBody(st, g, pal, seat, x, y, face, fl, sc, now, mine, ready) {
+  function drawBody(st, g, pal, seat, x, y, face, fl, sc, now, mine, ready, speed) {
     const R = st.bodyR * sc, color = pal.seats[seat];
     const cx = x * sc, cy = y * sc;
     const fx = COS16[face], fy = SIN16[face];
+    // на ходу валянки дрібно тупцяють: один уперед, другий назад (швидше — частіше)
+    const walk = speed > 60 && !reduced() ? Math.sin(now / Math.max(45, 110 - speed / 12) + seat) * R * 0.13 : 0;
     // тінь
     g.fillStyle = 'rgba(10, 30, 45, 0.3)';
     g.beginPath();
@@ -947,7 +974,7 @@
     const bootA = Math.atan2(fy, fx);
     for (let k = -1; k <= 1; k += 2) {
       const side = 0.5 * k;
-      const bx = cx + Math.cos(bootA + side) * R * 0.78, by = cy + Math.sin(bootA + side) * R * 0.78;
+      const bx = cx + Math.cos(bootA + side) * R * 0.78 + fx * walk * k, by = cy + Math.sin(bootA + side) * R * 0.78 + fy * walk * k;
       g.fillStyle = (fl & 2) ? '#39424a' : '#efe6d6';
       g.beginPath();
       g.ellipse(bx, by, R * 0.36, R * 0.26, bootA, 0, Math.PI * 2);
@@ -993,6 +1020,22 @@
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillText(String(seat + 1), hx, hy + 0.5);
+    // очі з-під шапки, у бік обличчя; щойно зачепили — круглі від подиву
+    if (R >= 9) {
+      const hitNow = now - st.hitFlash[seat] < 260;
+      const er = R * (hitNow ? 0.17 : 0.13), ex = cx + fx * R * 0.72, ey = cy + fy * R * 0.72;
+      for (let k = -1; k <= 1; k += 2) {
+        const px = ex - fy * R * 0.24 * k, py = ey + fx * R * 0.24 * k;
+        g.fillStyle = '#ffffff';
+        g.beginPath();
+        g.arc(px, py, er, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = '#1b2530';
+        g.beginPath();
+        g.arc(px + fx * er * 0.35, py + fy * er * 0.35, er * (hitNow ? 0.35 : 0.55), 0, Math.PI * 2);
+        g.fill();
+      }
+    }
     // «удар» ривка — біле кільце; щойно зачепили — спалах
     const lit = Math.max(0, 1 - (now - st.hitFlash[seat]) / 200);
     if ((fl & 8) || lit > 0) {
@@ -1007,11 +1050,11 @@
     if (mine) {
       g.strokeStyle = pal.accent;
       g.lineWidth = 1.5;
-      g.setLineDash([3, 3]);
+      g.setLineDash(DASH3);
       g.beginPath();
       g.arc(cx, cy, R + 6, 0, Math.PI * 2);
       g.stroke();
-      g.setLineDash([]);
+      g.setLineDash(NO_DASH);
     }
     // нік — окремим проходом після всіх тіл (там же й розводимо їх, щоб не злипались)
     st.lx[seat] = cx;
@@ -1055,20 +1098,22 @@
       g.arc(cx, cy, R * 1.25, 0, Math.PI * 2);
       g.stroke();
       g.strokeStyle = '#e0533f';
-      g.setLineDash([R * 0.7, R * 0.95]);
+      ringDash[0] = R * 0.7;
+      ringDash[1] = R * 0.95;
+      g.setLineDash(ringDash);
       g.stroke();
-      g.setLineDash([]);
+      g.setLineDash(NO_DASH);
     }
     if (mine && q[7] > 0 && aimFace >= 0) {
       const a = aimFace;
       g.strokeStyle = pal.accent;
       g.lineWidth = 2;
-      g.setLineDash([5, 5]);
+      g.setLineDash(DASH5);
       g.beginPath();
       g.moveTo(cx, cy);
       g.lineTo(cx + COS16[a] * 70, cy + SIN16[a] * 70);
       g.stroke();
-      g.setLineDash([]);
+      g.setLineDash(NO_DASH);
       g.fillStyle = pal.accent;
       g.beginPath();
       const tx = cx + COS16[a] * 78, ty = cy + SIN16[a] * 78;
@@ -1115,8 +1160,9 @@
       const nk = st.ctx && st.ctx.nickOf(s);
       if (!nk) continue;
       const l = label(st, pal, s, nk);
-      // ніки — поза наїздом камери: тіла ростуть, а літери лишаються 12 px
-      const x = viewX(st, st.lx[s]) - l.w / 2, y = viewX(st, st.ly[s]) - l.h - (s === me ? 7 * st.z : 2);
+      // ніки — поза наїздом камери: тіла ростуть, а літери лишаються сталими; біля краю — всередину кадру
+      const x = clamp(viewX(st, st.lx[s]) - l.w / 2, 2, SIZE - l.w - 2);
+      const y = clamp(viewX(st, st.ly[s]) - l.h - (s === me ? 7 * st.z : 2), 2, SIZE - l.h - 2);
       let hit = false;
       for (let j = 0; j < n; j++) {
         const o = j * 4;
@@ -1166,12 +1212,11 @@
     g.fillText(t, x, y);
   }
 
-  /// Нічия раунду: або всі шубовснули разом, або на стелі 75 с на кризі ще стоять двоє й більше.
-  function drawnByTime(f) {
-    let alive = 0;
-    if (f && f.p) for (let i = 0; i < 8; i++) if (f.p[i] && (f.p[i][5] & 1)) alive++;
-    return alive >= 2;
-  }
+  /// Нічия раунду: на стелі 75 с на кризі ще стояли двоє й більше — чи всі шубовснули разом. Причину каже сервер
+  /// (lastRound.byTime): у фазі кінця світ ще доковзує, і з живого кадру вгадувати її не можна.
+  const drawnByTime = (v) => !!(v && v.lastRound && v.lastRound.byTime);
+
+  const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 
   const dots = (w, need) => (need <= 1 ? (w > 0 ? '●' : '○') : '●'.repeat(Math.min(w, need)) + '○'.repeat(Math.max(0, need - w)));
 
@@ -1192,7 +1237,7 @@
       shade(g, pal);
       const w = v.lastRound ? v.lastRound.winner : -1;
       if (w >= 0) text(g, pal, '🧊 Раунд — ' + nick(st, w) + '!', SIZE / 2, 150, 32, pal.seats[w]);
-      else text(g, pal, drawnByTime(f) ? '⏱ Час вийшов — нічия' : 'Усі шубовснули — нічия', SIZE / 2, 150, 30);
+      else text(g, pal, drawnByTime(v) ? '⏱ Час вийшов — нічия' : 'Усі шубовснули — нічия', SIZE / 2, 150, 30);
       table(st, g, pal, v, 200, false);
       g.globalAlpha = 1;
       return;
@@ -1215,6 +1260,11 @@
     for (let s = 0; s < 8; s++) if (v.wins && v.wins[s] != null) rows.push(s);
     rows.sort((a, b) => (v.wins[b] - v.wins[a]) || ((v.pushouts[b] || 0) - (v.pushouts[a] || 0)) || a - b);
     const lh = rows.length > 6 ? 29 : 34;
+    // напівпрозора плашка: тіла на кризі не лізуть між ніками й числами
+    g.fillStyle = 'rgba(8, 20, 28, 0.72)';
+    g.beginPath();
+    g.roundRect(112, top - 22, 408, 44 + rows.length * lh, 14);
+    g.fill();
     g.font = '600 15px ' + pal.font;
     g.textBaseline = 'middle';
     g.fillStyle = pal.muted;
@@ -1307,52 +1357,103 @@
       for (let i = 0; i < 8; i++) {
         const q = f.p[i];
         if (!q || !(q[5] & 1) || i === me) continue;
-        drawBody(st, g, pal, i, st.bx[i], st.by[i], q[4], q[5], sc, now, false, ready);
+        drawBody(st, g, pal, i, st.bx[i], st.by[i], q[4], q[5], sc, now, false, ready, Math.hypot(q[2], q[3]));
       }
       if (me >= 0 && f.p[me] && (f.p[me][5] & 1)) {
         const q = f.p[me];
-        const x = st.meOk && ph === 1 ? st.me.x : st.bx[me], y = st.meOk && ph === 1 ? st.me.y : st.by[me];
+        let x = st.meOk && ph === 1 ? st.me.x : st.bx[me], y = st.meOk && ph === 1 ? st.me.y : st.by[me];
+        // Своє тіло передбачене, а чужі — на ~100 мс у минулому: на ривку мій кругляш на пару кадрів заходив
+        // глибоко в сусіда. Зіткнення все одно судить сервер — тут лише не малюємо тіла одне в одному.
+        const rr = 2 * st.bodyR;
+        for (let i = 0; i < 8; i++) {
+          const o = f.p[i];
+          if (i === me || !o || !(o[5] & 1)) continue;
+          const dx = x - st.bx[i], dy = y - st.by[i], d = Math.hypot(dx, dy);
+          if (d < rr && d > 1e-6) { x = st.bx[i] + (dx / d) * rr; y = st.by[i] + (dy / d) * rr; }
+        }
         const face = st.want >= 0 && ph <= 1 ? st.want : q[4];
-        drawBody(st, g, pal, me, x, y, face, q[5], sc, now, true, ready);
+        const sp = st.meOk && ph === 1 ? Math.hypot(st.me.vx, st.me.vy) : Math.hypot(q[2], q[3]);
+        drawBody(st, g, pal, me, x, y, face, q[5], sc, now, true, ready, sp);
       }
       drawBalls(st, g, pal, f, sc);
     }
     drawParts(st, g, pal, dt);
     g.restore();
-    if (f && f.p) drawLabels(st, g, pal, mySeat(st));
+    // під підсумком раунду й партії ніки над тілами лише лізли б на таблицю
+    const plate = ph === 3 || (ph === 2 && now - st.phAt > 700);
+    if (f && f.p && !plate) drawLabels(st, g, pal, mySeat(st));
     if (f) overlays(st, g, pal, f, ph, now);
     drawPops(st, g, pal, now);
+    const mk = (now - (st.meltAt || -1e9)) / 2200;
+    if (ph === 1 && mk < 1) {
+      g.globalAlpha = mk < 0.75 ? 1 : (1 - mk) / 0.25;
+      text(g, pal, '🌡 Крига тане!', SIZE / 2, 64, 28, pal.danger);
+      g.globalAlpha = 1;
+    }
     if (ph === 1 && st.ctx && st.ctx.playing && st.lastFrameAt && now - st.lastFrameAt > 1000) text(g, pal, '⏳ зв’язок…', SIZE / 2, 28, 20, pal.text, 700);
     g.restore();
   }
 
-  // ---- рядок над полем ----
+  // ---- рядок над полем (чи стовпчики обабіч ставка) ----
+  const secsDown = (ticks) => {
+    const t = Math.max(0, Math.ceil((ticks * TICK_MS) / 1000));
+    return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+  };
+
+  /// Чип годинника: скільки минуло, а за 10 с до танення — «🌡 тане за 0:10» (червоніє), а коли тане — скільки
+  /// лишилось до кінця раунду. Про танення з 52-ї секунди й стелю 75 с інакше знав лише той, хто читав «що нового».
+  function clockChip(f) {
+    const rt = CAP_TICKS - (f.left || 0);
+    if (f.melt > 0) return '<span class="ifchip ifclock hot">🌡 тане · ще ' + secsDown(f.left || 0) + '</span>';
+    const toMelt = MELT_FROM - rt;
+    if (toMelt <= 250) return '<span class="ifchip ifclock hot">🌡 тане за ' + secsDown(toMelt) + '</span>';
+    return '<span class="ifchip ifclock">⏱ ' + clock(rt) + '</span>';
+  }
+
+  /// Відбиток того, що рядок над полем бере з кадру: фаза, секунда годинника, танення й стан кожного місця
+  /// (на кризі, шипи, глек, сніжки). Число, а не рядок — HTML перебудовуємо, лише коли щось із цього змінилось.
+  function hudKey(f) {
+    let k = (f.ph + 1) * 7 + (f.melt > 0 ? 3 : 0) + Math.floor(((f.left || 0) * TICK_MS) / 1000) * 64;
+    if (f.p) {
+      for (let i = 0; i < 8; i++) {
+        const q = f.p[i];
+        k = (k * 31 + (q ? (q[5] & 23) * 8 + Math.min(7, q[7]) + 1 : 0)) % 1000000007;
+      }
+    }
+    return k;
+  }
+
+  function hudEl(root, cls) {
+    let el = root.querySelector(':scope > .' + cls);
+    if (el) return el;
+    el = document.createElement('div');
+    el.className = cls;
+    // звук — чипом у цьому ж рядку: окремий рядок під полем з'їдав висоту на ноутбуці
+    el.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-snd]')) return;
+      Snd.set(!Snd.on);
+      if (Snd.on) Snd.pick();
+      const s = root._icefloe;
+      if (s) { s.hudSig = ''; hud(root, s); }
+    });
+    if (cls === 'ifhud') root.insertBefore(el, root.firstChild);
+    else root.appendChild(el);
+    return el;
+  }
+
   function hud(root, st) {
     const ctx = st.ctx;
-    let el = root.querySelector(':scope > .ifhud');
-    if (!el) {
-      el = document.createElement('div');
-      el.className = 'ifhud';
-      // звук — чипом у цьому ж рядку: окремий рядок під полем з'їдав висоту на ноутбуці
-      el.addEventListener('click', (e) => {
-        if (!e.target.closest('[data-snd]')) return;
-        Snd.set(!Snd.on);
-        if (Snd.on) Snd.pick();
-        el.dataset.sig = '';
-        const s = root._icefloe;
-        if (s) hud(root, s);
-      });
-      root.insertBefore(el, root.firstChild);
-    }
+    const el = hudEl(root, 'ifhud');
+    const meta = hudEl(root, 'ifmeta');
     const v = ctx.view || {};
     const f = st.last;
     const need = v.need || 2;
+    const side = !!st.side;
     let html = '';
     let seated = 0;
     for (let s = 0; s < 8; s++) if (ctx.nickOf(s)) seated++;
-    const tight = seated > 4;
-    // на п'ятьох і більше шапка картки й цей рядок ідуть у два ряди — ставок трохи менший, щоб усе влізло в екран
-    if (st.cv) st.cv.el.classList.toggle('many', tight);
+    // рядком на п'ятьох і більше — лише номери (свій — із ніком); стовпчиком обабіч ставка ніки влазять усі
+    const tight = seated > 4 && !side;
     for (let s = 0; s < 8; s++) {
       const n = ctx.nickOf(s);
       if (!n) continue;
@@ -1365,21 +1466,76 @@
         else stateTxt = ((q[5] & 2) ? '🥾' : '') + ((q[5] & 4) ? '🏺' : '') + (q[7] > 0 ? '❄' + q[7] : '');
       }
       html += '<span class="ifchip if' + s + (q && !(q[5] & 1) && plays ? ' out' : '') + (s === ctx.seat ? ' me' : '') + '" title="' + ctx.esc(n) + '">'
-        + '<i>' + (s + 1) + '</i>' + (tight && s !== ctx.seat ? '' : ctx.esc(n))
+        + '<i>' + (s + 1) + '</i>' + (tight && s !== ctx.seat ? '' : '<span class="ifnick">' + ctx.esc(n) + '</span>')
         + (plays && v.phase !== 'lobby' ? ' <b class="ifdots">' + dots(v.wins[s], need) + '</b>' : '')
         + (plays && v.pushouts[s] ? ' <span class="ifpush">💨' + v.pushouts[s] + '</span>' : '')
         + (stateTxt ? ' <span class="ifst">' + stateTxt + '</span>' : '') + '</span>';
     }
-    if (f && ctx.playing && (f.ph === 1 || f.ph === 2)) {
-      const el2 = CAP_TICKS - (f.ph === 1 ? f.left || 0 : 0);
-      if (f.ph === 1) html += '<span class="ifchip ifclock' + (f.melt > 0 ? ' hot' : '') + '">⏱ ' + clock(el2) + (f.melt > 0 ? ' · тане' : '') + '</span>';
+    let tail = '';
+    if (f && ctx.playing && f.ph === 1) tail += clockChip(f);
+    if (v.round && v.phase !== 'lobby') tail += '<span class="ifchip ifround">раунд ' + v.round + ' · до ' + need + '</span>';
+    tail += '<button type="button" class="ifchip ifsnd" data-snd data-pad-skip title="' + (Snd.on ? 'Вимкнути звук' : 'Увімкнути звук') + '">' + (Snd.on ? '🔊' : '🔇') + '</button>';
+    // стовпчиком під час гри шапку картки й рядок статусу сховано — підказку (чи підсумок) кажемо тут
+    const say = side && st.play ? statusText(ctx) || overText(ctx) : '';
+    if (say) tail += '<p class="ifsay">' + ctx.esc(say) + '</p>';
+    const sig = (side ? 's' : 'r') + html + '|' + tail;
+    if (st.hudSig === sig) return;
+    st.hudSig = sig;
+    if (side) { el.innerHTML = html; meta.innerHTML = tail; }
+    else { el.innerHTML = html + tail; meta.innerHTML = ''; }
+  }
+
+  /// Розмір ставка під екран. На Деці (1280×800) з вісьмома шапка картки з місцями й рядок над полем з'їдали
+  /// третину висоти, і ставок лишався 440 px з порожнечею обабіч. Тож: на широкій картці гравці стають стовпчиком
+  /// ліворуч, годинник і підказка — праворуч, а під час гри шапка й статус картки ховаються (ті самі ніки й слова
+  /// є в стовпчиках). Висоту міряємо по-справжньому: від верху ставка до низу вікна мінус кнопки під ним і
+  /// смужка підказок пада. Телефон не чіпаємо — там гортають, і сторінку підкручує fitView.
+  function fit(root, st) {
+    const cv = st.cv && st.cv.el;
+    if (!cv || !cv.isConnected || !cv.offsetParent) return;
+    const ctx = st.ctx;
+    const phone = window.innerWidth < 700 || HGames.ui.coarse();
+    const side = !phone && root.clientWidth >= 820;
+    const ph = phaseOf(st);
+    // Шапку й статус картки ховаємо на всю партію, разом із підсумком (інакше в кінці ставок стрибав би меншим);
+    // у лобі вони потрібні — там видно вільні місця й «Чекаємо на гравців».
+    const play = ph <= 3 && !!(ctx && ctx.view && ctx.view.phase !== 'lobby');
+    if (side !== !!st.side || play !== !!st.play) {
+      st.side = side;
+      st.play = play;
+      root.classList.toggle('ifside', side);
+      root.classList.toggle('ifplay', side && play);
+      st.hudSig = '';
+      hud(root, st);
     }
-    if (v.round && v.phase !== 'lobby') html += '<span class="ifchip ifround">раунд ' + v.round + (need > 1 ? ' · до ' + need : '') + '</span>';
-    html += '<button type="button" class="ifchip ifsnd" data-snd data-pad-skip title="' + (Snd.on ? 'Вимкнути звук' : 'Увімкнути звук') + '">' + (Snd.on ? '🔊' : '🔇') + '</button>';
-    if (el.dataset.sig !== html) {
-      el.dataset.sig = html;
-      el.innerHTML = html;
+    if (phone) {
+      if (cv.style.maxWidth || cv.style.width) { cv.style.maxWidth = ''; cv.style.width = ''; }
+      st.labelPx = 12;
+      return;
     }
+    const card = root.parentElement || root;
+    const r = cv.getBoundingClientRect();
+    const top = r.top + window.scrollY;
+    const bar = document.querySelector('.padhints');
+    const barH = bar && !bar.hidden && document.body.classList.contains('pad-on') ? bar.getBoundingClientRect().height + 10 : 0;
+    // під ставком: кнопки картки й відступ сторінки під нею. Відступ беремо з документа, але не більше 24 px: коли
+    // сторінка коротша за вікно, документ тягнеться до низу вікна, і «відступ» був би всією порожнечею — ставок
+    // від цього меншав би, документ ставав би ще «довшим» знизу, і так до упору.
+    const cb = card.getBoundingClientRect().bottom;
+    const gap = Math.max(0, Math.min(24, document.documentElement.scrollHeight - (cb + window.scrollY)));
+    const below = Math.max(0, cb - r.bottom) + gap + barH;
+    const big = window.innerWidth >= 1500 && window.innerHeight >= 860;
+    let size = Math.floor(window.innerHeight - top - below);
+    const wide = side ? root.clientWidth - 2 * 130 - 28 : root.clientWidth;
+    size = Math.max(300, Math.min(size, big ? 760 : 680, wide));
+    const cur = side ? parseFloat(cv.style.width) : parseFloat(cv.style.maxWidth);
+    if (!(Math.abs(cur - size) < 2)) {
+      if (side) { cv.style.width = size + 'px'; cv.style.maxWidth = 'none'; }
+      else { cv.style.width = ''; cv.style.maxWidth = size + 'px'; }
+    }
+    // ніки над тілами — не дрібніші за ~12 css-px, хоч би яким малим був ставок
+    const css = side ? size : Math.min(size, cv.clientWidth || size);
+    st.labelPx = Math.round(12 * Math.max(1, Math.min(1.6, SIZE / Math.max(200, css))));
   }
 
   // ---- керування пальцем: віртуальний стік і дві кнопки ----
@@ -1482,6 +1638,17 @@
     el.addEventListener('pointercancel', up);
   }
 
+  /// Пад: партію зіграно — рамку на «Ще раз». Інакше вона лишалась там, куди її поставило перше пробудження пада
+  /// (на першу кнопку сторінки — «📻 Ефір»), і Ⓐ після партії виносило зі столу.
+  function padToRematch(root) {
+    if (!window.HPad || !HPad.on || !HPad.focus) return;
+    setTimeout(() => {
+      const card = root.parentElement;
+      const b = (card && card.querySelector('.gbtns [data-do="Rematch"]')) || document.querySelector('.grback');
+      if (b && b.isConnected) HPad.focus(b);
+    }, 80);
+  }
+
   /// Телефон: на старті партії підкручуємо сторінку так, щоб ставок і стік із кнопками стали між шапкою й
   /// нижніми панелями. Раз на партію (і після F5) — далі людина гортає сама.
   function fitView(root, st) {
@@ -1504,11 +1671,14 @@
       const now = performance.now();
       readPad(st);
       if (st.mouseDown) aimMouse(st);
-      // відкладена зміна наміру
+      // відкладена зміна наміру; той самий напрямок, поки тримають, — підтверджуємо раз на KEEP_MS
       if (st.sent !== currentWant(st) && canSend(st) && now - st.sentAt >= SEND_MS) push(st);
+      else if (st.sent != null && st.sent >= 0 && canSend(st) && now - st.sentAt >= KEEP_MS) push(st, true, true);
       predict(st, now);
       // схована картка чи вкладка — стан приймаємо, а малювати нема кому
       if (!st.cv.el.offsetParent || document.hidden) return;
+      // смужка пада з'явилась, балачки згорнули, «на весь екран» — розмір ставка перераховуємо раз на пів секунди
+      if (now - (st.fitAt || 0) > 500) { st.fitAt = now; fit(root, st); }
       const t0 = performance.now();
       draw(st, now);
       const ms = performance.now() - t0;
@@ -1516,6 +1686,47 @@
       if (st.drawMs.length > 300) st.drawMs.shift();
     };
     st.raf = requestAnimationFrame(loop);
+  }
+
+  /// Підсумок партії словами — для правого стовпчика, коли рядок статусу картки сховано.
+  function overText(ctx) {
+    const res = ctx.room && ctx.room.status === 'finished' && ctx.room.result;
+    if (!res) return '';
+    const ws = res.winners || [];
+    if (res.draw || !ws.length) return 'Партію зіграно — нічия';
+    return 'Перемога: ' + ws.map((i) => ctx.nickOf(i) || ctx.seatName(i)).join(', ');
+  }
+
+  /// Рядок статусу під грою (і в правому стовпчику на широкому екрані, де рядок картки сховано).
+  function statusText(ctx) {
+    const st = [...live].find((s) => s.ctx === ctx);
+    const v = ctx.view || {};
+    const f = ctx.frame || v.frame;
+    const need = v.need || 2;
+    if (!ctx.playing) {
+      if (ctx.room && ctx.room.status === 'lobby') {
+        const host = ctx.room.host && ctx.me && String(ctx.room.host).toLowerCase() === String(ctx.me.nick).toLowerCase();
+        return host ? 'Тисни «Почати», коли всі сіли (2–8)' : 'Сумо на кризі. Стартує господар, коли зібралось 2–8';
+      }
+      return '';
+    }
+    if (st && performance.now() - st.lastFrameAt > 1000 && st.lastFrameAt && f && f.ph === 1) return '⏳ зв\'язок…';
+    if (!f) return '';
+    if (f.ph === 0) return 'Готуйсь… раунд ' + (v.round || 1);
+    if (f.ph === 2) {
+      const w = v.lastRound ? v.lastRound.winner : -1;
+      return w >= 0 ? 'Раунд — ' + (ctx.nickOf(w) || ctx.seatName(w)) + '!' : (drawnByTime(v) ? 'Час вийшов — нічия раунду' : 'Усі шубовснули — нічия раунду');
+    }
+    if (!ctx.mine) return 'Дивишся збоку · раунд ' + (v.round || 1) + ' · до ' + need + (need > 1 ? ' перемог' : ' перемоги');
+    const q = f.p && f.p[ctx.seat];
+    if (q && !(q[5] & 1)) {
+      return q[7] > 0 ? '🌊 Ти у воді — ' + (padOn() ? 'стік цілить, Ⓐ кидає' : HGames.ui.coarse() ? 'стік цілить, ❄ кидає' : 'стрілки чи мишка цілять, пробіл кидає') + ' сніжку (лишилось ' + q[7] + ')'
+        : '🌊 Ти у воді, сніжки скінчились — дивись, хто кого';
+    }
+    const extra = q ? ((q[5] & 2) ? ' · 🥾 шипи' : '') + ((q[5] & 4) ? ' · 🏺 глек' : '') : '';
+    const how = padOn() ? 'Стік — ковзати, Ⓐ ривок, Ⓧ сніжка'
+      : HGames.ui.coarse() ? 'Стік — ковзати, 💨 ривок, ❄ сніжка' : 'Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка';
+    return how + ' · раунд ' + (v.round || 1) + ' · до ' + need + extra;
   }
 
   HGames.register({
@@ -1528,8 +1739,8 @@
       v: '2026-09-27',
       title: 'Нова гра: Крижина',
       items: [
-        '🧊 Сумо на крижині: ковзай стрілками, пробілом штовхай — хто у воді, той вибув',
-        '💥 Ривок раз на секунду: влучив — суперник летить, промазав — сам біля краю',
+        '🧊 Сумо на крижині: ковзай (стрілки чи стік) і штовхайся ривком 💨 — хто у воді, той вибув',
+        '💥 Ривок (пробіл, Ⓐ чи 💨) — раз на секунду: влучив — суперник летить, промазав — сам біля краю',
         '🪓 Крижина тріскається й меншає, а на 52-й секунді починає танути — відсидітись не вийде',
         '❄ Випав — не нудьгуй: із берега кидай три сніжки в тих, хто ще на кризі',
         '🥾 Підбирай шипи (не ковзаєш), важкий глек (не зіпхнути) і сніжки',
@@ -1546,6 +1757,9 @@
       st.cv.el.classList.toggle('play', !!ctx.mine);
       wireCanvas(root, st);
       controls(root, st);
+      st.onResize = () => { const s = root._icefloe; if (s) fit(root, s); };
+      window.addEventListener('resize', st.onResize);
+      fit(root, st);
       spin(root, st);
     },
 
@@ -1568,9 +1782,15 @@
       st.cv.resize();
       hud(root, st);
       controls(root, st);
+      fit(root, st);
       // «Ще раз» і F5: сервер не знає про клавішу, яку не відпускали — досилаємо намір
       if (ctx.playing && ctx.mine && !st.was) { st.sent = null; push(st, true); setTimeout(() => fitView(root, st), 60); }
-      if (!ctx.playing) { st.sent = null; st.meOk = false; }
+      // глядач на телефоні теж бачить ставок цілком
+      if (ctx.playing && !ctx.mine && !st.watchFit) { st.watchFit = true; setTimeout(() => fitView(root, st), 60); }
+      if (!ctx.playing) { st.sent = null; st.meOk = false; st.watchFit = false; }
+      const status = ctx.room && ctx.room.status;
+      if (status === 'finished' && st.status === 'playing' && ctx.mine) padToRematch(root);
+      st.status = status;
       st.was = !!(ctx.playing && ctx.mine);
       spin(root, st);
     },
@@ -1581,11 +1801,18 @@
       if (st.last && (f.t < st.last.t - 2 || f.iv !== st.last.iv)) st.interp.reset();
       if (!st.last || st.last.ph !== f.ph) st.phAt = performance.now();
       events(st, f);
+      if (st.last && !(st.last.melt > 0) && f.melt > 0 && f.ph === 1 && st.cv && st.cv.el.offsetParent) {
+        // крига почала танути — кажемо вголос банером угорі, а не лише мокрою смугою по краю
+        st.meltAt = performance.now();
+        Snd.crack();
+      }
       st.last = f;
       st.lastFrameAt = performance.now();
       st.interp.push(f);
       correct(st, f);
-      hud(root, st);
+      // рядок над полем — лише коли в кадрі змінилось те, що він показує
+      const hk = hudKey(f);
+      if (hk !== st.hudK) { st.hudK = hk; hud(root, st); }
       if (ctx.mine && HGames.ui.coarse()) controls(root, st);
     },
 
@@ -1602,42 +1829,15 @@
       return false;
     },
 
-    status(ctx) {
-      const st = [...live].find((s) => s.ctx === ctx);
-      const v = ctx.view || {};
-      const f = ctx.frame || v.frame;
-      const need = v.need || 2;
-      if (!ctx.playing) {
-        if (ctx.room && ctx.room.status === 'lobby') {
-          const host = ctx.room.host && ctx.me && String(ctx.room.host).toLowerCase() === String(ctx.me.nick).toLowerCase();
-          return host ? 'Тисни «Почати», коли всі сіли (2–8)' : 'Сумо на кризі. Стартує господар, коли зібралось 2–8';
-        }
-        return '';
-      }
-      if (st && performance.now() - st.lastFrameAt > 1000 && st.lastFrameAt && f && f.ph === 1) return '⏳ зв\'язок…';
-      if (!f) return '';
-      if (f.ph === 0) return 'Готуйсь… раунд ' + (v.round || 1);
-      if (f.ph === 2) {
-        const w = v.lastRound ? v.lastRound.winner : -1;
-        return w >= 0 ? 'Раунд — ' + (ctx.nickOf(w) || ctx.seatName(w)) + '!' : (drawnByTime(f) ? 'Час вийшов — нічия раунду' : 'Усі шубовснули — нічия раунду');
-      }
-      if (!ctx.mine) return 'Дивишся збоку · раунд ' + (v.round || 1) + ' · до ' + need + (need > 1 ? ' перемог' : ' перемоги');
-      const q = f.p && f.p[ctx.seat];
-      if (q && !(q[5] & 1)) {
-        return q[7] > 0 ? '🌊 Ти у воді — ' + (padOn() ? 'стік цілить, Ⓐ кидає' : HGames.ui.coarse() ? 'стік цілить, ❄ кидає' : 'стрілки чи мишка цілять, пробіл кидає') + ' сніжку (лишилось ' + q[7] + ')'
-          : '🌊 Ти у воді, сніжки скінчились — дивись, хто кого';
-      }
-      const extra = q ? ((q[5] & 2) ? ' · 🥾 шипи' : '') + ((q[5] & 4) ? ' · 🏺 глек' : '') : '';
-      const how = padOn() ? 'Стік — ковзати, Ⓐ ривок, Ⓧ сніжка'
-        : HGames.ui.coarse() ? 'Стік — ковзати, 💨 ривок, ❄ сніжка' : 'Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка';
-      return how + ' · раунд ' + (v.round || 1) + ' · до ' + need + extra;
-    },
+    status: statusText,
 
     unmount(root) {
       const st = root._icefloe;
       if (!st) return;
       cancelAnimationFrame(st.raf);
       st.raf = 0;
+      if (st.onResize) window.removeEventListener('resize', st.onResize);
+      root.classList.remove('ifside', 'ifplay');
       live.delete(st);
       root._icefloe = null;
     },
