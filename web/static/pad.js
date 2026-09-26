@@ -887,7 +887,7 @@
       + '<li>Правий тачпад лишається мишею — обидва способи працюють разом, можна будь-коли ткнути пальцем.</li>'
       + '<li>Текст можна вводити і нашою клавіатурою (A на полі), і стімівською — <b>STEAM + X</b>.</li>'
       + '</ol>' : '')
-    + '<div class="ph-foot"><button type="button" class="primary" data-close>Зрозумів</button>'
+    + '<div class="ph-foot"><button type="button" class="primary" data-close>Ясно!</button>'
     + '<span class="muted small">' + glyph('y') + ' відкриває це будь-коли</span></div>'
     + '</div>';
 

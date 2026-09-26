@@ -99,7 +99,7 @@
       + '<div class="gt-bar thin">' + (g.play > 0 ? '<i class="gt-play" style="width:' + pct(g.play, max) + '"></i>' : '')
       + (g.watch > 0 ? '<i class="gt-watch" style="width:' + pct(g.watch, max) + '"></i>' : '') + '</div>'
       + '<b class="gt-gsum">' + (g.play > 0 ? dur(g.play) : '—') + '</b>'
-      + (g.watch > 0 ? '<span class="gt-eye" title="дивився чужі столи">👀 ' + dur(g.watch) + '</span>' : '<span class="gt-eye"></span>')
+      + (g.watch > 0 ? '<span class="gt-eye" title="глядачем за чужими столами">👀 ' + dur(g.watch) + '</span>' : '<span class="gt-eye"></span>')
       + (tail || '') + '</div>';
   }
 
@@ -160,7 +160,7 @@
     if (w.room) bits.push('за столом ' + iconOf(w.room.game) + '<b>' + esc(titleOf(w.room.game)) + '</b> <span class="muted">· ' + esc(w.room.state) + '</span>');
     else if (w.solo) bits.push('грає в ' + iconOf(w.solo) + '<b>' + esc(titleOf(w.solo)) + '</b>');
     if (w.listening) bits.push('🎧 слухає ефір');
-    if (!bits.length) bits.push(w.online ? 'на сайті' : '<span class="muted">не на сайті</span>');
+    if (!bits.length) bits.push(w.online ? 'тусить на сайті' : '<span class="muted">не на сайті</span>');
     return '<span class="wdot' + (w.online ? ' on' : '') + '"></span>' + bits.join(' · ');
   }
 
@@ -177,7 +177,7 @@
     out.push('<button type="button" data-pa="mention" title="Гукнути в балачках — почує дзінь">@ Гукнути</button>');
     const mine = myWaitingRoom();
     if (mine && w.online && !(w.room && w.room.id === mine.id)) out.push('<button type="button" data-pa="invite" title="Покликати за мій стіл">📣 Покликати</button>');
-    if (w.room && w.room.canSit) out.push('<button type="button" data-pa="sit" title="Сісти за його стіл">🎲 Підсісти</button>');
+    if (w.room && w.room.canSit) out.push('<button type="button" data-pa="sit" title="Сісти за той самий стіл">🎲 Підсісти</button>');
     if (me.account && !isGuestNick(nick)) out.push('<button type="button" data-pa="gift" title="Подарувати щось із Лавки Дядька Глека — лишиться назавжди">🎁 Подарувати</button>');
     return out.join('');
   }
@@ -243,7 +243,7 @@
     el.innerHTML = '<div class="pc-head">' + ava(nick, 'ava xl') + '<div class="pc-who"><b class="' + nickCls(nick).trim() + '" style="--h:' + hue(nick) + '">' + esc(nick) + '</b>'
       + titleChip(nick) + '<div class="pc-where">' + whereHtml(nick) + '</div></div>'
       + '<button type="button" class="ghost icon pc-x" title="Закрити" aria-label="Закрити">✕</button></div>'
-      + '<div class="pc-stats"><span class="spin"></span></div>'
+      + '<div class="pc-stats"><span class="spin"></span> <span class="muted small">мить…</span></div>'
       + '<div class="pc-acts">' + actionsHtml(nick, false) + '</div>';
     document.body.appendChild(el);
     cardEl = el;
@@ -260,7 +260,7 @@
     const achs = (p.achievements || []).length;
     const fav = t && (t.games || []).filter((g) => g.play > 0)[0];
     box.innerHTML = '<span class="chip" title="Черепків зараз">🏺 ' + (w.balance != null ? lbNum(w.balance) : '—') + '</span>'
-      + (t ? '<span class="chip" title="Скільки був на сайті за весь час">⏱ ' + dur(timeTotal(t)) + '</span>' : '')
+      + (t ? '<span class="chip" title="Скільки часу тусить на сайті — за весь час">⏱ ' + dur(timeTotal(t)) + '</span>' : '')
       + '<span class="chip" title="Ачівки">🏅 ' + achs + '</span>'
       + (fav ? '<span class="chip" title="У що найбільше грає">' + iconOf(fav.game) + esc(fav.title || titleOf(fav.game)) + '</span>' : '');
     placeCard(el, anchor);
@@ -314,7 +314,7 @@
     const t = ++token;
     body.innerHTML = '<div class="gwait"><span class="spin"></span> рахую…</div>';
     const run = statsTab === 'games' ? statsGames : statsTab === 'time' ? statsTime : statsMusic;
-    run(body, t).catch((e) => { if (!stale(t)) body.innerHTML = '<div class="gempty">Не порахувалось: ' + esc(e.message) + '</div>'; });
+    run(body, t).catch((e) => { if (!stale(t)) body.innerHTML = '<div class="gempty">Ой-йой, не порахувалось: ' + esc(e.message) + '</div>'; });
   }
 
   // ---------- музика: хто закидає і що крутили ----------
@@ -341,7 +341,7 @@
       : '<div class="gempty glek">' + PERIOD_WORD[period][0].toUpperCase() + PERIOD_WORD[period].slice(1) + ' ніхто нічого не закидав — усе крутив ' + esc(djName) + '.</div>';
     const djLine = djRow && djRow.count ? '<div class="muted small stdj">🏺 А ' + esc(djName) + ' ' + PERIOD_WORD[period] + ' поставив сам ' + djRow.count + ' — коли черга порожніла.</div>' : '';
 
-    const sortSeg = '<div class="tabs seg stsort">' + [['plays', 'частіше грали'], ['completion', 'дослуховують'], ['listeners', 'більше слухачів'], ['likes', 'лайки']]
+    const sortSeg = '<div class="tabs seg stsort">' + [['plays', 'частіше грали'], ['completion', 'дослуховують'], ['listeners', 'більше слухачів'], ['likes', 'вподобайки']]
       .map(([v, l]) => '<button type="button" data-s="' + v + '" class="' + (sort === v ? 'on' : '') + '">' + l + '</button>').join('') + '</div>';
     const row = (x) => {
       const bits = ['▶ ' + x.plays];
@@ -360,7 +360,7 @@
       + '<section class="panel stbox"><h3>🙋 Хто закидає <span class="muted small">' + PERIOD_WORD[period] + '</span></h3>' + peopleHtml + djLine + '</section>'
       + '<section class="panel stbox wide"><div class="stbox-head"><h3>🎶 Що крутили</h3>'
       + '<input class="stfind" type="search" placeholder="знайти трек" autocomplete="off"></div>' + sortSeg
-      + '<ul class="list strating">' + ((rating.tracks || []).map(row).join('') || '<li class="empty">за цей час нічого не грало</li>') + '</ul>'
+      + '<ul class="list strating">' + ((rating.tracks || []).map(row).join('') || '<li class="empty">за цей час — тиша: нічого не грало</li>') + '</ul>'
       + '<div class="muted small">🎧 — скільки людей слухало на сайті (рахується з 13.09).</div>' + cacheLine + '</section></div>';
     o.wireRows(body);
     body.querySelectorAll('.stsort [data-s]').forEach((b) => b.onclick = () => { lsSet('ratingSort', b.dataset.s); drawStatsBody(); });
@@ -432,7 +432,7 @@
     }
     body.innerHTML = '<section class="panel stbox gtime">'
       + '<div class="gt-sum4">'
-      + '<div><b>' + dur(all) + '</b><span>усі разом на сайті</span></div>'
+      + '<div><b>' + dur(all) + '</b><span>уся тусня разом на сайті</span></div>'
       + '<div><b>' + dur(sum('play')) + '</b><span>в іграх</span></div>'
       + '<div><b>' + dur(sum('listen')) + '</b><span>📻 грало радіо</span></div>'
       + (games[0] ? '<div><b>' + iconOf(games[0].game) + esc(games[0].title) + '</b><span>найдовше грали · ' + dur(games[0].play) + '</span></div>' : '')
@@ -453,7 +453,7 @@
           + '<div class="gt-chips">' + TIME_PARTS.filter(([k]) => x[k] > 0).map(([k, l, cls]) =>
             '<span class="chip"><i class="gt-dot ' + cls + '"></i>' + l + ' ' + dur(x[k]) + '</span>').join('') + '</div>'
           + (gl.length ? '<div class="gt-games">' + gl.map((y) => timeGameRow(y, pmax)).join('') + '</div>'
-            : '<div class="gempty">За цей час в ігри не заходив.</div>')
+            : '<div class="gempty">За цей час — жодної гри.</div>')
           + '</div></details>';
       }).join('') + '</div>'
       + (games.length
@@ -472,6 +472,10 @@
   const OUTCOME = { win: 'перемога', loss: 'поразка', draw: 'нічия', solo: 'соло' };
   /// «за 1 спробу», «за 3 спроби», «за 6 спроб».
   const tries = (n) => { const t = n % 100, u = n % 10; return n + (t > 10 && t < 20 ? ' спроб' : u === 1 ? ' спробу' : u >= 2 && u <= 4 ? ' спроби' : ' спроб'); };
+  /// «1 раз», «3 рази», «12 разів».
+  const razy = (n) => { const t = n % 100, u = n % 10; return n + (t > 10 && t < 20 ? ' разів' : u === 1 ? ' раз' : u >= 2 && u <= 4 ? ' рази' : ' разів'); };
+  /// Підпис під числом ❤: «вподобайка», «вподобайки», «вподобайок».
+  const likesWord = (n) => { const t = n % 100, u = n % 10; return t > 10 && t < 20 ? 'вподобайок' : u === 1 ? 'вподобайка' : u >= 2 && u <= 4 ? 'вподобайки' : 'вподобайок'; };
 
   async function renderWho(tail) {
     const nick = decodeURIComponent(tail || '').trim();
@@ -500,7 +504,7 @@
         + walletCard(p, led, mine)
         + timeCard(p, week)
         + musicCard(ppl, nick, mine)
-        + gamesCard(p)
+        + gamesCard(p, mine)
         + achCard(p, mine)
         + '</div>'
         : '<section class="panel"><div class="gempty glek">Про ' + esc(nick) + ' тут поки нічого не знають — ні пісень, ні ігор. Схоже, усе ще попереду.</div></section>');
@@ -578,26 +582,26 @@
 
   function musicCard(ppl, nick, mine) {
     const m = ppl && ppl.music;
-    if (!m) return '<section class="panel wcard"><h3>🎵 Музика</h3><div class="gempty">Музичного сліду ще нема — жодної закинутої пісні й жодного ❤.</div></section>';
+    if (!m) return '<section class="panel wcard"><h3>🎵 Музика</h3><div class="gempty">Музичного сліду ще нема — жодної закинутої пісні й жодної вподобайки.</div></section>';
     const r = m.requests || {};
-    const top = (m.top || []).map((x) => o.trackRow(x.track, 'закидав ' + x.count + ' ' + (x.count % 10 >= 2 && x.count % 10 <= 4 && (x.count % 100 < 12 || x.count % 100 > 14) ? 'рази' : 'разів'))).join('');
+    const top = (m.top || []).map((x) => o.trackRow(x.track, 'закинуто ' + razy(x.count))).join('');
     const likes = ((m.likes && m.likes.recent) || []).map((x) => o.trackRow(x.track, '❤ ' + esc(o.dayTime(x.at)))).join('');
     const pls = (m.playlists || []);
     return '<section class="panel wcard"><h3>🎵 Музика</h3>'
-      + '<div class="wc-pair"><div><b>' + (r.week || 0) + '</b><span>закинув за тиждень</span></div><div><b>' + (r.month || 0) + '</b><span>за місяць</span></div>'
-      + '<div><b>' + (r.all || 0) + '</b><span>усього</span></div><div><b>' + ((m.likes && m.likes.count) || 0) + '</b><span>❤ улюблених</span></div></div>'
+      + '<div class="wc-pair"><div><b>' + (r.week || 0) + '</b><span>закинуто за тиждень</span></div><div><b>' + (r.month || 0) + '</b><span>за місяць</span></div>'
+      + '<div><b>' + (r.all || 0) + '</b><span>усього</span></div><div><b>' + ((m.likes && m.likes.count) || 0) + '</b><span>❤ ' + likesWord((m.likes && m.likes.count) || 0) + '</span></div></div>'
       + (top ? '<h4>Закидає найчастіше</h4><ul class="list">' + top + '</ul>' : '')
-      + (likes ? '<h4>Останнє улюблене' + (mine ? ' <button type="button" class="ghost wc-more" data-go="#lib/likes">усе →</button>' : '') + '</h4><ul class="list">' + likes + '</ul>' : '')
+      + (likes ? '<h4>Останні вподобайки' + (mine ? ' <button type="button" class="ghost wc-more" data-go="#lib/likes">усе →</button>' : '') + '</h4><ul class="list">' + likes + '</ul>' : '')
       + (pls.length ? '<h4>Плейлисти</h4><div class="wc-pls">' + pls.map((x) => '<button type="button" class="chip" data-go="#lib/playlists">📂 ' + esc(x.name) + ' · ' + x.count + '</button>').join('') + '</div>' : '')
-      + (!top && !likes ? '<div class="gempty">' + (mine ? 'Ти ще нічого не закинув і не вподобав — усе попереду.' : 'Тут ще порожньо: жодної закинутої пісні й жодного ❤.') + '</div>' : '')
+      + (!top && !likes ? '<div class="gempty">' + (mine ? 'Від тебе ще жодної пісні й жодної вподобайки — усе попереду.' : 'Тут ще порожньо: жодної закинутої пісні й жодної вподобайки.') + '</div>' : '')
       + '</section>';
   }
 
-  function gamesCard(p) {
+  function gamesCard(p, mine) {
     const ratings = (p && p.ratings) || [];
     const recent = ((p && (p.recent || p.games)) || []).slice(0, 8);
     const daily = ((p && p.daily) || []).filter((d) => d.streak);
-    if (!ratings.length && !recent.length && !daily.length) return '<section class="panel wcard"><h3>🎮 Ігри</h3><div class="gempty">Ще нічого не зіграно.</div></section>';
+    if (!ratings.length && !recent.length && !daily.length) return '<section class="panel wcard"><h3>🎮 Ігри</h3><div class="gempty">Ще нічого не зіграно' + (mine ? ' — гайда за стіл!' : '.') + '</div></section>';
     return '<section class="panel wcard"><h3>🎮 Ігри <button type="button" class="ghost wc-more" data-go="#stats/games">таблиці →</button></h3>'
       + (daily.length ? '<div class="wc-cats">' + daily.map((d) => '<span class="chip">' + iconOf(d.game) + esc(d.title || titleOf(d.game)) + ' 🔥 ' + d.streak + ' дн. поспіль</span>').join('') + '</div>' : '')
       + (ratings.length ? '<h4>Рейтинги</h4><div class="glb">' + ratings.map((r) => '<div class="glbrow"><span>' + iconOf(r.game) + esc(titleOf(r.game)) + '</span>'
