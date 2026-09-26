@@ -1193,6 +1193,7 @@
       if ((L.kind === 'wide' || L.kind === 'narrow') && L.others.length > 1) box.style.gridTemplateColumns = 'repeat(2, auto)';
     }
     if (L.mine && L.touch && L.kind === 'narrow') buildTouch(scene, st);
+    if (!L.seats.length && !st.sprint) scene.appendChild(lobbyHint());
     const sum = document.createElement('div');
     sum.className = 'bricks-summary';
     sum.hidden = true;
@@ -1201,6 +1202,20 @@
     st.spr = st.sprMini = st.back = st.backMini = null;
     st.dirty = true;
     return L;
+  }
+
+  /// Лобі: поки збираються, нагадати, як грати, — і що самому є спринт у Соло (стіл на одного каркас не почне).
+  function lobbyHint() {
+    const d = document.createElement('div');
+    d.className = 'bricks-lobby';
+    const keys = coarse() ? 'Кнопки під стіною; тап по стіні — крутити, свайп униз — кинути, угору — сховати'
+      : '← → рухати · ↑ або X крутити · пробіл — кинути · C — сховати';
+    d.innerHTML = '<div class="bricks-lobby-wall" aria-hidden="true">' + '<i></i>'.repeat(6) + '</div><ul>'
+      + '<li>🧱 ' + keys + '</li>'
+      + '<li>💥 Закрив два ряди й більше — сусідові за стрілкою знизу лізе сміття, а свої ряди гасять те, що летить тобі</li>'
+      + '<li>🏁 Хто завалився — вибув, останній бере раунд; сідайте вдвох-учотирьох</li></ul>'
+      + '<div class="bricks-lobby-solo">Сам? «Цеглини: 40 рядів» — у Соло, на секундомір</div>';
+    return d;
   }
 
   function sizeCanvas(cv, w, h, dpr) {
@@ -1439,7 +1454,8 @@
       if (core.type >= 0 && !dead) {
         let gy = core.by;
         while (core.fits(core.type, core.bx, gy - 1, core.rot)) gy--;
-        if (gy !== core.by) drawPiece(g, geo, spr, core.type, core.bx, gy, core.rot, true);
+        // примара — підказка, куди ляже; коли раунд скінчився, вона лише заважає читати підсумок
+        if (gy !== core.by && st.phase === 'go') drawPiece(g, geo, spr, core.type, core.bx, gy, core.rot, true);
         drawPiece(g, geo, spr, core.type, core.bx, core.by, core.rot, false);
       }
       const tr = st.fx.trail;
@@ -1799,11 +1815,14 @@
     const multi = (v.need || 1) > 1, pair = rows.length === 2;
     const score = multi && pair ? '<div class="bricks-score">Рахунок ' + rows.slice().sort((a, b) => a.s - b.s).map((r) => r.wins).join(' : ') + '</div>' : '';
     const star = multi && !pair;
+    // хто встав посеред партії — інакше «Рахунок 0 : 0» під «бере партію» виглядає як збій
+    const left = over && v.result && v.result.left ? rows.filter((r) => v.result.left[r.s]) : [];
+    const gone = left.length ? '<div class="bricks-next">🚪 ' + left.map((r) => st.ctx.esc(r.nick)).join(', ') + ' — з-за столу</div>' : '';
     const html = '<div class="bricks-sumbox"><div class="bricks-sumhead">' + head + '</div>' + score
       + '<table><tr><th></th><th></th>' + (star ? '<th>раундів</th>' : '') + '<th>' + (over ? 'рядів за партію' : 'рядів') + '</th>' + (over ? '' : '<th>вислав</th><th>отримав</th>') + '</tr>'
-      + rows.map((r) => '<tr class="bk' + r.s + '"><td>' + (r.rk === 1 ? '🏆' : r.rk < 99 ? r.rk + '-й' : '') + '</td><td><span class="bricks-dot"></span>'
+      + rows.map((r) => '<tr class="bk' + r.s + '"><td>' + (r.rk === 1 ? '🏆' : r.rk > 1 && r.rk < 99 ? r.rk + '-й' : '') + '</td><td><span class="bricks-dot"></span>'
         + st.ctx.esc(r.nick) + '</td>' + (star ? '<td class="bricks-w">★' + r.wins + '</td>' : '') + '<td>' + r.lines + '</td>' + (over ? '' : '<td>' + r.sn + '</td><td>' + r.rc + '</td>') + '</tr>').join('')
-      + '</table>' + (over ? '' : '<div class="bricks-next">новий раунд за кілька секунд…</div>') + '</div>';
+      + '</table>' + gone + (over ? '' : '<div class="bricks-next">новий раунд за кілька секунд…</div>') + '</div>';
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
     el.hidden = false;
   }
@@ -1972,7 +1991,7 @@
     if (ph === 'pause') {
       const v = ctx.view;
       const w = v && v.boards ? v.boards.filter((b) => b.rk === 1) : [];
-      return w.length ? 'Раунд узяв ' + w.map((b) => b.nk || SEATS[b.s]).join(', ') : 'Раунд нікому';
+      return w.length ? (w.length > 1 ? 'Раунд беруть ' : 'Раунд бере ') + w.map((b) => b.nk || SEATS[b.s]).join(', ') : 'Раунд нікому';
     }
     if (ph === 'over') return '';
     if (!ctx.mine) return 'Дивишся збоку';

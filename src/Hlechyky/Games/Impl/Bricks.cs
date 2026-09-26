@@ -48,6 +48,8 @@ public sealed class Bricks : Game
     List<object> _frameEv = [];
     readonly bool[] _inFrame = new bool[Seats];
     readonly bool[] _rowsInFrame = new bool[Seats];
+    /// <summary>Хто з тих, що грали, устав з-за столу до кінця партії (для підсумку).</summary>
+    readonly bool[] _left = new bool[Seats];
 
     string _phase = PhaseLobby;
     int _startIn;
@@ -86,6 +88,7 @@ public sealed class Bricks : Game
     {
         _round = 0;
         _finalRanks = null;
+        Array.Clear(_left);
         foreach (var st in _seats)
         {
             st.Wins = st.MatchLines = st.MatchSent = st.MatchRecv = 0;
@@ -289,15 +292,25 @@ public sealed class Bricks : Game
     void Over()
     {
         _phase = PhaseOver;
-        var seated = new List<int>();
-        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s) && _seats[s].Nick is not null) seated.Add(s);
+        // У підсумку — усі, хто грав останній раунд, і ті, хто посеред нього встав: їхня стіна впала з місцем,
+        // як у звичайного вибулого. Інакше утікач лишався без місця («0-й»), а той, хто впав раніше за нього,
+        // підіймався вище. Очки порожнього місця каркас однаково не запише.
+        var played = new List<int>();
+        for (var s = 0; s < Seats; s++) if (_seats[s].Nick is not null) played.Add(s);
         _finalRanks = new int[Seats];
-        foreach (var s in seated) _finalRanks[s] = 1 + seated.Count(o => Better(o, s));
-        var winners = seated.Where(s => _seats[s].Wins >= _need).ToArray();
-        var order = seated.OrderBy(s => _finalRanks[s]).ThenBy(s => s).ToList();
-        var scores = seated.ToDictionary(s => s, s => (long)_seats[s].MatchLines);
-        var log = $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{Ctx.NickOf(s)} {_seats[s].Wins}"));
+        foreach (var s in played) _finalRanks[s] = 1 + played.Count(o => Better(o, s));
+        MarkLeft();
+        var winners = played.Where(s => _seats[s].Plays && _seats[s].Wins >= _need).ToArray();
+        var order = played.OrderBy(s => _finalRanks[s]).ThenBy(s => s).ToList();
+        var scores = played.ToDictionary(s => s, s => (long)_seats[s].MatchLines);
+        var log = $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{_seats[s].Nick} {_seats[s].Wins}"));
         Ctx.Finish(winners, log, scores);
+    }
+
+    /// <summary>Хто з тих, що грали раунд, уже не сидить за столом — підсумок напише «встав з-за столу».</summary>
+    void MarkLeft()
+    {
+        for (var s = 0; s < Seats; s++) _left[s] = _seats[s].Nick is not null && !_seats[s].Plays;
     }
 
     /// <summary>Чи місце <paramref name="a"/> в підсумку партії вище за <paramref name="b"/>.</summary>
@@ -358,6 +371,7 @@ public sealed class Bricks : Game
             else rest.Add(s);
         }
         foreach (var s in rest) _finalRanks[s] = 1 + stay.Length + rest.Count(o => Better(o, s));
+        MarkLeft();
         var scores = new Dictionary<int, long>();
         for (var s = 0; s < Seats; s++) if (_seats[s].Nick is not null) scores[s] = _seats[s].MatchLines;
         Ctx.Finish(stay, log, scores);
@@ -500,7 +514,7 @@ public sealed class Bricks : Game
         {
             var lines = new int[Seats];
             for (var s = 0; s < Seats; s++) lines[s] = _seats[s].MatchLines;
-            result = new { ranks = (int[])_finalRanks.Clone(), lines };
+            result = new { ranks = (int[])_finalRanks.Clone(), lines, left = (bool[])_left.Clone() };
         }
         return new
         {

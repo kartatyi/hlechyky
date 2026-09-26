@@ -1418,6 +1418,11 @@ public class BricksTests
         Kill(h, 2);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([3], h.Room.Result!.Winners);
+        // підсумок партії: утікач — зі своїм місцем (упав першим — останній), а не «0-й», і позначений як той, хто встав
+        var res = h.View(null).GetProperty("result");
+        Assert.Equal([3, 4, 2, 1], res.GetProperty("ranks").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal([false, true, false, false], res.GetProperty("left").EnumerateArray().Select(x => x.GetBoolean()));
+        Assert.EndsWith("Петро 0", h.Room.Result.Text);
     }
 
     [Fact]
@@ -1432,6 +1437,7 @@ public class BricksTests
         // підсумок на картці: той, хто лишився, — перший, а не «Раунд нікому»
         var v = h.View(null);
         Assert.Equal([2, 1, 0, 0], v.GetProperty("result").GetProperty("ranks").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal([true, false, false, false], v.GetProperty("result").GetProperty("left").EnumerateArray().Select(x => x.GetBoolean()));
         Assert.Equal(1, v.GetProperty("boards")[1].GetProperty("rk").GetInt32());
         Assert.Equal(0L, h.Room.Result.Scores![1]);
     }
