@@ -328,7 +328,7 @@
     const b = $('playBtn');
     if (playState === 'idle') { b.className = 'primary'; b.textContent = '▶ Врубити'; b.title = 'Слухати ефір прямо тут'; }
     else if (playState === 'connecting') { b.className = 'primary busy'; b.innerHTML = '<span class="spin"></span> Підключаю…'; }
-    else { b.className = 'live'; b.innerHTML = '<span class="dot"></span> В ефірі · Стоп'; b.title = 'Вимкнути'; }
+    else { b.className = 'live'; b.innerHTML = '<span class="dot"></span> В ефірі · Вирубити'; b.title = 'Вирубити звук'; }
   }
   // сервер записує, хто слухав кожен трек (вкладка «Рейтинг»); ETS2 і VLC він бачить лише числом у потоці
   let listening = false;
@@ -876,7 +876,7 @@
     // Клік по людині — її картка (web/people.js ловить data-who на всій сторінці).
     $('online').innerHTML = people.map((n) => listens(n)
       ? `<button type="button" class="chip listening who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="${esc(n)} зараз слухає ефір">🎧 ${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`
-      : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="на сайті, але плеєр вимкнений">${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">нікого</span>';
+      : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="на сайті, але плеєр вимкнений">${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">ні душі</span>';
     HPeople.refreshWhere();          // на відкритому профілі «на сайті / слухає» — живе
   }
   $('listeners').onclick = () => { if (state) toast(listenersText()); };
@@ -1556,7 +1556,7 @@
     b.setAttribute('aria-expanded', String(open));
   });
 
-  // ---------- «Оля пише…» ----------
+  // ---------- «Оля тяпає…» ----------
   const TYPING_MS = 6000;
   const typers = { chat: new Map(), table: new Map() };   // нік → коли забути
   const typedAt = { chat: 0, table: 0 };
@@ -1573,9 +1573,9 @@
     for (const [n, until] of map) if (until < now) map.delete(n);
     const names = [...map.keys()];
     if (!names.length) return '';
-    if (names.length === 1) return names[0] + ' пише…';
-    if (names.length === 2) return names[0] + ' і ' + names[1] + ' пишуть…';
-    return names[0] + ', ' + names[1] + ' і ще ' + (names.length - 2) + ' пишуть…';
+    if (names.length === 1) return names[0] + ' тяпає…';
+    if (names.length === 2) return names[0] + ' і ' + names[1] + ' тяпають…';
+    return names[0] + ', ' + names[1] + ' і ще ' + (names.length - 2) + ' тяпають…';
   }
   function paintTyping() {
     const a = typingText(typers.chat), b = typingText(typers.table);
@@ -1609,7 +1609,7 @@
       + '<div class="tc-top"><b class="tc-name"></b><button type="button" class="ghost icon tc-close" title="Згорнути" aria-label="Згорнути">✕</button></div>'
       + '<div class="tc-lines messages"></div>'
       + '<div class="tc-typing typing" hidden></div>'
-      + '<form class="tc-form"><input type="text" maxlength="500" autocomplete="off" placeholder="Сказати за столом…">'
+      + '<form class="tc-form"><input type="text" maxlength="500" autocomplete="off" placeholder="Тяпни щось за столом…">'
       + '<button class="primary" type="submit" title="Сказати">→</button></form></div>';
     const q = (s) => root.querySelector(s);
     const o = {
@@ -1679,7 +1679,7 @@
     const box = tc.lines;
     box.innerHTML = '';
     const list = (table.id && table.lines.get(table.id)) || [];
-    if (!list.length) box.innerHTML = '<div class="tc-empty muted small">Тут поки тихо. Скажи щось першим — почують усі, хто за столом і біля нього.</div>';
+    if (!list.length) box.innerHTML = '<div class="tc-empty muted small">Тут поки тихо. Тяпни щось першим — почують усі, хто за столом і біля нього.</div>';
     for (const l of list) appendTableLine(l, false);
     scrollTable();
     paintTableLast();

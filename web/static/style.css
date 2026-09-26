@@ -164,7 +164,12 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
 @keyframes blink { 50% { opacity: .25; } }
 
 /* Шапка на середніх ширинах не має лізти у два рядки. Ховаємо по черзі: спершу повзунок гучності (за 🔊),
-   далі підписи розділів (лишаються іконки з title), далі виконавця в міні-плеєрі, нік і назву сайту. */
+   далі підписи розділів (лишаються іконки з title), далі назву сайту, виконавця в міні-плеєрі й нік.
+   На «Ефірі» трек і так видно у великій панелі, тож там обкладинка й назва в шапці ховаються, а підписи
+   розділів лишаються до 1000 px — раніше на планшеті 1024 px від них лишались самі значки. */
+@media (min-width: 901px) {
+  body.route-efir header .mini-cv, body.route-efir header .mini-tt { display: none; }
+}
 @media (max-width: 1440px) {
   header #volBtn { pointer-events: auto; }
   header #volume {
@@ -175,17 +180,24 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
   header .volwrap.open #volBtn { background: var(--panel2); }
 }
 @media (max-width: 1300px) {
-  header .vswitch .lbl { display: none; }
-  header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
+  body:not(.route-efir) header .vswitch .lbl { display: none; }
+  body:not(.route-efir) header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
+}
+@media (max-width: 1200px) {
+  header .brand span { display: none; }
 }
 @media (max-width: 1150px) {
   header { gap: 10px; }
   #playBtn { min-width: 0; }
   header .mechip .nick { max-width: 90px; }
+  /* На «Ефірі» тут стоять ще й підписи розділів: 🎧 з лічильником поступається їм місцем — хто слухає,
+     видно в балачках (🎧 біля ніків). Інакше разом із чипом «ефір ↓» шапка наповзала сама на себе. */
+  body.route-efir header #listeners { display: none; }
 }
 @media (max-width: 1000px) {
+  header .vswitch .lbl { display: none; }
+  header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
   .mini-tt small { display: none; }
-  header .brand span { display: none; }
   header #listeners { max-width: 92px; }
 }
 

@@ -174,7 +174,7 @@
     const w = whereIs(nick);
     const out = [];
     if (!full) out.push('<button type="button" class="primary" data-pa="profile">👤 Профіль</button>');
-    out.push('<button type="button" data-pa="mention" title="Згадати в балачках — почує дзінь">@ Згадати</button>');
+    out.push('<button type="button" data-pa="mention" title="Гукнути в балачках — почує дзінь">@ Гукнути</button>');
     const mine = myWaitingRoom();
     if (mine && w.online && !(w.room && w.room.id === mine.id)) out.push('<button type="button" data-pa="invite" title="Покликати за мій стіл">📣 Покликати</button>');
     if (w.room && w.room.canSit) out.push('<button type="button" data-pa="sit" title="Сісти за його стіл">🎲 Підсісти</button>');
