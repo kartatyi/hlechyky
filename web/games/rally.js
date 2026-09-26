@@ -1194,34 +1194,68 @@
     else st.dark = st.lamps = null;
   }
 
-  /// Ніч: темрява з уже вирізаними ліхтарями (статично) — щокадру лише копія й фари машин.
+  /// Ніч: темрява з уже вирізаними ліхтарями (статично) — щокадру лише копія й фари машин. Темрява м'яка, тож
+  /// живе в половинній роздільності: вчетверо менше пікселів на кожне вирізання, а на канвас лягає одним
+  /// розтягнутим drawImage. Світло фар — готовий спрайт (конус + коло довкола), а не градієнти щокадру.
+  const NIGHT = 'rgba(6,10,20,.8)', NIGHT_DIV = 4;
   function buildNight(st) {
-    st.lamps = offscreen(st.pxW, st.pxH);
+    const hk = st.k / NIGHT_DIV, hw = Math.ceil(st.pxW / NIGHT_DIV), hh = Math.ceil(st.pxH / NIGHT_DIV);
+    st.lamps = offscreen(hw, hh);
     const g = st.lamps.getContext('2d');
-    g.setTransform(st.k, 0, 0, st.k, 0, 0);
-    g.fillStyle = 'rgba(6,10,20,.84)';
+    g.setTransform(hk, 0, 0, hk, 0, 0);
+    g.fillStyle = NIGHT;
     g.fillRect(0, 0, WU, HU);
     g.globalCompositeOperation = 'destination-out';
     const tr = st.track;
-    let n = 0;
     const hole = (x, y, r, a) => {
       const gr = g.createRadialGradient(x, y, 0, x, y, r);
       gr.addColorStop(0, 'rgba(0,0,0,' + a + ')'); gr.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = gr;
       g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     };
+    // ліхтарі — на кожному шостому стовпі тину, що дивиться на дорогу
+    const lamps = [];
+    let n = 0;
     for (let y = 0; y < S.ROWS; y++) {
       for (let x = 0; x < S.COLS; x++) {
         if (tr.codeAt(x, y) !== S.FENCE) continue;
-        const nearRoad = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !S.isWall(tr.codeAt(x + dx, y + dy)));
-        if (!nearRoad) continue;
-        if (n++ % 6 === 0) hole(x * 32 + 16, y * 32 + 16, 70, 0.8);
+        let road = null;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const k = tr.codeAt(x + dx, y + dy);
+          if (!S.isWall(k) && k !== S.GRASS) { road = [dx, dy]; break; }
+        }
+        if (!road || n++ % 6) continue;
+        const lx = x * 32 + 16 + road[0] * 12, ly = y * 32 + 16 + road[1] * 12;
+        lamps.push(lx, ly);
+        hole(lx, ly, 74, 0.85);
       }
     }
     const l = tr.gates[0][0];
     for (let y = l[1]; y < l[1] + l[3]; y++) hole(l[0] * 32 + 16, y * 32 + 16, 34, 0.7);
-    st.dark = offscreen(st.pxW, st.pxH);
+    // сама лампа: тепла цятка з ореолом поверх темряви
+    g.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < lamps.length; i += 2) {
+      const gr = g.createRadialGradient(lamps[i], lamps[i + 1], 0, lamps[i], lamps[i + 1], 16);
+      gr.addColorStop(0, 'rgba(255,236,170,.95)'); gr.addColorStop(0.25, 'rgba(255,220,140,.45)'); gr.addColorStop(1, 'rgba(255,210,120,0)');
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(lamps[i], lamps[i + 1], 16, 0, Math.PI * 2); g.fill();
+    }
+    st.dark = offscreen(hw, hh);
     st.darkG = st.dark.getContext('2d');
+    // світло машини: конус фар 55° на 220 u і м'яке коло 60 u — ніс праворуч, центр спрайта в машині
+    const R = 220, rp = Math.ceil(R * hk) + 2;
+    st.light = offscreen(rp * 2, rp * 2);
+    const lg = st.light.getContext('2d');
+    lg.setTransform(hk, 0, 0, hk, rp, rp);
+    const cone = lg.createRadialGradient(0, 0, 8, 0, 0, R);
+    cone.addColorStop(0, 'rgba(0,0,0,.95)'); cone.addColorStop(0.6, 'rgba(0,0,0,.55)'); cone.addColorStop(1, 'rgba(0,0,0,0)');
+    lg.fillStyle = cone;
+    lg.beginPath(); lg.moveTo(0, 0); lg.arc(0, 0, R, -0.48, 0.48); lg.closePath(); lg.fill();
+    const glow = lg.createRadialGradient(0, 0, 0, 0, 0, 60);
+    glow.addColorStop(0, 'rgba(0,0,0,.85)'); glow.addColorStop(1, 'rgba(0,0,0,0)');
+    lg.fillStyle = glow;
+    lg.beginPath(); lg.arc(0, 0, 60, 0, Math.PI * 2); lg.fill();
+    st.lightR = rp;
   }
 
   // ===============================================================================================
@@ -1694,27 +1728,21 @@
   }
 
   function drawNight(st, g) {
-    const d = st.darkG;
+    const d = st.darkG, hk = st.k / NIGHT_DIV, L = st.light, lr = st.lightR;
     d.setTransform(1, 0, 0, 1, 0, 0);
     d.globalCompositeOperation = 'copy';
     d.drawImage(st.lamps, 0, 0);
     d.globalCompositeOperation = 'destination-out';
-    d.setTransform(st.k, 0, 0, st.k, 0, 0);
     for (let i = 0; i < SEATS; i++) {
       const s = st.drawn[i];
       if (!s.ok || st.f.c[i * STRIDE + 10] < 0) continue;
-      const a = s.a / 1024 * Math.PI * 2;
-      const gr = d.createRadialGradient(s.x, s.y, 8, s.x, s.y, 220);
-      gr.addColorStop(0, 'rgba(0,0,0,.95)'); gr.addColorStop(0.6, 'rgba(0,0,0,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-      d.fillStyle = gr;
-      d.beginPath(); d.moveTo(s.x, s.y); d.arc(s.x, s.y, 220, a - 0.48, a + 0.48); d.closePath(); d.fill();
-      const r = d.createRadialGradient(s.x, s.y, 0, s.x, s.y, 60);
-      r.addColorStop(0, 'rgba(0,0,0,.85)'); r.addColorStop(1, 'rgba(0,0,0,0)');
-      d.fillStyle = r;
-      d.beginPath(); d.arc(s.x, s.y, 60, 0, Math.PI * 2); d.fill();
+      const a = s.a / 1024 * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      d.setTransform(ca, sa, -sa, ca, s.x * hk, s.y * hk);
+      d.drawImage(L, -lr, -lr);
     }
+    d.globalCompositeOperation = 'source-over';
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.drawImage(st.dark, 0, 0);
+    g.drawImage(st.dark, 0, 0, st.pxW, st.pxH);
     g.setTransform(st.k, 0, 0, st.k, 0, 0);
   }
 
