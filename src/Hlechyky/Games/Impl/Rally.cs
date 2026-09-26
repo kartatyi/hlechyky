@@ -89,11 +89,16 @@ public sealed class Rally : Game
             _nicks[i] = Ctx.NickOf(i);
             if (_nicks[i] is null) continue;
             _players++;
-            _core.Grid(i, CarOf(i));
+            // машина їде за людиною й тоді, коли її не обирали: «Ще раз» обертає місця, але трактор лишається трактором
+            var car = CarOf(i);
+            _carByNick[_nicks[i]!] = car;
+            _core.Grid(i, car);
         }
         _core.Rank();
         _solo = _players == 1;
         _ph = PhCount;
+        _simAt = Ctx.Clock.UtcNow;
+        Array.Clear(_ev);
         _left = 0;
         _results = null;
         _record = null;
@@ -180,10 +185,48 @@ public sealed class Rally : Game
 
     // ---------- тик ----------
 
+    /// <summary>Найбільше кроків симуляції за один виклик Tick(): довший борг прощаємо (сервер спав).</summary>
+    public const int MaxSteps = 3;
+    /// <summary>Годинник, до якого дорахована симуляція: мить Start() + T · 40 мс.</summary>
+    DateTimeOffset _simAt;
+    /// <summary>Події машин за всі кроки цього виклику — у кадр (між кадрами крок міг бути не один).</summary>
+    readonly int[] _ev = new int[RallyCore.Seats];
+
+    /// <summary>
+    /// Каркас будить кімнату кроком 20 мс, а зерно таймера Windows — ~15,6 мс, тож 40-мс тик насправді приходить
+    /// раз на 47–63 мс, і гонка йшла б у півтора раза повільніше за задумане. Ралі тримає свої 25 кроків на
+    /// секунду само: за виклик — стільки кроків, скільки набіг час (1–3). Пропущене понад це не надолужуємо.
+    /// У тестах годинник іде рівно на 40 мс за тик — там завжди один крок.
+    /// </summary>
     public override TickResult Tick()
     {
         if (_core is null || _ph is PhLobby or PhOver) return TickResult.None;
-        var core = _core;
+        var now = Ctx.Clock.UtcNow;
+        var steps = (int)((now - _simAt).Ticks / (RallyCore.TickMs * TimeSpan.TicksPerMillisecond));
+        if (steps > MaxSteps)
+        {
+            _simAt = now - TimeSpan.FromMilliseconds(RallyCore.TickMs * MaxSteps);
+            steps = MaxSteps;
+        }
+        if (steps < 1) steps = 1;
+        _simAt += TimeSpan.FromMilliseconds(RallyCore.TickMs * steps);
+        Array.Clear(_ev);
+        bool frame = false, view = false;
+        for (var n = 0; n < steps; n++)
+        {
+            var r = Step();
+            for (var i = 0; i < RallyCore.Seats; i++) _ev[i] |= _core.Cars[i].Ev;
+            frame |= r.Frame;
+            view |= r.View;
+            if (_ph == PhOver) break;
+        }
+        return new TickResult(frame, view);
+    }
+
+    /// <summary>Один крок симуляції (40 мс ігрового часу): фізика, кола, рекорди, кінець гонки.</summary>
+    TickResult Step()
+    {
+        var core = _core!;
         core.Tick();
         if (_ph == PhCount)
         {
@@ -389,7 +432,7 @@ public sealed class Rally : Game
             c[o + 5] = car.Mask;
             c[o + 6] = car.Lap;
             c[o + 7] = car.Next;
-            c[o + 8] = car.Ev;
+            c[o + 8] = _ev[i];
             c[o + 9] = car.Timers;
             c[o + 10] = car.Fin;
             c[o + 11] = car.BestMs;

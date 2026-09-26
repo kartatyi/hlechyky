@@ -45,13 +45,15 @@
 .rl-chip.out { opacity: .5; }
 .rl-chip .rl-x { color: var(--danger); }
 .rl-chip.rl-info { color: var(--muted); }
+.rl-chip .rl-nk { overflow: hidden; text-overflow: ellipsis; max-width: 9em; }
 .rl-tog { padding: 3px 9px; font-size: .95em; border-radius: 999px; min-height: 0; }
 .rl-tog.on { background: var(--accent2); color: var(--accent-ink); }
 
-/* ---- під канвасом: вибір машини в лобі, рекорди траси ---- */
-.rl-lower { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+/* ---- під канвасом (лише в лобі): вибір машини й рекорди траси поруч, щоб «Почати» лишалась на екрані ---- */
+.rl-lower { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 10px 14px; width: 100%; }
 .rl-lower:empty { display: none; }
-.rl-cars { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; width: 100%; max-width: 760px; }
+.rl-pick { flex: 1 1 360px; max-width: 520px; display: flex; flex-direction: column; gap: 6px; }
+.rl-cars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
 .rl-cars button {
   display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px; font-size: .8em;
   border-radius: 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -59,14 +61,14 @@
 .rl-cars button.on { background: var(--accent2); color: var(--accent-ink); box-shadow: 0 0 0 2px var(--accent) inset; }
 .rl-emo { font-size: 1.6em; line-height: 1.1; }
 .rl-note { text-align: center; }
-.rl-records { width: 100%; max-width: 420px; background: var(--bg2); border-radius: 10px; padding: 8px 12px; font-size: .88em; }
+.rl-records { flex: 1 1 320px; max-width: 540px; background: var(--bg2); border-radius: 10px; padding: 8px 12px; font-size: .86em; }
 .rl-rh { font-weight: 700; margin-bottom: 4px; }
-.rl-records ol { margin: 0; padding-left: 1.6em; display: flex; flex-direction: column; gap: 2px; }
-.rl-records li { padding: 1px 4px; border-radius: 6px; }
-.rl-records li > * { vertical-align: middle; }
-.rl-records li span:first-child { display: inline-block; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rl-records li .rl-rc { margin: 0 6px; }
-.rl-records li b { float: right; font-variant-numeric: tabular-nums; }
+/* десятка — двома стовпчиками по п'ять */
+.rl-records ol { margin: 0; padding: 0; list-style: none; columns: 2 190px; column-gap: 14px; }
+.rl-records li { display: flex; align-items: center; gap: 5px; padding: 1px 4px; border-radius: 6px; break-inside: avoid; }
+.rl-records li i { font-style: normal; color: var(--muted); min-width: 1.5em; font-variant-numeric: tabular-nums; }
+.rl-records li .rl-rn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rl-records li b { font-variant-numeric: tabular-nums; }
 .rl-records li.me { background: var(--panel3); color: var(--accent); }
 
 /* ---- підказки для телефона ---- */
@@ -122,7 +124,6 @@
 @media (max-width: 480px) {
   .rl-hud { gap: 4px; font-size: .74em; }
   .rl-chip { padding: 2px 7px; gap: 4px; }
-  .rl-cars { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .rl-touch button { transition: none; }

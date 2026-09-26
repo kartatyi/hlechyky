@@ -1030,6 +1030,55 @@ public class RallyTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Late_engine_ticks_are_caught_up_to_25_steps_a_second_but_no_more_than_three_at_once()
+    {
+        var h = Table(2);
+        Green(h);
+        var core = Core(h);
+        // каркас приходить рівно за 40 мс — рівно один крок
+        var t = core.T;
+        h.Tick();
+        Assert.Equal(t + 1, core.T);
+        // запізнився на 80 мс (зерно таймера Windows) — три кроки, щоб гонка йшла в справжньому часі
+        t = core.T;
+        h.Clock.AdvanceMs(80);
+        h.Tick();
+        Assert.Equal(t + 3, core.T);
+        // 50 мс — один крок, а решта 10 мс чекає наступного разу: 50 + 70 = 120 мс → 3 кроки на двох викликах
+        t = core.T;
+        h.Clock.AdvanceMs(10);
+        h.Tick();
+        Assert.Equal(t + 1, core.T);
+        h.Clock.AdvanceMs(30);
+        h.Tick();
+        Assert.Equal(t + 3, core.T);
+        // сервер спав п'ять секунд — не надолужуємо, лише три кроки, і далі знову рівно
+        t = core.T;
+        h.Clock.AdvanceMs(5000);
+        h.Tick();
+        Assert.Equal(t + Rally.MaxSteps, core.T);
+        h.Tick();
+        Assert.Equal(t + Rally.MaxSteps + 1, core.T);
+    }
+
+    [Fact]
+    public void Events_of_every_caught_up_step_reach_the_frame()
+    {
+        var h = Table(2);
+        Green(h);
+        var core = Core(h);
+        Assert.True(h.Act(1, "horn").Ok);
+        h.Clock.AdvanceMs(80);
+        h.Tick();                                   // гудок — на першому з трьох кроків
+        Assert.Equal(0, core.Cars[1].Ev & RallyCore.EvHorn);
+        var f = (RallyFrame)Game(h).Frame()!;
+        Assert.NotEqual(0, f.C[Rally.Stride + 8] & RallyCore.EvHorn);
+        h.Tick();
+        f = (RallyFrame)Game(h).Frame()!;
+        Assert.Equal(0, f.C[Rally.Stride + 8] & RallyCore.EvHorn);
+    }
+
+    [Fact]
     public void Solo_race_finishes_as_a_draw_with_a_time_trial_log_line()
     {
         var laps = new RallyLaps(new MemoryGameStore(), a => a());
@@ -1133,6 +1182,8 @@ public class RallyTests(ITestOutputHelper output)
         Assert.Equal(0, lobby.GetProperty("records").GetArrayLength());
         h.Start();
         var seen = new HashSet<string>();
+        // Ганна машини не обирала — їй дісталась типова для її першого місця, і далі вона їде за нею
+        var ganna = Rally.Cars[2].Id;
         for (var round = 0; round < 8; round++)
         {
             var game = Game(h);
@@ -1141,7 +1192,7 @@ public class RallyTests(ITestOutputHelper output)
             for (var s = 0; s < 3; s++)
             {
                 var nick = h.NickOf(s);
-                var car = nick == "Оля" ? "moped" : nick == "Петро" ? "viz" : Rally.Cars[s].Id;
+                var car = nick == "Оля" ? "moped" : nick == "Петро" ? "viz" : ganna;
                 Assert.Equal(car, core.Cars[s].Car);
                 Assert.Equal(car, h.View(s).GetProperty("cars")[s].GetString());
             }
