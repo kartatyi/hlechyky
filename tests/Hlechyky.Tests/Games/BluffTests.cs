@@ -421,7 +421,7 @@ public class BluffTests(ITestOutputHelper output)
     {
         var h = Table(3);
         Until(h, Bluff.PhaseWrite);
-        var r = h.Act(0, "lie", new { text = "  свинячому салі " });
+        var r = h.Act(0, "lie", new { text = "  свинячому\u00a0салі " });
         Assert.True(r.Ok);
         Assert.Equal("Записано: «свинячому салі»", r.Message);
         Assert.Equal("свинячому салі", V(h, 0).GetProperty("my").GetProperty("lie").GetString());
@@ -457,7 +457,7 @@ public class BluffTests(ITestOutputHelper output)
         var before = Views.Text(h.View(0));
         foreach (var (payload, why) in new (object, string)[]
         {
-            (new { text = "   ​ " }, "Порожня брехня нікого не надурить"),
+            (new { text = "   \u200b " }, "Порожня брехня нікого не надурить"),
             (new { text = "" }, "Порожня брехня нікого не надурить"),
             (new { }, "Порожня брехня нікого не надурить"),
             (new { text = new string('я', Bluff.MaxLie + 1) }, "Коротше — до 40 знаків"),

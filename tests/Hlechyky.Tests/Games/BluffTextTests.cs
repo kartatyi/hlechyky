@@ -118,9 +118,9 @@ public class BluffTextTests
     public void Latin_lookalikes_invisible_characters_and_stress_marks_do_not_hide_the_truth()
     {
         Assert.True(BluffText.LooksTrue("гaсi", Gas));                // латинські a та i
-        Assert.True(BluffText.LooksTrue("га​сі", Gas));          // нульовий пробіл посередині
-        Assert.True(BluffText.LooksTrue("га­сі", Gas));          // м'який перенос
-        Assert.True(BluffText.LooksTrue("га́сі", Gas));          // наголос
+        Assert.True(BluffText.LooksTrue("га\u200bсі", Gas));          // нульовий пробіл посередині
+        Assert.True(BluffText.LooksTrue("га\u00adсі", Gas));          // м'який перенос
+        Assert.True(BluffText.LooksTrue("га\u0301сі", Gas));          // наголос
         Assert.True(BluffText.LooksTrue("Бyг", Bug));                 // латинська y
         Assert.Equal(BluffText.Norm("гасі"), BluffText.Norm("гaсi"));
     }
@@ -128,10 +128,10 @@ public class BluffTextTests
     [Fact]
     public void Clean_keeps_the_authors_case_and_punctuation_but_squeezes_spaces_and_drops_invisibles()
     {
-        Assert.Equal("Свинячому салі!", BluffText.Clean("  Свинячому  салі!\n"));
-        Assert.Equal("гасі", BluffText.Clean("га​сі"));
+        Assert.Equal("Свинячому салі!", BluffText.Clean("  Свинячому\u00a0\u00a0салі!\n"));
+        Assert.Equal("гасі", BluffText.Clean("га\u200bсі"));
         Assert.Equal("a b", BluffText.Clean("a\tb\u0007"));
-        Assert.Equal("", BluffText.Clean("   ​ "));
+        Assert.Equal("", BluffText.Clean("   \u200b "));
         Assert.Equal("", BluffText.Clean(null));
     }
 

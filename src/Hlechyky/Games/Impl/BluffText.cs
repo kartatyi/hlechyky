@@ -25,7 +25,7 @@ public static class BluffText
         {
             var ch = Fold(raw);
             var cat = char.GetUnicodeCategory(ch);
-            // Невидимі (нульовий пробіл, м'який перенос) і наголоси (гá-сі): інакше «га​сі» на картці читалась би
+            // Невидимі (нульовий пробіл, м'який перенос) і знаки наголосу: інакше «га\u200bсі» на картці читалась би
             // як «гасі», а для перевірки була б двома словами «га» і «сі» — правда проскочила б непоміченою.
             if (cat is UnicodeCategory.Format or UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark) continue;
             if (char.IsLetterOrDigit(ch) || ch == '\'' || ch == '-')
@@ -216,7 +216,7 @@ public static class BluffText
         foreach (var ch in s)
         {
             var cat = char.GetUnicodeCategory(ch);
-            if (cat == UnicodeCategory.Format && ch != '‍') continue;
+            if (cat == UnicodeCategory.Format && ch != '\u200d') continue;
             if (char.IsControl(ch) || char.IsWhiteSpace(ch) || cat is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator)
             {
                 gap = true;
