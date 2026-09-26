@@ -1,0 +1,129 @@
+/*
+  Сільське ралі. Траса й машини — на канвасі (rally.js), тут — рядок над ним, кнопки пальця поверх нього,
+  вибір машини й рекорди під ним. Свої кольори — на :root з префіксом --rl-, модуль читає їх через ctx.css().
+*/
+:root {
+  --rl-blue: #6fb3e8;   /* п'яте місце */
+  --rl-pink: #e88ac0;   /* шосте місце */
+  --rl-road: #6b5a46;
+  --rl-grass: #4f7d3a;
+}
+
+/* чіпи місць у каркасі знають лише x/o/c/d — свої три кольори */
+.gseat.rl-w { color: var(--text); }
+.gseat.rl-b { color: var(--rl-blue); }
+.gseat.rl-p { color: var(--rl-pink); }
+
+.rl-body { width: 100%; }
+
+/* ---- канвас 16:9: уся траса в екрані без прокрутки (250 px — шапки сайту й картки, статус, HUD) ---- */
+.rl-wrap {
+  position: relative; width: 100%; margin: 0 auto;
+  max-width: min(1280px, calc((100vh - 250px) * 16 / 9));
+}
+.rl-wrap.rl-live { touch-action: none; user-select: none; -webkit-user-select: none; }
+.rl-cv.gcanvas { width: 100%; max-width: none; aspect-ratio: 16 / 9; height: auto; display: block; border-radius: 10px; background: var(--rl-grass); }
+
+/* ---- рядок над полем: місця, траса, рекорд, перемикачі ---- */
+.rl-hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; min-height: 1.9em; }
+.rl-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.rl-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
+.rl-chip i {
+  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
+  display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
+}
+.rl-chip.s0 { color: var(--accent); }
+.rl-chip.s1 { color: var(--ok); }
+.rl-chip.s2 { color: var(--clay); }
+.rl-chip.s3 { color: var(--text); }
+.rl-chip.s4 { color: var(--rl-blue); }
+.rl-chip.s5 { color: var(--rl-pink); }
+.rl-chip.me { box-shadow: 0 0 0 1px currentColor inset; }
+.rl-chip.out { opacity: .5; }
+.rl-chip .rl-x { color: var(--danger); }
+.rl-chip.rl-info { color: var(--muted); }
+.rl-tog { padding: 3px 9px; font-size: .95em; border-radius: 999px; min-height: 0; }
+.rl-tog.on { background: var(--accent2); color: var(--accent-ink); }
+
+/* ---- під канвасом: вибір машини в лобі, рекорди траси ---- */
+.rl-lower { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+.rl-lower:empty { display: none; }
+.rl-cars { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; width: 100%; max-width: 760px; }
+.rl-cars button {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px; font-size: .8em;
+  border-radius: 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rl-cars button.on { background: var(--accent2); color: var(--accent-ink); box-shadow: 0 0 0 2px var(--accent) inset; }
+.rl-emo { font-size: 1.6em; line-height: 1.1; }
+.rl-note { text-align: center; }
+.rl-records { width: 100%; max-width: 420px; background: var(--bg2); border-radius: 10px; padding: 8px 12px; font-size: .88em; }
+.rl-rh { font-weight: 700; margin-bottom: 4px; }
+.rl-records ol { margin: 0; padding-left: 1.6em; display: flex; flex-direction: column; gap: 2px; }
+.rl-records li { padding: 1px 4px; border-radius: 6px; }
+.rl-records li > * { vertical-align: middle; }
+.rl-records li span:first-child { display: inline-block; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rl-records li .rl-rc { margin: 0 6px; }
+.rl-records li b { float: right; font-variant-numeric: tabular-nums; }
+.rl-records li.me { background: var(--panel3); color: var(--accent); }
+
+/* ---- підказки для телефона ---- */
+.rl-turn, .rl-fullhint { display: none; }
+@media (pointer: coarse) and (orientation: portrait) {
+  .rl-turn { display: block; font-size: .82em; color: var(--muted); text-align: center; }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .rl-fullhint { display: inline-block; font-size: .8em; padding: 3px 10px; border-radius: 999px; }
+  body.gfull .rl-fullhint { display: none; }
+}
+
+/* ---- керування пальцем: великі напівпрозорі кнопки поверх канваса ---- */
+.rl-touch { display: none; }
+@media (pointer: coarse) {
+  .rl-touch.show { display: block; position: absolute; inset: 0; pointer-events: none; }
+  .rl-touch button {
+    pointer-events: auto; position: absolute; width: 64px; height: 64px; border-radius: 50%; justify-content: center;
+    font-size: 1.5em; background: rgba(15, 25, 20, .38); border: 2px solid rgba(255, 255, 255, .35); color: #fff;
+    touch-action: none; user-select: none; -webkit-user-select: none; padding: 0; min-height: 0;
+  }
+  .rl-touch button.on { background: rgba(244, 197, 66, .55); border-color: rgba(255, 255, 255, .8); }
+  .rl-tl button[data-k="l"] { left: 8px; bottom: 8px; }
+  .rl-tl button[data-k="r"] { left: 80px; bottom: 8px; }
+  .rl-br .rl-gas { right: 8px; bottom: 8px; }
+  .rl-br .rl-brake { right: 80px; bottom: 8px; width: 52px; height: 52px; font-size: 1.2em; }
+  .rl-br .rl-hb { right: 8px; bottom: 80px; width: 52px; height: 52px; font-size: 1.2em; }
+  .rl-touch.auto .rl-gas { display: none; }
+  .rl-touch.auto .rl-brake { right: 8px; }
+  .rl-touch.auto .rl-hb { right: 70px; bottom: 8px; }
+  .rl-tr .rl-sm { width: 40px; height: 40px; font-size: 1em; top: 6px; }
+  .rl-tr .rl-sm[data-a="horn"] { right: 52px; }
+  .rl-tr .rl-sm[data-a="reset"] { right: 6px; }
+}
+/* дрібний канвас (телефон портретом): кнопки менші, щоб не закривали трасу */
+@media (pointer: coarse) and (max-width: 480px) {
+  .rl-touch button { width: 48px; height: 48px; font-size: 1.15em; }
+  .rl-tl button[data-k="r"] { left: 62px; }
+  .rl-br .rl-brake { right: 62px; width: 42px; height: 42px; }
+  .rl-br .rl-hb { bottom: 62px; width: 42px; height: 42px; }
+  .rl-touch.auto .rl-hb { right: 56px; bottom: 6px; }
+  .rl-tr .rl-sm { width: 32px; height: 32px; }
+  .rl-tr .rl-sm[data-a="horn"] { right: 42px; }
+}
+
+/* ---- телефон у ландшафті: канвас на всю висоту, HUD компактний, рекорди сховані ---- */
+@media (max-height: 500px) {
+  .rl-wrap { max-width: calc((100vh - 120px) * 16 / 9); }
+  .rl-hud { font-size: .72em; gap: 4px; min-height: 0; }
+  .rl-chip { padding: 1px 7px; }
+  .rl-records { display: none; }
+}
+@media (max-width: 480px) {
+  .rl-hud { gap: 4px; font-size: .74em; }
+  .rl-chip { padding: 2px 7px; gap: 4px; }
+  .rl-cars { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rl-touch button { transition: none; }
+}
