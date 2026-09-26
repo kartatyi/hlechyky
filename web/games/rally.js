@@ -23,7 +23,7 @@
     const SEATS = 6, TICK_MS = 40, COUNT = 75;
     const WORLD_W = COLS * CELL, WORLD_H = ROWS * CELL;
     const RWALL = 640, RCAR = 768, RHAY = 896;
-    const BRAKE = 58, REV = 19, MAX_REV = 320, TURN = 28, VTURN = 256;
+    const BRAKE = 58, REV = 19, MAX_REV = 320, TURN = 28, VTURN = 256, ROLL = 2, STOP_V = 24;
     const BOOST_ADD = 384, BOOST_CAP = 1408, BOOST_TICKS = 25, BOOST_CD = 40, BOOST_DRAG = 4;
     const JUMP_MIN = 512, AIR_TICKS = 14, OIL_TICKS = 30, OIL_GRIP = 10, HB_GRIP = 30;
     const STALL = 25, RESET_CD = 75, HORN_CD = 25, MAX_AHEAD = 10;
@@ -177,6 +177,11 @@
         else if (gas < 0) c.vf = c.vf > 0 ? Math.max(0, c.vf - BRAKE) : Math.max(-MAX_REV, c.vf - REV);
         c.vf -= (c.vf * drag / 256) | 0;
         c.vl -= (c.vl * grip / 256) | 0;
+        // опір коченню: малу швидкість, якої не бере цілочисельний опір, на землі гасимо кроками до нуля
+        if (c.air === 0) {
+          if (gas === 0 && c.vf !== 0 && c.vf > -STOP_V && c.vf < STOP_V) c.vf += c.vf > 0 ? -Math.min(ROLL, c.vf) : Math.min(ROLL, -c.vf);
+          if (c.vl !== 0 && c.vl > -STOP_V && c.vl < STOP_V) c.vl += c.vl > 0 ? -1 : 1;
+        }
         if (c.boostT > 0 && c.vf > BOOST_CAP) c.vf = BOOST_CAP;
 
         let tr = (TURN * Math.min(Math.abs(c.vf), VTURN) / 256) | 0;
@@ -1101,7 +1106,8 @@
         base: 0, baseNow: 0, P: TICK, clockOn: false, rate: [],
         lead: LEAD0, leadUpAt: 0, leadDownAt: 0, lateSeen: -1, late: [],
         // своя машина
-        mine: -1, sim: null, ring: [], maskAt: new Int32Array(64), want: 0, sent: 0, sentT: 0, sentAt: 0, hbUntil: 0,
+        mine: -1, sim: null, ring: [], maskAt: new Int32Array(64), sent: 0, sentT: 0, cur: 0, hbUntil: 0,
+        plan: new Int32Array(64), planT: new Int32Array(64).fill(-1),
         keys: new Set(), touch: new Set(), off: { x: 0, y: 0, a: 0 }, drawn: [],
         // чужі
         others: [], oT: [], oOff: [],
@@ -1323,6 +1329,8 @@
     snapInto(st.ring[f.t & 63], c).t = f.t;
     st.maskAt.fill(0);
     st.maskAt[f.t & 63] = c.mask;
+    // чинна маска — серверна; надіслане на пізніші тики чекає свого тика в плані
+    st.cur = c.mask;
     snapInto(st.prevOwn, c);
     st.off.x = st.off.y = st.off.a = 0;
   }
@@ -1370,8 +1378,9 @@
     while (st.sim.T < target && n < 5) {
       const t = st.sim.T + 1;
       flush(st, t);
-      car.mask = st.sent;
-      st.maskAt[t & 63] = st.sent;
+      if (st.planT[t & 63] === t) st.cur = st.plan[t & 63];
+      car.mask = st.cur;
+      st.maskAt[t & 63] = st.cur;
       snapInto(st.prevOwn, car);
       st.sim.tick();
       snapInto(st.ring[t & 63], car).t = t;
@@ -1457,16 +1466,25 @@
   const coarse = () => HGames.ui.coarse();
 
   /// Надіслати маску, якщо змінилась. t — тик, на який вона ляже (наступний крок своєї симуляції).
-  function flush(st, t) {
+  /// Не частіше ніж раз на тик — ≤ 25 на секунду при квоті каркаса 30 Input/с (понад неї сервер мовчки
+  /// відкидає, і передбачення розходилось би з сервером на пів секунди). Друга зміна в межах того самого тика
+  /// чекає наступного кроку й їде вже з останньою маскою; soon — не чекати кроку (вкладка ховається, rAF стане):
+  /// одразу на наступний після надісланого тик.
+  function flush(st, t, soon) {
     const ctx = st.ctx;
     if (!ctx || !ctx.mine || !ctx.playing || !st.sim || !st.f || st.f.ph === 3) return;
     const k = wantMask(st, t);
     if (k === st.sent && !st.forceSend) return;
+    if (t <= st.sentT) {
+      if (!soon) return;
+      t = st.sentT + 1;
+    }
     st.forceSend = false;
-    if (t < st.sentT) t = st.sentT;
     st.sent = k;
     st.sentT = t;
-    st.sentAt = performance.now();
+    // свій план — як кільце сервера: маска ляже рівно на тику t і в симуляції, і на сервері
+    st.plan[t & 63] = k;
+    st.planT[t & 63] = t;
     ctx.input('ctl', { t: t, k: k });
   }
 
@@ -1474,7 +1492,7 @@
     st.keys.clear();
     st.touch.clear();
     st.hbUntil = 0;
-    if (st.sim) flush(st, st.sim.T + 1);
+    if (st.sim) flush(st, st.sim.T + 1, true);
   }
 
   function horn(st) {
@@ -1900,6 +1918,8 @@
     // спалахи (коло, фініш)
     g.textAlign = 'center';
     if (st.flashes.length && now - st.flashes[0].at >= st.flashes[0].ms) st.flashes = st.flashes.filter((fl) => now - fl.at < fl.ms);
+    // гонка скінчилась — таблиця результатів сама все каже, спалах «Фініш» не лізе на неї
+    if (f.ph === 3 && st.flashes.length) st.flashes.length = 0;
     let fy = H * 0.3;
     for (const fl of st.flashes) {
       const a = Math.min(1, (fl.ms - (now - fl.at)) / 300);
@@ -2163,7 +2183,7 @@
   /// «Ще раз»: усе, що жило однією гонкою, — з нуля (маска на сервері теж нульова).
   function newRound(st) {
     st.sim = null; st.others = []; st.clockOn = false; st.mountCtl = false; st.seenFin = 0; st.lateSeen = -1; st.late = [];
-    st.lead = LEAD0; st.sent = 0; st.sentT = 0; st.flashes = []; st.lastPh = -1; st.wrongN = 0; st.wrong = false;
+    st.lead = LEAD0; st.sent = 0; st.sentT = 0; st.cur = 0; st.planT.fill(-1); st.flashes = []; st.lastPh = -1; st.wrongN = 0; st.wrong = false;
     for (const d of st.drawn) d.ok = false;
     if (st.skidG) st.skidG.clearRect(0, 0, WU, HU);
   }

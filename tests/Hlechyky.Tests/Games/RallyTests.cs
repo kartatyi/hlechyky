@@ -303,6 +303,34 @@ public class RallyTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void An_abandoned_car_stops_instead_of_creeping()
+    {
+        // цілочисельний опір не бере швидкостей, менших за 256/опір, — без опору коченню машина, яку покинули
+        // (F5, вийшов на хвилинку), повзла б сама: на дорозі 15 sub/тик, на льоду 21 і ще й боком
+        foreach (var fill in new[] { '=', '*', '.' })
+        {
+            var core = Bare(Arena(fill));
+            var c = core.Put(0, At(20), At(13.5), 0, 700);
+            c.VL = 300;
+            Run(core, 150);
+            Assert.True(c.VF == 0 && c.VL == 0, $"{fill}: VF {c.VF}, VL {c.VL}");
+            var (x, y) = (c.X, c.Y);
+            Run(core, 50);
+            Assert.Equal((x, y), (c.X, c.Y));
+        }
+        // а на ходу опору коченню нема: накатом понад StopV швидкість гасить лише опір дороги, як у spec §5.4
+        var run = Bare(Arena());
+        var r = run.Put(0, At(5), At(13.5), 0, 700);
+        var vf = 700;
+        for (var i = 0; i < 20; i++)
+        {
+            run.Tick();
+            vf -= vf * 16 / 256;
+            Assert.Equal(vf, r.VF);
+        }
+    }
+
+    [Fact]
     public void Steering_while_stopped_does_nothing()
     {
         var core = Bare(Arena());
@@ -385,7 +413,9 @@ public class RallyTests(ITestOutputHelper output)
             var core = Bare(Arena(fill));
             var c = core.Put(0, At(10), At(8.5), 0, 840);
             c.Mask = 2;
-            while (c.A < 256) core.Tick();
+            // без газу машина крутиться, поки має швидкість уздовж себе: на льоду це майже рівно чверть оберту
+            for (var n = 0; c.A < 240 && n < 100; n++) core.Tick();
+            Assert.True(c.A >= 240, $"{fill}: повернули лише на {c.A}");
             var after = Math.Abs(c.VL);
             c.Mask = 0;
             Run(core, 10);

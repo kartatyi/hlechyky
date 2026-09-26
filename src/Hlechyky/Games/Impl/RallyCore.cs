@@ -64,6 +64,9 @@ public sealed class RallyCore
     public const int WorldW = RallyTrack.Cols * RallyTrack.CellSub, WorldH = RallyTrack.Rows * RallyTrack.CellSub;
     public const int RWall = 640, RCar = 768, RHay = 896;
     public const int Brake = 58, Rev = 19, MaxRev = 320, Turn = 28, VTurn = 256;
+    /// <summary>Опір коченню: швидкість, меншу за StopV sub/тик (її вже не бере цілочисельний опір), без газу гасимо
+    /// по Roll за тик — покинута машина зупиняється, а не повзе.</summary>
+    public const int Roll = 2, StopV = 24;
     public const int BoostAdd = 384, BoostCap = 1408, BoostTicks = 25, BoostCdTicks = 40, BoostDrag = 4;
     public const int JumpMinVF = 512, AirTicks = 14, OilTicks = 30, OilGrip = 10, HbGrip = 30;
     public const int StallTicks = 25, ResetCdTicks = 75, HornCdTicks = 25;
@@ -314,6 +317,14 @@ public sealed class RallyCore
         else if (gas < 0) c.VF = c.VF > 0 ? Math.Max(0, c.VF - Brake) : Math.Max(-MaxRev, c.VF - Rev);
         c.VF -= c.VF * drag / 256;
         c.VL -= c.VL * grip / 256;
+        // опір коченню: усічення вище не гасить швидкостей, менших за 256/опір (на дорозі — 15 sub/тик, на льоду —
+        // 21), і покинута машина повзла б сама хоч до кінця гонки. На землі малу швидкість гасимо кроками до нуля
+        // (уперед — без газу й гальма); на ходу, понад StopV, фізика та сама, що в spec §5.4
+        if (c.Air == 0)
+        {
+            if (gas == 0 && c.VF != 0 && c.VF > -StopV && c.VF < StopV) c.VF += c.VF > 0 ? -Math.Min(Roll, c.VF) : Math.Min(Roll, -c.VF);
+            if (c.VL != 0 && c.VL > -StopV && c.VL < StopV) c.VL += c.VL > 0 ? -1 : 1;
+        }
         if (c.BoostT > 0 && c.VF > BoostCap) c.VF = BoostCap;
 
         var tr = Turn * Math.Min(Math.Abs(c.VF), VTurn) / 256;
