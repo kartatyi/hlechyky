@@ -702,11 +702,11 @@ public class RunnerSimTests
     /// </summary>
     public static readonly (string Name, Func<RunnerSim> Make, uint Js)[] Fixtures =
     [
-        ("dino 1×3000", () => RunnerSim.Fixture(RunnerMode.Dino, 1693571063, 1, 11, 3000, 150, 1000, false), 0u),
-        ("dino 8×6000", () => RunnerSim.Fixture(RunnerMode.Dino, 424242, 8, 12, 6000, 150, 1000, true), 0u),
-        ("dino 8×3000 сніжки", () => RunnerSim.Fixture(RunnerMode.Dino, 777, 8, 13, 3000, 150, 1000, true, [(600, 0), (1500, 3), (2400, 5)]), 0u),
-        ("storks 4×4000", () => RunnerSim.Fixture(RunnerMode.Storks, 402881377, 4, 14, 4000, 150, 1000, false), 0u),
-        ("dino-daily 1×5000", () => RunnerSim.Fixture(RunnerMode.Dino, Days.Seed("dino-daily", "2026-09-27"), 1, 15, 5000, 0, 1250, false), 0u),
+        ("dino 1×3000", () => RunnerSim.Fixture(RunnerMode.Dino, 1693571063, 1, 11, 3000, 150, 1000, false), 1063127438u),
+        ("dino 8×6000", () => RunnerSim.Fixture(RunnerMode.Dino, 424242, 8, 12, 6000, 150, 1000, true), 2442894996u),
+        ("dino 8×3000 сніжки", () => RunnerSim.Fixture(RunnerMode.Dino, 777, 8, 13, 3000, 150, 1000, true, [(600, 0), (1500, 3), (2400, 5)]), 550162003u),
+        ("storks 4×4000", () => RunnerSim.Fixture(RunnerMode.Storks, 402881377, 4, 14, 4000, 150, 1000, false), 3833156659u),
+        ("dino-daily 1×5000", () => RunnerSim.Fixture(RunnerMode.Dino, Days.Seed("dino-daily", "2026-09-27"), 1, 15, 5000, 0, 1250, false), 1039721497u),
     ];
 
     [Fact]
