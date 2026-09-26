@@ -242,6 +242,29 @@
     return w ? w.name : key;
   }
 
+  /// Вироби для всіх частин (ремесло, горно, ярмарок, альбом, цех) — у тих самих рядках, що й раніше: назва й
+  /// «відкриється на» — з каталогу, стан (відкритий, робота, обпалено, ціна) — з виду. Десяте оновлення (§10) винесло
+  /// незмінне з виду, що летить щопачки кліків. Старий сервер шле рядки цілими — беремо як є; без каталогу (перші
+  /// миті після F5, поки ядро його допитується) назвою служить ключ.
+  function waresOf(st, list) {
+    if (!list.length || list[0].name != null) return list;
+    const cat = new Map(((st.catalog && st.catalog.wares) || []).map((w) => [w.key, w]));
+    return list.map((w) => {
+      const k = cat.get(w.key) || {};
+      return { key: w.key, name: k.name || w.key, unlock: k.unlock || 0, open: !!w.open, need: w.need || 1, fired: w.fired || 0, value: w.value || 0 };
+    });
+  }
+
+  /// Прокачка ремесла: назва й опис — з каталогу, рівень зі стелею, ціна наступного й «зараз: …» — з виду.
+  function upsOf(st, list) {
+    if (!list.length || list[0].name != null) return list;
+    const cat = new Map(((st.catalog && st.catalog.craftUps) || []).map((u) => [u.key, u]));
+    return list.map((u) => {
+      const k = cat.get(u.key) || {};
+      return { key: u.key, name: k.name || u.key, desc: k.desc || '', level: u.level || 0, max: u.max || 0, price: u.price || 0, now: u.now || '' };
+    });
+  }
+
   /// Скільки роботи вже є просто зараз: серверне число + кліки, що ще не полетіли або летять, + підмайстри.
   function workNow(st) {
     const c = st.craft;
@@ -284,14 +307,20 @@
       st.jugBox.innerHTML = '<g transform="translate(50 70) scale(.78) translate(-50 -86)">' + inner + '</g>';
     }
     if (st.craftUi) {
-      // Смужку кроку «коло» доводимо щокадру: решту смуги вистачає малювати раз на slow.
-      const bar = st.craftUi.steps.querySelector('[data-step="wheel"] .clk-stbar i');
-      if (bar) {
-        const pct = Math.round(p * 1000) / 10 + '%';
-        if (bar.style.width !== pct) bar.style.width = pct;
-      }
-      st.craftUi.el.classList.toggle('full', full);
+      // Смужку кроку «коло» доводимо щокадру (решту смуги вистачає малювати раз на slow) — масштабом, а не шириною:
+      // transform не чіпає розкладки, а ширина щокадру перераховувала б її 60 разів на секунду (десяте оновлення, §10).
+      setBar(st.craftUi.wheelBar, p);
+      if (st.craftUi.full !== full) { st.craftUi.full = full; st.craftUi.el.classList.toggle('full', full); }
     }
+  }
+
+  /// Смужка прогресу кроком у тисячну: пишемо стиль лише тоді, коли число справді зрушило.
+  function setBar(el, frac) {
+    if (!el) return;
+    const k = Math.max(0, Math.min(1000, Math.round(frac * 1000)));
+    if (el._k === k) return;
+    el._k = k;
+    el.style.transform = 'scaleX(' + k / 1000 + ')';
   }
 
   /// Сирці на полиці над колом: до десяти, решта — «+N». Мокрі темніші; висохлі — світлі й чекають горна.
@@ -476,19 +505,34 @@
     const ui = st.craftUi;
     if (!c || !ui) return;
     const esc = (x) => api.esc(st, x);
+    const steps = pathSteps(st, api);
     // Чип — кнопка, а ⓘ поруч — окрема кнопка (кнопка в кнопці недійсна, і з клавіатури до неї не дістатись):
     // обидві в обгортці .clk-stepw, яка й стоїть у сітці кроків.
-    const html = pathSteps(st, api).map((s) => '<span class="clk-stepw' + (s.ups ? ' hasi' : '') + '"><button type="button" class="clk-step' + (s.on ? ' on' : '') + (s.hot ? ' hot' : '')
+    // Каркас (кнопки, значки, назви, класи) міняється рідко — його й порівнює swap. Рядок під назвою («17/40»,
+    // «складено 6») і смужки живуть на місці: раніше вся смуга перемальовувалась innerHTML-ом на кожен клік, а з нею
+    // SVG виробу й розкладка картки (десяте оновлення, §10).
+    const html = steps.map((s) => '<span class="clk-stepw' + (s.ups ? ' hasi' : '') + '"><button type="button" class="clk-step' + (s.on ? ' on' : '') + (s.hot ? ' hot' : '')
       + (s.ups ? ' hasi' : '') + '" data-step="' + s.key + '">'
       + '<span class="clk-stico">' + (s.ico.charAt(0) === '<' ? s.ico : esc(s.ico)) + '</span>'
-      + '<span class="clk-sttxt"><b>' + esc(s.name) + '</b><span class="clk-stsub">' + esc(s.sub) + '</span></span>'
-      + (s.pct != null ? '<i class="clk-stbar"><i style="width:' + Math.max(0, Math.min(100, s.pct)).toFixed(1) + '%"></i></i>' : '')
+      + '<span class="clk-sttxt"><b>' + esc(s.name) + '</b><span class="clk-stsub"></span></span>'
+      + (s.pct != null ? '<i class="clk-stbar"><i></i></i>' : '')
       + '</button>'
       + (s.ups ? '<button type="button" class="clk-sti" data-ups="1" aria-label="Звідки ця місткість і як її збільшити" title="Звідки ця місткість і як її збільшити">ⓘ</button>' : '')
       + '</span>').join('');
     if (api.swap(ui.steps, html)) {
       for (const b of ui.steps.querySelectorAll('[data-step]')) b.onclick = (ev) => stepClick(st, api, b.dataset.step, ev);
       for (const i of ui.steps.querySelectorAll('.clk-sti')) i.onclick = () => { api.sfx('tap'); showUps(st, api); };
+      ui.stepEls = {};
+      for (const b of ui.steps.querySelectorAll('[data-step]')) {
+        ui.stepEls[b.dataset.step] = { sub: b.querySelector('.clk-stsub'), bar: b.querySelector('.clk-stbar i') };
+      }
+      ui.wheelBar = ui.stepEls.wheel ? ui.stepEls.wheel.bar : null;
+    }
+    for (const s of steps) {
+      const el = ui.stepEls && ui.stepEls[s.key];
+      if (!el) continue;
+      if (el.sub && el.sub.textContent !== s.sub) el.sub.textContent = s.sub;
+      if (s.pct != null) setBar(el.bar, s.pct / 100);
     }
     paintNext(st, api);
   }
@@ -543,9 +587,8 @@
     if (ui.nxBtn.hidden !== !label) ui.nxBtn.hidden = !label;
     const off = !label || !st.mine || !n.run;
     if (ui.nxBtn.disabled !== off) ui.nxBtn.disabled = off;
-    ui.nxBtn.classList.toggle('armed', !!ui.armed);
-    const pct = n.pct != null ? Math.max(0, Math.min(100, n.pct)).toFixed(1) + '%' : '0%';
-    if (ui.nxBar.style.width !== pct) ui.nxBar.style.width = pct;
+    if (ui.nxBtn.classList.contains('armed') !== !!ui.armed) ui.nxBtn.classList.toggle('armed', !!ui.armed);
+    setBar(ui.nxBar, n.pct != null ? n.pct / 100 : 0);
   }
 
   // ---------- підказки «перший раз» ----------
@@ -762,7 +805,8 @@
     const c = st.craft;
     if (!c || !st.upsBody) return;
     // Кличеться щокадру, а HTML міняється лише коли змінився рівень, стеля чи «по кишені»: інакше розгорнута ⓘ згорталась би сама.
-    const sig = (c.ups || []).map((u) => u.key + ':' + u.level + ':' + u.max + ':' + (st.shown >= u.price ? 1 : 0)).join(',');
+    // Назва (приїжджає з каталогом) і «зараз: …» (росте разом із майстернею) — теж у підписі.
+    const sig = (c.ups || []).map((u) => u.key + ':' + u.level + ':' + u.max + ':' + (st.shown >= u.price ? 1 : 0) + ':' + u.name + ':' + u.now).join(',');
     if (st.upsBody._sig === sig) return;
     st.upsBody._sig = sig;
     const esc = (x) => api.esc(st, x);
@@ -846,8 +890,8 @@
       st.craft = {
         ware: c.ware, work: c.work || 0, need: c.need || 1, apprentice: c.apprentice || 0, rackFull: !!c.rackFull,
         rack: (c.rack || []).map((r) => ({ ware: r.ware, clay: r.clay || '', dryAt: Date.parse(r.dryAt) || 0 })),
-        rackSize: c.rackSize || 8, wares: c.wares || [], items: c.items || [], storeCap: c.storeCap || 200,
-        ups: c.ups || [], formed: c.formed || 0, fired: c.fired || 0,
+        rackSize: c.rackSize || 8, wares: waresOf(st, c.wares || []), items: c.items || [], storeCap: c.storeCap || 200,
+        ups: upsOf(st, c.ups || []), formed: c.formed || 0, fired: c.fired || 0,
       };
       st.craftAt = Date.now();
       st.craftDone = 0;

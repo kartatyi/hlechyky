@@ -578,6 +578,13 @@
 
   // ---------- стан горна ----------
 
+  /// paintState кличе slow п'ять разів на секунду: стилі й атрибути пишемо лише тоді, коли вони справді інші, —
+  /// навіть той самий атрибут SVG змушує браузер перераховувати стилі (десяте оновлення, §10).
+  const setVar = (el, k, v) => { if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v); };
+  const setAttr = (el, k, v) => { if (el && el.getAttribute(k) !== v) el.setAttribute(k, v); };
+  const setHidden = (el, h) => { if (el.hidden !== h) el.hidden = h; };
+  const setClass = (el, cls, on) => { if (el.classList.contains(cls) !== on) el.classList.toggle(cls, on); };
+
   function paintState(st, api, now) {
     const k = st.kView;
     const ui = st.kUi;
@@ -593,9 +600,9 @@
       label = '🔥 Підмайстер палить горно';
       clock = '⏳ ' + api.mmss(left);
       barPct = 100 - Math.max(0, Math.min(100, (left / burnMs(st)) * 100));
-      ui.svg.style.setProperty('--clkk-heat', '0.75');
-      ui.svg.style.setProperty('--clkk-fuel', '1');
-      ui.glow.setAttribute('opacity', '.8');
+      setVar(ui.svg, '--clkk-heat', '0.75');
+      setVar(ui.svg, '--clkk-fuel', '1');
+      setAttr(ui.glow, 'opacity', '.8');
       if (Date.now() - (st.kRoarAt || 0) > 3000 && left > 0) { st.kRoarAt = Date.now(); api.sfx('kiln-roar'); }
     } else if (manual) {
       label = '🔥 Горно палає — тримай жар!';
@@ -604,25 +611,29 @@
       label = '♨ Горно холоне';
       clock = api.mmss(left);
       const c = Math.max(0, Math.min(1, left / ((cat(st) && cat(st).coolMs) || 60000)));
-      ui.svg.style.setProperty('--clkk-heat', (c * 0.45).toFixed(3));
-      ui.glow.setAttribute('opacity', (c * 0.5).toFixed(2));
+      setVar(ui.svg, '--clkk-heat', (c * 0.45).toFixed(3));
+      setAttr(ui.glow, 'opacity', (c * 0.5).toFixed(2));
     } else {
       label = k.state === 'loaded' ? '🧱 Горно завантажене — можна палити' : '❄ Горно холодне';
-      ui.svg.style.setProperty('--clkk-heat', '0');
-      ui.glow.setAttribute('opacity', '0');
+      setVar(ui.svg, '--clkk-heat', '0');
+      setAttr(ui.glow, 'opacity', '0');
     }
     if (ui.state.textContent !== label) ui.state.textContent = label;
     if (!manual && ui.clock.textContent !== clock) ui.clock.textContent = clock;
-    ui.bar.hidden = !(manual || barPct != null);
-    if (barPct != null) ui.barFill.style.width = barPct.toFixed(1) + '%';
-    ui.play.hidden = !manual || !st.mine;
-    ui.gauge.hidden = !manual;
-    ui.top.classList.toggle('playing', manual);
-    ui.svg.classList.toggle('burning', burning);
-    ui.svg.classList.toggle('cooling', k.state === 'cooling');
-    ui.svg.classList.toggle('helper', burning && !!k.helper);
-    ui.svg.querySelector('.clkk-straw').setAttribute('opacity', burning && k.strawOn ? '1' : '0');
-    if (!manual) { ui.gust.hidden = true; ui.svg.classList.remove('closed'); }
+    setHidden(ui.bar, !(manual || barPct != null));
+    if (barPct != null) {
+      const w = barPct.toFixed(1) + '%';
+      if (ui.barFill.style.width !== w) ui.barFill.style.width = w;
+    }
+    setHidden(ui.play, !manual || !st.mine);
+    setHidden(ui.gauge, !manual);
+    setClass(ui.top, 'playing', manual);
+    setClass(ui.svg, 'burning', burning);
+    setClass(ui.svg, 'cooling', k.state === 'cooling');
+    setClass(ui.svg, 'helper', burning && !!k.helper);
+    if (!ui.straw) ui.straw = ui.svg.querySelector('.clkk-straw');
+    setAttr(ui.straw, 'opacity', burning && k.strawOn ? '1' : '0');
+    if (!manual) { setHidden(ui.gust, true); setClass(ui.svg, 'closed', false); }
     paintWares(st, api, k.batch, burning);
     // Ярлик «Ремесло»: стан горна одним поглядом, коротко.
     let note = '';
