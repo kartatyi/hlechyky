@@ -284,4 +284,16 @@ public class GuestAdoptionTests
         Assert.Equal(0, Db.Progress("{\"pots\":3}"));
         Assert.Equal(0, Db.Progress("не json"));
     }
+
+    [Fact]
+    public void A_guest_on_long_polling_is_still_a_guest()
+    {
+        // SignalR на long polling клонує HttpContext: Items там — звичайний Dictionary, який на відсутній ключ кидає
+        var c = new Microsoft.AspNetCore.Http.DefaultHttpContext { Items = new Dictionary<object, object?> { ["nick"] = "гість Вася" } };
+        Assert.Null(Auth.Me(c));
+        Assert.False(Auth.IsUser(c));
+        Assert.Equal("member", Auth.Role(c));
+        Assert.Equal("гість Вася", Auth.Nick(c));
+        Assert.Equal(Auth.Guest, Auth.Nick(new Microsoft.AspNetCore.Http.DefaultHttpContext { Items = new Dictionary<object, object?>() }));
+    }
 }

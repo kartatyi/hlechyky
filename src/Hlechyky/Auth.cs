@@ -25,11 +25,14 @@ public static class Auth
     public const string GuestPrefix = "гість ";
     public const int NickMin = 2, NickMax = 24, PasswordMin = 6;
 
-    public static Account? Me(HttpContext c) => c.Items["account"] as Account;
+    // Через TryGetValue, а не індексатор: у хабі на long polling SignalR клонує HttpContext, і Items там — звичайний
+    // Dictionary, що на відсутній ключ кидає KeyNotFoundException. Гість (без "account") так вилітав з хаба на старті.
+    public static Account? Me(HttpContext c) => Item(c, "account") as Account;
     public static bool IsUser(HttpContext c) => Me(c) is not null;
-    public static string Role(HttpContext c) => c.Items["role"] as string ?? "member";
+    public static string Role(HttpContext c) => Item(c, "role") as string ?? "member";
     public static bool IsAdmin(HttpContext c) => Role(c) == "admin";
-    public static string Nick(HttpContext c) => c.Items["nick"] as string ?? Guest;
+    public static string Nick(HttpContext c) => Item(c, "nick") as string ?? Guest;
+    static object? Item(HttpContext c, string key) => c.Items.TryGetValue(key, out var v) ? v : null;
 
     /// <summary>Ключ ніка — без регістру й країв, як у гаманців (Store.Key): «Оля» і «оля» — одна людина.</summary>
     public static string NickKey(string? nick) => (nick ?? "").Trim().ToLowerInvariant();
