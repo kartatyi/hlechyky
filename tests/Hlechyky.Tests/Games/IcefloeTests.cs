@@ -109,8 +109,12 @@ public class IcefloeTests(ITestOutputHelper output)
         Assert.Equal(950, ice.GetProperty("r0").GetInt32());
         foreach (var v in ice.GetProperty("v").EnumerateArray())
             Assert.InRange(v.GetInt32(), (int)Math.Floor(950 * 0.92), (int)Math.Ceiling(950 * 1.08));
-        // найбільша крижина все одно не лізе на берег
-        Assert.True(1100 * 1.08 < IcefloeCore.Shore - IcefloeCore.BodyR / 2);
+        // найбільша крижина все одно не лізе на берег, а берег на вісьмох не виходить за ставок
+        foreach (var r0 in new[] { 800, 950, 1100 })
+            Assert.True(r0 * 1.08 < IcefloeCore.ShoreOf(r0) - IcefloeCore.BodyR / 2);
+        Assert.Equal(IcefloeCore.ShoreOf(950), ice.GetProperty("r0").GetInt32() * 1.08 + IcefloeCore.ShoreGap, 0);
+        Assert.Equal((int)IcefloeCore.ShoreOf(950), h.View(null).GetProperty("shore").GetInt32());
+        Assert.True(IcefloeCore.ShoreOf(1100) + IcefloeCore.BankGap < IcefloeCore.Pond / 2);   // вибулі стоять у межах ставка
     }
 
     [Fact] // 2
@@ -498,8 +502,10 @@ public class IcefloeTests(ITestOutputHelper output)
         var p = Frame(h).GetProperty("p")[1];
         Assert.Equal(16, p[5].GetInt32() & 16);
         Assert.Equal(0, p[5].GetInt32() & 1);
-        Assert.Equal(Math.Round(C + IcefloeCore.Bank * Math.Cos(angle)), p[0].GetInt32());
-        Assert.Equal(Math.Round(C + IcefloeCore.Bank * Math.Sin(angle)), p[1].GetInt32());
+        var bank = Core(h).Bank;
+        Assert.Equal(IcefloeCore.ShoreOf(800) + IcefloeCore.BankGap, bank);   // трійко на кризі 800 — берег близько
+        Assert.Equal(Math.Round(C + bank * Math.Cos(angle)), p[0].GetInt32());
+        Assert.Equal(Math.Round(C + bank * Math.Sin(angle)), p[1].GetInt32());
         Assert.Equal(3, p[7].GetInt32());
         Assert.Equal([1], h.View(null).GetProperty("out").EnumerateArray().Select(x => x.GetInt32()));
     }
@@ -517,7 +523,7 @@ public class IcefloeTests(ITestOutputHelper output)
         var target = Put(c, 1, C, C);
         Assert.Null(c.Throw(0));
         var ball = c.Balls.Single(x => x.On);
-        Assert.Equal(C - IcefloeCore.Bank, ball.X, 6);
+        Assert.Equal(C - c.Bank, ball.X, 6);
         Assert.Equal(C, ball.Y, 6);
         var hit = false;
         for (var t = 0; t < 60 && !hit; t++)

@@ -292,8 +292,8 @@ public sealed class Icefloe : Game
             pushouts,
             ice = new { r0 = c.R0, v, iv = c.Iv },
             pond = (int)IcefloeCore.Pond,
-            shore = (int)IcefloeCore.Shore,
-            bank = (int)IcefloeCore.Bank,
+            shore = (int)c.Shore,
+            bank = (int)c.Bank,
             bodyR = (int)IcefloeCore.BodyR,
             lastRound = lobby || _lastRound is not { } lr ? null : new
             {

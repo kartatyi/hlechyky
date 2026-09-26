@@ -72,13 +72,22 @@ public sealed class IcefloeCore(Random rng)
 
     /// <summary>
     /// Ставок 2600 × 2600 (spec казав 2400, але найбільша крижина на вісьмох — 1100 × 1.08 = 1188 см — тоді лізла
-    /// б на берег із радіусом 1150). Центр — (1300, 1300).
+    /// б на берег із радіусом 1150). Центр — (1300, 1300). Сніжки живуть у межах ставка.
     /// </summary>
     public const double Pond = 2600, Cx = Pond / 2, Cy = Pond / 2;
-    /// <summary>Де закінчується вода й починається сніг.</summary>
-    public const double Shore = 1225;
+    /// <summary>Від найбільшої можливої вершини криги (R0 · 1.08) до берега — 40 см води; від берега до вибулих — 37.</summary>
+    public const double ShoreGap = 40, BankGap = 37;
+
+    /// <summary>
+    /// Де закінчується вода й починається сніг. Залежить від криги партії: на двох (R0 = 800) берег ближчий
+    /// (904), на вісьмох (1100) — 1228. Так браузер показує лише ставок навколо криги, і на двох тіла на екрані
+    /// на третину більші, ніж якби камера завжди брала найбільший ставок.
+    /// </summary>
+    public double Shore { get; private set; } = ShoreOf(BaseRadius(2));
     /// <summary>Де стоять ті, хто шубовснув (на снігу, трохи за лінією берега).</summary>
-    public const double Bank = 1262;
+    public double Bank => Shore + BankGap;
+
+    public static double ShoreOf(int r0) => Math.Round(r0 * 1.08 + ShoreGap);
     public const int Vertices = 24;
 
     public const double BodyR = 60;
@@ -227,6 +236,7 @@ public sealed class IcefloeCore(Random rng)
     public void NewRound(int baseRadius)
     {
         R0 = baseRadius;
+        Shore = ShoreOf(baseRadius);
         for (var i = 0; i < Vertices; i++) R[i] = R0 * (0.92 + 0.16 * rng.NextDouble());
         Iv++;
         Melt = 0;
@@ -245,6 +255,7 @@ public sealed class IcefloeCore(Random rng)
     public void Flat(int baseRadius)
     {
         R0 = baseRadius;
+        Shore = ShoreOf(baseRadius);
         for (var i = 0; i < Vertices; i++) R[i] = R0;
         Melt = 0;
         CrackS = -1;
@@ -378,7 +389,7 @@ public sealed class IcefloeCore(Random rng)
     }
 
     /// <summary>Точка на березі під кутом падіння.</summary>
-    public static (double X, double Y) BankPoint(double angle) => (Cx + Bank * Math.Cos(angle), Cy + Bank * Math.Sin(angle));
+    public (double X, double Y) BankPoint(double angle) => (Cx + Bank * Math.Cos(angle), Cy + Bank * Math.Sin(angle));
 
     /// <summary>Гравець устав із-за столу: тіло зникає без «шубовсь» і без заліку будь-кому.</summary>
     public void Drop(int seat)
