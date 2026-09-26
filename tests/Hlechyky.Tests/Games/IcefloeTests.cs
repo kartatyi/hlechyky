@@ -890,7 +890,7 @@ public class IcefloeTests(ITestOutputHelper output)
 
         var over = Table(2, wins: "1");
         Round(over, 0);
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", over.Act(0, "dash").Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", over.Act(0, "dash").Message);
     }
 
     [Fact] // 39
