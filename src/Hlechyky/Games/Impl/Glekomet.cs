@@ -13,6 +13,11 @@ public sealed class Glekomet : Game
 {
     public const int TickMs = 40, StartTicks = 50, FlyTicks = 200, SettleShot = 30, SettleSkip = 15;
     public const int SniperGap = 500, IdleLimit = 3, SkipLimit = 3, LogLines = 6, NickMax = 14;
+    /// <summary>
+    /// Хід того, хто минулого разу проспав, — 10 с, а не 30: інакше п'ятеро півтори хвилини дивились на порожню дугу,
+    /// поки хата засне втретє. Ворухнувся (приціл, крок) — хід одразу стає повним.
+    /// </summary>
+    public const int SleepySecs = 10;
     public const string PhaseLobby = "lobby", PhaseStart = "start", PhaseAim = "aim", PhaseFly = "fly", PhaseSettle = "settle", PhaseOver = "over";
     const int Seats = GlekometCore.Seats, Kinds = 6;
 
@@ -47,6 +52,9 @@ public sealed class Glekomet : Game
     /// коли хід ще йде. У тестах годинник — FakeClock, що крокує рівно по тику, тож детермінізм той самий.
     /// </summary>
     DateTimeOffset _deadline;
+    /// <summary>Коли почався хід і скільки секунд він триває (повний — <see cref="_turnSecs"/>, сонному — <see cref="SleepySecs"/>).</summary>
+    DateTimeOffset _turnAt;
+    int _turnLen = 30;
     int _t;
     int _turn = -1;
     int _cursor = Seats;
@@ -247,6 +255,7 @@ public sealed class Glekomet : Game
         var hp = core.Huts[seat].Hp;
         if (core.Move(seat, dir.Value) is { } why) return ActResult.Fail(why);
 
+        Wake();
         _pendMoved |= 1 << seat;
         var hut = core.Huts[seat];
         if (hut.Hp != hp) _pendHp = true;
@@ -293,12 +302,22 @@ public sealed class Glekomet : Game
         var p = Int(payload, "p");
         var w = Int(payload, "w");
         if (a is null or < 0 or > 180 || p is null or < 5 or > 100 || w is null or < 0 or >= Kinds) return ActResult.Fail("Такого прицілу нема");
+        Wake();
         if (_aimA[seat] == a && _aimP[seat] == p && _aimW[seat] == w) return ActResult.Done;
         _aimA[seat] = a.Value;
         _aimP[seat] = p.Value;
         _aimW[seat] = w.Value;
         _pendAim = true;
         return ActResult.Done;
+    }
+
+    /// <summary>Сонний хід, а людина ворухнулась — віддаємо повний; новий endsAt летить видом, дуга в усіх подовжиться.</summary>
+    void Wake()
+    {
+        if (_phase != PhaseAim || _turnLen >= _turnSecs) return;
+        _turnLen = _turnSecs;
+        _deadline = _turnAt.AddSeconds(_turnSecs);
+        _pendView = true;
     }
 
     // =============================================================================================
@@ -394,7 +413,7 @@ public sealed class Glekomet : Game
                 }
                 if (_waterFrom > 0 && _round >= _waterFrom && core.Water < GlekometCore.WaterTop)
                 {
-                    core.RaiseWater();
+                    core.RaiseWater(GlekometCore.WaterRiseFor(core.AliveCount));
                     _wlMark = true;
                     Note("Вода піднялась");
                     for (var i = 0; i < Seats; i++)
@@ -427,8 +446,10 @@ public sealed class Glekomet : Game
             _turn = s;
             _turnNo++;
             _phase = PhaseAim;
-            _left = _turnSecs * 1000 / TickMs;
-            _deadline = Ctx.Clock.UtcNow.AddSeconds(_turnSecs);
+            _turnLen = _skips[s] > 0 ? Math.Min(SleepySecs, _turnSecs) : _turnSecs;
+            _left = _turnLen * 1000 / TickMs;
+            _turnAt = Ctx.Clock.UtcNow;
+            _deadline = _turnAt.AddSeconds(_turnLen);
             return;
         }
         // сюди звичайна гра не доходить; хай краще буде нічия, ніж зависла партія
@@ -453,6 +474,14 @@ public sealed class Glekomet : Game
         Note(text);
         if (_skips[s] >= SkipLimit)
         {
+            // Третє коло поспіль без жодного пострілу — нічия (§2.3), навіть коли саме цей пропуск вибив би
+            // передостанню хату. Інакше, коли спить увесь стіл, перемога й «Ні подряпини» діставались хаті з
+            // більшим номером, яка теж не стрельнула жодного разу: її третій пропуск просто не встигав настати.
+            if (!_shotThisRound && _idle + 1 >= IdleLimit && DecidedWithout(s))
+            {
+                Over([], "idle", $"{Info.Title}: так ніхто й не стрельнув — розійшлись");
+                return;
+            }
             _core!.Kill(s, "afk");
             text = $"{Name(s)}: хата заснула — вибула";
             Note(text);
@@ -553,7 +582,8 @@ public sealed class Glekomet : Game
         {
             if (core.ShotStork > 0) return $"Лелека несе хату: {me}";
             if (core.ShotSplash > 0) return $"{me}: лелека на воду не сідає";
-            if (core.ShotOut > 0) return $"{me}: лелека полетіла в сусіднє село";
+            if (core.ShotOut > 0) return $"{me}: лелека — у сусіднє село";
+            if (!core.Huts[by].Alive) return $"{me}: лелеці нема кого нести";   // устав з-за столу посеред польоту
             return $"{me}: лелеці ніде сісти";
         }
 
@@ -571,14 +601,26 @@ public sealed class Glekomet : Game
         if (targets == 1 && w == GlekometCore.Pot && single != by) text = $"{me} → {Name(single)}: −{core.ShotDmg[single]}";
         else if (targets > 0) text = $"{me}: {lower} → {string.Join(", ", parts)}" + (selfOnly == 1 ? " (у свою хату!)" : "");
         else if (w == GlekometCore.Khrin && core.ShotPoisoned != 0) text = $"{me}: хрін → {Poisoned()} отруєно";
-        else if (core.ShotBooms > 0) text = $"{me}: мимо";
-        else if (core.ShotSplash > 0) text = $"{me}: бризки";
-        else if (core.ShotOut > 0) text = $"{me}: {lower} — у сусіднє село";
+        else if (core.ShotBooms > 0) text = me + Vary(Misses, by).Replace("{w}", lower);
+        else if (core.ShotSplash > 0) text = me + Vary(Splashes, by);
+        else if (core.ShotOut > 0) text = me + Vary(Outs, by).Replace("{w}", lower);
         else if (core.ShotCloud > 0) text = $"{me}: {lower} — у хмари";
         else text = $"{me}: мимо";
         if (w == GlekometCore.Khrin && targets > 0 && core.ShotPoisoned != 0) text += ", отрута";
         return Clip(text);
     }
+
+    // Десятки однакових «Оля: мимо» за партію нудні — кілька варіантів на подію. Вибір — від номера ходу, а не з
+    // Ctx.Rng: так вітер і мапа «Ще раз» за тим самим сідом лишаються тими самими. Снаряди тут усі чоловічого
+    // роду (глек, розсипний, вареник, хрін), тож «пішов» пасує; про стрільця — без дієслів, роду ніка ми не знаємо.
+    static readonly string[] Misses =
+    [
+        ": мимо", ": мимо — курка вціліла", ": {w} пішов по гриби", ": мимо, зате город переорано", ": мимо — сусіди й не помітили",
+    ];
+    static readonly string[] Splashes = [": бризки", ": бризки на пів ставка", ": плюсь — жаби в захваті"];
+    static readonly string[] Outs = [": {w} — у сусіднє село", ": {w} — аж за обрій", ": {w} — сусідам на гостинець"];
+
+    string Vary(string[] pool, int by) => pool[(_turnNo + by) % pool.Length];
 
     string Poisoned()
     {
@@ -638,6 +680,28 @@ public sealed class Glekomet : Game
         return false;
     }
 
+    /// <summary>Чи вирішиться партія, якщо хата <paramref name="seat"/> вибуде: лишиться ≤ 1 хата (≤ 1 команда).</summary>
+    bool DecidedWithout(int seat)
+    {
+        var core = _core!;
+        int alive = 0, mask = 0;
+        for (var s = 0; s < Seats; s++)
+            if (s != seat && core.Huts[s].Alive) { alive++; mask |= 1 << (s % 2); }
+        return _teams ? mask != 3 : alive <= 1;
+    }
+
+    /// <summary>
+    /// Чи був бій: хоч одну хату суперників розбито, повалено, затоплено чи добито хроном — а не лише «заснула»
+    /// чи «встав з-за столу». Без цього «Ні подряпини» діставалась би за стіл, де суперник просто спав.
+    /// </summary>
+    bool Fought(int[] winners)
+    {
+        var core = _core!;
+        for (var s = 0; s < Seats; s++)
+            if (core.Huts[s].Plays && Array.IndexOf(winners, s) < 0 && core.Huts[s].Reason is "hit" or "fall" or "drown" or "poison") return true;
+        return false;
+    }
+
     /// <summary>«Глекомети: Оля — остання хата в селі · Петро, Ганна — руїни»: останній вибулий — першим після переможця.</summary>
     void Win(int[] winners, string reason)
     {
@@ -670,10 +734,11 @@ public sealed class Glekomet : Game
         };
         foreach (var s in winners)
             if (_nick[s].Length > 0) _wins[Key(_nick[s])] = _wins.GetValueOrDefault(Key(_nick[s])) + 1;
-        // «Ні подряпини» — лише за виграний бій, а не за стіл, з якого всі повставали
-        if (reason is "last" or "team")
+        // «Ні подряпини» — лише за виграний бій: хтось із суперників упав у бою (а не заснув чи встав), а сам
+        // переможець хоч раз стрельнув
+        if (reason is "last" or "team" && Fought(winners))
             foreach (var s in winners)
-                if (core.Huts[s].Alive && core.Huts[s].Hp == 100) Ctx.Award(s, 0, "ach:glekomet-clean");
+                if (core.Huts[s].Alive && core.Huts[s].Hp == 100 && _stats[s].Shots > 0) Ctx.Award(s, 0, "ach:glekomet-clean");
         var scores = new Dictionary<int, long>();
         for (var s = 0; s < Seats; s++)
             if (core.Huts[s].Plays && Ctx.Seated(s)) scores[s] = _stats[s].Dmg;
@@ -765,7 +830,8 @@ public sealed class Glekomet : Game
             turn = aiming ? _turn : (int?)null,
             round = _round,
             endsAt = _phase == PhaseAim ? _deadline : (DateTimeOffset?)null,
-            turnMs = _turnSecs * 1000,
+            // довжина саме цього ходу: сонному — 10 с, щоб дуга в усіх показувала правду
+            turnMs = (_phase == PhaseAim ? _turnLen : _turnSecs) * 1000,
             startIn = _phase == PhaseStart ? _left : 0,
             wind = lobby ? 0 : core.Wind,
             water = core.Water,

@@ -677,10 +677,17 @@ public sealed class GlekometCore
         if (h.Hp == 0) Kill(seat, "fall");
     }
 
-    /// <summary>Вода на початку кола: +15 (стеля 400), і всі, хто нижче, тонуть.</summary>
-    public void RaiseWater()
+    /// <summary>
+    /// На скільки підступає вода за коло, коли живих хат <paramref name="alive"/>: 15 на шістьох і швидше, що менше
+    /// лишилось (4 → 22, 3 → 30, 2 → 45). Кожну хату за коло б'ють приблизно раз, хоч скільки за столом, тож дуель
+    /// тяглась би стільки ж кіл, як базар на шістьох, — у плейтесті двоє грали 16 кіл. Так кінцівка стискається.
+    /// </summary>
+    public static int WaterRiseFor(int alive) => WaterRise * Seats / Math.Max(2, alive);
+
+    /// <summary>Вода на початку кола: +<paramref name="rise"/> (стеля 400), і всі, хто нижче, тонуть.</summary>
+    public void RaiseWater(int rise = WaterRise)
     {
-        Water = Math.Min(WaterTop, Water + WaterRise);
+        Water = Math.Min(WaterTop, Water + rise);
         ShotDied = 0;
         for (var i = 0; i < Seats; i++)
             if (Huts[i].Alive && Huts[i].Y < Water) Kill(i, "drown");

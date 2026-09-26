@@ -64,6 +64,13 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
         Settle(h);
     }
 
+    /// <summary>Хто ходить — спить, поки хід не згорить (повний 30 с чи сонний 10 с); далі — до наступного прицілу.</summary>
+    static void Doze(RoomHarness h)
+    {
+        for (var i = 0; i < 2000 && Phase(h) == Glekomet.PhaseAim; i++) h.Tick(1);
+        Settle(h);
+    }
+
     /// <summary>Рівне село заданої висоти і хати там, де треба тесту (решта місць — порожні).</summary>
     static GlekometCore Flatten(RoomHarness h, int height, params (int seat, int x)[] huts)
     {
@@ -273,16 +280,111 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
         for (var round = 0; round < 3; round++)
         {
             Assert.Equal(0, Game(h).Turn);
-            h.Tick(750);                      // Оля спить
-            Settle(h);
+            Doze(h);                          // Оля спить
             if (h.Room.Status != RoomStatus.Playing) break;
-            SkipTurn(h);                      // Петро пропускає сам
+            ShootAway(h);                     // Петро стріляє (геть за край — нікому нічого)
         }
         var hut = V(h).GetProperty("huts")[0];
         Assert.False(hut.GetProperty("alive").GetBoolean());
         Assert.Equal("afk", hut.GetProperty("reason").GetString());
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
+        // перемога над сплячим — не бій: «Ні подряпини» за неї нема
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:glekomet-clean");
+    }
+
+    [Fact]
+    public void A_table_where_everyone_sleeps_ends_in_an_idle_draw_not_in_a_win()
+    {
+        // Обоє мовчать за часом: третій пропуск Олі настає раніше, ніж Петра, і раніше це вибивало Олю,
+        // а Петро «перемагав» із «Ні подряпини», не стрельнувши жодного разу.
+        var h = Table(2);
+        Ready(h);
+        for (var i = 0; i < 12 && h.Room.Status == RoomStatus.Playing; i++) Doze(h);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(h.Room.Result!.Draw);
+        Assert.Equal("Глекомети: так ніхто й не стрельнув — розійшлись", h.Room.Result.Text);
+        Assert.Equal("idle", V(h).GetProperty("result").GetProperty("reason").GetString());
+        Assert.Empty(h.Awards);
+        Assert.All(V(h).GetProperty("wins").EnumerateArray(), x => Assert.Equal(0, x.GetInt32()));
+        Assert.Single(h.Finished);
+
+        // на трьох так само: перша хата вибуває (лишаються двоє), а друга вже «вирішила б» партію — нічия
+        var t = Table(3);
+        Ready(t);
+        for (var i = 0; i < 20 && t.Room.Status == RoomStatus.Playing; i++) Doze(t);
+        Assert.True(t.Room.Result!.Draw);
+        Assert.Equal("afk", Core(t).Huts[0].Reason);
+        Assert.True(Core(t).Huts[1].Alive && Core(t).Huts[2].Alive);
+        Assert.Empty(t.Awards);
+    }
+
+    [Fact]
+    public void A_sleeper_gets_a_ten_second_turn_until_it_stirs()
+    {
+        var h = Table(2);
+        Ready(h);
+        Doze(h);                                   // Оля проспала повний хід
+        ShootAway(h);                              // Петро
+        Assert.Equal(0, Game(h).Turn);
+        Assert.Equal(10_000, V(h).GetProperty("turnMs").GetInt32());
+        Assert.Equal(250, Game(h).LeftTicks);
+        h.Tick(100);
+        var mark = h.Outbox.Count;
+        h.Input(0, "aim", new { a = 50, p = 60, w = 0 });                  // ворухнулась — хід повний
+        h.Tick(1);
+        Assert.Contains(h.Outbox.Skip(mark), o => o is RoomViews);         // новий endsAt — видом, усім
+        Assert.Equal(30_000, V(h).GetProperty("turnMs").GetInt32());
+        Assert.Equal(750 - 101, Game(h).LeftTicks);
+        Assert.True(Fire(h, 0, Away(h, 0), 100).Ok);
+        Settle(h);
+        ShootAway(h);                              // Петро
+        Assert.Equal(30_000, V(h).GetProperty("turnMs").GetInt32());       // постріл обнулив пропуски
+        Assert.Equal(0, V(h).GetProperty("huts")[0].GetProperty("skips").GetInt32());
+    }
+
+    [Fact]
+    public void The_shooter_leaving_mid_flight_lets_the_shell_land_and_the_game_goes_on()
+    {
+        var h = Table(3);
+        Ready(h);
+        Flatten(h, 100, (0, 200), (1, 600), (2, 900));
+        Core(h).Wind = 0;
+        var p = PowerFor(Core(h), 0, 45, 600);
+        Assert.True(Fire(h, 0, 45, p).Ok);
+        h.Tick(5);
+        Assert.Equal(Glekomet.PhaseFly, Phase(h));
+        h.Leave("Оля");                                  // встала, поки глек летить
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(Glekomet.PhaseFly, Phase(h));
+        Settle(h);
+        Assert.Equal(65, Core(h).Huts[1].Hp);            // глек долетів
+        Assert.Equal(35, V(h).GetProperty("stats")[0].GetProperty("dmg").GetInt32());
+        Assert.Equal(1, Game(h).Turn);
+        Assert.Empty(h.Finished);
+
+        // лелека того, хто встав, змарнована: нести нікого
+        var s = Table(3);
+        Ready(s);
+        Flatten(s, 100, (0, 200), (1, 600), (2, 900));
+        Core(s).Wind = 0;
+        Assert.True(Fire(s, 0, 60, 60, GlekometCore.Stork).Ok);
+        s.Tick(3);
+        s.Leave("Оля");
+        Settle(s);
+        Assert.Equal(200, Core(s).Huts[0].X);
+        Assert.Equal("Оля: лелеці нема кого нести", V(s).GetProperty("last").GetProperty("text").GetString());
+
+        // на двох — техпоразка одразу, і партія закінчується рівно раз, хоч глек іще в повітрі
+        var d = Table(2);
+        Ready(d);
+        Assert.True(Fire(d, 0, Away(d, 0), 100).Ok);
+        d.Tick(3);
+        d.Leave("Оля");
+        Assert.Equal(RoomStatus.Finished, d.Room.Status);
+        Assert.Equal([1], d.Room.Result!.Winners);
+        d.Tick(300);
+        Assert.Single(d.Finished);
     }
 
     [Fact]
@@ -409,7 +511,7 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
     [Fact]
     public void An_empty_weapon_cannot_be_fired_but_the_pot_is_infinite()
     {
-        var h = Table(2);
+        var h = Table(2, options: new { water = "0" });    // 12 кіл: вода на двох доїла б хати раніше
         Ready(h);
         for (var i = 0; i < 2; i++)
         {
@@ -886,7 +988,13 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
     }
 
     [Fact]
-    public void Water_rises_from_the_chosen_round_by_fifteen_and_drowns_low_huts()
+    public void Water_rises_faster_the_fewer_huts_are_left()
+    {
+        Assert.Equal([15, 18, 22, 30, 45, 45], new[] { 6, 5, 4, 3, 2, 1 }.Select(GlekometCore.WaterRiseFor));
+    }
+
+    [Fact]
+    public void Water_rises_from_the_chosen_round_and_drowns_low_huts()
     {
         var h = Table(3, options: new { water = "6" });
         Ready(h);
@@ -898,14 +1006,14 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.True(low.Alive);
         var mark = h.Outbox.Count;
         while (Game(h).Round < 6) ShootAway(h);
-        Assert.Equal(35, Core(h).Water);
-        Assert.Equal(35, V(h).GetProperty("water").GetInt32());
+        Assert.Equal(50, Core(h).Water);                   // троє живих — +30
+        Assert.Equal(50, V(h).GetProperty("water").GetInt32());
         Assert.False(low.Alive);
         Assert.Equal("drown", low.Reason);
-        Assert.Contains(Frames(h, mark), f => Views.Has(f, "wl") && f.GetProperty("wl").GetInt32() == 35);
+        Assert.Contains(Frames(h, mark), f => Views.Has(f, "wl") && f.GetProperty("wl").GetInt32() == 50);
         Assert.Contains("Ганна: хату затопило", V(h).GetProperty("log").EnumerateArray().Select(e => e.GetString()));
         while (Game(h).Round < 7 && h.Room.Status == RoomStatus.Playing) ShootAway(h);
-        Assert.Equal(50, Core(h).Water);
+        Assert.Equal(95, Core(h).Water);                   // лишилось двоє — +45
 
         var dry = Table(2, options: new { water = "0" });
         Ready(dry);
