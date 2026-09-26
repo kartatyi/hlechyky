@@ -309,7 +309,12 @@
       }
     }
     // 5. Щось відкрилось (вкладка, розділ) — ядро каже про це через api.feed.
-    if (k.note && Date.now() < k.note.until) return { ico: '🔓', text: k.note.text, cls: 'open' };
+    if (k.note && Date.now() < k.note.until) {
+      // Рядок уже зі своїм значком («⚓ До Одеського порту зайшов корабель…») — його й беремо, а не дописуємо 🔓.
+      const own = /^(\S+)\s+([\s\S]*)$/u.exec(k.note.text);
+      if (own && !/[\p{L}\p{N}]/u.test(own[1])) return { ico: own[1], text: own[2], cls: 'open' };
+      return { ico: '🔓', text: k.note.text, cls: 'open' };
+    }
     // 6. Хроніка — те, чим живе село, поки нічого не сталось.
     if (k.chronText) return { ico: '📰', text: k.chronText, cls: 'chron' };
     return null;

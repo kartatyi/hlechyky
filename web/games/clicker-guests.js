@@ -351,6 +351,25 @@
     api.showWhen(st, 'guild', fn);
   }
 
+  /// Смуга «Далі» (clicker-scene.js goalOf): коли в коморі вже є все для замовлення гостя — підказати віддати його.
+  /// Пріоритет 1, як «уже можна купити»: гостя чекати не варто — він відпливе, а шана росте лише з віддачі.
+  (window.HClicker.goals = window.HClicker.goals || []).push((st, v, api) => {
+    const k = st.guests;
+    if (!k || !k.v || !st.mine) return null;
+    const sn = api.serverNow(st);
+    const o = k.v.orders.find((x) => x.until > sn && x.have >= x.n);
+    if (!o) return null;
+    const d = def(st, o.guest);
+    const who = (d && d.people[o.who]) || (d && d.name) || o.guest;
+    const emoji = (d && d.emoji) || '🏛';
+    return {
+      icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + emoji + '</text>',
+      text: who + ' чекає: ' + wareName(st, o.ware).toLowerCase() + ' ×' + o.n,
+      sub: 'усе є в коморі — віддай за ≈' + api.potsShort(o.pay) + ' і шану +' + o.rep,
+      pct: 100, eta: 0, tab: 'guild', prio: 1,
+    };
+  });
+
   HClicker.part({
     id: 'guests',
     order: 62,
