@@ -48,6 +48,10 @@
   // ---- вигляд ----
   const SIZE = 600;                    // логічний канвас: увесь ставок
   const SEND_MS = 50;                  // наміри — не частіше 20/с
+  // Камера наближається, коли крига меншає: наприкінці раунду п'ятачок льоду — на весь канвас, а не цятка.
+  const CAM_MARGIN = 170;              // см від найдальшого краю криги (чи тіла) до краю кадру
+  const ZOOM_MAX = 2.2;
+  const ZOOM_MS = 700;                 // стала часу плавного наїзду
   const SEAT_VARS = [['--if-s0', '#5aa9ff'], ['--if-s1', '#d9825b'], ['--if-s2', '#7bd389'], ['--if-s3', '#f4c542'],
     ['--if-s4', '#b48cf2'], ['--if-s5', '#6fd6c2'], ['--if-s6', '#f08cb8'], ['--if-s7', '#b7c2bd']];
   const PICK_GLYPH = ['🥾', '🏺', '❄'];
@@ -162,7 +166,8 @@
         pal: null, palAt: 0, bg: null, bgKey: '', labels: [], picks: null,
         // світ із виду
         pond: 2600, shore: 904, bank: 941, bodyR: 60, R: new Float64Array(24), iceIv: -1, r0: 800,
-        C: 1300, half: 991, sc: SIZE / 1982, cam0: 309,
+        C: 1300, half: 991, sc: SIZE / 1982, cam0: 309, z: 1, zOk: false, ext: 0,
+        bankOff: new Float64Array(16), ballOwner: new Map(),
         // своє тіло
         me: { x: 0, y: 0, vx: 0, vy: 0 }, meOk: false, meAcc: 0, meAt: 0, lastFrameAt: 0, pendingDash: 0,
         rtt: 60, echo: null,
@@ -434,7 +439,7 @@
     // Камера: ставок лише навколо криги цієї партії — до вибулих на березі й трохи снігу за ними.
     st.C = st.pond / 2;
     const half = st.bank + 70;
-    if (half !== st.half) { st.half = half; st.bg = null; st.iceGrad = null; st.labels = []; st.picks = null; }
+    if (half !== st.half) { st.half = half; st.bg = null; st.iceGrad = null; st.labels = []; st.picks = null; st.zOk = false; }
     st.sc = SIZE / (2 * half);
     st.cam0 = st.C - half;
     if (v.ice && v.ice.v && (v.ice.iv !== st.iceIv || v.phase === 'lobby')) {
@@ -591,12 +596,15 @@
   }
   function toss(st) { if (canSend(st)) st.ctx.input('throw'); }
 
-  /// Точка на канвасі (CSS-пікселі) → світ, см.
+  /// Точка на канвасі (CSS-пікселі) → світ, см (з урахуванням наїзду камери на центр ставка).
   function toWorld(st, clientX, clientY) {
     const r = st.cv.el.getBoundingClientRect();
     if (!r.width) return null;
-    return [st.cam0 + ((clientX - r.left) / r.width) * 2 * st.half, st.cam0 + ((clientY - r.top) / r.height) * 2 * st.half];
+    const k = 1 / (st.sc * st.z);
+    return [st.C + (((clientX - r.left) / r.width) * SIZE - SIZE / 2) * k, st.C + (((clientY - r.top) / r.height) * SIZE - SIZE / 2) * k];
   }
+  /// Базові пікселі світу (x·sc) → пікселі канваса після наїзду камери.
+  const viewX = (st, bx) => SIZE / 2 + (bx - st.C * st.sc) * st.z;
   /// Звідки рахувати напрямок до курсора: своє тіло на кризі або точка на березі.
   function origin(st) {
     const s = mySeat(st);
@@ -857,6 +865,24 @@
     }
   }
 
+  /// Чия сніжка: кинута з берега — вилітає з точки падіння того, хто там стоїть. Власника в кадрі нема (зайві
+  /// байти), тож угадуємо один раз, коли сніжку вперше видно, і пам'ятаємо за id.
+  function ballOwner(st, f, b) {
+    let o = st.ballOwner.get(b[0]);
+    if (o !== undefined) return o;
+    o = -1;
+    let best = 150 * 150;
+    for (let i = 0; i < 8; i++) {
+      const q = f.p && f.p[i];
+      if (!q || !(q[5] & 16)) continue;
+      const d = (q[0] - b[1]) * (q[0] - b[1]) + (q[1] - b[2]) * (q[1] - b[2]);
+      if (d < best) { best = d; o = i; }
+    }
+    if (st.ballOwner.size > 64) st.ballOwner.clear();
+    st.ballOwner.set(b[0], o);
+    return o;
+  }
+
   function drawBalls(st, g, pal, f, sc) {
     if (!f.s || !f.s.length) return;
     const a = st.blendA, t = st.blendT;
@@ -869,13 +895,23 @@
       if (a && a.s) {
         for (const w of a.s) if (w[0] === b[0]) { x = w[1] + (b[1] - w[1]) * t; y = w[2] + (b[2] - w[2]) * t; break; }
       }
+      // сніжка з берега, коли камера наїхала: вилітає з фігурки біля краю кадру й за мить сходиться зі справжнім шляхом
+      let ox = 0, oy = 0;
+      const o = ballOwner(st, f, b), q = o >= 0 && f.p[o];
+      if (q && (q[5] & 16) && (st.bankOff[2 * o] || st.bankOff[2 * o + 1])) {
+        const span = Math.max(80, st.bank - st.ext);
+        const k = Math.max(0, 1 - Math.hypot(x - q[0], y - q[1]) / span);
+        ox = st.bankOff[2 * o] * k;
+        oy = st.bankOff[2 * o + 1] * k;
+      }
       const sp = Math.hypot(b[3], b[4]) || 1;
+      const px = x * sc + ox, py = y * sc + oy;
       g.beginPath();
-      g.moveTo(x * sc, y * sc);
-      g.lineTo((x - (b[3] / sp) * 70) * sc, (y - (b[4] / sp) * 70) * sc);
+      g.moveTo(px, py);
+      g.lineTo(px - (b[3] / sp) * 70 * sc, py - (b[4] / sp) * 70 * sc);
       g.stroke();
       g.beginPath();
-      g.arc(x * sc, y * sc, 3.5, 0, Math.PI * 2);
+      g.arc(px, py, 3.5, 0, Math.PI * 2);
       g.fill();
     }
   }
@@ -999,7 +1035,28 @@
 
   /// Вибулий на березі: маленька фігурка, над нею сніжки; мені — ще й стрілка прицілу.
   function drawBank(st, g, pal, seat, q, sc, mine, aimFace) {
-    const cx = q[0] * sc, cy = q[1] * sc, R = st.bodyR * sc * 0.6, color = pal.seats[seat];
+    // Камера наїхала — берег за кадром: ставимо фігурку біля краю кадру на тому ж промені. Там уже вода,
+    // тож вибулий бултихається в рятувальному колі (і справді ж «у воді»).
+    const R = st.bodyR * sc * 0.6, color = pal.seats[seat];
+    const dx = (q[0] - st.C) * sc * st.z, dy = (q[1] - st.C) * sc * st.z;
+    // фігурка з колом росте разом із наїздом — тримаємо її цілою в кадрі (згори ще й підпис ❄N)
+    const side = (R * 1.6 + 3) * st.z;
+    const limX = SIZE / 2 - side, limY = SIZE / 2 - side - (dy < 0 && q[7] > 0 ? 12 * st.z : 0);
+    const k = Math.min(1, limX / Math.max(1e-6, Math.abs(dx)), limY / Math.max(1e-6, Math.abs(dy)));
+    const cx = st.C * sc + (dx * k) / st.z, cy = st.C * sc + (dy * k) / st.z;
+    st.bankOff[2 * seat] = cx - q[0] * sc;
+    st.bankOff[2 * seat + 1] = cy - q[1] * sc;
+    if (k < 1 && Math.hypot(dx * k, dy * k) / (sc * st.z) < st.shore) {
+      g.lineWidth = R * 0.55;
+      g.strokeStyle = '#f4f1ea';
+      g.beginPath();
+      g.arc(cx, cy, R * 1.25, 0, Math.PI * 2);
+      g.stroke();
+      g.strokeStyle = '#e0533f';
+      g.setLineDash([R * 0.7, R * 0.95]);
+      g.stroke();
+      g.setLineDash([]);
+    }
     if (mine && q[7] > 0 && aimFace >= 0) {
       const a = aimFace;
       g.strokeStyle = pal.accent;
@@ -1056,7 +1113,8 @@
       const nk = st.ctx && st.ctx.nickOf(s);
       if (!nk) continue;
       const l = label(st, pal, s, nk);
-      const x = st.lx[s] - l.w / 2, y = st.ly[s] - l.h - (s === me ? 7 : 2);
+      // ніки — поза наїздом камери: тіла ростуть, а літери лишаються 12 px
+      const x = viewX(st, st.lx[s]) - l.w / 2, y = viewX(st, st.ly[s]) - l.h - (s === me ? 7 * st.z : 2);
       let hit = false;
       for (let j = 0; j < n; j++) {
         const o = j * 4;
@@ -1078,11 +1136,10 @@
     g.font = '800 15px ' + pal.font;
     g.lineWidth = 4;
     g.strokeStyle = 'rgba(8, 20, 28, 0.85)';
-    const off = st.cam0 * st.sc;
     for (const p of st.pops) {
       const k = (now - p.at) / 1400;
       if (p.w == null) p.w = g.measureText(p.text).width;
-      const x = Math.max(p.w / 2 + 8, Math.min(SIZE - p.w / 2 - 8, p.x - off)), y = Math.max(20, p.y - off - k * 24);
+      const x = Math.max(p.w / 2 + 8, Math.min(SIZE - p.w / 2 - 8, viewX(st, p.x))), y = Math.max(20, Math.min(SIZE - 16, viewX(st, p.y)) - k * 24);
       g.globalAlpha = 1 - k * k;
       g.strokeText(p.text, x, y);
       g.fillStyle = p.color || pal.text;
@@ -1148,8 +1205,8 @@
     const rows = [];
     for (let s = 0; s < 8; s++) if (v.wins && v.wins[s] != null) rows.push(s);
     rows.sort((a, b) => (v.wins[b] - v.wins[a]) || ((v.pushouts[b] || 0) - (v.pushouts[a] || 0)) || a - b);
-    const lh = rows.length > 6 ? 26 : 30;
-    g.font = '600 13px ' + pal.font;
+    const lh = rows.length > 6 ? 29 : 34;
+    g.font = '600 15px ' + pal.font;
     g.textBaseline = 'middle';
     g.fillStyle = pal.muted;
     g.textAlign = 'left';
@@ -1161,19 +1218,40 @@
       const y = top + 26 + i * lh;
       g.fillStyle = pal.seats[s];
       g.beginPath();
-      g.arc(136, y, 7, 0, Math.PI * 2);
+      g.arc(136, y, 8, 0, Math.PI * 2);
       g.fill();
-      g.font = '700 16px ' + pal.font;
+      g.font = '700 19px ' + pal.font;
       g.textAlign = 'left';
       g.fillStyle = pal.text;
       const n = nick(st, s);
-      g.fillText(n.length > 18 ? n.slice(0, 17) + '…' : n, 150, y);
+      g.fillText(n.length > 16 ? n.slice(0, 15) + '…' : n, 150, y);
       g.textAlign = 'center';
       g.fillStyle = pal.seats[s];
       g.fillText(final ? String(v.wins[s]) : dots(v.wins[s], v.need || 2), 380, y);
       g.fillStyle = pal.text;
       g.fillText(String(v.pushouts[s] || 0), 480, y);
     });
+  }
+
+  /// Наїзд камери: кадр тримає кригу (після танення) і живі тіла з запасом CAM_MARGIN, не ближче ZOOM_MAX.
+  /// На відліку й у лобі — одразу, у грі — плавно (відкол зменшує кригу стрибком, а камера під'їжджає за секунду).
+  function camera(st, f, ph, dt) {
+    const melt = (f && f.melt) || 0;
+    let ext = 0;
+    for (let i = 0; i < 24; i++) { const r = st.R[i] - melt; if (r > ext) ext = r; }
+    if (f && f.p && ph !== 4) {
+      for (let i = 0; i < 8; i++) {
+        const q = f.p[i];
+        if (!q || !(q[5] & 1)) continue;
+        const d = Math.hypot(st.bx[i] - st.C, st.by[i] - st.C) + st.bodyR;
+        if (d > ext) ext = d;
+      }
+    }
+    st.ext = ext;
+    const want = Math.min(st.half, Math.max(st.half / ZOOM_MAX, ext + CAM_MARGIN));
+    const zt = st.half / want;
+    if (ph === 0 || ph === 4 || !st.zOk) { st.z = zt; st.zOk = true; }
+    else st.z += (zt - st.z) * (1 - Math.exp(-dt / ZOOM_MS));
   }
 
   function draw(st, now) {
@@ -1186,6 +1264,7 @@
     const sc = st.sc;
     const dt = st.lastDraw ? Math.min(100, now - st.lastDraw) : 16;
     st.lastDraw = now;
+    camera(st, f, ph, dt);
     g.save();
     g.scale(st.K, st.K);
     const sh = now - st.shake;
@@ -1193,13 +1272,18 @@
       const k = st.shakeAmp * (1 - sh / st.shakeMs);
       g.translate((Math.random() - 0.5) * 2 * k, (Math.random() - 0.5) * 2 * k);
     }
-    g.drawImage(background(st, pal), 0, 0, SIZE, SIZE);
-    // шар світу: координати x·sc, камера зсуває ставок так, що крига посередині
+    // шар світу: координати x·sc, камера зсуває ставок так, що крига посередині, і наїжджає на центр
     g.save();
+    if (st.z !== 1) {
+      g.translate(SIZE / 2, SIZE / 2);
+      g.scale(st.z, st.z);
+      g.translate(-SIZE / 2, -SIZE / 2);
+    }
+    g.drawImage(background(st, pal), 0, 0, SIZE, SIZE);
     g.translate(-st.cam0 * sc, -st.cam0 * sc);
     drawIce(st, g, pal, f, sc, now);
     if (f && f.p) {
-      drawPickups(st, g, pal, f, sc, now);
+      if (ph < 2) drawPickups(st, g, pal, f, sc, now);   // під підсумком раунду й партії плитки лише заважають таблиці
       const me = mySeat(st);
       let n = 0;
       for (let i = 0; i < 8; i++) if (f.p[i]) n++;
@@ -1222,11 +1306,11 @@
         const face = st.want >= 0 && ph <= 1 ? st.want : q[4];
         drawBody(st, g, pal, me, x, y, face, q[5], sc, now, true, ready);
       }
-      drawLabels(st, g, pal, me);
       drawBalls(st, g, pal, f, sc);
     }
     drawParts(st, g, pal, dt);
     g.restore();
+    if (f && f.p) drawLabels(st, g, pal, mySeat(st));
     if (f) overlays(st, g, pal, f, ph, now);
     drawPops(st, g, pal, now);
     if (ph === 1 && st.ctx && st.ctx.playing && st.lastFrameAt && now - st.lastFrameAt > 1000) text(g, pal, '⏳ зв’язок…', SIZE / 2, 28, 20, pal.text, 700);
@@ -1258,6 +1342,8 @@
     let seated = 0;
     for (let s = 0; s < 8; s++) if (ctx.nickOf(s)) seated++;
     const tight = seated > 4;
+    // на п'ятьох і більше шапка картки й цей рядок ідуть у два ряди — ставок трохи менший, щоб усе влізло в екран
+    if (st.cv) st.cv.el.classList.toggle('many', tight);
     for (let s = 0; s < 8; s++) {
       const n = ctx.nickOf(s);
       if (!n) continue;
@@ -1447,6 +1533,7 @@
       if (ctx.view && ctx.view.frame) st.last = ctx.view.frame;
       hud(root, st);
       st.cv = HGames.ui.canvas(root, { w: SIZE * st.K, h: SIZE * st.K, cls: 'ifboard' });
+      hud(root, st);
       st.cv.el.classList.toggle('play', !!ctx.mine);
       wireCanvas(root, st);
       controls(root, st);

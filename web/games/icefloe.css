@@ -36,8 +36,11 @@
 
 /* Ставок квадратний; на ноутбуці мусить влізти разом із шапкою картки й рядком над полем. */
 .ifboard { aspect-ratio: 1; max-width: min(600px, calc(100vh - 300px)); min-width: min(300px, 100%); background: var(--if-water2); }
+/* на п'ятьох+ шапка з місцями й рядок над полем — по два ряди */
+.ifboard.many { max-width: min(600px, calc(100vh - 360px)); }
 @media (min-width: 1500px) and (min-height: 860px) {
   .ifboard { max-width: min(720px, calc(100vh - 330px)); }
+  .ifboard.many { max-width: min(720px, calc(100vh - 380px)); }
 }
 /* Гравцеві тягнути по ставку — це тяга, а не скрол сторінки; глядачеві скрол лишаємо. */
 .ifboard.play { touch-action: none; cursor: crosshair; }

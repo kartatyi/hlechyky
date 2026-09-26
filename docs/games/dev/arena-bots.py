@@ -8,6 +8,7 @@
 
     python arena-bots.py --port 8223 --room <id> --game icefloe --n 6 [--prefix бот] [--secs 120]
                          [--rematch] [--leave 1:40]   # бот №1 устає на 40-й секунді
+                         [--calm]                     # тримаються біля центру й не штовхаються (танення, камера)
 
 Друкує раз на 5 с: скільки кадрів прийшло, середній і найбільший розмір кадру в байтах (усе повідомлення SignalR).
 """
@@ -104,6 +105,19 @@ class Bot:
 
     async def icefloe(self):
         f = self.frame
+        if self.a.calm:
+            # тихо тримаються біля центру (не далі 250 см), нікого не штовхають — щоб дожити до танення
+            p = f.get("p") or []
+            me = p[self.seat] if self.seat < len(p) else None
+            if not me or not (me[5] & 1):
+                return
+            C = (self.view or {}).get("pond", 2600) / 2
+            dx, dy = C - me[0], C - me[1]
+            a = round(math.atan2(dy, dx) / (math.pi / 8)) % 16 if math.hypot(dx, dy) > 250 else -1
+            if a != self.sent:
+                self.sent = a
+                await self.input("move", {"a": a})
+            return
         p = f.get("p") or []
         me = p[self.seat] if self.seat < len(p) else None
         if not me or f.get("ph") not in (0, 1):
@@ -177,6 +191,7 @@ async def main():
     ap.add_argument("--secs", type=int, default=120)
     ap.add_argument("--rematch", action="store_true")
     ap.add_argument("--leave", help="номер_бота:секунда — встати посеред партії")
+    ap.add_argument("--calm", action="store_true", help="Крижина: боти тихо тримаються біля центру")
     a = ap.parse_args()
     stats = {"frames": 0, "bytes": 0, "max": 0, "finished": 0}
     bots = [Bot(i + 1, a, stats) for i in range(a.n)]
