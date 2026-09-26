@@ -627,7 +627,7 @@ public class ClickerGuestsTests
         Assert.Equal(1.5 * 1.3, after / before, 6);
     }
 
-    [Fact(Skip = "до злиття з ядром: секрет seamap")]
+    [Fact]
     public void The_sea_map_adds_a_place_and_brings_orders_sooner()
     {
         var h = Wheel();

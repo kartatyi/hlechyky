@@ -57,7 +57,7 @@ public sealed partial class Clicker
     /// <summary>Рід виробу для узгодження «дзвінкий/дзвінка/дзвінке» в похвалі.</summary>
     static readonly Dictionary<string, char> WareGender = new(StringComparer.Ordinal)
     {
-        ["bowl"] = 'f', ["makitra"] = 'f', ["tile"] = 'f', ["barrel"] = 'n',
+        ["bowl"] = 'f', ["makitra"] = 'f', ["tile"] = 'f', ["tykva"] = 'f', ["barrel"] = 'n',
     };
 
     /// <summary>Розпис у похвалі: «косівський розпис», «межигірський фаянс».</summary>
