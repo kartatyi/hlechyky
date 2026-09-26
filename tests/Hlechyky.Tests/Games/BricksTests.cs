@@ -12,7 +12,7 @@ namespace Hlechyky.Tests.Games;
 /// Цеглини (docs/games/specs/bricks.md §8). Правила стіни перевіряємо на голому <see cref="BricksCore"/> — там
 /// фігурку можна поставити рівно туди, куди треба, — а суддю, сміття, раунди й кадри — через кімнату.
 /// </summary>
-public class BricksTests
+public class BricksTests(ITestOutputHelper output)
 {
     const int N = BricksCore.ModeNormal;
     static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван"];
@@ -1274,7 +1274,11 @@ public class BricksTests
         Assert.Equal(6, el.GetProperty("ev").GetArrayLength());
         Assert.All(el.GetProperty("b").EnumerateArray(), x => Assert.Equal(14, x.GetProperty("r").GetArrayLength()));
         var bytes = System.Text.Encoding.UTF8.GetByteCount(json);
+        // вид на чотирьох із тими самими стінами — spec §8.5: ≤ 4 КБ (летить лише на подіях)
+        var view = System.Text.Encoding.UTF8.GetByteCount(Views.Text(h.Room.Game.View(null)));
+        output.WriteLine($"ключовий кадр 4 стіни × 14 рядів + 6 подій: {bytes} Б; вид: {view} Б");
         Assert.True(bytes <= 1500, $"кадр {bytes} Б");
+        Assert.True(view <= 4096, $"вид {view} Б");
     }
 
     [Fact]

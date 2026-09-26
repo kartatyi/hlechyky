@@ -1122,8 +1122,17 @@
     c = Math.max(kind === 'narrow' ? 10 : 12, Math.min(34, c | 0));
     if (kind === 'wide') mini = others.length > 1 ? Math.max(6, Math.floor(c / 2)) : c;
     if (kind === 'watch') mini = c;
-    const sig = [kind, c, mini, seats.join(','), mine ? ctx.seat : -1, touch, st.sprint].join('|');
-    return { kind, c, mini, mine, others, seats, touch, sig, narrow };
+    // Три чужі на широкому екрані (Full HD): рядком вони більші, ніж квадратом 2×2 з діркою. Рахуємо ширину своєї
+    // стіни з кишенею й чергою (як у build) і беремо рядок, лише якщо він справді дає більшу клітинку.
+    let row3 = false;
+    if (kind === 'wide' && others.length === 3) {
+      const pc = Math.max(7, Math.round(c * 0.56)), side = Math.round(pc * 4.6);
+      const own = side * 2 + Math.max(4, Math.round(c * 0.25)) * 2 + Math.max(4, Math.round(c * 0.36)) + 10 * c + 18;
+      const m3 = Math.min(Math.floor((W - own - 30) / 31.2), Math.floor(c * 0.7), Math.floor((ROWS * c - LBL_H) / ROWS));
+      if (m3 > mini) { mini = m3; row3 = true; }
+    }
+    const sig = [kind, c, mini, row3, seats.join(','), mine ? ctx.seat : -1, touch, st.sprint].join('|');
+    return { kind, c, mini, mine, others, seats, touch, sig, narrow, row3 };
   }
 
   function build(root, st) {
@@ -1190,7 +1199,7 @@
         st.el.boards[s] = { bd, cv, g: cv.getContext('2d'), geo, lbl: bd.querySelector('.bricks-lbl') };
         other(st, s).dirty = true;
       }
-      if ((L.kind === 'wide' || L.kind === 'narrow') && L.others.length > 1) box.style.gridTemplateColumns = 'repeat(2, auto)';
+      if ((L.kind === 'wide' || L.kind === 'narrow') && L.others.length > 1) box.style.gridTemplateColumns = L.row3 ? 'repeat(3, auto)' : 'repeat(2, auto)';
     }
     if (L.mine && L.touch && L.kind === 'narrow') buildTouch(scene, st);
     if (!L.seats.length && !st.sprint) scene.appendChild(lobbyHint());
@@ -1747,7 +1756,7 @@
       // після фінішу — офіційний час сервера (сотими, як у таблиці), доти — свій годинник стіни
       const done = st.phase === 'over' && v.result && v.result.sec != null;
       const t = done ? secText(v.result.sec) : clockText(st.phase === 'go' && net.loaded ? core.tick : st.phase === 'over' && net.loaded ? core.tick : 0, true);
-      html = '<span class="bricks-big">⏱ ' + t + '</span><span class="bricks-big">'
+      html = '<span class="bricks-big">⏱ ' + t + '</span><span class="bricks-big"><small>рядів </small>'
         + Math.min(SPRINT_LINES, net.loaded ? core.lines : 0) + '<small>/' + SPRINT_LINES + '</small></span>';
     } else {
       const bits = [];
