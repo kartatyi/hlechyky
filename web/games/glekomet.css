@@ -13,6 +13,7 @@
   --gk-water: #3f7fb0;    /* ставок */
   --gk-wall: #f1ece0;     /* біла мазанка */
   --gk-ink: #1b1510;      /* обведення, колеса, руїни */
+  --gk-g: #b8b8b8;        /* четверте місце — сіра: своя, бо --muted — колір підписів руїн і близька до зеленої */
   --gk-b: #6fb3e8;        /* п'яте місце — синя */
   --gk-p: #e88ac0;        /* шосте місце — рожева */
 }
@@ -23,11 +24,14 @@
   max-width: min(100%, 1200px, calc((100vh - 400px) * 2));
   min-width: 0; width: 100%; background: #20405a; cursor: default;
   touch-action: pan-y; user-select: none; -webkit-user-select: none;
+  /* телефон боком підкручує поле в кадр (scrollIntoView): зверху липка шапка сайту, знизу плеєр і вкладки */
+  scroll-margin: 58px 0 calc(var(--tabs-h, 0px) + var(--mini-h, 0px) + 4px);
 }
 .gcanvas.gk-canvas.gk-grab { cursor: crosshair; touch-action: none; }
 .gcanvas.gk-canvas.gk-pull { cursor: grabbing; }
 
-/* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
+/* четверте, п'яте й шосте місця: сірої в каркасі нема (d — це --muted), синьої й рожевої теж */
+.gseat.gk-g { color: var(--gk-g); }
 .gseat.gk-b { color: var(--gk-b); }
 .gseat.gk-p { color: var(--gk-p); }
 
@@ -53,11 +57,12 @@
 .gk-chip .gk-bar.low { background: var(--danger); }
 .gk-chip.turn { border-color: var(--accent2); }
 .gk-chip.me .gk-nick { font-weight: 700; }
+.gk-chip .gk-you { display: none; font-weight: 700; color: var(--text); }
 .gk-chip.out { opacity: .5; }
 .gk-chip.out .gk-nick { text-decoration: line-through; }
 .gk-chip .gk-star { color: var(--accent); }
 .gk-side { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
-.gk-who { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gk-who { min-width: 6.5em; max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* стала ширина: чіпи не переносяться щоходу */
 .gk-wind {
   display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px;
   background: var(--bg2); color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -66,9 +71,14 @@
 .gk-wind.calm { color: var(--muted); }
 /* «штиль» — слово, а не стрілка: стиснуті літери злипались у кашу */
 .gk-wind.calm .gk-arrow { color: var(--text); letter-spacing: normal; font-weight: 600; }
-.gk-clock { display: flex; align-items: center; gap: 6px; }
+.gk-clock { display: flex; align-items: center; gap: 6px; min-height: 38px; }
 .gk-clock .garc { width: 38px; height: 38px; }
 .gk-clock[hidden] { display: none; }
+/* поза прицілом дуга невидима, але місце тримає — поле не смикається */
+.gk-clock.gk-idle { visibility: hidden; }
+/* останні 5 секунд ходу — дуга й цифра червоні (у свій хід ще й тихе «тік», якщо звук увімкнено) */
+.gk-clock.gk-hurry .garc .fg { stroke: var(--danger); }
+.gk-clock.gk-hurry .garc b { color: var(--danger); }
 .gk-sound { padding: 3px 8px; font-size: .95em; background: transparent; border-color: transparent; color: var(--muted); }
 .gk-sound:hover { color: var(--text); }
 
@@ -124,6 +134,7 @@
 .gk-sum td { text-align: right; padding: 2px 6px; border-top: 1px solid var(--line); }
 .gk-sum td .gk-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
 .gk-sum tr.win td { color: var(--accent); font-weight: 600; }
+.gk-sum tr.gk-team2 td { border-top: 2px solid var(--line); }
 .gk-sum .gk-best { color: var(--text); }
 .gk-sum .gk-rs { color: var(--muted); font-size: .9em; }
 
@@ -138,7 +149,10 @@
   .gk-top { font-size: .78em; gap: 5px; flex-wrap: wrap; }
   .gk-chips { flex: 1 1 100%; }
   .gk-chip { padding: 2px 7px 2px 5px; gap: 4px; }
-  .gk-chip .gk-nick { max-width: 6.5em; }
+  /* ніки тут дублювали пігулки місць над столом і таблички на полі — лишаємо колір, ❤ і «ти» */
+  .gk-chip .gk-nick { display: none; }
+  .gk-chip .gk-you { display: inline; }
+  .gk-who { min-width: 0; }
   .gk-arms { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
   .gk-arm { flex: none; padding: 5px 8px; }
   .gk-arm .gk-key { display: none; }

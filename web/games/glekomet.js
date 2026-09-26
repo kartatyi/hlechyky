@@ -30,9 +30,13 @@
     { key: 'stork', name: 'Лелека', chip: 'Лелека', icon: '🕊', short: 'лелека', tip: 'Лелека: переносить твою хату туди, де сяде' },
     { key: 'khrin', name: 'Хрін', chip: 'Хрін', icon: '🌿', short: 'хрін', tip: 'Хрін: −12 і отрута на три ходи по −8 усім поруч' },
   ];
-  const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--muted', '#9db3a5'], ['--gk-b', '#6fb3e8'], ['--gk-p', '#e88ac0']];
+  const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--gk-g', '#b8b8b8'], ['--gk-b', '#6fb3e8'], ['--gk-p', '#e88ac0']];
   const TEAM_FLAG = ['#e25b4a', '#4a8fe2'];
-  const SHORT_PRESS = 150, CHARGE_MS = 1500, MOVE_GAP = 170, AIM_GAP = 100;
+  const TEAM_TEXT = ['#ffa194', '#a3c8ff'];                        // ніки на полі в командах — світлі червоний і синій
+  const SHORT_PRESS = 150, CHARGE_MS = 1500, MOVE_GAP = 170, AIM_GAP = 100, HURRY_MS = 5000;
+  /// Перші 0,6 с свого ходу пробіл/Enter/Ⓐ не стріляють: після «Ще раз» Ⓐ, натиснутий по кнопці, якої вже нема,
+  /// летів у гру й одразу стріляв 45°/60 «мимо».
+  const TURN_GRACE = 600;
 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -96,6 +100,8 @@
     const s = me(st);
     return !!c && c.playing && s != null && st.phase === 'aim' && st.turn === s && st.huts[s].alive && st.fired !== st.turnNo;
   }
+  /// Хід щойно почався — клавіші й Ⓐ ще не стріляють (див. TURN_GRACE).
+  const early = (st) => performance.now() - (st.turnAt || 0) < TURN_GRACE;
   const invOf = (st, seat) => (seat != null && st.inv[seat]) || [-1, 0, 0, 0, 0, 0];
 
   // =============================================================================================
@@ -123,6 +129,8 @@
     return {
       nick: f(600, small ? 9 : 11), label: f(600, small ? 9 : 11), dmg: f(800, small ? 12 : 15),
       big: f(800, small ? 16 : 22), count: f(800, small ? 40 : 64), wind: f(700, small ? 9 : 12), tiny: f(500, small ? 8 : 10),
+      // рядок пострілу на телефоні — дрібніше й у два рядки: 16 px в один рядок ширшали за поле й накривали його
+      banner: f(800, small ? 12 : 22), small,
       k,
     };
   }
@@ -268,18 +276,24 @@
     if (!el) return;
     const cssW = Math.round(el.getBoundingClientRect().width);
     if (cssW < 40) return;                                          // картка схована — розміру нема
+    // Щільність рахуємо самі, зі стелею 2, і порівнюємо пікселі, а не DPR. Раніше розмір ставив ui.canvas (стеля 3),
+    // а порівнювали з min(2, DPR): на телефонах із DPR 2,6–3 це не сходилось ніколи, і кожен update() (кожен вид,
+    // кожна подія лобі, кожен сигнал ResizeObserver) наново виділяв небо й землю й малював їх з нуля — ривок саме
+    // тоді, коли всі стежать за глеком. Тепер буфери перевиділяються лише тоді, коли справді змінився розмір.
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (cssW === st.cssW && Math.abs(dpr - st.dpr) < 0.01 && st.bgC) return;
+    const pw = Math.round(cssW * dpr), ph = Math.round((cssW * dpr) / 2);
+    if (pw === st.pw && ph === st.ph && st.bgC) return;
     st.cssW = cssW;
-    st.cv = HGames.ui.canvas(st.root, { w: cssW, h: cssW / 2, cls: canvasCls(st) });
-    st.g = st.cv.ctx;
-    st.pw = st.cv.el.width;
-    st.ph = st.cv.el.height;
-    st.dpr = st.pw / cssW;
+    if (el.width !== pw) el.width = pw;
+    if (el.height !== ph) el.height = ph;
+    st.pw = pw;
+    st.ph = ph;
+    st.dpr = pw / cssW;
     st.s = cssW / W;
+    st.fits = (st.fits || 0) + 1;                                   // для живої перевірки: скільки разів перевиділяли
     if (!st.skyC) { st.skyC = document.createElement('canvas'); st.bgC = document.createElement('canvas'); }
-    st.skyC.width = st.bgC.width = st.pw;
-    st.skyC.height = st.bgC.height = st.ph;
+    st.skyC.width = st.bgC.width = pw;
+    st.skyC.height = st.bgC.height = ph;
     st.pal = palette(st);
     st.fonts = fonts(st);
     st.skyDirty = true;
@@ -296,21 +310,28 @@
     const vh = window.innerHeight;
     if (vh < 460 || window.innerWidth < 700) { if (el.style.maxWidth) el.style.maxWidth = ''; return; }
     const cr = el.getBoundingClientRect();
-    let bottom = card.getBoundingClientRect().bottom;
+    const cardBottom = card.getBoundingClientRect().bottom;
+    let bottom = cardBottom;
+    // Що сторінка має ще під карткою (нижній відступ main тощо): міряємо, коли сторінка вже вилазить за екран, —
+    // тоді scrollHeight задає вміст. Сталі «+10» не вистачало: на Deck і на Full HD у підсумку лишалось 8–11 px прокрутки.
+    const doc = document.documentElement;
+    if (doc.scrollHeight > vh + 1) st.tail = clamp(doc.scrollHeight - (cardBottom + window.scrollY), 0, 60);
+    const tail = st.tail != null ? st.tail : 16;
     // Підказку про телефон не рахуємо (вона на хвилинку). Підсумок рахуємо, але поле заради нього меншає не
-    // більше ніж на третину: на Full HD «Ще раз» тоді видно без прокрутки, а на Deck поле не стискається в марку
+    // більше ніж до 60 %: на Full HD «Ще раз» тоді видно без прокрутки, а на Deck поле не стискається в марку
     // (там таблицю на шістьох трохи догортаємо).
     const tip = st.els.tip, sum = st.els.sum;
     if (tip && !tip.hidden) bottom -= tip.getBoundingClientRect().height + 8;
     const sumH = sum && !sum.hidden ? sum.getBoundingClientRect().height + 8 : 0;
-    const other = bottom + window.scrollY - cr.height + 10;
+    const other = bottom + window.scrollY - cr.height + Math.ceil(tail) + 4;
     const full = clamp((vh - other + sumH) * 2, 480, 1200);
-    const want = Math.floor(sumH ? Math.max(clamp((vh - other) * 2, 480, 1200), full * 0.66) : full);
+    const want = Math.floor(sumH ? Math.max(clamp((vh - other) * 2, 480, 1200), full * 0.6) : full);
     const cur = parseFloat(el.style.maxWidth) || 0;
     if (Math.abs(want - cur) >= 6) el.style.maxWidth = want + 'px';
   }
 
-  const canvasCls = (st) => 'gk-canvas' + (st.ctx && st.ctx.mine && st.ctx.playing ? ' gk-grab' : '') + (st.drag ? ' gk-pull' : '');
+  /// gk-grab (touch-action: none) — лише у свій хід: у чужий хід і після руїни свайп по полю гортає сторінку.
+  const canvasCls = (st) => 'gk-canvas' + (st.ctx && myTurn(st) ? ' gk-grab' : '') + (st.drag ? ' gk-pull' : '');
   function syncCanvasCls(st) {
     if (!st.cv) return;
     const want = 'gcanvas ' + canvasCls(st);
@@ -343,8 +364,11 @@
   }
 
   function float(st, x, y, text, color) {
+    const now = performance.now();
+    // дві скалки за край — один напис, а не два один на одному
+    for (const f of st.floats) if (f.text === text && now - f.t0 < 600 && Math.abs(f.x - x) < 160) return;
     if (st.floats.length > 12) st.floats.shift();
-    st.floats.push({ x, y, text, color, t0: performance.now() });
+    st.floats.push({ x, y, text, color, t0: now });
   }
 
   function shake(st, ms) { if (!st.calm) st.shakeUntil = Math.max(st.shakeUntil, performance.now() + ms); }
@@ -468,6 +492,7 @@
       case 'stork': tone('triangle', 900, 880, 0.07, vol * 0.6); tone('triangle', 1100, 1080, 0.07, vol * 0.6, 0.11); break;
       case 'step': tone('square', 600, 480, 0.04, vol * 0.2); break;
       case 'turn': tone('sine', 660, 880, 0.12, vol * 0.5); break;
+      case 'tick': tone('square', 1250, 1150, 0.035, vol * 0.25); break;
       default:
     }
   }
@@ -484,6 +509,7 @@
     st.turn = v.turn;
     st.round = v.round || 0;
     st.endsAt = v.endsAt;
+    st.endsMs = v.endsAt ? Date.parse(v.endsAt) || 0 : 0;
     st.turnMs = v.turnMs || 30000;
     st.startIn = v.startIn || 0;
     st.wind = v.wind || 0;
@@ -504,7 +530,12 @@
       st.banner = null;
       st.stork = null;
       st.shN = 0;
+      st.best = null;
+      st.bestTurn = -1;
+      st.replay = null;
+      st.replayChecked = false;
       for (const hut of st.huts) { hut.ruined = false; hut.anim = null; }
+      if (me(st) != null) requestAnimationFrame(() => bringIntoView(st));
     }
     st.turnNo = v.turnNo || 0;
 
@@ -551,11 +582,27 @@
     const text = v.last && v.last.text;
     if (text && st.phase === 'settle' && (!st.banner || st.banner.text !== text || st.banner.turnNo !== st.turnNo))
       st.banner = { text, t0: performance.now(), turnNo: st.turnNo, w: 0 };
+    // найкращий постріл партії: запам'ятовуємо його слід (точки кадрів), щоб у підсумку програти ще раз
+    if (st.phase === 'settle' && v.last && v.last.w >= 0 && st.bestTurn !== st.turnNo) {
+      st.bestTurn = st.turnNo;
+      const by = v.last.by;
+      let dmg = 0;
+      for (const hit of v.last.hits || []) if (hit.kind === 'hit' && hit.seat !== by && !(st.teams && hit.seat % 2 === by % 2)) dmg += hit.dmg;
+      const tr = st.trails[by];
+      if (dmg > 0 && (!st.best || dmg > st.best.dmg) && tr && tr.length >= 4) st.best = { seat: by, dmg, pts: tr.slice() };
+    }
+    // фаза over приходить кадром раніше за вид, тож «was !== over» тут не спрацює — прапорець на партію
+    if (st.phase === 'over' && st.result && !st.replayChecked) {
+      st.replayChecked = true;
+      const b = st.result.best, mine = st.best;
+      st.replay = b && mine && b.seat === mine.seat && b.dmg === mine.dmg ? { pts: mine.pts, seat: mine.seat, dmg: mine.dmg, t0: performance.now() + 700, boom: false } : null;
+    }
 
     // мій хід: приціл — з минулого пострілу, снаряд — наперед обраний у коморі, якщо ще є
     const s = me(st);
     if (st.phase === 'aim' && s != null && st.turn === s && st.turnNo !== st.myTurnNo) {
       st.myTurnNo = st.turnNo;
+      st.turnAt = performance.now();
       const a = v.aim || [45, 60, 0];
       st.my = { a: a[0], p: a[1], w: a[2] };
       const inv = invOf(st, s);
@@ -566,7 +613,20 @@
       st.holds.a = st.holds.p = null;
       st.aimSent = st.my.a + '|' + st.my.p + '|' + st.my.w;
       if (was !== 'lobby') sfx(st, 'turn', 1);
+      requestAnimationFrame(() => bringIntoView(st));
     }
+  }
+
+  /// Телефон боком: між липкою шапкою сайту й плеєром із вкладками внизу лишається смуга якраз на поле (CSS), але
+  /// саме поле нижче шапки картки й чіпів — видно було смужку 50 px. На початку партії й свого ходу підкручуємо
+  /// сторінку, щоб поле було в кадрі цілком (межі — scroll-margin канваса). Решта екранів — не чіпаємо.
+  function bringIntoView(st) {
+    const el = st.cv && st.cv.el;
+    if (!el || !el.offsetParent || window.innerHeight > 480 || window.innerWidth <= window.innerHeight) return;
+    const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    const top = parseFloat(cs.scrollMarginTop) || 0, bottom = parseFloat(cs.scrollMarginBottom) || 0;
+    if (r.top >= top - 2 && r.bottom <= window.innerHeight - bottom + 2) return;
+    el.scrollIntoView({ block: r.height <= window.innerHeight - top - bottom ? 'end' : 'start', behavior: st.calm ? 'auto' : 'smooth' });
   }
 
   function waterNow(st, now) {
@@ -693,10 +753,14 @@
       return;
     }
     if (st.teams) {
-      g.strokeStyle = pal.ink; g.lineWidth = 1;
-      g.beginPath(); g.moveTo(x + 8, Y - 36); g.lineTo(x + 8, Y - 47); g.stroke();
+      // команда видна здалеку: прапор на димарі й смуга кольору команди під колесами (плюс колір ніка в табличці)
+      g.strokeStyle = pal.ink; g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(x + 8, Y - 36); g.lineTo(x + 8, Y - 53); g.stroke();
       g.fillStyle = TEAM_FLAG[i % 2];
-      g.beginPath(); g.moveTo(x + 8, Y - 47); g.lineTo(x + 16, Y - 44.5); g.lineTo(x + 8, Y - 42); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(x + 8, Y - 53); g.lineTo(x + 21, Y - 49); g.lineTo(x + 8, Y - 45); g.closePath(); g.fill();
+      g.globalAlpha = 0.9;
+      g.fillRect(x - 23, Y - 0.5, 46, 3.5);
+      g.globalAlpha = 1;
     }
     // колеса
     g.fillStyle = pal.ink;
@@ -770,9 +834,9 @@
     g.lineWidth = 3 * k;
     g.strokeStyle = 'rgba(10, 16, 12, .85)';
     const ty = top - (hut.alive ? 5.5 * k : 0);
-    const label = tagLabel(name);
+    const label = tagLabel(st, name);
     g.strokeText(label, lx, ty);
-    g.fillStyle = hut.alive ? (st.turn === i && st.phase !== 'over' ? pal.accent : pal.text) : pal.muted;
+    g.fillStyle = hut.alive ? (st.turn === i && st.phase !== 'over' ? pal.accent : st.teams ? TEAM_TEXT[i % 2] : pal.text) : pal.muted;
     g.fillText(label, lx, ty);
     if (mine) {
       const ay = ty - 15 * k + (st.calm ? 0 : Math.sin(now / 260) * 1.5 * k);
@@ -792,7 +856,13 @@
     }
   }
 
-  const tagLabel = (name) => (name.length > 12 ? name.slice(0, 11) + '…' : name);
+  /// На телефоні табличка вузька: «гість » відкидаємо (решта ніка й так його), довше 9 — трикрапка.
+  function tagLabel(st, name) {
+    const small = st.fonts && st.fonts.small;
+    const n = small ? name.replace(/^гість\s+/i, '') : name;
+    const max = small ? 9 : 12;
+    return n.length > max ? n.slice(0, max - 1) + '…' : n;
+  }
 
   /// Хати стоять впритул (лелека, крок) — таблички налазили одна на одну. Живі ставимо першими, а кожну
   /// наступну, що налазить на вже поставлену, піднімаємо на рядок. Ширини — з кешу, measureText раз на нік.
@@ -803,8 +873,10 @@
     for (const t of out) {
       const hut = st.huts[t.i];
       t.on = hut.plays && !(st.stork && st.stork.seat === t.i && now - st.stork.t0 < 1000);
+      // руїну, на якій (чи впритул до якої) стоїть жива хата, не підписуємо: два ніки зливались в один
+      if (t.on && !hut.alive) for (let j = 0; j < 6; j++) if (j !== t.i && st.huts[j].alive && Math.abs(st.huts[j].dx - hut.dx) < 44) { t.on = false; break; }
       if (!t.on) continue;
-      const label = tagLabel(nickOf(st, t.i));
+      const label = tagLabel(st, nickOf(st, t.i));
       const key = F.nick + '|' + label;
       if (cache[t.i] !== key) { cache[t.i] = key; cache['w' + t.i] = g.measureText(label).width; }
       t.w = Math.max(30, cache['w' + t.i]);
@@ -1024,20 +1096,49 @@
     else g.rect(x, y, w, h);
   }
 
+  /// Рядок, ширший за поле, ділимо на два — біля середини, краще після «:» чи перед «→». Кеш на один рядок:
+  /// щокадру малюється лише одна табличка, а measureText на кожен кадр не потрібен.
+  function bannerLines(st, g, text, font) {
+    const c = st.bannerCache;
+    if (c && c.text === text && c.font === font) return c;
+    g.font = font;
+    const full = g.measureText(text).width;
+    let lines = [text], widths = [full];
+    if (full > W - 60 && text.length > 12) {
+      let cut = -1, best = Infinity;
+      for (let i = 1; i < text.length - 1; i++) {
+        if (text[i] !== ' ') continue;
+        const pref = text[i - 1] === ':' || text[i + 1] === '→' ? 0.6 : 1;
+        const d = Math.abs(i - text.length / 2) * pref;
+        if (d < best) { best = d; cut = i; }
+      }
+      if (cut > 0) {
+        lines = [text.slice(0, cut), text.slice(cut + 1)];
+        widths = lines.map((l) => g.measureText(l).width);
+      }
+    }
+    st.bannerCache = { text, font, lines, w: Math.max(...widths) };
+    return st.bannerCache;
+  }
+
   function drawBanner(st, g, text, alpha, y, font) {
     const F = st.fonts;
-    g.font = font || F.big;
+    font = font || F.banner;
+    const b = bannerLines(st, g, text, font);
+    g.font = font;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    const w = Math.min(W - 20, g.measureText(text).width + 28 * F.k);
+    const lh = (F.small ? 15 : 26) * F.k, n = b.lines.length;
+    const w = Math.min(W - 20, b.w + 24 * F.k), hgt = lh * n + (F.small ? 8 : 10) * F.k;
+    const top = sy(y) - hgt / 2;
     g.globalAlpha = alpha * 0.82;
     g.fillStyle = 'rgba(12, 20, 16, 1)';
     g.beginPath();
-    rrect(g, W / 2 - w / 2, sy(y) - 17 * F.k, w, 34 * F.k, 10 * F.k);
+    rrect(g, W / 2 - w / 2, top, w, hgt, (F.small ? 7 : 10) * F.k);
     g.fill();
     g.globalAlpha = alpha;
     g.fillStyle = st.pal.text;
-    g.fillText(text, W / 2, sy(y) + 1 * F.k, W - 30);
+    for (let i = 0; i < n; i++) g.fillText(b.lines[i], W / 2, top + (F.small ? 4 : 5) * F.k + lh * (i + 0.5) + 1 * F.k, W - 30);
     g.globalAlpha = 1;
   }
 
@@ -1109,10 +1210,11 @@
     const aiming = phase === 'aim' && st.turn != null && st.turn >= 0;
     if (aiming) drawTrail(st, g, st.turn);
 
-    // хати (і лелека, що несе хату)
-    for (let i = 0; i < 6; i++) {
+    // хати (і лелека, що несе хату): спершу руїни, потім живі — хата, що стала на руїну, не ховається під нею
+    for (let n = 0; n < 12; n++) {
+      const i = n % 6;
       const hut = st.huts[i];
-      if (!hut.plays) continue;
+      if (!hut.plays || (n < 6) === hut.alive) continue;
       hutPos(st, hut, now);
       let x = hut.dx, y = hut.dy;
       const sk = st.stork;
@@ -1247,6 +1349,22 @@
 
     drawWind(st, g);
 
+    // останні 5 секунд ходу — велика червона цифра біля хати, що ходить (видно всім, і глядачам теж)
+    if (st.hurry && aiming && st.huts[st.turn].alive) {
+      const hut = st.huts[st.turn];
+      const sec = Math.max(1, Math.ceil((st.endsMs - Date.now()) / 1000));
+      const x = hut.dx + (hut.dx < W / 2 ? 1 : -1) * 42, y = sy(hut.dy + 20);
+      g.font = F.big;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.lineJoin = 'round';
+      g.lineWidth = 3.5 * F.k;
+      g.strokeStyle = 'rgba(10, 16, 12, .9)';
+      g.strokeText(String(sec), x, y);
+      g.fillStyle = pal.danger;
+      g.fillText(String(sec), x, y);
+    }
+
     // заряд сили на пробілі/кнопці — дуга біля своєї хати
     if (st.charge && mine != null && phase === 'aim') {
       const hut = st.huts[mine];
@@ -1273,6 +1391,7 @@
     } else if (phase === 'over' && st.result) {
       g.fillStyle = 'rgba(12, 20, 16, .35)';
       g.fillRect(0, 0, W, HGT);
+      if (st.replay) drawReplay(st, g, now);
       // угорі, над пагорбами: посередині табличка ховала ніки хат, що стоять на гребені
       drawBanner(st, g, overText(st), 1, HGT - 64 * F.k);
     } else if (phase === 'lobby') {
@@ -1283,6 +1402,43 @@
       else drawBanner(st, g, st.banner.text, e < 2200 ? 1 : 1 - (e - 2200) / 400, HGT - 62 * F.k);
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /// Підсумок: найкращий постріл партії ще раз — пунктир росте за 1,6 с кольором стрільця, на кінці — вибух і «🏆 −55».
+  function drawReplay(st, g, now) {
+    const r = st.replay, pts = r.pts, n = pts.length >> 1, F = st.fonts;
+    const k = st.calm ? 1 : clamp((now - r.t0) / 1600, 0, 1);
+    if (k <= 0 || !n) return;
+    const upto = Math.max(1, Math.floor(n * k));
+    const rad = Math.max(1.8, 2.4 * F.k);
+    g.fillStyle = st.pal.seats[r.seat];
+    for (let i = 0; i < upto; i++) {
+      const y = pts[i * 2 + 1];
+      if (y > HGT) continue;
+      g.fillRect(pts[i * 2] - rad / 2, sy(y) - rad / 2, rad, rad);
+    }
+    const lx = pts[(upto - 1) * 2], ly = Math.min(HGT - 4, pts[(upto - 1) * 2 + 1]);
+    if (k < 1) {
+      g.beginPath(); g.arc(lx, sy(ly), rad * 1.9, 0, Math.PI * 2); g.fill();
+      return;
+    }
+    if (!r.boom) {
+      r.boom = true;
+      ring(st, lx, ly, 42, st.pal.accent, 520);
+      burst(st, lx, ly, 16, 0, 160, true, 0.9, 3, 300);
+      sfx(st, 'boom', 0.8);
+    }
+    const txt = '🏆 −' + r.dmg;
+    g.font = F.dmg;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    g.lineWidth = 3 * F.k;
+    const tx = clamp(lx, 40 * F.k, W - 40 * F.k), ty = sy(Math.min(HGT - 90 * F.k, ly + 40 + 30 * F.k));   // над табличкою хати
+    g.strokeStyle = 'rgba(10, 16, 12, .9)';
+    g.strokeText(txt, tx, ty);
+    g.fillStyle = st.pal.accent;
+    g.fillText(txt, tx, ty);
   }
 
   function overText(st) {
@@ -1402,6 +1558,14 @@
       }
     }
     paintCharge(st, now);
+    // останні 5 секунд ходу: червона дуга всім, а тому, хто ходить, — ще й тихе «тік» щосекунди (якщо звук увімкнено)
+    const left = st.phase === 'aim' && st.endsMs ? st.endsMs - Date.now() : Infinity;
+    const hurry = left > 0 && left <= HURRY_MS;
+    if (hurry !== st.hurry) { st.hurry = hurry; if (st.els) st.els.clock.classList.toggle('gk-hurry', hurry); }
+    if (hurry && myTurn(st)) {
+      const sec = Math.ceil(left / 1000);
+      if (sec !== st.tickSec) { st.tickSec = sec; sfx(st, 'tick', 1); }
+    } else st.tickSec = 0;
     if (st.aimDirty && now - st.aimSentAt >= AIM_GAP) {
       st.aimDirty = false;
       if (myTurn(st)) {
@@ -1465,8 +1629,10 @@
     ctl.className = 'gk-ctl';
     ctl.innerHTML = '<span class="gk-grp gk-move"><button type="button" class="gk-sq" data-k="m" data-d="-1" aria-label="посунути хату ліворуч">◀</button>'
       + '<span class="gk-fuel">⛽ 120</span><button type="button" class="gk-sq" data-k="m" data-d="1" aria-label="посунути хату праворуч">▶</button></span>'
-      + '<span class="gk-grp"><span class="gk-lbl">кут</span><button type="button" class="gk-sq" data-k="a" data-d="1" aria-label="кут лівіше">−</button>'
-      + '<b class="gk-a">45°</b><button type="button" class="gk-sq" data-k="a" data-d="-1" aria-label="кут правіше">+</button></span>'
+      // Кут — стрілками обертання, як клавіші ← →: ↺ крутить приціл проти годинникової (лівіше, число більшає),
+      // ↻ — за годинниковою. Колишні «− / +» працювали навпаки числу, і новачок, що тиснув «+» «щоб вище», стріляв нижче.
+      + '<span class="gk-grp"><span class="gk-lbl">кут</span><button type="button" class="gk-sq gk-rot" data-k="a" data-d="1" title="Повернути приціл лівіше (←)" aria-label="кут лівіше">↺</button>'
+      + '<b class="gk-a">45°</b><button type="button" class="gk-sq gk-rot" data-k="a" data-d="-1" title="Повернути приціл правіше (→)" aria-label="кут правіше">↻</button></span>'
       + '<span class="gk-grp"><span class="gk-lbl">сила</span><button type="button" class="gk-sq" data-k="p" data-d="-1" aria-label="слабше">−</button>'
       + '<b class="gk-p">60</b><button type="button" class="gk-sq" data-k="p" data-d="1" aria-label="сильніше">+</button></span>'
       + '<span class="gk-shoot"><button type="button" class="primary gk-fire" data-k="f"><i class="gk-charge"></i><span>💥 Постріл</span></button>'
@@ -1569,11 +1735,14 @@
       const hp = st.phase === 'lobby' ? 100 : hut.hp;
       const bar = hp > 60 ? '' : hp > 30 ? ' mid' : ' low';
       const turn = st.turn === i && (st.phase === 'aim' || st.phase === 'fly' || st.phase === 'settle');
-      html += '<span class="gk-chip' + (alive ? '' : ' out') + (turn ? ' turn' : '') + (i === mine ? ' me' : '') + '" title="' + ctx.esc(ctx.seatName(i)) + ' хата'
+      // На вузькому екрані ніки в чіпах сховані (їх і так показують пігулки місць над столом і таблички на полі),
+      // лишається колір, ❤ і «ти» на своєму — інакше над полем було шість рядів про те саме.
+      html += '<span class="gk-chip' + (alive ? '' : ' out') + (turn ? ' turn' : '') + (i === mine ? ' me' : '') + '" title="' + ctx.esc(nick) + ' · ' + ctx.esc(ctx.seatName(i)) + ' хата'
         + (st.teams ? ' · команда ' + (i % 2 ? 'непарних' : 'парних') : '') + '">'
         + '<i class="gk-dot" style="background:' + st.pal.seats[i] + '"></i>'
         + (st.teams ? '<span>' + (i % 2 ? '🔵' : '🔴') + '</span>' : '')
         + '<span class="gk-nick">' + ctx.esc(nick) + '</span>'
+        + (i === mine ? '<span class="gk-you">ти</span>' : '')
         + (alive ? '<span class="gk-hp">❤' + hp + '</span>' : '<span>⛔</span>')
         + (alive && hut.poison > 0 ? '<span title="отруєна хроном">🌿</span>' : '')
         + (st.wins[i] ? '<span class="gk-star">★' + st.wins[i] + '</span>' : '')
@@ -1588,7 +1757,11 @@
       E.wind.hidden = !wind;
       E.wind.classList.toggle('calm', !st.wind);
     }
-    const timed = st.phase === 'aim' && st.endsAt && ctx.playing;
+    const timed = !!(st.phase === 'aim' && st.endsAt && ctx.playing);
+    // Місце під дугу тримаємо всю партію (невидимою поза прицілом): дуга, що з'являлась лише в прицілі, робила
+    // смужку вищою на 12 px, і поле смикалось двічі за хід саме тоді, коли всі дивляться на політ.
+    const keep = !!ctx.playing && st.phase !== 'lobby' && st.phase !== 'over';
+    if (keep && !E.clock.querySelector('.garc')) HGames.ui.timerArc(E.clock, new Date().toISOString(), 1000).stop();
     if (timed) {
       HGames.ui.timerArc(E.clock, st.endsAt, st.turnMs);
       const who = st.turn === mine ? 'твій хід' : nickOf(st, st.turn);
@@ -1597,7 +1770,8 @@
       const arc = E.clock.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
     }
-    if (E.clock.hidden === !!timed) E.clock.hidden = !timed;
+    if (E.clock.hidden === keep) E.clock.hidden = !keep;
+    E.clock.classList.toggle('gk-idle', !timed);
     paintSound(st);
   }
 
@@ -1609,8 +1783,10 @@
     const mine = seat != null && (st.phase === 'lobby' || st.phase === 'start' || st.huts[seat].alive) ? seat : null;
     const who = mine != null ? mine : st.turn;
     const inv = invOf(st, who != null && who >= 0 ? who : null);
-    const sel = mine != null ? (myTurn(st) ? st.my.w : st.preW != null ? st.preW : st.my.w)
+    let sel = mine != null ? (myTurn(st) ? st.my.w : st.preW != null ? st.preW : st.my.w)
       : st.phase === 'aim' || st.phase === 'fly' ? st.aimTurn[2] : -1;
+    // останній вареник вистрілено — між ходами підсвічуємо вже глек, а не «Вареник ×0»
+    if (mine != null && sel >= 0 && inv[sel] === 0) sel = 0;
     const ro = mine == null || !st.ctx.playing;
     const hide = st.phase === 'over';
     if (E.arms.hidden !== hide) E.arms.hidden = hide;
@@ -1664,7 +1840,7 @@
   function paintTip(st) {
     const E = st.els;
     const want = HGames.ui.coarse() && window.innerWidth < window.innerHeight && st.ctx.playing && store.get('glekomet.turnHint', '') !== '1';
-    if (want && !E.tip.innerHTML) E.tip.innerHTML = '📱 Поверни телефон боком — так видно краще <button type="button">ясно</button>';
+    if (want && !E.tip.innerHTML) E.tip.innerHTML = '📱 Поверни телефон боком — поле більше (а з ⛶ — ще більше) <button type="button">ясно</button>';
     if (E.tip.hidden === want) E.tip.hidden = !want;
   }
 
@@ -1675,12 +1851,18 @@
     if (!show) { E.sig.sum = ''; return; }
     const r = st.result;
     const rows = [];
-    for (let i = 0; i < 6; i++) {
+    // у командах — спершу парні 🔴, потім непарні 🔵, щоб було видно, хто з ким
+    let odd = false;
+    for (const i of st.teams ? [0, 2, 4, 1, 3, 5] : [0, 1, 2, 3, 4, 5]) {
       const hut = st.huts[i];
       if (!hut.plays) continue;
       const s = st.stats[i] || {};
       const win = (r.winners || []).includes(i);
-      rows.push('<tr' + (win ? ' class="win"' : '') + '><td><i class="gk-dot" style="background:' + st.pal.seats[i] + '"></i>'
+      const split = st.teams && i % 2 === 1 && !odd;                  // риска між командами
+      if (split) odd = true;
+      const cls = (win ? 'win' : '') + (split ? ' gk-team2' : '');
+      rows.push('<tr' + (cls ? ' class="' + cls.trim() + '"' : '') + '><td><i class="gk-dot" style="background:' + st.pal.seats[i] + '"></i>'
+        + (st.teams ? (i % 2 ? '🔵 ' : '🔴 ') : '')
         + ctx.esc(nickOf(st, i)) + (win ? ' 🏆' : '') + (st.wins[i] ? ' <span class="gk-star">★' + st.wins[i] + '</span>' : '') + '</td>'
         + '<td>' + (s.dmg || 0) + '</td><td>' + (s.hits || 0) + '/' + (s.shots || 0) + '</td><td>' + (s.kills || 0) + '</td><td>' + (s.self || 0) + '</td></tr>');
     }
@@ -1734,7 +1916,7 @@
     id: 'glekomet',
     icon: ICON,
     seatNames: ['жовта', 'зелена', 'руда', 'сіра', 'синя', 'рожева'],
-    seatClass: ['x', 'o', 'c', 'd', 'gk-b', 'gk-p'],
+    seatClass: ['x', 'o', 'c', 'gk-g', 'gk-b', 'gk-p'],
     pad: {
       dirs: true,
       a: 'Space',
@@ -1745,7 +1927,8 @@
         move(st, btn === 'lb' ? -1 : 1);
         return true;
       },
-      hint: '{dpad} кут і сила · {a} тримай — сила, відпусти — постріл · {x} снаряд · {lb}{rb} посунути хату',
+      // Ⓐ коротко — постріл із тією силою, що виставив стіком; тримати — заряд із нуля (сила — скільки тримав)
+      hint: '{dpad} кут і сила · {a} постріл, тримай — заряд · {x} снаряд · {lb}{rb} посунути хату',
     },
     news: {
       v: '2026-09-27',
@@ -1754,7 +1937,7 @@
         '🏠 У кожного — хата на колесах із катапультою на даху. Цілься, дай сили — і глек полетить у сусіда',
         '🌬 Зважай на вітер: стрілка зверху каже, куди й як сильно знесе',
         '💥 Шість снарядів: глек, розсипний, вареник-бомба, копа сіна, лелека-телепорт і хрін',
-        '🌊 Із шостого кола підступає вода — не засиджуйся в низині, посунься або клич лелеку',
+        '🌊 Із шостого кола підступає вода, і що менше хат лишилось, то швидше — не засиджуйся в низині, посунься або клич лелеку',
         '🎮 ← → кут, ↑ ↓ сила, пробіл — постріл; на телефоні потягни по полю, як рогатку',
       ],
     },
@@ -1827,11 +2010,11 @@
           if (!e.repeat && mineNow) hold(st, 'p', code === 'ArrowUp' || code === 'KeyW' ? 1 : -1, e.shiftKey);
           return true;
         case 'Space':
-          if (!e.repeat && mineNow) startCharge(st, 'key');
+          if (!e.repeat && mineNow && !early(st)) startCharge(st, 'key');
           return true;
         case 'Enter': case 'NumpadEnter':
           if (!mineNow) return false;
-          if (!e.repeat) fire(st);
+          if (!e.repeat && !early(st)) fire(st);
           return true;
         case 'KeyA': case 'KeyD':
           if (mineNow) move(st, code === 'KeyA' ? -1 : 1);
@@ -1842,7 +2025,7 @@
         default: {
           const m = /^(?:Digit|Numpad)([1-6])$/.exec(code || '');
           if (m) { pickWeapon(st, +m[1] - 1); return true; }
-          if (e.key === ' ') { if (!e.repeat && mineNow) startCharge(st, 'key'); return true; }
+          if (e.key === ' ') { if (!e.repeat && mineNow && !early(st)) startCharge(st, 'key'); return true; }
           return false;
         }
       }
@@ -1861,7 +2044,7 @@
           if (!st.huts[s].alive) return 'Твоя хата — руїна · ходить ' + who;
           if (st.turn !== s) return 'Ходить ' + who + ' · ' + wind;
           if (st.fired === st.turnNo) return 'Летить…';
-          if (padOn()) return 'Твій хід · стік — кут і сила, Ⓐ — постріл';
+          if (padOn()) return 'Твій хід · стік — кут і сила, Ⓐ — постріл (тримай — заряд із нуля)';
           if (HGames.ui.coarse()) return 'Твій хід · потягни по полю, як рогатку, і відпусти';
           return 'Твій хід · ← → кут, ↑ ↓ сила, пробіл — постріл, A/D — посунутись';
         }
