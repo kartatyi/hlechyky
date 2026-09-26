@@ -30,7 +30,9 @@
 .bricks-narrow { flex-wrap: wrap; gap: 6px; }
 .bricks-narrow > .bricks-hud, .bricks-narrow > .bricks-touch { flex: 0 0 100%; }
 .bricks-narrow > .bricks-touch { max-width: none; }
-.bricks-narrow .bricks-lbl { font-size: .68em; min-height: 1.3em; }
+.bricks-narrow .bricks-lbl { font-size: .64em; min-height: 1.3em; }
+.bricks-narrow .bricks-l1 { gap: 3px; }
+.bricks-narrow .bricks-dot { width: .55em; height: .55em; }
 .bricks-narrow .bricks-l2 { display: none; }   /* на телефоні чужа стіна вузька: лише нік, ціль — у своєму HUD */
 .bricks-narrow .bricks-others { gap: 6px; }
 .bricks-watch { flex-wrap: wrap; }

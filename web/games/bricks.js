@@ -1108,12 +1108,9 @@
       const n = others.length, cols = n <= 1 ? 1 : 2;
       const k = n === 0 ? 0 : n === 1 ? 0.5 : 0.33;
       const minisW = (m) => (n ? cols * (Math.max(3, Math.round(m * 0.36)) + 10 * m) + (cols - 1) * 6 + 6 : 0);
+      // найбільша клітинка, за якої своя стіна з кишенею й чужі (що дрібнішають разом із нею) влазять у ширину
       c = Math.floor(hAvail / ROWS);
-      for (let i = 0; i < 3; i++) {
-        const byW = Math.floor((W - 4 - minisW(Math.max(4, Math.floor(c * k)))) / 13.3);
-        if (byW < c) c = byW;
-      }
-      c = Math.max(10, c);
+      while (c > 10 && 13.3 * c + minisW(Math.max(4, Math.floor(c * k))) + 4 > W) c--;
       mini = Math.max(4, Math.floor(c * k));
     } else {
       kind = 'wide';
@@ -1465,12 +1462,12 @@
     const holdY = 0;
     g.fillText('сховано', hx + sw / 2, holdY + 2);
     box(g, hx, holdY + pc * 1.4, sw, pc * 3.2, pal);
-    if (loaded) drawPreview(g, sp, core.hold, hx, holdY + pc * 1.4, sw, pc * 3.2, pc, core.holdUsed ? 0.35 : 1);
+    if (loaded && !dead) drawPreview(g, sp, core.hold, hx, holdY + pc * 1.4, sw, pc * 3.2, pc, core.holdUsed ? 0.35 : 1);
     const nextY = st.L && st.L.kind === 'wide' ? 0 : holdY + pc * 5.2;
     g.fillStyle = pal.muted;
     g.fillText('далі', nx + sw / 2, nextY + 2);
     box(g, nx, nextY + pc * 1.4, sw, pc * 8.6, pal);
-    if (loaded) for (let i = 0; i < 3; i++) drawPreview(g, sp, core.pieceAt(core.pi + i), nx, nextY + pc * 1.6 + i * pc * 2.8, sw, pc * 2.6, pc, i ? 0.8 : 1);
+    if (loaded && !dead) for (let i = 0; i < 3; i++) drawPreview(g, sp, core.pieceAt(core.pi + i), nx, nextY + pc * 1.6 + i * pc * 2.8, sw, pc * 2.6, pc, i ? 0.8 : 1);
     drawOverlay(g, st, geo, now, dead);
     drawLabels(g, st, now, geo);
   }
