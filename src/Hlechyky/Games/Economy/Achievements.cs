@@ -89,6 +89,9 @@ public static class AchievementCatalog
         new("listener-10h", "Слухач",          "Десять годин тусні на сайті", "🎧", 15),
         new("listener-100h","Меломан",         "Сто годин тусні на сайті", "📻", 50),
         new("rich-100",     "Сотня",           "Сто черепків на балансі", "🏦", 10),
+        // хвиля 2: bricks — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("bricks-four",      "Четвірка",       "Закрив чотири ряди одним ударом у Цеглинах", "🧱", 15),
+        new("bricks-sprint-2m", "Швидкий муляр",  "Сорок рядів швидше за дві хвилини", "⏱", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

@@ -1,0 +1,175 @@
+/*
+  Цеглини (bricks, bricks-sprint). Стіни малює канвас — тут розкладка, підписи, HUD, кнопки під палець,
+  підсумок раунду й посилка між стінами. Кольори на :root, бо модуль читає їх через ctx.css().
+*/
+:root {
+  --bk-i: #4fc3c7;   /* бірюзова глазур */
+  --bk-o: #e6c15a;   /* охра */
+  --bk-t: #9a6fc9;   /* слива */
+  --bk-s: #7bb661;   /* малахіт */
+  --bk-z: #d9534f;   /* червона теракота */
+  --bk-j: #4f78d1;   /* кобальт */
+  --bk-l: #e08a3c;   /* цегляна */
+  --bk-g: #7a6a5e;   /* сира глина — сміття */
+  --bk-seat0: #c5763a;   /* теракота */
+  --bk-seat1: #3fb1a8;   /* бірюза */
+  --bk-seat2: #8aa83d;   /* олива */
+  --bk-seat3: #6f93e8;   /* кобальт, світліший за глазур J — щоб підпис читався на темному */
+}
+
+/* чіпи місць у шапці картки */
+.gseat.bk0 { color: var(--bk-seat0); }
+.gseat.bk1 { color: var(--bk-seat1); }
+.gseat.bk2 { color: var(--bk-seat2); }
+.gseat.bk3 { color: var(--bk-seat3); }
+
+.bricks-scene {
+  position: relative; width: 100%; display: flex; gap: 18px; justify-content: center; align-items: flex-start;
+  user-select: none; -webkit-user-select: none;
+}
+.bricks-narrow { flex-wrap: wrap; gap: 6px; }
+.bricks-narrow > .bricks-hud, .bricks-narrow > .bricks-touch { flex: 0 0 100%; }
+.bricks-narrow > .bricks-touch { max-width: none; }
+.bricks-narrow .bricks-lbl { font-size: .64em; min-height: 1.3em; }
+.bricks-narrow .bricks-l1 { gap: 3px; }
+.bricks-narrow .bricks-dot { width: .55em; height: .55em; }
+.bricks-narrow .bricks-l2 { display: none; }   /* на телефоні чужа стіна вузька: лише нік, ціль — у своєму HUD */
+.bricks-narrow .bricks-others { gap: 6px; }
+.bricks-watch { flex-wrap: wrap; }
+
+.bricks-me { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bricks-cv { display: block; }
+.bricks-mine { touch-action: none; }
+
+/* HUD — один рядок сталої висоти: довге ім'я цілі обрізається трьома крапками, а стіна під ним не з'їжджає */
+.bricks-hud {
+  display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; justify-content: center; height: 26px;
+  font-size: .86em; color: var(--muted); font-variant-numeric: tabular-nums; max-width: 100%; min-width: 0;
+}
+.bricks-me > .bricks-hud { align-self: stretch; }
+.bricks-hudtxt { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bricks-hud .bricks-to { font-weight: 700; }
+.bricks-hud .bricks-hot { color: var(--danger); font-weight: 700; }
+.bricks-sprintmode .bricks-hud { height: auto; min-height: 44px; }
+.bricks-sprintmode .bricks-hudtxt { display: flex; gap: 4px 14px; align-items: baseline; flex-wrap: wrap; justify-content: center; white-space: normal; }
+.bricks-big { font-size: 1.7em; font-weight: 800; color: var(--text); letter-spacing: .02em; }
+.bricks-big small { font-size: .55em; color: var(--muted); font-weight: 600; }
+.bricks-pbline { font-size: .95em; font-weight: 700; color: var(--muted); }
+.bricks-pbline:empty { display: none; }
+.bricks-pbline.good { color: var(--ok); }
+.bricks-pbline.bad { color: var(--danger); }
+.bricks-snd {
+  flex: none; padding: 0 6px; min-height: 24px; font-size: .95em; background: transparent; border: 1px solid var(--line);
+  border-radius: 999px; cursor: pointer;
+}
+
+/* ---- телефон: смужки небезпеки замість мікростін ---- */
+.bricks-strips { flex: 0 0 100%; display: grid; gap: 4px; }
+.bricks-strip {
+  display: grid; grid-template-columns: auto minmax(0, 7.5em) 1fr auto; gap: 6px; align-items: center;
+  font-size: .8em; line-height: 1.2; padding: 2px 8px; border-radius: 999px; background: var(--panel2, rgba(255,255,255,.04));
+  border: 1px solid transparent;
+}
+.bricks-strip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bricks-strip.bk0 { color: var(--bk-seat0); }
+.bricks-strip.bk1 { color: var(--bk-seat1); }
+.bricks-strip.bk2 { color: var(--bk-seat2); }
+.bricks-strip.bk3 { color: var(--bk-seat3); }
+.bricks-strip.danger { border-color: var(--danger); }
+.bricks-strip.dead { opacity: .55; }
+.bricks-meter { height: 8px; border-radius: 4px; background: var(--bg2); overflow: hidden; }
+.bricks-meter i { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 4px; transition: width .2s; }
+.bricks-meter i.warm { background: var(--accent); }
+.bricks-meter i.hot { background: var(--danger); }
+.bricks-sv { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- вибулий кидає 🍅 / 👏 у стіну живого ---- */
+.bricks-toss { display: flex; gap: 6px; align-items: center; font-size: .82em; color: var(--muted); }
+.bricks-toss[hidden] { display: none; }
+.bricks-toss button {
+  min-height: 34px; min-width: 44px; padding: 0 8px; font-size: 1.25em; border-radius: 10px; background: var(--panel3);
+  border: 2px solid transparent; justify-content: center;
+}
+.bricks-toss button.on { border-color: var(--accent); }
+.bricks-tossed {
+  position: absolute; z-index: 4; pointer-events: none; margin: -.7em 0 0 -.6em; font-size: 1.6em;
+  transition: transform .45s cubic-bezier(.3, .1, .5, 1);
+}
+
+.bricks-others { display: grid; gap: 10px 12px; align-content: start; justify-content: center; }
+.bricks-watch .bricks-others { grid-auto-flow: column; }
+@media (max-width: 639px) { .bricks-watch .bricks-others { grid-auto-flow: row; grid-template-columns: repeat(2, auto); } }
+
+.bricks-bd { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.bricks-lbl {
+  font-size: .8em; line-height: 1.3; max-width: 100%; min-height: 2.6em;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+}
+.bricks-l1, .bricks-l2 { display: flex; gap: 5px; align-items: center; white-space: nowrap; overflow: hidden; max-width: 100%; }
+.bricks-l1 b { overflow: hidden; text-overflow: ellipsis; }
+.bricks-l2 { font-size: .92em; }
+.bricks-lbl .bricks-n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bricks-lbl .bricks-w, .bricks-sumbox .bricks-w { color: var(--accent); }
+.bricks-dot { width: .72em; height: .72em; border-radius: 50%; display: inline-block; background: currentColor; flex: none; }
+.bricks-bd.bk0 .bricks-lbl, .bricks-to.bk0, tr.bk0 .bricks-dot { color: var(--bk-seat0); }
+.bricks-bd.bk1 .bricks-lbl, .bricks-to.bk1, tr.bk1 .bricks-dot { color: var(--bk-seat1); }
+.bricks-bd.bk2 .bricks-lbl, .bricks-to.bk2, tr.bk2 .bricks-dot { color: var(--bk-seat2); }
+.bricks-bd.bk3 .bricks-lbl, .bricks-to.bk3, tr.bk3 .bricks-dot { color: var(--bk-seat3); }
+.bricks-bd .bricks-lbl .bricks-to { font-size: .92em; }
+
+/* ---- лобі: як грати, поки збираються ---- */
+.bricks-lobby { max-width: 520px; margin: 4px auto 0; display: grid; gap: 10px; justify-items: center; color: var(--muted); }
+.bricks-lobby ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: .92em; text-align: left; }
+.bricks-lobby-solo { font-size: .85em; opacity: .85; }
+.bricks-lobby-wall { display: grid; grid-template-columns: repeat(3, 22px); gap: 3px; transform: translateX(6px); }
+.bricks-lobby-wall i { height: 12px; border-radius: 3px; background: var(--clay); opacity: .8; }
+.bricks-lobby-wall i:nth-child(4), .bricks-lobby-wall i:nth-child(5), .bricks-lobby-wall i:nth-child(6) { transform: translateX(-12px); }
+.bricks-lobby-wall i:first-child { background: var(--accent); }
+
+/* ---- кнопки під палець: лише своєму місцю й лише на дотиковому екрані ---- */
+.bricks-touch {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; width: 100%; max-width: 380px;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.bricks-touch button {
+  height: 54px; padding: 0; justify-content: center; font-size: 1.45em; border-radius: 12px;
+  background: var(--panel3); color: var(--text);
+}
+.bricks-touch button.on { background: var(--clay); }
+.bricks-touch button[data-k="HARD"] { background: var(--accent); color: var(--accent-ink, #1b1b1b); }
+
+/* ---- підсумок раунду/партії поверх сцени ---- */
+.bricks-summary {
+  position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.bricks-summary[hidden] { display: none; }
+.bricks-sumbox {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; min-width: 240px;
+  max-width: 94%; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); text-align: center; animation: bricks-pop .18s ease-out;
+}
+.bricks-sumhead { font-size: 1.3em; font-weight: 800; margin-bottom: 6px; }
+.bricks-why { font-size: .68em; font-weight: 600; color: var(--muted); margin-top: 2px; }
+.bricks-score { font-weight: 700; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+.bricks-score b { color: var(--accent); margin: 0 4px; }
+.bricks-medals { margin-top: 8px; display: grid; gap: 2px; font-size: .84em; text-align: left; }
+.bricks-sumbox table { border-collapse: collapse; margin: 0 auto; font-variant-numeric: tabular-nums; }
+.bricks-sumbox th { font-weight: 500; color: var(--muted); font-size: .78em; padding: 2px 8px; }
+.bricks-sumbox td { padding: 3px 8px; text-align: right; }
+.bricks-sumbox td:first-child { white-space: nowrap; }
+.bricks-sumbox td:nth-child(2) { text-align: left; font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bricks-sumbox td:nth-child(2) .bricks-dot { margin-right: 6px; }
+.bricks-next { color: var(--muted); font-size: .82em; margin-top: 6px; }
+@keyframes bricks-pop { from { transform: scale(.94); opacity: 0; } }
+
+/* ---- посилка сміття між стінами ---- */
+.bricks-shot {
+  position: absolute; z-index: 4; pointer-events: none; margin: -.8em 0 0 -1em; padding: 2px 9px; border-radius: 999px;
+  background: var(--danger); color: #fff; font-weight: 800; font-size: .95em;
+  transition: transform .3s ease-in, opacity .3s ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bricks-sumbox { animation: none; }
+  .bricks-shot { display: none; }
+}
