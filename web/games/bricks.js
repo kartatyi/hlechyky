@@ -891,6 +891,7 @@
     ['--bk-z', '#d9534f'], ['--bk-j', '#4f78d1'], ['--bk-l', '#e08a3c'], ['--bk-g', '#7a6a5e']];
   const ROWS = 22;           // малюємо ряди 0..21: два над стіною — там з'являються фігурки
   const LBL_H = 40;          // підпис чужої стіни: два рядки (нік і ★; ряди й ціль)
+  const STRIP_W = 96;        // стовпчик смужок чужих стін на телефоні
   const cssPx = (name) => { try { return parseFloat(getComputedStyle(document.body).getPropertyValue(name)) || 0; } catch { return 0; } };
   const TICK_MS = 1000 / 60;
 
@@ -1026,7 +1027,7 @@
         others: {}, order: [], mySeat: null,
         el: {}, cells: 0, layout: '', pal: null, spr: null, sprMini: null, back: null, backMini: null,
         dirty: true, lastVer: -1, raf: 0, timer: 0, keyup: null, onResize: null, onBlur: null,
-        fx: { parts: [], labels: [], shake: 0, trail: null, flash: 0, go: 0 },
+        fx: { parts: [], labels: [], shake: 0, trail: null, flash: 0, go: 0, splat: null },
         sound: soundPref(), audio: null, perf: { n: 0, sum: 0, max: 0, ring: new Float64Array(300), i: 0 },
         readySent: 0, lastRender: 0, lastClock: 0, touch: null, sumShown: false,
         pb: null, run: null, pbDelta: null, pbNew: null, pbGap: 0, tossE: 0, tossAt: 0,
@@ -1102,7 +1103,7 @@
     const chrome = cssPx('--tabs-h') + cssPx('--mini-h');
     // смужка підказок пада (Дека) висить унизу поверх сторінки — статус і кнопки картки мусять лягти над нею
     const padBar = padBarH();
-    const below = (narrow && touch ? chrome + 10 : 86 + chrome) + (touch ? 64 : 0) + padBar, hud = 30;
+    const below = (narrow && touch ? chrome + 10 : 86 + chrome) + (touch ? 64 : 0) + padBar, hud = st.sprint ? 50 : 30;   // у спринті HUD вищий: великий секундомір
     let hAvail = Math.max(260, vh - Math.max(0, top) - below - hud);
     let c;
     let kind;
@@ -1120,10 +1121,10 @@
       const n = others.length;
       // Двоє й більше чужих на телефоні — не мікростіни з клітинкою 4 px і ніком з однієї літери, а смужки
       // небезпеки над своєю стіною: ім'я, висота стіни, що летить. Одна чужа стіна (дуель) — поруч, як була.
+      // Стовпчик смужок стоїть праворуч від своєї стіни, де й так лишалось порожньо, — висоти стіні не забирає.
       strips = n >= 2;
       const k = n === 1 ? 0.5 : 0;
-      const minisW = (m) => (n === 1 ? Math.max(3, Math.round(m * 0.36)) + 10 * m + 6 : 0);
-      if (strips) hAvail -= n * 24 + 8;
+      const minisW = (m) => (n === 1 ? Math.max(3, Math.round(m * 0.36)) + 10 * m + 6 : strips ? STRIP_W + 6 : 0);
       // найбільша клітинка, за якої своя стіна з кишенею й чужа (що дрібнішає разом із нею) влазять у ширину
       c = Math.floor(hAvail / ROWS);
       while (c > 10 && 13.3 * c + minisW(Math.max(4, Math.floor(c * k))) + 4 > W) c--;
@@ -1180,11 +1181,11 @@
       const hudEl = hudBuild(st);
       // на телефоні HUD — рядком над усією сценою, інакше в стовпчику стіни він переноситься в три рядки
       (L.kind === 'narrow' ? scene : me).appendChild(hudEl);
-      if (L.strips) scene.appendChild(stripsBuild(st, L.others));
       const cv = document.createElement('canvas');
       cv.className = 'bricks-cv bricks-mine';
       me.appendChild(cv);
       scene.appendChild(me);
+      if (L.strips) scene.appendChild(stripsBuild(st, L.others));
       st.el.me = me;
       st.el.hud = hudEl;
       const pc = Math.max(7, Math.round(L.c * 0.56));
@@ -1533,6 +1534,23 @@
     if (show) for (let i = 0; i < 3; i++) drawPreview(g, sp, core.pieceAt(core.pi + i), nx, nextY + pc * 1.6 + i * pc * 2.8, sw, pc * 2.6, pc, i ? 0.8 : 1);
     drawOverlay(g, st, geo, now, dead);
     drawLabels(g, st, now, geo);
+    drawSplat(g, st, now, geo);
+  }
+
+  /// Кинуте вибулим у мою стіну: 🍅 чи 👏 великим по центру, секунду, потім тане.
+  function drawSplat(g, st, now, geo) {
+    const sp = st.fx.splat;
+    if (!sp) return;
+    const age = now - sp.born;
+    if (age >= 1200) { st.fx.splat = null; return; }
+    if (age < 0) return;
+    const k = age / 1200;
+    g.globalAlpha = k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4;
+    g.font = Math.round(geo.c * (reduced() ? 3 : 2.4 + Math.min(1, age / 120) * 0.8)) + 'px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(sp.icon, geo.x0 + 5 * geo.c, geo.h * 0.45);
+    g.globalAlpha = 1;
   }
 
   /// Загроза сміття: скільки летить — числом угорі стіни; дозріло (влізе з наступною фіксацією без рядів) —
@@ -1578,7 +1596,7 @@
     if (st.sprint && st.phase === 'ready') {
       shade(g, geo, 0.55);
       text('Готовий?', Math.round(c * 1.3), pal.text, cy - c);
-      text(coarse() ? 'Торкнись стіни' : 'Натисни будь-яку клавішу', Math.round(c * 0.62), pal.accent, cy + c * 0.4);
+      text(padish() ? 'Натисни Ⓐ' : coarse() ? 'Торкнись стіни' : 'Натисни будь-яку клавішу', Math.round(c * 0.62), pal.accent, cy + c * 0.4);
       text('сорок рядів на час', Math.round(c * 0.5), pal.muted, cy + c * 1.4);
       return;
     }
@@ -2008,9 +2026,9 @@
     const left = res && res.left ? rows.filter((r) => res.left[r.s]) : [];
     const gone = left.length ? '<div class="bricks-next">🚪 ' + left.map((r) => esc(r.nick)).join(', ') + ' — з-за столу</div>' : '';
     const html = '<div class="bricks-sumbox"><div class="bricks-sumhead">' + head + '</div>' + score
-      + '<table><tr><th></th><th></th>' + (star ? '<th>раундів</th>' : '') + '<th>' + (over ? 'рядів за партію' : 'рядів') + '</th><th>вислав</th><th>отримав</th></tr>'
+      + '<table><tr><th></th><th></th>' + (star ? '<th>раундів</th>' : '') + '<th>рядів</th><th class="bricks-sr">вислав</th><th class="bricks-sr">отримав</th></tr>'
       + rows.map((r) => '<tr class="bk' + r.s + '"><td>' + (r.rk === 1 ? '🏆' : r.rk > 1 && r.rk < 99 ? r.rk + '-й' : '') + '</td><td><span class="bricks-dot"></span>'
-        + esc(r.nick) + '</td>' + (star ? '<td class="bricks-w">★' + r.wins + '</td>' : '') + '<td>' + r.lines + '</td><td>' + r.sn + '</td><td>' + r.rc + '</td></tr>').join('')
+        + esc(r.nick) + '</td>' + (star ? '<td class="bricks-w">★' + r.wins + '</td>' : '') + '<td>' + r.lines + '</td><td class="bricks-sr">' + r.sn + '</td><td class="bricks-sr">' + r.rc + '</td></tr>').join('')
       + '</table>' + medals(st, res, rows) + gone + (over ? '' : '<div class="bricks-next">новий раунд за кілька секунд…</div>') + '</div>';
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
     el.hidden = false;
@@ -2153,8 +2171,13 @@
   function tossBar(st) {
     const me = st.el.me;
     if (!me) return;
+    // лише коли вибування підтвердив сервер (подія «o» чи вид): до того він кидок не прийме
+    const mb = myBoard(st);
     const want = st.ctx.mine && st.phase === 'go' && st.net.loaded && !st.net.core.alive && !st.sprint
+      && (st.net.rank > 0 || (mb && !mb.a))
       && seatsInRound(st).some((s) => s !== st.ctx.seat && st.others[s] && st.others[s].a);
+    // вибулому кнопки керування ні до чого — на телефоні замість них панелька з 🍅
+    if (st.el.scene && st.el.scene.classList.contains('bricks-out') !== want) st.el.scene.classList.toggle('bricks-out', want);
     let bar = st.el.toss;
     if (!want) { if (bar && !bar.hidden) bar.hidden = true; return; }
     if (!bar) {
@@ -2195,7 +2218,8 @@
   function tossFly(st, from, to, e) {
     const icon = TOSS[e] || TOSS[0];
     const o = st.others[to];
-    if (st.ctx.mine && to === st.ctx.seat && st.el.mine) label(st, icon, '#fff');
+    // у мою стіну — великим, на пів стіни: помідор має бути помідором
+    if (st.ctx.mine && to === st.ctx.seat && st.el.mine) st.fx.splat = { icon, born: performance.now() + (reduced() ? 0 : 420) };
     else if (o) {
       (o.fx || (o.fx = [])).push({ text: icon, color: '#fff', born: performance.now() + (reduced() ? 0 : 420) });
       if (o.fx.length > 3) o.fx.shift();
@@ -2233,7 +2257,7 @@
     ensureArt(st);
     effects(st, now);
     const core = st.net.core;
-    const busy = st.fx.parts.length || st.fx.labels.length || st.fx.shake > now || (st.fx.trail && st.fx.trail.until > now)
+    const busy = st.fx.parts.length || st.fx.labels.length || st.fx.splat || st.fx.shake > now || (st.fx.trail && st.fx.trail.until > now)
       || st.phase === 'start' || st.fx.go > now || (st.sprint && st.phase === 'go')
       || (st.phase === 'go' && st.net.loaded && core.alive && core.crN > 0 && !reduced());   // рамка дозрілого сміття блимає
     let drew = false;
@@ -2390,14 +2414,30 @@
       const w = v && v.boards ? v.boards.filter((b) => b.rk === 1) : [];
       return w.length ? (w.length > 1 ? 'Раунд беруть ' : 'Раунд бере ') + w.map((b) => b.nk || SEATS[b.s]).join(', ') : 'Раунд нікому';
     }
-    // глядачеві «Дивлюсь збоку» пише каркас під кнопками — другий такий самий рядок тут ні до чого
-    if (!ctx.mine || ph === 'over') return '';
+    if (ph === 'over') return '';
+    // Глядачеві «Дивлюсь збоку» каркас уже пише під кнопками; порожній статус він доповнив би ще одним
+    // «Дивишся збоку». Тож глядачеві — щось корисне: скільки ще в грі й хто попереду за рядами.
+    if (!ctx.mine) return st ? watchText(st, ph) : '';
     if (ph === 'start') return 'Готуйсь… ' + controlsText();
     if (st && st.net.loaded && !st.net.core.alive) {
       const rk = myRank(st);
       return 'Ти вибув' + (rk > 1 ? ' — ' + rk + '-й' : '') + '. Дивись, як мучаться інші';
     }
     return '';
+  }
+
+  function watchText(st, ph) {
+    const seats = seatsInRound(st);
+    if (ph === 'start' || !seats.length) return 'Зараз почнуть…';
+    let alive = 0, best = -1;
+    for (const s of seats) {
+      const o = st.others[s];
+      if (!o) continue;
+      if (o.a) alive++;
+      if (o.a && (best < 0 || o.l > st.others[best].l)) best = s;
+    }
+    const lead = best >= 0 && st.others[best].l > 0 ? ' · найбільше рядів — ' + nickOf(st, best) + ', ' + st.others[best].l : '';
+    return 'У грі ' + alive + ' з ' + seats.length + lead;
   }
 
   /// Хто з джойстиком (Дека, підключений пад) — тому й підказки кнопками пада, а не клавіатури.
