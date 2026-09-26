@@ -1334,6 +1334,42 @@ public class CrowdTests(ITestOutputHelper output)
         Assert.Equal("фіолетовий", new Crowd().SeatName(6));
     }
 
+    [Fact]
+    public void The_module_sends_only_actions_and_payloads_the_server_reads()
+    {
+        var js = File.ReadAllText(Path.Combine(FindRoot(), "web", "games", "crowd.js"));
+        var sent = System.Text.RegularExpressions.Regex.Matches(js, @"ctx\.(?:act|input)\('(\w+)'")
+            .Select(m => m.Groups[1].Value).Distinct().Order().ToArray();
+        Assert.Equal(["buy", "move", "shoot"], sent);
+        // форми payload — ті самі, що перевіряє The_server_accepts_exactly_what_the_module_sends
+        Assert.Contains("ctx.input('move', { dir: d })", js);
+        Assert.Contains("ctx.input('move', { dir: -1 })", js);
+        Assert.Contains("ctx.act('shoot', id == null ? {} : { id })", js);
+        Assert.Contains("ctx.act('buy', stall == null ? {} : { stall })", js);
+    }
+
+    [Fact]
+    public void Module_constants_match_the_server_rules()
+    {
+        var js = File.ReadAllText(Path.Combine(FindRoot(), "web", "games", "crowd.js"));
+        int Const(string name)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(js, @"\b" + name + @"\s*=\s*(\d+)");
+            Assert.True(m.Success, name);
+            return int.Parse(m.Groups[1].Value);
+        }
+        Assert.Equal(Crowd.TickMs, Const("TICK_MS"));
+        Assert.Equal(CrowdMap.Cell, Const("CELL"));
+        Assert.Equal(CrowdMap.WorldW, Const("WW"));
+        Assert.Equal(CrowdMap.WorldH, Const("WH"));
+        Assert.Equal(CrowdCore.ShotRange, Const("SHOT_RANGE"));
+        Assert.Equal(CrowdCore.ShotRangeMax, Const("SHOT_MAX"));
+        Assert.Equal(CrowdCore.ConeCos2Milli, Const("CONE"));
+        Assert.Equal(Crowd.ShotCoolTicks * Crowd.TickMs, Const("SHOT_COOL_MS"));
+        Assert.Equal(Crowd.BuyCoolTicks * Crowd.TickMs, Const("BUY_COOL_MS"));
+        Assert.Equal(Crowd.HaggleTicks * Crowd.TickMs, Const("HAGGLE_MS"));
+    }
+
     static string FindRoot()
     {
         var dir = AppContext.BaseDirectory;
