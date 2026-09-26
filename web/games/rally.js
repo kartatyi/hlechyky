@@ -1213,7 +1213,7 @@
       g.fillStyle = gr;
       g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     };
-    // ліхтарі — на кожному шостому стовпі тину, що дивиться на дорогу
+    // ліхтарі — на кожному шостому стовпі тину, що дивиться на дорогу (упритул чи через смужку трави)
     const lamps = [];
     let n = 0;
     for (let y = 0; y < S.ROWS; y++) {
@@ -1222,7 +1222,7 @@
         let road = null;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const k = tr.codeAt(x + dx, y + dy);
-          if (!S.isWall(k) && k !== S.GRASS) { road = [dx, dy]; break; }
+          if (isRoadish(k) || ((k === S.GRASS || k === S.CORN) && isRoadish(tr.codeAt(x + 2 * dx, y + 2 * dy)))) { road = [dx, dy]; break; }
         }
         if (!road || n++ % 6) continue;
         const lx = x * 32 + 16 + road[0] * 12, ly = y * 32 + 16 + road[1] * 12;
@@ -1519,7 +1519,8 @@
     if (ev & S.EV.puddle) for (let n = 0; n < 10 * rm; n++) spawn(ps, x, y, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.4, 2, '#8fc3ee', 0);
     if (ev & S.EV.wall) {
       for (let n = 0; n < 6 * rm; n++) spawn(ps, x + ca * 10, y + sa * 10, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, 0.25, 1.5, '#ffd84a', 2);
-      if (own && st.rm === 1) st.shakeUntil = performance.now() + 120;
+      // тряска — лише від справжнього удару (швидкість змінилась понад 6 u/тик), а не від кожного дотику тину боком
+      if (own && st.rm === 1 && Math.hypot(st.prevOwn.vf - c.vf, st.prevOwn.vl - c.vl) > 384) st.shakeUntil = performance.now() + 120;
       sfx(st, 'hit');
     }
     if (ev & S.EV.hay) { for (let n = 0; n < 10 * rm; n++) spawn(ps, x, y, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.5, 2, '#e6c35a', 0); sfx(st, 'hit'); }
