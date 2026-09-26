@@ -520,7 +520,7 @@
     if (mine && led) {
       const month = led.month || [];
       if (month.length) {
-        body += '<h4>За 30 днів</h4><div class="wc-cats">' + month.map((c) => '<span class="chip' + (c.spent > c.earned ? ' minus' : '') + '">'
+        body += '<h4>Цього місяця</h4><div class="wc-cats">' + month.map((c) => '<span class="chip' + (c.spent > c.earned ? ' minus' : '') + '">'
           + esc(c.title) + ' ' + (c.earned ? '<b class="plus">+' + lbNum(c.earned) + '</b>' : '') + (c.spent ? ' <b class="minus">−' + lbNum(c.spent) + '</b>' : '') + '</span>').join('') + '</div>';
       }
       const items = led.items || [];

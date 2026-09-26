@@ -65,6 +65,7 @@ builder.Services.AddHlechykyGames();
 builder.Services.AddHlechykyEconomy();
 builder.Services.AddHlechykyWords();
 builder.Services.AddHlechykyMcp();   // аі-агенти за столом: POST /mcp
+builder.Services.AddHlechykyFeedback();   // «💡 Розробнику»: пропозиції й баги (Feedback.cs)
 
 var port = cfg.GetValue<int?>("Site:ListenPort") ?? 8080;
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(port));
@@ -84,5 +85,6 @@ app.MapHlechyky();
 app.MapHlechykyGames();
 app.MapHlechykyEconomy();
 app.MapHlechykyMcp();
+app.MapHlechykyFeedback();
 app.MapHub<RadioHub>("/hub");
 app.Run();

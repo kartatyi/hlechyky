@@ -64,6 +64,8 @@
       <span id="nickBtn" class="nick">…</span>
       <span id="hdrWallet" class="wallet" title="Черепки">🏺 <b>—</b></span>
     </a>
+    <!-- «💡 Розробнику»: пропозиції й баги. Бейдж — нові записки (адміну) або свіжа відповідь розробника (решті). -->
+    <button id="fbBtn" class="icon fbbtn" type="button" title="Пропозиції й баги — розробнику" aria-label="Написати розробнику">💡<span id="fbBadge" class="chip badge" hidden>0</span></button>
     <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
   </div>
   <div class="hdrprog" id="hdrProg" title="Скільки лишилось треку"><div id="hdrBar"></div></div>
@@ -143,6 +145,7 @@
         <div class="libgrp">Керування</div>
         <button data-tab="bans"><span class="ico">🚫</span>Бан</button>
         <button data-tab="ads" id="adsTab" hidden><span class="ico">📣</span>Реклама</button>
+        <button data-tab="feedback" id="fbTab" hidden><span class="ico">💡</span>Пропозиції <span id="fbTabBadge" class="chip badge" hidden>0</span></button>
       </nav>
       <section class="panel libpage">
         <div class="libhead">
@@ -251,6 +254,27 @@
   </div>
 </div>
 
+<!-- «💡 Розробнику»: що додати, що змінити, що зламалось. Своє з відповідями — у «Моїх записках» знизу. -->
+<div id="fbModal" class="modal" hidden>
+  <form id="fbForm" class="card fbcard">
+    <h3>💡 Розробнику</h3>
+    <p class="muted small">Що додати, що змінити, що зламалось — пиши як є. Читає той, хто робить сайт, і відповідає просто тут.</p>
+    <div class="tabs seg" id="fbKinds">
+      <button type="button" data-k="idea" class="on">💡 Додати</button>
+      <button type="button" data-k="change">✏ Змінити</button>
+      <button type="button" data-k="bug">🐞 Баг</button>
+    </div>
+    <textarea id="fbText" maxlength="2000" rows="5" autocomplete="off"></textarea>
+    <div class="muted small" id="fbNote"></div>
+    <div class="row fbrow">
+      <button class="primary" type="submit" id="fbSend">Надіслати</button>
+      <button class="ghost" type="button" id="fbClose">Закрити</button>
+      <span class="muted small fbcount" id="fbCount">0 / 2000</span>
+    </div>
+    <details id="fbMine" hidden><summary>Мої записки <span id="fbMineN" class="muted small"></span></summary><div id="fbMineList" class="fbmine"></div></details>
+  </form>
+</div>
+
 <!-- «?» — шпаргалка клавіш: раніше вони жили лише в підказках кнопок. -->
 <div id="keysModal" class="modal" hidden>
   <div class="card keys">
@@ -265,6 +289,7 @@
       <div><kbd>Tab</kbd><span>дописати команду чи нік у балачках</span></div>
     </div>
     <div class="muted small">Команди в балачках: набери <b>/</b> (або <b>.</b> з української розкладки) чи тисни кнопку <b>/</b> поруч із полем — кубик і монетку кидає одним натиском.</div>
+    <div class="muted small">Щось не так чи є ідея — кнопка <b>💡</b> у шапці: записка йде просто розробнику.</div>
     <button id="keysClose" class="ghost" type="button">Закрити</button>
   </div>
 </div>

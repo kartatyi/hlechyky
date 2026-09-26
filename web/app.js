@@ -1843,11 +1843,11 @@
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
   // балачок на телефоні). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
   const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'chat'];
-  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads'];
+  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback'];
   const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', chat: 'Балачки' };
-  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама' };
+  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
-  const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу' };
+  const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках' };
   // Старі адреси (закладки, посилання в балачках) ведуть туди, куди переїхали їхні сторінки.
   const MOVED = {
     'lib/rating': '#stats/music', 'lib/top': '#stats/music',
@@ -1996,6 +1996,89 @@
     else if (e.key === '3') { e.preventDefault(); go(hashFor('games')); }
     else if (e.key === '4') { e.preventDefault(); go(hashFor('stats')); }
   });
+  // ---------- «💡 Розробнику»: пропозиції й баги ----------
+  // Записка йде в базу (Feedback.cs) разом із тим, де людина на сайті, розміром екрана й браузером — так баг легше
+  // відтворити. Свої записки з відповіддю розробника видно тут же, у «Моїх записках»; свіжа відповідь — бейдж на 💡.
+  const FB_KINDS = {
+    idea: { ph: 'Що варто додати? Наприклад: «щоб у балачках можна було закріпити повідомлення»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
+    change: { ph: 'Що змінити й чому? Наприклад: «на телефоні черга завелика — хай згортається»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
+    bug: { ph: 'Що робив → що сталося → що мало статися. Наприклад: «натиснув Скіп — нічого, хоча мало перемкнути»', note: 'Разом із текстом піде, де ти на сайті, розмір екрана й браузер — так баг легше знайти.' },
+  };
+  const FB_STATUS = { new: ['нове', ''], seen: ['переглянуто', ''], planned: ['у планах', 'warn'], done: ['зроблено', 'ok'], nope: ['не буде', 'err'] };
+  const FB_ICON = { idea: '💡', change: '✏', bug: '🐞' };
+  let fbKind = 'idea';
+  const fbSeenAt = () => { try { return +(localStorage.getItem('fbSeenAt') || 0); } catch { return 0; } };
+  function setFbKind(k) {
+    fbKind = FB_KINDS[k] ? k : 'idea';
+    $('fbKinds').querySelectorAll('[data-k]').forEach((b) => b.classList.toggle('on', b.dataset.k === fbKind));
+    $('fbText').placeholder = FB_KINDS[fbKind].ph;
+    $('fbNote').textContent = FB_KINDS[fbKind].note;
+  }
+  const fbStatusChip = (s) => { const [l, cls] = FB_STATUS[s] || [s, '']; return `<span class="chip ${cls}">${esc(l)}</span>`; };
+  async function loadMyFeedback(open) {
+    if (!me.nick) return;
+    let r;
+    try { r = await api('GET', '/api/feedback/mine'); } catch { return; }
+    const items = (r && r.items) || [];
+    const seen = fbSeenAt();
+    // Свіжа відповідь — розробник щось зробив із запискою відтоді, як людина востаннє дивилась свої.
+    const isFresh = (x) => x.status !== 'new' && Date.parse(x.updatedAt) > seen;
+    const fresh = items.filter(isFresh).length;
+    if (me.role !== 'admin') { $('fbBadge').hidden = !fresh; $('fbBadge').textContent = fresh ? '•' : ''; }
+    $('fbMine').hidden = !items.length;
+    $('fbMineN').textContent = items.length ? `· ${items.length}` + (fresh ? ` · нових відповідей ${fresh}` : '') : '';
+    $('fbMineList').innerHTML = items.map((x) => `<div class="fbm${isFresh(x) ? ' fresh' : ''}">
+        <div class="fbm-head">${FB_ICON[x.kind] || '💬'} ${fbStatusChip(x.status)}<span class="muted small">${esc(dayTime(x.at))}</span></div>
+        <div class="fbm-text">${esc(x.text)}</div>
+        ${x.reply ? `<div class="fbm-reply">↪ <b>Розробник:</b> ${linkify(x.reply)}</div>` : ''}
+      </div>`).join('');
+    if (open) $('fbMine').open = true;
+  }
+  $('fbMine').addEventListener('toggle', () => {
+    if (!$('fbMine').open) return;
+    try { localStorage.setItem('fbSeenAt', String(Date.now())); } catch { /* приватне вікно */ }
+    if (me.role !== 'admin') $('fbBadge').hidden = true;
+  });
+  function openFeedback() {
+    setFbKind(fbKind);
+    $('fbCount').textContent = `${$('fbText').value.length} / 2000`;
+    $('fbModal').hidden = false;
+    setTimeout(() => $('fbText').focus(), 50);
+    loadMyFeedback(!$('fbBadge').hidden && me.role !== 'admin');
+  }
+  $('fbBtn').onclick = openFeedback;
+  $('fbClose').onclick = () => { $('fbModal').hidden = true; };
+  $('fbModal').addEventListener('click', (e) => { if (e.target === $('fbModal')) $('fbModal').hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('fbModal').hidden) $('fbModal').hidden = true; });
+  $('fbKinds').querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { setFbKind(b.dataset.k); $('fbText').focus(); });
+  $('fbText').addEventListener('input', () => { $('fbCount').textContent = `${$('fbText').value.length} / 2000`; });
+  $('fbForm').onsubmit = (e) => {
+    e.preventDefault();
+    const text = $('fbText').value.trim();
+    if (text.length < 5) { toast('Напиши трохи більше — хоч кілька слів', 'err'); $('fbText').focus(); return; }
+    busy($('fbSend'), 'надсилаю…', async () => {
+      try {
+        const r = await api('POST', '/api/feedback', {
+          kind: fbKind, text, place: location.hash || '#efir', screen: `${window.innerWidth}×${window.innerHeight}`,
+          ua: navigator.userAgent.slice(0, 300),
+        });
+        ok(r);
+        $('fbText').value = '';
+        $('fbCount').textContent = '0 / 2000';
+        loadMyFeedback(true);
+        if (me.role === 'admin') loadFeedbackCount();
+      } catch (err) { fail(err); }
+    });
+  };
+  /// Адміну — скільки нових записок чекає: бейдж на 💡 і на вкладці «Пропозиції».
+  async function loadFeedbackCount() {
+    if (me.role !== 'admin') return;
+    let n = 0;
+    try { n = ((await api('GET', '/api/feedback/new-count')) || {}).count || 0; } catch { return; }
+    for (const id of ['fbBadge', 'fbTabBadge']) { $(id).hidden = !n; $(id).textContent = n; }
+    $('fbBtn').title = n ? `Нових записок: ${n}` : 'Пропозиції й баги — розробнику';
+  }
+
   // ---------- шпаргалка клавіш ----------
   function showKeys() { $('keysModal').hidden = false; $('keysClose').focus(); }
   $('keysClose').onclick = () => { $('keysModal').hidden = true; };
@@ -2617,9 +2700,59 @@
       } else if (libTab === 'ads') {
         await renderAds();
         return;
+      } else if (libTab === 'feedback') {
+        await renderFeedbackAdmin();
+        return;
       }
       wireRows(box);
     } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  // ---------- «💡 Пропозиції й баги» — вкладка розробника (адміна) ----------
+  // Усі записки зі станом і відповіддю. Відповідь бачить автор у своїх «Моїх записках»; нова відповідь без зміни стану
+  // переводить «нове» в «переглянуто», щоб у фільтрі «нові» лишалось лише непрочитане.
+  let fbFilter = (() => { try { return localStorage.getItem('fbFilter') || 'new'; } catch { return 'new'; } })();
+  /// «Chrome 140 · Windows» — з рядка браузера досить цього; повний — у підказці.
+  function shortUa(ua) {
+    const s = String(ua || '');
+    const b = /Edg\/(\d+)/.exec(s) ? 'Edge ' + /Edg\/(\d+)/.exec(s)[1] : /Firefox\/(\d+)/.exec(s) ? 'Firefox ' + /Firefox\/(\d+)/.exec(s)[1]
+      : /Chrome\/(\d+)/.exec(s) ? 'Chrome ' + /Chrome\/(\d+)/.exec(s)[1] : /Safari\//.test(s) ? 'Safari' : '';
+    const p = /Android/.test(s) ? 'Android' : /iPhone|iPad/.test(s) ? 'iOS' : /Windows/.test(s) ? 'Windows' : /Mac OS X/.test(s) ? 'Mac' : /Linux/.test(s) ? 'Linux' : '';
+    return [b, p].filter(Boolean).join(' · ');
+  }
+  async function renderFeedbackAdmin() {
+    const box = $('lib');
+    if (me.role !== 'admin') { box.innerHTML = '<div class="empty">Це бачить лише розробник</div>'; return; }
+    const r = await api('GET', '/api/feedback' + (fbFilter === 'all' ? '' : '?status=' + encodeURIComponent(fbFilter)));
+    const c = r.counts || {};
+    const total = Object.values(c).reduce((a, b) => a + b, 0);
+    const seg = [['new', 'нові'], ['seen', 'переглянуті'], ['planned', 'у планах'], ['done', 'зроблені'], ['nope', 'не буде'], ['all', 'усі']]
+      .map(([v, l]) => `<button data-v="${v}" class="${fbFilter === v ? 'on' : ''}">${l} · ${v === 'all' ? total : (c[v] || 0)}</button>`).join('');
+    const row = (x) => `<li class="fbi fb-${esc(x.kind)}" data-id="${x.id}">
+        <div class="fbi-head">${FB_ICON[x.kind] || '💬'} ${nickHtml(x.nick, 'rnick')}<span class="muted small">${esc(dayTime(x.at))}</span>
+          <select class="fbi-st" aria-label="Стан">${Object.entries(FB_STATUS).map(([k, [l]]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="fbi-text">${esc(x.text)}</div>
+        <div class="fbi-ctx muted small">${x.place ? '📍 ' + esc(x.place) : ''}${x.screen ? ' · ' + esc(x.screen) : ''}${x.ua ? ` · <span title="${esc(x.ua)}">${esc(shortUa(x.ua))}</span>` : ''}</div>
+        <form class="fbi-reply"><input type="text" maxlength="500" placeholder="Відповідь — побачить автор у своїх записках" value="${esc(x.reply || '')}"><button class="ghost" type="submit">Відповісти</button></form>
+      </li>`;
+    const empty = fbFilter === 'new' ? 'Нових записок нема — усе прочитано.' : 'Тут поки порожньо.';
+    box.innerHTML = `<div class="tabs seg fbseg">${seg}</div><ul class="list fblist">${(r.items || []).map(row).join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
+    box.querySelectorAll('.fbseg [data-v]').forEach((b) => b.onclick = () => {
+      fbFilter = b.dataset.v;
+      try { localStorage.setItem('fbFilter', fbFilter); } catch { /* приватне вікно */ }
+      loadLib();
+    });
+    const save = async (li, body) => {
+      try { await api('PATCH', `/api/feedback/${li.dataset.id}`, body); loadFeedbackCount(); loadLib(); } catch (err) { fail(err); }
+    };
+    box.querySelectorAll('.fbi').forEach((li) => {
+      li.querySelector('.fbi-st').onchange = (e) => save(li, { status: e.target.value });
+      li.querySelector('.fbi-reply').onsubmit = (e) => {
+        e.preventDefault();
+        const st = li.querySelector('.fbi-st').value;
+        busy(e.target.querySelector('button'), '…', () => save(li, { reply: e.target.querySelector('input').value, status: st === 'new' ? 'seen' : st }));
+      };
+    });
   }
   // улюблене: типово — моє (згори те, що лайкнуто останнім), «Усі» — спільний список; вибір пам'ятаємо
   let likesWho = 'mine';
@@ -3132,8 +3265,9 @@
     paintNight();
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
-    // на #lib/ads зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
-    if (libTab === 'ads' && me.role !== 'admin') go('#lib/history');
+    $('fbTab').hidden = me.role !== 'admin';
+    // на #lib/ads чи записки зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
+    if ((libTab === 'ads' || libTab === 'feedback') && me.role !== 'admin') go('#lib/history');
     if (me.account || me.nick) {
       // Нік без приставки з часів до акаунтів: сервер уже зве нас «гість …» — запропонуємо закріпити його паролем.
       const plain = !me.account && me.nick && m.nick !== me.nick ? me.nick : null;
@@ -3142,6 +3276,8 @@
       paintNick();
       connect();
       if (plain) askNick(true, 'register', plain);
+      // «💡»: адміну — скільки нових записок, решті — чи є свіжа відповідь розробника на свої.
+      if (me.role === 'admin') loadFeedbackCount(); else loadMyFeedback(false);
     } else startPreview();
     if (state) render();
   }).catch(() => {

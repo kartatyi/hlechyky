@@ -993,3 +993,38 @@ body.preview header .mechip .wallet { display: none; }
 /* Довгий нік у «⏱ Час» — з трикрапкою, а не обрізаний посеред літери. */
 .gt-nick { min-width: 0; overflow: hidden; }
 .gt-nick .who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- «💡 Розробнику»: кнопка в шапці, вікно записки, «Мої записки» ---- */
+header .fbbtn { position: relative; padding: 6px 9px; font-size: 1.05em; }
+header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
+.modal .card.fbcard { width: min(94vw, 520px); max-height: 92vh; overflow: auto; }
+.fbcard textarea {
+  font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; width: 100%; min-height: 120px; resize: vertical; outline: none; line-height: 1.45;
+}
+.fbcard textarea:focus { border-color: var(--accent2); }
+.fbrow { align-items: center; }
+.fbcount { margin-left: auto; font-variant-numeric: tabular-nums; }
+.fbcard details summary { cursor: pointer; color: var(--text); font-weight: 600; padding: 4px 0; }
+.fbmine { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-height: 40vh; overflow: auto; }
+.fbm { background: var(--bg2); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; border: 1px solid transparent; }
+.fbm.fresh { border-color: var(--accent2); }
+.fbm-head { display: flex; align-items: center; gap: 6px; }
+.fbm-head .muted { margin-left: auto; }
+.fbm-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92em; }
+.fbm-reply { font-size: .9em; padding: 4px 8px; border-left: 3px solid var(--accent2); background: var(--panel); border-radius: 6px; }
+
+/* ---- вкладка розробника «💡 Пропозиції й баги» ---- */
+.fbseg { flex-wrap: wrap; }
+.list.fblist { max-height: none; overflow: visible; gap: 8px; }
+.list.fblist li.fbi { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--bg2); border-radius: 12px; border-left: 3px solid var(--line); font-size: .95em; }
+.list.fblist li.fbi:hover { background: var(--bg2); }
+.list.fblist li.fb-bug { border-left-color: var(--danger); }
+.list.fblist li.fb-idea { border-left-color: var(--accent2); }
+.list.fblist li.fb-change { border-left-color: var(--ok); }
+.fbi-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fbi-head .fbi-st { margin-left: auto; font: inherit; font-size: .85em; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.fbi-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.fbi-ctx:empty { display: none; }
+.fbi-reply { display: flex; gap: 6px; }
+.fbi-reply input { padding: 6px 10px; font-size: .9em; }
