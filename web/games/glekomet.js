@@ -534,6 +534,7 @@
       st.bestTurn = -1;
       st.replay = null;
       st.replayChecked = false;
+      st.shotTurn = -1;
       for (const hut of st.huts) { hut.ruined = false; hut.anim = null; }
       if (me(st) != null) requestAnimationFrame(() => bringIntoView(st));
     }
@@ -574,7 +575,7 @@
     }
 
     // снаряди з виду (F5 посеред польоту)
-    if (st.phase === 'fly' && st.shooter !== st.turn) startShot(st);
+    if (st.phase === 'fly' && st.shotTurn !== st.turnNo) startShot(st);   // за номером ходу: той самий стрілець двічі поспіль теж новий слід
     if (st.phase === 'fly' && v.shells && v.shells.length && !st.shN) takeShells(st, v.shells, false);
     if (st.phase !== 'fly') st.shN = 0;
 
@@ -637,6 +638,7 @@
   }
 
   function startShot(st) {
+    st.shotTurn = st.turnNo;
     st.shooter = st.turn;
     if (st.shooter != null && st.shooter >= 0) st.trails[st.shooter] = [];
     st.tailN.fill(0);
@@ -665,7 +667,7 @@
     st.t = f.t;
     const ph = f.ph;
     if (ph && ph !== st.phase) {
-      if (ph === 'fly' && st.phase !== 'fly') startShot(st);
+      if (ph === 'fly' && st.phase !== 'fly' && st.shotTurn !== st.turnNo) startShot(st);
       if (ph !== 'fly') st.shN = 0;
       st.phase = ph;
     }
