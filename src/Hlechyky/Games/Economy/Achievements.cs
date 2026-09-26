@@ -95,6 +95,9 @@ public static class AchievementCatalog
         // хвиля 2: glekomet
         new("glekomet-sniper", "Далекобійник",  "Глекомети: пряме влучання в чужу хату з пів села", "🎯", 20),
         new("glekomet-clean",  "Ні подряпини",  "Глекомети: перемога з цілою хатою — усі 100 здоров'я", "🏠", 25),
+        // хвиля 2: crowd
+        new("crowd-eye",   "Око-алмаз",       "Юрма: влучив у гравця першим камінцем раунду", "🎯", 15),
+        new("crowd-quiet", "Тихий покупець",  "Юрма: виграв раунд покупками, не стрельнувши жодного разу", "🧺", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
