@@ -125,7 +125,8 @@ gk.bot = async (nick, opts) => {
     bot.turnNo = v.turnNo;
     const turnNo = v.turnNo;
     setTimeout(async () => {
-      if (!bot.view || bot.view.turnNo !== turnNo) return;
+      // за паузу бот міг устати з-за столу або хід міг згоріти — тоді мовчимо
+      if (bot.opts.idle || bot.seat == null || !bot.view || bot.view.phase !== 'aim' || bot.view.turnNo !== turnNo) return;
       const plan = gk.plan(bot.view, bot.seat, bot.opts.skill);
       if (bot.opts.mover && Math.random() < 0.4) {
         const r = await bot.call('Act', bot.room, 'move', { dir: Math.random() < 0.5 ? -1 : 1 });

@@ -255,6 +255,15 @@ public sealed class Glekomet : Game
         if (!hut.Alive && hut.Reason == "drown") Note($"{Name(seat)}: хату затопило");
         if (!hut.Alive)
         {
+            // на полі в паузі — саме цей рядок, а не минулий постріл
+            var drowned = hut.Reason == "drown";
+            _last = new
+            {
+                by = seat,
+                w = -1,
+                hits = new object[] { new { seat, dmg = core.ShotFall[seat], kind = drowned ? "drown" : "fall" } },
+                text = _log[^1],
+            };
             _pendView = true;
             _phase = PhaseSettle;
             _left = SettleSkip;
@@ -685,7 +694,8 @@ public sealed class Glekomet : Game
             core.Kill(seat, "left");
             _pendHp = true;
         }
-        Note($"{Name(seat)}: за столом нема, хата порожня");
+        var gone = $"{Name(seat)}: за столом нема, хата порожня";
+        Note(gone);
         _pendView = true;
         var others = new List<int>();
         for (var s = 0; s < Seats; s++) if (s != seat && Ctx.Seated(s)) others.Add(s);
@@ -697,6 +707,7 @@ public sealed class Glekomet : Game
         if (CheckEnd()) return;
         if (_phase == PhaseAim && _turn == seat)
         {
+            _last = new { by = seat, w = -1, hits = Array.Empty<object>(), text = gone };
             _phase = PhaseSettle;
             _left = SettleSkip;
         }

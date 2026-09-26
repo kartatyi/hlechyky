@@ -491,6 +491,9 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.False(core.Huts[0].Alive);
         Assert.Equal("drown", core.Huts[0].Reason);
         Assert.Equal(Glekomet.PhaseSettle, Phase(h));
+        // у паузі на полі — саме ця біда, а не минулий постріл
+        Assert.Equal("Оля: хату затопило", V(h).GetProperty("last").GetProperty("text").GetString());
+        Assert.Equal("drown", V(h).GetProperty("last").GetProperty("hits")[0].GetProperty("kind").GetString());
         Settle(h);
         Assert.Equal(1, Game(h).Turn);
     }
@@ -1039,6 +1042,7 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.Equal("left", Core(h).Huts[0].Reason);
         Assert.Equal(Glekomet.PhaseSettle, Phase(h));
+        Assert.Equal("Оля: за столом нема, хата порожня", V(h).GetProperty("last").GetProperty("text").GetString());
         Settle(h);
         Assert.Equal(1, Game(h).Turn);
         Assert.Contains("Оля: за столом нема, хата порожня", V(h).GetProperty("log").EnumerateArray().Select(e => e.GetString()));
