@@ -277,7 +277,7 @@ public class CrowdTests(ITestOutputHelper output)
     public void Facing_turns_even_when_the_step_is_blocked()
     {
         var core = Bare(0);
-        var p = Put(core.V[0], 2, 1, oy: -8, dir: 0);  // впритул до паркану згори
+        var p = Put(core.V[0], 2, 1, ox: -8, oy: -8, dir: 0);  // у кутку клітинки: згори паркан, ліворуч дерево
         p.Want = 3;
         CrowdCore.Step(p);
         Assert.Equal(3, p.Dir);
@@ -290,7 +290,8 @@ public class CrowdTests(ITestOutputHelper output)
         Assert.Equal(43, p.Y);                         // униз — вільно
         p.Want = 2;                                    // ліворуч — дерево в (1,1): лише повернувся
         CrowdCore.Step(p);
-        Assert.Equal((2, 80), (p.Dir, p.X));
+        Assert.Equal((2, 72), (p.Dir, p.X));
+        Assert.True(p.Blocked);
     }
 
     [Fact]
@@ -681,7 +682,7 @@ public class CrowdTests(ITestOutputHelper output)
     // =============================================================================================
 
     [Fact]
-    public void Buy_needs_forty_units_to_a_counter_anchor_and_says_come_closer_otherwise()
+    public void Buy_needs_standing_on_the_counter_and_says_come_closer_otherwise()
     {
         var h = Table(seed: 16);
         Go(h);
@@ -690,12 +691,29 @@ public class CrowdTests(ITestOutputHelper output)
         Put(me, 10, 8);                       // посеред трави, далеко від усього
         Assert.False(h.Act(0, "buy", new { }).Ok);
         Assert.Equal("Підійди до лотка ближче", h.Reply.Message);
-        me.X = st.Fx + 40;
+        // трава одразу збоку від прилавка — ближче за 40 до точки прилавка, але боти тут не торгуються, тож і гравцеві не можна
+        me.X = st.Fx + 36;
         me.Y = st.Fy;
+        Assert.True(CrowdCore.Dist2(me, st.Fx, st.Fy) <= CrowdCore.BuyRange * CrowdCore.BuyRange);
+        Assert.False(h.Act(0, "buy", new { }).Ok);
+        Assert.Equal("Підійди до лотка ближче", h.Reply.Message);
+        // на прилавку: край дальньої клітинки — теж можна; чужий номер лотка — ні
+        me.X = st.Fx + 31;
+        Assert.Equal(2, CrowdCore.CounterAt(me));
         Assert.False(h.Act(0, "buy", new { stall = 0 }).Ok);
         Assert.Equal("Підійди до лотка ближче", h.Reply.Message);
+        Assert.Equal(0, me.Haggle);
         Assert.True(h.Act(0, "buy", new { stall = 2 }).Ok, h.Reply.Message);
         Assert.Equal(Crowd.HaggleTicks, me.Haggle);
+        // обидві клітинки прилавка кожного лотка — у межах BuyRange від його точки
+        foreach (var s in CrowdMap.Stalls)
+            foreach (var c in new[] { s.C0, s.C1 })
+                for (var dx = -8; dx <= 7; dx++)
+                    for (var dy = -8; dy <= 7; dy++)
+                    {
+                        long x = CrowdMap.CenterX(c) + dx - s.Fx, y = CrowdMap.CenterY(c) + dy - s.Fy;
+                        Assert.True(x * x + y * y <= CrowdCore.BuyRange * CrowdCore.BuyRange);
+                    }
     }
 
     [Fact]

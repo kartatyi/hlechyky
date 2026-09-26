@@ -327,26 +327,11 @@ public sealed class Crowd : Game
 
         var want = Field(payload, "stall", out var ok);
         if (!ok) return ActResult.Fail("Такого лотка нема");
-        const long range2 = (long)CrowdCore.BuyRange * CrowdCore.BuyRange;
-        int stall;
-        if (want is { } k)
-        {
-            if (k < 0 || k >= CrowdMap.Stalls.Length) return ActResult.Fail("Такого лотка нема");
-            var st = CrowdMap.Stalls[k];
-            if (CrowdCore.Dist2(me, st.Fx, st.Fy) > range2) return ActResult.Fail("Підійди до лотка ближче");
-            stall = k;
-        }
-        else
-        {
-            stall = -1;
-            var best = long.MaxValue;
-            foreach (var st in CrowdMap.Stalls)
-            {
-                var d = CrowdCore.Dist2(me, st.Fx, st.Fy);
-                if (d <= range2 && d < best) { best = d; stall = st.I; }
-            }
-            if (stall < 0) return ActResult.Fail("Підійди до лотка ближче");
-        }
+        if (want is { } bad && (bad < 0 || bad >= CrowdMap.Stalls.Length)) return ActResult.Fail("Такого лотка нема");
+        // Торгуються лише з прилавка — двох клітинок стежки перед корпусом. Там само стоять і боти, тож торг
+        // «із трави збоку» гравця не видасть: такого місця в юрмі просто нема.
+        var stall = CrowdCore.CounterAt(me);
+        if (stall < 0 || (want is { } k && k != stall)) return ActResult.Fail("Підійди до лотка ближче");
 
         // Торг: секунду стоїмо обличчям до лотка. Вид не розсилаємо — інакше «хтось почав торгуватись» видав би
         // гравця раніше за спалах; свій відлік клієнт веде сам від відповіді.
