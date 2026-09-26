@@ -30,6 +30,8 @@ data/words/*
 data/svoya/*
 !data/svoya/builtin/
 !data/svoya/host.json
+# «Дотепи»: банк завдань їде разом із грою.
+!data/dotepy/
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)

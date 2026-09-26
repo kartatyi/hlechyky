@@ -38,6 +38,7 @@ public static class GamesSetup
             sp.GetService<Microsoft.Extensions.Options.IOptionsMonitor<MelodyOptions>>(), sp.GetService<ILogger<Impl.MelodyLibrary>>()));
         services.AddSingleton<Impl.IMelodySource>(sp => sp.GetRequiredService<Impl.MelodyLibrary>());
         Impl.SvoyaSetup.AddSvoya(services);                 // «Своя гра»: пакети запитань
+        Impl.DotepySetup.AddDotepy(services);               // «Дотепи»: голос Глека, голос публіки
         return services;
     }
 
@@ -49,6 +50,7 @@ public static class GamesSetup
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
+        Impl.DotepySetup.MapDotepy(app);                    // /api/games/dotepy/jury — голос публіки «Дотепів»
         return app;
     }
 }

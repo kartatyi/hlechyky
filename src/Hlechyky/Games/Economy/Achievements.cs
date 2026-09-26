@@ -75,6 +75,9 @@ public static class AchievementCatalog
         new("listener-10h", "Слухач",          "Десять годин на сайті", "🎧", 15),
         new("listener-100h","Меломан",         "Сто годин на сайті", "📻", 50),
         new("rich-100",     "Сотня",           "Сто черепків на балансі", "🏦", 10),
+        // хвиля 2: dotepy — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("dotepy-sweep", "Розгром",         "Усі голоси столу — за твій дотеп", "💥", 15),
+        new("dotepy-king",  "Король дотепів",  "Виграв «Дотепи» за столом на п'ятьох і більше", "👑", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
