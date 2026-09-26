@@ -92,6 +92,10 @@
   background: currentColor; box-shadow: 0 0 0 1.5px var(--bg); transition: left .12s linear;
 }
 .rnr-dot.me { width: 14px; height: 14px; margin: -7px 0 0 -7px; box-shadow: 0 0 0 2px var(--text); z-index: 2; }
+/* хто біжить урівень, у того й крапки в одній точці — трохи розводимо їх по висоті, щоб видно було всіх */
+.rnr-dot.s1, .rnr-dot.s5 { top: calc(50% - 3px); }
+.rnr-dot.s2, .rnr-dot.s6 { top: calc(50% + 3px); }
+.rnr-dot.me { top: 50%; }
 @media (prefers-reduced-motion: reduce) { .rnr-dot { transition: none; } .rnr-clock.hot { animation: none; } }
 
 /* ---- сцена ---- */
