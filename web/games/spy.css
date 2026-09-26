@@ -35,7 +35,9 @@
 .sp-arc { flex: none; }
 .sp-arc.sp-red .garc .fg { stroke: var(--danger); }
 .sp-grow { flex: 1; }
-.sp-me { align-self: flex-start; background: var(--bg2); color: var(--text); border: 1px solid var(--line); padding: 7px 13px; border-radius: 999px;
+/* Вузька картка: розрив рядка перед чіпом; широка — чіп між дугою й звуком, розрив ховаємо. */
+.sp-br { flex-basis: 100%; height: 0; }
+.sp-me { flex: 0 1 auto; background: var(--bg2); color: var(--text); border: 1px solid var(--line); padding: 7px 13px; border-radius: 999px;
   font: inherit; font-size: .92em; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 36px; }
 .sp-me:disabled { cursor: default; opacity: 1; }
 .sp-me.sp-me-spy { background: var(--spy-ink); border-color: var(--spy-ink-edge); }
@@ -165,8 +167,22 @@
 
 /* ---- дві колонки на широкій картці: ліворуч стіл, праворуч колода ---- */
 @container (min-width: 820px) {
-  .sp-grid { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(320px, 420px); gap: 14px; align-items: start; }
+  .sp-grid { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(300px, 370px); gap: 14px; align-items: start; }
   .sp-side { position: sticky; top: 8px; }
+  /* Широка картка: бейджі в рядок із ніком — десятеро вміщаються без прокрутки навіть на Деці. */
+  .sp-p { min-height: 40px; padding: 3px 8px; }
+  .sp-who { flex-direction: row; align-items: center; gap: 8px; }
+  .sp-nick { flex: 0 1 auto; }
+  .sp-tags { flex-wrap: nowrap; overflow: hidden; }
+  .sp-do { min-height: 34px; padding: 5px 10px; }
+  .sp-players { gap: 3px; }
+  .sp-top { flex-wrap: nowrap; }
+  .sp-br { display: none; }
+  .sp-me { order: -1; flex: 0 1 auto; min-width: 0; }
+  .sp-clockbox { order: -3; flex: none; }
+  .sp-arc { order: -2; }
+  .sp-act { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 12px; }
+  .sp-act > .sp-say { flex: 1 1 55%; }
 }
 @container (min-width: 1300px) {
   .sp-grid { grid-template-columns: minmax(420px, 1fr) minmax(360px, 520px); }

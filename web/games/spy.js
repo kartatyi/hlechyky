@@ -121,8 +121,9 @@
       + '<div class="sp-arc"></div>'
       + '<span class="sp-grow"></span>'
       + '<button type="button" class="sp-snd ghost" data-sp="sound" data-pad-skip></button>'
-      + '</div>'
+      + '<span class="sp-br"></span>'
       + '<button type="button" class="sp-me" data-sp="card"></button>'
+      + '</div>'
       + '<div class="sp-card" hidden></div>'
       + '<div class="sp-reveal" hidden></div>'
       + '<div class="sp-act"></div>'
@@ -266,12 +267,27 @@
       st.clockEnd = end;
       st.clockLeft = c.leftMs || 0;
     }
-    // Закреслення — свої на кожен раунд, живуть у localStorage (F5 їх не губить).
-    const sk = st.ctx.room ? 'spy:strike:' + st.ctx.room.id + ':' + v.round : '';
+    // Закреслення — свої на кожен раунд, живуть у localStorage (F5 їх не губить). У ключі ще й номер партії
+    // столу (room.round): після «Ще раз» раунди знову з першого, і чужі закреслення з минулої партії не воскреснуть.
+    const room = st.ctx.room;
+    const pre = room ? 'spy:strike:' + room.id + ':' + (room.round || 0) + ':' : '';
+    const sk = pre ? pre + v.round : '';
     if (sk !== st.strikeKey) {
       st.strikeKey = sk;
       st.strikes = new Set();
-      try { const raw = sk && lsGet(sk); if (raw) for (const id of JSON.parse(raw)) st.strikes.add(String(id)); } catch { /* биті — забули */ }
+      try {
+        const raw = sk && lsGet(sk);
+        if (raw) for (const id of JSON.parse(raw)) st.strikes.add(String(id));
+        // Прибрати за собою: минулі партії цього столу вже нікому не потрібні, а чужі столи — лише коли їх
+        // назбиралось забагато (два столи на екрані одночасно не мають витирати одне одному закреслення).
+        const mine = room ? 'spy:strike:' + room.id + ':' : '';
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('spy:strike:') && !k.startsWith(pre)) keys.push(k);
+        }
+        for (const k of keys) if (k.startsWith(mine) || keys.length > 40) localStorage.removeItem(k);
+      } catch { /* приватне вікно чи биті дані — просто без закреслень */ }
     }
     // Дуга фази: від залишку, а не від чужого годинника; у play головний — годинник раунду.
     if ((RUNNING[v.phase] && v.phase !== 'play') || v.phase === 'reveal') {
@@ -372,6 +388,8 @@
 
     // ---- що робити зараз ----
     set(st.q.act, actHtml(v, ctx, st, mySeat, inGame));
+    const cdNode = st.q.act.querySelector('.sp-cd');
+    if (cdNode !== st.q.cd) { st.q.cd = cdNode; st.cdTxt = ''; }
 
     // ---- гравці ----
     const rows = playersHtml(v, ctx, st, mySeat, inGame);
@@ -408,7 +426,7 @@
         return '<div class="sp-say">Треба щонайменше троє — клич друзів у балачках.</div>'
           + '<div class="muted small">' + esc(rules) + '. Усі, крім шпигуна, знають, де ви; шпигун — лише колоду локацій.</div>';
       case 'deal':
-        return '<div class="sp-say">' + (me ? 'Запам\'ятай картку — раунд ось-ось почнеться.' : 'Роздають картки…') + '</div>'
+        return '<div class="sp-say">' + (me ? 'Запам\'ятай картку' : 'Роздають картки') + ' — раунд почнеться за <b class="sp-cd"></b> с.</div>'
           + '<div class="muted small">Питання й відповіді — у балачці столу. Картка підкаже, чия черга.</div>';
       case 'play': {
         const asker = v.asker, by = v.askedBy;
@@ -419,11 +437,11 @@
             ? 'Тебе питає ' + esc(nickOf(v, by)) + ' — відповідай у балачці, а тоді питай сам: обери кого.'
             : 'Ти питаєш першим — обери кого й пиши питання в балачці.') + '</div>';
         } else if (by === mySeat) {
-          say = '<div class="sp-say">Твоє питання — для ' + esc(nickOf(v, asker)) + '. Чекай відповіді в балачці.</div>';
+          say = '<div class="sp-say">Питання пішло — відповідає ' + esc(nickOf(v, asker)) + '. Чекай відповіді в балачці.</div>';
         } else if (v.askGrace) {
           say = '<div class="sp-say">' + esc(nickOf(v, asker)) + ' мовчить уже пів хвилини — слово можна перехопити.</div>';
         } else {
-          say = '<div class="sp-say">' + (by != null ? esc(nickOf(v, by)) + ' питає ' + esc(nickOf(v, asker)) + '. ' : 'Питає ' + esc(nickOf(v, asker)) + '. ')
+          say = '<div class="sp-say">' + (by != null ? 'Питає ' + esc(nickOf(v, by)) + ' — відповідає ' + esc(nickOf(v, asker)) + '. ' : 'Питає ' + esc(nickOf(v, asker)) + '. ')
             + 'Слухай і придивляйся.</div>';
         }
         const guess = inGame && me && me.spy
@@ -650,6 +668,11 @@
     const last = st.clockRun && left <= 10000;
     if (hot !== st.hot) { st.hot = hot; st.q.clockBox.classList.toggle('sp-hot', hot); }
     if (last !== st.last) { st.last = last; st.q.clockBox.classList.toggle('sp-last', last); }
+    // Відлік роздачі словами: «раунд почнеться за 5 с».
+    if (st.q.cd) {
+      const cd = String(Math.max(0, Math.ceil((st.phaseEnd - now) / 1000)));
+      if (cd !== st.cdTxt) { st.cdTxt = cd; st.q.cd.textContent = cd; }
+    }
     const paused = !st.clockRun && !!RUNNING[v.phase];
     if (paused !== st.paused) { st.paused = paused; st.q.clockBox.classList.toggle('sp-paused', paused); }
     // Двокрокова «Підозра» гасне сама; розгорнута на старті картка згортається в чіп.
@@ -731,7 +754,7 @@
           if (a == null) return r;
           return r + ' · ' + (a === ctx.seat && v.me ? 'твоя черга питати' : 'питає ' + nickOf(v, a));
         }
-        case 'vote': return v.vote ? 'Голосування: ' + nickOf(v, v.vote.accuser) + ' проти ' + nickOf(v, v.vote.suspect) : 'Голосування';
+        case 'vote': return v.vote ? 'Голосування: ' + nickOf(v, v.vote.suspect) + ' — шпигун?' : 'Голосування';
         case 'final': return 'Час вийшов — хто шпигун?';
         case 'reveal': return 'Розкриття';
       }
