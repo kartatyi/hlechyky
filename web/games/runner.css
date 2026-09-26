@@ -58,6 +58,7 @@
   display: inline-grid; place-items: center; background: currentColor; line-height: 1;
 }
 .rnr-chip em { font-style: normal; color: var(--text); }
+.rnr-nick { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rnr-chip.me { box-shadow: 0 0 0 1.5px currentColor inset; }
 .rnr-chip.out { opacity: .5; }
 .rnr-chip.s0, .rnr-dot.s0, .rnr-ovbox tr.s0 i { color: var(--ok); }
