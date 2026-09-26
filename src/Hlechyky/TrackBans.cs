@@ -82,7 +82,7 @@ public sealed class TrackBans(Db db, Economy economy, IOnAir air, IOptionsMonito
         return (true, price > 0 ? "Викуплено з бану" : "Розбанено");
     }
 
-    string NotEnough(string nick, int price) => $"Треба {Shards(price)}, а в тебе {economy.Balance(nick)}";
+    string NotEnough(string nick, int price) => $"Халепа: треба {Shards(price)}, а в тебе {economy.Balance(nick)}";
 
     void Refund(string nick, int price, string trackId, Exception ex)
     {

@@ -85,7 +85,7 @@ public class TrackBansTests
         var (ok, message) = await rig.Bans.BanAsync("song1", "Петро", isAdmin: false);
 
         Assert.False(ok);
-        Assert.Equal("Треба 100 черепків, а в тебе 57", message);
+        Assert.Equal("Халепа: треба 100 черепків, а в тебе 57", message);
         Assert.False(rig.Eco.Db.IsBanned("song1"));
         Assert.Equal(57, rig.Balance("Петро"));
     }

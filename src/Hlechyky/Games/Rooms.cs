@@ -111,7 +111,7 @@ static class Say
     public const string Waiting = "Чекаємо на гравців";
     public const string Played = "Партію зіграно, тисни «Ще раз»";
     public const string NotPlaying = "Ти тут не граєш";
-    public const string NoShards = "Бракує черепків на ставку";
+    public const string NoShards = "Халепа: бракує черепків на ставку";
     public const string TooFast = "Не так швидко";
     public const string HostOnly = "Почати може лише господар";
     public const string NotFinished = "Партія ще не скінчилась";

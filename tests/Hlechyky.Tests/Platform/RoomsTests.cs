@@ -396,7 +396,7 @@ public class RoomsTests
 
         var id = rooms.Create("Оля", "ttt", new Dictionary<string, string> { ["stake"] = "5" }).Reply.RoomId!;
         Assert.Equal(5, rooms.Find(id)!.Stake);
-        Assert.Equal("Бракує черепків на ставку", rooms.Join(id, "Петро").Reply.Message);
+        Assert.Equal("Халепа: бракує черепків на ставку", rooms.Join(id, "Петро").Reply.Message);
 
         stakes.Set("Петро", 30);
         Assert.True(rooms.Join(id, "Петро").Reply.Ok);
@@ -600,7 +600,7 @@ public class RoomsTests
         h.Leave("Петро");                                  // стіл лишився дограним, місце вільне
 
         var refused = h.Rooms.Join(h.RoomId, "Голодранець");
-        Assert.Equal("Бракує черепків на ставку", refused.Reply.Message);
+        Assert.Equal("Халепа: бракує черепків на ставку", refused.Reply.Message);
         Assert.Empty(refused.Out);                         // ніхто нічого не перемальовує
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal(1, h.Room.Round);
@@ -626,7 +626,7 @@ public class RoomsTests
 
         h.Stakes.Set("Ганна", 100);
         var refused = h.Rooms.Join(h.RoomId, "Ганна");      // сама Ганна багата, а от Оля вже ні
-        Assert.Equal("Бракує черепків на ставку", refused.Reply.Message);
+        Assert.Equal("Халепа: бракує черепків на ставку", refused.Reply.Message);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal(1, h.Room.Round);
         Assert.Equal("дуель: виграв Петро", h.Room.Result!.Text);

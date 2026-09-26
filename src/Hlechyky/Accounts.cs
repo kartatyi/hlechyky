@@ -71,7 +71,7 @@ public sealed class Accounts(Db db, IOptionsMonitor<SiteOptions> site)
         var a = db.FindAccount(Auth.CleanNick(rawNick));
         if (a is not null && !a.HasPassword)
             return Fail($"У «{a.Nick}» нема пароля — заходь через Google, а пароль поставиш у картці «Ти — {a.Nick}»", 401);
-        if (a is null || !Auth.VerifyPassword(password ?? "", a.PassHash, a.PassSalt)) return Fail("Не той нік або пароль", 401);
+        if (a is null || !Auth.VerifyPassword(password ?? "", a.PassHash, a.PassSalt)) return Fail("Халепа: не той нік або пароль", 401);
         db.TouchAccount(a.Nick);
         return Ok(a);
     }
@@ -123,7 +123,7 @@ public sealed class Accounts(Db db, IOptionsMonitor<SiteOptions> site)
     public Outcome SetPassword(Account me, string? current, string? password)
     {
         if ((password ?? "").Length < Auth.PasswordMin) return Fail($"Пароль — хоча б {Auth.PasswordMin} символів");
-        if (me.HasPassword && !Auth.VerifyPassword(current ?? "", me.PassHash, me.PassSalt)) return Fail("Не той теперішній пароль", 401);
+        if (me.HasPassword && !Auth.VerifyPassword(current ?? "", me.PassHash, me.PassSalt)) return Fail("Халепа: не той теперішній пароль", 401);
         db.SetAccountPassword(me.Nick, Auth.HashPassword(password!, out var salt), salt);
         return Ok(db.FindAccount(me.Nick)!);
     }
