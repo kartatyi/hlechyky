@@ -92,6 +92,9 @@ public static class AchievementCatalog
         // хвиля 2: bricks — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
         new("bricks-four",      "Четвірка",       "Закрив чотири ряди одним ударом у Цеглинах", "🧱", 15),
         new("bricks-sprint-2m", "Швидкий муляр",  "Сорок рядів швидше за дві хвилини", "⏱", 25),
+        // хвиля 2: glekomet
+        new("glekomet-sniper", "Далекобійник",  "Глекомети: пряме влучання в чужу хату з пів села", "🎯", 20),
+        new("glekomet-clean",  "Ні подряпини",  "Глекомети: перемога з цілою хатою — усі 100 здоров'я", "🏠", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
