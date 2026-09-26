@@ -128,7 +128,8 @@ public class ClickerProgressTests
         {
             Assert.True(idle[i].Base > idle[i - 1].Base, idle[i].Key);
             Assert.True(idle[i].Rate > idle[i - 1].Rate, idle[i].Key);
-            Assert.Equal(3, idle[i].Steps.Length);
+            // Три віхи ×2 у кожного (25/50/100); модифікатори після сотні ×2 не дають (v10).
+            Assert.Equal(3, idle[i].Steps.Count(s => s.Effect == MarkEffect.Double));
         }
     }
 
@@ -742,7 +743,7 @@ public class ClickerProgressTests
     [InlineData(50_101_180, "50,1 млн")]
     [InlineData(999_000_000, "999 млн")]
     [InlineData(2_500_000_000, "2,5 млрд")]
-    [InlineData(5_000_000_000_000_000, "5 квдрлн")]
+    [InlineData(5_000_000_000_000_000, "5 ₴")]
     public void Big_numbers_are_short(long n, string text)
     {
         Assert.Equal(text, Clicker.Short(n));

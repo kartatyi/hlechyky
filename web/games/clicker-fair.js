@@ -309,7 +309,12 @@
       }
     }
     // 5. Щось відкрилось (вкладка, розділ) — ядро каже про це через api.feed.
-    if (k.note && Date.now() < k.note.until) return { ico: '🔓', text: k.note.text, cls: 'open' };
+    if (k.note && Date.now() < k.note.until) {
+      // Рядок уже зі своїм значком («⚓ До Одеського порту зайшов корабель…») — його й беремо, а не дописуємо 🔓.
+      const own = /^(\S+)\s+([\s\S]*)$/u.exec(k.note.text);
+      if (own && !/[\p{L}\p{N}]/u.test(own[1])) return { ico: own[1], text: own[2], cls: 'open' };
+      return { ico: '🔓', text: k.note.text, cls: 'open' };
+    }
     // 6. Хроніка — те, чим живе село, поки нічого не сталось.
     if (k.chronText) return { ico: '📰', text: k.chronText, cls: 'chron' };
     return null;
@@ -327,7 +332,9 @@
       + '<span class="clkf-ftext">' + api.esc(st, f.text || '') + '</span>'
       + (f.cd ? '<span class="clkf-fcd small muted"><i class="clkf-cd" data-at="' + f.cd + '"></i></span>' : '')
       + (f.btn ? '<button type="button" class="ghost small clkf-fbtn">' + api.esc(st, f.btn) + '</button>' : '');
-    el.className = 'clkf-feed ' + (f.cls || '');
+    // Стрічку slow малює п'ять разів на секунду — клас пишемо, лише коли він інший (v10 §10).
+    const cls = 'clkf-feed ' + (f.cls || '');
+    if (el.className !== cls) el.className = cls;
     if (api.swap(el, html)) {
       countdowns(st, api, el);
       const btn = el.querySelector('.clkf-fbtn');

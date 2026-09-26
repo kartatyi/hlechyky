@@ -1,17 +1,20 @@
 /* Ярмарок і люди Гончарного кола: стрічка подій, пригода, гості, замовлення, шана сіл. */
 
 /* ---- стрічка подій: один рядок під смугою «Шлях виробу» ---- */
+/* Сталої висоти (v10 §9) — і з кнопкою «Глянути», і без неї, і поки стрічка ще порожня: на ПК під нею не «дихає»
+   смуга, а на телефоні — усе, що нижче. !important — бо style.css ховає [hidden] так само з !important. */
 .clkf-feed {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 6px;
-  width: 100%; max-width: 520px; padding: 4px 10px; border-radius: 999px; font-size: .82em;
+  width: 100%; max-width: 520px; padding: 0 10px; border-radius: 999px; font-size: .82em;
   background: var(--panel); border: 1px solid var(--line); color: var(--text);
+  box-sizing: border-box; height: 2.2em;
 }
-.clkf-feed[hidden] { display: none; }
+.clkf-feed[hidden] { display: grid !important; visibility: hidden; }
 .clkf-fico { font-size: 1.1em; line-height: 1; }
 .clkf-ftext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clkf-fcd { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .clkf-fcd i { font-style: normal; }
-.clkf-fbtn { padding: 1px 9px; font-size: .95em; }
+.clkf-fbtn { padding: 0 9px; font-size: .95em; height: 1.75em; }
 .clkf-feed.chron { color: var(--muted); }
 .clkf-feed.day { background: rgba(244, 197, 66, .08); border-color: rgba(244, 197, 66, .3); }
 .clkf-feed.good { background: #2e3c66; color: #cfe0ff; border-color: #6f8fe0; }

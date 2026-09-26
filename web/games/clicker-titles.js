@@ -39,10 +39,12 @@
     return s ? Object.assign({ key, kind: 'secret' }, s) : null;
   }
 
-  const kyivTime = (ms) => new Date(ms).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+  /// Форматери дат — по одному на частину: toLocale*String будує новий Intl.DateTimeFormat на кожен виклик (v10 §10).
+  let timeFmt = null, dateFmt = null;
+  const kyivTime = (ms) => (timeFmt = timeFmt || new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })).format(new Date(ms));
   const date = (iso) => {
     const d = Date.parse(iso);
-    return d ? new Date(d).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'long' }) : '';
+    return d ? (dateFmt = dateFmt || new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'long' })).format(new Date(d)) : '';
   };
 
   /// Число звання для людини: клейма й кліки — коротко, ранковий клік — годинником, приріст — відсотками.
@@ -50,7 +52,7 @@
     if (!(v > 0)) return '';
     if (key === 'rooster') return kyivTime(v);
     if (key === 'rising') return '+' + api.num(v * 100) + ' %';
-    return api.short(v);
+    return api.count(v);
   }
 
   function openSet() {
@@ -90,7 +92,7 @@
 
   function bar(api, have, need) {
     const pct = need > 0 ? Math.min(100, Math.floor((have / need) * 100)) : 0;
-    return '<div class="clkt-bar"><i style="width:' + pct + '%"></i></div><span class="muted small">' + api.short(have) + ' з ' + api.short(need) + '</span>';
+    return '<div class="clkt-bar"><i style="width:' + pct + '%"></i></div><span class="muted small">' + api.count(have) + ' з ' + api.count(need) + '</span>';
   }
 
   function kindHtml(st, api, k) {

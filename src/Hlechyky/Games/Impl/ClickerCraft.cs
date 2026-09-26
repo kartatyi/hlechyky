@@ -248,7 +248,8 @@ public sealed partial class Clicker
     {
         if (WareOf(ware) is not { } w) return 0;
         var q = QualityMult[Math.Clamp(quality, 1, QualityMax)];
-        var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware);
+        var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware)
+            * (1 + GuestsValueBonus);
         var floor = (_memoOn ? _memoClick : ClickBase) * WorkOf(w) * ValueFloorClicks * q;
         return Math.Max(1, ToPots(Math.Max(byPassive, floor)));
     }
@@ -304,7 +305,7 @@ public sealed partial class Clicker
     {
         var key = Str(payload, "ware");
         if (WareOf(key) is not { } w) return ActResult.Fail("Такого виробу гончарі не ліплять");
-        if (!WareOpen(key)) return ActResult.Fail($"{w.Name} відкриється на {Short(w.Unlock)} глеків за весь час");
+        if (!WareOpen(key)) return ActResult.Fail($"{w.Name} відкриється на {PotsShort(w.Unlock)} за весь час");
         if (_formWare == key) return ActResult.Done;
         _formWare = key;
         _formWork = Math.Min(_formWork, WorkOf(w));
@@ -323,7 +324,7 @@ public sealed partial class Clicker
         TakeItems(x => x == it, n);
         var pots = ToPots(ItemValue(it.Ware, it.Style, it.Quality) * n * HouseBazaarMult);
         Add(pots);
-        return ActResult.Accept($"🧺 Продав {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()}: +{Short(pots)} {Pots(pots)}");
+        return ActResult.Accept($"🧺 Продав {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()}: +{PotsShort(pots)}");
     }
 
     /// <summary>
@@ -347,7 +348,7 @@ public sealed partial class Clicker
                 : "У коморі порожньо — нічого везти на базар");
         Add(sum = ToPots(sum * HouseBazaarMult));
         var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : q == 3 ? " (крім розкішних)" : "";
-        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{Short(sum)} {Pots(sum)}");
+        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{PotsShort(sum)}");
     }
 
     static string WaresWord(double n) => Plural(n, "виріб", "вироби", "виробів");
@@ -516,23 +517,35 @@ public sealed partial class Clicker
             rackSize = RackSize,
             rackFull = _rack.Count >= RackSize,
             dryMs = DryTime.TotalMilliseconds * FairDryMult() * CraftDryMult,
-            wares = Wares.Select(x => new
-            {
-                key = x.Key, name = x.Name, open = WareOpen(x.Key), unlock = x.Unlock, need = WorkOf(x), fired = FiredOf(x.Key),
-                value = ItemValue(x.Key, "", 1),
-            }),
+            // Вироби новому клієнтові (_slim) — лише те, що міняється: відкритий, скільки роботи, скільки обпалено, чого
+            // вартий простий. Назва й «відкриється на» — у каталозі (catalog.wares): вид летить щопачки кліків (десяте
+            // оновлення, §10). Старій вкладці — як до v10, з назвою й порогом.
+            wares = Wares.Select(x => _slim
+                ? (object)new { key = x.Key, open = WareOpen(x.Key), need = WorkOf(x), fired = FiredOf(x.Key), value = ItemValue(x.Key, "", 1) }
+                : new
+                {
+                    key = x.Key, name = x.Name, open = WareOpen(x.Key), unlock = x.Unlock, need = WorkOf(x), fired = FiredOf(x.Key),
+                    value = ItemValue(x.Key, "", 1),
+                }),
             items = AllItems().Select(x => new
             {
                 key = ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality), ware = x.Item.Ware, style = x.Item.Style, q = x.Item.Quality,
                 n = x.Count, value = ItemValue(x.Item.Ware, x.Item.Style, x.Item.Quality),
             }),
             storeCap = StoreCapNow,
-            // Прокачка ремесла: назва й опис їдуть поруч із рівнем — панель малюється з самого виду.
-            ups = CraftUps.Select(u => new
-            {
-                key = u.Key, name = u.Name, desc = u.Desc, level = CraftLevel(u.Key), max = u.Max,
-                price = CraftLevel(u.Key) >= u.Max ? 0 : CraftUpPrice(u, CraftLevel(u.Key)), now = CraftUpNow(u),
-            }),
+            // Прокачка ремесла: рівень зі стелею, ціна наступного й «зараз: …» (воно від стану майстерні). Назва й опис —
+            // новому клієнтові в каталозі (catalog.craftUps), старій вкладці — тут же, як до v10.
+            ups = CraftUps.Select(u => _slim
+                ? (object)new
+                {
+                    key = u.Key, level = CraftLevel(u.Key), max = u.Max,
+                    price = CraftLevel(u.Key) >= u.Max ? 0 : CraftUpPrice(u, CraftLevel(u.Key)), now = CraftUpNow(u),
+                }
+                : new
+                {
+                    key = u.Key, name = u.Name, desc = u.Desc, level = CraftLevel(u.Key), max = u.Max,
+                    price = CraftLevel(u.Key) >= u.Max ? 0 : CraftUpPrice(u, CraftLevel(u.Key)), now = CraftUpNow(u),
+                }),
             formed = _formed,
             fired = FiredTotal,
         };
@@ -551,6 +564,9 @@ public sealed partial class Clicker
         return new
         {
             wares = Wares.Select(w => new { key = w.Key, name = w.Name, work = w.Work, seconds = w.Seconds, unlock = w.Unlock }),
+            // Прокачка ремесла й хата (десяте оновлення): незмінні тексти й ціни, які раніше їхали щопачки кліків.
+            craftUps = CraftUps.Select(u => new { key = u.Key, name = u.Name, desc = u.Desc }),
+            house = CatalogHouse(),
             styles = Styles.Select((s, i) => new { key = s.Key, name = s.Name, value = StyleValue(s.Key) }),
             quality = new[] { "", "звичайний", "добрий", "дзвінкий", "розкішний" },
             kiln = CatalogKiln(),
@@ -558,6 +574,7 @@ public sealed partial class Clicker
             fair = CatalogFair(),
             guild = CatalogGuild(),
             titles = CatalogTitles(),
+            guests = CatalogGuests(),
         };
     }
 

@@ -51,8 +51,13 @@ public class ClickerNumbersTests
 
     static ClickerUpgrade Tsar => Clicker.Shop.Single(u => u.Key == "tsar");
 
+    /// <summary>Розділювач тисяч в uk-UA — нерозривний пробіл; у тексті тесту пишемо звичайний.</summary>
+    static string Plain(string s) => s.Replace('\u00a0', ' ').Replace('\u202f', ' ');
+
     // ---------- слова для великих чисел ----------
 
+    // Десяте оновлення (docs/games/specs/clicker-v10.md §6): лише знайомі слова — до трильйона глеків, далі гривні,
+    // від 10²⁷ — червоні золоті. «Квдрлн», «скстлн» і решта більше не з'являються.
     [Theory]
     [InlineData(0, "0")]
     [InlineData(999, "999")]
@@ -61,27 +66,54 @@ public class ClickerNumbersTests
     [InlineData(999_000_000, "999 млн")]
     [InlineData(1e9, "1 млрд")]
     [InlineData(1e12, "1 трлн")]
-    [InlineData(1e15, "1 квдрлн")]
-    [InlineData(1e18, "1 квнтлн")]
-    [InlineData(1e21, "1 скстлн")]
-    [InlineData(1e24, "1 сптлн")]
-    [InlineData(1e27, "1 октлн")]
-    [InlineData(1e30, "1 нонлн")]
-    [InlineData(1e33, "1 дцлн")]
-    [InlineData(1.2e33, "1,2 дцлн")]
-    public void Short_names_every_big_number_up_to_the_decillion(double n, string text) =>
-        Assert.Equal(text, Clicker.Short(n));
+    [InlineData(999.99e12, "999 трлн")]
+    [InlineData(1e15, "1 ₴")]
+    [InlineData(600e18, "600 000 ₴")]
+    [InlineData(5.935e21, "5,93 млн ₴")]
+    [InlineData(2.6e24, "2,6 млрд ₴")]
+    [InlineData(999e24, "999 млрд ₴")]
+    [InlineData(1e27, "1 золотий")]
+    [InlineData(2e27, "2 золоті")]
+    [InlineData(5e27, "5 золотих")]
+    [InlineData(1.5e27, "1,5 золотого")]
+    [InlineData(21e27, "21 золотий")]
+    [InlineData(6e31, "60 000 золотих")]
+    // Від тисячі золотих — ціле, відтяте з запасом (6·10³⁰ / 10²⁷ у double — 5 999,99…), і слово за тим, що видно.
+    [InlineData(6e30, "6 000 золотих")]
+    [InlineData(3e30, "3 000 золотих")]
+    [InlineData(1.2345e30, "1 234 золоті")]
+    [InlineData(242_733.4e27, "242 733 золоті")]
+    [InlineData(1_001.7e27, "1 001 золотий")]
+    [InlineData(1.2e33, "1,2 млн золотих")]
+    public void Short_speaks_pots_then_hryvnias_then_gold(double n, string text) =>
+        Assert.Equal(text, Plain(Clicker.Short(n)));
 
     [Fact]
-    public void Past_the_decillion_short_switches_to_a_power_of_ten()
+    public void Past_a_thousand_billion_gold_short_switches_to_a_power_of_ten()
     {
-        // Слів далі нема — і вигадувати їх не варто: «1,2e36» читається однаково всюди.
-        Assert.Equal("1e36", Clicker.Short(1e36));
-        Assert.Equal("1,2e36", Clicker.Short(1.2e36));
-        Assert.Equal("1e37", Clicker.Short(9.99e36));      // мантиса, що доросла до десятки, — це наступний степінь
-        Assert.Equal("1e100", Clicker.Short(1e100));
+        // Модель до таких сум не доходить, але й вигадувати слова не варто: «1e15 золотих» читається однаково всюди.
+        Assert.Equal("1e15 золотих", Clicker.Short(1e42));
+        Assert.Equal("1,2e15 золотих", Clicker.Short(1.2e42));
         Assert.Equal("∞", Clicker.Short(double.PositiveInfinity));
         Assert.Equal("∞", Clicker.Short(double.NaN));
+    }
+
+    [Theory]
+    [InlineData(5, "5 глеків")]
+    [InlineData(21, "21 глек")]
+    [InlineData(1.5, "1,5 глека")]
+    [InlineData(5e14, "500 трлн глеків")]
+    [InlineData(7e15, "7 ₴")]
+    [InlineData(3e27, "3 золоті")]
+    public void Pots_short_adds_the_word_only_where_there_is_no_unit(double n, string text) =>
+        Assert.Equal(text, Plain(Clicker.PotsShort(n)));
+
+    [Fact]
+    public void Count_never_turns_into_money()
+    {
+        Assert.Equal("5 трлн", Clicker.Count(5e12));
+        Assert.Equal("1,2e15", Clicker.Count(1.2e15));
+        Assert.Equal("64,5 млрд", Clicker.Count(64_579_065_538));
     }
 
     // ---------- ціни верстатів ----------

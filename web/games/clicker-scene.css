@@ -254,5 +254,64 @@
   .clk-lookname { flex-basis: 100%; }
 }
 
+/* ---- десяте оновлення «Глек на весь світ»: світ за хатою росте з драбиною (clicker-v10.md §11) ---- */
+
+/* Потяг чавунки: ~26 с через усе поле, потім півтори хвилини його нема. Без руху — стоїть посеред поля. */
+.clks-train { transform: translateX(212px); animation: clks-train 110s linear infinite; }
+@keyframes clks-train { 0% { transform: translateX(-12px); } 24% { transform: translateX(456px); } 100% { transform: translateX(456px); } }
+/* Шлюп і пароплав — одна «смуга»: кожен перетинає річку раз на 2,5 хв, другий — на півциклу пізніше. */
+.clks-lane { transform: translateX(62px); animation: clks-lane 150s linear infinite; }
+.clks-lane.s2 { transform: translateX(262px); animation-delay: -75s; }
+@keyframes clks-lane { 0% { transform: translateX(-30px); } 32% { transform: translateX(404px); } 100% { transform: translateX(404px); } }
+/* Далеке вітрило повільно ходить туди-сюди. */
+.clks-farsail { animation: clks-farsail 46s ease-in-out infinite alternate; }
+@keyframes clks-farsail { from { transform: translateX(-22px); } to { transform: translateX(26px); } }
+/* Дим без розмиття: два клуби по черзі, як над комином, лише коротший. */
+.clks-puff circle {
+  fill: rgba(228, 228, 228, .6); opacity: .3; transform-box: fill-box; transform-origin: center;
+  animation: clks-smoke 3.2s ease-out infinite;
+}
+.clks-puff circle:nth-child(2) { animation-delay: -1.6s; }
+.clks-puff.sch circle { fill: rgba(150, 140, 130, .55); animation-duration: 4.2s; }
+.clks-puff.sch circle:nth-child(2) { animation-delay: -2.1s; }
+/* Промінь маяка пульсує (лише вночі — прозорість батька від --clks-lamp). */
+.clks-beam { animation: clks-beam 5s ease-in-out infinite; }
+@keyframes clks-beam { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+/* Феєрверк над Опішнею — уночі, два спалахи по черзі. */
+.clks-fw { transform-box: fill-box; transform-origin: center; animation: clks-fw 3.8s ease-out infinite; }
+.clks-fw.f2 { animation-delay: -1.9s; }
+@keyframes clks-fw {
+  0% { opacity: 0; transform: scale(.2); }
+  18% { opacity: 1; }
+  70% { opacity: .85; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.14); }
+}
+
+/* Заморський гість (api.sceneGuest): транспорт під'їжджає (~10 с), гість хвилину стоїть біля хвіртки, далі від'їзд.
+   Звідки, де й куди — змінні --gx0…--gx2 і --gy0…--gy2 на самій групі; --gf: -1 — розвернутись перед від'їздом (карета).
+   Без руху (reduced motion) транспорт одразу стоїть на місці, а гість просто видно; прибирає їх годинник. */
+.clks-gv { transform: translate(var(--gx1, 0px), var(--gy1, 0px)) scaleX(1); animation: clks-gv 80s linear forwards; }
+@keyframes clks-gv {
+  0% { transform: translate(var(--gx0, 0px), var(--gy0, 0px)) scaleX(1); animation-timing-function: cubic-bezier(.25, .6, .35, 1); }
+  12% { transform: translate(var(--gx1, 0px), var(--gy1, 0px)) scaleX(1); }
+  87.9% { transform: translate(var(--gx1, 0px), var(--gy1, 0px)) scaleX(1); }
+  88% { transform: translate(var(--gx1, 0px), var(--gy1, 0px)) scaleX(var(--gf, 1)); animation-timing-function: cubic-bezier(.6, 0, .85, .45); }
+  100% { transform: translate(var(--gx2, 0px), var(--gy2, 0px)) scaleX(var(--gf, 1)); }
+}
+.clks-gp { opacity: 0; animation: clks-gp 80s linear forwards; }
+@keyframes clks-gp {
+  0%, 12% { opacity: 0; transform: translateY(3px); }
+  15%, 85% { opacity: 1; transform: translateY(0); }
+  88%, 100% { opacity: 0; transform: translateY(3px); }
+}
+.clks-gbub { animation: clks-bob 1.3s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) {
+  .clks-gp { opacity: 1; }
+}
+
+/* Монета для вікна-церемонії (api.coinSvg): лише легке сяйво — розмір задає вікно ядра. */
+.clks-coin { display: block; filter: drop-shadow(0 0 10px rgba(244, 197, 66, .35)); }
+.clks-coin.hryvnia { filter: drop-shadow(0 0 10px rgba(220, 228, 240, .4)); }
+
 /* Сцена поза екраном — анімації хати на паузі (перемикає IntersectionObserver у clicker-scene.js). */
 .clk-stage.clks-off *, .clk-stage.clks-off *::before, .clk-stage.clks-off *::after { animation-play-state: paused !important; }

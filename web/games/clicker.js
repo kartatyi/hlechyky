@@ -50,11 +50,15 @@
   const STAMPS_PER_CAP = 10;              // +1 черепок до денної стелі за кожні 10 клейм
   const CATCH_GRACE_MS = 2000;            // той самий запас, що й на сервері: після нього глек уже не спіймати
   const BOARD_MS = 60 * 1000;             // як часто перепитуємо таблицю «Гончарне коло» для рядка про суперника
-  const SLOW_MS = 200;                    // таймери бонусів, прогрес клейм — не частіше, ніж так
+  /// Кнопки полиць і прилавка, таймери бонусів, прогрес клейм — чотири рази на секунду й одним кадром (v10 §10): кожна
+  /// зміна тексту поза сценою — це розкладка сторінки, і зміни одного такту мусять злитися в одну.
+  const SLOW_MS = 250;
+  const RIVAL_MS = 1000;                  // «суперник попереду на …» — не частіше, ніж так (різниця міняється щотакту)
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
-  const NEWS_VERSION = 'v9.2';            // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const NEWS_VERSION = 'v10';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const PV = 10;                          // версія протоколу (Clicker.ProtocolVersion): ми вміємо доповнювати худий вид
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
@@ -71,7 +75,7 @@
   /// Ремесло, жива хата, горно, альбом, ярмарок і цех живуть в окремих файлах clicker-<id>.js (+ .css): інакше
   /// цей файл виріс би втричі, а паралельні роботи бились би в одному місці. Частина кличе HClicker.part({...}) і
   /// дістає ті самі st, що й ядро, плюс спільний api. Каркас ігор знає лише clicker.js — частини вантажимо самі.
-  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles'];
+  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles', 'guests'];
   const H = window.HClicker = window.HClicker || { parts: [], mounted: new Set(), loaded: false };
 
   /// Одна частина впала — решта гри живе далі: помилку в консоль, а не білу картку.
@@ -86,7 +90,11 @@
     callPart(p, 'mount', st, H.api);
     // Частина догнала вже відкриту картку: віддати їй останній вид і перемалювати картку — ремесло й хата дають
     // іншим частинам силуети й значки, і без цього гравець без дій так і дивився б на заглушки.
-    if (st.lastView) { callPart(p, 'update', st, st.lastView, H.api); refreshCard(st); }
+    // Недоповнений худий вид частинам не віддаємо — назв розписів і верстатів у ньому ще нема.
+    if (st.lastView && (st.shopCat || Object.values(st.lastView.upgrades || {}).some((u) => u && u.name))) {
+      callPart(p, 'update', st, st.lastView, H.api);
+      refreshCard(st);
+    }
   }
 
   /// Перемалювати картку з останнім видом: скинути підписи swap() і прогнати update ядра й частин. Раз на пачку запізнілих.
@@ -128,9 +136,13 @@
 
   // ---------- числа й слова ----------
 
-  const num = (n) => Math.round(n).toLocaleString('uk-UA');
+  /// Форматери Intl — дорогі в створенні (toLocaleString будує новий щоразу), а числа малюються щокадру: кешуємо
+  /// за кількістю знаків після коми (десяте оновлення, docs/games/specs/clicker-v10.md §10).
+  const NF = [];
+  const nf = (digits) => NF[digits] || (NF[digits] = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: digits }));
+  const num = (n) => nf(0).format(Math.round(n));
   /// «0,5» замість «0.5»: десяткова кома в нас усюди українська.
-  const dec = (n) => (Math.round(n * 10) / 10).toLocaleString('uk-UA', { maximumFractionDigits: 1 });
+  const dec = (n) => nf(1).format(Math.round(n * 10) / 10);
   const plural = (n, one, few, many) => {
     n = Math.floor(Math.abs(n));
     return n % 100 >= 11 && n % 100 <= 14 ? many : n % 10 === 1 ? one : n % 10 >= 2 && n % 10 <= 4 ? few : many;
@@ -138,44 +150,84 @@
   const shards = (n) => plural(n, 'черепок', 'черепки', 'черепків');
   const stampsWord = (n) => plural(n, 'клеймо', 'клейма', 'клейм');
   /// Скільки «повних» клейм важать n клейм — та сама крива, що Clicker.StampWeight на сервері: до тисячі (soft)
-  /// усі, далі корінь — кожне нове клеймо важить дедалі менше (на 4000 — половину, на 16 000 — чверть).
-  const stampWeight = (n, soft) => (n <= soft ? Math.max(0, n) : soft * (2 * Math.sqrt(n / soft) - 1));
+  /// усі, далі корінь — кожне нове клеймо важить дедалі менше (на 4000 — половину, на 16 000 — чверть), а після
+  /// коліна (knee, 4 млн, десяте оновлення) — логарифм: удесятеро більше клейм додають ту саму вагу.
+  function stampWeight(n, soft, knee) {
+    if (n <= soft) return Math.max(0, n);
+    if (!knee || n <= knee) return soft * (2 * Math.sqrt(n / soft) - 1);
+    return soft * (2 * Math.sqrt(knee / soft) - 1) + Math.sqrt(soft * knee) * Math.log(n / knee);
+  }
   /// Бонус клейм «до всього» у відсотках для n клейм.
-  const stampPct = (st, n) => st.stampBonus * stampWeight(n, st.stampSoft) * 100;
+  const stampPct = (st, n) => st.stampBonus * stampWeight(n, st.stampSoft, st.stampKnee) * 100;
+  /// «2,23 млн клейм», «211 клейм»: після скорочення слово узгоджується з «млн».
+  const stampsShort = (n) => count(n) + ' ' + (Math.abs(n) >= 1e6 ? 'клейм' : stampsWord(n));
   const potsWord = (n) => (n % 1 ? 'глека' : plural(n, 'глек', 'глеки', 'глеків'));
-  /// «1,47 млн глеків», а не «1,47 млн глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
-  const potsShort = (n) => short(n) + ' ' + (Math.abs(n) >= 1e6 ? 'глеків' : potsWord(n));
 
-  /// Назви великих чисел — ті самі, що на сервері (Impl/Clicker.cs, BigNames): гравець бачить обидва
-  /// числа на одному екрані, і різні слова читались би як помилка. За децильйоном слів уже нема — там «1,2e36».
-  const BIG = ['млн', 'млрд', 'трлн', 'квдрлн', 'квнтлн', 'скстлн', 'сптлн', 'октлн', 'нонлн', 'дцлн'];
+  /// Десяте оновлення: від квадрильйона глеків суми показуються в гривнях (1 ₴ = 10¹⁵ глеків), від 10²⁷ — у червоних
+  /// золотих (1 золотий = 10¹² ₴). Це лише показ — гаманець один. Ті самі пороги й слова, що Clicker.Short на сервері.
+  const HRYVNIA = 1e15;
+  const GOLD = 1e27;
+  /// Назви великих чисел — ті самі, що на сервері (Impl/Clicker.cs, BigNames): лише знайомі слова. Далі за трильйоном
+  /// гривні й золоті, а за трильйонами одиниці — «1,2e15».
+  const BIG = ['млн', 'млрд', 'трлн'];
   /// «1,2e36»: степінь із українською комою, як у сервера («0.#e0»).
   function expo(n) {
     let e = Math.floor(Math.log10(Math.abs(n)));
     let m = Math.round((n / Math.pow(10, e)) * 10) / 10;
     if (Math.abs(m) >= 10) { m /= 10; e += 1; }            // 9,99e36 — це 1e37, а не «10e36»
-    return m.toLocaleString('uk-UA', { maximumFractionDigits: 1 }) + 'e' + e;
+    return nf(1).format(m) + 'e' + e;
   }
-  /// «1,09 млн» замість «1 093 232»: мільярди цифрами не читаються. До мільйона — повне число, як на сервері.
-  function short(n) {
+  /// Відтинаємо, а не округлюємо (як сервер): «999,999 трлн» не стає «1000 трлн». Запас у трильйонну частку —
+  /// від похибки double (999·10²⁴ / 10¹⁵ = 998,99999…).
+  const cut = (v, digits) => Math.trunc(v * Math.pow(10, digits) * (1 + 1e-12)) / Math.pow(10, digits);
+  /// Число без одиниці: до мільйона — повне, далі «1,09 млн» … «999 трлн», а за трильйонами — «1,2e15».
+  function count(n) {
     if (!Number.isFinite(n)) return '∞';
-    if (Math.abs(n) < 1e6) return n % 1 ? dec(n) : num(n);
+    // Від тисячі дробова частина — шум («14 091,8 ₴»): лише цілі, відтяті.
+    if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? dec(n) : num(cut(n, 0));
     const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
     if (i >= BIG.length) return expo(n);
     const v = n / Math.pow(1000, i + 2);
-    const digits = v < 10 ? 2 : v < 100 ? 1 : 0;
-    return (Math.floor(v * Math.pow(10, digits)) / Math.pow(10, digits)).toLocaleString('uk-UA', { maximumFractionDigits: digits })
-      + ' ' + BIG[i];
+    const digits = Math.abs(v) < 10 ? 2 : Math.abs(v) < 100 ? 1 : 0;
+    return nf(digits).format(cut(v, digits)) + ' ' + BIG[i];
   }
-  /// Великий лічильник: до трильйона кожна цифра (видно, як коло крутиться; «3 млрд» стояло б годинами),
-  /// далі — коротко, але з трьома знаками.
+  /// Золотий / золоті / золотих; дробове — «золотого». Після скорочення («1,2 млн») — «золотих», як і глеки.
+  const goldWord = (g) => {
+    if (!Number.isFinite(g) || Math.abs(g) >= 1e6) return 'золотих';
+    // Слово — за тим, що видно: до тисячі — один знак після коми, від тисячі — ціле відтяте.
+    const shown = Math.abs(g) >= 1000 ? cut(g, 0) : Math.round(g * 10) / 10;
+    return shown % 1 ? 'золотого' : plural(shown, 'золотий', 'золоті', 'золотих');
+  };
+  /// Сума глеків коротко: до квадрильйона — число («5,5 трлн»), далі «5,93 млн ₴», від 10²⁷ — «60 000 золотих».
+  /// Одиниця — частина тексту, тож «ціна: short(x)» читається правильно без слова поруч.
+  function short(n) {
+    if (!Number.isFinite(n)) return '∞';
+    const a = Math.abs(n);
+    if (a < HRYVNIA) return count(n);
+    if (a < GOLD) return count(n / HRYVNIA) + ' ₴';
+    const g = n / GOLD;
+    return count(g) + ' ' + goldWord(g);
+  }
+  /// «1,47 млн глеків», а не «1,47 млн глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
+  /// У гривнях і золотих слово вже є.
+  const potsShort = (n) => (Math.abs(n) >= HRYVNIA ? short(n)
+    : short(n) + ' ' + (Math.abs(n) >= 1e6 ? 'глеків' : potsWord(n)));
+  /// Одиниця для великого лічильника: у чому зараз рахуємо і на що ділити.
+  const unit = (n) => (n >= GOLD ? { div: GOLD, word: 'золотих', key: 'gold' }
+    : n >= HRYVNIA ? { div: HRYVNIA, word: '₴', key: 'hryvnia' } : { div: 1, word: 'глеків', key: 'pots' });
+  /// Великий лічильник (без одиниці — її пише мітка поруч, unit()): до трильйона глеків кожна цифра (видно, як коло
+  /// крутиться; «3 млрд» стояло б годинами), до квадрильйона — коротко з трьома знаками. У гривнях і золотих: до тисячі —
+  /// два знаки після коми (щоб число жило), до мільярда — усі цифри, далі — з трьома знаками й назвою.
   function big(n) {
     if (!Number.isFinite(n)) return '∞';
-    if (n < 1e12) return num(n);
-    const i = Math.floor(Math.log10(n) / 3) - 2;
-    if (i >= BIG.length) return expo(n);
-    const v = n / Math.pow(1000, i + 2);
-    return (Math.floor(v * 1000) / 1000).toLocaleString('uk-UA', { maximumFractionDigits: 3 }) + ' ' + BIG[i];
+    const u = unit(n);
+    const v = n / u.div;
+    if (u.div === 1 && v < 1e12) return num(v);
+    if (u.div > 1 && v < 1000) return nf(2).format(cut(v, 2));
+    if (u.div > 1 && v < 1e9) return num(cut(v, 0));
+    const i = Math.floor(Math.log10(v) / 3) - 2;
+    if (i >= BIG.length) return expo(v);
+    return nf(3).format(cut(v / Math.pow(1000, i + 2), 3)) + ' ' + BIG[i];
   }
 
   /// «за 40 с», «за 12 хв», «за 3 год», «за 2 дні».
@@ -186,8 +238,9 @@
     if (sec < 36 * 3600) return dec(sec / 3600) + ' год';
     const d = Math.round(sec / 86400);
     // Окупність верстата в пізній грі — це мільярди днів: цифрами їх ніхто не читає, та й JS написав би «1e+26».
-    // Після скорочення слово узгоджується з «млн», а не з останньою цифрою: «11,5 млн днів», не «дні».
-    return d >= 1e6 ? short(d) + ' днів' : num(d) + ' ' + plural(d, 'день', 'дні', 'днів');
+    // Після скорочення слово узгоджується з «млн», а не з останньою цифрою: «11,5 млн днів», не «дні». Дні — не гроші,
+    // тож count, а не short: інакше «5 ₴ днів».
+    return d >= 1e6 ? count(d) + ' днів' : num(d) + ' ' + plural(d, 'день', 'дні', 'днів');
   }
 
   /// Довгий абзац у значок ⓘ: прочитати можна, займати екран — не мусить. Тим самим користуються частини.
@@ -331,14 +384,41 @@
         guard: null, eye: null, taps: [], eyeBusy: false, eyeKey: '', eyeOpen: false, eyeAt: 0, eyeArm: 0,
         raf: 0, timer: 0, boardAt: 0, board: null, ctx: null,
         // Частини (clicker-<id>.js): які вже змонтовані, підписи їхніх вкладок, останній вид для запізнілих.
-        parts: new Set(), tabText: {}, lastView: null, catalog: null, catalogAsked: false, front: null, back: null, ov: null,
+        parts: new Set(), tabText: {}, lastView: null, catalog: null, front: null, back: null, ov: null,
+        // Десяте оновлення (§10): видимість від IntersectionObserver, полиці чотири рази на секунду, хата з каталогу,
+        // дозапит каталогу, коли в ньому чогось бракує.
+        io: null, onScreen: true, secEls: null, knockAnim: null, rivalAt: 0, rivalKey: '',
+        houseView: null, houseSig: '', houseCat: null, catalogGap: '', catalogAskAt: 0, catalogTries: {},
       };
     }
     return root._clk;
   }
 
-  /// Картку справді видно: вона в документі, панель ігор не схована і вкладка браузера на передньому плані.
-  const visible = (st) => !!st.el && st.el.isConnected && !document.hidden && st.el.getClientRects().length > 0;
+  /// Картку справді видно: вона в документі, вкладка браузера на передньому плані й картка хоч краєм у вікні.
+  /// Розкладку тут не питаємо (десяте оновлення, docs/games/specs/clicker-v10.md §10): visible() кличуть щокадру, а
+  /// getClientRects() після будь-якої зміни DOM у тому самому кадрі змушував браузер синхронно перераховувати всю
+  /// сторінку (11–13 тис. вузлів) — чверть часу головного потоку. «У вікні» каже IntersectionObserver (watchCard): він
+  /// відповідає сам, після розкладки, яку браузер і так робить, а схована картка (hidden на столі) для нього «поза».
+  const visible = (st) => !!st.el && st.el.isConnected && !document.hidden
+    && (st.io ? st.onScreen : st.el.getClientRects().length > 0);
+
+  /// Спостерігач для visible(). Картку каркас монтує ще до вставки в сторінку й потім лише ховає (hidden), тож
+  /// спостерігаємо від mount до unmount: відповідь приходить і на вставку, і на кожне «сховали/показали». Запас 200 px —
+  /// щоб лічильник ожив ще до того, як картку догорнули до краю екрана. Щойно знову видно — полиці й повільні рядки
+  /// малюються одразу, а не за чверть секунди.
+  function watchCard(st) {
+    if (st.io) st.io.disconnect();
+    st.io = null;
+    st.onScreen = true;
+    if (!window.IntersectionObserver || !st.el) return;
+    st.io = new IntersectionObserver((entries) => {
+      const on = entries[entries.length - 1].isIntersecting;
+      if (on === st.onScreen) return;
+      st.onScreen = on;
+      if (on) st.slowAt = 0;
+    }, { rootMargin: '200px 0px' });
+    st.io.observe(st.el);
+  }
 
   /// Серверне «зараз» у мс: мітка з виду плюс те, що минуло на нашому годиннику від його отримання.
   const serverNow = (st) => st.viewNow + (Date.now() - st.recvAt);
@@ -396,7 +476,10 @@
 
   // ---------- малювання ----------
 
-  /// Кличеться на кожен кадр: і число, і кнопки мусять оживати самі, поки коло крутиться без кліків.
+  /// Кличеться на кожен кадр, але щокадру живуть лише лічильник і коло (розписний глек, глек з полиці, frame частин).
+  /// Кнопки полиць і прилавка — чотири рази на секунду (paintShop), рядки й бонуси — п'ять (paintSlow): «вже по
+  /// кишені» око швидше однаково не ловить, а 24 верстати × afford() × short() щокадру на телефоні з'їдали десяту
+  /// частину часу (десяте оновлення, docs/games/specs/clicker-v10.md §10).
   function paint(st) {
     const now0 = Date.now();
     // Підтверджене число рахуємо один раз: від нього і лічильник (з нашими ще не відправленими кліками),
@@ -408,7 +491,10 @@
     if (n !== st.shown) {
       st.shown = n;
       const text = big(n);
-      st.count.textContent = text;
+      countText(st, text);
+      // Одиниця поруч із числом: глеки, гривні чи золоті (десяте оновлення). Міняється рідко — лише на порогах.
+      const u = unit(n);
+      if (u.key !== st.unitKey) { st.unitKey = u.key; st.unit.textContent = u.word; }
       // «999 999 999 999» на телефоні не влазить у звичний кегль — зменшуємо, а не переносимо.
       // Висоту шапки .long більше не міняє (див. .clk-head у clicker.css: вона стала від --clk-num),
       // а на картці від 900 px css узагалі лишає кегль незмінним — сцена під числом не ворухнеться.
@@ -416,39 +502,91 @@
       if (st.count.classList.contains('long') !== long) st.count.classList.toggle('long', long);
     }
 
-    for (const b of st.buys) {
-      const u = st.ups[b.dataset.buy];
-      if (!u) continue;
-      const maxed = u.max > 0 && u.level >= u.max;
-      const a = afford(u, n, st.mode);
-      const off = maxed || !st.mine || a.n < 1 || (st.mode !== 'max' && n < a.cost);
-      if (b.disabled !== off) b.disabled = off;
-      const label = maxed ? 'досить' : (a.n > 1 ? '×' + a.n + ' · ' : '') + short(Math.ceil(a.cost));
-      if (b._price.textContent !== label) b._price.textContent = label;
-      // Смужка «скільки ціни вже є» — кроком у 2 %, щоб не писати стиль щокадру.
-      if (b._bar) {
-        const pct = maxed ? 100 : Math.min(100, Math.floor((n / Math.max(1, st.mode === 'max' ? u.price : a.cost)) * 50) * 2);
-        if (b._pct !== pct) { b._pct = pct; b._bar.style.width = pct + '%'; }
+    paintWheel(st);
+    paintGolden(st);
+    paintFall(st);
+    for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'frame', st, H.api, now0);
+
+    const now = Date.now();
+    if (now - st.slowAt >= SLOW_MS) {
+      st.slowAt = now;
+      paintShop(st, n, sure);
+      paintSlow(st, n);
+    }
+  }
+
+  /// Число лічильника — в окремому абсолютному шарі .clk-cnum усередині .clk-count, а місце під нього тримає
+  /// «найширший текст розряду» (data-shape → ::before, clicker.css, блок «швидкість»). Шар — межа розкладки: нова
+  /// цифра перекладає лише його. Раніше кожна зміна числа протікала крізь флекс і грід до кореня й коштувала повної
+  /// розкладки документа — ~9 мс на ПК, а число міняється до 60 разів на секунду (десяте оновлення, §10).
+  /// Розряд — текст без цифр і без дробу: цифри однакової ширини (tabular-nums), а дріб big() відкидає нулі в кінці
+  /// («1,5 млн» → «1,523 млн»), тож місце тримаємо під найдовший дріб, який уже бачили в цьому розряді.
+  function countText(st, text) {
+    const c = st.count;
+    let t = st.countNum;
+    if (!t || t.parentNode !== c) {
+      c.textContent = '';
+      t = st.countNum = document.createElement('span');
+      t.className = 'clk-cnum';
+      c.appendChild(t);
+      st.countKey = null;
+      st.countShape = null;
+    }
+    t.textContent = text;
+    const z = text.replace(/\d/g, '0');
+    const key = z.replace(/,0*/, '');
+    const shape = key === st.countKey && st.countShape && st.countShape.length >= z.length ? st.countShape : z;
+    st.countKey = key;
+    if (shape !== st.countShape) { st.countShape = shape; c.dataset.shape = shape; }
+  }
+
+  /// Кнопки полиць і прилавка: «по кишені чи ні», ціна за ×1/×10/макс, смужка «скільки ціни вже є». Лише те, що
+  /// видно: на «Майстерні» — верстати й віхи, а розділи хати, розписів і купців — коли розгорнуті; решту вкладок
+  /// малюють їхні частини. Прилавок (лівий стовпчик) видно завжди. Перемкнули вкладку чи розгорнули розділ —
+  /// st.slowAt скидається, і кнопки оживають того ж кадру.
+  function paintShop(st, n, sure) {
+    if (st.tab === 'shop') {
+      for (const b of st.buys) {
+        const u = st.ups[b.dataset.buy];
+        if (!u) continue;
+        const maxed = u.max > 0 && u.level >= u.max;
+        const a = afford(u, n, st.mode);
+        const off = maxed || !st.mine || a.n < 1 || (st.mode !== 'max' && n < a.cost);
+        if (b.disabled !== off) b.disabled = off;
+        const label = maxed ? 'досить' : (a.n > 1 ? '×' + a.n + ' · ' : '') + short(Math.ceil(a.cost));
+        if (b._price.textContent !== label) b._price.textContent = label;
+        // Смужка «скільки ціни вже є» — кроком у 2 %, щоб не писати стиль на кожну дрібницю. Масштаб, а не ширина:
+        // transform не чіпає розкладки (clicker.css, блок «швидкість»).
+        if (b._bar) {
+          const pct = maxed ? 100 : Math.min(100, Math.floor((n / Math.max(1, st.mode === 'max' ? u.price : a.cost)) * 50) * 2);
+          if (b._pct !== pct) { b._pct = pct; b._bar.style.transform = 'scaleX(' + pct / 100 + ')'; }
+        }
       }
-    }
-    for (const b of st.markBtns) {
-      const off = !st.mine || n < +b.dataset.price;
-      if (b.disabled !== off) b.disabled = off;
-    }
-    for (const b of st.styleBtns) {
-      const off = !st.mine || (b.dataset.owned !== '1' && n < +b.dataset.price);
-      if (b.disabled !== off) b.disabled = off;
-    }
-    // Знаряддя й прикраси — одноразові: куплене лишається сірим, некуплене чекає глеків.
-    for (const b of st.houseBtns) {
-      const off = !st.mine || b.dataset.owned === '1' || n < +b.dataset.price;
-      if (b.disabled !== off) b.disabled = off;
-    }
-    // Купці: замовлення на розпис — лише за розпис із колекції; купців у дорозі — не більше трьох.
-    for (const b of st.orderBtns) {
-      const invest = b.dataset.kind === 'invest';
-      const off = !st.mine || b.dataset.can !== '1' || n < +b.dataset.need || (invest && st.taken.length >= st.maxTaken);
-      if (b.disabled !== off) b.disabled = off;
+      for (const b of st.markBtns) {
+        const off = !st.mine || n < +b.dataset.price;
+        if (b.disabled !== off) b.disabled = off;
+      }
+      if (secOpen(st, 'styles')) {
+        for (const b of st.styleBtns) {
+          const off = !st.mine || (b.dataset.owned !== '1' && n < +b.dataset.price);
+          if (b.disabled !== off) b.disabled = off;
+        }
+      }
+      // Знаряддя й прикраси — одноразові: куплене лишається сірим, некуплене чекає глеків.
+      if (secOpen(st, 'house')) {
+        for (const b of st.houseBtns) {
+          const off = !st.mine || b.dataset.owned === '1' || n < +b.dataset.price;
+          if (b.disabled !== off) b.disabled = off;
+        }
+      }
+      // Купці: замовлення на розпис — лише за розпис із колекції; купців у дорозі — не більше трьох.
+      if (secOpen(st, 'orders')) {
+        for (const b of st.orderBtns) {
+          const invest = b.dataset.kind === 'invest';
+          const off = !st.mine || b.dataset.can !== '1' || n < +b.dataset.need || (invest && st.taken.length >= st.maxTaken);
+          if (b.disabled !== off) b.disabled = off;
+        }
+      }
     }
 
     // Продаж — від підтвердженого числа, а не від намальованого: у st.hands може лежати хвіст кліків,
@@ -463,17 +601,42 @@
     if (st.all.dataset.pots !== pots) st.all.dataset.pots = pots;
     const label = 'Обміняти все (' + num(many) + ' 🏺)';
     if (st.all.textContent !== label) st.all.textContent = label;
+  }
 
-    paintWheel(st);
-    paintGolden(st);
-    paintFall(st);
-    for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'frame', st, H.api, now0);
-
-    const now = Date.now();
-    if (now - st.slowAt >= SLOW_MS) {
-      st.slowAt = now;
-      paintSlow(st, n);
+  /// Розділи Майстерні (<details>), знайдені раз на картку. Розгорнули розділ — його кнопки й відліки оживають
+  /// того ж кадру: toggle скидає st.slowAt.
+  function secEls(st) {
+    if (!st.secEls) {
+      st.secEls = {};
+      for (const x of SECTIONS) {
+        const el = st.el.querySelector('.clk-sec[data-sec="' + x.key + '"]');
+        st.secEls[x.key] = el;
+        if (el) el.addEventListener('toggle', () => { st.slowAt = 0; });
+      }
     }
+    return st.secEls;
+  }
+  /// Розділ Майстерні розгорнутий? Згорнутого гравець не бачить — і кнопок у ньому не малюємо.
+  const secOpen = (st, key) => { const el = secEls(st)[key]; return !el || el.open; };
+
+  /// Круг кола (диск, борозни, цятка) — в окремому <svg> під рештою кола, окремим шаром композитора (will-change у
+  /// clicker.css, блок «швидкість»), і крутиться сам шар. Поворот SVG-групи всередині спільного <svg> щокадру міняв
+  /// дерево властивостей малювання: Chrome перекомпоновував шари всієї сторінки й перемальовував коло — ~5 % головного
+  /// потоку навіть без кліків (десяте оновлення, §10). Глек, руки гончаря й «пружина» глини лишаються в першому
+  /// <svg> кола, як і були, — тож і querySelector('svg') частин знаходить саме його: круг додаємо після нього.
+  function discLayer(st) {
+    if (st.discSvg && st.discSvg.parentNode === st.wheel) return st.discSvg;
+    const turn = st.wheel && st.wheel.querySelector('.clk-turn');
+    if (!turn) return null;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', 'clk-disc-layer');
+    turn.style.transform = '';
+    svg.appendChild(turn);
+    st.wheel.appendChild(svg);
+    st.discSvg = svg;
+    return svg;
   }
 
   /// Коло крутиться від пасиву й від розгону, кільце навколо нього — це розгін, сяйво — теж. Усе за кадр і
@@ -488,7 +651,8 @@
     const speed = (sec > 0 ? 30 + 30 * Math.log10(1 + sec) : 0) + 420 * frac;
     if (speed > 0 && dt > 0) {
       st.angle = (st.angle + speed * dt) % 360;
-      st.turn.style.transform = 'rotate(' + st.angle.toFixed(1) + 'deg)';
+      const disc = discLayer(st) || st.turn;
+      disc.style.transform = 'rotate(' + st.angle.toFixed(1) + 'deg)';
     }
     const off = Math.round(RING * (1 - frac) * 10) / 10;
     if (off !== st.ringOff) { st.ringOff = off; st.heatRing.style.strokeDashoffset = off; }
@@ -514,7 +678,7 @@
     if (st.rate.textContent !== rate) st.rate.textContent = rate;
 
     let buffs = '';
-    if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + st.fairMult + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
+    if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + dec(st.fairMult) + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
     if (sn < st.inspireUntil) buffs += '<span class="clk-buff inspire">✨ Натхнення: клік ×' + st.inspireMult + ' · ' + Math.ceil((st.inspireUntil - sn) / 1000) + ' с</span>';
     if (windOn(st, sn)) buffs += '<span class="clk-buff wind">🌬 Вітер із поля: без тебе ×' + dec(st.windMult) + ' · '
       + Math.ceil((st.windUntil - sn) / 1000) + ' с</span>';
@@ -533,7 +697,7 @@
     paintRival(st, liveTotal);
     if (st.tab === 'fire') paintFire(st, liveTotal);
     // Хата й дошка купців — розділи Майстерні (v8), а не свої вкладки: ціни глини, «замісити» й відліки
-    // малюються, поки відкрита Майстерня.
+    // малюються, поки відкрита Майстерня й розгорнутий їхній розділ.
     if (st.tab === 'shop') paintCountdowns(st, sn, shown);
     // Купець повернувся, а гончар нічого не робив: сервер рахує повернення лише при дії чи виді, тож питаємо вид
     // самі — раз на купця, з запасом у дві секунди й лише коли картку видно (як look для глеків).
@@ -549,12 +713,16 @@
 
   /// Відліки в хаті й на дошці: глина відлежується, купець повертається, дошка оновлюється.
   function paintCountdowns(st, sn, shown) {
+    const house = secOpen(st, 'house');
+    const orders = secOpen(st, 'orders');
     for (const el of st.cds) {
+      if (!(el._sec === 'house' ? house : orders)) continue;
       const at = +el.dataset.at;
       const left = at - sn;
       const text = left > 0 ? mmss(left) : el.dataset.done || '0:00';
       if (el.textContent !== text) el.textContent = text;
     }
+    if (!house) return;
     const resting = sn < st.clayRestUntil;
     for (const b of st.clayBtns) {
       const owned = b.dataset.owned === '1';
@@ -908,7 +1076,16 @@
         }
       }
     }
-    if (st.rival.textContent !== text) { st.rival.textContent = text; st.rival.hidden = !text; }
+    // Різниця з суперником міняється щотакту, а кожен новий текст над сценою — розкладка сторінки: пишемо не частіше
+    // разу на секунду. Змінилось місце чи суперник (ключ — усе до «на …») — одразу.
+    const key = text.replace(/ на .*$/, '');
+    const now = Date.now();
+    if (st.rival.textContent !== text && (key !== st.rivalKey || now - st.rivalAt >= RIVAL_MS)) {
+      st.rivalKey = key;
+      st.rivalAt = now;
+      st.rival.textContent = text;
+      if (st.rival.hidden !== !text) st.rival.hidden = !text;
+    }
   }
 
   function paintFire(st, liveTotal) {
@@ -919,16 +1096,17 @@
     const to = (all + 1) * (all + 1) * STAMP_UNIT;
     const pct = Math.max(0, Math.min(100, ((liveTotal - from) / (to - from)) * 100));
     const f = st.fire;
-    const bar = pct.toFixed(1) + '%';
-    if (f._bar.style.width !== bar) f._bar.style.width = bar;
-    const next = 'наступне клеймо — на ' + short(to) + ' глеків за весь час (зараз ' + short(liveTotal) + ')';
+    // Масштабом, а не шириною (clicker.css, блок «швидкість»): смужка тягнеться щотакту, а ширина — це розкладка.
+    const bar = 'scaleX(' + (pct / 100).toFixed(3) + ')';
+    if (f._bar.style.transform !== bar) f._bar.style.transform = bar;
+    const next = 'наступне клеймо — на ' + potsShort(to) + ' за весь час (зараз ' + short(liveTotal) + ')';
     if (f._next.textContent !== next) f._next.textContent = next;
 
     const armed = st.fireArmed && Date.now() < st.fireArmed;
     if (!armed) st.fireArmed = 0;
     const label = gain < 1 ? '🔥 Почати наново — ще рано'
       : armed ? 'Точно? Глеки й верстати згорять — ще раз'
-      : '🔥 Почати наново: +' + gain + ' ' + stampsWord(gain);
+      : '🔥 Почати наново: +' + stampsShort(gain);
     if (f._btn.textContent !== label) f._btn.textContent = label;
     const off = !st.mine || gain < 1;
     if (f._btn.disabled !== off) f._btn.disabled = off;
@@ -947,7 +1125,7 @@
     const ratio = (100 + will) / (100 + was);
     const grow = ratio >= 2 ? '×' + dec(ratio) : '+' + dec((ratio - 1) * 100) + ' %';
     return 'після обпалу: +' + dec(was) + ' % → +' + dec(will) + ' % до всього (дохід ' + grow + ')'
-      + (sci > 0 ? ' · 🎓 і ще +' + num(sci) + ' ' + stampsWord(sci) + ' від науки майстра' : '');
+      + (sci > 0 ? ' · 🎓 і ще +' + stampsShort(sci) + ' від науки майстра' : '');
   }
 
   /// Скільки дасть наука майстра на обпалі просто зараз — та сама формула, що Clicker.ScienceFor на сервері:
@@ -1051,7 +1229,8 @@
     // Кліки, що вже полетіли, знімає з рахунку сам вид (див. update): вид і відповідь приходять різними
     // кадрами вебсокета, і якби ми чекали відповіді, між ними лічильник встигав би показати їх двічі.
     // Лишається тільки невдача: тоді виду не буде взагалі, і порахувати назад мусимо ми.
-    st.ctx.act('spin', { c: wire }).then((r) => { if (!r || !r.ok) back(); }, back);
+    // pv — сервер тоді шле худий вид (тексти магазину — раз, у shopCatalog).
+    st.ctx.act('spin', { c: wire, pv: PV }).then((r) => { if (!r || !r.ok) back(); }, back);
   }
 
   /// Точка на колі 0…1000 — так її чекає сервер.
@@ -1112,10 +1291,21 @@
     const sn = serverNow(st);
     const ends = [st.inspireUntil, st.fairUntil].filter((t) => t > sn);
     if (ends.length && Math.min(...ends) - sn < 1500) flush(st);
-    st.wheel.classList.remove('hit');
-    void st.wheel.offsetWidth;         // перезапуск анімації «стуку»: без цього другий клік поспіль її не покаже
-    st.wheel.classList.add('hit');
+    knock(st);
     paint(st);
+  }
+
+  const REDUCED_MQ = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  /// «Стук» кола на клік — ті самі кадри, що clkhit у clicker.css, але через WAAPI: перезапуск CSS-класу вимагав
+  /// void offsetWidth, тобто синхронної розкладки всієї сторінки на кожен клік (десяте оновлення, §10).
+  const KNOCK = [{ transform: 'none', easing: 'ease-out' }, { transform: 'scale(1.07)', offset: 0.4, easing: 'ease-out' }, { transform: 'none' }];
+  function knock(st) {
+    const w = st.wheel;
+    if (!w || !w.animate || (REDUCED_MQ && REDUCED_MQ.matches)) return;
+    try {
+      if (st.knockAnim) st.knockAnim.cancel();
+      st.knockAnim = w.animate(KNOCK, { duration: 180 });
+    } catch { /* браузер без WAAPI — коло просто без стуку */ }
   }
 
   /// Який звук дає дія гравця (жива хата озвучує; без неї — тиша).
@@ -1223,6 +1413,7 @@
     st.mode = mode;
     storeSet('clk.mode', mode);
     for (const b of st.modes.querySelectorAll('[data-mode]')) b.classList.toggle('active', b.dataset.mode === mode);
+    st.slowAt = 0;                     // ціни за ×1/×10/макс — того ж кадру
     paint(st);
   }
 
@@ -1269,14 +1460,18 @@
       const maxed = u.max > 0 && u.level >= u.max;
       const pay = u.gain > 0 && !maxed ? span(u.price / u.gain) : '';
       const x2 = u.boost > 1 ? '<span class="clk-x2">×' + u.boost + '</span> · ' : '';
+      // Наступна віха (v10): «віха на 150» — ціль, до якої варто докупити рівні.
+      const nm = u.nextMark;
+      const next = nm ? ' · наступна віха на ' + nm.level + ': «' + nm.name + '» — ' + nm.desc : '';
       // Компактний рядок: значок · назва з рівнем і описом · ціна; смужка знизу — скільки ціни вже назбирано.
       const icon = H.api.upIcon ? H.api.upIcon(k) : '';
       return '<button type="button" class="clk-up' + (k === best ? ' best' : '') + (u.kind === 'skill' ? ' skill' : '') + (maxed ? ' maxed' : '')
-        + '" data-buy="' + esc(k) + '" title="' + esc(u.name + ' — ' + u.desc + (pay ? ' · окупиться за ' + pay : '')) + '" disabled>'
+        + '" data-buy="' + esc(k) + '" title="' + esc(u.name + ' — ' + u.desc + (pay ? ' · окупиться за ' + pay : '') + next) + '" disabled>'
         // Рівень — плашкою на значку (як лічильник будівель), щоб назва мала весь рядок.
         + '<span class="clk-uico">' + icon + '<span class="clk-lvl' + (u.level ? '' : ' zero') + '">' + (u.level ? u.level + (u.max > 0 ? '/' + u.max : '') : '0') + '</span></span>'
         + '<span class="clk-umain"><span class="clk-uname"><b>' + esc(u.name) + '</b></span>'
-        + '<span class="clk-udesc">' + x2 + esc(u.desc) + '</span></span>'
+        + '<span class="clk-udesc">' + x2 + esc(u.desc) + (nm && u.level >= nm.level * 0.6
+          ? ' · <span class="clk-nextmark">віха на ' + nm.level + '</span>' : '') + '</span></span>'
         // Праворуч ціна, під нею дрібно — за скільки окупиться (★ — найвигідніше зараз).
         + '<span class="clk-uright"><span class="clk-price"></span>'
         + (pay ? '<span class="clk-pay">' + (k === best ? '★ ' : '') + 'окуп. ' + pay + '</span>' : '') + '</span>'
@@ -1305,7 +1500,8 @@
 
     const marks = st.markList.slice().sort((a, b) => a.price - b.price);
     const mhtml = marks.length
-      ? '<div class="clk-sub">Віхи<span class="muted small"> · одноразово, ×2 назавжди (до обпалу)</span></div><div class="clk-marks">'
+      ? '<div class="clk-sub">Віхи' + (st.marksAll ? ' · ' + num(st.marksOwned) + ' з ' + num(st.marksAll) : '')
+        + '<span class="muted small"> · одноразово, назавжди (до обпалу; з «Пам\'яттю рук» лишаються)</span></div><div class="clk-marks">'
         + marks.map((m) => '<button type="button" class="clk-mark" data-mark="' + esc(m.key) + '" data-price="' + m.price + '" title="'
           + esc(m.name + ' — ' + m.desc) + '" disabled>'
           + (H.api.upIcon ? '<span class="clk-uico">' + H.api.upIcon(m.on || String(m.key).split(':')[0]) + '</span>' : '')
@@ -1363,12 +1559,13 @@
     const v = ctx.view || {};
     const bonus = dec(stampPct(st, st.stamps));
     const cap = v.stampCap || 0;
-    const head = '<div class="clk-stamps"><b>🔖 ' + num(st.stamps) + ' ' + stampsWord(st.stamps) + '</b>'
+    const head = '<div class="clk-stamps"><b>🔖 ' + stampsShort(st.stamps) + '</b>'
       + '<span>+' + bonus + ' % до всього</span>'
-      + '<span class="muted small">вільних клейм: ' + num(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
+      + '<span class="muted small">вільних клейм: ' + count(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
       + info('Почати наново — це спалити глеки, верстати й віхи, а натомість узяти клейма майстра за все, що наліпив '
         + 'за весь час. Перша тисяча клейм дає по +' + dec(st.stampBonus * 100) + ' % до всього назавжди, далі кожне нове '
-        + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть. Розписи, секрети, альбом і таблиця '
+        + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть, а після 4 млн бонус росте зовсім '
+        + 'повільно — удесятеро більше клейм додають ту саму частку. Розписи, секрети, альбом і таблиця '
         + 'лишаються. Кожні ' + STAMPS_PER_CAP + ' клейм — ще один черепок до денної стелі обміну'
         + (cap ? ' (зараз +' + cap + ')' : '') + '.')
       + scienceLine(st, esc);
@@ -1376,14 +1573,18 @@
     const card = (s) => '<button type="button" class="clk-secret' + (s.owned ? ' owned' : '') + '" data-secret="' + esc(s.key)
       + '" data-price="' + s.price + '"' + (s.owned || !st.mine || st.stampsFree < s.price ? ' disabled' : '') + '>'
       + '<b>' + esc(s.name) + '</b><span class="muted small">' + esc(s.desc) + '</span>'
-      + '<span class="clk-price stamp' + (s.owned ? ' done' : '') + '">' + (s.owned ? '✓ знаєш' : '🔖 ' + s.price) + '</span></button>';
+      + '<span class="clk-price stamp' + (s.owned ? ' done' : '') + '">' + (s.owned ? '✓ знаєш' : '🔖 ' + count(s.price)) + '</span></button>';
     const ring = (n) => st.secretList.filter((s) => (s.ring || 1) === n);
     const block = (title, note, list) => (list.length
       ? '<div class="clk-sub">' + title + '<span class="muted small"> · ' + note + '</span></div>'
         + '<div class="clk-secrets">' + list.map(card).join('') + '</div>'
       : '');
+    // Третє коло (v10 §8) — коли перші два вже знаєш або клейм від 20 тисяч: новачкові мільярди лише лякали б.
+    const firstTwo = ring(1).concat(ring(2));
+    const third = firstTwo.every((s) => s.owned) || st.stamps >= 20000 ? ring(3) : [];
     const secrets = block('Родинні секрети', 'за клейма, назавжди', ring(1))
       + block('Дідівські секрети', 'друге коло — те, що дід тримав у скрині', ring(2))
+      + block('Прадідівські секрети', 'третє коло — на мільйони клейм, для тих, хто пройшов усе', third)
       + '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: він лишається, хоч витрать усі.</div>';
     if (swap(st.fire._static, head + secrets)) {
       st.secretBtns = [...st.fire._static.querySelectorAll('[data-secret]')];
@@ -1403,7 +1604,7 @@
     }
     const left = sc.readyAt ? (Date.parse(sc.readyAt) - serverNow(st)) / 1000 : 0;
     return '<div class="muted small clk-science">🎓 <b>Наука майстра.</b> Найкращий гончар округи — ' + esc(sc.who) + ': '
-      + num(sc.top) + ' ' + stampsWord(sc.top) + '. Раз на 20 годин обпал дає ще чверть різниці з ним, але не більше, '
+      + stampsShort(sc.top) + '. Раз на 20 годин обпал дає ще чверть різниці з ним, але не більше, '
       + 'ніж удвічі твоїх клейм за глеки. ' + (left > 0 ? 'Знову — через ' + span(left) + '.' : 'Наступний обпал її принесе.')
       + '</div>';
   }
@@ -1443,7 +1644,7 @@
       orders: st.taken.length ? '🐴' + st.taken.length : '',
     };
     for (const x of SECTIONS) {
-      const sec = st.el.querySelector('.clk-sec[data-sec="' + x.key + '"]');
+      const sec = secEls(st)[x.key];
       if (!sec) continue;
       const sum = String(count[x.key] || '');
       const text = x.title + (sum ? ' · ' + sum : '');
@@ -1458,8 +1659,57 @@
     }
   }
 
+  /// Хата для полиць і сцени: каталог (назви, описи, ціни) + стан із виду (куплене, обране, знайдене) у тих самих
+  /// рядках, що й до десятого оновлення, — st.clays / st.tools / st.decorList і st.houseView (оздоба, дивовижі,
+  /// вивіска). Перебудовуємо лише тоді, коли стан чи каталог справді змінились (st.houseVer росте): вид летить щопачки
+  /// кліків, а хата міняється раз на хвилини. Старий сервер (хвилина деплою) шле повні рядки прямо у виді — беремо як є.
+  function houseFrom(st, hs) {
+    const cat = (st.catalog && st.catalog.house) || null;
+    const sig = JSON.stringify(hs);
+    if (sig === st.houseSig && cat === st.houseCat) return;
+    st.houseSig = sig;
+    st.houseCat = cat;
+    st.houseVer = (st.houseVer || 0) + 1;
+    const own = hs.own;
+    if (!own) {
+      st.clays = hs.clays || [];
+      st.tools = hs.tools || [];
+      st.decorList = hs.decor || [];
+      st.houseView = { named: hs.named || '', nameMax: hs.nameMax || 24, looks: hs.looks || [],
+        wonders: hs.wonders && hs.wonders.list ? hs.wonders : null };
+      return;
+    }
+    const has = (list) => { const set = new Set(list || []); return (k) => set.has(k); };
+    const clay = has(own.clays), tool = has(own.tools), decor = has(own.decor), look = has(own.looks);
+    const c = cat || {};
+    st.clays = (c.clays || []).map((x) => ({ key: x.key, name: x.name, desc: x.desc, price: x.price, body: x.body,
+      owned: !x.key || clay(x.key), on: (hs.clay || '') === x.key }));
+    st.tools = (c.tools || []).map((x) => ({ key: x.key, name: x.name, desc: x.desc, price: x.price, owned: tool(x.key) }));
+    st.decorList = (c.decor || []).map((x) => ({ key: x.key, name: x.name, desc: x.desc, price: x.price, bonus: x.bonus, owned: decor(x.key) }));
+    const chosen = hs.look || {};
+    const found = hs.wonders || {};
+    // Назва й байка є в каталозі лише знайдених (решта — секрет); свіжознайдену дочекаємось із новим каталогом.
+    const list = (c.wonders || []).map((w) => ({ key: w.key, found: !!found[w.key], at: found[w.key] || null,
+      name: found[w.key] ? w.name || '' : '', tale: found[w.key] ? w.tale || '' : '', from: w.from || '' }));
+    st.houseView = {
+      named: hs.named || '',
+      nameMax: c.nameMax || 24,
+      looks: (c.looks || []).map((g) => {
+        const opts = g.options || [];
+        return { key: g.key, name: g.name, desc: g.desc, value: chosen[g.key] || (opts[0] && opts[0].value) || '',
+          options: opts.map((o) => ({ value: o.value, name: o.name, price: o.price, owned: !(o.price > 0) || look(g.key + ':' + o.value) })) };
+      }),
+      wonders: cat ? { found: Object.keys(found).length, total: list.length, bonus: c.wonderBonus || 0.01, list } : null,
+    };
+  }
+
   function housePane(st, ctx) {
     const esc = ctx.esc;
+    // Розмітку складаємо лише тоді, коли хата змінилась (houseFrom), гончар уперше обпалився (відкрилась оздоба) чи
+    // хтось скинув підпис панелі — запізніла частина принесла значки знарядь і дивовиж.
+    const inputs = st.houseVer + '|' + (st.stamps > 0 ? 1 : 0) + '|' + (H.api.toolIcon ? 1 : 0) + (H.api.decorIcon ? 1 : 0) + (H.api.wonderIcon ? 1 : 0);
+    if (st.housePane._sig != null && st.housePane._in === inputs) { lookButtons(st); return; }
+    st.housePane._in = inputs;
     const clays = '<div class="clk-sub">Глина на колі<span class="muted small"> · купується раз; замішана відлежується 10 хв</span></div>'
       + '<div class="clk-clays">' + st.clays.map((c) => '<button type="button" class="clk-clay' + (c.on ? ' on' : '') + (c.owned ? ' owned' : '')
         + '" data-clay="' + esc(c.key) + '" data-price="' + c.price + '" data-owned="' + (c.owned ? 1 : 0) + '" data-on="' + (c.on ? 1 : 0) + '" disabled>'
@@ -1488,7 +1738,11 @@
       collectCountdowns(st);
       st.slowAt = 0;
     }
-    // Клейма міняються рідко, але розмітку оздоби вони не чіпають: інакше кожне клеймо стирало б недописану вивіску.
+    lookButtons(st);
+  }
+
+  /// Клейма міняються рідко, але розмітку оздоби вони не чіпають: інакше кожне клеймо стирало б недописану вивіску.
+  function lookButtons(st) {
     for (const b of st.lookBtns || []) {
       const off = !st.mine || b.dataset.on === '1' || +b.dataset.stamp > (st.stampsFree || 0);
       if (b.disabled !== off) b.disabled = off;
@@ -1502,7 +1756,7 @@
 
   /// Оздоба: гурт (стріха, стіни, тин…) — рядок вибору. Куплений варіант вдягається безплатно, новий бере клейма.
   function looksHtml(st, esc) {
-    const hs = (st.lastView && st.lastView.house) || {};
+    const hs = st.houseView || {};
     const looks = hs.looks || [];
     if (!looks.length) return '';
     // Оздоба коштує клейм, тож новачкові, який ще не палив, показуємо саму вивіску: вона безплатна.
@@ -1528,13 +1782,13 @@
 
   /// Дивовижі: знайдене — з байкою, решта — силуети з підказкою, звідки їх ждати.
   function wondersHtml(st, esc) {
-    const w = (st.lastView && st.lastView.house && st.lastView.house.wonders) || null;
+    const w = (st.houseView && st.houseView.wonders) || null;
     // Дивовижі приходять із рідкісних подій пізньої гри: поки гончар не палив жодного разу, це просто шум.
     if (!w || !w.list || (!w.found && !st.stamps)) return '';
     const pct = Math.round((w.bonus || 0.01) * 100 * w.found);
     const cells = w.list.map((x) => '<div class="clk-wonder' + (x.found ? ' found' : '') + '">'
       + '<div class="clk-wtop"><span class="clk-wicon' + (x.found ? '' : ' sil') + '">' + wonderIcon(x.key) + '</span>'
-      + '<b>' + (x.found ? esc(x.name) : '· · ·') + '</b></div>'
+      + '<b>' + (x.found && x.name ? esc(x.name) : '· · ·') + '</b></div>'
       + '<span class="muted small">' + esc(x.found ? x.tale : x.from) + '</span></div>').join('');
     return '<div class="clk-sub">✨ Дивовижі · ' + w.found + '/' + w.total
       + (w.found ? '<span class="muted small"> · +' + pct + ' % до всього</span>' : '')
@@ -1564,6 +1818,10 @@
 
   function ordersPane(st, ctx) {
     const esc = ctx.esc;
+    // Як і хата: розмітку складаємо лише на новий стан дошки (він — частина хати) чи на щойно приїжджий каталог розписів.
+    const inputs = st.houseVer + '|' + (st.catalog ? 1 : 0);
+    if (st.ordersPane._sig != null && st.ordersPane._in === inputs) return;
+    st.ordersPane._in = inputs;
     const note = info('Купець у дорозі повертає більше, ніж узяв: що довша дорога, то щедріше (5 хв — ×1,4, 30 хв — ×2,2). '
       + 'За розпис із колекції платить одразу ×1,6. Дошка оновлюється раз на 4 хвилини, кого не взяв — поїхав. '
       + 'Клейма спалюють купців у дорозі разом із глеками.'
@@ -1573,13 +1831,13 @@
       ? '<div class="clk-orders">' + st.orders.map((o) => {
         const invest = o.kind === 'invest';
         const text = invest
-          ? 'Візьме ' + short(o.need) + ' глеків у дорогу і за ' + o.minutes + ' хв поверне <b>' + short(o.pay) + '</b>'
-          : 'Купить ' + short(o.need) + ' глеків у розписі «' + esc(o.styleName) + '» за <b>' + short(o.pay) + '</b> одразу'
+          ? 'Візьме ' + potsShort(o.need) + ' у дорогу і за ' + o.minutes + ' хв поверне <b>' + short(o.pay) + '</b>'
+          : 'Купить ' + potsShort(o.need) + ' у розписі «' + esc(o.styleName || styleNameOf(st, o.style)) + '» за <b>' + short(o.pay) + '</b> одразу'
             + (o.can ? '' : ' <span class="clk-no">(цього розпису ще нема)</span>');
         return '<div class="clk-order' + (invest ? '' : ' style') + '"><div class="clk-oname">' + (invest ? '🐴 ' : '🧺 ') + esc(o.merchant) + '</div>'
           + '<div class="small clk-otext">' + text + '</div>'
           + '<button type="button" class="primary small clk-take" data-take="' + o.id + '" data-kind="' + esc(o.kind) + '" data-need="' + o.need
-          + '" data-can="' + (o.can ? 1 : 0) + '" disabled>' + (invest ? 'Відправити' : 'Продати') + ' · ' + short(o.need) + ' 🏺</button></div>';
+          + '" data-can="' + (o.can ? 1 : 0) + '" disabled>' + (invest ? 'Відправити' : 'Продати') + ' · ' + short(o.need) + (o.need >= HRYVNIA ? '' : ' 🏺') + '</button></div>';
       }).join('') + '</div>'
       : '<div class="clk-teaser muted small">Усіх купців уже взято — нові прийдуть із новою дошкою</div>';
     const taken = st.taken.length
@@ -1595,9 +1853,50 @@
     }
   }
 
-  /// Усі відліки обох панелей — щоб paintCountdowns не шукав їх щоп'ятої секунди.
+  /// Назва розпису за ключем: вид купця шле лише ключ. З каталогу розписів, а без нього — з полиці розписів у виді.
+  function styleNameOf(st, key) {
+    const find = (list) => (Array.isArray(list) ? list.find((s) => s && s.key === key) : null);
+    const s = find(st.catalog && st.catalog.styles) || find(st.styleList);
+    return (s && s.name) || key || '';
+  }
+
+  // ---------- каталог: чого бракує й дозапит ----------
+
+  /// Чого бракує закешованому каталогу для цього виду: самого каталогу (після F5 сервер шле його лише на прохання),
+  /// хати чи прокачки ремесла в ньому (каталог зі старого сервера) або назви й байки щойно знайденої дивовижі — їх
+  /// каталог шле лише знайдених, решта секрет. '' — усього досить.
+  function catalogGap(st, v) {
+    const c = st.catalog;
+    if (!c) return 'all';
+    const hs = v.house;
+    if (hs && hs.own) {
+      if (!c.house) return 'house';
+      const known = new Set((c.house.wonders || []).filter((w) => w.tale).map((w) => w.key));
+      for (const key of Object.keys(hs.wonders || {})) if (!known.has(key)) return 'wonder:' + key;
+    }
+    const ups = v.craft && v.craft.ups;
+    if (ups && ups.length && ups[0].name == null && !c.craftUps) return 'craft';
+    return '';
+  }
+
+  /// Попросити каталог (look { catalog: true }): на кожну нестачу не більше трьох разів і не частіше, ніж раз на 5 с —
+  /// відповідь могла розминутись із пачкою кліків, а сервер без клієнта сам каталогу не пришле.
+  function askCatalog(st, ctx, gap) {
+    if (!gap || !ctx.mine || !ctx.act) return;
+    const now = Date.now();
+    if (st.catalogGap === gap && now - st.catalogAskAt < 5000) return;
+    const tries = st.catalogTries[gap] || 0;
+    if (tries >= 3) return;
+    st.catalogTries[gap] = tries + 1;
+    st.catalogGap = gap;
+    st.catalogAskAt = now;
+    ctx.act('look', { catalog: true, pv: PV });
+  }
+
+  /// Усі відліки обох панелей — щоб paintCountdowns не шукав їх щоп'ятої секунди. _sec — чий розділ: згорнутий не малюємо.
   function collectCountdowns(st) {
-    st.cds = [...st.housePane.querySelectorAll('.clk-cd'), ...st.ordersPane.querySelectorAll('.clk-cd')];
+    const of = (pane, sec) => [...pane.querySelectorAll('.clk-cd')].map((el) => { el._sec = sec; return el; });
+    st.cds = [...of(st.housePane, 'house'), ...of(st.ordersPane, 'orders')];
   }
 
   /// Купець повернувся між видами: «+N» над сценою й тост. Перший вид лише запам'ятовує, що вже було.
@@ -1611,7 +1910,7 @@
       popAt(st, '+' + short(p.pay), 'big', 50, 40);
       H.api.sfx('coins');
       sparks(st, st.fx, 10, true, 50, 44);
-      if (ctx.toast) ctx.toast('🐴 ' + p.merchant + ' повернувся: +' + short(p.pay) + ' ' + potsWord(p.pay), 'ok');
+      if (ctx.toast) ctx.toast('🐴 ' + p.merchant + ' повернувся: +' + potsShort(p.pay), 'ok');
     }
   }
 
@@ -1644,31 +1943,77 @@
 
   // ---------- «Що нового» раз на гравця (v9 §A.9) ----------
 
-  /// Текст показується один раз на гончаря: керує цим сервер (view.news), тож і з телефона, і з ноутбука
-  /// вікно відкриється рівно раз. «v9.2» — звання округи й подарунок (docs/games/specs/clicker-titles.md); закриття
-  /// вікна забирає подарунок. Хто пропустив «v9.1» (клейма після тисячі, docs/games/specs/clicker-stamps.md), тому
-  /// ті рядки йдуть слідом — сервер каже, що гончар бачив востаннє (view.newsSeen).
+  /// Текст показується один раз на гончаря: керує цим сервер (view.news), тож і з телефона, і з ноутбука вікно
+  /// відкриється рівно раз. «v10» — «Глек на весь світ» (docs/games/specs/clicker-v10.md §12); закриття вікна забирає
+  /// подарунок. Хто пропустив «v9.2» (звання округи) чи «v9.1» (клейма після тисячі), тому ті рядки йдуть слідом —
+  /// сервер каже, що гончар бачив востаннє (view.newsSeen), а подарунок v9.2 дасть сам, якщо його ще не забрано.
   const NEWS = {
     title: '✨ Що нового в Гончарному колі',
-    lead: 'В окрузі з\'явились звання — і кожному подарунок:',
+    lead: 'Оновлення «Глек на весь світ»: після Січі гончарня виходить у світ.',
     lines: [
-      ['🎖', '<b>Звання округи.</b> Тринадцять «перших в окрузі» — у кого найбільше клейм, спійманих розписних, гостей, дивовиж… Хто обжене — забирає звання собі.'],
-      ['⭐', '<b>Звання дня</b> — Бджілка, Нічна варта, Перший півень, Улов дня й Висхідна зірка: учорашні переможці тримають їх увесь день.'],
-      ['🏅', '<b>Рідкісні й таємні.</b> Рідкісні вибиває кожен, хто зможе, — назавжди. Таємні приховані, доки хтось в окрузі не здобуде їх першим — тоді їх видно всім.'],
-      ['🏷', '<b>Значки біля ніка</b> — до трьох, обираєш сам у «🤝 Селі» → «Звання»; їх видно у вивісці, у списку цеху й на стіні звань у хаті.'],
-      ['🎁', '<b>Подарунок округи:</b> три години твого «без тебе» глеками одразу — і пам\'ятний глечик «Округа» на стіні звань.'],
+      ['🌍', '<b>Дванадцять нових щаблів.</b> Від Батуринської кахельні й Корецької порцеляни — через Одеський порт, кругосвітнє плавання, пароплав за океан і Всесвітню виставку в Парижі — до Опішні, гончарної столиці світу. Кожен щабель видно на сцені.'],
+      ['₴', '<b>Гривні замість «скстлн».</b> Від квадрильйона глеків великі суми рахуються в гривнях: 1 ₴ = 1 квадрильйон глеків. Гаманець той самий, просто без зайвих нулів. А далі будуть і червоні золоті.'],
+      ['🪧', '<b>Віхи після сотні.</b> На 75–300 рівнях — віхи, що дають не ×2, а свою силу: пасив +25 %, глек з полиці, ярмарок, щедрий купець, довша ніч, Око майстра. У «Швидшого кола» — аж до «Обома руками».'],
+      ['🏛', '<b>Гостинний двір.</b> Одеський порт привозить заморських гостей: царградських і кантонських купців, діаспору з Канади, лондонських торговців, паризьких колекціонерів. Виконуй їхні замовлення — кожні гості шанують тебе по-своєму.'],
+      ['🔖', '<b>Прадідівські секрети</b> — третє коло за мільйони клейм. А після 4 млн клейм бонус росте повільніше: удесятеро більше клейм — та сама надбавка. Нікому з тих, хто грає, це не зменшило жодного відсотка.'],
+      ['⚡', '<b>Легше й рівніше.</b> Коло більше не смикається на айфоні, на ПК стіл уміщається в екран, а гра менше навантажує комп\'ютер.'],
+      ['🎁', '<b>Подарунок:</b> чотири години твого «без тебе» глеками одразу.'],
     ],
     ok: 'Забрати подарунок',
   };
-  /// «v9.1» — для тих, хто його пропустив.
-  const NEWS_OLD = {
+  /// «v9.2» — для тих, хто його пропустив.
+  const NEWS_92 = {
     lead: 'А ще — з минулого оновлення:',
     lines: [
-      ['🔖', '<b>Клейма після тисячі важать менше.</b> Перша тисяча — як і була: +2 % до всього за клеймо (з Родовим клеймом +3 %). Далі кожне нове клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть. У кого клейм понад тисячу, бонус через це менший — зате обпалювати щогодини більше не треба.'],
-      ['🎓', '<b>Наука майстра.</b> Раз на 20 годин обпал дає ще чверть різниці між твоїми клеймами й клеймами найкращого гончаря округи — але не більше, ніж удвічі твоїх клейм за глеки. Хто позаду, той наздоганяє.'],
-      ['🔥', '<b>Кнопка обпалу</b> тепер показує, наскільки виросте дохід, а Тавро майстра справді додає клеймо до кожного обпалу.'],
+      ['🎖', '<b>Звання округи.</b> Тринадцять «перших в окрузі», звання дня, рідкісні й таємні; значки біля ніка обираєш у «🤝 Селі» → «Звання».'],
+      ['🎁', '<b>Подарунок округи:</b> ще три години «без тебе» — і пам\'ятний глечик «Округа» на стіні звань.'],
     ],
   };
+  /// «v9.1» — для тих, хто пропустив і його.
+  const NEWS_OLD = {
+    lead: 'І ще раніше:',
+    lines: [
+      ['🔖', '<b>Клейма після тисячі важать менше.</b> Перша тисяча — +2 % до всього за клеймо (з Родовим клеймом +3 %), далі кожне нове важить дедалі менше.'],
+      ['🎓', '<b>Наука майстра.</b> Раз на 20 годин обпал дає ще чверть різниці з найкращим гончарем округи — хто позаду, той наздоганяє.'],
+    ],
+  };
+
+  // ---------- гривня й червоні золоті: вікно-церемонія (v10 §6) ----------
+
+  /// Уперше доріс до гривень чи золотих — одне вікно з поясненням. Сервер шле coin (до чого доріс) і coinSeen (що вже
+  /// бачив); хто бачив «Що нового» v10, тому сервер записав coinSeen сам — гривню там уже пояснено.
+  const COINS = [
+    null,
+    { kind: 'hryvnia', title: '📜 Гетьманський універсал', text: 'Глеків у тебе вже стільки, що рахувати їх поштучно — як рахувати зерно в мішку. '
+      + 'Відтепер великі гроші рахуються в <b>гривнях</b>: 1 ₴ = 1 квадрильйон глеків. Гривня — ще з княжих часів: так звали срібний злиток. '
+      + 'Гаманець той самий, просто без зайвих нулів.' },
+    { kind: 'gold', title: '💰 Червоні золоті', text: 'Гривень стало як піску над Дніпром. Великі статки рахують <b>червоними золотими</b>: '
+      + '1 золотий = 1 трильйон гривень. Хто б міг подумати, що все почалося з одного глечика.' },
+  ];
+
+  function coinLater(st) {
+    clearTimeout(st.coinT);
+    st.coinT = setTimeout(() => {
+      if (!st.el || !(st.coin > st.coinSeen) || st.news === NEWS_VERSION) return;
+      if (!showCoin(st)) coinLater(st);
+    }, 1200);
+  }
+
+  function showCoin(st) {
+    if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
+    const c = COINS[Math.min(2, st.coin)];
+    if (!c) return true;
+    const svg = H.api.coinSvg ? H.api.coinSvg(c.kind) : '';
+    const html = '<div class="clk-news clk-coin">' + (svg ? '<div class="clk-coin-pic">' + svg + '</div>' : '')
+      + '<h3>' + c.title + '</h3><p>' + c.text + '</p>'
+      + '<button type="button" class="primary clk-news-ok">Зрозуміло</button></div>';
+    const v = st.coin;
+    const body = H.api.overlay(st, html, { cls: 'clk-newsbox', onClose: () => order(st, 'coin', { v }) });
+    const ok = body.querySelector('.clk-news-ok');
+    if (ok) ok.onclick = () => H.api.closeOverlay(st);
+    H.api.sfx('rare');
+    return true;
+  }
 
   /// Вікно чекає своєї черги: «поки тебе не було», мінігра чи Око майстра важливіші за новини. Пробуємо, доки
   /// не покажемо (чи доки сервер не скаже, що гончар уже бачив), — інакше той, хто хвилину читав «поки тебе не
@@ -1684,8 +2029,10 @@
   function showNews(st) {
     if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
     const li = (l) => '<li><span class="clk-news-ico">' + l[0] + '</span><span>' + l[1] + '</span></li>';
-    const old = st.newsSeen && st.newsSeen !== 'v9.1'
-      ? '<p class="muted small">' + NEWS_OLD.lead + '</p><ul>' + NEWS_OLD.lines.map(li).join('') + '</ul>' : '';
+    // Хто пропустив «v9.2» — ті рядки; хто й «v9.1» — ще й ті (newsSeen — остання версія, яку гончар бачив).
+    const seen = st.newsSeen || '';
+    const block = (n) => '<p class="muted small">' + n.lead + '</p><ul>' + n.lines.map(li).join('') + '</ul>';
+    const old = (seen !== 'v9.2' ? block(NEWS_92) : '') + (seen && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : '');
     const html = '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
       + NEWS.lines.map(li).join('') + '</ul>' + old
       + '<button type="button" class="primary clk-news-ok">' + NEWS.ok + '</button></div>';
@@ -1693,6 +2040,50 @@
     const body = H.api.overlay(st, html, { cls: 'clk-newsbox', onClose: () => order(st, 'news', { v: NEWS_VERSION }) });
     const ok = body.querySelector('.clk-news-ok');
     if (ok) ok.onclick = () => H.api.closeOverlay(st);
+    return true;
+  }
+
+  // ---------- худий вид (v10 §10) ----------
+
+  /// Вид приходить «худим»: назви, описи й ціни верстатів, віх, секретів і розписів лежать у каталозі
+  /// (view.shopCatalog — лише до першої дії й на look { catalog: true }). Доповнюємо вид тут, до того як його побачать
+  /// ядро й частини: для них усе як і було. false — каталогу ще нема (перше відкриття після перезапуску сервера).
+  function hydrate(st, v) {
+    if (v.shopCatalog) st.shopCat = v.shopCatalog;
+    const c = st.shopCat;
+    // Повний вид (сервер ще до v10 — хвилина деплою — або сервер ще не знає, що ми нові): доповнювати нема чого.
+    const fat = Object.values(v.upgrades || {}).some((u) => u && u.name);
+    if (!c) return fat;
+    const ups = v.upgrades || {};
+    for (const k of Object.keys(ups)) {
+      const u = ups[k];
+      const s = c.upgrades && c.upgrades[k];
+      if (!s) continue;
+      u.name = s.name;
+      u.desc = s.desc;
+      u.kind = s.kind;
+      u.growth = s.growth;
+      // Вид міг прийти вдруге (refreshCard) уже доповненим — тоді nextMark уже об'єкт, лишаємо як є.
+      if (typeof u.nextMark === 'number') u.nextMark = (s.marks || []).find((m) => m.level === u.nextMark) || null;
+    }
+    if (Array.isArray(v.marks)) {
+      v.marks = v.marks.map((m) => {
+        const [on, lv] = String(m.key).split(':');
+        const s = c.upgrades && c.upgrades[on];
+        const mk = s && (s.marks || []).find((x) => x.level === +lv);
+        if (m.name) return m;                                   // повний вид — віха вже з назвою й ціною
+        return mk ? { key: m.key, on, level: +lv, name: mk.name, desc: mk.desc, price: mk.price, effect: mk.effect, amount: mk.amount } : null;
+      }).filter(Boolean);
+    }
+    const owned = (list) => new Set((list || []).filter((x) => x.owned).map((x) => x.key));
+    if (Array.isArray(v.secrets) && c.secrets) {
+      const own = owned(v.secrets);
+      v.secrets = c.secrets.map((s) => ({ ...s, owned: own.has(s.key) }));
+    }
+    if (Array.isArray(v.styles) && c.styles) {
+      const own = owned(v.styles);
+      v.styles = c.styles.map((s) => ({ ...s, owned: own.has(s.key) }));
+    }
     return true;
   }
 
@@ -1709,6 +2100,8 @@
 
   H.api = {
     short, num, dec, big, span, plural, potsWord, potsShort, shards, mmss, jug, jugSvg, STYLE, swap, fleeting, serverNow, visible,
+    // Десяте оновлення: число без одиниці (лічильники виробів, клейм) і одиниця грошей для великих сум.
+    count, unit,
     storeGet, storeSet,
     guardOn: (st) => guardOn(st),
     info,
@@ -1819,39 +2212,137 @@
     },
   };
 
-  // ---------- модуль ----------
+  // ---------- компонування стола (десяте оновлення, docs/games/specs/clicker-v10.md §9) ----------
 
-  /// Стіл вищий за те, що лишається під лобі й рядком стола, тому перший вид після входу підкручує картку
-  /// під шапку сайту (scroll-margin-top у css): коло, смуга «Шлях виробу» і полиця верстатів стають
-  /// в один екран і гортати нічого не треба. Каркас монтує картку один раз і далі лише ховає її,
-  /// тому міра — не mount, а мить, коли картка знову стала видною.
+  /// Картка стола (.gtable), у .gbody якої каркас змонтував коло.
+  const cardOf = (st) => (st.root && st.root.closest && st.root.closest('.gtable')) || null;
+
+  const FIT_W = 900;          // картка від 900 px — є що ділити на два стовпці (той самий поріг, що @container clk у css)
+  const FIT_H = 700;          // вікно нижче 700 px — одна прокрутка сторінки, як і було (@media (max-height: 699px))
+  /// Стіл нижчий за це (1536×864, 1366×768) — смуга «Шлях виробу» переходить нагору правої колонки. Під сценою вона
+  /// з'їдала б ~100 px висоти, а сцена 4:5 за кожен піксель висоти віддає 0,8 px ширини: на 768 px заввишки коло
+  /// лишилось би 113 px, а так — 150 px.
+  const SIDE_PATH_H = 800;
+
+  /// Обгортка сцени тримає лише сцену й Око майстра. Частини ставлять свої рядки «одразу після сцени»
+  /// (st.stage.insertAdjacentElement('afterend', …) — так робить смуга «Шлях виробу» в clicker-craft.js), і такий
+  /// рядок опинився б усередині обгортки, яка на ПК забирає всю вільну висоту стовпчика. Тож усе, що з'явилось в
+  /// обгортці поруч зі сценою, одразу переносимо за неї в тому самому порядку: MutationObserver встигає до малювання.
+  function keepBox(st) {
+    const box = st.stageBox;
+    const own = (e) => e.classList.contains('clk-stage') || e.classList.contains('clk-eye');
+    const mo = new MutationObserver(() => {
+      const extra = [...box.children].filter((e) => !own(e));
+      if (extra.length) box.after(...extra);
+    });
+    mo.observe(box, { childList: true });
+    return mo;
+  }
+
+  /// Кличеться на кожен вид. Рядки, що переходять між стовпцями, ставимо на місце щоразу (частини вантажаться пізніше
+  /// за ядро й кладуть свої рядки самі), а міряємо стіл лише тоді, коли картка щойно стала видною: каркас монтує її
+  /// раз і далі лише ховає, тож міра — не mount, а мить появи. Далі стіл стежить сам (fitWatch).
   function placeInView(st) {
-    const card = st.root && st.root.closest && st.root.closest('.gtable');
+    const card = cardOf(st);
     if (!card) return;
+    // Стежимо з першого виду, навіть схованої картки: коли її покажуть, ResizeObserver сам покличе fitTable.
+    if (!st.fitWatch) st.fitWatch = fitWatch(st);
     if (card.hidden || !card.isConnected) { st.inView = false; return; }
+    placeRows(st);
     if (st.inView) return;
     st.inView = true;
-    if (!window.matchMedia('(min-width: 1000px) and (min-height: 700px)').matches) return;
-    // Через кадр-другий: на першому виді полиця ще порожня (картка низька), а app.js на зміну адреси
-    // ще й скидає сторінку вгору — раніше міряти немає чого.
-    setTimeout(() => {
-      if (card.hidden || !card.isConnected) return;
-      const r = card.getBoundingClientRect();
-      if (r.bottom <= window.innerHeight) return;   // і так усе видно
-      if (r.top < 0) return;                        // гравець уже гортав сам — не смикаємо
-      card.scrollIntoView({ block: 'start', behavior: 'auto' });
-    }, 150);
+    fitTable(st);
+  }
+
+  /// ПК: стіл рівно в один екран, одна прокрутка. Висота .clk-lay — це висота вікна (100dvh у css) мінус те, що
+  /// сторінка має над столом (шапка сайту, рядок «← Лобі», відступи) і під ним (рядок «Закрити», відступ main). Обидва
+  /// числа міряємо, а не вгадуємо: шапка буває вищою, над столом може стати плашка нічного відбою, у «⛶» відступи
+  /// інші. Решту робить css: сцена забирає всю висоту, що лишилась у стовпчику, а полиця гортається сама в собі.
+  /// Вузьке (< 900) чи низьке (< 700) вікно — стіл як був: одна прокрутка сторінки.
+  function fitTable(st) {
+    const card = cardOf(st);
+    if (!st.el || !card || card.hidden || !card.isConnected) return;
+    // Спершу дешеві перевірки (без перерахунку розкладки): телефон сюди потрапляє на кожну зміну висоти сторінки.
+    let fit = window.innerWidth >= FIT_W && window.innerHeight >= FIT_H;
+    if (fit) {
+      if (!st.el.getClientRects().length) return;   // вкладка «Ефір» чи інший розділ — міряти нема чого
+      fit = st.el.clientWidth >= FIT_W;
+    }
+    if (st.el.classList.contains('fit') !== fit) st.el.classList.toggle('fit', fit);
+    if (card.classList.contains('clk-fit') !== fit) card.classList.toggle('clk-fit', fit);
+    let side = false;
+    if (fit) {
+      const lr = st.layEl.getBoundingClientRect();
+      const above = Math.ceil(lr.top + window.scrollY);
+      // Під столом: від низу .clk-lay до низу картки (рядок «Закрити»), далі — від картки до main (обгортки каркаса),
+      // і нижній відступ самого main. Саму висоту main не беремо: її може задавати колонка балачок, а не стіл.
+      let below = card.getBoundingClientRect().bottom - lr.bottom;
+      let e = card;
+      for (; e.parentElement && e.parentElement.tagName !== 'MAIN' && e.parentElement !== document.body; e = e.parentElement) {
+        below += e.parentElement.getBoundingClientRect().bottom - e.getBoundingClientRect().bottom;
+      }
+      if (e.parentElement && e.parentElement.tagName === 'MAIN') {
+        const cs = getComputedStyle(e.parentElement);
+        below += (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      }
+      below = Math.ceil(below);
+      // Угору — з запасом у піксель: дробова частина дала б сторінці 1 px прокрутки, а з нею і смугу прокрутки.
+      if (st.fitAbove !== above) { st.fitAbove = above; st.el.style.setProperty('--clk-above', above + 'px'); }
+      if (st.fitBelow !== below) { st.fitBelow = below; st.el.style.setProperty('--clk-below', below + 'px'); }
+      side = window.innerHeight - above - below < SIDE_PATH_H;
+    }
+    if (st.el.classList.contains('pathside') !== side) st.el.classList.toggle('pathside', side);
+    placeRows(st);
+  }
+
+  /// Стіл міряє себе знову, коли щось зрушило: вікно, картка (балачки згорнули, «⛶»), висота сторінки (над столом
+  /// з'явився рядок). Через кадр, а не в самому ResizeObserver: зміна висоти стола там же викликала б його знову.
+  function fitWatch(st) {
+    let raf = 0;
+    const again = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; fitTable(st); }); };
+    const ro = window.ResizeObserver ? new ResizeObserver(again) : null;
+    const card = cardOf(st);
+    if (ro) { ro.observe(document.body); if (card) ro.observe(card); }
+    window.addEventListener('resize', again);
+    return { stop() { if (ro) ro.disconnect(); window.removeEventListener('resize', again); cancelAnimationFrame(raf); } };
+  }
+
+  /// Рядки, що переходять між стовпцями, коли стіл стоїть в один екран: прилавок черепків — у підвал правої колонки
+  /// (обмін на черепки буває раз на день, а сцені це ще 60 px висоти), смуга «Шлях виробу» на низькому вікні —
+  /// нагору правої колонки. Поза цим режимом усе вертається під сцену, як було.
+  function placeRows(st) {
+    if (!st.el || !st.sellRow || !st.one) return;
+    const fit = st.el.classList.contains('fit');
+    // Сам .clk-sell лишається під сценою: перед ним ставить себе стрічка подій (clicker-fair.js). Ходять лише кнопки
+    // й рядок «сьогодні ще …» — ті самі елементи, тож обробники й st.one / st.all не міняються.
+    if (fit) {
+      if (st.one.parentElement !== st.shards) st.shards.append(st.one, st.all, st.left);
+    } else if (st.one.parentElement !== st.sellRow) {
+      st.sellRow.append(st.one, st.all);
+      st.sellRow.after(st.left);
+    }
+    const path = st.sceneEl.querySelector(':scope > .clk-path') || st.sideEl.querySelector(':scope > .clk-path');
+    if (!path) return;
+    if (fit && st.el.classList.contains('pathside')) {
+      if (path.parentElement !== st.sideEl) st.sideEl.prepend(path);
+    } else if (path.previousElementSibling !== st.stageBox) st.stageBox.after(path);
   }
 
   /// Погляд стоїть на місці, коли вище щось виросло чи зникло. Chrome і Firefox тримають його самі (scroll anchoring),
   /// а Safari — ні: на айфоні палій розпалював горно, «підготовка» й «Останнє горно» вгорі «Ремесла» ховались
   /// (~500 px), після обпалу вертались — і комора з ярмарком, які людина гортала внизу, підстрибували вгору.
-  /// Тут те саме вручну: на кожну прокрутку запам'ятовуємо елемент посеред екрана з усіма предками до картки
-  /// й де кожен стояв. Зміна вище міняє розмір когось із предків — ResizeObserver кличе нас ще до малювання,
-  /// і ми вертаємо першого живого й видного з ланцюжка на його місце. Там, де браузер уміє сам, — нічого не робимо.
+  /// Тут те саме вручну: на кожну прокрутку запам'ятовуємо якір посеред екрана з предками до картки й де кожен стояв.
+  /// Зміна вище міняє розмір когось із предків — ResizeObserver кличе нас ще до малювання, і ми вертаємо першого
+  /// живого й видного з ланцюжка на його місце. Там, де браузер уміє сам, — нічого не робимо.
+  ///
+  /// Якір — лише нерухомий HTML-блок (stillAnchor). До v10 ним ставав будь-який елемент під 40 % екрана, а там,
+  /// коли людина грає, якраз коло: диск, що крутиться, виріб, що ліпиться, руки гончаря, глек, що росте від розгону.
+  /// Їхній getBoundingClientRect ходить разом з анімацією, і кожна зміна висоти поруч (бафи з'явились чи зникли)
+  /// «вирівнювала» сторінку на висоту анімації — коло смикалось саме по собі на 5–26 px.
   function steadyView(st) {
     if (!window.ResizeObserver || (window.CSS && CSS.supports && CSS.supports('overflow-anchor', 'auto'))) return null;
-    let chain = [];                                   // [[елемент, top у вікні]] від найглибшого до картки
+    let chain = [];                                   // [[елемент, top у вікні]] від якоря до картки
+    let watched = [];                                 // якір і всі предки до body: зсув НАД карткою теж ловимо
     const shown = (e) => e.isConnected && e.getClientRects().length > 0;
     const ro = new ResizeObserver(() => {
       const link = chain.find(([e]) => shown(e));
@@ -1862,22 +2353,118 @@
       for (const l of chain) if (shown(l[0])) l[1] = l[0].getBoundingClientRect().top;
     });
     function pick() {
+      const card = cardOf(st) || st.root;
+      // Нагорі сторінки якір не потрібен (так само й у Chrome), а на прихованій картці — нема чого тримати.
+      const hit = window.scrollY > 0 && !card.hidden && card.isConnected
+        ? document.elementFromPoint(window.innerWidth / 2, window.innerHeight * 0.4) : null;
+      const anchor = hit && card.contains(hit) ? stillAnchor(hit, card) : null;
+      if (!anchor) { if (watched.length) { ro.disconnect(); watched = []; } chain = []; return; }
+      if (anchor === (chain[0] && chain[0][0])) {
+        // Той самий якір (гортаємо далі по тому самому блоку) — лише нові координати, без переписки спостерігача.
+        for (const l of chain) l[1] = l[0].getBoundingClientRect().top;
+        return;
+      }
       ro.disconnect();
       chain = [];
-      const card = (st.root.closest && st.root.closest('.gtable')) || st.root;
-      // Нагорі сторінки якір не потрібен (так само й у Chrome), а на прихованій картці — нема чого тримати.
-      if (window.scrollY <= 0 || card.hidden || !card.isConnected) return;
-      const hit = document.elementFromPoint(window.innerWidth / 2, window.innerHeight * 0.4);
-      if (!hit || !card.contains(hit)) return;
-      for (let e = hit; e; e = e === card ? null : e.parentElement) {
-        chain.push([e, e.getBoundingClientRect().top]);
+      watched = [];
+      for (let e = anchor; e; e = e.parentElement) {
+        if (e === document.documentElement) break;
+        if (card.contains(e)) chain.push([e, e.getBoundingClientRect().top]);
+        watched.push(e);
         ro.observe(e);
       }
     }
     // Синхронно, не через кадр: app.js на зміну адреси спершу гортає вгору, а вже потім ховає картку.
     window.addEventListener('scroll', pick, { passive: true });
-    return { stop() { window.removeEventListener('scroll', pick); ro.disconnect(); chain = []; } };
+    return { stop() { window.removeEventListener('scroll', pick); ro.disconnect(); chain = []; watched = []; } };
   }
+
+  /// Що може бути якорем прокрутки. Клік усередині сцени — сама .clk-stage: під пальцем там крутиться коло, ліпиться
+  /// виріб, бігає кіт, і жоден із них не стоїть на місці. Поза сценою — найглибший HTML-елемент, у якого ні сам він,
+  /// ні предки до картки не мають transform чи анімації (рядок верстата, що блимає після купівлі, — ні; його полиця — так)
+  /// і не липнуть. Усередині блоку, що гортається сам (полиця на ПК, вікно частини), якорем стає сам цей блок:
+  /// його вміст рухається прокруткою, а не розкладкою, і тримати там нема чого.
+  function stillAnchor(hit, card) {
+    const stage = hit.closest && hit.closest('.clk-stage');
+    const from = stage && card.contains(stage) ? stage : hit;
+    const path = [];
+    for (let e = from; e && e !== card; e = e.parentElement) path.push(e);
+    const kind = (e) => {
+      if (!(e instanceof HTMLElement)) return 'moving';               // SVG: диск, руки, виріб на колі
+      const cs = getComputedStyle(e);
+      if (cs.transform !== 'none' || cs.animationName !== 'none' || cs.position === 'sticky' || cs.position === 'fixed'
+        || (cs.translate && cs.translate !== 'none') || (cs.rotate && cs.rotate !== 'none') || (cs.scale && cs.scale !== 'none')) return 'moving';
+      return /auto|scroll/.test(cs.overflowY) ? 'scroller' : 'still';
+    };
+    if (kind(card) === 'moving') return null;
+    let anchor = card;
+    for (let i = path.length - 1; i >= 0; i--) {
+      const k = kind(path[i]);
+      if (k === 'moving') break;
+      anchor = path[i];
+      if (k === 'scroller') break;
+    }
+    return anchor;
+  }
+
+  /// Мініплашка: коло прокрутили з екрана (гравець пішов до полиць) — згори липне «🏺 число · ⤒ до кола», і дотик
+  /// вертає до кола. Число плашка не рахує: копіює текст лічильника (st.count / st.unit), щойно той змінився, і лише
+  /// поки її видно. На ПК, де стіл стоїть в один екран, коло з екрана не зникає — плашки там і не буде.
+  function pinView(st) {
+    const el = st.el.querySelector('.clk-pin');
+    if (!el || !window.IntersectionObserver) return null;
+    const btn = el.querySelector('.clk-pinbtn');
+    const num = el.querySelector('.clk-pinnum');
+    const unitEl = el.querySelector('.clk-pinunit');
+    let io = null, mo = null, on = false, top = -1, copyT = 0;
+    // Число на плашці — не щокадру: плашка липка й межею розкладки не буває, тож кожна нова цифра — розкладка
+    // сторінки, а лічильник міняється до 60 разів на секунду (пакет B, §10). Чотири рази на секунду оку досить.
+    const soon = () => { if (!copyT) copyT = setTimeout(() => { copyT = 0; if (on) copy(); }, 250); };
+    const copy = () => {
+      const n = st.count.textContent;
+      const u = st.unit.textContent;
+      if (num.textContent !== n) num.textContent = n;
+      if (unitEl.textContent !== u) unitEl.textContent = u;
+    };
+    const show = (v) => {
+      if (on === v) return;
+      on = v;
+      el.hidden = !v;
+      if (!v) { if (mo) mo.disconnect(); return; }
+      copy();
+      mo = mo || new MutationObserver(soon);
+      for (const x of [st.count, st.unit]) mo.observe(x, { childList: true, characterData: true, subtree: true });
+    };
+    // Шапка сайту липне згори — плашка стає під нею. Висота шапки міняється хіба з розміром вікна.
+    function watch() {
+      const head = document.querySelector('body > header');
+      const t = head ? Math.max(0, Math.round(head.getBoundingClientRect().bottom)) : 0;
+      if (t === top && io) return;
+      top = t;
+      el.style.setProperty('--clk-pin-top', t + 'px');
+      if (io) io.disconnect();
+      // Коло «з екрана» — обгортка сцени вся вище за шапку. Зникла з розкладки (картку сховали) — плашки теж нема.
+      io = new IntersectionObserver(([en]) => {
+        const r = en.boundingClientRect;
+        const rootTop = en.rootBounds ? en.rootBounds.top : t;
+        show(!en.isIntersecting && r.height > 0 && r.bottom <= rootTop + 1);
+      }, { rootMargin: '-' + t + 'px 0px 0px 0px' });
+      io.observe(st.stageBox);
+    }
+    btn.addEventListener('click', () => {
+      H.api.sfx('tap');
+      const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const y = window.scrollY + st.sceneEl.getBoundingClientRect().top - top - 8;
+      window.scrollTo({ top: Math.max(0, y), behavior: calm ? 'auto' : 'smooth' });
+    });
+    watch();
+    window.addEventListener('resize', watch);
+    return {
+      stop() { window.removeEventListener('resize', watch); if (io) io.disconnect(); if (mo) mo.disconnect(); clearTimeout(copyT); },
+    };
+  }
+
+  // ---------- модуль ----------
 
   const MOD = {
     id: 'clicker',
@@ -1909,13 +2496,22 @@
       // Картка — на всю ширину сітки столів (див. .clk-wide у css): інакше сцена й полиці лягали б одним стовпчиком.
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.add('clk-wide');
-      root.innerHTML = '<div class="clk"><div class="clk-lay">'
+      root.innerHTML = '<div class="clk">'
+        // Мініплашка (v10 §9): коло прокрутили з екрана — згори липне «🏺 число · ⤒ до кола». Сама нуль заввишки,
+        // тож поява плашки нічого під нею не зсуває. Число вона не рахує, а бере з лічильника (pinView).
+        + '<div class="clk-pin" hidden><button type="button" class="clk-pinbtn" aria-label="Прокрутити до кола">'
+        + '<span class="clk-pinico" aria-hidden="true">🏺</span><b class="clk-pinnum"></b><span class="clk-pinunit"></span>'
+        + '<span class="clk-pingo">⤒ до кола</span></button></div>'
+        + '<div class="clk-lay">'
         // Ліворуч (або зверху на телефоні): вивіска, лічильник, сцена з полицею й колом, бонуси, прилавок.
         + '<div class="clk-scene">'
         + '<div class="clk-sign"></div>'
-        + '<div class="clk-head"><b class="clk-count">0</b><span class="muted small">глеків</span></div>'
+        + '<div class="clk-head"><b class="clk-count">0</b><span class="muted small clk-unit">глеків</span></div>'
         + '<div class="clk-rate muted small"></div>'
         + '<div class="clk-rival small" hidden></div>'
+        // Обгортка сцени: на ПК вона забирає всю висоту, що лишилась у стовпчику, а сцена 4:5 вписується в неї
+        // (container-type: size у css). У ній лише сцена й Око майстра — решту тримає keepBox.
+        + '<div class="clk-stagebox">'
         + '<div class="clk-stage">'
         // Хата, що росте від покупок: шар під полицею й колом (viewBox 360×450 — сцена 4:5; малює clicker-scene.js).
         + '<svg class="clk-house" viewBox="0 0 360 450" preserveAspectRatio="none" aria-hidden="true"></svg>'
@@ -1953,6 +2549,7 @@
         + '<div class="clk-eye-veil"><span class="small">Полиця відкриється після кнопки — випадкові кліки не рахуються</span>'
         + '<button type="button" class="primary clk-eye-go" disabled>👁 Показати полицю</button></div></div>'
         + '<button type="button" class="ghost small clk-eye-reset" hidden disabled>Скинути торкання</button></div>'
+        + '</div>'
         + '<div class="clk-buffs" hidden></div>'
         + '<div class="clk-sell"><button type="button" class="primary clk-one" disabled></button>'
         + '<button type="button" class="ghost clk-all" data-pots="0" disabled></button></div>'
@@ -1981,6 +2578,8 @@
         + '<div class="clk-firebox"><div class="clk-bar"><i></i></div><div class="clk-nextstamp muted small"></div>'
         + '<button type="button" class="primary clk-fire" disabled></button><div class="clk-after small"></div></div>'
         + '<div class="clk-firestatic"></div></div>'
+        // Підвал правої колонки: на ПК, коли стіл стоїть в один екран, сюди переходить прилавок черепків (fitTable).
+        + '<div class="clk-shards"></div>'
         + '</div>'
         + '</div>'
         // Модальна панель частин (мінігри, дарунки, хата друга): одна за раз, поверх усієї картки.
@@ -1989,7 +2588,15 @@
         + '</div>';
       const q = (s) => root.querySelector(s);
       st.el = q('.clk');
+      st.layEl = q('.clk-lay');
+      st.sceneEl = q('.clk-scene');
+      st.sideEl = q('.clk-side');
+      st.stageBox = q('.clk-stagebox');
+      st.sellRow = q('.clk-sell');
+      st.shards = q('.clk-shards');
       st.count = q('.clk-count');
+      st.unit = q('.clk-unit');
+      st.unitKey = 'pots';
       st.rate = q('.clk-rate');
       st.rival = q('.clk-rival');
       st.sign = q('.clk-sign');
@@ -2099,7 +2706,10 @@
       st.ov.el.addEventListener('pointerdown', (e) => { st.ovDownBack = e.target === st.ov.el; });
       st.ov.el.addEventListener('click', (e) => { if (e.target === st.ov.el && st.ovDownBack !== false) H.api.closeOverlay(st); });
       st.root = root;
+      st.boxWatch = keepBox(st);
       st.steady = steadyView(st);
+      st.pinBar = pinView(st);
+      watchCard(st);
       H.mounted.add(st);
       for (const p of H.parts) mountPart(st, p);
       if (!st.raf) loop(st);
@@ -2113,6 +2723,9 @@
       ctx.clk = st;
       st.mine = !!ctx.mine;
       const v = ctx.view;
+      // Худий вид: без каталогу магазину (перше відкриття після перезапуску сервера) назв ще нема — просимо каталог і
+      // цей вид малюємо без магазину й частин; наступний прийде вже з назвами.
+      const ready = !v || v.pots == null || hydrate(st, v);
       if (v && v.pots != null) {
         // Сервер — джерело правди: беремо його число і його мітку часу, від них доліковуємо далі.
         // Усе, що вже полетіло, у цьому числі вже враховано — свій запас відпущених кліків обнуляємо.
@@ -2137,6 +2750,8 @@
         st.canSell = v.canSellToday || 0;
         st.ups = v.upgrades || {};
         st.markList = v.marks || [];
+        st.marksOwned = v.marksOwned || 0;
+        st.marksAll = v.marksAll || 0;
         st.styleList = v.styles || [];
         st.secretList = v.secrets || [];
         st.wear = v.wear || '';
@@ -2145,6 +2760,7 @@
         st.stampBonus = v.stampBonus || 0.02;
         st.stampsExtra = v.stampsExtra || 0;
         st.stampSoft = v.stampSoft || 1000;
+        st.stampKnee = v.stampKnee || 0;
         st.stampIron = v.stampIron || 0;
         st.science = v.science || null;
         // Розгін — серверний, плюс наші кліки, що ще не полетіли (сервер про них не знає).
@@ -2192,14 +2808,15 @@
           H.api.sfx('rare');
         }
         st.luckySeen = lucky;
+        // Каталоги (тексти виробів, хати, подій…) сервер шле лише до першої дії — кешуємо. Спершу каталог, потім
+        // хата: її назви й ціни (десяте оновлення, §10) потрібні вже цьому виду.
+        if (v.catalog) st.catalog = v.catalog;
         // Хата: глина, знаряддя, прикраси й купці. Старий сервер (хвилина деплою) house не шле — тоді все порожнє.
         const hs = v.house || {};
-        st.clays = hs.clays || [];
         st.clay = hs.clay || '';
         st.clayBody = hs.clayBody || '';
         st.clayRestUntil = Date.parse(hs.clayRestUntil) || 0;
-        st.tools = hs.tools || [];
-        st.decorList = hs.decor || [];
+        houseFrom(st, hs);
         const od = hs.orders || {};
         st.orders = od.board || [];
         st.taken = (od.taken || []).map((t) => ({ id: t.id, merchant: t.merchant, pay: t.pay, payAt: Date.parse(t.payAt) || 0 }));
@@ -2222,14 +2839,32 @@
         // Виняток — мінігра розпису, де вже водять пальцем: вона однаково скінчиться за кілька секунд, а обірвати
         // її посеред штриха означало б згаяти всю роботу. Майстер зачекає — кола ми в ці секунди й не крутимо.
         if (st.guard && H.api.overlayOpen(st) && !H.api.overlayBusy(st)) H.api.closeOverlay(st);
-        // Каталоги (тексти виробів, подій…) сервер шле лише до першої дії — кешуємо; нема в кеші — просимо раз.
-        if (v.catalog) st.catalog = v.catalog;
-        else if (!st.catalog && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
+        // Каталоги (тексти виробів, подій…) сервер шле лише до першої дії — кешуємо (st.catalog уже взято вище, до хати);
+        // нема в кеші — просимо раз.
+        if ((!st.catalog || !st.shopCat) && !st.catalogAsked && ctx.mine && ctx.act) {
+          // pv — ми клієнт v10, що вміє доповнювати худий вид. Каталог міг загубитись (ліміт дій, клік з іншого
+          // пристрою між look і видом) — тоді за три секунди питаємо знову.
+          st.catalogAsked = true;
+          ctx.act('look', { catalog: true, pv: PV });
+          clearTimeout(st.catalogT);
+          st.catalogT = setTimeout(() => { if (!st.catalog || !st.shopCat) st.catalogAsked = false; }, 3000);
+        } else if (st.catalog && st.shopCat) {
+          // Каталог є, та в ньому бракує хати чи прокачки ремесла (каталог від сервера до v10) або назви й байки щойно
+          // знайденої дивовижі (каталог шле лише знайдені) — просимо ще (пакет B, §10).
+          askCatalog(st, ctx, catalogGap(st, v));
+        }
         st.lastView = v;
         // «Що нового» — раз на гончаря; сервер шле поле, поки не бачив. Чекаємо, поки картка стане видною:
         // під час Ока майстра чи чужого вікна лізти поперед батька нема куди.
         st.news = v.news || '';
         st.newsSeen = v.newsSeen || '';
+        st.coin = v.coin || 0;
+        st.coinSeen = v.coinSeen || 0;
+        if (st.coin > st.coinSeen && st.news !== NEWS_VERSION && ctx.mine && !st.coinAsked) {
+          st.coinAsked = true;
+          coinLater(st);
+        }
+        if (!(st.coin > st.coinSeen)) st.coinAsked = false;
         if (st.news === NEWS_VERSION && !st.newsAsked && ctx.mine) {
           st.newsAsked = true;
           newsLater(st);
@@ -2245,19 +2880,22 @@
       const owned = st.styleList.filter((s) => s.owned).length;
       st.tabText.shop = '🔨 Майстерня';
       st.tabText.fire = '🔥 Клейма';
-      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + st.stamps : '', 1);
+      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + count(st.stamps) : '', 1);
       labelTab(st, 'shop');
       labelTab(st, 'fire');
       paintSections(st, owned);
       wheelJug(st);
       paintSign(st);
-      shop(st, ctx);
-      housePane(st, ctx);
-      ordersPane(st, ctx);
-      styles(st, ctx);
-      firePane(st, ctx);
-      if (v && v.pots != null) for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'update', st, v, H.api);
+      if (ready) {
+        shop(st, ctx);
+        housePane(st, ctx);
+        ordersPane(st, ctx);
+        styles(st, ctx);
+        firePane(st, ctx);
+      }
+      if (ready && v && v.pots != null) for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'update', st, v, H.api);
       gateTabs(st, v);
+      // Новий вид — і кнопки, і повільні рядки одразу: полиці могли щойно перемалюватись із вимкненими кнопками.
       st.slowAt = 0;
       paint(st);
     },
@@ -2289,14 +2927,19 @@
       clearInterval(st.timer);
       clearTimeout(st.eyeArm);
       clearTimeout(st.newsT);
+      clearTimeout(st.coinT);
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       if (st.steady) st.steady.stop();
+      if (st.fitWatch) st.fitWatch.stop();
+      if (st.pinBar) st.pinBar.stop();
+      if (st.boxWatch) st.boxWatch.disconnect();
+      if (st.io) { st.io.disconnect(); st.io = null; }
       for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);
       H.mounted.delete(st);
       if (st.ov) H.api.closeOverlay(st);
       const card = root.closest && root.closest('.gtable');
-      if (card) card.classList.remove('clk-wide');
+      if (card) card.classList.remove('clk-wide', 'clk-fit');
       st.raf = 0;
       st.el = null;
       root._clk = null;
