@@ -1801,6 +1801,47 @@
     return true;
   }
 
+  // ---------- худий вид (v10 §10) ----------
+
+  /// Вид приходить «худим»: назви, описи й ціни верстатів, віх, секретів і розписів лежать у каталозі
+  /// (view.shopCatalog — лише до першої дії й на look { catalog: true }). Доповнюємо вид тут, до того як його побачать
+  /// ядро й частини: для них усе як і було. false — каталогу ще нема (перше відкриття після перезапуску сервера).
+  function hydrate(st, v) {
+    if (v.shopCatalog) st.shopCat = v.shopCatalog;
+    const c = st.shopCat;
+    if (!c) return false;
+    const ups = v.upgrades || {};
+    for (const k of Object.keys(ups)) {
+      const u = ups[k];
+      const s = c.upgrades && c.upgrades[k];
+      if (!s) continue;
+      u.name = s.name;
+      u.desc = s.desc;
+      u.kind = s.kind;
+      u.growth = s.growth;
+      // Вид міг прийти вдруге (refreshCard) уже доповненим — тоді nextMark уже об'єкт, лишаємо як є.
+      if (typeof u.nextMark === 'number') u.nextMark = (s.marks || []).find((m) => m.level === u.nextMark) || null;
+    }
+    if (Array.isArray(v.marks)) {
+      v.marks = v.marks.map((m) => {
+        const [on, lv] = String(m.key).split(':');
+        const s = c.upgrades && c.upgrades[on];
+        const mk = s && (s.marks || []).find((x) => x.level === +lv);
+        return mk ? { key: m.key, on, level: +lv, name: mk.name, desc: mk.desc, price: mk.price } : null;
+      }).filter(Boolean);
+    }
+    const owned = (list) => new Set((list || []).filter((x) => x.owned).map((x) => x.key));
+    if (Array.isArray(v.secrets) && c.secrets) {
+      const own = owned(v.secrets);
+      v.secrets = c.secrets.map((s) => ({ ...s, owned: own.has(s.key) }));
+    }
+    if (Array.isArray(v.styles) && c.styles) {
+      const own = owned(v.styles);
+      v.styles = c.styles.map((s) => ({ ...s, owned: own.has(s.key) }));
+    }
+    return true;
+  }
+
   // ---------- api для частин ----------
 
   /// Новий вузол вмісту вікна щоразу: відповідь сервера, що запізнилась (хата друга, мінігра), перевіряє
@@ -2222,6 +2263,9 @@
       ctx.clk = st;
       st.mine = !!ctx.mine;
       const v = ctx.view;
+      // Худий вид: без каталогу магазину (перше відкриття після перезапуску сервера) назв ще нема — просимо каталог і
+      // цей вид малюємо без магазину й частин; наступний прийде вже з назвами.
+      const ready = !v || v.pots == null || hydrate(st, v);
       if (v && v.pots != null) {
         // Сервер — джерело правди: беремо його число і його мітку часу, від них доліковуємо далі.
         // Усе, що вже полетіло, у цьому числі вже враховано — свій запас відпущених кліків обнуляємо.
@@ -2336,7 +2380,7 @@
         if (st.guard && H.api.overlayOpen(st) && !H.api.overlayBusy(st)) H.api.closeOverlay(st);
         // Каталоги (тексти виробів, подій…) сервер шле лише до першої дії — кешуємо; нема в кеші — просимо раз.
         if (v.catalog) st.catalog = v.catalog;
-        else if (!st.catalog && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
+        if ((!st.catalog || !st.shopCat) && !st.catalogAsked && ctx.mine && ctx.act) { st.catalogAsked = true; ctx.act('look', { catalog: true }); }
         st.lastView = v;
         // «Що нового» — раз на гончаря; сервер шле поле, поки не бачив. Чекаємо, поки картка стане видною:
         // під час Ока майстра чи чужого вікна лізти поперед батька нема куди.
@@ -2370,12 +2414,14 @@
       paintSections(st, owned);
       wheelJug(st);
       paintSign(st);
-      shop(st, ctx);
-      housePane(st, ctx);
-      ordersPane(st, ctx);
-      styles(st, ctx);
-      firePane(st, ctx);
-      if (v && v.pots != null) for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'update', st, v, H.api);
+      if (ready) {
+        shop(st, ctx);
+        housePane(st, ctx);
+        ordersPane(st, ctx);
+        styles(st, ctx);
+        firePane(st, ctx);
+      }
+      if (ready && v && v.pots != null) for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'update', st, v, H.api);
       gateTabs(st, v);
       st.slowAt = 0;
       paint(st);

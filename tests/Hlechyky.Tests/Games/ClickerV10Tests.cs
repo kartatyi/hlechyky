@@ -203,9 +203,13 @@ public class ClickerV10Tests
     {
         var h = Rich();
         Marks(h, "workshop:25", "workshop:50", "workshop:100");
-        var next = Up(h, "workshop").GetProperty("nextMark");
-        Assert.Equal(150, next.GetProperty("level").GetInt32());
-        Assert.Equal("Друга майстерня", next.GetProperty("name").GetString());
+        Assert.Equal(150, Up(h, "workshop").GetProperty("nextMark").GetInt32());
+        // Назва й підпис — у каталозі магазину, що їде до першої дії й на look { catalog: true }.
+        Assert.True(Act(h, "look", new { catalog = true }).Ok);
+        var marks = View(h).GetProperty("shopCatalog").GetProperty("upgrades").GetProperty("workshop").GetProperty("marks");
+        var m150 = Assert.Single(marks.EnumerateArray(), m => m.GetProperty("level").GetInt32() == 150);
+        Assert.Equal("Друга майстерня", m150.GetProperty("name").GetString());
+        Assert.Equal("пасив +25 %", m150.GetProperty("desc").GetString()!.Replace('\u00a0', ' '));
     }
 
     [Fact]
@@ -375,7 +379,7 @@ public class ClickerV10Tests
         var ten = Clicker.StampWeight(k * 10) - Clicker.StampWeight(k);
         var hundred = Clicker.StampWeight(k * 100) - Clicker.StampWeight(k * 10);
         Assert.Equal(ten, hundred, 3);
-        Assert.Equal(145_600, ten, -2);
+        Assert.InRange(ten, 145_600 - 100, 145_600 + 100);             // √(1000·4 млн)·ln 10 ≈ 145 629
         Assert.Equal(125_491.1, Clicker.StampWeight(k), 1);
     }
 
@@ -507,6 +511,25 @@ public class ClickerV10Tests
         Assert.Equal("+2 ₴ за секунду", ocean.Desc);
         var workshop = Clicker.Shop.Single(u => u.Key == "workshop");
         Assert.Equal("+25 глеків за секунду", workshop.Desc);
+    }
+
+    // ---------- худий вид ----------
+
+    [Fact]
+    public void The_shop_texts_travel_once_and_the_view_carries_only_state()
+    {
+        var h = Rich(("sich", 50), ("baturyn", 5));
+        Assert.True(Act(h, "look").Ok);                                    // після дії каталогів у виді нема
+        var v = View(h);
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("shopCatalog").ValueKind);
+        var u = Up(h, "baturyn");
+        Assert.False(u.TryGetProperty("name", out _));
+        Assert.False(u.TryGetProperty("desc", out _));
+        var shop = v.GetProperty("upgrades").GetRawText().Length + v.GetProperty("secrets").GetRawText().Length
+            + v.GetProperty("styles").GetRawText().Length + v.GetProperty("marks").GetRawText().Length;
+        Assert.True(shop < 6_000, $"магазин у виді важить {shop} Б");
+        Assert.True(Act(h, "look", new { catalog = true }).Ok);
+        Assert.Equal(JsonValueKind.Object, View(h).GetProperty("shopCatalog").ValueKind);
     }
 
     // ---------- «Що нового» v10 і подарунок ----------

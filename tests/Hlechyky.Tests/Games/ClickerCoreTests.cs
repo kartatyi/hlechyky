@@ -464,7 +464,8 @@ public class ClickerCoreTests
     public void The_second_ring_of_secrets_is_in_the_catalog_at_its_price(string key, int price)
     {
         var h = Wheel();
-        var secret = Assert.Single(View(h).GetProperty("secrets").EnumerateArray(),
+        // Тексти й ціни секретів — у каталозі магазину (v10 §10), у виді лише «чи є».
+        var secret = Assert.Single(View(h).GetProperty("shopCatalog").GetProperty("secrets").EnumerateArray(),
             s => s.GetProperty("key").GetString() == key);
         Assert.Equal(price, secret.GetProperty("price").GetInt32());
         Assert.Equal(2, secret.GetProperty("ring").GetInt32());
@@ -475,7 +476,7 @@ public class ClickerCoreTests
     public void The_first_ring_of_secrets_did_not_move()
     {
         var h = Wheel();
-        var ring1 = View(h).GetProperty("secrets").EnumerateArray()
+        var ring1 = View(h).GetProperty("shopCatalog").GetProperty("secrets").EnumerateArray()
             .Where(s => s.GetProperty("ring").GetInt32() == 1).Select(s => s.GetProperty("key").GetString() ?? "").ToArray();
         Assert.Equal(new[] { "night", "omen", "cat", "kin", "longfair", "recipe", "memory", "seal" }, ring1);
     }

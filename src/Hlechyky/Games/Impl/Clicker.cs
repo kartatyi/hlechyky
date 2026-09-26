@@ -1398,12 +1398,34 @@ public sealed partial class Clicker : Game
         };
     }
 
-    /// <summary>Наступна віха верстата, яку ще не куплено: рівень і назва (null — усі куплені).</summary>
-    object? NextMark(ClickerUpgrade up)
+    /// <summary>Рівень наступної віхи верстата, яку ще не куплено (null — усі куплені).</summary>
+    int? NextMark(ClickerUpgrade up)
     {
         for (var i = 0; i < up.Steps.Length; i++)
-            if (!_marks.Contains(MarkKey(up, i))) return new { level = up.Steps[i].Level, name = up.Steps[i].Name, desc = MarkDesc(up, i) };
+            if (!_marks.Contains(MarkKey(up, i))) return up.Steps[i].Level;
         return null;
+    }
+
+    /// <summary>
+    /// Незмінне про магазин (десяте оновлення §10): назви, описи, вид і ріст ціни верстатів, усі віхи з підписом і
+    /// ціною, секрети й розписи. Їде у вид лише до першої дії й на look { catalog: true } — як і решта каталогів.
+    /// </summary>
+    object? ShopCatalog()
+    {
+        if (!_catalogWanted) return null;
+        return new
+        {
+            upgrades = Shop.ToDictionary(u => u.Key, u => (object)new
+            {
+                name = u.Name,
+                desc = u.Desc,
+                kind = u.Kind.ToString().ToLowerInvariant(),
+                growth = (double)u.GrowNum / u.GrowDen,
+                marks = u.Steps.Select((m, i) => new { level = m.Level, name = m.Name, desc = MarkDesc(u, i), price = u.MarkPrice(i) }),
+            }, StringComparer.Ordinal),
+            secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring }),
+            styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price }),
+        };
     }
 
     /// <summary>Прилавок: сотня глеків за черепок, не більше <see cref="DailyCap"/> черепків на день.</summary>
@@ -1884,14 +1906,13 @@ public sealed partial class Clicker : Game
             perSecond = PerSecond,
             // Без ярмарку: клієнт доліковує сам і сам вимикає ярмарок, коли той скінчиться.
             baseSecond = passive,
+            // Лише те, що міняється: назви, описи, вид верстата, ріст ціни й віхи — у shopCatalog (десяте оновлення §10:
+            // вид летить щопачки кліків, а незмінні тексти двадцяти семи верстатів важили кілобайти щоразу).
             upgrades = Shop.Select((u, index) => (u, index)).ToDictionary(x => x.u.Key, x => (object)new
             {
                 level = Level(x.u.Key),
                 price = x.u.Price(Level(x.u.Key)),
-                name = x.u.Name,
-                desc = x.u.Desc,
                 max = MaxOf(x.u),
-                kind = x.u.Kind.ToString().ToLowerInvariant(),
                 // Скільки глеків за секунду додасть наступний рівень — для підказки «окупиться за».
                 gain = x.u.Kind switch
                 {
@@ -1899,24 +1920,19 @@ public sealed partial class Clicker : Game
                     ClickerKind.Mult when !CappedNow(x.u, Level(x.u.Key)) => passive * 0.25,
                     _ => 0,
                 },
-                growth = (double)x.u.GrowNum / x.u.GrowDen,
                 marks = MarksOf(x.u),
                 // Справжній множник від віх: у пасивних ×2 за кожну, а в колі ×2 дає лише перша (решта — відсоток пасиву).
                 boost = x.u.Kind == ClickerKind.Click
                     ? (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1)
                     : Math.Pow(2, MarksOf(x.u)),
-                // Наступна віха (v10): рівень, назва й що дасть — «віха на 150» на картці верстата.
+                // Наступна віха (v10) — рівень; назву й що дасть клієнт бере з shopCatalog.
                 nextMark = NextMark(x.u),
                 open = Opened(x.index),
             }, StringComparer.Ordinal),
-            // Лише відкриті й ще не куплені віхи: решта клієнту ні до чого, а вид летить щопачки кліків.
+            // Лише відкриті й ще не куплені віхи — ключем; назву, підпис і ціну клієнт бере з shopCatalog.
             marks = Shop.SelectMany(u => u.Steps.Select((m, i) => (u, m, i)))
                 .Where(x => !_marks.Contains(MarkKey(x.u, x.i)) && Level(x.u.Key) >= x.m.Level)
-                .Select(x => new
-                {
-                    key = MarkKey(x.u, x.i), on = x.u.Key, level = x.m.Level, name = x.m.Name,
-                    desc = MarkDesc(x.u, x.i), price = x.u.MarkPrice(x.i),
-                })
+                .Select(x => new { key = MarkKey(x.u, x.i) })
                 .ToList(),
             // Скільки віх уже є і скільки всього (v10): «Віхи · 12 із 162».
             marksOwned = _marks.Count,
@@ -1954,8 +1970,9 @@ public sealed partial class Clicker : Game
             science = ScienceView(Ctx.Clock.UtcNow),
             stampCap = StampCap,
             firings = _firings,
-            secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
-            styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key) }),
+            // Секрети й розписи — лише «чи є»; тексти й ціни — у shopCatalog.
+            secrets = Secrets.Select(s => new { key = s.Key, owned = _secrets.Contains(s.Key) }),
+            styles = Styles.Select(s => new { key = s.Key, owned = _styles.Contains(s.Key) }),
             wear = _wear,
             // Розгін: скільки гарячих кліків зараз і що з них виходить. Клієнт веде той самий рахунок між видами.
             heat,
@@ -1999,6 +2016,7 @@ public sealed partial class Clicker : Game
             guests = ViewGuests(Ctx.Clock.UtcNow),
             away = AwayView(),
             catalog = CatalogView(),
+            shopCatalog = ShopCatalog(),
             // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна), пауза й платня.
             guard = _guard.View(Ctx.Clock.UtcNow, EyeGain),
         };

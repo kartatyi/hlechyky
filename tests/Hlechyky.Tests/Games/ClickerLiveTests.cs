@@ -344,9 +344,10 @@ public class ClickerLiveTests
     [Fact]
     public void The_flywheel_and_the_basket_are_always_on_the_shelf()
     {
-        var ups = View(Wheel()).GetProperty("upgrades");
+        var view = View(Wheel());
+        var ups = view.GetProperty("upgrades");
         var flywheel = ups.GetProperty("flywheel");
-        Assert.Equal("skill", flywheel.GetProperty("kind").GetString());
+        Assert.Equal("skill", view.GetProperty("shopCatalog").GetProperty("upgrades").GetProperty("flywheel").GetProperty("kind").GetString());
         Assert.Equal(8, flywheel.GetProperty("max").GetInt32());
         Assert.Equal(250, flywheel.GetProperty("price").GetInt64());
         Assert.True(flywheel.GetProperty("open").GetBoolean());
