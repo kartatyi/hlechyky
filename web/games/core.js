@@ -460,6 +460,7 @@
   const AWAY_HIDDEN_MS = 60 * 1000;
   const AWAY_IDLE_MS = 5 * 60 * 1000;
   let lastInput = Date.now();
+  let lastAct = Date.now();     // як lastInput, але без руху мишки: клік, дотик, клавіша, коліщатко, пад
   let hiddenAt = document.hidden ? Date.now() : 0;
 
   function syncFocus() {
@@ -479,7 +480,12 @@
   }
   // Ловимо на спуску (capture): гра може зупинити свою подію, а пад (web/static/pad.js) шле ті самі keydown і pointer*.
   ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach((type) =>
-    document.addEventListener(type, () => { lastInput = Date.now(); if (away) checkAway(); }, { capture: true, passive: true }));
+    document.addEventListener(type, () => {
+      lastInput = Date.now();
+      if (type !== 'pointermove') lastAct = lastInput;
+      if (away) checkAway();
+      else if (hereQuiet) syncHere();   // облік вимкнувся за тишею — вмикаємо з першим же рухом, а не за 15 с
+    }, { capture: true, passive: true }));
   document.addEventListener('visibilitychange', () => {
     hiddenAt = document.hidden ? Date.now() : 0;
     if (!document.hidden) lastInput = Date.now();      // повернувся у вкладку — отже, тут
@@ -497,12 +503,17 @@
   const HERE_IDLE_SOLO_MS = 5 * 60 * 1000;
   const HERE_IDLE_LOBBY_MS = 5 * 60 * 1000;
   const HERE_IDLE_LONG_MS = 10 * 60 * 1000;   // за столом і на радіо можна довго лише дивитись і слухати
+  // Гончарне коло: глек раз на кілька хвилин — ще не гра. Рахуємо, лише поки кліки йдуть частіше ніж раз на 30 с,
+  // і мишка, що просто ворушиться над столом, тут не рахується.
+  const HERE_IDLE_CLICKER_MS = 30 * 1000;
   let hereSent;                               // останній підпис сказаного Here; undefined — ще нічого
+  let hereQuiet = false;                      // Here вимкнули за тишею — перший рух має ввімкнути одразу
 
   function syncHere() {
     let where = null;
     let room = null;
     let limit = HERE_IDLE_LONG_MS;
+    let since = lastInput;
     let seated = false;
     if (!document.hidden) {
       if (!shown) where = 'page';
@@ -511,12 +522,14 @@
         where = 'room';
         room = view.id;
         seated = !!(rv && rv.seat != null);
-        if (seated && rv.room && rv.room.maxPlayers === 1) limit = HERE_IDLE_SOLO_MS;
+        if (seated && rv.room && rv.room.game === 'clicker') { limit = HERE_IDLE_CLICKER_MS; since = lastAct; }
+        else if (seated && rv.room && rv.room.maxPlayers === 1) limit = HERE_IDLE_SOLO_MS;
       } else { where = 'lobby'; limit = HERE_IDLE_LOBBY_MS; }
     }
     let idle = 0;
-    const quiet = Date.now() - lastInput;
-    if (where && quiet >= limit) { where = null; room = null; idle = quiet; }
+    const quiet = Date.now() - since;
+    hereQuiet = !!where && quiet >= limit;
+    if (hereQuiet) { where = null; room = null; idle = quiet; }
     const sig = where ? where + '|' + (room || '') + '|' + (seated ? 1 : 0) : '';
     if (sig === hereSent) return;
     hereSent = sig;
