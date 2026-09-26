@@ -775,7 +775,6 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   .mtabs button.on { color: var(--accent); }
   .mtabs button .chip.badge { position: absolute; top: 3px; left: calc(50% + 8px); }
   .mtabs .badge.turn { background: var(--accent); }
-  .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); }
   /* Шторка балачки столу — над міні-плеєром і вкладками; розгорнута — на всю ширину. */
   .tchat.drawer { right: 12px; bottom: calc(var(--tabs-h) + var(--mini-h) + 10px); }
   .tchat.drawer.open { left: 12px; }
@@ -799,6 +798,8 @@ body.gfull main { max-width: none; padding: 10px 12px; }
 
 /* ---- toast / modal ---- */
 .toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 20; width: max-content; max-width: 92vw; }
+/* На телефоні — над міні-плеєром і вкладками (після базового правила, інакше воно перебиває: тост накривав вкладки). */
+@media (max-width: 900px) { .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px + env(safe-area-inset-bottom)); } }
 .toast { background: #0b1712; border: 1px solid var(--line); color: var(--text); padding: 10px 14px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.5); animation: pop .15s ease-out; display: flex; gap: 8px; align-items: center; }
 .toast.err { border-color: var(--danger); }
 .toast.ok { border-color: var(--ok); }
