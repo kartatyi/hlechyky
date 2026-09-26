@@ -609,7 +609,7 @@
 
   // ---------- розділи, вкладки, балачки ----------
 
-  const ROUTES = ['efir', 'lib', 'games'];
+  const ROUTES = ['efir', 'lib', 'games', 'stats'];
 
   function section(d) {
     const now = ROUTES.findIndex((r) => document.body.classList.contains('route-' + r));
@@ -623,8 +623,9 @@
     // Спершу вкладки того розділу, де ми стоїмо, і лише потім балачки: інакше розгорнута
     // панель балачок забирала б LT/RT собі з будь-якого місця сайту.
     const cls = document.body.classList;
-    const rows = cls.contains('route-games') ? ['.gfilters', '.gnav', '#chatTabs']
-      : cls.contains('route-lib') ? ['#libTabs', '#chatTabs'] : ['#chatTabs'];
+    const rows = cls.contains('route-games') ? ['.gfilters', '#chatTabs']
+      : cls.contains('route-lib') ? ['#libTabs', '#chatTabs']
+        : cls.contains('route-stats') ? ['#statsTabs', '.stper', '#chatTabs'] : ['#chatTabs'];
     let list = null;
     for (const sel of rows) {
       const host = document.querySelector(sel);

@@ -394,6 +394,7 @@
 
   HGames.register({
     id: 'tanks',
+    added: '2026-09-18',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     seatNames: ['жовтий', 'зелений', 'рудий', 'сірий', 'синій', 'рожевий'],
     seatClass: ['x', 'o', 'c', 'd', 'tb', 'tp'],

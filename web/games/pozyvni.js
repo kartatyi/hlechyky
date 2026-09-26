@@ -325,6 +325,7 @@
 
   HGames.register({
     id: 'pozyvni',
+    added: '2026-09-17',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     news: {
       v: '2026-09-24',

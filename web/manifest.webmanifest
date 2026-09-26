@@ -1,0 +1,17 @@
+{
+  "name": "Глечики — радіо та ігри з друзями",
+  "short_name": "Глечики",
+  "description": "Спільне радіо, яке ставлять самі слухачі, балачки й ігри на компанію.",
+  "lang": "uk",
+  "start_url": "/#efir",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f1f18",
+  "theme_color": "#0f1f18",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
