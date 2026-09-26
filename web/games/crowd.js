@@ -557,9 +557,11 @@
     st.names = v.names || [];
     st.me = v.me || null;
     st.meId = st.me ? st.me.id : -1;
-    if (st.me && st.me.haggle > 0) st.haggleUntil = Math.max(st.haggleUntil, performance.now() + st.me.haggle * TICK_MS);
-    if (v.round !== st.round) {
+    // новий раунд — і коли змінився номер, і коли після розкриття/кінця знову «роздивись» (рематч на 1 раунд
+    // лишає номер той самий)
+    if (v.round !== st.round || (v.phase === 'start' && st.vphase && st.vphase !== 'start')) {
       st.round = v.round;
+      st.camRound = -1;
       st.interp.reset();
       st.last = null;
       st.flashes.length = 0;
@@ -569,6 +571,7 @@
       st.shotAt = st.buyAt = -1e9;
       st.haggleUntil = 0;
     }
+    if (st.me && st.me.haggle > 0) st.haggleUntil = Math.max(st.haggleUntil, performance.now() + st.me.haggle * TICK_MS);
     if (v.v && v.v.length) {
       const f = { t: v.t | 0, ph: v.phase, left: v.left | 0, v: v.v, ev: [] };
       const last = st.last;

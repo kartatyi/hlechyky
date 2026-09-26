@@ -74,8 +74,11 @@ public sealed class CrowdCore(Random rng)
     public const int StallPick = 60;
     /// <summary>Збитий бот лежить 3 с.</summary>
     public const int FallTicks = 75;
-    /// <summary>Скільки бот може простояти на самому старті раунду (щоб нерухомі гравці не виділялись).</summary>
-    public const int OpeningStandMax = 75;
+    /// <summary>
+    /// Скільки бот може простояти на самому старті раунду: 0…6 с, тобто й перші 3 с після «роздивись». Гравець,
+    /// що роздивлявся й рушає лише на сигнал, так не виділяється: на старті «go» стоїть ще половина юрми.
+    /// </summary>
+    public const int OpeningStandMax = 150;
 
     public static readonly int[] DX = [1, 0, -1, 0];
     public static readonly int[] DY = [0, 1, 0, -1];
