@@ -304,11 +304,20 @@
     return d === f || (v.wild && f !== 1 && d === 1);
   }
 
+  /// Розкриття — чотири незалежні частини: руки, вердикт, слово Глека й «Далі». Кожна перемальовується лише
+  /// тоді, коли змінилась саме вона: сусіди тиснуть «Далі» по черзі, і якби за кожним натиском мінявся весь
+  /// блок, руки щоразу в'їжджали б наново (так і було — рядки блимали, поки всі не натиснуть).
   function paintReveal(el, ctx, v, st) {
     const r = v.reveal;
     const show = !!r && (v.phase === 'reveal' || v.phase === 'done');
     el.hidden = !show;
-    if (!show) { setHtml(el, ''); return; }
+    if (!el.firstChild) {
+      el.innerHTML = '<div class="di-rows"></div><div class="di-verdict"></div>'
+        + '<div class="di-say" hidden><img src="/static/glek.svg" alt=""><span></span></div>'
+        + '<button type="button" class="primary di-next" hidden></button>';
+    }
+    const [rowsEl, verdictEl, sayEl, nextEl] = el.children;
+    if (!show) { setHtml(rowsEl, ''); nextEl.hidden = true; return; }
     const b = r.bid;
     // Хто що сказав і скільки нарахували — велике по центру (paintBid); тут — самі руки й вердикт.
     const rows = [];
@@ -327,21 +336,26 @@
         + '<span class="di-rn">' + nick(ctx, v, s) + (s === ctx.seat ? '<small>ти</small>' : '') + '</span>'
         + '<span class="di-rdice">' + dice + '</span></div>');
     }
+    setHtml(rowsEl, rows.join(''));
     let verdict = '';
     if (r.loser != null) verdict = nick(ctx, v, r.loser) + ' губить кісточку' + (r.out ? ' — і вибуває' : '');
     if (r.gainer != null) verdict = nick(ctx, v, r.gainer) + ' повертає кісточку 🎯';
+    setHtml(verdictEl, verdict);
     // Партію дограно — слово Глека про останнє розкриття поступається місцем підсумку партії (так і Дека вміщає).
-    const say = r.say && v.phase !== 'done' ? '<div class="di-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(r.say) + '</span></div>' : '';
-    let next = '';
-    if (v.phase === 'reveal' && ctx.playing && ctx.mine && alive(v, ctx.seat)) {
+    const say = r.say && v.phase !== 'done' ? r.say : '';
+    sayEl.hidden = !say;
+    if (sayEl.lastChild.textContent !== say) sayEl.lastChild.textContent = say;
+    const can = v.phase === 'reveal' && ctx.playing && ctx.mine && alive(v, ctx.seat);
+    nextEl.hidden = !can;
+    if (can) {
       const living = (v.players || []).filter((p) => p.alive).length;
       const ready = (v.ready || []).length;
       const mine = (v.ready || []).indexOf(ctx.seat) >= 0;
       const early = performance.now() < st.nextAt;
-      next = '<button type="button" class="primary di-next"' + (mine || early ? ' disabled' : '') + '>Далі ▸ ' + ready + '/' + living + '</button>';
+      nextEl.disabled = mine || early;
+      const t = (st.busy && st.sent === 'ready' ? '…' : mine ? '✓ Чекаємо решту' : 'Далі ▸') + ' ' + ready + '/' + living;
+      if (nextEl.textContent !== t) nextEl.textContent = t;
     }
-    setHtml(el, '<div class="di-rows">' + rows.join('') + '</div>'
-      + (verdict ? '<div class="di-verdict">' + verdict + '</div>' : '') + say + next);
   }
 
   function paintWin(el, ctx, v) {
@@ -371,7 +385,10 @@
       html = '<div class="di-melabel muted">Ти без кісточок — дивись і вболівай</div>';
     } else {
       const shaking = v.phase === 'shake';
-      const dice = my.map((d, i) => die(d, shaking ? 'tumble' : '', '--i:' + i)).join('');
+      // Поки трусимо, кісточки крутяться з «чужими» гранями: справжні з'являються, коли глек став на стіл.
+      const dice = my.map((d, i) => shaking
+        ? die((d + i * 2 + (v.round | 0)) % 6 + 1, 'tumble', '--i:' + i)
+        : die(d, '', '--i:' + i)).join('');
       const label = shaking ? 'Трусимо…' : 'Твої кісточки · ' + my.length + (v.palifico && my.length === 1 ? ' · паліфіко' : '');
       html = '<div class="di-mecup">' + cup(shaking ? 'shaking big' : 'peek big') + '</div>'
         + '<div class="di-mine">' + dice + '</div>'
@@ -400,7 +417,7 @@
 
   function paintFoot(el, ctx) {
     el.hidden = !!(ctx.room && ctx.room.status === 'finished');
-    const html = '<button type="button" class="ghost di-tg" data-tg="hint" aria-pressed="' + hintOn() + '">🎲 підказка: '
+    const html = '<button type="button" class="ghost di-tg" data-tg="hint" aria-pressed="' + hintOn() + '" title="Підказка ймовірності: скільки шансів, що ставка правдива">🎲 шанси: '
       + (hintOn() ? 'увімк' : 'вимк') + '</button>'
       + '<button type="button" class="ghost di-tg" data-tg="sound" aria-pressed="' + soundOn() + '">' + (soundOn() ? '🔊' : '🔈')
       + ' звук: ' + (soundOn() ? 'увімк' : 'вимк') + '</button>';
@@ -462,7 +479,10 @@
     box.querySelector('.di-plus').disabled = !mine || st.q >= v.total;
     const go = box.querySelector('.di-go');
     go.disabled = !mine || !legal;
-    const goHtml = st.busy && st.sent === 'bid' ? '…' : 'Ставлю ' + bidHtml({ q: st.q, f: st.f }, 'sm');
+    // Не мій хід — на кнопці, хто думає, а не чужа для мене «ставка», яку зараз однаково не зробиш.
+    const goHtml = st.busy && st.sent === 'bid' ? '…'
+      : v.turn !== ctx.seat ? '<span class="di-gowait">Ходить ' + nick(ctx, v, v.turn) + '…</span>'
+        : 'Ставлю ' + bidHtml({ q: st.q, f: st.f }, 'sm');
     if (go.dataset.sig !== goHtml) { go.dataset.sig = goHtml; go.innerHTML = goHtml; }
     const qp = box.querySelector('.di-qp');
     const pt = mine && hintOn() ? probText(v, st) : '';
@@ -683,7 +703,8 @@
     const myTurn = ctx.playing && v.phase === 'bid' && v.turn === ctx.seat;
     const fresh = p.phase !== v.phase || p.round !== v.round || p.hist !== hist;
     if (fresh) {
-      if (myTurn) prefill(ctx, v, st);
+      // Конструктор завжди показує найнижчу законну ставку з мого боку: поки чекаєш — видно, куди підніматимеш.
+      if (myTurn || (v.phase === 'bid' && ctx.mine && alive(v, ctx.seat))) prefill(ctx, v, st);
       // Нова ставка або моя черга: «Брешеш!»/«Точно!» мовчать 600 мс.
       if (v.phase === 'bid' && hist !== p.hist) {
         st.guardUntil = performance.now() + GUARD_MS;
@@ -722,6 +743,7 @@
     if (idle) {
       // Після reopen у виді лежить минула партія — у лобі її не показуємо (грабля доміно).
       paintLobby(lob, ctx);
+      box.dataset.phase = '';
       paintArc(root, ctx, {}, st);
       paintFoot(box.querySelector('.di-foot'), ctx);
       return;
@@ -844,7 +866,7 @@
       },
       // Смужку пад перечитує сам кожні ~400 мс: «{y} Точно!» з'являється, лише поки «Точно!» можна сказати.
       get hint() {
-        return '{dpad} грань і кількість · {a} ставка / далі · {x} Брешеш!' + (padExact ? ' · {y} Точно!' : '') + ' · {rb} підказка';
+        return '{dpad} грань і кількість · {a} ставка / далі · {x} Брешеш!' + (padExact ? ' · {y} Точно!' : '') + ' · {rb} шанси';
       },
       when: (ctx) => ctx.mine && ctx.playing && !!ctx.view && alive(ctx.view, ctx.seat)
         && (ctx.view.phase === 'bid' || ctx.view.phase === 'reveal'),
