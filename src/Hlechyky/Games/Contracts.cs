@@ -341,11 +341,24 @@ public sealed record WalletChanged(string Nick, int Balance, int Delta, string R
 public sealed record AchievementUnlocked(string Nick, string Key, string Title, string Text, string Icon, int Reward) : Outgoing;
 public sealed record ToastFor(string Nick, string Text, string Kind) : Outgoing;
 /// <summary>
-/// «Влад кличе в Мафію» — заклик до столу всім, хто зараз на сайті. Летить усім разом із ніком того, хто
+/// «Влад кличе в мафію» — заклик до столу всім, хто зараз на сайті. Летить усім разом із ніком того, хто
 /// кличе: свій же заклик браузер відкидає сам, бо хто кому кличе — видно лише в браузері (там є me.nick),
 /// а сервер про вкладки того самого ніка нічого корисного не знає.
+/// <para>
+/// <paramref name="To"/> — особистий заклик («Влад кличе тебе в мафію», кнопка «📣 Покликати» і /клич): летить
+/// лише на з'єднання цього ніка й несе <c>personal: true</c>. null — заклик для всіх (<c>personal: false</c>).
+/// </para>
 /// </summary>
-public sealed record Invite(string RoomId, string By, string Text) : Outgoing;
+public sealed record Invite(string RoomId, string By, string Text, string? To = null) : Outgoing;
+
+/// <summary>
+/// Рядок-заклик у Балачках (kind <c>invite</c>): <paramref name="Text"/> без ніка — «кличе в мафію», бо нік іде
+/// окремим полем, як у звичайній репліці, а стіл — у <c>roomId</c>, і біля рядка браузер малює кнопку до нього.
+/// Загальний (<paramref name="To"/> null) лягає в базу й летить усім; особистий — лише з'єднанням
+/// <paramref name="To"/>, з <c>id: 0</c> і <c>personal: true</c>, і в базу не лягає: чужі запрошення в історії
+/// Балачок нікому не потрібні. <paramref name="At"/> — коли кликали: особистому рядкові час ставить не база.
+/// </summary>
+public sealed record InviteLine(string RoomId, string By, string Text, DateTimeOffset At, string? To = null) : Outgoing;
 
 /// <summary>Куди сервіси (WP1) кладуть свої повідомлення, коли щось нарахували поза межами дії каркаса (онлайн-хвилини, ачівка).</summary>
 public interface IOutbox

@@ -203,6 +203,7 @@ public class SkilkyTests
         db.AddChat("Петро", "🎲 4 (1–6)", "dice");
         db.AddChat("Глечики", "хтось сів грати", "system");
         db.AddChat("Дядько Глек", "Вітаю, Оля! Корона ваша", "dj");
+        db.AddChat("Оля", "кличе в мафію", "invite", "abcd1234");   // заклик за стіл пише сервер, а не Оля
 
         var stats = new SkilkyStats(db, clock);
         Assert.Equal(3, stats.Value("plays7d"));

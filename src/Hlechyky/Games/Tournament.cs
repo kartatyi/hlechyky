@@ -152,6 +152,9 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
                 foreach (var p in here.Where(p => At(r, p))) outs.Adopt(rooms.Leave(r.Id, p).Out);
 
             var created = rooms.Create(here[0], gameId, null);
+            // Турнір садить усіх сам, тож кликати за цей стіл нікого: інакше в Балачках лишився б рядок «кличе в …»
+            // за стіл, на якому вже нема місця.
+            created.Out.RemoveAll(m => m is Invite or InviteLine);
             outs.Adopt(created.Out);
             if (!created.Reply.Ok || created.Reply.RoomId is not { } id) return created.Reply.Message;
             foreach (var p in here.Skip(1))

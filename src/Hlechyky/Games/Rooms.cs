@@ -274,6 +274,7 @@ public sealed class Rooms
             }), room.Id);
         string? failed = null;
         var waiting = true;
+        var now = _clock.UtcNow;
         lock (room.Sync)
         {
             if (info.Start == StartMode.Immediate || room.Full)
@@ -282,17 +283,20 @@ public sealed class Rooms
                 if (failed is null) reply = new RoomReply(true, "", room.Id);
             }
             waiting = room.Status == RoomStatus.Lobby;
+            // Створення столу — уже заклик: «Покликати ще раз» відлічує свою паузу від нього (Calls.AgainGap).
+            if (waiting && !info.Private) room.CalledAt = now;
         }
         // Drop бере спільний замок, тому робиться поза замком кімнати: один напрямок вкладення на весь файл.
         if (failed is not null) { Drop(room); return new RoomOutcome(outbox, RoomReply.Fail(failed)); }
         if (!info.Private) outbox.Add(new LobbyChanged());
-        // Стіл мають побачити й ті, хто зараз не в «Іграх»: рядок у Журналі з кнопкою до столу і заклик
-        // тостом. Коли партія стартувала одразу (повний стіл із першого разу), кликати вже нікого — про
-        // початок напише StartRound своїм рядком, і кнопка на ньому веде туди ж.
+        // Стіл мають побачити й ті, хто зараз не в «Іграх»: рядок у Журналі з кнопкою до столу, заклик тостом і
+        // рядок-заклик у Балачках (Журнал — окрема вкладка, а тост живе десять секунд: хто відволікся, той пропустив).
+        // Коли партія стартувала одразу (повний стіл із першого разу), кликати вже нікого — про початок напише
+        // StartRound своїм рядком, і кнопка на ньому веде туди ж.
         if (!info.Private && waiting)
         {
             outbox.Add(new Journal($"Новий стіл: {info.Title} ({PlayersLabel(info)}) · господар {nick}", room.Id));
-            outbox.Add(new Invite(room.Id, nick, $"{nick} кличе в {info.Accusative}"));
+            Calls.Everyone(outbox, room.Id, info, nick, now);
         }
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
@@ -1134,7 +1138,7 @@ public sealed class Rooms
 
     internal static string NickKey(string nick) => nick.Trim().ToLowerInvariant();
 
-    static bool Named(string? nick) => !string.IsNullOrWhiteSpace(nick) && nick != "гість";
+    internal static bool Named(string? nick) => !string.IsNullOrWhiteSpace(nick) && nick != "гість";
 }
 
 /// <summary>

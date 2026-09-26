@@ -900,6 +900,12 @@ public class RoomsTests
         Assert.Equal(h.RoomId, invite.RoomId);
         Assert.Equal("Оля", invite.By);
         Assert.Equal("Оля кличе в тестову компанію", invite.Text);
+        Assert.Null(invite.To);                                   // заклик для всіх, а не особистий
+
+        // Журнал — окрема вкладка, тост живе десять секунд: тому ще й рядок у Балачках від того, хто кличе (B2.3).
+        var call = Assert.Single(h.Outbox.OfType<InviteLine>());
+        Assert.Equal(new InviteLine(h.RoomId, "Оля", "кличе в тестову компанію", h.Clock.UtcNow), call);
+        Assert.Equal(h.Clock.UtcNow, h.Room.CalledAt);            // від цього моменту «Покликати ще раз» чекає дві хвилини
     }
 
     [Fact]
@@ -909,7 +915,9 @@ public class RoomsTests
         h.Solo("Оля");
 
         Assert.Empty(h.Outbox.OfType<Invite>());
+        Assert.Empty(h.Outbox.OfType<InviteLine>());
         Assert.Empty(h.Outbox.OfType<Journal>());
+        Assert.Null(h.Room.CalledAt);
     }
 
     [Fact]
@@ -919,10 +927,13 @@ public class RoomsTests
         // теж зайвий — про партію напише сам старт.
         var clock = new FakeClock();
         var rooms = New(clock);
-        var outbox = rooms.Create("Оля", "t-now", null).Out;
+        var created = rooms.Create("Оля", "t-now", null);
+        var outbox = created.Out;
 
         Assert.Empty(outbox.OfType<Invite>());
+        Assert.Empty(outbox.OfType<InviteLine>());
         Assert.DoesNotContain(outbox.OfType<Journal>(), l => l.Text.StartsWith("Новий стіл"));
+        Assert.Null(rooms.Find(created.Reply.RoomId)!.CalledAt);
     }
 
     [Fact]

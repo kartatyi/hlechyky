@@ -126,6 +126,8 @@ public class TournamentTests
         Assert.Equal(RoomStatus.Playing, room.Status);
         Assert.Equal(new string?[] { "Оля", "Петро" }, room.Seats);
         Assert.Contains(s.Out.Sent.OfType<Journal>(), j => j.Text.Contains("гра 1 з 2") && j.RoomId == room.Id);
+        // Турнір садить усіх сам: кликати за такий стіл нікого, і рядка «кличе в …» у Балачках від нього нема.
+        Assert.DoesNotContain(s.Out.Sent, m => m is Invite or InviteLine);
     }
 
     [Fact]

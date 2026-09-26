@@ -88,6 +88,11 @@ public sealed class Room
     /// <summary>Склад, про який востаннє написали в Журнал «сіли грати». null — ще не писали жодного разу.</summary>
     public string?[]? LoggedSeats { get; set; }
     /// <summary>
+    /// Коли стіл востаннє кликав усіх — при створенні чи «Покликати ще раз». Частіше за <see cref="Calls.AgainGap"/>
+    /// стіл усіх не кличе. null — ще не кликав (стіл стартував одразу).
+    /// </summary>
+    public DateTimeOffset? CalledAt { get; set; }
+    /// <summary>
     /// Балачка столу: останні <see cref="Rooms.TalkLines"/> реплік гравців, глядачів і Глека-ведучого. Під
     /// <see cref="Sync"/>; живе й помирає разом зі столом, як і сама партія.
     /// </summary>
