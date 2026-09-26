@@ -1290,7 +1290,7 @@ public class SpyTests(ITestOutputHelper output)
         var h = Table(4);
         ToPlay(h);
         var view = h.View(0);
-        foreach (var name in new[] { "phase", "round", "of", "endsAt", "phaseMs", "clock", "rules", "players", "asker", "askedBy",
+        foreach (var name in new[] { "phase", "round", "of", "endsAt", "phaseMs", "phaseLeftMs", "clock", "rules", "players", "asker", "askedBy",
                      "askGrace", "vote", "blame", "deck", "me", "reveal", "history", "result" })
             Assert.True(Views.Has(view, name), name);
         foreach (var name in new[] { "endsAt", "leftMs", "paused", "totalMs" }) Assert.True(Views.Has(view.GetProperty("clock"), name), name);
@@ -1304,6 +1304,7 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal(JsonValueKind.Array, view.GetProperty("deck").ValueKind);
         Assert.Equal(Crew[0], view.GetProperty("players")[0].GetProperty("nick").GetString());
         Assert.Equal("play", view.GetProperty("phase").GetString());
+        Assert.Equal(LeftMs(h), view.GetProperty("phaseLeftMs").GetInt64());   // у play фаза кінчається разом із годинником
 
         h.Act(1, "accuse", new { seat = 2 });
         var vote = h.View(0).GetProperty("vote");

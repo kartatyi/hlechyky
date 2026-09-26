@@ -888,13 +888,17 @@ public sealed class Spy : Game
         }
 
         var running = _phase is SpyPhase.Deal or SpyPhase.Play or SpyPhase.Vote or SpyPhase.Final;
+        var ends = _phase == SpyPhase.Play && _clockEndsAt is { } ce ? ce : _endsAt;
         return new
         {
             phase = Wire(_phase),
             round = _round,
             of = _rounds,
-            endsAt = _phase == SpyPhase.Play && _clockEndsAt is { } ce ? ce : _endsAt,
+            endsAt = ends,
             phaseMs = PhaseMs(),
+            // Скільки лишилось до кінця фази на момент виду: браузер рахує від нього, а не від свого годинника —
+            // годинник телефона буває на кілька секунд «не той», а дуга мусить бити з сервером.
+            phaseLeftMs = _phase is SpyPhase.Lobby or SpyPhase.Done ? 0 : Math.Max(0, (long)Math.Ceiling((ends - now).TotalMilliseconds)),
             clock = Clock(now),
             rules = _rules,
             players = list,
