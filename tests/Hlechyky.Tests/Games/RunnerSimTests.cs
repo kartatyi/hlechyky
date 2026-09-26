@@ -337,6 +337,64 @@ public class RunnerSimTests
         Assert.True(sim.P[0].HasPassed(id));
     }
 
+    /// <summary>Лівий край динозавра місця seat зараз (після останнього кроку), суб.</summary>
+    static int LeftEdge(RunnerSim sim, int seat = 0) => sim.PaceX(sim.S) - sim.P[seat].Lag;
+
+    static int HitEvents(RunnerSim sim)
+    {
+        var n = 0;
+        for (var i = 0; i < sim.EventCount; i++) if (sim.Event(i).Kind == RunnerEvent.Hit) n++;
+        return n;
+    }
+
+    [Fact]
+    public void A_block_under_the_nose_when_the_stun_ends_is_trampled_not_a_second_stumble()
+    {
+        var sim = Bare();
+        sim.Put(RunnerKind.Low, Ahead(sim, 40), 34 * U, 0, 30 * U);
+        while (sim.P[0].Hits == 0) sim.Step();
+        // друга брила — там, куди динозавр доповзе за спотик (≈ 82 px на 40 % темпу): коли оговтається, вона вже під ним
+        var second = sim.Put(RunnerKind.Wide, LeftEdge(sim) + 60 * U, 100 * U, 0, 30 * U);
+        Run(sim, RunnerDino.StunSteps);
+        Assert.Equal(0, sim.P[0].Stun);
+        Run(sim, RunnerDino.GraceSteps + 20);
+        Assert.Equal(1, sim.P[0].Hits);
+        Assert.True(sim.P[0].HasPassed(second));
+        Assert.Equal(second, sim.P[0].Lp);
+        Assert.Equal(1, HitEvents(sim));                                      // і спалаху «спотик» теж один
+    }
+
+    [Fact]
+    public void The_grace_after_a_stumble_lasts_twelve_steps_rides_in_the_wire_and_then_blocks_hit_again()
+    {
+        var sim = Bare();
+        sim.Put(RunnerKind.Low, Ahead(sim, 40), 34 * U, 0, 30 * U);
+        while (sim.P[0].Hits == 0) sim.Step();
+        Run(sim, RunnerDino.StunSteps);
+        var p = sim.P[0];
+        Assert.Equal((0, RunnerDino.GraceSteps), (p.Stun, p.Grace));
+        Assert.Equal(RunnerDino.GraceSteps, (sim.Wire(0)![10] >> 12) & 15);   // «hs» кадру знає про неї — звірка клієнта точна
+        Assert.Equal(0, p.ModeOf(RunnerMode.Dino));                           // це вже не спотик: біжить, стрибає, пригинається
+        Run(sim, RunnerDino.GraceSteps);
+        Assert.Equal(0, p.Grace);
+        sim.Put(RunnerKind.Low, Ahead(sim, 40), 34 * U, 0, 30 * U);
+        Run(sim, 40);
+        Assert.Equal(2, p.Hits);                                              // далі брили знову збивають
+    }
+
+    [Fact]
+    public void Two_snowballs_thrown_back_to_back_cost_one_stumble_not_a_chain()
+    {
+        var sim = Bare();
+        var x = Ahead(sim, 60);
+        var a = sim.PlaceSnow(x, 1, 0);
+        var b = sim.PlaceSnow(x, 2, 0);                                        // зсунеться за першу щонайменше на 100 px
+        Assert.NotEqual(a, b);
+        Run(sim, 120);                                                         // навіть не стрибаючи
+        Assert.Equal(1, sim.P[0].Hits);
+        Assert.True(sim.P[0].HasPassed(a) && sim.P[0].HasPassed(b));
+    }
+
     [Fact]
     public void Falling_into_a_pit_costs_a_second_of_stun_and_pops_out_at_the_far_edge()
     {
@@ -747,11 +805,11 @@ public class RunnerSimTests
     /// </summary>
     public static readonly (string Name, Func<RunnerSim> Make, uint Js)[] Fixtures =
     [
-        ("dino 1×3000", () => RunnerSim.Fixture(RunnerMode.Dino, 1693571063, 1, 11, 3000, 150, 1000, false), 1063127438u),
-        ("dino 8×6000", () => RunnerSim.Fixture(RunnerMode.Dino, 424242, 8, 12, 6000, 150, 1000, true), 2442894996u),
-        ("dino 8×3000 сніжки", () => RunnerSim.Fixture(RunnerMode.Dino, 777, 8, 13, 3000, 150, 1000, true, [(600, 0), (1500, 3), (2400, 5)]), 550162003u),
+        ("dino 1×3000", () => RunnerSim.Fixture(RunnerMode.Dino, 1693571063, 1, 11, 3000, 150, 1000, false), 1856319790u),
+        ("dino 8×6000", () => RunnerSim.Fixture(RunnerMode.Dino, 424242, 8, 12, 6000, 150, 1000, true), 175816020u),
+        ("dino 8×3000 сніжки", () => RunnerSim.Fixture(RunnerMode.Dino, 777, 8, 13, 3000, 150, 1000, true, [(600, 0), (1500, 3), (2400, 5)]), 2689567601u),
         ("storks 4×4000", () => RunnerSim.Fixture(RunnerMode.Storks, 402881377, 4, 14, 4000, 150, 1000, false), 3833156659u),
-        ("dino-daily 1×5000", () => RunnerSim.Fixture(RunnerMode.Dino, Days.Seed("dino-daily", "2026-09-27"), 1, 15, 5000, 0, 1250, false), 1039721497u),
+        ("dino-daily 1×5000", () => RunnerSim.Fixture(RunnerMode.Dino, Days.Seed("dino-daily", "2026-09-27"), 1, 15, 5000, 0, 1250, false), 3220255897u),
     ];
 
     [Fact]

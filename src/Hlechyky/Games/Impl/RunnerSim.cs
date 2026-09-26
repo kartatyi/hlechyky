@@ -100,6 +100,12 @@ public static class RunnerDino
     public const int CoyoteSteps = 2, BufferSteps = 3;
     public const int HitW = 30 * 16, HitH = 44 * 16, DuckW = 36 * 16, DuckH = 24 * 16, FootX = 15 * 16;
     public const int StunSteps = 30, PitStun = 50, PitDepth = 384, PitOut = 16 * 16;
+    /// <summary>
+    /// Скільки кроків після спотику динозавр «проламується» крізь брили: перешкода, що вже під носом, коли він
+    /// оговтався, не збиває вдруге. Без цього дві сніжки поспіль (чи сніжка перед брилою курсу) били одна за
+    /// одною без жодного шансу стрибнути — «ланцюг спотиків» на вісьмох забирав за секунду.
+    /// </summary>
+    public const int GraceSteps = 12;
     public const int StunMult = 40, BoostMult = 125, RecoverMult = 108, BoostSteps = 100;
     public const int LagMin = -1280;
     public const int AvD0 = 8960, AvDmin = 3200;
@@ -252,6 +258,8 @@ public sealed class RunnerPlayer
     /// <summary>Лелека зачепилась без пір'я — фізика стала; місце дасть найближчий звичайний крок.</summary>
     public bool Down;
     public int Lag, Y, Vy, Hold, Buffer, Coyote, Stun, Boost, Eggs, Snow, Place, Held, Hits, Ifr;
+    /// <summary>Скільки ще кроків після спотику брили не збивають, а лише «проламуються» (RunnerDino.GraceSteps).</summary>
+    public int Grace;
     /// <summary>Id підбирачки-сніжки, що зараз у руці (щоб перемотування не підняло кинуту вдруге).</summary>
     public int SnowId;
     public bool Air, Duck, HoldOn, Feather;
@@ -265,7 +273,7 @@ public sealed class RunnerPlayer
     {
         Plays = o.Plays; Out = o.Out; Down = o.Down;
         Lag = o.Lag; Y = o.Y; Vy = o.Vy; Hold = o.Hold; Buffer = o.Buffer; Coyote = o.Coyote; Stun = o.Stun; Boost = o.Boost;
-        Eggs = o.Eggs; Snow = o.Snow; Place = o.Place; Held = o.Held; Hits = o.Hits; Ifr = o.Ifr; SnowId = o.SnowId;
+        Eggs = o.Eggs; Snow = o.Snow; Place = o.Place; Held = o.Held; Hits = o.Hits; Ifr = o.Ifr; SnowId = o.SnowId; Grace = o.Grace;
         Air = o.Air; Duck = o.Duck; HoldOn = o.HoldOn; Feather = o.Feather;
         Lp = o.Lp; Lt = o.Lt;
         Array.Copy(o.Passed, Passed, 8);
@@ -310,7 +318,7 @@ public sealed class RunnerPlayer
     }
 
     /// <summary>Решта стану Стрибозавра одним числом — щоб звірка клієнта була точною, а не «майже».</summary>
-    public int Hidden => (Air ? 1 : 0) | (Duck ? 2 : 0) | (HoldOn ? 4 : 0) | (Hold << 3) | (Buffer << 8) | (Coyote << 10);
+    public int Hidden => (Air ? 1 : 0) | (Duck ? 2 : 0) | (HoldOn ? 4 : 0) | (Hold << 3) | (Buffer << 8) | (Coyote << 10) | (Grace << 12);
 }
 
 /// <summary>
@@ -774,7 +782,12 @@ public sealed class RunnerSim
         p.Lag += sp - fwd;
         if (p.Lag < RunnerDino.LagMin) p.Lag = RunnerDino.LagMin;
         var worldX = Rules.PaceX(run + 1) - p.Lag;
-        if (p.Stun > 0) p.Stun--;
+        if (p.Stun > 0)
+        {
+            p.Stun--;
+            if (p.Stun == 0) p.Grace = RunnerDino.GraceSteps;   // оговтався: ще мить брили не збивають
+        }
+        else if (p.Grace > 0) p.Grace--;
         if (p.Boost > 0) p.Boost--;
         var gx = worldX + RunnerDino.FootX;
 
@@ -869,6 +882,7 @@ public sealed class RunnerSim
     {
         ref var pit = ref _ob[_pitIdx];
         p.Stun = RunnerDino.PitStun;
+        p.Grace = 0;
         p.Y = 0;
         p.Air = false;
         p.Vy = 0;
@@ -892,6 +906,7 @@ public sealed class RunnerSim
         var y0 = p.Y;
         var y1 = p.Y + (p.Duck ? RunnerDino.DuckH : RunnerDino.HitH);
         var hit = false;
+        var ghost = p.Grace > 0;
         for (var i = 0; i < _obCount && !hit; i++)
         {
             ref var o = ref _ob[(_obHead + i) & (ObN - 1)];
@@ -900,6 +915,7 @@ public sealed class RunnerSim
             if (ox >= x1 || ox + o.W <= x0) continue;
             if (o.Base >= y1 || o.Base + o.H <= y0) continue;
             if (p.HasPassed(o.Id)) continue;
+            if (ghost) { Trample(p, o.Id); continue; }
             HitDino(seat, p, run, o.Id);
             hit = true;
         }
@@ -910,6 +926,7 @@ public sealed class RunnerSim
             if (o.X >= x1 || o.X + o.W <= x0) continue;
             if (o.Base >= y1 || o.Base + o.H <= y0) continue;
             if (p.HasPassed(o.Id)) continue;
+            if (ghost) { Trample(p, o.Id); continue; }
             HitDino(seat, p, run, o.Id);
             hit = true;
         }
@@ -923,9 +940,17 @@ public sealed class RunnerSim
         }
     }
 
+    /// <summary>Щойно оговтався — брила під носом не збиває: пройдена без спотику й без події.</summary>
+    static void Trample(RunnerPlayer p, int id)
+    {
+        p.AddPassed(id);
+        p.Lp = id;
+    }
+
     void HitDino(int seat, RunnerPlayer p, int run, int id)
     {
         p.Stun = RunnerDino.StunSteps;
+        p.Grace = 0;
         p.Duck = false;
         p.HoldOn = false;
         p.Buffer = 0;

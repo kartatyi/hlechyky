@@ -60,7 +60,7 @@ public class DinoDailyTests
         Assert.Equal(ScoreOrder.HigherIsBetter, info.Score);
         Assert.Equal(40, info.TickMs);
         Assert.Equal("runner", info.Module);
-        Assert.False(g is IDailyGame);
+        Assert.False(typeof(IDailyGame).IsAssignableFrom(g.GetType()));
         Assert.Equal("стрибозавр", g.SeatName(0));
     }
 

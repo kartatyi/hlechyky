@@ -40,7 +40,7 @@
     JumpV: 160, G: 14, GHold: 6, HoldMax: 14, FastFall: -160, VyMin: -400,
     CoyoteSteps: 2, BufferSteps: 3,
     HitW: 30 * 16, HitH: 44 * 16, DuckW: 36 * 16, DuckH: 24 * 16, FootX: 15 * 16,
-    StunSteps: 30, PitStun: 50, PitDepth: 384, PitOut: 16 * 16,
+    StunSteps: 30, PitStun: 50, PitDepth: 384, PitOut: 16 * 16, GraceSteps: 12,
     StunMult: 40, BoostMult: 125, RecoverMult: 108, BoostSteps: 100,
     LagMin: -1280, AvD0: 8960, AvDmin: 3200,
     PteroV: 64, PteroWake: 480 * 16,
@@ -131,7 +131,7 @@
     constructor() {
       this.plays = false; this.out = false; this.down = false;
       this.lag = 0; this.y = 0; this.vy = 0; this.hold = 0; this.buffer = 0; this.coyote = 0; this.stun = 0; this.boost = 0;
-      this.eggs = 0; this.snow = 0; this.place = 0; this.held = 0; this.hits = 0; this.ifr = 0; this.snowId = 0;
+      this.eggs = 0; this.snow = 0; this.place = 0; this.held = 0; this.hits = 0; this.ifr = 0; this.snowId = 0; this.grace = 0;
       this.air = false; this.duck = false; this.holdOn = false; this.feather = false;
       this.lp = -1; this.lt = -1;
       this.passed = new Int32Array(8).fill(INT_MIN);
@@ -142,7 +142,7 @@
       this.plays = o.plays; this.out = o.out; this.down = o.down;
       this.lag = o.lag; this.y = o.y; this.vy = o.vy; this.hold = o.hold; this.buffer = o.buffer; this.coyote = o.coyote;
       this.stun = o.stun; this.boost = o.boost; this.eggs = o.eggs; this.snow = o.snow; this.place = o.place;
-      this.held = o.held; this.hits = o.hits; this.ifr = o.ifr; this.snowId = o.snowId;
+      this.held = o.held; this.hits = o.hits; this.ifr = o.ifr; this.snowId = o.snowId; this.grace = o.grace;
       this.air = o.air; this.duck = o.duck; this.holdOn = o.holdOn; this.feather = o.feather;
       this.lp = o.lp; this.lt = o.lt;
       this.passed.set(o.passed); this.taken.set(o.taken);
@@ -160,7 +160,7 @@
       return this.duck ? 2 : 0;
     }
     get hidden() {
-      return (this.air ? 1 : 0) | (this.duck ? 2 : 0) | (this.holdOn ? 4 : 0) | (this.hold << 3) | (this.buffer << 8) | (this.coyote << 10);
+      return (this.air ? 1 : 0) | (this.duck ? 2 : 0) | (this.holdOn ? 4 : 0) | (this.hold << 3) | (this.buffer << 8) | (this.coyote << 10) | (this.grace << 12);
     }
     /// Стан із кадру: те, що сервер вважає правдою на початок кроку.
     fromWire(mode, w) {
@@ -174,7 +174,7 @@
       this.eggs = w[6]; this.snow = w[7];
       const hs = w[10] | 0;
       this.air = (hs & 1) !== 0; this.duck = (hs & 2) !== 0; this.holdOn = (hs & 4) !== 0;
-      this.hold = (hs >> 3) & 31; this.buffer = (hs >> 8) & 3; this.coyote = (hs >> 10) & 3;
+      this.hold = (hs >> 3) & 31; this.buffer = (hs >> 8) & 3; this.coyote = (hs >> 10) & 3; this.grace = (hs >> 12) & 15;
       if (w[8] >= 0 && !this.hasPassed(w[8])) this.addPassed(w[8]);
       if (w[9] >= 0 && !this.hasTaken(w[9])) this.addTaken(w[9]);
       this.lp = w[8]; this.lt = w[9];
@@ -517,7 +517,8 @@
       p.lag += sp - fwd;
       if (p.lag < D.LagMin) p.lag = D.LagMin;
       const worldX = this.paceX(run + 1) - p.lag;
-      if (p.stun > 0) p.stun--;
+      if (p.stun > 0) { p.stun--; if (p.stun === 0) p.grace = D.GraceSteps; }   // оговтався: ще мить брили не збивають
+      else if (p.grace > 0) p.grace--;
       if (p.boost > 0) p.boost--;
       const gx = worldX + D.FootX;
       if (p.stun === 0) {
@@ -575,7 +576,7 @@
 
     fall(seat, p, run) {
       const pit = this.ob[this.pitIdx];
-      p.stun = D.PitStun; p.y = 0; p.air = false; p.vy = 0; p.duck = false; p.holdOn = false; p.buffer = 0; p.coyote = 0;
+      p.stun = D.PitStun; p.grace = 0; p.y = 0; p.air = false; p.vy = 0; p.duck = false; p.holdOn = false; p.buffer = 0; p.coyote = 0;
       p.lag = this.paceX(run + 1) - (pit.x + pit.w + D.PitOut);
       if (p.lag < D.LagMin) p.lag = D.LagMin;
       p.hits++;
@@ -589,6 +590,7 @@
       const x0 = worldX, x1 = worldX + (p.duck ? D.DuckW : D.HitW);
       const y0 = p.y, y1 = p.y + (p.duck ? D.DuckH : D.HitH);
       let hit = false;
+      const ghost = p.grace > 0;
       for (let i = 0; i < this.obCount && !hit; i++) {
         const o = this.obstacle(i);
         if (!solid(o.kind)) continue;
@@ -596,6 +598,7 @@
         if (ox >= x1 || ox + o.w <= x0) continue;
         if (o.base >= y1 || o.base + o.h <= y0) continue;
         if (p.hasPassed(o.id)) continue;
+        if (ghost) { p.addPassed(o.id); p.lp = o.id; continue; }   // оговтався — проламується крізь брилу
         this.hitDino(seat, p, run, o.id);
         hit = true;
       }
@@ -605,6 +608,7 @@
         if (o.x >= x1 || o.x + o.w <= x0) continue;
         if (o.base >= y1 || o.base + o.h <= y0) continue;
         if (p.hasPassed(o.id)) continue;
+        if (ghost) { p.addPassed(o.id); p.lp = o.id; continue; }
         this.hitDino(seat, p, run, o.id);
         hit = true;
       }
@@ -618,7 +622,7 @@
     }
 
     hitDino(seat, p, run, id) {
-      p.stun = D.StunSteps; p.duck = false; p.holdOn = false; p.buffer = 0; p.hits++;
+      p.stun = D.StunSteps; p.grace = 0; p.duck = false; p.holdOn = false; p.buffer = 0; p.hits++;
       const fresh = !(this.rewinding && was(this.prePassed, id));
       p.addPassed(id);
       p.lp = id;
@@ -2064,14 +2068,14 @@
       const i = ORDER[q];
       const w = br.k < 0.5 ? (br.a.p[i] || br.b.p[i]) : (br.b.p[i] || br.a.p[i]);
       g.globalAlpha = 0.55;
-      if (mode === DINO) HEAD[i] = drawDino(st, g, i, SX[i], SY[i], w[3], w[4], w[5], now, st.outAt[i], false);
+      if (mode === DINO) HEAD[i] = drawDino(st, g, i, SX[i], SY[i], w[3], ((w[10] | 0) >> 12) & 15, now, st.outAt[i]);
       else HEAD[i] = drawStork(st, g, i, SX[i], SY[i], w[1], w[2], w[3], now, st.outAt[i], false);
       g.globalAlpha = 1;
     }
     for (let q = 0; q < n; q++) {
       const i = ORDER[q], nick = ctx.nickOf(i);
-      if (!nick || HEAD[i] < 0) continue;
-      const lb = label(st, i, nick), lx = SX[i] + 15 - lb._w / 2;
+      if (!nick || HEAD[i] < 0 || SX[i] + 40 < 0 || SX[i] - 12 > W) continue;
+      const lb = label(st, i, nick), lx = clamp(SX[i] + 15 - lb._w / 2, 2, W - lb._w - 2);
       let row = 0;
       for (; row < LABEL_ROWS; row++) {
         let free = true;
@@ -2097,10 +2101,13 @@
       if (mode === DINO) {
         const md = p.modeOf(DINO);
         if (md !== 4 || now - st.ownOutAt < 900) {
-          g.strokeStyle = pal.seats[me]; g.lineWidth = 2; g.globalAlpha = 0.8;
-          g.beginPath(); g.ellipse(sx + 15, GROUND + 3, 17, 3.5, 0, 0, 7); g.stroke(); g.globalAlpha = 1;
+          const under = lobby ? 0 : sim.groundAt((paceW - ownLag / SUB + 15) * SUB);
+          if (under !== NO_GROUND) {
+            g.strokeStyle = pal.seats[me]; g.lineWidth = 2; g.globalAlpha = 0.8;
+            g.beginPath(); g.ellipse(sx + 15, GROUND - under / SUB + 3, 17, 3.5, 0, 0, 7); g.stroke(); g.globalAlpha = 1;
+          }
           if (p.boost > 0 && !reduced) speedLines(g, sx, feet, pal.seats[me], now);
-          const head = drawDino(st, g, me, sx, ownY, md, p.stun, p.boost, now, st.ownOutAt, true);
+          const head = drawDino(st, g, me, sx, ownY, md, p.grace, now, st.ownOutAt);
           if (md !== 4) arrow(g, sx + 15, head - 6, pal.text, isReady(st, ownT) || lobby);
         }
       } else {
@@ -2191,7 +2198,8 @@
   }
 
   /// Динозавр місця i: ліва межа хітбокса — sx, ноги — y (суб над землею). Повертає y верхівки голови.
-  function drawDino(st, g, i, sx, y, md, stun, boost, now, outAt, mine) {
+  /// grace > 0 — щойно оговтався після спотику й брили його не збивають: блимає, як лелека з пір'ям.
+  function drawDino(st, g, i, sx, y, md, grace, now, outAt) {
     const feet = GROUND - y / SUB;
     let pose;
     if (md === 4) pose = 5;
@@ -2204,7 +2212,10 @@
       const k = clamp((now - outAt) / 600, 0, 1);
       g.globalAlpha *= 1 - k * 0.8;
     }
+    const a0 = g.globalAlpha;
+    if (grace > 0 && md !== 4 && ((now / 80) | 0) % 2 === 0) g.globalAlpha = a0 * 0.4;
     g.drawImage(img, sx - DINO_BOX.left, feet - DINO_BOX.foot, DINO_BOX.w, DINO_BOX.h);
+    g.globalAlpha = a0;
     const head = pose === 3 ? feet - 26 : pose === 5 ? feet - 30 : feet - 54;
     if (md === 3) stars(g, sx + 26, head - 4, now);
     return head;
