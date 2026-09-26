@@ -1,0 +1,153 @@
+/*
+  Пакет «runner»: Стрибозаври, Забіг дня, Лелеки. Сцену малює канвас (web/games/runner.js), тут — рядок над
+  ним, смужка гонки, таблиця раунду поверх сцени й кнопки для пальця. Свої кольори — на :root, бо модуль читає
+  їх через ui.css(). Усі класи — з префіксом rnr-.
+*/
+:root {
+  --rnr-b: #6fb3e8;       /* п'яте місце — синій */
+  --rnr-p: #e88ac0;       /* шосте — рожевий */
+  --rnr-v: #b08cf0;       /* сьоме — фіалковий */
+  --rnr-r: #e05a5a;       /* восьме — червоний */
+  --rnr-ice: #b8e6ff;
+  --rnr-ice2: #7fbfe6;    /* тіні льоду */
+  --rnr-snow: #f2f8ff;
+  --rnr-sky1: #0f1f2e;
+  --rnr-sky2: #2b4a66;
+  --rnr-far: #1c3346;
+  --rnr-mid: #24425a;
+  --rnr-ava: #dfeeff;     /* лавина */
+  --rnr-dusk1: #2a1d3a;   /* небо Лелек на заході */
+  --rnr-dusk2: #d97d4a;
+  --rnr-field: #6f8f3a;
+  --rnr-field2: #48661f;
+  --rnr-roof: #7a4a2a;
+  --rnr-wall: #efe3c8;
+  --rnr-wire: #1a1a1a;
+  --rnr-stork: #f7f7f2;
+  --rnr-beak: #d9482f;
+}
+
+/* п'яте–восьме місця: чіпи місць каркаса знають лише x/o/c/d */
+.gseat.rnr-b { color: var(--rnr-b); }
+.gseat.rnr-p { color: var(--rnr-p); }
+.gseat.rnr-v { color: var(--rnr-v); }
+.gseat.rnr-r { color: var(--rnr-r); }
+
+.rnr { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 6px; margin: 0 auto; }
+/* Full HD: сцена росте, поки вміщається по висоті разом із рядком над нею й кнопками під нею */
+@media (min-width: 1500px) and (min-height: 860px) {
+  .rnr { max-width: min(1200px, calc((100vh - 320px) * 8 / 3)); }
+  .rnr.rnr-storks { max-width: min(1200px, calc((100vh - 320px) * 25 / 11)); }   /* небо Лелек вище: 800 × 352 */
+}
+
+/* телефон боком: сайт лишає грі ~250 px висоти — сцену трохи зменшуємо, щоб влізла цілою */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .rnr { max-width: calc((100vh - 150px) * 8 / 3); }
+  .rnr.rnr-storks { max-width: calc((100vh - 150px) * 25 / 11); }
+}
+
+/* ---- рядок над сценою ---- */
+.rnr-hud { display: flex; gap: 6px 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: .82em; min-height: 26px; }
+.rnr-chips { display: flex; gap: 5px; flex-wrap: wrap; min-width: 0; }
+.rnr-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 3px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.rnr-chip i {
+  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.45em; height: 1.45em; border-radius: 50%;
+  display: inline-grid; place-items: center; background: currentColor; line-height: 1;
+}
+.rnr-chip em { font-style: normal; color: var(--text); }
+.rnr-chip.me { box-shadow: 0 0 0 1.5px currentColor inset; }
+.rnr-chip.out { opacity: .5; }
+.rnr-chip.s0, .rnr-dot.s0, .rnr-ovbox tr.s0 i { color: var(--ok); }
+.rnr-chip.s1, .rnr-dot.s1, .rnr-ovbox tr.s1 i { color: var(--accent); }
+.rnr-chip.s2, .rnr-dot.s2, .rnr-ovbox tr.s2 i { color: var(--clay); }
+.rnr-chip.s3, .rnr-dot.s3, .rnr-ovbox tr.s3 i { color: var(--muted); }
+.rnr-chip.s4, .rnr-dot.s4, .rnr-ovbox tr.s4 i { color: var(--rnr-b); }
+.rnr-chip.s5, .rnr-dot.s5, .rnr-ovbox tr.s5 i { color: var(--rnr-p); }
+.rnr-chip.s6, .rnr-dot.s6, .rnr-ovbox tr.s6 i { color: var(--rnr-v); }
+.rnr-chip.s7, .rnr-dot.s7, .rnr-ovbox tr.s7 i { color: var(--rnr-r); }
+/* номер на кружку — темним по кольору місця */
+.rnr-chip i { -webkit-text-fill-color: var(--bg); }
+
+.rnr-meta { display: flex; gap: 10px; align-items: center; margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rnr-meta .rnr-m { color: var(--text); font-weight: 700; }
+.rnr-clock.hot { color: var(--danger); animation: rnr-pulse 1s ease-in-out infinite; }
+@keyframes rnr-pulse { 50% { opacity: .55; } }
+.rnr-snd { padding: 2px 7px; min-height: 0; font-size: 1em; background: transparent; border: 1px solid var(--line); border-radius: 999px; line-height: 1.3; }
+
+/* Забіг дня: великі метри ліворуч */
+.rnr-dhud { align-items: flex-end; }
+.rnr-big { display: flex; flex-direction: column; line-height: 1.1; }
+.rnr-big .rnr-m { font-size: 1.9em; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.rnr-sub { color: var(--muted); font-size: .92em; }
+
+/* ---- смужка гонки: хто де між лавиною й лінією темпу ---- */
+.rnr-strip { display: flex; align-items: center; gap: 6px; height: 18px; font-size: .78em; }
+.rnr-sico { line-height: 1; }
+.rnr-track { position: relative; flex: 1; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--rnr-ava), var(--rnr-sky2) 30%, var(--bg2)); }
+.rnr-dot {
+  position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+  background: currentColor; box-shadow: 0 0 0 1.5px var(--bg); transition: left .12s linear;
+}
+.rnr-dot.me { width: 14px; height: 14px; margin: -7px 0 0 -7px; box-shadow: 0 0 0 2px var(--text); z-index: 2; }
+/* хто біжить урівень, у того й крапки в одній точці — трохи розводимо їх по висоті, щоб видно було всіх */
+.rnr-dot.s1, .rnr-dot.s5 { top: calc(50% - 3px); }
+.rnr-dot.s2, .rnr-dot.s6 { top: calc(50% + 3px); }
+.rnr-dot.me { top: 50%; }
+@media (prefers-reduced-motion: reduce) { .rnr-dot { transition: none; } .rnr-clock.hot { animation: none; } }
+
+/* ---- сцена ---- */
+.rnr-stage { position: relative; width: 100%; }
+.rnr-stage .rnr-cv { width: 100%; max-width: none; display: block; border-radius: 10px; background: var(--rnr-sky1); user-select: none; -webkit-user-select: none; }
+.rnr-stage.rnr-live .rnr-cv { touch-action: none; cursor: pointer; }
+.rnr-storks .rnr-stage .rnr-cv { background: var(--rnr-dusk1); }
+
+/* таблиця раунду/партії поверх застиглої сцени */
+.rnr-over { position: absolute; inset: 0; display: grid; place-items: center; padding: 8px; overflow: auto; z-index: 3; }
+.rnr-over[hidden] { display: none; }
+.rnr-ovbox {
+  background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 14px; max-width: 100%; max-height: 100%; overflow: auto; box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
+}
+.rnr-ovbox h3 { margin: 0 0 6px; font-size: 1.05em; text-align: center; }
+.rnr-ovbox table { border-collapse: collapse; font-size: .86em; margin: 0 auto; font-variant-numeric: tabular-nums; }
+.rnr-ovbox th { color: var(--muted); font-weight: 600; text-align: left; padding: 2px 8px; }
+.rnr-ovbox td { padding: 2px 8px; border-top: 1px solid var(--line); white-space: nowrap; max-width: 12em; overflow: hidden; text-overflow: ellipsis; }
+.rnr-ovbox tr i { display: inline-block; width: .7em; height: .7em; border-radius: 50%; background: currentColor; margin-right: 6px; }
+.rnr-ovbox tr.me td { color: var(--text); font-weight: 700; }
+.rnr-ovbox tr.me td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.rnr-ovsub { margin: 2px 0 6px; color: var(--muted); font-size: .84em; text-align: center; }
+.rnr-ovhint { margin: 6px 0 0; color: var(--muted); font-size: .8em; text-align: center; }
+.rnr-board { margin-top: 4px; }
+
+/* ---- підказка новачку ---- */
+.rnr-how { text-align: center; color: var(--muted); font-size: .84em; }
+.rnr-how:empty { display: none; }
+
+/* ---- кнопки для пальця: з'являються лише на сенсорі й лише тому, хто грає ---- */
+.rnr-touch { display: none; }
+@media (pointer: coarse) {
+  .rnr-touch.on { display: flex; justify-content: space-between; gap: 12px; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .rnr-tbtn {
+    width: 76px; height: 72px; border-radius: 18px; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 2px; font-size: 1.6em; line-height: 1; background: var(--panel3); touch-action: none;
+  }
+  .rnr-tbtn small { font-size: .42em; color: var(--muted); }
+  .rnr-tbtn:active { background: var(--clay); }
+  .rnr-tbtn[hidden] { display: flex; visibility: hidden; }
+  .rnr-duck, .rnr-flap { margin-left: auto; }
+  .rnr-flap { width: 100%; max-width: 220px; }
+  .rnr-jump { flex: 1 1 auto; max-width: 200px; }
+}
+
+@media (max-width: 480px) {
+  .rnr-hud { font-size: .76em; gap: 4px 8px; }
+  .rnr-chip { padding: 1px 7px 1px 2px; gap: 4px; }
+  .rnr-chip:not(.me) em { display: none; }
+  .rnr-big .rnr-m { font-size: 1.6em; }
+  .rnr-ovbox { padding: 6px 8px; }
+  .rnr-ovbox table { font-size: .78em; }
+  .rnr-ovbox td, .rnr-ovbox th { padding: 1px 5px; }
+}

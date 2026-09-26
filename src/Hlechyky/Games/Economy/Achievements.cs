@@ -101,6 +101,10 @@ public static class AchievementCatalog
         // хвиля 2: dice
         new("dice-exact",    "Точно!",            "Вгадав ставку рівно — і повернув кісточку", "🎯", 15),
         new("dice-comeback", "З однієї кісточки", "Виграв партію «Під глеком», побувавши на одній кісточці", "🏺", 25),
+        // хвиля 2: runner (Стрибозаври, Забіг дня, Лелеки) — гра просить їх сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("dino-far",     "Далекий забіг",   "Два кілометри від лавини за один забіг", "🦖", 20),
+        new("dino-snow",    "Сніжкою в спину", "Твоя сніжка збила з ніг того, хто попереду", "❄", 10),
+        new("storks-clean", "Чисте небо",      "Хвилина польоту в Лелеках без жодного зачепу", "🪽", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

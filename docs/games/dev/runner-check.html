@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Стенд рушія runner</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; background: #10202b; color: #e8f0f5; padding: 16px; }
+  table { border-collapse: collapse; }
+  td, th { padding: 4px 10px; border-bottom: 1px solid #2b4a66; text-align: left; }
+  code { color: #b8e6ff; }
+</style>
+</head>
+<body>
+<h1>Парність RunnerSim: JS ↔ C#</h1>
+<p>Той самий <code>web/games/runner.js</code>, що вантажить сайт, — без каркаса ігор: сторінка підставляє
+заглушку <code>HGames</code>, і модуль віддає лише симуляцію (<code>window.RunnerSim</code>). Хеші з таблиці
+мусять дорівнювати константам у <code>RunnerSimTests.Fixtures</code>.</p>
+<p>Headless: <code>python D:/or-wt/_tools/cdp2.py --port 9621 --url file:///D:/or-wt/w2-runner/docs/games/dev/runner-check.html --eval "return runnerCheck()"</code></p>
+<table id="out"><tr><th>фікстура</th><th>хеш</th><th>спотиків</th><th>яєць</th><th>мс</th></tr></table>
+<script>window.HGames = { register() {}, ui: {} };</script>
+<script src="../../../web/games/runner.js"></script>
+<script>
+  window.runnerCheck = () => window.RunnerSim.check();
+  const out = document.getElementById('out');
+  for (const r of window.runnerCheck()) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + r.name + '</td><td><code>' + r.hash + '</code></td><td>' + r.hits + '</td><td>' + r.eggs + '</td><td>' + r.ms + '</td>';
+    out.appendChild(tr);
+  }
+</script>
+</body>
+</html>
