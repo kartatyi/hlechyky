@@ -1133,10 +1133,12 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 }
 
 /* ---- рядки балачок: подарунок, присвята, феєрверк ---- */
-.msg.deed { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; padding: 4px 8px; border-radius: 10px; background: #241a2e; border: 1px solid #45305a; }
+/* Суцільним реченням, як звичайна репліка: «🎁 Оля дарує Петрові …» — флекс розносив нік і текст на різні рядки. */
+.msg.deed { display: block; padding: 4px 8px; border-radius: 10px; background: #241a2e; border: 1px solid #45305a; }
+.msg.deed .iv-ico { margin-right: 4px; }
 .msg.deed.dedication { background: #2e1a24; border-color: #5a3045; }
 .msg.deed.fx { background: transparent; border-style: dashed; }
-.msg.deed .n { margin-right: 0; }
+.msg.deed .n { margin-right: 4px; }
 .msg.deed .t { color: var(--text); }
 .msg.deed.tome { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 

@@ -185,7 +185,7 @@
     let state = '', btns = '';
     const perk = it.kind === 'perk' ? (data.perks || {})[it.id] : null;
     if (it.earned) {
-      state = it.owned ? '✓ здобуто' : '🔒 за ачівку «' + esc(it.earned.achTitle || it.earned.ach) + '»';
+      state = it.owned ? (it.worn && !gift ? '✓ вдягнуто' : '✓ здобуто') : '🔒 за ачівку «' + esc(it.earned.achTitle || it.earned.ach) + '»';
       if (it.owned && !gift) btns = it.worn ? '<button class="ghost" data-off="' + it.kind + '">Зняти</button>' : '<button class="primary" data-wear="' + it.id + '">Вдягти</button>';
     } else if (gift) {
       state = it.price + ' 🏺' + (it.season ? ' · ' + season(it.season) : '');
@@ -245,7 +245,10 @@
     const root = document.getElementById('lavka');
     if (!root) return;
     const parts = String(tail || '').split('/').map(decodeURIComponent);
+    const wasGift = giftTo;
     giftTo = parts[0] === 'gift' && parts[1] ? parts[1] : null;
+    // Подарунок починаємо зі значків — найдешевшого й найзрозумілішого, а не з полиці, де був сам.
+    if (giftTo && !same(giftTo, wasGift)) tab = 'icon';
     if (!giftTo && TABS.some(([k]) => k === parts[0])) tab = parts[0];
     if (giftTo && tab === 'mine') tab = 'icon';
     // Полиці перемикаємо одразу з того, що вже знаємо, а свіже (баланс, шафа) домальовуємо, щойно прийде.
@@ -324,9 +327,11 @@
   async function buy(id, forNick, btn) {
     const it = item(id);
     if (!it) return;
-    const yes = await ask(forNick ? '🎁 Подарувати?' : 'Купити?',
-      '<b>' + esc(it.title) + '</b> ' + (forNick ? '<b>' + esc(dative(forNick)) + '</b> ' : '') + 'за <b>' + it.price + ' 🏺</b>. '
-      + (forNick ? 'Подарунок лишиться в людини назавжди.' : 'Річ лишиться твоєю назавжди' + (it.kind === 'perk' ? '.' : ' — і одразу вдягнеться.')),
+    const yes = await ask(forNick ? '🎁 Подарунок' : 'Купити?',
+      forNick
+        ? 'Подарувати <b>' + esc(dative(forNick)) + '</b> «' + esc(it.title) + '» за <b>' + it.price + ' 🏺</b>? Подарунок лишиться в людини назавжди'
+          + (it.kind === 'perk' ? '.' : ', а якщо це місце в неї порожнє — одразу вдягнеться.')
+        : '<b>' + esc(it.title) + '</b> за <b>' + it.price + ' 🏺</b>. Річ лишиться твоєю назавжди' + (it.kind === 'perk' ? '.' : ' — і одразу вдягнеться.'),
       forNick ? 'Подарувати' : 'Купити');
     if (!yes) return;
     await o.busy(btn, forNick ? 'дарую…' : 'купую…', async () => {
