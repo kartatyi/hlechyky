@@ -23,11 +23,17 @@
 
 .crowd-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 
-/* Мапа 3:2. На ноуті її обмежує висота вікна (шапка картки, фішки, статус і кнопки — близько 230px),
-   на Full HD вона росте до 960px і все одно влазить без прокрутки. */
+/* Мапа 3:2. На ноуті й Деку її обмежує висота вікна: точну ширину модуль рахує сам від того, де сцена
+   починається (фішки на вісьмох переносяться в два рядки, на Деку внизу смужка пада); тут — лише запасна
+   оцінка до першого заміру. На Full HD мапа росте до 960px і все одно влазить без прокрутки. */
+.crowd-stage {
+  position: relative;
+  width: 100%;
+  max-width: min(960px, calc((100vh - 300px) * 1.5));
+}
 .crowd-board {
   width: 100%;
-  max-width: min(960px, calc((100vh - 250px) * 1.5));
+  max-width: none;
   border-radius: 10px;
   background: #5f8a42;
   user-select: none;
@@ -38,6 +44,9 @@
 /* ---- фішки над мапою ---- */
 .crowd-hud, .crowd-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
 .crowd-chips { display: contents; }
+/* фішки місць: на широкому — у рядку фішок (display: contents), на телефоні модуль переносить їх під керування */
+.crowd-hud .crowd-seats { display: contents; }
+.crowd-body > .crowd-seats { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; font-size: .76em; }
 .crowd-chip, .crowd-seat {
   display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
   background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
@@ -69,10 +78,17 @@
 .crowd-s6 { color: var(--crowd-violet); }
 .crowd-s7 { color: var(--crowd-red); }
 
-/* ---- рядок новин: останні дві події, згасають за 6 с ---- */
-.crowd-news { min-height: 2.6em; display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: .84em; text-align: center; }
-.crowd-ni { animation: crowd-fade 6s ease-in forwards; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.crowd-ni + .crowd-ni { opacity: .7; }
+/* ---- новини: останні дві події смужкою поверх низу мапи, згасають за 6 с ---- */
+.crowd-news {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 3px; font-size: .84em; text-align: center;
+}
+.crowd-ni {
+  animation: crowd-fade 6s ease-in forwards; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 11px; border-radius: 999px; background: rgba(12, 22, 14, .78); color: #eef3ea;
+}
+.crowd-ni + .crowd-ni { opacity: .72; }
+.crowd-portmode .crowd-news { bottom: 5px; left: 5px; right: 5px; font-size: .74em; }
 @keyframes crowd-fade { 0% { opacity: 0; transform: translateY(-3px); } 6% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ---- підсумок раунду ---- */

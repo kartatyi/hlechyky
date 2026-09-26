@@ -320,79 +320,135 @@
   // Селяни
   // ---------------------------------------------------------------------------------------------
 
-  /// Один селянин згори: тінь (окремо, пачкою), черевички на ходу, тіло-сорочка, голова, шапка. Без save/restore.
+  /// Селянин у виді 3/4 (як ляльки на ярмарку): ноги на ходу, сорочка з крайкою, руки, голова з обличчям у бік
+  /// погляду і шапка. (x, y) — точка на землі між ногами; фігурка стоїть над нею. Без save/restore і без алокацій.
   function villager(g, x, y, d, s, look, now, id, ink) {
-    const hat = look[0], hc = look[1], shirt = look[2], skin = look[3];
-    const fx = DX[d] || 0, fy = DY[d] || 0;           // вперед
-    const sx = -fy, sy = fx;                          // убік
     if (s >= 2) return lying(g, x, y, d, look, ink);
-    let bob = 0;
+    const hat = look[0], hc = look[1], shirt = look[2], skin = look[3];
+    const side = d === 0 ? 1 : d === 2 ? -1 : 0;     // праворуч / ліворуч / анфас чи спиною
+    let bob = 0, step = 0;
     if (s === 1) {
       const ph = Math.sin(now * 0.0503 + id * 1.7);
       bob = ph > 0 ? -1 : 0;
-      const k = ph > 0 ? 3 : -3;
-      g.fillStyle = '#3a2618';
-      g.beginPath();
-      g.ellipse(x + sx * 5 + fx * k, y + sy * 5 + fy * k + bob, 3, 2.2, 0, 0, TAU);
-      g.ellipse(x - sx * 5 - fx * k, y - sy * 5 - fy * k + bob, 3, 2.2, 0, 0, TAU);
-      g.fill();
+      step = ph > 0 ? 1 : -1;
     }
+    // ноги: на ходу по черзі виносяться вперед
+    g.fillStyle = '#3a2618';
+    g.beginPath();
+    if (side) {
+      g.ellipse(x + side * 2.5 * step, y + 0.5, 2.6, 2, 0, 0, TAU);
+      g.ellipse(x - side * 2.5 * step, y + 0.5, 2.6, 2, 0, 0, TAU);
+    } else {
+      g.ellipse(x - 3.2, y + 0.5 - (step > 0 ? 1.5 : 0), 2.3, 2.1, 0, 0, TAU);
+      g.ellipse(x + 3.2, y + 0.5 - (step < 0 ? 1.5 : 0), 2.3, 2.1, 0, 0, TAU);
+    }
+    g.fill();
     y += bob;
-    g.fillStyle = CLOTH[shirt] || CLOTH[0];
-    g.beginPath(); g.arc(x, y, 10, 0, TAU); g.fill();
+    // сорочка з крайкою
+    const cloth = CLOTH[shirt] || CLOTH[0], skinC = SKIN[skin] || SKIN[0];
+    g.fillStyle = cloth;
+    g.beginPath(); g.roundRect(x - 7, y - 14, 14, 13, 4); g.fill();
     g.strokeStyle = ink;
-    g.lineWidth = 1.1;
+    g.lineWidth = 1;
     g.stroke();
-    const hx = x + fx * 3, hy = y + fy * 3;
-    g.fillStyle = SKIN[skin] || SKIN[0];
-    g.beginPath(); g.arc(hx, hy, 6, 0, TAU); g.fill();
-    const a = Math.atan2(fy, fx);
+    g.fillStyle = 'rgba(0, 0, 0, .22)';
+    g.fillRect(x - 7, y - 6, 14, 2);
+    if (d === 1) {            // вишитий комір спереду
+      g.fillStyle = shirt === 0 ? '#f2efe6' : '#c0392b';
+      g.fillRect(x - 1, y - 13, 2, 5);
+    }
+    // руки: збоку — одна махає вперед-назад, анфас — обидві обабіч
+    g.fillStyle = skinC;
+    g.beginPath();
+    if (side) g.arc(x - side * 1 + side * 3 * step, y - 5, 2.2, 0, TAU);
+    else { g.arc(x - 8, y - 6 + step, 2.2, 0, TAU); g.arc(x + 8, y - 6 - step, 2.2, 0, TAU); }
+    g.fill();
+    // голова
+    const hx = x + side * 1.5, hy = y - 19;
+    g.beginPath(); g.arc(hx, hy, 6.2, 0, TAU); g.fill();
+    g.strokeStyle = ink;
+    g.lineWidth = 0.9;
+    g.stroke();
+    // обличчя: анфас — двоє очей, збоку — одне й ніс, спиною — нічого
+    g.fillStyle = ink;
+    if (d === 1) {
+      g.fillRect(hx - 2.8, hy - 0.2, 1.6, 1.8);
+      g.fillRect(hx + 1.2, hy - 0.2, 1.6, 1.8);
+    } else if (side) {
+      g.fillRect(hx + side * 2.2 - 0.8, hy - 0.4, 1.6, 1.8);
+      g.fillStyle = skinC;
+      g.beginPath(); g.arc(hx + side * 5.8, hy + 1.2, 1.5, 0, TAU); g.fill();
+    }
+    const hcol = CLOTH[hc] || CLOTH[0];
     switch (hat) {
-      case 0: // хустка: вкриває голову ззаду й з боків, вузлик на потилиці
-        g.fillStyle = CLOTH[hc];
-        g.beginPath(); g.arc(hx, hy, 6.6, a + 1.1, a - 1.1 + TAU); g.closePath(); g.fill();
-        g.beginPath(); g.arc(hx - fx * 7, hy - fy * 7, 2.4, 0, TAU); g.fill();
+      case 0: // хустка: вкриває маківку й потилицю, вузлик під підборіддям (анфас) чи ззаду
+        g.fillStyle = hcol;
+        g.beginPath();
+        if (d === 3) g.arc(hx, hy, 6.9, 0, TAU);
+        else if (side) g.ellipse(hx - side * 1.6, hy - 1.6, 6.4, 6.2, 0, Math.PI * 0.95, Math.PI * 2.05);
+        else g.arc(hx, hy - 0.4, 6.9, Math.PI * 1.02, Math.PI * 1.98);
+        g.fill();
+        if (side) { g.beginPath(); g.arc(hx - side * 6.4, hy + 1.6, 2, 0, TAU); g.fill(); }
+        else if (d === 3) { g.beginPath(); g.arc(hx, hy + 6.4, 2.2, 0, TAU); g.fill(); }
+        g.fillStyle = 'rgba(255, 255, 255, .45)';           // горошок
+        g.fillRect(hx - 3, hy - 4.5, 1.3, 1.3); g.fillRect(hx + 1.5, hy - 3.2, 1.3, 1.3);
         break;
-      case 1: // капелюх із крисами
-        g.fillStyle = 'rgba(0, 0, 0, .25)';
-        g.beginPath(); g.arc(hx, hy, 9, 0, TAU); g.fill();
-        g.fillStyle = CLOTH[hc];
-        g.beginPath(); g.arc(hx, hy, 8.3, 0, TAU); g.fill();
-        g.fillStyle = 'rgba(0, 0, 0, .22)';
-        g.beginPath(); g.arc(hx, hy, 4.6, 0, TAU); g.fill();
+      case 1: // бриль із широкими крисами
+        g.fillStyle = hcol;
+        g.beginPath(); g.ellipse(hx, hy - 3.5, 10, 3.6, 0, 0, TAU); g.fill();
+        g.strokeStyle = 'rgba(0, 0, 0, .35)';
+        g.lineWidth = 0.8;
+        g.stroke();
+        g.beginPath(); g.ellipse(hx, hy - 6, 5.4, 4.2, 0, Math.PI, TAU); g.closePath(); g.fill();
+        g.fillStyle = 'rgba(0, 0, 0, .28)';
+        g.fillRect(hx - 5.4, hy - 6.2, 10.8, 1.6);
         break;
-      case 2: // картуз: кругла тулія й козирок уперед
-        g.fillStyle = CLOTH[hc];
-        g.beginPath(); g.arc(hx - fx * 0.5, hy - fy * 0.5, 6.2, 0, TAU); g.fill();
+      case 2: // картуз: тулія й чорний козирок у бік погляду
+        g.fillStyle = hcol;
+        g.beginPath(); g.ellipse(hx, hy - 4.2, 6.6, 3.8, 0, Math.PI, TAU); g.closePath(); g.fill();
+        g.fillRect(hx - 6.6, hy - 4.6, 13.2, 1.8);
         g.fillStyle = '#1e1e1e';
-        g.beginPath(); g.ellipse(hx + fx * 5.5, hy + fy * 5.5, fy ? 5 : 2.6, fy ? 2.6 : 5, 0, 0, TAU); g.fill();
+        g.beginPath();
+        if (side) g.ellipse(hx + side * 6.6, hy - 3, 3.6, 1.3, 0, 0, TAU);
+        else if (d === 1) g.ellipse(hx, hy - 2.5, 5.2, 1.6, 0, 0, TAU);
+        g.fill();
         break;
-      default: // без шапки — волосся на потилиці
+      default: { // без шапки: чуб (анфас), потилиця (спиною), зачіска збоку
         g.fillStyle = HAIR[hc] || HAIR[0];
-        g.beginPath(); g.arc(hx, hy, 6.1, a + 1.5, a - 1.5 + TAU); g.closePath(); g.fill();
+        g.beginPath();
+        if (d === 3) g.arc(hx, hy, 6.3, 0, TAU);
+        else if (side) g.ellipse(hx - side * 1.4, hy - 1.8, 6, 5.4, 0, Math.PI * 0.9, Math.PI * 2.1);
+        else g.arc(hx, hy - 0.8, 6.3, Math.PI * 1.05, Math.PI * 1.95);
+        g.fill();
+      }
     }
   }
 
-  /// Лежить: тіло впоперек погляду, голова вбік, очі ✕✕, шапка відлетіла поруч.
+  /// Лежить: навзнак упоперек, голова вбік, очі ✕✕, шапка відлетіла поруч.
   function lying(g, x, y, d, look, ink) {
-    const ax = -(DY[d] || 0), ay = DX[d] || 0;
+    const dir = d === 2 ? -1 : 1;
+    g.fillStyle = '#3a2618';
+    g.beginPath();
+    g.ellipse(x - dir * 11, y - 3, 2.2, 2.4, 0, 0, TAU);
+    g.ellipse(x - dir * 11, y + 2, 2.2, 2.4, 0, 0, TAU);
+    g.fill();
     g.fillStyle = CLOTH[look[2]] || CLOTH[0];
-    g.beginPath(); g.ellipse(x, y, 11, 7, Math.atan2(ay, ax), 0, TAU); g.fill();
+    g.beginPath(); g.roundRect(x - 9, y - 6, 16, 11, 4); g.fill();
     g.strokeStyle = ink;
-    g.lineWidth = 1.1;
+    g.lineWidth = 1;
     g.stroke();
-    const hx = x + ax * 12, hy = y + ay * 12;
+    const hx = x + dir * 12, hy = y - 1;
     g.fillStyle = SKIN[look[3]] || SKIN[0];
     g.beginPath(); g.arc(hx, hy, 6, 0, TAU); g.fill();
-    g.strokeStyle = ink;
-    g.lineWidth = 1.2;
+    g.stroke();
+    g.lineWidth = 1.1;
     g.beginPath();
     g.moveTo(hx - 3.5, hy - 2.5); g.lineTo(hx - 1, hy); g.moveTo(hx - 1, hy - 2.5); g.lineTo(hx - 3.5, hy);
     g.moveTo(hx + 1, hy - 2.5); g.lineTo(hx + 3.5, hy); g.moveTo(hx + 3.5, hy - 2.5); g.lineTo(hx + 1, hy);
     g.stroke();
     if (look[0] < 3) {
-      g.fillStyle = CLOTH[look[1]];
-      g.beginPath(); g.arc(hx + ay * 10 + ax * 4, hy - ax * 10 + ay * 4, 4.5, 0, TAU); g.fill();
+      g.fillStyle = CLOTH[look[1]] || CLOTH[0];
+      g.beginPath(); g.ellipse(hx + dir * 9, hy + 6, 5, 3, 0.4 * dir, 0, TAU); g.fill();
     }
   }
 
@@ -414,7 +470,7 @@
         shotAt: -1e9, buyAt: -1e9, haggleUntil: 0,
         flashes: [], stones: [], hitAt: new Map(), fallAt: new Map(),
         raf: 0, keyup: null, blur: null, ro: null,
-        hudEl: null, clockEl: null, newsEl: null, sumEl: null, padEl: null,
+        hudEl: null, clockEl: null, newsEl: null, sumEl: null, padEl: null, stageEl: null, seatsEl: null,
         audio: null, mute: readMute(),
         perf: { sum: 0, n: 0, max: 0 },
       };
@@ -550,7 +606,7 @@
       if (e[0] === 1) {
         const a = e[1], b = e[2], kind = e[3], seat = e[4];
         const land = now + (quiet ? 0 : STONE_MS);
-        st.stones.push({ ax: f.v[a * 4], ay: f.v[a * 4 + 1], bx: f.v[b * 4], by: f.v[b * 4 + 1], at: now, land });
+        st.stones.push({ ax: f.v[a * 4], ay: f.v[a * 4 + 1] - 9, bx: f.v[b * 4], by: f.v[b * 4 + 1] - 8, at: now, land });
         if (st.stones.length > 12) st.stones.shift();
         st.hitAt.set(b, land);
         st.fallAt.set(b, land);
@@ -665,6 +721,13 @@
     const me = st.meId;
     const follow = me >= 0 && me < n && !st.drag && st.ctx && st.ctx.mine && (alive(st) || st.vphase === 'start');
     if (follow) { st.cam.x = st.px[me]; st.cam.y = st.py[me]; }
+    else if (!st.drag && st.vphase === 'reveal' && st.view && st.view.reveal && st.camRound !== st.round) {
+      // глядачеві й збитому — на розкритті камера сама їде до переможця (або до першого з гравців)
+      st.camRound = st.round;
+      const r = st.view.reveal, w = (r.winners || [])[0];
+      const hit = (r.ids || []).find((p) => p.seat === w) || (r.ids || [])[0];
+      if (hit && hit.id >= 0 && hit.id < n) { st.cam.x = st.px[hit.id]; st.cam.y = st.py[hit.id]; }
+    }
     box[0] = clamp(st.cam.x - PW / 2, 0, WW - PW);
     box[1] = clamp(st.cam.y - PH / 2, 0, WH - PH);
     box[2] = PW;
@@ -729,8 +792,8 @@
     for (let i = 0; i < n; i++) {
       const x = st.px[i], y = st.py[i];
       if (x < cx - 20 || x > cx + vw + 20 || y < cy - 20 || y > cy + vh + 20) continue;
-      g.moveTo(x + 13, y + 4);
-      g.ellipse(x + 2, y + 4, 11, 7, 0, 0, TAU);
+      g.moveTo(x + 11, y + 5);
+      g.ellipse(x + 1, y + 5, 10, 4, 0, 0, TAU);
     }
     g.fill();
     const look = [0, 0, 0, 0];
@@ -739,14 +802,14 @@
       const x = st.px[i], y = st.py[i];
       if (x < cx - 20 || x > cx + vw + 20 || y < cy - 20 || y > cy + vh + 20) continue;
       look[0] = st.looks[i * 4] | 0; look[1] = st.looks[i * 4 + 1] | 0; look[2] = st.looks[i * 4 + 2] | 0; look[3] = st.looks[i * 4 + 3] | 0;
-      villager(g, x, y, st.pd[i], st.ps[i], look, now, i, pal.ink);
+      villager(g, x, y + 4, st.pd[i], st.ps[i], look, now, i, pal.ink);
     }
     stars(st, g, pal, now, n);
     stones(st, g, pal, now);
 
     if (mine && alive(st) && phase === 'go' && playing) {
       const t = coneTarget(st, n);
-      if (t >= 0) chevron(g, st.px[t], st.py[t] - 19, pal);
+      if (t >= 0) chevron(g, st.px[t], st.py[t] - 27, pal);
     }
     if (peek) meArrow(g, st.px[st.meId], st.py[st.meId], pal, phase === 'start');
     labels(st, g, pal, n, phase);
@@ -765,6 +828,13 @@
     st.perf.sum += dt;
     st.perf.n++;
     if (dt > st.perf.max) st.perf.max = dt;
+  }
+
+  /// Шрифт розміром px, але не ширший за maxW: довгий напис на вузькому канвасі зменшуємо, а не обрізаємо.
+  function fitFont(g, text, maxW, px, weight) {
+    g.font = weight + ' ' + px + 'px system-ui, sans-serif';
+    const w = g.measureText(text).width;
+    if (w > maxW) g.font = weight + ' ' + Math.max(9, Math.floor((px * maxW) / w)) + 'px system-ui, sans-serif';
   }
 
   function outlined(g, text, x, y, fill, ink) {
@@ -788,7 +858,8 @@
     const list = st.me.list, done = st.me.done;
     for (let i = 0; i < list.length; i++) {
       const s = st.stalls[list[i]];
-      if (s && !done[i]) g.roundRect(s.x * CELL - 3, s.y * CELL - 2, 2 * CELL + 6, CELL + 4, 5);
+      // корпус разом із прилавком: видно, куди стати, щоб поторгуватись
+      if (s && !done[i]) g.roundRect(s.x * CELL - 3, (s.face === 3 ? s.y : s.y - 1) * CELL - 2, 2 * CELL + 6, 2 * CELL + 4, 7);
     }
     g.stroke();
     g.setLineDash([]);
@@ -819,13 +890,13 @@
     g.lineWidth = 2.5;
     g.setLineDash([5, 4]);
     g.lineDashOffset = -now / 60;
-    g.beginPath(); g.arc(x, y, 17, 0, TAU); g.stroke();
+    g.beginPath(); g.ellipse(x, y + 5, 15, 7.5, 0, 0, TAU); g.stroke();
     g.setLineDash([]);
     g.lineDashOffset = 0;
   }
 
   function meArrow(g, x, y, pal, big) {
-    const top = y - (big ? 26 : 22);
+    const top = y - (big ? 32 : 28);
     g.fillStyle = pal.accent;
     g.strokeStyle = pal.ink;
     g.lineWidth = 1.5;
@@ -895,19 +966,33 @@
   function labels(st, g, pal, n, phase) {
     const v = st.view;
     if (!v) return;
-    const rows = [];
-    if (v.reveal && (phase === 'reveal' || phase === 'over' || v.phase === 'reveal' || v.phase === 'over')) {
-      const win = v.reveal.winners || [];
-      for (const p of v.reveal.ids || []) rows.push([p.seat, p.id, win.includes(p.seat)]);
-    } else for (const d of v.dead || []) rows.push([d.seat, d.id, false]);
+    const open = v.reveal && (phase === 'reveal' || phase === 'over' || v.phase === 'reveal' || v.phase === 'over');
+    const rows = open ? v.reveal.ids || [] : v.dead || [];
     if (!rows.length) return;
-    g.font = '700 11px system-ui, sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'bottom';
-    for (const [seat, id, won] of rows) {
+    const win = open ? v.reveal.winners || [] : [];
+    // кільце кольору місця під ногами — щоб на розкритті одразу було видно всіх «живих» у юрмі
+    g.lineWidth = 2.5;
+    for (let r = 0; r < rows.length; r++) {
+      const id = rows[r].id, seat = rows[r].seat;
       if (id < 0 || id >= n) continue;
-      const x = st.px[id], y = st.py[id] - 16;
-      outlined(g, (won ? '🏆 ' : '') + nickOfSeat(st, seat), x, y, pal.seats[seat] || pal.text, pal.ink);
+      g.strokeStyle = pal.seats[seat] || pal.text;
+      g.beginPath(); g.ellipse(st.px[id], st.py[id] + 5, 14, 7, 0, 0, TAU); g.stroke();
+    }
+    // нік на темній плашці: читається і на траві, і на стежці, і на телефоні
+    const px = st.mode === 'port' ? 15 : 13;
+    g.font = '700 ' + px + 'px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    for (let r = 0; r < rows.length; r++) {
+      const id = rows[r].id, seat = rows[r].seat;
+      if (id < 0 || id >= n) continue;
+      const text = (win.includes(seat) ? '🏆 ' : '') + nickOfSeat(st, seat);
+      const x = st.px[id], y = st.py[id] - (st.ps[id] >= 2 ? 16 : 34);
+      const w = g.measureText(text).width + 12, h = px + 5;
+      g.fillStyle = 'rgba(12, 22, 14, .82)';
+      g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, h / 2); g.fill();
+      g.fillStyle = pal.seats[seat] || pal.text;
+      g.fillText(text, x, y + 0.5);
     }
   }
 
@@ -920,13 +1005,14 @@
     if (!playing && room && room.status === 'lobby') {
       g.fillStyle = 'rgba(10, 20, 12, .45)';
       g.fillRect(0, 0, w, h);
-      g.font = '700 ' + Math.round(w / 34) + 'px system-ui, sans-serif';
-      outlined(g, 'Ярмарок відчиниться, щойно господар натисне «Почати»', w / 2, h / 2, pal.text, pal.ink);
+      const msg = 'Ярмарок відчиниться, щойно господар натисне «Почати»';
+      fitFont(g, msg, w * 0.9, Math.round(w / 34), 700);
+      outlined(g, msg, w / 2, h / 2, pal.text, pal.ink);
       return;
     }
     if (phase === 'start') {
       if (mine) {
-        const x = st.px[st.meId] - cx, y = st.py[st.meId] - cy;
+        const x = st.px[st.meId] - cx, y = st.py[st.meId] - cy - 8;
         g.fillStyle = 'rgba(10, 20, 12, .42)';
         g.beginPath();
         g.rect(0, 0, w, h);
@@ -936,27 +1022,33 @@
       const left = st.last ? st.last.left : v.left;
       g.font = '800 ' + Math.round(h / 5) + 'px system-ui, sans-serif';
       outlined(g, String(Math.max(1, Math.ceil((left * TICK_MS) / 1000))), w / 2, h / 2, pal.text, pal.ink);
-      g.font = '700 ' + Math.round(h / 26) + 'px system-ui, sans-serif';
-      outlined(g, mine ? 'Роздивись: ти — під стрілкою' : 'Ярмарок відчиняється…', w / 2, h / 2 + h / 7, pal.text, pal.ink);
+      const sub = mine ? 'Роздивись: ти — під стрілкою' : 'Ярмарок відчиняється…';
+      fitFont(g, sub, w * 0.9, Math.round(h / 26), 700);
+      outlined(g, sub, w / 2, h / 2 + h / 7, pal.text, pal.ink);
       return;
     }
     if (phase === 'reveal' || phase === 'over' || (!playing && v.phase === 'over')) {
       g.fillStyle = 'rgba(10, 20, 12, .28)';
       g.fillRect(0, 0, w, h);
-      const title = phase === 'reveal' ? revealTitle(st) : overTitle(st);
-      g.font = '800 ' + Math.round(Math.max(13, h / 22)) + 'px system-ui, sans-serif';
+      const title = phase === 'reveal' ? revealTitle(st, st.mode === 'port') : overTitle(st);
+      // уся мапа — плашка над каруселлю й сценою (там людей найменше, а ніки гравців не сховаються під неї);
+      // в'юпорт телефона стежить за мною в центрі — там плашка вгорі, ліворуч від мінімапи
+      const port = st.mode === 'port', left = port ? w - 108 : w, mid = left / 2;
+      fitFont(g, title, left - (port ? 24 : 40), Math.round(Math.max(port ? 16 : 13, h / 22)), 800);
       const tw = g.measureText(title).width + 28;
-      g.fillStyle = 'rgba(10, 20, 12, .72)';
-      g.beginPath(); g.roundRect(w / 2 - tw / 2, 10, tw, Math.max(24, h / 13), 10); g.fill();
+      const th = Math.max(24, h / 13), ty = port ? 8 : Math.round(h * 0.36 - th / 2);
+      g.fillStyle = 'rgba(10, 20, 12, .76)';
+      g.beginPath(); g.roundRect(mid - tw / 2, ty, tw, th, 10); g.fill();
       g.fillStyle = pal.text;
-      g.fillText(title, w / 2, 10 + Math.max(24, h / 13) / 2);
+      g.fillText(title, mid, ty + th / 2);
     }
   }
 
-  function revealTitle(st) {
+  /// short — без «Раунд N з M» (на телефоні раунд і так у фішках, а плашка вузька).
+  function revealTitle(st, short) {
     const v = st.view, r = v && v.reveal;
     if (!r) return '';
-    const head = 'Раунд ' + v.round + ' з ' + v.of + ' · ';
+    const head = short ? '' : 'Раунд ' + v.round + ' з ' + v.of + ' · ';
     const who = (r.winners || []).map((s) => nickOfSeat(st, s)).join(' і ');
     switch (r.why) {
       case 'list': return head + '🧺 Кошик повний — ' + who;
@@ -1033,15 +1125,32 @@
     const seats = v.seats || [];
     const active = seats.filter((s) => !s.out);
     if (v.phase !== 'lobby') html += '<span class="crowd-chip">живих ' + active.filter((s) => s.alive).length + '/' + active.length + '</span>';
-    for (const s of seats) {
-      html += '<span class="crowd-seat crowd-s' + s.seat + (s.alive ? '' : ' dead') + (s.out ? ' out' : '') + (s.seat === ctx.seat ? ' me' : '') + '">'
-        + '<i></i>' + ctx.esc(s.nick) + ' <b>' + (s.total | 0) + '</b>' + (v.phase !== 'lobby' ? ' <small>🧺' + (s.bought | 0) + '</small>' : '') + '</span>';
-    }
     html += '<button type="button" class="crowd-mute" data-pad-skip title="Звук">' + (st.mute ? '🔇' : '🔊') + '</button>';
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
       el.querySelector('.crowd-chips').innerHTML = html;
     }
+    // фішки місць: рахунок, покупки цього раунду, хто вибув
+    let row = '';
+    for (const s of seats) {
+      row += '<span class="crowd-seat crowd-s' + s.seat + (s.alive ? '' : ' dead') + (s.out ? ' out' : '') + (s.seat === ctx.seat ? ' me' : '') + '">'
+        + '<i></i>' + ctx.esc(s.nick) + ' <b>' + (s.total | 0) + '</b>' + (v.phase !== 'lobby' ? ' <small>🧺' + (s.bought | 0) + '</small>' : '') + '</span>';
+    }
+    const se = st.seatsEl;
+    if (se && se.dataset.sig !== row) {
+      se.dataset.sig = row;
+      se.innerHTML = row;
+    }
+  }
+
+  /// Фішки місць: на широкому — у тому ж рядку, що й стан гри; на телефоні — під керуванням, щоб мапа
+  /// й хрестовина вміщались на екрані разом (хто за столом, і так видно в шапці картки).
+  function placeSeats(root, st) {
+    const se = st.seatsEl;
+    if (!se) return;
+    if (st.mode === 'port') {
+      if (se.parentNode !== root || se.nextSibling) root.appendChild(se);
+    } else if (se.parentNode !== st.hudEl) st.hudEl.appendChild(se);
   }
 
   function summary(st) {
@@ -1120,7 +1229,7 @@
     let best = -1, bestD = reach * reach;
     for (let i = 0; i < n; i++) {
       if (i === st.meId || st.ps[i] >= 2) continue;
-      const dx = st.px[i] - x, dy = st.py[i] - y, d2 = dx * dx + dy * dy;
+      const dx = st.px[i] - x, dy = st.py[i] - 7 - y, d2 = dx * dx + dy * dy;
       if (d2 <= bestD) { bestD = d2; best = i; }
     }
     return best;
@@ -1235,24 +1344,43 @@
     };
     el.addEventListener('pointerup', release);
     el.addEventListener('pointercancel', release);
-    root.appendChild(el);
+    root.insertBefore(el, st.sumEl.nextSibling);
     st.padEl = el;
   }
 
   /// Режим камери за фактичною шириною канваса: вузько (телефон) — в'юпорт 480×320 за своїм, інакше вся мапа.
+  /// Мапа 3:2 має влізти у вікно разом зі статусом і кнопками під нею: ширину сцени рахуємо від того, де вона
+  /// справді починається (фішок на вісьмох — два рядки, на Деку внизу ще смужка підказок пада). На телефоні
+  /// вирішує ширина, тож там це нічого не міняє.
+  function sizeStage(st) {
+    const el = st.stageEl;
+    if (!el || !el.isConnected) return;
+    const hints = document.querySelector('.padhints');
+    const padH = hints && hints.offsetParent ? hints.offsetHeight + 8 : 0;
+    const top = el.getBoundingClientRect().top + (window.scrollY || 0);
+    const h = Math.max(300, window.innerHeight - top - 92 - padH);
+    const want = Math.min(960, Math.floor(h * 1.5)) + 'px';
+    if (el.style.maxWidth !== want) el.style.maxWidth = want;
+  }
+
   function fit(root, st) {
+    sizeStage(st);
     const w = st.cv ? st.cv.el.clientWidth : 0;
     const mode = w && w < 640 ? 'port' : 'full';
     if (st.cv && mode === st.mode) { st.cv.resize(); return; }
     st.mode = mode;
-    st.cv = HGames.ui.canvas(root, mode === 'port' ? { w: PW, h: PH, cls: 'crowd-board crowd-port' } : { w: WW, h: WH, cls: 'crowd-board' });
-    if (st.padEl) root.appendChild(st.padEl);
+    st.cv = HGames.ui.canvas(st.stageEl, mode === 'port' ? { w: PW, h: PH, cls: 'crowd-board crowd-port' } : { w: WW, h: WH, cls: 'crowd-board' });
+    st.stageEl.classList.toggle('crowd-portmode', mode === 'port');
+    if (st.padEl) root.insertBefore(st.padEl, st.sumEl.nextSibling);
+    placeSeats(root, st);
   }
 
   function spin(st) {
     if (st.raf) return;
-    const loop = () => {
+    const loop = (now) => {
       if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
+      // раз на пів секунди — чи не змінилось місце під мапою (з'явилась смужка пада, перенеслись фішки)
+      if (now - (st.fitAt || 0) > 500) { st.fitAt = now; fit(st.root, st); }
       if (!document.hidden && st.cv.el.offsetParent) draw(st);
       st.raf = requestAnimationFrame(loop);
     };
@@ -1293,6 +1421,9 @@
       st.hudEl.className = 'crowd-hud';
       st.hudEl.innerHTML = '<span class="crowd-chip crowd-clock">⏱ —</span><span class="crowd-chips"></span>';
       st.clockEl = st.hudEl.querySelector('.crowd-clock');
+      st.seatsEl = document.createElement('div');
+      st.seatsEl.className = 'crowd-seats';
+      st.hudEl.appendChild(st.seatsEl);
       st.hudEl.addEventListener('click', (e) => {
         if (!e.target.closest('.crowd-mute')) return;
         st.mute = !st.mute;
@@ -1306,8 +1437,12 @@
       st.sumEl = document.createElement('div');
       st.sumEl.className = 'crowd-sum';
       st.sumEl.hidden = true;
-      root.append(st.hudEl, st.newsEl, st.sumEl);
-      st.cv = HGames.ui.canvas(root, { w: WW, h: WH, cls: 'crowd-board' });
+      // сцена: мапа, а новини — смужкою поверх її нижнього краю (не штовхають мапу вниз і не з'їдають висоту)
+      st.stageEl = document.createElement('div');
+      st.stageEl.className = 'crowd-stage';
+      st.stageEl.appendChild(st.newsEl);
+      root.append(st.hudEl, st.stageEl, st.sumEl);
+      st.cv = HGames.ui.canvas(st.stageEl, { w: WW, h: WH, cls: 'crowd-board' });
       wireCanvas(st);
       if (window.ResizeObserver) {
         st.ro = new ResizeObserver(() => fit(root, st));
@@ -1336,6 +1471,7 @@
       applyView(st, ctx.view);
       fit(root, st);
       pad(root, st);
+      placeSeats(root, st);
       hud(st);
       summary(st);
       paintClock(st, st.last && st.last.ph ? st.last : null);
@@ -1373,8 +1509,9 @@
       if (ph === 'start') return ctx.mine ? 'Роздивись: стрілка показує тебе' : 'Ярмарок відчиняється…';
       if (ph === 'reveal') return st ? revealTitle(st) : '';
       if (ph !== 'go') return '';
-      if (!ctx.mine) return 'Дивишся збоку';
+      if (!ctx.mine) return HGames.ui.coarse() ? 'Вгадуй разом із гравцями, хто з юрми живий · тягни мапу пальцем' : 'Вгадуй разом із гравцями, хто з юрми живий';
       if (st && st.me && !st.me.alive) return 'Тебе збили — дивись, хто кого';
+      if (window.HPad && window.HPad.on) return 'Стік — іти · Ⓐ рогатка · Ⓧ купити · LB — де я? Купують, стоячи на стежці перед лотком';
       return HGames.ui.coarse()
         ? 'Хрестовина — іти · 🪨 постріл · 🧺 купити · 👁 де я? · тиць по селянину чи лотку'
         : 'Стрілки/WASD — іти · пробіл — рогатка · E — купити · Q — де я? · клік по селянину чи лотку';
