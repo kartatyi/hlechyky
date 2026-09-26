@@ -145,9 +145,10 @@
   .gk-ctl .gk-shoot { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: center; }
   .gk-ctl .gk-move { grid-column: 1 / -1; justify-content: center; }
 }
-/* телефон боком: низько, але широко — пульт в один ряд під коморою */
+/* телефон боком: низько, але широко — поле рівно у видиму смугу між шапкою сайту й нижніми вкладками
+   (їхні висоти сайт тримає в --tabs-h / --mini-h), пульт в один ряд під коморою */
 @media (max-height: 480px) and (min-width: 640px) {
-  .gcanvas.gk-canvas { max-width: min(100%, 1200px, calc((100vh - 24px) * 2)); }
+  .gcanvas.gk-canvas { max-width: min(100%, 1200px, calc((100vh - 64px - var(--tabs-h, 0px) - var(--mini-h, 0px)) * 2)); }
   .gk-ctl { display: flex; flex-wrap: wrap; gap: 6px 8px; }
 }
 

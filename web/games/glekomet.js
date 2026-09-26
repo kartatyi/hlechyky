@@ -69,7 +69,7 @@
         inv: [], stats: [], wins: [0, 0, 0, 0, 0, 0], last: null, log: [], result: null,
         aimTurn: [45, 60, 0], my: { a: 45, p: 60, w: 0 }, myTurnNo: -1, preW: null, fired: -1,
         // снаряди: два останні кадри для екстраполяції й хвости
-        shA: new Float32Array(24), shB: new Float32Array(24), shN: 0, shSmooth: false, shAt: 0,
+        shA: new Float32Array(24), shB: new Float32Array(24), shN: 0, shSmooth: false, shAt: 0, gap: TICK_MS,
         tails: new Float32Array(8 * 12), tailN: new Uint8Array(8), tailAt: 0,
         trails: [[], [], [], [], [], []], shooter: -1,
         fresh: [],                                   // [c0, c1, t0] — свіжа земля у вирвах
@@ -584,7 +584,11 @@
     st.shSmooth = smooth && n === st.shN;
     if (n !== st.shN) st.tailN.fill(0);
     st.shN = n;
-    st.shAt = performance.now();
+    // Справжній проміжок між кадрами: годинник сервера на Windows тикає рідше за 25/с (≈ 19/с), і
+    // екстраполяція на сталі 40 мс доганяла б кадр і стояла — снаряд смикався б.
+    const now = performance.now(), gap = now - st.shAt;
+    if (st.shSmooth && gap > 15 && gap < 160) st.gap += (gap - st.gap) * 0.2;
+    st.shAt = now;
     // слід пострілу: точки кадрів, блідим пунктиром до наступного пострілу цього гравця
     const tr = st.shooter >= 0 ? st.trails[st.shooter] : null;
     if (tr && tr.length < 1600) for (let i = 0; i < n; i++) tr.push(sh[i][0], sh[i][1]);
@@ -739,8 +743,10 @@
   }
 
   /// Нік, смужка здоров'я, «ти» — над хатою, розміром у справжніх пікселях (на телефоні теж читається).
-  function drawTag(st, g, i, x, y, now, mine, lift) {
+  function drawTag(st, g, i, x, y, now, mine, lift, tw) {
     const hut = st.huts[i], F = st.fonts, k = F.k, pal = st.pal;
+    // нік біля краю поля не обрізаємо: зсуваємо всередину (смужка здоров'я лишається над хатою)
+    const lx = tw ? clamp(x, tw / 2 + 3 * k, W - tw / 2 - 3 * k) : x;
     const Y = sy(y);
     const top = Y - 50 - (lift || 0);
     if (hut.alive) {
@@ -759,9 +765,9 @@
     g.strokeStyle = 'rgba(10, 16, 12, .85)';
     const ty = top - (hut.alive ? 5.5 * k : 0);
     const label = tagLabel(name);
-    g.strokeText(label, x, ty);
+    g.strokeText(label, lx, ty);
     g.fillStyle = hut.alive ? (st.turn === i && st.phase !== 'over' ? pal.accent : pal.text) : pal.muted;
-    g.fillText(label, x, ty);
+    g.fillText(label, lx, ty);
     if (mine) {
       const ay = ty - 15 * k + (st.calm ? 0 : Math.sin(now / 260) * 1.5 * k);
       g.fillStyle = pal.text;
@@ -1145,7 +1151,7 @@
 
     // снаряди: екстраполяція на пів кадру вперед, але не під землю; хвіст з останніх положень
     if (phase === 'fly' && st.shN) {
-      const k = st.shSmooth ? clamp((now - st.shAt) / TICK_MS, 0, 1) : 0;
+      const k = st.shSmooth ? clamp((now - st.shAt) / st.gap, 0, 1) : 0;
       const sample = now - st.tailAt > 28;
       if (sample) st.tailAt = now;
       for (let i = 0; i < st.shN; i++) {
@@ -1205,7 +1211,7 @@
     st.tagOrder = st.tagOrder || [0, 1, 2, 3, 4, 5];
     st.tagOrder.sort((a, b) => (st.huts[b].alive - st.huts[a].alive) || a - b);
     const tags = placeTags(st, g, now);
-    for (const t of tags) if (t.on) drawTag(st, g, t.i, st.huts[t.i].dx, st.huts[t.i].dy, now, t.i === mine, Math.max(0, t.lift));
+    for (const t of tags) if (t.on) drawTag(st, g, t.i, st.huts[t.i].dx, st.huts[t.i].dy, now, t.i === mine, Math.max(0, t.lift), t.w);
 
     // цифри шкоди
     if (st.floats.length) {
@@ -1219,11 +1225,13 @@
         const k = (now - fl.t0) / 1100;
         if (k >= 1) { st.floats.splice(n, 1); continue; }
         const y = sy(fl.y + k * 26 * F.k * 1.4);
+        if (fl.w == null) fl.w = g.measureText(fl.text).width;
+        const x = clamp(fl.x, fl.w / 2 + 4 * F.k, W - fl.w / 2 - 4 * F.k);
         g.globalAlpha = k < 0.7 ? 1 : (1 - k) / 0.3;
         g.strokeStyle = 'rgba(10, 16, 12, .9)';
-        g.strokeText(fl.text, fl.x, y);
+        g.strokeText(fl.text, x, y);
         g.fillStyle = fl.color;
-        g.fillText(fl.text, fl.x, y);
+        g.fillText(fl.text, x, y);
       }
       g.globalAlpha = 1;
     }
@@ -1381,8 +1389,8 @@
         if (now - st.charge.t0 >= SHORT_PRESS && p !== st.my.p) { st.my.p = p; st.aimDirty = true; paintCtl(st); }
         if (now - st.charge.t0 >= CHARGE_MS) endCharge(st);          // перетримав — летить сам
       }
-      paintCharge(st, now);
     }
+    paintCharge(st, now);
     if (st.aimDirty && now - st.aimSentAt >= AIM_GAP) {
       st.aimDirty = false;
       if (myTurn(st)) {

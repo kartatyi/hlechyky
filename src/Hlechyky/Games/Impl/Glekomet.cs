@@ -41,6 +41,12 @@ public sealed class Glekomet : Game
     string _phase = PhaseLobby;
     /// <summary>Тиків до кінця поточної фази (start, aim, settle); у польоті — скільки вже летимо.</summary>
     int _left;
+    /// <summary>
+    /// Кінець ходу за годинником кімнати. Хід міряємо не тиками: каркасний годинник на Windows тикає рідше за
+    /// обіцяні 25/с (заміряно ≈ 19/с), і тоді 30 секунд тиками тривали б ~39, а дуга в людей показувала б нуль,
+    /// коли хід ще йде. У тестах годинник — FakeClock, що крокує рівно по тику, тож детермінізм той самий.
+    /// </summary>
+    DateTimeOffset _deadline;
     int _t;
     int _turn = -1;
     int _cursor = Seats;
@@ -89,7 +95,7 @@ public sealed class Glekomet : Game
     public string Phase => _phase;
     public int Turn => _turn;
     public int Round => _round;
-    public int LeftTicks => _left;
+    public int LeftTicks => _phase == PhaseAim ? (int)Math.Ceiling((_deadline - Ctx.Clock.UtcNow).TotalMilliseconds / TickMs) : _left;
     public bool Teams => _teams;
 
     public override string SeatName(int seat) => seat switch
@@ -317,7 +323,8 @@ public sealed class Glekomet : Game
                 }
                 break;
             case PhaseAim:
-                if (--_left <= 0)
+                --_left;
+                if (Ctx.Clock.UtcNow >= _deadline)
                 {
                     TimeOut();
                     view = frame = true;
@@ -412,6 +419,7 @@ public sealed class Glekomet : Game
             _turnNo++;
             _phase = PhaseAim;
             _left = _turnSecs * 1000 / TickMs;
+            _deadline = Ctx.Clock.UtcNow.AddSeconds(_turnSecs);
             return;
         }
         // сюди звичайна гра не доходить; хай краще буде нічия, ніж зависла партія
@@ -741,7 +749,7 @@ public sealed class Glekomet : Game
             phase = _phase,
             turn = aiming ? _turn : (int?)null,
             round = _round,
-            endsAt = _phase == PhaseAim ? Ctx.Clock.UtcNow.AddMilliseconds(_left * TickMs) : (DateTimeOffset?)null,
+            endsAt = _phase == PhaseAim ? _deadline : (DateTimeOffset?)null,
             turnMs = _turnSecs * 1000,
             startIn = _phase == PhaseStart ? _left : 0,
             wind = lobby ? 0 : core.Wind,
