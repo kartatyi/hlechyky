@@ -169,6 +169,10 @@
 
     <!-- Профіль людини (#who/<нік>) — і свій, «Я», і будь-чий. Малює web/people.js. -->
     <div class="view" id="viewWho"><div id="who" class="who-page"></div></div>
+
+    <!-- Лавка Дядька Глека (#lavka/<полиця>, #lavka/gift/<нік>): значки, рамки, колір ніка, титули, тло, вміння —
+         усе назавжди, за черепки. Малює web/lavka.js. -->
+    <div class="view" id="viewLavka"><div id="lavka" class="lavka"></div></div>
   </div>
 
   <aside class="panel chat" id="colChat">
@@ -315,6 +319,8 @@
 <script src="/games/tournament.js"></script>
 <!-- люди й цифри: профілі, картка по кліку на нік, «📊 Хто скільки» — до app.js, той кличе HPeople.init() -->
 <script src="/people.js"></script>
+<!-- Лавка: хто як вбраний (людям — кольори й значки) і сама вітрина — до app.js, той кличе HLavka.init() -->
+<script src="/lavka.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

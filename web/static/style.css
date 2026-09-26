@@ -219,7 +219,7 @@ body.chat-collapsed #colChat { padding: 0; visibility: hidden; transition: paddi
 /* Розділ = один вид у лівій колонці. Перемикає їх лише клас маршруту на body. */
 .view { display: none; flex-direction: column; gap: 18px; min-width: 0; }
 body.route-efir #viewEfir, body.route-lib #viewLib, body.route-games #viewGames,
-body.route-stats #viewStats, body.route-who #viewWho { display: flex; animation: fadein .15s ease-out; }
+body.route-stats #viewStats, body.route-who #viewWho, body.route-lavka #viewLavka { display: flex; animation: fadein .15s ease-out; }
 /* Один рівень карток: секція — панель без рамки, з тонким світлом ізсередини;
    усе, що всередині неї, сидить на bg2 без власних рамок. Подвійних рамок не лишилось.
    Балачки — теж панель, хоч і aside: без нього вони висять прозорі просто на тлі сторінки. */
@@ -1028,3 +1028,177 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 .fbi-ctx:empty { display: none; }
 .fbi-reply { display: flex; gap: 6px; }
 .fbi-reply input { padding: 6px 10px; font-size: .9em; }
+
+/* =====================================================================================================
+   Лавка Дядька Глека: вбрання людей (значок, рамка, колір ніка, титул, тло) і сама вітрина (web/lavka.js).
+   ===================================================================================================== */
+/* ---- аватарка: значок замість літери, фон через --ava-bg (щоб рамка й «веселка» лягали шарами) ---- */
+.ava { --ava-bg: hsl(var(--h) 42% 30%); background: var(--ava-bg); }
+.ava.ico { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; font-weight: 400; font-size: .95em; }
+.ava.sm.ico { font-size: .72em; }
+.ava.xl.ico { font-size: 1.45em; }
+.ava.xxl.ico { font-size: 2.3em; }
+.ava.rainbow { --ava-bg: conic-gradient(from 20deg, hsl(0 55% 34%), hsl(45 60% 32%), hsl(120 45% 28%), hsl(195 55% 32%), hsl(260 45% 36%), hsl(320 50% 34%), hsl(360 55% 34%)); color: #fff; }
+/* ---- рамки: кільце — другим шаром фону під border ---- */
+.ava.fr { border: 2px solid transparent; box-shadow: none; }
+.ava.xl.fr { border-width: 2.5px; }
+.ava.xxl.fr { border-width: 3.5px; }
+.ava.fr-copper { background: var(--ava-bg) padding-box, linear-gradient(135deg, #f0b07a, #8a4b22 45%, #d98d57 70%, #6e3a18) border-box; }
+.ava.fr-silver { background: var(--ava-bg) padding-box, linear-gradient(135deg, #ffffff, #8d98a3 40%, #e6ecf1 65%, #6f7a85) border-box; box-shadow: 0 0 6px rgba(220, 232, 240, .35); }
+.ava.fr-gold { background: var(--ava-bg) padding-box, linear-gradient(135deg, #fff4bf, #d99a16 40%, #ffd75e 65%, #a86d07) border-box; box-shadow: 0 0 9px rgba(255, 200, 60, .5); }
+@property --lv-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.ava.fr-alive {
+  background: var(--ava-bg) padding-box, conic-gradient(from var(--lv-a), #ff6b6b, #ffd166, #06d6a0, #4cc9f0, #b388ff, #ff6b6b) border-box;
+  box-shadow: 0 0 10px rgba(255, 255, 255, .22); animation: lv-spin 3.2s linear infinite;
+}
+@keyframes lv-spin { to { --lv-a: 360deg; } }
+
+/* ---- нік «Веселка»: дрібні ніки переливаються кольором, великі (профіль, картка, вітрина) — смугою ---- */
+@keyframes lv-rainbow {
+  0% { color: hsl(0 85% 72%); } 17% { color: hsl(38 92% 64%); } 33% { color: hsl(105 65% 64%); }
+  50% { color: hsl(185 78% 64%); } 67% { color: hsl(228 88% 76%); } 83% { color: hsl(290 72% 74%); } 100% { color: hsl(360 85% 72%); }
+}
+.who-n.rainbow, .msg .n.who-n.rainbow, .online .chip.rainbow { animation: lv-rainbow 6s linear infinite; }
+.wh-main h2 .rainbow, .pc-who b.rainbow, .lv-nick.rainbow {
+  background: linear-gradient(90deg, hsl(0 85% 70%), hsl(38 92% 62%), hsl(105 65% 62%), hsl(185 78% 62%), hsl(228 88% 74%), hsl(290 72% 72%), hsl(360 85% 70%)) 0 0 / 200% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: lv-slide 5s linear infinite;
+}
+@keyframes lv-slide { to { background-position: 200% 0; } }
+@media (prefers-reduced-motion: reduce) { .rainbow, .ava.fr-alive { animation: none !important; } }
+/* значок перед ніком у балачках */
+.nico { font-style: normal; margin-right: 3px; font-size: .95em; -webkit-text-fill-color: initial; }
+.online .chip .nico { margin-right: 2px; }
+/* титул — під ніком у картці, профілі й вітрині */
+.lv-titlechip {
+  display: inline-block; align-self: flex-start; margin: 1px 0; padding: 1px 9px; border-radius: 999px; font-size: .78em; font-weight: 600;
+  color: #ffe7a8; background: linear-gradient(90deg, #5a3d10, #3d2a0c); border: 1px solid #7a5a1c; letter-spacing: .01em;
+}
+
+/* ---- тло профілю ---- */
+.who-head.lv-bgd { position: relative; overflow: hidden; }
+.who-head.lv-bgd > * { position: relative; }
+.who-head.lv-bgd::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10, 14, 12, .72) 0%, rgba(10, 14, 12, .45) 55%, rgba(10, 14, 12, .15)); pointer-events: none; }
+.who-head.lv-bgd h2, .who-head.lv-bgd .wh-where, .who-head.lv-bgd .muted { text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
+.bg-stars {
+  background:
+    radial-gradient(1.4px 1.4px at 22px 18px, #fff 98%, transparent) 0 0 / 97px 83px,
+    radial-gradient(1px 1px at 60px 50px, #cfe0ff 98%, transparent) 0 0 / 131px 107px,
+    radial-gradient(1.8px 1.8px at 90px 70px, #fff6d0 98%, transparent) 0 0 / 173px 149px,
+    radial-gradient(1.1px 1.1px at 40px 90px, #fff 98%, transparent) 0 0 / 151px 121px,
+    radial-gradient(120% 100% at 85% -10%, #3a4796 0%, transparent 55%),
+    linear-gradient(180deg, #0c1230, #1c1442) !important;
+}
+.bg-stripes {
+  background: repeating-linear-gradient(135deg, #3a2448 0 16px, #24324a 16px 32px, #1f3d33 32px 48px, #4a3320 48px 64px) !important;
+}
+.bg-vyshyvanka {
+  background:
+    linear-gradient(45deg, transparent 38%, #d32f2f 38% 62%, transparent 62%) 0 6px / 14px 14px repeat-x,
+    linear-gradient(-45deg, transparent 38%, #d32f2f 38% 62%, transparent 62%) 0 6px / 14px 14px repeat-x,
+    linear-gradient(45deg, transparent 38%, #111 38% 62%, transparent 62%) 7px 22px / 14px 14px repeat-x,
+    linear-gradient(-45deg, transparent 38%, #111 38% 62%, transparent 62%) 7px 22px / 14px 14px repeat-x,
+    linear-gradient(45deg, transparent 38%, #d32f2f 38% 62%, transparent 62%) 0 calc(100% - 6px) / 14px 14px repeat-x,
+    linear-gradient(-45deg, transparent 38%, #d32f2f 38% 62%, transparent 62%) 0 calc(100% - 6px) / 14px 14px repeat-x,
+    linear-gradient(45deg, transparent 38%, #111 38% 62%, transparent 62%) 7px calc(100% - 22px) / 14px 14px repeat-x,
+    linear-gradient(-45deg, transparent 38%, #111 38% 62%, transparent 62%) 7px calc(100% - 22px) / 14px 14px repeat-x,
+    linear-gradient(180deg, #3b302a, #2c231f) !important;
+}
+.bg-petrykivka {
+  background:
+    radial-gradient(circle at 90% 32%, #ffd54f 0 5px, transparent 6px),
+    radial-gradient(circle at 90% 32%, #e53935 0 14px, transparent 15px),
+    radial-gradient(circle at 90% 32%, #ffb300 0 21px, transparent 22px),
+    radial-gradient(circle at 78% 72%, #fdd835 0 4px, transparent 5px),
+    radial-gradient(circle at 78% 72%, #fb8c00 0 10px, transparent 11px),
+    radial-gradient(circle at 78% 72%, #c62828 0 15px, transparent 16px),
+    radial-gradient(circle at 66% 22%, #d81b60 0 6px, transparent 7px),
+    radial-gradient(circle at 97% 82%, #ff7043 0 8px, transparent 9px),
+    radial-gradient(ellipse 26px 9px at 80% 45%, #43a047 97%, transparent),
+    radial-gradient(ellipse 22px 8px at 97% 55%, #2e7d32 97%, transparent),
+    radial-gradient(ellipse 18px 7px at 70% 58%, #66bb6a 97%, transparent),
+    radial-gradient(ellipse 20px 7px at 86% 12%, #388e3c 97%, transparent),
+    linear-gradient(180deg, #161210, #0f0c0b) !important;
+}
+.bg-trypillia {
+  background:
+    radial-gradient(circle at 100% 50%, transparent 20%, #c0703a 21% 33%, transparent 34% 49%, #c0703a 50% 62%, transparent 63%) 0 0 / 48px 48px,
+    radial-gradient(circle at 0 50%, transparent 20%, #8a4a1f 21% 33%, transparent 34% 49%, #8a4a1f 50% 62%, transparent 63%) 24px 24px / 48px 48px,
+    linear-gradient(180deg, #2a1a10, #1e130c) !important;
+}
+
+/* ---- рядки балачок: подарунок, присвята, феєрверк ---- */
+.msg.deed { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; padding: 4px 8px; border-radius: 10px; background: #241a2e; border: 1px solid #45305a; }
+.msg.deed.dedication { background: #2e1a24; border-color: #5a3045; }
+.msg.deed.fx { background: transparent; border-style: dashed; }
+.msg.deed .n { margin-right: 0; }
+.msg.deed .t { color: var(--text); }
+.msg.deed.tome { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
+/* ---- 🎆 над обкладинкою ---- */
+.fwbtn { font-size: 1.05em; padding: 4px 8px; border-color: #7a5a1c; background: linear-gradient(135deg, #3a2a10, #2a1d0c); }
+.fwbtn:hover { border-color: var(--accent); }
+.fw { position: absolute; width: 0; height: 0; pointer-events: none; }
+.fw i {
+  position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--c);
+  box-shadow: 0 0 8px var(--c); opacity: 0; animation: lv-burst 1.3s cubic-bezier(.15, .7, .3, 1) forwards;
+}
+@keyframes lv-burst {
+  0% { opacity: 1; transform: translate(0, 0) scale(1.2); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 24px)) scale(.4); }
+}
+@media (prefers-reduced-motion: reduce) { .fw i { animation-duration: .01s; } }
+/* 💌 на моїй найближчій пісні в черзі */
+.qitem .ded { font-size: .95em; }
+.dedmodal .card { width: min(94vw, 460px); }
+.ded-h { font-weight: 700; font-family: var(--display); margin-top: 2px; }
+.ded-chips { display: flex; gap: 6px; flex-wrap: wrap; max-height: 30vh; overflow: auto; }
+.ded-chips .chip { border: 1px solid var(--line); cursor: pointer; font: inherit; font-size: .88em; color: var(--text); background: var(--bg2); }
+.ded-chips .chip.on { border-color: var(--accent); background: var(--panel3); color: var(--accent); }
+.ded-say { background: var(--bg2); border-left: 3px solid var(--accent2); border-radius: 6px; padding: 8px 10px; font-size: .92em; }
+
+/* ---- вітрина ---- */
+.lavka { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.lv-head { display: flex; flex-direction: column; gap: 12px; }
+.lv-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: space-between; }
+.lv-sign { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lv-sign img { width: 52px; height: 52px; flex: none; }
+.lv-sign h2 { margin: 0; font-family: var(--display); font-size: 1.4em; }
+.lv-bal { background: var(--bg2); border-radius: 12px; padding: 8px 14px; white-space: nowrap; }
+.lv-bal b { color: var(--accent); font-size: 1.25em; font-variant-numeric: tabular-nums; }
+.lv-gift, .lv-guest { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: #2a2210; border: 1px solid #4a3a12; }
+.lv-gift button, .lv-guest button { margin-left: auto; }
+.lv-preview { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px; border-radius: 12px; background: var(--bg2); position: relative; overflow: hidden; }
+.lv-preview > * { position: relative; }
+.lv-preview[class*=' bg-']::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10, 14, 12, .7), rgba(10, 14, 12, .2)); }
+.lv-pv-who { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.lv-pv-who .lv-nick { font-family: var(--display); font-size: 1.35em; }
+.lv-nick { color: hsl(var(--h) 72% 76%); }
+.lv-pv-reset { margin-left: auto; }
+.lv-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+.lv-tabs button { padding: 6px 12px; font-size: .92em; }
+.lv-tabs button.on { background: var(--panel3); border-color: var(--accent2); color: var(--accent); }
+.lv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+.lv-item {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 12px 10px;
+  background: var(--bg2); border-radius: 12px; border: 1px solid transparent; min-width: 0;
+}
+.lv-item.owned { border-color: #3d6a4d; }
+.lv-item.worn { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2) inset; }
+.lv-item.trying { border-color: var(--accent); border-style: dashed; }
+.lv-item.locked { opacity: .72; }
+.lv-art { height: 76px; display: grid; place-items: center; width: 100%; }
+.lv-emoji { font-size: 2.5em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.lv-art .lv-nick { font-family: var(--display); font-size: 1.15em; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-bg { display: block; width: 100%; height: 64px; border-radius: 10px; }
+.lv-name { font-weight: 700; }
+.lv-desc { line-height: 1.35; }
+.lv-state { font-size: .88em; color: var(--muted); }
+.lv-item.owned .lv-state { color: var(--ok); }
+.lv-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: auto; }
+.lv-btns button { padding: 5px 11px; font-size: .88em; }
+@media (max-width: 600px) {
+  .lv-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .lv-sign img { width: 40px; height: 40px; }
+  .lv-sign h2 { font-size: 1.2em; }
+}

@@ -7,8 +7,9 @@
   const tracksN = (n) => plural(n, 'трек', 'треки', 'треків');
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
   const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
-  /// Нік, по якому можна клацнути: колір свій у кожного (web/people.js), клік — картка людини.
-  const nickHtml = (n, cls) => `<span class="${cls || 'n'} who-n" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}">${esc(n)}</span>`;
+  /// Нік, по якому можна клацнути: колір свій у кожного (web/people.js), клік — картка людини. badge — значок, куплений
+  /// у Лавці, перед ніком: у балачках, де людей багато й хочеться впізнати одразу (data-nb — щоб перемалювати на льоту).
+  const nickHtml = (n, cls, badge) => `<span class="${cls || 'n'} who-n${HPeople.nickCls(n)}" data-who="${esc(n)}"${badge ? ' data-nb="1"' : ''} style="--h:${HPeople.hue(n)}">${badge ? HPeople.badge(n) : ''}${esc(n)}</span>`;
   // Голосове — такий самий трек у черзі, тільки з нашим id і без обкладинки: замість неї мікрофон.
   const isVoice = (t) => !!t && String(t.id || '').startsWith('voice-');
   const cover = (t, attrs) => (t && t.thumbUrl
@@ -395,10 +396,14 @@
   let dragging = null, pendingQueueRender = false; // queue drag-to-reorder state
 
   const reactsHtml = () => EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('');
+  /// Феєрверк — вміння з Лавки: хто купив, у того поруч із реакціями ще й 🎆.
+  const fwHtml = () => (HLavka.perk('fireworks')?.owned
+    ? '<button type="button" class="fwbtn" title="Феєрверк над обкладинкою в усіх — твоє вміння з Лавки, раз на 10 хвилин">🎆</button>' : '');
   function wireReacts(box) {
     box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => {
       if (conn) conn.invoke('React', b.dataset.e).catch(() => {});
     });
+    box.querySelector('.fwbtn')?.addEventListener('click', (e) => launchFireworks(e.currentTarget));
   }
   const skipNow = () => api('POST', '/api/skip').then(ok).catch(fail);
 
@@ -438,7 +443,7 @@
           <div class="title">${esc(title)}</div>
           <div class="artist"><span class="art">${esc(sub)}</span></div>
           <div class="why">${spot ? 'грає резервний потік, поки в черзі порожньо' : 'закинь щось або зачекай'}</div>
-          <div class="actions"><span class="reacts">${reactsHtml()}</span></div>
+          <div class="actions"><span class="reacts">${reactsHtml()}</span>${fwHtml()}</div>
         </div>`;
       if (!mini) wireReacts(box);
       return;
@@ -476,7 +481,7 @@
           <button data-act="pl" title="Зберегти в плейлист">📂＋</button>
           ${t.sourceUrl ? `<a class="chip src" href="${esc(t.sourceUrl)}" target="_blank" rel="noopener" title="${isVoice(t) ? 'Послухати голосове' : 'Відкрити джерело'}">↗</a>` : ''}
           ${canBan ? `<button data-act="ban" class="danger ghost" title="${banPrice ? `Забанити назавжди за ${banPrice} черепків: трек скіпнеться і більше не заграє` : 'Забанити трек і скіпнути'}">🚫${banPrice ? ` ${banPrice} 🏺` : ' бан'}</button>` : ''}
-          <span class="reacts" title="Реакція — полетить над обкладинкою в усіх">${reactsHtml()}</span>
+          <span class="reacts" title="Реакція — полетить над обкладинкою в усіх">${reactsHtml()}</span>${fwHtml()}
         </div>
       </div>`;
     wireNow(box, t, o);
@@ -486,7 +491,8 @@
   function renderNow() {
     const n = state.now;
     const sig = JSON.stringify([n.playId, n.itemId, n.source, n.track?.id, n.likers, n.skipPending, n.requestedBy, n.via, n.reason,
-      n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName]);
+      n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName,
+      !!HLavka.perk('fireworks')?.owned]);
     if (sig === nowSig) return;
     nowSig = sig;
     const banner = $('banner');
@@ -550,6 +556,97 @@
     setTimeout(() => el.remove(), 2500);
   }
 
+  // ---------- 🎆 феєрверк і 💌 присвята (вміння з Лавки Дядька Глека, web/lavka.js) ----------
+  function launchFireworks(btn) {
+    if (!conn) return;
+    const p = HLavka.perk('fireworks');
+    if (p && p.readyAt && Date.parse(p.readyAt) > Date.now()) { toast('Феєрверк ще заряджається: ' + HLavka.readyIn(p.readyAt), 'err'); return; }
+    busy(btn, '', () => conn.invoke('Fireworks').then((err) => {
+      if (err) toast(err, 'err'); else HLavka.usedPerk('fireworks', 10);
+    }).catch(fail));
+  }
+  /// Три спалахи над обкладинкою, кожен — кільце іскор свого кольору, і підпис, хто запустив.
+  function fireworks(nick) {
+    const layer = $('flyLayer');
+    if (!layer || document.hidden) return;
+    const cover = document.querySelector('#now .cover');
+    const pr = layer.parentElement.getBoundingClientRect();
+    const cr = cover ? cover.getBoundingClientRect() : pr;
+    for (let b = 0; b < 3; b++) {
+      const burst = document.createElement('div');
+      burst.className = 'fw';
+      burst.style.left = (cr.left - pr.left + cr.width * (0.2 + Math.random() * 0.6)) + 'px';
+      burst.style.top = (cr.top - pr.top + cr.height * (0.15 + Math.random() * 0.45)) + 'px';
+      const hue0 = Math.floor(Math.random() * 360);
+      const delay = b * 320;
+      let html = '';
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2 + Math.random() * 0.2;
+        const r = 45 + Math.random() * 35;
+        html += `<i style="--dx:${(Math.cos(a) * r).toFixed(1)}px;--dy:${(Math.sin(a) * r).toFixed(1)}px;--c:hsl(${(hue0 + i * 9) % 360} 95% 66%);animation-delay:${delay}ms"></i>`;
+      }
+      burst.innerHTML = html;
+      layer.appendChild(burst);
+      setTimeout(() => burst.remove(), 1700 + delay);
+    }
+    const tag = document.createElement('div');
+    tag.className = 'fly';
+    tag.style.left = (cr.left - pr.left + cr.width * 0.5 - 20) + 'px';
+    tag.style.top = (cr.top - pr.top + cr.height * 0.7) + 'px';
+    tag.innerHTML = `🎆<small>${esc(nick || '')}</small>`;
+    layer.appendChild(tag);
+    setTimeout(() => tag.remove(), 2500);
+  }
+
+  /// Кому й як присвятити — віконце з кнопок (без вільного тексту: Глек читає це вголос на всіх).
+  function openDedication(it) {
+    if (!it) return;
+    const p = HLavka.perk('dedication');
+    if (p && p.readyAt && Date.parse(p.readyAt) > Date.now()) { toast('Присвята ще відпочиває: ' + HLavka.readyIn(p.readyAt), 'err'); return; }
+    const phrases = HLavka.phrases();
+    const people = ((state && state.online) || []).filter((n) => !sameNick(n, me.nick));
+    let to = '*';
+    let phrase = phrases[0] ? phrases[0].key : '';
+    const wrap = document.createElement('div');
+    wrap.className = 'modal dedmodal';
+    wrap.innerHTML = `<div class="card">
+        <h3>💌 Присвятити пісню</h3>
+        <div class="muted small">Перед «${esc(it.track.title)}» ${esc(dj())} скаже в ефір, кому ти її присвячуєш. Присвята — раз на 3 години.</div>
+        <div class="ded-h">Кому</div>
+        <div class="ded-chips" data-k="to">${['*'].concat(people).map((n) => `<button type="button" class="chip${n === '*' ? ' on' : ''}" data-v="${esc(n)}">${n === '*' ? '🌍 усім, хто слухає' : esc(n)}</button>`).join('')}</div>
+        ${people.length ? '' : '<div class="muted small">Зараз на сайті більше нікого — присвяти всім, хто слухає.</div>'}
+        <div class="ded-h">Як</div>
+        <div class="ded-chips" data-k="phrase">${phrases.map((x, i) => `<button type="button" class="chip${i === 0 ? ' on' : ''}" data-v="${esc(x.key)}">${esc(x.text)}</button>`).join('')}</div>
+        <div class="ded-say"></div>
+        <div class="row"><button type="button" class="primary" data-yes>Присвятити</button><button type="button" class="ghost" data-no>Передумав</button></div>
+      </div>`;
+    const say = () => {
+      const ph = phrases.find((x) => x.key === phrase);
+      wrap.querySelector('.ded-say').textContent = `🎙 «Цю пісню ${me.nick} присвячує ${to === '*' ? 'всім, хто слухає' : HLavka.dative(to)}${ph ? ' — ' + ph.text : ''}»`;
+    };
+    const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    wrap.querySelectorAll('.ded-chips').forEach((box) => box.querySelectorAll('button').forEach((b) => b.onclick = () => {
+      box.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      if (box.dataset.k === 'to') to = b.dataset.v; else phrase = b.dataset.v;
+      say();
+    }));
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector('[data-no]').onclick = close;
+    wrap.querySelector('[data-yes]').onclick = (e) => busy(e.currentTarget, 'присвячую…', async () => {
+      try {
+        const r = await api('POST', '/api/lavka/dedicate', { to, phrase });
+        toast(r.message || 'Присвята полетіла', 'ok');
+        HLavka.usedPerk('dedication', 180);
+        close();
+      } catch (err) { fail(err); }
+    });
+    say();
+    document.body.appendChild(wrap);
+    document.addEventListener('keydown', onKey, true);
+    wrap.querySelector('[data-yes]').focus();
+  }
+
   // ---------- queue ----------
   /// Чип стану — лише коли щось не так чи ще не готово: «готово» й «чекає» людям нічого не кажуть,
   /// їм важливо, коли заграє, а це й так видно (ETA в рядку).
@@ -567,7 +664,10 @@
     const q = state.queue;
     queueDur = q.map((it) => it.track.durationSec || 0);
     const sug0 = (state.suggestions || [])[0];
-    const sig = JSON.stringify([q.map((it) => [it.itemId, it.status, it.error, it.requestedBy, it.via]), me.role, me.nick, state.djName, !q.length && sug0 && sug0.itemId]);
+    // Присвята лягає перед МОЄЮ найближчою піснею, що ще не пішла в ефір, — тож і 💌 лише на ній.
+    const dedId = HLavka.perk('dedication')?.owned
+      ? (q.find((it) => sameNick(it.requestedBy, me.nick) && it.status !== 'dispatched' && it.status !== 'failed' && !isVoice(it.track)) || {}).itemId : null;
+    const sig = JSON.stringify([q.map((it) => [it.itemId, it.status, it.error, it.requestedBy, it.via]), me.role, me.nick, state.djName, !q.length && sug0 && sug0.itemId, dedId]);
     if (sig === queueSig) { tick(); return; }
     queueSig = sig;
     $('queueCount').textContent = q.length ? `· ${q.length} · ${fmt(queueDur.reduce((a, b) => a + b, 0))}` : '';
@@ -595,6 +695,7 @@
           </div>
           <div class="btns">
             ${voiceBtn(it.track)}
+            ${it.itemId === dedId ? `<button class="icon ded" title="Присвятити цю пісню — ${esc(dj())} скаже в ефір, кому, перед тим як вона заграє">💌</button>` : ''}
             ${canMove ? '<span class="grip" title="Тягни, щоб пересунути">⠿</span>' : ''}
             ${mine ? `<button class="icon danger rm" title="Прибрати">✕</button>` : ''}
           </div>
@@ -603,6 +704,7 @@
       ul.querySelectorAll('li').forEach((li) => {
         const id = li.dataset.id;
         li.querySelector('.rm')?.addEventListener('click', (e) => busy(e.currentTarget, '', () => api('DELETE', `/api/queue/${id}`).catch(fail)));
+        li.querySelector('.ded')?.addEventListener('click', () => openDedication(q.find((x) => String(x.itemId) === id)));
         wireVoiceButtons(li);
         if (li.classList.contains('movable')) li.addEventListener('pointerdown', (e) => startDrag(e, li));
       });
@@ -773,8 +875,8 @@
     const people = state.online.slice().sort((a, b) => listens(b) - listens(a));
     // Клік по людині — її картка (web/people.js ловить data-who на всій сторінці).
     $('online').innerHTML = people.map((n) => listens(n)
-      ? `<button type="button" class="chip listening who-n" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="${esc(n)} зараз слухає ефір">🎧 ${esc(n)}${crownOf(n)}</button>`
-      : `<button type="button" class="chip who-n" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="на сайті, але плеєр вимкнений">${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">нікого</span>';
+      ? `<button type="button" class="chip listening who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="${esc(n)} зараз слухає ефір">🎧 ${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`
+      : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="на сайті, але плеєр вимкнений">${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">нікого</span>';
     HPeople.refreshWhere();          // на відкритому профілі «на сайті / слухає» — живе
   }
   $('listeners').onclick = () => { if (state) toast(listenersText()); };
@@ -1148,18 +1250,27 @@
     prev.dataset.ts = String(new Date(m.at).getTime());
   }
 
+  /// Що зроблено в Лавці — рядком у балачках: «🎁 Оля дарує Петрові …», «💌 Оля присвячує …», «🎆 Оля запускає феєрверк!».
+  const DEEDS = { gift: '🎁', dedication: '💌', fx: '🎆' };
   function fillMessage(el, m, mine, live) {
     const isLog = m.kind === 'system';
     // Монетка живе в тій самій розкладці, що й кубик (.msg.dice — рядок у флексі); /choose і /8ball
     // це звичайні рядки з іконкою в самому тексті, тож їм окрема гілка ні до чого.
     el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj'
       : m.kind === 'dice' || m.kind === 'coin' ? 'dice'
-        : m.kind === 'tables' ? 'tables' : m.kind === 'invite' ? 'invite' : m.kind === 'note' ? 'note' : mine ? 'mine' : '');
-    if (m.kind === 'invite') {
+        : m.kind === 'tables' ? 'tables' : m.kind === 'invite' ? 'invite' : m.kind === 'note' ? 'note'
+          : DEEDS[m.kind] ? 'deed ' + m.kind : mine ? 'mine' : '');
+    if (DEEDS[m.kind]) {
+      // Подарували чи присвятили мені — підсвічуємо, як особистий заклик.
+      if (m.to && sameNick(m.to, me.nick)) el.classList.add('tome');
+      el.innerHTML = `<span class="iv-ico">${DEEDS[m.kind]}</span>${nickHtml(m.nick, 'n', true)}`
+        + `<span class="t">${esc(String(m.text || '').replace(/^\s*(🎁|💌|🎆)\s*/u, ''))}</span><span class="time">${tm(m.at)}</span>`;
+      if (live && m.kind === 'fx') el.classList.add('flash');
+    } else if (m.kind === 'invite') {
       // «📣 Влад кличе в Мафію [Сісти]» — живий рядок: кнопку домальовує paintRoomSlots, а щойно сісти вже нікуди,
       // рядок ховається сам. Особистий заклик (personal) бачить лише той, кого кликали, — його й підсвічуємо.
       if (m.personal) el.classList.add('tome');
-      el.innerHTML = `<span class="iv-ico">📣</span>${nickHtml(m.nick)}<span class="t">${esc(m.text)}</span><span class="time">${tm(m.at)}</span>`;
+      el.innerHTML = `<span class="iv-ico">📣</span>${nickHtml(m.nick, 'n', true)}<span class="t">${esc(m.text)}</span><span class="time">${tm(m.at)}</span>`;
     } else if (m.kind === 'note') {
       // Особиста відповідь сервера («📣 Покликав Олю») — як /столи: бачиш лише ти, у базі її нема.
       el.innerHTML = `<span class="t">${linkify(m.text)}</span><span class="time">лише тобі</span>`;
@@ -1174,7 +1285,7 @@
       if (!el.querySelector('.roomlink')) el.querySelector('.tlist').innerHTML = '<span class="muted small">Столи щойно розібрали.</span>';
     } else if (m.kind === 'coin' || m.kind === 'dice') {
       el.classList.toggle('mine', mine);
-      el.innerHTML = `${nickHtml(m.nick)}<span class="dies"></span><span class="rng muted small"></span><span class="time">${tm(m.at)}</span>`;
+      el.innerHTML = `${nickHtml(m.nick, 'n', true)}<span class="dies"></span><span class="rng muted small"></span><span class="time">${tm(m.at)}</span>`;
       el.querySelector('.dies').appendChild(rollEl(m, live));
       paintRollRange(el);
     } else if (m.kind === 'dj') {
@@ -1186,7 +1297,7 @@
       const big = emojiCount(m.text);
       if (big && big <= 3) el.classList.add('big');
       // корона — всередині ніка: repaintCrowns() переставляє її саме там
-      el.innerHTML = `<span class="n who-n" data-who="${esc(m.nick)}" style="--h:${HPeople.hue(m.nick)}">${esc(m.nick)}${crownOf(m.nick)}</span>`
+      el.innerHTML = `<span class="n who-n${HPeople.nickCls(m.nick)}" data-who="${esc(m.nick)}" data-nb="1" style="--h:${HPeople.hue(m.nick)}">${HPeople.badge(m.nick)}${esc(m.nick)}${crownOf(m.nick)}</span>`
         + `<span class="t">${highlightMentions(linkify(m.text))}</span><span class="time">${tm(m.at)}</span>`;
     }
     // Для днів, групування й гортання вгору: коли, хто і який це рядок у базі.
@@ -1842,9 +1953,9 @@
   // ---------- маршрути ----------
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
   // балачок на телефоні). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
-  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'chat'];
+  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback'];
-  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', chat: 'Балачки' };
+  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки' };
   const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках' };
@@ -1907,6 +2018,7 @@
     $('libTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === libTab));
     if (r === 'games') HGames.show(head === 'games' ? tail : ''); else HGames.hide();
     if (r === 'stats' || r === 'who') HPeople.show(r, tail); else HPeople.hide();
+    if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
     if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
     if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
@@ -3128,7 +3240,11 @@
       .withAutomaticReconnect()
       .build();
     conn.on('state', (s) => { state = s; render(); });
-    conn.on('chat', (m) => addMessage(m, true, true));
+    conn.on('chat', (m) => {
+      addMessage(m, true, true);
+      // Мені щось подарували — оновити шафу: раптом це вміння (🎆 чи 💌), і кнопка має з'явитись одразу.
+      if (m && m.kind === 'gift' && m.to && sameNick(m.to, me.nick) && me.account) HLavka.loadMine().then(lavkaChanged);
+    });
     let tourRoom = null;
     if (window.HTournament) HTournament.connect((...a) => conn.invoke(...a));
     conn.on('tournament', (t) => {
@@ -3152,6 +3268,8 @@
       if (el) paintLikes(el, x.likes || []);
     });
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
+    conn.on('fireworks', (x) => fireworks(x && x.nick));
+    conn.on('look', (x) => HLavka.onLook(x));
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
     // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
@@ -3199,6 +3317,7 @@
     });
     conn.onreconnected(() => {
       conn.invoke('SetNick', me.nick).catch(() => {});
+      HLavka.loadLooks();            // поки зв'язку не було, хтось міг перевдягтись
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       HGames.reconnected();
       toast('Знову на зв\'язку', 'ok');
@@ -3244,6 +3363,11 @@
     ping: () => ping(),
     mention: (nick) => { const inp = $('chatInput'); inp.value = (inp.value ? inp.value.replace(/\s*$/, ' ') : '') + '@' + nick + ' '; if (isMobile()) go('#chat'); else setChatOpen(true); setChatTab('chat'); inp.focus(); },
   });
+  // Лавка Дядька Глека (web/lavka.js): вітрина, а ще — хто як вбраний. Своє купив чи вдягнув — перемалювати шапку,
+  // ефір (🎆) і чергу (💌): там кнопки вмінь.
+  const lavkaChanged = () => { paintNick(); nowSig = ''; queueSig = ''; if (state) render(); };
+  HLavka.init({ $, esc, api, toast, busy, me, go, askNick, onMine: lavkaChanged });
+  HLavka.loadLooks();
   // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри,
   // onTurn — за якими столами мій хід (заголовок вкладки й «Ігри»), online — хто на сайті (кого покликати за стіл).
   HGames.init({
@@ -3275,6 +3399,7 @@
       localStorage.setItem('nick', m.nick);
       paintNick();
       connect();
+      if (me.account) HLavka.loadMine().then(lavkaChanged);
       if (plain) askNick(true, 'register', plain);
       // «💡»: адміну — скільки нових записок, решті — чи є свіжа відповідь розробника на свої.
       if (me.role === 'admin') loadFeedbackCount(); else loadMyFeedback(false);

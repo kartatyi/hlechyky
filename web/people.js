@@ -34,19 +34,36 @@
   /// FNV-1a від ніка, відтінок — зі СТАРШИХ бітів: молодші в FNV перемішуються погано, і за «% 16» половина
   /// друзів ставала одного кольору. Зерно підібране так, щоб у найбалакучіших (на 26.09.2026) кольори не збігались.
   const HUE_SEED = 30308;
-  function hue(nick) {
+  function hueRaw(nick) {
     const s = String(nick || '').toLowerCase().trim();
     let h = HUE_SEED;
     for (const ch of s) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
     return HUES[Math.floor(h / 4294967296 * HUES.length)];
   }
-  /// Перша літера ніка в кружечку його кольору. «гість Вася» — це «В», а не «Г».
-  function ava(nick, cls, id) {
-    const n = String(nick || '').replace(/^гість\s+/i, '').trim();
-    const ch = n ? [...n][0].toUpperCase() : '?';
-    return '<span' + (id ? ' id="' + id + '"' : '') + ' class="' + (cls || 'ava') + '" style="--h:' + hue(nick) + '" aria-hidden="true">' + esc(ch) + '</span>';
+  /// Що людина вдягла в Лавці Дядька Глека (web/lavka.js): значок, рамку, колір ніка, титул, тло профілю.
+  const lookOf = (nick) => (window.HLavka && nick ? window.HLavka.look(nick) : null);
+  /// Колір ніка: куплений у Лавці, а як нема — сталий із хешу. «Веселка» переливається класом rainbow,
+  /// а --h лишається своїм — ним фарбуються смужки в таблицях.
+  function hue(nick) {
+    const l = lookOf(nick);
+    return l && typeof l.color === 'number' ? l.color : hueRaw(nick);
   }
-  const nickLink = (n, cls) => '<span class="' + (cls || 'who-n') + ' who-n" data-who="' + esc(n) + '" style="--h:' + hue(n) + '">' + esc(n) + '</span>';
+  const nickCls = (nick) => { const l = lookOf(nick); return l && l.color === 'rainbow' ? ' rainbow' : ''; };
+  /// Куплений значок — маленьким перед ніком у балачках.
+  const badge = (nick) => { const l = lookOf(nick); return l && l.icon ? '<i class="nico" aria-hidden="true">' + esc(l.icon) + '</i>' : ''; };
+  /// Перша літера ніка в кружечку його кольору («гість Вася» — це «В», а не «Г»); купив значок — значок, рамку — рамка.
+  function ava(nick, cls, id) {
+    const l = lookOf(nick);
+    const n = String(nick || '').replace(/^гість\s+/i, '').trim();
+    const ch = l && l.icon ? l.icon : n ? [...n][0].toUpperCase() : '?';
+    return '<span' + (id ? ' id="' + id + '"' : '') + ' class="' + (cls || 'ava') + (l && l.icon ? ' ico' : '') + (l && l.frame ? ' fr fr-' + esc(l.frame) : '')
+      + nickCls(nick) + '" data-ava="' + esc(nick) + '" style="--h:' + hue(nick) + '" aria-hidden="true">' + esc(ch) + '</span>';
+  }
+  const nickLink = (n, cls) => '<span class="' + (cls || 'who-n') + ' who-n' + nickCls(n) + '" data-who="' + esc(n) + '" style="--h:' + hue(n) + '">' + esc(n) + '</span>';
+  /// Титул — під ніком у картці й у профілі.
+  const titleChip = (nick) => { const l = lookOf(nick); return l && l.title ? '<span class="lv-titlechip">' + esc(l.title) + '</span>' : ''; };
+  /// Гостьовий нік (з приставкою «гість ») — не акаунт: у Лавці йому нічого не купиш і не подаруєш.
+  const isGuestNick = (n) => /^гість\s/i.test(String(n || ''));
 
   // =============================================================================================
   // Час і великі числа (переїхали з core.js разом із «⏱ Час» і таблицями)
@@ -159,6 +176,7 @@
     const mine = myWaitingRoom();
     if (mine && w.online && !(w.room && w.room.id === mine.id)) out.push('<button type="button" data-pa="invite" title="Покликати за мій стіл">📣 Покликати</button>');
     if (w.room && w.room.canSit) out.push('<button type="button" data-pa="sit" title="Сісти за його стіл">🎲 Підсісти</button>');
+    if (me.account && !isGuestNick(nick)) out.push('<button type="button" data-pa="gift" title="Подарувати щось із Лавки Дядька Глека — лишиться назавжди">🎁 Подарувати</button>');
     return out.join('');
   }
   function wireActions(box, nick, after) {
@@ -166,6 +184,7 @@
       const a = b.dataset.pa;
       const g = G();
       if (a === 'profile') o.go('#who/' + encodeURIComponent(nick));
+      else if (a === 'gift') o.go('#lavka/gift/' + encodeURIComponent(nick));
       else if (a === 'mention') o.mention(nick);
       else if (a === 'invite') {
         const room = myWaitingRoom();
@@ -219,8 +238,8 @@
     el.className = 'pcard';
     el.dataset.nick = nick;
     el.setAttribute('role', 'dialog');
-    el.innerHTML = '<div class="pc-head">' + ava(nick, 'ava xl') + '<div class="pc-who"><b style="--h:' + hue(nick) + '">' + esc(nick) + '</b>'
-      + '<div class="pc-where">' + whereHtml(nick) + '</div></div>'
+    el.innerHTML = '<div class="pc-head">' + ava(nick, 'ava xl') + '<div class="pc-who"><b class="' + nickCls(nick).trim() + '" style="--h:' + hue(nick) + '">' + esc(nick) + '</b>'
+      + titleChip(nick) + '<div class="pc-where">' + whereHtml(nick) + '</div></div>'
       + '<button type="button" class="ghost icon pc-x" title="Закрити" aria-label="Закрити">✕</button></div>'
       + '<div class="pc-stats"><span class="spin"></span></div>'
       + '<div class="pc-acts">' + actionsHtml(nick, false) + '</div>';
@@ -494,12 +513,16 @@
       : ppl ? (ppl.account ? 'акаунт' : 'гість') : '';
     const btns = mine
       ? (me.account
-        ? '<button type="button" data-acc="me" title="Пароль, Google, вийти">⚙ Акаунт</button>'
+        ? '<button type="button" class="primary" data-go="#lavka" title="Значки, рамки, колір ніка, титули, тло — назавжди, за черепки">🛍 Лавка</button>'
+          + '<button type="button" data-acc="me" title="Пароль, Google, вийти">⚙ Акаунт</button>'
         : '<button type="button" class="primary" data-acc="register" title="Закріпити нік паролем — під ним ніхто інший не напише">✍ Закріпити нік</button>'
           + '<button type="button" data-acc="login">🔑 Зайти в акаунт</button><button type="button" class="ghost" data-acc="guest">✏ Інше ім\'я</button>')
       : actionsHtml(nick, true);
-    return '<section class="panel who-head">' + ava(nick, 'ava xxl')
-      + '<div class="wh-main"><h2 style="--h:' + hue(nick) + '">' + esc(nick) + (mine ? ' <span class="muted small">· це ти</span>' : '') + '</h2>'
+    const l = lookOf(nick);
+    return '<section class="panel who-head' + (l && l.bg ? ' lv-bgd bg-' + esc(l.bg) : '') + '">' + ava(nick, 'ava xxl')
+      + '<div class="wh-main"><h2 style="--h:' + hue(nick) + '"><span class="' + nickCls(nick).trim() + '">' + esc(nick) + '</span>'
+      + (mine ? ' <span class="muted small">· це ти</span>' : '') + '</h2>'
+      + titleChip(nick)
       + '<div class="wh-where">' + whereHtml(nick) + '</div>'
       + (acct ? '<div class="muted small">' + esc(acct) + '</div>' : '') + '</div>'
       + '<div class="wh-acts">' + btns + '</div></section>';
@@ -511,6 +534,7 @@
       else o.askNick(true, m);
     });
     if (!mine) wireActions(root.querySelector('.who-head'), nick, () => {});
+    root.querySelectorAll('.who-head [data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
   }
 
   function walletCard(p, led, mine) {
@@ -530,8 +554,9 @@
           + '<span class="muted small">' + esc(o.dayTime(x.at)) + '</span></div>').join('') + '</div>';
       }
     }
-    if (mine) body += '<div class="muted small wc-how">Черепки капають за радіо (увімкнений плеєр), партії, щоденний глек і ачівки. Витрачаються на бан треку й викуп із бану.</div>';
-    return '<section class="panel wcard"><h3>🏺 Черепки</h3>' + body + '</section>';
+    if (mine) body += '<div class="muted small wc-how">Черепки капають за радіо (увімкнений плеєр), партії, щоденний глек і ачівки. '
+      + 'Витрачаються в Лавці Дядька Глека (усе там — назавжди), на бан треку й викуп із бану.</div>';
+    return '<section class="panel wcard"><h3>🏺 Черепки' + (mine && o.me.account ? ' <button type="button" class="ghost wc-more" data-go="#lavka">🛍 Лавка →</button>' : '') + '</h3>' + body + '</section>';
   }
 
   function timeCard(p, week) {
@@ -604,7 +629,7 @@
       o = opts;
       if (o.esc) esc = o.esc;
     },
-    hue, ava, nickLink, dur, lbNum, shards,
+    hue, hueRaw, nickCls, badge, ava, nickLink, dur, lbNum, shards,
     /// Куди веде кнопка «📊 Хто скільки»: на вкладку, де людина була востаннє.
     statsHash: () => '#stats/' + statsTab,
     show(kind, tail) {

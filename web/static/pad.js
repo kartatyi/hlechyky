@@ -625,7 +625,8 @@
     const cls = document.body.classList;
     const rows = cls.contains('route-games') ? ['.gfilters', '#chatTabs']
       : cls.contains('route-lib') ? ['#libTabs', '#chatTabs']
-        : cls.contains('route-stats') ? ['#statsTabs', '.stper', '#chatTabs'] : ['#chatTabs'];
+        : cls.contains('route-stats') ? ['#statsTabs', '.stper', '#chatTabs']
+          : cls.contains('route-lavka') ? ['.lv-tabs', '#chatTabs'] : ['#chatTabs'];
     let list = null;
     for (const sel of rows) {
       const host = document.querySelector(sel);
