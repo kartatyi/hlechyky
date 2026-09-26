@@ -247,7 +247,7 @@ public sealed partial class Svoya : Game
         if (pack is null) return ActResult.Fail("У цей пакет грати не можна — він чужий, прихований або ще не дороблений");
         _pack = Cut(pack, _length);
         _dirty = true;
-        return ActResult.Accept($"Пакет «{pack.Title}»");
+        return ActResult.Accept($"Пакет «{pack.Title}» на столі — гайда!");
     }
 
     // =========================================================================================
@@ -667,10 +667,10 @@ public sealed partial class Svoya : Game
             _left.Add(seat);
             Phase(Done);
             _until = null;
-            _error = "Ведучий пішов";
+            _error = "Ведучого вже нема за столом";
             ClearQuestion();
             _result = new { winners = Array.Empty<int>(), scores = (int[])_scores.Clone() };
-            Ctx.Finish([], $"{Info.Title}: ведучий пішов, партію не дограли");
+            Ctx.Finish([], $"{Info.Title}: ведучого вже нема за столом, партію не дограли");
             return;
         }
         _left.Add(seat);
@@ -737,7 +737,7 @@ public sealed partial class Svoya : Game
     {
         if (_phase == Lobby) return action == "pack" ? PickPack(seat, payload) : ActResult.Fail("Партія ще не почалась");
         if (_phase == Done) return ActResult.Fail("Партію зіграно");
-        if (_left.Contains(seat)) return ActResult.Fail("Ти вже встав з-за столу");
+        if (_left.Contains(seat)) return ActResult.Fail("Ти вже не за столом");
         if (seat == _host) return HostAct(action, payload);
         if (_paused && action is not "appeal") return ActResult.Fail("Пауза");
         if (SpecialAct(seat, action, payload) is { } special) return special;
@@ -771,8 +771,8 @@ public sealed partial class Svoya : Game
         if (!IsPlayer(seat)) return ActResult.Fail("Ти тут не граєш");
         if (_paused) return ActResult.Fail("Пауза");
         if (_solo is not null) return ActResult.Fail(_solo == seat ? "Відповідай — кнопка тут не потрібна" : "Це запитання — лише для одного гравця");
-        if (_wrong.Contains(seat)) return ActResult.Fail("Свою спробу на це запитання ти вже використав(-ла)");
-        if (_phase == Reading && _early == EarlyOff) return ActResult.Fail("Ще читають — зачекай");
+        if (_wrong.Contains(seat)) return ActResult.Fail("Свою спробу на це запитання вже використано");
+        if (_phase == Reading && _early == EarlyOff) return ActResult.Fail("Ще читають — мить терпіння");
         if (_phase == Reading && _early == EarlyLock)
         {
             // фальстарт: кнопка «жива», але хто не дотерпів — той відкриється пізніше за інших
@@ -788,7 +788,7 @@ public sealed partial class Svoya : Game
             // відповідає інший — стаєш у чергу: помилиться він, відповідатимеш ти
             Note(seat);
             var place = _presses.Where(p => !_wrong.Contains(p.Seat) && p.Seat != who).Count();
-            return ActResult.Accept($"Ти в черзі {place}-й, після {Ctx.NickOf(who)}");
+            return ActResult.Accept($"Місце в черзі — {place}, після {NickCases.Genitive(Ctx.NickOf(who))}");
         }
         if (_phase is not (Reading or Buzz)) return ActResult.Fail("Кнопка закрита");
         if (_phase == Reading) _opened = Now;
@@ -813,7 +813,7 @@ public sealed partial class Svoya : Game
         if (_mode == Live) return ActResult.Fail("Кажи вголос — ведучий слухає");
         if (_phase != Answering || _answering != seat) return ActResult.Fail("Зараз відповідаєш не ти");
         var text = (Str(payload, "text") ?? "").Trim();
-        if (text.Length == 0) return ActResult.Fail("Напиши відповідь");
+        if (text.Length == 0) return ActResult.Fail("Тяпни відповідь");
         if (text.Length > MaxAnswer) text = text[..MaxAnswer];
         var ok = SvoyaAnswer.Hits(text, _q!.Answers);
         _tries.Add(new Try(seat, text, ok));
@@ -910,7 +910,7 @@ public sealed partial class Svoya : Game
                 _liveVoice = Bool(payload, "on") ?? !_liveVoice;
                 if (_liveVoice) PrepareRound(_round);
                 _dirty = true;
-                return ActResult.Accept(_liveVoice ? "Голос читає за тебе" : "Читаєш сам");
+                return ActResult.Accept(_liveVoice ? "Голос читає за тебе" : "Тепер читаєш ти");
             case "adjust":
                 if (Int(payload, "seat") is not { } s || s < 0 || s >= Seats || s == _host || !Ctx.Seated(s)) return ActResult.Fail("Такого гравця нема");
                 var delta = Int(payload, "delta") ?? 0;

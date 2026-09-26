@@ -318,7 +318,7 @@ public abstract class ArenaGame : Game
         core.Kill(seat, core.Bodies[seat].Count > 0 ? core.Bodies[seat][0] : -1);
         _place[seat] = rank;
         if (core.AliveCount <= 1) Settle([]);
-        else Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, решта їде далі");
+        else Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, решта їде далі");
     }
 
     public override TickResult Tick()
@@ -391,7 +391,7 @@ public abstract class ArenaGame : Game
             if (Ctx.NickOf(s) is { } nick) _wins[nick] = _wins.GetValueOrDefault(nick) + 1;
         Close(winners, winners.Length == 0
             ? $"{Info.Title}: час вийшов, розійшлись внічию. {Series()}"
-            : $"{Info.Title}: час вийшов — найдовша в {Names(winners)}. {Series()}");
+            : $"{Info.Title}: час вийшов — найдовша в {Names(winners, genitive: true)}. {Series()}");
     }
 
     void Close(int[] winners, string log)
@@ -401,9 +401,10 @@ public abstract class ArenaGame : Game
         Ctx.Finish(winners, log);
     }
 
-    string Names(IEnumerable<int> seats)
+    /// <summary>«Оля, Петро і Іра»; <paramref name="genitive"/> — «Олі і Петра» для «найдовша в …» (через NickCases).</summary>
+    string Names(IEnumerable<int> seats, bool genitive = false)
     {
-        var names = seats.Select(s => Ctx.NickOf(s) ?? SeatName(s)).ToList();
+        var names = seats.Select(s => Ctx.NickOf(s) is { } n ? genitive ? NickCases.Genitive(n) : n : SeatName(s)).ToList();
         return names.Count <= 1 ? string.Concat(names) : string.Join(", ", names[..^1]) + " і " + names[^1];
     }
 

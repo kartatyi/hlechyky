@@ -196,12 +196,12 @@ public sealed class AdLibrary(AdLibraryStore store, IVoiceSaver voice, IClock cl
         if (!voice.Enabled) return (false, "Голосові вимкнені");
         TrackInfo track;
         try { (track, _) = await voice.SaveAsync(body, nick, ct); }
-        catch (Exception ex) { return (false, "Не вийшло взяти файл: " + ex.Message); }
+        catch (Exception ex) { return (false, "Халепа: не вийшло взяти файл — " + ex.Message); }
         var name = Clean(title) ?? $"Реклама {clock.UtcNow.ToLocalTime():dd.MM HH:mm}";
         store.Add(track.Id, name, track.DurationSec, enabled: true, clock.UtcNow);
         Forget();
         log.LogInformation("у бібліотеку реклам лягла «{Title}» ({Track}, {Sec} с)", name, track.Id, track.DurationSec);
-        return (true, $"«{name}» у бібліотеці й у ротації");
+        return (true, $"Є! «{name}» у бібліотеці й у ротації");
     }
 
     public (bool Ok, string Message) Rename(long id, string? title)

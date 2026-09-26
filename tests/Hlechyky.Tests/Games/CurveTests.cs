@@ -631,7 +631,7 @@ public class CurveTests
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("лишився сам", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("лишається наодинці", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]

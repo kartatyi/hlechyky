@@ -210,7 +210,7 @@ public class SvoyaTests
     {
         var h = Table(new { early = "off" });
         var c = Open(h);
-        Assert.Equal("Ще читають — зачекай", h.Act(c, "buzz").Message);
+        Assert.Equal("Ще читають — мить терпіння", h.Act(c, "buzz").Message);
         Assert.False(h.View(c).GetProperty("me").GetProperty("canBuzz").GetBoolean());
         Until(h, Svoya.Buzz);
         Assert.True(h.Act(c, "buzz").Ok);
@@ -282,7 +282,7 @@ public class SvoyaTests
         Assert.True(h.Act(2, "buzz").Ok);
         Assert.True(h.View(0).GetProperty("me").GetProperty("canBuzz").GetBoolean());
         h.Clock.AdvanceMs(120);
-        Assert.Equal("Ти в черзі 1-й, після Іра", h.Act(0, "buzz").Message);
+        Assert.Equal("Місце в черзі — 1, після Іри", h.Act(0, "buzz").Message);
         Assert.Equal("Ти вже в черзі", h.Act(0, "buzz").Message);
         Assert.False(h.View(0).GetProperty("me").GetProperty("canBuzz").GetBoolean());
         Assert.Equal("Ти вже відповідаєш", h.Act(2, "buzz").Message);
@@ -927,7 +927,7 @@ public class SvoyaLiveTests
         h.Leave("Ведучий");
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Empty(h.Room.Result!.Winners);
-        Assert.Contains("ведучий пішов", h.Room.Result.Text);
+        Assert.Contains("ведучого вже нема за столом", h.Room.Result.Text);
     }
 
     [Fact]

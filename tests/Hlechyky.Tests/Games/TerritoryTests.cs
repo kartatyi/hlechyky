@@ -705,7 +705,7 @@ public class TerritoryTests
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.False(Core(h).Riders[1].On);
         Assert.Equal(0, Core(h).Area(1));              // його земля згоріла разом із ним
-        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("Петро встав з-за столу, земля згоріла"));
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("Петро встає з-за столу — земля згоріла"));
     }
 
     [Fact]

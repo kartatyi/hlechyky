@@ -75,7 +75,7 @@ public sealed class SvoyaImport(SvoyaPacks packs, SvoyaUploads uploads, SvoyaFil
             if (!saved.Ok) return saved;
             var d2 = System.Text.Json.JsonSerializer.SerializeToElement(saved.Data);
             var problems = d2.GetProperty("problems").EnumerateArray().Select(x => x.GetString()!).ToList();
-            return new SvoyaReply(true, problems.Count == 0 ? "Імпортовано — можна грати" : "Імпортовано як чернетку — подивись зауваження",
+            return new SvoyaReply(true, problems.Count == 0 ? "Є! Імпортовано — гайда грати" : "Імпортовано як чернетку — подивись зауваження",
                 new { id, ready = problems.Count == 0, problems, warnings });
         }
     }

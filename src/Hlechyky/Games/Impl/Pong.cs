@@ -718,7 +718,7 @@ public sealed class Pong : Game
         var alive = Enumerable.Range(0, PongArena.Seats).Where(s => s != seat && a.Alive(s) && Ctx.Seated(s)).ToArray();
         if (alive.Length > 1)
         {
-            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу — його стіна тепер глуха, решта грає далі");
+            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу — стіна тепер глуха, решта грає далі");
             return;
         }
         _over = true;
@@ -803,7 +803,7 @@ public sealed class Pong : Game
         _over = true;
         // Підсумок: переможець із життями, що лишились, далі — хто вилетів пізніше, той вище.
         var rest = Enumerable.Reverse(a.Out).Where(s => s != _winner).Select(s => Ctx.NickOf(s));
-        var head = _winner is { } w ? $"{Ctx.NickOf(w)} ({a.L[w]} ♥)" : "нікого не лишилось";
+        var head = _winner is { } w ? $"{Ctx.NickOf(w)} ({a.L[w]} ♥)" : "ні душі не лишилось";
         Ctx.Finish(alive, $"{Info.Title}, арена: {head} · {string.Join(" · ", rest)}",
             Enumerable.Range(0, PongArena.Seats).Where(s => a.Plays[s]).ToDictionary(s => s, s => (long)a.Goals[s]));
         return TickResult.Both;

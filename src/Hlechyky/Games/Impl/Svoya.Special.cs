@@ -127,7 +127,7 @@ public sealed partial class Svoya
         if (Int(payload, "seat") is not { } to || !IsPlayer(to)) return ActResult.Fail("Такого гравця нема");
         if (to == _chooser && Players().Count() > 1) return ActResult.Fail("Кота треба віддати комусь іншому");
         Give(to);
-        return ActResult.Accept($"Кіт — у {Ctx.NickOf(to)}");
+        return ActResult.Accept($"Кіт — у {NickCases.Genitive(Ctx.NickOf(to))}");
     }
 
     void Give(int to)
@@ -354,7 +354,7 @@ public sealed partial class Svoya
     {
         if (!_finalists.Contains(seat)) return ActResult.Fail("У фіналі грають ті, хто в плюсі");
         var text = (Str(payload, "text") ?? "").Trim();
-        if (text.Length == 0) return ActResult.Fail("Напиши відповідь");
+        if (text.Length == 0) return ActResult.Fail("Тяпни відповідь");
         if (text.Length > MaxAnswer) text = text[..MaxAnswer];
         _finalAnswers[seat] = text;                                 // до кінця часу можна переписати
         _dirty = true;
@@ -443,7 +443,7 @@ public sealed partial class Svoya
                 if (_phase != Auction || _turn is not { } t) return ActResult.Fail("Зараз не торгуються");
                 if (Int(payload, "seat") is { } who && who != t) return ActResult.Fail($"Зараз торгується {Ctx.NickOf(t)}");
                 PassTurn(t);
-                return ActResult.Accept($"Пас за {Ctx.NickOf(t)}");
+                return ActResult.Accept($"{Ctx.NickOf(t)}: пас");
             case "finalVerdict": return FinalVerdictAct(payload);
             case "next" when _phase == FinalJudge:
                 if (_finalists.Where(IsPlayer).Any(s => !_finalOk.ContainsKey(s))) return ActResult.Fail("Спершу оціни кожну відповідь");

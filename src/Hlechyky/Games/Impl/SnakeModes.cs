@@ -412,7 +412,7 @@ public sealed class SnakeCoopGame : Game
         };
         Ctx.Finish([],
             names.Count == 1
-                ? $"{Info.Title}: {who} сам на сам — змійка доросла до {len}"
+                ? $"{Info.Title}: {who} наодинці — змійка доросла до {len}"
                 : $"{Info.Title}: {who} виростили змійку до {len}",
             seated.ToDictionary(s => s, _ => (long)len));
         return TickResult.Both;

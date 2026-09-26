@@ -101,8 +101,8 @@ public sealed class Tanks : Game
                 Core.Turn(seat, dir.Value);
                 return ActResult.Done;
             case "fire":
-                if (_phase != PhaseGo) return ActResult.Fail("Зачекай, зараз почнемо");
-                if (!Core.Tanks[seat].Alive) return ActResult.Fail("Тебе підбили, зачекай пару секунд");
+                if (_phase != PhaseGo) return ActResult.Fail("Мить — зараз почнемо");
+                if (!Core.Tanks[seat].Alive) return ActResult.Fail("Тебе підбили — мить, і знову в бій");
                 return Core.Fire(seat) ? ActResult.Done : ActResult.Fail("Перезарядка");
             default:
                 return ActResult.Fail("Тут так не ходять");

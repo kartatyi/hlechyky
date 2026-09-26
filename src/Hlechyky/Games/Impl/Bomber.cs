@@ -96,7 +96,7 @@ public sealed class Bomber : Game
                 Core.Turn(seat, dir.Value);
                 return ActResult.Done;
             case "bomb":
-                if (_phase != PhaseGo) return ActResult.Fail("Зачекай, зараз почнемо");
+                if (_phase != PhaseGo) return ActResult.Fail("Мить — зараз почнемо");
                 if (!Core.Players[seat].Alive) return ActResult.Fail("Тебе вже підірвали, чекай наступного раунду");
                 return Core.Bomb(seat) ? ActResult.Done : ActResult.Fail("Бомби скінчились");
             default:
