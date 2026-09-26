@@ -123,6 +123,8 @@
       const base = [...el.classList].filter((c) => !/^(ico|fr|fr-.+|rainbow)$/.test(c)).join(' ');
       el.outerHTML = P.ava(n, base, el.id || undefined);
     });
+    // Решту (хто онлайн) app.js перемальовує сам — там ніки з приставками, і простіше намалювати наново.
+    if (o && o.onLooks) o.onLooks();
   }
   /// Моє вбрання знаю й сам — з /api/lavka: не чекаємо події look, якої без зв'язку з хабом може й не бути.
   function syncMine() {
@@ -138,6 +140,7 @@
   // =============================================================================================
 
   const item = (id) => ((data && data.items) || []).find((x) => x.id === id) || null;
+  const emo = (icon) => (window.HPeople && window.HPeople.emo ? window.HPeople.emo(icon) : esc(icon));
   /// Як виглядала б людина, якби вдягла ще й те, що зараз приміряє.
   function lookWith(extra) {
     const w = Object.assign({}, (data && data.worn) || {}, extra || {});
@@ -149,7 +152,7 @@
     const letter = n ? [...n][0].toUpperCase() : '?';
     const hue = l && typeof l.color === 'number' ? l.color : window.HPeople ? window.HPeople.hueRaw(nick) : 200;
     return '<span class="' + (cls || 'ava') + (l && l.frame ? ' fr fr-' + esc(l.frame) : '') + (l && l.icon ? ' ico' : '')
-      + (l && l.color === 'rainbow' ? ' rainbow' : '') + '" style="--h:' + hue + '" aria-hidden="true">' + esc(l && l.icon ? l.icon : letter) + '</span>';
+      + (l && l.color === 'rainbow' ? ' rainbow' : '') + '" style="--h:' + hue + '" aria-hidden="true">' + (l && l.icon ? emo(l.icon) : esc(letter)) + '</span>';
   }
   function nickOf(nick, l) {
     const hue = l && typeof l.color === 'number' ? l.color : window.HPeople ? window.HPeople.hueRaw(nick) : 200;
@@ -159,8 +162,8 @@
   function artOf(it) {
     const me = (o && o.me && o.me.nick) || 'Ти';
     switch (it.kind) {
-      case 'icon': return '<span class="lv-emoji">' + esc(it.art) + '</span>';
-      case 'frame': return avaOf(me, Object.assign(lookWith(), { frame: it.art }), 'ava xl');
+      case 'icon': return '<span class="lv-emoji">' + emo(it.art) + '</span>';
+      case 'frame': return avaOf(me, Object.assign(lookWith(), { frame: it.art }), 'ava xxl');
       case 'color': return nickOf(me, { color: it.art });
       case 'title': return '<span class="lv-titlechip">' + esc(it.art) + '</span>';
       case 'bg': return '<span class="lv-bg bg-' + esc(it.art) + '"></span>';
@@ -187,8 +190,9 @@
     } else if (gift) {
       state = it.price + ' 🏺' + (it.season ? ' · ' + season(it.season) : '');
       const short = it.price - (data.balance || 0);
-      btns = short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
-        : '<button class="primary" data-gift="' + it.id + '"' + (it.season && !it.season.open ? ' disabled' : '') + '>🎁 Подарувати</button>';
+      btns = it.season && !it.season.open ? '<button disabled>Не сезон</button>'
+        : short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
+          : '<button class="primary" data-gift="' + it.id + '">🎁 Подарувати</button>';
     } else if (it.owned) {
       if (it.kind === 'perk') state = '✓ твоє' + (perk && perk.readyAt && readyIn(perk.readyAt) ? ' · ' + readyIn(perk.readyAt) : ' · готове');
       else {
@@ -204,7 +208,9 @@
             : '<button class="primary" data-buy="' + it.id + '">Купити</button>';
     }
     const tryBtn = it.kind !== 'perk' && !gift && !it.worn ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
-    return '<div class="lv-item' + (it.owned ? ' owned' : '') + (it.worn ? ' worn' : '') + (it.earned && !it.owned ? ' locked' : '')
+    // У подарунку «моє / вдягнуто» ні до чого: річ вибирають для іншої людини.
+    const mine = !gift;
+    return '<div class="lv-item' + (mine && it.owned ? ' owned' : '') + (mine && it.worn ? ' worn' : '') + (it.earned && !it.owned ? ' locked' : '')
       + (preview[it.kind] === it.id ? ' trying' : '') + '" data-id="' + esc(it.id) + '">'
       + '<div class="lv-art">' + artOf(it) + '</div>'
       + '<div class="lv-name">' + esc(it.title) + (it.tier ? ' <span class="muted small">· ' + TIER[it.tier] + '</span>' : '') + '</div>'
@@ -260,9 +266,9 @@
       + '<div class="lv-top"><div class="lv-sign"><img src="/static/glek.svg" alt=""><div><h2>Лавка Дядька Глека</h2>'
       + '<div class="muted small">Усе, що купиш, — твоє назавжди. Черепки капають за радіо, партії й щоденний глек.</div></div></div>'
       + '<div class="lv-bal">У глечику <b>' + (data.balance != null ? data.balance : '—') + ' 🏺</b></div></div>'
-      + (giftTo ? '<div class="lv-gift">🎁 Подарунок для <b>' + esc(genitive(giftTo)) + '</b> — обери річ. Подарувати можна лише те, чого в людини ще нема.'
-        + ' <button class="ghost" data-go="#lavka">✕ скасувати</button></div>' : '')
-      + (!acc ? '<div class="lv-guest">🔒 Лавка — для акаунтів: гостьовий нік може зайняти хтось інший, і куплене пропало б. '
+      + (giftTo ? '<div class="lv-gift"><span>🎁 Подарунок для <b>' + esc(genitive(giftTo)) + '</b> — обери річ. Подарувати можна лише те, чого в людини ще нема.</span>'
+        + '<button class="ghost" data-go="#lavka">✕ скасувати</button></div>' : '')
+      + (!acc ? '<div class="lv-guest"><span>🔒 Лавка — для акаунтів: гостьовий нік може зайняти хтось інший, і куплене пропало б.</span>'
         + '<button class="primary" data-acc>Закріпити нік</button></div>' : '')
       + (!giftTo ? previewHtml() : '')
       + '</section>';

@@ -3366,7 +3366,7 @@
   // Лавка Дядька Глека (web/lavka.js): вітрина, а ще — хто як вбраний. Своє купив чи вдягнув — перемалювати шапку,
   // ефір (🎆) і чергу (💌): там кнопки вмінь.
   const lavkaChanged = () => { paintNick(); nowSig = ''; queueSig = ''; if (state) render(); };
-  HLavka.init({ $, esc, api, toast, busy, me, go, askNick, onMine: lavkaChanged });
+  HLavka.init({ $, esc, api, toast, busy, me, go, askNick, onMine: lavkaChanged, onLooks: () => { if (state) renderOnline(); } });
   HLavka.loadLooks();
   // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри,
   // onTurn — за якими столами мій хід (заголовок вкладки й «Ігри»), online — хто на сайті (кого покликати за стіл).

@@ -49,15 +49,17 @@
     return l && typeof l.color === 'number' ? l.color : hueRaw(nick);
   }
   const nickCls = (nick) => { const l = lookOf(nick); return l && l.color === 'rainbow' ? ' rainbow' : ''; };
+  /// Значок як HTML. Прапор малюємо самі: Windows прапорів-емодзі не має — показав би «UA».
+  const emo = (icon) => (icon === '🇺🇦' ? '<i class="fl-ua" role="img" aria-label="прапор України"></i>' : esc(icon));
   /// Куплений значок — маленьким перед ніком у балачках.
-  const badge = (nick) => { const l = lookOf(nick); return l && l.icon ? '<i class="nico" aria-hidden="true">' + esc(l.icon) + '</i>' : ''; };
+  const badge = (nick) => { const l = lookOf(nick); return l && l.icon ? '<i class="nico" aria-hidden="true">' + emo(l.icon) + '</i>' : ''; };
   /// Перша літера ніка в кружечку його кольору («гість Вася» — це «В», а не «Г»); купив значок — значок, рамку — рамка.
   function ava(nick, cls, id) {
     const l = lookOf(nick);
     const n = String(nick || '').replace(/^гість\s+/i, '').trim();
-    const ch = l && l.icon ? l.icon : n ? [...n][0].toUpperCase() : '?';
+    const ch = l && l.icon ? emo(l.icon) : esc(n ? [...n][0].toUpperCase() : '?');
     return '<span' + (id ? ' id="' + id + '"' : '') + ' class="' + (cls || 'ava') + (l && l.icon ? ' ico' : '') + (l && l.frame ? ' fr fr-' + esc(l.frame) : '')
-      + nickCls(nick) + '" data-ava="' + esc(nick) + '" style="--h:' + hue(nick) + '" aria-hidden="true">' + esc(ch) + '</span>';
+      + nickCls(nick) + '" data-ava="' + esc(nick) + '" style="--h:' + hue(nick) + '" aria-hidden="true">' + ch + '</span>';
   }
   const nickLink = (n, cls) => '<span class="' + (cls || 'who-n') + ' who-n' + nickCls(n) + '" data-who="' + esc(n) + '" style="--h:' + hue(n) + '">' + esc(n) + '</span>';
   /// Титул — під ніком у картці й у профілі.
@@ -629,7 +631,7 @@
       o = opts;
       if (o.esc) esc = o.esc;
     },
-    hue, hueRaw, nickCls, badge, ava, nickLink, dur, lbNum, shards,
+    hue, hueRaw, nickCls, badge, emo, ava, nickLink, dur, lbNum, shards,
     /// Куди веде кнопка «📊 Хто скільки»: на вкладку, де людина була востаннє.
     statsHash: () => '#stats/' + statsTab,
     show(kind, tail) {

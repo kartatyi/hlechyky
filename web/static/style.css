@@ -1032,8 +1032,10 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 /* =====================================================================================================
    Лавка Дядька Глека: вбрання людей (значок, рамка, колір ніка, титул, тло) і сама вітрина (web/lavka.js).
    ===================================================================================================== */
-/* ---- аватарка: значок замість літери, фон через --ava-bg (щоб рамка й «веселка» лягали шарами) ---- */
-.ava { --ava-bg: hsl(var(--h) 42% 30%); background: var(--ava-bg); }
+/* ---- аватарка: значок замість літери, фон через --ava-bg (щоб рамка й «веселка» лягали шарами) ----
+   --ava-bg — завжди зображення, не колір: у шарах background колір дозволено лише в останньому, і
+   «hsl(…) padding-box, рамка border-box» вбивав увесь фон — аватарка з рамкою лишалась без кружечка. */
+.ava { --ava-bg: linear-gradient(hsl(var(--h) 42% 30%), hsl(var(--h) 42% 30%)); background: var(--ava-bg); }
 .ava.ico { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; font-weight: 400; font-size: .95em; }
 .ava.sm.ico { font-size: .72em; }
 .ava.xl.ico { font-size: 1.45em; }
@@ -1067,6 +1069,10 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 @media (prefers-reduced-motion: reduce) { .rainbow, .ava.fr-alive { animation: none !important; } }
 /* значок перед ніком у балачках */
 .nico { font-style: normal; margin-right: 3px; font-size: .95em; -webkit-text-fill-color: initial; }
+/* 🇺🇦 малюємо самі: Windows прапорів-емодзі не має і показує замість нього літери «UA» */
+.fl-ua { display: inline-block; width: 1.25em; height: .85em; border-radius: .14em; vertical-align: -.08em;
+  background: linear-gradient(#1f5fd6 50%, #ffd23f 50%); box-shadow: 0 0 0 1px rgba(0, 0, 0, .25) inset; }
+.ava .fl-ua { width: 1.1em; height: .76em; }
 .online .chip .nico { margin-right: 2px; }
 /* титул — під ніком у картці, профілі й вітрині */
 .lv-titlechip {
@@ -1174,7 +1180,7 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 .lv-pv-who { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
 .lv-pv-who .lv-nick { font-family: var(--display); font-size: 1.35em; }
 .lv-nick { color: hsl(var(--h) 72% 76%); }
-.lv-pv-reset { margin-left: auto; }
+.lv-preview .lv-pv-reset { margin-left: auto; background: var(--panel); border: 1px solid var(--line); }
 .lv-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
 .lv-tabs button { padding: 6px 12px; font-size: .92em; }
 .lv-tabs button.on { background: var(--panel3); border-color: var(--accent2); color: var(--accent); }
@@ -1191,6 +1197,8 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 .lv-emoji { font-size: 2.5em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
 .lv-art .lv-nick { font-family: var(--display); font-size: 1.15em; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lv-bg { display: block; width: 100%; height: 64px; border-radius: 10px; }
+.lv-art .lv-titlechip { align-self: center; font-size: .95em; padding: 3px 12px; }
+.lv-btns .ghost { border: 1px solid var(--line); }
 .lv-name { font-weight: 700; }
 .lv-desc { line-height: 1.35; }
 .lv-state { font-size: .88em; color: var(--muted); }
