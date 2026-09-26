@@ -551,7 +551,7 @@
 
   function musicCard(ppl, nick, mine) {
     const m = ppl && ppl.music;
-    if (!m) return '<section class="panel wcard"><h3>🎵 Музика</h3><div class="gempty">Що закидає й любить — з\'явиться тут, щойно сервер навчиться це розповідати.</div></section>';
+    if (!m) return '<section class="panel wcard"><h3>🎵 Музика</h3><div class="gempty">Музичного сліду ще нема — жодної закинутої пісні й жодного ❤.</div></section>';
     const r = m.requests || {};
     const top = (m.top || []).map((x) => o.trackRow(x.track, 'закидав ' + x.count + ' ' + (x.count % 10 >= 2 && x.count % 10 <= 4 && (x.count % 100 < 12 || x.count % 100 > 14) ? 'рази' : 'разів'))).join('');
     const likes = ((m.likes && m.likes.recent) || []).map((x) => o.trackRow(x.track, '❤ ' + esc(o.dayTime(x.at)))).join('');
