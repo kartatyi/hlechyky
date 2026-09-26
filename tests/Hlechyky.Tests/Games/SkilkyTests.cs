@@ -829,7 +829,7 @@ public class SkilkyTests
     {
         var h = new RoomHarness("skilky");
         h.Join("Оля");
-        Assert.Contains("самому", h.Reply.Message);
+        Assert.Contains("почати вже", h.Reply.Message);
         Assert.True(h.Start().Ok);
 
         PlayAll(h, (0, 0));

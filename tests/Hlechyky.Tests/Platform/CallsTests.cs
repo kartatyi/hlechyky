@@ -68,7 +68,7 @@ public class CallsTests
         var id = s.Table("t-party", "Влад");
 
         Assert.Equal("Ти тут не граєш", s.Invite("Ганна", id, "Оля").Reply.Message);
-        Assert.Equal("Такої кімнати вже нема", s.Invite("Влад", "00000000", "Оля").Reply.Message);
+        Assert.Equal("Такого столу вже нема", s.Invite("Влад", "00000000", "Оля").Reply.Message);
         Assert.Equal("Спершу скажи, як тебе кликати", s.Invite("гість", id, "Оля").Reply.Message);
     }
 
@@ -80,7 +80,7 @@ public class CallsTests
 
         var call = s.Invite("Влад", solo, "Оля");
 
-        Assert.Equal("Тут граєш сам — кликати нема кого", call.Reply.Message);
+        Assert.Equal("Тут гра на одного — гукати нема кого", call.Reply.Message);
         Assert.Empty(call.Out);
     }
 
@@ -94,7 +94,7 @@ public class CallsTests
         var full = s.Table("t-party", "Ганна", "Іван", "Оля", "Хома");          // ByHost: повний, а партії ще нема
         Assert.Equal(RoomStatus.Lobby, s.Rooms.Find(full)!.Status);
         s.Online("Марта");
-        Assert.Equal("Місць уже нема", s.Invite("Ганна", full, "Марта").Reply.Message);
+        Assert.Equal("От халепа — місць уже нема", s.Invite("Ганна", full, "Марта").Reply.Message);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class CallsTests
 
         Assert.Equal("Оля зараз не на сайті", s.Invite("Влад", id, "Оля").Reply.Message);
         Assert.Equal("Незнайомець зараз не на сайті", s.Invite("Влад", id, "Незнайомець").Reply.Message);
-        Assert.Equal("Кого кликати?", s.Invite("Влад", id, "  ").Reply.Message);
+        Assert.Equal("Кого гукнути?", s.Invite("Влад", id, "  ").Reply.Message);
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public class CallsTests
         var id = s.Table("t-party", "Влад", "Оля");
 
         Assert.Equal("Оля вже за цим столом", s.Invite("Влад", id, "оля").Reply.Message);
-        Assert.Equal("Себе кликати не треба — ти вже тут", s.Invite("Влад", id, "@влад").Reply.Message);
+        Assert.Equal("Себе гукати не треба — ти вже тут", s.Invite("Влад", id, "@влад").Reply.Message);
     }
 
     [Fact]
@@ -270,10 +270,10 @@ public class CallsTests
 
         var full = s.Table("t-party", "Іван", "Оля", "Хома", "Ганна");
         s.Clock.Advance(Calls.AgainGap);
-        Assert.Equal("Місць уже нема", s.Calls.Again("Іван", full).Reply.Message);
+        Assert.Equal("От халепа — місць уже нема", s.Calls.Again("Іван", full).Reply.Message);
 
         var solo = s.Rooms.OpenSolo("Влад", "t-solo", null).Reply.RoomId!;
-        Assert.Equal("Тут граєш сам — кликати нема кого", s.Calls.Again("Влад", solo).Reply.Message);
+        Assert.Equal("Тут гра на одного — гукати нема кого", s.Calls.Again("Влад", solo).Reply.Message);
     }
 
     // ---------------------------------------------------------------- /клич
@@ -301,7 +301,7 @@ public class CallsTests
 
         var r = s.Calls.Command("Влад", "Оля");
 
-        Assert.Equal("Спершу сядь за стіл — тоді буде куди кликати", r.Error);
+        Assert.Equal("Спершу сідай за стіл — тоді буде куди гукати", r.Error);
         Assert.Null(r.Out);
     }
 

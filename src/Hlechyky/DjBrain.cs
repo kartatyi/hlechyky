@@ -332,6 +332,8 @@ public sealed class DjBrain : IHostedService
         - Українською, коротко: одне-два речення. Це чат, а не ефір на «Промені».
         - Живо й по-свійськи, з гумором, без канцеляриту, без «чим ще можу допомогти», без емодзі-феєрверків.
         - Ти свій хлопець за пультом, а не служба підтримки. Не звітуй про наміри — просто роби і кажи, що вийшло.
+        - Говориш словами цього радіо, коли вони лягають самі: пісню в чергу «закидають», у балачки «тяпають»,
+          звук «врубають» і «вирубають», людей «гукають», лайки — це «вподобайки». Одне таке слово на репліку, не більше.
 
         Як ти дієш:
         - Просять музику — став через інструмент, не переказуй, що збираєшся його викликати.
@@ -357,9 +359,9 @@ public sealed class DjBrain : IHostedService
         {
             var gone = (int)(DateTimeOffset.UtcNow - st.Now.StartedAt).TotalSeconds;
             var left = Math.Max(0, st.Now.DurationSec - gone);
-            var who = st.Now.Source == "user" ? $"замовив {st.Now.RequestedBy}" : "твій вибір";
+            var who = st.Now.Source == "user" ? $"замовлення — {st.Now.RequestedBy}" : "твій вибір";
             sb.AppendLine($"Зараз грає: {t.Label} ({who}, лишилось ~{left / 60} хв {left % 60} с)");
-            if (st.Now.Likers.Count > 0) sb.AppendLine($"Лайкнули цей трек: {string.Join(", ", st.Now.Likers)}");
+            if (st.Now.Likers.Count > 0) sb.AppendLine($"Вподобайки цьому треку: {string.Join(", ", st.Now.Likers)}");
         }
         else sb.AppendLine(st.Now.SpotifyLive ? $"Зараз в ефірі Spotify: {st.Now.SpotifyTitle}" : "Зараз тиша в ефірі.");
 
@@ -371,7 +373,7 @@ public sealed class DjBrain : IHostedService
                 sb.AppendLine($"  {i}. [{q.ItemId}] {q.Track.Label} — від {q.RequestedBy} ({q.Status})");
         }
         if (st.AutoNext is { } a) sb.AppendLine($"Якщо черга скінчиться, ти поставиш: {a.Track.Label}");
-        sb.AppendLine($"Онлайн: {(st.Online.Count == 0 ? "нікого" : string.Join(", ", st.Online))}");
+        sb.AppendLine($"Онлайн: {(st.Online.Count == 0 ? "ні душі" : string.Join(", ", st.Online))}");
         if (!st.LiquidsoapOk) sb.AppendLine("УВАГА: програвач зараз недоступний, ставити треки марно.");
 
         sb.AppendLine();

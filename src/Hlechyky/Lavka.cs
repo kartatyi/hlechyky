@@ -335,7 +335,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     public const string NotOwned = "Спершу купи — тоді вдягнеш";
     public const string NoSong = "Спершу закинь пісню — присвята прозвучить перед нею";
     public const string Mute = "Глек зараз мовчить";
-    public const string Fx = "🎆 запускає феєрверк!";
+    public const string Fx = "🎆 бахає феєрверк!";
 
     public static readonly TimeSpan DedicationGap = TimeSpan.FromHours(3);
     public static readonly TimeSpan FireworksGap = TimeSpan.FromMinutes(10);
@@ -481,7 +481,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         LavkaKind.Title => $"Титул «{i.Title}» тепер твій назавжди — уже біля ніка",
         LavkaKind.Bg => $"Тло «{i.Title}» тепер твоє назавжди — уже в профілі",
         _ when i.Id == LavkaCatalog.Dedication => "«Присвята в ефір» тепер твоя назавжди — закинь пісню й присвяти її комусь",
-        _ => $"«{i.Title}» тепер твій назавжди — запускай!",
+        _ => $"«{i.Title}» тепер твій назавжди — бахай!",
     };
 
     // ---------- вдягнути ----------
@@ -581,7 +581,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             }
             catch (Exception ex) { log.LogWarning(ex, "рядок присвяти від {Nick} не ліг у балачки", nick); }
             return mute is null
-                ? new(true, $"Готово! Глек скаже присвяту перед «{about}»")
+                ? new(true, $"Є! Глек скаже присвяту перед «{about}»")
                 : new(true, $"Присвята лягла в балачки — без голосу: {mute}");
         }
         finally

@@ -32,7 +32,7 @@ public class AlbumPlaylistTests
         Assert.True(r.Ok);
         Assert.Equal("Океан Ельзи — Земля", db.Db.GetPlaylist(r.Id)!.Name);
         Assert.Equal(["a1", "a3"], TrackIds(db, r.Id));
-        Assert.Equal("Плейлист «Океан Ельзи — Земля»: 2 треки", r.Message);
+        Assert.Equal("Є! Плейлист «Океан Ельзи — Земля»: 2 треки", r.Message);
 
         // удруге — той самий плейлист, без двійника
         var again = albums.SaveAsPlaylist(Sample, "Петро");
@@ -53,7 +53,7 @@ public class AlbumPlaylistTests
 
         var own = albums.SaveAsPlaylist(Sample, "Оля", "  Дорога додому  ");
         Assert.Equal("Дорога додому", db.Db.GetPlaylist(own.Id)!.Name);
-        Assert.Equal("Плейлист «Дорога додому»: 2 треки", own.Message);
+        Assert.Equal("Є! Плейлист «Дорога додому»: 2 треки", own.Message);
 
         var longName = albums.SaveAsPlaylist(Sample, "Оля", new string('я', 50));
         var name = db.Db.GetPlaylist(longName.Id)!.Name;
@@ -74,7 +74,7 @@ public class AlbumPlaylistTests
         var r = albums.SaveAsPlaylist(Sample, "Оля", "Вибране", ["a3", "нема-такого"]);
         Assert.True(r.Ok);
         Assert.Equal(["a3"], TrackIds(db, r.Id));
-        Assert.Equal("Плейлист «Вибране»: 1 трек", r.Message);
+        Assert.Equal("Є! Плейлист «Вибране»: 1 трек", r.Message);
 
         var none = albums.SaveAsPlaylist(Sample, "Оля", "Порожнє", ["нема-такого"]);
         Assert.False(none.Ok);
@@ -95,11 +95,11 @@ public class AlbumPlaylistTests
         Assert.True(r.Ok);
         Assert.Equal(road, r.Id);
         Assert.Equal(["old", "a1", "a3"], TrackIds(db, road));
-        Assert.Equal("У плейлист «Дорога» додано ще 2 треки", r.Message);
+        Assert.Equal("У плейлист «Дорога» докинуто ще 2 треки", r.Message);
         Assert.DoesNotContain(db.Db.Playlists(), p => p.Name == "ця назва ні до чого");
 
         var only = albums.SaveAsPlaylist(Earth(Yt("a1", "Мить"), Yt("a4", "Не питай")), "Оля", ids: ["a1", "a4"], playlistId: road);
-        Assert.Equal("У плейлист «Дорога» додано ще 1 трек", only.Message);
+        Assert.Equal("У плейлист «Дорога» докинуто ще 1 трек", only.Message);
 
         var missing = albums.SaveAsPlaylist(Sample, "Оля", playlistId: 999);
         Assert.False(missing.Ok);

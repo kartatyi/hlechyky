@@ -554,7 +554,7 @@ public class PongTests
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("з-за столу", h.Outbox.OfType<Journal>().Last().Text);
         // Партія скінчилась — вид і кадр мають це показати, інакше на полі застигне «граємо» без підсумку.
         var v = h.View(null);
         Assert.Equal("done", v.GetProperty("phase").GetString());

@@ -67,7 +67,7 @@ public static class ChatCommands
     {
         if (call is null) return new(Error: "Звідси кликати не вийде");
         var nick = args.TrimStart('@').Trim();
-        return nick.Length == 0 ? new(Error: "Кого кликати? Так: /клич Оля") : call(nick);
+        return nick.Length == 0 ? new(Error: "Кого гукнути? Так: /клич Оля") : call(nick);
     }
 
     /// <summary>Більше живих столів за раз і не буває (Rooms.MaxRooms), але межа тут своя — картка не гумова.</summary>
@@ -82,7 +82,7 @@ public static class ChatCommands
     {
         if (live is null) return new(Error: "Звідси столів не видно");
         var ids = live();
-        if (ids.Count == 0) return new(Error: "Живих столів нема. Постав свій у розділі «Ігри»");
+        if (ids.Count == 0) return new(Error: "За столами ні душі. Постав свій у розділі «Ігри»");
         return new(Text: ids.Count == 1 ? "Живий стіл" : $"Живих столів: {ids.Count}", Kind: "tables",
             Rooms: [.. ids.Take(MaxTables)]);
     }
@@ -96,7 +96,7 @@ public static class ChatCommands
             var parts = args.Split(['-', '–', '—', ' ', ':'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (parts.Length == 1 && int.TryParse(parts[0], out var n)) (min, max) = (1, n);
             else if (parts.Length == 2 && int.TryParse(parts[0], out var a) && int.TryParse(parts[1], out var b)) (min, max) = (a, b);
-            else return new(Error: "Не зрозумів межі. Кидай так: /roll, /roll 100 або /roll 2-12");
+            else return new(Error: "Не зрозумів межі. Жбурляй так: /кубик, /кубик 100 або /кубик 2-12");
         }
         if (min > max) (min, max) = (max, min);
         if (min < 0 || max > 1_000_000) return new(Error: "Тримайся в межах від 0 до мільйона");
@@ -195,7 +195,7 @@ public static class ChatCommands
     static Result Ball(string args)
     {
         var q = (args ?? "").Trim();
-        if (q.Length < MinQuestion) return new(Error: "Спитай щось довше: /8ball чи буде дощ?");
+        if (q.Length < MinQuestion) return new(Error: "Спитай щось довше: /куля чи буде дощ?");
         if (q.Length > MaxQuestion) q = Cut(q, MaxQuestion) + "…";
         var a = BallAnswers[Random.Shared.Next(BallAnswers.Count)];
         return new(Text: $"{q} — 🔮 Дядько Глек каже: „{a.Text}“", Kind: "8ball");

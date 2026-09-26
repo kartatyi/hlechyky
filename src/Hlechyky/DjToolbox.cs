@@ -215,7 +215,7 @@ public static class DjToolbox
                 sb.AppendLine("Що грало (найновіше згори):");
                 foreach (var h in history)
                     sb.AppendLine($"  {h.Track.Label} — {(h.RequestedBy is null ? "твій вибір" : h.RequestedBy)}" +
-                                  $"{(h.Likes > 0 ? $", лайків {h.Likes}" : "")}{(h.Skipped ? ", пропустили" : "")}");
+                                  $"{(h.Likes > 0 ? $", вподобайок: {h.Likes}" : "")}{(h.Skipped ? ", пропустили" : "")}");
                 return sb.ToString();
 
             case "top":
@@ -228,7 +228,7 @@ public static class DjToolbox
 
             case "likes":
                 var liked = db.LikedTracksDetailed(n);
-                if (liked.Count == 0) return "Поки нічого не лайкали.";
+                if (liked.Count == 0) return "Вподобайок поки нема.";
                 sb.AppendLine("Улюблене:");
                 foreach (var l in liked) sb.AppendLine($"  {l.Track.Label} — {string.Join(", ", l.Likes.Select(x => x.Nick))}");
                 return sb.ToString();
@@ -237,7 +237,7 @@ public static class DjToolbox
                 var lists = db.Playlists();
                 if (lists.Count == 0) return "Плейлистів ще нема.";
                 sb.AppendLine("Плейлисти:");
-                foreach (var p in lists) sb.AppendLine($"  [{p.Id}] {p.Name} — {p.Count} треків, створив {p.CreatedBy}");
+                foreach (var p in lists) sb.AppendLine($"  [{p.Id}] {p.Name} — {p.Count} треків, автор — {p.CreatedBy}");
                 return sb.ToString();
 
             default:

@@ -149,7 +149,7 @@ public class ChatCommandsTests
     public void Ball_wants_a_real_question(string text)
     {
         var r = ChatCommands.Run(text);
-        Assert.Equal("Спитай щось довше: /8ball чи буде дощ?", r.Error);
+        Assert.Equal("Спитай щось довше: /куля чи буде дощ?", r.Error);
     }
 
     [Fact]
@@ -231,7 +231,7 @@ public class ChatCommandsTests
     {
         var r = ChatCommands.Run("/столи", () => []);
 
-        Assert.Equal("Живих столів нема. Постав свій у розділі «Ігри»", r.Error);
+        Assert.Equal("За столами ні душі. Постав свій у розділі «Ігри»", r.Error);
         Assert.Null(r.Rooms);
     }
 
@@ -282,7 +282,7 @@ public class ChatCommandsTests
         var called = false;
         var r = ChatCommands.Run(text, null, _ => { called = true; return new(); });
 
-        Assert.Equal("Кого кликати? Так: /клич Оля", r.Error);
+        Assert.Equal("Кого гукнути? Так: /клич Оля", r.Error);
         Assert.False(called);
     }
 
@@ -352,7 +352,7 @@ public class ChatCommandsTests
     public void A_dotted_command_twice_is_no_repeat_for_the_flood_guard()
     {
         // Хаб перетворює крапку на скісну ще до лічильника флуду: команди на повтор не перевіряються, і кинути
-        // «.кубик» двічі поспіль — так само нормально, як і /кубик. Без цього друга спроба впиралась би в «Це вже написано».
+        // «.кубик» двічі поспіль — так само нормально, як і /кубик. Без цього друга спроба впиралась би в «Це вже тяпнуто».
         var flood = new ChatFlood();
         var now = DateTimeOffset.UtcNow;
         var text = ChatCommands.FromDot(".кубик")!;

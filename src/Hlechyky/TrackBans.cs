@@ -53,7 +53,7 @@ public sealed class TrackBans(Db db, Economy economy, IOnAir air, IOptionsMonito
             catch (Exception ex)
             {
                 Refund(nick, price, trackId, ex);
-                return (false, "Не вийшло записати бан" + (price > 0 ? ", черепки повернуто" : ""));
+                return (false, "Ой-йой, не вийшло записати бан" + (price > 0 ? " — черепки повернуто" : ""));
             }
         }
         air.Journal(price > 0 ? $"{nick} банить {track.Label} за {Shards(price)}" : $"{nick} банить {track.Label}");
@@ -74,7 +74,7 @@ public sealed class TrackBans(Db db, Economy economy, IOnAir air, IOptionsMonito
             catch (Exception ex)
             {
                 Refund(nick, price, trackId, ex);
-                return (false, "Не вийшло зняти бан" + (price > 0 ? ", черепки повернуто" : ""));
+                return (false, "Ой-йой, не вийшло зняти бан" + (price > 0 ? " — черепки повернуто" : ""));
             }
         }
         var label = db.GetTrack(trackId)?.Label ?? trackId;

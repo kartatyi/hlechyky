@@ -19,7 +19,7 @@ public sealed class ChatFlood
     const int PruneAt = 500;
 
     public const string TooFast = "Не так швидко — дай іншим слово вставити";
-    public const string Repeat = "Це вже написано";
+    public const string Repeat = "Це вже тяпнуто";
 
     readonly object _lock = new();
     readonly Dictionary<string, Trail> _byNick = new(StringComparer.OrdinalIgnoreCase);
