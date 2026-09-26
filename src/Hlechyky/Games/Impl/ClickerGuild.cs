@@ -244,7 +244,7 @@ public sealed partial class Clicker
     /// Найкращий гончар округи, крім себе: його нік і клейма (наука майстра рахується від них). Без цеху — нікого:
     /// тоді й науки нема.
     /// </summary>
-    (string Nick, int Stamps) GuildTopStamps() =>
+    (string Nick, long Stamps) GuildTopStamps() =>
         _guildSvc is { } svc && GuildKey.Length > 0 ? svc.TopStamps(GuildKey) : ("", 0);
 
     /// <summary>Кожна синхронізація: вперше — «я тут» у список цеху; і дарунки зі скриньки — на полицю.</summary>

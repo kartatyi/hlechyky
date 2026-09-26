@@ -128,7 +128,8 @@ public class ClickerProgressTests
         {
             Assert.True(idle[i].Base > idle[i - 1].Base, idle[i].Key);
             Assert.True(idle[i].Rate > idle[i - 1].Rate, idle[i].Key);
-            Assert.Equal(3, idle[i].Steps.Length);
+            // Три віхи ×2 у кожного (25/50/100); модифікатори після сотні ×2 не дають (v10).
+            Assert.Equal(3, idle[i].Steps.Count(s => s.Effect == MarkEffect.Double));
         }
     }
 

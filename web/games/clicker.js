@@ -54,7 +54,7 @@
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
-  const NEWS_VERSION = 'v9.2';            // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const NEWS_VERSION = 'v10';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
@@ -142,10 +142,17 @@
   const shards = (n) => plural(n, 'черепок', 'черепки', 'черепків');
   const stampsWord = (n) => plural(n, 'клеймо', 'клейма', 'клейм');
   /// Скільки «повних» клейм важать n клейм — та сама крива, що Clicker.StampWeight на сервері: до тисячі (soft)
-  /// усі, далі корінь — кожне нове клеймо важить дедалі менше (на 4000 — половину, на 16 000 — чверть).
-  const stampWeight = (n, soft) => (n <= soft ? Math.max(0, n) : soft * (2 * Math.sqrt(n / soft) - 1));
+  /// усі, далі корінь — кожне нове клеймо важить дедалі менше (на 4000 — половину, на 16 000 — чверть), а після
+  /// коліна (knee, 4 млн, десяте оновлення) — логарифм: удесятеро більше клейм додають ту саму вагу.
+  function stampWeight(n, soft, knee) {
+    if (n <= soft) return Math.max(0, n);
+    if (!knee || n <= knee) return soft * (2 * Math.sqrt(n / soft) - 1);
+    return soft * (2 * Math.sqrt(knee / soft) - 1) + Math.sqrt(soft * knee) * Math.log(n / knee);
+  }
   /// Бонус клейм «до всього» у відсотках для n клейм.
-  const stampPct = (st, n) => st.stampBonus * stampWeight(n, st.stampSoft) * 100;
+  const stampPct = (st, n) => st.stampBonus * stampWeight(n, st.stampSoft, st.stampKnee) * 100;
+  /// «2,23 млн клейм», «211 клейм»: після скорочення слово узгоджується з «млн».
+  const stampsShort = (n) => count(n) + ' ' + (Math.abs(n) >= 1e6 ? 'клейм' : stampsWord(n));
   const potsWord = (n) => (n % 1 ? 'глека' : plural(n, 'глек', 'глеки', 'глеків'));
 
   /// Десяте оновлення: від квадрильйона глеків суми показуються в гривнях (1 ₴ = 10¹⁵ глеків), від 10²⁷ — у червоних
@@ -968,7 +975,7 @@
     if (!armed) st.fireArmed = 0;
     const label = gain < 1 ? '🔥 Почати наново — ще рано'
       : armed ? 'Точно? Глеки й верстати згорять — ще раз'
-      : '🔥 Почати наново: +' + gain + ' ' + stampsWord(gain);
+      : '🔥 Почати наново: +' + stampsShort(gain);
     if (f._btn.textContent !== label) f._btn.textContent = label;
     const off = !st.mine || gain < 1;
     if (f._btn.disabled !== off) f._btn.disabled = off;
@@ -987,7 +994,7 @@
     const ratio = (100 + will) / (100 + was);
     const grow = ratio >= 2 ? '×' + dec(ratio) : '+' + dec((ratio - 1) * 100) + ' %';
     return 'після обпалу: +' + dec(was) + ' % → +' + dec(will) + ' % до всього (дохід ' + grow + ')'
-      + (sci > 0 ? ' · 🎓 і ще +' + num(sci) + ' ' + stampsWord(sci) + ' від науки майстра' : '');
+      + (sci > 0 ? ' · 🎓 і ще +' + stampsShort(sci) + ' від науки майстра' : '');
   }
 
   /// Скільки дасть наука майстра на обпалі просто зараз — та сама формула, що Clicker.ScienceFor на сервері:
@@ -1309,14 +1316,18 @@
       const maxed = u.max > 0 && u.level >= u.max;
       const pay = u.gain > 0 && !maxed ? span(u.price / u.gain) : '';
       const x2 = u.boost > 1 ? '<span class="clk-x2">×' + u.boost + '</span> · ' : '';
+      // Наступна віха (v10): «віха на 150» — ціль, до якої варто докупити рівні.
+      const nm = u.nextMark;
+      const next = nm ? ' · наступна віха на ' + nm.level + ': «' + nm.name + '» — ' + nm.desc : '';
       // Компактний рядок: значок · назва з рівнем і описом · ціна; смужка знизу — скільки ціни вже назбирано.
       const icon = H.api.upIcon ? H.api.upIcon(k) : '';
       return '<button type="button" class="clk-up' + (k === best ? ' best' : '') + (u.kind === 'skill' ? ' skill' : '') + (maxed ? ' maxed' : '')
-        + '" data-buy="' + esc(k) + '" title="' + esc(u.name + ' — ' + u.desc + (pay ? ' · окупиться за ' + pay : '')) + '" disabled>'
+        + '" data-buy="' + esc(k) + '" title="' + esc(u.name + ' — ' + u.desc + (pay ? ' · окупиться за ' + pay : '') + next) + '" disabled>'
         // Рівень — плашкою на значку (як лічильник будівель), щоб назва мала весь рядок.
         + '<span class="clk-uico">' + icon + '<span class="clk-lvl' + (u.level ? '' : ' zero') + '">' + (u.level ? u.level + (u.max > 0 ? '/' + u.max : '') : '0') + '</span></span>'
         + '<span class="clk-umain"><span class="clk-uname"><b>' + esc(u.name) + '</b></span>'
-        + '<span class="clk-udesc">' + x2 + esc(u.desc) + '</span></span>'
+        + '<span class="clk-udesc">' + x2 + esc(u.desc) + (nm && u.level >= nm.level * 0.6
+          ? ' · <span class="clk-nextmark">віха на ' + nm.level + '</span>' : '') + '</span></span>'
         // Праворуч ціна, під нею дрібно — за скільки окупиться (★ — найвигідніше зараз).
         + '<span class="clk-uright"><span class="clk-price"></span>'
         + (pay ? '<span class="clk-pay">' + (k === best ? '★ ' : '') + 'окуп. ' + pay + '</span>' : '') + '</span>'
@@ -1345,7 +1356,8 @@
 
     const marks = st.markList.slice().sort((a, b) => a.price - b.price);
     const mhtml = marks.length
-      ? '<div class="clk-sub">Віхи<span class="muted small"> · одноразово, ×2 назавжди (до обпалу)</span></div><div class="clk-marks">'
+      ? '<div class="clk-sub">Віхи' + (st.marksAll ? ' · ' + num(st.marksOwned) + ' з ' + num(st.marksAll) : '')
+        + '<span class="muted small"> · одноразово, назавжди (до обпалу; з «Пам\'яттю рук» лишаються)</span></div><div class="clk-marks">'
         + marks.map((m) => '<button type="button" class="clk-mark" data-mark="' + esc(m.key) + '" data-price="' + m.price + '" title="'
           + esc(m.name + ' — ' + m.desc) + '" disabled>'
           + (H.api.upIcon ? '<span class="clk-uico">' + H.api.upIcon(m.on || String(m.key).split(':')[0]) + '</span>' : '')
@@ -1403,12 +1415,13 @@
     const v = ctx.view || {};
     const bonus = dec(stampPct(st, st.stamps));
     const cap = v.stampCap || 0;
-    const head = '<div class="clk-stamps"><b>🔖 ' + num(st.stamps) + ' ' + stampsWord(st.stamps) + '</b>'
+    const head = '<div class="clk-stamps"><b>🔖 ' + stampsShort(st.stamps) + '</b>'
       + '<span>+' + bonus + ' % до всього</span>'
-      + '<span class="muted small">вільних клейм: ' + num(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
+      + '<span class="muted small">вільних клейм: ' + count(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
       + info('Почати наново — це спалити глеки, верстати й віхи, а натомість узяти клейма майстра за все, що наліпив '
         + 'за весь час. Перша тисяча клейм дає по +' + dec(st.stampBonus * 100) + ' % до всього назавжди, далі кожне нове '
-        + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть. Розписи, секрети, альбом і таблиця '
+        + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть, а після 4 млн бонус росте зовсім '
+        + 'повільно — удесятеро більше клейм додають ту саму частку. Розписи, секрети, альбом і таблиця '
         + 'лишаються. Кожні ' + STAMPS_PER_CAP + ' клейм — ще один черепок до денної стелі обміну'
         + (cap ? ' (зараз +' + cap + ')' : '') + '.')
       + scienceLine(st, esc);
@@ -1416,14 +1429,18 @@
     const card = (s) => '<button type="button" class="clk-secret' + (s.owned ? ' owned' : '') + '" data-secret="' + esc(s.key)
       + '" data-price="' + s.price + '"' + (s.owned || !st.mine || st.stampsFree < s.price ? ' disabled' : '') + '>'
       + '<b>' + esc(s.name) + '</b><span class="muted small">' + esc(s.desc) + '</span>'
-      + '<span class="clk-price stamp' + (s.owned ? ' done' : '') + '">' + (s.owned ? '✓ знаєш' : '🔖 ' + s.price) + '</span></button>';
+      + '<span class="clk-price stamp' + (s.owned ? ' done' : '') + '">' + (s.owned ? '✓ знаєш' : '🔖 ' + count(s.price)) + '</span></button>';
     const ring = (n) => st.secretList.filter((s) => (s.ring || 1) === n);
     const block = (title, note, list) => (list.length
       ? '<div class="clk-sub">' + title + '<span class="muted small"> · ' + note + '</span></div>'
         + '<div class="clk-secrets">' + list.map(card).join('') + '</div>'
       : '');
+    // Третє коло (v10 §8) — коли перші два вже знаєш або клейм від 20 тисяч: новачкові мільярди лише лякали б.
+    const firstTwo = ring(1).concat(ring(2));
+    const third = firstTwo.every((s) => s.owned) || st.stamps >= 20000 ? ring(3) : [];
     const secrets = block('Родинні секрети', 'за клейма, назавжди', ring(1))
       + block('Дідівські секрети', 'друге коло — те, що дід тримав у скрині', ring(2))
+      + block('Прадідівські секрети', 'третє коло — на мільйони клейм, для тих, хто пройшов усе', third)
       + '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: він лишається, хоч витрать усі.</div>';
     if (swap(st.fire._static, head + secrets)) {
       st.secretBtns = [...st.fire._static.querySelectorAll('[data-secret]')];
@@ -1443,7 +1460,7 @@
     }
     const left = sc.readyAt ? (Date.parse(sc.readyAt) - serverNow(st)) / 1000 : 0;
     return '<div class="muted small clk-science">🎓 <b>Наука майстра.</b> Найкращий гончар округи — ' + esc(sc.who) + ': '
-      + num(sc.top) + ' ' + stampsWord(sc.top) + '. Раз на 20 годин обпал дає ще чверть різниці з ним, але не більше, '
+      + stampsShort(sc.top) + '. Раз на 20 годин обпал дає ще чверть різниці з ним, але не більше, '
       + 'ніж удвічі твоїх клейм за глеки. ' + (left > 0 ? 'Знову — через ' + span(left) + '.' : 'Наступний обпал її принесе.')
       + '</div>';
   }
@@ -1684,31 +1701,77 @@
 
   // ---------- «Що нового» раз на гравця (v9 §A.9) ----------
 
-  /// Текст показується один раз на гончаря: керує цим сервер (view.news), тож і з телефона, і з ноутбука
-  /// вікно відкриється рівно раз. «v9.2» — звання округи й подарунок (docs/games/specs/clicker-titles.md); закриття
-  /// вікна забирає подарунок. Хто пропустив «v9.1» (клейма після тисячі, docs/games/specs/clicker-stamps.md), тому
-  /// ті рядки йдуть слідом — сервер каже, що гончар бачив востаннє (view.newsSeen).
+  /// Текст показується один раз на гончаря: керує цим сервер (view.news), тож і з телефона, і з ноутбука вікно
+  /// відкриється рівно раз. «v10» — «Глек на весь світ» (docs/games/specs/clicker-v10.md §12); закриття вікна забирає
+  /// подарунок. Хто пропустив «v9.2» (звання округи) чи «v9.1» (клейма після тисячі), тому ті рядки йдуть слідом —
+  /// сервер каже, що гончар бачив востаннє (view.newsSeen), а подарунок v9.2 дасть сам, якщо його ще не забрано.
   const NEWS = {
     title: '✨ Що нового в Гончарному колі',
-    lead: 'В окрузі з\'явились звання — і кожному подарунок:',
+    lead: 'Оновлення «Глек на весь світ»: після Січі гончарня виходить у світ.',
     lines: [
-      ['🎖', '<b>Звання округи.</b> Тринадцять «перших в окрузі» — у кого найбільше клейм, спійманих розписних, гостей, дивовиж… Хто обжене — забирає звання собі.'],
-      ['⭐', '<b>Звання дня</b> — Бджілка, Нічна варта, Перший півень, Улов дня й Висхідна зірка: учорашні переможці тримають їх увесь день.'],
-      ['🏅', '<b>Рідкісні й таємні.</b> Рідкісні вибиває кожен, хто зможе, — назавжди. Таємні приховані, доки хтось в окрузі не здобуде їх першим — тоді їх видно всім.'],
-      ['🏷', '<b>Значки біля ніка</b> — до трьох, обираєш сам у «🤝 Селі» → «Звання»; їх видно у вивісці, у списку цеху й на стіні звань у хаті.'],
-      ['🎁', '<b>Подарунок округи:</b> три години твого «без тебе» глеками одразу — і пам\'ятний глечик «Округа» на стіні звань.'],
+      ['🌍', '<b>Дванадцять нових щаблів.</b> Від Батуринської кахельні й Корецької порцеляни — через Одеський порт, кругосвітнє плавання, пароплав за океан і Всесвітню виставку в Парижі — до Опішні, гончарної столиці світу. Кожен щабель видно на сцені.'],
+      ['₴', '<b>Гривні замість «скстлн».</b> Від квадрильйона глеків великі суми рахуються в гривнях: 1 ₴ = 1 квадрильйон глеків. Гаманець той самий, просто без зайвих нулів. А далі будуть і червоні золоті.'],
+      ['🪧', '<b>Віхи після сотні.</b> На 75–300 рівнях — віхи, що дають не ×2, а свою силу: пасив +25 %, глек з полиці, ярмарок, щедрий купець, довша ніч, Око майстра. У «Швидшого кола» — аж до «Обома руками».'],
+      ['🏛', '<b>Гостинний двір.</b> Одеський порт привозить заморських гостей: царградських і кантонських купців, діаспору з Канади, лондонських торговців, паризьких колекціонерів. Виконуй їхні замовлення — кожні гості шанують тебе по-своєму.'],
+      ['🔖', '<b>Прадідівські секрети</b> — третє коло за мільйони клейм. А після 4 млн клейм бонус росте повільніше: удесятеро більше клейм — та сама надбавка. Нікому з тих, хто грає, це не зменшило жодного відсотка.'],
+      ['⚡', '<b>Легше й рівніше.</b> Коло більше не смикається на айфоні, на ПК стіл уміщається в екран, а гра менше навантажує комп\'ютер.'],
+      ['🎁', '<b>Подарунок:</b> чотири години твого «без тебе» глеками одразу.'],
     ],
     ok: 'Забрати подарунок',
   };
-  /// «v9.1» — для тих, хто його пропустив.
-  const NEWS_OLD = {
+  /// «v9.2» — для тих, хто його пропустив.
+  const NEWS_92 = {
     lead: 'А ще — з минулого оновлення:',
     lines: [
-      ['🔖', '<b>Клейма після тисячі важать менше.</b> Перша тисяча — як і була: +2 % до всього за клеймо (з Родовим клеймом +3 %). Далі кожне нове клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть. У кого клейм понад тисячу, бонус через це менший — зате обпалювати щогодини більше не треба.'],
-      ['🎓', '<b>Наука майстра.</b> Раз на 20 годин обпал дає ще чверть різниці між твоїми клеймами й клеймами найкращого гончаря округи — але не більше, ніж удвічі твоїх клейм за глеки. Хто позаду, той наздоганяє.'],
-      ['🔥', '<b>Кнопка обпалу</b> тепер показує, наскільки виросте дохід, а Тавро майстра справді додає клеймо до кожного обпалу.'],
+      ['🎖', '<b>Звання округи.</b> Тринадцять «перших в окрузі», звання дня, рідкісні й таємні; значки біля ніка обираєш у «🤝 Селі» → «Звання».'],
+      ['🎁', '<b>Подарунок округи:</b> ще три години «без тебе» — і пам\'ятний глечик «Округа» на стіні звань.'],
     ],
   };
+  /// «v9.1» — для тих, хто пропустив і його.
+  const NEWS_OLD = {
+    lead: 'І ще раніше:',
+    lines: [
+      ['🔖', '<b>Клейма після тисячі важать менше.</b> Перша тисяча — +2 % до всього за клеймо (з Родовим клеймом +3 %), далі кожне нове важить дедалі менше.'],
+      ['🎓', '<b>Наука майстра.</b> Раз на 20 годин обпал дає ще чверть різниці з найкращим гончарем округи — хто позаду, той наздоганяє.'],
+    ],
+  };
+
+  // ---------- гривня й червоні золоті: вікно-церемонія (v10 §6) ----------
+
+  /// Уперше доріс до гривень чи золотих — одне вікно з поясненням. Сервер шле coin (до чого доріс) і coinSeen (що вже
+  /// бачив); хто бачив «Що нового» v10, тому сервер записав coinSeen сам — гривню там уже пояснено.
+  const COINS = [
+    null,
+    { kind: 'hryvnia', title: '📜 Гетьманський універсал', text: 'Глеків у тебе вже стільки, що рахувати їх поштучно — як рахувати зерно в мішку. '
+      + 'Відтепер великі гроші рахуються в <b>гривнях</b>: 1 ₴ = 1 квадрильйон глеків. Гривня — ще з княжих часів: так звали срібний злиток. '
+      + 'Гаманець той самий, просто без зайвих нулів.' },
+    { kind: 'gold', title: '💰 Червоні золоті', text: 'Гривень стало як піску над Дніпром. Великі статки рахують <b>червоними золотими</b>: '
+      + '1 золотий = 1 трильйон гривень. Хто б міг подумати, що все почалося з одного глечика.' },
+  ];
+
+  function coinLater(st) {
+    clearTimeout(st.coinT);
+    st.coinT = setTimeout(() => {
+      if (!st.el || !(st.coin > st.coinSeen) || st.news === NEWS_VERSION) return;
+      if (!showCoin(st)) coinLater(st);
+    }, 1200);
+  }
+
+  function showCoin(st) {
+    if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
+    const c = COINS[Math.min(2, st.coin)];
+    if (!c) return true;
+    const svg = H.api.coinSvg ? H.api.coinSvg(c.kind) : '';
+    const html = '<div class="clk-news clk-coin">' + (svg ? '<div class="clk-coin-pic">' + svg + '</div>' : '')
+      + '<h3>' + c.title + '</h3><p>' + c.text + '</p>'
+      + '<button type="button" class="primary clk-news-ok">Зрозуміло</button></div>';
+    const v = st.coin;
+    const body = H.api.overlay(st, html, { cls: 'clk-newsbox', onClose: () => order(st, 'coin', { v }) });
+    const ok = body.querySelector('.clk-news-ok');
+    if (ok) ok.onclick = () => H.api.closeOverlay(st);
+    H.api.sfx('rare');
+    return true;
+  }
 
   /// Вікно чекає своєї черги: «поки тебе не було», мінігра чи Око майстра важливіші за новини. Пробуємо, доки
   /// не покажемо (чи доки сервер не скаже, що гончар уже бачив), — інакше той, хто хвилину читав «поки тебе не
@@ -1724,8 +1787,10 @@
   function showNews(st) {
     if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
     const li = (l) => '<li><span class="clk-news-ico">' + l[0] + '</span><span>' + l[1] + '</span></li>';
-    const old = st.newsSeen && st.newsSeen !== 'v9.1'
-      ? '<p class="muted small">' + NEWS_OLD.lead + '</p><ul>' + NEWS_OLD.lines.map(li).join('') + '</ul>' : '';
+    // Хто пропустив «v9.2» — ті рядки; хто й «v9.1» — ще й ті (newsSeen — остання версія, яку гончар бачив).
+    const seen = st.newsSeen || '';
+    const block = (n) => '<p class="muted small">' + n.lead + '</p><ul>' + n.lines.map(li).join('') + '</ul>';
+    const old = (seen !== 'v9.2' ? block(NEWS_92) : '') + (seen && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : '');
     const html = '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
       + NEWS.lines.map(li).join('') + '</ul>' + old
       + '<button type="button" class="primary clk-news-ok">' + NEWS.ok + '</button></div>';
@@ -2181,6 +2246,8 @@
         st.canSell = v.canSellToday || 0;
         st.ups = v.upgrades || {};
         st.markList = v.marks || [];
+        st.marksOwned = v.marksOwned || 0;
+        st.marksAll = v.marksAll || 0;
         st.styleList = v.styles || [];
         st.secretList = v.secrets || [];
         st.wear = v.wear || '';
@@ -2189,6 +2256,7 @@
         st.stampBonus = v.stampBonus || 0.02;
         st.stampsExtra = v.stampsExtra || 0;
         st.stampSoft = v.stampSoft || 1000;
+        st.stampKnee = v.stampKnee || 0;
         st.stampIron = v.stampIron || 0;
         st.science = v.science || null;
         // Розгін — серверний, плюс наші кліки, що ще не полетіли (сервер про них не знає).
@@ -2274,6 +2342,13 @@
         // під час Ока майстра чи чужого вікна лізти поперед батька нема куди.
         st.news = v.news || '';
         st.newsSeen = v.newsSeen || '';
+        st.coin = v.coin || 0;
+        st.coinSeen = v.coinSeen || 0;
+        if (st.coin > st.coinSeen && st.news !== NEWS_VERSION && ctx.mine && !st.coinAsked) {
+          st.coinAsked = true;
+          coinLater(st);
+        }
+        if (!(st.coin > st.coinSeen)) st.coinAsked = false;
         if (st.news === NEWS_VERSION && !st.newsAsked && ctx.mine) {
           st.newsAsked = true;
           newsLater(st);
@@ -2289,7 +2364,7 @@
       const owned = st.styleList.filter((s) => s.owned).length;
       st.tabText.shop = '🔨 Майстерня';
       st.tabText.fire = '🔥 Клейма';
-      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + st.stamps : '', 1);
+      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + count(st.stamps) : '', 1);
       labelTab(st, 'shop');
       labelTab(st, 'fire');
       paintSections(st, owned);
@@ -2333,6 +2408,7 @@
       clearInterval(st.timer);
       clearTimeout(st.eyeArm);
       clearTimeout(st.newsT);
+      clearTimeout(st.coinT);
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       if (st.steady) st.steady.stop();

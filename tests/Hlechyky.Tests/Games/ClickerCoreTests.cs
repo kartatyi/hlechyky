@@ -731,7 +731,9 @@ public class ClickerCoreTests
         Assert.Equal(ClickerKind.Idle, up.Kind);
         Assert.Equal(price, up.Price(0));
         Assert.Equal(rate, up.Rate);
-        Assert.Equal([25, 50, 100], up.Steps.Select(s => s.Level).ToArray());
+        // Віхи ×2 — ті самі 25/50/100; після сотні з десятого оновлення — модифікатори (docs/games/specs/clicker-v10.md §4).
+        Assert.Equal([25, 50, 100], up.Steps.Where(s => s.Effect == MarkEffect.Double).Select(s => s.Level).ToArray());
+        Assert.All(up.Steps.Where(s => s.Level > 100), s => Assert.NotEqual(MarkEffect.Double, s.Effect));
         Assert.All(up.Steps, s => Assert.NotEmpty(s.Name));
     }
 

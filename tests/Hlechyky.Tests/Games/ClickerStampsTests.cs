@@ -22,6 +22,8 @@ public class ClickerStampsTests
     }
 
     static JsonElement View(RoomHarness h) => h.View(0);
+    /// <summary>Розділювач тисяч в uk-UA — нерозривний пробіл; у тексті тесту пишемо звичайний.</summary>
+    static string Plain(string s) => s.Replace('\u00a0', ' ').Replace('\u202f', ' ');
     static ActResult Act(RoomHarness h, string action, object? payload = null) => h.Act(0, action, payload);
     static double AllMult(RoomHarness h) => View(h).GetProperty("allMult").GetDouble();
     static int Stamps(RoomHarness h) => View(h).GetProperty("stamps").GetInt32();
@@ -205,7 +207,7 @@ public class ClickerStampsTests
         Assert.Equal(JsonValueKind.Null, sc.GetProperty("readyAt").ValueKind);
 
         // Різниця 3000 − 1000 = 2000, чверть — 500 (стеля 2 × 1000 далеко).
-        Assert.StartsWith("🔥 Обпал! +1000 клейм і ще +500 від науки майстра — тепер +", Act(h, "fire").Message);
+        Assert.StartsWith("🔥 Обпал! +1 000 клейм і ще +500 від науки майстра — тепер +", Plain(Act(h, "fire").Message));
         Assert.Equal(1500, Stamps(h));
         Assert.Equal(500, Extra(h));
         Assert.Equal(h.Clock.UtcNow + Clicker.ScienceEvery, Science(h).GetProperty("readyAt").GetDateTimeOffset());

@@ -705,3 +705,15 @@
   .clk-scene, .clk-side { position: static; max-height: none; }
   .clk-pane { overflow: visible; }
 }
+
+/* ---- ядро v10: віхи після сотні й вікно гривні (docs/games/specs/clicker-v10.md §4, §6) ---- */
+/* «віха на 150» у рядку верстата — тихо, щоб не сперечатися з ціною. */
+.clk-nextmark { color: var(--accent2); }
+.clk-coin { text-align: center; }
+.clk-coin p { line-height: 1.45; margin: 6px 0 12px; }
+.clk-coin-pic { display: grid; place-items: center; margin: 2px auto 6px; }
+.clk-coin-pic svg { width: 72px; height: 72px; filter: drop-shadow(0 4px 10px rgba(244, 197, 66, .35)); }
+@media (prefers-reduced-motion: no-preference) {
+  .clk-coin-pic svg { animation: clkcoin 1.6s ease-out 1; }
+}
+@keyframes clkcoin { from { transform: rotateY(90deg) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
