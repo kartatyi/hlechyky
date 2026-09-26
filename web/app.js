@@ -9,7 +9,11 @@
   const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
   /// Нік, по якому можна клацнути: колір свій у кожного (web/people.js), клік — картка людини. badge — значок, куплений
   /// у Лавці, перед ніком: у балачках, де людей багато й хочеться впізнати одразу (data-nb — щоб перемалювати на льоту).
-  const nickHtml = (n, cls, badge) => `<span class="${cls || 'n'} who-n${HPeople.nickCls(n)}" data-who="${esc(n)}"${badge ? ' data-nb="1"' : ''} style="--h:${HPeople.hue(n)}">${badge ? HPeople.badge(n) : ''}${esc(n)}</span>`;
+  /// shown — як нік написати, якщо не в називному: «від Олі» (відмінок дає HLavka.genitive), клікається все одно на «Оля».
+  const nickHtml = (n, cls, badge, shown) => `<span class="${cls || 'n'} who-n${HPeople.nickCls(n)}" data-who="${esc(n)}"${badge ? ' data-nb="1"' : ''} style="--h:${HPeople.hue(n)}">${badge ? HPeople.badge(n) : ''}${esc(shown == null ? n : shown)}</span>`;
+  /// Для «від Олі» замість «закинув Оля» (рід людини невідомий): родовий відмінок ніка. «хтось» — так сервер зве
+  /// замовника, якого не пам'ятає після перезапуску, це не нік.
+  const fromNick = (n) => (n === 'хтось' ? 'когось' : HLavka.genitive(n));
   // Голосове — такий самий трек у черзі, тільки з нашим id і без обкладинки: замість неї мікрофон.
   const isVoice = (t) => !!t && String(t.id || '').startsWith('voice-');
   const cover = (t, attrs) => (t && t.thumbUrl
@@ -83,7 +87,7 @@
     // Лише дивишся (ще не назвався) — дивитись можна все, а робити щось — спершу назвись.
     if (!me.nick && method !== 'GET' && !path.startsWith('/api/account/')) {
       askNick(true);
-      throw new Error('Спершу назвись — і тоді тисни');
+      throw new Error('Агов, спершу назвись — тоді й тисни');
     }
     const r = await fetch(path, {
       method,
@@ -169,7 +173,7 @@
     b.classList.toggle('admin', me.role === 'admin');
     b.classList.toggle('guest', !me.account);
     b.href = me.nick ? '#who/' + encodeURIComponent(me.nick) : '#who';
-    b.title = !me.nick ? 'Назватись, щоб писати й грати'
+    b.title = !me.nick ? 'Назватись, щоб тяпати й грати'
       : me.account ? 'Твій профіль: черепки, ачівки, акаунт' : 'Твій профіль. Гість — зареєструй нік, щоб він був лише твій';
   }
   function showNickError(text) { $('nickErr').textContent = text; $('nickErr').hidden = false; }
@@ -189,14 +193,14 @@
         await busy($('nickSave'), 'Зберігаю…', () => api('POST', '/api/account/password', { current: $('passCurrent').value, password }));
         me.hasPassword = true;
         $('nickModal').hidden = true;
-        toast('Пароль збережено', 'ok');
+        toast('Є! Пароль збережено', 'ok');
         return;
       }
       if (!n) return;
       if (nickMode === 'guest') { await becomeGuest(n); return; }
       if (nickMode === 'gnick') {
         const r = await busy($('nickSave'), 'Заходжу…', () => api('POST', '/api/account/google', { credential: pendingGoogle, nick: n }));
-        if (!r.ok) { showNickError(r.message || 'Не вийшло'); return; }
+        if (!r.ok) { showNickError(r.message || 'Халепа: не вийшло'); return; }
         localStorage.setItem('nick', r.nick);
         location.reload();
         return;
@@ -271,13 +275,13 @@
     try {
       if (me.account) {
         await api('POST', '/api/account/google/link', { credential });
-        toast('Google прив\'язано', 'ok');
+        toast('Файно! Google прив\'язано', 'ok');
         location.reload();
         return;
       }
       const r = await api('POST', '/api/account/google', { credential });
       if (r.needNick) { pendingGoogle = credential; askNick(true, 'gnick', r.suggest || ''); return; }
-      if (!r.ok) { showNickError(r.message || 'Не вийшло'); return; }
+      if (!r.ok) { showNickError(r.message || 'Халепа: не вийшло'); return; }
       localStorage.setItem('nick', r.nick);
       location.reload();
     } catch (e) { showNickError(e.message); }
@@ -327,7 +331,7 @@
   function setPlayUi() {
     const b = $('playBtn');
     if (playState === 'idle') { b.className = 'primary'; b.textContent = '▶ Врубити'; b.title = 'Слухати ефір прямо тут'; }
-    else if (playState === 'connecting') { b.className = 'primary busy'; b.innerHTML = '<span class="spin"></span> Підключаю…'; }
+    else if (playState === 'connecting') { b.className = 'primary busy'; b.innerHTML = '<span class="spin"></span> Врубаю…'; }
     else { b.className = 'live'; b.innerHTML = '<span class="dot"></span> В ефірі · Вирубити'; b.title = 'Вирубити звук'; }
   }
   // сервер записує, хто слухав кожен трек (вкладка «Рейтинг»); ETS2 і VLC він бачить лише числом у потоці
@@ -348,18 +352,18 @@
   $('playBtn').onclick = async () => {
     if (playState !== 'idle') { stopAudio(); return; }
     const url = state?.streamUrl || '';
-    if (!url) { toast('Адреса потоку не налаштована', 'err'); return; }
+    if (!url) { toast('Халепа: адреса потоку не налаштована', 'err'); return; }
     playState = 'connecting';
     setPlayUi();
     audio.src = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
     try { await audio.play(); }
-    catch (e) { playState = 'idle'; setPlayUi(); toast('Не вдалося запустити потік: ' + e.message, 'err'); }
+    catch (e) { playState = 'idle'; setPlayUi(); toast('Халепа: потік не врубився — ' + e.message, 'err'); }
   };
   audio.addEventListener('playing', () => { playState = 'live'; setPlayUi(); updateMediaSession(); tellListening(true); });
   audio.addEventListener('pause', () => tellListening(false));
   audio.addEventListener('waiting', () => { if (playState === 'live') { playState = 'connecting'; setPlayUi(); } });
-  audio.addEventListener('error', () => { if (playState !== 'idle') { stopAudio(); toast('Потік обірвався. Натисни «Врубити» ще раз', 'err'); } });
-  audio.addEventListener('ended', () => { if (playState !== 'idle') { stopAudio(); toast('Потік закінчився', 'err'); } });
+  audio.addEventListener('error', () => { if (playState !== 'idle') { stopAudio(); toast('Ой-йой, потік обірвався. Натисни «Врубити» ще раз', 'err'); } });
+  audio.addEventListener('ended', () => { if (playState !== 'idle') { stopAudio(); toast('Ой-йой, потік закінчився. Натисни «Врубити» ще раз', 'err'); } });
   function updateMediaSession() {
     if (!('mediaSession' in navigator) || !state) return;
     const n = state.now, t = n.track;
@@ -398,7 +402,7 @@
   const reactsHtml = () => EMOJIS.map((e) => `<button data-e="${e}">${e}</button>`).join('');
   /// Феєрверк — вміння з Лавки: хто купив, у того поруч із реакціями ще й 🎆.
   const fwHtml = () => (HLavka.perk('fireworks')?.owned
-    ? '<button type="button" class="fwbtn" title="Феєрверк над обкладинкою в усіх — твоє вміння з Лавки, раз на 10 хвилин">🎆</button>' : '');
+    ? '<button type="button" class="fwbtn" title="Бахнути феєрверк над обкладинкою в усіх — твоє вміння з Лавки, раз на 10 хвилин">🎆</button>' : '');
   function wireReacts(box) {
     box.querySelectorAll('.reacts button').forEach((b) => b.onclick = () => {
       if (conn) conn.invoke('React', b.dataset.e).catch(() => {});
@@ -434,7 +438,7 @@
     if (!live) {
       const spot = n.spotifyLive;
       const title = spot ? 'Spotify-резерв' : 'Тиша';
-      const sub = spot ? (n.spotifyTitle || '') : `${dj()} шукає щось на полиці…`;
+      const sub = spot ? (n.spotifyTitle || '') : `${dj()} думає, що б його врубити…`;
       box.innerHTML = mini
         ? `<a class="mini-cv" href="#efir" title="Перейти в Ефір"><img src="/static/glek.svg" alt=""></a>
            <a class="mini-tt" href="#efir" title="${esc(title)}"><b>${esc(title)}</b><small>${esc(sub)}</small></a>`
@@ -451,7 +455,7 @@
     const t = n.track || {};
     const liked = n.likers.some((x) => sameNick(x, me.nick));
     const pending = n.skipPending;
-    const like = `<button data-act="like" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Лайкнути')}">❤ ${n.likers.length}</button>`;
+    const like = `<button data-act="like" class="${liked ? 'active' : ''}" title="${esc(n.likers.join(', ') || 'Вподобати')}">❤ ${n.likers.length}</button>`;
     const skip = `<button data-act="skip" ${pending ? 'disabled' : ''} title="Перемкнути на наступний трек">⏭${mini ? '' : '<span class="lbl"> Скіп</span>'}</button>`;
     if (mini) {
       box.innerHTML = `<a class="mini-cv" href="#efir" title="Перейти в Ефір">${cover(t)}</a>
@@ -461,7 +465,7 @@
       return;
     }
     const by = n.source === 'user'
-      ? `закинув ${nickHtml(n.requestedBy, 'bynick')}${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
+      ? `від ${nickHtml(n.requestedBy, 'bynick', false, fromNick(n.requestedBy))}${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
       : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
     // адмін банить безкоштовно; решта — за черепки, і голосові не банять
     const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
@@ -497,7 +501,7 @@
     nowSig = sig;
     const banner = $('banner');
     banner.hidden = state.liquidsoapOk;
-    banner.textContent = 'Ефір не відповідає (liquidsoap). Черга збережеться, треки підуть, щойно він оживе.';
+    banner.textContent = 'Ой-йой: ефір не відповідає (liquidsoap). Черга збережеться, треки підуть, щойно він оживе.';
     // Зелений чіп «ефір» у шапці — шум: показуємо лише тоді, коли з ефіром щось не так.
     $('liqStatus').hidden = !!state.liquidsoapOk;
     $('liqStatus').className = 'chip err';
@@ -614,11 +618,11 @@
         <div class="muted small">Перед «${esc(it.track.title)}» ${esc(dj())} скаже в ефір, кому ти її присвячуєш. Присвята — раз на 3 години.</div>
         <div class="ded-h">Кому</div>
         <div class="ded-chips" data-k="to">${['*'].concat(people).map((n) => `<button type="button" class="chip${n === '*' ? ' on' : ''}" data-v="${esc(n)}">${n === '*' ? '🌍 усім, хто слухає' : esc(n)}</button>`).join('')}</div>
-        ${people.length ? '' : '<div class="muted small">Зараз на сайті більше нікого — присвяти всім, хто слухає.</div>'}
+        ${people.length ? '' : '<div class="muted small">Зараз на сайті більше ні душі — присвяти всім, хто слухає.</div>'}
         <div class="ded-h">Як</div>
         <div class="ded-chips" data-k="phrase">${phrases.map((x, i) => `<button type="button" class="chip${i === 0 ? ' on' : ''}" data-v="${esc(x.key)}">${esc(x.text)}</button>`).join('')}</div>
         <div class="ded-say"></div>
-        <div class="row"><button type="button" class="primary" data-yes>Присвятити</button><button type="button" class="ghost" data-no>Передумав</button></div>
+        <div class="row"><button type="button" class="primary" data-yes>Присвятити</button><button type="button" class="ghost" data-no>Не треба</button></div>
       </div>`;
     const say = () => {
       const ph = phrases.find((x) => x.key === phrase);
@@ -653,7 +657,7 @@
   function statusChip(it) {
     switch (it.status) {
       case 'downloading': return '<span class="chip warn"><span class="spin"></span> качається</span>';
-      case 'failed': return `<span class="chip err">${esc(it.error || 'помилка')}</span>`;
+      case 'failed': return `<span class="chip err">${esc(it.error || 'халепа')}</span>`;
     }
     return '';
   }
@@ -821,8 +825,8 @@
     const label = (t) => (t.artist ? `${t.artist} — ${t.title}` : t.title);
     const onAir = seed && state.now.track && state.now.track.id === seed.id;
     $('djSub').textContent = seed
-      ? `Підбирає під ${state.suggestSeedNote || (onAir ? 'те, що зараз грає' : 'останнє, що грало')}: ${label(seed)}`
-      : 'Підбирає під те, що зараз грає. Зміниться трек — зміняться й поради';
+      ? `Підбирає під ${state.suggestSeedNote || (onAir ? 'те, що зараз шкварить' : 'останнє, що грало')}: ${label(seed)}`
+      : 'Підбирає під те, що зараз шкварить. Зміниться трек — зміняться й поради';
     // Картка — один рядок: обкладинка, назва, дві кнопки праворуч. Раніше це був блок на 118 px із кнопками
     // під назвою, і на ноутбуці поради опинялись аж на другому екрані.
     const card = (s, next) => `<div class="sug ${next ? 'next' : ''} ${sugSeen.has(s.itemId) ? '' : 'fade'}" data-id="${s.itemId}">
@@ -860,7 +864,7 @@
     if (nicks.length) parts.push('Слухають: ' + nicks.join(', '));
     if (others && state.listeningTabs !== undefined) parts.push(`${nicks.length ? 'ще ' : 'Слухають '}${others} через ETS2/VLC/інший плеєр`);
     else if (others) parts.push(`Слухають ${others}`);
-    return parts.join('; ') || 'Зараз ніхто не слухає';
+    return parts.join('; ') || 'У навушниках — ні душі';
   }
 
   function renderOnline() {
@@ -876,7 +880,7 @@
     // Клік по людині — її картка (web/people.js ловить data-who на всій сторінці).
     $('online').innerHTML = people.map((n) => listens(n)
       ? `<button type="button" class="chip listening who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="${esc(n)} зараз слухає ефір">🎧 ${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`
-      : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="на сайті, але плеєр вимкнений">${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">ні душі</span>';
+      : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="тусить на сайті, але плеєр вирублений">${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">ні душі</span>';
     HPeople.refreshWhere();          // на відкритому профілі «на сайті / слухає» — живе
   }
   $('listeners').onclick = () => { if (state) toast(listenersText()); };
@@ -901,12 +905,12 @@
   // розкладки латинські /roll і /coin набирати незручно. quick — кнопки палітри, що кидають одним натиском;
   // template — що підставити в поле для команд з аргументами.
   const COMMANDS = [
-    { cmd: '/кубик', alias: ['/roll'], args: '[N | A-B]', help: 'кубик 1–6; «/кубик 100» — до ста, «/кубик 2-12» — свої межі',
+    { cmd: '/кубик', alias: ['/roll'], args: '[N | A-B]', help: 'жбурнути кубик 1–6; «/кубик 100» — до ста, «/кубик 2-12» — свої межі',
       quick: [['🎲 1–6', '/кубик'], ['🎲 до 100', '/кубик 100']] },
-    { cmd: '/монетка', alias: ['/coin'], args: '', help: 'орел чи решка', quick: [['🪙 Монетка', '/монетка']] },
+    { cmd: '/монетка', alias: ['/coin'], args: '', help: 'жбурнути монетку: орел чи решка', quick: [['🪙 Монетка', '/монетка']] },
     { cmd: '/обери', alias: ['/вибери', '/choose'], args: 'а, б або в', help: 'обрати за тебе: «/обери чай, кава або компот»', template: '/обери ' },
     { cmd: '/куля', alias: ['/глек', '/8ball'], args: 'питання', help: 'спитати Дядька Глека: «/куля чи буде дощ?»', template: '/куля ' },
-    { cmd: '/клич', alias: ['/поклич', '/invite'], args: '@нік', help: 'покликати людину за твій стіл, що чекає гравців', template: '/клич @' },
+    { cmd: '/клич', alias: ['/поклич', '/invite'], args: '@нік', help: 'гукнути людину за твій стіл, що чекає гравців', template: '/клич @' },
     { cmd: '/столи', alias: ['/стіл', '/tables'], args: '', help: 'живі столи з кнопками — бачиш лише ти', quick: [['🎲 Столи', '/столи']] },
     { cmd: '/пароль', args: 'нік новий_пароль', help: 'поставити людині новий пароль, коли вона свій забула. Лише адмін', admin: true, template: '/пароль ' },
   ];
@@ -977,7 +981,7 @@
   }
   function sendCommand(text) {
     if (!conn) { askNick(true); return; }
-    conn.invoke('SendChat', text).then((err) => { if (err) toast(err, 'err'); }).catch((e) => toast('Не відправилось: ' + e.message, 'err'));
+    conn.invoke('SendChat', text).then((err) => { if (err) toast(err, 'err'); }).catch((e) => toast('Халепа: не відправилось — ' + e.message, 'err'));
   }
   function cmdRow(c, i) {
     return `<div class="cmd${i === cmdSel ? ' on' : ''}" data-i="${i}">
@@ -1069,7 +1073,7 @@
     const inp = $('chatInput');
     const [from, to] = [inp.selectionStart ?? inp.value.length, inp.selectionEnd ?? inp.value.length];
     const text = inp.value.slice(0, from) + e + inp.value.slice(to);
-    if (text.length > inp.maxLength) { toast('Задовге повідомлення', 'err'); return; }
+    if (text.length > inp.maxLength) { toast('Халепа: задовге повідомлення', 'err'); return; }
     inp.value = text;
     inp.focus();
     inp.setSelectionRange(from + e.length, from + e.length);
@@ -1160,7 +1164,7 @@
   function paintPing() {
     const b = $('pingBtn');
     b.textContent = pingOn ? '🔔' : '🔕';
-    b.title = pingOn ? 'Звук, коли тебе тегнули чи відповіли — увімкнено' : 'Звук на @ і відповіді вимкнено';
+    b.title = pingOn ? 'Дзінь, коли тебе гукнули чи відповіли, — увімкнено' : 'Дзінь на @ і відповіді вирублено';
   }
   $('pingBtn').onclick = () => {
     pingOn = !pingOn;
@@ -1368,7 +1372,7 @@
       // Непрочитане — це люди. Глек бейджа не смикає: інакше той не сходив би з екрана й нічого б не означав.
       if (m.kind !== 'dj') setUnread(unread + 1);
       if (repliedMe) toast(`↩ ${m.nick} відповідає тобі: ${m.text}`.slice(0, 140));
-      else if (tagged) toast(`@ ${m.nick} кличе тебе: ${m.text}`.slice(0, 140));
+      else if (tagged) toast(`@ ${m.nick} гукає тебе: ${m.text}`.slice(0, 140));
       else if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
     }
   }
@@ -1459,7 +1463,7 @@
     if (box.querySelector(':scope > .msg-top')) return;
     const t = document.createElement('div');
     t.className = 'msg-top muted small';
-    t.textContent = box.id === 'log' ? 'Далі Журнал не пам\'ятає' : 'Це найперше, що тут писали';
+    t.textContent = box.id === 'log' ? 'Далі Журнал не пам\'ятає' : 'Це найперше, що тут тяпнули';
     box.insertBefore(t, box.firstChild);
   }
   function prependOlder(box, list) {
@@ -1610,7 +1614,7 @@
       + '<div class="tc-lines messages"></div>'
       + '<div class="tc-typing typing" hidden></div>'
       + '<form class="tc-form"><input type="text" maxlength="500" autocomplete="off" placeholder="Тяпни щось за столом…">'
-      + '<button class="primary" type="submit" title="Сказати">→</button></form></div>';
+      + '<button class="primary" type="submit" title="Тяпнути (Enter)">→</button></form></div>';
     const q = (s) => root.querySelector(s);
     const o = {
       root, head: q('.tc-head'), last: q('.tc-last'), badge: q('.tc-badge'), name: q('.tc-name'),
@@ -1703,7 +1707,7 @@
     if (!text || !conn || !table.id) return;
     conn.invoke('TableSay', table.id, text)
       .then((err) => { if (err) { toast(err, 'err'); return; } tc.input.value = ''; })
-      .catch((e) => toast('Не відправилось: ' + e.message, 'err'));
+      .catch((e) => toast('Халепа: не відправилось — ' + e.message, 'err'));
   }
   /// Каркас ігор каже, біля якого столу ми стоїмо (null — ні біля якого) і чи стіл на весь екран.
   function onTable(info, layout) {
@@ -1753,7 +1757,7 @@
     }
     const acts = document.createElement('span');
     acts.className = 'macts';
-    acts.innerHTML = '<button type="button" class="ghost" data-a="like" title="❤ (подвійний клік — теж)">❤</button>'
+    acts.innerHTML = '<button type="button" class="ghost" data-a="like" title="❤ Вподобати (подвійний клік — теж)">❤</button>'
       + '<button type="button" class="ghost" data-a="reply" title="Відповісти">↩</button>';
     el.appendChild(acts);
     const likes = document.createElement('button');
@@ -1840,7 +1844,7 @@
     mentionSel = Math.min(mentionSel, list.length - 1);
     const online = new Set(((state && state.online) || []).map((n) => n.toLowerCase()));
     box.innerHTML = list.map((n, i) => `<button type="button" class="${i === mentionSel ? 'on' : ''}" data-nick="${esc(n)}">`
-      + `@${esc(n)}${crownOf(n)}${online.has(n.toLowerCase()) ? ' <span class="dot" title="на сайті"></span>' : ''}</button>`).join('');
+      + `@${esc(n)}${crownOf(n)}${online.has(n.toLowerCase()) ? ' <span class="dot" title="тусить на сайті"></span>' : ''}</button>`).join('');
     box.hidden = false;
     box.querySelectorAll('button').forEach((b) => b.onmousedown = (e) => { e.preventDefault(); insertMention(b.dataset.nick); });
   }
@@ -1918,7 +1922,7 @@
     const call = replyTo ? conn.invoke('SendReply', text, replyTo.id) : conn.invoke('SendChat', text);
     call
       .then((err) => { if (err) { toast(err, 'err'); return; } $('chatInput').value = ''; hideCmdHint(); clearReply(); })
-      .catch((err) => toast('Не відправилось: ' + err.message, 'err'));
+      .catch((err) => toast('Халепа: не відправилось — ' + err.message, 'err'));
   };
   function setChatTab(tab) {
     // «Стіл» є лише тоді, коли балачка столу живе в панелі; інакше вона — шторка, і вкладки нема.
@@ -2074,7 +2078,7 @@
       if (lastQuery !== text) return;
       lastResults = list;
       showResults(list, list.length ? null : 'нічого не знайшов, спробуй інакше або кинь посилання');
-    } catch (e) { showResults([], 'пошук впав: ' + e.message); }
+    } catch (e) { showResults([], 'ой-йой, пошук упав: ' + e.message); }
   }
   q.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => search(q.value.trim()), 350); });
   q.addEventListener('keydown', (e) => {
@@ -2114,7 +2118,7 @@
   const FB_KINDS = {
     idea: { ph: 'Що варто додати? Наприклад: «щоб у балачках можна було закріпити повідомлення»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
     change: { ph: 'Що змінити й чому? Наприклад: «на телефоні черга завелика — хай згортається»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
-    bug: { ph: 'Що робив → що сталося → що мало статися. Наприклад: «натиснув Скіп — нічого, хоча мало перемкнути»', note: 'Разом із текстом піде, де ти на сайті, розмір екрана й браузер — так баг легше знайти.' },
+    bug: { ph: 'Що робиш → що стається → що мало б статися. Наприклад: «тисну Скіп — нічого, а мало перемкнути»', note: 'Разом із текстом піде, де ти на сайті, розмір екрана й браузер — так баг легше знайти.' },
   };
   const FB_STATUS = { new: ['нове', ''], seen: ['переглянуто', ''], planned: ['у планах', 'warn'], done: ['зроблено', 'ok'], nope: ['не буде', 'err'] };
   const FB_ICON = { idea: '💡', change: '✏', bug: '🐞' };
@@ -2447,12 +2451,12 @@
 
   async function startRec() {
     if (recorder) return;
-    if (!voiceMax()) { toast('Голосові вимкнені', 'err'); return; }
-    if (!canRecord()) { toast('Цей браузер не вміє писати звук (потрібен https і свіжий Chrome, Firefox або Safari)', 'err'); return; }
+    if (!voiceMax()) { toast('Халепа: голосові вимкнені', 'err'); return; }
+    if (!canRecord()) { toast('Халепа: цей браузер не вміє писати звук (потрібен https і свіжий Chrome, Firefox або Safari)', 'err'); return; }
     if (!me.nick) { askNick(); return; }
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
-    catch (e) { toast(e.name === 'NotAllowedError' ? 'Мікрофон не дозволено — дозволь у браузері й спробуй ще' : 'Мікрофон не відкрився: ' + e.message, 'err'); return; }
+    catch (e) { toast(e.name === 'NotAllowedError' ? 'Халепа: мікрофон не дозволено — дозволь у браузері й спробуй ще' : 'Халепа: мікрофон не відкрився — ' + e.message, 'err'); return; }
     dropRecBlob();
     recStream = stream;
     recChunks = [];
@@ -2490,7 +2494,7 @@
     stopMeter();
     releaseMic();
     if (recTossed) { closeRec(); return; }
-    if (blob.size < 1024) { closeRec(); toast('Нічого не записалось, спробуй ще раз', 'err'); return; }
+    if (blob.size < 1024) { closeRec(); toast('Халепа: нічого не записалось — ану ще раз', 'err'); return; }
     recBlob = blob;
     recUrl = URL.createObjectURL(blob);
     drawRecPreview(sec);
@@ -2513,7 +2517,7 @@
     recBox.className = 'rec prev';
     recBox.innerHTML = `<span class="rec-mic">🎙</span><audio controls src="${recUrl}"></audio><span class="chip">${fmt(sec)}</span>
       <button id="recSend" class="primary">Закинути в чергу</button>
-      <button id="recAgain" class="ghost">Ще раз</button>
+      <button id="recAgain" class="ghost">Ану ще раз</button>
       <button id="recDrop" class="ghost icon danger" title="Викинути">✕</button>`;
     $('recSend').onclick = (e) => busy(e.currentTarget, 'несу…', sendRec);
     $('recAgain').onclick = () => { closeRec(); startRec(); };
@@ -2592,7 +2596,7 @@
     if (a.dataset.id === id && !a.paused) { a.pause(); return; }
     a.dataset.id = id;
     a.src = `/api/voice/${encodeURIComponent(id)}.mp3`;
-    a.play().catch((e) => toast('Не програлось: ' + e.message, 'err'));
+    a.play().catch((e) => toast('Халепа: не програлось — ' + e.message, 'err'));
   }
   function markVoiceButtons() {
     const a = $('voiceAudio');
@@ -2698,11 +2702,12 @@
     const bad = jobs.filter((j) => j.state === 'err');
     if (!bad.length) {
       const one = done.length === 1 ? done[0] : null;
-      showDrop('done', one && one.kind === 'album' ? 'Ось трекліст' : 'Закинуто!',
-        one ? String(one.msg).replace(/^Закинуто:\s*/, '').replace(/ — трекліст під пошуком$/, '') : `усі ${done.length} по черзі`, '');
+      // Префікс «Закинуто:» у відповіді сервера ріжемо разом із вигуком перед ним («Є! Закинуто: …»), якщо він там буде.
+      showDrop('done', one && one.kind === 'album' ? 'Лови трекліст' : 'Є! Закинуто',
+        one ? String(one.msg).replace(/^(?:\S+!\s+)?Закинуто:\s*/, '').replace(/ — трекліст під пошуком$/, '') : `усі ${done.length} по черзі`, '');
       hideDrop(1600);
     } else {
-      showDrop('err', done.length ? `Закинуто ${done.length} з ${jobs.length}` : 'Не вийшло', bad[0].msg, bad[0].label);
+      showDrop('err', done.length ? `Закинуто ${done.length} з ${jobs.length}` : 'От халепа — не вийшло', bad[0].msg, bad[0].label);
       hideDrop(3500);
     }
   }
@@ -2768,7 +2773,7 @@
     let list = await api('GET', '/api/history?' + qs);
     // Сервер, що ще не знає by, віддасть усе — тоді «Мої» відбираємо тут, у тому, що прийшло.
     if (histWho === 'mine') list = list.filter((h) => h.source === 'user' && sameNick(h.requestedBy, me.nick));
-    const moreBtn = (n) => (n >= HIST_N || (histWho === 'mine' && list.length) ? '<button class="ghost histmore" type="button">Показати ще</button>' : '');
+    const moreBtn = (n) => (n >= HIST_N || (histWho === 'mine' && list.length) ? '<button class="ghost histmore" type="button">Гортнути ще</button>' : '');
     if (more && ul) {
       ul.insertAdjacentHTML('beforeend', histRows(list));
       // роздільник дня на шві двох пачок: той самий день — другий заголовок зайвий
@@ -2781,7 +2786,7 @@
       const seg = `<div class="tabs seg">${[['all', 'Усі'], ['mine', 'Мої']].map(([v, l]) =>
         `<button data-v="${v}" class="${histWho === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
       const empty = histWho === 'mine'
-        ? 'Ти ще нічого не закидав. Знайди пісню в «Ефірі» — і тут почне збиратись твоє.'
+        ? 'Від тебе тут ще жодної пісні. Закинь щось в «Ефірі» — і тут почне збиратись твоє.'
         : 'Ще нічого не грало. Закинь першу пісню — і тут почне збиратись історія.';
       box.innerHTML = seg + `<ul class="list hist" data-last="${list.length ? list[list.length - 1].id : ''}">${histRows(list) || `<li class="empty glek">${empty}</li>`}</ul>` + moreBtn(list.length);
       box.querySelectorAll('.seg button').forEach((b) => b.onclick = () => {
@@ -2817,7 +2822,7 @@
         return;
       }
       wireRows(box);
-    } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    } catch (e) { box.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
   }
 
   // ---------- «💡 Пропозиції й баги» — вкладка розробника (адміна) ----------
@@ -2883,8 +2888,8 @@
       })
       : list.map((l) => trackRow(l.track, `❤ ${esc(l.likes.map((x) => x.nick).join(', '))}`));
     const empty = likesWho === 'mine' && list.length
-      ? 'Твоїх сердечок тут ще нема: тисни ❤ під треком в ефірі — і пісня осяде тут. Що люблять інші — перемкни на «Усі».'
-      : 'Ще ніхто нічого не лайкнув. Сердечко під треком в ефірі — і пісня осяде тут.';
+      ? 'Твоїх вподобайок тут ще нема: тисни ❤ під треком в ефірі — і пісня осяде тут. Що люблять інші — перемкни на «Усі».'
+      : 'Ще жодної вподобайки. Тисни ❤ під треком в ефірі — і пісня осяде тут.';
     box.innerHTML = `<div class="tabs seg">${[['mine', `Мої · ${mine.length}`], ['all', `Усі · ${list.length}`]].map(([v, label]) =>
       `<button data-v="${v}" class="${likesWho === v ? 'on' : ''}">${label}</button>`).join('')}</div>` +
       `<ul class="list">${rows.join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
@@ -2914,7 +2919,7 @@
     const row = (b) => `<li>
         ${cover(b.track)}
         <div style="min-width:0"><div class="t">${esc(b.track.title)}${b.track.artist ? ` <span class="muted">· ${esc(b.track.artist)}</span>` : ''}</div>
-          <div class="r">забанив ${esc(b.by || '?')}${b.price ? ` за ${b.price} 🏺` : ''} · ${dayTime(b.createdAt)}</div></div>
+          <div class="r">бан від ${esc(fromNick(b.by || '?'))}${b.price ? ` за ${b.price} 🏺` : ''} · ${dayTime(b.createdAt)}</div></div>
         <div class="btns">${b.track.sourceUrl && !isVoice(b.track) ? `<a class="chip" href="${esc(b.track.sourceUrl)}" target="_blank" rel="noopener" title="Що це було">↗</a>` : ''}${unbanBtn(b.track)}</div>
       </li>`;
     box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${how}</div>` +
@@ -2979,7 +2984,7 @@
     const again = () => loadLib();
     $('adsSaveEvery').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/air/every',
       { everyTracks: +$('adsEvery').value, minMinutes: +$('adsMins').value }).then(ok).then(again).catch(fail));
-    $('adsNow').onclick = (e) => busy(e.currentTarget, 'ставлю…', () => api('POST', '/api/ads/air/now').then(ok).catch(fail));
+    $('adsNow').onclick = (e) => busy(e.currentTarget, 'закидаю…', () => api('POST', '/api/ads/air/now').then(ok).catch(fail));
     $('adsAllOn').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/library/all', { enabled: true }).then(ok).then(again).catch(fail));
     $('adsAllOff').onclick = (e) => confirm('Вимкнути всі реклами з ротації?') && busy(e.currentTarget, '…',
       () => api('POST', '/api/ads/library/all', { enabled: false }).then(ok).then(again).catch(fail));
@@ -3155,19 +3160,19 @@
     if (!box) return;
     if (!openPl.has(id)) { box.hidden = true; return; }
     box.hidden = false;
-    box.innerHTML = '<div class="muted small"><span class="spin"></span></div>';
+    box.innerHTML = '<div class="muted small"><span class="spin"></span> мить…</div>';
     try {
       const r = await api('GET', `/api/playlists/${id}`);
       box.innerHTML = `<ul class="list">${r.tracks.map((x) => `<li>
           ${cover(x.track)}
-          <div style="min-width:0"><div class="t">${esc(x.track.title)} <span class="muted">· ${esc(x.track.artist)}</span></div><div class="r">${fmt(x.track.durationSec)} · додав ${esc(x.addedBy)}</div></div>
+          <div style="min-width:0"><div class="t">${esc(x.track.title)} <span class="muted">· ${esc(x.track.artist)}</span></div><div class="r">${fmt(x.track.durationSec)} · від ${esc(fromNick(x.addedBy))}</div></div>
           <div class="btns"><button class="q" data-id="${esc(x.track.id)}">в чергу</button><button class="ghost danger rmt" data-id="${esc(x.track.id)}" title="Прибрати з плейлиста">✕</button></div>
         </li>`).join('') || '<li class="empty">порожньо</li>'}</ul>`;
       wireRows(box);
       box.querySelectorAll('.rmt').forEach((b) => b.onclick = async () => {
         try { ok(await api('DELETE', `/api/playlists/${id}/tracks/${b.dataset.id}`)); renderPlaylists(); } catch (err) { fail(err); }
       });
-    } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    } catch (e) { box.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
   }
 
   // ---------- playlist picker modal ----------
@@ -3177,12 +3182,12 @@
     $('plModal').hidden = false;
     $('plModal').querySelector('h3').textContent = `«${title}» — у який плейлист?`;
     const pick = $('plPick');
-    pick.innerHTML = '<span class="spin"></span>';
+    pick.innerHTML = '<div class="muted small"><span class="spin"></span> мить…</div>';
     try {
       const list = await api('GET', '/api/playlists');
       pick.innerHTML = list.map((p) => `<button data-id="${p.id}"><span>${esc(p.name)}</span><span class="muted small">${p.count}</span></button>`).join('') || '<div class="muted small">Плейлистів ще нема, створи перший нижче.</div>';
       pick.querySelectorAll('button').forEach((b) => b.onclick = () => addToPlaylist(b.dataset.id));
-    } catch (e) { pick.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    } catch (e) { pick.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
     setTimeout(() => $('plNewName').focus(), 50);
   }
   async function addToPlaylist(id) {
@@ -3258,7 +3263,7 @@
       if (room && room !== tourRoom && mineT) {
         if (tourRoom !== null || route === 'games') {
           if (route === 'games') go('#games/room/' + encodeURIComponent(room));
-          else toast('🏆 Турнір: наступна гра почалась — зазирни в «Ігри»', 'ok');
+          else toast('🏆 Турнір: наступна гра почалась — гайда в «Ігри»!', 'ok');
         }
       }
       tourRoom = room || (tourRoom === null ? '' : tourRoom);
@@ -3312,7 +3317,7 @@
       if (!mine && !tableVisible()) {
         table.unread++;
         paintTableBadge();
-        if (tagged) toast(`@ ${l.nick} кличе тебе за столом: ${l.text}`.slice(0, 140));
+        if (tagged) toast(`@ ${l.nick} гукає тебе за столом: ${l.text}`.slice(0, 140));
       }
     });
     conn.onreconnected(() => {
@@ -3320,17 +3325,17 @@
       HLavka.loadLooks();            // поки зв'язку не було, хтось міг перевдягтись
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       HGames.reconnected();
-      toast('Знову на зв\'язку', 'ok');
+      toast('Є! Знову на зв\'язку', 'ok');
     });
-    conn.onreconnecting(() => toast('Зв\'язок зник, підключаюсь…', 'wait'));
-    conn.onclose(() => toast('Зв\'язок із сервером втрачено, онови сторінку', 'err'));
+    conn.onreconnecting(() => toast('Ой-йой, зв\'язок зник — підключаюсь…', 'wait'));
+    conn.onclose(() => toast('Ой-йой: зв\'язок із сервером втрачено — онови сторінку', 'err'));
     conn.start().then(() => {
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       // Перші 'rooms' прилітають ще до того, як start() віддасть 'Connected', тож підписки на
       // кімнати треба попросити заново — як після реконекту.
       HGames.reconnected();
       if (route === 'lib') { libShown = libTab; loadLib(); }
-    }).catch((e) => { toast('Не підключився: ' + e.message, 'err'); setTimeout(connect, 4000); });
+    }).catch((e) => { toast('Халепа: не з\'єдналось — ' + e.message + '. Пробую ще раз', 'err'); setTimeout(connect, 4000); });
   }
 
   // ---------- нічний відбій ----------

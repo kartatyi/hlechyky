@@ -30,7 +30,7 @@
   const TIER = { 1: 'звичайний', 2: 'рідкісний', 3: 'особливий' };
   const PERK_TEXT = {
     dedication: 'Перед твоїм треком Дядько Глек скаже в ефір: «Цю пісню Оля присвячує Петрові — на удачу». Раз на 3 години.',
-    fireworks: 'Кнопка 🎆 біля реакцій: феєрверк над обкладинкою в усіх і рядок у балачках. Раз на 10 хвилин.',
+    fireworks: 'Кнопка 🎆 біля реакцій: бахнути феєрверк над обкладинкою в усіх — і рядок у балачках. Раз на 10 хвилин.',
   };
 
   // =============================================================================================
@@ -312,7 +312,7 @@
       const wrap = document.createElement('div');
       wrap.className = 'modal lv-ask';
       wrap.innerHTML = '<div class="card"><h3>' + esc(title) + '</h3><div class="muted">' + html + '</div>'
-        + '<div class="row"><button class="primary" type="button" data-yes>' + esc(okText) + '</button><button class="ghost" type="button" data-no>Передумав</button></div></div>';
+        + '<div class="row"><button class="primary" type="button" data-yes>' + esc(okText) + '</button><button class="ghost" type="button" data-no>Не треба</button></div></div>';
       const close = (v) => { wrap.remove(); document.removeEventListener('keydown', onKey, true); done(v); };
       const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(false); } };
       wrap.addEventListener('click', (e) => { if (e.target === wrap) close(false); });
@@ -337,7 +337,7 @@
     await o.busy(btn, forNick ? 'дарую…' : 'купую…', async () => {
       try {
         const r = await o.api('POST', '/api/lavka/buy', forNick ? { item: id, for: forNick } : { item: id });
-        o.toast(r.message || (forNick ? 'Подаровано!' : 'Твоє!'), 'ok');
+        o.toast(r.message || (forNick ? 'Є! Подаровано' : 'Лови — твоє!'), 'ok');
         delete preview[it.kind];
         await load();
         paint();
