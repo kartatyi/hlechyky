@@ -190,7 +190,7 @@
     const me = el.querySelector('.mf-me');
     me.className = 'mf-me chip' + (v.me ? ' ' + roleCls(v.me.role) : '')
       + (v.me && !v.me.alive ? ' mf-out' : '');
-    me.textContent = v.me ? roleTitle(v.me.role) + (v.me.alive ? '' : ' (вибув)')
+    me.textContent = v.me ? roleTitle(v.me.role) + (v.me.alive ? '' : ' (поза грою)')
       : mySeat == null ? 'Дивишся збоку' : 'За столом';
     // Забув, що вміє твоя роль, — наведи на чіп (картка з поясненням була лише на знайомстві).
     const card = v.me && ROLE_CARD[v.me.role];
@@ -215,8 +215,8 @@
       if (p.role) tags.push('<span class="mf-tag ' + roleCls(p.role) + '">' + ctx.esc(roleTitle(p.role)) + '</span>');
       else if (checks[p.seat] != null) tags.push('<span class="mf-tag ' + (checks[p.seat] ? 'mf-r-mafia' : 'mf-r-civil') + '">'
         + (checks[p.seat] ? 'мафія' : 'не мафія') + '</span>');
-      if (secret && voted[p.seat]) tags.push('<span class="mf-count" title="вже визначився">✔</span>');
-      else if (!secret && counts[p.seat]) tags.push('<span class="mf-count" title="скільки на нього показують">' + counts[p.seat] + '</span>');
+      if (secret && voted[p.seat]) tags.push('<span class="mf-count" title="голос уже є">✔</span>');
+      else if (!secret && counts[p.seat]) tags.push('<span class="mf-count" title="скільки пальців показує сюди">' + counts[p.seat] + '</span>');
       return '<div class="mf-p' + (p.alive ? '' : ' dead') + (p.seat === mySeat ? ' me' : '') + '">'
         + '<span class="mf-nick">' + ctx.esc(p.nick || ('гравець ' + (p.seat + 1))) + '</span>'
         + '<span class="mf-tags">' + tags.join('') + '</span>'
@@ -283,7 +283,7 @@
     if (v.phase === 'day' && v.dayInfo) {
       const fallen = v.dayInfo.fallen || (v.dayInfo.killed != null ? [v.dayInfo.killed] : []);
       if (fallen.length >= 2) return fallen.map((s) => nickOf(v, s)).join(' і ') + ' не прокинулись';
-      if (fallen.length === 1) return nickOf(v, fallen[0]) + ' не прокинувся';
+      if (fallen.length === 1) return nickOf(v, fallen[0]) + ' більше не прокинеться';
       return 'уночі всі вціліли';
     }
     // Хто переміг, на дограній картці вже каже великий рядок унизу — у шапці вдруге не повторюємо.

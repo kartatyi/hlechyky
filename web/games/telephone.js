@@ -332,8 +332,9 @@
 
   function stepScreen(root, ctx, v) {
     const t = v.task;
-    const title = !t ? (ctx.mine ? 'Чекаємо, поки всі здадуть…' : 'Гравці працюють…')
-      : t.kind === 'phrase' ? 'Напиши фразу, яку намалює сусід'
+    const lobby = !!ctx.room && ctx.room.status === 'lobby';
+    const title = !t ? (lobby ? 'Збираємо стіл — грати можна вже вдвох' : ctx.mine ? 'Чекаємо, поки всі здадуть…' : 'Гравці працюють…')
+      : t.kind === 'phrase' ? 'Тяпни фразу, яку намалює сусід'
         : t.kind === 'draw' ? (v.duo && v.step === 1 ? 'Глек загадав — намалюй, а сусід угадає' : 'Намалюй це')
           : 'Опиши, що бачиш на малюнку';
     const key = [v.step, t ? t.kind + ':' + t.chain : 'none'].join('|');
@@ -411,7 +412,8 @@
       if (cv) cv.classList.toggle('can', !t.ready);
     }
     const waiting = (v.waiting || []).map((i) => nick(ctx, i));
-    const who = waiting.length ? 'Ще працюють: ' + waiting.join(', ') : 'Усі здали — зараз далі';
+    const who = waiting.length ? 'Ще працюють: ' + waiting.join(', ')
+      : lobby ? 'Гайда за стіл — господар тисне «Почати»' : 'Усі здали — гайда далі';
     const whoEl = body.querySelector('.tpwho');
     if (whoEl.innerHTML !== who) whoEl.innerHTML = who;
   }
@@ -446,6 +448,7 @@
       : '<div class="tptext">«' + ctx.esc(e.text || '') + '»</div>';
     const own = e.seat === ctx.seat;
     const like = jug ? '' : '<button type="button" class="tplike' + (e.liked ? ' on' : '') + '" data-chain="' + chain + '" data-index="' + e.index + '"'
+      + ' title="' + (own || !ctx.mine || !ctx.playing ? 'Вподобайки' : e.liked ? 'Забрати вподобайку' : 'Поставити вподобайку') + '"'
       + (own || !ctx.mine || !ctx.playing ? ' disabled' : '') + '>❤ ' + (e.likes || 0) + '</button>';
     return '<div class="tpentry' + (last ? ' fresh' : '') + '">' + who + body + like + '</div>';
   }
@@ -462,7 +465,7 @@
     if (!r) { body.innerHTML = ''; return; }
     body.dataset.chain = String(r.chain);
     body.dataset.shown = String(r.shown);
-    const more = r.shown < r.total ? 'Далі ▸' : r.no < r.chains ? 'Наступний ланцюжок ▸' : 'Підсумки ▸';
+    const more = r.shown < r.total ? 'Гортай далі ▸' : r.no < r.chains ? 'Наступний ланцюжок ▸' : 'Підсумки ▸';
     body.innerHTML = '<div class="tptitle">Ланцюжок ' + r.no + ' з ' + r.chains + ' · від ' + nick(ctx, r.owner) + '</div>'
       + '<div class="tpchain">' + r.entries.map((e, i) => entryHtml(ctx, e, r.chain, i === r.entries.length - 1)).join('') + '</div>'
       + (ctx.mine ? '<div class="tpact"><button type="button" class="primary" data-do="next">' + more + '</button></div>'
@@ -520,7 +523,8 @@
     ctx.tpRoot = root;
     const v = ctx.view || {};
     const head = root.querySelector('.tphead');
-    const text = v.phase === 'step' ? 'Крок ' + v.step + ' з ' + v.steps
+    // У лобі вид теж у фазі step, але кроків ще нема — «Крок 0 з 0» нічого не каже.
+    const text = v.phase === 'step' ? (v.steps ? 'Крок ' + v.step + ' з ' + v.steps : '')
       : v.phase === 'reveal' ? 'Показ' : v.phase === 'done' ? 'Альбом' : '';
     if (head.textContent !== text) head.textContent = text;
     if (v.phase === 'step') stepScreen(root, ctx, v);
@@ -572,12 +576,12 @@
     status(ctx) {
       const v = ctx.view || {};
       if (v.phase === 'done' || !ctx.playing) return v.phase === 'done' ? 'Гортай ланцюжки — кнопки з іменами' : '';
-      if (v.phase === 'reveal') return ctx.mine ? 'Став ❤ смішним записам і тисни «Далі»' : 'Дивишся збоку';
+      if (v.phase === 'reveal') return ctx.mine ? 'Став ❤ вподобайки смішним записам і гортай далі' : 'Дивишся збоку';
       if (!ctx.mine) return 'Дивишся збоку';
       const t = v.task;
       if (!t) return 'Чекаємо на інших';
       if (t.ready) return 'Здано — чекаємо на інших';
-      return t.kind === 'phrase' ? 'Пиши фразу' : t.kind === 'draw' ? 'Малюй!' : 'Опиши малюнок';
+      return t.kind === 'phrase' ? 'Тяпни фразу' : t.kind === 'draw' ? 'Малюй!' : 'Опиши малюнок';
     },
   });
 })();

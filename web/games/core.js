@@ -371,15 +371,15 @@
 
   /// Виклик хаба, що повертає RoomReply: помилку показуємо тостом, успіх — лише якщо є що сказати.
   async function call(method, ...args) {
-    if (!conn || conn.state !== 'Connected') { toast('Зв\'язку з сервером нема', 'err'); return { ok: false, message: '' }; }
+    if (!conn || conn.state !== 'Connected') { toast('Халепа: зв\'язку з сервером нема', 'err'); return { ok: false, message: '' }; }
     try {
       const r = await conn.invoke(method, ...args);
       if (!r) return { ok: true, message: '' };
-      if (!r.ok) errToast(r.message || 'Не вийшло');
+      if (!r.ok) errToast(r.message || 'От халепа — не вийшло');
       else if (r.message) toast(r.message, 'ok');
       return r;
     } catch (e) {
-      toast('Не вийшло: ' + e.message, 'err');
+      toast('Ой-йой, не вийшло: ' + e.message, 'err');
       return { ok: false, message: e.message };
     }
   }
@@ -456,7 +456,7 @@
       if (other && !(await call('LeaveRoom', other.id)).ok) return false;
       return !!(await call('JoinRoom', id)).ok;
     };
-    return btn ? !!(await busy(btn, 'сідаю…', sit)) : sit();
+    return btn ? !!(await busy(btn, 'підсідаю…', sit)) : sit();
   }
 
   /// Кадри просимо лише для відкритого столу, щойно відкритих приватних кімнат і тих, де сидимо:
@@ -672,10 +672,10 @@
       renderShell();
       const v = root && root.querySelector('.gview');
       if (!v) return;
-      v.innerHTML = '<div class="gempty">Каталог ігор не прочитався: ' + esc(e.message)
-        + ' <button class="ghost" data-retry>Спробувати ще</button></div>';
+      v.innerHTML = '<div class="gempty">Ой-йой, каталог ігор не прочитався: ' + esc(e.message)
+        + ' <button class="ghost" data-retry>Ану ще раз</button></div>';
       const b = v.querySelector('[data-retry]');
-      if (b) b.onclick = (ev) => busy(ev.currentTarget, 'читаю…', () => ensureCatalog());
+      if (b) b.onclick = (ev) => busy(ev.currentTarget, 'мить…', () => ensureCatalog());
     });
     return loading;
   }
@@ -740,7 +740,7 @@
       + '<div class="gnews-kick">✨ Що нового</div>'
       + '<h3>' + iconOf(id) + esc(n.title || titleOf(id)) + '</h3>'
       + '<ul class="gnews-list">' + n.items.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>'
-      + '<div class="grow"><button class="primary" type="button" data-ok data-pad-first>Зрозуміло, грати!</button></div></div>';
+      + '<div class="grow"><button class="primary" type="button" data-ok data-pad-first>Ясно, гайда грати!</button></div></div>';
     const close = () => {
       if (!wrap.isConnected) return;
       wrap.remove();
@@ -887,7 +887,7 @@
         setTimeout(() => {
           if (!views[room] && view.kind === 'room' && view.id === room) {
             pinned.delete(room);
-            toast('Цього столу вже нема', 'err');
+            toast('Отакої — цього столу вже нема', 'err');
             go('#games');
           }
         }, PIN_TTL);
@@ -938,7 +938,7 @@
     head.innerHTML = '<button class="ghost grback" title="Назад у лобі — Esc">← Лобі</button>'
       + '<span class="grtitle">' + (r ? iconOf(r.game) + esc(titleOf(r.game)) : 'Стіл') + '</span>'
       + (r && r.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + r.watchers + '</span>' : '')
-      + (canCall ? '<button class="grcall" type="button" title="Покликати когось за цей стіл" aria-haspopup="true">📣 Покликати</button>' : '')
+      + (canCall ? '<button class="grcall" type="button" title="Гукнути когось за цей стіл" aria-haspopup="true">📣 Гукнути</button>' : '')
       + '<span class="grsp"></span>' + others
       + '<button class="ghost grfull" title="' + (full ? 'Повернути балачки й підрозділи' : 'На весь екран') + '"'
       + ' aria-label="' + (full ? 'Повернути балачки й підрозділи' : 'На весь екран') + '">' + FULL_ICON(full) + '</button>';
@@ -950,7 +950,7 @@
   }
 
   // ---------------------------------------------------------------------------------------------
-  // «📣 Покликати»: особисто когось із тих, хто на сайті, або всіх ще раз (хаб: InviteTo, CallAgain)
+  // «📣 Гукнути»: особисто когось із тих, хто на сайті, або всіх ще раз (хаб: InviteTo, CallAgain)
   // ---------------------------------------------------------------------------------------------
 
   let callEl = null;
@@ -965,10 +965,10 @@
     const people = online().filter((n) => !seated.has(String(n).toLowerCase()) && !sameNick(n, me.nick));
     const el = document.createElement('div');
     el.className = 'gcall';
-    el.innerHTML = '<div class="muted small">' + (people.length ? 'Покликати особисто — прилетить лише цій людині:' : 'Зараз на сайті нікого, крім тих, хто вже за столом.') + '</div>'
+    el.innerHTML = '<div class="muted small">' + (people.length ? 'Гукнути особисто — прилетить лише цій людині:' : 'На сайті ні душі, крім тих, хто вже за столом.') + '</div>'
       + (people.length ? '<div class="gcall-list">' + people.map((n) => '<button type="button" class="gcall-p" data-nick="' + esc(n) + '">'
         + (window.HPeople ? window.HPeople.ava(n, 'ava sm') : '') + '<span style="--h:' + hueOf(n) + '">' + esc(n) + '</span></button>').join('') + '</div>' : '')
-      + (r.status === 'lobby' ? '<button type="button" class="primary gcall-all" title="Усім на сайті — тост і рядок у балачках">📣 Покликати всіх ще раз</button>' : '');
+      + (r.status === 'lobby' ? '<button type="button" class="primary gcall-all" title="Усім на сайті — тост і рядок у балачках">📣 Гукнути всіх ще раз</button>' : '');
     document.body.appendChild(el);
     callEl = el;
     const rect = anchor.getBoundingClientRect();
@@ -976,11 +976,11 @@
     el.style.top = (rect.bottom + 6) + 'px';
     el.querySelectorAll('.gcall-p').forEach((b) => b.onclick = async (e) => {
       const btn = e.currentTarget;
-      const res = await busy(btn, 'кличу…', () => call('InviteTo', roomId, b.dataset.nick));
+      const res = await busy(btn, 'гукаю…', () => call('InviteTo', roomId, b.dataset.nick));
       if (res && res.ok && btn.isConnected) { btn.disabled = true; btn.classList.add('done'); btn.insertAdjacentHTML('beforeend', ' ✓'); }
     });
     const all = el.querySelector('.gcall-all');
-    if (all) all.onclick = async (e) => { const res = await busy(e.currentTarget, 'кличу…', () => call('CallAgain', roomId)); if (res && res.ok) closeCall(); };
+    if (all) all.onclick = async (e) => { const res = await busy(e.currentTarget, 'гукаю…', () => call('CallAgain', roomId)); if (res && res.ok) closeCall(); };
   }
   document.addEventListener('click', (e) => { if (callEl && !e.target.closest('.gcall, .grcall')) closeCall(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && callEl) { closeCall(); e.stopPropagation(); } }, true);
@@ -1005,7 +1005,7 @@
     const myTurn = mine && r.status === 'playing' && rv && turnOf(rv) === seat;
     const status = r.status === 'playing' ? (myTurn ? '<b class="turn">твій хід</b>' : 'іде партія')
       : r.status === 'finished' ? 'дограли'
-        : free ? 'чекає гравців' : 'ось-ось почнуть';
+        : free ? 'чекає, хто підсяде' : 'ось-ось почнуть';
     const btns = mine
       ? '<button class="primary" data-open="' + esc(r.id) + '">Відкрити</button>'
       : (free > 0 && r.status !== 'playing' ? '<button class="primary" data-sit="' + esc(r.id) + '">Сісти</button>' : '')
@@ -1014,7 +1014,7 @@
       + '<div class="gs-head"><span class="gtitle">' + iconOf(r.game) + esc(titleOf(r.game)) + '</span>'
       + (r.stake ? '<span class="gmode stake">🏺' + r.stake + '</span>' : '')
       + '<span class="chip">' + (all > 1 ? took + '/' + all : 'соло') + '</span></div>'
-      + '<div class="gs-who">' + (nicks.length ? who : '<span class="muted">поки нікого</span>')
+      + '<div class="gs-who">' + (nicks.length ? who : '<span class="muted">поки ні душі</span>')
       + (free > 0 && all > 1 ? ' <span class="muted">· вільно ' + free + '</span>' : '')
       + ' · ' + status + (r.watchers ? ' <span class="muted">· 👁 ' + r.watchers + '</span>' : '') + '</div>'
       + '<div class="gs-btns">' + btns + '</div></div>';
@@ -1059,7 +1059,7 @@
   }
   function badgeOf(e) {
     // Нова гра — коли нова вся родина (перший режим); новий режим у старій грі — це вже «оновлено».
-    if (isNewGame(e.ids[0])) return '<span class="gnew" title="Нова гра на сайті — спробуй">🆕 нова гра</span>';
+    if (isNewGame(e.ids[0])) return '<span class="gnew" title="Лови нову гру на сайті — спробуй">🆕 нова гра</span>';
     const upd = e.ids.find((id) => hasNews(id));
     return upd ? '<span class="gupd" title="' + esc('Оновлення: ' + (newsOf(upd).title || titleOf(upd))) + '">оновлено</span>' : '';
   }
@@ -1111,7 +1111,7 @@
     if (!extraPanels.some((p) => p.id === 'tournament')) return '';
     if (!s || !s.active) {
       return '<button type="button" class="gdc gdc-link" data-go="#games/x:tournament" title="Кілька ігор поспіль, очки за місця, корона чемпіону">'
-        + '<span class="gemo">👑</span><b>Турнір на вечір</b><span class="muted small">зібрати →</span></button>';
+        + '<span class="gemo">👑</span><b>Турнір на вечір</b><span class="muted small">гайда збирати →</span></button>';
     }
     const stage = { gathering: 'збираємось', playing: 'іде гра ' + ((s.index || 0) + 1) + ' з ' + (s.games || []).length, between: 'перерва між іграми', done: 'дограли' }[s.stage] || '';
     return '<div class="gdc tour"><span class="gemo">👑</span><div><b>Турнір</b><span class="muted small">' + esc(stage)
@@ -1127,7 +1127,8 @@
         : 'ще не розгадано' + (p.solvedCount ? ' · ' + p.solvedCount + ' вже розгадали' : '');
       return '<div class="gdc' + (solved ? ' done' : '') + '">' + iconOf(p.game) + '<div><b>' + esc(p.title || titleOf(p.game)) + '</b>'
         + '<span class="muted small">' + esc(what) + (p.streak ? ' · 🔥 ' + p.streak : '') + '</span></div>'
-        + '<button class="' + (solved ? 'ghost' : 'primary') + '" data-solo="' + esc(p.game) + '">' + (solved ? 'Глянути' : 'Грати') + '</button></div>';
+        + '<button class="' + (solved ? 'ghost' : 'primary') + '" data-solo="' + esc(p.game) + '"'
+        + (solved ? '' : ' title="Розгадай — і хапай щоденний глек"') + '>' + (solved ? 'Глянути' : 'Грати') + '</button></div>';
     }).join('');
     const tour = tourCard();
     if (!cards && !tour) return '';
@@ -1149,9 +1150,9 @@
     // Натиск відкриває свою таку саму: побачив, що Оля крутить коло, — сів і собі.
     const soloGames = [...new Set(soloNow.map((p) => p.game))];
     const soloLine = soloGames.length
-      ? '<div class="gsolo"><span class="muted small">🏺 Соло зараз:</span>' + soloGames.map((id) => {
+      ? '<div class="gsolo"><span class="muted small">🏺 Хто тусить у соло:</span>' + soloGames.map((id) => {
         const who = playingIn(id);
-        return '<button class="chip gsolo-g" data-solo="' + esc(id) + '" title="' + esc(whoTitle(who) + ' — зіграй і ти') + '">'
+        return '<button class="chip gsolo-g" data-solo="' + esc(id) + '" title="' + esc(whoTitle(who) + ' — ану й ти') + '">'
           + iconOf(id) + '<b>' + esc(titleOf(id)) + '</b><span class="gw">· ' + esc(whoShort(who, 3)) + '</span></button>';
       }).join('') + '</div>'
       : '';
@@ -1161,7 +1162,7 @@
       ? '<div class="gempty glek">Хто за якими столами — видно, щойно назвешся. <button class="primary" data-nick>Назватись</button></div>'
       : mineFirst.length
         ? '<div class="gsums">' + mineFirst.map(roomSummaryHtml).join('') + '</div>'
-        : '<div class="gempty glek">Столів нема. Постав перший із каталогу нижче — друзям прилетить заклик.</div>';
+        : '<div class="gempty glek">Столів нема. Гайда, постав перший із каталогу нижче — друзям прилетить заклик.</div>';
 
     // «Часто граємо» — швидкий запуск того, у що компанія грає найбільше, без гортання каталогу.
     const favs = popular ? all.filter((e) => playsOf(e) >= 2).sort(byPlays).slice(0, 6) : [];
@@ -1200,7 +1201,7 @@
           + (g.icon ? g.icon + ' ' : '') + esc(g.title) + '</button>').join('')
       + '<input class="gfind" type="search" placeholder="знайти гру" value="' + esc(find) + '" autocomplete="off">'
       + '</div>'
-      + (tiles || '<div class="gempty">Нічого схожого не знайшлось. Спробуй інакше або зніми фільтр.</div>')
+      + (tiles || '<div class="gempty">Овва, нічого схожого не знайшлось. Спробуй інакше або зніми фільтр.</div>')
       + '<div class="glinks">' + links.map(([h, l]) => '<a href="' + h + '">' + esc(l) + '</a>').join('<span>·</span>') + '</div>'
       + '</section>';
 
@@ -1220,7 +1221,7 @@
     });
     box.querySelectorAll('[data-solo]').forEach((b) => b.onclick = (e) => {
       if (!me.nick) { askNick(); return; }
-      busy(e.currentTarget, 'відкриваю…', () => openRoom('OpenSolo', b.dataset.solo, null));
+      busy(e.currentTarget, 'мить…', () => openRoom('OpenSolo', b.dataset.solo, null));
     });
     box.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => go('#games/room/' + encodeURIComponent(b.dataset.open)));
     box.querySelectorAll('[data-sit]').forEach((b) => b.onclick = async (e) => {
@@ -1233,13 +1234,13 @@
   function renderExtra(box, id) {
     const p = extraPanels.find((x) => x.id === id);
     box.innerHTML = '';
-    if (!p) { box.innerHTML = '<div class="gempty">Панель зникла.</div>'; return; }
+    if (!p) { box.innerHTML = '<div class="gempty">Отакої — панель зникла.</div>'; return; }
     const host = document.createElement('div');
     host.className = 'gxpanel';
     box.appendChild(host);
     const c = panelCtx();
     try { p.mount(host, c); if (p.update) p.update(host, c); }
-    catch (e) { console.warn('[games] панель ' + id, e); host.innerHTML = '<div class="gempty">Панель зламалась.</div>'; }
+    catch (e) { console.warn('[games] панель ' + id, e); host.innerHTML = '<div class="gempty">Ой-йой, панель зламалась.</div>'; }
   }
 
   const panelCtx = () => ({ me, esc, toast, busy, api, call, ui, css: cssVar, catalog });
@@ -1363,7 +1364,7 @@
       if (r) views[id] = { room: r, seat: seatOfMe(r), view: undefined };
     }
     if (views[id]) refreshCard(id);
-    else card.body.innerHTML = '<div class="gwait"><span class="spin"></span> завантажую…</div>';
+    else card.body.innerHTML = '<div class="gwait"><span class="spin"></span> мить…</div>';
     return card;
   }
 
@@ -1459,11 +1460,13 @@
       const res = r.result;
       if (!res) return 'Партію зіграно';
       // соло: «перемога над собою» звучить дивно, тому беремо те, що написала гра
-      if (solo) return res.text || (res.draw ? 'Не вийшло' : 'Готово');
+      if (solo) return res.text || (res.draw ? 'Цього разу не вийшло' : 'Є! Готово');
       if (res.draw || !(res.winners || []).length) return 'Нічия';
-      return 'Перемога: ' + res.winners.map((i) => nickAt(r, i) || seatNameOf(rv, i)).join(', ');
+      // «Є!» — лише переможцеві: суперник і глядач бачать просто, чия перемога.
+      return (rv.seat != null && res.winners.includes(rv.seat) ? 'Є! ' : '')
+        + 'Перемога: ' + res.winners.map((i) => nickAt(r, i) || seatNameOf(rv, i)).join(', ');
     }
-    if (r.status === 'lobby') return solo ? '' : 'Чекаємо на гравців';
+    if (r.status === 'lobby') return solo ? '' : freeSeat(r) >= 0 ? 'Чекаємо, хто підсяде' : 'Чекаємо на старт';
     const t = turnOf(rv);
     if (t != null) return t === rv.seat ? 'Твій хід' : 'Ходить ' + (nickAt(r, t) || seatNameOf(rv, t));
     return rv.seat == null ? 'Дивишся збоку' : '';
@@ -1477,11 +1480,11 @@
     // тож статус тут не питаємо — інакше стіл висів би в лобі до прибиральника, і сісти нікому.
     const canSit = !solo && rv.seat == null && freeSeat(r) >= 0 && r.status !== 'playing';
     if (canSit) out.push('<button class="primary" data-do="JoinRoom">Сісти</button>');
-    // «Ще раз» пропонуємо лише коли є з ким: інакше кнопка є, а сервер відповідає «Замало гравців»
+    // «Ану ще раз» пропонуємо лише коли є з ким: інакше кнопка є, а сервер відповідає «Замало гравців»
     if (!solo && rv.seat != null && r.status === 'finished' && takenSeats(r) >= r.minPlayers)
-      out.push('<button class="primary" data-do="Rematch">Ще раз</button>');
-    // щоденна головоломка одна на день — «Ще раз» там не пропонуємо
-    if (solo && r.status === 'finished' && !(gameOf(r.game) || {}).daily) out.push('<button class="primary" data-do="Rematch">Ще раз</button>');
+      out.push('<button class="primary" data-do="Rematch">Ану ще раз</button>');
+    // щоденна головоломка одна на день — «Ану ще раз» там не пропонуємо
+    if (solo && r.status === 'finished' && !(gameOf(r.game) || {}).daily) out.push('<button class="primary" data-do="Rematch">Ану ще раз</button>');
     if (rv.seat != null && r.status === 'lobby' && sameNick(r.host, me.nick) && (gameOf(r.game) || {}).start === 'byHost'
       && takenSeats(r) >= r.minPlayers)
       out.push('<button class="primary" data-do="StartRoom">Почати</button>');
@@ -1523,8 +1526,8 @@
 
     if (!card.mod) {
       card.body.innerHTML = failed.has(rv.room.game)
-        ? '<div class="gwait err">модуль гри не завантажився</div>'
-        : '<div class="gwait"><span class="spin"></span> завантажую…</div>';
+        ? '<div class="gwait err">Ой-йой, модуль гри не завантажився</div>'
+        : '<div class="gwait"><span class="spin"></span> мить…</div>';
     } else if (rv.view !== undefined) {
       if (!card.mounted) {
         card.body.innerHTML = '';
@@ -1621,7 +1624,7 @@
       title: iconOf(r.game) + esc(titleOf(r.game)),            // іконка з назвою — для рядка, який гри не називає
       who: (all > 1 ? took + '/' + all : 'соло') + ' · '
         + (r.status === 'playing' ? 'іде партія' : r.status === 'finished' ? 'дограли'
-          : free ? 'чекає гравців' : 'ось-ось почнуть'),
+          : free ? 'чекає, хто підсяде' : 'ось-ось почнуть'),
       canSit,
       mine,
       label: mine ? 'До столу' : canSit ? 'Сісти' : 'Дивитись',
@@ -1839,13 +1842,16 @@
         wallet = w.balance;
         paintWallet();
         // сервер уже присилає готовий рядок «+5 черепків: перемога — Хрестики-нолики»;
-        // своє число ліпимо лише тоді, коли тексту нема, інакше виходило «+5 🏺 +5 черепків: …»
-        if (w.delta) toast('🏺 ' + (w.text || (w.delta > 0 ? '+' : '') + w.delta), w.delta > 0 ? 'ok' : '');
+        // своє число ліпимо лише тоді, коли тексту нема, інакше виходило «+5 🏺 +5 черепків: …».
+        // Прихід — «Лови +5 …» (якщо сервер сам уже не сказав «Лови»), витрата — як є.
+        const line = w.text || (w.delta > 0 ? '+' : '') + w.delta;
+        if (w.delta) toast('🏺 ' + (w.delta > 0 && !/^лови/i.test(line) ? 'Лови ' + line : line), w.delta > 0 ? 'ok' : '');
       });
       c.on('achievement', (a) => {
         if (!a) return;
-        longToast('<span class="gemo">' + esc(a.icon || '🏅') + '</span> <b>' + esc(a.title || a.key) + '</b>'
-          + (a.reward ? ' — +' + a.reward + ' 🏺' : '') + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
+        const title = String(a.title || a.key || '');
+        longToast('<span class="gemo">' + esc(a.icon || '🏅') + '</span> ' + (/^овва/i.test(title) ? '' : 'Овва! ') + '<b>' + esc(title) + '</b>'
+          + (a.reward ? ' — лови +' + a.reward + ' 🏺' : '') + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
       });
       c.on('toast', (t) => { if (t && t.text) toast(t.text, t.kind || ''); });
       c.on('invite', inviteToast);

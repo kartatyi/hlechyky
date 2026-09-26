@@ -99,7 +99,7 @@
     const btn = root.querySelector('.mgplay');
     if (!a || !btn) return;
     const playing = !a.paused && !a.ended;
-    btn.textContent = playing ? '⏸ Пауза' : st(root).played ? '↻ Ще раз' : '▶ Слухати';
+    btn.textContent = playing ? '⏸ Пауза' : st(root).played ? '↻ Ще раз' : '▶ Врубити';
     const disc = root.querySelector('.mgdisc');
     // Не голий .spin: у style.css це кружальце завантаження з рамкою, і платівка брала його обідок.
     if (disc) disc.classList.toggle('mgspinning', playing);
@@ -162,12 +162,12 @@
       html = '<div class="mgdisc"></div><div class="mgwait">Господар тисне «Почати» — і звучить перший уривок</div>';
     } else if (v.phase === 'loading') {
       key = 'loading:' + v.round;
-      html = '<div class="mgwait"><span class="spin"></span> ' + (v.round ? 'Наступний трек…' : 'Готуємо уривки…') + '</div>';
+      html = '<div class="mgwait"><span class="spin"></span> ' + (v.round ? 'Мить — наступний трек…' : 'Дядько Глек порпається на полицях…') + '</div>';
     } else if (v.phase === 'play') {
       key = 'play:' + v.round;
       html = '<div class="mgdisc"></div>'
         + '<div class="mgwave"><i></i></div>'
-        + '<button type="button" class="primary mgplay">▶ Слухати</button>';
+        + '<button type="button" class="primary mgplay">▶ Врубити</button>';
     } else if (v.phase === 'done' && (v.played || []).length) {
       key = 'done:' + v.played.map((t) => t.id).join(',');
       html = '<div class="mgwait">Що звучало. 👎 — більше не давати в цій грі</div><div class="mgplayed">'
@@ -230,7 +230,7 @@
     form.hidden = v.phase === 'done';
     input.placeholder = !ctx.mine ? 'Дивишся збоку'
       : v.phase !== 'play' ? 'Чекаємо на трек…'
-        : all ? 'Усе вгадав! 🎉' : 'виконавець або назва…';
+        : all ? 'Є! Усе вгадано 🎉' : 'виконавець або назва…';
     const marks = root.querySelector('.mgmarks');
     const html = ctx.mine && ctx.playing && v.phase !== 'done'
       ? '<span class="chip' + (me.artist ? ' on' : '') + '">🎤 виконавець</span><span class="chip' + (me.title ? ' on' : '') + '">🎵 назва</span>'
@@ -267,7 +267,7 @@
     const ready = skip.length ? '⏭ ' + skip.map((i) => ctx.esc(ctx.nickOf(i) || '')).join(', ') + ' — за пропуск' : '';
     const html = v.phase !== 'play' ? ''
       : (can ? '<button type="button" class="' + (mineSkip ? 'primary' : 'ghost') + ' mgskipbtn">'
-        + (mineSkip ? '⏭ Готовий пропустити (' + skip.length + '/' + waiting.length + ')' : '⏭ Пропустити') + '</button>' : '')
+        + (mineSkip ? '⏭ Я за пропуск (' + skip.length + '/' + waiting.length + ')' : '⏭ Пропустити') + '</button>' : '')
         + (ready && !(can && mineSkip && skip.length === 1) ? '<span class="muted small">' + ready + '</span>' : '');
     if (el.innerHTML !== html) {
       el.innerHTML = html;
@@ -334,7 +334,7 @@
         + '<div class="mgtop"><div class="mghead muted small"></div><div class="mgtime"><i></i><span></span></div></div>'
         + '<div class="mgstage"></div>'
         + '<audio class="mgaudio" preload="auto"></audio>'
-        + '<div class="mgvol"><button type="button" class="ghost" title="Вимкнути звук">🔉</button>'
+        + '<div class="mgvol"><button type="button" class="ghost" title="Вирубити / врубити звук">🔉</button>'
         + '<input type="range" min="0" max="100" step="1" aria-label="Гучність уривка" title="Гучність уривка · колесо миші — по кроку"></div>'
         + '<div class="mgmarks"></div>'
         + '<div class="mgskip"></div>'
@@ -368,8 +368,8 @@
     status(ctx) {
       const v = ctx.view || {};
       if (v.phase === 'done' || !ctx.playing) return v.phase === 'done' ? (v.error || 'Партію зіграно') : '';
-      if (v.phase === 'loading') return 'Готуємо трек…';
-      if (v.phase === 'reveal') return v.round >= v.rounds ? 'Рахуємо очки…' : 'Наступний трек за мить…';
+      if (v.phase === 'loading') return 'Глек порпається на полицях…';
+      if (v.phase === 'reveal') return v.round >= v.rounds ? 'Глек рахує очки…' : 'Наступний трек за мить…';
       if (!ctx.mine) return 'Дивишся збоку';
       return 'Хто співає і як зветься пісня?';
     },

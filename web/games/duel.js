@@ -129,6 +129,7 @@
     }
     const t = Snd.on ? '🔊 звук' : '🔇 без звуку';
     if (b.textContent !== t) b.textContent = t;
+    b.title = Snd.on ? 'Вирубити звук' : 'Врубити звук';
   }
 
   function state(root, ctx) {
@@ -604,7 +605,7 @@
       msg = seats.length < 3 ? 'Чекаємо стрільців: треба троє або четверо' : 'Стрільці на місцях — господар тисне «Почати»';
     } else if (!ctx.mine) msg = 'Дивишся збоку';
     else if (s.alive && !s.alive[ctx.seat]) msg = 'Тебе підстрелили — полеж, наступного раунду встанеш';
-    else if (s.fs && s.fs[ctx.seat]) msg = 'Поспішив — куля в небо, патрона до кінця раунду нема. Сподівайся, що в тебе не влучать';
+    else if (s.fs && s.fs[ctx.seat]) msg = 'Зарано! Куля в небо, патрона до кінця раунду нема. Сподівайся, що в тебе не влучать';
     else if (s.shot && s.shot[ctx.seat] != null) msg = 'Патрон витрачено — дивись, хто кого';
     else {
       const t = s.aim ? s.aim[ctx.seat] : null;

@@ -57,7 +57,7 @@
   /// Копіювання без clipboard API теж має працювати: сайт відкривають і по локальній адресі,
   /// а там navigator.clipboard браузер не дає.
   function copy(text, ctx) {
-    const done = () => ctx.toast('Скопійовано', 'ok');
+    const done = () => ctx.toast('Є! Скопійовано', 'ok');
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(done, () => fallback(text, ctx));
       return;
@@ -74,7 +74,7 @@
     let ok = false;
     try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
     ta.remove();
-    ctx.toast(ok ? 'Скопійовано' : 'Не вийшло скопіювати', ok ? 'ok' : 'err');
+    ctx.toast(ok ? 'Є! Скопійовано' : 'Халепа: не вийшло скопіювати', ok ? 'ok' : 'err');
   }
 
   /// Тіло картки за id кімнати: onKey приходить від каркаса з ctx, а не з DOM, і корінь треба звідкись узяти.
@@ -157,7 +157,7 @@
     const race = raceInCatalog();
     const html = (v.share ? '<button class="ghost" data-copy>Скопіювати результат</button>' : '')
       + '<div class="muted small wnext">' + ctx.esc(nextWordIn()) + '</div>'
-      + (race ? '<button class="ghost wracego" data-race title="Інші слова, не слово дня">🏁 Ще слово — наввипередки з друзями</button>' : '');
+      + (race ? '<button class="ghost wracego" data-race title="Інші слова, не слово дня">🏁 Ану ще слово — наввипередки з друзями</button>' : '');
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
       el.innerHTML = html;
@@ -210,7 +210,7 @@
     const st = state(root);
     const ctx = st.ctx;
     if (!ctx || st.sending || !st.draft) return false;
-    if (st.draft.length < LEN) { shake(root); ctx.toast('Треба п\'ять літер', 'err'); return true; }
+    if (st.draft.length < LEN) { shake(root); ctx.toast('Ану-но, треба п\'ять літер', 'err'); return true; }
     const word = st.draft;
     st.sending = true;
     ctx.act('guess', { word }).then((r) => {
@@ -272,7 +272,7 @@
       const v = ctx.view;
       if (!v) return '';
       if (v.noWords) return 'Словника нема — сьогодні без слова';
-      if (v.solved) return 'Слово дня взято за ' + tries(v.attempts);
+      if (v.solved) return 'Є! Слово дня взято за ' + tries(v.attempts);
       if (v.failed) return 'Слово було: ' + String(v.answer || '').toUpperCase();
       if (!ctx.mine) return 'Дивишся збоку';
       return 'Спроба ' + Math.min(v.attempts + 1, v.max) + ' з ' + v.max;
@@ -365,7 +365,7 @@
   }
 
   function badge(p, max) {
-    if (p.gone) return '<span class="wrst gone">пішов</span>';
+    if (p.gone) return '<span class="wrst gone">поза грою</span>';
     if (p.solved) return '<span class="wrst ok">✓ ' + p.attempts + '/' + max + (p.first ? ' ⚡' : '') + '</span>';
     if (p.failed) return '<span class="wrst bad">✗</span>';
     return '<span class="wrst">' + p.attempts + '/' + max + '</span>';
@@ -523,11 +523,12 @@
         const ps = (v.players || []).filter((p) => !p.gone);
         const best = Math.max(0, ...ps.map((p) => p.total));
         const win = best > 0 ? ps.filter((p) => p.total === best) : [];
-        return win.length ? '🏆 ' + win.map((p) => p.nick).join(' і ') + ' — ' + points(best) : 'Нічия: слова перемогли всіх';
+        const yes = win.some((p) => p.seat === ctx.seat && ctx.seat != null) ? 'Є! ' : '';
+        return win.length ? yes + '🏆 ' + win.map((p) => p.nick).join(' і ') + ' — ' + points(best) : 'Нічия: слова перемогли всіх';
       }
       if (v.phase === 'reveal') return 'Раунд ' + (v.round + 1) + ' з ' + v.rounds + ' — за кілька секунд';
       if (!v.me) return 'Дивишся збоку: літер не видно, лише кольори';
-      if (v.me.solved) return 'Вгадав! Дивись, як мучаться інші';
+      if (v.me.solved) return 'Є! Вгадано — дивись, як мучаться інші';
       if (v.me.failed) return 'Спроби скінчились — чекаємо на інших';
       return 'Спроба ' + Math.min(v.me.attempts + 1, v.max) + ' з ' + v.max + ' · слово в усіх те саме';
     },

@@ -204,7 +204,7 @@
       st.resign = null;
       let res = v.result && REASON[v.result.reason];
       if (v.result && v.result.reason === 'resign' && v.result.winner != null) {
-        res = ctx.esc(ctx.nickOf(1 - v.result.winner) || ctx.seatName(1 - v.result.winner)) + ' здався';
+        res = '🏳 ' + ctx.esc(ctx.nickOf(1 - v.result.winner) || ctx.seatName(1 - v.result.winner)) + ' здається';
       }
       setHtml(el, (res && ctx.room.status === 'finished' ? '<span class="chessres">' + res + '</span>' : '') + seriesHtml(ctx));
       return;

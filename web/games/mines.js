@@ -1,6 +1,6 @@
 /*
   Сапер: дуель ('mines') і Сапер дня ('mines-daily') — два модулі в одному файлі. Правила малювання
-  однакові, різниця лише в рядку над полем (рахунок проти таймера) і в кнопці «Спробувати ще».
+  однакові, різниця лише в рядку над полем (рахунок проти таймера) і в кнопці «Ану ще раз».
   Каркас дозволяє кілька register в одному файлі, тому окремого mines-daily.js не існує: у паспорті
   щоденного стоїть Client: "mines", і завантажувач іде по цей самий файл.
 
@@ -137,7 +137,7 @@
     if (el.textContent !== text) el.textContent = text;
   }
 
-  /// Кнопки під полем: режим прапорця (для пальця), «Спробувати ще» в дні, «Здаюсь» у дуелі.
+  /// Кнопки під полем: режим прапорця (для пальця), «Ану ще раз» в дні, «Здаюсь» у дуелі.
   function buttons(root, ctx, daily) {
     const st = state(root);
     const v = ctx.view || {};
@@ -155,7 +155,7 @@
     const out = [];
     if (ctx.mine && ctx.playing && !dead)
       out.push('<button type="button" class="ghost mflag' + (st.flagMode ? ' on' : '') + '" data-m="flag">🚩 Прапорець</button>');
-    if (daily && ctx.mine && dead) out.push('<button type="button" class="primary" data-m="restart">Спробувати ще</button>');
+    if (daily && ctx.mine && dead) out.push('<button type="button" class="primary" data-m="restart">Ану ще раз</button>');
     if (!daily && ctx.mine && ctx.playing && !dead) out.push('<button type="button" class="ghost" data-m="resign">Здаюсь</button>');
     const html = out.join('');
     if (el.innerHTML !== html) el.innerHTML = html;
@@ -282,8 +282,8 @@
     status(ctx) {
       const v = ctx.view || {};
       if (!daily) return '';                       // дуелі вистачає «Твій хід» / «Ходить …» від каркаса
-      if (v.solved) return 'Розмінував за ' + timeText(v.ms || 0) + (v.attempts > 1 ? ' · спроба ' + v.attempts : '');
-      if (v.result && v.result.reason === 'boom') return 'Бабах! Це була міна — тисни «Спробувати ще»';
+      if (v.solved) return 'Є! Поле чисте за ' + timeText(v.ms || 0) + (v.attempts > 1 ? ' · спроба ' + v.attempts : '');
+      if (v.result && v.result.reason === 'boom') return 'Бабах! Це була міна — тисни «Ану ще раз»';
       if (!ctx.playing) return '';
       return 'Лишилось клітинок: ' + (v.left == null ? '?' : v.left);
     },

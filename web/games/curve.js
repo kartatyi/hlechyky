@@ -462,7 +462,7 @@
       if (f.phase === 'done') return '';
       if (!ctx.mine) return 'Дивишся збоку';
       const me = (f.heads || [])[ctx.seat];
-      if (me && !me.alive) return 'Вибув — чекай на наступний раунд';
+      if (me && !me.alive) return 'Аварія! Чекай на наступний раунд';
       return HGames.ui.coarse() ? 'Тримай ліворуч або праворуч' : '← → або A/D, тримати';
     },
 

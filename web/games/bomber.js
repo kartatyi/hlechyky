@@ -451,7 +451,7 @@
     icon: ICON,
     seatNames: ['жовтий', 'зелений', 'рудий', 'сірий', 'синій', 'рожевий'],
     seatClass: ['x', 'o', 'c', 'd', 'bb', 'bp'],
-    pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} бігати · {a} бомба (будь-яка кнопка)' },
+    pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} бігати · {a} бахнути бомбу (будь-яка кнопка)' },
     news: {
       v: '2026-09-24',
       title: 'Бомбер: тепер до шести за столом',
@@ -536,11 +536,11 @@
       if (f.phase === 'start') return 'Готуйсь…';
       if (f.phase === 'pause') {
         const alive = ((f.p || []).map((m, i) => (m && m.alive ? i : -1))).filter((i) => i >= 0);
-        return alive.length === 1 ? 'Раунд узяв ' + (ctx.nickOf(alive[0]) || ctx.seatName(alive[0])) : 'Раунд нічий';
+        return alive.length === 1 ? 'Раунд бере ' + (ctx.nickOf(alive[0]) || ctx.seatName(alive[0])) : 'Раунд нічий';
       }
       if (f.phase === 'over') return '';
       if (!ctx.mine) return 'Дивишся збоку';
-      return HGames.ui.coarse() ? 'Хрестовина — бігти, 💣 — бомба' : 'Стрілки або WASD, пробіл — бомба';
+      return HGames.ui.coarse() ? 'Хрестовина — бігти, 💣 — бахнути бомбу' : 'Стрілки або WASD, пробіл — бахнути бомбу';
     },
 
     unmount(root) {
