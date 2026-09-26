@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock, Calls calls) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock, Calls calls, Lavka lavka) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
@@ -211,6 +211,17 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         if (LastReaction.TryGetValue(nick, out var last) && (now - last).TotalMilliseconds < 400) return;
         LastReaction[nick] = now;
         await Clients.All.SendAsync("reaction", new { nick, emoji });
+    }
+
+    /// <summary>
+    /// 🎆 Феєрверк — вміння з Лавки (раз на 10 хв): усім подія <c>fireworks</c> і рядок у Балачки, який у базу не лягає.
+    /// Повертає текст відмови тому, хто запускав, або null. Правила — у <see cref="Lavka.Fireworks"/>.
+    /// </summary>
+    public string? Fireworks()
+    {
+        if (!Allow(input: false)) return Games.Say.TooFast;
+        var http = Context.GetHttpContext();
+        return lavka.Fireworks(Nick(), http is not null && Auth.IsUser(http));
     }
 
     /// <summary>Вкладка каже, що її плеєр грає чи замовк: так рейтинг знає, хто саме слухав трек.</summary>

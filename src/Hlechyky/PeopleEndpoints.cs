@@ -176,6 +176,8 @@ public static class PeopleEndpoints
         "ad" => "реклама",
         "award" => "нагороди в іграх",
         "ban" => "бан-лист",
+        "shop" => "Лавка",
+        "gift" => "подарунки",
         _ => cat,
     };
 

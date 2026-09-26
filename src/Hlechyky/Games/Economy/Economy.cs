@@ -200,6 +200,9 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "ban" => "бан треку",
             "unban" => "викуп треку з бану",
             "ban-refund" => "бан не записався, повертаю",
+            // Лавка Дядька Глека: купівля собі й подарунок (хвіст — id речі з LavkaCatalog)
+            "shop" => $"Лавка — {LavkaCatalog.Label(tail)}",
+            "gift" => $"подарунок — {LavkaCatalog.Label(tail)}",
             _ => reason,
         };
     }
