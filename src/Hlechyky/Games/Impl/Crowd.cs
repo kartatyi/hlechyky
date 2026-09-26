@@ -581,7 +581,8 @@ public sealed class Crowd : Game
         {
             var s = _s[i];
             if (!s.Plays || s.Me < 0 || !who(s)) continue;
-            var win = Array.IndexOf(winners, i) >= 0;
+            // «усі розійшлись» — не виграний раунд: +3 не платимо, тож і в рядку його нема
+            var win = why != "left" && Array.IndexOf(winners, i) >= 0;
             ids.Add((i, s.Me));
             rows.Add(new CrowdRow(i, s.Bought, s.Kills, win, s.Bought * PtBuy + s.Kills * PtKill + (win ? PtRound : 0)));
             trails.Add((i, TrailOf(s)));

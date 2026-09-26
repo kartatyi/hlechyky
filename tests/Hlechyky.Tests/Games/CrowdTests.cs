@@ -527,6 +527,9 @@ public class CrowdTests(ITestOutputHelper output)
         var ids = reveal.GetProperty("ids").EnumerateArray().ToDictionary(e => e.GetProperty("seat").GetInt32(), e => e.GetProperty("id").GetInt32());
         Assert.Equal(petro, ids[1]);                          // і той, хто пішов: ким він був
         Assert.Equal(S(h, 0).Me, ids[0]);
+        // раунд ніхто не виграв — усі просто розійшлись: у рядках нема «+3», як нема його й в очках
+        Assert.All(reveal.GetProperty("rows").EnumerateArray(), r => Assert.False(r.GetProperty("win").GetBoolean()));
+        Assert.Equal(0, S(h, 0).Total);
         Assert.All(Core(h).V, q => Assert.False(q.Moving));   // юрма завмерла
         Assert.All(v.GetProperty("v").EnumerateArray().Where((_, i) => i % 4 == 3), s => Assert.NotEqual(1, s.GetInt32()));
         // дограли як слід — «end»
