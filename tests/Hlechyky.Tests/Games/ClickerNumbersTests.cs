@@ -78,6 +78,12 @@ public class ClickerNumbersTests
     [InlineData(1.5e27, "1,5 золотого")]
     [InlineData(21e27, "21 золотий")]
     [InlineData(6e31, "60 000 золотих")]
+    // Від тисячі золотих — ціле, відтяте з запасом (6·10³⁰ / 10²⁷ у double — 5 999,99…), і слово за тим, що видно.
+    [InlineData(6e30, "6 000 золотих")]
+    [InlineData(3e30, "3 000 золотих")]
+    [InlineData(1.2345e30, "1 234 золоті")]
+    [InlineData(242_733.4e27, "242 733 золоті")]
+    [InlineData(1_001.7e27, "1 001 золотий")]
     [InlineData(1.2e33, "1,2 млн золотих")]
     public void Short_speaks_pots_then_hryvnias_then_gold(double n, string text) =>
         Assert.Equal(text, Plain(Clicker.Short(n)));

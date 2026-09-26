@@ -8,8 +8,50 @@ namespace Hlechyky.Games.Impl;
 /// <summary>Що дає верстат: більше глеків за клік, глеки без тебе, множник до всього чи вправність (розгін, глеки з полиці).</summary>
 public enum ClickerKind { Click, Idle, Mult, Skill }
 
-/// <summary>Віха верстата: одноразове покращення, яке відкривається, коли верстат доріс до рівня.</summary>
-public sealed record ClickerMark(int Level, string Name);
+/// <summary>
+/// Що дає віха. До десятого оновлення кожна давала ×2 своєму верстату (<see cref="Double"/>), у кола — клік ×2 і
+/// відсотки пасиву в клік. Після сотні ×2 втрачає сенс (на ранньому щаблі це нуль, на верхньому — ще один множник у
+/// петлю), тож нові віхи дають модифікатор одного важеля. Суми додаються всередині важеля, тож максимум кожного
+/// відомий наперед (тест-бюджет, docs/games/specs/clicker-v10.md §4 і clicker-marks.md).
+/// </summary>
+public enum MarkEffect
+{
+    /// <summary>Свій верстат ×2 (старі віхи 25/50/100 і всі такі ж у нових щаблів).</summary>
+    Double,
+    /// <summary>Ручна частина кліка ×2 («Ножний привід»).</summary>
+    HandsDouble,
+    /// <summary>Клік бере ще частку пасиву.</summary>
+    Hand,
+    /// <summary>Пасив +частка.</summary>
+    Passive,
+    /// <summary>Стеля розгону +N.</summary>
+    Momentum,
+    /// <summary>Розгін тримається ще +N с.</summary>
+    Temper,
+    /// <summary>Ще частка кліків б'є в ×50.</summary>
+    Lucky,
+    /// <summary>Глек з полиці +частка (поруч із кошиком).</summary>
+    Fall,
+    /// <summary>Ярмарок розписного глека ще +N.</summary>
+    Fair,
+    /// <summary>Щедрий купець ще +N хв пасиву.</summary>
+    Merchant,
+    /// <summary>Коло крутиться без тебе ще +N год (разом не більше доби).</summary>
+    Night,
+    /// <summary>Розписний глек стоїть на колі ще +N с.</summary>
+    GoldenShown,
+    /// <summary>Глек з полиці летить ще +N с.</summary>
+    FallShown,
+    /// <summary>Око майстра платить ще +N год пасиву.</summary>
+    Eye,
+    /// <summary>Увесь клік ×2, разом із пасивом у ньому («Обома руками»).</summary>
+    ClickDouble,
+}
+
+/// <summary>Віха верстата: одноразове покращення, яке відкривається, коли верстат доріс до рівня. <paramref name="Amount"/>
+/// — сума ефекту (для <see cref="MarkEffect.Double"/>, <see cref="MarkEffect.HandsDouble"/> і
+/// <see cref="MarkEffect.ClickDouble"/> — просто «є»).</summary>
+public sealed record ClickerMark(int Level, string Name, MarkEffect Effect = MarkEffect.Double, double Amount = 1);
 
 /// <summary>
 /// Один верстат майстерні: скільки коштує перший рівень, що дає і чи є в нього стеля. Ціна росте в
@@ -60,7 +102,9 @@ public sealed record ClickerUpgrade(string Key, string Name, string Desc, double
 /// Родинний секрет: вічне покращення за клейма майстра, обпал його не забирає. <paramref name="Ring"/> — коло:
 /// перше (родинні, з першого оновлення) чи друге (дідівські, дев'яте оновлення — сотні клейм).
 /// </summary>
-public sealed record ClickerSecret(string Key, string Name, string Desc, int Price, int Ring = 1);
+/// <remarks>Ціна — <c>long</c> (десяте оновлення): прадідівські секрети коштують мільярди клейм, і сума всіх цін уже
+/// не влазить в <c>int</c>.</remarks>
+public sealed record ClickerSecret(string Key, string Name, string Desc, long Price, int Ring = 1);
 
 /// <summary>Розпис для глека: колекція на всі обпали, кожен розпис — плюс п'ять відсотків до всього.</summary>
 public sealed record ClickerStyle(string Key, string Name, double Price);
@@ -127,6 +171,8 @@ public sealed partial class Clicker : Game
     /// <summary>Стеля частки кишені — ще півтори «плоскі» частини: разом 360…900 с пасиву, як і до v9 у найкращому разі.</summary>
     public const double MerchantCapShare = 1.5;
     public const double MerchantSeconds = 360;
+    /// <summary>Купець із віхами «щедрий купець ще +1 хв» (десяте оновлення).</summary>
+    double MerchantSecondsNow => MerchantSeconds + 60 * Perk(MarkEffect.Merchant);
     public const int GoldenForAchievement = 50;
 
     /// <summary>Що буде в розписному глеку. Вирішується, коли глек з'являється, а гравцеві показується, лише коли впіймав.</summary>
@@ -185,11 +231,11 @@ public sealed partial class Clicker : Game
     public const double WindMult = 3;
 
     /// <summary>
-    /// Яку версію «Що нового» показуємо. Побачив — більше не показуємо ніколи й ні на якому пристрої. «v9.2» — звання
-    /// округи й подарунок (docs/games/specs/clicker-titles.md); хто не бачив «v9.1» (клейма після тисячі), тому клієнт
-    /// допише й ті рядки (вид шле newsSeen).
+    /// Яку версію «Що нового» показуємо. Побачив — більше не показуємо ніколи й ні на якому пристрої. «v10» — «Глек на
+    /// весь світ» (docs/games/specs/clicker-v10.md §12) і подарунок; хто пропустив «v9.2» (звання округи) чи «v9.1»
+    /// (клейма після тисячі), тому клієнт допише й ті рядки (вид шле newsSeen), а подарунок v9.2 дасть TakeGift.
     /// </summary>
-    public const string NewsVersion = "v9.2";
+    public const string NewsVersion = "v10";
 
     // ---------- розгін кола ----------
 
@@ -264,12 +310,18 @@ public sealed partial class Clicker : Game
     /// </summary>
     public static readonly ClickerUpgrade[] Shop =
     [
+        // Віхи кола: 10/25/50 — як були (клік ×2, +1 % і +2 % пасиву в клік), далі десяте оновлення — п'ять модифікаторів.
         new("wheel", "Швидше коло", "+1 глек за клік", 15, ClickerKind.Click,
-            Marks: [new(10, "Ножний привід"), new(25, "Легка рука"), new(50, "Руки майстра")]),
+            Marks: [new(10, "Ножний привід", MarkEffect.HandsDouble), new(25, "Легка рука", MarkEffect.Hand, 0.01),
+                new(50, "Руки майстра", MarkEffect.Hand, 0.02), new(75, "Тверда рука", MarkEffect.Hand, 0.03),
+                new(100, "Коло-дзиґа", MarkEffect.Momentum, 1), new(125, "Довгий розгін", MarkEffect.Temper, 3),
+                new(150, "Фартова рука", MarkEffect.Lucky, 0.02), new(200, "Обома руками", MarkEffect.ClickDouble)]),
         new("apprentice", "Підмайстер", "+0,5 глека за секунду", 100, ClickerKind.Idle, Rate: 0.5,
-            Marks: [new(10, "Учні з Опішні"), new(25, "Кухоль узвару"), new(50, "Цехова грамота")]),
+            Marks: [new(10, "Учні з Опішні"), new(25, "Кухоль узвару"), new(50, "Цехова грамота"),
+                M(75, "Учень із Косова", MarkEffect.Hand), M(100, "Учень став майстром", MarkEffect.Passive)]),
         new("kiln", "Піч", "+3 глеки за секунду", 1_000, ClickerKind.Idle, Rate: 3,
-            Marks: [new(10, "Дубові дрова"), new(25, "Двоярусний горн"), new(50, "Вічний вогонь")]),
+            Marks: [new(10, "Дубові дрова"), new(25, "Двоярусний горн"), new(50, "Вічний вогонь"),
+                M(75, "Жар не спадає", MarkEffect.Temper), M(100, "Піч на всю ніч", MarkEffect.Night)]),
         new("clay", "Гарна глина", "×1,25 до всього", 10_000, ClickerKind.Mult, MaxLevel: 5),
         new("flywheel", "Маховик", "Швидкі кліки поспіль розкручують коло: +0,5 до стелі розгону", 250, ClickerKind.Skill, MaxLevel: 8),
         new("basket", "Кошик під полицею", "+20 % до глеків, що падають з полиці", 2_500, ClickerKind.Skill, MaxLevel: 10),
@@ -277,42 +329,102 @@ public sealed partial class Clicker : Game
         new("swing", "Замашна рука", "Клік бере ще +1 % пасиву за рівень", 50_000_000, ClickerKind.Skill, MaxLevel: 10),
         new("temper", "Гарт кола", "Розгін спадає повільніше: +1 с за рівень", 500_000_000, ClickerKind.Skill, MaxLevel: 5),
         new("lucky", "Щасливий клік", "1 % кліків за рівень б'є в ×50", 5_000_000_000, ClickerKind.Skill, MaxLevel: 5),
-        Tier("workshop", "Гончарня", 100_000, 25, "Новий дах", "Полиці до стелі", "Вивіска на всю вулицю"),
-        Tier("fair", "Ярмарок у Сорочинцях", 2_000_000, 150, "Намет із прапорцем", "Ярмаркові зазивали", "Гоголь приїхав"),
-        Tier("artel", "Артіль в Опішні", 50_000_000, 900, "Спільна глина", "Артільний кошовий", "Знак Опішні"),
-        Tier("chumaks", "Чумацький обоз", 1_000_000_000, 5_000, "Сіль у дорогу", "Круторогі воли", "Чумацький Шлях"),
-        Tier("pit", "Глинище", 25_000_000_000, 32_000, "Голуба глина", "Кінний підйомник", "Глибокий пласт"),
-        Tier("school", "Школа гончарів", 500_000_000_000, 200_000, "Підручник гончаря", "Майстер-клас", "Випускний у глині"),
-        Tier("chaika", "Чайка до Царграда", 12_000_000_000_000, 1_200_000, "Козацька чайка", "Попутний вітер", "Царградський базар"),
-        Tier("museum", "Музей гончарства", 250_000_000_000_000, 7_000_000, "Екскурсовод", "Вітрина скарбів", "Ніч у музеї"),
-        Tier("tsar", "Цар-глек", 5_000_000_000_000_000, 45_000_000, "Глек на всю хату", "Глек на все село", "Глек видно з Місяця"),
+        Tier("workshop", "Гончарня", 100_000, 25, "Новий дах", "Полиці до стелі", "Вивіска на всю вулицю",
+            M(150, "Друга майстерня", MarkEffect.Passive), M(200, "Ліхтар над дверима", MarkEffect.Night), M(250, "Комора під полицею", MarkEffect.Fall), M(300, "Гончарня на весь квартал", MarkEffect.Passive)),
+        Tier("fair", "Ярмарок у Сорочинцях", 2_000_000, 150, "Намет із прапорцем", "Ярмаркові зазивали", "Гоголь приїхав",
+            M(150, "Ярмарковий оркестр", MarkEffect.Fair), M(200, "Свій ряд на ярмарку", MarkEffect.Merchant), M(250, "Гоголь задивився", MarkEffect.GoldenShown), M(300, "Ярмарок на три дні", MarkEffect.Fair)),
+        Tier("artel", "Артіль в Опішні", 50_000_000, 900, "Спільна глина", "Артільний кошовий", "Знак Опішні",
+            M(150, "Артільна пісня", MarkEffect.Hand), M(200, "Гуртом легше", MarkEffect.Passive), M(250, "Опішнянський ритм", MarkEffect.Temper), M(300, "Артіль на все Полтавське", MarkEffect.Passive)),
+        Tier("chumaks", "Чумацький обоз", 1_000_000_000, 5_000, "Сіль у дорогу", "Круторогі воли", "Чумацький Шлях",
+            M(150, "Нічний перехід", MarkEffect.Night), M(200, "Сіль — то гроші", MarkEffect.Merchant), M(250, "Воли не спиняються", MarkEffect.Temper), M(300, "До самого моря", MarkEffect.Night)),
+        Tier("pit", "Глинище", 25_000_000_000, 32_000, "Голуба глина", "Кінний підйомник", "Глибокий пласт",
+            M(150, "Жила без дна", MarkEffect.Passive), M(200, "М'яка глина під полицею", MarkEffect.Fall), M(250, "Щасливий пласт", MarkEffect.Lucky), M(300, "Глинище на всю долину", MarkEffect.Passive)),
+        Tier("school", "Школа гончарів", 500_000_000_000, 200_000, "Підручник гончаря", "Майстер-клас", "Випускний у глині",
+            M(150, "Урок розгону", MarkEffect.Momentum), M(200, "Іспит на руки", MarkEffect.Hand), M(250, "Кафедра гончарства", MarkEffect.Passive), M(300, "Гончарна академія", MarkEffect.Hand)),
+        Tier("chaika", "Чайка до Царграда", 12_000_000_000_000, 1_200_000, "Козацька чайка", "Попутний вітер", "Царградський базар",
+            M(150, "Вітер у вітрилах", MarkEffect.Temper), M(200, "Царградський купець", MarkEffect.Merchant), M(250, "Улов із палуби", MarkEffect.Fall), M(300, "Нічна вахта", MarkEffect.Night)),
+        Tier("museum", "Музей гончарства", 250_000_000_000_000, 7_000_000, "Екскурсовод", "Вітрина скарбів", "Ніч у музеї",
+            M(150, "Скляна вітрина", MarkEffect.FallShown), M(200, "Запасник музею", MarkEffect.Fall), M(250, "Наглядач залу", MarkEffect.Eye), M(300, "Зала розписних глеків", MarkEffect.GoldenShown)),
+        Tier("tsar", "Цар-глек", 5_000_000_000_000_000, 45_000_000, "Глек на всю хату", "Глек на все село", "Глек видно з Місяця",
+            M(150, "Глек на всю губернію", MarkEffect.Passive), M(200, "Царський ярмарок", MarkEffect.Fair), M(250, "Цар-глек із секретом", MarkEffect.Lucky), M(300, "Глек на всі сторони світу", MarkEffect.Fall)),
         // Дев'яте оновлення: три щаблі після Цар-глека — ×22 ціни й ×6,5 доходу, щоб було заради чого грати далі.
-        Tier("sloboda", "Гончарна слобода", 1e17, 3e8, "Своя вулиця", "Ярмарок під хатою", "Слобідський герб"),
-        Tier("kontrakty", "Контрактовий ярмарок", 2.5e18, 2e9, "Контракт із Києвом", "Гостиний двір", "Лаврські купці"),
-        Tier("sich", "Гончарня на Січі", 6e19, 1.3e10, "Курінь гончарів", "Козацька печатка", "Клейнод"),
+        Tier("sloboda", "Гончарна слобода", 1e17, 3e8, "Своя вулиця", "Ярмарок під хатою", "Слобідський герб",
+            M(150, "Ліхтарі на вулиці", MarkEffect.Night), M(200, "Ярмарок щонеділі", MarkEffect.Merchant), M(250, "Слобідський сторож", MarkEffect.Eye), M(300, "Слобода не спить", MarkEffect.Night)),
+        Tier("kontrakty", "Контрактовий ярмарок", 2.5e18, 2e9, "Контракт із Києвом", "Гостиний двір", "Лаврські купці",
+            M(150, "Контракт на рік", MarkEffect.Merchant), M(200, "Заморські купці", MarkEffect.Fair), M(250, "Довгий торг", MarkEffect.FallShown), M(300, "Контракт із половиною світу", MarkEffect.Fall)),
+        Tier("sich", "Гончарня на Січі", 6e19, 1.3e10, "Курінь гончарів", "Козацька печатка", "Клейнод",
+            M(150, "Козацька витривалість", MarkEffect.Temper), M(200, "Січова скарбниця", MarkEffect.Fall), M(250, "Гетьманська булава", MarkEffect.Momentum), M(300, "Слава на віки", MarkEffect.Night)),
         // Десяте оновлення «Глек на весь світ» (docs/games/specs/clicker-v10.md §3): дванадцять щаблів історії
         // гончарства й торгівлі — від гетьманського Батурина до Опішні. Ціна ×10, дохід ×5,5 на щабель.
-        Tier("baturyn", "Батуринська кахельня", 6e20, 7e10, "Зелена полива", "Кахлі з гербом", "Піч на весь палац"),
-        Tier("korets", "Корецька порцеляна", 6e21, 4e11, "Глухівська біла глина", "Кобальтова квітка", "Сервіз на сто персон"),
-        Tier("port", "Одеський порт", 6e22, 2.2e12, "Причал для глеків", "Власна шхуна", "Маяк над затокою"),
-        Tier("mezhyhirya", "Межигірська фабрика", 6e23, 1.2e13, "Київський фаянс", "Сині квіти на білому", "Сервіз для генерал-губернатора"),
-        Tier("voyage", "Кругосвітнє плавання", 6e24, 6.6e13, "Капітан із Ніжина", "Глеки на екваторі", "Три роки навколо світу"),
-        Tier("railway", "Глиняна чавунка", 6e25, 3.6e14, "Вагон соломи", "Паровоз «Глечик»", "Вокзал із куполом"),
-        Tier("ocean", "Пароплав за океан", 6e26, 2e15, "Скриня переселенця", "Хата в канадській прерії", "Глеки для діаспори"),
-        Tier("trypillia", "Трипільська експедиція", 6e27, 1.1e16, "Черепок із Трипілля", "Археолог Хвойка", "Сім тисяч років глини"),
-        Tier("mirgorod", "Миргородська школа кераміки", 6e28, 6e16, "Школа біля калюжі", "Майстер-керамік", "Диплом із Миргорода"),
-        Tier("exchange", "Одеська біржа", 6e29, 3.3e17, "Курс глека", "Бички й ведмеді", "Глек — тверда валюта"),
-        Tier("expo", "Всесвітня виставка в Парижі", 6e30, 1.8e18, "Павільйон із вишивкою", "Золота медаль", "Черга до павільйону"),
-        Tier("opishnia", "Гончарна столиця світу", 6e31, 1e19, "Гончарний фестиваль", "Гості з усіх країн", "Серце світу — в Опішні"),
+        Tier("baturyn", "Батуринська кахельня", 6e20, 7e10, "Зелена полива", "Кахлі з гербом", "Піч на весь палац",
+            M(150, "Кахлі на всю Гетьманщину", MarkEffect.Passive), M(200, "Булава над кахельнею", MarkEffect.Fair)),
+        Tier("korets", "Корецька порцеляна", 6e21, 4e11, "Глухівська біла глина", "Кобальтова квітка", "Сервіз на сто персон",
+            M(150, "Тонка, як шкаралупа", MarkEffect.Fall), M(200, "Порцеляна до королівського столу", MarkEffect.Passive)),
+        Tier("port", "Одеський порт", 6e22, 2.2e12, "Причал для глеків", "Власна шхуна", "Маяк над затокою",
+            M(150, "Попутний бриз", MarkEffect.Merchant), M(200, "Вогонь маяка", MarkEffect.Night)),
+        Tier("mezhyhirya", "Межигірська фабрика", 6e23, 1.2e13, "Київський фаянс", "Сині квіти на білому", "Сервіз для генерал-губернатора",
+            M(150, "Фаянс на весь Поділ", MarkEffect.Passive), M(200, "Фабричний гудок", MarkEffect.Momentum)),
+        Tier("voyage", "Кругосвітнє плавання", 6e24, 6.6e13, "Капітан із Ніжина", "Глеки на екваторі", "Три роки навколо світу",
+            M(150, "Пасат у вітрилах", MarkEffect.Temper), M(200, "Вахта до світанку", MarkEffect.Night)),
+        Tier("railway", "Глиняна чавунка", 6e25, 3.6e14, "Вагон соломи", "Паровоз «Глечик»", "Вокзал із куполом",
+            M(150, "Нічний потяг", MarkEffect.Night), M(200, "Експрес без зупинок", MarkEffect.Momentum)),
+        Tier("ocean", "Пароплав за океан", 6e26, 2e15, "Скриня переселенця", "Хата в канадській прерії", "Глеки для діаспори",
+            M(150, "Лист із-за океану", MarkEffect.Merchant), M(200, "Українська громада", MarkEffect.Passive)),
+        Tier("trypillia", "Трипільська експедиція", 6e27, 1.1e16, "Черепок із Трипілля", "Археолог Хвойка", "Сім тисяч років глини",
+            M(150, "Спіраль на вінцях", MarkEffect.Fall), M(200, "Прадавній обпал", MarkEffect.Lucky)),
+        Tier("mirgorod", "Миргородська школа кераміки", 6e28, 6e16, "Школа біля калюжі", "Майстер-керамік", "Диплом із Миргорода",
+            M(150, "Учні з усієї губернії", MarkEffect.Hand), M(200, "Миргородська полива", MarkEffect.GoldenShown)),
+        Tier("exchange", "Одеська біржа", 6e29, 3.3e17, "Курс глека", "Бички й ведмеді", "Глек — тверда валюта",
+            M(150, "Бичачий ринок", MarkEffect.Eye), M(200, "Золоті ф'ючерси", MarkEffect.Fair)),
+        Tier("expo", "Всесвітня виставка в Парижі", 6e30, 1.8e18, "Павільйон із вишивкою", "Золота медаль", "Черга до павільйону",
+            M(150, "Гран-прі", MarkEffect.Passive), M(200, "Фото в усіх газетах", MarkEffect.Fall)),
+        Tier("opishnia", "Гончарна столиця світу", 6e31, 1e19, "Гончарний фестиваль", "Гості з усіх країн", "Серце світу — в Опішні",
+            M(150, "Глина, що пам'ятає", MarkEffect.Passive), M(200, "Гончар усього світу", MarkEffect.Hand)),
     ];
 
     /// <summary>Дванадцять щаблів десятого оновлення — від Батурина до Опішні (ачівки, сцена, «що нового»).</summary>
     public static readonly string[] WorldTiers =
         ["baturyn", "korets", "port", "mezhyhirya", "voyage", "railway", "ocean", "trypillia", "mirgorod", "exchange", "expo", "opishnia"];
 
-    static ClickerUpgrade Tier(string key, string name, double price, double rate, string m25, string m50, string m100) =>
+    static ClickerUpgrade Tier(string key, string name, double price, double rate, string m25, string m50, string m100,
+        params ClickerMark[] more) =>
         new(key, name, $"+{PotsShort(rate)} за секунду", price, ClickerKind.Idle, Rate: rate,
-            GrowNum: 23, GrowDen: 20, Marks: [new(25, m25), new(50, m50), new(100, m100)]);
+            GrowNum: 23, GrowDen: 20, Marks: [new(25, m25), new(50, m50), new(100, m100), .. more]);
+
+    // ---------- віхи-модифікатори (десяте оновлення) ----------
+
+    /// <summary>Скільки дає одна віха свого ефекту — це й є всі «ручки» балансу віх (docs/games/specs/clicker-v10.md §4).</summary>
+    public const double MarkPassive = 0.25, MarkHand = 0.01, MarkMomentum = 0.5, MarkTemper = 1, MarkLucky = 0.01,
+        MarkFall = 0.25, MarkFair = 1, MarkMerchantMinutes = 1, MarkNightHours = 1, MarkGoldenSeconds = 3,
+        MarkFallSeconds = 0.5, MarkEyeHours = 1;
+
+    /// <summary>Віха-модифікатор із сумою за замовчуванням для свого ефекту.</summary>
+    static ClickerMark M(int level, string name, MarkEffect effect) => new(level, name, effect, effect switch
+    {
+        MarkEffect.Passive => MarkPassive,
+        MarkEffect.Hand => MarkHand,
+        MarkEffect.Momentum => MarkMomentum,
+        MarkEffect.Temper => MarkTemper,
+        MarkEffect.Lucky => MarkLucky,
+        MarkEffect.Fall => MarkFall,
+        MarkEffect.Fair => MarkFair,
+        MarkEffect.Merchant => MarkMerchantMinutes,
+        MarkEffect.Night => MarkNightHours,
+        MarkEffect.GoldenShown => MarkGoldenSeconds,
+        MarkEffect.FallShown => MarkFallSeconds,
+        MarkEffect.Eye => MarkEyeHours,
+        _ => 1,
+    });
+
+    /// <summary>Номер верстата в магазині за ключем — щоб на кожен клік не шукати перебором (оголошено ПІСЛЯ магазину).</summary>
+    static readonly Dictionary<string, int> ShopAt = Shop.Select((u, i) => (u.Key, i)).ToDictionary(x => x.Key, x => x.i, StringComparer.Ordinal);
+
+    /// <summary>Скільки віх у каталозі разом — для лічильника «12 із 162» і ачівок.</summary>
+    public static readonly int MarksAll = Shop.Sum(u => u.Steps.Length);
+
+    /// <summary>Старий ряд драбини — від Гончарні до Січі: його «Прадідів круг» ставить на десятий рівень після обпалу.</summary>
+    public static readonly string[] OldTiers =
+        ["workshop", "fair", "artel", "chumaks", "pit", "school", "chaika", "museum", "tsar", "sloboda", "kontrakty", "sich"];
 
     /// <summary>Родинні секрети — за клейма майстра, від дешевого до дорогого.</summary>
     public static readonly ClickerSecret[] Secrets =
@@ -333,6 +445,14 @@ public sealed partial class Clicker : Game
         new("bell", "Ярмарковий дзвін", "На дошці села до п'яти замовлень, нове — кожні 4–7 хвилин", 900, Ring: 2),
         new("ember", "Вогонь роду", "Палій пече якісніше: «блиск» його партії в півтора раза більший", 1_200, Ring: 2),
         new("ashes", "Дідова скриня", "Після обпалу в скрині лишається двадцята частина глеків", 2_000, Ring: 2),
+        // Третє коло (десяте оновлення, docs/games/specs/clicker-v10.md §8): прадідівські — на мільйони й мільярди клейм.
+        // Лише зручності обпалу й модифікатори — нічого «×до всього», щоб не розганяти петлю клейм.
+        new("ennight", "Прадідова ніч", "Коло крутиться без тебе ще +4 години (разом не більше доби)", 20_000, Ring: 3),
+        new("seamap", "Заморська карта", "У Гостинному дворі на місце більше, і гості приїжджають частіше", 200_000, Ring: 3),
+        new("kin2", "Прадідів круг", "Після обпалу весь старий ряд — від Гончарні до Січі — одразу на рівні 10", 2_000_000, Ring: 3),
+        new("basket2", "Прадідів кошик", "Кошик під полицею росте до 15 рівнів", 20_000_000, Ring: 3),
+        new("chest2", "Прадідова скриня", "Після обпалу лишається ще двадцята частина глеків", 200_000_000, Ring: 3),
+        new("wheel2", "Прадідове коло", "Клік бере ще +5 % пасиву", 2_000_000_000, Ring: 3),
     ];
 
     /// <summary>Розписи — від чорнодимленого до трипільського. Колекція лишається назавжди.</summary>
@@ -359,6 +479,34 @@ public sealed partial class Clicker : Game
     readonly Dictionary<string, int> _levels = new(StringComparer.Ordinal);
     /// <summary>Куплені віхи, ключ — «верстат:рівень».</summary>
     readonly HashSet<string> _marks = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Сума кожного ефекту куплених віх і скільки віх ×2 у кожного верстата. PassiveBase кличуть на кожну пачку кліків
+    /// і десятки разів на вид, тож не збираємо ключі віх рядками щоразу, а тримаємо готове й перераховуємо лише тоді,
+    /// коли віхи змінились (<see cref="Reperk"/>: Start, Load, BuyMark, обпал).
+    /// </summary>
+    readonly double[] _perk = new double[Enum.GetValues<MarkEffect>().Length];
+    readonly int[] _dbl = new int[Shop.Length];
+
+    void Reperk()
+    {
+        Array.Clear(_perk);
+        Array.Clear(_dbl);
+        for (var u = 0; u < Shop.Length; u++)
+        {
+            var up = Shop[u];
+            for (var i = 0; i < up.Steps.Length; i++)
+            {
+                if (!_marks.Contains(MarkKey(up, i))) continue;
+                var m = up.Steps[i];
+                if (m.Effect == MarkEffect.Double) _dbl[u]++;
+                else _perk[(int)m.Effect] += m.Amount;
+            }
+        }
+    }
+
+    /// <summary>Сума ефекту всіх куплених віх.</summary>
+    double Perk(MarkEffect effect) => _perk[(int)effect];
     readonly HashSet<string> _secrets = new(StringComparer.Ordinal);
     readonly HashSet<string> _styles = new(StringComparer.Ordinal);
     string _wear = "";
@@ -395,13 +543,14 @@ public sealed partial class Clicker : Game
     DateTimeOffset _fairUntil;
     DateTimeOffset _inspireUntil;
     int _caught;
-    /// <summary>Усі клейма: за глеки плюс <see cref="_stampsExtra"/>. Бонус, секрети й стеля черепків рахуються від них.</summary>
-    int _stamps;
+    /// <summary>Усі клейма: за глеки плюс <see cref="_stampsExtra"/>. Бонус, секрети й стеля черепків рахуються від них.
+    /// <c>long</c> з десятого оновлення: <c>int</c> переповнювався б уже на 4,6·10²⁷ глеків за весь час.</summary>
+    long _stamps;
     /// <summary>
     /// Клейма понад ті, що за глеки: від Тавра майстра й науки майстра. Обпал рахує приріст від клейм за глеки, тож
     /// окремий лічильник потрібен, щоб наступний обпал їх не «з'їдав» (раніше саме так губилось клеймо від тавра).
     /// </summary>
-    int _stampsExtra;
+    long _stampsExtra;
     /// <summary>Коли наука майстра дала клейма востаннє: наступна — через <see cref="ScienceEvery"/>.</summary>
     DateTimeOffset _scienceAt;
     int _firings;
@@ -435,6 +584,15 @@ public sealed partial class Clicker : Game
     string _news = "";
 
     /// <summary>
+    /// Яку «грошову» церемонію гончар уже бачив (десяте оновлення, §6): 0 — жодної, 1 — «Гетьманський універсал»
+    /// (гривні), 2 — «Червоні золоті». Клієнт показує вікно, коли <see cref="CoinLevel"/> більший за це число.
+    /// </summary>
+    int _coinSeen;
+
+    /// <summary>До якої одиниці гончар доріс глеками за весь час: 0 — глеки, 1 — гривні, 2 — червоні золоті.</summary>
+    int CoinLevel => _total >= Gold ? 2 : _total >= Hryvnia ? 1 : 0;
+
+    /// <summary>
     /// Як часто число з таблиці оновлюється під час клацання. Кожна пачка кліків — це запис у ту саму
     /// SQLite, у яку пише ефір, тож півхвилини затримки в таблиці «Гончарі» коштують дешевше, ніж
     /// півтора запису на секунду з кожного гончаря.
@@ -443,7 +601,7 @@ public sealed partial class Clicker : Game
 
     /// <summary>Пороги ачівок: платформа бачить їх саме з таблиці, тож ці числа мусять летіти негайно,
     /// а не чекати своєї півхвилини.</summary>
-    static readonly long[] Milestones = [1_000, 100_000, 1_000_000, 1_000_000_000, 1_000_000_000_000];
+    static readonly double[] Milestones = [1_000, 100_000, 1_000_000, 1_000_000_000, 1_000_000_000_000, Hryvnia, Gold];
 
     // ---------- те, з чого складається дохід ----------
 
@@ -453,13 +611,8 @@ public sealed partial class Clicker : Game
 
     static string MarkKey(ClickerUpgrade up, int i) => $"{up.Key}:{up.Steps[i].Level}";
 
-    int MarksOf(ClickerUpgrade up)
-    {
-        var n = 0;
-        for (var i = 0; i < up.Steps.Length; i++)
-            if (_marks.Contains(MarkKey(up, i))) n++;
-        return n;
-    }
+    /// <summary>Скільки віх ×2 куплено в цього верстата (модифікатори сюди не входять).</summary>
+    int MarksOf(ClickerUpgrade up) => _dbl[ShopAt[up.Key]];
 
     /// <summary>
     /// Множник до всього: глина (1,25^n), розписи (+5 % кожен) і клейма (+2 % за кожне з першої тисячі, з «Родовим
@@ -476,7 +629,7 @@ public sealed partial class Clicker : Game
         * GuestsAllMult;
 
     /// <summary>Скільки глеків за секунду дає один наступний рівень верстата (без ярмарку).</summary>
-    double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult;
+    double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult * (1 + Perk(MarkEffect.Passive));
 
     /// <summary>Глеків за секунду без тебе — без ярмарку розписного глека.</summary>
     double PassiveBase
@@ -484,17 +637,17 @@ public sealed partial class Clicker : Game
         get
         {
             var sum = 0.0;
-            foreach (var up in Shop)
-                if (up.Kind == ClickerKind.Idle) sum += Level(up.Key) * up.Rate * Math.Pow(2, MarksOf(up));
-            // Біла глина — для того, хто чекає; відро з водою — трохи до всього пасиву.
-            return sum * AllMult * ClayNow.Passive * (Tool("bucket") ? BucketPassive : 1);
+            for (var u = 0; u < Shop.Length; u++)
+                if (Shop[u].Kind == ClickerKind.Idle) sum += Level(Shop[u].Key) * Shop[u].Rate * Math.Pow(2, _dbl[u]);
+            // Біла глина — для того, хто чекає; відро з водою — трохи до всього пасиву; віхи «пасив +25 %» (v10).
+            return sum * AllMult * ClayNow.Passive * (Tool("bucket") ? BucketPassive : 1) * (1 + Perk(MarkEffect.Passive));
         }
     }
 
     bool FairOn => Ctx.Clock.UtcNow < _fairUntil;
 
     /// <summary>Ярмарок розписного глека просто зараз: ×7 і те, що додали лондонські торговці (десяте оновлення).</summary>
-    double FairMultNow => FairMult + GuestsFairBonus;
+    double FairMultNow => FairMult + Perk(MarkEffect.Fair) + GuestsFairBonus;
     bool InspireOn => Ctx.Clock.UtcNow < _inspireUntil;
 
     /// <summary>
@@ -506,9 +659,9 @@ public sealed partial class Clicker : Game
     {
         get
         {
-            var wheel = Shop[0];
-            return (_marks.Contains(MarkKey(wheel, 1)) ? 0.01 : 0) + (_marks.Contains(MarkKey(wheel, 2)) ? 0.02 : 0)
-                + (Tool("string") ? 0.01 : 0) + SwingShare * Level("swing");
+            // Віхи «клік бере ще % пасиву» (кола 25/50/75 і драбини), струна, замашна рука й прадідове коло (v10).
+            return Perk(MarkEffect.Hand) + (Tool("string") ? 0.01 : 0) + SwingShare * Level("swing")
+                + (Has("wheel2") ? Wheel2Share : 0);
         }
     }
 
@@ -524,10 +677,11 @@ public sealed partial class Clicker : Game
     {
         get
         {
-            var wheel = Shop[0];
-            var hands = (1 + Level("wheel")) * (_marks.Contains(MarkKey(wheel, 0)) ? 2 : 1) * AllMult
+            var hands = (1 + Level("wheel")) * (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * AllMult
                 * ClayNow.Click * (Tool("ribs") ? RibsClick : 1);
-            return Math.Max(1, ToPots(Math.Round(hands + PassiveBase * ClickShare, MidpointRounding.AwayFromZero)));
+            var click = Math.Max(1, ToPots(Math.Round(hands + PassiveBase * ClickShare, MidpointRounding.AwayFromZero)));
+            // «Обома руками» (коло 200): увесь клік ×2, разом із пасивом у ньому.
+            return Perk(MarkEffect.ClickDouble) > 0 ? click * 2 : click;
         }
     }
 
@@ -543,13 +697,13 @@ public sealed partial class Clicker : Game
     public double PerSecond => PassiveBase * (FairOn ? FairMultNow : 1) * (WindOn ? WindMult : 1);
 
     /// <summary>Стеля розгону: ×1 без маховика (коло не розганяється), +0,5 за кожен його рівень — до ×5.</summary>
-    public double MomentumMax => 1 + FlywheelStep * Level("flywheel");
+    public double MomentumMax => 1 + FlywheelStep * Level("flywheel") + Perk(MarkEffect.Momentum);
 
     /// <summary>
     /// За скільки секунд розгін спадає в e разів: <see cref="HeatTau"/>, з лопаткою — удвічі довше, і ще по
     /// секунді за кожен рівень «Гарту кола» (дев'яте оновлення): коло тримає розгін, поки рука переводить подих.
     /// </summary>
-    double Tau => (Tool("paddle") ? HeatTau * PaddleTau : HeatTau) + TemperTau * Level("temper");
+    double Tau => (Tool("paddle") ? HeatTau * PaddleTau : HeatTau) + TemperTau * Level("temper") + Perk(MarkEffect.Temper);
 
     /// <summary>Скільки секунд до згасання розгону додає один рівень «Гарту кола».</summary>
     public const double TemperTau = 1;
@@ -568,7 +722,7 @@ public sealed partial class Clicker : Game
     double FallGain()
     {
         var raw = PassiveBase * FallSeconds + ClickBase * FallClicks;
-        var mult = (1 + BasketBonus * Level("basket") + GuestsFallBonus) * (1 + StreakMult) * (FairOn ? FairMultNow : 1)
+        var mult = (1 + BasketBonus * Level("basket") + Perk(MarkEffect.Fall) + GuestsFallBonus) * (1 + StreakMult) * (FairOn ? FairMultNow : 1)
             * ClayNow.Loot * HouseFallMult * (_starWish ? StarFallMult : 1);
         return ToPots(raw * mult) + FallFloor;
     }
@@ -584,7 +738,7 @@ public sealed partial class Clicker : Game
         get
         {
             var hours = (Has("night") ? LongOfflineCap : OfflineCap) + (Tool("lantern") ? LanternHours : TimeSpan.Zero) + HouseOfflineExtra
-                + GuestsOfflineExtra;
+                + GuestsOfflineExtra + TimeSpan.FromHours(Perk(MarkEffect.Night)) + (Has("ennight") ? EnNightHours : TimeSpan.Zero);
             return hours > OfflineMax ? OfflineMax : hours;
         }
     }
@@ -600,33 +754,47 @@ public sealed partial class Clicker : Game
     /// </summary>
     int BaseCap => Math.Max(0, _opts?.CurrentValue.ClickerDailyCap ?? DefaultDailyCap);
     int CapMax => Math.Max(BaseCap, _opts?.CurrentValue.ClickerDailyCapMax ?? DefaultDailyCap + MaxStampCap);
-    int DailyCap => BaseCap == 0 ? 0 : Math.Min(BaseCap + Math.Min(MaxStampCap, _stamps / StampsPerCap), CapMax);
+    int DailyCap => BaseCap == 0 ? 0 : Math.Min(BaseCap + (int)Math.Min(MaxStampCap, _stamps / StampsPerCap), CapMax);
     /// <summary>Скільки черепків до стелі справді додали клейма (після всіх обмежень).</summary>
     int StampCap => DailyCap - BaseCap;
 
     /// <summary>Скільки вже виміняно САМЕ сьогодні: після півночі лічильник сам стає нулем.</summary>
     int SoldToday => _soldDay == Days.Today(Ctx.Clock) ? _soldShards : 0;
 
-    /// <summary>Скільки клейм дають глеки за весь час — усього, а не «ще».</summary>
-    public static int StampsFor(double total) =>
-        !(total > 0) ? 0 : (int)Math.Min(int.MaxValue, Math.Floor(Math.Sqrt(total / StampUnit)));
+    /// <summary>Скільки клейм дають глеки за весь час — усього, а не «ще». Стеля — чверть <c>long</c>: сума з Тавром і
+    /// наукою мусить лишитись додатною навіть на 10³⁰⁰ глеків.</summary>
+    public static long StampsFor(double total) =>
+        !(total > 0) ? 0 : (long)Math.Min(long.MaxValue / 4, Math.Floor(Math.Sqrt(total / StampUnit)));
 
     /// <summary>Скільки глеків за весь час треба для n клейм.</summary>
-    public static double TotalFor(int stamps) => ToPots((double)stamps * stamps * StampUnit);
+    public static double TotalFor(long stamps) => ToPots((double)stamps * stamps * StampUnit);
 
     /// <summary>
-    /// Скільки «повних» клейм важать <paramref name="stamps"/> клейм: до <see cref="StampSoftFrom"/> — усі, далі —
-    /// <c>1000·(2√(n/1000) − 1)</c>. На тисячі крива переходить у корінь без сходинки й без зламу: наступне клеймо
-    /// важить рівно одне, а далі дедалі менше (на 4000 — пів клейма, на 16 000 — чверть).
+    /// Коліно кривої клейм (десяте оновлення, docs/games/specs/clicker-v10.md §5): до чотирьох мільйонів крива та
+    /// сама, що з 23.09, а далі вага росте як логарифм — удесятеро більше клейм додають ту саму вагу (+145 тис.).
+    /// Чотири мільйони — більше, ніж будь-хто мав чи чекав обпалу в день релізу (найбільше — 2,44 млн), тож нікому
+    /// з поточних гравців ні відсотка не зменшилось. Без коліна нова драбина знову розігнала б петлю «глеки → клейма».
     /// </summary>
-    public static double StampWeight(int stamps) =>
-        stamps <= StampSoftFrom ? Math.Max(0, stamps) : StampSoftFrom * (2 * Math.Sqrt((double)stamps / StampSoftFrom) - 1);
+    public const long StampKnee = 4_000_000;
+
+    /// <summary>
+    /// Скільки «повних» клейм важать <paramref name="stamps"/> клейм: до <see cref="StampSoftFrom"/> — усі, далі до
+    /// <see cref="StampKnee"/> — <c>1000·(2√(n/1000) − 1)</c>, а після коліна — <c>W(K) + √(1000·K)·ln(n/K)</c>.
+    /// На обох переходах без сходинки й без зламу: наступне клеймо важить рівно стільки, скільки попереднє.
+    /// </summary>
+    public static double StampWeight(long stamps)
+    {
+        if (stamps <= StampSoftFrom) return Math.Max(0, stamps);
+        if (stamps <= StampKnee) return StampSoftFrom * (2 * Math.Sqrt((double)stamps / StampSoftFrom) - 1);
+        var knee = StampSoftFrom * (2 * Math.Sqrt((double)StampKnee / StampSoftFrom) - 1);
+        return knee + Math.Sqrt((double)StampSoftFrom * StampKnee) * Math.Log((double)stamps / StampKnee);
+    }
 
     /// <summary>Множник від клейм: <c>1 + бонус за клеймо × вага клейм</c>.</summary>
     double StampMult => 1 + (Has("seal") ? SealStampBonus : StampBonus) * StampWeight(_stamps);
 
     /// <summary>Клейма за глеки — від них рахується приріст на обпалі (Тавро й наука лежать окремо).</summary>
-    int NaturalStamps => Math.Max(0, _stamps - _stampsExtra);
+    long NaturalStamps => Math.Max(0, _stamps - _stampsExtra);
 
     /// <summary>
     /// Скільки дасть наука майстра на обпалі, якщо після нього клейм за глеки буде <paramref name="natural"/>, а
@@ -634,28 +802,47 @@ public sealed partial class Clicker : Game
     /// більше ніж двічі по <paramref name="natural"/>. Нуль — коли ще не минуло 20 годин від минулої науки, коли
     /// гончар сам найкращий або коли цеху (а з ним і округи) нема.
     /// </summary>
-    int ScienceFor(int natural, int extra, int top, DateTimeOffset now)
+    long ScienceFor(long natural, long extra, long top, DateTimeOffset now)
     {
         if (_scienceAt != default && now - _scienceAt < ScienceEvery) return 0;
         var gap = (double)top - natural - extra;
         if (!(gap > 0)) return 0;
-        // У double і зі стелею: двічі по мільярду клейм уже не влазить в int.
-        return (int)Math.Clamp(Math.Min(Math.Floor(gap * ScienceShare), (double)ScienceCap * natural), 0, int.MaxValue / 4);
+        // У double і зі стелею: двічі по мільярдах клейм — і сума мусить лишитись у long.
+        return (long)Math.Clamp(Math.Min(Math.Floor(gap * ScienceShare), (double)ScienceCap * natural), 0, long.MaxValue / 8);
     }
 
-    int StampsSpent => Secrets.Where(s => _secrets.Contains(s.Key)).Sum(s => s.Price);
+    long StampsSpent => Secrets.Where(s => _secrets.Contains(s.Key)).Sum(s => s.Price);
     /// <summary>Клейма, витрачені не на секрети (оздоби хати тощо, v9): бонус клейм вони не гублять, як і секрети.</summary>
-    int _stampsUsed;
+    long _stampsUsed;
     /// <summary>Вільні клейма: усі мінус секрети мінус інші покупки за клейма.</summary>
-    internal int FreeStamps => _stamps - StampsSpent - _stampsUsed;
+    internal long FreeStamps => _stamps - StampsSpent - _stampsUsed;
 
     /// <summary>Витратити клейма на щось, крім секретів (v9). null — вдалось; інакше готова відмова.</summary>
-    internal ActResult? SpendStamps(int price)
+    internal ActResult? SpendStamps(long price)
     {
         if (price <= 0) return null;
-        if (FreeStamps < price) return ActResult.Fail($"Бракує клейм: треба ще {price - FreeStamps}");
+        if (FreeStamps < price) return ActResult.Fail($"Бракує клейм: треба ще {Count(price - FreeStamps)}");
         _stampsUsed += price;
         return null;
+    }
+
+    // ---------- сумісність клієнтів (десяте оновлення) ----------
+
+    /// <summary>
+    /// Версія протоколу клієнта: з v10 вид «худий» (тексти магазину — у <c>shopCatalog</c>, клієнт доповнює вид сам).
+    /// Вкладка, відкрита до деплою, тримає старий clicker.js і доповнювати не вміє, а сайт сам сторінку не
+    /// перезавантажує (друзі тримають радіо відкритим добами). Тож поки клієнт не сказав <c>pv ≥ 10</c> (у кліках і в
+    /// запиті каталогу), вид повний — такий, як до v10; щойно сказав — худий.
+    /// </summary>
+    public const int ProtocolVersion = 10;
+    bool _slim;
+
+    /// <summary>Що каже клієнт про себе: <c>pv</c> у payload. Старий клік без нього — старий клієнт.</summary>
+    void SeeClient(JsonElement payload, bool oldIfMissing)
+    {
+        var pv = Num(payload, "pv");
+        if (pv is { } v) _slim = v >= ProtocolVersion;
+        else if (oldIfMissing) _slim = false;
     }
 
     // ---------- життя партії ----------
@@ -676,6 +863,7 @@ public sealed partial class Clicker : Game
         _levels.Clear();
         foreach (var up in Shop) _levels[up.Key] = 0;
         _marks.Clear();
+        Reperk();
         _secrets.Clear();
         _styles.Clear();
         _wear = "";
@@ -705,6 +893,7 @@ public sealed partial class Clicker : Game
         _fallSlept = false;
         // Новачкові «що нового» ні до чого — для нього нове все; новини бачить той, чиє збереження старше за випуск.
         _news = NewsVersion;
+        _coinSeen = 0;
         ScheduleCat(_lastSync);
         ScheduleStar(_lastSync);
         ScheduleWind(_lastSync);
@@ -750,6 +939,8 @@ public sealed partial class Clicker : Game
             "pet" => Pet(),
             "wish" => Wish(),
             "news" => SeenNews(payload),
+            // «Бачив» вікно-церемонію гривні чи червоних золотих (v10 §6).
+            "coin" => SeenCoin(payload),
             // Клієнт питає свіжий вид, коли розписний глек утік чи глек з полиці розбився: наступний розклад знає лише сервер.
             "look" => LookHouse(payload) ?? Look(payload),
             "fire" => Fire(),
@@ -870,6 +1061,7 @@ public sealed partial class Clicker : Game
     {
         if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("catalog", out var c) && c.ValueKind == JsonValueKind.True)
             _catalogWanted = true;
+        SeeClient(payload, oldIfMissing: false);
         return ActResult.Done;
     }
 
@@ -921,7 +1113,8 @@ public sealed partial class Clicker : Game
         var kind = roll < 40 ? GoldenKind.Fair : roll < 70 ? GoldenKind.Merchant : GoldenKind.Inspire;
         // Де саме на сцені: лівий верхній кут у відсотках. Глек завширшки ~58 px, сцена на телефоні ~300 px —
         // тож праворуч лишаємо чверть, щоб він не вилазив за картку.
-        var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero) + HouseGoldenExtra;
+        var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero) + HouseGoldenExtra
+            + TimeSpan.FromSeconds(Perk(MarkEffect.GoldenShown));
         _golden = new GoldenRow(at, at + shown, kind, Ctx.Rng.Next(4, 77), Ctx.Rng.Next(2, 70));
     }
 
@@ -930,7 +1123,8 @@ public sealed partial class Clicker : Game
     {
         var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
         var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events);
-        _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown), Ctx.Rng.Next(8, 80));
+        _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown) + TimeSpan.FromSeconds(Perk(MarkEffect.FallShown)),
+            Ctx.Rng.Next(8, 80));
     }
 
     // ---------- випадковості на сцені: кіт, зірка, вітер (§A.6) ----------
@@ -1018,6 +1212,7 @@ public sealed partial class Clicker : Game
         // тут — їй досить перезавантажитись.
         if (ClickerGuard.Parse(payload) is not { } hands)
             return ActResult.Fail("Коло оновилось — перезавантаж сторінку");
+        SeeClient(payload, oldIfMissing: true);
         var now = Ctx.Clock.UtcNow;
         if (_guard.Locked(now) || _guard.Pending) return ActResult.Done;
 
@@ -1047,9 +1242,9 @@ public sealed partial class Clicker : Game
     /// </summary>
     int LuckyIn(int taken)
     {
-        var level = Level("lucky");
-        if (level <= 0 || taken <= 0) return 0;
-        var chance = LuckyChance * level;
+        // Віхи «ще % кліків б'є в ×50» працюють і без жодного рівня «Щасливого кліка» (v10).
+        var chance = LuckyChance * Level("lucky") + Perk(MarkEffect.Lucky);
+        if (!(chance > 0) || taken <= 0) return 0;
         var hits = 0;
         for (var i = 0; i < taken; i++)
             if (Ctx.Rng.NextDouble() < chance) hits++;
@@ -1093,7 +1288,7 @@ public sealed partial class Clicker : Game
     /// подарунок, а плата за руку: полиця, що прийшла через підозру, пильний крок чи паузу, не платить нічого,
     /// інакше автоклікер із господарем при ньому доїв би майстра щодві хвилини.
     /// </summary>
-    double EyeGain => PassiveBase * EyeSeconds + ClickBase * EyeClicks;
+    double EyeGain => PassiveBase * (EyeSeconds + 3600 * Perk(MarkEffect.Eye)) + ClickBase * EyeClicks;
 
     /// <summary>Серія стала довшою на один — спійманим глеком чи котом: ачівки й дивовижі одні на обох.</summary>
     void StreakUp()
@@ -1134,12 +1329,12 @@ public sealed partial class Clicker : Game
         var want = (int)Math.Clamp(raw ?? 1, 1, MaxBuy);
 
         var level = Level(up.Key);
-        if (up.Capped(level)) return ActResult.Fail($"{up.Name}: кращої вже не буває");
+        if (CappedNow(up, level)) return ActResult.Fail($"{up.Name}: кращої вже не буває");
 
         var bought = 0;
         var last = 0.0;
         var second = PassiveBase;              // «Остання копійка» міряє дохід ДО покупки: новий верстат його ще підніме
-        while (bought < want && !up.Capped(level))
+        while (bought < want && !CappedNow(up, level))
         {
             var price = up.Price(level);
             if (_pots < price)
@@ -1151,6 +1346,13 @@ public sealed partial class Clicker : Game
             last = price;
             level++;
             bought++;
+        }
+        // Десяте оновлення: ачівки за перший рівень знакових щаблів.
+        if (level > 0 && level == bought)
+        {
+            if (up.Key == "voyage") Achieve("potter-world");
+            else if (up.Key == "expo") Achieve("potter-paris");
+            else if (up.Key == "opishnia") Achieve("potter-opishnia");
         }
         _levels[up.Key] = level;
         TitlesOnBuy(last, second);
@@ -1172,14 +1374,113 @@ public sealed partial class Clicker : Game
                 if (_pots < price) return ActResult.Fail($"Бракує глеків: треба ще {Short(price - _pots)}");
                 _pots -= price;
                 _marks.Add(key);
+                Reperk();
+                // Ачівки десятого оновлення: сорок віх водночас і всі вісім віх «Швидшого кола».
+                if (_marks.Count >= MarksForAchievement) Achieve("potter-marks-40");
+                if (up.Key == "wheel" && Enumerable.Range(0, up.Steps.Length).All(j => _marks.Contains(MarkKey(up, j))))
+                    Achieve("potter-wheel-all");
                 return ActResult.Accept($"«{step.Name}»: {MarkDesc(up, i)}");
             }
         return ActResult.Fail("Такої віхи нема");
     }
 
-    static string MarkDesc(ClickerUpgrade up, int i) => up.Kind != ClickerKind.Click
-        ? $"{up.Name} ×2"
-        : i switch { 0 => "клік ×2", 1 => "клік +1 % пасиву", _ => "клік ще +2 % пасиву" };
+    /// <summary>Скільки віх водночас — на ачівку «Сорок віх».</summary>
+    public const int MarksForAchievement = 40;
+
+    /// <summary>
+    /// Підпис віхи — лише з її ефекту й суми, без переліку віх у коді: клієнт малює те, що тут написано.
+    /// </summary>
+    internal static string MarkDesc(ClickerUpgrade up, int i)
+    {
+        var m = up.Steps[i];
+        static string Pct(double x) => (x * 100).ToString("0.#", Uk) + " %";
+        static string Num(double x) => x.ToString("0.#", Uk);
+        return m.Effect switch
+        {
+            MarkEffect.Double => $"{up.Name} ×2",
+            MarkEffect.HandsDouble => "клік ×2",
+            MarkEffect.ClickDouble => "клік ×2 — увесь, разом із пасивом у ньому",
+            // Дві перші віхи кола — з тими самими словами, що й до десятого оновлення.
+            MarkEffect.Hand when up.Key == "wheel" && i == 1 => "клік +1 % пасиву",
+            MarkEffect.Hand when up.Key == "wheel" && i == 2 => "клік ще +2 % пасиву",
+            MarkEffect.Hand => $"клік бере ще +{Pct(m.Amount)} пасиву",
+            MarkEffect.Passive => $"пасив +{Pct(m.Amount)}",
+            MarkEffect.Momentum => $"стеля розгону +{Num(m.Amount)}",
+            MarkEffect.Temper => $"розгін тримається ще +{Num(m.Amount)} с",
+            MarkEffect.Lucky => $"ще +{Pct(m.Amount)} кліків б'є в ×50",
+            MarkEffect.Fall => $"глек з полиці +{Pct(m.Amount)}",
+            MarkEffect.Fair => $"ярмарок розписного глека ще +{Num(m.Amount)}",
+            MarkEffect.Merchant => $"щедрий купець ще +{Num(m.Amount)} хв пасиву",
+            MarkEffect.Night => $"коло крутиться без тебе ще +{Num(m.Amount)} год",
+            MarkEffect.GoldenShown => $"розписний глек стоїть на колі ще +{Num(m.Amount)} с",
+            MarkEffect.FallShown => $"глек з полиці летить ще +{Num(m.Amount)} с",
+            MarkEffect.Eye => $"Око майстра платить ще +{Num(m.Amount)} год пасиву",
+            _ => "",
+        };
+    }
+
+    /// <summary>
+    /// Верстат у виді. Для нового клієнта (<see cref="_slim"/>) — лише те, що міняється: рівень, ціна, стеля, приріст,
+    /// ×2 від віх, наступна віха й чи відкритий. Для вкладки, відкритої до v10, — ще й назва, опис, вид і ріст ціни, як
+    /// і було: інакше в неї порожні верстати до перезавантаження.
+    /// </summary>
+    object UpgradeView(ClickerUpgrade up, int index, double passive)
+    {
+        var level = Level(up.Key);
+        var price = up.Price(level);
+        // Скільки глеків за секунду додасть наступний рівень — для підказки «окупиться за».
+        var gain = up.Kind switch
+        {
+            ClickerKind.Idle => GainOf(up),
+            ClickerKind.Mult when !CappedNow(up, level) => passive * 0.25,
+            _ => 0,
+        };
+        // Справжній множник від віх: у пасивних ×2 за кожну, а в колі ×2 дає лише перша (решта — відсоток пасиву).
+        var boost = up.Kind == ClickerKind.Click
+            ? (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1)
+            : Math.Pow(2, MarksOf(up));
+        if (_slim)
+            return new { level, price, max = MaxOf(up), gain, marks = MarksOf(up), boost, nextMark = NextMark(up), open = Opened(index) };
+        return new
+        {
+            level, price, name = up.Name, desc = up.Desc, max = MaxOf(up), kind = up.Kind.ToString().ToLowerInvariant(), gain,
+            growth = (double)up.GrowNum / up.GrowDen, marks = MarksOf(up), boost, nextMark = NextMark(up), open = Opened(index),
+        };
+    }
+
+    /// <summary>Рівень наступної віхи верстата, яку ще не куплено (null — усі куплені).</summary>
+    int? NextMark(ClickerUpgrade up)
+    {
+        for (var i = 0; i < up.Steps.Length; i++)
+            if (!_marks.Contains(MarkKey(up, i))) return up.Steps[i].Level;
+        return null;
+    }
+
+    /// <summary>
+    /// Незмінне про магазин (десяте оновлення §10): назви, описи, вид і ріст ціни верстатів, усі віхи з підписом і
+    /// ціною, секрети й розписи. Їде у вид лише до першої дії й на look { catalog: true } — як і решта каталогів.
+    /// </summary>
+    object? ShopCatalog()
+    {
+        if (!_catalogWanted) return null;
+        return new
+        {
+            upgrades = Shop.ToDictionary(u => u.Key, u => (object)new
+            {
+                name = u.Name,
+                desc = u.Desc,
+                kind = u.Kind.ToString().ToLowerInvariant(),
+                growth = (double)u.GrowNum / u.GrowDen,
+                marks = u.Steps.Select((m, i) => new
+                {
+                    level = m.Level, name = m.Name, desc = MarkDesc(u, i), price = u.MarkPrice(i),
+                    effect = m.Effect.ToString().ToLowerInvariant(), amount = m.Amount,
+                }),
+            }, StringComparer.Ordinal),
+            secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring }),
+            styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price }),
+        };
+    }
 
     /// <summary>Прилавок: сотня глеків за черепок, не більше <see cref="DailyCap"/> черепків на день.</summary>
     ActResult Sell(JsonElement payload)
@@ -1234,7 +1535,7 @@ public sealed partial class Clicker : Game
             default:
                 // Шість хвилин роботи як дно плюс десята частина кишені (теж не більше шести хвилин): купець
                 // мусить щось важити і на голому колі, і на квадрильйонах.
-                var flat = PassiveBase * MerchantSeconds;
+                var flat = PassiveBase * MerchantSecondsNow;
                 var gain = ToPots((flat + Math.Min(_pots * MerchantShare, flat * MerchantCapShare)) * ClayNow.Loot) + 13;
                 Add(gain);
                 text = $"🧺 Щедрий купець: +{PotsShort(gain)}";
@@ -1347,7 +1648,11 @@ public sealed partial class Clicker : Game
             if (!(up.Key == "clay" && Has("recipe"))) _levels[up.Key] = 0;
         if (Has("kin"))
             foreach (var key in new[] { "wheel", "apprentice", "kiln" }) _levels[key] = KinLevels;
+        // «Прадідів круг» (v10): і весь старий ряд драбини одразу на десятому рівні — відбудова після обпалу коротша.
+        if (Has("kin2"))
+            foreach (var key in OldTiers) _levels[key] = KinLevels;
         if (!Has("memory")) _marks.Clear();
+        Reperk();
         FireHouse(Ctx.Clock.UtcNow);
         FireCraft();
         FireKiln(Ctx.Clock.UtcNow);
@@ -1362,16 +1667,32 @@ public sealed partial class Clicker : Game
         if (_firings == 1) Ctx.Award(0, 0, "ach:potter-fire");
         Wonder("fire");
         var bonus = (StampMult - 1) * 100;
-        return ActResult.Accept($"🔥 Обпал! +{gain + iron} {Stamps(gain + iron)}"
-            + (science > 0 ? $" і ще +{science} від науки майстра" : "")
+        return ActResult.Accept($"🔥 Обпал! +{StampsShort(gain + iron)}"
+            + (science > 0 ? $" і ще +{Count(science)} від науки майстра" : "")
             + $" — тепер +{bonus.ToString("#,0.#", Uk)} % до всього");
     }
 
     /// <summary>Яка частка глеків переживає обпал: хата (v9) плюс дідова скриня — двадцята частина.</summary>
-    double KeepShare => HouseKeepShare + (Has("ashes") ? AshesShare : 0);
+    double KeepShare => HouseKeepShare + (Has("ashes") ? AshesShare : 0) + (Has("chest2") ? AshesShare : 0);
 
-    /// <summary>«Дідова скриня»: після обпалу лишається п'ять відсотків глеків.</summary>
+    /// <summary>«Дідова скриня»: після обпалу лишається п'ять відсотків глеків. «Прадідова скриня» — ще стільки ж.</summary>
     public const double AshesShare = 0.05;
+
+    /// <summary>«Прадідова ніч»: коло без тебе ще чотири години (стеля доби — <see cref="OfflineMax"/>).</summary>
+    public static readonly TimeSpan EnNightHours = TimeSpan.FromHours(4);
+    /// <summary>«Прадідове коло»: клік бере ще п'ять відсотків пасиву.</summary>
+    public const double Wheel2Share = 0.05;
+    /// <summary>«Прадідів кошик»: до скількох рівнів росте кошик під полицею.</summary>
+    public const int Basket2Max = 15;
+
+    /// <summary>Стеля верстата просто зараз: у кошика з «Прадідовим кошиком» вона вища, у решти — як у каталозі.</summary>
+    int MaxOf(ClickerUpgrade up) => up.Key == "basket" && Has("basket2") ? Basket2Max : up.MaxLevel;
+
+    bool CappedNow(ClickerUpgrade up, int level)
+    {
+        var max = MaxOf(up);
+        return max > 0 && level >= max;
+    }
 
     // ---------- випадковості на сцені (§A.6) ----------
 
@@ -1443,8 +1764,35 @@ public sealed partial class Clicker : Game
     {
         if (Str(payload, "v") != NewsVersion) return ActResult.Fail("Це новини з іншого оновлення");
         _news = NewsVersion;
-        // Подарунок округи їде разом із новинами про звання — раз на гончаря (ClickerTitles.cs).
-        return TakeGift() ?? ActResult.Done;
+        // У новинах v10 уже пояснено гривню: окреме вікно-церемонію тому, хто вище порога, не показуємо.
+        _coinSeen = Math.Max(_coinSeen, CoinLevel);
+        // Подарунки: округи (v9.2 — для тих, хто його пропустив) і десятого оновлення — кожен раз на гончаря.
+        var old = TakeGift();
+        var now = TakeGiftV10();
+        if (old is null) return now ?? ActResult.Done;
+        return now is null ? old : ActResult.Accept(old.Message + " · " + now.Message);
+    }
+
+    /// <summary>Подарунок десятого оновлення: чотири години власного «без тебе» глеками одразу.</summary>
+    public const string GiftV10Key = "v10";
+    public const int GiftV10Minutes = 240;
+
+    ActResult? TakeGiftV10()
+    {
+        if (_gifts.Contains(GiftV10Key)) return null;
+        _gifts.Add(GiftV10Key);
+        var gain = TreatGain(GiftV10Minutes);
+        Add(gain);
+        return ActResult.Accept($"🎁 Подарунок «Глек на весь світ»: +{PotsShort(gain)} — чотири години твого «без тебе»");
+    }
+
+    /// <summary>Вікно-церемонію гривні чи золотих побачено. Вище, ніж доріс, записати не можна.</summary>
+    ActResult SeenCoin(JsonElement payload)
+    {
+        var v = (int)Math.Clamp(Num(payload, "v") ?? 0, 0, 2);
+        if (v > CoinLevel) return ActResult.Fail("До цього ще треба дорости");
+        _coinSeen = Math.Max(_coinSeen, v);
+        return ActResult.Done;
     }
 
     ActResult BuySecret(JsonElement payload)
@@ -1453,7 +1801,7 @@ public sealed partial class Clicker : Game
             return ActResult.Fail("Такого секрету в родині нема");
         if (_secrets.Contains(secret.Key)) return ActResult.Fail($"«{secret.Name}» уже знаєш");
         var free = FreeStamps;
-        if (free < secret.Price) return ActResult.Fail($"Бракує клейм: треба ще {secret.Price - free}");
+        if (free < secret.Price) return ActResult.Fail($"Бракує клейм: треба ще {Count(secret.Price - free)}");
         _secrets.Add(secret.Key);
         return ActResult.Accept($"🤫 {secret.Name}: {secret.Desc.ToLowerInvariant()}");
     }
@@ -1485,6 +1833,9 @@ public sealed partial class Clicker : Game
     /// <summary>Черепок / черепки / черепків — «2 черепків» ріже око так само, як і в гаманці.</summary>
     static string Shards(long n) => Plural(n, "черепок", "черепки", "черепків");
     static string Stamps(long n) => Plural(n, "клеймо", "клейма", "клейм");
+
+    /// <summary>«+2,23 млн клейм», «+211 клейм»: після скорочення слово узгоджується з «млн», як і в глеках.</summary>
+    static string StampsShort(long n) => $"{Count(n)} {(Math.Abs(n) >= 1_000_000 ? "клейм" : Stamps(n))}";
 
     /// <summary>Глек / глеки / глеків; дробове число — «глека» («0,5 глека»).</summary>
     static string Pots(double n) => n % 1 != 0 ? "глека" : Plural(n, "глек", "глеки", "глеків");
@@ -1518,8 +1869,9 @@ public sealed partial class Clicker : Game
     {
         if (!double.IsFinite(n)) return "∞";
         // Від тисячі дробова частина — шум («14 091,8 ₴»): лише цілі, відтяті.
+        // Запас у трильйонну частку — як у Shown: 6·10³⁰ / 10²⁷ у double — це 5 999,99…, а показати треба 6 000.
         if (Math.Abs(n) < 1_000_000)
-            return n % 1 == 0 || Math.Abs(n) >= 1000 ? Math.Truncate(n).ToString("#,0", Uk) : n.ToString("#,0.#", Uk);
+            return n % 1 == 0 || Math.Abs(n) >= 1000 ? Math.Truncate(n * (1 + 1e-12)).ToString("#,0", Uk) : n.ToString("#,0.#", Uk);
         var i = (int)Math.Floor(Math.Log10(Math.Abs(n)) / 3) - 2;
         if (i >= BigNames.Length) return n.ToString("0.#e0", Uk);
         var v = Shown(n / Math.Pow(1000, i + 2));
@@ -1555,8 +1907,8 @@ public sealed partial class Clicker : Game
     static string GoldWord(double g)
     {
         if (!double.IsFinite(g) || Math.Abs(g) >= 1_000_000) return "золотих";
-        // Слово — за тим, що видно: Count до мільйона пише один знак після коми з округленням.
-        var shown = Math.Round(g, 1, MidpointRounding.AwayFromZero);
+        // Слово — за тим, що видно: до тисячі Count пише один знак після коми з округленням, від тисячі — ціле відтяте.
+        var shown = Math.Abs(g) >= 1000 ? Math.Truncate(g * (1 + 1e-12)) : Math.Round(g, 1, MidpointRounding.AwayFromZero);
         return shown % 1 != 0 ? "золотого" : Plural(shown, "золотий", "золоті", "золотих");
     }
 
@@ -1609,38 +1961,19 @@ public sealed partial class Clicker : Game
             perSecond = PerSecond,
             // Без ярмарку: клієнт доліковує сам і сам вимикає ярмарок, коли той скінчиться.
             baseSecond = passive,
-            upgrades = Shop.Select((u, index) => (u, index)).ToDictionary(x => x.u.Key, x => (object)new
-            {
-                level = Level(x.u.Key),
-                price = x.u.Price(Level(x.u.Key)),
-                name = x.u.Name,
-                desc = x.u.Desc,
-                max = x.u.MaxLevel,
-                kind = x.u.Kind.ToString().ToLowerInvariant(),
-                // Скільки глеків за секунду додасть наступний рівень — для підказки «окупиться за».
-                gain = x.u.Kind switch
-                {
-                    ClickerKind.Idle => GainOf(x.u),
-                    ClickerKind.Mult when !x.u.Capped(Level(x.u.Key)) => passive * 0.25,
-                    _ => 0,
-                },
-                growth = (double)x.u.GrowNum / x.u.GrowDen,
-                marks = MarksOf(x.u),
-                // Справжній множник від віх: у пасивних ×2 за кожну, а в колі ×2 дає лише перша (решта — відсоток пасиву).
-                boost = x.u.Kind == ClickerKind.Click
-                    ? (_marks.Contains(MarkKey(x.u, 0)) ? 2 : 1)
-                    : Math.Pow(2, MarksOf(x.u)),
-                open = Opened(x.index),
-            }, StringComparer.Ordinal),
-            // Лише відкриті й ще не куплені віхи: решта клієнту ні до чого, а вид летить щопачки кліків.
+            // Лише те, що міняється: назви, описи, вид верстата, ріст ціни й віхи — у shopCatalog (десяте оновлення §10:
+            // вид летить щопачки кліків, а незмінні тексти двадцяти семи верстатів важили кілобайти щоразу).
+            upgrades = Shop.Select((u, index) => (u, index)).ToDictionary(x => x.u.Key, x => UpgradeView(x.u, x.index, passive), StringComparer.Ordinal),
+            // Лише відкриті й ще не куплені віхи — ключем; назву, підпис і ціну клієнт бере з shopCatalog.
             marks = Shop.SelectMany(u => u.Steps.Select((m, i) => (u, m, i)))
-                .Where(x => !_marks.Contains(MarkKey(x.u, x.i)) && Level(x.u.Key) >= x.m.Level)
-                .Select(x => new
-                {
-                    key = MarkKey(x.u, x.i), on = x.u.Key, level = x.m.Level, name = x.m.Name,
-                    desc = MarkDesc(x.u, x.i), price = x.u.MarkPrice(x.i),
-                })
+                .Where(x => Level(x.u.Key) >= x.m.Level && !_marks.Contains(MarkKey(x.u, x.i)))
+                .Select(x => _slim
+                    ? (object)new { key = MarkKey(x.u, x.i) }
+                    : new { key = MarkKey(x.u, x.i), on = x.u.Key, level = x.m.Level, name = x.m.Name, desc = MarkDesc(x.u, x.i), price = x.u.MarkPrice(x.i) })
                 .ToList(),
+            // Скільки віх уже є і скільки всього (v10): «Віхи · 12 із 162».
+            marksOwned = _marks.Count,
+            marksAll = MarksAll,
             canSellToday = Math.Max(0, DailyCap - SoldToday),
             soldToday = SoldToday,
             cap = DailyCap,
@@ -1667,13 +2000,20 @@ public sealed partial class Clicker : Game
             stampBonus = Has("seal") ? SealStampBonus : StampBonus,
             // З якого клейма бонус росте як корінь (StampWeight): клієнт рахує «після обпалу» тією самою кривою.
             stampSoft = StampSoftFrom,
+            // Коліно кривої (десяте оновлення): після нього вага росте як логарифм — клієнт рахує «після обпалу» так само.
+            stampKnee = StampKnee,
             stampMult = StampMult,
             stampIron = Tool("iron") ? IronStamps : 0,
             science = ScienceView(Ctx.Clock.UtcNow),
             stampCap = StampCap,
             firings = _firings,
-            secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
-            styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key) }),
+            // Секрети й розписи — лише «чи є»; тексти й ціни — у shopCatalog.
+            secrets = Secrets.Select(s => _slim
+                ? (object)new { key = s.Key, owned = _secrets.Contains(s.Key) }
+                : new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
+            styles = Styles.Select(s => _slim
+                ? (object)new { key = s.Key, owned = _styles.Contains(s.Key) }
+                : new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key) }),
             wear = _wear,
             // Розгін: скільки гарячих кліків зараз і що з них виходить. Клієнт веде той самий рахунок між видами.
             heat,
@@ -1699,6 +2039,9 @@ public sealed partial class Clicker : Game
             news = _news == NewsVersion ? null : NewsVersion,
             // Яку версію гончар бачив востаннє: хто пропустив «v9.1», тому клієнт допише й ті рядки.
             newsSeen = _news == NewsVersion ? null : _news,
+            // Гроші (v10 §6): до якої одиниці доріс і яку церемонію вже бачив.
+            coin = CoinLevel,
+            coinSeen = _coinSeen,
             // Звання округи (ClickerTitles.cs): що маю, значки, мої числа, прогрес.
             titles = TitlesView(Ctx.Clock.UtcNow),
             // Хата: глина, знаряддя, прикраси й дошка купців (ClickerHouse.cs).
@@ -1714,6 +2057,7 @@ public sealed partial class Clicker : Game
             guests = ViewGuests(Ctx.Clock.UtcNow),
             away = AwayView(),
             catalog = CatalogView(),
+            shopCatalog = ShopCatalog(),
             // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна), пауза й платня.
             guard = _guard.View(Ctx.Clock.UtcNow, EyeGain),
         };
@@ -1776,22 +2120,24 @@ public sealed partial class Clicker : Game
         Dictionary<string, int> Upgrades, SoldRow SoldToday, BucketRow Clicks,
         List<string>? Marks = null, GoldenRow? Golden = null,
         DateTimeOffset FairUntil = default, DateTimeOffset InspireUntil = default, int Caught = 0,
-        int Stamps = 0, int Firings = 0, List<string>? Secrets = null, List<string>? Styles = null, string? Wear = null,
+        long Stamps = 0, int Firings = 0, List<string>? Secrets = null, List<string>? Styles = null, string? Wear = null,
         ClickerGuard.Row? Guard = null,
         FallRow? Fall = null, int FallStreak = 0, int Grabbed = 0, double Heat = 0, DateTimeOffset HeatAt = default,
         HouseRow? House = null,
         CraftRow? Craft = null, KilnRow? Kiln = null, AlbumRow? Album = null, FairRow? Fair = null, GuildRow? Guild = null,
-        List<string>? Achievements = null, int StampsUsed = 0,
+        List<string>? Achievements = null, long StampsUsed = 0,
         // Дев'яте оновлення: щасливі кліки, випадковості на сцені, бажання на зірку, проспані під полицею глеки
         // й побачене «Що нового». Усе необов'язкове — старе збереження читається як «цього ще не було».
         long Lucky = 0, EventRow? Cat = null, EventRow? Star = null, EventRow? Wind = null,
         int Petted = 0, bool StarWish = false, bool GoldenSlept = false, bool FallSlept = false, string? News = null,
         // Клейма понад ті, що за глеки (Тавро й наука майстра), і остання наука. Старе збереження — «ще не було».
-        int StampsExtra = 0, DateTimeOffset ScienceAt = default,
+        long StampsExtra = 0, DateTimeOffset ScienceAt = default,
         // Звання й подарунок округи. Старе збереження — null: тоді пам'ятні звання (див. LoadTitles).
         TitlesRow? Titles = null,
         // Десяте оновлення: заморські гості (ClickerGuests.cs). Старе збереження — «гостей ще не було».
-        GuestsRow? Guests = null);
+        GuestsRow? Guests = null,
+        // Яку грошову церемонію гончар бачив (v10 §6). Старе збереження — жодної.
+        int CoinSeen = 0);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -1803,7 +2149,7 @@ public sealed partial class Clicker : Game
             _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse(),
             SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null, _stampsUsed,
             _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news,
-            _stampsExtra, _scienceAt, SaveTitles(), SaveGuests()),
+            _stampsExtra, _scienceAt, SaveTitles(), SaveGuests(), _coinSeen),
         Wire);
 
     public override void Load(string json)
@@ -1838,7 +2184,11 @@ public sealed partial class Clicker : Game
         // Лише ті ключі, які гра знає: вигадана віха з бази не має множити дохід.
         var marks = Shop.SelectMany(u => u.Steps.Select((_, i) => MarkKey(u, i))).ToHashSet(StringComparer.Ordinal);
         Fill(_marks, s.Marks, marks.Contains);
+        Reperk();
         Fill(_secrets, s.Secrets, k => Secrets.Any(x => x.Key == k));
+        // «Прадідів кошик» піднімає стелю кошика: рівні вище десятого читаємо лише тоді, коли секрет уже прочитано.
+        if (Has("basket2") && s.Upgrades is not null && s.Upgrades.TryGetValue("basket", out var basket))
+            _levels["basket"] = Math.Clamp(basket, 0, Basket2Max);
         Fill(_styles, s.Styles, k => Styles.Any(x => x.Key == k));
         _wear = s.Wear is { } w && _styles.Contains(w) ? w : "";
 
@@ -1878,6 +2228,7 @@ public sealed partial class Clicker : Game
         _goldenSlept = s.GoldenSlept;
         _fallSlept = s.FallSlept;
         _news = s.News is { Length: <= 16 } news ? news : "";
+        _coinSeen = Math.Clamp(s.CoinSeen, 0, 2);
         if (Sane(s.Cat) is { } cat) _cat = cat; else ScheduleCat(Ctx.Clock.UtcNow);
         if (Sane(s.Star) is { } star) _star = star; else ScheduleStar(Ctx.Clock.UtcNow);
         if (Sane(s.Wind) is { } wind) _wind = wind; else ScheduleWind(Ctx.Clock.UtcNow);

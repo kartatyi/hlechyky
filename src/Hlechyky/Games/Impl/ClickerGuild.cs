@@ -57,7 +57,7 @@ public sealed partial class Clicker
     /// <summary>Рід виробу для узгодження «дзвінкий/дзвінка/дзвінке» в похвалі.</summary>
     static readonly Dictionary<string, char> WareGender = new(StringComparer.Ordinal)
     {
-        ["bowl"] = 'f', ["makitra"] = 'f', ["tile"] = 'f', ["barrel"] = 'n',
+        ["bowl"] = 'f', ["makitra"] = 'f', ["tile"] = 'f', ["tykva"] = 'f', ["barrel"] = 'n',
     };
 
     /// <summary>Розпис у похвалі: «косівський розпис», «межигірський фаянс».</summary>
@@ -244,7 +244,7 @@ public sealed partial class Clicker
     /// Найкращий гончар округи, крім себе: його нік і клейма (наука майстра рахується від них). Без цеху — нікого:
     /// тоді й науки нема.
     /// </summary>
-    (string Nick, int Stamps) GuildTopStamps() =>
+    (string Nick, long Stamps) GuildTopStamps() =>
         _guildSvc is { } svc && GuildKey.Length > 0 ? svc.TopStamps(GuildKey) : ("", 0);
 
     /// <summary>Кожна синхронізація: вперше — «я тут» у список цеху; і дарунки зі скриньки — на полицю.</summary>

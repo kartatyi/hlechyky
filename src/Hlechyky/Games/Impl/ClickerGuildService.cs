@@ -155,7 +155,7 @@ public sealed partial class ClickerGuildService
         /// Клейма гончаря — для науки майстра (<see cref="TopStamps"/>). null — ще не знаємо: рядок зі старого стану,
         /// а гончар відтоді кола не відкривав; тоді одноразово читаємо з його збереження.
         /// </summary>
-        public int? Stamps { get; set; }
+        public long? Stamps { get; set; }
     }
 
     sealed class SentRow
@@ -568,7 +568,7 @@ public sealed partial class ClickerGuildService
     /// Гончар відкрив коло, дістав новий ранг чи обпалив майстерню: у список цеху. Пишемо, лише коли щось змінилось
     /// чи настав новий день. <paramref name="stamps"/> — його клейма (null — не чіпати те, що вже знаємо).
     /// </summary>
-    public void Hello(string nickKey, string nick, int rank, DateTimeOffset now, int? stamps = null)
+    public void Hello(string nickKey, string nick, int rank, DateTimeOffset now, long? stamps = null)
     {
         if (nickKey.Length == 0) return;
         lock (_lock)
@@ -594,14 +594,14 @@ public sealed partial class ClickerGuildService
     /// з його збереження один раз; далі число живе в списку й оновлюється його ж обпалами. Нікого — <c>("", 0)</c>.
     /// Кличеться з-під замка кімнати (обпал, вид), тож базу чіпаємо лише для невідомих і не частіше, ніж раз на хвилину.
     /// </summary>
-    public (string Nick, int Stamps) TopStamps(string exceptKey)
+    public (string Nick, long Stamps) TopStamps(string exceptKey)
     {
         List<string> unknown;
         lock (_lock)
             unknown = _clock.UtcNow < _stampsRetryAt ? [] : S().Potters.Where(x => x.Value.Stamps is null).Select(x => x.Key).ToList();
         if (unknown.Count > 0)
         {
-            var read = new Dictionary<string, int>(StringComparer.Ordinal);
+            var read = new Dictionary<string, long>(StringComparer.Ordinal);
             var failed = false;
             foreach (var key in unknown)
             {
@@ -634,10 +634,10 @@ public sealed partial class ClickerGuildService
     }
 
     /// <summary>Клейма зі збереження кола: поле <c>stamps</c>, або 0, коли збереження нема чи воно зіпсоване.</summary>
-    static int StampsOf(string? json)
+    static long StampsOf(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return 0;
-        try { return JsonNode.Parse(json) is JsonObject o ? Math.Max(0, Int(o["stamps"])) : 0; }
+        try { return JsonNode.Parse(json) is JsonObject o ? Math.Max(0, Long(o["stamps"])) : 0; }
         catch (JsonException) { return 0; }
     }
 
@@ -765,7 +765,7 @@ public sealed partial class ClickerGuildService
         {
             nick,
             total = Math.Max(0, Pots(root["total"])),
-            stamps = Math.Max(0, Int(root["stamps"])),
+            stamps = Math.Max(0, Long(root["stamps"])),
             firings = Math.Max(0, Int(root["firings"])),
             ladder,
             decor = Known(house?["decor"], k => Clicker.Decor.Any(d => d.Key == k)),

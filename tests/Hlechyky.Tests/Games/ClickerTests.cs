@@ -588,13 +588,15 @@ public class ClickerTests
         Assert.Equal(JsonValueKind.String, v.GetProperty("now").ValueKind);
 
         var ups = v.GetProperty("upgrades");
+        // Назви й описи — у каталозі магазину (v10 §10: вид летить щопачки кліків, тексти — раз).
+        var cat = v.GetProperty("shopCatalog").GetProperty("upgrades");
         foreach (var key in new[] { "wheel", "apprentice", "kiln", "clay" })
         {
             var u = ups.GetProperty(key);
             Assert.Equal(0, u.GetProperty("level").GetInt32());
             Assert.True(u.GetProperty("price").GetInt64() > 0);
-            Assert.False(string.IsNullOrWhiteSpace(u.GetProperty("name").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(u.GetProperty("desc").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(cat.GetProperty(key).GetProperty("name").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(cat.GetProperty(key).GetProperty("desc").GetString()));
         }
         Assert.Equal(0, ups.GetProperty("wheel").GetProperty("max").GetInt32());
         Assert.Equal(5, ups.GetProperty("clay").GetProperty("max").GetInt32());

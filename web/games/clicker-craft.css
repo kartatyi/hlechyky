@@ -53,13 +53,16 @@
 .clk-stbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--clay), #d99a5b); transition: width .12s linear; }
 .clk-step.hot .clk-stbar i { background: var(--accent2); }
 
-/* Рядок «Далі» — єдина порада й єдина кнопка. */
+/* Рядок «Далі» — єдина порада й єдина кнопка. Висота стала (v10 §9): з підрядком чи кнопкою він мав 50 px, без них —
+   34, і все під ним (а на ПК — і сцена над ним) стрибало на 16 px щоразу, як порада мінялась. Порожній рядок (поки
+   Око майстра питає) місце теж тримає; !important — бо style.css ховає [hidden] так само з !important. */
 .clkc-next {
   display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; position: relative;
   padding: 6px 10px 8px; border-radius: 12px; overflow: hidden;
   background: linear-gradient(100deg, rgba(217, 169, 47, .16), var(--panel) 60%); border: 1px solid rgba(217, 169, 47, .35);
+  box-sizing: border-box; height: calc(2.15em + 16px);
 }
-.clkc-next[hidden] { display: none; }
+.clkc-next[hidden] { display: grid !important; visibility: hidden; }
 .clk-nxico { font-size: 17px; line-height: 1; text-align: center; }
 .clk-nxsvg { width: 26px; height: 26px; display: block; }
 .clk-nxtxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }

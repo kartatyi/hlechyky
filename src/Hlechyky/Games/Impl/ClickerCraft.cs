@@ -517,25 +517,35 @@ public sealed partial class Clicker
             rackSize = RackSize,
             rackFull = _rack.Count >= RackSize,
             dryMs = DryTime.TotalMilliseconds * FairDryMult() * CraftDryMult,
-            // Вироби — лише те, що міняється: відкритий, скільки роботи, скільки обпалено, чого вартий простий. Назва й
-            // «відкриється на» — у каталозі (catalog.wares): вид летить щопачки кліків (десяте оновлення, §10).
-            wares = Wares.Select(x => new
-            {
-                key = x.Key, open = WareOpen(x.Key), need = WorkOf(x), fired = FiredOf(x.Key), value = ItemValue(x.Key, "", 1),
-            }),
+            // Вироби новому клієнтові (_slim) — лише те, що міняється: відкритий, скільки роботи, скільки обпалено, чого
+            // вартий простий. Назва й «відкриється на» — у каталозі (catalog.wares): вид летить щопачки кліків (десяте
+            // оновлення, §10). Старій вкладці — як до v10, з назвою й порогом.
+            wares = Wares.Select(x => _slim
+                ? (object)new { key = x.Key, open = WareOpen(x.Key), need = WorkOf(x), fired = FiredOf(x.Key), value = ItemValue(x.Key, "", 1) }
+                : new
+                {
+                    key = x.Key, name = x.Name, open = WareOpen(x.Key), unlock = x.Unlock, need = WorkOf(x), fired = FiredOf(x.Key),
+                    value = ItemValue(x.Key, "", 1),
+                }),
             items = AllItems().Select(x => new
             {
                 key = ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality), ware = x.Item.Ware, style = x.Item.Style, q = x.Item.Quality,
                 n = x.Count, value = ItemValue(x.Item.Ware, x.Item.Style, x.Item.Quality),
             }),
             storeCap = StoreCapNow,
-            // Прокачка ремесла: рівень зі стелею, ціна наступного й «зараз: …» (воно від стану майстерні). Назва й
-            // опис — у каталозі (catalog.craftUps).
-            ups = CraftUps.Select(u => new
-            {
-                key = u.Key, level = CraftLevel(u.Key), max = u.Max,
-                price = CraftLevel(u.Key) >= u.Max ? 0 : CraftUpPrice(u, CraftLevel(u.Key)), now = CraftUpNow(u),
-            }),
+            // Прокачка ремесла: рівень зі стелею, ціна наступного й «зараз: …» (воно від стану майстерні). Назва й опис —
+            // новому клієнтові в каталозі (catalog.craftUps), старій вкладці — тут же, як до v10.
+            ups = CraftUps.Select(u => _slim
+                ? (object)new
+                {
+                    key = u.Key, level = CraftLevel(u.Key), max = u.Max,
+                    price = CraftLevel(u.Key) >= u.Max ? 0 : CraftUpPrice(u, CraftLevel(u.Key)), now = CraftUpNow(u),
+                }
+                : new
+                {
+                    key = u.Key, name = u.Name, desc = u.Desc, level = CraftLevel(u.Key), max = u.Max,
+                    price = CraftLevel(u.Key) >= u.Max ? 0 : CraftUpPrice(u, CraftLevel(u.Key)), now = CraftUpNow(u),
+                }),
             formed = _formed,
             fired = FiredTotal,
         };

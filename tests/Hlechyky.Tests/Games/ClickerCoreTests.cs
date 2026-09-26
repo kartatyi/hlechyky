@@ -464,7 +464,8 @@ public class ClickerCoreTests
     public void The_second_ring_of_secrets_is_in_the_catalog_at_its_price(string key, int price)
     {
         var h = Wheel();
-        var secret = Assert.Single(View(h).GetProperty("secrets").EnumerateArray(),
+        // Тексти й ціни секретів — у каталозі магазину (v10 §10), у виді лише «чи є».
+        var secret = Assert.Single(View(h).GetProperty("shopCatalog").GetProperty("secrets").EnumerateArray(),
             s => s.GetProperty("key").GetString() == key);
         Assert.Equal(price, secret.GetProperty("price").GetInt32());
         Assert.Equal(2, secret.GetProperty("ring").GetInt32());
@@ -475,7 +476,7 @@ public class ClickerCoreTests
     public void The_first_ring_of_secrets_did_not_move()
     {
         var h = Wheel();
-        var ring1 = View(h).GetProperty("secrets").EnumerateArray()
+        var ring1 = View(h).GetProperty("shopCatalog").GetProperty("secrets").EnumerateArray()
             .Where(s => s.GetProperty("ring").GetInt32() == 1).Select(s => s.GetProperty("key").GetString() ?? "").ToArray();
         Assert.Equal(new[] { "night", "omen", "cat", "kin", "longfair", "recipe", "memory", "seal" }, ring1);
     }
@@ -731,7 +732,9 @@ public class ClickerCoreTests
         Assert.Equal(ClickerKind.Idle, up.Kind);
         Assert.Equal(price, up.Price(0));
         Assert.Equal(rate, up.Rate);
-        Assert.Equal([25, 50, 100], up.Steps.Select(s => s.Level).ToArray());
+        // Віхи ×2 — ті самі 25/50/100; після сотні з десятого оновлення — модифікатори (docs/games/specs/clicker-v10.md §4).
+        Assert.Equal([25, 50, 100], up.Steps.Where(s => s.Effect == MarkEffect.Double).Select(s => s.Level).ToArray());
+        Assert.All(up.Steps.Where(s => s.Level > 100), s => Assert.NotEqual(MarkEffect.Double, s.Effect));
         Assert.All(up.Steps, s => Assert.NotEmpty(s.Name));
     }
 

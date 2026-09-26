@@ -1461,7 +1461,7 @@
   /// пороги, що Clicker.Short). Інакше глеки гончарів стояли б у таблиці як «3.601004441162112e+21».
   const LB_BIG = ['млн', 'млрд', 'трлн'];
   function lbCount(n) {
-    if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? (Math.round(n * 10) / 10).toLocaleString('uk-UA') : Math.trunc(n).toLocaleString('uk-UA');
+    if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? (Math.round(n * 10) / 10).toLocaleString('uk-UA') : Math.trunc(n * (1 + 1e-12)).toLocaleString('uk-UA');
     const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
     if (i >= LB_BIG.length) {
       let e = Math.floor(Math.log10(Math.abs(n)));
@@ -1480,7 +1480,7 @@
     if (a < 1e15) return lbCount(n);
     if (a < 1e27) return lbCount(n / 1e15) + ' ₴';
     const g = n / 1e27;
-    const shown = Math.round(g * 10) / 10;
+    const shown = Math.abs(g) >= 1000 ? Math.trunc(g * (1 + 1e-12)) : Math.round(g * 10) / 10;
     const word = Math.abs(g) >= 1e6 ? 'золотих' : shown % 1 ? 'золотого'
       : shown % 100 >= 11 && shown % 100 <= 14 ? 'золотих' : shown % 10 === 1 ? 'золотий' : shown % 10 >= 2 && shown % 10 <= 4 ? 'золоті' : 'золотих';
     return lbCount(g) + ' ' + word;

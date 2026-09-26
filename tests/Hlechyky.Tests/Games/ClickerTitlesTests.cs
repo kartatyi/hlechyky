@@ -156,7 +156,8 @@ public class ClickerTitlesTests
         var r = h.Act(0, "news", new { v = Clicker.NewsVersion });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("Подарунок округи", r.Message);
-        Assert.Equal(Math.Floor(perSecond * Clicker.GiftMinutes * 60), Pots(h) - before);
+        // З десятого оновлення новини v10 несуть ще й свій подарунок (чотири години): хто пропустив звання, дістає обидва.
+        Assert.Equal(Math.Floor(perSecond * Clicker.GiftMinutes * 60) + Math.Floor(perSecond * Clicker.GiftV10Minutes * 60), Pots(h) - before);
         Assert.True(T(h).GetProperty("gift").GetBoolean());
 
         // Удруге нічого: новини вже бачив, подарунок уже забрав.
@@ -293,7 +294,8 @@ public class ClickerTitlesTests
         var h = Wheel();
         Patch(h, s => s["upgrades"]!["apprentice"] = 10);
         var up = View(h).GetProperty("upgrades").EnumerateObject()
-            .First(p => p.Value.GetProperty("kind").GetString() == "idle" && p.Value.GetProperty("price").GetDouble() >= Clicker.PennyFrom);
+            // Вид верстата — у каталозі магазину (v10 §10), а тут досить самого магазину гри.
+            .First(p => Clicker.Shop.Single(u => u.Key == p.Name).Kind == ClickerKind.Idle && p.Value.GetProperty("price").GetDouble() >= Clicker.PennyFrom);
         var price = up.Value.GetProperty("price").GetDouble();
 
         // Лишилось хвилину пасиву — ще ні.

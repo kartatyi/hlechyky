@@ -547,7 +547,7 @@ public sealed partial class Clicker
             return ActResult.Accept($"🧺 {order.Merchant} забрав {PotsShort(order.Need)} «{styleName}» і заплатив {Short(pay)}");
         }
         _taken.Add(new(order.Id, order.Merchant, pay, now + TimeSpan.FromMinutes(order.Minutes)));
-        return ActResult.Accept($"🐴 {order.Merchant} поїхав із {PotsShort(order.Need)}, повернеться за {order.Minutes} хв із {Short(pay)}");
+        return ActResult.Accept($"🐴 {order.Merchant} узяв у дорогу {PotsShort(order.Need)} і повернеться за {order.Minutes} хв — привезе {Short(pay)}");
     }
 
     // ---------- життя хати ----------
@@ -578,11 +578,14 @@ public sealed partial class Clicker
     }
 
     /// <summary>
-    /// Хата у виді — лише стан: що куплено й знайдено, що обране, глина на колі й дошка купців. Назви, описи й ціни
-    /// (вони не міняються) їдуть у каталозі — <see cref="CatalogHouse"/>: вид летить щопачки кліків (раз на 700 мс),
-    /// і тексти хати були половиною його ваги (десяте оновлення, docs/games/specs/clicker-v10.md §10).
+    /// Хата у виді. Новому клієнтові (<see cref="_slim"/>, pv ≥ 10) — лише стан: що куплено й знайдено, що обране, глина
+    /// на колі й дошка купців. Назви, описи й ціни (вони не міняються) їдуть у каталозі — <see cref="CatalogHouse"/>: вид
+    /// летить щопачки кліків (раз на 700 мс), і тексти хати були половиною його ваги (десяте оновлення,
+    /// docs/games/specs/clicker-v10.md §10). Вкладка, відкрита до деплою, доповнювати не вміє — їй повний вид, як до v10.
     /// </summary>
-    object HouseView(DateTimeOffset now) => new
+    object HouseView(DateTimeOffset now) => _slim ? HouseSlim(now) : HouseFull(now);
+
+    object HouseSlim(DateTimeOffset now) => new
     {
         named = _houseName,
         clay = _clay,
@@ -621,6 +624,60 @@ public sealed partial class Clicker
 
     /// <summary>Скільки повернення купця лишається у виді: клієнт малює «+N» лише за останні дві хвилини.</summary>
     static readonly TimeSpan PaidShown = TimeSpan.FromMinutes(3);
+
+    /// <summary>Повний вид хати — рівно такий, як до десятого оновлення: для вкладки зі старим clicker.js.</summary>
+    object HouseFull(DateTimeOffset now) => new
+    {
+        name = _houseName.Length > 0 ? _houseName : HouseNameDefault,
+        named = _houseName,
+        nameMax = HouseNameMax,
+        clays = Clays.Select(c => new
+        {
+            key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body,
+            owned = c.Key.Length == 0 || _clays.Contains(c.Key), on = _clay == c.Key,
+        }),
+        clay = _clay,
+        clayBody = ClayNow.Body,
+        clayRestUntil = _clayRestUntil,
+        tools = Tools.Select(t => new { key = t.Key, name = t.Name, desc = t.Desc, price = t.Price, owned = _tools.Contains(t.Key) }),
+        decor = Decor.Select(d => new { key = d.Key, name = d.Name, desc = d.Desc, price = d.Price, bonus = d.Bonus, owned = _decor.Contains(d.Key) }),
+        look = Looks.ToDictionary(l => l.Key, LookOf, StringComparer.Ordinal),
+        looks = Looks.Select(l => new
+        {
+            key = l.Key, name = l.Name, desc = l.Desc, value = LookOf(l),
+            options = l.Options.Select(o => new { value = o.Value, name = o.Name, price = o.Price, owned = LookOwned(l, o) }),
+        }),
+        wonders = new
+        {
+            found = _wonders.Count,
+            total = Wonders.Length,
+            list = Wonders.Select(w => new
+            {
+                key = w.Key,
+                found = _wonders.ContainsKey(w.Key),
+                at = _wonders.TryGetValue(w.Key, out var at) ? at : (DateTimeOffset?)null,
+                name = _wonders.ContainsKey(w.Key) ? w.Name : "",
+                tale = _wonders.ContainsKey(w.Key) ? w.Tale : "",
+                from = WonderHint(w),
+            }),
+            bonus = WonderBonus,
+        },
+        orders = new
+        {
+            board = _board.Select(o => new
+            {
+                id = o.Id, kind = o.Kind, merchant = o.Merchant, need = o.Need,
+                pay = ToPots(o.Pay * MerchantMult),
+                minutes = o.Minutes, style = o.Style,
+                styleName = Styles.FirstOrDefault(s => s.Key == o.Style)?.Name ?? "",
+                can = o.Kind != "style" || _styles.Contains(o.Style),
+            }),
+            taken = _taken.Select(t => new { id = t.Id, merchant = t.Merchant, pay = t.Pay, payAt = t.PayAt }),
+            paid = _paid.Select(p => new { id = p.Id, merchant = p.Merchant, pay = p.Pay, at = p.At }),
+            refreshAt = _boardUntil,
+            maxTaken = MaxTakenNow,
+        },
+    };
 
     /// <summary>
     /// Незмінне про хату — для каталогу (іде у вид лише до першої дії, клієнт кешує): глина, знаряддя, прикраси й

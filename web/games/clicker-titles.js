@@ -52,7 +52,7 @@
     if (!(v > 0)) return '';
     if (key === 'rooster') return kyivTime(v);
     if (key === 'rising') return '+' + api.num(v * 100) + ' %';
-    return api.short(v);
+    return api.count(v);
   }
 
   function openSet() {
@@ -92,7 +92,7 @@
 
   function bar(api, have, need) {
     const pct = need > 0 ? Math.min(100, Math.floor((have / need) * 100)) : 0;
-    return '<div class="clkt-bar"><i style="width:' + pct + '%"></i></div><span class="muted small">' + api.short(have) + ' з ' + api.short(need) + '</span>';
+    return '<div class="clkt-bar"><i style="width:' + pct + '%"></i></div><span class="muted small">' + api.count(have) + ' з ' + api.count(need) + '</span>';
   }
 
   function kindHtml(st, api, k) {
