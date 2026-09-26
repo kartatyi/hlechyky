@@ -1,0 +1,156 @@
+/*
+  Глекомети. Поле малює канвас (web/games/glekomet.js), тут — смужка над полем, комора, пульт і підсумок.
+  Свої кольори — на :root, бо модуль читає їх через ctx.css(): небо, земля, вода, стіни хат, два нові місця.
+*/
+:root {
+  --gk-sky1: #20405a;     /* небо вгорі: вечір над ставком */
+  --gk-sky2: #e9b872;     /* небо біля обрію: захід сонця */
+  --gk-sun: #ffe3a1;
+  --gk-far: #3d5f55;      /* далекі пагорби */
+  --gk-soil: #6b4a2e;     /* земля */
+  --gk-soil2: #3f2a19;    /* земля глибше */
+  --gk-grass: #6fae4f;    /* трава по гребеню */
+  --gk-water: #3f7fb0;    /* ставок */
+  --gk-wall: #f1ece0;     /* біла мазанка */
+  --gk-ink: #1b1510;      /* обведення, колеса, руїни */
+  --gk-b: #6fb3e8;        /* п'яте місце — синя */
+  --gk-p: #e88ac0;        /* шосте місце — рожева */
+}
+
+/* Канвас: одна стеля на всі екрани — 400 px відводимо на шапку сайту, шапку картки, смужку, комору, пульт,
+   статус і кнопки картки (заміряно на 1280×720: з 340 px пульт і «Встати» вилазили за екран). */
+.gcanvas.gk-canvas {
+  max-width: min(100%, 1200px, calc((100vh - 400px) * 2));
+  min-width: 0; width: 100%; background: #20405a; cursor: default;
+  touch-action: pan-y; user-select: none; -webkit-user-select: none;
+}
+.gcanvas.gk-canvas.gk-grab { cursor: crosshair; touch-action: none; }
+.gcanvas.gk-canvas.gk-pull { cursor: grabbing; }
+
+/* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
+.gseat.gk-b { color: var(--gk-b); }
+.gseat.gk-p { color: var(--gk-p); }
+
+.gk-wrap { width: 100%; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+
+/* ---- смужка над полем: хати, вітер, дуга-таймер ---- */
+.gk-top {
+  width: 100%; max-width: min(100%, 1200px);
+  display: flex; align-items: flex-start; gap: 8px; flex-wrap: nowrap; font-size: .84em;
+}
+/* чіпи хат переносяться всередині свого місця, а вітер і дуга лишаються праворуч у першому рядку */
+.gk-chips { display: flex; gap: 5px; flex-wrap: wrap; flex: 1 1 0; min-width: 0; }
+.gk-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; position: relative; overflow: hidden;
+  font-variant-numeric: tabular-nums; border: 1px solid transparent;
+}
+.gk-chip .gk-dot { width: 10px; height: 10px; border-radius: 3px 3px 1px 1px; flex: none; }
+.gk-chip .gk-nick { overflow: hidden; text-overflow: ellipsis; max-width: 9em; color: var(--text); }
+.gk-chip .gk-hp { color: var(--muted); }
+.gk-chip .gk-bar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--ok); }
+.gk-chip .gk-bar.mid { background: var(--accent); }
+.gk-chip .gk-bar.low { background: var(--danger); }
+.gk-chip.turn { border-color: var(--accent2); }
+.gk-chip.me .gk-nick { font-weight: 700; }
+.gk-chip.out { opacity: .5; }
+.gk-chip.out .gk-nick { text-decoration: line-through; }
+.gk-chip .gk-star { color: var(--accent); }
+.gk-side { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
+.gk-who { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gk-wind {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px;
+  background: var(--bg2); color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.gk-wind .gk-arrow { color: var(--accent); letter-spacing: -2px; }
+.gk-wind.calm { color: var(--muted); }
+.gk-clock { display: flex; align-items: center; gap: 6px; }
+.gk-clock .garc { width: 38px; height: 38px; }
+.gk-clock[hidden] { display: none; }
+.gk-sound { padding: 3px 8px; font-size: .95em; background: transparent; border-color: transparent; color: var(--muted); }
+.gk-sound:hover { color: var(--text); }
+
+/* ---- комора: шість снарядів ---- */
+.gk-arms {
+  width: 100%; max-width: min(100%, 1200px);
+  display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;
+}
+.gk-arm {
+  display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px 5px 8px; font-size: .88em;
+  background: var(--panel2); border-color: var(--line); position: relative;
+}
+.gk-arm .gk-emo { font-size: 1.15em; line-height: 1; }
+.gk-arm .gk-left { color: var(--muted); font-variant-numeric: tabular-nums; }
+.gk-arm .gk-key {
+  font-size: .72em; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 3px;
+  line-height: 1.3;
+}
+.gk-arm.on { background: var(--panel3); border-color: var(--accent2); color: var(--text); box-shadow: 0 0 0 1px var(--accent2) inset; }
+.gk-arm.on .gk-left { color: var(--accent); }
+.gk-arm:disabled { opacity: .42; cursor: default; }
+.gk-arm.ro { cursor: default; }
+
+/* ---- пульт: крок, кут, сила, постріл ---- */
+.gk-ctl {
+  width: 100%; max-width: min(100%, 1200px);
+  display: flex; gap: 8px 12px; justify-content: center; align-items: center; flex-wrap: wrap;
+  user-select: none; -webkit-user-select: none;
+}
+.gk-grp { display: inline-flex; align-items: center; gap: 4px; }
+.gk-grp .gk-lbl { color: var(--muted); font-size: .85em; }
+.gk-grp b { min-width: 3.1em; text-align: center; font-variant-numeric: tabular-nums; }
+.gk-ctl button { padding: 6px 11px; justify-content: center; touch-action: manipulation; }
+.gk-ctl button.gk-sq { min-width: 36px; }
+.gk-fuel { color: var(--muted); font-size: .85em; font-variant-numeric: tabular-nums; min-width: 3.4em; text-align: center; }
+.gk-fire { font-weight: 700; min-width: 128px; position: relative; overflow: hidden; }
+.gk-fire .gk-charge { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255, 255, 255, .28); width: 0; pointer-events: none; }
+.gk-fire span { position: relative; }
+.gk-skip { font-size: .85em; color: var(--muted); background: transparent; }
+.gk-ctl button:disabled { opacity: .45; cursor: default; }
+
+.gk-tip { font-size: .8em; color: var(--muted); text-align: center; }
+.gk-tip button { padding: 1px 8px; font-size: .95em; margin-left: 6px; }
+
+/* ---- підсумок партії ---- */
+.gk-sum {
+  width: 100%; max-width: 640px; background: var(--panel2); border-radius: 12px; padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 4px; font-size: .84em;
+}
+.gk-sum table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.gk-sum th { color: var(--muted); font-weight: 500; font-size: .85em; text-align: right; padding: 2px 6px; }
+.gk-sum th:first-child, .gk-sum td:first-child { text-align: left; }
+.gk-sum td { text-align: right; padding: 2px 6px; border-top: 1px solid var(--line); }
+.gk-sum td .gk-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.gk-sum tr.win td { color: var(--accent); font-weight: 600; }
+.gk-sum .gk-best { color: var(--text); }
+.gk-sum .gk-rs { color: var(--muted); font-size: .9em; }
+
+/* ---- палець: великі кнопки, пульт у два ряди ---- */
+@media (pointer: coarse) {
+  .gk-ctl { gap: 8px; }
+  .gk-ctl button { min-height: 44px; min-width: 44px; font-size: 1.02em; }
+  .gk-fire { min-width: 150px; min-height: 50px; font-size: 1.08em; }
+  .gk-arm { min-height: 40px; }
+}
+@media (max-width: 640px) {
+  .gk-top { font-size: .78em; gap: 5px; flex-wrap: wrap; }
+  .gk-chips { flex: 1 1 100%; }
+  .gk-chip { padding: 2px 7px 2px 5px; gap: 4px; }
+  .gk-chip .gk-nick { max-width: 6.5em; }
+  .gk-arms { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+  .gk-arm { flex: none; padding: 5px 8px; }
+  .gk-arm .gk-key { display: none; }
+  .gk-ctl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+  .gk-ctl .gk-grp { justify-content: center; }
+  .gk-ctl .gk-shoot { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: center; }
+  .gk-ctl .gk-move { grid-column: 1 / -1; justify-content: center; }
+}
+/* телефон боком: низько, але широко — пульт в один ряд під коморою */
+@media (max-height: 480px) and (min-width: 640px) {
+  .gcanvas.gk-canvas { max-width: min(100%, 1200px, calc((100vh - 24px) * 2)); }
+  .gk-ctl { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gk-fire .gk-charge { transition: none; }
+}

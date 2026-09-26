@@ -463,10 +463,12 @@ public sealed class Glekomet : Game
             hits.Add(new { seat = t, dmg, kind = "hit" });
             if (t == by || Ally(by, t)) { st.Self += dmg; continue; }
             st.Dmg += dmg;
-            st.Hits++;
             total += dmg;
             if (dmg > topDmg) { topDmg = dmg; top = t; }
         }
+        // Влучання — постріл, що зачепив хоч одну чужу хату: розсипний у трьох — одне влучання, а не три,
+        // інакше в підсумку виходило «4 влучання з 3 пострілів».
+        if (total > 0) st.Hits++;
         for (var t = 0; t < Seats; t++)
         {
             if (core.ShotFall[t] > 0) hits.Add(new { seat = t, dmg = core.ShotFall[t], kind = "fall" });
@@ -832,7 +834,7 @@ public sealed class Glekomet : Game
     }
 }
 
-/// <summary>Статистика місця за партію: постріли, влучання в чужих, шкода чужим, руїни, по своїх, найкращий постріл.</summary>
+/// <summary>Статистика місця за партію: постріли, влучні постріли (зачепили чужу хату), шкода чужим, руїни, по своїх, найкращий постріл.</summary>
 public sealed class GlekometStat
 {
     public int Shots, Hits, Dmg, Kills, Self, Best;

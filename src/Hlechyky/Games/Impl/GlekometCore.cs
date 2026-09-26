@@ -70,7 +70,7 @@ public sealed class GlekometCore
     public const int WaterStart = 20, WaterRise = 15, WaterTop = 400;
     public const int HayW = 30, HayH = 26, PoisonTurns = 3, PoisonDmg = 8, StorkReach = 60, HutGap = 40;
     public const int MaxShells = 8, MaxEx = 16;
-    public const int HMin = 60, HMax = 340;
+    public const int HMin = 60, HMax = 340, RampCols = 8;
 
     public const int Pot = 0, Shards = 1, Varenyk = 2, Hay = 3, Stork = 4, Khrin = 5;
     public const int ExSplash = 6, ExOut = 7, ExCloud = 8;
@@ -82,7 +82,7 @@ public sealed class GlekometCore
         new("shards", "Розсипний глек", "💥", 2, 16, 14, 24, 1.0),
         new("varenyk", "Вареник-бомба", "🥟", 1, 55, 40, 56, 0.4),
         new("hay", "Копа сіна", "🌾", 2, 0, 0, 0, 1.0),
-        new("stork", "Лелека", "🪽", 1, 0, 0, 0, 1.0),
+        new("stork", "Лелека", "🕊", 1, 0, 0, 0, 1.0),
         new("khrin", "Хрін", "🌿", 2, 12, 12, 40, 1.0),
     ];
 
@@ -189,23 +189,25 @@ public sealed class GlekometCore
         var n = 0;
         for (var i = 0; i < Seats; i++) if (plays[i]) n++;
 
+        // Хвилі лагідніші, ніж у першому задумі spec (там схили виходили 2–6 u на u — скелі, а не пагорби):
+        // медіана схилу ≈ 0,5, дев'яносто відсотків — до 1,25, тож хата здебільшого може з'їхати й виїхати.
         var bottom = 150 + _rng.Next(51);
         Span<double> ph = stackalloc double[5], per = stackalloc double[5], amp = stackalloc double[5];
         for (var k = 0; k < 3; k++)
         {
             ph[k] = _rng.NextDouble() * 2 * Math.PI;
-            per[k] = 220 + _rng.NextDouble() * 200;
-            amp[k] = 30 + _rng.NextDouble() * 40;
+            per[k] = 300 + _rng.NextDouble() * 250;
+            amp[k] = 22 + _rng.NextDouble() * 28;
         }
         for (var k = 3; k < 5; k++)
         {
             ph[k] = _rng.NextDouble() * 2 * Math.PI;
-            per[k] = 60 + _rng.NextDouble() * 60;
-            amp[k] = 8 + _rng.NextDouble() * 10;
+            per[k] = 70 + _rng.NextDouble() * 60;
+            amp[k] = 3 + _rng.NextDouble() * 4;
         }
         var cx = 200 + _rng.NextDouble() * 600;
         var hamp = 40 + _rng.NextDouble() * 50;
-        var wid = 80 + _rng.NextDouble() * 80;
+        var wid = 100 + _rng.NextDouble() * 80;
         for (var c = 0; c < Cols; c++)
         {
             double x = c * ColW + 2, h = bottom;
@@ -232,6 +234,7 @@ public sealed class GlekometCore
         OutCount = 0;
         ClearShells();
         var next = 0;
+        Span<bool> pad = stackalloc bool[Cols];
         for (var s = 0; s < Seats; s++)
         {
             var hut = Huts[s];
@@ -242,19 +245,44 @@ public sealed class GlekometCore
             hut.Hp = 100;
             hut.Fuel = FuelMax;
             hut.X = slots[next++];
-            Level(hut.X);
+            Level(hut.X, pad);
         }
+        // Майданчик на схилі давав урвища по боках (до 75 u в одній колонці) — з'їжджаємо до нього пандусом.
+        for (var s = 0; s < Seats; s++)
+            if (Huts[s].Plays) Ramp(Huts[s].X, pad);
         for (var s = 0; s < Seats; s++)
             if (Huts[s].Plays) Huts[s].Y = Ground(Huts[s].X);
     }
 
     /// <summary>Рівний майданчик під хатою: колонки x±24 отримують цілочисельне середнє своїх висот.</summary>
-    void Level(int x)
+    void Level(int x, Span<bool> pad)
     {
         int lo = Col(x - 24), hi = Col(x + 24), sum = 0;
         for (var c = lo; c <= hi; c++) sum += H[c];
         var avg = sum / (hi - lo + 1);
-        for (var c = lo; c <= hi; c++) H[c] = avg;
+        for (var c = lo; c <= hi; c++)
+        {
+            H[c] = avg;
+            pad[c] = true;
+        }
+    }
+
+    /// <summary>
+    /// Пандус по 8 колонок (32 u) з обох боків майданчика: висота плавно переходить від рівня хати до природної.
+    /// Чужі майданчики не чіпаємо — хата має стояти рівно.
+    /// </summary>
+    void Ramp(int x, Span<bool> pad)
+    {
+        int lo = Col(x - 24), hi = Col(x + 24), level = H[lo];
+        for (var d = 1; d <= RampCols; d++)
+        {
+            for (var side = 0; side < 2; side++)
+            {
+                var c = side == 0 ? lo - d : hi + d;
+                if (c < 0 || c >= Cols || pad[c]) continue;
+                H[c] = level + (int)Math.Round((H[c] - level) * d / (double)(RampCols + 1), MidpointRounding.AwayFromZero);
+            }
+        }
     }
 
     static void Reset(GlekometHut hut, int seat)
