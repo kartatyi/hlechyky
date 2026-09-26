@@ -409,6 +409,9 @@
     // Партію зіграно — хроніку розгортаємо самі, але раз: що людина згорнула руками, те й лишається.
     const endKey = v.phase === 'done' ? (st.ctx.room ? st.ctx.room.id + ':' + st.ctx.room.round : 'done') : '';
     if (endKey && st.histOpened !== endKey) { st.histOpened = endKey; st.q.hist.open = true; }
+    // Нова партія («Ще раз») — хроніка знову згорнута: посеред гри вона лише відсуває колоду.
+    const matchKey = st.ctx.room ? st.ctx.room.id + ':' + st.ctx.room.round : '';
+    if (v.phase !== 'done' && matchKey !== st.matchKey) { if (st.matchKey) st.q.hist.open = false; st.matchKey = matchKey; }
 
     // ---- колода ----
     paintDeck(v, ctx, st, me);
@@ -485,7 +488,9 @@
         const w = (v.result && v.result.winners) || [];
         if (!w.length) return '<div class="sp-final">🤝 Нічия</div>';
         const top = (v.players || []).find((p) => p.seat === w[0]);
-        const who = w.map((s) => esc(nickOf(v, s))).join(' й ');
+        const all = w.map((s) => esc(nickOf(v, s)));
+        // «Оля», «Оля й Петро», «Оля, Петро й Ганна»
+        const who = all.length > 1 ? all.slice(0, -1).join(', ') + ' й ' + all[all.length - 1] : all[0];
         return '<div class="sp-final">🏆 ' + (w.length === 1 ? 'Партію бере ' + who : 'Перемогу ділять ' + who)
           + (top ? ' — ' + (w.length > 1 ? 'по ' : '') + pts(top.score) : '') + '</div>';
       }
@@ -745,6 +750,13 @@
       const v = ctx.view || {};
       const src = f.phase && !over && !(ctx.playing && f.phase === 'done') && f.round === v.round ? f : v;
       const phase = src.phase;
+      // Після партії каркас пише «Перемога: …» з місць за столом — а хто вже встав, у нього стає номером
+      // («Перемога: 1, Оля»). Імена переможців вид тримає й після виходу — пишемо їх самі. Стіл, відкритий
+      // наново для новачків, — знову лобі каркаса.
+      if (phase === 'done' && ctx.room && ctx.room.status === 'finished' && v.result) {
+        const w = v.result.winners || [];
+        return w.length ? 'Перемога: ' + w.map((s) => nickOf(v, s)).join(', ') : 'Нічия';
+      }
       if (!phase || phase === 'lobby' || phase === 'done') return '';
       const r = (v.of || src.of) > 1 ? 'Раунд ' + (src.round || v.round) + ' із ' + (src.of || v.of) : 'Один раунд';
       switch (phase) {
