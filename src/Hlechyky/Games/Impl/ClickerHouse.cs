@@ -213,7 +213,7 @@ public sealed partial class Clicker
     /// </summary>
     internal double HouseBazaarMult => Tool("cart") ? 1 + CartBazaar : 1;
     /// <summary>Скільки зверху платять купці: ваги й рахівниця складаються.</summary>
-    double MerchantMult => 1 + (Tool("scales") ? ScalesBonus : 0) + (Tool("abacus") ? AbacusBonus : 0);
+    double MerchantMult => 1 + (Tool("scales") ? ScalesBonus : 0) + (Tool("abacus") ? AbacusBonus : 0) + GuestsPayBonus;
 
     ActResult Adorn(JsonElement payload)
     {
@@ -546,10 +546,10 @@ public sealed partial class Clicker
         if (order.Kind == "style")
         {
             Add(pay);
-            return ActResult.Accept($"🧺 {order.Merchant} забрав {Short(order.Need)} глеків «{styleName}» і заплатив {Short(pay)}");
+            return ActResult.Accept($"🧺 {order.Merchant} забрав {PotsShort(order.Need)} «{styleName}» і заплатив {Short(pay)}");
         }
         _taken.Add(new(order.Id, order.Merchant, pay, now + TimeSpan.FromMinutes(order.Minutes)));
-        return ActResult.Accept($"🐴 {order.Merchant} поїхав із {Short(order.Need)} глеками, повернеться за {order.Minutes} хв із {Short(pay)}");
+        return ActResult.Accept($"🐴 {order.Merchant} поїхав із {PotsShort(order.Need)}, повернеться за {order.Minutes} хв із {Short(pay)}");
     }
 
     // ---------- життя хати ----------

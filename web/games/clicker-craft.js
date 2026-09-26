@@ -633,7 +633,7 @@
           ? '<span class="muted small">робота ' + w.need + (sec ? ' · ~' + api.potsShort(w.value) : '') + '</span>'
             + '<span class="muted small">обпалено ' + api.num(w.fired) + '</span>'
             + (on ? '<span class="clk-price done">на колі</span>' : '<span class="clk-price">ліпити</span>')
-          : '<span class="muted small">відкриється на ' + api.short(w.unlock) + ' глеків за весь час</span>')
+          : '<span class="muted small">відкриється на ' + api.potsShort(w.unlock) + ' за весь час</span>')
         + '</button>';
     }).join('');
     const body = api.overlay(st, '<div class="clk-sub">Що ліпити на колі'

@@ -248,7 +248,8 @@ public sealed partial class Clicker
     {
         if (WareOf(ware) is not { } w) return 0;
         var q = QualityMult[Math.Clamp(quality, 1, QualityMax)];
-        var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware);
+        var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware)
+            * (1 + GuestsValueBonus);
         var floor = (_memoOn ? _memoClick : ClickBase) * WorkOf(w) * ValueFloorClicks * q;
         return Math.Max(1, ToPots(Math.Max(byPassive, floor)));
     }
@@ -304,7 +305,7 @@ public sealed partial class Clicker
     {
         var key = Str(payload, "ware");
         if (WareOf(key) is not { } w) return ActResult.Fail("Такого виробу гончарі не ліплять");
-        if (!WareOpen(key)) return ActResult.Fail($"{w.Name} відкриється на {Short(w.Unlock)} глеків за весь час");
+        if (!WareOpen(key)) return ActResult.Fail($"{w.Name} відкриється на {PotsShort(w.Unlock)} за весь час");
         if (_formWare == key) return ActResult.Done;
         _formWare = key;
         _formWork = Math.Min(_formWork, WorkOf(w));
@@ -323,7 +324,7 @@ public sealed partial class Clicker
         TakeItems(x => x == it, n);
         var pots = ToPots(ItemValue(it.Ware, it.Style, it.Quality) * n * HouseBazaarMult);
         Add(pots);
-        return ActResult.Accept($"🧺 Продав {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()}: +{Short(pots)} {Pots(pots)}");
+        return ActResult.Accept($"🧺 Продав {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()}: +{PotsShort(pots)}");
     }
 
     /// <summary>
@@ -347,7 +348,7 @@ public sealed partial class Clicker
                 : "У коморі порожньо — нічого везти на базар");
         Add(sum = ToPots(sum * HouseBazaarMult));
         var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : q == 3 ? " (крім розкішних)" : "";
-        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{Short(sum)} {Pots(sum)}");
+        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{PotsShort(sum)}");
     }
 
     static string WaresWord(double n) => Plural(n, "виріб", "вироби", "виробів");
@@ -558,6 +559,7 @@ public sealed partial class Clicker
             fair = CatalogFair(),
             guild = CatalogGuild(),
             titles = CatalogTitles(),
+            guests = CatalogGuests(),
         };
     }
 

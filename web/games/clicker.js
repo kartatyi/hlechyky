@@ -71,7 +71,7 @@
   /// Ремесло, жива хата, горно, альбом, ярмарок і цех живуть в окремих файлах clicker-<id>.js (+ .css): інакше
   /// цей файл виріс би втричі, а паралельні роботи бились би в одному місці. Частина кличе HClicker.part({...}) і
   /// дістає ті самі st, що й ядро, плюс спільний api. Каркас ігор знає лише clicker.js — частини вантажимо самі.
-  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles'];
+  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles', 'guests'];
   const H = window.HClicker = window.HClicker || { parts: [], mounted: new Set(), loaded: false };
 
   /// Одна частина впала — решта гри живе далі: помилку в консоль, а не білу картку.
@@ -128,9 +128,13 @@
 
   // ---------- числа й слова ----------
 
-  const num = (n) => Math.round(n).toLocaleString('uk-UA');
+  /// Форматери Intl — дорогі в створенні (toLocaleString будує новий щоразу), а числа малюються щокадру: кешуємо
+  /// за кількістю знаків після коми (десяте оновлення, docs/games/specs/clicker-v10.md §10).
+  const NF = [];
+  const nf = (digits) => NF[digits] || (NF[digits] = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: digits }));
+  const num = (n) => nf(0).format(Math.round(n));
   /// «0,5» замість «0.5»: десяткова кома в нас усюди українська.
-  const dec = (n) => (Math.round(n * 10) / 10).toLocaleString('uk-UA', { maximumFractionDigits: 1 });
+  const dec = (n) => nf(1).format(Math.round(n * 10) / 10);
   const plural = (n, one, few, many) => {
     n = Math.floor(Math.abs(n));
     return n % 100 >= 11 && n % 100 <= 14 ? many : n % 10 === 1 ? one : n % 10 >= 2 && n % 10 <= 4 ? few : many;
@@ -143,39 +147,71 @@
   /// Бонус клейм «до всього» у відсотках для n клейм.
   const stampPct = (st, n) => st.stampBonus * stampWeight(n, st.stampSoft) * 100;
   const potsWord = (n) => (n % 1 ? 'глека' : plural(n, 'глек', 'глеки', 'глеків'));
-  /// «1,47 млн глеків», а не «1,47 млн глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
-  const potsShort = (n) => short(n) + ' ' + (Math.abs(n) >= 1e6 ? 'глеків' : potsWord(n));
 
-  /// Назви великих чисел — ті самі, що на сервері (Impl/Clicker.cs, BigNames): гравець бачить обидва
-  /// числа на одному екрані, і різні слова читались би як помилка. За децильйоном слів уже нема — там «1,2e36».
-  const BIG = ['млн', 'млрд', 'трлн', 'квдрлн', 'квнтлн', 'скстлн', 'сптлн', 'октлн', 'нонлн', 'дцлн'];
+  /// Десяте оновлення: від квадрильйона глеків суми показуються в гривнях (1 ₴ = 10¹⁵ глеків), від 10²⁷ — у червоних
+  /// золотих (1 золотий = 10¹² ₴). Це лише показ — гаманець один. Ті самі пороги й слова, що Clicker.Short на сервері.
+  const HRYVNIA = 1e15;
+  const GOLD = 1e27;
+  /// Назви великих чисел — ті самі, що на сервері (Impl/Clicker.cs, BigNames): лише знайомі слова. Далі за трильйоном
+  /// гривні й золоті, а за трильйонами одиниці — «1,2e15».
+  const BIG = ['млн', 'млрд', 'трлн'];
   /// «1,2e36»: степінь із українською комою, як у сервера («0.#e0»).
   function expo(n) {
     let e = Math.floor(Math.log10(Math.abs(n)));
     let m = Math.round((n / Math.pow(10, e)) * 10) / 10;
     if (Math.abs(m) >= 10) { m /= 10; e += 1; }            // 9,99e36 — це 1e37, а не «10e36»
-    return m.toLocaleString('uk-UA', { maximumFractionDigits: 1 }) + 'e' + e;
+    return nf(1).format(m) + 'e' + e;
   }
-  /// «1,09 млн» замість «1 093 232»: мільярди цифрами не читаються. До мільйона — повне число, як на сервері.
-  function short(n) {
+  /// Відтинаємо, а не округлюємо (як сервер): «999,999 трлн» не стає «1000 трлн». Запас у трильйонну частку —
+  /// від похибки double (999·10²⁴ / 10¹⁵ = 998,99999…).
+  const cut = (v, digits) => Math.trunc(v * Math.pow(10, digits) * (1 + 1e-12)) / Math.pow(10, digits);
+  /// Число без одиниці: до мільйона — повне, далі «1,09 млн» … «999 трлн», а за трильйонами — «1,2e15».
+  function count(n) {
     if (!Number.isFinite(n)) return '∞';
-    if (Math.abs(n) < 1e6) return n % 1 ? dec(n) : num(n);
+    // Від тисячі дробова частина — шум («14 091,8 ₴»): лише цілі, відтяті.
+    if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? dec(n) : num(Math.trunc(n));
     const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
     if (i >= BIG.length) return expo(n);
     const v = n / Math.pow(1000, i + 2);
-    const digits = v < 10 ? 2 : v < 100 ? 1 : 0;
-    return (Math.floor(v * Math.pow(10, digits)) / Math.pow(10, digits)).toLocaleString('uk-UA', { maximumFractionDigits: digits })
-      + ' ' + BIG[i];
+    const digits = Math.abs(v) < 10 ? 2 : Math.abs(v) < 100 ? 1 : 0;
+    return nf(digits).format(cut(v, digits)) + ' ' + BIG[i];
   }
-  /// Великий лічильник: до трильйона кожна цифра (видно, як коло крутиться; «3 млрд» стояло б годинами),
-  /// далі — коротко, але з трьома знаками.
+  /// Золотий / золоті / золотих; дробове — «золотого». Після скорочення («1,2 млн») — «золотих», як і глеки.
+  const goldWord = (g) => {
+    if (!Number.isFinite(g) || Math.abs(g) >= 1e6) return 'золотих';
+    const shown = Math.round(g * 10) / 10;
+    return shown % 1 ? 'золотого' : plural(shown, 'золотий', 'золоті', 'золотих');
+  };
+  /// Сума глеків коротко: до квадрильйона — число («5,5 трлн»), далі «5,93 млн ₴», від 10²⁷ — «60 000 золотих».
+  /// Одиниця — частина тексту, тож «ціна: short(x)» читається правильно без слова поруч.
+  function short(n) {
+    if (!Number.isFinite(n)) return '∞';
+    const a = Math.abs(n);
+    if (a < HRYVNIA) return count(n);
+    if (a < GOLD) return count(n / HRYVNIA) + ' ₴';
+    const g = n / GOLD;
+    return count(g) + ' ' + goldWord(g);
+  }
+  /// «1,47 млн глеків», а не «1,47 млн глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
+  /// У гривнях і золотих слово вже є.
+  const potsShort = (n) => (Math.abs(n) >= HRYVNIA ? short(n)
+    : short(n) + ' ' + (Math.abs(n) >= 1e6 ? 'глеків' : potsWord(n)));
+  /// Одиниця для великого лічильника: у чому зараз рахуємо і на що ділити.
+  const unit = (n) => (n >= GOLD ? { div: GOLD, word: 'золотих', key: 'gold' }
+    : n >= HRYVNIA ? { div: HRYVNIA, word: '₴', key: 'hryvnia' } : { div: 1, word: 'глеків', key: 'pots' });
+  /// Великий лічильник (без одиниці — її пише мітка поруч, unit()): до трильйона глеків кожна цифра (видно, як коло
+  /// крутиться; «3 млрд» стояло б годинами), до квадрильйона — коротко з трьома знаками. У гривнях і золотих: до тисячі —
+  /// два знаки після коми (щоб число жило), до мільярда — усі цифри, далі — з трьома знаками й назвою.
   function big(n) {
     if (!Number.isFinite(n)) return '∞';
-    if (n < 1e12) return num(n);
-    const i = Math.floor(Math.log10(n) / 3) - 2;
-    if (i >= BIG.length) return expo(n);
-    const v = n / Math.pow(1000, i + 2);
-    return (Math.floor(v * 1000) / 1000).toLocaleString('uk-UA', { maximumFractionDigits: 3 }) + ' ' + BIG[i];
+    const u = unit(n);
+    const v = n / u.div;
+    if (u.div === 1 && v < 1e12) return num(v);
+    if (u.div > 1 && v < 1000) return nf(2).format(cut(v, 2));
+    if (u.div > 1 && v < 1e9) return num(Math.floor(v));
+    const i = Math.floor(Math.log10(v) / 3) - 2;
+    if (i >= BIG.length) return expo(v);
+    return nf(3).format(cut(v / Math.pow(1000, i + 2), 3)) + ' ' + BIG[i];
   }
 
   /// «за 40 с», «за 12 хв», «за 3 год», «за 2 дні».
@@ -186,8 +222,9 @@
     if (sec < 36 * 3600) return dec(sec / 3600) + ' год';
     const d = Math.round(sec / 86400);
     // Окупність верстата в пізній грі — це мільярди днів: цифрами їх ніхто не читає, та й JS написав би «1e+26».
-    // Після скорочення слово узгоджується з «млн», а не з останньою цифрою: «11,5 млн днів», не «дні».
-    return d >= 1e6 ? short(d) + ' днів' : num(d) + ' ' + plural(d, 'день', 'дні', 'днів');
+    // Після скорочення слово узгоджується з «млн», а не з останньою цифрою: «11,5 млн днів», не «дні». Дні — не гроші,
+    // тож count, а не short: інакше «5 ₴ днів».
+    return d >= 1e6 ? count(d) + ' днів' : num(d) + ' ' + plural(d, 'день', 'дні', 'днів');
   }
 
   /// Довгий абзац у значок ⓘ: прочитати можна, займати екран — не мусить. Тим самим користуються частини.
@@ -409,6 +446,9 @@
       st.shown = n;
       const text = big(n);
       st.count.textContent = text;
+      // Одиниця поруч із числом: глеки, гривні чи золоті (десяте оновлення). Міняється рідко — лише на порогах.
+      const u = unit(n);
+      if (u.key !== st.unitKey) { st.unitKey = u.key; st.unit.textContent = u.word; }
       // «999 999 999 999» на телефоні не влазить у звичний кегль — зменшуємо, а не переносимо.
       // Висоту шапки .long більше не міняє (див. .clk-head у clicker.css: вона стала від --clk-num),
       // а на картці від 900 px css узагалі лишає кегль незмінним — сцена під числом не ворухнеться.
@@ -921,7 +961,7 @@
     const f = st.fire;
     const bar = pct.toFixed(1) + '%';
     if (f._bar.style.width !== bar) f._bar.style.width = bar;
-    const next = 'наступне клеймо — на ' + short(to) + ' глеків за весь час (зараз ' + short(liveTotal) + ')';
+    const next = 'наступне клеймо — на ' + potsShort(to) + ' за весь час (зараз ' + short(liveTotal) + ')';
     if (f._next.textContent !== next) f._next.textContent = next;
 
     const armed = st.fireArmed && Date.now() < st.fireArmed;
@@ -1573,8 +1613,8 @@
       ? '<div class="clk-orders">' + st.orders.map((o) => {
         const invest = o.kind === 'invest';
         const text = invest
-          ? 'Візьме ' + short(o.need) + ' глеків у дорогу і за ' + o.minutes + ' хв поверне <b>' + short(o.pay) + '</b>'
-          : 'Купить ' + short(o.need) + ' глеків у розписі «' + esc(o.styleName) + '» за <b>' + short(o.pay) + '</b> одразу'
+          ? 'Візьме ' + potsShort(o.need) + ' у дорогу і за ' + o.minutes + ' хв поверне <b>' + short(o.pay) + '</b>'
+          : 'Купить ' + potsShort(o.need) + ' у розписі «' + esc(o.styleName) + '» за <b>' + short(o.pay) + '</b> одразу'
             + (o.can ? '' : ' <span class="clk-no">(цього розпису ще нема)</span>');
         return '<div class="clk-order' + (invest ? '' : ' style') + '"><div class="clk-oname">' + (invest ? '🐴 ' : '🧺 ') + esc(o.merchant) + '</div>'
           + '<div class="small clk-otext">' + text + '</div>'
@@ -1611,7 +1651,7 @@
       popAt(st, '+' + short(p.pay), 'big', 50, 40);
       H.api.sfx('coins');
       sparks(st, st.fx, 10, true, 50, 44);
-      if (ctx.toast) ctx.toast('🐴 ' + p.merchant + ' повернувся: +' + short(p.pay) + ' ' + potsWord(p.pay), 'ok');
+      if (ctx.toast) ctx.toast('🐴 ' + p.merchant + ' повернувся: +' + potsShort(p.pay), 'ok');
     }
   }
 
@@ -1709,6 +1749,8 @@
 
   H.api = {
     short, num, dec, big, span, plural, potsWord, potsShort, shards, mmss, jug, jugSvg, STYLE, swap, fleeting, serverNow, visible,
+    // Десяте оновлення: число без одиниці (лічильники виробів, клейм) і одиниця грошей для великих сум.
+    count, unit,
     storeGet, storeSet,
     guardOn: (st) => guardOn(st),
     info,
@@ -1913,7 +1955,7 @@
         // Ліворуч (або зверху на телефоні): вивіска, лічильник, сцена з полицею й колом, бонуси, прилавок.
         + '<div class="clk-scene">'
         + '<div class="clk-sign"></div>'
-        + '<div class="clk-head"><b class="clk-count">0</b><span class="muted small">глеків</span></div>'
+        + '<div class="clk-head"><b class="clk-count">0</b><span class="muted small clk-unit">глеків</span></div>'
         + '<div class="clk-rate muted small"></div>'
         + '<div class="clk-rival small" hidden></div>'
         + '<div class="clk-stage">'
@@ -1990,6 +2032,8 @@
       const q = (s) => root.querySelector(s);
       st.el = q('.clk');
       st.count = q('.clk-count');
+      st.unit = q('.clk-unit');
+      st.unitKey = 'pots';
       st.rate = q('.clk-rate');
       st.rival = q('.clk-rival');
       st.sign = q('.clk-sign');

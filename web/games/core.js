@@ -1456,11 +1456,12 @@
     ['streak', 'серія'], ['score', 'результат'], ['best', 'рекорд'], ['attempts', 'спроб'],
     ['tries', 'спроб'], ['ms', 'час'], ['balance', '🏺'], ['earned', 'зароблено'], ['count', 'разів']];
 
-  /// Число в клітинці таблиці. Від мільйона — коротко, як у Гончарному колі: «3,6 скстлн», а за словами — «1,2e36»;
-  /// інакше глеки гончарів стояли б у таблиці як «3.601004441162112e+21».
-  const LB_BIG = ['млн', 'млрд', 'трлн', 'квдрлн', 'квнтлн', 'скстлн', 'сптлн', 'октлн', 'нонлн', 'дцлн'];
-  function lbNum(n) {
-    if (typeof n !== 'number' || !Number.isFinite(n) || Math.abs(n) < 1e6) return n;
+  /// Число в клітинці таблиці. Від мільйона — коротко, як у Гончарному колі: «3,6 трлн», від квадрильйона — у гривнях
+  /// («5,93 млн ₴»), від 10²⁷ — у червоних золотих (десяте оновлення, docs/games/specs/clicker-v10.md §6; ті самі
+  /// пороги, що Clicker.Short). Інакше глеки гончарів стояли б у таблиці як «3.601004441162112e+21».
+  const LB_BIG = ['млн', 'млрд', 'трлн'];
+  function lbCount(n) {
+    if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? (Math.round(n * 10) / 10).toLocaleString('uk-UA') : Math.trunc(n).toLocaleString('uk-UA');
     const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
     if (i >= LB_BIG.length) {
       let e = Math.floor(Math.log10(Math.abs(n)));
@@ -1470,8 +1471,19 @@
     }
     const v = n / Math.pow(1000, i + 2);
     const digits = v < 10 ? 2 : v < 100 ? 1 : 0;
-    return (Math.floor(v * Math.pow(10, digits)) / Math.pow(10, digits)).toLocaleString('uk-UA', { maximumFractionDigits: digits })
-      + ' ' + LB_BIG[i];
+    const k = Math.pow(10, digits);
+    return (Math.trunc(v * k * (1 + 1e-12)) / k).toLocaleString('uk-UA', { maximumFractionDigits: digits }) + ' ' + LB_BIG[i];
+  }
+  function lbNum(n) {
+    if (typeof n !== 'number' || !Number.isFinite(n) || Math.abs(n) < 1e6) return n;
+    const a = Math.abs(n);
+    if (a < 1e15) return lbCount(n);
+    if (a < 1e27) return lbCount(n / 1e15) + ' ₴';
+    const g = n / 1e27;
+    const shown = Math.round(g * 10) / 10;
+    const word = Math.abs(g) >= 1e6 ? 'золотих' : shown % 1 ? 'золотого'
+      : shown % 100 >= 11 && shown % 100 <= 14 ? 'золотих' : shown % 10 === 1 ? 'золотий' : shown % 10 >= 2 && shown % 10 <= 4 ? 'золоті' : 'золотих';
+    return lbCount(g) + ' ' + word;
   }
 
   async function renderLeaders(view, token) {

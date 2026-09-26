@@ -297,7 +297,7 @@ public sealed partial class Clicker
                     _treatAt = now;
                     _treatFrom = from;
                     _treatPots = gain;
-                    AwayNote($"🎁 Гостинець від {from}: +{Short(gain)} {Pots(gain)} — {minutes} хв твого пасиву");
+                    AwayNote($"🎁 Гостинець від {from}: +{PotsShort(gain)} — {minutes} хв твого пасиву");
                     break;
                 case "lend":
                     _lendUntil = now.AddMinutes(minutes);
@@ -400,7 +400,7 @@ public sealed partial class Clicker
         _guildClaims++;
         if (_guildClaims == 1) Achieve("potter-wagon");
         var pay = WagonShare(r.Mine);
-        return ActResult.Accept($"🛒 Віз повернувся з ярмарку ({ClickerGuildService.TierNames[r.Tier]}): +{Short(gain)} {Pots(gain)} — "
+        return ActResult.Accept($"🛒 Віз повернувся з ярмарку ({ClickerGuildService.TierNames[r.Tier]}): +{PotsShort(gain)} — "
             + $"{minutes.ToString("0", Uk)} хв твого пасиву за {pay.ToString("0.##", Uk)} {ShareWord(pay)}");
     }
 
@@ -434,14 +434,14 @@ public sealed partial class Clicker
         if (Array.IndexOf(ClickerGuildService.TreatSizes, minutes) < 0)
             return ActResult.Fail("Гостинець буває на 10, 30 або 60 хвилин");
         var cost = TreatGain(minutes);
-        if (_pots < cost) return ActResult.Fail($"Гостинець на {minutes} хв коштує {Short(cost)} {Pots(cost)} — бракує {Short(cost - _pots)}");
+        if (_pots < cost) return ActResult.Fail($"Гостинець на {minutes} хв коштує {PotsShort(cost)} — бракує {Short(cost - _pots)}");
         var to = Str(payload, "to").Trim();
         if (svc.Boost(GuildKey, GuildNick, to, "treat", minutes, now) is { } why) return ActResult.Fail(why);
         _pots -= cost;
         _treatsSent++;
         if (_treatsSent == TreatsForAchievement) Achieve("potter-treat");
         Wonder("treat");
-        return ActResult.Accept($"🎁 Гостинець для {to}: −{Short(cost)} {Pots(cost)} у тебе, "
+        return ActResult.Accept($"🎁 Гостинець для {to}: −{PotsShort(cost)} у тебе, "
             + $"{minutes * ClickerGuildService.TreatBack} хв його власного пасиву — йому");
     }
 
@@ -517,8 +517,8 @@ public sealed partial class Clicker
     List<string> RankMissing(ClickerGuildRank next)
     {
         var miss = new List<string>();
-        if (FiredTotal < next.Fired) miss.Add($"обпалити ще {Short(next.Fired - FiredTotal)} {WaresWord(next.Fired - FiredTotal)}");
-        if (_guildGiven < next.Given) miss.Add($"покласти на вози ще {Short(next.Given - _guildGiven)}");
+        if (FiredTotal < next.Fired) miss.Add($"обпалити ще {Count(next.Fired - FiredTotal)} {WaresWord(next.Fired - FiredTotal)}");
+        if (_guildGiven < next.Given) miss.Add($"покласти на вози ще {Count(next.Given - _guildGiven)}");
         if (_styles.Count < next.Styles) miss.Add($"зібрати ще {next.Styles - _styles.Count} розписи");
         return miss;
     }

@@ -517,7 +517,7 @@ public sealed partial class Clicker
 
     /// <summary>Повний множник замовлення: базовий плюс шана села, ×Косів за розпис, ×базарний день.</summary>
     double MktMult(FairOrderRow o) =>
-        (o.Mult + MktRepPay(o)) * MktStylePerk(o) * (MktBazaarOn(Ctx.Clock.UtcNow) ? FairBazaarMult : 1);
+        (o.Mult + MktRepPay(o)) * MktStylePerk(o) * (MktBazaarOn(Ctx.Clock.UtcNow) ? FairBazaarMult : 1) * (1 + GuestsPayBonus);
 
     double MktChance(FairOrderRow o) =>
         Math.Min(FairUpMax, FairUpChance + FairUpPerLevel * MktLevel(o.Village) + FairPerkHaggle * MktLevel("sorochyntsi"));
@@ -621,7 +621,7 @@ public sealed partial class Clicker
         var rep = MktRepFor(o) * (bid == "down" ? 2 : 1);
         var up = MktRepAdd(o.Village, rep);
         var (emoji, lines) = bid switch { "down" => ("🥰", FairDownLines), "up" => ("💰", FairUpLines), _ => ("🤝", FairAsLines) };
-        var text = $"{emoji} {who} {village.From}: «{lines[Ctx.Rng.Next(lines.Length)]}» +{Short(pay)} {Pots(pay)} · шана +{rep}";
+        var text = $"{emoji} {who} {village.From}: «{lines[Ctx.Rng.Next(lines.Length)]}» +{PotsShort(pay)} · шана +{rep}";
         if (bear) text += " · 🐻 ведмідь наворожив подвійну плату";
         if (MktBazaarOn(now)) text += " · 🛒 базарний день";
         if (up > 0) text += $" · ⭐ {village.Name}: шана {MktLevel(o.Village)}";
@@ -712,7 +712,7 @@ public sealed partial class Clicker
                     var loss = ToPots(_pots * FairBearLoss);
                     if (loss > 0) _pots -= loss;
                     text = loss > 0
-                        ? $"🐻 Ведмідь перекинув полицю: −{Short(loss)} {Pots(loss)}"
+                        ? $"🐻 Ведмідь перекинув полицю: −{PotsShort(loss)}"
                         : "🐻 Ведмідь перекинув полицю — добре, що на ній нічого не стояло";
                 }
                 break;
@@ -721,8 +721,8 @@ public sealed partial class Clicker
                 var gain = MktMagpie();
                 Add(gain);
                 text = g.Kind == "lord"
-                    ? $"🎩 Пан ще чекає свого замовлення — лишив на чай +{Short(gain)} {Pots(gain)}"
-                    : $"🐦 Сорока впустила монету: +{Short(gain)} {Pots(gain)}";
+                    ? $"🎩 Пан ще чекає свого замовлення — лишив на чай +{PotsShort(gain)}"
+                    : $"🐦 Сорока впустила монету: +{PotsShort(gain)}";
                 break;
         }
         _mktGuests++;
@@ -767,7 +767,7 @@ public sealed partial class Clicker
                     var sec = FairGiftMinutes * 60 * level;
                     var gain = Math.Max(FairMagpieFloor, ToPots(Math.Max(PassiveBase * sec, ClickBase * sec / 5)));
                     Add(gain);
-                    what = $"+{Short(gain)} {Pots(gain)} за поміч селу";
+                    what = $"+{PotsShort(gain)} за поміч селу";
                     break;
                 }
                 case 1:
@@ -844,7 +844,7 @@ public sealed partial class Clicker
                         // На голому колі пасиву нема — тоді кліками: хвилина ≈ дванадцять.
                         var gain = Math.Max(5, ToPots(Math.Max(PassiveBase * sec, ClickBase * sec / 5)));
                         Add(gain);
-                        notes.Add($"+{Short(gain)} {Pots(gain)}");
+                        notes.Add($"+{PotsShort(gain)}");
                     }
                     else if (sec < 0)
                     {
@@ -852,7 +852,7 @@ public sealed partial class Clicker
                         if (loss > 0)
                         {
                             _pots -= loss;
-                            notes.Add($"−{Short(loss)} {Pots(loss)}");
+                            notes.Add($"−{PotsShort(loss)}");
                         }
                     }
                     break;

@@ -102,15 +102,16 @@ public class ClickerCoreTests
     [Fact]
     public void The_pay_is_told_in_short_numbers_with_the_right_word()
     {
-        // «14,5 квдрлн глеки» різало б око: після скорочення слово узгоджується з «квдрлн», а не з останньою цифрою.
+        // «14,5 квдрлн глеки» різало б око. З десятого оновлення такі суми — у гривнях: «14,5 ₴», і слова «глеків» після
+        // одиниці бути не може.
         var h = Wheel();
         Levels(h, ("sich", 77));
         ShelfDue(h);
         Human(h);
         var r = PotterHands.Pass(h);
 
-        Assert.Contains("квдрлн глеків", r.Message);
-        Assert.DoesNotContain("квдрлн глеки ", r.Message);
+        Assert.Contains(" ₴", r.Message);
+        Assert.DoesNotContain("₴ глек", r.Message);
     }
 
     [Fact]
