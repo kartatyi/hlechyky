@@ -694,6 +694,51 @@ public class RunnerSimTests
         Assert.Equal(0, sim.P[0].Hits);
     }
 
+    // ---------- годинник кроків ----------
+
+    [Fact]
+    public void The_pacer_makes_two_steps_per_forty_milliseconds()
+    {
+        var pacer = new RunnerPacer();
+        var t = DateTimeOffset.Parse("2026-09-27T10:00:00Z");
+        Assert.Equal(2, pacer.Due(t));   // перший тик — два кроки
+        for (var i = 0; i < 100; i++)
+        {
+            t = t.AddMilliseconds(40);
+            Assert.Equal(2, pacer.Due(t));
+        }
+    }
+
+    [Fact]
+    public void A_coarse_timer_still_gives_fifty_steps_per_second()
+    {
+        // Таймер Windows: тик приходить за 46,875 мс (3 × 15,625) — гра не має від цього сповільнитись.
+        var pacer = new RunnerPacer();
+        var t = DateTimeOffset.Parse("2026-09-27T10:00:00Z");
+        pacer.Due(t);
+        var steps = 0;
+        for (var i = 0; i < 640; i++)
+        {
+            t = t.AddTicks(468750);
+            var n = pacer.Due(t);
+            Assert.InRange(n, 2, 3);
+            steps += n;
+        }
+        Assert.InRange(steps, 1499, 1500);   // 640 × 46,875 мс = 30 с = 1500 кроків
+    }
+
+    [Fact]
+    public void A_sleeping_server_does_not_catch_up_more_than_four_steps()
+    {
+        var pacer = new RunnerPacer();
+        var t = DateTimeOffset.Parse("2026-09-27T10:00:00Z");
+        pacer.Due(t);
+        Assert.Equal(RunnerPacer.MaxSteps, pacer.Due(t.AddSeconds(2)));
+        Assert.Equal(2, pacer.Due(t.AddSeconds(2).AddMilliseconds(40)));   // борг не тягнеться далі
+        pacer.Reset();
+        Assert.Equal(2, pacer.Due(t.AddSeconds(9)));
+    }
+
     // ---------- парність із JS ----------
 
     /// <summary>

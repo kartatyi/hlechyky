@@ -168,6 +168,7 @@ public sealed class DinoDaily : Game
     DateTimeOffset? _loggedAt;
     object? _last;
     int? _ping;
+    RunnerPacer _pacer;
 
     /// <summary>Світ поточної спроби (тести й діагностика).</summary>
     public RunnerSim? World => _sim;
@@ -201,6 +202,7 @@ public sealed class DinoDaily : Game
                     if ((k & 4) == 0) return ActResult.Fail("Стрибни, щоб побігти");
                     _phase = Running;
                     _fresh = true;
+                    _pacer.Reset();
                     _sim.Input(0, 0, k);
                     return ActResult.Done;
                 }
@@ -221,7 +223,8 @@ public sealed class DinoDaily : Game
         if (_sim is null || _phase != Running) return TickResult.None;
         var view = _fresh;
         _fresh = false;
-        for (var i = 0; i < RunnerSim.StepsPerTick; i++)
+        var steps = _pacer.Due(Ctx.Clock.UtcNow);
+        for (var i = 0; i < steps; i++)
         {
             _sim.Step();
             if (!_sim.P[0].Out) continue;

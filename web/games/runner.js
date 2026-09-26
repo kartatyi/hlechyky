@@ -1469,7 +1469,7 @@
       root, ctx, kind, mode: kind === 'storks' ? STORKS : DINO, daily: kind === 'daily',
       el: {}, cv: null, viewW: 800, K: 1, dpr: 1, pal: null, spr: null, scene: null, sizeSig: '',
       sim: null, simArgs: null, key: '', me: null, ph: '', running: false, waitView: false,
-      acc: 0, lastT: 0, adj: 0, adjUntil: 0, eAvg: 0,
+      acc: 0, lastT: 0, adj: 0, adjUntil: 0, eAvg: 0, rate: 1 / STEP_MS, arr: [],
       lead: 5, rtt: 80, rtts: [], slow: 0, pingAt: 0,
       hist: Array.from({ length: HIST_N }, () => new Player()), histAt: new Int32Array(HIST_N).fill(-1),
       held: 0, edge: false, lastHeld: 0, pend: [], sent: 0, fixes: 0, snaps: 0, snapWhy: {},
@@ -1581,7 +1581,7 @@
     for (const x of st.rtts) if (x < m) m = x;
     st.rtt = m;                                           // мінімум відсіює очікування тика сервера
     st.slow = d > 250 ? st.slow + 1 : 0;
-    st.lead = clamp(Math.ceil(st.rtt / STEP_MS) + 3, 3, 9);
+    st.lead = clamp(Math.ceil(st.rtt * st.rate) + 3, 3, FUTURE_MAX);
   }
 
   function send(st, s, k) {
@@ -1656,6 +1656,7 @@
     if (st.waitView) return;                             // новий раунд: кадр обігнав вид із новим зерном
     st.latest = f;
     st.latestAt = now;
+    rateSample(st, f.s, now);
     pushFrame(st, f.s, f.p || []);
     if (f.pg && st.me != null && f.pg[st.me] != null) rttSample(st, f.pg[st.me]);
     if (f.sn) for (const w of f.sn) knowSnow(st, w, true);
@@ -1758,6 +1759,19 @@
     if (st.running) { const target = f.s + st.lead; while (sim.S < target) stepOnce(st, false); }
   }
 
+  /// Темп сервера в кроках за мс — з кадрів за останні ~3 с. Сервер крокує за стінним годинником (RunnerPacer),
+  /// тож це ≈ 0,05; під навантаженням менше — і тоді свій годинник іде так само повільніше, а не тікає вперед.
+  function rateSample(st, s, now) {
+    const a = st.arr;
+    if (a.length && s < a[a.length - 1]) a.length = 0;       // новий раунд: лічильник кроків почався знову
+    a.push(now, s);
+    while (a.length > 4 && now - a[0] > 3000) a.splice(0, 2);
+    if (a.length >= 8 && now - a[0] >= 600) {
+      const r = (s - a[1]) / (now - a[0]);
+      st.rate = clamp(st.rate * 0.7 + r * 0.3, 0.02, 0.06);
+    }
+  }
+
   /// Тримаємо cs ≈ f.s + lead: трохи попереду сервера, щоб свій ввід приходив до нього «вчасно».
   function syncClock(st, f) {
     const e = st.sim.S - f.s - st.lead;
@@ -1779,15 +1793,16 @@
     if (!st.running || !st.sim) return;
     if (dt > 250) { if (st.latest) snap(st, st.latest, 'stall'); return; }
     st.acc += dt;
+    const stepMs = 1 / st.rate;
     let n = 0;
-    while (st.acc >= STEP_MS && n < 8) {
-      st.acc -= STEP_MS;
+    while (st.acc >= stepMs && n < 8) {
+      st.acc -= stepMs;
       n++;
       if (st.adj < 0) { st.adj++; continue; }
       stepOnce(st, true);
       if (st.adj > 0) { st.adj--; stepOnce(st, true); }
     }
-    if (st.acc > STEP_MS * 2) st.acc = STEP_MS;
+    if (st.acc > stepMs * 2) st.acc = stepMs;
   }
 
   // ---------- ввід ----------
@@ -1897,7 +1912,7 @@
     g.scale(st.K, st.K);
 
     // ---- час: свій — передбачений (дріб між кроками), чужі — з кадрів, трохи позаду ----
-    const frac = st.running ? clamp(st.acc / STEP_MS, 0, 1) : 1;
+    const frac = st.running ? clamp(st.acc * st.rate, 0, 1) : 1;
     const ownT = st.running ? sim.S - 1 + frac : sim.S;
     const newest = st.frN ? st.fr[(st.frHead + st.frN - 1) % FR_N].s : sim.S;
     let othersT = st.running ? ownT - st.lead - 2 : newest;

@@ -39,6 +39,44 @@ public struct RunnerRng
     public int Next(int n) => (int)(NextU32() % (uint)n);
 }
 
+/// <summary>
+/// Скільки кроків по 20 мс зробити на цьому тику, щоб годинник гри йшов за стінним. Кімната тикає «не раніше
+/// ніж за 40 мс», а таймер Windows грубий (15,6 мс), тож насправді тик приходить за 45–55 мс: із рівно двома
+/// кроками на тик гра йшла б на ~80 % задуманої швидкості, а годинник клієнта (крок = 20 мс) весь час
+/// утікав би вперед. Тому кроків стільки, скільки набіг час (2–4), залишок мілісекунд переходить на наступний
+/// тик. Понад 4 кроки (сервер спав) не надолужуємо — як і каркас із пропущеними тиками.
+/// У тестах годинник рухається рівно на 40 мс — там завжди два кроки.
+/// </summary>
+public struct RunnerPacer
+{
+    public const int MaxSteps = 4;
+    DateTimeOffset? _last;
+    double _carry;
+
+    public void Reset() { _last = null; _carry = 0; }
+
+    public int Due(DateTimeOffset now)
+    {
+        if (_last is not { } last)
+        {
+            _last = now;
+            _carry = 0;
+            return RunnerSim.StepsPerTick;
+        }
+        _last = now;
+        var ms = (now - last).TotalMilliseconds + _carry;
+        var n = (int)(ms / RunnerSim.StepMs);
+        if (n < 1) n = 1;
+        if (n > MaxSteps)
+        {
+            n = MaxSteps;
+            _carry = 0;
+        }
+        else _carry = Math.Max(0, ms - n * RunnerSim.StepMs);
+        return n;
+    }
+}
+
 /// <summary>Коди перешкод, подій курсу й підбирачок (ті самі числа в JS і в кадрі).</summary>
 public static class RunnerKind
 {

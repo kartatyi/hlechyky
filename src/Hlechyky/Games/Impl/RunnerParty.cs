@@ -52,6 +52,7 @@ public abstract class RunnerParty : Game
     protected readonly bool[] Awarded = new bool[Seats];
     int _evSeen;
     object? _result;
+    RunnerPacer _pacer;
 
     public override string SeatName(int seat) => seat >= 0 && seat < Names.Length ? Names[seat] : base.SeatName(seat);
 
@@ -74,6 +75,7 @@ public abstract class RunnerParty : Game
         _roundPoints.Clear();
         _round = 0;
         _result = null;
+        _pacer.Reset();
         OnPartyStart();
         NewRound();
     }
@@ -145,7 +147,8 @@ public abstract class RunnerParty : Game
             {
                 var view = _fresh;
                 _fresh = false;
-                for (var i = 0; i < RunnerSim.StepsPerTick; i++)
+                var steps = _pacer.Due(Ctx.Clock.UtcNow);
+                for (var i = 0; i < steps; i++)
                 {
                     Sim.Step();
                     if (Phase == Ready && Sim.S >= ReadySteps)
@@ -163,7 +166,7 @@ public abstract class RunnerParty : Game
                 return view ? TickResult.Both : TickResult.FrameOnly;
             }
             case Over:
-                _overLeft -= RunnerSim.StepsPerTick;
+                _overLeft -= _pacer.Due(Ctx.Clock.UtcNow);
                 if (_overLeft > 0) return TickResult.None;
                 if (_round < _rounds)
                 {

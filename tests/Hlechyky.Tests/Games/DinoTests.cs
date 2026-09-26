@@ -135,6 +135,24 @@ public class DinoTests
     }
 
     [Fact]
+    public void Slow_ticks_do_not_slow_the_race_down()
+    {
+        // Кімната тикає «не раніше ніж за 40 мс», а насправді — за ~50: кроків на тик тоді більше, ніж два.
+        var h = Table(2);
+        for (var i = 0; i < 60; i++)
+        {
+            h.Clock.AdvanceMs(10);
+            h.Tick();
+        }
+        Assert.Equal(149, Sim(h).S);          // перший тик — два кроки, далі 59 × 50 мс = 147 кроків (і 10 мс у запасі)
+        Assert.Equal("ready", Ph(h));
+        h.Clock.AdvanceMs(10);
+        h.Tick();
+        Assert.Equal(152, Sim(h).S);          // 50 мс + 10 мс запасу = три кроки: відлік (3 с) скінчився вчасно
+        Assert.Equal("run", Ph(h));
+    }
+
+    [Fact]
     public void An_edge_before_the_run_does_not_jump_at_the_start()
     {
         var h = Table(2);
