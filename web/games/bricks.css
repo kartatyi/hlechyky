@@ -41,17 +41,59 @@
 .bricks-cv { display: block; }
 .bricks-mine { touch-action: none; }
 
+/* HUD — один рядок сталої висоти: довге ім'я цілі обрізається трьома крапками, а стіна під ним не з'їжджає */
 .bricks-hud {
-  display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; justify-content: center; min-height: 26px;
-  font-size: .86em; color: var(--muted); font-variant-numeric: tabular-nums; max-width: 100%;
+  display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; justify-content: center; height: 26px;
+  font-size: .86em; color: var(--muted); font-variant-numeric: tabular-nums; max-width: 100%; min-width: 0;
 }
+.bricks-me > .bricks-hud { align-self: stretch; }
+.bricks-hudtxt { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .bricks-hud .bricks-to { font-weight: 700; }
 .bricks-hud .bricks-hot { color: var(--danger); font-weight: 700; }
+.bricks-sprintmode .bricks-hud { height: auto; min-height: 44px; }
+.bricks-sprintmode .bricks-hudtxt { display: flex; gap: 4px 14px; align-items: baseline; flex-wrap: wrap; justify-content: center; white-space: normal; }
 .bricks-big { font-size: 1.7em; font-weight: 800; color: var(--text); letter-spacing: .02em; }
 .bricks-big small { font-size: .55em; color: var(--muted); font-weight: 600; }
+.bricks-pbline { font-size: .95em; font-weight: 700; color: var(--muted); }
+.bricks-pbline:empty { display: none; }
+.bricks-pbline.good { color: var(--ok); }
+.bricks-pbline.bad { color: var(--danger); }
 .bricks-snd {
-  padding: 0 6px; min-height: 24px; font-size: .95em; background: transparent; border: 1px solid var(--line);
+  flex: none; padding: 0 6px; min-height: 24px; font-size: .95em; background: transparent; border: 1px solid var(--line);
   border-radius: 999px; cursor: pointer;
+}
+
+/* ---- телефон: смужки небезпеки замість мікростін ---- */
+.bricks-strips { flex: 0 0 100%; display: grid; gap: 4px; }
+.bricks-strip {
+  display: grid; grid-template-columns: auto minmax(0, 7.5em) 1fr auto; gap: 6px; align-items: center;
+  font-size: .8em; line-height: 1.2; padding: 2px 8px; border-radius: 999px; background: var(--panel2, rgba(255,255,255,.04));
+  border: 1px solid transparent;
+}
+.bricks-strip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bricks-strip.bk0 { color: var(--bk-seat0); }
+.bricks-strip.bk1 { color: var(--bk-seat1); }
+.bricks-strip.bk2 { color: var(--bk-seat2); }
+.bricks-strip.bk3 { color: var(--bk-seat3); }
+.bricks-strip.danger { border-color: var(--danger); }
+.bricks-strip.dead { opacity: .55; }
+.bricks-meter { height: 8px; border-radius: 4px; background: var(--bg2); overflow: hidden; }
+.bricks-meter i { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 4px; transition: width .2s; }
+.bricks-meter i.warm { background: var(--accent); }
+.bricks-meter i.hot { background: var(--danger); }
+.bricks-sv { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- вибулий кидає 🍅 / 👏 у стіну живого ---- */
+.bricks-toss { display: flex; gap: 6px; align-items: center; font-size: .82em; color: var(--muted); }
+.bricks-toss[hidden] { display: none; }
+.bricks-toss button {
+  min-height: 34px; min-width: 44px; padding: 0 8px; font-size: 1.25em; border-radius: 10px; background: var(--panel3);
+  border: 2px solid transparent; justify-content: center;
+}
+.bricks-toss button.on { border-color: var(--accent); }
+.bricks-tossed {
+  position: absolute; z-index: 4; pointer-events: none; margin: -.7em 0 0 -.6em; font-size: 1.6em;
+  transition: transform .45s cubic-bezier(.3, .1, .5, 1);
 }
 
 .bricks-others { display: grid; gap: 10px 12px; align-content: start; justify-content: center; }
@@ -107,7 +149,10 @@
   max-width: 94%; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); text-align: center; animation: bricks-pop .18s ease-out;
 }
 .bricks-sumhead { font-size: 1.3em; font-weight: 800; margin-bottom: 6px; }
-.bricks-score { color: var(--accent); font-weight: 700; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+.bricks-why { font-size: .68em; font-weight: 600; color: var(--muted); margin-top: 2px; }
+.bricks-score { font-weight: 700; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+.bricks-score b { color: var(--accent); margin: 0 4px; }
+.bricks-medals { margin-top: 8px; display: grid; gap: 2px; font-size: .84em; text-align: left; }
 .bricks-sumbox table { border-collapse: collapse; margin: 0 auto; font-variant-numeric: tabular-nums; }
 .bricks-sumbox th { font-weight: 500; color: var(--muted); font-size: .78em; padding: 2px 8px; }
 .bricks-sumbox td { padding: 3px 8px; text-align: right; }

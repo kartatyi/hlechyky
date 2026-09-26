@@ -1756,6 +1756,30 @@ public class BricksTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void The_fallen_can_toss_a_tomato_at_the_living_once_a_second()
+    {
+        var h = Table(3, new { wins = "2" });
+        Go(h);
+        Assert.Equal("Кидають ті, хто вже вибув", h.Act(0, "toss", new { e = 0, to = 1 }).Message);
+        Kill(h, 0);
+        var was = Frames(h).Count;
+        Assert.True(h.Act(0, "toss", new { e = 0, to = 1 }).Ok);
+        Assert.Equal("Не так часто", h.Act(0, "toss", new { e = 1, to = 2 }).Message);
+        h.Tick();
+        var r = Assert.Single(Events(Frames(h).Skip(was), "r"));
+        Assert.Equal([0, 1, 0], r.EnumerateArray().Skip(1).Select(x => x.GetInt32()));
+        h.Tick(Bricks.TossEvery);
+        Assert.True(h.Act(0, "toss", new { e = 1, to = 2 }).Ok);
+        Assert.Equal("Туди не докинеш", h.Act(0, "toss", new { e = 1, to = 0 }).Message);   // у себе
+        Assert.Equal("Такого не кидають", h.Act(0, "toss", new { e = 7, to = 2 }).Message);
+        Assert.Equal("Такого не кидають", h.Act(0, "toss", "🍅").Message);
+        // гри не змінює: стіни живих ті самі
+        Assert.True(Wall(h, 1).Alive && Wall(h, 2).Alive);
+        Kill(h, 1);                                             // раунд скінчився — кидати нікуди
+        Assert.Equal("Кидати можна посеред раунду", h.Act(0, "toss", new { e = 0, to = 2 }).Message);
+    }
+
+    [Fact]
     public void Reconnecting_client_finds_its_whole_wall_in_the_view()
     {
         var h = Table(2);

@@ -150,9 +150,34 @@ public sealed class Bricks : Game
                 if (_phase != PhaseGo || !_seats[seat].Plays) return ActResult.Fail("Зараз нема чого звіряти");
                 _seats[seat].NeedFix = true;
                 return ActResult.Done;
+            case "toss":
+                return Toss(seat, payload);
             default:
                 return ActResult.Fail("Тут так не ходять");
         }
+    }
+
+    public const int TossEvery = 25;
+
+    /// <summary>
+    /// Вибулий кидає 🍅 (<c>e: 0</c>) чи 👏 (<c>e: 1</c>) у стіну живого — усім на екрані летить подія
+    /// <c>['r', from, to, e]</c>. Лише поки раунд іде, лише з упалої стіни й не частіше разу на секунду:
+    /// гри не змінює, це щоб вибулий не нудьгував, поки дограють.
+    /// </summary>
+    ActResult Toss(int seat, JsonElement payload)
+    {
+        if (_phase != PhaseGo) return ActResult.Fail("Кидати можна посеред раунду");
+        var st = _seats[seat];
+        if (!st.Plays || st.Core.Alive) return ActResult.Fail("Кидають ті, хто вже вибув");
+        if (payload.ValueKind != JsonValueKind.Object
+            || !payload.TryGetProperty("e", out var e) || e.ValueKind != JsonValueKind.Number || !e.TryGetInt32(out var kind) || kind is < 0 or > 1
+            || !payload.TryGetProperty("to", out var t) || t.ValueKind != JsonValueKind.Number || !t.TryGetInt32(out var to))
+            return ActResult.Fail("Такого не кидають");
+        if (to < 0 || to >= Seats || to == seat || !_seats[to].Plays || !_seats[to].Core.Alive) return ActResult.Fail("Туди не докинеш");
+        if (_rt - st.LastTossAt < TossEvery) return ActResult.Fail("Не так часто");
+        st.LastTossAt = _rt;
+        _ev.Add(new object[] { "r", seat, to, kind });
+        return ActResult.Done;
     }
 
     ActResult Journal(int seat, JsonElement payload)
