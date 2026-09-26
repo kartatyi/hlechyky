@@ -40,7 +40,7 @@ public sealed class Bricks : Game
             new GameOption("speed", "Темп", [("calm", "Спокійно"), ("normal", "Звичайно"), ("fast", "Швидко")], "normal"),
             new GameOption("garbage", "Сміття", [("normal", "Звичайне"), ("hard", "Люте"), ("none", "Без сміття — хто довше")], "normal"),
         ],
-        Hint: "Падають цеглинки з чотирьох квадратиків. Закрив ряди — суперникові знизу лізе сміття. Хто завалився — вибув, останній бере раунд");
+        Hint: "Падають цеглинки з чотирьох квадратиків. Закрив два ряди й більше — суперникові знизу лізе сміття. Хто завалився — вибув, останній бере раунд");
 
     readonly BricksSeat[] _seats = [new(), new(), new(), new()];
     readonly BricksJournal _journal = new();
@@ -69,6 +69,8 @@ public sealed class Bricks : Game
     int _frameWall;
     /// <summary>Місця в партії за перемогами, коли її дограно (для підсумку); null — ще йде.</summary>
     int[]? _finalRanks;
+    /// <summary>Партію віддано тому, хто лишився за столом сам (решта встали) — підсумок так і скаже.</summary>
+    bool _byLeave;
 
     public override string SeatName(int seat) => seat >= 0 && seat < Names.Length ? Names[seat] : base.SeatName(seat);
 
@@ -88,11 +90,16 @@ public sealed class Bricks : Game
     {
         _round = 0;
         _finalRanks = null;
+        _byLeave = false;
         Array.Clear(_left);
         foreach (var st in _seats)
         {
             st.Wins = st.MatchLines = st.MatchSent = st.MatchRecv = 0;
+            st.BestShot = st.BestCombo = 0;
+            st.BestShotTo = -1;
             st.FourAsked = false;
+            st.MatchNick = null;
+            st.Gone = false;
         }
         NewRound();
     }
@@ -106,10 +113,13 @@ public sealed class Bricks : Game
             var st = _seats[s];
             st.Plays = Ctx.Seated(s);
             st.Nick = st.Plays ? Ctx.NickOf(s) : null;
+            if (st.Plays) st.MatchNick = st.Nick;
             st.Rank = 0;
             st.NeedFix = false;
             st.Dirty = true;
             st.SentCellsVer = -1;
+            st.LastEvT = -1;
+            st.LastEvN = 0;
             st.Core.Reset(_seed, _mode, _stageTicks);
         }
         _phase = PhaseStart;
@@ -155,16 +165,17 @@ public sealed class Bricks : Game
         }
         var st = _seats[seat];
         if (!st.Plays) return ActResult.Fail("Ти тут не граєш");
-        var r = _journal.Apply(st, payload, Wall());
+        var r = _journal.Apply(st, payload, Wall(), _rt);
         if (r.Ok)
         {
             Settle(seat);
+            if (!st.Core.Alive && st.Rank == 0) Fall(seat, Alive() + 1);
             CheckRound();
         }
         return r;
     }
 
-    /// <summary>Що рушій натворив після пачки чи серверного ведення: напади → посилки, четвірка, вибування.</summary>
+    /// <summary>Що рушій натворив після пачки чи серверного ведення: напади → посилки, четвірка. Вибування — окремо.</summary>
     void Settle(int seat)
     {
         var st = _seats[seat];
@@ -176,7 +187,12 @@ public sealed class Bricks : Game
             _ev.Add(new object[] { "c", seat, c.Lines, c.Kind, c.Combo, c.B2b, c.Sent, target });
             st.MatchLines += c.Lines;
             st.MatchSent += c.Sent;
-            if (c.Sent > 0 && target >= 0) Credit(target, c.Sent, seat, ripeNow: false);
+            if (c.Combo > st.BestCombo) st.BestCombo = c.Combo;
+            if (c.Sent > 0 && target >= 0)
+            {
+                if (c.Sent > st.BestShot) { st.BestShot = c.Sent; st.BestShotTo = target; }
+                Credit(target, c.Sent, seat, ripeNow: false);
+            }
             if (c.Lines == 4 && !st.FourAsked)
             {
                 st.FourAsked = true;
@@ -186,7 +202,6 @@ public sealed class Bricks : Game
         b.ClearCount = 0;
         st.MatchRecv += b.Inserted;
         b.Inserted = 0;
-        if (!b.Alive && st.Rank == 0) Fall(seat);
     }
 
     /// <summary>
@@ -224,16 +239,41 @@ public sealed class Bricks : Game
         return n;
     }
 
-    /// <summary>Стіна впала: місце = скільки живих лишилось + 1; клієнтові — виправлення з кінцевою стіною.</summary>
-    void Fall(int seat)
+    /// <summary>Стіна впала з цим місцем у раунді; клієнтові — виправлення з кінцевою стіною.</summary>
+    void Fall(int seat, int rank)
     {
         var st = _seats[seat];
-        st.Rank = Alive() + 1;
+        st.Rank = rank;
         _ev.Add(new object[] { "o", seat, st.Rank, st.Core.OutTick });
         st.NeedFix = true;
         st.LastFixAt = -1_000_000;
         st.Dirty = true;
         _viewDirty = true;
+    }
+
+    /// <summary>
+    /// Кілька стін упало за один тик серверного ведення (мовчуни, §5.4). Хто протримався довше за годинником
+    /// своєї стіни (<c>OutTick</c> більший) — вище; однаковий <c>OutTick</c> — одне місце на всіх («1224»).
+    /// Інакше перша в циклі стіна діставала б місце гірше за другу, хоч упали вони разом.
+    /// </summary>
+    void FallTogether(int mask)
+    {
+        var place = Alive() + 1;
+        while (mask != 0)
+        {
+            var best = int.MinValue;
+            for (var s = 0; s < Seats; s++)
+                if ((mask >> s & 1) != 0) best = Math.Max(best, _seats[s].Core.OutTick);
+            var n = 0;
+            for (var s = 0; s < Seats; s++)
+            {
+                if ((mask >> s & 1) == 0 || _seats[s].Core.OutTick != best) continue;
+                Fall(s, place);
+                mask &= ~(1 << s);
+                n++;
+            }
+            place += n;
+        }
     }
 
     void CheckRound()
@@ -244,7 +284,12 @@ public sealed class Bricks : Game
         for (var s = 0; s < Seats; s++)
             if (_seats[s].Plays && _seats[s].Core.Alive) { alive++; last = s; }
         if (alive > 1) return;
-        EndRound(alive == 1 ? [last] : []);
+        if (alive == 1) { EndRound([last]); return; }
+        // Живих нема: останні впали разом (FallTogether) — ті, хто з місцем 1, ділять раунд, як рівні о 8:00.
+        var shared = new List<int>();
+        for (var s = 0; s < Seats; s++)
+            if (_seats[s].Plays && _seats[s].Rank == 1) shared.Add(s);
+        EndRound([.. shared]);
     }
 
     /// <summary>8:00 — раунд зупиняється: більше рядів — вище, рівні ділять місце, найкращі разом беруть раунд.</summary>
@@ -292,25 +337,32 @@ public sealed class Bricks : Game
     void Over()
     {
         _phase = PhaseOver;
-        // У підсумку — усі, хто грав останній раунд, і ті, хто посеред нього встав: їхня стіна впала з місцем,
-        // як у звичайного вибулого. Інакше утікач лишався без місця («0-й»), а той, хто впав раніше за нього,
-        // підіймався вище. Очки порожнього місця каркас однаково не запише.
-        var played = new List<int>();
-        for (var s = 0; s < Seats; s++) if (_seats[s].Nick is not null) played.Add(s);
+        // У підсумку — усі, хто грав у партії: і ті, хто посеред раунду встав (їхня стіна впала з місцем, як у
+        // звичайного вибулого), і ті, хто встав у паузі між раундами, — разом зі своїми перемогами. Інакше утікач
+        // лишався без місця («0-й») або зникав зовсім. Очки порожнього місця каркас однаково не запише.
+        var played = Played();
         _finalRanks = new int[Seats];
         foreach (var s in played) _finalRanks[s] = 1 + played.Count(o => Better(o, s));
         MarkLeft();
         var winners = played.Where(s => _seats[s].Plays && _seats[s].Wins >= _need).ToArray();
         var order = played.OrderBy(s => _finalRanks[s]).ThenBy(s => s).ToList();
         var scores = played.ToDictionary(s => s, s => (long)_seats[s].MatchLines);
-        var log = $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{_seats[s].Nick} {_seats[s].Wins}"));
+        var log = $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{_seats[s].MatchNick} {_seats[s].Wins}"));
         Ctx.Finish(winners, log, scores);
     }
 
-    /// <summary>Хто з тих, що грали раунд, уже не сидить за столом — підсумок напише «встав з-за столу».</summary>
+    /// <summary>Місця тих, хто грав у партії хоч один раунд.</summary>
+    List<int> Played()
+    {
+        var played = new List<int>();
+        for (var s = 0; s < Seats; s++) if (_seats[s].MatchNick is not null) played.Add(s);
+        return played;
+    }
+
+    /// <summary>Хто з тих, що грали в партії, устав з-за столу до її кінця — підсумок напише «з-за столу».</summary>
     void MarkLeft()
     {
-        for (var s = 0; s < Seats; s++) _left[s] = _seats[s].Nick is not null && !_seats[s].Plays;
+        for (var s = 0; s < Seats; s++) _left[s] = _seats[s].MatchNick is not null && _seats[s].Gone;
     }
 
     /// <summary>Чи місце <paramref name="a"/> в підсумку партії вище за <paramref name="b"/>.</summary>
@@ -319,10 +371,14 @@ public sealed class Bricks : Game
         var x = _seats[a];
         var y = _seats[b];
         if (x.Wins != y.Wins) return x.Wins > y.Wins;
-        var rx = x.Rank == 0 ? 1 : x.Rank;
-        var ry = y.Rank == 0 ? 1 : y.Rank;
-        return rx < ry;
+        return LastPlace(x) < LastPlace(y);
     }
+
+    /// <summary>
+    /// Місце в останньому раунді для розводу рівних за перемогами: 0 (дограв живим) — як перше, а хто
+    /// останнього раунду вже не грав (устав у паузі) — позаду всіх.
+    /// </summary>
+    static int LastPlace(BricksSeat st) => st.Nick is null ? 99 : st.Rank == 0 ? 1 : st.Rank;
 
     /// <summary>
     /// Хтось устав посеред партії: його стіна падає тут же (місце — як у звичайного вибулого), партія йде далі,
@@ -332,10 +388,11 @@ public sealed class Bricks : Game
     {
         if (seat < 0 || seat >= Seats) return;
         var st = _seats[seat];
+        if (_phase != PhaseOver && st.MatchNick is not null) st.Gone = true;
         if (st.Plays && _phase is PhaseStart or PhaseGo && st.Core.Alive)
         {
             st.Core.Retire(BricksCore.OutLeft);
-            Fall(seat);
+            Fall(seat, Alive() + 1);
         }
         st.Plays = false;
         st.NeedFix = false;
@@ -345,7 +402,11 @@ public sealed class Bricks : Game
         var others = Enumerable.Range(0, Seats).Where(s => s != seat && Ctx.Seated(s)).ToArray();
         if (others.Length <= 1)
         {
-            FinishLeft(others, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+            // Журнал каже те саме, що й картка: хто лишився — бере партію, бо суперник пішов.
+            var who = Ctx.NickOf(seat);
+            FinishLeft(others, others.Length == 1
+                ? $"{Info.Title}: {Ctx.NickOf(others[0])} бере партію — {who} встав з-за столу"
+                : $"{Info.Title}: {who} встав з-за столу, партію не дограли");
             return;
         }
         CheckRound();
@@ -353,16 +414,16 @@ public sealed class Bricks : Game
 
     /// <summary>
     /// За столом лишився один — партія його, скільки б раундів хто не виграв: у підсумку він перший, решта
-    /// (і той, хто встав) — за ним у звичайному порядку. Інакше підсумок писав би «Раунд нікому».
+    /// (і ті, хто встав) — за ним у звичайному порядку. Інакше підсумок писав би «Раунд нікому».
     /// </summary>
     void FinishLeft(int[] stay, string log)
     {
         _phase = PhaseOver;
+        _byLeave = stay.Length > 0;
         _finalRanks = new int[Seats];
         var rest = new List<int>();
-        for (var s = 0; s < Seats; s++)
+        foreach (var s in Played())
         {
-            if (_seats[s].Nick is null) continue;
             if (Array.IndexOf(stay, s) >= 0)
             {
                 _finalRanks[s] = 1;
@@ -373,7 +434,7 @@ public sealed class Bricks : Game
         foreach (var s in rest) _finalRanks[s] = 1 + stay.Length + rest.Count(o => Better(o, s));
         MarkLeft();
         var scores = new Dictionary<int, long>();
-        for (var s = 0; s < Seats; s++) if (_seats[s].Nick is not null) scores[s] = _seats[s].MatchLines;
+        foreach (var s in Played()) scores[s] = _seats[s].MatchLines;
         Ctx.Finish(stay, log, scores);
     }
 
@@ -410,8 +471,21 @@ public sealed class Bricks : Game
     void GoTick()
     {
         var wall = Wall();
+        // Спершу довести всі стіни мовчунів, а тоді вже роздавати місця: хто впав за цей тик — упав разом.
+        var driven = 0;
         for (var s = 0; s < Seats; s++)
-            if (_seats[s].Plays && BricksJournal.Drive(_seats[s], wall)) Settle(s);
+            if (_seats[s].Plays && BricksJournal.Drive(_seats[s], wall)) driven |= 1 << s;
+        if (driven != 0)
+        {
+            var down = 0;
+            for (var s = 0; s < Seats; s++)
+            {
+                if ((driven >> s & 1) == 0) continue;
+                Settle(s);
+                if (!_seats[s].Core.Alive && _seats[s].Rank == 0) down |= 1 << s;
+            }
+            if (down != 0) FallTogether(down);
+        }
         CheckRound();
         if (_phase != PhaseGo) return;
 
@@ -513,8 +587,30 @@ public sealed class Bricks : Game
         if (_finalRanks is not null)
         {
             var lines = new int[Seats];
-            for (var s = 0; s < Seats; s++) lines[s] = _seats[s].MatchLines;
-            result = new { ranks = (int[])_finalRanks.Clone(), lines, left = (bool[])_left.Clone() };
+            var sent = new int[Seats];
+            var recv = new int[Seats];
+            var shot = new int[Seats];
+            var shotTo = new int[Seats];
+            var combo = new int[Seats];
+            var nk = new string?[Seats];
+            for (var s = 0; s < Seats; s++)
+            {
+                var st = _seats[s];
+                lines[s] = st.MatchLines;
+                sent[s] = st.MatchSent;
+                recv[s] = st.MatchRecv;
+                shot[s] = st.BestShot;
+                shotTo[s] = st.BestShotTo;
+                combo[s] = st.BestCombo;
+                nk[s] = st.MatchNick;
+            }
+            // nk — усі, хто грав у партії (і ті, хто встав у паузі: їхньої стіни в boards уже нема);
+            // why: "left" — партію віддано тому, хто лишився за столом сам.
+            result = new
+            {
+                ranks = (int[])_finalRanks.Clone(), lines, left = (bool[])_left.Clone(), nk,
+                sent, recv, shot, shotTo, combo, why = _byLeave ? "left" : null,
+            };
         }
         return new
         {

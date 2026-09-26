@@ -1141,7 +1141,13 @@ public class BricksTests(ITestOutputHelper output)
 
         // дірки обирає сервер, і вони бувають різні
         var holes = new HashSet<int>();
-        for (var i = 0; i < 12; i++) { Double(h, 3); holes.Add(Wall(h, 0).Credits[Wall(h, 0).CreditCount - 1].Hole); }
+        for (var i = 0; i < 12; i++)
+        {
+            var w3 = Wall(h, 3);
+            w3.AdvanceTo(w3.Tick + 1);                          // кожна двійка — на своєму тику: понад 4 події на тик сервер не бере
+            Double(h, 3);
+            holes.Add(Wall(h, 0).Credits[Wall(h, 0).CreditCount - 1].Hole);
+        }
         Assert.True(holes.Count > 1);
     }
 
@@ -1579,6 +1585,174 @@ public class BricksTests(ITestOutputHelper output)
             return string.Join("\n", views) + string.Join(",", Frames(h).Select(f => f.GetRawText()));
         }
         Assert.Equal(Play(), Play());
+    }
+
+    // ---------- після рецензій ----------
+
+    [Fact]
+    public void Lost_fix_is_sent_again_when_stale_batches_keep_coming()
+    {
+        var h = Table(2);
+        Go(h);
+        Assert.True(h.Act(0, "sync").Ok);
+        h.Tick();
+        var st = Game(h).SeatState(0);
+        Assert.Equal(1, st.Epoch);
+        // одразу після fix старі пачки ще летять — це нормально, мовчки мимо
+        Assert.True(Jq(h, 0, 1, [3, 1], f: 0).Ok);
+        Assert.False(st.NeedFix);
+        // а через дві секунди — кадр із fix загубився (обрив і перепідключення): шлемо fix іще раз
+        h.Tick(2 * BricksJournal.FixEvery);
+        var was = Frames(h).Count;
+        Assert.True(Jq(h, 0, 1, [3, 1], f: 0).Ok);
+        Assert.True(st.NeedFix);
+        h.Tick();
+        var fix = Assert.Single(Events(Frames(h).Skip(was), "f"));
+        Assert.Equal(0, fix[1].GetInt32());
+        Assert.Equal(2, fix[2].GetProperty("fx").GetInt32());
+        // клієнт узяв нову епоху — його пачки знову йдуть у стіну
+        Assert.True(Jq(h, 0, Wall(h, 0).Seq + 1, [Wall(h, 0).Tick, 1], f: 2).Ok);
+        Assert.Equal(1, Wall(h, 0).Seq);
+    }
+
+    [Fact]
+    public void Burst_limit_holds_across_batches()
+    {
+        var h = Table(2);
+        Go(h);
+        Assert.True(J(h, 0, 5, 1, 5, 2, 5, 3).Ok);
+        Assert.True(J(h, 0, 5, 4).Ok);                          // четверта на тому самому тику — ще можна
+        var r = J(h, 0, 5, 7);                                   // п'ята, хоч і в окремій пачці, — уже ні
+        Assert.Equal((false, "Забагато натисків за раз"), (r.Ok, r.Message));
+        Assert.Equal(4, Wall(h, 0).Seq);
+        Assert.True(J(h, 0, 6, 7).Ok);                          // наступний тик — лічильник наново
+    }
+
+    /// <summary>Стіна по вінця (стовпець 9 порожній) і T на появі: сама, гравітацією, завалиться за 30 тиків фіксації.</summary>
+    static void Brim(RoomHarness h, int seat, int lockT = 0)
+    {
+        var c = Wall(h, seat);
+        c.LoadRows(Enumerable.Repeat("8888888880", 20).ToArray());
+        c.Clearing = 0;
+        c.Spawn(BricksCore.T);
+        c.LockT = lockT;
+    }
+
+    [Fact]
+    public void Walls_that_fall_on_one_server_tick_are_ranked_by_their_own_clock()
+    {
+        var h = Table(2, new { wins = "2" });
+        Go(h);
+        Brim(h, 0);
+        Brim(h, 1, lockT: 12);                                  // у Петра фіксація настане на 12 тиків раніше
+        Later(h, 300);                                          // обоє мовчать — сервер веде обидві стіни одним тиком
+        h.Tick();
+        Assert.False(Wall(h, 0).Alive);
+        Assert.False(Wall(h, 1).Alive);
+        Assert.True(Wall(h, 0).OutTick > Wall(h, 1).OutTick);
+        Assert.Equal(1, Game(h).SeatState(0).Rank);              // Оля протрималась довше — вона й бере раунд
+        Assert.Equal(2, Game(h).SeatState(1).Rank);
+        var v = h.View(null);
+        Assert.Equal([1, 0, 0, 0], v.GetProperty("wins").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal(Bricks.PhasePause, Game(h).Phase);
+    }
+
+    [Fact]
+    public void Walls_that_fall_at_the_very_same_tick_share_the_round()
+    {
+        var h = Table(2, new { wins = "2" });
+        Go(h);
+        Brim(h, 0);
+        Brim(h, 1);
+        Later(h, 300);
+        h.Tick();
+        Assert.Equal(Wall(h, 0).OutTick, Wall(h, 1).OutTick);
+        // одне місце на двох і перемога обом — як рівні о 8:00; а не «🏆 Петро» без очка
+        Assert.Equal((1, 1), (Game(h).SeatState(0).Rank, Game(h).SeatState(1).Rank));
+        Assert.Equal([1, 1, 0, 0], h.View(null).GetProperty("wins").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal(2, Events(Frames(h), "w").Count);
+    }
+
+    [Fact]
+    public void Leaving_in_the_pause_keeps_the_leaver_and_their_wins_in_the_summary()
+    {
+        var h = Table(3, new { wins = "2" });
+        Go(h);
+        Kill(h, 0);
+        Kill(h, 1);                                             // раунд 1 — Ганна
+        Assert.Equal(Bricks.PhasePause, Game(h).Phase);
+        h.Leave("Ганна");                                       // і встає в паузі
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        h.Tick(Bricks.PauseTicks);
+        Go(h);
+        Assert.Equal(2, h.View(null).GetProperty("boards").GetArrayLength());   // її стіни в новому раунді нема
+        Kill(h, 1);                                             // раунд 2 — Оля
+        h.Tick(Bricks.PauseTicks);
+        Go(h);
+        Kill(h, 1);                                             // раунд 3 — Оля, 2 перемоги
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal("Цеглини: Оля 2 : Ганна 1 : Петро 0", h.Room.Result!.Text);
+        var res = h.View(null).GetProperty("result");
+        Assert.Equal([1, 3, 2, 0], res.GetProperty("ranks").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal([false, false, true, false], res.GetProperty("left").EnumerateArray().Select(x => x.GetBoolean()));
+        Assert.Equal("Ганна", res.GetProperty("nk")[2].GetString());
+        Assert.Equal(JsonValueKind.Null, res.GetProperty("nk")[3].ValueKind);
+    }
+
+    [Fact]
+    public void Leaving_during_the_countdown_tops_out_and_the_summary_remembers_it()
+    {
+        var h = Table(3);
+        Assert.Equal(Bricks.PhaseStart, Game(h).Phase);
+        h.Leave("Петро");
+        var st = Game(h).SeatState(1);
+        Assert.False(st.Core.Alive);
+        Assert.Equal(3, st.Rank);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Go(h);
+        Assert.Equal([2, -1, 0, -1], h.View(null).GetProperty("target").EnumerateArray().Select(x => x.GetInt32()));
+        Kill(h, 0);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        var res = h.View(null).GetProperty("result");
+        Assert.Equal([2, 3, 1, 0], res.GetProperty("ranks").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal([false, true, false, false], res.GetProperty("left").EnumerateArray().Select(x => x.GetBoolean()));
+        Assert.Equal("Цеглини: Ганна 1 : Оля 0 : Петро 0", h.Room.Result!.Text);
+    }
+
+    [Fact]
+    public void Match_won_by_the_opponent_leaving_says_so_in_the_journal_and_the_summary()
+    {
+        var h = Table(2, new { wins = "3" });
+        Go(h);
+        Kill(h, 0);                                             // Петро веде 1 : 0
+        h.Leave("Петро");                                       // і встає в паузі
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.Equal("Цеглини: Оля бере партію — Петро встав з-за столу", h.Room.Result.Text);
+        var res = h.View(null).GetProperty("result");
+        Assert.Equal("left", res.GetProperty("why").GetString());
+        Assert.Equal([1, 2, 0, 0], res.GetProperty("ranks").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal([false, true, false, false], res.GetProperty("left").EnumerateArray().Select(x => x.GetBoolean()));
+    }
+
+    [Fact]
+    public void Summary_carries_the_biggest_shot_the_longest_combo_and_sent_and_received()
+    {
+        var h = Table(3);
+        Go(h);
+        Four(h, 2);                                             // Ганна — четвіркою в Олю (4 ряди)
+        h.Tick(12);
+        Double(h, 1);                                           // Петро — двійкою в Ганну (1 ряд)
+        h.Tick(12);
+        Kill(h, 0);
+        Kill(h, 1);
+        var res = h.View(null).GetProperty("result");
+        int[] Arr(string name) => [.. res.GetProperty(name).EnumerateArray().Select(x => x.GetInt32())];
+        Assert.Equal([0, 1, 4, 0], Arr("shot"));
+        Assert.Equal([-1, 2, 0, -1], Arr("shotTo"));
+        Assert.Equal([0, 1, 4, 0], Arr("sent"));
+        Assert.Equal(JsonValueKind.Null, res.GetProperty("why").ValueKind);
+        Assert.Equal(4, Arr("combo").Length);
     }
 
     [Fact]

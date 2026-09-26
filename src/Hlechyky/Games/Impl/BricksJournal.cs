@@ -13,9 +13,23 @@ public sealed class BricksSeat
     public bool Plays;
     /// <summary>Нік на старті раунду — щоб підписати стіну навіть того, хто вже встав.</summary>
     public string? Nick;
+    /// <summary>
+    /// Нік того, хто грав у цій партії хоч один раунд (null — не грав). На відміну від <see cref="Nick"/>, не зникає,
+    /// коли гравець устав у паузі між раундами: підсумок партії й рядок Журналу мусять пам'ятати і його перемоги.
+    /// </summary>
+    public string? MatchNick;
+    /// <summary>Устав з-за столу до кінця партії (у будь-якій фазі) — підсумок напише «з-за столу».</summary>
+    public bool Gone;
     /// <summary>Місце в раунді: 0 — ще грає, 1 — узяв раунд, 2+ — вибув.</summary>
     public int Rank;
     public int Wins, MatchLines, MatchSent, MatchRecv;
+    /// <summary>Для «медалей» партії: найбільша посилка одним ударом (скільки й кому) і найдовша серія.</summary>
+    public int BestShot, BestShotTo = -1, BestCombo;
+    /// <summary>
+    /// Тик останньої прийнятої події журналу й скільки подій уже лягло на нього — щоб стеля «не більше 4 подій на
+    /// тик» трималась і тоді, коли їх розкладено по кількох пачках.
+    /// </summary>
+    public int LastEvT = -1, LastEvN;
     /// <summary>
     /// Епоха виправлень: росте на кожен <c>fix</c>. Клієнт пише її в кожну пачку (<c>f</c>), і пачки, відправлені
     /// ще до того, як він прийняв виправлення, сервер мовчки викидає — інакше вони б наздоганяли <c>fix</c> і
@@ -67,18 +81,25 @@ public sealed class BricksJournal
     public int Keys { get; private set; }
 
     /// <summary>
-    /// Застосувати пачку до стіни місця. <paramref name="wallTick"/> — годинник сервера (60 Гц від «go»).
+    /// Застосувати пачку до стіни місця. <paramref name="wallTick"/> — годинник сервера (60 Гц від «go»),
+    /// <paramref name="roomTick"/> — тик кімнати (для повторного виправлення, §10.1).
     /// Повертає відмову (текст для тестів через <c>Act</c>) або <see cref="ActResult.Done"/>; сміття, вибування
     /// й події кадра кімната забирає з рушія сама.
     /// </summary>
-    public ActResult Apply(BricksSeat seat, JsonElement payload, int wallTick)
+    public ActResult Apply(BricksSeat seat, JsonElement payload, int wallTick, int roomTick)
     {
         Keys = 0;
         var b = seat.Core;
         if (!b.Alive) return ActResult.Fail(Out);
         if (!Parse(payload)) return ActResult.Fail(Malformed);
         // Пачка, відправлена до того, як клієнт прийняв виправлення, — мовчки мимо: fix уже в дорозі.
-        if (_hasEpoch && _epoch < seat.Epoch) return ActResult.Done;
+        // Але якщо старі пачки йдуть і через дві секунди після fix, кадр із ним загубився (обрив і
+        // перепідключення саме тоді): клієнт так і грав би в порожнечу, поки стіну веде сервер. Шлемо fix ще раз.
+        if (_hasEpoch && _epoch < seat.Epoch)
+        {
+            if (roomTick - seat.LastFixAt >= 2 * FixEvery) seat.NeedFix = true;
+            return ActResult.Done;
+        }
         if (_hasEpoch && _epoch > seat.Epoch) return ActResult.Fail(Malformed);
 
         var count = _n / 2;
@@ -88,16 +109,21 @@ public sealed class BricksJournal
         var from = b.Seq + 1 - _q;                           // перекриття з уже прийнятим — пропускаємо голову
 
         var prev = b.Tick;
-        var same = 0;
+        // лічильник подій на одному тику продовжується з минулих пачок: інакше «не більше 4» обходилось би другою
+        var sameT = seat.LastEvT;
+        var same = seat.LastEvN;
         for (var i = from; i < count; i++)
         {
             var t = _buf[i * 2];
             if (t < prev) return Refuse(seat, Past);
             if (t > wallTick + BricksCore.Ahead) return Refuse(seat, Future);
-            same = t == prev && i > from ? same + 1 : 1;
+            if (t == sameT) same++;
+            else { sameT = t; same = 1; }
             if (same > MaxSameTick) return Refuse(seat, Burst);
             prev = t;
         }
+        seat.LastEvT = sameT;
+        seat.LastEvN = same;
 
         for (var i = from; i < count; i++)
         {

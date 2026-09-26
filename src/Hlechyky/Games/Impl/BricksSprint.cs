@@ -53,6 +53,8 @@ public sealed class BricksSprint : Game
         _seat.Dirty = true;
         _seat.SentCellsVer = -1;
         _seat.LastKeyWall = 0;
+        _seat.LastEvT = -1;
+        _seat.LastEvN = 0;
         _seat.Core.Reset(_seed, BricksCore.ModeNone, 0);
         _phase = PhaseReady;
         _startIn = 0;
@@ -88,7 +90,7 @@ public sealed class BricksSprint : Game
                     case PhaseOver: return ActResult.Fail("Партію вже зіграно");
                 }
                 var wall = Wall();
-                var r = _journal.Apply(_seat, payload, wall);
+                var r = _journal.Apply(_seat, payload, wall, _rt);
                 if (r.Ok)
                 {
                     if (_journal.Keys > 0) _seat.LastKeyWall = wall;
