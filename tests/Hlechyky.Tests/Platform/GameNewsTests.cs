@@ -1,4 +1,6 @@
 using Hlechyky.Games;
+using Hlechyky.Games.Economy;
+using Hlechyky.Tests.Support;
 
 namespace Hlechyky.Tests.Platform;
 
@@ -43,5 +45,29 @@ public class GameNewsTests
         var news = new GameNews(new MemoryGameStore());
         Assert.False(news.Mark(Auth.Guest, "tron", "v1"));
         Assert.Empty(news.Seen(Auth.Guest));
+    }
+
+    [Fact]
+    public void News_also_says_which_games_the_nick_has_played_guests_too()
+    {
+        using var rig = new EconomyRig();
+        var news = new GameNews(rig.GameStore);
+        var at = rig.Clock.UtcNow;
+        rig.Store.AddResult(new ResultRow("r1", "tron", 1, "гість вася", "гість Вася", "win", null, "Оля", 0, at));
+        rig.Store.AddResult(new ResultRow("r1", "tron", 1, "оля", "Оля", "loss", null, "гість Вася", 0, at));
+        rig.Store.AddResult(new ResultRow("r2", "chess", 1, "оля", "Оля", "win", null, "Петро", 0, at));
+        rig.Store.AddResult(new ResultRow("r2", "chess", 2, "оля", "Оля", "draw", null, "Петро", 0, at));
+        news.Mark("Оля", "tron", "v2");
+
+        var (status, mine) = Radio.Reply(GameNews.Get(Radio.As("ОЛЯ"), news, rig.Store));
+        Assert.Equal(200, status);
+        Assert.Equal("v2", mine.GetProperty("seen").GetProperty("tron").GetString());
+        Assert.Equal(["chess", "tron"], mine.GetProperty("played").EnumerateArray().Select(g => g.GetString()));
+
+        var guest = Radio.Reply(GameNews.Get(Radio.As("гість Вася"), news, rig.Store)).Body;
+        Assert.Empty(guest.GetProperty("seen").EnumerateObject());
+        Assert.Equal(["tron"], guest.GetProperty("played").EnumerateArray().Select(g => g.GetString()));
+
+        Assert.Empty(Radio.Reply(GameNews.Get(Radio.As("Новенький"), news, rig.Store)).Body.GetProperty("played").EnumerateArray());
     }
 }

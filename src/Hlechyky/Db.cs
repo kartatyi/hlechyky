@@ -133,6 +133,14 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE accounts ADD COLUMN email TEXT"); } catch (SqliteException) { /* exists */ }
         Exec(c, "CREATE UNIQUE INDEX IF NOT EXISTS ix_accounts_google ON accounts(google_sub) WHERE google_sub IS NOT NULL");
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_tracks_song_key ON tracks(song_key)");
+        // Людина за ніком (профіль, «Мої» в історії): усі написання ніка й усе, що під ними лежить, шукаються
+        // індексом, а не проходом по десятках тисяч програвань, лайків і реплік (див. Spellings). (requested_by, source)
+        // заразом покриває «хто скільки закинув за весь час»: той рахується самим індексом, без таблиці.
+        // Увага: запит за період із GROUP BY requested_by планувальник охоче веде цим індексом через усю таблицю —
+        // аби лиш не сортувати, — тому такі запити прив'язані до ix_plays_started через INDEXED BY.
+        Exec(c, "CREATE INDEX IF NOT EXISTS ix_plays_requested ON plays(requested_by, source)");
+        Exec(c, "CREATE INDEX IF NOT EXISTS ix_likes_nick ON likes(nick)");
+        Exec(c, "CREATE INDEX IF NOT EXISTS ix_chat_nick ON chat(nick)");
         BackfillSongKeys(c);
     }
 
@@ -275,6 +283,34 @@ public sealed class Db
 
     static string? Str(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
 
+    /// <summary>
+    /// Усі написання ніка в колонці: «Оля», «оля» й «ОЛЯ» — одна людина, а lower() у SQLite кирилиці не знає,
+    /// тож порівнюємо в C# (<see cref="Auth.NickKey"/>). DISTINCT іде індексом по цій колонці: кілька тисяч
+    /// коротких записів замість цілої таблиці. Порожній ключ — нікого.
+    /// </summary>
+    static List<string> Spellings(SqliteConnection c, string table, string column, string key)
+    {
+        var list = new List<string>();
+        if (key.Length == 0) return list;
+        using var cmd = Cmd(c, $"SELECT DISTINCT {column} FROM {table} WHERE {column} IS NOT NULL");
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            if (Auth.NickKey(r.GetString(0)) == key) list.Add(r.GetString(0));
+        return list;
+    }
+
+    /// <summary>«$p0, $p1, …» для IN зі списку, а самі значення — у <paramref name="ps"/>.</summary>
+    static string InList(string prefix, IReadOnlyList<string> values, List<(string Name, object? Value)> ps)
+    {
+        var names = new string[values.Count];
+        for (var i = 0; i < values.Count; i++)
+        {
+            names[i] = $"{prefix}{i}";
+            ps.Add((names[i], values[i]));
+        }
+        return string.Join(", ", names);
+    }
+
     // ---- tracks ----
 
     public void UpsertTrack(TrackInfo t)
@@ -402,7 +438,14 @@ public sealed class Db
     /// Рейтинг треків за період. Дослуховування — середнє по програваннях: скільки секунд прозвучало з довжини
     /// файлу (без обрізання «на секунду раніше»: хто дограв без 10 секунд, дограв). Голосові не музика.
     /// </summary>
-    public List<TrackRating> TrackRatings(int days, string sort, int n)
+    public List<TrackRating> TrackRatings(int days, string sort, int n) => TrackRatings(DateTimeOffset.UtcNow.AddDays(-days), sort, n);
+
+    /// <summary>
+    /// Те саме від моменту <paramref name="since"/> — для періодів за київськими днями (Periods). Програвання періоду
+    /// збираються один раз (MATERIALIZED): інакше SQLite вбудовував їх в обидва підзапити й ішов індексом треків через
+    /// усю таблицю, аби не сортувати групи, — на десятках тисяч програвань це секунди замість десятків мілісекунд.
+    /// </summary>
+    public List<TrackRating> TrackRatings(DateTimeOffset since, string sort, int n)
     {
         var order = sort switch
         {
@@ -413,7 +456,7 @@ public sealed class Db
         };
         using var c = Open();
         using var cmd = Cmd(c, $"""
-            WITH p AS (
+            WITH p AS MATERIALIZED (
                 SELECT p.id, p.track_id, p.skipped, p.started_at, p.stream_peak,
                        (julianday(p.ended_at) - julianday(p.started_at)) * 86400 AS played,
                        COALESCE(NULLIF(p.duration_sec, 0), NULLIF(t.duration_sec, 0)) AS dur
@@ -432,7 +475,7 @@ public sealed class Db
                    (SELECT COUNT(*) FROM likes l WHERE l.track_id = t.id) AS likes, a.last_played
             FROM agg a JOIN tracks t ON t.id = a.track_id LEFT JOIN who w ON w.track_id = a.track_id
             ORDER BY {order}, a.last_played DESC LIMIT $n
-            """, ("$since", DateTimeOffset.UtcNow.AddDays(-days).ToString("o")), ("$n", n));
+            """, ("$since", since.ToUniversalTime().ToString("o")), ("$n", n));
         using var r = cmd.ExecuteReader();
         var list = new List<TrackRating>();
         while (r.Read())
@@ -469,15 +512,33 @@ public sealed class Db
         Exec(c, "UPDATE plays SET ended_at=$now WHERE ended_at IS NULL AND id<>$k", ("$now", Now()), ("$k", keepId));
     }
 
-    public List<HistoryEntry> History(int n)
+    /// <summary>
+    /// Що грало, найсвіжіше згори. <paramref name="by"/> — лише те, що закинув цей нік (у будь-якому регістрі);
+    /// <paramref name="before"/> — лише старіше за програвання з цим id («Показати ще»). Без них — як завжди.
+    /// </summary>
+    public List<HistoryEntry> History(int n, string? by = null, long? before = null)
     {
         using var c = Open();
+        var ps = new List<(string Name, object? Value)> { ("$n", n) };
+        var where = new List<string>();
+        if (before is { } b)
+        {
+            where.Add("p.id < $before");
+            ps.Add(("$before", b));
+        }
+        if (by is not null)
+        {
+            var names = Spellings(c, "plays", "requested_by", Auth.NickKey(by));
+            if (names.Count == 0) return [];
+            where.Add($"p.source = 'user' AND p.requested_by IN ({InList("$by", names, ps)})");
+        }
         using var cmd = Cmd(c, $"""
             SELECT p.id, {TrackCols}, p.source, p.requested_by, p.started_at,
                    (SELECT COUNT(*) FROM likes l WHERE l.track_id = t.id), p.via, p.skipped
             FROM plays p JOIN tracks t ON t.id = p.track_id
+            {(where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "")}
             ORDER BY p.id DESC LIMIT $n
-            """, ("$n", n));
+            """, [.. ps]);
         using var r = cmd.ExecuteReader();
         var list = new List<HistoryEntry>();
         while (r.Read())
@@ -586,18 +647,54 @@ public sealed class Db
         return list;
     }
 
-    public List<NickCount> TopRequesters(int days)
+    /// <summary>Хто скільки закинув за останні <paramref name="days"/> діб (для Глека-балакуна) — як і було, разом із самим Глеком.</summary>
+    public List<NickCount> TopRequesters(int days) => TopRequesters(DateTimeOffset.UtcNow.AddDays(-days), []).People;
+
+    /// <summary>
+    /// Хто скільки закинув від <paramref name="since"/> (<see cref="DateTimeOffset.MinValue"/> — за весь час): люди —
+    /// окремо, Глек — окремо. У топ людей Глек пролазив рекламою: джингл ставить її в чергу звичайним замовленням від
+    /// його імені (source user, requested_by — «Дядько Глек»), тоді як власні його вибори (source autodj, без імені)
+    /// не рахувались зовсім. Тепер обидва шляхи — його лічильник <c>Dj</c>. <paramref name="djNames"/> — імена, під
+    /// якими в чергу ставить сам сервер. Написання ніка зливаються: «Оля» й «оля» — один рядок під найсвіжішим.
+    /// </summary>
+    public (List<NickCount> People, int Dj) TopRequesters(DateTimeOffset since, IReadOnlyCollection<string> djNames, int n = 20)
     {
+        var dj = djNames.Select(Auth.NickKey).Where(k => k.Length > 0).ToHashSet();
         using var c = Open();
-        using var cmd = Cmd(c, """
-            SELECT requested_by, COUNT(*) FROM plays
-            WHERE source = 'user' AND requested_by IS NOT NULL AND started_at >= $s
-            GROUP BY requested_by ORDER BY 2 DESC LIMIT 20
-            """, ("$s", DateTimeOffset.UtcNow.AddDays(-days).ToString("o")));
+        // За період — лише проміжок часу (без INDEXED BY планувальник іде індексом ніків через усю таблицю, аби не
+        // сортувати: місяць рахувався б у п'ятнадцять разів довше); за весь час — самим покривним індексом ніків.
+        using var cmd = since > DateTimeOffset.MinValue
+            ? Cmd(c, """
+                SELECT source, requested_by, COUNT(*), MAX(id) FROM plays INDEXED BY ix_plays_started
+                WHERE source IN ('user', 'autodj') AND started_at >= $s
+                GROUP BY source, requested_by
+                """, ("$s", since.ToUniversalTime().ToString("o")))
+            : Cmd(c, """
+                SELECT source, requested_by, COUNT(*), MAX(id) FROM plays INDEXED BY ix_plays_requested
+                WHERE source IN ('user', 'autodj')
+                GROUP BY requested_by, source
+                """);
         using var r = cmd.ExecuteReader();
-        var list = new List<NickCount>();
-        while (r.Read()) list.Add(new NickCount(r.GetString(0), r.GetInt32(1)));
-        return list;
+        var djCount = 0;
+        var people = new Dictionary<string, (string Nick, int Count, long Last)>();
+        while (r.Read())
+        {
+            var by = Str(r, 1);
+            var (count, last) = (r.GetInt32(2), r.GetInt64(3));
+            if (r.GetString(0) == "autodj" || (by is not null && dj.Contains(Auth.NickKey(by))))
+            {
+                djCount += count;
+                continue;
+            }
+            if (by is null) continue;   // людське замовлення без імені — нема кому записати
+            var key = Auth.NickKey(by);
+            people[key] = people.TryGetValue(key, out var was)
+                ? (last > was.Last ? by : was.Nick, was.Count + count, Math.Max(last, was.Last))
+                : (by, count, last);
+        }
+        var top = people.Values.OrderByDescending(x => x.Count).ThenByDescending(x => x.Last).Take(n)
+            .Select(x => new NickCount(x.Nick, x.Count)).ToList();
+        return (top, djCount);
     }
 
     // ---- queue persistence (survives server restarts) ----
@@ -998,6 +1095,131 @@ public sealed class Db
         var list = new List<(string, string?)>();
         while (r.Read()) list.Add((r.GetString(0), Str(r, 1)));
         return list;
+    }
+
+    // ---- людина: музичне обличчя ніка ----
+
+    public sealed record TrackCount(TrackInfo Track, int Count);
+    public sealed record TrackAt(TrackInfo Track, DateTimeOffset At);
+    public sealed record PlaylistRef(long Id, string Name, int Count);
+
+    /// <summary>
+    /// Що радіо знає про ніка. <paramref name="Nick"/> — останнє написання, під яким він тут щось робив (null — ніде);
+    /// <paramref name="Seen"/> — закидав, лайкав, робив плейлисти чи писав у Балачки. Закидання — лише людські
+    /// (source user); лічильники — за київськими днями від меж, які дав той, хто питає.
+    /// </summary>
+    public sealed record PersonRadio(string? Nick, bool Seen, int Week, int Month, int All, List<TrackCount> Top,
+        List<TrackAt> Recent, int LikeCount, List<TrackAt> Likes, List<PlaylistRef> Playlists);
+
+    /// <summary>
+    /// Музичне обличчя ніка для картки людини: скільки закидав, що найчастіше (голосові не музика — у топ не йдуть),
+    /// що останнє (кожен трек раз, свіже згори), що лайкав і які плейлисти завів. Регістр не рахується: під «оля»
+    /// знайдеться і те, що колись закидала «Оля». Усе — на одному з'єднанні, кожен запит — індексом по ніку.
+    /// </summary>
+    public PersonRadio Person(string nick, DateTimeOffset weekSince, DateTimeOffset monthSince, int n = 5)
+    {
+        var key = Auth.NickKey(nick);
+        using var c = Open();
+        var plays = Spellings(c, "plays", "requested_by", key);
+        var likes = Spellings(c, "likes", "nick", key);
+        var lists = Spellings(c, "playlists", "created_by", key);
+        var chat = Spellings(c, "chat", "nick", key);
+
+        int week = 0, month = 0, all = 0;
+        var top = new List<TrackCount>();
+        var recent = new List<TrackAt>();
+        if (plays.Count > 0)
+        {
+            var ps = new List<(string Name, object? Value)>
+            {
+                ("$w", weekSince.ToUniversalTime().ToString("o")), ("$m", monthSince.ToUniversalTime().ToString("o")), ("$k", n),
+            };
+            var mine = $"p.source = 'user' AND p.requested_by IN ({InList("$by", plays, ps)})";
+            using (var cmd = Cmd(c, $"""
+                       SELECT COUNT(*), COALESCE(SUM(p.started_at >= $w), 0), COALESCE(SUM(p.started_at >= $m), 0)
+                       FROM plays p WHERE {mine}
+                       """, [.. ps]))
+            using (var r = cmd.ExecuteReader())
+                if (r.Read()) (all, week, month) = (r.GetInt32(0), r.GetInt32(1), r.GetInt32(2));
+            // Спершу групи по самих програваннях, і лише п'ять переможців — до треків: так не тягнемо трек на кожне
+            // з тисяч закидань. Програвання треку, якого в tracks нема (рушій після рестарту міг узяти його лише з
+            // метаданих liquidsoap), відсіюємо ще в групах, інакше п'ятірка після з'єднання стала б четвіркою.
+            const string known = "EXISTS (SELECT 1 FROM tracks k WHERE k.id = p.track_id)";
+            using (var cmd = Cmd(c, $"""
+                       SELECT {TrackCols}, x.times FROM (
+                           SELECT p.track_id, COUNT(*) AS times, MAX(p.id) AS last_id FROM plays p
+                           WHERE {mine} AND p.track_id NOT LIKE 'voice-%' AND {known}
+                           GROUP BY p.track_id ORDER BY times DESC, last_id DESC LIMIT $k
+                       ) x JOIN tracks t ON t.id = x.track_id ORDER BY x.times DESC, x.last_id DESC
+                       """, [.. ps]))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read()) top.Add(new TrackCount(ReadTrack(r), r.GetInt32(7)));
+            using (var cmd = Cmd(c, $"""
+                       SELECT {TrackCols}, x.played_at FROM (
+                           SELECT p.track_id, MAX(p.started_at) AS played_at, MAX(p.id) AS last_id FROM plays p
+                           WHERE {mine} AND {known} GROUP BY p.track_id ORDER BY last_id DESC LIMIT $k
+                       ) x JOIN tracks t ON t.id = x.track_id ORDER BY x.last_id DESC
+                       """, [.. ps]))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read()) recent.Add(new TrackAt(ReadTrack(r), Ts(r.GetString(7))));
+        }
+
+        var likeCount = 0;
+        var liked = new List<TrackAt>();
+        if (likes.Count > 0)
+        {
+            var ps = new List<(string Name, object? Value)> { ("$k", n) };
+            // лайк можна поставити й на id, якого в tracks нема (запит руками) — такі не рахуємо, як і «Улюблене»
+            var mine = $"l.nick IN ({InList("$ln", likes, ps)}) AND EXISTS (SELECT 1 FROM tracks k WHERE k.id = l.track_id)";
+            using (var cmd = Cmd(c, $"SELECT COUNT(DISTINCT l.track_id) FROM likes l WHERE {mine}", [.. ps]))
+                likeCount = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+            using (var cmd = Cmd(c, $"""
+                       SELECT {TrackCols}, x.liked_at FROM (
+                           SELECT l.track_id, MAX(l.created_at) AS liked_at FROM likes l
+                           WHERE {mine} GROUP BY l.track_id ORDER BY liked_at DESC LIMIT $k
+                       ) x JOIN tracks t ON t.id = x.track_id ORDER BY x.liked_at DESC
+                       """, [.. ps]))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read()) liked.Add(new TrackAt(ReadTrack(r), Ts(r.GetString(7))));
+        }
+
+        var playlists = new List<PlaylistRef>();
+        if (lists.Count > 0)
+        {
+            var ps = new List<(string Name, object? Value)>();
+            using var cmd = Cmd(c, $"""
+                SELECT p.id, p.name, (SELECT COUNT(*) FROM playlist_tracks x WHERE x.playlist_id = p.id)
+                FROM playlists p WHERE p.created_by IN ({InList("$pl", lists, ps)}) ORDER BY p.id
+                """, [.. ps]);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) playlists.Add(new PlaylistRef(r.GetInt64(0), r.GetString(1), r.GetInt32(2)));
+        }
+
+        var spellings = plays.Concat(likes).Concat(lists).Concat(chat).Distinct(StringComparer.Ordinal).ToList();
+        var latest = spellings.Count <= 1 ? spellings.FirstOrDefault() : LatestSpelling(c, spellings);
+        return new PersonRadio(latest, spellings.Count > 0, week, month, all, top, recent, likeCount, liked, playlists);
+    }
+
+    /// <summary>
+    /// Кілька написань того самого ніка (буває в гостей: «гість вася» з одного браузера, «гість Вася» з іншого) —
+    /// беремо те, під яким він діяв найпізніше. Мітки часу — ISO у UTC, тож рядки порівнюються як час.
+    /// </summary>
+    static string LatestSpelling(SqliteConnection c, List<string> spellings)
+    {
+        var best = (Nick: spellings[0], At: "");
+        foreach (var (table, column, at) in new[]
+                 {
+                     ("plays", "requested_by", "started_at"), ("likes", "nick", "created_at"),
+                     ("chat", "nick", "created_at"), ("playlists", "created_by", "created_at"),
+                 })
+        {
+            var ps = new List<(string Name, object? Value)>();
+            using var cmd = Cmd(c, $"SELECT {column}, MAX({at}) FROM {table} WHERE {column} IN ({InList("$s", spellings, ps)}) GROUP BY {column}", [.. ps]);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                if (!r.IsDBNull(1) && string.CompareOrdinal(r.GetString(1), best.At) > 0) best = (r.GetString(0), r.GetString(1));
+        }
+        return best.Nick;
     }
 
     // ---- акаунти ----
