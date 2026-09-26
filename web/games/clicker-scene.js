@@ -601,7 +601,7 @@
     if (t.school >= 1) {
       s += hutSvg(108, 74, 28, { h: 11, roof: '#8f6e44', windows: 3,
         extra: '<rect x="8" y="-30" width="6" height="10" fill="#e8dfcc"/><path d="M6 -30l5-6 5 6z" fill="#8f6e44"/><circle cx="11" cy="-25" r="1.6" fill="#d9a92f"/>'
-          + (t.school >= 25 ? '<path d="M-10 -22v-9" stroke="#6b4423"/><path class="clks-flag" d="M-10 -31l7 2-7 2z" fill="#2f5fa8"/><path d="M-10 -27l7 2-7 0z" fill="#f2c230"/>' : '') });
+          + (t.school >= 25 ? '<path d="M-10 -22v-9" stroke="#6b4423"/><path class="clks-flag" d="M-10 -31l7 2-7 2z" fill="#2f5fa8"/>' : '') });
     }
     if (t.tsar >= 1) {
       const k = 0.7 + (t.tsar >= 25 ? 0.2 : 0) + (t.tsar >= 50 ? 0.2 : 0) + (t.tsar >= 100 ? 0.3 : 0);
@@ -1225,7 +1225,7 @@
       + '<path d="M-6-2.4V-30M7-2.4V-27" stroke="#3a2a1a" stroke-width="1"/>'
       + '<path d="M-5.4-29q9 9 8.6 25.6H-5.4z" fill="#f4efe3"/><path d="M7.6-26.4q7 8 7 22H7.6z" fill="#efe6d2"/>'
       + '<path d="M-6.6-27.4q-8.6 8-11 23.6H-6.6z" fill="#e8dcc4"/>'
-      + '<path d="M-6-30l5 1.6-5 1.6z" fill="#2f5fa8"/><path d="M-6-28.4l5 .4-5 1z" fill="#f2c230"/></g>';
+      + '<path d="M-6-30l5.6 1.8-5.6 1.8z" fill="#2f5fa8"/></g>';
   }
 
   /// Шлюп «Нева» (Лисянський, 1803–1806): три щогли з прямими вітрилами, ніс праворуч.
@@ -1269,7 +1269,7 @@
     if (n >= 25) {
       s += '<g transform="translate(270 110)">'
         + (n >= 50 ? '<path d="M7.4-17V-24h3.2v7z" fill="#9a6a4a"/>' + puff(9, -25, 0.5, 'sch') : '')
-        + (n >= 100 ? '<path d="M-8-19.6v-9" stroke="#6b4423" stroke-width=".7"/><path class="clks-flag" d="M-8-28.6l6.4 1.8-6.4 1.8z" fill="#2f5fa8"/><path d="M-8-26.8l6.4.2-6.4 1.2z" fill="#f2c230"/>' : '')
+        + (n >= 100 ? '<path d="M-8-19.6v-9" stroke="#6b4423" stroke-width=".7"/><path class="clks-flag" d="M-8-28.6l6.4 1.8-6.4 1.8z" fill="#2f5fa8"/>' : '')
         + '<path d="M-13 0v-13h26V0z" fill="#e9d6b0"/><path d="M-14.6-13L0-20.4 14.6-13z" fill="#9a5a3a"/>'
         + '<path d="M-13-6.6h26" stroke="#c9a06a" stroke-width=".6"/>'
         // Школа керамічна — фриз із зелених кахлів під стріхою.
@@ -1507,18 +1507,18 @@
       + '<path d="M-6-2.6V-24M7-2.6V-20" stroke="#3a2a1a" stroke-width=".9"/>'
       + '<path d="M-15-7.6L4-27" stroke="#6b4423" stroke-width=".8"/><path d="M-14.4-8.2L3.4-26.4-5.4-4.4z" fill="#f1e6cc"/>'
       + '<path d="M-1-6L15-22.6" stroke="#6b4423" stroke-width=".8"/><path d="M-.4-6.6L14.4-22 7.4-4.2z" fill="#e8dcc0"/>'
-      + '<path d="M4-27l8 2-8 2z" fill="' + c + '"/><path d="M-18-2.6v-8.4" stroke="#3a2a1a" stroke-width=".6"/><path d="M-18-11h5.6v3.6H-18z" fill="' + c + '"/>',
+      + '<path d="M4-27l8 2-8 2z" fill="' + c + '"/><path d="M-18-2.6v-8.4" stroke="#3a2a1a" stroke-width=".6"/><path d="M-18-11l5.6 1.8-5.6 1.8z" fill="' + c + '"/>',
     canton: (c) => '<path d="M-19-6.4Q-17 1-11 2h22q6-1 9-9l-5 2.4h-28z" fill="#7a3a1e"/><path d="M-16-2.6h29" stroke="#c9a04a" stroke-width=".6"/>'
       + '<path d="M-4-4V-28M8-4V-22" stroke="#3a2a1a" stroke-width=".9"/>'
       + '<path d="M-3.6-27.4Q5-25 6-15L5-5h-8.6z" fill="#b5532e"/><path d="M-3.6-22h9.4M-3.6-17h10M-3.6-12h9.8M-3.6-7.6h9" stroke="#6b2a14" stroke-width=".5"/>'
       + '<path d="M8.4-21.6Q15-19.6 15.6-12L15-5H8.4z" fill="#c2643a"/><path d="M8.4-17.6h6.8M8.4-13h7.2M8.4-8.6h6.8" stroke="#6b2a14" stroke-width=".5"/>'
       + '<path d="M-4-28l7 1.8-7 1.8z" fill="' + c + '"/>',
-    diaspora: (c) => steamerSvg(1, c) + '<path d="M14-12.6v-4" stroke="#3a3a40" stroke-width=".5"/><path d="M14-16.6h5v1.6h-5z" fill="' + c + '"/><path d="M14-15h5v1.6h-5z" fill="#f4efe3"/>',
+    diaspora: (c) => steamerSvg(1, c) + '<path d="M14-12.6v-4" stroke="#3a3a40" stroke-width=".5"/><path d="M14-16.6l5.4 1.6-5.4 1.6z" fill="' + c + '"/>',
     london: (c) => locoSvg(false)
       + '<path d="M-42-4h2" stroke="#3a3a40" stroke-width=".8"/><rect x="-60" y="-11" width="17" height="8.4" rx="1.2" fill="#2f5a3a"/>'
       + '<path d="M-60.6-11.2h18.2" stroke="#1f3a26" stroke-width="1.2"/><g fill="#f2d27a"><rect x="-58" y="-9.4" width="3" height="3"/><rect x="-53" y="-9.4" width="3" height="3"/><rect x="-48" y="-9.4" width="3" height="3"/></g>'
       + '<circle cx="-57" cy="-1.6" r="1.6" fill="#2a2a2e"/><circle cx="-46" cy="-1.6" r="1.6" fill="#2a2a2e"/>'
-      + '<path d="M-1.4-2.6v-7" stroke="#3a3a40" stroke-width=".5"/><path d="M-1.4-9.6h5v3.2h-5z" fill="' + c + '"/>',
+      + '<path d="M-1.4-2.6v-7" stroke="#3a3a40" stroke-width=".5"/><path d="M-1.4-9.6l5.2 1.6-5.2 1.6z" fill="' + c + '"/>',
     paris: (c) => '<ellipse cy=".4" rx="22" ry="1.6" fill="rgba(0,0,0,.2)"/>'
       // Кінь попереду (ліворуч), карета позаду, кучер на передку.
       + '<path d="M-17.6-9.6v9.4M-14.6-9.6v9.4M-24.4-9.2v9M-21.8-9.4v9.2" stroke="#6b4a2e" stroke-width="1.3" stroke-linecap="round"/>'
