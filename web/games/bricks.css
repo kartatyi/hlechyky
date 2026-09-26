@@ -93,6 +93,7 @@
 }
 .bricks-toss span { text-align: center; }
 .bricks-out .bricks-touch { display: none; }
+.bricks-out .bricks-bd canvas, .bricks-out .bricks-strip:not(.dead) { cursor: pointer; }   /* сюди й кидають */
 .bricks-toss[hidden] { display: none; }
 .bricks-toss button {
   min-height: 34px; min-width: 44px; padding: 0 8px; font-size: 1.25em; border-radius: 10px; background: var(--panel3);
