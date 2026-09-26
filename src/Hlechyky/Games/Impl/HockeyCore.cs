@@ -55,8 +55,22 @@ public sealed class HockeyCore(Random rng)
     public int Rally { get; private set; }
     /// <summary>Хто вдарив шайбу в цьому тику.</summary>
     public int? HitBy { get; private set; }
-    /// <summary>Хто торкався шайби останнім — йому гол або автогол.</summary>
-    public int? LastTouch { get; set; }
+    /// <summary>
+    /// Хто торкався шайби останнім. Сетер ще й запам'ятовує дотик за командою: гол записуємо останньому, хто
+    /// грав шайбою за команду, що забила, навіть якщо захисник її потім зачепив (див. <see cref="Goal"/>).
+    /// </summary>
+    public int? LastTouch
+    {
+        get => _lastTouch;
+        set
+        {
+            _lastTouch = value;
+            if (value is { } s && s is >= 0 and < Seats) _teamTouch[Team[s]] = s;
+        }
+    }
+    int? _lastTouch;
+    /// <summary>Останній дотик кожної команди в цьому розіграші (−1 — ще не торкались).</summary>
+    readonly int[] _teamTouch = [-1, -1];
     /// <summary>Команда, що забила в цьому тику.</summary>
     public int? GoalBy { get; private set; }
     /// <summary>У цьому тику сервер штовхнув застиглу шайбу.</summary>
@@ -99,6 +113,7 @@ public sealed class HockeyCore(Random rng)
         N = 0;
         Rally = 0;
         HitBy = LastTouch = GoalBy = null;
+        _teamTouch[0] = _teamTouch[1] = -1;
         Nudged = false;
         Still = false;
         Puck = new ArenaBody(Mid, TableH / 2, PuckR, 1);
@@ -133,6 +148,7 @@ public sealed class HockeyCore(Random rng)
     {
         Plays[seat] = false;
         if (LastTouch == seat) LastTouch = null;
+        for (var t = 0; t < 2; t++) if (_teamTouch[t] == seat) _teamTouch[t] = -1;
     }
 
     // ---------- ввід ----------
@@ -301,16 +317,20 @@ public sealed class HockeyCore(Random rng)
         return -1;
     }
 
-    /// <summary>Гол команді <paramref name="team"/>: особистий — останньому, хто торкався (свій — автогол), шайба — тим, хто пропустив.</summary>
+    /// <summary>
+    /// Гол команді <paramref name="team"/>, шайба — тим, хто пропустив. Особистий гол — останньому з команди, що
+    /// забила, хто торкався шайби в цьому розіграші: удар, який захисник лише зачепив по дорозі у свої ворота, —
+    /// гол нападника, а не автогол. Автогол — коли забивна команда шайби не торкалась зовсім, а останнім був
+    /// хтось із тих, хто пропустив (сам заштовхав у свої).
+    /// </summary>
     int Goal(int team)
     {
         S[team]++;
-        if (LastTouch is { } lt && Plays[lt])
-        {
-            if (Team[lt] == team) Goals[lt]++;
-            else Own[lt]++;
-        }
+        var scorer = _teamTouch[team];
+        if (scorer >= 0 && Plays[scorer]) Goals[scorer]++;
+        else if (LastTouch is { } lt && Plays[lt] && Team[lt] != team) Own[lt]++;
         LastTouch = null;
+        _teamTouch[0] = _teamTouch[1] = -1;
         Rally = 0;
         GoalBy = team;
         ServeIn = ServeTicks;

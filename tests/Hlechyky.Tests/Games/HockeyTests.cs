@@ -825,4 +825,44 @@ public class HockeyTests(ITestOutputHelper output)
         Assert.Equal(left - 10, Game(h).Left);
         Assert.Equal(left - 10, Frame(h).GetProperty("left").GetInt32());
     }
+
+    [Fact] // 44: захисник лише зачепив удар — гол нападника, а не автогол
+    public void A_deflection_by_the_defender_still_counts_for_the_attacker()
+    {
+        var h = Table(4);
+        Live(h);
+        var c = Core(h);
+        // Ганна (місце 2, сині) б'є, Петро (1, руді) зачіпає — шайба все одно в рудих воротах
+        c.LastTouch = 2;
+        Score(h, 0, toucher: 1);
+        var v = h.View(null);
+        Assert.Equal(1, v.GetProperty("goals")[2].GetInt32());
+        Assert.Equal(0, v.GetProperty("own")[1].GetInt32());
+        // новий розіграш — старий дотик Ганни вже не рахується: Петро сам заштовхав у свої
+        Score(h, 0, toucher: 1);
+        v = h.View(null);
+        Assert.Equal(1, v.GetProperty("goals")[2].GetInt32());
+        Assert.Equal(1, v.GetProperty("own")[1].GetInt32());
+        Assert.Equal("[2,0]", v.GetProperty("score").GetRawText());
+    }
+
+    [Fact] // 45: дотик за командою пише сама фізика удару, а не лише тестовий сетер
+    public void A_real_paddle_hit_is_what_credits_the_goal()
+    {
+        var c = Bare(0, 1);
+        Put(c, 1, 120, 60);
+        Put(c, 0, 60, 30);
+        // рудий б'є шайбу ліворуч, вона пролітає повз синього й залітає в сині ворота
+        c.Puck = new ArenaBody(120 - HockeyCore.PadR - HockeyCore.PuckR - 0.5, 60, HockeyCore.PuckR, 1) { Vx = -1 };
+        c.Move(1, -1, 0);
+        var scored = -1;
+        for (var t = 0; t < 60 && scored < 0; t++)
+        {
+            if (t == 1) c.Move(1, 0, 0);
+            scored = c.Step();
+        }
+        Assert.Equal(1, scored);
+        Assert.Equal(1, c.Goals[1]);
+        Assert.Equal(0, c.Own[0]);
+    }
 }
