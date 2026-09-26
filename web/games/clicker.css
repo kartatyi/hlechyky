@@ -5,6 +5,7 @@
 
   Формфактор: .clk — контейнер (container-type), і коли картка ширша за 640 px, .clk-lay стає двома стовпцями:
   ліворуч сцена з лічильником і прилавком, праворуч вкладки з верстатами. На телефоні — як і було, стовпчиком.
+  На ПК (картка від 900 px, вікно від 700 px заввишки) — .clk.fit: стіл рівно в один екран (див. наприкінці файла).
 */
 :root {
   --clk-disc: #2b4c3c;      /* сам круг гончарного кола */
@@ -16,8 +17,7 @@
 
 /* Картка кімнати — на всю ширину сітки столів: у половині стовпця коло, лічильник і три вкладки лягали б
    одним довгим стовпчиком. Клас ставить сам модуль на mount. */
-/* Підкручуємо стіл під шапку сайту (56 px), а не під неї — clicker.js кличе scrollIntoView на відкритті. */
-.gtable.clk-wide { grid-column: 1 / -1; scroll-margin-top: 62px; }
+.gtable.clk-wide { grid-column: 1 / -1; }
 /* Іменовані контейнери: clk — вся картка (від неї залежить компонування), clkside — полиця верстатів
    (від неї — в один чи в два стовпці рядки). Без імен запит ізсередини полиці читав би тепер її, а не картку. */
 .clk { width: 100%; container: clk / inline-size; }
@@ -29,6 +29,29 @@
 .clk-scene { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .clk-scene input, .clk-scene textarea { -webkit-user-select: text; user-select: text; }
 .clk-side { width: 100%; display: flex; flex-direction: column; gap: 8px; min-width: 0; container: clkside / inline-size; }
+/* Обгортка сцени: сцена й Око майстра по центру. На ПК (.clk.fit) вона ще й забирає всю вільну висоту стовпчика. */
+.clk-stagebox { width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+
+/* ---- мініплашка «🏺 число · ⤒ до кола» (v10 §9) ----
+   Коло прокрутили з екрана — плашка липне під шапкою сайту (--clk-pin-top ставить pinView у clicker.js). Сама вона
+   нуль заввишки, а кнопка з неї лише звисає: поява плашки нічого в картці не зсуває. Липне в межах картки. */
+.clk-pin {
+  position: sticky; top: calc(var(--clk-pin-top, 56px) + 6px); z-index: 20; height: 0;
+  display: flex; justify-content: center; align-items: flex-start; pointer-events: none;
+}
+.clk .clk-pinbtn {
+  pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; flex: none; height: 40px;
+  max-width: calc(100% - 16px); padding: 0 14px; border-radius: 999px; border: 1px solid var(--accent2);
+  background: rgba(12, 24, 18, .94); color: var(--text); box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+  white-space: nowrap; overflow: hidden; animation: clk-pinin .2s ease-out;
+}
+.clk .clk-pinbtn:hover { background: rgba(20, 38, 29, .96); }
+.clk-pinico { font-size: 1.05em; line-height: 1; }
+.clk-pinnum { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clk-pinunit { color: var(--muted); font-size: .9em; }
+.clk-pingo { color: var(--muted); font-size: .85em; padding-left: 8px; margin-left: 2px; border-left: 1px solid var(--line); }
+@keyframes clk-pinin { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .clk .clk-pinbtn { animation: none; } }
 
 @container clk (min-width: 640px) {
   /* Сцена — головне: до 55 % картки (але не ширше 620 px), праворуч лишається щонайменше 250 px на рядки верстатів. */
@@ -40,11 +63,15 @@
 }
 
 /* ---- шапка сцени: вивіска, лічильник, швидкість, суперник ---- */
+/* Усі рядки над сценою — сталої висоти (v10 §9): коли над колом щось міняє висоту, коло їде під пальцем, а на айфоні
+   ще й смикає сторінку. Вивіска — один рядок заввишки рівно зі свій кегль: значки звань (емодзі) не роздувають його. */
 .clk-sign {
   font-size: .78em; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
   border-radius: 999px; padding: 2px 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  box-sizing: border-box; height: 1.75em; line-height: calc(1.75em - 6px);
 }
-.clk-sign:empty { display: none; }
+/* Порожня вивіска — лише до першого виду; місце тримаємо, щоб сцена не зсувалась на її появі. */
+.clk-sign:empty { visibility: hidden; }
 /* Шапка сцени має СТАЛУ висоту: інакше «99 999» → «100,001 трлн» перемикало клас .long (2,4em ↔ 1,6em),
    рядок ставав на 14 px нижчим і вся сцена з колом стрибала під пальцем.
    Рецепт: --clk-num — найбільший кегль числа, а висота шапки задана ним же (calc(var(--clk-num) * 1.08))
@@ -76,11 +103,16 @@
   .clk-head { --clk-num: 2.4em; }
   .clk-rate { display: block; min-height: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 }
-/* Ніки бувають довгі («микола ( справжній )»), а картка на ПК вузька — переносимо, а не обрізаємо. */
+/* Суперник — один рядок із «…» (v10 §9): «микола ( справжній ) попереду на 2,34 млн ₴» з живим числом то влазив,
+   то переносився, і на телефоні коло під ним стрибало на рядок. Висота стала й тоді, коли суперника ще нема
+   (таблицю тягнемо раз на хвилину): місце тримаємо порожнім, а не складаємо рядок. */
 .clk-rival {
   text-align: center; color: var(--text); background: var(--panel); border-radius: 10px; padding: 2px 10px;
-  max-width: 100%; overflow-wrap: anywhere;
+  max-width: 100%; box-sizing: border-box; height: calc(1.35em + 4px); line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* !important — бо style.css ховає будь-який [hidden] так само з !important; тут приховане лише не видно, а місце є. */
+.clk-rival[hidden] { display: block !important; visibility: hidden; }
 
 /* ---- сцена 4:5: світ за хатою вгорі, під стріхою — полиця, коло внизу, між ними падає глек ---- */
 /* container-type: розміри речей на сцені (сирці на полиці) — у cqw, щоб на телефоні й на ПК сцена була та сама. */
@@ -176,10 +208,17 @@
 }
 
 /* ---- бонуси розписного глека й розгін ---- */
-.clk-buffs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+/* Один рядок сталої висоти (v10 §9): бафи з'являються й зникають, щойно починаєш чи кидаєш клацати, і сцена
+   на ПК «дихала» б, а на телефоні все під нею стрибало. Не влазять — стискаються з «…», а не переносяться. */
+.clk-buffs {
+  display: flex; gap: 6px; flex-wrap: nowrap; justify-content: center; align-items: center; overflow: hidden;
+  width: 100%; height: calc(.82em * 1.3 + 6px);
+}
+.clk-buffs[hidden] { display: flex !important; visibility: hidden; }
 .clk-buff {
-  font-size: .82em; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  font-size: .82em; font-weight: 600; padding: 2px 9px; border-radius: 999px; line-height: 1.3;
   font-variant-numeric: tabular-nums; animation: clkglow 1.4s ease-in-out infinite alternate;
+  flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .clk-buff.fair { background: #5a3d0a; color: var(--accent); }
 .clk-buff.inspire { background: #2e3c66; color: #cfe0ff; }
@@ -375,6 +414,8 @@
 /* ---- прилавок ---- */
 .clk-sell { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .clk-left { text-align: center; }
+/* На ПК в один екран кнопки прилавка переходять у підвал правої колонки (.clk-shards), а тут лишається порожньо. */
+.clk-sell:empty, .clk-shards:empty { display: none; }
 
 /* ---- вкладки ---- */
 /* Вкладок уже сім: один рядок із горизонтальною прокруткою (активну жива хата докручує в поле зору), а не два ряди. */
@@ -618,29 +659,15 @@
   .clk-marks { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 }
 
-/* ---- широкий екран (Full HD і ширші): стіл — один екран, а не стрічка ----
-   Було: сцена 620×775 плюс шапка й смуга «Шлях виробу» = 1110 px лише лівий стовпець, полиця верстатів
-   у ОДИН стовпець на 2400 px — на 1920×1080 картка виходила 2,5 екрана. Коло — те, по чому клацають, —
-   ховалося за згином, щойно гравець гортав до верстатів, а під сценою лишалося пів екрана порожнечі.
-   Стало: сцена міряється вільною висотою вікна (--clk-stage-w веде і ширину стовпця сітки, і саму сцену),
-   полиця верстатів гортається сама в собі, обидва стовпці липнуть під шапкою сайту (56 px).
-   Порогів два: картка від 900 px (є що ділити) і вікно від 700 px заввишки (є що обмежувати). */
+/* ---- широкий екран: картка від 900 px ----
+   Історія: v9 міряла сцену вільною висотою вікна (--clk-stage-w) і клеїла обидва стовпці під шапкою сайту, але картка
+   однаково лишалась на 160 px вищою за вікно — дві прокрутки. Тепер стіл в один екран — режим .clk.fit наприкінці
+   файла; тут лишилось те, що однакове для будь-якої висоти вікна. */
 @container clk (min-width: 900px) {
-  .clk-lay {
-    /* 470 px — те, що з'їдають шапка сайту, рядок столу, лічильник, смуга «Шлях виробу» й прилавок.
-       Нижче 420 px сцену не тиснемо: на низькому екрані краще трохи прокрутити, ніж дивитись у сірник. */
-    --clk-stage-w: clamp(420px, calc((100vh - 470px) * .8), 620px);
-  }
-  .clk-scene, .clk-side { position: sticky; top: 62px; align-self: start; }
-  /* Смуга «Шлях виробу» і прилавок беруть усю ширину сцени: на широкому екрані обрізати їх до 520 px нема чого. */
+  /* Смуга «Шлях виробу» бере всю ширину сцени: на широкому екрані обрізати її до 520 px нема чого. */
   .clk-path { max-width: none; }
-  /* 120 px — шапка сайту, рядок стола й відступи сторінки над карткою та під нею: з ними картка
-     стає рівно в екран і прокрутити вкладки під шапку вже нікуди. */
-  .clk-side { max-height: calc(100vh - 120px); }
-  /* Гортається лише полиця; min-height: 0 — щоб флекс дав їй стиснутись, інакше max-height вище не діє. */
-  .clk-pane { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
-  /* Сцена тут щонайменше 420 px завширшки, а найдовше число («999 999 999 999») у 2,4em — це ~340 px
-     разом зі словом «глеків». Тож на ПК число взагалі не міняє кегля: найспокійніший вигляд лічильника. */
+  /* Сцена тут здебільшого ширша за 400 px, а найдовше число («999 999 999 999») у 2,4em — це ~340 px разом зі словом
+     «глеків». Тож на ПК число не міняє кегля: найспокійніший вигляд лічильника (вузький стовпчик — див. .pathside). */
   .clk-count.long { font-size: var(--clk-num); }
 }
 
@@ -669,39 +696,100 @@
 }
 
 /* ---- Full HD і ширше (картка від 1500 px — це 1920 у режимі ⛶) ----
-   Скарга: «сцена дрібна, коло маленьке, шрифти дрібні». Сцена тут упирається не в ширину (її вдосталь),
-   а в ВИСОТУ вікна: сцена 4:5, і над нею ще лічильник, під нею — смуга «Шлях виробу», стрічка й прилавок.
-   Тому тут ми (а) звільняємо рядок, поклавши вивіску на небо сцени, (б) тиснемо проміжки з 8 до 6 px,
-   (в) міряємо сцену з меншим накладним числом. Разом: 1920×1080 дає сцену 520 замість 488 (коло 256
-   замість 240), а на 1440 px заввишки — стелю 760 замість 620 (коло 375 замість 306). */
+   Скарга v9: «сцена дрібна, коло маленьке, шрифти дрібні» — тут кегль більший, а проміжки менші. */
 @container clk (min-width: 1500px) {
-  .clk-lay {
-    /* Кегль ставимо на .clk-lay, а не на .clk: @container міряє ПРЕДКА, тож сам контейнер собі не відповідає. */
-    font-size: 1.06em;
-    /* 430 px — виміряний накладний простір: 107 px над карткою (шапка сайту + рядок стола), 44 лічильник,
-       19 швидкість, 22 суперник, 98 смуга «Шлях виробу», 30 стрічка, 38 прилавок, 18 черепки й проміжки.
-       Нижня межа та сама, що й для 900-ки: на широкому, але низькому вікні (1920×900) сцена не має рости. */
-    /* 480, не 430: над карткою ще рядок «← Лобі · Гончарне коло», і з 430 нижній край картки їхав під згин на 1080 (рецензія v9). */
-    --clk-stage-w: clamp(420px, calc((100vh - 480px) * .8), 760px);
-  }
+  /* Кегль ставимо на .clk-lay, а не на .clk: @container міряє ПРЕДКА, тож сам контейнер собі не відповідає. */
+  .clk-lay { font-size: 1.06em; }
   .clk-scene { gap: 6px; }
-  /* Вивіска перестає займати окремий рядок і лягає на небо над хатою: order переставляє її перед сценою,
-     а від'ємний відступ знизу (своя висота + проміжок) піднімає сцену на її місце — сцені +29 px висоти.
-     Порядок: 0 — число, швидкість, суперник; 1 — вивіска; 2 — сцена й усе, що частини додають під нею. */
-  .clk-scene > * { order: 2; }
-  .clk-head, .clk-rate, .clk-rival { order: 0; }
-  .clk-sign {
-    order: 1; position: relative; z-index: 2; box-sizing: border-box;
-    height: 1.75em; line-height: 1.45; margin-bottom: calc(-1.75em - 6px);
-  }
-  /* Поки Око майстра стоїть замість сцени, класти вивіску нема на що — вертаємо їй рядок. */
-  .clk-scene:has(> .clk-stage[hidden]) .clk-sign { order: 0; margin-bottom: 0; }
-  /* Суперник лишається рядком, але в один: «микола ( справжній ) позаду на …» не має ставати абзацом. */
-  .clk-rival { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
-/* Низьке вікно (ноутбук на 768 px) або зовсім високе — хай усе лишається як було: там прокрутка не образа. */
-@media (max-height: 699px) {
-  .clk-lay { --clk-stage-w: 620px; }
-  .clk-scene, .clk-side { position: static; max-height: none; }
-  .clk-pane { overflow: visible; }
+
+/* ---- ПК: стіл рівно в один екран, одна прокрутка (v10 §9) ----
+   Скарга: «блок з грою більший за сторінку, і щоб доскролити донизу, треба гортати і в блоці гри, і сторінку».
+   Було (1920×1080, тест-владік): картка 1099 px з 123-го пікселя — сторінку треба догортати на 160 px, а полиця
+   праворуч гортається ще й сама (3679 px у 915). Стало: .clk-lay заввишки рівно з вікно мінус те, що сторінка має над
+   столом і під ним (--clk-above / --clk-below міряє fitTable у clicker.js, клас .fit ставить теж він: картка від
+   900 px і вікно від 700 px), сторінка не гортається зовсім, гортається лише полиця.
+   Лівий стовпчик — рядки сталої висоти й обгортка сцени, що забирає решту висоти; сцена 4:5 вписується в обгортку:
+   ширина min(100cqw, 80cqh). Ширину самого стовпчика дає та сама формула від висоти (--clk-rows — сталі рядки з
+   проміжками), щоб сцена стояла впритул, без порожніх смуг обабіч. Прилавок черепків іде в підвал правої колонки, а
+   на низькому вікні (.pathside) — ще й смуга «Шлях виробу» нагору правої колонки (placeRows у clicker.js).
+   Вузьке (< 900) чи низьке (< 700) вікно — як і було: одна прокрутка сторінки, полиця без власної прокрутки. */
+.clk.fit .clk-lay {
+  --clk-h: calc(100vh - var(--clk-above, 140px) - var(--clk-below, 82px));
+  --clk-rows: 262px;
+  height: var(--clk-h);
+  grid-template-columns: clamp(300px, calc((var(--clk-h) - var(--clk-rows)) * .8), 58%) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+/* dvh — висота вікна без панелей браузера, що ховаються (планшет): там 100vh вилазить за екран. */
+@supports (height: 100dvh) {
+  .clk.fit .clk-lay { --clk-h: calc(100dvh - var(--clk-above, 140px) - var(--clk-below, 82px)); }
+}
+.clk.fit.pathside .clk-lay { --clk-rows: 160px; }
+.clk.fit .clk-scene, .clk.fit .clk-side { position: static; min-height: 0; }
+/* Стовпчик — контейнер (clkscene): обгортка сцени не вища, ніж треба сцені на всю його ширину. Високе вікно при
+   вузькому столі (2560×1440 із балачками: стовпчик упирається в 58 %) інакше лишало б між сценою й смугою 120 px
+   порожнечі — тепер вільне місце збирається внизу стовпчика. */
+.clk.fit .clk-scene { gap: 6px; container: clkscene / inline-size; }
+.clk.fit .clk-stagebox { flex: 1 1 0; min-height: 0; max-height: calc(100cqw * 1.25); container-type: size; }
+.clk.fit .clk-stage { width: min(100cqw, 80cqh); max-width: none; flex: none; }
+.clk.fit .clk-eye { flex: 0 1 auto; min-height: 0; max-height: 100%; overflow-y: auto; }
+.clk.fit .clk-path, .clk.fit .clkf-feed { max-width: none; }
+/* Вивіска лягає на небо над хатою: order ставить її перед обгорткою сцени, а від'ємний відступ (своя висота +
+   проміжок) віддає сцені її рядок. Порядок: 0 — число, швидкість, суперник; 1 — вивіска; 2 — сцена й усе під нею.
+   Праворуч угорі сцени — кнопки звуку, тож вивіска не ширша, ніж лишає їм місце. */
+.clk.fit .clk-scene > * { order: 2; }
+.clk.fit .clk-head, .clk.fit .clk-rate, .clk.fit .clk-rival { order: 0; }
+.clk.fit .clk-sign { order: 1; position: relative; top: 6px; z-index: 2; margin-bottom: calc(-1.75em - 6px); max-width: calc(100% - 180px); }
+/* Вузький стовпчик (низьке вікно): вивіска ліворуч — по центру їй лишилось би 130 px між краєм і кнопками звуку. */
+.clk.fit.pathside .clk-sign { align-self: flex-start; margin-left: 8px; max-width: calc(100% - 100px); }
+/* Поки Око майстра стоїть замість сцени, класти вивіску нема на що — вертаємо їй рядок. */
+.clk.fit .clk-scene:has(.clk-stage[hidden]) .clk-sign { order: 0; top: 0; margin-bottom: 0; }
+/* Вузький стовпчик: «999 999 999 999 глеків» у 2,4em ширше за нього — тут число знову меншає (висота шапки та сама). */
+.clk.fit.pathside .clk-count.long { font-size: calc(var(--clk-num) * .75); }
+/* Права колонка: [смуга «Шлях виробу»] · вкладки · одна панель, що гортається · підвал із прилавком. */
+.clk.fit .clk-pane { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
+.clk.fit .clk-side > .clk-path { order: -1; flex: none; }
+/* Смуга стоїть під самим верхом картки — підказка «перший раз» виринає під нею (над вкладками), а не над карткою. */
+.clk.fit.pathside .clk-tip { bottom: auto; top: calc(100% + 4px); }
+.clk.fit .clk-shards { order: 99; flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; }
+.clk.fit .clk-shards .clk-left { flex: 1 1 100%; }
+/* Картка стола: рядок-дубль «🏺 Гончарне коло 👁 1» ховаємо (те саме пише рядок «← Лобі» над карткою), а статус і
+   «Закрити» ставимо в один рядок — разом це 60 px висоти сцені. Клас .clk-fit на картці ставить fitTable. */
+.gtable.clk-fit > .gseats { display: none; }
+.gtable.clk-fit { flex-flow: row wrap; align-items: center; column-gap: 12px; }
+.gtable.clk-fit > .gbody { flex: 1 0 100%; min-width: 0; }
+.gtable.clk-fit > .gstatus { flex: 1 1 0; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gtable.clk-fit > .gbtns { flex: none; }
+
+/* ---- телефон: під палець, а не під мишку (v10 §9) ----
+   На 390 px кнопки були 22–37 px заввишки: вкладки 30, «×1 / ×10 / макс» 26, «Продати» в коморі 22, «Здати» 26,
+   розділи Майстерні 25. Тут усе, чого торкаються пальцем, — від 40 px. Один блок на всі частини й наприкінці файла:
+   кожне правило на клас важче за правило частини (.clk попереду), тож частинам нічого міняти не треба.
+   Дрібні значки посеред тексту (ⓘ, «Глянути» в стрічці) не роздуваємо — їм дотик ширшає невидимою рамкою (::after). */
+@media (max-width: 480px) {
+  .clk .clk-tabs button, .clk .clk-modes button, .clk .clk-sell button, .clk .clk-shards button, .clk .clk-nxbtn,
+  .clk .clk-lookopt, .clk .clk-take, .clk .clk-plain, .clk .clk-fire, .clk .clkw-btns button, .clk .clkw-sellall,
+  .clk .clkw-upbtn, .clk .clkf-obtns > button, .clk .clkf-bid button, .clk .clkk-wbtn, .clk .clkk-replay,
+  .clk .clka-showoff, .clk .clkg-btns button, .clk .clkg-master, .clk .clkg-potter button, .clk .clkt-chip {
+    min-height: 40px;
+  }
+  .clk .clk-modes button { min-width: 44px; justify-content: center; }
+  .clk .clkk-tbtn { width: 40px; height: 40px; }
+  .clk .clk-ov-x { min-width: 40px; min-height: 40px; justify-content: center; }
+  .clk .clks-snd .clks-sndbtn, .clk .clks-snd .clks-sndmus { width: 40px; height: 40px; }
+  /* Заголовки згорток («🏠 Хата», «торг ▾», «що потрібно ▾»…): висоту дає відступ, а не display — flex на <summary>
+     старий Safari не бере. */
+  .clk .clk-sec > summary, .clk .clkf-bid > summary, .clk .clkk-styles > summary, .clk .clkk-other > summary,
+  .clk .clkk-strawsec > summary, .clk .clka-ringsec > summary, .clk .clkg-need > summary, .clk .clkt-sec > summary {
+    padding-top: 11px; padding-bottom: 11px;
+  }
+  /* Назви кроків смуги стоять по центру плитки: без межі ширини довга («Баранець-свищик») вилазила з обох боків і
+     різалась посеред слова. Тепер — у межах плитки й з «…». */
+  .clk .clk-sttxt > b, .clk .clk-sttxt > .clk-stsub { max-width: 100%; }
+  .clk .clk-info > summary, .clk .clkk-help summary, .clk .clkf-fbtn { position: relative; }
+  .clk .clk-info > summary::after, .clk .clkk-help summary::after, .clk .clkf-fbtn::after {
+    content: ''; position: absolute; left: -8px; right: -8px; top: 50%; height: 40px; margin-top: -20px;
+  }
 }

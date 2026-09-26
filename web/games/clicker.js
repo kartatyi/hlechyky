@@ -1861,39 +1861,137 @@
     },
   };
 
-  // ---------- модуль ----------
+  // ---------- компонування стола (десяте оновлення, docs/games/specs/clicker-v10.md §9) ----------
 
-  /// Стіл вищий за те, що лишається під лобі й рядком стола, тому перший вид після входу підкручує картку
-  /// під шапку сайту (scroll-margin-top у css): коло, смуга «Шлях виробу» і полиця верстатів стають
-  /// в один екран і гортати нічого не треба. Каркас монтує картку один раз і далі лише ховає її,
-  /// тому міра — не mount, а мить, коли картка знову стала видною.
+  /// Картка стола (.gtable), у .gbody якої каркас змонтував коло.
+  const cardOf = (st) => (st.root && st.root.closest && st.root.closest('.gtable')) || null;
+
+  const FIT_W = 900;          // картка від 900 px — є що ділити на два стовпці (той самий поріг, що @container clk у css)
+  const FIT_H = 700;          // вікно нижче 700 px — одна прокрутка сторінки, як і було (@media (max-height: 699px))
+  /// Стіл нижчий за це (1536×864, 1366×768) — смуга «Шлях виробу» переходить нагору правої колонки. Під сценою вона
+  /// з'їдала б ~100 px висоти, а сцена 4:5 за кожен піксель висоти віддає 0,8 px ширини: на 768 px заввишки коло
+  /// лишилось би 113 px, а так — 150 px.
+  const SIDE_PATH_H = 800;
+
+  /// Обгортка сцени тримає лише сцену й Око майстра. Частини ставлять свої рядки «одразу після сцени»
+  /// (st.stage.insertAdjacentElement('afterend', …) — так робить смуга «Шлях виробу» в clicker-craft.js), і такий
+  /// рядок опинився б усередині обгортки, яка на ПК забирає всю вільну висоту стовпчика. Тож усе, що з'явилось в
+  /// обгортці поруч зі сценою, одразу переносимо за неї в тому самому порядку: MutationObserver встигає до малювання.
+  function keepBox(st) {
+    const box = st.stageBox;
+    const own = (e) => e.classList.contains('clk-stage') || e.classList.contains('clk-eye');
+    const mo = new MutationObserver(() => {
+      const extra = [...box.children].filter((e) => !own(e));
+      if (extra.length) box.after(...extra);
+    });
+    mo.observe(box, { childList: true });
+    return mo;
+  }
+
+  /// Кличеться на кожен вид. Рядки, що переходять між стовпцями, ставимо на місце щоразу (частини вантажаться пізніше
+  /// за ядро й кладуть свої рядки самі), а міряємо стіл лише тоді, коли картка щойно стала видною: каркас монтує її
+  /// раз і далі лише ховає, тож міра — не mount, а мить появи. Далі стіл стежить сам (fitWatch).
   function placeInView(st) {
-    const card = st.root && st.root.closest && st.root.closest('.gtable');
+    const card = cardOf(st);
     if (!card) return;
+    // Стежимо з першого виду, навіть схованої картки: коли її покажуть, ResizeObserver сам покличе fitTable.
+    if (!st.fitWatch) st.fitWatch = fitWatch(st);
     if (card.hidden || !card.isConnected) { st.inView = false; return; }
+    placeRows(st);
     if (st.inView) return;
     st.inView = true;
-    if (!window.matchMedia('(min-width: 1000px) and (min-height: 700px)').matches) return;
-    // Через кадр-другий: на першому виді полиця ще порожня (картка низька), а app.js на зміну адреси
-    // ще й скидає сторінку вгору — раніше міряти немає чого.
-    setTimeout(() => {
-      if (card.hidden || !card.isConnected) return;
-      const r = card.getBoundingClientRect();
-      if (r.bottom <= window.innerHeight) return;   // і так усе видно
-      if (r.top < 0) return;                        // гравець уже гортав сам — не смикаємо
-      card.scrollIntoView({ block: 'start', behavior: 'auto' });
-    }, 150);
+    fitTable(st);
+  }
+
+  /// ПК: стіл рівно в один екран, одна прокрутка. Висота .clk-lay — це висота вікна (100dvh у css) мінус те, що
+  /// сторінка має над столом (шапка сайту, рядок «← Лобі», відступи) і під ним (рядок «Закрити», відступ main). Обидва
+  /// числа міряємо, а не вгадуємо: шапка буває вищою, над столом може стати плашка нічного відбою, у «⛶» відступи
+  /// інші. Решту робить css: сцена забирає всю висоту, що лишилась у стовпчику, а полиця гортається сама в собі.
+  /// Вузьке (< 900) чи низьке (< 700) вікно — стіл як був: одна прокрутка сторінки.
+  function fitTable(st) {
+    const card = cardOf(st);
+    if (!st.el || !card || card.hidden || !card.isConnected) return;
+    // Спершу дешеві перевірки (без перерахунку розкладки): телефон сюди потрапляє на кожну зміну висоти сторінки.
+    let fit = window.innerWidth >= FIT_W && window.innerHeight >= FIT_H;
+    if (fit) {
+      if (!st.el.getClientRects().length) return;   // вкладка «Ефір» чи інший розділ — міряти нема чого
+      fit = st.el.clientWidth >= FIT_W;
+    }
+    if (st.el.classList.contains('fit') !== fit) st.el.classList.toggle('fit', fit);
+    if (card.classList.contains('clk-fit') !== fit) card.classList.toggle('clk-fit', fit);
+    let side = false;
+    if (fit) {
+      const lr = st.layEl.getBoundingClientRect();
+      const above = Math.ceil(lr.top + window.scrollY);
+      // Під столом: від низу .clk-lay до низу картки (рядок «Закрити»), далі — від картки до main (обгортки каркаса),
+      // і нижній відступ самого main. Саму висоту main не беремо: її може задавати колонка балачок, а не стіл.
+      let below = card.getBoundingClientRect().bottom - lr.bottom;
+      let e = card;
+      for (; e.parentElement && e.parentElement.tagName !== 'MAIN' && e.parentElement !== document.body; e = e.parentElement) {
+        below += e.parentElement.getBoundingClientRect().bottom - e.getBoundingClientRect().bottom;
+      }
+      if (e.parentElement && e.parentElement.tagName === 'MAIN') {
+        const cs = getComputedStyle(e.parentElement);
+        below += (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      }
+      below = Math.ceil(below);
+      // Угору — з запасом у піксель: дробова частина дала б сторінці 1 px прокрутки, а з нею і смугу прокрутки.
+      if (st.fitAbove !== above) { st.fitAbove = above; st.el.style.setProperty('--clk-above', above + 'px'); }
+      if (st.fitBelow !== below) { st.fitBelow = below; st.el.style.setProperty('--clk-below', below + 'px'); }
+      side = window.innerHeight - above - below < SIDE_PATH_H;
+    }
+    if (st.el.classList.contains('pathside') !== side) st.el.classList.toggle('pathside', side);
+    placeRows(st);
+  }
+
+  /// Стіл міряє себе знову, коли щось зрушило: вікно, картка (балачки згорнули, «⛶»), висота сторінки (над столом
+  /// з'явився рядок). Через кадр, а не в самому ResizeObserver: зміна висоти стола там же викликала б його знову.
+  function fitWatch(st) {
+    let raf = 0;
+    const again = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; fitTable(st); }); };
+    const ro = window.ResizeObserver ? new ResizeObserver(again) : null;
+    const card = cardOf(st);
+    if (ro) { ro.observe(document.body); if (card) ro.observe(card); }
+    window.addEventListener('resize', again);
+    return { stop() { if (ro) ro.disconnect(); window.removeEventListener('resize', again); cancelAnimationFrame(raf); } };
+  }
+
+  /// Рядки, що переходять між стовпцями, коли стіл стоїть в один екран: прилавок черепків — у підвал правої колонки
+  /// (обмін на черепки буває раз на день, а сцені це ще 60 px висоти), смуга «Шлях виробу» на низькому вікні —
+  /// нагору правої колонки. Поза цим режимом усе вертається під сцену, як було.
+  function placeRows(st) {
+    if (!st.el || !st.sellRow || !st.one) return;
+    const fit = st.el.classList.contains('fit');
+    // Сам .clk-sell лишається під сценою: перед ним ставить себе стрічка подій (clicker-fair.js). Ходять лише кнопки
+    // й рядок «сьогодні ще …» — ті самі елементи, тож обробники й st.one / st.all не міняються.
+    if (fit) {
+      if (st.one.parentElement !== st.shards) st.shards.append(st.one, st.all, st.left);
+    } else if (st.one.parentElement !== st.sellRow) {
+      st.sellRow.append(st.one, st.all);
+      st.sellRow.after(st.left);
+    }
+    const path = st.sceneEl.querySelector(':scope > .clk-path') || st.sideEl.querySelector(':scope > .clk-path');
+    if (!path) return;
+    if (fit && st.el.classList.contains('pathside')) {
+      if (path.parentElement !== st.sideEl) st.sideEl.prepend(path);
+    } else if (path.previousElementSibling !== st.stageBox) st.stageBox.after(path);
   }
 
   /// Погляд стоїть на місці, коли вище щось виросло чи зникло. Chrome і Firefox тримають його самі (scroll anchoring),
   /// а Safari — ні: на айфоні палій розпалював горно, «підготовка» й «Останнє горно» вгорі «Ремесла» ховались
   /// (~500 px), після обпалу вертались — і комора з ярмарком, які людина гортала внизу, підстрибували вгору.
-  /// Тут те саме вручну: на кожну прокрутку запам'ятовуємо елемент посеред екрана з усіма предками до картки
-  /// й де кожен стояв. Зміна вище міняє розмір когось із предків — ResizeObserver кличе нас ще до малювання,
-  /// і ми вертаємо першого живого й видного з ланцюжка на його місце. Там, де браузер уміє сам, — нічого не робимо.
+  /// Тут те саме вручну: на кожну прокрутку запам'ятовуємо якір посеред екрана з предками до картки й де кожен стояв.
+  /// Зміна вище міняє розмір когось із предків — ResizeObserver кличе нас ще до малювання, і ми вертаємо першого
+  /// живого й видного з ланцюжка на його місце. Там, де браузер уміє сам, — нічого не робимо.
+  ///
+  /// Якір — лише нерухомий HTML-блок (stillAnchor). До v10 ним ставав будь-який елемент під 40 % екрана, а там,
+  /// коли людина грає, якраз коло: диск, що крутиться, виріб, що ліпиться, руки гончаря, глек, що росте від розгону.
+  /// Їхній getBoundingClientRect ходить разом з анімацією, і кожна зміна висоти поруч (бафи з'явились чи зникли)
+  /// «вирівнювала» сторінку на висоту анімації — коло смикалось саме по собі на 5–26 px.
   function steadyView(st) {
     if (!window.ResizeObserver || (window.CSS && CSS.supports && CSS.supports('overflow-anchor', 'auto'))) return null;
-    let chain = [];                                   // [[елемент, top у вікні]] від найглибшого до картки
+    let chain = [];                                   // [[елемент, top у вікні]] від якоря до картки
+    let watched = [];                                 // якір і всі предки до body: зсув НАД карткою теж ловимо
     const shown = (e) => e.isConnected && e.getClientRects().length > 0;
     const ro = new ResizeObserver(() => {
       const link = chain.find(([e]) => shown(e));
@@ -1904,22 +2002,115 @@
       for (const l of chain) if (shown(l[0])) l[1] = l[0].getBoundingClientRect().top;
     });
     function pick() {
+      const card = cardOf(st) || st.root;
+      // Нагорі сторінки якір не потрібен (так само й у Chrome), а на прихованій картці — нема чого тримати.
+      const hit = window.scrollY > 0 && !card.hidden && card.isConnected
+        ? document.elementFromPoint(window.innerWidth / 2, window.innerHeight * 0.4) : null;
+      const anchor = hit && card.contains(hit) ? stillAnchor(hit, card) : null;
+      if (!anchor) { if (watched.length) { ro.disconnect(); watched = []; } chain = []; return; }
+      if (anchor === (chain[0] && chain[0][0])) {
+        // Той самий якір (гортаємо далі по тому самому блоку) — лише нові координати, без переписки спостерігача.
+        for (const l of chain) l[1] = l[0].getBoundingClientRect().top;
+        return;
+      }
       ro.disconnect();
       chain = [];
-      const card = (st.root.closest && st.root.closest('.gtable')) || st.root;
-      // Нагорі сторінки якір не потрібен (так само й у Chrome), а на прихованій картці — нема чого тримати.
-      if (window.scrollY <= 0 || card.hidden || !card.isConnected) return;
-      const hit = document.elementFromPoint(window.innerWidth / 2, window.innerHeight * 0.4);
-      if (!hit || !card.contains(hit)) return;
-      for (let e = hit; e; e = e === card ? null : e.parentElement) {
-        chain.push([e, e.getBoundingClientRect().top]);
+      watched = [];
+      for (let e = anchor; e; e = e.parentElement) {
+        if (e === document.documentElement) break;
+        if (card.contains(e)) chain.push([e, e.getBoundingClientRect().top]);
+        watched.push(e);
         ro.observe(e);
       }
     }
     // Синхронно, не через кадр: app.js на зміну адреси спершу гортає вгору, а вже потім ховає картку.
     window.addEventListener('scroll', pick, { passive: true });
-    return { stop() { window.removeEventListener('scroll', pick); ro.disconnect(); chain = []; } };
+    return { stop() { window.removeEventListener('scroll', pick); ro.disconnect(); chain = []; watched = []; } };
   }
+
+  /// Що може бути якорем прокрутки. Клік усередині сцени — сама .clk-stage: під пальцем там крутиться коло, ліпиться
+  /// виріб, бігає кіт, і жоден із них не стоїть на місці. Поза сценою — найглибший HTML-елемент, у якого ні сам він,
+  /// ні предки до картки не мають transform чи анімації (рядок верстата, що блимає після купівлі, — ні; його полиця — так)
+  /// і не липнуть. Усередині блоку, що гортається сам (полиця на ПК, вікно частини), якорем стає сам цей блок:
+  /// його вміст рухається прокруткою, а не розкладкою, і тримати там нема чого.
+  function stillAnchor(hit, card) {
+    const stage = hit.closest && hit.closest('.clk-stage');
+    const from = stage && card.contains(stage) ? stage : hit;
+    const path = [];
+    for (let e = from; e && e !== card; e = e.parentElement) path.push(e);
+    const kind = (e) => {
+      if (!(e instanceof HTMLElement)) return 'moving';               // SVG: диск, руки, виріб на колі
+      const cs = getComputedStyle(e);
+      if (cs.transform !== 'none' || cs.animationName !== 'none' || cs.position === 'sticky' || cs.position === 'fixed'
+        || (cs.translate && cs.translate !== 'none') || (cs.rotate && cs.rotate !== 'none') || (cs.scale && cs.scale !== 'none')) return 'moving';
+      return /auto|scroll/.test(cs.overflowY) ? 'scroller' : 'still';
+    };
+    if (kind(card) === 'moving') return null;
+    let anchor = card;
+    for (let i = path.length - 1; i >= 0; i--) {
+      const k = kind(path[i]);
+      if (k === 'moving') break;
+      anchor = path[i];
+      if (k === 'scroller') break;
+    }
+    return anchor;
+  }
+
+  /// Мініплашка: коло прокрутили з екрана (гравець пішов до полиць) — згори липне «🏺 число · ⤒ до кола», і дотик
+  /// вертає до кола. Число плашка не рахує: копіює текст лічильника (st.count / st.unit), щойно той змінився, і лише
+  /// поки її видно. На ПК, де стіл стоїть в один екран, коло з екрана не зникає — плашки там і не буде.
+  function pinView(st) {
+    const el = st.el.querySelector('.clk-pin');
+    if (!el || !window.IntersectionObserver) return null;
+    const btn = el.querySelector('.clk-pinbtn');
+    const num = el.querySelector('.clk-pinnum');
+    const unitEl = el.querySelector('.clk-pinunit');
+    let io = null, mo = null, on = false, top = -1;
+    const copy = () => {
+      const n = st.count.textContent;
+      const u = st.unit.textContent;
+      if (num.textContent !== n) num.textContent = n;
+      if (unitEl.textContent !== u) unitEl.textContent = u;
+    };
+    const show = (v) => {
+      if (on === v) return;
+      on = v;
+      el.hidden = !v;
+      if (!v) { if (mo) mo.disconnect(); return; }
+      copy();
+      mo = mo || new MutationObserver(copy);
+      for (const x of [st.count, st.unit]) mo.observe(x, { childList: true, characterData: true, subtree: true });
+    };
+    // Шапка сайту липне згори — плашка стає під нею. Висота шапки міняється хіба з розміром вікна.
+    function watch() {
+      const head = document.querySelector('body > header');
+      const t = head ? Math.max(0, Math.round(head.getBoundingClientRect().bottom)) : 0;
+      if (t === top && io) return;
+      top = t;
+      el.style.setProperty('--clk-pin-top', t + 'px');
+      if (io) io.disconnect();
+      // Коло «з екрана» — обгортка сцени вся вище за шапку. Зникла з розкладки (картку сховали) — плашки теж нема.
+      io = new IntersectionObserver(([en]) => {
+        const r = en.boundingClientRect;
+        const rootTop = en.rootBounds ? en.rootBounds.top : t;
+        show(!en.isIntersecting && r.height > 0 && r.bottom <= rootTop + 1);
+      }, { rootMargin: '-' + t + 'px 0px 0px 0px' });
+      io.observe(st.stageBox);
+    }
+    btn.addEventListener('click', () => {
+      H.api.sfx('tap');
+      const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const y = window.scrollY + st.sceneEl.getBoundingClientRect().top - top - 8;
+      window.scrollTo({ top: Math.max(0, y), behavior: calm ? 'auto' : 'smooth' });
+    });
+    watch();
+    window.addEventListener('resize', watch);
+    return {
+      stop() { window.removeEventListener('resize', watch); if (io) io.disconnect(); if (mo) mo.disconnect(); },
+    };
+  }
+
+  // ---------- модуль ----------
 
   const MOD = {
     id: 'clicker',
@@ -1951,13 +2142,22 @@
       // Картка — на всю ширину сітки столів (див. .clk-wide у css): інакше сцена й полиці лягали б одним стовпчиком.
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.add('clk-wide');
-      root.innerHTML = '<div class="clk"><div class="clk-lay">'
+      root.innerHTML = '<div class="clk">'
+        // Мініплашка (v10 §9): коло прокрутили з екрана — згори липне «🏺 число · ⤒ до кола». Сама нуль заввишки,
+        // тож поява плашки нічого під нею не зсуває. Число вона не рахує, а бере з лічильника (pinView).
+        + '<div class="clk-pin" hidden><button type="button" class="clk-pinbtn" aria-label="Прокрутити до кола">'
+        + '<span class="clk-pinico" aria-hidden="true">🏺</span><b class="clk-pinnum"></b><span class="clk-pinunit"></span>'
+        + '<span class="clk-pingo">⤒ до кола</span></button></div>'
+        + '<div class="clk-lay">'
         // Ліворуч (або зверху на телефоні): вивіска, лічильник, сцена з полицею й колом, бонуси, прилавок.
         + '<div class="clk-scene">'
         + '<div class="clk-sign"></div>'
         + '<div class="clk-head"><b class="clk-count">0</b><span class="muted small clk-unit">глеків</span></div>'
         + '<div class="clk-rate muted small"></div>'
         + '<div class="clk-rival small" hidden></div>'
+        // Обгортка сцени: на ПК вона забирає всю висоту, що лишилась у стовпчику, а сцена 4:5 вписується в неї
+        // (container-type: size у css). У ній лише сцена й Око майстра — решту тримає keepBox.
+        + '<div class="clk-stagebox">'
         + '<div class="clk-stage">'
         // Хата, що росте від покупок: шар під полицею й колом (viewBox 360×450 — сцена 4:5; малює clicker-scene.js).
         + '<svg class="clk-house" viewBox="0 0 360 450" preserveAspectRatio="none" aria-hidden="true"></svg>'
@@ -1995,6 +2195,7 @@
         + '<div class="clk-eye-veil"><span class="small">Полиця відкриється після кнопки — випадкові кліки не рахуються</span>'
         + '<button type="button" class="primary clk-eye-go" disabled>👁 Показати полицю</button></div></div>'
         + '<button type="button" class="ghost small clk-eye-reset" hidden disabled>Скинути торкання</button></div>'
+        + '</div>'
         + '<div class="clk-buffs" hidden></div>'
         + '<div class="clk-sell"><button type="button" class="primary clk-one" disabled></button>'
         + '<button type="button" class="ghost clk-all" data-pots="0" disabled></button></div>'
@@ -2023,6 +2224,8 @@
         + '<div class="clk-firebox"><div class="clk-bar"><i></i></div><div class="clk-nextstamp muted small"></div>'
         + '<button type="button" class="primary clk-fire" disabled></button><div class="clk-after small"></div></div>'
         + '<div class="clk-firestatic"></div></div>'
+        // Підвал правої колонки: на ПК, коли стіл стоїть в один екран, сюди переходить прилавок черепків (fitTable).
+        + '<div class="clk-shards"></div>'
         + '</div>'
         + '</div>'
         // Модальна панель частин (мінігри, дарунки, хата друга): одна за раз, поверх усієї картки.
@@ -2031,6 +2234,12 @@
         + '</div>';
       const q = (s) => root.querySelector(s);
       st.el = q('.clk');
+      st.layEl = q('.clk-lay');
+      st.sceneEl = q('.clk-scene');
+      st.sideEl = q('.clk-side');
+      st.stageBox = q('.clk-stagebox');
+      st.sellRow = q('.clk-sell');
+      st.shards = q('.clk-shards');
       st.count = q('.clk-count');
       st.unit = q('.clk-unit');
       st.unitKey = 'pots';
@@ -2143,7 +2352,9 @@
       st.ov.el.addEventListener('pointerdown', (e) => { st.ovDownBack = e.target === st.ov.el; });
       st.ov.el.addEventListener('click', (e) => { if (e.target === st.ov.el && st.ovDownBack !== false) H.api.closeOverlay(st); });
       st.root = root;
+      st.boxWatch = keepBox(st);
       st.steady = steadyView(st);
+      st.pinBar = pinView(st);
       H.mounted.add(st);
       for (const p of H.parts) mountPart(st, p);
       if (!st.raf) loop(st);
@@ -2336,11 +2547,14 @@
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       if (st.steady) st.steady.stop();
+      if (st.fitWatch) st.fitWatch.stop();
+      if (st.pinBar) st.pinBar.stop();
+      if (st.boxWatch) st.boxWatch.disconnect();
       for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);
       H.mounted.delete(st);
       if (st.ov) H.api.closeOverlay(st);
       const card = root.closest && root.closest('.gtable');
-      if (card) card.classList.remove('clk-wide');
+      if (card) card.classList.remove('clk-wide', 'clk-fit');
       st.raf = 0;
       st.el = null;
       root._clk = null;
