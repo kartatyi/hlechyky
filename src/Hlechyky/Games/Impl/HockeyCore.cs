@@ -25,7 +25,12 @@ public sealed class HockeyCore(Random rng)
     /// <summary>Шайба повільніша за 15 три секунди поспіль — сервер штовхає її до центру.</summary>
     public const int IdleTicks = 75;
     public const double IdleSpeed = 15, NudgeSpeed = 150, NudgeAngle = 20;
-    public const double KickSpeed = 220, KickAngle = 35;
+    /// <summary>
+    /// Стартовий розіграш — лагідний: 110 під кутом 15…35° у бік випадкової команди. Так шайба щоразу б'ється об
+    /// борт чи торець повз ворота й сповзає в куток — перший гол мусить хтось забити, а не сам стартовий удар
+    /// (на 220 і ±35° шайба часом залітала у ворота за пару секунд, поки ніхто й не торкнувся).
+    /// </summary>
+    public const double KickSpeed = 110, KickAngleMin = 15, KickAngle = 35;
 
     public ArenaBody Puck = new(Mid, TableH / 2, PuckR, 1);
     public ArenaBody[] Pads { get; } = new ArenaBody[Seats];
@@ -309,12 +314,96 @@ public sealed class HockeyCore(Random rng)
             // Застій дотиком не скидається — лише швидкістю: інакше шайбу можна «пасти» біля борта вічно.
         }
         ArenaPhysics.Cap(ref Puck, VMax);
+        var bx = Puck.X;
+        var by = Puck.Y;
         ArenaPhysics.ReflectY(ref Puck, PuckR, TableH - PuckR, EWall);
         // Торці — стіна скрізь, крім прорізу воріт: центр шайби в прорізі торця не бачить.
         if (Puck.Y < GoalLo || Puck.Y > GoalHi) ArenaPhysics.ReflectX(ref Puck, PuckR, W - PuckR, EWall);
+        Pinch(bx, by);
         if (Puck.X <= 0) return Goal(1);
         if (Puck.X >= W) return Goal(0);
         return -1;
+    }
+
+    /// <summary>
+    /// Шайба затиснута: біта впхнула її в борт (чи на біту суперника), і відбій повернув шайбу знову в біту — місця
+    /// між ними нема. Без цього наступний підкрок бачив би нормаль уже з іншого боку центра біти й вистрілював шайбу
+    /// навиворіт крізь біту. Тож: шайба лишається біля борта (без дзеркала), швидкість у бік біти гасне (вздовж борта
+    /// лишається — затиснута шайба вислизає вбік, як справжня), а біта впирається й відступає на дотик: вона
+    /// кінематична, але крізь затиснуту шайбу не проходить. Кілька проходів — на кут і на дві біти одразу.
+    /// <paramref name="bx"/>, <paramref name="by"/> — де була шайба до відбою від бортів.
+    /// </summary>
+    void Pinch(double bx, double by)
+    {
+        const double rr = PadR + PuckR;
+        for (var pass = 0; pass < 3; pass++)
+        {
+            var any = false;
+            for (var i = 0; i < Seats; i++)
+            {
+                if (!Plays[i]) continue;
+                ref var p = ref Pads[i];
+                var dx = p.X - Puck.X;
+                var dy = p.Y - Puck.Y;
+                var d2 = dx * dx + dy * dy;
+                if (d2 >= rr * rr - 1e-9) continue;
+                any = true;
+                if (pass == 0)
+                {
+                    // замість дзеркала — упритул до борта (не було борта — позиція та сама: між двома бітами)
+                    by = Math.Clamp(by, PuckR, TableH - PuckR);
+                    if (by < GoalLo || by > GoalHi) bx = Math.Clamp(bx, PuckR, W - PuckR);
+                    Puck.X = bx;
+                    Puck.Y = by;
+                    dx = p.X - Puck.X;
+                    dy = p.Y - Puck.Y;
+                    d2 = dx * dx + dy * dy;
+                    if (d2 >= rr * rr - 1e-9) continue;
+                }
+                var d = Math.Sqrt(d2);
+                var (nx, ny) = d > 1e-9 ? (dx / d, dy / d) : (0.0, Puck.Y < TableH / 2 ? 1.0 : -1.0);
+                // швидкість у бік біти гасне: туди шайбі нема куди
+                var vn = Puck.Vx * nx + Puck.Vy * ny;
+                if (vn > 0)
+                {
+                    Puck.Vx -= vn * nx;
+                    Puck.Vy -= vn * ny;
+                }
+                // біта відступає рівно на дотик (у своїй половині) — і її швидкість для ударів теж чесна
+                Yield(ref p, Team[i], nx, ny, rr);
+                p.Vx = (p.X - _x0[i]) / H;
+                p.Vy = (p.Y - _y0[i]) / H;
+            }
+            if (!any) return;
+        }
+    }
+
+    /// <summary>
+    /// Біта відступає від шайби вздовж нормалі на відстань <paramref name="rr"/>. Якщо одна вісь уперлась у межу
+    /// своєї половини (біта біля борта чи центральної лінії), дотик шукаємо вздовж тієї межі — інакше біта в куті
+    /// повзла б до дотику кілька підкроків, а шайба тим часом сиділа б у ній.
+    /// </summary>
+    void Yield(ref ArenaBody p, int team, double nx, double ny, double rr)
+    {
+        double lo = MinX(team), hi = MaxX(team);
+        var tx = Puck.X + nx * rr;
+        var ty = Puck.Y + ny * rr;
+        var cx = Math.Clamp(tx, lo, hi);
+        var cy = Math.Clamp(ty, PadR, TableH - PadR);
+        if (cx != tx && cy == ty)
+        {
+            var e = cx - Puck.X;
+            var rem = rr * rr - e * e;
+            if (rem > 0) cy = Math.Clamp(Puck.Y + (ny < 0 ? -1 : 1) * Math.Sqrt(rem), PadR, TableH - PadR);
+        }
+        else if (cy != ty && cx == tx)
+        {
+            var e = cy - Puck.Y;
+            var rem = rr * rr - e * e;
+            if (rem > 0) cx = Math.Clamp(Puck.X + (nx < 0 ? -1 : 1) * Math.Sqrt(rem), lo, hi);
+        }
+        p.X = cx;
+        p.Y = cy;
     }
 
     /// <summary>
@@ -359,11 +448,12 @@ public sealed class HockeyCore(Random rng)
         Nudged = true;
     }
 
-    /// <summary>Стартовий розіграш: 220 під кутом ±35° у бік випадкової команди.</summary>
+    /// <summary>Стартовий розіграш: 110 під кутом 15…35° (угору чи вниз) у бік випадкової команди.</summary>
     void Kickoff()
     {
         var team = rng.Next(2);
-        var a = (rng.NextDouble() * 2 - 1) * KickAngle * Math.PI / 180;
+        var deg = KickAngleMin + rng.NextDouble() * (KickAngle - KickAngleMin);
+        var a = (rng.Next(2) == 0 ? -deg : deg) * Math.PI / 180;
         var dir = team == 0 ? -1 : 1;
         Puck = new ArenaBody(Mid, TableH / 2, PuckR, 1) { Vx = dir * KickSpeed * Math.Cos(a), Vy = KickSpeed * Math.Sin(a) };
         Idle = 0;

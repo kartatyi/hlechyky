@@ -16,9 +16,21 @@ public sealed class Icefloe : Game
     public const int RoundsMax = 12;
     /// <summary>Фази в кадрі (<c>ph</c>): 0 готуйсь, 1 гра, 2 кінець раунду, 3 партію зіграно, 4 лобі.</summary>
     public const int PhReady = 0, PhGo = 1, PhEnd = 2, PhOver = 3, PhLobby = 4;
+    /// <summary>
+    /// Скільки тиків намір живе без підтвердження. Браузер, поки тримають напрямок, досилає його раз на 0.4 с;
+    /// зв'язок пропав (телефон тримав стік і втратив мережу, F5 із затиснутою стрілкою) — за 1.2 с тяга гасне, і
+    /// тіло доковзує тертям, а не розганяється саме у воду, поки йде grace 20 с.
+    /// </summary>
+    public const int KeepTicks = 30;
+    /// <summary>Від скількох гравців «типова» партія коротшає до одного раунду.</summary>
+    public const int ShortFrom = 5;
 
+    /// <summary>
+    /// Типово — «авто»: на двох–чотирьох до двох перемог, а на п'ятьох і більше — один раунд (на вісьмох «до двох»
+    /// тягнулось сім раундів і п'ять хвилин, а двоє так і не виграли жодного).
+    /// </summary>
     static readonly GameOption WinsOption = new("wins", "Партія до",
-        [("1", "1 раунду"), ("2", "2 перемог"), ("3", "3 перемог")], "2");
+        [("auto", "2 перемог (на 5+ — 1 раунду)"), ("1", "1 раунду"), ("2", "2 перемог"), ("3", "3 перемог")], "auto");
 
     static readonly string[] Names = ["синій", "рудий", "зелений", "жовтий", "бузковий", "м’ятний", "рожевий", "сірий"];
 
@@ -32,13 +44,18 @@ public sealed class Icefloe : Game
     int _ph = PhReady;
     int _left;
     int _need = 2;
+    /// <summary>Що обрали в опції: 1–3, або 0 — «авто» (див. <see cref="ShortFrom"/>).</summary>
+    int _needOpt;
+    /// <summary>Номер тика (<see cref="IcefloeCore.T"/>) останнього наміру кожного місця й початку фази гри.</summary>
+    readonly int[] _moveAt = new int[IcefloeCore.Seats];
+    int _goAt;
     int _round;
     int _r0 = IcefloeCore.BaseRadius(2);
     /// <summary>Скільки людей сиділо на «Почати» — ачівки лише для справжніх партій на двох і більше.</summary>
     int _startPlayers;
     int _roundWinner = -1;
     /// <summary>Минулий раунд: хто взяв (−1 — нічия) і хто кого випхнув.</summary>
-    (int Winner, (int Fell, int By)[] By)? _lastRound;
+    (int Winner, bool ByTime, (int Fell, int By)[] By)? _lastRound;
     int[] _winners = [];
     string[] _startNicks = [];
     readonly Series _series = new();
@@ -55,7 +72,10 @@ public sealed class Icefloe : Game
         }
     }
 
-    public int Need => _need;
+    /// <summary>До скількох перемог партія: після «Почати» — зафіксовано, у лобі — за тими, хто вже сів.</summary>
+    public int Need => Lobby ? NeedFor(Seated().Count(x => x)) : _need;
+
+    int NeedFor(int players) => _needOpt > 0 ? _needOpt : players >= ShortFrom ? 1 : 2;
     public int RoundNo => _round;
     public int Phase => _ph;
     public int Left => _left;
@@ -73,7 +93,8 @@ public sealed class Icefloe : Game
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
-        _need = options.TryGetValue("wins", out var v) && int.TryParse(v, out var n) && n is >= 1 and <= 3 ? n : 2;
+        _needOpt = options.TryGetValue("wins", out var v) && int.TryParse(v, out var n) && n is >= 1 and <= 3 ? n : 0;
+        _need = NeedFor(2);
     }
 
     public override void Start()
@@ -82,6 +103,9 @@ public sealed class Icefloe : Game
         var seated = Seated();
         _startNicks = [.. Enumerable.Range(0, IcefloeCore.Seats).Where(Ctx.Seated).Select(s => Ctx.NickOf(s) ?? "")];
         _startPlayers = seated.Count(x => x);
+        _need = NeedFor(_startPlayers);
+        Array.Clear(_moveAt);
+        _goAt = 0;
         _r0 = IcefloeCore.BaseRadius(_startPlayers);
         _series.Begin(Ctx, IcefloeCore.Seats);
         _winners = [];
@@ -113,6 +137,7 @@ public sealed class Icefloe : Game
                 // Намір, а не хід: сектор приймаємо й на відліку, і з води (там це приціл сніжки).
                 if (Sector(payload) is not { } a || a is < -1 or > 15) return ActResult.Fail("Такого напрямку нема");
                 Core.Move(seat, a);
+                _moveAt[seat] = Core.T;
                 return ActResult.Done;
             case "dash":
                 if (_ph != PhGo) return ActResult.Fail("Зачекай, зараз почнемо");
@@ -148,16 +173,33 @@ public sealed class Icefloe : Game
                 if (--_left > 0) return c.T % 5 == 0 ? TickResult.FrameOnly : TickResult.None;
                 _ph = PhGo;
                 c.Rt = 0;
+                _goAt = c.T;
                 return TickResult.Both;
             case PhGo:
                 c.Step(true);
-                if (c.AliveCount <= 1) return EndRound(Survivor());
-                if (c.Rt >= IcefloeCore.CapTicks) return EndRound(-1);
+                Expire();
+                if (c.AliveCount <= 1) return EndRound(Survivor(), false);
+                if (c.Rt >= IcefloeCore.CapTicks) return EndRound(-1, true);
                 return c.Broke ? TickResult.Both : TickResult.FrameOnly;
             default:
                 c.Step(false);
+                Expire();
                 if (--_left > 0) return c.Moving || c.T % 5 == 0 ? TickResult.FrameOnly : TickResult.None;
                 return AfterRound();
+        }
+    }
+
+    /// <summary>
+    /// Намір без підтвердження тягне рівно <see cref="KeepTicks"/> тиків і гасне (відлік не рахується: на ньому світ
+    /// стоїть). Обличчя лишається — ривок полетить туди ж, куди дивився.
+    /// </summary>
+    void Expire()
+    {
+        var c = Core;
+        for (var s = 0; s < IcefloeCore.Seats; s++)
+        {
+            var b = c.Bodies[s];
+            if (b.Want >= 0 && c.T - Math.Max(_moveAt[s], _goAt) >= KeepTicks) b.Want = -1;
         }
     }
 
@@ -168,15 +210,19 @@ public sealed class Icefloe : Game
         return -1;
     }
 
-    /// <summary>Раунд скінчився: переможець (−1 — нічия) бере очко, три секунди «Раунд — Оля!».</summary>
-    TickResult EndRound(int winner)
+    /// <summary>
+    /// Раунд скінчився: переможець (−1 — нічия) бере очко, три секунди «Раунд — Оля!». <paramref name="byTime"/> —
+    /// нічия на стелі часу (на кризі ще двоє й більше), а не «усі шубовснули разом»: причина йде у вид, бо світ у
+    /// фазі кінця ще доковзує, і вгадувати її з живого кадру не можна.
+    /// </summary>
+    TickResult EndRound(int winner, bool byTime)
     {
         var c = Core;
         _ph = PhEnd;
         _left = EndTicks;
         _roundWinner = winner;
         if (winner >= 0) c.Bodies[winner].Wins++;
-        _lastRound = (winner, [.. c.ByList]);
+        _lastRound = (winner, byTime, [.. c.ByList]);
         c.ClearCrack();
         c.Event(IcefloeCore.EvRound, winner);
         return TickResult.Both;
@@ -286,7 +332,7 @@ public sealed class Icefloe : Game
         {
             phase = lobby ? "lobby" : _ph switch { PhReady => "ready", PhGo => "go", PhEnd => "end", _ => "over" },
             round = lobby ? 0 : _round,
-            need = _need,
+            need = Need,
             roundsMax = RoundsMax,
             wins,
             pushouts,
@@ -298,6 +344,7 @@ public sealed class Icefloe : Game
             lastRound = lobby || _lastRound is not { } lr ? null : new
             {
                 winner = lr.Winner,
+                byTime = lr.ByTime,
                 by = lr.By.Select(p => new[] { p.Fell, p.By }).ToArray(),
             },
             @out = lobby ? [] : c.Out.ToArray(),

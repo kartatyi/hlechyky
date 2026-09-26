@@ -392,7 +392,7 @@ public class HockeyTests(ITestOutputHelper output)
     }
 
     [Fact] // 19
-    public void Kickoff_launches_after_75_ticks_toward_a_random_team_within_35_degrees()
+    public void Kickoff_launches_after_75_ticks_toward_a_random_team_between_15_and_35_degrees()
     {
         double Kick(int seed)
         {
@@ -403,16 +403,33 @@ public class HockeyTests(ITestOutputHelper output)
             h.Tick();
             Assert.Equal("go", h.View(null).GetProperty("phase").GetString());
             var p = Core(h).Puck;
-            // у тику свистка шайба вже пройшла 5 підкроків тертя: 220 · 0.9952⁵ ≈ 214.7
+            // у тику свистка шайба вже пройшла 5 підкроків тертя: 110 · 0.9952⁵ ≈ 107.4
             Assert.Equal(HockeyCore.KickSpeed * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, 5), Speed(p), 6);
             var off = Math.Abs(Math.Atan2(p.Vy, Math.Abs(p.Vx))) * 180 / Math.PI;
-            Assert.True(off <= 35.001, $"{off}°");
+            Assert.InRange(off, 14.999, 35.001);
             return p.Vx;
         }
 
         Assert.Equal(Kick(3), Kick(3));
         var sides = Enumerable.Range(1, 12).Select(s => Math.Sign(Kick(s))).Distinct().Count();
         Assert.Equal(2, sides);                                   // подають то в один бік, то в інший
+    }
+
+    [Fact] // 19б (плейтест): стартовий розіграш сам у ворота не залітає — перший гол треба забити
+    public void Kickoff_alone_never_scores_while_nobody_touches_the_puck()
+    {
+        for (var seed = 1; seed <= 60; seed++)
+        {
+            var h = Table(2, seed);
+            h.Tick(HockeyCore.StartTicks);
+            // п'ять секунд після свистка ніхто не водить біту (стоять на стартових місцях)
+            for (var t = 0; t < 125; t++)
+            {
+                h.Tick();
+                Assert.True(Core(h).S[0] + Core(h).S[1] == 0, $"сід {seed}: гол без жодного дотику на {t}-му тику");
+            }
+            Assert.Null(Core(h).LastTouch);
+        }
     }
 
     // ---------- голи й партія ----------
@@ -779,8 +796,8 @@ public class HockeyTests(ITestOutputHelper output)
     public void A_gentle_touch_does_not_reset_the_stall_clock()
     {
         // Шайба ледь повзе в біту, що стоїть, і відскакує так само ледь-ледь: дотик був, а застій лишився.
-        // (Притиснути шайбу до борта фізично не вийде: біта не підходить до борта ближче за 8, і шайба
-        // вистрибує з-під неї на сотнях за секунду — тому застій міряємо лише швидкістю.)
+        // (Застій міряємо лише швидкістю: шайбу, притиснуту до борта, біта тримає на місці — і через три секунди
+        // сервер її штовхне, хоч дотик і триває.)
         var c = Bare(0, 1);
         Put(c, 1, 180, 110);
         Put(c, 0, 40, 60);
@@ -876,5 +893,131 @@ public class HockeyTests(ITestOutputHelper output)
         Assert.True(h.Start().Ok);
         // на двох Петро (місце 1) — рудий, а вільне місце 2 — синє, а не «рудий вільно»
         Assert.Equal(["синій", "рудий", "синій", "рудий"], Enumerable.Range(0, 4).Select(h.Room.Game.SeatName));
+    }
+
+    // ---------- притиснута шайба (після рецензії коду) ----------
+
+    /// <summary>Інваріант живої гри: після кроку центр шайби не ближче до жодної біти, ніж сума радіусів.</summary>
+    static void PuckOutsidePads(HockeyCore c, string what)
+    {
+        for (var i = 0; i < HockeyCore.Seats; i++)
+        {
+            if (!c.Plays[i]) continue;
+            var dx = c.Puck.X - c.Pads[i].X;
+            var dy = c.Puck.Y - c.Pads[i].Y;
+            var d = Math.Sqrt(dx * dx + dy * dy);
+            Assert.True(d >= HockeyCore.PadR + HockeyCore.PuckR - 1e-6, $"{what}: шайба в біті {i} (між центрами {d:0.###})");
+        }
+    }
+
+    [Fact] // 47: біта тисне шайбу в бічний борт — шайба лишається між бітою й бортом, а не вистрибує крізь біту
+    public void A_puck_pressed_into_the_side_rail_stays_between_the_paddle_and_the_rail()
+    {
+        var c = Bare(0, 1);
+        Put(c, 1, 180, 110);
+        Put(c, 0, 50, 30);
+        c.Puck = new ArenaBody(50, 10, HockeyCore.PuckR, 1);
+        c.Aim(0, 50, HockeyCore.PadR);                           // біта рветься в борт крізь шайбу
+        for (var t = 0; t < 30; t++)
+        {
+            c.Step();
+            PuckOutsidePads(c, $"тик {t}");
+            Assert.True(c.Puck.Y < c.Pads[0].Y, $"тик {t}: шайба проскочила під біту (шайба {c.Puck.Y:0.#}, біта {c.Pads[0].Y:0.#})");
+            Assert.True(c.Puck.Y >= HockeyCore.PuckR - 1e-9);
+            Assert.True(Speed(c.Puck) < 1, $"тик {t}: затиснута шайба летить {Speed(c.Puck):0}");
+        }
+        // біта вперлась у затиснуту шайбу: між центрами рівно дотик
+        Assert.Equal(HockeyCore.PuckR + HockeyCore.PadR + HockeyCore.PuckR, c.Pads[0].Y, 6);
+    }
+
+    [Fact] // 48: те саме біля торця поза прорізом воріт — і шайба не летить навиворіт у бік суперника
+    public void A_puck_pressed_into_the_end_wall_does_not_shoot_through_the_paddle()
+    {
+        var c = Bare(0, 1);
+        Put(c, 1, 180, 110);
+        Put(c, 0, 40, 20);
+        c.Puck = new ArenaBody(10, 20, HockeyCore.PuckR, 1);
+        c.Aim(0, HockeyCore.PadR, 20);
+        for (var t = 0; t < 30; t++)
+        {
+            var scored = c.Step();
+            Assert.Equal(-1, scored);
+            PuckOutsidePads(c, $"тик {t}");
+            Assert.True(c.Puck.X < c.Pads[0].X, $"тик {t}: шайба праворуч від біти ({c.Puck.X:0.#} проти {c.Pads[0].X:0.#})");
+            Assert.True(c.Puck.Vx < 1, $"тик {t}: шайба полетіла до суперника, vx = {c.Puck.Vx:0}");
+        }
+    }
+
+    [Fact] // 49: біта йде навскіс через шайбу біля борта — шайба вичавлюється вбік, як кісточка, а не крізь біту
+    public void A_puck_squeezed_at_an_angle_squirts_out_sideways()
+    {
+        var c = Bare(0, 1);
+        Put(c, 1, 180, 110);
+        Put(c, 0, 58, 26);
+        c.Puck = new ArenaBody(50, 8, HockeyCore.PuckR, 1);
+        c.Aim(0, 40, HockeyCore.PadR);                           // униз ліворуч — просто через шайбу біля борта
+        for (var t = 0; t < 20; t++)
+        {
+            c.Step();
+            PuckOutsidePads(c, $"тик {t}");
+            Assert.True(c.Puck.Y >= HockeyCore.PuckR - 1e-9);
+            Assert.True(Speed(c.Puck) <= 2 * HockeyCore.PadSpeed, $"тик {t}: {Speed(c.Puck):0}");
+        }
+        // біта проїхала ліворуч — шайба вислизнула праворуч і котиться геть
+        Assert.True(c.Puck.X > c.Pads[0].X + HockeyCore.PadR + HockeyCore.PuckR);
+        Assert.True(c.Puck.Vx > 0);
+    }
+
+    [Fact] // 50: біти суперників затисли шайбу на центральній лінії — шайба не в біті, біти поступаються
+    public void A_puck_sandwiched_between_rival_paddles_stays_outside_both()
+    {
+        var c = Bare(0, 1);
+        Put(c, 0, 80, 60);
+        Put(c, 1, 120, 60);
+        c.Aim(0, 100, 60);                                       // обидві рвуться в центр, до своєї межі 92 / 108
+        c.Aim(1, 100, 60);
+        for (var t = 0; t < 30; t++)
+        {
+            c.Step();
+            PuckOutsidePads(c, $"тик {t}");
+            Assert.True(c.Pads[0].X < c.Puck.X && c.Puck.X < c.Pads[1].X, $"тик {t}: шайба вискочила з-поміж біт");
+        }
+    }
+
+    [Fact] // 51: фаз — чотири біти ганяють шайбу до бортів і в кути; після кожного тику шайба не в біті й на столі
+    public void Four_paddles_chasing_the_puck_into_the_rails_never_swallow_it()
+    {
+        var rng = new Random(7);
+        var c = Bare(0, 1, 2, 3);
+        var inside = 0;
+        for (var t = 0; t < 20000; t++)
+        {
+            for (var s = 0; s < HockeyCore.Seats; s++)
+            {
+                // ціль — «за шайбою»: точка з того боку шайби, що ближче до найближчого борта чи торця
+                var px = c.Puck.X;
+                var py = c.Puck.Y;
+                var wx = px < 100 ? -1 : 1;
+                var wy = py < 60 ? -1 : 1;
+                var mode = (t / 40 + s) % 3;
+                var (tx, ty) = mode switch
+                {
+                    0 => (px, py + wy * 30),                     // у бічний борт
+                    1 => (px + wx * 30, py),                     // у торець
+                    _ => (px + wx * 20, py + wy * 20),           // у кут
+                };
+                c.Aim(s, tx + rng.NextDouble() * 4 - 2, ty + rng.NextDouble() * 4 - 2);
+            }
+            c.Step();
+            if (c.ServeIn > 0) { c.ServeIn = 0; c.Puck = new ArenaBody(20 + rng.NextDouble() * 160, 10 + rng.NextDouble() * 100, HockeyCore.PuckR, 1); }
+            for (var i = 0; i < HockeyCore.Seats; i++)
+            {
+                var dx = c.Puck.X - c.Pads[i].X;
+                var dy = c.Puck.Y - c.Pads[i].Y;
+                if (Math.Sqrt(dx * dx + dy * dy) < HockeyCore.PadR + HockeyCore.PuckR - 1e-6) inside++;
+            }
+            Assert.InRange(c.Puck.Y, HockeyCore.PuckR - 1e-6, HockeyCore.TableH - HockeyCore.PuckR + 1e-6);
+        }
+        Assert.Equal(0, inside);
     }
 }

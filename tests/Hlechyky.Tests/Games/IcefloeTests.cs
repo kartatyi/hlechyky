@@ -1192,4 +1192,112 @@ public class IcefloeTests(ITestOutputHelper output)
         one.Join("Оля");
         Assert.False(one.Start().Ok);                              // сам на сам — не починаємо
     }
+
+    // ---------- після рецензій ----------
+
+    [Fact] // 54 (рецензія коду): зв'язок пропав із затиснутим напрямком — тяга гасне, тіло не їде саме у воду
+    public void A_held_intent_without_keepalive_fades_and_the_body_only_coasts()
+    {
+        var h = Table(2);
+        ToGo(h);
+        var b = Core(h).Bodies[0];                                // угорі криги, тягне вниз — через центр
+        h.Input(0, "move", new { a = 4 });
+        h.Tick(Icefloe.KeepTicks - 1);
+        Assert.Equal(4, b.Want);                                  // поки свіже — тягне
+        h.Tick();
+        Assert.Equal(-1, b.Want);                                 // підтвердження не прийшло — відпустили
+        Assert.Equal(4, b.Face);                                  // обличчя лишилось: ривок туди ж
+        var y = b.B.Y;
+        var v0 = b.B.Vy;
+        Assert.True(v0 > 500, $"{v0}");
+        h.Tick(60);
+        Assert.True(b.B.Vy < v0 * 0.2, $"тіло мало гальмувати: {v0:0} → {b.B.Vy:0}");
+        Assert.True(b.B.Y - y < v0 / IcefloeCore.Mu + 1, "доковзало не далі за гальмівний шлях");
+        Assert.True(b.Alive, "без тяги тіло не доїхало до води");
+
+        // браузер досилає той самий намір раз на 0.4 с — тоді тягне весь час
+        var k = Table(2);
+        ToGo(k);
+        var c = Core(k).Bodies[1];
+        for (var t = 0; t < 100; t++)
+        {
+            if (t % 10 == 0) k.Input(1, "move", new { a = 4 });
+            k.Tick();
+            Assert.Equal(4, c.Want);
+        }
+    }
+
+    [Fact] // 55: відлік вікно наміру не з'їдає — хто тримав стрілку з відліку, рушає зі свистком
+    public void Countdown_does_not_count_against_the_intent_window()
+    {
+        var h = Table(2);
+        h.Input(0, "move", new { a = 8 });
+        ToGo(h);
+        var b = Core(h).Bodies[0];
+        Assert.Equal(8, b.Want);
+        h.Tick(Icefloe.KeepTicks - 1);
+        Assert.Equal(8, b.Want);
+        h.Tick();
+        Assert.Equal(-1, b.Want);
+    }
+
+    [Fact] // 56 (рецензія коду): причина нічиєї раунду — у виді, і вона не перемикається, поки світ доковзує
+    public void Draw_reason_comes_with_the_view_and_does_not_flip_during_the_end_phase()
+    {
+        var h = Table(3);
+        ToGo(h);
+        var c = Core(h);
+        Sink(h, 2);
+        h.Tick();
+        c.Rt = IcefloeCore.CapTicks - 1;
+        h.Tick();
+        Assert.Equal(Icefloe.PhEnd, Game(h).Phase);
+        var lr = h.View(null).GetProperty("lastRound");
+        Assert.Equal(-1, lr.GetProperty("winner").GetInt32());
+        Assert.True(lr.GetProperty("byTime").GetBoolean());
+        // у фазі кінця один із двох уцілілих доїжджає у воду — у кадрі живий лишився один, а причина та сама
+        Sink(h, 1);
+        h.Tick();
+        Assert.False(c.Bodies[1].Alive);
+        Assert.True(h.View(null).GetProperty("lastRound").GetProperty("byTime").GetBoolean());
+
+        // усі шубовснули разом — це не «час вийшов»
+        var d = Table(2);
+        ToGo(d);
+        Sink(d, 0);
+        Sink(d, 1);
+        d.Tick();
+        var dl = d.View(null).GetProperty("lastRound");
+        Assert.Equal(-1, dl.GetProperty("winner").GetInt32());
+        Assert.False(dl.GetProperty("byTime").GetBoolean());
+    }
+
+    [Fact] // 57 (плейтест): типово — «авто»: на двох–чотирьох до двох перемог, на п'ятьох і більше — один раунд
+    public void Auto_wins_is_two_for_a_small_table_and_one_from_five()
+    {
+        static RoomHarness Auto(int players)
+        {
+            var h = new RoomHarness("icefloe", null, 5);
+            foreach (var nick in Nicks.Take(players)) h.Join(nick);
+            return h;
+        }
+
+        var four = Auto(4);
+        Assert.Equal(2, NeedOf(four));                                 // лобі показує, що буде
+        Assert.True(four.Start().Ok);
+        Assert.Equal(2, Game(four).Need);
+
+        var five = Auto(5);
+        Assert.Equal(1, NeedOf(five));
+        Assert.True(five.Start().Ok);
+        Assert.Equal(1, Game(five).Need);
+        Round(five, 3);
+        Assert.Equal(RoomStatus.Finished, five.Room.Status);     // один раунд — і партія
+        Assert.Equal([3], five.Finished.Single().Result.Winners);
+
+        Assert.Equal(2, Game(Table(6, wins: "2")).Need);         // обрали явно — так і буде
+        Assert.Equal("auto", Auto(2).Room.Info.Options![0].Default);
+
+        static int NeedOf(RoomHarness r) => r.View(null).GetProperty("need").GetInt32();
+    }
 }
