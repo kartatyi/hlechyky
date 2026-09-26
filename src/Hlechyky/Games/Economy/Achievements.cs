@@ -75,6 +75,12 @@ public static class AchievementCatalog
         new("listener-10h", "Слухач",          "Десять годин на сайті", "🎧", 15),
         new("listener-100h","Меломан",         "Сто годин на сайті", "📻", 50),
         new("rich-100",     "Сотня",           "Сто черепків на балансі", "🏦", 10),
+        // хвиля 2: icefloe
+        new("icefloe-dry",     "Сухі валянки",  "Виграв партію в Крижині, жодного разу не шубовснувши", "🥾", 20),
+        new("icefloe-push5",   "Штовхач",       "П'ятеро випханих у воду за одну партію Крижини", "💨", 15),
+        // хвиля 2: hockey
+        new("hockey-dry",      "Сухий рахунок", "Виграв аерохокей, не пропустивши жодного гола", "🧤", 20),
+        new("hockey-comeback", "Камбек",        "Виграв аерохокей, програючи три голи", "🔁", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
