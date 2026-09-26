@@ -49,12 +49,12 @@ public class RoomsTests
         ttt.Join("Оля");
         ttt.Join("Петро");
         Assert.Equal(RoomStatus.Playing, ttt.Room.Status);
-        // Два рядки: «Новий стіл» від Create і «сіли грати» від старту — і обидва з id столу, щоб у
+        // Два рядки: «Новий стіл» від Create і «сідають грати» від старту — і обидва з id столу, щоб у
         // Журналі біля них була кнопка (docs/redesign/PLAN.md §7.4).
         var journal = ttt.Outbox.OfType<Journal>().ToList();
         Assert.Equal(2, journal.Count);
         Assert.Equal("Новий стіл: Хрестики-нолики (2) · господар Оля", journal[0].Text);
-        Assert.Equal("Оля і Петро сіли грати в хрестики-нолики", journal[1].Text);
+        Assert.Equal("Оля і Петро сідають грати в хрестики-нолики", journal[1].Text);
         Assert.All(journal, line => Assert.Equal(ttt.RoomId, line.RoomId));
     }
 
@@ -90,10 +90,10 @@ public class RoomsTests
         var h = new RoomHarness("ttt");
         h.Join("Оля");
         h.Join("Петро");
-        Assert.Equal("Місць уже нема", h.Rooms.Join(h.RoomId, "Третій").Reply.Message);
-        Assert.Equal("Ти вже в цій кімнаті", h.Rooms.Join(h.RoomId, "Оля").Reply.Message);
+        Assert.Equal("От халепа — місць уже нема", h.Rooms.Join(h.RoomId, "Третій").Reply.Message);
+        Assert.Equal("Ти вже за цим столом", h.Rooms.Join(h.RoomId, "Оля").Reply.Message);
         Assert.Equal("Такої гри тут нема", h.Rooms.Create("Хтось", "не-гра", null).Reply.Message);
-        Assert.Equal("Такої кімнати вже нема", h.Rooms.Join("00000000", "Хтось").Reply.Message);
+        Assert.Equal("Такого столу вже нема", h.Rooms.Join("00000000", "Хтось").Reply.Message);
         Assert.Equal("Спершу скажи, як тебе кликати", h.Rooms.Create("гість", "ttt", null).Reply.Message);
     }
 
@@ -103,7 +103,7 @@ public class RoomsTests
         var h = new RoomHarness("t-solo");
         h.Solo("Оля");
 
-        Assert.Equal("Такої кімнати вже нема", h.Rooms.Join(h.RoomId, "Петро").Reply.Message);
+        Assert.Equal("Такого столу вже нема", h.Rooms.Join(h.RoomId, "Петро").Reply.Message);
         Assert.Empty(h.Rooms.Watch(h.RoomId, "conn-петро", "Петро"));
         Assert.Single(h.Rooms.Watch(h.RoomId, "conn-оля", "Оля"));
     }
@@ -115,7 +115,7 @@ public class RoomsTests
     {
         var h = new RoomHarness("t-party");
         h.Join("Оля");
-        Assert.Equal("Замало гравців, треба щонайменше 2", h.Rooms.StartByHost(h.RoomId, "Оля").Reply.Message);
+        Assert.Equal("Замало гравців, треба щонайменше 2 — гукни когось", h.Rooms.StartByHost(h.RoomId, "Оля").Reply.Message);
 
         h.Join("Петро");
         Assert.Equal("Почати може лише господар", h.Rooms.StartByHost(h.RoomId, "Петро").Reply.Message);
@@ -396,7 +396,7 @@ public class RoomsTests
 
         var id = rooms.Create("Оля", "ttt", new Dictionary<string, string> { ["stake"] = "5" }).Reply.RoomId!;
         Assert.Equal(5, rooms.Find(id)!.Stake);
-        Assert.Equal("Бракує черепків на ставку", rooms.Join(id, "Петро").Reply.Message);
+        Assert.Equal("Халепа: бракує черепків на ставку", rooms.Join(id, "Петро").Reply.Message);
 
         stakes.Set("Петро", 30);
         Assert.True(rooms.Join(id, "Петро").Reply.Ok);
@@ -581,7 +581,7 @@ public class RoomsTests
 
         var join = h.Rooms.Join(h.RoomId, "Ганна");         // глядач, який щойно бачив кінець партії
         Assert.True(join.Reply.Ok);
-        Assert.Equal("Сів. Твоє місце — ◯", join.Reply.Message);
+        Assert.Equal("Є! Твоє місце — ◯", join.Reply.Message);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);    // WhenFull → партія почалась одразу
         Assert.Equal(2, h.Room.Round);
         Assert.Null(h.Room.Result);
@@ -600,7 +600,7 @@ public class RoomsTests
         h.Leave("Петро");                                  // стіл лишився дограним, місце вільне
 
         var refused = h.Rooms.Join(h.RoomId, "Голодранець");
-        Assert.Equal("Бракує черепків на ставку", refused.Reply.Message);
+        Assert.Equal("Халепа: бракує черепків на ставку", refused.Reply.Message);
         Assert.Empty(refused.Out);                         // ніхто нічого не перемальовує
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal(1, h.Room.Round);
@@ -626,7 +626,7 @@ public class RoomsTests
 
         h.Stakes.Set("Ганна", 100);
         var refused = h.Rooms.Join(h.RoomId, "Ганна");      // сама Ганна багата, а от Оля вже ні
-        Assert.Equal("Бракує черепків на ставку", refused.Reply.Message);
+        Assert.Equal("Халепа: бракує черепків на ставку", refused.Reply.Message);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal(1, h.Room.Round);
         Assert.Equal("дуель: виграв Петро", h.Room.Result!.Text);
@@ -775,14 +775,14 @@ public class RoomsTests
         h.Leave("Оля");                                    // техпоразка, місце 0 вільне
         h.Join("Ганна");                                   // нова пара за тим самим столом
 
-        Assert.Equal(2, h.Outbox.OfType<Journal>().Count(j => j.Text.Contains("сіли грати")));
+        Assert.Equal(2, h.Outbox.OfType<Journal>().Count(j => j.Text.Contains("сідають грати")));
 
         Assert.Equal("Партія ще не скінчилась", h.Rooms.Rematch(h.RoomId, "Петро").Reply.Message);
 
         foreach (var (seat, cell) in new[] { (0, 0), (1, 3), (0, 1), (1, 4), (0, 2) }) h.Act(seat, "move", new { cell });
         var outcome = h.Rooms.Rematch(h.RoomId, "Петро");
         Assert.True(outcome.Reply.Ok);
-        Assert.DoesNotContain(outcome.Out.OfType<Journal>(), j => j.Text.Contains("сіли грати"));
+        Assert.DoesNotContain(outcome.Out.OfType<Journal>(), j => j.Text.Contains("грати в"));
     }
 
     // ---------- глядачі ----------

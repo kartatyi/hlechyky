@@ -114,10 +114,10 @@ public static class Endpoints
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
             {
-                return (null, Fail("Такого не знайшлось: посилання биті або плейлист приватний"));
+                return (null, Fail("Халепа: такого не знайшлось — посилання бите або плейлист приватний"));
             }
-            catch (HttpRequestException ex) { return (null, Fail($"Сервіс відповів помилкою ({(int?)ex.StatusCode ?? 0}), спробуй ще раз")); }
-            catch (OperationCanceledException) { return (null, Fail("Не дочекався відповіді, спробуй ще раз")); }
+            catch (HttpRequestException ex) { return (null, Fail($"Халепа: сервіс відповів помилкою ({(int?)ex.StatusCode ?? 0}), спробуй ще раз")); }
+            catch (OperationCanceledException) { return (null, Fail("Халепа: не дочекався відповіді, спробуй ще раз")); }
             catch (Exception ex) { return (null, Fail("Не вийшло відкрити: " + ex.Message)); }
         }
 
@@ -149,12 +149,12 @@ public static class Endpoints
         // далі воно стає в чергу як звичайний трек (файл уже є, качати нема чого).
         api.MapPost("/voice", async (HttpContext c, RadioEngine e, VoiceService voice, CancellationToken ct) =>
         {
-            if (!voice.Enabled) return Fail("Голосові вимкнені");
+            if (!voice.Enabled) return Fail("Голосові зараз вирубано");
             if (c.Request.ContentLength > voice.MaxUploadBytes) return Fail($"Задовгий запис, ліміт {voice.MaxUploadBytes / (1024 * 1024)} МБ");
             TrackInfo track;
             string path;
             try { (track, path) = await voice.SaveAsync(c.Request.Body, Auth.Nick(c), ct); }
-            catch (Exception ex) { return Fail("Не вийшло взяти голосове: " + ex.Message); }
+            catch (Exception ex) { return Fail("Халепа з голосовим: " + ex.Message); }
             return Reply(e.AddVoice(track, path, Auth.Nick(c)));
         });
 
@@ -219,7 +219,7 @@ public static class Endpoints
             var name = (req.Name ?? "").Trim();
             if (name.Length is 0 or > 40) return Fail("Назва від 1 до 40 символів");
             var id = db.CreatePlaylist(name, Auth.Nick(c));
-            return Results.Ok(new { ok = true, id, message = $"Плейлист «{name}» створено" });
+            return Results.Ok(new { ok = true, id, message = $"Є! Плейлист «{name}» створено" });
         });
 
         api.MapDelete("/playlists/{id:long}", (HttpContext c, long id, Db db) =>

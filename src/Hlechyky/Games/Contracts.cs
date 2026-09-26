@@ -201,7 +201,7 @@ public abstract class Game
     public virtual void OnLeave(int seat)
     {
         var others = Enumerable.Range(0, Info.MaxPlayers).Where(s => s != seat && Ctx.Seated(s)).ToArray();
-        Ctx.Finish(others, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        Ctx.Finish(others, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
     /// <summary>Persistent: стан у JSON. null — нема чого зберігати.</summary>

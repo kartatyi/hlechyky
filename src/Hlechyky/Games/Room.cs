@@ -85,7 +85,7 @@ public sealed class Room
     public DateTimeOffset LastActivity { get; set; }
     /// <summary>З кого цього раунду списано ставку — щоб виплата й повернення знали, кому й скільки.</summary>
     public List<string> Charged { get; } = [];
-    /// <summary>Склад, про який востаннє написали в Журнал «сіли грати». null — ще не писали жодного разу.</summary>
+    /// <summary>Склад, про який востаннє написали в Журнал «сідають грати». null — ще не писали жодного разу.</summary>
     public string?[]? LoggedSeats { get; set; }
     /// <summary>
     /// Коли стіл востаннє кликав усіх — при створенні чи «Покликати ще раз». Частіше за <see cref="Calls.AgainGap"/>

@@ -72,7 +72,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         // подвійний клік і дрібний спам: одна зміна на ніка за 250 мс
         if (LastLike.TryGetValue(nick, out var last) && (now - last).TotalMilliseconds < 250) return null;
         LastLike[nick] = now;
-        if (db.ToggleChatLike(id, nick) is not { } likes) return "Це повідомлення не лайкнути";
+        if (db.ToggleChatLike(id, nick) is not { } likes) return "Сюди вподобайку не поставиш";
         await Clients.All.SendAsync("chatLikes", new { id, likes });
         return null;
     }
@@ -83,7 +83,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         if (text.Length == 0) return null;
         var nick = Nick();
         // «.кубик 20» з української розкладки — та сама /кубик. Далі все, і лічильник флуду теж, бачить уже скісну:
-        // інакше «.кубик» двічі поспіль упирався б у «Це вже написано», а /кубик — ні.
+        // інакше «.кубик» двічі поспіль упирався б у «Це вже тяпнуто», а /кубик — ні.
         text = ChatCommands.FromDot(text) ?? text;
         var (chatText, kind) = (text, "chat");
         if (text.StartsWith('/'))

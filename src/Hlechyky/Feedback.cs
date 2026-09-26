@@ -138,11 +138,11 @@ public sealed class Feedback(FeedbackStore store, IClock clock)
         kind = (kind ?? "").Trim().ToLowerInvariant();
         if (!Kinds.Contains(kind)) return new(false, "Не зрозумів, що це: пропозиція, зміна чи баг?");
         text = Clean(text, MaxText + 1);
-        if (text.Length < MinText) return new(false, "Напиши трохи більше — хоч кілька слів");
+        if (text.Length < MinText) return new(false, "Тяпни трохи більше — хоч кілька слів");
         if (text.Length > MaxText) return new(false, $"Задовго: до {MaxText} символів. Розбий на дві записки");
         var now = clock.UtcNow;
-        if (store.Recent(nick, text, now.AddMinutes(-30))) return new(false, "Це вже надіслано — розробник побачить");
-        if (store.CountSince(nick, now.AddHours(-1)) >= PerHour) return new(false, "За годину досить записок — решту напиши трохи згодом");
+        if (store.Recent(nick, text, now.AddMinutes(-30))) return new(false, "Це вже тяпнуто — розробник побачить");
+        if (store.CountSince(nick, now.AddHours(-1)) >= PerHour) return new(false, "За годину досить записок — решту тяпнеш трохи згодом");
         if (store.CountSince(nick, now.AddDays(-1)) >= PerDay) return new(false, "На сьогодні записок досить — завтра продовжимо");
         var id = store.Add(nick, kind, text, Short(place, 200), Short(screen, 40), Short(ua, 300), now);
         return new(true, kind == "bug" ? "Дякую! Баг записано — розробник погляне" : "Дякую! Розробник прочитає", id);

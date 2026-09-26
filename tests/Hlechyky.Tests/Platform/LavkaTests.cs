@@ -750,7 +750,7 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(0, line.GetProperty("id").GetInt64());
         Assert.Equal("fx", line.GetProperty("kind").GetString());
         Assert.Equal("Оля", line.GetProperty("nick").GetString());
-        Assert.Equal("🎆 запускає феєрверк!", line.GetProperty("text").GetString());
+        Assert.Equal("🎆 бахає феєрверк!", line.GetProperty("text").GetString());
         Assert.Equal(_r.Clock.UtcNow, line.GetProperty("at").GetDateTimeOffset());
         Assert.DoesNotContain(_r.Chat(), m => m.Kind == "fx");        // у базу не лягає
 
@@ -811,7 +811,7 @@ public sealed class LavkaTests : IDisposable
         var reply = r.Dedicate("Оля", "петро", "luck");
 
         Assert.True(reply.Ok, reply.Message);
-        Assert.Equal("Готово! Глек скаже присвяту перед «Друга — Океан Ельзи»", reply.Message);
+        Assert.Equal("Є! Глек скаже присвяту перед «Друга — Океан Ельзи»", reply.Message);
         Assert.Equal(["Цю пісню Оля присвячує Петрові — на удачу"], r.Voice.Said);
         var order = r.Air.Items.Select(q => q.Track.Title).ToList();
         Assert.Equal(["Перша", "Чужа", "Голосове", "Присвята Петрові", "Друга", "Третя"], order);

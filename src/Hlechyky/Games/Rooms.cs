@@ -103,21 +103,21 @@ static class Say
 {
     public const string NoNick = "Спершу скажи, як тебе кликати";
     public const string NoGame = "Такої гри тут нема";
-    public const string NoRoom = "Такої кімнати вже нема";
+    public const string NoRoom = "Такого столу вже нема";
     public const string Seated = "Ти вже за столом. Встань, якщо хочеш новий";
     public const string TooMany = "Столів уже задосить, дограйте ті, що є";
-    public const string Already = "Ти вже в цій кімнаті";
-    public const string NoSeats = "Місць уже нема";
+    public const string Already = "Ти вже за цим столом";
+    public const string NoSeats = "От халепа — місць уже нема";
     public const string Waiting = "Чекаємо на гравців";
     public const string Played = "Партію зіграно, тисни «Ще раз»";
     public const string NotPlaying = "Ти тут не граєш";
-    public const string NoShards = "Бракує черепків на ставку";
+    public const string NoShards = "Халепа: бракує черепків на ставку";
     public const string TooFast = "Не так швидко";
     public const string HostOnly = "Почати може лише господар";
     public const string NotFinished = "Партія ще не скінчилась";
     public const string TooBig = "Забагато даних";
-    public static string TooFew(int n) => $"Замало гравців, треба щонайменше {n}";
-    public const string Broken = "партія зламалась, вибачте";
+    public static string TooFew(int n) => $"Замало гравців, треба щонайменше {n} — гукни когось";
+    public const string Broken = "ой-йой, партія зламалась — вибачте";
 }
 
 /// <summary>
@@ -267,11 +267,11 @@ public sealed class Rooms
 
         var outbox = new Outbox();
         var reply = new RoomReply(true, info.MinPlayers <= 1
-            ? "Стіл готовий. Можна почати самому або дочекатись друзів"
+            ? "Стіл готовий. Можна почати вже, а можна гукнути друзів"
             : "Стіл готовий. Треба ще " + ((info.MinPlayers - 1) switch
             {
                 1 => "одного гравця", 2 => "двох гравців", 3 => "трьох гравців", var n => n + " гравців",
-            }), room.Id);
+            }) + " — гукни когось", room.Id);
         string? failed = null;
         var waiting = true;
         var now = _clock.UtcNow;
@@ -482,7 +482,7 @@ public sealed class Rooms
             }
             room.Seats[seat] = nick;
             room.LastActivity = _clock.UtcNow;
-            reply = new RoomReply(true, $"Сів. Твоє місце — {room.SafeSeatName(seat)}", room.Id);
+            reply = new RoomReply(true, $"Є! Твоє місце — {room.SafeSeatName(seat)}", room.Id);
             if (room.Info.Start == StartMode.WhenFull && room.Full && StartRound(room, outbox) is { } no)
             {
                 room.Seats[seat] = null;
@@ -508,7 +508,7 @@ public sealed class Rooms
         }
         Sweep(room, outbox);
         outbox.RunAfter(_log);
-        return new RoomOutcome(outbox, new RoomReply(true, "Встав з-за столу", room.Id));
+        return new RoomOutcome(outbox, new RoomReply(true, "Ти вже не за столом", room.Id));
     }
 
     /// <summary>Звільнити місце. Кличеться під замком кімнати.</summary>
@@ -609,7 +609,7 @@ public sealed class Rooms
         outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
-        return new RoomOutcome(outbox, new RoomReply(true, "Нова партія", room.Id));
+        return new RoomOutcome(outbox, new RoomReply(true, "Нова партія — гайда!", room.Id));
     }
 
     /// <summary>Старт партії під замком кімнати. Повертає текст помилки або null, якщо все гаразд.</summary>
@@ -651,8 +651,10 @@ public sealed class Rooms
         if (!room.Info.Solo && !SameCrew(room.LoggedSeats, room.Seats))
         {
             room.LoggedSeats = (string?[])room.Seats.Clone();
-            // З id столу цей рядок стає ще й запрошенням подивитись: у Журналі біля нього — кнопка.
-            outbox.Add(new Journal($"{Nicks(room)} сіли грати в {room.Info.Accusative}", room.Info.Private ? null : room.Id));
+            // З id столу цей рядок стає ще й запрошенням подивитись: у Журналі біля нього — кнопка. Теперішній час, як
+            // у решти Журналу, і однина для одного: «Скільки?» і «Свою гру» господар може почати й сам.
+            var sit = room.Occupied == 1 ? "сідає" : "сідають";
+            outbox.Add(new Journal($"{Nicks(room)} {sit} грати в {room.Info.Accusative}", room.Info.Private ? null : room.Id));
         }
         return null;
     }

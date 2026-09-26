@@ -331,8 +331,8 @@ public sealed partial class Albums(YtMusicClient ytm, Db db, ILogger<Albums> log
             if (db.AddToPlaylist(id, m.Id, nick)) added++;
         }
         return existing is null
-            ? (true, $"Плейлист «{name}»: {Tracks(added)}", id)
-            : (true, added == 0 ? $"У плейлисті «{name}» це все вже є" : $"У плейлист «{name}» додано ще {Tracks(added)}", id);
+            ? (true, $"Є! Плейлист «{name}»: {Tracks(added)}", id)
+            : (true, added == 0 ? $"У плейлисті «{name}» це все вже є" : $"У плейлист «{name}» докинуто ще {Tracks(added)}", id);
     }
 
     /// <summary>«1 трек», «3 треки», «12 треків».</summary>

@@ -20,12 +20,12 @@ public sealed class Calls(Rooms rooms, Presence presence, IClock clock)
     /// <summary>Скільки ніків і пар пам'ятати, перш ніж забути тих, хто давно нікого не кликав.</summary>
     const int PruneAt = 256;
 
-    const string Alone = "Тут граєш сам — кликати нема кого";
+    const string Alone = "Тут гра на одного — гукати нема кого";
     const string Going = "Партія вже йде — сісти нема куди";
-    const string Whom = "Кого кликати?";
-    const string Self = "Себе кликати не треба — ти вже тут";
+    const string Whom = "Кого гукнути?";
+    const string Self = "Себе гукати не треба — ти вже тут";
     const string Nameless = "Гостя без імені не покличеш — хай спершу назветься";
-    const string NoTable = "Спершу сядь за стіл — тоді буде куди кликати";
+    const string NoTable = "Спершу сідай за стіл — тоді буде куди гукати";
 
     readonly object _lock = new();
     /// <summary>Коли кожен нік кликав особисто за останню хвилину (ключ — <see cref="Rooms.NickKey"/>).</summary>

@@ -139,7 +139,7 @@ public class EconomyTests
 
         var wallet = rig.Outbox.Of<WalletChanged>();
         Assert.Equal(3, wallet.Count);
-        Assert.Equal("+5 черепків: перемога — Шахи", wallet[0].Text);
+        Assert.Equal("Лови +5 черепків: перемога — Шахи", wallet[0].Text);
         Assert.Equal(5, wallet[0].Balance);
         Assert.Equal("−10 черепків: ставка", wallet[2].Text);
         Assert.Equal(5, wallet[2].Balance);

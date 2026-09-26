@@ -91,7 +91,7 @@ public sealed class FeedbackTests : IDisposable
         Assert.True(_fb.Submit("Оля", "idea", "Додайте темну тему", null, null, null).Ok);
         var again = _fb.Submit("Оля", "idea", "Додайте темну тему", null, null, null);
         Assert.False(again.Ok);
-        Assert.Contains("вже надіслано", again.Message);
+        Assert.Contains("вже тяпнуто", again.Message);
 
         // той самий текст від іншої людини — окрема думка
         Assert.True(_fb.Submit("Петро", "idea", "Додайте темну тему", null, null, null).Ok);
