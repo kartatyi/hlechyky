@@ -30,6 +30,11 @@ public static class VohnykPlans
             case 8: Level8(b); break;
             case 9: Level9(b); break;
             case 10: Level10(b); break;
+            case 11: Level11(b); break;
+            case 12: Level12(b); break;
+            case 13: Level13(b); break;
+            case 14: Level14(b); break;
+            case 15: Level15(b); break;
             default: throw new InvalidOperationException($"для рівня {level.N} плану ще нема");
         }
         // обоє у своїх дверях — стоїмо, доки рівень не зарахує вихід
@@ -168,6 +173,105 @@ public static class VohnykPlans
         b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.LiftX[1] == 15 * T), b.RunJump(F, +1, C(16) + 8, 30, C(20)), b.Go(F, C(23)), b.Go(F, C(26))),
             VohnykBot.Seq(b.WaitFor(() => b.W.LiftX[1] == 15 * T), b.Go(Wt, C(15)), b.Jump(Wt, +1, 30, C(16)), b.Go(Wt, C(16)), b.Jump(Wt, +1, 30, C(17)), b.Go(Wt, C(17)),
                 b.Jump(Wt, +1, 30, C(18)), b.Go(Wt, C(18)), b.Go(Wt, C(21)), b.Go(Wt, C(27))));
+    }
+
+    static void Level11(VohnykBot b)
+    {
+        // скрині: 0 — та, що їде ліфтом нагору; 1 — нижня. Вогник стрибком через скриню (самоцвіт) і лавовими сходами вгору
+        b.Do(VohnykBot.Seq(b.Go(F, C(4)), b.Jump(F, +1, 30, C(7)), b.Go(F, C(11)), b.Jump(F, +1, 30, C(12)), b.Go(F, C(12)), b.Jump(F, +1, 30, C(13)), b.Go(F, C(13))),
+            // Крапля заштовхує скриню на ліфт і сама стає поруч
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(9)), b.Go(Wt, C(4)), b.RunUntil(+1, () => b.W.BoxX[0] >= 7 * T), b.Go(Wt, C(6)),
+                b.Jump(Wt, +1, 30, C(8) - 2), b.Go(Wt, C(8) - 2)));
+        // Вогник стрибає в клітинку важеля нагорі й виходить праворуч — ліфт везе Краплю зі скринею; сам — у отвір униз, до нижньої скрині
+        b.Do(VohnykBot.Seq(b.Jump(F, +1, 30, C(14)), b.Go(F, C(14)), b.Go(F, C(17)), b.RunUntil(+1, () => b.W.BoxX[1] >= 21 * T), b.Go(F, C(18)), b.Jump(F, 0, 30), b.Go(F, C(20))),
+            // нагорі Крапля штовхає скриню ліворуч на кнопку b2, стрибає по самоцвіт, калюжею по два — і через отвори вниз
+            VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[0] == 9 * T), b.RunUntil(-1, () => b.W.BoxX[0] <= 4 * T), b.Go(Wt, C(5)), b.Jump(Wt, 0, 30),
+                b.Go(Wt, C(11)), b.RunJump(Wt, +1, C(11) + 8, 30, C(15)), b.Go(Wt, C(15)), b.Go(Wt, C(17)), b.Go(Wt, C(19))));
+        // брама all відчинена: обоє по скрині крізь браму — до своїх дверей
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[0] >= 2 * T), b.Jump(F, +1, 30, C(21)), b.Go(F, C(23)), b.Jump(F, +1, 30, C(25)), b.Go(F, C(25))),
+            VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[0] >= 2 * T && b.CenterPx(F) >= C(22)), b.Jump(Wt, +1, 30, C(21)), b.Go(Wt, C(24)), b.Go(Wt, C(27))));
+    }
+
+    static void Level12(VohnykBot b)
+    {
+        // ліфти: 0 L1, 1 R1, 2 M (центральна шахта), 3 T. Поверх 1: Вогник на L1, Крапля на кнопці — він їде на другий
+        b.Do(b.Go(F, C(2) + 10), VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) <= C(2) + 12 && b.W.Vx[F] == 0), b.Go(Wt, C(6))));
+        // Вогник другим поверхом: лавою (самоцвіт), через калюжу — і крізь важіль l1, коли Крапля вже на R1
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[0] == 11 * T), b.Go(F, C(6)), b.Go(F, C(16)), b.Jump(F, +1, 30, C(19)), b.Go(F, C(20)),
+                b.WaitFor(() => b.CenterPx(Wt) >= C(26) + 10 && b.W.Vx[Wt] == 0 && b.FeetPx(Wt) == 600), b.Go(F, C(23))),
+            VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[0] == 11 * T && b.CenterPx(F) >= C(5)), b.RunJump(Wt, +1, C(8) + 4, 30, C(11)), b.Go(Wt, C(18)), b.Go(Wt, C(26) + 20)));
+        // R1 привіз Краплю: вона водою (самоцвіт) до кнопки bm; Вогник через калюжу на ліфт M — угору на третій
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[1] == 11 * T && b.CenterPx(Wt) <= C(24)), b.RunJump(F, -1, C(19) - 4, 30, C(16)), b.Go(F, C(14) + 20)),
+            VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[1] == 11 * T), b.Go(Wt, C(17)),
+                b.WaitFor(() => b.CenterPx(F) <= C(15) && b.CenterPx(F) >= C(14) && b.W.Vx[F] == 0 && b.Ground(F)), b.Go(Wt, C(11))));
+        // нагорі Вогник сходить праворуч; Крапля з кнопки — M по неї; вона на M — Вогник на bm2 — M везе її
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[2] == 7 * T), b.Go(F, C(16)),
+                b.WaitFor(() => b.W.LiftY[2] == 11 * T && b.CenterPx(Wt) >= C(14) && b.CenterPx(Wt) <= C(15) + 10 && b.W.Vx[Wt] == 0), b.Go(F, C(17))),
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(16) - 2), b.Go(Wt, C(12) + 10), b.WaitFor(() => b.W.LiftY[2] == 11 * T), b.Go(Wt, C(14) + 20)));
+        // третій поверх: Крапля праворуч по самоцвіт; Вогник ліворуч (самоцвіт) крізь важіль lT на ліфт T — на четвертий
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.CenterPx(Wt) >= C(18)), b.Go(F, C(18)), b.RunJump(F, -1, C(16) - 4, 30, C(12)), b.Go(F, C(9)), b.Jump(F, 0, 30),
+                b.Go(F, C(2) + 20), b.WaitFor(() => b.W.LiftY[3] == 3 * T), b.Go(F, C(12)), b.Go(F, C(20))),
+            VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[2] == 7 * T), b.Go(Wt, C(20)), b.Jump(Wt, 0, 30), b.WaitFor(() => b.W.LiftY[2] == 11 * T),
+                b.RunJump(Wt, -1, C(16) - 4, 30, C(12)), b.WaitFor(() => b.W.LiftY[3] == 3 * T && b.FeetPx(F) == 120 && b.CenterPx(F) >= C(4)),
+                b.Go(Wt, C(3)), b.Go(Wt, C(6)), b.WaitFor(() => b.W.LiftY[3] == 7 * T), b.Go(Wt, C(2) + 20), b.WaitFor(() => b.W.LiftY[3] == 3 * T),
+                b.Go(Wt, C(8)), b.Go(Wt, C(22))));
+    }
+
+    static void Level13(VohnykBot b)
+    {
+        // двері: 0 dG, 1 dF. Вогник висячими лавовими приступками вгору; Крапля попід ними по три самоцвіти — на кнопку bG
+        b.Do(VohnykBot.Seq(b.Go(F, C(2)), b.Jump(F, +1, 30, C(3)), b.Go(F, C(3)), b.Jump(F, +1, 30, C(4)), b.Go(F, C(4)),
+                b.Jump(F, +1, 30, C(5)), b.Go(F, C(5)), b.Jump(F, +1, 30, C(6)), b.Go(F, C(6))),
+            VohnykBot.Seq(b.WaitFor(() => b.FeetPx(F) <= 520), b.Go(Wt, C(4)), b.Jump(Wt, 0, 4), b.Go(Wt, C(6)), b.Go(Wt, C(8)), b.Go(Wt, C(9))));
+        // двері dG відчинені: Вогник галереєю по лаві (п'ять самоцвітів), крізь важіль lK — і в отвір униз
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[0] >= 2 * T), b.Go(F, C(9)), b.Go(F, C(12)), b.RunJump(F, +1, C(12) + 4, 30, C(15)), b.Go(F, C(16)),
+                b.Go(F, C(17)), b.RunJump(F, +1, C(17) + 4, 30, C(21)), b.Go(F, C(21)), b.Go(F, C(24))),
+            // Крапля відпускає bG, коли Вогник пройшов, штовхає скриню на bA, стрибає по самоцвіт і стає на bB
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(9)), b.Go(Wt, C(10)), b.RunUntil(+1, () => b.W.BoxX[0] >= 22 * T), b.Go(Wt, C(16)), b.Jump(Wt, 0, 30),
+                b.Go(Wt, C(21)), b.Jump(Wt, +1, 30, C(22)), b.Go(Wt, C(24)), b.Go(Wt, C(25))));
+        // три ключі на місці — брама all відчинена: Вогник проходить, Крапля зістрибує з кнопки й пірнає в браму, поки та не зачинилась
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[1] >= 2 * T), b.Go(F, C(27))),
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(27) - 4), b.Go(Wt, C(28))));
+    }
+
+    static void Level14(VohnykBot b)
+    {
+        // двері: 0 TD1, 1 BD1 (inv), 2 TD2 (inv), 3 BD2, 4 A1, 5 A2
+        // Крапля через лаву (самоцвіт) на кнопку b1: верхні TD1 відчинені, її власні BD1 — зачинені. Вогник через калюжу (самоцвіт) і крізь TD1
+        b.Do(VohnykBot.Seq(b.RunJump(F, +1, C(3), 30, C(7)), b.Go(F, C(7)), b.WaitFor(() => b.W.DoorO[0] >= T), b.Go(F, C(11))),
+            VohnykBot.Seq(b.RunJump(Wt, +1, C(2), 30, C(5)), b.Go(Wt, C(6))));
+        // вона сходить з кнопки — її двері відчиняються; він через стовпчик, по самоцвіт і на кнопку b2 — її двері BD2 відчинені, його TD2 зачинені
+        b.Do(VohnykBot.Seq(b.Jump(F, +1, 30, C(12)), b.Go(F, C(13)), b.Go(F, C(16)), b.Jump(F, 0, 30), b.Go(F, C(15))),
+            VohnykBot.Seq(b.Go(Wt, C(7)), b.WaitFor(() => b.W.DoorO[1] >= T), b.Go(Wt, C(11)), b.Go(Wt, C(14)), b.Jump(Wt, +1, 30, C(15)), b.Go(Wt, C(16)), b.Go(Wt, C(18))));
+        // Крапля крізь BD2, по самоцвіт — на кнопку b5 (комірчина Вогника); він з кнопки — крізь TD2, по самоцвіт, у комірчину й на кнопку b6
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.CenterPx(Wt) >= C(20)), b.Go(F, C(17)), b.WaitFor(() => b.W.DoorO[2] >= T), b.Go(F, C(21)), b.Jump(F, 0, 30),
+                b.WaitFor(() => b.W.DoorO[4] >= T), b.Go(F, C(28)), b.Go(F, C(23))),
+            VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[3] >= T), b.Go(Wt, C(21)), b.Jump(Wt, 0, 30), b.Go(Wt, C(23)), b.WaitFor(() => b.CenterPx(F) >= C(26)),
+                b.WaitFor(() => b.CenterPx(F) <= C(24)), b.WaitFor(() => b.W.DoorO[5] >= T), b.Go(Wt, C(28)), b.Go(Wt, C(22))));
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.CenterPx(Wt) <= C(22) + 4), b.Go(F, C(22))), null);
+    }
+
+    static void Level15(VohnykBot b)
+    {
+        // скрині: 0 — ліва (ліфтом на bX), 1 і 2 — праві (одна — місток у болоті, друга — на bY). Двері: 0 dR, 1 dE
+        // Вогник: через скриню, самоцвіт у стрибку, назад через скриню — і ще один самоцвіт, чекає праворуч
+        b.Do(VohnykBot.Seq(b.Go(F, C(10)), b.Jump(F, -1, 30, C(8)), b.Go(F, C(7)), b.Jump(F, 0, 30), b.Go(F, C(8)), b.Jump(F, +1, 30, C(12)),
+                b.Go(F, C(12)), b.Jump(F, 0, 30), b.Go(F, C(12))),
+            // Крапля: через скриню й горбик водою в куток (два самоцвіти), назад крізь важіль lR — праві двері dR відчинені;
+            // потім заштовхує скриню на ліфт аж до горбика (стає рівно) і стає поруч
+            VohnykBot.Seq(b.Go(Wt, C(10)), b.Jump(Wt, -1, 30, C(8)), b.Go(Wt, C(5)), b.Jump(Wt, -1, 30, C(3)), b.Go(Wt, C(1)), b.Go(Wt, C(3)),
+                b.Jump(Wt, +1, 30, C(5)), b.Go(Wt, C(7)), b.WaitFor(() => b.CenterPx(F) >= C(12) - 4 && b.Ground(F)),
+                b.Go(Wt, C(8)), b.Jump(Wt, +1, 30, C(10)), b.Go(Wt, C(10)), b.RunUntil(-1, () => b.W.BoxX[0] <= 5 * T), b.Go(Wt, C(6) - 2)));
+        // Вогник на кнопку bL — ліфт везе Краплю зі скринею нагору; там скриня — на bX, два самоцвіти, і Крапля чекає біля калюжі
+        b.Do(b.Go(F, C(11)),
+            VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[0] == 7 * T), b.RunUntil(-1, () => b.W.BoxX[0] <= 2 * T), b.Go(Wt, C(6)), b.Jump(Wt, 0, 30), b.Go(Wt, C(9))));
+        // Вогник праворуч крізь dR: права скриня — у болото (місток), ліва — по містку на bY; самоцвіт; назад на ліфт
+        b.Do(VohnykBot.Seq(b.Go(F, C(14)), b.Go(F, C(16)), b.Jump(F, +1, 30, C(18)), b.Go(F, C(18)), b.RunUntil(+1, () => b.W.BoxY[2] >= 15 * T),
+                b.Go(F, C(19)), b.Jump(F, -1, 30, C(16)), b.Go(F, C(16)), b.RunUntil(+1, () => b.W.BoxX[1] >= 25 * T), b.Go(F, C(23)), b.Jump(F, 0, 30),
+                b.Go(F, C(6) - 2)), null);
+        // Крапля на bL2 нагорі — ліфт везе Вогника; обоє по самоцвіти — і крізь браму dE (обидві кнопки тримають скрині)
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[0] == 7 * T), b.Go(F, C(4)), b.Jump(F, 0, 30), b.Go(F, C(7)), b.RunJump(F, +1, C(8) + 4, 30, C(11)), b.Go(F, C(14))),
+            VohnykBot.Seq(b.Go(Wt, C(8)), b.WaitFor(() => b.W.LiftY[0] == 7 * T && b.CenterPx(F) <= C(4) + 4), b.WaitFor(() => b.CenterPx(F) >= C(8)), b.Go(Wt, C(16))));
     }
 
     static void Level2(VohnykBot b)

@@ -635,8 +635,59 @@ public sealed class VohnykWorld
 
     // ---------- скрині ----------
 
+    /// <summary>
+    /// Скриня, що більше ніж наполовину звисає над ямою (рідина чи повітря в ряду під нею), перекидається в яму:
+    /// стає рівно в клітинку ями, і далі падає звичайно. Без цього скриня, яку штовхають кроками по 2 px, майже
+    /// ніколи не влучила б рівно в яму шириною в одну плитку й проїхала б по краях, як по мосту.
+    /// </summary>
+    void TipIntoGap(int b)
+    {
+        var x = BoxX[b];
+        var y = BoxY[b];
+        var c0 = FloorDiv(x, TileSu);
+        var off = x - c0 * TileSu;
+        var bottom = y + BoxSize;
+        if (off == 0 || bottom % TileSu != 0) return;
+        var r = bottom / TileSu;
+        var left = Level.Tile(c0, r) == VohnykLevel.Stone;
+        var right = Level.Tile(c0 + 1, r) == VohnykLevel.Stone;
+        if (left == right) return;
+        // тримається не на плитці, а на ліфті, дверях чи іншій скрині — то не яма
+        for (var f = 0; f < _nf; f++)
+            if (LiftY[f] == bottom && LiftX[f] < x + BoxSize && LiftX[f] + _liftW[f] > x) return;
+        for (var d = 0; d < _nd; d++)
+            if (_doorY[d] == bottom && _doorH[d] > DoorO[d] && _doorX[d] < x + BoxSize && _doorX[d] + TileSu > x) return;
+        for (var o = 0; o < _nx; o++)
+            if (o != b && BoxY[o] == bottom && BoxX[o] < x + BoxSize && BoxX[o] + BoxSize > x) return;
+        int nx;
+        if (left)
+        {
+            if (TileSu - off >= TileSu / 2) return;
+            nx = (c0 + 1) * TileSu;
+        }
+        else
+        {
+            if (off >= TileSu / 2) return;
+            nx = c0 * TileSu;
+        }
+        // клітинка ями вільна: не камінь, не двері, не ліфт, не інша скриня й не герой
+        var col = nx / TileSu;
+        for (var rr = FloorDiv(y, TileSu); rr <= FloorDiv(y + BoxSize - 1, TileSu); rr++)
+            if (Level.Tile(col, rr) == VohnykLevel.Stone) return;
+        for (var d = 0; d < _nd; d++)
+            if (_doorH[d] > DoorO[d] && Overlap(nx, y, BoxSize, BoxSize, _doorX[d], _doorY[d], TileSu, _doorH[d] - DoorO[d])) return;
+        for (var f = 0; f < _nf; f++)
+            if (Overlap(nx, y, BoxSize, BoxSize, LiftX[f], LiftY[f], _liftW[f], LiftH)) return;
+        for (var o = 0; o < _nx; o++)
+            if (o != b && Overlap(nx, y, BoxSize, BoxSize, BoxX[o], BoxY[o], BoxSize, BoxSize)) return;
+        for (var h = 0; h < 2; h++)
+            if (Overlap(nx, y, BoxSize, BoxSize, X[h], Y[h], HeroW, HeroH)) return;
+        BoxX[b] = nx;
+    }
+
     void StepBox(int b)
     {
+        TipIntoGap(b);
         BoxVy[b] = Math.Min(BoxVy[b] + Gravity, FallMax);
         var dy = BoxVy[b];
         var x0 = BoxX[b];
