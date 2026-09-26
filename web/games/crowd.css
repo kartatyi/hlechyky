@@ -119,6 +119,8 @@
 
 /* ---- керування пальцем: хрестовина — одна зона (тримай і веди пальцем), дії — одним дотиком ---- */
 .crowd-pad { display: none; }
+/* на розкритті, в кінці й коли збили — ховаємо: «Ще раз» на телефоні піднімається на екран */
+.crowd-pad.crowd-off { display: none !important; }
 @media (pointer: coarse) {
   .crowd-pad {
     display: flex; gap: 18px; align-items: center; justify-content: center; margin-top: 2px;

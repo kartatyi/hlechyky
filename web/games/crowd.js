@@ -1226,7 +1226,7 @@
     const who = res.winners.map((s) => nickOfSeat(st, s) + ' ' + (res.totals[s] | 0)).join(', ');
     if (res.why === 'left') {
       // хтось пішов, і грати лишилось нікому: пояснюємо, чому все скінчилось посеред раунду
-      return res.winners.length ? '🚪 Суперники розійшлись — ярмарок за ' + res.winners.map((s) => nickOfSeat(st, s)).join(', ')
+      return res.winners.length ? '🚪 Суперники розійшлись — перемога: ' + res.winners.map((s) => nickOfSeat(st, s)).join(', ')
         : '🚪 Усі розійшлись';
     }
     if (!res.winners.length) return '🤝 Нічия';
@@ -1741,6 +1741,11 @@
       placeSum(root, st);
       placePad(root, st);
       placeSeats(root, st);
+      if (st.padEl) {
+        const ph = st.vphase, off = !(alive(st) && (ph === 'start' || ph === 'go'));   // фазу тут каже вид: він летить на кожну її зміну
+        if (st.padEl.classList.contains('crowd-off') !== off) st.padEl.classList.toggle('crowd-off', off);
+        if (off && st.touchDir >= 0) { st.touchDir = -1; st.touchPid = null; want(st); }   // палець «лишився» на схованій хрестовині
+      }
       hud(st);
       summary(st);
       paintClock(st, st.last && st.last.ph ? st.last : null);
