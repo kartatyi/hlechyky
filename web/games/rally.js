@@ -2317,8 +2317,10 @@
         const a = f.c[o + 2];
         against = (fx || fy) && (fx * S.COS[a] + fy * S.SIN[a]) < -0.3 * 16384 * Math.hypot(fx, fy);
       }
-      st.wrongN = against ? (st.wrongN || 0) + 1 : 0;
-      st.wrong = st.wrongN >= 40;
+      // понад 40 тиків (1,6 с) поспіль — за тиками кадрів, не за кадрами: кадр буває й через два тики
+      if (!against) st.wrongN = 0;
+      else if (!st.wrongN) st.wrongN = f.t;
+      st.wrong = !!st.wrongN && f.t - st.wrongN >= 40;
     } else { st.wrong = false; st.wrongN = 0; }
   }
 
