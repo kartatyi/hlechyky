@@ -5,15 +5,16 @@
 
   Будова:
     1. RunnerSim — ДОСЛІВНЕ дзеркало src/Hlechyky/Games/Impl/RunnerSim.cs: цілі числа в суб-пікселях (16 на px),
-       крок 20 мс, курс від зерна (xorshift32), стрибок/політ, перемотування. Без DOM, лежить у window.RunnerSim
-       ще до HGames.register — його ганяє стенд docs/games/dev/runner-check.html (хеш парності з C#).
+       крок 20 мс, курс від зерна (xorshift32), стрибок/політ, перемотування. Без DOM; у window.RunnerSim — лише на
+       стенді docs/games/dev/runner-check.html (хеш парності з C#) і з ?rnrdebug=1.
     2. Мережа й годинник: свій герой рахується тут же з власного вводу (передбачення), сервер — суддя; кадр
        звіряє стан на кроці f.s і, якщо розійшлись, перераховує хвіст. Чужі — інтерполяція кадрів.
     3. Малювання на canvas: статичне (небо, гори, село) — в offscreen-шарах, спрайти — в кеші.
     4. HUD, керування (клавіатура, пад, палець, мишка), звук, три HGames.register.
 
   Дріт: вид { mode, ph, s, seed, readySteps, pmCap, snowOpt|featherOpt, plays, alive, place, points, p, … },
-  кадр { s, ph, d?, m?, p, sn?, pg?, ev? }; p[seat] Стрибозавра = [lag, y, vy, mode, stun, boost, eggs, snow, lp, lt, hs],
+  кадр { s, ph, d?, m?, p, sn?, pg?, ev? }; sn — кинуті брили [x, хто, id, з якого кроку, у кого цілили];
+  p[seat] Стрибозавра = [lag, y, vy, mode, stun, boost, eggs, snow, lp, lt, hs],
   Лелеки = [y, vy, mode, feather, ifr, lp]. Ввід — Input('in', { s, k }): k = 1 стрибок тримають, 2 ↓, 4 натиск.
 */
 (() => {
@@ -819,7 +820,10 @@
     ['dino-daily 1×5000', () => fixture(DINO, 390981302, 1, 15, 5000, 0, 1250, false)],   // Days.Seed("dino-daily","2026-09-27")
   ];
 
-  window.RunnerSim = {
+  // Симуляція назовні — лише стенду парності (без каркаса) і з ?rnrdebug=1 (боти-стенди): на проді готовий генератор
+  // курсу в консолі — ще один подарунок автострибу.
+  const stand = !window.HGames || !HGames.ui || !HGames.ui.canvas;
+  if (stand || /[?&]rnrdebug=1/.test(location.search)) window.RunnerSim = {
     Sim, Player, Rng, K, D, ST, RULES, DINO, STORKS, SUB, STEP_MS, SEATS, NO_GROUND, SNOW_ID_BASE,
     paceOf, speedOf, runAtOf, avD, obXAt, obBaseAt, fixture, FIXTURES,
     check() {
@@ -833,7 +837,7 @@
     },
   };
 
-  if (!window.HGames || !HGames.ui || !HGames.ui.canvas) return;   // стенд: лише симуляція
+  if (stand) return;   // стенд: лише симуляція
 
   // =============================================================================================
   // 2. Клієнт: годинник кроків, передбачення свого героя, звірка з сервером, чужі — з кадрів.
@@ -1056,7 +1060,7 @@
       g.fillStyle = '#fff'; g.beginPath(); g.arc(50, 40, 2.2, 0, 7); g.fill();
       g.fillStyle = deep; g.beginPath(); g.arc(50.8, 40, 1.1, 0, 7); g.fill();
       g.strokeStyle = deep; g.lineWidth = 1.2; g.beginPath(); g.moveTo(51, 45); g.lineTo(56, 45); g.stroke();
-      numberOn(g, seat + 1, 22, 45, 9);
+      if (seat >= 0) numberOn(g, seat + 1, 22, 45, 9);
       g.restore();
       return;
     }
@@ -1069,7 +1073,7 @@
       g.fillStyle = col; g.beginPath(); g.roundRect(28, 30, 18, 12, 5); g.fill();
       g.strokeStyle = deep; g.lineWidth = 1.3;
       g.beginPath(); g.moveTo(38, 33); g.lineTo(42, 37); g.moveTo(42, 33); g.lineTo(38, 37); g.stroke();
-      numberOn(g, seat + 1, 20, 46, 9);
+      if (seat >= 0) numberOn(g, seat + 1, 20, 46, 9);
       g.restore();
       return;
     }
@@ -1097,7 +1101,7 @@
     g.strokeStyle = deep; g.lineWidth = 1.2; g.beginPath(); g.moveTo(42, 15); g.lineTo(47, 15); g.stroke();
     // лапка
     g.strokeStyle = dark; g.lineWidth = 2.6; g.beginPath(); g.moveTo(32, 30); g.lineTo(37, pose === 2 ? 28 : 34); g.stroke();
-    numberOn(g, seat + 1, 20, 31, 9);
+    if (seat >= 0) numberOn(g, seat + 1, 20, 31, 9);
     g.restore();
   }
 
@@ -1109,8 +1113,8 @@
     // ноги назад
     g.strokeStyle = pal.beak; g.lineWidth = 1.8;
     g.beginPath(); g.moveTo(18, 27); g.lineTo(3, 30); g.moveTo(19, 29); g.lineTo(4, 33); g.stroke();
-    // хвіст
-    g.fillStyle = black; g.beginPath(); g.moveTo(16, 22); g.lineTo(9, 21); g.lineTo(10, 27); g.lineTo(17, 27); g.fill();
+    // хвіст — кольору місця: зграю з восьми лелек мало б читати й без бирок
+    g.fillStyle = mix(col, black, 0.25); g.beginPath(); g.moveTo(16, 22); g.lineTo(9, 21); g.lineTo(10, 27); g.lineTo(17, 27); g.fill();
     // тіло
     g.fillStyle = white; g.beginPath(); g.ellipse(27, 24, 13, 7, -0.08, 0, 7); g.fill();
     // шия, голова, дзьоб
@@ -1121,8 +1125,8 @@
     // хустка кольору місця
     g.fillStyle = col; g.beginPath(); g.moveTo(37, 17); g.lineTo(42, 14); g.lineTo(44, 19); g.lineTo(39, 23); g.fill();
     g.beginPath(); g.moveTo(38, 21); g.lineTo(34, 29); g.lineTo(40, 24); g.fill();
-    // крило
-    g.fillStyle = white;
+    // крило — теж у колір місця (світліше), кінчики лишаються чорними, як у справжньої лелеки
+    g.fillStyle = mix(col, white, 0.3);
     g.beginPath();
     if (frame === 0) { g.moveTo(21, 21); g.lineTo(11, 3); g.lineTo(22, 5); g.lineTo(33, 20); }
     else { g.moveTo(21, 24); g.lineTo(12, 40); g.lineTo(24, 38); g.lineTo(33, 25); }
@@ -1137,9 +1141,23 @@
     g.restore();
   }
 
+  /// Обвідка кольором місця навколо фігури (кільце ≈ 1,6 px). Чужих малюємо напівпрозорими, і без неї жовтий на
+  /// темному небі ставав бурим (плутався з рудим), а лелеки були однаково білі. Будується раз, у кадрі — один drawImage.
+  function ringOf(src, w, h, s, col) {
+    const sil = off(w, h, s);
+    sil.g.drawImage(src, 0, 0, w, h);
+    sil.g.globalCompositeOperation = 'source-in';
+    sil.g.fillStyle = col; sil.g.fillRect(0, 0, w, h);
+    const o = off(w, h, s), g = o.g;
+    for (let a = 0; a < 8; a++) g.drawImage(sil.c, Math.cos(a * Math.PI / 4) * 1.6, Math.sin(a * Math.PI / 4) * 1.6, w, h);
+    g.globalCompositeOperation = 'destination-out';
+    g.drawImage(src, 0, 0, w, h);
+    return o.c;
+  }
+
   function buildSprites(st) {
     const s = st.dpr * st.K, pal = st.pal;
-    const spr = { dino: [], stork: [], ob: {}, pk: {}, lazy: new Map(), labels: new Map() };
+    const spr = { dino: [], stork: [], ring: [], ob: {}, pk: {}, lazy: new Map(), labels: new Map() };
     for (let i = 0; i < SEATS; i++) {
       const col = pal.seats[i], a = [];
       for (let pose = 0; pose < 6; pose++) { const o = off(DINO_BOX.w, DINO_BOX.h, s); paintDino(o.g, pose, col, i); a.push(o.c); }
@@ -1147,6 +1165,13 @@
       const b = [];
       for (let fr = 0; fr < 2; fr++) { const o = off(STORK_BOX.w, STORK_BOX.h, s); paintStork(o.g, fr, col, i, pal); b.push(o.c); }
       spr.stork.push(b);
+      // обвідки — лише для свого режиму (чужі — у кожного місця свої)
+      spr.ring.push(st.mode === DINO ? a.map((c) => ringOf(c, DINO_BOX.w, DINO_BOX.h, s, col)) : b.map((c) => ringOf(c, STORK_BOX.w, STORK_BOX.h, s, col)));
+    }
+    // привид найкращої спроби дня — блідо-крижаний, без номера й візерунка
+    if (st.daily) {
+      spr.ghost = [];
+      for (let pose = 0; pose < 6; pose++) { const o = off(DINO_BOX.w, DINO_BOX.h, s); paintDino(o.g, pose, '#dff3ff', -1); spr.ghost.push(o.c); }
     }
     // ---- брили, бурулька, птеродактиль, сніжка ----
     const block = (g, x, y, w, h, cap) => {
@@ -1402,6 +1427,22 @@
       q.beginPath(); for (let i = 0; i < 30; i++) { const x = r3() * 256, y = 3 + r3() * 50; q.moveTo(x, y); q.lineTo(x + 1.5, y - 4); } q.stroke();
     }
     sc.ground = gr.c;
+    if (st.mode === DINO) {
+      // Іній з лівого краю: лавина ще за кадром, але вже близько — сцена мерзне від краю (малюється розтягнутою)
+      const fr = off(160, VIEW_H, s), q2 = fr.g;
+      const lg2 = q2.createLinearGradient(0, 0, 160, 0);
+      lg2.addColorStop(0, 'rgba(236, 246, 255, .95)'); lg2.addColorStop(0.35, 'rgba(214, 234, 252, .55)'); lg2.addColorStop(1, 'rgba(214, 234, 252, 0)');
+      q2.fillStyle = lg2; q2.fillRect(0, 0, 160, VIEW_H);
+      const r4 = Lcg(9);
+      q2.strokeStyle = 'rgba(255, 255, 255, .8)'; q2.lineWidth = 1.2;
+      q2.beginPath();
+      for (let i = 0; i < 26; i++) {
+        const x = r4() * 70, y = r4() * VIEW_H, len = 5 + r4() * 9;
+        for (let a = 0; a < 3; a++) { const an = a * Math.PI / 3 + r4() * 0.3; q2.moveTo(x - Math.cos(an) * len, y - Math.sin(an) * len); q2.lineTo(x + Math.cos(an) * len, y + Math.sin(an) * len); }
+      }
+      q2.stroke();
+      sc.frost = fr.c;
+    }
     st.scene = sc;
   }
 
@@ -1501,7 +1542,8 @@
       latest: null, latestAt: 0, snowWire: new Map(),
       vis: { lag: 0, y: 0 }, camBias: 0, lastCam: 0, camFocus: null, wasLive: null,
       prevMode: new Int8Array(SEATS).fill(-1), outAt: new Float64Array(SEATS), pops: [],
-      goAt: 0, ownOutAt: 0, throwAt: 0, rematchAt: 0, lastLand: 0, lastDraw: 0, ownSx: null,
+      goAt: 0, ownOutAt: 0, throwAt: 0, rematchAt: 0, finAt: 0, goNext: 0, lastLand: 0, lastDraw: 0, ownSx: null,
+      runLog: null, ghost: null,
       ptr: null, ptrY: 0, ptrDuck: false, rmb: false,
       raf: 0, hudAt: 0, stripAt: 0, hudSig: '', overSig: '', perf: { frames: 0, ms: 0, max: 0 },
       flakes: null, dust: null, board: null, boardAt: 0, boardBusy: false, boardRuns: -1,
@@ -1580,6 +1622,7 @@
     st.vis.lag = st.vis.y = 0; st.camBias = 0; st.camFocus = null; st.wasLive = null;
     st.prevMode.fill(-1); st.outAt.fill(0); st.pops.length = 0;
     st.goAt = 0; st.ownOutAt = 0; st.waitView = false; st.pend.length = 0;
+    st.ghost = null; st.runLog = null;
     st.lastHeld = 0; st.edge = false;
     const s = v.s | 0;
     ffWorld(st.sim, s);
@@ -1596,14 +1639,33 @@
     st.overSig = null;
     if (canSend(st)) { send(st, st.sim.S, st.held); st.lastHeld = st.held; }   // після F5: сервер дізнається, що зараз тримають
     if (me != null && ctx.playing) setTimeout(() => showStage(st), 60);
+    // Забіг дня: «Ще раз» стрибком чи тапом — той самий натиск і стартує нову спробу, як у хромівського динозаврика
+    // (раніше треба було тапнути двічі: перший ховав підсумок, другий стартував).
+    const go = st.goNext;
+    st.goNext = 0;
+    if (st.daily && go && performance.now() - go < 3000 && st.ph === 'wait' && me != null && ctx.playing) dailyStart(st);
   }
 
-  /// Кинута брила з кадру — у курс (клієнт дізнається про кидок лише з кадру, dino.md §9).
+  /// Кинута брила з кадру — у курс (клієнт дізнається про кидок лише з кадру, dino.md §9). Сцена показує кидок
+  /// сама: сніжка летить від кидальника до брили, над ціллю — «❄ нік» кольором кидальника (балачку столу сніжки
+  /// більше не засмічують). w[4] — у кого цілили.
   function knowSnow(st, w, fx) {
     if (st.snowWire.has(w[2])) return;
     st.snowWire.set(w[2], w);
     st.sim.knowSnow(w);
-    if (fx) { popAt(st, 'throw', w[0] / SUB + 13, GROUND - 20, w[1]); if (w[1] !== st.me) Snd.toss(); }
+    if (!fx) return;
+    popAt(st, 'throw', w[0] / SUB + 13, GROUND - 20, w[1]);
+    popAt(st, 'fly', w[0] / SUB + 13, GROUND - 16, w[1]);
+    const to = w.length > 4 ? w[4] : -1;
+    if (to >= 0 && to < SEATS && to !== w[1]) {
+      const q = popAt(st, 'snowhit', 0, 0, to, true);
+      if (q) {
+        const nick = st.ctx.nickOf(w[1]) || st.ctx.seatName(w[1]);
+        q.by = w[1];
+        q.text = to === st.me ? '❄ ' + nick + ' кидає сніжку — стрибай!' : '❄ ' + nick;
+      }
+    }
+    if (w[1] !== st.me) Snd.toss();
   }
 
   function rttSample(st, t) {
@@ -1635,10 +1697,13 @@
     let p = null, wasAir = false, wasOut = false;
     if (me != null) {
       p = sim.P[me];
-      if (!p.out && !p.down && canSend(st) && (st.edge || st.held !== st.lastHeld)) {
+      // Лелекам важить лише ребро змаху: відпускання не шлемо — інакше кожен тап коштував би два вводи, і на
+      // швидкому клацанні квота каркаса (30/с) різала б саме змахи.
+      if (!p.out && !p.down && canSend(st) && (st.mode === STORKS ? st.edge : st.edge || st.held !== st.lastHeld)) {
         const k = st.held | (st.edge ? 4 : 0);
         sim.input(me, t, k);
         send(st, t, k);
+        if (st.runLog) st.runLog.push(t, k);
         st.lastHeld = st.held;
       }
       st.edge = false;
@@ -1648,6 +1713,7 @@
     }
     const vy0 = p ? p.vy : 0;
     sim.step();
+    if (st.ghost) ghostTo(st.ghost, sim.S);
     if (p && fx) ownEvents(st, p, wasAir, wasOut, vy0);
     sim.clearEvents();
     if (t + 1 === sim.readySteps && sim.readySteps > 0 && fx) { st.goAt = performance.now(); Snd.go(); }
@@ -1861,6 +1927,8 @@
     st.running = true;
     sim.input(st.me, 0, k);
     send(st, 0, k);
+    st.runLog = [0, k];
+    st.ghost = ghostStart(st);
     st.lastHeld = st.held;
     st.edge = false;
     st.acc = 0; st.adj = 0; st.eAvg = 0; st.lastT = performance.now();
@@ -1869,6 +1937,50 @@
     // Сервер почне крокувати, лише коли отримає цей ввід, і перший його тик одразу дасть два кроки. Щоб годинник
     // не «снапався» вже на першому кадрі, одразу стаємо на своє випередження, як після відліку в партії.
     while (sim.S < st.lead) stepOnce(st, false);
+  }
+
+  // ---------- привид найкращої спроби дня (лише Забіг дня, лише на цьому пристрої) ----------
+  // Траса дня однакова й детермінована, тож досить пам'ятати свій ввід (крок, клавіші) і прогнати його на власному
+  // екземплярі Sim поруч зі своїм: напівпрозорий динозавр найкращої спроби біжить поруч — «ще одну, обжену себе».
+  const GHOST_KEY = 'runner.ghost';
+
+  function ghostLoad() {
+    try { const g = JSON.parse(localStorage.getItem(GHOST_KEY) || 'null'); return g && Array.isArray(g.log) ? g : null; } catch (_) { return null; }
+  }
+
+  function ghostStart(st) {
+    const v = st.ctx.view || {}, g = ghostLoad();
+    if (!st.daily || !g || g.day !== v.day || !(g.m > 0)) return null;
+    return { sim: new Sim(DINO, v.seed || 1, [true], 0, v.pmCap || 1250, false), log: g.log, idx: 0, m: g.m, outAt: 0 };
+  }
+
+  /// Привид — до кроку target (ввід із журналу подається на свій крок; той, що в минулому, пропускається).
+  function ghostTo(gh, target) {
+    const sim = gh.sim, log = gh.log;
+    let n = 0;
+    while (sim.S < target && n++ < 64) {
+      const t = sim.S;
+      while (gh.idx < log.length && log[gh.idx] <= t) { if (log[gh.idx] === t) sim.input(0, t, log[gh.idx + 1]); gh.idx += 2; }
+      sim.step();
+      sim.clearEvents();
+    }
+  }
+
+  /// Кінець спроби: якщо вона найкраща за день на цьому пристрої — запам'ятати ввід. Перед тим журнал проганяємо
+  /// з нуля й звіряємо метри з тими, що порахував сервер: спроба з F5, снапом чи відкинутим вводом привидом не стане.
+  function ghostSave(st) {
+    const v = st.ctx.view || {}, log = st.runLog, last = v.last;
+    st.runLog = null;
+    if (!st.daily || !log || !last || !(last.m > 0) || !v.day) return;
+    const old = ghostLoad();
+    if (old && old.day === v.day && old.m >= last.m) return;
+    setTimeout(() => {
+      const gh = { sim: new Sim(DINO, v.seed || 1, [true], 0, v.pmCap || 1250, false), log, idx: 0 };
+      for (let guard = 0; guard < 40000 && !gh.sim.P[0].out; guard++) ghostTo(gh, gh.sim.S + 1);
+      const m = Math.floor(paceOf(gh.sim.R, gh.sim.S) / D.SubPerMetre);
+      if (!gh.sim.P[0].out || m !== last.m) { if (DEBUG) console.log('[runner] привид не збігся з сервером', m, last.m); return; }
+      try { localStorage.setItem(GHOST_KEY, JSON.stringify({ day: v.day, m, log })); } catch (_) { /* приватне вікно */ }
+    }, 30);
   }
 
   function doThrow(st) {
@@ -1881,10 +1993,17 @@
     ctx.act('throw').then((r) => { if (r && r.ok) Snd.toss(); }).catch(() => {});
   }
 
+  /// «Ще раз» стрибком, тапом чи Ⓐ. Щойно скінчилось — натиск ще з гри (гравець саме гатив стрибок, коли його
+  /// наздогнала лавина): підсумок мусить побути на екрані — соло 0,7 с, партія 1,5 с (там пробіл будь-кого
+  /// перезапускає стіл для всіх, а таблицю хочуть роздивитись). У Забігу дня той самий натиск одразу й стартує.
   function rematch(st) {
     const ctx = st.ctx, now = performance.now();
     if (!ctx.mine || ctx.room.status !== 'finished' || now - st.rematchAt < 900) return;
+    const v = ctx.view || {};
+    const lock = st.daily || (v.n0 | 0) <= 1 ? 700 : 1500;
+    if (!st.finAt || now - st.finAt < lock) return;
     st.rematchAt = now;
+    if (st.daily) st.goNext = now;
     Promise.resolve(HGames.call('Rematch', ctx.room.id))
       .then((r) => { if (r && r.ok === false && r.message) ctx.toast(r.message, 'err'); })
       .catch(() => {});
@@ -1927,22 +2046,27 @@
     }
   }
 
-  /// Короткий спалах над героєм місця seat (яйце, перчик, пір'я) або в точці (кидок).
+  /// Короткий спалах над героєм місця seat (яйце, перчик, пір'я, «❄ від кого») або в точці (кидок). Повертає спалах.
   function popAt(st, kind, x, y, seat, onSeat) {
     const now = performance.now();
-    for (let i = st.pops.length - 1; i >= 0; i--) if (now - st.pops[i].at > 900) st.pops.splice(i, 1);
-    if (st.pops.length < 24) st.pops.push({ kind, x, y, seat, onSeat: !!onSeat, at: now });
+    for (let i = st.pops.length - 1; i >= 0; i--) if (now - st.pops[i].at > POP_MS) st.pops.splice(i, 1);
+    if (st.pops.length >= 24) return null;
+    const q = { kind, x, y, seat, onSeat: !!onSeat, at: now, by: -1, text: '', tz: 0, tw: 0 };
+    st.pops.push(q);
+    return q;
   }
+  const POP_MS = 1400;
 
   const ORDER = new Int8Array(SEATS);
   const SX = new Float64Array(SEATS), SY = new Float64Array(SEATS), HEAD = new Float64Array(SEATS);
   // Бирки ніків розкладаємо прямокутниками (x, y, ширина): нова не лягає на вже покладену — піднімається
   // над нею (під стелею Лелек — опускається під птаха). Фіксовані масиви, без алокацій у кадрі.
   const LB_H = 15, LB_GAP = 2, LB_MAX = 10;
-  const LB = { n: 0, x: new Float64Array(LB_MAX), y: new Float64Array(LB_MAX), w: new Float64Array(LB_MAX) };
+  // h — висота бирки в цьому кадрі: на телефоні сцена стиснута до ~0,67, і бирки там у 1,4 раза більші, щоб читались
+  const LB = { n: 0, h: LB_H, z: 1, x: new Float64Array(LB_MAX), y: new Float64Array(LB_MAX), w: new Float64Array(LB_MAX) };
   function lbHit(x, y, w) {
     for (let k = 0; k < LB.n; k++)
-      if (x < LB.x[k] + LB.w[k] + LB_GAP && x + w + LB_GAP > LB.x[k] && y < LB.y[k] + LB_H + 1 && y + LB_H + 1 > LB.y[k]) return k;
+      if (x < LB.x[k] + LB.w[k] + LB_GAP && x + w + LB_GAP > LB.x[k] && y < LB.y[k] + LB.h + 1 && y + LB.h + 1 > LB.y[k]) return k;
     return -1;
   }
   function lbPut(x, y, w) { if (LB.n < LB_MAX) { LB.x[LB.n] = x; LB.y[LB.n] = y; LB.w[LB.n] = w; LB.n++; } }
@@ -2063,6 +2187,8 @@
 
     // ---- 8: чужі — за кадрами, прозорі, з бирками ----
     LB.n = 0;
+    LB.z = W < 800 ? 1.4 : 1;
+    LB.h = LB_H * LB.z;
     // над своїм — стрілка й «ти»: це місце зайняте, чужі бирки обходять його
     if (p && p.plays && !(p.out || p.down)) {
       const ox = (lobby ? 70 + me * ((W - 140) / 8) : paceW - ownLag / SUB - camPx) + 15;
@@ -2095,29 +2221,32 @@
     for (let q = 0; q < n; q++) {
       const i = ORDER[q];
       const w = br.k < 0.5 ? (br.a.p[i] || br.b.p[i]) : (br.b.p[i] || br.a.p[i]);
-      g.globalAlpha = 0.55;
-      if (mode === DINO) HEAD[i] = drawDino(st, g, i, SX[i], SY[i], w[3], ((w[10] | 0) >> 12) & 15, now, st.outAt[i]);
+      g.globalAlpha = 0.6;
+      if (mode === DINO) HEAD[i] = drawDino(st, g, i, SX[i], SY[i], w[3], ((w[10] | 0) >> 12) & 15, now, st.outAt[i], true);
       else HEAD[i] = drawStork(st, g, i, SX[i], SY[i], w[1], w[2], w[3], now, st.outAt[i], false);
       g.globalAlpha = 1;
     }
     for (let q = 0; q < n; q++) {
       const i = ORDER[q], nick = ctx.nickOf(i);
       if (!nick || HEAD[i] < 0 || SX[i] + 40 < 0 || SX[i] - 12 > W) continue;
-      const lb = label(st, i, nick), lx = clamp(SX[i] + 15 - lb._w / 2, 2, W - lb._w - 2);
+      const lb = label(st, i, nick), lw = lb._w * LB.z, lx = clamp(SX[i] + 15 - lw / 2, 2, W - lw - 2);
       // угору над головою, поки не знайдеться вільне місце; під самою стелею (Лелеки) — униз, під птаха
-      let ly = HEAD[i] - 18, dir = -1, ok = false;
+      let ly = HEAD[i] - 3 - LB.h, dir = -1, ok = false;
       for (let tries = 0; tries < 12; tries++) {
         if (dir < 0 && ly < 2 - st.oy) { dir = 1; ly = GROUND - SY[i] / SUB + 6; }
-        const k = lbHit(lx, ly, lb._w);
+        const k = lbHit(lx, ly, lw);
         if (k < 0) { ok = true; break; }
-        ly = dir < 0 ? LB.y[k] - LB_H - LB_GAP : LB.y[k] + LB_H + LB_GAP;
+        ly = dir < 0 ? LB.y[k] - LB.h - LB_GAP : LB.y[k] + LB.h + LB_GAP;
       }
-      if (!ok || ly > VIEW_H - LB_H) continue;     // бирок більше, ніж місця над табуном, — решту видно в чіпах
-      lbPut(lx, ly, lb._w);
+      if (!ok || ly > VIEW_H - LB.h) continue;     // бирок більше, ніж місця над табуном, — решту видно в чіпах
+      lbPut(lx, ly, lw);
       g.globalAlpha = 0.9;
-      g.drawImage(lb, lx, ly, lb._w, LB_H);
+      g.drawImage(lb, lx, ly, lw, LB.h);
       g.globalAlpha = 1;
     }
+
+    // ---- 8½: привид своєї найкращої спроби дня ----
+    if (st.ghost && st.spr.ghost && !lobby) drawGhost(st, g, paceW, camPx, now);
 
     // ---- 9: свій — непрозорий, кільце під ногами, стрілка над головою ----
     st.ownSx = null;
@@ -2153,7 +2282,21 @@
     }
 
     // ---- 10: лавина ----
-    if (mode === DINO && !lobby && runT > -1) drawAvalanche(st, g, (paceF(R, ready, wt) - D0) / SUB - camPx, runT, now, reduced);
+    if (mode === DINO && !lobby && runT > -1) {
+      const avX = (paceF(R, ready, wt) - D0) / SUB - camPx;
+      drawAvalanche(st, g, avX, runT, now, reduced);
+      // Стіна ще за лівим краєм, а свій уже близько (< 420 px): край сцени береться інеєм, що росте й густішає, —
+      // «ой-ой» видно без читання статусу. Коли стіна в кадрі — вона сама все каже.
+      if (p && ownLive && !p.out && st.scene.frost && avX < 0) {
+        const gap = (D0 - ownLag) / SUB;
+        if (gap < 420) {
+          const f = clamp(1 - gap / 420, 0, 1);
+          g.globalAlpha = clamp(0.25 + f * 0.65 + (reduced ? 0 : Math.sin(now / 140) * 0.05), 0, 1);
+          g.drawImage(st.scene.frost, 0, 0, 50 + f * 130, VIEW_H);
+          g.globalAlpha = 1;
+        }
+      }
+    }
 
     // ---- 11: частинки ----
     const dt = Math.min(0.05, st.lastDraw ? (now - st.lastDraw) / 1000 : 0.016);
@@ -2191,6 +2334,25 @@
 
   const isReady = (st, t) => st.ph === 'ready' && t < st.sim.readySteps;
 
+  function drawGhost(st, g, paceW, camPx, now) {
+    const gh = st.ghost, gp = gh.sim.P[0];
+    if (gp.out && !gh.outAt) gh.outAt = now;
+    if (gh.outAt && now - gh.outAt > 700) return;
+    // трохи «вглиб» кризи (вище й лівіше), як чужі в табуні: поки біжите однаково, привид видно з-за свого
+    const sx = paceW - gp.lag / SUB - camPx - 8;
+    if (sx < -60 || sx > st.viewW + 20) return;
+    g.globalAlpha = 0.45;
+    const head = drawDino(st, g, 0, sx, gp.y + 9 * SUB, gp.modeOf(DINO), 0, now, gh.outAt, false, st.spr.ghost);
+    g.globalAlpha = 1;
+    if (gh.outAt) return;
+    const lb = label(st, 3, '👻 ' + fmtNum(gh.m) + ' м'), lw = lb._w * LB.z, lx = clamp(sx + 15 - lw / 2, 2, st.viewW - lw - 2), ly = head - 3 - LB.h;
+    if (lbHit(lx, ly, lw) >= 0) return;          // над своїм «ти» — не пишемо
+    lbPut(lx, ly, lw);
+    g.globalAlpha = 0.7;
+    g.drawImage(lb, lx, ly, lw, LB.h);
+    g.globalAlpha = 1;
+  }
+
   /// Відставання (px) того, хто з живих найменше відстав, — за кадрами чужих; нікого — лінія темпу.
   function leaderLag(br, me) {
     if (!br || !br.a) return 0;
@@ -2226,7 +2388,7 @@
 
   /// Динозавр місця i: ліва межа хітбокса — sx, ноги — y (суб над землею). Повертає y верхівки голови.
   /// grace > 0 — щойно оговтався після спотику й брили його не збивають: блимає, як лелека з пір'ям.
-  function drawDino(st, g, i, sx, y, md, grace, now, outAt) {
+  function drawDino(st, g, i, sx, y, md, grace, now, outAt, ghost, set) {
     const feet = GROUND - y / SUB;
     let pose;
     if (md === 4) pose = 5;
@@ -2234,7 +2396,7 @@
     else if (md === 1) pose = 2;
     else if (md === 2) pose = 3;
     else pose = ((sx + st.lastCam) / 22) & 1 ? 1 : 0;
-    const img = st.spr.dino[i][pose];
+    const img = (set || st.spr.dino[i])[pose];
     if (md === 4 && outAt) {
       const k = clamp((now - outAt) / 600, 0, 1);
       g.globalAlpha *= 1 - k * 0.8;
@@ -2242,6 +2404,11 @@
     const a0 = g.globalAlpha;
     if (grace > 0 && md !== 4 && ((now / 80) | 0) % 2 === 0) g.globalAlpha = a0 * 0.4;
     g.drawImage(img, sx - DINO_BOX.left, feet - DINO_BOX.foot, DINO_BOX.w, DINO_BOX.h);
+    if (ghost) {
+      // чужий: тіло напівпрозоре, а обвідка кольору місця — майже суцільна
+      g.globalAlpha = Math.min(1, g.globalAlpha * 1.6);
+      g.drawImage(st.spr.ring[i][pose], sx - DINO_BOX.left, feet - DINO_BOX.foot, DINO_BOX.w, DINO_BOX.h);
+    }
     g.globalAlpha = a0;
     const head = pose === 3 ? feet - 26 : pose === 5 ? feet - 30 : feet - 54;
     if (md === 3) stars(g, sx + 26, head - 4, now);
@@ -2276,6 +2443,12 @@
     }
     if (md === 3 && ((now / 90) | 0) % 2 === 0) g.globalAlpha *= 0.45;   // невразлива — блимає
     g.drawImage(img, x, top, STORK_BOX.w, STORK_BOX.h);
+    if (!mine) {
+      const a1 = g.globalAlpha;
+      g.globalAlpha = Math.min(1, a1 * 1.6);
+      g.drawImage(st.spr.ring[i][frame], x, top, STORK_BOX.w, STORK_BOX.h);
+      g.globalAlpha = a1;
+    }
     if (feather) {
       g.strokeStyle = st.pal.stork; g.lineWidth = 1.6;
       g.beginPath(); g.moveTo(x + 9, top + 24); g.quadraticCurveTo(x + 2, top + 18, x - 2, top + 22); g.stroke();
@@ -2382,21 +2555,76 @@
     }
   }
 
+  /// Де зараз герой місця seat на сцені (px): свій — з передбачення, чужий — з цього ж кадру (SX/SY). null — не видно.
+  function seatAt(st, seat) {
+    if (seat === st.me) {
+      if (st.ownSx == null) return null;
+      PT.x = st.ownSx + 15; PT.y = GROUND - st.sim.P[st.me].y / SUB - 58;
+      return PT;
+    }
+    if (seat < 0 || seat >= SEATS || HEAD[seat] < 0 || !Number.isFinite(SX[seat])) return null;
+    PT.x = SX[seat] + 15; PT.y = GROUND - SY[seat] / SUB - 58;
+    return PT;
+  }
+  const PT = { x: 0, y: 0 };
+
   function drawPops(st, g, now, camPx, paceO) {
     if (!st.pops.length) return;
-    for (const q of st.pops) {
-      const k = (now - q.at) / 700;
-      if (k >= 1) continue;
+    const W = st.viewW, z = W < 800 ? 1.3 : 1;
+    // два проходи: спершу чужі, потім свої — свій напис не мусить ховатися під значками табуна
+    for (let pass = 0; pass < 2; pass++) for (const q of st.pops) {
+      if ((q.onSeat && q.seat === st.me) !== (pass === 1)) continue;
+      const life = q.kind === 'snowhit' ? 1300 : q.kind === 'fly' ? 380 : 700;
+      const k = (now - q.at) / life;
+      if (k >= 1 || k < 0) continue;
       let x = q.x, y = q.y;
+      if (q.kind === 'fly') {
+        // сніжка летить від кидальника до місця, де ляже брила (кидальник за кадром — з лівого краю)
+        const from = seatAt(st, q.seat);
+        const x0 = from ? from.x : -10, y0 = from ? from.y + 20 : GROUND - 60;
+        const x1 = q.x - camPx, y1 = q.y;
+        const bx = x0 + (x1 - x0) * k, by = y0 + (y1 - y0) * k - Math.sin(k * Math.PI) * 46;
+        g.drawImage(st.spr.pk.snowball, bx - 8, by - 8, 16, 16);
+        continue;
+      }
       if (q.onSeat) {
-        if (q.seat === st.me) { if (st.ownSx == null) continue; x = st.ownSx + 15; y = GROUND - st.sim.P[st.me].y / SUB - 58; }
-        else { x = SX[q.seat] + 15; y = GROUND - SY[q.seat] / SUB - 58; if (!Number.isFinite(x)) continue; }
+        const at = seatAt(st, q.seat);
+        if (!at) continue;
+        x = at.x; y = at.y;
       } else x = q.x - camPx;
-      g.globalAlpha = 1 - k;
+      g.globalAlpha = q.kind === 'snowhit' ? Math.min(1, (1 - k) * 3) : 1 - k;
       if (q.kind === 'egg') { g.fillStyle = '#fff4c2'; for (let a = 0; a < 6; a++) { const r = 6 + k * 16; g.fillRect(x + Math.cos(a) * r - 1.5, y + 20 + Math.sin(a) * r - 1.5, 3, 3); } }
-      else if (q.kind === 'pepper') { g.fillStyle = '#ff7a3d'; g.font = '700 12px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('+25%', x, y + 8 - k * 14); }
+      else if (q.kind === 'pepper') {
+        // напис — лише над своїм: коли табун бере перчик разом, шість «+25%» злипались у кашу
+        if (q.seat === st.me) {
+          g.fillStyle = '#ff7a3d'; g.font = '700 ' + Math.round(12 * z) + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+          g.fillText('🌶 +25 % швидкості', x, y + 8 - k * 14);
+        } else g.drawImage(st.spr.pk.pepper, x - 7, y + 10 - k * 12, 14, 14);
+      }
       else if (q.kind === 'feather') { g.fillStyle = '#ffffff'; for (let a = 0; a < 3; a++) { g.save(); g.translate(x - 10 + a * 10 + k * (a - 1) * 20, y + 40 + k * 26); g.rotate(k * 4 + a); g.fillRect(-4, -1.2, 8, 2.4); g.restore(); } }
       else if (q.kind === 'throw') { g.strokeStyle = '#dff3ff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 8 + k * 30, 0, 7); g.stroke(); }
+      else if (q.kind === 'snowhit' && q.text) {
+        // ціль бачить, хто це зробив, у мить кидка: підпис кольором кидальника; собі — більший і вгорі сцени
+        const mine = q.seat === st.me, px = Math.round((mine ? 15 : 11) * z);
+        g.font = '800 ' + px + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        if (q.tz !== px) { q.tz = px; q.tw = g.measureText(q.text).width + 14; }
+        const tw = q.tw, th = px + 8;
+        const cx = mine ? W / 2 : clamp(x, tw / 2 + 2, W - tw / 2 - 2);
+        let cy = mine ? 28 - st.oy + 12 : y - 20;
+        if (!mine) {
+          // над ціллю, але не поверх бирок табуна: піднімаємось над тією, на яку лягли б
+          for (let tries = 0; tries < 8; tries++) {
+            const hit = lbHit(cx - tw / 2, cy - th / 2, tw);
+            if (hit < 0) break;
+            cy = LB.y[hit] - th / 2 - LB_GAP;
+          }
+          if (cy - th / 2 < -st.oy + 2) cy = -st.oy + 2 + th / 2;
+          lbPut(cx - tw / 2, cy - th / 2, tw);
+        }
+        g.fillStyle = 'rgba(8, 16, 24, .78)'; g.beginPath(); g.roundRect(cx - tw / 2, cy - th / 2, tw, th, th / 2); g.fill();
+        g.fillStyle = q.by >= 0 ? st.pal.seats[q.by] : '#dff3ff';
+        g.fillText(q.text, cx, cy + 1);
+      }
     }
     g.globalAlpha = 1;
   }
@@ -2571,7 +2799,7 @@
         if (w[2] === 4) { extra += ' 💀'; cls += ' out'; }
       }
     }
-    return '<span class="' + cls + '"><i>' + (i + 1) + '</i>' + esc(nick) + (extra ? '<em>' + extra + '</em>' : '') + '</span>';
+    return '<span class="' + cls + '" title="' + esc(nick) + '"><i>' + (i + 1) + '</i><span class="rnr-nick">' + esc(nick) + '</span>' + (extra ? '<em>' + extra + '</em>' : '') + '</span>';
   }
 
   function hud(st) {
@@ -2584,7 +2812,7 @@
       const p = st.me != null ? sim.P[st.me] : null;
       setText(el.m, fmtNum(ctx.room.status === 'finished' && v.last ? v.last.m : metres) + ' м');
       const yest = v.day && kyivToday() && v.day !== kyivToday();
-      setText(el.sub, yest ? 'це вчорашня траса — зайди з лобі за новою'
+      setText(el.sub, yest ? (ctx.room.status === 'finished' ? 'настав новий день — «Ще раз» дасть нову кризу' : 'це ще вчорашня траса — наступна спроба вже буде сьогоднішня')
         : 'рекорд дня ' + fmtNum(v.best || 0) + ' м · спроба ' + ((v.runs || 0) + (ctx.room.status === 'finished' ? 0 : 1)));
       setText(el.eggs, '🥚 ' + (ctx.room.status === 'finished' && v.last ? v.last.eggs : p ? p.eggs : 0));
     } else {
@@ -2646,48 +2874,83 @@
     }
   }
 
+  /// «Оля й Петро», «Петро і Оля», «Влад і Юра»: між голосними й після голосної перед приголосною — «й»,
+  /// між приголосними й перед і/й/є/ї/ю/я — «і». Імена вже екрановані.
+  function andJoin(a) {
+    if (a.length <= 1) return a.join('');
+    const head = a.slice(0, -1).join(', '), tail = a[a.length - 1];
+    const prev = head.slice(-1).toLowerCase(), next = tail.slice(0, 1).toLowerCase();
+    return head + (('аеєиіїоуюя'.includes(prev) && !'іїйєюя'.includes(next)) ? ' й ' : ' і ') + tail;
+  }
+
+  /// «❄ Снайпер раунду — Тарас: 7 спотиків від 1 сніжки» (сервер дає [місце, влучань, кинуто] лише після раунду).
+  /// Одна брила може збити пів табуна: вона лягає перед лідером, а решта біжить слідом.
+  function sniperHtml(ctx, sn, what) {
+    if (!Array.isArray(sn) || sn.length < 3) return '';
+    const nick = ctx.esc(ctx.nickOf(sn[0]) || ctx.seatName(sn[0]));
+    const hits = sn[1] + ' ' + plural(sn[1], 'спотик', 'спотики', 'спотиків');
+    const balls = sn[2] + ' ' + (sn[2] % 10 === 1 && sn[2] % 100 !== 11 ? 'сніжки' : 'сніжок');
+    return '<p class="rnr-ovsnow">❄ Снайпер ' + what + ' — <b class="s' + sn[0] + '">' + nick + '</b>: ' + hits + ' від ' + balls + '</p>';
+  }
+
+  function plural(n, one, few, many) {
+    const t = n % 100, o = n % 10;
+    if (t > 10 && t < 20) return many;
+    return o === 1 ? one : o >= 2 && o <= 4 ? few : many;
+  }
+
   /// Таблиця раунду (over) і партії (done) поверх канвасу; для Забігу дня — підсумок спроби й «сьогодні».
+  /// На вузькому екрані (телефон) CSS ставить її під сцену: у сцені 170 px заввишки вісім рядків не вміщались.
   function over(st) {
     const ctx = st.ctx, v = ctx.view || {}, el = st.el;
     const done = ctx.room.status === 'finished';
     const show = done || st.ph === 'over';
-    const sig = show ? [ctx.room.status, st.ph, v.round, v.s, JSON.stringify(v.result || v.last || null), st.board ? st.boardAt : 0].join('|') : '';
+    const sig = show ? [ctx.room.status, st.ph, v.round, v.s, JSON.stringify(v.result || v.last || null), JSON.stringify(v.sniper || null), st.board ? st.boardAt : 0].join('|') : '';
     if (sig === st.overSig) return;
     st.overSig = sig;
+    el.wrap.classList.toggle('rnr-showover', show);
     if (!show) { el.over.hidden = true; el.over.innerHTML = ''; return; }
     const esc = ctx.esc, nick = (i) => esc(ctx.nickOf(i) || ctx.seatName(i));
+    const again = '<p class="rnr-ovhint">' + (device() === 'pad' ? 'Ⓐ — ще раз' : ui.coarse() ? 'Тап — ще раз' : 'Пробіл або Enter — ще раз') + '</p>';
     let html = '';
     if (st.daily) {
       const last = v.last || { m: 0, eggs: 0, record: false };
       html = '<div class="rnr-ovbox"><h3>' + (last.record && last.m > 0 ? '🏆 Новий рекорд дня: ' + fmtNum(last.m) + ' м' : fmtNum(last.m) + ' м · 🥚 ' + last.eggs) + '</h3>'
         + '<p class="rnr-ovsub">Рекорд дня ' + fmtNum(v.best || 0) + ' м · спроб сьогодні ' + (v.runs || 0) + '</p>'
-        + boardHtml(st) + '<p class="rnr-ovhint">' + (ui.coarse() ? 'Тап — ще раз' : 'Пробіл або Enter — ще раз') + '</p></div>';
+        + boardHtml(st) + again + '</div>';
       loadBoard(st);
     } else if (done && v.n0 === 1) {
       const run = Math.max(0, (v.s || 0) - (v.readySteps || 0));
       html = '<div class="rnr-ovbox"><h3>' + (st.mode === DINO ? 'Тренування: ' + fmtNum(v.m || 0) + ' м' : 'Тренування: у небі ' + fmtClock(run)) + '</h3>'
-        + '<p class="rnr-ovsub">' + (st.mode === DINO ? 'Для таблиці рекордів є «Забіг дня» в Соло. ' : '') + 'Клич друзів — удвох веселіше.</p></div>';
+        + '<p class="rnr-ovsub">' + (st.mode === DINO ? 'Для таблиці рекордів є «Забіг дня» в Соло. ' : '') + 'Клич друзів — удвох веселіше.</p>' + again + '</div>';
     } else if (done && v.result && v.result.table && v.result.table.length) {
       const t = v.result.table, wn = v.result.winners || [];
-      const names = wn.map(nick);
-      const top = names.length > 1 ? names.slice(0, -1).join(', ') + ' й ' + names[names.length - 1] : names.join('');
-      html = '<div class="rnr-ovbox"><h3>🏆 ' + top + ' — ' + (wn.length > 1 ? 'по ' : '') + t[0].points + ' ' + points(t[0].points) + '</h3>'
-        + '<table><tr><th>#</th><th>хто</th><th>очки</th>' + (st.mode === DINO ? '<th>🥚</th>' : '') + '</tr>'
-        + t.map((r, k) => '<tr class="s' + r.seat + (r.seat === ctx.seat ? ' me' : '') + '"><td>' + (k + 1) + '</td><td><i></i>' + nick(r.seat) + '</td><td>' + r.points + '</td>'
+      const top = t[0].points;
+      const head = v.result.draw || !wn.length
+        ? '🤝 Нічия — усі по ' + top + ' ' + points(top)
+        : '🏆 ' + andJoin(wn.map(nick)) + ' — ' + (wn.length > 1 ? 'по ' : '') + top + ' ' + points(top);
+      // рівні очки — рівне місце: «1, 1, 3», а не «1, 2, 3»
+      const rank = (r) => 1 + t.filter((x) => x.points > r.points).length;
+      html = '<div class="rnr-ovbox"><h3>' + head + '</h3>'
+        + '<table><tr><th>#</th><th>хто</th><th>очки</th>' + (st.mode === DINO ? '<th title="з них за яйця">з них 🥚</th>' : '') + '</tr>'
+        + t.map((r) => '<tr class="s' + r.seat + (r.seat === ctx.seat ? ' me' : '') + '"><td>' + rank(r) + '</td><td><i></i>' + nick(r.seat) + '</td><td>' + r.points + '</td>'
           + (st.mode === DINO ? '<td>' + r.eggs + '</td>' : '') + '</tr>').join('')
-        + '</table></div>';
+        + '</table>' + sniperHtml(ctx, v.sniperParty, 'партії') + (ctx.mine ? again : '') + '</div>';
     } else if (done) {
-      html = '<div class="rnr-ovbox"><h3>' + esc((ctx.room.result && ctx.room.result.text) || 'Партію зіграно') + '</h3></div>';
+      html = '<div class="rnr-ovbox"><h3>' + esc((ctx.room.result && ctx.room.result.text) || 'Партію зіграно') + '</h3>' + (ctx.mine ? again : '') + '</div>';
     } else {
       const rp = (v.roundPoints && v.roundPoints[v.roundPoints.length - 1]) || [];
       const rows = [];
       for (let i = 0; i < SEATS; i++) if (v.plays && v.plays[i]) rows.push(i);
       rows.sort((a, b) => (v.place[a] || 99) - (v.place[b] || 99) || a - b);
+      // «раунд» раніше вже містив яйця, а поруч стояла ще колонка 🥚 — здавалось, що яйця лічаться двічі.
+      // Тепер окремо: за місце, за яйця, разом за партію.
+      const eggs = (i) => (st.mode === DINO && v.eggs && v.eggs[i]) || 0;
       html = '<div class="rnr-ovbox"><h3>Раунд ' + (v.round || 1) + (v.rounds > 1 ? ' з ' + v.rounds : '') + '</h3>'
-        + '<table><tr><th>#</th><th>хто</th><th>раунд</th>' + (st.mode === DINO ? '<th>🥚</th>' : '') + '<th>разом</th></tr>'
-        + rows.map((i) => '<tr class="s' + i + (i === ctx.seat ? ' me' : '') + '"><td>' + (v.place[i] || '—') + '</td><td><i></i>' + nick(i) + '</td><td>+' + (rp[i] || 0) + '</td>'
-          + (st.mode === DINO ? '<td>' + ((v.eggs && v.eggs[i]) || 0) + '</td>' : '') + '<td>' + ((v.points && v.points[i]) || 0) + '</td></tr>').join('')
-        + '</table>' + (v.round < v.rounds ? '<p class="rnr-ovhint">Наступний раунд за мить…</p>' : '') + '</div>';
+        + '<table><tr><th>#</th><th>хто</th><th>за місце</th>' + (st.mode === DINO ? '<th>🥚</th>' : '') + '<th>разом</th></tr>'
+        + rows.map((i) => '<tr class="s' + i + (i === ctx.seat ? ' me' : '') + '"><td>' + (v.place[i] || '—') + '</td><td><i></i>' + nick(i) + '</td><td>+' + Math.max(0, (rp[i] || 0) - eggs(i)) + '</td>'
+          + (st.mode === DINO ? '<td>+' + eggs(i) + '</td>' : '') + '<td>' + ((v.points && v.points[i]) || 0) + '</td></tr>').join('')
+        + '</table>' + sniperHtml(ctx, v.sniper, 'раунду') + (v.round < v.rounds ? '<p class="rnr-ovhint">Наступний раунд за мить…</p>' : '') + '</div>';
     }
     el.over.innerHTML = html;
     el.over.hidden = false;
@@ -2776,7 +3039,9 @@
     listen(st, document, 'visibilitychange', () => { if (document.hidden) { letGo(); Snd.rumbleTo(0); } });
     if (window.ResizeObserver) { st.ro = new ResizeObserver(() => fit(st)); st.ro.observe(st.el.stage); }
     else listen(st, window, 'resize', () => fit(st));
-    window.__rnr = debugApi(st);
+    // Відладка (стан, заміри, найближчі перешкоди для ботів-стендів) — лише з ?rnrdebug=1: на проді готовий
+    // перелік перешкод у консолі був би подарунком автострибу для Забігу дня.
+    if (DEBUG) window.__rnr = debugApi(st);
     loop(st);
   }
 
@@ -2787,6 +3052,8 @@
     ctx._rnr = st;
     const v = ctx.view;
     if (!v) return;
+    if (ctx.room.status !== 'finished') st.finAt = 0;
+    else if (!st.finAt) { st.finAt = performance.now(); ghostSave(st); }
     if (keyOf(ctx, v) !== st.key) newRound(st, v);
     else {
       if (v.p && v.s != null && !st.running) pushFrame(st, v.s, v.p);
@@ -2842,14 +3109,40 @@
 
   function place(n) { return n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : n + '.'; }
 
+  /// Чим людина грає зараз: пад (шар пада вмикає body.pad-on), палець чи клавіатура — підказки кажуть її мовою.
+  const device = () => (document.body.classList.contains('pad-on') ? 'pad' : ui.coarse() ? 'touch' : 'kbd');
+
+  /// Найближча перешкода «на рівні голови» попереду свого динозавра (≤ 300 px), поки він на землі: тоді й лише тоді
+  /// підказка «пригнись» має сенс — постійне «↓ пригнутись» новачок читав як наказ «пригнись зараз».
+  function duckAhead(st) {
+    const sim = st.sim;
+    if (!sim || st.me == null || st.mode !== DINO) return '';
+    const p = sim.P[st.me];
+    if (p.out || p.air || p.duck) return '';
+    const run = Math.max(0, sim.S - sim.readySteps), x = paceOf(sim.R, run) - p.lag + D.HitW;
+    let best = Infinity, kind = 0;
+    for (let i = 0; i < sim.obCount; i++) {
+      const o = sim.obstacle(i);
+      if (o.kind !== K.Icicle && o.kind !== K.Ptero) continue;
+      const dx = obXAt(o, run) - x;
+      if (dx < -o.w || dx > 300 * SUB || dx >= best) continue;
+      best = dx; kind = o.kind;
+    }
+    if (!kind) return '';
+    const hint = device() === 'touch' ? '⬇' : '↓';
+    return hint + ' ' + (kind === K.Icicle ? 'бурулька' : 'птеродактиль') + ' — пригнись!';
+  }
+
   function status(ctx) {
     const st = ctx._rnr, v = ctx.view || {}, room = ctx.room;
     if (!st) return '';
-    const coarse = ui.coarse();
+    const dev = device();
     if (room.status === 'lobby') {
       const seated = room.seats.filter((x) => x.nick).length;
-      if (ctx.mine && seated === 1 && String(room.host).toLowerCase() === String(ctx.me.nick).toLowerCase())
-        return 'Можна почати самому — це тренування; клич друзів у балачках';
+      const host = String(room.host || ''), iHost = host.toLowerCase() === String(ctx.me.nick).toLowerCase();
+      if (ctx.mine && seated === 1 && iHost) return 'Можна почати самому — це тренування; клич друзів у балачках';
+      if (iHost && seated >= 2) return seated >= room.seats.length ? 'Усі на місці — тисни «Почати»' : 'За столом ' + seated + ' — можна тиснути «Почати»';
+      if (host && seated >= 1) return 'Чекаємо, поки ' + host + ' почне';
       return '';
     }
     if (room.status === 'finished') {
@@ -2862,29 +3155,49 @@
     }
     const ph = st.ph || v.ph;
     const slow = st.slow >= 3 ? (st.mode === DINO ? ' · зв\'язок повільний, стрибки можуть запізнюватись' : ' · зв\'язок повільний') : '';
+    const p = st.sim && st.me != null ? st.sim.P[st.me] : null;
+    const gapM = () => Math.max(0, Math.floor((avD(Math.max(0, st.sim.S - st.sim.readySteps)) - p.lag) / D.SubPerMetre));
     if (st.daily) {
-      if (ph === 'wait') return coarse ? 'Тап — стрибок і старт. Тримай довше — вище' : 'Пробіл, ↑ або тап — стрибок і старт. Тримай довше — вище';
-      const p = st.sim && st.me != null ? st.sim.P[st.me] : null;
+      if (ph === 'wait') {
+        return (dev === 'pad' ? 'Ⓐ' : dev === 'touch' ? 'Тап' : 'Пробіл, ↑ або тап') + ' — стрибок і старт. Тримай довше — вище';
+      }
       if (!p) return '';
-      const gap = Math.max(0, Math.floor((avD(Math.max(0, st.sim.S)) - p.lag) / D.SubPerMetre));
-      return (coarse ? '⬇ пригнись' : '↓ пригнутись') + ' · лавина за ' + fmtNum(gap) + ' м' + slow;
+      return (duckAhead(st) || '🌨 лавина за ' + fmtNum(gapM()) + ' м') + slow;
     }
-    if (ph === 'ready') return 'Готуйсь…';
+    if (ph === 'ready') {
+      if (!ctx.mine) return 'Зараз почнуть…';
+      const jump = dev === 'pad' ? 'Ⓐ' : dev === 'touch' ? 'тап' : 'пробіл';
+      return 'Готуйсь… ' + (st.mode === DINO ? jump + ' — стрибок, ' + (dev === 'touch' ? '⬇' : '↓') + ' — пригнутись' : jump + ' — змах');
+    }
     if (ph === 'over') {
       const rows = [];
       for (let i = 0; i < SEATS; i++) if (v.plays && v.plays[i] && v.place && v.place[i]) rows.push(i);
       rows.sort((a, b) => v.place[a] - v.place[b] || a - b);
       return 'Раунд ' + (v.round || 1) + ': ' + rows.map((i) => place(v.place[i]) + ' ' + (ctx.nickOf(i) || ctx.seatName(i))).join(' · ');
     }
-    if (!ctx.mine) return 'Дивишся збоку';
-    const p = st.sim && st.me != null ? st.sim.P[st.me] : null;
-    if (st.mode === DINO) {
-      if (p && p.out) return 'Лавина тебе забрала — дивись, хто витримає';
-      const snow = p && p.snow ? (coarse ? ' · ❄ — кинути сніжку' : ' · X — сніжка') : '';
-      return (coarse ? 'Тап — стрибок (тримай — вище) · ⬇ пригнись' : 'Пробіл — стрибок (тримай — вище) · ↓ пригнутись') + snow + slow;
+    // хто ще в грі — з останнього кадру (глядачу й тому, хто вибув)
+    const f = st.latest || { p: v.p || [] }, fp = f.p || [], mi = st.mode === DINO ? 3 : 2;
+    let alive = 0, n = 0, lead = -1;
+    for (let i = 0; i < SEATS; i++) {
+      const w = fp[i];
+      if (!w || (v.plays && !v.plays[i])) continue;
+      n++;
+      if (w[mi] === 4) continue;
+      alive++;
+      if (st.mode === DINO && (lead < 0 || w[0] < fp[lead][0])) lead = i;
     }
-    if (p && (p.out || p.down)) return 'Ти на землі — дивись, хто ще в небі';
-    return (coarse ? 'Тап — змах' : 'Пробіл або тап — змах') + (p && p.feather ? ' · 🪶 запасне пір\'я є' : ' · пір\'я вже нема — обережно') + slow;
+    // сам на сам (тренування) рахувати нема кого
+    const left = n <= 1 ? '' : st.mode === DINO ? 'бігуть ' + alive + ' з ' + n : 'у небі ' + alive + ' з ' + n;
+    const leader = lead >= 0 && alive > 1 ? 'попереду ' + (ctx.nickOf(lead) || ctx.seatName(lead)) + ' · ' : '';
+    // Глядач: каркас уже пише «Дивлюсь збоку» — тут корисніше, хто лідирує і скільки ще в грі.
+    if (!ctx.mine || !p) return leader + left;
+    if (st.mode === DINO) {
+      if (p.out) return 'Лавина тебе забрала' + (left ? ' — ' + leader + left : '');
+      const snow = p.snow ? ' · ' + (dev === 'pad' ? 'Ⓧ' : dev === 'touch' ? '❄' : 'X') + ' — сніжка в лідера' : '';
+      return (duckAhead(st) || '🌨 лавина за ' + fmtNum(gapM()) + ' м') + snow + slow;
+    }
+    if (p.out || p.down) return 'Ти на землі' + (left ? ' — ' + left : '');
+    return (p.feather ? '🪶 запасне пір\'я є' : 'пір\'я вже нема — обережно') + (left ? ' · ' + left : '') + slow;
   }
 
   /// Для headless-перевірок і ботів: швидкодія малювання, найближча перешкода, стан годинника.
@@ -2918,6 +3231,28 @@
     };
   }
 
+  /// Джойстик (PROTOCOL §3). Посеред партії — стрибок/змах на будь-якій кнопці під пальцем. Після кінця партії
+  /// Ⓐ — «Ще раз» (раніше Ⓐ тиснула те, на чому з самого початку стояло кільце навігації, — хоч «Ефір» у шапці),
+  /// а решта кнопок — як на всьому сайті: Ⓧ балачки, Ⓨ підказки, Ⓑ вийти.
+  function padFor(kind) {
+    let last = null;
+    const done = () => !!(last && last.room && last.room.status === 'finished');
+    const play = kind === 'storks' ? '{a} змах крил (будь-яка кнопка) · {dpad} ↑ теж змах'
+      : kind === 'daily' ? '{a} стрибок (тримай — вище) · {dpad} ↓ пригнутись'
+        : '{a} стрибок (тримай — вище) · {dpad} ↓ пригнутись · {x} сніжка';
+    return {
+      dirs: 'y', a: 'Space',
+      get anyBtn() { return !done(); },
+      get hint() { return done() ? '{a} ще раз' : play; },
+      when(ctx) { last = ctx; return !!(ctx && ctx.mine && (ctx.playing || (ctx.room && ctx.room.status === 'finished'))); },
+      on(btn, ctx) {
+        if (kind !== 'dino' || btn !== 'x' || !ctx || !ctx._rnr || !ctx.playing) return false;
+        doThrow(ctx._rnr);
+        return true;
+      },
+    };
+  }
+
   function makeModule(kind) {
     return {
       mount(root, ctx) { mountCard(root, ctx, kind); },
@@ -2939,11 +3274,7 @@
     icon: DINO_ICON,
     seatNames: DINO_NAMES,
     seatClass: SEAT_CLASS,
-    pad: {
-      dirs: 'y', a: 'Space', anyBtn: true,
-      on(btn, ctx) { if (btn === 'x' && ctx && ctx._rnr) { doThrow(ctx._rnr); return true; } return false; },
-      hint: '{a} стрибок (тримай — вище) · {dpad} ↓ пригнутись · {x} сніжка',
-    },
+    pad: padFor('dino'),
     news: {
       v: '2026-09-27', title: 'Нова гра: Стрибозаври',
       items: [
@@ -2961,7 +3292,7 @@
     icon: DINO_ICON.replace('</svg>', '<rect x="10" y="10" width="5" height="5" rx="1" fill="var(--clay)"/><path d="M11 12h3" stroke="#fff" stroke-width="1"/></svg>'),
     seatNames: ['стрибозавр'],
     seatClass: ['o'],
-    pad: { dirs: 'y', a: 'Space', anyBtn: true, hint: '{a} стрибок (тримай — вище) · {dpad} ↓ пригнутись' },
+    pad: padFor('daily'),
     news: {
       v: '2026-09-27', title: 'Нова гра: Забіг дня',
       items: [
@@ -2969,6 +3300,7 @@
         '⬆️ Пробіл, ↑ або тап — стрибок (тримай — вище), ↓ — пригнутись чи швидко вниз',
         '🌨 Лавина не дрімає: кожен спотик — вона ближче. Дожене — забіг скінчився',
         '🔁 Спроб скільки завгодно, у таблицю йде найкраща за день; 500 м — черепки дня',
+        '👻 Поруч біжить привид твоєї найкращої спроби сьогодні — обжени себе',
       ],
     },
   }));
@@ -2982,7 +3314,7 @@
       + '<circle cx="11.5" cy="5.5" r="0.8" fill="var(--bg2)"/></svg>',
     seatNames: STORK_NAMES,
     seatClass: SEAT_CLASS,
-    pad: { dirs: 'y', a: 'Space', anyBtn: true, hint: '{a} змах крил (будь-яка кнопка) · {dpad} ↑ теж змах' },
+    pad: padFor('storks'),
     news: {
       v: '2026-09-27', title: 'Нова гра: Лелеки',
       items: [

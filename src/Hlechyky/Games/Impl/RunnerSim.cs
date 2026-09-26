@@ -221,6 +221,8 @@ public sealed class RunnerRules
 public struct RunnerObstacle
 {
     public int Id, Kind, X, W, Base, H, Since, By;
+    /// <summary>У кого цілили (кинута сніжка; лише для підпису «❄ від …» на клієнті, у фізику й хеш не йде). −1 — ні в кого.</summary>
+    public int For;
 
     /// <summary>Птеродактиль летить назустріч, щойно лінія темпу підійшла на 480 px.</summary>
     public readonly int XAt(int run) => Kind == RunnerKind.Ptero && run > Since ? X - RunnerDino.PteroV * (run - Since) : X;
@@ -664,9 +666,9 @@ public sealed class RunnerSim
 
     /// <summary>
     /// Кинута сніжка: брила лягає в x, а якщо поруч (ближче 100 px) інша перешкода, яма чи схил — зсувається
-    /// вперед по 40 px, до десяти разів. Повертає id брили.
+    /// вперед по 40 px, до десяти разів. Повертає id брили. target — у кого цілили (лише для підпису).
     /// </summary>
-    public int PlaceSnow(int x, int by, int run)
+    public int PlaceSnow(int x, int by, int run, int target = -1)
     {
         for (var tries = 0; tries < RunnerDino.SnowTries && Crowded(x, run); tries++) x += RunnerDino.SnowShift;
         if (_snCount == SnN)
@@ -678,6 +680,7 @@ public sealed class RunnerSim
         _sn[_snCount++] = new RunnerObstacle
         {
             Id = id, Kind = RunnerKind.Snow, X = x, W = RunnerDino.SnowW, Base = 0, H = RunnerDino.SnowH, Since = run, By = by,
+            For = target,
         };
         if (Hashing) { H(0x0D); H(id); H(x); H(by); H(run); }
         Emit(RunnerEvent.Throw, by, x, id);
@@ -1188,11 +1191,11 @@ public sealed class RunnerSim
         return a;
     }
 
-    /// <summary>Живі кинуті брили: [x, хто кинув, id, з якого кроку б'є].</summary>
+    /// <summary>Живі кинуті брили: [x, хто кинув, id, з якого кроку б'є, у кого цілили].</summary>
     public int[][] WireSnow()
     {
         var a = new int[_snCount][];
-        for (var i = 0; i < _snCount; i++) a[i] = [_sn[i].X, _sn[i].By, _sn[i].Id, _sn[i].Since];
+        for (var i = 0; i < _snCount; i++) a[i] = [_sn[i].X, _sn[i].By, _sn[i].Id, _sn[i].Since, _sn[i].For];
         return a;
     }
 

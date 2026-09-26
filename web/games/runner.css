@@ -58,6 +58,7 @@
   display: inline-grid; place-items: center; background: currentColor; line-height: 1;
 }
 .rnr-chip em { font-style: normal; color: var(--text); }
+.rnr-nick { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rnr-chip.me { box-shadow: 0 0 0 1.5px currentColor inset; }
 .rnr-chip.out { opacity: .5; }
 .rnr-chip.s0, .rnr-dot.s0, .rnr-ovbox tr.s0 i { color: var(--ok); }
@@ -119,6 +120,9 @@
 .rnr-ovbox tr.me td { color: var(--text); font-weight: 700; }
 .rnr-ovbox tr.me td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .rnr-ovsub { margin: 2px 0 6px; color: var(--muted); font-size: .84em; text-align: center; }
+.rnr-ovsnow { margin: 6px 0 0; font-size: .84em; text-align: center; }
+.rnr-ovsnow b.s0 { color: var(--ok); } .rnr-ovsnow b.s1 { color: var(--accent); } .rnr-ovsnow b.s2 { color: var(--clay); } .rnr-ovsnow b.s3 { color: var(--muted); }
+.rnr-ovsnow b.s4 { color: var(--rnr-b); } .rnr-ovsnow b.s5 { color: var(--rnr-p); } .rnr-ovsnow b.s6 { color: var(--rnr-v); } .rnr-ovsnow b.s7 { color: var(--rnr-r); }
 .rnr-ovhint { margin: 6px 0 0; color: var(--muted); font-size: .8em; text-align: center; }
 .rnr-board { margin-top: 4px; }
 
@@ -131,23 +135,37 @@
 @media (pointer: coarse) {
   .rnr-touch.on { display: flex; justify-content: space-between; gap: 12px; touch-action: none; user-select: none; -webkit-user-select: none; }
   .rnr-tbtn {
-    width: 76px; height: 72px; border-radius: 18px; display: flex; flex-direction: column; align-items: center;
+    width: 76px; height: 84px; border-radius: 18px; display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 2px; font-size: 1.6em; line-height: 1; background: var(--panel3); touch-action: none;
   }
   .rnr-tbtn small { font-size: .42em; color: var(--muted); }
   .rnr-tbtn:active { background: var(--clay); }
   .rnr-tbtn[hidden] { display: flex; visibility: hidden; }
-  .rnr-duck, .rnr-flap { margin-left: auto; }
-  .rnr-flap { width: 100%; max-width: 220px; }
-  .rnr-jump { flex: 1 1 auto; max-width: 200px; }
+  .rnr-duck { margin-left: auto; }
+  .rnr-flap { flex: 1 1 auto; width: auto; }   /* у Лелек кнопка одна — хай уся смуга під сценою буде змахом */
+  .rnr-jump { flex: 1 1 auto; max-width: none; }
 }
 
 @media (max-width: 480px) {
   .rnr-hud { font-size: .76em; gap: 4px 8px; }
   .rnr-chip { padding: 1px 7px 1px 2px; gap: 4px; }
   .rnr-chip:not(.me) em { display: none; }
+  /* п'ятеро й більше за столом: чужі чіпи — лише кружок із номером (ніки й так є в шапці столу), усе в один рядок */
+  .rnr-chips:has(.rnr-chip:nth-child(5)) .rnr-chip:not(.me) .rnr-nick { display: none; }
+  .rnr-chips:has(.rnr-chip:nth-child(5)) .rnr-chip:not(.me) { padding: 1px; }
   .rnr-big .rnr-m { font-size: 1.6em; }
   .rnr-ovbox { padding: 6px 8px; }
-  .rnr-ovbox table { font-size: .78em; }
+  .rnr-ovbox table { font-size: .82em; }
   .rnr-ovbox td, .rnr-ovbox th { padding: 1px 5px; }
+  /* Підсумок — під сценою, а не в ній: у сцені ~200 px заввишки вісім рядків таблиці й «Тап — ще раз» не вміщались. */
+  .rnr-stage { display: flex; flex-direction: column; }
+  .rnr-over { position: static; order: 2; padding: 6px 0 0; overflow: visible; }
+  .rnr-over .rnr-ovbox { max-height: none; width: 100%; }
+  .rnr-showover .rnr-touch.on { display: none; }   /* між раундами тиснути нічого — таблиця стає на місце кнопок */
+}
+/* Телефон стоячи: сцена на всю ширину екрана, без полів картки — динозаври й бирки на п'яту частину більші */
+@media (max-width: 480px) and (orientation: portrait) {
+  .rnr-stage { width: 100vw; margin-left: calc(50% - 50vw); }
+  .rnr-stage .rnr-cv { border-radius: 0; }
+  .rnr-over { padding: 6px 10px 0; }
 }
