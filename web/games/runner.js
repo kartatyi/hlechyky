@@ -1434,16 +1434,33 @@
       g.strokeStyle = mix(pal.clay, '#000000', 0.4); g.lineWidth = 1;
       g.beginPath(); for (let y = top + 10; y < roofY - 6; y += 6) { g.moveTo(8, y); g.lineTo(40, y); } g.stroke();
     } else if (kind === K.Tree) {
+      // верба, що звисає згори: густа крона від самого верху кадру й завіса гілок до низу хітбокса —
+      // щоб читалось «звідси й донизу не пролетиш», а не кулька в небі
       o = off(64, hPx + 4, s);
-      const g = o.g, H = hPx;
-      g.strokeStyle = mix(pal.roof, '#000000', 0.35); g.lineWidth = 3;
-      g.beginPath(); g.moveTo(32, 0); g.lineTo(32, H * 0.55); g.moveTo(32, H * 0.3); g.lineTo(14, H * 0.6); g.moveTo(32, H * 0.4); g.lineTo(50, H * 0.7); g.stroke();
-      g.fillStyle = mix(pal.field2, '#000000', 0.2);
-      g.beginPath(); g.ellipse(32, H * 0.45, 31, H * 0.45, 0, 0, 7); g.fill();
-      g.fillStyle = pal.field2;
-      g.beginPath(); g.ellipse(20, H * 0.62, 13, H * 0.3, 0, 0, 7); g.ellipse(44, H * 0.66, 13, H * 0.3, 0, 0, 7); g.ellipse(32, H * 0.74, 14, H * 0.24, 0, 0, 7); g.fill();
-      g.fillStyle = mix(pal.field, '#ffe7a0', 0.2);
-      g.beginPath(); g.arc(22, H * 0.5, 3, 0, 7); g.arc(40, H * 0.58, 2.5, 0, 7); g.arc(31, H * 0.78, 2.5, 0, 7); g.fill();
+      const g = o.g, H = hPx, rnd = Lcg(hPx * 7 + 3);
+      const dark = mix(pal.field2, '#000000', 0.3), leaf = pal.field2, light = mix(pal.field, '#ffe7a0', 0.25);
+      g.strokeStyle = mix(pal.roof, '#000000', 0.35); g.lineWidth = 4; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(-4, 0); g.quadraticCurveTo(18, H * 0.12, 30, H * 0.3); g.stroke();   // гілляка з-за кадру
+      g.fillStyle = dark;
+      g.fillRect(0, 0, 64, H * 0.3);
+      g.beginPath();
+      for (let x = 4; x <= 60; x += 11) { const r = 9 + rnd() * 4; g.moveTo(x + r, H * 0.32); g.arc(x, H * 0.32, r, 0, 7); }
+      g.fill();
+      // завіса гілок: від крони до самого низу хітбокса
+      g.lineWidth = 1.6;
+      for (let x = 3; x <= 61; x += 4.2) {
+        const len = H * (0.86 + rnd() * 0.12), bend = (rnd() - 0.5) * 5;
+        g.strokeStyle = rnd() < 0.5 ? leaf : mix(leaf, '#000000', 0.15);
+        g.beginPath(); g.moveTo(x, H * 0.25); g.quadraticCurveTo(x + bend, H * 0.6, x + bend * 0.6, Math.min(H - 1, len)); g.stroke();
+      }
+      g.fillStyle = light;
+      g.beginPath();
+      for (let k = 0; k < 22; k++) { const x = 3 + rnd() * 58, y = H * (0.35 + rnd() * 0.6); g.moveTo(x + 1.6, y); g.ellipse(x, y, 1.6, 2.6, 0.3, 0, 7); }
+      g.fill();
+      g.fillStyle = leaf;
+      g.beginPath();
+      for (let x = 8; x <= 56; x += 12) { g.moveTo(x + 7, H * 0.18); g.arc(x, H * 0.18, 7, 0, 7); }
+      g.fill();
     } else if (kind === K.Pole) {
       o = off(18, hPx + 2, s);
       const g = o.g;
@@ -1919,9 +1936,16 @@
 
   const ORDER = new Int8Array(SEATS);
   const SX = new Float64Array(SEATS), SY = new Float64Array(SEATS), HEAD = new Float64Array(SEATS);
-  const LABEL_ROWS = 6;
-  const ROWS = Array.from({ length: LABEL_ROWS }, () => new Float64Array(8));
-  const ROWN = new Int8Array(LABEL_ROWS);
+  // Бирки ніків розкладаємо прямокутниками (x, y, ширина): нова не лягає на вже покладену — піднімається
+  // над нею (під стелею Лелек — опускається під птаха). Фіксовані масиви, без алокацій у кадрі.
+  const LB_H = 15, LB_GAP = 2, LB_MAX = 10;
+  const LB = { n: 0, x: new Float64Array(LB_MAX), y: new Float64Array(LB_MAX), w: new Float64Array(LB_MAX) };
+  function lbHit(x, y, w) {
+    for (let k = 0; k < LB.n; k++)
+      if (x < LB.x[k] + LB.w[k] + LB_GAP && x + w + LB_GAP > LB.x[k] && y < LB.y[k] + LB_H + 1 && y + LB_H + 1 > LB.y[k]) return k;
+    return -1;
+  }
+  function lbPut(x, y, w) { if (LB.n < LB_MAX) { LB.x[LB.n] = x; LB.y[LB.n] = y; LB.w[LB.n] = w; LB.n++; } }
   // Чужі — «табун» навколо лінії: хто не спотикався, у того відставання рівно 0, і вісім динозаврів злипались
   // в одного. Тож кожне місце малюємо з невеликим сталим зсувом (лише малюнок, не правила): трохи вбік і
   // трохи «вглиб» кризи (вище); глибші малюються першими. Лелекам — лише вбік: висота в них — сама гра.
@@ -2038,9 +2062,13 @@
     }
 
     // ---- 8: чужі — за кадрами, прозорі, з бирками ----
-    for (let r = 0; r < LABEL_ROWS; r++) ROWN[r] = 0;
-    // над своїм — стрілка й «ти»: перший ряд бирок там зайнятий, чужі бирки піднімаються вище
-    if (p && p.plays) { ROWS[0][0] = (lobby ? 70 + me * ((W - 140) / 8) : paceW - ownLag / SUB - camPx) + 15 - 30; ROWN[0] = 1; }
+    LB.n = 0;
+    // над своїм — стрілка й «ти»: це місце зайняте, чужі бирки обходять його
+    if (p && p.plays && !(p.out || p.down)) {
+      const ox = (lobby ? 70 + me * ((W - 140) / 8) : paceW - ownLag / SUB - camPx) + 15;
+      const top = mode === DINO ? GROUND - ownY / SUB - 54 : GROUND - ownY / SUB - STORK_BOX.bottom + 8;
+      lbPut(ox - 16, top - 26, 32);
+    }
     let n = 0;
     const paceO = paceF(R, ready, othersT) / SUB;
     for (let i = 0; i < SEATS; i++) {
@@ -2076,19 +2104,18 @@
       const i = ORDER[q], nick = ctx.nickOf(i);
       if (!nick || HEAD[i] < 0 || SX[i] + 40 < 0 || SX[i] - 12 > W) continue;
       const lb = label(st, i, nick), lx = clamp(SX[i] + 15 - lb._w / 2, 2, W - lb._w - 2);
-      let row = 0;
-      for (; row < LABEL_ROWS; row++) {
-        let free = true;
-        for (let z = 0; z < ROWN[row]; z++) if (Math.abs(ROWS[row][z] - lx) < 64) { free = false; break; }
-        if (free) break;
+      // угору над головою, поки не знайдеться вільне місце; під самою стелею (Лелеки) — униз, під птаха
+      let ly = HEAD[i] - 18, dir = -1, ok = false;
+      for (let tries = 0; tries < 12; tries++) {
+        if (dir < 0 && ly < 2 - st.oy) { dir = 1; ly = GROUND - SY[i] / SUB + 6; }
+        const k = lbHit(lx, ly, lb._w);
+        if (k < 0) { ok = true; break; }
+        ly = dir < 0 ? LB.y[k] - LB_H - LB_GAP : LB.y[k] + LB_H + LB_GAP;
       }
-      if (row === LABEL_ROWS) continue;          // бирок більше, ніж місця над табуном, — решту видно в чіпах
-      if (ROWN[row] < 8) ROWS[row][ROWN[row]++] = lx;
-      // під самою стелею (Лелеки) бирка вилізла б за кадр — тоді вона під птахом
-      let ly = HEAD[i] - 18 - row * 14;
-      if (ly < 2 - st.oy) ly = GROUND - SY[i] / SUB + 6 + row * 14;
+      if (!ok || ly > VIEW_H - LB_H) continue;     // бирок більше, ніж місця над табуном, — решту видно в чіпах
+      lbPut(lx, ly, lb._w);
       g.globalAlpha = 0.9;
-      g.drawImage(lb, lx, ly, lb._w, 15);
+      g.drawImage(lb, lx, ly, lb._w, LB_H);
       g.globalAlpha = 1;
     }
 
@@ -2288,7 +2315,7 @@
       }
       case K.Tree: {
         const h = o.h / u, sc = o.w / (60 * u), img = storkSprite(st, K.Tree, h);
-        g.drawImage(img, sx - 2 * sc, GROUND - (o.base + o.h) / u, 64 * sc, h + 4);
+        g.drawImage(img, sx - 2 * sc, GROUND - (o.base + o.h) / u - 3, 64 * sc, h + 7);   // крона впритул до верху неба
         return;
       }
       case K.Pole: {
