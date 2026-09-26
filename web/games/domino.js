@@ -61,7 +61,7 @@
     box(root, 'dround', idle ? '' : roundBox(v, ctx, line));
     box(root, 'dline', idle ? '' : (line.length
       ? line.map((b, i) => boneHtml(b.tile, (fresh === 'left' && i === 0) || (fresh === 'right' && i === line.length - 1) ? 'fresh' : '')).join('')
-      : '<span class="muted small">' + (my ? 'Твій хід — клади будь-яку кістку' : 'Чекаємо першу кістку') + '</span>'));
+      : '<span class="muted small">' + (my ? 'Твій хід — бахни будь-яку кістку' : 'Чекаємо першу кістку') + '</span>'));
 
     // Рука — віяло каркаса: клік по кістці або ходить одразу, або питає, з якого боку класти.
     ctx.ui.hand(root, hand.map((t) => ({ t, disabled: !(my && (line.length === 0 || fits(t, ends[0]) || fits(t, ends[1]))) })), {
@@ -194,11 +194,12 @@
       // каркас уже вернув у лобі — в обох випадках краще звучить його ж рядок.
       const won = (v.result && (v.result.scores || [])[v.result.winner]) || 0;
       const done = ctx.room && ctx.room.status === 'finished';
+      const yes = v.result && v.result.winner != null && v.result.winner === ctx.seat ? 'Є! ' : '';   // «Є!» — лише переможцеві
       if (done && v.result && targetOf(v) <= 1) {
         return v.result.winner == null ? 'Риба порівну — нічия'
-          : 'Раунд і партія — ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner));
+          : yes + 'Раунд і партія — ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner));
       }
-      if (done && won >= targetOf(v)) return 'Партію зіграно: ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner)) + ' — ' + pips(won);
+      if (done && won >= targetOf(v)) return yes + 'Партію зіграно: ' + (ctx.nickOf(v.result.winner) || ctx.seatName(v.result.winner)) + ' — ' + pips(won);
       if (!ctx.playing) return '';
       if (ctx.myTurn && v.mustDraw) return 'Нема чим ходити — тягни з базару';
       if (ctx.myTurn && !v.canPlay) return 'Ходити нема чим і базар порожній — пас';

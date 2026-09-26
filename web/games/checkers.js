@@ -132,7 +132,7 @@
     if (!mine) {
       let res = v.result && ctx.room.status === 'finished' ? REASON[v.result.reason] : '';
       if (v.result && v.result.reason === 'resign' && v.result.winner != null) {
-        res = ctx.esc(ctx.nickOf(1 - v.result.winner) || ctx.seatName(1 - v.result.winner)) + ' здався';
+        res = '🏳 ' + ctx.esc(ctx.nickOf(1 - v.result.winner) || ctx.seatName(1 - v.result.winner)) + ' здається';
       }
       if (res) html += '<span class="ckres">' + res + '</span>';
     }

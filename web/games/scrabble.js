@@ -213,7 +213,7 @@
     let ri = rack.findIndex((r, i) => r === ch && !used(st, i));
     let blank = false;
     if (ri < 0) { ri = rack.findIndex((r, i) => isBlank(r) && !used(st, i)); blank = ri >= 0; }
-    if (ri < 0) { ctx.toast('Літери «' + ch + '» на стійці нема', 'err'); return true; }
+    if (ri < 0) { ctx.toast('Халепа: літери «' + ch + '» на стійці нема', 'err'); return true; }
     const cells = v.board || '';
     let c = st.cur;
     while (c < CELLS && (cells[c] !== '.' || pendAt(st, c) >= 0)) c = advance(c, st.dir);
@@ -282,7 +282,7 @@
       const p = preview({ cells: v.board || '', bonuses: v.bonuses || '' }, st.pend);
       html = p && p.error ? '<span class="scr-bad">' + ctx.esc(p.error) + '</span>'
         : p ? 'Складено: <b>' + p.words.map((w) => ctx.esc(w.word)).join(', ') + '</b> — ≈ +' + points(p.total)
-          + (st.pend.length === RACK ? ' (з бінго!)' : '') + '. Тисни «Готово»'
+          + (st.pend.length === RACK ? ' (бінго — файно!)' : '') + '. Тисни «Готово»'
           : '';
     } else if (ctx.myTurn && ctx.playing) {
       html = firstMove

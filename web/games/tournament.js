@@ -16,7 +16,7 @@
 
   let state = null;
   let picked = null;           // вибір ігор у формі «зібрати турнір» — живе між перемальовуваннями
-  let composing = false;       // після дограного турніру показуємо підсумок, поки не натиснуть «Новий турнір»
+  let composing = false;       // після дограного турніру показуємо підсумок, поки не натиснуть «Ану ще турнір»
   let invoke = () => Promise.reject(new Error('нема зв\'язку'));
 
   const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
@@ -39,7 +39,7 @@
   function run(ctx, method, ...args) {
     return invoke(method, ...args)
       .then((err) => { if (err) ctx.toast(err, 'err'); return !err; })
-      .catch((e) => { ctx.toast('Не вийшло: ' + e.message, 'err'); return false; });
+      .catch((e) => { ctx.toast('Ой-йой, не вийшло: ' + e.message, 'err'); return false; });
   }
 
   function standings(ctx, s) {
@@ -123,7 +123,7 @@
       html += '<h3>🏆 Гра ' + (s.index + 1) + ' з ' + s.games.length + ': ' + ctx.esc(next.title) + '</h3>'
         + gamesLine(ctx, s)
         + '<div class="tract">'
-        + (s.room ? '<button type="button" class="primary" data-room="' + ctx.esc(s.room.id) + '">До столу ▸</button>' : '')
+        + (s.room ? '<button type="button" class="primary" data-room="' + ctx.esc(s.room.id) + '">Гайда до столу ▸</button>' : '')
         + (lead ? '<button type="button" class="ghost" data-do="TournamentSkip" title="Якщо гра зависла чи всі розбіглись">Пропустити гру</button>' : '')
         + (mine ? '' : '<button type="button" class="ghost" data-do="TournamentJoin">Я теж (з наступної гри)</button>')
         + '</div>'
@@ -132,7 +132,7 @@
       html += '<h3>🏆 Після гри ' + s.index + ' з ' + s.games.length + '</h3>'
         + gamesLine(ctx, s)
         + '<div class="tract">'
-        + (lead ? '<button type="button" class="primary" data-do="TournamentNext">Далі: ' + ctx.esc(next.title) + ' ▸</button>' : '<span class="muted">Чекаємо, поки ' + ctx.esc(s.host) + ' запустить наступну гру</span>')
+        + (lead ? '<button type="button" class="primary" data-do="TournamentNext">Гайда далі: ' + ctx.esc(next.title) + ' ▸</button>' : '<span class="muted">Чекаємо, поки ' + ctx.esc(s.host) + ' запустить наступну гру</span>')
         + (mine ? '' : '<button type="button" class="ghost" data-do="TournamentJoin">Я теж</button>')
         + (lead ? '<button type="button" class="ghost" data-do="TournamentSkip" title="Якщо в цю гру нинішній склад не влазить">Пропустити «' + ctx.esc(next.title) + '»</button>' : '')
         + (lead ? '<button type="button" class="ghost" data-do="TournamentCancel">Завершити зараз</button>' : '')
@@ -143,7 +143,7 @@
       html += '<h3>🏆 Турнір закінчено</h3>'
         + (champ.length ? '<div class="trchamp">👑 ' + champ.map(ctx.esc).join(' і ') + '</div>' : '<div class="muted">Без чемпіона</div>')
         + standings(ctx, s) + results(ctx, s)
-        + '<div class="tract"><button type="button" class="primary" data-do="new">Новий турнір</button></div>';
+        + '<div class="tract"><button type="button" class="primary" data-do="new">Ану ще турнір</button></div>';
     }
     html += '</section>';
     host.innerHTML = html;

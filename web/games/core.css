@@ -424,7 +424,7 @@
 /* Особистий заклик («Влад кличе тебе») — помітніший: жовта рамка й легке світіння. */
 .toast.ginvite.personal { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 10px 30px rgba(0, 0, 0, .5), 0 0 24px rgba(244, 197, 66, .25); }
 
-/* ---- «📣 Покликати» на сторінці столу ---- */
+/* ---- «📣 Гукнути» на сторінці столу ---- */
 .grcall { padding: 5px 11px; font-size: .92em; border-color: var(--accent2); }
 .gcall {
   position: fixed; z-index: 26; width: 300px; max-width: calc(100vw - 16px); padding: 10px; border-radius: 12px;

@@ -318,7 +318,7 @@
       if (f.phase === 'ready' && f.startIn > 0) return ctx.mine ? 'Готуйсь… можна вже повернути' : 'Готуйсь…';
       const left = 'ще ' + secs(f.timeLeft) + ' с';
       const me = ctx.mine && f.heads ? f.heads[ctx.seat] : null;
-      if (me && me.on && !me.alive) return 'Згорів, повертаєшся за ' + secs(me.respawnIn) + ' с · ' + left;
+      if (me && me.on && !me.alive) return 'Отакої, згоріло! Повертаєшся за ' + secs(me.respawnIn) + ' с · ' + left;
       const how = HGames.ui.coarse() ? 'Хрестовина — куди бігти' : 'Стрілки або WASD';
       return (ctx.mine ? how : 'Дивишся збоку') + ' · ' + left;
     },
