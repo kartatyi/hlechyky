@@ -105,6 +105,9 @@ public static class AchievementCatalog
         new("dino-far",     "Далекий забіг",   "Два кілометри від лавини за один забіг", "🦖", 20),
         new("dino-snow",    "Сніжкою в спину", "Твоя сніжка збила з ніг того, хто попереду", "❄", 10),
         new("storks-clean", "Чисте небо",      "Хвилина польоту в Лелеках без жодного зачепу", "🪽", 15),
+        // хвиля 2: сільське ралі
+        new("rally-win3",   "Перший на селі",  "Переміг у «Сільському ралі», де на старті було троє й більше", "🏁", 15),
+        new("rally-record", "Рекорд траси",    "Найкраще коло траси за весь час — перебив чужий рекорд", "⏱", 20),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
