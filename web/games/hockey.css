@@ -15,7 +15,7 @@
 .gseat.hkb { color: var(--hk-blue); }
 
 /* Ландшафт 5:3: на ноутбуці мусить влізти разом із шапкою картки й рядком над полем. */
-.hkboard { aspect-ratio: 5 / 3; max-width: min(800px, calc((100vh - 290px) * 5 / 3)); min-width: min(320px, 100%); }
+.hkboard { aspect-ratio: 5 / 3; max-width: min(800px, calc((100vh - 322px) * 5 / 3)); min-width: min(320px, 100%); }
 @media (min-width: 1500px) and (min-height: 860px) {
   .hkboard { max-width: min(1000px, calc((100vh - 320px) * 5 / 3)); }
 }
