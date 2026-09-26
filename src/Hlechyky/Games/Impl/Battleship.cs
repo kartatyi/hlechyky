@@ -195,7 +195,7 @@ public sealed class Battleship : Game
     {
         /// <summary>Сидів за столом на старті партії — тобто має поле.</summary>
         public bool In { get; set; }
-        /// <summary>Вибув: флот на дні або встав з-за столу.</summary>
+        /// <summary>Вибув: флот на дні або встає з-за столу.</summary>
         public bool Out { get; set; }
         public List<int[]> Ships { get; set; } = [];
         public bool Ready { get; set; }
@@ -295,7 +295,7 @@ public sealed class Battleship : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_phase == Phase.Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == Phase.Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (seat < 0 || seat >= Seats || !_sides[seat].In) return ActResult.Fail("Ти тут не граєш");
         // Час на розстановку перевіряємо і тут, а не лише в Tick: між тиками є проміжок, і за нього
         // ніхто не має права ані переставити кораблі, ані сказати «Готово» після дзвінка.
@@ -606,7 +606,7 @@ public sealed class Battleship : Game
         _phase = Phase.Done;
         _winner = rest.Length == 1 ? rest[0] : null;
         _turnUntil = null;
-        Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
     // ---------- види ----------

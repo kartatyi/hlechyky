@@ -675,7 +675,7 @@ public sealed class Mafia : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_phase == MafiaPhase.Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == MafiaPhase.Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase == MafiaPhase.Lobby) return ActResult.Fail("Партія ще не почалась");
         if (!_roles.TryGetValue(seat, out var role)) return ActResult.Fail("Ти тут не граєш");
         if (_dead.Contains(seat)) return ActResult.Fail("Мертві мовчать");

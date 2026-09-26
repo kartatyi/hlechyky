@@ -851,7 +851,7 @@ public class DurakTests
         var finished = Assert.Single(h.Finished);
         Assert.Equal("durak", finished.GameId);
         Assert.True(h.Room.Moves > 5, "справжня партія має бути довшою за п'ять ходів");
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(0, "done").Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(0, "done").Message);
     }
 
     [Fact]

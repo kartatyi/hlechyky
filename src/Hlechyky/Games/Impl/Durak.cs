@@ -57,7 +57,7 @@ public enum DurakPhase { Attack, Defend, Taking, Done }
 
 /// <summary>
 /// Чим скінчилось: <c>out</c> — лишився один дурень, <c>both</c> — останні вийшли разом і дурня нема,
-/// <c>left</c> — дурень встав з-за столу. <see cref="Winner"/> — хто вийшов першим (на двох це й є
+/// <c>left</c> — дурень встає з-за столу. <see cref="Winner"/> — хто вийшов першим (на двох це й є
 /// переможець), <see cref="Fool"/> — хто лишився з картами.
 /// </summary>
 public sealed record DurakOver(int? Winner, string Reason)
@@ -101,7 +101,7 @@ public sealed class DurakCore
     public int Seats => Hands.Length;
     /// <summary>Кому роздавали на початку партії.</summary>
     public bool[] Dealt { get; }
-    /// <summary>Хто ще грає: має карти (або ще добере) і не встав з-за столу.</summary>
+    /// <summary>Хто ще грає: має карти (або ще добере) і не встає з-за столу.</summary>
     public bool[] In { get; }
     /// <summary>У якому порядку виходили з гри: перший — найкраще місце.</summary>
     public List<int> Places { get; } = [];

@@ -757,7 +757,7 @@ public class DominoTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);        // навіть якщо очок лише одне
         Assert.Contains("за 1 раунд", h.Outbox.OfType<Journal>().Last().Text);
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(1, "pass").Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(1, "pass").Message);
     }
 
     [Fact]

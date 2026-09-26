@@ -579,7 +579,7 @@ public class CheckersTests
 
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Equal("left", Views.Json(Game(h).View(0)).GetProperty("result").GetProperty("reason").GetString());
-        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("встає з-за столу", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]

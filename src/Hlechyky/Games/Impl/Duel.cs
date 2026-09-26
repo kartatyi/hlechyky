@@ -125,7 +125,7 @@ public sealed class Duel : Game
     {
         if (action != "shoot") return ActResult.Fail("Тут так не ходять");
         if (_phase is DuelPhase.Result) return ActResult.Fail("Раунд уже скінчився — мить, і буде наступний");
-        if (_phase is DuelPhase.Done) return ActResult.Fail("Дуель зіграно, тисни «Ще раз»");
+        if (_phase is DuelPhase.Done) return ActResult.Fail("Дуель зіграно, тисни «Ану ще раз»");
 
         if (_phase == DuelPhase.Fire) Shoot(seat, Ctx.Clock.UtcNow);
         else FalseStart(seat);

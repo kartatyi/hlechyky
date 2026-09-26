@@ -311,7 +311,7 @@ public sealed class Mines : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_reason is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_reason is not null) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (seat < 0 || seat >= Seats || !_in[seat]) return ActResult.Fail("Ти тут не граєш");
         // Здатись можна й не в свою чергу: чекати ходу, щоб сказати «здаюсь», — знущання.
         if (action == "resign") return Resign(seat);
@@ -471,7 +471,7 @@ public sealed class Mines : Game
         }
         _reason = "left";
         _winners = living;
-        Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли", Scores());
+        Ctx.Finish(living, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли", Scores());
     }
 
     /// <summary>Місця від першого до останнього: хто вцілів — за очками, далі вибулі у зворотному порядку.</summary>

@@ -2171,7 +2171,7 @@
   $('fbForm').onsubmit = (e) => {
     e.preventDefault();
     const text = $('fbText').value.trim();
-    if (text.length < 5) { toast('Напиши трохи більше — хоч кілька слів', 'err'); $('fbText').focus(); return; }
+    if (text.length < 5) { toast('Тяпни трохи більше — хоч кілька слів', 'err'); $('fbText').focus(); return; }
     busy($('fbSend'), 'надсилаю…', async () => {
       try {
         const r = await api('POST', '/api/feedback', {

@@ -109,7 +109,7 @@ static class Say
     public const string Already = "Ти вже за цим столом";
     public const string NoSeats = "От халепа — місць уже нема";
     public const string Waiting = "Чекаємо на гравців";
-    public const string Played = "Партію зіграно, тисни «Ще раз»";
+    public const string Played = "Партію зіграно, тисни «Ану ще раз»";
     public const string NotPlaying = "Ти тут не граєш";
     public const string NoShards = "Халепа: бракує черепків на ставку";
     public const string TooFast = "Не так швидко";
@@ -518,7 +518,7 @@ public sealed class Rooms
         room.LastActivity = _clock.UtcNow;
         // Місце звільняємо після OnLeave: типовий OnLeave пише в Журнал ім'я того, хто пішов, і рахує решту
         // сам (за «s != seat»), а RoomFinishedEvent має бачити повний склад — інакше рейтинг не знатиме, хто програв.
-        // Соло — приватна головоломка: закрив вкладку з клікером — це не «встав з-за столу», і в спільні
+        // Соло — приватна головоломка: закрив вкладку з клікером — це не «встає з-за столу», і в спільні
         // Балачки про це писати нема чого (та й RoomFinishedEvent рейтингам тут ні до чого).
         if (room.Status == RoomStatus.Playing && !room.Info.Solo)
         {

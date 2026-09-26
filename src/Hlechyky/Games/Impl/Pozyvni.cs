@@ -229,7 +229,7 @@ public sealed class Pozyvni : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         return action switch
         {
             "team" => JoinTeam(seat, payload),

@@ -456,7 +456,7 @@ public class ScrabbleTests
         Rig(h, "", "а", "аа");
         for (var i = 0; i < 6; i++) Assert.True(h.Act(i % 2, "pass").Ok);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(0, "pass").Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(0, "pass").Message);
     }
 
     // ================================================================== стіл: викладка

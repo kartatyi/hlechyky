@@ -87,7 +87,7 @@ public sealed class Hangman : Game
     int _shownIn;
     string? _revealed;
     readonly int[] _scores = new int[Seats];
-    /// <summary>Хто вибув із цього слова (не вгадав його цілком) або встав з-за столу.</summary>
+    /// <summary>Хто вибув із цього слова (не вгадав його цілком) або встає з-за столу.</summary>
     readonly HashSet<int> _out = [];
     readonly Dictionary<int, DateTimeOffset> _last = [];
     object? _result;
@@ -131,7 +131,7 @@ public sealed class Hangman : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (action is not ("guess" or "word")) return ActResult.Fail("Тут так не ходять");
-        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase == Between) return ActResult.Fail("Мить — зараз буде нове слово");
         if (_out.Contains(seat)) return ActResult.Fail("Це слово вже без тебе, чекай наступне");
         // По черзі ліміт швидкості не потрібен: чужий хід і так не пройде, а свій — хай хоч блискавкою.

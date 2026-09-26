@@ -176,7 +176,7 @@
     if (!full) out.push('<button type="button" class="primary" data-pa="profile">👤 Профіль</button>');
     out.push('<button type="button" data-pa="mention" title="Гукнути в балачках — почує дзінь">@ Гукнути</button>');
     const mine = myWaitingRoom();
-    if (mine && w.online && !(w.room && w.room.id === mine.id)) out.push('<button type="button" data-pa="invite" title="Покликати за мій стіл">📣 Покликати</button>');
+    if (mine && w.online && !(w.room && w.room.id === mine.id)) out.push('<button type="button" data-pa="invite" title="Гукнути за мій стіл">📣 Гукнути</button>');
     if (w.room && w.room.canSit) out.push('<button type="button" data-pa="sit" title="Сісти за той самий стіл">🎲 Підсісти</button>');
     if (me.account && !isGuestNick(nick)) out.push('<button type="button" data-pa="gift" title="Подарувати щось із Лавки Дядька Глека — лишиться назавжди">🎁 Подарувати</button>');
     return out.join('');

@@ -894,7 +894,7 @@ public class MafiaTests
         var h = Table(4);
         h.Leave(h.NickOf(Seat(h, "mafia")));
 
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(0, "vote", new { seat = 1 }).Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(0, "vote", new { seat = 1 }).Message);
     }
 
     // =========================================================================================

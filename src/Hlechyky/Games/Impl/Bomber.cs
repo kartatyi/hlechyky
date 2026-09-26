@@ -191,7 +191,7 @@ public sealed class Bomber : Game
         var left = Enumerable.Range(0, BomberCore.Seats).Where(s => s != seat && Ctx.Seated(s)).ToArray();
         if (left.Length > 1) return;
         _phase = PhaseOver;
-        Ctx.Finish(left, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        Ctx.Finish(left, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
     // ---------- вид і кадр ----------

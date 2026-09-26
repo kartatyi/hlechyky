@@ -319,7 +319,7 @@ public class MinesTests
     {
         var (h, mirror) = Duel();
         h.Act(1, "open", new { cell = MineCell(mirror, Cells(h)) });
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(0, "open", new { cell = 0 }).Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(0, "open", new { cell = 0 }).Message);
     }
 
     [Fact]

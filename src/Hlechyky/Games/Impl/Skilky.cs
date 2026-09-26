@@ -224,7 +224,7 @@ public sealed class Skilky : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (action != "answer") return ActResult.Fail("Тут так не ходять");
-        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase != PhaseAsk) return ActResult.Fail("Мить — зараз буде запитання");
         if (Ctx.Clock.UtcNow >= _endsAt) return ActResult.Fail("От халепа — час вийшов");
         if (Number(payload) is not { } value) return ActResult.Fail("Тут треба число");

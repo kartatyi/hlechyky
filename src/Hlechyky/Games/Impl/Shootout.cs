@@ -107,7 +107,7 @@ public sealed class Shootout : Game
     {
         if (seat is < 0 or >= Seats) return ActResult.Fail("Ти тут не граєш");
         if (_phase is DuelPhase.Result) return ActResult.Fail("Раунд уже скінчився — мить, і буде наступний");
-        if (_phase is DuelPhase.Done) return ActResult.Fail("Перестрілку зіграно, тисни «Ще раз»");
+        if (_phase is DuelPhase.Done) return ActResult.Fail("Перестрілку зіграно, тисни «Ану ще раз»");
         if (!_plays[seat]) return ActResult.Fail("Ти в цьому раунді не граєш");
         if (!_alive[seat]) return ActResult.Fail("Ти вже лежиш у пилюці — чекай наступного раунду");
 
@@ -284,7 +284,7 @@ public sealed class Shootout : Game
         if (others.Length <= 1)
         {
             _phase = DuelPhase.Done;
-            Ctx.Finish(others, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+            Ctx.Finish(others, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
             return;
         }
         _plays[seat] = false;

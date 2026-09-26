@@ -164,7 +164,7 @@ public sealed class ArenaCore(Random rng, int w, int h, int seats, bool tailShri
         return died;
     }
 
-    /// <summary>Вершник вибув (врізався або встав з-за столу). Змійка при цьому зникає з поля, мотоцикл — ні.</summary>
+    /// <summary>Вершник вибув (врізався або встає з-за столу). Змійка при цьому зникає з поля, мотоцикл — ні.</summary>
     public void Kill(int seat, int at)
     {
         if (!Alive[seat]) return;

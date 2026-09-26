@@ -588,7 +588,7 @@ public class ChessTests
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("встав з-за столу", Journal(h));
+        Assert.Contains("встає з-за столу", Journal(h));
     }
 
     // ------------------------------------------------------------------------------------------

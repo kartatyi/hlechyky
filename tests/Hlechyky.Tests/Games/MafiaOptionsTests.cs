@@ -626,7 +626,7 @@ public class MafiaOptionsTests
         To(h, "night");
         h.Act(mafia, "kill", new { seat = sheriff });
         To(h, "day");
-        // Мафіозі встав з-за столу, і в селі лишились маньяк та один мирний. Це не перемога, це неявка.
+        // Мафіозі встає з-за столу, і в селі лишились маньяк та один мирний. Це не перемога, це неявка.
         h.Leave(h.NickOf(mafia));
 
         Assert.Equal("done", Phase(h));

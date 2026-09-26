@@ -401,7 +401,7 @@ public class HangmanTests(HangmanWords fx) : IClassFixture<HangmanWords>
             Word(h, 0, HangmanWords.Word);
             NextWord(h);
         }
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", Guess(h, 0, "к").Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", Guess(h, 0, "к").Message);
     }
 
     [Fact]

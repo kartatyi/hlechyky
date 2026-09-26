@@ -256,7 +256,7 @@ public sealed class WordleRace : Game
             // очки недограного раунду — теж очки: хто вже вгадав, той вгадав
             if (_phase == PhasePlay) foreach (var p in _p.Where(x => x.In)) p.Total += p.Gained;
             _phase = PhaseDone;
-            Ctx.Finish([.. left], $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли",
+            Ctx.Finish([.. left], $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли",
                 left.ToDictionary(s => s, s => (long)_p[s].Total));
             return;
         }

@@ -140,7 +140,7 @@ public sealed class Pictionary : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         return action switch
         {
             "pick" => PickWord(seat, payload),

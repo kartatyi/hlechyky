@@ -266,7 +266,7 @@ public class CallsTests
         var playing = s.Table("ttt", "Петро", "Ганна");
         Assert.Equal("Партія вже йде — сісти нема куди", s.Calls.Again("Петро", playing).Reply.Message);
         s.Rooms.Leave(playing, "Ганна");                                       // дограний, місце вільне
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", s.Calls.Again("Петро", playing).Reply.Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", s.Calls.Again("Петро", playing).Reply.Message);
 
         var full = s.Table("t-party", "Іван", "Оля", "Хома", "Ганна");
         s.Clock.Advance(Calls.AgainGap);

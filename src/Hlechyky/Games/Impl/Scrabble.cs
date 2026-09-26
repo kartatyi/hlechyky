@@ -54,7 +54,7 @@ public sealed class Scrabble : Game
     List<char> _bag = [];
     List<char>[] _racks = [];
     int[] _scores = [];
-    /// <summary>Місця, які зараз грають: хто встав з-за столу, той із черги випадає.</summary>
+    /// <summary>Місця, які зараз грають: хто встає з-за столу, той із черги випадає.</summary>
     bool[] _active = [];
     readonly List<Move> _moves = [];
     /// <summary>Слова, які вже стояли на дошці: у режимі малого словника вони лишаються законними.</summary>
@@ -119,7 +119,7 @@ public sealed class Scrabble : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_result is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_result is not null) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (seat < 0 || seat >= _active.Length || !_active[seat]) return ActResult.Fail("Ти тут не граєш");
         if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
         return action switch
@@ -304,7 +304,7 @@ public sealed class Scrabble : Game
     }
 
     /// <summary>
-    /// Хтось встав з-за столу. Його фішки йдуть у мішок (інакше решті не буде чим дограти), а партія
+    /// Хтось встає з-за столу. Його фішки йдуть у мішок (інакше решті не буде чим дограти), а партія
     /// триває, поки за столом лишається щонайменше двоє.
     /// </summary>
     public override void OnLeave(int seat)

@@ -288,7 +288,7 @@ public class GridGameTests
         Assert.Equal([1], h.Room.Result!.Winners);
         Assert.Equal("o", h.View(0).GetProperty("winner").GetString());
         Assert.Contains("здається", h.Outbox.OfType<Journal>().Last().Text);
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(1, "resign").Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(1, "resign").Message);
     }
 
     [Fact]
@@ -298,7 +298,7 @@ public class GridGameTests
         Move(h, 0, 4);
         h.Leave("Оля");
         Assert.Equal([1], h.Room.Result!.Winners);
-        Assert.Contains("встав з-за столу", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("встає з-за столу", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]

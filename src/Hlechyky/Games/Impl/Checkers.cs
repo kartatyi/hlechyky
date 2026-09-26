@@ -287,7 +287,7 @@ public sealed class Checkers : Game
 
     ActResult Dispatch(int seat, string action, JsonElement payload) => action switch
     {
-        "flag" => ActResult.Fail(_over ? "Партію зіграно, тисни «Ще раз»" : "Час ще є"),
+        "flag" => ActResult.Fail(_over ? "Партію зіграно, тисни «Ану ще раз»" : "Час ще є"),
         "move" => Move(seat, payload),
         "resign" => Resign(seat),
         "draw" => Offer(seat),
@@ -299,7 +299,7 @@ public sealed class Checkers : Game
 
     ActResult Move(int seat, JsonElement payload)
     {
-        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
         if (ReadPath(payload) is not { } path) return ActResult.Fail("Не зрозумів, куди ходити");
 
@@ -363,7 +363,7 @@ public sealed class Checkers : Game
 
     ActResult Resign(int seat)
     {
-        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         var win = Other(seat);
         Over(win, "resign");
         End([win], $"{Info.Title}: {Ctx.NickOf(seat)} здається — {Ctx.NickOf(win)} {SeatName(win)} 1:0 {Ctx.NickOf(seat)} {SeatName(seat)}");
@@ -372,7 +372,7 @@ public sealed class Checkers : Game
 
     ActResult Offer(int seat)
     {
-        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_offer == seat) return ActResult.Fail("Пропозиція вже висить — слово за суперником");
         if (_offer == Other(seat)) return Drawn("agreed");
         _offer = seat;
@@ -381,7 +381,7 @@ public sealed class Checkers : Game
 
     ActResult Decline(int seat)
     {
-        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_over) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_offer != Other(seat)) return ActResult.Fail("Нічиєї ніхто не пропонував");
         _offer = null;
         return ActResult.Accept("Нічию відхилено — граємо далі");
@@ -436,7 +436,7 @@ public sealed class Checkers : Game
         var win = Other(seat);
         int[] winners = Ctx.Seated(win) ? [win] : [];
         Over(winners.Length > 0 ? win : null, "left");
-        End(winners, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        End(winners, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
     // ---------- вид ----------

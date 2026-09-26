@@ -259,7 +259,7 @@ public sealed class Melody : Game
     {
         if (action == "skip") return Skip(seat);
         if (action != "guess") return ActResult.Fail("Тут так не ходять");
-        if (_phase != Play) return ActResult.Fail(_phase == Done ? "Партію зіграно, тисни «Ще раз»" : "Зараз не вгадують");
+        if (_phase != Play) return ActResult.Fail(_phase == Done ? "Партію зіграно, тисни «Ану ще раз»" : "Зараз не вгадують");
         if (_left.Contains(seat)) return ActResult.Fail("Ти вже не за столом");
 
         var text = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String

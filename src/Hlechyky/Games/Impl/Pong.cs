@@ -723,7 +723,7 @@ public sealed class Pong : Game
         }
         _over = true;
         _winner = alive.Length == 1 ? alive[0] : null;
-        Ctx.Finish(alive, $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+        Ctx.Finish(alive, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)

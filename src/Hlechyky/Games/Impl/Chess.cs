@@ -85,7 +85,7 @@ public sealed class Chess : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_result is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_result is not null) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         // Прапорець перевіряємо на кожній дії, а не лише на flag: хто просидів свій час, той уже не походить.
         // Відповідь — «прийнято», інакше каркас не розіслав би вид із результатом (Rooms.Act шле види лише на Ok).
         if (_clock.Flagged(Ctx.Clock.UtcNow) is { } flagged)
@@ -255,11 +255,11 @@ public sealed class Chess : Game
         if (!Ctx.Seated(other))
         {
             _result = new Outcome(null, "left");
-            End([], $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, партію не дограли");
+            End([], $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
             return;
         }
         _result = new Outcome(other, "left");
-        End([other], $"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, {Ctx.NickOf(other)} 1:0 {Ctx.NickOf(seat)}");
+        End([other], $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, {Ctx.NickOf(other)} 1:0 {Ctx.NickOf(seat)}");
     }
 
     // ------------------------------------------------------------------------------------------

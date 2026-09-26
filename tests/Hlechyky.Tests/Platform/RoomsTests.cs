@@ -171,7 +171,7 @@ public class RoomsTests
 
         foreach (var (seat, cell) in new[] { (0, 0), (1, 3), (0, 1), (1, 4), (0, 2) }) h.Act(seat, "move", new { cell });
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.Equal("Партію зіграно, тисни «Ще раз»", h.Act(1, "move", new { cell = 8 }).Message);
+        Assert.Equal("Партію зіграно, тисни «Ану ще раз»", h.Act(1, "move", new { cell = 8 }).Message);
     }
 
     [Fact]
@@ -294,7 +294,7 @@ public class RoomsTests
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
-        Assert.Equal("Хрестики-нолики: Оля встав з-за столу, партію не дограли", h.Room.Result.Text);
+        Assert.Equal("Хрестики-нолики: Оля встає з-за столу, партію не дограли", h.Room.Result.Text);
         Assert.Null(h.Room.Seats[0]);
         Assert.Equal("Петро", h.Room.Host);
         Assert.Equal(["Оля", "Петро"], h.Finished.Single().Seats);   // рейтинг має бачити, хто саме програв

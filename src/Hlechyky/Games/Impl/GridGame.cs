@@ -66,7 +66,7 @@ public abstract class GridGame : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (_winner is not null) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_winner is not null) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (action == "resign") return Resign(seat);
         if (action != "move") return ActResult.Fail("Тут так не ходять");
         if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
@@ -139,7 +139,7 @@ public abstract class GridGame : Game
         return ActResult.Accept(_winner is null ? "Ти вибуваєш — решта грає далі" : "Партію віддано — ану ще раз?");
     }
 
-    const string Left = "встав з-за столу";
+    const string Left = "встає з-за столу";
 
     void Drop(int seat, string why)
     {
