@@ -235,7 +235,7 @@ public class MelodyTests
         }
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("найкраще вухо в Оля", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("найкраще вухо в Олі", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]

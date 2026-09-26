@@ -225,7 +225,7 @@ public sealed class SvoyaImportTests : IDisposable
         Assert.Equal(first.Rounds[0].Themes[0].Questions[0].Media!.File, copy.Rounds[0].Themes[0].Questions[0].Media!.File);
         Assert.True(File.Exists(Path.Combine(_files.Dir(copy.Id), copy.Rounds[0].Themes[0].Questions[1].AnswerMedia!.File)));
         Assert.True(d.GetProperty("ready").GetBoolean());
-        Assert.Equal("Імпортовано — можна грати", r.Message);
+        Assert.Equal("Є! Імпортовано — гайда грати", r.Message);
     }
 
     [Fact]

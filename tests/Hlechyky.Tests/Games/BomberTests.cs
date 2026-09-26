@@ -739,7 +739,7 @@ public class BomberTests
     public void An_unknown_action_and_a_too_early_one_are_refused_politely()
     {
         var h = Table();
-        Assert.Equal("Зачекай, зараз почнемо", h.Act(0, "bomb").Message);
+        Assert.Equal("Мить — зараз почнемо", h.Act(0, "bomb").Message);
 
         Ready(h);
         var before = h.View(null).ToString();

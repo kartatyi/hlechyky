@@ -288,7 +288,7 @@ public class ShootoutTests
         Assert.NotEqual(3, Aims(h)[0]);
         Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("aim")[3].ValueKind);
         Assert.False(Alive(h)[3]);
-        Assert.Contains("пішов з вулиці", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("іде з вулиці", h.Outbox.OfType<Journal>().Last().Text);
 
         h.Leave("Ігор");
         Assert.Equal(RoomStatus.Playing, h.Room.Status);   // двоє ще достріляються

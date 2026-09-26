@@ -437,7 +437,7 @@ public class ScrabbleTests
     {
         var h = Table();
         var before = Views.Text(h.Room.Game.View(null));
-        Assert.Equal("Зараз не твій хід", Play(h, 1, C(7, 6), "кіт").Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", Play(h, 1, C(7, 6), "кіт").Message);
         Assert.Equal(before, Views.Text(h.Room.Game.View(null)));
         Assert.Equal(0, h.Room.Moves);
     }
@@ -466,7 +466,7 @@ public class ScrabbleTests
     {
         var h = Table();
         Rig(h, "оаиеноаоаи", "кітоаие", "оса");
-        Assert.Equal("+8 очок", Play(h, 0, C(7, 6), "кіт").Message);
+        Assert.Equal("Лови +8 очок", Play(h, 0, C(7, 6), "кіт").Message);
 
         Assert.Equal("кіт", h.View(0).GetProperty("board").GetString()!.Substring(C(7, 6), 3));
         Assert.Equal(8, Ints(h.View(0).GetProperty("scores"))[0]);
@@ -521,7 +521,7 @@ public class ScrabbleTests
         var h = Table();
         Rig(h, "оаиеноаоаи", "к*тоаие", "оса");
         var tiles = new[] { Tile(C(7, 6), 'к'), Tile(C(7, 7), 'і', blank: true), Tile(C(7, 8), 'т') };
-        Assert.Equal("+6 очок", h.Act(0, "play", new { tiles }).Message);
+        Assert.Equal("Лови +6 очок", h.Act(0, "play", new { tiles }).Message);
         Assert.Equal('І', h.View(0).GetProperty("board").GetString()![ScrabbleBoard.Centre]);
     }
 
@@ -530,7 +530,7 @@ public class ScrabbleTests
     {
         var h = Table();
         Rig(h, "оаиеноаоаи", "оаиеноа", "оса");
-        Assert.Equal("Бінго! +64 очок", Play(h, 0, C(7, 4), "оаиеноа").Message);
+        Assert.Equal("Бінго! +64 очки", Play(h, 0, C(7, 4), "оаиеноа").Message);
         Assert.Equal(64, Ints(h.View(0).GetProperty("scores"))[0]);
     }
 
@@ -797,7 +797,7 @@ public class ScrabbleTests
         Assert.True(Play(h, 0, C(7, 6), "кіт").Ok);
         Assert.Equal(8, Ints(h.View(0).GetProperty("scores"))[0]);
 
-        Assert.Equal("«кіт» знято з дошки", h.Act(1, "challenge").Message);
+        Assert.Equal("Є! «кіт» знято з дошки", h.Act(1, "challenge").Message);
         Assert.True(h.View(0).GetProperty("board").GetString()!.All(c => c == '.'));
         Assert.Equal(0, Ints(h.View(0).GetProperty("scores"))[0]);
         Assert.Equal("кітоаие", Rack(h, 0));
@@ -828,7 +828,7 @@ public class ScrabbleTests
         Assert.Equal("Нема чого оскаржувати", h.Act(0, "challenge").Message);
 
         Assert.True(Play(h, 0, C(7, 6), "кіт").Ok);
-        Assert.Equal("Зараз не твій хід", h.Act(0, "challenge").Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", h.Act(0, "challenge").Message);
         Assert.True(h.Act(1, "challenge").Ok);
         Assert.Equal("Нема чого оскаржувати", h.Act(1, "challenge").Message);
     }
@@ -1019,7 +1019,7 @@ public class ScrabbleTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Equal("left", h.View(0).GetProperty("result").GetProperty("reason").GetString());
-        Assert.Contains("лишилась за Оля", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("партію бере Оля", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     // ================================================================== рематч, детермінізм, стан

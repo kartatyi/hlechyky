@@ -165,10 +165,10 @@ public sealed class WordleRace : Game
     {
         if (action != "guess") return ActResult.Fail("Тут так не ходять");
         if (seat is < 0 or >= MaxSeats || !_p[seat].Active) return ActResult.Fail("Ти в цій партії не граєш");
-        if (_phase == PhaseReveal) return ActResult.Fail("Зачекай, зараз буде нове слово");
+        if (_phase == PhaseReveal) return ActResult.Fail("Мить — зараз буде нове слово");
         if (_phase != PhasePlay) return ActResult.Fail("Партію зіграно");
         var p = _p[seat];
-        if (p.Solved) return ActResult.Fail("Ти вже вгадав — дивись, як мучаться інші");
+        if (p.Solved) return ActResult.Fail("Слово вже твоє — дивись, як мучаться інші");
         if (p.Failed) return ActResult.Fail("Спроби скінчились — чекай кінця раунду");
 
         if (Word(payload) is not { } raw) return ActResult.Fail("Не зрозумів, що за слово");
@@ -187,7 +187,7 @@ public sealed class WordleRace : Game
             p.First = !_p.Any(o => o != p && o.Solved);
             p.Gained = MaxTries + 1 - p.Guesses.Count + (p.First ? FirstBonus : 0);
             p.Words++;
-            reply = p.First ? $"Перший! +{p.Gained}" : $"Вгадав! +{p.Gained}";
+            reply = p.First ? $"Є! Раніше за всіх — лови +{p.Gained}" : $"Є! Лови +{p.Gained}";
         }
         else if (p.Guesses.Count >= MaxTries) p.Failed = true;
 

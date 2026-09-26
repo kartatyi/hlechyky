@@ -216,7 +216,7 @@ public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFile
         var problems = Problems(pack);
         store.Insert(Row(pack, u.Key, u.Nick, problems.Count == 0, 0, now));
         _log.LogInformation("своя гра: {Nick} створив пакет {Id} «{Title}»", u.Nick, pack.Id, pack.Title);
-        return new SvoyaReply(true, "Пакет створено", Full(pack, canEdit: true, problems));
+        return new SvoyaReply(true, "Є! Пакет створено", Full(pack, canEdit: true, problems));
     }
 
     /// <summary>
@@ -279,7 +279,7 @@ public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFile
         var copy = ((SvoyaFull)r.Data!).Pack;
         CopyMedia(id, copy.Id);
         if (copy.MediaFiles().Any()) Save(copy.Id, u, copy.Clone());   // перерахувати розмір медіа й готовність уже з файлами
-        return new SvoyaReply(true, "Скопійовано до тебе", new { id = copy.Id });
+        return new SvoyaReply(true, "Лови копію — вона вже серед твоїх пакетів", new { id = copy.Id });
     }
 
     void CopyMedia(string fromId, string toId)

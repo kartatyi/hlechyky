@@ -194,7 +194,7 @@ public sealed class Domino : Game
         if (action is not ("play" or "draw" or "pass")) return ActResult.Fail("Тут так не ходять");
         if (_winner is not null || _draw) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
         if (!_in[seat]) return ActResult.Fail("Ти вже не в цій партії");
-        if (seat != _turn) return ActResult.Fail("Зараз не твій хід");
+        if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
 
         return action switch
         {
@@ -220,7 +220,7 @@ public sealed class Domino : Game
             // Вийшов: забирає все, що лишилось на руках у решти.
             var points = Seats().Where(s => s != seat).Sum(Pips);
             EndRound(seat, points, "out");
-            return ActResult.Accept("Раунд твій!");
+            return ActResult.Accept("Є! Раунд твій!");
         }
         NextTurn();
         CheckFish();
@@ -417,11 +417,11 @@ public sealed class Domino : Game
             var last = FirstAlive;
             _winner = last >= 0 ? last : null;
             if (last >= 0) Ctx.Finish([last], $"{Info.Title}: усі встали з-за столу, перемога — {Ctx.NickOf(last)}");
-            else Ctx.Finish([], $"{Info.Title}: за столом уже нікого");
+            else Ctx.Finish([], $"{Info.Title}: за столом уже ні душі");
             return;
         }
 
-        Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу, кістки пішли в базар");
+        Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, кістки йдуть у базар");
         if (_turn == seat) NextTurn();
         CheckFish();
     }

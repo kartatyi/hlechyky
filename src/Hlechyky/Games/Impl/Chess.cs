@@ -91,7 +91,7 @@ public sealed class Chess : Game
         if (_clock.Flagged(Ctx.Clock.UtcNow) is { } flagged)
         {
             TimeOut(flagged);
-            return ActResult.Accept(flagged == seat ? "Твій час вийшов" : "У суперника впав прапорець");
+            return ActResult.Accept(flagged == seat ? "От халепа — твій час вийшов" : "Овва! У суперника впав прапорець");
         }
         return action switch
         {
@@ -106,7 +106,7 @@ public sealed class Chess : Game
 
     ActResult Move(int seat, JsonElement payload)
     {
-        if (seat != Turn) return ActResult.Fail("Зараз не твій хід");
+        if (seat != Turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
         var legal = _core.Legal();
         if (Resolve(payload, legal) is not { } move)
         {
@@ -226,8 +226,8 @@ public sealed class Chess : Game
     {
         var winner = Other(seat);
         _result = new Outcome(winner, "resign");
-        End([winner], $"{Info.Title}: {Ctx.NickOf(seat)} здався, {Ctx.NickOf(winner)} 1:0 {Ctx.NickOf(seat)}");
-        return ActResult.Accept("Здався");
+        End([winner], $"{Info.Title}: {Ctx.NickOf(seat)} здається — {Ctx.NickOf(winner)} 1:0 {Ctx.NickOf(seat)}");
+        return ActResult.Accept("Партію віддано — ану ще раз?");
     }
 
     ActResult Draw(int seat)
@@ -235,18 +235,18 @@ public sealed class Chess : Game
         if (_drawOffer == Other(seat))
         {
             Draw("agreed", "за згодою");
-            return ActResult.Accept("Нічия");
+            return ActResult.Accept("Нічия! Ану ще раз?");
         }
-        if (_drawOffer == seat) return ActResult.Fail("Ти вже пропонував нічию");
+        if (_drawOffer == seat) return ActResult.Fail("Пропозиція вже висить — слово за суперником");
         _drawOffer = seat;
-        return ActResult.Accept("Запропонував нічию");
+        return ActResult.Accept("Нічию запропоновано — слово за суперником");
     }
 
     ActResult Decline(int seat)
     {
         if (_drawOffer != Other(seat)) return ActResult.Fail("Нічиєї ніхто не пропонував");
         _drawOffer = null;
-        return ActResult.Accept("Відхилив нічию");
+        return ActResult.Accept("Нічию відхилено — граємо далі");
     }
 
     public override void OnLeave(int seat)

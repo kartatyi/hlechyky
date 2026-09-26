@@ -203,7 +203,7 @@ public class DominoTests
     {
         var h = Table();
         Position(h, [[3, 2]], [[[6, 5]], [[3, 0]]], yard: [[0, 0]]);
-        Assert.Equal("Зараз не твій хід", Play(h, 1, 3, 0).Message);
+        Assert.Equal("Не так швидко — зараз не твій хід", Play(h, 1, 3, 0).Message);
     }
 
     [Fact]
@@ -608,7 +608,7 @@ public class DominoTests
         Assert.Equal(0, Counts(h)[1]);
         Assert.Equal(18, Yard(h));                         // 13 у базарі + 5 із руки
         Assert.Equal(2, h.View(0).GetProperty("players").GetInt32());
-        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("Петро встав з-за столу"));
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("Петро встає з-за столу"));
     }
 
     [Fact]

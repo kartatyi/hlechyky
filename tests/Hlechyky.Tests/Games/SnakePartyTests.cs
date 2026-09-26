@@ -230,7 +230,7 @@ public class SnakePartyTests
 
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.Equal(0b011, Alive(h.View(null)));
-        Assert.Contains("Іра встав з-за столу, решта їде далі", LastLog(h));
+        Assert.Contains("Іра встає з-за столу, решта їде далі", LastLog(h));
 
         h.Leave("Петро");                        // лишилась одна — раунд її
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
@@ -420,7 +420,7 @@ public class SnakePartyTests
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("час вийшов — найдовша в Оля", LastLog(h));
+        Assert.Contains("час вийшов — найдовша в Олі", LastLog(h));
     }
 
     [Fact]
@@ -510,7 +510,7 @@ public class SnakePartyTests
         h.Tick(30);
 
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.Contains("Оля сам на сам — змійка доросла до", LastLog(h));
+        Assert.Contains("Оля наодинці — змійка доросла до", LastLog(h));
         Assert.Single(h.Scores);
     }
 

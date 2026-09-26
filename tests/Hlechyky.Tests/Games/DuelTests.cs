@@ -276,7 +276,7 @@ public class DuelTests
 
         var refused = h.Act(1, "shoot");
         Assert.False(refused.Ok);
-        Assert.Equal("Раунд уже скінчився, чекай наступного", refused.Message);
+        Assert.Equal("Раунд уже скінчився — мить, і буде наступний", refused.Message);
         Assert.Equal(0, Last(h).GetProperty("winner").GetInt32());   // стан не зрушив
     }
 

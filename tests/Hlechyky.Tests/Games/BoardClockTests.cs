@@ -100,7 +100,7 @@ public class BoardClockTests
         ChessMove(h, 0, "e2", "e4");
         h.Clock.Advance(TimeSpan.FromMinutes(4));
 
-        Assert.Equal("Твій час вийшов", ChessMove(h, 1, "e7", "e5").Message);
+        Assert.Equal("От халепа — твій час вийшов", ChessMove(h, 1, "e7", "e5").Message);
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Equal('p', h.View(0).GetProperty("board").GetString()![12]);   // e7 на місці: хід не пройшов
     }
@@ -150,7 +150,7 @@ public class BoardClockTests
         Assert.Equal([180_000L, 162_000L], Ms(h));
 
         h.Clock.Advance(TimeSpan.FromMinutes(4));
-        Assert.Equal("У суперника впав прапорець", h.Act(1, "flag").Message);
+        Assert.Equal("Овва! У суперника впав прапорець", h.Act(1, "flag").Message);
         Assert.Equal([1], h.Room.Result!.Winners);
         Assert.Equal("time", Reason(h));
     }
