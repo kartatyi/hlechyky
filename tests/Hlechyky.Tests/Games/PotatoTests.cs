@@ -577,6 +577,28 @@ public class PotatoTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void A_bot_slap_follows_the_same_rule_it_stuns_a_player_and_dazes_itself_on_a_bot()
+    {
+        var core = new PotatoCore(new Random(3));
+        core.Deal([0], 3);
+        foreach (var v in core.V) { PotatoCore.Forget(v); Put(v, 20, 12); }
+        var man = core.V.First(v => v.Owner == 0);
+        var bots = core.V.Where(v => v.Owner < 0).ToArray();
+        Put(bots[0], 5, 5, dir: 0);
+        Put(man, 5, 5, 30);
+        Assert.Equal(PotatoNo.None, core.TrySlap(bots[0], null));
+        Assert.Equal(PotatoCore.StunTicks, man.Stun);
+        Assert.Equal(0, bots[0].Stun);
+        Put(bots[1], 8, 5, dir: 0);
+        Put(bots[2], 8, 5, 30);
+        Assert.Equal(PotatoNo.None, core.TrySlap(bots[1], null));
+        Assert.Equal(PotatoCore.StunTicks, bots[1].Stun);
+        Assert.Equal(0, bots[2].Stun);
+        Assert.Equal(4, bots[1].State);
+        Assert.Equal(4, man.State);
+    }
+
+    [Fact]
     public void Slap_cone_takes_the_nearest_upright_within_forty_five_degrees_and_forty_units()
     {
         var core = new PotatoCore(new Random(1));

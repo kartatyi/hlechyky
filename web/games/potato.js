@@ -49,8 +49,12 @@
     if (/[гкхжчшщ]а$/.test(name)) return name.slice(0, -1) + 'и';
     if (/а$/.test(name)) return name.slice(0, -1) + 'и';
     if (/я$/.test(name)) return name.slice(0, -1) + 'і';
+    if (/о$/.test(name)) return name.slice(0, -1) + 'а';
+    if (/ь$/.test(name)) return name.slice(0, -1) + 'я';
     return name + 'а';
   };
+  // знахідний для «ляснула Степана», «ляснув Параску»: жіночі й «Микола» на -а/-я — у/ю, решта (чоловічі, живі) = родовий
+  const accusative = (name) => (/а$/.test(name) ? name.slice(0, -1) + 'у' : /я$/.test(name) ? name.slice(0, -1) + 'ю' : genitive(name));
 
   const DIRS = { ArrowRight: 0, KeyD: 0, ArrowDown: 1, KeyS: 1, ArrowLeft: 2, KeyA: 2, ArrowUp: 3, KeyW: 3 };
   const KEY_DIRS = { d: 0, 'в': 0, s: 1, 'і': 1, 'ы': 1, a: 2, 'ф': 2, w: 3, 'ц': 3 };
@@ -453,9 +457,13 @@
   /// Горщик над головою носія: глиняний, з вушками, жар угорі. Чим гарячіше — тим червоніший і дужче трусить.
   function pot(g, x, y, heat, now, k, pal) {
     let sx = 0, sy = 0;
-    if (heat >= 3) { sx = Math.sin(now * 0.09 + k * 2) * 1.8; sy = Math.cos(now * 0.113 + k) * 1.1; }
-    else if (heat === 2) { sx = Math.sin(now * 0.06 + k) * 0.7; }
-    x += sx; y += sy;
+    if (heat >= 3) { sx = Math.sin(now * 0.09 + k * 2) * 2.2; sy = Math.cos(now * 0.113 + k) * 1.3; }
+    else if (heat === 2) { sx = Math.sin(now * 0.06 + k) * 0.8; }
+    // горщик — головний герой: у півтора раза більший за голову селянина, щоб читався й на малій мапі
+    g.save();
+    g.translate(x + sx, y + sy);
+    g.scale(1.3, 1.3);
+    x = 0; y = 0;
     const pulse = 0.5 + 0.5 * Math.sin(now / (heat >= 3 ? 70 : heat === 2 ? 140 : 260));
     // сяйво довкола — видно й на маленькій мапі
     g.globalAlpha = 0.18 + heat * 0.08 + pulse * 0.08 * heat;
@@ -489,6 +497,7 @@
     for (let i = 0; i < 3; i++) {
       g.beginPath(); g.arc(x - 3 + i * 3, y - 4.3 + Math.sin(f + i * 2) * 0.5, 1.1 + 0.4 * Math.sin(f * 1.3 + i), 0, TAU); g.fill();
     }
+    g.restore();
   }
 
   /// Кільце під ногами носія — щоб горщик читався навіть у тисняві.
@@ -546,8 +555,9 @@
     for (const q of st.parts) {
       if (!q.on || q.spark) continue;
       const k = 1 - q.life / q.max;
-      g.globalAlpha = k * (q.dark ? 0.62 : 0.42);
-      g.fillStyle = q.dark > 1 ? '#3b3632' : q.dark ? '#6d665f' : '#c8c1b6';
+      // світлий дим на траві й стежці губився — він сірий і щільніший, а з іскрами — темний
+      g.globalAlpha = k * (q.dark ? 0.7 : 0.55);
+      g.fillStyle = q.dark > 1 ? '#34302c' : q.dark ? '#5d5750' : '#9b948a';
       g.beginPath(); g.arc(q.x, q.y, q.r, 0, TAU); g.fill();
     }
     for (const q of st.parts) {
@@ -607,11 +617,15 @@
     return -1;
   };
 
+  /// Відмова — тостом і підписом над своїм селянином (на Деку тости ховаються під смужкою пада). Та сама відмова,
+  /// поки підпис ще видно, тост не множить: людина з горщиком тисне пробіл очманіло, і стовпчик тостів закрив би мапу.
   function refuse(st, text, toasted) {
     if (!text) return;
-    if (!toasted && st.ctx) st.ctx.toast(text, 'err');
+    const now = performance.now();
+    const again = st.tip === text && now < st.tipUntil;
+    if (!toasted && !again && st.ctx) st.ctx.toast(text, 'err');
     st.tip = text;
-    st.tipUntil = performance.now() + TIP_MS;
+    st.tipUntil = now + TIP_MS;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -747,23 +761,23 @@
       if (e[0] === 1) {
         const a = e[2], b = e[3];
         const from = prev && prev.v ? prev.v : f.v;
-        if (!quiet) st.flies.push({ k: e[1], ax: from[a * 4], ay: from[a * 4 + 1] - 36, at: now });
+        if (!quiet) st.flies.push({ k: e[1], ax: from[a * 4], ay: from[a * 4 + 1] - 40, at: now });
         if (st.flies.length > 8) st.flies.shift();
         if (b === st.meId) {
           st.gotAt = now;
           st.giver = a;
           news(st, '🔥 Тобі тицьнули горщик! Хутко — впритул до когось і пробіл');
-        } else if (a === st.meId) news(st, '😮‍💨 Спихнув горщик на ' + esc(nameOf(st, b)) + '. Тепер тікай!');
+        } else if (a === st.meId) news(st, '😮‍💨 Горщик тепер у ' + esc(genitive(nameOf(st, b))) + '. Тікай!');
         sfx(st, 'pass');
       } else if (e[0] === 2) {
         const a = e[1], b = e[2], dz = e[3];
         st.slaps.push({ x: f.v[b * 4], y: f.v[b * 4 + 1] - 24, at: now });
         if (st.slaps.length > 8) st.slaps.shift();
-        const an = esc(nameOf(st, a)), bn = esc(nameOf(st, b)), she = FEMALE.has(nameOf(st, b));
-        if (dz === b) news(st, '✋ Ляп! ' + bn + (she ? ' оглушена — вона з живих!' : ' оглушений — він з живих!')
+        const aName = nameOf(st, a), bName = nameOf(st, b), she = FEMALE.has(bName), sheA = FEMALE.has(aName);
+        if (dz === b) news(st, '✋ Ляп! ' + esc(bName) + (she ? ' оглушена — вона з живих!' : ' оглушений — він з живих!')
           + (a === st.meId ? ' Твоя рука' : ''));
-        else if (a === st.meId) news(st, '✋ Ляснув ' + (she ? 'селянку' : 'селянина') + ' — і отетерів. Усі бачили');
-        else news(st, '✋ ' + an + ' ляснув ' + bn + ' — і сам отетерів');
+        else if (a === st.meId) news(st, '✋ Ляп! А то ' + (she ? 'була просто селянка' : 'був просто селянин') + ' — у тебе іскри з очей. Усі бачили');
+        else news(st, '✋ ' + esc(aName) + (sheA ? ' ляснула ' : ' ляснув ') + esc(accusative(bName)) + ' — і ' + (sheA ? 'сама отетеріла' : 'сам отетерів'));
         sfx(st, 'slap');
       } else if (e[0] === 3) {
         const id = e[2], kind = e[3], seat = e[4];
@@ -784,7 +798,7 @@
         sfx(st, 'boom');
       } else if (e[0] === 4) {
         const id = e[2];
-        if (!quiet) for (let i = 0; i < 6; i++) emit(st, f.v[id * 4], f.v[id * 4 + 1] - 36, false, 1, true);
+        if (!quiet) for (let i = 0; i < 6; i++) emit(st, f.v[id * 4], f.v[id * 4 + 1] - 40, false, 1, true);
         if (id === st.meId) {
           st.gotAt = now;
           st.giver = -1;
@@ -997,7 +1011,7 @@
         const rate = [3, 8, 14, 24][heat] || 3, sparks = [0, 0, 8, 20][heat] || 0;
         st.emitAcc[q * 2] += rate * dt;
         st.emitAcc[q * 2 + 1] += sparks * dt;
-        const x = st.px[id], y = st.py[id] - 44;
+        const x = st.px[id], y = st.py[id] - 50;
         while (st.emitAcc[q * 2] >= 1) { st.emitAcc[q * 2]--; emit(st, x, y, false, heat >= 2 ? 1 : 0, false); }
         while (st.emitAcc[q * 2 + 1] >= 1) { st.emitAcc[q * 2 + 1]--; emit(st, x, y, true, 0, false); }
       }
@@ -1009,7 +1023,7 @@
     for (let q = 0; q * 2 < pots.length; q++) {
       const id = pots[q * 2];
       if (id < 0 || id >= n) continue;
-      let x = st.px[id], y = st.py[id] - (st.ps[id] >= 2 ? 16 : 36);
+      let x = st.px[id], y = st.py[id] - (st.ps[id] >= 2 ? 16 : 40);
       for (const f of st.flies) {
         if (f.k !== q || now - f.at >= FLY_MS) continue;
         const p = (now - f.at) / FLY_MS;
@@ -1324,10 +1338,16 @@
       fitFont(g, title, left - (port ? 24 : 40), Math.round(Math.max(minPx, h / 22)), 800);
       const tw = g.measureText(title).width + 28;
       const th = Math.max(24, h / 13), ty = port ? 8 : Math.round(h * 0.3 - th / 2);
+      // плашка посеред толоки накриває чиїсь ніки: прочитали за 2,5 с — вона тьмяніє, і видно, хто під нею стояв
+      const key = phase + st.round;
+      if (st.plateKey !== key) { st.plateKey = key; st.plateAt = now; }
+      const a = clamp(1 - (now - st.plateAt - 2500) / 600, 0.28, 1);
+      g.globalAlpha = a;
       g.fillStyle = 'rgba(10, 20, 12, .76)';
       g.beginPath(); g.roundRect(mid - tw / 2, ty, tw, th, 10); g.fill();
       g.fillStyle = pal.text;
       g.fillText(title, mid, ty + th / 2);
+      g.globalAlpha = 1;
     }
   }
 
@@ -1524,8 +1544,12 @@
     if (!ctx || !ctx.mine || !ctx.playing) return;
     const now = performance.now();
     if (st.me && !st.me.alive) { refuse(st, 'Тебе вже рознесло — дивись, хто кого'); return; }
-    if (phaseOf(st) === 'go' && myPot(st) < 0) { refuse(st, 'Нема в тебе горщика — E, щоб ляпнути'); return; }
-    if (now - st.gotAt < HOLD_MS) { refuse(st, 'Горщик ще пече руки — мить!'); return; }
+    if (phaseOf(st) === 'go' && myPot(st) < 0) { refuse(st, 'Нема в тебе горщика'); return; }
+    if (now - st.gotAt < HOLD_MS) {
+      // щойно впіймав і вже тисне — не сваримо, а передаємо, щойно дозволять (пів секунди): так і задумано
+      if (!st.passT) st.passT = setTimeout(() => { st.passT = 0; pass(st, id); }, HOLD_MS - (now - st.gotAt) + 30);
+      return;
+    }
     ctx.act('pass', id == null ? {} : { id }).then((r) => {
       if (r && !r.ok) refuse(st, r.message, true);
     });
