@@ -1,0 +1,149 @@
+/*
+  Ковзанка. Ставок малює канвас; тут — рядок фішок над ним, новини, підсумок раунду і керування пальцем.
+  Свої кольори — на :root, бо модуль читає їх через ctx.css(). Усі класи з префіксом skate-.
+*/
+:root {
+  --skate-ice: #bfe1ee;      /* лід */
+  --skate-ice2: #a3d0e4;     /* глибший лід посередині */
+  --skate-snow: #f1f5f8;     /* сніг берега */
+  --skate-snow2: #d7e2ea;    /* тіні на снігу */
+  --skate-water: #123a52;    /* вода в ополонці */
+  --skate-wood: #7a4f2c;     /* лавка, човен, двері */
+  --skate-blue: #6fb3e8;     /* п'яте місце */
+  --skate-pink: #e88ac0;     /* шосте */
+  --skate-violet: #b48ae8;   /* сьоме */
+  --skate-red: #e86a6a;      /* восьме */
+}
+
+/* місця 5–8: чіпи в шапці картки каркас знає лише x/o/c/d */
+.gseat.skate-b { color: var(--skate-blue); }
+.gseat.skate-p { color: var(--skate-pink); }
+.gseat.skate-v { color: var(--skate-violet); }
+.gseat.skate-r { color: var(--skate-red); }
+
+.skate-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* Мапа 3:2: точну ширину модуль рахує від висоти вікна (як у Юрми); тут — запасна оцінка до першого заміру. */
+.skate-stage {
+  position: relative;
+  width: 100%;
+  max-width: min(960px, calc((100vh - 300px) * 1.5));
+}
+.skate-board {
+  width: 100%;
+  max-width: none;
+  border-radius: 10px;
+  background: #cfe6f0;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: crosshair;
+}
+.skate-board.skate-port { touch-action: none; }
+
+/* ---- фішки над мапою ---- */
+.skate-hud, .skate-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
+.skate-chips { display: contents; }
+.skate-hud .skate-seats { display: contents; }
+.skate-body > .skate-seats { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; font-size: .76em; }
+.skate-chip, .skate-seat {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.skate-clock { color: var(--muted); min-width: 4.4em; justify-content: center; }
+.skate-clock.hot { color: var(--danger); animation: skate-pulse 1s ease-in-out infinite; }
+@keyframes skate-pulse { 50% { opacity: .55; } }
+.skate-list i { font-style: normal; }
+.skate-list small { color: var(--muted); font-size: .86em; margin-right: 1px; }
+.skate-list i.done { opacity: .45; }
+.skate-seat i { width: .7em; height: .7em; border-radius: 50%; background: currentColor; display: inline-block; }
+.skate-seat b { color: var(--text); }
+.skate-seat small { color: var(--muted); font-size: .92em; }
+.skate-seat.dead { text-decoration: line-through; opacity: .7; }
+.skate-seat.out { opacity: .45; }
+.skate-seat.me { box-shadow: 0 0 0 1px currentColor inset; }
+.skate-mute {
+  padding: 2px 8px; border-radius: 999px; background: var(--bg2); border: 0; cursor: pointer; font-size: 1em; line-height: 1.4;
+}
+
+/* кольори місць: чіпи, ніки в новинах і підсумку */
+.skate-s0 { color: var(--accent); }
+.skate-s1 { color: var(--ok); }
+.skate-s2 { color: var(--clay); }
+.skate-s3 { color: var(--muted); }
+.skate-s4 { color: var(--skate-blue); }
+.skate-s5 { color: var(--skate-pink); }
+.skate-s6 { color: var(--skate-violet); }
+.skate-s7 { color: var(--skate-red); }
+
+/* ---- новини: останні дві події смужкою поверх низу мапи, згасають за 6 с ---- */
+.skate-news {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 3px; font-size: .84em; text-align: center;
+}
+.skate-ni {
+  animation: skate-fade 6s ease-in forwards; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 11px; border-radius: 999px; background: rgba(15, 25, 35, .78); color: #eef3f7;
+}
+.skate-ni + .skate-ni { opacity: .72; }
+/* телефон: одна новина, дрібно, угорі ліворуч від мінімапи — низ в'юпорта лишається для свого селянина */
+.skate-portmode .skate-news { top: 5px; bottom: auto; left: 5px; right: 108px; align-items: flex-start; flex-direction: column; font-size: .7em; }
+.skate-portmode .skate-ni { padding: 1px 8px; }
+.skate-portmode .skate-ni + .skate-ni { display: none; }
+.skate-stage.skate-open .skate-news { display: none; }
+@keyframes skate-fade { 0% { opacity: 0; transform: translateY(-3px); } 6% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- підсумок раунду й партії: фішки за очками партії ---- */
+.skate-sum { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; font-size: .84em; font-variant-numeric: tabular-nums; }
+.skate-stage > .skate-sum { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none; }
+.skate-sc {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  background: rgba(15, 25, 35, .84); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.skate-body > .skate-sum .skate-sc { background: var(--bg2); }
+.skate-sc b { font-weight: 700; }
+.skate-sc em { font-style: normal; font-weight: 800; color: #eef3f7; }
+.skate-body > .skate-sum .skate-sc em { color: var(--text); }
+.skate-sc small { color: #b9c7d2; font-size: .88em; }
+.skate-body > .skate-sum .skate-sc small { color: var(--muted); }
+.skate-sc.win { box-shadow: 0 0 0 1.5px currentColor inset; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skate-clock.hot { animation: none; }
+  .skate-ni { animation: none; }
+}
+
+/* ---- керування пальцем: джойстик-коло (тримай і веди), гальмо тримати, 👁 — дотик ---- */
+.skate-pad { display: none; }
+.skate-pad.skate-off { display: none !important; }
+@media (pointer: coarse) {
+  .skate-pad {
+    display: flex; gap: 22px; align-items: center; justify-content: center; margin-top: 2px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .skate-stick {
+    position: relative; width: 140px; height: 140px; border-radius: 50%; touch-action: none;
+    background: radial-gradient(circle, var(--panel2) 0 30%, var(--panel3) 31% 100%);
+    box-shadow: 0 0 0 2px var(--line) inset;
+  }
+  .skate-knob {
+    position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+    background: var(--clay); box-shadow: 0 2px 6px rgba(0, 0, 0, .35); pointer-events: none;
+  }
+  .skate-acts { display: grid; grid-template-columns: 66px; gap: 10px; }
+  .skate-acts button { justify-content: center; height: 66px; border-radius: 50%; font-size: 1.6em; background: var(--panel3); padding: 0; }
+  .skate-acts button[data-act="peek"] { height: 50px; font-size: 1.2em; }
+  .skate-acts button.on, .skate-acts button:active { background: var(--clay); }
+}
+@media (max-width: 380px) {
+  .skate-stick { width: 124px; height: 124px; }
+  .skate-knob { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
+  .skate-acts { grid-template-columns: 60px; }
+  .skate-acts button { height: 60px; }
+  .skate-pad { gap: 14px; }
+}
+@media (max-width: 480px) {
+  .skate-hud { font-size: .76em; gap: 4px; }
+  .skate-chip, .skate-seat { padding: 2px 7px; }
+  .skate-news { font-size: .78em; }
+}
