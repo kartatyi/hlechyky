@@ -1522,9 +1522,9 @@ public class BricksTests
     public void Journal_payload_is_exactly_what_the_module_sends()
     {
         var js = File.ReadAllText(Paths.Resolve("web/games/bricks.js"));
-        // модуль шле рівно { q, e, h, g, f } — і ні під якими іншими іменами
-        Assert.Matches(new Regex(@"input\('j', \{ q: \w+, e: \w+, h: [\w.()]+, g: [\w.]+, f: [\w.]+ \}\)"), js);
-        Assert.Contains("input('sync')", js);
+        // модуль шле рівно { q, e, h, g, f } — і ні під якими іншими іменами (send — це ctx.input картки або хаб бота)
+        Assert.Matches(new Regex(@"send\('j', \{ q: \w+, e: \w+, h: \w+, g: \w+, f: [\w.]+ \}\)"), js);
+        Assert.Contains("send('sync')", js);
         Assert.Contains("input('ready')", js);
 
         var h = Table(2);
