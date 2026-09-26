@@ -1042,11 +1042,13 @@ public class GlekometTests
         Settle(h);
         Assert.Equal(1, Game(h).Turn);
         Assert.Contains("Оля: за столом нема, хата порожня", V(h).GetProperty("log").EnumerateArray().Select(e => e.GetString()));
+        // каркас ніка того, хто встав, уже не знає — руїну підписує вид
+        Assert.Equal("Оля", V(h).GetProperty("huts")[0].GetProperty("nick").GetString());
 
         h.Leave("Ганна");
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
-        Assert.Equal("Глекомети: Ганна встав з-за столу, партію не дограли", h.Room.Result.Text);
+        Assert.Equal("Глекомети: Ганна — за столом нема, партію не дограли", h.Room.Result.Text);
         Assert.Equal("left", V(h).GetProperty("result").GetProperty("reason").GetString());
     }
 
@@ -1120,6 +1122,19 @@ public class GlekometTests
     }
 
     [Fact]
+    public void A_table_everyone_left_gives_the_win_but_not_the_clean_achievement()
+    {
+        var h = Table(3);
+        Ready(h);
+        h.Leave("Петро");
+        h.Leave("Ганна");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+        Assert.Equal(100, Core(h).Huts[0].Hp);
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:glekomet-clean");
+    }
+
+    [Fact]
     public void A_close_hit_is_no_sniper_shot()
     {
         var h = Table(3);
@@ -1160,7 +1175,7 @@ public class GlekometTests
         Assert.Equal(6, v.GetProperty("inv").GetArrayLength());
         Assert.Equal(6, v.GetProperty("stats").GetArrayLength());
         var hut = v.GetProperty("huts")[0];
-        foreach (var key in new[] { "seat", "x", "y", "hp", "alive", "team", "poison", "fuel", "skips", "reason" })
+        foreach (var key in new[] { "seat", "nick", "x", "y", "hp", "alive", "team", "poison", "fuel", "skips", "reason" })
             Assert.True(Views.Has(hut, key), key);
         var empty = v.GetProperty("huts")[5];
         Assert.False(empty.GetProperty("alive").GetBoolean());

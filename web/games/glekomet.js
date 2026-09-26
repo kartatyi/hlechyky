@@ -3,7 +3,7 @@
   сам літає, рве землю й рахує шкоду; ми лише малюємо те, що він прислав, і ніколи не рахуємо вирву самі.
 
   Вид (один на всіх, spec §4.1): { phase, turn, round, endsAt, turnMs, startIn, wind, water, waterFrom, w, hgt, step,
-    h[250], teams, huts[6]{seat,x,y,hp,alive,team,poison,fuel,skips,reason}, inv[6][6], aim[a,p,w], shells[[x,y,k]],
+    h[250], teams, huts[6]{seat,nick,x,y,hp,alive,team,poison,fuel,skips,reason}, inv[6][6], aim[a,p,w], shells[[x,y,k]],
     last{by,w,hits,text}, log[], stats[6], wins[6], result{winners,reason,best}, turnNo }
   Кадр (лише те, що змінилось, §4.2): { t, ph, sh?[[x,y,k]], hx?[[seat,x,y]], ex?[[x,y,r,kind]], dh?[[c0,h…]], hp?[6],
     aim?[a,p,w], si?, wl? }
@@ -521,7 +521,7 @@
       const src = (v.huts || [])[i];
       const hut = st.huts[i];
       if (!src) continue;
-      const nick = st.ctx.nickOf(i);
+      const nick = st.ctx.nickOf(i) || src.nick;
       if (nick) st.nicks[i] = nick;
       hut.plays = src.alive || !!src.reason;
       if (hut.alive && !src.alive && hut.plays && st.phase !== 'lobby' && !newGame) ruin(st, i, src.reason);
@@ -862,6 +862,9 @@
         g.rotate(ang);
         g.fillStyle = '#fff4df';
         g.beginPath(); g.arc(0, 1, 6, Math.PI, 0); g.closePath(); g.fill();
+        g.strokeStyle = 'rgba(70, 48, 24, .8)';                      // обвідка: на світлій хмарі білий вареник губився
+        g.lineWidth = 0.9;
+        g.stroke();
         g.fillStyle = '#e3cfa6';
         for (let k = -4; k <= 4; k += 2) { g.beginPath(); g.arc(k, 1, 0.8, 0, Math.PI * 2); g.fill(); }
         break;
@@ -1264,7 +1267,8 @@
     } else if (phase === 'over' && st.result) {
       g.fillStyle = 'rgba(12, 20, 16, .35)';
       g.fillRect(0, 0, W, HGT);
-      drawBanner(st, g, overText(st), 1, HGT / 2 + 20);
+      // угорі, над пагорбами: посередині табличка ховала ніки хат, що стоять на гребені
+      drawBanner(st, g, overText(st), 1, HGT - 64 * F.k);
     } else if (phase === 'lobby') {
       drawBanner(st, g, 'Чекаємо на гравців · господар тисне «Почати»', 0.9, HGT / 2 + 30, F.label);
     } else if (st.banner) {
@@ -1593,7 +1597,9 @@
   function paintArms(st) {
     const E = st.els;
     if (!E) return;
-    const mine = me(st);
+    // руїна дивиться на комору як глядач: чим стріляє той, хто ходить
+    const seat = me(st);
+    const mine = seat != null && (st.phase === 'lobby' || st.phase === 'start' || st.huts[seat].alive) ? seat : null;
     const who = mine != null ? mine : st.turn;
     const inv = invOf(st, who != null && who >= 0 ? who : null);
     const sel = mine != null ? (myTurn(st) ? st.my.w : st.preW != null ? st.preW : st.my.w)
@@ -1617,7 +1623,9 @@
     const E = st.els;
     if (!E) return;
     // пульт є тим, хто сидить, поки йде партія; у лобі й після кінця він лише заважав би підсумку
-    const show = !!st.ctx.mine && st.ctx.playing && st.phase !== 'over';
+    // руїні ходити вже нічим — пульт ховаємо, лишається комора й підсумок
+    const mine0 = me(st);
+    const show = !!st.ctx.mine && st.ctx.playing && st.phase !== 'over' && (st.phase === 'start' || (mine0 != null && st.huts[mine0].alive));
     if (E.ctl.hidden === show) E.ctl.hidden = !show;
     if (!show) return;
     const mine = me(st);

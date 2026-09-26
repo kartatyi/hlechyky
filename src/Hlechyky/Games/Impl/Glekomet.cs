@@ -661,8 +661,10 @@ public sealed class Glekomet : Game
         };
         foreach (var s in winners)
             if (_nick[s].Length > 0) _wins[Key(_nick[s])] = _wins.GetValueOrDefault(Key(_nick[s])) + 1;
-        foreach (var s in winners)
-            if (core.Huts[s].Alive && core.Huts[s].Hp == 100) Ctx.Award(s, 0, "ach:glekomet-clean");
+        // «Ні подряпини» — лише за виграний бій, а не за стіл, з якого всі повставали
+        if (reason is "last" or "team")
+            foreach (var s in winners)
+                if (core.Huts[s].Alive && core.Huts[s].Hp == 100) Ctx.Award(s, 0, "ach:glekomet-clean");
         var scores = new Dictionary<int, long>();
         for (var s = 0; s < Seats; s++)
             if (core.Huts[s].Plays && Ctx.Seated(s)) scores[s] = _stats[s].Dmg;
@@ -689,7 +691,7 @@ public sealed class Glekomet : Game
         for (var s = 0; s < Seats; s++) if (s != seat && Ctx.Seated(s)) others.Add(s);
         if (others.Count <= 1)
         {
-            Over([.. others], "left", $"{Info.Title}: {_nick[seat]} встав з-за столу, партію не дограли");
+            Over([.. others], "left", $"{Info.Title}: {_nick[seat]} — за столом нема, партію не дограли");
             return;
         }
         if (CheckEnd()) return;
@@ -725,6 +727,8 @@ public sealed class Glekomet : Game
             huts[s] = new
             {
                 seat = s,
+                // нік того, чия хата: хто встав посеред партії, того каркас уже не назве, а руїна підписана
+                nick = lobby ? Ctx.NickOf(s) ?? "" : here ? _nick[s] ?? "" : "",
                 x = h.X,
                 y = h.Y,
                 hp = here ? (lobby ? 100 : h.Hp) : 0,
