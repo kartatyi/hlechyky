@@ -127,7 +127,7 @@ public sealed class Pozyvni : Game
     /// <summary>«Дві команди» з трьома людьми не почнеш — кажемо це до старту, а не нічиєю після.</summary>
     public override string? CanStart() =>
         _mode == ModeTeams && Seated().Count() < TeamsMin
-            ? $"На дві команди треба щонайменше {TeamsMin}. Удвох-утрьох — стіл «Разом проти столу»"
+            ? $"На дві команди треба щонайменше {TeamsMin} — гукни ще когось. Удвох-утрьох — стіл «Разом проти столу»"
             : null;
 
     public override void Start()

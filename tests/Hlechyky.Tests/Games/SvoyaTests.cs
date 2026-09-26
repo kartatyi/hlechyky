@@ -798,7 +798,7 @@ public class SvoyaLiveTests
     {
         var h = SvoyaTests.Table(new { host = "live" }, ["Ведучий"], start: false);
         h.Act(0, "pack", new { id = "b_mini" });
-        Assert.Equal("Треба ще хоч одного гравця, крім ведучого", h.Start().Message);
+        Assert.Equal("Треба ще хоч одного гравця, крім ведучого — гукни когось за стіл", h.Start().Message);
         h.Join("Оля");
         Assert.True(h.Start().Ok);
     }

@@ -233,7 +233,7 @@ public sealed partial class Svoya : Game
     public override string? CanStart()
     {
         if (_pack is null) return "Оберіть пакет";
-        if (_mode == Live && Enumerable.Range(0, Seats).Count(Ctx.Seated) < 2) return "Треба ще хоч одного гравця, крім ведучого";
+        if (_mode == Live && Enumerable.Range(0, Seats).Count(Ctx.Seated) < 2) return "Треба ще хоч одного гравця, крім ведучого — гукни когось за стіл";
         return null;
     }
 

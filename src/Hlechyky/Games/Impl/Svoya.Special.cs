@@ -251,7 +251,7 @@ public sealed partial class Svoya
                 _allIn = true;
                 _bids.Add((seat, "allin", _bid));
                 AdvanceAuction();
-                return ActResult.Accept($"Ва-банк: {_bid}");
+                return ActResult.Accept($"Бах! Ва-банк: {_bid}");
             default:
                 if (!CanRaise(seat)) return ActResult.Fail(_allIn ? "Після ва-банку — лише більший ва-банк" : "Тобі бракує балів — лише пас або ва-банк");
                 var amount = Int(payload, "amount") ?? 0;

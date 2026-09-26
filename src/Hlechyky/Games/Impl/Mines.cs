@@ -342,7 +342,7 @@ public sealed class Mines : Game
 
         var opened = _board.Open(cell);
         if (!Hunting) _points[seat] += opened;   // у мисливців очки — лише міни
-        if (!Hunting && _board.Left == 0) return Cleared();
+        if (!Hunting && _board.Left == 0) return Cleared(seat);
         _turn = NextAlive(seat);
         return ActResult.Done;
     }
@@ -398,7 +398,8 @@ public sealed class Mines : Game
         return ActResult.Accept($"Є! Міна твоя — шукай ще (лишилось {left})");
     }
 
-    ActResult Cleared()
+    /// <summary>Поле розміновано. <paramref name="seat"/> — хто відкрив останню клітинку: не конче той, хто виграв.</summary>
+    ActResult Cleared(int seat)
     {
         _reason = "cleared";
         var living = Living.ToArray();
@@ -422,7 +423,7 @@ public sealed class Mines : Game
                 + $"{Ctx.NickOf(lost)} {SeatName(lost)}", Scores());
         }
         else Ctx.Finish(best, $"{Info.Title}: поле чисте — {Ranking()}", Scores());
-        return ActResult.Accept("Поле чисте!");
+        return ActResult.Accept(best.Contains(seat) ? "Є! Поле чисте — твоя взяла!" : "Поле чисте!");
     }
 
     ActResult Resign(int seat)

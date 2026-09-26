@@ -178,14 +178,14 @@ public class SvoyaSpecialTests
     {
         var h = AuctionTable();
         h.Act(1, "bid", new { amount = 200 });
-        Assert.Equal("Ва-банк: 300", h.Act(0, "allin").Message);  // Оля: усі свої 300
+        Assert.Equal("Бах! Ва-банк: 300", h.Act(0, "allin").Message);  // Оля: усі свої 300
         var a = V(h).GetProperty("auction");
         Assert.True(a.GetProperty("allIn").GetBoolean());
         Assert.Equal(1, a.GetProperty("turn").GetInt32());
         Assert.False(Me(h, 1).GetProperty("canBid").GetBoolean());
         Assert.True(Me(h, 1).GetProperty("canAllIn").GetBoolean());
         Assert.Equal("Після ва-банку — лише більший ва-банк", h.Act(1, "bid", new { amount = 400 }).Message);
-        Assert.Equal("Ва-банк: 500", h.Act(1, "allin").Message);
+        Assert.Equal("Бах! Ва-банк: 500", h.Act(1, "allin").Message);
         // Олиних 300 на 500 не вистачає — торги закінчено
         Assert.Equal(Svoya.Reading, Phase(h));
         Assert.Equal(500, V(h).GetProperty("question").GetProperty("price").GetInt32());
