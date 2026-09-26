@@ -258,4 +258,24 @@ public class BricksSprintTests
         Assert.Null(h.Rooms.Find(h.RoomId));
         Assert.Empty(h.Scores);
     }
+
+    [Fact]
+    public void Lost_fix_in_the_sprint_is_sent_again_too()
+    {
+        var h = Solo();
+        Go(h);
+        Assert.True(h.Act(0, "sync").Ok);
+        h.Tick();
+        var st = Game(h).SeatState;
+        Assert.Equal(1, st.Epoch);
+        h.Tick(2 * BricksJournal.FixEvery);
+        // клієнт і далі шле пачки зі старою епохою — кадр із fix не дійшов; сервер шле fix іще раз
+        Assert.True(h.Act(0, "j", new { q = 1, e = new[] { 3, 1 }, f = 0 }).Ok);
+        Assert.True(st.NeedFix);
+        var was = h.Outbox.OfType<RoomFrame>().Count();
+        h.Tick();
+        var fix = h.Outbox.OfType<RoomFrame>().Skip(was).Select(f => Views.Json(f.Frame))
+            .SelectMany(f => f.GetProperty("ev").EnumerateArray()).Single(e => e[0].GetString() == "f");
+        Assert.Equal(2, fix[2].GetProperty("fx").GetInt32());
+    }
 }

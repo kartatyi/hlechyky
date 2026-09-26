@@ -63,14 +63,17 @@
   border-radius: 999px; cursor: pointer;
 }
 
-/* ---- телефон: смужки небезпеки замість мікростін ---- */
-.bricks-strips { flex: 0 0 100%; display: grid; gap: 4px; }
+/* ---- телефон: смужки небезпеки замість мікростін — стовпчиком праворуч від своєї стіни ---- */
+.bricks-strips { flex: 0 0 96px; width: 96px; display: grid; gap: 6px; align-content: start; }
 .bricks-strip {
-  display: grid; grid-template-columns: auto minmax(0, 7.5em) 1fr auto; gap: 6px; align-items: center;
-  font-size: .8em; line-height: 1.2; padding: 2px 8px; border-radius: 999px; background: var(--panel2, rgba(255,255,255,.04));
-  border: 1px solid transparent;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "dot nick" "bar bar" "val val";
+  gap: 2px 4px; align-items: center; font-size: .74em; line-height: 1.2; padding: 4px 6px; border-radius: 8px;
+  background: var(--panel2, rgba(255,255,255,.04)); border: 1px solid transparent; min-width: 0;
 }
-.bricks-strip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bricks-strip .bricks-dot { grid-area: dot; }
+.bricks-strip b { grid-area: nick; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bricks-strip .bricks-meter { grid-area: bar; }
+.bricks-strip .bricks-sv { grid-area: val; }
 .bricks-strip.bk0 { color: var(--bk-seat0); }
 .bricks-strip.bk1 { color: var(--bk-seat1); }
 .bricks-strip.bk2 { color: var(--bk-seat2); }
@@ -84,7 +87,13 @@
 .bricks-sv { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---- вибулий кидає 🍅 / 👏 у стіну живого ---- */
-.bricks-toss { display: flex; gap: 6px; align-items: center; font-size: .82em; color: var(--muted); }
+.bricks-toss {
+  display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; justify-content: center; font-size: .82em; color: var(--muted);
+  width: 0; min-width: 100%;   /* ширину стовпчика задає стіна, а не ця панелька */
+}
+.bricks-toss span { text-align: center; }
+.bricks-out .bricks-touch { display: none; }
+.bricks-out .bricks-bd canvas, .bricks-out .bricks-strip:not(.dead) { cursor: pointer; }   /* сюди й кидають */
 .bricks-toss[hidden] { display: none; }
 .bricks-toss button {
   min-height: 34px; min-width: 44px; padding: 0 8px; font-size: 1.25em; border-radius: 10px; background: var(--panel3);
@@ -161,6 +170,13 @@
 .bricks-sumbox td:nth-child(2) .bricks-dot { margin-right: 6px; }
 .bricks-next { color: var(--muted); font-size: .82em; margin-top: 6px; }
 @keyframes bricks-pop { from { transform: scale(.94); opacity: 0; } }
+/* телефон: плашка підсумку не ширша за екран — «вислав/отримав» ховаємо, решта тісніше */
+@media (max-width: 560px) {
+  .bricks-sumbox { padding: 10px 12px; min-width: 0; font-size: .92em; overflow: hidden; }
+  .bricks-sumbox .bricks-sr { display: none; }
+  .bricks-sumbox th, .bricks-sumbox td { padding: 2px 5px; }
+  .bricks-sumbox td:nth-child(2) { max-width: 120px; }
+}
 
 /* ---- посилка сміття між стінами ---- */
 .bricks-shot {
