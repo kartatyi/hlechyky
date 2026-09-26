@@ -1,0 +1,360 @@
+/*
+  Під глеком: стіл із глеками, ставка, розкриття, свої кісточки й конструктор ставки. Кольори — лише змінними;
+  свої — у :root з префіксом --di-, класи — з префіксом di-. Кісточка — один елемент: крапки малюють шари
+  radial-gradient за класом грані; глечик на грані 1 — маска з SVG, пофарбована глиною.
+*/
+:root {
+  --di-face: #f4efe3;            /* кісточка слонової кістки */
+  --di-face2: #ddd3bf;           /* її тінь */
+  --di-pip: #26332b;             /* крапки */
+  --di-glaze: #e9b27a;           /* полива на глечику */
+  --di-clay-dark: #86491f;       /* обведення глека */
+  --di-ornament: #f6e6c6;        /* зигзаг-орнамент */
+  --di-glow: rgba(123, 211, 137, .55);
+  /* одна крапка кісточки; оголошена тут раз, а не на кожній кісточці: на шістьох це п'ять десятків
+     однакових довгих рядків у перерахунку стилів на кожне розкриття */
+  --di-pipg: radial-gradient(circle closest-side, #435349 0, var(--di-pip) 55%, var(--di-pip) 80%, transparent 90%);
+  /* Шість місць — шість кольорів і шість фігурок (● ▲ ■ ◆ ★ ✚), тож колір не єдина підказка. */
+  --di-s0: var(--accent);
+  --di-s1: var(--ok);
+  --di-s2: var(--clay);
+  --di-s3: #b69cf0;
+  --di-s4: #6fb3e8;
+  --di-s5: #e88ac0;
+}
+
+/* четверте–шосте місця в чіпах каркаса (там знають лише x/o/c/d, а сірий «d» тут читався б як «вибув») */
+.gseat.div { color: var(--di-s3); }
+.gseat.dib { color: var(--di-s4); }
+.gseat.dip { color: var(--di-s5); }
+
+.dice {
+  --di-s: 44px;
+  container-type: inline-size;
+  width: 100%; max-width: 760px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.dice .s0 { --di-c: var(--di-s0); } .dice .s1 { --di-c: var(--di-s1); } .dice .s2 { --di-c: var(--di-s2); }
+.dice .s3 { --di-c: var(--di-s3); } .dice .s4 { --di-c: var(--di-s4); } .dice .s5 { --di-c: var(--di-s5); }
+.dice u { text-decoration: none; color: var(--di-c, var(--muted)); margin-right: 3px; }
+.dice .muted { color: var(--muted); }
+.di-table { display: flex; flex-direction: column; gap: 10px; }
+.di-table[hidden], .di-lobby[hidden] { display: none; }
+.di-nk { font-weight: 600; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- кісточка */
+/* Одна кісточка — один елемент: крапки намальовані шарами radial-gradient у ::before (раніше було дев'ять <i>,
+   і розкриття на шістьох будувало три сотні вузлів на кожен вид). Центри крапок — на 24/50/76 % грані. */
+.di-die {
+  --s: var(--di-s);
+  position: relative; flex: none; box-sizing: border-box; display: inline-block;
+  width: var(--s); height: var(--s);
+  border-radius: calc(var(--s) * .22); vertical-align: middle;
+  background: linear-gradient(150deg, #fffbf2 0%, var(--di-face) 55%, var(--di-face2) 100%);
+  box-shadow: inset 0 calc(var(--s) * -.05) 0 rgba(0, 0, 0, .13), 0 2px 5px rgba(0, 0, 0, .35);
+}
+.di-die::before {
+  content: ''; position: absolute; inset: 0;
+  background-repeat: no-repeat; background-size: 22% 22%;
+}
+.di-die.f2::before { background-image: var(--di-pipg), var(--di-pipg); background-position: 83% 17%, 17% 83%; }
+.di-die.f3::before { background-image: var(--di-pipg), var(--di-pipg), var(--di-pipg); background-position: 83% 17%, 50% 50%, 17% 83%; }
+.di-die.f4::before {
+  background-image: var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg);
+  background-position: 17% 17%, 83% 17%, 17% 83%, 83% 83%;
+}
+.di-die.f5::before {
+  background-image: var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg);
+  background-position: 17% 17%, 83% 17%, 50% 50%, 17% 83%, 83% 83%;
+}
+.di-die.f6::before {
+  background-image: var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg);
+  background-position: 17% 17%, 83% 17%, 17% 50%, 83% 50%, 17% 83%, 83% 83%;
+}
+/* грань 1 — глечик замість крапки */
+.di-die.f1::after {
+  content: ''; position: absolute; inset: 20%;
+  background: var(--clay);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 24'%3E%3Cpath d='M6 1h8v1.6l-1.6 2.2C16 6.4 18.6 9.6 18.6 14c0 5.2-3.9 9-8.6 9s-8.6-3.8-8.6-9c0-4.4 2.6-7.6 6.2-9.2L6 2.6z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 24'%3E%3Cpath d='M6 1h8v1.6l-1.6 2.2C16 6.4 18.6 9.6 18.6 14c0 5.2-3.9 9-8.6 9s-8.6-3.8-8.6-9c0-4.4 2.6-7.6 6.2-9.2L6 2.6z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* невідома кісточка («сорочка») і та, що повертається після «Точно!» */
+.di-die.back, .di-die.f0 { background: linear-gradient(150deg, var(--panel3), var(--panel2)); box-shadow: inset 0 0 0 1px var(--line); }
+.di-die.xs { --s: 16px; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
+.di-die.sm { --s: 22px; }
+.di-die.md { --s: 40px; }
+
+/* рахуються в розкритті — світяться; решта блідне */
+.di-die.hit { box-shadow: 0 0 0 2px var(--ok), 0 0 14px var(--di-glow); animation: di-hit .5s ease-out .55s both; }
+.di-die.miss { opacity: .42; filter: saturate(.5); }
+.di-die.fall { animation: di-fall .4s ease-in 1.2s forwards; }
+.di-die.hit.fall { animation: di-hit .5s ease-out .55s both, di-fall .4s ease-in 1.2s forwards; }
+.di-die.rise { animation: di-rise .45s ease-out 1.2s both; box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(244, 197, 66, .5); }
+/* кісточка, що повертається після влучного «Точно!», — сорочка з «+», а не порожня клітинка */
+.di-die.rise::before {
+  content: '+'; display: grid; place-items: center; background: none;
+  color: var(--accent); font-weight: 800; font-size: calc(var(--s) * .62); line-height: 1;
+}
+.di-die.tumble { animation: di-tumble .5s linear infinite; animation-delay: calc(var(--i, 0) * -90ms); filter: blur(1.4px); }
+
+@keyframes di-hit { from { transform: scale(.7); box-shadow: 0 0 0 0 var(--ok); } 60% { transform: scale(1.12); } to { transform: none; } }
+/* кісточка, що впала, лишається блідою тінню: інакше рахунок «на столі 3» не зійдеться з тим, що видно */
+@keyframes di-fall { to { transform: translateY(8px) rotate(28deg); opacity: .4; box-shadow: 0 0 0 2px var(--danger); } }
+@keyframes di-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes di-tumble {
+  0% { transform: rotate(0) translateY(0); }
+  25% { transform: rotate(90deg) translateY(-7px); }
+  50% { transform: rotate(180deg) translateY(0); }
+  75% { transform: rotate(270deg) translateY(-4px); }
+  100% { transform: rotate(360deg) translateY(0); }
+}
+
+/* ---------------------------------------------------------------- глечик */
+.di-cup { display: inline-block; flex: none; width: 20px; height: 22px; transform-origin: 50% 92%; }
+.di-cup.big { width: 58px; height: 64px; }
+.di-cupsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.di-cb { fill: var(--clay); stroke: var(--di-clay-dark); stroke-width: 2.4; stroke-linejoin: round; }
+.di-cg { fill: none; stroke: var(--di-glaze); stroke-width: 3; opacity: .75; }
+.di-cz { fill: none; stroke: var(--di-ornament); stroke-width: 2; stroke-linejoin: round; opacity: .85; }
+.di-cl { fill: rgba(0, 0, 0, .35); }
+.di-cup.shaking { animation: di-shake .375s ease-in-out 4; }
+.di-cup.lift { animation: di-lift .5s cubic-bezier(.2, .8, .3, 1.25) both; }
+.di-cup.peek { transform: rotate(-10deg) translate(-3px, -5px); }
+.di-cup.gone { display: none; }
+@keyframes di-shake {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-6deg) translateX(-2px); }
+  75% { transform: rotate(6deg) translateX(2px); }
+}
+@keyframes di-lift { to { transform: translateY(-35%) rotate(-14deg); } }
+
+/* ---------------------------------------------------------------- гравці по колу */
+.di-others { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.di-p {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 100px; max-width: 160px; padding: 6px 10px 6px; box-sizing: border-box;
+  border-radius: 12px; background: var(--panel2); border: 1px solid var(--line);
+  border-top: 3px solid var(--di-c, var(--line));
+  transition: opacity .3s, box-shadow .3s;
+}
+.di-pn { max-width: 100%; font-size: .88em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.di-pn small { margin-left: 5px; font-weight: 400; color: var(--muted); font-size: .85em; }
+.di-pc { display: flex; align-items: flex-end; gap: 5px; height: 24px; }
+.di-pc b { font-size: .92em; font-variant-numeric: tabular-nums; line-height: 1; }
+.di-pc em { font-style: normal; font-size: .82em; color: var(--muted); align-self: center; }
+.di-pcn { display: inline-flex; align-items: flex-end; gap: 5px; }
+.di-backs { display: inline-flex; gap: 2px; padding-bottom: 2px; }
+.di-backs i { width: 7px; height: 7px; border-radius: 2px; background: var(--di-face); opacity: .75; }
+.di-pb {
+  display: inline-flex; align-items: center; gap: 3px; min-height: 20px; padding: 1px 7px;
+  border-radius: 8px; background: var(--bg2); font-size: .8em;
+}
+.di-pb.none { visibility: hidden; }
+.di-pb .di-q { font-size: 1.05em; }
+.di-p.me { background: var(--panel3); }
+.di-p.turn { box-shadow: 0 0 0 2px var(--accent); animation: di-pulse 1.6s ease-in-out infinite; }
+.di-p.out { opacity: .5; }
+.di-p.out .di-pn { text-decoration: line-through; text-decoration-color: var(--danger); }
+.di-p.champ { box-shadow: 0 0 0 2px var(--accent), 0 0 20px rgba(244, 197, 66, .45); animation: di-winpop .6s ease-out; }
+@keyframes di-pulse { 50% { box-shadow: 0 0 0 4px rgba(244, 197, 66, .35); } }
+
+/* ---------------------------------------------------------------- ставка на столі */
+.di-center { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 92px; }
+.di-arcbox:empty { display: none; }
+.di-arcbox .garc { width: 52px; height: 52px; }
+.di-arcbox.hurry .garc .fg { stroke: var(--ok); }
+.di-bid { text-align: center; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.di-who { font-size: .95em; color: var(--muted); }
+.di-val { display: inline-flex; align-items: center; gap: 8px; font-size: 2.3em; font-weight: 800; line-height: 1.1; }
+.di-val.pop { animation: di-pop .25s ease-out; }
+.di-x { color: var(--muted); font-weight: 400; margin: 0 1px; }
+.di-prob { color: var(--ok); font-weight: 600; font-size: .92em; }
+/* печатка розкриття: «✓ правда» / «✗ брехня» / «🎯 рівно» — ставиться, коли глеки вже підняли */
+.di-stamp {
+  font-size: .42em; font-weight: 800; padding: 3px 10px; border-radius: 8px; margin-left: 6px; white-space: nowrap;
+  border: 2px solid currentColor; transform: rotate(-6deg); animation: di-stamp .35s cubic-bezier(.2, .9, .3, 1.4) .35s both;
+}
+.di-stamp.yes { color: var(--ok); }
+.di-stamp.no { color: var(--danger); }
+.di-cnt { font-size: 1.25em; }
+@keyframes di-stamp { from { transform: rotate(-6deg) scale(2.2); opacity: 0; } to { transform: rotate(-6deg) scale(1); opacity: 1; } }
+.di-note { font-size: 1.15em; font-weight: 700; max-width: 520px; }
+.di-sub { font-size: .85em; }
+@keyframes di-pop { from { transform: scale(.85); opacity: .4; } to { transform: none; opacity: 1; } }
+
+.di-pal {
+  text-align: center; font-size: .88em; padding: 6px 12px; border-radius: 10px;
+  background: rgba(197, 118, 58, .14); border: 1px solid var(--clay);
+}
+.di-pal[hidden] { display: none; }
+
+/* історія раунду: старі ставки блідішають, нова в'їжджає справа */
+.di-hist { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 3px 2px; font-size: .84em; }
+.di-hist:empty { display: none; }
+.di-h {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px 8px 2px 6px; border-radius: 999px;
+  background: var(--panel2); opacity: calc(1 - var(--age, 0) * .1);
+}
+.di-h.new { animation: di-in .25s ease-out; box-shadow: 0 0 0 1px var(--di-c, var(--line)); }
+.di-h.auto { font-style: italic; }
+.di-h.more { color: var(--muted); padding: 2px 8px; }
+.di-arrow { color: var(--muted); font-style: normal; }
+@keyframes di-in { from { transform: translateX(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------------------------------------------------------------- розкриття */
+.di-reveal {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 10px 12px; border-radius: 14px; background: var(--panel2); border: 1px solid var(--line);
+}
+.di-reveal[hidden], .di-reveal [hidden] { display: none; }
+.di-verdict:empty { display: none; }
+.di-rows { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 5px; }
+.di-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 3px 8px; border-radius: 10px; background: var(--bg2);
+  animation: di-rowin .35s ease-out both; animation-delay: calc(.45s + var(--n, 0) * 80ms);
+}
+.di-row.lose { box-shadow: inset 3px 0 0 var(--danger); }
+.di-row.gain { box-shadow: inset 3px 0 0 var(--accent); }
+.di-rn { flex: 1 1 auto; display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; overflow: hidden; }
+.di-rn .di-nk { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.di-rn small { color: var(--muted); font-size: .8em; }
+.di-row.me { background: var(--panel3); }
+.di-rdice { --di-s: 30px; flex: none; display: inline-flex; justify-content: flex-end; gap: 5px; }
+.di-verdict { font-weight: 700; }
+.di-say { display: flex; align-items: center; gap: 8px; font-style: italic; max-width: 560px; }
+.di-say img { width: 30px; height: 30px; flex: none; }
+.di-next { min-width: 170px; min-height: 42px; justify-content: center; }
+@keyframes di-rowin { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------------------------------------------------------------- перемога */
+.di-win { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.di-win[hidden] { display: none; }
+.di-champ { font-size: 1.6em; font-weight: 800; animation: di-winpop .6s ease-out; }
+.di-podium { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; }
+@keyframes di-winpop { from { transform: scale(.7); opacity: 0; } 70% { transform: scale(1.06); } to { transform: none; opacity: 1; } }
+
+/* ---------------------------------------------------------------- мої кісточки і конструктор */
+.di-bottom { display: grid; gap: 10px; }
+@container (min-width: 720px) {
+  .di-bottom { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; }
+  .di-me .di-mine { --di-s: 46px; gap: 6px; }
+  .di-me .di-cup.big { width: 46px; height: 51px; }
+}
+@container (min-width: 880px) {
+  .di-me .di-mine { --di-s: 56px; }
+  .di-me .di-cup.big { width: 54px; height: 60px; }
+}
+.di-me {
+  display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 12px;
+  padding: 10px 12px; border-radius: 14px; background: var(--panel2); border: 1px solid var(--line); min-height: 64px;
+}
+.di-me[hidden] { display: none; }
+.di-me > .di-melabel:only-child { grid-column: 1 / -1; text-align: center; }
+.di-mecup { grid-row: span 2; }
+.di-mine { display: flex; flex-wrap: wrap; gap: 8px; min-height: var(--di-s); }
+.di-melabel { font-size: .85em; color: var(--muted); }
+
+.di-act { display: flex; flex-direction: column; gap: 8px; }
+.di-act[hidden] { display: none; }
+.di-faces { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.di-face {
+  --di-s: 30px;
+  flex-direction: column; justify-content: center; gap: 3px; padding: 6px 2px 4px; min-height: 60px;
+  border: 2px solid transparent; border-radius: 12px; background: var(--panel2);
+}
+.di-face small { font-size: .72em; color: var(--muted); white-space: nowrap; }
+.di-face.on { border-color: var(--accent); background: var(--panel3); }
+.di-face.on small { color: var(--text); }
+.di-qrow { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.di-qrow button { width: 48px; height: 48px; justify-content: center; font-size: 1.5em; padding: 0; border-radius: 12px; }
+.di-qv { min-width: 2.4ch; text-align: center; font-size: 1.9em; font-variant-numeric: tabular-nums; }
+.di-qp { min-width: 5.5ch; color: var(--ok); font-weight: 600; font-size: .92em; }
+.di-go { min-height: 48px; justify-content: center; font-size: 1.05em; }
+.di-go .di-q { font-size: 1.1em; }
+.di-gowait { font-weight: 400; font-size: .92em; }
+.di-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.di-row2 button { min-height: 46px; flex-direction: column; justify-content: center; gap: 0; font-weight: 700; line-height: 1.15; }
+.di-row2 button small { font-size: .7em; font-weight: 400; color: var(--muted); }
+.di-row2 .di-exact:not([hidden]) { border-color: var(--line); color: var(--text); }
+.di-row2 .di-exact[hidden] { display: none; }
+.di-row2:has(.di-exact[hidden]) { grid-template-columns: 1fr; }
+.di-act.wait .di-faces, .di-act.wait .di-qrow, .di-act.wait .di-go { opacity: .7; }
+
+/* ---------------------------------------------------------------- лобі, низ */
+.di-how { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 560px; margin: 0 auto; }
+.di-howcup { display: flex; align-items: flex-end; gap: 12px; --di-s: 34px; }
+.di-howcup .di-mine { gap: 6px; }
+.di-how ol { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; line-height: 1.4; }
+.di-how .di-die.xs { margin-right: 2px; }
+.di-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.di-foot[hidden] { display: none; }
+.di-tg { font-size: .8em; padding: 3px 10px; }
+
+.dice.di-shudder { animation: di-shudder .1s linear 2; }
+@keyframes di-shudder { 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+
+/* ---------------------------------------------------------------- Full HD */
+/* Full HD: стіл ширший, усе більше — на 1920 760 px губились посеред картки, а висоти лишалось на пів екрана.
+   Навіть розкриття на шістьох із таким масштабом стає в 1080 без прокрутки. */
+@media (min-width: 1600px) and (min-height: 900px) {
+  .dice { max-width: 980px; --di-s: 50px; font-size: 1.1em; }
+  .di-p { min-width: 118px; max-width: 180px; }
+  .di-pc { height: 28px; }
+  .di-p .di-cup { width: 24px; height: 26px; }
+  .di-backs i { width: 8px; height: 8px; }
+  .di-rdice { --di-s: 34px; }
+  .di-face { --di-s: 34px; min-height: 68px; }
+  .di-arcbox .garc { width: 60px; height: 60px; }
+}
+
+/* ---------------------------------------------------------------- низький екран (Steam Deck 1280×800, ноут 768) */
+/* Поки йде партія, ті самі гравці вже є в чіпах столу — рядок місць каркаса над ним лише з'їдав би висоту
+   (на шістьох це два рядки). На телефоні й на низькому екрані ховаємо його, у лобі й після партії він на місці. */
+@media (max-width: 520px), (max-height: 820px) {
+  .gtable:has(> .gbody > .dice:is([data-phase="shake"], [data-phase="bid"], [data-phase="reveal"])) > .gseats .gseat { display: none; }
+}
+@media (max-height: 820px) and (min-width: 521px) {
+  .dice { gap: 8px; }
+  .di-table { gap: 8px; }
+  .di-center { min-height: 76px; }
+  .di-val { font-size: 2em; }
+  .di-face { min-height: 54px; padding: 4px 2px 3px; }
+  .di-qrow button { width: 42px; height: 42px; }
+  .di-go { min-height: 44px; }
+  .di-row2 button { min-height: 42px; }
+  .di-me { min-height: 0; padding: 8px 12px; }
+  .di-rows { gap: 4px; }
+}
+
+/* ---------------------------------------------------------------- телефон */
+@media (max-width: 520px) {
+  .dice { --di-s: 40px; gap: 8px; }
+  .di-others { gap: 5px; }
+  /* Чіп у два рядки: нік, а під ним глек із числом і остання ставка поруч — сорочки кісточок тут зайві,
+     число їх і так каже. Шість гравців — два ряди по ~55 px замість ~85. */
+  .di-p {
+    min-width: 0; flex: 1 1 30%; max-width: 33%; padding: 5px 5px;
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 3px 4px;
+  }
+  .di-pn { grid-column: 1 / -1; justify-self: center; }
+  .di-backs { display: none; }
+  .di-pb { justify-self: end; padding: 1px 5px; }
+  .di-center { min-height: 80px; gap: 10px; }
+  .di-val { font-size: 2em; }
+  .di-faces { gap: 4px; }
+  .di-face { --di-s: 28px; min-height: 56px; }
+  .di-rdice { --di-s: 24px; gap: 3px; }
+  .di-row { padding: 3px 6px; gap: 6px; }
+  .di-me { padding: 6px 10px; min-height: 0; gap: 2px 10px; }
+  .di-mecup .di-cup.big { width: 36px; height: 40px; }
+  .di-melabel { font-size: .8em; }
+  .di-act { gap: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dice, .dice * { animation: none !important; transition: none !important; }
+  .di-die.tumble { filter: none; }
+  .di-die.fall { opacity: .4; box-shadow: 0 0 0 2px var(--danger); }
+  .di-cup.lift { transform: translateY(-35%) rotate(-14deg); }
+}

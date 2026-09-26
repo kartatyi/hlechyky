@@ -98,6 +98,9 @@ public static class AchievementCatalog
         // хвиля 2: crowd
         new("crowd-eye",   "Око-алмаз",       "Юрма: влучив у гравця першим камінцем раунду", "🎯", 15),
         new("crowd-quiet", "Тихий покупець",  "Юрма: виграв раунд покупками, не стрельнувши жодного разу", "🧺", 15),
+        // хвиля 2: dice
+        new("dice-exact",    "Точно!",            "Вгадав ставку рівно — і повернув кісточку", "🎯", 15),
+        new("dice-comeback", "З однієї кісточки", "Виграв партію «Під глеком», побувавши на одній кісточці", "🏺", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
