@@ -407,7 +407,12 @@ public sealed class Dice : Game
         Ctx.Finish(winner >= 0 ? [winner] : [], log, scores);
     }
 
-    string Nick(int seat) => (seat is >= 0 and < DiceCore.MaxSeats ? Ctx.NickOf(seat) ?? _nicks[seat] : null) ?? SeatName(seat);
+    /// <summary>
+    /// Нік місця: спершу той, що сидів на старті партії (місце того, хто встав, каркас звільняє одразу, а в
+    /// дограній кімнаті на нього вже може сісти новенький), далі — хто сидить зараз, далі — «третій».
+    /// </summary>
+    string Nick(int seat) =>
+        (seat is >= 0 and < DiceCore.MaxSeats ? (_core.Dealt[seat] ? _nicks[seat] : null) ?? Ctx.NickOf(seat) : null) ?? SeatName(seat);
 
     // ---------- payload ----------
 

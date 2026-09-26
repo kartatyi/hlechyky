@@ -40,26 +40,35 @@
 .di-nk { font-weight: 600; white-space: nowrap; }
 
 /* ---------------------------------------------------------------- кісточка */
+/* Одна кісточка — один елемент: крапки намальовані шарами radial-gradient у ::before (раніше було дев'ять <i>,
+   і розкриття на шістьох будувало три сотні вузлів на кожен вид). Центри крапок — на 24/50/76 % грані. */
 .di-die {
   --s: var(--di-s);
-  position: relative; flex: none; box-sizing: border-box;
-  display: inline-grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-  width: var(--s); height: var(--s); padding: calc(var(--s) * .13);
+  --di-pipg: radial-gradient(circle closest-side, #435349 0, var(--di-pip) 55%, var(--di-pip) 80%, transparent 90%);
+  position: relative; flex: none; box-sizing: border-box; display: inline-block;
+  width: var(--s); height: var(--s);
   border-radius: calc(var(--s) * .22); vertical-align: middle;
   background: linear-gradient(150deg, #fffbf2 0%, var(--di-face) 55%, var(--di-face2) 100%);
   box-shadow: inset 0 calc(var(--s) * -.05) 0 rgba(0, 0, 0, .13), 0 2px 5px rgba(0, 0, 0, .35);
 }
-.di-die i {
-  visibility: hidden; align-self: center; justify-self: center;
-  width: 74%; height: 74%; border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #4a5a4f, var(--di-pip) 70%);
+.di-die::before {
+  content: ''; position: absolute; inset: 0;
+  background-repeat: no-repeat; background-size: 22% 22%;
 }
-.di-die.f2 i:nth-child(3), .di-die.f2 i:nth-child(7),
-.di-die.f3 i:nth-child(3), .di-die.f3 i:nth-child(5), .di-die.f3 i:nth-child(7),
-.di-die.f4 i:nth-child(1), .di-die.f4 i:nth-child(3), .di-die.f4 i:nth-child(7), .di-die.f4 i:nth-child(9),
-.di-die.f5 i:nth-child(1), .di-die.f5 i:nth-child(3), .di-die.f5 i:nth-child(5), .di-die.f5 i:nth-child(7), .di-die.f5 i:nth-child(9),
-.di-die.f6 i:nth-child(1), .di-die.f6 i:nth-child(3), .di-die.f6 i:nth-child(4),
-.di-die.f6 i:nth-child(6), .di-die.f6 i:nth-child(7), .di-die.f6 i:nth-child(9) { visibility: visible; }
+.di-die.f2::before { background-image: var(--di-pipg), var(--di-pipg); background-position: 83% 17%, 17% 83%; }
+.di-die.f3::before { background-image: var(--di-pipg), var(--di-pipg), var(--di-pipg); background-position: 83% 17%, 50% 50%, 17% 83%; }
+.di-die.f4::before {
+  background-image: var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg);
+  background-position: 17% 17%, 83% 17%, 17% 83%, 83% 83%;
+}
+.di-die.f5::before {
+  background-image: var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg);
+  background-position: 17% 17%, 83% 17%, 50% 50%, 17% 83%, 83% 83%;
+}
+.di-die.f6::before {
+  background-image: var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg), var(--di-pipg);
+  background-position: 17% 17%, 83% 17%, 17% 50%, 83% 50%, 17% 83%, 83% 83%;
+}
 /* грань 1 — глечик замість крапки */
 .di-die.f1::after {
   content: ''; position: absolute; inset: 20%;
@@ -82,7 +91,8 @@
 .di-die.tumble { animation: di-tumble .5s linear infinite; animation-delay: calc(var(--i, 0) * -90ms); filter: blur(1.4px); }
 
 @keyframes di-hit { from { transform: scale(.7); box-shadow: 0 0 0 0 var(--ok); } 60% { transform: scale(1.12); } to { transform: none; } }
-@keyframes di-fall { to { transform: translateY(28px) rotate(40deg); opacity: 0; } }
+/* кісточка, що впала, лишається блідою тінню: інакше рахунок «на столі 3» не зійдеться з тим, що видно */
+@keyframes di-fall { to { transform: translateY(8px) rotate(28deg); opacity: .28; } }
 @keyframes di-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes di-tumble {
   0% { transform: rotate(0) translateY(0); }
@@ -103,6 +113,7 @@
 .di-cup.shaking { animation: di-shake .375s ease-in-out 4; }
 .di-cup.lift { animation: di-lift .5s cubic-bezier(.2, .8, .3, 1.25) both; }
 .di-cup.peek { transform: rotate(-10deg) translate(-3px, -5px); }
+.di-cup.gone { display: none; }
 @keyframes di-shake {
   0%, 100% { transform: rotate(0); }
   25% { transform: rotate(-6deg) translateX(-2px); }
@@ -150,6 +161,15 @@
 .di-val.pop { animation: di-pop .25s ease-out; }
 .di-x { color: var(--muted); font-weight: 400; margin: 0 1px; }
 .di-prob { color: var(--ok); font-weight: 600; font-size: .92em; }
+/* печатка розкриття: «✓ правда» / «✗ брехня» / «🎯 рівно» — ставиться, коли глеки вже підняли */
+.di-stamp {
+  font-size: .42em; font-weight: 800; padding: 3px 10px; border-radius: 8px; margin-left: 6px; white-space: nowrap;
+  border: 2px solid currentColor; transform: rotate(-6deg); animation: di-stamp .35s cubic-bezier(.2, .9, .3, 1.4) .35s both;
+}
+.di-stamp.yes { color: var(--ok); }
+.di-stamp.no { color: var(--danger); }
+.di-cnt { font-size: 1.25em; }
+@keyframes di-stamp { from { transform: rotate(-6deg) scale(2.2); opacity: 0; } to { transform: rotate(-6deg) scale(1); opacity: 1; } }
 .di-note { font-size: 1.15em; font-weight: 700; max-width: 520px; }
 .di-sub { font-size: .85em; }
 @keyframes di-pop { from { transform: scale(.85); opacity: .4; } to { transform: none; opacity: 1; } }
@@ -169,6 +189,7 @@
 }
 .di-h.new { animation: di-in .25s ease-out; box-shadow: 0 0 0 1px var(--di-c, var(--line)); }
 .di-h.auto { font-style: italic; }
+.di-h.more { color: var(--muted); padding: 2px 8px; }
 .di-arrow { color: var(--muted); font-style: normal; }
 @keyframes di-in { from { transform: translateX(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -178,7 +199,6 @@
   padding: 10px 12px; border-radius: 14px; background: var(--panel2); border: 1px solid var(--line);
 }
 .di-reveal[hidden] { display: none; }
-.di-rhead { font-size: .92em; text-align: center; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; }
 .di-rows { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 5px; }
 .di-row {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -187,10 +207,11 @@
 }
 .di-row.lose { box-shadow: inset 3px 0 0 var(--danger); }
 .di-row.gain { box-shadow: inset 3px 0 0 var(--accent); }
-.di-row .di-nk { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.di-rn { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; overflow: hidden; }
+.di-rn .di-nk { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.di-rn small { color: var(--muted); font-size: .8em; }
+.di-row.me { background: var(--panel3); }
 .di-rdice { --di-s: 30px; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
-.di-rsum { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; font-size: 1.02em; }
-.di-big { font-size: 1.7em; line-height: 1; }
 .di-verdict { font-weight: 700; }
 .di-say { display: flex; align-items: center; gap: 8px; font-style: italic; max-width: 560px; }
 .di-say img { width: 30px; height: 30px; flex: none; }
@@ -207,14 +228,21 @@
 /* ---------------------------------------------------------------- мої кісточки і конструктор */
 .di-bottom { display: grid; gap: 10px; }
 @container (min-width: 720px) {
-  .di-bottom { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); align-items: start; }
-  .di-mine { --di-s: 48px; }
+  .di-bottom { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; }
+  .di-me .di-mine { --di-s: 46px; gap: 6px; }
+  .di-me .di-cup.big { width: 46px; height: 51px; }
 }
-@container (min-width: 900px) { .di-mine { --di-s: 56px; } }
+@container (min-width: 880px) {
+  .di-me .di-mine { --di-s: 56px; }
+  .di-me .di-cup.big { width: 54px; height: 60px; }
+}
+/* Full HD: стіл ширший, кісточки більші — на 1920 760 px губились посеред картки */
+@media (min-width: 1600px) and (min-height: 900px) { .dice { max-width: 920px; --di-s: 48px; } }
 .di-me {
   display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 12px;
   padding: 10px 12px; border-radius: 14px; background: var(--panel2); border: 1px solid var(--line); min-height: 64px;
 }
+.di-me[hidden] { display: none; }
 .di-me > .di-melabel:only-child { grid-column: 1 / -1; text-align: center; }
 .di-mecup { grid-row: span 2; }
 .di-mine { display: flex; flex-wrap: wrap; gap: 8px; min-height: var(--di-s); }
@@ -238,7 +266,8 @@
 .di-go { min-height: 48px; justify-content: center; font-size: 1.05em; }
 .di-go .di-q { font-size: 1.1em; }
 .di-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.di-row2 button { min-height: 46px; justify-content: center; font-weight: 700; }
+.di-row2 button { min-height: 46px; flex-direction: column; justify-content: center; gap: 0; font-weight: 700; line-height: 1.15; }
+.di-row2 button small { font-size: .7em; font-weight: 400; color: var(--muted); }
 .di-row2 .di-exact:not([hidden]) { border-color: var(--line); color: var(--text); }
 .di-row2 .di-exact[hidden] { display: none; }
 .di-row2:has(.di-exact[hidden]) { grid-template-columns: 1fr; }

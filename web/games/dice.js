@@ -94,10 +94,9 @@
   // Малюнки
   // =============================================================================================
 
-  const PIP9 = '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>';
-  /// Кісточка: дев'ять клітинок 3×3, які крапки видно — вирішує клас грані (dice.css). Грань 1 — глечик.
+  /// Кісточка — один порожній елемент: крапки малює dice.css шарами градієнтів за класом грані. Грань 1 — глечик.
   const die = (f, cls, style) => '<span class="di-die f' + f + (cls ? ' ' + cls : '') + '"'
-    + (style ? ' style="' + style + '"' : '') + '>' + PIP9 + '</span>';
+    + (style ? ' style="' + style + '"' : '') + '></span>';
   const bidHtml = (b, cls) => '<b class="di-q">' + b.q + '</b><span class="di-x">×</span>' + die(b.f, cls || 'sm');
 
   /// Перевернутий глечик — той, під яким трусять. Малюємо одним SVG і для чіпів, і для свого глека.
@@ -188,30 +187,43 @@
     return null;
   }
 
+  /// Чіпи гравців. Скелет чіпів ставимо раз на склад, далі міняємо лише класи й ті частини, що справді
+  /// змінились: хід переходить щоставки, і перебудовувати шість глеків-SVG заради рамки — марна праця.
   function paintOthers(el, ctx, v) {
     const phase = v.phase;
     const res = v.result;
     const lift = phase === 'reveal' || phase === 'done';
-    const html = ring(ctx, v).map((p) => {
-      const cls = ['di-p', 's' + p.seat];
-      if (p.seat === ctx.seat) cls.push('me');
-      if (!p.alive) cls.push('out');
-      if (phase === 'bid' && v.turn === p.seat) cls.push('turn');
-      if (res && res.winner === p.seat) cls.push('champ');
-      const last = phase === 'bid' || phase === 'reveal' ? lastBidOf(v, p.seat) : null;
+    const list = ring(ctx, v);
+    const order = list.map((p) => p.seat).join(',') + '|' + ctx.seat;
+    if (el.dataset.order !== order) {
+      el.dataset.order = order;
+      el.innerHTML = list.map((p) => '<div class="di-p s' + p.seat + '"><span class="di-pn"></span>'
+        + '<span class="di-pc">' + cup('') + '<span class="di-pcn"></span></span><span class="di-pb none"></span></div>').join('');
+    }
+    const chips = el.children;
+    for (let i = 0; i < list.length && i < chips.length; i++) {
+      const p = list[i];
+      const c = chips[i];
+      c.classList.toggle('me', p.seat === ctx.seat);
+      c.classList.toggle('out', !p.alive);
+      c.classList.toggle('turn', phase === 'bid' && v.turn === p.seat);
+      c.classList.toggle('champ', !!res && res.winner === p.seat);
+      setHtml(c.children[0], '<u>' + MARKS[p.seat] + '</u>' + ctx.esc(nameOf(ctx, v, p.seat))
+        + (p.seat === ctx.seat ? '<small>ти</small>' : ''));
+      const pc = c.children[1];
+      const cupEl = pc.children[0];
+      const cc = 'di-cup' + (!p.alive ? ' gone' : lift ? ' lift' : phase === 'shake' ? ' shaking' : '');
+      if (cupEl.className !== cc) cupEl.className = cc;
       const n = Math.max(0, p.dice | 0);
-      const body = p.alive
-        ? cup(lift ? 'lift' : phase === 'shake' ? 'shaking' : '') + '<span class="di-backs">' + '<i></i>'.repeat(n) + '</span><b>' + n + '</b>'
-        : '<em>' + (p.left ? 'встав' : '✕ вибув') + '</em>';
-      const bubble = last
-        ? '<span class="di-pb' + (last.auto ? ' auto' : '') + '">' + (last.auto ? '⏰' : '') + bidHtml(last, 'xs') + '</span>'
-        : '<span class="di-pb none"></span>';
-      return '<div class="' + cls.join(' ') + '">'
-        + '<span class="di-pn"><u>' + MARKS[p.seat] + '</u>' + ctx.esc(nameOf(ctx, v, p.seat))
-        + (p.seat === ctx.seat ? '<small>ти</small>' : '') + '</span>'
-        + '<span class="di-pc">' + body + '</span>' + bubble + '</div>';
-    }).join('');
-    setHtml(el, html);
+      setHtml(pc.children[1], p.alive
+        ? '<span class="di-backs">' + '<i></i>'.repeat(n) + '</span><b>' + n + '</b>'
+        : '<em>' + (p.left ? 'встав' : '✕ вибув') + '</em>');
+      const last = phase === 'bid' || phase === 'reveal' ? lastBidOf(v, p.seat) : null;
+      const pb = c.children[2];
+      const pbc = 'di-pb' + (!last ? ' none' : last.auto ? ' auto' : '');
+      if (pb.className !== pbc) pb.className = pbc;
+      setHtml(pb, last ? (last.auto ? '⏰' : '') + bidHtml(last, 'xs') : '');
+    }
   }
 
   function probLine(v, ctx, q, f) {
@@ -226,29 +238,51 @@
     if (phase === 'shake') {
       html = '<div class="di-note">' + ctx.esc(v.note || 'Трусимо глеки…') + '</div>'
         + '<div class="di-sub muted">🎲 Трусимо глеки…</div>';
+    } else if ((phase === 'reveal' || phase === 'done') && v.reveal) {
+      // Розкриття: велика ставка, яку перевіряють, і печатка «правда/брехня» — головна мить раунду.
+      const r = v.reveal, b = r.bid;
+      const what = r.kind === 'exact' ? '«Точно!»' : r.kind === 'timeout' ? '⏰ час вийшов — «Брешеш!»' : '«Брешеш!»';
+      const ok = r.kind === 'exact' ? r.count === b.q : r.count >= b.q;
+      const stamp = r.kind === 'exact' ? (ok ? '🎯 рівно' : '✗ не рівно') : (ok ? '✓ правда' : '✗ брехня');
+      const jugs = r.jokers ? ' <span class="muted">(з них ' + r.jokers + ' ' + plural(r.jokers, 'глечик', 'глечики', 'глечиків') + ')</span>' : '';
+      html = '<div class="di-who">' + nick(ctx, v, r.caller) + ' — ' + what + '</div>'
+        + '<div class="di-val">' + bidHtml(b, 'md') + '<span class="di-stamp ' + (ok ? 'yes' : 'no') + '">' + stamp + '</span></div>'
+        + '<div class="di-sub">на столі <b class="di-cnt">' + r.count + '</b>' + jugs + ' · ставка ' + nick(ctx, v, b.seat) + '</div>';
     } else if (phase === 'bid' && !v.bid) {
       const mine = v.turn === ctx.seat;
       html = '<div class="di-note">' + (mine ? 'Твій хід — відкривай раунд' : 'Ставок ще нема — починає ' + nick(ctx, v, v.turn)) + '</div>'
         + '<div class="di-sub muted">На всьому столі ' + v.total + ' ' + plural(v.total, 'кісточка', 'кісточки', 'кісточок') + '</div>';
-    } else if (v.bid) {
-      const b = (phase === 'reveal' || phase === 'done') && v.reveal ? v.reveal.bid : v.bid;
-      const live = phase === 'bid';
-      const p = live ? probLine(v, ctx, b.q, b.f) : '';
+    } else if (v.bid && phase === 'bid') {
+      const b = v.bid;
+      const p = probLine(v, ctx, b.q, b.f);
       html = '<div class="di-who">' + nick(ctx, v, b.seat) + (b.auto ? ' <span class="muted">⏰ за нього годинник</span>' : ' каже:') + '</div>'
-        + '<div class="di-val' + (live ? ' pop' : '') + '">' + bidHtml(b, 'md') + '</div>'
-        + (p ? '<div class="di-prob">' + p + '</div>' : '')
-        + (live ? '' : '<div class="di-sub muted">на столі тепер ' + v.total + ' ' + plural(v.total, 'кісточка', 'кісточки', 'кісточок') + '</div>');
+        + '<div class="di-val pop">' + bidHtml(b, 'md') + '</div>'
+        + (p ? '<div class="di-prob">' + p + '</div>' : '');
     } else if (phase === 'done') {
       html = '<div class="di-note">Партію зіграно</div>';
     }
     setHtml(el, html);
   }
 
+  /// Скільки останніх ставок показувати в історії: на шістьох торг доходить і до двадцяти, а стіл не має рости.
+  const HIST_SHOW = 8;
+
   function paintHist(el, ctx, v) {
-    const h = v.phase === 'bid' || v.phase === 'reveal' ? (v.history || []) : [];
+    // Лише поки торгуються: у розкритті ставку, яку перевіряють, і так видно велику по центру.
+    const h = v.phase === 'bid' ? (v.history || []) : [];
     const n = h.length;
-    const html = n < 2 ? '' : h.map((b, i) => '<span class="di-h s' + b.seat + (i === n - 1 ? ' new' : '') + (b.auto ? ' auto' : '')
-      + '" style="--age:' + Math.min(6, n - 1 - i) + '"><u>' + MARKS[b.seat] + '</u>' + (b.auto ? '⏰' : '') + bidHtml(b, 'xs') + '</span>').join('<i class="di-arrow">›</i>');
+    const from = Math.max(0, n - HIST_SHOW);
+    let html = '';
+    if (n >= 2) {
+      const chips = [];
+      if (from > 0) chips.push('<span class="di-h more" title="ще ' + from + ' ' + plural(from, 'ставка', 'ставки', 'ставок') + ' раніше">… +' + from + '</span>');
+      for (let i = from; i < n; i++) {
+        const b = h[i];
+        chips.push('<span class="di-h s' + b.seat + (i === n - 1 ? ' new' : '') + (b.auto ? ' auto' : '')
+          + '" style="--age:' + Math.min(6, n - 1 - i) + '"><u>' + MARKS[b.seat] + '</u>' + (b.auto ? '⏰' : '') + bidHtml(b, 'xs') + '</span>');
+      }
+      html = chips.join('<i class="di-arrow">›</i>');
+    }
     setHtml(el, html);
   }
 
@@ -274,9 +308,7 @@
     el.hidden = !show;
     if (!show) { setHtml(el, ''); return; }
     const b = r.bid;
-    const what = r.kind === 'exact' ? '«Точно!»' : r.kind === 'timeout' ? '⏰ час вийшов — «Брешеш!»' : '«Брешеш!»';
-    const head = '<div class="di-rhead">' + nick(ctx, v, r.caller) + ': <b>' + what + '</b> на ' + nick(ctx, v, b.seat)
-      + ' ' + bidHtml(b, 'xs') + '</div>';
+    // Хто що сказав і скільки нарахували — велике по центру (paintBid); тут — самі руки й вердикт.
     const rows = [];
     let row = 0;
     for (let s = 0; s < 6; s++) {
@@ -288,12 +320,11 @@
         if (r.loser === s && i === hand.length - 1) cls += ' fall';
         return die(d, cls);
       }).join('') + (r.gainer === s ? die(0, 'back rise') : '');
-      rows.push('<div class="di-row s' + s + (r.loser === s ? ' lose' : '') + (r.gainer === s ? ' gain' : '') + '" style="--n:' + row++ + '">'
-        + nick(ctx, v, s) + '<span class="di-rdice">' + dice + '</span></div>');
+      rows.push('<div class="di-row s' + s + (r.loser === s ? ' lose' : '') + (r.gainer === s ? ' gain' : '')
+        + (s === ctx.seat ? ' me' : '') + '" style="--n:' + row++ + '">'
+        + '<span class="di-rn">' + nick(ctx, v, s) + (s === ctx.seat ? '<small>ти</small>' : '') + '</span>'
+        + '<span class="di-rdice">' + dice + '</span></div>');
     }
-    const jugs = r.jokers ? ' <span class="muted">(з них ' + r.jokers + ' ' + plural(r.jokers, 'глечик', 'глечики', 'глечиків') + ')</span>' : '';
-    const sum = '<div class="di-rsum">На столі <b class="di-big">' + r.count + '</b><span class="di-x">×</span>' + die(b.f, 'sm')
-      + jugs + ' — ставили <b>' + b.q + '</b> ' + (r.kind === 'exact' ? (r.count === b.q ? '✓ рівно' : '✗ не рівно') : r.count >= b.q ? '✓ правда' : '✗ брехня') + '</div>';
     let verdict = '';
     if (r.loser != null) verdict = nick(ctx, v, r.loser) + ' губить кісточку' + (r.out ? ' — і вибуває' : '');
     if (r.gainer != null) verdict = nick(ctx, v, r.gainer) + ' повертає кісточку 🎯';
@@ -305,7 +336,7 @@
       const mine = (v.ready || []).indexOf(ctx.seat) >= 0;
       next = '<button type="button" class="primary di-next"' + (mine ? ' disabled' : '') + '>Далі ▸ ' + ready + '/' + living + '</button>';
     }
-    setHtml(el, head + '<div class="di-rows">' + rows.join('') + '</div>' + sum
+    setHtml(el, '<div class="di-rows">' + rows.join('') + '</div>'
       + (verdict ? '<div class="di-verdict">' + verdict + '</div>' : '') + say + next);
   }
 
@@ -324,6 +355,10 @@
   }
 
   function paintMe(el, ctx, v) {
+    // У розкритті свої кісточки вже лежать у сітці рук (рядок «ти») — другий раз їх не показуємо.
+    const on = v.phase === 'shake' || v.phase === 'bid';
+    el.hidden = !on;
+    if (!on) return;
     let html;
     const my = v.my;
     if (!ctx.mine || my == null) {
@@ -331,20 +366,10 @@
     } else if (!my.length) {
       html = '<div class="di-melabel muted">Ти без кісточок — дивись і вболівай</div>';
     } else {
-      const phase = v.phase;
-      const r = v.reveal;
-      const shaking = phase === 'shake';
-      const lifted = phase === 'reveal' || phase === 'done';
-      const dice = my.map((d, i) => {
-        let cls = shaking ? 'tumble' : '';
-        if (lifted && r) {
-          cls += counts(v, d, r.bid.f) ? ' hit' : ' miss';
-          if (r.loser === ctx.seat && i === my.length - 1) cls += ' fall';
-        }
-        return die(d, cls.trim(), '--i:' + i);
-      }).join('') + (lifted && r && r.gainer === ctx.seat ? die(0, 'back rise') : '');
+      const shaking = v.phase === 'shake';
+      const dice = my.map((d, i) => die(d, shaking ? 'tumble' : '', '--i:' + i)).join('');
       const label = shaking ? 'Трусимо…' : 'Твої кісточки · ' + my.length + (v.palifico && my.length === 1 ? ' · паліфіко' : '');
-      html = '<div class="di-mecup">' + cup(shaking ? 'shaking big' : lifted ? 'lift big' : 'peek big') + '</div>'
+      html = '<div class="di-mecup">' + cup(shaking ? 'shaking big' : 'peek big') + '</div>'
         + '<div class="di-mine">' + dice + '</div>'
         + '<div class="di-melabel">' + label + '</div>';
     }
@@ -445,9 +470,12 @@
     const exactRule = !v.rules || v.rules.exact !== false;
     ex.hidden = !exactRule;
     ex.disabled = !v.canExact || g || st.busy;
-    ex.textContent = st.busy && st.sent === 'exact' ? '…' : 'Точно!';
-    ex.title = v.bid && v.canExact && hintOn() ? 'Рівно ' + v.bid.q + ': ' + pct(chance(v, v.bid.q, v.bid.f, true).p)
-      : v.bid && exactRule && md >= ((v.rules && v.rules.dice) || 5) ? 'З повним глеком «Точно!» нічого не дасть' : '';
+    // Чому «Точно!» погашене — пишемо просто на кнопці: інакше новачок тисне й не розуміє.
+    const full = md >= ((v.rules && v.rules.dice) || 5);
+    const exHtml = st.busy && st.sent === 'exact' ? '…'
+      : 'Точно!' + (full ? '<small>повний глек</small>' : v.canExact && v.bid && hintOn() ? '<small>рівно ' + v.bid.q + ': ' + pct(chance(v, v.bid.q, v.bid.f, true).p) + '</small>' : '');
+    if (ex.dataset.sig !== exHtml) { ex.dataset.sig = exHtml; ex.innerHTML = exHtml; }
+    ex.title = full ? 'З повним глеком «Точно!» нічого не дасть: повертати нема чого' : 'Вгадав рівно — повертаєш кісточку, ні — губиш';
     box.classList.toggle('wait', !mine);
   }
 
@@ -659,6 +687,8 @@
       else if (v.phase === 'bid' && hist > p.hist && p.round === v.round) sound(root, 'bid');
     }
     if (revKey && revKey !== p.reveal && v.phase === 'reveal') {
+      st.timers.forEach(clearTimeout);   // минуле розкриття вже не «тукне»
+      st.timers.length = 0;
       sound(root, 'whoosh');
       if (v.reveal.loser != null && !reduced()) st.timers.push(setTimeout(() => sound(root, 'thud'), FALL_MS));
       if (v.reveal.kind !== 'exact' && !reduced()) {
