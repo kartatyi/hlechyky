@@ -38,6 +38,7 @@ public static class GamesSetup
             sp.GetService<Microsoft.Extensions.Options.IOptionsMonitor<MelodyOptions>>(), sp.GetService<ILogger<Impl.MelodyLibrary>>()));
         services.AddSingleton<Impl.IMelodySource>(sp => sp.GetRequiredService<Impl.MelodyLibrary>());
         Impl.SvoyaSetup.AddSvoya(services);                 // «Своя гра»: пакети запитань
+        Impl.RallySetup.AddRally(services);   // «Сільське ралі»: рекорди кіл трас
         return services;
     }
 
