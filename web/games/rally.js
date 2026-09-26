@@ -1402,6 +1402,7 @@
       // перше коло — з місця, з решітки: привидом стає лише коло з ходу (друге й далі)
       if (st.gLapT >= 0 && car.lap >= 2 && car.lastMs > 0 && (!st.ghost || car.lastMs < st.ghost.ms)) saveGhost(st, car.lastMs);
       st.gLapT = t;
+      st.gLapN = car.lap;
       st.gRecN = 0;
     }
     if (st.gLapT < 0) return;
@@ -1447,9 +1448,11 @@
     st.cur = c.mask;
     snapInto(st.prevOwn, c);
     st.off.x = st.off.y = st.off.a = 0;
-    // коло привида — лише з самого старту чи з наступної лінії: після F5 посеред кола початку не знаємо
-    st.gLapT = f.t <= S.COUNT ? S.COUNT : -1;
-    st.gRecN = 0;
+    // коло привида: на світлофорі — з тика зеленого; перезапуск симуляції посеред того самого кола (кадр
+    // обігнав свою симуляцію, вкладка спала) початку кола не міняє; після F5 чи на іншому колі — з наступної лінії
+    const lapNow = f.c[seat * STRIDE + 6];
+    if (f.t <= S.COUNT) { st.gLapT = S.COUNT; st.gLapN = 0; st.gRecN = 0; }
+    else if (st.gLapT < 0 || st.gLapN !== lapNow) { st.gLapT = -1; st.gRecN = 0; }
   }
 
   /// Кадр сервера про свою машину: збіглось — нічого; ні — переписати історію й переграти свої маски.
