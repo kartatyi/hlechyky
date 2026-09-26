@@ -193,8 +193,6 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             if (e.Reason == "clicker" || e.Reason.StartsWith("clicker:", StringComparison.Ordinal))
                 economy.GrantSequenced(e.Nick, e.Shards, "clicker", n => $"clicker:{nickKey}:{day}:{n}",
                     "clicker", ClickerCap(e.Reason, o), e.Shards);
-            else if (e.Reason.StartsWith("ad:", StringComparison.Ordinal))
-                economy.Grant(e.Nick, e.Shards, e.Reason, $"ad:{e.RoomId}:{e.Reason[3..]}:{nickKey}");
             // Очки партії, які гра сама перевела в черепки («Скільки?»): без денної стелі, і соло теж. Після
             // двокрапки — номер партії в кімнаті, тож «Ще раз» за тим самим столом платить заново, а повтор
             // тієї самої події — ні.

@@ -14,7 +14,8 @@
 
 **Що НЕ робимо.** Акаунти й паролі (нік — і далі вільний текст, див. §9), збірку фронту (лишається чистий
 JS без фреймворків), окремі мікросервіси, WebSocket поза SignalR, платні речі. Ефір (RadioEngine,
-liquidsoap) не чіпаємо, крім одного публічного гачка для реклами (див. spec `ad-contest`).
+liquidsoap) не чіпаємо, крім одного публічного гачка для реклами (`RadioEngine.AddVoice`, джингл бібліотеки реклами
+в `Impl/AdSetup.cs`; конкурс реклами, для якого гачок робили, прибрано 26.09.2026).
 
 **Принципи.**
 1. **Правила живуть на сервері.** Браузер малює і шле наміри; сервер вирішує, що сталось. Це і проти
@@ -40,7 +41,7 @@ liquidsoap) не чіпаємо, крім одного публічного га
 | **Тик** | Крок реалтайм-гри. `TickEngine` смикає `Game.Tick()` раз на `Info.TickMs`. |
 | **Черепки** | Валюта. Нараховуються за слухання, перемоги, ачівки; витрачаються на ставки й у клікері. |
 | **Журнал** | Системні рядки в чаті (kind `system`): «X і Y сіли грати в шахи», «шахи: X 1:0 Y». |
-| **Глек** | Дядько Глек, DJ-персона; в іграх — ведучий (мафія, «Скільки?») і суддя (реклама). |
+| **Глек** | Дядько Глек, DJ-персона; в іграх — ведучий (мафія, «Скільки?»). |
 
 ## 3. Розкладка файлів
 
@@ -66,7 +67,8 @@ src/Hlechyky/Games/
     SnakeGame.cs      змійка-дуель (порт), режими тron/кооп додаються тут же
     Chess.cs, Checkers.cs, Battleship.cs, Mines.cs, Scrabble.cs, Domino.cs, Durak.cs,
     Pong.cs, Curve.cs, Bomber.cs, Duel.cs, Territory.cs, Hangman.cs, Wordle.cs, Skilky.cs,
-    Mafia.cs, Clicker.cs, AdContest.cs
+    Mafia.cs, Clicker.cs
+    AdLibrary.cs, AdSetup.cs   не гра: бібліотека реклами, ротація, джингл в ефірі (конкурс реклами прибрано 26.09.2026)
 web/games/
   core.js, core.css   каркас: лобі, картка кімнати, завантажувач модулів, профіль, таблиці
   <id>.js, <id>.css   модуль гри (самореєстрація через HGames.register)
@@ -311,7 +313,8 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 ```
 Кожна успішна операція → `Outbox.Wallet` (Broadcaster шле `wallet` на всі з'єднання ніка). Причини
 (`reason`) — короткі коди: `listen`, `win:chess`, `draw:chess`, `play:chess`, `solo:mines`, `daily:wordle`,
-`ach:first-win`, `stake`, `stake-win`, `stake-refund`, `clicker`, `award:skilky`, `ad:winner`…
+`ach:first-win`, `stake`, `stake-win`, `stake-refund`, `clicker`, `award:skilky`, `ad:listen`… (у старих записах
+ще трапляються `ad:winner`/`ad:entry`/`ad:vote` від конкурсу реклами — тексти для них `Economy.Reason` знає й далі).
 
 ### 6.2 Джерела (усі числа — в `appsettings.json`, секція `Economy`)
 
@@ -325,7 +328,9 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 | Ачівка | зі спеціфікації каталогу (5–100) | раз назавжди | `ach:<key>:<nick>` |
 | Клікер | обмін 100 глеків → 1 черепок | `ClickerDailyCap=20`/день (+1 за 10 клейм майстра, до `ClickerDailyCapMax=40`) | `clicker:<nick>:<day>:<n>` |
 | Ставки | нуль-сумові, поза стелями | — | `stake*:<room>:<round>:<nick>` |
-| Реклама | переможець 25, учасник 3, голос 1 | — | `ad:<contest>:<role>:<nick>` |
+| Прослухана реклама (секція `Ad`; плеєр грав і на старті реклами, і під її кінець) | `ListenReward=2` | `ListenDailyCap=40`/день | `ad-listen:<track>:<start>:<nick>` |
+
+Конкурс реклами (переможець 25, учасник 3, голос 1, ref `ad:<contest>:<role>:<nick>`) прибрано 26.09.2026, лишилась бібліотека.
 
 Лічильники стель — у `ledger` (COUNT за `reason LIKE` і день) або в окремій `economy_counters(nick_key, key, day, n)`;
 реалізація на вибір WP1, але з тестом на межу.
@@ -381,7 +386,7 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 | mafia-win | Мафіозі | перемога за мафію | 15 |
 | svoya-win | Знавець | перемога у «Своїй грі» (на двох і більше) | 15 |
 | sheriff | Комісар | знайшов мафію перевіркою | 15 |
-| ad-winner | Голос села | виграв конкурс реклами | 25 |
+| ad-winner | Голос села | виграв конкурс реклами (конкурс прибрано 26.09.2026: нових не видають, здобуті лишаються; `Hidden`) | 25 |
 | potter-1k | Гончар | 1000 глеків у клікері | 10 |
 | potter-100k | Майстер-гончар | 100 000 глеків | 30 |
 | high-roller | Ставка | виграв ставку 25 | 15 |
