@@ -26,6 +26,10 @@ public static class VohnykPlans
             case 4: Level4(b); break;
             case 5: Level5(b); break;
             case 6: Level6(b); break;
+            case 7: Level7(b); break;
+            case 8: Level8(b); break;
+            case 9: Level9(b); break;
+            case 10: Level10(b); break;
             default: throw new InvalidOperationException($"для рівня {level.N} плану ще нема");
         }
         // обоє у своїх дверях — стоїмо, доки рівень не зарахує вихід
@@ -103,6 +107,67 @@ public static class VohnykPlans
         b.Do(null, VohnykBot.Seq(b.Go(Wt, C(18)), b.Jump(Wt, +1, 30, C(19)), b.Go(Wt, C(19)), b.Jump(Wt, +1, 30, C(21)), b.Go(Wt, C(21))));
         b.Do(VohnykBot.Seq(b.Go(F, C(17)), b.RunUntil(+1, () => b.W.BoxY[1] >= 13 * T), b.Go(F, C(22)), b.RunJump(F, +1, 973, 30, C(27)), b.Go(F, C(27))),
             VohnykBot.Seq(b.Go(Wt, C(17)), b.WaitFor(() => b.CenterPx(F) >= C(26)), b.Go(Wt, C(22)), b.RunJump(Wt, +1, 973, 30, C(28)), b.Go(Wt, C(28))));
+    }
+
+    static void Level7(VohnykBot b)
+    {
+        // Крапля стрибком через лаву — на ліфт; Вогник лавою (самоцвіт), повз ліфт, крізь важіль: вона їде, йому двері
+        b.Do(null, VohnykBot.Seq(b.Jump(Wt, +1, 30, C(5) + 20), b.Go(Wt, C(5) + 20)));
+        b.Do(VohnykBot.Seq(b.Go(F, C(9)), b.Go(F, C(16)), b.Jump(F, +1, 30, C(18)), b.Go(F, C(18))),
+            VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[0] == 6 * T), b.Go(Wt, C(9)), b.Jump(Wt, 0, 30), b.Go(Wt, C(11)), b.Go(Wt, C(17))));
+        // Вогник на кнопці — двері нагорі відчинені; Крапля проходить і стрибає по самоцвіт
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.CenterPx(Wt) >= C(19) + 4), b.Jump(F, +1, 30, C(20)), b.Go(F, C(20)), b.Jump(F, +1, 30, C(21)), b.Go(F, C(21)),
+                b.Jump(F, +1, 30, C(24)), b.Go(F, C(24)), b.Jump(F, +1, 30, C(25) + 8), b.Go(F, C(26)), b.Jump(F, 0, 30), b.Go(F, C(25))),
+            VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[1] >= 4 * T), b.Go(Wt, C(19)), b.Jump(Wt, 0, 30), b.Go(Wt, C(19) + 8), b.WaitFor(() => b.CenterPx(F) >= C(20)),
+                b.Go(Wt, C(22)), b.Jump(Wt, +1, 30, C(23) + 8), b.Go(Wt, C(24) - 4), b.WaitFor(() => b.CenterPx(F) >= C(25)),
+                b.Jump(Wt, +1, 30, C(26)), b.Go(Wt, C(26))));
+    }
+
+    static void Level8(VohnykBot b)
+    {
+        // двері: 0 U1, 1 L1, 2 U2, 3 L2, 4 U3, 5 L3. Вогник на bL0 — верхні U1 відчинені; Крапля через лаву й крізь U1 на bU1
+        b.Do(b.Go(F, C(4)),
+            VohnykBot.Seq(b.RunJump(Wt, +1, C(2), 30, C(5)), b.Go(Wt, C(6)), b.WaitFor(() => b.W.DoorO[0] >= 2 * T), b.Go(Wt, C(9))));
+        // Крапля тримає bU1 — Вогник через калюжу (самоцвіт) і крізь L1 на bL1
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[1] >= 2 * T), b.RunJump(F, +1, C(6), 30, C(9)), b.Go(F, C(13))), null);
+        // Вогник тримає bL1 — Крапля через лаву (самоцвіт) і крізь U2 на bU2
+        b.Do(null, VohnykBot.Seq(b.RunJump(Wt, +1, C(11), 30, C(14)), b.Go(Wt, C(15)), b.WaitFor(() => b.W.DoorO[2] >= 2 * T), b.Go(Wt, C(18))));
+        // Крапля тримає bU2 — Вогник через калюжу (самоцвіт) і крізь L2 на bL2
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[3] >= 2 * T), b.RunJump(F, +1, C(14), 30, C(17)), b.Go(F, C(22))), null);
+        // Крапля ставить скриню на bU3 — нижні L3 відчинені назавжди; самоцвіт у стрибку; крізь U3 (Вогник тримає bL2) — до виходу
+        b.Do(null, VohnykBot.Seq(b.Go(Wt, C(19)), b.RunUntil(+1, () => b.W.BoxX[0] >= 22 * T), b.Go(Wt, C(21)), b.Jump(Wt, 0, 30),
+            b.Jump(Wt, +1, 30, C(23)), b.WaitFor(() => b.W.DoorO[4] >= 2 * T), b.Go(Wt, C(27))));
+        b.Do(VohnykBot.Seq(b.Jump(F, +1, 30, C(24)), b.Go(F, C(24)), b.Go(F, C(27))), null);
+    }
+
+    static void Level9(VohnykBot b)
+    {
+        // ліфти: 0 пором, 1 підйомник. Вогник униз у рів і лавою на підйомник; Крапля стає на bV — підйомник везе його до стелі
+        b.Do(VohnykBot.Seq(b.Go(F, C(10) + 20)),
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(10) && b.FeetPx(F) == 600 && b.W.Vx[F] == 0), b.Go(Wt, C(3))));
+        // нагорі: полиці з самоцвітами ліворуч і праворуч, потім зістрибнути на правий берег
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[1] == 6 * T), b.Go(F, C(8)), b.Go(F, C(7)), b.Go(F, C(10) + 20), b.Go(F, C(14)), b.Go(F, C(15) + 10)), null);
+        // Крапля — на пором; Вогник — на поміст, на кнопку bF: пором везе її через ріку
+        b.Do(VohnykBot.Seq(b.Go(F, C(20)), b.Jump(F, +1, 30, C(21)), b.Go(F, C(21)), b.Jump(F, -1, 30, C(18)), b.Go(F, C(17))),
+            VohnykBot.Seq(b.Go(Wt, C(5) + 20), b.WaitFor(() => b.W.LiftX[0] == 15 * T), b.Go(Wt, C(20)), b.Jump(Wt, +1, 30, C(21)), b.Go(Wt, C(22)), b.Go(Wt, C(23)), b.Go(Wt, C(24)),
+                b.Go(Wt, C(23)), b.Jump(Wt, -1, 30, C(22)), b.Go(Wt, C(21)), b.Jump(Wt, -1, 30, C(18)), b.Go(Wt, C(18))));
+        // обоє з помосту на сходинку й стрибком на поміст виходів
+        b.Do(VohnykBot.Seq(b.Jump(F, +1, 30, C(21)), b.Go(F, C(21)), b.RunJump(F, +1, C(22) + 8, 30, C(26)), b.Go(F, C(27))),
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(22)), b.Jump(Wt, +1, 30, C(21)), b.Go(Wt, C(21)), b.RunJump(Wt, +1, C(22) + 8, 30, C(26)), b.Go(Wt, C(26)), b.Go(Wt, C(28))));
+    }
+
+    static void Level10(VohnykBot b)
+    {
+        // ліфти: 0 підйомник, 1 над озером. Вогник — стрибок по самоцвіт і на підйомник; Крапля озером крізь lA
+        b.Do(VohnykBot.Seq(b.Jump(F, 0, 30), b.Go(F, C(6) + 20)),
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(6) && b.Ground(F) && b.W.Vx[F] == 0), b.Go(Wt, C(10))));
+        // нагорі: полиця з двома самоцвітами, назад на підйомник і на ліфт над озером
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.LiftY[0] == 7 * T), b.Go(F, C(4)), b.Go(F, C(3)), b.Go(F, C(8) + 20)),
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(8) && b.FeetPx(F) == 280 && b.W.Vx[F] == 0), b.Go(Wt, C(14))));
+        // Крапля пройшла крізь lB — ліфт везе Вогника над озером; він стрибає на терасу, вона — водоспадом угору
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.LiftX[1] == 15 * T), b.RunJump(F, +1, C(16) + 8, 30, C(20)), b.Go(F, C(23)), b.Go(F, C(26))),
+            VohnykBot.Seq(b.WaitFor(() => b.W.LiftX[1] == 15 * T), b.Go(Wt, C(15)), b.Jump(Wt, +1, 30, C(16)), b.Go(Wt, C(16)), b.Jump(Wt, +1, 30, C(17)), b.Go(Wt, C(17)),
+                b.Jump(Wt, +1, 30, C(18)), b.Go(Wt, C(18)), b.Go(Wt, C(21)), b.Go(Wt, C(27))));
     }
 
     static void Level2(VohnykBot b)
