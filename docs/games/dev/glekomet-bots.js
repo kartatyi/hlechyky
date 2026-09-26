@@ -152,18 +152,25 @@ gk.autopilot = (on, opts) => {
     const st = gk.st();
     if (!st || gk.apBusy || !st.view || !st.ctx || !st.ctx.mine || st.phase !== 'aim' || st.turn !== st.ctx.seat || st.fired === st.turnNo || st.myTurnNo !== st.turnNo) return;
     gk.apBusy = true;
+    const turnNo = st.turnNo;
+    // хід міг згоріти чи партія скінчитись посеред прицілювання — тоді кидаємо, а не крутимо стрілки вічно
+    // (раніше автопілот так відкрутив кут Олі до 180° у наступній партії, і вона прогавила хід)
+    const still = () => st.phase === 'aim' && st.turn === st.ctx.seat && st.turnNo === turnNo && st.fired !== turnNo;
     try {
-      await sleep(400);
+      await sleep(700);                              // перші 0,6 с ходу Enter не стріляє (TURN_GRACE)
+      if (!still()) return;
       const plan = gk.plan(st.view, st.ctx.seat, opts && opts.skill);
       const cur = st.my;
       if (plan.w !== cur.w) { gk.key('Digit' + (plan.w + 1)); await sleep(60); }
-      let da = plan.a - st.my.a;
-      while (Math.abs(da) >= 5) { gk.key(da > 0 ? 'ArrowLeft' : 'ArrowRight', { shift: true }); await sleep(25); da = plan.a - st.my.a; }
-      while (da !== 0) { gk.key(da > 0 ? 'ArrowLeft' : 'ArrowRight'); await sleep(25); da = plan.a - st.my.a; }
+      let da = plan.a - st.my.a, guard = 0;
+      while (Math.abs(da) >= 5 && still() && guard++ < 200) { gk.key(da > 0 ? 'ArrowLeft' : 'ArrowRight', { shift: true }); await sleep(25); da = plan.a - st.my.a; }
+      while (da !== 0 && still() && guard++ < 400) { gk.key(da > 0 ? 'ArrowLeft' : 'ArrowRight'); await sleep(25); da = plan.a - st.my.a; }
       let dp = plan.p - st.my.p;
-      while (Math.abs(dp) >= 5) { gk.key(dp > 0 ? 'ArrowUp' : 'ArrowDown', { shift: true }); await sleep(25); dp = plan.p - st.my.p; }
-      while (dp !== 0) { gk.key(dp > 0 ? 'ArrowUp' : 'ArrowDown'); await sleep(25); dp = plan.p - st.my.p; }
+      while (Math.abs(dp) >= 5 && still() && guard++ < 600) { gk.key(dp > 0 ? 'ArrowUp' : 'ArrowDown', { shift: true }); await sleep(25); dp = plan.p - st.my.p; }
+      while (dp !== 0 && still() && guard++ < 800) { gk.key(dp > 0 ? 'ArrowUp' : 'ArrowDown'); await sleep(25); dp = plan.p - st.my.p; }
+      if (!still()) return;
       await sleep(250);
+      if (!still()) return;
       gk.key('Enter');
       gk.apLog.push([st.turnNo, plan.a, plan.p, plan.w, st.my.a, st.my.p, st.my.w]);
     } finally { gk.apBusy = false; }
