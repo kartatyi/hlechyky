@@ -59,7 +59,10 @@ public sealed class Hockey : Game
     public override string SeatName(int seat)
     {
         if (seat is < 0 or >= HockeyCore.Seats) return base.SeatName(seat);
-        var team = Lobby || _core is null ? HockeyCore.TeamOf(seat, Seated()) : Core.Team[seat];
+        // Вільне місце (чи місце, що не грає цю партію) — за парністю, як на столі на чотирьох; зайняте — за командою.
+        int team;
+        if (Lobby || _core is null) team = Ctx.Seated(seat) ? HockeyCore.TeamOf(seat, Seated()) : seat % 2;
+        else team = Core.Plays[seat] ? Core.Team[seat] : seat % 2;
         return team == 0 ? "синій" : "рудий";
     }
 

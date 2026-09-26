@@ -1164,6 +1164,13 @@
     g.fillText(t, x, y);
   }
 
+  /// Нічия раунду: або всі шубовснули разом, або на стелі 75 с на кризі ще стоять двоє й більше.
+  function drawnByTime(f) {
+    let alive = 0;
+    if (f && f.p) for (let i = 0; i < 8; i++) if (f.p[i] && (f.p[i][5] & 1)) alive++;
+    return alive >= 2;
+  }
+
   const dots = (w, need) => (need <= 1 ? (w > 0 ? '●' : '○') : '●'.repeat(Math.min(w, need)) + '○'.repeat(Math.max(0, need - w)));
 
   function overlays(st, g, pal, f, ph, now) {
@@ -1183,7 +1190,7 @@
       shade(g, pal);
       const w = v.lastRound ? v.lastRound.winner : -1;
       if (w >= 0) text(g, pal, '🧊 Раунд — ' + nick(st, w) + '!', SIZE / 2, 150, 32, pal.seats[w]);
-      else text(g, pal, 'Усі шубовснули — нічия', SIZE / 2, 150, 30);
+      else text(g, pal, drawnByTime(f) ? '⏱ Час вийшов — нічия' : 'Усі шубовснули — нічия', SIZE / 2, 150, 30);
       table(st, g, pal, v, 200, false);
       g.globalAlpha = 1;
       return;
@@ -1610,7 +1617,7 @@
       if (f.ph === 0) return 'Готуйсь… раунд ' + (v.round || 1);
       if (f.ph === 2) {
         const w = v.lastRound ? v.lastRound.winner : -1;
-        return w >= 0 ? 'Раунд — ' + (ctx.nickOf(w) || ctx.seatName(w)) + '!' : 'Нічия раунду';
+        return w >= 0 ? 'Раунд — ' + (ctx.nickOf(w) || ctx.seatName(w)) + '!' : (drawnByTime(f) ? 'Час вийшов — нічия раунду' : 'Усі шубовснули — нічия раунду');
       }
       if (!ctx.mine) return 'Дивишся збоку · раунд ' + (v.round || 1) + ' · до ' + need + (need > 1 ? ' перемог' : ' перемоги');
       const q = f.p && f.p[ctx.seat];

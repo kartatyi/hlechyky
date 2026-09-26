@@ -865,4 +865,16 @@ public class HockeyTests(ITestOutputHelper output)
         Assert.Equal(1, c.Goals[1]);
         Assert.Equal(0, c.Own[0]);
     }
+
+    [Fact] // 46: вільні місця в шапці картки — за парністю, як на столі на чотирьох, і до, і після «Почати»
+    public void Free_seats_are_named_by_parity_before_and_after_the_start()
+    {
+        var h = new RoomHarness("hockey", new { goals = "7" });
+        h.Join("Оля");
+        h.Join("Петро");
+        Assert.Equal(["синій", "рудий", "синій", "рудий"], Enumerable.Range(0, 4).Select(h.Room.Game.SeatName));
+        Assert.True(h.Start().Ok);
+        // на двох Петро (місце 1) — рудий, а вільне місце 2 — синє, а не «рудий вільно»
+        Assert.Equal(["синій", "рудий", "синій", "рудий"], Enumerable.Range(0, 4).Select(h.Room.Game.SeatName));
+    }
 }
