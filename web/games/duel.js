@@ -132,6 +132,45 @@
     b.title = Snd.on ? 'Вирубити звук' : 'Врубити звук';
   }
 
+  /// Кнопка «Стріляти» бахає на натиск (pointerdown), а не на click: той приходить, лише коли палець
+  /// відпустили, — це ще 50–120 мс, а раунд тут вирішують десятки. На телефоні саме ця кнопка й головна,
+  /// тож тапом по ній людина програвала тому, хто тисне клавішу. Клавіатура (Enter на кнопці) — через click.
+  function trigger(btn, fire) {
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      e.preventDefault();
+      fire();
+    });
+    btn.addEventListener('click', (e) => { if (e.detail === 0) fire(); });
+  }
+
+  /// Телефон: у Перестрілці на чотирьох шапка столу й табло штовхали сцену вниз, і кнопка «Стріляти»
+  /// ховалась під нижнім меню та «💬 Стіл». Раз на партію (room.startedAt), коли вона пішла, прокручуємо
+  /// так, щоб рахунок, сцена й кнопка стали між шапкою сайту й меню. Усе й так видно — не чіпаємо.
+  function fitPhone(st, ctx) {
+    if (!st.els || !ctx.mine || !ctx.playing || !ctx.room || !ctx.ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const a = st.els.wrap.getBoundingClientRect(), b = st.els.fire.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+  }
+
+  /// Перемалювати, лише коли рядок справді інший. Порівнювати з el.innerHTML марно: браузер серіалізує його
+  /// по-своєму (&#39; → ', лапки, style), тож «інше» виходило майже завжди — і DOM перебудовувався щокадру.
+  const putHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+
   function state(root, ctx) {
     let st = states.get(ctx);
     if (!st || st.root !== root) {
@@ -162,7 +201,7 @@
     const wrap = document.createElement('div');
     wrap.className = 'duel';
     wrap.innerHTML = '<div class="dtop"><span class="gscore dwins"><b>0</b> : <b>0</b></span>'
-      + '<span class="dround muted small"></span></div>'
+      + '<span class="duround muted small"></span></div>'
       + '<div class="dscene" data-phase="wait" role="button" tabindex="-1" aria-label="Сцена дуелі: тисни, щоб вистрілити">'
       + '<div class="dsky"></div><div class="dsun"></div><div class="dstreet"></div><div class="dtumble"></div>'
       + '<div class="dguy sheriff">' + figure('sheriff') + '</div>'
@@ -176,7 +215,7 @@
       wrap: wrap,
       // Рахунок збираємо один раз, а далі правимо лише текст цифр: шлях кадру HTML не парсить.
       wins: [...wrap.querySelectorAll('.dwins b')],
-      round: wrap.querySelector('.dround'),
+      round: wrap.querySelector('.duround'),
       scene: wrap.querySelector('.dscene'),
       call: wrap.querySelector('.dcall'),
       msg: wrap.querySelector('.dmsg'),
@@ -185,7 +224,7 @@
     };
     // Колбек беремо з останнього виклику (ctx той самий, але зайвий раз вішати слухач нема потреби).
     st.els.scene.addEventListener('pointerdown', () => shoot(st, st.ctx || ctx));
-    st.els.fire.addEventListener('click', () => shoot(st, st.ctx || ctx));
+    trigger(st.els.fire, () => shoot(st, st.ctx || ctx));
     return st;
   }
 
@@ -282,7 +321,7 @@
     const msg = ended ? resultText(ctx, s)
       : phase === 'done' ? ''                       // партію обірвали: підсумок напише каркас
         : phase === 'wait' ? 'Чекаємо на другого стрільця'
-          : ctx.mine ? 'Стріляй будь-якою клавішею, кліком по вулиці або кнопкою'
+          : ctx.mine ? (ctx.ui.coarse() ? 'Стріляй тапом по вулиці або кнопкою — щойно побачиш «ВОГОНЬ!»' : 'Стріляй будь-якою клавішею, кліком по вулиці або кнопкою')
             : 'Дивишся збоку';
     if (st.els.msg.textContent !== msg) st.els.msg.textContent = msg;
 
@@ -299,12 +338,12 @@
     seatClass: ['x', 'o'],
     pad: { a: 'Space', anyBtn: true, hint: '{a} стріляти (будь-яка кнопка) — щойно побачиш сигнал' },
     news: {
-      v: '2026-09-24',
-      title: 'Дуель: гримить і дзвенить',
+      v: '2026-09-28',
+      title: 'Дуель: більша вулиця, швидший курок',
       items: [
-        '🔔 «ВОГОНЬ!» тепер ще й дзвенить, постріл гримить, а поспішив — чути, як куля свистить у небо',
-        '🔇 Кому тихіше — вимикач звуку під сценою',
-        '🤠 Зібрались утрьох чи вчотирьох? Поруч нова гра — «Перестрілка», кожен проти кожного',
+        '🔫 Кнопка «Стріляти» бахає, щойно торкнешся, а не коли відпустиш палець — на телефоні це десятки мілісекунд',
+        '🌅 На ноутбуці, Деці й великому моніторі вулиця більша',
+        '📋 Підсумок раунду вже не пишеться двічі поспіль',
       ],
     },
 
@@ -314,8 +353,10 @@
     },
 
     update(root, ctx) {
-      take(build(root, ctx), ctx);
+      const st = build(root, ctx);
+      take(st, ctx);
       render(root, ctx);
+      fitPhone(st, ctx);
     },
 
     frame(root, ctx, f) {
@@ -344,7 +385,15 @@
       if (s.phase === 'ready') return 'Готуйсь…';
       if (s.phase === 'aim') return 'Цілься…';
       if (s.phase === 'fire') return 'ВОГОНЬ! Тисни!';
-      if (s.phase === 'result') return resultText(ctx, s);
+      // Хто скільки мілісекунд — уже написано під сценою; тут коротко, щоб не читати те саме двічі.
+      if (s.phase === 'result') {
+        const l = s.last;
+        if (l && l.winner != null) {
+          const last = (s.wins || []).some((w) => w >= 3);   // Duel.WinsNeeded
+          return 'Раунд бере ' + nameOf(ctx, l.winner) + (last ? ' — і всю дуель!' : ' — мить, і наступний');
+        }
+        return l ? 'Раунд переграють' : '';
+      }
       return '';
     },
 
@@ -405,7 +454,7 @@
     root.innerHTML = '';
     const wrap = document.createElement('div');
     wrap.className = 'duel shoot';
-    wrap.innerHTML = '<div class="dtop"><span class="sboard"></span><span class="dround muted small"></span></div>'
+    wrap.innerHTML = '<div class="dtop"><span class="sboard"></span><span class="duround muted small"></span></div>'
       + '<div class="dscene" data-phase="wait">'
       + '<div class="dsky"></div><div class="dsun"></div><div class="dstreet"></div><div class="dtumble"></div>'
       + '<div class="sguys"></div>'
@@ -418,7 +467,7 @@
     st.els = {
       wrap: wrap,
       board: wrap.querySelector('.sboard'),
-      round: wrap.querySelector('.dround'),
+      round: wrap.querySelector('.duround'),
       scene: wrap.querySelector('.dscene'),
       guys: wrap.querySelector('.sguys'),
       lines: wrap.querySelector('.slines'),
@@ -437,7 +486,7 @@
       e.preventDefault();
       sAim(st, c, { at: at });
     });
-    st.els.fire.addEventListener('click', () => sShoot(st, st.ctx || ctx));
+    trigger(st.els.fire, () => sShoot(st, st.ctx || ctx));
     return st;
   }
 
@@ -513,7 +562,7 @@
       }
     }
     const html = out.join('');
-    if (st.els.lines.innerHTML !== html) st.els.lines.innerHTML = html;
+    putHtml(st.els.lines, html);
   }
 
   const nick = (ctx, i) => ctx.nickOf(i) || ctx.seatName(i);
@@ -560,7 +609,7 @@
     // Табло: фігура, нік і виграні раунди кожного.
     const board = seats.map((i) => '<span class="sb s' + i + (ctx.mine && i === ctx.seat ? ' me' : '') + '"><b>'
       + S_SHAPES[i] + '</b> ' + ctx.esc(nick(ctx, i)) + ' <em>' + (wins[i] || 0) + '</em></span>').join('');
-    if (st.els.board.innerHTML !== board) st.els.board.innerHTML = board;
+    putHtml(st.els.board, board);
     const parts = [];
     if (phase === 'done') parts.push('перестрілку зіграно');
     else if (phase !== 'wait') parts.push('раунд ' + (s.round || 1) + ' · до ' + (s.target || 3) + ' перемог');
@@ -610,7 +659,8 @@
     else {
       const t = s.aim ? s.aim[ctx.seat] : null;
       msg = (t != null ? 'Ціль: ' + nick(ctx, t) + '. ' : '')
-        + 'Змінити — тап по фігурі або ← →; на ВОГОНЬ стріляй кнопкою чи будь-якою іншою клавішею';
+        + (ctx.ui.coarse() ? 'Змінити — тап по фігурі; на ВОГОНЬ тисни «Стріляти»'
+          : 'Змінити — тап по фігурі або ← →; на ВОГОНЬ стріляй кнопкою чи будь-якою іншою клавішею');
     }
     if (st.els.msg.textContent !== msg) st.els.msg.textContent = msg;
 
@@ -635,13 +685,12 @@
     seatClass: ['x', 'o', 'c', 'db'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} у кого цілишся · {a} вогонь (будь-яка кнопка)' },
     news: {
-      v: '2026-09-24',
-      title: 'Перестрілка: дуель на трьох-чотирьох',
+      v: '2026-09-28',
+      title: 'Перестрілка: таблички не обрізає',
       items: [
-        '🤠 Нова гра: троє-четверо на одній вулиці, кожен проти кожного',
-        '🎯 Поки «Цілься…» — обери, в кого цілишся (тап по фігурі або ← →). Хто в кого — бачать усі',
-        '🔫 На ВОГОНЬ у кожного один патрон: хто перший вистрілив, той і влучив, а підстрелений уже не відповість',
-        '👑 Раунд бере той, хто лишився на ногах сам. Перестрілку — перший, хто взяв три раунди',
+        '🏷 Таблички з ніками крайніх стрільців більше не обрізає край сцени',
+        '🔫 «Стріляти» бахає на дотик, а на телефоні кнопка з початком партії стає в екран',
+        '💻 На 1280×800 стіл влазить без прокрутки',
       ],
     },
 
@@ -654,6 +703,7 @@
       const st = sBuild(root, ctx);
       sTake(st, ctx);
       sRender(root, ctx);
+      fitPhone(st, ctx);
     },
 
     frame(root, ctx, f) {

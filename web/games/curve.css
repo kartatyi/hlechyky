@@ -15,9 +15,10 @@
 .curveboard { max-width: 460px; }
 .curveboard.big { max-width: 560px; }
 .curveboard.hold { touch-action: none; }
-/* Full HD: 460 px посеред порожньої картки — замало; даємо полю рости, поки воно вміщається по висоті */
-@media (min-width: 1500px) and (min-height: 860px) {
-  .curveboard, .curveboard.big { max-width: min(780px, calc((100vh - 320px) * 1.5)); }
+/* Ноутбук, Дека й Full HD: 460 px посеред порожньої картки — замало; даємо полю рости, поки повний стіл
+   (вісім чіпів місць, очки, статус, кнопки) влазить по висоті. Прохід 28.09: раніше — лише від 1500×860. */
+@media (min-width: 1000px) and (min-height: 700px) {
+  .curveboard, .curveboard.big { max-width: min(780px, calc((100vh - 380px) * 1.5)); }
 }
 
 /* Чипи місць у шапці картки: каркас знає лише x/o/c/d */

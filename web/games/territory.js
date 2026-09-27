@@ -29,6 +29,21 @@
   /// На звичайному моніторі (DPR 1) малюємо вдвічі щільніше: поле на Full HD росте, і клітинки милились.
   const scale = () => ((window.devicePixelRatio || 1) >= 2 ? 1 : 2);
 
+  /// Кольори з :root — у кеші: кожен st.css — це getComputedStyle, а кадр на шістьох питав його з два
+  /// десятки разів (наділи, голови, смуга площ) десять разів на секунду. Кеш скидає зміна теми (data-theme)
+  /// і кожен новий вид (подія 'room' рідка).
+  const pal = { sig: null, v: {} };
+  function cssv(st, name, fallback) {
+    const sig = document.documentElement.getAttribute('data-theme') || '';
+    if (pal.sig !== sig) { pal.sig = sig; pal.v = {}; }
+    const hit = pal.v[name];
+    return hit !== undefined ? hit : (pal.v[name] = st.css(name, fallback));
+  }
+
+  /// Перемалювати, лише коли рядок справді інший. Порівнювати з el.innerHTML марно: браузер серіалізує його
+  /// по-своєму (&#39; → ', лапки, style), тож «інше» виходило майже завжди — і DOM перебудовувався щокадру.
+  const putHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+
   function state(root, ctx) {
     if (!root._terr) {
       root._terr = {
@@ -117,22 +132,26 @@
   }
 
   function colours(st) {
-    return VARS.map((v) => st.css(v[0], v[1]));
+    return VARS.map((v) => cssv(st, v[0], v[1]));
   }
 
   function draw(st) {
     const c = st.cv;
     if (!c || !st.N) return;
+    // Картку не видно (лобі, інша вкладка сайту чи браузера) — не малюємо, лише позначаємо, що поле
+    // застаріло: зміни з кадрів у пам'яті накладаються й далі. Раніше невидиме поле малювалось щокадру.
+    if (document.hidden || st.hidden) { st.stale = true; return; }
+    st.stale = false;
     const g = c.ctx;
     const colour = colours(st);
     const W = st.W, N = st.N, PX = st.PX;
-    const text = st.css('--text', '#ecf1ea');
+    const text = cssv(st, '--text', '#ecf1ea');
     const ctx = st.ctx;
     const me = ctx && ctx.mine ? ctx.seat : null;
     c.resize();
     g.save();
     g.scale(st.K, st.K);
-    g.fillStyle = st.css('--bg2', '#16291f');
+    g.fillStyle = cssv(st, '--bg2', '#16291f');
     g.fillRect(0, 0, CW, CH);
 
     // Земля — блідо, слід — на повний колір: так одразу видно, що вже твоє, а що ще горить.
@@ -146,7 +165,7 @@
 
     const ready = st.phase === 'ready' && st.startIn > 0 && ctx && ctx.playing;
     if (ready) {
-      g.fillStyle = st.css('--gshade', 'rgba(15, 31, 24, .62)');
+      g.fillStyle = cssv(st, '--gshade', 'rgba(15, 31, 24, .62)');
       g.fillRect(0, 0, CW, CH);
     }
 
@@ -161,7 +180,7 @@
       g.lineWidth = 1.5;
       g.stroke();
       // Номер місця в голові — на шістьох кольори близькі, а цифру не сплутаєш.
-      g.fillStyle = st.css('--bg', '#0f1f18');
+      g.fillStyle = cssv(st, '--bg', '#0f1f18');
       g.font = '700 ' + Math.round(PX * 0.75) + 'px system-ui, sans-serif';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
@@ -179,7 +198,7 @@
         g.font = (s === me ? '700 13px' : '600 11px') + ' system-ui, sans-serif';
         g.textBaseline = 'bottom';
         g.lineWidth = 3;
-        g.strokeStyle = st.css('--bg2', '#16291f');
+        g.strokeStyle = cssv(st, '--bg2', '#16291f');
         const label = nick.length > 12 ? nick.slice(0, 11) + '…' : nick;
         const ly = h.y * PX - 6;
         g.strokeText(label, h.x * PX + PX / 2, ly);
@@ -201,7 +220,7 @@
       g.beginPath();
       g.arc(b.x * PX + PX / 2, b.y * PX + PX / 2, PX * (0.6 + 2.4 * k), 0, Math.PI * 2);
       g.stroke();
-      g.fillStyle = st.css('--danger', '#e57373');
+      g.fillStyle = cssv(st, '--danger', '#e57373');
       g.beginPath();
       g.arc(b.x * PX + PX / 2, b.y * PX + PX / 2, PX * 0.7 * (1 - k), 0, Math.PI * 2);
       g.fill();
@@ -221,7 +240,7 @@
     const room = ctx && ctx.room;
     if (room && room.status === 'finished' && room.result && st.seen) {
       const who = room.result.winners || [];
-      g.fillStyle = st.css('--gshade', 'rgba(15, 31, 24, .62)');
+      g.fillStyle = cssv(st, '--gshade', 'rgba(15, 31, 24, .62)');
       g.fillRect(0, 0, CW, CH);
       g.textAlign = 'center';
       g.textBaseline = 'middle';
@@ -252,12 +271,62 @@
       const dead = st.heads[s] && st.heads[s].on && !st.heads[s].alive;
       const pct = st.area[s] == null ? 0 : st.area[s];
       return '<span class="gterr-p' + (dead ? ' out' : '') + (s === ctx.seat ? ' me' : '') + '"><i style="background:'
-        + st.css(VARS[s][0], VARS[s][1]) + '">' + (s + 1) + '</i>' + ctx.esc(nick) + ' <b>' + pct + '%</b></span>';
+        + cssv(st, VARS[s][0], VARS[s][1]) + '">' + (s + 1) + '</i>' + ctx.esc(nick) + ' <b>' + pct + '%</b></span>';
     }).join('');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    putHtml(el, html);
   }
 
   const secs = (ms) => Math.max(0, Math.ceil((ms || 0) / 1000));
+
+  /// Хрестовина під палець — своя, на pointerdown: хрестовина каркаса слухає click, а він приходить аж коли
+  /// палець відпустили (+50–120 мс). Голова тут біжить клітинку за 100 мс, тож запізнілий поворот — це
+  /// поворот не там. Вигляд той самий (клас .dpad каркаса, видно лише на сенсорному екрані).
+  function dpad(root, ctx) {
+    let el = root.querySelector(':scope > .dpad');
+    // Хрестовина лише поки йде партія: у лобі й після кінця вона штовхала «Почати» / «Ану ще раз» під нижнє меню.
+    if (!ctx.mine || !ctx.playing) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'dpad tdp';
+      const label = { 0: '→', 1: '↓', 2: '←', 3: '↑' };
+      const aria = { 0: 'праворуч', 1: 'вниз', 2: 'ліворуч', 3: 'вгору' };
+      el.innerHTML = [3, 2, 1, 0].map((d) => '<button type="button" data-dir="' + d + '" aria-label="' + aria[d] + '">' + label[d] + '</button>').join('');
+      el.addEventListener('pointerdown', (e) => {
+        const b = e.target.closest('button');
+        if (!b || !el._ctx) return;
+        e.preventDefault();
+        el._ctx.input('turn', { dir: +b.dataset.dir });
+      });
+      root.appendChild(el);
+    }
+    el._ctx = ctx;   // колбек — з останнього update
+  }
+
+  /// Телефон: на шістьох шапка столу й смуга площ штовхали поле вниз, і хрестовина ховалась під нижнім
+  /// меню. Раз на партію (room.startedAt), коли вона пішла, прокручуємо так, щоб поле з хрестовиною стало між
+  /// шапкою сайту й меню (і над «💬 Стіл»). Усе й так видно — не чіпаємо.
+  function fitPhone(root, st, ctx, hudSel, padSel) {
+    if (!ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const hudEl = root.querySelector(':scope > ' + hudSel), padEl = root.querySelector(':scope > ' + padSel);
+    if (!hudEl || !padEl) return;
+    const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+  }
 
   HGames.register({
     id: 'territory',
@@ -267,14 +336,12 @@
     seatClass: ['x', 'o', 'c', 'tq', 'tr5', 'tr6'],
     pad: { dirs: true, hint: '{dpad} куди бігти' },
     news: {
-      v: '2026-09-24',
-      title: 'Земля: тепер до шести загарбників',
+      v: '2026-09-28',
+      title: 'Земля: поворот одразу',
       items: [
-        '🗺 За столом 2–6 гравців; уп’ятьох і вшістьох поле більше — 48×36, землі на кожного вистачає',
-        '⏳ Перед раундом три секунди «Готуйсь»: над кожною головою видно, чия вона, а своя — «ти»',
-        '🔢 На голові — номер місця, а твоя обведена другим кільцем: не загубишся навіть серед шести',
-        '🔥 Хто згорів — спалахує на місці, а наприкінці на полі написано, хто взяв найбільше',
-        '🔵 Чіп блакитного гравця нарешті блакитний, а не сірий',
+        '👆 Хрестовина на телефоні повертає на дотик, а не коли відпустиш палець — поворот там, де хотів',
+        '⌨ Затиснута стрілка більше не «з’їдає» наступний поворот',
+        '📱 З початком партії поле й хрестовина стають в екран разом; на ноутбуці й Деці поле більше',
       ],
     },
 
@@ -283,16 +350,26 @@
       st.cv = HGames.ui.canvas(root, { w: CW * st.K, h: CH * st.K, cls: 'territoryboard' });
       const v = ctx.view || {};
       size(st, v.width || 40, v.height || 30);
+      // Видно картку чи ні — каже IntersectionObserver (без читання розкладки щокадру); знову видно —
+      // домальовуємо пропущене.
+      const wake = () => { if (st.stale && st.cv) draw(st); };
+      if (window.IntersectionObserver) {
+        st.io = new IntersectionObserver((es) => { st.hidden = !es[es.length - 1].isIntersecting; if (!st.hidden) wake(); });
+        st.io.observe(st.cv.el);
+      }
+      st.vis = () => { if (!document.hidden) wake(); };
+      document.addEventListener('visibilitychange', st.vis);
     },
 
     update(root, ctx) {
       const st = state(root, ctx);
       if (!st.cv) return;
+      pal.sig = null;   // тема могла змінитись — кольори зберемо заново
       // хрестовина потрібна лише тому, хто грає: сів глядач за стіл — вона з'явиться тут
-      if (ctx.mine) HGames.ui.dpad(root, (d) => ctx.input('turn', { dir: d }));
-      else { const d = root.querySelector(':scope > .dpad'); if (d) d.remove(); }
+      dpad(root, ctx);
       fromView(st, ctx.view);
       bar(root, ctx, st);
+      fitPhone(root, st, ctx, '.gterr', '.dpad');
       draw(st);
     },
 
@@ -307,7 +384,9 @@
     onKey(e, ctx) {
       const dir = DIRS[e.code];
       if (dir === undefined || !ctx.mine || !ctx.playing) return false;
-      ctx.input('turn', { dir });
+      // Автоповтор затиснутої стрілки (~30 на секунду) з'їдав квоту каркаса на ввід (30 Input/с), і
+      // справжній поворот одразу після нього мовчки губився. Поворот — лише на справжній натиск.
+      if (!e.repeat) ctx.input('turn', { dir });
       return true;
     },
 
@@ -326,6 +405,8 @@
     unmount(root) {
       const st = root._terr;
       if (st && st.raf) cancelAnimationFrame(st.raf);
+      if (st && st.vis) document.removeEventListener('visibilitychange', st.vis);
+      if (st && st.io) st.io.disconnect();
       root._terr = null;
     },
   });

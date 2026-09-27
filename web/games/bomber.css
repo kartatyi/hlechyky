@@ -10,10 +10,11 @@
 }
 
 .bboard { max-width: 420px; }
-/* Full HD: поле 15×13 на 420 px губилось посеред порожньої картки — на великому екрані даємо йому рости,
-   але так, щоб разом із рядком над ним і статусом під ним уміщалось по висоті */
-@media (min-width: 1500px) and (min-height: 860px) {
-  .bboard { max-width: min(600px, calc((100vh - 330px) * 15 / 13)); }
+/* Ноутбук, Дека (1280×800) і Full HD: поле 15×13 на 420 px губилось посеред порожньої картки — даємо йому
+   рости, але так, щоб повний стіл (шість чіпів у два ряди, рядок гравців, статус і кнопки) влазив по висоті.
+   Прохід 28.09: раніше правило діяло лише від 1500×860, і на MacBook 1512×862 сторінка вже прокручувалась. */
+@media (min-width: 1000px) and (min-height: 700px) {
+  .bboard { max-width: min(600px, calc((100vh - 386px) * 15 / 13)); }
 }
 
 /* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
@@ -41,10 +42,10 @@
   display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
 }
 .bchip.me { box-shadow: 0 0 0 1px currentColor inset; }
-.bchip.bclock { color: var(--muted); font-variant-numeric: tabular-nums; }
-.bchip.bclock.hot { color: var(--danger); animation: bpulse 1s ease-in-out infinite; }
+.bchip.bmclock { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bchip.bmclock.hot { color: var(--danger); animation: bpulse 1s ease-in-out infinite; }
 @keyframes bpulse { 50% { opacity: .55; } }
-@media (prefers-reduced-motion: reduce) { .bchip.bclock.hot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .bchip.bmclock.hot { animation: none; } }
 
 /* ---- керування пальцем: напрямок тримають, тому це не .dpad каркаса ---- */
 .bpad { display: none; }
@@ -77,4 +78,6 @@
   .bhud { gap: 4px; font-size: .76em; }
   .bchip { padding: 2px 7px; gap: 4px; }
   .bchip:not(.me) .bups { display: none; }
+  /* довгі ніки не розносять рядок на чотири поверхи: хто це — видно з номера й кольору, повний нік — у шапці */
+  .bchip .bnick { max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
 }

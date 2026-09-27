@@ -24,6 +24,11 @@
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .duel .dscene > * { position: absolute; }
+/* Ноутбук, Дека (1280×800) і Full HD: сцена на 416 px губилась посеред порожньої картки. Даємо їй рости,
+   поки картка разом із кнопкою «Стріляти» й рядками під нею влазить по висоті без прокрутки. */
+@media (min-width: 900px) and (min-height: 700px) {
+  .duel .dscene { max-width: min(760px, calc((100vh - 460px) * 16 / 9)); }
+}
 
 .duel .dsky { inset: 0; background: linear-gradient(180deg, var(--accent) 0%, var(--duel-haze) 52%, var(--clay) 100%); }
 .duel .dsun {
@@ -156,5 +161,15 @@
 }
 /* Слово розпорядника — вгорі, над головами: посередині вулиці тут стоїть третій стрілець. */
 .duel.shoot .dcall { place-items: start center; padding-top: 4%; }
-.duel.shoot .dguy.el:not(.lost) .stag { left: 0; transform: none; }
-.duel.shoot .dguy.er:not(.lost) .stag { left: auto; right: 0; transform: none; }
+/* Крайні стрільці стоять так близько до краю, що їхня рамка вилазить за сцену (на 640 px — на 12 px), і
+   табличку з ніком обрізало. Прив'язуємо її не до краю рамки, а до краю капелюха — він усередині сцени. */
+.duel.shoot .dguy.el:not(.lost) .stag { left: 12%; transform: none; }
+.duel.shoot .dguy.er:not(.lost) .stag { left: auto; right: 12%; transform: none; }
+/* Дека й ноутбук 1280×800: сцена 640 px штовхала «Встати» на кілька пікселів за екран — хай росте лише до висоти. */
+@media (min-width: 900px) and (max-height: 860px) {
+  .duel.shoot .dscene { max-width: min(640px, calc((100vh - 460px) * 16 / 9)); }
+}
+/* Вузький телефон: довгі ніки на табличках налазили одне на одного — повний нік є в табло над сценою. */
+@media (max-width: 480px) {
+  .duel.shoot .stag .snick { display: inline-block; max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+}
