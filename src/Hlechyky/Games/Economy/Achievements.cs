@@ -117,6 +117,9 @@ public static class AchievementCatalog
         // хвиля 3: freeze — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
         new("freeze-clean", "Кам'яна баба",     "«Замри!»: торкнувся глека, жодного разу не впійманий за раунд", "🗿", 15),
         new("freeze-bold",  "Під самим носом",  "«Замри!»: торкнувся глека, коли Баба вже кричала «Замри!»", "🏺", 20),
+        // хвиля 3: kupala — гра просить їх сама через Ctx.Award(seat, 0, "ach:<key>") на кінці раунду
+        new("kupala-fern",  "Цвіт папороті", "Купальська ніч: знайшов і зірвав квітку папороті", "🌺", 20),
+        new("kupala-blind", "Навпомацки",    "Купальська ніч: вибив гравця ляпасом, коли обидва стояли в темряві", "✋", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
