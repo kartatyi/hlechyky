@@ -85,6 +85,8 @@
   font-size: 1.35em; font-weight: 700; text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
 .geocurtain[hidden] { display: none; }
 .geoframe.empty .geocurtain { font-size: 1em; font-weight: 500; color: var(--muted); text-shadow: none; }
+.geocurtain.wait { font-size: 1em; font-weight: 500; color: var(--muted); text-shadow: none; animation: geowait 1.2s ease-in-out infinite alternate; }
+@keyframes geowait { from { opacity: .45; } to { opacity: 1; } }
 .geofullbtn { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border-radius: 9px; border: 0; cursor: pointer;
   background: rgba(10, 20, 15, .6); color: var(--text); font-size: 18px; line-height: 1; }
 .geofullbtn:hover { background: rgba(10, 20, 15, .85); }
@@ -130,11 +132,12 @@
 .geogo { min-width: 170px; min-height: 42px; font-size: 1.02em; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
 .geogo[hidden] { display: none; }
 @container (max-width: 560px) {
-  /* телефон: «Готово» на всю ширину, над ним — масштаб і підказка одним рядком */
-  .geobar { flex-wrap: wrap; }
-  .geozoomb button { width: 40px; height: 40px; }
-  .geohint { flex: 1 1 0; }
-  .geogo { order: 3; flex: 1 1 100%; min-height: 50px; }
+  /* телефон: масштаб і велике «Готово» одним рядком, підказка — під ними. Раніше «Готово» стояло окремим рядком
+     під масштабом, і на айфоні (видно 390×664) його низ ховався під нижніми вкладками. */
+  .geobar { flex-wrap: wrap; row-gap: 6px; }
+  .geozoomb button { width: 40px; height: 44px; }
+  .geohint { order: 4; flex: 1 1 100%; }
+  .geogo { order: 3; flex: 1 1 0; min-width: 0; min-height: 50px; }
 }
 
 /* ---------- підсумок партії: п'єдестал ---------- */
@@ -204,6 +207,6 @@
   border: 1px solid var(--line); background: rgba(15, 31, 24, .9); color: var(--text); font-size: 1em; }
 
 @media (prefers-reduced-motion: reduce) {
-  .georow, .geopod { animation: none; }
+  .georow, .geopod, .geocurtain.wait { animation: none; }
   .geoimg, .geocanvas, .geozoom { transition: none; }
 }
