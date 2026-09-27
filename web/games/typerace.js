@@ -924,6 +924,9 @@
     if (st.ctx.mine && meRacer(st) && (st.phase === 'ready' || (st.phase === 'go' && canType(st) && !focused)))
       text = coarse ? '👆 Тапни по тексту й друкуй по літері — без свайпів'
         : st.phase === 'ready' ? '⌨ Прочитай перший рядок — і руки на клавіатуру' : '⌨ Друкуй — помилка висить червоним, доки не натиснеш Backspace';
+    // лобі: правила одним реченням — новачок має зрозуміти гру за п'ять секунд
+    else if (st.phase === 'lobby')
+      text = '🚜 Після «Почати» всі друкують той самий уривок: трактор їде, поки пишеш без помилок; червону літеру прибирає Backspace';
     if (el.textContent !== text) el.textContent = text;
     el.hidden = !text;
   }
