@@ -46,6 +46,14 @@ public sealed class Dotepy : Game
     public const int FinalHoldMs = 3_000;
     public const int TableMs = 6_000;
     public const int VoiceWaitMs = 3_000;
+    /// <summary>
+    /// Стеля очікування для довгого читання: фінал на вісьмох — це ~700 знаків, і edge-tts на таке не вкладається
+    /// в 3 с. Голосувати під час очікування вже можна, тож довше очікування нікого не гальмує — лише пізніше
+    /// запускає відлік.
+    /// </summary>
+    public const int MaxVoiceWaitMs = 6_000;
+    /// <summary>Скільки чекати на кліп картки: 3 с на коротку, до 6 с на довгу (≈ 8 мс на знак понад 1,5 с).</summary>
+    public static int VoiceWait(string text) => Math.Clamp(1500 + text.Length * 8, VoiceWaitMs, MaxVoiceWaitMs);
     public const double CharsPerSec = 14;
     public const int RankCount = 3;
     public static readonly int[] RankPoints = [300, 200, 100];
@@ -521,10 +529,10 @@ public sealed class Dotepy : Game
             StartVote(card.Line, clip, now);
             return;
         }
-        // Кліп ще готується: чекаємо до VoiceWaitMs (голосувати вже можна), далі — без голосу.
+        // Кліп ще готується: чекаємо до VoiceWait (голосувати вже можна), далі — без голосу.
         Prepare([card.Line], urgent: true);
         _pending = card.Line;
-        _pendingUntil = now.AddMilliseconds(VoiceWaitMs);
+        _pendingUntil = now.AddMilliseconds(VoiceWait(card.Line));
         _endsAt = null;
         _totalMs = 0;
     }
@@ -849,7 +857,8 @@ public sealed class Dotepy : Game
         e.Done = true;
         _dirty = true;
         // Усі автори цієї картки здали — читання вже відоме: хай Глек озвучує його, поки решта пише.
-        if (VoiceOn && _cards[Int(payload, "i")!.Value] is var card && card.Entries.TrueForAll(x => x.Done))
+        var card = _cards[Int(payload, "i")!.Value];             // індекс уже перевірив Mine
+        if (VoiceOn && card.Entries.TrueForAll(x => x.Done))
             Prepare([DotepyLines.Card(card.Prompt.Text, [.. card.Order.Select(k => card.Entries[k].Text)])], urgent: true);
         return ActResult.Done;
     }
@@ -1116,8 +1125,23 @@ public sealed class Dotepy : Game
     {
         winners = (int[])_winners!.Clone(),
         scores = (long[])_score.Clone(),
-        best = _bests.OrderByDescending(b => b.Points).ThenBy(b => b.Round).Take(3).Select(BestView).ToArray(),
+        best = TopBests().Select(BestView).ToArray(),
     };
+
+    /// <summary>
+    /// Трійка партії: найбільші очки, але з різних завдань (фінал дає найбільше, і всі три були б з нього); коли
+    /// різних завдань менше — добираємо з того, що є. Найкращий дотеп партії завжди перший.
+    /// </summary>
+    List<Best> TopBests()
+    {
+        var sorted = _bests.OrderByDescending(b => b.Points).ThenBy(b => b.Round).ToList();
+        var top = new List<Best>(3);
+        foreach (var b in sorted)
+            if (top.Count < 3 && !top.Exists(t => t.Prompt == b.Prompt)) top.Add(b);
+        foreach (var b in sorted)
+            if (top.Count < 3 && !top.Contains(b)) top.Add(b);
+        return [.. top.OrderByDescending(b => b.Points).ThenBy(b => b.Round)];
+    }
 
     static object BestView(Best b) => new { prompt = b.Prompt, text = b.Text, seat = b.Seat, points = b.Points };
 }

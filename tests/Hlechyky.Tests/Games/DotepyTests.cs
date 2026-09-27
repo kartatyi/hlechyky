@@ -1510,6 +1510,33 @@ public class DotepyTests
     }
 
     [Fact]
+    public void A_long_final_reading_waits_longer_but_never_more_than_6_s()
+    {
+        Assert.Equal(Dotepy.VoiceWaitMs, Dotepy.VoiceWait("коротко"));
+        Assert.Equal(Dotepy.MaxVoiceWaitMs, Dotepy.VoiceWait(new string('а', 900)));
+        var h = Table(8, options: new { rounds = "blitz" }, voice: new FakeVoice(readyAfter: -1));
+        WriteAll(h, (s, _) => new string((char)('а' + s), Dotepy.MaxAnswer));
+        h.Tick();
+        Assert.True(V(h).GetProperty("waiting").GetBoolean());
+        h.Tick(Dotepy.VoiceWaitMs / Dotepy.TickMs);
+        Assert.True(V(h).GetProperty("waiting").GetBoolean());       // 3 с минуло — довгий фінал ще чекаємо
+        h.Tick((Dotepy.MaxVoiceWaitMs - Dotepy.VoiceWaitMs) / Dotepy.TickMs);
+        Assert.False(V(h).GetProperty("waiting").GetBoolean());      // а 6 с — стеля
+    }
+
+    [Fact]
+    public void Top_three_of_the_match_come_from_different_prompts_when_possible()
+    {
+        var h = Table(4, options: new { rounds = "short" }, seed: 5);
+        PlayMatch(h, s => Ballot(h, s));
+        var best = V(h).GetProperty("result").GetProperty("best").EnumerateArray().ToList();
+        Assert.Equal(3, best.Count);
+        Assert.Equal(3, best.Select(b => b.GetProperty("prompt").GetString()).Distinct().Count());
+        var points = best.Select(b => b.GetProperty("points").GetInt32()).ToList();
+        Assert.Equal(points.OrderByDescending(p => p), points);
+    }
+
+    [Fact]
     public void Voice_none_never_waits_and_never_prepares()
     {
         var voice = new FakeVoice(readyAfter: -1);
@@ -1638,6 +1665,9 @@ public class DotepyPerfTests(ITestOutputHelper output)
         var ticks = 0;
         var viewTicks = 0;
         long bytes = 0;
+        var maxWire = 0;
+        var maxUtf8 = 0;
+        var relaxed = new JsonSerializerOptions(JsonSerializerDefaults.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
         while (h.Room.Status == RoomStatus.Playing && ticks < 3000)
         {
             var phase = DotepyTests.Phase(h);
@@ -1655,8 +1685,14 @@ public class DotepyPerfTests(ITestOutputHelper output)
                 views.Start();
                 lock (h.Room.Sync)
                 {
-                    for (var s = 0; s < 8; s++) bytes += Views.Text(game.View(s)).Length;
+                    for (var s = 0; s < 8; s++)
+                    {
+                        var wire = Views.Text(game.View(s)).Length;       // як шле SignalR: кирилиця екранована, тож це ASCII
+                        bytes += wire;
+                        maxWire = Math.Max(maxWire, wire);
+                    }
                     bytes += Views.Text(game.View(null)).Length;
+                    maxUtf8 = Math.Max(maxUtf8, JsonSerializer.SerializeToUtf8Bytes(game.View(0), relaxed).Length);
                 }
                 views.Stop();
                 viewTicks++;
@@ -1673,7 +1709,7 @@ public class DotepyPerfTests(ITestOutputHelper output)
         var total = matchMs + idle.Elapsed.TotalMilliseconds;
         output.WriteLine($"партія на восьми: {matchTicks} тиків, середній тик {matchMs / matchTicks:0.0000} мс; " +
             $"розсилок видів {viewTicks}, 9 видів + серіалізація в середньому {views.Elapsed.TotalMilliseconds / Math.Max(1, viewTicks):0.000} мс, " +
-            $"{bytes / Math.Max(1, viewTicks * 9)} Б на вид; 3000 тиків разом — {total:0.0} мс");
+            $"{bytes / Math.Max(1, viewTicks * 9)} Б на вид (найбільший {maxWire} Б на дроті, {maxUtf8} Б у UTF-8); 3000 тиків разом — {total:0.0} мс");
         Assert.True(total < 1000, $"3000 тиків — {total:0.0} мс");
         Assert.True(matchMs / matchTicks < 0.25, $"середній тик {matchMs / matchTicks:0.0000} мс");
     }

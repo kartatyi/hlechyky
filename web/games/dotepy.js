@@ -163,7 +163,7 @@
     if (v.me) {
       html += tasks.map((t, n) => '<div class="dt-task" data-i="' + t.i + '" style="--n:' + n + '">'
         + '<div class="dt-prompt">' + ctx.esc(t.prompt) + '</div>'
-        + '<form class="dt-form"><input class="dt-in" type="text" maxlength="' + MAX + '" autocomplete="off" spellcheck="true"'
+        + '<form class="dt-form"><input class="dt-in" type="text" maxlength="' + MAX + '" autocomplete="off" spellcheck="true"' + (n === 0 ? ' data-pad-first' : '')
         + ' enterkeyhint="send" placeholder="твій дотеп…" aria-label="Відповідь на завдання ' + (n + 1) + '">'
         + '<button class="primary dt-send" type="submit">Здати</button></form>'
         + '<div class="dt-meta"><span class="dt-cnt">0/' + MAX + '</span></div>'
@@ -282,7 +282,7 @@
       + '<div class="dt-prompt big">' + ctx.esc(c.prompt) + '</div>'
       + (v.final ? '<div class="dt-podium mini" hidden></div>' : '')
       + '<div class="dt-answers ' + (v.final ? 'final' : v.mode) + (k > 4 ? ' dense' : '') + ' n' + k + '">'
-      + c.answers.map((a, i) => '<button type="button" class="dt-ans' + (a.stock ? ' stock' : '') + '" data-i="' + i + '" style="--n:' + i + '">'
+      + c.answers.map((a, i) => '<button type="button" class="dt-ans' + (a.stock ? ' stock' : '') + '" data-i="' + i + '" style="--n:' + i + '"' + (i === 0 ? ' data-pad-first' : '') + '>'
         + '<span class="dt-n">' + (i + 1) + '</span><span class="dt-txt">' + ctx.esc(a.text) + '</span>'
         + '<span class="dt-badge"></span><span class="dt-res"></span></button>').join('')
       + '</div>'
@@ -538,7 +538,8 @@
       + ((r.best || []).length ? '<div class="dt-besttitle">😂 Найдотепніше партії</div><div class="dt-bestlist">'
         + r.best.map((b) => bestHtml(ctx, v, b, '')).join('') + '</div>' : '')
       + (v.say && v.say.text ? '<div class="dt-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>' : '')
-      + '<div class="dt-again muted small">Ще партію? Тисни «Ще раз» — завдання будуть нові</div>';
+      + '<div class="dt-again muted small">' + ((v.players || []).filter((p) => !p.left).length >= 3
+        ? 'Ще партію? Тисни «Ще раз» — завдання будуть нові' : 'На «Ще раз» треба щонайменше троє — клич друзів') + '</div>';
   }
 
   // =============================================================================================
@@ -723,7 +724,7 @@
       root.innerHTML = '<div class="dt">'
         + '<div class="dt-top"><span class="dt-pill"></span><span class="dt-arcbox"></span>'
         + '<span class="dt-wait muted small" hidden>Глек прокашлюється…</span>'
-        + '<button type="button" class="ghost small dt-spk" data-pad-skip></button></div>'
+        + '<button type="button" class="ghost small dt-spk"></button></div>'
         + '<div class="dt-players"></div>'
         + '<div class="dt-stage"></div>'
         + '<audio class="dt-voice" preload="auto"></audio>'
@@ -803,7 +804,12 @@
           if (v.waiting) return 'Глек прокашлюється…';
           if (!ctx.mine) return 'Голосуй як публіка 👀';
           if (!me.voter) return 'Твій дотеп у грі — тримай кулаки';
-          return (me.picks || []).length ? 'Голос є — чекаємо решту' : (v.card && v.card.ranked ? 'Роздай 🥇🥈🥉 найдотепнішим' : 'Голосуй за найдотепніше');
+          if (v.card && v.card.ranked) {
+            const n = (me.picks || []).length;
+            if (!n) return 'Роздай ' + MEDALS.slice(0, v.card.perVoter).join('') + ' найдотепнішим';
+            if (n < v.card.perVoter) return 'Ще ' + MEDALS.slice(n, v.card.perVoter).join('') + ' — кому?';
+          }
+          return (me.picks || []).length ? 'Голос є — чекаємо решту' : 'Голосуй за найдотепніше';
         case 'reveal': return 'Розкриття…';
         case 'table': return 'Раунд ' + v.round + ' позаду';
       }
