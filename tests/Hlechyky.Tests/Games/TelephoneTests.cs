@@ -230,6 +230,33 @@ public class TelephoneTests
     }
 
     [Fact]
+    public void A_like_travels_in_a_small_frame_not_in_full_views()
+    {
+        // прохід 28.09: кожне ❤ розсилало кожному повний вид з усіма малюнками ланцюжка
+        var h = Revealing();
+        h.Clock.AdvanceMs(Telephone.NextEveryMs);
+        h.Act(0, "next");
+        h.Tick();
+        h.Outbox.Clear();
+
+        Assert.True(h.Act(1, "like", new { chain = 0, index = 0 }).Ok);
+        Assert.True(h.Act(2, "like", new { chain = 0, index = 0 }).Ok);
+        Assert.True(h.Act(2, "like", new { chain = 0, index = 1 }).Ok);
+        h.Tick();
+
+        Assert.Empty(h.Outbox.OfType<RoomViews>());
+        var frame = Views.Json(Assert.Single(h.Outbox.OfType<RoomFrame>()).Frame);
+        Assert.Equal(0, frame.GetProperty("chain").GetInt32());
+        Assert.Equal([2, 1], frame.GetProperty("likes").EnumerateArray().Select(x => x.GetInt32()).ToArray());
+        // вид, як і раніше, знає правду — з нього стартує той, хто щойно відкрив стіл
+        Assert.Equal(2, h.View(null).GetProperty("reveal").GetProperty("entries")[0].GetProperty("likes").GetInt32());
+
+        h.Outbox.Clear();
+        h.Tick();
+        Assert.Empty(h.Outbox);   // нічого не змінилось — нічого й не летить
+    }
+
+    [Fact]
     public void You_cannot_like_yourself_or_what_was_not_shown()
     {
         var h = Revealing();
@@ -397,5 +424,77 @@ public class TelephoneTests
         var h = Table(3);
         Assert.False(h.View(null).GetProperty("duo").GetBoolean());
         Assert.Equal(Telephone.Phrase, Kind(h, 0));
+    }
+}
+
+/// <summary>
+/// Швидкодія Зіпсованого телефону на десятьох (прохід 28.09): десять ланцюжків, п'ять малюнків у кожному по ~3000
+/// точок. Міряємо тик і розмір видів — на кроці й на показі, де кожне «Далі» і кожне ❤ розсилає вид кожному.
+/// </summary>
+[Collection(SerialPerf.Name)]
+public class TelephonePerfTests(Xunit.Abstractions.ITestOutputHelper output)
+{
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Ten_players_a_whole_game_stay_cheap()
+    {
+        var h = new RoomHarness("telephone", seed: 5, services: RoomHarness.WithService(new TelephonePhrases(["кіт на даху"])));
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна", "Іван", "Марта", "Богдан", "Софія", "Тарас", "Мар'яна", "Остап" }) h.Join(nick);
+        h.Start();
+        var rng = new Random(3);
+        var ticks = new System.Diagnostics.Stopwatch();
+        int tickCount = 0;
+        long stepViewMax = 0, revealViews = 0, revealBytes = 0, revealMax = 0;
+
+        void Tick()
+        {
+            h.Outbox.Clear();
+            ticks.Start(); h.Tick(); ticks.Stop(); tickCount++;
+            if (!h.Outbox.OfType<RoomViews>().Any()) return;
+            var size = System.Text.Encoding.UTF8.GetByteCount(Views.Text(h.Room.Game.View(0)));
+            if (h.View(null).GetProperty("phase").GetString() == "reveal") { revealViews++; revealBytes += size; revealMax = Math.Max(revealMax, size); }
+            else stepViewMax = Math.Max(stepViewMax, size);
+        }
+
+        while (h.View(null).GetProperty("phase").GetString() == "step")
+        {
+            for (var s = 0; s < 10; s++)
+            {
+                var kind = h.View(s).GetProperty("task").GetProperty("kind").GetString();
+                if (kind == Telephone.Draw)
+                {
+                    for (var c = 0; c < 150; c++)
+                    {
+                        var p = new int[40];
+                        for (var i = 0; i < 40; i += 2) { p[i] = rng.Next(0, 1000); p[i + 1] = rng.Next(0, 750); }
+                        h.Input(s, "draw", new { s = c / 10 + 1, c = 1 + c % 9, w = 8, p });
+                        if (c % 15 == 0) Tick();
+                    }
+                    Assert.True(h.Act(s, "done", new { n = 150 }).Ok);
+                }
+                else Assert.True(h.Act(s, "done", new { text = "кіт на даху грає на скрипці " + s }).Ok);
+                Tick();
+            }
+        }
+        while (h.View(null).GetProperty("phase").GetString() == "reveal")
+        {
+            var r = h.View(0).GetProperty("reveal");
+            var last = r.GetProperty("entries").EnumerateArray().Last();
+            // троє ставлять ❤ кожному запису, потім «Далі»
+            for (var s = 1; s <= 3; s++)
+                if (last.GetProperty("seat").GetInt32() != s)
+                    h.Act(s, "like", new { chain = r.GetProperty("chain").GetInt32(), index = last.GetProperty("index").GetInt32() });
+            Tick();
+            h.Clock.AdvanceMs(Telephone.NextEveryMs);
+            h.Act(0, "next");
+            Tick();
+        }
+
+        var tickUs = ticks.Elapsed.TotalMilliseconds * 1000 / tickCount;
+        output.WriteLine($"тиків {tickCount}: {tickUs:F1} мкс на тик");
+        output.WriteLine($"вид на кроці (одне місце): макс {stepViewMax} Б");
+        output.WriteLine($"видів на показі {revealViews} (на одне місце): сер {revealBytes / Math.Max(1, revealViews)} Б, макс {revealMax} Б");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(tickUs < 250, $"тик {tickUs:F0} мкс");
     }
 }

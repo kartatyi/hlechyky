@@ -675,6 +675,7 @@
     const v = ctx.view || {};
     const s = st(root);
     if (v.phase) {
+      if (v.phase !== 'draw' && s.mark) s.mark.n = 0;   // новий хід — знімок старого малюнка ні до чого
       fromView(root, ctx, v);
       mergeFeed(s, v.feed, true);
       if (v.phase === 'reveal') snap(ctx, s, v);

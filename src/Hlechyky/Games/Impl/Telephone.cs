@@ -11,6 +11,7 @@ namespace Hlechyky.Games.Impl;
 ///
 /// Тик потрібен лише для таймерів кроку й розсилки видів: малюнок кожен малює у себе, а на сервер його штрихи
 /// летять через Input і лежать тут, поки крок не скінчиться (з них же відновлюється полотно після F5).
+/// Кадр — лише на показі, коли хтось ставить ❤: лічильники ланцюжка, а не повні види з усіма малюнками.
 /// </summary>
 public sealed class Telephone : Game
 {
@@ -95,6 +96,11 @@ public sealed class Telephone : Game
     DateTimeOffset _lastNext;
     object? _result;
     bool _dirty;
+    /// <summary>
+    /// ❤ змінились: летить кадр із лічильниками. Раніше кожне ❤ розсилало кожному повний вид з усіма малюнками
+    /// ланцюжка — на десятьох ~60 КБ на місце за одне ❤ (прохід 28.09).
+    /// </summary>
+    bool _likesDirty;
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
@@ -306,7 +312,7 @@ public sealed class Telephone : Game
         if (entry.Seat == Jug) return ActResult.Fail("Це загадав Глек — ❤ ставлять гравцям");
         if (entry.Seat == seat) return ActResult.Fail("Собі ❤ не ставлять 🙂");
         if (!entry.Likes.Remove(seat)) entry.Likes.Add(seat);
-        _dirty = true;
+        _likesDirty = true;
         return ActResult.Done;
     }
 
@@ -316,14 +322,19 @@ public sealed class Telephone : Game
 
     public override TickResult Tick()
     {
-        if (_phase == Step)
-        {
-            var waiting = _tasks.Where(kv => Present(kv.Key)).ToList();
-            if (Now >= _until || waiting.Count == 0 || waiting.All(kv => kv.Value.Ready)) EndStep();
-        }
-        if (!_dirty) return TickResult.None;
-        _dirty = false;
-        return new TickResult(Frame: false, View: true);
+        if (_phase == Step && (Now >= _until || AllReady())) EndStep();
+        var frame = _likesDirty && _phase == Reveal;
+        var result = new TickResult(Frame: frame, View: _dirty);
+        _dirty = _likesDirty = false;
+        return result;
+    }
+
+    /// <summary>Усі присутні здали (або присутніх із завданнями нема). Без LINQ — це кличе кожен тик.</summary>
+    bool AllReady()
+    {
+        foreach (var (seat, task) in _tasks)
+            if (Present(seat) && !task.Ready) return false;
+        return true;
     }
 
     int[] Likes()
@@ -362,8 +373,15 @@ public sealed class Telephone : Game
     }
 
     // =========================================================================================
-    // Вид
+    // Вид і кадр
     // =========================================================================================
+
+    /// <summary>Кадр показу: скільки ❤ у кожного вже показаного запису поточного ланцюжка (публічно, без того, хто ставив).</summary>
+    public override object? Frame() => new
+    {
+        chain = _chain,
+        likes = _phase == Reveal && _chain >= 0 ? _chains[_chain].Take(_shown).Select(e => e.Likes.Count).ToArray() : [],
+    };
 
     object? EntryView(Entry e, int index, int? seat) => new
     {
