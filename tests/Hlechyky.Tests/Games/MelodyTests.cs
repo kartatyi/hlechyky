@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Hlechyky.Games;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
+using Xunit.Abstractions;
 
 namespace Hlechyky.Tests.Games;
 
@@ -724,5 +726,68 @@ public class MelodyTests
         var survive = new MelodyTrack("", "I Will Survive", "Gloria Gaynor", 0, null, "");
         Assert.Equal("s", MelodyLibrary.Pick([R("e", "Gloria Gaynor", "I Will Survive (Extended Version)", 482), R("s", "Gloria Gaynor", "I Will Survive", 198)], survive)!.Id);
         Assert.Null(MelodyLibrary.Pick([R("s", "Gloria Gaynor", "I Will Survive", 30)], survive));   // коротше за 45 с — не пісня
+    }
+}
+
+/// <summary>Швидкодія «Вгадай мелодію» на дванадцятьох (прохід 28.09): тик, вид, здогадка й розмір виду.</summary>
+[Collection(SerialPerf.Name)]
+public class MelodyPerfTests(ITestOutputHelper output)
+{
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Twelve_guessers_tick_view_and_guess_stay_cheap()
+    {
+        string[] nicks = ["Оля", "Петро", "Ганна", "Іван", "Марта", "Богдан", "Леся", "Остап", "Ніна", "Юрко", "Даша", "Тарас"];
+        var songs = Enumerable.Range(0, 20).Select(i => new MelodyTrack("t" + i, "Пісня " + i, "Гурт " + i, 200, null, "/dev/null")).ToArray();
+        var h = new RoomHarness("melody", options: new Dictionary<string, string> { ["rounds"] = "15", ["clip"] = "10" }, seed: 3,
+            services: RoomHarness.WithService<IMelodySource>(new FakeMelodySource(songs)));
+        foreach (var n in nicks) h.Join(n);
+        h.Start();
+        for (var i = 0; i < 400 && h.View(null).GetProperty("phase").GetString() != "play"; i++) { h.Tick(); Thread.Sleep(2); }
+
+        // здогадки мимо (перевірка відповіді — повна: виконавець і назва) — сам Act гри під замком, без розсилки видів
+        var miss = Views.Json(new { text = "щось зовсім не те, що грає" });
+        var game = h.Room.Game;
+        for (var k = 0; k < 50; k++) { h.Clock.AdvanceMs(Melody.GuessEveryMs); lock (h.Room.Sync) game.Act(k % 12, "guess", miss); }
+        var act = new Stopwatch();
+        var acts = 0;
+        for (var k = 0; k < 600; k++)
+        {
+            h.Clock.AdvanceMs(Melody.GuessEveryMs);
+            act.Start();
+            lock (h.Room.Sync) game.Act(k % 12, "guess", miss);
+            act.Stop();
+            acts++;
+        }
+        // і влучання — уже через кімнату, як із хаба (з розсилкою видів дванадцятьом)
+        var hub = Stopwatch.StartNew();
+        for (var s = 0; s < 12; s++) { h.Clock.AdvanceMs(Melody.GuessEveryMs); h.Act(s, "guess", new { text = "Гурт 0 Пісня 0" }); }
+        hub.Stop();
+        output.WriteLine($"влучання через кімнату (з видами всім): {hub.Elapsed.TotalMilliseconds / 12:F2} мс");
+
+        // вид кожного місця й глядача — як його збирає й серіалізує розсилка
+        var view = Stopwatch.StartNew();
+        var bytes = 0;
+        const int ViewRuns = 200;
+        for (var k = 0; k < ViewRuns; k++)
+            for (var s = -1; s < 12; s++) bytes = Views.Json(h.Room.Game.View(s < 0 ? null : s)).GetRawText().Length;
+        view.Stop();
+
+        // тики: дві тисячі (≈ 8 хв гри) з розкриттями й новими раундами
+        var tick = new Stopwatch();
+        for (var t = 0; t < 2000 && h.Room.Status == RoomStatus.Playing; t++)
+        {
+            tick.Start();
+            h.Tick();
+            tick.Stop();
+        }
+        var perTick = tick.Elapsed.TotalMilliseconds / 2000;
+        var perView = view.Elapsed.TotalMilliseconds / (ViewRuns * 13);
+        var perAct = act.Elapsed.TotalMilliseconds / acts;
+        output.WriteLine($"тик {perTick * 1000:F1} мкс, вид {perView * 1000:F1} мкс ({bytes} Б JSON), здогадка {perAct * 1000:F1} мкс");
+        Assert.True(perTick < 0.25, $"тик {perTick:F3} мс");
+        Assert.True(perView < 0.2, $"вид {perView:F3} мс");
+        Assert.True(perAct < 0.2, $"здогадка {perAct:F3} мс");
+        Assert.True(bytes < 1500, $"вид {bytes} Б");
     }
 }

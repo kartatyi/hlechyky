@@ -81,3 +81,22 @@
 .mgpt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .mgpt b, .mgpt i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mgpt i { font-style: normal; color: var(--muted); font-size: .88em; }
+
+/*
+  Телефон: поле відповіді — одразу під платівкою, а гучність і рахунок — нижче. Раніше на айфоні (видно 390×664)
+  поле ховалось під краєм екрана: трек уже грає, а щоб писати, треба було спершу гортати.
+*/
+@media (max-width: 560px) {
+  .mgwrap { gap: 10px; }
+  .mgstage { min-height: 0; gap: 10px; }
+  .mgdisc { width: 88px; height: 88px; }
+  .mgcover { width: 96px; height: 96px; }
+  .mgtitle { font-size: 1.2em; }
+  .mgtop { order: 1; }
+  .mgstage { order: 2; }
+  .mgguess { order: 3; }
+  .mgmarks { order: 4; }
+  .mgskip { order: 5; }
+  .mgvol { order: 6; }
+  .mgscores { order: 7; }
+}
