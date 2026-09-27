@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace Hlechyky.Games.Impl;
@@ -23,16 +24,124 @@ public interface IDotepyVoice
 /// Бойовий голос поверх <see cref="TtsService"/>: той самий кеш <c>cache/tts</c> і той самий уже змаплений
 /// ендпоінт «Своєї гри» <c>/api/games/svoya/tts/&lt;хеш&gt;.mp3</c> — новий дублював би десять рядків заради іншого
 /// шляху (specs/dotepy.md §12.7). Текст для edge-tts чиститься <see cref="Clean"/>: емодзі голосом не прочитаєш.
+/// <para>
+/// <see cref="Ready"/> кличуть з-під замка кімнати щотика, поки картка чекає на Глека, тож він дивиться <b>лише</b> в
+/// словник у пам'яті. <see cref="TtsService.TryGet"/>, що при промаху лізе на диск (<c>.sec</c>/<c>.mp3</c> з
+/// минулого запуску), кличе тільки фоновий опитувач <see cref="Poll"/> — по репліках, які гра попросила і яких ще нема.
+/// </para>
 /// </summary>
-public sealed class DotepyVoice(TtsService tts) : IDotepyVoice
+public sealed class DotepyVoice(TtsService tts) : IDotepyVoice, IDisposable
 {
+    /// <summary>Як часто опитувач питає TtsService про репліки, яких чекає гра.</summary>
+    public const int PollMs = 200;
+    /// <summary>Перші стільки мс репліку питаємо щоразу, далі — раз на <see cref="SlowPollMs"/> (невдала озвучка не «доспіє»).</summary>
+    const int FastMs = 30_000, SlowPollMs = 2_000;
+    /// <summary>Скільки ще шукаємо репліку, яку попросили: вердикти з ніками готуються на старті й потрібні аж у кінці партії.</summary>
+    const int WantMs = 30 * 60_000;
+    /// <summary>Стеля словника готових: переросла — чистимо (його наповнить наступне опитування).</summary>
+    const int MaxClips = 4096;
+
+    readonly ConcurrentDictionary<string, DotepyClip> _clips = new(StringComparer.Ordinal);
+    readonly Dictionary<string, Want> _wanted = new(StringComparer.Ordinal);
+    readonly object _lock = new();
+    readonly object _pollLock = new();
+    Timer? _timer;
+    bool _armed;
+
+    sealed class Want(string voice, string text, long since)
+    {
+        public string Voice { get; } = voice;
+        public string Text { get; } = text;
+        public long Since { get; } = since;
+        public long Next;
+    }
+
     public bool Enabled => tts.Enabled;
 
-    public void Prepare(string voice, IEnumerable<string> texts, bool urgent = false) =>
-        tts.Enqueue(voice, texts.Select(Clean), urgent);
+    public void Prepare(string voice, IEnumerable<string> texts, bool urgent = false)
+    {
+        var clean = texts.Select(Clean).ToList();
+        tts.Enqueue(voice, clean, urgent);
+        foreach (var t in clean) Ask(voice, t);
+    }
 
-    public DotepyClip? Ready(string voice, string text) =>
-        tts.TryGet(voice, Clean(text)) is { } clip ? new DotepyClip(SvoyaVoice.UrlPrefix + clip.Hash + ".mp3", clip.Seconds) : null;
+    public DotepyClip? Ready(string voice, string text)
+    {
+        var clean = Clean(text);
+        if (_clips.TryGetValue(Key(voice, clean), out var clip)) return clip;
+        Ask(voice, clean);
+        return null;
+    }
+
+    static string Key(string voice, string text) => voice + "\n" + text;
+
+    /// <summary>Гра чекає на цю репліку — опитувач перевірить її найближчим проходом.</summary>
+    void Ask(string voice, string text)
+    {
+        var key = Key(voice, text);
+        if (_clips.ContainsKey(key)) return;
+        lock (_lock)
+        {
+            if (!_wanted.ContainsKey(key)) _wanted[key] = new Want(voice, text, Environment.TickCount64);
+            if (_armed) return;
+            _armed = true;
+            _timer ??= new Timer(_ => Poll(), null, Timeout.Infinite, Timeout.Infinite);
+            _timer.Change(PollMs, PollMs);
+        }
+    }
+
+    /// <summary>
+    /// Один прохід опитувача (кличе таймер; публічний — щоб тести крутили його без очікувань): кожну репліку, на яку
+    /// чекає гра, питаємо в <see cref="TtsService.TryGet"/>; готова — у словник, де її миттєво знайде <see cref="Ready"/>.
+    /// Чекати нема на що — таймер засинає до наступного <see cref="Ask"/>.
+    /// </summary>
+    public void Poll()
+    {
+        lock (_pollLock)
+        {
+            List<(string Key, Want W)> due;
+            var now = Environment.TickCount64;
+            lock (_lock)
+            {
+                due = new List<(string, Want)>(_wanted.Count);
+                foreach (var (k, w) in _wanted)
+                {
+                    if (now - w.Since > WantMs) continue;
+                    if (w.Next <= now) due.Add((k, w));
+                }
+                foreach (var k in _wanted.Where(p => now - p.Value.Since > WantMs).Select(p => p.Key).ToList()) _wanted.Remove(k);
+            }
+            foreach (var (key, w) in due)
+            {
+                TtsClip? clip = null;
+                try { clip = tts.TryGet(w.Voice, w.Text); }
+                catch (Exception) { /* диск чи кеш спіткнулись — спробуємо наступного разу */ }
+                if (clip is not null)
+                {
+                    if (_clips.Count >= MaxClips) _clips.Clear();
+                    _clips[key] = new DotepyClip(SvoyaVoice.UrlPrefix + clip.Hash + ".mp3", clip.Seconds);
+                    lock (_lock) _wanted.Remove(key);
+                }
+                else w.Next = now + (now - w.Since < FastMs ? 0 : SlowPollMs);
+            }
+            lock (_lock)
+            {
+                if (_wanted.Count > 0 || _timer is null) return;
+                _armed = false;
+                _timer.Change(Timeout.Infinite, Timeout.Infinite);
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            _timer?.Dispose();
+            _timer = null;
+            _armed = true;      // більше не заводимо
+        }
+    }
 
     /// <summary>Розділові знаки, що лишаються для голосу: паузи й інтонацію edge-tts бере саме з них.</summary>
     const string Keep = ".,!?…'’ʼ-–—:;()«»";
@@ -100,6 +209,8 @@ public static class DotepyLines
     public const string Silence = "Ніхто не проголосував. Буває.";
     public const string StockWin = "Публіка обрала мовчання. Очок за це не дають.";
     public const string GameTie = "Нагорі нічия. Дотепні всі!";
+    /// <summary>Дограли, а очок ні в кого (усі мовчали) — «Дотепні всі!» тут звучало б як знущання.</summary>
+    public const string GameNone = "Нуль очок на всіх. Глек чекає реваншу!";
     public const string Gone = "Замало гравців — партію не дограли. Приходьте ще!";
 
     public static string Win(string nick) => $"Картку забирає {nick}.";
@@ -112,7 +223,13 @@ public static class DotepyLines
         final ? (perVoter >= 3 ? FinalThree : FinalTwo) : round == 1 ? Round1 : Round2;
 
     /// <summary>Усе, що Глек каже без підстановок, — це можна озвучити ще до першої партії.</summary>
-    public static IEnumerable<string> Pure() => [Round1, Round2, FinalThree, FinalTwo, Tie, Silence, StockWin, GameTie, Gone];
+    public static IEnumerable<string> Pure() => [Round1, Round2, FinalThree, FinalTwo, Tie, Silence, StockWin, GameTie, GameNone, Gone];
+
+    /// <summary>
+    /// «Думки сходяться!» — обидва автори дуелі написали одне й те саме. Одним кліпом, як і звичайна картка:
+    /// «{завдання}. Думки сходяться! Обидва написали: {відповідь}»
+    /// </summary>
+    public static string Jinx(string prompt, string answer) => $"{End(prompt)} Думки сходяться! Обидва написали: {End(answer)}";
 
     /// <summary>Вердикти з ніком — готуються на старті партії для кожного ніка за столом.</summary>
     public static IEnumerable<string> Named(string nick) => [Win(nick), Sweep(nick), FinalWin(nick), GameWin(nick)];

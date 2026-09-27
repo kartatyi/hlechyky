@@ -69,8 +69,30 @@ public class DotepyTests
     internal static JsonElement Card(RoomHarness h) => V(h).GetProperty("card");
     internal static int CardI(RoomHarness h) => Card(h).GetProperty("i").GetInt32();
     internal static int[] Ints(JsonElement e) => [.. e.EnumerateArray().Select(x => x.GetInt32())];
-    internal static int[] Voters(RoomHarness h) => Ints(Card(h).GetProperty("voters"));
-    internal static int[] Voted(RoomHarness h) => Ints(Card(h).GetProperty("voted"));
+    /// <summary>
+    /// Хто має голос на поточній картці — з видів самих місць (<c>me.voter</c>): у дуелі списку суддів у спільному
+    /// виді нема навмисно (це «усі, крім двох авторів»).
+    /// </summary>
+    internal static int[] Voters(RoomHarness h) =>
+        [.. Enumerable.Range(0, Dotepy.MaxSeats).Where(s => h.Room.Seats[s] is not null && V(h, s).GetProperty("me").GetProperty("voter").GetBoolean())];
+
+    /// <summary>Хто з суддів уже віддав повний бюлетень (у фіналі — усі медалі) — теж із їхніх власних видів.</summary>
+    internal static int[] Voted(RoomHarness h)
+    {
+        var card = Card(h);
+        var need = card.GetProperty("ranked").GetBoolean() ? card.GetProperty("perVoter").GetInt32() : 1;
+        return [.. Voters(h).Where(s => V(h, s).GetProperty("me").GetProperty("picks").GetArrayLength() >= need)];
+    }
+
+    /// <summary>Ще не всі судді проголосували — за лічильниками зі спільного виду (дешево: один вид, а не вісім).</summary>
+    internal static bool Pending(RoomHarness h)
+    {
+        var card = Card(h);
+        return card.ValueKind == JsonValueKind.Object && card.GetProperty("votedCount").GetInt32() < card.GetProperty("votersCount").GetInt32();
+    }
+
+    /// <summary>Сире тіло ходу — щоб передати те, чого анонімний об'єкт не вміє (самотній сурогат, дроби, величезні числа).</summary>
+    internal static JsonElement Raw(string json) => JsonDocument.Parse(json).RootElement.Clone();
     internal static int[] Mine(RoomHarness h, int seat) => Ints(V(h, seat).GetProperty("me").GetProperty("mine"));
     internal static long Score(RoomHarness h, int seat) =>
         V(h).GetProperty("players").EnumerateArray().First(p => p.GetProperty("seat").GetInt32() == seat).GetProperty("score").GetInt64();
@@ -156,7 +178,7 @@ public class DotepyTests
                 prompts.AddRange(v.GetProperty("prompts").EnumerateArray().Select(p => p.GetString()!));
                 WriteAll(h);
             }
-            else if (phase == "vote" && Voted(h).Length < Voters(h).Length) VoteAll(h, pick ?? (s => [FirstOther(h, s)]));
+            else if (phase == "vote" && Pending(h)) VoteAll(h, pick ?? (s => [FirstOther(h, s)]));
             else if (phase == "reveal" && onReveal is not null)
             {
                 var key = v.GetProperty("round").GetInt32() * 100 + v.GetProperty("card").GetProperty("i").GetInt32();
@@ -227,15 +249,46 @@ public class DotepyTests
         finally { File.Delete(path); }
     }
 
+    /// <summary>
+    /// Банк, що їде з грою (data/dotepy/prompts.json, формат dotepy з CONTENT-FORMATS.md): JSON парситься, id унікальні,
+    /// текст непорожній і ≤ 120, фінальних ≥ 50 — і завантажувач гри не відкинув жодного запису.
+    /// </summary>
     [Fact]
-    public void Starter_bank_has_at_least_30_prompts_and_10_finals_with_unique_ids()
+    public void Bank_file_matches_the_format_and_the_game_loads_every_record()
     {
-        var bank = DotepyBank.Load(Paths.Resolve(DotepyBank.FileName), out var problem);
+        var path = Paths.Resolve(DotepyBank.FileName);
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var root = doc.RootElement;
+        Assert.Equal(1, root.GetProperty("version").GetInt32());
+        var raw = root.GetProperty("prompts").EnumerateArray().ToList();
+        Assert.True(raw.Count >= 350, $"у банку {raw.Count}");
+        var ids = new HashSet<string>();
+        foreach (var p in raw)
+        {
+            var id = p.GetProperty("id").GetString()!;
+            Assert.True(ids.Add(id), $"повторний id {id}");
+            var text = p.GetProperty("text").GetString()!;
+            Assert.False(string.IsNullOrWhiteSpace(text), id);
+            Assert.InRange(text.Length, 10, DotepyBank.MaxText);
+            Assert.Equal(text, text.Trim());
+            Assert.Equal(JsonValueKind.Array, p.GetProperty("tags").ValueKind);
+            Assert.True(p.GetProperty("final").ValueKind is JsonValueKind.True or JsonValueKind.False, id);
+        }
+        Assert.True(raw.Count(p => p.GetProperty("final").GetBoolean()) >= 50);
+        Assert.Equal(raw.Count, raw.Select(p => p.GetProperty("text").GetString()).Distinct().Count());
+
+        var bank = DotepyBank.Load(path, out var problem);
         Assert.Null(problem);
-        Assert.True(bank.Count >= 30, $"у банку {bank.Count}");
-        Assert.True(bank.Count(p => p.Final) >= 10);
-        Assert.Equal(bank.Count, bank.Select(p => p.Id).Distinct().Count());
-        Assert.All(bank, p => Assert.InRange(p.Text.Length, 10, DotepyBank.MaxText));
+        Assert.Equal(raw.Count, bank.Count);
+        // гра вантажить саме цей файл (DotepyBank.All — те, що бере Start без підміни)
+        Assert.Equal(bank.Select(p => p.Id), DotepyBank.All.Select(p => p.Id));
+        var services = new ServiceCollection();
+        services.AddSingleton(new DotepySeen(Dotepy.SeenRing));
+        var h = new RoomHarness("dotepy", null, 3, services.BuildServiceProvider());
+        foreach (var n in Names.Take(3)) Assert.True(h.Join(n).Ok);
+        Assert.True(h.Start().Ok);
+        var texts = bank.Select(p => p.Text).ToHashSet();
+        Assert.All(V(h).GetProperty("prompts").EnumerateArray(), p => Assert.Contains(p.GetString(), texts));
     }
 
     [Fact]
@@ -332,7 +385,7 @@ public class DotepyTests
         h.Tick();
         Until(h, () =>
         {
-            if (Phase(h) == "vote" && Voted(h).Length < Voters(h).Length) VoteAll(h, s => [0]);
+            if (Phase(h) == "vote" && Pending(h)) VoteAll(h, s => [0]);
             return Phase(h) == "write" && V(h).GetProperty("round").GetInt32() == 2;
         });
         Assert.Equal("duel", V(h).GetProperty("mode").GetString());
@@ -388,7 +441,7 @@ public class DotepyTests
         s.Tick();
         Until(s, () =>
         {
-            if (Phase(s) == "vote" && Voted(s).Length < Voters(s).Length) VoteAll(s, x => [FirstOther(s, x)]);
+            if (Phase(s) == "vote" && Pending(s)) VoteAll(s, x => [FirstOther(s, x)]);
             return Phase(s) == "write" && V(s).GetProperty("round").GetInt32() == 2;
         });
         Assert.True(V(s).GetProperty("final").GetBoolean());
@@ -571,7 +624,7 @@ public class DotepyTests
             if (Phase(h) == "vote")
             {
                 if (!seen.Contains(CardI(h))) seen.Add(CardI(h));
-                if (Voted(h).Length < Voters(h).Length) VoteAll(h, _ => [0]);
+                if (Pending(h)) VoteAll(h, _ => [0]);
             }
             return Phase(h) == "table";
         });
@@ -717,19 +770,19 @@ public class DotepyTests
         var voice = new FakeVoice();
         services.AddSingleton<IDotepyVoice>(voice);
         var h = new RoomHarness("dotepy", null, 7, services.BuildServiceProvider());
-        foreach (var n in new[] { "гість Оля", "гість Петро", "гість Ганна" }) Assert.True(h.Join(n).Ok);
+        foreach (var n in new[] { "гість Оля", "гість Петро", "гість Ганна", "гість Іван" }) Assert.True(h.Join(n).Ok);
         Assert.True(h.Start().Ok);
         Assert.Contains(voice.Prepared, p => p.Text == DotepyLines.Sweep("Оля"));
         Assert.DoesNotContain(voice.Prepared, p => p.Text.Contains("гість"));
         WriteAll(h);
         h.Tick();
         var target = Mine(h, 0)[0];
-        h.Act(1, "vote", new { card = 0, picks = new[] { target } });
-        h.Act(2, "vote", new { card = 0, picks = new[] { target } });
+        for (var s = 1; s < 4; s++) h.Act(s, "vote", new { card = 0, picks = new[] { target } });
         h.Act(0, "vote", new { card = 0, picks = new[] { FirstOther(h, 0) } });
         UntilPhase(h, "reveal");
         Assert.Equal(DotepyLines.Sweep("Оля"), Say(h));
         h.Leave("гість Ганна");
+        h.Leave("гість Іван");
         Assert.Equal("Дотепи: гравці розійшлись — попереду гість Оля", h.Outbox.OfType<Journal>().Last().Text);
     }
 
@@ -881,7 +934,7 @@ public class DotepyTests
 
         Until(h, () =>
         {
-            if (Phase(h) == "vote" && V(h).GetProperty("round").GetInt32() == 1 && Voted(h).Length < Voters(h).Length) VoteAll(h, _ => [0]);
+            if (Phase(h) == "vote" && V(h).GetProperty("round").GetInt32() == 1 && Pending(h)) VoteAll(h, _ => [0]);
             if (Phase(h) == "write" && V(h).GetProperty("round").GetInt32() == 2) WriteAll(h);
             return Phase(h) == "vote" && V(h).GetProperty("round").GetInt32() == 2;
         });
@@ -900,7 +953,7 @@ public class DotepyTests
     }
 
     [Fact]
-    public void Sweep_needs_at_least_two_voters_all_for_one_pays_double_bonus_and_asks_the_achievement()
+    public void Sweep_needs_at_least_three_voters_all_for_one_pays_double_bonus_and_asks_the_achievement()
     {
         var h = Table(5);
         WriteAll(h);
@@ -914,26 +967,27 @@ public class DotepyTests
         Assert.Equal(DotepyLines.Sweep(h.NickOf(author)), Say(h));
         Assert.Contains(h.Awards, x => x.Reason == "ach:dotepy-sweep" && x.Nick == h.NickOf(author));
 
-        // лише один суддя — це не «Розгром», а просто голос
-        var one = Table(5, seed: 9);
-        var authors = Enumerable.Range(0, 5).Where(s => Tasks(one, s).Any(t => t.I == 0)).ToArray();
+        // двоє суддів (третій пішов), обидва за одну — це не «Розгром», а просто два голоси
+        var two = Table(5, seed: 9);
+        var authors = Enumerable.Range(0, 5).Where(s => Tasks(two, s).Any(t => t.I == 0)).ToArray();
         var judges = Enumerable.Range(0, 5).Except(authors).ToArray();
-        one.Leave(one.NickOf(judges[0]));
-        one.Leave(one.NickOf(judges[1]));
-        WriteAll(one);
-        one.Clock.AdvanceMs(90_000);
-        one.Tick();
-        Assert.Equal(0, CardI(one));
-        Assert.Equal([judges[2]], Voters(one));
-        Assert.True(one.Act(judges[2], "vote", new { card = 0, picks = new[] { 0 } }).Ok);
-        one.Tick();
-        Assert.Equal(JsonValueKind.Null, Card(one).GetProperty("sweep").ValueKind);
-        Assert.Equal(100, Answers(one)[0].GetProperty("points").GetInt32());
-        Assert.DoesNotContain(one.Awards, x => x.Reason == "ach:dotepy-sweep");
+        two.Leave(two.NickOf(judges[0]));
+        WriteAll(two);
+        two.Clock.AdvanceMs(90_000);
+        two.Tick();
+        Assert.Equal(0, CardI(two));
+        Assert.Equal([judges[1], judges[2]], Voters(two));
+        Assert.True(two.Act(judges[1], "vote", new { card = 0, picks = new[] { 0 } }).Ok);
+        Assert.True(two.Act(judges[2], "vote", new { card = 0, picks = new[] { 0 } }).Ok);
+        two.Tick();
+        Assert.Equal("reveal", Phase(two));
+        Assert.Equal(JsonValueKind.Null, Card(two).GetProperty("sweep").ValueKind);
+        Assert.Equal(200, Answers(two)[0].GetProperty("points").GetInt32());
+        Assert.DoesNotContain(two.Awards, x => x.Reason == "ach:dotepy-sweep");
     }
 
     [Fact]
-    public void Sweep_in_all_mode_counts_everyone_but_the_author()
+    public void On_three_players_both_others_agreeing_is_just_two_votes_not_a_sweep()
     {
         var h = Table(3);
         WriteAll(h);
@@ -943,8 +997,25 @@ public class DotepyTests
         Assert.True(h.Act(2, "vote", new { card = 0, picks = new[] { target } }).Ok);
         Assert.True(h.Act(0, "vote", new { card = 0, picks = new[] { FirstOther(h, 0) } }).Ok);
         h.Tick();
+        Assert.Equal("reveal", Phase(h));
+        Assert.Equal(JsonValueKind.Null, Card(h).GetProperty("sweep").ValueKind);
+        Assert.Equal(200, Answers(h)[target].GetProperty("points").GetInt32());
+        Assert.Equal(DotepyLines.Win("Оля"), Say(h));
+        Assert.DoesNotContain(h.Awards, x => x.Reason == "ach:dotepy-sweep");
+    }
+
+    [Fact]
+    public void Sweep_in_all_mode_counts_everyone_but_the_author()
+    {
+        var h = Table(4);
+        WriteAll(h);
+        h.Tick();
+        var target = Mine(h, 0)[0];
+        for (var s = 1; s < 4; s++) Assert.True(h.Act(s, "vote", new { card = 0, picks = new[] { target } }).Ok);
+        Assert.True(h.Act(0, "vote", new { card = 0, picks = new[] { FirstOther(h, 0) } }).Ok);
+        h.Tick();
         Assert.Equal(target, Card(h).GetProperty("sweep").GetInt32());
-        Assert.Equal(200 + Dotepy.SweepBonus(1), Answers(h)[target].GetProperty("points").GetInt32());
+        Assert.Equal(300 + Dotepy.SweepBonus(1), Answers(h)[target].GetProperty("points").GetInt32());
     }
 
     [Fact]
@@ -1056,7 +1127,7 @@ public class DotepyTests
         Assert.True(h.Room.Result!.Draw);
         Assert.Empty(V(h).GetProperty("result").GetProperty("winners").EnumerateArray());
         Assert.EndsWith("— нічия", h.Outbox.OfType<Journal>().Last().Text);
-        Assert.Equal(DotepyLines.GameTie, Say(h));
+        Assert.Equal(DotepyLines.GameNone, Say(h));
         Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:dotepy-king");
     }
 
@@ -1088,7 +1159,7 @@ public class DotepyTests
             switch (v.GetProperty("phase").GetString())
             {
                 case "write": WriteAll(h); break;
-                case "vote" when Voted(h).Length < Voters(h).Length: VoteAll(h, s => [FirstOther(h, s)]); break;
+                case "vote" when Pending(h): VoteAll(h, s => [FirstOther(h, s)]); break;
                 case "table":
                     var best = v.GetProperty("table").GetProperty("best");
                     Assert.Equal(perRound[round], best.GetProperty("points").GetInt32());
@@ -1153,7 +1224,7 @@ public class DotepyTests
         // раунд 1: усі голоси — за місце 4, де воно автор
         Until(h, () =>
         {
-            if (Phase(h) == "vote" && Voted(h).Length < Voters(h).Length)
+            if (Phase(h) == "vote" && Pending(h))
                 VoteAll(h, s => Mine(h, 4) is { Length: > 0 } m ? [m[0]] : [0]);
             return Phase(h) == "write";
         });
@@ -1172,7 +1243,7 @@ public class DotepyTests
             if (Phase(h) == "vote")
             {
                 Assert.DoesNotContain(4, Voters(h));
-                if (Voted(h).Length < Voters(h).Length) VoteAll(h, s => [FirstOther(h, s)]);
+                if (Pending(h)) VoteAll(h, s => [FirstOther(h, s)]);
             }
             if (Phase(h) == "reveal")
                 foreach (var a in Answers(h).EnumerateArray())
@@ -1189,7 +1260,7 @@ public class DotepyTests
         Assert.Equal(kept, Score(h, 4));
         Assert.DoesNotContain(4, h.Room.Result!.Winners);
         Assert.DoesNotContain(h.Scores, e => e.Nick == gone);
-        Assert.DoesNotContain(gone, h.Outbox.OfType<Journal>().Last().Text);
+        Assert.DoesNotContain(gone, h.Outbox.OfType<Journal>().Last().Text.Split(" · ")[0]);   // у рахунку — ні; «дотеп партії» може бути й його
     }
 
     [Fact]
@@ -1220,12 +1291,20 @@ public class DotepyTests
         h.Act(0, "vote", new { card = 0, picks = new[] { FirstOther(h, 0) } });
         h.Tick();
         Assert.True(Score(h, 0) > Score(h, 1));
+        var scores = new[] { Score(h, 0), Score(h, 1) };
         h.Leave(h.NickOf(2));
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Equal("Дотепи: гравці розійшлись — попереду Оля", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Equal("done", Phase(h));
         Assert.Equal(DotepyLines.GameWin("Оля"), Say(h));       // не «Раунд перший…», що висів до виходу
+        // рахунки тих, хто лишився, — у таблицю, як і в дограній партії; того, хто пішов, — ні
+        Assert.Equal(2, h.Scores.Count);
+        Assert.Equal(scores[0], (long)h.Scores.Single(e => e.Nick == "Оля").Score);
+        Assert.Equal(scores[1], (long)h.Scores.Single(e => e.Nick == "Петро").Score);
+        var result = V(h).GetProperty("result");
+        Assert.True(result.GetProperty("early").GetBoolean());
+        Assert.Equal([0], Ints(result.GetProperty("winners")));
 
         var zero = Table(3);
         zero.Leave(zero.NickOf(1));
@@ -1253,9 +1332,13 @@ public class DotepyTests
         {
             var view = V(h, seat);
             foreach (var a in view.GetProperty("card").GetProperty("answers").EnumerateArray())
-                foreach (var hidden in new[] { "seat", "votes", "jury", "points", "rank", "medals", "prize" })
+                foreach (var hidden in new[] { "seat", "votes", "jury", "juryBy", "points", "rank", "medals", "prize", "laughs" })
                     Assert.Equal(JsonValueKind.Null, a.GetProperty(hidden).ValueKind);
-            Assert.Equal([v[0]], Ints(view.GetProperty("card").GetProperty("voted")));
+            // дуель: хто суддя і хто вже проголосував — лише числами (імена видали б авторів)
+            Assert.Empty(view.GetProperty("card").GetProperty("voted").EnumerateArray());
+            Assert.Equal(1, view.GetProperty("card").GetProperty("votedCount").GetInt32());
+            Assert.Equal(3, view.GetProperty("card").GetProperty("votersCount").GetInt32());
+            Assert.All(view.GetProperty("players").EnumerateArray(), p => Assert.False(p.GetProperty("voted").GetBoolean()));
             Assert.Equal(1, view.GetProperty("card").GetProperty("juryVotes").GetInt32());
             if (seat is { } s)
             {
@@ -1307,8 +1390,8 @@ public class DotepyTests
         WriteAll(h);
         h.Tick();
         var card = Card(h);
-        Assert.Equal(["i", "of", "prompt", "answers", "voters", "voted", "juryVotes", "perVoter", "ranked", "sweep", "shown"], Keys(card));
-        Assert.Equal(["text", "stock", "seat", "votes", "medals", "jury", "points", "rank", "prize"], Keys(card.GetProperty("answers")[0]));
+        Assert.Equal(["i", "of", "prompt", "answers", "votersCount", "votedCount", "voted", "juryVotes", "perVoter", "ranked", "sweep", "jinx", "shown"], Keys(card));
+        Assert.Equal(["text", "stock", "seat", "votes", "medals", "jury", "juryBy", "points", "rank", "prize", "laughs"], Keys(card.GetProperty("answers")[0]));
         Assert.Equal(5, card.GetProperty("of").GetInt32());
         Assert.Equal(2, card.GetProperty("shown").GetInt32());
         Assert.Empty(V(h).GetProperty("prompts").EnumerateArray());
@@ -1316,7 +1399,7 @@ public class DotepyTests
 
         Until(h, () =>
         {
-            if (Phase(h) == "vote" && Voted(h).Length < Voters(h).Length) VoteAll(h, _ => [0]);
+            if (Phase(h) == "vote" && Pending(h)) VoteAll(h, _ => [0]);
             return Phase(h) == "table";
         });
         var table = V(h).GetProperty("table");
@@ -1326,7 +1409,8 @@ public class DotepyTests
 
         PlayMatch(h);
         var result = V(h).GetProperty("result");
-        Assert.Equal(["winners", "scores", "best"], Keys(result));
+        Assert.Equal(["winners", "scores", "best", "early"], Keys(result));
+        Assert.False(result.GetProperty("early").GetBoolean());
         Assert.Equal(Dotepy.MaxSeats, result.GetProperty("scores").GetArrayLength());
         Assert.Equal(JsonValueKind.Null, V(h).GetProperty("card").ValueKind);
     }
@@ -1387,6 +1471,10 @@ public class DotepyTests
         h.Tick();
         var voter = Voters(h)[0];
         Assert.True(h.Act(voter, "vote", new { card = CardI(h), picks = new[] { 1 } }).Ok, h.Reply.Message);
+        VoteAll(h, _ => [0]);
+        h.Tick();
+        Assert.Equal("reveal", Phase(h));
+        Assert.True(h.Act(voter, "laugh", Views.Payload(new { card = CardI(h), i = 0 })).Ok, h.Reply.Message);
 
         var f = Table(4, options: new { rounds = "blitz" });
         WriteAll(f);
@@ -1410,7 +1498,7 @@ public class DotepyTests
         {
             var phase = Phase(h);
             if (phase == "write") WriteAll(h, skip: [2]);
-            else if (phase == "vote" && Voted(h).Length < Voters(h).Length) VoteAll(h, s => [FirstOther(h, s)]);
+            else if (phase == "vote" && Pending(h)) VoteAll(h, s => [FirstOther(h, s)]);
             h.Tick();
             Snap();
         }
@@ -1648,6 +1736,362 @@ public class DotepyTests
         Assert.Empty(v.GetProperty("me").GetProperty("tasks").EnumerateArray());
         Assert.Equal(JsonValueKind.Null, v.GetProperty("card").ValueKind);
     }
+
+    // ======================================================================================
+    // після рецензій (27.09): криві рядки, витоки авторів, публіка, голос, сміх, «Думки сходяться!»
+    // ======================================================================================
+
+    [Fact]
+    public void A_lone_surrogate_in_an_answer_or_a_draft_does_not_break_the_match()
+    {
+        var h = Table(3);
+        // «\ud800» — валідний JSON, але не валідний UTF-16: раніше GetString кидав, і стіл закривався «партія зламалась»
+        var r = h.Act(0, "answer", Raw("""{"i":0,"text":"ха\ud800ха"}"""));
+        Assert.False(r.Ok);
+        Assert.Equal("Порожній дотеп — то ще не дотеп", r.Message);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        h.Input(0, "draft", Raw("""{"i":1,"text":"\udc00"}"""));
+        h.Tick();
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal("", V(h, 0).GetProperty("me").GetProperty("tasks")[1].GetProperty("text").GetString());
+        // пара сурогатів — це емодзі, воно проходить ціле
+        Assert.True(h.Act(0, "answer", Raw("""{"i":0,"text":"кіт 😂"}""")).Ok, h.Reply.Message);
+        Assert.Equal("кіт 😂", V(h, 0).GetProperty("me").GetProperty("tasks")[0].GetProperty("text").GetString());
+        // і самотній сурогат, якщо колись просочиться іншим шляхом, чистка прибирає — вид лишається серіалізовним
+        Assert.Equal("аб", Dotepy.Clean("а\ud800б\udc00"));
+        // дробові, величезні й нечислові індекси — звичайна відмова, не падіння
+        foreach (var raw in new[] { """{"i":0.5,"text":"x"}""", """{"i":1e40,"text":"x"}""", """{"i":"0","text":"x"}""", "[]", "null" })
+            Assert.Equal("Це не твоє завдання", h.Act(1, "answer", Raw(raw)).Message);
+        WriteAll(h);
+        h.Tick();
+        foreach (var raw in new[] { """{"card":0,"picks":[0.5]}""", """{"card":0,"picks":[1e40]}""", """{"card":0,"picks":{"a":1}}""" })
+            Assert.False(h.Act(1, "vote", Raw(raw)).Ok);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.NotEmpty(Views.Text(Game(h).View(null)));
+    }
+
+    [Theory]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(8)]
+    public void In_a_duel_vote_the_views_do_not_tell_who_the_authors_are(int players)
+    {
+        var h = Table(players, seed: 50 + players);
+        WriteAll(h);
+        h.Tick();
+        Assert.Equal("duel", V(h).GetProperty("mode").GetString());
+        var judges = Voters(h);
+        Assert.Equal(players - 2, judges.Length);
+        static string Strip(string json) => System.Text.RegularExpressions.Regex.Replace(json, "\"votedCount\":\\d+", "");
+        var first = Strip(V(h).GetRawText());
+        Assert.False(Views.Has(Card(h), "voters"));
+        // судді голосують по одному: спільний вид міняє лише лічильник — ні списку, ні позначок «проголосував»
+        foreach (var j in judges.SkipLast(1))
+        {
+            Assert.True(h.Act(j, "vote", new { card = CardI(h), picks = new[] { 0 } }).Ok);
+            h.Tick();
+            Assert.Equal("vote", Phase(h));
+            Assert.Equal(first, Strip(V(h).GetRawText()));
+            // вид судді від виду глядача відрізняється лише своїм «me»
+            foreach (var s in judges)
+            {
+                var mine = V(h, s);
+                Assert.Empty(Mine(h, s));
+                foreach (var p in mine.EnumerateObject())
+                    if (p.Name != "me") Assert.Equal(V(h).GetProperty(p.Name).GetRawText(), p.Value.GetRawText());
+            }
+        }
+    }
+
+    [Fact]
+    public void Card_order_in_a_duel_does_not_chain_authors_of_neighbouring_cards()
+    {
+        // раніше картки йшли по колу пар: сусідні завжди мали спільного автора, і після двох розкриттів стіл знав
+        // одного автора третьої картки ще до голосування
+        var chained = 0;
+        const int seeds = 12;
+        for (var seed = 1; seed <= seeds; seed++)
+        {
+            var h = Table(6, seed: seed);
+            var authors = new List<int>[6];
+            for (var k = 0; k < 6; k++) authors[k] = [];
+            for (var s = 0; s < 6; s++) foreach (var (i, _) in Tasks(h, s)) authors[i].Add(s);
+            var all = true;
+            for (var k = 0; k + 1 < 6; k++) all &= authors[k].Intersect(authors[k + 1]).Any();
+            if (all) chained++;
+        }
+        Assert.True(chained < seeds, $"сусідні картки мали спільного автора в усіх {seeds} партіях");
+    }
+
+    [Fact]
+    public void Resubmitting_an_answer_does_not_flood_the_voice_queue()
+    {
+        var voice = new FakeVoice(readyAfter: -1);
+        var h = Table(5, voice: voice);
+        voice.Prepared.Clear();
+        var authors = Enumerable.Range(0, 5).Where(s => Tasks(h, s).Any(t => t.I == 0)).ToArray();
+        var prompt = V(h).GetProperty("prompts")[0].GetString()!;
+        Assert.True(h.Act(authors[1], "answer", new { i = 0, text = "Другий" }).Ok);
+        for (var n = 0; n < 20; n++)
+        {
+            Assert.True(h.Act(authors[0], "answer", new { i = 0, text = $"Версія {n}" }).Ok);
+            Assert.True(h.Act(authors[0], "edit", new { i = 0 }).Ok);
+        }
+        var early = voice.Prepared.Where(p => p.Text.StartsWith(prompt, StringComparison.Ordinal)).ToList();
+        Assert.Single(early, p => p.Urgent);
+        Assert.InRange(early.Count, 1, Dotepy.EarlyVoicings);
+    }
+
+    [Fact]
+    public void A_dead_voice_does_not_hold_cards_once_the_intro_never_arrived()
+    {
+        // edge-tts лежить: вступ, поставлений терміново на старті, за 20 с так і не озвучився — картки не чекають
+        var h = Table(3, voice: new FakeVoice(readyAfter: -1));
+        h.Tick(Dotepy.IntroGraceMs / Dotepy.TickMs + 1);
+        WriteAll(h);
+        h.Tick();
+        Assert.Equal("vote", Phase(h));
+        Assert.False(V(h).GetProperty("waiting").GetBoolean());
+        Assert.Equal(JsonValueKind.String, V(h).GetProperty("endsAt").ValueKind);
+    }
+
+    [Fact]
+    public void A_dead_voice_stops_holding_cards_after_two_clips_never_came()
+    {
+        var h = Table(3, voice: new FakeVoice(readyAfter: -1));
+        WriteAll(h);                  // здали миттєво — вступ перевіряти ще рано, тож чекаємо на кліп
+        h.Tick();
+        var waited = new List<bool>();
+        var lastCard = -1;
+        for (var guard = 0; guard < 4000 && h.Room.Status == RoomStatus.Playing; guard++)
+        {
+            var v = V(h);
+            var phase = v.GetProperty("phase").GetString();
+            if (phase == "write") WriteAll(h);
+            if (phase == "vote")
+            {
+                var key = v.GetProperty("round").GetInt32() * 100 + CardI(h);
+                if (key != lastCard) { lastCard = key; waited.Add(v.GetProperty("waiting").GetBoolean()); }
+                if (!v.GetProperty("waiting").GetBoolean() && Pending(h)) VoteAll(h, s => [FirstOther(h, s)]);
+            }
+            h.Tick();
+        }
+        // дві картки чекали й не дочекались, далі (друга картка раунду 2 і фінал) — жодного очікування
+        Assert.True(waited.Count >= 4, string.Join(",", waited));
+        Assert.Equal([true, true], waited.Take(2));
+        Assert.All(waited.Skip(2), w => Assert.False(w));
+    }
+
+    [Fact]
+    public void Identical_duel_answers_skip_the_vote_and_pay_both_as_one_vote()
+    {
+        var h = Table(5, voice: new FakeVoice());
+        var authors = Enumerable.Range(0, 5).Where(s => Tasks(h, s).Any(t => t.I == 0)).ToArray();
+        var prompt = V(h).GetProperty("prompts")[0].GetString()!;
+        Assert.True(h.Act(authors[0], "answer", new { i = 0, text = "Спочатку було слово, а потім теща" }).Ok);
+        Assert.True(h.Act(authors[1], "answer", new { i = 0, text = "спочатку було слово а потім ТЕЩА!" }).Ok);
+        WriteAll(h);
+        h.Tick();
+        Assert.Equal(0, CardI(h));
+        Assert.Equal("reveal", Phase(h));                    // голосувати за дві однакові кнопки не треба
+        var card = Card(h);
+        Assert.True(card.GetProperty("jinx").GetBoolean());
+        Assert.All(card.GetProperty("answers").EnumerateArray(), a =>
+        {
+            Assert.Contains(a.GetProperty("seat").GetInt32(), authors);
+            Assert.Equal(Dotepy.JinxPoints(1), a.GetProperty("points").GetInt32());
+        });
+        foreach (var a in authors) Assert.Equal(Dotepy.JinxPoints(1), Score(h, a));
+        Assert.StartsWith(prompt, Say(h));
+        Assert.Contains("Думки сходяться!", Say(h));
+        Assert.Equal("Зараз не голосують", h.Act(Enumerable.Range(0, 5).Except(authors).First(), "vote", new { card = 0, picks = new[] { 0 } }).Message);
+        UntilPhase(h, "vote");
+        Assert.Equal(1, CardI(h));
+        Assert.False(Dotepy.Same("теща", "тесть"));
+        Assert.False(Dotepy.Same("😂", "😂"));
+    }
+
+    [Fact]
+    public void Laughs_count_once_per_person_per_answer_only_on_the_reveal_and_never_for_yourself()
+    {
+        var h = Table(4);
+        WriteAll(h);
+        h.Tick();
+        Assert.Equal("Зараз не смішно", h.Act(0, "laugh", new { card = 0, i = 0 }).Message);
+        VoteAll(h, s => [FirstOther(h, s)]);
+        h.Tick();
+        Assert.Equal("reveal", Phase(h));
+        var own = Mine(h, 0)[0];
+        var other = FirstOther(h, 0);
+        var points = Answers(h)[other].GetProperty("points").GetInt32();
+        var score = Score(h, Answers(h)[other].GetProperty("seat").GetInt32());
+        Assert.Equal("Зі свого не сміються — хай сміються інші", h.Act(0, "laugh", new { card = 0, i = own }).Message);
+        Assert.True(h.Act(0, "laugh", new { card = 0, i = other }).Ok);
+        Assert.True(h.Act(0, "laugh", new { card = 0, i = other }).Ok);          // повторний — мовчки нічого
+        Assert.Equal("Ця картка вже пішла", h.Act(1, "laugh", new { card = 1, i = other }).Message);
+        Assert.Equal("Такої відповіді нема", h.Act(1, "laugh", new { card = 0, i = 9 }).Message);
+        lock (h.Room.Sync) Assert.True(Game(h).JuryLaugh("глядач", 0, other).Ok);
+        h.Tick();
+        Assert.Equal(2, Answers(h)[other].GetProperty("laughs").GetInt32());
+        Assert.Equal(0, Answers(h)[own].GetProperty("laughs").GetInt32());
+        // сміх очок не дає
+        Assert.Equal(points, Answers(h)[other].GetProperty("points").GetInt32());
+        Assert.Equal(score, Score(h, Answers(h)[other].GetProperty("seat").GetInt32()));
+
+        // фінал: сміятись можна лише з уже розкритої відповіді
+        var f = Table(4, options: new { rounds = "blitz" });
+        WriteAll(f);
+        f.Tick();
+        VoteAll(f, s => Ballot(f, s));
+        f.Tick();
+        Assert.Equal("reveal", Phase(f));
+        Assert.Equal("Такої відповіді нема", f.Act(0, "laugh", new { card = 0, i = FirstOther(f, 0) }).Message);
+        f.Tick(Dotepy.FinalStepMs * 4 / Dotepy.TickMs);
+        Assert.True(f.Act(0, "laugh", new { card = 0, i = FirstOther(f, 0) }).Ok);
+    }
+
+    [Fact]
+    public void Spectator_laughs_go_through_the_jury_service_with_its_checks()
+    {
+        var h = Table(3);
+        var presence = new Presence();
+        var jury = new DotepyJury(h.Rooms, presence, h.Clock);
+        WriteAll(h);
+        h.Tick();
+        VoteAll(h, s => [FirstOther(h, s)]);
+        h.Tick();
+        Assert.Equal("Ти за столом — смійся на картці", jury.Laugh("Оля", h.RoomId, 0, 0).Message);
+        Assert.Equal("Спершу відкрий цей стіл", jury.Laugh("Глядач", h.RoomId, 0, 0).Message);
+        presence.Set("c1", "Глядач");
+        h.Rooms.Watch(h.RoomId, "c1", "Глядач");
+        Assert.True(jury.Laugh("Глядач", h.RoomId, 0, 0).Ok);
+        h.Tick();
+        Assert.Equal(1, Answers(h)[0].GetProperty("laughs").GetInt32());
+    }
+
+    [Fact]
+    public void A_lone_spectator_or_a_players_guest_tab_cannot_win_the_jury_prize()
+    {
+        // Рецензія: «Оля» відкриває приватне вікно як «гість Хтось» і голосує публікою за свій дотеп
+        var h = Table(3);
+        WriteAll(h);
+        h.Tick();
+        var olya = Mine(h, 0)[0];
+        lock (h.Room.Sync) Assert.True(Game(h).JuryVote("гість Хтось", 0, olya).Ok);
+        for (var s = 1; s < 3; s++) h.Act(s, "vote", new { card = 0, picks = new[] { Enumerable.Range(0, 3).First(i => i != olya && !Mine(h, s).Contains(i)) } });
+        h.Act(0, "vote", new { card = 0, picks = new[] { FirstOther(h, 0) } });
+        h.Tick();
+        Assert.Equal("reveal", Phase(h));
+        var a = Answers(h)[olya];
+        Assert.False(a.GetProperty("prize").GetBoolean());
+        Assert.Equal(0, a.GetProperty("points").GetInt32());
+        Assert.Equal(1, a.GetProperty("jury").GetInt32());
+        Assert.Equal(["гість Хтось"], a.GetProperty("juryBy").EnumerateArray().Select(x => x.GetString()));   // і видно, хто це
+
+        // двоє глядачів за одну — оце вже публіка
+        UntilPhase(h, "vote");
+        var target = FirstOther(h, 0);
+        lock (h.Room.Sync)
+        {
+            Game(h).JuryVote("Марта", 1, target);
+            Game(h).JuryVote("гість Тарас", 1, target);
+        }
+        VoteAll(h, s => [FirstOther(h, s)]);
+        h.Tick();
+        Assert.True(Answers(h)[target].GetProperty("prize").GetBoolean());
+        Assert.Equal(2, Answers(h)[target].GetProperty("juryBy").GetArrayLength());
+    }
+
+    [Fact]
+    public void Leaving_down_to_two_sends_scores_of_those_left_but_no_king()
+    {
+        var h = Table(5, seed: 44);
+        WriteAll(h);
+        h.Tick();
+        VoteAll(h, _ => [0]);
+        h.Tick();
+        Assert.Equal("reveal", Phase(h));
+        var stay = Present(h).Take(2).ToArray();
+        var scores = stay.Select(s => Score(h, s)).ToArray();
+        foreach (var s in Present(h).Skip(2).ToArray()) h.Leave(h.NickOf(s));
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(2, h.Scores.Count);
+        for (var k = 0; k < 2; k++) Assert.Equal(scores[k], (long)h.Scores.Single(e => e.Nick == Names[stay[k]]).Score);
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:dotepy-king");
+        Assert.True(V(h).GetProperty("result").GetProperty("early").GetBoolean());
+    }
+
+    [Fact]
+    public void Seen_prompts_come_back_oldest_first_once_the_bank_has_gone_round()
+    {
+        var seen = new DotepySeen(Dotepy.SeenRing);
+        var bank = Bank(normal: 10, finals: 0);
+        // увесь банк уже бачений; найдавніше — n004, потім n009
+        seen.Mark(["n004", "n009", "n001", "n002", "n003", "n005", "n006", "n007", "n008", "n010"]);
+        var h = Table(3, options: new { rounds = "short" }, bank: bank, seen: seen);
+        var prompts = V(h).GetProperty("prompts").EnumerateArray().Select(p => p.GetString()).ToHashSet();
+        Assert.Equal(["Звичайне завдання номер 4", "Звичайне завдання номер 9"], prompts.Order());
+    }
+
+    [Fact]
+    public void Journal_line_carries_the_joke_of_the_match()
+    {
+        var h = Table(4, seed: 21);
+        PlayMatch(h, s => Ballot(h, s));
+        var line = h.Outbox.OfType<Journal>().Last().Text;
+        var best = V(h).GetProperty("result").GetProperty("best")[0];
+        Assert.EndsWith($" · дотеп партії: «{best.GetProperty("text").GetString()}» ({Names[best.GetProperty("seat").GetInt32()]})", line);
+    }
+}
+
+/// <summary>Бойовий голос «Дотепів» поверх справжнього <see cref="TtsService"/> (рушій — фейковий).</summary>
+public sealed class DotepyVoiceTests : IDisposable
+{
+    readonly string _dir = Path.Combine(Path.GetTempPath(), "dotepy-tts-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
+    }
+
+    TtsService Tts(FakeTtsEngine? engine = null) =>
+        new(engine ?? new FakeTtsEngine(), new FixedOptions<TtsOptions>(new TtsOptions { CacheDir = _dir }),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<TtsService>.Instance);
+
+    [Fact]
+    public async Task Ready_looks_only_in_memory_and_the_poller_picks_up_clips_from_disk()
+    {
+        // кліп лишився на диску з минулого запуску сервера
+        var before = Tts();
+        before.Enqueue("ostap", [DotepyVoice.Clean(DotepyLines.Round1)]);
+        while (await before.StepAsync(CancellationToken.None)) { }
+
+        using var voice = new DotepyVoice(Tts());
+        Assert.True(voice.Enabled);
+        // під замком кімнати — лише словник у пам'яті: файл є, але Ready на диск не лізе
+        Assert.Null(voice.Ready("ostap", DotepyLines.Round1));
+        voice.Poll();                                        // це робить фоновий опитувач
+        var clip = voice.Ready("ostap", DotepyLines.Round1);
+        Assert.NotNull(clip);
+        Assert.StartsWith(SvoyaVoice.UrlPrefix, clip!.Url);
+        Assert.Equal(1.5, clip.Seconds);
+        Assert.Null(voice.Ready("polina", DotepyLines.Round1));   // інший голос — інший кліп
+    }
+
+    [Fact]
+    public async Task A_prepared_line_becomes_ready_after_the_queue_voices_it()
+    {
+        var engine = new FakeTtsEngine();
+        var tts = Tts(engine);
+        using var voice = new DotepyVoice(tts);
+        voice.Prepare("ostap", ["Картку забирає Оля 😂"], urgent: true);
+        Assert.Equal(1, tts.Queued);
+        Assert.Null(voice.Ready("ostap", "Картку забирає Оля 😂"));
+        while (await tts.StepAsync(CancellationToken.None)) { }
+        Assert.Equal(["Картку забирає Оля"], engine.Said);    // емодзі голосом не читаємо
+        voice.Poll();
+        Assert.NotNull(voice.Ready("ostap", "Картку забирає Оля 😂"));
+    }
 }
 
 /// <summary>Швидкодія «Дотепів»: окремо й без сусідів, бо міряє стінним годинником (<see cref="SerialPerf"/>).</summary>
@@ -1672,7 +2116,7 @@ public class DotepyPerfTests(ITestOutputHelper output)
         {
             var phase = DotepyTests.Phase(h);
             if (phase == "write") DotepyTests.WriteAll(h, (s, i) => $"Дотеп місця {s} на завдання {i}: про глек і кота");
-            else if (phase == "vote" && DotepyTests.Voted(h).Length < DotepyTests.Voters(h).Length)
+            else if (phase == "vote" && DotepyTests.Pending(h))
                 DotepyTests.VoteAll(h, s => DotepyTests.Ballot(h, s));
             var before = h.Outbox.Count;
             tick.Start();

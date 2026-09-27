@@ -6,11 +6,13 @@
     { phase: 'lobby'|'write'|'vote'|'reveal'|'table'|'done', round, rounds, final, mode: 'duel'|'all',
       endsAt, totalMs, waiting, voice, players: [{ seat, nick, score, ready, voted, left }], prompts: string[],
       me: null | { tasks: [{ i, prompt, text, done }], mine: number[], voter, picks: number[] },
-      card: null | { i, of, prompt, answers: [{ text, stock, seat, votes, medals, jury, points, rank, prize }],
-                     voters, voted, juryVotes, perVoter, ranked, sweep, shown },
-      say: null | { id, text, url, seconds }, table: null | { rows, best }, result: null | { winners, scores, best } }
-  Ходи: Input('draft', { i, text }) · Act('answer', { i, text }) · Act('edit', { i }) · Act('vote', { card, picks }).
-  Глядач голосує як публіка: POST /api/games/dotepy/jury { room, card, pick }.
+      card: null | { i, of, prompt, answers: [{ text, stock, seat, votes, medals, jury, juryBy, points, rank, prize, laughs }],
+                     votersCount, votedCount, voted, juryVotes, perVoter, ranked, sweep, jinx, shown },
+      say: null | { id, text, url, seconds }, table: null | { rows, best }, result: null | { winners, scores, best, early } }
+  У дуелі до розкриття нема ні списку суддів, ні «хто проголосував» (це видало б двох авторів) — лише лічильники.
+  Ходи: Input('draft', { i, text }) · Act('answer', { i, text }) · Act('edit', { i }) · Act('vote', { card, picks })
+        · Act('laugh', { card, i }) — «😂» на розкритті.
+  Глядач голосує як публіка: POST /api/games/dotepy/jury { room, card, pick }; сміється — POST /api/games/dotepy/laugh { room, card, i }.
 
   DOM оновлюється лише на подію 'room' (≤ 4 на секунду) і лише той поверх, чий підпис змінився. Анімації — CSS.
 */
@@ -26,6 +28,7 @@
   const MEDALS = ['🥇', '🥈', '🥉'];
   const SPK_KEY = 'dotepySpeaker';
   const CONFETTI = ['😂', '🤣', '💥', '🏺', '✨', '🎉'];
+  const PAD_SETTLE = 450;     // мс: поки картки сцени проявляться (dt-rise), кільце пада на них не ставимо
 
   const reduced = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -33,8 +36,27 @@
     if (!root._dt) root._dt = {
       keys: {}, sayId: 0, speaking: false, reading: false, next: null, later: 0, line: 0, radioMuted: null,
       drafts: {}, draftTimers: {}, local: null, jury: null, ac: null, stale: false, stats: { n: 0, sum: 0, max: 0 },
+      laughed: new Set(), timers: new Set(),
     };
     return root._dt;
+  }
+
+  /// setTimeout, який unmount гарантовано зніме (звуки, конфеті, «😂» — усе, що може пережити картку).
+  function later(s, fn, ms) {
+    const id = setTimeout(() => { s.timers.delete(id); fn(); }, ms);
+    s.timers.add(id);
+    return id;
+  }
+
+  /// Пад (Steam Deck): поставити кільце сюди. Кожна нова сцена сама каже, де кільцю бути, — інакше після
+  /// перебудови воно падало на найближчу кнопку, а нею бувало «Встати» каркаса (одне Ⓐ — і партія на трьох скінчена).
+  function padTo(root, el) {
+    const P = window.HPad;
+    if (!P || !P.on || !el || !el.isConnected || typeof P.focus !== 'function') return;
+    const a = document.activeElement;
+    // людина саме друкує (екранна клавіатура пада на полі) — кільце не чіпаємо
+    if (a && a !== el && /^(INPUT|TEXTAREA)$/.test(a.tagName) && !a.disabled && root.contains(a)) return;
+    try { P.focus(el); } catch { /* пад — прикраса */ }
   }
 
   const col = (seat) => 'var(--dt-p' + seat + ', var(--accent))';
@@ -90,11 +112,12 @@
     const list = lobbyOf(ctx, v) ? [] : (v.players || []);
     const voting = v.phase === 'vote';
     const writing = v.phase === 'write';
-    const voters = (v.card && v.card.voters) || [];
+    // Лише ✓ тим, хто вже проголосував (сервер ставить його тільки там, де це нічого не видає: «на всіх» і фінал).
+    // Жодних «🎭 автор / 🤔 суддя»: у дуелі це й були два автори картки.
     const html = list.map((p) => {
       const mark = p.left ? '🚪'
         : writing ? (p.ready ? '✓' : '✍')
-        : voting ? (p.voted ? '✓' : voters.includes(p.seat) ? '🤔' : '🎭')
+        : voting && p.voted ? '✓'
         : '';
       const full = p.nick || '';
       return '<span class="dt-pl' + (p.left ? ' left' : '') + (mark === '✓' ? ' ok' : '') + '" style="--c:' + col(p.seat) + '" title="'
@@ -133,24 +156,75 @@
       s.keys = { stage: key };
       s.local = null;
       stage.className = 'dt-stage dt-' + key.split('|')[0];
-      if (key === 'lobby') stage.innerHTML = lobbyHtml();
+      if (key === 'lobby') stage.innerHTML = lobbyHtml(ctx);
       else if (key.startsWith('write')) buildWrite(root, ctx, v, stage);
       else if (key.startsWith('card')) buildCard(root, ctx, v, stage);
       else if (key.startsWith('table')) buildTable(root, ctx, v, stage);
       else if (key.startsWith('done')) buildDone(root, ctx, v, stage);
       else stage.innerHTML = '';
+      padScene(root, stage);
+    }
+    if (key === 'lobby') {
+      // склад міняється й до старту: на шістьох підказуємо коротку партію
+      const tip = stage.querySelector('.dt-howtip');
+      const text = lobbyTip(ctx);
+      if (tip && tip.textContent !== text) { tip.textContent = text; tip.hidden = !text; }
     }
     if (key.startsWith('write')) refreshWrite(root, ctx, v, stage);
     else if (key.startsWith('card')) refreshCard(root, ctx, v, stage);
   }
 
-  function lobbyHtml() {
+  /// Де стати кільцю пада на новій сцені: перша жива ціль ([data-pad-first]) або тиха «стоянка» ([data-pad-focus]) —
+  /// Ⓐ на ній нічого не робить. На кінці партії — «Ще раз» каркаса, якщо він є.
+  function padScene(root, stage) {
+    if (!window.HPad || !window.HPad.on) return;
+    const s = st(root);
+    const key = s.keys.stage;
+    // Одразу — на тиху стоянку сцени (завдання, заголовок): стара ціль щойно зникла, і без цього кільце за кадр
+    // упало б на найближчу кнопку, «Встати» каркаса.
+    padTo(root, stage.querySelector('[data-pad-focus]'));
+    // Картки з'являються анімацією з нульової прозорості, а пад такі цілі вважає невидимими й перескакує на
+    // найближчу видиму — тож на першу справжню ціль кільце ставимо, коли вони вже проявились.
+    later(s, () => {
+      if (s.keys.stage !== key || !stage.isConnected) return;
+      const vis = (e) => e && !e.disabled && !e.hidden && e.getClientRects().length > 0;
+      let el = [...stage.querySelectorAll('[data-pad-first]')].find(vis) || null;
+      if (!el && stage.classList.contains('dt-done')) {
+        const table = root.closest('.gtable');
+        el = table ? table.querySelector('[data-do="Rematch"]') : null;
+      }
+      if (!vis(el)) el = stage.querySelector('[data-pad-focus]');
+      padTo(root, el);
+    }, PAD_SETTLE);
+  }
+
+  function lobbyHtml(ctx) {
+    const o = (ctx.room && ctx.room.options) || {};
+    const rounds = o.rounds || 'full';
+    const secs = +(o.write || 90);
+    const votes = rounds === 'blitz'
+      ? 'Роздаєш 🥇🥈🥉 чужим дотепам: 300, 200 і 100 очок.'
+      : rounds === 'short'
+        ? 'Голос — 100 очок. Троє й більше за одного — «Розгром!» А далі — «Останній дотеп» з медалями 🥇🥈🥉.'
+        : 'Голос — 100 очок, у другому раунді — 200. Троє й більше за одного — «Розгром!»';
     return '<div class="dt-how">'
-      + '<div class="dt-howrow"><b>✍</b><span><i>Пиши.</i> Кожному — дурне завдання. Найсмішніша відповідь одним рядком.</span></div>'
+      + '<div class="dt-howrow"><b>✍</b><span><i>Пиши.</i> ' + (rounds === 'blitz' ? 'Одне дурне завдання на всіх' : 'Кожному — дурні завдання')
+      + ', ' + secs + ' с на дотеп. Найсмішніша відповідь одним рядком.</span></div>'
       + '<div class="dt-howrow"><b>🗳</b><span><i>Голосуй.</i> Відповіді виходять анонімно — обирай найдотепнішу чужу.</span></div>'
-      + '<div class="dt-howrow"><b>🎭</b><span><i>Дивись, хто це написав.</i> Голос — 100 очок, у другому раунді — 200. Усі за одного — «Розгром!»</span></div>'
-      + '<div class="dt-howsmall muted small">Троє й більше. Дядько Глек зачитує все вголос; глядачі голосують як публіка 👀</div>'
+      + '<div class="dt-howrow"><b>🎭</b><span><i>Дивись, хто це написав.</i> ' + votes + '</span></div>'
+      + '<div class="dt-howsmall muted small">Троє й більше. Дядько Глек зачитує все вголос; глядачі голосують як публіка 👀 і сміються 😂</div>'
+      + '<div class="dt-howtip small" hidden></div>'
       + '</div>';
+  }
+
+  function lobbyTip(ctx) {
+    const r = ctx.room || {};
+    let seated = 0;
+    for (let i = 0; i < 8; i++) if (ctx.nickOf(i)) seated++;
+    const rounds = (r.options && r.options.rounds) || 'full';
+    return seated >= 6 && rounds === 'full'
+      ? '⏱ На ' + seated + ' повна партія — хвилин 12–15. Швидше — стіл «1 раунд + Останній дотеп».'
+      : '';
   }
 
   // ---------- написання ----------
@@ -162,8 +236,8 @@
     if (v.say && v.say.text) html += '<div class="dt-say intro"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>';
     if (v.me) {
       html += tasks.map((t, n) => '<div class="dt-task" data-i="' + t.i + '" style="--n:' + n + '">'
-        + '<div class="dt-prompt">' + ctx.esc(t.prompt) + '</div>'
-        + '<form class="dt-form"><input class="dt-in" type="text" maxlength="' + MAX + '" autocomplete="off" spellcheck="true"' + (n === 0 ? ' data-pad-first' : '')
+        + '<div class="dt-prompt" data-pad-focus>' + ctx.esc(t.prompt) + '</div>'
+        + '<form class="dt-form"><input class="dt-in" type="text" maxlength="' + MAX + '" autocomplete="off" spellcheck="true" data-pad-first'
         + ' enterkeyhint="send" placeholder="твій дотеп…" aria-label="Відповідь на завдання ' + (n + 1) + '">'
         + '<button class="primary dt-send" type="submit">Здати</button></form>'
         + '<div class="dt-meta"><span class="dt-cnt">0/' + MAX + '</span></div>'
@@ -172,7 +246,7 @@
         + '</div>').join('');
       if (!tasks.length) html += '<div class="gempty">Цього раунду тобі завдань нема — дивись і чекай голосування</div>';
     } else {
-      html += '<div class="dt-watch">Пишуть дотепи… 🤫 Скоро відповіді вийдуть на голосування — голосуй як публіка 👀</div>';
+      html += '<div class="dt-watch" data-pad-focus>Пишуть дотепи… 🤫 Скоро відповіді вийдуть на голосування — голосуй як публіка 👀</div>';
     }
     html += '<details class="dt-peek"' + (v.me ? '' : ' open') + '><summary>На що пишуть</summary><ol class="dt-plist"></ol></details>';
     stage.innerHTML = html;
@@ -249,12 +323,14 @@
     const s = st(root);
     const tasks = (v.me && v.me.tasks) || [];
     let doneAll = tasks.length > 0;
+    let justDone = false;
     for (const t of tasks) {
       const box = stage.querySelector('.dt-task[data-i="' + t.i + '"]');
       if (!box) continue;
       const input = box.querySelector('.dt-in');
       if (box.classList.contains('done') !== t.done) {
         box.classList.toggle('done', t.done);
+        if (t.done) justDone = true;
         // забрав назад («Змінити») — у полі те, що здавав
         if (!t.done && document.activeElement !== input) { input.value = t.text || ''; s.drafts[t.i] = input.value; counter(box); }
       }
@@ -270,6 +346,11 @@
     if (list && list.dataset.sig !== html) { list.dataset.sig = html; list.innerHTML = html; }
     const peek = stage.querySelector('.dt-peek');
     if (peek) peek.hidden = !!v.me && !doneAll;
+    // здане поле зникає — кільце пада переходить на наступне незадане (або на завдання), а не на «Встати»
+    if (justDone) {
+      const next = [...stage.querySelectorAll('.dt-task:not(.done) .dt-in')].find((x) => !x.disabled);
+      padTo(root, next || stage.querySelector('.dt-task [data-pad-focus]'));
+    }
   }
 
   // ---------- картка: голосування й розкриття ----------
@@ -277,20 +358,24 @@
   function buildCard(root, ctx, v, stage) {
     const c = v.card;
     const k = c.answers.length;
+    const mine = (v.me && v.me.mine) || [];
+    const first = c.answers.findIndex((_, i) => !mine.includes(i));
     stage.innerHTML = '<div class="dt-cardhead"><span class="dt-of">' + (v.final ? 'Одне завдання — на всіх' : 'Картка ' + (c.i + 1) + ' з ' + c.of) + '</span>'
       + '<span class="dt-hint muted small"></span></div>'
-      + '<div class="dt-prompt big">' + ctx.esc(c.prompt) + '</div>'
+      + '<div class="dt-prompt big" data-pad-focus>' + ctx.esc(c.prompt) + '</div>'
       + (v.final ? '<div class="dt-podium mini" hidden></div>' : '')
       + '<div class="dt-answers ' + (v.final ? 'final' : v.mode) + (k > 4 ? ' dense' : '') + ' n' + k + '">'
-      + c.answers.map((a, i) => '<button type="button" class="dt-ans' + (a.stock ? ' stock' : '') + '" data-i="' + i + '" style="--n:' + i + '"' + (i === 0 ? ' data-pad-first' : '') + '>'
+      + c.answers.map((a, i) => '<button type="button" class="dt-ans' + (a.stock ? ' stock' : '') + '" data-i="' + i + '" style="--n:' + i + '"' + (i === first ? ' data-pad-first' : '') + '>'
         + '<span class="dt-n">' + (i + 1) + '</span><span class="dt-txt">' + ctx.esc(a.text) + '</span>'
-        + '<span class="dt-badge"></span><span class="dt-res"></span></button>').join('')
+        + '<span class="dt-badge"></span><span class="dt-lol"></span><span class="dt-res"></span></button>').join('')
       + '</div>'
       + '<div class="dt-foot"><span class="dt-voted"></span><span class="dt-jury"></span></div>'
       + '<div class="dt-say" hidden></div>';
     stage.querySelectorAll('.dt-ans').forEach((b) => b.addEventListener('click', (e) => {
       if (!HGames.ui.human(e)) return;
-      pick(root, +b.dataset.i);
+      const c2 = root._ctx;
+      if (c2 && c2.view && c2.view.phase === 'reveal') laugh(root, +b.dataset.i, b);
+      else pick(root, +b.dataset.i);
     }));
   }
 
@@ -379,6 +464,39 @@
     }).catch(() => undo('Зв\'язку нема — голос публіки не дійшов'));
   }
 
+  /// «😂» на розкритті: гравець — через хаб, глядач — через HTTP. Один сміх на відповідь; очок не дає — це зал.
+  function laugh(root, i, btn) {
+    const ctx = root._ctx;
+    if (!ctx || !ctx.playing) return;
+    const v = ctx.view || {};
+    const c = v.card;
+    if (v.phase !== 'reveal' || !c || !c.answers[i] || c.answers[i].seat == null) return;
+    if (ctx.mine && ((v.me && v.me.mine) || []).includes(i)) return;       // зі свого не сміються
+    const s = st(root);
+    const key = (ctx.room.round || 0) + ':' + v.round + ':' + c.i + ':' + i;
+    const b = btn || root.querySelector('.dt-ans[data-i="' + i + '"]');
+    if (b && !reduced()) {
+      // смішок вилітає з картки одразу — навіть якщо цей сміх уже зарахований
+      const fly = document.createElement('span');
+      fly.className = 'dt-fly';
+      fly.textContent = '😂';
+      fly.style.setProperty('--x', (20 + Math.random() * 60).toFixed(0) + '%');
+      b.appendChild(fly);
+      later(s, () => fly.remove(), 1300);
+    }
+    if (s.laughed.has(key)) return;
+    s.laughed.add(key);
+    unlockSound(root);
+    beep(s, 740, 50, 'triangle', 0.035);
+    if (b) b.classList.add('laughed');
+    if (ctx.mine) { ctx.act('laugh', { card: c.i, i }); return; }
+    fetch('/api/games/dotepy/laugh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Nick': encodeURIComponent((ctx.me && ctx.me.nick) || '') },
+      body: JSON.stringify({ room: ctx.room.id, card: c.i, i }),
+    }).then((r) => r.json()).then((d) => { if (!d || !d.ok) s.laughed.delete(key); }).catch(() => s.laughed.delete(key));
+  }
+
   function refreshCard(root, ctx, v, stage) {
     const c = v.card;
     if (!c || !stage || !stage.querySelector('.dt-answers')) return;
@@ -390,11 +508,14 @@
     const mine = me.mine || [];
 
     const hint = stage.querySelector('.dt-hint');
-    const hintText = reveal ? (v.final && c.shown < c.answers.length ? 'Розкриваємо з кінця…' : '')
+    // на телефоні цифр нема — хвіст «· цифри 1–N» лише там, де є клавіатура
+    const keys = HGames.ui.coarse() ? '' : ' · цифри 1–' + c.answers.length;
+    const others = c.answers.some((a, i) => a.seat != null && !mine.includes(i));
+    const hintText = reveal ? (v.final && c.shown < c.answers.length ? 'Розкриваємо з кінця…' : others && ctx.playing ? 'Смішно? Тапни — 😂' : '')
       : !ctx.mine ? 'Тапни — голос публіки 👀'
       : !me.voter ? 'Твій дотеп у грі — тримай кулаки'
-      : c.ranked ? 'Тапай по черзі: 🥇 → 🥈' + (c.perVoter > 2 ? ' → 🥉' : '') + ' · цифри 1–' + c.answers.length
-      : 'Обери найдотепніше · цифри 1–' + c.answers.length;
+      : c.ranked ? 'Тапай по черзі: 🥇 → 🥈' + (c.perVoter > 2 ? ' → 🥉' : '') + keys
+      : 'Обери найдотепніше' + keys;
     if (hint.textContent !== hintText) hint.textContent = hintText;
 
     const buttons = stage.querySelectorAll('.dt-ans');
@@ -402,6 +523,7 @@
     let bestPts = 0;
     c.answers.forEach((a, i) => { if (a.points != null && a.points > bestPts) { bestPts = a.points; best = i; } });
     const allOpen = !v.final || c.shown >= c.answers.length;
+    const laughPrefix = (ctx.room.round || 0) + ':' + v.round + ':' + c.i + ':';
     buttons.forEach((b, i) => {
       const a = c.answers[i];
       if (!a) return;
@@ -411,18 +533,32 @@
       b.classList.toggle('off', !reveal && ctx.mine && !me.voter && !own);
       b.classList.toggle('picked', rank >= 0 || jury === i);
       b.classList.toggle('hidden', reveal && v.final && a.seat == null);
-      b.disabled = reveal || own || (ctx.mine && !me.voter) || !ctx.playing;
+      // на розкритті відповіді знову натискні — тепер це «😂»
+      b.disabled = reveal ? (own || a.seat == null || !ctx.playing) : (own || (ctx.mine && !me.voter) || !ctx.playing);
+      b.classList.toggle('lolable', reveal && !b.disabled);
+      b.classList.toggle('laughed', s.laughed.has(laughPrefix + i));
       const badge = own ? 'твій' : rank >= 0 ? (c.ranked ? MEDALS[rank] : '✓') : jury === i ? '👀' : '';
       const bEl = b.querySelector('.dt-badge');
       if (bEl.textContent !== badge) bEl.textContent = badge;
+      const lol = b.querySelector('.dt-lol');
+      const lolText = reveal && a.laughs ? '😂 ' + a.laughs : '';
+      if (lol.textContent !== lolText) {
+        lol.textContent = lolText;
+        lol.classList.remove('pop');
+        if (lolText && !reduced()) { void lol.offsetWidth; lol.classList.add('pop'); }
+      }
       if (reveal && a.seat != null && !b.classList.contains('open')) openAnswer(root, ctx, v, b, a);
       b.classList.toggle('win', reveal && allOpen && i === best);
     });
 
     const voted = stage.querySelector('.dt-voted');
-    const vText = reveal ? '' : (c.voted || []).length
-      ? 'проголосували: ' + c.voted.map((x) => '✓ ' + ctx.esc(short(nickOf(ctx, v, x), 10))).join(' · ')
-      : 'ще ніхто не голосував';
+    // Дуель: хто суддя, а хто автор — таємниця до розкриття, тож лише «скільки з скількох».
+    const secret = v.mode === 'duel' && !v.final;
+    const vText = reveal ? ''
+      : secret ? (c.votedCount ? 'проголосували: ' + c.votedCount + ' з ' + c.votersCount : 'ще ніхто не голосував')
+      : (c.voted || []).length
+        ? 'проголосували: ' + c.voted.map((x) => '✓ ' + ctx.esc(short(nickOf(ctx, v, x), 10))).join(' · ')
+        : 'ще ніхто не голосував';
     if (voted.dataset.sig !== vText) { voted.dataset.sig = vText; voted.innerHTML = vText; }
     const jEl = stage.querySelector('.dt-jury');
     const jText = c.juryVotes ? '👀 публіка: ' + c.juryVotes : '';
@@ -434,10 +570,24 @@
     if (say.dataset.sig !== sayHtml) { say.dataset.sig = sayHtml; say.innerHTML = sayHtml; say.hidden = !sayHtml; }
 
     if (v.final) paintPodium(ctx, v, stage.querySelector('.dt-podium'));
+    if (reveal && !s.keys.revealed) {
+      s.keys.revealed = true;
+      // голосування скінчилось: вибрані кнопки фіналу стали «сорочкою» (недоступні) — кільце пада на завдання,
+      // інакше воно впало б на найближчу кнопку каркаса
+      padTo(root, stage.querySelector('[data-pad-first]:not(:disabled)') || stage.querySelector('[data-pad-focus]'));
+    }
     if (reveal && c.sweep != null && !s.keys.sweep) {
       s.keys.sweep = true;
       const b = buttons[c.sweep];
       if (b) sweep(root, b);
+    }
+    if (reveal && c.jinx && !s.keys.jinx) {
+      s.keys.jinx = true;
+      const box = stage.querySelector('.dt-answers');
+      const rib = document.createElement('div');
+      rib.className = 'dt-jinx';
+      rib.textContent = '🤝 Думки сходяться! Обом — як за голос';
+      box.parentNode.insertBefore(rib, box);
     }
   }
 
@@ -448,13 +598,17 @@
     const votes = a.votes || [];
     const chips = votes.map((seat, n) => '<i class="dt-vote" style="--c:' + col(seat) + ';--d:' + (n * 80) + 'ms" title="'
       + ctx.esc(nickOf(ctx, v, seat)) + '">' + (a.medals ? MEDALS[(a.medals[n] || 1) - 1] : (seat + 1)) + '</i>').join('');
+    // публіка: приз (від двох глядачів) — «👀 +100», інакше просто скільки глядачів і хто саме
+    const by = (a.juryBy || []).map((n) => short(disp(n), 10));
+    const jury = a.prize ? '<span class="dt-prize" title="' + ctx.esc(by.join(', ')) + '">👀 +' + (v.final ? 200 : 100) + '</span>'
+      : a.jury ? '<span class="dt-jurysm muted" title="Голос публіки">👀 ' + ctx.esc(by.join(', ') || String(a.jury)) + '</span>' : '';
     res.innerHTML = '<span class="dt-votes">' + (chips || '<small class="muted">без голосів</small>') + '</span>'
       + '<span class="dt-pts' + (a.points ? '' : ' zero') + '">' + (a.points ? '+' + num(a.points) : '0') + '</span>'
-      + (a.prize ? '<span class="dt-prize">👀 +' + (v.final ? 200 : 100) + '</span>' : '')
+      + jury
       + '<span class="dt-author" style="--c:' + col(a.seat) + '"><i class="dt-dot"></i>' + ctx.esc(nickOf(ctx, v, a.seat))
       + (a.stock ? ' <small>· підставна</small>' : '') + '</span>';
     b.classList.add('open');
-    if (!reduced()) votes.forEach((_, n) => setTimeout(() => beep(s, 520 + n * 40, 30, 'triangle', 0.03), 400 + n * 80));
+    if (!reduced()) votes.forEach((_, n) => later(s, () => beep(s, 520 + n * 40, 30, 'triangle', 0.03), 400 + n * 80));
   }
 
   function sweep(root, b) {
@@ -465,18 +619,22 @@
     rib.textContent = '💥 Розгром!';
     b.appendChild(rib);
     if (!reduced()) {
+      // Конфеті злітає з боків і знизу картки й летить геть від тексту — переможний дотеп саме читають.
       const box = document.createElement('span');
       box.className = 'dt-confetti';
       let html = '';
       for (let n = 0; n < 24; n++) {
-        const x = (n * 37) % 100, d = (n * 53) % 600, r = ((n * 71) % 120) - 60;
-        html += '<span style="--x:' + x + '%;--d:' + d + 'ms;--r:' + r + 'deg">' + CONFETTI[n % CONFETTI.length] + '</span>';
+        const left = n % 2 === 0;
+        const x = left ? (n * 7) % 12 : 88 + (n * 5) % 12;          // 0–12 % або 88–100 %
+        const d = (n * 53) % 600, r = ((n * 71) % 60) + 20;
+        html += '<span style="--x:' + x + '%;--d:' + d + 'ms;--r:' + (left ? -r : r) + 'deg;--dx:' + (left ? -1 : 1) + '">'
+          + CONFETTI[n % CONFETTI.length] + '</span>';
       }
       box.innerHTML = html;
       b.appendChild(box);
-      setTimeout(() => box.remove(), 2600);
+      later(s, () => box.remove(), 2800);
     }
-    [523, 659, 784].forEach((f, n) => setTimeout(() => beep(s, f, 120, 'triangle', 0.04), 1000 + n * 90));
+    [523, 659, 784].forEach((f, n) => later(s, () => beep(s, f, 120, 'triangle', 0.04), 1000 + n * 90));
   }
 
   /// П'єдестал фіналу: добудовується, коли розкриваються 🥉, 🥈, 🥇.
@@ -507,7 +665,7 @@
   function buildTable(root, ctx, v, stage) {
     const t = v.table || { rows: [] };
     const max = Math.max(1, ...t.rows.map((r) => r.score));
-    stage.innerHTML = '<div class="dt-tabtitle">Раунд ' + v.round + ' позаду</div>'
+    stage.innerHTML = '<div class="dt-tabtitle" data-pad-focus>Раунд ' + v.round + ' позаду</div>'
       + '<div class="dt-bars">' + t.rows.map((r, n) => {
         const p = (v.players || []).find((x) => x.seat === r.seat) || {};
         return '<div class="dt-bar' + (p.left ? ' left' : '') + '" style="--c:' + col(r.seat) + ';--w:' + Math.round(100 * r.score / max) + '%;--n:' + n + '">'
@@ -533,8 +691,9 @@
       + ctx.esc(short(disp(p.nick), 12)) + ' <b>' + num(p.score) + '</b></span>').join('');
     // усі по нулях — п'єдестал із нулів смішить не так, як треба
     const scored = rows.some((p) => p.score > 0);
-    stage.innerHTML = (scored ? '<div class="dt-podium big">' + podium + '</div>' + (rest ? '<div class="dt-rest">' + rest + '</div>' : '')
-      : '<div class="dt-watch">Цього разу ніхто не набрав жодного очка 🤷</div>')
+    stage.innerHTML = (r.early ? '<div class="dt-early" data-pad-focus>🚪 Партію перервано: за столом лишилось менше трьох</div>' : '')
+      + (scored ? '<div class="dt-podium big"' + (r.early ? '' : ' data-pad-focus') + '>' + podium + '</div>' + (rest ? '<div class="dt-rest">' + rest + '</div>' : '')
+      : r.early ? '' : '<div class="dt-watch" data-pad-focus>Цього разу ніхто не набрав жодного очка 🤷</div>')
       + ((r.best || []).length ? '<div class="dt-besttitle">😂 Найдотепніше партії</div><div class="dt-bestlist">'
         + r.best.map((b) => bestHtml(ctx, v, b, '')).join('') + '</div>' : '')
       + (v.say && v.say.text ? '<div class="dt-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>' : '')
@@ -709,9 +868,9 @@
       v: '2026-09-27',
       title: 'Нова гра: Дотепи',
       items: [
-        '✍ Кожному — по два дурних завдання. Пиши найсмішнішу відповідь, 90 секунд',
-        '🗳 Далі всі голосують за чужі дотепи — анонімно. Голос = 100 очок, у другому раунді — 200',
-        '💥 Усі голоси за одного — «Розгром!» і подвійний бонус',
+        '✍ Кожному — дурні завдання. Пиши найсмішнішу відповідь одним рядком, поки біжить дуга',
+        '🗳 Далі всі голосують за чужі дотепи — анонімно, хто що написав, видно лише після голосування',
+        '💥 Троє й більше голосів за одного — «Розгром!» і подвійний бонус; на розкритті тапай «😂»',
         '🏁 «Останній дотеп»: одне завдання на всіх, роздаєш 🥇🥈🥉',
         '🔊 Дядько Глек зачитує завдання й відповіді — тумблер «Глек тут» на картці; глядачі голосують як публіка',
       ],
@@ -737,7 +896,8 @@
         if (on) unlockSound(root); else hush(root);
         paintTop(root, c, c.view || {});
       });
-      root.addEventListener('pointerdown', () => unlockSound(root), { passive: true });
+      s.onDown = () => unlockSound(root);
+      root.addEventListener('pointerdown', s.onDown, { passive: true });
       // F5 посеред репліки — стару не повторюємо: звучить лише те, що Глек скаже вже при нас
       s.sayId = (ctx.view && ctx.view.say && ctx.view.say.id) || 0;
       s.onVis = () => { if (!document.hidden && s.stale && root._ctx) render(root, root._ctx); };
@@ -758,7 +918,10 @@
       if (arc && arc._arc) arc._arc.stop();
       hush(root);
       Object.values(s.draftTimers).forEach((t) => clearTimeout(t));
+      s.timers.forEach((t) => clearTimeout(t));
+      s.timers.clear();
       document.removeEventListener('visibilitychange', s.onVis);
+      root.removeEventListener('pointerdown', s.onDown);
       if (s.ac) { try { s.ac.close(); } catch { /* уже */ } }
       root._dt = null;
       root._ctx = null;
@@ -766,20 +929,23 @@
 
     onKey(e, ctx) {
       const v = ctx.view || {};
-      if (!ctx.playing || !v.card || (v.phase !== 'vote' && v.phase !== 'reveal')) return false;
+      if (!ctx.playing || lobbyOf(ctx, v) || v.phase === 'done') return false;
       if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || '')) return false;
-      const root = rootOf(ctx);
-      if (!root) return false;
-      const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code || '');
+      const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || '');
       if (m) {
-        // Цифру з'їдаємо і тоді, коли голосування щойно скінчилось: інакше запізніле «3» провалилось би в
-        // гарячі клавіші сайту (1/2/3 — розділи) і викинуло б людину з-за столу посеред розкриття.
+        // Поки партія жива, цифри — наші в будь-якій фазі: запізніле «1» після голосування (у написанні нового раунду,
+        // на підсумку) інакше провалювалось у гарячі клавіші сайту (1/2/3 — розділи) і ховало гру.
+        const root = rootOf(ctx);
         const i = +m[1] - 1;
-        if (v.phase === 'vote' && i < v.card.answers.length) pick(root, i);
+        if (root && v.card && i < v.card.answers.length) {
+          if (v.phase === 'vote') pick(root, i);
+          else if (v.phase === 'reveal') laugh(root, i);
+        }
         return true;
       }
-      if (e.key === 'Backspace' && ctx.mine && v.card.ranked) {
-        const picks = myPicks(root, v);
+      if (e.key === 'Backspace' && ctx.mine && v.card && v.card.ranked && v.phase === 'vote') {
+        const root = rootOf(ctx);
+        const picks = root ? myPicks(root, v) : [];
         if (picks.length > 1) send(root, ctx, v, picks.slice(0, -1));
         return true;
       }
@@ -788,6 +954,8 @@
 
     status(ctx) {
       const v = ctx.view || {};
+      // розійшлись посеред партії — це не «Нічия» (так каркас пише, коли переможців нема), а перервана партія
+      if (v.phase === 'done' && v.result && v.result.early && !(v.result.winners || []).length) return 'Партію перервано — розійшлись';
       if (!ctx.playing || lobbyOf(ctx, v)) return ctx.room && ctx.room.status === 'lobby' ? 'Господар тисне «Почати» — треба щонайменше троє' : '';
       const me = v.me || {};
       switch (v.phase) {
@@ -810,8 +978,9 @@
             if (n < v.card.perVoter) return 'Ще ' + MEDALS.slice(n, v.card.perVoter).join('') + ' — кому?';
           }
           return (me.picks || []).length ? 'Голос є — чекаємо решту' : 'Голосуй за найдотепніше';
-        case 'reveal': return 'Розкриття…';
-        case 'table': return 'Раунд ' + v.round + ' позаду';
+        case 'reveal': return v.card && v.card.jinx ? 'Думки сходяться!' : 'Розкриття…';
+        // заголовок сцени вже каже «Раунд N позаду» — статус каже, що далі
+        case 'table': return v.round + 1 >= v.rounds ? 'Далі — Останній дотеп 🏁' : 'Далі — раунд ' + (v.round + 1);
       }
       return '';
     },

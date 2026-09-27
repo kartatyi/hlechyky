@@ -58,9 +58,35 @@ public sealed class Dotepy : Game
     public const int RankCount = 3;
     public static readonly int[] RankPoints = [300, 200, 100];
     public const int JuryPrize = 100, FinalJuryPrize = 200;
+    /// <summary>
+    /// Приз публіки — лише коли за відповідь стоять щонайменше двоє глядачів. Один голос — це лише «👀 1» на картці:
+    /// інакше гравець із гостьової вкладки віддавав би «публіку» сам собі й забирав приз без жодного справжнього глядача.
+    /// </summary>
+    public const int JuryMin = 2;
+    /// <summary>
+    /// «Розгром!» — коли за відповідь могли голосувати щонайменше троє і всі обрали її. На трьох «усі за одного» — це
+    /// просто «обидва інших збіглись» (≈ 75 % карток), і подвійний бонус ставав дармовим.
+    /// </summary>
+    public const int SweepMin = 3;
     /// <summary>Раунд 1 — 100 за голос, раунд 2 — 200.</summary>
     public static int VoteValue(int round) => 100 * round;
     public static int SweepBonus(int round) => 2 * VoteValue(round);
+    /// <summary>«Думки сходяться!»: обидва автори дуелі написали одне й те саме — кожному як за один голос, без голосування.</summary>
+    public static int JinxPoints(int round) => VoteValue(round);
+    /// <summary>Картку з однаковими відповідями показуємо трохи довше: її ще треба прочитати.</summary>
+    public const int JinxExtraMs = 2_000;
+    /// <summary>
+    /// Скільки разів за написання картку можна озвучити наперед (перша — терміново, друга — у кінець черги). Далі
+    /// «змінив — здав — змінив» уже не закидає спільну чергу edge-tts: остаточне читання піде на кінці написання.
+    /// </summary>
+    public const int EarlyVoicings = 2;
+    /// <summary>
+    /// Голос Глека, схоже, не працює: вступ раунду, поставлений терміново на старті, за стільки мс так і не озвучився.
+    /// Тоді до кінця партії картки не чекають на кліп (брифове «TTS недоступний — гра йде текстом без затримок»).
+    /// </summary>
+    public const int IntroGraceMs = 20_000;
+    /// <summary>Скільки кліпів поспіль мають не дочекатись, щоб гра перестала їх чекати.</summary>
+    public const int VoiceGiveUp = 2;
     /// <summary>Скільки останніх завдань сервер пам'ятає, щоб не повторювати їх між столами.</summary>
     public const int SeenRing = 300;
 
@@ -110,6 +136,13 @@ public sealed class Dotepy : Game
         public string Line = "";
         /// <summary>Індекс відповіді з «Розгромом»; −1 — не було.</summary>
         public int Sweep = -1;
+        /// <summary>«Думки сходяться!» — у дуелі обидва написали одне й те саме: голосування нема, одразу розкриття.</summary>
+        public bool Jinx;
+        /// <summary>Скільки разів картку вже озвучували наперед і яким текстом (див. <see cref="EarlyVoicings"/>).</summary>
+        public int EarlyVoiced;
+        public string EarlyLine = "";
+        /// <summary>Хто вже посміявся з якої відповіді: «ключ ніка\nіндекс» — один сміх на людину на відповідь.</summary>
+        public readonly HashSet<string> Laughed = new(StringComparer.Ordinal);
 
         public bool IsAuthor(int seat)
         {
@@ -137,9 +170,13 @@ public sealed class Dotepy : Game
         /// <summary>Фінал: ранг кожного голосу з <see cref="Voters"/> (1 — 🥇).</summary>
         public readonly List<int> Medals = [];
         public int Jury;
+        /// <summary>Хто з публіки голосував за цю відповідь (ніки) — відкривається разом з авторами: так видно й «публіку» з гостьової вкладки гравця.</summary>
+        public readonly List<string> JuryBy = [];
         public int Points;
         public int Rank;
         public bool Prize;
+        /// <summary>«😂» на розкритті — реакція залу, очок не дає.</summary>
+        public int Laughs;
     }
 
     /// <summary>Найдотепніше: для «Дотепу раунду» й трійки партії.</summary>
@@ -166,9 +203,13 @@ public sealed class Dotepy : Game
     readonly bool[] _left = new bool[MaxSeats];
     readonly long[] _score = new long[MaxSeats];
     readonly long[] _roundFrom = new long[MaxSeats];
-    /// <summary>Порядок місць партії (тасується раз на старті) — від нього дуелі: зсув 1 у раунді 1, зсув 2 у раунді 2.</summary>
+    /// <summary>Порядок місць партії (тасується раз на старті) — від нього пари дуелей раунду 1.</summary>
     int[] _order = [];
+    /// <summary>Пари дуелей, що вже були в цій партії (ключ <see cref="PairKey"/>): раунд 2 їх не повторює.</summary>
+    readonly HashSet<int> _pairs = [];
     int _startedWith;
+    /// <summary>Партія скінчилась раніше — гравці розійшлись (менше трьох).</summary>
+    bool _early;
 
     // фаза
     string _phase = PhaseLobby;
@@ -185,8 +226,8 @@ public sealed class Dotepy : Game
     readonly int[]?[] _picks = new int[MaxSeats][];
     readonly bool[] _voter = new bool[MaxSeats];
     int _perVoter = 1;
-    /// <summary>Голос публіки на поточній картці: ключ ніка глядача → індекс відповіді.</summary>
-    readonly Dictionary<string, int> _jury = new(StringComparer.Ordinal);
+    /// <summary>Голос публіки на поточній картці: ключ ніка глядача → (нік як є, індекс відповіді).</summary>
+    readonly Dictionary<string, (string Nick, int Pick)> _jury = new(StringComparer.Ordinal);
     /// <summary>Коли Глек дочитає картку: усі проголосували раніше — розкриваємо не раніше за це (голос не рвемо).</summary>
     DateTimeOffset _speechEnd;
 
@@ -207,6 +248,15 @@ public sealed class Dotepy : Game
     int _sayId;
     string? _pending;
     DateTimeOffset _pendingUntil;
+    /// <summary>
+    /// Скільки кліпів поспіль так і не дочекались. Від <see cref="VoiceGiveUp"/> гра перестає чекати на голос (але
+    /// готовими кліпами користується); перший же вчасний кліп скидає лічильник. Живе в екземплярі — переживає «Ще раз»:
+    /// зламаний edge-tts за хвилину сам не полагодиться.
+    /// </summary>
+    int _voiceMisses;
+    /// <summary>Коли почалось написання раунду й що Глек сказав на вступі — для перевірки «голос узагалі живий?».</summary>
+    DateTimeOffset _writeFrom;
+    string _intro = "";
 
     DateTimeOffset Now => Ctx.Clock.UtcNow;
     bool VoiceOn => _voice.Enabled;
@@ -258,6 +308,8 @@ public sealed class Dotepy : Game
             (seated[i], seated[j]) = (seated[j], seated[i]);
         }
         _order = [.. seated];
+        _pairs.Clear();
+        _early = false;
 
         _cards.Clear();
         _at = -1;
@@ -320,16 +372,15 @@ public sealed class Dotepy : Game
 
         var count = _final ? 1 : _mode == ModeDuel ? n : TasksPerRound;
         var prompts = PickPrompts(count, _final);
+        var duels = _mode == ModeDuel ? DuelPairs(present) : null;
         _cards.Clear();
         for (var k = 0; k < prompts.Count; k++)
         {
             var card = new Card(prompts[k]);
-            if (_mode == ModeDuel)
+            if (duels is not null)
             {
-                // кожен пише рівно два завдання, і жодне — сам із собою; зсув 2 у раунді 2 не повторює пар раунду 1
-                var off = round == 1 ? 1 : 2;
-                card.Entries.Add(new Entry(present[k]));
-                card.Entries.Add(new Entry(present[(k + off) % n]));
+                card.Entries.Add(new Entry(duels[k].A));
+                card.Entries.Add(new Entry(duels[k].B));
             }
             else
             {
@@ -343,6 +394,16 @@ public sealed class Dotepy : Game
                 (card.Order[i], card.Order[j]) = (card.Order[j], card.Order[i]);
             }
             _cards.Add(card);
+        }
+        if (duels is not null)
+        {
+            // Картки йдуть на голосування в перетасованому порядку, а не по колу пар: інакше сусідні картки мали б
+            // спільного автора, і після двох розкриттів стіл знав би автора третьої ще до голосування.
+            for (var i = _cards.Count - 1; i > 0; i--)
+            {
+                var j = Ctx.Rng.Next(i + 1);
+                (_cards[i], _cards[j]) = (_cards[j], _cards[i]);
+            }
         }
 
         for (var s = 0; s < MaxSeats; s++)
@@ -359,8 +420,45 @@ public sealed class Dotepy : Game
         _phase = PhaseWrite;
         _totalMs = _final ? FinalWriteMs(_writeMs) : _writeMs;
         _endsAt = now.AddMilliseconds(_totalMs);
-        SayNow(DotepyLines.Intro(round, _final, Math.Min(RankCount, n - 1)));
+        _writeFrom = now;
+        _intro = DotepyLines.Intro(round, _final, Math.Min(RankCount, n - 1));
+        SayNow(_intro);
         _dirty = true;
+    }
+
+    static int PairKey(int a, int b) => Math.Min(a, b) * MaxSeats + Math.Max(a, b);
+
+    /// <summary>
+    /// Пари дуелей раунду: кожен пише рівно два завдання, жодне — сам із собою. Раунд 1 — сусіди по колу
+    /// <see cref="_order"/>. Раунд 2 — нове випадкове коло, у якому жодна пара раунду 1 не повторюється (при п'ятьох
+    /// і більше таке коло завжди є; шукаємо перебором на <c>Ctx.Rng</c>, детерміновано). Не знайшлось — старий
+    /// запасний хід: зсув 2 по тому самому порядку.
+    /// </summary>
+    List<(int A, int B)> DuelPairs(List<int> present)
+    {
+        var n = present.Count;
+        var ring = present;
+        if (_pairs.Count > 0)
+        {
+            ring = null;
+            var probe = new List<int>(present);
+            for (var attempt = 0; attempt < 400 && ring is null; attempt++)
+            {
+                for (var i = n - 1; i > 0; i--)
+                {
+                    var j = Ctx.Rng.Next(i + 1);
+                    (probe[i], probe[j]) = (probe[j], probe[i]);
+                }
+                var clean = true;
+                for (var k = 0; k < n && clean; k++) clean = !_pairs.Contains(PairKey(probe[k], probe[(k + 1) % n]));
+                if (clean) ring = probe;
+            }
+        }
+        var pairs = new List<(int, int)>(n);
+        for (var k = 0; k < n; k++)
+            pairs.Add(ring is not null ? (ring[k], ring[(k + 1) % n]) : (present[k], present[(k + 2) % n]));
+        foreach (var (a, b) in pairs) _pairs.Add(PairKey(a, b));
+        return pairs;
     }
 
     /// <summary>
@@ -380,9 +478,12 @@ public sealed class Dotepy : Game
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
         var seen = _seen.Snapshot();
-        // ранг свіжості: 0 — нове, 1 — бачене сервером, 2 — зігране тут; усередині — звичайні раніше за фінальні
-        int Rank(DotepyPrompt p) => (_used.Contains(p.Id) ? 4 : seen.Contains(p.Id) ? 2 : 0) + (!final && p.Final ? 1 : 0);
-        var ordered = pool.Select((p, i) => (p, i)).OrderBy(x => Rank(x.p)).ThenBy(x => x.i).Select(x => x.p).ToList();
+        // ранг свіжості: 0 — нове, 1 — бачене сервером, 2 — зігране тут; усередині — звичайні раніше за фінальні.
+        // Бачені сервером — від найдавнішого: коли банк пройдено по колу, першим повторюється те, що грали давно,
+        // а не те, що щойно було на сусідньому столі. Тасування — лише розв'язання нічиїх.
+        int Rank(DotepyPrompt p) => (_used.Contains(p.Id) ? 4 : seen.ContainsKey(p.Id) ? 2 : 0) + (!final && p.Final ? 1 : 0);
+        long Stamp(DotepyPrompt p) => !_used.Contains(p.Id) && seen.TryGetValue(p.Id, out var at) ? at : 0;
+        var ordered = pool.Select((p, i) => (p, i)).OrderBy(x => Rank(x.p)).ThenBy(x => Stamp(x.p)).ThenBy(x => x.i).Select(x => x.p).ToList();
         var picked = new List<DotepyPrompt>(count);
         for (var i = 0; i < count && ordered.Count > 0; i++) picked.Add(ordered[i % ordered.Count]);
         foreach (var p in picked) _used.Add(p.Id);
@@ -399,6 +500,8 @@ public sealed class Dotepy : Game
         if (_pending is { } pending)
         {
             var clip = Clip(pending);
+            if (clip is not null) _voiceMisses = 0;
+            else if (now >= _pendingUntil) _voiceMisses++;
             if (clip is not null || now >= _pendingUntil) StartVote(pending, clip, now);
         }
 
@@ -407,7 +510,7 @@ public sealed class Dotepy : Game
             case PhaseWrite:
                 if (now >= _endsAt || AllWritten())
                 {
-                    CloseWriting();
+                    CloseWriting(now);
                     OpenCard(0, now);
                 }
                 break;
@@ -461,8 +564,13 @@ public sealed class Dotepy : Game
     /// Кінець написання: незданому — чернетка (якщо не порожня), інакше підставна; відповіді перетасовано;
     /// картки, де все підставне, пропускаються; усі читання карток — у чергу голосу, перша — найперша.
     /// </summary>
-    void CloseWriting()
+    void CloseWriting(DateTimeOffset now)
     {
+        // Вступ першого раунду ставили в чергу терміново ще на старті. Минуло 20 с, а його так і нема — edge-tts
+        // не працює (нема мережі до Microsoft чи зламався python): далі картки на Глека не чекають.
+        if (VoiceOn && _round == 1 && _voiceMisses < VoiceGiveUp && now - _writeFrom >= TimeSpan.FromMilliseconds(IntroGraceMs)
+            && Clip(_intro) is null)
+            _voiceMisses = VoiceGiveUp;
         var lines = new List<string>();
         foreach (var card in _cards)
         {
@@ -482,7 +590,10 @@ public sealed class Dotepy : Game
             }
             card.Answers = [.. card.Order.Select(k => byEntry[k])];
             card.Skipped = Array.TrueForAll(card.Answers, a => a.Stock);
-            card.Line = DotepyLines.Card(card.Prompt.Text, [.. card.Answers.Select(a => a.Text)]);
+            card.Jinx = _mode == ModeDuel && card.Answers.Length == 2 && !card.Answers[0].Stock && !card.Answers[1].Stock
+                && Same(card.Answers[0].Text, card.Answers[1].Text);
+            card.Line = card.Jinx ? DotepyLines.Jinx(card.Prompt.Text, card.Answers[0].Text)
+                : DotepyLines.Card(card.Prompt.Text, [.. card.Answers.Select(a => a.Text)]);
             if (!card.Skipped) lines.Add(card.Line);
         }
         // Усі — терміново й по порядку: звичайна черга могла б стояти за чужими репліками, і тоді кожна картка
@@ -518,6 +629,11 @@ public sealed class Dotepy : Game
         card.Sweep = -1;
         _dirty = true;
 
+        if (card.Jinx)
+        {
+            Jinx(card, now);
+            return;
+        }
         if (!VoiceOn)
         {
             StartVote(card.Line, null, now);
@@ -526,11 +642,18 @@ public sealed class Dotepy : Game
         var clip = Clip(card.Line);
         if (clip is not null)
         {
+            _voiceMisses = 0;
             StartVote(card.Line, clip, now);
             return;
         }
-        // Кліп ще готується: чекаємо до VoiceWait (голосувати вже можна), далі — без голосу.
         Prepare([card.Line], urgent: true);
+        // Голос уже кілька разів не встигав (edge-tts, схоже, лежить) — не чекаємо: гра йде текстом.
+        if (_voiceMisses >= VoiceGiveUp)
+        {
+            StartVote(card.Line, null, now);
+            return;
+        }
+        // Кліп ще готується: чекаємо до VoiceWait (голосувати вже можна), далі — без голосу.
         _pending = card.Line;
         _pendingUntil = now.AddMilliseconds(VoiceWait(card.Line));
         _endsAt = null;
@@ -562,6 +685,7 @@ public sealed class Dotepy : Game
             a.Voters.Clear();
             a.Medals.Clear();
             a.Jury = 0;
+            a.JuryBy.Clear();
             a.Points = 0;
             a.Rank = 0;
             a.Prize = false;
@@ -578,7 +702,11 @@ public sealed class Dotepy : Game
                 totalVotes++;
             }
         }
-        foreach (var pick in _jury.Values) answers[pick].Jury++;
+        foreach (var (nick, pick) in _jury.Values)
+        {
+            answers[pick].Jury++;
+            answers[pick].JuryBy.Add(nick);
+        }
 
         foreach (var a in answers)
         {
@@ -587,7 +715,7 @@ public sealed class Dotepy : Game
             else a.Points = a.Voters.Count * VoteValue(_round);
         }
 
-        // «Розгром!»: усі, хто міг голосувати за цю відповідь (≥ 2), віддали голос саме їй, і ніхто, крім її
+        // «Розгром!»: усі, хто міг голосувати за цю відповідь (≥ SweepMin), віддали голос саме їй, і ніхто, крім її
         // автора, не голосував за іншу. У «на всіх» автор за себе голосувати не може — його голос не рахується.
         card.Sweep = -1;
         if (!_final)
@@ -595,7 +723,7 @@ public sealed class Dotepy : Game
             for (var i = 0; i < answers.Length; i++)
             {
                 var a = answers[i];
-                if (a.Stock || a.Voters.Count < 2 || !IsSweep(i, answers)) continue;
+                if (a.Stock || a.Voters.Count < SweepMin || !IsSweep(i, answers)) continue;
                 card.Sweep = i;
                 a.Points += SweepBonus(_round);
                 _sweeps++;
@@ -604,7 +732,8 @@ public sealed class Dotepy : Game
             }
         }
 
-        // Приз публіки — строго найпопулярнішій серед глядачів; порівну — нікому. Підставній — теж нікому.
+        // Приз публіки — строго найпопулярнішій серед глядачів і лише від двох голосів (JuryMin); порівну — нікому.
+        // Підставній — теж нікому.
         var bestJury = 0;
         var juryAt = -1;
         for (var i = 0; i < answers.Length; i++)
@@ -612,7 +741,7 @@ public sealed class Dotepy : Game
             if (answers[i].Jury > bestJury) { bestJury = answers[i].Jury; juryAt = i; }
             else if (answers[i].Jury == bestJury && bestJury > 0) juryAt = -1;
         }
-        if (juryAt >= 0)
+        if (juryAt >= 0 && bestJury >= JuryMin)
         {
             answers[juryAt].Prize = true;
             if (!answers[juryAt].Stock) answers[juryAt].Points += _final ? FinalJuryPrize : JuryPrize;
@@ -670,13 +799,57 @@ public sealed class Dotepy : Game
             eligible++;
             if (_picks[s] is not { Length: > 0 } p || p[0] != i) return false;
         }
-        if (eligible < 2) return false;
+        if (eligible < SweepMin) return false;
         for (var j = 0; j < answers.Length; j++)
         {
             if (j == i) continue;
             foreach (var v in answers[j].Voters) if (v != author) return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// «Думки сходяться!» — обидва автори дуелі написали одне й те саме. Голосувати за дві однакові кнопки безглуздо,
+    /// тож картка одразу розкривається: кожному по <see cref="JinxPoints"/>, Глек дивується вголос.
+    /// </summary>
+    void Jinx(Card card, DateTimeOffset now)
+    {
+        foreach (var a in card.Answers)
+        {
+            a.Voters.Clear();
+            a.Medals.Clear();
+            a.JuryBy.Clear();
+            a.Jury = 0;
+            a.Prize = false;
+            a.Points = JinxPoints(_round);
+            _score[a.Seat] += a.Points;
+            var best = new Best(card.Prompt.Text, a.Text, a.Seat, a.Points, _round);
+            _bests.Add(best);
+            if (_roundBest is null || best.Points > _roundBest.Points) _roundBest = best;
+        }
+        card.Sweep = -1;
+        _phase = PhaseReveal;
+        var ms = SayNow(card.Line);
+        _totalMs = RevealMs + JinxExtraMs + (int)Math.Min(SpeechCapMs, ms);
+        _endsAt = now.AddMilliseconds(_totalMs);
+        _dirty = true;
+    }
+
+    /// <summary>
+    /// Чи дві відповіді — «те саме»: без регістру, розділових знаків і пробілів («Теща!» і «теща» — так, «теща» і
+    /// «тесть» — ні). Порожні після чистки (самі емодзі) — не збіг: там нема що порівнювати словами.
+    /// </summary>
+    public static bool Same(string a, string b)
+    {
+        var x = Letters(a);
+        return x.Length > 0 && x == Letters(b);
+
+        static string Letters(string s)
+        {
+            var sb = new StringBuilder(s.Length);
+            foreach (var ch in s) if (char.IsLetterOrDigit(ch)) sb.Append(char.ToLowerInvariant(ch));
+            return sb.ToString();
+        }
     }
 
     /// <summary>Що каже Глек на розкритті картки раунду.</summary>
@@ -743,6 +916,19 @@ public sealed class Dotepy : Game
     /// </summary>
     void Done()
     {
+        var present = End();
+        if (_startedWith >= DuelFrom) foreach (var w in _winners!) Ctx.Award(w, 0, "ach:dotepy-king");
+        SayNow(_winners!.Length == 1 ? DotepyLines.GameWin(Spoken(_winners[0]))
+            : _winners.Length > 1 ? DotepyLines.GameTie : DotepyLines.GameNone);
+        Ctx.Finish(_winners, Summary(present), present.ToDictionary(s => s, s => _score[s]));
+    }
+
+    /// <summary>
+    /// Спільне для кінця партії (дограли чи розійшлись): фаза done, переможці — найбільший рахунок серед присутніх
+    /// (кілька — усі, усі по нулях — нікого), кожному присутньому — рахунок у таблицю «кращих».
+    /// </summary>
+    List<int> End()
+    {
         _phase = PhaseDone;
         _endsAt = null;
         _totalMs = 0;
@@ -754,13 +940,14 @@ public sealed class Dotepy : Game
         foreach (var s in present) best = Math.Max(best, _score[s]);
         _winners = best > 0 ? [.. present.Where(s => _score[s] == best)] : [];
         foreach (var s in present) Ctx.Score(s, _score[s]);
-        if (_startedWith >= DuelFrom) foreach (var w in _winners) Ctx.Award(w, 0, "ach:dotepy-king");
-        SayNow(_winners.Length == 1 ? DotepyLines.GameWin(Spoken(_winners[0])) : DotepyLines.GameTie);
         _dirty = true;
-        Ctx.Finish(_winners, Summary(present), present.ToDictionary(s => s, s => _score[s]));
+        return present;
     }
 
-    /// <summary>«Дотепи: Оля 3400, Петро 2100, Ганна 900 — розгромів: 2» — від більшого, бо ніки не відмінюємо.</summary>
+    /// <summary>
+    /// «Дотепи: Оля 3400, Петро 2100, Ганна 900 — розгромів: 2 · дотеп партії: «Радіо Куряча сліпота» (Оля)» — від
+    /// більшого, бо ніки не відмінюємо. Дотеп партії в Журналі живе довше за саму партію.
+    /// </summary>
     string Summary(List<int> seats)
     {
         if (seats.Count == 0) return $"{Info.Title}: за столом уже нікого";
@@ -768,6 +955,7 @@ public sealed class Dotepy : Game
             .Select(s => $"{NickOf(s)} {_score[s].ToString(CultureInfo.InvariantCulture)}"));
         var tail = _sweeps > 0 ? $" — розгромів: {_sweeps}" : "";
         if (_winners is { Length: 0 }) tail += " — нічия";
+        if (TopBests() is [var top, ..]) tail += $" · дотеп партії: «{top.Text}» ({NickOf(top.Seat)})";
         return $"{Info.Title}: {line}{tail}";
     }
 
@@ -794,21 +982,16 @@ public sealed class Dotepy : Game
         _left[seat] = true;
         if (PresentCount() >= MinSeats) return;
 
-        _phase = PhaseDone;
-        _endsAt = null;
-        _totalMs = 0;
-        _pending = null;
-        _at = -1;
-        var present = new List<int>();
-        for (var s = 0; s < MaxSeats; s++) if (Present(s)) present.Add(s);
-        long best = 0;
-        foreach (var s in present) best = Math.Max(best, _score[s]);
-        _winners = best > 0 ? [.. present.Where(s => _score[s] == best)] : [];
+        // Рахунки тим, хто лишився, — у таблицю, як і в дограній партії. «Короля дотепів» — ні: це за дограну партію,
+        // а не за те, що решта розійшлась.
+        _early = true;
+        var present = End();
         // підсумок Глека теж: інакше на екрані кінця висіла б остання репліка партії («Раунд перший…»)
-        SayNow(_winners.Length == 1 ? DotepyLines.GameWin(Spoken(_winners[0])) : DotepyLines.Gone);
+        SayNow(_winners!.Length == 1 ? DotepyLines.GameWin(Spoken(_winners[0])) : DotepyLines.Gone);
         Ctx.Finish(_winners, _winners.Length > 0
             ? $"{Info.Title}: гравці розійшлись — попереду {string.Join(", ", _winners.Select(NickOf))}"
-            : $"{Info.Title}: гравці розійшлись, партію не дограли");
+            : $"{Info.Title}: гравці розійшлись, партію не дограли",
+            present.ToDictionary(s => s, s => _score[s]));
     }
 
     // ---------------------------------------------------------------------------------------
@@ -824,9 +1007,33 @@ public sealed class Dotepy : Game
             "answer" => Submit(seat, payload),
             "edit" => Edit(seat, payload),
             "vote" => Vote(seat, payload),
+            "laugh" => Present(seat) ? LaughAt(NickKey(seat), seat, Int(payload, "card"), Int(payload, "i")) : ActResult.Fail("Зараз не смішно"),
             _ => ActResult.Fail("Тут так не ходять"),
         };
     }
+
+    string NickKey(int seat) => "#" + seat.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// «😂» — реакція залу на розкритті (гравці через хаб, глядачі через HTTP): одна на людину на відповідь, за себе
+    /// не можна, очок не дає. Дає тим, хто вже проголосував, і публіці що робити, поки летять голоси, і живе
+    /// відчуття залу. Лише фаза <c>reveal</c> і лише розкриті відповіді.
+    /// </summary>
+    ActResult LaughAt(string who, int seat, int? card, int? i)
+    {
+        if (_phase != PhaseReveal || _at < 0 || _at >= _cards.Count) return ActResult.Fail("Зараз не смішно");
+        if (card != _at) return ActResult.Fail("Ця картка вже пішла");
+        var c = _cards[_at];
+        if (i is not { } k || k < 0 || k >= c.Answers.Length || _final && _revealPos[k] >= _shown) return ActResult.Fail("Такої відповіді нема");
+        if (seat >= 0 && c.Answers[k].Seat == seat) return ActResult.Fail("Зі свого не сміються — хай сміються інші");
+        if (!c.Laughed.Add(who + "\n" + k.ToString(CultureInfo.InvariantCulture))) return ActResult.Done;   // уже сміявся — мовчки
+        c.Answers[k].Laughs++;
+        _dirty = true;
+        return ActResult.Done;
+    }
+
+    /// <summary>Сміх глядача (через <see cref="DotepyJury"/>, під <c>room.Sync</c>, без <c>Ctx.*</c>).</summary>
+    public ActResult JuryLaugh(string nickKey, int card, int i) => LaughAt("@" + nickKey, -1, card, i);
 
     /// <summary>Моє місце на картці <paramref name="i"/> поточного раунду (або null, якщо картка не моя).</summary>
     Entry? Mine(int seat, int? i)
@@ -856,10 +1063,23 @@ public sealed class Dotepy : Game
         e.Draft = text;
         e.Done = true;
         _dirty = true;
-        // Усі автори цієї картки здали — читання вже відоме: хай Глек озвучує його, поки решта пише.
+        // Усі автори цієї картки здали — читання вже відоме: хай Глек озвучує його, поки решта пише. Лише двічі за
+        // написання (перший раз терміново): «змінив — здав» по колу інакше закидав би спільну чергу edge-tts
+        // терміновими репліками, що назавжди лягають у кеш. Остаточне читання однаково піде на кінці написання.
         var card = _cards[Int(payload, "i")!.Value];             // індекс уже перевірив Mine
-        if (VoiceOn && card.Entries.TrueForAll(x => x.Done))
-            Prepare([DotepyLines.Card(card.Prompt.Text, [.. card.Order.Select(k => card.Entries[k].Text)])], urgent: true);
+        if (VoiceOn && card.EarlyVoiced < EarlyVoicings && card.Entries.TrueForAll(x => x.Done))
+        {
+            var texts = card.Order.Select(k => card.Entries[k].Text).ToArray();
+            var line = _mode == ModeDuel && texts.Length == 2 && Same(texts[0], texts[1])
+                ? DotepyLines.Jinx(card.Prompt.Text, texts[0])
+                : DotepyLines.Card(card.Prompt.Text, texts);
+            if (line != card.EarlyLine)
+            {
+                Prepare([line], urgent: card.EarlyVoiced == 0);
+                card.EarlyVoiced++;
+                card.EarlyLine = line;
+            }
+        }
         return ActResult.Done;
     }
 
@@ -905,12 +1125,12 @@ public sealed class Dotepy : Game
     /// Голос публіки (глядач, specs/dotepy.md §3.2). Кличе <see cref="DotepyJury"/> під <c>room.Sync</c>, поза
     /// <c>Collect</c> — тому жодного <c>Ctx.*</c> тут нема: види розішле наступний тик.
     /// </summary>
-    public ActResult JuryVote(string nickKey, int card, int pick)
+    public ActResult JuryVote(string nick, int card, int pick)
     {
-        if (_phase != PhaseVote) return ActResult.Fail("Зараз не голосують");
+        if (_phase != PhaseVote || _at < 0 || _at >= _cards.Count) return ActResult.Fail("Зараз не голосують");
         if (card != _at) return ActResult.Fail("Ця картка вже пішла");
         if (pick < 0 || pick >= _cards[_at].Answers.Length) return ActResult.Fail("Такої відповіді нема");
-        _jury[nickKey] = pick;
+        _jury[Auth.NickKey(nick)] = (nick.Trim(), pick);
         _dirty = true;
         return ActResult.Accept("Голос публіки прийнято");
     }
@@ -919,8 +1139,14 @@ public sealed class Dotepy : Game
         p.ValueKind == JsonValueKind.Object && p.TryGetProperty(name, out var v)
         && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) ? n : null;
 
-    static string? Str(JsonElement p, string name) =>
-        p.ValueKind == JsonValueKind.Object && p.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    static string? Str(JsonElement p, string name)
+    {
+        if (p.ValueKind != JsonValueKind.Object || !p.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.String) return null;
+        // Самотній сурогат («\ud800») — валідний JSON, але не валідний UTF-16: GetString кидає, і Rooms.Act закривав
+        // партію «зламалась». Такий рядок — просто «нема тексту».
+        try { return v.GetString(); }
+        catch (InvalidOperationException) { return null; }
+    }
 
     /// <summary>
     /// Чистка дотепу: без керівних і невидимих службових символів, пробіли по одному, без пробілів по краях.
@@ -931,15 +1157,25 @@ public sealed class Dotepy : Game
         if (string.IsNullOrEmpty(raw)) return "";
         var sb = new StringBuilder(raw.Length);
         var space = false;
-        foreach (var ch in raw)
+        for (var k = 0; k < raw.Length; k++)
         {
+            var ch = raw[k];
             if (char.IsWhiteSpace(ch) || char.IsControl(ch))
             {
                 space = true;
                 continue;
             }
+            // Сурогати — лише парами (емодзі). Самотній зламав би серіалізацію виду для всього столу.
+            if (char.IsSurrogate(ch))
+            {
+                if (!char.IsHighSurrogate(ch) || k + 1 >= raw.Length || !char.IsLowSurrogate(raw[k + 1])) continue;
+                if (space && sb.Length > 0) sb.Append(' ');
+                space = false;
+                sb.Append(ch).Append(raw[++k]);
+                continue;
+            }
             // невидимі службові (напрямок тексту, м'який перенос) — геть, але ZWJ/селектори емодзі лишаємо: без них 👨‍👩‍👧 розсиплеться
-            if (char.GetUnicodeCategory(ch) == UnicodeCategory.Format && ch is not ('‍' or '️')) continue;
+            if (char.GetUnicodeCategory(ch) == UnicodeCategory.Format && ch is not ('\u200D' or '\uFE0F')) continue;
             if (space && sb.Length > 0) sb.Append(' ');
             space = false;
             sb.Append(ch);
@@ -1023,7 +1259,9 @@ public sealed class Dotepy : Game
                 nick = _nicks[s],
                 score = _score[s],
                 ready = _phase == PhaseWrite && Ready(s),
-                voted = _phase is PhaseVote or PhaseReveal && Complete(s),
+                // У дуелі, поки голосують, «хто вже проголосував» — це «хто не автор»: під кінець голосування
+                // непроголосовані й були б рівно двоє авторів. Тож у дуелі до розкриття — лише лічильник на картці.
+                voted = (_phase == PhaseVote && _mode != ModeDuel || _phase == PhaseReveal) && Complete(s),
                 left = _left[s],
             });
         }
@@ -1085,17 +1323,27 @@ public sealed class Dotepy : Game
                 votes = open ? a.Voters.ToArray() : null,
                 medals = open && _final ? a.Medals.ToArray() : null,
                 jury = open ? a.Jury : (int?)null,
+                juryBy = open ? a.JuryBy.ToArray() : null,
                 points = open ? a.Points : (int?)null,
                 rank = open && _final ? a.Rank : (int?)null,
                 prize = open ? a.Prize : (bool?)null,
+                laughs = open ? a.Laughs : (int?)null,
             };
         }
-        var voters = new List<int>(MaxSeats);
+        // Хто має голос і хто вже голосував. У дуелі — лише числа: список суддів — це «усі, крім двох авторів»,
+        // а список проголосованих під кінець звужується до тих самих авторів. У «на всіх» і фіналі голосують усі,
+        // тож імена нічого не видають і лишаються (соціальний тиск на того, хто досі думає, — частина гри).
+        var voters = 0;
+        var votedCount = 0;
         var voted = new List<int>(MaxSeats);
+        var duel = _mode == ModeDuel && !reveal;
         for (var s = 0; s < MaxSeats; s++)
         {
-            if (_voter[s] && Present(s)) voters.Add(s);
-            if (Complete(s)) voted.Add(s);
+            if (!_voter[s] || !Present(s)) continue;
+            voters++;
+            if (!Complete(s)) continue;
+            votedCount++;
+            if (!duel) voted.Add(s);
         }
         return new
         {
@@ -1103,12 +1351,14 @@ public sealed class Dotepy : Game
             of = _cards.Count,
             prompt = card.Prompt.Text,
             answers,
-            voters = voters.ToArray(),
+            votersCount = voters,
+            votedCount,
             voted = voted.ToArray(),
             juryVotes = _jury.Count,
             perVoter = _perVoter,
             ranked = _final,
             sweep = reveal && card.Sweep >= 0 ? card.Sweep : (int?)null,
+            jinx = reveal && card.Jinx,
             shown = reveal && _final ? _shown : card.Answers.Length,
         };
     }
@@ -1126,6 +1376,7 @@ public sealed class Dotepy : Game
         winners = (int[])_winners!.Clone(),
         scores = (long[])_score.Clone(),
         best = TopBests().Select(BestView).ToArray(),
+        early = _early,
     };
 
     /// <summary>

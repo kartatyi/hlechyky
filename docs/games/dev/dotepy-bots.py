@@ -1,12 +1,16 @@
 """Боти «Дотепів» для живої перевірки: кожен — окреме SignalR-з'єднання (JSON поверх WebSocket).
 
-    python docs/games/dev/dotepy-bots.py --port 8231 --room <id> --nicks Петро,Ганна [--write 2-6] [--vote 1-4] [--leave Ганна@vote] [--secs 600]
+    C:/Users/Ya/AppData/Local/Python/pythoncore-3.14-64/python.exe docs/games/dev/dotepy-bots.py --port 8231 --room <id>         --nicks Петро,Ганна [--write 2-6] [--vote 1-4] [--leave Ганна@vote] [--laugh 0.5] [--jinx] [--secs 600]
+
+(Python — лише повним шляхом: голий `python`/`py` на цій машині смикає «оновлення» Install Manager, і AppXSvc тече пам'яттю.)
 
 Сідають за стіл (JoinRoom), дивляться його (WatchRoom), на кожен свій вид:
   write — здають свої завдання (смішні рядки з запасу) через випадкову паузу, спершу чернетку;
   vote  — якщо мають голос і ще не голосували — голосують за випадкову чужу (у фіналі — одразу всі медалі).
 --leave Нік@фаза — цей бот встає з-за столу, щойно побачить фазу (write/vote/reveal/table).
 --rematch — коли партію зіграно, перший бот тисне «Ще раз».
+--laugh P — на розкритті з імовірністю P бот тисне «😂» на чужу відповідь.
+--jinx — усі боти на одне завдання пишуть той самий рядок (перевірити «Думки сходяться!»).
 Друкує фази й підсумок; завершується, коли партію зіграно (або --secs).
 Потрібен пакет websockets. Нік на сервері стане «гість <нік>» — так сайт кличе гостей.
 Людину за столом зручно водити справжнім браузером (headless Chrome, D:/or-wt/_tools/cdp2.py), решту — цими ботами.
@@ -110,6 +114,7 @@ class Bot:
         v = self.view or {}
         phase = v.get("phase")
         if self.status == "finished":
+            self.busy.clear()          # «Ще раз» — нова партія з тими самими номерами раундів і карток
             if not self.shared.get("finished"):
                 self.shared["finished"] = True
                 res = v.get("result") or {}
@@ -141,6 +146,12 @@ class Bot:
                     continue
                 self.busy.add(tag)
                 asyncio.create_task(self.write(t["i"]))
+        elif phase == "reveal" and self.a.laugh > 0:
+            card = v.get("card") or {}
+            tag = ("l", v.get("round"), card.get("i"))
+            if tag not in self.busy:
+                self.busy.add(tag)
+                asyncio.create_task(self.laugh(card))
         elif phase == "vote" and me.get("voter") and not me.get("picks"):
             card = v.get("card") or {}
             tag = ("v", v.get("round"), card.get("i"))
@@ -152,7 +163,7 @@ class Bot:
     async def write(self, i):
         lo, hi = self.a.write
         await asyncio.sleep(self.rng.uniform(lo, hi) / 2)
-        text = self.rng.choice(LINES)
+        text = LINES[(i * 7 + (self.view or {}).get("round", 0)) % len(LINES)] if self.a.jinx else self.rng.choice(LINES)
         await self.send("Input", [self.a.room, "draft", {"i": i, "text": text[: len(text) // 2]}])
         await asyncio.sleep(self.rng.uniform(lo, hi) / 2)
         r = await self.call("Act", [self.a.room, "answer", {"i": i, "text": text}])
@@ -172,6 +183,17 @@ class Bot:
             print(f"[{self.nick}] vote {card.get('i')}: {r}", flush=True)
 
 
+    async def laugh(self, card):
+        await asyncio.sleep(self.rng.uniform(0.8, 3))
+        if self.rng.random() > self.a.laugh:
+            return
+        me = (self.view or {}).get("me") or {}
+        mine = set(me.get("mine", []))
+        open_ = [i for i, x in enumerate(((self.view or {}).get("card") or {}).get("answers", [])) if x.get("seat") is not None and i not in mine]
+        if open_:
+            await self.call("Act", [self.a.room, "laugh", {"card": card["i"], "i": self.rng.choice(open_)}])
+
+
 def span(s):
     lo, hi = (float(x) for x in s.split("-"))
     return lo, hi
@@ -186,6 +208,8 @@ async def main():
     ap.add_argument("--vote", type=span, default=(1, 4))
     ap.add_argument("--leave")
     ap.add_argument("--rematch", action="store_true")
+    ap.add_argument("--laugh", type=float, default=0.0)
+    ap.add_argument("--jinx", action="store_true")
     ap.add_argument("--secs", type=int, default=900)
     ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
