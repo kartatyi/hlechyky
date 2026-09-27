@@ -1962,11 +1962,11 @@
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
   // балачок на телефоні). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
   const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat'];
-  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback'];
+  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos'];
   const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки' };
-  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги' };
+  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото людей' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
-  const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках' };
+  const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
   // Старі адреси (закладки, посилання в балачках) ведуть туди, куди переїхали їхні сторінки.
   const MOVED = {
     'lib/rating': '#stats/music', 'lib/top': '#stats/music',
@@ -2824,6 +2824,9 @@
       } else if (libTab === 'feedback') {
         await renderFeedbackAdmin();
         return;
+      } else if (libTab === 'photos') {
+        await HLavka.adminPhotos(box);   // «Своя фотка» з Лавки: переглянути й зняти (lavka.js)
+        return;
       }
       wireRows(box);
     } catch (e) { box.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
@@ -3467,8 +3470,9 @@
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
     $('fbTab').hidden = me.role !== 'admin';
-    // на #lib/ads чи записки зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
-    if ((libTab === 'ads' || libTab === 'feedback') && me.role !== 'admin') go('#lib/history');
+    $('photosTab').hidden = me.role !== 'admin';
+    // на #lib/ads, записки чи фото зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
+    if ((libTab === 'ads' || libTab === 'feedback' || libTab === 'photos') && me.role !== 'admin') go('#lib/history');
     if (me.account || me.nick) {
       // Нік без приставки з часів до акаунтів: сервер уже зве нас «гість …» — запропонуємо закріпити його паролем.
       const plain = !me.account && me.nick && m.nick !== me.nick ? me.nick : null;

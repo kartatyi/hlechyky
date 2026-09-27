@@ -1231,3 +1231,70 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
   .lv-sign img { width: 40px; height: 40px; }
   .lv-sign h2 { font-size: 1.2em; }
 }
+
+/* =====================================================================================================
+   Лавка: «📷 Своя фотка» (пакет fb/lavka, 28.09.2026) — окремим блоком, щоб легко зводилось з іншими правками.
+   Фото в кружечку аватарки, значок у куточку, фото перед ніком у балачках, вікно обрізки, полиця «Своя фотка»
+   і адмінська вкладка «📷 Фото» в Бібліотеці. Малює web/people.js (avaHtml, badge) і web/lavka.js.
+   ===================================================================================================== */
+/* Фото — у кружечку; рамка з Лавки (border + свій шар фону border-box) лишається поверх, бо фото сидить усередині
+   рамки. Специфічніше за «.list img» (36×36, квадрат), щоб у списках аватарка не ставала квадратною мініатюрою. */
+.ava.ph { position: relative; }
+.ava.ph:not(.fr) { box-shadow: 0 0 0 1px hsl(var(--h) 50% 45% / .7); }
+.ava.ph > img { grid-area: 1 / 1; display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--panel3); }
+/* значок, коли є фото, — маленьким кружечком у правому нижньому куточку */
+.ava .ava-ic {
+  position: absolute; right: -14%; bottom: -14%; width: 54%; height: 54%; border-radius: 50%; display: grid; place-items: center;
+  background: hsl(var(--h) 42% 24%); box-shadow: 0 0 0 1.5px var(--bg); font-style: normal; font-weight: 400; line-height: 1;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; font-size: 9px; overflow: hidden;
+}
+.ava.sm .ava-ic { font-size: 7px; box-shadow: 0 0 0 1px var(--bg); }
+.ava.xl .ava-ic { font-size: 14px; }
+.ava.xxl .ava-ic { font-size: 22px; box-shadow: 0 0 0 2px var(--bg); }
+.ava .ava-ic .fl-ua { width: 1.1em; height: .76em; }
+/* балачки й «хто тут»: фото замість значка перед ніком */
+.nico.ph {
+  display: inline-block; width: 1.25em; height: 1.25em; border-radius: 50%; overflow: hidden; vertical-align: -.28em; margin-right: 4px;
+  background: var(--panel3); box-shadow: 0 0 0 1px hsl(var(--h) 50% 50% / .7);
+}
+.nico.ph > img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+
+/* ---- полиця «📷 Своя фотка» ---- */
+.lv-photo { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 16px; border-radius: 12px; background: var(--bg2); }
+.lv-ph-art { flex: none; display: grid; place-items: center; width: 124px; height: 124px; }
+.lv-ph-art .ava.xxl { width: 108px; height: 108px; font-size: 2.7em; }
+.lv-ph-art .ava.xxl.ico { font-size: 3.3em; }
+.lv-ph-art .ava.xxl .ava-ic { font-size: 28px; box-shadow: 0 0 0 3px var(--bg2); }
+.lv-ph-main { flex: 1; min-width: 210px; display: flex; flex-direction: column; gap: 8px; }
+.lv-ph-main .lv-name { font-size: 1.1em; }
+.lv-ph-main .lv-btns { justify-content: flex-start; margin-top: 2px; }
+.lv-ph-main .lv-btns button { padding: 7px 14px; font-size: .95em; }
+@media (max-width: 600px) {
+  .lv-photo { flex-direction: column; text-align: center; }
+  .lv-ph-main { min-width: 0; width: 100%; }
+  .lv-ph-main .lv-btns { justify-content: center; }
+}
+
+/* ---- вікно обрізки: квадратне полотно, поза колом — затемнено ---- */
+.lv-crop .card { width: min(94vw, 380px); max-height: 96vh; overflow: auto; }
+.lv-crop-stage {
+  position: relative; align-self: center; flex: none; width: min(78vw, 300px); height: min(78vw, 300px); border-radius: 14px; overflow: hidden;
+  background: #111; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.lv-crop-stage:active { cursor: grabbing; }
+.lv-crop-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lv-crop-stage canvas { display: block; width: 100%; height: 100%; }
+.lv-crop-ring {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 999px rgba(8, 10, 9, .62), inset 0 0 0 2px rgba(255, 255, 255, .75);
+}
+.lv-crop-zoom { display: flex; align-items: center; gap: 8px; font-size: .9em; color: var(--muted); }
+.lv-crop-zoom input { flex: 1; min-width: 0; accent-color: var(--accent); }
+@media (max-height: 640px) { .lv-crop-stage { width: min(78vw, 250px); height: min(78vw, 250px); } }
+
+/* ---- адміну: усі фотки з кнопкою «Зняти» ---- */
+.lv-adm-note { margin-bottom: 10px; }
+.list.lv-adm li.lv-adm-row { grid-template-columns: 56px 1fr auto; gap: 12px; }
+.list .lv-adm-img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; display: block; background: var(--panel3); }
+.lv-adm-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lv-adm-row button { border: 1px solid var(--line); }

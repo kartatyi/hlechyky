@@ -171,7 +171,8 @@ public sealed partial class LavkaPhotos(LavkaStore store, Lavka lavka, ILavkaWir
         if (old is null) return new(false, "Фото й так нема");
         Delete(old);
         lavka.Announce(nick);
-        return new(true, "Фото прибрано — знову значок", null, lavka.ReadyAt(nick, LavkaCatalog.Photo));
+        var back = lavka.LookOf(nick)?.Icon is null ? "знову літера" : "знову значок";
+        return new(true, $"Фото прибрано — {back}", null, lavka.ReadyAt(nick, LavkaCatalog.Photo));
     }
 
     /// <summary>Усі поставлені фото — для адміна, свіжі згори.</summary>

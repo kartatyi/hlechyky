@@ -200,9 +200,12 @@ public static class LavkaSetup
         : Results.Ok(new { items = photos.All().Select(p => new { nick = p.Nick, url = p.Url, at = p.At, bytes = p.Bytes }) });
 
     /// <summary>POST /api/lavka/photos/remove { nick } — адмін знімає фото. → { ok, message }.</summary>
-    public static IResult TakeDown(HttpContext c, TakeDownRequest b, LavkaPhotos photos) => !Auth.IsAdmin(c)
-        ? Results.BadRequest(new { ok = false, message = "Це вміє лише розробник" })
-        : photos.TakeDown(b.Nick) is var r && r.Ok ? Results.Ok(new { ok = true, message = r.Message }) : Results.BadRequest(new { ok = false, message = r.Message });
+    public static IResult TakeDown(HttpContext c, TakeDownRequest b, LavkaPhotos photos)
+    {
+        if (!Auth.IsAdmin(c)) return Results.BadRequest(new { ok = false, message = "Це вміє лише розробник" });
+        var r = photos.TakeDown(b.Nick);
+        return Reply(new LavkaReply(r.Ok, r.Message));
+    }
 
     static IResult PhotoReply(LavkaPhotoReply r)
     {

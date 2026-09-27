@@ -488,7 +488,7 @@ public sealed class LavkaPhotoTests : IDisposable
         var r = _photos.Remove("Оля", true);
 
         Assert.True(r.Ok, r.Message);
-        Assert.Equal("Фото прибрано — знову значок", r.Message);
+        Assert.Equal("Фото прибрано — знову значок", r.Message);         // значок був — він і повернувся
         Assert.Empty(Files());
         Assert.Equal(new LavkaLook("🦊", null, null, null, null), _lavka.LookOf("Оля"));   // знову значок
         Assert.Equal(("Оля", (LavkaLook?)new LavkaLook("🦊", null, null, null, null)), Assert.Single(_wire.Shown));
@@ -635,6 +635,7 @@ public sealed class LavkaPhotoTests : IDisposable
         Assert.True(_photos.Set("Оля", true, Jpeg()).Ok);
         var (status, body) = Radio.Reply(LavkaSetup.RemovePhoto(As("Оля"), _photos));
         Assert.Equal(200, status);
+        Assert.Equal("Фото прибрано — знову літера", body.GetProperty("message").GetString());   // значка нема
         Assert.Equal(JsonValueKind.Null, body.GetProperty("url").ValueKind);
         Assert.Equal(Clock.UtcNow + Lavka.PhotoGap, body.GetProperty("readyAt").GetDateTimeOffset());
     }
