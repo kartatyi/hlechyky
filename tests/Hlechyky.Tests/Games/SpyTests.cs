@@ -199,9 +199,9 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal(("Шпигун", GameGroup.Party, 3, 10), (info.Title, info.Group, info.MinPlayers, info.MaxPlayers));
         Assert.Equal((250, StartMode.ByHost, true, false, false), (info.TickMs, info.Start, info.Hidden, info.Rated, info.Persistent));
         var options = info.Options!.ToDictionary(o => o.Key);
-        Assert.Equal(["6", "8", "10"], options["time"].Values.Select(v => v.Value).ToArray());
+        Assert.Equal(["4", "6", "8", "10"], options["time"].Values.Select(v => v.Value).ToArray());
         Assert.Equal("6", options["time"].Default);
-        Assert.Equal(["1", "3", "5"], options["rounds"].Values.Select(v => v.Value).ToArray());
+        Assert.Equal(["1", "3", "5", Spy.EachRound], options["rounds"].Values.Select(v => v.Value).ToArray());
         Assert.Equal("3", options["rounds"].Default);
         Assert.True(options["set"].Multi);
         Assert.Equal(["all", "ua", "classic"], options["set"].Values.Select(v => v.Value).ToArray());
@@ -241,6 +241,67 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal(["ua", "classic"], rules.GetProperty("sets").EnumerateArray().Select(x => x.GetString()!).ToArray());
         ToPlay(h);
         Assert.Equal(600_000, h.View(null).GetProperty("clock").GetProperty("totalMs").GetInt64());
+    }
+
+    [Fact]
+    public void Four_minute_rounds_are_an_option()
+    {
+        var h = Table(3, options: new { time = "4" });
+        Assert.Equal(4, h.View(null).GetProperty("rules").GetProperty("minutes").GetInt32());
+        ToPlay(h);
+        Assert.Equal(240_000, LeftMs(h));
+    }
+
+    [Fact]
+    public void Each_once_makes_as_many_rounds_as_players_and_everyone_is_spy_exactly_once()
+    {
+        var lobby = new RoomHarness("spy", new { rounds = Spy.EachRound }, 1, RoomHarness.WithService(Real.Value));
+        foreach (var n in Crew.Take(4)) lobby.Join(n);
+        var rules = lobby.View(null).GetProperty("rules");
+        Assert.True(rules.GetProperty("each").GetBoolean());                 // у лобі — «кожен по разу», число ще невідоме
+        Assert.Equal(0, rules.GetProperty("rounds").GetInt32());
+
+        var h = Table(4, seed: 3, options: new { rounds = Spy.EachRound });
+        Assert.Equal(4, h.View(null).GetProperty("of").GetInt32());
+        Assert.Equal(4, h.View(null).GetProperty("rules").GetProperty("rounds").GetInt32());
+        var spies = new List<int>();
+        for (var r = 0; r < 4; r++)
+        {
+            ToPlay(h);
+            spies.Add(SpySeat(h));
+            h.Act(SpySeat(h), "guess", new { loc = WrongLoc(h) });
+            AllReady(h);
+        }
+        Assert.Equal("done", Phase(h));
+        Assert.Equal(Seated(h).Order().ToArray(), spies.Order().ToArray());   // кожен — рівно раз
+    }
+
+    [Fact]
+    public void Each_once_loses_the_round_of_someone_who_left_before_being_spy()
+    {
+        var h = Table(5, seed: 4, options: new { rounds = Spy.EachRound });
+        ToPlay(h);
+        var first = SpySeat(h);
+        h.Act(first, "guess", new { loc = WrongLoc(h) });
+        AllReady(h);
+        ToPlay(h);
+        var second = SpySeat(h);
+        var gone = Seated(h).First(s => s != first && s != second);
+        h.Leave(h.NickOf(gone));                            // шпигуном так і не побув
+        Assert.Equal(4, h.View(null).GetProperty("of").GetInt32());
+        var spies = new List<int> { first, second };
+        h.Act(second, "guess", new { loc = WrongLoc(h) });
+        AllReady(h);
+        for (var r = 0; r < 2; r++)
+        {
+            ToPlay(h);
+            spies.Add(SpySeat(h));
+            h.Act(SpySeat(h), "guess", new { loc = WrongLoc(h) });
+            AllReady(h);
+        }
+        Assert.Equal("done", Phase(h));
+        Assert.Equal(4, spies.Distinct().Count());
+        Assert.DoesNotContain(gone, spies);
     }
 
     // =========================================================================================
@@ -619,7 +680,7 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal("play", Phase(h));
         Assert.InRange(LeftMs(h), left - Spy.TickMs, left);
         Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("vote").ValueKind);
-        Assert.Contains(Hlek(h), l => SpyGlek.NotUnanimous.Contains(l));
+        Assert.Equal(1, Hlek(h).Count(l => SpyGlek.Accuse.Any(p => l.StartsWith(p[..6], StringComparison.Ordinal))));
         Assert.All(Seated(h), s => Assert.Equal(0, Score(h, s)));
 
         // Одне явне «ні» — те саме, і без чекання дедлайну.
@@ -714,6 +775,25 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Contains(Hlek(h), l => SpyGlek.VoteCancelled.Contains(l));
         Assert.False(Player(h, accuser).GetProperty("accused").GetBoolean());
         Assert.True(h.Act(accuser, "accuse", new { seat = spy }).Ok);
+    }
+
+    [Fact]
+    public void A_suspect_leaving_a_table_of_three_folds_it_without_saying_play_on()
+    {
+        // Утрьох підозрюваний устав — лишилось двоє. Глек не має казати «граємо далі», щоб за мить сказати «згорнуто».
+        var h = Table(3);
+        ToPlay(h);
+        var spy = SpySeat(h);
+        var accuser = Villager(h);
+        var innocent = Villager(h, accuser);
+        Assert.True(h.Act(accuser, "accuse", new { seat = innocent }).Ok);
+        var before = Hlek(h).Count;
+        h.Leave(h.NickOf(innocent));
+        Assert.Equal("done", Phase(h));
+        var said = Hlek(h).Skip(before).ToList();
+        Assert.DoesNotContain(said, l => SpyGlek.VoteCancelled.Contains(l));
+        Assert.Single(said, l => SpyGlek.Fold.Contains(l));
+        Assert.Equal(spy, h.View(null).GetProperty("reveal").GetProperty("spy").GetInt32());
     }
 
     // =========================================================================================
@@ -819,7 +899,7 @@ public class SpyTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void A_strict_majority_on_the_spy_catches_them_without_an_accuser_bonus()
+    public void A_strict_majority_on_the_spy_catches_them_and_only_those_who_pointed_at_the_spy_get_the_bonus()
     {
         var h = Table(5);
         ToPlay(h);
@@ -833,13 +913,21 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal("На себе не показують", h.Act(vs[3], "blame", new { seat = vs[3] }).Message);
         var votes = h.View(null).GetProperty("blame").GetProperty("votes");
         Assert.Equal(spy, votes.GetProperty(vs[0].ToString()).GetInt32());   // голоси відкриті
+        h.Act(vs[3], "blame", new { seat = vs[0] });        // не влучив
         Until(h, () => Phase(h) == "reveal", 200);
         var reveal = h.View(null).GetProperty("reveal");
         Assert.Equal("caught", reveal.GetProperty("how").GetString());
         Assert.Equal(JsonValueKind.Null, reveal.GetProperty("accuser").ValueKind);
-        Assert.All(vs, v => Assert.Equal(1, Score(h, v)));
+        // Селу по очку, а «влучне око» — хто показав саме на шпигуна — ще одне, як обвинувач за підозру.
+        Assert.Equal([2L, 2L, 2L, 1L], vs.Select(v => Score(h, v)).ToArray());
         Assert.Equal(0, Score(h, spy));
-        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:spy-catch");
+        Assert.Equal(2, reveal.GetProperty("gained").GetProperty(vs[0].ToString()).GetInt64());
+        // Хто на кого показав — на розкритті видно всім.
+        var pointed = reveal.GetProperty("pointed");
+        Assert.Equal(spy, pointed.GetProperty(vs[1].ToString()).GetInt32());
+        Assert.Equal(vs[0], pointed.GetProperty(vs[3].ToString()).GetInt32());
+        Assert.Contains(Hlek(h), l => SpyGlek.CaughtFinal.Any(p => l.StartsWith(p[..12], StringComparison.Ordinal)));
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:spy-catch");   // ачівка — лише за підозру
     }
 
     [Fact]
@@ -873,7 +961,8 @@ public class SpyTests(ITestOutputHelper output)
         t.Tick();
         Assert.Equal("timeout", t.View(null).GetProperty("reveal").GetProperty("how").GetString());
         Assert.Equal(Spy.SpyTimeoutPts, Score(t, ts));
-        Assert.All(tv, v => Assert.Equal(0, Score(t, v)));
+        Assert.All(tv, v => Assert.Equal(0, Score(t, v)));      // без вироку бонусу «влучного ока» нема
+        Assert.Equal(4, t.View(null).GetProperty("reveal").GetProperty("pointed").EnumerateObject().Count());
     }
 
     [Fact]
@@ -1084,7 +1173,12 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal([spy], fin.Result.Winners);
         Assert.Contains("лишилось двоє — партію згорнули", fin.Result.Text);
         Assert.Contains(h.NickOf(spy) + " 4", fin.Result.Text);
-        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("reveal").ValueKind);   // незавершений раунд не розкриваємо
+        // Недограний раунд розкриваємо (таємницю вже нема від кого берегти), але в хроніку він не йде й очок не дає.
+        var reveal = h.View(null).GetProperty("reveal");
+        Assert.Equal("fold", reveal.GetProperty("how").GetString());
+        Assert.Equal(spy2, reveal.GetProperty("spy").GetInt32());
+        Assert.All(reveal.GetProperty("gained").EnumerateObject(), g => Assert.Equal(0, g.Value.GetInt64()));
+        Assert.True(h.View(null).GetProperty("result").GetProperty("folded").GetBoolean());
         Assert.Equal(1, h.View(null).GetProperty("history").GetArrayLength());
         Assert.Contains(Hlek(h), l => SpyGlek.Fold.Contains(l));
     }
@@ -1098,8 +1192,10 @@ public class SpyTests(ITestOutputHelper output)
         var fin = h.Finished.Single();
         Assert.True(fin.Result.Draw);
         Assert.Contains("партії не вийшло", fin.Result.Text);
-        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("reveal").ValueKind);
+        Assert.Equal("fold", h.View(null).GetProperty("reveal").GetProperty("how").GetString());
         Assert.Equal(0, h.View(null).GetProperty("result").GetProperty("winners").GetArrayLength());
+        Assert.True(h.View(null).GetProperty("result").GetProperty("folded").GetBoolean());
+        Assert.Equal(0, h.View(null).GetProperty("history").GetArrayLength());
     }
 
     /// <summary>Стіл, де перший, хто питає, — не шпигун (інакше його вихід закрив би раунд).</summary>
@@ -1279,9 +1375,34 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal("Остап", mine.GetProperty("nick").GetString());
         Assert.Equal(0, mine.GetProperty("score").GetInt64());
         lock (h.Room.Sync) Assert.Null(h.Room.Game.TalkBlock(seat));
+        Assert.Equal(Crew[gone], h.View(null).GetProperty("names").GetProperty(gone.ToString()).GetString());
         // Нова партія — і новачок уже грає.
         Assert.True(h.Start().Ok);
         Assert.Equal(JsonValueKind.Object, h.View(seat).GetProperty("me").ValueKind);
+    }
+
+    [Fact]
+    public void A_newcomer_on_a_vacated_seat_does_not_take_the_leavers_name_in_the_chronicle()
+    {
+        // Шпигун устав, партію дограли, і на його звільнене місце сів новачок: у «Як це було» шпигуном має лишитись
+        // той, хто грав, а не новачок. Імена партії вид віддає окремо — players після партії показує вже новачка.
+        var h = Table(4, options: new { rounds = "1" });
+        ToPlay(h);
+        var spy = SpySeat(h);
+        var spyNick = h.NickOf(spy)!;
+        h.Leave(spyNick);
+        AllReady(h);
+        Assert.Equal("done", Phase(h));
+        Assert.True(h.Join("Чужинець").Ok);
+        Assert.Equal(spy, Array.IndexOf(h.Room.Seats, "Чужинець"));
+        var view = h.View(null);
+        Assert.Equal(spy, view.GetProperty("history")[0].GetProperty("spy").GetInt32());
+        Assert.Equal("Чужинець", view.GetProperty("players").EnumerateArray().Single(p => p.GetProperty("seat").GetInt32() == spy).GetProperty("nick").GetString());
+        var names = view.GetProperty("names");
+        Assert.Equal(spyNick, names.GetProperty(spy.ToString()).GetString());
+        Assert.Equal(4, names.EnumerateObject().Count());
+        // посеред партії імен окремо не шлемо — там players і так правдиві
+        Assert.Equal(JsonValueKind.Null, Table(3).View(null).GetProperty("names").ValueKind);
     }
 
     [Fact]
@@ -1291,10 +1412,10 @@ public class SpyTests(ITestOutputHelper output)
         ToPlay(h);
         var view = h.View(0);
         foreach (var name in new[] { "phase", "round", "of", "endsAt", "phaseMs", "phaseLeftMs", "clock", "rules", "players", "asker", "askedBy",
-                     "askGrace", "vote", "blame", "deck", "me", "reveal", "history", "result" })
+                     "askGrace", "vote", "blame", "deck", "me", "reveal", "history", "result", "names" })
             Assert.True(Views.Has(view, name), name);
         foreach (var name in new[] { "endsAt", "leftMs", "paused", "totalMs" }) Assert.True(Views.Has(view.GetProperty("clock"), name), name);
-        foreach (var name in new[] { "minutes", "rounds", "sets", "dealMs", "voteMs", "finalMs", "revealMs", "askGraceMs" })
+        foreach (var name in new[] { "minutes", "rounds", "sets", "dealMs", "voteMs", "finalMs", "revealMs", "askGraceMs", "each" })
             Assert.True(Views.Has(view.GetProperty("rules"), name), name);
         foreach (var name in new[] { "seat", "nick", "here", "score", "accused", "ready" })
             Assert.True(Views.Has(view.GetProperty("players")[0], name), name);
@@ -1314,8 +1435,19 @@ public class SpyTests(ITestOutputHelper output)
         h.Tick();
         h.Act(SpySeat(h), "guess", new { loc = Location(h) });
         var reveal = h.View(0).GetProperty("reveal");
-        foreach (var name in new[] { "spy", "loc", "roles", "how", "gained", "guess", "suspect", "accuser" })
+        foreach (var name in new[] { "spy", "loc", "roles", "how", "gained", "guess", "suspect", "accuser", "pointed" })
             Assert.True(Views.Has(reveal, name), name);
+        AllReady(h);
+        for (var r = 2; r <= 3; r++)
+        {
+            ToPlay(h);
+            h.Act(SpySeat(h), "guess", new { loc = Location(h) });
+            AllReady(h);
+        }
+        Assert.Equal("done", Phase(h));
+        var result = h.View(0).GetProperty("result");
+        foreach (var name in new[] { "winners", "folded" }) Assert.True(Views.Has(result, name), name);
+        Assert.Equal(JsonValueKind.Object, h.View(0).GetProperty("names").ValueKind);
     }
 
     [Fact]
@@ -1369,12 +1501,13 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal(n + 1, Hlek(h).Count);                // підозра
         foreach (var s in Seated(h)) if (s != spy) h.Act(s, "vote", new { yes = false });
         h.Tick();
-        Assert.Equal(n + 2, Hlek(h).Count);                // «не одностайно»
+        Assert.Equal("play", Phase(h));
+        Assert.Equal(n + 1, Hlek(h).Count);                // невдала підозра — мовчки: картка й так показує
         h.Act(spy, "guess", new { loc = WrongLoc(h) });
-        Assert.Equal(n + 3, Hlek(h).Count);                // вердикт
+        Assert.Equal(n + 2, Hlek(h).Count);                // вердикт
         foreach (var s in Seated(h)) h.Act(s, "ready", new { });
         h.Tick();
-        Assert.Equal(n + 4, Hlek(h).Count);                // кінець партії
+        Assert.Equal(n + 3, Hlek(h).Count);                // кінець партії
         Assert.All(SpyGlek.All, l => { Assert.False(string.IsNullOrWhiteSpace(l)); Assert.DoesNotContain('<', l); });
     }
 
@@ -1439,7 +1572,33 @@ public class SpyTests(ITestOutputHelper output)
         lock (h.Room.Sync) Assert.Equal("Ти тут не граєш", game.Act(7, "ask", Views.Payload(new { seat = 1 })).Message);
         h.Leave(h.NickOf(0));
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        lock (h.Room.Sync) Assert.Contains("ще раз", game.Act(1, "ask", Views.Payload(new { seat = 2 })).Message);
+        // Текст відмови — каркасний Say.Played (internal, тестам не видно): тут «Ще раз», а в main уже «Ану ще раз».
+        // Тож звіряємо без регістру — тест має пережити злиття, а не знати назву кнопки.
+        string played;
+        lock (h.Room.Sync) played = game.Act(1, "ask", Views.Payload(new { seat = 2 })).Message;
+        Assert.StartsWith("Партію зіграно", played);
+        Assert.Contains("ще раз", played, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Input_goes_through_exactly_the_same_rules_as_Act()
+    {
+        // Гра реалтаймова (TickMs > 0), тож каркас пускає в Act і шлях Input (без відповіді). Відрізнити його гра не
+        // може — тому всі правила однакові: чужа черга, не шпигун, повтор — ті самі відмови, стан не міняється.
+        var h = Table(4);
+        ToPlay(h);
+        var a = Asker(h)!.Value;
+        var other = Seated(h).First(s => s != a);
+        var target = Seated(h).First(s => s != a && s != other);
+        var before = WithoutMe(h, null);
+        h.Input(other, "ask", new { seat = target });                 // не його черга
+        h.Input(Villager(h), "guess", new { loc = Location(h) });     // не шпигун
+        h.Input(other, "vote", new { yes = true });                   // голосування нема
+        Assert.Equal(before, WithoutMe(h, null));
+        h.Input(a, "ask", new { seat = target });                     // легальне — те саме, що через Act
+        Assert.Equal(target, Asker(h));
+        h.Input(SpySeat(h), "guess", new { loc = WrongLoc(h) });
+        Assert.Equal("misguess", h.View(null).GetProperty("reveal").GetProperty("how").GetString());
     }
 
     [Fact]
