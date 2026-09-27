@@ -8,7 +8,7 @@
       reveal: null | { answer, years, say, rows: [{ seat, value, diff, points, accuracy, bonus, fast }] },
       scores: number[], result: null | { winners, scores } }
   points = accuracy (за точність) + bonus (найближчому) + fast (швидшому за однакової відстані).
-  Кадр (подія 'frame', раз на секунду, летить усій кімнаті — прихованого в ньому нема):
+  Кадр (подія 'frame', лише разом із новиною — чиєсь число чи зміна фази; летить усій кімнаті, прихованого нема):
     { round, of, phase, endsAt, answered, scores }
   Хід: Act('answer', { value }) — число або рядок («10 000», «2,54» сервер розбере сам).
 */

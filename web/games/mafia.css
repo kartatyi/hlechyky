@@ -19,7 +19,8 @@
 .mf-arc { flex: none; }
 .mf-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .mf-phase { font-size: 1.05em; }
-.mf-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Хто не прокинувся — головна новина ранку: на телефоні рядок обрізало до «гість Влад більше не п…». Хай переноситься. */
+.mf-hint { line-height: 1.3; overflow-wrap: anywhere; }
 .mf-me { background: var(--bg2); white-space: nowrap; }
 .mf-me.mf-out { opacity: .55; text-decoration: line-through; }
 /* Правила столу: один рядок, який можна прочитати й не читати. */
@@ -97,6 +98,14 @@
 .mf-logbox { width: 100%; }
 .mf-logbox summary { cursor: pointer; }
 .mf-log { display: flex; flex-direction: column; gap: 2px; padding-top: 5px; font-size: .86em; color: var(--muted); }
+
+/* Палець: «Перевірити» в комісара — одна спроба на ніч, а кнопка була 30 px заввишки впритул до сусіднього рядка.
+   Тепер ціль — 40 px, рядок — 46. */
+@media (pointer: coarse) {
+  .mf-p { min-height: 46px; }
+  .mf-do { min-height: 40px; padding: 8px 14px; }
+  .mf-act .ghost { min-height: 40px; padding: 8px 14px; }
+}
 
 @media (max-width: 480px) {
   .mf-p { padding: 5px 7px; gap: 6px; }

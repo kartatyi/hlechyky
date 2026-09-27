@@ -1061,21 +1061,23 @@ public class SkilkyTests
     }
 
     [Fact]
-    public void A_tick_that_changes_nothing_sends_only_a_frame()
+    public void A_tick_that_changes_nothing_sends_nothing()
     {
         var h = Table(2);
         Until(h, Skilky.PhaseAsk);
         var views = h.Outbox.OfType<RoomViews>().Count();
         var frames = h.Outbox.OfType<RoomFrame>().Count();
 
-        h.Tick(1);
+        // Прохід 28.09: раніше тут щосекунди летів кадр без жодної новини (дуга таймера цокає сама від endsAt).
+        h.Tick(5);
         Assert.Equal(views, h.Outbox.OfType<RoomViews>().Count());
-        Assert.Equal(frames + 1, h.Outbox.OfType<RoomFrame>().Count());
+        Assert.Equal(frames, h.Outbox.OfType<RoomFrame>().Count());
 
-        // А от чиєсь число — це вже привід розіслати види: у кожного вони свої.
+        // А от чиєсь число — це вже привід розіслати види (у кожного вони свої) і кадр із галочкою.
         h.Act(0, "answer", new { value = 1 });
         h.Tick(1);
         Assert.Equal(views + 1, h.Outbox.OfType<RoomViews>().Count());
+        Assert.Equal(frames + 1, h.Outbox.OfType<RoomFrame>().Count());
     }
 
     // ---------- вибір запитань ----------

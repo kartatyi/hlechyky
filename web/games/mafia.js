@@ -173,7 +173,14 @@
     const el = root.querySelector(':scope > .mafia') || build(root, ctx);
     el._mfCtx = ctx;
     const v = ctx.view || {};
-    if (!v.phase) { el.querySelector('.mf-players').innerHTML = '<div class="gwait">чекаю на село…</div>'; return; }
+    if (!v.phase) {
+      // Підпис скидаємо разом із вмістом: інакше наступний вид із тим самим селом «нічого не змінив» би,
+      // і на картці так і висіло б «чекаю на село…».
+      const box = el.querySelector('.mf-players');
+      box.dataset.sig = '';
+      box.innerHTML = '<div class="gwait">чекаю на село…</div>';
+      return;
+    }
 
     // Своє місце каркас кладе в ctx.seat; у глядача воно null, і жодної нічної кнопки він не побачить.
     const mySeat = ctx.seat == null ? null : ctx.seat;
