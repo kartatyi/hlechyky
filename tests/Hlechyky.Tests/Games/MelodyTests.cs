@@ -1,18 +1,22 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Hlechyky.Games;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
+using Xunit.Abstractions;
 
 namespace Hlechyky.Tests.Games;
 
 /// <summary>
 /// Підроблене джерело: треки зі списку, уривок — кілька кілобайт нулів (або null для «зламаних»). Трек без файла
-/// (<see cref="MelodyTrack.Pending"/>) «качається» миттєво — або не качається, якщо його назва в <paramref name="missing"/>.
+/// (<see cref="MelodyTrack.Pending"/>) «качається» миттєво — або не качається, якщо його назва в <paramref name="missing"/>,
+/// або качається, доки тест не скаже <see cref="Release"/>, якщо назва в <paramref name="slow"/>.
 /// </summary>
-sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? broken = null, ISet<string>? missing = null) : IMelodySource
+sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? broken = null, ISet<string>? missing = null, ISet<string>? slow = null) : IMelodySource
 {
     public int Clips, Resolved;
     public IReadOnlyList<string>? Categories;
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<MelodyTrack?>> _slow = new();
 
     public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct)
     {
@@ -25,7 +29,18 @@ sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? b
         if (!track.Pending) return Task.FromResult<MelodyTrack?>(track);
         Interlocked.Increment(ref Resolved);
         if (missing?.Contains(track.Title) == true) return Task.FromResult<MelodyTrack?>(null);
-        return Task.FromResult<MelodyTrack?>(track with { Id = "yt-" + track.Title, DurationSec = 240, FilePath = "/dev/null" });
+        var done = track with { Id = "yt-" + track.Title, DurationSec = 240, FilePath = "/dev/null" };
+        if (slow?.Contains(track.Title) == true)
+            return _slow.GetOrAdd(track.Title, _ => new TaskCompletionSource<MelodyTrack?>(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        return Task.FromResult<MelodyTrack?>(done);
+    }
+
+    /// <summary>«Докачалась» (або, з <paramref name="ok"/> = false, упала з 403).</summary>
+    public void Release(string title, bool ok = true)
+    {
+        var t = tracks.First(x => x.Title == title);
+        _slow.GetOrAdd(title, _ => new TaskCompletionSource<MelodyTrack?>(TaskCreationOptions.RunContinuationsAsynchronously))
+            .TrySetResult(ok ? t with { Id = "yt-" + t.Title, DurationSec = 240, FilePath = "/dev/null" } : null);
     }
 
     public Task<byte[]?> ClipAsync(MelodyTrack track, double startSec, int seconds, CancellationToken ct)
@@ -304,6 +319,23 @@ public class MelodyTests
         Assert.All(h.View(null).GetProperty("scores").EnumerateArray(), e => Assert.Equal(0, e.GetInt32()));
     }
 
+    [Fact]
+    public void The_winner_stays_in_the_summary_after_leaving_the_table()
+    {
+        // прохід 28.09: переможець встав після партії — і зник із підсумку в тих, хто лишився
+        var h = Table(new FakeMelodySource([Songs[0]]), new { rounds = "5", clip = "10" });
+        Until(h, "play");
+        Guess(h, 0, "обійми");
+        h.Tick((10_000 + Melody.ExtraMs) / Melody.TickMs + 1);
+        h.Tick(Melody.RevealMs / Melody.TickMs + 2);
+        for (var k = 0; k < 200 && h.Room.Status == RoomStatus.Playing; k++) { h.Tick(); Thread.Sleep(2); }
+        h.Leave("Оля");
+        var result = h.View(1).GetProperty("result");
+        Assert.Equal([0], result.GetProperty("winners").EnumerateArray().Select(e => e.GetInt32()));
+        Assert.Equal("Оля", result.GetProperty("nicks")[0].GetString());
+        Assert.Equal("Петро", result.GetProperty("nicks")[1].GetString());
+    }
+
     // ---------------------------------------------------------------- відповіді
 
     [Theory]
@@ -385,6 +417,125 @@ public class MelodyTests
         h.Clock.AdvanceMs(Melody.ExtraMs + 20_000);
         Until(h, "reveal");
         Assert.Equal("yt-Bohemian Rhapsody", h.View(null).GetProperty("answer").GetProperty("id").GetString());   // id — уже справжній, з бази
+    }
+
+    // ---------------------------------------------------------------- коли YouTube не віддає пісню (прохід 28.09)
+
+    static readonly MelodyTrack Queen = new("", "Bohemian Rhapsody", "Queen", 0, null, "");
+    static readonly MelodyTrack Abba = new("", "Dancing Queen", "ABBA", 0, null, "");
+
+    /// <summary>Дограти поточний трек до кінця часу й розкриття (кліп 10 с).</summary>
+    static void ToReveal(RoomHarness h)
+    {
+        h.Clock.AdvanceMs(10_000 + Melody.ExtraMs + 100);
+        Until(h, "reveal");
+    }
+
+    [Fact]
+    public void A_slow_download_does_not_stall_the_table_a_ready_track_plays_in_its_place()
+    {
+        var src = new FakeMelodySource([Songs[0], Queen, Songs[1], Songs[2]], slow: new HashSet<string> { Queen.Title });
+        var h = Table(src, new { rounds = "3", clip = "10" });
+        Until(h, "play");
+        ToReveal(h);
+        Assert.Equal(1, src.Clips);                     // Queen досі качається — фон на ній і стоїть
+
+        // розкриття от-от скінчиться, а Queen нема — стіл «поспішає», і фон ріже готового Скрябіна
+        h.Clock.AdvanceMs(Melody.RevealMs - Melody.HurryLeadMs + 50);
+        h.Tick();
+        for (var k = 0; k < 400 && src.Clips < 2; k++) Thread.Sleep(5);
+        Assert.Equal(2, src.Clips);
+
+        // розкриття скінчилось — наступний трек звучить одразу, без «Мить — наступний трек…»
+        h.Clock.AdvanceMs(Melody.HurryLeadMs);
+        h.Tick();
+        Assert.Equal("play", Phase(h));
+        Assert.Equal(2, h.View(null).GetProperty("round").GetInt32());
+        Assert.Contains("виконавець", Guess(h, 0, "скрябін").Message);
+
+        // Queen докачалась — вона наступна, а не загубилась
+        src.Release(Queen.Title);
+        ToReveal(h);
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        Until(h, "play");
+        Assert.Contains("виконавець", Guess(h, 0, "queen").Message);
+    }
+
+    [Fact]
+    public void Classics_are_fetched_two_at_a_time_ahead_of_the_game()
+    {
+        var src = new FakeMelodySource([Songs[0], Queen, Abba, Songs[1]], slow: new HashSet<string> { Queen.Title, Abba.Title });
+        var h = Table(src, new { rounds = "4", clip = "10" });
+        Until(h, "play");
+        for (var k = 0; k < 200 && src.Resolved < 2; k++) Thread.Sleep(5);
+        Assert.Equal(2, src.Resolved);                   // обидві качаються водночас, поки звучить перший трек
+    }
+
+    [Fact]
+    public void When_downloads_fail_the_game_ends_early_and_says_why()
+    {
+        var src = new FakeMelodySource([Songs[0], Queen, Abba], missing: new HashSet<string> { Queen.Title, Abba.Title });
+        var h = Table(src, new { rounds = "5", clip = "10" });
+        Until(h, "play");
+        Guess(h, 0, "обійми");
+        for (var k = 0; k < 200 && h.View(null).GetProperty("rounds").GetInt32() != 1; k++) { h.Tick(); Thread.Sleep(2); }
+        Assert.Equal(1, h.View(null).GetProperty("rounds").GetInt32());    // «Трек 1 з 1», а не «з 5»
+        ToReveal(h);
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        for (var k = 0; k < 50 && h.Room.Status == RoomStatus.Playing; k++) { h.Tick(); Thread.Sleep(2); }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Contains("1 трек з 5", h.View(null).GetProperty("error").GetString());
+        Assert.Equal([0], h.Room.Result!.Winners);        // рахунок — як завжди, партія зарахована
+    }
+
+    [Fact]
+    public void A_download_that_never_ends_closes_the_game_with_an_explanation_not_silently()
+    {
+        var src = new FakeMelodySource([Songs[0], Queen], slow: new HashSet<string> { Queen.Title });
+        var h = Table(src, new { rounds = "2", clip = "10" });
+        Until(h, "play");
+        ToReveal(h);
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        h.Tick();
+        Assert.Equal("loading", Phase(h));
+        h.Clock.AdvanceMs(Melody.LoadTimeoutMs + 100);
+        h.Tick();
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Contains("не скачалась", h.View(null).GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void Picks_are_followed_by_a_reserve_of_songs_already_on_disk()
+    {
+        // «лише хіти»: дев'ять пісень качати, три вже на диску; раундів два
+        var all = new List<MelodyTrack>();
+        for (var i = 0; i < 9; i++) all.Add(new MelodyTrack("", "Song " + i, "Band " + i, 0, null, ""));
+        all.Insert(4, T("r1", "Океан Ельзи", "Обійми"));
+        all.Insert(8, T("r2", "Скрябін", "Старі фотографії"));
+        all.Add(T("r3", "KALUSH", "Stefania"));
+        var got = MelodyLibrary.WithReserve(all, 4, new Random(1));
+        // основні чотири — усі з добірки (качати), тож першим стає готовий із запасу, а за основними — решта запасу,
+        // лише те, що вже на диску, і без повторів
+        Assert.Equal(["Обійми", "Song 0", "Song 1", "Song 2", "Song 3", "Старі фотографії", "Stefania"], got.Select(t => t.Title));
+        Assert.Equal(got.Count, got.Select(t => t.Artist).Distinct().Count());
+    }
+
+    [Fact]
+    public void Downloads_pause_after_a_series_of_failures_and_resume_later()
+    {
+        var now = DateTimeOffset.Parse("2026-09-28T12:00:00Z");
+        var b = new MelodyFetchBreaker(() => now);
+        Assert.False(b.Failed());
+        b.Ok();                                                        // вдале скидає лічильник
+        Assert.False(b.Failed());
+        Assert.False(b.Failed());
+        Assert.False(b.Open);
+        Assert.True(b.Failed());                                       // третє поспіль — пауза
+        Assert.True(b.Open);
+        now += MelodyFetchBreaker.BreakFor - TimeSpan.FromSeconds(1);
+        Assert.True(b.Open);
+        now += TimeSpan.FromSeconds(2);
+        Assert.False(b.Open);                                          // минуло — знову пробуємо
     }
 
     [Fact]
@@ -592,5 +743,68 @@ public class MelodyTests
         var survive = new MelodyTrack("", "I Will Survive", "Gloria Gaynor", 0, null, "");
         Assert.Equal("s", MelodyLibrary.Pick([R("e", "Gloria Gaynor", "I Will Survive (Extended Version)", 482), R("s", "Gloria Gaynor", "I Will Survive", 198)], survive)!.Id);
         Assert.Null(MelodyLibrary.Pick([R("s", "Gloria Gaynor", "I Will Survive", 30)], survive));   // коротше за 45 с — не пісня
+    }
+}
+
+/// <summary>Швидкодія «Вгадай мелодію» на дванадцятьох (прохід 28.09): тик, вид, здогадка й розмір виду.</summary>
+[Collection(SerialPerf.Name)]
+public class MelodyPerfTests(ITestOutputHelper output)
+{
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Twelve_guessers_tick_view_and_guess_stay_cheap()
+    {
+        string[] nicks = ["Оля", "Петро", "Ганна", "Іван", "Марта", "Богдан", "Леся", "Остап", "Ніна", "Юрко", "Даша", "Тарас"];
+        var songs = Enumerable.Range(0, 20).Select(i => new MelodyTrack("t" + i, "Пісня " + i, "Гурт " + i, 200, null, "/dev/null")).ToArray();
+        var h = new RoomHarness("melody", options: new Dictionary<string, string> { ["rounds"] = "15", ["clip"] = "10" }, seed: 3,
+            services: RoomHarness.WithService<IMelodySource>(new FakeMelodySource(songs)));
+        foreach (var n in nicks) h.Join(n);
+        h.Start();
+        for (var i = 0; i < 400 && h.View(null).GetProperty("phase").GetString() != "play"; i++) { h.Tick(); Thread.Sleep(2); }
+
+        // здогадки мимо (перевірка відповіді — повна: виконавець і назва) — сам Act гри під замком, без розсилки видів
+        var miss = Views.Json(new { text = "щось зовсім не те, що грає" });
+        var game = h.Room.Game;
+        for (var k = 0; k < 50; k++) { h.Clock.AdvanceMs(Melody.GuessEveryMs); lock (h.Room.Sync) game.Act(k % 12, "guess", miss); }
+        var act = new Stopwatch();
+        var acts = 0;
+        for (var k = 0; k < 600; k++)
+        {
+            h.Clock.AdvanceMs(Melody.GuessEveryMs);
+            act.Start();
+            lock (h.Room.Sync) game.Act(k % 12, "guess", miss);
+            act.Stop();
+            acts++;
+        }
+        // і влучання — уже через кімнату, як із хаба (з розсилкою видів дванадцятьом)
+        var hub = Stopwatch.StartNew();
+        for (var s = 0; s < 12; s++) { h.Clock.AdvanceMs(Melody.GuessEveryMs); h.Act(s, "guess", new { text = "Гурт 0 Пісня 0" }); }
+        hub.Stop();
+        output.WriteLine($"влучання через кімнату (з видами всім): {hub.Elapsed.TotalMilliseconds / 12:F2} мс");
+
+        // вид кожного місця й глядача — як його збирає й серіалізує розсилка
+        var view = Stopwatch.StartNew();
+        var bytes = 0;
+        const int ViewRuns = 200;
+        for (var k = 0; k < ViewRuns; k++)
+            for (var s = -1; s < 12; s++) bytes = Views.Json(h.Room.Game.View(s < 0 ? null : s)).GetRawText().Length;
+        view.Stop();
+
+        // тики: дві тисячі (≈ 8 хв гри) з розкриттями й новими раундами
+        var tick = new Stopwatch();
+        for (var t = 0; t < 2000 && h.Room.Status == RoomStatus.Playing; t++)
+        {
+            tick.Start();
+            h.Tick();
+            tick.Stop();
+        }
+        var perTick = tick.Elapsed.TotalMilliseconds / 2000;
+        var perView = view.Elapsed.TotalMilliseconds / (ViewRuns * 13);
+        var perAct = act.Elapsed.TotalMilliseconds / acts;
+        output.WriteLine($"тик {perTick * 1000:F1} мкс, вид {perView * 1000:F1} мкс ({bytes} Б JSON), здогадка {perAct * 1000:F1} мкс");
+        Assert.True(perTick < 0.25, $"тик {perTick:F3} мс");
+        Assert.True(perView < 0.2, $"вид {perView:F3} мс");
+        Assert.True(perAct < 0.2, $"здогадка {perAct:F3} мс");
+        Assert.True(bytes < 1500, $"вид {bytes} Б");
     }
 }

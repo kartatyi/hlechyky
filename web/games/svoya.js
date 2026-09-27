@@ -56,7 +56,10 @@
     return '';
   }
 
-  const nick = (ctx, i) => ctx.nickOf(i) || ('місце ' + (i + 1));
+  /// Нік місця; після партії — і тих, хто вже встав з-за столу (сервер кладе ніки в result): інакше, щойно друзі
+  /// розходились, переможець ставав «🏆 місце 2» і зникав із рахунку.
+  const gone = (ctx, i) => { const r = ctx.view && ctx.view.result; return (r && r.nicks && r.nicks[i]) || ''; };
+  const nick = (ctx, i) => ctx.nickOf(i) || gone(ctx, i) || ('місце ' + (i + 1));
 
   // ---------- лобі: вибір пакета ----------
 
@@ -117,7 +120,7 @@
   function boardHtml(ctx, v) {
     const me = v.me || {};
     const cols = Math.max(...v.board.map((t) => t.cells.length));
-    return '<div class="svboard" style="--cols:' + cols + '">'
+    return '<div class="svboard" lang="uk" style="--cols:' + cols + '">'
       + v.board.map((t, ti) => '<div class="svtheme">' + esc(t.theme) + '</div>'
         + t.cells.map((c, qi) => c.open
           ? '<button type="button" class="svcell"' + (me.canPick ? ' data-do="pick" data-t="' + ti + '" data-q="' + qi + '"' : ' disabled') + '>' + c.price + '</button>'
@@ -233,7 +236,7 @@
     const me = v.me || {};
     const rows = [];
     for (let i = 0; i < seatsOf(ctx); i++) {
-      const n = ctx.nickOf(i);
+      const n = ctx.nickOf(i) || (v.phase === 'done' ? gone(ctx, i) : '');
       if (!n || i === v.host) continue;
       rows.push({ i, n, score: (v.scores || [])[i] || 0 });
     }
@@ -340,7 +343,9 @@
     if (!line || line.id === s.sayId) return;
     s.sayId = line.id;
     // на фініші кімната вже не «грає», а підсумок ведучого — саме тоді
-    if (!speakerOn(ctx) || !(ctx.playing || v.phase === 'done')) return;
+    // «Без голосу» в лобі — це тиша: раніше браузер усе одно читав репліки своїм голосом (speechSynthesis), якщо
+    // знаходив український (на маку — Леся), хоча стіл обрав мовчазного ведучого
+    if (mute(v) || !speakerOn(ctx) || !(ctx.playing || v.phase === 'done')) return;
     // запитання голос дочитує завжди, навіть коли вже хтось відповідає: наступна репліка чекає на нього
     if (s.speaking && s.question) { s.next = line; return; }
     hush(root);
@@ -372,8 +377,12 @@
     }
   }
 
+  const mute = (v) => !!(v.options && v.options.voice === 'none');
+
   function speakerBtn(root, ctx) {
     const b = root.querySelector('.svspk');
+    // стіл без голосу — і перемикача «Ведучий тут» не треба
+    b.hidden = mute(ctx.view || {});
     const on = speakerOn(ctx);
     const text = on ? '🔊 Ведучий тут' : '🔇 Ведучий';
     if (b.textContent !== text) b.textContent = text;
@@ -523,7 +532,8 @@
     if (v.phase === 'done') {
       const res = v.result || {};
       const w = (res.winners || []).map((i) => esc(nick(ctx, i))).join(' і ');
-      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w : 'Отакої — ніхто не вийшов у плюс') + '</div></div>'
+      const pts = w ? (res.scores || [])[res.winners[0]] : null;
+      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w + (pts != null ? ' — ' + pts : '') : 'Отакої — ніхто не вийшов у плюс') + '</div></div>'
         + sayHtml(v)
         + (v.final && (v.final.rows || []).length ? '<div class="muted small">Фінал</div>' + finalHtml(ctx, v) : '');
     }
@@ -582,6 +592,10 @@
       setTimeout(() => input.focus(), 0);
     }
     numForm(root, ctx, v);
+    // пігулка балачки столу внизу праворуч — дати столу низ, щоб вона не лягла на кнопку чи рахунок
+    const wrap = root.querySelector('.svwrap');
+    const pill = !!document.querySelector('.tchat.drawer');
+    if (wrap.classList.contains('sv-pill') !== pill) wrap.classList.toggle('sv-pill', pill);
     speakerBtn(root, ctx);
     voice(root, ctx, v);
     autoplayMedia(root, ctx, v);
@@ -647,13 +661,13 @@
     id: 'svoya',
     added: '2026-09-19',  // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     news: {
-      v: '2026-09-24',
-      title: 'Своя гра: коротка партія',
+      v: '2026-09-28',
+      title: 'Своя гра: ведучий не барится',
       items: [
-        '⏱ Нова опція «Довжина»: один раунд і фінал (~15 хв) або два раунди й фінал — коли на весь пакет нема години',
-        '🎮 Джойстик: поки кнопка відкрита, будь-яка кнопка під пальцем — «Я знаю!»',
-        '🎯 Перелік навздогад («1990 1991 1992» чи п’ять прізвищ підряд) більше не зараховується',
-        '🔧 Черга на кнопку більше не розповзається по всьому рядку',
+        '🎙 Глек озвучує репліки втричі швидше — «Правильно, Оля! Плюс двісті» звучить одразу, без «Ведучий збирається з думками…»',
+        '📱 На телефоні «Я знаю!» вище й більше не ховається під пігулкою «💬 Стіл»',
+        '🏆 Переможець лишається в підсумку, навіть коли друзі вже встали з-за столу',
+        '🔇 «Без голосу» — справді тиша: браузер більше не читає репліки своїм голосом',
       ],
     },
     icon: ICON,
