@@ -320,4 +320,21 @@ public class ClickerV11Tests
         Patch(h, _ => { });
         Assert.Equal(mult, AllMult(h), 9);
     }
+
+    [Fact]
+    public void Who_saw_v10_keeps_the_gold_ceremony_waiting_after_the_v11_news()
+    {
+        var h = Wheel();
+        Patch(h, s => { s["news"] = "v10"; s["coinSeen"] = 1; s["total"] = 5e27; });
+        Assert.Equal(2, View(h).GetProperty("coin").GetInt32());
+        Assert.True(Act(h, "news", new { v = Clicker.NewsVersion }).Ok);
+        // Новини v11 гривні й золотих не пояснюють — вікно «Червоні золоті» ще попереду.
+        Assert.Equal(1, View(h).GetProperty("coinSeen").GetInt32());
+
+        var old = Wheel("Стара");
+        Patch(old, s => { s["news"] = "v9.2"; s["coinSeen"] = 0; s["total"] = 5e27; });
+        Assert.True(Act(old, "news", new { v = Clicker.NewsVersion }).Ok);
+        // А хто v10 не бачив, тому це вікно показало блок v10 із гривнею й золотими.
+        Assert.Equal(2, View(old).GetProperty("coinSeen").GetInt32());
+    }
 }

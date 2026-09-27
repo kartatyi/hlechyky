@@ -1818,9 +1818,10 @@ public sealed partial class Clicker : Game
     ActResult SeenNews(JsonElement payload)
     {
         if (Str(payload, "v") != NewsVersion) return ActResult.Fail("Це новини з іншого оновлення");
+        // Гривню пояснює лише блок v10 у вікні новин, а його бачить той, хто v10 (чи v10.1) ще не бачив. Хто вже бачив —
+        // тому новини v11 гривню не пояснюють, і його церемонія (скажімо, «Червоні золоті»), якщо ще чекає, лишається.
+        if (_news is not ("v10" or "v10.1")) _coinSeen = Math.Max(_coinSeen, CoinLevel);
         _news = NewsVersion;
-        // У новинах v10 уже пояснено гривню: окреме вікно-церемонію тому, хто вище порога, не показуємо.
-        _coinSeen = Math.Max(_coinSeen, CoinLevel);
         // Подарунки: округи (v9.2), десятого й одинадцятого оновлень — кожен раз на гончаря; хто пропустив старі,
         // забирає їх разом із новим.
         var got = new[] { TakeGift(), TakeGiftV10(), TakeGiftV11() }.Where(x => x is not null).Select(x => x!.Message).ToList();
