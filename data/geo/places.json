@@ -1,0 +1,409 @@
+{
+ "version": 1,
+ "places": [
+  {
+   "id": "g0001",
+   "name": "Кам'янець-Подільська фортеця",
+   "region": "Хмельницька область",
+   "cat": "castle",
+   "lat": 48.67333,
+   "lon": 26.5625,
+   "difficulty": 1,
+   "wikidata": "Q2375603",
+   "photos": [
+    {
+     "title": "File:Zamek w Kamieńcu Podolskim 2019.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/10/Zamek_w_Kamie%C5%84cu_Podolskim_2019.jpg/1280px-Zamek_w_Kamie%C5%84cu_Podolskim_2019.jpg",
+     "author": "Grzegorz Gołębiowski",
+     "license": "CC BY-SA 4.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+     "page": "https://commons.wikimedia.org/wiki/File:Zamek_w_Kamie%C5%84cu_Podolskim_2019.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0002",
+   "name": "Хотинська фортеця",
+   "region": "Чернівецька область",
+   "cat": "castle",
+   "lat": 48.52194,
+   "lon": 26.49833,
+   "difficulty": 2,
+   "wikidata": "Q141012",
+   "photos": [
+    {
+     "title": "File:73-250-0001 Khotyn Fortress RB 18.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/df/73-250-0001_Khotyn_Fortress_RB_18.jpg/1280px-73-250-0001_Khotyn_Fortress_RB_18.jpg",
+     "author": "Rbrechko",
+     "license": "CC BY-SA 4.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+     "page": "https://commons.wikimedia.org/wiki/File:73-250-0001_Khotyn_Fortress_RB_18.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0003",
+   "name": "Львівська опера",
+   "region": "Львівська область",
+   "cat": "city",
+   "lat": 49.84399,
+   "lon": 24.02618,
+   "difficulty": 1,
+   "wikidata": "Q1246092",
+   "photos": [
+    {
+     "title": "File:Lviv.Theatre.of.Opera.and.Ballet.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/25/Lviv.Theatre.of.Opera.and.Ballet.jpg/1280px-Lviv.Theatre.of.Opera.and.Ballet.jpg",
+     "author": "Oleksandr Samoylyk",
+     "license": "Public domain",
+     "licenseUrl": "",
+     "page": "https://commons.wikimedia.org/wiki/File:Lviv.Theatre.of.Opera.and.Ballet.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0004",
+   "name": "Потьомкінські сходи",
+   "region": "Одеська область",
+   "cat": "city",
+   "lat": 46.48854,
+   "lon": 30.74199,
+   "difficulty": 1,
+   "wikidata": "Q1413595",
+   "photos": [
+    {
+     "title": "File:Потьомкінські сходи 11.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/53/%D0%9F%D0%BE%D1%82%D1%8C%D0%BE%D0%BC%D0%BA%D1%96%D0%BD%D1%81%D1%8C%D0%BA%D1%96_%D1%81%D1%85%D0%BE%D0%B4%D0%B8_11.jpg/1280px-%D0%9F%D0%BE%D1%82%D1%8C%D0%BE%D0%BC%D0%BA%D1%96%D0%BD%D1%81%D1%8C%D0%BA%D1%96_%D1%81%D1%85%D0%BE%D0%B4%D0%B8_11.jpg",
+     "author": "Oleksandr Malyon",
+     "license": "CC BY-SA 4.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+     "page": "https://commons.wikimedia.org/wiki/File:%D0%9F%D0%BE%D1%82%D1%8C%D0%BE%D0%BC%D0%BA%D1%96%D0%BD%D1%81%D1%8C%D0%BA%D1%96_%D1%81%D1%85%D0%BE%D0%B4%D0%B8_11.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0005",
+   "name": "Держпром",
+   "region": "Харківська область",
+   "cat": "city",
+   "lat": 50.00667,
+   "lon": 36.22708,
+   "difficulty": 2,
+   "wikidata": "Q1975624",
+   "photos": [
+    {
+     "title": "File:Будинок держпромисловості (ДЕРЖПРОМ).jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2c/%D0%91%D1%83%D0%B4%D0%B8%D0%BD%D0%BE%D0%BA_%D0%B4%D0%B5%D1%80%D0%B6%D0%BF%D1%80%D0%BE%D0%BC%D0%B8%D1%81%D0%BB%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D1%96_%28%D0%94%D0%95%D0%A0%D0%96%D0%9F%D0%A0%D0%9E%D0%9C%29.jpg/1280px-%D0%91%D1%83%D0%B4%D0%B8%D0%BD%D0%BE%D0%BA_%D0%B4%D0%B5%D1%80%D0%B6%D0%BF%D1%80%D0%BE%D0%BC%D0%B8%D1%81%D0%BB%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D1%96_%28%D0%94%D0%95%D0%A0%D0%96%D0%9F%D0%A0%D0%9E%D0%9C%29.jpg",
+     "author": "Anna Leonenko",
+     "license": "CC BY-SA 4.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+     "page": "https://commons.wikimedia.org/wiki/File:%D0%91%D1%83%D0%B4%D0%B8%D0%BD%D0%BE%D0%BA_%D0%B4%D0%B5%D1%80%D0%B6%D0%BF%D1%80%D0%BE%D0%BC%D0%B8%D1%81%D0%BB%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D1%96_(%D0%94%D0%95%D0%A0%D0%96%D0%9F%D0%A0%D0%9E%D0%9C).jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0006",
+   "name": "Говерла",
+   "region": "Івано-Франківська область",
+   "cat": "nature",
+   "lat": 48.16028,
+   "lon": 24.5,
+   "difficulty": 1,
+   "wikidata": "Q627508",
+   "photos": [
+    {
+     "title": "File:Говерла 2015.JPG",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/73/%D0%93%D0%BE%D0%B2%D0%B5%D1%80%D0%BB%D0%B0_2015.JPG/1280px-%D0%93%D0%BE%D0%B2%D0%B5%D1%80%D0%BB%D0%B0_2015.JPG",
+     "author": "Olexdj",
+     "license": "Public domain",
+     "licenseUrl": "",
+     "page": "https://commons.wikimedia.org/wiki/File:%D0%93%D0%BE%D0%B2%D0%B5%D1%80%D0%BB%D0%B0_2015.JPG"
+    }
+   ]
+  },
+  {
+   "id": "g0007",
+   "name": "Тунель кохання",
+   "region": "Рівненська область",
+   "cat": "nature",
+   "lat": 50.7509,
+   "lon": 26.0461,
+   "difficulty": 2,
+   "wikidata": "Q9635778",
+   "photos": [
+    {
+     "title": "File:Green Mile Tunnel, Rivne.jpg",
+     "url": "https://upload.wikimedia.org/wikipedia/commons/6/64/Green_Mile_Tunnel%2C_Rivne.jpg",
+     "author": "serhei",
+     "license": "CC BY 3.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+     "page": "https://commons.wikimedia.org/wiki/File:Green_Mile_Tunnel,_Rivne.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0008",
+   "name": "Олешківські піски",
+   "region": "Херсонська область",
+   "cat": "nature",
+   "lat": 46.58333,
+   "lon": 33.05,
+   "difficulty": 3,
+   "wikidata": "Q2997385",
+   "photos": [
+    {
+     "title": "File:Херсонська область, Національний природний парк Олешківські піски. Автор Гаврилюк С. В. (5).JPG",
+     "url": "https://upload.wikimedia.org/wikipedia/commons/d/db/%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D1%81%D1%8C%D0%BA%D0%B0_%D0%BE%D0%B1%D0%BB%D0%B0%D1%81%D1%82%D1%8C%2C_%D0%9D%D0%B0%D1%86%D1%96%D0%BE%D0%BD%D0%B0%D0%BB%D1%8C%D0%BD%D0%B8%D0%B9_%D0%BF%D1%80%D0%B8%D1%80%D0%BE%D0%B4%D0%BD%D0%B8%D0%B9_%D0%BF%D0%B0%D1%80%D0%BA_%D0%9E%D0%BB%D0%B5%D1%88%D0%BA%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D1%96_%D0%BF%D1%96%D1%81%D0%BA%D0%B8._%D0%90%D0%B2%D1%82%D0%BE%D1%80_%D0%93%D0%B0%D0%B2%D1%80%D0%B8%D0%BB%D1%8E%D0%BA_%D0%A1._%D0%92._%285%29.JPG",
+     "author": "НПП \"Олешківські піски\"",
+     "license": "CC BY-SA 3.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+     "page": "https://commons.wikimedia.org/wiki/File:%D0%A5%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D1%81%D1%8C%D0%BA%D0%B0_%D0%BE%D0%B1%D0%BB%D0%B0%D1%81%D1%82%D1%8C,_%D0%9D%D0%B0%D1%86%D1%96%D0%BE%D0%BD%D0%B0%D0%BB%D1%8C%D0%BD%D0%B8%D0%B9_%D0%BF%D1%80%D0%B8%D1%80%D0%BE%D0%B4%D0%BD%D0%B8%D0%B9_%D0%BF%D0%B0%D1%80%D0%BA_%D0%9E%D0%BB%D0%B5%D1%88%D0%BA%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D1%96_%D0%BF%D1%96%D1%81%D0%BA%D0%B8._%D0%90%D0%B2%D1%82%D0%BE%D1%80_%D0%93%D0%B0%D0%B2%D1%80%D0%B8%D0%BB%D1%8E%D0%BA_%D0%A1._%D0%92._(5).JPG"
+    }
+   ]
+  },
+  {
+   "id": "g0009",
+   "name": "Хортиця",
+   "region": "Запорізька область",
+   "cat": "nature",
+   "lat": 47.82,
+   "lon": 35.1,
+   "difficulty": 2,
+   "wikidata": "Q914907",
+   "photos": [
+    {
+     "title": "File:Khortytsia Island from space.jpg",
+     "url": "https://upload.wikimedia.org/wikipedia/commons/2/26/Khortytsia_Island_from_space.jpg",
+     "author": "невідомий автор",
+     "license": "Public domain",
+     "licenseUrl": "",
+     "page": "https://commons.wikimedia.org/wiki/File:Khortytsia_Island_from_space.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0010",
+   "name": "Синевир",
+   "region": "Закарпатська область",
+   "cat": "nature",
+   "lat": 48.61667,
+   "lon": 23.68389,
+   "difficulty": 2,
+   "wikidata": "Q1188040",
+   "photos": [
+    {
+     "title": "File:Ранкові промені на Синевирі.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/%D0%A0%D0%B0%D0%BD%D0%BA%D0%BE%D0%B2%D1%96_%D0%BF%D1%80%D0%BE%D0%BC%D0%B5%D0%BD%D1%96_%D0%BD%D0%B0_%D0%A1%D0%B8%D0%BD%D0%B5%D0%B2%D0%B8%D1%80%D1%96.jpg/1280px-%D0%A0%D0%B0%D0%BD%D0%BA%D0%BE%D0%B2%D1%96_%D0%BF%D1%80%D0%BE%D0%BC%D0%B5%D0%BD%D1%96_%D0%BD%D0%B0_%D0%A1%D0%B8%D0%BD%D0%B5%D0%B2%D0%B8%D1%80%D1%96.jpg",
+     "author": "Misha Reme",
+     "license": "CC BY-SA 4.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+     "page": "https://commons.wikimedia.org/wiki/File:%D0%A0%D0%B0%D0%BD%D0%BA%D0%BE%D0%B2%D1%96_%D0%BF%D1%80%D0%BE%D0%BC%D0%B5%D0%BD%D1%96_%D0%BD%D0%B0_%D0%A1%D0%B8%D0%BD%D0%B5%D0%B2%D0%B8%D1%80%D1%96.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0011",
+   "name": "Свірзький замок",
+   "region": "Львівська область",
+   "cat": "castle",
+   "lat": 49.65246,
+   "lon": 24.43196,
+   "difficulty": 3,
+   "wikidata": "Q1979628",
+   "photos": [
+    {
+     "title": "File:Svirzh.jpg",
+     "url": "https://upload.wikimedia.org/wikipedia/commons/2/29/Svirzh.jpg",
+     "author": "Petro Vlasenko",
+     "license": "CC BY-SA 3.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+     "page": "https://commons.wikimedia.org/wiki/File:Svirzh.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0012",
+   "name": "Асканія-Нова",
+   "region": "Херсонська область",
+   "cat": "nature",
+   "lat": 46.45194,
+   "lon": 33.88083,
+   "difficulty": 3,
+   "wikidata": "Q708096",
+   "photos": [
+    {
+     "title": "File:Przewalski's Horse Askania Nova.jpg",
+     "url": "https://upload.wikimedia.org/wikipedia/commons/5/52/Przewalski%27s_Horse_Askania_Nova.jpg",
+     "author": "2bpatchett",
+     "license": "CC BY-SA 2.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+     "page": "https://commons.wikimedia.org/wiki/File:Przewalski%27s_Horse_Askania_Nova.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0013",
+   "name": "Замок Паланок",
+   "region": "Закарпатська область",
+   "cat": "castle",
+   "lat": 48.43151,
+   "lon": 22.6878,
+   "difficulty": 2,
+   "wikidata": "Q1013472",
+   "photos": [
+    {
+     "title": "File:Замок із висоти пташиного польоту 3.JPG",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/%D0%97%D0%B0%D0%BC%D0%BE%D0%BA_%D1%96%D0%B7_%D0%B2%D0%B8%D1%81%D0%BE%D1%82%D0%B8_%D0%BF%D1%82%D0%B0%D1%88%D0%B8%D0%BD%D0%BE%D0%B3%D0%BE_%D0%BF%D0%BE%D0%BB%D1%8C%D0%BE%D1%82%D1%83_3.JPG/1280px-%D0%97%D0%B0%D0%BC%D0%BE%D0%BA_%D1%96%D0%B7_%D0%B2%D0%B8%D1%81%D0%BE%D1%82%D0%B8_%D0%BF%D1%82%D0%B0%D1%88%D0%B8%D0%BD%D0%BE%D0%B3%D0%BE_%D0%BF%D0%BE%D0%BB%D1%8C%D0%BE%D1%82%D1%83_3.JPG",
+     "author": "Vasil stecko",
+     "license": "CC BY-SA 3.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+     "page": "https://commons.wikimedia.org/wiki/File:%D0%97%D0%B0%D0%BC%D0%BE%D0%BA_%D1%96%D0%B7_%D0%B2%D0%B8%D1%81%D0%BE%D1%82%D0%B8_%D0%BF%D1%82%D0%B0%D1%88%D0%B8%D0%BD%D0%BE%D0%B3%D0%BE_%D0%BF%D0%BE%D0%BB%D1%8C%D0%BE%D1%82%D1%83_3.JPG"
+    }
+   ]
+  },
+  {
+   "id": "g0014",
+   "name": "Бакота",
+   "region": "Хмельницька область",
+   "cat": "nature",
+   "lat": 48.59306,
+   "lon": 26.97889,
+   "difficulty": 3,
+   "wikidata": "Q4076051",
+   "photos": [
+    {
+     "title": "File:Bakota rocks.JPG",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Bakota_rocks.JPG/1280px-Bakota_rocks.JPG",
+     "author": "Dima Sergiyenko",
+     "license": "CC BY-SA 4.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+     "page": "https://commons.wikimedia.org/wiki/File:Bakota_rocks.JPG"
+    }
+   ]
+  },
+  {
+   "id": "g0015",
+   "name": "Софійський собор",
+   "region": "Київ",
+   "cat": "castle",
+   "lat": 50.45278,
+   "lon": 30.51444,
+   "difficulty": 1,
+   "wikidata": "Q830054",
+   "photos": [
+    {
+     "title": "File:80-391-0151 Kyiv St.Sophia's Cathedral RB 18 2 (cropped).jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/61/80-391-0151_Kyiv_St.Sophia%27s_Cathedral_RB_18_2_%28cropped%29.jpg/1280px-80-391-0151_Kyiv_St.Sophia%27s_Cathedral_RB_18_2_%28cropped%29.jpg",
+     "author": "Rbrechko",
+     "license": "CC BY-SA 4.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+     "page": "https://commons.wikimedia.org/wiki/File:80-391-0151_Kyiv_St.Sophia%27s_Cathedral_RB_18_2_(cropped).jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0016",
+   "name": "Ластівчине гніздо",
+   "region": "Автономна Республіка Крим",
+   "cat": "castle",
+   "lat": 44.43057,
+   "lon": 34.12851,
+   "difficulty": 1,
+   "wikidata": "Q1353643",
+   "photos": [
+    {
+     "title": "File:Crimea South Coast 04-14 img10 Gaspra Swallows Nest.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Crimea_South_Coast_04-14_img10_Gaspra_Swallows_Nest.jpg/1280px-Crimea_South_Coast_04-14_img10_Gaspra_Swallows_Nest.jpg",
+     "author": "A.Savin",
+     "license": "CC BY-SA 3.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+     "page": "https://commons.wikimedia.org/wiki/File:Crimea_South_Coast_04-14_img10_Gaspra_Swallows_Nest.jpg"
+    },
+    {
+     "title": "File:Swallow's Nest (Crimea) 2007.JPG",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/10/Swallow%27s_Nest_%28Crimea%29_2007.JPG/1280px-Swallow%27s_Nest_%28Crimea%29_2007.JPG",
+     "author": "Dima Sergiyenko",
+     "license": "CC BY-SA 4.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+     "page": "https://commons.wikimedia.org/wiki/File:Swallow%27s_Nest_(Crimea)_2007.JPG"
+    }
+   ]
+  },
+  {
+   "id": "g0017",
+   "name": "Меджибізький замок",
+   "region": "Хмельницька область",
+   "cat": "castle",
+   "lat": 49.43654,
+   "lon": 27.41211,
+   "difficulty": 3,
+   "wikidata": "Q2387627",
+   "photos": [
+    {
+     "title": "File:Замок в Меджибожі.jpg",
+     "url": "https://upload.wikimedia.org/wikipedia/commons/7/7e/%D0%97%D0%B0%D0%BC%D0%BE%D0%BA_%D0%B2_%D0%9C%D0%B5%D0%B4%D0%B6%D0%B8%D0%B1%D0%BE%D0%B6%D1%96.jpg",
+     "author": "Петро Диаментовський",
+     "license": "Public domain",
+     "licenseUrl": "",
+     "page": "https://commons.wikimedia.org/wiki/File:%D0%97%D0%B0%D0%BC%D0%BE%D0%BA_%D0%B2_%D0%9C%D0%B5%D0%B4%D0%B6%D0%B8%D0%B1%D0%BE%D0%B6%D1%96.jpg"
+    },
+    {
+     "title": "File:Medzhybozh.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5f/Medzhybozh.jpg/1280px-Medzhybozh.jpg",
+     "author": "автор невідомий",
+     "license": "Public domain",
+     "licenseUrl": "",
+     "page": "https://commons.wikimedia.org/wiki/File:Medzhybozh.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0018",
+   "name": "Музей народної архітектури в Пирогові",
+   "region": "Київ",
+   "cat": "village",
+   "lat": 50.35454,
+   "lon": 30.51223,
+   "difficulty": 2,
+   "wikidata": "Q1857990",
+   "photos": [
+    {
+     "title": "File:Kiev Pirogiv windmills 060927.jpg",
+     "url": "https://upload.wikimedia.org/wikipedia/commons/2/24/Kiev_Pirogiv_windmills_060927.jpg",
+     "author": "Kabinet",
+     "license": "Public domain",
+     "licenseUrl": "",
+     "page": "https://commons.wikimedia.org/wiki/File:Kiev_Pirogiv_windmills_060927.jpg"
+    },
+    {
+     "title": "File:Kiev Pyrogiv Podillya 070628.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/30/Kiev_Pyrogiv_Podillya_070628.jpg/1280px-Kiev_Pyrogiv_Podillya_070628.jpg",
+     "author": "Dgri",
+     "license": "CC BY-SA 3.0",
+     "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+     "page": "https://commons.wikimedia.org/wiki/File:Kiev_Pyrogiv_Podillya_070628.jpg"
+    }
+   ]
+  },
+  {
+   "id": "g0019",
+   "name": "Кінбурнська коса",
+   "region": "Миколаївська область",
+   "cat": "nature",
+   "lat": 46.55861,
+   "lon": 31.52778,
+   "difficulty": 3,
+   "wikidata": "Q65315",
+   "photos": [
+    {
+     "title": "File:Легкий летний штормец - panoramio.jpg",
+     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/ba/%D0%9B%D0%B5%D0%B3%D0%BA%D0%B8%D0%B9_%D0%BB%D0%B5%D1%82%D0%BD%D0%B8%D0%B9_%D1%88%D1%82%D0%BE%D1%80%D0%BC%D0%B5%D1%86_-_panoramio.jpg/1280px-%D0%9B%D0%B5%D0%B3%D0%BA%D0%B8%D0%B9_%D0%BB%D0%B5%D1%82%D0%BD%D0%B8%D0%B9_%D1%88%D1%82%D0%BE%D1%80%D0%BC%D0%B5%D1%86_-_panoramio.jpg",
+     "author": "В'ячеслав Касім",
+     "license": "CC BY 3.0",
+     "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+     "page": "https://commons.wikimedia.org/wiki/File:%D0%9B%D0%B5%D0%B3%D0%BA%D0%B8%D0%B9_%D0%BB%D0%B5%D1%82%D0%BD%D0%B8%D0%B9_%D1%88%D1%82%D0%BE%D1%80%D0%BC%D0%B5%D1%86_-_panoramio.jpg"
+    }
+   ]
+  }
+ ]
+}
