@@ -320,6 +320,68 @@
         + '<path d="M37.6 49.4c0-5.2 7.2-5.2 7.2 0 0 3-4 3.4-4 .8M62.4 48.6c0 5.2-7.2 5.2-7.2 0 0-3 4-3.4 4-.8" stroke="#2a1a12" stroke-width="1.5" fill="none"/>'
         + '<path d="M44.8 49.4c2.6-4.4 7.8 3.6 10.4-.8" stroke="#2a1a12" stroke-width="1.5" fill="none"/>',
     },
+    // Розписи світу (одинадцяте оновлення, пакет C): та сама сітка — пояси 36…62, середина на 50.
+    /// Цзиндечжень: кобальт на білій порцеляні — лотос у кучерях пагонів між подвійними поясами.
+    jingdezhen: {
+      body: '#f3f5f8',
+      decor: '<path d="M35 37.8h30M35 61.2h30" stroke="#1f3f9a" stroke-width="1.6"/><path d="M35 40.1h30M35 58.9h30" stroke="#1f3f9a" stroke-width=".5"/>'
+        + '<circle cx="50" cy="50" r="7.2" fill="#9fb4de" opacity=".4"/>'
+        + '<path d="M50 43.6c-2.5 2.7-2.5 6.1 0 8.6 2.5-2.5 2.5-5.9 0-8.6zM50 52.2c-3.1-1.1-6.2-.6-7.8 1.7 2.7 1.4 5.8 1 7.8-1.7zM50 52.2c3.1-1.1 6.2-.6 7.8 1.7-2.7 1.4-5.8 1-7.8-1.7z" fill="#1f3f9a"/>'
+        + '<path d="M37.4 49.6c1.8-3.6 5.6-3.8 6.2-.4-.2 1.8-2.3 2.1-2.7.6M62.6 49.6c-1.8-3.6-5.6-3.8-6.2-.4.2 1.8 2.3 2.1 2.7.6" stroke="#1f3f9a" stroke-width=".9" fill="none"/>'
+        + '<path d="M44 29.5h12" stroke="#1f3f9a" stroke-width="1"/>',
+    },
+    /// Ізнік: біле тіло, коралово-червоний тюльпан на бірюзовому пагоні, кобальтові пояси.
+    iznik: {
+      body: '#fbf8f1',
+      decor: '<path d="M35 38h30M35 61h30" stroke="#1d4e9e" stroke-width="1.8"/><path d="M35 40.2h30M35 58.8h30" stroke="#2aa198" stroke-width=".8"/>'
+        + '<path d="M50 58.2V47.5" stroke="#2aa198" stroke-width="1.1"/>'
+        + '<path d="M50 57.6c-4.3-.9-7.3-4-8.3-8.3 3.3.7 6.3 3.5 8.3 8.3zM50 55.4c4-1 6.6-3.7 7.6-7.7-3.1.8-5.7 3.3-7.6 7.7z" fill="#2aa198"/>'
+        + '<path d="M46.4 46.8c0-3 1.2-5 1.9-6.1.5 1.6 1.1 2.7 1.7 2.7s1.2-1.1 1.7-2.7c.7 1.1 1.9 3.1 1.9 6.1 0 2-1.6 3.1-3.6 3.1s-3.6-1.1-3.6-3.1z" fill="#c8372d"/>'
+        + '<g fill="#c8372d"><circle cx="39.4" cy="45" r="1.3"/><circle cx="60.6" cy="45" r="1.3"/></g>'
+        + '<g fill="#1d4e9e"><circle cx="39.4" cy="54.6" r=".9"/><circle cx="60.6" cy="54.6" r=".9"/></g>'
+        + '<path d="M44 29.5h12" stroke="#1d4e9e" stroke-width="1"/>',
+    },
+    /// Делфт: синім по олов'яній поливі — вітряк над берегом, пташки й рамка.
+    delft: {
+      body: '#eef2f6',
+      decor: '<path d="M35 37.6h30M35 61.6h30" stroke="#2c5aa0" stroke-width="1.5"/><path d="M35 39.8h30M35 59.4h30" stroke="#2c5aa0" stroke-width=".5" stroke-dasharray="1.4 1"/>'
+        + '<path d="M36 56.6q7-2 14 0t14 0" stroke="#2c5aa0" stroke-width=".9" fill="none"/>'
+        + '<path d="M47.6 56.4l.9-7.4h3l.9 7.4z" fill="#2c5aa0"/>'
+        + '<path d="M50 48.6l-5.2-5.2M50 48.6l5.2-5.2M50 48.6l-5.2 5.2M50 48.6l5.2 5.2" stroke="#2c5aa0" stroke-width="1.5" stroke-linecap="round"/>'
+        + '<circle cx="50" cy="48.6" r="1" fill="#eef2f6"/>'
+        + '<path d="M39 44.4l1.2 1 1.2-1M58.6 42.6l1.1.9 1.1-.9" stroke="#2c5aa0" stroke-width=".6" fill="none"/>'
+        + '<path d="M44 29.5h12" stroke="#2c5aa0" stroke-width="1"/>',
+    },
+    /// Майсен: біла тверда порцеляна, сині схрещені мечі й квіткова гілочка, золото на плечі.
+    meissen: {
+      body: '#fdfdfa',
+      decor: '<path d="M35 38.2h30" stroke="#c9a13a" stroke-width="1.1"/><path d="M35 61.4h30" stroke="#c9a13a" stroke-width=".8"/>'
+        + '<path d="M45.2 55.6l9.6-10.2M54.8 55.6l-9.6-10.2" stroke="#2745a3" stroke-width="1.3" stroke-linecap="round"/>'
+        + '<path d="M45.9 48.5l2.4-2.2M51.7 46.3l2.4 2.2" stroke="#2745a3" stroke-width="1.1" stroke-linecap="round"/>'
+        + '<g fill="#d9607a"><circle cx="40" cy="44.8" r="1.7"/><circle cx="60.2" cy="57" r="1.3"/></g>'
+        + '<g fill="#f7c3cf"><circle cx="40" cy="44.8" r=".7"/></g><circle cx="61.4" cy="44.2" r="1.1" fill="#3f63c4"/>'
+        + '<path d="M41.4 46.2c1.6.8 2.3 2.3 2 3.8M58.8 45.4c-1.2.9-1.6 2.4-1.2 3.6" stroke="#5a8a3a" stroke-width=".7" fill="none"/>'
+        + '<path d="M44 29.5h12" stroke="#c9a13a" stroke-width="1.1"/>',
+    },
+    /// Севр: густа «королівська блакить» і золото — білий медальйон із трояндою в золотій рамці.
+    sevres: {
+      body: '#1f3f91',
+      decor: '<path d="M35 37.8h30M35 61.4h30" stroke="#d4af37" stroke-width="1.5"/>'
+        + '<path d="M35 40.8q3.75 2.4 7.5 0t7.5 0 7.5 0 7.5 0" stroke="#d4af37" stroke-width=".8" fill="none"/>'
+        + '<ellipse cx="50" cy="50.4" rx="6.6" ry="7.8" fill="#fbf7ee" stroke="#d4af37" stroke-width="1.3"/>'
+        + '<circle cx="50" cy="49.6" r="2" fill="#d9607a"/><circle cx="50" cy="49.6" r=".8" fill="#f7c3cf"/>'
+        + '<path d="M50 51.6v2.8M48 53.4c1 .1 1.6-.4 2-1.2" stroke="#5a8a3a" stroke-width=".7" fill="none"/>'
+        + '<g fill="#d4af37"><circle cx="39.6" cy="50.4" r=".9"/><circle cx="60.4" cy="50.4" r=".9"/><circle cx="39.6" cy="56" r=".6"/><circle cx="60.4" cy="56" r=".6"/></g>'
+        + '<path d="M44 29.5h12" stroke="#d4af37" stroke-width="1.1"/>',
+    },
+    /// Раку: темна полива з кракелюром і мідним відблиском, який лишає вогонь і тирса.
+    raku: {
+      body: '#2a2522',
+      decor: '<ellipse cx="45" cy="47" rx="8" ry="6" fill="#b8733a" opacity=".55"/><ellipse cx="56" cy="55" rx="7" ry="4.5" fill="#3f8f84" opacity=".4"/>'
+        + '<ellipse cx="44" cy="45.4" rx="3.4" ry="1.9" fill="#f0c27a" opacity=".5"/>'
+        + '<path d="M36 42l5 3 3-4 6 5 4-3 5 4 5-2M35 51.6l6-2 4 4 5-3 6 3 5-2M37 59.6l4-3 5 2 4-3 6 3 5-1M41 45l-1 6.6M50 46l1 5.4M55 43l-.6 7M46 53.6l-1 5M57 52l1 6.4" stroke="#d8cfc0" stroke-width=".35" fill="none" opacity=".75"/>'
+        + '<path d="M44 29.5h12" stroke="#b8733a" stroke-width="1"/>',
+    },
     /// Той, що з'являється на колі й чекає, щоб його впіймали: золотий із петриківською квіткою.
     golden: {
       body: '#f2c14e',
@@ -1526,20 +1588,35 @@
     const esc = ctx.esc;
     const list = st.styleList;
     const owned = list.filter((s) => s.owned).length;
-    const html = '<div class="clk-sub">Розписи · ' + owned + ' з ' + list.length
+    // Одинадцяте оновлення: розписи світу (s.tier — щабель гончарів світу) — окремим рядком. Поки нема першого рівня
+    // свого щабля, розпис не купиш: сіра картка «привезуть із …» без кнопки (назва щабля — з каталогу магазину).
+    const home = list.filter((s) => !s.tier);
+    const world = list.filter((s) => s.tier);
+    // Довгі назви світу («Цзиндечженська») на телефоні не влазять у картку: м'який перенос перед «-ська/-цька».
+    const name = (s) => (s.tier ? esc(s.name).replace(/([^\s&;]{5,})(ськ|цьк)/g, '$1&shy;$2') : esc(s.name));
+    const card = (s) => {
+      const on = st.wear === s.key;
+      const u = st.ups && st.ups[s.tier];
+      if (s.tier && !s.owned && !(u && u.level > 0)) {
+        return '<div class="clk-style clk-far" title="' + esc(s.name + ' — продадуть, щойно матимеш перший рівень щабля') + '">'
+          + jugSvg(s.key, 'clk-mini locked', 's-' + s.key) + '<b>' + name(s) + '</b>'
+          + '<span class="clk-price done clk-farnote">🚢 привезуть із «' + esc((u && u.name) || s.tier) + '»</span></div>';
+      }
+      return '<button type="button" class="clk-style' + (s.owned ? ' owned' : '') + (on ? ' on' : '') + '" data-style="' + esc(s.key)
+        + '" data-owned="' + (s.owned ? 1 : 0) + '" data-price="' + s.price + '" disabled>'
+        // Некуплений розпис видно приглушеним: купують те, що бачать, а не сірий силует.
+        + jugSvg(s.key, 'clk-mini' + (s.owned ? '' : ' locked'), 's-' + s.key)
+        + '<b>' + name(s) + '</b>'
+        + '<span class="clk-price' + (s.owned ? ' done' : '') + '">' + (on ? 'на колі' : s.owned ? 'поставити' : short(s.price)) + '</span>'
+        + '</button>';
+    };
+    const worldOwned = world.filter((s) => s.owned).length;
+    const html = '<div class="clk-sub">Розписи · ' + (owned - worldOwned) + ' з ' + home.length
       + '<span class="muted small"> · кожен +5 % до всього, лишаються й після обпалу</span></div>'
-      + '<div class="clk-styles">'
-      + list.map((s) => {
-        const on = st.wear === s.key;
-        return '<button type="button" class="clk-style' + (s.owned ? ' owned' : '') + (on ? ' on' : '') + '" data-style="' + esc(s.key)
-          + '" data-owned="' + (s.owned ? 1 : 0) + '" data-price="' + s.price + '" disabled>'
-          // Некуплений розпис видно приглушеним: купують те, що бачать, а не сірий силует.
-          + jugSvg(s.key, 'clk-mini' + (s.owned ? '' : ' locked'), 's-' + s.key)
-          + '<b>' + esc(s.name) + '</b>'
-          + '<span class="clk-price' + (s.owned ? ' done' : '') + '">' + (on ? 'на колі' : s.owned ? 'поставити' : short(s.price)) + '</span>'
-          + '</button>';
-      }).join('')
-      + '</div>'
+      + '<div class="clk-styles">' + home.map(card).join('') + '</div>'
+      + (world.length ? '<div class="clk-sub clk-worldsub">🌍 Розписи світу · ' + worldOwned + ' з ' + world.length
+        + '<span class="muted small"> · теж +5 % до всього; кожен привозять, коли маєш перший рівень його щабля</span></div>'
+        + '<div class="clk-styles clk-styles-world">' + world.map(card).join('') + '</div>' : '')
       + (owned ? '<button type="button" class="ghost small clk-plain"' + (st.wear ? '' : ' disabled') + '>Простий глиняний на колі</button>' : '');
     if (swap(st.styles, html)) {
       st.styleBtns = [...st.styles.querySelectorAll('[data-style]')];

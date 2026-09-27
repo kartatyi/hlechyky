@@ -185,6 +185,13 @@ public static class KilnPaint
     public sealed record Stamp(int[][] Marks, int Step);
     /// <summary>Полива: силует посудини — півширина в одиницях полотна на кожен рядок клітинок (0 — поза посудиною).</summary>
     public sealed record Glaze(int[] Half, int Top, int Bottom);
+    /// <summary>Кобальт (v11): той самий контур, що й у ріжкування, але тонший і на повільнішому колі.</summary>
+    public sealed record Kobalt(int R0, int Amp, int K, int Phase, int Period, int Dir);
+    /// <summary>
+    /// Раку (v11): піч <paramref name="Kiln"/>, яма з тирсою <paramref name="Pit"/> і вироби по черзі — кожен
+    /// [коли засвітиться, мс; скільки світиться, мс] від миті, коли попередній вийняли (перший — від кришки).
+    /// </summary>
+    public sealed record Raku(int[] Kiln, int[] Pit, int[][] Pieces);
 
     static double Lerp(double a, double b, double t) => a + (b - a) * t;
 
@@ -245,6 +252,18 @@ public static class KilnPaint
                     half[cy] = (int)Math.Round(w);
                 }
                 return new Glaze(half, top, bottom);
+            }
+            case "kobalt":
+                // Повільніше коло й дрібніша хвиля, ніж у ріжка: тонкий пензель веде рука, а не поспіх.
+                return new Kobalt(240 + r.Next(80), 28 + r.Next(24), 5 + r.Next(4), r.Next(360), 7600 + r.Next(1800), r.Next(2) == 0 ? 1 : -1);
+            case "raku":
+            {
+                // Піч і яма — по різні боки полотна (бік — із зерна), вироби світяться по черзі кожен у своє вікно.
+                var left = r.Next(2) == 0;
+                int[] kiln = [left ? 250 : 750, 470], pit = [left ? 760 : 240, 700];
+                var pieces = new int[RakuPieces][];
+                for (var i = 0; i < pieces.Length; i++) pieces[i] = [1400 + r.Next(1400), 650 + r.Next(350)];
+                return new Raku(kiln, pit, pieces);
             }
             case "rizh":
                 return new Rizh(250 + r.Next(70), 45 + r.Next(35), 3 + r.Next(4), r.Next(360), 4200 + r.Next(1400), r.Next(2) == 0 ? 1 : -1);
@@ -391,6 +410,10 @@ public static class KilnPaint
         {
             Rizh z => Trace(pts, z.R0, z.Amp, z.K, z.Phase, z.Period, z.Dir, sine: true, tol: 28, blot: 70, blotWeight: 1, accShare: 0.3),
             Ryt z => Trace(pts, z.R0, z.Amp, z.K, z.Phase, 0, 0, sine: false, tol: 18, blot: 45, blotWeight: 1.5, accShare: 0.4),
+            // Кобальт: допуск вужчий за ріжок (20 проти 28), клякса важить у півтора раза більше, а точність — 60 % краси
+            // (у ріжка 30 %). Коло ж крутиться повільніше, тож поспіх важить менше.
+            Kobalt z => Trace(pts, z.R0, z.Amp, z.K, z.Phase, z.Period, z.Dir, sine: true, tol: KobaltTol, blot: 50, blotWeight: 1.5, accShare: 0.6),
+            Raku z => Quench(pts, z),
             Flyand z => Pull(pts, z),
             Marble z => Drip(pts, z),
             Losk z => Rub(pts, z),
@@ -712,6 +735,63 @@ public static class KilnPaint
             }
         return body == 0 ? 0 : 100.0 * done / body - 200.0 * spill / body;
     }
+
+    // ---------- техніки одинадцятого оновлення ----------
+
+    /// <summary>Допуск кобальту: тонкий пензель мусить іти майже по самому пунктиру.</summary>
+    public const double KobaltTol = 20;
+    /// <summary>
+    /// Раку: скільки виробів виймають за мінігру; наскільки далеко від печі й ями ще «влучили» щипцями; скільки треба
+    /// пронести (коротший рух — не виймання, а смик); за скільки мс раніше вікна краса падає до нуля (тріщина) і за
+    /// скільки пізніше (без блиску); за скільки мс донести до тирси, щоб не втратити жару; кара за зайвий штрих.
+    /// </summary>
+    public const int RakuPieces = 3;
+    public const double RakuReach = 170, RakuMinCarry = 150, RakuEarly = 600, RakuLate = 900, RakuCarry = 1200, RakuStray = 6;
+
+    /// <summary>
+    /// Раку: перший штрих — кришка печі, з нього починає розжарюватись перший виріб. Далі кожен штрих, що почався біля
+    /// печі й відніс щось хоч на 150 одиниць, — виймання наступного виробу. Його оцінка — влучання у вікно світіння,
+    /// рахуючи від кінця попереднього виймання (перший — від кришки): у вікні — 1, раніше — тріщина, до нуля за 600 мс,
+    /// пізніше — без блиску, до нуля за 900 мс. Не доніс до ями з тирсою — виріб упав (0). Ніс довше за 1,2 с — жар
+    /// вистигає: до ×0,5. Штрих не від печі чи вже без виробів — зайвий, −6. Краса = середнє по виробах.
+    /// </summary>
+    static double Quench(List<Pt> pts, Raku z)
+    {
+        var strokes = Strokes(pts);
+        if (strokes.Count == 0 || z.Pieces.Length == 0) return 0;
+        var kiln = new Pt(0, z.Kiln[0], z.Kiln[1], false);
+        var pit = new Pt(0, z.Pit[0], z.Pit[1], false);
+        double sum = 0, from = strokes[0][0].Ms;
+        int piece = 0, stray = 0;
+        for (var i = 1; i < strokes.Count; i++)
+        {
+            var s = strokes[i];
+            if (piece >= z.Pieces.Length || Dist(s[0], kiln) > RakuReach || Dist(s[0], s[^1]) < RakuMinCarry)
+            {
+                stray++;
+                continue;
+            }
+            sum += RakuPieceScore(s[0].Ms - from, s[^1].Ms - s[0].Ms, Dist(s[^1], pit) <= RakuReach, z.Pieces[piece]);
+            from = s[^1].Ms;
+            piece++;
+        }
+        return 100 * sum / z.Pieces.Length - RakuStray * stray;
+    }
+
+    /// <summary>
+    /// Оцінка одного виробу раку 0…1: <paramref name="at"/> — коли взяли щипцями (мс від кришки чи попереднього
+    /// виймання), <paramref name="carry"/> — скільки несли, <paramref name="landed"/> — чи долетів до тирси.
+    /// </summary>
+    public static double RakuPieceScore(double at, double carry, bool landed, int[] window)
+    {
+        if (!landed) return 0;
+        double open = window[0], shut = window[0] + window[1];
+        var time = at < open ? Math.Max(0, 1 - (open - at) / RakuEarly)
+            : at > shut ? Math.Max(0, 1 - (at - shut) / RakuLate)
+            : 1;
+        var heat = carry <= RakuCarry ? 1 : Math.Max(0.5, 1 - (carry - RakuCarry) / 3000);
+        return time * heat;
+    }
 }
 
 /// <summary>
@@ -780,7 +860,18 @@ public sealed partial class Clicker
         new("glaze", "Полива", "mezhyhirya", 1200,
             "Ополоник із поливою йде за пальцем, а полива стікає вниз: укрий увесь черепок і не лий повз.",
             "з межигірським фаянсом у колекції або після 1200 обпалених"),
+        // Одинадцяте оновлення (пакет «Розписи світу»): техніки гончарів світу. Без розпису — лише на десятках тисяч
+        // обпалених: це вже глибоко у великій толоці, тож раніше за будови, що відмикають ці щаблі, вони не прийдуть.
+        new("kobalt", "Кобальт", "jingdezhen", 10_000,
+            "Тонкий пензель із кобальтом під прозору поливу: коло крутиться повільно, веди контур точно по пунктиру — тут важить рука, а не поспіх. Так пишуть синім у Цзиндечжені.",
+            "з цзиндечженською синню в колекції або після 10 000 обпалених"),
+        new("raku", "Раку", "raku", 25_000,
+            "Розпечений виріб виймають щипцями просто з печі й кидають у тирсу: коли він світиться. Рано — тріщина, пізно — без блиску.",
+            "з розписом раку в колекції або після 25 000 обпалених"),
     ];
+
+    /// <summary>Скільки технік було до одинадцятого оновлення: ачівка «Усі техніки» — «усі вісім», так і лишається.</summary>
+    public const int HomeTechniques = 8;
 
     sealed record KilnOutRow(string Ware, int Q);
 
@@ -1141,7 +1232,7 @@ public sealed partial class Clicker
             else if (!_litHelper && now >= end + KilnAbandon) KilnFinish(end + KilnAbandon, 0, 0, manual: false);
         }
         AutoKiln(now);
-        if (!_kilnTechAll && Techniques.All(TechOpen))
+        if (!_kilnTechAll && Techniques.Take(HomeTechniques).All(TechOpen))
         {
             _kilnTechAll = true;
             Achieve("potter-tech-all");
@@ -1301,6 +1392,13 @@ public sealed partial class Clicker
             KilnPaint.Brush z => new { petals = z.Petals },
             KilnPaint.Stamp z => new { marks = z.Marks, step = z.Step },
             KilnPaint.Glaze z => (object)new { half = z.Half, top = z.Top, bottom = z.Bottom, cell = 40 },
+            // v11: кобальт малюється як ріжкування (тонше й синім); раку — піч, яма й вікна світіння разом із межами оцінки.
+            KilnPaint.Kobalt z => new { r0 = z.R0, amp = z.Amp, k = z.K, phase = z.Phase, period = z.Period, dir = z.Dir, tol = KilnPaint.KobaltTol },
+            KilnPaint.Raku z => new
+            {
+                kiln = z.Kiln, pit = z.Pit, pieces = z.Pieces, reach = KilnPaint.RakuReach, carry = KilnPaint.RakuMinCarry,
+                early = KilnPaint.RakuEarly, late = KilnPaint.RakuLate, cool = KilnPaint.RakuCarry,
+            },
             _ => new { },
         };
         return new { tech = _kilnTech, at = _paintAt, shape = p };
