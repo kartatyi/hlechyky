@@ -1066,7 +1066,13 @@ public sealed class Rooms
         {
             if (room.Status != RoomStatus.Playing) return outbox;
             var now = _clock.UtcNow;
-            room.NextTickAt = now.AddMilliseconds(room.Info.TickMs);
+            // Наступний тик — від призначеного часу цього, а не від «зараз». Інакше кожен тик запізнювався на частку
+            // кроку циклу (таймер Windows — 15,6 мс), і замість 25 кадрів Танчиків на секунду було 16–24: гра йшла
+            // повільніше задуманого, годинники над полем відставали, а швидкість залежала від того, чи хтось на машині
+            // попросив точніший таймер. Відстали на цілий тик і більше (сервер спав) — не надолужуємо, рахуємо від «зараз».
+            var step = TimeSpan.FromMilliseconds(room.Info.TickMs);
+            var next = room.NextTickAt + step;
+            room.NextTickAt = now - next < step ? next : now + step;
             var ctx = (RoomContext)room.Game.Ctx;
             TickResult result;
             using (ctx.Collect(outbox))

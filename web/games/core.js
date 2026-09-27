@@ -220,10 +220,14 @@
     const label = { 0: '→', 1: '↓', 2: '←', 3: '↑' };
     const aria = { 0: 'праворуч', 1: 'вниз', 2: 'ліворуч', 3: 'вгору' };
     el.innerHTML = (dirs || [3, 2, 1, 0]).map((d) => '<button type="button" data-dir="' + d + '" aria-label="' + aria[d] + '">' + label[d] + '</button>').join('');
-    el.addEventListener('click', (e) => {
+    // Поворот — на дотик, а не на click: той приходить лише після відпускання пальця, +50–120 мс на телефоні,
+    // і в змійці чи мотоциклах цього вистачало, щоб врізатись. click лишається для Enter/пробілу з клавіатури.
+    const fire = (e) => {
       const b = e.target.closest('button');
       if (b && el._onDir) el._onDir(+b.dataset.dir);
-    });
+    };
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); fire(e); });
+    el.addEventListener('click', (e) => { if (e.detail === 0) fire(e); });
     el._onDir = onDir;                 // колбек — завжди з останнього виклику, не з першого
     host.appendChild(el);
     return el;
@@ -954,6 +958,7 @@
     v.hidden = !!room;
     // На телефоні за столом міні-плеєр і так нікому не потрібен — style.css ховає його за цим класом.
     document.body.classList.toggle('g-room', !!room && shown);
+    syncArcade();
     // Лобі малює свої секції-панелі саме, а панелі ігор (турнір, пакети) — просто вміст,
     // тож панель під них дає сам контейнер.
     v.classList.toggle('boxed', view.kind === 'panel');
@@ -1582,6 +1587,15 @@
   }
 
   /// Шапка/статус/кнопки — окремо від .gbody: тіло чіпає лише модуль.
+  /// Сиджу за аркадою, і партія йде: на телефоні шторка «💬 Стіл» лягала на кнопки керування (style.css ховає
+  /// згорнуту шторку за body.g-arcade). Після партії й у лобі столу вона знову на місці.
+  function syncArcade() {
+    const rv = shown && view.kind === 'room' ? views[view.id] : null;
+    const g = rv && gameOf(rv.room.game);
+    const on = !!(g && g.group === 'live' && rv.seat != null && rv.room.status === 'playing');
+    if (document.body.classList.contains('g-arcade') !== on) document.body.classList.toggle('g-arcade', on);
+  }
+
   function refreshCard(id) {
     const card = cards[id], rv = views[id];
     if (!card || !rv) return;
@@ -1592,7 +1606,8 @@
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
       rv.room.options, rv.room.result, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
-    if (sig !== card.sig) {
+    const roomChanged = sig !== card.sig;
+    if (roomChanged) {
       card.sig = sig;
       card.head.innerHTML = headHtml(rv);
       card.head.classList.toggle('many', !!card.head.querySelector('[data-many]'));
@@ -1623,12 +1638,19 @@
         try { if (card.mod.mount) card.mod.mount(card.body, ctx); }
         catch (e) { console.warn('[games] mount ' + rv.room.game, e); }
       }
-      try { if (card.mod.update) card.mod.update(card.body, ctx); }
-      catch (e) { console.warn('[games] update ' + rv.room.game, e); }
+      // Кожна новина лобі ('rooms') кличе нас для всіх відкритих столів — із тим самим, уже баченим видом. Реалтайм-гра
+      // живе кадрами, тож старий вид відкидав бомберів на старти й будив привидів вибухів. Той самий вид і той самий
+      // стіл (місця, статус, хід…) — модулю нічого нового, update не кличемо.
+      if (roomChanged || card.lastView !== rv.view) {
+        card.lastView = rv.view;
+        try { if (card.mod.update) card.mod.update(card.body, ctx); }
+        catch (e) { console.warn('[games] update ' + rv.room.game, e); }
+      }
       maybeNews(rv);
     }
 
     paintStatus(card, rv);
+    if (view.kind === 'room' && view.id === id) syncArcade();
   }
 
   /// Рядок статусу — тільки textContent, тому його не шкода перерахувати і на кожен кадр:
@@ -1975,7 +1997,7 @@
     hide() {
       shown = false;
       setFull(false);
-      document.body.classList.remove('g-room');
+      document.body.classList.remove('g-room', 'g-arcade');
       syncWatch();
       checkTurns();
     },

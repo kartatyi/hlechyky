@@ -785,6 +785,8 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   .tchat.drawer { right: 12px; bottom: calc(var(--tabs-h) + var(--mini-h) + 10px); }
   .tchat.drawer.open { left: 12px; }
   .tchat.drawer.open .tc-body { width: 100%; height: min(62vh, 560px); }
+  /* Посеред аркади згорнута шторка лягала на кнопки керування; великими пальцями в балачку однаково не пишуть. */
+  body.g-arcade .tchat.drawer:not(.open) { display: none; }
   /* бокове меню бібліотеки на телефоні — чипи, що переносяться (без гортання вбік, де половину не видно);
      заголовок і пошук один під одним */
   .libmenu { flex-wrap: wrap; overflow: visible; gap: 6px; }

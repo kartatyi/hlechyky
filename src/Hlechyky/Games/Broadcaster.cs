@@ -47,8 +47,8 @@ public sealed class Broadcaster(
         var all = Drain(messages);
         if (all.Count == 0) return;
 
-        // Дедлайн на всю пачку: один клієнт із забитим каналом (телефон у ліфті) не має тримати цикл тика.
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        // Дедлайн на всю пачку: те, що не дописалось повільному клієнтові за 2 с, для нього пропадає.
+        var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(2));
 
         List<Send> sends;
@@ -62,23 +62,53 @@ public sealed class Broadcaster(
         }
         catch (Exception ex)
         {
+            deadline.Dispose();
             log.LogWarning(ex, "не вдалось скласти розсилку");
             return;
         }
 
+        // Не чекаємо на найповільнішого. SignalR пише кожному з'єднанню одразу, а Task лишається незавершеним лише
+        // заради того, у кого забитий канал (телефон у ліфті). Раніше цикл тика чекав на нього до дедлайну — і
+        // реалтайм завмирав у ВСІХ за столом: заміри 28.09 — паузи між кадрами 1,5–2 с у здорового гравця, поки
+        // один бот не читав сокет. Тепер недописане доганяє повільного у фоні (своя черга з'єднання в SignalR береже
+        // порядок), а коло йде далі.
+        List<Task>? slow = null;
         foreach (var send in sends)
         {
-            try { await Dispatch(send, deadline.Token); }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
-            catch (OperationCanceledException) { log.LogWarning("розсилка {Event} не вклалась у дедлайн", send.Event); }
-            catch (Exception ex) { log.LogWarning(ex, "не відправилось {Event}", send.Event); }
+            Task task;
+            try { task = Dispatch(send, deadline.Token); }
+            catch (Exception ex) { log.LogWarning(ex, "не відправилось {Event}", send.Event); continue; }
+            if (task.IsCompletedSuccessfully) continue;
+            (slow ??= []).Add(Watch(task, send.Event));
         }
+        if (slow is null) deadline.Dispose();
+        else _ = Task.WhenAll(slow).ContinueWith(_ => deadline.Dispose(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
         foreach (var say in all.OfType<DjSays>())
         {
             try { await engine.SayAsync(say.Text); }
             catch (Exception ex) { log.LogWarning(ex, "Глек не сказав своє слово"); }
         }
+    }
+
+    long _lateWarnAt;
+
+    /// <summary>
+    /// Дочекатись відправки повільному з'єднанню у фоні. Не вклалось у дедлайн — це звична справа телефона в ліфті:
+    /// пишемо в лог не частіше ніж раз на 10 с, інакше застряглий клієнт на 25 кадрах за секунду засипав би лог.
+    /// </summary>
+    async Task Watch(Task task, string ev)
+    {
+        try { await task.ConfigureAwait(false); }
+        catch (OperationCanceledException)
+        {
+            var now = Environment.TickCount64;
+            var last = Interlocked.Read(ref _lateWarnAt);
+            if (now - last >= 10_000 && Interlocked.CompareExchange(ref _lateWarnAt, now, last) == last)
+                log.LogWarning("розсилка {Event} комусь не вклалась у дедлайн (повільне з'єднання)", ev);
+        }
+        catch (Exception ex) { log.LogWarning(ex, "не відправилось {Event}", ev); }
     }
 
     /// <summary>

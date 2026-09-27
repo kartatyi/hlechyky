@@ -48,6 +48,19 @@ public class TickEngineTests
     }
 
     [Fact]
+    public void Tick_rate_holds_when_the_loop_wakes_up_off_beat()
+    {
+        // Таймер Windows будить цикл не кожні 20 мс, а кожні ~31 (крок 15,6 мс). Коли розклад рахувався від «зараз»,
+        // стомілісекундна кімната тикала раз на 124 мс — 8 разів на секунду замість 10 (Танчики — 20 замість 25).
+        var clock = new FakeClock();
+        var rooms = New(clock);
+        Playing(rooms);
+
+        var ticks = Run(rooms, clock, 1000, stepMs: 31);   // 31 с
+        Assert.InRange(ticks, 309, 311);
+    }
+
+    [Fact]
     public void Missed_time_is_not_caught_up()
     {
         var clock = new FakeClock();
