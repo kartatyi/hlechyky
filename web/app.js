@@ -3367,7 +3367,10 @@
     return out;
   }
   // after — після реконекту: навіть коли файли ті самі, каталог ігор на новому сервері міг змінитись.
-  async function checkFront(after) {
+  // Звірки йдуть по черзі: реконект і повернення у вкладку разом підміняли б той самий модуль двічі.
+  let frontQueue = Promise.resolve();
+  const checkFront = (after) => (frontQueue = frontQueue.then(() => checkFrontNow(after)).catch((e) => console.warn('[front]', e)));
+  async function checkFrontNow(after) {
     frontAt = Date.now();
     let files;
     try { files = (await api('GET', '/api/front')).files || {}; } catch { return; }
