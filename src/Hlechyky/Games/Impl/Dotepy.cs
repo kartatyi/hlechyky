@@ -87,6 +87,8 @@ public sealed class Dotepy : Game
     public const int IntroGraceMs = 20_000;
     /// <summary>Скільки кліпів поспіль мають не дочекатись, щоб гра перестала їх чекати.</summary>
     public const int VoiceGiveUp = 2;
+    /// <summary>Своє завдання від гравця (у лобі): від 8 до 100 знаків — «хоч кілька слів», і щоб влізло на картку.</summary>
+    public const int OwnMin = 8, OwnMax = 100;
     /// <summary>Скільки останніх завдань сервер пам'ятає, щоб не повторювати їх між столами.</summary>
     public const int SeenRing = 300;
 
@@ -196,6 +198,15 @@ public sealed class Dotepy : Game
     IReadOnlyList<DotepyPrompt> _bank = [];
     /// <summary>Завдання, що вже грали за цим столом. Живе в екземплярі гри — тож переживає «Ще раз».</summary>
     readonly HashSet<string> _used = new(StringComparer.Ordinal);
+    /// <summary>
+    /// Свої завдання друзів (у лобі, дія <c>mine</c>): ключ ніка → текст. Ідуть у партію першими (внутрішні жарти
+    /// компанії смішніші за будь-який банк) з підписом автора; невикористані чекають на «Ще раз».
+    /// </summary>
+    readonly Dictionary<string, string> _own = new(StringComparer.Ordinal);
+    /// <summary>Свої завдання цієї партії в черзі на роздачу: (ключ ніка, завдання).</summary>
+    readonly List<(string Key, DotepyPrompt Prompt)> _ownQueue = [];
+    /// <summary>Хто вигадав завдання (id → місце автора) — для підпису «автор завдання: Петро».</summary>
+    readonly Dictionary<string, int> _ownBy = new(StringComparer.Ordinal);
 
     // склад
     readonly string[] _nicks = new string[MaxSeats];
@@ -310,6 +321,23 @@ public sealed class Dotepy : Game
         _order = [.. seated];
         _pairs.Clear();
         _early = false;
+
+        // свої завдання тих, хто сів за стіл, — у чергу партії, у перетасованому порядку
+        _ownQueue.Clear();
+        _ownBy.Clear();
+        foreach (var s in seated)
+        {
+            var key = Auth.NickKey(_nicks[s]);
+            if (!_own.TryGetValue(key, out var text)) continue;
+            var id = "own:" + key;
+            _ownQueue.Add((key, new DotepyPrompt(id, text, ["свої"], false)));
+            _ownBy[id] = s;
+        }
+        for (var i = _ownQueue.Count - 1; i > 0; i--)
+        {
+            var j = Ctx.Rng.Next(i + 1);
+            (_ownQueue[i], _ownQueue[j]) = (_ownQueue[j], _ownQueue[i]);
+        }
 
         _cards.Clear();
         _at = -1;
@@ -468,6 +496,23 @@ public sealed class Dotepy : Game
     /// фінал вистачило.
     /// </summary>
     List<DotepyPrompt> PickPrompts(int count, bool final)
+    {
+        // Спершу — свої завдання друзів (у фінал — лише коли звичайних раундів нема: там потрібне «фінальне»).
+        var own = new List<DotepyPrompt>(count);
+        while (own.Count < count && _ownQueue.Count > 0 && (!final || _roundsTotal == 1))
+        {
+            var (key, prompt) = _ownQueue[0];
+            _ownQueue.RemoveAt(0);
+            _own.Remove(key);
+            own.Add(prompt);
+        }
+        if (own.Count == count) return own;
+        var rest = PickFromBank(count - own.Count, final);
+        own.AddRange(rest);
+        return own;
+    }
+
+    List<DotepyPrompt> PickFromBank(int count, bool final)
     {
         var pool = new List<DotepyPrompt>(_bank.Count);
         foreach (var p in _bank) if (!final || p.Final) pool.Add(p);
@@ -998,8 +1043,12 @@ public sealed class Dotepy : Game
     // ходи
     // ---------------------------------------------------------------------------------------
 
+    /// <summary>У лобі можна лише одне — дописати своє завдання для партії (<c>mine</c>).</summary>
+    public override bool ActsInLobby => true;
+
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (_phase == PhaseLobby) return action == "mine" ? Own(seat, payload) : ActResult.Fail("Партія ще не почалась");
         if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
         return action switch
         {
@@ -1013,6 +1062,27 @@ public sealed class Dotepy : Game
     }
 
     string NickKey(int seat) => "#" + seat.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Своє завдання в лобі: <c>{ text }</c>, одне на гравця (нове замінює старе, порожнє — прибирає). Живе за ніком,
+    /// тож хто пересів чи прийшов на звільнене місце, чужого не успадкує.
+    /// </summary>
+    ActResult Own(int seat, JsonElement payload)
+    {
+        if (Ctx.NickOf(seat) is not { Length: > 0 } nick) return ActResult.Fail("Спершу сядь за стіл");
+        var key = Auth.NickKey(nick);
+        var text = Clean(Str(payload, "text"));
+        if (text.Length == 0)
+        {
+            if (!_own.Remove(key)) return ActResult.Done;
+            return ActResult.Accept("Своє завдання прибрано");
+        }
+        if (text.Length < OwnMin) return ActResult.Fail("Закоротко — хоч кілька слів");
+        if (text.Length > OwnMax) return ActResult.Fail($"Задовго: до {OwnMax} знаків");
+        if (_own.Count >= 2 * MaxSeats && !_own.ContainsKey(key)) return ActResult.Fail("Своїх завдань за цим столом уже досить");
+        _own[key] = text;
+        return ActResult.Accept("Твоє завдання піде в партію");
+    }
 
     /// <summary>
     /// «😂» — реакція залу на розкритті (гравці через хаб, глядачі через HTTP): одна на людину на відповідь, за себе
@@ -1244,6 +1314,8 @@ public sealed class Dotepy : Game
             say = _say is { } l ? new { id = l.Id, text = l.Text, url = l.Url, seconds = l.Seconds } : null,
             table = _phase == PhaseTable ? TableView() : null,
             result = _phase == PhaseDone && _winners is not null ? ResultView() : null,
+            // лобі: скільки своїх завдань уже є за столом і моє (щоб бачити й прибрати)
+            own = _phase == PhaseLobby ? OwnView(me) : null,
         };
     }
 
@@ -1290,7 +1362,7 @@ public sealed class Dotepy : Game
             for (var k = 0; k < _cards.Count; k++)
                 foreach (var e in _cards[k].Entries)
                     if (e.Seat == seat)
-                        tasks.Add(new { i = k, prompt = _cards[k].Prompt.Text, text = e.Done ? e.Text : e.Draft, done = e.Done });
+                        tasks.Add(new { i = k, prompt = _cards[k].Prompt.Text, by = By(_cards[k].Prompt), text = e.Done ? e.Text : e.Draft, done = e.Done });
         if (seat >= 0 && _phase is PhaseVote or PhaseReveal && _at >= 0 && _at < _cards.Count)
         {
             var answers = _cards[_at].Answers;
@@ -1350,6 +1422,7 @@ public sealed class Dotepy : Game
             i = _at,
             of = _cards.Count,
             prompt = card.Prompt.Text,
+            by = By(card.Prompt),
             answers,
             votersCount = voters,
             votedCount,
@@ -1361,6 +1434,18 @@ public sealed class Dotepy : Game
             jinx = reveal && card.Jinx,
             shown = reveal && _final ? _shown : card.Answers.Length,
         };
+    }
+
+    /// <summary>Хто вигадав це завдання (своє від друга) — місце автора; банкове — null.</summary>
+    int? By(DotepyPrompt p) => _ownBy.TryGetValue(p.Id, out var s) ? s : null;
+
+    object OwnView(int seat)
+    {
+        var count = 0;
+        for (var s = 0; s < MaxSeats; s++)
+            if (Ctx.NickOf(s) is { Length: > 0 } n && _own.ContainsKey(Auth.NickKey(n))) count++;
+        var mine = seat >= 0 && Ctx.NickOf(seat) is { Length: > 0 } nick && _own.TryGetValue(Auth.NickKey(nick), out var t) ? t : null;
+        return new { count, mine };
     }
 
     object TableView() => new

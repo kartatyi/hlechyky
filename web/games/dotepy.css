@@ -91,6 +91,15 @@
 .dt-howrow i { font-style: normal; font-weight: 700; color: var(--accent); }
 .dt-howtip { padding: 6px 10px; border-radius: 10px; background: var(--bg2); }
 .dt-early { text-align: center; padding: 10px; border-radius: 12px; background: var(--bg2); font-weight: 700; }
+/* своє завдання в лобі й підпис «завдання від Петра» */
+.dt-own { display: flex; gap: 8px; }
+.dt-ownin { flex: 1; min-height: 44px; font-size: 16px !important; }
+.dt-ownbtn { min-height: 44px; }
+.dt-owndel { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+.dt-ownst:empty { display: none; }
+.dt-by { font-size: .85em; color: var(--muted); margin-top: -4px; }
+.dt-by b { color: var(--c); }
+.dt-prompt.big + .dt-by { text-align: center; margin-top: -8px; }
 
 /* ---------- написання ---------- */
 
@@ -201,7 +210,6 @@
   font-size: .82em; font-weight: 700; border: 1px solid var(--line); pointer-events: none; z-index: 2;
 }
 .dt-lol:empty { display: none; }
-.dt-lol.pop { animation: dt-pop .35s ease-out both; }
 .dt-fly {
   position: absolute; left: var(--x); bottom: 40%; font-size: 1.5em; pointer-events: none; z-index: 3;
   animation: dt-flyup 1.2s ease-out both;

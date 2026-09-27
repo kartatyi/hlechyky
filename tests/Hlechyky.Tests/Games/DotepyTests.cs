@@ -288,7 +288,7 @@ public class DotepyTests
         foreach (var n in Names.Take(3)) Assert.True(h.Join(n).Ok);
         Assert.True(h.Start().Ok);
         var texts = bank.Select(p => p.Text).ToHashSet();
-        Assert.All(V(h).GetProperty("prompts").EnumerateArray(), p => Assert.Contains(p.GetString(), texts));
+        Assert.All(V(h).GetProperty("prompts").EnumerateArray(), p => Assert.Contains(p.GetString()!, texts));
     }
 
     [Fact]
@@ -1377,12 +1377,12 @@ public class DotepyTests
     public void View_shape_on_the_wire_matches_the_spec_example_keys()
     {
         var h = Table(5);
-        var top = new[] { "phase", "round", "rounds", "final", "mode", "endsAt", "totalMs", "waiting", "voice", "players", "prompts", "me", "card", "say", "table", "result" };
+        var top = new[] { "phase", "round", "rounds", "final", "mode", "endsAt", "totalMs", "waiting", "voice", "players", "prompts", "me", "card", "say", "table", "result", "own" };
         Assert.Equal(top, Keys(V(h, 2)));
         Assert.Equal(top, Keys(V(h)));
         Assert.Equal(["seat", "nick", "score", "ready", "voted", "left"], Keys(V(h).GetProperty("players")[0]));
         Assert.Equal(["tasks", "mine", "voter", "picks"], Keys(V(h, 2).GetProperty("me")));
-        Assert.Equal(["i", "prompt", "text", "done"], Keys(V(h, 2).GetProperty("me").GetProperty("tasks")[0]));
+        Assert.Equal(["i", "prompt", "by", "text", "done"], Keys(V(h, 2).GetProperty("me").GetProperty("tasks")[0]));
         Assert.Equal(["id", "text", "url", "seconds"], Keys(V(h).GetProperty("say")));
         Assert.Equal(JsonValueKind.String, V(h).GetProperty("endsAt").ValueKind);
         Assert.Equal("ostap", V(h).GetProperty("voice").GetString());
@@ -1390,7 +1390,7 @@ public class DotepyTests
         WriteAll(h);
         h.Tick();
         var card = Card(h);
-        Assert.Equal(["i", "of", "prompt", "answers", "votersCount", "votedCount", "voted", "juryVotes", "perVoter", "ranked", "sweep", "jinx", "shown"], Keys(card));
+        Assert.Equal(["i", "of", "prompt", "by", "answers", "votersCount", "votedCount", "voted", "juryVotes", "perVoter", "ranked", "sweep", "jinx", "shown"], Keys(card));
         Assert.Equal(["text", "stock", "seat", "votes", "medals", "jury", "juryBy", "points", "rank", "prize", "laughs"], Keys(card.GetProperty("answers")[0]));
         Assert.Equal(5, card.GetProperty("of").GetInt32());
         Assert.Equal(2, card.GetProperty("shown").GetInt32());
@@ -1735,6 +1735,8 @@ public class DotepyTests
         Assert.Empty(v.GetProperty("players").EnumerateArray());
         Assert.Empty(v.GetProperty("me").GetProperty("tasks").EnumerateArray());
         Assert.Equal(JsonValueKind.Null, v.GetProperty("card").ValueKind);
+        Assert.Equal(0, v.GetProperty("own").GetProperty("count").GetInt32());
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("own").GetProperty("mine").ValueKind);
     }
 
     // ======================================================================================
@@ -2041,6 +2043,68 @@ public class DotepyTests
         var line = h.Outbox.OfType<Journal>().Last().Text;
         var best = V(h).GetProperty("result").GetProperty("best")[0];
         Assert.EndsWith($" · дотеп партії: «{best.GetProperty("text").GetString()}» ({Names[best.GetProperty("seat").GetInt32()]})", line);
+    }
+
+    [Fact]
+    public void Own_prompts_from_the_lobby_go_first_into_the_match_signed_by_their_author()
+    {
+        var h = Table(3, start: false);
+        const string mine = "Що Петро завжди забуває на рибалці";
+        var r = h.Act(0, "mine", new { text = "  Що Петро завжди   забуває на рибалці " });
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal("Твоє завдання піде в партію", r.Message);
+        Assert.Equal("Закоротко — хоч кілька слів", h.Act(1, "mine", new { text = "коротко" }).Message);
+        Assert.Equal("Задовго: до 100 знаків", h.Act(1, "mine", new { text = new string('я', Dotepy.OwnMax + 1) }).Message);
+        Assert.Equal("Партія ще не почалась", h.Act(2, "answer", new { i = 0, text = "рано" }).Message);
+        Assert.Equal("Партія ще не почалась", h.Act(2, "vote", new { card = 0, picks = new[] { 0 } }).Message);
+        Assert.Contains(h.Outbox, o => o is RoomViews);               // лобі без тика — вид летить одразу
+        Assert.Equal(1, V(h, 1).GetProperty("own").GetProperty("count").GetInt32());
+        Assert.Equal(mine, V(h, 0).GetProperty("own").GetProperty("mine").GetString());
+        Assert.Equal(JsonValueKind.Null, V(h, 1).GetProperty("own").GetProperty("mine").ValueKind);
+        Assert.True(h.Start().Ok, h.Reply.Message);
+        Assert.Contains(mine, V(h).GetProperty("prompts").EnumerateArray().Select(p => p.GetString()));
+        var task = V(h, 1).GetProperty("me").GetProperty("tasks").EnumerateArray().Single(t => t.GetProperty("prompt").GetString() == mine);
+        Assert.Equal(0, task.GetProperty("by").GetInt32());
+        Assert.Equal(JsonValueKind.Null, V(h).GetProperty("own").ValueKind);
+        WriteAll(h);
+        h.Tick();
+        Until(h, () =>
+        {
+            if (Phase(h) == "vote" && Pending(h)) VoteAll(h, s => [FirstOther(h, s)]);
+            return Phase(h) == "vote" && Card(h).GetProperty("prompt").GetString() == mine;
+        });
+        Assert.Equal(0, Card(h).GetProperty("by").GetInt32());
+        Assert.Equal("Тут так не ходять", h.Act(0, "mine", new { text = "Ще одне своє завдання" }).Message);
+    }
+
+    [Fact]
+    public void An_empty_own_prompt_removes_it_and_a_newcomer_on_the_seat_does_not_inherit_it()
+    {
+        var h = Table(3, start: false);
+        Assert.True(h.Act(2, "mine", new { text = "Найкращий тост від Ганни" }).Ok);
+        Assert.True(h.Act(1, "mine", new { text = "Свято, яке придумав Петро" }).Ok);
+        Assert.Equal("Своє завдання прибрано", h.Act(1, "mine", new { text = "   " }).Message);
+        Assert.Equal(1, V(h, 0).GetProperty("own").GetProperty("count").GetInt32());
+        h.Leave(Names[2]);
+        Assert.True(h.Join("Богдан").Ok);
+        Assert.Equal(0, V(h, 0).GetProperty("own").GetProperty("count").GetInt32());
+        Assert.True(h.Start().Ok);
+        Assert.DoesNotContain("Найкращий тост від Ганни", V(h).GetProperty("prompts").EnumerateArray().Select(p => p.GetString()));
+        Assert.All(V(h, 0).GetProperty("me").GetProperty("tasks").EnumerateArray(), t => Assert.Equal(JsonValueKind.Null, t.GetProperty("by").ValueKind));
+    }
+
+    [Fact]
+    public void Own_prompts_left_unused_wait_for_the_rematch()
+    {
+        var h = Table(3, options: new { rounds = "short" }, start: false);
+        string[] own = ["Своє завдання Олі про кота", "Своє завдання Петра про трактор", "Своє завдання Ганни про борщ"];
+        for (var s = 0; s < 3; s++) Assert.True(h.Act(s, "mine", new { text = own[s] }).Ok);
+        Assert.True(h.Start().Ok);
+        var first = PlayMatch(h);
+        Assert.Equal(2, first.Count(own.Contains));               // раунд 1 на трьох — два завдання, обидва свої; фінал — з банку
+        Assert.True(h.Rematch().Ok, h.Reply.Message);
+        var left = own.Except(first).Single();
+        Assert.Contains(left, V(h).GetProperty("prompts").EnumerateArray().Select(p => p.GetString()));
     }
 }
 
