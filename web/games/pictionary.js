@@ -31,6 +31,9 @@
   const FLUSH_MS = 60;
   const CHUNK_MAX = 200;
   const SYNC_MS = 2000;
+  /// Точка, що лежить ближче за стільки логічних одиниць до прямої між сусідками, малюнку нічого не дає, лише
+  /// байти (прохід 28.09: миша на 1000 Гц слала ~500 точок на секунду, пряма лінія — сотні точок; зі спрощенням — у рази менше).
+  const SIMPLIFY = 0.9;
 
   const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 10);
 
@@ -126,9 +129,64 @@
     c.putImageData(img, 0, 0);
   }
 
+  /// Спростити шматок штриха (Рамер — Дуглас — Пекер, відстань до відрізка): лишаються кінці й ті точки, без яких
+  /// лінія відхилилась би більше ніж на eps. Кінці не чіпаємо — з останньої точки починається наступний шматок.
+  function simplify(p, eps) {
+    const n = p.length / 2;
+    if (n <= 2) return p;
+    const keep = new Uint8Array(n);
+    keep[0] = keep[n - 1] = 1;
+    const e2 = eps * eps;
+    const stack = [0, n - 1];
+    while (stack.length) {
+      const b = stack.pop(), a = stack.pop();
+      const ax = p[a * 2], ay = p[a * 2 + 1], dx = p[b * 2] - ax, dy = p[b * 2 + 1] - ay, len2 = dx * dx + dy * dy;
+      let best = -1, far = e2;
+      for (let i = a + 1; i < b; i++) {
+        const px = p[i * 2] - ax, py = p[i * 2 + 1] - ay;
+        const t = len2 ? Math.max(0, Math.min(1, (px * dx + py * dy) / len2)) : 0;
+        const ex = px - t * dx, ey = py - t * dy, d2 = ex * ex + ey * ey;
+        if (d2 > far) { far = d2; best = i; }
+      }
+      if (best >= 0) { keep[best] = 1; stack.push(a, best, best, b); }
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) if (keep[i]) out.push(p[i * 2], p[i * 2 + 1]);
+    return out;
+  }
+
+  /// Знімок буфера одразу після останньої заливки. Заливка — найдорожче (прохід 28.09: ~35 мс на великій площі
+  /// в ноуті, на телефоні в рази довше), а «↶» після неї перемальовував усе з нуля — кожну заливку наново.
+  function keepMark(s, i) {
+    if (!s.mark) {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      s.mark = { c, g: c.getContext('2d'), n: 0, op: null };
+    }
+    s.mark.g.drawImage(s.buf, 0, 0);
+    s.mark.n = i + 1;
+    s.mark.op = s.ops[i];
+  }
+
+  const sameOp = (a, b) => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
+
+  /// Перемалювати малюнок цілком. «↶» і повний кадр після нього приносять той самий початок малюнка, тож
+  /// починаємо зі знімка після останньої заливки, якщо вона на місці, і домальовуємо лише лінії після неї.
   function redrawAll(s) {
-    clearBuf(s);
-    for (const op of s.ops) drawOp(s.bctx, op);
+    const m = s.mark;
+    let from = 0;
+    if (m && m.n > 0 && m.n <= s.ops.length && sameOp(s.ops[m.n - 1], m.op)) {
+      s.bctx.globalCompositeOperation = 'source-over';
+      s.bctx.drawImage(m.c, 0, 0);
+      from = m.n;
+    } else {
+      if (m) m.n = 0;
+      clearBuf(s);
+    }
+    for (let i = from; i < s.ops.length; i++) {
+      drawOp(s.bctx, s.ops[i]);
+      if (s.ops[i][0] === 1) keepMark(s, i);
+    }
     s.dirty = true;
   }
 
@@ -153,6 +211,7 @@
     for (const op of ops) {
       s.ops.push(op);
       drawOp(s.bctx, op);
+      if (op[0] === 1) keepMark(s, s.ops.length - 1);
     }
     s.n = s.ops.length;
     s.local = s.local.filter((l) => countOf(s, l.s) <= l.i);
@@ -254,7 +313,7 @@
     const cur = s.cur;
     if (!cur || cur.p.length < 2) { if (final) s.cur = null; return; }
     if (cur.sent === cur.p.length && !final) return;
-    const p = cur.p.slice();
+    const p = simplify(cur.p, SIMPLIFY);
     if (p.length >= 2) {
       ctx.input('draw', { s: cur.s, c: cur.c, w: cur.w, p });
       s.local.push({ s: cur.s, i: cur.chunks, t: Date.now(), op: [0, cur.s, cur.c, cur.w, ...p] });
@@ -416,7 +475,7 @@
     } else {
       html = '';
     }
-    if (el.innerHTML !== html) el.innerHTML = html;
+    if (el._html !== html) { el._html = html; el.innerHTML = html; }
   }
 
   function head(root, ctx, v) {
@@ -463,7 +522,7 @@
         + '<b>' + r.score + '</b></div>';
     }).join('');
     const el = root.querySelector('.pcscores');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    if (el._html !== html) { el._html = html; el.innerHTML = html; }
   }
 
   function mergeFeed(s, items, replace) {
@@ -492,7 +551,8 @@
       }
     }).join('') || '<div class="pcf muted">Поки тиша — тут з\'являться здогадки</div>';
     const el = root.querySelector('.pcfeed');
-    if (el.innerHTML !== html) {
+    if (el._html !== html) {
+      el._html = html;
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
       el.innerHTML = html;
       if (atBottom || !el._seen) el.scrollTop = el.scrollHeight;
