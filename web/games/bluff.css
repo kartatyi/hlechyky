@@ -3,20 +3,25 @@
   Картка міряє себе сама (container-type): стіл буває і на всю ширину, і вузькою карткою в сітці.
 */
 :root {
-  --bluff-s0: #e0a94a;
-  --bluff-s1: #6fb86f;
-  --bluff-s2: #d97757;
-  --bluff-s3: #9aa3ad;
-  --bluff-s4: #5b8dd6;
-  --bluff-s5: #d97ab0;
-  --bluff-s6: #7fc7c4;
-  --bluff-s7: #b48ce0;
+  /* Вісім насичених відтінків, рознесених по колу (≈45° один від одного): сірого нема — сірий лишається для «вийшов». */
+  --bluff-s0: #f0b43c;
+  --bluff-s1: #5fc86a;
+  --bluff-s2: #ef5f5f;
+  --bluff-s3: #3fc6e0;
+  --bluff-s4: #5b86f0;
+  --bluff-s5: #e46fbf;
+  --bluff-s6: #b9d94a;
+  --bluff-s7: #a884f0;
   --bluff-truth: rgba(123, 211, 137, .16);
   --bluff-lie: rgba(197, 118, 58, .14);
   --bluff-on: rgba(244, 197, 66, .13);
 }
 
-/* Шапка картки каркаса: місця 5–8 — наші кольори (1–4 — x/o/c/d каркаса). */
+/* Шапка картки каркаса: усі вісім місць — наші кольори (каркасове «d» — сіре). */
+.gseat.bluff-s0 { color: var(--bluff-s0); }
+.gseat.bluff-s1 { color: var(--bluff-s1); }
+.gseat.bluff-s2 { color: var(--bluff-s2); }
+.gseat.bluff-s3 { color: var(--bluff-s3); }
 .gseat.bluff-s4 { color: var(--bluff-s4); }
 .gseat.bluff-s5 { color: var(--bluff-s5); }
 .gseat.bluff-s6 { color: var(--bluff-s6); }
@@ -31,7 +36,7 @@
 .bluff-c6 { --bluff-c: var(--bluff-s6); }
 .bluff-c7 { --bluff-c: var(--bluff-s7); }
 
-.bluff-wrap { container-type: inline-size; width: 100%; }
+.bluff-wrap { container: bluff-wrap / inline-size; width: 100%; }
 .bluff {
   max-width: 960px; margin: 0 auto; width: 100%;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start;
@@ -40,6 +45,15 @@
 .bluff-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; container-type: inline-size; }
 @container (min-width: 820px) {
   .bluff:not(.bluff-lobby) { grid-template-columns: minmax(0, 1fr) 230px; }
+}
+/* Full HD і більше: компанія дивиться на великий екран — ширше й крупніше. */
+@container bluff-wrap (min-width: 1080px) {
+  .bluff { max-width: 1400px; }
+  .bluff:not(.bluff-lobby) { grid-template-columns: minmax(0, 1fr) 270px; }
+  .bluff-q { font-size: clamp(1.5em, 1.45vw, 2em); }
+  .bluff-otext { font-size: 1.12em; }
+  .bluff-opt { min-height: 84px; }
+  .bluff-me, .bluff-final { font-size: 1.12em; }
 }
 
 /* ---- шапка ---- */
@@ -66,6 +80,23 @@
 .bluff-blank.truth { border-bottom-style: solid; border-color: var(--ok); color: var(--ok); text-shadow: 0 0 14px rgba(123, 211, 137, .45); }
 .bluff-blank.swap { animation: bluff-fade .2s ease-out both; }
 .bluff-stage { text-align: center; min-height: 1.2em; }
+/* Фінал — подія: банер на весь рядок у фазі читання останнього питання. */
+.bluff-final {
+  text-align: center; font-weight: 750; padding: 7px 12px; border-radius: 12px;
+  background: var(--bluff-on); border: 1px solid var(--accent); color: var(--accent);
+  box-shadow: 0 0 18px rgba(244, 197, 66, .18); animation: bluff-rise .4s ease-out both;
+}
+.bluff-final[hidden] { display: none; }
+/* «Ти…» на розкритті: кого надурила твоя брехня і хто надурив тебе. */
+.bluff-me { text-align: center; line-height: 1.45; padding: 2px 6px; font-size: 1.02em; }
+.bluff-me[hidden] { display: none; }
+.bluff-me .ok { color: var(--ok); }
+.bluff-me .lie { color: var(--clay); }
+.bluff-me .lie b { color: var(--text); }
+.bluff-me .win { color: var(--accent); }
+.bluff-me .bluff-sep { color: var(--muted); }
+/* Прокрутка до щойно відкритої картки й до «а насправді» лишає місце під смугою плеєра внизу й шапкою вгорі. */
+.bluff-cell, .bluff-note, .bluff-me { scroll-margin: 70px 0 120px; }
 
 /* ---- брехня ---- */
 .bluff-write { display: flex; flex-direction: column; gap: 8px; align-items: stretch; max-width: 560px; width: 100%; margin: 0 auto; }
@@ -159,15 +190,16 @@
 /* ---- рахунок ---- */
 .bluff-score { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .bluff-shead { padding: 0 4px 2px; }
+/* Рядок рахунку — сітка: нік має всю ширину між крапкою й числом, а дельти — окремим рядком під ніком. */
 .bluff-srow {
-  display: flex; align-items: center; gap: 7px; padding: 5px 9px; background: var(--panel); border-radius: 9px; font-size: .92em;
-  flex-wrap: wrap;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 7px; row-gap: 3px;
+  padding: 5px 9px; background: var(--panel); border-radius: 9px; font-size: .92em;
 }
 .bluff-srow.win { box-shadow: 0 0 0 1px var(--accent2) inset; background: var(--bluff-on); }
 .bluff-srow.gone { opacity: .55; }
 .bluff-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--bluff-c, var(--muted)); }
-.bluff-sn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bluff-sd { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
+.bluff-sn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bluff-sd { grid-column: 2 / 4; display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-start; }
 .bluff-d { font-style: normal; font-size: .75em; padding: 1px 6px; border-radius: 999px; background: var(--panel2); animation: bluff-rise .5s ease-out both; }
 .bluff-d.ok { color: var(--ok); }
 .bluff-d.lie { color: var(--clay); }
@@ -196,6 +228,12 @@
 .bluff-rules { margin: 4px auto; padding-left: 1.2em; max-width: 36em; line-height: 1.5; display: flex; flex-direction: column; gap: 3px; }
 .bluff-rules[hidden] { display: none; }
 
+/* Палець: плаваюча кнопка «💬 Стіл» каркаса не лягає на нижню картку. */
+@media (pointer: coarse) {
+  .bluff-opts { padding-bottom: 64px; }
+  .bluff-cell, .bluff-note, .bluff-me { scroll-margin-bottom: 180px; }
+}
+
 /* ---- телефон ---- */
 @container (max-width: 420px) {
   .bluff-btns button { flex-basis: 100%; }
@@ -212,6 +250,6 @@
 @keyframes bluff-pulse { 50% { transform: scale(1.08); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .bluff-x2, .bluff-blank.swap, .bluff-opt, .bluff-opt.flip, .bluff-opt.open.truth, .bluff-pk, .bluff-note, .bluff-d, .bluff-win { animation: none !important; transition: none !important; }
+  .bluff-x2, .bluff-final, .bluff-blank.swap, .bluff-opt, .bluff-opt.flip, .bluff-opt.open.truth, .bluff-pk, .bluff-note, .bluff-d, .bluff-win { animation: none !important; transition: none !important; }
   .bluff-opt.now, .bluff-opt:not(:disabled):not(.inert):hover { transform: none; }
 }
