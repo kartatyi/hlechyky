@@ -2199,13 +2199,16 @@
   async function readMine() {
     try { paintFbBadge(((await api('POST', '/api/feedback/mine/read', {})) || {}).unread || 0); } catch { /* наступного разу */ }
   }
-  function fbMineCard(x) {
+  const fbMineHot = (x) => (x.msgs || []).some((m) => fbMineFresh.has(m.id));
+  /// Записка людини. Поле відповіді — там, де розробник уже щось написав (чи де людина вже дописує); на решті —
+  /// лише «✏ Доповнити»: тридцять порожніх полів підряд перетворили б «Мої записки» на анкету.
+  function fbMineCard(x, typing) {
     const msgs = x.msgs || [];
-    const hot = msgs.some((m) => fbMineFresh.has(m.id));
-    return `<div class="fbm${hot ? ' fresh' : ''}" data-id="${x.id}">
+    const talk = msgs.some((m) => m.dev);
+    return `<div class="fbm${fbMineHot(x) ? ' fresh' : ''}" data-id="${x.id}">
         <div class="fbm-head">${FB_ICON[x.kind] || '💬'} ${fbStatusChip(x.status)}<span class="muted small">${esc(dayTime(x.at))}</span></div>
         <div class="fbt"><div class="fbb me"><div class="fbb-text">${esc(x.text)}</div></div>${msgs.map((m) => fbBubble(m, false, fbMineFresh)).join('')}</div>
-        ${fbSayBox(msgs.some((m) => m.dev) ? 'Відповісти… (Enter)' : 'Доповнити… (Enter)')}
+        ${talk || typing ? fbSayBox(talk ? 'Відповісти… (Enter)' : 'Доповнити… (Enter)') : '<button type="button" class="ghost fbadd">✏ Доповнити</button>'}
       </div>`;
   }
   async function loadMyFeedback(open) {
@@ -2215,16 +2218,25 @@
     const items = (r && r.items) || [];
     paintFbBadge((r && r.unread) || 0);
     for (const x of items) for (const m of x.msgs || []) if (m.fresh) fbMineFresh.add(m.id);
-    const fresh = items.filter((x) => x.unread).length;
+    const unreadNow = items.some((x) => x.unread);
+    const hot = items.filter(fbMineHot).length;   // нове на момент показу: підпис тримається, поки вікно відкрите
     $('fbMine').hidden = !items.length;
-    $('fbMineN').textContent = items.length ? `· ${items.length}` + (fresh ? ` · нових відповідей ${fresh}` : '') : '';
+    $('fbMineN').textContent = items.length ? `· ${items.length}` + (hot ? ` · нових відповідей ${hot}` : '') : '';
     const list = $('fbMineList');
     const drafts = fbDrafts(list);
-    list.innerHTML = items.map(fbMineCard).join('');
+    // записки з новою відповіддю — згори (і там лишаються, поки вікно відкрите), далі — як дав сервер: свіжа розмова вище
+    const order = items.map((x, i) => [x, i]).sort((a, b) => (Number(fbMineHot(b[0])) - Number(fbMineHot(a[0]))) || a[1] - b[1]);
+    list.innerHTML = order.map(([x]) => fbMineCard(x, drafts.has(String(x.id)))).join('');
     fbRestore(list, drafts);
     fbWireSay(list, sayMine);
+    list.querySelectorAll('.fbadd').forEach((b) => b.onclick = () => {
+      const card = b.closest('[data-id]');
+      b.outerHTML = fbSayBox('Доповнити… (Enter)');
+      fbWireSay(card, sayMine);
+      card.querySelector('.fbsay textarea').focus();
+    });
     if (open) $('fbMine').open = true;
-    if (fresh && fbMineVisible()) {
+    if (unreadNow && fbMineVisible()) {
       readMine();
       if (open) list.querySelector('.fbm.fresh')?.scrollIntoView({ block: 'nearest' });
     }
@@ -2973,6 +2985,7 @@
     // Усі разом (до 300), а фільтр — тут: записка з відповіддю мусить лишатись на виду, хоч би її стан і не підходив.
     const r = await api('GET', '/api/feedback');
     const all = r.items || [];
+    paintDevCount(r.waiting);
     for (const x of all) {
       if (x.unread) { fbHot.add(x.id); if (!fbWaitRead.includes(x.id)) fbWaitRead.push(x.id); }
       for (const m of x.msgs || []) if (m.fresh) fbDevFresh.add(m.id);
@@ -2992,7 +3005,7 @@
         <div class="fbi-text">${esc(x.text)}</div>
         <div class="fbi-ctx muted small">${x.place ? '📍 ' + esc(x.place) : ''}${x.screen ? ' · ' + esc(x.screen) : ''}${x.ua ? ` · <span title="${esc(x.ua)}">${esc(shortUa(x.ua))}</span>` : ''}</div>
         ${msgs.length ? `<div class="fbt">${msgs.map((m) => fbBubble(m, true, fbDevFresh)).join('')}</div>` : ''}
-        ${fbSayBox('Відповісти — автор побачить на 💡 (Enter)')}
+        ${fbSayBox('Відповісти… (Enter)')}
       </li>`;
     };
     const empty = fbFilter === 'new' ? 'Нових записок нема — усе прочитано.' : 'Тут поки порожньо.';

@@ -1055,6 +1055,7 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 }
 .fbsay textarea:focus { border-color: var(--accent2); }
 .fbsay button { flex: none; }
+.fbm .fbadd { align-self: flex-start; font-size: .85em; padding: 4px 10px; }
 
 /* ---- вкладка розробника «💡 Пропозиції й баги» ---- */
 .fbseg { flex-wrap: wrap; }

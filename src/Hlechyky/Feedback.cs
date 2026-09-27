@@ -493,6 +493,8 @@ public static class FeedbackSetup
         services.AddSingleton<FeedbackStore>();
         services.TryAddSingleton<IFeedbackWire, HubFeedbackWire>();
         services.AddSingleton<Feedback>();
+        // Одиничка в DI: інакше SignalR створював би фільтр наново на кожен виклик хабу (а коло кличе його щосекунди).
+        services.AddSingleton<FeedbackDevGroup>();
         services.Configure<HubOptions>(o => o.AddFilter<FeedbackDevGroup>());
         return services;
     }

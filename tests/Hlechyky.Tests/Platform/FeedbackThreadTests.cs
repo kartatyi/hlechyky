@@ -1,5 +1,10 @@
 using Hlechyky.Tests.Support;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Connections.Features;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hlechyky.Tests.Platform;
 
@@ -363,6 +368,78 @@ public sealed class FeedbackThreadTests : IDisposable
         _fb.Say(id, "Оля", false, "");
         Assert.Empty(_wire.Authors);
         Assert.Empty(_wire.Devs);
+    }
+
+    [Theory]
+    [InlineData("admin", true)]
+    [InlineData("member", false)]
+    [InlineData(null, false)]
+    public async Task Only_the_developer_joins_the_feedback_group_on_connect(string? role, bool joins)
+    {
+        var http = new DefaultHttpContext();
+        if (role is not null) http.Items["role"] = role;
+        var groups = new Groups();
+        var hub = new NoHub { Groups = groups };
+        var called = false;
+        var filter = new FeedbackDevGroup(Microsoft.Extensions.Logging.Abstractions.NullLogger<FeedbackDevGroup>.Instance);
+
+        await filter.OnConnectedAsync(new HubLifetimeContext(new Caller(http), new ServiceCollection().BuildServiceProvider(), hub),
+            _ => { called = true; return Task.CompletedTask; });
+
+        Assert.True(called);                                // підключення йде далі за будь-якої ролі
+        Assert.Equal(joins ? new List<(string, string)> { ("c1", FeedbackDevGroup.Name) } : [], groups.Added);
+    }
+
+    [Fact]
+    public async Task A_broken_group_does_not_stop_the_connection()
+    {
+        var http = new DefaultHttpContext();
+        http.Items["role"] = "admin";
+        var hub = new NoHub { Groups = new Groups { Fail = true } };
+        var called = false;
+        await new FeedbackDevGroup(Microsoft.Extensions.Logging.Abstractions.NullLogger<FeedbackDevGroup>.Instance)
+            .OnConnectedAsync(new HubLifetimeContext(new Caller(http), new ServiceCollection().BuildServiceProvider(), hub),
+                _ => { called = true; return Task.CompletedTask; });
+        Assert.True(called);
+    }
+
+    sealed class NoHub : Hub;
+
+    sealed class Groups : IGroupManager
+    {
+        public bool Fail;
+        public readonly List<(string, string)> Added = [];
+        public Task AddToGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default)
+        {
+            if (Fail) throw new InvalidOperationException("група впала");
+            Added.Add((connectionId, groupName));
+            return Task.CompletedTask;
+        }
+        public Task RemoveFromGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    /// <summary>З'єднання хабу, за яким стоїть звичайний HTTP-запит (кука адміна вже розібрана в Items["role"]).</summary>
+    sealed class Caller(HttpContext http) : HubCallerContext
+    {
+        readonly FeatureCollection _features = MakeFeatures(http);
+        static FeatureCollection MakeFeatures(HttpContext http)
+        {
+            var f = new FeatureCollection();
+            f.Set<IHttpContextFeature>(new HttpFeature { HttpContext = http });
+            return f;
+        }
+        public override string ConnectionId => "c1";
+        public override string? UserIdentifier => null;
+        public override System.Security.Claims.ClaimsPrincipal? User => null;
+        public override IDictionary<object, object?> Items { get; } = new Dictionary<object, object?>();
+        public override IFeatureCollection Features => _features;
+        public override CancellationToken ConnectionAborted => default;
+        public override void Abort() { }
+    }
+
+    sealed class HttpFeature : IHttpContextFeature
+    {
+        public HttpContext? HttpContext { get; set; }
     }
 
     // ---------- стара база ----------
