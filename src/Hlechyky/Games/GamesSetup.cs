@@ -40,6 +40,7 @@ public static class GamesSetup
         services.AddSingleton<Impl.IMelodySource>(sp => sp.GetRequiredService<Impl.MelodyLibrary>());
         Impl.SvoyaSetup.AddSvoya(services);                 // «Своя гра»: пакети запитань
         Impl.RallySetup.AddRally(services);   // «Сільське ралі»: рекорди кіл трас
+        Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
         return services;
     }
 
@@ -51,6 +52,7 @@ public static class GamesSetup
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
+        Impl.VohnykSetup.MapVohnyk(app);                   // /api/games/vohnyk/best — таблиця рівня
         return app;
     }
 }

@@ -138,6 +138,9 @@ public static class AchievementCatalog
         // хвиля 3: dance
         new("dance-ribbon", "Перша на вечорницях", "Вечорниці: витанцював стрічку в колі, нікого не вдаривши", "🎀", 15),
         new("dance-slap",   "Ляпас у яблучко",     "Вечорниці: першим же ляпасом раунду вивів гравця", "✋", 15),
+        // хвиля 2: vohnyk — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("vohnyk-duo",  "Вогонь і вода",     "Пройшли рівень «Вогника і Краплі» удвох", "🔥", 15),
+        new("vohnyk-cave", "Кришталева печера", "Усі п'ятнадцять рівнів «Вогника і Краплі» на три зірки", "💎", 60),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

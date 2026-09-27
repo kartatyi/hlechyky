@@ -1,0 +1,157 @@
+/*
+  Вогник і Крапля. Печеру малює канвас (vohnyk.js), тут — рядок над ним, кнопки для пальця, мапа рівнів і
+  підсумок. Свої кольори — на :root: модуль читає їх через ctx.css().
+*/
+:root {
+  --vh-fire: #ff8c1a;
+  --vh-fire2: #ffd23a;
+  --vh-water: #46b4ff;
+  --vh-water2: #bfe6ff;
+  --vh-lava: #ff5a1f;
+  --vh-mud: #5a4a2a;
+  --vh-stone: #2a3a44;
+  --vh-bg: #101b24;
+  --vh-bg2: #1a2a36;
+  --vh-door: #6b7f8f;
+  --vh-box: #9b6b3a;
+  --vh-crystal1: #7fe0ff;
+  --vh-crystal2: #c69bff;
+  --vh-crystal3: #8dff9e;
+  --vh-chrome: 250px;           /* шапка сайту + шапка картки + рядок над полем + статус + кнопки */
+}
+body.gfull { --vh-chrome: 180px; }
+@media (pointer: coarse) { body.gfull { --vh-chrome: 110px; } }
+
+.gseat.vhf { color: var(--vh-fire); }
+.gseat.vhw { color: var(--vh-water); }
+
+.vh { display: flex; flex-direction: column; gap: 6px; }
+
+/* ---- рядок над полем ---- */
+.vh-hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .84em; min-height: 26px; }
+.vh-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--bg2);
+  white-space: nowrap; max-width: 14em; overflow: hidden; text-overflow: ellipsis; color: var(--text); border: 0; font: inherit;
+  font-variant-numeric: tabular-nums; line-height: 1.3;
+}
+button.vh-chip { cursor: pointer; }
+button.vh-chip:disabled { cursor: default; opacity: .85; }
+.vh-chip.vh-h0 { color: var(--vh-fire); }
+.vh-chip.vh-h1 { color: var(--vh-water); }
+.vh-chip.me { box-shadow: 0 0 0 1px currentColor inset; }
+.vh-chip.act { background: color-mix(in srgb, currentColor 22%, var(--bg2)); }
+.vh-chip.vh-clock, .vh-chip.vh-dead { color: var(--muted); }
+.vh-chip.vh-give { color: var(--muted); background: transparent; box-shadow: 0 0 0 1px var(--line) inset; }
+.vh-chip.vh-dead.hold { background: color-mix(in srgb, var(--danger) 35%, var(--bg2)); transition: background .6s; }
+.vh-chip.vh-give:hover { color: var(--danger); }
+
+/* ---- полотно: завжди весь рівень, скільки дозволяє висота ---- */
+.vh-wrap {
+  position: relative; width: 100%; margin: 0 auto;
+  max-width: min(1200px, calc((100vh - var(--vh-chrome)) * var(--vh-ratio, 1.76)));
+  min-width: min(100%, 300px);
+}
+.vh-wrap .vh-board.gcanvas { width: 100%; max-width: none; border-radius: 10px; background: var(--vh-bg); touch-action: none; user-select: none; }
+.vh-stage { display: flex; flex-direction: column; gap: 8px; min-width: 0; align-self: stretch; width: 100%; }
+/* кінець партії: підсумок і рекорди поверх затемненого полотна — «Ще раз» лишається на екрані */
+.vh-over {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px; z-index: 2; overflow: auto;
+}
+.vh-over[hidden] { display: none; }
+.vh-over > * { width: min(100%, 460px); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+.vh-bestbox[hidden] { display: none; }
+/* лобі: прев'ю рівня з рекордами ліворуч, мапа рівнів праворуч */
+@media (min-width: 720px) {
+  .vh.vh-lobby { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; column-gap: 12px; }
+  .vh.vh-lobby > .vh-hud { grid-column: 1 / -1; }
+  .vh.vh-lobby .vh-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vh.vh-lobby .vh-lv { min-height: 64px; }
+}
+.vh.vh-lobby .vh-wrap { max-width: min(760px, calc((100vh - var(--vh-chrome)) * var(--vh-ratio, 1.76))); min-width: min(100%, 240px); }
+.vh.vh-lobby .vh-turn { display: none !important; }
+.vh-turn { display: none; }
+@media (orientation: portrait) and (max-width: 600px) {
+  .vh.vh-play .vh-turn { display: block; text-align: center; font-size: .8em; color: var(--muted); }
+}
+
+/* ---- кнопки пальця: поверх полотна, лише сидячому й лише посеред партії ---- */
+.vh-touch { display: none; }
+@media (pointer: coarse) {
+  .vh.vh-seated.vh-play .vh-touch {
+    display: block; position: absolute; inset: 0; pointer-events: none; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .vh-touch button {
+    pointer-events: auto; position: absolute; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35);
+    background: rgba(12, 22, 30, .42); color: #fff; font-size: 26px; display: grid; place-items: center; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vh-touch button.on { background: rgba(255, 255, 255, .35); }
+  .vh-tl { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 10px; }
+  .vh-tl button { position: static; width: 72px; height: 72px; pointer-events: auto; }
+  .vh-tj { right: 8px; bottom: 8px; width: 88px; height: 88px; }
+  .vh-sw { left: 50%; bottom: 10px; width: 64px; height: 64px; transform: translateX(-50%); display: none !important; }
+  .vh.vh-solo .vh-sw { display: grid !important; }
+}
+/* телефон лежачи: полотно на всю висоту між липкою шапкою сайту (~57 px) і вкладками внизу; на старті модуль
+   сам прокручує до нього, а HUD — дрібніший */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .vh-wrap { max-width: calc((100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px)) * var(--vh-ratio, 1.76)); }
+  .vh-hud { font-size: .72em; gap: 4px; min-height: 0; }
+  .vh-chip { padding: 1px 7px; }
+  .vh-tl { left: 4px; bottom: 4px; gap: 6px; }
+  .vh-tl button { width: 52px; height: 52px; font-size: 20px; }
+  .vh-tj { right: 4px; bottom: 4px; width: 60px; height: 60px; font-size: 22px; }
+  .vh-sw { top: 4px; bottom: auto; width: 42px; height: 42px; font-size: 18px; }
+  .vh-touch button { background: rgba(12, 22, 30, .28); border-color: rgba(255, 255, 255, .25); }
+}
+/* телефон стоячи: полотно й так дрібне — кнопки не на ньому, а смугою під ним */
+@media (pointer: coarse) and (orientation: portrait) {
+  .vh.vh-seated.vh-play .vh-touch { position: relative; inset: auto; height: 92px; margin-top: 10px; pointer-events: auto; }
+  .vh-touch button { background: var(--bg2); border-color: var(--line); color: var(--text); }
+  .vh-tl { left: 4px; bottom: 4px; }
+  .vh-tj { right: 4px; bottom: 2px; }
+  .vh-sw { left: auto; right: 100px; transform: none; }
+}
+@media (pointer: coarse) and (max-width: 420px) {
+  .vh-tl button { width: 64px; height: 64px; font-size: 24px; }
+  .vh-tj { width: 80px; height: 80px; }
+  .vh-sw { width: 54px; height: 54px; }
+}
+
+/* ---- мапа рівнів у лобі й підсумок ---- */
+.vh-pick { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
+.vh-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.vh-lv {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 8px; border-radius: 10px;
+  background: var(--bg2); border: 2px solid transparent; color: var(--text); text-align: left; font: inherit; font-size: .82em;
+  min-height: 74px; cursor: pointer; overflow: hidden;
+}
+.vh-lv:disabled { cursor: default; opacity: 1; }
+.vh-lv.lock { opacity: .5; }
+.vh-lv.sel { border-color: var(--accent); background: var(--panel2); }
+.vh-lv b { font-size: 1.15em; color: var(--accent); }
+.vh-lv .vh-nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.vh-lv .vh-st i { font-style: normal; color: var(--accent); letter-spacing: 1px; }
+.vh-lv .vh-st i.small { font-size: .75em; color: var(--muted); margin-left: 6px; }
+.vh-lv .vh-gm, .vh-lv .vh-bs { color: var(--muted); font-size: .88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.vh-best { background: var(--bg2); border-radius: 10px; padding: 6px 12px; font-size: .86em; }
+.vh-best h4 { margin: 2px 0 4px; font-size: 1em; }
+.vh-best ol { margin: 0; padding-left: 1.6em; }
+.vh-best li span { display: inline-block; margin-right: 12px; font-variant-numeric: tabular-nums; }
+.vh-stars { color: var(--accent); letter-spacing: 1px; }
+.vh-res { background: var(--bg2); border-radius: 10px; padding: 8px 12px; text-align: center; }
+.vh-res.ok b { background: linear-gradient(90deg, var(--vh-fire), var(--vh-water)); -webkit-background-clip: text; background-clip: text; color: transparent; font-size: 1.2em; }
+.vh-res .small { color: var(--muted); margin-top: 2px; }
+
+@media (max-width: 700px) {
+  .vh-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .vh-hud { gap: 4px; font-size: .76em; }
+  .vh-chip { padding: 2px 7px; max-width: 10em; }
+  .vh-lv { min-height: 64px; padding: 5px 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vh-touch button { transition: none; }
+}
