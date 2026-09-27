@@ -37,6 +37,7 @@
   /// Перші 0,6 с свого ходу пробіл/Enter/Ⓐ не стріляють: після «Ще раз» Ⓐ, натиснутий по кнопці, якої вже нема,
   /// летів у гру й одразу стріляв 45°/60 «мимо».
   const TURN_GRACE = 600;
+  const AWAY_MS = 200, CALM_MS = 50;   // цикл малювання: схована картка / тихе лобі й підсумок (spin)
 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -1893,25 +1894,50 @@
   // Цикл
   // =============================================================================================
 
+  /// Лобі чи підсумок без разових анімацій (лелека, вибухи, цифри шкоди, свіжа земля, повтор найкращого пострілу):
+  /// рухаються лише хмари й дим — їм досить 20 кадрів на секунду.
+  function calmNow(st, now) {
+    if (st.phase !== 'lobby' && st.phase !== 'over') return false;
+    if (st.stork || st.rings.length || st.floats.length || st.fresh.length || now < st.shakeUntil) return false;
+    return !(st.replay && !st.replay.boom);
+  }
+
+  /// rAF — лише поки треба (прохід 28.09): схована картка чи вкладка — перевірка раз на 0,2 с без rAF; тихе лобі й
+  /// підсумок — 20 кадрів/с; вид чи розмір будять одразу (wake). Було 60 повних кадрів/с усюди, і в схованій картці теж.
   function spin(st) {
-    if (st.raf) return;
+    if (st.raf || st.idleT) return;
     st.lastT = performance.now();
     const loop = () => {
+      st.raf = 0;
       const el = st.cv && st.cv.el;
-      if (!el || !el.isConnected) { st.raf = 0; return; }
-      st.raf = requestAnimationFrame(loop);
-      if (document.hidden || !el.offsetParent) return;
+      if (!el || !el.isConnected) return;
+      const shown = !document.hidden && !!el.offsetParent;
+      st.away = !shown;
       const now = performance.now();
-      const dt = Math.min(0.05, (now - st.lastT) / 1000);
-      st.lastT = now;
-      if (!st.bgC) fit(st);
-      if (!st.bgC) return;
-      tickInput(st, now);
-      const t0 = performance.now();
-      draw(st, now, dt);
-      st.perf[st.perfN++ % st.perf.length] = performance.now() - t0;
+      if (shown) {
+        const dt = Math.min(0.1, (now - st.lastT) / 1000);
+        st.lastT = now;
+        if (!st.bgC) fit(st);
+        if (st.bgC) {
+          tickInput(st, now);
+          const t0 = performance.now();
+          draw(st, now, dt);
+          st.perf[st.perfN++ % st.perf.length] = performance.now() - t0;
+        }
+      }
+      const gap = !shown ? AWAY_MS : calmNow(st, now) ? CALM_MS : 0;
+      if (gap) st.idleT = setTimeout(() => { st.idleT = 0; st.raf = requestAnimationFrame(loop); }, gap);
+      else st.raf = requestAnimationFrame(loop);
     };
     st.raf = requestAnimationFrame(loop);
+  }
+
+  /// Цикл дрімає — розбудити зараз; force — і тоді, коли картка була схована (кадри в схованій будити не мусять).
+  function wake(st, force) {
+    if (!st || !st.idleT || (st.away && !force)) return;
+    clearTimeout(st.idleT);
+    st.idleT = 0;
+    spin(st);
   }
 
   HGames.register({
@@ -1970,12 +1996,12 @@
       };
       document.addEventListener('keyup', st.keyup);
       if (window.ResizeObserver) {
-        st.ro = new ResizeObserver(() => { fit(st); fitHeight(st); });
+        st.ro = new ResizeObserver(() => { fit(st); fitHeight(st); wake(st, true); });
         st.ro.observe(el);
         const card = root.closest('.gtable');
         if (card) st.ro.observe(card);
       }
-      st.onResize = () => fitHeight(st);
+      st.onResize = () => { fitHeight(st); wake(st, true); };
       window.addEventListener('resize', st.onResize);
       fit(st);
       spin(st);
@@ -1988,6 +2014,7 @@
       fit(st);
       paintAll(st);
       fitHeight(st);
+      wake(st, true);
       spin(st);
     },
 
@@ -1997,6 +2024,7 @@
       const phase = st.phase;
       applyFrame(st, f);
       if (f.hp || f.hx || f.ph !== phase || f.aim) paintAll(st);
+      wake(st);
     },
 
     onKey(e, ctx) {
@@ -2061,6 +2089,8 @@
       if (!st) return;
       cancelAnimationFrame(st.raf);
       st.raf = 0;
+      clearTimeout(st.idleT);
+      st.idleT = 0;
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.ro) st.ro.disconnect();
       if (st.onResize) window.removeEventListener('resize', st.onResize);

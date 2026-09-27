@@ -2232,16 +2232,25 @@
 
   // ---------- цикл ----------
 
+  /// Лобі, «готовий?» спринту й підсумок: мережа стоїть, стіни не рухаються. Тоді цикл не крутить 60 порожніх кадрів
+  /// на секунду, а дрімає по 0,25 с (прохід 28.09); вид, кадр і розмір будять одразу (frameLoop).
+  const IDLE_PH = new Set(['lobby', 'ready', 'over']);
+  const IDLE_MS = 250;
+  const fxBusy = (st, now) => st.fx.parts.length || st.fx.labels.length || st.fx.splat || st.fx.shake > now
+    || (st.fx.trail && st.fx.trail.until > now) || st.fx.go > now;
+
   function frameLoop(st) {
     const loop = (now) => {
       st.raf = 0;
       const root = st.root;
       if (!root || !root.isConnected) return;
-      st.raf = requestAnimationFrame(loop);
       tickNet(st, now);
-      if (document.hidden || !root.offsetParent) return;
-      render(st, now);
+      const shown = !document.hidden && !!root.offsetParent;
+      if (shown) render(st, now);
+      if (IDLE_PH.has(st.phase) && (!shown || (!st.dirty && !fxBusy(st, now)))) st.idleT = setTimeout(() => { st.idleT = 0; st.raf = requestAnimationFrame(loop); }, IDLE_MS);
+      else st.raf = requestAnimationFrame(loop);
     };
+    if (st.idleT) { clearTimeout(st.idleT); st.idleT = 0; }
     if (!st.raf) st.raf = requestAnimationFrame(loop);
   }
 
@@ -2396,6 +2405,7 @@
     st.net.onFrame(f, now);
     st.dirty = true;
     if (prev !== f.ph && st.root) summary(st);
+    if (st.idleT) frameLoop(st);
   }
 
   function status(ctx) {
@@ -2491,6 +2501,8 @@
     if (!st) return;
     if (st.raf) cancelAnimationFrame(st.raf);
     st.raf = 0;
+    clearTimeout(st.idleT);
+    st.idleT = 0;
     clearInterval(st.timer);
     if (st.keyup) document.removeEventListener('keyup', st.keyup);
     if (st.onBlur) window.removeEventListener('blur', st.onBlur);
