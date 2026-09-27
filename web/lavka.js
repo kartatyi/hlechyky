@@ -276,6 +276,21 @@
     // Сезонне, що продається саме зараз (🎃 восени, 🎄 на свята), — першим: воно ненадовго, і в кінці полиці його не видно.
     const now = (x) => (x.season && x.season.open ? 0 : 1);
     if (tab !== 'mine') list.sort((a, b) => now(a) - now(b));
+    // Сезонних на весь рік два десятки: поза сезоном (і ще не своє) воно не займає полицю кнопками «Не сезон» —
+    // лише рядок «ще будуть» під полицею, найближче першим.
+    const later = tab !== 'mine' ? list.filter((x) => x.season && !x.season.open && !x.owned) : [];
+    const shelf = later.length ? list.filter((x) => !later.includes(x)) : list;
+    const d = new Date();
+    const today = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const nextKey = (x) => (x.season.from > today ? '0' : '1') + x.season.from;
+    later.sort((a, b) => (nextKey(a) < nextKey(b) ? -1 : 1));
+    const soon = later.length
+      ? '<div class="lv-soon"><div class="muted small">🗓 Ще будуть у Лавці</div><div class="lv-soon-list">'
+        + later.map((x) => '<span class="lv-soon-it" title="' + esc(x.title) + ' · ' + x.price + ' 🏺"><span class="lv-soon-art">'
+          + (x.kind === 'icon' ? emo(x.art) : '🗓') + '</span><span>' + esc(x.title) + '</span><span class="muted small">з '
+          + x.season.from.split('-').reverse().join('.') + '</span></span>').join('')
+        + '</div></div>'
+      : '';
     const head = '<section class="panel lv-head">'
       + '<div class="lv-top"><div class="lv-sign"><img src="/static/glek.svg" alt=""><div><h2>Лавка Дядька Глека</h2>'
       + '<div class="muted small">Усе, що купиш, — твоє назавжди. Черепки капають за радіо, партії й щоденний глек.</div></div></div>'
@@ -289,8 +304,8 @@
     const tabs = '<nav class="lv-tabs" aria-label="Полиці лавки">' + TABS.filter(([k]) => !(giftTo && k === 'mine')).map(([k, l]) =>
       '<button type="button" data-tab="' + k + '"' + (k === tab ? ' class="on"' : '') + '>' + l + '</button>').join('') + '</nav>';
     const body = tab === 'photo' ? photoPanel()
-      : list.length
-      ? '<div class="lv-grid">' + list.map(cardHtml).join('') + '</div>'
+      : shelf.length
+      ? '<div class="lv-grid">' + shelf.map(cardHtml).join('') + '</div>' + soon
       : '<div class="gempty glek">' + (tab === 'mine' ? 'Шафа ще порожня. Обери щось на полицях — і воно лишиться з тобою назавжди.' : 'Тут поки порожньо.') + '</div>';
     root.innerHTML = head + '<section class="panel lv-shelf">' + tabs + body + '</section>';
     wire(root);

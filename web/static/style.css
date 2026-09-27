@@ -1226,6 +1226,14 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 .lv-item.owned .lv-state { color: var(--ok); }
 .lv-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: auto; }
 .lv-btns button { padding: 5px 11px; font-size: .88em; }
+/* сезонне поза сезоном — рядок «ще будуть» під полицею, а не картки з «Не сезон» */
+.lv-soon { margin-top: 14px; display: grid; gap: 6px; }
+.lv-soon-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.lv-soon-it {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border-radius: 999px;
+  background: var(--bg2); font-size: .88em; min-width: 0; opacity: .85;
+}
+.lv-soon-art { font-size: 1.25em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
 @media (max-width: 600px) {
   .lv-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .lv-sign img { width: 40px; height: 40px; }

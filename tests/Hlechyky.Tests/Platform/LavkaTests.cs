@@ -152,7 +152,7 @@ public sealed class LavkaTests : IDisposable
     {
         var all = LavkaCatalog.All;
         Assert.Equal(all.Count, all.Select(i => i.Id).Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal(28, all.Count(i => i.Kind == LavkaKind.Icon));        // 24 звичайних + 4 сезонні (з 28.09 — і гарбуз)
+        Assert.Equal(45, all.Count(i => i.Kind == LavkaKind.Icon));        // 24 звичайних + 21 сезонний (календар на весь рік з 28.09)
         Assert.Equal(4, all.Count(i => i.Kind == LavkaKind.Frame));
         Assert.Equal(17, all.Count(i => i.Kind == LavkaKind.Color));       // 16 кольорів і веселка
         Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Title));       // 8 купованих і 5 за ачівки
@@ -222,6 +222,24 @@ public sealed class LavkaTests : IDisposable
     public void Season_bounds_are_inclusive_and_cross_new_year(string from, string to, string day, bool open)
     {
         Assert.Equal(open, new LavkaSeason(from, to).Open(day));
+    }
+
+    [Fact]
+    public void Every_day_of_the_year_has_a_seasonal_icon_on_the_shelf()
+    {
+        var seasonal = LavkaCatalog.All.Where(i => i.Kind == LavkaKind.Icon && i.Season is not null).ToList();
+        // високосний рік — щоб перевірити й 29 лютого
+        for (var d = new DateOnly(2028, 1, 1); d.Year == 2028; d = d.AddDays(1))
+        {
+            var md = d.ToString("MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            Assert.True(seasonal.Any(i => i.Season!.Open(md)), $"{md}: жодного сезонного значка");
+        }
+        // межі — справжні дні «MM-dd»
+        Assert.All(seasonal, i =>
+        {
+            Assert.True(DateOnly.TryParseExact("2028-" + i.Season!.From, "yyyy-MM-dd", out _), i.Id);
+            Assert.True(DateOnly.TryParseExact("2028-" + i.Season!.To, "yyyy-MM-dd", out _), i.Id);
+        });
     }
 
     // =============================================================================================
