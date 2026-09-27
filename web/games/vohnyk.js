@@ -1297,6 +1297,7 @@
 
   HGames.register({
     id: 'vohnyk',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: NAMES,
     seatClass: ['vhf', 'vhw'],

@@ -82,6 +82,7 @@
 
   /// «🆕 нова гра» — 14 днів від дати, яку модуль каже полем added, і лише тим, хто в неї ще не грав.
   /// «оновлено» — 7 днів від news.v і лише тим, хто вже грав: новенькому все одно все нове.
+  /// Нова гра мусить казати added: без нього нема «🆕», а її «Нова гра: …» вилазить як «оновлено».
   const NEW_DAYS = 14;
   const UPD_DAYS = 7;
 
@@ -762,8 +763,14 @@
     if (shown && view.kind === 'lobby') renderView();
     if (shown && view.kind === 'room' && views[view.id]) maybeNews(views[view.id]);
   }
-  const daysSince = (iso) => (Date.now() - Date.parse(iso + 'T12:00:00')) / 86400000;
-  const newsOf = (id) => { const m = modules[id]; return m && m.news && m.news.v && (m.news.items || []).length ? m.news : null; };
+  // Версія буває з літерою ('2026-09-24b' — друге оновлення за день): дата — лише перші десять знаків, інакше NaN і «оновлено» довіку.
+  const daysSince = (iso) => (Date.now() - Date.parse(String(iso).slice(0, 10) + 'T12:00:00')) / 86400000;
+  /// «Нова гра: …» з тією ж датою, що added, — знайомство, а не оновлення: ні «оновлено» на плитці, ні вікна.
+  const newsOf = (id) => {
+    const m = modules[id];
+    if (!m || !m.news || !m.news.v || !(m.news.items || []).length) return null;
+    return m.added && m.news.v <= m.added ? null : m.news;
+  };
   const playedIt = (id) => played == null || played.has(id);
   /// Оновлення, якого людина ще не бачила, у грі, в яку вона вже грала (вікно «що нового» — без терміну давності).
   const unseenNews = (id) => { const n = newsOf(id); return !!n && newsSeen != null && newsSeen[id] !== n.v && playedIt(id); };

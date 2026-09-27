@@ -1876,6 +1876,7 @@
 
   HGames.register({
     id: 'dance',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: SEAT_NAMES,
     seatClass: ['x', 'o', 'c', 'd', 'dance-b', 'dance-p', 'dance-v', 'dance-r'],

@@ -1731,6 +1731,7 @@
 
   HGames.register({
     id: 'icefloe',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: ['синій', 'рудий', 'зелений', 'жовтий', 'бузковий', 'м’ятний', 'рожевий', 'сірий'],
     seatClass: ['if0', 'if1', 'if2', 'if3', 'if4', 'if5', 'if6', 'if7'],

@@ -1268,6 +1268,7 @@
 
   HGames.register(Object.assign({
     id: 'geo',
+    added: '2026-09-27',
     news: {
       v: '2026-09-27',
       title: 'Нова гра: Де це?',
@@ -1281,5 +1282,5 @@
     },
   }, common));
 
-  HGames.register(Object.assign({ id: 'geo-solo' }, common));
+  HGames.register(Object.assign({ id: 'geo-solo', added: '2026-09-27' }, common));
 })();

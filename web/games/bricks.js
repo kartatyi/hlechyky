@@ -2537,6 +2537,7 @@
 
   HGames.register(Object.assign({
     id: 'bricks',
+    added: '2026-09-27',
     news: {
       v: '2026-09-27',
       title: 'Нова гра: Цеглини',
@@ -2549,5 +2550,5 @@
       ],
     },
   }, common));
-  HGames.register(Object.assign({ id: 'bricks-sprint' }, common, { seatNames: ['муляр'] }));
+  HGames.register(Object.assign({ id: 'bricks-sprint', added: '2026-09-27' }, common, { seatNames: ['муляр'] }));
 })();

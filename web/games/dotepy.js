@@ -861,6 +861,7 @@
 
   HGames.register({
     id: 'dotepy',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: (i) => String(i + 1),
     seatClass: ['dt0', 'dt1', 'dt2', 'dt3', 'dt4', 'dt5', 'dt6', 'dt7'],

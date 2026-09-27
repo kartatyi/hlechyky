@@ -1916,6 +1916,7 @@
 
   HGames.register({
     id: 'glekomet',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: ['жовта', 'зелена', 'руда', 'сіра', 'синя', 'рожева'],
     seatClass: ['x', 'o', 'c', 'gk-g', 'gk-b', 'gk-p'],

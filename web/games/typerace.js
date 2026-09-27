@@ -1178,6 +1178,7 @@
   function module(id) {
     return {
       id,
+      added: '2026-09-27',
       icon: ICON,
       news: NEWS,
       mount(root, ctx) { ctx._trroot = root; mount(root, ctx); ctx._trst = state(root); },

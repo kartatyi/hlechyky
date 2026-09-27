@@ -938,6 +938,7 @@
 
   HGames.register({
     id: 'hockey',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: ['синій', 'рудий', 'синій', 'рудий'],
     seatClass: ['hks0', 'hks1', 'hks2', 'hks3'],
