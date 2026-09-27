@@ -363,10 +363,11 @@
     if (a === STOKE) {
       api.sfx('stoke');
       // Іскри від поліна — та сама анімація наново. Без примусової розкладки (getBoundingClientRect посеред натиску
-      // коштує повної розкладки важкої сторінки): клас знімаємо зараз, ставимо в наступному кадрі.
+      // коштує повної розкладки важкої сторінки): клас знімаємо зараз, ставимо через кадр — між ними браузер устигне
+      // перерахувати стилі без нього (один rAF спрацював би ще до того перерахунку, і анімація не почалась би наново).
       const svg = st.kUi.svg;
       svg.classList.remove('stoked');
-      requestAnimationFrame(() => svg.classList.add('stoked'));
+      requestAnimationFrame(() => requestAnimationFrame(() => svg.classList.add('stoked')));
     } else api.sfx('damper');
     paintBurn(st, api, true);
   }
@@ -408,7 +409,7 @@
     const trend = d > 2 ? '▲' : d < -2 ? '▼' : '•';
     if (ui.trend.textContent !== trend) ui.trend.textContent = trend;
     // Полум'я й світло камери — від жару й дров. Змінна на корені SVG перераховує стилі всього горна, тож пишемо її
-    // сходинками (1/50), а не щокроку: оком різниці нема, а кадрів — удвічі менше роботи.
+    // сходинками (1/50) і лише коли змінилась: оком різниці нема, а перерахунків стилів горна — менше.
     const glow = Math.max(0, Math.min(1, (s.T - 150) / 950));
     const g50 = Math.round(glow * 50) / 50;
     setVar(ui.svg, '--clkk-heat', g50.toFixed(2));
@@ -1613,6 +1614,9 @@
     },
 
     frame(st, api) {
+      // Повернувся на «Ремесло» посеред ручного обпалу («До горна» в смузі) — ще раз показати горно й кнопки.
+      if (st.kb && st.kTabAt !== st.tab && kilnVisible(st)) st.kb.shown = false;
+      st.kTabAt = st.tab;
       if (st.kb && kilnVisible(st)) {
         paintBurn(st, api, false);
         if (!st.kb.shown && st.mine) showBurn(st);
