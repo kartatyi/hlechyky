@@ -133,7 +133,7 @@
 
   function stageKey(ctx, v) {
     const m = (ctx.room && ctx.room.round) || 0;
-    if (lobbyOf(ctx, v)) return 'lobby';
+    if (lobbyOf(ctx, v)) return 'lobby|' + (ctx.mine ? 'p' : 's');     // сів за стіл — з'являється поле свого завдання
     switch (v.phase) {
       case 'write': {
         const tasks = (v.me && v.me.tasks) || [];
@@ -156,7 +156,7 @@
       s.keys = { stage: key };
       s.local = null;
       stage.className = 'dt-stage dt-' + key.split('|')[0];
-      if (key === 'lobby') { stage.innerHTML = lobbyHtml(ctx); bindOwn(root, stage); }
+      if (key.startsWith('lobby')) { stage.innerHTML = lobbyHtml(ctx); bindOwn(root, stage); }
       else if (key.startsWith('write')) buildWrite(root, ctx, v, stage);
       else if (key.startsWith('card')) buildCard(root, ctx, v, stage);
       else if (key.startsWith('table')) buildTable(root, ctx, v, stage);
@@ -164,7 +164,7 @@
       else stage.innerHTML = '';
       padScene(root, stage);
     }
-    if (key === 'lobby') {
+    if (key.startsWith('lobby')) {
       // склад міняється й до старту: на шістьох підказуємо коротку партію
       const tip = stage.querySelector('.dt-howtip');
       const text = lobbyTip(ctx);
@@ -251,9 +251,9 @@
     if (st && st.dataset.sig !== html) { st.dataset.sig = html; st.innerHTML = html; }
   }
 
-  /// «✍ завдання від Петра» — під своїм завданням друга.
+  /// «✍ автор завдання: Петро» — під своїм завданням друга (нік у називному: ніки ми не відмінюємо).
   function byHtml(ctx, v, by) {
-    return by == null ? '' : '<div class="dt-by" style="--c:' + col(by) + '">✍ завдання від <b>' + ctx.esc(nickOf(ctx, v, by)) + '</b></div>';
+    return by == null ? '' : '<div class="dt-by" style="--c:' + col(by) + '">✍ автор завдання: <b>' + ctx.esc(nickOf(ctx, v, by)) + '</b></div>';
   }
 
   function lobbyTip(ctx) {

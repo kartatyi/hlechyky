@@ -205,7 +205,7 @@ public sealed class Dotepy : Game
     readonly Dictionary<string, string> _own = new(StringComparer.Ordinal);
     /// <summary>Свої завдання цієї партії в черзі на роздачу: (ключ ніка, завдання).</summary>
     readonly List<(string Key, DotepyPrompt Prompt)> _ownQueue = [];
-    /// <summary>Хто вигадав завдання (id → місце автора) — для підпису «завдання від Петра».</summary>
+    /// <summary>Хто вигадав завдання (id → місце автора) — для підпису «автор завдання: Петро».</summary>
     readonly Dictionary<string, int> _ownBy = new(StringComparer.Ordinal);
 
     // склад
