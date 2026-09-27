@@ -38,6 +38,8 @@ data/svoya/*
 !data/vohnyk/
 # «Дотепи»: банк завдань їде разом із грою.
 !data/dotepy/
+# «Де це?»: банк місць, README і збірник мапи.
+!data/geo/
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)

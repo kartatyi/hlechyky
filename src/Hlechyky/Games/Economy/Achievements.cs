@@ -147,6 +147,9 @@ public static class AchievementCatalog
         // хвиля 2: typerace — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
         new("typerace-300",   "Швидкі пальці",      "300 знаків за хвилину з точністю 95 % у Клавоперегонах", "⌨️", 20),
         new("typerace-clean", "Без жодної помилки", "Дописав уривок на 240+ знаків без жодної червоної літери", "🧼", 15),
+        // хвиля 2: geo
+        new("geo-bull",     "В яблучко",       "Шпилька за кілометр і ближче від правди в «Де це?»", "🎯", 20),
+        new("geo-20k",      "Знавець України", "20 000 очок за партію «Де це?» з п'яти й більше раундів", "🗺", 30),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

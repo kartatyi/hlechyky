@@ -1,0 +1,161 @@
+/* «Де це?» — фото зліва, мапа справа (на вузькому — фото над мапою). Усе через змінні теми; своє — з префіксом geo. */
+:root {
+  --geo-sea: #123038;
+  --geo-land: #2b4c3c;
+  --geo-river: #4a8fb3;
+  --geo-border: rgba(236, 241, 234, .26);   /* межі областей — видно, але не кричать */
+  /* десять місць: добре розрізнювані, плюс номер на шпильці й нік у чіпі — колір не єдина ознака */
+  --geo-p0: #f4c542;
+  --geo-p1: #7bd389;
+  --geo-p2: #c5763a;
+  --geo-p3: #6fb3e8;
+  --geo-p4: #e88ac0;
+  --geo-p5: #b48cf2;
+  --geo-p6: #f0f0f0;
+  --geo-p7: #ff8a5b;
+  --geo-p8: #5ad1c9;
+  --geo-p9: #c9d96b;
+  --geo-room: calc(100dvh - 330px);     /* скільки висоти лишається фото й мапі під шапкою сайту й картки */
+}
+
+.geo-s0 { --geo-c: var(--geo-p0); }
+.geo-s1 { --geo-c: var(--geo-p1); }
+.geo-s2 { --geo-c: var(--geo-p2); }
+.geo-s3 { --geo-c: var(--geo-p3); }
+.geo-s4 { --geo-c: var(--geo-p4); }
+.geo-s5 { --geo-c: var(--geo-p5); }
+.geo-s6 { --geo-c: var(--geo-p6); }
+.geo-s7 { --geo-c: var(--geo-p7); }
+.geo-s8 { --geo-c: var(--geo-p8); }
+.geo-s9 { --geo-c: var(--geo-p9); }
+.gseat[class*="geo-s"] { color: var(--geo-c); }
+
+.geowrap { width: 100%; container-type: inline-size; display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------- шапка: раунд, дуга, чіпи ---------- */
+.geotop { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; min-height: 40px; }
+.georound { font-weight: 600; white-space: nowrap; }
+.geotop > .garc { order: 1; }
+.geochips { order: 2; display: flex; flex-wrap: wrap; gap: 5px; flex: 1 1 200px; min-width: 0; }
+.geosnd { order: 3; margin-left: auto; background: none; border: 0; padding: 4px 6px; font-size: 1.05em; cursor: pointer; opacity: .75; }
+.geosnd:hover { opacity: 1; }
+.geochip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 10px 2px 8px; border-radius: 999px;
+  background: var(--bg2); border: 1px solid transparent; font-size: .86em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.geochip.me { border-color: var(--line); }
+.geochip.on { background: var(--panel3); }
+.geochip b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.geodot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--geo-c, var(--muted)); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
+
+/* ---------- фото й мапа ---------- */
+.geomain { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
+@container (min-width: 720px) {
+  .geomain { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* широка картка: мапа — головне поле гри, їй трохи більше місця */
+@container (min-width: 1000px) {
+  .geomain, .georesult { grid-template-columns: minmax(0, 1fr) minmax(0, 1.22fr); }
+}
+
+.geophoto { min-width: 0; }
+.geoframe { position: relative; width: min(100%, calc(var(--geo-room) * 1.5)); aspect-ratio: 3 / 2; margin: 0 auto;
+  background: var(--bg2); border-radius: 10px; overflow: hidden; }
+.geoimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; cursor: zoom-in;
+  -webkit-user-select: none; user-select: none; transition: filter .35s ease-out; }
+.geoframe.empty .geoimg { visibility: hidden; }
+.geoframe.geoblur .geoimg { filter: blur(14px) brightness(.5); cursor: default; }
+.geocurtain { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; pointer-events: none;
+  font-size: 1.35em; font-weight: 700; text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+.geocurtain[hidden] { display: none; }
+.geoframe.empty .geocurtain { font-size: 1em; font-weight: 500; color: var(--muted); text-shadow: none; }
+.geofullbtn { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border-radius: 9px; border: 0; cursor: pointer;
+  background: rgba(10, 20, 15, .6); color: var(--text); font-size: 18px; line-height: 1; }
+.geofullbtn:hover { background: rgba(10, 20, 15, .85); }
+.geofullbtn[hidden] { display: none; }
+.geoerr { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center; justify-content: center;
+  padding: 8px; background: var(--gshade); color: var(--text); }
+.geoerr[hidden] { display: none; }
+.geoerr button { min-height: 32px; }
+.geocap { padding: 6px 2px 0; line-height: 1.4; overflow-wrap: anywhere; }
+.geocap[hidden] { display: none; }
+.geocap a { color: var(--accent); }
+
+.geomap { position: relative; width: min(100%, calc(var(--geo-room) * 1.4652)); aspect-ratio: 4000 / 2730; margin: 0 auto;
+  background: var(--geo-sea); border-radius: 10px; overflow: hidden; touch-action: none; }
+.geocanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none;
+  transition: opacity .3s ease-out; }
+.geomap.can .geocanvas { cursor: crosshair; }
+.geocanvas.drag, .geomap.can .geocanvas.drag { cursor: grabbing; }
+.geomap.dim .geocanvas { opacity: .55; }
+.geomapmsg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
+.geomapmsg[hidden] { display: none; }
+.geozoom { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 6px; opacity: 0; transition: opacity .15s; }
+.geomap:hover .geozoom, .geozoom:focus-within { opacity: 1; }
+.geozoom button { width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--line); cursor: pointer;
+  background: rgba(15, 31, 24, .82); color: var(--text); font-size: 18px; line-height: 1; }
+.geozoom button:hover { border-color: var(--accent2); }
+@media (pointer: coarse) {
+  .geozoom { opacity: 1; }
+  .geozoom button, .geofullbtn { width: 44px; height: 44px; }
+}
+
+/* ---------- кнопка й підказка ---------- */
+.geobar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 42px; }
+.geobar[hidden] { display: none; }
+.geohint { flex: 1; min-width: 0; }
+.geogo { min-width: 170px; min-height: 42px; font-size: 1.02em; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+.geogo[hidden] { display: none; }
+@container (max-width: 560px) {
+  /* на телефоні кнопки масштабу — рядком угорі: стовпчик з'їдав пів мапи */
+  .geozoom { flex-direction: row; }
+  .geozoom button { width: 40px; height: 40px; }
+  .geobar { flex-direction: column-reverse; align-items: stretch; }
+  .geogo { width: 100%; min-height: 50px; }
+  .geohint { text-align: center; }
+}
+
+/* ---------- розкриття й рахунок ---------- */
+.georesult { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
+.georesult[hidden] { display: none; }
+@container (min-width: 720px) {
+  .georesult { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+.georows { display: flex; flex-direction: column; gap: 4px; }
+.georow { display: grid; grid-template-columns: minmax(0, 1fr) auto 4.2em; gap: 10px; align-items: center; padding: 5px 10px;
+  border-radius: 8px; background: var(--bg2); animation: geo-rise .35s ease-out both; animation-delay: calc(var(--n, 0) * 80ms); }
+.georow.best { background: var(--gwin); }
+.georow.none { opacity: .6; }
+.geon { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.geokm { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.geop { text-align: right; color: var(--accent); font-variant-numeric: tabular-nums; }
+.geosay { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-style: italic; }
+.geosay img { width: 28px; height: 28px; flex: none; }
+@keyframes geo-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.geoscore { display: flex; flex-direction: column; gap: 4px; }
+.geoshead { margin-bottom: 2px; }
+.geosrow { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 8px; background: var(--bg2); }
+.geosrow > span { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.geosrow b { font-variant-numeric: tabular-nums; }
+.geosrow.win { background: var(--gwin); }
+.geosrow.gone { opacity: .6; }
+.geoshard { font-style: normal; font-size: .85em; color: var(--muted); white-space: nowrap; }
+
+.georecap > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.georecap ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+.georecap li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px; border-radius: 8px; background: var(--bg2); }
+.georecap img, .geothumb { width: 72px; height: 48px; flex: none; border-radius: 6px; object-fit: cover; background: var(--panel3); }
+.geort { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.geort > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.geort > .small:last-child { white-space: normal; }
+
+/* ---------- фото на весь екран ---------- */
+.geofull { position: fixed; inset: 0; z-index: 28; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .92); cursor: zoom-out; }
+.geofull img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.geofullx { position: absolute; top: 14px; right: 14px; min-height: 44px; padding: 0 16px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--line); background: rgba(15, 31, 24, .9); color: var(--text); font-size: 1em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .georow { animation: none; }
+  .geoimg, .geocanvas, .geozoom { transition: none; }
+}
