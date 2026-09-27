@@ -516,6 +516,8 @@ public sealed partial class Clicker
         star = AlbumStarBonus,
         starRow = AlbumStarRowBonus,
         starAll = AlbumStarAllBonus,
+        // Уся сітка з п'ятнадцятьма стовпчиками (v11) — клієнт кладе в розклад бонусу.
+        worldAll = AlbumWorldAllBonus,
         starQuality = StarQuality,
         stoveSlots = StoveSlots,
         stoveQuality = StoveQualityBonus,
