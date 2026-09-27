@@ -1,0 +1,161 @@
+/*
+  Купальська ніч. Галявину, темряву й вогні малює канвас; тут — фішки над ним, новини, підсумок і керування пальцем.
+  Свої кольори — на :root, бо модуль читає їх через ctx.css(). Усі класи з префіксом kupala-.
+*/
+:root {
+  --kupala-grass: #4f7d3c;     /* луг */
+  --kupala-grass2: #436d33;    /* плями на лузі */
+  --kupala-forest: #2f4f2a;    /* лісова земля */
+  --kupala-bank: #b39463;      /* берег */
+  --kupala-water: #2a5877;     /* річка під берегом */
+  --kupala-water2: #1b3b55;    /* річка посередині */
+  --kupala-night: rgb(6, 10, 26);   /* колір темряви */
+  --kupala-blue: #6fb3e8;      /* п'яте місце */
+  --kupala-pink: #e88ac0;      /* шосте */
+  --kupala-violet: #b48ae8;    /* сьоме */
+  --kupala-red: #e86a6a;       /* восьме */
+}
+
+/* місця 5–8: чіпи в шапці картки каркас знає лише x/o/c/d */
+.gseat.kupala-b { color: var(--kupala-blue); }
+.gseat.kupala-p { color: var(--kupala-pink); }
+.gseat.kupala-v { color: var(--kupala-violet); }
+.gseat.kupala-r { color: var(--kupala-red); }
+
+.kupala-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* Мапа 3:2; точну ширину модуль рахує сам від висоти вікна (як у Юрми), тут — запасна оцінка до першого заміру. */
+.kupala-stage {
+  position: relative;
+  width: 100%;
+  max-width: min(960px, calc((100vh - 300px) * 1.5));
+}
+.kupala-board {
+  width: 100%;
+  max-width: none;
+  border-radius: 10px;
+  background: #0a1020;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.kupala-board.kupala-port { touch-action: none; }
+
+/* ---- фішки над мапою ---- */
+.kupala-hud, .kupala-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
+.kupala-chips { display: contents; }
+.kupala-hud .kupala-seats { display: contents; }
+.kupala-body > .kupala-seats { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; font-size: .76em; }
+.kupala-chip, .kupala-seat {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); color: var(--text); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums; border: 0; font: inherit;
+}
+.kupala-clock { color: var(--muted); min-width: 4.4em; justify-content: center; }
+.kupala-clock.hot { color: var(--danger); animation: kupala-pulse 1s ease-in-out infinite; }
+@keyframes kupala-pulse { 50% { opacity: .55; } }
+.kupala-lamp { color: var(--muted); }
+.kupala-lamp.lit { color: var(--accent); }
+.kupala-torch { cursor: pointer; }
+.kupala-torch i, .kupala-list i { font-style: normal; }
+.kupala-torch i.used { opacity: .25; filter: grayscale(1); }
+.kupala-list { gap: 6px; }
+.kupala-list small { color: var(--muted); font-size: .86em; }
+.kupala-list i.done { opacity: .45; text-decoration: line-through; }
+.kupala-seat i { width: .7em; height: .7em; border-radius: 50%; background: currentColor; display: inline-block; }
+.kupala-seat b { color: var(--text); }
+.kupala-seat small { color: var(--muted); font-size: .92em; }
+.kupala-seat.dead { text-decoration: line-through; opacity: .7; }
+.kupala-seat.out { opacity: .45; }
+.kupala-seat.me { box-shadow: 0 0 0 1px currentColor inset; }
+.kupala-mute {
+  padding: 2px 8px; border-radius: 999px; background: var(--bg2); border: 0; cursor: pointer; font-size: 1em; line-height: 1.4;
+}
+
+/* кольори місць: чіпи, ніки в новинах і підсумку */
+.kupala-s0 { color: var(--accent); }
+.kupala-s1 { color: var(--ok); }
+.kupala-s2 { color: var(--clay); }
+.kupala-s3 { color: var(--muted); }
+.kupala-s4 { color: var(--kupala-blue); }
+.kupala-s5 { color: var(--kupala-pink); }
+.kupala-s6 { color: var(--kupala-violet); }
+.kupala-s7 { color: var(--kupala-red); }
+
+/* ---- новини: дві останні події смужкою поверх низу мапи (над річкою), згасають за 6 с ---- */
+.kupala-news {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 3px; font-size: .84em; text-align: center;
+}
+.kupala-ni {
+  animation: kupala-fade 6s ease-in forwards; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 11px; border-radius: 999px; background: rgba(8, 12, 26, .8); color: #eef3ea;
+}
+.kupala-ni + .kupala-ni { opacity: .72; }
+.kupala-portmode .kupala-news { top: 5px; bottom: auto; left: 5px; right: 108px; align-items: flex-start; flex-direction: column; font-size: .7em; }
+.kupala-portmode .kupala-ni { padding: 1px 8px; }
+.kupala-portmode .kupala-ni + .kupala-ni { display: none; }
+.kupala-stage.kupala-open .kupala-news { display: none; }
+@keyframes kupala-fade { 0% { opacity: 0; transform: translateY(-3px); } 6% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- підсумок раунду й партії ---- */
+.kupala-sum { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; font-size: .84em; font-variant-numeric: tabular-nums; }
+.kupala-stage > .kupala-sum { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none; }
+.kupala-sc {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  background: rgba(8, 12, 26, .86); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.kupala-body > .kupala-sum .kupala-sc { background: var(--bg2); }
+.kupala-sc b { font-weight: 700; }
+.kupala-sc em { font-style: normal; font-weight: 800; color: #eef3ea; }
+.kupala-body > .kupala-sum .kupala-sc em { color: var(--text); }
+.kupala-sc small { color: #b9c4d4; font-size: .88em; }
+.kupala-body > .kupala-sum .kupala-sc small { color: var(--muted); }
+.kupala-sc.win { box-shadow: 0 0 0 1.5px currentColor inset; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kupala-clock.hot { animation: none; }
+  .kupala-ni { animation: none; }
+}
+
+/* ---- керування пальцем: хрестовина — одна зона, дії — одним дотиком ---- */
+.kupala-pad { display: none; }
+.kupala-pad.kupala-off { display: none !important; }
+@media (pointer: coarse) {
+  .kupala-pad {
+    display: flex; gap: 16px; align-items: center; justify-content: center; margin-top: 2px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .kupala-dirs {
+    display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px;
+    touch-action: none; border-radius: 50%;
+  }
+  .kupala-arr {
+    display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.25em;
+    background: var(--panel3); color: var(--text); pointer-events: none;
+  }
+  .kupala-arr.on { background: var(--clay); }
+  .kupala-arr[data-dir="3"] { grid-column: 2; grid-row: 1; }
+  .kupala-arr[data-dir="2"] { grid-column: 1; grid-row: 2; }
+  .kupala-arr[data-dir="0"] { grid-column: 3; grid-row: 2; }
+  .kupala-arr[data-dir="1"] { grid-column: 2; grid-row: 3; }
+  .kupala-peek { grid-column: 2; grid-row: 2; justify-content: center; border-radius: 50%; font-size: 1.05em; padding: 0; min-width: 0; }
+  /* три дії трикутником: ✋ і 🌼 знизу, 🔥 над ними */
+  .kupala-acts { display: grid; grid-template-columns: 60px 60px; grid-template-rows: 52px 60px; gap: 8px 10px; }
+  .kupala-acts button { justify-content: center; border-radius: 50%; font-size: 1.5em; background: var(--panel3); padding: 0; min-width: 0; }
+  .kupala-acts [data-act="torch"] { grid-column: 1 / span 2; grid-row: 1; width: 52px; height: 52px; justify-self: center; font-size: 1.3em; }
+  .kupala-acts [data-act="slap"] { grid-column: 1; grid-row: 2; height: 60px; }
+  .kupala-acts [data-act="launch"] { grid-column: 2; grid-row: 2; height: 60px; }
+  .kupala-acts button:active, .kupala-peek:active { background: var(--clay); }
+}
+@media (max-width: 380px) {
+  .kupala-dirs { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); }
+  .kupala-acts { grid-template-columns: 56px 56px; grid-template-rows: 48px 56px; }
+  .kupala-acts [data-act="slap"], .kupala-acts [data-act="launch"] { height: 56px; }
+  .kupala-acts [data-act="torch"] { width: 48px; height: 48px; }
+  .kupala-pad { gap: 12px; }
+}
+@media (max-width: 480px) {
+  .kupala-hud { font-size: .76em; gap: 4px; }
+  .kupala-chip, .kupala-seat { padding: 2px 7px; }
+  .kupala-news { font-size: .78em; }
+}

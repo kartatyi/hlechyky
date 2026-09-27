@@ -1,0 +1,140 @@
+/*
+  Замри! Луг малює канвас; тут — рядок фішок над ним, новини поверх низу лугу, підсумок раунду й керування пальцем.
+  Свої кольори — на :root, бо модуль читає їх через ctx.css(). Усі класи з префіксом freeze-.
+*/
+:root {
+  --freeze-grass: #78a552;    /* луг */
+  --freeze-grass2: #669443;   /* плями на лузі */
+  --freeze-sky: #bcd9ea;      /* небо над гаєм */
+  --freeze-wood: #8a5a33;     /* тин, кілки, двері */
+  --freeze-cold: rgba(110, 170, 255, .30);   /* «Замри!» — екран холоне */
+  --freeze-blue: #6fb3e8;     /* п'яте місце */
+  --freeze-pink: #e88ac0;     /* шосте */
+  --freeze-violet: #b48ae8;   /* сьоме */
+  --freeze-red: #e86a6a;      /* восьме */
+}
+
+/* місця 5–8: чіпи в шапці картки каркас знає лише x/o/c/d */
+.gseat.freeze-b { color: var(--freeze-blue); }
+.gseat.freeze-p { color: var(--freeze-pink); }
+.gseat.freeze-v { color: var(--freeze-violet); }
+.gseat.freeze-r { color: var(--freeze-red); }
+
+.freeze-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* Луг 10:3. Точну ширину модуль рахує сам від висоти вікна (на Деку внизу смужка пада); тут — запасна оцінка. */
+.freeze-stage {
+  position: relative;
+  width: 100%;
+  max-width: min(1200px, calc((100vh - 260px) * 3.333));
+  margin: 0 auto;
+}
+.freeze-board {
+  width: 100%;
+  max-width: none;
+  border-radius: 10px;
+  background: #669443;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.freeze-board.freeze-port { touch-action: none; }
+
+/* ---- фішки над лугом ---- */
+.freeze-hud, .freeze-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
+.freeze-chips { display: contents; }
+.freeze-hud .freeze-seats { display: contents; }
+.freeze-body > .freeze-seats { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; font-size: .76em; }
+.freeze-chip, .freeze-seat {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.freeze-clock { color: var(--muted); min-width: 4.4em; justify-content: center; }
+.freeze-clock.hot { color: var(--danger); animation: freeze-pulse 1s ease-in-out infinite; }
+@keyframes freeze-pulse { 50% { opacity: .55; } }
+.freeze-hand.cool { opacity: .35; filter: grayscale(1); }
+.freeze-seat i { width: .7em; height: .7em; border-radius: 50%; background: currentColor; display: inline-block; }
+.freeze-seat b { color: var(--text); }
+.freeze-seat.out { opacity: .45; }
+.freeze-seat.me { box-shadow: 0 0 0 1px currentColor inset; }
+.freeze-mute { padding: 2px 8px; border-radius: 999px; background: var(--bg2); border: 0; cursor: pointer; font-size: 1em; line-height: 1.4; }
+
+.freeze-s0 { color: var(--accent); }
+.freeze-s1 { color: var(--ok); }
+.freeze-s2 { color: var(--clay); }
+.freeze-s3 { color: var(--muted); }
+.freeze-s4 { color: var(--freeze-blue); }
+.freeze-s5 { color: var(--freeze-pink); }
+.freeze-s6 { color: var(--freeze-violet); }
+.freeze-s7 { color: var(--freeze-red); }
+
+/* ---- новини: останні дві події смужкою поверх низу лугу, згасають за 6 с ---- */
+.freeze-news {
+  position: absolute; left: 8px; right: 8px; bottom: 6px; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 3px; font-size: .82em; text-align: center;
+}
+.freeze-ni {
+  animation: freeze-fade 6s ease-in forwards; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 11px; border-radius: 999px; background: rgba(12, 22, 14, .78); color: #eef3ea;
+}
+.freeze-ni + .freeze-ni { opacity: .72; }
+.freeze-portmode .freeze-news { font-size: .7em; bottom: 4px; }
+.freeze-portmode .freeze-ni { padding: 1px 8px; }
+.freeze-portmode .freeze-ni + .freeze-ni { display: none; }
+.freeze-stage.freeze-open .freeze-news { display: none; }
+@keyframes freeze-fade { 0% { opacity: 0; transform: translateY(-3px); } 6% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- підсумок раунду й партії ---- */
+.freeze-sum { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; font-size: .84em; font-variant-numeric: tabular-nums; }
+.freeze-stage > .freeze-sum { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none; }
+.freeze-sc {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  background: rgba(12, 22, 14, .84); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.freeze-body > .freeze-sum .freeze-sc { background: var(--bg2); }
+.freeze-sc b { font-weight: 700; }
+.freeze-sc em { font-style: normal; font-weight: 800; color: #eef3ea; }
+.freeze-body > .freeze-sum .freeze-sc em { color: var(--text); }
+.freeze-sc small { color: #b9c7b4; font-size: .88em; }
+.freeze-body > .freeze-sum .freeze-sc small { color: var(--muted); }
+.freeze-sc.win { box-shadow: 0 0 0 1.5px currentColor inset; }
+
+@media (prefers-reduced-motion: reduce) {
+  .freeze-clock.hot { animation: none; }
+  .freeze-ni { animation: none; }
+}
+
+/* ---- керування пальцем: хрестовина — одна зона (тримай і веди), відпустив — стоїш ---- */
+.freeze-pad { display: none; }
+.freeze-pad.freeze-off { display: none !important; }
+@media (pointer: coarse) {
+  .freeze-pad {
+    display: flex; gap: 22px; align-items: center; justify-content: center; margin-top: 2px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .freeze-dirs {
+    display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px;
+    touch-action: none; border-radius: 50%;
+  }
+  .freeze-arr {
+    display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.25em;
+    background: var(--panel3); color: var(--text); pointer-events: none;
+  }
+  .freeze-arr.on { background: var(--clay); }
+  .freeze-arr[data-dir="3"] { grid-column: 2; grid-row: 1; }
+  .freeze-arr[data-dir="2"] { grid-column: 1; grid-row: 2; }
+  .freeze-arr[data-dir="0"] { grid-column: 3; grid-row: 2; }
+  .freeze-arr[data-dir="1"] { grid-column: 2; grid-row: 3; }
+  .freeze-peek { grid-column: 2; grid-row: 2; justify-content: center; border-radius: 50%; font-size: 1.05em; padding: 0; min-width: 0; }
+  .freeze-acts button { justify-content: center; width: 78px; height: 78px; border-radius: 50%; font-size: 1.9em; background: var(--panel3); }
+  .freeze-acts button:active, .freeze-peek:active { background: var(--clay); }
+}
+@media (max-width: 380px) {
+  .freeze-dirs { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); }
+  .freeze-acts button { width: 70px; height: 70px; }
+  .freeze-pad { gap: 16px; }
+}
+@media (max-width: 480px) {
+  .freeze-hud { font-size: .76em; gap: 4px; }
+  .freeze-chip, .freeze-seat { padding: 2px 7px; }
+}
