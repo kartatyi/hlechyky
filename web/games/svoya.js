@@ -56,7 +56,10 @@
     return '';
   }
 
-  const nick = (ctx, i) => ctx.nickOf(i) || ('місце ' + (i + 1));
+  /// Нік місця; після партії — і тих, хто вже встав з-за столу (сервер кладе ніки в result): інакше, щойно друзі
+  /// розходились, переможець ставав «🏆 місце 2» і зникав із рахунку.
+  const gone = (ctx, i) => { const r = ctx.view && ctx.view.result; return (r && r.nicks && r.nicks[i]) || ''; };
+  const nick = (ctx, i) => ctx.nickOf(i) || gone(ctx, i) || ('місце ' + (i + 1));
 
   // ---------- лобі: вибір пакета ----------
 
@@ -233,7 +236,7 @@
     const me = v.me || {};
     const rows = [];
     for (let i = 0; i < seatsOf(ctx); i++) {
-      const n = ctx.nickOf(i);
+      const n = ctx.nickOf(i) || (v.phase === 'done' ? gone(ctx, i) : '');
       if (!n || i === v.host) continue;
       rows.push({ i, n, score: (v.scores || [])[i] || 0 });
     }
@@ -523,7 +526,8 @@
     if (v.phase === 'done') {
       const res = v.result || {};
       const w = (res.winners || []).map((i) => esc(nick(ctx, i))).join(' і ');
-      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w : 'Отакої — ніхто не вийшов у плюс') + '</div></div>'
+      const pts = w ? (res.scores || [])[res.winners[0]] : null;
+      return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w + (pts != null ? ' — ' + pts : '') : 'Отакої — ніхто не вийшов у плюс') + '</div></div>'
         + sayHtml(v)
         + (v.final && (v.final.rows || []).length ? '<div class="muted small">Фінал</div>' + finalHtml(ctx, v) : '');
     }

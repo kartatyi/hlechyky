@@ -641,7 +641,7 @@ public sealed partial class Svoya : Game
         foreach (var s in seats) Ctx.Score(s, _scores[s]);
         // «Знавець» — лише за перемогу над кимось: соло-партія з автоматом ачівки не дає
         if (seats.Length >= 2) foreach (var w in winners) Ctx.Award(w, 0, "ach:svoya-win");
-        _result = new { winners, scores = (int[])_scores.Clone() };
+        _result = new { winners, scores = (int[])_scores.Clone(), nicks = Nicks() };
         // підсумок голосом: обраний наперед, якщо рахунок відтоді не змінився (апеляція на останньому запитанні — змінює)
         if (error is null && Machine)
         {
@@ -658,6 +658,17 @@ public sealed partial class Svoya : Game
         Ctx.Finish(winners, $"{Info.Title}: {string.Join(", ", parts)} — {tail}", seats.ToDictionary(s => s, s => (long)_scores[s]));
     }
 
+    /// <summary>
+    /// Ніки на момент фінішу: хто встане з-за столу вже після партії, лишиться в підсумку й у фіналі. Раніше, щойно
+    /// гравці розходились, переможець на екрані ставав «🏆 місце 2», а з таблиці рахунку зникав.
+    /// </summary>
+    string?[] Nicks()
+    {
+        var nicks = new string?[Seats];
+        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s)) nicks[s] = Ctx.NickOf(s);
+        return nicks;
+    }
+
     public override void OnLeave(int seat)
     {
         if (_phase is Done or Lobby) return;
@@ -669,7 +680,7 @@ public sealed partial class Svoya : Game
             _until = null;
             _error = "Ведучого вже нема за столом";
             ClearQuestion();
-            _result = new { winners = Array.Empty<int>(), scores = (int[])_scores.Clone() };
+            _result = new { winners = Array.Empty<int>(), scores = (int[])_scores.Clone(), nicks = Nicks() };
             Ctx.Finish([], $"{Info.Title}: ведучого вже нема за столом, партію не дограли");
             return;
         }

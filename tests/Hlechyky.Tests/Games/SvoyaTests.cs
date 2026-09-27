@@ -663,6 +663,20 @@ public class SvoyaTests
     }
 
     [Fact]
+    public void The_winner_stays_in_the_summary_after_everyone_else_leaves_the_table()
+    {
+        // прохід 28.09: друзі розходились — і на екрані того, хто лишився, переможець ставав «🏆 місце 2»
+        var h = Table(pack: "b_nofinal");
+        PlayRound(h, i => i == 3 ? 0 : 1);
+        Until(h, Svoya.Done, 400);
+        h.Leave("Петро");
+        var result = h.View(0).GetProperty("result");
+        Assert.Equal("Петро", result.GetProperty("nicks")[1].GetString());
+        Assert.Equal("Оля", result.GetProperty("nicks")[0].GetString());
+        Assert.Equal(400, result.GetProperty("scores")[1].GetInt32());
+    }
+
+    [Fact]
     public void Winner_over_someone_asks_for_the_achievement()
     {
         var h = Table(pack: "b_nofinal");

@@ -319,6 +319,23 @@ public class MelodyTests
         Assert.All(h.View(null).GetProperty("scores").EnumerateArray(), e => Assert.Equal(0, e.GetInt32()));
     }
 
+    [Fact]
+    public void The_winner_stays_in_the_summary_after_leaving_the_table()
+    {
+        // прохід 28.09: переможець встав після партії — і зник із підсумку в тих, хто лишився
+        var h = Table(new FakeMelodySource([Songs[0]]), new { rounds = "5", clip = "10" });
+        Until(h, "play");
+        Guess(h, 0, "обійми");
+        h.Tick((10_000 + Melody.ExtraMs) / Melody.TickMs + 1);
+        h.Tick(Melody.RevealMs / Melody.TickMs + 2);
+        for (var k = 0; k < 200 && h.Room.Status == RoomStatus.Playing; k++) { h.Tick(); Thread.Sleep(2); }
+        h.Leave("Оля");
+        var result = h.View(1).GetProperty("result");
+        Assert.Equal([0], result.GetProperty("winners").EnumerateArray().Select(e => e.GetInt32()));
+        Assert.Equal("Оля", result.GetProperty("nicks")[0].GetString());
+        Assert.Equal("Петро", result.GetProperty("nicks")[1].GetString());
+    }
+
     // ---------------------------------------------------------------- відповіді
 
     [Theory]
