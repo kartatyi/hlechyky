@@ -347,4 +347,88 @@ public class BluffTextTests
         Assert.Equal("5", BluffText.Norm("5 \u20AC"));                   // окремо — валюта
         Assert.Equal("кіт пес", BluffText.Norm("кіт | пес"));
     }
+
+    [Fact]
+    public void A_glued_or_split_truth_is_still_the_truth()
+    {
+        // Рецензія: звичайною клавіатурою, без жодних особливих знаків, правду склеювали чи розбивали — і вона проходила.
+        Assert.True(BluffText.LooksTrue("кістокмамонта", ["кісток мамонта"]));
+        Assert.True(BluffText.LooksTrue("яєчнібілки", ["яєчні білки"]));
+        Assert.True(BluffText.LooksTrue("35разів", ["35 разів"]));            // «0 і 3 — літери» тут не читаємо
+        Assert.True(BluffText.LooksTrue("РічардаЛевовеСерце", ["Річарда Левове Серце"]));
+        string[] disney = ["Діснейленд"];
+        foreach (var lie in new[] { "ДІСНЕЙ ЛЕНД", "Діс-ней-ленд", "ДІСНЕЙ.ЛЕНД", "Д'ІСНЕЙ'ЛЕНД", "ді с ней лен д", "ДІСНЕЙ_ЛЕНД" })
+            Assert.True(BluffText.LooksTrue(lie, disney), lie);
+        Assert.True(BluffText.LooksTrue("майдан-чики", ["майданчики"]));
+        Assert.True(BluffText.LooksTrue("ші-сть", ["шість"]));
+        // Жива партія рецензента (b0191): обидві брехні лягли на стіл поруч із правдою.
+        string[] swap = ["перейшла на правосторонній рух"];
+        Assert.True(BluffText.LooksTrue("ПЕРЕЙШЛА НАПРАВОСТОРОННІЙ РУХ", swap));
+        Assert.True(BluffText.LooksTrue("перейшла на право сторонній рух", swap));
+        Assert.True(BluffText.LooksTrue("перейшла направо сторонній рух", swap));     // межа посунулась з обох боків
+        // Той самий допуск на одруківки, що й для слів, правда у фразі й шматок правди — теж склеєні.
+        Assert.True(BluffText.LooksTrue("ДІЗНЕЙ ЛЕНД", disney));
+        Assert.True(BluffText.LooksTrue("кістокмамонту", ["кісток мамонта"]));
+        Assert.True(BluffText.LooksTrue("звісно ж, Діс-ней-ленд", disney));
+        Assert.True(BluffText.LooksTrue("ЛевовеСерце", ["Річарда Левове Серце"]));
+        Assert.True(BluffText.LooksTrue("мор ську", Pig));
+        Assert.True(BluffText.LooksTrue("НаПравостороннійРух", swap));
+        // Цифри в склеєному — точно, як і окремо; самотній нуль, приклеєний до слова, — усе ще О.
+        Assert.True(BluffText.LooksTrue("0четвертійранку", ["о четвертій ранку"]));
+        Assert.True(BluffText.LooksTrue("2метрів", Meters));
+    }
+
+    [Fact]
+    public void Gluing_does_not_turn_an_honest_lie_into_the_truth()
+    {
+        // Кілька слів проти кількох — лише точно: короткі слова й досі не мають допуску на одруківку.
+        Assert.False(BluffText.LooksTrue("кит і пес", ["кіт і пес"]));
+        Assert.False(BluffText.LooksTrue("Південний Бог", Bug));
+        Assert.False(BluffText.LooksTrue("в Криму", ["в Римі"]));
+        // Числа — точно: інша цифра, склеєна чи ні, — чесна брехня.
+        Assert.False(BluffText.LooksTrue("4дні", ["3 дні"]));
+        Assert.False(BluffText.LooksTrue("20метрів", Meters));
+        Assert.False(BluffText.LooksTrue("1855року", ["1854 року"]));
+        Assert.False(BluffText.LooksTrue("30 друзями", ["з друзями"]));
+        // Шматок — не менше половини змістовних слів, хоч склеєний, хоч розбитий.
+        Assert.False(BluffText.LooksTrue("фру кт", ["овоч", "овоч, а не фрукт"]));
+        Assert.False(BluffText.LooksTrue("Левове", ["Річарда Левове Серце"]));
+        // Слово, що лише починається з правди, — як і раніше, не правда.
+        Assert.False(BluffText.LooksTrue("HOLLYWOOD HILLS", ["HOLLYWOODLAND", "hollywood land"]));
+        Assert.False(BluffText.LooksTrue("Дісней", ["Діснейленд"]));
+        Assert.False(BluffText.LooksTrue("Юрського періоду", ["Діснейленд"]));
+        Assert.False(BluffText.LooksTrue("на пляжі", ["на піску"]));
+    }
+
+    [Fact]
+    public void Digits_inside_a_word_match_exactly_and_the_letters_with_the_usual_slack()
+    {
+        Assert.True(BluffText.TokenMatch("35разів", "35разів"));
+        Assert.True(BluffText.TokenMatch("35разив", "35разів"));
+        Assert.False(BluffText.TokenMatch("36разів", "35разів"));
+        Assert.False(BluffText.TokenMatch("2км", "2м"));
+        Assert.False(BluffText.TokenMatch("1855", "1854"));
+        Assert.False(BluffText.TokenMatch("з5разів", "35разів"));   // літера проти цифри — інше
+    }
+
+    [Fact]
+    public void A_mark_inside_a_word_is_flagged_but_punctuation_and_emoji_beside_words_are_fine()
+    {
+        // Рецензія: знаки-двійники поза старим списком (рамки, геометрія, математика, чужа пунктуація).
+        foreach (var lie in new[]
+        {
+            "Д\u2502СНЕЙЛЕНД", "Д\u23D0СНЕЙЛЕНД", "Д\u05C0СНЕЙЛЕНД", "МА\u2715ОРКА", "МА\u2573ОРКА", "ЛЬВ\u25EFВІ",
+            "ЛЬВ\u25CBВІ", "Ап\u00B0ллон", "п\u2205льку", "МА\u00D7ОРКА", "К|Т", "К!Т", "Д\u2502\u2502СНЕЙЛЕНД",
+            "кіт\U0001F642пес", "Д\uFF5CСНЕЙЛЕНД",
+        })
+            Assert.True(BluffText.MarkInWord(lie), lie);
+        // Звичайне письмо: дефіс, апостроф, тире, розділові знаки посеред слова; знаки й смайлики біля пробілу й на краях.
+        foreach (var lie in new[]
+        {
+            "Нью-Йорк", "м'яч", "м’яч", "Пд.Буг", "кіт/пес", "rock&roll", "кіт,пес", "Нью—Йорк", "так…ні", "«Бітлз»",
+            "гасі!", "(гас)", "2\u00D72", "5 \u20AC", "100%", "м\u00B2", "кіт \U0001F642 пес", "\u2764\uFE0F серце",
+            "га\u0301сі", "iPhone-ом", "20\u00B0C", "В0\u25EFДЕНЬ", "\u20ACВА", "домен .tv", "35 %", "кіт | пес", "", null,
+        })
+            Assert.False(BluffText.MarkInWord(lie), lie);
+    }
 }

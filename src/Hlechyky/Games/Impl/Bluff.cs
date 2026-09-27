@@ -55,6 +55,11 @@ public sealed class Bluff : Game
     /// картці вони вдають наші: «МАШИНОЮ», де М і А — літери черокі (U+13B7, U+13AA), — та сама правда.
     /// </summary>
     public const string ForeignAbc = "Такі літери на картці вдають наші — пиши кирилицею або латиницею 🙂";
+    /// <summary>
+    /// Відмова знакові посеред слова («Д│СНЕЙЛЕНД», «МА✕ОРКА», «ЛЬВ◯ВІ»): на великій картці він вдає літеру. Можна лише
+    /// дефіс, апостроф і звичайні розділові знаки (<see cref="BluffText.MarkInWord"/>).
+    /// </summary>
+    public const string InWordMark = "Такий знак посеред слова вдає літеру — пиши літерами 🙂";
     /// <summary>Повторний 🎲, коли нової заготовки Глек не дасть: решту він береже для столу й для тих, хто ще без брехні.</summary>
     public const string DiceHeld = "Інших Глек не дасть — решту береже для столу. Лиши цю або пиши сам 🙂";
     /// <summary>Відмова, коли спроби на це питання скінчились: однакова на будь-який текст, тож правди не видає.</summary>
@@ -558,15 +563,16 @@ public sealed class Bluff : Game
 
     /// <summary>
     /// Чому сервер не приймає цей (уже <see cref="BluffText.Clean"/>) текст як брехню на питання — або <c>null</c>, якщо
-    /// приймає: порожній, задовгий, літери інших письмен (<see cref="ForeignAbc"/>), слово з двох абеток
-    /// (<see cref="MixedAbc"/>), правда (<see cref="Truthy"/>). Одна перевірка й для <see cref="Act"/>, і для тестів
-    /// на всьому банку.
+    /// приймає: порожній, задовгий, літери інших письмен (<see cref="ForeignAbc"/>), знак посеред слова
+    /// (<see cref="InWordMark"/>), слово з двох абеток (<see cref="MixedAbc"/>), правда (<see cref="Truthy"/>). Одна
+    /// перевірка й для <see cref="Act"/>, і для тестів на всьому банку.
     /// </summary>
     public static string? Refuse(string text, BluffQuestion question)
     {
         if (text.Length == 0) return "Порожня брехня нікого не надурить";
         if (text.Length > MaxLie) return "Коротше — до 40 знаків";
         if (BluffText.ForeignLetters(text)) return ForeignAbc;
+        if (BluffText.MarkInWord(text)) return InWordMark;
         if (BluffText.MixedScripts(text)) return MixedAbc;
         if (BluffText.LooksTrue(text, question)) return Truthy;
         return null;
