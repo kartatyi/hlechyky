@@ -384,7 +384,7 @@ public class BluffTests(ITestOutputHelper output)
         h.Tick();
         var fresh = h.Outbox.Skip(n).ToList();
         Assert.Single(fresh.OfType<RoomViews>());
-        Assert.Single(fresh.OfType<RoomFrame>());
+        Assert.Empty(fresh.OfType<RoomFrame>());
 
         var m = h.Outbox.Count;
         h.Tick(3);
@@ -528,7 +528,7 @@ public class BluffTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Pressing_the_dice_again_gives_the_next_decoy_in_a_circle()
+    public void Pressing_the_dice_again_gives_the_next_decoy_but_only_two_per_player()
     {
         var h = Table(2);
         Until(h, Bluff.PhaseWrite);
@@ -538,10 +538,11 @@ public class BluffTests(ITestOutputHelper output)
         Assert.Equal(q.Decoys[0], Mine());
         Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
         Assert.Equal(q.Decoys[1], Mine());
-        Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
-        Assert.Equal(q.Decoys[2], Mine());
+        // Третьої Глек не показує (Bluff.DiceSeen = 2): вона ще може лягти на стіл, а ти мав би її знати.
         Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
         Assert.Equal(q.Decoys[0], Mine());
+        Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
+        Assert.Equal(q.Decoys[1], Mine());
         Lie(h, 0, "своя");                                      // переписав сам — уже не від Глека
         Assert.False(V(h, 0).GetProperty("my").GetProperty("auto").GetBoolean());
     }
@@ -928,8 +929,7 @@ public class BluffTests(ITestOutputHelper output)
         Assert.DoesNotContain(secret, RawView(h, 2));
         Assert.DoesNotContain(secret, RawView(h, null));
         Assert.DoesNotContain(secret, Frame(h));
-        Assert.NotEmpty(h.Outbox.Skip(n).OfType<RoomFrame>());
-        Assert.All(h.Outbox.Skip(n).OfType<RoomFrame>(), f => Assert.DoesNotContain(secret, Raw(f.Frame)));
+        Assert.Empty(h.Outbox.Skip(n).OfType<RoomFrame>());          // кадру нема зовсім — модуль його не читає
         Assert.DoesNotContain(h.Outbox.OfType<Journal>(), j => j.Text.Contains(secret));
     }
 
@@ -1001,7 +1001,7 @@ public class BluffTests(ITestOutputHelper output)
         var v = V(h, null);
         Assert.Equal(
             ["phase", "q", "of", "final", "endsAt", "phaseMs", "cat", "catLabel", "text", "nicks", "present", "wrote", "picked", "my",
-             "options", "revealed", "note", "quip", "scores", "delta", "likeDelta", "victims", "result"],
+             "options", "revealed", "note", "quip", "scores", "delta", "truthDelta", "likeDelta", "victims", "result"],
             v.EnumerateObject().Select(p => p.Name));
         Assert.Equal(JsonValueKind.Null, v.GetProperty("my").ValueKind);
         Assert.Equal(JsonValueKind.Null, v.GetProperty("result").ValueKind);
@@ -1016,22 +1016,6 @@ public class BluffTests(ITestOutputHelper output)
         Assert.Equal(["lie", "auto", "pick", "likes"], V(h, 0).GetProperty("my").EnumerateObject().Select(p => p.Name));
         Assert.Equal(TestBank.First(q => q.Q == v.GetProperty("text").GetString()).Cat, v.GetProperty("cat").GetString());
         Assert.Equal(BluffCats.Label(v.GetProperty("cat").GetString()), v.GetProperty("catLabel").GetString());
-    }
-
-    [Fact]
-    public void The_frame_is_small_and_carries_no_text()
-    {
-        var h = Table(8);
-        Until(h, Bluff.PhaseWrite);
-        for (var s = 0; s < 8; s++) Lie(h, s);
-        Until(h, Bluff.PhasePick);
-        var frame = Frame(h);
-        output.WriteLine($"кадр: {frame.Length} Б — {frame}");
-        Assert.True(frame.Length <= 300, $"кадр {frame.Length} Б");
-        foreach (var text in Lies.Concat(Nicks).Append(Question(h).Answer).Append(Question(h).Q))
-            Assert.DoesNotContain(text, frame);
-        Assert.Equal(["phase", "q", "step", "endsAt", "wrote", "picked", "scores"],
-            JsonDocument.Parse(frame).RootElement.EnumerateObject().Select(p => p.Name));
     }
 
     [Fact]
@@ -1117,7 +1101,7 @@ public class BluffTests(ITestOutputHelper output)
         PickCard(h, 2, CardOf(h, Lies[0]));
         NextQuestion(h);
         PlayOut(h);
-        Assert.Equal($"Байкарі: Оля 1 000, Петро 0, Ганна 0 · найкраща брехня — «{Lies[0]}» (Оля, 2 жертви)",
+        Assert.Equal("Байкарі: Оля 1 000, Петро 0, Ганна 0 · найкраща брехня — Оля, 2 жертви",
             h.Outbox.OfType<Journal>().Last().Text);
         var best = V(h).GetProperty("result").GetProperty("best");
         Assert.Equal(Lies[0], best.GetProperty("text").GetString());
@@ -1133,7 +1117,7 @@ public class BluffTests(ITestOutputHelper output)
         Until(co, Bluff.PhasePick);
         PickCard(co, 2, CardOf(co, "Бамбарбія"));
         PlayOut(co);
-        Assert.EndsWith("найкраща брехня — «Бамбарбія» (Оля і Петро, 1 жертва)", co.Outbox.OfType<Journal>().Last().Text);
+        Assert.EndsWith("найкраща брехня — Оля і Петро, 1 жертва", co.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -1235,7 +1219,7 @@ public class BluffTests(ITestOutputHelper output)
         Assert.False(result.Scores!.ContainsKey(2));
         // У рахунку її нема; а от її брехня лишилась найкращою в партії — картка ж стояла на столі.
         Assert.DoesNotContain("Ганна", result.Text.Split(" · ")[0]);
-        Assert.EndsWith($"«{Lies[2]}» (Ганна, 1 жертва)", result.Text);
+        Assert.EndsWith("найкраща брехня — Ганна, 1 жертва", result.Text);
     }
 
     [Fact]
@@ -1363,6 +1347,343 @@ public class BluffTests(ITestOutputHelper output)
             NextQuestion(h);
         }
         Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:bluff-nose");
+    }
+
+    // =====================================================================================
+    // після рецензій: двійники правди, 🎲, перебір, рахунок того, хто встав, пам'ять, Журнал
+    // =====================================================================================
+
+    const string HydrogenJson = """
+        [ { "id": "h1", "cat": "science", "q": "Найпоширеніший хімічний елемент у Всесвіті — ___", "answer": "водень",
+            "accept": ["гідроген"], "decoys": ["залізо", "кисень", "кремній"], "note": "Три чверті речовини." } ]
+        """;
+
+    static IServiceProvider Bank(string json) => Services(bank: BluffBank.Parse(json));
+
+    static string? MyLie(RoomHarness h, int seat) => V(h, seat).GetProperty("my").GetProperty("lie").GetString();
+
+    static List<string> Texts(RoomHarness h) => [.. Cards(h).EnumerateArray().Select(c => c.GetProperty("text").GetString()!)];
+
+    [Fact]
+    public void An_uppercase_twin_of_the_truth_in_another_alphabet_never_reaches_the_table()
+    {
+        var h = Table(2, services: Bank(HydrogenJson));
+        Until(h, Bluff.PhaseWrite);
+        var before = Views.Text(h.View(0));
+        // Латинські B, O, E, H і грецькі епсилон і ета на великій картці — те саме «ВОДЕНЬ»; невидима «літера» теж не рятує.
+        foreach (var twin in new[] { "BOДEHЬ", "ВОД\u0395\u0397Ь", "в\u3164о\u3164день", "во\U000E0020день", "В0ДЕНЬ" })
+        {
+            var r = h.Act(0, "lie", new { text = twin });
+            Assert.False(r.Ok, twin);
+            Assert.Contains(r.Message, new[] { Bluff.Truthy, Bluff.MixedAbc });
+        }
+        Assert.Equal(before, Views.Text(h.View(0)));
+        // Слово з двох абеток — навіть не правда — не приймаємо: на картці його не відрізнити від «чистого».
+        Assert.Equal(Bluff.MixedAbc, h.Act(0, "lie", new { text = "кис\u0065нь" }).Message);
+        Assert.True(h.Act(0, "lie", new { text = "iPhone-ом" }).Ok);   // різні абетки в різних словах — можна
+    }
+
+    [Fact]
+    public void The_truth_with_another_service_word_is_still_the_truth()
+    {
+        var h = Table(2, services: Bank("""
+            [ { "cat": "nature", "q": "Рогівка ока не має судин, а кисень отримує ___", "answer": "зі сліз",
+                "accept": ["з сліз"], "decoys": ["з війок", "від кришталика", "з брів"] },
+              { "cat": "odd", "q": "Якийсь час «Мона Ліза» висіла ___ Наполеона", "answer": "у спальні",
+                "decoys": ["у ванній", "на кухні", "у кареті"] } ]
+            """));
+        for (var n = 0; n < 2; n++)
+        {
+            Until(h, Bluff.PhaseWrite);
+            var q = Question(h, BluffBank.Parse("""
+                [ { "q": "Рогівка ока не має судин, а кисень отримує ___", "answer": "зі сліз" },
+                  { "q": "Якийсь час «Мона Ліза» висіла ___ Наполеона", "answer": "у спальні" } ]
+                """));
+            var twin = q.Answer == "зі сліз" ? "із сліз" : "в спальні";
+            Assert.Equal(Bluff.Truthy, h.Act(0, "lie", new { text = twin }).Message);
+            NextQuestion(h);
+        }
+    }
+
+    [Fact]
+    public void Different_words_a_typo_apart_stay_separate_cards_with_their_own_authors()
+    {
+        var h = Table(3, services: Bank("""
+            [ { "cat": "sport", "q": "Перший чемпіонат світу з футболу 1930 року відбувся в ___", "answer": "Уругваї",
+                "decoys": ["Бразилії", "Італії", "Аргентині"] } ]
+            """));
+        Until(h, Bluff.PhaseWrite);
+        Lie(h, 0, "Іраку");
+        Lie(h, 1, "Ірану");
+        Lie(h, 2, "Австрії");
+        Until(h, Bluff.PhasePick);
+        var iraq = CardOf(h, "Іраку");
+        var iran = CardOf(h, "Ірану");
+        Assert.True(iraq >= 0 && iran >= 0 && iraq != iran, string.Join(", ", Texts(h)));
+        Assert.True(Cards(h, 1)[iran].GetProperty("mine").GetBoolean());
+        Assert.False(Cards(h, 1)[iraq].GetProperty("mine").GetBoolean());
+        Assert.True(h.Act(1, "pick", new { i = iraq }).Ok);          // чужу — можна обрати
+    }
+
+    [Fact]
+    public void Decoys_seen_through_the_dice_never_land_on_the_table_as_hleks_cards()
+    {
+        var h = Table(2, services: Bank(HydrogenJson));
+        Until(h, Bluff.PhaseWrite);
+        Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
+        Assert.Equal("залізо", MyLie(h, 0));
+        Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
+        Assert.Equal("кисень", MyLie(h, 0));
+        // Третій натиск нового не показує — Глек крутить уже бачені, щоб на столі лишилось, чого ти не знаєш.
+        Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
+        Assert.Equal("залізо", MyLie(h, 0));
+        // Сусідові — лише те, чого ніхто не бачив.
+        Assert.True(h.Act(1, "lie", new { auto = true }).Ok);
+        Assert.Equal("кремній", MyLie(h, 1));
+        Lie(h, 0, "Бамбарбія");                                     // передумав і написав сам
+        Until(h, Bluff.PhasePick);
+        var texts = Texts(h);
+        Assert.DoesNotContain("залізо", texts);                     // бачене через 🎲 Глек на стіл не кладе
+        Assert.DoesNotContain("кисень", texts);
+        Assert.Equal(3, texts.Count);                               // Бамбарбія, кремній Петра і правда
+
+        var once = Table(2, services: Bank(HydrogenJson));
+        Until(once, Bluff.PhaseWrite);
+        Assert.True(once.Act(0, "lie", new { auto = true }).Ok);
+        Lie(once, 0, "Бамбарбія");
+        Lie(once, 1, "кергуду");
+        Until(once, Bluff.PhasePick);
+        Assert.Equal(["Бамбарбія", "водень", "кергуду", "кисень", "кремній"], Texts(once).Order());
+    }
+
+    [Fact]
+    public void The_dice_as_the_last_lie_does_not_promise_a_rewrite()
+    {
+        var h = Table(2, services: Bank(HydrogenJson));
+        Until(h, Bluff.PhaseWrite);
+        Assert.Equal("Глек підказав: «залізо». Можеш переписати", h.Act(0, "lie", new { auto = true }).Message);
+        Lie(h, 0, "Бамбарбія");
+        // Петро вже написав би сам, а Оля — останнє слово: фаза піде далі, тож «можеш переписати» було б неправдою.
+        Assert.Equal("Глек збрехав за тебе: «кисень»", h.Act(1, "lie", new { auto = true }).Message);
+    }
+
+    [Fact]
+    public void Guessing_the_truth_by_brute_force_runs_out_of_tries()
+    {
+        var h = Table(2, services: Bank(HydrogenJson));
+        Until(h, Bluff.PhaseWrite);
+        for (var n = 0; n < Bluff.MaxTruthy; n++) Assert.Equal(Bluff.Truthy, h.Act(0, "lie", new { text = "водень" }).Message);
+        // Далі сервер уже не каже, правда це чи ні: відмова однакова на будь-який текст.
+        Assert.Equal(Bluff.TooManyTries, h.Act(0, "lie", new { text = "водень" }).Message);
+        Assert.Equal(Bluff.TooManyTries, h.Act(0, "lie", new { text = "Бамбарбія" }).Message);
+        Assert.Null(MyLie(h, 0));
+        Assert.True(h.Act(0, "lie", new { auto = true }).Ok);      // 🎲 лишається
+
+        // Чесна брехня, переписана вдвадцяте, — досить; і реалтайм-ввід (Input) лічиться так само.
+        for (var n = 0; n < Bluff.MaxLieTries; n++) Assert.True(h.Act(1, "lie", new { text = "брехня " + n }).Ok, n.ToString());
+        Assert.Equal(Bluff.TooManyTries, h.Act(1, "lie", new { text = "ще одна" }).Message);
+        h.Input(1, "lie", new { text = "через Input" });
+        Assert.Equal("брехня " + (Bluff.MaxLieTries - 1), MyLie(h, 1));
+
+    }
+
+    [Fact]
+    public void Tries_come_back_with_the_next_question()
+    {
+        var h = Table(2, options: new { questions = "5" });
+        Until(h, Bluff.PhaseWrite);
+        var q = Question(h);
+        for (var n = 0; n < Bluff.MaxTruthy; n++) h.Act(0, "lie", new { text = q.Answer });
+        Assert.Equal(Bluff.TooManyTries, h.Act(0, "lie", new { text = Lies[0] }).Message);
+        NextQuestion(h);
+        Until(h, Bluff.PhaseWrite);
+        Assert.True(h.Act(0, "lie", new { text = Lies[0] }).Ok);
+    }
+
+    [Fact]
+    public void Someone_who_left_gets_no_truth_chip_even_though_their_pick_stays_on_the_card()
+    {
+        var h = Table(3);
+        WriteAndPick(h, 0, 1, 2);
+        var truth = TruthCard(h);
+        PickCard(h, 0, truth);
+        PickCard(h, 2, truth);
+        Assert.True(h.Leave("Ганна").Ok);
+        PickCard(h, 1, CardOf(h, Lies[0]));
+        UntilOpen(h, truth);
+        var v = V(h);
+        Assert.Equal([0, 2], Ints(Cards(h)[truth].GetProperty("picks")));     // вибір лишився на картці
+        Assert.Equal(Bluff.TruthPts, v.GetProperty("truthDelta")[0].GetInt64());
+        Assert.Equal(0, v.GetProperty("truthDelta")[2].GetInt64());           // а очок — ні
+        Assert.Equal(0, v.GetProperty("delta")[2].GetInt64());
+        Assert.Equal(0, v.GetProperty("truthDelta")[1].GetInt64());
+    }
+
+    [Fact]
+    public void Ticks_send_views_but_no_frame_nobody_reads()
+    {
+        var h = Table(3);
+        Until(h, Bluff.PhaseWrite);
+        var n = h.Outbox.Count;
+        Lie(h, 0);
+        h.Tick();
+        Until(h, Bluff.PhasePick);
+        var fresh = h.Outbox.Skip(n).ToList();
+        Assert.NotEmpty(fresh.OfType<RoomViews>());
+        Assert.Empty(fresh.OfType<RoomFrame>());
+        Assert.Null(h.Room.Game.Frame());
+    }
+
+    [Fact]
+    public void The_journal_names_the_best_liar_but_never_repeats_free_text_to_the_whole_site()
+    {
+        var h = Table(3, options: new { questions = "5" });
+        const string spicy = "Пікантна вигадка";
+        Until(h, Bluff.PhaseWrite);
+        Lie(h, 0, spicy);
+        Lie(h, 1);
+        Lie(h, 2);
+        Until(h, Bluff.PhasePick);
+        PickCard(h, 1, CardOf(h, spicy));
+        PickCard(h, 2, CardOf(h, spicy));
+        PlayOut(h);
+        var line = h.Outbox.OfType<Journal>().Last().Text;
+        Assert.Equal("Байкарі: Оля 1 000, Петро 0, Ганна 0 · найкраща брехня — Оля, 2 жертви", line);
+        Assert.DoesNotContain(h.Outbox.OfType<Journal>(), j => j.Text.Contains(spicy));
+        Assert.Equal(spicy, V(h).GetProperty("result").GetProperty("best").GetProperty("text").GetString());   // стіл бачить
+    }
+
+    [Fact]
+    public void Hleks_word_after_the_truth_fits_how_many_found_it()
+    {
+        static string Quip(int who)
+        {
+            var h = Table(2);
+            WriteAndPick(h, 0, 1);
+            var truth = TruthCard(h);
+            PickCard(h, 0, who >= 1 ? truth : CardOf(h, Lies[1]));
+            PickCard(h, 1, who >= 2 ? truth : CardOf(h, Lies[0]));
+            UntilOpen(h, truth);
+            return V(h).GetProperty("quip").GetString()!;
+        }
+
+        Assert.Contains(Quip(0), Bluff.QuipsNobody);
+        Assert.Contains(Quip(1), Bluff.QuipsSome);
+        Assert.Contains(Quip(2), Bluff.QuipsAll);
+        Assert.Empty(Bluff.QuipsNobody.Intersect(Bluff.QuipsAll));
+        Assert.Equal(Bluff.QuipsNobody.Length + Bluff.QuipsSome.Length + Bluff.QuipsAll.Length, Bluff.Quips.Length);
+    }
+
+    [Fact]
+    public void At_equal_victims_the_best_lie_is_a_hand_written_one_and_a_dice_lie_is_marked()
+    {
+        for (var seed = 1; seed < 60; seed++)
+        {
+            var h = Table(3, seed, options: new { questions = "5" });
+            Until(h, Bluff.PhaseWrite);
+            var q = Question(h);
+            Assert.True(h.Act(0, "lie", new { auto = true }).Ok);           // Оля — через 🎲
+            Lie(h, 1, "Бамбарбія");
+            Lie(h, 2);
+            Until(h, Bluff.PhasePick);
+            var dice = CardOf(h, q.Decoys[0]);
+            var hand = CardOf(h, "Бамбарбія");
+            if (dice > hand) continue;                                    // потрібен стіл, де 🎲-картка раніша
+            PickCard(h, 1, dice);
+            PickCard(h, 2, hand);
+            PickCard(h, 0, TruthCard(h));
+            PlayOut(h);
+            var best = V(h).GetProperty("result").GetProperty("best");
+            Assert.Equal("Бамбарбія", best.GetProperty("text").GetString());
+            Assert.False(best.GetProperty("hlek").GetBoolean());
+            Assert.EndsWith("найкраща брехня — Петро, 1 жертва", h.Outbox.OfType<Journal>().Last().Text);
+
+            // Коли 🎲-брехня таки найкраща — підсумок так і каже: «від Глека».
+            var solo = Table(2, seed, options: new { questions = "5" });
+            Until(solo, Bluff.PhaseWrite);
+            var sq = Question(solo);
+            Assert.True(solo.Act(0, "lie", new { auto = true }).Ok);
+            Lie(solo, 1);
+            Until(solo, Bluff.PhasePick);
+            PickCard(solo, 1, CardOf(solo, sq.Decoys[0]));
+            PlayOut(solo);
+            var top = V(solo).GetProperty("result").GetProperty("best");
+            Assert.True(top.GetProperty("hlek").GetBoolean());
+            Assert.True(V(solo).GetProperty("result").GetProperty("recap")[0].GetProperty("best").GetProperty("hlek").GetBoolean());
+            return;
+        }
+        Assert.Fail("не знайшлось столу, де 🎲-картка стоїть раніше");
+    }
+
+    [Fact]
+    public void A_dice_lie_that_fools_two_earns_points_but_not_the_fox()
+    {
+        var h = Table(3);
+        Until(h, Bluff.PhaseWrite);
+        var q = Question(h);
+        Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
+        Lie(h, 1);
+        Lie(h, 2);
+        Until(h, Bluff.PhasePick);
+        var dice = CardOf(h, q.Decoys[0]);
+        PickCard(h, 1, dice);
+        PickCard(h, 2, dice);
+        Until(h, Bluff.PhaseScore);
+        Assert.Equal(2 * Bluff.FooledPts, Score(h, 0));                  // очки — як за будь-яку брехню
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:bluff-fox");  // а «Хитрий лис» — лише за свою
+    }
+
+    [Fact]
+    public async Task A_new_table_takes_its_memory_in_the_lobby_and_start_never_asks_the_database()
+    {
+        using var temp = new TempDb();
+        var first = Table(2, options: new { questions = "5" }, services: Services(temp.Db));
+        var seen = new List<string>();
+        while (Playing(first))
+        {
+            seen.Add(V(first).GetProperty("text").GetString()!);
+            NextQuestion(first);
+        }
+        await BluffSeen.Idle.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Ті самі люди сідають за новий стіл: лобі показали — пам'ять підтяглась фоном.
+        var h = Seated(2, options: new { questions = "5" }, services: Services(temp.Db));
+        _ = V(h, 0);
+        await BluffSeen.Idle.WaitAsync(TimeSpan.FromSeconds(10));
+        // Базу витерли вже після лобі: Start під замком кімнати в неї не ходить, тож пам'ять не губиться.
+        temp.Db.With(c =>
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "DELETE FROM bluff_seen";
+            cmd.ExecuteNonQuery();
+        });
+        Assert.True(h.Start().Ok, h.Reply.Message);
+        var second = new List<string>();
+        while (Playing(h))
+        {
+            second.Add(V(h).GetProperty("text").GetString()!);
+            NextQuestion(h);
+        }
+        Assert.Equal(5, second.Count);
+        Assert.Empty(seen.Intersect(second));
+    }
+
+    [Fact]
+    public void The_bank_hides_the_style_of_the_truth_and_drops_answers_longer_than_a_lie()
+    {
+        var bank = BluffBank.Parse("""
+            [ { "q": "Кондратюків спосіб узяли в програмі ___", "answer": "«Аполлон»", "decoys": ["«Джеміні»", "“Шаттл”"] },
+              { "q": "Boring побраталося з селом ___", "answer": "Dull («тьмяне»)", "decoys": ["Yawn («позіх»)", "Sleepy (сонне)"] },
+              { "q": "На кордоні штрафували за ___", "answer": "яйце «Кіндер Сюрприз»", "decoys": ["\"вівсяне\" печиво", "перо"] },
+              { "q": "Задовга правда ___", "answer": "дуже довга правда, якої жоден гравець не напише", "decoys": ["а", "б"] } ]
+            """);
+        Assert.Equal(3, bank.Count);
+        Assert.Equal("Аполлон", bank[0].Answer);
+        Assert.Equal(["Джеміні", "Шаттл"], bank[0].Decoys);
+        Assert.Equal("Dull", bank[1].Answer);
+        Assert.Equal(["Yawn", "Sleepy"], bank[1].Decoys);
+        Assert.Equal("яйце Кіндер Сюрприз", bank[2].Answer);
+        Assert.Equal(["вівсяне печиво", "перо"], bank[2].Decoys);
     }
 
     // =====================================================================================

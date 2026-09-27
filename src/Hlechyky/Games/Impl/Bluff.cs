@@ -48,6 +48,23 @@ public sealed class Bluff : Game
 
     /// <summary>Відмова, коли брехня збіглась із правдою. Одна фраза на всі випадки — звертання «ти», не розповідь.</summary>
     public const string Truthy = "Схоже, ти випадково написав правду — вигадай іншу 🙂";
+    /// <summary>Відмова слову з двох абеток: «кисeнь» із латинською e на великій картці не відрізнити від чесного.</summary>
+    public const string MixedAbc = "Пиши однією абеткою — кирилицею або латиницею 🙂";
+    /// <summary>Відмова, коли спроби на це питання скінчились: однакова на будь-який текст, тож правди не видає.</summary>
+    public const string TooManyTries = "Годі перебирати 🙂 Лиши, що є, або тисни 🎲";
+
+    /// <summary>
+    /// Скільки разів за питання сервер може сказати «ти випадково написав правду». Кожна така відмова — підказка, де
+    /// правда, тож після п'ятої текстові брехні на це питання більше не приймаються (🎲 лишається).
+    /// </summary>
+    public const int MaxTruthy = 5;
+    /// <summary>Скільки текстових брехень за питання можна надіслати (переписувати — можна, перебирати скриптом — ні).</summary>
+    public const int MaxLieTries = 20;
+    /// <summary>
+    /// Скільки різних заготовок Глек показує одному гравцеві через 🎲 за питання. Бачену заготовку Глек уже не кладе на
+    /// стіл як «чужу» картку (ти її знаєш), тож решту бережемо для столу й для інших.
+    /// </summary>
+    public const int DiceSeen = 2;
 
     static readonly int[] QuestionChoices = [5, 7, 10];
 
@@ -71,6 +88,8 @@ public sealed class Bluff : Game
         public readonly List<int> By = [];
         public bool Truth;
         public bool Decoy;
+        /// <summary>Брехня гравців, але текст — Глека (усі співавтори взяли її через 🎲).</summary>
+        public bool Auto;
         /// <summary>Уже відкрита на розкритті.</summary>
         public bool Open;
         /// <summary>Хто обрав (заповнюється на початку розкриття, у порядку місць).</summary>
@@ -101,8 +120,15 @@ public sealed class Bluff : Game
     // ---- поточне питання ----
     readonly string?[] _lie = new string?[Seats];
     readonly bool[] _auto = new bool[Seats];
+    /// <summary>Які заготовки (біти за номером у банку) місце вже бачило через 🎲.</summary>
+    readonly int[] _dice = new int[Seats];
+    /// <summary>Текстових брехень на це питання і з них — «ти випадково написав правду».</summary>
+    readonly int[] _tries = new int[Seats];
+    readonly int[] _truthy = new int[Seats];
     readonly int[] _pick = new int[Seats];
     readonly long[] _delta = new long[Seats];
+    /// <summary>Частина <see cref="_delta"/> за вгадану правду — щоб клієнт не відтворював очки сам.</summary>
+    readonly long[] _truthDelta = new long[Seats];
     readonly long[] _likeDelta = new long[Seats];
     readonly int[] _victims = new int[Seats];
     List<Card> _cards = [];
@@ -150,10 +176,13 @@ public sealed class Bluff : Game
     public override string? CanStart() =>
         Bank.Any(q => BluffCats.Fits(q, _cats)) ? null : "У цих темах ще нема питань — обери інші теми";
 
+    /// <summary>
+    /// Пам'ять бачених. Db беремо не в конструкторі: гру створює реєстр без параметрів. Без бази пам'ять мовчить.
+    /// </summary>
+    BluffSeen Seen => _seen ??= new BluffSeen(Ctx.Services.GetService<Db>());
+
     public override void Start()
     {
-        // Db беремо тут, а не в конструкторі: гру створює реєстр без параметрів. Без бази пам'ять мовчить.
-        _seen ??= new BluffSeen(Ctx.Services.GetService<Db>());
         for (var s = 0; s < Seats; s++)
         {
             _present[s] = Ctx.Seated(s);
@@ -184,7 +213,8 @@ public sealed class Bluff : Game
 
     /// <summary>
     /// Питання партії: банк за темами, тасування Фішера — Єйтса на <c>Ctx.Rng</c>, потім найсвіжіші для цього столу
-    /// (спершу ніким не бачені, далі — бачені найдавніше).
+    /// (спершу ніким не бачені, далі — бачені найдавніше). Пам'ять — з того, що підтяглось фоном у лобі, і з позначок
+    /// самого столу: Start кличуть під замком кімнати, тож у базу тут не ходимо.
     /// </summary>
     List<BluffQuestion> Pick()
     {
@@ -195,7 +225,7 @@ public sealed class Bluff : Game
             var j = Ctx.Rng.Next(i + 1);
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
-        return BluffSeen.Freshest(pool, q => q.Key, _seen!.LastSeen(PresentKeys()), _count);
+        return BluffSeen.Freshest(pool, q => q.Key, Seen.LastSeen(PresentKeys()), _count);
     }
 
     List<string> PresentKeys()
@@ -204,6 +234,18 @@ public sealed class Bluff : Game
         for (var s = 0; s < Seats; s++)
             if (_present[s] && _nicks[s] is { } nick && BluffSeen.NickKey(nick) is var key && !keys.Contains(key)) keys.Add(key);
         return keys;
+    }
+
+    /// <summary>
+    /// Лобі (чи дограний стіл перед «Ще раз»): хто зараз сидить — тих і пам'ять підтягуємо фоном, щоб Start узяв готове.
+    /// Ключі ніків, уже прочитані чи в дорозі, повторно не читаємо.
+    /// </summary>
+    void PrefetchSeated()
+    {
+        List<string>? keys = null;
+        for (var s = 0; s < Seats; s++)
+            if (Ctx.Seated(s) && Ctx.NickOf(s) is { Length: > 0 } nick) (keys ??= []).Add(BluffSeen.NickKey(nick));
+        if (keys is not null) Seen.Prefetch(keys);
     }
 
     BluffQuestion? Current => _q >= 0 && _q < _asked.Count ? _asked[_q] : null;
@@ -223,8 +265,12 @@ public sealed class Bluff : Game
     {
         Array.Clear(_lie);
         Array.Clear(_auto);
+        Array.Clear(_dice);
+        Array.Clear(_tries);
+        Array.Clear(_truthy);
         Array.Fill(_pick, -1);
         Array.Clear(_delta);
+        Array.Clear(_truthDelta);
         Array.Clear(_likeDelta);
         Array.Clear(_victims);
         _cards = [];
@@ -240,7 +286,7 @@ public sealed class Bluff : Game
         _phase = PhaseRead;
         SetTimer(now, ReadMs);
         // «Бачив» — з тієї миті, коли питання з'явилось на екрані; до недограних питань пам'ять не доходить.
-        _seen!.Mark(PresentKeys(), _asked[_q], now);
+        Seen.Mark(PresentKeys(), _asked[_q], now);
     }
 
     void BeginWrite(DateTimeOffset now)
@@ -258,8 +304,9 @@ public sealed class Bluff : Game
 
     /// <summary>
     /// Картки питання, детерміновано: брехні присутніх у порядку місць (однакові — одна спільна картка на всіх
-    /// співавторів), правда, заготовки Глека до <see cref="MinOptions"/> (крім тих, що вже є на столі), і тасування
-    /// на <c>Ctx.Rng</c> — один порядок для всіх, щоб за столом можна було сказати «третя — точно правда».
+    /// співавторів), правда, заготовки Глека до <see cref="MinOptions"/> (крім тих, що вже є на столі, і тих, що хтось
+    /// бачив через 🎲 — він би знав, що це Глек), і тасування на <c>Ctx.Rng</c> — один порядок для всіх, щоб за
+    /// столом можна було сказати «третя — точно правда».
     /// </summary>
     void BuildOptions()
     {
@@ -269,19 +316,28 @@ public sealed class Bluff : Game
         {
             if (!_present[s] || _lie[s] is not { } lie) continue;
             var same = cards.Find(c => BluffText.LooksSame(c.Text, lie));
-            if (same is not null) same.By.Add(s);
+            if (same is not null)
+            {
+                same.By.Add(s);
+                same.Auto &= _auto[s];
+            }
             else
             {
-                var card = new Card { Text = lie };
+                var card = new Card { Text = lie, Auto = _auto[s] };
                 card.By.Add(s);
                 cards.Add(card);
             }
         }
         cards.Add(new Card { Text = q.Answer, Truth = true });
-        foreach (var d in q.Decoys)
+        var seen = 0;
+        for (var s = 0; s < Seats; s++) seen |= _dice[s];
+        for (var k = 0; k < q.Decoys.Count; k++)
         {
             if (cards.Count >= MinOptions) break;
-            // Гравець написав те саме (чи взяв її через 🎲) — його версія важливіша.
+            var d = q.Decoys[k];
+            // Хтось бачив її через 🎲 (і, може, передумав) — для нього це вже не загадка.
+            if ((seen & (1 << k)) != 0) continue;
+            // Гравець написав те саме — його версія важливіша.
             if (cards.Exists(c => BluffText.LooksSame(c.Text, d))) continue;
             cards.Add(new Card { Text = d, Decoy = true });
         }
@@ -324,13 +380,18 @@ public sealed class Bluff : Game
         var mult = Final ? FinalMult : 1;
         if (card.Truth)
         {
+            var found = 0;
             foreach (var p in card.Picks)
             {
-                Credit(p, TruthPts * mult);
+                if (!Credit(p, TruthPts * mult)) continue;
+                _truthDelta[p] += TruthPts * mult;
                 _hits[p]++;
+                found++;
             }
             _truthOpen = true;
-            _quip = Quips[Ctx.Rng.Next(Quips.Length)];
+            // Слово Глека — під те, що сталось: ніхто не вгадав, усі вгадали чи частина.
+            var pool = found == 0 ? QuipsNobody : found >= PresentSeats().Count ? QuipsAll : QuipsSome;
+            _quip = pool[Ctx.Rng.Next(pool.Length)];
             _played.Add(new Played(_asked[_q], _cards));
             SetTimer(now, StepTruthMs);
             return;
@@ -340,7 +401,8 @@ public sealed class Bluff : Game
             {
                 Credit(a, (long)FooledPts * mult * card.Picks.Count);
                 _victims[a] += card.Picks.Count;
-                if (card.Picks.Count >= 2 && _present[a] && !_fox[a])
+                // «Хитрий лис» — за свою брехню, а не за Глекову з 🎲.
+                if (card.Picks.Count >= 2 && _present[a] && !_fox[a] && !_auto[a])
                 {
                     _fox[a] = true;
                     Ctx.Award(a, 0, "ach:bluff-fox");
@@ -356,11 +418,12 @@ public sealed class Bluff : Game
     }
 
     /// <summary>Очки за питання — лише тим, хто досі за столом (той, хто пішов, не виграє й не набирає).</summary>
-    void Credit(int seat, long points)
+    bool Credit(int seat, long points)
     {
-        if (!_present[seat]) return;
+        if (!_present[seat]) return false;
         _scores[seat] += points;
         _delta[seat] += points;
+        return true;
     }
 
     public override TickResult Tick()
@@ -376,7 +439,7 @@ public sealed class Bluff : Game
         {
             if (!_dirty) return TickResult.None;
             _dirty = false;
-            return TickResult.Both;
+            return ViewOnly;
         }
 
         _dirty = false;
@@ -401,8 +464,14 @@ public sealed class Bluff : Game
                 BeginRead(now);
                 break;
         }
-        return TickResult.Both;
+        return ViewOnly;
     }
+
+    /// <summary>
+    /// Лише види, без кадру: модуль кадрів не читає (у нього нема frame-хука), а відлік веде сам від <c>endsAt</c>.
+    /// Кадр на кожну подію був би ~200 байт і чотири масиви в пам'яті — задарма.
+    /// </summary>
+    static readonly TickResult ViewOnly = new(false, true);
 
     bool AllWrote()
     {
@@ -453,6 +522,10 @@ public sealed class Bluff : Game
         if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("auto", out var auto) && auto.ValueKind == JsonValueKind.True)
             return AutoLie(seat);
 
+        // Перебір: кожна відмова «це правда» — підказка, тож спроби на питання лічимо, а коли вони скінчились,
+        // відповідь однакова на будь-який текст. Реалтайм-ввід (Rooms.Input) кличе той самий Act — лічиться так само.
+        if (_tries[seat] >= MaxLieTries || _truthy[seat] >= MaxTruthy) return ActResult.Fail(TooManyTries);
+        _tries[seat]++;
         var text = BluffText.Clean(payload.ValueKind switch
         {
             JsonValueKind.String => payload.GetString(),
@@ -461,7 +534,12 @@ public sealed class Bluff : Game
         });
         if (text.Length == 0) return ActResult.Fail("Порожня брехня нікого не надурить");
         if (text.Length > MaxLie) return ActResult.Fail("Коротше — до 40 знаків");
-        if (BluffText.LooksTrue(text, _asked[_q])) return ActResult.Fail(Truthy);
+        if (BluffText.MixedScripts(text)) return ActResult.Fail(MixedAbc);
+        if (BluffText.LooksTrue(text, _asked[_q]))
+        {
+            _truthy[seat]++;
+            return ActResult.Fail(Truthy);
+        }
 
         _lie[seat] = text;
         _auto[seat] = false;
@@ -470,8 +548,10 @@ public sealed class Bluff : Game
     }
 
     /// <summary>
-    /// «🎲 Хай Глек збреше»: заготовка з банку стає твоєю брехнею з усіма очками. Друга спроба — наступна заготовка
-    /// (по колу); уже взяту іншим чи написану кимось слово в слово Глек не дає.
+    /// «🎲 Хай Глек збреше»: заготовка з банку стає твоєю брехнею з усіма очками. Наступний натиск — наступна заготовка,
+    /// але нових не більше <see cref="DiceSeen"/> на гравця (далі Глек крутить уже бачені): кожна бачена заготовка
+    /// випадає зі столу, бо ти знав би, що це Глек. Уже взяту іншим, бачену іншим через 🎲 чи написану кимось слово в
+    /// слово Глек не дає.
     /// </summary>
     ActResult AutoLie(int seat)
     {
@@ -480,17 +560,27 @@ public sealed class Bluff : Game
         if (_auto[seat] && _lie[seat] is { } mine)
             for (var k = 0; k < decoys.Count; k++)
                 if (decoys[k] == mine) { start = k + 1; break; }
-        for (var k = 0; k < decoys.Count; k++)
+        var others = 0;
+        for (var s = 0; s < Seats; s++) if (s != seat) others |= _dice[s];
+        var fresh = BitCount(_dice[seat]) < DiceSeen;
+        for (var n = 0; n < decoys.Count; n++)
         {
-            var d = decoys[(start + k) % decoys.Count];
-            if (TakenByOther(seat, d)) continue;
+            var k = (start + n) % decoys.Count;
+            var bit = 1 << k;
+            if ((others & bit) != 0 || TakenByOther(seat, decoys[k])) continue;
+            if ((_dice[seat] & bit) == 0 && !fresh) continue;
+            var d = decoys[k];
+            _dice[seat] |= bit;
             _lie[seat] = d;
             _auto[seat] = true;
             _dirty = true;
-            return ActResult.Accept($"Глек підказав: «{d}». Можеш переписати");
+            // Останній за столом: фаза піде далі на найближчому тику, тож «можеш переписати» було б неправдою.
+            return ActResult.Accept(AllWrote() ? $"Глек збрехав за тебе: «{d}»" : $"Глек підказав: «{d}». Можеш переписати");
         }
         return ActResult.Fail("Глек уже все вибрехав — пиши сам 🙂");
     }
+
+    static int BitCount(int mask) => System.Numerics.BitOperations.PopCount((uint)mask);
 
     bool TakenByOther(int seat, string decoy)
     {
@@ -574,9 +664,7 @@ public sealed class Bluff : Game
         _present[seat] = false;
         _dirty = true;
         if (_phase == PhaseDone || PresentSeats().Count >= 2) return;
-        if (_phase == PhasePick)
-            for (var s = 0; s < Seats; s++)
-                if (_pick[s] >= 0 && _pick[s] < _cards.Count) _cards[_pick[s]].Picks.Add(s);
+        // Недогране питання в підсумок не йде (там лише ті, де правду вже відкрили), тож картки не чіпаємо.
         _phase = PhaseDone;
         _result = Result([], left: true);
         Ctx.Finish([], $"{Info.Title}: гравці розійшлись, партію не дограли");
@@ -589,16 +677,22 @@ public sealed class Bluff : Game
         return list;
     }
 
-    /// <summary>Картка брехні гравців, що надурила найбільше: жертви, далі ❤, далі — раніше питання й менший номер.</summary>
+    /// <summary>
+    /// Картка брехні гравців, що надурила найбільше: жертви, далі — власноруч написана перед 🎲-брехнею (текст Глека —
+    /// не твоя заслуга), далі ❤, далі — раніше питання й менший номер.
+    /// </summary>
     static (int Q, Card Card)? BestOf(IEnumerable<(int Q, Card Card)> cards)
     {
         (int Q, Card Card)? best = null;
         foreach (var (q, c) in cards)
         {
             if (c.Truth || c.Decoy || c.Picks.Count == 0) continue;
-            if (best is not { } b || c.Picks.Count > b.Card.Picks.Count
-                || (c.Picks.Count == b.Card.Picks.Count && c.LikedBy.Count > b.Card.LikedBy.Count))
-                best = (q, c);
+            if (best is not { } b) { best = (q, c); continue; }
+            var o = b.Card;
+            var better = c.Picks.Count != o.Picks.Count ? c.Picks.Count > o.Picks.Count
+                : c.Auto != o.Auto ? !c.Auto
+                : c.LikedBy.Count > o.LikedBy.Count;
+            if (better) best = (q, c);
         }
         return best;
     }
@@ -625,6 +719,7 @@ public sealed class Bluff : Game
                 by = b.Card.By.ToArray(),
                 victims = b.Card.Picks.Count,
                 likes = b.Card.LikedBy.Count,
+                hlek = b.Card.Auto,
             },
             recap = _played.Select((p, n) =>
             {
@@ -635,15 +730,17 @@ public sealed class Bluff : Game
                     text = p.Question.Q,
                     answer = p.Question.Answer,
                     note = string.IsNullOrEmpty(p.Question.Note) ? null : p.Question.Note,
-                    best = top is not { } t ? null : new { text = t.Card.Text, by = t.Card.By.ToArray(), victims = t.Card.Picks.Count },
+                    best = top is not { } t ? null
+                        : new { text = t.Card.Text, by = t.Card.By.ToArray(), victims = t.Card.Picks.Count, hlek = t.Card.Auto },
                 };
             }).ToArray(),
         };
     }
 
     /// <summary>
-    /// Рядок Журналу: рахунок усіх від більшого й найкраща брехня партії. Ніки — завжди в називному (ми їх не
-    /// відмінюємо): «Байкарі: Оля 6 500, Петро 4 000 · найкраща брехня — «свинячому салі» (Оля, 2 жертви)».
+    /// Рядок Журналу: рахунок усіх від більшого й автор найкращої брехні партії. Ніки — завжди в називному (ми їх не
+    /// відмінюємо): «Байкарі: Оля 6 500, Петро 4 000 · найкраща брехня — Оля, 2 жертви». Самого тексту брехні тут нема:
+    /// Журнал читає весь сайт, а писали «для своїх» — текст лишається в підсумку столу.
     /// </summary>
     string Summary(List<int> seats)
     {
@@ -652,7 +749,7 @@ public sealed class Bluff : Game
             .Select(s => $"{Nick(s)} {Num(_scores[s])}"));
         var best = BestOf(AllCards());
         var tail = best is not { } b ? "нікого так і не надурили"
-            : $"найкраща брехня — «{b.Card.Text}» ({Names(b.Card.By)}, {Victims(b.Card.Picks.Count)})";
+            : $"найкраща брехня — {Names(b.Card.By)}, {Victims(b.Card.Picks.Count)}";
         return seats.Count == 0 ? $"{Info.Title}: за столом уже нікого" : $"{Info.Title}: {line} · {tail}";
     }
 
@@ -686,6 +783,8 @@ public sealed class Bluff : Game
         var me = seat is { } s && s >= 0 && s < Seats ? s : -1;
         var q = Current;
         var done = _phase == PhaseDone;
+        // Лобі чи дограний стіл: той, хто зараз сидить, скоро натисне «Почати» чи «Ще раз» — пам'ять підтягуємо фоном.
+        if (_asked.Count == 0 || done) PrefetchSeated();
         return new
         {
             phase = _phase,
@@ -714,6 +813,7 @@ public sealed class Bluff : Game
             quip = _truthOpen ? _quip : null,
             scores = (long[])_scores.Clone(),
             delta = (long[])_delta.Clone(),
+            truthDelta = (long[])_truthDelta.Clone(),
             likeDelta = (long[])_likeDelta.Clone(),
             victims = (int[])_victims.Clone(),
             result = _result,
@@ -768,34 +868,44 @@ public sealed class Bluff : Game
         return flags;
     }
 
-    /// <summary>Кадр — публічний, без жодного тексту, крім фази й часу. Летить лише разом із видами, на зміну.</summary>
-    public override object? Frame() => new
-    {
-        phase = _phase,
-        q = _asked.Count == 0 ? 0 : _q + 1,
-        step = _revealed.Count,
-        endsAt = _endsAt,
-        wrote = Wrote(),
-        picked = Picked(),
-        scores = (long[])_scores.Clone(),
-    };
+    // Кадру (Frame) нема: модуль його не читає, а тик шле лише види (ViewOnly).
 
     // ---------------------------------------------------------------------------------------
     // Дядько Глек
     // ---------------------------------------------------------------------------------------
 
-    /// <summary>Фраза Глека до правди. Ніків не підставляємо — відмінків нема.</summary>
-    public static readonly string[] Quips =
+    /// <summary>Фраза Глека до правди, коли її не знайшов ніхто. Ніків не підставляємо — відмінків нема.</summary>
+    public static readonly string[] QuipsNobody =
     [
+        "Правда стояла поруч і мовчала.",
+        "Ніхто не повірив — а дарма.",
+        "Це чиста правда, хоч і звучить як брехня.",
+        "Не вірите? Загугліть після партії.",
+        "Бідолашна правда: жодного голосу.",
+        "Байкарі так набрехали, що правді й місця не лишилось.",
+        "Так буває: правда — найдивніша картка на столі.",
+    ];
+
+    /// <summary>Фраза Глека, коли правду знайшла частина столу.</summary>
+    public static readonly string[] QuipsSome =
+    [
+        "Хто вгадав — той сьогодні з нюхом.",
         "Отак-то. Правда буває дивнішою за брехню.",
         "І це не жарт — так і було.",
-        "Хто вгадав — той сьогодні з нюхом.",
-        "Не вірите? Загугліть після партії.",
-        "Правда стояла поруч і мовчала.",
-        "Ось вона, справжня. Решта — байки.",
-        "Це чиста правда, хоч і звучить як брехня.",
-        "Так буває: правда — найдивніша картка на столі.",
         "Байкарі старались, але правда — ось.",
         "Записуйте, на ярмарку розкажете.",
     ];
+
+    /// <summary>Фраза Глека, коли правду знайшли всі.</summary>
+    public static readonly string[] QuipsAll =
+    [
+        "Нюх у всіх — як у гончих!",
+        "Цю правду не сховаєш і в глечику.",
+        "Усі вгадали — брехунам сьогодні не щастить.",
+        "Ось вона, справжня. Решта — байки.",
+        "Надто чесне питання — правду видно здалеку.",
+    ];
+
+    /// <summary>Усі фрази Глека разом.</summary>
+    public static readonly string[] Quips = [.. QuipsNobody, .. QuipsSome, .. QuipsAll];
 }
