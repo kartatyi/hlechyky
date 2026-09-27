@@ -966,7 +966,16 @@
     const peek = mine && (phase === 'start' || (phase === 'go' && now < st.peekUntil && alive(st)));
     if (peek) {
       if (lit) { sparkle(g, st.px[st.meId], st.py[st.meId], pal, now); meArrow(g, st.px[st.meId], st.py[st.meId], pal, true); }
-      else if (st.seen && phase === 'go') ghost(g, st.seen.x, st.seen.y, pal, now);
+      else if (phase === 'go') {
+        // напис — за тим, що є зараз, а не в мить натиску: вийшов на світло — одразу іскорка замість нього
+        if (st.seen) ghost(g, st.seen.x, st.seen.y, pal, now);
+        if (!(now < st.tipUntil && st.tip)) {
+          const tip = st.tip;
+          st.tip = 'Ти в темряві — пам\'ятай, куди йшов';
+          tipPlate(g, st, st.cam.x, cy + vh * 0.72, pal);
+          st.tip = tip;
+        }
+      }
     }
     if (mine && now < st.tipUntil && st.tip) tipPlate(g, st, lit ? st.px[st.meId] : st.cam.x, lit ? st.py[st.meId] : cy + vh * 0.72, pal);
 
@@ -1652,7 +1661,7 @@
     });
   }
 
-  function peek(st) { st.peekUntil = performance.now() + PEEK_MS; if (!meLit(st) && phaseOf(st) === 'go') refuse(st, 'Ти в темряві — пам\'ятай, куди йшов', true); }
+  function peek(st) { st.peekUntil = performance.now() + PEEK_MS; }
 
   function toWorld(st, e) {
     const r = st.cv.el.getBoundingClientRect();
