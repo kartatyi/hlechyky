@@ -572,7 +572,7 @@
     zoom.oninput = () => zoomTo(+zoom.value, S / 2, S / 2);
     stage.addEventListener('keydown', (e) => {
       const step = e.shiftKey ? 40 : 10;
-      const moves = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+      const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };   // фото їде туди, куди стрілка
       if (moves[e.key]) { ox += moves[e.key][0]; oy += moves[e.key][1]; clamp(); redraw(); }
       else if (e.key === '+' || e.key === '=') zoomTo(z * 1.1, S / 2, S / 2);
       else if (e.key === '-') zoomTo(z / 1.1, S / 2, S / 2);
