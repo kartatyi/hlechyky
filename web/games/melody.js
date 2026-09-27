@@ -277,7 +277,11 @@
         waiting.push(i);
       }
     }
-    const ready = skip.length ? '⏭ ' + skip.map((i) => ctx.esc(ctx.nickOf(i) || '')).join(', ') + ' — за пропуск' : '';
+    // Троє й менше — поіменно; більше — числом (хто саме, видно ⏭ у рахунку): на столі з дванадцяти перелік
+    // ніків розтягувався на пів екрана телефона.
+    const ready = !skip.length ? ''
+      : skip.length > 3 ? '⏭ ' + skip.length + ' з ' + waiting.length + ' — за пропуск'
+        : '⏭ ' + skip.map((i) => ctx.esc(ctx.nickOf(i) || '')).join(', ') + ' — за пропуск';
     const html = v.phase !== 'play' ? ''
       : (can ? '<button type="button" class="' + (mineSkip ? 'primary' : 'ghost') + ' mgskipbtn">'
         + (mineSkip ? '⏭ Я за пропуск (' + skip.length + '/' + waiting.length + ')' : '⏭ Пропустити') + '</button>' : '')
