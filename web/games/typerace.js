@@ -356,6 +356,8 @@
   // =============================================================================================
 
   function laneHeight(st, n) {
+    // у підсумку траса лише показує, хто де зупинився, — нижча, щоб таблиця влізла в екран
+    if (st.phase === 'done' && n >= 5) return st.W < 600 ? 18 : 22;
     if (st.W < 600) return n >= 7 ? 22 : 28;
     // Steam Deck і невисокі ноути (≤ 820 px): десять доріжок по 30 з'їли б пів екрана
     if (window.innerHeight <= 820) return n <= 4 ? 38 : n <= 7 ? 28 : 22;
@@ -379,9 +381,9 @@
   function ensureTrack(root, st) {
     const host = root.querySelector('.tr-trackbox');
     if (!host || !st.ctx) return;
-    const n = Math.max(2, racers(st).length);
+    const n = Math.max(solo(st) ? 1 : 2, racers(st).length);
     const theme = document.documentElement.getAttribute('data-theme') || '';
-    const sig = n + ':' + theme;
+    const sig = n + ':' + theme + ':' + (st.phase === 'done');
     if (st.cv && st.bg && st.trackSig === sig) return;
     const W = Math.max(280, Math.floor(host.clientWidth || 600));
     st.W = W;
