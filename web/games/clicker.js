@@ -57,6 +57,7 @@
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
+  const CLOCK_KEEP_MS = 60 * 1000;        // серверне «зараз» — від найменш запізнілого виду за стільки (див. update)
   const NEWS_VERSION = 'v10';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   const PV = 10;                          // версія протоколу (Clicker.ProtocolVersion): ми вміємо доповнювати худий вид
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
@@ -105,6 +106,8 @@
       if (!st.el || !st.ctx || !st.lastView || !st.root) return;
       for (const el of st.el.querySelectorAll('*')) if (el._sig !== undefined) el._sig = null;
       if (st.jugBox) st.jugBox._wear = null;
+      // Вид той самий — update сам по собі його пропустив би (див. update): тут перемалювати треба.
+      st.again = true;
       MOD.update(st.root, st.ctx);
     }, 60);
   }
@@ -2821,23 +2824,43 @@
       placeInView(st);
       st.ctx = ctx;
       ctx.clk = st;
-      st.mine = !!ctx.mine;
       const v = ctx.view;
+      // Той самий вид удруге — не новина (записка Smaug №2: «обпал залагує, і час або скидається на початок, або
+      // зависає на місці»). Каркас кличе update не лише на новий вид, а й на КОЖНУ зміну лобі (подія 'rooms' →
+      // refreshAll: хтось на сайті поставив стіл чи встав із-за нього) — з тим самим видом, що вже був. Раніше ми брали
+      // з нього «правду сервера» вдруге: серверне «зараз» відкочувалось до миті, коли вид складено, — у ручному обпалі
+      // це мить розпалу, тож відлік горна скакав назад на 0:30 і стояв, поки в лобі метушились, жар не рухався, а горно
+      // не відкривалось; лічильник глеків, розгін і робота підмайстрів теж відкочувались. Свіжий вид — лише новий
+      // об'єкт від сервера. Перемалювати картку зі старим (refreshCard, частина догнала) — st.again, свій nick — mine.
+      const fresh = !!v && v !== st.lastView;
+      const mine = !!ctx.mine;
+      if (v && !fresh && !st.again && mine === st.mine) return;
+      st.again = false;
+      st.mine = mine;
       // Худий вид: без каталогу магазину (перше відкриття після перезапуску сервера) назв ще нема — просимо каталог і
       // цей вид малюємо без магазину й частин; наступний прийде вже з назвами.
       const ready = !v || v.pots == null || hydrate(st, v);
-      if (v && v.pots != null) {
+      if (v && v.pots != null && fresh) {
         // Сервер — джерело правди: беремо його число і його мітку часу, від них доліковуємо далі.
         // Усе, що вже полетіло, у цьому числі вже враховано — свій запас відпущених кліків обнуляємо.
         st.inflight = 0;
         st.inflightGain = 0;
         st.base = v.pots;
         st.total = v.total || 0;
+        // Серверне «зараз» — від найменш запізнілого з недавніх видів. Вид каже «на сервері було now», а до нас доїхав
+        // із затримкою: мережа, а на повільному ПК ще й зайнятий головний потік (вид обробляється на сотні мс пізніше).
+        // Тож now − Date.now() — нижня межа справжнього зсуву годинників, і найбільша з них — найточніша; з кожним
+        // запізнілим видом відлік горна смикався назад (заміряно: −200…−345 мс на процесорі ×6). Беремо найкращу за
+        // останні 60 с — щоб переведений годинник ПК не тягнувся за нами довше.
+        const at = Date.now();
         const now = Date.parse(v.now);
-        st.viewNow = Number.isFinite(now) ? now : Date.now();
+        const offs = (st.clockOffs || []).filter((x) => at - x[1] < CLOCK_KEEP_MS).slice(-11);
+        offs.push([(Number.isFinite(now) ? now : at) - at, at]);
+        st.clockOffs = offs;
+        st.viewNow = at + Math.max(...offs.map((x) => x[0]));
         const sync = Date.parse(v.lastSync);
         st.lastSync = Number.isFinite(sync) ? sync : st.viewNow;
-        st.recvAt = Date.now();
+        st.recvAt = at;
         st.offlineMs = (v.offlineHours || 8) * 3600 * 1000;
         st.clickBase = v.clickBase || v.perClick || 1;
         st.baseSecond = v.baseSecond != null ? v.baseSecond : v.perSecond || 0;
