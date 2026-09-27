@@ -137,6 +137,7 @@
 .geosrow > span { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .geosrow b { font-variant-numeric: tabular-nums; }
 .geosrow.win { background: var(--gwin); }
+.geosrow.gone { opacity: .6; }
 .geoshard { font-style: normal; font-size: .85em; color: var(--muted); white-space: nowrap; }
 
 .georecap > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }

@@ -29,6 +29,9 @@
   const SEAT_COLORS = ['#f4c542', '#7bd389', '#c5763a', '#6fb3e8', '#e88ac0', '#b48cf2', '#f0f0f0', '#ff8a5b', '#5ad1c9', '#c9d96b'];
   const SEAT_CLASS = SEAT_COLORS.map((_, i) => 'geo-s' + i);
   const DRAG_PX = 6;
+  /// Стільки мс мапа має постояти, щоб статичний шар перемалювати начисто; доти (протяг, колесо, щипок,
+  /// підліт) кадр — готовий «атлас» мапи, розтягнутий під масштаб: одна drawImage замість тисяч точок.
+  const SETTLE_MS = 140;
   const RULES = 'Фото звідкись з України — тицьни на мапі, де це знято. За кілометр і ближче — 5000 очок, '
     + 'за 100 км — 2885, за 500 — 313, далі крихти. За кожні 5000 очок партії — 🏺 черепок.';
 
@@ -145,18 +148,20 @@
       root._geo = {
         root, ctx, map: null,
         cv: null, g: null, stat: null, sg: null, dpr: 1, cw: 0, ch: 0,
-        s0: 0, k: 1, ox: 0, oy: 0, staticDirty: true, hints: '',
+        s0: 0, k: 1, ox: 0, oy: 0, staticDirty: true, statKey: '', viewT: 0, atlas: null, atlasKey: '', hints: '', redTimer: 0,
         raf: 0, fly: null, fit: null, drop: 0, revT0: 0, revKey: '', lastKey: '', lastPhase: '',
         pin: null, pinRound: -1, readyRound: -1, nextRound: -1,
         cur: null, keys: { l: 0, r: 0, u: 0, d: 0 }, keyT0: 0, lastT: 0,
         ptrs: new Map(), down: null, pinch: null,
         colors: SEAT_COLORS.slice(), css: {},
-        full: null, ro: null, keyup: null, onVis: null, labels: [],
+        full: null, ro: null, keyup: null, onVis: null, labels: [], pins: [],
         perf: { draws: 0, drawMs: 0, statics: 0, staticMs: 0 },
       };
     }
     root._geo.ctx = ctx;
     ctx._geo = root._geo;
+    // для заміру швидкодії з консолі (docs/games/specs/geo.md, «Як реалізовано»): один кадр прямо зараз
+    if (!root._geo.redraw) { const st = root._geo; st.redraw = () => draw(st, performance.now()); }
     return root._geo;
   }
 
@@ -174,8 +179,8 @@
     for (let i = 0; i < n; i++) if (ctx.nickOf(i)) out.push(i);
     return out;
   }
-  /// Нік місця; хто встав посеред партії — лише номер місця (нік каркас уже забув).
-  const nick = (ctx, i) => ctx.nickOf(i) || '№' + ctx.seatName(i);
+  /// Нік місця. Хто встав (посеред партії чи вже після) — нік із виду: каркас його забуває, партія — ні.
+  const nick = (ctx, i) => ctx.nickOf(i) || (V(ctx).nicks || [])[i] || '№' + ctx.seatName(i);
   const canPin = (st, ctx) => ctx.mine && ctx.playing && phaseOf(ctx) === 'guess' && st.readyRound !== V(ctx).round;
 
   // ---------------------------------------------------------------------------------------------
@@ -193,6 +198,12 @@
     const mx = st.cw * 0.25, my = st.ch * 0.25;
     st.ox = mw <= st.cw ? (st.cw - mw) / 2 : clamp(st.ox, st.cw - mw - mx, mx);
     st.oy = mh <= st.ch ? (st.ch - mh) / 2 : clamp(st.oy, st.ch - mh - my, my);
+  }
+
+  /// Вид зсунули чи наблизили безперервно (протяг, колесо, щипок, підліт): поки рухається — атлас, потім начисто.
+  function moved(st) {
+    st.viewT = performance.now();
+    kick(st);
   }
 
   function home(st) {
@@ -213,8 +224,7 @@
     st.fly = null;
     st.fit = null;
     clampView(st);
-    st.staticDirty = true;
-    kick(st);
+    moved(st);
   }
 
   function zoomKey(st, f) {
@@ -242,7 +252,7 @@
     const from = { k: st.k, ox: st.ox, oy: st.oy };
     fitView(st, pts, maxK);
     const to = { k: st.k, ox: st.ox, oy: st.oy };
-    st.staticDirty = true;
+    moved(st);
     if (!reduced() && st.cv && st.cv.offsetParent) {
       st.k = from.k; st.ox = from.ox; st.oy = from.oy;
       st.fly = { t0: performance.now(), ms: 500, from, to };
@@ -358,19 +368,29 @@
     g.fillText(text, x, y);
   }
 
-  /// Шпилька-крапля: вістря в точці, голівка з номером місця (колір — не єдина ознака).
-  function drawPin(g, st, x, y, color, n, lift) {
-    const top = y - (lift || 0);
-    const hy = top - 17;
+  const PIN_W = 24, PIN_H = 34, PIN_TIP = 31;             // спрайт шпильки в CSS-пікселях; вістря — на PIN_TIP
+
+  /// Шпилька-крапля: вістря в точці, голівка з номером місця (колір — не єдина ознака). Малюється один раз на
+  /// місце в маленький канвас, далі — одна drawImage: десять обведених крапель із цифрами щокадру коштували
+  /// більше за всю мапу.
+  function pinSprite(st, seat) {
+    const key = st.dpr + ':' + st.colors[seat % 10];
+    const have = st.pins[seat];
+    if (have && have.key === key) return have.c;
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(PIN_W * st.dpr); c.height = Math.ceil(PIN_H * st.dpr);
+    const g = c.getContext('2d');
+    g.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
+    const x = PIN_W / 2, y = PIN_TIP, hy = y - 17;
     g.fillStyle = 'rgba(0,0,0,.35)';
     g.beginPath();
     g.ellipse(x, y, 4, 1.6, 0, 0, Math.PI * 2);
     g.fill();
     g.beginPath();
-    g.moveTo(x, top);
+    g.moveTo(x, y);
     g.arc(x, hy, 9, Math.PI * 0.72, Math.PI * 0.28);
     g.closePath();
-    g.fillStyle = color;
+    g.fillStyle = st.colors[seat % 10];
     g.fill();
     g.lineWidth = 1.5;
     g.strokeStyle = 'rgba(10,20,15,.85)';
@@ -379,7 +399,13 @@
     g.font = 'bold 10px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(String(n), x, hy + 0.5);
+    g.fillText(String(seat + 1), x, hy + 0.5);
+    st.pins[seat] = { key, c };
+    return c;
+  }
+
+  function drawPin(g, st, x, y, seat, lift) {
+    g.drawImage(pinSprite(st, seat), x - PIN_W / 2, y - PIN_TIP - (lift || 0), PIN_W, PIN_H);
   }
 
   function drawStar(g, x, y, r, fill, stroke) {
@@ -417,14 +443,57 @@
     g.closePath();
   }
 
+  const viewKey = (st, hints) => st.k + ':' + st.ox + ':' + st.oy + ':' + st.cw + ':' + st.ch + ':' + st.dpr + ':' + hints;
+
+  /// Атлас: уся мапа (без підписів) один раз у канвас удвічі щільніший за рамку при k = 1. Під час руху
+  /// кадр — лише розтягнутий атлас; лінії в ньому товщі, щоб при k = 1 виглядати як начисто.
+  function atlasOf(st, hints) {
+    const aw = Math.round(clamp(st.cw * st.dpr * 2, 1000, 2400));
+    const key = aw + ':' + hints;
+    if (st.atlas && st.atlasKey === key) return st.atlas;
+    const ah = Math.round(aw * H / W);
+    const c = st.atlas || document.createElement('canvas');
+    c.width = aw; c.height = ah;
+    const g = c.getContext('2d'), s = aw / W, u = aw / (W * st.s0 * st.dpr), m = st.map, css = st.css;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = css.sea;
+    g.fillRect(0, 0, aw, ah);
+    g.setTransform(s, 0, 0, s, 0, 0);
+    g.fillStyle = css.land;
+    g.fill(m.land, 'evenodd');
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    if (hints !== 'none') {
+      g.strokeStyle = css.border; g.lineWidth = u / s; g.stroke(m.borders);
+      g.strokeStyle = css.river; g.lineWidth = 1.2 * u / s; g.stroke(m.river);
+      g.lineWidth = 1.8 * u / s; g.stroke(m.riverBig);
+    }
+    g.strokeStyle = css.outline; g.lineWidth = 1.5 * u / s; g.stroke(m.outline);
+    st.atlas = c;
+    st.atlasKey = key;
+    return c;
+  }
+
+  function preview(st, g, hints) {
+    const a = atlasOf(st, hints);
+    g.fillStyle = st.css.sea;
+    g.fillRect(0, 0, st.cv.width, st.cv.height);
+    g.drawImage(a, st.dpr * st.ox, st.dpr * st.oy, st.dpr * W * sc(st), st.dpr * H * sc(st));
+    st.perf.previews = (st.perf.previews || 0) + 1;
+  }
+
   function draw(st, now) {
     const t0 = performance.now();
     const ctx = st.ctx, v = V(ctx), c = st.css;
     const phase = phaseOf(ctx);
-    if (st.staticDirty) renderStatic(st, v.hints || 'full');
+    const hints = v.hints || 'full';
     const g = st.g;
+    const key = viewKey(st, hints);
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.drawImage(st.stat, 0, 0);
+    if (st.staticDirty || st.statKey !== key) {
+      if (st.map && !st.staticDirty && (st.fly || now - st.viewT < SETTLE_MS)) preview(st, g, hints);
+      else { renderStatic(st, hints); st.statKey = key; g.drawImage(st.stat, 0, 0); }
+    } else g.drawImage(st.stat, 0, 0);
     g.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
 
     const rv = (phase === 'reveal' || phase === 'done') && v.reveal ? v.reveal : null;
@@ -433,10 +502,11 @@
       const still = reduced();
       const [tx, ty] = toScreen(st, rv.x, rv.y);
       const rows = (rv.rows || []).filter((r) => r.x != null);
-      // лінії від шпильок до правди — від найближчого, кроком 80 мс
+      // лінії від шпильок до правди — від найближчого, кроком 80 мс (суцільні: пунктир у програмному
+      // растрі коштував пів мілісекунди на кадр)
       g.lineCap = 'round';
       g.lineWidth = 2;
-      g.setLineDash([6, 4]);
+      g.globalAlpha = 0.85;
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         const p = still ? 1 : easeOut(clamp((t - 300 - i * 80) / 500, 0, 1));
@@ -448,10 +518,10 @@
         g.lineTo(px + (tx - px) * p, py + (ty - py) * p);
         g.stroke();
       }
-      g.setLineDash([]);
+      g.globalAlpha = 1;
       for (const r of rows) {
         const [px, py] = toScreen(st, r.x, r.y);
-        drawPin(g, st, px, py, st.colors[r.seat % 10], r.seat + 1, 0);
+        drawPin(g, st, px, py, r.seat, 0);
       }
       // підписи кілометрів на плашках — коли лінія домальована; ті, що налізли б на вже намальовані, пропускаємо
       g.font = '600 11px system-ui, sans-serif';
@@ -491,7 +561,7 @@
     } else if (phase === 'guess' && ctx.mine && st.pin && st.pinRound === v.round) {
       const [px, py] = toScreen(st, st.pin.x, st.pin.y);
       const p = reduced() ? 1 : clamp((now - st.drop) / 250, 0, 1);
-      drawPin(g, st, px, py, st.colors[(ctx.seat || 0) % 10], (ctx.seat || 0) + 1, (1 - easeOut(p)) * 18);
+      drawPin(g, st, px, py, ctx.seat || 0, (1 - easeOut(p)) * 18);
     }
 
     if (st.cur && canPin(st, ctx)) {
@@ -524,7 +594,9 @@
     const ctx = st.ctx, v = V(ctx), phase = phaseOf(ctx);
     if (st.fly) return true;
     if (st.cur && (st.keys.l || st.keys.r || st.keys.u || st.keys.d)) return true;
-    if (reduced()) return phase === 'guess' && !!v.endsAt && Date.parse(v.endsAt) - Date.now() > 4000;
+    // після руху — ще кадр-другий, доки статичний шар не перемалюється начисто
+    if (st.map && (st.staticDirty || st.statKey !== viewKey(st, v.hints || 'full'))) return true;
+    if (reduced()) return false;
     if (phase === 'guess' && now - st.drop < 260) return true;
     if ((phase === 'reveal' || phase === 'done') && v.reveal && now - st.revT0 < 1100 + 80 * (v.reveal.rows || []).length) return true;
     if (phase === 'guess' && v.endsAt) {
@@ -552,7 +624,7 @@
       st.ox = a.ox + (b.ox - a.ox) * e;
       st.oy = a.oy + (b.oy - a.oy) * e;
       if (p >= 1) st.fly = null;
-      st.staticDirty = true;
+      st.viewT = now;
     }
     moveCursor(st, dt, now);
     // схована вкладка — не малюємо (стан приймаємо далі; повернеться — домалюємо)
@@ -593,7 +665,7 @@
       const ox = st.ox, oy = st.oy;
       st.ox += px; st.oy += py;
       clampView(st);
-      if (st.ox !== ox || st.oy !== oy) st.staticDirty = true;
+      if (st.ox !== ox || st.oy !== oy) st.viewT = now;
     }
     const [mx, my] = toMap(st, sx, sy);
     st.cur.x = clamp(mx, 0, W);
@@ -804,7 +876,9 @@
     const sc = v.scores || [];
     const win = (v.result && v.result.winners) || [];
     const done = phaseOf(ctx) === 'done' && !!v.result;
-    const seats = seatsOf(ctx);
+    const left = v.left || [];
+    // усі, хто грав цю партію (і ті, хто вже встав), — з виду; старий вид без nicks — ті, хто сидить
+    const seats = v.nicks ? v.nicks.map((n, i) => (n ? i : -1)).filter((i) => i >= 0) : seatsOf(ctx);
     if (!seats.length || (!ctx.playing && !v.result)) return '';
     // до першого розкриття всі по нулях — рахунок лише займав би місце
     if (!done && !seats.some((i) => sc[i])) return '';
@@ -813,8 +887,10 @@
       .map((i) => {
         // черепки за очки — так само, як рахує сервер (GeoMatch.PointsPerShard)
         const shards = done ? Math.floor((sc[i] || 0) / 5000) : 0;
-        return '<div class="geosrow ' + SEAT_CLASS[i % 10] + (done && win.includes(i) ? ' win' : '') + '">'
-          + '<span><i class="geodot"></i>' + (done && win.includes(i) ? '🏆 ' : '') + ctx.esc(nick(ctx, i)) + '</span>'
+        const gone = left.includes(i);
+        return '<div class="geosrow ' + SEAT_CLASS[i % 10] + (done && win.includes(i) ? ' win' : '') + (gone ? ' gone' : '') + '">'
+          + '<span><i class="geodot"></i>' + (done && win.includes(i) ? '🏆 ' : '') + ctx.esc(nick(ctx, i))
+          + (gone ? ' <i class="muted small">· встав</i>' : '') + '</span>'
           + (shards > 0 ? '<i class="geoshard" title="черепки за очки">🏺+' + shards + '</i>' : '')
           + '<b>' + num(sc[i]) + '</b></div>';
       }).join('');
@@ -888,6 +964,12 @@
       if (v.my.ready) st.readyRound = v.round;
     }
     if (st.hints !== v.hints) { st.hints = v.hints; st.staticDirty = true; }
+    // рамка червоніє за 5 с до кінця — розбудити малювання саме тоді (до того кадрів нема взагалі)
+    clearTimeout(st.redTimer);
+    if (phase === 'guess' && v.endsAt) {
+      const wait = Date.parse(v.endsAt) - 5000 - Date.now();
+      if (wait > 0) st.redTimer = setTimeout(() => kick(st), wait + 20);
+    }
     kick(st);
   }
 
@@ -942,8 +1024,7 @@
         zoomAt(st, mx, my, d / st.pinch.d);
         clampView(st);
         st.pinch = { d, mx, my };
-        st.staticDirty = true;
-        kick(st);
+        moved(st);
         return;
       }
       const dn = st.down;
@@ -954,8 +1035,7 @@
         st.ox += x - dn.lx;
         st.oy += y - dn.ly;
         clampView(st);
-        st.staticDirty = true;
-        kick(st);
+        moved(st);
       }
       dn.lx = x; dn.ly = y;
     });
@@ -1171,6 +1251,7 @@
       const st = root._geo;
       if (!st) return;
       cancelAnimationFrame(st.raf);
+      clearTimeout(st.redTimer);
       st.raf = 0;
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.onVis) document.removeEventListener('visibilitychange', st.onVis);

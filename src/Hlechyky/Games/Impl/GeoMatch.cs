@@ -79,6 +79,11 @@ public sealed class GeoMatch
     readonly DateTimeOffset[] _pinAt;
     readonly bool[] _ready, _next, _left, _pinnedEver, _bullAsked;
     readonly long[] _scores;
+    /// <summary>
+    /// Хто грав на кожному місці цієї партії. Каркас забуває нік, щойно людина встала (чи закрила вкладку вже
+    /// після кінця), а підсумок і розкриття мають і далі казати «Оля», а не «місце 3».
+    /// </summary>
+    readonly string?[] _nicks;
     RevealData? _reveal;
     readonly List<Recap> _recap = [];
     int[]? _winners;
@@ -102,6 +107,7 @@ public sealed class GeoMatch
         _pinnedEver = new bool[maxSeats];
         _bullAsked = new bool[maxSeats];
         _scores = new long[maxSeats];
+        _nicks = new string?[maxSeats];
         Array.Fill(_pinX, -1);
         Array.Fill(_pinY, -1);
     }
@@ -149,6 +155,7 @@ public sealed class GeoMatch
         _winners = null;
         _round = 0;
         _dirty = _frameDirty = false;
+        for (var s = 0; s < _max; s++) _nicks[s] = _ctx.NickOf(s);
 
         var pool = Pool(fresh: true);
         if (pool.Count < _rules.Rounds)
@@ -521,6 +528,8 @@ public sealed class GeoMatch
             } : null,
             scores = (long[])_scores.Clone(),
             left = Seats(_left),
+            // лише для розкриття й підсумку: там імена потрібні й тих, хто вже встав; у guess — зайві байти
+            nicks = _phase is PhaseReveal or PhaseDone ? (string?[])_nicks.Clone() : null,
             result = _winners is null ? null : new { winners = (int[])_winners.Clone(), scores = (long[])_scores.Clone() },
             recap = _phase != PhaseDone ? null : _recap.Select(r => new
             {

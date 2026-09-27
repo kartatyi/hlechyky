@@ -628,6 +628,23 @@ public class GeoTests
     }
 
     [Fact]
+    public void Nicks_of_the_match_survive_a_player_leaving()
+    {
+        using var c = new GeoCache();
+        var h = Table(c, 3);
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("nicks").ValueKind);   // до розкриття — не треба
+        Until(h, "reveal");
+        Assert.Equal(["Оля", "Петро", "Ганна"], h.View(null).GetProperty("nicks").EnumerateArray().Take(3).Select(e => e.GetString()));
+        Until(h, "guess");
+        h.Leave("Петро");
+        Until(h, "reveal");
+        var v = h.View(null);
+        Assert.Equal("Петро", v.GetProperty("nicks")[1].GetString());      // каркас нік забув, а партія пам'ятає
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("nicks")[3].ValueKind);
+        Assert.Equal(10, v.GetProperty("nicks").GetArrayLength());
+    }
+
+    [Fact]
     public void Rematch_rotates_seats_and_starts_clean_but_keeps_the_seen_list()
     {
         using var c = new GeoCache();
@@ -820,7 +837,7 @@ public class GeoTests
     }
 
     static readonly string[] ViewKeys = ["phase", "round", "rounds", "endsAt", "phaseMs", "seconds", "hints", "photo",
-        "pinned", "ready", "next", "my", "reveal", "scores", "left", "result", "recap", "turn"];
+        "pinned", "ready", "next", "my", "reveal", "scores", "left", "nicks", "result", "recap", "turn"];
 
     [Fact]
     public void The_view_shape_matches_the_spec_in_every_phase()
@@ -1111,7 +1128,7 @@ public class GeoPerfTests(ITestOutputHelper output)
         // Кирилиця на дроті — escape-послідовності по 6 байтів на літеру (серіалізатор спільний, не наш), а адреси
         // сторінок Вікісховища з кириличними назвами ще й у %-кодуванні. Тому розкриття ~2,8 КБ, підсумок на
         // 10 раундів ~5,8 КБ — але це лише 3 види на раунд, а типовий тик — нуль байтів.
-        Assert.InRange(maxGuess, 1, 600);
+        Assert.InRange(maxGuess, 1, 700);
         Assert.InRange(maxReveal, 1, 3500);
         Assert.InRange(done, 1, 7000);
         Assert.InRange(maxFrame, 1, 150);
