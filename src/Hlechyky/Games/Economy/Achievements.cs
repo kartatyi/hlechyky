@@ -117,6 +117,9 @@ public static class AchievementCatalog
         // хвиля 2: spy — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
         new("spy-guess",    "Шпигун-віртуоз",  "Шпигун назвав локацію правильно", "🕵", 20),
         new("spy-catch",    "Контррозвідка",   "Висунув підозру, яка спіймала шпигуна", "🔦", 15),
+        // хвиля 2: bluff
+        new("bluff-fox",  "Хитрий лис",     "Одна брехня в «Байкарях» надурила двох і більше", "🦊", 20),
+        new("bluff-nose", "Нюх на правду",  "Вгадав правду в кожному питанні партії «Байкарів»", "👃", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

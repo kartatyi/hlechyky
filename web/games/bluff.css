@@ -1,0 +1,217 @@
+/*
+  «Байкарі». Кольори — змінними: спільні зі style.css, свої оголошені тут на :root (з префіксом --bluff-).
+  Картка міряє себе сама (container-type): стіл буває і на всю ширину, і вузькою карткою в сітці.
+*/
+:root {
+  --bluff-s0: #e0a94a;
+  --bluff-s1: #6fb86f;
+  --bluff-s2: #d97757;
+  --bluff-s3: #9aa3ad;
+  --bluff-s4: #5b8dd6;
+  --bluff-s5: #d97ab0;
+  --bluff-s6: #7fc7c4;
+  --bluff-s7: #b48ce0;
+  --bluff-truth: rgba(123, 211, 137, .16);
+  --bluff-lie: rgba(197, 118, 58, .14);
+  --bluff-on: rgba(244, 197, 66, .13);
+}
+
+/* Шапка картки каркаса: місця 5–8 — наші кольори (1–4 — x/o/c/d каркаса). */
+.gseat.bluff-s4 { color: var(--bluff-s4); }
+.gseat.bluff-s5 { color: var(--bluff-s5); }
+.gseat.bluff-s6 { color: var(--bluff-s6); }
+.gseat.bluff-s7 { color: var(--bluff-s7); }
+
+.bluff-c0 { --bluff-c: var(--bluff-s0); }
+.bluff-c1 { --bluff-c: var(--bluff-s1); }
+.bluff-c2 { --bluff-c: var(--bluff-s2); }
+.bluff-c3 { --bluff-c: var(--bluff-s3); }
+.bluff-c4 { --bluff-c: var(--bluff-s4); }
+.bluff-c5 { --bluff-c: var(--bluff-s5); }
+.bluff-c6 { --bluff-c: var(--bluff-s6); }
+.bluff-c7 { --bluff-c: var(--bluff-s7); }
+
+.bluff-wrap { container-type: inline-size; width: 100%; }
+.bluff {
+  max-width: 960px; margin: 0 auto; width: 100%;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start;
+}
+/* Сітка карток міряє саму колонку гри, а не всю картку: поруч може стояти рахунок. */
+.bluff-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; container-type: inline-size; }
+@container (min-width: 820px) {
+  .bluff:not(.bluff-lobby) { grid-template-columns: minmax(0, 1fr) 230px; }
+}
+
+/* ---- шапка ---- */
+.bluff-top { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.bluff-no { flex: 1; min-width: 0; letter-spacing: .3px; }
+.bluff-x2 {
+  padding: 2px 9px; border-radius: 999px; background: var(--accent); color: var(--accent-ink);
+  font-weight: 800; font-size: .85em; animation: bluff-pulse 1.6s ease-in-out infinite;
+}
+.bluff-arc { display: inline-flex; }
+.bluff-snd { padding: 4px 8px; min-width: 36px; }
+
+/* ---- питання ---- */
+.bluff-q {
+  text-align: center; font-weight: 650; line-height: 1.4;
+  font-size: clamp(1.05em, 2.2vw, 1.5em); padding: 4px 2px; overflow-wrap: anywhere;
+}
+.bluff-q.dim { opacity: .9; }
+.bluff-blank {
+  display: inline-block; min-width: 4.5em; padding: 0 .3em; margin: 0 .1em;
+  border-bottom: 3px dashed var(--accent2); color: var(--accent); text-transform: uppercase; letter-spacing: .02em;
+}
+.bluff-blank.lie { border-bottom-style: solid; border-color: var(--clay); color: var(--clay); }
+.bluff-blank.truth { border-bottom-style: solid; border-color: var(--ok); color: var(--ok); text-shadow: 0 0 14px rgba(123, 211, 137, .45); }
+.bluff-blank.swap { animation: bluff-fade .2s ease-out both; }
+.bluff-stage { text-align: center; min-height: 1.2em; }
+
+/* ---- брехня ---- */
+.bluff-write { display: flex; flex-direction: column; gap: 8px; align-items: stretch; max-width: 560px; width: 100%; margin: 0 auto; }
+.bluff-row { position: relative; display: flex; }
+.bluff-in {
+  flex: 1; min-width: 0; padding: 11px 58px 11px 14px; font-size: 1.1em;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
+}
+.bluff-in:focus { outline: none; border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(244, 197, 66, .15); }
+.bluff-cnt { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-variant-numeric: tabular-nums; }
+.bluff-cnt.full { color: var(--danger); }
+.bluff-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.bluff-btns button { flex: 1 1 160px; min-height: 42px; }
+.bluff-my { text-align: center; min-height: 1.1em; overflow-wrap: anywhere; }
+
+/* ---- хто вже ---- */
+.bluff-who { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.bluff-chip {
+  padding: 3px 10px; border-radius: 999px; font-size: .85em; background: var(--panel2); color: var(--muted);
+  border: 1px solid transparent; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bluff-chip.on { color: var(--text); border-color: var(--bluff-c, var(--accent)); box-shadow: inset 3px 0 0 var(--bluff-c, var(--accent)); }
+
+/* ---- картки ---- */
+.bluff-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+@container (min-width: 700px) {
+  .bluff-opts { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+}
+.bluff-cell { position: relative; display: flex; min-width: 0; }
+.bluff-opt {
+  position: relative; flex: 1; min-width: 0; min-height: 64px; margin: 0;
+  display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 5px;
+  padding: 24px 10px 10px; text-align: center; color: var(--text); cursor: pointer;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 12px;
+  transition: border-color .15s, background .15s, transform .15s, opacity .25s;
+  font: inherit; white-space: normal;   /* загальний button — nowrap: 40 знаків вилазили б за картку */
+}
+/* Вимкнена картка (своя, розкрита, чужий стіл) лишається читабельною: загальне button:disabled її б пригасило. */
+.bluff-opt:disabled { cursor: default; opacity: 1; }
+.bluff-opt:hover { background: var(--panel); }
+.bluff-opt:not(:disabled):not(.inert):hover { border-color: var(--accent2); background: var(--panel2); transform: translateY(-1px); }
+.bluff-opt.inert { cursor: default; }
+.bluff-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bluff-n { position: absolute; left: 8px; top: 5px; font-size: .72em; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Великими — як у шоу: регістр і стиль автора не видають, де людина, а де банк. */
+.bluff-otext {
+  font-weight: 750; text-transform: uppercase; letter-spacing: .02em; line-height: 1.25;
+  overflow-wrap: anywhere; font-size: .95em; padding: 0 6px; min-width: 0; max-width: 100%;
+}
+.bluff-tag:empty, .bluff-by:empty, .bluff-picks:empty { display: none; }
+.bluff-tag { font-size: .72em; color: var(--muted); }
+.bluff-opt.on { border-color: var(--accent); background: var(--bluff-on); }
+.bluff-opt.on .bluff-tag { color: var(--accent); font-weight: 700; }
+.bluff-opt.mine { border-style: dashed; opacity: .8; }
+.bluff-opt.wait { opacity: .42; filter: saturate(.3); }
+.bluff-opt.open.lie { border-color: var(--clay); background: var(--bluff-lie); }
+.bluff-opt.open.decoy { border-color: var(--line); background: var(--panel2); }
+.bluff-opt.open.truth { border-color: var(--ok); background: var(--bluff-truth); animation: bluff-glow .6s ease-out; }
+.bluff-opt.now { box-shadow: 0 0 0 3px rgba(244, 197, 66, .28), 0 6px 18px rgba(0, 0, 0, .3); transform: translateY(-2px); }
+.bluff-opt.open.truth.now { box-shadow: 0 0 0 3px rgba(123, 211, 137, .35), 0 0 26px rgba(123, 211, 137, .25); }
+.bluff-opt.flip { animation: bluff-flip .4s ease-out; }
+.bluff-opt.open.truth.flip { animation: bluff-flip .4s ease-out, bluff-glow .6s ease-out .3s; }
+.bluff-by { font-size: .82em; font-weight: 650; color: var(--text); }
+.bluff-opt.open.truth .bluff-by { color: var(--ok); }
+.bluff-opt.open.decoy .bluff-by { color: var(--muted); }
+.bluff-picks { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+.bluff-pk {
+  font-size: .72em; padding: 1px 7px; border-radius: 999px; color: #10170f; font-weight: 650;
+  background: var(--bluff-c, var(--muted)); max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  animation: bluff-pop .25s ease-out both; animation-delay: calc(var(--n, 0) * 60ms + .15s);
+}
+.bluff-none { font-size: .72em; color: var(--muted); font-style: italic; }
+.bluff-like {
+  position: absolute; right: 5px; top: 3px; padding: 0 7px; min-height: 0; font-size: .76em; line-height: 1.45;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--bg2); color: var(--muted); cursor: pointer;
+}
+.bluff-like b { font-weight: 700; }
+.bluff-like.on { color: #ff7a8a; border-color: #ff7a8a; background: rgba(255, 122, 138, .12); }
+.bluff-like:disabled { cursor: default; opacity: 1; }
+.bluff-like:not(:disabled):hover { border-color: #ff7a8a; color: #ff9aa6; }
+
+/* ---- «а насправді…» ---- */
+.bluff-note {
+  display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px;
+  background: #2a2210; border: 1px solid #4a3a12; border-radius: 12px; animation: bluff-rise .35s ease-out both;
+}
+.bluff-note img { width: 28px; height: 28px; flex: none; }
+.bluff-ntext { line-height: 1.4; }
+.bluff-quip { margin-top: 3px; font-style: italic; }
+
+/* ---- рахунок ---- */
+.bluff-score { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bluff-shead { padding: 0 4px 2px; }
+.bluff-srow {
+  display: flex; align-items: center; gap: 7px; padding: 5px 9px; background: var(--panel); border-radius: 9px; font-size: .92em;
+  flex-wrap: wrap;
+}
+.bluff-srow.win { box-shadow: 0 0 0 1px var(--accent2) inset; background: var(--bluff-on); }
+.bluff-srow.gone { opacity: .55; }
+.bluff-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--bluff-c, var(--muted)); }
+.bluff-sn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bluff-sd { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
+.bluff-d { font-style: normal; font-size: .75em; padding: 1px 6px; border-radius: 999px; background: var(--panel2); animation: bluff-rise .5s ease-out both; }
+.bluff-d.ok { color: var(--ok); }
+.bluff-d.lie { color: var(--clay); }
+.bluff-d.like { color: #ff9aa6; }
+.bluff-sv { font-variant-numeric: tabular-nums; color: var(--accent); min-width: 3.2em; text-align: right; }
+
+/* ---- кінець партії ---- */
+.bluff-end { display: flex; flex-direction: column; gap: 10px; }
+.bluff-win { text-align: center; font-size: 1.3em; font-weight: 700; padding: 6px 0; animation: bluff-rise .4s ease-out both; }
+.bluff-win b { color: var(--bluff-c, var(--accent)); }
+.bluff-win.draw { color: var(--muted); font-size: 1.1em; }
+.bluff-best {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; padding: 10px 12px;
+  background: var(--bluff-lie); border: 1px solid var(--clay); border-radius: 12px; overflow-wrap: anywhere;
+}
+.bluff-best b { font-size: 1.15em; text-transform: uppercase; letter-spacing: .02em; }
+.bluff-best.none { background: none; border: none; }
+.bluff-recap { background: var(--panel); border-radius: 12px; padding: 6px 12px; }
+.bluff-recap summary { cursor: pointer; padding: 4px 0; font-weight: 600; }
+.bluff-recap ol { margin: 4px 0 6px; padding-left: 1.4em; display: flex; flex-direction: column; gap: 8px; }
+.bluff-recap li { line-height: 1.35; }
+.bluff-rq, .bluff-rn, .bluff-rb { display: block; overflow-wrap: anywhere; }
+.bluff-ra { color: var(--ok); }
+.bluff-rb { color: var(--clay); }
+
+.bluff-rules { margin: 4px auto; padding-left: 1.2em; max-width: 36em; line-height: 1.5; display: flex; flex-direction: column; gap: 3px; }
+.bluff-rules[hidden] { display: none; }
+
+/* ---- телефон ---- */
+@container (max-width: 420px) {
+  .bluff-btns button { flex-basis: 100%; }
+  .bluff-opt { min-height: 56px; padding: 24px 6px 8px; }
+  .bluff-otext { font-size: .88em; padding: 0 2px; }
+  .bluff-q { font-size: 1.05em; }
+}
+
+@keyframes bluff-flip { from { transform: perspective(600px) rotateY(90deg); opacity: .4; } to { transform: none; opacity: 1; } }
+@keyframes bluff-pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes bluff-glow { 0% { box-shadow: 0 0 0 0 rgba(123, 211, 137, .6); } 100% { box-shadow: 0 0 0 14px rgba(123, 211, 137, 0); } }
+@keyframes bluff-rise { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes bluff-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bluff-pulse { 50% { transform: scale(1.08); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bluff-x2, .bluff-blank.swap, .bluff-opt, .bluff-opt.flip, .bluff-opt.open.truth, .bluff-pk, .bluff-note, .bluff-d, .bluff-win { animation: none !important; transition: none !important; }
+  .bluff-opt.now, .bluff-opt:not(:disabled):not(.inert):hover { transform: none; }
+}
