@@ -1,205 +1,246 @@
 /*
   Шпигун. Кольори — лише змінними: спільні зі style.css, свої — тут, на :root (з префіксом --spy-).
   Картка мусить вціліти на 375 px: гравці — рядки, колода — сітка чипів у дві колонки. Від 820 px ширини
-  картки (container query) — дві колонки: ліворуч стіл, праворуч колода.
+  картки (container query) — дві колонки: ліворуч стіл (годинник, що робити, гравці), праворуч «хто я» і колода.
+  На вузькій картці обидві колонки розчиняються (display: contents), і блоки стають у стовпчик за order:
+  годинник, «хто я», що робити, гравці, колода.
 */
 :root {
   --spy-s0: #e5a33a; --spy-s1: #7bd389; --spy-s2: #6fb6e0; --spy-s3: #e57373; --spy-s4: #c08ad4;
-  --spy-s5: #f2d05a; --spy-s6: #4fc3c3; --spy-s7: #f08a4b; --spy-s8: #9fa8da; --spy-s9: #a1887f;
+  --spy-s5: #f2d05a; --spy-s6: #4fc3c3; --spy-s7: #f48fb1; --spy-s8: #9fa8da; --spy-s9: #cfd8dc;
   --spy-ink: #0b1410;          /* шпигунська картка — майже чорна */
   --spy-ink-edge: #c85b5b;     /* її рамка — тривожна */
   --spy-num-ink: #16201b;      /* цифра місця на кольоровому кружку */
+  --spy-on-danger: #1a0d0d;    /* текст на червоній кнопці «Так, це шпигун» */
+  --spy-on-edge: #fff;         /* текст на тривожній рамці (вибрано «Назвати локацію») */
 }
 
+/* [hidden] перемагає будь-який display у класах картки. */
+.spy [hidden] { display: none !important; }
+
 /* Чіпи місць у шапці картки каркаса: колір + номер, не лише колір. */
-.gseat.sp-s0 { color: var(--spy-s0); } .gseat.sp-s1 { color: var(--spy-s1); } .gseat.sp-s2 { color: var(--spy-s2); }
-.gseat.sp-s3 { color: var(--spy-s3); } .gseat.sp-s4 { color: var(--spy-s4); } .gseat.sp-s5 { color: var(--spy-s5); }
-.gseat.sp-s6 { color: var(--spy-s6); } .gseat.sp-s7 { color: var(--spy-s7); } .gseat.sp-s8 { color: var(--spy-s8); }
-.gseat.sp-s9 { color: var(--spy-s9); }
+.gseat.spy-s0 { color: var(--spy-s0); } .gseat.spy-s1 { color: var(--spy-s1); } .gseat.spy-s2 { color: var(--spy-s2); }
+.gseat.spy-s3 { color: var(--spy-s3); } .gseat.spy-s4 { color: var(--spy-s4); } .gseat.spy-s5 { color: var(--spy-s5); }
+.gseat.spy-s6 { color: var(--spy-s6); } .gseat.spy-s7 { color: var(--spy-s7); } .gseat.spy-s8 { color: var(--spy-s8); }
+.gseat.spy-s9 { color: var(--spy-s9); }
+
+/* Балачка столу на телефоні — шторка. У каркасі `.tc-body { flex: 1 }` у колонці без висоти перебиває її
+   height, і на довгій розмові шторка росла вище екрана разом із хрестиком. У «Шпигуні» шторку відкривають щоходу,
+   тож поки на сторінці картка гри — тримаємо висоту шторки (виправлення для каркаса — у звіті інтегратору). */
+body:has(.spy) .tchat.drawer.open .tc-body { flex: none; }
 
 /* Контейнер — .spy, а сітка — його дитина: container query міряє предка, а не сам елемент. */
 .spy { width: 100%; container-type: inline-size; }
-.sp-grid { display: flex; flex-direction: column; gap: 10px; }
-.sp-main, .sp-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.spy-grid { display: flex; flex-direction: column; gap: 10px; }
+.spy-main, .spy-side { display: contents; }
+.spy-top { order: 1; } .spy-me { order: 2; } .spy-card { order: 3; } .spy-reveal { order: 4; }
+.spy-act { order: 5; } .spy-players { order: 6; } .spy-hist { order: 7; } .spy-deck { order: 8; }
 
-/* ---- шапка: годинник, фаза, дуга, моя картка-чіп ---- */
-.sp-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
-.sp-clockbox { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.sp-clock { font-size: 1.7em; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: .02em; transition: color .25s; }
-.sp-phase { font-size: .86em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sp-clockbox.sp-idle .sp-clock { font-size: 1.2em; color: var(--muted); }
-.sp-clockbox.sp-paused .sp-clock { color: var(--muted); }
-.sp-clockbox.sp-hot .sp-clock { color: var(--danger); }
-.sp-clockbox.sp-last .sp-clock { animation: sppulse 1s ease-in-out infinite; display: inline-block; transform-origin: left center; }
-@keyframes sppulse { 50% { transform: scale(1.06); } }
-.sp-arc { flex: none; }
-.sp-arc.sp-red .garc .fg { stroke: var(--danger); }
-.sp-grow { flex: 1; }
-/* Вузька картка: розрив рядка перед чіпом; широка — чіп між дугою й звуком, розрив ховаємо. */
-.sp-br { flex-basis: 100%; height: 0; }
-.sp-me { flex: 0 1 auto; background: var(--bg2); color: var(--text); border: 1px solid var(--line); padding: 7px 13px; border-radius: 999px;
-  font: inherit; font-size: .92em; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 36px; }
-.sp-me:disabled { cursor: default; opacity: 1; }
-.sp-me.sp-me-spy { background: var(--spy-ink); border-color: var(--spy-ink-edge); }
-.sp-snd { flex: none; padding: 5px 9px; font-size: .95em; }
+/* ---- шапка: годинник, фаза, дуга, звук ---- */
+.spy-top { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+.spy-clockbox { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.spy-clock { font-size: 1.7em; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: .02em; transition: color .25s; }
+.spy-phase { font-size: .86em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spy-clockbox.spy-idle .spy-clock { font-size: 1.2em; color: var(--muted); }
+.spy-clockbox.spy-paused .spy-clock { color: var(--muted); }
+.spy-clockbox.spy-hot .spy-clock { color: var(--danger); }
+.spy-clockbox.spy-last .spy-clock { animation: spy-pulse 1s ease-in-out infinite; display: inline-block; transform-origin: left center; }
+@keyframes spy-pulse { 50% { transform: scale(1.06); } }
+.spy-arc { flex: none; }
+.spy-arc.spy-red .garc .fg { stroke: var(--danger); }
+.spy-grow { flex: 1; }
+.spy-snd { flex: none; padding: 5px 9px; font-size: .95em; }
+
+/* ---- «хто я»: чіп. Свою роль мусить бути видно цілою — довга («бабця «передайте за проїзд»») переноситься. ---- */
+.spy-me {
+  align-self: flex-start; max-width: 100%; min-width: 0; min-height: 36px; padding: 7px 13px; border-radius: 18px;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); font: inherit; font-size: .92em;
+  cursor: pointer; white-space: normal; overflow-wrap: anywhere; text-align: left; line-height: 1.3;
+}
+.spy-me:disabled { cursor: default; opacity: 1; }
+.spy-me.spy-me-spy { background: var(--spy-ink); border-color: var(--spy-ink-edge); }
 
 /* ---- велика картка ролі ---- */
-.sp-cardin {
+.spy-cardin {
   display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; text-align: left;
   background: var(--panel2); border: 1px solid var(--accent2); border-radius: 14px; min-height: 96px;
   font: inherit; color: var(--text); cursor: pointer; white-space: normal;
 }
-.sp-cardin.sp-flip { animation: spflip .6s cubic-bezier(.2, .9, .3, 1.2) both; }
-.sp-spycard { background: var(--spy-ink); border-color: var(--spy-ink-edge); }
-.sp-spycard.sp-flip { animation: spflip .6s cubic-bezier(.2, .9, .3, 1.2) both, spdark .4s ease-out both; }
-.sp-cico { font-size: 2.4em; line-height: 1; flex: none; }
-.sp-cbody { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.sp-cbody b { font-size: 1.25em; font-family: var(--display); }
-.sp-spycard .sp-cbody b { color: var(--spy-ink-edge); letter-spacing: .04em; }
-@keyframes spflip { from { transform: perspective(600px) rotateY(80deg); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes spdark { from { filter: brightness(.2); } to { filter: none; } }
+.spy-flipin { animation: spy-flip .6s cubic-bezier(.2, .9, .3, 1.2) both; }
+.spy-spycard { background: var(--spy-ink); border-color: var(--spy-ink-edge); }
+.spy-spycard.spy-flipin { animation: spy-flip .6s cubic-bezier(.2, .9, .3, 1.2) both, spy-dark .4s ease-out both; }
+.spy-cico { font-size: 2.4em; line-height: 1; flex: none; }
+.spy-cbody { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.spy-cbody b { font-size: 1.25em; font-family: var(--display); }
+.spy-spycard .spy-cbody b { color: var(--spy-ink-edge); letter-spacing: .04em; }
+@keyframes spy-flip { from { transform: perspective(600px) rotateY(80deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes spy-dark { from { filter: brightness(.2); } to { filter: none; } }
 
-/* ---- розкриття ---- */
-.sp-banner {
-  display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 12px; line-height: 1.35;
-  background: var(--panel2); border: 1px solid var(--line); animation: sppop .35s cubic-bezier(.2, .9, .3, 1.3) both;
+/* ---- розкриття: картка шпигуна перевертається в усіх одночасно ---- */
+.spy-reveal { display: flex; flex-direction: column; gap: 8px; }
+.spy-banner {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; line-height: 1.35;
+  background: var(--panel2); border: 1px solid var(--line); animation: spy-pop .35s cubic-bezier(.2, .9, .3, 1.3) both;
 }
-.sp-banner.sp-good { border-color: var(--ok); }
-.sp-banner.sp-bad { border-color: var(--danger); }
-.sp-bico { font-size: 1.6em; flex: none; }
-@keyframes sppop { from { transform: translateY(-8px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
-.sp-reveal { display: flex; flex-direction: column; gap: 8px; }
-.sp-hist summary { cursor: pointer; }
-.sp-hlist { display: flex; flex-direction: column; gap: 2px; padding-top: 5px; font-size: .88em; color: var(--muted); }
+.spy-banner.spy-good { border-color: var(--ok); }
+.spy-banner.spy-bad { border-color: var(--danger); }
+.spy-rcard {
+  flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  min-width: 96px; max-width: 42%; padding: 8px 10px; border-radius: 12px; text-align: center;
+  background: var(--spy-ink); border: 1px solid var(--spy-ink-edge); animation-delay: .15s;
+}
+.spy-rico { font-size: 1.8em; line-height: 1; }
+.spy-rcard b { font-family: var(--display); overflow-wrap: anywhere; }
+.spy-rbody { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.spy-rloc b { font-family: var(--display); font-size: 1.1em; }
+@keyframes spy-pop { from { transform: translateY(-8px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+.spy-hist summary { cursor: pointer; }
+.spy-hlist { display: flex; flex-direction: column; gap: 2px; padding-top: 5px; font-size: .88em; color: var(--muted); }
 
-/* ---- що робити зараз ---- */
-.sp-act { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.sp-act:empty { display: none; }
-.sp-say { line-height: 1.35; }
-.sp-say.sp-hi { color: var(--accent); font-weight: 600; }
-.sp-say.sp-hot2 { color: var(--danger); font-weight: 600; }
-.sp-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-.sp-btns .ghost, .sp-go { padding: 7px 12px; font-size: .9em; min-height: 40px; }
-.sp-go { background: var(--spy-ink); color: var(--text); border: 1px solid var(--spy-ink-edge); border-radius: 10px; cursor: pointer; font: inherit; }
-.sp-go.on { background: var(--spy-ink-edge); color: #fff; }
-.sp-big { min-height: 46px; padding: 10px 18px; font-size: 1em; font-weight: 600; border-radius: 12px; }
-.sp-vote { animation: spup .2s ease-out both; }
-.sp-yes { background: var(--danger); color: #1a0d0d; border: 0; }
-.sp-no { background: var(--panel3); color: var(--text); border: 1px solid var(--line); }
-.sp-yes.on, .sp-no.on { box-shadow: 0 0 0 3px var(--accent); }
-.sp-yes:not(.on), .sp-no:not(.on) { opacity: .92; }
-@keyframes spup { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
-.sp-final { font-size: 1.15em; font-weight: 600; font-family: var(--display); }
+/* ---- що робити зараз: порада, кнопки, дрібний рядок ---- */
+.spy-act { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.spy-act > :empty { display: none; }
+.spy-say { line-height: 1.35; }
+.spy-say.spy-hi { color: var(--accent); font-weight: 600; }
+.spy-say.spy-hot2 { color: var(--danger); font-weight: 600; }
+.spy-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.spy-btns .ghost, .spy-go { padding: 7px 12px; font-size: .9em; min-height: 40px; }
+.spy-go { background: var(--spy-ink); color: var(--text); border: 1px solid var(--spy-ink-edge); border-radius: 10px; cursor: pointer; font: inherit; }
+.spy-go.on { background: var(--spy-ink-edge); color: var(--spy-on-edge); }
+.spy-big { min-height: 46px; padding: 10px 18px; font-size: 1em; font-weight: 600; border-radius: 12px; }
+.spy-vote { display: flex; gap: 8px; flex-wrap: wrap; animation: spy-up .2s ease-out both; }
+.spy-yes { background: var(--danger); color: var(--spy-on-danger); border: 0; }
+.spy-no { background: var(--panel3); color: var(--text); border: 1px solid var(--line); }
+.spy-yes.on, .spy-no.on { box-shadow: 0 0 0 3px var(--accent); }
+.spy-yes:not(.on), .spy-no:not(.on) { opacity: .92; }
+@keyframes spy-up { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.spy-final { font-size: 1.15em; font-weight: 600; font-family: var(--display); }
 
 /* ---- гравці ---- */
-.sp-players { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-.sp-p {
+.spy-players { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.spy-p {
   display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px;
   background: var(--panel2); min-height: 44px; transition: background .25s, box-shadow .25s;
 }
-.sp-p.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
-.sp-p.asking { background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); }
-.sp-p.sus { box-shadow: 0 0 0 2px var(--danger) inset; animation: spsus 1s ease-in-out 3; }
-.sp-p.wasspy { background: color-mix(in srgb, var(--spy-ink-edge) 22%, var(--panel2)); }
-.sp-p.gone { opacity: .5; }
-.sp-p.gone .sp-nick { text-decoration: line-through; }
-@keyframes spsus { 50% { box-shadow: 0 0 0 4px var(--danger) inset; } }
-.sp-n {
+.spy-p.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.spy-p.asking { background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); }
+.spy-p.sus { box-shadow: 0 0 0 2px var(--danger) inset; animation: spy-sus 1s ease-in-out 3; }
+.spy-p.wasspy { background: color-mix(in srgb, var(--spy-ink-edge) 22%, var(--panel2)); }
+.spy-p.gone { opacity: .5; }
+.spy-p.gone .spy-nick { text-decoration: line-through; }
+@keyframes spy-sus { 50% { box-shadow: 0 0 0 4px var(--danger) inset; } }
+.spy-n {
   flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
   font-size: .82em; font-weight: 700; color: var(--spy-num-ink);
 }
-.sp-c0 { background: var(--spy-s0); } .sp-c1 { background: var(--spy-s1); } .sp-c2 { background: var(--spy-s2); }
-.sp-c3 { background: var(--spy-s3); } .sp-c4 { background: var(--spy-s4); } .sp-c5 { background: var(--spy-s5); }
-.sp-c6 { background: var(--spy-s6); } .sp-c7 { background: var(--spy-s7); } .sp-c8 { background: var(--spy-s8); }
-.sp-c9 { background: var(--spy-s9); }
-.sp-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.sp-nick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sp-nick i { font-style: normal; color: var(--muted); font-size: .85em; }
-.sp-tags { display: flex; gap: 4px; flex-wrap: wrap; }
-.sp-b { font-size: .72em; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; line-height: 1.5; }
-.sp-b-ask { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
-.sp-b-by, .sp-b-acc, .sp-b-wait, .sp-b-gone { color: var(--muted); }
-.sp-b-sus, .sp-b-spy { color: var(--danger); }
-.sp-b-yes { color: var(--danger); }
-.sp-b-no { color: var(--ok); }
-.sp-b-point { color: var(--accent); }
-.sp-b-role { color: var(--text); border-color: var(--line); }
-.sp-b-ready { color: var(--ok); }
-.sp-b-win { color: var(--accent-ink); background: var(--accent); border-color: transparent; font-weight: 700; }
-.sp-b-plus { color: var(--accent-ink); background: var(--ok); border-color: transparent; font-weight: 700; animation: sphop .5s ease-out both; animation-delay: calc(var(--n, 0) * 60ms); }
-@keyframes sphop { 0% { transform: translateY(6px); opacity: 0; } 60% { transform: translateY(-3px); opacity: 1; } 100% { transform: none; } }
-.sp-score { flex: none; min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-.sp-dos { display: flex; gap: 5px; flex: none; }
-.sp-do { min-height: 40px; padding: 6px 10px; font-size: .85em; border-radius: 10px; }
-.sp-ask { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 600; }
-.sp-acc.sp-sure { background: var(--danger); color: #1a0d0d; border-color: transparent; font-weight: 600; }
-.sp-blame.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
-.sp-do[aria-busy="true"], .sp-big[aria-busy="true"] { opacity: .6; cursor: progress; }
+.spy-c0 { background: var(--spy-s0); } .spy-c1 { background: var(--spy-s1); } .spy-c2 { background: var(--spy-s2); }
+.spy-c3 { background: var(--spy-s3); } .spy-c4 { background: var(--spy-s4); } .spy-c5 { background: var(--spy-s5); }
+.spy-c6 { background: var(--spy-s6); } .spy-c7 { background: var(--spy-s7); } .spy-c8 { background: var(--spy-s8); }
+.spy-c9 { background: var(--spy-s9); }
+.spy-who { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; row-gap: 2px; }
+.spy-nick { flex: 1 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spy-nick i { font-style: normal; color: var(--muted); font-size: .85em; }
+.spy-tags, .spy-marks { display: flex; gap: 4px; flex-wrap: wrap; }
+.spy-tags:empty, .spy-marks:empty, .spy-dos:empty { display: none; }
+.spy-b { font-size: .72em; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; line-height: 1.5; }
+.spy-b-ask { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.spy-b-by, .spy-b-acc, .spy-b-wait, .spy-b-gone, .spy-b-to { color: var(--muted); }
+.spy-b-hit { color: var(--ok); }
+.spy-b-sus, .spy-b-spy { color: var(--danger); }
+.spy-b-yes { color: var(--danger); }
+.spy-b-no { color: var(--ok); }
+.spy-b-point { color: var(--accent); }
+.spy-b-role { color: var(--text); border-color: var(--line); }
+.spy-b-ready { color: var(--ok); }
+.spy-b-win { color: var(--accent-ink); background: var(--accent); border-color: transparent; font-weight: 700; }
+.spy-b-plus { color: var(--accent-ink); background: var(--ok); border-color: transparent; font-weight: 700; animation: spy-hop .5s ease-out both; animation-delay: calc(var(--n, 0) * 60ms); }
+@keyframes spy-hop { 0% { transform: translateY(6px); opacity: 0; } 60% { transform: translateY(-3px); opacity: 1; } 100% { transform: none; } }
+.spy-score { flex: none; min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.spy-score:empty { display: none; }
+.spy-dos { display: flex; gap: 5px; flex: none; }
+.spy-do { min-height: 40px; padding: 6px 10px; font-size: .85em; border-radius: 10px; }
+.spy-ask { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 600; }
+.spy-acc.spy-sure { background: var(--danger); color: var(--spy-on-danger); border-color: transparent; font-weight: 600; }
+.spy-blame.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.spy-do[aria-busy="true"], .spy-big[aria-busy="true"] { opacity: .6; cursor: progress; }
 
 /* ---- колода ---- */
-.sp-deck { display: flex; flex-direction: column; gap: 7px; background: var(--bg2); border-radius: 12px; padding: 10px; }
-.sp-dhead { display: flex; align-items: baseline; gap: 6px; }
-.sp-locs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 5px; }
-.sp-loc {
+.spy-deck { display: flex; flex-direction: column; gap: 7px; background: var(--bg2); border-radius: 12px; padding: 10px; scroll-margin-top: 12px; }
+.spy-dhead { display: flex; align-items: baseline; gap: 6px; }
+.spy-locs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 5px; }
+.spy-loc {
   display: flex; align-items: center; gap: 7px; min-height: 40px; padding: 5px 8px; text-align: left;
   background: var(--panel); color: var(--text); border: 1px solid transparent; border-radius: 9px; cursor: pointer; font: inherit; font-size: .88em;
 }
-.sp-loc:hover { border-color: var(--line); }
-.sp-li { flex: none; font-size: 1.15em; width: 1.4em; text-align: center; }
+.spy-loc:hover { border-color: var(--line); }
+.spy-li { flex: none; font-size: 1.15em; width: 1.4em; text-align: center; }
 /* Довгі назви («Відділення «Нової пошти»») — у два рядки, а не з трикрапкою: на телефоні колонка вузька. */
-.sp-lt { min-width: 0; overflow: hidden; line-height: 1.2; white-space: normal; overflow-wrap: anywhere;
+.spy-lt { min-width: 0; overflow: hidden; line-height: 1.2; white-space: normal; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
-.sp-loc.struck { opacity: .45; }
-.sp-loc.struck .sp-lt { text-decoration: line-through; }
-.sp-loc.here { border-color: var(--accent2); }
-.sp-loc.pick { background: var(--spy-ink); border-color: var(--spy-ink-edge); box-shadow: 0 0 0 2px var(--spy-ink-edge); }
-.sp-loc.true { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok); opacity: 1; }
-.sp-loc.false { border-color: var(--danger); box-shadow: 0 0 0 2px var(--danger); }
-.sp-deck.sp-guessing { box-shadow: 0 0 0 2px var(--spy-ink-edge); }
-.sp-guess {
-  position: sticky; bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+.spy-loc.struck { opacity: .45; }
+.spy-loc.struck .spy-lt { text-decoration: line-through; }
+.spy-loc.here { border-color: var(--accent2); }
+.spy-loc.pick { background: var(--spy-ink); border-color: var(--spy-ink-edge); box-shadow: 0 0 0 2px var(--spy-ink-edge); }
+.spy-loc.true { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok); opacity: 1; }
+.spy-loc.false { border-color: var(--danger); box-shadow: 0 0 0 2px var(--danger); }
+.spy-deck.spy-guessing { box-shadow: 0 0 0 2px var(--spy-ink-edge); }
+/* Смужка «Так, це тут» липне до низу екрана — над міні-плеєром і вкладками телефона (їхні висоти — змінні каркаса). */
+.spy-guess {
+  position: sticky; bottom: calc(var(--tabs-h, 0px) + var(--mini-h, 0px) + 8px); z-index: 2;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 9px 10px; border-radius: 10px; background: var(--spy-ink); border: 1px solid var(--spy-ink-edge);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
 }
-.sp-guess span { flex: 1 1 180px; }
-.sp-guess button { min-height: 40px; }
+.spy-guess span { flex: 1 1 180px; }
+.spy-guess button { min-height: 40px; }
 
-.sp-hist { width: 100%; }
+.spy-hist { width: 100%; }
 
-/* ---- дві колонки на широкій картці: ліворуч стіл, праворуч колода ---- */
+/* На телефоні в правому нижньому куті ще й пігулка балачки столу — смужка стає над нею. */
+@media (max-width: 900px) {
+  .spy-guess { bottom: calc(var(--tabs-h, 0px) + var(--mini-h, 0px) + 62px); }
+}
+
+/* ---- дві колонки на широкій картці: ліворуч стіл, праворуч «хто я» і колода ---- */
 @container (min-width: 820px) {
-  .sp-grid { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(300px, 370px); gap: 14px; align-items: start; }
-  .sp-side { position: sticky; top: 8px; }
+  .spy-grid { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(300px, 370px); gap: 14px; align-items: start; }
+  .spy-grid.spy-solo { grid-template-columns: minmax(0, 1fr); }
+  .spy-main, .spy-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .spy-grid.spy-solo .spy-side { display: none; }
+  /* Після партії кнопок у рядках нема, а колонка колоди звільнилась: підсумок — у дві колонки, щоб «Ще раз»
+     каркаса й на десятьох на Деці було видно без прокрутки. */
+  .spy-grid.spy-solo .spy-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 8px; }
+  .spy-side { position: sticky; top: 8px; }
+  .spy-side .spy-me { align-self: stretch; border-radius: 12px; }
   /* Широка картка: бейджі в рядок із ніком — десятеро вміщаються без прокрутки навіть на Деці. */
-  .sp-p { min-height: 40px; padding: 3px 8px; }
-  .sp-who { flex-direction: row; align-items: center; gap: 8px; }
-  .sp-nick { flex: 0 1 auto; }
-  .sp-tags { flex-wrap: nowrap; overflow: hidden; }
-  .sp-do { min-height: 34px; padding: 5px 10px; }
-  .sp-players { gap: 3px; }
-  .sp-top { flex-wrap: nowrap; }
-  .sp-br { display: none; }
-  .sp-me { order: -1; flex: 0 1 auto; min-width: 0; }
-  .sp-clockbox { order: -3; flex: none; }
-  .sp-arc { order: -2; }
-  .sp-act { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 12px; }
-  .sp-act > .sp-say { flex: 1 1 55%; }
+  .spy-p { min-height: 40px; padding: 3px 8px; }
+  .spy-who { flex-wrap: nowrap; }
+  .spy-nick { flex: 0 1 auto; }
+  .spy-tags { flex-wrap: nowrap; overflow: hidden; min-width: 0; }
+  .spy-marks { flex-wrap: nowrap; flex: none; }
+  .spy-do { min-height: 34px; padding: 5px 10px; }
+  .spy-players { gap: 3px; }
+  .spy-act { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 12px; }
+  .spy-act > .spy-say { flex: 1 1 55%; }
+  .spy-act > .spy-note { flex: 1 0 100%; }
 }
 @container (min-width: 1300px) {
-  .sp-grid { grid-template-columns: minmax(420px, 1fr) minmax(360px, 520px); }
-  .sp-clock { font-size: 2em; }
+  .spy-grid { grid-template-columns: minmax(420px, 1fr) minmax(360px, 520px); }
+  .spy-clock { font-size: 2em; }
 }
 
 @media (max-width: 480px) {
-  .sp-clock { font-size: 1.4em; }
-  .sp-top { gap: 8px; }
-  .sp-locs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sp-p { padding: 5px 6px; gap: 6px; }
-  .sp-do { padding: 6px 8px; font-size: .82em; }
-  .sp-cardin { padding: 12px; gap: 11px; }
-  .sp-cico { font-size: 2.1em; }
+  .spy-clock { font-size: 1.4em; }
+  .spy-top { gap: 8px; }
+  .spy-locs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .spy-p { padding: 5px 6px; gap: 6px; }
+  .spy-do { padding: 6px 8px; font-size: .82em; }
+  .spy-cardin { padding: 12px; gap: 11px; }
+  .spy-cico { font-size: 2.1em; }
+  .spy-rcard { min-width: 84px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sp-cardin.sp-flip, .sp-spycard.sp-flip, .sp-banner, .sp-vote, .sp-p.sus, .sp-b-plus, .sp-clockbox.sp-last .sp-clock { animation: none; }
-  .sp-p, .sp-clock { transition: none; }
+  .spy-flipin, .spy-spycard.spy-flipin, .spy-banner, .spy-vote, .spy-p.sus, .spy-b-plus, .spy-clockbox.spy-last .spy-clock { animation: none; }
+  .spy-p, .spy-clock { transition: none; }
 }
