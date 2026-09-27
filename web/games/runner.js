@@ -3275,6 +3275,7 @@
     seatNames: DINO_NAMES,
     seatClass: SEAT_CLASS,
     pad: padFor('dino'),
+    added: '2026-09-26',
     news: {
       v: '2026-09-27', title: 'Нова гра: Стрибозаври',
       items: [
@@ -3293,6 +3294,7 @@
     seatNames: ['стрибозавр'],
     seatClass: ['o'],
     pad: padFor('daily'),
+    added: '2026-09-26',
     news: {
       v: '2026-09-27', title: 'Нова гра: Забіг дня',
       items: [
@@ -3315,6 +3317,7 @@
     seatNames: STORK_NAMES,
     seatClass: SEAT_CLASS,
     pad: padFor('storks'),
+    added: '2026-09-26',
     news: {
       v: '2026-09-27', title: 'Нова гра: Лелеки',
       items: [
