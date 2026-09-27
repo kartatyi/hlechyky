@@ -328,7 +328,11 @@
       + (r.f && r.f.points && v.phase !== 'done' ? '<em>+' + r.f.points + '</em>' : '')
       + '<b>' + r.score + '</b></div>').join('');
     const el = root.querySelector('.mgscores');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    // У лобі — без рахунку з нулями: хто сів, і так видно в шапці столу, а дванадцять рядків нулів відсували
+    // «Почати» господаря на екран униз.
+    const lobby = ctx.room && ctx.room.status === 'lobby';
+    const out = lobby ? '' : html;
+    if (el.innerHTML !== out) el.innerHTML = out;
   }
 
   function render(root, ctx) {
