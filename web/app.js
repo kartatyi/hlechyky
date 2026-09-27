@@ -2118,7 +2118,8 @@
   });
   // ---------- «💡 Розробнику»: пропозиції й баги ----------
   // Записка йде в базу (Feedback.cs) разом із тим, де людина на сайті, розміром екрана й браузером — так баг легше
-  // відтворити. Свої записки з відповіддю розробника видно тут же, у «Моїх записках»; свіжа відповідь — бейдж на 💡.
+  // відтворити. Кожна записка — переписка: у «Моїх записках» видно все, що відповів розробник, і там же можна
+  // відписати. У скількох записках є непрочитана відповідь — число на 💡; нове прилітає хабом (fbUnread), без F5.
   const FB_KINDS = {
     idea: { ph: 'Що варто додати? Наприклад: «щоб у балачках можна було закріпити повідомлення»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
     change: { ph: 'Що змінити й чому? Наприклад: «на телефоні черга завелика — хай згортається»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
@@ -2126,8 +2127,12 @@
   };
   const FB_STATUS = { new: ['нове', ''], seen: ['переглянуто', ''], planned: ['у планах', 'warn'], done: ['зроблено', 'ok'], nope: ['не буде', 'err'] };
   const FB_ICON = { idea: '💡', change: '✏', bug: '🐞' };
+  const FB_MAX_MSG = 1000;       // як Feedback.MaxMsg
   let fbKind = 'idea';
-  const fbSeenAt = () => { try { return +(localStorage.getItem('fbSeenAt') || 0); } catch { return 0; } };
+  let fbMineUnread = 0;          // у скількох своїх записках нова відповідь (людині; адміну 💡 рахує інше)
+  // Повідомлення розробника, нові на момент показу: сервер уже вважає їх прочитаними, а підсвітка тримається, поки
+  // вікно відкрите — інакше перше ж перемальовування (сама відписала) гасило б її посеред читання.
+  const fbMineFresh = new Set();
   function setFbKind(k) {
     fbKind = FB_KINDS[k] ? k : 'idea';
     $('fbKinds').querySelectorAll('[data-k]').forEach((b) => b.classList.toggle('on', b.dataset.k === fbKind));
@@ -2135,41 +2140,139 @@
     $('fbNote').textContent = FB_KINDS[fbKind].note;
   }
   const fbStatusChip = (s) => { const [l, cls] = FB_STATUS[s] || [s, '']; return `<span class="chip ${cls}">${esc(l)}</span>`; };
+  /// Одне повідомлення переписки. mineDev — чи «свої» тут повідомлення розробника (так бачить адмін); свої — праворуч.
+  /// Розробник переставив стан — рядок посередині, а не бульбашка: це подія, а не слова.
+  function fbBubble(m, mineDev, fresh) {
+    const at = esc(dayTime(m.at));
+    const hl = fresh.has(m.id) ? ' fresh' : '';
+    if (m.kind === 'status') return `<div class="fbx-st${hl}">Стан записки: ${fbStatusChip(m.text)}<span>${at}</span></div>`;
+    const mine = !!m.dev === mineDev;
+    const who = !mine && m.dev ? '<div class="fbb-who">Розробник</div>' : '';
+    return `<div class="fbb ${mine ? 'me' : 'them'}${hl}">${who}<div class="fbb-text">${linkify(m.text)}</div><div class="fbb-at">${at}</div></div>`;
+  }
+  /// Поле відповіді під запискою. Не <form>: «Мої записки» живуть усередині форми нової записки, а форма у формі не буває.
+  const fbSayBox = (ph) => `<div class="fbsay"><textarea rows="1" maxlength="${FB_MAX_MSG}" placeholder="${esc(ph)}" aria-label="Відповісти"></textarea><button type="button" class="ghost">Тяпнути</button></div>`;
+  const fbGrow = (t) => { t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight + 2, 160)}px`; };
+  /// Недописане в полях відповіді (і курсор) переживає перемальовування: нове повідомлення прилітає й тоді, коли пишеш.
+  function fbDrafts(root) {
+    const map = new Map();
+    root.querySelectorAll('[data-id] .fbsay textarea').forEach((t) => {
+      const focus = document.activeElement === t;
+      if (t.value || focus) map.set(t.closest('[data-id]').dataset.id, { v: t.value, focus, at: t.selectionStart });
+    });
+    return map;
+  }
+  function fbRestore(root, drafts) {
+    for (const [id, d] of drafts) {
+      const t = root.querySelector(`[data-id="${id}"] .fbsay textarea`);
+      if (!t) continue;
+      t.value = d.v;
+      if (d.v) fbGrow(t);
+      if (d.focus) { t.focus(); try { t.setSelectionRange(d.at, d.at); } catch { /* не текст */ } }
+    }
+  }
+  /// Enter — тяпнути, Shift+Enter — новий рядок; send(id, text, textarea) — куди саме.
+  function fbWireSay(root, send) {
+    root.querySelectorAll('[data-id] .fbsay').forEach((box) => {
+      const id = box.closest('[data-id]').dataset.id;
+      const t = box.querySelector('textarea');
+      const b = box.querySelector('button');
+      const go = () => {
+        const text = t.value.trim();
+        if (!text) { t.focus(); return; }
+        busy(b, '…', () => send(id, text, t));
+      };
+      b.onclick = go;
+      t.addEventListener('input', () => fbGrow(t));
+      t.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); go(); } });
+    });
+  }
+  function paintFbBadge(n) {
+    if (me.role === 'admin') return;
+    fbMineUnread = n;
+    $('fbBadge').hidden = !n;
+    $('fbBadge').textContent = n > 99 ? '99+' : String(n);
+    $('fbBtn').title = n ? `Розробник відповів у записках: ${n}` : 'Пропозиції й баги — розробнику';
+  }
+  // Свої записки справді видно: вікно відкрите, «Мої записки» розгорнуті, вкладка браузера спереду.
+  const fbMineVisible = () => !$('fbModal').hidden && $('fbMine').open && !document.hidden;
+  async function readMine() {
+    try { paintFbBadge(((await api('POST', '/api/feedback/mine/read', {})) || {}).unread || 0); } catch { /* наступного разу */ }
+  }
+  const fbMineHot = (x) => (x.msgs || []).some((m) => fbMineFresh.has(m.id));
+  /// Записка людини. Поле відповіді — там, де розробник уже щось написав (чи де людина вже дописує); на решті —
+  /// лише «✏ Доповнити»: тридцять порожніх полів підряд перетворили б «Мої записки» на анкету.
+  function fbMineCard(x, typing) {
+    const msgs = x.msgs || [];
+    const talk = msgs.some((m) => m.dev);
+    return `<div class="fbm${fbMineHot(x) ? ' fresh' : ''}" data-id="${x.id}">
+        <div class="fbm-head">${FB_ICON[x.kind] || '💬'} ${fbStatusChip(x.status)}<span class="muted small">${esc(dayTime(x.at))}</span></div>
+        <div class="fbt"><div class="fbb me"><div class="fbb-text">${esc(x.text)}</div></div>${msgs.map((m) => fbBubble(m, false, fbMineFresh)).join('')}</div>
+        ${talk || typing ? fbSayBox(talk ? 'Відповісти… (Enter)' : 'Доповнити… (Enter)') : '<button type="button" class="ghost fbadd">✏ Доповнити</button>'}
+      </div>`;
+  }
   async function loadMyFeedback(open) {
     if (!me.nick) return;
     let r;
     try { r = await api('GET', '/api/feedback/mine'); } catch { return; }
     const items = (r && r.items) || [];
-    const seen = fbSeenAt();
-    // Свіжа відповідь — розробник щось зробив із запискою відтоді, як людина востаннє дивилась свої.
-    const isFresh = (x) => x.status !== 'new' && Date.parse(x.updatedAt) > seen;
-    const fresh = items.filter(isFresh).length;
-    if (me.role !== 'admin') { $('fbBadge').hidden = !fresh; $('fbBadge').textContent = fresh ? '•' : ''; }
+    paintFbBadge((r && r.unread) || 0);
+    for (const x of items) for (const m of x.msgs || []) if (m.fresh) fbMineFresh.add(m.id);
+    const unreadNow = items.some((x) => x.unread);
+    const hot = items.filter(fbMineHot).length;   // нове на момент показу: підпис тримається, поки вікно відкрите
     $('fbMine').hidden = !items.length;
-    $('fbMineN').textContent = items.length ? `· ${items.length}` + (fresh ? ` · нових відповідей ${fresh}` : '') : '';
-    $('fbMineList').innerHTML = items.map((x) => `<div class="fbm${isFresh(x) ? ' fresh' : ''}">
-        <div class="fbm-head">${FB_ICON[x.kind] || '💬'} ${fbStatusChip(x.status)}<span class="muted small">${esc(dayTime(x.at))}</span></div>
-        <div class="fbm-text">${esc(x.text)}</div>
-        ${x.reply ? `<div class="fbm-reply">↪ <b>Розробник:</b> ${linkify(x.reply)}</div>` : ''}
-      </div>`).join('');
+    $('fbMineN').textContent = items.length ? `· ${items.length}` + (hot ? ` · нових відповідей ${hot}` : '') : '';
+    const list = $('fbMineList');
+    const drafts = fbDrafts(list);
+    // записки з новою відповіддю — згори (і там лишаються, поки вікно відкрите), далі — як дав сервер: свіжа розмова вище
+    const order = items.map((x, i) => [x, i]).sort((a, b) => (Number(fbMineHot(b[0])) - Number(fbMineHot(a[0]))) || a[1] - b[1]);
+    list.innerHTML = order.map(([x]) => fbMineCard(x, drafts.has(String(x.id)))).join('');
+    fbRestore(list, drafts);
+    fbWireSay(list, sayMine);
+    list.querySelectorAll('.fbadd').forEach((b) => b.onclick = () => {
+      const card = b.closest('[data-id]');
+      b.outerHTML = fbSayBox('Доповнити… (Enter)');
+      fbWireSay(card, sayMine);
+      card.querySelector('.fbsay textarea').focus();
+    });
     if (open) $('fbMine').open = true;
+    if (unreadNow && fbMineVisible()) {
+      readMine();
+      if (open) list.querySelector('.fbm.fresh')?.scrollIntoView({ block: 'nearest' });
+    }
   }
-  $('fbMine').addEventListener('toggle', () => {
-    if (!$('fbMine').open) return;
-    try { localStorage.setItem('fbSeenAt', String(Date.now())); } catch { /* приватне вікно */ }
-    if (me.role !== 'admin') $('fbBadge').hidden = true;
-  });
+  async function sayMine(id, text, t) {
+    try {
+      await api('POST', `/api/feedback/${id}/msg`, { text });
+      t.value = '';
+      await loadMyFeedback(false);
+    } catch (err) { fail(err); }
+  }
+  $('fbMine').addEventListener('toggle', () => { if (fbMineUnread && fbMineVisible()) readMine(); });
+  /// Хаб: розробник відповів (або своє прочитане на іншій вкладці). Вікно відкрите — перемалювати, закрите — число й тост.
+  function fbOnUnread(x) {
+    if (me.role === 'admin') return;
+    const n = (x && x.count) || 0;
+    if (!$('fbModal').hidden) { loadMyFeedback(false); return; }
+    if (n > fbMineUnread) toast('💡 Розробник відповів на твою записку — глянь у «Моїх записках»', 'ok');
+    paintFbBadge(n);
+  }
   function openFeedback() {
     setFbKind(fbKind);
     $('fbCount').textContent = `${$('fbText').value.length} / 2000`;
     $('fbModal').hidden = false;
-    setTimeout(() => $('fbText').focus(), 50);
-    loadMyFeedback(!$('fbBadge').hidden && me.role !== 'admin');
+    // Є нова відповідь — одразу до неї, а не в поле нової записки (на телефоні клавіатура заступила б відповідь).
+    if (!fbMineUnread || me.role === 'admin') setTimeout(() => $('fbText').focus(), 50);
+    loadMyFeedback(fbMineUnread > 0 && me.role !== 'admin');
+  }
+  function closeFeedback() {
+    $('fbModal').hidden = true;
+    fbMineFresh.clear();
   }
   $('fbBtn').onclick = openFeedback;
-  $('fbClose').onclick = () => { $('fbModal').hidden = true; };
-  $('fbModal').addEventListener('click', (e) => { if (e.target === $('fbModal')) $('fbModal').hidden = true; });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('fbModal').hidden) $('fbModal').hidden = true; });
+  $('fbClose').onclick = closeFeedback;
+  $('fbModal').addEventListener('click', (e) => { if (e.target === $('fbModal')) closeFeedback(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('fbModal').hidden) closeFeedback(); });
   $('fbKinds').querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { setFbKind(b.dataset.k); $('fbText').focus(); });
   $('fbText').addEventListener('input', () => { $('fbCount').textContent = `${$('fbText').value.length} / 2000`; });
   $('fbForm').onsubmit = (e) => {
@@ -2190,14 +2293,37 @@
       } catch (err) { fail(err); }
     });
   };
-  /// Адміну — скільки нових записок чекає: бейдж на 💡 і на вкладці «Пропозиції».
+  /// Адміну — скільки записок чекає: нові й ті, де людина відписала. Бейдж на 💡 і на вкладці «Пропозиції».
+  function paintDevCount(w) {
+    if (me.role !== 'admin' || !w) return;
+    const n = w.count || 0;
+    for (const id of ['fbBadge', 'fbTabBadge']) { $(id).hidden = !n; $(id).textContent = n; }
+    $('fbBtn').title = n ? `Чекає записок: ${n}` + (w.replies ? ` (відповіли: ${w.replies})` : '') : 'Пропозиції й баги — розробнику';
+  }
   async function loadFeedbackCount() {
     if (me.role !== 'admin') return;
-    let n = 0;
-    try { n = ((await api('GET', '/api/feedback/new-count')) || {}).count || 0; } catch { return; }
-    for (const id of ['fbBadge', 'fbTabBadge']) { $(id).hidden = !n; $(id).textContent = n; }
-    $('fbBtn').title = n ? `Нових записок: ${n}` : 'Пропозиції й баги — розробнику';
+    try { paintDevCount(await api('GET', '/api/feedback/new-count')); } catch { /* наступного разу */ }
   }
+  /// Хаб: нова записка чи відповідь людини. Відкрита вкладка «Пропозиції» перемальовується (недописане в полях
+  /// переживе) — з маленькою паузою, бо сервер шле це й на власні дії розробника, після яких список і так тягнеться.
+  let fbRedraw = 0;
+  function fbOnDev(w) {
+    if (me.role !== 'admin') return;
+    paintDevCount(w);
+    if (route === 'lib' && libTab === 'feedback') { clearTimeout(fbRedraw); fbRedraw = setTimeout(loadLib, 400); }
+    else if (libShown === 'feedback') libShown = null;   // вкладку малювали раніше — зайде, хай потягне свіже
+  }
+  /// Після реконекту (здебільшого — деплой): поки зв'язку не було, розробник міг відповісти.
+  function fbResync() {
+    if (me.role === 'admin') { loadFeedbackCount(); fbOnDev(null); }   // null — число вже тягнеться, лише перемалювати
+    else if (me.nick) loadMyFeedback(false);
+  }
+  // Вкладку браузера повернули наперед — те, що вже на екрані, тепер справді прочитане.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (me.role !== 'admin' && fbMineUnread && fbMineVisible()) readMine();
+    if (me.role === 'admin' && fbWaitRead.length && route === 'lib' && libTab === 'feedback') readAsDev();
+  });
 
   // ---------- шпаргалка клавіш ----------
   function showKeys() { $('keysModal').hidden = false; $('keysClose').focus(); }
@@ -2833,9 +2959,16 @@
   }
 
   // ---------- «💡 Пропозиції й баги» — вкладка розробника (адміна) ----------
-  // Усі записки зі станом і відповіддю. Відповідь бачить автор у своїх «Моїх записках»; нова відповідь без зміни стану
-  // переводить «нове» в «переглянуто», щоб у фільтрі «нові» лишалось лише непрочитане.
+  // Усі записки з перепискою: відповідь під запискою бачить автор (число на його 💡). Записка, де людина відписала,
+  // стоїть згори з позначкою «↩ відповідь» за будь-якого фільтра: показали — отже, розробник її бачив, і сервер
+  // рахує прочитаною, а позначка тримається до першої дії з запискою (відповідь, стан) чи до F5. Перша відповідь на
+  // нову записку робить її «переглянутою» (Feedback.Say), тож у фільтрі «нові» лишається лише непрочитане — але та,
+  // з якою щойно щось зробив, лишається на місці до зміни фільтра: видно, що відповідь лягла в переписку.
   let fbFilter = (() => { try { return localStorage.getItem('fbFilter') || 'new'; } catch { return 'new'; } })();
+  const fbHot = new Set();        // записки з відповіддю людини, показаною в цій вкладці
+  const fbDevFresh = new Set();   // повідомлення людей, нові на момент показу
+  const fbKeep = new Set();       // записки, з якими щойно щось зробив: не зникають із фільтра до його зміни
+  let fbWaitRead = [];            // показано, поки вкладка браузера була позаду: прочитаємо, щойно повернуть
   /// «Chrome 140 · Windows» — з рядка браузера досить цього; повний — у підказці.
   function shortUa(ua) {
     const s = String(ua || '');
@@ -2844,39 +2977,65 @@
     const p = /Android/.test(s) ? 'Android' : /iPhone|iPad/.test(s) ? 'iOS' : /Windows/.test(s) ? 'Windows' : /Mac OS X/.test(s) ? 'Mac' : /Linux/.test(s) ? 'Linux' : '';
     return [b, p].filter(Boolean).join(' · ');
   }
+  function readAsDev() {
+    const ids = fbWaitRead;
+    fbWaitRead = [];
+    if (ids.length) api('POST', '/api/feedback/read', { ids }).then((r) => paintDevCount(r && r.waiting)).catch(() => {});
+  }
   async function renderFeedbackAdmin() {
     const box = $('lib');
     if (me.role !== 'admin') { box.innerHTML = '<div class="empty">Це бачить лише розробник</div>'; return; }
-    const r = await api('GET', '/api/feedback' + (fbFilter === 'all' ? '' : '?status=' + encodeURIComponent(fbFilter)));
+    // Усі разом (до 300), а фільтр — тут: записка з відповіддю мусить лишатись на виду, хоч би її стан і не підходив.
+    const r = await api('GET', '/api/feedback');
+    const all = r.items || [];
+    paintDevCount(r.waiting);
+    for (const x of all) {
+      if (x.unread) { fbHot.add(x.id); if (!fbWaitRead.includes(x.id)) fbWaitRead.push(x.id); }
+      for (const m of x.msgs || []) if (m.fresh) fbDevFresh.add(m.id);
+    }
     const c = r.counts || {};
     const total = Object.values(c).reduce((a, b) => a + b, 0);
     const seg = [['new', 'нові'], ['seen', 'переглянуті'], ['planned', 'у планах'], ['done', 'зроблені'], ['nope', 'не буде'], ['all', 'усі']]
       .map(([v, l]) => `<button data-v="${v}" class="${fbFilter === v ? 'on' : ''}">${l} · ${v === 'all' ? total : (c[v] || 0)}</button>`).join('');
-    const row = (x) => `<li class="fbi fb-${esc(x.kind)}" data-id="${x.id}">
-        <div class="fbi-head">${FB_ICON[x.kind] || '💬'} ${nickHtml(x.nick, 'rnick')}<span class="muted small">${esc(dayTime(x.at))}</span>
+    const shown = all.filter((x) => fbHot.has(x.id) || fbKeep.has(x.id) || fbFilter === 'all' || x.status === fbFilter)
+      .sort((a, b) => (Number(fbHot.has(b.id)) - Number(fbHot.has(a.id))) || (b.id - a.id));
+    const row = (x) => {
+      const hot = fbHot.has(x.id);
+      const msgs = x.msgs || [];
+      return `<li class="fbi fb-${esc(x.kind)}${hot ? ' hot' : ''}" data-id="${x.id}">
+        <div class="fbi-head">${FB_ICON[x.kind] || '💬'} ${nickHtml(x.nick, 'rnick')}<span class="muted small">${esc(dayTime(x.at))}</span>${hot ? '<span class="chip warn fbi-hot">↩ відповідь</span>' : ''}
           <select class="fbi-st" aria-label="Стан">${Object.entries(FB_STATUS).map(([k, [l]]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="fbi-text">${esc(x.text)}</div>
         <div class="fbi-ctx muted small">${x.place ? '📍 ' + esc(x.place) : ''}${x.screen ? ' · ' + esc(x.screen) : ''}${x.ua ? ` · <span title="${esc(x.ua)}">${esc(shortUa(x.ua))}</span>` : ''}</div>
-        <form class="fbi-reply"><input type="text" maxlength="500" placeholder="Відповідь — побачить автор у своїх записках" value="${esc(x.reply || '')}"><button class="ghost" type="submit">Відповісти</button></form>
+        ${msgs.length ? `<div class="fbt">${msgs.map((m) => fbBubble(m, true, fbDevFresh)).join('')}</div>` : ''}
+        ${fbSayBox('Відповісти… (Enter)')}
       </li>`;
+    };
     const empty = fbFilter === 'new' ? 'Нових записок нема — усе прочитано.' : 'Тут поки порожньо.';
-    box.innerHTML = `<div class="tabs seg fbseg">${seg}</div><ul class="list fblist">${(r.items || []).map(row).join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
+    const drafts = fbDrafts(box);
+    box.innerHTML = `<div class="tabs seg fbseg">${seg}</div><ul class="list fblist">${shown.map(row).join('') || `<li class="empty glek">${empty}</li>`}</ul>`;
+    fbRestore(box, drafts);
     box.querySelectorAll('.fbseg [data-v]').forEach((b) => b.onclick = () => {
       fbFilter = b.dataset.v;
+      fbKeep.clear();
       try { localStorage.setItem('fbFilter', fbFilter); } catch { /* приватне вікно */ }
       loadLib();
     });
-    const save = async (li, body) => {
-      try { await api('PATCH', `/api/feedback/${li.dataset.id}`, body); loadFeedbackCount(); loadLib(); } catch (err) { fail(err); }
-    };
+    // Відповів чи переставив стан — з запискою розібрались, позначка «↩ відповідь» їй більше ні до чого.
+    const done = (id) => { fbHot.delete(+id); fbKeep.add(+id); loadFeedbackCount(); return loadLib(); };
     box.querySelectorAll('.fbi').forEach((li) => {
-      li.querySelector('.fbi-st').onchange = (e) => save(li, { status: e.target.value });
-      li.querySelector('.fbi-reply').onsubmit = (e) => {
-        e.preventDefault();
-        const st = li.querySelector('.fbi-st').value;
-        busy(e.target.querySelector('button'), '…', () => save(li, { reply: e.target.querySelector('input').value, status: st === 'new' ? 'seen' : st }));
+      li.querySelector('.fbi-st').onchange = async (e) => {
+        try { await api('PATCH', `/api/feedback/${li.dataset.id}`, { status: e.target.value }); await done(li.dataset.id); } catch (err) { fail(err); }
       };
     });
+    fbWireSay(box, async (id, text, t) => {
+      try {
+        ok(await api('POST', `/api/feedback/${id}/msg`, { text }));
+        t.value = '';
+        await done(id);
+      } catch (err) { fail(err); }
+    });
+    if (!document.hidden) readAsDev();
   }
   // улюблене: типово — моє (згори те, що лайкнуто останнім), «Усі» — спільний список; вибір пам'ятаємо
   let likesWho = 'mine';
@@ -3286,6 +3445,8 @@
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
     conn.on('fireworks', (x) => fireworks(x && x.nick));
     conn.on('look', (x) => HLavka.onLook(x));
+    conn.on('fbUnread', fbOnUnread);   // «💡»: розробник відповів на мою записку
+    conn.on('fbDev', fbOnDev);         // «💡» розробнику: нова записка чи відповідь людини
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
     // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
@@ -3338,6 +3499,7 @@
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       HGames.reconnected();
       checkFront(true);              // зв'язок рветься здебільшого через деплой — глянути, що змінилось на сайті
+      fbResync();                    // поки зв'язку не було, у записках могли відповісти
       toast('Є! Знову на зв\'язку', 'ok');
     };
     conn.onreconnected(resync);
@@ -3482,7 +3644,7 @@
       connect();
       if (me.account) HLavka.loadMine().then(lavkaChanged);
       if (plain) askNick(true, 'register', plain);
-      // «💡»: адміну — скільки нових записок, решті — чи є свіжа відповідь розробника на свої.
+      // «💡»: адміну — скільки записок чекає, решті — у скількох своїх записках нова відповідь розробника.
       if (me.role === 'admin') loadFeedbackCount(); else loadMyFeedback(false);
     } else startPreview();
     if (state) render();

@@ -151,29 +151,29 @@ public sealed class FeedbackTests : IDisposable
     }
 
     [Fact]
-    public void Update_changes_status_and_reply()
+    public void Update_changes_status_and_an_old_style_reply_becomes_a_message()
     {
         var id = _fb.Submit("Оля", "idea", "Додайте темну тему", null, null, null).Id;
         _clock.Advance(TimeSpan.FromMinutes(5));
 
-        Assert.True(_fb.Update(id, "planned", "  Беремо в наступне оновлення  ").Ok);
+        // старий клієнт (кілька хвилин деплою) ще шле reply через PATCH — це просто повідомлення в переписку
+        Assert.True(_fb.Update(id, "planned", "  Беремо в наступне оновлення  ", "Влад").Ok);
         var item = _fb.Mine("Оля")[0];
         Assert.Equal("planned", item.Status);
-        Assert.Equal("Беремо в наступне оновлення", item.Reply);
+        Assert.Null(item.Reply);                            // старе поле більше не пишеться
         Assert.True(item.UpdatedAt > item.CreatedAt);
+        var msgs = _fb.One(id)!.Msgs;
+        Assert.Equal(["text:Беремо в наступне оновлення", "status:planned"], msgs.Select(m => m.Kind + ":" + m.Text));
+        Assert.All(msgs, m => Assert.True(m.Dev));
 
-        // стан без відповіді — відповідь лишається
+        // стан без відповіді — переписка лишається, стан лягає рядком
         Assert.True(_fb.Update(id, "done", null).Ok);
-        Assert.Equal("Беремо в наступне оновлення", _fb.Mine("Оля")[0].Reply);
+        Assert.Equal(3, _fb.One(id)!.Msgs.Count);
 
-        // порожня відповідь — прибрати
+        // порожня відповідь нічого не стирає і нічого не додає
         Assert.True(_fb.Update(id, null, "").Ok);
-        Assert.Null(_fb.Mine("Оля")[0].Reply);
+        Assert.Equal(3, _fb.One(id)!.Msgs.Count);
         Assert.Equal("done", _fb.Mine("Оля")[0].Status);
-
-        // задовга відповідь обрізається
-        Assert.True(_fb.Update(id, null, new string('я', Feedback.MaxReply + 50)).Ok);
-        Assert.Equal(Feedback.MaxReply, _fb.Mine("Оля")[0].Reply!.Length);
     }
 
     [Fact]
