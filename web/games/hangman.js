@@ -106,7 +106,7 @@
     }).join('');
     el.dataset.mask = shown;
     el.dataset.round = String(v.round || 0);
-    if (el.innerHTML !== html) el.innerHTML = html;
+    if (el._html !== html) { el._html = html; el.innerHTML = html; }
   }
 
   /// Рахунок по місцях. Вибулих із цього слова притінюємо — видно, кому ще є що казати.
@@ -121,7 +121,7 @@
         + (turn ? '👉 ' : '') + ctx.esc(nick) + ' <b>' + ((v.scores || [])[i] || 0) + '</b></span>';
     }
     const el = root.querySelector('.hscores');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    if (el._html !== html) { el._html = html; el.innerHTML = html; }
   }
 
   /// Хто що щойно зробив: «Оля: «О» ×2 +2». У грі на кількох без цього не видно, чиї це літери.

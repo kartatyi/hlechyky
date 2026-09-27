@@ -10,7 +10,9 @@
       reveal: null | { chain, owner, no, chains, shown, total,
                        entries: [{ index, seat, kind: 'text'|'drawing', text, ops, likes, liked }] },
       likes: number[], left: seat[], result }
-  Кадрів нема. Ходи: Input('text', { text }) — чернетка; Act('done', { text } | { n }), Act('edit');
+  Кадр (подія 'frame') — лише на показі, коли хтось ставить чи знімає ❤: { chain, likes: [скільки ❤ у записів 0..shown-1] };
+  повний вид заради лічильника ❤ більше не летить (прохід 28.09). Своє «❤ стоїть» модуль пам'ятає сам (p.liked).
+  Ходи: Input('text', { text }) — чернетка; Act('done', { text } | { n }), Act('edit');
   Input('draw', { s, c, w, p }), Input('fill', { s, c, x, y }), Input('undo'), Input('clear');
   Act('next'), Act('like', { chain, index }).
 
@@ -32,6 +34,11 @@
   const FLUSH_MS = 80;
   const CHUNK_MAX = 200;
   const DRAFT_MS = 600;
+  /// Спрощення штриха перед відправкою — як у pictionary.js (миша на 1000 Гц слала ~500 точок на секунду,
+  /// а малюнок на сервері має межу в 30 000 точок: активні півтори хвилини — і «Полотно переповнене»).
+  const SIMPLIFY = 0.9;
+  /// Скільки готових картинок показу тримати (кожна — полотно 1000 × 750, ~3 МБ).
+  const RENDER_KEEP = 8;
 
   // =========================================================================================
   // Малювання операцій
@@ -89,17 +96,60 @@
     c.putImageData(img, 0, 0);
   }
 
-  /// Готова картинка з операцій: canvas 1000 × 750. Кешуємо за самим масивом — показ перемальовується часто.
-  const rendered = new WeakMap();
+  /// Спростити шматок штриха (Рамер — Дуглас — Пекер, відстань до відрізка) — див. pictionary.js.
+  function simplify(q, eps) {
+    const n = q.length / 2;
+    if (n <= 2) return q;
+    const keep = new Uint8Array(n);
+    keep[0] = keep[n - 1] = 1;
+    const e2 = eps * eps;
+    const stack = [0, n - 1];
+    while (stack.length) {
+      const b = stack.pop(), a = stack.pop();
+      const ax = q[a * 2], ay = q[a * 2 + 1], dx = q[b * 2] - ax, dy = q[b * 2 + 1] - ay, len2 = dx * dx + dy * dy;
+      let best = -1, far = e2;
+      for (let i = a + 1; i < b; i++) {
+        const px = q[i * 2] - ax, py = q[i * 2 + 1] - ay;
+        const t = len2 ? Math.max(0, Math.min(1, (px * dx + py * dy) / len2)) : 0;
+        const ex = px - t * dx, ey = py - t * dy, d2 = ex * ex + ey * ey;
+        if (d2 > far) { far = d2; best = i; }
+      }
+      if (best >= 0) { keep[best] = 1; stack.push(a, best, best, b); }
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) if (keep[i]) out.push(q[i * 2], q[i * 2 + 1]);
+    return out;
+  }
+
+  /// Підпис малюнка за вмістом: кожен вид приносить нові масиви, тож кеш за самим масивом (як було) не влучав
+  /// ніколи — і кожне ❤ чи «Далі» перемальовувало всі малюнки ланцюжка з заливками наново (прохід 28.09).
+  const sigs = new WeakMap();
+  function sigOf(ops) {
+    if (!ops) return '0';
+    let sig = sigs.get(ops);
+    if (sig) return sig;
+    let h = 2166136261, n = 0;
+    for (const op of ops) { for (let i = 0; i < op.length; i++) h = Math.imul(h ^ op[i], 16777619); n += op.length; }
+    sig = n + ':' + (h >>> 0);
+    sigs.set(ops, sig);
+    return sig;
+  }
+
+  /// Готова картинка з операцій: canvas 1000 × 750. Кешуємо за підписом і тримаємо лише кілька останніх:
+  /// раніше альбом тримав полотно на кожен малюнок партії (на десятьох — під півсотні по 3 МБ).
+  const rendered = new Map();
   function picture(ops) {
-    if (rendered.has(ops)) return rendered.get(ops);
-    const cv = document.createElement('canvas');
+    const key = sigOf(ops);
+    let cv = rendered.get(key);
+    if (cv) { rendered.delete(key); rendered.set(key, cv); return cv; }
+    cv = document.createElement('canvas');
     cv.width = W; cv.height = H;
     const c = cv.getContext('2d', { willReadFrequently: true });
     c.fillStyle = '#fff';
     c.fillRect(0, 0, W, H);
     for (const op of ops || []) drawOp(c, op);
-    rendered.set(ops, cv);
+    rendered.set(key, cv);
+    while (rendered.size > RENDER_KEEP) rendered.delete(rendered.keys().next().value);
     return cv;
   }
 
@@ -125,6 +175,8 @@
         ops: [], key: '', tool: 'pen', color: 1, size: 1, stroke: 1,
         cur: null, flushTimer: 0, draftTimer: 0, raf: 0, timer: 0, idea: 0,
         seen: new Map(),        // chain → entries, які вже показали: з них гортаємо альбом після партії
+        liked: new Set(),       // 'chain:index' записів, яким я поставив ❤ (вид каже правду, між видами — ми самі)
+        mark: null,             // знімок полотна після останньої заливки: «↶» не перезаливає все наново
       };
       wipe(root._tp);
     }
@@ -136,9 +188,32 @@
     p.bctx.fillRect(0, 0, W, H);
   }
 
+  /// Знімок свого полотна одразу після заливки — див. pictionary.js (keepMark).
+  function keepMark(p, i = p.ops.length - 1) {
+    if (!p.mark) {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      p.mark = { c, g: c.getContext('2d'), n: 0, op: null };
+    }
+    p.mark.g.drawImage(p.buf, 0, 0);
+    p.mark.n = i + 1;
+    p.mark.op = p.ops[i];
+  }
+
   function rebuild(p) {
-    wipe(p);
-    for (const op of p.ops) drawOp(p.bctx, op);
+    const m = p.mark;
+    let from = 0;
+    if (m && m.n > 0 && m.n <= p.ops.length && p.ops[m.n - 1] === m.op) {
+      p.bctx.drawImage(m.c, 0, 0);
+      from = m.n;
+    } else {
+      if (m) m.n = 0;
+      wipe(p);
+    }
+    for (let i = from; i < p.ops.length; i++) {
+      drawOp(p.bctx, p.ops[i]);
+      if (p.ops[i][0] === 1) keepMark(p, i);
+    }
   }
 
   function paintSoon(root) {
@@ -187,10 +262,11 @@
     if (!cur || !ctx) return;
     // один-єдиний «хвіст» із попереднього шматка слати нема чого; крапку (клік без руху) — так
     if (cur.p.length > 2 || (cur.fresh && final)) {
-      const op = [0, cur.s, cur.c, cur.w, ...cur.p];
+      const q = simplify(cur.p, SIMPLIFY);
+      const op = [0, cur.s, cur.c, cur.w, ...q];
       p.ops.push(op);
       drawOp(p.bctx, op);
-      ctx.input('draw', { s: cur.s, c: cur.c, w: cur.w, p: cur.p });
+      ctx.input('draw', { s: cur.s, c: cur.c, w: cur.w, p: q });
       const lx = cur.p[cur.p.length - 2], ly = cur.p[cur.p.length - 1];
       cur.p = [lx, ly];
       cur.fresh = false;
@@ -217,6 +293,7 @@
         const op = [1, p.stroke++, p.color, 0, x, y];
         p.ops.push(op);
         drawOp(p.bctx, op);
+        keepMark(p);
         ctx.input('fill', { s: op[1], c: op[2], x, y });
         paintSoon(root);
         return;
@@ -313,6 +390,7 @@
   // =========================================================================================
 
   const nick = (ctx, i) => ctx.esc(ctx.nickOf(i) || 'хтось');
+  const blank = (ops) => !ops || !ops.length;
 
   function timer(root, ctx) {
     const v = ctx.view || {};
@@ -345,7 +423,11 @@
       const p = pad(root);
       let html = '<div class="tptitle">' + ctx.esc(title) + '</div>';
       if (t && t.prompt && t.prompt.kind === 'text') html += '<div class="tpprompt">«' + ctx.esc(t.prompt.text) + '»</div>';
-      if (t && t.prompt && t.prompt.kind === 'drawing') html += '<canvas class="tpshow big"></canvas>';
+      // Порожнє полотно (сусід не встиг) — краще сказати словами, ніж показувати білий аркуш і гадати, чи він довантажиться.
+      if (t && t.prompt && t.prompt.kind === 'drawing') {
+        html += blank(t.prompt.ops) ? '<div class="tpprompt tpempty">🤷 Сусідові забракло часу — полотно порожнє. Вигадай, що там мало бути!</div>'
+          : '<canvas class="tpshow big"></canvas>';
+      }
       if (t && t.kind === 'draw') html += '<canvas class="tpcanvas"></canvas><div class="tptools"></div>';
       if (t && t.kind !== 'draw') {
         html += '<form class="tpform"><input type="text" maxlength="80" autocomplete="off" spellcheck="false" enterkeyhint="done" placeholder="'
@@ -362,6 +444,7 @@
         p.ops = (t.ops || []).map((o) => o.slice());
         p.stroke = p.ops.reduce((m, o) => Math.max(m, o[1]), 0) + 1;
         p.cur = null;
+        if (p.mark) p.mark.n = 0;          // знімок чужого (попереднього) малюнка сюди не годиться
         rebuild(p);
         bindCanvas(root);
         tools(root);
@@ -384,7 +467,7 @@
           input.dispatchEvent(new Event('input'));
         };
       }
-      if (t && t.prompt && t.prompt.kind === 'drawing') {
+      if (t && t.prompt && t.prompt.kind === 'drawing' && !blank(t.prompt.ops)) {
         const el = body.querySelector('.tpshow');
         requestAnimationFrame(() => show(el, t.prompt.ops));
         new ResizeObserver(() => show(el, t.prompt.ops)).observe(el);
@@ -397,7 +480,8 @@
       const html = t.ready
         ? '<span class="tpok">✅ Здано</span><button type="button" class="ghost" data-do="edit">Змінити</button>'
         : '<button type="button" class="primary" data-do="done">Готово</button>';
-      if (act.innerHTML !== html) {
+      if (act._html !== html) {
+        act._html = html;
         act.innerHTML = html;
         act.querySelectorAll('[data-do]').forEach((b) => b.onclick = () => {
           if (b.dataset.do === 'done') submit(root);
@@ -415,7 +499,7 @@
     const who = waiting.length ? 'Ще працюють: ' + waiting.join(', ')
       : lobby ? 'Гайда за стіл — господар тисне «Почати»' : 'Усі здали — гайда далі';
     const whoEl = body.querySelector('.tpwho');
-    if (whoEl.innerHTML !== who) whoEl.innerHTML = who;
+    if (whoEl._html !== who) { whoEl._html = who; whoEl.innerHTML = who; }
   }
 
   function submit(root) {
@@ -439,27 +523,56 @@
     ctx.act('done', { text: input ? input.value : '' });
   }
 
-  function entryHtml(ctx, e, chain, last) {
+  function entryHtml(ctx, e, chain, last, liked) {
     // seat -1 — фраза від Глека (партія на двох): її автор не гравець, і ❤ їй не ставлять
     const jug = e.seat < 0;
     const who = '<div class="tpby">' + (jug ? '🏺 Глек загадав:' : nick(ctx, e.seat) + (e.kind === 'drawing' ? ' малює:' : e.index === 0 ? ' починає:' : ' бачить:')) + '</div>';
     const body = e.kind === 'drawing'
-      ? '<canvas class="tpshow" data-chain="' + chain + '" data-index="' + e.index + '"></canvas>'
+      ? (blank(e.ops) ? '<div class="tptext tpempty">🤷 полотно лишилось порожнім</div>'
+        : '<canvas class="tpshow" data-chain="' + chain + '" data-index="' + e.index + '"></canvas>')
       : '<div class="tptext">«' + ctx.esc(e.text || '') + '»</div>';
     const own = e.seat === ctx.seat;
-    const like = jug ? '' : '<button type="button" class="tplike' + (e.liked ? ' on' : '') + '" data-chain="' + chain + '" data-index="' + e.index + '"'
-      + ' title="' + (own || !ctx.mine || !ctx.playing ? 'Вподобайки' : e.liked ? 'Забрати вподобайку' : 'Поставити вподобайку') + '"'
+    const on = liked == null ? !!e.liked : liked;
+    const like = jug ? '' : '<button type="button" class="tplike' + (on ? ' on' : '') + '" data-chain="' + chain + '" data-index="' + e.index + '"'
+      + ' title="' + (own || !ctx.mine || !ctx.playing ? 'Вподобайки' : on ? 'Забрати вподобайку' : 'Поставити вподобайку') + '"'
       + (own || !ctx.mine || !ctx.playing ? ' disabled' : '') + '>❤ ' + (e.likes || 0) + '</button>';
     return '<div class="tpentry' + (last ? ' fresh' : '') + '">' + who + body + like + '</div>';
+  }
+
+  /// Вид каже правду про мої ❤ у показаних записах — запам'ятовуємо, щоб між видами (❤ летять кадрами) не губити.
+  function syncLiked(p, chain, entries) {
+    for (const e of entries || []) {
+      const k = chain + ':' + e.index;
+      if (e.liked) p.liked.add(k); else p.liked.delete(k);
+    }
+  }
+
+  /// Лічильники й свої ❤ — на місці, без перебудови ланцюжка: інакше кожне ❤ заново вставляло всі малюнки
+  /// й наново програвало появу останнього запису (прохід 28.09).
+  function paintLikes(root, chain) {
+    const p = pad(root);
+    const seen = p.seen.get(chain);
+    root.querySelectorAll('.tplike[data-chain="' + chain + '"]').forEach((b) => {
+      const e = seen && seen.entries.find((x) => x.index === +b.dataset.index);
+      if (!e) return;
+      const on = p.liked.has(chain + ':' + e.index);
+      const text = '❤ ' + (e.likes || 0);
+      if (b.textContent !== text) b.textContent = text;
+      b.classList.toggle('on', on);
+      if (!b.disabled) b.title = on ? 'Забрати вподобайку' : 'Поставити вподобайку';
+    });
   }
 
   function revealScreen(root, ctx, v) {
     const r = v.reveal;
     const p = pad(root);
-    if (r) p.seen.set(r.chain, { owner: r.owner, entries: r.entries });
+    if (r) {
+      syncLiked(p, r.chain, r.entries);
+      p.seen.set(r.chain, { owner: r.owner, entries: r.entries.map((e) => Object.assign({}, e)) });
+    }
     const body = root.querySelector('.tpbody');
-    const key = 'reveal|' + (r ? r.chain + ':' + r.shown + ':' + r.entries.map((e) => e.likes + (e.liked ? 'y' : 'n')).join(',') : '');
-    if (body.dataset.key === key) return;
+    const key = 'reveal|' + (r ? r.chain + ':' + r.shown + ':' + (ctx.mine ? 'm' : '') + (ctx.playing ? 'p' : '') : '');
+    if (body.dataset.key === key) { if (r) paintLikes(root, r.chain); return; }
     const scrollToEnd = !r || body.dataset.chain !== String(r.chain) || +body.dataset.shown < r.shown;
     body.dataset.key = key;
     if (!r) { body.innerHTML = ''; return; }
@@ -467,7 +580,7 @@
     body.dataset.shown = String(r.shown);
     const more = r.shown < r.total ? 'Гортай далі ▸' : r.no < r.chains ? 'Наступний ланцюжок ▸' : 'Підсумки ▸';
     body.innerHTML = '<div class="tptitle">Ланцюжок ' + r.no + ' з ' + r.chains + ' · від ' + nick(ctx, r.owner) + '</div>'
-      + '<div class="tpchain">' + r.entries.map((e, i) => entryHtml(ctx, e, r.chain, i === r.entries.length - 1)).join('') + '</div>'
+      + '<div class="tpchain">' + r.entries.map((e, i) => entryHtml(ctx, e, r.chain, i === r.entries.length - 1, p.liked.has(r.chain + ':' + e.index))).join('') + '</div>'
       + (ctx.mine ? '<div class="tpact"><button type="button" class="primary" data-do="next">' + more + '</button></div>'
         : '<div class="tpwho">Гравці гортають ланцюжок</div>');
     wireChain(root, body, r.entries, r.chain);
@@ -487,7 +600,16 @@
     });
     body.querySelectorAll('.tplike').forEach((b) => b.onclick = () => {
       const c = root._ctx;
-      if (c) c.act('like', { chain, index: +b.dataset.index });
+      if (!c) return;
+      const index = +b.dataset.index;
+      c.act('like', { chain, index }).then((res) => {
+        if (!res || !res.ok) return;
+        // Сервер ❤ перемкнув; лічильник приїде кадром, а своє «стоїть / не стоїть» знаємо й так.
+        const p = pad(root);
+        const k = chain + ':' + index;
+        if (p.liked.has(k)) p.liked.delete(k); else p.liked.add(k);
+        paintLikes(root, chain);
+      });
     });
   }
 
@@ -511,23 +633,33 @@
       html += '<div class="tpalbum">' + chains.map((c) => '<button type="button" class="' + (c === pick ? 'primary' : 'ghost') + '" data-album="' + c + '">'
         + nick(ctx, p.seen.get(c).owner) + '</button>').join('') + '</div>';
       const ch = p.seen.get(pick);
-      html += '<div class="tpchain">' + ch.entries.map((e) => entryHtml(ctx, e, pick, false)).join('') + '</div>';
+      html += '<div class="tpchain">' + ch.entries.map((e) => entryHtml(ctx, e, pick, false, p.liked.has(pick + ':' + e.index))).join('') + '</div>';
     }
     body.innerHTML = html;
     body.querySelectorAll('[data-album]').forEach((b) => b.onclick = () => { p.album = +b.dataset.album; const c = root._ctx; if (c) doneScreen(root, c, c.view || {}); });
     if (chains.length) wireChain(root, body, p.seen.get(pick).entries, pick);
   }
 
+  /// Де на сторінці починається полотно чи малюнок кроку — з цього CSS рахує їхню ширину, щоб «Готово» влізло в екран.
+  function fitStep(root) {
+    const wrap = root.querySelector('.tpwrap');
+    const el = root.querySelector('.tpbody > .tpcanvas, .tpbody > .tpshow.big');
+    if (!wrap || !el || !el.isConnected) return;
+    const top = Math.round(el.getBoundingClientRect().top + window.scrollY) + 'px';
+    if (wrap.style.getPropertyValue('--tptop') !== top) wrap.style.setProperty('--tptop', top);
+  }
+
   function render(root, ctx) {
     root._ctx = ctx;
     ctx.tpRoot = root;
     const v = ctx.view || {};
+    root.querySelector('.tpwrap').classList.toggle('live', !!ctx.playing);   // на телефоні в партії чіпи місць ховаються
     const head = root.querySelector('.tphead');
     // У лобі вид теж у фазі step, але кроків ще нема — «Крок 0 з 0» нічого не каже.
     const text = v.phase === 'step' ? (v.steps ? 'Крок ' + v.step + ' з ' + v.steps : '')
       : v.phase === 'reveal' ? 'Показ' : v.phase === 'done' ? 'Альбом' : '';
     if (head.textContent !== text) head.textContent = text;
-    if (v.phase === 'step') stepScreen(root, ctx, v);
+    if (v.phase === 'step') { stepScreen(root, ctx, v); fitStep(root); }
     else if (v.phase === 'reveal') revealScreen(root, ctx, v);
     else if (v.phase === 'done') doneScreen(root, ctx, v);
     timer(root, ctx);
@@ -538,12 +670,12 @@
     added: '2026-09-17',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     news: {
-      v: '2026-09-24',
-      title: 'Зіпсований телефон: тепер і вдвох',
+      v: '2026-09-28',
+      title: 'Зіпсований телефон: легше й зручніше',
       items: [
-        '👫 Грати можна вже вдвох: фразу кожному загадує Глек, ти малюєш — сусід угадує, і навпаки',
-        '🏺 На показі видно, що саме Глек загадав і що з того вийшло',
-        '✋ Малювати пальцем надійніше: другий дотик чи долоня більше не черкають лінію через усе полотно',
+        '🖥 Полотно, палітра й «Готово» тепер влазять в екран ноутбука й Deck, а на телефоні полотно на всю ширину',
+        '❤ Вподобайки на показі ставляться миттєво — без перемальовування всього ланцюжка',
+        '🤷 Хто не встиг намалювати, того видно одразу: замість білого аркуша — «полотно лишилось порожнім»',
       ],
     },
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd', 'x', 'o'],
@@ -554,10 +686,22 @@
         + '<div class="tpbody"></div></div>';
       const p = pad(root);
       p.timer = setInterval(() => { if (root._ctx) timer(root, root._ctx); }, 250);
+      // інша ширина вікна — інакше лягають чіпи місць і заголовок, і полотно починається деінде
+      new ResizeObserver(() => fitStep(root)).observe(root.querySelector('.tpwrap'));
       render(root, ctx);
     },
 
     update(root, ctx) { render(root, ctx); },
+
+    /// Кадр лише на показі: хтось поставив чи зняв ❤ — латаємо лічильники, ланцюжок не чіпаємо.
+    frame(root, ctx, f) {
+      if (!f || !Array.isArray(f.likes)) return;
+      const p = pad(root);
+      const seen = p.seen.get(f.chain);
+      if (!seen) return;
+      f.likes.forEach((n, i) => { const e = seen.entries.find((x) => x.index === i); if (e) e.likes = n; });
+      paintLikes(root, f.chain);
+    },
 
     unmount(root) {
       const p = root._tp;

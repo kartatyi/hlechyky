@@ -72,6 +72,12 @@ public sealed class Pictionary : Game
     string _word = "";
     /// <summary>Які позиції слова вже підказані (відкриті всім).</summary>
     readonly HashSet<int> _hinted = [];
+    /// <summary>Позиції літер слова, скільки підказок можна і коли наступна — рахуємо раз на слово, а не щотика.</summary>
+    int[] _letters = [];
+    int _hintsAllowed;
+    DateTimeOffset _nextHint = DateTimeOffset.MaxValue;
+    /// <summary>«к_т» для тих, хто слова не знає; міняється лише з підказкою чи новим словом.</summary>
+    string _mask = "";
     DateTimeOffset _phaseStart;
     DateTimeOffset _until;
     readonly int[] _scores = new int[Seats];
@@ -93,6 +99,11 @@ public sealed class Pictionary : Game
     // ---------- стрічка ----------
     readonly List<FeedItem> _feed = [];
     int _feedId;
+    /// <summary>
+    /// Стрічку кадр везе лише тоді, коли в ній з'явилось нове, і лише нове (прохід 28.09): раніше кожен кадр —
+    /// десять на секунду, поки художник малює, — віз дванадцять останніх здогадок наново, ~800 байт із ~1000.
+    /// </summary>
+    int _feedSent, _frameFeedFrom;
 
     bool _frameDirty, _viewDirty;
 
@@ -128,6 +139,14 @@ public sealed class Pictionary : Game
     }
 
     IEnumerable<int> Present() => Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) && !_left.Contains(s));
+
+    /// <summary>Скільки людей за столом — те саме, що Present().Count(), але без LINQ: це кличе кожен тик.</summary>
+    int PresentCount()
+    {
+        var n = 0;
+        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s) && !_left.Contains(s)) n++;
+        return n;
+    }
 
     /// <summary>Хто може вгадувати в цьому ході: усі присутні, крім художника.</summary>
     IEnumerable<int> Guessers() => Present().Where(s => s != _drawer);
@@ -318,7 +337,7 @@ public sealed class Pictionary : Game
     public override TickResult Tick()
     {
         var now = Now;
-        if (_phase != Done && Present().Count() < 2)
+        if (_phase != Done && PresentCount() < 2)
         {
             Over();
         }
@@ -330,7 +349,7 @@ public sealed class Pictionary : Game
         else if (_phase == Draw)
         {
             if (_left.Contains(_drawer) || !Ctx.Seated(_drawer) || now >= _until) EndTurn();
-            else Hint(now);
+            else if (now >= _nextHint) Hint();
         }
         else if (_phase == Reveal && now >= _until)
         {
@@ -341,30 +360,43 @@ public sealed class Pictionary : Game
         {
             _frameFrom = _sent;
             _sent = _sketch.Count;
+            _frameFeedFrom = _feedSent;
+            _feedSent = _feedId;
         }
         var result = new TickResult(_frameDirty, _viewDirty);
         _frameDirty = _viewDirty = false;
         return result;
     }
 
+    /// <summary>Коли відкривати літери: частки часу на малюнок.</summary>
+    static readonly double[] HintMarks = [0.5, 0.7, 0.85];
+
     /// <summary>
     /// Підказки: коли минула половина часу, 70% і 85% — відкриваємо по літері, але не більше третини слова
     /// і не більше трьох. Короткі слова (до 4 літер) без підказок: там одна літера — вже пів відповіді.
+    /// Скільки й коли — рахуємо раз на слово (<see cref="PlanHints"/>), тик лише звіряє годинник.
     /// </summary>
-    void Hint(DateTimeOffset now)
+    void Hint()
     {
-        var letters = Enumerable.Range(0, _word.Length).Where(i => char.IsLetter(_word[i])).ToList();
-        var allowed = letters.Count < 5 ? 0 : Math.Min(3, letters.Count / 3);
-        if (_hinted.Count >= allowed) return;
-        var passed = (now - _phaseStart).TotalMilliseconds / _drawMs;
-        double[] marks = [0.5, 0.7, 0.85];
-        if (passed < marks[_hinted.Count]) return;
-        var closed = letters.Where(i => !_hinted.Contains(i)).ToList();
-        if (closed.Count <= 1) return;
+        var closed = _letters.Where(i => !_hinted.Contains(i)).ToList();
+        if (closed.Count <= 1) { _nextHint = DateTimeOffset.MaxValue; return; }
         _hinted.Add(closed[Ctx.Rng.Next(closed.Count)]);
+        _mask = BuildMask();
+        NextHintAt();
+        // Маска їде кадром. Повні види (з усім малюнком, кожному місцю) заради однієї літери не шлемо.
         _frameDirty = true;
-        _viewDirty = true;
     }
+
+    void PlanHints()
+    {
+        _letters = [.. Enumerable.Range(0, _word.Length).Where(i => char.IsLetter(_word[i]))];
+        _hintsAllowed = _letters.Length < 5 ? 0 : Math.Min(3, _letters.Length / 3);
+        NextHintAt();
+    }
+
+    void NextHintAt() => _nextHint = _hinted.Count < _hintsAllowed
+        ? _phaseStart.AddMilliseconds(_drawMs * HintMarks[_hinted.Count])
+        : DateTimeOffset.MaxValue;
 
     void BeginDraw(string word)
     {
@@ -373,6 +405,8 @@ public sealed class Pictionary : Game
         _phase = Draw;
         _phaseStart = Now;
         _until = _phaseStart.AddMilliseconds(_drawMs);
+        _mask = BuildMask();
+        PlanHints();
         _frameDirty = _viewDirty = true;
     }
 
@@ -406,7 +440,9 @@ public sealed class Pictionary : Game
         if (_choices.Length == 0) _choices = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, Choices);
         if (_choices.Length == 0) { Over(); return; }
         _word = "";
+        _mask = "";
         _hinted.Clear();
+        _nextHint = DateTimeOffset.MaxValue;
         _guessed.Clear();
         Array.Clear(_gained);
         WipeCanvas();
@@ -459,7 +495,9 @@ public sealed class Pictionary : Game
     // =========================================================================================
 
     /// <summary>«к_т» для тих, хто слова не знає: відкриті підказки, пробіли й дефіси на своїх місцях.</summary>
-    string Mask()
+    string Mask() => _mask;
+
+    string BuildMask()
     {
         if (_word.Length == 0) return "";
         return string.Concat(_word.Select((c, i) => !char.IsLetter(c) || _hinted.Contains(i) ? c : '_'));
@@ -505,7 +543,7 @@ public sealed class Pictionary : Game
         mask = Mask(),
         until = _until,
         guessed = _guessed.ToArray(),
-        feed = Feed(FeedInFrame),
+        feed = _feedId > _frameFeedFrom ? Feed(Math.Min(FeedInFrame, _feedId - _frameFeedFrom)) : null,
     };
 
     // =========================================================================================

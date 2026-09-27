@@ -31,6 +31,9 @@
   const FLUSH_MS = 60;
   const CHUNK_MAX = 200;
   const SYNC_MS = 2000;
+  /// Точка, що лежить ближче за стільки логічних одиниць до прямої між сусідками, малюнку нічого не дає, лише
+  /// байти (прохід 28.09: миша на 1000 Гц слала ~500 точок на секунду, пряма лінія — сотні точок; зі спрощенням — у рази менше).
+  const SIMPLIFY = 0.9;
 
   const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 10);
 
@@ -126,9 +129,64 @@
     c.putImageData(img, 0, 0);
   }
 
+  /// Спростити шматок штриха (Рамер — Дуглас — Пекер, відстань до відрізка): лишаються кінці й ті точки, без яких
+  /// лінія відхилилась би більше ніж на eps. Кінці не чіпаємо — з останньої точки починається наступний шматок.
+  function simplify(p, eps) {
+    const n = p.length / 2;
+    if (n <= 2) return p;
+    const keep = new Uint8Array(n);
+    keep[0] = keep[n - 1] = 1;
+    const e2 = eps * eps;
+    const stack = [0, n - 1];
+    while (stack.length) {
+      const b = stack.pop(), a = stack.pop();
+      const ax = p[a * 2], ay = p[a * 2 + 1], dx = p[b * 2] - ax, dy = p[b * 2 + 1] - ay, len2 = dx * dx + dy * dy;
+      let best = -1, far = e2;
+      for (let i = a + 1; i < b; i++) {
+        const px = p[i * 2] - ax, py = p[i * 2 + 1] - ay;
+        const t = len2 ? Math.max(0, Math.min(1, (px * dx + py * dy) / len2)) : 0;
+        const ex = px - t * dx, ey = py - t * dy, d2 = ex * ex + ey * ey;
+        if (d2 > far) { far = d2; best = i; }
+      }
+      if (best >= 0) { keep[best] = 1; stack.push(a, best, best, b); }
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) if (keep[i]) out.push(p[i * 2], p[i * 2 + 1]);
+    return out;
+  }
+
+  /// Знімок буфера одразу після останньої заливки. Заливка — найдорожче (прохід 28.09: ~35 мс на великій площі
+  /// в ноуті, на телефоні в рази довше), а «↶» після неї перемальовував усе з нуля — кожну заливку наново.
+  function keepMark(s, i) {
+    if (!s.mark) {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      s.mark = { c, g: c.getContext('2d'), n: 0, op: null };
+    }
+    s.mark.g.drawImage(s.buf, 0, 0);
+    s.mark.n = i + 1;
+    s.mark.op = s.ops[i];
+  }
+
+  const sameOp = (a, b) => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
+
+  /// Перемалювати малюнок цілком. «↶» і повний кадр після нього приносять той самий початок малюнка, тож
+  /// починаємо зі знімка після останньої заливки, якщо вона на місці, і домальовуємо лише лінії після неї.
   function redrawAll(s) {
-    clearBuf(s);
-    for (const op of s.ops) drawOp(s.bctx, op);
+    const m = s.mark;
+    let from = 0;
+    if (m && m.n > 0 && m.n <= s.ops.length && sameOp(s.ops[m.n - 1], m.op)) {
+      s.bctx.globalCompositeOperation = 'source-over';
+      s.bctx.drawImage(m.c, 0, 0);
+      from = m.n;
+    } else {
+      if (m) m.n = 0;
+      clearBuf(s);
+    }
+    for (let i = from; i < s.ops.length; i++) {
+      drawOp(s.bctx, s.ops[i]);
+      if (s.ops[i][0] === 1) keepMark(s, i);
+    }
     s.dirty = true;
   }
 
@@ -153,6 +211,7 @@
     for (const op of ops) {
       s.ops.push(op);
       drawOp(s.bctx, op);
+      if (op[0] === 1) keepMark(s, s.ops.length - 1);
     }
     s.n = s.ops.length;
     s.local = s.local.filter((l) => countOf(s, l.s) <= l.i);
@@ -254,7 +313,7 @@
     const cur = s.cur;
     if (!cur || cur.p.length < 2) { if (final) s.cur = null; return; }
     if (cur.sent === cur.p.length && !final) return;
-    const p = cur.p.slice();
+    const p = simplify(cur.p, SIMPLIFY);
     if (p.length >= 2) {
       ctx.input('draw', { s: cur.s, c: cur.c, w: cur.w, p });
       s.local.push({ s: cur.s, i: cur.chunks, t: Date.now(), op: [0, cur.s, cur.c, cur.w, ...p] });
@@ -323,6 +382,8 @@
     el.addEventListener('lostpointercapture', end);
 
     new ResizeObserver(() => paintSoon(root)).observe(el);
+    // інша ширина вікна — інакше лягають чіпи місць над карткою, і полотно починається деінде
+    new ResizeObserver(() => fitStage(root)).observe(root.querySelector('.pcwrap'));
   }
 
   // =========================================================================================
@@ -392,11 +453,16 @@
     return new Date((f && f.until) || v.until || 0).getTime();
   }
 
+  /// Стіл ще збирається: вид у гри вже є (фаза «вибір», художника нема), але партії ще нема.
+  const lobby = (ctx) => !!ctx.room && ctx.room.status === 'lobby';
+
   function wordLine(root, ctx, v) {
     const f = fresh(ctx, v);
     const el = root.querySelector('.pcword');
     let html;
-    if (v.phase === 'pick') {
+    if (lobby(ctx)) {
+      html = '';
+    } else if (v.phase === 'pick') {
       html = v.drawer === ctx.seat && ctx.mine
         ? '<span class="muted">Обери слово</span>'
         : '<span class="muted">' + ctx.esc(ctx.nickOf(v.drawer) || 'Художник') + ' обирає слово…</span>';
@@ -416,7 +482,7 @@
     } else {
       html = '';
     }
-    if (el.innerHTML !== html) el.innerHTML = html;
+    if (el._html !== html) { el._html = html; el.innerHTML = html; }
   }
 
   function head(root, ctx, v) {
@@ -463,7 +529,7 @@
         + '<b>' + r.score + '</b></div>';
     }).join('');
     const el = root.querySelector('.pcscores');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    if (el._html !== html) { el._html = html; el.innerHTML = html; }
   }
 
   function mergeFeed(s, items, replace) {
@@ -492,7 +558,8 @@
       }
     }).join('') || '<div class="pcf muted">Поки тиша — тут з\'являться здогадки</div>';
     const el = root.querySelector('.pcfeed');
-    if (el.innerHTML !== html) {
+    if (el._html !== html) {
+      el._html = html;
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
       el.innerHTML = html;
       if (atBottom || !el._seen) el.scrollTop = el.scrollHeight;
@@ -509,7 +576,7 @@
     const drawer = ctx.mine && v.drawer === ctx.seat && v.phase === 'draw';
     input.disabled = !can;
     form.querySelector('button').disabled = !can;
-    input.placeholder = can ? 'Тяпни здогадку…'
+    input.placeholder = lobby(ctx) ? 'Партія ще не почалась' : can ? 'Тяпни здогадку…'
       : drawer ? 'Ти малюєш — вгадують інші'
         : guessed.indexOf(ctx.seat) >= 0 && v.phase === 'draw' ? 'Є! Вгадано — чекаємо інших'
           : !ctx.mine ? 'Дивишся збоку' : 'Зараз не вгадують';
@@ -528,7 +595,14 @@
   function overlay(root, ctx, v) {
     const el = root.querySelector('.pcover');
     let html = '';
-    if (v.phase === 'pick' && ctx.mine && v.drawer === ctx.seat && v.choices) {
+    if (lobby(ctx)) {
+      // Раніше тут до старту висіло «Художник обирає слово…» — хоча партії ще нема й художника теж (прохід 28.09).
+      const n = ctx.room && ctx.room.seats ? ctx.room.seats.filter((x) => x.nick).length : 0;
+      html = '<div class="pcbox pcrules"><div class="pctitle">✏️ Піктіонарі</div>'
+        + '<div>Художник малює слово — решта вгадує, пишучи здогадки в поле. Хто вгадав швидше, тому більше очок, '
+        + 'художник бере частку від усіх, хто вгадав. Малюють по черзі.</div>'
+        + '<div class="muted small">' + (n < 2 ? 'Чекаємо, хто підсяде: треба щонайменше двоє' : 'За столом ' + n + ' — господар тисне «Почати»') + '</div></div>';
+    } else if (v.phase === 'pick' && ctx.mine && v.drawer === ctx.seat && v.choices) {
       html = '<div class="pcbox"><div class="pctitle">Що малюватимеш?</div><div class="pcchoices">'
         + v.choices.map((w, i) => '<button type="button" class="primary" data-i="' + i + '">' + ctx.esc(w) + '</button>').join('')
         + '</div></div>';
@@ -597,12 +671,23 @@
       + '</div>';
   }
 
+  /// Де на сторінці починається полотно — з цього CSS рахує, якої ширини йому бути, щоб інструменти під ним
+  /// влізли в екран (pictionary.css, .pcmain). Міряємо на кожен вид: чіпи місць над карткою то в рядок, то в два.
+  function fitStage(root) {
+    const wrap = root.querySelector('.pcwrap');
+    const main = root.querySelector('.pcmain');
+    if (!wrap || !main || !main.isConnected) return;
+    const top = Math.round(main.getBoundingClientRect().top + window.scrollY) + 'px';
+    if (wrap.style.getPropertyValue('--pctop') !== top) wrap.style.setProperty('--pctop', top);
+  }
+
   function render(root, ctx) {
     root._ctx = ctx;
     ctx.pcRoot = root;
     const v = ctx.view || {};
     const s = st(root);
     if (v.phase) {
+      if (v.phase !== 'draw' && s.mark) s.mark.n = 0;   // новий хід — знімок старого малюнка ні до чого
       fromView(root, ctx, v);
       mergeFeed(s, v.feed, true);
       if (v.phase === 'reveal') snap(ctx, s, v);
@@ -618,7 +703,11 @@
     toolbar(root, ctx);
     const el = root.querySelector('.pccanvas');
     el.classList.toggle('can', canDraw(ctx));
+    const wrap = root.querySelector('.pcwrap');
+    wrap.classList.toggle('drw', canDraw(ctx));   // на телефоні художнику поле здогадки ні до чого
+    wrap.classList.toggle('live', !!ctx.playing);  // на телефоні в партії чіпи місць ховаються (pictionary.css)
     if (!canDraw(ctx)) { s.cur = null; s.local = []; }
+    fitStage(root);
     paintSoon(root);
   }
 
@@ -627,12 +716,13 @@
     added: '2026-09-17',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     news: {
-      v: '2026-09-24',
-      title: 'Піктіонарі: альбом партії',
+      v: '2026-09-28',
+      title: 'Піктіонарі: усе в один екран',
       items: [
-        '🖼 Наприкінці партії — альбом усіх малюнків зі словами й художниками',
-        '🔥 «Гаряче!» тепер ловить і переставлені літери: «кажна» — майже кажан',
-        '✋ Малювати пальцем надійніше: другий дотик чи долоня більше не черкають лінію через усе полотно',
+        '🖥 Полотно з палітрою й кнопками тепер влазить в екран ноутбука й Deck — посеред ходу нічого не треба гортати',
+        '📱 На телефоні поле здогадки одразу під малюнком: клавіатура більше не виштовхує полотно за край',
+        '⚡ Штрихи й стрічка важать у кілька разів менше, а «↶» після заливки більше не пригальмовує',
+        '📋 Поки стіл збирається — на полотні коротко, як грати, а в альбомі слово під малюнком видно цілим',
       ],
     },
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd', 'x', 'o'],

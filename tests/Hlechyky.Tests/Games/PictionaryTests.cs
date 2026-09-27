@@ -248,6 +248,49 @@ public class PictionaryTests
         Assert.InRange(mask.Count(c => c != '_'), 1, 3);
     }
 
+    [Fact]
+    public void A_hint_travels_in_a_frame_not_in_full_views()
+    {
+        // прохід 28.09: підказка слала кожному місцю повний вид з усім малюнком — заради однієї літери
+        var h = Table(Words("холодильник"), new { seconds = "60" }, "Оля", "Петро");
+        PickFirst(h);
+        h.Tick(29_900 / Pictionary.TickMs);
+        h.Outbox.Clear();
+
+        h.Tick(2);   // 30-та секунда — половина часу, перша літера
+
+        Assert.Empty(h.Outbox.OfType<RoomViews>());
+        var mask = LastFrame(h).GetProperty("mask").GetString()!;
+        Assert.Equal(1, mask.Count(c => c != '_'));
+        Assert.Equal(mask, h.View(1).GetProperty("mask").GetString());
+    }
+
+    [Fact]
+    public void Frames_carry_the_feed_only_when_something_new_is_in_it()
+    {
+        // прохід 28.09: кожен кадр (десять на секунду) віз дванадцять останніх здогадок наново
+        var h = Three();
+        PickFirst(h);
+        h.Tick();
+
+        Guess(h, 1, "пес");
+        Guess(h, 2, "сова");
+        h.Tick();
+        var feed = LastFrame(h).GetProperty("feed");
+        Assert.Equal(["пес", "сова"], feed.EnumerateArray().Select(f => f.GetProperty("text").GetString()!).ToArray());
+
+        h.Input(0, "draw", Line(1, 10, 10, 200, 200));
+        h.Tick();
+        Assert.Equal(JsonValueKind.Null, LastFrame(h).GetProperty("feed").ValueKind);
+
+        Guess(h, 1, "лис");
+        h.Tick();
+        feed = LastFrame(h).GetProperty("feed");
+        Assert.Equal(["лис"], feed.EnumerateArray().Select(f => f.GetProperty("text").GetString()!).ToArray());
+        // а вид, з якого стартує новенький, як і раніше несе всю стрічку
+        Assert.Equal(3, h.View(null).GetProperty("feed").GetArrayLength());
+    }
+
     // ---------------------------------------------------------------- малюнок
 
     [Fact]
@@ -488,5 +531,91 @@ public class PictionaryTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "liquidsoap", "radio.liq"))) dir = dir.Parent;
         return dir?.FullName ?? throw new InvalidOperationException("корінь репозиторію не знайдено");
+    }
+}
+
+/// <summary>
+/// Швидкодія Піктіонарі на повному столі (прохід 28.09): десятеро, художник малює весь хід так, як шле клієнт
+/// (шматок штриха кожні 60 мс), решта кидає промахи, дехто влучає. Міряємо тик, розмір кадру й виду.
+/// Окремою колекцією: стінний годинник у паралельному прогоні бреше (<see cref="SerialPerf"/>).
+/// </summary>
+[Collection(SerialPerf.Name)]
+public class PictionaryPerfTests(Xunit.Abstractions.ITestOutputHelper output)
+{
+    static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марія", "Богдан", "Софія", "Тарас", "Мар'яна", "Остап"];
+    static readonly string[] Misses = ["хата", "сонце", "дерево", "машина", "човен", "м'яч", "квітка", "гора", "риба", "хмара"];
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Ten_players_drawing_a_whole_game_stay_cheap()
+    {
+        var words = new PictionaryWords(Enumerable.Range(0, 60).Select(i => ("animals", "слово" + (char)('а' + i % 30) + i)));
+        var h = new RoomHarness("pictionary", options: new { rounds = "1", seconds = "60" }, seed: 5, services: RoomHarness.WithService(words));
+        foreach (var n in Nicks) h.Join(n);
+        h.Start();
+
+        var rng = new Random(9);
+        var ticks = new System.Diagnostics.Stopwatch();
+        var acts = new System.Diagnostics.Stopwatch();
+        int tickCount = 0, actCount = 0, stroke = 1, frames = 0;
+        long frameBytes = 0, frameMax = 0, viewMax = 0, viewBytes = 0, viewCount = 0;
+        var t = 0;
+        while (h.Room.Status == RoomStatus.Playing && t < 20_000)
+        {
+            t++;
+            var v = h.View(null);
+            var phase = v.GetProperty("phase").GetString();
+            var drawer = v.GetProperty("drawer").GetInt32();
+            if (phase == "pick") { acts.Start(); h.Act(drawer, "pick", new { i = 0 }); acts.Stop(); actCount++; }
+            else if (phase == "draw")
+            {
+                // півтора шматка на тик (кожні 60 мс), по 6 точок: так шле клієнт зі звичайною мишею
+                for (var k = 0; k < (t % 2 == 0 ? 2 : 1); k++)
+                {
+                    var p = new int[12];
+                    for (var i = 0; i < 12; i += 2) { p[i] = rng.Next(100, 900); p[i + 1] = rng.Next(100, 650); }
+                    acts.Start(); h.Input(drawer, "draw", new { s = stroke, c = 1 + t % 7, w = 8, p }); acts.Stop(); actCount++;
+                    if (t % 20 == 0) stroke++;
+                }
+                // кожен вгадувач — промах раз на ~4 с, а на 30-й секунді ходу половина влучає
+                var guesser = t % Nicks.Length;
+                if (guesser != drawer && t % 4 == 0)
+                {
+                    var word = h.View(drawer).GetProperty("word").GetString()!;
+                    var elapsed = (h.Clock.UtcNow - DateTimeOffset.Parse(v.GetProperty("until").GetString()!)).TotalSeconds + 60;
+                    h.Clock.AdvanceMs(Pictionary.GuessEveryMs);
+                    acts.Start();
+                    h.Act(guesser, "guess", new { text = elapsed > 30 && guesser % 2 == 0 ? word : Misses[rng.Next(Misses.Length)] });
+                    acts.Stop(); actCount++;
+                }
+            }
+
+            h.Outbox.Clear();
+            ticks.Start();
+            h.Tick();
+            ticks.Stop();
+            tickCount++;
+            foreach (var o in h.Outbox)
+            {
+                if (o is RoomFrame f)
+                {
+                    var size = System.Text.Encoding.UTF8.GetByteCount(Views.Text(f.Frame));
+                    frames++; frameBytes += size; frameMax = Math.Max(frameMax, size);
+                }
+                else if (o is RoomViews && phase == "draw")
+                {
+                    var size = System.Text.Encoding.UTF8.GetByteCount(Views.Text(h.Room.Game.View(0)));
+                    viewCount++; viewBytes += size; viewMax = Math.Max(viewMax, size);
+                }
+            }
+        }
+
+        var tickUs = ticks.Elapsed.TotalMilliseconds * 1000 / tickCount;
+        var actUs = acts.Elapsed.TotalMilliseconds * 1000 / Math.Max(1, actCount);
+        output.WriteLine($"тиків {tickCount}: {tickUs:F1} мкс на тик; ходів/вводів {actCount}: {actUs:F1} мкс на один (з JSON тесту)");
+        output.WriteLine($"кадрів {frames}: сер {frameBytes / Math.Max(1, frames)} Б, макс {frameMax} Б");
+        output.WriteLine($"видів у малюванні {viewCount} (на одне місце): сер {viewBytes / Math.Max(1, viewCount)} Б, макс {viewMax} Б");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(tickUs < 250, $"тик {tickUs:F0} мкс");
     }
 }

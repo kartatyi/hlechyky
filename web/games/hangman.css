@@ -18,7 +18,8 @@
 .hgal svg .hghost path, .hgal svg .hghost circle, .hgal svg .hghost .hface { stroke: var(--line); opacity: .55; }
 /* ---- риски й підписи ---- */
 .hside { display: flex; flex-direction: column; gap: 6px; align-items: center; min-width: 0; }
-.hround { color: var(--muted); font-size: .82em; text-transform: uppercase; letter-spacing: 1.1px; }
+/* без великих літер: «СЛОВО 1 З 5» читалось як «слово 1 3 5» — велика З у цьому шрифті близнюк трійки (прохід 28.09) */
+.hround { color: var(--muted); font-size: .86em; letter-spacing: .4px; }
 .hmask { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
 /* Порожня риска — це порожній елемент, і без min-height рядок мав би висоту самої лінії, а з появою
    першої літери підстрибував би на пів картки. Тому висота стала, хоч би що там було відкрито. */

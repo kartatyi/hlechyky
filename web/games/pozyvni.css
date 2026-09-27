@@ -73,8 +73,11 @@
 .pz-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 100%; }
 .pz-card {
   position: relative; padding: 8px 6px; display: grid; place-items: center;
-  /* Стіл росте разом із карткою: у режимі ⛶ плитки стають більшими, на телефоні — дрібнішими. */
+  /* Стіл росте разом із карткою: у режимі ⛶ плитки стають більшими, на телефоні — дрібнішими. А ще — не вищими, ніж
+     дозволяє висота вікна: на MacBook (видно 862 px) поле підказки й «Сказати» ховались під нижній край, і капітан
+     щоходу гортав сторінку (прохід 28.09). Під столом ~480 px: шапка, склад, підказка й поле. */
   min-height: clamp(54px, 6.4vw, 104px);
+  min-height: clamp(54px, min(6.4vw, (100dvh - 480px) / 5), 104px);
   text-align: center; font-size: clamp(.78em, .92vw, 1.1em); line-height: 1.16; font-weight: 600; color: var(--text);
   border: 1px solid rgba(0, 0, 0, .34); border-radius: 11px;
   background: linear-gradient(180deg, var(--pz-face-top), var(--pz-face-bot));

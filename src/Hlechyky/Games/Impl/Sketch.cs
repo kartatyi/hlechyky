@@ -92,8 +92,16 @@ public sealed class Sketch(int maxOps = Sketch.DefaultMaxOps, int maxPoints = Sk
         Points = 0;
     }
 
-    /// <summary>Копія операцій, починаючи з <paramref name="from"/> — те, що йде на дріт.</summary>
-    public int[][] Ops(int from = 0) => [.. _ops.Skip(from).Select(o => (int[])o.Clone())];
+    /// <summary>
+    /// Операції, починаючи з <paramref name="from"/> — те, що йде на дріт. Масив новий, а самі операції — ті самі:
+    /// додана операція ніколи не міняється (undo й очистка лише прибирають), тож копіювати кожну на кожен вид
+    /// і кадр нема чого (прохід 28.09: десять видів по тисячі операцій — десять тисяч копій на одну подію).
+    /// </summary>
+    public int[][] Ops(int from = 0)
+    {
+        from = Math.Clamp(from, 0, _ops.Count);
+        return _ops.GetRange(from, _ops.Count - from).ToArray();
+    }
 
     static int Int(JsonElement payload, string field, int fallback) =>
         payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(field, out var v)

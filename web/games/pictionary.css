@@ -25,24 +25,26 @@
 .pctime i.hot { background: var(--danger); }
 .pcsec { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8em; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 
+/*
+  Полотно з інструментами мусить влазити в екран без прокрутки: на Full HD (видно 963 px) палітра й кнопки
+  ховались під нижній край, і художник гортав сторінку посеред ходу (прохід 28.09). Тому ширину полотна (а з
+  нею й висоту, 4:3) стримує висота вікна: --pctop — де на сторінці починається полотно (модуль міряє сам:
+  чіпів місць буває рядок, а буває два), під полотном ~110 px інструментів.
+*/
 .pcmain {
   display: grid; gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-columns: minmax(0, max(360px, calc((100vh - var(--pctop, 230px) - 110px) * 4 / 3))) 240px;
+  grid-template-columns: minmax(0, max(360px, calc((100dvh - var(--pctop, 230px) - 110px) * 4 / 3))) 240px;
   grid-template-areas: "stage side" "tools side";
+  /* рахунок зі стрічкою на десятьох вищі за полотно — зайве місце віддаємо рядку інструментів, а не щілині під полотном */
+  grid-template-rows: auto 1fr;
+  justify-content: center;
   align-items: start;
 }
 .pcstage { grid-area: stage; position: relative; }
 .pcside { grid-area: side; display: flex; flex-direction: column; gap: 6px; min-width: 0; align-self: stretch; }
 .pctools { grid-area: tools; display: flex; flex-direction: column; gap: 6px; }
 
-@container (max-width: 640px) {
-  .pcmain { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "tools" "side"; }
-  .pctop { grid-template-columns: 1fr auto; }
-  .pcword { grid-column: 1 / -1; order: 3; }
-  /* у стовпці «auto» відсоткова ширина схлопувалась у нуль — таймер на телефоні просто зникав */
-  .pctime { width: 110px; }
-  .pcfeed { max-height: 160px; }
-}
 
 .pccanvas {
   display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--pcpaper);
@@ -63,6 +65,7 @@
   box-shadow: 0 8px 30px rgba(0, 0, 0, .25);
 }
 .pctitle { font-weight: 700; font-size: 1.05em; }
+.pcrules { max-width: 420px; line-height: 1.4; }
 .pcchoices { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .pcchoices button { font-size: 1.05em; padding: 9px 16px; }
 .pcbig { font-size: 1.8em; font-weight: 800; color: var(--accent); }
@@ -96,7 +99,13 @@
 .pcguess input:focus { outline: none; border-color: var(--accent2); }
 .pcguess input:disabled { opacity: .6; }
 
-.pcpal { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; max-width: 420px; }
+/* широко — усі двадцять кольорів одним рядком: так інструменти займають два рядки, а не три */
+.pcpal { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 4px; max-width: 760px; }
+/* пальцем (планшет, Deck) — два рядки по десять: дрібні квадратики пальцем не влучиш; під полотном тоді треба ще ~50 px */
+@media (pointer: coarse) {
+  .pcpal { grid-template-columns: repeat(10, minmax(0, 1fr)); max-width: 420px; }
+  .pcmain { grid-template-columns: minmax(0, max(360px, calc((100dvh - var(--pctop, 230px) - 160px) * 4 / 3))) 240px; }
+}
 .pcsw { aspect-ratio: 1; min-height: 22px; padding: 0; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
 .pcsw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
 .pcrow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -111,13 +120,49 @@
 /* ---- альбом партії (оновлення 24.09) ---- */
 .pcalbum { display: flex; flex-direction: column; gap: 8px; }
 .pcalbum[hidden] { display: none; }
-.pcthumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.pcthumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .pcthumbs figure { margin: 0; background: var(--bg2); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
 .pcthumbs img { width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; background: var(--pcpaper); display: block; }
-.pcthumbs figcaption { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; min-width: 0; }
-.pcthumbs figcaption b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* слово — головне в альбомі: цілим рядком, а художник під ним (раніше «соб…» і «мікі …» різались ніком поруч) */
+.pcthumbs figcaption { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pcthumbs figcaption b { overflow-wrap: anywhere; }
+.pcthumbs figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pcthumbs figure { animation: pcin .4s ease-out both; }
 @keyframes pcin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .pcthumbs figure { animation: none; } }
 /* Десять місць — це два рядки «вільно» над полотном. Сісти можна кнопкою каркаса, чіпи тут зайві. */
 .gtable:has(.pcwrap) .gseat.free { display: none; }
+
+/*
+  Вузька картка (телефон): полотно, під ним одразу поле здогадки, далі стрічка й рахунок чіпами. Раніше поле
+  стояло під рахунком на десятьох і стрічкою — сантиметрів за двадцять від малюнка, і коли виринала клавіатура,
+  малюнок їхав за верхній край: вгадуй наосліп (прохід 28.09). Блок стоїть наприкінці файла, щоб перебивати
+  базові правила: раніше .pcfeed { max-height } нижче за текстом перебивав вузький і стрічка росла до 300 px.
+*/
+@container (max-width: 640px) {
+  .pcmain { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "tools" "guess" "feed" "scores"; grid-template-rows: none; gap: 8px; }
+  .pcside { display: contents; }
+  .pcguess { grid-area: guess; }
+  .pcwrap.drw .pcguess { display: none; }
+  .pcfeed { grid-area: feed; min-height: 56px; max-height: 132px; }
+  .pcscores { grid-area: scores; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .pcsc { padding: 3px 8px; }
+  .pcn { flex: 0 1 auto; max-width: 11em; }
+  .pcpal { grid-template-columns: repeat(10, minmax(0, 1fr)); max-width: 420px; }
+  /* дев'ять кнопок інструментів — в один рядок і на 360 px: «↶» не падає окремим рядком під пензлі */
+  .pcsz, .pct, .pca { min-width: 32px; padding: 0 4px; }
+  .pcsep { width: 2px; }
+  .pcrow { gap: 3px; }
+  .pctop { grid-template-columns: 1fr auto; }
+  .pcword { grid-column: 1 / -1; order: 3; }
+  /* у стовпці «auto» відсоткова ширина схлопувалась у нуль — таймер на телефоні просто зникав */
+  .pctime { width: 110px; }
+}
+
+/*
+  Телефон у партії: чіпи місць над карткою на десятьох — п'ять рядків, і полотно з полем здогадки з'їжджали під
+  нижню панель (прохід 28.09, 390 × 664). Хто грає і скільки має, видно в рахунку під полотном.
+*/
+@media (max-width: 640px) {
+  .gtable:has(> .gbody > .pcwrap.live) > .gseats .gseat { display: none; }
+}
