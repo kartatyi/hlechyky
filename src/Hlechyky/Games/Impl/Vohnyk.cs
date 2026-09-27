@@ -17,8 +17,8 @@ public sealed class Vohnyk : Game
 {
     public const int StepMs = 20, StepsPerTick = 2;
     public const int ReadySteps = 100, DeadSteps = 30, ClearSteps = 60;
-    /// <summary>Наскільки далеко в минуле сервер перемотує пізній ввід (500 мс) і наскільки наперед приймає (120 мс).</summary>
-    public const int Rewind = 25, Future = 6;
+    /// <summary>Наскільки далеко в минуле сервер перемотує пізній ввід (500 мс) і наскільки наперед приймає (200 мс: клієнт іде на 4 кроки попереду й має запас ±3 на похибку свого годинника).</summary>
+    public const int Rewind = 25, Future = 10;
     public const int JournalSize = 64;
     /// <summary>Кадр раз на секунду, навіть коли нічого не рухається, — щоб клієнт знав, що зв'язок живий.</summary>
     public const int KeepaliveTicks = 25;
