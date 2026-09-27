@@ -51,7 +51,24 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
   min-width: min(100%, 300px);
 }
 .vh-wrap .vh-board.gcanvas { width: 100%; max-width: none; border-radius: 10px; background: var(--vh-bg); touch-action: none; user-select: none; }
-.vh.vh-lobby .vh-wrap { max-width: min(760px, calc((100vh - var(--vh-chrome) - 280px) * var(--vh-ratio, 1.76))); min-width: min(100%, 260px); }
+.vh-stage { display: flex; flex-direction: column; gap: 8px; min-width: 0; align-self: stretch; width: 100%; }
+/* кінець партії: підсумок і рекорди поверх затемненого полотна — «Ще раз» лишається на екрані */
+.vh-over {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px; z-index: 2; overflow: auto;
+}
+.vh-over[hidden] { display: none; }
+.vh-over > * { width: min(100%, 460px); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+.vh-bestbox[hidden] { display: none; }
+/* лобі: прев'ю рівня з рекордами ліворуч, мапа рівнів праворуч */
+@media (min-width: 720px) {
+  .vh.vh-lobby { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; column-gap: 12px; }
+  .vh.vh-lobby > .vh-hud { grid-column: 1 / -1; }
+  .vh.vh-lobby .vh-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vh.vh-lobby .vh-lv { min-height: 64px; }
+}
+.vh.vh-lobby .vh-wrap { max-width: min(760px, calc((100vh - var(--vh-chrome)) * var(--vh-ratio, 1.76))); min-width: min(100%, 240px); }
+.vh.vh-lobby .vh-turn { display: none !important; }
 .vh-turn { display: none; }
 @media (orientation: portrait) and (max-width: 600px) {
   .vh.vh-play .vh-turn { display: block; text-align: center; font-size: .8em; color: var(--muted); }
@@ -82,7 +99,7 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
 }
 
 /* ---- мапа рівнів у лобі й підсумок ---- */
-.vh-pick { display: flex; flex-direction: column; gap: 8px; }
+.vh-pick { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
 .vh-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .vh-lv {
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 8px; border-radius: 10px;

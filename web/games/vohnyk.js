@@ -312,12 +312,11 @@
         const x = cc * TILE, y = r * TILE, k = hash32(L.n * 131 + r, cc);
         g.fillStyle = pal.stone;
         g.fillRect(x, y, TILE, TILE);
-        if (k < 0.1 || k > 0.92) {
-          g.fillStyle = k < 0.1 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.18)';
-          g.fillRect(x, y, TILE, TILE);
-        }
-        g.fillStyle = 'rgba(0,0,0,.18)';
-        g.beginPath(); g.arc(x + 8 + k * 22, y + 12 + (1 - k) * 16, 2.5, 0, Math.PI * 2); g.fill();
+        g.fillStyle = k < 0.5 ? 'rgba(255,255,255,' + (0.035 * k).toFixed(3) + ')' : 'rgba(0,0,0,' + (0.06 * (k - 0.5)).toFixed(3) + ')';
+        g.fillRect(x, y, TILE, TILE);
+        g.fillStyle = 'rgba(0,0,0,.14)';
+        g.beginPath(); g.arc(x + 8 + k * 22, y + 12 + (1 - k) * 16, 2 + k * 2, 0, Math.PI * 2); g.fill();
+        if (k > 0.7) { g.beginPath(); g.arc(x + 30 - k * 10, y + 30, 1.6, 0, Math.PI * 2); g.fill(); }
         const above = r > 0 ? L.tiles[(r - 1) * W + cc] : 1;
         if (above === 0) {                         // верх уступу — світлий край і трохи моху
           g.fillStyle = 'rgba(190,220,235,.22)';
@@ -372,9 +371,9 @@
     // підказки навчальних рівнів
     for (const hnt of st.src.hints || []) {
       const x = hnt.at[0] * TILE + 4, y = hnt.at[1] * TILE + 4, w = hnt.w * TILE - 8;
-      g.font = '600 12px system-ui, sans-serif';
+      g.font = '700 15px system-ui, sans-serif';
       const lines = wrapText(g, hintText(st, hnt.text), w - 16);
-      const hh = 12 + lines.length * 15;
+      const hh = 12 + lines.length * 19;
       g.fillStyle = 'rgba(8,16,22,.72)';
       g.strokeStyle = 'rgba(191,230,255,.35)';
       g.lineWidth = 1;
@@ -382,7 +381,7 @@
       g.fillStyle = '#e8f4fb';
       g.textAlign = 'left';
       g.textBaseline = 'top';
-      lines.forEach((ln, i) => g.fillText(ln, x + 8, y + 7 + i * 15));
+      lines.forEach((ln, i) => g.fillText(ln, x + 8, y + 7 + i * 19));
     }
   }
 
@@ -407,8 +406,10 @@
     return st.lastF && st.lastF.w ? st.lastF.w[c * 14 + 4] : 0;
   }
 
-  function wantK(st, c) {
+  function wantK(st, c, s) {
     if (!playing(st) || st.ph === PH_CLEAR) return 0;
+    // гачок для ботів у перевірках: той самий шлях вводу й передбачення, лише клавіші — з записаного проходження
+    if (st.botK) return st.botK(c, s) & 7;
     if (view(st).solo && c !== st.active) return 0;
     if (document.hidden) return 0;
     return (st.held | st.touch) & 7;
@@ -427,7 +428,7 @@
     const s = st.stepLocal + 1;
     if (record) {
       for (const c of myHeroes(st)) {
-        const want = wantK(st, c);
+        const want = wantK(st, c, s);
         if (want !== st.sentK[c] && canSend(st)) {
           st.sentK[c] = want;
           st.lastSendStep[c] = s;
@@ -1033,23 +1034,29 @@
     return '<div class="vh-res"><b>Не дограли</b> рівень ' + r.level + ' · ☠ ' + r.deaths + (ctx.mine ? '<div class="small">«Ще раз» — той самий рівень</div>' : '') + '</div>';
   }
 
+  function put(el, html, key) {
+    el.hidden = !html;
+    if (el['_' + key] !== html) { el['_' + key] = html; el.innerHTML = html; }
+  }
+
   function panel(st) {
-    const el = st.pickEl;
-    if (!el) return;
+    if (!st.pickEl) return;
     const ctx = st.ctx, v = view(st);
     const status = ctx.room.status;
-    let html = '';
+    let pick = '', best = '', over = '';
     if (status === 'lobby') {
       const n = v.picked || 1;
       loadBest(st, n);
-      html = levelsHtml(st) + bestHtml(st, n);
+      pick = levelsHtml(st);
+      best = bestHtml(st, n);
     } else if (status === 'finished') {
       const n = (v.result && v.result.level) || v.picked || 1;
       loadBest(st, n);
-      html = resultHtml(st) + bestHtml(st, n);
+      over = resultHtml(st) + bestHtml(st, n);
     }
-    el.hidden = !html;
-    if (html !== st.pickSig) { st.pickSig = html; el.innerHTML = html; }
+    put(st.pickEl, pick, 'sig');
+    put(st.bestEl, best, 'sig');
+    put(st.overEl, over, 'sig');
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1063,7 +1070,7 @@
     st.active = 1 - st.active;
     // старий відпускає, новий бере те, що затиснуто — з найближчого кроку (старий шлемо першим)
     for (const c of [1 - st.active, st.active]) {
-      const want = wantK(st, c);
+      const want = wantK(st, c, st.stepLocal + 1);
       if (want !== st.sentK[c] && canSend(st)) {
         st.sentK[c] = want;
         st.lastSendStep[c] = st.stepLocal + 1;
@@ -1128,10 +1135,13 @@
   function build(root, st) {
     root.classList.add('vh');
     root.innerHTML = '<div class="vh-hud"></div><div class="vh-turn">🔄 Поверни телефон боком — так видно більше</div>'
-      + '<div class="vh-wrap"></div><div class="vh-pick" hidden></div>';
+      + '<div class="vh-stage"><div class="vh-wrap"><div class="vh-over" hidden></div></div><div class="vh-bestbox" hidden></div></div>'
+      + '<div class="vh-pick" hidden></div>';
     st.hudEl = root.querySelector('.vh-hud');
     st.wrap = root.querySelector('.vh-wrap');
     st.pickEl = root.querySelector('.vh-pick');
+    st.overEl = root.querySelector('.vh-over');
+    st.bestEl = root.querySelector('.vh-bestbox');
     st.touchEl = buildTouch(st);
     st.wrap.appendChild(st.touchEl);
     st.hudEl.addEventListener('click', (e) => {
@@ -1205,6 +1215,12 @@
     }
     const f = ctx.frame && ctx.frame.lv === st.lvN ? ctx.frame : v.f;
     if (f && playing(st) && (st.lastN < 0 || f.n > st.lastN)) onFrame(st, f);
+    // партію дограно: показуємо світ таким, яким він був наприкінці (і після F5 теж)
+    if (ctx.room.status === 'finished' && st.world && v.f && v.f.lv === st.lvN && v.f.w) {
+      st.world.load(v.f.w);
+      st.t = v.f.t; st.d = v.f.d;
+      st.gemsSeen = st.world.Gems;
+    }
     fit(st);
     st.hudAt = 0;
     hud(st);
@@ -1337,7 +1353,12 @@
 
   // для заміру швидкодії й перевірок у headless Chrome
   window.__vohnyk = {
-    st() { const el = document.querySelector('.vh'); return el && el._vh; },
+    /// видима картка (у сторінці бувають і сховані картки інших столів)
+    st() {
+      const all = [...document.querySelectorAll('.vh')].filter((el) => el._vh);
+      const el = all.find((e) => e.offsetParent) || all[all.length - 1];
+      return el ? el._vh : null;
+    },
     drawStats() {
       const st = this.st();
       if (!st || !st.drawMs.length) return null;

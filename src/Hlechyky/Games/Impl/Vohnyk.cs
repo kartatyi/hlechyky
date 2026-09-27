@@ -541,7 +541,7 @@ public sealed class Vohnyk : Game
                 gemsAll = shown.Gems.Length,
             },
             result = _result,
-            f = InPlay ? Frame() : null,
+            f = InPlay || (_phase == PhOver && _world is not null) ? Frame() : null,   // після кінця — останній світ, щоб F5 бачив, де все скінчилось
         };
     }
 
