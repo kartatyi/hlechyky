@@ -67,6 +67,15 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
 }
 .vh-over[hidden] { display: none; }
 .vh-over > * { width: min(100%, 460px); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+/* посередині, коли вміщається, і від верху, коли ні (інакше верх підсумку з кнопками обрізався б і не гортався) */
+.vh-over { justify-content: flex-start; }
+.vh-over > :first-child { margin-top: auto; }
+.vh-over > :last-child { margin-bottom: auto; }
+/* телефон: полотно дрібне — підсумок не поверх нього, а над ним, у потоці сторінки */
+@media (max-width: 600px), (max-height: 500px) {
+  .vh-over { position: static; padding: 0 0 8px; overflow: visible; }
+  .vh-over > * { box-shadow: none; }
+}
 .vh-bestbox[hidden] { display: none; }
 /* лобі: прев'ю рівня з рекордами ліворуч, мапа рівнів праворуч */
 @media (min-width: 720px) {
