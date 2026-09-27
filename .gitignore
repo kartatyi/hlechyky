@@ -36,6 +36,8 @@ data/svoya/*
 !data/svoya/host.json
 # Рівні «Вогника і Краплі» їдуть разом із грою.
 !data/vohnyk/
+# «Дотепи»: банк завдань їде разом із грою.
+!data/dotepy/
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)

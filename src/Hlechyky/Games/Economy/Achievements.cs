@@ -141,6 +141,9 @@ public static class AchievementCatalog
         // хвиля 2: vohnyk — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
         new("vohnyk-duo",  "Вогонь і вода",     "Пройшли рівень «Вогника і Краплі» удвох", "🔥", 15),
         new("vohnyk-cave", "Кришталева печера", "Усі п'ятнадцять рівнів «Вогника і Краплі» на три зірки", "💎", 60),
+        // хвиля 2: dotepy — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("dotepy-sweep", "Розгром",         "Усі голоси столу — за твій дотеп", "💥", 15),
+        new("dotepy-king",  "Король дотепів",  "Виграв «Дотепи» за столом на п'ятьох і більше", "👑", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

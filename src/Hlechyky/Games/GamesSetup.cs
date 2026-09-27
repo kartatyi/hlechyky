@@ -41,6 +41,7 @@ public static class GamesSetup
         Impl.SvoyaSetup.AddSvoya(services);                 // «Своя гра»: пакети запитань
         Impl.RallySetup.AddRally(services);   // «Сільське ралі»: рекорди кіл трас
         Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
+        Impl.DotepySetup.AddDotepy(services);               // «Дотепи»: голос Глека, голос публіки
         return services;
     }
 
@@ -53,6 +54,7 @@ public static class GamesSetup
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
         Impl.VohnykSetup.MapVohnyk(app);                   // /api/games/vohnyk/best — таблиця рівня
+        Impl.DotepySetup.MapDotepy(app);                    // /api/games/dotepy/jury — голос публіки «Дотепів»
         return app;
     }
 }
