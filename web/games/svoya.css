@@ -134,9 +134,10 @@ audio.svmedia { width: min(420px, 100%); }
 .svadj button { padding: 2px 5px; font-size: .8em; }
 
 @media (max-width: 520px) {
-  .svboard { grid-template-columns: minmax(70px, 1.2fr) repeat(var(--cols), minmax(34px, 1fr)); gap: 3px; padding: 4px; }
-  .svtheme { font-size: .7em; padding: 4px; }
-  .svcell { min-height: 40px; font-size: 1em; }
+  /* теми — трохи ширші й дрібніші: «ВИНАХОДИ» на айфоні рвалось на «ВИНАХОД / И»; клітинки — 44 px під палець */
+  .svboard { grid-template-columns: minmax(76px, 1.3fr) repeat(var(--cols), minmax(34px, 1fr)); gap: 3px; padding: 4px; }
+  .svtheme { font-size: .66em; padding: 4px; letter-spacing: 0; hyphens: auto; }
+  .svcell { min-height: 44px; font-size: 1em; }
   .svscores { grid-template-columns: 1fr 1fr; }
   /* Телефон: «Я знаю!» має бути видно разом із запитанням, без гортання. Раніше на айфоні (видно 390×664) кнопка
      лягала під самий низ — під плаваючу пігулку «💬 Стіл», і натиск по правому краю відкривав балачку. */
@@ -151,6 +152,7 @@ audio.svmedia { width: min(420px, 100%); }
 
 /* ---------- голос ---------- */
 .svspk { margin-left: auto; white-space: nowrap; }
+.svspk[hidden] { display: none; }
 .svspk.on { color: var(--accent); }
 
 

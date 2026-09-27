@@ -120,7 +120,7 @@
   function boardHtml(ctx, v) {
     const me = v.me || {};
     const cols = Math.max(...v.board.map((t) => t.cells.length));
-    return '<div class="svboard" style="--cols:' + cols + '">'
+    return '<div class="svboard" lang="uk" style="--cols:' + cols + '">'
       + v.board.map((t, ti) => '<div class="svtheme">' + esc(t.theme) + '</div>'
         + t.cells.map((c, qi) => c.open
           ? '<button type="button" class="svcell"' + (me.canPick ? ' data-do="pick" data-t="' + ti + '" data-q="' + qi + '"' : ' disabled') + '>' + c.price + '</button>'
@@ -343,7 +343,9 @@
     if (!line || line.id === s.sayId) return;
     s.sayId = line.id;
     // на фініші кімната вже не «грає», а підсумок ведучого — саме тоді
-    if (!speakerOn(ctx) || !(ctx.playing || v.phase === 'done')) return;
+    // «Без голосу» в лобі — це тиша: раніше браузер усе одно читав репліки своїм голосом (speechSynthesis), якщо
+    // знаходив український (на маку — Леся), хоча стіл обрав мовчазного ведучого
+    if (mute(v) || !speakerOn(ctx) || !(ctx.playing || v.phase === 'done')) return;
     // запитання голос дочитує завжди, навіть коли вже хтось відповідає: наступна репліка чекає на нього
     if (s.speaking && s.question) { s.next = line; return; }
     hush(root);
@@ -375,8 +377,12 @@
     }
   }
 
+  const mute = (v) => !!(v.options && v.options.voice === 'none');
+
   function speakerBtn(root, ctx) {
     const b = root.querySelector('.svspk');
+    // стіл без голосу — і перемикача «Ведучий тут» не треба
+    b.hidden = mute(ctx.view || {});
     const on = speakerOn(ctx);
     const text = on ? '🔊 Ведучий тут' : '🔇 Ведучий';
     if (b.textContent !== text) b.textContent = text;
