@@ -89,5 +89,6 @@ app.MapHlechykyEconomy();
 app.MapHlechykyMcp();
 app.MapHlechykyFeedback();
 app.MapHlechykyLavka();
+app.MapFront();    // відбиток web/: відкрита сторінка сама бачить, що після деплою змінилось (Front.cs)
 app.MapHub<RadioHub>("/hub");
 app.Run();

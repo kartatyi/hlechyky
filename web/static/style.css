@@ -216,6 +216,11 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
   background: linear-gradient(100deg, #151d38, #232f5c); border: 1px solid #3b4a86; color: #e4e8ff; line-height: 1.4;
 }
 .nightbar .nb-moon { font-size: 1.9em; line-height: 1; flex: none; }
+/* ---- «Сайт оновився»: вкладка на старому коді, оновлює людина сама (F5 рве музику) ---- */
+.updbar > div { background: var(--panel2); border-color: var(--line); color: var(--text); padding: 8px 10px 8px 16px; }
+.updbar .nb-moon { font-size: 1.4em; }
+.updbar .nb-text { flex: 1; min-width: 0; }
+.updbar button { flex: none; }
 
 /* ---- layout ---- */
 main {
@@ -735,6 +740,7 @@ body.gfull main { max-width: none; padding: 10px 12px; }
 @media (max-width: 900px) {
   .nightbar { margin-top: 10px; padding: 0 10px; }
   .nightbar > div { padding: 10px 12px; gap: 10px; font-size: .92em; }
+  .updbar .nb-moon { display: none; }
   :root { --tabs-h: 58px; --mini-h: 54px; }
   header { gap: 8px; padding: 8px 12px; backdrop-filter: none; background: #101f18; }
   header .brand span, header #volume { display: none; }
