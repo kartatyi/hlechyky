@@ -153,7 +153,11 @@
     const stage = root.querySelector('.dt-stage');
     const key = stageKey(ctx, v);
     if (s.keys.stage !== key) {
+      const was = s.keys.stage;
       s.keys = { stage: key };
+      // Нова сцена — шапка гри (раунд і дуга часу) знову на екрані. На телефоні «Почати» тиснуть унизу лобі,
+      // і вся партія далі йшла з таймером за краєм — а завдання чи картка починались під шапкою сайту.
+      if (was && !key.startsWith('lobby')) requestAnimationFrame(() => showTop(root));
       s.local = null;
       stage.className = 'dt-stage dt-' + key.split('|')[0];
       if (key.startsWith('lobby')) { stage.innerHTML = lobbyHtml(ctx); bindOwn(root, stage); }
@@ -173,6 +177,17 @@
     }
     if (key.startsWith('write')) refreshWrite(root, ctx, v, stage);
     else if (key.startsWith('card')) refreshCard(root, ctx, v, stage);
+  }
+
+  /// Шапка гри вилізла за верх (під липку шапку сайту) — прокрутити, щоб вона стала під неї. Коли видно — не чіпаємо.
+  function showTop(root) {
+    const top = root.querySelector('.dt-top');
+    if (!top || !top.isConnected || document.querySelector('.modal:not([hidden]), .padhelp, .padkbd')) return;
+    const head = document.querySelector('body > header');
+    const hb = head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
+    const t = top.getBoundingClientRect().top;
+    if (t >= hb - 2) return;
+    try { window.scrollBy({ top: t - hb - 6, behavior: reduced() ? 'auto' : 'smooth' }); } catch { /* старий браузер */ }
   }
 
   /// Де стати кільцю пада на новій сцені: перша жива ціль ([data-pad-first]) або тиха «стоянка» ([data-pad-focus]) —
@@ -213,7 +228,8 @@
       + ', ' + secs + ' с на дотеп. Найсмішніша відповідь одним рядком.</span></div>'
       + '<div class="dt-howrow"><b>🗳</b><span><i>Голосуй.</i> Відповіді виходять анонімно — обирай найдотепнішу чужу.</span></div>'
       + '<div class="dt-howrow"><b>🎭</b><span><i>Дивись, хто це написав.</i> ' + votes + '</span></div>'
-      + '<div class="dt-howsmall muted small">Троє й більше. Дядько Глек зачитує все вголос; глядачі голосують як публіка 👀 і сміються 😂</div>'
+      + '<div class="dt-howsmall muted small">Троє й більше. ' + (o.voice === 'none' ? 'Цього разу Глек мовчить — усе текстом' : 'Дядько Глек зачитує все вголос')
+      + '; глядачі голосують як публіка 👀 і сміються 😂</div>'
       + '<div class="dt-howtip small" hidden></div>'
       + (ctx.mine ? '<form class="dt-own"><input class="dt-ownin" type="text" maxlength="100" autocomplete="off" spellcheck="true"'
         + ' enterkeyhint="send" placeholder="Своє завдання для друзів — необов\'язково" aria-label="Своє завдання">'
@@ -738,7 +754,7 @@
         + r.best.map((b) => bestHtml(ctx, v, b, '')).join('') + '</div>' : '')
       + (v.say && v.say.text ? '<div class="dt-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>' : '')
       + '<div class="dt-again muted small">' + ((v.players || []).filter((p) => !p.left).length >= 3
-        ? 'Ще партію? Тисни «Ще раз» — завдання будуть нові' : 'На «Ще раз» треба щонайменше троє — клич друзів') + '</div>';
+        ? 'Ще партію? Тисни «Ану ще раз» — завдання будуть нові' : 'На «Ану ще раз» треба щонайменше троє — клич друзів') + '</div>';
   }
 
   // =============================================================================================
@@ -904,6 +920,7 @@
     icon: ICON,
     seatNames: (i) => String(i + 1),
     seatClass: ['dt0', 'dt1', 'dt2', 'dt3', 'dt4', 'dt5', 'dt6', 'dt7'],
+    added: '2026-09-27',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     news: {
       v: '2026-09-27',
       title: 'Нова гра: Дотепи',

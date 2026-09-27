@@ -2106,6 +2106,19 @@ public class DotepyTests
         var left = own.Except(first).Single();
         Assert.Contains(left, V(h).GetProperty("prompts").EnumerateArray().Select(p => p.GetString()));
     }
+
+    /// <summary>
+    /// Прохід 28.09: без поля <c>added</c> у модулі плитка не світиться «🆕 нова гра» (core.js, isNewGame); підказка кінця
+    /// називає кнопку каркаса так, як вона зветься, — «Ану ще раз».
+    /// </summary>
+    [Fact]
+    public void The_module_marks_the_game_new_and_names_the_rematch_button_right()
+    {
+        var js = File.ReadAllText(Paths.Resolve("web/games/dotepy.js"));
+        Assert.Matches(@"added:\s*'2026-09-27'", js);
+        Assert.Contains("«Ану ще раз»", js);
+        Assert.DoesNotContain("Тисни «Ще раз»", js);
+    }
 }
 
 /// <summary>Бойовий голос «Дотепів» поверх справжнього <see cref="TtsService"/> (рушій — фейковий).</summary>

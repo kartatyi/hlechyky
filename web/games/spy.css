@@ -104,6 +104,8 @@ body:has(.spy) .tchat.drawer.open .tc-body { flex: none; }
 .spy-say.spy-hi { color: var(--accent); font-weight: 600; }
 .spy-say.spy-hot2 { color: var(--danger); font-weight: 600; }
 .spy-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+/* «Як грати» в лобі: п'ять коротких рядків, читаються за кілька секунд. */
+.spy-how { margin: 8px 0 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 3px; line-height: 1.45; max-width: 44em; }
 .spy-btns .ghost, .spy-go { padding: 7px 12px; font-size: .9em; min-height: 40px; }
 .spy-go { background: var(--spy-ink); color: var(--text); border: 1px solid var(--spy-ink-edge); border-radius: 10px; cursor: pointer; font: inherit; }
 .spy-go.on { background: var(--spy-ink-edge); color: var(--spy-on-edge); }

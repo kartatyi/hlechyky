@@ -35,6 +35,9 @@
   const OPTIMISTIC_MS = 1500;
   /// Останні секунди фази, коли тим, хто ще не написав чи не обрав, тихо цокає.
   const TICK_LAST_MS = 5000;
+  /// Написане, але не надіслане (не встиг «Готово», на телефоні закрив клавіатуру її ж кнопкою) — за стільки до кінця
+  /// часу піде саме: інакше брехня згоріла б разом із фазою, а людина певна, що її картка на столі.
+  const RESCUE_MS = 2000;
   const HEART = '\u2764\ufe0f';
 
   const RULES = [
@@ -224,8 +227,20 @@
     paintEnd(root, ctx, v, done);
     paintScore(root, ctx, v, phase, lobby, done);
     root.querySelector('.bluff-rules').hidden = !lobby;
-    root.querySelector('.bluff').classList.toggle('bluff-lobby', lobby);
+    const box = root.querySelector('.bluff');
+    box.classList.toggle('bluff-lobby', lobby);
+    box.classList.toggle('bluff-picking', !lobby && !done && phase === 'pick');
     padFocus(root, ctx, v, st, seat, phase, done, lobby);
+
+    // Нове питання й початок вибору — питання знову на екран. На телефоні після розкриття сторінка стоїть на
+    // рахунку, а наступне питання з'являлось під шапкою сайту: його доводилось шукати пальцем щоразу.
+    // Першу відмальовку (відкрив стіл, F5) не чіпаємо — сторінка й так угорі.
+    const step = ctx.playing && !done && !lobby ? v.q + ':' + phase : '';
+    if (step !== st.step) {
+      const was = st.step;
+      st.step = step;
+      if (was != null && (phase === 'read' || phase === 'pick' || phase === 'score')) requestAnimationFrame(() => showStep(root, phase));
+    }
 
     // Щойно відкрита картка (чи правда з поясненням) — у видиму частину екрана: на телефоні й на Deck із вісьмома
     // картками вони лежать під краєм. 'nearest' не смикає сторінку, коли все й так видно.
@@ -243,6 +258,64 @@
     const r = el.getBoundingClientRect();
     if (r.top >= 60 && r.bottom <= innerHeight - 110) return;
     try { el.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch { /* старий браузер */ }
+  }
+
+  /// Видима смуга екрана [верх, низ] у координатах в'юпорта: під липкою шапкою сайту й над нижніми панелями
+  /// (вкладки й міні-плеєр на телефоні), а з екранною клавіатурою — лише те, що над нею (visualViewport).
+  /// Кличеться на зміну фази й на клавіатуру, не на кожен вид.
+  function band() {
+    const vv = window.visualViewport;
+    let top = vv ? vv.offsetTop : 0;
+    let low = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const head = document.querySelector('body > header');
+    if (head) top = Math.max(top, head.getBoundingClientRect().bottom);
+    for (const el of document.querySelectorAll('body > nav.mtabs, #mini')) {
+      if (!el.getClientRects().length || getComputedStyle(el).position !== 'fixed') continue;
+      const r = el.getBoundingClientRect();
+      if (r.height && r.top > (top + low) / 2) low = Math.min(low, r.top);
+    }
+    return { top, low };
+  }
+
+  /// Питання (у виборі — ще й перший рядок карток) має бути видно; коли ні — прокрутити так, щоб шапка гри стала
+  /// під шапку сайту. Коли все й так на екрані — нічого не чіпаємо.
+  function showStep(root, phase) {
+    const head = root.querySelector('.bluff-top');
+    if (!head || !head.isConnected || modalOpen()) return;
+    if (phase === 'score') {
+      // Рахунок між питаннями: на вузькому екрані таблиця під картками, і за 6 секунд її ніхто не бачив.
+      // Праворуч колонкою (ПК, Дека) вона й так на екрані — тоді нічого не робимо.
+      const sc = root.querySelector('.bluff-score');
+      if (!sc || sc.hidden) return;
+      const r = sc.getBoundingClientRect(), b = band();
+      if (r.bottom > b.low + 8 && r.top > b.top + 40) {
+        try { sc.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch { /* старий браузер */ }
+      }
+      return;
+    }
+    const tail = phase === 'pick' ? root.querySelector('.bluff-opts:not([hidden]) .bluff-cell') : root.querySelector('.bluff-q');
+    const b = band();
+    const t = head.getBoundingClientRect().top;
+    const end = (tail || head).getBoundingClientRect().bottom;
+    if (t >= b.top - 2 && end <= b.low + 2) return;
+    try { window.scrollBy({ top: t - b.top - 6, behavior: reduced() ? 'auto' : 'smooth' }); } catch { /* старий браузер */ }
+  }
+
+  /// Екранна клавіатура телефона: поле з «Готово» — над нею, а питання — над полем, скільки влізе. Браузер сам
+  /// показує лише поле (і то не завжди), а «Готово» й питання лишались під клавіатурою й шапкою.
+  function fitWrite(root) {
+    const input = root.querySelector('.bluff-in');
+    if (!input || document.activeElement !== input || !HGames.ui.coarse()) return;
+    const row = root.querySelector('.bluff-row').getBoundingClientRect();
+    const q = root.querySelector('.bluff-q').getBoundingClientRect();
+    const b = band();
+    let d = 0;
+    if (row.bottom > b.low - 8) d = row.bottom - (b.low - 8);
+    else if (row.top < b.top + 4) d = row.top - (b.top + 4);
+    const over = (b.top + 6) - (q.top - d);                // на скільки питання вилазить угору
+    const room = (b.low - 8) - (row.bottom - d);           // на скільки ще можна опустити поле
+    if (over > 0 && room > 0) d -= Math.min(over, room);
+    if (Math.abs(d) > 3) window.scrollBy(0, d);
   }
 
   /// «Чекаємо: Петро» — коли решта вже написала (обрала), а стіл тримають один-три.
@@ -544,11 +617,13 @@
     if (!st || !st.ctx) return;
     const ctx = st.ctx;
     const v = ctx.view || {};
-    if (!ctx.playing || (v.phase !== 'write' && v.phase !== 'pick') || document.hidden) return;
+    if (!ctx.playing || (v.phase !== 'write' && v.phase !== 'pick')) return;
     const seat = me(ctx, v);
     const my = v.my || {};
-    if (seat < 0 || (v.phase === 'write' ? !!my.lie : my.pick != null)) return;
+    if (seat < 0) return;
     const left = (Date.parse(v.endsAt) || 0) - Date.now();
+    if (v.phase === 'write' && left > 0 && left <= RESCUE_MS) rescue(root, ctx, v, st);
+    if (document.hidden || (v.phase === 'write' ? !!my.lie : my.pick != null)) return;
     if (left <= 0 || left > TICK_LAST_MS) return;
     const sec = Math.ceil(left / 1000);
     if (st.tickAt === v.q * 1000 + sec + (v.phase === 'pick' ? 500 : 0)) return;
@@ -560,9 +635,24 @@
   // дії
   // =============================================================================================
 
+  const typed = (input) => (input.value || '').replace(/\s+/g, ' ').trim();
+
+  /// Час спливає, а в полі — не надіслане (чи переписане після «Готово»): шлемо самі, по разу на кожен текст.
+  /// Сервер відповість звичним «Записано: «…»» (або відмовою, як на «Готово»).
+  function rescue(root, ctx, v, st) {
+    const input = root.querySelector('.bluff-in');
+    if (!input || input.disabled) return;
+    const text = typed(input);
+    const my = v.my || {};
+    const key = v.q + '\u0001' + text;
+    if (!text || text === (my.lie || '') || st.rescued === key) return;
+    st.rescued = key;
+    ctx.act('lie', { text });
+  }
+
   function submit(root, ctx) {
     const input = root.querySelector('.bluff-in');
-    const text = (input.value || '').replace(/\s+/g, ' ').trim();
+    const text = typed(input);
     if (!text) { ctx.toast('Спершу вигадай брехню 🙂', 'err'); input.focus(); return; }
     ctx.act('lie', { text }).then((r) => {
       // На телефоні ховаємо клавіатуру — хай видно, хто ще пише.
@@ -621,14 +711,13 @@
     icon: ICON,
     added: '2026-09-27',
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Байкарі',
+      v: '2026-09-28',
+      title: 'Байкарі: зручніше з телефона',
       items: [
-        '🤥 Питання з пропуском і дивною правдою: впиши свою правдоподібну брехню (до 40 знаків)',
-        '🔍 Потім усі шукають правду серед брехень — свою обрати не можна',
-        '💰 Вгадав правду — +1000, кожен, кого надурила твоя брехня, — +500 тобі, ' + HEART + ' за найсмішнішу — +100',
-        '🎲 Нема ідей — «Хай Глек збреше»: він підкине брехню з банку, а очки за неї — твої',
-        '⏱ Останнє питання — подвійне; коли всі натиснули «Готово», фаза не чекає таймера',
+        '📱 Нове питання саме стає на екран — більше не треба гортати вгору, а картки у виборі йдуть одразу під питанням',
+        '✍ «Готово» тепер поруч із полем — його видно й над клавіатурою телефона',
+        '⏳ Написав, але не встиг «Готово»? Брехня піде сама за дві секунди до кінця часу',
+        '📊 Між питаннями рахунок сам виїжджає на екран телефона',
       ],
     },
     seatNames: (i) => String(i + 1),
@@ -656,11 +745,12 @@
         + '<div class="bluff-q" aria-live="polite" data-pad-focus></div>'
         + '<div class="bluff-stage muted small"></div>'
         + '<div class="bluff-write" hidden>'
-        + '<div class="bluff-row"><input class="bluff-in" type="text" maxlength="' + MAX_LIE + '" autocomplete="off" autocorrect="off"'
+        // «Готово» — поруч із полем, як «надіслати» в месенджері: над екранною клавіатурою телефона видно обидва.
+        + '<div class="bluff-row"><span class="bluff-field"><input class="bluff-in" type="text" maxlength="' + MAX_LIE + '" autocomplete="off" autocorrect="off"'
         + ' autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="твоя брехня…" aria-label="Твоя брехня">'
-        + '<span class="bluff-cnt muted small">0/' + MAX_LIE + '</span></div>'
-        + '<div class="bluff-btns"><button type="button" class="primary bluff-go">Готово</button>'
-        + '<button type="button" class="ghost bluff-dice" title="Глек підкине брехню з банку — очки за неї твої">🎲 Хай Глек збреше</button></div>'
+        + '<span class="bluff-cnt muted small">0/' + MAX_LIE + '</span></span>'
+        + '<button type="button" class="primary bluff-go">Готово</button></div>'
+        + '<div class="bluff-btns"><button type="button" class="ghost bluff-dice" title="Глек підкине брехню з банку — очки за неї твої">🎲 Хай Глек збреше</button></div>'
         + '<div class="bluff-my muted small"></div>'
         + '</div>'
         + '<div class="bluff-who"></div>'
@@ -675,6 +765,10 @@
 
       const input = root.querySelector('.bluff-in');
       input.addEventListener('input', () => count(root));
+      // Телефон: клавіатура виїжджає не миттєво — підлаштовуємось і на фокус (з затримкою), і на зміну видимої частини.
+      input.addEventListener('focus', () => { if (HGames.ui.coarse()) setTimeout(() => fitWrite(root), 350); });
+      root._bfFit = () => { if (document.activeElement === input) requestAnimationFrame(() => fitWrite(root)); };
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', root._bfFit);
       input.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter' || e.isComposing) return;
         e.preventDefault();
@@ -754,6 +848,8 @@
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
       if (root._bfTick) { clearInterval(root._bfTick); root._bfTick = 0; }
+      if (root._bfFit && window.visualViewport) window.visualViewport.removeEventListener('resize', root._bfFit);
+      root._bfFit = null;
       const main = root.querySelector('.bluff-main');
       if (main) main.removeAttribute('data-pad-scope');
       root._bf = null;

@@ -96,11 +96,13 @@
 .bluff-me .win { color: var(--accent); }
 .bluff-me .bluff-sep { color: var(--muted); }
 /* Прокрутка до щойно відкритої картки й до «а насправді» лишає місце під смугою плеєра внизу й шапкою вгорі. */
-.bluff-cell, .bluff-note, .bluff-me { scroll-margin: 70px 0 120px; }
+.bluff-cell, .bluff-note, .bluff-me, .bluff-score { scroll-margin: 70px 0 120px; }
 
 /* ---- брехня ---- */
 .bluff-write { display: flex; flex-direction: column; gap: 8px; align-items: stretch; max-width: 560px; width: 100%; margin: 0 auto; }
-.bluff-row { position: relative; display: flex; }
+/* Поле й «Готово» — одним рядком, як «надіслати» в месенджері: над екранною клавіатурою видно обидва. */
+.bluff-row { display: flex; gap: 8px; align-items: stretch; }
+.bluff-field { position: relative; display: flex; flex: 1; min-width: 0; }
 .bluff-in {
   flex: 1; min-width: 0; padding: 11px 58px 11px 14px; font-size: 1.1em;
   background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
@@ -108,12 +110,16 @@
 .bluff-in:focus { outline: none; border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(244, 197, 66, .15); }
 .bluff-cnt { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-variant-numeric: tabular-nums; }
 .bluff-cnt.full { color: var(--danger); }
+.bluff-go { flex: none; min-height: 44px; padding: 0 20px; }
 .bluff-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-.bluff-btns button { flex: 1 1 160px; min-height: 42px; }
+.bluff-btns button { flex: 0 1 260px; min-height: 42px; }
 .bluff-my { text-align: center; min-height: 1.1em; overflow-wrap: anywhere; }
 
 /* ---- хто вже ---- */
 .bluff-who { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+/* У виборі головне — картки: галочки «хто вже обрав» ідуть під них (на телефоні з вісьмома вони з'їдали пів екрана,
+   і перший рядок карток був аж під краєм). */
+.bluff-picking .bluff-who { order: 1; }
 .bluff-chip {
   padding: 3px 10px; border-radius: 999px; font-size: .85em; background: var(--panel2); color: var(--muted);
   border: 1px solid transparent; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -231,12 +237,15 @@
 /* Палець: плаваюча кнопка «💬 Стіл» каркаса не лягає на нижню картку. */
 @media (pointer: coarse) {
   .bluff-opts { padding-bottom: 64px; }
-  .bluff-cell, .bluff-note, .bluff-me { scroll-margin-bottom: 180px; }
+  .bluff-cell, .bluff-note, .bluff-me, .bluff-score { scroll-margin-bottom: 180px; }
 }
 
 /* ---- телефон ---- */
 @container (max-width: 420px) {
   .bluff-btns button { flex-basis: 100%; }
+  .bluff-in { padding-right: 48px; font-size: 1.05em; }
+  .bluff-cnt { right: 9px; }
+  .bluff-go { padding: 0 14px; }
   .bluff-opt { min-height: 56px; padding: 24px 6px 8px; }
   .bluff-otext { font-size: .88em; padding: 0 2px; }
   .bluff-q { font-size: 1.05em; }
