@@ -40,6 +40,16 @@
 .skunit { flex: none; }
 .skgo { flex: none; }
 .skmy { text-align: center; min-height: 1.1em; }
+/* «= 13 800 000 000», поки набираєш: видно, чи не загубився нуль. Порожня — не займає місця. */
+.skprev { text-align: center; color: var(--accent); font-variant-numeric: tabular-nums; margin-top: -4px; }
+.skprev:empty { display: none; }
+.skprev.bad { color: var(--danger); }
+
+/* Підсумок партії вгорі картки: переможець великим, нижче — твоє місце. */
+.skpod { text-align: center; display: flex; flex-direction: column; gap: 4px; padding: 6px 0 2px; }
+.skpodt { font-size: 1.2em; line-height: 1.35; }
+.skpodt b { color: var(--accent); }
+.skpods { font-size: .95em; }
 
 /* ---- розкриття ---- */
 .skans { display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap; }
