@@ -38,7 +38,11 @@
 @container (min-width: 600px) { .tr-text { font-size: 18px; } }
 @container (min-width: 900px) { .tr-text { font-size: 21px; line-height: 1.55; } }
 /* Steam Deck і невисокі ноути: 21 px не влазить у 800 px висоти */
-@media (max-height: 820px) and (min-width: 700px) { .tr-text { font-size: 18px; line-height: 1.5; } }
+@media (max-height: 820px) and (min-width: 700px) { .tr-text { font-size: 17px; line-height: 1.45; } .tr-textbox { padding: 9px 12px; } .tr-src { min-height: 0; } }
+/* вірш: рядки короткі — дві-три колонки замість довгої стрічки вниз */
+.tr-text.tr-verse { column-gap: 32px; column-rule: 1px dashed var(--line); }
+@container (min-width: 520px) { .tr-text.tr-verse { column-count: 2; } }
+@container (min-width: 820px) { .tr-text.tr-verse.tr-many { column-count: 3; } }
 .tr-done { color: var(--muted); }
 .tr-word { border-radius: 5px; }
 .tr-word.on { background: var(--tr-word); box-shadow: 0 0 0 2px var(--tr-word); }

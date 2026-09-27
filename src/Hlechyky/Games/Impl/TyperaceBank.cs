@@ -129,10 +129,10 @@ public sealed class TyperaceBank
     readonly System.Collections.Concurrent.ConcurrentDictionary<int, (TyperaceEntry Entry, string Text)[]> _cuts = new();
 
     /// <summary>
-    /// Чи годиться шматок для цілі: не коротший за половину й не довший за подвійну. Уривок, що починається реченням
+    /// Чи годиться шматок для цілі: від 0,6 до 1,6 цілі. Уривок, що починається реченням
     /// «Йду.», а далі має одне речення на 500 знаків, для «коротко» не годиться — для «середньо» саме те.
     /// </summary>
-    public static bool Fits(int length, int target) => length >= target / 2 && length <= target * 2;
+    public static bool Fits(int length, int target) => length * 10 >= target * 6 && length * 10 <= target * 16;
 
     (TyperaceEntry Entry, string Text)[] CutsFor(int target) => _cuts.GetOrAdd(target, t =>
     {

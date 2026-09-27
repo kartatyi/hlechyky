@@ -30,6 +30,9 @@ public sealed class TyperaceSolo : TyperaceRace
 
     protected override bool SendsFrames => false;
 
+    /// <summary>У виборі трактор стоїть на старті: для траси це те саме лобі, лише без тексту.</summary>
+    protected override bool LobbyNow => Phase == PhasePick;
+
     /// <summary>Чистий стан: вибір довжини й джерела, без тексту. Load (якщо є що) ляже вже поверх.</summary>
     public override void Start()
     {

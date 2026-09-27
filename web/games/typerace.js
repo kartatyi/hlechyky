@@ -98,7 +98,7 @@
         // малювання
         raf: 0, lastT: 0, stopAt: 0, cv: null, bg: null, bgKey: '', lanes: 0, laneH: 0, W: 0, H: 0, pal: null,
         x: new Float64Array(10), tx: new Float64Array(10), s: new Int8Array(10).fill(-1),
-        dustAt: new Float64Array(10), mineX: 0, trackSig: '', nickW: new Float64Array(10), nickOf: new Array(10).fill(null),
+        dustAt: new Float64Array(10), mineX: 0, trackSig: '', nickW: new Float64Array(10), nickOf: new Array(10).fill(null), nickTxt: new Array(10).fill(''),
         parts: new Float32Array(160 * 7), partN: 0,
         perf: { frames: 0, ms: 0, max: 0 },
         // DOM
@@ -357,6 +357,8 @@
 
   function laneHeight(st, n) {
     if (st.W < 600) return n >= 7 ? 22 : 28;
+    // Steam Deck і невисокі ноути (≤ 820 px): десять доріжок по 30 з'їли б пів екрана
+    if (window.innerHeight <= 820) return n <= 4 ? 38 : n <= 7 ? 28 : 22;
     return n <= 4 ? 44 : n <= 7 ? 36 : 30;
   }
 
@@ -529,11 +531,12 @@
   }
 
   /** Нік — праворуч від трактора, а біля фінішу, де праворуч місця нема, — ліворуч. */
-  function drawNick(g, st, x, y, k, seat, nick, gone) {
+  function drawNick(g, st, x, y, k, seat, raw, gone) {
     if (st.laneH < 28) return;
     g.font = '11px system-ui, sans-serif';
-    let w = st.nickW[seat];
-    if (st.nickOf[seat] !== nick) { st.nickOf[seat] = nick; w = st.nickW[seat] = g.measureText(nick).width; }
+    // обрізаний нік і його ширину рахуємо раз на нік, а не щокадру
+    if (st.nickOf[seat] !== raw) { st.nickOf[seat] = raw; st.nickTxt[seat] = nickShort(raw); st.nickW[seat] = g.measureText(st.nickTxt[seat]).width; }
+    const nick = st.nickTxt[seat], w = st.nickW[seat];
     const right = x + 36 * k;
     g.globalAlpha = gone ? 0.5 : 0.95;
     g.fillStyle = st.pal.text;
@@ -577,7 +580,7 @@
         spawn(st, x + 1, y + 8 * kk, -0.02 - Math.random() * 0.02, -0.01 - Math.random() * 0.01, 500, 0);
       }
       drawTractor(g, st, x, y, kk, st.pal.seats[i % 10], i, i === me, r.gone ? 3 : s);
-      drawNick(g, st, x, y, kk, i, nickShort(r.nick), r.gone);
+      drawNick(g, st, x, y, kk, i, r.nick, r.gone);
     }
     // частинки: рух, вигорання й стискання масиву зсувом — без алокацій
     const p = st.parts;
@@ -730,7 +733,7 @@
     const v = view(st);
     let html = '';
     const r = meRacer(st);
-    if (st.ctx.mine && r && (st.phase === 'go' || st.phase === 'done')) {
+    if (st.ctx.mine && r && st.phase === 'go') {
       const n = myNumbers(st);
       const cpm = st.phase === 'done' && r.cpm != null ? r.cpm : r.fin != null && r.cpm != null ? r.cpm : n.cpm;
       const acc = r.acc != null ? r.acc : n.acc;
@@ -743,9 +746,10 @@
         html += '<span class="tr-tail" title="Скільки лишилось до кінця заїзду">⌛ ' + clock(left) + '</span>';
       }
     } else if (st.phase === 'go') {
-      const lead = liveOrder(st)[0];
-      if (lead) html = '<span>Попереду ' + esc(lead.r.nick) + ' — ' + Math.floor(100 * Math.min(1, lead.c / Math.max(1, st.len))) + ' %</span>'
-        + '<span>⏱ ' + clock(elapsed(st)) + '</span>';
+      // глядач: лідера каже рядок статусу, тут — годинник і скільки вже доїхало
+      const list = racers(st);
+      const fin = list.filter((x) => x.fin != null || st.s[x.seat] === 2).length;
+      html = '<span>👁 Дивишся збоку</span><span>⏱ ' + clock(elapsed(st)) + '</span><span>🏁 ' + fin + ' з ' + list.length + '</span>';
     }
     if (html !== st.statsSig) { st.statsSig = html; el.innerHTML = html; }
     paintLive(root, st);
@@ -1027,6 +1031,12 @@
       st.len = v.len || 0;
       resetRun(st);
       st.trackSig = '';
+      // вірш (багато коротких рядків) — у дві-три колонки, інакше на Деку й на ноуті текст лізе за екран
+      let lines = st.text ? 1 : 0;
+      for (let i = 0; i < st.len; i++) if (st.text.charCodeAt(i) === 10) lines++;
+      const tx = root.querySelector('.tr-text');
+      tx.classList.toggle('tr-verse', lines >= 8 && st.len / lines <= 48);
+      tx.classList.toggle('tr-many', lines >= 14);
     }
     st.phase = v.phase || '';
     // годинник сервера: зсув — з endsIn на мить прийому; відлік — з goIn
@@ -1061,7 +1071,8 @@
 
   function paint(root, st) {
     const tb = root.querySelector('.tr-textbox');
-    if (tb) tb.hidden = !st.text || (solo(st) && (st.showPick || st.phase === 'pick'));
+    // у підсумку текст уже не потрібен — таблиця стає одразу під трасою (на Full HD — без прокрутки)
+    if (tb) tb.hidden = !st.text || st.phase === 'done' || (solo(st) && (st.showPick || st.phase === 'pick'));
     paintWord(root, st);
     paintStats(root, st);
     paintBoard(root, st);
@@ -1102,8 +1113,9 @@
         : soloGame ? 'Фініш!' : 'Фініш! ' + (me.place ? me.place + '-е місце' : '') + ' — чекаємо на решту';
       if (me && st && st.finished) return 'Фініш! Суддя дивиться журнал…';
       if (me) return 'Друкуй!';
-      const lead = (v.racers || []).slice().sort((a, b) => (b.fin != null) - (a.fin != null) || b.c - a.c)[0];
-      return lead ? 'Попереду ' + lead.nick + ' — ' + Math.floor(100 * lead.c / Math.max(1, v.len)) + ' %' : '';
+      // глядач: лідер — з кадрів (вид приходить лише на подіях і відстає)
+      const lead = st ? liveOrder(st).find((x) => !x.r.gone) : null;
+      return lead ? 'Попереду ' + lead.r.nick + ' — ' + Math.floor(100 * Math.min(1, lead.c / Math.max(1, v.len))) + ' %' : 'Дивишся збоку';
     }
     if (v.phase === 'done' && soloGame) {
       const me = (v.racers || [])[0];

@@ -84,7 +84,7 @@ public sealed class Typerace : TyperaceRace
         foreach (var r in Racers)
         {
             if (!r.In) continue;
-            if (r.Fin is null && !r.Gone) allDone = false;
+            if (r.Fin is null) allDone = false;          // хто встав недописавши — теж «не всі»
             if (winner is not null && r != winner && !r.Gone) others++;
         }
         string say;

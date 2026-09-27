@@ -426,6 +426,8 @@ public class TyperaceTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Finished.Single().Result.Winners);
         Assert.Contains("їхав сам", h.View(null).GetProperty("result").GetProperty("say").GetString());
+        // хто встав недописавши — «усі дописали» вже не скажеш
+        Assert.False(h.View(null).GetProperty("result").GetProperty("allDone").GetBoolean());
     }
 
     [Fact]
@@ -761,6 +763,17 @@ public class TyperaceTests
         var junk = new FakeStore();
         junk.SaveState("typerace-solo:оля", "{не json");
         Assert.Equal(0, Me(Solo(store: junk)).GetProperty("runs").GetInt32());
+    }
+
+    [Fact]
+    public void Solo_pick_shows_the_tractor_waiting_at_the_start()
+    {
+        var h = Solo();
+        var racers = h.View(0).GetProperty("racers");
+        Assert.Equal(1, racers.GetArrayLength());
+        Assert.Equal(0, racers[0].GetProperty("c").GetInt32());
+        Assert.Equal("Оля", racers[0].GetProperty("nick").GetString());
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("result").ValueKind);
     }
 
     [Fact]
