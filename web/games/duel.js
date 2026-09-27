@@ -167,6 +167,10 @@
     window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
   }
 
+  /// Перемалювати, лише коли рядок справді інший. Порівнювати з el.innerHTML марно: браузер серіалізує його
+  /// по-своєму (&#39; → ', лапки, style), тож «інше» виходило майже завжди — і DOM перебудовувався щокадру.
+  const putHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+
   function state(root, ctx) {
     let st = states.get(ctx);
     if (!st || st.root !== root) {
@@ -558,7 +562,7 @@
       }
     }
     const html = out.join('');
-    if (st.els.lines.innerHTML !== html) st.els.lines.innerHTML = html;
+    putHtml(st.els.lines, html);
   }
 
   const nick = (ctx, i) => ctx.nickOf(i) || ctx.seatName(i);
@@ -605,7 +609,7 @@
     // Табло: фігура, нік і виграні раунди кожного.
     const board = seats.map((i) => '<span class="sb s' + i + (ctx.mine && i === ctx.seat ? ' me' : '') + '"><b>'
       + S_SHAPES[i] + '</b> ' + ctx.esc(nick(ctx, i)) + ' <em>' + (wins[i] || 0) + '</em></span>').join('');
-    if (st.els.board.innerHTML !== board) st.els.board.innerHTML = board;
+    putHtml(st.els.board, board);
     const parts = [];
     if (phase === 'done') parts.push('перестрілку зіграно');
     else if (phase !== 'wait') parts.push('раунд ' + (s.round || 1) + ' · до ' + (s.target || 3) + ' перемог');

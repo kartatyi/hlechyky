@@ -41,6 +41,10 @@
   /// слід милився сходинками. Малюємо вдвічі щільніше — на телефонах із DPR ≥ 2 це й так уже зроблено.
   const scale = () => ((window.devicePixelRatio || 1) >= 2 ? 1 : 2);
 
+  /// Перемалювати, лише коли рядок справді інший. Порівнювати з el.innerHTML марно: браузер серіалізує його
+  /// по-своєму (&#39; → ', лапки, style), тож «інше» виходило майже завжди — і DOM перебудовувався щокадру.
+  const putHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+
   function state(root, ctx) {
     if (root._curve) return root._curve;
     const st = {
@@ -319,7 +323,7 @@
     }
     const target = ctx.view && ctx.view.target;
     const html = parts.join('') + (target ? '<span class="muted small">до ' + target + '</span>' : '');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    putHtml(el, html);
   }
 
   /// Дві кнопки під палець: не тап, а утримання, тож слухаємо саме pointer-події.

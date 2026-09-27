@@ -40,6 +40,10 @@
     return hit !== undefined ? hit : (pal.v[name] = st.css(name, fallback));
   }
 
+  /// Перемалювати, лише коли рядок справді інший. Порівнювати з el.innerHTML марно: браузер серіалізує його
+  /// по-своєму (&#39; → ', лапки, style), тож «інше» виходило майже завжди — і DOM перебудовувався щокадру.
+  const putHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+
   function state(root, ctx) {
     if (!root._terr) {
       root._terr = {
@@ -269,7 +273,7 @@
       return '<span class="gterr-p' + (dead ? ' out' : '') + (s === ctx.seat ? ' me' : '') + '"><i style="background:'
         + cssv(st, VARS[s][0], VARS[s][1]) + '">' + (s + 1) + '</i>' + ctx.esc(nick) + ' <b>' + pct + '%</b></span>';
     }).join('');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    putHtml(el, html);
   }
 
   const secs = (ms) => Math.max(0, Math.ceil((ms || 0) / 1000));
