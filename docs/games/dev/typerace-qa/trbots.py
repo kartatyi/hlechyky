@@ -21,12 +21,13 @@ def enc(ms):
 
 
 class Bot:
-    def __init__(self, port, room, nick, cpm=240, robot=False, leave_at=None, seed=1, errors=0.03, rounds=1):
+    def __init__(self, port, room, nick, cpm=240, robot=False, leave_at=None, seed=1, errors=0.03, rounds=1, leave_after=False):
         self.port, self.room, self.nick, self.cpm, self.robot = port, room, nick, cpm, robot
         self.leave_at = leave_at          # частка тексту, на якій бот встає з-за столу (None — дограє)
         self.rng = random.Random(seed)
         self.errors = errors
         self.rounds = rounds
+        self.leave_after = leave_after    # встати одразу після свого фінішу (утікач-переможець)
         self.seen = set()
         self.inv = 0
         self.pending = {}
@@ -90,6 +91,10 @@ class Bot:
                 return
             self.seen.add(self.view.get("goAt"))
             await self.race()
+            if self.leave_after:
+                await asyncio.sleep(1.0)
+                self.log.append(("leave", await self.invoke("LeaveRoom", [self.room])))
+                return
             if self.leave_at is not None:
                 return
 
@@ -132,14 +137,15 @@ class Bot:
         self.log.append(("finish", self.result))
 
 
-def run_bots(port, room, nicks, cpm=None, robot=None, leave_at=None, seeds=None, rounds=1, tag=None):
+def run_bots(port, room, nicks, cpm=None, robot=None, leave_at=None, seeds=None, rounds=1, tag=None, leave_after=None):
     """Запустити ботів у фоновому потоці; повертає (потік, список ботів)."""
     bots = []
     tag = tag if tag is not None else str(random.Random().randint(10, 99))   # свіжий нік на кожен прогін: старий ще 20 с «сидить» за минулим столом
     nicks = [n + tag for n in nicks]
     for i, n in enumerate(nicks):
         bots.append(Bot(port, room, n, cpm=(cpm or [240] * len(nicks))[i], robot=(robot or [False] * len(nicks))[i],
-                        leave_at=(leave_at or [None] * len(nicks))[i], seed=(seeds or list(range(1, 50)))[i], rounds=rounds))
+                        leave_at=(leave_at or [None] * len(nicks))[i], seed=(seeds or list(range(1, 50)))[i], rounds=rounds,
+                        leave_after=(leave_after or [False] * len(nicks))[i]))
 
     def main():
         async def all_():

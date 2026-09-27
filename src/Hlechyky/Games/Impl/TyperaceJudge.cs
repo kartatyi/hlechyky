@@ -27,8 +27,12 @@ public static class TyperaceJudge
     public const int MaxHumanCpm = 1200;
     /// <summary>Журнал може «бачити» трохи більше часу, ніж сервер (зсув моменту старту в браузері), але не більше.</summary>
     public const int ClockAheadMs = 500;
-    /// <summary>…і менше — на латентність і паузу до першого натиску.</summary>
-    public const int ClockBehindMs = 6000;
+    /// <summary>
+    /// …і менше — на латентність і на фініш, що дійшов пізно: зв'язок ліг на останній літері, клієнт повторював, доки
+    /// SignalR не перепідключився (до 20 с, які каркас тримає місце). Офіційний час однаково серверний — гравець лише
+    /// втратив секунди, а не став «ботом». Було 6 с — і чесний фініш після 12 с без зв'язку діставав 🤖.
+    /// </summary>
+    public const int ClockBehindMs = 20_000;
     public const int ScriptPercent = 10;
     public const int MetronomeRun = 10;
     public const int MetronomeMin = 40;
@@ -38,9 +42,18 @@ public static class TyperaceJudge
     public const int BurstPercent = 15;
     /// <summary>Нижче цієї кількості проміжків частка «черги» ще нічого не каже.</summary>
     public const int BurstMin = 20;
+    /// <summary>
+    /// «Бачив, як друкував»: сервер знає з <c>pos</c>, коли гонщик перетнув чверть, половину й три чверті тексту. Мить
+    /// із журналу не може бути пізнішою за мить на сервері більш ніж на <see cref="SeenLeadMs"/> (pos іде вже після
+    /// натиску) і ранішою більш ніж на <see cref="SeenLagMs"/> (кліпнув зв'язок, SignalR перепідключився — у межах
+    /// 20 с, які каркас тримає місце).
+    /// </summary>
+    public const int SeenLeadMs = 1500, SeenLagMs = 20_000;
+    /// <summary>Скільки відміток прогресу сервер пам'ятає: ¼, ½, ¾ тексту.</summary>
+    public const int SeenMarks = 3;
 
     public const string BadLog = "bad-log", Mismatch = "mismatch", Clock = "clock", Fast = "fast",
-        Script = "script", Metronome = "metronome", Burst = "burst";
+        Script = "script", Metronome = "metronome", Burst = "burst", Unseen = "unseen";
 
     public const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -64,6 +77,7 @@ public static class TyperaceJudge
         Script => "натиски не з клавіатури",
         Metronome => "ритм метронома",
         Burst => "черга натисків",
+        Unseen => "сервер не бачив самого друку",
         null => "",
         _ => "щось не те",
     };
@@ -83,11 +97,16 @@ public static class TyperaceJudge
         return a < 0 || b < 0 ? -1 : (a << 6) | b;
     }
 
+    /// <summary>Скільки правильних знаків — це відмітка прогресу <paramref name="q"/> (0 — чверть, 1 — половина, 2 — три чверті).</summary>
+    public static int Mark(int len, int q) => ((q + 1) * len + 3) / 4;
+
     /// <summary>
     /// Перевірити журнал заїзду по тексту довжиною <paramref name="len"/>; <paramref name="serverMs"/> — офіційний час
-    /// фінішу, який бачив сервер. Без алокацій: 1600 подій — кілька мікросекунд.
+    /// фінішу, який бачив сервер; <paramref name="seen"/> — коли (мс від старту) сервер із <c>pos</c> бачив, що гонщик
+    /// останній раз перетнув ¼, ½ і ¾ тексту (-1 — не бачив). Порожній <paramref name="seen"/> — перевірку 8 пропускаємо
+    /// (чистий суддя в тестах). Без алокацій: 1600 подій — кілька мікросекунд.
     /// </summary>
-    public static TyperaceVerdict Check(int len, string? k, string? d, long serverMs)
+    public static TyperaceVerdict Check(int len, string? k, string? d, long serverMs, ReadOnlySpan<long> seen = default)
     {
         // 1. журнал читається
         if (string.IsNullOrEmpty(k) || k.Length > MaxEvents || d is null || d.Length != 2 * k.Length)
@@ -110,16 +129,28 @@ public static class TyperaceJudge
         }
         var logMs = logSteps * StepMs;
 
-        // 2. програвання по тексту
+        // 2. програвання по тексту; заразом — коли журнал останній раз перетнув ¼, ½, ¾ (для перевірки 8)
         int cur = 0, correct = 0, wrong = 0, swallowed = 0;
         var red = false;
+        // перший і останній раз, коли журнал перетнув відмітку (Backspace через неї — і перетне ще раз)
+        Span<long> markFirst = stackalloc long[SeenMarks], markAt = stackalloc long[SeenMarks];
+        markFirst.Fill(-1);
+        markAt.Fill(-1);
+        long at = 0;
         for (var i = 0; i < n; i++)
         {
+            at += steps[i];
             switch (k[i] | 0x20)   // до малої: 'C' → 'c'
             {
                 case 'c':
                     if (red || cur >= len) return new(Mismatch, correct, wrong, swallowed, logMs);
                     cur++; correct++;
+                    for (var q = 0; q < SeenMarks; q++)
+                        if (cur == Mark(len, q))
+                        {
+                            markAt[q] = at * StepMs;
+                            if (markFirst[q] < 0) markFirst[q] = markAt[q];
+                        }
                     break;
                 case 'x':
                     if (red || cur >= len) return new(Mismatch, correct, wrong, swallowed, logMs);
@@ -131,7 +162,11 @@ public static class TyperaceJudge
                     break;
                 default:   // 'b'
                     if (red) red = false;
-                    else if (cur > 0) cur--;
+                    else if (cur > 0)
+                    {
+                        for (var q = 0; q < SeenMarks; q++) if (cur == Mark(len, q)) markAt[q] = -1;   // відмітку перетнуть ще раз
+                        cur--;
+                    }
                     else return new(Mismatch, correct, wrong, swallowed, logMs);
                     break;
             }
@@ -171,7 +206,64 @@ public static class TyperaceJudge
             for (var i = 0; i < m; i++) if (gaps[i] < BurstSteps) quick++;
             if (quick * 100 > m * BurstPercent) return new(Burst, correct, wrong, swallowed, logMs);
         }
+
+        // 8. сервер бачив друк: pos доходили під час заїзду й у ті самі миті, що й у журналі. Фініш «з нуля» одним
+        // викликом із консолі (журнал без жодного pos) сюди не пройде. Чверть має прийти справжнім pos; ½ і ¾, яких
+        // сервер не бачив (зв'язок ліг під кінець), рахуються миттю фінішу — тоді й вони мусять бути в межах запізнення.
+        if (seen.Length >= SeenMarks)
+        {
+            // пауза на стелі (≥ 16,4 с) зсуває в журналі всі миті після неї на невідоме — але не більше, ніж журнал недобачив
+            var slack = clamped ? Math.Max(0, serverMs - logMs) : 0;
+            for (var q = 0; q < SeenMarks; q++)
+            {
+                var server = seen[q];
+                if (server < 0)
+                {
+                    if (q == 0) return new(Unseen, correct, wrong, swallowed, logMs);
+                    server = serverMs;
+                }
+                // сервер міг бачити будь-який із перетинів (коротку ямку назад pos раз на 200 мс і не помітить)
+                if (markAt[q] < 0 || server < markFirst[q] - SeenLeadMs || server > markAt[q] + SeenLagMs + slack)
+                    return new(Unseen, correct, wrong, swallowed, logMs);
+            }
+        }
         return new(null, correct, wrong, swallowed, logMs);
+    }
+
+    /// <summary>
+    /// Де в тексті журнал помилявся: <paramref name="into"/>[i] = true, якщо на знаку i хоч раз висів червоний. Для
+    /// «слова-пастки» в підсумку. Програє журнал так само, як <see cref="Check"/>, і спиняється там, де той зламався б.
+    /// </summary>
+    public static void Misses(string? k, int len, Span<bool> into)
+    {
+        if (string.IsNullOrEmpty(k)) return;
+        var cur = 0;
+        var red = false;
+        foreach (var ch in k)
+        {
+            switch (ch | 0x20)
+            {
+                case 'c':
+                    if (red || cur >= len) return;
+                    cur++;
+                    break;
+                case 'x':
+                    if (red || cur >= len) return;
+                    red = true;
+                    if (cur < into.Length) into[cur] = true;
+                    break;
+                case 's':
+                    if (!red) return;
+                    break;
+                case 'b':
+                    if (red) red = false;
+                    else if (cur > 0) cur--;
+                    else return;
+                    break;
+                default:
+                    return;
+            }
+        }
     }
 
     /// <summary>Серія з 10 проміжків, рівних з точністю до кроку, або рівний ритм (σ/μ &lt; 0,12) на 40+ проміжках.</summary>

@@ -39,10 +39,23 @@ public class TyperaceTests
     static ActResult Finish(RoomHarness h, int seat, TyperaceLogs.Log log) => h.Act(seat, "finish", new { k = log.K, d = log.D });
 
     /// <summary>Поставити годинник на мить «старт + atMs» і фінішувати чесним журналом, що бачив трохи менше часу.</summary>
-    static ActResult FinishAt(RoomHarness h, int seat, long atMs, int seed = 1)
+    static ActResult FinishAt(RoomHarness h, int seat, long atMs, int seed = 1) =>
+        FinishWith(h, seat, TyperaceLogs.HumanIn(Len(h), atMs - 300, seed), atMs);
+
+    /// <summary>
+    /// Чесний фініш журналом, як його шле клієнт: спершу pos на ¼, ½, ¾ тексту в ті миті, коли їх перетнув журнал
+    /// (+120 мс на дорогу), далі годинник на «старт + atMs» і finish.
+    /// </summary>
+    static ActResult FinishWith(RoomHarness h, int seat, TyperaceLogs.Log log, long atMs)
     {
-        h.Clock.UtcNow = GoAt(h).AddMilliseconds(atMs);
-        return Finish(h, seat, TyperaceLogs.HumanIn(Len(h), atMs - 300, seed));
+        var go = GoAt(h);
+        foreach (var (c, ms) in TyperaceLogs.Marks(log, Len(h)))
+        {
+            h.Clock.UtcNow = go.AddMilliseconds(ms + 120);
+            h.Input(seat, "pos", new { c, e = 0 });
+        }
+        h.Clock.UtcNow = go.AddMilliseconds(atMs);
+        return Finish(h, seat, log);
     }
 
     static void Pos(RoomHarness h, int seat, int c, int e = 0) => h.Input(seat, "pos", new { c, e });
@@ -279,10 +292,10 @@ public class TyperaceTests
     }
 
     [Theory]
-    [InlineData("short", 20_000, 30_000)]      // 0,75 × 20 с = 15 с — мало, підтягуємо до 30 с
-    [InlineData("short", 60_000, 45_000)]      // 0,75 × 60 с = 45 с
-    [InlineData("medium", 170_000, -1)]        // 0,75 × 170 с = 127 с → не більше 90 с, і не далі за стелю партії
-    public void First_verified_finish_sets_the_tail_within_thirty_and_ninety_seconds(string length, long winnerMs, long tailMs)
+    [InlineData("short", 20_000, 45_000)]      // 20 с — мало, підтягуємо до 45 с
+    [InlineData("short", 60_000, 60_000)]      // скільки їхав переможець, стільки й хвіст
+    [InlineData("medium", 170_000, -1)]        // 170 с → не більше 120 с, і не далі за стелю партії
+    public void First_verified_finish_sets_the_tail_within_45_and_120_seconds(string length, long winnerMs, long tailMs)
     {
         var h = Table(2, new { length });
         ToGo(h);
@@ -294,7 +307,7 @@ public class TyperaceTests
         var v = h.View(null);
         Assert.True(v.GetProperty("tail").GetBoolean());
         var endsAt = DateTimeOffset.Parse(v.GetProperty("endsAt").GetString()!);
-        var expected = tailMs >= 0 ? GoAt(h).AddMilliseconds(winnerMs + tailMs) : GoAt(h).AddMilliseconds(Math.Min(cap, winnerMs + 90_000));
+        var expected = tailMs >= 0 ? GoAt(h).AddMilliseconds(winnerMs + tailMs) : GoAt(h).AddMilliseconds(Math.Min(cap, winnerMs + 120_000));
         Assert.Equal(expected, endsAt);
     }
 
@@ -312,7 +325,7 @@ public class TyperaceTests
         Assert.True(FinishAt(h, 0, 20_000).Ok);
         h.Tick(1);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
-        h.Tick(30_000 / 200);
+        h.Tick(45_000 / 200);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         var result = h.View(null).GetProperty("result");
         Assert.Equal([0, 2, 1, 3], result.GetProperty("order").EnumerateArray().Select(x => x.GetInt32()));
@@ -368,22 +381,26 @@ public class TyperaceTests
     }
 
     [Fact]
-    public void An_idle_minute_without_a_single_key_closes_the_table_as_a_draw()
+    public void Idle_seconds_without_a_single_key_close_the_table_as_an_unpaid_draw()
     {
         var h = Table(2);
         ToGo(h);
-        h.Tick(60_000 / 200 - 1);
+        h.Tick(Typerace.IdleMs / 200 - 1);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         h.Tick(1);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.True(h.Finished.Single().Result.Draw);
-        Assert.Equal("Клавоперегони: ніхто й пальцем не ворухнув", h.Finished.Single().Result.Text);
+        var fin = h.Finished.Single();
+        Assert.True(fin.Result.Draw);
+        Assert.Equal("Клавоперегони: ніхто й пальцем не ворухнув", fin.Result.Text);
         Assert.Contains("пальцем не ворухнув", h.View(null).GetProperty("result").GetProperty("say").GetString());
+        // «Почати» й піти пити чай — не заробіток: така партія коротша за поріг нагороди (нічия платила б +2, більше за програш)
+        Assert.True((fin.FinishedAt - fin.StartedAt).TotalSeconds < new EconomyOptions().MinRewardSeconds,
+            $"тиша закрила стіл через {(fin.FinishedAt - fin.StartedAt).TotalSeconds} с");
 
-        // одна літера за хвилину — і стіл живе далі
+        // одна літера до кінця тиші — і стіл живе далі
         var alive = Table(2);
         ToGo(alive);
-        alive.Tick(250);
+        alive.Tick(Typerace.IdleMs / 200 - 5);
         Pos(alive, 1, 1);
         alive.Tick(100);
         Assert.Equal(RoomStatus.Playing, alive.Room.Status);
@@ -399,7 +416,7 @@ public class TyperaceTests
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.True(FinishAt(h, 1, 22_000, seed: 2).Ok);
         Pos(h, 2, 10);
-        h.Tick(31_000 / 200);
+        h.Tick(46_000 / 200);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Finished.Single().Result.Winners);
         var olya = Racer(h, 0);
@@ -425,7 +442,7 @@ public class TyperaceTests
         h.Tick(1);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Finished.Single().Result.Winners);
-        Assert.Contains("їхав сам", h.View(null).GetProperty("result").GetProperty("say").GetString());
+        Assert.Contains("один на трасі", h.View(null).GetProperty("result").GetProperty("say").GetString());
         // хто встав недописавши — «усі дописали» вже не скажеш
         Assert.False(h.View(null).GetProperty("result").GetProperty("allDone").GetBoolean());
     }
@@ -547,8 +564,7 @@ public class TyperaceTests
         // з помилками — лише «швидкі пальці», якщо точність ≥ 95 %
         h.Clock.UtcNow = GoAt(h).AddMilliseconds(fast + 1000);
         var sloppy = TyperaceLogs.Sloppy(len, every: 30, meanMs: (int)(fast / len));
-        h.Clock.UtcNow = GoAt(h).AddMilliseconds(Math.Max(fast + 1000, sloppy.Ms + 200));
-        Assert.True(Finish(h, 1, sloppy).Ok);
+        Assert.True(FinishWith(h, 1, sloppy, Math.Max(fast + 1000, sloppy.Ms + 200)).Ok);
         var petro = h.Awards.Where(a => a.Nick == "Петро").Select(a => a.Reason).ToList();
         Assert.DoesNotContain("ach:typerace-clean", petro);
 
@@ -605,7 +621,7 @@ public class TyperaceTests
         Assert.True(FinishAt(h, 0, 30_000).Ok);
         var v = h.View(null);
         Assert.Equal(
-            ["phase", "turn", "len", "text", "src", "opts", "readyAt", "goAt", "endsAt", "goIn", "endsIn", "tail", "racers", "result"],
+            ["phase", "turn", "len", "text", "src", "opts", "readyAt", "goAt", "endsAt", "goIn", "endsIn", "tail", "racers", "result", "extra"],
             v.EnumerateObject().Select(p => p.Name));
         Assert.Equal(JsonValueKind.Null, v.GetProperty("turn").ValueKind);
         Assert.Equal(["kind", "author", "title", "year"], v.GetProperty("src").EnumerateObject().Select(p => p.Name));
@@ -678,9 +694,10 @@ public class TyperaceTests
     {
         // імена полів модуль бере з одного рядка WIRE поруч із register — тут читаємо саме його
         var js = File.ReadAllText(Paths.Resolve("web/games/typerace.js"));
-        var m = Regex.Match(js, @"const WIRE = \{ pos: \['c', 'e'\], finish: \['k', 'd'\], go: \['length', 'source'\], stop: \[\] \};");
-        Assert.True(m.Success, "у typerace.js нема рядка WIRE з полями pos/finish/go/stop");
+        var m = Regex.Match(js, @"const WIRE = \{ pos: \['c', 'e'\], finish: \['k', 'd'\], go: \['length', 'source'\], stop: \[\], cheer: \['r'\] \};");
+        Assert.True(m.Success, "у typerace.js нема рядка WIRE з полями pos/finish/go/stop/cheer");
         Assert.Contains("ctx.input(WIRE_POS", js);
+        Assert.Contains("ctx.input(WIRE_CHEER", js);
 
         var h = Table(2);
         ToGo(h);
@@ -695,6 +712,11 @@ public class TyperaceTests
         Assert.True(alien.Ok);
         Assert.Contains("журнал не читається", alien.Message);
         Assert.Equal("bad-log", Racer(h, 0).GetProperty("flag").GetString());
+        // гудок з фінішу — { r }
+        h.Tick(1);
+        h.Input(0, "cheer", new { r = 2 });
+        h.Tick(1);
+        Assert.Equal([0, 2], Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame).GetProperty("h").EnumerateArray().Select(x => x.GetInt32()));
 
         var s = Solo();
         Assert.True(s.Act(0, "go", new { length = "short", source = "proverbs" }).Ok);
@@ -809,7 +831,7 @@ public class TyperaceTests
         var len = Len(h);
         var r = FinishAt(h, 0, 40_000);
         Assert.True(r.Ok);
-        Assert.StartsWith("Рекорд!", r.Message);
+        Assert.Equal("", r.Message);          // без тосту: підсумок заїзду з'являється тут-таки й каже те саме
         h.Tick(1);
         Assert.Equal("done", Phase(h));
         var cpm = CpmFor(len, 40_000);
@@ -819,7 +841,7 @@ public class TyperaceTests
         Assert.Equal(TyperaceLines.Title(cpm), Me(h).GetProperty("title").GetString());
         Assert.Equal(cpm, h.Scores.Single().Score);
         Assert.Equal("typerace-solo", h.Scores.Single().GameId);
-        Assert.Contains("Рекорд!", h.View(0).GetProperty("result").GetProperty("say").GetString());
+        Assert.Contains("екорд", h.View(0).GetProperty("result").GetProperty("say").GetString());
 
         SoloGo(h);
         var len2 = Len(h);
@@ -841,7 +863,7 @@ public class TyperaceTests
         var len = Len(h);
         h.Clock.UtcNow = GoAt(h).AddMilliseconds(len * 150 + 200);
         var r = Finish(h, 0, TyperaceLogs.Robot(len, 150));
-        Assert.Contains("не зараховано", r.Message);
+        Assert.True(r.Ok);
         h.Tick(1);
         Assert.Equal("done", Phase(h));
         Assert.Equal(1, Me(h).GetProperty("runs").GetInt32());
@@ -903,7 +925,7 @@ public class TyperaceTests
     {
         var h = Solo();
         SoloGo(h);
-        h.Tick(60_000 / 200);
+        h.Tick(TyperaceSolo.IdleMs / 200);
         Assert.Equal("pick", Phase(h));
         Assert.Equal(0, Me(h).GetProperty("runs").GetInt32());
         Assert.Empty(h.Scores);
@@ -920,7 +942,7 @@ public class TyperaceTests
         Assert.Equal("done", Phase(h));
         Assert.Equal(0, Me(h).GetProperty("runs").GetInt32());
         Assert.False(h.View(0).GetProperty("result").GetProperty("allDone").GetBoolean());
-        Assert.Contains("Не доїхав", h.View(0).GetProperty("result").GetProperty("say").GetString());
+        Assert.Contains("До фінішу", h.View(0).GetProperty("result").GetProperty("say").GetString());
         Assert.Empty(h.Scores);
         // і знову можна
         SoloGo(h);
@@ -949,5 +971,204 @@ public class TyperaceTests
         h.Tick(5);
         // у соло кадрів нема: дивитись нікому, свій трактор клієнт і так знає
         Assert.Empty(h.Outbox.OfType<RoomFrame>());
+    }
+
+    // ------------------------------------------------------------------------------------ після рецензій
+
+    static DateTimeOffset EndsAt(RoomHarness h) => DateTimeOffset.Parse(h.View(null).GetProperty("endsAt").GetString()!);
+
+    [Fact]
+    public void A_console_finish_without_a_single_pos_is_unseen_and_gets_no_place()
+    {
+        var h = Table(2);
+        ToGo(h);
+        var len = Len(h);
+        // «людський» журнал, підігнаний під час, — але сервер за весь заїзд не бачив жодного pos
+        h.Clock.UtcNow = GoAt(h).AddMilliseconds(40_000);
+        var r = Finish(h, 0, TyperaceLogs.HumanIn(len, 39_700));
+        Assert.True(r.Ok);
+        Assert.Contains("сервер не бачив самого друку", r.Message);
+        Assert.Equal("unseen", Racer(h, 0).GetProperty("flag").GetString());
+        Assert.Equal(JsonValueKind.Null, Racer(h, 0).GetProperty("place").ValueKind);
+        Assert.Empty(h.Awards);
+        // той самий журнал разом із pos, що йшли під час друку, — зараховано
+        Assert.True(FinishAt(h, 1, 41_000).Ok);
+        Assert.Equal(1, Racer(h, 1).GetProperty("place").GetInt32());
+    }
+
+    [Fact]
+    public void A_finish_that_arrives_twelve_seconds_late_after_a_network_drop_still_counts()
+    {
+        // зв'язок ліг на останній літері, клієнт повторював, SignalR перепідключився за 12 с — фініш дійшов пізно
+        var h = Table(2);
+        ToGo(h);
+        var log = TyperaceLogs.HumanIn(Len(h), 30_000);
+        var r = FinishWith(h, 0, log, 30_000 + 12_000);
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(JsonValueKind.Null, Racer(h, 0).GetProperty("flag").ValueKind);
+        Assert.Equal(42_000, Racer(h, 0).GetProperty("fin").GetInt64());     // час — серверний: секунди втрачено, не більше
+        Assert.Equal(1, Racer(h, 0).GetProperty("place").GetInt32());
+    }
+
+    [Fact]
+    public void A_racer_near_the_finish_who_still_types_stretches_the_tail()
+    {
+        var h = Table(4);
+        ToGo(h);
+        var len = Len(h);
+        var go = GoAt(h);
+        Pos(h, 2, len / 2);                                   // Ганна застрягла на половині
+        h.Clock.UtcNow = go.AddMilliseconds(10_000);
+        Pos(h, 3, len * 9 / 10);                              // Іван майже доїхав, але давно не друкує
+        Assert.True(FinishAt(h, 0, 20_000).Ok);               // хвіст — 45 с, до 65-ї секунди
+        var end = go.AddMilliseconds(65_000);
+        Assert.Equal(end, EndsAt(h));
+
+        // Петро друкує рівно й за секунду до кінця хвоста вже на 90 %
+        var petro = TyperaceLogs.HumanIn(len, 69_700, seed: 2);
+        foreach (var (c, ms) in TyperaceLogs.Marks(petro, len))
+        {
+            h.Clock.UtcNow = go.AddMilliseconds(ms + 120);
+            Pos(h, 1, c);
+        }
+        h.Clock.UtcNow = go.AddMilliseconds(64_000);
+        Pos(h, 1, len * 9 / 10);
+        h.Tick(10);                                           // 66-та секунда: хвіст скінчився б
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        var v = h.View(null);
+        Assert.Equal(1, v.GetProperty("extra").GetInt32());
+        var stretched = EndsAt(h);
+        Assert.InRange((stretched - end).TotalMilliseconds, 1, Typerace.ExtraMs + 200);
+
+        // дописав — друге місце; а на новому дедлайні ніхто вже не біля фінішу й не друкує — кінець
+        h.Clock.UtcNow = go.AddMilliseconds(70_000);
+        Assert.True(Finish(h, 1, petro).Ok);
+        Assert.Equal(2, Racer(h, 1).GetProperty("place").GetInt32());
+        h.Tick(1);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        h.Tick((int)((stretched - h.Clock.UtcNow).TotalMilliseconds / 200) + 1);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0, 1, 3, 2], h.View(null).GetProperty("result").GetProperty("order").EnumerateArray().Select(x => x.GetInt32()));
+
+        // дотяжка ніколи не йде за стелю партії
+        var cap = Table(2);
+        ToGo(cap);
+        var clen = Len(cap);
+        var capAt = GoAt(cap).AddMilliseconds(TyperaceRace.HardCapMs(clen));
+        for (var t = 0; cap.Room.Status == RoomStatus.Playing && t < 2000; t++)
+        {
+            if (t % 5 == 0) Pos(cap, 1, clen * 9 / 10 + (t / 5) % 2);   // «друкує» біля фінішу без кінця
+            cap.Tick(1);
+        }
+        Assert.Equal(RoomStatus.Finished, cap.Room.Status);
+        Assert.True(cap.Clock.UtcNow <= capAt.AddMilliseconds(400));
+    }
+
+    [Fact]
+    public void A_slow_racer_far_from_the_finish_does_not_hold_the_table()
+    {
+        var h = Table(2);
+        ToGo(h);
+        var len = Len(h);
+        var go = GoAt(h);
+        Assert.True(FinishAt(h, 0, 20_000).Ok);                  // хвіст до 65-ї секунди
+        for (var t = 21; t <= 64; t++)                            // Петро повзе й на 64-й секунді має 64 %
+        {
+            h.Clock.UtcNow = go.AddSeconds(t);
+            Pos(h, 1, len * t / 100);
+        }
+        h.Tick(10);
+        // решта 36 % його темпом — ще пів хвилини: дотяжки нема, заїзд закінчився вчасно
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(0, h.View(null).GetProperty("extra").GetInt32());
+    }
+
+    [Fact]
+    public void Cheers_from_the_finish_ride_in_exactly_one_frame()
+    {
+        var h = Table(3);
+        Assert.Equal("Гудіти можна, поки їдуть", h.Act(0, "cheer", new { r = 0 }).Message);
+        ToGo(h);
+        Assert.Equal("Спершу доїдь — тоді й гуди", h.Act(0, "cheer", new { r = 0 }).Message);
+        Assert.True(FinishAt(h, 0, 20_000).Ok);
+        h.Tick(1);
+        int Frames() => h.Outbox.OfType<RoomFrame>().Count();
+        var before = Frames();
+        h.Input(0, "cheer", new { r = 3 });
+        h.Input(0, "cheer", new { r = 1 });                  // частіше за 0,7 с — мовчки відкинуто
+        h.Tick(1);
+        Assert.Equal(before + 1, Frames());
+        var f = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
+        Assert.Equal([0, 3], f.GetProperty("h").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.True(Views.Text(h.Outbox.OfType<RoomFrame>().Last().Frame).Length < 120);
+        h.Tick(1);
+        Assert.Equal(before + 1, Frames());                   // той самий гудок удруге не летить
+        Pos(h, 1, 5);
+        h.Tick(1);
+        Assert.False(Views.Has(Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame), "h"));
+        h.Clock.AdvanceMs(800);
+        foreach (var bad in new object?[] { new { r = 4 }, new { r = -1 }, new { r = "1" }, new { }, null })
+            Assert.Equal("Не зрозумів, як гудіти", h.Act(0, "cheer", bad).Message);
+        h.Leave("Оля");
+        lock (h.Room.Sync)
+            Assert.Equal("Ти в цих перегонах не їдеш", h.Room.Game.Act(0, "cheer", Views.Payload(new { r = 0 })).Message);
+        // у соло гудіти нікому
+        var s = Solo();
+        SoloGo(s);
+        Assert.Equal("Тут так не ходять", s.Act(0, "cheer", new { r = 0 }).Message);
+    }
+
+    [Fact]
+    public void The_trap_word_is_the_one_most_finishers_stumbled_on()
+    {
+        var h = Table(3);
+        ToGo(h);
+        var text = h.View(null).GetProperty("text").GetString()!;
+        var len = text.Length;
+        var starts = Enumerable.Range(0, len).Where(i => i == 0 || text[i - 1] is ' ' or '\n').ToArray();
+        string WordAt(int start)
+        {
+            var end = start;
+            while (end < len && text[end] is not ' ' and not '\n') end++;
+            return text[start..end].Trim(',', '.', '!', '?', ';', ':', '«', '»', '—', '(', ')');
+        }
+        Assert.True(FinishWith(h, 0, TyperaceLogs.HumanInWithMiss(len, 30_000, starts[2] + 1, seed: 1), 30_300).Ok);
+        Assert.True(FinishWith(h, 1, TyperaceLogs.HumanInWithMiss(len, 32_000, starts[2] + 2, seed: 2), 32_300).Ok);
+        Assert.True(FinishWith(h, 2, TyperaceLogs.HumanInWithMiss(len, 34_000, starts[5], seed: 3), 34_300).Ok);
+        h.Tick(1);
+        var trap = h.View(null).GetProperty("result").GetProperty("trap");
+        Assert.Equal(WordAt(starts[2]), trap.GetProperty("word").GetString());
+        Assert.Equal(2, trap.GetProperty("n").GetInt32());
+        Assert.Equal(3, trap.GetProperty("of").GetInt32());
+
+        // спіткнувся один — пастки нема
+        var one = Table(2);
+        ToGo(one);
+        var olen = Len(one);
+        Assert.True(FinishWith(one, 0, TyperaceLogs.HumanInWithMiss(olen, 30_000, 10, seed: 1), 30_300).Ok);
+        Assert.True(FinishAt(one, 1, 31_000, seed: 2).Ok);
+        one.Tick(1);
+        Assert.Equal(JsonValueKind.Null, one.View(null).GetProperty("result").GetProperty("trap").ValueKind);
+    }
+
+    [Fact]
+    public void Hlek_never_says_the_rest_still_types_when_everyone_finished_and_never_guesses_a_gender()
+    {
+        for (var seed = 0; seed < 200; seed++)
+        {
+            var all = TyperaceLines.ForWinner(new Random(seed), "Оля", 300, clean: false, alone: false, allDone: true);
+            Assert.DoesNotContain("Решта ще", all);
+            Assert.DoesNotContain("в решти ще", all);
+            Assert.EndsWith("Усі дописали — це вже саме по собі свято.", all);
+            foreach (var say in new[]
+                     {
+                         all, TyperaceLines.ForWinner(new Random(seed), "Оля", 300, clean: false, alone: false, allDone: false),
+                         TyperaceLines.ForWinner(new Random(seed), "Оля", 300, clean: false, alone: true, allDone: false),
+                         TyperaceLines.ForWinner(new Random(seed), "Оля", 300, clean: true, alone: false, allDone: false),
+                         TyperaceLines.ForSolo(new Random(seed), 250, record: seed % 2 == 0), TyperaceLines.ForSoloUnfinished(40),
+                     })
+                Assert.DoesNotMatch(@"\b(доїхав|їхав|перший|друкував|Не доїхав)\b", say);
+        }
+        Assert.DoesNotContain("курить", TyperaceLines.ForSolo(new Random(1), 300, record: true));
     }
 }

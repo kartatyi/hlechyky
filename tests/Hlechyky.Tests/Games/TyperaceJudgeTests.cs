@@ -146,17 +146,19 @@ public class TyperaceJudgeTests
     }
 
     [Fact]
-    public void A_log_up_to_six_seconds_shorter_than_server_time_still_passes()
+    public void A_log_up_to_twenty_seconds_shorter_than_server_time_still_passes()
     {
         var log = TyperaceLogs.Human(100, seed: 10);
-        Assert.Null(Check(100, log, log.Ms + 6000).Flag);
-        Assert.Equal(TyperaceJudge.Clock, Check(100, log, log.Ms + 6001).Flag);
+        // фініш дійшов на 12 с пізніше за останню літеру (зв'язок ліг і повернувся) — не бот, лише гірший час
+        Assert.Null(Check(100, log, log.Ms + 12_000).Flag);
+        Assert.Null(Check(100, log, log.Ms + 20_000).Flag);
+        Assert.Equal(TyperaceJudge.Clock, Check(100, log, log.Ms + 20_001).Flag);
         // але якщо в журналі була пауза на стелі (людина відійшла) — скільки там насправді, журнал не знає
         var b = new TyperaceLogs.Builder();
         var rng = new Random(6);
         for (var i = 0; i < 50; i++) b.Add('c', i == 25 ? 30_000 : 150 + rng.Next(100));
         var paused = b.Build();
-        Assert.Null(Check(50, paused, paused.Ms + 20_000).Flag);
+        Assert.Null(Check(50, paused, paused.Ms + 40_000).Flag);
     }
 
     [Fact]
@@ -272,7 +274,7 @@ public class TyperaceJudgeTests
         // причини людською мовою
         Assert.Equal("ритм метронома", TyperaceJudge.Reason(TyperaceJudge.Metronome));
         Assert.Equal("", TyperaceJudge.Reason(null));
-        foreach (var f in new[] { "bad-log", "mismatch", "clock", "fast", "script", "metronome", "burst" })
+        foreach (var f in new[] { "bad-log", "mismatch", "clock", "fast", "script", "metronome", "burst", "unseen" })
             Assert.NotEqual("щось не те", TyperaceJudge.Reason(f));
     }
 
@@ -294,5 +296,130 @@ public class TyperaceJudgeTests
         Assert.Equal(5, v.Swallowed);
         // так рахує гра: 100 × 102 / 103 = 99 %
         Assert.Equal(99, (int)Math.Round(100.0 * v.Correct / (v.Correct + v.Wrong), MidpointRounding.AwayFromZero));
+    }
+
+    // ------------------------------------------------------------------------------------ після рецензій
+
+    /// <summary>Миті ¼, ½, ¾ із журналу + затримка — те, що сервер бачив би з pos у чесного гравця.</summary>
+    static long[] SeenFor(TyperaceLogs.Log log, int len, long lagMs = 150)
+    {
+        var seen = new long[TyperaceJudge.SeenMarks];
+        Array.Fill(seen, -1L);
+        var q = 0;
+        foreach (var (_, ms) in TyperaceLogs.Marks(log, len)) seen[q++] = ms + lagMs;
+        return seen;
+    }
+
+    [Fact]
+    public void A_finish_the_server_never_saw_being_typed_is_unseen()
+    {
+        var log = TyperaceLogs.Human(300, seed: 8);
+        var ms = log.Ms + 150;
+        // чесний: pos на ¼, ½, ¾ ішли слідом за натисками
+        Assert.Null(TyperaceJudge.Check(300, log.K, log.D, ms, SeenFor(log, 300)).Flag);
+        // фініш «з нуля» з консолі: жодного pos за весь заїзд
+        var none = new long[] { -1, -1, -1 };
+        Assert.Equal(TyperaceJudge.Unseen, TyperaceJudge.Check(300, log.K, log.D, ms, none).Flag);
+        // pos є, але всі прийшли наприкінці — журнал каже, що чверть була хвилину тому
+        Assert.Equal(TyperaceJudge.Unseen, TyperaceJudge.Check(300, log.K, log.D, ms, new[] { ms - 100, ms - 80, ms - 60 }).Flag);
+        // pos «випередили» журнал більш ніж на 1,5 с — теж не те
+        var early = SeenFor(log, 300, lagMs: -2_000);
+        Assert.Equal(TyperaceJudge.Unseen, TyperaceJudge.Check(300, log.K, log.D, ms, early).Flag);
+        // зв'язок кліпнув на 12 с якраз на половині — ще людське
+        var lag = SeenFor(log, 300);
+        lag[1] += 12_000;
+        Assert.Null(TyperaceJudge.Check(300, log.K, log.D, ms, lag).Flag);
+        // зв'язок ліг під кінець: ¾ сервер не бачив — рахується миттю фінішу, і це близько
+        var tail = SeenFor(log, 300);
+        tail[2] = -1;
+        Assert.Null(TyperaceJudge.Check(300, log.K, log.D, ms, tail).Flag);
+        // …а чверть мусить прийти справжнім pos
+        var noQuarter = SeenFor(log, 300);
+        noQuarter[0] = -1;
+        Assert.Equal(TyperaceJudge.Unseen, TyperaceJudge.Check(300, log.K, log.D, ms, noQuarter).Flag);
+        // порожній seen — перевірку пропускаємо (чистий суддя)
+        Assert.Null(TyperaceJudge.Check(300, log.K, log.D, ms).Flag);
+        Assert.Equal("сервер не бачив самого друку", TyperaceJudge.Reason(TyperaceJudge.Unseen));
+    }
+
+    [Fact]
+    public void A_backspace_dip_across_a_mark_that_pos_never_saw_still_passes()
+    {
+        // чверть тексту (25 з 100): дописав, помилився, довго виправляв і ще й стер знак перед нею — ямку назад
+        // на 150 мс pos (раз на 200 мс) не побачив, тож сервер пам'ятає перший перетин, а журнал — останній
+        var b = new TyperaceLogs.Builder();
+        var rng = new Random(3);
+        for (var i = 0; i < 25; i++) b.Add('c', 150 + rng.Next(120));
+        b.Add('x', 180).Add('s', 300).Add('s', 400).Add('b', 900).Add('b', 700).Add('c', 150);
+        for (var i = 0; i < 75; i++) b.Add('c', 150 + rng.Next(120));
+        var log = b.Build();
+        var marks = TyperaceLogs.Marks(log, 100).ToArray();
+        var firstQuarter = marks[0].Ms - 180 - 300 - 400 - 900 - 700 - 150;   // коли чверть перетнули вперше
+        var seen = new[] { firstQuarter + 120, marks[1].Ms + 120, marks[2].Ms + 120 };
+        Assert.Null(TyperaceJudge.Check(100, log.K, log.D, log.Ms + 150, seen).Flag);
+    }
+
+    [Fact]
+    public void A_sloppy_long_run_fits_the_journal_once_the_client_caps_swallowed_keys()
+    {
+        // 760 знаків, 70 помилок (точність 92 %), і на кожну — 12 натисків, поки людина помітила червоне
+        var raw = TyperaceLogs.SloppyRaw(760, errors: 70, swallows: 12);
+        var all = new TyperaceLogs.Builder();
+        foreach (var (kind, ms) in raw) all.Add(kind, ms);
+        var uncapped = all.Build();
+        Assert.True(uncapped.K.Length > TyperaceJudge.MaxEvents);      // так клієнт писав до виправлення — і людину звали 🤖
+        Assert.Equal(TyperaceJudge.BadLog, TyperaceJudge.Check(760, uncapped.K, uncapped.D, uncapped.Ms + 150).Flag);
+
+        var log = TyperaceLogs.AsClientWrites(raw, 760);
+        Assert.True(log.K.Length <= TyperaceJudge.MaxEvents);
+        Assert.InRange(Math.Abs(uncapped.Ms - log.Ms), 0, 4L * raw.Count);   // час той самий (з точністю до округлення кроків)
+        var v = TyperaceJudge.Check(760, log.K, log.D, log.Ms + 150, SeenFor(log, 760));
+        Assert.Null(v.Flag);
+        Assert.Equal(70, v.Wrong);
+        Assert.Equal(760, v.Correct);
+        Assert.Equal(70 * TyperaceLogs.ClientSwallowsPerRed, v.Swallowed);
+
+        // ще неохайніше: 200 помилок по 12 — проковтнуті зникають зовсім, коли журнал підходить до стелі
+        var worse = TyperaceLogs.AsClientWrites(TyperaceLogs.SloppyRaw(760, errors: 200, swallows: 12), 760);
+        Assert.True(worse.K.Length <= TyperaceJudge.MaxEvents);
+        Assert.Null(TyperaceJudge.Check(760, worse.K, worse.D, worse.Ms + 150).Flag);
+    }
+
+    [Fact]
+    public void The_client_journal_clock_does_not_drift_on_a_long_run()
+    {
+        // 1100 натисків, проміжки — цілі мілісекунди на півкроці (4k + 2): кожен округлюється «вгору» на 2 мс
+        var rng = new Random(11);
+        var raw = new List<(char Kind, int Ms)>();
+        long truth = 0;
+        for (var i = 0; i < 1100; i++) { var ms = 4 * rng.Next(15, 60) + 2; raw.Add(('c', ms)); truth += ms; }
+        var server = truth + 30;                                            // фініш дійшов за 30 мс після останньої літери
+        var old = TyperaceLogs.AsOldClientWrites(raw);
+        Assert.Equal(truth + 2 * 1100, old.Ms);                             // журнал «бачив» на 2,2 с більше, ніж було
+        Assert.Equal(TyperaceJudge.Clock, TyperaceJudge.Check(1100, old.K, old.D, server).Flag);
+        var now = TyperaceLogs.AsClientWrites(raw, 1100);
+        Assert.InRange(now.Ms - truth, -2, 2);                              // годинник журналу йде записаними кроками
+        Assert.Null(TyperaceJudge.Check(1100, now.K, now.D, server).Flag);
+    }
+
+    [Fact]
+    public void The_client_journal_cap_is_the_same_in_the_browser_and_in_cs()
+    {
+        var log = TyperaceLogs.AsClientWrites(TyperaceLogs.ScenarioSwallows(), 40);
+        Assert.Equal(TyperaceLogs.FromJsCapped.K, log.K);
+        Assert.Equal(TyperaceLogs.FromJsCapped.D, log.D);
+        var v = TyperaceJudge.Check(40, log.K, log.D, log.Ms + 150);
+        Assert.Null(v.Flag);
+        Assert.Equal((4, 4 + 2 + 4 + 4), (v.Wrong, v.Swallowed));   // 6 і 9 проковтнутих стали по 4
+    }
+
+    [Fact]
+    public void Misses_mark_the_letters_where_red_hung()
+    {
+        var b = new TyperaceLogs.Builder();
+        b.Add('c', 300).Add('x', 200).Add('b', 300).Add('c', 200).Add('c', 200).Add('x', 150).Add('s', 90).Add('b', 300).Add('c', 200);
+        var miss = new bool[4];
+        TyperaceJudge.Misses(b.Build().K, 4, miss);
+        Assert.Equal([false, true, false, true], miss);
     }
 }

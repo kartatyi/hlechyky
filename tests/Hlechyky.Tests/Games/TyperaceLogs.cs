@@ -97,6 +97,36 @@ public static class TyperaceLogs
         return b.Build();
     }
 
+    /// <summary>
+    /// Як <see cref="HumanIn"/>, але на знаку <paramref name="missAt"/> людина спершу помилилась (x) і стерла (b).
+    /// </summary>
+    public static Log HumanInWithMiss(int len, long totalMs, int missAt, int seed = 1)
+    {
+        var rng = new Random(seed);
+        var n = len + 2;
+        var raw = new double[n];
+        double sum = 0;
+        for (var i = 0; i < n; i++) { raw[i] = i == 0 ? 3 : 0.4 + 1.2 * rng.NextDouble(); sum += raw[i]; }
+        var totalSteps = totalMs / TyperaceJudge.StepMs;
+        var b = new Builder();
+        long used = 0;
+        var e = 0;
+        void Add(char kind)
+        {
+            var steps = e == n - 1 ? totalSteps - used : (long)Math.Round(raw[e] / sum * totalSteps);
+            steps = Math.Clamp(steps, 1, TyperaceJudge.MaxStep);
+            used += steps;
+            e++;
+            b.Add(kind, (int)(steps * TyperaceJudge.StepMs));
+        }
+        for (var i = 0; i < len; i++)
+        {
+            if (i == missAt) { Add('x'); Add('b'); }
+            Add('c');
+        }
+        return b.Build();
+    }
+
     /// <summary>Бот: рівно однаковий проміжок між усіма натисками.</summary>
     public static Log Robot(int len, int ms = 100)
     {
@@ -153,5 +183,135 @@ public static class TyperaceLogs
         var b = new Builder();
         foreach (var (kind, ms) in scenario) b.Add(kind, ms);
         return b.Build();
+    }
+
+    /// <summary>
+    /// Коли журнал останній раз перетнув ¼, ½, ¾ тексту (мс від старту) — саме тоді клієнт шле pos із цим c, і сервер
+    /// запам'ятовує мить для перевірки 8 судді.
+    /// </summary>
+    public static IEnumerable<(int C, long Ms)> Marks(Log log, int len)
+    {
+        var at = new long[TyperaceJudge.SeenMarks];
+        Array.Fill(at, -1L);
+        var cur = 0;
+        var red = false;
+        long t = 0;
+        for (var i = 0; i < log.K.Length; i++)
+        {
+            t += TyperaceJudge.DecodeSteps(log.D[2 * i], log.D[2 * i + 1]) * TyperaceJudge.StepMs;
+            switch (log.K[i] | 0x20)
+            {
+                case 'c':
+                    if (red || cur >= len) break;
+                    cur++;
+                    for (var q = 0; q < at.Length; q++) if (cur == TyperaceJudge.Mark(len, q)) at[q] = t;
+                    break;
+                case 'x': red = true; break;
+                case 'b':
+                    if (red) { red = false; break; }
+                    if (cur == 0) break;
+                    for (var q = 0; q < at.Length; q++) if (cur == TyperaceJudge.Mark(len, q)) at[q] = -1;
+                    cur--;
+                    break;
+            }
+        }
+        for (var q = 0; q < at.Length; q++)
+            if (at[q] >= 0) yield return (TyperaceJudge.Mark(len, q), at[q]);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Що клієнт справді пише в журнал (typerace.js, journalAt): проковтнуті натиски (s) — не більше чотирьох за
+    // одну червону літеру і жодного, коли до стелі журналу лишається менше, ніж треба на решту тексту + 200 подій.
+    // Пропущений натиск свою дельту віддає наступній події. Годинник журналу йде рівно записаними кроками (похибка
+    // округлення не накопичується); пауза на стелі — від справжньої миті. Міняти разом із JS.
+    // ---------------------------------------------------------------------------------------------
+
+    public const int ClientSwallowsPerRed = 4, ClientReserve = 200;
+
+    /// <summary>
+    /// Сирий потік неохайного друкаря на тексті в 40 знаків (помилки на 5, 12, 20, 33 і по 6, 2, 9, 5 проковтнутих) —
+    /// той самий, що четвертий сценарій у docs/games/dev/typerace-parity.js.
+    /// </summary>
+    public static List<(char Kind, int Ms)> ScenarioSwallows()
+    {
+        var miss = new Dictionary<int, int> { [5] = 6, [12] = 2, [20] = 9, [33] = 5 };
+        var raw = new List<(char, int)>();
+        for (var i = 0; i < 40; i++)
+        {
+            if (miss.TryGetValue(i, out var n))
+            {
+                raw.Add(('x', 100 + i));
+                for (var s = 0; s < n; s++) raw.Add(('s', 50 + 7 * s));
+                raw.Add(('b', 300));
+            }
+            raw.Add(('c', 120 + i * 37 % 90));
+        }
+        return raw;
+    }
+
+    /// <summary>Що з <see cref="ScenarioSwallows"/> записав у журнал браузер (TyperaceCore.capped) — з живого прогону.</summary>
+    public static readonly (string K, string D) FromJsCapped =
+        ("cccccxssssbcccccccxssbccccccccxssssbcccccccccccccxssssbccccccc",
+         "AeAnAxAjAtAaAMAPAQARB0AfApAyAkAuAgAqAcANAOBLAzAmAvAhArA1AnAwAeAMAPAQARC-AjAtAfAoAxAlAtAgAqAzAlAvAhAiAMAOAQASBfAqA0AnAwAjAsAf");
+
+    public static Log AsClientWrites(IEnumerable<(char Kind, int Ms)> raw, int len)
+    {
+        var b = new Builder();
+        int events = 0, cur = 0, swallowsInRed = 0;
+        var red = false;
+        long now = 0, lastAt = 0;
+        foreach (var (kind, ms) in raw)
+        {
+            now += ms;
+            if (kind == 's' && (swallowsInRed >= ClientSwallowsPerRed || TyperaceJudge.MaxEvents - events <= len - cur + ClientReserve))
+                continue;
+            var v = (int)Math.Clamp(Math.Floor((now - lastAt) / (double)TyperaceJudge.StepMs + 0.5), 0, TyperaceJudge.MaxStep);
+            b.Add(kind, v * TyperaceJudge.StepMs);
+            lastAt = v >= TyperaceJudge.MaxStep ? Math.Max(now, lastAt) : lastAt + v * TyperaceJudge.StepMs;
+            events++;
+            switch (kind)
+            {
+                case 'c': cur++; break;
+                case 'x': red = true; swallowsInRed = 0; break;
+                case 's': swallowsInRed++; break;
+                case 'b': if (red) red = false; else if (cur > 0) cur--; break;
+            }
+        }
+        return b.Build();
+    }
+
+    /// <summary>
+    /// Як писав журнал клієнт до виправлення: кожна дельта округлюється окремо, а годинник журналу стає на справжню
+    /// мить (lastAt = t). На цілих мілісекундах «від половини вгору» це +0,5 мс на подію.
+    /// </summary>
+    public static Log AsOldClientWrites(IEnumerable<(char Kind, int Ms)> raw)
+    {
+        var b = new Builder();
+        foreach (var (kind, ms) in raw) b.Add(kind, ms);
+        return b.Build();
+    }
+
+    /// <summary>
+    /// Неохайний друкар на довгому тексті, як його описала рецензія: <paramref name="errors"/> помилок, і після кожної —
+    /// ще <paramref name="swallows"/> натисків, поки не помітив червоне. Сирий потік подій (до того, як клієнт його стисне).
+    /// </summary>
+    public static List<(char Kind, int Ms)> SloppyRaw(int len, int errors, int swallows, int seed = 7, int meanMs = 210)
+    {
+        var rng = new Random(seed);
+        var raw = new List<(char, int)>();
+        var every = Math.Max(2, len / (errors + 1));
+        var made = 0;
+        for (var i = 0; i < len; i++)
+        {
+            if (i > 0 && i % every == 0 && made < errors)
+            {
+                made++;
+                raw.Add(('x', Jitter(rng, meanMs)));
+                for (var s = 0; s < swallows; s++) raw.Add(('s', Jitter(rng, meanMs)));
+                raw.Add(('b', Jitter(rng, meanMs * 2)));
+            }
+            raw.Add(('c', i == 0 ? 700 : Jitter(rng, meanMs)));
+        }
+        return raw;
     }
 }
