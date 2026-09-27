@@ -252,12 +252,14 @@
     const from = { k: st.k, ox: st.ox, oy: st.oy };
     fitView(st, pts, maxK);
     const to = { k: st.k, ox: st.ox, oy: st.oy };
-    moved(st);
     if (!reduced() && st.cv && st.cv.offsetParent) {
       st.k = from.k; st.ox = from.ox; st.oy = from.oy;
       st.fly = { t0: performance.now(), ms: 500, from, to };
+      moved(st);
+    } else {
+      st.staticDirty = true;                              // без польоту — одразу начисто, одним кадром
+      kick(st);
     }
-    kick(st);
   }
 
   // ---------------------------------------------------------------------------------------------
