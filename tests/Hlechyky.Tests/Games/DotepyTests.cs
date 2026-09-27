@@ -673,6 +673,55 @@ public class DotepyTests
     }
 
     [Fact]
+    public void A_partial_final_ballot_counts_at_the_deadline_but_does_not_close_the_vote_early()
+    {
+        var h = Table(3, options: new { rounds = "blitz" });
+        WriteAll(h);
+        h.Tick();
+        for (var s = 0; s < 3; s++) Assert.True(h.Act(s, "vote", new { card = 0, picks = new[] { FirstOther(h, s) } }).Ok);
+        h.Tick(4);
+        Assert.Equal("vote", Phase(h));                       // 🥇 є, 🥈 ще шукають
+        Assert.Empty(Voted(h));
+        Assert.All(V(h).GetProperty("players").EnumerateArray(), p => Assert.False(p.GetProperty("voted").GetBoolean()));
+        var full = Enumerable.Range(0, 3).Where(i => !Mine(h, 0).Contains(i)).ToArray();
+        Assert.True(h.Act(0, "vote", new { card = 0, picks = full }).Ok);
+        Assert.Equal([0], Voted(h));
+        UntilPhase(h, "reveal");                              // дедлайн: неповні бюлетені теж пішли в рахунок
+        var medals = Answers(h).EnumerateArray().Sum(a => a.GetProperty("seat").ValueKind == JsonValueKind.Null ? 0 : 1);
+        Assert.Equal(0, medals);                              // фінал розкривається по одній
+        h.Tick(3 * Dotepy.FinalStepMs / Dotepy.TickMs);
+        Assert.Equal(4, Answers(h).EnumerateArray().Sum(a => a.GetProperty("votes").GetArrayLength()));
+    }
+
+    [Fact]
+    public void Guests_are_named_without_the_guest_prefix_in_glek_lines_but_fully_in_the_journal()
+    {
+        Assert.Equal("Оля", Dotepy.Spoken("гість Оля"));
+        Assert.Equal("гість", Dotepy.Spoken("гість"));
+        Assert.Equal("Петро", Dotepy.Spoken("Петро"));
+        var services = new ServiceCollection();
+        services.AddSingleton(new DotepyPrompts(Bank()));
+        services.AddSingleton(new DotepySeen(Dotepy.SeenRing));
+        var voice = new FakeVoice();
+        services.AddSingleton<IDotepyVoice>(voice);
+        var h = new RoomHarness("dotepy", null, 7, services.BuildServiceProvider());
+        foreach (var n in new[] { "гість Оля", "гість Петро", "гість Ганна" }) Assert.True(h.Join(n).Ok);
+        Assert.True(h.Start().Ok);
+        Assert.Contains(voice.Prepared, p => p.Text == DotepyLines.Sweep("Оля"));
+        Assert.DoesNotContain(voice.Prepared, p => p.Text.Contains("гість"));
+        WriteAll(h);
+        h.Tick();
+        var target = Mine(h, 0)[0];
+        h.Act(1, "vote", new { card = 0, picks = new[] { target } });
+        h.Act(2, "vote", new { card = 0, picks = new[] { target } });
+        h.Act(0, "vote", new { card = 0, picks = new[] { FirstOther(h, 0) } });
+        UntilPhase(h, "reveal");
+        Assert.Equal(DotepyLines.Sweep("Оля"), Say(h));
+        h.Leave("гість Ганна");
+        Assert.Equal("Дотепи: гравці розійшлись — попереду гість Оля", h.Outbox.OfType<Journal>().Last().Text);
+    }
+
+    [Fact]
     public void Duplicate_too_many_or_own_picks_are_refused_with_the_spec_texts()
     {
         var h = Table(4, options: new { rounds = "blitz" });

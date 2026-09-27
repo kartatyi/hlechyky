@@ -278,7 +278,7 @@ public sealed class Dotepy : Game
             // у кінець черги, до них ще кілька хвилин.
             Prepare([DotepyLines.Intro(1, _roundsTotal == 1, Math.Min(RankCount, _startedWith - 1))], urgent: true);
             var lines = new List<string>(DotepyLines.Pure());
-            foreach (var s in seated) lines.AddRange(DotepyLines.Named(_nicks[s]));
+            foreach (var s in seated) lines.AddRange(DotepyLines.Named(Spoken(s)));
             Prepare(lines);
         }
         OpenRound(1, Now);
@@ -425,10 +425,17 @@ public sealed class Dotepy : Game
         {
             if (!_voter[s] || !Present(s)) continue;
             voters++;
-            if (_picks[s] is null) return false;
+            if (!Complete(s)) return false;
         }
         return voters > 0;
     }
+
+    /// <summary>
+    /// Голос місця віддано повністю: у раундах — один, у фіналі — усі медалі (<see cref="_perVoter"/>). Неповний
+    /// фінальний бюлетень рахується на дедлайні, але голосування раніше часу не закриває: людина, що поставила 🥇,
+    /// ще шукає, кому дати 🥈.
+    /// </summary>
+    bool Complete(int seat) => _picks[seat] is { } p && (!_final || p.Length >= _perVoter);
 
     /// <summary>
     /// Кінець написання: незданому — чернетка (якщо не порожня), інакше підставна; відповіді перетасовано;
@@ -672,7 +679,7 @@ public sealed class Dotepy : Game
         }
         if (tie) return DotepyLines.Tie;
         if (answers[top].Stock) return DotepyLines.StockWin;
-        return card.Sweep == top ? DotepyLines.Sweep(NickOf(answers[top].Seat)) : DotepyLines.Win(NickOf(answers[top].Seat));
+        return card.Sweep == top ? DotepyLines.Sweep(Spoken(answers[top].Seat)) : DotepyLines.Win(Spoken(answers[top].Seat));
     }
 
     /// <summary>Фінал: ще одна відповідь розкривається, її очки — у рахунок саме зараз (таблиця не спойлерить).</summary>
@@ -701,7 +708,7 @@ public sealed class Dotepy : Game
         var best = answers[_revealOrder[^1]];
         if (best.Stock) return DotepyLines.StockWin;
         var second = _revealOrder.Length > 1 ? answers[_revealOrder[^2]] : null;
-        return second is not null && second.Points == best.Points ? DotepyLines.Tie : DotepyLines.FinalWin(NickOf(best.Seat));
+        return second is not null && second.Points == best.Points ? DotepyLines.Tie : DotepyLines.FinalWin(Spoken(best.Seat));
     }
 
     /// <summary>Підсумок раунду між раундами: смужки рахунку й «Дотеп раунду».</summary>
@@ -732,7 +739,7 @@ public sealed class Dotepy : Game
         _winners = best > 0 ? [.. present.Where(s => _score[s] == best)] : [];
         foreach (var s in present) Ctx.Score(s, _score[s]);
         if (_startedWith >= DuelFrom) foreach (var w in _winners) Ctx.Award(w, 0, "ach:dotepy-king");
-        SayNow(_winners.Length == 1 ? DotepyLines.GameWin(NickOf(_winners[0])) : DotepyLines.GameTie);
+        SayNow(_winners.Length == 1 ? DotepyLines.GameWin(Spoken(_winners[0])) : DotepyLines.GameTie);
         _dirty = true;
         Ctx.Finish(_winners, Summary(present), present.ToDictionary(s => s, s => _score[s]));
     }
@@ -749,6 +756,16 @@ public sealed class Dotepy : Game
     }
 
     string NickOf(int seat) => seat >= 0 && seat < MaxSeats && _nicks[seat] is { Length: > 0 } n ? n : SeatName(seat);
+
+    /// <summary>
+    /// Нік для голосу й вердикту: без приставки «гість » — «Розгром! Усі голоси — Оля!», а не «…— гість Оля!».
+    /// У Журналі лишається повний нік: там важливо, хто саме.
+    /// </summary>
+    string Spoken(int seat) => Spoken(NickOf(seat));
+
+    public static string Spoken(string nick) =>
+        nick.StartsWith(Auth.GuestPrefix, StringComparison.OrdinalIgnoreCase) && nick.Length > Auth.GuestPrefix.Length
+            ? nick[Auth.GuestPrefix.Length..].Trim() : nick;
 
     /// <summary>
     /// Хтось встав посеред партії: його незданe стане чернеткою/підставною, його голос більше не чекаємо, рахунок
@@ -984,7 +1001,7 @@ public sealed class Dotepy : Game
                 nick = _nicks[s],
                 score = _score[s],
                 ready = _phase == PhaseWrite && Ready(s),
-                voted = _phase is PhaseVote or PhaseReveal && _picks[s] is not null,
+                voted = _phase is PhaseVote or PhaseReveal && Complete(s),
                 left = _left[s],
             });
         }
@@ -1056,7 +1073,7 @@ public sealed class Dotepy : Game
         for (var s = 0; s < MaxSeats; s++)
         {
             if (_voter[s] && Present(s)) voters.Add(s);
-            if (_picks[s] is not null) voted.Add(s);
+            if (Complete(s)) voted.Add(s);
         }
         return new
         {
