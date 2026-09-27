@@ -54,6 +54,18 @@
   .board.wtiles .cell { font-size: 1.35em; border-width: 2px; }
 }
 
+/* Невисокий телефон (айфон — видно 390×664): дошка на всю ширину забирала екран, і клавіатура опинялась під
+   нижніми вкладками — друкувати можна було лише прокрутивши, а тоді ховалась дошка. Тепер ширина дошки
+   (а з нею й висота: плитки квадратні, 5×6) рахується від висоти екрана так, щоб дошка й клавіатура
+   стали разом між шапкою сайту й нижніми вкладками. 330 px — усе, що над дошкою й під нею (шапка сайту й
+   столу, клавіатура). Нижче 190 px не стискаємо: далі краще прокрутити, ніж мружитись. */
+@media (max-width: 900px) {
+  .gbody > .board.wtiles {
+    width: min(300px, 100%, max(190px, calc((100vh - var(--tabs-h, 0px) - 330px) * .83)));
+    width: min(300px, 100%, max(190px, calc((100dvh - var(--tabs-h, 0px) - 330px) * .83)));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .board.wtiles .cell.flip, .board.wtiles .cell.bad { animation: none; }
 }
@@ -158,3 +170,25 @@
 /* auto-fill бере кількість колонок із max-width, а min-width:auto не дає рядку стиснутись — без цього
    на телефоні сітка суперників вилазила за екран */
 .wrrivals { min-width: 0; }
+
+/* Партію зіграно: шапка, одразу під нею слово й таблиця партії, а дошки з відкритими літерами — нижче. */
+.wr.done .wrhead { order: -2; }
+.wr.done .wrfoot { order: -1; }
+
+/* Телефон, я граю: суперники — одним рядком маленьких карток над моєю дошкою, а дошка стискається під висоту
+   екрана. Раніше п'ятеро суперників займали два рядки по 130 px, і моя дошка з клавіатурою починались нижче
+   згину (на айфоні — на 450 px нижче). Глядачеві (.spect) своєї дошки нема — йому лишаються великі картки. */
+@media (max-width: 560px) {
+  .wr:not(.spect) .wrrivals { display: flex; justify-content: center; gap: 5px; overflow-x: auto; flex-wrap: nowrap; }
+  .wr:not(.spect) .wrp { flex: 0 0 60px; width: 60px; padding: 4px 2px; gap: 2px; }
+  .wr:not(.spect) .wrmini { grid-template-columns: repeat(5, 8px); gap: 1.5px; }
+  .wr:not(.spect) .wrmini i { width: 8px; height: 8px; border-radius: 2px; font-size: 0; }
+  .wr:not(.spect) .wrmini.open { grid-template-columns: repeat(5, 9px); }
+  .wr:not(.spect) .wrmini.open i { width: 9px; height: 9px; font-size: 0; }
+  .wr:not(.spect) .wrpname { font-size: .72em; }
+  .wr:not(.spect) .wrptot { font-size: .68em; line-height: 1.15; text-align: center; }
+  .wr:not(.spect) .board.wtiles {
+    width: min(270px, 100%, max(170px, calc((100vh - var(--tabs-h, 0px) - 370px) * .83)));
+    width: min(270px, 100%, max(170px, calc((100dvh - var(--tabs-h, 0px) - 370px) * .83)));
+  }
+}

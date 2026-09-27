@@ -20,6 +20,24 @@
   const ALPHABET = 'абвгґдеєжзиіїйклмнопрстуфхцчшщьюя';
   const CLS = { G: 'g', Y: 'y', B: 'b' };
 
+  /// Фізична клавіша → українська літера (ЙЦУКЕН). Потрібно, коли в системі ввімкнена латинка чи російська:
+  /// раніше «q» чи «ы» мовчки нічого не робили, і людина не розуміла, чому дошка не пише. Ґ — на клавіші «\»,
+  /// як у розширеній українській розкладці Windows.
+  const CODE_UA = {
+    KeyQ: 'й', KeyW: 'ц', KeyE: 'у', KeyR: 'к', KeyT: 'е', KeyY: 'н', KeyU: 'г', KeyI: 'ш', KeyO: 'щ', KeyP: 'з',
+    BracketLeft: 'х', BracketRight: 'ї', KeyA: 'ф', KeyS: 'і', KeyD: 'в', KeyF: 'а', KeyG: 'п', KeyH: 'р', KeyJ: 'о',
+    KeyK: 'л', KeyL: 'д', Semicolon: 'ж', Quote: 'є', Backslash: 'ґ', KeyZ: 'я', KeyX: 'ч', KeyC: 'с', KeyV: 'м',
+    KeyB: 'и', KeyN: 'т', KeyM: 'ь', Comma: 'б', Period: 'ю',
+  };
+
+  /// Літера з натиску: українська розкладка — як є, будь-яка інша — за місцем клавіші.
+  function letterOf(e) {
+    const ch = String(e.key || '').toLowerCase();
+    if (ch.length !== 1) return '';
+    if (ALPHABET.indexOf(ch) >= 0) return ch;
+    return CODE_UA[e.code] || '';
+  }
+
   /// «за 1 спробу», «за 3 спроби», «за 6 спроб» — інакше рядок статусу читається як телеграма.
   function tries(n) {
     const t = n % 100, o = n % 10;
@@ -146,12 +164,11 @@
       root.appendChild(el);
     }
     if (v.noWords) {
-      const html = '<div class="muted small">Словника на цьому сервері нема — сьогодні без слова.</div>';
-      if (el.innerHTML !== html) el.innerHTML = html;
+      setHtml(el, '<div class="muted small">Словника на цьому сервері нема — сьогодні без слова.</div>');
       return;
     }
     if (!over(v)) {
-      if (el.innerHTML !== '') el.innerHTML = '';
+      setHtml(el, '');
       return;
     }
     const race = raceInCatalog();
@@ -242,8 +259,8 @@
     // віддаємо рівно те, що сталось: на true каркас робить preventDefault, а він гасить і Enter
     // на сфокусованій кнопці картки
     if (e.key === 'Enter' || e.key === 'Backspace') return press(root, e.key);
-    const ch = String(e.key || '').toLowerCase();
-    if (ch.length !== 1 || ALPHABET.indexOf(ch) < 0) return false;
+    const ch = letterOf(e);
+    if (!ch) return false;
     return press(root, ch);
   }
 
@@ -450,11 +467,13 @@
     // раунду) не перевертає нічого, як і в щоденному.
     // «Ще раз» знову починає з раунду 1 — тож ключ раунду включає й номер партії за столом
     const key = (ctx.room ? ctx.room.round : 0) + ':' + v.round;
+    let fresh = false;
     if (st.round !== key) {
       st.flipFrom = st.round == null ? rows.length : 0;
       if (st.round != null) st.draft = '';
       st.round = key;
       st.solvedSeen = {};
+      fresh = true;
     }
     // Хтось щойно вгадав — його дошка на мить спалахує: без літер це єдиний спосіб помітити, що суперник уже все.
     (v.players || []).forEach((p) => {
@@ -470,6 +489,9 @@
 
     const wrap = part(root, 'wr');
     wrap.classList.toggle('spect', !me);
+    // Партію зіграно — підсумкова таблиця піднімається під шапку (wordle.css): на 1280×800 вона ховалась
+    // під порожньою дошкою й клавіатурою, нижче згину.
+    wrap.classList.toggle('done', v.phase === 'done');
     if (!v.phase || v.phase === 'lobby') {
       // до старту — правила: без них новачок бачить порожню картку і не розуміє, у що сідає
       if (st.arc) { st.arc.stop(); st.arc = null; }
@@ -490,12 +512,38 @@
     const mine = part(main, 'wrme');
     if (me) {
       drawBoard(mine, ctx, st, rows, v.max || 6, !raceLocked(v));
-      HGames.ui.keyboardUa(mine, (k) => press(root, k), me.keys || {});
+      // Між раундами й після партії друкувати нікуди — клавіатура лише штовхала слово раунду й таблицю
+      // під нижній край (на телефоні — за екран).
+      HGames.ui.keyboardUa(mine, (k) => press(root, k), me.keys || {}).hidden = v.phase !== 'play';
       mine.hidden = false;
     } else {
       mine.hidden = true;
     }
     raceFoot(wrap, ctx, v);
+    if (fresh && me && v.phase === 'play') raceInView(wrap);
+  }
+
+  /// Новий раунд — моя дошка й клавіатура мають бути в полі зору. На телефоні з п'ятьма суперниками дошка
+  /// починалась нижче згину, і друкувати доводилось наосліп або прокручуючи туди-сюди. Раз на раунд і лише коли
+  /// низ клавіатури справді схований під нижніми вкладками: підкручуємо рівно настільки, щоб він виринув, але не
+  /// далі, ніж шапка раунду (з таймером) доїде до шапки сайту.
+  function raceInView(wrap) {
+    requestAnimationFrame(() => {
+      const head = wrap.querySelector('.wrhead');
+      const kbd = wrap.querySelector('.wrme:not([hidden]) .gkbd');
+      if (!head || !kbd || !kbd.offsetParent) return;
+      const cs = getComputedStyle(document.documentElement);
+      const bars = parseFloat(cs.getPropertyValue('--tabs-h')) || 0;
+      const site = document.querySelector('header');
+      const top = site ? Math.max(0, site.getBoundingClientRect().bottom) : 0;
+      const over = kbd.getBoundingClientRect().bottom - (innerHeight - bars - 8);
+      const room = head.getBoundingClientRect().top - top - 6;
+      const dy = Math.min(over, room);
+      if (over > 1 && dy > 1) {
+        const calm = matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+      }
+    });
   }
 
   HGames.register({
