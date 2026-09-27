@@ -307,13 +307,29 @@
       g.shadowBlur = 0;
       g.globalAlpha = 1;
     }
-    // камінь
+    // камінь: що глибше в скелі (далі від печери), то темніший — так видно обрис печери
+    const depth = new Uint8Array(W * H).fill(9);
+    for (let r = 0; r < H; r++)
+      for (let cc = 0; cc < W; cc++) if (L.tiles[r * W + cc] !== 1) depth[r * W + cc] = 0;
+    for (let pass = 1; pass <= 3; pass++)
+      for (let r = 0; r < H; r++)
+        for (let cc = 0; cc < W; cc++) {
+          const i = r * W + cc;
+          if (depth[i] !== 9) continue;
+          for (let dr = -1; dr <= 1; dr++)
+            for (let dc = -1; dc <= 1; dc++) {
+              const rr = r + dr, c2 = cc + dc;
+              if (rr >= 0 && rr < H && c2 >= 0 && c2 < W && depth[rr * W + c2] === pass - 1) depth[i] = pass;
+            }
+        }
     for (let r = 0; r < H; r++)
       for (let cc = 0; cc < W; cc++) {
         if (L.tiles[r * W + cc] !== 1) continue;
         const x = cc * TILE, y = r * TILE, k = hash32(L.n * 131 + r, cc);
         g.fillStyle = pal.stone;
         g.fillRect(x, y, TILE, TILE);
+        const dp = depth[r * W + cc];
+        if (dp > 1) { g.fillStyle = 'rgba(0,0,0,' + (dp >= 9 ? 0.34 : 0.1 * (dp - 1)).toFixed(2) + ')'; g.fillRect(x, y, TILE, TILE); }
         g.fillStyle = k < 0.5 ? 'rgba(255,255,255,' + (0.035 * k).toFixed(3) + ')' : 'rgba(0,0,0,' + (0.06 * (k - 0.5)).toFixed(3) + ')';
         g.fillRect(x, y, TILE, TILE);
         g.fillStyle = 'rgba(0,0,0,.14)';
