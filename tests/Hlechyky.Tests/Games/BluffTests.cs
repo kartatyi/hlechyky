@@ -177,19 +177,75 @@ public class BluffTests(ITestOutputHelper output)
     // =====================================================================================
 
     [Fact]
-    public void The_starter_bank_has_at_least_fifteen_questions_with_one_blank_each()
+    public void The_real_bank_is_the_verified_one_with_one_blank_and_honest_decoys_everywhere()
     {
         var bank = BluffBank.All;
-        Assert.True(bank.Count >= 15, $"у банку лише {bank.Count} питань");
+        Assert.True(bank.Count >= 250, $"у банку лише {bank.Count} питань — перевірений банк не підклали?");
         Assert.All(bank, q =>
         {
             Assert.Equal(1, CountBlanks(q.Q));
             Assert.False(string.IsNullOrWhiteSpace(q.Answer));
             Assert.True(q.Decoys.Count >= 2, $"«{q.Q}»: заготовок {q.Decoys.Count}");
             Assert.True(q.Answer.Length <= Bluff.MaxLie, $"«{q.Q}»: правда довша за брехню");
-            // Жодна заготовка не близнюк правди (банк таких відсіює мовчки).
+            Assert.False(q.Note.Length == 0, $"«{q.Q}»: нема «а насправді»");
+            // Жодна заготовка не близнюк правди (банк таких відсіює мовчки) і не «правда» для гравця, що надрукує її сам.
             Assert.All(q.Decoys, d => Assert.DoesNotContain(q.Forms, f => BluffText.LooksSame(d, f)));
+            Assert.All(q.Decoys, d => Assert.False(BluffText.LooksTrue(d, q), $"«{q.Q}»: заготовка «{d}» схожа на правду"));
+            Assert.False(BluffText.MixedScripts(q.Answer), q.Answer);
+            Assert.All(q.Decoys, d => Assert.False(BluffText.MixedScripts(d), d));
         });
+        // Та сама правда двічі — друге питання в тій самій партії вгадували б з пам'яті.
+        var truths = bank.GroupBy(q => BluffText.Norm(q.Answer)).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        Assert.True(truths.Count == 0, "одна правда в кількох питаннях: " + string.Join(", ", truths));
+    }
+
+    /// <summary>
+    /// Схема самого файла (формат bluff із CONTENT-FORMATS.md), без поблажливого парсера гри: той мовчки відкидає криве,
+    /// а тут криве має впасти голосно — інакше зламане питання чи заготовка тихо зникли б із гри.
+    /// </summary>
+    [Fact]
+    public void The_bank_file_matches_the_bluff_format_and_nothing_is_silently_dropped()
+    {
+        var path = Hlechyky.Paths.Resolve(BluffBank.FileName);
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));      // JSON без коментарів і хвостових ком
+        var root = doc.RootElement;
+        Assert.Equal(1, root.GetProperty("version").GetInt32());
+        var raw = root.GetProperty("questions").EnumerateArray().ToList();
+        var known = BluffCats.All.Select(c => c.Key).Where(k => k != BluffCats.Any).ToHashSet();
+        var ids = new HashSet<string>();
+        foreach (var e in raw)
+        {
+            var id = e.GetProperty("id").GetString()!;
+            Assert.Matches("^b[0-9]{4}$", id);
+            Assert.True(ids.Add(id), $"id {id} двічі");
+            Assert.Contains(e.GetProperty("cat").GetString()!, known);
+            var q = e.GetProperty("q").GetString()!;
+            Assert.Equal(1, CountBlanks(q));
+            Assert.DoesNotContain("____", q);
+            var answer = e.GetProperty("answer").GetString()!;
+            Assert.False(string.IsNullOrWhiteSpace(answer), id);
+            var accept = e.GetProperty("accept").EnumerateArray().Select(x => BluffText.Norm(x.GetString())).ToList();
+            var decoys = e.GetProperty("decoys").EnumerateArray().Select(x => x.GetString()!).ToList();
+            Assert.True(decoys.Count >= 2, $"{id}: заготовок {decoys.Count}");
+            // Після нормалізації заготовка не збігається ні з правдою, ні з жодним її написанням, ні з іншою заготовкою.
+            foreach (var d in decoys)
+            {
+                Assert.NotEqual(BluffText.Norm(answer), BluffText.Norm(d));
+                Assert.DoesNotContain(BluffText.Norm(d), accept);
+            }
+            Assert.Equal(decoys.Count, decoys.Select(BluffText.Norm).Distinct().Count());
+            Assert.False(string.IsNullOrWhiteSpace(e.GetProperty("note").GetString()), id);
+            Assert.StartsWith("https://", e.GetProperty("source").GetString());
+        }
+        // Гра вантажить саме цей файл і нічого з нього не губить.
+        var bank = BluffBank.Load(path);
+        Assert.Equal(raw.Count, bank.Count);
+        Assert.Equal(raw.Count, BluffBank.All.Count);
+        foreach (var e in raw)
+        {
+            var q = bank.Single(x => x.Id == e.GetProperty("id").GetString());
+            Assert.Equal(e.GetProperty("decoys").GetArrayLength(), q.Decoys.Count);
+        }
     }
 
     static int CountBlanks(string text)
@@ -214,8 +270,12 @@ public class BluffTests(ITestOutputHelper output)
         var known = BluffCats.All.Select(c => c.Key).Where(k => k != BluffCats.Any).ToHashSet();
         Assert.Equal(9, known.Count);
         Assert.All(BluffBank.All, q => Assert.Contains(q.Cat, known));
-        // Кожну тему з попапа можна обрати й зіграти.
-        Assert.All(known, k => Assert.Contains(BluffBank.All, q => q.Cat == k));
+        // Кожну тему з попапа можна обрати й зіграти навіть найдовшу партію (10 питань) — і ще на кілька «Ще раз».
+        Assert.All(known, k =>
+        {
+            var n = BluffBank.All.Count(q => q.Cat == k);
+            Assert.True(n >= 15, $"у темі {k} лише {n} питань");
+        });
     }
 
     [Fact]
