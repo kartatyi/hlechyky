@@ -193,6 +193,9 @@ public class BluffTests(ITestOutputHelper output)
             Assert.All(q.Decoys, d => Assert.False(BluffText.LooksTrue(d, q), $"«{q.Q}»: заготовка «{d}» схожа на правду"));
             Assert.False(BluffText.MixedScripts(q.Answer), q.Answer);
             Assert.All(q.Decoys, d => Assert.False(BluffText.MixedScripts(d), d));
+            // Гравець, що надрукує заготовку сам, не почує «пиши кирилицею».
+            Assert.False(BluffText.ForeignLetters(q.Answer), q.Answer);
+            Assert.All(q.Decoys, d => Assert.Null(Bluff.Refuse(d, q)));
         });
         // Та сама правда двічі — друге питання в тій самій партії вгадували б з пам'яті.
         var truths = bank.GroupBy(q => BluffText.Norm(q.Answer)).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
@@ -590,7 +593,8 @@ public class BluffTests(ITestOutputHelper output)
     [Fact]
     public void Pressing_the_dice_again_gives_the_next_decoy_but_only_two_per_player()
     {
-        var h = Table(2);
+        // Утрьох: брехні трьох і правда — вже чотири картки, тож стіл заготовок не потребує (на двох — див. MinTable).
+        var h = Table(3);
         Until(h, Bluff.PhaseWrite);
         var q = Question(h);
         string Mine() => V(h, 0).GetProperty("my").GetProperty("lie").GetString()!;
@@ -1443,6 +1447,231 @@ public class BluffTests(ITestOutputHelper output)
         Assert.True(h.Act(0, "lie", new { text = "iPhone-ом" }).Ok);   // різні абетки в різних словах — можна
     }
 
+    /// <summary>
+    /// Рецензія: «МАШИНОЮ», де М і А — черокі (U+13B7, U+13AA), сервер записав, а на картці це та сама правда «МАШИНОЮ». Літери інших
+    /// письмен тепер не проходять узагалі, і «ти написав правду» на них не витрачається.
+    /// </summary>
+    [Fact]
+    public void A_twin_in_cherokee_or_lisu_letters_is_refused_before_it_reaches_the_table()
+    {
+        var h = Table(2, services: Bank(HydrogenJson));
+        Until(h, Bluff.PhaseWrite);
+        var before = Views.Text(h.View(0));
+        foreach (var twin in new[] { "\u13F4ОДЕНЬ", "ВОД\u13AC\u13BBЬ", "\uA4D0ОДЕНЬ", "\u1D0Fводень", "\u13F4\u13AC\u13BB" })
+        {
+            var r = h.Act(0, "lie", new { text = twin });
+            Assert.False(r.Ok, twin);
+            Assert.Equal(Bluff.ForeignAbc, r.Message);
+        }
+        Assert.Equal(before, Views.Text(h.View(0)));
+        // П'ять відмов — а правду вгадувати досі можна тими самими спробами: «ти написав правду» не лічилось.
+        Assert.Equal(Bluff.Truthy, h.Act(0, "lie", new { text = "водню" }).Message);
+        Assert.True(h.Act(0, "lie", new { text = "Лісу — це народ" }).Ok);
+    }
+
+    /// <summary>
+    /// Двійники на всьому справжньому банку: у кожній правді підміняємо літери двійниками з латиниці, грецької,
+    /// черокі, лісу, капітелі, розширених латиниці й кирилиці, знаками (× ∏ € …) і цифрами (0, 3) — поодинці, парами серед
+    /// перших трьох (так проходило сито одруківок) і всі разом. Жоден такий двійник не має лягти на стіл.
+    /// </summary>
+    [Fact]
+    public void No_twin_of_any_truth_in_the_real_bank_is_accepted_as_a_lie()
+    {
+        string[][] groups =
+        [
+            ["А", "A", "\u0391", "\u13AA", "\uA4EE", "\u1D00", "\uFF21", "\U0001D400"],
+            ["В", "B", "\u0392", "\u13F4", "\uA4D0", "\u0299", "\u03D0"],
+            ["Е", "E", "\u0395", "\u13AC", "\uA4F0", "\u1D07", "\u212E"],
+            ["Н", "H", "\u0397", "\u13BB", "\uA4E7", "\u029C", "\u04BA"],
+            ["М", "M", "\u039C", "\u13B7", "\uA4DF", "\u1D0D", "\u216F"],
+            ["І", "I", "\u0399", "\uA4F2", "\u0131", "|", "\u04C0", "\u01C0", "\u026A", "\u2160", "\u2502", "\u23D0", "\u05C0"],
+            ["Т", "T", "\u03A4", "\u13A2", "\uA4D4", "\u1D1B", "\u22A4"],
+            ["С", "C", "\u03F9", "\u13DF", "\uA4DA", "\u1D04", "\u216D", "\u00A2"],
+            ["Р", "P", "\u03A1", "\u13E2", "\uA4D1", "\u1D18", "\u00FE"],
+            ["К", "K", "\u039A", "\u13E6", "\uA4D7", "\u1D0B", "\u0138", "\u212A"],
+            ["О", "O", "\u039F", "0", "\uA4F3", "\u1D0F", "\u0555", "\u2C9F", "\u1C82", "\u0966", "\u25EF", "\u25CB", "\u00B0", "\u2205"],
+            ["Х", "X", "\u03A7", "\uA4EB", "\u00D7", "\u2715", "\u2573"],
+            ["У", "Y", "\u03A5", "\uA4EC", "\u04AE", "\u03D2"],
+            ["З", "3", "\u01B7", "\u04E0"],
+            ["Л", "\u039B", "\u0245", "\u2227"],
+            ["П", "\u03A0", "\u220F", "\u1D28"],
+            ["Д", "\u0394", "\u2206"],
+            ["Г", "\u0393", "\u1D26"],
+            ["Ф", "\u03A6", "\u0278"],
+            ["Б", "\u0182"],
+            ["Ь", "\u0184", "\u0185"],
+            ["Є", "\u20AC", "\u2208", "\u0190", "\u0510"],
+            ["Ї", "\u00CF", "\u03AA"],
+            ["Ш", "\u019C"],
+            ["И", "\u0376"],
+            ["L", "\u13DE", "\uA4E1", "\u216C"],
+            ["D", "\u13A0", "\uA4D3", "\u0501"],
+            ["N", "\u039D", "\uA4E0"],
+            ["W", "\u13B3", "\uA4EA", "\u051C"],
+            ["S", "\u0405", "\u13DA"],
+            ["G", "\u13C0"],
+            ["V", "\u13D9"],
+            ["R", "\u13A1"],
+            ["Z", "\u0396"],
+            ["J", "\u0408"],
+            ["F", "\u03DC"],
+        ];
+        var byLetter = new Dictionary<char, string[]>();
+        foreach (var g in groups) byLetter[g[0][0]] = g;
+        var columns = groups.Max(g => g.Length);
+        string[]? Group(char ch) => byLetter.GetValueOrDefault(char.ToUpperInvariant(ch));
+
+        var bank = BluffBank.All;
+        var tried = 0;
+        var leaks = new List<string>();
+        void Try(BluffQuestion q, string twin)
+        {
+            tried++;
+            if (Bluff.Refuse(BluffText.Clean(twin), q) is null) leaks.Add($"{q.Id}: «{q.Answer}» → «{twin}»");
+        }
+        foreach (var q in bank)
+        {
+            var truth = q.Answer;
+            var slots = new List<int>();
+            for (var i = 0; i < truth.Length; i++) if (Group(truth[i]) is not null) slots.Add(i);
+            // поодинці: кожна літера — кожним двійником
+            foreach (var i in slots)
+                foreach (var twin in Group(truth[i])!.Skip(1))
+                    Try(q, truth[..i] + twin + truth[(i + 1)..]);
+            // стовпчиком: усі літери разом j-им двійником (де такого нема — лишається своя)
+            for (var j = 1; j < columns; j++)
+            {
+                var sb = new System.Text.StringBuilder();
+                var any = false;
+                foreach (var ch in truth)
+                    if (Group(ch) is { } g && j < g.Length) { sb.Append(g[j]); any = true; }
+                    else sb.Append(ch);
+                if (any) Try(q, sb.ToString());
+            }
+            // парами серед перших трьох підмінних літер — дві правки без спільного початку
+            var head = slots.Take(3).ToList();
+            for (var a = 0; a < head.Count; a++)
+                for (var b = a + 1; b < head.Count; b++)
+                    for (var j = 1; j < columns; j++)
+                    {
+                        var ga = Group(truth[head[a]])!;
+                        var gb = Group(truth[head[b]])!;
+                        if (j >= ga.Length || j >= gb.Length) continue;
+                        var chars = truth.Select(c => c.ToString()).ToArray();
+                        chars[head[a]] = ga[j];
+                        chars[head[b]] = gb[j];
+                        Try(q, string.Concat(chars));
+                    }
+        }
+        output.WriteLine($"двійників перевірено: {tried} на {bank.Count} правдах");
+        Assert.True(tried > 15000, $"перевірено лише {tried}");
+        Assert.True(leaks.Count == 0, $"{leaks.Count} двійників пройшли, напр.: " + string.Join("; ", leaks.Take(15)));
+    }
+
+    /// <summary>
+    /// Рецензія: правду склеювали («кістокмамонта», «РічардаЛевовеСерце») чи розбивали пробілом, дефісом, крапкою
+    /// («Діс-ней-ленд», «ДІСНЕЙ.ЛЕНД», «ші-сть») — звичайною клавіатурою, — і сервер приймав її як брехню. На всьому
+    /// справжньому банку кожне написання правди (відповідь і кожна форма accept) склеюємо цілком (і посеред фрази, і
+    /// ВЕЛИКИМИ), склеюємо кожну пару сусідніх слів і розбиваємо кожне слово в кожному місці пробілом, дефісом і
+    /// крапкою. Жодне таке написання не має лягти на стіл.
+    /// </summary>
+    [Fact]
+    public void No_glued_or_split_truth_in_the_real_bank_is_accepted_as_a_lie()
+    {
+        var bank = BluffBank.All;
+        var tried = 0;
+        var leaks = new List<string>();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        void Try(BluffQuestion q, string lie)
+        {
+            var text = BluffText.Clean(lie);
+            if (text.Length == 0 || text.Length > Bluff.MaxLie) return;
+            tried++;
+            if (Bluff.Refuse(text, q) is null) leaks.Add($"{q.Id}: «{q.Answer}» → «{text}»");
+        }
+        foreach (var q in bank)
+            foreach (var form in q.Forms.Distinct())
+            {
+                var words = form.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (words.Length > 1)
+                {
+                    var glued = string.Concat(words);
+                    Try(q, glued);
+                    Try(q, glued.ToUpperInvariant());
+                    Try(q, "звісно ж, " + glued);
+                    for (var w = 0; w + 1 < words.Length && words.Length > 2; w++)
+                        Try(q, string.Join(' ', words[..w].Append(words[w] + words[w + 1]).Concat(words[(w + 2)..])));
+                }
+                for (var w = 0; w < words.Length; w++)
+                    for (var cut = 1; cut < words[w].Length; cut++)
+                        foreach (var gap in new[] { " ", "-", "." })
+                        {
+                            var parts = (string[])words.Clone();
+                            parts[w] = words[w][..cut] + gap + words[w][cut..];
+                            Try(q, string.Join(' ', parts));
+                        }
+            }
+        output.WriteLine($"склеєних і розбитих правд перевірено: {tried} на {bank.Count} питаннях, {watch.ElapsedMilliseconds} мс");
+        Assert.True(tried > 20000, $"перевірено лише {tried}");
+        Assert.True(leaks.Count == 0, $"{leaks.Count} склеєних чи розбитих правд пройшли, напр.: " + string.Join("; ", leaks.Take(20)));
+    }
+
+    const string SwedenJson = """
+        [ { "id": "s1", "cat": "history", "q": "3 вересня 1967 року вся Швеція за один день ___",
+            "answer": "перейшла на правосторонній рух", "accept": ["перейшла на правий бік"],
+            "decoys": ["перевела годинники на пів години", "відмовилася від монет", "перейменувала всі вулиці"],
+            "note": "День Г." } ]
+        """;
+
+    /// <summary>
+    /// Рецензія, жива партія (b0191): «ПЕРЕЙШЛА НАПРАВОСТОРОННІЙ РУХ» і «перейшла на право сторонній рух» сервер записав, і
+    /// обидві лягли на стіл поруч із правдою. Тепер це «ти випадково написав правду», а чесна брехня поруч — проходить.
+    /// </summary>
+    [Fact]
+    public void A_glued_or_split_truth_never_reaches_the_table()
+    {
+        var h = Table(2, services: Bank(SwedenJson));
+        Until(h, Bluff.PhaseWrite);
+        var before = Views.Text(h.View(0));
+        foreach (var twin in new[]
+        {
+            "ПЕРЕЙШЛА НАПРАВОСТОРОННІЙ РУХ", "перейшла на право сторонній рух", "ПерейшлаНаПравостороннійРух",
+            "перейшла на право-сторонній.рух",
+        })
+        {
+            var r = h.Act(0, "lie", new { text = twin });
+            Assert.False(r.Ok, twin);
+            Assert.Equal(Bluff.Truthy, r.Message);
+        }
+        Assert.Equal(before, Views.Text(h.View(0)));
+        Assert.True(h.Act(0, "lie", new { text = "перейшла на лівосторонній рух" }).Ok);
+        Assert.Equal("перейшла на лівосторонній рух", MyLie(h, 0));
+    }
+
+    /// <summary>
+    /// Рецензія: знаки-двійники поза старим списком («В◯ДЕНЬ», «Д│СНЕЙЛЕНД», «МА✕ОРКА», «Ап°ллон») проходили. Тепер
+    /// посеред слова — лише білий список знаків; відмова своя, і «ти написав правду» на неї не витрачається.
+    /// </summary>
+    [Fact]
+    public void A_mark_inside_a_word_is_refused_and_is_no_hint_about_the_truth()
+    {
+        var h = Table(2, services: Bank(HydrogenJson));
+        Until(h, Bluff.PhaseWrite);
+        var before = Views.Text(h.View(0));
+        foreach (var twin in new[] { "В\u25EFДЕНЬ", "В\u25CBДЕНЬ", "В\u00B0ДЕНЬ", "В\u2205ДЕНЬ", "ВОД\u2502НЬ", "ВОДЕН\u2573Ь" })
+        {
+            var r = h.Act(0, "lie", new { text = twin });
+            Assert.False(r.Ok, twin);
+            Assert.Equal(Bluff.InWordMark, r.Message);
+        }
+        Assert.Equal(before, Views.Text(h.View(0)));
+        // Шість відмов — а п'ять «ти написав правду» ще попереду: знак посеред слова підказкою не лічиться.
+        for (var n = 0; n < Bluff.MaxTruthy; n++) Assert.Equal(Bluff.Truthy, h.Act(0, "lie", new { text = "водню" }).Message);
+        Assert.Equal(Bluff.TooManyTries, h.Act(0, "lie", new { text = "гелій" }).Message);
+        // Знаки біля пробілу й звичайні розділові посеред слова — можна.
+        Assert.True(h.Act(1, "lie", new { text = "гелій \U0001F388 (мабуть), Пд.Буг/кіт" }).Ok);
+    }
+
     [Fact]
     public void The_truth_with_another_service_word_is_still_the_truth()
     {
@@ -1488,7 +1717,7 @@ public class BluffTests(ITestOutputHelper output)
     [Fact]
     public void Decoys_seen_through_the_dice_never_land_on_the_table_as_hleks_cards()
     {
-        var h = Table(2, services: Bank(HydrogenJson));
+        var h = Table(3, services: Bank(HydrogenJson));
         Until(h, Bluff.PhaseWrite);
         Assert.True(h.Act(0, "lie", new { auto = true }).Ok);
         Assert.Equal("залізо", MyLie(h, 0));
@@ -1501,11 +1730,12 @@ public class BluffTests(ITestOutputHelper output)
         Assert.True(h.Act(1, "lie", new { auto = true }).Ok);
         Assert.Equal("кремній", MyLie(h, 1));
         Lie(h, 0, "Бамбарбія");                                     // передумав і написав сам
+        Lie(h, 2, "кергуду");
         Until(h, Bluff.PhasePick);
         var texts = Texts(h);
         Assert.DoesNotContain("залізо", texts);                     // бачене через 🎲 Глек на стіл не кладе
         Assert.DoesNotContain("кисень", texts);
-        Assert.Equal(3, texts.Count);                               // Бамбарбія, кремній Петра і правда
+        Assert.Equal(4, texts.Count);                               // Бамбарбія, кремній Петра, кергуду Ганни і правда
 
         var once = Table(2, services: Bank(HydrogenJson));
         Until(once, Bluff.PhaseWrite);
@@ -1514,6 +1744,48 @@ public class BluffTests(ITestOutputHelper output)
         Lie(once, 1, "кергуду");
         Until(once, Bluff.PhasePick);
         Assert.Equal(["Бамбарбія", "водень", "кергуду", "кисень", "кремній"], Texts(once).Order());
+    }
+
+    /// <summary>
+    /// Рецензія: на двох Оля двічі тиснула 🎲 і написала своє, Петро взяв третю заготовку — на столі лишились три картки,
+    /// і кожен вгадував 50 на 50. Тепер 🎲 не з'їдає стіл нижче <see cref="Bluff.MinTable"/>.
+    /// </summary>
+    [Fact]
+    public void At_two_the_dice_never_thins_the_table_below_four_cards()
+    {
+        var h = Table(2, services: Bank(HydrogenJson));
+        Until(h, Bluff.PhaseWrite);
+        Assert.Equal("Глек підказав: «залізо». Можеш переписати", h.Act(0, "lie", new { auto = true }).Message);
+        // Друга нова заготовка з'їла б першу 🎲 Петра, а третя — ще й стіл: Глек лишає ту, що є.
+        var again = h.Act(0, "lie", new { auto = true });
+        Assert.False(again.Ok);
+        Assert.Equal(Bluff.DiceHeld, again.Message);
+        Assert.Equal("залізо", MyLie(h, 0));
+        Lie(h, 0, "Бамбарбія");
+        Assert.Equal("Глек збрехав за тебе: «кисень»", h.Act(1, "lie", new { auto = true }).Message);
+        Until(h, Bluff.PhasePick);
+        Assert.Equal(["Бамбарбія", "водень", "кисень", "кремній"], Texts(h).Order());
+        Assert.All(new[] { 0, 1 }, s => Assert.Equal(3, Cards(h, s).EnumerateArray().Count(c => !c.GetProperty("mine").GetBoolean())));
+
+        // Коли сусід уже написав своє, першу 🎲 для нього берегти не треба: друга заготовка — можна, третя — вже стіл.
+        var solo = Table(2, services: Bank(HydrogenJson));
+        Until(solo, Bluff.PhaseWrite);
+        Assert.True(solo.Act(0, "lie", new { auto = true }).Ok);
+        Lie(solo, 1, "кергуду");
+        Assert.True(solo.Act(0, "lie", new { auto = true }).Ok);
+        Assert.Equal("кисень", MyLie(solo, 0));
+        Assert.True(solo.Act(0, "lie", new { auto = true }).Ok);
+        Assert.Equal("залізо", MyLie(solo, 0));                    // по колу між баченими, «кремній» — для столу
+        Until(solo, Bluff.PhasePick);
+        Assert.Equal(["водень", "залізо", "кергуду", "кремній"], Texts(solo).Order());
+
+        // Обидва взяли по першій — друга нова вже з'їла б стіл.
+        var both = Table(2, services: Bank(HydrogenJson));
+        Until(both, Bluff.PhaseWrite);
+        Assert.True(both.Act(0, "lie", new { auto = true }).Ok);
+        Assert.True(both.Act(1, "lie", new { auto = true }).Ok);
+        Assert.Equal(Bluff.DiceHeld, both.Act(1, "lie", new { auto = true }).Message);
+        Assert.Equal("кисень", MyLie(both, 1));
     }
 
     [Fact]

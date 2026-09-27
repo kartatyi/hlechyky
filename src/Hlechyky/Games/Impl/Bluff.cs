@@ -50,6 +50,18 @@ public sealed class Bluff : Game
     public const string Truthy = "Схоже, ти випадково написав правду — вигадай іншу 🙂";
     /// <summary>Відмова слову з двох абеток: «кисeнь» із латинською e на великій картці не відрізнити від чесного.</summary>
     public const string MixedAbc = "Пиши однією абеткою — кирилицею або латиницею 🙂";
+    /// <summary>
+    /// Відмова літерам інших письмен (черокі, лісу, капітель, розширена латиниця й кирилиця, «математичні»): на великій
+    /// картці вони вдають наші: «МАШИНОЮ», де М і А — літери черокі (U+13B7, U+13AA), — та сама правда.
+    /// </summary>
+    public const string ForeignAbc = "Такі літери на картці вдають наші — пиши кирилицею або латиницею 🙂";
+    /// <summary>
+    /// Відмова знакові посеред слова («Д│СНЕЙЛЕНД», «МА✕ОРКА», «ЛЬВ◯ВІ»): на великій картці він вдає літеру. Можна лише
+    /// дефіс, апостроф і звичайні розділові знаки (<see cref="BluffText.MarkInWord"/>).
+    /// </summary>
+    public const string InWordMark = "Такий знак посеред слова вдає літеру — пиши літерами 🙂";
+    /// <summary>Повторний 🎲, коли нової заготовки Глек не дасть: решту він береже для столу й для тих, хто ще без брехні.</summary>
+    public const string DiceHeld = "Інших Глек не дасть — решту береже для столу. Лиши цю або пиши сам 🙂";
     /// <summary>Відмова, коли спроби на це питання скінчились: однакова на будь-який текст, тож правди не видає.</summary>
     public const string TooManyTries = "Годі перебирати 🙂 Лиши, що є, або тисни 🎲";
 
@@ -65,6 +77,11 @@ public sealed class Bluff : Game
     /// стіл як «чужу» картку (ти її знаєш), тож решту бережемо для столу й для інших.
     /// </summary>
     public const int DiceSeen = 2;
+    /// <summary>
+    /// Скільки карток 🎲 не дасть з'їсти: бачена через 🎲 заготовка на стіл уже не лягає, і за столом на двох три бачені
+    /// лишали б три картки — кожен обирав би з двох, тобто 50 на 50. З чотирма кожен обирає щонайменше з трьох.
+    /// </summary>
+    public const int MinTable = 4;
 
     static readonly int[] QuestionChoices = [5, 7, 10];
 
@@ -532,13 +549,10 @@ public sealed class Bluff : Game
             JsonValueKind.Object when payload.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String => t.GetString(),
             _ => null,
         });
-        if (text.Length == 0) return ActResult.Fail("Порожня брехня нікого не надурить");
-        if (text.Length > MaxLie) return ActResult.Fail("Коротше — до 40 знаків");
-        if (BluffText.MixedScripts(text)) return ActResult.Fail(MixedAbc);
-        if (BluffText.LooksTrue(text, _asked[_q]))
+        if (Refuse(text, _asked[_q]) is { } why)
         {
-            _truthy[seat]++;
-            return ActResult.Fail(Truthy);
+            if (why == Truthy) _truthy[seat]++;
+            return ActResult.Fail(why);
         }
 
         _lie[seat] = text;
@@ -548,10 +562,28 @@ public sealed class Bluff : Game
     }
 
     /// <summary>
+    /// Чому сервер не приймає цей (уже <see cref="BluffText.Clean"/>) текст як брехню на питання — або <c>null</c>, якщо
+    /// приймає: порожній, задовгий, літери інших письмен (<see cref="ForeignAbc"/>), знак посеред слова
+    /// (<see cref="InWordMark"/>), слово з двох абеток (<see cref="MixedAbc"/>), правда (<see cref="Truthy"/>). Одна
+    /// перевірка й для <see cref="Act"/>, і для тестів на всьому банку.
+    /// </summary>
+    public static string? Refuse(string text, BluffQuestion question)
+    {
+        if (text.Length == 0) return "Порожня брехня нікого не надурить";
+        if (text.Length > MaxLie) return "Коротше — до 40 знаків";
+        if (BluffText.ForeignLetters(text)) return ForeignAbc;
+        if (BluffText.MarkInWord(text)) return InWordMark;
+        if (BluffText.MixedScripts(text)) return MixedAbc;
+        if (BluffText.LooksTrue(text, question)) return Truthy;
+        return null;
+    }
+
+    /// <summary>
     /// «🎲 Хай Глек збреше»: заготовка з банку стає твоєю брехнею з усіма очками. Наступний натиск — наступна заготовка,
     /// але нових не більше <see cref="DiceSeen"/> на гравця (далі Глек крутить уже бачені): кожна бачена заготовка
-    /// випадає зі столу, бо ти знав би, що це Глек. Уже взяту іншим, бачену іншим через 🎲 чи написану кимось слово в
-    /// слово Глек не дає.
+    /// випадає зі столу, бо ти знав би, що це Глек. Тому нову Глек показує, лише коли стіл від цього не схудне нижче
+    /// <see cref="MinTable"/> (<see cref="CanShowNew"/>). Уже взяту іншим, бачену іншим через 🎲 чи написану кимось слово
+    /// в слово Глек не дає.
     /// </summary>
     ActResult AutoLie(int seat)
     {
@@ -562,7 +594,7 @@ public sealed class Bluff : Game
                 if (decoys[k] == mine) { start = k + 1; break; }
         var others = 0;
         for (var s = 0; s < Seats; s++) if (s != seat) others |= _dice[s];
-        var fresh = BitCount(_dice[seat]) < DiceSeen;
+        var fresh = CanShowNew(seat, decoys.Count);
         for (var n = 0; n < decoys.Count; n++)
         {
             var k = (start + n) % decoys.Count;
@@ -570,6 +602,8 @@ public sealed class Bluff : Game
             if ((others & bit) != 0 || TakenByOther(seat, decoys[k])) continue;
             if ((_dice[seat] & bit) == 0 && !fresh) continue;
             var d = decoys[k];
+            // Обійшли коло й прийшли до тієї самої: нової Глек не дасть, а «підказав те саме» звучало б як збій.
+            if (_auto[seat] && _lie[seat] == d) return ActResult.Fail(DiceHeld);
             _dice[seat] |= bit;
             _lie[seat] = d;
             _auto[seat] = true;
@@ -581,6 +615,30 @@ public sealed class Bluff : Game
     }
 
     static int BitCount(int mask) => System.Numerics.BitOperations.PopCount((uint)mask);
+
+    /// <summary>
+    /// Чи можна показати місцю ще не бачену ним заготовку. Кожна показана вже не ляже на стіл як Глекова, тож Глек
+    /// береже: на стіл — стільки, щоб разом із брехнями всіх присутніх і правдою карток було щонайменше
+    /// <see cref="MinTable"/> (на двох — одну заготовку, від трьох гравців не треба жодної), а поки столу бракує, ще й
+    /// першу 🎲 для кожного, хто досі без брехні. Перша заготовка місця йде без цієї черги.
+    /// </summary>
+    bool CanShowNew(int seat, int decoys)
+    {
+        var mine = BitCount(_dice[seat]);
+        if (mine >= DiceSeen) return false;
+        int seen = 0, present = 0, waiting = 0;
+        for (var s = 0; s < Seats; s++)
+        {
+            seen |= _dice[s];
+            if (!_present[s]) continue;
+            present++;
+            if (s != seat && _lie[s] is null && _dice[s] == 0) waiting++;
+        }
+        var unseen = 0;
+        for (var k = 0; k < decoys; k++) if ((seen & (1 << k)) == 0) unseen++;
+        var need = Math.Max(0, MinTable - 1 - present);
+        return unseen - 1 >= need + (mine > 0 && need > 0 ? waiting : 0);
+    }
 
     bool TakenByOther(int seat, string decoy)
     {
