@@ -1,1 +1,122 @@
-/* Толока (одинадцяте оновлення) — стилі пише пакет A. */
+/* Толока — розділ «🏗 Толока» у вкладці «Село», під Гостинним двором (clicker-toloka.js, docs/games/specs/clicker-v11.md §2).
+   Барви — дерево й теплий пісок будови, щоб толока не злилась ні з синім двором гостей вище, ні з цехом нижче. */
+
+/* flex: none — панель «Села» на ПК гортається всередині себе (стіл в один екран): без цього розділ стискався б
+   до заголовка, як будь-який гнучкий рядок, що не влазить. */
+.clkt {
+  gap: 7px; position: relative; flex: none;
+  border-color: rgba(201, 146, 78, .5);
+  background: linear-gradient(135deg, rgba(110, 72, 34, .34) 0%, var(--panel) 60%);
+}
+.clkt.closed { background: var(--panel); border-color: var(--line); padding-top: 6px; padding-bottom: 6px; }
+.clkt-title { align-self: stretch; }
+
+/* ---- дванадцять будов ---- */
+.clkt-row { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }
+.clkt-bi {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 1; min-width: 0; max-height: 34px;
+  border-radius: 8px; background: rgba(0, 0, 0, .22); border: 1px dashed rgba(201, 146, 78, .3);
+}
+.clkt-bi b { font-size: 17px; line-height: 1; opacity: .28; filter: grayscale(1); }
+.clkt-bi.big { border-style: dotted; }
+.clkt-bi.on { background: linear-gradient(160deg, #6b4a26, #3d2a17); border: 1px solid rgba(244, 197, 66, .55); }
+.clkt-bi.on b { opacity: 1; filter: none; }
+.clkt-bi.cur { border: 1px solid var(--accent2); background: rgba(244, 197, 66, .1); }
+.clkt-bi.cur b { opacity: .9; filter: none; animation: clktbob 2.4s ease-in-out infinite; }
+
+/* ---- поточна будова ---- */
+.clkt-cur { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; }
+.clkt-ico {
+  font-size: 30px; line-height: 44px; height: 44px; text-align: center; border-radius: 12px;
+  background: radial-gradient(circle at 50% 60%, rgba(244, 197, 66, .22), transparent 70%);
+}
+.clkt-cbody { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.clkt-name { line-height: 1.2; overflow-wrap: anywhere; }
+.clkt-reward { font-size: .76em; line-height: 1.25; }
+
+.clkt-steps { display: flex; gap: 4px; }
+.clkt-step { flex: 1 1 0; height: 8px; border-radius: 4px; background: rgba(0, 0, 0, .28); overflow: hidden; }
+.clkt-step i { display: block; height: 100%; transform: scaleX(0); transform-origin: left; }
+.clkt-step.done i { transform: none; background: linear-gradient(90deg, #a8742f, #f4c542); }
+.clkt-step.cur i { transform: scaleX(.12); background: var(--accent2); }
+.clkt-step.laid i { transform: scaleX(.5); background: linear-gradient(90deg, #a8742f, #e8a14a); }
+.clkt-stage { font-size: .86em; }
+
+/* ---- вимоги етапу ---- */
+.clkt-needs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px; }
+.clkt-need {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 3px 8px 3px 4px;
+  border-radius: 10px; background: rgba(0, 0, 0, .18); border: 1px solid transparent; min-width: 0;
+}
+.clkt-need.ok { border-color: rgba(123, 211, 137, .45); background: rgba(76, 154, 63, .12); }
+.clkt-nart { display: flex; align-items: center; justify-content: center; height: 34px; }
+.clkt-ware { width: 30px; height: 32px; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .35)); }
+.clkt-emo { font-size: 20px; }
+.clkt-ntxt { display: flex; flex-direction: column; min-width: 0; font-size: .84em; line-height: 1.25; }
+.clkt-ntxt .small { font-size: .86em; }
+.clkt-req { color: var(--accent2); font-size: .9em; }
+.clkt-mark { font-size: .8em; font-weight: 700; white-space: nowrap; color: #ffb27a; font-variant-numeric: tabular-nums; }
+.clkt-need.ok .clkt-mark { color: #7bd389; font-size: 1em; }
+
+.clkt-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.clkt-btns > button { white-space: nowrap; }
+.clkt-miss { font-size: .76em; line-height: 1.25; flex: 1 1 180px; min-width: 0; }
+.clkt-ready { color: #7bd389; }
+.clkt-help { font-size: .8em; line-height: 1.3; }
+.clkt-cut { color: #7bd389; font-weight: 700; white-space: nowrap; }
+.clkt-err { color: #ffb27a; }
+
+/* ---- будується ---- */
+.clkt-build {
+  display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 10px;
+  background: repeating-linear-gradient(135deg, rgba(168, 116, 47, .16) 0 10px, rgba(0, 0, 0, .12) 10px 20px);
+  border: 1px solid rgba(201, 146, 78, .45);
+}
+.clkt-bline { font-size: .9em; }
+.clkt-bline i, .clkt-fest i { font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+.clkt-tbar { height: 10px; border-radius: 5px; background: rgba(0, 0, 0, .3); overflow: hidden; }
+.clkt-tbar i {
+  display: block; height: 100%; transform: scaleX(0); transform-origin: left; transition: transform 1s linear;
+  background: linear-gradient(90deg, #a8742f, #f4c542);
+}
+
+.clkt-wait, .clkt-all { padding: 4px 8px; border-radius: 10px; border: 1px dashed rgba(201, 146, 78, .5); }
+.clkt-all { color: var(--accent); }
+
+/* ---- фестиваль ---- */
+.clkt-fest { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.clkt-fest.on {
+  padding: 5px 10px; border-radius: 10px; background: linear-gradient(90deg, rgba(215, 55, 43, .25), rgba(244, 197, 66, .2));
+  border: 1px solid rgba(244, 197, 66, .5);
+}
+
+/* ---- хата друга: «🤝 Піднести на толоку» ---- */
+.clkt-friend {
+  display: flex; flex-direction: column; gap: 5px; margin: 8px 0; padding: 8px 10px; border-radius: 12px;
+  border: 1px solid rgba(201, 146, 78, .5); background: linear-gradient(135deg, rgba(110, 72, 34, .3) 0%, var(--panel2) 70%);
+}
+.clkt-fneeds { display: flex; flex-direction: column; gap: 5px; }
+.clkt-fneed { display: flex; flex-direction: column; gap: 3px; padding: 5px 6px; border-radius: 10px; background: rgba(0, 0, 0, .18); }
+.clkt-fneed.done { opacity: .6; }
+.clkt-fhead { font-size: .86em; }
+.clkt-fitem { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.clkt-fware { width: 28px; height: 30px; }
+.clkt-fn { min-width: 0; overflow-wrap: anywhere; }
+.clkt-fbtns { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
+.clkt-fbtns > button { padding: 2px 8px; }
+
+@keyframes clktbob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+/* Телефон: вимоги в один стовпчик, кнопки — під палець. */
+@container clk (max-width: 420px) {
+  .clkt-needs { grid-template-columns: minmax(0, 1fr); }
+  .clkt-btns > button, .clkt-fest > button { min-height: 40px; }
+  .clkt-fbtns > button { min-height: 36px; padding: 4px 10px; }
+  .clkt-bi b { font-size: 15px; }
+  .clkt-row { gap: 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clkt-bi.cur b { animation: none; }
+  .clkt-tbar i { transition: none; }
+}

@@ -261,6 +261,8 @@ public sealed partial class Clicker
         // перезапуск сервера до першого кліка загубив би дарунок назавжди.
         if (!_inAct) return;
         TakeBoosts(svc, now);
+        // Посилки з чужих толок (v11): у рядки вимог поточного етапу, решта — у комору.
+        TakeTolokaMail(svc, now);
         if (svc.TakeMail(GuildKey) is not { } mail) return;
         foreach (var raw in mail)
         {
@@ -334,6 +336,8 @@ public sealed partial class Clicker
             "treat" => GuildTreat(svc, payload, now),
             "lend" => GuildLend(svc, payload, now),
             "cheer" => GuildCheer(svc, payload, now),
+            // Одинадцяте оновлення: піднести вироби на толоку друга (ClickerTolokaHelp.cs).
+            "toloka" => GuildToloka(svc, payload, now),
             "brag" => GuildBrag(payload, now),
             "masterpiece" => GuildMasterpiece(svc, now),
             "auto" => GuildAuto(payload),

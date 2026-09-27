@@ -235,6 +235,8 @@ public sealed partial class ClickerGuildService
         s.Boosts = Clean(s.Boosts);
         s.Helps = Clean(s.Helps);
         s.Treats = Clean(s.Treats);
+        // Пошти толоки до v11 не було — порожня скринька (ClickerTolokaHelp.cs).
+        s.Toloka = Clean(s.Toloka);
         foreach (var h in s.Helps.Values) h.Cheer = h.Cheer?.Where(x => x is { Length: > 0 }).ToList() ?? [];
         foreach (var w in s.Days.Values)
         {
@@ -700,6 +702,8 @@ public sealed partial class ClickerGuildService
         }
         string display;
         object[] wall;
+        // Толока друга (v11): що будує і чого ще бракує — для «🤝 Піднести на толоку» в його хаті.
+        var toloka = json is { Length: > 0 } ? TolokaView(key, json, _clock.UtcNow) : null;
         // Стіна звань: зароблене назавжди — зі збереження, «перші в окрузі» й звання дня — з цеху.
         var earned = Clicker.TitleStatsFromSave(json).Earned;
         lock (_lock)
@@ -708,7 +712,7 @@ public sealed partial class ClickerGuildService
             display = s.Potters.TryGetValue(key, out var p) ? p.Nick : (nick ?? "").Trim();
             wall = WallOf(s, key, _clock.UtcNow, earned);
         }
-        return HouseSnapshot(display, json, wall);
+        return HouseSnapshot(display, json, wall, toloka);
     }
 
     /// <summary>
@@ -716,7 +720,7 @@ public sealed partial class ClickerGuildService
     /// знаряддя, розписи, альбом і кахлі — якщо такі поля є, ранг, полиця дарунків, вироби, найкращі з комори, глеки
     /// за весь час). Око майстра, глеки в кишені, купці, скринька — не йдуть. Зіпсований JSON — null.
     /// </summary>
-    public static object? HouseSnapshot(string nick, string? json, object[]? titles = null)
+    public static object? HouseSnapshot(string nick, string? json, object[]? titles = null, object? toloka = null)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         JsonObject root;
@@ -811,6 +815,11 @@ public sealed partial class ClickerGuildService
             // Стіна звань (clicker-titles.md): що гончар має зараз, найрідкісніші спершу; і пам'ятний глечик «Округа».
             titles = titles ?? [],
             keepsake = Clicker.KeepsakeIn(root),
+            // Толока (v11): поточна будова друга й чого бракує (null — будови нема); готові будови — для сцени хати.
+            toloka,
+            built = root["toloka"] is JsonObject t && t["built"] is JsonArray ba
+                ? ba.Select(Str).Where(k => Clicker.Buildings.Any(b => b.Key == k)).Distinct(StringComparer.Ordinal).ToList()
+                : [],
         };
     }
 
