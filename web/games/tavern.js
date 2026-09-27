@@ -219,12 +219,6 @@
       const x0 = door[0] * CELL, x1 = (door[1] + 1) * CELL, y = door[2] * CELL;
       g.fillStyle = '#2b1a0e';
       g.fillRect(x0 - 5, y, 6, CELL); g.fillRect(x1 - 1, y, 6, CELL);
-      g.fillStyle = '#7a4b27';
-      g.save();
-      g.translate(x1 + 4, y + 2);
-      g.rotate(0.9);
-      g.fillRect(0, 0, 5, x1 - x0 - 6);
-      g.restore();
       g.fillStyle = '#8b3a2a';
       g.beginPath(); g.roundRect(x0 + 10, y + 6, x1 - x0 - 20, 20, 4); g.fill();   // рядно на порозі
     }
@@ -347,15 +341,20 @@
       const cx = x + w / 2, cy = y + h / 2;
       g.fillStyle = 'rgba(0, 0, 0, .32)';
       g.beginPath(); g.ellipse(cx + 3, cy + 5, w / 2 - 1, h / 2 - 2, 0, 0, TAU); g.fill();
-      g.fillStyle = '#8a5a2b';
-      g.beginPath(); g.roundRect(x + 3, y + 3, w - 6, h - 6, 12); g.fill();
-      g.strokeStyle = 'rgba(30, 15, 5, .45)';
+      g.fillStyle = '#c08a4c';
+      g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, h - 2, 14); g.fill();
+      g.fillStyle = 'rgba(255, 235, 200, .22)';
+      g.beginPath(); g.roundRect(x + 5, y + 4, w - 10, 7, 4); g.fill();
+      g.strokeStyle = 'rgba(40, 20, 5, .5)';
       g.lineWidth = 1;
       g.beginPath();
-      for (let k = 1; k < 5; k++) { g.moveTo(x + 6, y + 3 + k * 5.2); g.lineTo(x + w - 6, y + 3 + k * 5.2); }
+      for (let k = 1; k < 5; k++) { g.moveTo(x + 5, y + 1 + k * 6); g.lineTo(x + w - 5, y + 1 + k * 6); }
       g.stroke();
-      g.fillStyle = '#3a3a3a';
-      g.fillRect(x + 12, y + 3, 4, h - 6); g.fillRect(x + w - 16, y + 3, 4, h - 6);
+      g.strokeStyle = '#2a1a10';
+      g.lineWidth = 1.6;
+      g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, h - 2, 14); g.stroke();
+      g.fillStyle = '#4a4a4a';
+      g.fillRect(x + 10, y + 1, 5, h - 2); g.fillRect(x + w - 15, y + 1, 5, h - 2);
       // днище з краником у бік приступки
       g.fillStyle = '#6b4424';
       g.beginPath(); g.ellipse(cx, toward > 0 ? y + h - 5 : y + 5, 8, 3, 0, 0, TAU); g.fill();
@@ -989,6 +988,24 @@
     if (st.k) {
       const kk = st.k, bx = st.kx != null ? st.kx : kk[0];
       barman(g, [bx, kk[1], kk[2], kk[3]], now, pal.ink);
+      if (kk[3] === 2 && phase === 'go') {
+        g.font = '18px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText('👀', bx, kk[1] - 44);
+      } else if (kk[3] === 1 && phase === 'go') {
+        g.font = '800 12px system-ui, sans-serif';
+        const text = 'Хто тут б\'ється?!', tw = g.measureText(text).width + 14;
+        const tx = clamp(bx + 30, tw / 2 + 36, 330);
+        g.fillStyle = 'rgba(255, 250, 238, .97)';
+        g.strokeStyle = pal.ink;
+        g.lineWidth = 1.2;
+        g.beginPath(); g.roundRect(tx - tw / 2, kk[1] - 58, tw, 20, 9); g.fill(); g.stroke();
+        g.fillStyle = '#8b1a10';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(text, tx, kk[1] - 47.5);
+      }
     }
 
     g.fillStyle = pal.shadow;
@@ -1339,12 +1356,15 @@
     const minPx = 14 / (st.cssK || 1);
     // корчмар дивиться — червонувата рамка по краю: махнеш кулаком — за двері
     if (phase === 'go' && st.k && st.k[3] === 2) {
-      const a = 0.22 + 0.12 * Math.sin(now / 160);
-      const grd = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.72);
+      const a = 0.42 + 0.14 * Math.sin(now / 160);
+      const grd = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.42, w / 2, h / 2, Math.hypot(w, h) / 2);
       grd.addColorStop(0, 'rgba(200, 40, 20, 0)');
-      grd.addColorStop(1, 'rgba(200, 40, 20, ' + a.toFixed(3) + ')');
+      grd.addColorStop(1, 'rgba(200, 40, 20, ' + (a + 0.1).toFixed(3) + ')');
       g.fillStyle = grd;
       g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(220, 50, 30, ' + (a + 0.25).toFixed(3) + ')';
+      g.lineWidth = 6;
+      g.strokeRect(3, 3, w - 6, h - 6);
     }
     if (phase === 'start') {
       if (mine) spotlight(st, g, w, h, cx, cy, 0.42);
