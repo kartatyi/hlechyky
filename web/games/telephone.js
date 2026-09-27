@@ -390,6 +390,7 @@
   // =========================================================================================
 
   const nick = (ctx, i) => ctx.esc(ctx.nickOf(i) || 'хтось');
+  const blank = (ops) => !ops || !ops.length;
 
   function timer(root, ctx) {
     const v = ctx.view || {};
@@ -422,7 +423,11 @@
       const p = pad(root);
       let html = '<div class="tptitle">' + ctx.esc(title) + '</div>';
       if (t && t.prompt && t.prompt.kind === 'text') html += '<div class="tpprompt">«' + ctx.esc(t.prompt.text) + '»</div>';
-      if (t && t.prompt && t.prompt.kind === 'drawing') html += '<canvas class="tpshow big"></canvas>';
+      // Порожнє полотно (сусід не встиг) — краще сказати словами, ніж показувати білий аркуш і гадати, чи він довантажиться.
+      if (t && t.prompt && t.prompt.kind === 'drawing') {
+        html += blank(t.prompt.ops) ? '<div class="tpprompt tpempty">🤷 Сусідові забракло часу — полотно порожнє. Вигадай, що там мало бути!</div>'
+          : '<canvas class="tpshow big"></canvas>';
+      }
       if (t && t.kind === 'draw') html += '<canvas class="tpcanvas"></canvas><div class="tptools"></div>';
       if (t && t.kind !== 'draw') {
         html += '<form class="tpform"><input type="text" maxlength="80" autocomplete="off" spellcheck="false" enterkeyhint="done" placeholder="'
@@ -462,7 +467,7 @@
           input.dispatchEvent(new Event('input'));
         };
       }
-      if (t && t.prompt && t.prompt.kind === 'drawing') {
+      if (t && t.prompt && t.prompt.kind === 'drawing' && !blank(t.prompt.ops)) {
         const el = body.querySelector('.tpshow');
         requestAnimationFrame(() => show(el, t.prompt.ops));
         new ResizeObserver(() => show(el, t.prompt.ops)).observe(el);
@@ -523,7 +528,8 @@
     const jug = e.seat < 0;
     const who = '<div class="tpby">' + (jug ? '🏺 Глек загадав:' : nick(ctx, e.seat) + (e.kind === 'drawing' ? ' малює:' : e.index === 0 ? ' починає:' : ' бачить:')) + '</div>';
     const body = e.kind === 'drawing'
-      ? '<canvas class="tpshow" data-chain="' + chain + '" data-index="' + e.index + '"></canvas>'
+      ? (blank(e.ops) ? '<div class="tptext tpempty">🤷 полотно лишилось порожнім</div>'
+        : '<canvas class="tpshow" data-chain="' + chain + '" data-index="' + e.index + '"></canvas>')
       : '<div class="tptext">«' + ctx.esc(e.text || '') + '»</div>';
     const own = e.seat === ctx.seat;
     const on = liked == null ? !!e.liked : liked;
@@ -634,16 +640,26 @@
     if (chains.length) wireChain(root, body, p.seen.get(pick).entries, pick);
   }
 
+  /// Де на сторінці починається полотно чи малюнок кроку — з цього CSS рахує їхню ширину, щоб «Готово» влізло в екран.
+  function fitStep(root) {
+    const wrap = root.querySelector('.tpwrap');
+    const el = root.querySelector('.tpbody > .tpcanvas, .tpbody > .tpshow.big');
+    if (!wrap || !el || !el.isConnected) return;
+    const top = Math.round(el.getBoundingClientRect().top + window.scrollY) + 'px';
+    if (wrap.style.getPropertyValue('--tptop') !== top) wrap.style.setProperty('--tptop', top);
+  }
+
   function render(root, ctx) {
     root._ctx = ctx;
     ctx.tpRoot = root;
     const v = ctx.view || {};
+    root.querySelector('.tpwrap').classList.toggle('live', !!ctx.playing);   // на телефоні в партії чіпи місць ховаються
     const head = root.querySelector('.tphead');
     // У лобі вид теж у фазі step, але кроків ще нема — «Крок 0 з 0» нічого не каже.
     const text = v.phase === 'step' ? (v.steps ? 'Крок ' + v.step + ' з ' + v.steps : '')
       : v.phase === 'reveal' ? 'Показ' : v.phase === 'done' ? 'Альбом' : '';
     if (head.textContent !== text) head.textContent = text;
-    if (v.phase === 'step') stepScreen(root, ctx, v);
+    if (v.phase === 'step') { stepScreen(root, ctx, v); fitStep(root); }
     else if (v.phase === 'reveal') revealScreen(root, ctx, v);
     else if (v.phase === 'done') doneScreen(root, ctx, v);
     timer(root, ctx);
@@ -670,6 +686,8 @@
         + '<div class="tpbody"></div></div>';
       const p = pad(root);
       p.timer = setInterval(() => { if (root._ctx) timer(root, root._ctx); }, 250);
+      // інша ширина вікна — інакше лягають чіпи місць і заголовок, і полотно починається деінде
+      new ResizeObserver(() => fitStep(root)).observe(root.querySelector('.tpwrap'));
       render(root, ctx);
     },
 

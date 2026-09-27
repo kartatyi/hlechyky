@@ -12,6 +12,20 @@
 .tptop { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
 .tpbody { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; }
 .tpbody > * { width: 100%; max-width: 560px; }
+/*
+  Полотно (і малюнок, який описуєш) з інструментами й «Готово» мусить влазити в екран: на MacBook і Deck кнопка
+  «Готово» ховалась під нижній край (прохід 28.09). --tptop — де на сторінці починається полотно (модуль міряє сам),
+  під ним ~170 px: палітра, інструменти, «Готово» й рядок «ще працюють».
+*/
+.tpwrap { --tpw: min(560px, max(300px, calc((100vh - var(--tptop, 300px) - 170px) * 4 / 3))); }
+@supports (height: 100dvh) {
+  .tpwrap { --tpw: min(560px, max(300px, calc((100dvh - var(--tptop, 300px) - 170px) * 4 / 3))); }
+  /* пальцем палітра у два рядки по десять — під нею треба ще ~50 px */
+  @media (pointer: coarse) { .tpwrap { --tpw: min(560px, max(300px, calc((100dvh - var(--tptop, 300px) - 225px) * 4 / 3))); } }
+}
+.tpbody > .tpcanvas, .tpbody > .tpshow.big, .tpbody > .tptools { max-width: var(--tpw); }
+/* на телефоні в екран однаково не влізе — там полотно на всю ширину: пальцем на більшому малювати легше */
+@container (max-width: 520px) { .tpbody > .tpcanvas, .tpbody > .tpshow.big, .tpbody > .tptools { max-width: 560px; } }
 
 .tptitle { text-align: center; font-weight: 700; font-size: 1.1em; }
 .tpprompt { text-align: center; font-size: 1.5em; font-weight: 800; color: var(--accent); overflow-wrap: anywhere; }
@@ -47,6 +61,7 @@
 @media (prefers-reduced-motion: reduce) { .tpentry.fresh { animation: none; } }
 .tpby { color: var(--muted); font-size: .85em; }
 .tptext { font-size: 1.25em; font-weight: 700; overflow-wrap: anywhere; }
+.tpempty { color: var(--muted); font-weight: 600; font-size: 1.05em; }
 .tpentry .tpshow { max-width: 420px; }
 .tplike {
   align-self: flex-end; padding: 4px 10px; border-radius: 999px; cursor: pointer;
@@ -64,7 +79,10 @@
 .tpwrap .pctime i { position: absolute; inset: 0 auto 0 0; background: var(--accent2); transition: width .25s linear; }
 .tpwrap .pctime i.hot { background: var(--danger); }
 .tpwrap .pcsec { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8em; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
-.tpwrap .pcpal { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+/* широко — двадцять кольорів одним рядком (два рядки по 52 px з'їдали висоту), вузько — два рядки по десять */
+.tpwrap .pcpal { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 3px; }
+@container (max-width: 520px) { .tpwrap .pcpal { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; } }
+@media (pointer: coarse) { .tpwrap .pcpal { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; } }
 .tpwrap .pcsw { aspect-ratio: 1; min-height: 22px; padding: 0; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
 .tpwrap .pcsw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
 .tpwrap .pcrow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -78,3 +96,8 @@
 
 /* Шість (десять) місць — це рядки «вільно» над карткою. Сісти можна кнопкою каркаса, чіпи тут зайві. */
 .gtable:has(.tpwrap) .gseat.free { display: none; }
+
+/* Телефон у партії: чіпи місць на десятьох — п'ять рядків над завданням; хто ще працює, пише рядок під ним. */
+@media (max-width: 640px) {
+  .gtable:has(> .gbody > .tpwrap.live) > .gseats .gseat { display: none; }
+}

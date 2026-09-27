@@ -100,6 +100,11 @@
 
 /* широко — усі двадцять кольорів одним рядком: так інструменти займають два рядки, а не три */
 .pcpal { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 4px; max-width: 760px; }
+/* пальцем (планшет, Deck) — два рядки по десять: дрібні квадратики пальцем не влучиш; під полотном тоді треба ще ~50 px */
+@media (pointer: coarse) {
+  .pcpal { grid-template-columns: repeat(10, minmax(0, 1fr)); max-width: 420px; }
+  .pcmain { grid-template-columns: minmax(0, max(360px, calc((100dvh - var(--pctop, 230px) - 160px) * 4 / 3))) 240px; }
+}
 .pcsw { aspect-ratio: 1; min-height: 22px; padding: 0; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
 .pcsw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
 .pcrow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
