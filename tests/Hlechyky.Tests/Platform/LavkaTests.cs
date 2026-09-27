@@ -152,12 +152,12 @@ public sealed class LavkaTests : IDisposable
     {
         var all = LavkaCatalog.All;
         Assert.Equal(all.Count, all.Select(i => i.Id).Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal(27, all.Count(i => i.Kind == LavkaKind.Icon));        // 24 звичайних + 3 сезонні
+        Assert.Equal(28, all.Count(i => i.Kind == LavkaKind.Icon));        // 24 звичайних + 4 сезонні (з 28.09 — і гарбуз)
         Assert.Equal(4, all.Count(i => i.Kind == LavkaKind.Frame));
         Assert.Equal(17, all.Count(i => i.Kind == LavkaKind.Color));       // 16 кольорів і веселка
         Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Title));       // 8 купованих і 5 за ачівки
         Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Bg));
-        Assert.Equal(["dedication", "fireworks"], all.Where(i => i.Kind == LavkaKind.Perk).Select(i => i.Id));
+        Assert.Equal(["dedication", "fireworks", "photo"], all.Where(i => i.Kind == LavkaKind.Perk).Select(i => i.Id));
         // id латиницею — без пробілів і великих літер
         Assert.All(all, i => Assert.Matches("^[a-z]+$", i.Id));
     }
