@@ -56,3 +56,6 @@
 @media (max-width: 420px) {
   .gterr { gap: 4px 10px; font-size: .88em; }
 }
+
+/* Своя хрестовина (pointerdown замість click): палець на ній не гортає сторінку й не виділяє текст */
+.dpad.tdp { touch-action: none; user-select: none; -webkit-user-select: none; }

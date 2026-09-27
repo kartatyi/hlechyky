@@ -47,6 +47,8 @@
 @media (max-width: 480px) {
   .thud { gap: 4px; font-size: .76em; }
   .tchip { padding: 2px 7px; gap: 4px; }
+  /* довгі ніки не розносять рядок на чотири поверхи: хто це — видно з номера й кольору, повний нік — у шапці */
+  .tchip .tnick { max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* ---- керування пальцем: напрямок тримають, тому pointerdown/pointerup, а не клік ---- */

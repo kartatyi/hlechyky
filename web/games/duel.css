@@ -24,6 +24,11 @@
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .duel .dscene > * { position: absolute; }
+/* Ноутбук, Дека (1280×800) і Full HD: сцена на 416 px губилась посеред порожньої картки. Даємо їй рости,
+   поки картка разом із кнопкою «Стріляти» й рядками під нею влазить по висоті без прокрутки. */
+@media (min-width: 900px) and (min-height: 700px) {
+  .duel .dscene { max-width: min(760px, calc((100vh - 460px) * 16 / 9)); }
+}
 
 .duel .dsky { inset: 0; background: linear-gradient(180deg, var(--accent) 0%, var(--duel-haze) 52%, var(--clay) 100%); }
 .duel .dsun {

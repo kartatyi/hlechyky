@@ -132,6 +132,18 @@
     b.title = Snd.on ? 'Вирубити звук' : 'Врубити звук';
   }
 
+  /// Кнопка «Стріляти» бахає на натиск (pointerdown), а не на click: той приходить, лише коли палець
+  /// відпустили, — це ще 50–120 мс, а раунд тут вирішують десятки. На телефоні саме ця кнопка й головна,
+  /// тож тапом по ній людина програвала тому, хто тисне клавішу. Клавіатура (Enter на кнопці) — через click.
+  function trigger(btn, fire) {
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      e.preventDefault();
+      fire();
+    });
+    btn.addEventListener('click', (e) => { if (e.detail === 0) fire(); });
+  }
+
   function state(root, ctx) {
     let st = states.get(ctx);
     if (!st || st.root !== root) {
@@ -162,7 +174,7 @@
     const wrap = document.createElement('div');
     wrap.className = 'duel';
     wrap.innerHTML = '<div class="dtop"><span class="gscore dwins"><b>0</b> : <b>0</b></span>'
-      + '<span class="dround muted small"></span></div>'
+      + '<span class="duround muted small"></span></div>'
       + '<div class="dscene" data-phase="wait" role="button" tabindex="-1" aria-label="Сцена дуелі: тисни, щоб вистрілити">'
       + '<div class="dsky"></div><div class="dsun"></div><div class="dstreet"></div><div class="dtumble"></div>'
       + '<div class="dguy sheriff">' + figure('sheriff') + '</div>'
@@ -176,7 +188,7 @@
       wrap: wrap,
       // Рахунок збираємо один раз, а далі правимо лише текст цифр: шлях кадру HTML не парсить.
       wins: [...wrap.querySelectorAll('.dwins b')],
-      round: wrap.querySelector('.dround'),
+      round: wrap.querySelector('.duround'),
       scene: wrap.querySelector('.dscene'),
       call: wrap.querySelector('.dcall'),
       msg: wrap.querySelector('.dmsg'),
@@ -185,7 +197,7 @@
     };
     // Колбек беремо з останнього виклику (ctx той самий, але зайвий раз вішати слухач нема потреби).
     st.els.scene.addEventListener('pointerdown', () => shoot(st, st.ctx || ctx));
-    st.els.fire.addEventListener('click', () => shoot(st, st.ctx || ctx));
+    trigger(st.els.fire, () => shoot(st, st.ctx || ctx));
     return st;
   }
 
@@ -282,7 +294,7 @@
     const msg = ended ? resultText(ctx, s)
       : phase === 'done' ? ''                       // партію обірвали: підсумок напише каркас
         : phase === 'wait' ? 'Чекаємо на другого стрільця'
-          : ctx.mine ? 'Стріляй будь-якою клавішею, кліком по вулиці або кнопкою'
+          : ctx.mine ? (ctx.ui.coarse() ? 'Стріляй тапом по вулиці або кнопкою — щойно побачиш «ВОГОНЬ!»' : 'Стріляй будь-якою клавішею, кліком по вулиці або кнопкою')
             : 'Дивишся збоку';
     if (st.els.msg.textContent !== msg) st.els.msg.textContent = msg;
 
@@ -344,7 +356,15 @@
       if (s.phase === 'ready') return 'Готуйсь…';
       if (s.phase === 'aim') return 'Цілься…';
       if (s.phase === 'fire') return 'ВОГОНЬ! Тисни!';
-      if (s.phase === 'result') return resultText(ctx, s);
+      // Хто скільки мілісекунд — уже написано під сценою; тут коротко, щоб не читати те саме двічі.
+      if (s.phase === 'result') {
+        const l = s.last;
+        if (l && l.winner != null) {
+          const last = (s.wins || []).some((w) => w >= 3);   // Duel.WinsNeeded
+          return 'Раунд бере ' + nameOf(ctx, l.winner) + (last ? ' — і всю дуель!' : ' — мить, і наступний');
+        }
+        return l ? 'Раунд переграють' : '';
+      }
       return '';
     },
 
@@ -405,7 +425,7 @@
     root.innerHTML = '';
     const wrap = document.createElement('div');
     wrap.className = 'duel shoot';
-    wrap.innerHTML = '<div class="dtop"><span class="sboard"></span><span class="dround muted small"></span></div>'
+    wrap.innerHTML = '<div class="dtop"><span class="sboard"></span><span class="duround muted small"></span></div>'
       + '<div class="dscene" data-phase="wait">'
       + '<div class="dsky"></div><div class="dsun"></div><div class="dstreet"></div><div class="dtumble"></div>'
       + '<div class="sguys"></div>'
@@ -418,7 +438,7 @@
     st.els = {
       wrap: wrap,
       board: wrap.querySelector('.sboard'),
-      round: wrap.querySelector('.dround'),
+      round: wrap.querySelector('.duround'),
       scene: wrap.querySelector('.dscene'),
       guys: wrap.querySelector('.sguys'),
       lines: wrap.querySelector('.slines'),
@@ -437,7 +457,7 @@
       e.preventDefault();
       sAim(st, c, { at: at });
     });
-    st.els.fire.addEventListener('click', () => sShoot(st, st.ctx || ctx));
+    trigger(st.els.fire, () => sShoot(st, st.ctx || ctx));
     return st;
   }
 

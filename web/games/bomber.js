@@ -60,8 +60,15 @@
     g.fill();
   }
 
-  // Кожен ctx.css — це getComputedStyle(:root), а малюємо ми на rAF. Тому палітру збираємо рівно
-  // раз на кадр і передаємо вниз готовою, а не питаємо колір на кожен ящик і кожного бомбера.
+  // Кожен ctx.css — це getComputedStyle(:root), а малюємо ми на rAF. Тому палітру збираємо один раз і
+  // тримаємо, поки не зміниться тема (атрибут data-theme) або не прийде новий вид (подія 'room' — рідко):
+  // раніше її збирали щокадру — два десятки getComputedStyle 60 разів на секунду.
+  function palOf(st) {
+    const sig = document.documentElement.getAttribute('data-theme') || '';
+    if (!st.pal || st.palSig !== sig) { st.pal = palette(st); st.palSig = sig; }
+    return st.pal;
+  }
+
   function palette(st) {
     return {
       bg: st.css('--bg', '#0f1f18'),
@@ -301,23 +308,49 @@
     };
   }
 
+  const sameCells = (a, b) => {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  };
+
+  /// Тло, стіни й ящики — в окремому канвасі: стіни не міняються за партію, ящики — лише коли щось
+  /// розлетілось. Перемальовуємо його тоді, а щокадру кладемо однією картинкою (раніше — сотня roundRect).
+  function staticLayer(st, pal, boxes) {
+    const el = st.cv.el;
+    const L = st.layer || (st.layer = document.createElement('canvas'));
+    if (L.width === el.width && L.height === el.height && st.layerPal === pal && st.layerWalls === st.walls
+      && sameCells(st.layerBoxes, boxes)) return L;
+    if (L.width !== el.width) L.width = el.width;
+    if (L.height !== el.height) L.height = el.height;
+    const g = L.getContext('2d');
+    const k = el.width / (W * PX);
+    g.setTransform(k, 0, 0, k, 0, 0);
+    g.fillStyle = pal.bg2;
+    g.fillRect(0, 0, W * PX, H * PX);
+    drawWalls(pal, g, st.walls);
+    drawBoxes(pal, g, boxes);
+    st.layerPal = pal;
+    st.layerWalls = st.walls;
+    st.layerBoxes = boxes ? boxes.slice() : [];
+    return L;
+  }
+
   function draw(st, waiting) {
     const c = st.cv;
     if (!c) return;
     const now = performance.now();
     const shot = men(st);
     const g = c.ctx;
-    const pal = palette(st);
+    const pal = palOf(st);
     // Малюємо в логічних одиницях поля, а канвас щільніший у K разів (див. scale()).
     const box = { w: W * PX, h: H * PX };
     g.save();
     g.scale(st.K, st.K);
-    g.fillStyle = pal.bg2;
-    g.fillRect(0, 0, box.w, box.h);
-    drawWalls(pal, g, st.walls);
+    g.drawImage(staticLayer(st, pal, shot ? shot.f.boxes : null), 0, 0, box.w, box.h);
     if (shot) {
       const f = shot.f;
-      drawBoxes(pal, g, f.boxes);
       drawDrops(pal, g, f.pw);
       drawBombs(pal, g, f.b, now);
       const me = st.ctx && st.ctx.mine ? st.ctx.seat : null;
@@ -349,13 +382,13 @@
       const m = men[i] || {};
       const ups = '💣' + (m.bombs || 1) + ' 🔥' + (m.range || 2) + (m.boots ? ' 👟' : '');
       html += '<span class="bchip s' + i + (m.alive === false ? ' out' : '') + (i === ctx.seat ? ' me' : '') + '">'
-        + '<i>' + (i + 1) + '</i>' + ctx.esc(nick) + ' <b>' + (wins[i] || 0) + '</b> <span class="bups">' + ups + '</span></span>';
+        + '<i>' + (i + 1) + '</i><span class="bnick">' + ctx.esc(nick) + '</span> <b>' + (wins[i] || 0) + '</b> <span class="bups">' + ups + '</span></span>';
     }
     // Годинник раунду: за дві хвилини раунд нічий, і краще бачити це заздалегідь, ніж дивуватись.
     if (f && f.phase === 'go') {
       const limit = (ctx.view && ctx.view.limit) || 2000;
       const left = Math.max(0, limit - (f.t || 0));
-      html += '<span class="bchip bclock' + (left * TICK_MS <= 15000 ? ' hot' : '') + '">⏱ ' + clock(left) + '</span>';
+      html += '<span class="bchip bmclock' + (left * TICK_MS <= 15000 ? ' hot' : '') + '">⏱ ' + clock(left) + '</span>';
     }
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
@@ -391,21 +424,41 @@
         // забирає з собою pointerup — і бомбер біг би далі, поки не впреться.
         try { b.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер — переживемо */ }
         st.pid = e.pointerId;
-        st.held = +b.dataset.dir;
-        el._bomberCtx.input('move', { dir: st.held });
+        st.touch = +b.dataset.dir;
+        steer(st, el._bomberCtx);
       });
       const release = (e) => {
         if (st.pid !== e.pointerId) return;
         st.pid = null;
-        if (st.held < 0) return;
-        st.held = -1;
-        el._bomberCtx.input('move', { dir: -1 });
+        st.touch = -1;
+        steer(st, el._bomberCtx);
       };
       el.addEventListener('pointerup', release);
       el.addEventListener('pointercancel', release);
       root.appendChild(el);
     }
     el._bomberCtx = ctx;      // колбеки завжди з останнього update, а не з першого
+  }
+
+  /// Телефон: на шістьох шапка столу з місцями й рядок гравців штовхали поле вниз, а хрестовина з «💣»
+  /// опинялась під нижнім меню — видно було або поле, або кнопки. Раз на партію (room.startedAt), коли
+  /// партія пішла, прокручуємо сторінку так, щоб рядок гравців став під шапку сайту: тоді поле й кнопки
+  /// вміщаються разом. Якщо й так усе видно — не чіпаємо.
+  function fitPhone(root, st, ctx, hudSel, padSel) {
+    if (!ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const hudEl = root.querySelector(':scope > ' + hudSel), padEl = root.querySelector(':scope > ' + padSel);
+    if (!hudEl || !padEl) return;
+    const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = head ? head.getBoundingClientRect().bottom : 0;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    if (a.top >= top && b.bottom <= innerHeight - tabs) return;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: a.top - top - 4, behavior: calm ? 'auto' : 'smooth' });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -417,12 +470,23 @@
     if (!root._bomber) {
       root._bomber = {
         cv: null, walls: [], last: null, held: -1, pid: null, bombDown: false, booms: [],
-        raf: 0, keyup: null, phase: '', round: 0, css: ctx.css, K: scale(),
+        keys: [], touch: -1, seenAt: 0,
+        raf: 0, keyup: null, blur: null, phase: '', round: 0, css: ctx.css, K: scale(),
       };
     }
     root._bomber.ctx = ctx;
     ctx._bomber = root._bomber;
     return root._bomber;
+  }
+
+  /// Куди бігти зараз: палець на хрестовині головніший, далі — остання із затиснутих клавіш. Затиснув →,
+  /// додав ↑ і відпустив ↑ — бомбер знову біжить праворуч, а не стоїть (раніше зупинявся, хоч → іще тиснули).
+  /// Серверу шлемо лише зміну.
+  function steer(st, ctx) {
+    const d = st.touch >= 0 ? st.touch : (st.keys.length ? st.keys[st.keys.length - 1] : -1);
+    if (st.held === d) return;
+    st.held = d;
+    if (ctx && ctx.mine && ctx.playing) ctx.input('move', { dir: d });
   }
 
   /// Сервер бере новий раунд із чистими бомберами, тож напрямок, який людина досі тримає, треба
@@ -434,16 +498,22 @@
     st.phase = phase;
   }
 
-  /// Цикл малювання. Помер разом із карткою; поки картку сховали під іншу вкладку (#colGames стає
-  /// display:none, тобто offsetParent зникає) — крутиться вхолосту, не перемальовуючи невидимий канвас.
+  /// Цикл малювання живе, лише поки є що рухати: йдуть кадри (плюс ще три тики — інтерполяція відстає на
+  /// один) або догорає хмарка підірваного. Стіл у лобі, дограна партія, картка під іншою вкладкою
+  /// (#colGames — display:none, offsetParent зникає) — жодного rAF: новий кадр чи вид розбудять цикл самі.
+  /// Раніше rAF крутився 60 разів на секунду завжди, поки картка існувала, навіть на порожньому столі.
+  const LIVE_MS = TICK_MS * 3;
   function spin(st) {
-    if (st.raf) return;
-    const loop = () => {
-      if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
-      if (st.cv.el.offsetParent) draw(st, !(st.ctx && st.ctx.playing));
-      st.raf = requestAnimationFrame(loop);
-    };
-    st.raf = requestAnimationFrame(loop);
+    if (st.raf || !st.cv) return;
+    st.raf = requestAnimationFrame(() => loop(st));
+  }
+  function loop(st) {
+    st.raf = 0;
+    if (!st.cv || !st.cv.el.isConnected || !st.cv.el.offsetParent) return;
+    draw(st, !(st.ctx && st.ctx.playing));
+    const now = performance.now();
+    if (st.booms.length) st.booms = st.booms.filter((b) => now - b.at < BOOM_MS);
+    if (now - st.seenAt < LIVE_MS || st.booms.length) spin(st);
   }
 
   HGames.register({
@@ -471,11 +541,21 @@
       // Каркас віддає модулю лише keydown, а напрямок тут тримають — відпускання ловимо самі.
       st.keyup = (e) => {
         if (isBomb(e)) { st.bombDown = false; return; }
-        if (dirOf(e) !== st.held || st.held < 0) return;
-        st.held = -1;
-        if (st.ctx && st.ctx.mine && st.ctx.playing) st.ctx.input('move', { dir: -1 });
+        const d = dirOf(e);
+        if (d === undefined || st.keys.indexOf(d) < 0) return;
+        st.keys = st.keys.filter((k) => k !== d);
+        steer(st, st.ctx);
+      };
+      // Вікно втратило фокус (Alt+Tab, клік у балачки іншої програми) — keyup уже не прийде, і бомбер
+      // біг би, поки не впреться. Відпускаємо все.
+      st.blur = () => {
+        st.keys = [];
+        st.touch = -1;
+        st.bombDown = false;
+        steer(st, st.ctx);
       };
       document.addEventListener('keyup', st.keyup);
+      window.addEventListener('blur', st.blur);
       // Після F5 сервер може пам'ятати напрямок, якого свіжий клієнт уже не тримає — скидаємо.
       if (ctx.mine && ctx.playing) ctx.input('move', { dir: -1 });
       spin(st);
@@ -485,11 +565,16 @@
       const st = state(root, ctx);
       st.ctx = ctx;
       if (!st.cv) return;
+      st.pal = null;   // тема могла змінитись — палітру зберемо заново (подія 'room' рідка)
       const v = ctx.view;
       if (v && v.walls && v.walls.length) st.walls = v.walls;
-      if (v && v.p) {
-        // Вид прилітає й на дрібниці (сів глядач, змінилось число очей) — інтерполяцію рвемо лише
-        // тоді, коли світ справді стрибнув: новий раунд або відлік тиків пішов назад.
+      // Вид накладаємо рівно раз. Каркас кличе update() і на кожну подію лобі (хтось сів за інший стіл),
+      // причому з тим самим, давно збереженим видом — а вид бомбера приходить лише на межі раундів. Раніше
+      // такий старий вид ставав «останнім кадром»: бомбери на мить відскакували туди, де стояли на початку
+      // раунду, і рахунок над полем блимав старим.
+      if (v && v.p && v !== st.seenView) {
+        st.seenView = v;
+        // Інтерполяцію рвемо лише тоді, коли світ справді стрибнув: новий раунд або тики пішли назад.
         const jump = !st.last || v.round !== st.round || v.t < (st.last.t || 0);
         if (!jump) noteBooms(st, v);
         st.last = v;
@@ -499,6 +584,7 @@
       }
       pad(root, ctx, st);
       hud(root, ctx, st.last);
+      fitPhone(root, st, ctx, '.bhud', '.bpad');
       syncHeld(st);
       st.cv.resize();
       spin(st);        // якщо картку колись перемонтують — цикл малювання не загубиться
@@ -510,6 +596,7 @@
       if (!st.cv || !f) return;
       noteBooms(st, f);
       st.last = f;
+      st.seenAt = performance.now();
       st.interp.push(f);
       hud(root, ctx, f);
       syncHeld(st);
@@ -526,7 +613,9 @@
       }
       const dir = dirOf(e);
       if (dir === undefined) return false;
-      if (st.held !== dir) { st.held = dir; ctx.input('move', { dir }); }
+      // Остання натиснута — головна; автоповтор тієї самої нічого не міняє й нічого не шле.
+      if (st.keys[st.keys.length - 1] !== dir) st.keys = st.keys.filter((k) => k !== dir).concat(dir);
+      steer(st, ctx);
       return true;   // інакше стрілки гортали б сторінку
     },
 
@@ -547,7 +636,10 @@
       const st = root._bomber;
       if (!st) return;
       cancelAnimationFrame(st.raf);
+      st.raf = 0;
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
+      if (st.blur) window.removeEventListener('blur', st.blur);
+      st.cv = null;
       root._bomber = null;
     },
   });

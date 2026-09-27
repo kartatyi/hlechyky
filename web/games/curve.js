@@ -26,7 +26,17 @@
     + '<path d="M1.5 12.5c3.4 0 3.4-9 6.8-9s3.4 9 6.2 9" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>'
     + '<circle cx="14.2" cy="12.5" r="1.8" fill="var(--ok)"/></svg>';
 
-  const color = (ctx, i) => ctx.css(COLORS[i][0], COLORS[i][1]);
+  /// Кольори з :root — у кеші. Кожен ctx.css — це getComputedStyle, а кадр на вісьмох питав його під сорок
+  /// разів (по два на голову, око, кільце, підписи) 25 разів на секунду. Кеш скидає зміна теми (data-theme)
+  /// і кожен новий вид (подія 'room' рідка).
+  const pal = { sig: null, v: {} };
+  function cssv(ctx, name, fallback) {
+    const sig = document.documentElement.getAttribute('data-theme') || '';
+    if (pal.sig !== sig) { pal.sig = sig; pal.v = {}; }
+    const hit = pal.v[name];
+    return hit !== undefined ? hit : (pal.v[name] = ctx.css(name, fallback));
+  }
+  const color = (ctx, i) => cssv(ctx, COLORS[i][0], COLORS[i][1]);
   /// Масштаб малювання: на звичайному моніторі (DPR 1) поле 300 одиниць розтягувалось на 460+ пікселів і
   /// слід милився сходинками. Малюємо вдвічі щільніше — на телефонах із DPR ≥ 2 це й так уже зроблено.
   const scale = () => ((window.devicePixelRatio || 1) >= 2 ? 1 : 2);
@@ -174,7 +184,7 @@
       g.beginPath();
       g.arc(b.x, b.y, 3 + 14 * k, 0, Math.PI * 2);
       g.stroke();
-      g.fillStyle = ctx.css('--danger', '#e57373');
+      g.fillStyle = cssv(ctx, '--danger', '#e57373');
       g.beginPath();
       g.arc(b.x, b.y, 3.5 * (1 - k) + 1, 0, Math.PI * 2);
       g.fill();
@@ -195,7 +205,7 @@
     g.textAlign = 'center';
     g.textBaseline = 'bottom';
     g.lineWidth = 3;
-    g.strokeStyle = ctx.css('--bg2', '#16291f');
+    g.strokeStyle = cssv(ctx, '--bg2', '#16291f');
     g.strokeText(text, h.x, h.y - 6);
     g.fillStyle = fill;
     g.fillText(text, h.x, h.y - 6);
@@ -206,12 +216,17 @@
     if (!c) return;
     st.lastF = f;
     st.ctx = ctx;
+    // Картку не видно (лобі, інша вкладка сайту, схована вкладка браузера) — поле не малюємо, лише
+    // запам'ятовуємо, що воно застаріло: слід на своєму канвасі кадри домальовують і далі. Раніше кожен
+    // кадр перемальовував невидиме поле 25 разів на секунду.
+    if (document.hidden || st.hidden) { st.stale = true; return; }
+    st.stale = false;
     const g = c.ctx;
     const W = st.W, H = st.H;
     c.resize();
     g.save();
     g.scale(st.K, st.K);
-    g.fillStyle = ctx.css('--bg2', '#16291f');
+    g.fillStyle = cssv(ctx, '--bg2', '#16291f');
     g.fillRect(0, 0, W, H);
     g.drawImage(st.tr, 0, 0, W, H);
 
@@ -220,7 +235,7 @@
     const me = ctx.mine ? ctx.seat : null;
     // Тінь поза грою кладемо під голови: на відліку вони мають світитись, а не тонути разом зі слідом.
     if (phase && phase !== 'play') {
-      g.fillStyle = ctx.css('--gshade', 'rgba(15, 31, 24, .62)');
+      g.fillStyle = cssv(ctx, '--gshade', 'rgba(15, 31, 24, .62)');
       g.fillRect(0, 0, W, H);
     }
     for (let i = 0; i < heads.length && i < SEATS; i++) {
@@ -237,13 +252,13 @@
       g.arc(h.x, h.y, 2.8, 0, Math.PI * 2);
       g.fill();
       // Око: без нього голова губиться на власному сліді того ж кольору.
-      g.fillStyle = ctx.css('--bg2', '#16291f');
+      g.fillStyle = cssv(ctx, '--bg2', '#16291f');
       g.beginPath();
       g.arc(h.x, h.y, 1.1, 0, Math.PI * 2);
       g.fill();
       if (i === me) {
         // Своя голова — у білому кільці: на повному столі «де я?» — перше питання раунду.
-        g.strokeStyle = ctx.css('--text', '#ecf1ea');
+        g.strokeStyle = cssv(ctx, '--text', '#ecf1ea');
         g.lineWidth = 0.9;
         g.beginPath();
         g.arc(h.x, h.y, 5, 0, Math.PI * 2);
@@ -266,14 +281,14 @@
         if (phase === 'done' && ctx.view && Array.isArray(ctx.view.winners)) who = ctx.view.winners;
         const names = who.map((i) => ctx.nickOf(i) || ctx.seatName(i)).join(', ');
         g.font = '700 ' + Math.round(17 * u) + 'px system-ui, sans-serif';
-        g.fillStyle = who.length === 1 ? color(ctx, who[0]) : ctx.css('--text', '#ecf1ea');
+        g.fillStyle = who.length === 1 ? color(ctx, who[0]) : cssv(ctx, '--text', '#ecf1ea');
         g.fillText(who.length ? '🏆 ' + names : 'Усі вибули разом', W / 2, H / 2 - 30 * u, W - 20);
         g.font = Math.round(10 * u) + 'px system-ui, sans-serif';
-        g.fillStyle = ctx.css('--text', '#ecf1ea');
+        g.fillStyle = cssv(ctx, '--text', '#ecf1ea');
         g.fillText(phase === 'done' ? 'партію зіграно' : (who.length ? 'бере раунд' : 'раунд — нікому'), W / 2, H / 2 - 14 * u);
       }
       if (phase === 'ready' || phase === 'between') {
-        g.fillStyle = ctx.css('--text', '#ecf1ea');
+        g.fillStyle = cssv(ctx, '--text', '#ecf1ea');
         g.font = '700 ' + Math.round(40 * u) + 'px system-ui, sans-serif';
         // Стіл у лобі теж стоїть у фазі 'ready', але без відліку: велике біле «0» посеред поля
         // читалось би як відлік, що застряг.
@@ -399,11 +414,21 @@
       };
       document.addEventListener('keyup', st.up);
       window.addEventListener('blur', st.blur);
+      // Видно картку чи ні — каже IntersectionObserver (без читання розкладки щокадру); знову видно —
+      // домальовуємо те, що пропустили.
+      const wake = () => { if (st.stale && st.ctx && st.cv) paint(st, st.ctx, st.lastF); };
+      if (window.IntersectionObserver) {
+        st.io = new IntersectionObserver((es) => { st.hidden = !es[es.length - 1].isIntersecting; if (!st.hidden) wake(); });
+        st.io.observe(st.cv.el);
+      }
+      st.vis = () => { if (!document.hidden) wake(); };
+      document.addEventListener('visibilitychange', st.vis);
     },
 
     update(root, ctx) {
       const st = state(root, ctx);
       if (!st.cv) return;
+      pal.sig = null;   // тема могла змінитись — кольори зберемо заново
       const v = ctx.view || {};
       // Поле могло вирости (сіли вп'ятьох) або знову стати звичним — канваси за ним, і слід доведеться
       // перемалювати з вида.
@@ -413,7 +438,16 @@
       // update() приходить і на чужі новини лобі, і тоді ctx.view — той самий об'єкт, що був. Перемальовувати
       // з нього не можна: кадри вже намалювали слід далі, і ми б стерли все, що набігло після події 'room'.
       const fresh = ctx.view !== st.view || resized;
-      if (fresh) { st.view = ctx.view; rebuild(st, ctx); }
+      if (fresh) {
+        st.view = ctx.view;
+        // Той самий раунд, а кадри йдуть без перерви — слід на своєму канвасі й так точний, точніший за
+        // проріджену ламану вида (на вісьмох — лише 250 точок на кривулю). У компанії вид летить на кожну
+        // смерть, і перемальовувати з нього все поле було і дарма (3–6 мс), і грубше: кути сліду зрізались.
+        // Після реконекту, повернення до столу чи нового розміру кадрів щойно не було — тоді з вида.
+        const v = ctx.view || {};
+        const live = !resized && v.round === st.r && performance.now() - st.frameAt < 300;
+        if (!live) rebuild(st, ctx);
+      }
       const f = fresh ? (ctx.view || {}) : (ctx.frame || ctx.view || {});
       score(root, ctx, f);
       paint(st, ctx, f);
@@ -439,6 +473,7 @@
         }
       }
       st.t = f.t;
+      st.frameAt = performance.now();
       noteBooms(st, f);
       grow(st, ctx, f);
       score(root, ctx, f);
@@ -471,6 +506,8 @@
       if (!st) return;
       if (st.up) document.removeEventListener('keyup', st.up);
       if (st.blur) window.removeEventListener('blur', st.blur);
+      if (st.vis) document.removeEventListener('visibilitychange', st.vis);
+      if (st.io) st.io.disconnect();
       if (st.raf) cancelAnimationFrame(st.raf);
       root._curve = null;
       if (ctx) ctx._curve = null;
