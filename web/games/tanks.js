@@ -539,6 +539,12 @@
       };
       document.addEventListener('keyup', st.keyup);
       window.addEventListener('blur', st.blur);
+      // Картку сховали (лобі, інша вкладка сайту) й показали знову: rAF поки спав, а подія 'room' могла
+      // прийти, поки її не було видно. Щойно канвас знову на екрані — малюємо свіже.
+      if (window.IntersectionObserver) {
+        st.io = new IntersectionObserver((es) => { if (es[es.length - 1].isIntersecting) spin(st); });
+        st.io.observe(st.cv.el);
+      }
       if (ctx.mine && ctx.playing) ctx.input('move', { dir: -1 });
       spin(st);
     },
@@ -623,6 +629,7 @@
       st.raf = 0;
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.blur) window.removeEventListener('blur', st.blur);
+      if (st.io) st.io.disconnect();
       st.cv = null;
       root._tanks = null;
     },
