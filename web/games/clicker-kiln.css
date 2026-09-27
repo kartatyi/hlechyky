@@ -184,7 +184,10 @@
 .clkk-cell.bad { fill: rgba(200, 120, 100, .35); }
 
 /* ---- пензель, штампик, полива (v9) ---- */
-.clkk-petal { fill: none; stroke: var(--clkk-slip, #f4ead6); stroke-width: 26; stroke-dasharray: 6 26; stroke-linecap: round; opacity: .38; }
+.clkk-petal { fill: none; stroke: var(--clkk-slip, #f4ead6); stroke-width: 26; stroke-dasharray: 6 26; stroke-linecap: round; opacity: .38; transition: opacity .25s; }
+/* Зафарбована пелюстка (10 з 14 позначок) світлішає, повна — ще й суцільна: видно, що лишилось (записка №12). */
+.clkk-petal.done { opacity: .62; stroke-dasharray: 14 10; }
+.clkk-petal.full { opacity: .8; stroke-dasharray: none; }
 .t-brush .clkk-stroke { display: none; }
 .clkk-bseg { stroke: var(--clkk-slip, #f4ead6); stroke-linecap: round; opacity: .95; }
 .clkk-mkdot { fill: rgba(244, 234, 214, .16); stroke: var(--clkk-slip, #f4ead6); stroke-width: 4; stroke-dasharray: 7 9; }
@@ -205,6 +208,11 @@
 .clkk-howto.clkk-warn { color: var(--accent2); }
 .clkk-prow { display: flex; align-items: center; gap: 8px; }
 .clkk-prow .clkk-pinfo { flex: 1 1 auto; }
+/* Підсумок розпису на місці кнопок: вікно стоїть, доки до нього торкаються, — зайвий натиск лягає сюди. */
+.clkk-prow.clkk-result { justify-content: space-between; padding: 6px 8px; border-radius: 10px; background: var(--panel); border: 1px solid var(--accent2); }
+.clkk-rtext b { font-size: 1.25em; }
+.clkk-rtext b.lux { color: #ffd76b; text-shadow: 0 0 8px rgba(255, 215, 107, .55); }
+.clkk-canvas.over { cursor: default; }
 
 /* ---- відкриття горна ---- */
 .clkk-reveal { display: flex; flex-direction: column; gap: 8px; }

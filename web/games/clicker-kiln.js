@@ -826,7 +826,7 @@
     flyand: 'На кожній позначці протягни рівний штрих через усі смуги — у бік стрілки.',
     marble: 'Торкнись кожної позначки (крапля), а тоді різко крутни пальцем коло навколо центру.',
     losk: 'Натирай пунктирні смуги — водь пальцем туди-сюди, поки не заблищать. Поза смугами не три.',
-    brush: 'Проведи мазок по кожній примарній пелюстці — від серединки до кінчика. Швидше рука — тонша лінія.',
+    brush: 'Проведи мазок по кожній примарній пелюстці — від серединки до кінчика. Зафарбована пелюстка світлішає; усі — і квітка готова.',
     stamp: 'Торкнись першої позначки — і далі вони спалахуватимуть по черзі. Тисни, коли кільце стисне позначку.',
     glaze: 'Води ополоником по черепку — полива стікає ще на два рядки вниз. Укрий усе й не лий повз.',
   };
@@ -888,10 +888,17 @@
       petals: [...svg.querySelectorAll('[data-petal]')], wetG: svg.querySelector('.clkk-wet'),
       spillG: svg.querySelector('.clkk-spill'), ladle: svg.querySelector('.clkk-ladle'),
       bodyCells: p.tech === 'glaze' ? vesselCells(p.shape) : 0,
+      // Записка Smaug №12: мінігра рахує не натиски, а зроблене — зафарбовані пелюстки, відбиті позначки, протягнуті смуги.
+      hits: p.tech === 'brush' ? p.shape.petals.map(() => new Array(PETAL_MARKS).fill(false)) : null,
+      samples: p.tech === 'brush' ? petalSamples(p.shape.petals) : null,
+      doneN: 0, hitMarks: new Set(), pulled: new Set(), finishT: 0, over: false, closeT: 0,
     };
     st.kPaint = g;
     body.querySelector('.clkk-again').onclick = () => startPaint(st, api, p.tech);
     g.done.onclick = () => submitPaint(st, api, true);
+    // Підсумок на місці полотна: будь-який дотик у вікні відсуває його зачинення — зайвий натиск не пролетить на
+    // кнопки горна під вікном (там «Розписати» й техніки: нова спроба скинула б щойно зароблену красу).
+    body.addEventListener('pointerdown', () => { if (g.over) closeLater(st, api, g); }, true);
     // Полотно 1000×1000 у боксі будь-якої форми: коли вікно нижче за ширину, preserveAspectRatio літербоксить
     // картинку, і ділення на getBoundingClientRect клало штрих не під курсор. Матриця екрана знає правду завжди.
     const pos = (e) => {
@@ -906,6 +913,8 @@
     svg.addEventListener('pointerdown', (e) => {
       if (!human(e) || g.sent || (e.pointerType === 'mouse' && e.button !== 0)) return;
       e.preventDefault();
+      // Гравець малює далі — «квітка готова» зачекає, поки він відпустить.
+      if (g.finishT) { clearTimeout(g.finishT); g.finishT = 0; }
       try { svg.setPointerCapture(e.pointerId); } catch { /* старий браузер */ }
       g.down = true;
       g.pointer = e.pointerId;
@@ -974,10 +983,65 @@
     g.curStroke = null;
     g.curExtra = null;
     g.curFrom = 0;
+    if (g.hits) for (const h of g.hits) h.fill(false);
+    g.doneN = 0;
+    g.hitMarks = new Set();
+    g.pulled = new Set();
+    if (g.finishT) { clearTimeout(g.finishT); g.finishT = 0; }
     g.done.disabled = true;
     g.bar.style.width = '0%';
     g.info.textContent = '';
     note(g, why || '');
+  }
+
+  /// Пензель: кожна пелюстка — 14 позначок (той самий PetalAt, що й KilnPaint.Sweep на сервері); позначку закриває
+  /// пензель, що пройшов ближче за 62. Клієнт рахує те саме, щоб показати, які пелюстки вже зафарбовані, і закінчити
+  /// мінігру тоді, коли квітка справді готова, а не на N-му натиску (записка Smaug №12).
+  const PETAL_MARKS = 14, BRUSH_TOL = 62;
+  /// Пелюстка «зафарбована» від стількох позначок із 14: так видно прогрес, навіть якщо кінчик ледь не дотягнуто.
+  const PETAL_DONE = 10;
+  /// Усі пелюстки повні — здаємо швидко; зафарбовані не до кінця — чекаємо довше: може, гравець ще підправить.
+  const FINISH_FULL_MS = 500, FINISH_MS = 1500;
+  /// Скільки підсумок стоїть на місці полотна після останнього дотику до вікна.
+  const RESULT_MS = 2400;
+
+  function petalAt(p, t) {
+    const c = petalCtrl(p);
+    const s = 1 - t;
+    return [s * s * p[0] + 2 * s * t * c[0] + t * t * p[2], s * s * p[1] + 2 * s * t * c[1] + t * t * p[3]];
+  }
+
+  function petalSamples(petals) {
+    const out = [];
+    petals.forEach((p, i) => { for (let j = 0; j < PETAL_MARKS; j++) out.push([i, j, ...petalAt(p, (j + 0.5) / PETAL_MARKS)]); });
+    return out;
+  }
+
+  /// Точка пензля: найближча позначка з усіх пелюсток (так само, як на сервері) — закрита, якщо ближче за допуск.
+  function brushHit(g, x, y) {
+    let best = Infinity;
+    let hit = null;
+    for (const s of g.samples) {
+      const d = (x - s[2]) * (x - s[2]) + (y - s[3]) * (y - s[3]);
+      if (d < best) { best = d; hit = s; }
+    }
+    if (!hit || Math.sqrt(best) > BRUSH_TOL) return;
+    const row = g.hits[hit[0]];
+    if (row[hit[1]]) return;
+    row[hit[1]] = true;
+    const n = row.filter(Boolean).length;
+    if (n === PETAL_DONE) {
+      g.doneN++;
+      if (g.petals[hit[0]]) g.petals[hit[0]].classList.add('done');
+    }
+    if (n === PETAL_MARKS && g.petals[hit[0]]) g.petals[hit[0]].classList.add('full');
+  }
+
+  /// Здати роботу трохи згодом — якщо гравець не візьметься малювати далі (pointerdown скасовує).
+  function finishSoon(st, api, g, ms, text) {
+    if (g.finishT) clearTimeout(g.finishT);
+    note(g, text);
+    g.finishT = setTimeout(() => { g.finishT = 0; if (!g.down) submitPaint(st, api, false); }, reduced() ? 50 : ms);
   }
 
   function addPoint(st, api, g, ts, x, y, down) {
@@ -1021,6 +1085,7 @@
     }
     g.curStroke.setAttribute('points', g.curStroke.getAttribute('points') + ' ' + px.toFixed(0) + ',' + py.toFixed(0));
     if (g.p.tech === 'losk' && prev && !down) rub(g, prev[1], prev[2], x, y);
+    if (g.p.tech === 'brush' && g.hits) brushHit(g, x, y);
     // Пензель: ширина мазка — від швидкості руки (швидко — тонко), тож кожен відрізок малюється окремо.
     if (g.p.tech === 'brush' && prev && !down) {
       const dt = Math.max(1, ms - prev[0]);
@@ -1119,7 +1184,24 @@
     g.strokes = Math.max(0, g.strokes - 1);
     g.last = g.pts.length ? g.pts[g.pts.length - 1].slice(0, 3) : null;
     g.curFrom = Math.max(0, g.pts.length - 1);
+    // Нічого, крім забраного, ще не було — і годинник мінігри ще не йшов: випадковий тик його не запускає.
+    if (!g.pts.length) g.t0 = 0;
+    // Пелюстки — наново з того, що лишилось: забраний дотик міг закрити позначку, якої сервер уже не побачить.
+    if (g.hits) {
+      for (const h of g.hits) h.fill(false);
+      g.doneN = 0;
+      for (const el of g.petals) el.classList.remove('done', 'full');
+      for (const q of g.pts) brushHit(g, q[1], q[2]);
+    }
     g.done.disabled = !ready(g);
+  }
+
+  /// Тик — не мазок: майже без руху. Пензлем так не малюють, і зайвий натиск мінігра пропускає мимо.
+  function isTap(s) {
+    if (s.length < 3) return true;
+    const w = Math.max(...s.map((q) => q[1])) - Math.min(...s.map((q) => q[1]));
+    const h = Math.max(...s.map((q) => q[2])) - Math.min(...s.map((q) => q[2]));
+    return Math.max(w, h) < 24;
   }
 
   function afterStroke(st, api, g) {
@@ -1159,7 +1241,17 @@
     // Випадковий тик по полотну більше не «з'їдає» позначку й не обриває мінігру достроково.
     if (p.tech === 'flyand') {
       const h = s.length ? Math.max(...s.map((q) => q[2])) - Math.min(...s.map((q) => q[2])) : 0;
-      if (s.length >= 3 && h >= 120) g.good++;
+      // Позначка — найближча до штриха (як на сервері, до 45 одиниць). Кінець мінігри — коли протягнуто через УСІ
+      // позначки, а не після N штрихів: зайвий штрих по тій самій позначці чи мимо її більше не обриває (записка №12).
+      if (s.length >= 3 && h >= 120) {
+        const xm = s.reduce((a, q) => a + q[1], 0) / s.length;
+        let idx = -1;
+        let near = Infinity;
+        p.shape.marks.forEach((mk, i) => { const d = Math.abs(mk[0] - xm); if (d < near) { near = d; idx = i; } });
+        if (idx >= 0 && near <= 45) g.pulled.add(idx);
+        else note(g, 'Мимо позначки — тягни саме через позначку зі стрілкою.');
+      }
+      g.good = g.pulled.size;
       if (g.good >= p.shape.marks.length) {
         // Позначки скінчились, а роботи менше за півтори секунди — сервер такого не зарахує. Не здаємо й не
         // скидаємо полотно: просимо ще штрих, штрихи ж усе одно лягають на найкращий із них.
@@ -1181,21 +1273,33 @@
           const d = Math.hypot(s[0][1] - m[0], s[0][2] - m[1]);
           if (d <= near) { near = d; best = i; }
         });
-        if (best >= 0 && g.marks[best]) g.marks[best].classList.add('hit');
+        if (best >= 0 && g.marks[best]) { g.marks[best].classList.add('hit'); g.hitMarks.add(best); }
         api.sfx('tap');
       } else note(g, 'Штампик — це короткий дотик, а не мазок.');
-      if (g.taps >= p.shape.marks.length && ready(g)) { setTimeout(() => submitPaint(st, api, false), 400); return; }
+      // Кінець — коли відбито всі позначки (або згасла остання — це рахує paintFrame), а не після N дотиків: зайвий
+      // тик сервер і так рахує (−8), але вікна він більше не зачиняє (записка №12).
+      if (g.hitMarks.size >= p.shape.marks.length && ready(g)) { finishSoon(st, api, g, 400, ''); return; }
     }
     // Полива: черепок укритий — далі лити нема куди.
     if (p.tech === 'glaze' && g.bodyCells > 0 && g.covered >= g.bodyCells * 0.97 && ready(g)) {
       setTimeout(() => submitPaint(st, api, false), 300);
       return;
     }
-    // Пензель: по мазку на кожну пелюстку — і квітка готова.
-    if (p.tech === 'brush' && g.strokes >= p.shape.petals.length) {
-      if (!ready(g)) { note(g, 'Ще мазок — розпис це хоч півтори секунди роботи.'); return; }
-      setTimeout(() => submitPaint(st, api, false), 350);
-      return;
+    // Пензель (записка Smaug №12: «натиснув більше разів, ніж є промінчиків, — і воно закривається»): рахуємо не мазки,
+    // а зафарбовані пелюстки. Тик без руху — не мазок: забираємо його мовчки. Зайвий мазок по вже готовій пелюстці —
+    // просто ще фарба. Квітка готова, коли зафарбовано всі пелюстки, — тоді й здаємо (якщо гравець не малює далі).
+    if (p.tech === 'brush') {
+      const tap = isTap(s);
+      if (tap) undoStroke(g);
+      const n = p.shape.petals.length;
+      // Квітка вже готова, а гравець тицьнув ще — відлік «здати» (його скасував цей дотик) починаємо наново.
+      if (g.doneN >= n) {
+        if (!ready(g)) { note(g, 'Ще мазок — розпис це хоч півтори секунди роботи.'); return; }
+        const full = g.hits.every((h) => h.every(Boolean));
+        finishSoon(st, api, g, full ? FINISH_FULL_MS : FINISH_MS, full ? '🌸 Квітка готова!' : '🌸 Усі пелюстки є — підправ, якщо хочеш, або тисни «Готово».');
+        return;
+      }
+      if (tap) return;
     }
     // Фарба в ріжку скінчилась (уперлись у стелю точок) — домальовуємо цей штрих і здаємо роботу.
     if (g.full) submitPaint(st, api, true);
@@ -1231,8 +1335,9 @@
     g.bar.style.width = Math.min(100, (t / g.limit) * 100).toFixed(1) + '%';
     let info = g.t0 ? Math.max(0, Math.ceil((g.limit - t) / 1000)) + ' с' : 'чекаю на дотик';
     if (g.t0 && g.p.tech === 'glaze' && g.bodyCells > 0) info = 'укрито ' + Math.round((g.covered / g.bodyCells) * 100) + ' % · ' + info;
-    if (g.t0 && g.p.tech === 'stamp') info = 'відбитків ' + g.taps + ' з ' + g.p.shape.marks.length + ' · ' + info;
-    if (g.t0 && g.p.tech === 'brush') info = 'пелюсток ' + Math.min(g.strokes, g.p.shape.petals.length) + ' з ' + g.p.shape.petals.length + ' · ' + info;
+    if (g.t0 && g.p.tech === 'stamp') info = 'відбитків ' + g.hitMarks.size + ' з ' + g.p.shape.marks.length + ' · ' + info;
+    if (g.t0 && g.p.tech === 'brush') info = 'пелюсток ' + Math.min(g.doneN, g.p.shape.petals.length) + ' з ' + g.p.shape.petals.length + ' · ' + info;
+    if (g.t0 && g.p.tech === 'flyand') info = 'позначок ' + g.pulled.size + ' з ' + g.p.shape.marks.length + ' · ' + info;
     if (g.info.textContent !== info) g.info.textContent = info;
     if (g.t0 && t >= g.limit && !g.down) submitPaint(st, api, false);
     if (g.t0 && t >= g.limit + 3000) submitPaint(st, api, false);
@@ -1262,13 +1367,63 @@
     }
     g.sent = true;
     g.done.disabled = true;
+    if (g.finishT) { clearTimeout(g.finishT); g.finishT = 0; }
     api.act(st, 'kiln', { op: 'decor', path: encode(g.pts) }).then((r) => {
       if (st.kPaint !== g) return;
       // Сервер не зарахував (надто рівна рука, розпис затягнувся) — причину він уже сказав тостом, а вікно
       // лишаємо: візерунок живе п'ять хвилин, тож розпис можна перемалювати тут-таки.
       if (r && r.ok === false) { g.sent = false; restartPaint(st, api, g, 'Не зарахувалось — полотно чисте, спробуй ще раз.'); return; }
-      api.closeOverlay(st);
+      showDone(st, api, g, r);
     });
+  }
+
+  /// Кінець розпису — зрозумілий: на місці кнопок підсумок (краса й що зроблено) і «Добре». Вікно не зникає з-під
+  /// пальця: закривається само, лише коли до нього ~2 с ніхто не торкався, — тож зайві натиски лягають на підсумок,
+  /// а не на кнопки горна під вікном (записка Smaug №12).
+  function showDone(st, api, g, r) {
+    g.over = true;
+    const m = /краса (\d+)/.exec((r && r.message) || '');
+    const beauty = m ? +m[1] : (st.kView && st.kView.beauty) || 0;
+    const p = g.p;
+    const what = p.tech === 'brush' ? 'пелюсток ' + Math.min(g.doneN, p.shape.petals.length) + ' з ' + p.shape.petals.length
+      : p.tech === 'stamp' ? 'відбитків ' + g.hitMarks.size + ' з ' + p.shape.marks.length
+        : p.tech === 'flyand' ? 'позначок ' + g.pulled.size + ' з ' + p.shape.marks.length
+          : p.tech === 'glaze' && g.bodyCells ? 'укрито ' + Math.round((g.covered / g.bodyCells) * 100) + ' %' : '';
+    const lux = beauty >= luxFrom(st);
+    g.svg.classList.add('over');
+    note(g, lux ? 'Розпис ліг на партію — у ній трапляться й розкішні вироби.' : 'Розпис ліг на всю партію в горні.');
+    g.howto.classList.remove('clkk-warn');
+    const row = g.done.parentElement;
+    row.classList.add('clkk-result');
+    row.innerHTML = '<span class="clkk-rtext">✅ Краса <b class="' + (lux ? 'lux' : '') + '">' + beauty + '</b>'
+      + (what ? ' <span class="muted small">· ' + what + '</span>' : '') + '</span>'
+      + '<button type="button" class="primary clkk-ok">Добре</button>';
+    row.querySelector('.clkk-ok').onclick = () => api.closeOverlay(st);
+    g.bar.style.width = '100%';
+    closeLater(st, api, g);
+  }
+
+  /// Зачинити підсумок, коли до вікна RESULT_MS ніхто не торкався. Кожен дотик (зайвий натиск) — відлік наново.
+  function closeLater(st, api, g) {
+    if (g.closeT) clearTimeout(g.closeT);
+    g.closeT = setTimeout(() => {
+      g.closeT = 0;
+      if (st.kPaint !== g || !api.overlayOpen(st)) return;
+      api.closeOverlay(st);
+      shield(st, 450);
+    }, RESULT_MS);
+  }
+
+  /// Вікно зачинилось саме — ще мить не пускаємо натисків на картку: палець, що якраз тиснув по вікну, не влучить
+  /// ні в «Розписати», ні в техніку, ні в «Обпалити» під ним.
+  function shield(st, ms) {
+    const el = st.el;
+    if (!el) return;
+    const until = performance.now() + ms;
+    const stop = (e) => { if (performance.now() < until) { e.stopPropagation(); e.preventDefault(); } };
+    const types = ['pointerdown', 'pointerup', 'click'];
+    for (const t of types) el.addEventListener(t, stop, true);
+    setTimeout(() => { for (const t of types) el.removeEventListener(t, stop, true); }, ms + 50);
   }
   // ---------- відкриття горна ----------
 
