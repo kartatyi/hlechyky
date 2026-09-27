@@ -330,7 +330,10 @@ public sealed partial class Clicker
     static string NeedWord(TolokaNeed n)
     {
         var name = WareOf(n.Ware)?.Name.ToLowerInvariant() ?? n.Ware;
-        var q = n.Q switch { 2 => ", добрий і кращий", 3 => ", дзвінкий і кращий", 4 => ", розкішний", _ => "" };
+        // Рід — за виробом: «макітра, добра і краща», а не «макітра, добрий і кращий» (пакет A).
+        var g = WareGender.GetValueOrDefault(n.Ware, 'm');
+        var better = g == 'f' ? "краща" : g == 'n' ? "краще" : "кращий";
+        var q = n.Q switch { 2 or 3 => $", {QualityWord(n.Ware, n.Q)} і {better}", 4 => $", {QualityWord(n.Ware, 4)}", _ => "" };
         var style = n.Style.Length > 0 ? $", «{Styles.FirstOrDefault(s => s.Key == n.Style)?.Name ?? n.Style}»" : "";
         return name + q + style;
     }

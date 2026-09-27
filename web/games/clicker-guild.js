@@ -569,6 +569,8 @@
             openHelp(st, api, b.dataset.hhelp);
           };
         }
+        // Толока друга (v11, clicker-toloka.js): його будова й «🤝 Піднести на толоку».
+        if (!mine && typeof api.tolokaHouse === 'function') api.tolokaHouse(st, body, d);
       })
       .catch((e) => { console.error('[clicker:guild] хата друга', e); if (body.isConnected) body.innerHTML = '<div class="muted">Не вийшло зазирнути — спробуй ще</div>'; });
   }
