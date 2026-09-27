@@ -298,7 +298,9 @@
       fg.style.strokeDashoffset = LEN * (1 - k);
       const s = String(Math.ceil(left / 1000));
       if (num.textContent !== s) num.textContent = s;
-      st.raf = requestAnimationFrame(step);
+      // На нулі дуга вже порожня: далі крутити кадри — лише палити батарею, поки фаза чекає сервера.
+      // Новий час принесе set(), і він заведе цикл знову.
+      st.raf = left > 0 ? requestAnimationFrame(step) : 0;
     }
     st.raf = requestAnimationFrame(step);
     const handle = {
