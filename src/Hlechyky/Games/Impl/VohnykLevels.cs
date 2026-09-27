@@ -31,6 +31,17 @@ public sealed record VohnykHintDef(int Col, int Row, int W, string Text);
 /// <summary>Записане проходження: хеші світу кожні <see cref="Every"/> кроків і фінальний (§5.5).</summary>
 public sealed record VohnykCheck(int Steps, int Hash, int Every, int[] Hashes);
 
+/// <summary>
+/// Записане проходження «сам за двох»: у кожен момент рухається лише один герой, світ — у режимі соло (кнопки брам
+/// «все разом» тримаються <see cref="VohnykWorld.SoloLatch"/>). Доводить, що рівень проходиться одним гравцем, і
+/// заодно звіряє з C# соло-логіку JS-симуляції.
+/// </summary>
+public sealed class VohnykSoloRun
+{
+    public int[][] Solution { get; set; } = [];
+    public VohnykCheck? Check { get; set; }
+}
+
 /// <summary>Розібраний рівень. Плитки: 0 повітря, 1 камінь, 2 вода, 3 лава, 4 болото.</summary>
 public sealed class VohnykLevel
 {
@@ -56,6 +67,8 @@ public sealed class VohnykLevel
     /// <summary>Журнал вводу проходження: [крок від першого кроку go (1-based), герой, k].</summary>
     public required int[][] Solution { get; init; }
     public VohnykCheck? Check { get; init; }
+    /// <summary>Записане проходження сам за двох (є не на кожному рівні).</summary>
+    public VohnykSoloRun? Solo { get; init; }
     public string File { get; init; } = "";
 
     public int GemsOf(int who)
@@ -92,6 +105,8 @@ public sealed class VohnykLevelFile
     public int[][] Solution { get; set; } = [];
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public VohnykCheck? Check { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public VohnykSoloRun? Solo { get; set; }
 }
 
 public sealed class VohnykSpawnFile
@@ -267,6 +282,7 @@ public static class VohnykLevels
             Hints = [.. f.Hints.Select(h => { var (c, r) = At(h.At, "hint"); return new VohnykHintDef(c, r, h.W, h.Text); })],
             Solution = f.Solution,
             Check = f.Check,
+            Solo = f.Solo,
             File = path,
         };
     }
@@ -333,7 +349,7 @@ public static class VohnykLevels
         if (l.Hints.Length > 4) e.Add("підказок понад 4");
         if (l.Hints.Length > 0 && l.N > 2) e.Add("підказки — лише на рівнях 1–2");
         if (l.Par <= 0) e.Add("par має бути додатним");
-        foreach (var s in l.Solution)
+        foreach (var s in l.Solution.Concat(l.Solo?.Solution ?? []))
             if (s is not { Length: 3 } || s[0] < 1 || s[1] is not (0 or 1) || s[2] is < 0 or > 7) { e.Add("solution: запис має бути [крок ≥ 1, 0|1, 0..7]"); break; }
         return e;
     }

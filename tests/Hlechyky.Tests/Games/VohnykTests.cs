@@ -85,21 +85,31 @@ public sealed class VohnykTests(ITestOutputHelper output)
 
     /// <summary>
     /// Зіграти записаний журнал рівня за столом: кожен запис [крок go, герой, k] іде вводом рівно тоді, коли його крок
-    /// ось-ось настане (як від клієнта з маленьким випередженням). soloSeat — усе з одного місця.
+    /// ось-ось настане (як від клієнта з маленьким випередженням). soloSeat — усе з одного місця. Як і справжній
+    /// клієнт, поки герой тримає клавішу, раз на 25 кроків нагадує про неї (інакше сервер вирішив би, що гравець зник).
     /// </summary>
-    static void Play(RoomHarness h, int[][] log, int? soloSeat = null, int? until = null)
+    static void Play(RoomHarness h, int[][] log, int? soloSeat = null, int? until = null, Func<bool>? stop = null)
     {
         var entries = log.OrderBy(e => e[0]).ToList();
         var p = 0;
+        int[] lastK = [0, 0], lastN = [0, 0], nudged = [0, 0];
         for (var guard = 0; guard < 20000 && h.Room.Status == RoomStatus.Playing; guard++)
         {
             var s = G(h).StepNo;
             if (until is { } u && s >= u) return;
+            if (stop is not null && stop()) return;
             while (p < entries.Count && Go0 + entries[p][0] <= s + Vohnyk.StepsPerTick)
             {
                 var e = entries[p++];
                 In(h, soloSeat ?? e[1], Go0 + e[0], e[1], e[2]);
+                (lastK[e[1]], lastN[e[1]], nudged[e[1]]) = (e[2], Go0 + e[0], s);
             }
+            for (var c = 0; c < 2; c++)
+                if (lastK[c] != 0 && s - nudged[c] >= 25)
+                {
+                    In(h, soloSeat ?? c, Math.Max(s + 1, lastN[c]), c, lastK[c]);
+                    nudged[c] = s;
+                }
             h.Tick();
         }
     }
@@ -166,6 +176,35 @@ public sealed class VohnykTests(ITestOutputHelper output)
             Assert.Equal(check.Hashes, run.Hashes);
             Assert.Equal(VohnykRecord.Every, check.Every);
         }
+    }
+
+    [Fact]
+    public void Level_four_is_cleared_alone_moving_one_hero_at_a_time_and_its_solo_run_matches_its_hashes()
+    {
+        var lv = VohnykLevels.Get(4);
+        var so = lv.Solo!;
+        Assert.NotNull(so.Check);
+        // у кожен момент клавіші тримає лише один герой — як у людини з одною парою рук
+        var k = new int[2];
+        foreach (var grp in so.Solution.GroupBy(e => e[0]).OrderBy(g => g.Key))
+        {
+            foreach (var e in grp) k[e[1]] = e[2];
+            Assert.False(k[0] != 0 && k[1] != 0, $"крок {grp.Key}: обидва герої тримають клавіші");
+        }
+        var run = VohnykRecord.Replay(lv, so.Solution, solo: true);
+        Assert.Equal(so.Check!.Steps, run.ClearedAt);
+        Assert.Equal(lv.AllGemsMask, run.Gems);
+        Assert.Equal(so.Check.Hash, run.Hash);
+        Assert.Equal(so.Check.Hashes, run.Hashes);
+        // без «тримання» кнопки брами той самий журнал не проходить: удвох брами на рахунок «три»
+        Assert.Equal(0, VohnykRecord.Replay(lv, so.Solution, maxSteps: 3000, solo: false).ClearedAt);
+        // і за столом сам за двох — проходить
+        var h = Table(Unlocked(4, "Оля"), "Оля");
+        h.Act(0, "pick", new { level = 4 });
+        h.Start();
+        Play(h, so.Solution, soloSeat: 0);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(h.View(0).GetProperty("result").GetProperty("cleared").GetBoolean());
     }
 
     [Fact]
@@ -616,6 +655,43 @@ public sealed class VohnykTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Alone_a_button_of_an_all_gate_holds_for_two_seconds_after_stepping_off_but_not_in_a_duo()
+    {
+        foreach (var solo in new[] { false, true })
+        {
+            var w = W(Flat, fire: [2, 9], water: [4, 9], tweak: f =>
+            {
+                f.Buttons = [Btn("b1", 2, 9), Btn("b2", 4, 9), Btn("b3", 8, 9)];
+                f.Doors = [Door("d1", 12, 8, 2, ["b1", "b2"], "all"), Door("d2", 16, 8, 2, ["b3"])];
+            });
+            w.Solo = solo;
+            for (var i = 0; i < 20; i++) w.Step(0, 0);
+            Assert.Equal(2 * T, w.DoorO[0]);                          // обоє на кнопках — брама відчинена
+            var guard = 0;
+            while (w.Button[0] == 1 && guard++ < 60) w.Step(L, 0);     // Вогник зійшов з b1
+            w.Step(0, 0);
+            if (!solo)
+            {
+                Assert.Equal(0, w.Button[0]);
+                Assert.True(w.DoorO[0] < 2 * T);                       // удвох брама зачиняється одразу
+                continue;
+            }
+            for (var i = 0; i < VohnykWorld.SoloLatch - 3; i++) w.Step(0, 0);
+            Assert.NotEqual(0, w.Button[0]);                           // сам — кнопка ще тримається
+            Assert.Equal(2 * T, w.DoorO[0]);
+            for (var i = 0; i < 4; i++) w.Step(0, 0);
+            Assert.Equal(0, w.Button[0]);                              // а за 2 с відпускається
+            Assert.True(w.DoorO[0] < 2 * T);
+            // кнопка звичайних дверей (any) не тримається й сам за двох
+            guard = 0;
+            while (w.Button[2] == 0 && guard++ < 200) w.Step(0, R);
+            while (w.Button[2] != 0 && guard++ < 400) w.Step(0, R);
+            Assert.True(guard < 400);
+            Assert.Equal(0, w.Button[2]);
+        }
+    }
+
+    [Fact]
     public void Triggers_seen_by_mechanisms_are_those_of_the_previous_step()
     {
         var w = W(Flat, fire: [4, 9], water: [15, 9], tweak: f =>
@@ -716,8 +792,8 @@ public sealed class VohnykTests(ITestOutputHelper output)
         var h = Table();
         h.Start();
         var x0 = G(h).World!.X[0];
-        h.Tick(10);
-        In(h, 0, G(h).StepNo + 1, 0, R);                  // натиснув «праворуч» ще на відліку
+        h.Tick(30);
+        In(h, 0, G(h).StepNo + 1, 0, R);                  // натиснув «праворуч» ще на відліку (за 0,8 с до старту)
         TickTo(h, Go0);
         Assert.Equal(Vohnyk.PhGo, G(h).PhaseNo);
         Assert.Equal(x0, G(h).World!.X[0]);               // світ стояв увесь відлік
@@ -799,6 +875,10 @@ public sealed class VohnykTests(ITestOutputHelper output)
         Assert.Equal(1, g.World!.Died[0]);
         Assert.Equal(1, g.World.Died[1]);
         Assert.Equal(Vohnyk.CauseBoth, Frame(h).GetProperty("dc").GetInt32());
+        Assert.True(h.Act(0, "giveup").Ok);                          // підсумок каже, хто скільки разів
+        var by = h.View(null).GetProperty("result").GetProperty("deathsBy");
+        Assert.Equal(1, by[0].GetInt32());
+        Assert.Equal(1, by[1].GetInt32());
     }
 
     [Fact]
@@ -908,7 +988,7 @@ public sealed class VohnykTests(ITestOutputHelper output)
         solo.Start();
         Play(solo, VohnykLevels.Get(1).Solution, soloSeat: 0);
         Assert.Equal(RoomStatus.Finished, solo.Room.Status);
-        Assert.Equal("Вогник і Крапля: Оля за двох: рівень 1 «Перші кроки» за 0:03 ★★★", solo.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Вогник і Крапля: Оля за двох — рівень 1 «Перші кроки» пройдено за 0:03 ★★★", solo.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -978,8 +1058,10 @@ public sealed class VohnykTests(ITestOutputHelper output)
         var r = h.View(null).GetProperty("result");
         Assert.False(r.GetProperty("cleared").GetBoolean());
         Assert.Equal(0, r.GetProperty("stars").GetInt32());
-        Assert.Equal("Вогник і Крапля: Оля і Петро відступають перед рівнем 1 «Перші кроки»", h.Room.Result!.Text);
+        Assert.Equal("Вогник і Крапля: Оля і Петро здались на рівні 1 «Перші кроки»", h.Room.Result!.Text);
         Assert.Equal(0, g.StoreService.Stars("оля", 1));
+        Assert.Equal(0, r.GetProperty("deathsBy")[0].GetInt32() + r.GetProperty("deathsBy")[1].GetInt32());   // «заново» — нічия смерть
+        Assert.Equal(1, r.GetProperty("deaths").GetInt32());
     }
 
     [Fact]
@@ -991,8 +1073,13 @@ public sealed class VohnykTests(ITestOutputHelper output)
         Assert.Equal("Тут так не ходять", h.Act(0, "dance").Message);
         h.Start();
         Assert.Equal("Зараз не можна", h.Act(0, "reset").Message);    // відлік
-        Assert.Equal("Партія вже йде", h.Act(0, "pick", new { level = 1 }).Message);
+        Assert.True(h.Act(1, "pick", new { level = 1 }).Ok);             // рівень на відліку ще можна змінити (тут — той самий)
         Assert.True(h.Act(0, "giveup").Ok);                              // здатись можна й на відліку
+        var go = Table();
+        go.Start();
+        TickTo(go, Go0 + 2);
+        Assert.Equal("Партія вже йде", go.Act(0, "pick", new { level = 1 }).Message);
+        Assert.Equal(1, G(go).GameNo);                                   // і нічого не перезапустилось
     }
 
     [Fact]
@@ -1004,12 +1091,155 @@ public sealed class VohnykTests(ITestOutputHelper output)
         h.Leave("Петро");
         h.Join("Ганна");                                  // вільне місце відкриває стіл наново
         Assert.Equal(RoomStatus.Lobby, h.Room.Status);
-        Assert.Equal(2, h.View(0).GetProperty("picked").GetInt32());
+        var v = h.View(0);
+        Assert.Equal("pick", v.GetProperty("phase").GetString());                 // лобі, а не підсумок минулої партії
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("result").ValueKind);
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("f").ValueKind);
+        Assert.Equal(2, v.GetProperty("picked").GetInt32());
+        Assert.Equal(2, v.GetProperty("level").GetProperty("n").GetInt32());      // прев'ю — обраний рівень
         Assert.True(h.Act(0, "pick", new { level = 1 }).Ok);
+        v = h.View(1);
+        Assert.Equal("pick", v.GetProperty("phase").GetString());
+        Assert.Equal(1, v.GetProperty("picked").GetInt32());
+        Assert.Equal(1, v.GetProperty("level").GetProperty("n").GetInt32());
         Assert.True(h.Start().Ok);
         h.Tick();
         Assert.Equal(1, G(h).LevelNo);
         Assert.False(G(h).SoloMode);
+    }
+
+    [Fact]
+    public void Standing_up_on_together_still_credits_both_with_the_pairs_record()
+    {
+        // «Разом!» уже грає — рівень пройдено; Петро тисне «Встати»: зараховуємо зараз, обом
+        var store = new VohnykStore(null);
+        var h2 = Table(store);
+        h2.Start();
+        var g2 = G(h2);
+        Play(h2, VohnykLevels.Get(1).Solution, stop: () => g2.PhaseNo == Vohnyk.PhClear);
+        Assert.Equal(Vohnyk.PhClear, g2.PhaseNo);
+        h2.Leave("Петро");
+        Assert.Equal(RoomStatus.Finished, h2.Room.Status);
+        Assert.Equal(3, store.Stars("петро", 1));
+        Assert.Equal(3, store.Stars("оля", 1));
+        Assert.NotNull(store.Best("оля+петро", 1));
+        Assert.Null(store.Best("оля", 1));                                        // не соло-рекорд Олі
+        Assert.Contains(h2.Awards, a => a.Nick == "Петро" && a.Reason == "ach:vohnyk-duo");
+        Assert.Equal("Вогник і Крапля: Оля і Петро пройшли рівень 1 «Перші кроки» за 0:03 ★★★", h2.Room.Result!.Text);
+    }
+
+    [Fact]
+    public void A_crew_that_changed_mid_level_gets_the_stars_but_no_record()
+    {
+        var store = new VohnykStore(null);
+        var h = Table(store);
+        h.Start();
+        TickTo(h, Go0 + 10);
+        h.Leave("Петро");                                                           // Оля догравує за двох
+        Play(h, VohnykLevels.Get(1).Solution.Select(e => new[] { e[0] + 10, e[1], e[2] }).ToArray(), soloSeat: 0);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(store.Stars("оля", 1) > 0);
+        Assert.Equal(0, store.Stars("петро", 1));
+        Assert.Null(store.Best("оля", 1));                                          // час пари — не соло-рекорд
+        Assert.Null(store.Best("оля+петро", 1));                                    // і не рекорд пари: догравала сама
+        Assert.Empty(store.Top(1, 10));
+    }
+
+    [Fact]
+    public void A_vanished_players_held_key_is_released_at_the_first_reset_instead_of_looping_deaths()
+    {
+        // Оля (Вогник) тримає «праворуч» і пропадає: Вогник біжить у воду. Без відпускання — смерть за смертю 20 с grace.
+        var h = Table();
+        h.Start();
+        TickTo(h, Go0);
+        In(h, 0, Go0 + 1, 0, R);
+        var g = G(h);
+        TickTo(h, Go0 + 1000);
+        Assert.Equal(1, g.Deaths);                                                  // одна смерть, а не п'ятнадцять
+        Assert.Equal(0, g.KeysAt(0, g.StepNo));
+        Assert.Equal(Vohnyk.PhGo, g.PhaseNo);
+        Assert.True(g.World!.X[0] < 4 * T, $"x {g.World.X[0]}");                    // стоїть біля старту, до води не дійшов
+    }
+
+    [Fact]
+    public void A_held_key_the_client_keeps_reminding_about_survives_the_reset()
+    {
+        // живий клієнт, поки тримає клавішу, нагадує про неї раз на 25 кроків — і сервер її не відпускає
+        var h = Table();
+        h.Start();
+        TickTo(h, Go0);
+        In(h, 0, Go0 + 1, 0, R);
+        var g = G(h);
+        while (g.Deaths < 2 && g.StepNo < Go0 + 1000)
+        {
+            if (g.StepNo % 25 < Vohnyk.StepsPerTick) In(h, 0, g.StepNo + 3, 0, R);
+            h.Tick();
+        }
+        Assert.Equal(2, g.Deaths);                                                  // побіг у воду й удруге — він же тримає
+        Assert.Equal(R, g.KeysAt(0, g.StepNo));
+    }
+
+    [Fact]
+    public void After_a_game_a_seated_player_switches_the_level_during_the_countdown_of_the_next()
+    {
+        var h = Table();
+        h.Start();
+        Play(h, VohnykLevels.Get(1).Solution);
+        var gi = G(h).GameNo;
+        Assert.True(h.Rematch().Ok);                                                 // «Ще раз» — наступний, 2-й
+        h.Tick(3);
+        Assert.Equal(2, G(h).LevelNo);
+        Assert.Equal(gi + 1, Frame(h).GetProperty("gi").GetInt32());
+        var views = h.Outbox.OfType<RoomViews>().Count();
+        var guest = h.Room.SeatOf("Петро")!.Value;
+        Assert.Equal("Рівень 3 ще зачинений: спершу пройдіть 2", h.Act(guest, "pick", new { level = 3 }).Message);
+        Assert.True(h.Act(guest, "pick", new { level = 1 }).Ok);                     // «Ще раз цей» — будь-хто з сидячих
+        var g = G(h);
+        Assert.Equal(1, g.LevelNo);
+        Assert.Equal(Vohnyk.PhReady, g.PhaseNo);
+        Assert.True(g.StepNo < 3);                                                   // відлік з нуля
+        h.Tick();
+        Assert.True(h.Outbox.OfType<RoomViews>().Count() > views);                   // вид із новим рівнем — з тика
+        var v = h.View(null);
+        Assert.Equal(1, v.GetProperty("level").GetProperty("n").GetInt32());
+        Assert.Equal(gi + 2, v.GetProperty("gi").GetInt32());
+        Assert.Equal(gi + 2, Frame(h).GetProperty("gi").GetInt32());
+        TickTo(h, Go0 + 2);
+        Assert.Equal("Партія вже йде", h.Act(0, "pick", new { level = 2 }).Message);
+    }
+
+    [Fact]
+    public void Steps_follow_the_real_clock_not_the_tick_count()
+    {
+        // таймер Windows тикає раз на ~48 мс замість 40 — гра однаково йде 50 кроків за секунду
+        var h = Table();
+        h.Start();
+        for (var i = 0; i < 25; i++)
+        {
+            h.Clock.AdvanceMs(8);
+            h.Tick();                                                                // + 40 мс
+        }
+        Assert.Equal(60, G(h).StepNo);                                              // 25 × 48 мс = 1,2 с
+        h.Clock.AdvanceMs(3000);                                                     // сервер завмер на 3 с
+        h.Tick();
+        Assert.Equal(60 + Vohnyk.MaxCatchUp, G(h).StepNo);                          // не надолужує все махом
+        h.Tick();
+        Assert.Equal(60 + Vohnyk.MaxCatchUp + 2, G(h).StepNo);                      // і далі — рівно
+    }
+
+    [Fact]
+    public void A_level_you_passed_yourself_is_never_shown_locked()
+    {
+        // Тарас пройшов 2-й і 3-й гостем у ветерана, а 1-го — ні
+        var store = new VohnykStore(null);
+        store.Record(["Тарас", "Ганна"], 2, 30000, 0, 3, DateTimeOffset.UnixEpoch);
+        store.Record(["Тарас", "Ганна"], 3, 30000, 0, 3, DateTimeOffset.UnixEpoch);
+        Assert.True(store.Unlocked(["тарас"], 2));
+        Assert.True(store.Unlocked(["тарас"], 4));
+        Assert.False(store.Unlocked(["тарас"], 5));
+        var h = Table(store, "Тарас");
+        Assert.True(h.Act(0, "pick", new { level = 2 }).Ok);
+        Assert.True(h.View(0).GetProperty("levels")[1].GetProperty("unlocked").GetBoolean());
     }
 
     // =============================================================================================
@@ -1071,19 +1301,57 @@ public sealed class VohnykTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void A_rewind_never_uncollects_a_gem_and_a_replayed_death_lands_on_the_current_step()
+    public void A_probe_into_the_past_never_collects_a_gem_the_hero_did_not_reach()
     {
-        // Крапля на рівні 1 біжить праворуч по калюжі й бере самоцвіт; пізній ввід «ліворуч» у минулому забрав би його — не забирає
+        // «Зонд» модифікованого клієнта (рецензія): Крапля стоїть на старті, клієнт шле «праворуч» на 24 кроки в минуле —
+        // у повторі вона добігає до самоцвіта; тут же шле «нічого» на той самий крок — у повторі стоїть. Самоцвіт — за
+        // останньою гілкою: його нема, бо героїня туди так і не ходила.
         var h = Table();
         h.Start();
-        TickTo(h, Go0);
-        In(h, 1, Go0 + 1, 1, R);
+        TickTo(h, Go0 + 40);
         var g = G(h);
-        while ((g.World!.Gems & 1) == 0) h.Tick();
-        var got = g.StepNo;
-        In(h, 1, got - 12, 1, L);
-        Assert.Equal(1, g.World.Gems & 1);
+        var spawn = g.World!.X[1];
+        var s = g.StepNo;
+        In(h, 1, s - 24, 1, R);
+        Assert.Equal(1, g.World.Gems & 1);                 // гілка «біжить» — самоцвіт у руках
+        In(h, 1, s - 24, 1, 0);
+        Assert.Equal(spawn, g.World.X[1]);                 // гілка «стоїть» — на старті
+        Assert.Equal(0, g.World.Gems & 1);                 // і самоцвіта нема
+        h.Tick(30);
+        Assert.Equal(0, g.World.Gems & 1);
+        Assert.Equal(0, Frame(h).GetProperty("w")[g.World.StateLength - 3].GetInt32() & 1);
 
+        // чесна гра: побігла вчасно — самоцвіт її, і пізній ввід партнера цього не міняє
+        var fair = Table();
+        fair.Start();
+        TickTo(fair, Go0);
+        In(fair, 1, Go0 + 1, 1, R);
+        var gf = G(fair);
+        while ((gf.World!.Gems & 1) == 0) fair.Tick();
+        In(fair, 0, gf.StepNo - 10, 0, L);
+        Assert.Equal(1, gf.World.Gems & 1);
+    }
+
+    [Fact]
+    public void A_hero_input_never_rewrites_its_own_past_before_the_last_one_sent()
+    {
+        var h = Table();
+        h.Start();
+        TickTo(h, Go0 + 60);
+        var g = G(h);
+        var s = g.StepNo;
+        In(h, 0, s - 5, 0, R);
+        In(h, 0, s - 20, 0, L);                            // раніше за вже надіслане — лягає не раніше за нього
+        Assert.Equal(0, g.KeysAt(0, s - 20));
+        Assert.Equal(0, g.KeysAt(0, s - 6));
+        Assert.Equal(L, g.KeysAt(0, s - 5));
+        In(h, 1, s - 20, 1, R);                            // межа — своя в кожного героя
+        Assert.Equal(R, g.KeysAt(1, s - 20));
+    }
+
+    [Fact]
+    public void A_replayed_death_lands_on_the_current_step()
+    {
         // Вогник стрибав через воду вчасно; пізній ввід «без стрибка» — у повторі він падає у воду, а смерть — зараз
         var d = Table();
         d.Start();
@@ -1389,7 +1657,7 @@ public sealed class VohnykPerfTests(ITestOutputHelper output)
         var bytes = 0L;
         lock (h.Room.Sync)
         {
-            for (var t = 0; t < 60; t++) game.Tick();   // відлік
+            for (var t = 0; t < 60; t++) { h.Clock.AdvanceMs(40); game.Tick(); }   // відлік
             var rewinds = 0;
             for (var t = 0; t < 3000; t++)
             {
@@ -1397,6 +1665,7 @@ public sealed class VohnykPerfTests(ITestOutputHelper output)
                 // по вводу на героя щотика (зміна кожні 3 кроки, у середньому), і кожен — на 5 кроків пізно: перемотування
                 var p0 = Views.Payload(new { n = s - 5, c = 0, k = pattern[(t / 2) % pattern.Length] });
                 var p1 = Views.Payload(new { n = s - 4, c = 1, k = pattern[(t / 3 + 2) % pattern.Length] });
+                h.Clock.AdvanceMs(40);
                 sw.Start();
                 game.Act(0, "in", p0);
                 game.Act(1, "in", p1);
@@ -1430,9 +1699,10 @@ public sealed class VohnykPerfTests(ITestOutputHelper output)
         var game = (Vohnyk)h.Room.Game;
         lock (h.Room.Sync)
         {
-            for (var t = 0; t < 60; t++) game.Tick();
+            for (var t = 0; t < 60; t++) { h.Clock.AdvanceMs(40); game.Tick(); }
             var before = GC.GetAllocatedBytesForCurrentThread();
-            for (var t = 0; t < 1000; t++) game.Tick();
+            for (var t = 0; t < 1000; t++) { h.Clock.AdvanceMs(40); game.Tick(); }
+            Assert.True(game.StepNo > 2000, $"крок {game.StepNo}");
             var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
             output.WriteLine($"1000 тиків без кадрів: {allocated} Б");
             Assert.True(allocated < 1024, $"{allocated} Б");

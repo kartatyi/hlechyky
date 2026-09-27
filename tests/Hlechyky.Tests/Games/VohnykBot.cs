@@ -6,14 +6,14 @@ namespace Hlechyky.Tests.Games;
 /// Робот-гравець для «Вогника і Краплі»: крутить <see cref="VohnykWorld"/> крок за кроком і пише журнал вводу
 /// так само, як його писала б людина (лише зміни k). Дії — ітератори «що тиснути цього кроку», двоє героїв
 /// можуть діяти одночасно. З цього складено записані проходження всіх 15 рівнів (VohnykPlans), а тести
-/// потім програють ці журнали наосліп — без робота.
+/// потім програють ці журнали наосліп — без робота. solo — світ у режимі «сам за двох» (для соло-проходжень).
 /// </summary>
-public sealed class VohnykBot(VohnykLevel level)
+public sealed class VohnykBot(VohnykLevel level, bool solo = false)
 {
     public const int Px = VohnykWorld.Px;
     public const int L = VohnykWorld.KeyLeft, R = VohnykWorld.KeyRight, J = VohnykWorld.KeyJump;
 
-    public readonly VohnykWorld W = new(level);
+    public readonly VohnykWorld W = new(level) { Solo = solo };
     public readonly List<int[]> Log = [];
     readonly int[] _k = new int[2];
     public int Steps { get; private set; }

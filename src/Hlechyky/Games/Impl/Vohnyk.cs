@@ -9,8 +9,9 @@ namespace Hlechyky.Games.Impl;
 /// у <see cref="VohnykWorld"/>, і вона ж, слово в слово, крутиться в браузері (web/games/vohnyk-sim.js): свій герой
 /// рухається миттєво, а сервер лишається суддею.
 /// <para>
-/// Час тут — кроки по 20 мс, по два на тик. Лічильник кроків <see cref="_s"/> росте у всіх фазах від старту, а світ
-/// рухається лише в «go»: так ввід, натиснутий на відліку, лягає в журнал на свій крок і діє з першого кроку гри.
+/// Час тут — кроки по 20 мс. Лічильник кроків <see cref="_s"/> росте у всіх фазах від старту й іде за справжнім
+/// годинником (а не за тиками: таймер Windows тикає раз на ~48 мс замість 40), а світ рухається лише в «go»: так
+/// ввід, натиснутий на відліку, лягає в журнал на свій крок і діє з першого кроку гри.
 /// </para>
 /// </summary>
 public sealed class Vohnyk : Game
@@ -22,6 +23,15 @@ public sealed class Vohnyk : Game
     public const int JournalSize = 64;
     /// <summary>Кадр раз на секунду, навіть коли нічого не рухається, — щоб клієнт знав, що зв'язок живий.</summary>
     public const int KeepaliveTicks = 25;
+    /// <summary>
+    /// Скільки кроків без жодного вводу від героя, що тримає клавішу, — і сервер її відпускає. Клієнт, поки тримає
+    /// клавішу, нагадує про неї раз на 25 кроків, тож мовчить так довго лише той, хто зник (F5, закритий ноут, телефон
+    /// без мережі), — і його герой не бігає в воду знову й знову, скидаючи рівень партнерові. Спізніле нагадування
+    /// живого клієнта лягає на крок відпускання й перемотує, ніби нічого й не було.
+    /// </summary>
+    public const int StaleSteps = 75;
+    /// <summary>Скільки кроків максимум надолужуємо за один тик, якщо сервер пригальмував (решту часу просто відпускаємо).</summary>
+    public const int MaxCatchUp = 6;
 
     /// <summary>Фази: pick — лобі, ready — відлік, go — гра, dead — смерть і скидання, clear — «Разом!», over — кінець.</summary>
     public const int PhPick = -1, PhReady = 0, PhGo = 1, PhDead = 2, PhClear = 3, PhOver = 4;
@@ -38,12 +48,24 @@ public sealed class Vohnyk : Game
     int _phase = PhPick;
     int _picked = 1;
     bool _explicitPick;
+    /// <summary>На якому раунді каркаса партія скінчилась: раунд змінився без Start — стіл відкрили наново (лобі).</summary>
+    int _overRound = -1;
 
     VohnykLevel? _level;
     VohnykWorld? _world;
     int _s, _pt, _t, _deaths, _goFrom, _cause, _active;
+    /// <summary>Номер партії (рівня) за цим столом — у виді й кадрі, щоб клієнт не взяв кадр минулої спроби за свіжий.</summary>
+    int _game;
     bool _solo;
     object? _result;
+    /// <summary>Хто скільки разів загинув (0 — Вогник, 1 — Крапля) — для підсумку.</summary>
+    readonly int[] _deathsBy = new int[2];
+    /// <summary>Склад на старті (ключ пари): змінився посеред рівня — рекорд пари не пишемо, бо час не цієї пари.</summary>
+    string _crew = "";
+    /// <summary>Вид треба розіслати з найближчого тика (дія посеред партії, яку каркас сам не розсилає).</summary>
+    bool _viewDirty;
+    /// <summary>Від цього моменту рахуються кроки: крок n настає через n × 20 мс.</summary>
+    DateTimeOffset _t0;
 
     // знімки світу після кожного кроку: кільце на Rewind + 1 кроків, виділяється раз на Start
     int[][] _snap = [];
@@ -51,6 +73,10 @@ public sealed class Vohnyk : Game
     readonly int[][] _jStep = [new int[JournalSize], new int[JournalSize]];
     readonly int[][] _jK = [new int[JournalSize], new int[JournalSize]];
     readonly int[] _jCount = new int[2];
+    /// <summary>Крок останнього прийнятого вводу героя: минуле, раніше за нього, уже не переписати.</summary>
+    readonly int[] _lastN = new int[2];
+    /// <summary>На якому кроці сервера від героя востаннє щось прийшло (будь-який ввід, і нагадування теж).</summary>
+    readonly int[] _heard = new int[2];
     // що бачив клієнт востаннє: кадр шлемо лише на зміну (плюс keepalive)
     uint _sentHash;
     int _sentPhase = int.MinValue, _sentActive = -1, _ticks;
@@ -66,6 +92,7 @@ public sealed class Vohnyk : Game
     public bool SoloMode => _solo;
     public int ActiveHero => _active;
     public int LevelNo => _level?.N ?? 0;
+    public int GameNo => _game;
     public int AckOf(int c) => Ack(c);
     public int KeysAt(int c, int step) => KAt(c, step);
     public VohnykStore StoreService => Store;
@@ -114,28 +141,48 @@ public sealed class Vohnyk : Game
 
     bool InPlay => _phase is PhReady or PhGo or PhDead or PhClear;
 
+    /// <summary>
+    /// Партію дограли, а потім на вільне місце хтось сів — каркас відкрив стіл наново (раунд +1), а Start ще не
+    /// було. Це знову лобі: вид має показувати мапу й прев'ю обраного рівня, а не підсумок минулої партії.
+    /// </summary>
+    bool Reopened => _phase == PhOver && Ctx.Round != _overRound;
+
+    /// <summary>Фаза, як її бачить стіл (відкритий наново стіл — це вже лобі).</summary>
+    int Phase => Reopened ? PhPick : _phase;
+
     // ============================================================================================
     // Старт
     // ============================================================================================
 
     public override void Start()
     {
-        var n = Picked();
-        _level = VohnykLevels.Get(n);
-        _world = new VohnykWorld(_level);
         _solo = Ctx.Players <= 1;
         _active = 0;
         for (var s = 0; s < 2; s++)
             if (_solo && Ctx.Seated(s)) { _active = s; break; }
+        _crew = VohnykStore.PairKey(Nicks());
+        StartLevel(Picked());
+    }
+
+    /// <summary>Рівень n з нуля: відлік, порожній журнал, знімки. Кличеться зі Start і коли на відліку обрали інший рівень.</summary>
+    void StartLevel(int n)
+    {
+        _level = VohnykLevels.Get(n);
+        _world = new VohnykWorld(_level) { Solo = _solo };
+        _game++;
         _phase = PhReady;
         _s = 0;
+        _t0 = Ctx.Clock.UtcNow;
         _pt = ReadySteps;
         _goFrom = ReadySteps + 1;
         _t = 0;
         _deaths = 0;
+        _deathsBy[0] = _deathsBy[1] = 0;
         _cause = CauseNone;
         _result = null;
         _jCount[0] = _jCount[1] = 0;
+        _lastN[0] = _lastN[1] = 0;
+        _heard[0] = _heard[1] = 0;
         var len = _world.StateLength;
         _snap = new int[Rewind + 1][];
         for (var i = 0; i < _snap.Length; i++)
@@ -175,16 +222,31 @@ public sealed class Vohnyk : Game
         }
     }
 
+    /// <summary>
+    /// Вибір рівня. У лобі — господар (мапа під полотном). На відліку нової партії — будь-хто з сидячих: так
+    /// після кінця партії можна одразу взяти інший рівень (модуль тисне «Ще раз» каркаса і тут же обирає рівень),
+    /// а не вставати з-за столу заради мапи. Далі, коли рівень уже йде, — ні.
+    /// </summary>
     ActResult Pick(int seat, JsonElement payload)
     {
-        if (InPlay) return ActResult.Fail("Партія вже йде");
-        if (Ctx.HostSeat != seat) return ActResult.Fail("Рівень обирає господар столу");
+        var phase = Phase;
+        if (phase is PhGo or PhDead or PhClear) return ActResult.Fail("Партія вже йде");
+        if (phase != PhReady && Ctx.HostSeat != seat) return ActResult.Fail("Рівень обирає господар столу");
         if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("level", out var lv)
             || lv.ValueKind != JsonValueKind.Number || !lv.TryGetInt32(out var n) || n is < 1 or > VohnykLevels.Count)
             return ActResult.Fail("Такого рівня нема");
         if (!Unlocked(n)) return ActResult.Fail($"Рівень {n} ще зачинений: спершу пройдіть {n - 1}");
         _picked = n;
         _explicitPick = true;
+        if (phase == PhReady)
+        {
+            if (_level?.N != n) StartLevel(n);
+            _viewDirty = true;
+            return ActResult.Done;
+        }
+        // стіл відкрили наново — підсумок минулої партії вже нікому не потрібен
+        _phase = PhPick;
+        _result = null;
         return ActResult.Done;
     }
 
@@ -196,7 +258,8 @@ public sealed class Vohnyk : Game
 
     /// <summary>
     /// Ввід героя: {n — крок клієнта, c — герой, k — утримуване}. Лягає в журнал на свій крок; пізній (крок уже минув)
-    /// у фазі go — перемотування від знімка, ранній — чекає свого кроку.
+    /// у фазі go — перемотування від знімка, ранній — чекає свого кроку. Переписати вже надіслане не можна: ввід
+    /// лягає не раніше за попередній від того ж героя (чесний клієнт і так шле кроки по зростанню).
     /// </summary>
     void Input(int seat, JsonElement p)
     {
@@ -206,9 +269,12 @@ public sealed class Vohnyk : Game
         if (!_solo && c != seat) throw new GameError("Це не твій герой");
         if (!InPlay || _world is null) return;
         if (_solo) _active = c;
+        _heard[c] = _s;
         if (n < _s - Rewind + 1) n = _s - Rewind + 1;
         if (n > _s + Future) n = _s + Future;
+        if (n < _lastN[c]) n = _lastN[c];
         if (n < 1) n = 1;
+        _lastN[c] = n;
         if (!Record(c, n, k)) return;
         if (_phase == PhGo && n <= _s) Replay(n);
     }
@@ -239,6 +305,13 @@ public sealed class Vohnyk : Game
         return dropped || prev != k;
     }
 
+    /// <summary>Сервер сам відпускає клавіші героя з кроку n (вийшов, зник): журнал і межа «минулого» — разом.</summary>
+    void Release(int c, int n)
+    {
+        Record(c, n, 0);
+        if (_lastN[c] < n) _lastN[c] = n;
+    }
+
     /// <summary>Утримуване героєм c на кроці s: останній запис журналу з кроком ≤ s.</summary>
     int KAt(int c, int s)
     {
@@ -260,8 +333,9 @@ public sealed class Vohnyk : Game
     int[] Snap(int step) => _snap[((step % _snap.Length) + _snap.Length) % _snap.Length];
 
     /// <summary>
-    /// Перемотати від кроку n до поточного з журналом, що вже знає пізній ввід. Правда сервера тут трохи добріша за
-    /// фізику: самоцвіт назад не забирається, а смерть чи «пройдено», що трапились у повторі, стаються зараз, а не в минулому.
+    /// Перемотати від кроку n до поточного з журналом, що вже знає пізній ввід. Правдою стає нова гілка цілком —
+    /// разом із самоцвітами (інакше «зонд» у минуле збирав би самоцвіт, до якого герой так і не дійшов). Лише смерть
+    /// чи «пройдено», що трапились у повторі, стаються зараз, а не в минулому: фазу назад не відкрутиш.
     /// </summary>
     void Replay(int n)
     {
@@ -269,7 +343,6 @@ public sealed class Vohnyk : Game
         if (n < _goFrom) n = _goFrom;
         if (n < _s - Rewind + 1) n = _s - Rewind + 1;
         if (n > _s) return;
-        var gemsBefore = w.Gems;
         w.Load(Snap(n - 1));
         var frozen = false;
         for (var s = n; s <= _s; s++)
@@ -280,11 +353,6 @@ public sealed class Vohnyk : Game
                 frozen = w.AnyDied || w.Cleared != 0;
             }
             w.Save(Snap(s));
-        }
-        if ((w.Gems | gemsBefore) != w.Gems)
-        {
-            w.Gems |= gemsBefore;
-            w.Save(Snap(_s));
         }
         if (w.AnyDied) EnterDead(DeathCause());
         else if (w.Cleared != 0) EnterClear();
@@ -305,6 +373,9 @@ public sealed class Vohnyk : Game
         _pt = DeadSteps;
         _deaths++;
         _cause = cause;
+        if (cause != CauseReset)
+            for (var h = 0; h < 2; h++)
+                if (_world!.Died[h] != 0) _deathsBy[h]++;
     }
 
     void EnterClear()
@@ -320,8 +391,18 @@ public sealed class Vohnyk : Game
     public override TickResult Tick()
     {
         if (!InPlay || _world is null) return TickResult.None;
-        var view = false;
-        for (var i = 0; i < StepsPerTick && InPlay; i++)
+        var view = _viewDirty;
+        _viewDirty = false;
+        // Скільки кроків належить за справжнім годинником: тик каркаса на Windows приходить раз на ~48 мс, а не 40,
+        // і з «два кроки на тик» гра йшла б на п'яту частину повільніше, а рекорди залежали б від таймера машини.
+        var due = (long)((Ctx.Clock.UtcNow - _t0).TotalMilliseconds / StepMs);
+        var steps = due - _s;
+        if (steps > MaxCatchUp)
+        {
+            _t0 = _t0.AddMilliseconds((steps - MaxCatchUp) * StepMs);
+            steps = MaxCatchUp;
+        }
+        for (var i = 0; i < steps && InPlay; i++)
         {
             var was = _phase;
             Advance();
@@ -358,6 +439,7 @@ public sealed class Vohnyk : Game
                 }
                 break;
             case PhGo:
+                ReleaseStale();
                 w.Step(KAt(0, _s), KAt(1, _s));
                 _t++;
                 if (w.AnyDied) EnterDead(DeathCause());
@@ -386,6 +468,16 @@ public sealed class Vohnyk : Game
         w.Save(Snap(_s));
     }
 
+    /// <summary>
+    /// Герой тримає клавішу, а його гравець мовчить уже понад <see cref="StaleSteps"/> кроків (зник зі зв'язку) — клавішу
+    /// відпускаємо з цього кроку: інакше він біг би в воду знову й знову, і рівень скидався б обом раз у раз.
+    /// </summary>
+    void ReleaseStale()
+    {
+        for (var c = 0; c < 2; c++)
+            if (_s - _heard[c] > StaleSteps && KAt(c, _s) != 0) Release(c, _s);
+    }
+
     // ============================================================================================
     // Кінець
     // ============================================================================================
@@ -400,6 +492,24 @@ public sealed class Vohnyk : Game
 
     static int Bits(int v) => System.Numerics.BitOperations.PopCount((uint)v);
 
+    void EnterOver(int next)
+    {
+        _phase = PhOver;
+        _overRound = Ctx.Round;
+        _picked = next;
+        _explicitPick = true;
+    }
+
+    object Result(bool cleared, int stars, int next)
+    {
+        var lv = _level!;
+        return new
+        {
+            cleared, level = lv.N, ms = _t * StepMs, deaths = _deaths, deathsBy = new[] { _deathsBy[0], _deathsBy[1] }, stars,
+            gems = Bits(_world!.Gems), gemsAll = lv.Gems.Length, nicks = VohnykStore.Names(Nicks()), next,
+        };
+    }
+
     void FinishCleared()
     {
         var w = _world!;
@@ -410,20 +520,18 @@ public sealed class Vohnyk : Game
         var nicks = Nicks();
         var names = VohnykStore.Names(nicks);
         var next = Math.Min(VohnykLevels.Count, lv.N + 1);
-        _result = new
-        {
-            cleared = true, level = lv.N, ms, deaths = _deaths, stars, gems = Bits(w.Gems), gemsAll = lv.Gems.Length,
-            nicks = names, next,
-        };
-        _phase = PhOver;
-        _picked = next;
-        _explicitPick = true;
-        Store.Record(nicks, lv.N, ms, _deaths, stars, Ctx.Clock.UtcNow);
+        _result = Result(true, stars, next);
+        EnterOver(next);
+        // Зірки й «пройдено» — усім, хто сидить (і тому, хто встає просто на «Разом!»). Рекорд пари — лише коли склад
+        // той самий, що на старті: інакше час пари ліг би в соло-таблицю того, хто лишився догравати.
+        Store.Record(nicks, lv.N, ms, _deaths, stars, Ctx.Clock.UtcNow, best: VohnykStore.PairKey(nicks) == _crew);
         var scores = new Dictionary<int, long>();
         for (var s = 0; s < 2; s++)
             if (Ctx.Seated(s)) scores[s] = ms;
-        var who = nicks.Count == 1 ? $"{names} за двох:" : $"{names} пройшли";
-        Ctx.Finish([], $"{Info.Title}: {who} рівень {lv.N} «{lv.Name}» за {Clock(ms)} {Stars(stars)}", scores);
+        var line = nicks.Count == 1
+            ? $"{names} за двох — рівень {lv.N} «{lv.Name}» пройдено за {Clock(ms)} {Stars(stars)}"
+            : $"{names} пройшли рівень {lv.N} «{lv.Name}» за {Clock(ms)} {Stars(stars)}";
+        Ctx.Finish([], $"{Info.Title}: {line}", scores);
 
         // ачівки: удвох різними ніками — «Вогонь і вода»; усі п'ятнадцять на три зірки — «Кришталева печера»
         var keys = Keys();
@@ -441,47 +549,43 @@ public sealed class Vohnyk : Game
         var lv = _level!;
         var nicks = Nicks();
         var names = VohnykStore.Names(nicks);
-        _result = new
-        {
-            cleared = false, level = lv.N, ms = _t * StepMs, deaths = _deaths, stars = 0, gems = Bits(_world!.Gems),
-            gemsAll = lv.Gems.Length, nicks = names, next = lv.N,
-        };
-        _phase = PhOver;
-        _picked = lv.N;
-        _explicitPick = true;
-        var verb = nicks.Count == 1 ? "відступає" : "відступають";
-        Ctx.Finish([], $"{Info.Title}: {names} {verb} перед рівнем {lv.N} «{lv.Name}»");
+        _result = Result(false, 0, lv.N);
+        EnterOver(lv.N);
+        var line = nicks.Count == 1
+            ? $"{names} відступає перед рівнем {lv.N} «{lv.Name}»"
+            : $"{names} здались на рівні {lv.N} «{lv.Name}»";
+        Ctx.Finish([], $"{Info.Title}: {line}");
     }
 
     /// <summary>
     /// Хтось устав посеред рівня. Удвох — той, хто лишився, бере обох героїв, і партія триває; сам — кінець.
-    /// Встали на «Разом!» — рівень таки пройдено, записуємо.
+    /// Встали на «Разом!» — рівень таки пройдено: зараховуємо зараз, поки той, хто встає, ще за столом.
     /// </summary>
     public override void OnLeave(int seat)
     {
         if (InPlay && seat is 0 or 1)
         {
+            if (_phase == PhClear)
+            {
+                FinishCleared();
+                return;
+            }
             var other = 1 - seat;
             if (Ctx.Seated(other))
             {
                 if (!_solo)
                 {
                     _solo = true;
+                    _world!.Solo = true;
                     Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встав з-за столу — {Ctx.NickOf(other)} веде обох");
                 }
                 _active = other;
                 // герой того, хто пішов, відпускає клавіші — інакше біг би в стіну, доки його не підхоплять
-                Record(seat, _s + 1, 0);
+                Release(seat, _s + 1);
                 return;
             }
-            if (_phase == PhClear)
-            {
-                FinishCleared();
-                return;
-            }
-            _phase = PhOver;
-            _picked = _level?.N ?? _picked;
-            _explicitPick = true;
+            _result = _level is null ? null : Result(false, 0, _level.N);
+            EnterOver(_level?.N ?? _picked);
         }
         base.OnLeave(seat);
     }
@@ -515,6 +619,7 @@ public sealed class Vohnyk : Game
             h = (int)VohnykWorld.Hash(w, w.Length),
             a = _active,
             lv = _level.N,
+            gi = _game,
             dc = _cause,
             ack = new[] { Ack(0), Ack(1) },
             w,
@@ -523,16 +628,19 @@ public sealed class Vohnyk : Game
 
     public override object View(int? seat)
     {
-        var playing = InPlay || _phase == PhOver;
+        var phase = Phase;
+        var over = phase == PhOver;
+        var playing = InPlay || over;
         var shown = playing && _level is not null ? _level : VohnykLevels.Get(Picked());
         var world = playing ? _world : null;
         return new
         {
             turn = (int?)null,
-            phase = PhaseName(_phase),
+            phase = PhaseName(phase),
             solo = _solo,
             active = _active,
-            picked = playing && _phase != PhOver ? shown.N : Picked(),
+            picked = playing && !over ? shown.N : Picked(),
+            gi = _game,
             levels = LevelList(),
             level = Static(shown),
             run = new
@@ -542,8 +650,8 @@ public sealed class Vohnyk : Game
                 gems = world is null ? 0 : Bits(world.Gems),
                 gemsAll = shown.Gems.Length,
             },
-            result = _result,
-            f = InPlay || (_phase == PhOver && _world is not null) ? Frame() : null,   // після кінця — останній світ, щоб F5 бачив, де все скінчилось
+            result = over ? _result : null,
+            f = InPlay || (over && _world is not null) ? Frame() : null,   // після кінця — останній світ, щоб F5 бачив, де все скінчилось
         };
     }
 
