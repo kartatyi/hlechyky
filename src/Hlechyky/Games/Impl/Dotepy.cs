@@ -89,7 +89,12 @@ public sealed class Dotepy : Game
         public DotepyPrompt Prompt { get; } = prompt;
         /// <summary>Автори в порядку роздачі — до кінця написання.</summary>
         public readonly List<Entry> Entries = [];
-        /// <summary>Відповіді на голосування, перетасовані — після <see cref="CloseWriting"/>.</summary>
+        /// <summary>
+        /// Порядок відповідей на голосуванні (індекси <see cref="Entries"/>). Тасується ще на старті раунду: тоді,
+        /// щойно всі автори картки здали, її читання вже відоме й іде озвучуватись, поки решта ще пише.
+        /// </summary>
+        public int[] Order = [];
+        /// <summary>Відповіді на голосування в порядку <see cref="Order"/> — після <see cref="CloseWriting"/>.</summary>
         public Answer[] Answers = [];
         /// <summary>Усі відповіді підставні (автори пішли) — голосувати нема за що, картку пропускаємо.</summary>
         public bool Skipped;
@@ -322,6 +327,13 @@ public sealed class Dotepy : Game
             {
                 foreach (var s in present) card.Entries.Add(new Entry(s));
             }
+            card.Order = new int[card.Entries.Count];
+            for (var i = 0; i < card.Order.Length; i++) card.Order[i] = i;
+            for (var i = card.Order.Length - 1; i > 0; i--)
+            {
+                var j = Ctx.Rng.Next(i + 1);
+                (card.Order[i], card.Order[j]) = (card.Order[j], card.Order[i]);
+            }
             _cards.Add(card);
         }
 
@@ -447,26 +459,22 @@ public sealed class Dotepy : Game
         foreach (var card in _cards)
         {
             var taken = new List<string>(card.Entries.Count);
-            var answers = new List<Answer>(card.Entries.Count);
-            foreach (var e in card.Entries)
+            var byEntry = new Answer[card.Entries.Count];
+            for (var k = 0; k < byEntry.Length; k++)
             {
-                if (e.Done) answers.Add(new Answer(e.Seat, e.Text, false));
-                else if (e.Draft.Length > 0) answers.Add(new Answer(e.Seat, e.Draft, false));
+                var e = card.Entries[k];
+                if (e.Done) byEntry[k] = new Answer(e.Seat, e.Text, false);
+                else if (e.Draft.Length > 0) byEntry[k] = new Answer(e.Seat, e.Draft, false);
                 else
                 {
                     var stock = DotepyStock.Pick(Ctx.Rng, taken);
                     taken.Add(stock);
-                    answers.Add(new Answer(e.Seat, stock, true));
+                    byEntry[k] = new Answer(e.Seat, stock, true);
                 }
             }
-            for (var i = answers.Count - 1; i > 0; i--)
-            {
-                var j = Ctx.Rng.Next(i + 1);
-                (answers[i], answers[j]) = (answers[j], answers[i]);
-            }
-            card.Answers = [.. answers];
-            card.Skipped = answers.TrueForAll(a => a.Stock);
-            card.Line = DotepyLines.Card(card.Prompt.Text, [.. answers.Select(a => a.Text)]);
+            card.Answers = [.. card.Order.Select(k => byEntry[k])];
+            card.Skipped = Array.TrueForAll(card.Answers, a => a.Stock);
+            card.Line = DotepyLines.Card(card.Prompt.Text, [.. card.Answers.Select(a => a.Text)]);
             if (!card.Skipped) lines.Add(card.Line);
         }
         // Усі — терміново й по порядку: звичайна черга могла б стояти за чужими репліками, і тоді кожна картка
@@ -788,6 +796,8 @@ public sealed class Dotepy : Game
         long best = 0;
         foreach (var s in present) best = Math.Max(best, _score[s]);
         _winners = best > 0 ? [.. present.Where(s => _score[s] == best)] : [];
+        // підсумок Глека теж: інакше на екрані кінця висіла б остання репліка партії («Раунд перший…»)
+        SayNow(_winners.Length == 1 ? DotepyLines.GameWin(Spoken(_winners[0])) : DotepyLines.Gone);
         Ctx.Finish(_winners, _winners.Length > 0
             ? $"{Info.Title}: гравці розійшлись — попереду {string.Join(", ", _winners.Select(NickOf))}"
             : $"{Info.Title}: гравці розійшлись, партію не дограли");
@@ -838,6 +848,9 @@ public sealed class Dotepy : Game
         e.Draft = text;
         e.Done = true;
         _dirty = true;
+        // Усі автори цієї картки здали — читання вже відоме: хай Глек озвучує його, поки решта пише.
+        if (VoiceOn && _cards[Int(payload, "i")!.Value] is var card && card.Entries.TrueForAll(x => x.Done))
+            Prepare([DotepyLines.Card(card.Prompt.Text, [.. card.Order.Select(k => card.Entries[k].Text)])], urgent: true);
         return ActResult.Done;
     }
 

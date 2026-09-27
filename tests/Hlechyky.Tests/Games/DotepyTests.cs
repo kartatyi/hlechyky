@@ -90,8 +90,12 @@ public class DotepyTests
         foreach (var s in Present(h))
         {
             if (skip?.Contains(s) == true) continue;
-            foreach (var (i, _) in Tasks(h, s))
+            foreach (var t in V(h, s).GetProperty("me").GetProperty("tasks").EnumerateArray().ToList())
+            {
+                if (t.GetProperty("done").GetBoolean()) continue;      // здане не перезаписуємо
+                var i = t.GetProperty("i").GetInt32();
                 Assert.True(h.Act(s, "answer", new { i, text = text?.Invoke(s, i) ?? $"дотеп {s}.{i}" }).Ok, h.Reply.Message);
+            }
         }
     }
 
@@ -102,6 +106,14 @@ public class DotepyTests
         var n = Answers(h).GetArrayLength();
         for (var i = 0; i < n; i++) if (!mine.Contains(i)) return i;
         throw new InvalidOperationException("нема за кого голосувати");
+    }
+
+    /// <summary>Повний бюлетень місця: перші чужі відповіді, скільки дозволено (у фіналі — усі медалі).</summary>
+    internal static int[] Ballot(RoomHarness h, int seat)
+    {
+        var mine = Mine(h, seat);
+        var per = Card(h).GetProperty("perVoter").GetInt32();
+        return [.. Enumerable.Range(0, Answers(h).GetArrayLength()).Where(i => !mine.Contains(i)).Take(per)];
     }
 
     /// <summary>Усі, хто має голос і ще не голосував, голосують за <paramref name="pick"/>.</summary>
@@ -1213,12 +1225,14 @@ public class DotepyTests
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Equal("Дотепи: гравці розійшлись — попереду Оля", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Equal("done", Phase(h));
+        Assert.Equal(DotepyLines.GameWin("Оля"), Say(h));       // не «Раунд перший…», що висів до виходу
 
         var zero = Table(3);
         zero.Leave(zero.NickOf(1));
         Assert.Equal(RoomStatus.Finished, zero.Room.Status);
         Assert.True(zero.Room.Result!.Draw);
         Assert.Equal("Дотепи: гравці розійшлись, партію не дограли", zero.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal(DotepyLines.Gone, Say(zero));
     }
 
     // ======================================================================================
@@ -1429,7 +1443,7 @@ public class DotepyTests
         WriteAll(h);
         h.Tick();
         var cards = voice.Prepared.Where(p => p.Urgent).ToList();
-        Assert.Equal(2, cards.Count);
+        Assert.Equal(2, cards.Select(c => c.Text).Distinct().Count());
         Assert.StartsWith(V(h).GetProperty("card").GetProperty("prompt").GetString()!, cards[0].Text);
         Assert.Contains("Перша: ", cards[0].Text);
         Assert.Contains("Третя: ", cards[0].Text);
@@ -1440,6 +1454,28 @@ public class DotepyTests
         var polina = new FakeVoice();
         Table(3, options: new { voice = "polina" }, voice: polina);
         Assert.All(polina.Prepared, p => Assert.Equal("polina", p.Voice));
+    }
+
+    [Fact]
+    public void A_card_goes_to_the_voice_queue_as_soon_as_all_its_authors_have_answered()
+    {
+        var voice = new FakeVoice(readyAfter: -1);
+        var h = Table(5, voice: voice);
+        voice.Prepared.Clear();
+        var authors = Enumerable.Range(0, 5).Where(s => Tasks(h, s).Any(t => t.I == 0)).ToArray();
+        Assert.True(h.Act(authors[0], "answer", new { i = 0, text = "Перший дотеп" }).Ok);
+        Assert.DoesNotContain(voice.Prepared, p => p.Text.Contains("Перший дотеп"));
+        Assert.True(h.Act(authors[1], "answer", new { i = 0, text = "Другий дотеп" }).Ok);
+        var early = Assert.Single(voice.Prepared, p => p.Urgent);
+        Assert.Equal("write", Phase(h));
+        Assert.Contains("Перший дотеп", early.Text);
+        Assert.Contains("Другий дотеп", early.Text);
+        WriteAll(h);
+        h.Tick();
+        Assert.Equal(0, CardI(h));
+        Assert.Contains(voice.Prepared, p => p.Text == early.Text && p.Urgent);   // те саме читання — той самий кліп
+        h.Tick(Dotepy.VoiceWaitMs / Dotepy.TickMs);
+        Assert.Equal(early.Text, Say(h));                                        // і саме його Глек читає на картці
     }
 
     [Fact]
@@ -1607,7 +1643,7 @@ public class DotepyPerfTests(ITestOutputHelper output)
             var phase = DotepyTests.Phase(h);
             if (phase == "write") DotepyTests.WriteAll(h, (s, i) => $"Дотеп місця {s} на завдання {i}: про глек і кота");
             else if (phase == "vote" && DotepyTests.Voted(h).Length < DotepyTests.Voters(h).Length)
-                DotepyTests.VoteAll(h, s => [DotepyTests.FirstOther(h, s)]);
+                DotepyTests.VoteAll(h, s => DotepyTests.Ballot(h, s));
             var before = h.Outbox.Count;
             tick.Start();
             h.Tick();

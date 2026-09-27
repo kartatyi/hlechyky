@@ -452,7 +452,7 @@
       + '<span class="dt-pts' + (a.points ? '' : ' zero') + '">' + (a.points ? '+' + num(a.points) : '0') + '</span>'
       + (a.prize ? '<span class="dt-prize">👀 +' + (v.final ? 200 : 100) + '</span>' : '')
       + '<span class="dt-author" style="--c:' + col(a.seat) + '"><i class="dt-dot"></i>' + ctx.esc(nickOf(ctx, v, a.seat))
-      + (a.stock ? ' <small>не встиг — підставна</small>' : '') + '</span>';
+      + (a.stock ? ' <small>· підставна</small>' : '') + '</span>';
     b.classList.add('open');
     if (!reduced()) votes.forEach((_, n) => setTimeout(() => beep(s, 520 + n * 40, 30, 'triangle', 0.03), 400 + n * 80));
   }
@@ -531,8 +531,10 @@
     }).join('');
     const rest = rows.slice(3).map((p) => '<span class="dt-restp' + (p.left ? ' left' : '') + '" style="--c:' + col(p.seat) + '"><i class="dt-dot"></i>'
       + ctx.esc(short(disp(p.nick), 12)) + ' <b>' + num(p.score) + '</b></span>').join('');
-    stage.innerHTML = '<div class="dt-podium big">' + podium + '</div>'
-      + (rest ? '<div class="dt-rest">' + rest + '</div>' : '')
+    // усі по нулях — п'єдестал із нулів смішить не так, як треба
+    const scored = rows.some((p) => p.score > 0);
+    stage.innerHTML = (scored ? '<div class="dt-podium big">' + podium + '</div>' + (rest ? '<div class="dt-rest">' + rest + '</div>' : '')
+      : '<div class="dt-watch">Цього разу ніхто не набрав жодного очка 🤷</div>')
       + ((r.best || []).length ? '<div class="dt-besttitle">😂 Найдотепніше партії</div><div class="dt-bestlist">'
         + r.best.map((b) => bestHtml(ctx, v, b, '')).join('') + '</div>' : '')
       + (v.say && v.say.text ? '<div class="dt-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>' : '')

@@ -100,6 +100,7 @@ public static class DotepyLines
     public const string Silence = "Ніхто не проголосував. Буває.";
     public const string StockWin = "Публіка обрала мовчання. Очок за це не дають.";
     public const string GameTie = "Нагорі нічия. Дотепні всі!";
+    public const string Gone = "Замало гравців — партію не дограли. Приходьте ще!";
 
     public static string Win(string nick) => $"Картку забирає {nick}.";
     public static string Sweep(string nick) => $"Розгром! Усі голоси — {nick}!";
@@ -111,7 +112,7 @@ public static class DotepyLines
         final ? (perVoter >= 3 ? FinalThree : FinalTwo) : round == 1 ? Round1 : Round2;
 
     /// <summary>Усе, що Глек каже без підстановок, — це можна озвучити ще до першої партії.</summary>
-    public static IEnumerable<string> Pure() => [Round1, Round2, FinalThree, FinalTwo, Tie, Silence, StockWin, GameTie];
+    public static IEnumerable<string> Pure() => [Round1, Round2, FinalThree, FinalTwo, Tie, Silence, StockWin, GameTie, Gone];
 
     /// <summary>Вердикти з ніком — готуються на старті партії для кожного ніка за столом.</summary>
     public static IEnumerable<string> Named(string nick) => [Win(nick), Sweep(nick), FinalWin(nick), GameWin(nick)];
