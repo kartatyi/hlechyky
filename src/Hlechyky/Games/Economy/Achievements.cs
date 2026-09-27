@@ -126,6 +126,9 @@ public static class AchievementCatalog
         // хвиля 3: tavern
         new("tavern-ko",    "Вишибала",       "Корчма: вибив із гри двох гравців за один раунд", "👊", 20),
         new("tavern-quiet", "Тихий гість",    "Корчма: виграв раунд трьома кухлями, жодного разу не змахнувши кулаком", "🍺", 15),
+        // хвиля 3: skate
+        new("skate-ram",   "Таран",            "Ковзанка: зіпхнув гравця в ополонку", "🛷", 15),
+        new("skate-clean", "Твердо на ногах",  "Ковзанка: виграв раунд повним кошиком, жодного разу не впавши", "⛸", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
