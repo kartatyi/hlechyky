@@ -1700,4 +1700,20 @@ public class SpyTests(ITestOutputHelper output)
         output.WriteLine($"вид на розкритті на 10: {reveal} Б");
         Assert.True(reveal < 8192, $"розкриття {reveal} Б");
     }
+
+    /// <summary>
+    /// Прохід 28.09: без поля <c>added</c> у модулі плитка не світиться «🆕 нова гра» (core.js, isNewGame) — за перший день на
+    /// проді «Шпигуна» не зіграли жодного разу. Лобі пояснює гру («Як грати»), а плитка каже, що питати можна й уголос і що
+    /// треба щонайменше троє.
+    /// </summary>
+    [Fact]
+    public void The_module_marks_the_game_new_and_the_lobby_explains_how_to_play()
+    {
+        var js = File.ReadAllText(Paths.Resolve("web/games/spy.js"));
+        Assert.Matches(@"added:\s*'2026-09-27'", js);
+        Assert.Contains("class=\"spy-how\"", js);
+        var hint = new Spy().Info.Hint;
+        Assert.Contains("вголос", hint);
+        Assert.Contains("Троє й більше", hint);
+    }
 }
