@@ -14,28 +14,44 @@ public static class BluffText
 {
     /// <summary>
     /// Для порівнянь: NFKC (широкі й «математичні» літери — звичайними), нижній регістр, усі апострофи — один «'»,
-    /// двійники з інших абеток — однією літерою (<see cref="Fold"/>), невидимі знаки й наголоси геть, решта не-літер —
-    /// пробіл, пробіли злиті; у слові, де є й літери, й цифри, 0 і 3 читаються як О і З (на великій картці їх не
-    /// відрізнити). «Гасі!» → «гасі», «Пд. Буг» → «пд буг», «BOДEHЬ» і «В0ДЕНЬ» → «водень».
+    /// двійники з інших абеток — однією літерою (<see cref="Fold"/>), невидимі знаки й наголоси геть, знак-двійник
+    /// літери посеред слова — тією літерою (<see cref="SymbolTwin"/>: «МА×ОРКА» — це «махорка»), решта не-літер — пробіл,
+    /// пробіли злиті; у слові, де є й літери, й цифри, 0 і 3 читаються як О і З (на великій картці їх не відрізнити).
+    /// «Гасі!» → «гасі», «Пд. Буг» → «пд буг», «BOДEHЬ» і «В0ДЕНЬ» → «водень».
     /// </summary>
     public static string Norm(string? s)
     {
         if (string.IsNullOrEmpty(s)) return "";
         s = s.Normalize(NormalizationForm.FormKC).ToLowerInvariant();
-        var sb = new StringBuilder(s.Length);
-        var gap = false;
+        // Спершу лише видимі руни: знакові-двійнику треба бачити сусідів. Невидимі (нульовий пробіл, заповнювачі
+        // хангиля, теги) і знаки наголосу геть: інакше «во[заповнювач]день» на картці читалась би як «водень», а для
+        // перевірки була б двома словами — правда проскочила б непоміченою.
+        var runes = new List<Rune>(s.Length);
         foreach (var rune in s.EnumerateRunes())
         {
-            // Невидимі (нульовий пробіл, заповнювачі хангиля, теги) і знаки наголосу: інакше «во[заповнювач]день» на
-            // картці читалась би як «водень», а для перевірки була б двома словами — правда проскочила б непоміченою.
             if (Invisible(rune.Value)) continue;
             var cat = Rune.GetUnicodeCategory(rune);
             if (cat is UnicodeCategory.Format or UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark) continue;
-            if (Rune.IsLetterOrDigit(rune) || rune.Value == '\'' || rune.Value == '-' || IsApostrophe(rune.Value))
+            runes.Add(rune);
+        }
+        var sb = new StringBuilder(s.Length);
+        var gap = false;
+        for (var i = 0; i < runes.Count; i++)
+        {
+            var rune = runes[i];
+            var c = rune.Value;
+            var twin = SymbolTwin(c);
+            if (twin != '\0' && (LetterAt(runes, i - 1) || LetterAt(runes, i + 1)))
             {
                 if (gap && sb.Length > 0) sb.Append(' ');
                 gap = false;
-                if (rune.IsBmp) sb.Append(Fold((char)rune.Value));
+                sb.Append(twin);
+            }
+            else if (Rune.IsLetterOrDigit(rune) || c == '\'' || c == '-' || IsApostrophe(c))
+            {
+                if (gap && sb.Length > 0) sb.Append(' ');
+                gap = false;
+                if (rune.IsBmp) sb.Append(Fold((char)c));
                 else sb.Append(rune.ToString());
             }
             else gap = true;
@@ -44,12 +60,35 @@ public static class BluffText
         return sb.ToString();
     }
 
+    /// <summary>Сусід — літера чи теж знак-двійник («∏℮ТРО»: ∏ стоїть біля ℮, а той — біля літери).</summary>
+    static bool LetterAt(List<Rune> runes, int i) =>
+        i >= 0 && i < runes.Count && (Rune.IsLetter(runes[i]) || SymbolTwin(runes[i].Value) != '\0');
+
+    /// <summary>
+    /// Знаки, що на великій картці посеред слова вдають літеру: × — Х, | — І, € і ∈ — Є, ∏ — П, ∆ — Д, ∧ — Л, ⊤ — Т,
+    /// ℮ — Е, ¢ — С. Окремо (2×2, 5 €) вони лишаються знаками. <c>'\0'</c> — не двійник.
+    /// </summary>
+    static char SymbolTwin(int c) => c switch
+    {
+        '×' => 'х',
+        '|' or '¦' or '∣' => 'і',
+        '€' or '∈' => 'є',
+        '∏' => 'п',
+        '∆' => 'д',
+        '∧' => 'л',
+        '⊤' => 'т',
+        '℮' => 'е',
+        '¢' => 'с',
+        _ => '\0',
+    };
+
     static bool IsApostrophe(int c) => c is '’' or 'ʼ' or '‘' or '`' or '´' or 'ʻ' or '′';
 
     /// <summary>
     /// Двійники, яких на великій картці (картки — ВЕЛИКИМИ літерами) не відрізнити: латинські й грецькі — до кирилиці
-    /// (B/В, H/Н, M/М, T/Т, грецькі Е/Н/П…), кілька неукраїнських кириличних — до латиниці (S, J, Q, W). Порівнюємо обидва
-    /// боки однаково, тож латинська правда (HOLLYWOODLAND) так само впізнає кириличного двійника.
+    /// (B/В, H/Н, M/М, T/Т, безкрапкова ı/І, грецькі Е/Н/П…), кілька неукраїнських кириличних — до латиниці (S, J).
+    /// Порівнюємо обидва боки однаково, тож латинська правда (HOLLYWOODLAND) так само впізнає кириличного двійника.
+    /// Літер інших письмен (черокі, лісу, капітель…) тут нема: брехню з ними <see cref="ForeignLetters"/> не пускає.
     /// </summary>
     static char Fold(char ch) => ch switch
     {
@@ -57,14 +96,52 @@ public static class BluffText
         // латиниця → кирилиця
         'a' => 'а', 'b' => 'в', 'c' => 'с', 'e' => 'е', 'h' => 'н', 'i' => 'і', 'k' => 'к', 'm' => 'м', 'o' => 'о',
         'p' => 'р', 't' => 'т', 'x' => 'х', 'y' => 'у', 'ï' => 'ї',
+        'ı' => 'і', 'ĸ' => 'к', 'þ' => 'р', 'ë' => 'ё', 'è' => 'ѐ',
         // греція → кирилиця (ню й дзета — до латиниці: Ν і Ζ схожі лише на N і Z)
         'α' => 'а', 'β' => 'в', 'γ' => 'г', 'δ' => 'д', 'ε' => 'е', 'η' => 'н', 'ι' => 'і', 'κ' => 'к', 'λ' => 'л',
-        'μ' => 'м', 'ο' => 'о', 'π' => 'п', 'ρ' => 'р', 'τ' => 'т', 'υ' => 'у', 'φ' => 'ф', 'χ' => 'х',
+        'μ' => 'м', 'ο' => 'о', 'π' => 'п', 'ρ' => 'р', 'τ' => 'т', 'υ' => 'у', 'φ' => 'ф', 'χ' => 'х', 'ϊ' => 'ї',
         'ν' => 'n', 'ζ' => 'z',
         // неукраїнська кирилиця, що вдає латиницю
         'ѕ' => 's', 'ј' => 'j', 'ԛ' => 'q', 'ԝ' => 'w', 'ӏ' => 'і',
         _ => ch,
     };
+
+    /// <summary>
+    /// Літери, з яких може складатись брехня: латиниця Європи (основна, Latin-1, Extended-A і румунські ș ț), основна
+    /// грецька, кирилиця (U+0400–U+045F і Ґ). Двійників усередині цього набору зводить <see cref="Fold"/>.
+    /// </summary>
+    static bool PlainLetter(int c) =>
+        c is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z')
+        || c is >= 0x00C0 and <= 0x017F
+        || c is >= 0x0218 and <= 0x021B
+        || c is >= 0x0386 and <= 0x03CE
+        || c is >= 0x0400 and <= 0x045F
+        || c is 0x0490 or 0x0491;
+
+    /// <summary>
+    /// Чи є в тексті літера чи цифра не з нашого набору (<see cref="PlainLetter"/>, цифри 0–9) — хоч як написано, хоч
+    /// після NFKC. Черокі й лісу (цілі абетки двійників M, A, H, T, B, P), капітель, IPA, розширена латиниця й
+    /// кирилиця (Ƃ Ƅ Ʒ Ү Һ), «математичні» й широкі літери, чужі цифри (деванагарі нуль): на великій картці половина з
+    /// них вдає кирилицю, а всіх двійників усіх письмен не переловиш — тож такі брехні просимо переписати.
+    /// Апострофи-«літери» (ʼ) і невидимі знаки не рахуються.
+    /// </summary>
+    public static bool ForeignLetters(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        return Foreign(s) || Foreign(s.Normalize(NormalizationForm.FormKC));
+
+        static bool Foreign(string t)
+        {
+            foreach (var rune in t.EnumerateRunes())
+            {
+                var c = rune.Value;
+                if (IsApostrophe(c) || Invisible(c)) continue;
+                if (Rune.IsLetter(rune) && !PlainLetter(c)) return true;
+                if (Rune.IsDigit(rune) && c is not (>= '0' and <= '9')) return true;
+            }
+            return false;
+        }
+    }
 
     /// <summary>У слові, де є і літери, і цифри, 0 → о, 3 → з: «В0ДЕНЬ» на картці — те саме «ВОДЕНЬ».</summary>
     static void FoldDigitsInWords(StringBuilder sb)
@@ -155,7 +232,9 @@ public static class BluffText
         return false;
     }
 
-    /// <summary>1 — латиниця, 2 — кирилиця, 4 — грецька, 0 — інше (ієрогліфи, арабська… їх не судимо).</summary>
+    /// <summary>
+    /// 1 — латиниця, 2 — кирилиця, 4 — грецька, 0 — інше (його сюди не пускає ще <see cref="ForeignLetters"/>).
+    /// </summary>
     static int Script(int c) =>
         c is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= 0x00C0 and <= 0x024F) or (>= 0x1E00 and <= 0x1EFF) ? 1
         : c is (>= 0x0400 and <= 0x052F) or (>= 0x1C80 and <= 0x1C8F) or (>= 0x2DE0 and <= 0x2DFF) or (>= 0xA640 and <= 0xA69F) ? 2
@@ -281,7 +360,49 @@ public static class BluffText
     /// <summary>Чи ця «брехня» насправді правда цього питання (відповідь або будь-яка форма з <c>accept</c>).</summary>
     public static bool LooksTrue(string? lie, BluffQuestion question) => LooksTrue(lie, question.Forms);
 
+    /// <summary>
+    /// Правда — і як написано, і як прочитає око: цифра окремим словом на великій картці — та сама літера («0 четвертій»
+    /// = «о четвертій», «3 друзями» = «з друзями»), тож коли такі є в брехні чи в правді, звіряємо ще й це прочитання.
+    /// Лише для правди: у злитті брехень (<see cref="LooksSame"/>) «3 коти» й «коти» — різні картки.
+    /// </summary>
     public static bool LooksTrue(string? lie, IEnumerable<string> forms)
+    {
+        var list = forms as IReadOnlyList<string> ?? [.. forms];
+        if (LooksTrueAsWritten(lie, list)) return true;
+        var read = ReadLoneDigits(Norm(lie));
+        var changed = read is not null;
+        var alt = new List<string>(list.Count);
+        foreach (var f in list)
+        {
+            var n = Norm(f);
+            if (ReadLoneDigits(n) is { } r)
+            {
+                alt.Add(r);
+                changed = true;
+            }
+            else alt.Add(n);
+        }
+        return changed && LooksTrueAsWritten(read ?? Norm(lie), alt);
+    }
+
+    /// <summary>
+    /// Цифри 0 і 3, що стоять окремим словом (уже після <see cref="Norm"/>), — літерами О і З; <c>null</c>, коли таких нема.
+    /// </summary>
+    static string? ReadLoneDigits(string norm)
+    {
+        char[]? buf = null;
+        for (var i = 0; i < norm.Length; i++)
+        {
+            if (norm[i] is not ('0' or '3')) continue;
+            if (i > 0 && norm[i - 1] is not (' ' or '-')) continue;
+            if (i + 1 < norm.Length && norm[i + 1] is not (' ' or '-')) continue;
+            buf ??= norm.ToCharArray();
+            buf[i] = norm[i] == '0' ? 'о' : 'з';
+        }
+        return buf is null ? null : new string(buf);
+    }
+
+    static bool LooksTrueAsWritten(string? lie, IReadOnlyList<string> forms)
     {
         var norm = Norm(lie);
         var tokens = Tokens(lie);
