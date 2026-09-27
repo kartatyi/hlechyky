@@ -106,8 +106,16 @@ public sealed record ClickerUpgrade(string Key, string Name, string Desc, double
 /// не влазить в <c>int</c>.</remarks>
 public sealed record ClickerSecret(string Key, string Name, string Desc, long Price, int Ring = 1);
 
-/// <summary>Розпис для глека: колекція на всі обпали, кожен розпис — плюс п'ять відсотків до всього.</summary>
-public sealed record ClickerStyle(string Key, string Name, double Price);
+/// <summary>Розпис для глека: колекція на всі обпали, кожен розпис — плюс п'ять відсотків до всього.
+/// <paramref name="Tier"/> — щабель «Гончарів світу», без рівня якого розпис не купиш (одинадцяте оновлення); порожній — завжди.</summary>
+public sealed record ClickerStyle(string Key, string Name, double Price, string Tier = "");
+
+/// <summary>
+/// Родова реліквія (одинадцяте оновлення, docs/games/specs/clicker-v11.md §4): рівні за клейма без стелі, кожен
+/// рівень у <see cref="Clicker.RelicGrowth"/> разів дорожчий. <paramref name="Step"/> — що дає рівень свого важеля,
+/// <paramref name="Cap"/> — межа суми (0 — без межі).
+/// </summary>
+public sealed record ClickerRelic(string Key, string Name, string Desc, long Base, double Step, double Cap = 0);
 
 /// <summary>
 /// Гончарне коло — соло-клікер на одного назавжди. Кімната приватна й persistent: закрив вкладку, прийшов
@@ -380,7 +388,28 @@ public sealed partial class Clicker : Game
             M(150, "Гран-прі", MarkEffect.Passive), M(200, "Фото в усіх газетах", MarkEffect.Fall)),
         Tier("opishnia", "Гончарна столиця світу", 6e31, 1e19, "Гончарний фестиваль", "Гості з усіх країн", "Серце світу — в Опішні",
             M(150, "Глина, що пам'ятає", MarkEffect.Passive), M(200, "Гончар усього світу", MarkEffect.Hand)),
+        // Одинадцяте оновлення «Толока» (docs/games/specs/clicker-v11.md §3): гончарі світу. Кожен щабель відмикає своя
+        // будова Толоки (WorldGate) — ціна в глеках тут лише другий бар'єр, перший — реальний час будов.
+        Tier("jingdezhen", "Порцеляна Цзиндечженя", 6e32, 5.5e19, "Кобальт із Персії", "Імператорські печі", "Тисяча років порцеляни"),
+        Tier("iznik", "Ізнікські кахлі", 6e33, 3e20, "Тюльпан на кахлі", "Кахлі для мечеті", "Червоне, як корал"),
+        Tier("delft", "Делфтська синь", 6e34, 1.7e21, "Олов'яна полива", "Вітряк на тарілці", "Тюльпанниця"),
+        Tier("meissen", "Майсенська порцеляна", 6e35, 9.2e21, "Секрет алхіміка", "Схрещені мечі", "Порцеляновий сад"),
+        Tier("sevres", "Севрська мануфактура", 6e36, 5e22, "Королівська блакить", "Бісквіт", "Сервіз для імператриці"),
+        Tier("raku", "Японська раку", 6e37, 2.8e23, "Чашка для чаю", "Вогонь і тирса", "Краса неідеального"),
     ];
+
+    /// <summary>Шість щаблів одинадцятого оновлення — гончарі світу (ачівки, сцена, «що нового»).</summary>
+    public static readonly string[] MasterTiers = ["jingdezhen", "iznik", "delft", "meissen", "sevres", "raku"];
+
+    /// <summary>Яка будова Толоки відмикає щабель гончарів світу (ClickerToloka.cs).</summary>
+    public static readonly Dictionary<string, string> WorldGate = new(StringComparer.Ordinal)
+    {
+        ["jingdezhen"] = "pier", ["iznik"] = "museum", ["delft"] = "institute", ["meissen"] = "institute",
+        ["sevres"] = "hall", ["raku"] = "festival",
+    };
+
+    /// <summary>Чи відімкнула Толока щабель (для решти верстатів — завжди так).</summary>
+    bool GateOpen(string key) => !WorldGate.TryGetValue(key, out var b) || TolokaHas(b);
 
     /// <summary>Дванадцять щаблів десятого оновлення — від Батурина до Опішні (ачівки, сцена, «що нового»).</summary>
     public static readonly string[] WorldTiers =
@@ -466,7 +495,17 @@ public sealed partial class Clicker : Game
         new("mezhyhirya", "Межигірський фаянс", 5_000_000_000_000),
         new("petrykivka", "Петриківський розпис", 100_000_000_000_000),
         new("trypillia", "Трипільська", 2_000_000_000_000_000),
+        // Одинадцяте оновлення: розписи світу — по одному з кожного щабля гончарів світу, ціна — сто перших рівнів щабля.
+        new("jingdezhen", "Цзиндечженська синь", 6e34, "jingdezhen"),
+        new("iznik", "Ізнікський тюльпан", 6e35, "iznik"),
+        new("delft", "Делфтська синь", 6e36, "delft"),
+        new("meissen", "Майсенські мечі", 6e37, "meissen"),
+        new("sevres", "Севрська блакить", 6e38, "sevres"),
+        new("raku", "Раку", 6e39, "raku"),
     ];
+
+    /// <summary>Скільки «домашніх» розписів (до одинадцятого оновлення): ачівка «Музей», стара сітка альбому.</summary>
+    public const int HomeStyles = 8;
 
     static readonly JsonSerializerOptions Wire = new(JsonSerializerDefaults.Web);
 
@@ -626,7 +665,9 @@ public sealed partial class Clicker : Game
         // Пакети сьомого оновлення: альбом, кахлі, репутація сіл, цех (docs/games/specs/clicker-v7.md).
         * KilnAllMult * AlbumAllMult * FairAllMult * GuildAllMult
         // Десяте оновлення: шана заморських гостей (ClickerGuests.cs).
-        * GuestsAllMult;
+        * GuestsAllMult
+        // Одинадцяте: будови Толоки (+5 % кожна) і фестиваль на майдані (ClickerToloka.cs).
+        * TolokaAllMult;
 
     /// <summary>Скільки глеків за секунду дає один наступний рівень верстата (без ярмарку).</summary>
     double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult * (1 + Perk(MarkEffect.Passive));
@@ -722,7 +763,7 @@ public sealed partial class Clicker : Game
     double FallGain()
     {
         var raw = PassiveBase * FallSeconds + ClickBase * FallClicks;
-        var mult = (1 + BasketBonus * Level("basket") + Perk(MarkEffect.Fall) + GuestsFallBonus) * (1 + StreakMult) * (FairOn ? FairMultNow : 1)
+        var mult = (1 + BasketBonus * Level("basket") + Perk(MarkEffect.Fall) + GuestsFallBonus + Relic("basket3")) * (1 + StreakMult) * (FairOn ? FairMultNow : 1)
             * ClayNow.Loot * HouseFallMult * (_starWish ? StarFallMult : 1);
         return ToPots(raw * mult) + FallFloor;
     }
@@ -905,6 +946,8 @@ public sealed partial class Clicker : Game
         ResetGuild(_lastSync);
         ResetTitles();
         ResetGuests(_lastSync);
+        _relics.Clear();
+        ResetToloka(_lastSync);
         _achQueue.Clear();
         _viewVersion++;
     }
@@ -945,6 +988,8 @@ public sealed partial class Clicker : Game
             "look" => LookHouse(payload) ?? Look(payload),
             "fire" => Fire(),
             "secret" => BuySecret(payload),
+            // Одинадцяте оновлення: рівень родової реліквії за клейма (§4).
+            "relic" => BuyRelic(payload),
             "paint" => Paint(payload),
             "wear" => Wear(payload),
             "answer" => Answer(payload),
@@ -959,7 +1004,7 @@ public sealed partial class Clicker : Game
             "craft" => ActCraft(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
             _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
-                ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActResult.Fail("Тут так не ходять"),
+                ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActResult.Fail("Тут так не ходять"),
         };
         // Звання: лічильники → звання, нові — у Журнал, звіт цехові (раз на хвилину або одразу, коли щось сталось).
         TitlesAfterAct(Ctx.Clock.UtcNow);
@@ -1053,6 +1098,7 @@ public sealed partial class Clicker : Game
         SyncFair(now, paid);
         SyncGuild(now, paid);
         SyncGuests(now, paid);
+        SyncToloka(now);
         AwayEnd(now, gap);
     }
 
@@ -1122,7 +1168,7 @@ public sealed partial class Clicker : Game
     void ScheduleFall(DateTimeOffset from)
     {
         var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
-        var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events);
+        var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * RelicWaitMult("cat3"));
         _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown) + TimeSpan.FromSeconds(Perk(MarkEffect.FallShown)),
             Ctx.Rng.Next(8, 80));
     }
@@ -1158,7 +1204,7 @@ public sealed partial class Clicker : Game
 
     void ScheduleWind(DateTimeOffset from)
     {
-        var at = from + TimeSpan.FromSeconds(WindMinWait + Ctx.Rng.NextDouble() * (WindMaxWait - WindMinWait));
+        var at = from + TimeSpan.FromSeconds((WindMinWait + Ctx.Rng.NextDouble() * (WindMaxWait - WindMinWait)) * TolokaWindWait);
         _wind = new EventRow(at, at + WindShown, 0, 0);
     }
 
@@ -1330,6 +1376,8 @@ public sealed partial class Clicker : Game
 
         var level = Level(up.Key);
         if (CappedNow(up, level)) return ActResult.Fail($"{up.Name}: кращої вже не буває");
+        if (level == 0 && !GateOpen(up.Key))
+            return ActResult.Fail($"{up.Name}: спершу збудуй на Толоці «{TolokaName(WorldGate[up.Key])}»");
 
         var bought = 0;
         var last = 0.0;
@@ -1353,6 +1401,8 @@ public sealed partial class Clicker : Game
             if (up.Key == "voyage") Achieve("potter-world");
             else if (up.Key == "expo") Achieve("potter-paris");
             else if (up.Key == "opishnia") Achieve("potter-opishnia");
+            else if (up.Key == "jingdezhen") Achieve("potter-world-first");
+            if (MasterTiers.Contains(up.Key) && MasterTiers.All(k => Level(k) > 0)) Achieve("potter-world-all");
         }
         _levels[up.Key] = level;
         TitlesOnBuy(last, second);
@@ -1478,7 +1528,10 @@ public sealed partial class Clicker : Game
                 }),
             }, StringComparer.Ordinal),
             secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring }),
-            styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price }),
+            styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price, tier = s.Tier }),
+            // Одинадцяте оновлення: яка будова відмикає щабель і що дають реліквії.
+            gates = WorldGate.ToDictionary(x => x.Key, x => (object)new { building = x.Value, name = TolokaName(x.Value) }, StringComparer.Ordinal),
+            relics = Relics.Select(r => new { key = r.Key, name = r.Name, desc = r.Desc, step = r.Step, cap = r.Cap }),
         };
     }
 
@@ -1520,7 +1573,8 @@ public sealed partial class Clicker : Game
 
         // «В останню мить» (звання): за пів секунди до втечі чи вже в запасі на дорогу.
         if (now >= _golden.Until - LastMoment) TitleEarn("moment");
-        var longer = Has("longfair") ? 2 : 1;
+        // «Дідова скрипка» (реліквія v11) — ще кілька відсотків до кожного бонусу, до ×2.
+        var longer = (Has("longfair") ? 2 : 1) * (1 + Relic("fiddle"));
         string text;
         switch (_golden.Kind)
         {
@@ -1660,6 +1714,7 @@ public sealed partial class Clicker : Game
         FireFair(Ctx.Clock.UtcNow);
         FireGuild(Ctx.Clock.UtcNow);
         FireGuests(Ctx.Clock.UtcNow);
+        // Толока й реліквії обпал не чіпає: будови вічні, реліквії — за клейма.
         // Цех мусить знати нові клейма: з них рахується наука майстра для решти округи.
         GuildStampsChanged(now);
         TitlesOnFire(now);
@@ -1811,11 +1866,13 @@ public sealed partial class Clicker : Game
         if (Styles.FirstOrDefault(s => s.Key == Str(payload, "key")) is not { } style)
             return ActResult.Fail("Такого розпису нема");
         if (_styles.Contains(style.Key)) return ActResult.Fail($"{style.Name} уже в колекції");
+        if (style.Tier.Length > 0 && Level(style.Tier) == 0)
+            return ActResult.Fail($"{style.Name} привезуть, коли матимеш «{Shop[ShopAt[style.Tier]].Name}»");
         if (_pots < style.Price) return ActResult.Fail($"Бракує глеків: треба ще {Short(style.Price - _pots)}");
         _pots -= style.Price;
         _styles.Add(style.Key);
         _wear = style.Key;                     // новий розпис хочеться одразу побачити на колі
-        if (_styles.Count == Styles.Length) Ctx.Award(0, 0, "ach:potter-museum");
+        if (Styles.Take(HomeStyles).All(x => _styles.Contains(x.Key))) Ctx.Award(0, 0, "ach:potter-museum");
         return ActResult.Accept($"🎨 {style.Name} — +5 % до всього");
     }
 
@@ -2055,6 +2112,9 @@ public sealed partial class Clicker : Game
             guild = ViewGuild(Ctx.Clock.UtcNow),
             // Десяте оновлення: заморські гості в Гостинному дворі (ClickerGuests.cs); null — гостей ще нема.
             guests = ViewGuests(Ctx.Clock.UtcNow),
+            // Одинадцяте оновлення: Толока (ClickerToloka.cs; null — ще нема гривні за весь час) і скарбниця роду.
+            toloka = ViewToloka(Ctx.Clock.UtcNow),
+            relics = RelicsView(),
             away = AwayView(),
             catalog = CatalogView(),
             shopCatalog = ShopCatalog(),
@@ -2094,6 +2154,8 @@ public sealed partial class Clicker : Game
         if (up.Kind == ClickerKind.Skill)
             return Level(up.Key) > 0 || up.Base < SkillHideFrom || _total * SkillShowShare >= up.Base;
         if (up.Kind != ClickerKind.Idle || Level(up.Key) > 0) return true;
+        // Гончарі світу (v11): без своєї будови Толоки щабель не відкривається, хоч би скільки було глеків.
+        if (!GateOpen(up.Key)) return false;
         for (var i = index - 1; i >= 0; i--)
             if (Shop[i].Kind == ClickerKind.Idle) return Level(Shop[i].Key) > 0;
         return true;                                           // перший пасивний верстат видно завжди
@@ -2137,7 +2199,9 @@ public sealed partial class Clicker : Game
         // Десяте оновлення: заморські гості (ClickerGuests.cs). Старе збереження — «гостей ще не було».
         GuestsRow? Guests = null,
         // Яку грошову церемонію гончар бачив (v10 §6). Старе збереження — жодної.
-        int CoinSeen = 0);
+        int CoinSeen = 0,
+        // Одинадцяте оновлення: Толока й рівні родових реліквій. Старе збереження — «ще не було».
+        TolokaRow? Toloka = null, Dictionary<string, int>? Relics = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2149,7 +2213,8 @@ public sealed partial class Clicker : Game
             _fall, _fallStreak, _grabbed, _heat, _heatAt, SaveHouse(),
             SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null, _stampsUsed,
             _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news,
-            _stampsExtra, _scienceAt, SaveTitles(), SaveGuests(), _coinSeen),
+            _stampsExtra, _scienceAt, SaveTitles(), SaveGuests(), _coinSeen,
+            SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal)),
         Wire);
 
     public override void Load(string json)
@@ -2232,6 +2297,12 @@ public sealed partial class Clicker : Game
         if (Sane(s.Cat) is { } cat) _cat = cat; else ScheduleCat(Ctx.Clock.UtcNow);
         if (Sane(s.Star) is { } star) _star = star; else ScheduleStar(Ctx.Clock.UtcNow);
         if (Sane(s.Wind) is { } wind) _wind = wind; else ScheduleWind(Ctx.Clock.UtcNow);
+        // Одинадцяте оновлення — ДО хати й ремесла: будови Толоки й реліквії розширюють комору, горно й сушарню, і
+        // ремесло, прочитане раніше за них, обрізало б збережене під старі стелі.
+        _relics.Clear();
+        foreach (var (k, n) in s.Relics ?? [])
+            if (Relics.Any(r => r.Key == k) && n > 0) _relics[k] = Math.Min(n, RelicMaxLevel);
+        LoadToloka(s.Toloka);
         // Хата — після розписів (замовлення на розпис мусять бачити колекцію) і після рівнів (дошка рахується від пасиву).
         LoadHouse(s.House);
         // Ремесло й пакети — наприкінці: їм потрібні рівні, розписи й глина.

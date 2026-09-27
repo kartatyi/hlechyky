@@ -819,7 +819,8 @@ public sealed partial class Clicker
     bool _kilnTechAll;
 
     /// <summary>Місця горна: піч дає до стелі, ранг майстра цеху — ще два понад неї (ClickerGuild.cs).</summary>
-    internal int KilnSlots => Math.Min(KilnSlotsMax, KilnSlotsBase + Level("kiln") / KilnPerLevel) + Math.Max(0, GuildKilnSlots) + Math.Max(0, CraftKilnBonus);
+    internal int KilnSlots => Math.Min(KilnSlotsMax + TolokaKilnMaxExtra, KilnSlotsBase + Level("kiln") / KilnPerLevel + TolokaKilnExtra)
+        + Math.Max(0, GuildKilnSlots) + Math.Max(0, CraftKilnBonus);
 
     bool TechOpen(ClickerTechnique t) => t.Fired <= 0 || FiredTotal >= t.Fired || (t.Home.Length > 0 && _styles.Contains(t.Home));
 
@@ -1023,7 +1024,8 @@ public sealed partial class Clicker
         var beauty = manual ? _kilnBeauty : 0;
         var crack = manual ? KilnHeat.CrackChance(over) * (_litStraw ? StrawCrack : 1) : 0;
         // Палій пече без розпису й без тріщин, зате з власним невеликим «блиском» від прокачки (v9).
-        var shine = manual ? KilnHeat.Shine(heat, beauty) : AutoShine;
+        // Одинадцяте оновлення: Інститут керамології й «Родовий жар» додають до блиску (стеля — та сама одиниця в QualityOf).
+        var shine = (manual ? KilnHeat.Shine(heat, beauty) : AutoShine) * (1 + TolokaShineBonus + Relic("ember3"));
         var paint = manual ? Math.Clamp(beauty, 0, 100) / 100.0 : 0;
         var outs = new List<KilnOutRow>(_kiln.Count);
         foreach (var ware in _kiln)

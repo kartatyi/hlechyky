@@ -639,12 +639,13 @@ public class ClickerProgressTests
     public void The_whole_collection_makes_a_museum_at_home()
     {
         var h = Wheel();
-        Strings(h, "styles", Clicker.Styles.SkipLast(1).Select(s => s.Key).ToArray());
+        // «Музей» — вісім домашніх розписів; розписи світу (v11) до нього не входять.
+        Strings(h, "styles", Clicker.Styles.Take(Clicker.HomeStyles).SkipLast(1).Select(s => s.Key).ToArray());
         Give(h, long.MaxValue / 2);
 
         Assert.True(Act(h, "paint", new { key = "trypillia" }).Ok);
         Assert.Equal("ach:potter-museum", Assert.Single(h.Awards).Reason);
-        Assert.Equal(1 + 0.05 * Clicker.Styles.Length, AllMult(h), 9);
+        Assert.Equal(1 + 0.05 * Clicker.HomeStyles, AllMult(h), 9);
     }
 
     // ---------- збереження, стелі, вид ----------

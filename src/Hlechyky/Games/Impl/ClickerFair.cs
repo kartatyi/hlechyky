@@ -517,7 +517,7 @@ public sealed partial class Clicker
 
     /// <summary>Повний множник замовлення: базовий плюс шана села, ×Косів за розпис, ×базарний день.</summary>
     double MktMult(FairOrderRow o) =>
-        (o.Mult + MktRepPay(o)) * MktStylePerk(o) * (MktBazaarOn(Ctx.Clock.UtcNow) ? FairBazaarMult : 1) * (1 + GuestsPayBonus);
+        (o.Mult + MktRepPay(o)) * MktStylePerk(o) * (MktBazaarOn(Ctx.Clock.UtcNow) ? FairBazaarMult : 1) * (1 + GuestsPayBonus) * TolokaMktPay;
 
     double MktChance(FairOrderRow o) =>
         Math.Min(FairUpMax, FairUpChance + FairUpPerLevel * MktLevel(o.Village) + FairPerkHaggle * MktLevel("sorochyntsi"));
@@ -563,7 +563,7 @@ public sealed partial class Clicker
     }
 
     /// <summary>Скільки замовлень уміщає дошка: з ярмарковим дзвоном — п'ять замість чотирьох.</summary>
-    int MktBoardMax => Has("bell") ? FairBellBoardMax : FairBoardMax;
+    int MktBoardMax => (Has("bell") ? FairBellBoardMax : FairBoardMax) + TolokaMktSlots;
 
     TimeSpan MktOrderGap()
     {
@@ -920,7 +920,7 @@ public sealed partial class Clicker
         foreach (var o in row.Orders ?? [])
             if (o is not null && o.Style is not null && WareOf(o.Ware) is not null && FairVillages.Any(v => v.Key == o.Village) && o.Count is > 0 and <= 20
                 && o.Quality is >= 1 and <= 3 && (o.Style.Length == 0 || Styles.Any(s => s.Key == o.Style))
-                && double.IsFinite(o.Mult) && o.Mult is > 0 and <= FairLordMult && _mktOrders.Count < FairBellBoardMax + 2)
+                && double.IsFinite(o.Mult) && o.Mult is > 0 and <= FairLordMult && _mktOrders.Count < FairBellBoardMax + TolokaMktSlotsMax + 2)
                 _mktOrders.Add(o);
         _mktOrderId = Math.Max(row.OrderId, _mktOrders.Count == 0 ? 0 : _mktOrders.Max(o => o.Id));
         _mktOrderNext = row.OrderNext;

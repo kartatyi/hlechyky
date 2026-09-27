@@ -138,7 +138,7 @@ public sealed partial class Clicker
     /// <summary>Скільки місць горна додає прокачка ремесла (v9); горно додає їх до своїх.</summary>
     internal int CraftKilnBonus => KilnPerUp * CraftLevel("kilnroom");
     /// <summary>Місткість комори просто зараз (v9: прокачується); <see cref="StoreCap"/> — базова.</summary>
-    internal int StoreCapNow => StoreCap + StorePerUp * CraftLevel("store");
+    internal int StoreCapNow => StoreCap + StorePerUp * CraftLevel("store") + TolokaStoreExtra;
     /// <summary>Рівень прокачки ремесла за ключем (v9: rack/kilnroom/store/stoker/dryer); 0 — нема.</summary>
     internal int CraftLevel(string key) => _craftUps.TryGetValue(key, out var n) ? n : 0;
 
@@ -249,7 +249,7 @@ public sealed partial class Clicker
         if (WareOf(ware) is not { } w) return 0;
         var q = QualityMult[Math.Clamp(quality, 1, QualityMax)];
         var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware)
-            * (1 + GuestsValueBonus);
+            * (1 + GuestsValueBonus) * TolokaValueMult;
         var floor = (_memoOn ? _memoClick : ClickBase) * WorkOf(w) * ValueFloorClicks * q;
         return Math.Max(1, ToPots(Math.Max(byPassive, floor)));
     }
@@ -284,7 +284,7 @@ public sealed partial class Clicker
             if (_rack.Count >= RackSize) { _formWork = need; break; }
             _formWork -= need;
             // Виліплене підмайстрами за довгий простій уже встигло висохнути.
-            _rack.Add(new RackRow(w.Key, _clay, dried ? now : now + TimeSpan.FromSeconds(DryTime.TotalSeconds * FairDryMult() * CraftDryMult)));
+            _rack.Add(new RackRow(w.Key, _clay, dried ? now : now + TimeSpan.FromSeconds(DrySeconds)));
             _formed++;
             made++;
             if (_formed == 1) Achieve("potter-ware-1");
@@ -299,7 +299,27 @@ public sealed partial class Clicker
 
     int _awayFormed;
 
-    double ApprenticeRate => Math.Min(ApprenticeMax, ApprenticeWork * Level("apprentice"));
+    /// <summary>
+    /// Скільки роботи за секунду ліплять підмайстри: стеля — з «Онука за колом» і Гончарної школи Толоки (v11), а
+    /// «Родинні руки» (реліквія) множать уже готове.
+    /// </summary>
+    double ApprenticeRate => Math.Min(ApprenticeMax + TolokaApprenticeExtra, ApprenticeWork * Level("apprentice")) * (1 + Relic("hands"));
+
+    /// <summary>Нижче цього сирець не сохне, скільки б не додали рушник і криниця (v11).</summary>
+    public const double DryFloorSeconds = 20;
+
+    /// <summary>
+    /// Скільки сохне сирець просто зараз: погода, вітряна сушарня, а з одинадцятого оновлення — криниця Толоки й
+    /// «Бабусин рушник». Нові множники не опускають нижче <see cref="DryFloorSeconds"/> (старі — як були).
+    /// </summary>
+    double DrySeconds
+    {
+        get
+        {
+            var old = DryTime.TotalSeconds * FairDryMult() * CraftDryMult;
+            return Math.Max(Math.Min(old, DryFloorSeconds), old * TolokaDryMult * (1 - Relic("towel")));
+        }
+    }
 
     ActResult Form(JsonElement payload)
     {
@@ -516,7 +536,7 @@ public sealed partial class Clicker
             rack = _rack.Select(r => new { ware = r.Ware, clay = r.Clay, dryAt = r.DryAt }),
             rackSize = RackSize,
             rackFull = _rack.Count >= RackSize,
-            dryMs = DryTime.TotalMilliseconds * FairDryMult() * CraftDryMult,
+            dryMs = DrySeconds * 1000,
             // Вироби новому клієнтові (_slim) — лише те, що міняється: відкритий, скільки роботи, скільки обпалено, чого
             // вартий простий. Назва й «відкриється на» — у каталозі (catalog.wares): вид летить щопачки кліків (десяте
             // оновлення, §10). Старій вкладці — як до v10, з назвою й порогом.
@@ -575,6 +595,7 @@ public sealed partial class Clicker
             guild = CatalogGuild(),
             titles = CatalogTitles(),
             guests = CatalogGuests(),
+            toloka = CatalogToloka(),
         };
     }
 

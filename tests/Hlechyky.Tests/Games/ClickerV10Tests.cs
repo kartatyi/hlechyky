@@ -67,7 +67,7 @@ public class ClickerV10Tests
     {
         var idle = Clicker.Shop.Where(u => u.Kind == ClickerKind.Idle).Select(u => u.Key).ToList();
         var sich = idle.IndexOf("sich");
-        Assert.Equal(Clicker.WorldTiers, idle.Skip(sich + 1).ToArray());
+        Assert.Equal(Clicker.WorldTiers, idle.Skip(sich + 1).Take(Clicker.WorldTiers.Length).ToArray());
         var prev = Clicker.Shop.Single(u => u.Key == "sich");
         foreach (var key in Clicker.WorldTiers)
         {
@@ -115,8 +115,9 @@ public class ClickerV10Tests
     [Fact]
     public void The_catalogue_holds_162_marks_and_every_one_past_a_hundred_is_a_modifier()
     {
-        Assert.Equal(162, Clicker.MarksAll);
-        Assert.Equal(162, AllMarks.Count());
+        // v11 додав шість щаблів гончарів світу — лише з віхами ×2 на 25/50/100.
+        Assert.Equal(180, Clicker.MarksAll);
+        Assert.Equal(180, AllMarks.Count());
         foreach (var up in Clicker.Shop)
             Assert.All(up.Steps.Where(s => s.Level > 100 || (up.Key is "apprentice" or "kiln" && s.Level > 50)),
                 s => Assert.NotEqual(MarkEffect.Double, s.Effect));
@@ -147,7 +148,8 @@ public class ClickerV10Tests
         Assert.Equal(0.05, SumOf(MarkEffect.Lucky), 9);
         Assert.Equal(0.12, SumOf(MarkEffect.Hand), 9);
         // 45 старих ×2 (разом із трьома «старими» віхами кола) + 57 плану віх + 60 нових щаблів.
-        Assert.Equal(12 * 3 + 2 * 3 + 12 * 3, CountOf(MarkEffect.Double));
+        // v11: ще шість щаблів гончарів світу по три віхи ×2.
+        Assert.Equal(12 * 3 + 2 * 3 + 12 * 3 + 6 * 3, CountOf(MarkEffect.Double));
     }
 
     [Fact]
@@ -195,7 +197,7 @@ public class ClickerV10Tests
         Assert.Equal("«Друга майстерня»: пасив +25 %", r.Message.Replace('\u00a0', ' '));
         Assert.False(Act(h, "mark", new { key = "workshop:150" }).Ok);
         Assert.Equal(1, View(h).GetProperty("marksOwned").GetInt32());
-        Assert.Equal(162, View(h).GetProperty("marksAll").GetInt32());
+        Assert.Equal(Clicker.MarksAll, View(h).GetProperty("marksAll").GetInt32());
     }
 
     [Fact]
