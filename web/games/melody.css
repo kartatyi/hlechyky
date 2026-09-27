@@ -61,6 +61,9 @@
 
 /* Гучність уривка — окремо від радіо. */
 .mgvol { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.mgvol[hidden] { display: none; }
+.mghead.mgwon { font-size: 1.05em; font-weight: 800; color: var(--accent); }
+.mgnote { color: var(--text); font-weight: 600; }
 .mgvol button { min-width: 38px; padding: 4px 6px; font-size: 1.1em; }
 .mgvol input { width: min(240px, 60%); accent-color: var(--accent); }
 

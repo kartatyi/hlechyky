@@ -347,7 +347,10 @@ public sealed class Melody : Game
         var best = seats.Length == 0 ? 0 : seats.Max(s => _scores[s]);
         int[] winners = best > 0 ? [.. seats.Where(s => _scores[s] == best)] : [];
         foreach (var s in seats) Ctx.Score(s, _scores[s]);
-        _result = new { winners, scores = (int[])_scores.Clone() };
+        // ніки — на момент фінішу: хто встане з-за столу вже після партії, лишиться в підсумку (інакше переможець зникав з таблиці)
+        var nicks = new string?[Seats];
+        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s)) nicks[s] = Ctx.NickOf(s);
+        _result = new { winners, scores = (int[])_scores.Clone(), nicks };
         var parts = seats.OrderByDescending(s => _scores[s]).Select(s => $"{Ctx.NickOf(s)} {_scores[s]}");
         var tail = winners.Length == 0 ? "жодної пісні не впізнали" : "найкраще вухо в " + string.Join(" і ", winners.Select(s => NickCases.Genitive(Ctx.NickOf(s))));
         Ctx.Finish(winners, $"{Info.Title}: {string.Join(", ", parts)} — {tail}", seats.ToDictionary(s => s, s => (long)_scores[s]));

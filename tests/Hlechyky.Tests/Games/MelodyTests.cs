@@ -486,6 +486,40 @@ public class MelodyTests
     }
 
     [Fact]
+    public void Picks_are_followed_by_a_reserve_of_songs_already_on_disk()
+    {
+        // «лише хіти»: дев'ять пісень качати, три вже на диску; раундів два
+        var all = new List<MelodyTrack>();
+        for (var i = 0; i < 9; i++) all.Add(new MelodyTrack("", "Song " + i, "Band " + i, 0, null, ""));
+        all.Insert(4, T("r1", "Океан Ельзи", "Обійми"));
+        all.Insert(8, T("r2", "Скрябін", "Старі фотографії"));
+        all.Add(T("r3", "KALUSH", "Stefania"));
+        var got = MelodyLibrary.WithReserve(all, 4, new Random(1));
+        // основні чотири — усі з добірки (качати), тож першим стає готовий із запасу, а за основними — решта запасу,
+        // лише те, що вже на диску, і без повторів
+        Assert.Equal(["Обійми", "Song 0", "Song 1", "Song 2", "Song 3", "Старі фотографії", "Stefania"], got.Select(t => t.Title));
+        Assert.Equal(got.Count, got.Select(t => t.Artist).Distinct().Count());
+    }
+
+    [Fact]
+    public void Downloads_pause_after_a_series_of_failures_and_resume_later()
+    {
+        var now = DateTimeOffset.Parse("2026-09-28T12:00:00Z");
+        var b = new MelodyFetchBreaker(() => now);
+        Assert.False(b.Failed());
+        b.Ok();                                                        // вдале скидає лічильник
+        Assert.False(b.Failed());
+        Assert.False(b.Failed());
+        Assert.False(b.Open);
+        Assert.True(b.Failed());                                       // третє поспіль — пауза
+        Assert.True(b.Open);
+        now += MelodyFetchBreaker.BreakFor - TimeSpan.FromSeconds(1);
+        Assert.True(b.Open);
+        now += TimeSpan.FromSeconds(2);
+        Assert.False(b.Open);                                          // минуло — знову пробуємо
+    }
+
+    [Fact]
     public void Classics_file_parses_categories_and_songs()
     {
         var c = MelodyClassics.Parse(

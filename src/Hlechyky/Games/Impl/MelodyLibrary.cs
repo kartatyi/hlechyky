@@ -107,8 +107,21 @@ public sealed class MelodyLibrary(
         var (rows, disliked) = Load();
         var cached = rows.Where(x => File.Exists(x.Track.FilePath)).ToList();
         var pools = Pools(cached, disliked, categories, Classics, rng);
-        return FirstReady(Choose(Interleave(pools), count, rng, shuffle: false));
+        return WithReserve(Interleave(pools), count, rng);
     }, ct);
+
+    /// <summary>
+    /// <paramref name="count"/> треків як завжди (<see cref="Choose"/>, першим — готовий), а за ними — запас із
+    /// решти тих самих категорій, що вже лежать на диску. Запас грає лише тоді, коли пісні з добірки не скачались:
+    /// YouTube буває відповідає 403 цілими серіями, і партія «лише світові хіти» інакше зводилась до одного треку.
+    /// </summary>
+    public static IReadOnlyList<MelodyTrack> WithReserve(List<MelodyTrack> all, int count, Random rng)
+    {
+        var picked = Choose(all, count, rng, shuffle: false);
+        var have = new HashSet<string>(picked.Select(t => SongKey.Of(t.Artist, t.Title)), StringComparer.Ordinal);
+        var reserve = Choose([.. all.Where(t => !t.Pending && !have.Contains(SongKey.Of(t.Artist, t.Title)))], count, rng, shuffle: false);
+        return FirstReady([.. picked, .. reserve]);
+    }
 
     /// <summary>
     /// По списку кандидатів на кожну обрану категорію, кожен перемішаний. Радіо: українське / решта
@@ -227,6 +240,9 @@ public sealed class MelodyLibrary(
     /// <summary>Одну пісню кількома столами одночасно не качаємо: хто другий — чекає на ту саму задачу.</summary>
     readonly ConcurrentDictionary<string, Task<MelodyTrack?>> _fetching = new(StringComparer.Ordinal);
 
+    /// <summary>YouTube відмовляє серіями — тоді якийсь час не качаємо зовсім (<see cref="MelodyFetchBreaker"/>).</summary>
+    public MelodyFetchBreaker Breaker { get; } = new();
+
     public async Task<MelodyTrack?> ResolveAsync(MelodyTrack track, CancellationToken ct)
     {
         if (!track.Pending)
@@ -257,6 +273,8 @@ public sealed class MelodyLibrary(
                 var known = db.GetTrack(id);
                 return new MelodyTrack(id, want.Title, want.Artist, dur, known?.ThumbUrl, path);
             }
+            // YouTube щойно відмовив кілька разів поспіль — не смикаємо його: партія візьме запас із диска
+            if (Breaker.Open) return null;
             using var cts = new CancellationTokenSource(FetchTimeout);
             var hit = Pick(await ytm!.SearchSongsAsync($"{want.Artist} {want.Title}", 10, cts.Token), want);
             if (hit is null)
@@ -270,6 +288,7 @@ public sealed class MelodyLibrary(
             Directory.CreateDirectory(ClassicsDir);
             var file = await ytdlp!.DownloadAsync(info, cts.Token, ClassicsDir);
             db.SetTrackFile(hit.Id, file);
+            Breaker.Ok();
             log?.LogInformation("мелодія: скачано «{Artist} — {Title}» ({Id})", want.Artist, want.Title, hit.Id);
             Trim();
             return new MelodyTrack(hit.Id, want.Title, want.Artist, hit.DurationSec, hit.ThumbUrl, file);
@@ -277,6 +296,9 @@ public sealed class MelodyLibrary(
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             log?.LogWarning("мелодія: «{Artist} — {Title}» не скачалась: {Err}", want.Artist, want.Title, ex.Message);
+            if (Breaker.Failed())
+                log?.LogWarning("мелодія: YouTube не віддає пісні ({N} поспіль) — {Min} хв не качаю, партії грають із диска. Мабуть, час оновити yt-dlp",
+                    MelodyFetchBreaker.BreakAfter, (int)MelodyFetchBreaker.BreakFor.TotalMinutes);
             return null;
         }
     }
@@ -407,6 +429,36 @@ public sealed class MelodyLibrary(
             if (File.Exists(path)) return path;
         }
         return name;   // нехай шукає в PATH
+    }
+}
+
+/// <summary>
+/// Запобіжник для добірок: коли YouTube відмовляє серіями (HTTP 403 — зазвичай так старіє yt-dlp), кожна партія
+/// «лише хіти» інакше смикала б yt-dlp на кожну пісню й чекала, поки той упаде. Після <see cref="BreakAfter"/>
+/// невдалих скачувань поспіль добірки <see cref="BreakFor"/> не качаються взагалі — партії грають те, що вже на
+/// диску (<see cref="MelodyLibrary.WithReserve"/>). Перше вдале скачування скидає лічильник.
+/// </summary>
+public sealed class MelodyFetchBreaker(Func<DateTimeOffset>? now = null)
+{
+    public const int BreakAfter = 3;
+    public static readonly TimeSpan BreakFor = TimeSpan.FromMinutes(10);
+
+    readonly Func<DateTimeOffset> _now = now ?? (() => DateTimeOffset.UtcNow);
+    int _streak;
+    long _until;
+
+    /// <summary>Зараз не качаємо.</summary>
+    public bool Open => _now().UtcTicks < Interlocked.Read(ref _until);
+
+    public void Ok() => Interlocked.Exchange(ref _streak, 0);
+
+    /// <summary>Ще одне невдале скачування. true — саме воно вимкнуло скачування на <see cref="BreakFor"/>.</summary>
+    public bool Failed()
+    {
+        if (Interlocked.Increment(ref _streak) < BreakAfter) return false;
+        Interlocked.Exchange(ref _streak, 0);
+        Interlocked.Exchange(ref _until, (_now() + BreakFor).UtcTicks);
+        return true;
     }
 }
 

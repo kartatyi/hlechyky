@@ -140,8 +140,19 @@
 
   // ---------- розмітка ----------
 
+  /// Наступний трек не готовий уже кілька секунд — отже, пісня ще качається з YouTube: кажемо, що чекати недовго.
+  const SLOW_LOAD_MS = 4000;
+
+  function slowLoad(root) {
+    const el = root.querySelector('.mgload');
+    if (!el || el.dataset.slow || Date.now() - (st(root).stageAt || 0) < SLOW_LOAD_MS) return;
+    el.dataset.slow = '1';
+    el.textContent = 'Глек докачує пісню з полиці — ще кілька секунд…';
+  }
+
   function timer(root, ctx) {
     const v = ctx.view || {};
+    slowLoad(root);
     const box = root.querySelector('.mgtime');
     const live = ctx.playing && (v.phase === 'play' || v.phase === 'reveal');
     box.style.visibility = live ? 'visible' : 'hidden';
@@ -162,15 +173,16 @@
       html = '<div class="mgdisc"></div><div class="mgwait">Господар тисне «Почати» — і звучить перший уривок</div>';
     } else if (v.phase === 'loading') {
       key = 'loading:' + v.round;
-      html = '<div class="mgwait"><span class="spin"></span> ' + (v.round ? 'Мить — наступний трек…' : 'Дядько Глек порпається на полицях…') + '</div>';
+      html = '<div class="mgwait"><span class="spin"></span> <span class="mgload">' + (v.round ? 'Мить — наступний трек…' : 'Дядько Глек порпається на полицях…') + '</span></div>';
     } else if (v.phase === 'play') {
       key = 'play:' + v.round;
       html = '<div class="mgdisc"></div>'
         + '<div class="mgwave"><i></i></div>'
         + '<button type="button" class="primary mgplay">▶ Врубити</button>';
     } else if (v.phase === 'done' && (v.played || []).length) {
-      key = 'done:' + v.played.map((t) => t.id).join(',');
-      html = '<div class="mgwait">Що звучало. 👎 — більше не давати в цій грі</div><div class="mgplayed">'
+      key = 'done:' + v.played.map((t) => t.id).join(',') + ':' + (v.error || '');
+      html = (v.error ? '<div class="mgwait mgnote">' + ctx.esc(v.error) + '</div>' : '')
+        + '<div class="mgwait">Що звучало. 👎 — більше не давати в цій грі</div><div class="mgplayed">'
         + v.played.map((t) => '<div class="mgpl">'
           + '<span class="mgmini"' + (t.thumb ? ' style="background-image:url(' + ctx.esc(t.thumb) + ')"' : '') + '></span>'
           + '<span class="mgpt"><b>' + ctx.esc(t.title) + '</b><i>' + ctx.esc(t.artist) + '</i></span>'
@@ -188,6 +200,7 @@
     }
     if (el.dataset.key === key) return;
     el.dataset.key = key;
+    st(root).stageAt = Date.now();
     el.innerHTML = html;
     el.querySelectorAll('.mgdis').forEach((b) => b.onclick = () => dislike(root, b.dataset.track));
     const btn = el.querySelector('.mgplay');
@@ -276,12 +289,27 @@
     }
   }
 
+  /// Нік місця; після партії — і тих, хто вже встав з-за столу: підсумок не має губити переможця.
+  function nickAt(ctx, v, i) {
+    const res = v.phase === 'done' && v.result;
+    return ctx.nickOf(i) || (res && res.nicks && res.nicks[i]) || '';
+  }
+
+  /// Шапка після партії: хто переміг і з чим, а не просто «Партію зіграно».
+  function doneHead(ctx, v) {
+    const res = v.result || {};
+    const w = (res.winners || []).map((i) => nickAt(ctx, v, i)).filter(Boolean);
+    if (!w.length) return 'Партію зіграно' + (res.scores ? ' — жодної пісні не впізнали' : '');
+    const pts = (res.scores || [])[res.winners[0]] || 0;
+    return '🏆 ' + w.join(' і ') + (w.length > 1 ? ' — по ' : ' — ') + pts;
+  }
+
   function scores(root, ctx, v) {
     const found = {};
     for (const f of v.found || []) found[f.seat] = f;
     const rows = [];
     for (let i = 0; i < seatsOf(ctx); i++) {
-      const nick = ctx.nickOf(i);
+      const nick = nickAt(ctx, v, i);
       if (nick) rows.push({ i, nick, score: (v.scores || [])[i] || 0, f: found[i] });
     }
     rows.sort((a, b) => b.score - a.score);
@@ -302,8 +330,11 @@
     root._ctx = ctx;
     const v = ctx.view || {};
     const head = root.querySelector('.mghead');
-    const text = v.phase === 'done' ? 'Партію зіграно' : v.round ? 'Трек ' + v.round + ' з ' + v.rounds : ctx.playing ? 'Готуємось' : '';
+    const text = v.phase === 'done' ? doneHead(ctx, v) : v.round ? 'Трек ' + v.round + ' з ' + v.rounds : ctx.playing ? 'Готуємось' : '';
     if (head.textContent !== text) head.textContent = text;
+    head.classList.toggle('mgwon', v.phase === 'done' && !!(v.result && (v.result.winners || []).length));
+    // після партії повзунок гучності ні до чого: слухати вже нема чого
+    root.querySelector('.mgvol').hidden = v.phase === 'done';
     stage(root, ctx, v);
     audio(root, ctx, v);
     guessBox(root, ctx, v);
