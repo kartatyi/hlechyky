@@ -1439,7 +1439,7 @@ public class SpyTests(ITestOutputHelper output)
         lock (h.Room.Sync) Assert.Equal("Ти тут не граєш", game.Act(7, "ask", Views.Payload(new { seat = 1 })).Message);
         h.Leave(h.NickOf(0));
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        lock (h.Room.Sync) Assert.Contains("Ще раз", game.Act(1, "ask", Views.Payload(new { seat = 2 })).Message);
+        lock (h.Room.Sync) Assert.Contains("ще раз", game.Act(1, "ask", Views.Payload(new { seat = 2 })).Message);
     }
 
     [Fact]

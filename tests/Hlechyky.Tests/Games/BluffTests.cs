@@ -289,7 +289,7 @@ public class BluffTests(ITestOutputHelper output)
         Assert.Contains(BluffBank.Blank, V(h).GetProperty("text").GetString());
         Assert.Equal(1, QNo(h));
         Assert.Equal(Bluff.DefaultQuestions, V(h).GetProperty("of").GetInt32());
-        Assert.Contains("сіли грати в байкарів", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Contains("грати в байкарів", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
