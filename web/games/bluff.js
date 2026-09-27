@@ -11,10 +11,10 @@
       nicks[8], present[8], wrote[8], picked[8],
       my: null | { lie, auto, pick, likes: number[] },
       options: null | [{ i, text, mine, by: number[]|null, picks: number[]|null, truth: bool|null, decoy: bool|null, likes }],
-      revealed: number[], note, quip, scores[8], delta[8], likeDelta[8], victims[8],
-      result: null | { winners, left, scores, best: null | { q, text, by, victims, likes },
-                       recap: [{ q, text, answer, note, best: null | { text, by, victims } }] } }
-  Кадр { phase, q, step, endsAt, wrote, picked, scores } летить лише разом із видами — модуль його не читає.
+      revealed: number[], note, quip, scores[8], delta[8], truthDelta[8], likeDelta[8], victims[8],
+      result: null | { winners, left, scores, best: null | { q, text, by, victims, likes, hlek },
+                       recap: [{ q, text, answer, note, best: null | { text, by, victims, hlek } }] } }
+  Кадрів гра не шле (тик — лише види), тож frame-хука тут нема.
 
   Наміри: act('lie', { text }), act('lie', { auto: true }) — «🎲 Хай Глек збреше», act('pick', { i }), act('like', { i }).
 */
@@ -24,20 +24,23 @@
     + '<circle cx="5" cy="7" r="1" fill="var(--accent)"/>'
     + '<path d="M9.5 8h5.5" stroke="var(--clay)" stroke-width="2" stroke-linecap="round"/></svg>';
 
-  const SEAT_CLASS = ['x', 'o', 'c', 'd', 'bluff-s4', 'bluff-s5', 'bluff-s6', 'bluff-s7'];
-  /// Числа — ті самі, що Bluff.MaxLie / TruthPts / FooledPts / LikePts / FinalMult на сервері.
+  /// Усі вісім кольорів — свої: каркасове «d» (місце 4) сіре й читалось би як «вийшов».
+  const SEAT_CLASS = ['bluff-s0', 'bluff-s1', 'bluff-s2', 'bluff-s3', 'bluff-s4', 'bluff-s5', 'bluff-s6', 'bluff-s7'];
+  /// Числа — ті самі, що Bluff.MaxLie / TruthPts / FooledPts / LikePts на сервері (для правил).
   const MAX_LIE = 40;
   const TRUTH = 1000;
   const FOOLED = 500;
   const LIKE = 100;
-  const FINAL = 2;
   /// Скільки чекаємо, поки вид підтвердить мій вибір картки, перш ніж повірити виду, а не натиску.
   const OPTIMISTIC_MS = 1500;
+  /// Останні секунди фази, коли тим, хто ще не написав чи не обрав, тихо цокає.
+  const TICK_LAST_MS = 5000;
+  const HEART = '\u2764\ufe0f';
 
   const RULES = [
     '🤥 Питання з пропуском і дивна, але справжня відповідь. Кожен вписує свою правдоподібну брехню',
     '🔍 Потім усі бачать картки впереміш і шукають правду — свою брехню обрати не можна',
-    '💰 Вгадав правду — +' + TRUTH + ', кожен, кого надурила твоя брехня, — +' + FOOLED + ' тобі, ❤ — +' + LIKE,
+    '💰 Вгадав правду — +' + TRUTH + ', кожен, кого надурила твоя брехня, — +' + FOOLED + ' тобі, ' + HEART + ' — +' + LIKE,
     '⏱ Останнє питання — подвійне. Нема ідей — «🎲 Хай Глек збреше»',
   ];
 
@@ -64,14 +67,14 @@
     return actx;
   }
 
-  function tone(ac, type, f1, f2, ms, delay) {
+  function tone(ac, type, f1, f2, ms, delay, vol) {
     const t0 = ac.currentTime + (delay || 0);
     const o = ac.createOscillator();
     const g = ac.createGain();
     o.type = type;
     o.frequency.setValueAtTime(f1, t0);
     if (f2 !== f1) o.frequency.exponentialRampToValueAtTime(f2, t0 + ms / 1000);
-    g.gain.setValueAtTime(0.08, t0);
+    g.gain.setValueAtTime(vol || 0.08, t0);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + ms / 1000);
     o.connect(g).connect(ac.destination);
     o.start(t0);
@@ -85,6 +88,8 @@
       if (name === 'open') tone(ac, 'square', 220, 220, 40);
       else if (name === 'truth') { tone(ac, 'sine', 440, 440, 90); tone(ac, 'sine', 660, 660, 90, 0.1); }
       else if (name === 'boing') tone(ac, 'sine', 160, 110, 180, 0.12);
+      else if (name === 'tick') tone(ac, 'triangle', 880, 880, 25, 0, 0.035);
+      else if (name === 'final') { tone(ac, 'triangle', 392, 392, 110); tone(ac, 'triangle', 523, 523, 110, 0.12); tone(ac, 'triangle', 784, 784, 200, 0.24); }
     } catch { /* звук — прикраса, не причина падати */ }
   }
 
@@ -112,15 +117,20 @@
     return list.length <= 1 ? list.join('') : list.slice(0, -1).join(', ') + ' і ' + list[list.length - 1];
   }
 
-  /// Картку показуємо без кінцевої крапки чи знаку оклику: «Гасі!» поруч із «ДЕСНА» видавало б людську руку.
-  const shown = (t) => String(t || '').replace(/[\s.!?…]+$/u, '') || String(t || '');
+  /// Картку показуємо без лапок і без кінцевої крапки чи знаку оклику: «Гасі!» чи «„Аполлон“» поруч із «ДЕСНА»
+  /// видавали б людську руку чи банк — правду шукали б за оформленням, а не за змістом.
+  const shown = (t) => String(t || '').replace(/[«»“”„"]/gu, '').replace(/[\s.!?…]+$/u, '').trim() || String(t || '');
 
   function state(root) {
-    if (!root._bf) root._bf = { opened: new Set(), primed: false, writeQ: -1, auto: null, opt: null, padKey: '' };
+    if (!root._bf) root._bf = { opened: new Set(), primed: false, writeQ: -1, auto: null, opt: null, padKey: '', finalQ: -1, tickAt: 0 };
     return root._bf;
   }
 
   const me = (ctx, v) => (ctx.mine && v.present && v.present[ctx.seat] ? ctx.seat : -1);
+  const modalOpen = () => !!document.querySelector('.modal:not([hidden]), .padhelp, .padkbd');
+
+  /// Фаза активного столу — для рядка підказок пада (hint читається щоразу, коли смужка перемальовується).
+  let padPhase = '';
 
   // =============================================================================================
   // малювання
@@ -129,10 +139,12 @@
   function paint(root, ctx) {
     const v = ctx.view || {};
     const st = state(root);
+    st.ctx = ctx;
     const phase = v.phase || 'read';
     const lobby = !ctx.playing && !v.result;
     const done = !!v.result && (phase === 'done' || !ctx.playing);
     const seat = me(ctx, v);
+    padPhase = lobby || done ? '' : phase;
 
     // ---- шапка: номер, тема, ×2, дуга ----
     const no = root.querySelector('.bluff-no');
@@ -151,6 +163,12 @@
     }
     setText(root.querySelector('.bluff-snd'), muted() ? '🔇' : '🔈');
 
+    // ---- фінал — подія: банер і фанфара на початку останнього питання ----
+    const finalNow = ctx.playing && !done && !!v.final && phase === 'read';
+    const banner = root.querySelector('.bluff-final');
+    banner.hidden = !finalNow;
+    if (finalNow && st.finalQ !== v.q) { st.finalQ = v.q; sound('final'); }
+
     // ---- питання з пропуском ----
     const qBox = root.querySelector('.bluff-q');
     const cards = v.options || [];
@@ -164,7 +182,7 @@
       const was = qBox.dataset.sig || '';
       qBox.dataset.sig = qSig;
       const text = done || lobby ? '' : v.text || '';
-      const blank = '<span class="bluff-blank' + (truth ? ' truth' : fill ? ' lie' : '') + '">' + (fill ? ctx.esc(fill) : '&nbsp;') + '</span>';
+      const blank = '<span class="bluff-blank' + (truth ? ' truth' : fill ? ' lie' : '') + '">' + (fill ? ctx.esc(shown(fill)) : '&nbsp;') + '</span>';
       qBox.innerHTML = ctx.esc(text).split('___').join(blank);
       const b = qBox.querySelector('.bluff-blank');
       if (b && fill && was.split('\u0001')[0] === text) b.classList.add('swap');
@@ -176,18 +194,18 @@
     const stage = root.querySelector('.bluff-stage');
     const my = v.my || {};
     const stageText = lobby || done ? ''
-      : phase === 'read' ? 'Читай уважно — за мить вигадуватимеш свою брехню'
-      // Коли брехню вже записано, про це кажуть рядок під полем і статус — третій раз не треба.
-      : phase === 'write' ? (seat < 0 ? 'Байкарі брешуть…' : my.lie ? '' : 'Вигадай брехню, у яку повірять друзі. Правду писати не можна 🙂')
-      : phase === 'pick' ? (seat < 0 ? 'Гравці шукають правду…' : my.pick != null ? 'Обрано. Можна передумати, поки йде час' : 'Одна з карток — правда. Яка? Свою обрати не можна')
-      // Розкриття й рахунок пояснює рядок статусу каркаса під столом — двічі те саме не пишемо.
+      : phase === 'read' ? (v.final ? '' : 'Читай уважно — за мить вигадуватимеш свою брехню')
+      : phase === 'write' ? (waiting(ctx, v, v.wrote, seat) || (seat < 0 ? 'Байкарі брешуть…' : my.lie ? '' : 'Вигадай брехню, у яку повірять друзі. Правду писати не можна 🙂'))
+      : phase === 'pick' ? (waiting(ctx, v, v.picked, seat) || (seat < 0 ? 'Гравці шукають правду…' : my.pick != null ? 'Обрано. Можна передумати, поки йде час' : 'Одна з карток — правда. Яка? Свою обрати не можна'))
+      // Розкриття й рахунок пояснюють рядок «Ти…» під картками і статус каркаса — двічі те саме не пишемо.
       : '';
     if (stage.textContent !== stageText) stage.textContent = stageText;
     stage.hidden = !stageText;
 
     paintWrite(root, ctx, v, st, seat, phase);
     paintWho(root, ctx, v, phase, lobby, done);
-    paintCards(root, ctx, v, st, seat, phase, done);
+    const fresh = paintCards(root, ctx, v, st, seat, phase, done);
+    paintMe(root, ctx, v, seat, phase, done);
 
     // ---- «а насправді…» ----
     const note = root.querySelector('.bluff-note');
@@ -207,22 +225,58 @@
     paintScore(root, ctx, v, phase, lobby, done);
     root.querySelector('.bluff-rules').hidden = !lobby;
     root.querySelector('.bluff').classList.toggle('bluff-lobby', lobby);
-    padFocus(root, ctx, v, st, seat, phase, done);
+    padFocus(root, ctx, v, st, seat, phase, done, lobby);
+
+    // Щойно відкрита картка (чи правда з поясненням) — у видиму частину екрана: на телефоні й на Deck із вісьмома
+    // картками вони лежать під краєм. 'nearest' не смикає сторінку, коли все й так видно.
+    if (fresh.length) {
+      const i = fresh[fresh.length - 1];
+      const target = cards[i] && cards[i].truth && !note.hidden ? note : root.querySelector('.bluff-opts').children[i];
+      if (target) { try { target.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch { /* старий браузер */ } }
+    }
   }
 
-  /// Джойстик: на новій фазі ставимо кільце туди, де зараз справа (поле брехні, перша картка). Інакше воно
-  /// шукало б «найближче» до зниклого блоку — і могло стати на «Встати», а один зайвий Ⓐ — і ти вже не за столом.
-  function padFocus(root, ctx, v, st, seat, phase, done) {
+  /// «Чекаємо: Петро» — коли решта вже написала (обрала), а стіл тримають один-три.
+  function waiting(ctx, v, flags, seat) {
+    if (!v.nicks || !v.present || !flags) return '';
+    if (seat >= 0 && !flags[seat]) return '';
+    const left = [];
+    let present = 0;
+    for (let i = 0; i < 8; i++) {
+      if (!v.nicks[i] || !v.present[i]) continue;
+      present++;
+      if (!flags[i]) left.push(nick(ctx, v, i));
+    }
+    return left.length && left.length <= 3 && left.length < present ? '⏳ Чекаємо: ' + left.join(', ') : '';
+  }
+
+  /// Джойстик: кільце не має виходити з гри на «Встати» (один зайвий Ⓐ — і ти вже не за столом). Поки партія йде,
+  /// колонка гри — межа кільця (data-pad-scope), а на кожну нову фазу модуль ставить кільце туди, де зараз справа.
+  /// Коли висить вікно (новини, довідка пада, клавіатура), не ставимо — і не запам'ятовуємо фазу: повторимо, щойно
+  /// вікно закриють (а після закриття каркас сам шукає data-pad-first у межі).
+  function padFocus(root, ctx, v, st, seat, phase, done, lobby) {
+    const main = root.querySelector('.bluff-main');
+    const playing = seat >= 0 && ctx.playing && !done && !lobby;
+    main.toggleAttribute('data-pad-scope', playing);
+    const cards = [...root.querySelectorAll('.bluff-opts .bluff-opt')];
+    const firstCard = cards.find((b) => !b.disabled && !b.classList.contains('mine')) || cards[0] || null;
+    const want = !playing ? null
+      : phase === 'write' ? root.querySelector('.bluff-in')
+      : phase === 'pick' || phase === 'reveal' || phase === 'score' ? firstCard
+      : root.querySelector('.bluff-q');
+    for (const el of root.querySelectorAll('[data-pad-first]')) if (el !== want) el.removeAttribute('data-pad-first');
+    if (want) want.setAttribute('data-pad-first', '');
+
     const key = v.q + ':' + phase;
     if (st.padKey === key) return;
-    st.padKey = key;
     const pad = window.HPad;
-    if (!pad || !pad.on || typeof pad.focus !== 'function' || seat < 0 || done || !ctx.playing) return;
-    const el = phase === 'write' ? root.querySelector('.bluff-in')
-      : phase === 'pick' ? root.querySelector('.bluff-opts .bluff-opt:not(:disabled)')
-      : phase === 'read' ? root.querySelector('.bluff-q')
-      : null;   // розкриття й рахунок — картки лишаються на місці, кільце з них не зникає
-    if (el && !el.hidden) { try { pad.focus(el); } catch { /* пад — прикраса, не причина падати */ } }
+    if (!pad || !pad.on || typeof pad.focus !== 'function' || !playing) { st.padKey = key; return; }
+    if (modalOpen()) return;                     // спершу вікно — фазу не записуємо, повторимо на наступному виді
+    // У розкритті й рахунку картки лишаються на місці, і кільце з них нікуди не зникає.
+    const el = phase === 'reveal' || phase === 'score' ? null : want;
+    if (el && (el.hidden || !el.isConnected)) return;
+    st.padKey = key;
+    if (el) { try { pad.focus(el); } catch { /* пад — прикраса, не причина падати */ } }
   }
 
   function paintWrite(root, ctx, v, st, seat, phase) {
@@ -249,7 +303,7 @@
       input.value = my.lie;
       count(root);
     }
-    if (opened && !HGames.ui.coarse() && !document.querySelector('.modal:not([hidden])')) {
+    if (opened && !HGames.ui.coarse() && !modalOpen()) {
       const busy = document.activeElement;
       if (!busy || busy === document.body || !/^(INPUT|TEXTAREA|SELECT)$/.test(busy.tagName)) input.focus({ preventScroll: true });
     }
@@ -292,14 +346,14 @@
     st.primed = false;
     st.opt = null;
     box.innerHTML = cards.map((o, i) => '<div class="bluff-cell" data-i="' + i + '">'
-      + '<button type="button" class="bluff-opt" data-i="' + i + '" aria-label="Картка ' + (i + 1) + ': ' + ctx.esc(o.text) + '">'
+      + '<button type="button" class="bluff-opt" data-i="' + i + '" aria-label="Картка ' + (i + 1) + ': ' + ctx.esc(shown(o.text)) + '">'
       + '<span class="bluff-n">' + (i + 1) + '</span>'
       + '<span class="bluff-otext">' + ctx.esc(shown(o.text)) + '</span>'
       + '<span class="bluff-tag"></span>'
       + '<span class="bluff-by"></span>'
       + '<span class="bluff-picks"></span>'
       + '</button>'
-      + '<button type="button" class="bluff-like" data-i="' + i + '" hidden aria-label="Сподобалась брехня">❤ <b>0</b></button>'
+      + '<button type="button" class="bluff-like" data-i="' + i + '" hidden aria-label="Сподобалась брехня">' + HEART + ' <b>0</b></button>'
       + '</div>').join('');
     return true;
   }
@@ -307,12 +361,14 @@
   function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
   function setHtml(el, html) { if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; } }
 
+  /// Малює картки; повертає номери щойно відкритих (для шоу й прокрутки).
   function paintCards(root, ctx, v, st, seat, phase, done) {
     const box = root.querySelector('.bluff-opts');
     const cards = v.options || [];
     const show = !done && cards.length > 0 && (phase === 'pick' || phase === 'reveal' || phase === 'score');
     box.hidden = !show;
-    if (!show) return;
+    const fresh = [];
+    if (!show) return fresh;
     buildCards(box, ctx, v, st);
     const my = v.my || {};
     const likes = my.likes || [];
@@ -321,7 +377,6 @@
     // Оптимістичний вибір: картка світиться одразу по кліку, а не за пів секунди, коли прийде вид.
     let pick = my.pick != null ? my.pick : -1;
     if (st.opt && st.opt.q === v.q && phase === 'pick' && Date.now() - st.opt.at < OPTIMISTIC_MS && st.opt.i !== pick) pick = st.opt.i;
-    const fresh = [];
     const cells = box.children;
     for (let i = 0; i < cards.length && i < cells.length; i++) {
       const o = cards[i];
@@ -350,11 +405,10 @@
       setHtml(btn.querySelector('.bluff-picks'), picks);
 
       const like = cell.lastElementChild;
-      const canLike = likable;
-      const showLike = isOpen && !o.truth && !o.decoy && (canLike || o.likes > 0);
+      const showLike = isOpen && !o.truth && !o.decoy && (likable || o.likes > 0);
       like.hidden = !showLike;
       if (showLike) {
-        like.disabled = !canLike;
+        like.disabled = !likable;
         like.classList.toggle('on', likes.includes(i));
         setText(like.querySelector('b'), String(o.likes || 0));
       }
@@ -371,6 +425,37 @@
       sound(o.truth ? 'truth' : 'open');
       if (o.mine && (o.picks || []).length) sound('boing');
     }
+    return fresh;
+  }
+
+  /// Мій рядок на розкритті: кого надурила моя брехня і хто надурив мене — найсмішніша мить питання одним рядком,
+  /// щоб не вичитувати її з карток і таблиці (на телефоні таблиця ще й під краєм).
+  function paintMe(root, ctx, v, seat, phase, done) {
+    const box = root.querySelector('.bluff-me');
+    let html = '';
+    if (seat >= 0 && !done && (phase === 'reveal' || phase === 'score')) {
+      const cards = v.options || [];
+      const my = v.my || {};
+      const parts = [];
+      const picked = my.pick != null ? cards[my.pick] : null;
+      if (picked && picked.by != null) {
+        const t = v.truthDelta ? v.truthDelta[seat] : 0;
+        if (picked.truth) parts.push('<b class="ok">✅ Правду знайдено' + (t ? ' · +' + num(t) : '') + '</b>');
+        else if (picked.decoy) parts.push('<span class="lie">🏺 Тебе надурив Глек</span>');
+        else parts.push('<span class="lie">🤥 Тебе надурили: <b>' + ctx.esc(names(ctx, v, picked.by)) + '</b></span>');
+      }
+      const mine = cards.find((o) => o.mine && o.by != null);
+      if (mine) {
+        const n = (mine.picks || []).length;
+        const pts = (v.delta ? v.delta[seat] : 0) - (v.truthDelta ? v.truthDelta[seat] : 0);
+        parts.push(n
+          ? '<b class="win">😏 Твоя брехня зловила ' + victims(n) + (pts > 0 ? ' · +' + num(pts) : '') + '</b>'
+          : '<span class="muted">Твоя брехня нікого не надурила</span>');
+      }
+      html = parts.join('<span class="bluff-sep"> · </span>');
+    }
+    setHtml(box, html);
+    box.hidden = !html;
   }
 
   /// Кінець партії: переможці, найкраща брехня й «Як це було».
@@ -389,21 +474,25 @@
       if (r.left && !r.best) { /* про «нікого не надурили» мовчимо: партія просто обірвалась */ }
       else if (r.best)
         html += '<div class="bluff-best"><span class="muted small">Найкраща брехня партії</span>'
-          + '<b>«' + ctx.esc(r.best.text) + '»</b>'
-          + '<span>' + ctx.esc(names(ctx, v, r.best.by)) + ' · ' + victims(r.best.victims) + (r.best.likes ? ' · ❤ ' + r.best.likes : '') + '</span></div>';
+          + '<b>«' + ctx.esc(shown(r.best.text)) + '»</b>'
+          + '<span>' + ctx.esc(names(ctx, v, r.best.by)) + (r.best.hlek ? ' з підказки Глека 🎲' : '') + ' · ' + victims(r.best.victims)
+          + (r.best.likes ? ' · ' + HEART + ' ' + r.best.likes : '') + '</span></div>';
       else html += '<div class="bluff-best none muted small">Цього разу нікого так і не надурили — чесні ви якісь</div>';
       const recap = r.recap || [];
       if (recap.length)
-        html += '<details class="bluff-recap" open><summary>Як це було · ' + recap.length + ' ' + plural(recap.length, 'питання', 'питання', 'питань') + '</summary><ol>'
+        // На невисокому екрані (Deck, ноут 1280×800) «Як це було» згорнуте: інакше «Ще раз» їде під край.
+        html += '<details class="bluff-recap"' + (tall() ? ' open' : '') + '><summary>Як це було · ' + recap.length + ' ' + plural(recap.length, 'питання', 'питання', 'питань') + '</summary><ol>'
           + recap.map((x) => '<li><span class="bluff-rq">' + ctx.esc(x.text).split('___').join('<b class="bluff-ra">' + ctx.esc(x.answer) + '</b>') + '</span>'
             + (x.note ? '<span class="bluff-rn muted small">' + ctx.esc(x.note) + '</span>' : '')
-            + (x.best ? '<span class="bluff-rb small">🤥 «' + ctx.esc(x.best.text) + '» — ' + ctx.esc(names(ctx, v, x.best.by)) + ', ' + victims(x.best.victims) + '</span>' : '')
+            + (x.best ? '<span class="bluff-rb small">🤥 «' + ctx.esc(shown(x.best.text)) + '»' + (x.best.hlek ? ' 🎲' : '') + ' — ' + ctx.esc(names(ctx, v, x.best.by)) + ', ' + victims(x.best.victims) + '</span>' : '')
             + '</li>').join('') + '</ol></details>';
     }
     // Порівнюємо з тим, що малювали, а не з innerHTML: інакше кожен вид згортав би розгорнуте людиною.
     setHtml(box, html);
     box.hidden = !html;
   }
+
+  const tall = () => (window.innerHeight || 0) >= 900;
 
   function paintScore(root, ctx, v, phase, lobby, done) {
     const box = root.querySelector('.bluff-score');
@@ -414,31 +503,48 @@
       const seats = [];
       for (let i = 0; i < 8; i++) if (v.nicks && v.nicks[i]) seats.push(i);
       seats.sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b);
-      const cards = v.options || [];
-      const truth = cards.find((o) => o.truth === true);
-      const mult = v.final ? FINAL : 1;
       const deltas = !done && (phase === 'reveal' || phase === 'score');
       html = seats.map((i) => {
         const gone = !(v.present && v.present[i]);
         let chips = '';
         if (deltas) {
-          const t = truth && (truth.picks || []).includes(i) ? TRUTH * mult : 0;
-          const fooled = (v.delta ? v.delta[i] : 0) - t;
+          // Скільки за правду — каже сервер: той, хто встав, вибір на картці лишає, а очок не отримує.
+          const t = v.truthDelta ? v.truthDelta[i] || 0 : 0;
+          const fooled = (v.delta ? v.delta[i] || 0 : 0) - t;
           const liked = v.likeDelta ? v.likeDelta[i] : 0;
-          if (t) chips += '<i class="bluff-d ok">+' + num(t) + ' ✅</i>';
+          if (t > 0) chips += '<i class="bluff-d ok">+' + num(t) + ' ✅</i>';
           if (fooled > 0) chips += '<i class="bluff-d lie">+' + num(fooled) + ' 🤥' + (v.victims && v.victims[i] > 1 ? '×' + v.victims[i] : '') + '</i>';
-          if (liked > 0) chips += '<i class="bluff-d like">+' + num(liked) + ' ❤</i>';
+          if (liked > 0) chips += '<i class="bluff-d like">+' + num(liked) + ' ' + HEART + '</i>';
         }
         return '<div class="bluff-srow' + (win.includes(i) ? ' win' : '') + (gone ? ' gone' : '') + '">'
           + '<span class="bluff-dot bluff-c' + i + '"></span>'
-          + '<span class="bluff-sn">' + (win.includes(i) ? '🏆 ' : '') + ctx.esc(nick(ctx, v, i)) + (gone ? ' <small>🚪</small>' : '') + '</span>'
-          + '<span class="bluff-sd">' + chips + '</span>'
-          + '<b class="bluff-sv">' + num(sc[i]) + '</b></div>';
+          + '<span class="bluff-sn" title="' + ctx.esc(nick(ctx, v, i)) + '">' + (win.includes(i) ? '🏆 ' : '') + ctx.esc(nick(ctx, v, i)) + (gone ? ' <small>🚪</small>' : '') + '</span>'
+          + '<b class="bluff-sv">' + num(sc[i]) + '</b>'
+          + (chips ? '<span class="bluff-sd">' + chips + '</span>' : '')
+          + '</div>';
       }).join('');
       if (html) html = '<div class="bluff-shead muted small">Рахунок</div>' + html;
     }
     setHtml(box, html);
     box.hidden = !html;
+  }
+
+  /// Тихий цокіт останніх секунд — лише тому, хто ще тримає стіл (не написав чи не обрав).
+  function tickLoop(root) {
+    const st = root._bf;
+    if (!st || !st.ctx) return;
+    const ctx = st.ctx;
+    const v = ctx.view || {};
+    if (!ctx.playing || (v.phase !== 'write' && v.phase !== 'pick') || document.hidden) return;
+    const seat = me(ctx, v);
+    const my = v.my || {};
+    if (seat < 0 || (v.phase === 'write' ? !!my.lie : my.pick != null)) return;
+    const left = (Date.parse(v.endsAt) || 0) - Date.now();
+    if (left <= 0 || left > TICK_LAST_MS) return;
+    const sec = Math.ceil(left / 1000);
+    if (st.tickAt === v.q * 1000 + sec + (v.phase === 'pick' ? 500 : 0)) return;
+    st.tickAt = v.q * 1000 + sec + (v.phase === 'pick' ? 500 : 0);
+    sound('tick');
   }
 
   // =============================================================================================
@@ -484,6 +590,8 @@
     const cols = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length);
     const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[code] || 0;
     let i = at < 0 ? 0 : at + step;
+    // Під останньою картою рядка порожньо — ↓ стає на останню картку, а не губиться.
+    if (code === 'ArrowDown' && i >= list.length && at < list.length - 1 && Math.floor(at / cols) < Math.floor((list.length - 1) / cols)) i = list.length - 1;
     // Перестрибуємо свою (вимкнену) картку в тому самому напрямку.
     while (i >= 0 && i < list.length && list[i].disabled) i += step || 1;
     if (i < 0 || i >= list.length) return;
@@ -509,14 +617,24 @@
       items: [
         '🤥 Питання з пропуском і дивною правдою: впиши свою правдоподібну брехню (до 40 знаків)',
         '🔍 Потім усі шукають правду серед брехень — свою обрати не можна',
-        '💰 Вгадав правду — +1000, кожен, кого надурила твоя брехня, — +500 тобі, ❤ за найсмішнішу — +100',
+        '💰 Вгадав правду — +1000, кожен, кого надурила твоя брехня, — +500 тобі, ' + HEART + ' за найсмішнішу — +100',
         '🎲 Нема ідей — «Хай Глек збреше»: він підкине брехню з банку, а очки за неї — твої',
         '⏱ Останнє питання — подвійне; коли всі натиснули «Готово», фаза не чекає таймера',
       ],
     },
     seatNames: (i) => String(i + 1),
     seatClass: SEAT_CLASS,
-    pad: { hint: '{dpad} по картках · {a} обрати або ❤', when: (ctx) => ctx.mine && ctx.playing },
+    pad: {
+      // Рядок підказок — під фазу: у write карток ще нема, а Ⓐ на полі відкриває клавіатуру.
+      get hint() {
+        return padPhase === 'write' ? '{a} на полі — клавіатура · «Готово» чи 🎲'
+          : padPhase === 'pick' ? '{dpad} по картках · {a} обрати правду'
+          : padPhase === 'reveal' || padPhase === 'score' ? '{dpad} по картках · {a} ' + HEART + ' брехні'
+          : padPhase === 'read' ? 'Читай питання — за мить брехати'
+          : '';
+      },
+      when: (ctx) => ctx.mine && ctx.playing,
+    },
 
     mount(root, ctx) {
       root._bf = null;
@@ -525,6 +643,7 @@
         + '<div class="bluff-main">'
         + '<div class="bluff-top"><span class="bluff-no muted small"></span><span class="bluff-x2" hidden title="Останнє питання — очки подвійні">×2</span>'
         + '<span class="bluff-arc"></span><button type="button" class="ghost bluff-snd" title="Звук" aria-label="Звук">🔈</button></div>'
+        + '<div class="bluff-final" hidden>🔥 Останнє питання — правда й жертви вдвічі дорожчі!</div>'
         + '<div class="bluff-q" aria-live="polite" data-pad-focus></div>'
         + '<div class="bluff-stage muted small"></div>'
         + '<div class="bluff-write" hidden>'
@@ -537,6 +656,7 @@
         + '</div>'
         + '<div class="bluff-who"></div>'
         + '<div class="bluff-opts" hidden></div>'
+        + '<div class="bluff-me" hidden aria-live="polite"></div>'
         + '<div class="bluff-note" hidden><img src="/static/glek.svg" alt=""><div><div class="bluff-ntext"></div><div class="bluff-quip muted small"></div></div></div>'
         + '<div class="bluff-end" hidden></div>'
         + '<ul class="bluff-rules muted small">' + RULES.map((r) => '<li>' + r + '</li>').join('') + '</ul>'
@@ -572,6 +692,7 @@
       root.addEventListener('pointerdown', wake, { passive: true });
       root.addEventListener('keydown', wake);
       paint(root, ctx);
+      root._bfTick = setInterval(() => tickLoop(root), 250);
     },
 
     update(root, ctx) {
@@ -611,7 +732,7 @@
       const mine = me(ctx, v) >= 0;
       const my = v.my || {};
       switch (v.phase) {
-        case 'read': return 'Читай питання…';
+        case 'read': return v.final ? '🔥 Фінал: очки вдвічі' : 'Читай питання…';
         case 'write': return !mine ? 'Байкарі брешуть…' : my.lie ? 'Записано. Чекаємо на решту…' : 'Пиши брехню й тисни «Готово»';
         case 'pick': return !mine ? 'Усі думають…' : my.pick != null ? 'Обрано. Можна передумати' : 'Де правда? Обери картку';
         case 'reveal': return 'Розкриваємо…';
@@ -623,7 +744,11 @@
     unmount(root, ctx) {
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
+      if (root._bfTick) { clearInterval(root._bfTick); root._bfTick = 0; }
+      const main = root.querySelector('.bluff-main');
+      if (main) main.removeAttribute('data-pad-scope');
       root._bf = null;
+      padPhase = '';
       if (ctx && ctx._bluffRoot === root) ctx._bluffRoot = null;
     },
   });

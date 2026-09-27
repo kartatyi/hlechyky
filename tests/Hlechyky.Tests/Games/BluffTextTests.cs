@@ -201,6 +201,14 @@ public class BluffTextTests
         Assert.True(BluffText.LooksSame("лампами", "лампи"));
         Assert.True(BluffText.LooksSame("Ірак", "в Іраку"));
         Assert.True(BluffText.LooksSame("синій", "синя"));
+        // Основа — без закінчення: «кита» (кит) і «Китаї» (Китай) — різні слова, хоч одне й починає інше.
+        Assert.False(BluffText.LooksSame("кита", "Китаї"));
+        Assert.True(BluffText.LooksSame("кит", "кита"));
+        Assert.True(BluffText.LooksSame("Китай", "в Китаї"));
+        Assert.True(BluffText.LooksSame("школа", "школу"));
+        Assert.True(BluffText.LooksSame("школою", "школи"));
+        Assert.True(BluffText.LooksSame("Уругвай", "Уругваї"));
+        Assert.True(BluffText.LooksSame("заштовхують", "заштовхує"));
     }
 
     [Fact]
