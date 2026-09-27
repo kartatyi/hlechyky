@@ -1,0 +1,161 @@
+/*
+  Корчма. Залу малює канвас; тут — рядок фішок над ним (годинник, корчмар, серця, кухлі), новини поверх низу мапи,
+  підсумок раунду і керування пальцем. Свої кольори — на :root, бо модуль читає їх через ctx.css(). Усі класи з
+  префіксом tavern-.
+*/
+:root {
+  --tavern-floor: #8a6440;    /* дошки долівки */
+  --tavern-floor2: #7a5634;   /* темніші дошки */
+  --tavern-wall: #4a3020;     /* зруб */
+  --tavern-wood: #a0703f;     /* лави */
+  --tavern-table: #b98a52;    /* столи */
+  --tavern-yard: #6f8a4e;     /* двір за дверима */
+  --tavern-shadow: rgba(20, 12, 5, .34);
+  --tavern-blue: #6fb3e8;     /* п'яте місце */
+  --tavern-pink: #e88ac0;     /* шосте */
+  --tavern-violet: #b48ae8;   /* сьоме */
+  --tavern-red: #e86a6a;      /* восьме */
+}
+
+/* місця 5–8: чіпи в шапці картки каркас знає лише x/o/c/d */
+.gseat.tavern-b { color: var(--tavern-blue); }
+.gseat.tavern-p { color: var(--tavern-pink); }
+.gseat.tavern-v { color: var(--tavern-violet); }
+.gseat.tavern-r { color: var(--tavern-red); }
+
+.tavern-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* Мапа 3:2. На ноуті й Деку її обмежує висота вікна: точну ширину модуль рахує сам; тут — запасна оцінка. */
+.tavern-stage {
+  position: relative;
+  width: 100%;
+  max-width: min(960px, calc((100vh - 300px) * 1.5));
+}
+.tavern-board {
+  width: 100%;
+  max-width: none;
+  border-radius: 10px;
+  background: #4a3020;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tavern-board.tavern-port { touch-action: none; }
+
+/* ---- фішки над мапою ---- */
+.tavern-hud, .tavern-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
+.tavern-chips { display: contents; }
+.tavern-seats { display: contents; }
+.tavern-body > .tavern-seats { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; font-size: .8em; }
+.tavern-chip, .tavern-seat {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.tavern-clock { color: var(--muted); min-width: 4.4em; justify-content: center; }
+.tavern-clock.hot { color: var(--danger); animation: tavern-pulse 1s ease-in-out infinite; }
+.tavern-bar { color: var(--muted); }
+.tavern-bar.warn { color: var(--accent); }
+.tavern-bar.hot { color: #fff; background: #a8321f; animation: tavern-pulse .8s ease-in-out infinite; }
+@keyframes tavern-pulse { 50% { opacity: .6; } }
+.tavern-hearts i, .tavern-mugs i { font-style: normal; }
+.tavern-hearts i { color: #e25a4a; }
+.tavern-hearts i.lost { opacity: .22; filter: grayscale(1); }
+.tavern-mugs small { color: var(--muted); font-size: .86em; margin-right: 1px; }
+.tavern-mugs i { opacity: .5; }
+.tavern-mugs i.done { opacity: 1; text-shadow: 0 0 6px var(--accent); }
+.tavern-seat i { width: .7em; height: .7em; border-radius: 50%; background: currentColor; display: inline-block; }
+.tavern-seat b { color: var(--text); }
+.tavern-seat small { color: var(--muted); font-size: .92em; }
+.tavern-seat.dead { text-decoration: line-through; opacity: .7; }
+.tavern-seat.out { opacity: .45; }
+.tavern-seat.me { box-shadow: 0 0 0 1px currentColor inset; }
+.tavern-mute {
+  padding: 2px 8px; border-radius: 999px; background: var(--bg2); border: 0; cursor: pointer; font-size: 1em; line-height: 1.4;
+}
+
+/* кольори місць: чіпи, ніки в новинах і підсумку */
+.tavern-s0 { color: var(--accent); }
+.tavern-s1 { color: var(--ok); }
+.tavern-s2 { color: var(--clay); }
+.tavern-s3 { color: var(--muted); }
+.tavern-s4 { color: var(--tavern-blue); }
+.tavern-s5 { color: var(--tavern-pink); }
+.tavern-s6 { color: var(--tavern-violet); }
+.tavern-s7 { color: var(--tavern-red); }
+
+/* ---- новини: останні дві події смужкою поверх низу мапи (над ґанком), згасають за 6 с ---- */
+.tavern-news {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 3px; font-size: .84em; text-align: center;
+}
+.tavern-ni {
+  animation: tavern-fade 6s ease-in forwards; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 11px; border-radius: 999px; background: rgba(20, 12, 5, .8); color: #f3ece0;
+}
+.tavern-ni + .tavern-ni { opacity: .72; }
+.tavern-portmode .tavern-news { top: 5px; bottom: auto; left: 5px; right: 108px; align-items: flex-start; flex-direction: column; font-size: .7em; }
+.tavern-portmode .tavern-ni { padding: 1px 8px; }
+.tavern-portmode .tavern-ni + .tavern-ni { display: none; }
+.tavern-stage.tavern-open .tavern-news { display: none; }
+@keyframes tavern-fade { 0% { opacity: 0; transform: translateY(-3px); } 6% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- підсумок раунду й партії ---- */
+.tavern-sum { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; font-size: .84em; font-variant-numeric: tabular-nums; }
+.tavern-stage > .tavern-sum { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none; }
+.tavern-sc {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  background: rgba(20, 12, 5, .86); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.tavern-body > .tavern-sum .tavern-sc { background: var(--bg2); }
+.tavern-sc b { font-weight: 700; }
+.tavern-sc em { font-style: normal; font-weight: 800; color: #f3ece0; }
+.tavern-body > .tavern-sum .tavern-sc em { color: var(--text); }
+.tavern-sc small { color: #c9bca6; font-size: .88em; }
+.tavern-body > .tavern-sum .tavern-sc small { color: var(--muted); }
+.tavern-sc.win { box-shadow: 0 0 0 1.5px currentColor inset; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern-clock.hot, .tavern-bar.hot { animation: none; }
+  .tavern-ni { animation: none; }
+}
+
+/* ---- керування пальцем: хрестовина — одна зона (тримай і веди пальцем), дії — одним дотиком ---- */
+.tavern-pad { display: none; }
+.tavern-pad.tavern-off { display: none !important; }
+@media (pointer: coarse) {
+  .tavern-pad {
+    display: flex; gap: 14px; align-items: center; justify-content: center; margin-top: 2px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .tavern-dirs {
+    display: grid; grid-template-columns: repeat(3, 50px); grid-template-rows: repeat(3, 50px); gap: 4px;
+    touch-action: none; border-radius: 50%;
+  }
+  .tavern-arr {
+    display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.25em;
+    background: var(--panel3); color: var(--text); pointer-events: none;
+  }
+  .tavern-arr.on { background: var(--clay); }
+  .tavern-arr[data-dir="3"] { grid-column: 2; grid-row: 1; }
+  .tavern-arr[data-dir="2"] { grid-column: 1; grid-row: 2; }
+  .tavern-arr[data-dir="0"] { grid-column: 3; grid-row: 2; }
+  .tavern-arr[data-dir="1"] { grid-column: 2; grid-row: 3; }
+  .tavern-peek { grid-column: 2; grid-row: 2; justify-content: center; border-radius: 50%; font-size: 1.05em; padding: 0; min-width: 0; }
+  /* кулак — великий і першим під великим пальцем; кухоль і лава — поруч */
+  .tavern-acts { display: grid; grid-template-columns: 64px 52px; grid-template-rows: 52px 52px; gap: 8px; align-items: center; }
+  .tavern-acts button { justify-content: center; border-radius: 50%; font-size: 1.4em; background: var(--panel3); padding: 0; min-width: 0; height: 52px; }
+  .tavern-acts button[data-act="punch"] { grid-row: 1 / span 2; height: 64px; font-size: 1.7em; }
+  .tavern-acts button:active, .tavern-peek:active { background: var(--clay); }
+}
+@media (max-width: 380px) {
+  .tavern-dirs { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); }
+  .tavern-acts { grid-template-columns: 58px 48px; grid-template-rows: 48px 48px; }
+  .tavern-acts button { height: 48px; }
+  .tavern-acts button[data-act="punch"] { height: 58px; }
+  .tavern-pad { gap: 10px; }
+}
+@media (max-width: 480px) {
+  .tavern-hud { font-size: .76em; gap: 4px; }
+  .tavern-chip, .tavern-seat { padding: 2px 7px; }
+  .tavern-news { font-size: .78em; }
+}
