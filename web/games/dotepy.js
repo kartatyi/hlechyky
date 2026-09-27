@@ -156,7 +156,7 @@
       s.keys = { stage: key };
       s.local = null;
       stage.className = 'dt-stage dt-' + key.split('|')[0];
-      if (key === 'lobby') stage.innerHTML = lobbyHtml(ctx);
+      if (key === 'lobby') { stage.innerHTML = lobbyHtml(ctx); bindOwn(root, stage); }
       else if (key.startsWith('write')) buildWrite(root, ctx, v, stage);
       else if (key.startsWith('card')) buildCard(root, ctx, v, stage);
       else if (key.startsWith('table')) buildTable(root, ctx, v, stage);
@@ -169,6 +169,7 @@
       const tip = stage.querySelector('.dt-howtip');
       const text = lobbyTip(ctx);
       if (tip && tip.textContent !== text) { tip.textContent = text; tip.hidden = !text; }
+      refreshOwn(ctx, v, stage);
     }
     if (key.startsWith('write')) refreshWrite(root, ctx, v, stage);
     else if (key.startsWith('card')) refreshCard(root, ctx, v, stage);
@@ -214,7 +215,45 @@
       + '<div class="dt-howrow"><b>🎭</b><span><i>Дивись, хто це написав.</i> ' + votes + '</span></div>'
       + '<div class="dt-howsmall muted small">Троє й більше. Дядько Глек зачитує все вголос; глядачі голосують як публіка 👀 і сміються 😂</div>'
       + '<div class="dt-howtip small" hidden></div>'
+      + (ctx.mine ? '<form class="dt-own"><input class="dt-ownin" type="text" maxlength="100" autocomplete="off" spellcheck="true"'
+        + ' enterkeyhint="send" placeholder="Своє завдання для друзів — необов\'язково" aria-label="Своє завдання">'
+        + '<button class="ghost dt-ownbtn" type="submit">Додати</button></form>' : '')
+      + '<div class="dt-ownst muted small"></div>'
       + '</div>';
+  }
+
+  /// Своє завдання в лобі: «Що Петро завжди забуває на рибалці» — піде в партію першим, з підписом автора.
+  function bindOwn(root, stage) {
+    const form = stage.querySelector('.dt-own');
+    if (!form) return;
+    const input = form.querySelector('.dt-ownin');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const c = root._ctx;
+      if (!c) return;
+      c.act('mine', { text: input.value }).then((r) => { if (r && r.ok) input.blur(); });
+    });
+    stage.addEventListener('click', (e) => {
+      const b = e.target.closest('.dt-owndel');
+      if (!b) return;
+      const c = root._ctx;
+      if (c) c.act('mine', { text: '' }).then((r) => { if (r && r.ok) input.value = ''; });
+    });
+  }
+
+  function refreshOwn(ctx, v, stage) {
+    const o = v.own || { count: 0, mine: null };
+    const input = stage.querySelector('.dt-ownin');
+    if (input && document.activeElement !== input && o.mine && !input.value) input.value = o.mine;
+    const st = stage.querySelector('.dt-ownst');
+    const html = (o.mine ? '✓ Твоє завдання в партії · <button type="button" class="linkish dt-owndel">прибрати</button>' : '')
+      + (o.count ? (o.mine ? ' · ' : '') + 'своїх завдань за столом: ' + o.count : '');
+    if (st && st.dataset.sig !== html) { st.dataset.sig = html; st.innerHTML = html; }
+  }
+
+  /// «✍ завдання від Петра» — під своїм завданням друга.
+  function byHtml(ctx, v, by) {
+    return by == null ? '' : '<div class="dt-by" style="--c:' + col(by) + '">✍ завдання від <b>' + ctx.esc(nickOf(ctx, v, by)) + '</b></div>';
   }
 
   function lobbyTip(ctx) {
@@ -236,7 +275,7 @@
     if (v.say && v.say.text) html += '<div class="dt-say intro"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>';
     if (v.me) {
       html += tasks.map((t, n) => '<div class="dt-task" data-i="' + t.i + '" style="--n:' + n + '">'
-        + '<div class="dt-prompt" data-pad-focus>' + ctx.esc(t.prompt) + '</div>'
+        + '<div class="dt-prompt" data-pad-focus>' + ctx.esc(t.prompt) + '</div>' + byHtml(ctx, v, t.by)
         + '<form class="dt-form"><input class="dt-in" type="text" maxlength="' + MAX + '" autocomplete="off" spellcheck="true" data-pad-first'
         + ' enterkeyhint="send" placeholder="твій дотеп…" aria-label="Відповідь на завдання ' + (n + 1) + '">'
         + '<button class="primary dt-send" type="submit">Здати</button></form>'
@@ -362,7 +401,7 @@
     const first = c.answers.findIndex((_, i) => !mine.includes(i));
     stage.innerHTML = '<div class="dt-cardhead"><span class="dt-of">' + (v.final ? 'Одне завдання — на всіх' : 'Картка ' + (c.i + 1) + ' з ' + c.of) + '</span>'
       + '<span class="dt-hint muted small"></span></div>'
-      + '<div class="dt-prompt big" data-pad-focus>' + ctx.esc(c.prompt) + '</div>'
+      + '<div class="dt-prompt big" data-pad-focus>' + ctx.esc(c.prompt) + '</div>' + byHtml(ctx, v, c.by)
       + (v.final ? '<div class="dt-podium mini" hidden></div>' : '')
       + '<div class="dt-answers ' + (v.final ? 'final' : v.mode) + (k > 4 ? ' dense' : '') + ' n' + k + '">'
       + c.answers.map((a, i) => '<button type="button" class="dt-ans' + (a.stock ? ' stock' : '') + '" data-i="' + i + '" style="--n:' + i + '"' + (i === first ? ' data-pad-first' : '') + '>'
@@ -544,8 +583,8 @@
       const lolText = reveal && a.laughs ? '😂 ' + a.laughs : '';
       if (lol.textContent !== lolText) {
         lol.textContent = lolText;
-        lol.classList.remove('pop');
-        if (lolText && !reduced()) { void lol.offsetWidth; lol.classList.add('pop'); }
+        // «підстрибнути» — через Web Animations: перезапуск CSS-анімації класом вимагав би примусової розкладки
+        if (lolText && !reduced() && lol.animate) lol.animate([{ transform: 'scale(.4)' }, { transform: 'scale(1.2)' }, { transform: 'none' }], { duration: 350, easing: 'ease-out' });
       }
       if (reveal && a.seat != null && !b.classList.contains('open')) openAnswer(root, ctx, v, b, a);
       b.classList.toggle('win', reveal && allOpen && i === best);
@@ -602,7 +641,8 @@
     const by = (a.juryBy || []).map((n) => short(disp(n), 10));
     const jury = a.prize ? '<span class="dt-prize" title="' + ctx.esc(by.join(', ')) + '">👀 +' + (v.final ? 200 : 100) + '</span>'
       : a.jury ? '<span class="dt-jurysm muted" title="Голос публіки">👀 ' + ctx.esc(by.join(', ') || String(a.jury)) + '</span>' : '';
-    res.innerHTML = '<span class="dt-votes">' + (chips || '<small class="muted">без голосів</small>') + '</span>'
+    const none = v.card && v.card.jinx ? '🤝 без голосування' : 'без голосів';
+    res.innerHTML = '<span class="dt-votes">' + (chips || '<small class="muted">' + none + '</small>') + '</span>'
       + '<span class="dt-pts' + (a.points ? '' : ' zero') + '">' + (a.points ? '+' + num(a.points) : '0') + '</span>'
       + jury
       + '<span class="dt-author" style="--c:' + col(a.seat) + '"><i class="dt-dot"></i>' + ctx.esc(nickOf(ctx, v, a.seat))
