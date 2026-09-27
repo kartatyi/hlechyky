@@ -375,7 +375,9 @@ public sealed class GeoMatch
             }
         }
         var top = rows.Count > 0 && rows[0].Km is not null ? rows[0] : null;
-        var say = GeoLines.Pick(_ctx.Rng, top is null ? null : _ctx.NickOf(top.Seat), top?.Km, top?.Points ?? 0, alone: present == 1);
+        // Відстань у фразі — та сама, що в рядку розкриття (до 0,1 км), інакше Глек казав би «233 км», а рядок — «234 км».
+        var topKm = top?.Km is { } tk ? Math.Round(tk, 1, MidpointRounding.AwayFromZero) : (double?)null;
+        var say = GeoLines.Pick(_ctx.Rng, top is null ? null : _ctx.NickOf(top.Seat), topKm, top?.Points ?? 0, alone: present == 1);
         var best = rows.Where(r => r.Best || (present == 1 && r.Km is not null)).Select(r => r.Seat).ToArray();
         _recap.Add(new Recap(place.Name, place.Region, round.Url, best, top?.Km, top?.Points ?? 0));
         _reveal = new RevealData(tx, ty, place, place.Photos[round.Photo], say, rows);

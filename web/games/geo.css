@@ -3,6 +3,7 @@
   --geo-sea: #123038;
   --geo-land: #2b4c3c;
   --geo-river: #4a8fb3;
+  --geo-border: rgba(236, 241, 234, .26);   /* межі областей — видно, але не кричать */
   /* десять місць: добре розрізнювані, плюс номер на шпильці й нік у чіпі — колір не єдина ознака */
   --geo-p0: #f4c542;
   --geo-p1: #7bd389;
@@ -49,6 +50,10 @@
 .geomain { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
 @container (min-width: 720px) {
   .geomain { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* широка картка: мапа — головне поле гри, їй трохи більше місця */
+@container (min-width: 1000px) {
+  .geomain, .georesult { grid-template-columns: minmax(0, 1fr) minmax(0, 1.22fr); }
 }
 
 .geophoto { min-width: 0; }
@@ -97,9 +102,12 @@
 .geobar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 42px; }
 .geobar[hidden] { display: none; }
 .geohint { flex: 1; min-width: 0; }
-.geogo { min-width: 170px; min-height: 42px; font-size: 1.02em; }
+.geogo { min-width: 170px; min-height: 42px; font-size: 1.02em; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
 .geogo[hidden] { display: none; }
 @container (max-width: 560px) {
+  /* на телефоні кнопки масштабу — рядком угорі: стовпчик з'їдав пів мапи */
+  .geozoom { flex-direction: row; }
+  .geozoom button { width: 40px; height: 40px; }
   .geobar { flex-direction: column-reverse; align-items: stretch; }
   .geogo { width: 100%; min-height: 50px; }
   .geohint { text-align: center; }
@@ -137,6 +145,7 @@
 .georecap img, .geothumb { width: 72px; height: 48px; flex: none; border-radius: 6px; object-fit: cover; background: var(--panel3); }
 .geort { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .geort > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.geort > .small:last-child { white-space: normal; }
 
 /* ---------- фото на весь екран ---------- */
 .geofull { position: fixed; inset: 0; z-index: 28; display: flex; align-items: center; justify-content: center;

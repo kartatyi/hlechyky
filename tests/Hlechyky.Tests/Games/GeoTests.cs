@@ -401,6 +401,9 @@ public class GeoTests
 
     static string Say(RoomHarness h) => Reveal(h).GetProperty("say").GetString()!;
 
+    /// <summary>Відстань так, як її бачать гравці: до 0,1 км (фраза Глека бере саме її).</summary>
+    static double Tenth(double km) => Math.Round(km, 1, MidpointRounding.AwayFromZero);
+
     [Fact]
     public void Glek_speaks_by_the_situation_bullseye_near_far_and_silence()
     {
@@ -422,7 +425,7 @@ public class GeoTests
         var corner = (X: t.X < 2000 ? GeoMap.W : 0, Y: t.Y < 1300 ? GeoMap.H : 0);   // на другий край мапи
         Pin(h, 1, corner.X, corner.Y);
         Until(h, "reveal");
-        var km = GeoText.Km(GeoScore.KmFromGrid(corner.X, corner.Y, place.Lat, place.Lon));
+        var km = GeoText.Km(Tenth(GeoScore.KmFromGrid(corner.X, corner.Y, place.Lat, place.Lon)));
         Assert.Contains(Say(h), GeoLines.AllFar.Select(l => string.Format(l, "Петро", km)));
 
         Until(h, "guess");
@@ -431,7 +434,7 @@ public class GeoTests
         Pin(h, 0, t.X + 60, t.Y);                          // ~20 км
         Pin(h, 1, t.X + 200, t.Y);
         Until(h, "reveal");
-        km = GeoText.Km(GeoScore.KmFromGrid(t.X + 60, t.Y, place.Lat, place.Lon));
+        km = GeoText.Km(Tenth(GeoScore.KmFromGrid(t.X + 60, t.Y, place.Lat, place.Lon)));
         Assert.Contains(Say(h), GeoLines.Normal.Select(l => string.Format(l, "Оля", km)));
 
         var alone = Table(c, 1);
@@ -441,7 +444,7 @@ public class GeoTests
         corner = (t.X < 2000 ? GeoMap.W : 0, t.Y < 1300 ? GeoMap.H : 0);
         Pin(alone, 0, corner.X, corner.Y);
         Until(alone, "reveal");
-        km = GeoText.Km(GeoScore.KmFromGrid(corner.X, corner.Y, place.Lat, place.Lon));
+        km = GeoText.Km(Tenth(GeoScore.KmFromGrid(corner.X, corner.Y, place.Lat, place.Lon)));
         Assert.Contains(Say(alone), GeoLines.SoloFar.Select(l => string.Format(l, "Оля", km)));
 
         Until(alone, "guess");
@@ -449,7 +452,7 @@ public class GeoTests
         t = GeoMap.Project(place.Lat, place.Lon);
         Pin(alone, 0, t.X + 60, t.Y);
         Until(alone, "reveal");
-        km = GeoText.Km(GeoScore.KmFromGrid(t.X + 60, t.Y, place.Lat, place.Lon));
+        km = GeoText.Km(Tenth(GeoScore.KmFromGrid(t.X + 60, t.Y, place.Lat, place.Lon)));
         Assert.Contains(Say(alone), GeoLines.SoloNear.Select(l => string.Format(l, "Оля", km)));
     }
 
@@ -1105,9 +1108,12 @@ public class GeoPerfTests(ITestOutputHelper output)
         done = Views.Text(h.Room.Game.View(0)).Length;
         foreach (var f in h.Outbox.OfType<RoomFrame>()) maxFrame = Math.Max(maxFrame, Views.Text(f.Frame).Length);
         output.WriteLine($"вид guess ≤ {maxGuess} Б, вид reveal на десятьох ≤ {maxReveal} Б, done з 10 раундами {done} Б, кадр ≤ {maxFrame} Б");
-        Assert.InRange(maxGuess, 1, 900);
+        // Кирилиця на дроті — escape-послідовності по 6 байтів на літеру (серіалізатор спільний, не наш), а адреси
+        // сторінок Вікісховища з кириличними назвами ще й у %-кодуванні. Тому розкриття ~2,8 КБ, підсумок на
+        // 10 раундів ~5,8 КБ — але це лише 3 види на раунд, а типовий тик — нуль байтів.
+        Assert.InRange(maxGuess, 1, 600);
         Assert.InRange(maxReveal, 1, 3500);
-        Assert.InRange(done, 1, 6000);
+        Assert.InRange(done, 1, 7000);
         Assert.InRange(maxFrame, 1, 150);
     }
 }

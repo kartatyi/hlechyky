@@ -151,7 +151,7 @@
         cur: null, keys: { l: 0, r: 0, u: 0, d: 0 }, keyT0: 0, lastT: 0,
         ptrs: new Map(), down: null, pinch: null,
         colors: SEAT_COLORS.slice(), css: {},
-        full: null, ro: null, keyup: null, onVis: null,
+        full: null, ro: null, keyup: null, onVis: null, labels: [],
         perf: { draws: 0, drawMs: 0, statics: 0, staticMs: 0 },
       };
     }
@@ -174,7 +174,8 @@
     for (let i = 0; i < n; i++) if (ctx.nickOf(i)) out.push(i);
     return out;
   }
-  const nick = (ctx, i) => ctx.nickOf(i) || ctx.seatName(i);
+  /// Нік місця; хто встав посеред партії — лише номер місця (нік каркас уже забув).
+  const nick = (ctx, i) => ctx.nickOf(i) || '№' + ctx.seatName(i);
   const canPin = (st, ctx) => ctx.mine && ctx.playing && phaseOf(ctx) === 'guess' && st.readyRound !== V(ctx).round;
 
   // ---------------------------------------------------------------------------------------------
@@ -185,11 +186,13 @@
   const toScreen = (st, x, y) => [x * sc(st) + st.ox, y * sc(st) + st.oy];
   const toMap = (st, x, y) => [(x - st.ox) / sc(st), (y - st.oy) / sc(st)];
 
-  /// Мапа завжди заповнює рамку: менша за рамку — по центру, більша — без порожніх країв.
+  /// Мапа не тікає з рамки: менша за рамку — по центру, більша — з полем моря до чверті рамки за краєм
+  /// (інакше зірка правди на березі Криму чи Закарпаття липла б до самого краю екрана).
   function clampView(st) {
     const mw = W * sc(st), mh = H * sc(st);
-    st.ox = mw <= st.cw ? (st.cw - mw) / 2 : clamp(st.ox, st.cw - mw, 0);
-    st.oy = mh <= st.ch ? (st.ch - mh) / 2 : clamp(st.oy, st.ch - mh, 0);
+    const mx = st.cw * 0.25, my = st.ch * 0.25;
+    st.ox = mw <= st.cw ? (st.cw - mw) / 2 : clamp(st.ox, st.cw - mw - mx, mx);
+    st.oy = mh <= st.ch ? (st.ch - mh) / 2 : clamp(st.oy, st.ch - mh - my, my);
   }
 
   function home(st) {
@@ -208,6 +211,7 @@
     st.oy = py - (py - st.oy) * (k / st.k);
     st.k = k;
     st.fly = null;
+    st.fit = null;
     clampView(st);
     st.staticDirty = true;
     kick(st);
@@ -218,19 +222,25 @@
     zoomAt(st, c[0], c[1], f);
   }
 
-  /// Плавно підлетіти так, щоб вмістити всі точки (одиниці сітки) з полем 12 %.
-  function flyTo(st, pts, maxK) {
-    if (!pts.length) return;
-    if (!st.cw) { st.fit = { pts, maxK }; return; }       // рамка ще не виміряна — підлетимо, щойно буде
+  /// Вмістити всі точки (одиниці сітки) з полем 15–17 % — одразу, без польоту.
+  function fitView(st, pts, maxK) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     const bw = Math.max(x1 - x0, 1), bh = Math.max(y1 - y0, 1);
-    const k = clamp(Math.min(st.cw * 0.76 / (bw * st.s0), st.ch * 0.76 / (bh * st.s0)), 1, maxK || KMAX);
-    const from = { k: st.k, ox: st.ox, oy: st.oy };
-    st.k = k;
-    st.ox = st.cw / 2 - (x0 + x1) / 2 * st.s0 * k;
-    st.oy = st.ch / 2 - (y0 + y1) / 2 * st.s0 * k;
+    st.k = clamp(Math.min(st.cw * 0.7 / (bw * st.s0), st.ch * 0.66 / (bh * st.s0)), 1, maxK || KMAX);
+    st.ox = st.cw / 2 - (x0 + x1) / 2 * st.s0 * st.k;
+    st.oy = st.ch / 2 - (y0 + y1) / 2 * st.s0 * st.k;
     clampView(st);
+  }
+
+  /// Плавно підлетіти до точок. Ціль пам'ятаємо (st.fit), поки людина сама не рушила мапу: якщо рамка тим часом
+  /// змінить розмір (з'явилась смуга прокрутки, розгорнули картку), вписуємо наново, а не лишаємо пів польоту.
+  function flyTo(st, pts, maxK) {
+    if (!pts.length) return;
+    st.fit = { pts, maxK };
+    if (!st.cw) return;                                   // рамка ще не виміряна — впишемо, щойно буде
+    const from = { k: st.k, ox: st.ox, oy: st.oy };
+    fitView(st, pts, maxK);
     const to = { k: st.k, ox: st.ox, oy: st.oy };
     st.staticDirty = true;
     if (!reduced() && st.cv && st.cv.offsetParent) {
@@ -247,7 +257,7 @@
   function cssColors(st, ctx) {
     const c = (n, f) => ctx.css(n, f) || f;
     st.css = {
-      sea: c('--geo-sea', '#123038'), land: c('--geo-land', '#2b4c3c'), line: c('--line', '#2f4d3d'),
+      sea: c('--geo-sea', '#123038'), land: c('--geo-land', '#2b4c3c'), border: c('--geo-border', 'rgba(236,241,234,.26)'),
       outline: c('--accent2', '#d9a92f'), river: c('--geo-river', '#4a8fb3'), muted: c('--muted', '#9db3a5'),
       text: c('--text', '#ecf1ea'), accent: c('--accent', '#f4c542'), danger: c('--danger', '#e57373'),
       ink: c('--accent-ink', '#2a1e03'), shade: c('--gshade', 'rgba(15,31,24,.62)'), bg: c('--bg', '#0f1f18'),
@@ -274,8 +284,8 @@
     st.oy = ch / 2 - center[1] * sc(st);
     clampView(st);
     st.fly = null;
+    if (st.fit) fitView(st, st.fit.pts, st.fit.maxK);
     st.staticDirty = true;
-    if (st.fit) { const f = st.fit; st.fit = null; flyTo(st, f.pts, f.maxK); }
     kick(st);
   }
 
@@ -293,7 +303,7 @@
       g.lineJoin = 'round';
       g.lineCap = 'round';
       if (hints !== 'none') {
-        g.strokeStyle = c.line;
+        g.strokeStyle = c.border;
         g.lineWidth = 1 / sc(st);
         g.stroke(m.borders);
         g.strokeStyle = c.river;
@@ -443,10 +453,12 @@
         const [px, py] = toScreen(st, r.x, r.y);
         drawPin(g, st, px, py, st.colors[r.seat % 10], r.seat + 1, 0);
       }
-      // підписи кілометрів на плашках — коли лінія домальована
+      // підписи кілометрів на плашках — коли лінія домальована; ті, що налізли б на вже намальовані, пропускаємо
       g.font = '600 11px system-ui, sans-serif';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
+      const taken = st.labels;
+      taken.length = 0;
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         const p = still ? 1 : clamp((t - 800 - i * 80) / 200, 0, 1);
@@ -456,6 +468,11 @@
         const text = km(r.km);
         const mx = (px + tx) / 2, my = (py + ty) / 2;
         const w = g.measureText(text).width + 10;
+        let hit = false;
+        for (let j = 0; j < taken.length; j += 4)
+          if (Math.abs(taken[j] - mx) * 2 < taken[j + 2] + w && Math.abs(taken[j + 1] - my) < 20) { hit = true; break; }
+        if (hit) continue;
+        taken.push(mx, my, w, 0);
         g.globalAlpha = p;
         g.fillStyle = c.shade;
         roundRect(g, mx - w / 2, my - 9, w, 18, 9);
@@ -789,6 +806,8 @@
     const done = phaseOf(ctx) === 'done' && !!v.result;
     const seats = seatsOf(ctx);
     if (!seats.length || (!ctx.playing && !v.result)) return '';
+    // до першого розкриття всі по нулях — рахунок лише займав би місце
+    if (!done && !seats.some((i) => sc[i])) return '';
     return '<div class="geoshead muted small">' + (done ? 'Підсумок' : 'Рахунок') + '</div>' + seats.slice()
       .sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b)
       .map((i) => {
@@ -806,9 +825,11 @@
     if (!list.length) return '';
     return '<details class="georecap" open><summary>Як це було · ' + list.length + ' ' + plural(list.length, 'раунд', 'раунди', 'раундів') + '</summary><ol>'
       + list.map((r) => {
-        const who = (r.best || []).map((i) => ctx.esc(nick(ctx, i))).join(', ');
-        const got = r.km == null ? '<span class="muted">ніхто не поставив шпильки</span>'
-          : (who ? '🎯 ' + who + ' — ' : '') + km(r.km) + (r.points ? ' <b>+' + r.points + '</b>' : '');
+        // самому «найближчий» — це він сам: лише відстань; у компанії — хто був ближче за всіх
+        const solo = (ctx.room && ctx.room.maxPlayers) === 1;
+        const who = solo ? '' : (r.best || []).map((i) => ctx.esc(nick(ctx, i))).join(', ');
+        const got = r.km == null ? '<span class="muted">без шпильки</span>'
+          : (who ? '🏆 ' + who + ' — ' : '') + km(r.km) + (r.points ? ' <b>+' + r.points + '</b>' : '');
         return '<li>' + (r.photo ? '<img src="' + ctx.esc(r.photo) + '" alt="" loading="lazy">' : '<i class="geothumb"></i>')
           + '<span class="geort"><b>' + ctx.esc(r.name) + '</b><span class="muted small">' + ctx.esc(r.region) + '</span>'
           + '<span class="small">' + got + '</span></span></li>';
@@ -915,6 +936,7 @@
         const [a, b] = [...st.ptrs.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
         const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        st.fit = null;
         st.ox += mx - st.pinch.mx;
         st.oy += my - st.pinch.my;
         zoomAt(st, mx, my, d / st.pinch.d);
@@ -928,6 +950,7 @@
       if (!dn || dn.id !== e.pointerId) return;
       if (!dn.moved && Math.hypot(x - dn.x, y - dn.y) > DRAG_PX) { dn.moved = true; el.classList.add('drag'); }
       if (dn.moved) {
+        st.fit = null;
         st.ox += x - dn.lx;
         st.oy += y - dn.ly;
         clampView(st);
@@ -944,7 +967,8 @@
       if (dn && dn.id === e.pointerId) {
         st.down = null;
         el.classList.remove('drag');
-        if (!dn.moved && !cancel && (st.ctx.ui || HGames.ui).human(e)) {
+        // Людськості тут не питаємо: скрипт, що тицяє в мапу, правди не знає — сервер однаково суддя всім.
+        if (!dn.moved && !cancel) {
           const [x, y] = local(st, e);
           const [mx, my] = toMap(st, x, y);
           placePin(st, mx, my);
@@ -1083,6 +1107,10 @@
         readyOrNext(st);
         return true;
       }
+      if (e.code === 'Space' && phase === 'reveal' && ctx.mine && ctx.playing) {
+        if (!e.repeat) readyOrNext(st);
+        return true;
+      }
       if (!canPin(st, ctx)) return false;
       const d = KEYDIR[e.code];
       if (d) {
@@ -1104,8 +1132,11 @@
     },
 
     status(ctx) {
-      if (!ctx.playing) return '';
       const st = ctx._geo, v = V(ctx), phase = phaseOf(ctx);
+      // тренування: замість сухого «Готово» — скільки набрав із можливих
+      if (!ctx.playing && phase === 'done' && ctx.room && ctx.room.maxPlayers === 1 && v.rounds)
+        return 'Результат: ' + num((v.scores || [])[0]) + ' з ' + num(v.rounds * 5000);
+      if (!ctx.playing) return '';
       if (phase === 'between') return 'Раунд ' + v.round + ' з ' + v.rounds + ' — готуйсь…';
       if (phase === 'guess') {
         if (!ctx.mine) return 'Гравці думають…';
@@ -1131,8 +1162,9 @@
         return false;             // Ⓑ — вийти, Ⓨ — довідка, ☰ — на весь екран: лишаються каркасу
       },
       hint: '{dpad} курсор · {a} шпилька · {rt} готово · {lb}{rb} масштаб · {x} фото',
-      // Лише поки вгадують: на розкритті пад знову водить кільце, і «Далі» — під Ⓐ (data-pad-first).
-      when: (ctx) => ctx.mine && ctx.playing && phaseOf(ctx) === 'guess',
+      // Поки вгадують і на розкритті: там Ⓐ і RT — «Далі» (інакше RT перемикав би вкладки сайту посеред партії).
+      // У «готуйсь» і після партії пад знову водить кільце по кнопках картки.
+      when: (ctx) => ctx.mine && ctx.playing && (phaseOf(ctx) === 'guess' || phaseOf(ctx) === 'reveal'),
     },
 
     unmount(root) {
