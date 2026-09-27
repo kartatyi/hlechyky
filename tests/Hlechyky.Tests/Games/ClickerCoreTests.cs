@@ -577,6 +577,8 @@ public class ClickerCoreTests
     {
         var h = Wheel();
         Levels(h, ("apprentice", 10));
+        // Скалка з неба вже в хаті: перша зірка приносить її напевно (28.09), а з нею +1 % до всього — і до суми глека.
+        Patch(h, s => s["house"]!["wonders"] = new JsonObject { ["sky-stone"] = h.Clock.UtcNow.ToString("O") });
         EventNow(h, "star", Clicker.StarShown);
         var plain = View(h).GetProperty("fall").GetProperty("gain").GetDouble();
 

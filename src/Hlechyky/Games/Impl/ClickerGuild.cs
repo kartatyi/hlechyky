@@ -329,6 +329,8 @@ public sealed partial class Clicker
         return Str(payload, "op") switch
         {
             "give" => GuildGive(svc, payload, now),
+            // «🛒 Усе на віз» (записка Smaug 27.09: «зручно перед клеймом»): уся комора однією дією.
+            "giveAll" => GuildGiveAll(svc, payload, now),
             "claim" => GuildClaim(svc, payload, now),
             "gift" => GuildGiftTo(svc, payload, now),
             "treat" => GuildTreat(svc, payload, now),
@@ -350,19 +352,88 @@ public sealed partial class Clicker
         var have = ItemCount(x => x == it);
         if (have <= 0) return ActResult.Fail("Такого виробу в коморі нема");
         var n = TakeItems(x => x == it, (int)Math.Min(Math.Clamp(raw ?? 1, 1, StoreCapNow), have));
-        var r = svc.Give(GuildKey, GuildNick, it.Ware, n, now);
+        // З розписом і якістю: віз малює справжні вироби, а не лише вид (записка Smaug «на возі лише горщик»).
+        var r = svc.Give(GuildKey, GuildNick, [(it.Ware, (ItemInfo?)it, n)], now);
         _guildGiven += n;
-        if (r.Reached > 0)
-        {
-            var who = string.Join(", ", r.Wagon.Givers.Select(g => g.Nick));
-            Ctx.Log($"🐴 Віз цеху гончарів — {ClickerGuildService.TierNames[r.Reached]}! Разом клали: {who}. Хто поклав хоч "
-                + $"{ClickerGuildService.MinGive}, забирайте нагороду у вкладці «Цех»");
-            // Золотий віз — рідкість: саме тут щось у хаті й може знайтись (§E.5).
-            if (r.Reached >= ClickerGuildService.TierShare.Length - 1) Wonder("wagon-gold");
-        }
+        WagonReached(r);
         var text = $"🐴 {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()} на віз — він повний на {Pct(r.Wagon)} %";
         if (r.Wagon.Mine < ClickerGuildService.MinGive) text += $" · ще {ClickerGuildService.MinGive - r.Wagon.Mine} — і нагорода твоя";
         return ActResult.Accept(text);
+    }
+
+    /// <summary>Віз щойно дійшов до нового рівня: рядок у Журнал, а на золоті — ще й шанс на дивовижу (§E.5).</summary>
+    void WagonReached(WagonGive r)
+    {
+        if (r.Reached <= 0) return;
+        var who = string.Join(", ", r.Wagon.Givers.Select(g => g.Nick));
+        Ctx.Log($"🐴 Віз цеху гончарів — {ClickerGuildService.TierNames[r.Reached]}! Разом клали: {who}. Хто поклав хоч "
+            + $"{ClickerGuildService.MinGive}, забирайте нагороду у вкладці «Цех»");
+        if (r.Reached >= ClickerGuildService.TierShare.Length - 1) Wonder("wagon-gold");
+    }
+
+    /// <summary>
+    /// «🛒 Усе на віз»: уся комора однією дією, крім відкладеного (<see cref="WagonPick"/>). <c>keep: false</c> — і
+    /// відкладене теж: перед обпалом комора однаково згорить, а на возі вироби ще щось дадуть.
+    /// </summary>
+    ActResult GuildGiveAll(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)
+    {
+        var keep = !(payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("keep", out var k) && k.ValueKind == JsonValueKind.False);
+        var (give, kept) = WagonPick(keep, now);
+        var n = give.Sum(x => x.N);
+        if (n <= 0)
+            return ActResult.Fail(kept > 0
+                ? $"Усе, що є в коморі ({Count(kept)}), відкладено під замовлення — класти на віз нічого"
+                : "Комора порожня — класти на віз нічого");
+        foreach (var (it, c) in give) TakeItems(x => x == it, c);
+        var r = svc.Give(GuildKey, GuildNick, give.Select(x => (x.Item.Ware, (ItemInfo?)x.Item, x.N)).ToList(), now);
+        _guildGiven += n;
+        WagonReached(r);
+        var text = $"🛒 На віз — {Count(n)} {WaresWord(n)}, він повний на {Pct(r.Wagon)} %";
+        if (kept > 0) text += $" · {Count(kept)} {WaresWord(kept)} лишив під замовлення";
+        if (r.Wagon.Mine < ClickerGuildService.MinGive) text += $" · ще {ClickerGuildService.MinGive - r.Wagon.Mine} — і нагорода твоя";
+        return ActResult.Accept(text);
+    }
+
+    /// <summary>
+    /// Що піде на віз за «Усе на віз» і скільки лишиться відкладеним. Відкладене — те, чого чекають відкриті
+    /// замовлення (спершу заморські гості, далі села) і майстерштук наступного рангу: скільки кожне просить, стільки
+    /// й лишаємо, з найгіршої придатної якості — рівно те, що забрала б здача (<see cref="TakeItems"/>). Замовлення, на
+    /// яке виробів бракує, однаково тримає те, що є: доліпиш решту — і здаси.
+    /// </summary>
+    internal (List<(ItemInfo Item, int N)> Give, int Kept) WagonPick(bool keep, DateTimeOffset now)
+    {
+        var left = AllItems().ToDictionary(x => x.Item, x => x.Count);
+        var kept = 0;
+        if (keep)
+            foreach (var (match, need) in WagonHolds(now))
+            {
+                var want = need;
+                foreach (var it in left.Keys.Where(match).OrderBy(x => x.Quality).ThenBy(x => x.Ware, StringComparer.Ordinal)
+                             .ThenBy(x => x.Style, StringComparer.Ordinal).ToList())
+                {
+                    if (want <= 0) break;
+                    var take = Math.Min(want, left[it]);
+                    left[it] -= take;
+                    want -= take;
+                    kept += take;
+                }
+            }
+        var give = left.Where(x => x.Value > 0)
+            .OrderBy(x => x.Key.Ware, StringComparer.Ordinal).ThenBy(x => x.Key.Style, StringComparer.Ordinal).ThenBy(x => x.Key.Quality)
+            .Select(x => (x.Key, x.Value)).ToList();
+        return (give, kept);
+    }
+
+    /// <summary>Чого чекають: відкриті замовлення гостей і сіл (виріб, розпис, якість — як при здачі) і майстерштук.</summary>
+    IEnumerable<(Func<ItemInfo, bool> Match, int Need)> WagonHolds(DateTimeOffset now)
+    {
+        foreach (var o in _gOrders) if (o.Until > now) yield return (GuestMatch(o), o.Count);
+        foreach (var o in _mktOrders) if (o.Until > now) yield return (MktMatch(o), o.Count);
+        if (_guildRank < GuildRanks.Length - 1)
+        {
+            var piece = PieceFor(_guildRank + 1);
+            yield return (x => PieceMatch(x, piece), 1);
+        }
     }
 
     static string Pct(WagonInfo w) => w.Goal > 0 ? Math.Floor(100.0 * w.Total / w.Goal).ToString("0", Uk) : "0";
@@ -601,7 +672,15 @@ public sealed partial class Clicker
             kilnSlots = GuildKilnSlots,
             wagonMult = WagonRank,
             bragAt = _bragAt,
+            // «🛒 Усе на віз»: скільки поїде й скільки лишиться під замовлення — те саме правило, що й у дії.
+            all = WagonAllView(now),
         };
+    }
+
+    object WagonAllView(DateTimeOffset now)
+    {
+        var (give, kept) = WagonPick(true, now);
+        return new { n = give.Sum(x => x.N), keep = kept };
     }
 
     object? NextRankView()

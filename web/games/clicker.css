@@ -875,3 +875,65 @@
 @media (prefers-reduced-motion: reduce) {
   .clk .clk-ubar i, .clk .clk-stbar i, .clk .clk-nxbar i, .clk .clk-firebox .clk-bar i { transition: none; }
 }
+
+/* ==== ui (записки друзів 28.09): плашки бафів під колом — сітка, секунди великими, смужка, що тане ====
+   Записка Smaug: «ярмарок, натхнення, розгін, серія — кожне в новому рядку, бо все в купі й не видно, скільки секунд
+   до кінця». Був один рядок пігулок сталої висоти з «…» (v10 §9) — на ПК п'ять бафів різались до «🎪 Я…». Тепер сітка:
+   на телефоні щонайменше дві в рядок, на ПК скільки влазить (але не менше трьох). У плашці ліворуч великими цифрами
+   множник і секунди (tabular-nums, стала ширина), праворуч дрібно назва — обрізається лише вона; під ними смужка часу
+   (transform: scaleX — тане сама через WAAPI, clicker.js → buffBar). Останні п'ять секунд — .end: колір і пульс.
+   Блок стоїть останнім і з .clk попереду — перебиває старі правила .clk-buffs/.clk-buff вище (їхні кольори лишаються). */
+.clk .clk-buffs {
+  --clk-bh: 2.25em;
+  display: grid; gap: 4px; align-content: start; justify-content: stretch; overflow: hidden;
+  grid-template-columns: repeat(auto-fill, minmax(min(150px, calc((100% - 4px) / 2)), 1fr));
+  font-size: .82em; height: auto; min-height: var(--clk-bh); width: 100%;
+}
+/* Порожньо — місце на один рядок лишається (як і було): поява першого бафу нічого під ним не зсуває. */
+.clk .clk-buffs[hidden] { display: grid !important; visibility: hidden; }
+.clk .clk-buff {
+  position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; height: var(--clk-bh);
+  box-sizing: border-box; padding: 0 7px 3px; border-radius: 9px; overflow: hidden;
+  font-size: 1em; font-weight: 600; line-height: 1.1; white-space: nowrap; animation: none; text-overflow: clip;
+}
+.clk .clk-buff[hidden] { display: none; }
+.clk .clk-bico { flex: none; font-size: 1.05em; line-height: 1; }
+.clk .clk-bnum { flex: none; display: flex; align-items: baseline; gap: 5px; font-size: 1.22em; font-weight: 800; font-variant-numeric: tabular-nums; }
+.clk .clk-bmul { min-width: 2.4ch; }
+.clk .clk-bsec { min-width: 2ch; text-align: right; }
+.clk .clk-bsec.w3 { min-width: 3ch; }
+.clk .clk-bsec:empty { display: none; }
+.clk .clk-bsec::after { content: '\00a0с'; font-size: .62em; font-weight: 600; opacity: .8; }
+.clk .clk-bname { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .8em; font-weight: 600; opacity: .85; text-align: right; }
+/* Смужка часу: на всю ширину плашки внизу, тане справа наліво. Масштаб, а не ширина — розкладка не перераховується. */
+.clk .clk-bbar {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: currentColor; opacity: .75;
+  transform: scaleX(0); transform-origin: 0 50%; pointer-events: none;
+}
+.clk .clk-buff.heat .clk-bbar { transition: transform .2s linear; }
+/* Останні п'ять секунд: плашка червоніє й пульсує (пульс — лише прозорістю, без руху). */
+.clk .clk-buff.end { box-shadow: inset 0 0 0 1.5px #ff7b5c; }
+.clk .clk-buff.end .clk-bsec { color: #ffb4a0; }
+@media (prefers-reduced-motion: no-preference) {
+  .clk .clk-buff.end { animation: clkbuffend .7s ease-in-out infinite alternate; }
+}
+@keyframes clkbuffend { from { opacity: 1; } to { opacity: .62; } }
+/* На ПК, коли стіл стоїть в один екран (.fit), висота рядка стала — два рядки по три й більше плашок (усі шість бафів
+   влазять): інакше поява натхнення стискала б сцену й коло під пальцем. Вузький стовпчик (низьке вікно, ~300 px) —
+   значки ховаються, щоб множник і секунди влізли цілими в третину стовпчика. */
+.clk.fit .clk-buffs {
+  grid-template-columns: repeat(auto-fill, minmax(min(150px, calc((100% - 8px) / 3)), 1fr));
+  height: calc(var(--clk-bh) * 2 + 4px); min-height: 0; container: clkbuffs / inline-size;
+}
+@container clkbuffs (max-width: 380px) {
+  .clk .clk-bico { display: none; }
+  .clk .clk-buff { padding: 0 5px 3px; }
+  .clk .clk-bnum { gap: 3px; }
+}
+/* Сталі рядки лівого стовпчика (див. .clk.fit .clk-lay вище) стали вищими рівно на другий рядок плашок (~40 px):
+   без цього стовпчик лишався б ширшим за сцену, і обабіч неї стояли б порожні смуги по 17 px. */
+.clk.fit .clk-lay { --clk-rows: 302px; }
+.clk.fit.pathside .clk-lay { --clk-rows: 200px; }
+/* Довгі написи на кнопках («🔥 Почати наново: +1,23 млн клейм», «Продати все звичайне…») на 360 px вилазили за
+   картку на 4–9 px: кнопка за замовчуванням не переносить рядок. Тепер переносить і не ширша за свій рядок. */
+.clk .clk-fire, .clk .clkw-sellall { white-space: normal; max-width: 100%; text-align: center; justify-content: center; }

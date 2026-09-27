@@ -666,6 +666,114 @@
     if (scale !== st.jugScale) { st.jugScale = scale; st.jugBox.style.transform = 'scale(' + scale + ')'; }
   }
 
+  // ---------- плашки бафів під колом ----------
+  // Записки Smaug (27.09): «ярмарок, натхнення, розгін, серія — кожне в новому рядку, бо зараз усе в купі й не видно,
+  // скільки секунд до кінця». Було: один рядок пігулок із «…» — на ПК при п'яти бафах лишалось «🎪 Я…». Стало: кожен
+  // баф — своя клітинка сітки; ліворуч великими цифрами множник і секунди (tabular-nums і стала ширина — число не
+  // стрибає), праворуч дрібно назва — обрізатись може лише вона; під ними смужка часу, що тане. Порядок — що скоро
+  // скінчиться, те першим; останні п'ять секунд плашка світиться. Розмітка плашок складається раз: щосекунди
+  // міняється лише текст числа (коли він справді інший), а смужка тане сама — WAAPI на transform, без JS щокадру.
+  const BUFF_END_MS = 5000;
+  const BUFF_KINDS = [
+    { key: 'fair', icon: '🎪', name: () => 'Ярмарок', what: (st) => 'Ярмарок: усе ×' + dec(st.fairMult) },
+    { key: 'inspire', icon: '✨', name: () => 'Натхнення', what: (st) => 'Натхнення: клік ×' + st.inspireMult },
+    { key: 'wind', icon: '🌬', name: () => 'Вітер із поля', what: (st) => 'Вітер із поля: без тебе все ×' + dec(st.windMult) },
+    { key: 'heat', icon: '🌀', name: () => 'Розгін', what: () => 'Розгін кола: що частіше клацаєш, то більший клік; смужка — наскільки коло гаряче' },
+    { key: 'streak', icon: '🤲', name: (st) => 'Серія ' + count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
+      + Math.round(st.streakBonus * 100) + ' % більше' },
+    { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
+  ];
+
+  /// Що з бафів діє саме зараз: множник, до коли й скільки триває весь (для смужки). Лише читає стан.
+  function buffsNow(st, sn, mom) {
+    const out = [];
+    if (sn < st.fairUntil) out.push({ key: 'fair', mult: '×' + dec(st.fairMult), until: st.fairUntil, span: st.fairSpan || 66000 });
+    if (sn < st.inspireUntil) out.push({ key: 'inspire', mult: '×' + st.inspireMult, until: st.inspireUntil, span: st.inspireSpan || 20000 });
+    if (windOn(st, sn)) out.push({ key: 'wind', mult: '×' + dec(st.windMult), until: st.windUntil, span: Math.max(1000, st.windUntil - st.windAt) });
+    if (st.momentumMax > 1 && mom > 1.05) out.push({ key: 'heat', mult: '×' + dec(mom), level: (mom - 1) / (st.momentumMax - 1) });
+    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
+    if (st.fallStreak > 1) out.push({ key: 'streak', mult: '+' + Math.round(st.streakBonus * 100) + ' %' });
+    if (st.starWish) out.push({ key: 'wish', mult: '×3' });
+    return out;
+  }
+
+  /// Плашки складаємо раз на хост (.clk-buffs нового mount — нові плашки): далі лише текст, клас і смужка.
+  function buffEls(st) {
+    if (st.buffEls && st.buffEls.host === st.buffs) return st.buffEls;
+    const els = { host: st.buffs };
+    st.buffs.textContent = '';
+    for (const k of BUFF_KINDS) {
+      const el = document.createElement('span');
+      el.className = 'clk-buff ' + k.key;
+      el.hidden = true;
+      el.innerHTML = '<span class="clk-bico" aria-hidden="true">' + k.icon + '</span>'
+        + '<b class="clk-bnum"><span class="clk-bmul"></span><span class="clk-bsec"></span></b>'
+        + '<span class="clk-bname"></span><i class="clk-bbar" aria-hidden="true"></i>';
+      st.buffs.appendChild(el);
+      els[k.key] = { el, kind: k, mul: el.querySelector('.clk-bmul'), sec: el.querySelector('.clk-bsec'),
+        name: el.querySelector('.clk-bname'), bar: el.querySelector('.clk-bbar'), until: 0, anim: null, level: -1, order: '', secs: -1 };
+    }
+    st.buffEls = els;
+    return els;
+  }
+
+  /// Смужка часу: від частки, що лишилась, до нуля рівно за залишок. Під prefers-reduced-motion — сходинками раз на
+  /// секунду (paintBuffs), без безперервного руху.
+  function buffBar(b, left, span) {
+    const f = Math.max(0, Math.min(1, left / span));
+    if (b.anim) { b.anim.cancel(); b.anim = null; }
+    if ((REDUCED_MQ && REDUCED_MQ.matches) || !b.bar.animate) { b.bar.style.transform = 'scaleX(' + f.toFixed(3) + ')'; return; }
+    try {
+      b.anim = b.bar.animate([{ transform: 'scaleX(' + f.toFixed(4) + ')' }, { transform: 'scaleX(0)' }],
+        { duration: Math.max(1, left), easing: 'linear', fill: 'forwards' });
+    } catch { b.bar.style.transform = 'scaleX(' + f.toFixed(3) + ')'; }
+  }
+
+  function paintBuffs(st, sn, mom) {
+    if (!st.buffs) return;
+    const els = buffEls(st);
+    const now = buffsNow(st, sn, mom);
+    const on = new Set(now.map((x) => x.key));
+    // Що скоро скінчиться — першим; безстрокові (розгін, серія, бажання) — за ними, завжди в тому самому порядку.
+    const timed = now.filter((x) => x.until).sort((a, b) => a.until - b.until).map((x) => x.key);
+    const stepped = !!(REDUCED_MQ && REDUCED_MQ.matches);
+    for (const k of BUFF_KINDS) {
+      const b = els[k.key];
+      if (!on.has(k.key)) {
+        if (!b.el.hidden) { b.el.hidden = true; if (b.anim) { b.anim.cancel(); b.anim = null; } b.until = 0; b.level = -1; }
+        continue;
+      }
+      const x = now.find((y) => y.key === k.key);
+      if (b.el.hidden) b.el.hidden = false;
+      if (b.mul.textContent !== x.mult) { b.mul.textContent = x.mult; b.el.title = k.what(st); }
+      const name = k.name(st);
+      if (b.name.textContent !== name) b.name.textContent = name;
+      const order = String(x.until ? timed.indexOf(k.key) : 10 + BUFF_KINDS.indexOf(k));
+      if (b.order !== order) { b.order = order; b.el.style.order = order; }
+      if (x.until) {
+        const left = x.until - sn;
+        const secs = Math.max(0, Math.ceil(left / 1000));
+        if (b.secs !== secs) {
+          b.secs = secs;
+          b.sec.textContent = String(secs);
+          b.sec.classList.toggle('w3', secs >= 100);
+          if (stepped) buffBar(b, left, x.span);
+        }
+        // Новий баф чи той самий, але подовжений (ще один розписний глек) — смужка стартує наново від свого залишку.
+        if (Math.abs(b.until - x.until) > 50) { b.until = x.until; buffBar(b, left, x.span); }
+        const end = left <= BUFF_END_MS;
+        if (b.el.classList.contains('end') !== end) b.el.classList.toggle('end', end);
+      } else {
+        if (b.secs !== -1) { b.secs = -1; b.sec.textContent = ''; b.el.classList.remove('end'); }
+        // Розгін — смужка показує, наскільки коло гаряче (спадає сама, щойно перестаєш клацати); серія й бажання — без смужки.
+        const level = x.level != null ? Math.round(Math.max(0, Math.min(1, x.level)) * 100) / 100 : -1;
+        if (b.level !== level) { b.level = level; b.bar.style.transform = 'scaleX(' + Math.max(0, level) + ')'; }
+      }
+    }
+    const any = now.length > 0;
+    if (st.buffs.hidden === any) st.buffs.hidden = !any;
+  }
+
   /// Те, що не мусить жити шістдесят разів на секунду: рядок швидкості, бонуси, суперник, прогрес клейм.
   function paintSlow(st, shown) {
     const sn = serverNow(st);
@@ -677,17 +785,7 @@
       + (sec > 0 ? ' · без тебе +' + short(sec) + ' за секунду' : ' · підмайстрів ще нема');
     if (st.rate.textContent !== rate) st.rate.textContent = rate;
 
-    let buffs = '';
-    if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + dec(st.fairMult) + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
-    if (sn < st.inspireUntil) buffs += '<span class="clk-buff inspire">✨ Натхнення: клік ×' + st.inspireMult + ' · ' + Math.ceil((st.inspireUntil - sn) / 1000) + ' с</span>';
-    if (windOn(st, sn)) buffs += '<span class="clk-buff wind">🌬 Вітер із поля: без тебе ×' + dec(st.windMult) + ' · '
-      + Math.ceil((st.windUntil - sn) / 1000) + ' с</span>';
-    if (st.momentumMax > 1 && mom > 1.05) buffs += '<span class="clk-buff heat">🌀 Розгін ×' + dec(mom) + '</span>';
-    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
-    if (st.fallStreak > 1) buffs += '<span class="clk-buff streak">🤲 Серія ' + st.fallStreak + ' · глек з полиці +'
-      + Math.round(st.streakBonus * 100) + ' %</span>';
-    if (st.starWish) buffs += '<span class="clk-buff wish">🌠 Бажання: наступний глек з полиці ×3</span>';
-    if (st.buffs._html !== buffs) { st.buffs._html = buffs; st.buffs.innerHTML = buffs; st.buffs.hidden = !buffs; }
+    paintBuffs(st, sn, mom);
     const fair = sn < st.fairUntil, inspire = sn < st.inspireUntil;
     if (st.stage.classList.contains('fair') !== fair) st.stage.classList.toggle('fair', fair);
     if (st.stage.classList.contains('inspire') !== inspire) st.stage.classList.toggle('inspire', inspire);
@@ -1793,7 +1891,9 @@
     return '<div class="clk-sub">✨ Дивовижі · ' + w.found + '/' + w.total
       + (w.found ? '<span class="muted small"> · +' + pct + ' % до всього</span>' : '')
       + info('Дивовижі знаходяться самі, коли в хаті стається щось рідкісне: добрий обпал, довга серія, щедрий віз, '
-        + 'гість на свято. Кожна додає +1 % до всього й лишається в хаті назавжди. Люстро в знаряддях — удвічі частіше.')
+        + 'гість на свято. Під силуетом — звідки вона може прийти: це як пощастить, а не щоразу (Люстро в знаряддях — удвічі '
+        + 'частіше). Лише Скалка з неба приходить напевно — з першою ж спійманою зіркою. Кожна дивовижа додає +1 % до всього '
+        + 'й лишається в хаті назавжди.')
       + '</div><div class="clk-wonders">' + cells + '</div>';
   }
 
@@ -2746,6 +2846,9 @@
         st.inspireUntil = (v.inspire && Date.parse(v.inspire.until)) || 0;
         st.inspireMult = (v.inspire && v.inspire.mult) || 25;
         st.inspireShare = (v.inspire && v.inspire.share) || 0;
+        // Скільки триває весь баф (з «Довгим ярмарком» — удвічі): від цього смужка під плашкою знає, з якої частки танути.
+        st.fairSpan = ((v.fair && v.fair.span) || 0) * 1000;
+        st.inspireSpan = ((v.inspire && v.inspire.span) || 0) * 1000;
         st.rateOf = v.rate || 100;
         st.canSell = v.canSellToday || 0;
         st.ups = v.upgrades || {};
