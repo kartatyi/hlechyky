@@ -220,9 +220,10 @@ public static class TyperaceLogs
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Що клієнт справді пише в журнал (typerace.js, journal): проковтнуті натиски (s) — не більше чотирьох за
+    // Що клієнт справді пише в журнал (typerace.js, journalAt): проковтнуті натиски (s) — не більше чотирьох за
     // одну червону літеру і жодного, коли до стелі журналу лишається менше, ніж треба на решту тексту + 200 подій.
-    // Пропущений натиск свою дельту віддає наступній події. Міняти разом із SWALLOW_PER_RED / RESERVE у JS.
+    // Пропущений натиск свою дельту віддає наступній події. Годинник журналу йде рівно записаними кроками (похибка
+    // округлення не накопичується); пауза на стелі — від справжньої миті. Міняти разом із JS.
     // ---------------------------------------------------------------------------------------------
 
     public const int ClientSwallowsPerRed = 4, ClientReserve = 200;
@@ -251,21 +252,22 @@ public static class TyperaceLogs
     /// <summary>Що з <see cref="ScenarioSwallows"/> записав у журнал браузер (TyperaceCore.capped) — з живого прогону.</summary>
     public static readonly (string K, string D) FromJsCapped =
         ("cccccxssssbcccccccxssbccccccccxssssbcccccccccccccxssssbccccccc",
-         "AeAnAxAjAtAaANAOAQASB0AfApAyAlAuAhAqAcANAOBLAzAmAvAiArA0AnAwAeANAOAQASC-AjAsAfAoAyAkAuAgAqAzAmAvAiAhANAOAQASBfArA0AnAwAjAsAf");
+         "AeAnAxAjAtAaAMAPAQARB0AfApAyAkAuAgAqAcANAOBLAzAmAvAhArA1AnAwAeAMAPAQARC-AjAtAfAoAxAlAtAgAqAzAlAvAhAiAMAOAQASBfAqA0AnAwAjAsAf");
 
     public static Log AsClientWrites(IEnumerable<(char Kind, int Ms)> raw, int len)
     {
         var b = new Builder();
         int events = 0, cur = 0, swallowsInRed = 0;
         var red = false;
-        long carry = 0;
+        long now = 0, lastAt = 0;
         foreach (var (kind, ms) in raw)
         {
-            carry += ms;
+            now += ms;
             if (kind == 's' && (swallowsInRed >= ClientSwallowsPerRed || TyperaceJudge.MaxEvents - events <= len - cur + ClientReserve))
                 continue;
-            b.Add(kind, (int)Math.Min(int.MaxValue, carry));
-            carry = 0;
+            var v = (int)Math.Clamp(Math.Floor((now - lastAt) / (double)TyperaceJudge.StepMs + 0.5), 0, TyperaceJudge.MaxStep);
+            b.Add(kind, v * TyperaceJudge.StepMs);
+            lastAt = v >= TyperaceJudge.MaxStep ? Math.Max(now, lastAt) : lastAt + v * TyperaceJudge.StepMs;
             events++;
             switch (kind)
             {
@@ -275,6 +277,17 @@ public static class TyperaceLogs
                 case 'b': if (red) red = false; else if (cur > 0) cur--; break;
             }
         }
+        return b.Build();
+    }
+
+    /// <summary>
+    /// Як писав журнал клієнт до виправлення: кожна дельта округлюється окремо, а годинник журналу стає на справжню
+    /// мить (lastAt = t). На цілих мілісекундах «від половини вгору» це +0,5 мс на подію.
+    /// </summary>
+    public static Log AsOldClientWrites(IEnumerable<(char Kind, int Ms)> raw)
+    {
+        var b = new Builder();
+        foreach (var (kind, ms) in raw) b.Add(kind, ms);
         return b.Build();
     }
 

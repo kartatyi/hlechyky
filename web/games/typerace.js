@@ -228,10 +228,14 @@
   function journalAt(st, kind, human, t) {
     if (kind === 's' && (st.sInRed >= SWALLOW_PER_RED || MAX_EVENTS - st.events <= st.len - st.c + RESERVE)) return;
     if (st.events >= MAX_EVENTS) return;
-    if (t < st.lastAt) t = st.lastAt;
+    const v = Math.min(MAX_STEP, Math.max(0, Math.floor((t - st.lastAt) / STEP_MS + 0.5)));
     st.k += human ? kind : kind.toUpperCase();
-    st.d += enc(t - st.lastAt);
-    st.lastAt = t;
+    st.d += ALPHA[v >> 6] + ALPHA[v & 63];
+    // час журналу йде рівно тими кроками, що записані, тож округлення не накопичується. Раніше lastAt = t, і цілі
+    // мілісекунди, округлені до кроку 4 мс «від половини вгору», давали +0,5 мс на подію: на 1100 подій журнал «бачив»
+    // на пів секунди більше, ніж сервер, і суддя казав чесному неохайному друкареві «годинник не сходиться».
+    // Пауза на стелі (≥ 16,4 с) — журнал свідомо недобачає, тож там беремо справжню мить.
+    st.lastAt = v >= MAX_STEP ? Math.max(t, st.lastAt) : st.lastAt + v * STEP_MS;
     st.events++;
     if (kind === 'x') st.sInRed = 0;
     else if (kind === 's') st.sInRed++;
@@ -895,9 +899,10 @@
       const ch = st.text[i];
       let cl = i < c ? 'ok' : i === c && !st.finished ? (st.red != null ? 'bad' : 'cur') : '';
       if (ch === '\n') cl += ' nl';
-      const shown = ch === '\n' ? '↵\n' : ch;
       const typed = i === c && st.red != null ? ' data-typed="' + esc(st.red === ' ' ? '␣' : st.red === '\n' ? '↵' : st.red) + '"' : '';
-      html += '<b class="' + cl.trim() + '"' + typed + '>' + esc(shown) + '</b>';
+      // кінець рядка: ↵ у літері, а сам перенос — уже за нею (інакше літера тягнулась на два рядки, і набраний
+      // неправильний знак під червоним ↵ з'являвся аж під наступним рядком)
+      html += '<b class="' + cl.trim() + '"' + typed + '>' + esc(ch === '\n' ? '↵' : ch) + '</b>' + (ch === '\n' ? '\n' : '');
     }
     word.innerHTML = html;
     word.classList.toggle('on', mine && st.phase === 'go' && !st.finished);
@@ -919,7 +924,11 @@
     if (!kbd && !(st.ctx && st.ctx.ui.coarse())) return;
     const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     const r = input.getBoundingClientRect();
-    if (kbd || r.bottom > vh - 80 || r.top < 0) {
+    // кругла кнопка балачки столу (каркас сайту) — якщо вона є на екрані, рядок має бути вище за неї
+    const fab = document.querySelector('.tchat .tc-head');
+    const fr = fab && fab.getClientRects().length ? fab.getBoundingClientRect() : null;
+    const limit = fr && fr.top > 0 && fr.top < vh ? Math.min(vh - 80, fr.top - 8) : vh - 80;
+    if (kbd || r.bottom > limit || r.top < 0) {
       try { input.scrollIntoView({ block: 'center' }); } catch { /* старий браузер */ }
     }
   }
@@ -1426,7 +1435,8 @@
     if (v.phase === 'go') {
       const me = ctx.mine ? (v.racers || []).find((r) => r.seat === ctx.seat) : null;
       if (me && me.fin != null) return me.flag ? 'Фініш, але не зараховано: ' + (REASON[me.flag] || me.flag)
-        : soloGame ? 'Фініш!' : 'Фініш! ' + (me.place ? me.place + '-е місце' : '') + ' — чекаємо на решту · гуди: 1–4';
+        : soloGame ? 'Фініш!' : 'Фініш! ' + (me.place ? me.place + '-е місце' : '') + ' — чекаємо на решту · '
+          + (ctx.ui && ctx.ui.coarse() ? 'гуди решті' : 'гуди: 1–4');
       if (me && st && st.finished) return st.finTries > 1 ? 'Фініш! Стукаємо до сервера ще раз…' : 'Фініш! Суддя дивиться журнал…';
       if (me) return 'Друкуй!';
       // глядач: лідер — з кадрів (вид приходить лише на подіях і відстає)

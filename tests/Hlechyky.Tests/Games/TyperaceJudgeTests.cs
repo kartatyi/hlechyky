@@ -386,6 +386,23 @@ public class TyperaceJudgeTests
     }
 
     [Fact]
+    public void The_client_journal_clock_does_not_drift_on_a_long_run()
+    {
+        // 1100 натисків, проміжки — цілі мілісекунди на півкроці (4k + 2): кожен округлюється «вгору» на 2 мс
+        var rng = new Random(11);
+        var raw = new List<(char Kind, int Ms)>();
+        long truth = 0;
+        for (var i = 0; i < 1100; i++) { var ms = 4 * rng.Next(15, 60) + 2; raw.Add(('c', ms)); truth += ms; }
+        var server = truth + 30;                                            // фініш дійшов за 30 мс після останньої літери
+        var old = TyperaceLogs.AsOldClientWrites(raw);
+        Assert.Equal(truth + 2 * 1100, old.Ms);                             // журнал «бачив» на 2,2 с більше, ніж було
+        Assert.Equal(TyperaceJudge.Clock, TyperaceJudge.Check(1100, old.K, old.D, server).Flag);
+        var now = TyperaceLogs.AsClientWrites(raw, 1100);
+        Assert.InRange(now.Ms - truth, -2, 2);                              // годинник журналу йде записаними кроками
+        Assert.Null(TyperaceJudge.Check(1100, now.K, now.D, server).Flag);
+    }
+
+    [Fact]
     public void The_client_journal_cap_is_the_same_in_the_browser_and_in_cs()
     {
         var log = TyperaceLogs.AsClientWrites(TyperaceLogs.ScenarioSwallows(), 40);
