@@ -3,7 +3,8 @@ namespace Hlechyky.Games.Impl;
 /// <summary>
 /// Слова Дядька Глека в підсумку Клавоперегонів (spec §6.6) і звання за швидкістю. Репліка йде у вид
 /// (<c>result.say</c>), а не в балачку столу: коментарі в чаті дратували ще в «Скільки?». Вибір — через
-/// <c>Ctx.Rng</c> кімнати, тож той самий сід дає ту саму репліку.
+/// <c>Ctx.Rng</c> кімнати, тож той самий сід дає ту саму репліку. Нік — підметом у називному, а дієслова без роду:
+/// за столом і Оля, і Петро («доїхав» Олі не личить).
 /// </summary>
 public static class TyperaceLines
 {
@@ -18,20 +19,22 @@ public static class TyperaceLines
         _ => "Ракета",
     };
 
-    static readonly string[] Winner =
+    /// <summary>Переможець; <c>true</c> у парі — репліка каже, що решта ще їде, тож коли дописали всі, її не беремо.</summary>
+    static readonly (string Line, bool OthersStillTyping)[] Winner =
     [
-        "{nick} — {cpm} зн/хв. Клавіатура ще димить.",
-        "{nick} доїхав першим. Решта ще шукає літеру «ґ».",
-        "{cpm} зн/хв — {nick} друкує швидше, ніж Глек говорить.",
-        "Перший — {nick}. Комусь варто протерти окуляри й клавіатуру.",
-        "Трактор {nick} на фініші. Пахне бензином і перемогою.",
-        "{nick} перший. Шевченко був би радий, якби мав клавіатуру.",
-        "{nick} — {cpm}. Пальці окремо, голова окремо, і все одно перший.",
+        ("{nick} — {cpm} зн/хв. Клавіатура ще димить.", false),
+        ("Перше місце — {nick}. Решта ще шукає літеру «ґ».", true),
+        ("{cpm} зн/хв — {nick} друкує швидше, ніж Глек говорить.", false),
+        ("Перше місце — {nick}. Комусь варто протерти окуляри й клавіатуру.", false),
+        ("Трактор {nick} на фініші. Пахне бензином і перемогою.", false),
+        ("Перше місце — {nick}. Шевченко був би радий, якби мав клавіатуру.", false),
+        ("{nick} — {cpm}. Пальці окремо, голова окремо, і все одно перше місце.", false),
+        ("{nick} на фініші, а в решти ще гарячі клавіші.", true),
     ];
 
     const string Clean = "{nick}: {cpm} зн/хв і жодного червоного. Так не буває. Було.";
     const string AllDone = "Усі дописали — це вже саме по собі свято.";
-    const string Alone = "{nick} їхав сам і виграв сам. Чесно, але сумно.";
+    const string Alone = "{nick} — один на трасі й перше місце на фініші. Чесно, але сумно.";
 
     static readonly string[] Nobody =
     [
@@ -45,10 +48,20 @@ public static class TyperaceLines
     static readonly string[] Solo =
     [
         "{cpm} зн/хв. {title} — так і запишемо.",
+        "{cpm} зн/хв. Пальці розім’яті, можна й за стіл.",
+        "{title}: {cpm} зн/хв. Глек записав олівцем — ще переб'єш.",
+        "{cpm} зн/хв. Клавіатура ціла, текст дописаний — день удався.",
+        "{cpm}. Не рекорд, зате чесно й по літері.",
     ];
 
-    const string Record = "Рекорд! {cpm} зн/хв. Учорашній ти нервово курить.";
-    const string SoloShort = "Не доїхав: {pct} % тексту. Уривок цього разу переміг.";
+    static readonly string[] Record =
+    [
+        "Рекорд! {cpm} зн/хв. Учорашній ти мовчки заздрить.",
+        "Рекорд! {cpm} зн/хв. Глек аж окуляри протер.",
+        "Новий рекорд — {cpm} зн/хв. Клавіші просять пощади.",
+    ];
+
+    const string SoloShort = "До фінішу — {pct} % тексту. Уривок цього разу переміг.";
 
     static string Fill(string line, string? nick, int cpm, string? title = null, int pct = 0) => line
         .Replace("{nick}", nick ?? "Хтось")
@@ -56,21 +69,35 @@ public static class TyperaceLines
         .Replace("{title}", title ?? Title(cpm))
         .Replace("{pct}", pct.ToString());
 
-    /// <summary>Підсумок столу з переможцем. <paramref name="clean"/> — без жодної помилки; <paramref name="alone"/> — решта пішли.</summary>
+    /// <summary>
+    /// Підсумок столу з переможцем. <paramref name="clean"/> — без жодної помилки; <paramref name="alone"/> — решта пішли;
+    /// <paramref name="allDone"/> — дописали всі (тоді без реплік «решта ще їде», зате з «це вже свято»).
+    /// </summary>
     public static string ForWinner(Random rng, string nick, int cpm, bool clean, bool alone, bool allDone)
     {
         string line;
         if (alone) line = Fill(Alone, nick, cpm);
         else if (clean) line = Fill(Clean, nick, cpm);
-        else line = Fill(Winner[rng.Next(Winner.Length)], nick, cpm);
+        else
+        {
+            var n = 0;
+            foreach (var w in Winner) if (!(allDone && w.OthersStillTyping)) n++;
+            var pick = rng.Next(n);
+            line = "";
+            foreach (var w in Winner)
+            {
+                if (allDone && w.OthersStillTyping) continue;
+                if (pick-- == 0) { line = Fill(w.Line, nick, cpm); break; }
+            }
+        }
         return allDone && !alone ? line + " " + AllDone : line;
     }
 
     public static string ForNobody(Random rng) => Nobody[rng.Next(Nobody.Length)];
 
-    /// <summary>Підсумок тренування: рекорд, звичайний заїзд або «не доїхав».</summary>
+    /// <summary>Підсумок тренування: рекорд або звичайний заїзд.</summary>
     public static string ForSolo(Random rng, int cpm, bool record) =>
-        record ? Fill(Record, null, cpm) : Fill(Solo[rng.Next(Solo.Length)], null, cpm);
+        record ? Fill(Record[rng.Next(Record.Length)], null, cpm) : Fill(Solo[rng.Next(Solo.Length)], null, cpm);
 
     public static string ForSoloUnfinished(int pct) => Fill(SoloShort, null, 0, pct: pct);
 }

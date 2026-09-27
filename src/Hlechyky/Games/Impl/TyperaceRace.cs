@@ -22,7 +22,6 @@ public abstract class TyperaceRace : Game
     public const int ReadyTicks = ReadyMs / TickMs;
     public const int HardCapBaseMs = 60_000;
     public const int HardCapPerCharMs = 500;
-    public const int IdleMs = 60_000;
 
     public const string PhaseLobby = "lobby", PhasePick = "pick", PhaseReady = "ready", PhaseGo = "go", PhaseDone = "done";
 
@@ -42,6 +41,13 @@ public abstract class TyperaceRace : Game
         public int? Cpm, Acc;
         public string? Flag;         // null — зараховано (або ще не фінішував)
         public int Seat;
+        /// <summary>Коли (мс від старту) pos останній раз перетнув ¼, ½, ¾ тексту; -1 — ще ні (суддя, перевірка 8).</summary>
+        public readonly long[] Seen = new long[TyperaceJudge.SeenMarks];
+        /// <summary>Остання зміна з pos — «ще друкує» (дотяжка хвоста).</summary>
+        public DateTimeOffset LastMove;
+        /// <summary>Де помилявся (з журналу зарахованого фінішу) — для слова-пастки; null — журналу нема.</summary>
+        public bool[]? Missed;
+        public DateTimeOffset LastCheer;
 
         public int S => Gone ? 3 : Fin is not null ? 2 : Red ? 1 : 0;
 
@@ -58,11 +64,15 @@ public abstract class TyperaceRace : Game
             Place = null;
             Cpm = Acc = null;
             Flag = null;
+            Array.Fill(Seen, -1L);
+            LastMove = default;
+            Missed = null;
+            LastCheer = default;
         }
     }
 
-    /// <summary>Підсумок заїзду для виду (<c>result</c>).</summary>
-    protected sealed record Summary(int[] Order, int[] Winners, string Say, bool AllDone);
+    /// <summary>Підсумок заїзду для виду (<c>result</c>); <paramref name="Trap"/> — слово-пастка, якщо було.</summary>
+    protected sealed record Summary(int[] Order, int[] Winners, string Say, bool AllDone, TyperaceTrap? Trap = null);
 
     protected Racer[] Racers = [];
     protected TyperaceBank Bank = null!;
@@ -197,6 +207,16 @@ public abstract class TyperaceRace : Game
         var red = e == 1;
         if (c == r.C && red == r.Red) return ActResult.Done;
         if (red && !r.Red) r.Wrong++;
+        // відмітки ¼, ½, ¾ для судді: коли перетнув востаннє (відступив назад — забуваємо, перетне ще раз)
+        var now = Ctx.Clock.UtcNow;
+        var ms = (long)(now - GoAt!.Value).TotalMilliseconds;
+        for (var q = 0; q < TyperaceJudge.SeenMarks; q++)
+        {
+            var mark = TyperaceJudge.Mark(Len, q);
+            if (c < mark) r.Seen[q] = -1;
+            else if (r.C < mark) r.Seen[q] = ms;
+        }
+        r.LastMove = now;
         r.C = c;
         r.Red = red;
         if (c > 0 || red) Moved = true;
@@ -222,7 +242,7 @@ public abstract class TyperaceRace : Game
         }
         var now = Ctx.Clock.UtcNow;
         var ms = Math.Max(1L, (long)Math.Round((now - GoAt!.Value).TotalMilliseconds));
-        var v = TyperaceJudge.Check(Len, k ?? "", d, ms);
+        var v = TyperaceJudge.Check(Len, k ?? "", d, ms, r.Seen);
         r.Fin = ms;
         r.C = Len;
         r.Red = false;
@@ -235,15 +255,19 @@ public abstract class TyperaceRace : Game
         ViewDirty = true;
         if (v.Ok)
         {
+            r.Missed = new bool[Len];
+            TyperaceJudge.Misses(k, Len, r.Missed);
             r.Place = ++Places;
             OnVerified(r, now);
             return ActResult.Accept(FinishText(r));
         }
         OnFlagged(r, now);
-        return ActResult.Accept($"Фініш, але заїзд не зараховано: {TyperaceJudge.Reason(v.Flag)}");
+        return ActResult.Accept(FlaggedText(r));
     }
 
     protected virtual string FinishText(Racer r) => $"Фініш! {r.Cpm} зн/хв, точність {r.Acc} %";
+
+    protected virtual string FlaggedText(Racer r) => $"Фініш, але заїзд не зараховано: {TyperaceJudge.Reason(r.Flag)}";
 
     /// <summary>Ачівки за зарахований заїзд (spec §2.3) — і за столом, і в соло.</summary>
     protected void AwardAchievements(Racer r)
@@ -293,7 +317,10 @@ public abstract class TyperaceRace : Game
 
     protected int Percent(Racer r) => Len > 0 ? (int)Math.Floor(100.0 * r.C / Len) : 0;
 
-    public override object? Frame()
+    public override object? Frame() => new { t = TickNo, p = Positions() };
+
+    /// <summary>Пласкі пари «c, s» за місцями (порожнє — -1, -1).</summary>
+    protected int[] Positions()
     {
         var p = new int[2 * Racers.Length];
         for (var i = 0; i < Racers.Length; i++)
@@ -303,7 +330,7 @@ public abstract class TyperaceRace : Game
             p[2 * i] = r.C;
             p[2 * i + 1] = r.S;
         }
-        return new { t = TickNo, p };
+        return p;
     }
 
     /// <summary>Лобі наново: стіл дограли, і хтось сів — каркас відкрив кімнату знову, а Start() ще не було.</summary>
@@ -371,7 +398,11 @@ public abstract class TyperaceRace : Game
             ["tail"] = TailSet && !lobby,
             ["racers"] = RacersView(),
             ["result"] = !lobby && Phase == PhaseDone && Result is { } res
-                ? new { order = (int[])res.Order.Clone(), winners = (int[])res.Winners.Clone(), say = res.Say, allDone = res.AllDone }
+                ? new
+                {
+                    order = (int[])res.Order.Clone(), winners = (int[])res.Winners.Clone(), say = res.Say, allDone = res.AllDone,
+                    trap = res.Trap is { } tr ? new { word = tr.Word, n = tr.N, of = tr.Of } : null,
+                }
                 : null,
         };
     }

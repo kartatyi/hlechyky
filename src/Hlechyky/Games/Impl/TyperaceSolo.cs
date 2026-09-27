@@ -11,6 +11,8 @@ namespace Hlechyky.Games.Impl;
 public sealed class TyperaceSolo : TyperaceRace
 {
     public const string ActGo = "go", ActStop = "stop";
+    /// <summary>Хвилина без жодного натиску — людина відійшла, назад до вибору (за столом тиша коротша, там інша причина).</summary>
+    public const int IdleMs = 60_000;
 
     public override GameInfo Info { get; } = new(
         "typerace-solo", "Клавоперегони: тренування", "тренування клавоперегонів", GameGroup.Solo, 1, 1,
@@ -125,8 +127,10 @@ public sealed class TyperaceSolo : TyperaceRace
         Done(r, $"Фініш є, але не зараховано: {TyperaceJudge.Reason(r.Flag)}. Спробуй ще — по-людськи.");
     }
 
-    protected override string FinishText(Racer r) =>
-        _record ? $"Рекорд! {r.Cpm} зн/хв, точність {r.Acc} %" : base.FinishText(r);
+    /// <summary>Тост на фініш соло не потрібен: підсумок заїзду з'являється тут-таки, і рекорд у ньому вже написано.</summary>
+    protected override string FinishText(Racer r) => "";
+
+    protected override string FlaggedText(Racer r) => "";
 
     void Done(Racer r, string say)
     {
