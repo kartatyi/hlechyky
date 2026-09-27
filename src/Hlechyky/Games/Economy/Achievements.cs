@@ -144,6 +144,9 @@ public static class AchievementCatalog
         // хвиля 2: dotepy — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
         new("dotepy-sweep", "Розгром",         "Усі голоси столу — за твій дотеп", "💥", 15),
         new("dotepy-king",  "Король дотепів",  "Виграв «Дотепи» за столом на п'ятьох і більше", "👑", 25),
+        // хвиля 2: typerace — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("typerace-300",   "Швидкі пальці",      "300 знаків за хвилину з точністю 95 % у Клавоперегонах", "⌨️", 20),
+        new("typerace-clean", "Без жодної помилки", "Дописав уривок на 240+ знаків без жодної червоної літери", "🧼", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
