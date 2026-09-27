@@ -134,6 +134,26 @@ public static partial class BluffBank
     [GeneratedRegex("_{3,}")]
     private static partial Regex Blanks();
 
+    /// <summary>Пояснення в дужках наприкінці: «Dull («тьмяне»)».</summary>
+    [GeneratedRegex(@"\s*\([^()]*\)\s*$")]
+    private static partial Regex Trailing();
+
+    /// <summary>Скільки заготовок одного питання беремо (гра тримає бачені через 🎲 у бітах числа).</summary>
+    public const int MaxDecoys = 8;
+
+    /// <summary>
+    /// Текст картки без оформлення, якого гравці не друкують: лапок («Аполлон» → Аполлон, яйце «Кіндер Сюрприз» →
+    /// яйце Кіндер Сюрприз) і пояснення в дужках наприкінці (Dull («тьмяне») → Dull). Інакше коли заготовок на столі
+    /// нема, правду видавало б саме оформлення. Пояснення — місце для <c>note</c>.
+    /// </summary>
+    public static string Plain(string? s)
+    {
+        var clean = BluffText.Clean(s);
+        var bare = BluffText.Clean(Trailing().Replace(clean, "")
+            .Replace("«", "").Replace("»", "").Replace("“", "").Replace("”", "").Replace("„", "").Replace("\"", ""));
+        return bare.Length > 0 ? bare : clean;
+    }
+
     public static IReadOnlyList<BluffQuestion> Load(string path)
     {
         try
@@ -173,8 +193,9 @@ public static partial class BluffBank
     {
         if (e.ValueKind != JsonValueKind.Object) return null;
         var text = BluffText.Clean(Str(e, "q"));
-        var answer = BluffText.Clean(Str(e, "answer"));
-        if (text.Length == 0 || answer.Length == 0) return null;
+        var answer = Plain(Str(e, "answer"));
+        // Правда довша за брехню видала б себе сама: гравець стільки не напише.
+        if (text.Length == 0 || answer.Length == 0 || answer.Length > Bluff.MaxLie) return null;
         var blanks = Blanks().Matches(text);
         if (blanks.Count != 1) return null;
         text = Blanks().Replace(text, Blank);
@@ -186,9 +207,13 @@ public static partial class BluffBank
         // вона сиділа б на столі близнюком правди. Грубішого сита гравців (правда всередині фрази, шматок) тут нема:
         // заготовки пишуть і звіряють люди, а «сорок центів» при правді «сорокова формула» — чесна брехня.
         var decoys = new List<string>();
-        foreach (var d in Strs(e, "decoys"))
-            if (!forms.Any(f => BluffText.LooksSame(d, f)) && !decoys.Any(x => BluffText.LooksSame(x, d)) && d.Length <= Bluff.MaxLie)
+        foreach (var raw in Strs(e, "decoys"))
+        {
+            var d = Plain(raw);
+            if (decoys.Count < MaxDecoys && !forms.Any(f => BluffText.LooksSame(d, f)) && !decoys.Any(x => BluffText.LooksSame(x, d))
+                && d.Length <= Bluff.MaxLie)
                 decoys.Add(d);
+        }
         return new BluffQuestion
         {
             Id = Str(e, "id").Trim(),

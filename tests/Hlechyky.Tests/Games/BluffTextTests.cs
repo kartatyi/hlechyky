@@ -126,6 +126,84 @@ public class BluffTextTests
     }
 
     [Fact]
+    public void Capital_latin_and_greek_twins_do_not_hide_the_truth_on_uppercase_cards()
+    {
+        // Картки показано ВЕЛИКИМИ: латинські B, H, M, T (і грецькі) там не відрізнити від В, Н, М, Т.
+        string[] hydrogen = ["водень", "гідроген"];
+        Assert.True(BluffText.LooksTrue("BOДEHЬ", hydrogen));             // B, O, E, H — латиниця
+        Assert.True(BluffText.LooksTrue("ВОД\u0395\u0397Ь", hydrogen));             // \u0395, \u0397 — грецькі
+        Assert.True(BluffText.LooksTrue("TAKCI", ["таксі"]));             // уся брехня латиницею
+        Assert.True(BluffText.LooksTrue("МАМА", ["mama"]));              // і навпаки: кирилиця під латинську правду
+        Assert.True(BluffText.LooksTrue("В0ДЕНЬ", hydrogen));             // нуль посеред слова — це О
+        Assert.Equal(BluffText.Norm("водень"), BluffText.Norm("BOДEHЬ"));
+        // Чесні латинські слова лишаються собою: HOLLYWOODHILLS не став правдою HOLLYWOODLAND.
+        Assert.False(BluffText.LooksTrue("HOLLYWOODHILLS", ["HOLLYWOODLAND"]));
+        Assert.False(BluffText.LooksTrue("1930", ["1903"]));
+    }
+
+    [Fact]
+    public void Invisible_letters_and_fillers_do_not_split_the_truth()
+    {
+        string[] hydrogen = ["водень"];
+        Assert.True(BluffText.LooksTrue("в\u3164о\u3164день", hydrogen));   // HANGUL FILLER — «літера», якої не видно
+        Assert.True(BluffText.LooksTrue("во\u115fдень", hydrogen));
+        Assert.True(BluffText.LooksTrue("во\uffa0день", hydrogen));
+        Assert.True(BluffText.LooksTrue("во\U000E0020день", hydrogen));    // тег-символ (дві половинки UTF-16)
+        Assert.True(BluffText.LooksTrue("во\u2060день", hydrogen));
+        Assert.True(BluffText.LooksTrue("во\u034fдень", hydrogen));
+        Assert.Equal("водень", BluffText.Clean("в\u3164о\u3164день"));
+        Assert.Equal("водень", BluffText.Clean("во\U000E0020день"));
+        Assert.Equal("во день", BluffText.Clean("во\u2800день"));            // порожня клітинка Брайля — це пробіл
+        Assert.Equal("", BluffText.Clean("\u3164\u3164 \u2800"));
+        Assert.Equal("\u2764\ufe0f серце", BluffText.Clean("\u2764\ufe0f серце"));   // VS16 смайлика лишається
+    }
+
+    [Fact]
+    public void A_word_mixing_alphabets_is_flagged()
+    {
+        Assert.True(BluffText.MixedScripts("BOДEHЬ"));
+        Assert.True(BluffText.MixedScripts("гaсi"));
+        Assert.True(BluffText.MixedScripts("вод\u0395нь"));
+        Assert.False(BluffText.MixedScripts("водень"));
+        Assert.False(BluffText.MixedScripts("HOLLYWOOD land"));
+        Assert.False(BluffText.MixedScripts("iPhone-ом за 1000"));       // різні абетки в різних словах — можна
+        Assert.False(BluffText.MixedScripts("🙂 водень!"));
+        Assert.False(BluffText.MixedScripts("2м"));
+    }
+
+    [Fact]
+    public void Service_words_in_and_with_do_not_turn_the_truth_into_a_lie()
+    {
+        // «зі сліз» — правда; «із сліз» і «з сліз» на картці — та сама правда, лише інше службове слово.
+        string[] tears = ["зі сліз", "з сліз", "із сліз", "сльози"];
+        Assert.True(BluffText.LooksTrue("із сліз", ["зі сліз"]));
+        Assert.True(BluffText.LooksTrue("зо сліз", tears));
+        Assert.True(BluffText.LooksTrue("в спальні", ["у спальні"]));
+        Assert.True(BluffText.LooksTrue("У спальні!", ["в спальні"]));
+        Assert.True(BluffText.LooksTrue("кіт й пес", ["кіт і пес"]));
+        Assert.False(BluffText.LooksTrue("з війок", tears));
+        Assert.False(BluffText.LooksTrue("у ванній", ["у спальні"]));
+    }
+
+    [Fact]
+    public void Lies_merge_by_endings_but_different_words_stay_different_cards()
+    {
+        // Різні слова з однією одруківкою різниці — різні брехні, а не одна спільна картка.
+        Assert.False(BluffText.LooksSame("кота", "кита"));
+        Assert.False(BluffText.LooksSame("Іраку", "Ірану"));
+        Assert.False(BluffText.LooksSame("Австрії", "Австралії"));
+        Assert.False(BluffText.LooksSame("Ірландії", "Ісландії"));
+        Assert.False(BluffText.LooksSame("салі", "салоні"));
+        // А одне слово в різних відмінках — одна картка.
+        Assert.True(BluffText.LooksSame("на Марсі", "Марсу"));
+        Assert.True(BluffText.LooksSame("свинячому салі", "свинячим салом"));
+        Assert.True(BluffText.LooksSame("кроликів", "кролики"));
+        Assert.True(BluffText.LooksSame("лампами", "лампи"));
+        Assert.True(BluffText.LooksSame("Ірак", "в Іраку"));
+        Assert.True(BluffText.LooksSame("синій", "синя"));
+    }
+
+    [Fact]
     public void Clean_keeps_the_authors_case_and_punctuation_but_squeezes_spaces_and_drops_invisibles()
     {
         Assert.Equal("Свинячому салі!", BluffText.Clean("  Свинячому\u00a0\u00a0салі!\n"));

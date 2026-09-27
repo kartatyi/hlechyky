@@ -8,11 +8,11 @@ namespace Hlechyky.Games.Impl;
 /// Пам'ять «Байкарів»: хто яке питання вже бачив і коли — щоб у наступній партії були свіжі. Копія
 /// <see cref="SkilkySeen"/> під своєю таблицею <c>bluff_seen</c> (файл чужої гри не узагальнюємо).
 /// <para>
-/// Одна відмінність: запис (<see cref="Mark"/>) іде не під замком кімнати, а фоном — чергою на пулі потоків, по одному
-/// запису за раз. Позначка ставиться з тика, а тик тримає замок; база там — зайва затримка всім за столом. Читання
-/// (<see cref="LastSeen"/>) — раз на партію, у <c>Start()</c>, як у «Скільки?». Щоб «Ще раз» за тим самим столом не
-/// обігнав фоновий запис і не повторив щойно бачене, кожен екземпляр ще й пам'ятає свої позначки в пам'яті й домішує
-/// їх до прочитаного з бази (без бази — лише вони: повторів за столом однаково не буде).
+/// Відмінність від «Скільки?»: база ніколи не чіпається під замком кімнати. І запис (<see cref="Mark"/>, з тика), і
+/// читання (<see cref="Prefetch"/>, коли стіл показують у лобі) ідуть фоном — однією чергою на пулі потоків, тож
+/// читання бачить усе, що записали перед ним. <see cref="LastSeen"/> (його кличе <c>Start()</c>) бере лише те, що вже
+/// підтяглось, плюс позначки самого столу в пам'яті: «Ще раз» не повторить щойно бачене, навіть коли фоновий запис
+/// ще не встиг, а стіл, що встиг натиснути «Почати» раніше за базу, просто зіграє без старої пам'яті.
 /// </para>
 /// Ніколи не кидає. Без бази, із зайнятою чи покаліченою — мовчить, і питання просто тасуються.
 /// </summary>
@@ -28,10 +28,14 @@ public sealed class BluffSeen(Db? db)
     static Task _tail = Task.CompletedTask;
 
     volatile bool _ready;
+
+    readonly Lock _own = new();
     /// <summary>Позначки цього столу: питання → (ніки, коли). Питань за вечір — десятки, тож не чистимо.</summary>
     readonly Dictionary<string, (string[] Nicks, DateTimeOffset At)> _mine = new(StringComparer.Ordinal);
+    /// <summary>Прочитане з бази для кожного ніка: питання → коли бачив востаннє; null — ще в дорозі.</summary>
+    readonly Dictionary<string, Dictionary<string, DateTimeOffset>?> _byNick = new(StringComparer.Ordinal);
 
-    /// <summary>Коли допишеться все, що вже стоїть у черзі (для тестів).</summary>
+    /// <summary>Коли допишеться й дочитається все, що вже стоїть у черзі (для тестів).</summary>
     public static Task Idle
     {
         get { lock (Gate) return _tail; }
@@ -39,33 +43,49 @@ public sealed class BluffSeen(Db? db)
 
     public static string NickKey(string nick) => EconomyStore.Key(nick);
 
-    /// <summary>Для кожного питання, яке бачив хоч хтось із цих гравців, — коли його бачили востаннє.</summary>
+    static void Enqueue(Action work)
+    {
+        lock (Gate) _tail = _tail.ContinueWith(_ => work(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+    }
+
+    /// <summary>
+    /// Підтягнути з бази фоном пам'ять цих ніків (тих, кого ще не читали). Кличе гра, коли стіл показують у лобі:
+    /// поки люди сідають і тиснуть «Почати», база встигає.
+    /// </summary>
+    public void Prefetch(IEnumerable<string> nickKeys)
+    {
+        if (db is null) return;
+        List<string>? need = null;
+        lock (_own)
+            foreach (var key in nickKeys)
+                if (_byNick.TryAdd(key, null)) (need ??= []).Add(key);
+        if (need is null) return;
+        Enqueue(() =>
+        {
+            var read = Read(need);
+            lock (_own)
+                foreach (var key in need) _byNick[key] = read.TryGetValue(key, out var seen) ? seen : [];
+        });
+    }
+
+    /// <summary>
+    /// Для кожного питання, яке бачив хоч хтось із цих гравців, — коли його бачили востаннє. Лише з пам'яті (у базу не
+    /// ходить): прочитане фоном + позначки цього столу. Кого ще не читали — просимо прочитати на наступний раз.
+    /// </summary>
     public Dictionary<string, DateTimeOffset> LastSeen(IReadOnlyCollection<string> nickKeys)
     {
         var result = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
         if (nickKeys.Count == 0) return result;
-        try
-        {
-            db?.With(c =>
+        var missing = false;
+        lock (_own)
+            foreach (var key in nickKeys)
             {
-                Ensure(c);
-                using var cmd = c.CreateCommand();
-                var names = nickKeys.Select((key, i) =>
-                {
-                    cmd.Parameters.AddWithValue("$n" + i.ToString(CultureInfo.InvariantCulture), key);
-                    return "$n" + i.ToString(CultureInfo.InvariantCulture);
-                }).ToList();
-                cmd.CommandText = $"SELECT q_key, MAX(seen_at) FROM bluff_seen WHERE nick_key IN ({string.Join(",", names)}) GROUP BY q_key";
-                using var r = cmd.ExecuteReader();
-                while (r.Read())
-                    result[r.GetString(0)] = DateTimeOffset.Parse(r.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-                return 0;
-            });
-        }
-        catch (Exception)
-        {
-            result.Clear();
-        }
+                if (!_byNick.TryGetValue(key, out var seen)) missing = true;
+                if (seen is null) continue;
+                foreach (var (q, at) in seen)
+                    if (!result.TryGetValue(q, out var was) || was < at) result[q] = at;
+            }
+        if (missing) Prefetch(nickKeys);
         foreach (var (q, (nicks, at)) in _mine)
             if (nicks.Any(nickKeys.Contains) && (!result.TryGetValue(q, out var was) || was < at)) result[q] = at;
         return result;
@@ -79,8 +99,43 @@ public sealed class BluffSeen(Db? db)
         var q = question.Key;
         _mine[q] = (keys, now);
         if (db is null) return;
-        lock (Gate) _tail = _tail.ContinueWith(_ => Write(keys, q, now), CancellationToken.None,
-            TaskContinuationOptions.None, TaskScheduler.Default);
+        Enqueue(() => Write(keys, q, now));
+    }
+
+    /// <summary>Пам'ять цих ніків із бази: нік → (питання → коли). Будь-яка біда — порожньо.</summary>
+    Dictionary<string, Dictionary<string, DateTimeOffset>> Read(List<string> nickKeys)
+    {
+        var result = new Dictionary<string, Dictionary<string, DateTimeOffset>>(StringComparer.Ordinal);
+        if (db is null || nickKeys.Count == 0) return result;
+        try
+        {
+            db.With(c =>
+            {
+                Ensure(c);
+                using var cmd = c.CreateCommand();
+                var names = new List<string>(nickKeys.Count);
+                for (var i = 0; i < nickKeys.Count; i++)
+                {
+                    var name = "$n" + i.ToString(CultureInfo.InvariantCulture);
+                    cmd.Parameters.AddWithValue(name, nickKeys[i]);
+                    names.Add(name);
+                }
+                cmd.CommandText = $"SELECT nick_key, q_key, seen_at FROM bluff_seen WHERE nick_key IN ({string.Join(",", names)})";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    if (!result.TryGetValue(r.GetString(0), out var seen))
+                        result[r.GetString(0)] = seen = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+                    seen[r.GetString(1)] = DateTimeOffset.Parse(r.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+                }
+                return 0;
+            });
+        }
+        catch (Exception)
+        {
+            result.Clear();
+        }
+        return result;
     }
 
     void Write(string[] nickKeys, string questionKey, DateTimeOffset now)
@@ -100,7 +155,7 @@ public sealed class BluffSeen(Db? db)
                     """;
                 var n = cmd.Parameters.Add("$n", SqliteType.Text);
                 cmd.Parameters.AddWithValue("$q", questionKey);
-                // UTC і «O»: однакова довжина рядка, тож MAX(seen_at) у SQL — справді найсвіжіший час.
+                // UTC і «O»: однакова довжина рядка, тож рядки порівнюються як час.
                 cmd.Parameters.AddWithValue("$at", now.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
                 foreach (var key in nickKeys)
                 {
