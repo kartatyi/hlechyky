@@ -330,7 +330,9 @@ public sealed class Vohnyk : Game
         _ticks++;
         if (_phase == PhOver) return TickResult.Both;
         var h = _world.Hash();
-        var frame = h != _sentHash || _phase != _sentPhase || _active != _sentActive || _ticks % KeepaliveTicks == 0;
+        // Поза грою (відлік, смерть, «Разом!») кадр щотика: коротко, а клієнт саме тут звіряє годинник кроків — щоб
+        // перший натиск після відліку ліг на свій крок, а не на обрізаний «наперед».
+        var frame = h != _sentHash || _phase != _sentPhase || _active != _sentActive || _phase != PhGo || _ticks % KeepaliveTicks == 0;
         if (frame)
         {
             _sentHash = h;

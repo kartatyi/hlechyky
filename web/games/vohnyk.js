@@ -132,7 +132,7 @@
         ph: PH_READY, pt: READY, t: 0, d: 0, cause: 0, stepLocal: -1, acc: 0, lastNow: 0,
         hist: null, histMeta: null, kLog: [new Int32Array(HIST), new Int32Array(HIST)], kLogStep: [new Int32Array(HIST).fill(-1), new Int32Array(HIST).fill(-1)],
         sentK: [0, 0], sendTimes: [], lastSendStep: [0, 0],
-        lastN: -1, lastAt: 0, rate: 0.05, rateRef: null, lastF: null,
+        lastN: -1, lastAt: 0, rate: 0.042, rateRef: null, lastF: null,
         // ввід
         held: 0, touch: 0, active: 0, mode: 'kb', switchHeld: false, soloInit: false,
         // малювання
@@ -218,6 +218,8 @@
     if (!st.cv || st.cv.w !== cw || st.cv.h !== ch) {
       st.cv = HGames.ui.canvas(st.wrap, { w: cw, h: ch, cls: 'vh-board' });
       st.statKey = '';
+      // кнопки пальця — після полотна: стоячи телефон кладе їх смугою під ним
+      if (st.touchEl && st.touchEl.previousElementSibling !== st.cv.el) st.wrap.appendChild(st.touchEl);
     } else st.cv.resize();
     st.S = cw / W;
   }
@@ -492,12 +494,13 @@
   function onFrame(st, f) {
     if (!f || !f.w || !st.world || f.lv !== st.lvN) return;
     const now = performance.now();
-    // швидкість сервера (кроків за мс) — з пар кадрів, рознесених хоча б на секунду
-    if (!st.rateRef || f.n < st.rateRef.n) st.rateRef = { n: f.n, at: now };
-    else if (now - st.rateRef.at > 1000) {
+    // швидкість сервера (кроків за мс): тик не рівно 40 мс (таймер ОС), тож міряємо з пар кадрів, рознесених
+    // хоча б на 0,4 с; перший замір беремо цілим, далі згладжуємо
+    if (!st.rateRef || f.n < st.rateRef.n) st.rateRef = { n: f.n, at: now, first: !st.rateRef };
+    else if (now - st.rateRef.at > 400) {
       const r = (f.n - st.rateRef.n) / (now - st.rateRef.at);
-      if (r > 0.02 && r < 0.08) st.rate = st.rate * 0.6 + r * 0.4;
-      st.rateRef = { n: f.n, at: now };
+      if (r > 0.02 && r < 0.08) st.rate = st.rateRef.first ? r : st.rate * 0.7 + r * 0.3;
+      st.rateRef = { n: f.n, at: now, first: false };
     }
     const fresh = st.lastN < 0 || f.n < st.lastN - 50;
     if (!fresh && f.n < st.lastN) return;          // старий кадр, що заблукав, — ігноруємо
@@ -972,7 +975,8 @@
         html += '<span class="vh-chip vh-gem vh-h' + who + '">💎 ' + got + '/' + tot + '</span>';
       }
       html += '<span class="vh-chip vh-clock">⏱ ' + clock(st.t * STEP_MS) + '</span>';
-      html += '<button type="button" class="vh-chip vh-dead" data-vh="reset" title="Почати рівень заново (R)"' + (mine(st) && playing(st) ? '' : ' disabled') + '>☠ ' + st.d + '</button>';
+      html += '<button type="button" class="vh-chip vh-dead" data-vh="reset" title="' + (HGames.ui.coarse() ? 'Потримай, щоб почати рівень заново' : 'Почати рівень заново (R)') + '"'
+        + (mine(st) && playing(st) ? '' : ' disabled') + '>☠ ' + st.d + '</button>';
     }
     html += '<button type="button" class="vh-chip vh-snd" data-vh="mute" data-pad-skip aria-label="звук">' + (snd.muted ? '🔇' : '🔈') + '</button>';
     if (mine(st) && playing(st)) html += '<button type="button" class="vh-chip vh-give" data-vh="giveup">' + (st.giveupArm > now ? 'Точно здатись?' : 'Здатись') + '</button>';
@@ -1154,9 +1158,21 @@
         if (!snd.muted) snd.wake();
         st.hudAt = 0;
         hud(st);
-      } else if (b.dataset.vh === 'reset') st.ctx.act('reset');
+      } else if (b.dataset.vh === 'reset') { if (!HGames.ui.coarse()) st.ctx.act('reset'); }
       else if (b.dataset.vh === 'giveup') giveUp(st);
     });
+    // на пальці «заново» — лише довгим дотиком до ☠: випадковий тап не має скидати рівень
+    st.hudEl.addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('[data-vh="reset"]');
+      if (!b || b.disabled || !HGames.ui.coarse()) return;
+      clearTimeout(st.pressT);
+      b.classList.add('hold');
+      st.pressT = setTimeout(() => { b.classList.remove('hold'); st.ctx.act('reset'); }, 600);
+    });
+    const cancel = () => { clearTimeout(st.pressT); st.hudEl.querySelectorAll('.hold').forEach((x) => x.classList.remove('hold')); };
+    st.hudEl.addEventListener('pointerup', cancel);
+    st.hudEl.addEventListener('pointercancel', cancel);
+    st.hudEl.addEventListener('pointerleave', cancel);
     st.pickEl.addEventListener('click', (e) => {
       const b = e.target.closest('[data-lv]');
       if (!b || b.disabled) return;
@@ -1183,7 +1199,11 @@
     st.vis = () => { if (document.hidden) releaseAll(st); st.lastNow = 0; };
     document.addEventListener('visibilitychange', st.vis);
     if (window.ResizeObserver) {
-      st.ro = new ResizeObserver(() => fit(st));
+      st.ro = new ResizeObserver(() => {
+        fit(st);
+        // телефон лежачи: ⛶ чи поворот міняють розмір — полотно знову між шапкою й вкладками
+        if (playing(st) && phoneLandscape()) { clearTimeout(st.centreT); st.centreT = setTimeout(() => centre(st), 120); }
+      });
       st.ro.observe(st.wrap);
     }
     st.mode = HGames.ui.coarse() ? 'touch' : (window.HPad && window.HPad.pads > 0) ? 'pad' : 'kb';
@@ -1215,6 +1235,9 @@
     }
     const f = ctx.frame && ctx.frame.lv === st.lvN ? ctx.frame : v.f;
     if (f && playing(st) && (st.lastN < 0 || f.n > st.lastN)) onFrame(st, f);
+    // телефон лежачи: на старті партії підкрутити сторінку так, щоб полотно стало між шапкою й вкладками
+    if (playing(st) && !st.centred && phoneLandscape()) { st.centred = true; setTimeout(() => centre(st), 60); }
+    if (!playing(st)) st.centred = false;
     // партію дограно: показуємо світ таким, яким він був наприкінці (і після F5 теж)
     if (ctx.room.status === 'finished' && st.world && v.f && v.f.lv === st.lvN && v.f.w) {
       st.world.load(v.f.w);
@@ -1226,6 +1249,20 @@
     hud(st);
     panel(st);
     spin(st);
+  }
+
+  const phoneLandscape = () => !!(window.matchMedia && window.matchMedia('(pointer: coarse) and (orientation: landscape) and (max-height: 500px)').matches);
+
+  function centre(st) {
+    try {
+      const cs = getComputedStyle(document.body);
+      const px = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
+      const head = document.querySelector('header');
+      const top = head ? head.getBoundingClientRect().bottom : 0;
+      const bottom = window.innerHeight - px('--tabs-h') - px('--mini-h');
+      const r = st.wrap.getBoundingClientRect();
+      window.scrollBy(0, r.top - (top + Math.max(0, (bottom - top - r.height) / 2)));
+    } catch (_) { /* без прокрутки теж можна грати */ }
   }
 
   function spin(st) {

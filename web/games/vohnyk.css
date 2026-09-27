@@ -42,6 +42,7 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
 .vh-chip.act { background: color-mix(in srgb, currentColor 22%, var(--bg2)); }
 .vh-chip.vh-clock, .vh-chip.vh-dead { color: var(--muted); }
 .vh-chip.vh-give { color: var(--muted); background: transparent; box-shadow: 0 0 0 1px var(--line) inset; }
+.vh-chip.vh-dead.hold { background: color-mix(in srgb, var(--danger) 35%, var(--bg2)); transition: background .6s; }
 .vh-chip.vh-give:hover { color: var(--danger); }
 
 /* ---- полотно: завжди весь рівень, скільки дозволяє висота ---- */
@@ -92,10 +93,30 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
   .vh-sw { left: 50%; bottom: 10px; width: 64px; height: 64px; transform: translateX(-50%); display: none !important; }
   .vh.vh-solo .vh-sw { display: grid !important; }
 }
+/* телефон лежачи: полотно на всю висоту між липкою шапкою сайту (~57 px) і вкладками внизу; на старті модуль
+   сам прокручує до нього, а HUD — дрібніший */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .vh-wrap { max-width: calc((100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px)) * var(--vh-ratio, 1.76)); }
+  .vh-hud { font-size: .72em; gap: 4px; min-height: 0; }
+  .vh-chip { padding: 1px 7px; }
+  .vh-tl { left: 4px; bottom: 4px; gap: 6px; }
+  .vh-tl button { width: 52px; height: 52px; font-size: 20px; }
+  .vh-tj { right: 4px; bottom: 4px; width: 60px; height: 60px; font-size: 22px; }
+  .vh-sw { top: 4px; bottom: auto; width: 42px; height: 42px; font-size: 18px; }
+  .vh-touch button { background: rgba(12, 22, 30, .28); border-color: rgba(255, 255, 255, .25); }
+}
+/* телефон стоячи: полотно й так дрібне — кнопки не на ньому, а смугою під ним */
+@media (pointer: coarse) and (orientation: portrait) {
+  .vh.vh-seated.vh-play .vh-touch { position: relative; inset: auto; height: 92px; margin-top: 10px; pointer-events: auto; }
+  .vh-touch button { background: var(--bg2); border-color: var(--line); color: var(--text); }
+  .vh-tl { left: 4px; bottom: 4px; }
+  .vh-tj { right: 4px; bottom: 2px; }
+  .vh-sw { left: auto; right: 100px; transform: none; }
+}
 @media (pointer: coarse) and (max-width: 420px) {
-  .vh-tl button { width: 56px; height: 56px; font-size: 22px; }
-  .vh-tj { width: 66px; height: 66px; }
-  .vh-sw { width: 50px; height: 50px; }
+  .vh-tl button { width: 64px; height: 64px; font-size: 24px; }
+  .vh-tj { width: 80px; height: 80px; }
+  .vh-sw { width: 54px; height: 54px; }
 }
 
 /* ---- мапа рівнів у лобі й підсумок ---- */
