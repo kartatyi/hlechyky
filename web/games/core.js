@@ -105,6 +105,16 @@
   const hueOf = (n) => (window.HPeople ? window.HPeople.hue(n) : 0);
   const cssVar = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
   const coarse = () => window.matchMedia('(pointer: coarse)').matches;
+  /// Вписати html, лише коли він справді інший. Порівнювати з el.innerHTML не можна: браузер серіалізує по-своєму
+  /// (апостроф з esc — &#39; проти ', &quot;, <br/>, лапки атрибутів), і «однаково» майже не траплялось — DOM
+  /// перебудовувався на кожен вид. Тому пам'ятаємо свій рядок. Хто міняє дітей елемента сам — не для нього.
+  const setHtml = (el, html) => {
+    html = html == null ? '' : String(html);
+    if (el._gh === html) return false;
+    el._gh = html;
+    el.innerHTML = html;
+    return true;
+  };
 
   /// Місця в RoomSummary приходять як [{ i, nick }]; терпимо і простий масив ніків.
   function nickAt(room, i) {
@@ -166,7 +176,7 @@
         const b = kids[i];
         const want = 'cell' + (v.cls ? ' ' + v.cls : '');
         if (b.className !== want) b.className = want;
-        if (b.innerHTML !== (v.html || '')) b.innerHTML = v.html || '';
+        setHtml(b, v.html);
         const dis = !!v.disabled;
         if (b.disabled !== dis) b.disabled = dis;
       }
@@ -356,7 +366,7 @@
   /// питав саме `ev.isTrusted` (Око майстра Гончарного кола), має стояти оце.
   const human = (ev) => !!ev && (ev.isTrusted || ev.hpad === true);
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, Interp, timerArc, hand, css: cssVar, coarse, human };
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml };
 
   // =============================================================================================
   // Хаб
@@ -792,7 +802,10 @@
     const n0 = newsOf(id);
     if (n0 && newsSeen != null && newsSeen[id] !== n0.v && !playedIt(id)) { markNews(id, n0.v); return; }
     if (!unseenNews(id) || newsShown.has(id)) return;
-    if (rv.seat != null && rv.room.status === 'playing' && rv.room.maxPlayers > 1) return;
+    // Посеред партії — нікому, не лише тим, хто сидить: після F5 місце впізнається не одразу (вид ще з лобі),
+    // і вікно вискакувало поверх «Я знаю!». Глядачеві воно теж закриває гру. Дочекаємось кінця партії.
+    if (rv.view === undefined) return;
+    if (rv.room.status === 'playing' && rv.room.maxPlayers > 1) return;
     if (document.querySelector('.modal.gmodal')) return;          // інше вікно вже висить — наступного разу
     const n = newsOf(id);
     newsShown.add(id);
@@ -1420,6 +1433,8 @@
       sig: '',
     };
     cards[id] = card;
+    // «👥 N» на телефоні розгортає всіх гравців; клас живе на .gseats, тож переживає перемальовування чіпів.
+    card.head.addEventListener('click', (e) => { if (e.target.closest('[data-many]')) card.head.classList.toggle('open'); });
     if (host) host.appendChild(el);   // у DOM до першого mount: модуль, що міряє ширину, має що міряти
     // Вид прийде з першою подією 'room' після WatchRoom; поки що вистачить того, що є в лобі.
     if (!views[id]) {
@@ -1490,14 +1505,19 @@
       let free = 0;
       for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i)) free++;
       const fold = free > 2;
+      // Від п'яти гравців на телефоні чіпи ніків стояли 4–5 рядками над грою. Там лишаємо свій чіп, чий хід
+      // і «👥 N» — дотик розгортає всіх (core.css, .gseats.many). На широкому екрані видно всіх, як і було.
+      const taken = seatCount(room) - free;
       for (let i = 0; i < seatCount(room); i++) {
         const nick = nickAt(room, i);
         if (fold && !nick) continue;
         const turn = room.status === 'playing' && turnOf(rv) === i;
         chips.push('<span class="gseat ' + seatClassOf(rv, i) + (nick ? '' : ' free') + (turn ? ' turn' : '')
-          + '"><i>' + esc(seatNameOf(rv, i)) + '</i>' + esc(nick || 'вільно') + '</span>');
+          + (i === rv.seat ? ' me' : '') + '"><i>' + esc(seatNameOf(rv, i)) + '</i>' + esc(nick || 'вільно') + '</span>');
       }
       if (fold) chips.push('<span class="gseat free gfreeall">вільно ×' + free + '</span>');
+      if (taken > 4) chips.push('<button type="button" class="gseat gmany" data-many title="Показати всіх за столом">👥 '
+        + taken + '</button>');
     }
     // Варіант, обраний при створенні (зникаючі хрестики, розмір поля) — підписуємо, якщо він не типовий.
     const modes = [];
@@ -1571,6 +1591,7 @@
     if (sig !== card.sig) {
       card.sig = sig;
       card.head.innerHTML = headHtml(rv);
+      card.head.classList.toggle('many', !!card.head.querySelector('[data-many]'));
       card.btns.innerHTML = btnsHtml(rv);
       card.btns.querySelectorAll('[data-do]').forEach((b) => b.onclick = async (e) => {
         // «Сісти» йде через joinRoom: він сам спитає, чи вставати з попереднього столу, і сам крутить кнопку.

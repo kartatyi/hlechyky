@@ -461,10 +461,15 @@
   .gtile .gt-now { flex: 0 1 auto; max-width: 45%; }
   .gtile .gt-now .muted { display: none; }
 }
+.gseat.gmany { display: none; border: 0; font: inherit; color: var(--text); cursor: pointer; }
 @media (max-width: 480px) {
   .gtable { padding: 8px 9px 10px; }
   .gseats { gap: 5px; font-size: .86em; }
   .gseat { max-width: 100%; }
+  /* Великий стіл: свій чіп, чий хід і «👥 N»; решта — після дотику на «👥». */
+  .gseats.many:not(.open) .gseat:not(.me):not(.turn):not(.gmany):not(.gfreeall) { display: none; }
+  .gseats.many .gseat.gmany { display: inline-block; }
+  .gseats.many.open .gseat.gmany { background: transparent; box-shadow: 0 0 0 1px var(--line) inset; }
   .board { gap: 5px; }
   .board .cell { font-size: 1.7em; border-radius: 10px; }
   .gkey { padding: 8px 0; font-size: .85em; }

@@ -20,6 +20,10 @@
     + '<path d="M6 12.5V3.2l7-1.4v9.2" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/>'
     + '<circle cx="4.3" cy="12.4" r="1.9" fill="var(--clay)"/><circle cx="11.3" cy="11" r="1.9" fill="var(--clay)"/></svg>';
 
+  /// Вписати html, лише коли він справді інший: порівняння з el.innerHTML майже ніколи не збігається (браузер
+  /// серіалізує апостроф ніка як ', а esc дає &#39;), і DOM перебудовувався на кожен вид. Свій хелпер, а не
+  /// HGames.ui.html: модуль після деплою підміняється на льоту й може застати старий каркас.
+  const setHtml = (el, html) => { if (el._h === html) return false; el._h = html; el.innerHTML = html; return true; };
   const seatsOf = (ctx) => (ctx.room && ctx.room.seats ? ctx.room.seats.length : 12);
 
   function st(root) {
@@ -248,7 +252,7 @@
     const html = ctx.mine && ctx.playing && v.phase !== 'done'
       ? '<span class="chip' + (me.artist ? ' on' : '') + '">🎤 виконавець</span><span class="chip' + (me.title ? ' on' : '') + '">🎵 назва</span>'
       : '';
-    if (marks.innerHTML !== html) marks.innerHTML = html;
+    setHtml(marks, html);
     form.onsubmit = (e) => {
       e.preventDefault();
       const text = input.value.trim();
@@ -286,8 +290,7 @@
       : (can ? '<button type="button" class="' + (mineSkip ? 'primary' : 'ghost') + ' mgskipbtn">'
         + (mineSkip ? '⏭ Я за пропуск (' + skip.length + '/' + waiting.length + ')' : '⏭ Пропустити') + '</button>' : '')
         + (ready && !(can && mineSkip && skip.length === 1) ? '<span class="muted small">' + ready + '</span>' : '');
-    if (el.innerHTML !== html) {
-      el.innerHTML = html;
+    if (setHtml(el, html)) {
       const b = el.querySelector('.mgskipbtn');
       if (b) b.onclick = () => { const c = root._ctx; if (c) c.act('skip'); };
     }
@@ -332,7 +335,7 @@
     // «Почати» господаря на екран униз.
     const lobby = ctx.room && ctx.room.status === 'lobby';
     const out = lobby ? '' : html;
-    if (el.innerHTML !== out) el.innerHTML = out;
+    setHtml(el, out);
   }
 
   function render(root, ctx) {
