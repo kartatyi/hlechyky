@@ -440,7 +440,7 @@
   const HANDS = [
     // [лівої x, y, правої x, y] відносно точки на землі (з урахуванням присідання)
     [-1.5, -12, 1.5, -12],   // плескай: долоні разом перед грудьми
-    [-14, -15, 14, -15],     // присядь: руки в боки, як у гопаку
+    [-9, -4, 9, -4],         // присядь: низько, руки на колінах — найнижча й найкомпактніша постать
     [-12, -20, 12, -20],     // крутись: руки розкинуті
     [-7, -35, 7, -35],       // руки вгору
   ];
@@ -461,7 +461,7 @@
       step = ph > 0 ? 1 : -1;
     }
     if (s === 4) x += Math.sin(now / 70 + id) * 2;                   // отетерів — хитається
-    const low = fig === 1 ? 7 : 0;
+    const low = fig === 1 ? 5 : 0;
     const flare = fig === 2 ? 1 : 0;
 
     // ноги
@@ -485,17 +485,18 @@
     g.strokeStyle = ink;
     g.lineWidth = 1;
     if (kind === 0) {
-      const top = 6, bot = fig === 1 ? 12 : 8 + flare * 5;
+      // присіла — плахта низьким широким віялом по землі
+      const top = 6, bot = fig === 1 ? 12 : 8 + flare * 5, y0 = fig === 1 ? y - 6 : yb - 10, y1 = fig === 1 ? y : yb - 1;
       g.fillStyle = c1;
       g.beginPath();
-      g.moveTo(x - top, yb - 10); g.lineTo(x + top, yb - 10); g.lineTo(x + bot, yb - 1); g.lineTo(x - bot, yb - 1); g.closePath();
+      g.moveTo(x - top, y0); g.lineTo(x + top, y0); g.lineTo(x + bot, y1); g.lineTo(x - bot, y1); g.closePath();
       g.fill(); g.stroke();
       g.fillStyle = 'rgba(0, 0, 0, .25)';
-      g.fillRect(x - bot + 1, yb - 4, bot * 2 - 2, 1.6);
+      g.fillRect(x - bot + 1, y1 - 3, bot * 2 - 2, 1.6);
     } else {
       g.fillStyle = c1;
       g.beginPath();
-      if (fig === 1) { g.ellipse(x - 5, yb - 4, 5, 3.5, 0, 0, TAU); g.ellipse(x + 5, yb - 4, 5, 3.5, 0, 0, TAU); }
+      if (fig === 1) { g.ellipse(x - 5, y - 3, 5, 3.5, 0, 0, TAU); g.ellipse(x + 5, y - 3, 5, 3.5, 0, 0, TAU); }
       else { g.roundRect(x - 6, yb - 10, 5.5, 10, 2.5); g.roundRect(x + 0.5, yb - 10, 5.5, 10, 2.5); }
       g.fill(); g.stroke();
     }
@@ -516,7 +517,7 @@
     if (fig >= 0) {
       const hnd = HANDS[fig];
       const sq = side && fig === 0 ? side * 5 : 0;            // плескай у профіль — долоні попереду
-      lx = x + hnd[0] + sq; ly = y + hnd[1] + (fig === 3 ? 0 : low); rx = x + hnd[2] + sq; ry = y + hnd[3] + (fig === 3 ? 0 : low);
+      lx = x + hnd[0] + sq; ly = y + hnd[1] + (fig === 0 || fig === 2 ? low : 0); rx = x + hnd[2] + sq; ry = y + hnd[3] + (fig === 0 || fig === 2 ? low : 0);
     } else if (s === 4) {
       lx = x - 7; ly = yb - 5; rx = x + 7; ry = yb - 5;
     } else {
@@ -1324,15 +1325,21 @@
     const fade = clamp(1 - Math.max(0, -mu.toBeat - LATE) / (LATE_MAX - LATE), 0.25, 1);
     const minPx = 15 / (st.cssK || 1);
     const big = Math.round(Math.max(minPx * 1.25, port ? 26 : 30));
-    const bw = port ? Math.min(w - 118, 300) : Math.min(w * 0.5, 420), bh = big * 2.1;
-    const bx = port ? 6 : w / 2 - bw / 2, by = port ? 6 : 6;
+    // уся мапа — «бульбашка» з вуст музик праворуч від помосту (сам поміст і коло лишаються на виду);
+    // в'юпорт телефона — плашка вгорі ліворуч від мінімапи
+    const mm = st.map && st.map[1] ? st.map[1].indexOf('M') : 13;
+    const sx = (mm + 4) * CELL;
+    const bw = port ? Math.min(w - 118, 300) : Math.min(w - sx - 44, 380), bh = big * 2.1;
+    const bx = port ? 6 : sx + 14, by = port ? 6 : 30;
     const pop = hop && mu.toBeat > -6 && !reduced() ? 1 + (6 + mu.toBeat) * 0.012 : 1;
     g.globalAlpha = fade;
-    g.fillStyle = 'rgba(14, 18, 12, .82)';
-    g.beginPath(); g.roundRect(bx, by, bw, bh, 12); g.fill();
+    g.fillStyle = 'rgba(14, 18, 12, .84)';
+    g.beginPath(); g.roundRect(bx, by, bw, bh, 12);
+    if (!port) { g.moveTo(bx + 1, by + bh * 0.35); g.lineTo(bx - 13, by + bh * 0.5); g.lineTo(bx + 1, by + bh * 0.62); }
+    g.fill();
     g.strokeStyle = col;
     g.lineWidth = hop ? 4 : 2;
-    g.stroke();
+    g.beginPath(); g.roundRect(bx, by, bw, bh, 12); g.stroke();
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     const tx = bx + bw / 2;
@@ -1428,7 +1435,7 @@
     const head = short ? '' : 'Раунд ' + v.round + ' з ' + v.of + ' · ';
     const who = (r.winners || []).map((s) => nickOfSeat(st, s)).join(' і ');
     switch (r.why) {
-      case 'ribbon': return head + '🎀 Стрічка — ' + who + ' витанцював(-ла) ' + ((v.need | 0) || 6) + ' поспіль!';
+      case 'ribbon': return head + '🎀 Стрічка — ' + who + ': ' + ((v.need | 0) || 6) + ' фігур поспіль у колі!';
       case 'last': return head + '✋ На ногах лише ' + who;
       case 'time': return head + '🎻 Музики стомились — найкраще в колі: ' + who;
       default: return head + '🎻 Музики стомились — ніхто не взяв раунду';
@@ -1474,11 +1481,12 @@
     const text = ph === 'go' ? '⏱ ' + clock(left) : ph === 'start' ? '⏱ 2:00' : '⏱ —';
     if (el.textContent !== text) el.textContent = text;
     const hot = ph === 'go' && left * TICK_MS <= 10000;
-    if (el.classList.contains('hot') !== hot) el.classList.toggle('hot', hot);
+    const chip = el.parentNode;
+    if (chip.classList.contains('hot') !== hot) chip.classList.toggle('hot', hot);
     const tempo = f && f.m ? f.m[3] | 0 : 0;
     const te = st.tempoEl;
     if (te) {
-      const tt = '🎻 ' + '♪'.repeat(tempo + 1);
+      const tt = '🎻' + '♪'.repeat(tempo + 1);
       if (te.textContent !== tt) { te.textContent = tt; te.title = ['Музики грають помірно', 'Музики розігрались', 'Музики шкварять щосили!'][tempo] || ''; }
       if (te.classList.contains('fast') !== (tempo === 2)) te.classList.toggle('fast', tempo === 2);
     }
@@ -1488,7 +1496,7 @@
     const ctx = st.ctx, v = st.view, el = st.hudEl;
     if (!el || !v) return;
     const me = v.me, need = (v.need | 0) || 6;
-    let html = '<span class="dance-chip">Раунд ' + Math.max(1, v.round | 0) + '/' + (v.of | 0) + '</span>';
+    let html = (v.of | 0) > 1 ? '<span class="dance-chip">Раунд ' + Math.max(1, v.round | 0) + '/' + (v.of | 0) + '</span>' : '';
     if (me) {
       let dots = '';
       for (let i = 0; i < need; i++) dots += '<i' + (i < me.streak ? ' class="on"' : '') + '></i>';
@@ -1502,10 +1510,14 @@
       el.dataset.sig = html;
       el.querySelector('.dance-chips').innerHTML = html;
     }
+    // Низьке вікно (Дек, ноут) і йде раунд: ніки й так у шапці картки — фішка лише кольором і рахунком (нік у підказці),
+    // а мапа отримує цілий рядок висоти. На розкритті й у кінці — знову з ніками.
+    const compact = st.mode !== 'port' && window.innerHeight < 900 && (v.phase === 'start' || v.phase === 'go');
     let row = '';
     for (const s of seats) {
-      row += '<span class="dance-seat dance-s' + s.seat + (s.alive ? '' : ' dead') + (s.out ? ' out' : '') + (s.seat === ctx.seat ? ' me' : '') + '">'
-        + '<i></i>' + ctx.esc(s.nick) + ' <b>' + (s.total | 0) + '</b>'
+      row += '<span class="dance-seat dance-s' + s.seat + (s.alive ? '' : ' dead') + (s.out ? ' out' : '') + (s.seat === ctx.seat ? ' me' : '') + '"'
+        + (compact ? ' title="' + ctx.esc(s.nick) + '"' : '') + '>'
+        + '<i></i>' + (compact ? '' : ctx.esc(s.nick) + ' ') + '<b>' + (s.total | 0) + '</b>'
         + (s.good != null ? ' <small>✓' + (s.good | 0) + ' ✗' + (s.bad | 0) + '</small>' : '') + '</span>';
     }
     const se = st.seatsEl;
@@ -1785,6 +1797,9 @@
     const pad = padOn();
     if (el.dataset.pad === String(pad)) return;
     el.dataset.pad = String(pad);
+    // на Деку кнопки під мапою дублюють смужку підказок пада — ховаємо їх, мапа стає більшою
+    el.classList.toggle('dance-padmode', pad && !HGames.ui.coarse());
+    if (st.root) fit(st.root, st);
     el.querySelectorAll('.dance-f').forEach((b) => {
       const f = FIGS[+b.dataset.f];
       b.querySelector('kbd').textContent = pad ? f.pad : f.key + '·' + f.alt;
@@ -1898,8 +1913,8 @@
       root.classList.add('dance-body');
       st.hudEl = document.createElement('div');
       st.hudEl.className = 'dance-hud';
-      st.hudEl.innerHTML = '<span class="dance-chip dance-clock">⏱ —</span><span class="dance-chip dance-tempo">🎻 ♪</span><span class="dance-chips"></span>';
-      st.clockEl = st.hudEl.querySelector('.dance-clock');
+      st.hudEl.innerHTML = '<span class="dance-chip dance-clock"><span class="dance-time">⏱ —</span><span class="dance-tempo">🎻♪</span></span><span class="dance-chips"></span>';
+      st.clockEl = st.hudEl.querySelector('.dance-time');
       st.tempoEl = st.hudEl.querySelector('.dance-tempo');
       st.seatsEl = document.createElement('div');
       st.seatsEl.className = 'dance-seats';
@@ -1954,6 +1969,7 @@
     update(root, ctx) {
       const st = state(root, ctx);
       applyView(st, ctx.view);
+      hud(st);            // спершу фішки: від їхньої висоти залежить, скільки місця лишається мапі
       fit(root, st);
       controls(root, st);
       placeSum(root, st);
@@ -2007,7 +2023,7 @@
       if (ph !== 'go') return '';
       if (!ctx.mine) return HGames.ui.coarse() ? 'Вгадуй разом із гравцями, хто з танцюристів живий · тягни мапу пальцем' : 'Вгадуй разом із гравцями, хто з танцюристів живий';
       if (st && st.me && !st.me.alive) return 'Тебе вивели з танцю — дивись, хто кого';
-      if (padOn()) return 'Стік — іти · Ⓧ 👏 · Ⓐ 🧎 · RB 🌀 · LB 🙌 — у такт! · RT — ляпас · LT — де я?';
+      if (padOn()) return 'Фігуру — на «ГОП», як усі · 6 поспіль у колі — стрічка 🎀 · кнопки — у смужці внизу';
       return HGames.ui.coarse()
         ? 'Хрестовина — іти · кнопки фігур — у такт · ✋ ляпас · 👁 де я?'
         : 'Стрілки/WASD — іти · 1–4 або J K L I — фігура в такт · пробіл — ляпас · Q — де я?';

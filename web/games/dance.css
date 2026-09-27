@@ -57,9 +57,9 @@
   background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
-.dance-clock { color: var(--muted); min-width: 4.4em; justify-content: center; }
-.dance-clock.hot { color: var(--danger); animation: dance-pulse 1s ease-in-out infinite; }
-.dance-tempo { color: var(--muted); }
+.dance-clock { color: var(--muted); min-width: 6.4em; justify-content: center; gap: 7px; }
+.dance-clock.hot .dance-time { color: var(--danger); animation: dance-pulse 1s ease-in-out infinite; }
+.dance-tempo { color: var(--muted); letter-spacing: -1px; }
 .dance-tempo.fast { color: var(--accent); animation: dance-pulse .5s ease-in-out infinite; }
 @keyframes dance-pulse { 50% { opacity: .55; } }
 .dance-streak span { display: inline-flex; gap: 3px; }
@@ -115,7 +115,7 @@
 
 /* ---- панель керування: кнопки фігур рядком (мишка) або ромбом (палець), ляпас, хрестовина на тачі ---- */
 .dance-ctl { display: flex; gap: 14px; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; }
-.dance-ctl.dance-off { display: none !important; }
+.dance-ctl.dance-off, .dance-ctl.dance-padmode { display: none !important; }
 .dance-dirs { display: none; }
 .dance-figs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .dance-figs button {
@@ -143,7 +143,7 @@
 .dance-f0 { order: 1; } .dance-f1 { order: 2; } .dance-f2 { order: 3; } .dance-f3 { order: 4; } .dance-slap { order: 5; margin-left: 8px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .dance-clock.hot, .dance-tempo.fast, .dance-ni, .dance-figs .dance-f.on { animation: none; }
+  .dance-clock.hot .dance-time, .dance-tempo.fast, .dance-ni, .dance-figs .dance-f.on { animation: none; }
 }
 
 @media (pointer: coarse) {
