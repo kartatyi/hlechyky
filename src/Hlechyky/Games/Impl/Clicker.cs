@@ -234,8 +234,10 @@ public sealed partial class Clicker : Game
     /// Яку версію «Що нового» показуємо. Побачив — більше не показуємо ніколи й ні на якому пристрої. «v10» — «Глек на
     /// весь світ» (docs/games/specs/clicker-v10.md §12) і подарунок; хто пропустив «v9.2» (звання округи) чи «v9.1»
     /// (клейма після тисячі), тому клієнт допише й ті рядки (вид шле newsSeen), а подарунок v9.2 дасть TakeGift.
+    /// «v10.1» (28.09) — правки за записками «💡 Розробнику»: без подарунка; хто пропустив v10, тому клієнт допише
+    /// рядки v10, а подарунок v10 дасть TakeGiftV10 (він сам знає, чи вже давав).
     /// </summary>
-    public const string NewsVersion = "v10";
+    public const string NewsVersion = "v10.1";
 
     // ---------- розгін кола ----------
 
@@ -1772,9 +1774,10 @@ public sealed partial class Clicker : Game
     ActResult SeenNews(JsonElement payload)
     {
         if (Str(payload, "v") != NewsVersion) return ActResult.Fail("Це новини з іншого оновлення");
+        // У новинах v10 пояснено гривню: окреме вікно-церемонію тому, хто вище порога, не показуємо. Хто ж v10 уже
+        // бачив, тому v10.1 гривні не пояснює — його церемонія (якщо ще чекає) лишається.
+        if (_news != "v10") _coinSeen = Math.Max(_coinSeen, CoinLevel);
         _news = NewsVersion;
-        // У новинах v10 уже пояснено гривню: окреме вікно-церемонію тому, хто вище порога, не показуємо.
-        _coinSeen = Math.Max(_coinSeen, CoinLevel);
         // Подарунки: округи (v9.2 — для тих, хто його пропустив) і десятого оновлення — кожен раз на гончаря.
         var old = TakeGift();
         var now = TakeGiftV10();

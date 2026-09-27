@@ -571,11 +571,11 @@ public class ClickerV10Tests
         var h = Wheel();
         Levels(h, ("sich", 20));
         Patch(h, s => { s["news"] = "v9.2"; s["total"] = 5e21; s["titles"]!["gifts"] = new JsonArray("v9.2"); });
-        Assert.Equal("v10", View(h).GetProperty("news").GetString());
+        Assert.Equal(Clicker.NewsVersion, View(h).GetProperty("news").GetString());
         Assert.Equal("v9.2", View(h).GetProperty("newsSeen").GetString());
         var pots = Num(h, "pots");
         var passive = Num(h, "baseSecond");
-        var r = Act(h, "news", new { v = "v10" });
+        var r = Act(h, "news", new { v = Clicker.NewsVersion });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("чотири години", r.Message);
         Assert.Equal(pots + passive * 4 * 3600, Num(h, "pots"), Math.Max(10, passive * 60));
@@ -593,10 +593,30 @@ public class ClickerV10Tests
         var h = Wheel();
         Levels(h, ("sich", 20));
         Patch(h, s => { s["news"] = "v9.1"; s["titles"]!["gifts"] = new JsonArray(); });
-        var r = Act(h, "news", new { v = "v10" });
+        var r = Act(h, "news", new { v = Clicker.NewsVersion });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("Подарунок округи", r.Message);
         Assert.Contains("Глек на весь світ", r.Message);
+    }
+
+    [Fact]
+    public void One_who_saw_v10_sees_the_fixes_once_without_a_second_gift()
+    {
+        var h = Wheel();
+        Levels(h, ("sich", 20));
+        // бачив v10 ще до гривень, а тепер доріс — церемонія гривні ще попереду
+        Patch(h, s => { s["news"] = "v10"; s["total"] = 5e21; s["coinSeen"] = 0; s["titles"]!["gifts"] = new JsonArray("v9.2", Clicker.GiftV10Key); });
+        Assert.Equal("v10.1", View(h).GetProperty("news").GetString());
+        Assert.Equal("v10", View(h).GetProperty("newsSeen").GetString());
+        var pots = Num(h, "pots");
+        Assert.False(Act(h, "news", new { v = "v10" }).Ok);
+        var r = Act(h, "news", new { v = "v10.1" });
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(pots, Num(h, "pots"), Math.Max(10, Num(h, "baseSecond") * 60));
+        Assert.Equal(JsonValueKind.Null, View(h).GetProperty("news").ValueKind);
+        // v10.1 гривні не пояснює — церемонія лишається
+        Assert.Equal(0, View(h).GetProperty("coinSeen").GetInt32());
+        Assert.True(View(h).GetProperty("coin").GetInt32() >= 1);
     }
 
     // ---------- ачівки щаблів ----------
