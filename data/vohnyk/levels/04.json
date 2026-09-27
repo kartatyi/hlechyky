@@ -35,8 +35,8 @@
   ],
   "levers": [],
   "doors": [
-    { "id": "dF", "at": [10,12], "h": 2, "by": ["b1","b2"], "mode": "all", "inv": false },
-    { "id": "dW", "at": [19,12], "h": 2, "by": ["b1","b2"], "mode": "all", "inv": false },
+    { "id": "dF", "at": [10,10], "h": 4, "by": ["b1","b2"], "mode": "all", "inv": false },
+    { "id": "dW", "at": [19,10], "h": 4, "by": ["b1","b2"], "mode": "all", "inv": false },
     { "id": "dX", "at": [19,7], "h": 2, "by": ["b3","b4"], "mode": "any", "inv": false }
   ],
   "lifts": [],
