@@ -36,7 +36,8 @@ def main():
     for f in sorted(glob.glob(os.path.join(ROOT, "data", "vohnyk", "levels", "*.json"))):
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
-        sols[d["n"]] = d["solution"]
+        # сам за двох — соло-проходження (один герой за раз), де воно записане
+        sols[d["n"]] = d["solo"]["solution"] if a.solo and d.get("solo") else d["solution"]
     cfg = {"role": a.role, "levels": [int(x) for x in a.levels.split(",") if x], "room": a.room, "solo": a.solo, "extra": a.extra}
     code = "window.__sols = " + json.dumps(sols, separators=(",", ":")) + ";\nwindow.__cfg = " + json.dumps(cfg, ensure_ascii=False) + ";\n"
     with open(os.path.join(HERE, "vohnyk-bot.js"), encoding="utf-8") as fh:
