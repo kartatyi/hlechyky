@@ -1,2 +1,158 @@
-/* Клавоперегони — повна версія стилів іде разом із модулем */
-:root { --tr-c0: #f4c542; }
+/* Клавоперегони і тренування (web/games/typerace.js). Усе з префіксом tr-/--tr-, кольори — через змінні теми. */
+:root {
+  /* кольори місць: десять добре розрізнюваних; на тракторі й у чіпі ще й номер */
+  --tr-c0: #f4c542; --tr-c1: #7bd389; --tr-c2: #c5763a; --tr-c3: #6fb3e8; --tr-c4: #e88ac0;
+  --tr-c5: #b48ef0; --tr-c6: #4fd1c5; --tr-c7: #ff8a65; --tr-c8: #c6e377; --tr-c9: #9db3a5;
+  --tr-sky: #1a2e3a;
+  --tr-field: #2c4a2e;
+  --tr-dust: rgba(214, 190, 140, .55);
+  --tr-word: rgba(244, 197, 66, .16);
+}
+
+.tr-wrap { width: 100%; container-type: inline-size; display: flex; flex-direction: column; gap: 10px; }
+.tr-trackbox { width: 100%; line-height: 0; }
+.gcanvas.tr-track { max-width: none; width: 100%; border-radius: 10px; background: var(--tr-field); }
+
+.tr-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.tr-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tr-side { display: none; }
+@container (min-width: 900px) {
+  .tr-cols { grid-template-columns: minmax(0, 1fr) 240px; }
+  .tr-side { display: block; }
+}
+.tr-solo-mode .tr-cols { grid-template-columns: minmax(0, 1fr); }
+.tr-solo-mode .tr-side { display: none; }
+
+.tr-src { min-height: 1.2em; }
+
+/* ---------- текст ---------- */
+.tr-textbox {
+  position: relative; background: var(--bg2); border-radius: 10px; padding: 12px 14px; cursor: text;
+  box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow .15s;
+}
+.tr-textbox.focus { box-shadow: inset 0 0 0 2px var(--accent); }
+.tr-text {
+  font-family: var(--font); font-size: 17px; line-height: 1.5; white-space: pre-line; word-break: normal; hyphens: none;
+  overflow-wrap: break-word; color: var(--text); user-select: none; -webkit-user-select: none;
+}
+@container (min-width: 600px) { .tr-text { font-size: 18px; } }
+@container (min-width: 900px) { .tr-text { font-size: 21px; line-height: 1.55; } }
+/* Steam Deck і невисокі ноути: 21 px не влазить у 800 px висоти */
+@media (max-height: 820px) and (min-width: 700px) { .tr-text { font-size: 18px; line-height: 1.5; } }
+.tr-done { color: var(--muted); }
+.tr-word { border-radius: 5px; }
+.tr-word.on { background: var(--tr-word); box-shadow: 0 0 0 2px var(--tr-word); }
+.tr-word b { font-weight: inherit; position: relative; }
+.tr-word b.ok { color: var(--ok); }
+.tr-word b.cur { box-shadow: inset 0 -3px 0 var(--accent); }
+.tr-word.on b.cur { animation: tr-caret 1s steps(1) infinite; }
+.tr-word b.bad { background: var(--danger); color: #fff; border-radius: 3px; }
+.tr-word b.bad::after {
+  content: attr(data-typed); position: absolute; left: 50%; top: 100%; transform: translate(-50%, -2px);
+  font-size: 11px; line-height: 1; color: var(--danger); font-weight: 700; pointer-events: none;
+}
+.tr-word b.nl { color: var(--muted); opacity: .55; }
+.tr-word b.nl.cur, .tr-word b.nl.bad { opacity: 1; }
+@keyframes tr-caret { 50% { box-shadow: inset 0 -3px 0 transparent; } }
+
+/* невидиме поле: над поточним рядком (iOS прокрутить саме до нього), видиме для кільця пада (opacity > 0) */
+.tr-in {
+  position: absolute; left: 0; top: 0; width: 100%; height: 30px; margin: 0; padding: 0 14px; border: 0; outline: none;
+  opacity: .01; color: transparent; caret-color: transparent; background: transparent; font-size: 16px; z-index: 1;
+}
+
+.tr-count {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px;
+  font-family: var(--display, var(--font)); font-size: 60px; font-weight: 800; color: var(--accent);
+  background: rgba(15, 31, 24, .55); pointer-events: none; z-index: 2; text-shadow: 0 2px 8px rgba(0, 0, 0, .5);
+}
+.tr-pop { animation: tr-pop .3s ease-out; }
+@keyframes tr-pop { from { transform: scale(1.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.tr-hint {
+  position: absolute; right: 10px; top: -14px; z-index: 3; background: var(--accent); color: var(--accent-ink);
+  font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+.tr-hint[data-kind="rej"] { background: var(--danger); color: #fff; }
+.tr-shake { animation: tr-shake .15s linear; }
+@keyframes tr-shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+.tr-help { text-align: center; }
+
+/* ---------- числа ---------- */
+.tr-stats { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.tr-nums { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.tr-nums b { font-size: 1.15em; color: var(--accent); }
+.tr-tail { color: var(--danger); }
+.tr-snd { padding: 4px 8px; }
+.tr-stop { padding: 4px 10px; }
+
+/* ---------- живий список (широка картка) ---------- */
+.tr-live { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.tr-lrow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 38px; gap: 6px; align-items: center; padding: 3px 6px; border-radius: 8px; background: var(--panel2); }
+.tr-lrow.me { box-shadow: inset 0 0 0 1px var(--accent); }
+.tr-lrow.gone { opacity: .5; }
+.tr-lnick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-lpct, .tr-lcpm { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.tr-lcpm { color: var(--text); }
+
+.tr-dot {
+  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
+  font-size: 11px; font-weight: 800; color: #111; background: var(--tr-seat, var(--muted)); flex: none; margin-right: 6px;
+}
+.tr-lrow .tr-dot { margin-right: 0; }
+.tr-s0 { --tr-seat: var(--tr-c0); } .tr-s1 { --tr-seat: var(--tr-c1); } .tr-s2 { --tr-seat: var(--tr-c2); }
+.tr-s3 { --tr-seat: var(--tr-c3); } .tr-s4 { --tr-seat: var(--tr-c4); } .tr-s5 { --tr-seat: var(--tr-c5); }
+.tr-s6 { --tr-seat: var(--tr-c6); } .tr-s7 { --tr-seat: var(--tr-c7); } .tr-s8 { --tr-seat: var(--tr-c8); }
+.tr-s9 { --tr-seat: var(--tr-c9); }
+
+/* ---------- підсумок ---------- */
+.tr-board { display: flex; flex-direction: column; gap: 8px; }
+.tr-table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+.tr-table th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 2px 6px; }
+.tr-table td { padding: 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.tr-table tr.me td { background: var(--tr-word); }
+.tr-table tr.gone td { opacity: .6; }
+.tr-table .tr-num { text-align: right; white-space: nowrap; }
+.tr-table small { color: var(--muted); }
+.tr-medal { width: 28px; text-align: center; }
+.tr-bnick { min-width: 0; }
+.tr-note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tr-title { white-space: nowrap; }
+@container (max-width: 560px) {
+  .tr-table .tr-opt { display: none; }
+  .tr-table { font-size: 14px; }
+  .tr-table td { padding: 5px 3px; }
+}
+.tr-say { margin: 0; color: var(--text); }
+.tr-say i { color: var(--muted); }
+.tr-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.tr-solo { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.tr-big { font-family: var(--display, var(--font)); font-size: 26px; }
+.tr-big b { color: var(--accent); font-size: 1.2em; }
+
+/* ---------- соло: вибір ---------- */
+.tr-pick { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 6px 0; }
+.tr-row { display: flex; flex-direction: column; gap: 4px; }
+.tr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tr-chip { min-height: 40px; border-radius: 999px; padding: 6px 14px; }
+.tr-chip small { color: var(--muted); }
+.tr-chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.tr-chip.on small { color: var(--accent-ink); }
+.tr-go { min-height: 46px; padding: 8px 28px; font-size: 17px; }
+.tr-empty { color: var(--muted); }
+
+/* ---------- телефон ---------- */
+@container (max-width: 520px) {
+  .tr-textbox { padding: 10px 11px; }
+  .tr-nums { font-size: 14px; gap: 2px 12px; }
+  .tr-go, .tr-acts button { width: 100%; justify-content: center; }
+  .tr-acts { flex-direction: column; }
+  .tr-count { font-size: 48px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tr-word.on b.cur { animation: none; }
+  .tr-pop, .tr-shake { animation: none; }
+}
+.tr-sbtns { display: flex; gap: 4px; align-items: center; }
