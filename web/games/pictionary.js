@@ -382,6 +382,8 @@
     el.addEventListener('lostpointercapture', end);
 
     new ResizeObserver(() => paintSoon(root)).observe(el);
+    // інша ширина вікна — інакше лягають чіпи місць над карткою, і полотно починається деінде
+    new ResizeObserver(() => fitStage(root)).observe(root.querySelector('.pcwrap'));
   }
 
   // =========================================================================================
@@ -657,6 +659,16 @@
       + '</div>';
   }
 
+  /// Де на сторінці починається полотно — з цього CSS рахує, якої ширини йому бути, щоб інструменти під ним
+  /// влізли в екран (pictionary.css, .pcmain). Міряємо на кожен вид: чіпи місць над карткою то в рядок, то в два.
+  function fitStage(root) {
+    const wrap = root.querySelector('.pcwrap');
+    const main = root.querySelector('.pcmain');
+    if (!wrap || !main || !main.isConnected) return;
+    const top = Math.round(main.getBoundingClientRect().top + window.scrollY) + 'px';
+    if (wrap.style.getPropertyValue('--pctop') !== top) wrap.style.setProperty('--pctop', top);
+  }
+
   function render(root, ctx) {
     root._ctx = ctx;
     ctx.pcRoot = root;
@@ -678,7 +690,11 @@
     toolbar(root, ctx);
     const el = root.querySelector('.pccanvas');
     el.classList.toggle('can', canDraw(ctx));
+    const wrap = root.querySelector('.pcwrap');
+    wrap.classList.toggle('drw', canDraw(ctx));   // на телефоні художнику поле здогадки ні до чого
+    wrap.classList.toggle('live', !!ctx.playing);  // на телефоні в партії чіпи місць ховаються (pictionary.css)
     if (!canDraw(ctx)) { s.cur = null; s.local = []; }
+    fitStage(root);
     paintSoon(root);
   }
 
