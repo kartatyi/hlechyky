@@ -44,6 +44,13 @@ public sealed class GeoMatch
     public const int ExpertRounds = 5;
     /// <summary>Тренування потрапляє в Журнал лише від стількох очок.</summary>
     public const int SoloJournal = 15_000;
+    /// <summary>
+    /// Причина черепків за очки: <c>geo:&lt;номер партії&gt;</c>. Каркас веде її шляхом «нагород гри» — з денною
+    /// стелею (<c>Economy:AwardDailyCap</c>, 30 на день), а не безстельовим <c>points:</c>, як у «Скільки?»:
+    /// тут відповіді можна вивчити (банк скінченний, фото між партіями ті самі), і тренування з «Готово»/«Далі»
+    /// одразу давало б ≈1200 🏺 на годину. Номер партії — щоб «Ще раз» платило знову, а повтор події — ні.
+    /// </summary>
+    public const string ShardReason = "geo";
 
     public const string PhaseLobby = "lobby", PhaseBetween = "between", PhaseGuess = "guess", PhaseReveal = "reveal", PhaseDone = "done";
 
@@ -62,7 +69,8 @@ public sealed class GeoMatch
 
     sealed record RevealData(int X, int Y, GeoPlace Place, GeoPhoto Photo, string? Say, IReadOnlyList<Row> Rows);
 
-    sealed record Recap(string Name, string Region, string? Photo, int[] Best, double? Km, int Points);
+    /// <summary>Рядок «Як це було»: <c>Best</c> — 🏆 раунду (лише в компанії), <c>Top</c> — найближчий (і самому).</summary>
+    sealed record Recap(string Name, string Region, string? Photo, int[] Best, int? Top, double? Km, int Points);
 
     readonly IRoomContext _ctx;
     readonly GeoRules _rules;
@@ -157,18 +165,19 @@ public sealed class GeoMatch
         _dirty = _frameDirty = false;
         for (var s = 0; s < _max; s++) _nicks[s] = _ctx.NickOf(s);
 
+        var rng = _ctx.Rng;
         var pool = Pool(fresh: true);
+        Shuffle(pool, rng);
         if (pool.Count < _rules.Rounds)
         {
-            // Свіжого на цілу партію вже нема — забуваємо бачене й тасуємо все знову.
+            // Свіжого на цілу партію вже нема: беремо все свіже, а бракуюче добираємо з уже баченого (теж
+            // навмання). Пам'ять починається наново з цієї партії — що не випало зараз, наступного разу знову
+            // свіже. Інакше після скидання наступна партія повторювала б пів попередньої.
+            var seen = new List<GeoPlace>();
+            foreach (var p in Pool(fresh: false)) if (_seen.Contains(p.Id)) seen.Add(p);
+            Shuffle(seen, rng);
+            pool.AddRange(seen);
             _seen.Clear();
-            pool = Pool(fresh: false);
-        }
-        var rng = _ctx.Rng;
-        for (var i = pool.Count - 1; i > 0; i--)
-        {
-            var j = rng.Next(i + 1);
-            (pool[i], pool[j]) = (pool[j], pool[i]);
         }
         var take = Math.Min(_rules.Rounds, pool.Count);
         for (var i = 0; i < take; i++)
@@ -188,6 +197,16 @@ public sealed class GeoMatch
             return;
         }
         Open(1, now);
+    }
+
+    /// <summary>Тасування Фішера — Єйтса на <c>Ctx.Rng</c>: той самий сід — ті самі місця.</summary>
+    static void Shuffle(List<GeoPlace> list, Random rng)
+    {
+        for (var i = list.Count - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
     }
 
     /// <summary>Новий раунд: чиста мапа, токен фото і дві секунди «готуйсь» (фото встигає завантажитись).</summary>
@@ -385,8 +404,10 @@ public sealed class GeoMatch
         // Відстань у фразі — та сама, що в рядку розкриття (до 0,1 км), інакше Глек казав би «233 км», а рядок — «234 км».
         var topKm = top?.Km is { } tk ? Math.Round(tk, 1, MidpointRounding.AwayFromZero) : (double?)null;
         var say = GeoLines.Pick(_ctx.Rng, top is null ? null : _ctx.NickOf(top.Seat), topKm, top?.Points ?? 0, alone: present == 1);
-        var best = rows.Where(r => r.Best || (present == 1 && r.Km is not null)).Select(r => r.Seat).ToArray();
-        _recap.Add(new Recap(place.Name, place.Region, round.Url, best, top?.Km, top?.Points ?? 0));
+        // 🏆 у «Як це було» — рівно ті, що в рядках розкриття (самому — нікого); найближчий окремо, щоб
+        // підсумок і самому, і вдвох-після-того-як-хтось-устав казав, чия це відстань.
+        var best = rows.Where(r => r.Best).Select(r => r.Seat).ToArray();
+        _recap.Add(new Recap(place.Name, place.Region, round.Url, best, top?.Seat, top?.Km, top?.Points ?? 0));
         _reveal = new RevealData(tx, ty, place, place.Photos[round.Photo], say, rows);
         _phase = PhaseReveal;
         _phaseMs = RevealMs;
@@ -417,7 +438,7 @@ public sealed class GeoMatch
             if (_pinnedEver[s]) _ctx.Score(s, _scores[s]);
             if (_scores[s] / PointsPerShard is > 0 and var shards)
                 // Номер партії в причині: «Ще раз» за тим самим столом — нова виплата, а не повтор старої.
-                _ctx.Award(s, (int)Math.Min(int.MaxValue, shards), $"points:{_ctx.Round.ToString(CultureInfo.InvariantCulture)}");
+                _ctx.Award(s, (int)Math.Min(int.MaxValue, shards), $"{ShardReason}:{_ctx.Round.ToString(CultureInfo.InvariantCulture)}");
             if (_scores[s] >= Expert && _rounds.Count >= ExpertRounds) _ctx.Award(s, 0, "ach:geo-20k");
         }
         _ctx.Finish(_winners, Journal(seats, best), scores);
@@ -537,6 +558,7 @@ public sealed class GeoMatch
                 region = r.Region,
                 photo = r.Photo,
                 best = r.Best,
+                top = r.Top,
                 km = r.Km is { } k ? Math.Round(k, 1, MidpointRounding.AwayFromZero) : (double?)null,
                 points = r.Points,
             }).ToArray(),

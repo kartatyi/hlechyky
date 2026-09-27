@@ -16,8 +16,14 @@ public sealed class GeoCache : IDisposable
 
     public static byte[] Jpeg => Convert.FromBase64String(JpegB64);
 
-    /// <summary>Стартовий банк із гіта (19 місць).</summary>
-    public static GeoBank Starter => GeoBank.Load(Paths.Resolve(GeoBank.FileName), null);
+    /// <summary>
+    /// Стартовий банк (19 місць із додатка А spec) — фікстура тестів: на ньому стоять перевірки з конкретними id
+    /// (два фото в g0016, перші чотири місця тощо), тож він не має мінятись разом зі справжнім банком гри.
+    /// </summary>
+    public static GeoBank Starter => GeoBank.Load(Paths.Resolve("tests/Hlechyky.Tests/Fixtures/geo-starter.json"), null);
+
+    /// <summary>Справжній банк гри з гіта (<c>data/geo/places.json</c>, ~250 місць).</summary>
+    public static GeoBank Main => GeoBank.Load(Paths.Resolve(GeoBank.FileName), null);
 
     public string Dir { get; } = Path.Combine(Path.GetTempPath(), "geo-test-" + Guid.NewGuid().ToString("N")[..10]);
     public GeoBank Bank { get; }

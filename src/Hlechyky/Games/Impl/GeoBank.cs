@@ -138,13 +138,29 @@ public sealed class GeoBank
             foreach (var p in ph.EnumerateArray())
             {
                 if (p.ValueKind != JsonValueKind.Object) continue;
+                // Посилання йдуть у <a href> під фото — лише https (і сторінка файла — лише на Вікісховищі),
+                // інакше порожньо: «javascript:…» чи чужий хост у банку не стане клікабельним.
                 var photo = new GeoPhoto(Str(p, "title"), Str(p, "url"), Str(p, "author"), Str(p, "license"),
-                    Str(p, "licenseUrl"), Str(p, "page"));
+                    Link(Str(p, "licenseUrl"), null), Link(Str(p, "page"), "commons.wikimedia.org"));
                 if (!GoodHost(photo.Url) || photo.Title.Length == 0 || photo.Author.Length == 0 || photo.License.Length == 0) continue;
                 photos.Add(photo);
             }
         if (photos.Count == 0) { why = "нема жодного придатного фото (лише https з upload/thumb.wikimedia.org, з назвою, автором і ліцензією)"; return null; }
         return new GeoPlace(id, name, Str(e, "region"), cat, lat, lon, (int)d, Str(e, "wikidata"), photos);
+    }
+
+    /// <summary>
+    /// Посилання для підпису: абсолютне https без порту (або <paramref name="host"/>, коли він названий);
+    /// <c>http://creativecommons.org/…</c> (так його пишуть старі шаблони Вікісховища) підтягуємо до https.
+    /// Усе інше — порожній рядок: клієнт тоді покаже автора й ліцензію текстом, без посилання.
+    /// </summary>
+    public static string Link(string url, string? host)
+    {
+        if (url.Length == 0 || !Uri.TryCreate(url, UriKind.Absolute, out var u) || !u.IsDefaultPort) return "";
+        if (u.Scheme == Uri.UriSchemeHttp && u.Host == "creativecommons.org" && host is null)
+            return "https://" + url["http://".Length..];
+        if (u.Scheme != Uri.UriSchemeHttps) return "";
+        return host is null || u.Host == host ? url : "";
     }
 
     /// <summary>Лише https і лише два хости Вікімедіа — жодних довільних адрес.</summary>

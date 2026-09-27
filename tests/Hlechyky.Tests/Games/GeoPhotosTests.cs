@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
 
@@ -286,5 +288,66 @@ public class GeoPhotosTests
         for (var i = 0; i < 5; i++) await photos.PassAsync(CancellationToken.None);
         Assert.False(photos.Ready("z1"));
         Assert.Equal(4, stub.Seen.Count);        // три спроби + один запит до API, далі тиша
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // ендпоінт /api/games/geo/<токен>.jpg
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>Виконати <see cref="GeoSetup.Serve"/> так, як це зробив би ASP.NET: код, заголовки, тіло.</summary>
+    static async Task<(int Status, IHeaderDictionary Headers, byte[] Body)> Get(GeoCache c, string file)
+    {
+        var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider(),
+        };
+        var body = new MemoryStream();
+        ctx.Response.Body = body;
+        await GeoSetup.Serve(file, c.Photos, ctx).ExecuteAsync(ctx);
+        return (ctx.Response.StatusCode, ctx.Response.Headers, body.ToArray());
+    }
+
+    [Fact]
+    public async Task The_photo_endpoint_serves_a_live_token_as_a_private_nosniff_jpeg()
+    {
+        using var c = new GeoCache();
+        var token = c.Photos.Issue("g0001", 0);
+        var (status, headers, body) = await Get(c, token + ".jpg");
+        Assert.Equal(200, status);
+        Assert.Equal("image/jpeg", headers.ContentType.ToString());
+        Assert.Equal("private, max-age=1800", headers.CacheControl.ToString());
+        Assert.Equal("nosniff", headers["X-Content-Type-Options"].ToString());
+        Assert.Equal(File.ReadAllBytes(c.Photos.Resolve(token)!), body);
+    }
+
+    [Theory]
+    [InlineData("{token}")]                               // без .jpg
+    [InlineData("{token}.png")]
+    [InlineData("{token}.JPG")]
+    [InlineData("{TOKEN}.jpg")]                           // великими літерами
+    [InlineData("0123456789abcdef01234567.jpg")]          // схожий, але не виданий
+    [InlineData("..%2F..%2Fdata%2Fhlechyky.db.jpg")]
+    [InlineData("../../data/geo/places.jpg")]
+    [InlineData("{name}")]                                // ім'я файла з кешу — не токен
+    [InlineData(".jpg")]
+    public async Task The_photo_endpoint_answers_404_to_anything_but_a_live_token(string file)
+    {
+        using var c = new GeoCache();
+        var token = c.Photos.Issue("g0001", 0);
+        var name = Path.GetFileName(c.Photos.Resolve(token)!);
+        file = file.Replace("{token}", token).Replace("{TOKEN}", token.ToUpperInvariant()).Replace("{name}", name);
+        var (status, _, body) = await Get(c, file);
+        Assert.Equal(404, status);
+        Assert.Empty(body);
+    }
+
+    [Fact]
+    public async Task The_photo_endpoint_forgets_a_token_after_45_minutes()
+    {
+        using var c = new GeoCache();
+        var token = c.Photos.Issue("g0001", 0);
+        Assert.Equal(200, (await Get(c, token + ".jpg")).Status);
+        c.Clock.Advance(TimeSpan.FromMinutes(46));
+        Assert.Equal(404, (await Get(c, token + ".jpg")).Status);
     }
 }

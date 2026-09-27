@@ -399,6 +399,54 @@ public class GeoTests
         Assert.False(Row(h, 2).GetProperty("best").GetBoolean());
     }
 
+    /// <summary>
+    /// Рецензія: у «Як це було» гравець, що лишився сам, отримував 🏆, якого в рядку розкриття не було. Тепер
+    /// <c>recap.best</c> — рівно ті, в кого <c>best</c> у розкритті, а найближчого (і самому) каже <c>top</c>.
+    /// </summary>
+    [Fact]
+    public void Recap_trophies_match_the_reveal_rows_and_top_names_the_nearest_even_alone()
+    {
+        using var c = new GeoCache();
+        var alone = Table(c, 1);
+        PlayAll(alone, c, (s, t) => (t.X + 30, t.Y), 1);
+        var recap = alone.View(0).GetProperty("recap");
+        Assert.Equal(5, recap.GetArrayLength());
+        Assert.All(recap.EnumerateArray(), r =>
+        {
+            Assert.Empty(r.GetProperty("best").EnumerateArray());
+            Assert.Equal(0, r.GetProperty("top").GetInt32());
+            Assert.True(r.GetProperty("km").GetDouble() > 0);
+        });
+
+        // удвох, а посеред партії Петро встав: до того 🏆 — як у рядках, після — нікому, але top є
+        var h = Table(c, 2);
+        Until(h, "guess");
+        var t = Truth(h, c);
+        Pin(h, 0, t.X + 30, t.Y);
+        Pin(h, 1, t.X + 300, t.Y);
+        Until(h, "reveal");
+        Assert.True(Row(h, 0).GetProperty("best").GetBoolean());
+        Until(h, "between");
+        Assert.True(h.Leave("Петро").Ok, h.Reply.Message);
+        for (var guard = 0; guard < 40 && Playing(h); guard++)
+        {
+            Until(h, "guess");
+            if (!Playing(h)) break;
+            var tt = Truth(h, c);
+            Pin(h, 0, tt.X + 30, tt.Y);
+            Until(h, "reveal");
+            Assert.False(Row(h, 0).GetProperty("best").GetBoolean());
+            Until(h, "between");
+        }
+        recap = h.View(0).GetProperty("recap");
+        Assert.Equal([0], recap[0].GetProperty("best").EnumerateArray().Select(e => e.GetInt32()));
+        for (var i = 1; i < recap.GetArrayLength(); i++)
+        {
+            Assert.Empty(recap[i].GetProperty("best").EnumerateArray());
+            Assert.Equal(0, recap[i].GetProperty("top").GetInt32());
+        }
+    }
+
     static string Say(RoomHarness h) => Reveal(h).GetProperty("say").GetString()!;
 
     /// <summary>Відстань так, як її бачать гравці: до 0,1 км (фраза Глека бере саме її).</summary>
@@ -435,7 +483,7 @@ public class GeoTests
         Pin(h, 1, t.X + 200, t.Y);
         Until(h, "reveal");
         km = GeoText.Km(Tenth(GeoScore.KmFromGrid(t.X + 60, t.Y, place.Lat, place.Lon)));
-        Assert.Contains(Say(h), GeoLines.Normal.Select(l => string.Format(l, "Оля", km)));
+        Assert.Contains(Say(h), GeoLines.Close.Select(l => string.Format(l, "Оля", km)));
 
         var alone = Table(c, 1);
         Until(alone, "guess");
@@ -453,7 +501,45 @@ public class GeoTests
         Pin(alone, 0, t.X + 60, t.Y);
         Until(alone, "reveal");
         km = GeoText.Km(Tenth(GeoScore.KmFromGrid(t.X + 60, t.Y, place.Lat, place.Lon)));
-        Assert.Contains(Say(alone), GeoLines.SoloNear.Select(l => string.Format(l, "Оля", km)));
+        Assert.Contains(Say(alone), GeoLines.SoloClose.Select(l => string.Format(l, "Оля", km)));
+    }
+
+    /// <summary>
+    /// Похвала — за відстанню: «гостре око» лише до 30 км, «знає ці краї» — до 150, далі рівно; за 370–415 км
+    /// (ще ≥ 500 очок) Глек більше не каже «майже в ціль» (плейтест: «гість Петро знає ці краї: 371 км убік»).
+    /// </summary>
+    [Theory]
+    [InlineData(0.4, false, "Bull")]
+    [InlineData(12, false, "Close")]
+    [InlineData(30, false, "Close")]
+    [InlineData(31, false, "Good")]
+    [InlineData(149, false, "Good")]
+    [InlineData(151, false, "Mid")]
+    [InlineData(371, false, "Mid")]
+    [InlineData(414, false, "Mid")]
+    [InlineData(430, false, "AllFar")]
+    [InlineData(0.9, true, "Bull")]
+    [InlineData(20, true, "SoloClose")]
+    [InlineData(100, true, "SoloGood")]
+    [InlineData(371, true, "SoloMid")]
+    [InlineData(600, true, "SoloFar")]
+    public void Glek_praises_by_distance_not_just_by_points(double km, bool alone, string bank)
+    {
+        var want = bank switch
+        {
+            "Bull" => GeoLines.Bull, "Close" => GeoLines.Close, "Good" => GeoLines.Good, "Mid" => GeoLines.Mid,
+            "AllFar" => GeoLines.AllFar, "SoloClose" => GeoLines.SoloClose, "SoloGood" => GeoLines.SoloGood,
+            "SoloMid" => GeoLines.SoloMid, _ => GeoLines.SoloFar,
+        };
+        for (var seed = 0; seed < 20; seed++)
+        {
+            var say = GeoLines.Pick(new Random(seed), "Оля", km, GeoScore.Points(km), alone);
+            Assert.Contains(say, want.Select(l => string.Format(l, "Оля", GeoText.Km(km))));
+        }
+        // жодна «похвальна» фраза не звучить далі за 150 км
+        if (km > GeoLines.GoodKm)
+            foreach (var praise in GeoLines.Close.Concat(GeoLines.Good).Concat(GeoLines.SoloClose).Concat(GeoLines.SoloGood))
+                Assert.DoesNotContain(want, l => l == praise);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -569,8 +655,55 @@ public class GeoTests
             Assert.True(h.Rematch().Ok, h.Reply.Message);
         }
         Assert.Equal(15, all.Distinct().Count());
-        // четверта партія: свіжих лишилось 4 < 5 — бачене забувається, партія все одно на 5 раундів
+        // четверта партія: свіжих лишилось 4 < 5 — усі чотири свіжі йдуть у партію, п'яте — з баченого
         Assert.Equal(5, h.View(0).GetProperty("rounds").GetInt32());
+        var fourth = new List<string>();
+        for (var r = 0; r < 5; r++)
+        {
+            Until(h, "guess");
+            fourth.Add(Current(h, c).Id);
+            Until(h, "reveal");
+        }
+        var unseen = c.Bank.Places.Select(p => p.Id).Except(all).ToList();
+        Assert.Equal(4, unseen.Count);
+        Assert.All(unseen, id => Assert.Contains(id, fourth));
+        Assert.Single(fourth, id => all.Contains(id));
+    }
+
+    /// <summary>
+    /// Рецензія: коли свіжих місць бракує на цілу партію, бачене скидалось повністю, і наступна партія
+    /// повторювала в середньому 5,2 місця з 10. Тепер повторів рівно стільки, скільки бракує свіжих.
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7)]
+    [InlineData(42)]
+    [InlineData(2026)]
+    public void When_fresh_places_run_short_a_rematch_repeats_only_as_many_as_it_must(int seed)
+    {
+        using var c = new GeoCache();                       // 19 місць
+        var h = Table(c, 1, new { rounds = "10" }, seed);
+        List<string> Match()
+        {
+            var ids = new List<string>();
+            for (var r = 0; r < 10; r++)
+            {
+                Until(h, "guess");
+                ids.Add(Current(h, c).Id);
+                Until(h, "reveal");
+            }
+            Until(h, "done");
+            return ids;
+        }
+        var first = Match();
+        Assert.Equal(10, first.Distinct().Count());
+        Assert.True(h.Rematch().Ok, h.Reply.Message);
+        var second = Match();
+        Assert.Equal(10, second.Distinct().Count());
+        Assert.Single(second.Intersect(first));     // 9 свіжих + 1 повтор, а не пів партії
+        Assert.True(h.Rematch().Ok, h.Reply.Message);
+        var third = Match();
+        Assert.Single(third.Intersect(second));     // бачене тепер — друга партія: 9 свіжих з неї нема
     }
 
     [Fact]
@@ -698,14 +831,52 @@ public class GeoTests
         using var c = new GeoCache();
         var h = Table(c, 2);
         PlayAll(h, c, (s, t) => s == 0 ? t : (t.X > 2000 ? t.X - 300 : t.X + 300, t.Y), 2);
-        var shards = h.Awards.Where(a => a.Reason.StartsWith("points:", StringComparison.Ordinal)).ToList();
-        Assert.Contains(shards, a => a is { Nick: "Оля", Shards: 5, Reason: "points:1" });
+        var shards = h.Awards.Where(a => a.Reason.StartsWith("geo:", StringComparison.Ordinal)).ToList();
+        Assert.Contains(shards, a => a is { Nick: "Оля", Shards: 5, Reason: "geo:1" });
         var p1 = h.View(null).GetProperty("scores")[1].GetInt64();
-        Assert.Contains(shards, a => a.Nick == "Петро" && a.Shards == (int)(p1 / 5000) && a.Reason == "points:1");
+        Assert.Contains(shards, a => a.Nick == "Петро" && a.Shards == (int)(p1 / 5000) && a.Reason == "geo:1");
+        // безстельового «points:» гра не просить ніколи: відповіді тут вивчаються, тож лише шлях зі стелею
+        Assert.DoesNotContain(h.Awards, a => a.Reason.StartsWith("points:", StringComparison.Ordinal));
 
         Assert.True(h.Rematch().Ok);
         PlayAll(h, c, (s, t) => t, 2);
-        Assert.Equal(2, h.Awards.Count(a => a.Reason == "points:2" && a.Shards == 5));
+        Assert.Equal(2, h.Awards.Count(a => a.Reason == "geo:2" && a.Shards == 5));
+    }
+
+    /// <summary>
+    /// Рецензія: тренування з «Готово»/«Далі» одразу — 15 с на партію й 5 🏺 за ідеальну, тобто ≈1200 🏺 на годину.
+    /// Тепер черепки за очки йдуть «нагородою гри» з денною стелею: двадцять ідеальних партій поспіль (і в
+    /// тренуванні, і за столом на одного) дають не більше <c>AwardDailyCap</c> — через справжні <c>Rewards</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("geo-solo")]
+    [InlineData("geo")]
+    public void Twenty_perfect_matches_in_a_row_pay_no_more_than_the_daily_award_cap(string game)
+    {
+        using var c = new GeoCache();
+        var h = game == "geo-solo" ? Solo(c) : Table(c, 1);
+        for (var match = 0; match < 20; match++)
+        {
+            if (match > 0) Assert.True(h.Rematch().Ok, h.Reply.Message);
+            PlayAll(h, c, (s, t) => t, 1);
+            Assert.Equal(25_000, h.View(0).GetProperty("scores")[0].GetInt64());
+        }
+        var asked = h.Awards.Where(a => a.Shards > 0).ToList();
+        Assert.Equal(20, asked.Count);
+        Assert.Equal(100, asked.Sum(a => a.Shards));                  // гра чесно просить 5 за кожну
+
+        using var rig = new EconomyRig();
+        foreach (var a in asked) rig.Events.Raise(a);
+        var paid = rig.Paid("Оля", "award:geo");
+        Assert.InRange(paid, 25, rig.Options.AwardDailyCap);          // а гаманець бачить не більше денної стелі
+        Assert.Equal(0, rig.Paid("Оля", "points:"));
+
+        // наступного дня — знову можна
+        rig.Clock.Advance(TimeSpan.FromDays(1));
+        Assert.True(h.Rematch().Ok, h.Reply.Message);
+        PlayAll(h, c, (s, t) => t, 1);
+        rig.Events.Raise(h.Awards.Last(a => a.Shards > 0));
+        Assert.Equal(paid + 5, rig.Paid("Оля", "award:geo"));
     }
 
     [Fact]
@@ -862,7 +1033,7 @@ public class GeoTests
                 }
                 if (v.GetProperty("recap") is { ValueKind: JsonValueKind.Array } rc)
                     Assert.All(rc.EnumerateArray(), r =>
-                        Assert.Equal(["name", "region", "photo", "best", "km", "points"], r.EnumerateObject().Select(p => p.Name)));
+                        Assert.Equal(["name", "region", "photo", "best", "top", "km", "points"], r.EnumerateObject().Select(p => p.Name)));
             }
         }
         Shape("lobby");
@@ -1017,7 +1188,7 @@ public class GeoTests
         Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text == "Де це?: Оля — 25 000 очок у тренуванні");
         var e = Assert.Single(h.Scores);
         Assert.Equal(("geo-solo", 25_000.0, ScoreOrder.HigherIsBetter), (e.GameId, e.Score, e.Order));
-        Assert.Contains(h.Awards, a => a is { Reason: "points:1", Shards: 5 });
+        Assert.Contains(h.Awards, a => a is { Reason: "geo:1", Shards: 5 });
 
         var journals = h.Outbox.OfType<Journal>().Count();
         Assert.True(h.Rematch().Ok);

@@ -23,16 +23,22 @@ public static class GeoSetup
 
     public static WebApplication MapGeo(WebApplication app)
     {
-        app.MapGet("/api/games/geo/{file}", (string file, GeoPhotos photos, HttpContext c) =>
-        {
-            // Лише «<токен>.jpg»: жодних списків теки, жодних імен файлів ззовні.
-            if (!file.EndsWith(".jpg", StringComparison.Ordinal)) return Results.NotFound();
-            if (photos.Resolve(file[..^4]) is not { } path || !File.Exists(path)) return Results.NotFound();
-            GeoPhotos.Touch(path);
-            c.Response.Headers.CacheControl = "private, max-age=1800";
-            c.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return Results.File(path, "image/jpeg");
-        });
+        app.MapGet("/api/games/geo/{file}", (string file, GeoPhotos photos, HttpContext c) => Serve(file, photos, c));
         return app;
+    }
+
+    /// <summary>
+    /// Фото за токеном. Лише «&lt;24 hex&gt;.jpg» живого токена — інакше 404 (жодних списків теки, жодних імен
+    /// файлів ззовні, жодного «..»); віддане — <c>private</c> (токен особистий, спільним кешам ні до чого) і
+    /// <c>nosniff</c>.
+    /// </summary>
+    public static IResult Serve(string file, GeoPhotos photos, HttpContext c)
+    {
+        if (!file.EndsWith(".jpg", StringComparison.Ordinal)) return Results.NotFound();
+        if (photos.Resolve(file[..^4]) is not { } path || !File.Exists(path)) return Results.NotFound();
+        GeoPhotos.Touch(path);
+        c.Response.Headers.CacheControl = "private, max-age=1800";
+        c.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return Results.File(path, "image/jpeg");
     }
 }

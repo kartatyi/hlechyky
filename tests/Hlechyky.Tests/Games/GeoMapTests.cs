@@ -44,10 +44,15 @@ public class GeoMapTests
             }
     }
 
-    [Fact]
-    public void Every_bank_place_projects_inside_the_map_grid()
+    public static TheoryData<string> Banks => ["main", "starter"];
+
+    static GeoBank BankOf(string which) => which == "main" ? GeoCache.Main : GeoCache.Starter;
+
+    [Theory]
+    [MemberData(nameof(Banks))]
+    public void Every_bank_place_projects_inside_the_map_grid(string which)
     {
-        var bank = GeoCache.Starter;
+        var bank = BankOf(which);
         Assert.NotEmpty(bank.Places);
         foreach (var p in bank.Places)
         {
@@ -127,12 +132,19 @@ public class GeoMapTests
         Assert.Null(GeoMap.RegionAt(mx, my));
     }
 
-    [Fact]
-    public void Every_starter_place_lies_in_the_region_the_bank_names()
+    /// <summary>
+    /// Кожна точка банку лягає на суходіл України (а не в море чи за кордон) — і саме в ту область, яку банк
+    /// називає. Для головного банку (~250 місць) це заразом перевірка, що збирачі не переплутали lat/lon.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Banks))]
+    public void Every_bank_place_lies_on_ukrainian_land_in_the_region_the_bank_names(string which)
     {
         var map = GeoMapFile.Load(MapPath)!;
         var byName = map.Regions.ToDictionary(r => r.Name, r => r.Id);
-        foreach (var p in GeoCache.Starter.Places)
+        var bank = BankOf(which);
+        Assert.NotEmpty(bank.Places);
+        foreach (var p in bank.Places)
         {
             Assert.True(byName.TryGetValue(p.Region, out var want), $"{p.Id}: невідома область «{p.Region}»");
             var (x, y) = GeoMap.ProjectExact(p.Lat, p.Lon);
@@ -253,6 +265,37 @@ public class GeoMapTests
         Assert.Equal(2, bank.Find("g0016")!.Photos.Count);
     }
 
+    /// <summary>
+    /// Головний банк гри (підготували збирачі й куратор): усі записи валідні, id і фото не повторюються, кожна
+    /// категорія й складність мають із чого вибрати навіть на столі з десятьма раундами, посилання — лише https.
+    /// </summary>
+    [Fact]
+    public void Main_bank_has_250_valid_places_and_every_filter_has_enough_to_play()
+    {
+        var bank = GeoCache.Main;
+        Assert.Empty(bank.Problems);
+        Assert.InRange(bank.Places.Count, 250, 2000);
+        Assert.Equal(bank.Places.Count, bank.Places.Select(p => p.Id).Distinct().Count());
+        var photos = bank.Places.SelectMany(p => p.Photos).ToList();
+        Assert.Equal(photos.Count, photos.Select(ph => ph.Url).Distinct().Count());
+        Assert.Equal(photos.Count, photos.Select(ph => GeoPhotos.FileNameFor(ph.Url)).Distinct().Count());
+        Assert.All(photos, ph =>
+        {
+            Assert.True(GeoBank.GoodHost(ph.Url), ph.Url);
+            Assert.StartsWith("https://commons.wikimedia.org/", ph.Page);
+            Assert.True(ph.LicenseUrl.Length == 0 || ph.LicenseUrl.StartsWith("https://", StringComparison.Ordinal), ph.LicenseUrl);
+            Assert.False(string.IsNullOrWhiteSpace(ph.Author));
+            Assert.DoesNotContain("<", ph.Author);
+        });
+        foreach (var cat in new[] { "city", "castle", "nature", "village" })
+        {
+            var inCat = bank.Places.Where(p => p.Cat == cat).ToList();
+            Assert.True(inCat.Count >= 40, $"{cat}: {inCat.Count}");
+            Assert.True(inCat.Count(p => p.Difficulty == 1) >= 10, $"{cat}: легких мало");
+            Assert.True(inCat.Count(p => p.Difficulty >= 2) >= 10, $"{cat}: складних мало");
+        }
+    }
+
     [Fact]
     public void Bank_drops_records_with_bad_cat_coordinates_or_foreign_photo_hosts_and_keeps_the_rest()
     {
@@ -278,6 +321,35 @@ public class GeoMapTests
         Assert.Equal(["ok1", "mixed"], bank.Places.Select(p => p.Id));
         Assert.Single(bank.Find("mixed")!.Photos);
         Assert.Equal(8, bank.Problems.Count);
+    }
+
+    /// <summary>
+    /// Рецензія: <c>page</c> і <c>licenseUrl</c> ідуть у <c>&lt;a href&gt;</c> під фото, а банк на ~250 місць
+    /// готують інші агенти. Кривий запис лишається в грі (фото ж добре), але посилання з нього — порожні.
+    /// </summary>
+    [Theory]
+    [InlineData("javascript:alert(1)", "javascript:alert(1)", "", "")]
+    [InlineData("http://commons.wikimedia.org/wiki/File:a.jpg", "http://evil.example/l", "", "")]
+    [InlineData("https://evil.example/wiki/File:a.jpg", "https://evil.example/l", "", "https://evil.example/l")]
+    [InlineData("https://commons.wikimedia.org:8443/wiki/File:a.jpg", "data:text/html,hi", "", "")]
+    [InlineData("//commons.wikimedia.org/wiki/File:a.jpg", "creativecommons.org/licenses/by/3.0", "", "")]
+    [InlineData("https://commons.wikimedia.org/wiki/File:a.jpg", "http://creativecommons.org/licenses/by/3.0",
+        "https://commons.wikimedia.org/wiki/File:a.jpg", "https://creativecommons.org/licenses/by/3.0")]
+    [InlineData("https://commons.wikimedia.org/wiki/File:a.jpg", "",
+        "https://commons.wikimedia.org/wiki/File:a.jpg", "")]
+    public void Photo_links_are_https_only_and_the_page_lives_on_commons(string page, string license, string wantPage, string wantLicense)
+    {
+        var json = $$"""
+        { "version": 1, "places": [
+          { "id": "p1", "name": "Місце", "region": "Київ", "cat": "city", "lat": 50.45, "lon": 30.52, "difficulty": 1,
+            "photos": [{"title":"File:a.jpg","url":"https://upload.wikimedia.org/a.jpg","author":"Я","license":"CC BY 3.0",
+                        "licenseUrl":{{System.Text.Json.JsonSerializer.Serialize(license)}},"page":{{System.Text.Json.JsonSerializer.Serialize(page)}}}] }
+        ] }
+        """;
+        var bank = GeoBank.Parse(json, null);
+        var ph = Assert.Single(Assert.Single(bank.Places).Photos);
+        Assert.Equal(wantPage, ph.Page);
+        Assert.Equal(wantLicense, ph.LicenseUrl);
     }
 
     [Fact]
