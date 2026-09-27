@@ -75,6 +75,29 @@ public sealed class SvoyaVoiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_miss_goes_to_disk_only_once_and_the_worker_still_finds_the_old_file()
+    {
+        // гра питає з-під замка щотика, поки чекає на репліку: на диск — лише перший раз (прохід 28.09)
+        _tts.Enqueue("ostap", ["Раунд другий"]);
+        await Drain();
+        var fresh = new TtsService(_engine, new FixedOptions<TtsOptions>(_opts), NullLogger<TtsService>.Instance);
+        var hash = fresh.HashOf("ostap", "Раунд третій");
+        Assert.Null(fresh.TryGet("ostap", "Раунд третій"));
+        // файл підклали збоку (так на диску не буває — лише для доказу, що вдруге туди не дивляться)
+        File.WriteAllBytes(Path.Combine(_dir, hash + ".mp3"), [1, 2, 3]);
+        File.WriteAllText(Path.Combine(_dir, hash + ".sec"), "2.5");
+        Assert.Null(fresh.TryGet("ostap", "Раунд третій"));
+        // а репліка з минулого запуску, про яку ще не питали, — з диска, як і була
+        Assert.NotNull(fresh.TryGet("ostap", "Раунд другий"));
+        // воркер, дійшовши до репліки, бере готовий файл без озвучки — і вона вже є
+        var said = _engine.Said.Count;
+        fresh.Enqueue("ostap", ["Раунд третій"]);
+        while (await fresh.StepAsync(CancellationToken.None)) { }
+        Assert.Equal(said, _engine.Said.Count);
+        Assert.Equal(2.5, fresh.TryGet("ostap", "Раунд третій")!.Seconds);
+    }
+
+    [Fact]
     public async Task Urgent_line_jumps_the_queue()
     {
         _tts.Enqueue("ostap", ["один", "два", "три"]);

@@ -141,6 +141,9 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
     readonly Dictionary<string, LinkedListNode<Job>> _queued = [];
     readonly Dictionary<string, double> _ready = [];
     readonly HashSet<string> _failed = [];
+    /// <summary>Репліки, яких на диску точно нема (уже дивились) — щоб <see cref="TryGet"/> не ліз туди щотика.</summary>
+    readonly HashSet<string> _missing = [];
+    const int MaxMissing = 20_000;
     readonly SemaphoreSlim _signal = new(0);
 
     sealed record Job(string Hash, string Voice, string Text, string Rate, int PauseMs);
@@ -157,7 +160,12 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
 
     public string HashOf(string voice, string text) => Hash(voice, Shape(O.Rate, O.PauseMs), text);
 
-    /// <summary>Готова репліка або null. Файл із попереднього запуску підхоплюється за його <c>.sec</c>.</summary>
+    /// <summary>
+    /// Готова репліка або null. Файл із попереднього запуску підхоплюється за його <c>.sec</c> — але на диск по
+    /// кожну репліку йдемо лише раз: «Своя гра» питає з-під замка кімнати щотика, поки чекає на голос, і промах
+    /// запам'ятовується (<see cref="_missing"/>). Новий файл у кеші з'являється лише з рук воркера, а той кладе
+    /// репліку в <see cref="_ready"/> сам, тож запам'ятований промах нічого не губить.
+    /// </summary>
     public TtsClip? TryGet(string voice, string text)
     {
         if (!Enabled || string.IsNullOrWhiteSpace(text)) return null;
@@ -166,11 +174,20 @@ public sealed class TtsService(ITtsEngine engine, IOptionsMonitor<TtsOptions> op
         lock (_lock)
         {
             if (_ready.TryGetValue(hash, out var sec)) return new TtsClip(hash, mp3, sec);
+            if (_missing.Contains(hash) || _failed.Contains(hash)) return null;
         }
         var known = ReadSeconds(hash);
-        if (known is not { } s) return null;
-        lock (_lock) _ready[hash] = s;
-        return new TtsClip(hash, mp3, s);
+        lock (_lock)
+        {
+            if (known is not { } s)
+            {
+                if (_missing.Count >= MaxMissing) _missing.Clear();
+                _missing.Add(hash);
+                return null;
+            }
+            _ready[hash] = s;
+            return new TtsClip(hash, mp3, s);
+        }
     }
 
     double? ReadSeconds(string hash)
