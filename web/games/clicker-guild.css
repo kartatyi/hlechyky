@@ -100,16 +100,22 @@
 .clkg-gift.q3 svg { filter: drop-shadow(0 0 5px rgba(244, 197, 66, .55)); }
 .clkg-mid { width: 40px; height: 42px; }
 
-/* ---- ранг ---- */
-.clkg-path { display: flex; align-items: center; gap: 2px; overflow-x: auto; padding-bottom: 2px; }
-.clkg-step { display: flex; flex-direction: column; align-items: center; min-width: 58px; opacity: .5; }
+/* ---- ранг ----
+   Шлях рангів — без прокрутки вбік (записки 28.09): кроки стискаються, а назва, якщо вже зовсім тісно, — з «…»;
+   на вузькій полиці кегль назв менший, щоб «Старійшина» влазила цілою в п'яту частину 290 px. */
+.clkg-path { display: flex; align-items: center; gap: 2px; padding-bottom: 2px; min-width: 0; }
+.clkg-step { display: flex; flex-direction: column; align-items: center; flex: 0 1 auto; min-width: 0; opacity: .5; }
 .clkg-step b { font-size: 20px; }
-.clkg-step i { font-style: normal; font-size: 11px; }
+.clkg-step i { font-style: normal; font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clkg-step.done { opacity: .85; }
 .clkg-step.on { opacity: 1; }
 .clkg-step.on b { filter: drop-shadow(0 0 6px rgba(244, 197, 66, .7)); }
 .clkg-step.on i { color: var(--accent); font-weight: 600; }
-.clkg-dash { flex: 1 1 10px; min-width: 6px; height: 2px; background: var(--line); }
+.clkg-dash { flex: 1 1 10px; min-width: 3px; height: 2px; background: var(--line); }
+@container clkside (max-width: 460px) {
+  .clkg-step i { font-size: 10px; }
+  .clkg-step b { font-size: 18px; }
+}
 .clkg-req { display: grid; grid-template-columns: minmax(0, 1fr) 90px 72px; align-items: center; gap: 6px; font-size: .85em; }
 .clkg-req b { text-align: right; white-space: nowrap; }
 .clkg-req.ok b { color: var(--ok); }

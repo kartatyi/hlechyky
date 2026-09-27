@@ -181,9 +181,17 @@
       + '<div class="clkg-mine" style="width:' + mine.toFixed(1) + '%"></div>' + marks + '</div>';
   }
 
-  /// Рядок «на возі»: до шести найчисленніших виробів мініатюрами з кількістю, решта — «+N».
+  /// Рядок «на возі»: до шести найчисленніших виробів мініатюрами з кількістю, решта — «+N». Той самий виріб у тому
+  /// самому розписі різної якості — однією мініатюрою (на возі їх однаково не розрізнити), сяє найкращий.
   function loadHtml(st, api, w) {
-    const items = (w.items || []).filter((x) => x.n > 0);
+    const byKind = new Map();
+    for (const x of w.items || []) {
+      if (!(x.n > 0)) continue;
+      const k = x.ware + '|' + (x.q ? x.style || '' : '?');
+      const was = byKind.get(k);
+      if (was) { was.n += x.n; was.q = Math.max(was.q, x.q || 0); } else byKind.set(k, { ware: x.ware, style: x.style || '', q: x.q || 0, n: x.n });
+    }
+    const items = [...byKind.values()].sort((a, b) => b.n - a.n);
     if (!items.length) return '';
     const esc = (x) => api.esc(st, x);
     const show = items.slice(0, WAGON_KINDS);
@@ -191,8 +199,8 @@
     const more = Math.max(0, w.total - shownN);
     const kindsMore = Math.max(0, (w.kinds || items.length) - show.length);
     return '<div class="clkg-load"><span class="muted small">на возі:</span>'
-      + show.map((x, i) => '<span class="clkg-lcell q' + (x.q || 1) + '" title="' + esc((x.q ? QUALITY[x.q] + ' ' : '')
-        + wareName(st, x.ware).toLowerCase() + (x.q ? ' · ' + styleName(st, x.style) : '') + ' × ' + x.n) + '">'
+      + show.map((x, i) => '<span class="clkg-lcell q' + (x.q || 1) + '" title="' + esc(wareName(st, x.ware)
+        + (x.q ? ' · ' + styleName(st, x.style) : '') + ' × ' + x.n) + '">'
         + api.wareSvg(x.ware, { style: x.style || '', quality: x.q || 1, cls: 'clkg-lico', slot: 'wl-' + i })
         + '<b>' + api.count(x.n) + '</b></span>').join('')
       + (more > 0 ? '<span class="clkg-lmore" title="' + esc('ще ' + kindsMore + ' ' + api.plural(kindsMore, 'вид', 'види', 'видів')

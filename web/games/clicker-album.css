@@ -41,42 +41,46 @@
 
 /* ---- розписи (вузол ядра всередині альбому) ---- */
 
-/* ---- сітка ---- */
-.clka-scroll {
-  overflow-x: auto; max-width: 100%; border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
-  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+/* ---- сітка ----
+   Записки 28.09: була таблиця в .clka-scroll з прокруткою вбік (на телефоні 15 × 9 клітинок + назви не влазили).
+   Тепер CSS-грід на всю ширину полиці: ліворуч назви, праворуч дев'ять стовпчиків розписів, що тиснуться до ширини;
+   на вузькій полиці (телефон) назва стає рядком-підписом над своїми клітинками — і жодної прокрутки вбік. */
+.clka-box { border-radius: 10px; border: 1px solid var(--line); background: var(--panel); padding: 2px; min-width: 0; }
+.clka-grid {
+  display: grid; gap: 2px; width: 100%; align-items: stretch;
+  grid-template-columns: minmax(0, max-content) repeat(var(--clka-cols, 9), minmax(0, 1fr));
 }
-/* width: 100% — щоб сітка розтягувалась на всю полицю, а не тулилась ліворуч із порожнечею праворуч
-   (на Full HD її було ~430 px із 1000). Вужче за свій мінімум таблиця не стиснеться — там і далі прокрутка. */
-.clka-grid { border-collapse: separate; border-spacing: 2px; margin: 0; width: 100%; }
-.clka-grid th, .clka-grid td { padding: 0; }
-.clka-corner { position: sticky; left: 0; z-index: 4; background: var(--panel); text-align: left; padding: 0 4px !important; width: 1%; }
-.clka-colh { height: 34px; }
-.clka-colh.full { background: rgba(244, 197, 66, .16); border-radius: 6px; }
+.clka-corner { align-self: end; text-align: left; padding: 0 4px 4px; line-height: 1.1; }
+.clka-colh { height: 34px; display: grid; place-items: center; border-radius: 6px; min-width: 0; }
+.clka-colh.full { background: rgba(244, 197, 66, .16); }
 .clka-colh.stars { background: rgba(244, 197, 66, .3); box-shadow: inset 0 3px 0 #f4c542; }
-.clka-colj { width: 22px; height: 28px; display: block; margin: 0 auto; }
-.clka-rowh {
-  position: sticky; left: 0; z-index: 3; background: var(--panel); text-align: left; padding: 2px 6px 2px 4px !important;
-  font-weight: 500; width: 1%;
+.clka-colj { width: 22px; height: 28px; display: block; margin: 0 auto; max-width: 100%; }
+/* Назва виробу — кнопка: тап відкриває картку рядка (що означають зірки й чого бракує). */
+.clk .clka-rowh {
+  width: auto; max-width: 160px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 1px 4px;
+  padding: 2px 5px 2px 4px; border: 0; border-radius: 6px; background: var(--panel); color: inherit; text-align: left;
+  font-weight: 500; white-space: nowrap; cursor: pointer; min-height: 0;
 }
-.clka-rh { width: 96px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1px 4px; }
-.clka-grid tr.full .clka-rowh { box-shadow: inset 3px 0 0 var(--accent2); }
-.clka-grid tr.stars .clka-rowh { box-shadow: inset 3px 0 0 #f4c542; background: linear-gradient(90deg, rgba(244, 197, 66, .18), var(--panel) 70%); }
-.clka-grid tr.stars .clka-wn::after { content: ' ⭐'; }
-.clka-wn { font-size: .78em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk .clka-rowh:hover { background: var(--panel3); }
+.clka-rowh.full { box-shadow: inset 3px 0 0 var(--accent2); }
+.clka-rowh.stars { box-shadow: inset 3px 0 0 #f4c542; background: linear-gradient(90deg, rgba(244, 197, 66, .18), var(--panel) 70%); }
+.clka-wn { font-size: .78em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* Зірки біля назви — окремим елементом, а не ::after: інакше «…» обрізала б саме ⭐ у довгих назвах. */
+.clka-rstar { font-size: .72em; line-height: 1; }
+.clka-rcount { font-size: .66em; color: #f4c542; font-weight: 600; font-variant-numeric: tabular-nums; opacity: .8; }
 .clka-lv { font-size: .7em; color: var(--accent2); font-variant-numeric: tabular-nums; }
 .clka-lv.max { color: #f4c542; font-weight: 700; }
 .clka-mbar { grid-column: 1 / -1; display: block; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .08); overflow: hidden; }
 .clka-mbar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--clay), var(--accent2)); border-radius: 2px; }
 
 .clka-cell {
-  position: relative; width: 100%; min-width: 34px; height: 36px; padding: 0; border-radius: 7px; display: grid; place-items: center;
+  position: relative; width: 100%; min-width: 0; height: 36px; padding: 0; border-radius: 7px; display: grid; place-items: center;
   border: 1px solid transparent; background: rgba(0, 0, 0, .18);
 }
 .clka-cell:hover { border-color: var(--line); }
 .clka-cell.open { background: radial-gradient(circle at 50% 70%, rgba(244, 197, 66, .12), rgba(0, 0, 0, .1)); }
 .clka-cell.star { border-color: rgba(244, 197, 66, .5); }
-.clka-w { width: 28px; height: 30px; }
+.clka-w { width: 28px; height: 30px; max-width: 100%; }
 .clka-w.shadow, .clka-big.shadow { filter: brightness(0) opacity(.36); }
 .clka-star { position: absolute; right: 1px; top: -2px; font-style: normal; font-size: 10px; color: #f4c542; text-shadow: 0 0 3px rgba(0, 0, 0, .8); }
 .clka-pin { position: absolute; left: 0; bottom: -3px; font-style: normal; font-size: 9px; }
@@ -210,9 +214,9 @@
    350 px порожнечі праворуч. Міра — сама полиця (clkside), як і у верстатів. */
 @container clkside (min-width: 900px) {
   .clka-grid { width: 100%; }
-  .clka-cell { width: 100%; min-width: 42px; height: 48px; }
+  .clka-cell { width: 100%; min-width: 0; height: 48px; }
   .clka-w { width: 38px; height: 40px; }
-  .clka-rh { width: 150px; }
+  .clk .clka-rowh { max-width: 200px; }
   .clka-wn { font-size: .88em; }
   .clka-lv { font-size: .78em; }
   .clka-colh { height: 42px; }
@@ -232,3 +236,30 @@
 
 /* Плашка знахідки лише показує: правило шару .clk-layer-front > div > * вмикало б їй торкання, і вона ковтала б тапи по розписному глеку. */
 .clk-layer-front .clka-found { pointer-events: none; }
+
+/* ---- ui (записки 28.09): легенда зірок, картка рядка, вузька полиця без прокрутки вбік ---- */
+.clka-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; font-size: .78em; color: var(--muted); line-height: 1.3; }
+.clka-lg { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; }
+.clka-lg b, .clka-lgstar { font-weight: 700; color: #f4c542; white-space: nowrap; flex: none; }
+.clka-lg b.clka-lv { color: var(--accent2); font-size: 1em; }
+.clka-lg b.clka-lv.max { color: #f4c542; }
+.clka-lgstar { font-style: normal; color: #f4c542; font-weight: 700; }
+.clka-legend .clk-info { margin-left: 0; }
+.clka-rowcard { display: flex; flex-direction: column; gap: 6px; }
+.clka-note { margin: 0; line-height: 1.4; }
+.clka-misses { display: flex; flex-wrap: wrap; gap: 4px; }
+.clka-miss { display: inline-flex; align-items: center; gap: 2px; padding: 1px 8px 1px 2px; border-radius: 999px; background: var(--panel2); font-size: .8em; }
+.clka-miss i { font-style: normal; }
+.clka-miss:not(.open) { opacity: .7; }
+.clka-mini { width: 22px; height: 24px; flex: none; }
+/* Вузька полиця: назва — рядок-підпис над клітинками, стовпчики займають усю ширину. */
+@container clkside (max-width: 440px) {
+  .clka-grid { grid-template-columns: repeat(var(--clka-cols, 9), minmax(0, 1fr)); row-gap: 1px; }
+  .clka-corner { display: none; }
+  .clk .clka-rowh {
+    grid-column: 1 / -1; width: auto; grid-template-columns: auto auto auto minmax(24px, 1fr); gap: 6px;
+    padding: 3px 6px 1px; margin-top: 3px; background: transparent;
+  }
+  .clk .clka-rowh .clka-mbar { grid-column: auto; align-self: center; }
+  .clka-wn { font-size: .8em; }
+}
