@@ -1509,6 +1509,8 @@ public class SpyTests(ITestOutputHelper output)
         h.Tick();
         Assert.Equal(n + 3, Hlek(h).Count);                // кінець партії
         Assert.All(SpyGlek.All, l => { Assert.False(string.IsNullOrWhiteSpace(l)); Assert.DoesNotContain('<', l); });
+        // Нік буває «гість Петро»: рядок, що починається з ніка чи ставить його одразу після «!»/«.», вийшов би з малої.
+        Assert.All(SpyGlek.All, l => Assert.DoesNotMatch(@"^\{|[.!?…] \{", l));
     }
 
     [Fact]
