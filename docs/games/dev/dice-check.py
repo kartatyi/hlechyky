@@ -7,7 +7,8 @@ rules — minQ із web/games/dice.js проти знімка C# (tests/Hlechyky
         біноміальної підказки зі spec §6.6. Так C# і JS звіряються через один і той самий знімок.
 perf  — docs/games/dev/dice-perf.js: 300 update() на шістьох у справжньому перебігу (ставка за ставкою, розкриття,
         «Далі» по одному) — середній час JS і JS + розкладка.
-mock  — docs/games/dev/dice-mock.js: рідкісні стани без везіння (влучне «Точно!», паліфіко) — знімки в --shots.
+mock  — docs/games/dev/dice-mock.js: рідкісні стани без везіння (влучне «Точно!», паліфіко, кісточка, що падає, «Точно!»
+        при надлишку, підсумок зі смішними нагородами, лобі на трьох кісточках) — знімки в --shots (--modes — які).
 
 Скрипт лише читає файли репозиторію й пише тимчасовий JS поруч із собою в %TEMP%; Chrome лишається жити
 (закрити: python D:/or-wt/_tools/cdp2.py --port <cdp> --kill).
@@ -68,6 +69,7 @@ def main():
     ap.add_argument("--cdp", type=int, default=9691)
     ap.add_argument("--what", default="rules,perf")
     ap.add_argument("--shots", default="qa")
+    ap.add_argument("--modes", default="exact,pal,fall,fallall,exact0,win,lobby3", help="які вигадані стани знімати (mock)")
     a = ap.parse_args()
     a.url = True
     what = set(a.what.split(","))
@@ -81,7 +83,7 @@ def main():
     if "mock" in what:
         os.makedirs(os.path.join(ROOT, a.shots), exist_ok=True)
         mock = open(os.path.join(HERE, "dice-mock.js"), encoding="utf-8").read()
-        for mode in ("exact", "pal"):
+        for mode in a.modes.split(","):
             print(f"== вигаданий вид: {mode}")
             run(a, f"window.__mode = '{mode}';\n" + mock, shot=os.path.join(ROOT, a.shots, f"dice-mock-{mode}.png"))
 

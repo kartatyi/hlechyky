@@ -1,7 +1,7 @@
 """«Під глеком»: боти для живої перевірки — легкі SignalR-клієнти (JSON поверх WebSocket, як _tools/loadtest/load.py).
 
     python docs/games/dev/dice-bot.py --port 8228 --room <id> --nicks Петро,Ганна,Іван [--leave Ганна:100]
-                                      [--sleepy Іван] [--exact 0.35] [--stay] [--rematch 1] [--seconds 600]
+                                      [--sleepy Іван] [--exact 0.35] [--react 0.3] [--stay] [--rematch 1] [--seconds 600]
     python docs/games/dev/dice-bot.py --port 8228 --create --options '{"dice":"3"}' --nicks Петро,Ганна --start
 
 Кожен бот сидить за столом, дивиться (WatchRoom), читає СВІЙ вид (гра Hidden) і грає як обережна людина:
@@ -9,7 +9,8 @@
 інакше — найнижча законна ставка на грані, яка найімовірніша з його рукою. Поза чергою інколи каже «Точно!», якщо
 шанс «рівно» пристойний. У розкритті тисне «Далі» за 1–2 с. --sleepy — ніки, що ніколи не ходять (так видно
 таймер ходу: ⏰-ставку за сплячого й авто-«Брешеш!»), --leave нік:секунд — встати посеред партії, --stay —
-лишатись за столом після кінця (чекати на «Ще раз» людини). Друкує, що робить, і всі відмови сервера.
+лишатись за столом після кінця (чекати на «Ще раз» людини), --react — з такою ймовірністю реагує на чужу ставку
+(🤨 якщо не вірить, 😏 якщо вірить, 😂 інакше). Друкує, що робить, і всі відмови сервера.
 """
 import argparse, asyncio, json, math, random, sys, time
 
@@ -48,9 +49,11 @@ def binom_eq(n, p, m):
 
 
 class Bot:
-    def __init__(self, nick, port, room, rng, quiet, exact_rate):
+    def __init__(self, nick, port, room, rng, quiet, exact_rate, react_rate=0.0):
         self.nick, self.port, self.room, self.rng, self.quiet = nick, port, room, rng, quiet
         self.exact_rate = exact_rate
+        self.react_rate = react_rate
+        self.react_key = None
         self.ws = None
         self.inv = 0
         self.pending = {}
@@ -59,7 +62,7 @@ class Bot:
         self.status = None
         self.busy = False
         self.acted_key = None
-        self.stats = {"bid": 0, "liar": 0, "exact": 0, "ready": 0, "fail": []}
+        self.stats = {"bid": 0, "liar": 0, "exact": 0, "ready": 0, "react": 0, "fail": []}
         self.gone = False
         self.sleepy = False
 
@@ -134,6 +137,11 @@ class Bot:
             self.log("ВІДМОВА", action, payload, "→", msg)
         return r
 
+    async def react_later(self, e):
+        await asyncio.sleep(self.rng.uniform(0.3, 1.2))
+        if not self.gone:
+            await self.act("react", {"e": e})
+
     def my_dice(self, v):
         for p in v.get("players", []):
             if p["seat"] == self.seat:
@@ -156,6 +164,12 @@ class Bot:
         if not me or not me["alive"]:
             return
         key = (v["round"], len(v.get("history", [])), v["phase"])
+        bid0 = v.get("bid")
+        if (self.react_rate and v["phase"] == "bid" and bid0 and bid0["seat"] != self.seat and key != self.react_key):
+            self.react_key = key
+            if self.rng.random() < self.react_rate:
+                p = self.chance(v, bid0["q"], bid0["f"])
+                asyncio.create_task(self.react_later(0 if p < 0.4 else 1 if p > 0.8 else 2))
         if key == self.acted_key:
             return
         phase = v["phase"]
@@ -229,6 +243,7 @@ async def main():
     ap.add_argument("--sleepy", default="", help="ніки через кому, що ніколи не ходять (таймер ходу)")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--exact", type=float, default=0.35)
+    ap.add_argument("--react", type=float, default=0.0, help="ймовірність реакції на чужу ставку")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--rematch", type=int, default=0, help="скільки разів натиснути «Ще раз» після кінця")
     ap.add_argument("--stay", action="store_true", help="після кінця партії сидіти далі (чекати на чуже «Ще раз»)")
@@ -238,7 +253,7 @@ async def main():
     bots = []
     room = a.room
     for i, n in enumerate(nicks):
-        b = Bot(n, a.port, room, random.Random(rng.random()), a.quiet, a.exact)
+        b = Bot(n, a.port, room, random.Random(rng.random()), a.quiet, a.exact, a.react)
         b.sleepy = n in a.sleepy.split(",")
         await b.connect()
         await asyncio.sleep(0.2)
