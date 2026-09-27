@@ -64,13 +64,29 @@
   const cat = (st) => (st.catalog && st.catalog.album) || null;
   const wareList = (st) => (st.catalog && st.catalog.wares) || (st.craft && st.craft.wares) || [];
   const styleKeys = (st) => [''].concat(((st.catalog && st.catalog.styles) || st.styleList || []).map((s) => s.key));
-  /// Стовпчиків у сітці — скільки їх на сервері (size / рядки), інакше — розписи каталога. Ніде не зашито дев'ять.
+  /// «Домашніх» стовпчиків — скільки їх на сервері (homeColumns, або size / рядки), інакше — розписи каталога. Саме по
+  /// них рахуються повні рядки, стовпчики й «усе в зірках» (v11: стовпчики світу — окремий бонус). Ніде не зашито дев'ять.
   const cols = (st) => {
     const a = st.album;
+    if (a && a.homeColumns > 0) return a.homeColumns;
     if (a && a.size > 0 && a.cells.length > 0) return Math.round(a.size / a.cells.length);
     return styleKeys(st).length;
   };
+  /// Усі стовпчики сітки разом зі стовпчиками світу (v11): номер клітинки для спалаху — r · allCols + c.
+  const allCols = (st) => Math.max(cols(st), styleKeys(st).length);
   const fullRow = (st) => (1 << cols(st)) - 1;
+  /// З якого «за весь час» група «світ» уже варта уваги: червоний золотий — там починається велика толока.
+  const WORLD_NEAR = 1e27;
+  /// Зірок у стовпчиках світу: біти від homeColumns і далі.
+  const worldStars = (st) => st.album.stars.reduce((n, m) => n + pc((m || 0) >>> cols(st)), 0);
+  /// Група «світ» згорнута? Вибір гравця пам'ятаємо; без нього — згорнута на телефоні й поки у світі порожньо.
+  function worldHidden(st, api) {
+    const saved = api.storeGet('clka.world', '');
+    if (saved) return saved === 'hide';
+    const narrow = window.matchMedia && window.matchMedia('(max-width: 480px)').matches;
+    const owned = (st.styleList || []).some((s) => s.tier && s.owned);
+    return narrow || (!owned && !(st.album && st.album.worldOpen));
+  }
   const styleName = (st, key) => {
     if (!key) return 'простий';
     const s = (st.styleList || []).find((x) => x.key === key);
@@ -192,6 +208,13 @@
     add('⭐', 'зірки', a.starOpen + ' з ' + n, bonusOf(st, 'star', 0.01), a.starOpen * bonusOf(st, 'star', 0.01));
     add('🌟', 'рядки в зірках', a.starRows, bonusOf(st, 'starRow', 0.05), a.starRows * bonusOf(st, 'starRow', 0.05));
     if (a.starOpen >= n && n > 0) add('✨', 'увесь альбом у зірках', '', 0, bonusOf(st, 'starAll', 0.25));
+    // Стовпчики світу (v11) — окремий бонус: клітинка й зірка там важать стільки ж, а вся сітка з ними — ще зверху.
+    if (a.worldSize > 0) {
+      const ws = worldStars(st);
+      add('🌍', 'клітинки світу', a.worldOpen + ' з ' + a.worldSize, bonusOf(st, 'cell', 0.005), a.worldOpen * bonusOf(st, 'cell', 0.005));
+      add('💫', 'зірки світу', ws + ' з ' + a.worldSize, bonusOf(st, 'star', 0.01), ws * bonusOf(st, 'star', 0.01));
+      if (a.worldFull) add('🌐', 'альбом світу зібрано', '', 0, bonusOf(st, 'worldAll', 0.25));
+    }
     const byQ = {};
     for (const t of a.stove) byQ[t.q] = (byQ[t.q] || 0) + 1;
     for (let q = topQuality(st); q >= 2; q--) {
@@ -230,6 +253,8 @@
       + '<div class="clka-rings">'
       + '<div class="clka-rg">' + ring(a.open / Math.max(1, n)) + '<span><b>' + a.open + '/' + n + '</b><i class="muted">клітинок</i></span></div>'
       + '<div class="clka-rg">' + ring(a.starOpen / Math.max(1, n), 'star') + '<span><b>' + a.starOpen + '/' + n + '</b><i class="muted">зірок</i></span></div>'
+      + (a.worldSize > 0 ? '<div class="clka-rg">' + ring(a.worldOpen / a.worldSize, 'world') + '<span><b>' + a.worldOpen + '/' + a.worldSize
+        + '</b><i class="muted">світ</i></span></div>' : '')
       + '<div class="clka-rg">' + ring(a.stove.length / 12, 'tile') + '<span><b>' + a.stove.length + '/12</b><i class="muted">кахлів</i></span></div>'
       + '<div class="clka-rg">' + ring(found / 8, 'museum') + '<span><b>' + found + '/8</b><i class="muted">знахідок</i></span></div>'
       + '<div class="clka-rg">' + ring(lv / Math.max(1, a.mastery.length * 10), 'mastery') + '<span><b>' + lv + '/' + a.mastery.length * 10
@@ -243,21 +268,30 @@
     const esc = (x) => api.esc(st, x);
     const wares = wareList(st);
     const keys = styleKeys(st);
-    const C = cols(st);
+    const HC = cols(st);
+    const C = allCols(st);
     const FR = fullRow(st);
+    // v11: стовпчики від HC і далі — розписи світу. Своя група з підписом «світ»; її можна згорнути (на телефоні
+    // типово згорнута), тоді сітка лишається такою, як до одинадцятого оновлення.
+    const wc = (c) => (c >= HC ? ' clka-wc' + (c === HC ? ' clka-wc0' : '') : '');
     if (!wares.length) return;
     const sig = a.cells.join(',') + '|' + a.stars.join(',') + '|' + a.mastery.join(',') + '|'
       + wares.map((w, i) => Math.floor(masteryProgress(st, w.key, a.mastery[i] || 0) * 20)).join(',') + '|' + keys.length
       + '|' + [...st.albumFlash].join(',') + '|' + a.show.map((s) => s.key).join(',');
+    paintWorldToggle(st, api);
     if (st.albumUi.grid._sig === sig) return;
     st.albumUi.grid._sig = sig;
     const shown = new Set(a.show.map((s) => s.key));
-    let h = '<div class="clka-scroll"><table class="clka-grid"><thead><tr><th class="clka-corner"><span class="small muted">виріб \\ розпис</span></th>';
+    let h = '<div class="clka-scroll"><table class="clka-grid"><thead>'
+      + (C > HC ? '<tr class="clka-grprow"><th class="clka-corner"></th><th colspan="' + HC + '" class="clka-grp">дім</th>'
+        + '<th colspan="' + (C - HC) + '" class="clka-grp clka-wc clka-wc0">🌍 світ</th></tr>' : '')
+      + '<tr><th class="clka-corner"><span class="small muted">виріб \\ розпис</span></th>';
     keys.forEach((k, c) => {
       const full = a.cells.every((m) => (m >> c) & 1);
       const stars = a.stars.length && a.stars.every((m) => (m >> c) & 1);
-      h += '<th class="clka-colh' + (full ? ' full' : '') + (stars ? ' stars' : '') + '" title="' + esc(styleName(st, k))
-        + (full ? ' — стовпчик зібрано, +' + pct(api, bonusOf(st, 'column', 0.06)) : '') + '">'
+      // Повний стовпчик дає +6 % лише в «домашньому» альбомі; у світі він — частина «альбому світу».
+      h += '<th class="clka-colh' + (full ? ' full' : '') + (stars ? ' stars' : '') + wc(c) + '" title="' + esc(styleName(st, k))
+        + (full ? (c < HC ? ' — стовпчик зібрано, +' + pct(api, bonusOf(st, 'column', 0.06)) : ' — стовпчик зібрано') : '') + '">'
         + api.jugSvg(k, 'clka-colj', 'alb-h-' + (k || 'plain'), '') + '</th>';
     });
     h += '</tr></thead><tbody>';
@@ -279,7 +313,7 @@
         const star = (smask >> c) & 1;
         const flash = st.albumFlash.has(r * C + c);
         const onShow = shown.has(cellKey(st, r, c));
-        h += '<td><button type="button" class="clka-cell' + (open ? ' open' : '') + (star ? ' star' : '') + (flash ? ' new' : '')
+        h += '<td class="' + wc(c).trim() + '"><button type="button" class="clka-cell' + (open ? ' open' : '') + (star ? ' star' : '') + (flash ? ' new' : '')
           + (onShow ? ' shown' : '') + '" data-r="' + r + '" data-c="' + c
           + '" aria-label="' + esc(w.name + ', ' + styleName(st, k) + (open ? (star ? ' — із зіркою' : '') : ' — ще не обпалено')) + '">'
           + (open
@@ -292,6 +326,33 @@
     h += '</tbody></table></div>';
     st.albumUi.grid.innerHTML = h;
     for (const b of st.albumUi.grid.querySelectorAll('.clka-cell')) b.onclick = () => openCell(st, api, +b.dataset.r, +b.dataset.c);
+  }
+
+  /// Смужка над сіткою: «🌍 Світ: N з M» і кнопка показати чи згорнути стовпчики світу. Згортання — лише клас на
+  /// коробці сітки (CSS ховає стовпчики), тож сітку не перемальовуємо.
+  function paintWorldToggle(st, api) {
+    const a = st.album;
+    const bar = st.albumUi.world;
+    if (!bar) return;
+    // Поки до світу далеко (нема ні клітинки, ні розпису, ні червоного золотого за весь час), групи не видно зовсім:
+    // альбом новачка лишається таким, як до одинадцятого оновлення.
+    const near = a.worldOpen > 0 || (st.total || 0) >= WORLD_NEAR || (st.styleList || []).some((x) => x.tier && x.owned);
+    const hide = !near || worldHidden(st, api);
+    st.albumUi.grid.classList.toggle('clka-noworld', a.worldSize > 0 && hide);
+    const sig = a.worldSize + '|' + a.worldOpen + '|' + a.worldFull + '|' + hide + '|' + near;
+    if (bar._sig === sig) return;
+    bar._sig = sig;
+    if (!(a.worldSize > 0) || !near) { bar.innerHTML = ''; return; }
+    bar.innerHTML = '<button type="button" class="ghost small clka-worldbtn" aria-expanded="' + !hide + '">'
+      + '🌍 Світ: <b>' + a.worldOpen + '</b> з ' + a.worldSize + (a.worldFull ? ' 🌐' : '') + ' <span class="muted">' + (hide ? 'показати ▸' : 'згорнути ▾') + '</span></button>'
+      + '<span class="muted small">' + (a.worldFull
+        ? 'альбом світу зібрано — ще +' + pct(api, bonusOf(st, 'worldAll', 0.25)) + ' до всього'
+        : 'стовпчики розписів світу: клітинка й зірка — як удома, а всі ' + (a.worldSize + (a.size || 0)) + ' клітинок разом — ще\u00a0+'
+          + pct(api, bonusOf(st, 'worldAll', 0.25)).replace(' ', '\u00a0')) + '</span>';
+    bar.querySelector('.clka-worldbtn').onclick = () => {
+      api.storeSet('clka.world', worldHidden(st, api) ? 'show' : 'hide');
+      paintWorldToggle(st, api);
+    };
   }
 
   // ---------- 📌 виставка ----------
@@ -567,7 +628,8 @@
 
   function noticeCells(st, api, prev, prevStars) {
     const a = st.album;
-    const C = cols(st);
+    // Усі стовпчики, разом зі світом: нова клітинка світу теж спалахує (і не плутається з наступним рядком).
+    const C = allCols(st);
     if (!prev) return;
     const fresh = [];
     const stars = [];
@@ -653,7 +715,8 @@
       pane.classList.add('clka-pane');
       pane.innerHTML = '<div class="clka">'
         + '<div class="clka-head"></div>'
-        + '<section class="clka-sec"><div class="clk-sub">Альбом виробів<span class="muted small clka-gridhint"></span></div><div class="clka-gridbox"></div></section>'
+        + '<section class="clka-sec"><div class="clk-sub">Альбом виробів<span class="muted small clka-gridhint"></span></div>'
+        + '<div class="clka-worldbar"></div><div class="clka-gridbox"></div></section>'
         + '<section class="clka-sec clka-showsec"></section>'
         + '<section class="clka-sec clka-stovesec"></section>'
         + '<section class="clka-sec clka-museumsec"></section>'
@@ -663,6 +726,7 @@
         head: pane.querySelector('.clka-head'),
         hint: pane.querySelector('.clka-gridhint'),
         grid: pane.querySelector('.clka-gridbox'),
+        world: pane.querySelector('.clka-worldbar'),
         show: pane.querySelector('.clka-showsec'),
         stove: pane.querySelector('.clka-stovesec'),
         museum: pane.querySelector('.clka-museumsec'),
@@ -679,6 +743,8 @@
         rows: a.rows || 0, cols: a.cols || 0, starOpen: a.starOpen || 0, starRows: a.starRows || 0,
         stove: a.stove || [], stoveRing: !!a.stoveRing, stoveBonus: a.stoveBonus || 0, show: a.show || [],
         finds: a.finds || 0, shards: a.shards || 0, find: a.find || null, bonus: a.bonus || 0,
+        // v11: стовпчики світу — скільки «домашніх» і що відкрито у світі (старий сервер їх не шле — тоді світу нема).
+        homeColumns: a.homeColumns || 0, worldOpen: a.worldOpen || 0, worldSize: a.worldSize || 0, worldFull: !!a.worldFull,
       };
       noticeCells(st, api, st.albumPrev, st.albumPrevStars);
       st.albumPrev = a.cells.slice();

@@ -197,6 +197,33 @@
 .clkk-gcell.bad { fill: rgba(225, 105, 85, .6); }
 .clkk-wet { mix-blend-mode: screen; }
 .t-glaze .clkk-stroke { display: none; }
+
+/* ---- кобальт і раку (v11, пакет «Розписи світу») ---- */
+/* Кобальт: тонкий синій пунктир і тонка лінія — точність тут важить більше, ніж у ріжка. */
+.clkk-guide.kobalt { stroke: #1f3f9a; stroke-width: 5; stroke-dasharray: 3 13; opacity: .55; }
+.t-kobalt .clkk-stroke { stroke: #1f3f9a; stroke-width: 9; opacity: .9; }
+/* Раку: сліду щипців не малюємо — видно виріб, що летить за пальцем. */
+.t-raku { cursor: grab; }
+.t-raku .clkk-stroke { display: none; }
+.clkk-rlid { transition: transform .45s cubic-bezier(.2, .7, .3, 1), opacity .45s; }
+.clkk-rlid.open { transform: translate(0, -170px) rotate(-8deg); opacity: 0; }
+.clkk-rhalo { transform-box: fill-box; transform-origin: 50% 50%; }
+.clkk-rpiece.win .clkk-rhalo { animation: clkkrglow .35s ease-in-out infinite alternate; }
+@keyframes clkkrglow { from { transform: scale(.92); } to { transform: scale(1.14); } }
+.clkk-rlbl { fill: rgba(244, 234, 214, .7); font-size: 34px; text-anchor: middle; font-family: inherit; }
+.clkk-rlbl.small { font-size: 30px; text-anchor: start; }
+.clkk-rlbl.small.end { text-anchor: end; }
+.clkk-rlbl.big { font-size: 58px; fill: #f4ead6; }
+.clkk-rsay { fill: #f4ead6; font-size: 44px; font-weight: 700; text-anchor: middle; font-family: inherit; }
+.clkk-rsay.ok { fill: #f4c542; }
+.clkk-rsay.bad { fill: #e8705a; }
+.clkk-rsay.dim { fill: #a9a3b4; }
+.clkk-rsmoke circle { fill: rgba(220, 215, 205, .35); transform-box: fill-box; transform-origin: 50% 50%; animation: clkkrsmoke 2.4s ease-out forwards; }
+@keyframes clkkrsmoke { 0% { opacity: .9; transform: translate(0, 0) scale(.6); } 100% { opacity: 0; transform: translate(0, -60px) scale(1.6); } }
+@media (prefers-reduced-motion: reduce) {
+  .clkk-rlid { transition: none; }
+  .clkk-rpiece.win .clkk-rhalo, .clkk-rsmoke circle { animation: none; }
+}
 .clkk-vessel { filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .5)); }
 .clkk-ladle { transition: opacity .2s; }
 .clkk-pbar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }

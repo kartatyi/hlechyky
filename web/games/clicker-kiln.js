@@ -9,7 +9,8 @@
      min/max; пориви й поліна — xorshift32 із зерна view.kiln.seed). Клієнт записує СВОЇ дії [мс від розпалу, дія] і після
      30 с шле їх разом на kiln/open — сервер проганяє модель сам. Таймлайн лежить у localStorage: F5 посеред обпалу не губить дій;
   3) мінігри розпису (overlay): ріжкування (коло крутиться), ритування (контур), фляндрування (штрихи через смуги),
-     мармурування (краплі й закрутка), лощіння (натирати смуги). Точки — лише з isTrusted-подій, у полотні 1000×1000, пласким
+     мармурування (краплі й закрутка), лощіння (натирати смуги); v11 — кобальт (тонкий контур на повільному колі) і раку
+     (вийняти розпечений виріб у тирсу, коли світиться). Точки — лише з isTrusted-подій, у полотні 1000×1000, пласким
      масивом [dt, x, y, …] (dt < 0 — початок штриха), бо кімната не бере payload понад 8 КБ. Красу рахує сервер (kiln/decor);
   4) відкриття горна — подія в overlay: вироби з'являються по одному, дзвінкі блищать, тріснуті розсипаються;
   5) світло й дим від печі в хаті (api.layer back, піч праворуч ~x 292–350, y 190–302).
@@ -32,7 +33,7 @@
   const OPEN_AFTER_MS = 350;                // після кінця обпалу — трохи зачекати, щоб серверне «зараз» точно дійшло
   const MAX_POINTS = 480;                   // сервер бере до 500
   const SAMPLE_MS = 24;                     // не частіше за стільки — інакше за 12 с упремось у стелю точок
-  const TECH_ICON = { rizh: '🌀', flyand: '🌲', marble: '💧', ryt: '✒️', losk: '🪨', brush: '🖌', stamp: '🔘', glaze: '🫗' };
+  const TECH_ICON = { rizh: '🌀', flyand: '🌲', marble: '💧', ryt: '✒️', losk: '🪨', brush: '🖌', stamp: '🔘', glaze: '🫗', kobalt: '🔵', raku: '🍵' };
   /// Техніки дев'ятого оновлення: у старих гравців вони мусять світитись «нове», у нових — ні.
   const NEW_TECHS = ['brush', 'stamp', 'glaze'];
   /// Хто палить: підмайстер (типово, без мінігри) чи сам гончар. Пам'ятаємо між заходами.
@@ -686,6 +687,8 @@
   const SLIP = {
     '': '#f4ead6', gavarets: '#b9b4c2', vasylkiv: '#2f5fa8', bubnivka: '#f4ead6', kosiv: '#6b3b1b',
     opishnia: '#f6efe2', mezhyhirya: '#2b4f9e', petrykivka: '#f2c230', trypillia: '#2a1a12',
+    // Розписи світу (v11): синім по білому, золотом по севрській блакиті, міддю по темному раку.
+    jingdezhen: '#1f3f9a', iznik: '#1d4e9e', delft: '#2c5aa0', meissen: '#2745a3', sevres: '#d4af37', raku: '#d9a05b',
   };
 
   /// Яскравість кольору 0–1 — на випадок розпису, якого ще нема в SLIP (сервер додасть новий раніше за клієнт).
@@ -716,6 +719,21 @@
           + '<g class="clkk-horn" transform="translate(500 ' + (500 - s.r0) + ')"><path d="M-12-150l24 0-6 120h-12z" fill="#e7d7b4" stroke="#6b4a2a" stroke-width="4"/>'
           + '<circle r="9" fill="#fff" opacity=".7"/></g>';
       }
+      case 'kobalt': {
+        // Кобальт (v11): те саме коло, що й у ріжкування, але біла порцеляна, тонкий синій пунктир і пензлик замість ріжка.
+        let d = '';
+        for (let i = 0; i <= 240; i++) {
+          const th = (i / 240) * Math.PI * 2;
+          const r = s.r0 + s.amp * Math.sin(s.k * th + (s.phase * Math.PI) / 180);
+          d += (i ? 'L' : 'M') + (500 + r * Math.cos(th)).toFixed(1) + ' ' + (500 + r * Math.sin(th)).toFixed(1);
+        }
+        return '<g class="clkk-disc">' + PLATE('#f3f5f8', '#8e9bb0') + '<circle cx="500" cy="500" r="400" fill="none" stroke="#1f3f9a" stroke-width="6" opacity=".35"/>'
+          + '<circle cx="500" cy="500" r="90" fill="rgba(31,63,154,.06)"/>'
+          + '<path d="' + d + '" class="clkk-guide kobalt"/><g class="clkk-trail"></g><circle cx="500" cy="60" r="8" fill="#1f3f9a"/></g>'
+          + '<g class="clkk-horn" transform="translate(500 ' + (500 - s.r0) + ')"><path d="M-7-170h14l-2 118h-10z" fill="#8a5a2b" stroke="#3b2414" stroke-width="3"/>'
+          + '<path d="M-6-52h12l-6 42z" fill="#1f3f9a"/><circle r="6" fill="#fff" opacity=".7"/></g>';
+      }
+      case 'raku': return rakuScene(p);
       case 'ryt': {
         let d = '';
         for (let i = 0; i <= 200; i++) {
@@ -820,6 +838,198 @@
     return n;
   }
 
+  // ---------- раку (v11) ----------
+
+  /// Раку: перший дотик знімає кришку печі — і перший виріб починає розжарюватись. Коли засвітиться, хапай його щипцями
+  /// в печі й неси в яму з тирсою; наступний розжарюється від миті, коли попередній упав у тирсу. Межі оцінки — ті самі,
+  /// що в KilnPaint.Quench на сервері (приходять у shape), але красу рахує сервер: тут лише світіння й підказки.
+  /// Ширина шкали світіння в одиницях полотна.
+  const RAKU_BAR = 400;
+  const RAKU_POT = 'M-24-48h48v8c0 7-7 8-7 14 0 9 26 15 26 38 0 18-12 30-21 36h-58c-9-6-21-18-21-36 0-23 26-29 26-38 0-6-7-7-7-14z';
+
+  function rakuScene(p) {
+    const s = p.shape;
+    const [kx, ky] = s.kiln;
+    const [px, py] = s.pit;
+    let dust = '';
+    for (let i = 0; i < 34; i++) {
+      const a = (i * 137.5 * Math.PI) / 180;
+      const r = Math.sqrt(i / 34);
+      dust += '<circle cx="' + (px + 118 * r * Math.cos(a)).toFixed(0) + '" cy="' + (py + 2 + 24 * r * Math.sin(a)).toFixed(0) + '" r="' + (4 + (i % 3)) + '"/>';
+    }
+    const bx = kx - RAKU_BAR / 2;
+    return '<rect width="1000" height="1000" fill="#1a1411"/><path d="M0 620h1000v380H0z" fill="#2a1f19"/>'
+      // яма з тирсою
+      + '<ellipse cx="' + px + '" cy="' + py + '" rx="152" ry="50" fill="#0f0a07" stroke="#4a3a2c" stroke-width="6"/>'
+      + '<ellipse cx="' + px + '" cy="' + (py + 4) + '" rx="126" ry="30" fill="#a37b4b"/><g fill="#7c5a33">' + dust + '</g>'
+      + '<text x="' + px + '" y="' + (py + 96) + '" class="clkk-rlbl">тирса</text><g class="clkk-rdone"></g>'
+      // піч: бочка з обручами, жерло світиться
+      + '<path d="M' + (kx - 120) + ' ' + ky + 'h240v250q-120 26-240 0z" fill="#5b4a40" stroke="#2a201a" stroke-width="6"/>'
+      + '<path d="M' + (kx - 120) + ' ' + (ky + 90) + 'q120 18 240 0M' + (kx - 120) + ' ' + (ky + 180) + 'q120 18 240 0" stroke="#34343a" stroke-width="12" fill="none"/>'
+      + '<ellipse cx="' + kx + '" cy="' + ky + '" rx="112" ry="30" fill="#120b08"/>'
+      + '<ellipse class="clkk-rmouth" cx="' + kx + '" cy="' + ky + '" rx="96" ry="22" fill="#ff7a2a" opacity="0"/>'
+      // виріб: тіло, жар і біле світіння — шари з прозорістю, що міняється щокадру
+      + '<g class="clkk-rpiece" transform="translate(' + kx + ' ' + (ky - 30) + ')"><circle class="clkk-rhalo" r="96" fill="#ffb04a" opacity="0"/>'
+      + '<path d="' + RAKU_POT + '" fill="#4a2012" stroke="#1d0d06" stroke-width="4"/>'
+      + '<path class="clkk-rhot" d="' + RAKU_POT + '" fill="#ff8a2a" opacity="0"/><path class="clkk-rwhite" d="' + RAKU_POT + '" fill="#fff2b8" opacity="0"/>'
+      + '<path d="M-12-42h24" stroke="rgba(0,0,0,.35)" stroke-width="4"/></g>'
+      // кришка: перший дотик її знімає
+      + '<g class="clkk-rlid"><ellipse cx="' + kx + '" cy="' + (ky - 4) + '" rx="124" ry="34" fill="#6b5a4f" stroke="#2a201a" stroke-width="6"/>'
+      + '<path d="M' + (kx - 26) + ' ' + (ky - 30) + 'h52v-18h-52z" fill="#3b3b40"/></g>'
+      // шкала світіння над піччю: рано (тріщина) · вікно · пізно (без блиску)
+      + '<g class="clkk-rbar" transform="translate(' + bx + ' ' + (ky - 230) + ')"><rect width="' + RAKU_BAR + '" height="18" rx="9" fill="rgba(255,255,255,.08)"/>'
+      + '<rect class="clkk-rearly" height="18" rx="9" fill="rgba(214,80,60,.35)"/><rect class="clkk-rwin" height="18" fill="#f4c542"/>'
+      + '<rect class="clkk-rlate" height="18" rx="9" fill="rgba(140,140,160,.3)"/>'
+      + '<g class="clkk-rmark"><path d="M0-12v42" stroke="#fff" stroke-width="6" stroke-linecap="round"/></g>'
+      + '<text x="0" y="50" class="clkk-rlbl small">рано</text><text x="' + RAKU_BAR + '" y="50" class="clkk-rlbl small end">пізно</text></g>'
+      + '<text class="clkk-rsay" x="' + kx + '" y="' + (ky - 290) + '"></text>'
+      + '<g class="clkk-trail"></g>';
+  }
+
+  /// Стан раку в мінігрі. Полотно після «Спочатку» малюється наново — тоді й стан новий (впізнаємо за вузлом кришки).
+  function rakuState(g) {
+    const lid = g.svg.querySelector('.clkk-rlid');
+    if (!lid) return null;
+    if (g.raku && g.raku.lid === lid) return g.raku;
+    // Щипці — не пензель: шурхоту пензля під час перенесення не треба.
+    g.brushAt = Date.now() + 1e9;
+    g.raku = {
+      lid, open: false, i: 0, from: 0, seen: 0, grab: false, grabAt: 0, res: [],
+      piece: g.svg.querySelector('.clkk-rpiece'), hot: g.svg.querySelector('.clkk-rhot'), white: g.svg.querySelector('.clkk-rwhite'),
+      halo: g.svg.querySelector('.clkk-rhalo'), mouth: g.svg.querySelector('.clkk-rmouth'), mark: g.svg.querySelector('.clkk-rmark'),
+      done: g.svg.querySelector('.clkk-rdone'), say: g.svg.querySelector('.clkk-rsay'), bar: g.svg.querySelector('.clkk-rbar'),
+    };
+    rakuBar(g, g.raku);
+    return g.raku;
+  }
+
+  /// Скільки мс шкала світіння показує на один виріб: до вікна, вікно і «пізно».
+  const rakuSpan = (s, w) => w[0] + w[1] + s.late;
+
+  /// Розкласти шкалу під поточний виріб: у кожного своє вікно.
+  function rakuBar(g, R) {
+    const s = g.p.shape;
+    const w = s.pieces[Math.min(R.i, s.pieces.length - 1)];
+    const k = RAKU_BAR / rakuSpan(s, w);
+    const set = (sel, x, wd) => { const el = R.bar.querySelector(sel); el.setAttribute('x', (x * k).toFixed(1)); el.setAttribute('width', Math.max(0, wd * k).toFixed(1)); };
+    set('.clkk-rearly', Math.max(0, w[0] - s.early), Math.min(w[0], s.early));
+    set('.clkk-rwin', w[0], w[1]);
+    set('.clkk-rlate', w[0] + w[1], s.late);
+  }
+
+  /// Оцінка виробу 0…1 — та сама формула, що KilnPaint.RakuPieceScore: для підказки «блиск / тріщина / тьмяний».
+  function rakuScore(s, at, carry, landed, w) {
+    if (!landed) return 0;
+    const open = w[0];
+    const shut = w[0] + w[1];
+    const time = at < open ? Math.max(0, 1 - (open - at) / s.early) : at > shut ? Math.max(0, 1 - (at - shut) / s.late) : 1;
+    const heat = carry <= s.cool ? 1 : Math.max(0.5, 1 - (carry - s.cool) / 3000);
+    return time * heat;
+  }
+
+  const rakuDist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+  function rakuSay(R, text, cls) {
+    R.say.textContent = text;
+    R.say.setAttribute('class', 'clkk-rsay' + (cls ? ' ' + cls : ''));
+  }
+
+  /// Кадр раку: кришка, світіння поточного виробу, повзунок на шкалі, виріб у щипцях за пальцем.
+  function rakuFrame(st, api, g, now) {
+    const R = rakuState(g);
+    if (!R) return;
+    const s = g.p.shape;
+    if (g.t0 && !R.open) {
+      R.open = true;
+      R.lid.classList.add('open');
+      api.sfx('damper');
+      rakuSay(R, 'гріється…', '');
+    }
+    // Новий штрих: чи взяв він виріб із печі (перший штрих — кришка, він нічого не бере).
+    if (g.down && g.strokes !== R.seen) {
+      R.seen = g.strokes;
+      const p0 = g.pts[g.curFrom] || g.pts[g.pts.length - 1];
+      R.grab = g.strokes > 1 && R.i < s.pieces.length && !!p0 && rakuDist([p0[1], p0[2]], s.kiln) <= s.reach;
+      if (R.grab) {
+        R.grabAt = p0[0];
+        const w = s.pieces[R.i];
+        const at = p0[0] - R.from;
+        rakuSay(R, at < w[0] ? 'зарано!' : at > w[0] + w[1] ? 'запізно…' : 'саме час!', at < w[0] ? 'bad' : at > w[0] + w[1] ? 'dim' : 'ok');
+        api.sfx('tap');
+      } else if (g.strokes > 1 && R.i < s.pieces.length) note(g, 'Щипці — у піч: бери виріб із жерла, а тоді неси в тирсу.');
+    }
+    if (!R.open || R.i >= s.pieces.length) return;
+    const w = s.pieces[R.i];
+    const t = g.t0 ? now - g.t0 - R.from : 0;
+    const at = R.grab && g.down ? R.grabAt - R.from : t;
+    // Жар росте до вікна, у вікні виріб світиться білим, після — тьмяніє.
+    const heat = Math.max(0, Math.min(1, at / w[0]));
+    const past = Math.max(0, Math.min(1, (at - w[0] - w[1]) / s.late));
+    const win = at >= w[0] && at <= w[0] + w[1];
+    const white = win ? 1 : at < w[0] ? Math.max(0, (heat - 0.8) / 0.2) * 0.35 : 0.6 * (1 - past);
+    R.hot.setAttribute('opacity', (heat * (1 - 0.6 * past)).toFixed(2));
+    R.white.setAttribute('opacity', white.toFixed(2));
+    R.halo.setAttribute('opacity', (win ? 0.4 : heat * 0.18 * (1 - past)).toFixed(2));
+    R.mouth.setAttribute('opacity', (0.35 + 0.5 * heat).toFixed(2));
+    R.piece.classList.toggle('win', win);
+    const x = (Math.min(rakuSpan(s, w), Math.max(0, at)) * RAKU_BAR) / rakuSpan(s, w);
+    R.mark.setAttribute('transform', 'translate(' + x.toFixed(1) + ' 0)');
+    if (!R.grab && t > w[0] && t < w[0] + 60 && R.say.textContent !== 'світиться — бери!') rakuSay(R, 'світиться — бери!', 'ok');
+    if (!R.grab && past >= 1 && R.say.textContent !== 'вистигає…') rakuSay(R, 'вистигає…', 'dim');
+    if (R.grab && g.down) {
+      const q = g.lastPos || (g.last ? [g.last[1], g.last[2]] : s.kiln);
+      R.piece.setAttribute('transform', 'translate(' + q[0].toFixed(0) + ' ' + (q[1] - 30).toFixed(0) + ')');
+    }
+  }
+
+  /// Відпустили щипці. Не від печі чи замало пронесли — виріб лишається в печі. Інакше — у тирсу (або на землю).
+  function rakuStroke(st, api, g, pts) {
+    const R = rakuState(g);
+    if (!R) return;
+    const s = g.p.shape;
+    const n = s.pieces.length;
+    if (!R.grab) return;
+    R.grab = false;
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    const home = () => R.piece.setAttribute('transform', 'translate(' + s.kiln[0] + ' ' + (s.kiln[1] - 30) + ')');
+    if (rakuDist([a[1], a[2]], [b[1], b[2]]) < s.carry) { home(); note(g, 'Виріб треба винести з печі аж до тирси.'); return; }
+    const w = s.pieces[R.i];
+    const at = a[0] - R.from;
+    const landed = rakuDist([b[1], b[2]], s.pit) <= s.reach;
+    const sc = rakuScore(s, at, b[0] - a[0], landed, w);
+    const word = !landed ? '🫳 впав' : at < w[0] ? '💥 тріснув' : at > w[0] + w[1] ? '🌫 тьмяний' : '✨ блищить';
+    R.res.push(sc);
+    // Виріб лягає в тирсу (чи біля ями, якщо не доніс) — з димком і словом над ним.
+    const ox = (R.i - (n - 1) / 2) * 70;
+    const gx = landed ? s.pit[0] + ox : b[1];
+    const gy = landed ? s.pit[1] - 26 : Math.min(900, b[2]);
+    const tone = !landed || at < w[0] ? '#3a2a22' : at > w[0] + w[1] ? '#5a4a40' : '#b8733a';
+    R.done.insertAdjacentHTML('beforeend', '<g transform="translate(' + gx.toFixed(0) + ' ' + gy.toFixed(0) + ') scale(.55)">'
+      + '<path d="' + RAKU_POT + '" fill="' + tone + '" stroke="#1d0d06" stroke-width="5"/>'
+      + (landed && at >= w[0] && at <= w[0] + w[1] ? '<ellipse cx="-12" cy="0" rx="14" ry="22" fill="#3f8f84" opacity=".55"/><path d="M-8-30c10 10 14 30 6 56" stroke="#f0c27a" stroke-width="5" fill="none" opacity=".7"/>' : '')
+      + (landed && at < w[0] ? '<path d="M-10-40l8 22-12 16 10 20" stroke="#f4ead6" stroke-width="4" fill="none"/>' : '')
+      + (landed ? '<g class="clkk-rsmoke"><circle cx="-10" cy="-70" r="18"/><circle cx="12" cy="-96" r="22"/></g>' : '')
+      + '<text y="-130" class="clkk-rlbl big">' + word + '</text></g>');
+    api.sfx(!landed || at < w[0] ? 'crack' : at > w[0] + w[1] ? 'tap' : 'ding');
+    rakuSay(R, word, sc >= 0.8 ? 'ok' : sc >= 0.4 ? 'dim' : 'bad');
+    R.i++;
+    R.from = b[0];
+    if (R.i < n) {
+      home();
+      rakuBar(g, R);
+      return;
+    }
+    R.piece.setAttribute('opacity', '0');
+    R.mark.setAttribute('opacity', '0');
+    const avg = Math.round((R.res.reduce((x, y) => x + y, 0) / n) * 100);
+    note(g, 'Усі в тирсі: приблизно ' + avg + ' краси — точне число скаже майстер.');
+    if (ready(g)) setTimeout(() => { if (st.kPaint === g) submitPaint(st, api, false); }, reduced() ? 50 : 1100);
+  }
+
+  /// Скільки часу мінігра раку дає: на кожен виріб — до кінця «пізно» і ще на перенесення.
+  const rakuLimit = (s) => s.pieces.reduce((t, w) => t + w[0] + w[1] + s.late + 1500, 2000);
+
   const HOWTO = {
     rizh: 'Торкнись біля ріжка й тримай: коло закрутиться. Веди палець угору-вниз, щоб ріжок ішов по пунктиру, — один оберт.',
     ryt: 'Проведи по пунктирному контуру, не відриваючи руки, — усе коло. Мимо контуру — подряпина на білому.',
@@ -829,10 +1039,13 @@
     brush: 'Проведи мазок по кожній примарній пелюстці — від серединки до кінчика. Швидше рука — тонша лінія.',
     stamp: 'Торкнись першої позначки — і далі вони спалахуватимуть по черзі. Тисни, коли кільце стисне позначку.',
     glaze: 'Води ополоником по черепку — полива стікає ще на два рядки вниз. Укрий усе й не лий повз.',
+    kobalt: 'Торкнись біля пензлика й тримай: коло крутиться повільно. Веди тонку лінію точно по синьому пунктиру — один оберт.',
+    raku: 'Торкнись печі — кришка злетить. Коли виріб засвітиться (повзунок у жовтому), хапай його в жерлі й неси в тирсу. Три вироби.',
   };
 
   /// Скільки часу мінігра дає на роботу. Ріжкування — один оберт кола, штампик — поки не згаснуть усі позначки.
-  const limitOf = (p) => (p.tech === 'rizh' ? p.shape.period + 1200
+  const limitOf = (p) => (p.tech === 'rizh' || p.tech === 'kobalt' ? p.shape.period + 1200
+    : p.tech === 'raku' ? rakuLimit(p.shape)
     : p.tech === 'stamp' ? p.shape.marks.length * p.shape.step + 1600
       : p.tech === 'glaze' ? 16000 : 14000);
   /// Крок вибірки підбираємо під цей час: 480 точок мусять покрити ВСЮ мінігру, інакше вона обривалась на
@@ -926,7 +1139,7 @@
       if (!human(e) || e.pointerId !== g.pointer) return;
       // Штампик: дотик без руху — одна точка, а серверу треба дванадцять на всю мінігру; відпускання дає другу точку
       // того самого штриха (місце й мить штампа — перша), і 8 позначок стають 16 точками (рецензія v9).
-      if (g.down && g.p.tech === 'stamp' && !g.sent) { const [ux, uy] = pos(e); addPoint(st, api, g, e.timeStamp + 1, ux, uy, false); }
+      if (g.down && (g.p.tech === 'stamp' || g.p.tech === 'raku') && !g.sent) { const [ux, uy] = pos(e); addPoint(st, api, g, e.timeStamp + 1, ux, uy, false); }
       g.down = false;
       g.lastPos = null;
       afterStroke(st, api, g);
@@ -996,7 +1209,7 @@
     // Слід на полотні: у ріжкуванні — у системі кола (фарба крутиться разом із ним).
     let px = x;
     let py = y;
-    if (g.p.tech === 'rizh') {
+    if (g.p.tech === 'rizh' || g.p.tech === 'kobalt') {
       const a = -g.p.shape.dir * 2 * Math.PI * ms / g.p.shape.period;
       const dx = x - 500;
       const dy = y - 500;
@@ -1127,6 +1340,7 @@
     const p = g.p;
     const s = lastStroke(g);
     if (!s.length) return;
+    if (p.tech === 'raku') { rakuStroke(st, api, g, s); return; }
     if (p.tech === 'marble') {
       // Закрутка: штрих, що обійшов центр хоч на пів оберта, — фарби розходяться, і розпис готовий. Але тільки
       // коли всі краплі вже накрапані: інакше кругла петля при накрапуванні обривала мінігру на першій же краплі.
@@ -1205,8 +1419,9 @@
     const g = st.kPaint;
     if (!g || g.sent) return;
     const now = performance.now();
+    if (g.p.tech === 'raku') rakuFrame(st, api, g, now);
     // Палець стоїть на місці (подій руху нема), а коло крутиться — точка все одно потрібна.
-    if (g.down && g.last && g.t0 && now - g.t0 - g.last[0] > 45 && g.p.tech === 'rizh') {
+    if (g.down && g.last && g.t0 && now - g.t0 - g.last[0] > 45 && (g.p.tech === 'rizh' || g.p.tech === 'kobalt')) {
       addPoint(st, api, g, now, g.lastPos ? g.lastPos[0] : g.last[1], g.lastPos ? g.lastPos[1] : g.last[2], false);
     }
     const t = g.t0 ? now - g.t0 : 0;
