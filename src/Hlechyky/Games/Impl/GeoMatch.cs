@@ -246,7 +246,7 @@ public sealed class GeoMatch
 
     ActResult Guess(int seat, JsonElement payload)
     {
-        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase != PhaseGuess) return ActResult.Fail("Зараз не вгадують");
         if (_left[seat]) return ActResult.Fail("Ти вже встав з-за столу");
         if (_ready[seat]) return ActResult.Fail("Ти вже натиснув «Готово»");
@@ -267,7 +267,7 @@ public sealed class GeoMatch
 
     ActResult Ready(int seat)
     {
-        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase != PhaseGuess) return ActResult.Fail("Зараз не вгадують");
         if (_left[seat]) return ActResult.Fail("Ти вже встав з-за столу");
         if (_pinX[seat] < 0) return ActResult.Fail("Спершу постав шпильку на мапу");
@@ -279,7 +279,7 @@ public sealed class GeoMatch
 
     ActResult Next(int seat)
     {
-        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase != PhaseReveal) return ActResult.Fail("Зараз нічого пропускати");
         if (_left[seat]) return ActResult.Fail("Ти вже встав з-за столу");
         if (_next[seat]) return ActResult.Fail("Уже натиснув");

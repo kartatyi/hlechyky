@@ -1049,7 +1049,7 @@ public sealed class Dotepy : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_phase == PhaseLobby) return action == "mine" ? Own(seat, payload) : ActResult.Fail("Партія ще не почалась");
-        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ще раз»");
+        if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         return action switch
         {
             "draft" => Draft(seat, payload),
