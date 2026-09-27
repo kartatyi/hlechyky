@@ -39,21 +39,80 @@ public interface ITtsEngine
     Task<double> DurationAsync(string path, CancellationToken ct);
 }
 
-/// <summary>edge-tts через <c>python -m edge_tts</c>, тривалість — ffprobe з <c>YtDlp:FfmpegDir</c>.</summary>
-public sealed class EdgeTtsEngine(IOptionsMonitor<TtsOptions> options, IOptionsMonitor<YtDlpOptions> yt, ILogger<EdgeTtsEngine> log) : ITtsEngine
+/// <summary>
+/// edge-tts, тривалість — із самого mp3 (<see cref="Mp3Duration"/>; не вийшло — ffprobe з <c>YtDlp:FfmpegDir</c>).
+/// <para>
+/// Озвучує постійний процес python (<see cref="EdgeWorker"/>): заміри 28.09 — репліка через <c>python -m edge_tts</c>
+/// коштувала 2,2–3,6 с, з них ~1,8 с — сам запуск python та <c>import edge_tts</c>, ще 0,5 с — ffprobe; мережа — менше
+/// секунди. Через живий процес репліка — ~1 с, і вердикт «Правильно, Оля! Плюс двісті» встигає, поки гравець пише.
+/// Процес не піднявся чи впав — репліка йде старим шляхом, окремим запуском.
+/// </para>
+/// </summary>
+public sealed class EdgeTtsEngine(IOptionsMonitor<TtsOptions> options, IOptionsMonitor<YtDlpOptions> yt, ILogger<EdgeTtsEngine> log) : ITtsEngine, IDisposable
 {
+    readonly SemaphoreSlim _gate = new(1, 1);
+    EdgeWorker? _worker;
+    /// <summary>Коли живий процес не піднявся — не пробуємо знову до цього часу (а поки — окремі запуски).</summary>
+    DateTimeOffset _workerRetry;
+    bool _disposed;
+
     public async Task<bool> SynthesizeAsync(string voice, string text, string rate, int pauseMs, string outPath, CancellationToken ct)
     {
         var o = options.CurrentValue;
-        var (code, err) = await RunAsync(o.Python, ["-m", "edge_tts", "--voice", voice, "--rate=" + rate, "--text", text, "--write-media", outPath],
-            TimeSpan.FromSeconds(Math.Clamp(o.TimeoutSeconds, 5, 120)), ct);
-        if (code != 0 || !File.Exists(outPath) || new FileInfo(outPath).Length == 0)
+        var timeout = TimeSpan.FromSeconds(Math.Clamp(o.TimeoutSeconds, 5, 120));
+        var (ok, err) = await ViaWorkerAsync(o.Python, voice, text, rate, outPath, timeout, ct);
+        if (ok is null)
         {
-            log.LogWarning("edge-tts не озвучив ({Code}): {Err}", code, err.Trim().Split('\n').LastOrDefault());
+            var (code, e) = await RunAsync(o.Python, ["-m", "edge_tts", "--voice", voice, "--rate=" + rate, "--text", text, "--write-media", outPath], timeout, ct);
+            ok = code == 0;
+            err = code == 0 ? "" : $"({code}) {e}";
+        }
+        if (ok != true || !File.Exists(outPath) || new FileInfo(outPath).Length == 0)
+        {
+            log.LogWarning("edge-tts не озвучив: {Err}", err.Trim().Split('\n').LastOrDefault());
             return false;
         }
         if (pauseMs > 0) await TightenAsync(outPath, pauseMs, ct);
         return true;
+    }
+
+    /// <summary>Репліка через живий процес: true/false — озвучив чи ні; null — процесу нема (тоді окремим запуском).</summary>
+    async Task<(bool? Ok, string Err)> ViaWorkerAsync(string python, string voice, string text, string rate, string outPath, TimeSpan timeout, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            if (_disposed) return (null, "");
+            if (_worker is null || !_worker.Alive)
+            {
+                _worker?.Dispose();
+                _worker = null;
+                if (DateTimeOffset.UtcNow < _workerRetry) return (null, "");
+                _worker = await EdgeWorker.StartAsync(python, Path.GetDirectoryName(outPath) ?? Paths.Root, log, ct);
+                if (_worker is null)
+                {
+                    _workerRetry = DateTimeOffset.UtcNow + EdgeWorker.RetryAfter;
+                    return (null, "");
+                }
+            }
+            var reply = await _worker.AskAsync(voice, text, rate, outPath, timeout, ct);
+            if (reply is null)
+            {
+                // не відповів у час чи впав — цей процес більше не наш; наступна репліка підніме новий
+                _worker.Dispose();
+                _worker = null;
+                return (false, "живий edge-tts не вклався в час");
+            }
+            return reply.Value;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _worker?.Dispose();
+        _worker = null;
     }
 
     /// <summary>Хвіст тиші (мс), який лишаємо в кінці репліки — щоб останнє слово не обрубалось.</summary>
@@ -85,6 +144,13 @@ public sealed class EdgeTtsEngine(IOptionsMonitor<TtsOptions> options, IOptionsM
 
     public async Task<double> DurationAsync(string path, CancellationToken ct)
     {
+        // рахуємо кадри mp3 самі: ffprobe — це ще пів секунди на запуск процесу на кожну репліку
+        try
+        {
+            var own = Mp3Duration.Seconds(await File.ReadAllBytesAsync(path, ct));
+            if (own > 0) return own;
+        }
+        catch (IOException) { /* тоді ffprobe */ }
         var ffprobe = Path.Combine(Paths.Resolve(yt.CurrentValue.FfmpegDir), OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
         var (code, o) = await RunAsync(ffprobe, ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path],
             TimeSpan.FromSeconds(15), ct, wantStdout: true);

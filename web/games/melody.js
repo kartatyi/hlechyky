@@ -306,7 +306,8 @@
 
   function scores(root, ctx, v) {
     const found = {};
-    for (const f of v.found || []) found[f.seat] = f;
+    // після партії 🎤🎵 останнього треку лише плутали б: наче хтось «вгадав усе»
+    if (v.phase !== 'done') for (const f of v.found || []) found[f.seat] = f;
     const rows = [];
     for (let i = 0; i < seatsOf(ctx); i++) {
       const nick = nickAt(ctx, v, i);

@@ -98,6 +98,24 @@ public sealed class SvoyaVoiceTests : IDisposable
     }
 
     [Fact]
+    public void Mp3_length_is_counted_from_frames_without_ffprobe()
+    {
+        // MPEG-2 Layer III, 48 кбіт/с, 24 кГц — як репліки edge-tts після стискання пауз: кадр 144 байти, 576 семплів
+        static byte[] Frame(bool info = false)
+        {
+            var f = new byte[144];
+            f[0] = 0xFF; f[1] = 0xF3; f[2] = 0x64; f[3] = 0xC4;
+            if (info) "Info"u8.CopyTo(f.AsSpan(13));
+            return f;
+        }
+        var id3 = new byte[] { (byte)'I', (byte)'D', (byte)'3', 4, 0, 0, 0, 0, 0, 20 }.Concat(new byte[20]);
+        var mp3 = id3.Concat(Frame(info: true)).Concat(Enumerable.Range(0, 100).SelectMany(_ => Frame())).ToArray();
+        Assert.Equal(2.4, Mp3Duration.Seconds(mp3), 3);                       // 100 × 576 / 24000; службовий кадр не рахується
+        Assert.Equal(0, Mp3Duration.Seconds("не mp3 зовсім, а просто текст"u8));
+        Assert.Equal(2.4, Mp3Duration.Seconds([.. mp3, 0xFF, 0xF3, 0x64]), 3); // обрізаний хвіст — не біда
+    }
+
+    [Fact]
     public async Task Urgent_line_jumps_the_queue()
     {
         _tts.Enqueue("ostap", ["один", "два", "три"]);

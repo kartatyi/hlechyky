@@ -582,6 +582,10 @@
       setTimeout(() => input.focus(), 0);
     }
     numForm(root, ctx, v);
+    // пігулка балачки столу внизу праворуч — дати столу низ, щоб вона не лягла на кнопку чи рахунок
+    const wrap = root.querySelector('.svwrap');
+    const pill = !!document.querySelector('.tchat.drawer');
+    if (wrap.classList.contains('sv-pill') !== pill) wrap.classList.toggle('sv-pill', pill);
     speakerBtn(root, ctx);
     voice(root, ctx, v);
     autoplayMedia(root, ctx, v);

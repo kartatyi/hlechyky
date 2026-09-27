@@ -107,11 +107,11 @@ class Bot:
         except Exception as e:
             print(f"[{self.nick}] зв'язок: {e}", flush=True)
 
-    def once(self, key, coro):
+    def once(self, key, make):
         if key in self.busy:
             return
         self.busy.add(key)
-        asyncio.create_task(coro)
+        asyncio.create_task(make())
 
     def react(self):
         v = self.view or {}
@@ -121,7 +121,7 @@ class Bot:
         cell = v.get("cell") or {}
         qkey = f"{v.get('round')}:{cell.get('theme')}:{cell.get('q')}"
         if self.nick == self.shared["first"]:
-            k = f"{ph}:{qkey}:{v.get('answering')}"
+            k = f"{ph}:{qkey}:{v.get('answering')}:{v.get('waiting')}"
             if self.shared.get("last") != k:
                 self.shared["last"] = k
                 extra = ""
@@ -138,28 +138,28 @@ class Bot:
             self.done.set()
             return
         if ph == "board" and me.get("canPick"):
-            self.once("pick:" + qkey + str(v.get("chooser")), self.pick(v))
+            self.once(f"pick:{qkey}:{sum(1 for t in v.get('board') or [] for c in t['cells'] if not c['open'])}", lambda: self.pick(v))
         if ph in ("reading", "buzz") and me.get("canBuzz") and (ph == "buzz" or self.a.early):
-            self.once(f"buzz:{qkey}:{ph}", self.buzz(qkey))
+            self.once(f"buzz:{qkey}:{ph}", lambda: self.buzz(qkey))
         if ph == "answering" and me.get("canAnswer"):
-            self.once("answer:" + qkey, self.answer(v))
+            self.once("answer:" + qkey, lambda: self.answer(v))
         if ph == "reveal" and me.get("canAppeal") and self.rng.random() < self.a.appeal:
-            self.once("appeal:" + qkey, self.do("appeal"))
+            self.once("appeal:" + qkey, lambda: self.do("appeal"))
         if ph == "cat":
             if sp.get("canGive"):
-                self.once("give:" + qkey, self.give(v))
+                self.once("give:" + qkey, lambda: self.give(v))
             if sp.get("canCatPrice"):
-                self.once("catPrice:" + qkey, self.do("catPrice", {"max": True}))
+                self.once("catPrice:" + qkey, lambda: self.do("catPrice", {"max": True}))
         if ph == "auction":
             a = v.get("auction") or {}
             if a.get("turn") == self.seat and (sp.get("canBid") or sp.get("canPass")):
-                self.once(f"bid:{qkey}:{len(a.get('bids') or [])}", self.bid(v))
+                self.once(f"bid:{qkey}:{len(a.get('bids') or [])}", lambda: self.bid(v))
         if ph == "strike" and sp.get("canStrike") and (v.get("final") or {}).get("turn") == self.seat:
-            self.once(f"strike:{len((v.get('final') or {}).get('struck') or [])}", self.strike(v))
+            self.once(f"strike:{len((v.get('final') or {}).get('struck') or [])}", lambda: self.strike(v))
         if ph == "bet" and sp.get("canBet") and sp.get("bet") is None:
-            self.once("bet", self.bet(v))
+            self.once("bet", lambda: self.bet(v))
         if ph == "final" and sp.get("canFinalAnswer") and not sp.get("answer"):
-            self.once("final", self.final(v))
+            self.once("final", lambda: self.final(v))
 
     async def do(self, action, payload=None, delay=(0.5, 1.5)):
         await asyncio.sleep(self.rng.uniform(*delay))

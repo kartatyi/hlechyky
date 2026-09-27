@@ -138,7 +138,16 @@ audio.svmedia { width: min(420px, 100%); }
   .svtheme { font-size: .7em; padding: 4px; }
   .svcell { min-height: 40px; font-size: 1em; }
   .svscores { grid-template-columns: 1fr 1fr; }
+  /* Телефон: «Я знаю!» має бути видно разом із запитанням, без гортання. Раніше на айфоні (видно 390×664) кнопка
+     лягала під самий низ — під плаваючу пігулку «💬 Стіл», і натиск по правому краю відкривав балачку. */
+  .svstage { min-height: 0; }
+  .svtv { min-height: 120px; padding: 12px 14px 14px; gap: 8px; }
+  .svbuzz { min-height: 64px; }
 }
+
+/* Пігулка «💬 Стіл» (шторка балачки, каркас) лежить унизу праворуч: даємо столу низ на її висоту, щоб догорнути
+   можна було до всього. Клас ставить svoya.js — так само, як у костях. */
+.svwrap.sv-pill { padding-bottom: 60px; }
 
 /* ---------- голос ---------- */
 .svspk { margin-left: auto; white-space: nowrap; }
