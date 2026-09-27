@@ -51,6 +51,26 @@ public sealed class FrontPrintTests : IDisposable
     }
 
     [Fact]
+    public void Only_the_current_print_lets_a_module_be_cached_forever()
+    {
+        var print = Print();
+        var v = print.Files()["games/runner.js"];
+        Assert.True(print.Matches("/games/runner.js", v));     // так його питає Program.cs — шлях запиту
+        Assert.True(print.Matches("games/runner.js", v));
+        Assert.False(print.Matches("/games/runner.js", "20260927"));
+        Assert.False(print.Matches("/games/runner.js", ""));
+        Assert.False(print.Matches("/games/nope.js", v));
+        Assert.False(print.Matches("/games/../app.js", print.Files()["app.js"]));
+        // Деплой між каталогом і запитом: старий відбиток більше не «назавжди» — віддамо свіже з no-cache.
+        File.WriteAllText(Path.Combine(_web, "games", "runner.js"), "run(); jump();");
+        Assert.False(print.Matches("/games/runner.js", v));
+    }
+
+    [Fact]
+    public void Catalog_gets_prints_of_game_modules_only() =>
+        Assert.Equal(["games/runner.css", "games/runner.js"], Print().Games().Keys.Order());
+
+    [Fact]
     public void Missing_web_folder_gives_an_empty_print() =>
         Assert.Empty(new FrontPrint(Path.Combine(_web, "nope"), TimeSpan.Zero).Files());
 }

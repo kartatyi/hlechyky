@@ -25,8 +25,11 @@ public sealed record CatalogGame(
     /// <summary>Ім'я файла модуля без розширення: завантажувач бере <c>/games/{Module}.js</c>. Кілька ігор можуть ділити один.</summary>
     string Module);
 
-/// <summary>Відповідь каталогу: ігри й дозволені ставки.</summary>
-public sealed record Catalog(IReadOnlyList<CatalogGame> Games, IReadOnlyList<int> Stakes);
+/// <summary>
+/// Відповідь каталогу: ігри, дозволені ставки й відбитки файлів модулів (<c>"games/bomber.js" → "3f9a0c…"</c>, Front.cs) —
+/// core.js тягне модулі з <c>?v=</c>, і браузер тримає їх у кеші, доки вміст не зміниться.
+/// </summary>
+public sealed record Catalog(IReadOnlyList<CatalogGame> Games, IReadOnlyList<int> Stakes, IReadOnlyDictionary<string, string>? Files = null);
 
 /// <summary>
 /// Усі ігри збірки. Нова гра = новий клас-нащадок <see cref="Game"/> з публічним конструктором без

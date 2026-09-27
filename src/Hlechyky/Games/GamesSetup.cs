@@ -49,7 +49,7 @@ public static class GamesSetup
     public static WebApplication MapHlechykyGames(this WebApplication app)
     {
         // Лобі будується з каталогу, а не з хардкоду в JS: додав клас гри — вона з'явилась на сайті.
-        app.MapGet("/api/games/catalog", (Registry registry) => new Catalog(registry.Catalog, Rooms.Stakes));
+        app.MapGet("/api/games/catalog", (Registry registry, FrontPrint front) => new Catalog(registry.Catalog, Rooms.Stakes, front.Games()));
         GameNews.Map(app);                                  // /api/games/news — «бачив що нового»
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»

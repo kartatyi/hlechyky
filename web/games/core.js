@@ -606,8 +606,12 @@
 
   const loadedFiles = new Map();   // файл модуля → проміс завантаження: двічі той самий не тягнемо
 
+  /// «?v=<відбиток>» із каталогу: такий файл сервер дозволяє кешувати назавжди (Program.cs), і повторне відкриття
+  /// «Ігор» не перепитує про кожен із ~95 файлів. Старий сервер відбитків не дає — тоді без ?v=, як раніше.
+  const verQ = (rel) => { const v = catalog.files && catalog.files[rel]; return v ? '?v=' + encodeURIComponent(v) : ''; };
+
   const loadFile = (f) => {
-    if (!loadedFiles.has(f)) loadedFiles.set(f, loadScript('/games/' + f + '.js'));
+    if (!loadedFiles.has(f)) loadedFiles.set(f, loadScript('/games/' + f + '.js' + verQ('games/' + f + '.js')));
     return loadedFiles.get(f);
   };
 
@@ -615,7 +619,7 @@
     if (!g.hasCss || document.querySelector('link[data-game="' + f + '"]')) return;
     const l = document.createElement('link');
     l.rel = 'stylesheet';
-    l.href = '/games/' + f + '.css';
+    l.href = '/games/' + f + '.css' + verQ('games/' + f + '.css');
     l.dataset.game = f;
     document.head.appendChild(l);
   }
@@ -659,7 +663,7 @@
   function ensureNames() {
     if (names) return names;
     names = api('GET', '/api/games/catalog').then((c) => {
-      catalog = { games: (c && c.games) || [], stakes: (c && c.stakes) || [0] };
+      catalog = { games: (c && c.games) || [], stakes: (c && c.stakes) || [0], files: (c && c.files) || {} };
       for (const g of catalog.games) byId[g.id] = g;
       return catalog;
     }).catch((e) => {

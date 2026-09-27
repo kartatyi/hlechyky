@@ -36,6 +36,28 @@ public sealed class FrontPrint(string webRoot, TimeSpan? fresh = null)
         }
     }
 
+    /// <summary>
+    /// Чи файл <paramref name="rel"/> (шлях від web/, «games/bomber.js») зараз саме з відбитком <paramref name="v"/>.
+    /// Так — його можна кешувати в браузері назавжди: адреса з ?v= зміниться разом із вмістом (Program.cs, core.js).
+    /// Відбиток застарів (деплой між каталогом і запитом) — ні: тоді віддаємо свіже з no-cache, як раніше.
+    /// </summary>
+    public bool Matches(string rel, string v)
+    {
+        if (string.IsNullOrEmpty(v) || string.IsNullOrEmpty(rel) || rel.Contains("..", StringComparison.Ordinal)) return false;
+        rel = rel.TrimStart('/');
+        lock (_gate) return Hash(Path.Combine(webRoot, rel), rel) is { } h && string.Equals(h, v, StringComparison.Ordinal);
+    }
+
+    /// <summary>Відбитки модулів ігор (web/games/*) — каталог роздає їх, щоб core.js тягнув модулі з ?v=.</summary>
+    public IReadOnlyDictionary<string, string> Games()
+    {
+        var all = Files();
+        var games = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (k, v) in all)
+            if (k.StartsWith("games/", StringComparison.Ordinal)) games[k] = v;
+        return games;
+    }
+
     /// <summary>Хеш рахуємо лише тоді, коли в файла змінився час запису чи довжина.</summary>
     string? Hash(string path, string rel)
     {
@@ -57,7 +79,7 @@ public static class FrontSetup
 {
     public static WebApplication MapFront(this WebApplication app)
     {
-        var print = new FrontPrint(app.Environment.WebRootPath);
+        var print = app.Services.GetRequiredService<FrontPrint>();
         app.MapGet("/api/front", (HttpContext c) =>
         {
             c.Response.Headers.CacheControl = "no-store";

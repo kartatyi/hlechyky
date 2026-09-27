@@ -35,6 +35,7 @@ Console.OutputEncoding = System.Text.Encoding.UTF8;
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Paths.Resolve("data/keys")));
 builder.Services.AddSignalR();
 builder.Services.AddSingleton(_ => new Db(Paths.Resolve("data/hlechyky.db")));
+builder.Services.AddSingleton(_ => new FrontPrint(Path.Combine(root, "web")));   // відбиток web/ (Front.cs): /api/front, ?v= модулів ігор
 builder.Services.AddSingleton<Accounts>();
 builder.Services.AddSingleton<IGoogleVerifier, GoogleVerifier>();
 builder.Services.AddSingleton<YtMusicClient>();
@@ -78,9 +79,18 @@ app.Logger.LogInformation("Глечики: root={Root}, port={Port}", root, port
 
 app.UseHlechykyAuth();
 app.UseDefaultFiles();
+var front = app.Services.GetRequiredService<FrontPrint>();
 app.UseStaticFiles(new StaticFileOptions
 {
-    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
+    // Типово no-cache: web/ віддається наживо і міняється деплоєм. Але модулі ігор core.js тягне з ?v=<відбиток>
+    // (каталог роздає відбитки, Front.cs), і такий файл браузер може тримати назавжди — нова версія прийде під
+    // новою адресою. Раніше кожне відкриття «Ігор» перепитувало сервер про ~95 файлів.
+    OnPrepareResponse = ctx =>
+    {
+        var req = ctx.Context.Request;
+        var immutable = req.Query.TryGetValue("v", out var v) && front.Matches(req.Path.Value ?? "", v.ToString());
+        ctx.Context.Response.Headers.CacheControl = immutable ? "public, max-age=31536000, immutable" : "no-cache";
+    },
 });
 app.MapHlechyky();
 app.MapPeople();   // люди й статистика: картка людини, «Хто скільки», історія, свій гаманець, «Часто граємо»
