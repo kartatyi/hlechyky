@@ -1042,8 +1042,11 @@ public sealed partial class Clicker : Game
             ScheduleFall(now);
         }
         // Пробігли — наступні від «зараз»; гончаря не було — теж від «зараз». Зірка ще й чекає ночі (§A.6).
-        if (!watching || now > _cat.Until) ScheduleCat(now);
-        if (!watching || now > _star.Until) ScheduleStar(now);
+        // Кіт і зірка, що саме зараз на сцені (разом із запасом на пінг), лишаються: інакше дія «погладити» чи
+        // «загадати» спершу перепланувала б їх тут і отримала «Зірка вже згасла» — щойно гончар хвилини дві дивився
+        // на сцену, нічого не клацаючи, або натиснув в останню мить (клієнт тим часом уже намалював «загадав!»).
+        if (!Catchable(_cat, now) && (!watching || now > _cat.Until)) ScheduleCat(now);
+        if (!Catchable(_star, now) && (!watching || now > _star.Until)) ScheduleStar(now);
         if (!watching || now > _wind.Until) ScheduleWind(now);
         SyncOrders(now);
         // Ремесло й пакети — після пасиву й купців: підмайстри ліплять за той самий оплачений проміжок.
@@ -1133,6 +1136,9 @@ public sealed partial class Clicker : Game
     sealed record EventRow(DateTimeOffset At, DateTimeOffset Until, int A, int B);
 
     static bool During(EventRow row, DateTimeOffset now) => now >= row.At && now <= row.Until;
+
+    /// <summary>Ще можна спіймати: на сцені або в запасі на пінг (секунда завчасу, дві після), як у Pet і Wish.</summary>
+    static bool Catchable(EventRow row, DateTimeOffset now) => now >= row.At - EarlyGrace && now <= row.Until + CatchGrace;
 
     bool CatOn(DateTimeOffset now) => During(_cat, now);
     bool StarOn(DateTimeOffset now) => During(_star, now);
@@ -1506,6 +1512,9 @@ public sealed partial class Clicker : Game
         return ActResult.Accept($"Обміняв {pots} глеків на {shards} {Shards(shards)}");
     }
 
+    /// <summary>Скільки триває бонус розписного глека: «Довгий ярмарок» подовжує і ярмарок, і натхнення вдвічі.</summary>
+    TimeSpan BuffLonger(TimeSpan span) => Has("longfair") ? span * 2 : span;
+
     /// <summary>Розписний глек: впіймав у вікні — бонус, запізнився — він уже втік.</summary>
     ActResult Catch()
     {
@@ -1520,17 +1529,16 @@ public sealed partial class Clicker : Game
 
         // «В останню мить» (звання): за пів секунди до втечі чи вже в запасі на дорогу.
         if (now >= _golden.Until - LastMoment) TitleEarn("moment");
-        var longer = Has("longfair") ? 2 : 1;
         string text;
         switch (_golden.Kind)
         {
             case GoldenKind.Fair:
-                _fairUntil = now + FairFor * longer;
-                text = $"🎪 Ярмарок! Усе ×{FairMultNow.ToString("0.#", Uk)} на {(FairFor * longer).TotalSeconds:0} с";
+                _fairUntil = now + BuffLonger(FairFor);
+                text = $"🎪 Ярмарок! Усе ×{FairMultNow.ToString("0.#", Uk)} на {BuffLonger(FairFor).TotalSeconds:0} с";
                 break;
             case GoldenKind.Inspire:
-                _inspireUntil = now + InspireFor * longer;
-                text = $"✨ Натхнення! Клік ×{InspireMult:0} на {(InspireFor * longer).TotalSeconds:0} с";
+                _inspireUntil = now + BuffLonger(InspireFor);
+                text = $"✨ Натхнення! Клік ×{InspireMult:0} на {BuffLonger(InspireFor).TotalSeconds:0} с";
                 break;
             default:
                 // Шість хвилин роботи як дно плюс десята частина кишені (теж не більше шести хвилин): купець
@@ -1753,6 +1761,7 @@ public sealed partial class Clicker : Game
         _starWish = true;
         ScheduleGolden(now, StarGoldenSeconds);
         _guard.Spend(ClickerGuard.CatchWeight);
+        CountStar();
         Wonder("star");
         ScheduleStar(now);
         return ActResult.Accept($"🌠 Загадав! Наступний глек з полиці ×{StarFallMult:0}, а розписний — за {StarGoldenSeconds:0} с"
@@ -1987,9 +1996,10 @@ public sealed partial class Clicker : Game
             // Наступний розписний глек. Що в ньому — секрет до першого кліка.
             golden = new { at = _golden.At, until = _golden.Until, x = _golden.X, y = _golden.Y },
             caught = _caught,
-            fair = new { until = _fairUntil, mult = FairMultNow },
+            // span — скільки триває весь баф (секунди, з «Довгим ярмарком» удвічі): смужка під плашкою тане від цієї частки.
+            fair = new { until = _fairUntil, mult = FairMultNow, span = BuffLonger(FairFor).TotalSeconds },
             // share — ті самі три відсотки пасиву, що натхнення кладе в кожен клік: клієнт мусить рахувати так само.
-            inspire = new { until = _inspireUntil, mult = InspireMult, share = InspireShare },
+            inspire = new { until = _inspireUntil, mult = InspireMult, share = InspireShare, span = BuffLonger(InspireFor).TotalSeconds },
             allMult = all,
             stamps = _stamps,
             stampsFree = FreeStamps,
@@ -2245,6 +2255,8 @@ public sealed partial class Clicker : Game
         LoadGuests(s.Guests);
         _achQueue.Clear();
         foreach (var key in s.Achievements ?? []) if (key is { Length: > 0 and < 64 } && !_achQueue.Contains(key)) _achQueue.Add(key);
+        // Що належить напевно, але в хаті не лежить (зірку спіймано, а Скалки нема) — після черги ачівок, щоб її не стерло.
+        WondersOwed();
         _viewVersion++;
         // Після Load каталогів у виді нема (вид до збереження й після мусить збігатись): клієнт без них сам попросить look { catalog: true }.
         _catalogWanted = false;

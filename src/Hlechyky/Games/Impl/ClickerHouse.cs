@@ -30,8 +30,9 @@ public sealed record ClickerLook(string Key, string Name, string Desc, ClickerLo
 /// <summary>
 /// Дивовижа: річ із байкою, що трапляється сама, коли в хаті стається щось рідкісне. <paramref name="Triggers"/> —
 /// з яких подій її можна знайти (імена — з контракту v9 §F.4). Кожна знайдена додає відсоток до всього.
+/// <paramref name="Sure"/> — подія, з якою вона приходить напевно, а не кидком (Скалка з неба — з першою ж зіркою).
 /// </summary>
-public sealed record ClickerWonder(string Key, string Name, string Tale, string[] Triggers);
+public sealed record ClickerWonder(string Key, string Name, string Tale, string[] Triggers, string? Sure = null);
 
 /// <summary>
 /// Замовлення на дошці купців. <c>invest</c> — купець бере глеки і за <paramref name="Minutes"/> повертає більше;
@@ -362,9 +363,11 @@ public sealed partial class Clicker
         new("salt", "Чумацька сіль у горщику",
             "Чумак розплатився не грішми, а жменею солі. Горщик стоїть на полиці, і сіль у ньому не кінчається — бо її ніхто не чіпає.",
             ["wagon-gold", "treat"]),
+        // Напевно, а не кидком (записка Smaug 27.09: «зібрала зірку, а в дивовижах нема»): зірка падає лише вночі й
+        // рідко, а кидок 8 % означав десяток ночей чекання — під силуетом же було написано просто «коли впіймаєш зірку».
         new("sky-stone", "Скалка з неба",
             "Упала зірка, а вранці в бур'яні знайшовся камінець — теплий і важчий, ніж має бути. Лежить у скриньці, гріє долоню.",
-            ["star"]),
+            ["star"], Sure: "star"),
         new("mitten", "Рукавиця без пари",
             "Знайшлась у соломі. Ліва. Друга не знайшлась ніколи, але ця чомусь завжди тепла.",
             ["streak", "cat"]),
@@ -404,7 +407,7 @@ public sealed partial class Clicker
         ["streak"] = "за довгу серію глеків з полиці",
         ["lucky"] = "за щасливий клік",
         ["cat"] = "коли погладиш кота",
-        ["star"] = "коли впіймаєш зірку",
+        ["star"] = "коли впіймаєш зірку (падають лише вночі, з 21:00 до 5:00)",
         ["fire"] = "на обпалі",
         ["kiln-perfect"] = "за бездоганну партію з горна",
         ["paint-90"] = "за дуже гарний розпис",
@@ -420,6 +423,11 @@ public sealed partial class Clicker
 
     /// <summary>Знайдені дивовижі й коли саме: час потрібен клієнтові, щоб показати картку з байкою один раз.</summary>
     readonly Dictionary<string, DateTimeOffset> _wonders = new(StringComparer.Ordinal);
+    /// <summary>
+    /// Скільки зірок гончар спіймав за весь час (бажання, що дійшли до сервера). Лічильник з'явився 28.09: зі старих
+    /// збережень не видно, хто зірку вже ловив, тож у них тут нуль. Лежить у хаті, бо живе заради дивовиж.
+    /// </summary>
+    int _starsCaught;
 
     /// <summary>Гачок для решти пакетів: сталось щось рідкісне — може, щось і знайдеться.</summary>
     partial void Wonder(string trigger) => RollWonder(trigger);
@@ -432,15 +440,36 @@ public sealed partial class Clicker
     public ClickerWonder? RollWonder(string trigger)
     {
         if (string.IsNullOrEmpty(trigger)) return null;
+        // Та, що з цієї події приходить напевно, — без кидка й першою: інші з тієї самої події чекають наступного разу.
+        if (Wonders.FirstOrDefault(w => w.Sure == trigger && !_wonders.ContainsKey(w.Key)) is { } sure) return FindWonder(sure);
         var pool = Wonders.Where(w => !_wonders.ContainsKey(w.Key) && w.Triggers.Contains(trigger, StringComparer.Ordinal)).ToList();
         if (pool.Count == 0) return null;
         if (Ctx.Rng.NextDouble() >= WonderChance * (Tool("mirror") ? MirrorWonder : 1)) return null;
-        var found = pool[Ctx.Rng.Next(pool.Count)];
+        return FindWonder(pool[Ctx.Rng.Next(pool.Count)]);
+    }
+
+    /// <summary>Дивовижа в хаті: мить знахідки (клієнт покаже картку з байкою раз), ачівки й +1 % до всього.</summary>
+    ClickerWonder FindWonder(ClickerWonder found)
+    {
         _wonders[found.Key] = Ctx.Clock.UtcNow;
         Achieve("potter-wonder");
         if (_wonders.Count >= Wonders.Length) Achieve("potter-wonders");
         _viewVersion++;
         return found;
+    }
+
+    /// <summary>Спіймав зірку — лічимо: з лічильника <see cref="WondersOwed"/> знає, що Скалка з неба вже належить.</summary>
+    void CountStar() => _starsCaught++;
+
+    /// <summary>
+    /// Дивовижі, що належать напевно, але не лежать у хаті: зірку спіймано, а Скалки нема. Кличеться на завантаженні,
+    /// ідемпотентно (знайдена вдруге не знаходиться); ачівка йде звичайною чергою — каркас роздасть її на першій же дії,
+    /// а вдруге платформа ту саму ачівку не дає.
+    /// </summary>
+    void WondersOwed()
+    {
+        if (_starsCaught > 0 && Wonders.FirstOrDefault(w => w.Sure == "star") is { } sky && !_wonders.ContainsKey(sky.Key))
+            FindWonder(sky);
     }
 
     // ---------- купці ----------
@@ -701,9 +730,15 @@ public sealed partial class Clicker
         nameMax = HouseNameMax,
     };
 
-    /// <summary>«коли майстер кивне на полицю або за щасливий клік» — звідки ждати дивовижу, словами.</summary>
+    /// <summary>
+    /// «може знайтись коли майстер кивне на полицю або за щасливий клік» — звідки ждати дивовижу, словами. «Може» — бо
+    /// це кидок, а не обіцянка: без цього слова «коли впіймаєш зірку» читалось як «впіймав — маєш» (записка Smaug).
+    /// Та, що приходить напевно, так і каже.
+    /// </summary>
     static string WonderHint(ClickerWonder w) =>
-        string.Join(" або ", w.Triggers.Select(t => WonderFrom.TryGetValue(t, out var f) ? f : t));
+        w.Sure == "star"
+            ? "напевно — з першою ж спійманою зіркою (падають лише вночі, з 21:00 до 5:00)"
+            : "може знайтись " + string.Join(" або ", w.Triggers.Select(t => WonderFrom.TryGetValue(t, out var f) ? f : t));
 
     sealed record HouseRow(
         List<string>? Clays, string? Clay, DateTimeOffset ClayRestUntil,
@@ -711,7 +746,9 @@ public sealed partial class Clicker
         List<ClickerOrder>? Board, List<ClickerTaken>? Taken, DateTimeOffset BoardUntil, int OrderId,
         // Дев'яте оновлення — усе необов'язкове: старе збереження читається як «цього ще не було».
         List<string>? Looks = null, Dictionary<string, string>? Look = null, string? Name = null,
-        Dictionary<string, DateTimeOffset>? Wonders = null);
+        Dictionary<string, DateTimeOffset>? Wonders = null,
+        // 28.09: скільки зірок спіймано (Скалка з неба). Старе збереження — нуль: хто ловив до того, невідомо.
+        int Stars = 0);
 
     HouseRow SaveHouse() => new(
         _clays.Order(StringComparer.Ordinal).ToList(), _clay, _clayRestUntil,
@@ -720,7 +757,8 @@ public sealed partial class Clicker
         _looksOwned.Count > 0 ? _looksOwned.Order(StringComparer.Ordinal).ToList() : null,
         _look.Count > 0 ? new Dictionary<string, string>(_look, StringComparer.Ordinal) : null,
         _houseName.Length > 0 ? _houseName : null,
-        _wonders.Count > 0 ? new Dictionary<string, DateTimeOffset>(_wonders, StringComparer.Ordinal) : null);
+        _wonders.Count > 0 ? new Dictionary<string, DateTimeOffset>(_wonders, StringComparer.Ordinal) : null,
+        _starsCaught);
 
     /// <summary>Старе збереження без хати — чиста хата зі свіжою дошкою.</summary>
     void LoadHouse(HouseRow? row)
@@ -744,6 +782,7 @@ public sealed partial class Clicker
         _wonders.Clear();
         foreach (var (key, at) in row?.Wonders ?? [])
             if (Wonders.Any(w => w.Key == key)) _wonders[key] = at;
+        _starsCaught = Math.Max(0, row?.Stars ?? 0);
 
         _board.Clear();
         _taken.Clear();

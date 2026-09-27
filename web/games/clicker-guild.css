@@ -192,3 +192,23 @@
 .clkg-fhouse { width: 100%; max-width: 420px; margin: 8px auto 0; border-radius: 14px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
 .clkg-fhouse svg { display: block; width: 100%; height: auto; aspect-ratio: 360 / 450; }
 .clkg-shelves { display: block; width: 100%; max-width: 420px; margin: 6px auto 0; height: auto; }
+
+/* ---- ui (записки друзів 28.09): що лежить на возі й «🛒 Усе на віз» ----
+   Smaug: «додати вигляд товарів на возі, бо зараз лише горщик» — під возом рядок справжніх виробів (мініатюра з
+   розписом і якістю, скільки штук), до шести видів і «+N»; «кнопку покласти всі вироби на віз (зручно перед клеймом)» —
+   на картці воза, у вікні вибору й у вкладці «Клейма» перед обпалом. */
+.clkg-load { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.clkg-lcell {
+  display: inline-flex; align-items: center; gap: 2px; padding: 1px 7px 1px 2px; border-radius: 999px;
+  background: var(--panel2); font-size: .85em; font-variant-numeric: tabular-nums;
+}
+.clkg-lcell b { font-weight: 700; }
+.clkg-lico { width: 22px; height: 24px; flex: none; }
+.clkg-lcell.q3 .clkg-lico, .clkg-lcell.q4 .clkg-lico { filter: drop-shadow(0 0 4px rgba(244, 197, 66, .6)); }
+.clkg-lmore { padding: 1px 8px; border-radius: 999px; background: rgba(255, 255, 255, .06); color: var(--muted); font-size: .85em; font-weight: 700; }
+.clkg-allrow { margin: 4px 0 2px; }
+.clkg-firewagon {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 12px;
+  background: var(--panel); border: 1px dashed var(--accent2);
+}
+.clkg-firewagon[hidden] { display: none; }
