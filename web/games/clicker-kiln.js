@@ -211,18 +211,24 @@
     // Горно — верх вкладки «Ремесло» (її робить clicker-craft.js). Без ремесла ставимо свою вкладку, як було:
     // одна частина не мусить падати від того, що інша не завантажилась.
     const pane = api.slot(st, 'kiln') || api.tab(st, 'kiln', '🏺 Горно', 15);
+    // Горно — невелике й ліворуч, а стан, «Обпалити» і вся мінігра жару — поруч і під ним (записки Smaug №7 і
+    // користувача 4в): ручний обпал уміщається на один екран разом із кнопками й вітром — і на айфоні, і на ПК 1366×768,
+    // де панелі «Ремесла» лишається 330 px. Термометр — горизонтальний, рядки під ним сталої висоти: сторінка не
+    // стрибає, коли з'являється «тріщини» чи порив вітру. Сітку розставляє clicker-kiln.css (.clkk-top).
     pane.innerHTML = '<div class="clkk">'
-      + '<div class="clkk-top"><div class="clkk-stage">' + kilnSvg() + '<div class="clkk-gust" hidden>💨 порив вітру</div></div>'
-      + '<div class="clkk-gauge" hidden><div class="clkk-tube"><i class="clkk-band"></i><i class="clkk-mercury"></i><i class="clkk-mark"></i></div>'
-      + '<b class="clkk-temp">20°</b><span class="clkk-trend small"></span></div></div>'
-      + '<div class="clkk-status"><b class="clkk-state"></b><span class="clkk-clock muted small"></span></div>'
-      + '<div class="clkk-bar" hidden><i></i></div>'
+      + '<div class="clkk-top"><div class="clkk-stage">' + kilnSvg() + '</div>'
+      + '<div class="clkk-head"><div class="clkk-status"><b class="clkk-state"></b><span class="clkk-clock muted small"></span></div>'
+      + '<div class="clkk-bar" hidden><i></i></div></div>'
+      + '<div class="clkk-fire"></div>'
       + '<div class="clkk-play" hidden>'
-      + '<div class="clkk-meters small"><span class="clkk-score"></span><span class="clkk-risk"></span><span class="clkk-next"></span></div>'
+      + '<div class="clkk-gauge"><div class="clkk-tube"><i class="clkk-band"></i><i class="clkk-mercury"></i><i class="clkk-mark"></i></div>'
+      + '<b class="clkk-temp">20°</b><span class="clkk-trend small"></span></div>'
+      + '<div class="clkk-lines small"><span class="clkk-gust">💨 Порив вітру — жар падає!</span><span class="clkk-score"></span>'
+      + '<span class="clkk-next"></span><span class="clkk-risk"></span></div>'
       + '<div class="clkk-btns"><button type="button" class="primary clkk-stoke">🪵 Поліно</button>'
       + '<button type="button" class="ghost clkk-damp">Заслінка</button></div>'
-      + '<div class="muted small clkk-keys">Тримай жар у зеленій смузі. Відкрита заслінка — жаркіше, але дрова згоряють утричі швидше; '
-      + 'прикрита душить вогонь. Клавіші: ↑ — поліно, ↓ — заслінка.</div></div>'
+      + '<div class="muted small clkk-keys">Ртуть — у зелену смугу: поліно гріє, прикрита заслінка душить вогонь і береже дрова.'
+      + '<span class="clkk-kbd"> Клавіші: ↑ — поліно, ↓ — заслінка.</span></div></div></div>'
       + '<div class="clkk-prep"></div>'
       + '<div class="clkk-last"></div>'
       + '<details class="clkk-help small"><summary>Як це працює</summary>'
@@ -240,11 +246,11 @@
       + '</div>';
     const q = (s) => pane.querySelector(s);
     st.kUi = {
-      pane, svg: q('.clkk-svg'), wares: q('.clkk-wares'), glow: q('.clkk-glow'), gust: q('.clkk-gust'),
+      pane, root: q('.clkk'), svg: q('.clkk-svg'), wares: q('.clkk-wares'), glow: q('.clkk-glow'), gust: q('.clkk-gust'),
       gauge: q('.clkk-gauge'), band: q('.clkk-band'), mercury: q('.clkk-mercury'), mark: q('.clkk-mark'), temp: q('.clkk-temp'), trend: q('.clkk-trend'),
       state: q('.clkk-state'), clock: q('.clkk-clock'), bar: q('.clkk-bar'), barFill: q('.clkk-bar i'),
       play: q('.clkk-play'), score: q('.clkk-score'), risk: q('.clkk-risk'), next: q('.clkk-next'),
-      stoke: q('.clkk-stoke'), damp: q('.clkk-damp'), prep: q('.clkk-prep'), last: q('.clkk-last'), top: q('.clkk-top'),
+      stoke: q('.clkk-stoke'), damp: q('.clkk-damp'), prep: q('.clkk-prep'), fire: q('.clkk-fire'), last: q('.clkk-last'), top: q('.clkk-top'),
     };
     st.kUi.stoke.addEventListener('pointerdown', (e) => { if (human(e) && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, STOKE); } });
     st.kUi.damp.addEventListener('pointerdown', (e) => { if (human(e) && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, st.kb && st.kb.sim.open ? CLOSE : OPEN); } });
@@ -278,6 +284,41 @@
     st.kb = null;
   }
 
+  /// Мініплашка кола (clicker.js, pinView) стає під шапкою сайту, щойно коло з екрана: 40 px і відступ.
+  const PIN_H = 46;
+  const fitDelta = (r, lo, hi) => (r.top < lo ? r.top - lo : r.bottom > hi ? Math.min(r.bottom - hi, r.top - lo) : 0);
+
+  /// Ручний обпал почався (чи сторінку оновили посеред нього) — горно, термометр, вітер і кнопки мусять бути на очах
+  /// (записка користувача 4в): на телефоні горно далеко під колом, а на ПК панель «Ремесла» гортається сама в собі.
+  /// Раз на обпал, коли панель горна справді видно; далі гравець гортає як хоче — ми не смикаємо сторінку.
+  function showBurn(st) {
+    const kb = st.kb;
+    const box = st.kUi && st.kUi.top;
+    if (!kb || !box || !box.getClientRects().length) return;
+    kb.shown = true;
+    const behavior = reduced() ? 'auto' : 'smooth';
+    // Панель із власною прокруткою (ПК, стіл в один екран): гортаємо її, а не сторінку.
+    let sc = box.parentElement;
+    while (sc && sc !== st.el) {
+      if (/(auto|scroll)/.test(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight + 1) break;
+      sc = sc.parentElement;
+    }
+    if (sc && sc !== st.el) {
+      const b = sc.getBoundingClientRect();
+      const d = fitDelta(box.getBoundingClientRect(), b.top + 4, b.bottom - 4);
+      if (d) sc.scrollBy({ top: d, behavior });
+      return;
+    }
+    // Сторінка: між шапкою сайту (і мініплашкою кола під нею) та нижньою панеллю телефона.
+    const head = document.querySelector('body > header');
+    const lo = (head ? Math.max(0, head.getBoundingClientRect().bottom) : 0) + (st.el.classList.contains('fit') ? 6 : PIN_H);
+    const nav = [...document.querySelectorAll('nav')].find((n) => n.getClientRects().length && getComputedStyle(n).position === 'fixed'
+      && n.getBoundingClientRect().top > innerHeight / 2);
+    const hi = (nav ? Math.min(innerHeight, nav.getBoundingClientRect().top) : innerHeight) - 6;
+    const d = fitDelta(box.getBoundingClientRect(), lo, hi);
+    if (d) window.scrollBy({ top: d, behavior });
+  }
+
   function doAct(st, api, a) {
     const kb = st.kb;
     if (!kb || kb.done || api.guardOn(st)) return;
@@ -295,10 +336,11 @@
     saveTimeline(st);
     if (a === STOKE) {
       api.sfx('stoke');
+      // Іскри від поліна — та сама анімація наново. Без примусової розкладки (getBoundingClientRect посеред натиску
+      // коштує повної розкладки важкої сторінки): клас знімаємо зараз, ставимо в наступному кадрі.
       const svg = st.kUi.svg;
       svg.classList.remove('stoked');
-      void svg.getBoundingClientRect();
-      svg.classList.add('stoked');
+      requestAnimationFrame(() => svg.classList.add('stoked'));
     } else api.sfx('damper');
     paintBurn(st, api, true);
   }
@@ -323,28 +365,33 @@
     const hi = n < m.warm ? m.hi0 + (m.hi - m.hi0) * n / m.warm : m.hi;
     const lo = n < m.warm ? 0 : m.lo;
     const pct = (t) => Math.max(0, Math.min(100, (t / T_MAX) * 100));
-    ui.band.style.bottom = pct(lo) + '%';
-    ui.band.style.height = (pct(hi) - pct(lo)) + '%';
-    ui.band.classList.toggle('warm', n < m.warm);
-    ui.mercury.style.height = pct(s.T) + '%';
-    ui.mark.style.bottom = pct(s.T) + '%';
+    // Смуга міняється лише на розігріві (перші 8 с), ртуть і риска — щокроку: їх рухає transform, без розкладки.
+    setStyle(ui.band, 'left', pct(lo).toFixed(1) + '%');
+    setStyle(ui.band, 'width', (pct(hi) - pct(lo)).toFixed(1) + '%');
+    setClass(ui.band, 'warm', n < m.warm);
+    setStyle(ui.mercury, 'transform', 'scaleX(' + (pct(s.T) / 100).toFixed(3) + ')');
+    setStyle(ui.mark, 'transform', 'translateX(' + pct(s.T).toFixed(1) + '%)');
     const hot = s.T > hi;
     const cold = n >= m.warm && s.T < m.lo;
-    ui.gauge.classList.toggle('hot', hot);
-    ui.gauge.classList.toggle('cold', cold);
-    ui.gauge.classList.toggle('ok', !hot && !cold);
+    setClass(ui.gauge, 'hot', hot);
+    setClass(ui.gauge, 'cold', cold);
+    setClass(ui.gauge, 'ok', !hot && !cold);
     const t = Math.round(s.T) + '°';
     if (ui.temp.textContent !== t) ui.temp.textContent = t;
     const d = s.T - kb.prevT;
     const trend = d > 2 ? '▲' : d < -2 ? '▼' : '•';
     if (ui.trend.textContent !== trend) ui.trend.textContent = trend;
-    // Полум'я й світло камери — від жару й дров.
+    // Полум'я й світло камери — від жару й дров. Змінна на корені SVG перераховує стилі всього горна, тож пишемо її
+    // сходинками (1/50), а не щокроку: оком різниці нема, а кадрів — удвічі менше роботи.
     const glow = Math.max(0, Math.min(1, (s.T - 150) / 950));
-    ui.svg.style.setProperty('--clkk-heat', glow.toFixed(3));
-    ui.svg.style.setProperty('--clkk-fuel', Math.max(0.35, Math.min(1.5, 0.45 + s.F * 0.4)).toFixed(3));
-    ui.svg.classList.toggle('closed', !s.open);
-    ui.glow.setAttribute('opacity', (0.2 + glow * 0.8).toFixed(2));
-    ui.gust.hidden = !s.gustNow;
+    const g50 = Math.round(glow * 50) / 50;
+    setVar(ui.svg, '--clkk-heat', g50.toFixed(2));
+    setVar(ui.svg, '--clkk-fuel', (Math.round(Math.max(0.35, Math.min(1.5, 0.45 + s.F * 0.4)) * 20) / 20).toFixed(2));
+    setClass(ui.svg, 'closed', !s.open);
+    setAttr(ui.glow, 'opacity', (0.2 + g50 * 0.8).toFixed(2));
+    // Порив вітру — у рядку над кнопками, місце під нього стоїть завжди (visibility): рядки не стрибають.
+    setClass(ui.gust, 'on', !!s.gustNow);
+    setClass(ui.gauge, 'gust', !!s.gustNow);
     const damp = s.open ? 'Заслінка: відкрита ↓' : 'Заслінка: прикрита ↑';
     if (ui.damp.textContent !== damp) ui.damp.textContent = damp;
     const inBand = s.i > m.warm ? Math.round((s.score / (s.i - m.warm + 1)) * 100) : null;
@@ -359,8 +406,8 @@
     const left = Math.max(0, m.steps * m.stepMs - elapsed);
     const clock = '⏳ ' + api.mmss(left);
     if (ui.clock.textContent !== clock) ui.clock.textContent = clock;
-    ui.barFill.style.width = Math.min(100, (elapsed / (m.steps * m.stepMs)) * 100).toFixed(1) + '%';
-    ui.barFill.parentElement.classList.toggle('hot', hot);
+    setStyle(ui.barFill, 'transform', 'scaleX(' + Math.max(0, Math.min(1, elapsed / (m.steps * m.stepMs))).toFixed(3) + ')');
+    setClass(ui.bar, 'hot', hot);
     if (Date.now() - kb.roarAt > 3000 && elapsed < m.steps * m.stepMs) { kb.roarAt = Date.now(); api.sfx('kiln-roar'); }
     // Кінець обпалу: відкриваємо самі. Відмову «ще палає» (пінг) повторюємо; майстер хоче глянути — чекаємо, поки пропустить.
     if (elapsed >= m.steps * m.stepMs + OPEN_AFTER_MS && !api.guardOn(st) && Date.now() - kb.sentAt > 2500) {
@@ -452,7 +499,7 @@
     const mine = st.mine;
     const burning = k.state === 'burning';
     const cooling = k.state === 'cooling';
-    if (burning) { api.swap(ui.prep, ''); return; }
+    if (burning) { api.swap(ui.prep, ''); api.swap(ui.fire, ''); return; }
     const counts = {};
     for (const w of k.batch) counts[w] = (counts[w] || 0) + 1;
     const inKiln = Object.keys(counts).map((w) => esc(wareName(st, w)).toLowerCase() + ' ×' + counts[w]).join(', ');
@@ -464,8 +511,10 @@
     const owned = (st.styleList || []).filter((x) => x.owned);
     let paint = '';
     if (owned.length) {
+      // Розписи — сітка з перенесенням, а не стрічка з горизонтальною прокруткою (записки користувача 4б і Smaug №7):
+      // дев'ять осередків видно всі одразу, і на телефоні, і на ПК. Назва — до двох рядків, повна — у підказці.
       const styles = '<div class="clkk-chips">' + [{ key: '', name: 'Простий' }].concat(owned).map((x) => '<button type="button" class="clkk-chip'
-        + (x.key === k.style ? ' on' : '') + '" data-style="' + esc(x.key) + '"' + (mine ? '' : ' disabled') + '>'
+        + (x.key === k.style ? ' on' : '') + '" data-style="' + esc(x.key) + '" title="' + esc(x.name) + '"' + (mine ? '' : ' disabled') + '>'
         + api.jugSvg(x.key, 'clkk-chipjug', 'kst-' + (x.key || 'plain')) + '<span>' + esc(x.name) + '</span></button>').join('') + '</div>';
       // Рядок технік: відкриті — кнопки в один дотик, закриті — з підказкою, чим відкриються. Новеньку видно здалеку.
       const fresh = newTechs(st, api);
@@ -483,12 +532,15 @@
       const beauty = k.beauty > 0
         ? '<span class="clkk-beautyn small' + (k.beauty >= luxFrom(st) ? ' lux' : '') + '">краса ' + k.beauty + '</span>'
         : '';
-      paint = '<div class="clkk-paint"><details class="clkk-styles"><summary>🎨 Розпис: <b>' + esc(styleName(st, k.style)) + '</b>' + beauty + '</summary>'
-        + styles + '</details>' + row
+      // Розгорнутий вибір розпису swap тримає розгорнутим і після перемальовування (details за класом).
+      paint = '<div class="clkk-decorsec"><details class="clkk-styles"><summary>🎨 Розпис: <b>'
+        + esc(styleName(st, k.style)) + '</b>' + beauty + '</summary>' + styles + '</details>'
+        + '<div class="clkk-techline">' + row
         + (tech
           ? '<button type="button" class="primary clkk-decor"' + (mine && load > 0 ? '' : ' disabled') + '>🖌 Розписати'
             + (fresh.length ? '<i class="clkk-new">нове</i>' : '') + '</button>'
           : '')
+        + '</div>'
         + '<div class="muted small clkk-painthint">' + (load > 0
           ? 'Розписана партія — дзвінкіші й розкішні вироби. Обраний розпис лишається й на наступні партії'
           : 'Обраний розпис лишається на наступні партії')
@@ -498,19 +550,17 @@
         + '</div>';
     }
 
-    // Головна кнопка: сама складає сухі й розпалює.
+    // Головна кнопка: сама складає сухі й розпалює. Стоїть поруч із горном (.clkk-fire), а не під ним.
     const can = mine && !cooling && load > 0;
     const mySelf = selfFire(api);
     const batchText = k.batch.length ? 'у горні ' + k.batch.length + ' з ' + k.slots + ': ' + inKiln : 'сухих на сушарні ' + k.dry;
-    const fire = '<div class="clkk-fire">'
-      + '<button type="button" class="primary clkk-go"' + (can ? '' : ' disabled') + '>🔥 Обпалити' + (load ? ' ' + load : '') + '</button>'
+    const fire = '<button type="button" class="primary clkk-go"' + (can ? '' : ' disabled') + '>🔥 Обпалити' + (load ? ' ' + load : '') + '</button>'
       + '<div class="clkk-who"><button type="button" class="clkk-wbtn' + (mySelf ? '' : ' on') + '" data-self="0">👷 Палить підмайстер</button>'
       + '<button type="button" class="clkk-wbtn' + (mySelf ? ' on' : '') + '" data-self="1">🔥 Палю сам</button></div>'
       + '<div class="muted small clkk-whohint">' + (mySelf
         ? 'мінігра на пів хвилини: тримай жар у смузі — буде більше добрих і дзвінких, але й тріщини можливі'
         : 'без мінігри, усі звичайні й без тріщин; дзвінкий виріб вартий ×2,6 — їх дає лише уважний палій') + '</div>'
-      + '<div class="muted small">' + batchText + (cooling ? ' · горно ще гаряче — зачекай, поки вихолоне' : '') + '</div>'
-      + '</div>';
+      + '<div class="muted small clkk-batch">' + batchText + (cooling ? ' · горно ще гаряче — зачекай, поки вихолоне' : '') + '</div>';
 
     // Солома — дрібниця для тих, хто палить сам: ховаємо за ▾, щоб не займала екран.
     const loft = k.strawMax || 20;
@@ -532,18 +582,22 @@
           + 'в обраному розписі, але без «краси» з мінігри. За ніч він так обпалює десятки партій. Прокачаний «Палій» пече дзвінкіше.') + '</label>'
       : '';
 
-    if (!api.swap(ui.prep, paint + fire + straw + auto)) return;
-    const b = (sel) => ui.prep.querySelector(sel);
-    for (const el of ui.prep.querySelectorAll('[data-style]')) el.onclick = () => api.order(st, 'kiln', { op: 'paint', style: el.dataset.style });
-    for (const el of ui.prep.querySelectorAll('[data-tech]')) el.onclick = () => { rememberTech(api, el.dataset.tech); startPaint(st, api, el.dataset.tech); };
-    if (b('.clkk-decor')) b('.clkk-decor').onclick = () => pickTech(st, api);
-    if (b('.clkk-autobox')) b('.clkk-autobox').onchange = (e) => api.order(st, 'guild', { op: 'auto', on: e.target.checked });
-    if (b('.clkk-buystraw')) b('.clkk-buystraw').onclick = () => api.order(st, 'kiln', { op: 'straw', n: 1 });
-    if (b('.clkk-strawon')) b('.clkk-strawon').onchange = (e) => api.storeSet('clk.kiln.straw', e.target.checked ? '1' : '0');
-    for (const el of ui.prep.querySelectorAll('[data-self]')) {
-      el.onclick = () => { api.storeSet('clk.kiln.self', el.dataset.self); api.sfx('tap'); paintPrep(st, api); };
+    if (api.swap(ui.fire, fire + straw + auto)) {
+      const f = (sel) => ui.fire.querySelector(sel);
+      if (f('.clkk-autobox')) f('.clkk-autobox').onchange = (e) => api.order(st, 'guild', { op: 'auto', on: e.target.checked });
+      if (f('.clkk-buystraw')) f('.clkk-buystraw').onclick = () => api.order(st, 'kiln', { op: 'straw', n: 1 });
+      if (f('.clkk-strawon')) f('.clkk-strawon').onchange = (e) => api.storeSet('clk.kiln.straw', e.target.checked ? '1' : '0');
+      for (const el of ui.fire.querySelectorAll('[data-self]')) {
+        el.onclick = () => { api.storeSet('clk.kiln.self', el.dataset.self); api.sfx('tap'); paintPrep(st, api); };
+      }
+      f('.clkk-go').onclick = () => (api.fireKiln ? api.fireKiln() : api.order(st, 'kiln', { op: 'light', helper: true }));
     }
-    b('.clkk-go').onclick = () => (api.fireKiln ? api.fireKiln() : api.order(st, 'kiln', { op: 'light', helper: true }));
+    if (api.swap(ui.prep, paint)) {
+      const b = (sel) => ui.prep.querySelector(sel);
+      for (const el of ui.prep.querySelectorAll('[data-style]')) el.onclick = () => api.order(st, 'kiln', { op: 'paint', style: el.dataset.style });
+      for (const el of ui.prep.querySelectorAll('[data-tech]')) el.onclick = () => { rememberTech(api, el.dataset.tech); startPaint(st, api, el.dataset.tech); };
+      if (b('.clkk-decor')) b('.clkk-decor').onclick = () => pickTech(st, api);
+    }
   }
 
   function paintLast(st, api) {
@@ -580,10 +634,12 @@
 
   /// paintState кличе slow п'ять разів на секунду: стилі й атрибути пишемо лише тоді, коли вони справді інші, —
   /// навіть той самий атрибут SVG змушує браузер перераховувати стилі (десяте оновлення, §10).
-  const setVar = (el, k, v) => { if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v); };
-  const setAttr = (el, k, v) => { if (el && el.getAttribute(k) !== v) el.setAttribute(k, v); };
-  const setHidden = (el, h) => { if (el.hidden !== h) el.hidden = h; };
-  const setClass = (el, cls, on) => { if (el.classList.contains(cls) !== on) el.classList.toggle(cls, on); };
+  function setVar(el, k, v) { if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v); }
+  function setAttr(el, k, v) { if (el && el.getAttribute(k) !== v) el.setAttribute(k, v); }
+  function setHidden(el, h) { if (el.hidden !== h) el.hidden = h; }
+  function setClass(el, cls, on) { if (el && el.classList.contains(cls) !== on) el.classList.toggle(cls, on); }
+  /// Стиль — лише коли він справді інший (мінігра жару малюється до десяти разів на секунду).
+  function setStyle(el, k, v) { if (el && el.style[k] !== v) el.style[k] = v; }
 
   function paintState(st, api, now) {
     const k = st.kView;
@@ -605,7 +661,7 @@
       setAttr(ui.glow, 'opacity', '.8');
       if (Date.now() - (st.kRoarAt || 0) > 3000 && left > 0) { st.kRoarAt = Date.now(); api.sfx('kiln-roar'); }
     } else if (manual) {
-      label = '🔥 Горно палає — тримай жар!';
+      label = '🔥 Тримай жар!';
     } else if (k.state === 'cooling') {
       const left = Date.parse(k.coolUntil) - now;
       label = '♨ Горно холоне';
@@ -621,19 +677,17 @@
     if (ui.state.textContent !== label) ui.state.textContent = label;
     if (!manual && ui.clock.textContent !== clock) ui.clock.textContent = clock;
     setHidden(ui.bar, !(manual || barPct != null));
-    if (barPct != null) {
-      const w = barPct.toFixed(1) + '%';
-      if (ui.barFill.style.width !== w) ui.barFill.style.width = w;
-    }
+    if (barPct != null) setStyle(ui.barFill, 'transform', 'scaleX(' + (barPct / 100).toFixed(3) + ')');
     setHidden(ui.play, !manual || !st.mine);
-    setHidden(ui.gauge, !manual);
+    // Ручний обпал — стислий вид: горно менше, під ним лише мінігра (clicker-kiln.css, .clkk.burn).
+    setClass(ui.root, 'burn', manual && st.mine);
     setClass(ui.top, 'playing', manual);
     setClass(ui.svg, 'burning', burning);
     setClass(ui.svg, 'cooling', k.state === 'cooling');
     setClass(ui.svg, 'helper', burning && !!k.helper);
     if (!ui.straw) ui.straw = ui.svg.querySelector('.clkk-straw');
     setAttr(ui.straw, 'opacity', burning && k.strawOn ? '1' : '0');
-    if (!manual) { setHidden(ui.gust, true); setClass(ui.svg, 'closed', false); }
+    if (!manual) { setClass(ui.gust, 'on', false); setClass(ui.svg, 'closed', false); }
     paintWares(st, api, k.batch, burning);
     // Ярлик «Ремесло»: стан горна одним поглядом, коротко.
     let note = '';
@@ -1527,8 +1581,10 @@
     },
 
     frame(st, api) {
-      if (st.kb && kilnVisible(st)) paintBurn(st, api, false);
-      else if (st.kb) {
+      if (st.kb && kilnVisible(st)) {
+        paintBurn(st, api, false);
+        if (!st.kb.shown && st.mine) showBurn(st);
+      } else if (st.kb) {
         // Вкладку сховали посеред обпалу — модель однаково доходить до кінця й відкриває горно.
         const m = model(st);
         if (api.serverNow(st) - st.kb.litAt >= m.steps * m.stepMs + OPEN_AFTER_MS) paintBurn(st, api, true);
