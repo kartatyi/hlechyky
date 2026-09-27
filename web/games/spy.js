@@ -495,7 +495,7 @@
     else if (me && me.loc) { const l = locOf(v, me.loc); chip = l[2] + ' ' + l[1] + ' · ти — ' + (me.role || ''); }
     else chip = mySeat == null || v.phase !== 'lobby' ? '👀 Дивишся збоку' : '';
     const flip = me && RUNNING[v.phase];
-    if (flip) chip += ' ▾';   // нерозривний пробіл: стрілка не лишається сама в другому рядку
+    if (flip) chip += '\u00a0▾';   // нерозривний пробіл: стрілка не лишається сама в другому рядку
     if (st.q.me.textContent !== chip) st.q.me.textContent = chip;
     cls(st.q.me, chipCls);
     st.q.me.hidden = !chip || showCard || v.phase === 'done';
