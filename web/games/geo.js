@@ -1122,9 +1122,13 @@
       const bars = (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + (parseFloat(cs.getPropertyValue('--mini-h')) || 0);
       const head = document.querySelector('header');
       const top = head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
-      const over = last.getBoundingClientRect().bottom - (innerHeight - bars - 8);   // > 0 — низ сховано
-      const room = main.getBoundingClientRect().top - top - 6;                        // < 0 — верх фото під шапкою
-      // униз — поки низ не видно, але не далі, ніж верх фото до шапки; угору — якщо фото заїхало під шапку
+      const bottom = last.getBoundingClientRect().bottom, limit = innerHeight - bars - 8;
+      // верх — шапка картки з раундом і таймером, якщо все разом влазить (телефон 375×812 — так); ні — верх фото
+      const head2 = st.root.querySelector('.geotop');
+      const topEl = head2 && bottom - head2.getBoundingClientRect().top <= limit - top - 6 ? head2 : main;
+      const over = bottom - limit;                                    // > 0 — низ сховано
+      const room = topEl.getBoundingClientRect().top - top - 6;       // < 0 — верх заїхав під шапку сайту
+      // униз — поки низ не видно, але не далі, ніж верх до шапки сайту; угору — якщо верх заїхав під шапку
       // й знизу є запас; не влазить узагалі (телефон лежачи) — не чіпаємо, людина прокрутить сама
       const dy = over > 1 ? (room > 1 ? Math.min(over, room) : 0) : room < -1 ? Math.max(room, over) : 0;
       if (Math.abs(dy) > 1) window.scrollBy({ top: dy, behavior: reduced() ? 'auto' : 'smooth' });
