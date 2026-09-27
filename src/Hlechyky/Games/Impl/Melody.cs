@@ -22,8 +22,18 @@ public sealed class Melody : Game
     public const int LoadTimeoutMs = 60_000;
     public const int GuessEveryMs = 700;
     public const int ArtistPoints = 50, TitlePoints = 100, ArtistFirst = 20, TitleFirst = 30;
-    /// <summary>Скільки зайвих треків беремо про запас — на випадок, коли уривок не наріжеться.</summary>
+    /// <summary>
+    /// Скільки зайвих треків беремо про запас — на випадок, коли уривок не наріжеться чи пісня з добірки не скачається
+    /// (YouTube буває відповідає 403 на цілі серії): щонайменше стільки, а загалом — удвічі більше за раунди.
+    /// </summary>
     const int Spare = 4;
+    /// <summary>Скільки пісень із добірки качаються водночас, наперед: один невдалий 403 тоді не зупиняє стіл.</summary>
+    const int FetchAhead = 2;
+    /// <summary>
+    /// За скільки до кінця розкриття стіл «поспішає»: наступний трек ще качається — хай замість нього звучить
+    /// готовий із диска, а той докачається й прозвучить пізніше. Уривок ріжеться ~1 с, тож 3 с вистачає без паузи.
+    /// </summary>
+    public const int HurryLeadMs = 3_000;
     /// <summary>
     /// Скільки місць за столом. Було вісім; дванадцять — як у «Скільки?»: на велику компанію гра так само годиться
     /// (кожен вгадує сам, черги нема), а стіл на вісім лишав решту глядачами.
@@ -73,6 +83,12 @@ public sealed class Melody : Game
     ConcurrentDictionary<int, Prepared> _ready = new();
     /// <summary>Скільки раундів точно буде (фон уже знає, скільки треків вдалось нарізати). -1 — ще невідомо.</summary>
     volatile int _available = -1;
+    /// <summary>Більше раундів не буде точно: нарізане плюс ще не спробувані треки (для «Трек 3 з N», поки фон працює).</summary>
+    volatile int _cap = int.MaxValue;
+    /// <summary>На який раунд стіл уже чекає (чи от-от чекатиме) — фон тоді не жде пісню, що качається, а бере готову.</summary>
+    volatile int _hurry;
+    /// <summary>Будильник для фону: стіл почав поспішати. Новий на кожен раунд, продовження — не під замком кімнати.</summary>
+    TaskCompletionSource _hurrySignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // ---------- партія ----------
     string _phase = Loading;
@@ -106,6 +122,9 @@ public sealed class Melody : Game
         _cts = new CancellationTokenSource();
         _ready = new ConcurrentDictionary<int, Prepared>();
         _available = -1;
+        _cap = int.MaxValue;
+        _hurry = 0;
+        _hurrySignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Array.Clear(_scores);
         _left.Clear();
         _lastGuess.Clear();
@@ -133,13 +152,16 @@ public sealed class Melody : Game
         try
         {
             var rng = new Random(seed);
-            var tracks = await _source.PickAsync(_rounds + Spare, _categories, rng, ct);
+            var picks = (await _source.PickAsync(Math.Max(_rounds + Spare, _rounds * 2), _categories, rng, ct)).ToList();
+            var fetch = new List<Task<MelodyTrack?>?>(picks.Select(_ => (Task<MelodyTrack?>?)null));
             var round = 0;
-            foreach (var pick in tracks)
+            for (var i = 0; i < picks.Count && round < _rounds; i++)
             {
-                if (ct.IsCancellationRequested || round >= _rounds) break;
-                // пісня з добірки, якої ще нема на диску, качається тут — уже під час гри, поки звучать попередні
-                var t = await _source.ResolveAsync(pick, ct);
+                ct.ThrowIfCancellationRequested();
+                _cap = round + picks.Count - i;
+                // пісні з добірки, яких ще нема на диску, качаються наперед — уже під час гри, поки звучать попередні
+                Ahead(picks, fetch, i, ct);
+                var t = await Take(picks, fetch, i, round + 1, ct);
                 if (t is null) continue;
                 var len = t.DurationSec > 0 ? t.DurationSec : 180;
                 // з першої чверті до 60% — там зазвичай куплет або приспів, а не тиша інтро
@@ -159,6 +181,63 @@ public sealed class Melody : Game
         }
     }
 
+    /// <summary>Почати качати наперед ще не початі пісні з добірки, починаючи з <paramref name="from"/>, — щоб водночас качалось не більше <see cref="FetchAhead"/>.</summary>
+    void Ahead(List<MelodyTrack> picks, List<Task<MelodyTrack?>?> fetch, int from, CancellationToken ct)
+    {
+        var busy = 0;
+        foreach (var f in fetch) if (f is { IsCompleted: false }) busy++;
+        for (var j = from; j < picks.Count && busy < FetchAhead; j++)
+        {
+            if (!picks[j].Pending || fetch[j] is not null) continue;
+            fetch[j] = _source.ResolveAsync(picks[j], ct);
+            if (!fetch[j]!.IsCompleted) busy++;
+        }
+    }
+
+    /// <summary>
+    /// Трек для раунду <paramref name="slot"/> з місця <paramref name="i"/>: з диска — одразу; з добірки — коли
+    /// докачається (null — не скачалась: 403, не знайшлась, — і тоді береться наступний). Але якщо стіл уже
+    /// поспішає саме на цей раунд, а пісня ще качається, то на її місце стає перша готова з решти списку, а вона
+    /// сама зсувається на одне місце далі: докачається — прозвучить наступною, а стіл не стоїть.
+    /// </summary>
+    async Task<MelodyTrack?> Take(List<MelodyTrack> picks, List<Task<MelodyTrack?>?> fetch, int i, int slot, CancellationToken ct)
+    {
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!picks[i].Pending) return await _source.ResolveAsync(picks[i], ct);
+            var f = fetch[i] ??= _source.ResolveAsync(picks[i], ct);
+            if (f.IsCompleted) return await f;
+            var alarm = _hurrySignal.Task;          // спершу будильник, потім умова: інакше можна проспати дзвінок
+            if (_hurry >= slot && ReadyLater(picks, fetch, i) is { } j)
+            {
+                var (p, t) = (picks[j], fetch[j]);
+                picks.RemoveAt(j);
+                fetch.RemoveAt(j);
+                picks.Insert(i, p);
+                fetch.Insert(i, t);
+                continue;
+            }
+            await Task.WhenAny(f, alarm).WaitAsync(ct);
+        }
+    }
+
+    /// <summary>Перше місце після <paramref name="i"/>, де трек уже можна різати: з диска або вже докачаний.</summary>
+    static int? ReadyLater(List<MelodyTrack> picks, List<Task<MelodyTrack?>?> fetch, int i)
+    {
+        for (var j = i + 1; j < picks.Count; j++)
+            if (!picks[j].Pending || fetch[j] is { IsCompletedSuccessfully: true, Result: not null }) return j;
+        return null;
+    }
+
+    /// <summary>Стіл чекає (чи от-от чекатиме) на раунд <paramref name="slot"/>: розбудити фон, якщо він жде повільну пісню.</summary>
+    void Hurry(int slot)
+    {
+        if (_hurry >= slot) return;
+        _hurry = slot;
+        Interlocked.Exchange(ref _hurrySignal, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+    }
+
     // =========================================================================================
     // Хід часу
     // =========================================================================================
@@ -170,16 +249,18 @@ public sealed class Melody : Game
         {
             case Loading:
                 if (_ready.ContainsKey(_round + 1)) BeginRound();
-                else if (_available >= 0 && _round >= _available) Over(_available == 0 ? NoTracks() : null);
-                else if ((now - _loadStarted).TotalMilliseconds > LoadTimeoutMs) Over(_round == 0 ? "Ой-йой — уривки не нарізались, ffmpeg мовчить" : null);
+                else if (_available >= 0 && _round >= _available) Over(_available == 0 ? NoTracks() : Short());
+                else if ((now - _loadStarted).TotalMilliseconds > LoadTimeoutMs)
+                    Over(_round == 0 ? "Ой-йой — пісні не встигли ні скачатись, ні нарізатись" : Short());
+                else Hurry(_round + 1);
                 break;
             case Play:
-                var players = Present().ToList();
                 // Раунд закінчується, коли кожен або вгадав усе, або готовий пропустити (а не всі вже вгадали — не чекати ж).
-                if (now >= _until || players.Count > 0 && players.All(s => Finished(s) || _skip.Contains(s)))
-                    EndRound();
+                if (now >= _until || AllDone()) EndRound();
                 break;
             case Reveal:
+                // наступний трек ще качається, а розкриття от-от скінчиться — хай фон бере готовий із диска
+                if (_round < _rounds && (_until - now).TotalMilliseconds <= HurryLeadMs && !_ready.ContainsKey(_round + 1)) Hurry(_round + 1);
                 if (now < _until) break;
                 if (_round >= _rounds) { Over(null); break; }
                 _phase = Loading;
@@ -188,13 +269,41 @@ public sealed class Melody : Game
                 if (_ready.ContainsKey(_round + 1)) BeginRound();
                 break;
         }
-        if (_phase != Done && !Present().Any()) Over(null);
+        if (_phase != Done && !AnyPresent()) Over(null);
         if (!_dirty) return TickResult.None;
         _dirty = false;
         return new TickResult(Frame: false, View: true);
     }
 
-    IEnumerable<int> Present() => Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) && !_left.Contains(s));
+    bool IsPresent(int s) => Ctx.Seated(s) && !_left.Contains(s);
+
+    IEnumerable<int> Present() => Enumerable.Range(0, Seats).Where(IsPresent);
+
+    // Тик — чотири рази на секунду на кожен стіл: без LINQ і нових колекцій.
+    bool AnyPresent()
+    {
+        for (var s = 0; s < Seats; s++) if (IsPresent(s)) return true;
+        return false;
+    }
+
+    /// <summary>Кожен присутній або вгадав усе, або готовий пропустити (і хоч хтось присутній).</summary>
+    bool AllDone()
+    {
+        var any = false;
+        for (var s = 0; s < Seats; s++)
+        {
+            if (!IsPresent(s)) continue;
+            if (!Finished(s) && !_skip.Contains(s)) return false;
+            any = true;
+        }
+        return any;
+    }
+
+    /// <summary>Партія вийшла коротшою за обрану: частина пісень так і не скачалась (YouTube відмовив) — кажемо чесно.</summary>
+    string Short() => $"Глек дістав лише {Tracks(_round)} з {_rounds} — решта пісень не скачалась. Зіграли, що було";
+
+    static string Tracks(int n) => n % 10 == 1 && n % 100 != 11 ? $"{n} трек"
+        : n % 10 is >= 2 and <= 4 && n % 100 is < 12 or > 14 ? $"{n} треки" : $"{n} треків";
 
     string NoTracks() => _categories.Count == 1 && _categories[0] == MelodyCategories.Ua
         ? "Українських треків у кеші радіо ще нема — грати нема в що"
@@ -248,7 +357,7 @@ public sealed class Melody : Game
     {
         _left.Add(seat);
         _dirty = true;
-        if (!Present().Any()) Over(null);
+        if (!AnyPresent()) Over(null);
     }
 
     // =========================================================================================
@@ -326,7 +435,8 @@ public sealed class Melody : Game
         {
             phase = _phase,
             round = _round,
-            rounds = _available > 0 ? Math.Min(_rounds, _available) : _rounds,
+            // «з N»: скільки раундів іще може бути — поки фон качає, стеля падає з кожною пісною, що не скачалась
+            rounds = Math.Max(_round, Math.Min(_rounds, _available > 0 ? _available : _cap)),
             clipSec = _clipSec,
             until = _until,
             totalMs = _totalMs,

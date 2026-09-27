@@ -7,12 +7,14 @@ namespace Hlechyky.Tests.Games;
 
 /// <summary>
 /// Підроблене джерело: треки зі списку, уривок — кілька кілобайт нулів (або null для «зламаних»). Трек без файла
-/// (<see cref="MelodyTrack.Pending"/>) «качається» миттєво — або не качається, якщо його назва в <paramref name="missing"/>.
+/// (<see cref="MelodyTrack.Pending"/>) «качається» миттєво — або не качається, якщо його назва в <paramref name="missing"/>,
+/// або качається, доки тест не скаже <see cref="Release"/>, якщо назва в <paramref name="slow"/>.
 /// </summary>
-sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? broken = null, ISet<string>? missing = null) : IMelodySource
+sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? broken = null, ISet<string>? missing = null, ISet<string>? slow = null) : IMelodySource
 {
     public int Clips, Resolved;
     public IReadOnlyList<string>? Categories;
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<MelodyTrack?>> _slow = new();
 
     public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct)
     {
@@ -25,7 +27,18 @@ sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? b
         if (!track.Pending) return Task.FromResult<MelodyTrack?>(track);
         Interlocked.Increment(ref Resolved);
         if (missing?.Contains(track.Title) == true) return Task.FromResult<MelodyTrack?>(null);
-        return Task.FromResult<MelodyTrack?>(track with { Id = "yt-" + track.Title, DurationSec = 240, FilePath = "/dev/null" });
+        var done = track with { Id = "yt-" + track.Title, DurationSec = 240, FilePath = "/dev/null" };
+        if (slow?.Contains(track.Title) == true)
+            return _slow.GetOrAdd(track.Title, _ => new TaskCompletionSource<MelodyTrack?>(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        return Task.FromResult<MelodyTrack?>(done);
+    }
+
+    /// <summary>«Докачалась» (або, з <paramref name="ok"/> = false, упала з 403).</summary>
+    public void Release(string title, bool ok = true)
+    {
+        var t = tracks.First(x => x.Title == title);
+        _slow.GetOrAdd(title, _ => new TaskCompletionSource<MelodyTrack?>(TaskCreationOptions.RunContinuationsAsynchronously))
+            .TrySetResult(ok ? t with { Id = "yt-" + t.Title, DurationSec = 240, FilePath = "/dev/null" } : null);
     }
 
     public Task<byte[]?> ClipAsync(MelodyTrack track, double startSec, int seconds, CancellationToken ct)
@@ -385,6 +398,91 @@ public class MelodyTests
         h.Clock.AdvanceMs(Melody.ExtraMs + 20_000);
         Until(h, "reveal");
         Assert.Equal("yt-Bohemian Rhapsody", h.View(null).GetProperty("answer").GetProperty("id").GetString());   // id — уже справжній, з бази
+    }
+
+    // ---------------------------------------------------------------- коли YouTube не віддає пісню (прохід 28.09)
+
+    static readonly MelodyTrack Queen = new("", "Bohemian Rhapsody", "Queen", 0, null, "");
+    static readonly MelodyTrack Abba = new("", "Dancing Queen", "ABBA", 0, null, "");
+
+    /// <summary>Дограти поточний трек до кінця часу й розкриття (кліп 10 с).</summary>
+    static void ToReveal(RoomHarness h)
+    {
+        h.Clock.AdvanceMs(10_000 + Melody.ExtraMs + 100);
+        Until(h, "reveal");
+    }
+
+    [Fact]
+    public void A_slow_download_does_not_stall_the_table_a_ready_track_plays_in_its_place()
+    {
+        var src = new FakeMelodySource([Songs[0], Queen, Songs[1], Songs[2]], slow: new HashSet<string> { Queen.Title });
+        var h = Table(src, new { rounds = "3", clip = "10" });
+        Until(h, "play");
+        ToReveal(h);
+        Assert.Equal(1, src.Clips);                     // Queen досі качається — фон на ній і стоїть
+
+        // розкриття от-от скінчиться, а Queen нема — стіл «поспішає», і фон ріже готового Скрябіна
+        h.Clock.AdvanceMs(Melody.RevealMs - Melody.HurryLeadMs + 50);
+        h.Tick();
+        for (var k = 0; k < 400 && src.Clips < 2; k++) Thread.Sleep(5);
+        Assert.Equal(2, src.Clips);
+
+        // розкриття скінчилось — наступний трек звучить одразу, без «Мить — наступний трек…»
+        h.Clock.AdvanceMs(Melody.HurryLeadMs);
+        h.Tick();
+        Assert.Equal("play", Phase(h));
+        Assert.Equal(2, h.View(null).GetProperty("round").GetInt32());
+        Assert.Contains("виконавець", Guess(h, 0, "скрябін").Message);
+
+        // Queen докачалась — вона наступна, а не загубилась
+        src.Release(Queen.Title);
+        ToReveal(h);
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        Until(h, "play");
+        Assert.Contains("виконавець", Guess(h, 0, "queen").Message);
+    }
+
+    [Fact]
+    public void Classics_are_fetched_two_at_a_time_ahead_of_the_game()
+    {
+        var src = new FakeMelodySource([Songs[0], Queen, Abba, Songs[1]], slow: new HashSet<string> { Queen.Title, Abba.Title });
+        var h = Table(src, new { rounds = "4", clip = "10" });
+        Until(h, "play");
+        for (var k = 0; k < 200 && src.Resolved < 2; k++) Thread.Sleep(5);
+        Assert.Equal(2, src.Resolved);                   // обидві качаються водночас, поки звучить перший трек
+    }
+
+    [Fact]
+    public void When_downloads_fail_the_game_ends_early_and_says_why()
+    {
+        var src = new FakeMelodySource([Songs[0], Queen, Abba], missing: new HashSet<string> { Queen.Title, Abba.Title });
+        var h = Table(src, new { rounds = "5", clip = "10" });
+        Until(h, "play");
+        Guess(h, 0, "обійми");
+        for (var k = 0; k < 200 && h.View(null).GetProperty("rounds").GetInt32() != 1; k++) { h.Tick(); Thread.Sleep(2); }
+        Assert.Equal(1, h.View(null).GetProperty("rounds").GetInt32());    // «Трек 1 з 1», а не «з 5»
+        ToReveal(h);
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        for (var k = 0; k < 50 && h.Room.Status == RoomStatus.Playing; k++) { h.Tick(); Thread.Sleep(2); }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Contains("1 трек з 5", h.View(null).GetProperty("error").GetString());
+        Assert.Equal([0], h.Room.Result!.Winners);        // рахунок — як завжди, партія зарахована
+    }
+
+    [Fact]
+    public void A_download_that_never_ends_closes_the_game_with_an_explanation_not_silently()
+    {
+        var src = new FakeMelodySource([Songs[0], Queen], slow: new HashSet<string> { Queen.Title });
+        var h = Table(src, new { rounds = "2", clip = "10" });
+        Until(h, "play");
+        ToReveal(h);
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        h.Tick();
+        Assert.Equal("loading", Phase(h));
+        h.Clock.AdvanceMs(Melody.LoadTimeoutMs + 100);
+        h.Tick();
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Contains("не скачалась", h.View(null).GetProperty("error").GetString());
     }
 
     [Fact]
