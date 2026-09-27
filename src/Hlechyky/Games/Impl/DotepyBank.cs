@@ -163,10 +163,13 @@ public sealed class DotepySeen(int capacity)
         }
     }
 
-    /// <summary>Знімок того, що пам'ятаємо, — щоб не тримати замок, поки гра тасує пул.</summary>
-    public HashSet<string> Snapshot()
+    /// <summary>
+    /// Знімок того, що пам'ятаємо: id → штамп (більший — пізніше). Копія — щоб не тримати замок, поки гра тасує пул;
+    /// штамп — щоб повторювати спершу давно бачене, а не щойно зігране сусіднім столом.
+    /// </summary>
+    public Dictionary<string, long> Snapshot()
     {
-        lock (_lock) return new HashSet<string>(_stamp.Keys, StringComparer.Ordinal);
+        lock (_lock) return new Dictionary<string, long>(_stamp, StringComparer.Ordinal);
     }
 }
 

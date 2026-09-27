@@ -16,13 +16,21 @@ public sealed class DotepyJury(Rooms rooms, Presence presence, IClock clock)
     /// <summary>Останні спроби ніка (ключ — нижній регістр): щоб третя за секунду отримала «Не так швидко».</summary>
     readonly Dictionary<string, Queue<DateTimeOffset>> _tries = new(StringComparer.Ordinal);
 
-    public ActResult Vote(string? nick, string? roomId, int card, int pick)
+    public ActResult Vote(string? nick, string? roomId, int card, int pick) =>
+        Pass(nick, roomId, "Ти за столом — голосуй на картці", "Зараз не голосують", game => game.JuryVote(nick!, card, pick));
+
+    /// <summary>«😂» глядача на розкритті — ті самі перевірки й та сама квота, що в голосу публіки.</summary>
+    public ActResult Laugh(string? nick, string? roomId, int card, int i) =>
+        Pass(nick, roomId, "Ти за столом — смійся на картці", "Зараз не смішно", game => game.JuryLaugh(Auth.NickKey(nick), card, i));
+
+    /// <summary>Спільні перевірки публіки (specs/dotepy.md §3.2) і сам виклик гри під замком кімнати.</summary>
+    ActResult Pass(string? nick, string? roomId, string seated, string idle, Func<Dotepy, ActResult> act)
     {
         if (string.IsNullOrWhiteSpace(nick) || Auth.NickKey(nick) == Auth.Guest) return ActResult.Fail("Спершу скажи, як тебе кликати");
         if (rooms.Find(roomId) is not { } room || room.Game is not Dotepy game) return ActResult.Fail("Такого столу вже нема");
         lock (room.Sync)
         {
-            if (room.Has(nick)) return ActResult.Fail("Ти за столом — голосуй на картці");
+            if (room.Has(nick)) return ActResult.Fail(seated);
         }
         var watching = false;
         foreach (var conn in presence.ConnectionsOf(nick))
@@ -32,8 +40,8 @@ public sealed class DotepyJury(Rooms rooms, Presence presence, IClock clock)
         // Лише замок кімнати (без Rooms._lock) — той самий порядок вкладення, що в Rooms: дедлоку нема.
         lock (room.Sync)
         {
-            if (room.Status != RoomStatus.Playing) return ActResult.Fail("Зараз не голосують");
-            return game.JuryVote(Auth.NickKey(nick), card, pick);
+            if (room.Status != RoomStatus.Playing) return ActResult.Fail(idle);
+            return act(game);
         }
     }
 
@@ -56,6 +64,9 @@ public sealed class DotepyJury(Rooms rooms, Presence presence, IClock clock)
 
 /// <summary>Тіло запиту голосу публіки: <c>{ room, card, pick }</c>.</summary>
 public sealed record DotepyJuryBody(string? Room, int Card, int Pick);
+
+/// <summary>Тіло «😂» глядача: <c>{ room, card, i }</c>.</summary>
+public sealed record DotepyLaughBody(string? Room, int Card, int I);
 
 /// <summary>
 /// Підключення «Дотепів» одним рядком у <see cref="GamesSetup"/>: голос Глека поверх <see cref="TtsService"/>
@@ -86,6 +97,17 @@ public static class DotepySetup
                 catch (Exception e) when (e is JsonException or InvalidOperationException or BadHttpRequestException) { }
             }
             var r = body is null ? ActResult.Fail("Тут так не голосують") : jury.Vote(Auth.Nick(c), body.Room, body.Card, body.Pick);
+            return Results.Json(new { ok = r.Ok, message = r.Message });
+        });
+        app.MapPost("/api/games/dotepy/laugh", async (HttpContext c, DotepyJury jury, CancellationToken ct) =>
+        {
+            DotepyLaughBody? body = null;
+            if (c.Request.ContentLength is null or <= MaxBody)
+            {
+                try { body = await c.Request.ReadFromJsonAsync<DotepyLaughBody>(new JsonSerializerOptions(JsonSerializerDefaults.Web), ct); }
+                catch (Exception e) when (e is JsonException or InvalidOperationException or BadHttpRequestException) { }
+            }
+            var r = body is null ? ActResult.Fail("Тут так не сміються") : jury.Laugh(Auth.Nick(c), body.Room, body.Card, body.I);
             return Results.Json(new { ok = r.Ok, message = r.Message });
         });
         return app;

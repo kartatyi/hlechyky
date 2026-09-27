@@ -1,8 +1,10 @@
 /* «Дотепи» (specs/dotepy.md §8). Усі класи й змінні — з префіксом dt-/--dt-: гра живе поруч із двома десятками інших. */
 
 :root {
-  /* кольори восьми місць — добре розрізнювані; поруч завжди номер місця й нік, колір не єдина ознака */
-  --dt-p0: #f4c542;
+  /* кольори восьми місць — добре розрізнювані; поруч завжди номер місця й нік, колір не єдина ознака.
+     Перше місце — лаймове, а не жовте: жовтий — це акцент сайту («твій», вибрана відповідь, дуга, переможець),
+     і підпис «● Оля» губився серед нього. */
+  --dt-p0: #c3e04a;
   --dt-p1: #6bbf6b;
   --dt-p2: #e0704a;
   --dt-p3: #6aa9e8;
@@ -58,10 +60,16 @@
 .dt-pl.ok { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
 .dt-pl.ok u { color: var(--ok); }
 .dt-pl.left { opacity: .5; }
+/* Ніки вже є в рядку місць каркаса над грою (той самий номер і колір), тож на вузькому й низькому екрані
+   (телефон, Steam Deck 1280×800) чіп гри — лише крапка, номер, рахунок і позначка: одна смужка замість двох. */
+@container (max-width: 560px) { .dt-pl .dt-nk { display: none; } }
+@media (max-height: 860px) { .dt-pl .dt-nk { display: none; } }
 
 /* ---------- сцена ---------- */
 
 .dt-stage { display: flex; flex-direction: column; gap: 12px; }
+/* телефон: плаваюча пілюля «💬 Стіл» каркаса стоїть у правому нижньому куті — під нею нічого натискного */
+@media (pointer: coarse) { .dt-stage { padding-bottom: 56px; } }
 .dt-prompt { font-size: 1.15em; font-weight: 650; line-height: 1.3; font-family: var(--display, var(--font)); }
 .dt-prompt.big { font-size: 1.3em; text-align: center; padding: 6px 4px; }
 @container (min-width: 560px) {
@@ -81,6 +89,8 @@
 .dt-howrow { display: flex; gap: 12px; align-items: flex-start; line-height: 1.35; }
 .dt-howrow b { font-size: 1.5em; line-height: 1; flex: none; width: 1.5em; text-align: center; }
 .dt-howrow i { font-style: normal; font-weight: 700; color: var(--accent); }
+.dt-howtip { padding: 6px 10px; border-radius: 10px; background: var(--bg2); }
+.dt-early { text-align: center; padding: 10px; border-radius: 12px; background: var(--bg2); font-weight: 700; }
 
 /* ---------- написання ---------- */
 
@@ -174,11 +184,33 @@
   color: #fff; font-weight: 800; font-size: .85em; transform: rotate(3deg); animation: dt-pop .45s ease-out 1.1s both;
   pointer-events: none;
 }
-.dt-confetti { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+/* Конфеті — з боків і знизу картки, під текстом (z-index), і летить назовні: переможний дотеп лишається читабельним. */
+.dt-confetti { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 0; }
+.dt-ans.sweep > .dt-n, .dt-ans.sweep > .dt-txt, .dt-ans.sweep > .dt-badge, .dt-ans.sweep > .dt-res { position: relative; z-index: 1; }
+.dt-ans.sweep > .dt-sweep { z-index: 2; }
 .dt-confetti span {
-  position: absolute; left: var(--x); top: 40%; font-size: 1.1em; opacity: 0;
+  position: absolute; left: var(--x); bottom: 0; font-size: 1.1em; opacity: 0;
   animation: dt-conf 1.4s ease-out both; animation-delay: calc(1.1s + var(--d));
 }
+
+/* «😂» — реакція залу на розкритті */
+.dt-ans.lolable { cursor: pointer; }
+.dt-ans.laughed { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
+.dt-lol {
+  position: absolute; top: -11px; left: 12px; padding: 1px 8px; border-radius: 999px; background: var(--bg2);
+  font-size: .82em; font-weight: 700; border: 1px solid var(--line); pointer-events: none; z-index: 2;
+}
+.dt-lol:empty { display: none; }
+.dt-lol.pop { animation: dt-pop .35s ease-out both; }
+.dt-fly {
+  position: absolute; left: var(--x); bottom: 40%; font-size: 1.5em; pointer-events: none; z-index: 3;
+  animation: dt-flyup 1.2s ease-out both;
+}
+.dt-jinx {
+  text-align: center; font-weight: 800; padding: 6px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--ok) 22%, var(--bg2)); animation: dt-pop .45s ease-out both;
+}
+.dt-jurysm { font-size: .9em; }
 
 .dt-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: .85em; min-height: 1.2em; }
 
@@ -259,11 +291,16 @@
 @keyframes dt-conf {
   0% { opacity: 0; transform: translate(0, 0) rotate(0); }
   15% { opacity: 1; }
-  100% { opacity: 0; transform: translate(calc(var(--r) * .6), -90px) rotate(var(--r)); }
+  100% { opacity: 0; transform: translate(calc(var(--dx, 1) * 46px), -70px) rotate(var(--r)); }
+}
+@keyframes dt-flyup {
+  0% { opacity: 0; transform: translateY(0) scale(.6); }
+  20% { opacity: 1; transform: translateY(-14px) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-80px) scale(1); }
 }
 @keyframes dt-breath { from { opacity: .45; } to { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
   .dt *, .dt *::before, .dt *::after { animation: none !important; transition: none !important; }
-  .dt-confetti { display: none; }
+  .dt-confetti, .dt-fly { display: none; }
 }
