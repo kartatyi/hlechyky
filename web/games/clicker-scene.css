@@ -315,3 +315,46 @@
 
 /* Сцена поза екраном — анімації хати на паузі (перемикає IntersectionObserver у clicker-scene.js). */
 .clk-stage.clks-off *, .clk-stage.clks-off *::before, .clk-stage.clks-off *::after { animation-play-state: paused !important; }
+
+/* ---- одинадцяте оновлення «Толока»: майдан за хатою й гончарі світу на обрії (clicker-v11.md §6) ---- */
+
+/* Рухається на майдані небагато: кожна SVG-анімація — перерахунок стилів і розкладка хати щокадру (clicker-v10-b.md
+   §5), тож постійно — лише крила вітряка й дим кузні; толочани — поки йде будова, музики — поки фестиваль. */
+.clks-tsail { animation: clks-spin 16s linear infinite; }
+@keyframes clks-spin { to { transform: rotate(360deg); } }
+/* Дим кузні — ті самі клуби, що в школи Миргорода. */
+.clks-puff.frg circle { fill: rgba(150, 140, 130, .55); animation-duration: 4s; }
+.clks-puff.frg circle:nth-child(2) { animation-delay: -2s; }
+/* Етап, що будується, — блідий контур у риштуванні; щойно готовий шар виростає з землі (раз). */
+.clks-tghost { opacity: .34; }
+.clks-tnew { transform-box: fill-box; transform-origin: 50% 100%; animation: clks-tnew 1.6s cubic-bezier(.2, .8, .3, 1.15) both; }
+@keyframes clks-tnew { 0% { opacity: .2; transform: translateY(2px) scaleY(.3); } 55% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+/* Толочани ходять туди-сюди від своєї точки (--tw — на скільки, --td — як довго). */
+.clks-tman { animation: clks-tman var(--td, 9s) linear infinite; animation-delay: var(--tdl, 0s); }
+@keyframes clks-tman {
+  0% { transform: translateX(calc(var(--tw, 6px) * -1)) scaleX(1); }
+  47% { transform: translateX(var(--tw, 6px)) scaleX(1); }
+  50% { transform: translateX(var(--tw, 6px)) scaleX(-1); }
+  97% { transform: translateX(calc(var(--tw, 6px) * -1)) scaleX(-1); }
+  100% { transform: translateX(calc(var(--tw, 6px) * -1)) scaleX(1); }
+}
+/* Музики на фестивалі пританцьовують кожен у свій такт. */
+.clks-tmus { animation: clks-bob .42s ease-in-out infinite alternate; }
+.clks-tmus.m1 { animation-duration: .5s; animation-delay: -.2s; }
+.clks-tmus.m2 { animation-duration: .36s; animation-delay: -.1s; }
+/* Святковий ефект готового етапу (api.sceneToloka): сяйво, промені й вимпели, що злітають, — раз. */
+.clks-tfx { pointer-events: none; }
+.clks-tfxg { opacity: 0; transform-box: fill-box; transform-origin: center; animation: clks-tfxg 2.2s ease-out forwards; }
+@keyframes clks-tfxg { 0% { opacity: 0; transform: scale(.3); } 20% { opacity: .55; } 100% { opacity: 0; transform: scale(1.5); } }
+.clks-fw.tfxr { animation: clks-fw 1.6s ease-out forwards; }
+.clks-tconf { opacity: 0; transform-box: fill-box; transform-origin: center; animation: clks-tconf 1.9s cubic-bezier(.2, .7, .4, 1) forwards; }
+@keyframes clks-tconf {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--cx, 0px), var(--cy, -16px)) rotate(200deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Без руху ефект — просто сяйво на мить (годинник у clicker-scene.js прибирає його). */
+  .clks-tfxg { opacity: .45; }
+  .clks-tconf { opacity: 0; }
+}
