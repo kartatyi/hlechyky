@@ -1,0 +1,153 @@
+/*
+  Гарячий горщик. Толоку малює канвас; тут — рядок фішок над ним, новини, підсумок раунду і керування пальцем.
+  Свої кольори — на :root, бо модуль читає їх через ctx.css(). Усі класи з префіксом potato-.
+*/
+:root {
+  --potato-grass: #7aa152;     /* трава толоки */
+  --potato-grass2: #6a9146;    /* плями на траві */
+  --potato-earth: #c4a473;     /* утоптана земля */
+  --potato-wood: #8a5a33;      /* лави, віз, жердини криниці */
+  --potato-wicker: #a47a45;    /* тин */
+  --potato-fire: #ff8a2a;      /* жар горщика */
+  --potato-shadow: rgba(20, 30, 15, .32);
+  --potato-blue: #6fb3e8;      /* п'яте місце */
+  --potato-pink: #e88ac0;      /* шосте */
+  --potato-violet: #b48ae8;    /* сьоме */
+  --potato-red: #e86a6a;       /* восьме */
+}
+
+/* місця 5–8: чіпи в шапці картки каркас знає лише x/o/c/d */
+.gseat.potato-b { color: var(--potato-blue); }
+.gseat.potato-p { color: var(--potato-pink); }
+.gseat.potato-v { color: var(--potato-violet); }
+.gseat.potato-r { color: var(--potato-red); }
+
+.potato-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* Мапа 3:2. Точну ширину модуль рахує сам від того, де сцена починається й скільки під нею (статус, кнопки,
+   смужка пада на Деку); тут — лише запасна оцінка до першого заміру. */
+.potato-stage {
+  position: relative;
+  width: 100%;
+  max-width: min(960px, calc((100vh - 300px) * 1.5));
+}
+.potato-board {
+  width: 100%;
+  max-width: none;
+  border-radius: 10px;
+  background: #6a9146;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.potato-board.potato-port { touch-action: none; }
+
+/* ---- фішки над мапою ---- */
+.potato-hud, .potato-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
+.potato-chips { display: contents; }
+.potato-hud .potato-seats { display: contents; }
+.potato-body > .potato-seats { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; font-size: .76em; }
+.potato-chip, .potato-seat {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.potato-clock { color: var(--muted); min-width: 4.4em; justify-content: center; }
+.potato-clock.hot { color: var(--danger); animation: potato-pulse 1s ease-in-out infinite; }
+@keyframes potato-pulse { 50% { opacity: .55; } }
+.potato-held { color: var(--potato-fire); }
+.potato-seat i { width: .7em; height: .7em; border-radius: 50%; background: currentColor; display: inline-block; }
+.potato-seat b { color: var(--text); }
+.potato-seat small { color: var(--muted); font-size: .92em; }
+.potato-seat.dead { text-decoration: line-through; opacity: .7; }
+.potato-seat.out { opacity: .45; }
+.potato-seat.me { box-shadow: 0 0 0 1px currentColor inset; }
+.potato-mute {
+  padding: 2px 8px; border-radius: 999px; background: var(--bg2); border: 0; cursor: pointer; font-size: 1em; line-height: 1.4;
+}
+
+/* кольори місць: чіпи, ніки в новинах і підсумку */
+.potato-s0 { color: var(--accent); }
+.potato-s1 { color: var(--ok); }
+.potato-s2 { color: var(--clay); }
+.potato-s3 { color: var(--muted); }
+.potato-s4 { color: var(--potato-blue); }
+.potato-s5 { color: var(--potato-pink); }
+.potato-s6 { color: var(--potato-violet); }
+.potato-s7 { color: var(--potato-red); }
+
+/* ---- новини: останні дві події смужкою поверх низу мапи, згасають за 6 с ---- */
+.potato-news {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 3px; font-size: .84em; text-align: center;
+}
+.potato-ni {
+  animation: potato-fade 6s ease-in forwards; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 11px; border-radius: 999px; background: rgba(12, 22, 14, .78); color: #eef3ea;
+}
+.potato-ni + .potato-ni { opacity: .72; }
+/* телефон: одна новина, дрібно, угорі ліворуч від мінімапи — низ в'юпорта лишається для селян, по яких тапають */
+.potato-portmode .potato-news { top: 5px; bottom: auto; left: 5px; right: 108px; align-items: flex-start; flex-direction: column; font-size: .7em; }
+.potato-portmode .potato-ni { padding: 1px 8px; }
+.potato-portmode .potato-ni + .potato-ni { display: none; }
+.potato-stage.potato-open .potato-news { display: none; }
+@keyframes potato-fade { 0% { opacity: 0; transform: translateY(-3px); } 6% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- підсумок раунду й партії ---- */
+.potato-sum { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; font-size: .84em; font-variant-numeric: tabular-nums; }
+.potato-stage > .potato-sum { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 1; pointer-events: none; }
+.potato-sc {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  background: rgba(12, 22, 14, .84); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.potato-body > .potato-sum .potato-sc { background: var(--bg2); }
+.potato-sc b { font-weight: 700; }
+.potato-sc em { font-style: normal; font-weight: 800; color: #eef3ea; }
+.potato-body > .potato-sum .potato-sc em { color: var(--text); }
+.potato-sc small { color: #b9c7b4; font-size: .88em; }
+.potato-body > .potato-sum .potato-sc small { color: var(--muted); }
+.potato-sc.win { box-shadow: 0 0 0 1.5px currentColor inset; }
+.potato-sc.dead b { text-decoration: line-through; }
+
+@media (prefers-reduced-motion: reduce) {
+  .potato-clock.hot { animation: none; }
+  .potato-ni { animation: none; }
+}
+
+/* ---- керування пальцем: хрестовина — одна зона (тримай і веди пальцем), дії — одним дотиком ---- */
+.potato-pad { display: none; }
+.potato-pad.potato-off { display: none !important; }
+@media (pointer: coarse) {
+  .potato-pad {
+    display: flex; gap: 18px; align-items: center; justify-content: center; margin-top: 2px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .potato-dirs {
+    display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px;
+    touch-action: none; border-radius: 50%;
+  }
+  .potato-arr {
+    display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.25em;
+    background: var(--panel3); color: var(--text); pointer-events: none;
+  }
+  .potato-arr.on { background: var(--clay); }
+  .potato-arr[data-dir="3"] { grid-column: 2; grid-row: 1; }
+  .potato-arr[data-dir="2"] { grid-column: 1; grid-row: 2; }
+  .potato-arr[data-dir="0"] { grid-column: 3; grid-row: 2; }
+  .potato-arr[data-dir="1"] { grid-column: 2; grid-row: 3; }
+  .potato-peek { grid-column: 2; grid-row: 2; justify-content: center; border-radius: 50%; font-size: 1.05em; padding: 0; min-width: 0; }
+  .potato-acts { display: grid; grid-template-columns: 66px 66px; gap: 10px; }
+  .potato-acts button { justify-content: center; height: 66px; border-radius: 50%; font-size: 1.6em; background: var(--panel3); }
+  .potato-acts button[data-act="pass"] { box-shadow: 0 0 0 2px var(--potato-fire) inset; }
+  .potato-acts button:active, .potato-peek:active { background: var(--clay); }
+}
+@media (max-width: 380px) {
+  .potato-dirs { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); }
+  .potato-acts { grid-template-columns: 60px 60px; }
+  .potato-acts button { height: 60px; }
+  .potato-pad { gap: 12px; }
+}
+@media (max-width: 480px) {
+  .potato-hud { font-size: .76em; gap: 4px; }
+  .potato-chip, .potato-seat { padding: 2px 7px; }
+  .potato-news { font-size: .78em; }
+}

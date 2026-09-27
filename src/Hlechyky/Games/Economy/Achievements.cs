@@ -120,6 +120,9 @@ public static class AchievementCatalog
         // хвиля 3: kupala — гра просить їх сама через Ctx.Award(seat, 0, "ach:<key>") на кінці раунду
         new("kupala-fern",  "Цвіт папороті", "Купальська ніч: знайшов і зірвав квітку папороті", "🌺", 20),
         new("kupala-blind", "Навпомацки",    "Купальська ніч: вибив гравця ляпасом, коли обидва стояли в темряві", "✋", 15),
+        // хвиля 3: potato
+        new("potato-gift", "Гостинець",      "Гарячий горщик: підкинув горщик гравцеві — і той рвонув у нього в руках", "🔥", 15),
+        new("potato-cool", "Холодні руки",   "Гарячий горщик: виграв раунд, хоч горщик побував у тебе тричі", "🧊", 20),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
