@@ -919,10 +919,16 @@
     if (Math.abs(d) > 24) window.scrollBy({ top: d, behavior: reduced() ? 'auto' : 'smooth' });
   }
 
+  /// Цикл живе, поки йде партія (кадри, передбачення своєї біти, ввід), і ще AWAKE_MS після останньої події —
+  /// догорають «ГОЛ!», іскри й трус. У лобі й на підсумку засинає: 60 разів на секунду перемальовувати застиглий
+  /// стіл нема чого. Будять update(), frame() і зміна розміру вікна.
+  const AWAKE_MS = 1500;
   function spin(root, st) {
+    st.awakeUntil = performance.now() + AWAKE_MS;
     if (st.raf) return;
     const loop = () => {
       if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
+      if (!(st.ctx && st.ctx.playing) && performance.now() > st.awakeUntil) { st.raf = 0; return; }
       st.raf = requestAnimationFrame(loop);
       const now = performance.now();
       flush(st, now);
@@ -943,6 +949,7 @@
     seatClass: ['hks0', 'hks1', 'hks2', 'hks3'],
     // Ⓐ забираємо собі й нічого нею не робимо: інакше посеред партії вона тиснула б кнопку, на якій стоїть рамка
     pad: { dirs: true, a: 'Space', hint: '{dpad} біта' },
+    added: '2026-09-26',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     news: {
       v: '2026-09-27',
       title: 'Нова гра: Аерохокей',
@@ -960,7 +967,7 @@
       if (ctx.view && ctx.view.frame) st.last = ctx.view.frame;
       hud(root, st);
       layout(root, st);
-      st.onResize = () => { const s = root._hockey; if (s) { layout(root, s); s.cv.resize(); } };
+      st.onResize = () => { const s = root._hockey; if (s) { layout(root, s); s.cv.resize(); spin(root, s); } };
       window.addEventListener('resize', st.onResize);
       spin(root, st);
     },
@@ -1021,6 +1028,7 @@
       // рядок над полем — лише коли змінився рахунок (решту міняє вид), а не 25 разів на секунду
       const sc = f.s;
       if (sc && (sc[0] !== st.hudS0 || sc[1] !== st.hudS1)) { st.hudS0 = sc[0]; st.hudS1 = sc[1]; hud(root, st); }
+      spin(root, st);
     },
 
     onKey(e, ctx) {

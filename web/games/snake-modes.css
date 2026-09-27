@@ -39,10 +39,18 @@
 .gseat.ar2 i::before { content: '▲ '; color: var(--moto2); }
 .gseat.ar3 i::before { content: '◆ '; color: var(--moto3); }
 
-/* Велике поле (34×24) ширше за змійчине — даємо йому трохи місця, але не на весь Full HD. */
-.arenaboard { max-width: 560px; }
-.arenaboard.big { max-width: 680px; }
-@media (min-width: 1600px) and (min-height: 900px) { .arenaboard.big { max-width: 780px; } }
+/* Велике поле (34×24) ширше за змійчине — даємо йому трохи місця, але не на весь Full HD.
+   Ширину тримає ще й висота вікна: над полем шапка сайту, столу й табло, під ним статус і кнопки (≈300 px),
+   а коли горить смужка підказок пада (Steam Deck, body.pad-on) — ще 50. Без цього на Деці в кіоску (1024×640)
+   і на невисоких ноутбуках поле з кнопками «Встати»/«Ще раз» не вміщалось і сторінку треба було гортати.
+   Нижня межа 300 px — для телефона, покладеного набік: хай гортає, але поле лишається полем. */
+.arenaboard { max-width: min(560px, max(300px, calc((100vh - 300px) * 26 / 18))); }
+.arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 300px) * 34 / 24))); }
+body.pad-on .arenaboard { max-width: min(560px, max(300px, calc((100vh - 350px) * 26 / 18))); }
+body.pad-on .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 350px) * 34 / 24))); }
+@media (min-width: 1600px) and (min-height: 900px) {
+  .arenaboard.big { max-width: min(780px, calc((100vh - 300px) * 34 / 24)); }
+}
 
 /* Табло над полем: хто скільки раундів узяв; вибулі — бліді й закреслені до кінця раунду. */
 .ascore {

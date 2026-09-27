@@ -42,6 +42,29 @@
     + '<path d="M2 12h4.4a2.6 2.6 0 0 0 0-5.2H5.4a2.6 2.6 0 0 1 0-5.2H9" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
     + '<circle cx="4" cy="12" r="1.7" fill="var(--ok)"/><circle cx="12.5" cy="1.9" r="1.7" fill="var(--clay)"/></svg>';
 
+  /// Палітра з CSS-змінних: getComputedStyle — раз на колір і вид, а не на кожен кадр (десять разів на
+  /// секунду по десятку змінних). update() кожної картки бере свіжу — так нова тема підхопиться з першою ж подією.
+  function palette(css) {
+    const m = new Map();
+    return (name, fallback) => {
+      let v = m.get(name);
+      if (v === undefined) { v = css(name, fallback); m.set(name, v); }
+      return v;
+    };
+  }
+
+  /// «Що нового» (прохід 28.09): поворот на екрані одразу, свайп і хрестовина на дотик, автоповтор не губить поворотів.
+  const NEWS_TRON = {
+    v: '2026-09-28',
+    title: 'Мотоцикли: поворот одразу',
+    items: [
+      '🔦 Фара на голові мотоцикла повертає одразу, щойно натиснеш, — не чекаючи сервера. А ще по ній видно, куди їде суперник',
+      '👆 На телефоні крути свайпом просто по полю, а стрілки під полем спрацьовують на дотик, а не на відпускання',
+      '⌨️ Затиснута стрілка більше не з\'їдає наступного повороту',
+      '🎮 На Steam Deck і невеликих екранах поле вміщається разом із кнопками',
+    ],
+  };
+
   const x0 = (cell) => (cell % W) * PX;
   const y0 = (cell) => Math.floor(cell / W) * PX;
 
@@ -67,21 +90,112 @@
     g.fillText(String(Math.ceil((startIn * tickMs) / 1000)), c.w / 2, c.h / 2);
   }
 
+  /// HTML елемента — лише коли рядок справді змінився. Порівнювати з el.innerHTML не можна: браузер
+  /// серіалізує його по-своєму (апостроф із esc → «'», а не «&#39;»), і «однаково» не виходило б ніколи —
+  /// табло перебудовувалось би на кожен кадр.
+  function html(el, s) {
+    if (el._h === s) return;
+    el._h = s;
+    el.innerHTML = s;
+  }
+
   /// Рядок над полем: рахунок серії в мотоциклах, довжина змійки в коопі.
-  function score(root, html) {
+  function score(root, s) {
     let el = root.querySelector(':scope > .gscore');
     if (!el) {
       el = document.createElement('div');
       el.className = 'gscore';
       root.insertBefore(el, root.firstChild);
     }
-    if (el.innerHTML !== html) el.innerHTML = html;
+    html(el, s);
   }
 
   /// Хрестовина потрібна лише тому, хто грає: сів глядач за стіл — вона з'явиться на наступному 'room'.
-  function pad(root, ctx, dirs) {
-    if (ctx.mine) HGames.ui.dpad(root, (d) => ctx.input('turn', { dir: d }), dirs);
-    else { const d = root.querySelector(':scope > .dpad'); if (d) d.remove(); }
+  /// Кнопки — каркасні (ui.dpad спрацьовує на дотик, а не на відпускання); поворот іде через turn гри, щоб
+  /// своя голова повертала на екрані одразу.
+  function pad(root, ctx, turn, dirs) {
+    if (!ctx.mine) { const d = root.querySelector(':scope > .dpad'); if (d) d.remove(); return; }
+    const el = HGames.ui.dpad(root, turn, dirs);
+    // без подвійного тапу-зуму, коли швидко тиснуть сусідні стрілки
+    if (el && el.style.touchAction !== 'manipulation') el.style.touchAction = 'manipulation';
+  }
+
+  /// Свайп по полю: провів пальцем щонайменше SWIPE_PX — поворот у бік переважної осі. Не відриваючи пальця,
+  /// можна крутити далі: відлік іде від точки останнього повороту. turnOf() — живий обробник картки (null —
+  /// зараз не граєш), бо канвас переживає стан картки. Прокрутку пальцем по полю забираємо лише в того, хто
+  /// грає (touch-action: none), — глядач гортає сторінку як завжди.
+  const SWIPE_PX = 18;
+  function swipe(el, turnOf) {
+    if (el._swipe) return;
+    el._swipe = true;
+    let from = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || !turnOf()) return;
+      from = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      try { el.setPointerCapture(e.pointerId); } catch { /* стара миша без capture */ }
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!from || e.pointerId !== from.id) return;
+      const dx = e.clientX - from.x, dy = e.clientY - from.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_PX) return;
+      from.x = e.clientX;
+      from.y = e.clientY;
+      const turn = turnOf();
+      if (turn) turn(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3));
+    });
+    const end = (e) => { if (from && e.pointerId === from.id) from = null; };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+  function touchable(el, on) {
+    const want = on ? 'none' : '';
+    if (el.style.touchAction !== want) el.style.touchAction = want;
+  }
+
+  /// Куди дивиться голова — з голови й «шиї»; null, поки тіло коротше за дві клітинки.
+  function heading(cells, w) {
+    if (!cells || cells.length < 2) return null;
+    const a = cells[0], b = cells[1];
+    const dx = (a % w) - (b % w), dy = Math.floor(a / w) - Math.floor(b / w);
+    return dx === 1 ? 0 : dy === 1 ? 1 : dx === -1 ? 2 : dy === -1 ? 3 : null;
+  }
+
+  /// Дзеркало серверної черги поворотів (SnakeCore.Turn: розворот і повтор не беремо, у черзі — до двох).
+  /// Лише для малюнка: своя голова «дивиться» туди, куди щойно натиснули, ще до того, як сервер зробив крок і
+  /// кадр доїхав, — так поворот відчувається одразу, а не за тик плюс дорогу. Суддя — сервер: кадр, у якому
+  /// голова справді повернула, знімає поворот із черги, а непідтверджений за 400 мс просто забувається.
+  function queueTurn(st, cur, dir) {
+    const now = performance.now();
+    st.q = st.q.filter((t) => now - t.at < 400);
+    const last = st.q.length ? st.q[st.q.length - 1].dir : cur;
+    if (st.q.length >= 2 || last == null || dir === last || (dir + 2) % 4 === last) return;
+    st.q.push({ dir, at: now });
+  }
+  /// Кадр приїхав: голова тепер дивиться в cur. Збігся з першим у черзі — поворот підтверджено.
+  function settleTurns(st, cur) {
+    const now = performance.now();
+    st.q = st.q.filter((t) => now - t.at < 400);
+    if (st.q.length && st.q[0].dir === cur) st.q.shift();
+  }
+  function facing(st, cur) {
+    const t = st.q[0];
+    return t && performance.now() - t.at < 400 ? t.dir : cur;
+  }
+
+  const STEP = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  /// «Фара» на голові: трикутник вістрям до переднього краю клітинки — куди вершник зараз їде.
+  function nose(g, x, y, dir, color, size) {
+    const c = PX / 2, r = PX * (size || 0.3);
+    const [dx, dy] = STEP[dir];
+    const tx = x + c + dx * (c - 2), ty = y + c + dy * (c - 2);
+    const bx = tx - dx * r * 1.6, by = ty - dy * r * 1.6;
+    g.fillStyle = color;
+    g.beginPath();
+    g.moveTo(tx, ty);
+    g.lineTo(bx - dy * r, by + dx * r);
+    g.lineTo(bx + dy * r, by - dx * r);
+    g.closePath();
+    g.fill();
   }
 
   // =============================================================================================
@@ -93,19 +207,24 @@
     // події 'room', а update() смикається ще й на кожну 'rooms' (будь-хто на сайті створив чи покинув стіл).
     // Під час раунду 'room' не приходить узагалі — Tick віддає самі кадри, — тож без цієї позначки слід
     // відкочувався б до трьох стартових клітинок, а середину його вже ніхто б не домалював: кадр несе лише голови.
-    if (!root._tron) root._tron = { cv: null, view: null, a: [], b: [], sa: new Set(), sb: new Set(), startIn: 0, winner: null, css: ctx.css };
+    if (!root._tron) root._tron = { cv: null, view: null, a: [], b: [], sa: new Set(), sb: new Set(), startIn: 0, winner: null, css: palette(ctx.css), q: [], waiting: true };
+    root._tron.ctx = ctx;
+    ctx._moto = root._tron;     // onKey отримує лише ctx — так він знайде стан картки
     return root._tron;
   }
+  const tronMine = (st) => (st.ctx.seat === 0 ? st.a : st.ctx.seat === 1 ? st.b : null);
 
-  /// Слід — суцільна стіна (клітинка в клітинку, без зазорів), голова тим самим кольором плюс світла
-  /// цятка мотоцикліста: так видно, куди саме він зараз їде.
-  function trail(st, cells, color) {
+  /// Слід — суцільна стіна (клітинка в клітинку, без зазорів), на голові — світла «фара» мотоцикліста
+  /// вістрям туди, куди він їде (своя — туди, куди щойно натиснув).
+  function trail(st, cells, color, dir) {
     if (!cells.length) return;
     const g = st.cv.ctx;
     g.fillStyle = color;
     for (const cell of cells) g.fillRect(x0(cell), y0(cell), PX, PX);
     const h = cells[0];
-    g.fillStyle = st.css('--text', '#ecf1ea');
+    const light = st.css('--text', '#ecf1ea');
+    if (dir != null) { nose(g, x0(h), y0(h), dir, light, 0.34); return; }
+    g.fillStyle = light;
     g.beginPath();
     g.arc(x0(h) + PX / 2, y0(h) + PX / 2, PX / 4, 0, Math.PI * 2);
     g.fill();
@@ -113,10 +232,25 @@
 
   function drawTron(st, waiting) {
     if (!st.cv) return;
+    st.waiting = waiting;
     field(st);
-    trail(st, st.a, st.css('--accent', '#f4c542'));
-    trail(st, st.b, st.css('--ok', '#7bd389'));
+    const me = st.ctx.mine ? st.ctx.seat : -1;
+    const ha = heading(st.a, W), hb = heading(st.b, W);
+    trail(st, st.a, st.css('--accent', '#f4c542'), me === 0 ? facing(st, ha) : ha);
+    trail(st, st.b, st.css('--ok', '#7bd389'), me === 1 ? facing(st, hb) : hb);
     shade(st, st.startIn, st.winner, waiting, TRON_MS);
+  }
+
+  /// Поворот із клавіатури, хрестовини чи свайпу: на сервер — завжди (суддя він), у дзеркало черги — щоб
+  /// своя голова повернулась на екрані одразу, а не за тик сервера.
+  function tronTurn(st, dir) {
+    const ctx = st.ctx;
+    if (!ctx || !ctx.mine || !ctx.playing) return;
+    ctx.input('turn', { dir });
+    const mine = tronMine(st);
+    if (!mine || st.winner != null) return;
+    queueTurn(st, heading(mine, W), dir);
+    drawTron(st, st.waiting);
   }
 
   /// Голова з кадру. Множина побачених клітинок ловить два випадки: відлік (голова стоїть на місці) і
@@ -133,16 +267,20 @@
     seatNames: ['жовтий', 'зелений'],
     seatClass: ['x', 'o'],
     pad: { dirs: true, hint: '{dpad} куди їхати' },
+    news: NEWS_TRON,
 
     mount(root, ctx) {
       const st = tronState(root, ctx);
-      st.cv = HGames.ui.canvas(root, { w: W * PX, h: H * PX });
+      st.cv = HGames.ui.canvas(root, { w: W * PX, h: H * PX, cls: 'arenaboard' });
+      swipe(st.cv.el, () => { const s = root._tron; return s && s.ctx.mine && s.ctx.playing ? (d) => tronTurn(s, d) : null; });
     },
 
     update(root, ctx) {
       const st = tronState(root, ctx);
       if (!st.cv) return;
-      pad(root, ctx);
+      st.css = palette(ctx.css);
+      pad(root, ctx, (d) => tronTurn(st, d));
+      touchable(st.cv.el, ctx.mine && ctx.playing);
       const v = ctx.view;
       // Новий вид (подія 'room': старт раунду, кінець, рематч, підключення глядача) — перекладаємо поле з
       // нуля. Той самий об'єкт удруге — це вже застарілий кеш, і чіпати ним живий слід не можна.
@@ -154,6 +292,7 @@
         st.sb = new Set(st.b);
         st.startIn = v.startIn || 0;
         st.winner = v.winner == null ? null : v.winner;
+        if (st.startIn > 0 || st.winner != null) st.q = [];
         score(root, '<b>' + (v.winsA || 0) + '</b> : <b>' + (v.winsB || 0) + '</b>');
       }
       st.cv.resize();
@@ -167,13 +306,19 @@
       addHead(st.b, st.sb, f.hb);
       st.startIn = f.startIn || 0;
       st.winner = f.winner == null ? null : f.winner;
+      const mine = ctx.mine ? tronMine(st) : null;
+      if (mine) settleTurns(st, heading(mine, W));
       drawTron(st, !ctx.playing);
     },
 
     onKey(e, ctx) {
       const dir = DIRS[e.code];
       if (dir === undefined || !ctx.mine || !ctx.playing) return false;
-      ctx.input('turn', { dir });
+      // Автоповтор затиснутої клавіші (на Windows ~30 на секунду) за секунду з'їдав усю квоту каркаса —
+      // 30 Input на секунду з'єднання, — і справжній поворот у ту саму секунду мовчки губився. Сервер
+      // повтор напрямку й так відкидає; клавішу при цьому з'їдаємо, щоб сторінка не гортала.
+      if (e.repeat) return true;
+      if (ctx._moto) tronTurn(ctx._moto, dir); else ctx.input('turn', { dir });
       return true;
     },
 
@@ -196,8 +341,14 @@
   function coopState(root, ctx) {
     // view — вид, який уже застосовано (див. пояснення в tronState): кадр коопа завжди свіжіший за
     // кешований вид, тож давати виду перебивати його на кожну 'rooms' означало б смикати змійку назад.
-    if (!root._coop) root._coop = { cv: null, view: null, last: null, css: ctx.css };
+    if (!root._coop) root._coop = { cv: null, view: null, last: null, css: palette(ctx.css) };
+    root._coop.ctx = ctx;
     return root._coop;
+  }
+
+  /// Поворот у коопі: лише свої стрілки — чужі сервер усе одно не прийме.
+  function coopTurn(ctx, dir) {
+    if (ctx && ctx.mine && ctx.playing && ownKey(ctx, dir)) ctx.input('turn', { dir });
   }
 
   function drawCoop(st, f, waiting) {
@@ -227,26 +378,28 @@
     seatClass: ['x', 'o', 'c', 'd'],
     pad: { dirs: true, hint: '{dpad} свої стрілки' },
     news: {
-      v: '2026-09-24',
-      title: 'Змійка на всіх: від одного до чотирьох',
+      v: '2026-09-28',
+      title: 'Змійка на всіх: свайпом по полю',
       items: [
-        '🐍 «Змійка на двох» тепер «Змійка на всіх»: за кермом від одного до чотирьох',
-        '🎮 Стрілки діляться порівну: удвох — вгору-вниз і вліво-вправо, утрьох — вертикаль, ліво й право, учотирьох — по одній',
-        '▶️ Стіл стартує кнопкою «Почати» — можна й самому потренуватись',
-        '🤝 Хтось встав посеред раунду — змійка повзе далі, а його стрілки дістаються решті',
+        '👆 На телефоні крути свайпом просто по полю — чужі напрямки змійка й так пропустить повз вуха',
+        '⚡ Кнопки під полем спрацьовують на дотик, а не на відпускання',
+        '⌨️ Затиснута стрілка більше не з\'їдає наступного повороту',
       ],
     },
 
     mount(root, ctx) {
       const st = coopState(root, ctx);
-      st.cv = HGames.ui.canvas(root, { w: W * PX, h: H * PX });
+      st.cv = HGames.ui.canvas(root, { w: W * PX, h: H * PX, cls: 'arenaboard' });
+      swipe(st.cv.el, () => { const s = root._coop; return s && s.ctx.mine && s.ctx.playing ? (d) => coopTurn(s.ctx, d) : null; });
     },
 
     update(root, ctx) {
       const st = coopState(root, ctx);
       if (!st.cv) return;
+      st.css = palette(ctx.css);
       // на пальці показуємо лише свої кнопки: чужі сервер усе одно не прийме
-      pad(root, ctx, padDirs(keysOf(ctx)));
+      pad(root, ctx, (d) => coopTurn(ctx, d), padDirs(keysOf(ctx)));
+      touchable(st.cv.el, ctx.mine && ctx.playing);
       if (ctx.view && Array.isArray(ctx.view.s) && ctx.view !== st.view) {
         st.view = ctx.view;
         st.last = ctx.view;
@@ -270,8 +423,9 @@
       if (dir === undefined || !ctx.mine || !ctx.playing) return false;
       // Чужа вісь — не помилка, а домовленість; на сервер її не шлемо. Але клавішу все одно з'їдаємо:
       // віддати браузеру ↑ чи ↓ посеред живого раунду означає прокрутити сторінку і зігнати поле з екрана.
-      if (!ownKey(ctx, dir)) return true;
-      ctx.input('turn', { dir });
+      // Автоповтор затиснутої клавіші — теж: він лише їв би квоту Input (див. мотоцикли).
+      if (!ownKey(ctx, dir) || e.repeat) return true;
+      coopTurn(ctx, dir);
       return true;
     },
 
@@ -312,12 +466,32 @@
   function partyState(root, ctx) {
     if (!root._party) {
       root._party = {
-        cv: null, view: null, w: W, h: H, mode: 'tron', css: ctx.css,
+        cv: null, view: null, w: W, h: H, mode: 'tron', css: palette(ctx.css),
         t: [[], [], [], []], seen: [new Set(), new Set(), new Set(), new Set()],
         ap: [], al: 0, crash: [-1, -1, -1, -1], place: [], wins: [], present: [], startIn: 0, winner: null, winners: [],
+        q: [], waiting: true,
       };
     }
+    root._party.ctx = ctx;
+    ctx._moto = root._party;
     return root._party;
+  }
+
+  /// Моє тіло в цьому раунді (null — глядач, мене нема на полі або я вже вибув).
+  function partyMine(st) {
+    const s = st.ctx.mine ? st.ctx.seat : null;
+    return s != null && st.present[s] && (st.al & (1 << s)) ? st.t[s] : null;
+  }
+
+  /// Поворот гурту — як у дуелі: на сервер завжди, у дзеркало черги — для «фари» на своїй голові.
+  function partyTurn(st, dir) {
+    const ctx = st.ctx;
+    if (!ctx || !ctx.mine || !ctx.playing) return;
+    ctx.input('turn', { dir });
+    const mine = partyMine(st);
+    if (!mine || st.winner != null) return;
+    queueTurn(st, heading(mine, st.w), dir);
+    drawParty(st, ctx, st.waiting);
   }
 
   /// Поле буває більшим для трьох-чотирьох: розмір беремо з виду, канвас каркаса перелаштовується сам.
@@ -357,40 +531,46 @@
 
   function drawParty(st, ctx, waiting) {
     if (!st.cv) return;
+    st.waiting = waiting;
     const g = st.cv.ctx, w = st.w, cw = st.cv.w, ch = st.cv.h;
-    const px = (cell) => [(cell % w) * PX, Math.floor(cell / w) * PX];
+    // клітинка → пікселі без масиву на кожну клітинку: кадр малює сотні клітинок десять разів на секунду
+    const cx = (cell) => (cell % w) * PX, cy = (cell) => Math.floor(cell / w) * PX;
     g.fillStyle = st.css('--bg2', '#16291f');
     g.fillRect(0, 0, cw, ch);
 
     g.fillStyle = st.css('--clay', '#c5763a');
     for (const a of st.ap) {
-      const [x, y] = px(a);
       g.beginPath();
-      g.arc(x + PX / 2, y + PX / 2, PX / 2 - 2.5, 0, Math.PI * 2);
+      g.arc(cx(a) + PX / 2, cy(a) + PX / 2, PX / 2 - 2.5, 0, Math.PI * 2);
       g.fill();
     }
 
     const dark = st.css('--bg', '#0f1f18');
-    st.t.forEach((cells, s) => {
-      if (!cells || !cells.length) return;
+    const mine = partyMine(st);
+    for (let s = 0; s < st.t.length; s++) {
+      const cells = st.t[s];
+      if (!cells || !cells.length) continue;
       const r = RIDERS[s] || RIDERS[0];
       const alive = (st.al & (1 << s)) !== 0;
       g.globalAlpha = alive || st.winner != null ? 1 : 0.4;   // розбитий слід лишається стіною, але блідою
       g.fillStyle = st.css(r.v, r.f);
       if (st.mode === 'snake') {
-        cells.forEach((cell, i) => {
-          const [x, y] = px(cell);
+        for (let i = 0; i < cells.length; i++) {
           g.beginPath();
-          g.roundRect(x + 1, y + 1, PX - 2, PX - 2, i ? 3 : 6);
+          g.roundRect(cx(cells[i]) + 1, cy(cells[i]) + 1, PX - 2, PX - 2, i ? 3 : 6);
           g.fill();
-        });
+        }
       } else {
-        for (const cell of cells) { const [x, y] = px(cell); g.fillRect(x, y, PX, PX); }
+        for (const cell of cells) g.fillRect(cx(cell), cy(cell), PX, PX);
       }
-      const [hx, hy] = px(cells[0]);
-      shapeAt(g, hx, hy, r.shape, dark);
+      shapeAt(g, cx(cells[0]), cy(cells[0]), r.shape, dark);
+      // своя голова — ще й зі світлою «фарою» туди, куди щойно натиснув (не чекаючи тика сервера)
+      if (cells === mine && st.winner == null) {
+        const d = facing(st, heading(cells, w));
+        if (d != null) nose(g, cx(cells[0]), cy(cells[0]), d, st.css('--text', '#ecf1ea'), 0.24);
+      }
       g.globalAlpha = 1;
-    });
+    }
 
     // хрестик там, де хтось розбився — поверх затемнення, щоб і в кінці раунду було видно, хто де злетів
     const crosses = () => {
@@ -398,7 +578,7 @@
       g.lineWidth = 2.5;
       st.crash.forEach((cell, s) => {
         if (cell == null || cell < 0 || !st.present[s]) return;
-        const [x, y] = px(cell);
+        const x = cx(cell), y = cy(cell);
         g.beginPath();
         g.moveTo(x + 3, y + 3); g.lineTo(x + PX - 3, y + PX - 3);
         g.moveTo(x + PX - 3, y + 3); g.lineTo(x + 3, y + PX - 3);
@@ -419,7 +599,7 @@
     if (counting) {
       // «ти тут»: на великому полі вчотирьох себе треба знайти за три секунди — кільце поверх затемнення
       if (me != null && st.t[me] && st.t[me].length) {
-        const [x, y] = px(st.t[me][0]);
+        const x = cx(st.t[me][0]), y = cy(st.t[me][0]);
         g.strokeStyle = st.css('--text', '#ecf1ea');
         g.lineWidth = 2;
         g.beginPath();
@@ -460,8 +640,7 @@
       parts.push('<span class="' + cls + '"><i>' + RIDERS[s].mark + '</i>' + ctx.esc(nick)
         + ' <b>' + (st.wins[s] || 0) + '</b></span>');
     }
-    const html = parts.join('');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    html(el, parts.join(''));
   }
 
   function registerParty(id, o) {
@@ -476,15 +655,21 @@
       mount(root, ctx) {
         const st = partyState(root, ctx);
         partyCanvas(root, st);
+        swipe(st.cv.el, () => { const s = root._party; return s && s.ctx.mine && s.ctx.playing ? (d) => partyTurn(s, d) : null; });
       },
 
       update(root, ctx) {
         const st = partyState(root, ctx);
         if (!st.cv) return;
-        pad(root, ctx);
+        st.css = palette(ctx.css);
+        pad(root, ctx, (d) => partyTurn(st, d));
         const v = ctx.view;
-        if (v && Array.isArray(v.t) && v !== st.view) applyPartyView(st, v);
+        if (v && Array.isArray(v.t) && v !== st.view) {
+          applyPartyView(st, v);
+          if (st.startIn > 0 || st.winner != null) st.q = [];
+        }
         partyCanvas(root, st);
+        touchable(st.cv.el, ctx.mine && ctx.playing);
         partyScore(root, ctx, st);
         drawParty(st, ctx, !ctx.playing);
       },
@@ -500,13 +685,16 @@
         st.startIn = f.startIn || 0;
         st.winner = f.winner == null ? null : f.winner;
         if (was !== st.al) partyScore(root, ctx, st);
+        const mine = partyMine(st);
+        if (mine) settleTurns(st, heading(mine, st.w));
         drawParty(st, ctx, !ctx.playing);
       },
 
       onKey(e, ctx) {
         const dir = DIRS[e.code];
         if (dir === undefined || !ctx.mine || !ctx.playing) return false;
-        ctx.input('turn', { dir });
+        if (e.repeat) return true;   // автоповтор лише їв би квоту Input (див. мотоцикли)
+        if (ctx._moto) partyTurn(ctx._moto, dir); else ctx.input('turn', { dir });
         return true;
       },
 
@@ -534,13 +722,13 @@
     play: 'Стрілки або WASD — і не наїдь на чужий слід',
     out: 'Аварія! Дивись, хто кого пережене',
     news: {
-      v: '2026-09-24',
-      title: 'Мотоцикли гуртом: до чотирьох на трасі',
+      v: '2026-09-28',
+      title: 'Мотоцикли гуртом: поворот одразу',
       items: [
-        '🏍 Нова плитка «Мотоцикли гуртом»: 2–4 гравці, у кожного свій колір і фігурка на голові',
-        '💥 Врізався — вибув, але раунд триває: бере його останній, хто ще їде',
-        '🗺 Утрьох і вчотирьох поле більше, 34×24; розмір можна обрати й самому',
-        '🏆 Рахунок серії їде з вами через «Ще раз», а дуель «Мотоцикли» зі ставками лишилась як була',
+        '🔦 Своя фара на голові повертає одразу, щойно натиснеш, — не чекаючи сервера',
+        '👆 На телефоні крути свайпом просто по полю, а стрілки під полем спрацьовують на дотик',
+        '⌨️ Затиснута стрілка більше не з\'їдає наступного повороту',
+        '🎮 Велике поле на Steam Deck і невеликих екранах вміщається разом із кнопками',
       ],
     },
   });
@@ -555,13 +743,13 @@
     play: 'Стрілки або WASD — їж яблука й не врізайся',
     out: 'Твоя змійка вибула — дивись, хто переживе решту',
     news: {
-      v: '2026-09-24',
-      title: 'Змійки гуртом: до чотирьох на полі',
+      v: '2026-09-28',
+      title: 'Змійки гуртом: поворот одразу',
       items: [
-        '🐍 Нова плитка «Змійки гуртом»: 2–4 змійки, у кожної свій колір і фігурка',
-        '🍎 Утрьох і вчотирьох на полі два яблука, а саме поле більше',
-        '💥 Врізалась — вибула, раунд бере остання жива, а за три хвилини — найдовша',
-        '🏆 Рахунок серії їде з вами через «Ще раз»',
+        '👀 Своя змійка повертає голову одразу, щойно натиснеш, — не чекаючи сервера',
+        '👆 На телефоні крути свайпом просто по полю, а стрілки під полем спрацьовують на дотик',
+        '⌨️ Затиснута стрілка більше не з\'їдає наступного повороту',
+        '🎮 Велике поле на Steam Deck і невеликих екранах вміщається разом із кнопками',
       ],
     },
   });
