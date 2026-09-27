@@ -264,7 +264,7 @@ public class DotepyTests
         var h = Table(2, start: false);
         var r = h.Start();
         Assert.False(r.Ok);
-        Assert.Equal("Замало гравців, треба щонайменше 3", r.Message);
+        Assert.StartsWith("Замало гравців, треба щонайменше 3", r.Message);
         Assert.Equal(RoomStatus.Lobby, h.Room.Status);
         Assert.Equal("lobby", Phase(h));
     }

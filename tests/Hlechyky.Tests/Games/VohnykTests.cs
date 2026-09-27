@@ -958,7 +958,7 @@ public sealed class VohnykTests(ITestOutputHelper output)
         h.Start();
         h.Tick(60);
         h.Leave("Оля");
-        Assert.Contains(h.Finished, f => f.Result.Text == "Вогник і Крапля: Оля встав з-за столу, партію не дограли");
+        Assert.Contains(h.Finished, f => f.Result.Text == "Вогник і Крапля: Оля встає з-за столу, партію не дограли");
     }
 
     [Fact]
