@@ -279,7 +279,8 @@
   /// поворот не там. Вигляд той самий (клас .dpad каркаса, видно лише на сенсорному екрані).
   function dpad(root, ctx) {
     let el = root.querySelector(':scope > .dpad');
-    if (!ctx.mine) { if (el) el.remove(); return; }
+    // Хрестовина лише поки йде партія: у лобі й після кінця вона штовхала «Почати» / «Ану ще раз» під нижнє меню.
+    if (!ctx.mine || !ctx.playing) { if (el) el.remove(); return; }
     if (!el) {
       el = document.createElement('div');
       el.className = 'dpad tdp';
@@ -297,6 +298,32 @@
     el._ctx = ctx;   // колбек — з останнього update
   }
 
+  /// Телефон: на шістьох шапка столу й смуга площ штовхали поле вниз, і хрестовина ховалась під нижнім
+  /// меню. Раз на партію (room.startedAt), коли вона пішла, прокручуємо так, щоб поле з хрестовиною стало між
+  /// шапкою сайту й меню (і над «💬 Стіл»). Усе й так видно — не чіпаємо.
+  function fitPhone(root, st, ctx, hudSel, padSel) {
+    if (!ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const hudEl = root.querySelector(':scope > ' + hudSel), padEl = root.querySelector(':scope > ' + padSel);
+    if (!hudEl || !padEl) return;
+    const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+  }
+
   HGames.register({
     id: 'territory',
     icon: ICON,
@@ -305,14 +332,12 @@
     seatClass: ['x', 'o', 'c', 'tq', 'tr5', 'tr6'],
     pad: { dirs: true, hint: '{dpad} куди бігти' },
     news: {
-      v: '2026-09-24',
-      title: 'Земля: тепер до шести загарбників',
+      v: '2026-09-28',
+      title: 'Земля: поворот одразу',
       items: [
-        '🗺 За столом 2–6 гравців; уп’ятьох і вшістьох поле більше — 48×36, землі на кожного вистачає',
-        '⏳ Перед раундом три секунди «Готуйсь»: над кожною головою видно, чия вона, а своя — «ти»',
-        '🔢 На голові — номер місця, а твоя обведена другим кільцем: не загубишся навіть серед шести',
-        '🔥 Хто згорів — спалахує на місці, а наприкінці на полі написано, хто взяв найбільше',
-        '🔵 Чіп блакитного гравця нарешті блакитний, а не сірий',
+        '👆 Хрестовина на телефоні повертає на дотик, а не коли відпустиш палець — поворот там, де хотів',
+        '⌨ Затиснута стрілка більше не «з’їдає» наступний поворот',
+        '📱 З початком партії поле й хрестовина стають в екран разом; на ноутбуці й Деці поле більше',
       ],
     },
 
@@ -340,6 +365,7 @@
       dpad(root, ctx);
       fromView(st, ctx.view);
       bar(root, ctx, st);
+      fitPhone(root, st, ctx, '.gterr', '.dpad');
       draw(st);
     },
 

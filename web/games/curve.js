@@ -325,7 +325,8 @@
   /// Дві кнопки під палець: не тап, а утримання, тож слухаємо саме pointer-події.
   function pad(root, ctx, st) {
     let el = root.querySelector(':scope > .cpad');
-    if (!ctx.mine) { if (el) el.remove(); return; }
+    // Кнопки лише поки йде партія: у лобі й після кінця вони штовхали «Почати» / «Ану ще раз» під нижнє меню.
+    if (!ctx.mine || !ctx.playing) { if (el) { el.remove(); st.touch = 0; } return; }
     if (el) {
       // канвас могли перебудувати під нове поле — кнопки лишаються під ним
       if (el.nextElementSibling) root.appendChild(el);
@@ -352,6 +353,32 @@
     el.addEventListener('pointercancel', off);
     el.addEventListener('pointerleave', off);
     root.appendChild(el);
+  }
+
+  /// Телефон: на вісьмох шапка столу з місцями й чіпи очок штовхали поле вниз, і кнопки ◀ ▶ ховались під
+  /// нижнім меню. Раз на партію (room.startedAt), коли вона пішла, прокручуємо так, щоб поле з кнопками
+  /// стало між шапкою сайту й меню (і над «💬 Стіл»). Усе й так видно — не чіпаємо.
+  function fitPhone(root, st, ctx, hudSel, padSel) {
+    if (!ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const hudEl = root.querySelector(':scope > ' + hudSel), padEl = root.querySelector(':scope > ' + padSel);
+    if (!hudEl || !padEl) return;
+    const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
   }
 
   /// Половини поля — те саме, але без прицілювання в кнопку. Гортати сторінку пальцем по полю
@@ -387,14 +414,12 @@
     seatClass: ['x', 'o', 'c', 'd', 'cb', 'cp', 'cv', 'cr'],
     pad: { dirs: 'x', hint: '{dpad} повертати ліворуч-праворуч' },
     news: {
-      v: '2026-09-24',
-      title: 'Кривуля: тепер до восьми за столом',
+      v: '2026-09-28',
+      title: 'Кривуля: поле більше, слід рівніший',
       items: [
-        '🌈 За столом 2–8 кривуль, як у класичній Achtung — кожна своїм кольором; на п’ятьох і більше поле ширшає',
-        '⭕ Своя голова — у білому кільці, а на відліку над кожною видно, чия вона',
-        '💥 Хто врізався — спалахує на місці аварії, а після раунду на полі написано, хто його взяв',
-        '📋 Над полем — ніки з очками, а не самі цифри',
-        '🔍 Слід на великому моніторі тепер чіткий, без сходинок, і поле там більше',
+        '🔍 На ноутбуці й Деці поле більше — і влазить без прокрутки навіть на вісьмох',
+        '📱 На телефоні з початком партії поле й кнопки ◀ ▶ стають в екран разом, над «💬 Стіл»',
+        '〰 Коли хтось урізається, слід решти більше не зрізає кути',
       ],
     },
 
@@ -450,6 +475,7 @@
       }
       const f = fresh ? (ctx.view || {}) : (ctx.frame || ctx.view || {});
       score(root, ctx, f);
+      fitPhone(root, st, ctx, '.cscore', '.cpad');
       paint(st, ctx, f);
       if (!ctx.playing) st.sent = 0;   // партія стала — наступне натискання має долетіти
     },

@@ -213,10 +213,42 @@
     }
   }
 
-  function drawShade(pal, g, c, f, waiting) {
+  /// 1 фраг, 2 фраги, 5 фрагів.
+  const frags = (n) => {
+    const t = n % 100, o = n % 10;
+    return n + (t > 10 && t < 20 ? ' фрагів' : o === 1 ? ' фраг' : o >= 2 && o <= 4 ? ' фраги' : ' фрагів');
+  };
+
+  function drawShade(pal, g, c, f, waiting, st) {
     if (f.phase === 'go' || (f.phase === 'start' && waiting)) return;
     g.fillStyle = pal.shade;
     g.fillRect(0, 0, c.w, c.h);
+    if (f.phase === 'over') {
+      // Хто взяв партію — великими літерами просто на мапі (як у Бомбера й Кривулі), а не лише рядком під нею.
+      const ctx = st && st.ctx;
+      const res = ctx && ctx.room && ctx.room.result;
+      if (!res) return;
+      const who = res.winners || [];
+      const one = who.length === 1 ? who[0] : -1;
+      const nick = one >= 0 ? (ctx.nickOf(one) || ctx.seatName(one)) : '';
+      const m = one >= 0 && f.p ? f.p[one] : null;
+      const u = c.w / (21 * PX);   // на великій мапі літери більші — інакше на телефоні вони дрібніють
+      g.fillStyle = pal.dark;
+      g.globalAlpha = 0.85;
+      g.beginPath();
+      g.roundRect(24, c.h / 2 - 36 * u, c.w - 48, 70 * u, 14);
+      g.fill();
+      g.globalAlpha = 1;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '700 ' + Math.round(24 * u) + 'px system-ui, sans-serif';
+      g.fillStyle = one >= 0 ? (pal.seats[one] || pal.text) : pal.text;
+      g.fillText(one >= 0 ? '🏆 ' + nick : who.length ? '🏆 ' + who.map((i) => ctx.nickOf(i) || ctx.seatName(i)).join(', ') : 'Нічия', c.w / 2, c.h / 2 - 9 * u, c.w - 60);
+      g.font = Math.round(14 * u) + 'px system-ui, sans-serif';
+      g.fillStyle = pal.text;
+      g.fillText(one >= 0 ? 'бере партію — ' + frags((m && m.frags) || 0) : who.length ? 'поділили першість' : 'фрагів порівну', c.w / 2, c.h / 2 + 17 * u);
+      return;
+    }
     if (f.phase !== 'start' || waiting) return;
     g.fillStyle = pal.text;
     g.font = '700 46px system-ui, sans-serif';
@@ -308,7 +340,7 @@
       }
       drawShells(pal, g, cur.shells);
       drawBooms(pal, g, st.booms, now);
-      drawShade(pal, g, box, f, waiting);
+      drawShade(pal, g, box, f, waiting, st);
     }
     g.restore();
   }
@@ -344,8 +376,9 @@
 
   function pad(root, ctx, st) {
     let el = root.querySelector(':scope > .tpad');
-    if (!ctx.mine) {
-      if (el) el.remove();
+    // Хрестовина лише поки йде партія: у лобі й після кінця вона штовхала «Почати» / «Ану ще раз» під нижнє меню телефона.
+    if (!ctx.mine || !ctx.playing) {
+      if (el) { el.remove(); st.touch = -1; st.pid = null; }
       return;
     }
     if (!el) {
@@ -392,11 +425,17 @@
     if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
     const head = document.querySelector('header');
-    const top = head ? head.getBoundingClientRect().bottom : 0;
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
     const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    if (a.top >= top && b.bottom <= innerHeight - tabs) return;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
+    if (Math.abs(dy) < 2) return;
     const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollBy({ top: a.top - top - 4, behavior: calm ? 'auto' : 'smooth' });
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -470,13 +509,13 @@
     seatClass: ['x', 'o', 'c', 'd', 'tb', 'tp'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} їхати · {a} бахнути (будь-яка кнопка)' },
     news: {
-      v: '2026-09-24',
-      title: 'Танчики: снаряди більше не проскакують',
+      v: '2026-09-28',
+      title: 'Танчики: переможець на мапі',
       items: [
-        '💥 Зустрічні снаряди тепер завжди гасять один одного, а швидкий 🚀 не пролітає крізь танк, що мчить назустріч',
-        '🔢 На башті — номер місця, а над своїм танком стрілочка (на відліку ще й «ти»)',
-        '⏱ Годинник партії червоніє за 15 секунд до кінця',
-        '🔍 На великому моніторі мапа більша й чіткіша',
+        '🏆 Наприкінці просто на мапі видно, хто взяв партію і скільки фрагів',
+        '🎮 Затиснув →, додав ↑ і відпустив ↑ — танк знову їде праворуч, а не стає',
+        '📱 На телефоні з початком партії мапа й хрестовина стають в екран разом',
+        '🧹 Більше нема вибухів-привидів і стрибків танків, коли хтось сідає за інший стіл',
       ],
     },
 

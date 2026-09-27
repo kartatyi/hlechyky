@@ -144,6 +144,29 @@
     btn.addEventListener('click', (e) => { if (e.detail === 0) fire(); });
   }
 
+  /// Телефон: у Перестрілці на чотирьох шапка столу й табло штовхали сцену вниз, і кнопка «Стріляти»
+  /// ховалась під нижнім меню та «💬 Стіл». Раз на партію (room.startedAt), коли вона пішла, прокручуємо
+  /// так, щоб рахунок, сцена й кнопка стали між шапкою сайту й меню. Усе й так видно — не чіпаємо.
+  function fitPhone(st, ctx) {
+    if (!st.els || !ctx.mine || !ctx.playing || !ctx.room || !ctx.ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const a = st.els.wrap.getBoundingClientRect(), b = st.els.fire.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+  }
+
   function state(root, ctx) {
     let st = states.get(ctx);
     if (!st || st.root !== root) {
@@ -311,12 +334,12 @@
     seatClass: ['x', 'o'],
     pad: { a: 'Space', anyBtn: true, hint: '{a} стріляти (будь-яка кнопка) — щойно побачиш сигнал' },
     news: {
-      v: '2026-09-24',
-      title: 'Дуель: гримить і дзвенить',
+      v: '2026-09-28',
+      title: 'Дуель: більша вулиця, швидший курок',
       items: [
-        '🔔 «ВОГОНЬ!» тепер ще й дзвенить, постріл гримить, а поспішив — чути, як куля свистить у небо',
-        '🔇 Кому тихіше — вимикач звуку під сценою',
-        '🤠 Зібрались утрьох чи вчотирьох? Поруч нова гра — «Перестрілка», кожен проти кожного',
+        '🔫 Кнопка «Стріляти» бахає, щойно торкнешся, а не коли відпустиш палець — на телефоні це десятки мілісекунд',
+        '🌅 На ноутбуці, Деці й великому моніторі вулиця більша',
+        '📋 Підсумок раунду вже не пишеться двічі поспіль',
       ],
     },
 
@@ -326,8 +349,10 @@
     },
 
     update(root, ctx) {
-      take(build(root, ctx), ctx);
+      const st = build(root, ctx);
+      take(st, ctx);
       render(root, ctx);
+      fitPhone(st, ctx);
     },
 
     frame(root, ctx, f) {
@@ -630,7 +655,8 @@
     else {
       const t = s.aim ? s.aim[ctx.seat] : null;
       msg = (t != null ? 'Ціль: ' + nick(ctx, t) + '. ' : '')
-        + 'Змінити — тап по фігурі або ← →; на ВОГОНЬ стріляй кнопкою чи будь-якою іншою клавішею';
+        + (ctx.ui.coarse() ? 'Змінити — тап по фігурі; на ВОГОНЬ тисни «Стріляти»'
+          : 'Змінити — тап по фігурі або ← →; на ВОГОНЬ стріляй кнопкою чи будь-якою іншою клавішею');
     }
     if (st.els.msg.textContent !== msg) st.els.msg.textContent = msg;
 
@@ -655,13 +681,12 @@
     seatClass: ['x', 'o', 'c', 'db'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} у кого цілишся · {a} вогонь (будь-яка кнопка)' },
     news: {
-      v: '2026-09-24',
-      title: 'Перестрілка: дуель на трьох-чотирьох',
+      v: '2026-09-28',
+      title: 'Перестрілка: таблички не обрізає',
       items: [
-        '🤠 Нова гра: троє-четверо на одній вулиці, кожен проти кожного',
-        '🎯 Поки «Цілься…» — обери, в кого цілишся (тап по фігурі або ← →). Хто в кого — бачать усі',
-        '🔫 На ВОГОНЬ у кожного один патрон: хто перший вистрілив, той і влучив, а підстрелений уже не відповість',
-        '👑 Раунд бере той, хто лишився на ногах сам. Перестрілку — перший, хто взяв три раунди',
+        '🏷 Таблички з ніками крайніх стрільців більше не обрізає край сцени',
+        '🔫 «Стріляти» бахає на дотик, а на телефоні кнопка з початком партії стає в екран',
+        '💻 На 1280×800 стіл влазить без прокрутки',
       ],
     },
 
@@ -674,6 +699,7 @@
       const st = sBuild(root, ctx);
       sTake(st, ctx);
       sRender(root, ctx);
+      fitPhone(st, ctx);
     },
 
     frame(root, ctx, f) {

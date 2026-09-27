@@ -402,8 +402,9 @@
 
   function pad(root, ctx, st) {
     let el = root.querySelector(':scope > .bpad');
-    if (!ctx.mine) {
-      if (el) el.remove();
+    // Хрестовина лише поки йде партія: у лобі й після кінця вона штовхала «Почати» / «Ану ще раз» під нижнє меню телефона.
+    if (!ctx.mine || !ctx.playing) {
+      if (el) { el.remove(); st.touch = -1; st.pid = null; }
       return;
     }
     if (!el) {
@@ -454,11 +455,17 @@
     if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
     const head = document.querySelector('header');
-    const top = head ? head.getBoundingClientRect().bottom : 0;
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
     const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    if (a.top >= top && b.bottom <= innerHeight - tabs) return;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
+    if (Math.abs(dy) < 2) return;
     const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollBy({ top: a.top - top - 4, behavior: calm ? 'auto' : 'smooth' });
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -523,14 +530,13 @@
     seatClass: ['x', 'o', 'c', 'd', 'bb', 'bp'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} бігати · {a} бахнути бомбу (будь-яка кнопка)' },
     news: {
-      v: '2026-09-24',
-      title: 'Бомбер: тепер до шести за столом',
+      v: '2026-09-28',
+      title: 'Бомбер: керування слухняніше',
       items: [
-        '👥 За столом 2–6 бомберів: п’ятий і шостий стартують посередині верхнього й нижнього краю',
-        '🔢 На кожному бомбері номер місця, над своїм — стрілочка, а на відліку ще й «ти»',
-        '💨 Підірваний бомбер розлітається хмаркою, а хто взяв раунд — написано просто на полі',
-        '⏱ Над полем годинник раунду: дві хвилини без переможця — нічия, тепер це видно заздалегідь',
-        '🔍 На великому моніторі поле більше й чіткіше, на телефоні рядок гравців компактніший',
+        '🎮 Затиснув →, додав ↑ і відпустив ↑ — бомбер знову біжить праворуч, а не стає; Alt+Tab більше не лишає його бігти самого',
+        '📱 На телефоні з початком партії поле й хрестовина стають в екран разом, а в лобі хрестовина не заважає',
+        '🔍 На ноутбуці й Деці поле більше, а годинник раунду — знову маленький чіп, а не смуга на всю ширину',
+        '🧹 Бомбери більше не смикаються на мить, коли хтось сідає за інший стіл',
       ],
     },
 
