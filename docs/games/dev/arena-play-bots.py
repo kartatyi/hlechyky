@@ -67,8 +67,16 @@ class Bot:
         await self.input(action, payload)
 
     async def reader(self):
+        t0 = time.time()
         try:
             while True:
+                if self.idx == 1 and self.a.stall and not self.plan.get("stalled"):
+                    secs, at = (float(v) for v in self.a.stall.split(":"))
+                    if time.time() - t0 >= at:
+                        # «повільний телефон»: бот перестає читати сокет — чи не гальмує це розсилку всім?
+                        self.plan["stalled"] = True
+                        print(f"[{self.nick}] не читаю {secs:.0f} с", flush=True)
+                        time.sleep(secs)
                 data = await self.ws.recv(decode=False)
                 for rec in data.split(RS):
                     if not rec or not rec.startswith(b'{"type":1'):
@@ -227,9 +235,10 @@ class Bot:
             if (px == cx or py == cy) and clear(cx, cy, px, py):
                 d = (0 if px > cx else 2) if py == cy else (1 if py > cy else 3)
                 if me.get("d") != d:
+                    # розворот на місці: коротке натискання. Не спимо в читачі кадрів — повільний читач
+                    # гальмує розсилку сервера всім (Broadcaster: «розсилка frame не вклалась у дедлайн»)
                     await self.want("move", {"dir": d}, d)
-                    await asyncio.sleep(0.03)
-                    await self.want("move", {"dir": -1}, -1)
+                    asyncio.create_task(self.release_later(0.03))
                 elif me.get("reload", 0) == 0:
                     await self.input("fire")
                 return
@@ -344,8 +353,7 @@ class Bot:
         if ph == "aim" and self.plan.get("key") != key:
             self.plan["key"] = key
             if self.rng.random() < 0.06:
-                await asyncio.sleep(self.rng.uniform(0.3, 1.2))
-                await self.input("shoot")
+                asyncio.create_task(self.later(self.rng.uniform(0.3, 1.2), "shoot"))   # зрідка поспішає
         if ph == "fire" and self.plan.get("fired") != key:
             self.plan["fired"] = key
             asyncio.create_task(self.later(self.rng.uniform(0.18, 0.45), "shoot"))
@@ -364,6 +372,10 @@ class Bot:
             self.plan["fired"] = key
             asyncio.create_task(self.later(self.rng.uniform(0.2, 0.5), "shoot"))
 
+    async def release_later(self, secs):
+        await asyncio.sleep(secs)
+        await self.want("move", {"dir": -1}, -1)
+
     async def later(self, secs, action):
         await asyncio.sleep(secs)
         await self.input(action)
@@ -380,6 +392,7 @@ async def main():
     ap.add_argument("--rematch", action="store_true")
     ap.add_argument("--start", action="store_true", help="бот №1 тисне «Почати», коли всі сіли")
     ap.add_argument("--leave", help="номер_бота:секунда — встати посеред партії")
+    ap.add_argument("--stall", help="секунд:на_якій — бот №1 перестає читати сокет (повільний клієнт)")
     a = ap.parse_args()
     stats = {"frames": 0, "bytes": 0, "max": 0, "finished": 0, "views": 0, "vbytes": 0}
     bots = [Bot(i + 1, a, stats) for i in range(a.n)]
