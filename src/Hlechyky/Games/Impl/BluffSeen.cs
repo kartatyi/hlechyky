@@ -10,7 +10,9 @@ namespace Hlechyky.Games.Impl;
 /// <para>
 /// Одна відмінність: запис (<see cref="Mark"/>) іде не під замком кімнати, а фоном — чергою на пулі потоків, по одному
 /// запису за раз. Позначка ставиться з тика, а тик тримає замок; база там — зайва затримка всім за столом. Читання
-/// (<see cref="LastSeen"/>) — раз на партію, у <c>Start()</c>, як у «Скільки?».
+/// (<see cref="LastSeen"/>) — раз на партію, у <c>Start()</c>, як у «Скільки?». Щоб «Ще раз» за тим самим столом не
+/// обігнав фоновий запис і не повторив щойно бачене, кожен екземпляр ще й пам'ятає свої позначки в пам'яті й домішує
+/// їх до прочитаного з бази (без бази — лише вони: повторів за столом однаково не буде).
 /// </para>
 /// Ніколи не кидає. Без бази, із зайнятою чи покаліченою — мовчить, і питання просто тасуються.
 /// </summary>
@@ -26,6 +28,8 @@ public sealed class BluffSeen(Db? db)
     static Task _tail = Task.CompletedTask;
 
     volatile bool _ready;
+    /// <summary>Позначки цього столу: питання → (ніки, коли). Питань за вечір — десятки, тож не чистимо.</summary>
+    readonly Dictionary<string, (string[] Nicks, DateTimeOffset At)> _mine = new(StringComparer.Ordinal);
 
     /// <summary>Коли допишеться все, що вже стоїть у черзі (для тестів).</summary>
     public static Task Idle
@@ -39,10 +43,10 @@ public sealed class BluffSeen(Db? db)
     public Dictionary<string, DateTimeOffset> LastSeen(IReadOnlyCollection<string> nickKeys)
     {
         var result = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
-        if (db is null || nickKeys.Count == 0) return result;
+        if (nickKeys.Count == 0) return result;
         try
         {
-            db.With(c =>
+            db?.With(c =>
             {
                 Ensure(c);
                 using var cmd = c.CreateCommand();
@@ -62,15 +66,19 @@ public sealed class BluffSeen(Db? db)
         {
             result.Clear();
         }
+        foreach (var (q, (nicks, at)) in _mine)
+            if (nicks.Any(nickKeys.Contains) && (!result.TryGetValue(q, out var was) || was < at)) result[q] = at;
         return result;
     }
 
     /// <summary>Ці гравці щойно побачили це питання. Запис — фоном, у черзі за попередніми.</summary>
     public void Mark(IReadOnlyCollection<string> nickKeys, BluffQuestion question, DateTimeOffset now)
     {
-        if (db is null || nickKeys.Count == 0) return;
+        if (nickKeys.Count == 0) return;
         var keys = nickKeys.ToArray();
         var q = question.Key;
+        _mine[q] = (keys, now);
+        if (db is null) return;
         lock (Gate) _tail = _tail.ContinueWith(_ => Write(keys, q, now), CancellationToken.None,
             TaskContinuationOptions.None, TaskScheduler.Default);
     }

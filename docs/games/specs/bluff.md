@@ -654,7 +654,7 @@ Chrome + троє легких SignalR-ботів, `_tools/loadtest/load.py`), �
 | `src/Hlechyky/Games/Impl/BluffSeen.cs` | пам'ять бачених `bluff_seen` (копія `SkilkySeen`, запис фоном) |
 | `data/bluff/questions.json` | стартовий банк — Додаток А, 16 питань (перевірений банк на ~276 кладуть на етапі виправлень) |
 | `web/games/bluff.js`, `web/games/bluff.css` | клієнт |
-| `tests/Hlechyky.Tests/Games/BluffTests.cs` | 61 тест гри + `BluffPerfTests` (1 перф-тест у `SerialPerf`) |
+| `tests/Hlechyky.Tests/Games/BluffTests.cs` | 62 тести гри + `BluffPerfTests` (1 перф-тест у `SerialPerf`) |
 | `tests/Hlechyky.Tests/Games/BluffTextTests.cs` | 13 тестів перевірки тексту |
 | `docs/games/dev/bluff-bots.py` | легкі SignalR-боти для живої перевірки (див. «Як тестувати») |
 
@@ -688,8 +688,9 @@ Chrome + троє легких SignalR-ботів, `_tools/loadtest/load.py`), �
    тести (≥ 15 питань, один пропуск, ≥ 2 заготовки, дев'ять тем) і повна партія на ньому. У проді сервіс не
    реєструється — гра бере `BluffBank.All`.
 4. **`BluffSeen.Mark` пише фоном** (черга `Task.ContinueWith` на пулі, по одному запису): позначка ставиться з тика, а
-   спільні правила забороняють базу під замком кімнати. `LastSeen` — раз на партію в `Start()`, як у «Скільки?».
-   Для тестів — `BluffSeen.Idle`.
+   спільні правила забороняють базу під замком кімнати. `LastSeen` — раз на партію в `Start()`, як у «Скільки?». Щоб
+   «Ще раз» не обігнав фоновий запис (повний прогін тестів це таки впіймав), екземпляр пам'ятає свої позначки й
+   домішує їх до прочитаного з бази — за тим самим столом повторів нема навіть без бази. Для тестів — `BluffSeen.Idle`.
 5. **`result.left`** (нове поле виду): `true`, коли партія скінчилась нічиєю, бо гравці розійшлись. Клієнт пише
    «🚪 Гравці розійшлись — партію не дограли», а не «ніхто нікого не переграв».
 6. **Відмова після кінця — «Партію зіграно, тисни «Ану ще раз»»**: так кнопка зветься в `main` після «Лад» (злиття
@@ -716,7 +717,7 @@ Chrome + троє легких SignalR-ботів, `_tools/loadtest/load.py`), �
 
 | Що | Бюджет | Вийшло |
 |---|---|---|
-| `Tick()` на 8 гравцях, разом із кімнатою й кадром на зміну | ≤ 0,02 мс (spec), ≤ 0,25 мс (COMMON) | 3000 тиків — 17,4 мс, **≈ 0,006 мс на тик** (найкраща з трьох спроб, 5 партій по 10 питань з усіма ходами) |
+| `Tick()` на 8 гравцях, разом із кімнатою й кадром на зміну | ≤ 0,02 мс (spec), ≤ 0,25 мс (COMMON) | 3000 тиків — 17–20 мс, **≈ 0,006–0,007 мс на тик** (найкраща з трьох спроб, 5 партій по 10 питань з усіма ходами) |
 | алокації тихого тика | 0 | 10 000 тихих тиків — < 256 Б разом (0 на тик; тест) |
 | кадр на 8 гравцях | ≤ 300 Б | **206 Б** |
 | вид у pick/reveal, 8 брехень по 40 знаків | ≤ 2 КБ (spec) | **4,3 КБ** — кирилиця на дроті як `\uXXXX` (6 байт на літеру), самі 8 × 40 літер — 1,9 КБ; межа каркаса 32 КБ |
@@ -728,7 +729,7 @@ Chrome + троє легких SignalR-ботів, `_tools/loadtest/load.py`), �
 
 ### Як тестувати
 
-- Юніт-тести: `dotnet test tests/Hlechyky.Tests -v q -nologo --filter "FullyQualifiedName~Bluff"` — 75 тестів (61 гра +
+- Юніт-тести: `dotnet test tests/Hlechyky.Tests -v q -nologo --filter "FullyQualifiedName~Bluff"` — 76 тестів (62 гра +
   1 перф + 13 тексту). Перф окремо: `--filter "FullyQualifiedName~BluffPerfTests"` (у `ITestOutputHelper` — справжнє число).
 - Сервер із копії збірки на своєму порту (AGENT-COMMON), стіл: `HGames.call('CreateRoom','bluff',{questions:'5',pace:'slow'})`.
 - Боти: `C:/Users/Ya/AppData/Local/Python/pythoncore-3.14-64/python.exe docs/games/dev/bluff-bots.py --port <порт> --room <id>

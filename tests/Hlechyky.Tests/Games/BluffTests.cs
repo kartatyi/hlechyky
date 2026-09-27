@@ -1296,6 +1296,29 @@ public class BluffTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void A_rematch_at_the_same_table_brings_fresh_questions_even_before_the_database_catches_up()
+    {
+        // Без бази взагалі: стіл пам'ятає свої позначки сам, тож «Ще раз» не повторює щойно бачене, а запис у базу
+        // (фоном) може й не встигнути — перша партія закінчується за мить до рематчу.
+        var h = Table(2, options: new { questions = "5" });
+        var first = new List<string>();
+        while (Playing(h))
+        {
+            first.Add(V(h).GetProperty("text").GetString()!);
+            NextQuestion(h);
+        }
+        Assert.True(h.Rematch().Ok);
+        var second = new List<string>();
+        while (Playing(h))
+        {
+            second.Add(V(h).GetProperty("text").GetString()!);
+            NextQuestion(h);
+        }
+        Assert.Equal(5, second.Count);
+        Assert.Empty(first.Intersect(second));
+    }
+
+    [Fact]
     public void Fox_and_nose_achievements_are_requested_once_and_only_when_earned()
     {
         var h = Table(3, options: new { questions = "5" });
