@@ -243,7 +243,7 @@ public sealed partial class Clicker : Game
     /// весь світ» (docs/games/specs/clicker-v10.md §12) і подарунок; хто пропустив «v9.2» (звання округи) чи «v9.1»
     /// (клейма після тисячі), тому клієнт допише й ті рядки (вид шле newsSeen), а подарунок v9.2 дасть TakeGift.
     /// </summary>
-    public const string NewsVersion = "v10";
+    public const string NewsVersion = "v11";
 
     // ---------- розгін кола ----------
 
@@ -1821,11 +1821,24 @@ public sealed partial class Clicker : Game
         _news = NewsVersion;
         // У новинах v10 уже пояснено гривню: окреме вікно-церемонію тому, хто вище порога, не показуємо.
         _coinSeen = Math.Max(_coinSeen, CoinLevel);
-        // Подарунки: округи (v9.2 — для тих, хто його пропустив) і десятого оновлення — кожен раз на гончаря.
-        var old = TakeGift();
-        var now = TakeGiftV10();
-        if (old is null) return now ?? ActResult.Done;
-        return now is null ? old : ActResult.Accept(old.Message + " · " + now.Message);
+        // Подарунки: округи (v9.2), десятого й одинадцятого оновлень — кожен раз на гончаря; хто пропустив старі,
+        // забирає їх разом із новим.
+        var got = new[] { TakeGift(), TakeGiftV10(), TakeGiftV11() }.Where(x => x is not null).Select(x => x!.Message).ToList();
+        return got.Count == 0 ? ActResult.Done : ActResult.Accept(string.Join(" · ", got));
+    }
+
+    /// <summary>Подарунок одинадцятого оновлення «Толока»: три години «без тебе» й двадцять в'язок соломи.</summary>
+    public const string GiftV11Key = "v11";
+    public const int GiftV11Minutes = 180, GiftV11Straw = 20;
+
+    ActResult? TakeGiftV11()
+    {
+        if (_gifts.Contains(GiftV11Key)) return null;
+        _gifts.Add(GiftV11Key);
+        var gain = TreatGain(GiftV11Minutes);
+        Add(gain);
+        StrawAdd(GiftV11Straw);
+        return ActResult.Accept($"🎁 Подарунок «Толока»: +{PotsShort(gain)} і {GiftV11Straw} в'язок соломи");
     }
 
     /// <summary>Подарунок десятого оновлення: чотири години власного «без тебе» глеками одразу.</summary>

@@ -572,12 +572,13 @@ public class ClickerV10Tests
     {
         var h = Wheel();
         Levels(h, ("sich", 20));
-        Patch(h, s => { s["news"] = "v9.2"; s["total"] = 5e21; s["titles"]!["gifts"] = new JsonArray("v9.2"); });
-        Assert.Equal("v10", View(h).GetProperty("news").GetString());
+        // v11 уже видав свій подарунок (щоб тут міряти лише чотири години v10); новини тепер — «v11».
+        Patch(h, s => { s["news"] = "v9.2"; s["total"] = 5e21; s["titles"]!["gifts"] = new JsonArray("v9.2", "v11"); });
+        Assert.Equal(Clicker.NewsVersion, View(h).GetProperty("news").GetString());
         Assert.Equal("v9.2", View(h).GetProperty("newsSeen").GetString());
         var pots = Num(h, "pots");
         var passive = Num(h, "baseSecond");
-        var r = Act(h, "news", new { v = "v10" });
+        var r = Act(h, "news", new { v = Clicker.NewsVersion });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("чотири години", r.Message);
         Assert.Equal(pots + passive * 4 * 3600, Num(h, "pots"), Math.Max(10, passive * 60));
@@ -595,10 +596,11 @@ public class ClickerV10Tests
         var h = Wheel();
         Levels(h, ("sich", 20));
         Patch(h, s => { s["news"] = "v9.1"; s["titles"]!["gifts"] = new JsonArray(); });
-        var r = Act(h, "news", new { v = "v10" });
+        var r = Act(h, "news", new { v = Clicker.NewsVersion });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("Подарунок округи", r.Message);
         Assert.Contains("Глек на весь світ", r.Message);
+        Assert.Contains("Толока", r.Message);
     }
 
     // ---------- ачівки щаблів ----------

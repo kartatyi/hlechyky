@@ -57,7 +57,7 @@
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
-  const NEWS_VERSION = 'v10';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const NEWS_VERSION = 'v11';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   const PV = 10;                          // версія протоколу (Clicker.ProtocolVersion): ми вміємо доповнювати худий вид
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
@@ -1478,10 +1478,14 @@
         + '<i class="clk-ubar"><i></i></i>'
         + '</button>';
     }).join('');
+    // Гончарі світу (v11): щабель відмикає будова Толоки, а не попередній рівень.
+    const gate = teaser && st.shopCat && st.shopCat.gates && st.shopCat.gates[teaser];
     const more = teaser
       ? '<div class="clk-teaser muted small">' + (H.api.upIcon ? '<span class="clk-uico locked">' + H.api.upIcon(teaser) + '</span>' : '')
-        + 'Далі на драбині ще є верстати: наступний відкриється після першого рівня «'
-        + esc(ups[prevIdle(ups, teaser)].name) + '»</div>'
+        + (gate && ups[prevIdle(ups, teaser)].level > 0
+          ? '⚓ «' + esc(ups[teaser].name || teaser) + '» відкриє будова Толоки «' + esc(gate.name) + '» — вкладка «🤝 Село»'
+          : 'Далі на драбині ще є верстати: наступний відкриється після першого рівня «' + esc(ups[prevIdle(ups, teaser)].name) + '»')
+        + '</div>'
       : '';
     if (swap(st.shop, cards + more)) {
       st.buys = [...st.shop.querySelectorAll('[data-buy]')];
@@ -1586,11 +1590,33 @@
       + block('Дідівські секрети', 'друге коло — те, що дід тримав у скрині', ring(2))
       + block('Прадідівські секрети', 'третє коло — на мільйони клейм, для тих, хто пройшов усе', third)
       + '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: він лишається, хоч витрать усі.</div>';
-    if (swap(st.fire._static, head + secrets)) {
+    if (swap(st.fire._static, head + secrets + relics(st, esc))) {
       st.secretBtns = [...st.fire._static.querySelectorAll('[data-secret]')];
       for (const b of st.secretBtns) b.onclick = () => order(st, 'secret', { key: b.dataset.secret });
+      for (const b of st.fire._static.querySelectorAll('[data-relic]')) b.onclick = () => order(st, 'relic', { key: b.dataset.relic });
     }
     st.slowAt = 0;
+  }
+
+  /// Скарбниця роду (v11 §4): реліквії з рівнями за клейма. Кнопка — «наступний рівень за N клейм»; що дає — з
+  /// каталогу магазину (крок і межа), сума зараз — з виду.
+  const RELIC_ICON = { basket3: '🧺', cat3: '🐈', fiddle: '🎻', towel: '🌾', ember3: '🔥', seal2: '🏛', hands: '🧑‍🎓', toloka: '🏗' };
+  function relics(st, esc) {
+    const list = st.relicList;
+    const cat = st.shopCat && st.shopCat.relics;
+    if (!list || !cat) return '';
+    const pct = (x) => dec(Math.round(x * 1000) / 10);
+    return '<div class="clk-sub">🗝 Скарбниця роду<span class="muted small"> · реліквії за клейма: рівні без стелі, кожен утричі дорожчий</span></div>'
+      + '<div class="clk-secrets clk-relics">' + list.map((r) => {
+        const c = cat.find((x) => x.key === r.key);
+        if (!c) return '';
+        const capped = c.cap > 0 && r.sum >= c.cap - 1e-9;
+        return '<button type="button" class="clk-secret clk-relic' + (r.level ? ' owned' : '') + '" data-relic="' + esc(r.key) + '"'
+          + (!st.mine || !r.can || capped ? ' disabled' : '') + '>'
+          + '<b>' + (RELIC_ICON[r.key] || '🗝') + ' ' + esc(c.name) + (r.level ? ' · рівень ' + r.level : '') + '</b>'
+          + '<span class="muted small">' + esc(c.desc) + (r.level ? ' · зараз ' + pct(r.sum) + ' %' : '') + '</span>'
+          + '<span class="clk-price stamp">' + (capped ? '✓ на межі' : '🔖 ' + count(r.price)) + '</span></button>';
+      }).join('') + '</div>';
   }
 
   /// Наука майстра у вкладці Клейма: від кого вчимось, скільки в нього клейм і коли наука знову готова. Хто сам
@@ -1949,7 +1975,20 @@
   /// сервер каже, що гончар бачив востаннє (view.newsSeen), а подарунок v9.2 дасть сам, якщо його ще не забрано.
   const NEWS = {
     title: '✨ Що нового в Гончарному колі',
-    lead: 'Оновлення «Глек на весь світ»: після Січі гончарня виходить у світ.',
+    lead: 'Оновлення «Толока»: усім селом будуємо Опішню — а вона відчиняє двері гончарям усього світу.',
+    lines: [
+      ['🏗', '<b>Толока.</b> Дванадцять будов на майдані — від криниці з журавлем до Глека на майдані. Етап закладаєш глеками й виробами з горна, а далі він будується годинами — і ніякий множник цього не пришвидшить. Мала толока — з гривні, велика — з червоного золотого. Кожна будова — +5 % до всього і своя вічна пільга.'],
+      ['🤝', '<b>Друзі на толоці.</b> Піднеси виріб другові з цеху — його етап будується на 15 % швидше (до трьох друзів), а тобі — гостинець.'],
+      ['🏯', '<b>Гончарі світу.</b> Пристань, музей, інститут, зала й фестиваль відчиняють шість нових щаблів: Цзиндечжень, Ізнік, Делфт, Майсен, Севр і раку. Кожен привозить свій розпис — альбом росте до п\'ятнадцяти стовпчиків, а все, що вже зібрано, лишається зібраним.'],
+      ['🗝', '<b>Скарбниця роду.</b> Клеймам нарешті є куди йти: вісім реліквій з рівнями без стелі — полиця, кіт, скрипка, рушник, жар, печатка, руки й толока.'],
+      ['🎉', '<b>Фестиваль.</b> Коли збудуєш фестивальну сцену — раз на добу година ×2 до всього.'],
+      ['🎁', '<b>Подарунок:</b> три години твого «без тебе» і двадцять в\'язок соломи.'],
+    ],
+    ok: 'Забрати подарунок',
+  };
+  /// «v10» — для тих, хто пропустив і його.
+  const NEWS_10 = {
+    lead: 'А ще — з минулого оновлення «Глек на весь світ»:',
     lines: [
       ['🌍', '<b>Дванадцять нових щаблів.</b> Від Батуринської кахельні й Корецької порцеляни — через Одеський порт, кругосвітнє плавання, пароплав за океан і Всесвітню виставку в Парижі — до Опішні, гончарної столиці світу. Кожен щабель видно на сцені.'],
       ['₴', '<b>Гривні замість «скстлн».</b> Від квадрильйона глеків великі суми рахуються в гривнях: 1 ₴ = 1 квадрильйон глеків. Гаманець той самий, просто без зайвих нулів. А далі будуть і червоні золоті.'],
@@ -1959,7 +1998,6 @@
       ['⚡', '<b>Легше й рівніше.</b> Коло більше не смикається на айфоні, на ПК стіл уміщається в екран, а гра менше навантажує комп\'ютер.'],
       ['🎁', '<b>Подарунок:</b> чотири години твого «без тебе» глеками одразу.'],
     ],
-    ok: 'Забрати подарунок',
   };
   /// «v9.2» — для тих, хто його пропустив.
   const NEWS_92 = {
@@ -2032,7 +2070,9 @@
     // Хто пропустив «v9.2» — ті рядки; хто й «v9.1» — ще й ті (newsSeen — остання версія, яку гончар бачив).
     const seen = st.newsSeen || '';
     const block = (n) => '<p class="muted small">' + n.lead + '</p><ul>' + n.lines.map(li).join('') + '</ul>';
-    const old = (seen !== 'v9.2' ? block(NEWS_92) : '') + (seen && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : '');
+    // v11: хто бачив v10 — лише нове; хто ні — ще й v10, а далі ланцюжок як був.
+    const old = seen === 'v10' ? '' : block(NEWS_10) + (seen !== 'v9.2' ? block(NEWS_92) : '')
+      + (seen && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : '');
     const html = '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
       + NEWS.lines.map(li).join('') + '</ul>' + old
       + '<button type="button" class="primary clk-news-ok">' + NEWS.ok + '</button></div>';
@@ -2754,6 +2794,8 @@
         st.marksAll = v.marksAll || 0;
         st.styleList = v.styles || [];
         st.secretList = v.secrets || [];
+        // Скарбниця роду (v11): null — ще не відкрилась; тексти — у каталозі магазину.
+        st.relicList = v.relics || null;
         st.wear = v.wear || '';
         st.stamps = v.stamps || 0;
         st.stampsFree = v.stampsFree || 0;
