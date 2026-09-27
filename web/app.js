@@ -349,16 +349,20 @@
     playState = 'idle';
     setPlayUi();
   }
-  $('playBtn').onclick = async () => {
-    if (playState !== 'idle') { stopAudio(); return; }
+  // auto — після «Оновити» на плашці (resumeAudio): жесту на цій сторінці ще не було, і браузер може не дати звуку.
+  async function startAudio(auto) {
     const url = state?.streamUrl || '';
     if (!url) { toast('Халепа: адреса потоку не налаштована', 'err'); return; }
     playState = 'connecting';
     setPlayUi();
     audio.src = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
     try { await audio.play(); }
-    catch (e) { playState = 'idle'; setPlayUi(); toast('Халепа: потік не врубився — ' + e.message, 'err'); }
-  };
+    catch (e) {
+      if (auto) { stopAudio(); toast('Сайт оновлено. Сам звук браузер не врубив — тисни «▶ Врубити»'); return; }
+      playState = 'idle'; setPlayUi(); toast('Халепа: потік не врубився — ' + e.message, 'err');
+    }
+  }
+  $('playBtn').onclick = () => { if (playState !== 'idle') stopAudio(); else startAudio(false); };
   audio.addEventListener('playing', () => { playState = 'live'; setPlayUi(); updateMediaSession(); tellListening(true); });
   audio.addEventListener('pause', () => tellListening(false));
   audio.addEventListener('waiting', () => { if (playState === 'live') { playState = 'connecting'; setPlayUi(); } });
@@ -3238,11 +3242,15 @@
   $('helloGo').onclick = () => askNick(true);
 
   // ---------- realtime ----------
+  // Сервер перезапускається з кожним деплоєм, а телефон у кишені буває без мережі й довше. Тож пробуємо, поки не
+  // вийде (типове — чотири спроби за 42 с), а не здаємось із «онови сторінку»: для того, хто слухає, F5 — це тиша.
+  const RETRY_MS = [0, 1000, 2000, 3000, 5000];
+  const retryIn = (r) => (r.elapsedMilliseconds > 120000 ? 10000 : RETRY_MS[Math.min(r.previousRetryCount, RETRY_MS.length - 1)]);
   function connect() {
     stopPreview();
     conn = new signalR.HubConnectionBuilder()
       .withUrl('/hub?nick=' + encodeURIComponent(me.nick))
-      .withAutomaticReconnect()
+      .withAutomaticReconnect({ nextRetryDelayInMilliseconds: retryIn })
       .build();
     conn.on('state', (s) => { state = s; render(); });
     conn.on('chat', (m) => {
@@ -3320,15 +3328,20 @@
         if (tagged) toast(`@ ${l.nick} гукає тебе за столом: ${l.text}`.slice(0, 140));
       }
     });
-    conn.onreconnected(() => {
+    // Знову на зв'язку — після реконекту чи після того, як з'єднання довелось стартувати наново.
+    const resync = () => {
       conn.invoke('SetNick', me.nick).catch(() => {});
       HLavka.loadLooks();            // поки зв'язку не було, хтось міг перевдягтись
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       HGames.reconnected();
+      checkFront(true);              // зв'язок рветься здебільшого через деплой — глянути, що змінилось на сайті
       toast('Є! Знову на зв\'язку', 'ok');
-    });
+    };
+    conn.onreconnected(resync);
     conn.onreconnecting(() => toast('Ой-йой, зв\'язок зник — підключаюсь…', 'wait'));
-    conn.onclose(() => toast('Ой-йой: зв\'язок із сервером втрачено — онови сторінку', 'err'));
+    // Автоповтор здається лише в рідкісних випадках (сервер закрив з'єднання назовсім) — тоді стартуємо його самі.
+    const restart = () => conn.start().then(resync).catch(() => setTimeout(restart, 5000));
+    conn.onclose(() => { toast('Ой-йой, зв\'язок урвався — підключаюсь наново…', 'wait'); setTimeout(restart, 2000); });
     conn.start().then(() => {
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       // Перші 'rooms' прилітають ще до того, як start() віддасть 'Connected', тож підписки на
@@ -3336,6 +3349,63 @@
       HGames.reconnected();
       if (route === 'lib') { libShown = libTab; loadLib(); }
     }).catch((e) => { toast('Халепа: не з\'єдналось — ' + e.message + '. Пробую ще раз', 'err'); setTimeout(connect, 4000); });
+  }
+
+  // ---------- оновлення без F5 ----------
+  // web/ віддається наживо, тож після деплою ця вкладка живе зі старим кодом, а F5 рве музику. Сервер каже відбиток
+  // кожного файлу (/api/front, Front.cs); перший — те, з чим вкладка стартувала. Змінений модуль гри каркас ігор
+  // підхоплює сам (HGames.refresh), а змінилось інше, що ця сторінка вже вантажила, — плашка «Сайт оновився»:
+  // сторінку людина оновить сама, коли їй зручно. Файли, яких сторінка ще не брала, нам байдужі — прийдуть свіжі.
+  let front = null;              // файл → відбиток, з яким живе ця вкладка
+  let frontAt = 0;
+  function usedFiles() {
+    const out = new Set(['index.html']);
+    for (const el of document.querySelectorAll('script[src], link[rel="stylesheet"][href]')) {
+      const u = new URL(el.src || el.href, location.href);
+      if (u.origin === location.origin) out.add(u.pathname.slice(1));
+    }
+    return out;
+  }
+  // after — після реконекту: навіть коли файли ті самі, каталог ігор на новому сервері міг змінитись.
+  // Звірки йдуть по черзі: реконект і повернення у вкладку разом підміняли б той самий модуль двічі.
+  let frontQueue = Promise.resolve();
+  const checkFront = (after) => (frontQueue = frontQueue.then(() => checkFrontNow(after)).catch((e) => console.warn('[front]', e)));
+  async function checkFrontNow(after) {
+    frontAt = Date.now();
+    let files;
+    try { files = (await api('GET', '/api/front')).files || {}; } catch { return; }
+    if (!front) { front = files; return; }
+    const changed = {};
+    for (const f in files) if (front[f] !== files[f]) changed[f] = files[f];
+    front = files;
+    if (!after && !Object.keys(changed).length) return;
+    const taken = new Set(HGames.refresh(changed));
+    const used = usedFiles();
+    if (Object.keys(changed).some((f) => !taken.has(f) && used.has(f))) $('updBar').hidden = false;
+  }
+  $('updLater').onclick = () => { $('updBar').hidden = true; };
+  $('updGo').onclick = () => {
+    // Грала музика — після перезавантаження спробуємо врубити її самі (resumeAudio нижче).
+    try { if (playState !== 'idle') sessionStorage.setItem('resumeAudio', '1'); } catch { /* приватне вікно */ }
+    location.reload();
+  };
+  // Фронт буває змінено й без перезапуску сервера — тоді звіряємось, коли людина вертається у вкладку, і зрідка просто так.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - frontAt > 60000) checkFront(false); });
+  setInterval(() => { if (!document.hidden) checkFront(false); }, 10 * 60 * 1000);
+
+  // Після «Оновити» на плашці: чекаємо адресу потоку (вона в state) і врубаємо. Chrome дозволяє — жест був на цьому
+  // ж сайті; інший браузер може й не дати, тоді startAudio просто підкаже натиснути кнопку.
+  function resumeAudio() {
+    let want = false;
+    try { want = sessionStorage.getItem('resumeAudio') === '1'; sessionStorage.removeItem('resumeAudio'); } catch { /* приватне вікно */ }
+    if (!want) return;
+    const until = Date.now() + 20000;
+    const tick = () => {
+      if (playState !== 'idle') return;
+      if (state?.streamUrl) startAudio(true);
+      else if (Date.now() < until) setTimeout(tick, 300);
+    };
+    tick();
   }
 
   // ---------- нічний відбій ----------
@@ -3381,6 +3451,8 @@
   });
   setLogFilter(logFilter);
   applyRoute();
+  checkFront(false);   // перший відбиток — те, з чим стартувала вкладка
+  resumeAudio();
   // Хто я — каже сервер: акаунт із куки або гість із приставкою до того, що лежить у localStorage.
   // Тому підключаємось до хабу лише після /api/me: інакше me.nick розійшовся б із тим, як нас звуть за столами.
   api('GET', '/api/me').then((m) => {

@@ -73,6 +73,8 @@
 <noscript><p class="noscript">Глечики — спільне онлайн-радіо, де музику ставлять самі слухачі, а поруч чат та ігри на компанію: Мафія, Своя гра, Вгадай мелодію й інші. Щоб слухати й грати, увімкни JavaScript.</p></noscript>
 <!-- Нічний відбій: бачать лише ті, кого він стосується (app.js, paintNight) -->
 <div id="nightBar" class="nightbar" role="status" hidden><div><span class="nb-moon" aria-hidden="true">🌙</span><span class="nb-text"></span></div></div>
+<!-- Сайт оновився, а ця вкладка ще на старому коді (app.js, checkFront). Сама не перезавантажується: F5 рве музику. -->
+<div id="updBar" class="nightbar updbar" role="status" hidden><div><span class="nb-moon" aria-hidden="true">✨</span><span class="nb-text">Сайт оновився — онови сторінку, коли буде зручно.</span><button id="updGo" class="primary" type="button">Оновити</button><button id="updLater" class="icon ghost" type="button" title="Пізніше" aria-label="Пізніше">✕</button></div></div>
 <!-- Хто ще не назвався, бачить сайт одразу — лише подивитись; а тут одна кнопка, щоб долучитись. -->
 <div id="hello" class="hellobar" role="status" hidden><div>
   <img src="/static/glek.svg" alt="">

@@ -681,6 +681,66 @@
   }
 
   // ---------------------------------------------------------------------------------------------
+  // Оновлення без F5 (app.js, checkFront → HGames.refresh). Каталог перечитуємо — нові ігри з'являються самі.
+  // Змінений модуль гри вантажимо ще раз (?v=відбиток, щоб браузер не взяв старий), а його приховані картки знімаємо:
+  // відкриє стіл — змонтується вже новим модулем. Стіл, що зараз перед очима, не чіпаємо (старе тіло з новим update
+  // не живе) — чекаємо, поки людина з нього піде. Модуль із власними частинами (коло тягне clicker-*.js, своя гра —
+  // svoya-packs.js) так не перезбереш — його, як і каркас, app.js лишає плашці «Сайт оновився».
+  // ---------------------------------------------------------------------------------------------
+
+  const staleMods = new Map();   // файл модуля → { js, css }: нові відбитки, що чекають, поки людина встане з його столу
+
+  const isModuleFile = (f) => catalog.games.some((g) => moduleOf(g) === f);
+  const fileOfRoom = (id) => { const g = views[id] && byId[views[id].room.game]; return g ? moduleOf(g) : null; };
+  const openNow = (f) => shown && view.kind === 'room' && !!cards[view.id] && fileOfRoom(view.id) === f;
+  /// Модуль сам довантажив свої частини: games/<файл>-щось.js, що не є окремим модулем.
+  const hasParts = (f) => [...document.scripts].some((s) => {
+    const m = /^\/games\/([^/]+)\.js$/.exec(new URL(s.src || '', location.href).pathname);
+    return !!m && m[1].startsWith(f + '-') && !isModuleFile(m[1]);
+  });
+
+  function swapCss(f, v) {
+    const l = document.querySelector('link[data-game="' + f + '"]');
+    if (l && v) l.href = '/games/' + f + '.css?v=' + encodeURIComponent(v);
+  }
+  function swapModule(f, ver) {
+    for (const id in cards) if (fileOfRoom(id) === f) dropCard(id);
+    swapCss(f, ver.css);
+    loadedFiles.set(f, loadScript('/games/' + f + '.js?v=' + encodeURIComponent(ver.js)));
+  }
+  function flushStale() {
+    for (const [f, ver] of staleMods) if (!openNow(f)) { staleMods.delete(f); swapModule(f, ver); }
+  }
+
+  /// changed — змінені файли web/ і їхні нові відбитки. Вертає ті, що підхоплено тут.
+  function refreshFront(changed) {
+    const taken = [];
+    const byFile = new Map();
+    for (const path in changed) {
+      const m = /^games\/([^/]+)\.(js|css)$/.exec(path);
+      if (!m || !loadedFiles.has(m[1]) || !isModuleFile(m[1]) || hasParts(m[1])) continue;
+      taken.push(path);
+      const ver = byFile.get(m[1]) || staleMods.get(m[1]) || {};
+      ver[m[2]] = changed[path];
+      byFile.set(m[1], ver);
+    }
+    for (const [f, ver] of byFile) {
+      // Лише стиль — міняємо одразу, навіть на відкритому столі: код той самий, що його чекає.
+      if (!ver.js) swapCss(f, ver.css);
+      else staleMods.set(f, ver);
+    }
+    flushStale();
+    // Каталог наново — могли з'явитись ігри чи нові варіанти в старих. Лише якщо його вже брали.
+    if (names) {
+      const full = !!loading;
+      names = null;
+      loading = null;
+      if (full) ensureCatalog(); else ensureNames().catch(() => { /* назви підтягнуться з наступним 'rooms' */ });
+    }
+    return taken;
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // «Що нового»: модуль гри каже news: { v, title, items }, сервер пам'ятає, яку версію нік бачив
   // (/api/games/news). Вікно — один раз при першому заході на стіл цієї гри; на плитці лобі — «✨ нове».
   // Гість (без збереження на сервері) пам'ятає в localStorage.
@@ -862,6 +922,7 @@
   function renderView() {
     renderViewNow();
     notifyTable();
+    if (staleMods.size) flushStale();   // людина встала з-за столу, чий модуль тим часом оновився
   }
 
   function renderViewNow() {
@@ -1857,6 +1918,10 @@
       c.on('invite', inviteToast);
       loadWallet();          // черепки видно в шапці з будь-якого розділу, тож питаємо їх одразу
     },
+
+    /// Сайт оновився без F5 (app.js, checkFront): changed — { 'games/runner.js': відбиток, … }. Перечитує каталог,
+    /// перевантажує змінені модулі ігор; вертає шляхи, які підхопив сам, — решту app.js віддає плашці.
+    refresh: refreshFront,
 
     /// Після реконекту підписки на сервері вже нема — просимо заново для видимих кімнат (і кажемо, що на екрані).
     reconnected() {
