@@ -144,7 +144,7 @@ public class GeoTests
         h.Tick(1);
         Assert.Equal("guess", Phase(h));
         Assert.Equal(45000, h.View(0).GetProperty("phaseMs").GetInt32());
-        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text == "Оля сіли грати в «Де це?»");
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text == "Оля сідає грати в «Де це?»");
     }
 
     [Fact]
