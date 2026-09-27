@@ -75,7 +75,7 @@
   /// Ремесло, жива хата, горно, альбом, ярмарок і цех живуть в окремих файлах clicker-<id>.js (+ .css): інакше
   /// цей файл виріс би втричі, а паралельні роботи бились би в одному місці. Частина кличе HClicker.part({...}) і
   /// дістає ті самі st, що й ядро, плюс спільний api. Каркас ігор знає лише clicker.js — частини вантажимо самі.
-  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles', 'guests'];
+  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles', 'guests', 'toloka'];
   const H = window.HClicker = window.HClicker || { parts: [], mounted: new Set(), loaded: false };
 
   /// Одна частина впала — решта гри живе далі: помилку в консоль, а не білу картку.
