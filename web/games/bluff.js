@@ -229,11 +229,20 @@
 
     // Щойно відкрита картка (чи правда з поясненням) — у видиму частину екрана: на телефоні й на Deck із вісьмома
     // картками вони лежать під краєм. 'nearest' не смикає сторінку, коли все й так видно.
+    // Прокрутка — у наступному кадрі: там браузер і так рахує розкладку, а update() лишається дешевим.
     if (fresh.length) {
       const i = fresh[fresh.length - 1];
       const target = cards[i] && cards[i].truth && !note.hidden ? note : root.querySelector('.bluff-opts').children[i];
-      if (target) { try { target.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch { /* старий браузер */ } }
+      if (target) requestAnimationFrame(() => reveal(target));
     }
+  }
+
+  /// Показати елемент, лише коли він справді під краєм (з урахуванням смуги плеєра внизу — scroll-margin у CSS).
+  function reveal(el) {
+    if (!el.isConnected) return;
+    const r = el.getBoundingClientRect();
+    if (r.top >= 60 && r.bottom <= innerHeight - 110) return;
+    try { el.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch { /* старий браузер */ }
   }
 
   /// «Чекаємо: Петро» — коли решта вже написала (обрала), а стіл тримають один-три.
