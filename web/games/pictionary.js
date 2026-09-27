@@ -453,11 +453,16 @@
     return new Date((f && f.until) || v.until || 0).getTime();
   }
 
+  /// Стіл ще збирається: вид у гри вже є (фаза «вибір», художника нема), але партії ще нема.
+  const lobby = (ctx) => !!ctx.room && ctx.room.status === 'lobby';
+
   function wordLine(root, ctx, v) {
     const f = fresh(ctx, v);
     const el = root.querySelector('.pcword');
     let html;
-    if (v.phase === 'pick') {
+    if (lobby(ctx)) {
+      html = '';
+    } else if (v.phase === 'pick') {
       html = v.drawer === ctx.seat && ctx.mine
         ? '<span class="muted">Обери слово</span>'
         : '<span class="muted">' + ctx.esc(ctx.nickOf(v.drawer) || 'Художник') + ' обирає слово…</span>';
@@ -571,7 +576,7 @@
     const drawer = ctx.mine && v.drawer === ctx.seat && v.phase === 'draw';
     input.disabled = !can;
     form.querySelector('button').disabled = !can;
-    input.placeholder = can ? 'Тяпни здогадку…'
+    input.placeholder = lobby(ctx) ? 'Партія ще не почалась' : can ? 'Тяпни здогадку…'
       : drawer ? 'Ти малюєш — вгадують інші'
         : guessed.indexOf(ctx.seat) >= 0 && v.phase === 'draw' ? 'Є! Вгадано — чекаємо інших'
           : !ctx.mine ? 'Дивишся збоку' : 'Зараз не вгадують';
@@ -590,7 +595,14 @@
   function overlay(root, ctx, v) {
     const el = root.querySelector('.pcover');
     let html = '';
-    if (v.phase === 'pick' && ctx.mine && v.drawer === ctx.seat && v.choices) {
+    if (lobby(ctx)) {
+      // Раніше тут до старту висіло «Художник обирає слово…» — хоча партії ще нема й художника теж (прохід 28.09).
+      const n = ctx.room && ctx.room.seats ? ctx.room.seats.filter((x) => x.nick).length : 0;
+      html = '<div class="pcbox pcrules"><div class="pctitle">✏️ Піктіонарі</div>'
+        + '<div>Художник малює слово — решта вгадує, пишучи здогадки в поле. Хто вгадав швидше, тому більше очок, '
+        + 'художник бере частку від усіх, хто вгадав. Малюють по черзі.</div>'
+        + '<div class="muted small">' + (n < 2 ? 'Чекаємо, хто підсяде: треба щонайменше двоє' : 'За столом ' + n + ' — господар тисне «Почати»') + '</div></div>';
+    } else if (v.phase === 'pick' && ctx.mine && v.drawer === ctx.seat && v.choices) {
       html = '<div class="pcbox"><div class="pctitle">Що малюватимеш?</div><div class="pcchoices">'
         + v.choices.map((w, i) => '<button type="button" class="primary" data-i="' + i + '">' + ctx.esc(w) + '</button>').join('')
         + '</div></div>';

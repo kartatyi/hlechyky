@@ -906,3 +906,53 @@ public class PozyvniTests
         Assert.NotEqual(captain, h.NickOf(Boss(h, "red")));
     }
 }
+
+/// <summary>
+/// Швидкодія Позивних на дванадцятьох (прохід 28.09): дві команди по шість, капітани підказують, польові показують
+/// пальцем на свої слова, поки партія не скінчиться. Тик, хід і вид — копійчані.
+/// </summary>
+[Collection(SerialPerf.Name)]
+public class PozyvniPerfTests(Xunit.Abstractions.ITestOutputHelper output)
+{
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Twelve_players_a_whole_game_stay_cheap()
+    {
+        var words = new PictionaryWords(Enumerable.Range(0, 40).Select(i => ("animals", "слово" + (char)('а' + i % 30) + (char)('а' + i / 30))));
+        var h = new RoomHarness("pozyvni", options: new { clock = "90" }, seed: 7, services: RoomHarness.WithService(words));
+        foreach (var n in new[] { "Оля", "Петро", "Ганна", "Влад", "Марта", "Богдан", "Софія", "Тарас", "Мар'яна", "Остап", "Іра", "Денис" }) h.Join(n);
+        h.Start();
+        Assert.True(h.Act(0, "go").Ok);
+
+        var ticks = new System.Diagnostics.Stopwatch();
+        var acts = new System.Diagnostics.Stopwatch();
+        int tickCount = 0, actCount = 0;
+        long viewMax = 0;
+        for (var guard = 0; guard < 2000 && h.Room.Status == RoomStatus.Playing; guard++)
+        {
+            var v = h.View(null);
+            var side = v.GetProperty("side").GetString()!;
+            var team = v.GetProperty("teams").GetProperty(side);
+            var boss = team.GetProperty("boss").GetInt32();
+            var field = team.GetProperty("seats").EnumerateArray().Select(e => e.GetInt32()).Where(s => s != boss).ToArray();
+            acts.Start();
+            if (v.GetProperty("phase").GetString() == "clue") h.Act(boss, "clue", new { word = "натяк", count = 2 });
+            else
+            {
+                var key = h.View(boss).GetProperty("key").EnumerateArray().Select(e => e.GetString()).ToArray();
+                var board = v.GetProperty("board");
+                // своє закрите слово, а через раз — перше-ліпше закрите (промахи теж бувають)
+                var card = Enumerable.Range(0, Pozyvni.Cards).First(i => board[i].GetProperty("open").ValueKind == JsonValueKind.Null
+                    && (guard % 3 == 0 || key[i] == side));
+                foreach (var s in field) h.Act(s, "pick", new { i = card });
+            }
+            acts.Stop();
+            actCount++;
+            viewMax = Math.Max(viewMax, System.Text.Encoding.UTF8.GetByteCount(Views.Text(h.Room.Game.View(boss))));
+            ticks.Start(); h.Tick(); ticks.Stop(); tickCount++;
+        }
+        output.WriteLine($"тиків {tickCount}: {ticks.Elapsed.TotalMilliseconds * 1000 / tickCount:F1} мкс на тик; ходів {actCount}: {acts.Elapsed.TotalMilliseconds * 1000 / actCount:F0} мкс на хід разом із видами тесту; вид капітана макс {viewMax} Б");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(ticks.Elapsed.TotalMilliseconds * 1000 / tickCount < 250);
+    }
+}

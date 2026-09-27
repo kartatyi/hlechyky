@@ -65,6 +65,7 @@
   box-shadow: 0 8px 30px rgba(0, 0, 0, .25);
 }
 .pctitle { font-weight: 700; font-size: 1.05em; }
+.pcrules { max-width: 420px; line-height: 1.4; }
 .pcchoices { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .pcchoices button { font-size: 1.05em; padding: 9px 16px; }
 .pcbig { font-size: 1.8em; font-weight: 800; color: var(--accent); }
@@ -119,11 +120,13 @@
 /* ---- альбом партії (оновлення 24.09) ---- */
 .pcalbum { display: flex; flex-direction: column; gap: 8px; }
 .pcalbum[hidden] { display: none; }
-.pcthumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.pcthumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .pcthumbs figure { margin: 0; background: var(--bg2); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
 .pcthumbs img { width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; background: var(--pcpaper); display: block; }
-.pcthumbs figcaption { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; min-width: 0; }
-.pcthumbs figcaption b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* слово — головне в альбомі: цілим рядком, а художник під ним (раніше «соб…» і «мікі …» різались ніком поруч) */
+.pcthumbs figcaption { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pcthumbs figcaption b { overflow-wrap: anywhere; }
+.pcthumbs figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pcthumbs figure { animation: pcin .4s ease-out both; }
 @keyframes pcin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .pcthumbs figure { animation: none; } }
@@ -146,6 +149,10 @@
   .pcsc { padding: 3px 8px; }
   .pcn { flex: 0 1 auto; max-width: 11em; }
   .pcpal { grid-template-columns: repeat(10, minmax(0, 1fr)); max-width: 420px; }
+  /* дев'ять кнопок інструментів — в один рядок і на 360 px: «↶» не падає окремим рядком під пензлі */
+  .pcsz, .pct, .pca { min-width: 32px; padding: 0 4px; }
+  .pcsep { width: 2px; }
+  .pcrow { gap: 3px; }
   .pctop { grid-template-columns: 1fr auto; }
   .pcword { grid-column: 1 / -1; order: 3; }
   /* у стовпці «auto» відсоткова ширина схлопувалась у нуль — таймер на телефоні просто зникав */
