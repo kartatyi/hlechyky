@@ -26,14 +26,17 @@
   const W = 4000, H = 2730;            // сітка мапи — та сама, що GeoMap.W/H на сервері
   const KMAX = 12;
   const MAP_URL = '/games/geo-map.json';
-  const SEAT_COLORS = ['#f4c542', '#7bd389', '#c5763a', '#6fb3e8', '#e88ac0', '#b48cf2', '#f0f0f0', '#ff8a5b', '#5ad1c9', '#c9d96b'];
+  /// Десять місць — десять різних відтінків (жовтий, зелений, помаранчевий, блакитний, рожевий, фіалковий, білий,
+  /// синій, бірюзовий, лаймовий); червоного серед них нема — червоно-біла мішень лише в правди.
+  const SEAT_COLORS = ['#f4c542', '#7bd389', '#e8833a', '#6fb3e8', '#e88ac0', '#b48cf2', '#f0f0f0', '#5c7cfa', '#5ad1c9', '#a3e635'];
   const SEAT_CLASS = SEAT_COLORS.map((_, i) => 'geo-s' + i);
   const DRAG_PX = 6;
   /// Стільки мс мапа має постояти, щоб статичний шар перемалювати начисто; доти (протяг, колесо, щипок,
   /// підліт) кадр — готовий «атлас» мапи, розтягнутий під масштаб: одна drawImage замість тисяч точок.
   const SETTLE_MS = 140;
   const RULES = 'Фото звідкись з України — тицьни на мапі, де це знято. За кілометр і ближче — 5000 очок, '
-    + 'за 100 км — 2885, за 500 — 313, далі крихти. За кожні 5000 очок партії — 🏺 черепок.';
+    + 'за 100 км — 2885, за 500 — 313, далі крихти. За кожні 5000 очок партії — 🏺 черепок (до 30 на день).';
+  const PLACE = ['перше', 'друге', 'третє', 'четверте', 'п’яте', 'шосте', 'сьоме', 'восьме', 'дев’яте', 'десяте'];
 
   const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -148,7 +151,8 @@
       root._geo = {
         root, ctx, map: null,
         cv: null, g: null, stat: null, sg: null, dpr: 1, cw: 0, ch: 0,
-        s0: 0, k: 1, ox: 0, oy: 0, staticDirty: true, statKey: '', viewT: 0, atlas: null, atlasKey: '', hints: '', redTimer: 0,
+        s0: 0, k: 1, ox: 0, oy: 0, staticDirty: true, sv: { k: -1, ox: 0, oy: 0, cw: 0, ch: 0, dpr: 0, hints: '' },
+        viewT: 0, atlas: null, atlasKey: '', hints: '', redTimer: 0, scrolled: '', podFocus: '',
         raf: 0, fly: null, fit: null, drop: 0, revT0: 0, revKey: '', lastKey: '', lastPhase: '',
         pin: null, pinRound: -1, readyRound: -1, nextRound: -1,
         cur: null, keys: { l: 0, r: 0, u: 0, d: 0 }, keyT0: 0, lastT: 0,
@@ -188,7 +192,9 @@
   // ---------------------------------------------------------------------------------------------
 
   const sc = (st) => st.s0 * st.k;
-  const toScreen = (st, x, y) => [x * sc(st) + st.ox, y * sc(st) + st.oy];
+  /// Екранні x і y окремо — у кадрі rAF без масивів на кожну шпильку.
+  const sx = (st, x) => x * st.s0 * st.k + st.ox;
+  const sy = (st, y) => y * st.s0 * st.k + st.oy;
   const toMap = (st, x, y) => [(x - st.ox) / sc(st), (y - st.oy) / sc(st)];
 
   /// Мапа не тікає з рамки: менша за рамку — по центру, більша — з полем моря до чверті рамки за краєм
@@ -228,8 +234,8 @@
   }
 
   function zoomKey(st, f) {
-    const c = st.cur ? toScreen(st, st.cur.x, st.cur.y) : [st.cw / 2, st.ch / 2];
-    zoomAt(st, c[0], c[1], f);
+    if (st.cur) zoomAt(st, sx(st, st.cur.x), sy(st, st.cur.y), f);
+    else zoomAt(st, st.cw / 2, st.ch / 2, f);
   }
 
   /// Вмістити всі точки (одиниці сітки) з полем 15–17 % — одразу, без польоту.
@@ -335,7 +341,7 @@
           g.font = 'italic ' + (small ? 10 : 11) + 'px system-ui, sans-serif';
           g.textAlign = 'center';
           for (const r of m.riverLabels) {
-            const [x, y] = toScreen(st, r.x, r.y);
+            const x = sx(st, r.x), y = sy(st, r.y);
             if (x < -60 || y < -20 || x > st.cw + 60 || y > st.ch + 20) continue;
             label(g, r.name, x, y, c.river, c.bg);
           }
@@ -343,7 +349,7 @@
         g.textAlign = 'left';
         for (const city of m.cities) {
           if (city.lvl > 1 && st.k < 1.8) continue;
-          const [x, y] = toScreen(st, city.x, city.y);
+          const x = sx(st, city.x), y = sy(st, city.y);
           if (x < -90 || y < -20 || x > st.cw + 10 || y > st.ch + 20) continue;
           g.fillStyle = c.text;
           g.beginPath();
@@ -410,19 +416,21 @@
     g.drawImage(pinSprite(st, seat), x - PIN_W / 2, y - PIN_TIP - (lift || 0), PIN_W, PIN_H);
   }
 
-  function drawStar(g, x, y, r, fill, stroke) {
-    g.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + i * Math.PI / 5;
-      const rr = i % 2 ? r * 0.45 : r;
-      if (i) g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); else g.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
-    }
-    g.closePath();
-    g.fillStyle = fill;
-    g.fill();
-    g.lineWidth = 1.5;
-    g.strokeStyle = stroke;
+  const TAU = Math.PI * 2;
+  /// Правда — червоно-біла мішень з темним обідком і білим ореолом: форма й кольори, яких нема в жодної шпильки
+  /// (шпильки — краплі кольору місця з номером), тож біля жовтої «1» її не сплутати.
+  function drawTruth(g, x, y, r) {
+    g.fillStyle = 'rgba(255,255,255,.22)';
+    g.beginPath(); g.arc(x, y, r * 1.9, 0, TAU); g.fill();
+    g.fillStyle = '#e53935';
+    g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+    g.lineWidth = 2;
+    g.strokeStyle = 'rgba(10,20,15,.9)';
     g.stroke();
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(x, y, r * 0.66, 0, TAU); g.fill();
+    g.fillStyle = '#e53935';
+    g.beginPath(); g.arc(x, y, r * 0.34, 0, TAU); g.fill();
   }
 
   function crosshair(g, x, y) {
@@ -445,7 +453,16 @@
     g.closePath();
   }
 
-  const viewKey = (st, hints) => st.k + ':' + st.ox + ':' + st.oy + ':' + st.cw + ':' + st.ch + ':' + st.dpr + ':' + hints;
+  /// Чи статичний шар намальовано саме для цього виду (масштаб, зсув, розмір, підказки) — числами, без склеювання
+  /// рядка в кожному кадрі.
+  function sameView(st, hints) {
+    const v = st.sv;
+    return v.k === st.k && v.ox === st.ox && v.oy === st.oy && v.cw === st.cw && v.ch === st.ch && v.dpr === st.dpr && v.hints === hints;
+  }
+  function markView(st, hints) {
+    const v = st.sv;
+    v.k = st.k; v.ox = st.ox; v.oy = st.oy; v.cw = st.cw; v.ch = st.ch; v.dpr = st.dpr; v.hints = hints;
+  }
 
   /// Атлас: уся мапа (без підписів) один раз у канвас удвічі щільніший за рамку при k = 1. Під час руху
   /// кадр — лише розтягнутий атлас; лінії в ньому товщі, щоб при k = 1 виглядати як начисто.
@@ -490,11 +507,10 @@
     const phase = phaseOf(ctx);
     const hints = v.hints || 'full';
     const g = st.g;
-    const key = viewKey(st, hints);
     g.setTransform(1, 0, 0, 1, 0, 0);
-    if (st.staticDirty || st.statKey !== key) {
+    if (st.staticDirty || !sameView(st, hints)) {
       if (st.map && !st.staticDirty && (st.fly || now - st.viewT < SETTLE_MS)) preview(st, g, hints);
-      else { renderStatic(st, hints); st.statKey = key; g.drawImage(st.stat, 0, 0); }
+      else { renderStatic(st, hints); markView(st, hints); g.drawImage(st.stat, 0, 0); }
     } else g.drawImage(st.stat, 0, 0);
     g.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
 
@@ -502,18 +518,21 @@
     if (rv) {
       const t = now - st.revT0;
       const still = reduced();
-      const [tx, ty] = toScreen(st, rv.x, rv.y);
-      const rows = (rv.rows || []).filter((r) => r.x != null);
-      // лінії від шпильок до правди — від найближчого, кроком 80 мс (суцільні: пунктир у програмному
-      // растрі коштував пів мілісекунди на кадр)
+      const tx = sx(st, rv.x), ty = sy(st, rv.y);
+      const rows = rv.rows || [];
+      // Порядок шарів: лінії → мішень правди → чужі шпильки → плашки км → своя шпилька. Мішень під шпильками:
+      // найкращий момент раунду — своя шпилька біля цілі — не має ховатись під правдою.
+      // Лінії від шпильок до правди — від найближчого, кроком 80 мс (суцільні: пунктир у програмному
+      // растрі коштував пів мілісекунди на кадр).
       g.lineCap = 'round';
       g.lineWidth = 2;
       g.globalAlpha = 0.85;
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
+        if (r.x == null) continue;
         const p = still ? 1 : easeOut(clamp((t - 300 - i * 80) / 500, 0, 1));
         if (p <= 0) continue;
-        const [px, py] = toScreen(st, r.x, r.y);
+        const px = sx(st, r.x), py = sy(st, r.y);
         g.strokeStyle = st.colors[r.seat % 10];
         g.beginPath();
         g.moveTo(px, py);
@@ -521,22 +540,33 @@
         g.stroke();
       }
       g.globalAlpha = 1;
-      for (const r of rows) {
-        const [px, py] = toScreen(st, r.x, r.y);
-        drawPin(g, st, px, py, r.seat, 0);
-      }
-      // підписи кілометрів на плашках — коли лінія домальована; ті, що налізли б на вже намальовані, пропускаємо
-      g.font = '600 11px system-ui, sans-serif';
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
+      const grow = still ? 1 : clamp(t / 300, 0, 1);
+      drawTruth(g, tx, ty, 11 * (grow < 1 ? 0.2 + easeOut(grow) * 0.95 : 1));
+      const me = ctx.mine ? ctx.seat : -1;
+      let mine = null;
       const taken = st.labels;
       taken.length = 0;
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
+        if (r.x == null) continue;
+        const px = sx(st, r.x), py = sy(st, r.y);
+        // голівка шпильки зайнята — плашку км на неї не кладемо
+        taken.push(px, py - 17, 22, 0);
+        if (r.seat === me) { mine = r; continue; }
+        drawPin(g, st, px, py, r.seat, 0);
+      }
+      // підписи кілометрів на плашках — коли лінія домальована; ті, що налізли б на вже намальовані плашки чи
+      // голівки шпильок, пропускаємо
+      g.font = '600 11px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (r.x == null || r.km == null) continue;
         const p = still ? 1 : clamp((t - 800 - i * 80) / 200, 0, 1);
-        if (p <= 0 || r.km == null) continue;
-        const [px, py] = toScreen(st, r.x, r.y);
-        if (Math.hypot(tx - px, ty - py) < 46) continue;    // впритул до зірки плашка лише заважала б
+        if (p <= 0) continue;
+        const px = sx(st, r.x), py = sy(st, r.y);
+        if (Math.hypot(tx - px, ty - py) < 46) continue;    // впритул до мішені плашка лише заважала б
         const text = km(r.km);
         const mx = (px + tx) / 2, my = (py + ty) / 2;
         const w = g.measureText(text).width + 10;
@@ -553,21 +583,23 @@
         g.fillText(text, mx, my + 0.5);
         g.globalAlpha = 1;
       }
-      const grow = still ? 1 : clamp(t / 300, 0, 1);
-      const r = 12 * (grow < 1 ? 0.2 + easeOut(grow) * 0.95 : 1);
-      g.fillStyle = 'rgba(244,197,66,.2)';
-      g.beginPath();
-      g.arc(tx, ty, r * 1.9, 0, Math.PI * 2);
-      g.fill();
-      drawStar(g, tx, ty, r, c.accent, c.ink);
+      // своя — останньою, поверх усього, з обідком навколо голівки: на десятьох її не треба шукати
+      if (mine) {
+        const px = sx(st, mine.x), py = sy(st, mine.y);
+        g.lineWidth = 2.5;
+        g.strokeStyle = c.text;
+        g.beginPath();
+        g.arc(px, py - 17, 12.5, 0, TAU);
+        g.stroke();
+        drawPin(g, st, px, py, mine.seat, 0);
+      }
     } else if (phase === 'guess' && ctx.mine && st.pin && st.pinRound === v.round) {
-      const [px, py] = toScreen(st, st.pin.x, st.pin.y);
       const p = reduced() ? 1 : clamp((now - st.drop) / 250, 0, 1);
-      drawPin(g, st, px, py, ctx.seat || 0, (1 - easeOut(p)) * 18);
+      drawPin(g, st, sx(st, st.pin.x), sy(st, st.pin.y), ctx.seat || 0, (1 - easeOut(p)) * 18);
     }
 
     if (st.cur && canPin(st, ctx)) {
-      const [x, y] = toScreen(st, st.cur.x, st.cur.y);
+      const x = sx(st, st.cur.x), y = sy(st, st.cur.y);
       g.lineWidth = 3.5;
       g.strokeStyle = 'rgba(0,0,0,.7)';
       crosshair(g, x, y);
@@ -597,7 +629,7 @@
     if (st.fly) return true;
     if (st.cur && (st.keys.l || st.keys.r || st.keys.u || st.keys.d)) return true;
     // після руху — ще кадр-другий, доки статичний шар не перемалюється начисто
-    if (st.map && (st.staticDirty || st.statKey !== viewKey(st, v.hints || 'full'))) return true;
+    if (st.map && (st.staticDirty || !sameView(st, v.hints || 'full'))) return true;
     if (reduced()) return false;
     if (phase === 'guess' && now - st.drop < 260) return true;
     if ((phase === 'reveal' || phase === 'done') && v.reveal && now - st.revT0 < 1100 + 80 * (v.reveal.rows || []).length) return true;
@@ -656,20 +688,20 @@
     if (!dx && !dy) return;
     const speed = (now - st.keyT0 < 150 ? 200 : 420) * dt;
     const len = Math.hypot(dx, dy);
-    let [sx, sy] = toScreen(st, st.cur.x, st.cur.y);
-    sx += dx / len * speed;
-    sy += dy / len * speed;
+    let cx = sx(st, st.cur.x), cy = sy(st, st.cur.y);
+    cx += dx / len * speed;
+    cy += dy / len * speed;
     const m = 14;
     let px = 0, py = 0;
-    if (sx < m) { px = m - sx; sx = m; } else if (sx > st.cw - m) { px = st.cw - m - sx; sx = st.cw - m; }
-    if (sy < m) { py = m - sy; sy = m; } else if (sy > st.ch - m) { py = st.ch - m - sy; sy = st.ch - m; }
+    if (cx < m) { px = m - cx; cx = m; } else if (cx > st.cw - m) { px = st.cw - m - cx; cx = st.cw - m; }
+    if (cy < m) { py = m - cy; cy = m; } else if (cy > st.ch - m) { py = st.ch - m - cy; cy = st.ch - m; }
     if (px || py) {
       const ox = st.ox, oy = st.oy;
       st.ox += px; st.oy += py;
       clampView(st);
       if (st.ox !== ox || st.oy !== oy) st.viewT = now;
     }
-    const [mx, my] = toMap(st, sx, sy);
+    const [mx, my] = toMap(st, cx, cy);
     st.cur.x = clamp(mx, 0, W);
     st.cur.y = clamp(my, 0, H);
   }
@@ -824,8 +856,12 @@
       const isPinned = phase === 'guess' && (pinned.includes(i) || (mine && st.pinRound === v.round));
       const mark = phase === 'guess' ? (isReady ? '✓' : isPinned ? '📍' : '')
         : phase === 'reveal' ? (pts[i] != null ? '+' + pts[i] : '') + (next.includes(i) ? ' →' : '') : '';
-      return '<span class="geochip ' + SEAT_CLASS[i % 10] + (isReady ? ' on' : '') + (mine ? ' me' : '') + '">'
-        + '<i class="geodot"></i>' + ctx.esc(nick(ctx, i)) + (mark ? '<b>' + mark + '</b>' : '') + '</span>';
+      // на вузькій картці (телефон, десятеро) чіп — лише кружок із номером: заповнений — готовий, обведений
+      // товще — поставив; нік — у підказці. Так десять чіпів лягають в один рядок, а мапа — вище згину.
+      return '<span class="geochip ' + SEAT_CLASS[i % 10] + (isReady ? ' on' : '') + (isPinned ? ' pin' : '') + (mine ? ' me' : '')
+        + '" title="' + ctx.esc(nick(ctx, i)) + '">'
+        + '<i class="geodot"></i><i class="geonum">' + (i + 1) + '</i><span class="geonick">' + ctx.esc(nick(ctx, i)) + '</span>'
+        + (mark ? '<b>' + mark + '</b>' : '') + '</span>';
     }).join('');
     if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
   }
@@ -841,13 +877,13 @@
     const show = seated && (phase === 'between' || phase === 'guess' || phase === 'reveal');
     let label = '', dis = true, h = '';
     if (phase === 'lobby') h = RULES;
-    else if (phase === 'between') { label = 'Готуйсь…'; h = 'Роздивляйся фото — за мить мапа оживе'; }
+    else if (phase === 'between') { label = 'Готуйсь…'; h = 'Фото проявляється — за мить мапа оживе'; }
     else if (phase === 'guess') {
       const pinned = st.pin && st.pinRound === v.round;
       if (!ctx.mine) h = 'Гравці ставлять шпильки…';
       else if (st.readyRound === v.round) { label = 'Чекаємо решту…'; h = 'Шпилька зафіксована'; }
-      else if (pinned) { label = 'Готово ✓'; dis = false; h = coarse ? 'Тап — пересунути · два пальці — масштаб' : 'Клік — пересунути · Enter — готово'; }
-      else { label = 'Постав шпильку'; h = coarse ? 'Тапни на мапі, де це знято · два пальці — масштаб' : 'Клікни на мапі, де це знято · колесо — масштаб · протяг — рух'; }
+      else if (pinned) { label = 'Готово ✓'; dis = false; h = 'Шпилька зарахується й так; «Готово» — щоб не чекати' + (coarse ? '' : ' (Enter)'); }
+      else { label = 'Постав шпильку'; h = coarse ? 'Тапни на мапі, де це знято · два пальці — масштаб' : 'Клікни на мапі, де це знято · колесо — масштаб · тягни мапу — рух'; }
     } else if (phase === 'reveal') {
       const f = fresh(ctx);
       if (st.nextRound === v.round || (f && (f.nxt || []).includes(ctx.seat))) label = 'Чекаємо решту…';
@@ -855,9 +891,24 @@
     }
     bar.hidden = !show && !h;
     btn.hidden = !show;
+    // кнопки масштабу на пальці — тут, під мапою, а не на ній (там вони закривали Сумщину й шпильки)
+    const zb = bar.querySelector('.geozoom');
+    if (zb) zb.hidden = !(show && (phase === 'guess' || phase === 'reveal'));
     if (btn.textContent !== label) btn.textContent = label;
     if (btn.disabled !== dis) btn.disabled = dis;
     if (hint.textContent !== h) hint.textContent = h;
+  }
+
+  /// «Ти: 246 км · +1 282 · п'яте місце з 10» — щоб на десятьох не шукати себе у двох таблицях.
+  function meHtml(ctx, rows) {
+    if (!ctx.mine || rows.length < 1) return '';
+    const mine = rows.find((r) => r.seat === ctx.seat);
+    if (!mine) return '';
+    if (mine.x == null) return '<div class="geome none">Ти цього разу без шпильки</div>';
+    const place = 1 + rows.filter((r) => r.points > mine.points).length;
+    const where = rows.length > 1 ? ' · ' + (PLACE[place - 1] || place + '-е') + ' місце з ' + rows.length : '';
+    return '<div class="geome' + (mine.bull ? ' bull' : '') + '"><span>' + (mine.bull ? '🎯 В яблучко! ' : 'Ти: ') + km(mine.km) + '</span>'
+      + '<b>+' + num(mine.points) + '</b><span class="muted">' + where + '</span></div>';
   }
 
   function revealHtml(ctx, v) {
@@ -866,8 +917,10 @@
     const rows = rv.rows || [];
     const say = rv.say ? '<div class="geosay"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(rv.say) + '</span></div>' : '';
     if (!rows.length) return say;
-    return '<div class="georows">' + rows.map((r, n) =>
-      '<div class="georow' + (r.best ? ' best' : '') + (r.x == null ? ' none' : '') + '" style="--n:' + n + '">'
+    // самому таблиця з одного рядка лише повторювала б «Ти: …»
+    if (rows.length === 1 && ctx.mine && rows[0].seat === ctx.seat) return meHtml(ctx, rows) + say;
+    return meHtml(ctx, rows) + '<div class="georows">' + rows.map((r, n) =>
+      '<div class="georow' + (r.best ? ' best' : '') + (r.x == null ? ' none' : '') + (ctx.mine && r.seat === ctx.seat ? ' me' : '') + '" style="--n:' + n + '">'
       + '<span class="geon ' + SEAT_CLASS[r.seat % 10] + '"><i class="geodot"></i>' + (r.best ? '🏆 ' : '') + (r.bull ? '🎯 ' : '')
       + ctx.esc(nick(ctx, r.seat)) + '</span>'
       + '<span class="geokm">' + (r.km == null ? '— без шпильки' : km(r.km)) + '</span>'
@@ -884,14 +937,17 @@
     if (!seats.length || (!ctx.playing && !v.result)) return '';
     // до першого розкриття всі по нулях — рахунок лише займав би місце
     if (!done && !seats.some((i) => sc[i])) return '';
+    // 🏆 — лише коли було кого перемагати; самому (тренування, стіл на одного) — просто рахунок
+    const crown = seats.length > 1;
     return '<div class="geoshead muted small">' + (done ? 'Підсумок' : 'Рахунок') + '</div>' + seats.slice()
       .sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b)
       .map((i) => {
         // черепки за очки — так само, як рахує сервер (GeoMatch.PointsPerShard)
         const shards = done ? Math.floor((sc[i] || 0) / 5000) : 0;
         const gone = left.includes(i);
-        return '<div class="geosrow ' + SEAT_CLASS[i % 10] + (done && win.includes(i) ? ' win' : '') + (gone ? ' gone' : '') + '">'
-          + '<span><i class="geodot"></i>' + (done && win.includes(i) ? '🏆 ' : '') + ctx.esc(nick(ctx, i))
+        const won = crown && done && win.includes(i);
+        return '<div class="geosrow ' + SEAT_CLASS[i % 10] + (won ? ' win' : '') + (gone ? ' gone' : '') + (ctx.mine && i === ctx.seat ? ' me' : '') + '">'
+          + '<span><i class="geodot"></i>' + (won ? '🏆 ' : '') + ctx.esc(nick(ctx, i))
           + (gone ? ' <i class="muted small">· встав</i>' : '') + '</span>'
           + (shards > 0 ? '<i class="geoshard" title="черепки за очки">🏺+' + shards + '</i>' : '')
           + '<b>' + num(sc[i]) + '</b></div>';
@@ -901,23 +957,77 @@
   function recapHtml(ctx, v) {
     const list = v.recap || [];
     if (!list.length) return '';
+    const players = (v.nicks || []).filter((n) => n).length;
     return '<details class="georecap" open><summary>Як це було · ' + list.length + ' ' + plural(list.length, 'раунд', 'раунди', 'раундів') + '</summary><ol>'
       + list.map((r) => {
-        // самому «найближчий» — це він сам: лише відстань; у компанії — хто був ближче за всіх
-        const solo = (ctx.room && ctx.room.maxPlayers) === 1;
-        const who = solo ? '' : (r.best || []).map((i) => ctx.esc(nick(ctx, i))).join(', ');
+        // 🏆 — лише ті, в кого він був у розкритті (самому — нікого); інакше — чия це відстань, без трофея
+        const solo = (ctx.room && ctx.room.maxPlayers) === 1 || players < 2;
+        const best = r.best || [];
+        const who = best.length ? '🏆 ' + best.map((i) => ctx.esc(nick(ctx, i))).join(', ') + ' — '
+          : !solo && r.top != null ? ctx.esc(nick(ctx, r.top)) + ' — ' : '';
         const got = r.km == null ? '<span class="muted">без шпильки</span>'
-          : (who ? '🏆 ' + who + ' — ' : '') + km(r.km) + (r.points ? ' <b>+' + r.points + '</b>' : '');
+          : who + km(r.km) + (r.points ? ' <b>+' + r.points + '</b>' : '');
         return '<li>' + (r.photo ? '<img src="' + ctx.esc(r.photo) + '" alt="" loading="lazy">' : '<i class="geothumb"></i>')
           + '<span class="geort"><b>' + ctx.esc(r.name) + '</b><span class="muted small">' + ctx.esc(r.region) + '</span>'
           + '<span class="small">' + got + '</span></span></li>';
       }).join('') + '</ol></details>';
   }
 
+  /// «Ще раз» каркаса — під карткою, на 1280×800 нижче згину. П'єдестал має свою кнопку, що тисне ту саму.
+  const againOf = (root) => (root.parentElement && root.parentElement.querySelector('.gbtns [data-do="Rematch"]')) || null;
+
+  /// П'єдестал у підсумку: хто виграв партію — першим рядком і великими літерами (у розкритті останнього
+  /// раунду 🏆 означає «найближчий у раунді», і плеєри плутали), нижче — твоє місце, поруч «Ще раз».
+  function podiumHtml(root, ctx, v) {
+    if (phaseOf(ctx) !== 'done' || !v.result || !v.rounds) return '';
+    const sc = v.scores || [];
+    const seats = v.nicks ? v.nicks.map((n, i) => (n ? i : -1)).filter((i) => i >= 0) : seatsOf(ctx);
+    if (!seats.length) return '';
+    const win = v.result.winners || [];
+    let head, sub = '';
+    if (seats.length === 1) {
+      const i = seats[0];
+      head = '<span class="geopodt">🎯 ' + (ctx.mine ? 'Твій результат' : ctx.esc(nick(ctx, i))) + ': <b>' + num(sc[i]) + '</b>'
+        + ' <span class="muted">з ' + num(v.rounds * 5000) + '</span></span>';
+    } else if (!win.length) {
+      head = '<span class="geopodt">🤷 Ніхто нікуди не влучив</span>';
+    } else {
+      head = '<span class="geopodt">🏆 ' + win.map((i) => '<b><i class="geodot ' + SEAT_CLASS[i % 10] + '"></i>' + ctx.esc(nick(ctx, i)) + '</b>').join(' і ')
+        + ' — ' + num(sc[win[0]]) + (win.length > 1 ? ' <span class="muted">(нічия на першому)</span>' : '') + '</span>';
+      if (ctx.mine && seats.includes(ctx.seat)) {
+        const place = 1 + seats.filter((i) => (sc[i] || 0) > (sc[ctx.seat] || 0)).length;
+        sub = win.includes(ctx.seat) ? 'Це ти — перше місце з ' + seats.length + '!'
+          : 'Ти — ' + (PLACE[place - 1] || place + '-е') + ' місце з ' + seats.length + ' · ' + num(sc[ctx.seat]);
+      }
+    }
+    const again = againOf(root) ? '<button type="button" class="primary geoagain" data-pad-first>Ще раз</button>' : '';
+    return '<div class="geopodl">' + head + (sub ? '<span class="geopods muted">' + sub + '</span>' : '') + '</div>' + again;
+  }
+
+  function paintPodium(root, ctx) {
+    const pod = root.querySelector('.geopod');
+    const html = podiumHtml(root, ctx, V(ctx));
+    if (pod.dataset.sig !== html) {
+      pod.dataset.sig = html;
+      pod.innerHTML = html;
+      const b = pod.querySelector('.geoagain');
+      if (b) b.onclick = () => { const a = againOf(root); if (a) a.click(); };
+    }
+    pod.hidden = !html;
+    // Пад: після партії кільце — на «Ще раз», а не на «← Лобі» (Ⓐ після «Підсумок →» виводив зі столу).
+    const st = root._geo, b = pod.querySelector('.geoagain');
+    const key = b ? (ctx.room ? ctx.room.round : 0) + ':' + (V(ctx).rounds || 0) : '';
+    if (b && st.podFocus !== key) {
+      st.podFocus = key;
+      try { if (window.HPad && HPad.on && HPad.focus) HPad.focus(b); } catch { /* без пада — і так видно */ }
+    }
+  }
+
   function paintResult(root, ctx) {
     const v = V(ctx), phase = phaseOf(ctx);
     const rev = root.querySelector('.georev');
-    const html = phase === 'reveal' || phase === 'done' ? revealHtml(ctx, v) : '';
+    // у підсумку таблиці останнього раунду нема: її 🏆 («найближчий у раунді») плутали з переможцем партії
+    const html = phase === 'reveal' ? revealHtml(ctx, v) : '';
     if (rev.dataset.sig !== html) { rev.dataset.sig = html; rev.innerHTML = html; }
     const score = root.querySelector('.geoscore');
     const sh = phase === 'lobby' ? '' : scoreHtml(ctx, v);
@@ -926,7 +1036,10 @@
     const rh = phase === 'done' ? recapHtml(ctx, v) : '';
     // порівнюємо з тим, що малювали, а не з innerHTML: інакше кожне оновлення згортало б розгорнуте людиною
     if (recap.dataset.sig !== rh) { recap.dataset.sig = rh; recap.innerHTML = rh; }
-    root.querySelector('.georesult').hidden = !html && !sh;
+    const res = root.querySelector('.georesult');
+    res.hidden = !html && !sh;
+    // у підсумку таблиці раунду нема — рахунок на всю ширину, кількома стовпчиками
+    res.classList.toggle('done', phase === 'done');
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -979,12 +1092,47 @@
     const st = root._geo;
     sync(st, ctx);
     paintTop(root, ctx);
+    paintPodium(root, ctx);
     paintPhoto(root, ctx);
     paintBar(root, ctx);
     paintResult(root, ctx);
+    roundInView(st, ctx);
     const mapEl = root.querySelector('.geomap');
     mapEl.classList.toggle('can', canPin(st, ctx));
     mapEl.classList.toggle('dim', phaseOf(ctx) === 'between');
+  }
+
+  /// На початку кожного раунду фото, мапа й «Готово» мають бути в полі зору: на телефоні з десятьма гравцями
+  /// мапа починалась нижче згину, а низ її (Крим, Донеччина) ховали смуга радіо й вкладки. Раз на раунд, лише
+  /// тому, хто грає, і лише коли щось справді не влазить — підкручуємо сторінку рівно настільки, щоб низ
+  /// кнопки (або хоч мапи) став над нижніми смугами, а верх фото не заїхав під шапку сайту.
+  function roundInView(st, ctx) {
+    const v = V(ctx), phase = phaseOf(ctx);
+    if (!ctx.mine || !ctx.playing || (phase !== 'between' && phase !== 'guess')) return;
+    // і в «готуйсь», і на початку вгадування: у guess під мапою з'являється рядок масштабу — кнопка нижчає
+    const key = (ctx.room ? ctx.room.round : 0) + ':' + v.round + ':' + phase;
+    if (st.scrolled === key) return;
+    st.scrolled = key;
+    requestAnimationFrame(() => {
+      const main = st.root.querySelector('.geomain'), map = st.root.querySelector('.geomap');
+      if (!main || !map || !map.offsetParent) return;
+      const bar = st.root.querySelector('.geobar');
+      const last = bar && !bar.hidden && bar.offsetParent ? bar : map;
+      const cs = getComputedStyle(document.documentElement);
+      const bars = (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + (parseFloat(cs.getPropertyValue('--mini-h')) || 0);
+      const head = document.querySelector('header');
+      const top = head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
+      const bottom = last.getBoundingClientRect().bottom, limit = innerHeight - bars - 8;
+      // верх — шапка картки з раундом і таймером, якщо все разом влазить (телефон 375×812 — так); ні — верх фото
+      const head2 = st.root.querySelector('.geotop');
+      const topEl = head2 && bottom - head2.getBoundingClientRect().top <= limit - top - 6 ? head2 : main;
+      const over = bottom - limit;                                    // > 0 — низ сховано
+      const room = topEl.getBoundingClientRect().top - top - 6;       // < 0 — верх заїхав під шапку сайту
+      // униз — поки низ не видно, але не далі, ніж верх до шапки сайту; угору — якщо верх заїхав під шапку
+      // й знизу є запас; не влазить узагалі (телефон лежачи) — не чіпаємо, людина прокрутить сама
+      const dy = over > 1 ? (room > 1 ? Math.min(over, room) : 0) : room < -1 ? Math.max(room, over) : 0;
+      if (Math.abs(dy) > 1) window.scrollBy({ top: dy, behavior: reduced() ? 'auto' : 'smooth' });
+    });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1085,9 +1233,13 @@
 
     mount(root, ctx) {
       const st = state(root, ctx);
+      const zoom = '<button type="button" data-z="in" data-pad-skip aria-label="Наблизити">＋</button>'
+        + '<button type="button" data-z="out" data-pad-skip aria-label="Віддалити">−</button>'
+        + '<button type="button" data-z="home" data-pad-skip aria-label="Уся мапа">⌂</button>';
       root.innerHTML = '<div class="geowrap">'
         + '<div class="geotop"><span class="georound"></span><div class="geochips"></div>'
         + '<button type="button" class="geosnd" data-pad-skip title="Звук">🔈</button></div>'
+        + '<div class="geopod" hidden></div>'
         + '<div class="geomain">'
         + '<div class="geophoto"><div class="geoframe empty">'
         + '<img class="geoimg" alt="Фото місця" draggable="false">'
@@ -1097,11 +1249,10 @@
         + '</div><div class="geocap" hidden></div></div>'
         + '<div class="geomap"><canvas class="geocanvas" aria-label="Мапа України: тицьни, де знято фото"></canvas>'
         + '<div class="geomapmsg">мапа вантажиться…</div>'
-        + '<div class="geozoom"><button type="button" data-z="in" data-pad-skip aria-label="Наблизити">＋</button>'
-        + '<button type="button" data-z="out" data-pad-skip aria-label="Віддалити">−</button>'
-        + '<button type="button" data-z="home" data-pad-skip aria-label="Уся мапа">⌂</button></div></div>'
+        + '<div class="geozoom geozoomm">' + zoom + '</div></div>'
         + '</div>'
-        + '<div class="geobar"><span class="geohint muted small"></span><button type="button" class="primary geogo" data-pad-first hidden></button></div>'
+        + '<div class="geobar"><div class="geozoom geozoomb" hidden>' + zoom + '</div><span class="geohint muted small"></span>'
+        + '<button type="button" class="primary geogo" data-pad-first hidden></button></div>'
         + '<div class="georesult" hidden><div class="georev"></div><div class="geoscore"></div></div>'
         + '<div class="georecapbox"></div>'
         + '</div>';
@@ -1119,11 +1270,11 @@
       img.addEventListener('load', () => { root.querySelector('.geoerr').hidden = true; });
       img.addEventListener('click', () => openFull(st));
       root.querySelector('.geoerr button').onclick = () => { img.src = img.dataset.src + '#' + Date.now(); };
-      root.querySelector('.geozoom').addEventListener('click', (e) => {
+      root.querySelectorAll('.geozoom').forEach((z) => z.addEventListener('click', (e) => {
         const b = e.target.closest('button');
         if (!b) return;
         if (b.dataset.z === 'home') home(st); else zoomKey(st, b.dataset.z === 'in' ? 1.5 : 1 / 1.5);
-      });
+      }));
       const snd = root.querySelector('.geosnd');
       const paintSnd = () => { snd.textContent = soundOn() ? '🔈' : '🔇'; snd.title = soundOn() ? 'Звук є — вимкнути' : 'Звук вимкнено — увімкнути'; };
       snd.onclick = () => { try { localStorage.setItem('geoSound', soundOn() ? '0' : '1'); } catch { /* ні то ні */ } paintSnd(); };
@@ -1181,6 +1332,9 @@
         return true;
       }
       if (st.full) return false;
+      // «Готуйсь…» (2 с): пробіл/Enter — це Ⓐ/RT пада, і вони не мають тиснути нічого з каркаса, а стрілки —
+      // гортати сторінку; мапа ще неактивна, тож просто ковтаємо
+      if (phase === 'between' && ctx.mine && ctx.playing && (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter' || KEYDIR[e.code])) return true;
       if (e.code === 'Equal' || e.code === 'NumpadAdd' || e.code === 'BracketRight') { zoomKey(st, 1.5); return true; }
       if (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.code === 'BracketLeft') { zoomKey(st, 1 / 1.5); return true; }
       if (e.code === 'Digit0' || e.code === 'Numpad0' || e.code === 'Home') { home(st); return true; }
@@ -1223,7 +1377,7 @@
       if (phase === 'guess') {
         if (!ctx.mine) return 'Гравці думають…';
         if (st && st.readyRound === v.round) return 'Готово! Чекаємо решту…';
-        if ((st && st.pin && st.pinRound === v.round) || v.my) return 'Шпилька стоїть — тисни «Готово» або пересунь';
+        if ((st && st.pin && st.pinRound === v.round) || v.my) return 'Шпилька стоїть — зарахується й так; «Готово» — щоб не чекати';
         return 'Тицьни на мапу, де це';
       }
       if (phase === 'reveal') return 'Ось де це насправді';
@@ -1244,9 +1398,10 @@
         return false;             // Ⓑ — вийти, Ⓨ — довідка, ☰ — на весь екран: лишаються каркасу
       },
       hint: '{dpad} курсор · {a} шпилька · {rt} готово · {lb}{rb} масштаб · {x} фото',
-      // Поки вгадують і на розкритті: там Ⓐ і RT — «Далі» (інакше RT перемикав би вкладки сайту посеред партії).
-      // У «готуйсь» і після партії пад знову водить кільце по кнопках картки.
-      when: (ctx) => ctx.mine && ctx.playing && (phaseOf(ctx) === 'guess' || phaseOf(ctx) === 'reveal'),
+      // Уся партія: «готуйсь» (там Ⓐ/RT нічого не роблять — раніше кільце стояло на «← Лобі», і Ⓐ викидав зі
+      // столу), вгадування й розкриття (там Ⓐ і RT — «Далі»). Після партії пад знову водить кільце, і воно
+      // стає на «Ще раз» п'єдесталу (paintPodium).
+      when: (ctx) => ctx.mine && ctx.playing && ['between', 'guess', 'reveal'].includes(phaseOf(ctx)),
     },
 
     unmount(root) {

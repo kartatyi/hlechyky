@@ -4,17 +4,18 @@
   --geo-land: #2b4c3c;
   --geo-river: #4a8fb3;
   --geo-border: rgba(236, 241, 234, .26);   /* межі областей — видно, але не кричать */
-  /* десять місць: добре розрізнювані, плюс номер на шпильці й нік у чіпі — колір не єдина ознака */
-  --geo-p0: #f4c542;
-  --geo-p1: #7bd389;
-  --geo-p2: #c5763a;
-  --geo-p3: #6fb3e8;
-  --geo-p4: #e88ac0;
-  --geo-p5: #b48cf2;
-  --geo-p6: #f0f0f0;
-  --geo-p7: #ff8a5b;
-  --geo-p8: #5ad1c9;
-  --geo-p9: #c9d96b;
+  /* десять місць: десять різних відтінків, плюс номер на шпильці й нік у чіпі — колір не єдина ознака;
+     червоного нема: червоно-біла мішень — лише в правди */
+  --geo-p0: #f4c542;   /* жовтий */
+  --geo-p1: #7bd389;   /* зелений */
+  --geo-p2: #e8833a;   /* помаранчевий */
+  --geo-p3: #6fb3e8;   /* блакитний */
+  --geo-p4: #e88ac0;   /* рожевий */
+  --geo-p5: #b48cf2;   /* фіалковий */
+  --geo-p6: #f0f0f0;   /* білий */
+  --geo-p7: #5c7cfa;   /* синій */
+  --geo-p8: #5ad1c9;   /* бірюзовий */
+  --geo-p9: #a3e635;   /* лаймовий */
   --geo-room: calc(100dvh - 330px);     /* скільки висоти лишається фото й мапі під шапкою сайту й картки */
 }
 
@@ -45,6 +46,21 @@
 .geochip.on { background: var(--panel3); }
 .geochip b { font-weight: 600; font-variant-numeric: tabular-nums; }
 .geodot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--geo-c, var(--muted)); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
+.geonum { display: none; font-style: normal; }
+.geonick { overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 560px) {
+  /* телефон: чіп — кружок із номером місця (обведений — поставив шпильку, заповнений — готовий), нік — у
+     підказці; десять чіпів — один рядок, і мапа не тікає нижче згину */
+  .geotop { gap: 6px 8px; min-height: 32px; }
+  .geochips { gap: 4px; flex-basis: 100%; order: 4; }
+  .geochip { width: 28px; height: 28px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; background: transparent;
+    border: 2px solid var(--geo-c, var(--line)); font-size: .82em; font-weight: 700; }
+  .geochip .geodot, .geochip .geonick, .geochip b { display: none; }
+  .geochip .geonum { display: inline; }
+  .geochip.pin { box-shadow: inset 0 0 0 3px var(--geo-c, var(--line)); }
+  .geochip.on { background: var(--geo-c, var(--line)); color: #1a1406; }
+  .geochip.me { outline: 2px solid var(--text); outline-offset: 1px; }
+}
 
 /* ---------- фото й мапа ---------- */
 .geomain { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
@@ -59,6 +75,8 @@
 .geophoto { min-width: 0; }
 .geoframe { position: relative; width: min(100%, calc(var(--geo-room) * 1.5)); aspect-ratio: 3 / 2; margin: 0 auto;
   background: var(--bg2); border-radius: 10px; overflow: hidden; }
+/* телефон: фото трохи нижче (16:10) — мапа піднімається на ~20 px; тап — фото на весь екран */
+@container (max-width: 560px) { .geoframe { aspect-ratio: 16 / 10; } }
 .geoimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; cursor: zoom-in;
   -webkit-user-select: none; user-select: none; transition: filter .35s ease-out; }
 .geoframe.empty .geoimg { visibility: hidden; }
@@ -88,13 +106,20 @@
 .geomap.dim .geocanvas { opacity: .55; }
 .geomapmsg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
 .geomapmsg[hidden] { display: none; }
-.geozoom { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 6px; opacity: 0; transition: opacity .15s; }
-.geomap:hover .geozoom, .geozoom:focus-within { opacity: 1; }
+/* Кнопки масштабу. На мишці — у правому нижньому куті мапи (при k = 1 там Азовське море й чужа земля, а fitView
+   лишає 15 % поля), з'являються при наведенні; сховані — не ловлять натисків. На пальці — під мапою, в рядку
+   з підказкою: на мапі 307×210 рядок 132×44 закривав Сумщину й шпильки. */
+.geozoom { display: flex; gap: 6px; }
+.geozoom[hidden] { display: none; }
+.geozoomm { position: absolute; right: 8px; bottom: 8px; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .15s; }
+.geomap:hover .geozoomm, .geozoomm:focus-within { opacity: 1; pointer-events: auto; }
 .geozoom button { width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--line); cursor: pointer;
   background: rgba(15, 31, 24, .82); color: var(--text); font-size: 18px; line-height: 1; }
 .geozoom button:hover { border-color: var(--accent2); }
+.geozoomb { display: none; flex: none; }
 @media (pointer: coarse) {
-  .geozoom { opacity: 1; }
+  .geozoomm { display: none; }
+  .geozoomb:not([hidden]) { display: flex; }
   .geozoom button, .geofullbtn { width: 44px; height: 44px; }
 }
 
@@ -105,13 +130,24 @@
 .geogo { min-width: 170px; min-height: 42px; font-size: 1.02em; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
 .geogo[hidden] { display: none; }
 @container (max-width: 560px) {
-  /* на телефоні кнопки масштабу — рядком угорі: стовпчик з'їдав пів мапи */
-  .geozoom { flex-direction: row; }
-  .geozoom button { width: 40px; height: 40px; }
-  .geobar { flex-direction: column-reverse; align-items: stretch; }
-  .geogo { width: 100%; min-height: 50px; }
-  .geohint { text-align: center; }
+  /* телефон: «Готово» на всю ширину, над ним — масштаб і підказка одним рядком */
+  .geobar { flex-wrap: wrap; }
+  .geozoomb button { width: 40px; height: 40px; }
+  .geohint { flex: 1 1 0; }
+  .geogo { order: 3; flex: 1 1 100%; min-height: 50px; }
 }
+
+/* ---------- підсумок партії: п'єдестал ---------- */
+.geopod { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 14px; border-radius: 12px; background: var(--gwin);
+  animation: geo-rise .35s ease-out both; }
+.geopod[hidden] { display: none; }
+.geopodl { display: flex; flex-direction: column; gap: 2px; flex: 1 1 240px; min-width: 0; }
+.geopodt { font-size: 1.25em; font-weight: 600; overflow-wrap: anywhere; }
+.geopodt b { white-space: nowrap; }
+.geopodt .geodot { display: inline-block; width: 11px; height: 11px; margin: 0 5px 2px 2px; vertical-align: middle; }
+.geopods { font-size: .95em; }
+.geoagain { min-height: 42px; min-width: 150px; flex: none; }
+@container (max-width: 560px) { .geoagain { flex: 1 1 100%; min-height: 48px; } }
 
 /* ---------- розкриття й рахунок ---------- */
 .georesult { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
@@ -124,6 +160,14 @@
   border-radius: 8px; background: var(--bg2); animation: geo-rise .35s ease-out both; animation-delay: calc(var(--n, 0) * 80ms); }
 .georow.best { background: var(--gwin); }
 .georow.none { opacity: .6; }
+.georow.me, .geosrow.me { box-shadow: inset 0 0 0 1.5px var(--text); }
+/* «Ти: 246 км · +1 282 · п'яте місце з 10» — над таблицею розкриття */
+.geome { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; padding: 8px 12px; border-radius: 10px;
+  background: var(--panel3); font-size: 1.08em; font-weight: 600; font-variant-numeric: tabular-nums; }
+.geome b { color: var(--accent); }
+.geome .muted { font-weight: 400; font-size: .9em; }
+.geome.bull { background: var(--gwin); }
+.geome.none { font-weight: 400; color: var(--muted); }
 .geon { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .geokm { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .geop { text-align: right; color: var(--accent); font-variant-numeric: tabular-nums; }
@@ -133,6 +177,10 @@
 
 .geoscore { display: flex; flex-direction: column; gap: 4px; }
 .geoshead { margin-bottom: 2px; }
+.georesult.done { grid-template-columns: minmax(0, 1fr); }
+.georesult.done .georev { display: none; }
+.georesult.done .geoscore { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 4px 8px; }
+.georesult.done .geoshead { grid-column: 1 / -1; }
 .geosrow { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 8px; background: var(--bg2); }
 .geosrow > span { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .geosrow b { font-variant-numeric: tabular-nums; }
@@ -156,6 +204,6 @@
   border: 1px solid var(--line); background: rgba(15, 31, 24, .9); color: var(--text); font-size: 1em; }
 
 @media (prefers-reduced-motion: reduce) {
-  .georow { animation: none; }
+  .georow, .geopod { animation: none; }
   .geoimg, .geocanvas, .geozoom { transition: none; }
 }
