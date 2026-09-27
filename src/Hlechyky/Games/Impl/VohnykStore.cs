@@ -83,12 +83,15 @@ public sealed class VohnykStore : BackgroundService
     /// <summary>Зірки ніка на рівні (0 — ще не пройшов).</summary>
     public int Stars(string nickKey, int level) => _done.TryGetValue((nickKey, level), out var s) ? s : 0;
 
-    /// <summary>Рівень відчинений, якщо це перший або хоч хтось із цих ніків пройшов попередній.</summary>
+    /// <summary>
+    /// Рівень відчинений, якщо це перший або хоч хтось із цих ніків пройшов попередній — чи вже сам цей рівень
+    /// (гостем у ветерана пройшов 3-й, не пройшовши 2-го: свій пройдений рівень не буває зачиненим).
+    /// </summary>
     public bool Unlocked(IEnumerable<string> nickKeys, int level)
     {
         if (level <= 1) return true;
         foreach (var k in nickKeys)
-            if (Stars(k, level - 1) > 0) return true;
+            if (Stars(k, level - 1) > 0 || Stars(k, level) > 0) return true;
         return false;
     }
 
@@ -113,10 +116,11 @@ public sealed class VohnykStore : BackgroundService
     }
 
     /// <summary>
-    /// Пройшли рівень: кожному ніку — максимум зірок, парі — рекорд, якщо швидше. Пам'ять одразу, база — потім,
+    /// Пройшли рівень: кожному ніку — максимум зірок, парі — рекорд, якщо швидше (<paramref name="best"/> = false —
+    /// лише зірки: склад мінявся посеред рівня, і час не належить жодній парі). Пам'ять одразу, база — потім,
     /// через канал (кличеться під замком кімнати, тож жодного SQLite тут).
     /// </summary>
-    public void Record(IReadOnlyList<string> nicks, int level, int ms, int deaths, int stars, DateTimeOffset at)
+    public void Record(IReadOnlyList<string> nicks, int level, int ms, int deaths, int stars, DateTimeOffset at, bool best = true)
     {
         if (nicks.Count == 0) return;
         lock (_gate)
@@ -129,9 +133,10 @@ public sealed class VohnykStore : BackgroundService
                 _done[(key, level)] = stars;
                 if (_db is not null) _rows.Writer.TryWrite(new Row(key, level, stars, null, at));
             }
+            if (!best) return;
             var pair = PairKey(nicks);
-            var best = Best(pair, level);
-            if (best is null || ms < best.Ms)
+            var prev = Best(pair, level);
+            if (prev is null || ms < prev.Ms)
             {
                 var row = new VohnykBest(pair, level, ms, deaths, stars, Names(nicks), at);
                 _best[(pair, level)] = row;

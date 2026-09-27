@@ -67,6 +67,41 @@ public static class VohnykPlans
         b.Do(null, VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(22) - 4), b.Go(Wt, C(21)), b.Jump(Wt, +1, 30, C(23)), b.Go(Wt, C(24))));
     }
 
+    /// <summary>
+    /// Проходження сам за двох: у кожен момент рухається лише один герой (b.Only), світ — у режимі соло. null — для
+    /// рівня соло-плану нема (там і так нічого не треба робити двома руками одночасно).
+    /// </summary>
+    public static VohnykBot? PlaySolo(VohnykLevel level)
+    {
+        var b = new VohnykBot(level, solo: true);
+        switch (level.N)
+        {
+            case 4: Level4Solo(b); break;
+            default: return null;
+        }
+        b.Do(b.WaitFor(() => b.W.Cleared != 0), null);
+        return b;
+    }
+
+    /// <summary>
+    /// «Дві криниці» сам за двох: брами dF/dW — «все разом» на b1+b2. Удвох заходять на рахунок «три»; одному досить
+    /// того, що кнопка брами тримається ще 2 с: Вогник зійшов із b1 у свою браму, Tab — і Крапля встигає у свою.
+    /// </summary>
+    static void Level4Solo(VohnykBot b)
+    {
+        b.Only(F, VohnykBot.Seq(b.RunJump(F, +1, 100, 30, C(5)), b.Go(F, C(5)), b.Jump(F, +1, 30, C(6)), b.Go(F, C(6)), b.Jump(F, +1, 30, C(8)), b.Go(F, C(9))));
+        b.Only(Wt, VohnykBot.Seq(b.RunJump(Wt, -1, C(27), 30, C(24)), b.Go(Wt, C(24)), b.Jump(Wt, -1, 30, C(23)), b.Go(Wt, C(23)), b.Jump(Wt, -1, 30, C(21)), b.Go(Wt, C(20))));
+        b.Only(F, VohnykBot.Seq(b.WaitFor(() => b.W.DoorO[0] >= 2 * T), b.Go(F, C(11))));
+        b.Only(Wt, b.Go(Wt, C(14)));
+        // Вогник сходинками на b3 — двері dX відчиняються; Крапля слідом і крізь них на b4
+        b.Only(F, VohnykBot.Seq(b.Jump(F, +1, 30, C(13) - 6), b.Go(F, C(13) - 6), b.Jump(F, +1, 30, C(16)), b.Go(F, C(16)), b.Jump(F, +1, 30, C(18)), b.Go(F, C(18))));
+        b.Only(Wt, VohnykBot.Seq(b.Jump(Wt, -1, 30, C(13) - 6), b.Go(Wt, C(13) - 6), b.Jump(Wt, +1, 30, C(16)), b.Go(Wt, C(16)),
+            b.Jump(Wt, +1, 30, C(17)), b.WaitFor(() => b.W.DoorO[2] >= 2 * T), b.Go(Wt, C(20))));
+        // Крапля тримає b4 — Вогник крізь dX до своїх дверей, потім Крапля до своїх
+        b.Only(F, b.Go(F, C(25)));
+        b.Only(Wt, b.Go(Wt, C(27)));
+    }
+
     static void Level4(VohnykBot b)
     {
         // кожен своєю криницею: стрибком над чужою рідиною по самоцвіт, на стовпчик по другий — і на кнопку біля брами

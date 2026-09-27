@@ -18,9 +18,9 @@ public static class VohnykRecord
     /// <summary>
     /// Грати журнал до «пройдено» (або до maxSteps). Журнал: [крок (1-based), герой, k]; k діє з цього кроку.
     /// </summary>
-    public static Run Replay(VohnykLevel level, int[][] solution, int maxSteps = 20000)
+    public static Run Replay(VohnykLevel level, int[][] solution, int maxSteps = 20000, bool solo = false)
     {
-        var w = new VohnykWorld(level);
+        var w = new VohnykWorld(level) { Solo = solo };
         var k = new int[2];
         var p = 0;
         var hashes = new List<int>();
@@ -37,6 +37,15 @@ public static class VohnykRecord
     }
 
     public static string LevelPath(int n) => Path.Combine(Paths.Resolve(VohnykLevels.Dir), $"{n:00}.json");
+
+    /// <summary>Переписати проходження сам за двох у файлі рівня n, зберігши решту як була.</summary>
+    public static void SaveSolo(int n, int[][] solution, VohnykCheck check)
+    {
+        var path = LevelPath(n);
+        var file = JsonSerializer.Deserialize<VohnykLevelFile>(File.ReadAllText(path), VohnykLevels.Json)!;
+        file.Solo = new VohnykSoloRun { Solution = solution, Check = check };
+        File.WriteAllText(path, Format(file), new UTF8Encoding(false));
+    }
 
     /// <summary>Переписати solution і check у файлі рівня n, зберігши решту як була.</summary>
     public static void Save(int n, int[][] solution, VohnykCheck check, int? par = null)
@@ -76,20 +85,40 @@ public static class VohnykRecord
         List("lifts", f.Lifts.Select(l => $"{{ \"id\": {J(l.Id)}, \"at\": {J(l.At)}, \"w\": {l.W}, \"to\": {J(l.To)}, \"by\": {J(l.By)}, \"mode\": {J(l.Mode)}, \"inv\": {J(l.Inv)} }}"));
         List("boxes", f.Boxes.Select(b => $"{{ \"at\": {J(b.At)} }}"));
         List("hints", f.Hints.Select(h => $"{{ \"at\": {J(h.At)}, \"w\": {h.W}, \"text\": {J(h.Text)} }}"));
-        sb.Append("  \"solution\": [");
-        for (var i = 0; i < f.Solution.Length; i++)
-        {
-            if (i % 10 == 0) sb.Append("\n    ");
-            sb.Append(J(f.Solution[i])).Append(i + 1 < f.Solution.Length ? ", " : "");
-        }
-        sb.Append(f.Solution.Length > 0 ? "\n  ]" : "]");
+        sb.Append("  \"solution\": ");
+        Log(f.Solution, "  ");
         if (f.Check is { } c)
         {
-            sb.Append(",\n  \"check\": { ");
-            sb.Append($"\"steps\": {c.Steps}, \"hash\": {c.Hash}, \"every\": {c.Every},\n    \"hashes\": {J(c.Hashes)} }}");
+            sb.Append(",\n  \"check\": ");
+            Check(c, "  ");
+        }
+        if (f.Solo is { } so)
+        {
+            sb.Append(",\n  \"solo\": {\n    \"solution\": ");
+            Log(so.Solution, "    ");
+            if (so.Check is { } sc)
+            {
+                sb.Append(",\n    \"check\": ");
+                Check(sc, "    ");
+            }
+            sb.Append("\n  }");
         }
         sb.Append("\n}\n");
         return sb.ToString();
+
+        void Log(int[][] log, string pad)
+        {
+            sb.Append('[');
+            for (var i = 0; i < log.Length; i++)
+            {
+                if (i % 10 == 0) sb.Append('\n').Append(pad).Append("  ");
+                sb.Append(J(log[i])).Append(i + 1 < log.Length ? ", " : "");
+            }
+            sb.Append(log.Length > 0 ? "\n" + pad + "]" : "]");
+        }
+
+        void Check(VohnykCheck ch, string pad) =>
+            sb.Append($"{{ \"steps\": {ch.Steps}, \"hash\": {ch.Hash}, \"every\": {ch.Every},\n{pad}  \"hashes\": {J(ch.Hashes)} }}");
 
         void List(string name, IEnumerable<string> items)
         {

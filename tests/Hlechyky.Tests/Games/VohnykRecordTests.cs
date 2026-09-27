@@ -50,6 +50,13 @@ public sealed class VohnykRecordTests(ITestOutputHelper output)
             var par = Par(n, ms, level.Par);
             VohnykRecord.Save(n, solution, new VohnykCheck(run.ClearedAt, run.Hash, VohnykRecord.Every, run.Hashes), par);
             output.WriteLine($"{n:00} «{level.Name}»: {run.ClearedAt} кроків = {ms / 1000.0:0.0} с, записів {solution.Length}, par {par / 1000} с");
+            // сам за двох (де є план): один герой за раз, світ у соло
+            if (VohnykPlans.PlaySolo(level) is not { } soloBot) continue;
+            var soloLog = soloBot.Log.ToArray();
+            var soloRun = VohnykRecord.Replay(level, soloLog, solo: true);
+            Assert.True(soloRun.ClearedAt > 0, $"рівень {n}: соло-журнал наосліп не проходить (крок {soloRun.Steps}, смерть {soloRun.DiedAt})");
+            VohnykRecord.SaveSolo(n, soloLog, new VohnykCheck(soloRun.ClearedAt, soloRun.Hash, VohnykRecord.Every, soloRun.Hashes));
+            output.WriteLine($"   сам за двох: {soloRun.ClearedAt} кроків = {soloRun.ClearedAt * 20 / 1000.0:0.0} с, записів {soloLog.Length}");
         }
     }
 }

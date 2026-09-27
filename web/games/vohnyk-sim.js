@@ -18,6 +18,8 @@
   const BoxSize = 640, BoxPush = 32;
   const DoorSpeed = 96, LiftSpeed = 48, LiftH = 256;
   const ExitHold = 10;
+  // сам за двох кнопка брами «все разом» тримається ще 2 с після того, як з неї зійшли (VohnykWorld.SoloLatch)
+  const SoloLatch = 100;
   const FeetInset = 4 * Px, FeetH = 16 * Px;
   const KeyLeft = 1, KeyRight = 2, KeyJump = 4;
   const HeroInts = 14;
@@ -71,6 +73,8 @@
     this.BoxX = I(nx); this.BoxY = I(nx); this.BoxVy = I(nx);
     this.DoorO = I(nd); this.LiftX = I(nf); this.LiftY = I(nf); this.Lever = I(nl); this.Button = I(nb);
     this.Gems = 0; this.Hold = 0; this.Cleared = 0;
+    // сам за двох: не частина знімка, клієнт бере з виду (як Solo у C#)
+    this.solo = false;
     this._doorX = I(nd); this._doorY = I(nd); this._doorH = I(nd);
     for (let i = 0; i < nd; i++) { const d = L.doors[i]; this._doorX[i] = d.col * T; this._doorY[i] = d.row * T; this._doorH[i] = d.tiles * T; }
     this._liftAX = I(nf); this._liftAY = I(nf); this._liftBX = I(nf); this._liftBY = I(nf); this._liftW = I(nf);
@@ -85,6 +89,11 @@
     for (let i = 0; i < nb; i++) { this._btnX[i] = L.buttons[i].col * T + 4 * Px; this._btnY[i] = L.buttons[i].row * T + 32 * Px; }
     this._levX = I(nl); this._levY = I(nl);
     for (let i = 0; i < nl; i++) { this._levX[i] = L.levers[i].col * T; this._levY[i] = L.levers[i].row * T; }
+    this._latchable = new Array(nb).fill(false);
+    for (let i = 0; i < nb; i++) {
+      for (const d of L.doors) if (d.all && (d.mask & (1 << i)) !== 0) this._latchable[i] = true;
+      for (const l of L.lifts) if (l.all && (l.mask & (1 << i)) !== 0) this._latchable[i] = true;
+    }
     this._exitX = I(2); this._exitY = I(2);
     for (let i = 0; i < 2; i++) { this._exitX[i] = L.exits[i][0] * T; this._exitY[i] = L.exits[i][1] * T; }
     this._riderHero = [false, false];
@@ -594,7 +603,11 @@
         if (overlap(this._btnX[i], this._btnY[i], 32 * Px, 8 * Px, this.X[h], this.Y[h], HeroW, HeroH)) on = 1;
       for (let b = 0; b < this.nx && on === 0; b++)
         if (overlap(this._btnX[i], this._btnY[i], 32 * Px, 8 * Px, this.BoxX[b], this.BoxY[b], BoxSize, BoxSize)) on = 1;
-      this.Button[i] = on;
+      // сам за двох кнопка брами «все разом» відпускається не одразу: 1 → SoloLatch+1 → … → 2 → 0
+      const was = this.Button[i];
+      if (on !== 0) this.Button[i] = 1;
+      else if (this.solo && this._latchable[i] && was !== 0) this.Button[i] = was === 1 ? SoloLatch + 1 : was > 2 ? was - 1 : 0;
+      else this.Button[i] = 0;
     }
     for (let h = 0; h < 2; h++) {
       let mask = 0;
@@ -644,8 +657,9 @@
    * Прогнати журнал проходження (як VohnykRecord.Replay у тестах): [крок від 1, герой, k]. Повертає
    * { clearedAt, steps, hash, hashes, gems, diedAt } — хеші беззнакові.
    */
-  function replay(level, solution, every, maxSteps) {
+  function replay(level, solution, every, maxSteps, solo) {
     const w = new World(level);
+    w.solo = !!solo;
     const k = [0, 0];
     const log = solution.slice().sort((a, b) => a[0] - b[0]);
     const hashes = [];
@@ -670,7 +684,7 @@
     save: (w, s) => w.save(s),
     load: (w, s) => w.load(s),
     hash: (w) => w.hash(),
-    C: { Px, T, HeroW, HeroH, BoxSize, LiftH, KeyLeft, KeyRight, KeyJump, HeroInts, Air, Stone, Water, Lava, Mud, ExitHold },
+    C: { Px, T, HeroW, HeroH, BoxSize, LiftH, KeyLeft, KeyRight, KeyJump, HeroInts, Air, Stone, Water, Lava, Mud, ExitHold, SoloLatch },
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.VohnykSim = api;

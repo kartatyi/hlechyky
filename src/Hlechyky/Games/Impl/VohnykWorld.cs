@@ -19,6 +19,12 @@ public sealed class VohnykWorld
     public const int BoxSize = 640, BoxPush = 32;
     public const int DoorSpeed = 96, LiftSpeed = 48, LiftH = 256;
     public const int ExitHold = 10;
+    /// <summary>
+    /// Сам за двох: скільки кроків кнопка брами «все разом» (двері чи ліфт із mode all) ще тримається після того,
+    /// як з неї зійшли (2 с). Одною парою рук на двох кнопках одночасно не встоїш, а «на рахунок три» заходити треба.
+    /// У знімку це саме значення кнопки: 1 — натиснута, 2…SoloLatch+1 — тримається ще (значення − 1) кроків.
+    /// </summary>
+    public const int SoloLatch = 100;
     /// <summary>Зона ніг: відступ з боків і висота від низу AABB.</summary>
     public const int FeetInset = 4 * Px, FeetH = 16 * Px;
     public const int KeyLeft = 1, KeyRight = 2, KeyJump = 4;
@@ -41,6 +47,11 @@ public sealed class VohnykWorld
     public readonly int[] LiftX, LiftY;
     public readonly int[] Lever, Button;
     public int Gems, Hold, Cleared;
+    /// <summary>
+    /// Сам за двох (один гравець веде обох). Не частина знімка: гра ставить це на старті й коли партнер устає, а
+    /// клієнт — з виду. Єдине, що від цього міняється, — кнопки брам «все разом» тримаються <see cref="SoloLatch"/>.
+    /// </summary>
+    public bool Solo;
 
     // ---- статичне з рівня, у su ----
     readonly int[] _doorX, _doorY, _doorH, _liftAX, _liftAY, _liftBX, _liftBY, _liftW;
@@ -48,6 +59,8 @@ public sealed class VohnykWorld
     // тимчасове для ліфтів (без алокацій у кроці): хто їде
     readonly bool[] _riderHero = new bool[2];
     readonly bool[] _riderBox;
+    /// <summary>Кнопка входить у двері чи ліфт «все разом» — у соло вона тримається ще <see cref="SoloLatch"/> кроків.</summary>
+    readonly bool[] _latchable;
 
     public VohnykWorld(VohnykLevel level)
     {
@@ -93,6 +106,12 @@ public sealed class VohnykWorld
         {
             _levX[i] = level.Levers[i].Col * TileSu;
             _levY[i] = level.Levers[i].Row * TileSu;
+        }
+        _latchable = new bool[_nb];
+        for (var i = 0; i < _nb; i++)
+        {
+            foreach (var d in level.Doors) if (d.All && (d.ByMask & (1 << i)) != 0) _latchable[i] = true;
+            foreach (var l in level.Lifts) if (l.All && (l.ByMask & (1 << i)) != 0) _latchable[i] = true;
         }
         _exitX = [level.Exits[0].Col * TileSu, level.Exits[1].Col * TileSu];
         _exitY = [level.Exits[0].Row * TileSu, level.Exits[1].Row * TileSu];
@@ -730,7 +749,10 @@ public sealed class VohnykWorld
                 if (Overlap(_btnX[i], _btnY[i], 32 * Px, 8 * Px, X[h], Y[h], HeroW, HeroH)) on = 1;
             for (var b = 0; b < _nx && on == 0; b++)
                 if (Overlap(_btnX[i], _btnY[i], 32 * Px, 8 * Px, BoxX[b], BoxY[b], BoxSize, BoxSize)) on = 1;
-            Button[i] = on;
+            // сам за двох кнопка брами «все разом» відпускається не одразу: 1 → SoloLatch+1 → … → 2 → 0
+            if (on != 0) Button[i] = 1;
+            else if (Solo && _latchable[i] && Button[i] != 0) Button[i] = Button[i] == 1 ? SoloLatch + 1 : Button[i] > 2 ? Button[i] - 1 : 0;
+            else Button[i] = 0;
         }
         // Важіль перемикається, коли герой ВИХОДИТЬ із клітинки: праворуч — 1, ліворуч — 0, угору/вниз — як був.
         for (var h = 0; h < 2; h++)
