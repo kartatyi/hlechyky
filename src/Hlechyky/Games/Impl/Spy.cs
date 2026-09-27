@@ -7,8 +7,9 @@ namespace Hlechyky.Games.Impl;
 /// <summary>Фаза партії «Шпигуна». На дроті — рядком (<see cref="Spy.Wire(SpyPhase)"/>).</summary>
 public enum SpyPhase { Lobby, Deal, Play, Vote, Final, Reveal, Done }
 
-/// <summary>Чим скінчився раунд. На дроті — рядком (<see cref="Spy.Wire(SpyHow)"/>).</summary>
-public enum SpyHow { Caught, Wrong, Guessed, Misguess, Timeout, Left }
+/// <summary>Чим скінчився раунд. На дроті — рядком (<see cref="Spy.Wire(SpyHow)"/>).
+/// <c>Fold</c> — раунд не дограли: за столом лишилось двоє (його розкривають, але в хроніку він не йде).</summary>
+public enum SpyHow { Caught, Wrong, Guessed, Misguess, Timeout, Left, Fold }
 
 // ---------------------------------------------------------------------------------------------
 // Форми на дроті. Записи, а не анонімні типи там, де вид складається з кусків: так поле не загубиться
@@ -18,8 +19,9 @@ public enum SpyHow { Caught, Wrong, Guessed, Misguess, Timeout, Left }
 /// <summary>Годинник раунду: коли скінчиться (null, поки стоїть), скільки лишилось зараз, чи стоїть, скільки всього.</summary>
 public sealed record SpyClockView(DateTimeOffset? EndsAt, long LeftMs, bool Paused, long TotalMs);
 
-/// <summary>Правила столу, зведені до чисел. Один об'єкт на кімнату — не перебудовується на кожен вид.</summary>
-public sealed record SpyRulesView(int Minutes, int Rounds, string[] Sets, int DealMs, int VoteMs, int FinalMs, int RevealMs, int AskGraceMs);
+/// <summary>Правила столу, зведені до чисел. Один об'єкт на партію — не перебудовується на кожен вид.
+/// <c>Each</c> — «кожен по разу»: раундів стільки, скільки гравців на старті (у лобі <c>Rounds</c> ще невідомо — 0).</summary>
+public sealed record SpyRulesView(int Minutes, int Rounds, string[] Sets, int DealMs, int VoteMs, int FinalMs, int RevealMs, int AskGraceMs, bool Each);
 
 /// <summary>Рядок гравця: лише публічне (ні ролей, ні хто шпигун).</summary>
 public sealed record SpyPlayerView(int Seat, string? Nick, bool Here, long Score, bool Accused, bool Ready);
@@ -33,15 +35,18 @@ public sealed record SpyBlameView(Dictionary<int, int> Votes, int Need);
 /// <summary>Моя картка. Шпигунові — лише <c>Spy = true</c>, без локації й ролі.</summary>
 public sealed record SpyMeView(bool Spy, string? Loc, string? Role);
 
-/// <summary>Розкриття раунду, що щойно скінчився: тепер це знають усі, і глядачі теж.</summary>
+/// <summary>
+/// Розкриття раунду, що щойно скінчився: тепер це знають усі, і глядачі теж. <c>Pointed</c> — хто на кого показав,
+/// якщо раунд скінчився у фінальному голосуванні (інакше null).
+/// </summary>
 public sealed record SpyRevealView(int Spy, string Loc, Dictionary<int, string> Roles, string How,
-    Dictionary<int, long> Gained, string? Guess, int? Suspect, int? Accuser);
+    Dictionary<int, long> Gained, string? Guess, int? Suspect, int? Accuser, Dictionary<int, int>? Pointed);
 
 /// <summary>Дограний раунд у хроніці партії.</summary>
 public sealed record SpyHistoryView(int Round, int Spy, string Loc, string How, Dictionary<int, long> Gained);
 
-/// <summary>Підсумок партії: порожні переможці — нічия.</summary>
-public sealed record SpyResultView(int[] Winners);
+/// <summary>Підсумок партії: порожні переможці — нічия; <c>Folded</c> — партію згорнули, бо за столом лишилось двоє.</summary>
+public sealed record SpyResultView(int[] Winners, bool Folded);
 
 /// <summary>
 /// «Шпигун» — Spyfall у балачці столу. Усі, крім одного, знають, де вони (локація) і ким там є (роль); шпигун знає
@@ -78,8 +83,10 @@ public sealed class Spy : Game
     public const int MaxSeats = 10;
     public const int DefaultMinutes = 6;
     public const int DefaultRounds = 3;
+    /// <summary>Значення опції «Раундів»: кожен за столом побуде шпигуном по разу.</summary>
+    public const string EachRound = "each";
 
-    static readonly int[] MinuteChoices = [6, 8, 10];
+    static readonly int[] MinuteChoices = [4, 6, 8, 10];
     static readonly int[] RoundChoices = [1, 3, 5];
 
     public override GameInfo Info { get; } = new(
@@ -88,8 +95,8 @@ public sealed class Spy : Game
         Score: ScoreOrder.None,
         Options:
         [
-            new GameOption("time", "Раунд", [("6", "6 хвилин"), ("8", "8 хвилин"), ("10", "10 хвилин")], "6"),
-            new GameOption("rounds", "Раундів", [("1", "Один"), ("3", "Три"), ("5", "П'ять")], "3"),
+            new GameOption("time", "Раунд", [("4", "4 хвилини"), ("6", "6 хвилин"), ("8", "8 хвилин"), ("10", "10 хвилин")], "6"),
+            new GameOption("rounds", "Раундів", [("1", "Один"), ("3", "Три"), ("5", "П'ять"), (EachRound, "Кожен по разу")], "3"),
             new GameOption("set", "Локації", SpyLocations.Sets, SpyLocations.AnySet, Multi: true),
         ],
         Hint: "Усі знають, де вони, — крім шпигуна. Питайте одне одного в балачці столу: село шукає шпигуна, шпигун — локацію");
@@ -113,8 +120,10 @@ public sealed class Spy : Game
 
     int _minutes = DefaultMinutes;
     int _rounds = DefaultRounds;
+    /// <summary>Раундів «кожен по разу»: скільки їх, стане відомо на старті (стільки, скільки гравців).</summary>
+    bool _each;
     string[] _sets = [SpyLocations.AnySet];
-    SpyRulesView _rules = new(DefaultMinutes, DefaultRounds, [SpyLocations.AnySet], DealMs, VoteMs, FinalMs, RevealMs, AskGraceMs);
+    SpyRulesView _rules = new(DefaultMinutes, DefaultRounds, [SpyLocations.AnySet], DealMs, VoteMs, FinalMs, RevealMs, AskGraceMs, false);
     SpyLocations? _bank;
 
     long PlayMs => _minutes * 60_000L;
@@ -137,6 +146,11 @@ public sealed class Spy : Game
     string[][] _deckView = [];
     readonly HashSet<string> _playedLocs = new(StringComparer.Ordinal);
     readonly List<SpyHistoryView> _history = [];
+    /// <summary>
+    /// Імена всіх, хто грав партію, — для виду після неї: на звільнене місце вже може сісти новачок, а хроніка й
+    /// переможці мусять лишитись при своїх іменах. Збирається раз на партію.
+    /// </summary>
+    Dictionary<int, string> _namesView = [];
     int _round;
     SpyResultView? _result;
 
@@ -198,11 +212,12 @@ public sealed class Spy : Game
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
         _minutes = Pick(options, "time", MinuteChoices, DefaultMinutes);
-        _rounds = Pick(options, "rounds", RoundChoices, DefaultRounds);
+        _each = options.TryGetValue("rounds", out var rr) && rr == EachRound;
+        _rounds = _each ? 0 : Pick(options, "rounds", RoundChoices, DefaultRounds);
         var picked = options.TryGetValue("set", out var raw) ? GameOption.Split(raw) : [];
         var known = SpyLocations.Sets.Where(s => s.Value != SpyLocations.AnySet && picked.Contains(s.Value)).Select(s => s.Value).ToArray();
         _sets = known.Length == 0 || picked.Contains(SpyLocations.AnySet) ? [SpyLocations.AnySet] : known;
-        _rules = new SpyRulesView(_minutes, _rounds, _sets, DealMs, VoteMs, FinalMs, RevealMs, AskGraceMs);
+        _rules = new SpyRulesView(_minutes, _rounds, _sets, DealMs, VoteMs, FinalMs, RevealMs, AskGraceMs, _each);
         // Сервіси — тут, а не в конструкторі: гру створює реєстр без параметрів. Тести кладуть свій банк.
         _bank = Ctx.Services.GetService<SpyLocations>() ?? SpyLocations.Default;
     }
@@ -234,6 +249,10 @@ public sealed class Spy : Game
             _present[s] = true;
         }
         _presentCount = _seats.Length;
+        _namesView = [];
+        foreach (var s in _seats) _namesView[s] = Name(s);
+        if (_each) _rounds = _seats.Length;
+        _rules = new SpyRulesView(_minutes, _rounds, _sets, DealMs, VoteMs, FinalMs, RevealMs, AskGraceMs, _each);
         _history.Clear();
         _playedLocs.Clear();
         _round = 0;
@@ -249,7 +268,7 @@ public sealed class Spy : Game
             _deck = [];
             _deckView = [];
             SetPhase(SpyPhase.Done);
-            _result = new SpyResultView([]);
+            _result = new SpyResultView([], false);
             Ctx.Finish([], $"{Info.Title}: локацій не знайшлось, партії не буде");
             return;
         }
@@ -478,12 +497,10 @@ public sealed class Spy : Game
             return;
         }
         CloseVote();
+        // Невдалу підозру картка й так показує (рядок «підозру не підтримали»), а балачка столу в «Шпигуні» — це
+        // сама гра: друга бульбашка Глека на кожну підозру відсувала б питання вгору. Тож тут Глек мовчить.
         if (_clockLeftMs <= 0) EnterFinal(now, SpyGlek.NotUnanimousFinal);
-        else
-        {
-            ResumePlay(now);
-            Speak(SpyGlek.Pick(Ctx.Rng, SpyGlek.NotUnanimous));
-        }
+        else ResumePlay(now);
     }
 
     void CloseVote()
@@ -505,13 +522,19 @@ public sealed class Spy : Game
             if (_present[s] && _tally[s] * 2 > _presentCount) convicted = s;
 
         if (convicted < 0) EndRound(SpyHow.Timeout, null, null, null);
-        else EndRound(convicted == _spy ? SpyHow.Caught : SpyHow.Wrong, convicted, null, null);
+        else EndRound(convicted == _spy ? SpyHow.Caught : SpyHow.Wrong, convicted, null, null, byMajority: true);
     }
 
-    /// <summary>Раунд скінчився: очки, розкриття, рядок у хроніку, слово Глека.</summary>
-    void EndRound(SpyHow how, int? suspect, int? accuser, string? guess)
+    /// <summary>
+    /// Раунд скінчився: очки, розкриття, рядок у хроніку, слово Глека. <paramref name="byMajority"/> — вердикт
+    /// фінального голосування: коли засудили шпигуна, кожен, хто показав саме на нього, бере бонус, як обвинувач
+    /// за підозру («влучне око»).
+    /// </summary>
+    void EndRound(SpyHow how, int? suspect, int? accuser, string? guess, bool byMajority = false)
     {
         var now = Ctx.Clock.UtcNow;
+        // Хто на кого показав — якщо раунд скінчився у фінальному голосуванні (вердиктом чи здогадкою шпигуна).
+        var pointed = _phase == SpyPhase.Final ? BlameMap() : null;
         var gained = new Dictionary<int, long>();
         foreach (var s in _seats) if (_dealt[s]) gained[s] = 0;
 
@@ -535,6 +558,9 @@ public sealed class Spy : Game
                     Give(a, AccuserBonus);
                     Ctx.Award(a, 0, "ach:spy-catch");
                 }
+                if (byMajority)
+                    foreach (var s in _seats)
+                        if (_present[s] && _blame[s] == _spy) Give(s, AccuserBonus);   // «влучне око»
                 break;
             case SpyHow.Wrong: Give(_spy, SpyFramedPts); break;
             case SpyHow.Guessed:
@@ -548,16 +574,15 @@ public sealed class Spy : Game
                 break;
         }
 
-        var roles = new Dictionary<int, string>();
-        foreach (var s in _seats) if (_dealt[s] && s != _spy && _roles[s] is { } r) roles[s] = r;
         var loc = _loc!;
-        _reveal = new SpyRevealView(_spy, loc.Id, roles, Wire(how), gained, guess, suspect, accuser);
+        _reveal = new SpyRevealView(_spy, loc.Id, RolesMap(), Wire(how), gained, guess, suspect, accuser, pointed);
         _history.Add(new SpyHistoryView(_round, _spy, loc.Id, Wire(how), new Dictionary<int, long>(gained)));
 
         var spyName = Name(_spy);
         var line = how switch
         {
             SpyHow.Caught when accuser is { } by && _present[by] => SpyGlek.Pick(Ctx.Rng, SpyGlek.CaughtBy, spyName, loc.Title, Name(by)),
+            SpyHow.Caught when byMajority => SpyGlek.Pick(Ctx.Rng, SpyGlek.CaughtFinal, spyName, loc.Title),
             SpyHow.Caught => SpyGlek.Pick(Ctx.Rng, SpyGlek.Caught, spyName, loc.Title),
             SpyHow.Wrong => SpyGlek.Pick(Ctx.Rng, SpyGlek.Framed, Name(suspect ?? -1), spyName, loc.Title),
             SpyHow.Guessed => SpyGlek.Pick(Ctx.Rng, SpyGlek.Guessed, spyName, loc.Title),
@@ -574,6 +599,20 @@ public sealed class Spy : Game
         _clockEndsAt = null;
         _endsAt = now.AddMilliseconds(RevealMs);
         SetPhase(SpyPhase.Reveal);
+    }
+
+    Dictionary<int, string> RolesMap()
+    {
+        var roles = new Dictionary<int, string>();
+        foreach (var s in _seats) if (_dealt[s] && s != _spy && _roles[s] is { } r) roles[s] = r;
+        return roles;
+    }
+
+    Dictionary<int, int> BlameMap()
+    {
+        var map = new Dictionary<int, int>();
+        foreach (var s in _seats) if (_present[s] && _blame[s] >= 0) map[s] = _blame[s];
+        return map;
     }
 
     /// <summary>Розкриття скінчилось: наступний раунд або кінець партії.</summary>
@@ -608,7 +647,7 @@ public sealed class Spy : Game
     void FinishMatch()
     {
         var leaders = Leaders();
-        _result = new SpyResultView(leaders);
+        _result = new SpyResultView(leaders, false);
         SetPhase(SpyPhase.Done);
         if (leaders.Length == 0)
         {
@@ -783,6 +822,8 @@ public sealed class Spy : Game
         _presentCount--;
         _dirty = true;
         var now = Ctx.Clock.UtcNow;
+        // «Кожен по разу»: хто пішов, так і не побувавши шпигуном, свого раунду вже не отримає.
+        if (_each && _spyTimes[seat] == 0 && _rounds > _round) _rounds--;
 
         var inRound = _phase is SpyPhase.Deal or SpyPhase.Play or SpyPhase.Vote or SpyPhase.Final;
         if (inRound && seat == _spy)
@@ -803,11 +844,15 @@ public sealed class Spy : Game
                 // Підозра обвинувача не згорає: раунд не має карати за чужий вихід.
                 _accused[_accuser] = false;
                 CloseVote();
-                if (_clockLeftMs <= 0) EnterFinal(now, SpyGlek.NotUnanimousFinal);
-                else
+                // Лишилось двоє — Fold нижче згорне партію одразу: без «граємо далі», за яким за мить іде «згорнуто».
+                if (_presentCount >= MinSeats)
                 {
-                    ResumePlay(now);
-                    Speak(SpyGlek.Pick(Ctx.Rng, SpyGlek.VoteCancelled));
+                    if (_clockLeftMs <= 0) EnterFinal(now, SpyGlek.NotUnanimousFinal);
+                    else
+                    {
+                        ResumePlay(now);
+                        Speak(SpyGlek.Pick(Ctx.Rng, SpyGlek.VoteCancelled));
+                    }
                 }
             }
         }
@@ -828,15 +873,24 @@ public sealed class Spy : Game
         _graceShown = false;
     }
 
-    /// <summary>За столом менше трьох — партію згортаємо одразу, без розкриття незавершеного раунду.</summary>
+    /// <summary>
+    /// За столом менше трьох — партію згортаємо одразу. Недограний раунд очок не дає й у хроніку не йде, але його
+    /// розкриваємо: партія скінчилась, таємницю берегти вже нема від кого, а людям цікаво, хто ж був шпигуном.
+    /// </summary>
     void Fold()
     {
-        if (_roundOpen) _reveal = null;
+        if (_roundOpen && _loc is { } loc)
+        {
+            var zero = new Dictionary<int, long>();
+            foreach (var s in _seats) if (_dealt[s]) zero[s] = 0;
+            _reveal = new SpyRevealView(_spy, loc.Id, RolesMap(), Wire(SpyHow.Fold), zero, null, null, null,
+                _phase == SpyPhase.Final ? BlameMap() : null);
+        }
         _roundOpen = false;
         CloseVote();
         var played = _history.Count > 0;
         var leaders = played ? Leaders() : [];
-        _result = new SpyResultView(leaders);
+        _result = new SpyResultView(leaders, true);
         SetPhase(SpyPhase.Done);
         Speak(SpyGlek.Pick(Ctx.Rng, SpyGlek.Fold));
         if (played) Ctx.Finish(leaders, $"{Info.Title}: за столом лишилось двоє — партію згорнули. {Standings()}", ScoreMap());
@@ -912,6 +966,9 @@ public sealed class Spy : Game
             reveal = _phase is SpyPhase.Reveal or SpyPhase.Done ? _reveal : null,
             history = _history.ToArray(),
             result = _phase == SpyPhase.Done ? _result : null,
+            // Лише після партії: тоді на звільнене місце вже може сісти новачок (players показує його), а хроніка й
+            // переможці мусять лишитись при іменах тих, хто грав.
+            names = _phase == SpyPhase.Done ? _namesView : null,
         };
     }
 
@@ -997,6 +1054,7 @@ public sealed class Spy : Game
         SpyHow.Guessed => "guessed",
         SpyHow.Misguess => "misguess",
         SpyHow.Timeout => "timeout",
+        SpyHow.Fold => "fold",
         _ => "left",
     };
 }
