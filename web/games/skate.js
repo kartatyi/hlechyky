@@ -648,9 +648,10 @@
           if (e[3]) st.stars.set(a, now);
           st.knockedBy.set(b, { by: a, at: now });
           const na = nameOf(st, a), nb = nameOf(st, b);
+          // імена — лише в називному: «збив Меланка» різало б вухо, а відмінювати всі 64 імені заради рядка не варто
           news(st, e[3]
             ? '💥 Лоб у лоб: ' + esc(na) + ' і ' + esc(nb) + ' лежать'
-            : '💥 ' + esc(na) + (FEMALE.has(na) ? ' збила ' : ' збив ') + esc(nb) + ' з ніг');
+            : '💥 ' + esc(nb) + ' на льоду — ' + (FEMALE.has(na) ? 'налетіла ' : 'налетів ') + esc(na));
           sfx(st, 'knock');
           break;
         }
@@ -665,7 +666,7 @@
             news(st, '🌊 <b class="skate-s' + seat + '">' + esc(nickOfSeat(st, seat)) + '</b> шубовснув' + (she ? 'а' : '') + ' — це ' + (she ? 'була ' : 'був ')
               + esc(name) + '!' + who);
             sfx(st, 'out');
-          } else news(st, '🌊 Шубовсть! ' + esc(name) + ' в ополонці — вилізе, обтрусит' + (she ? 'ься' : 'ься'));
+          } else news(st, '🌊 Шубовсть! ' + esc(name) + ' в ополонці — зараз вилізе й обтруситься');
           sfx(st, 'splash');
           break;
         }
