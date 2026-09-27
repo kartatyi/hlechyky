@@ -931,6 +931,27 @@ public class SkateTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void A_bot_swerves_from_water_ahead_but_may_stand_right_by_a_hole()
+    {
+        var core = Bare(2, seed: 22);
+        var bot = core.V.First(v => v.Owner < 0);
+        core.Holes.Add(new SkateHole { X = 500, Y = 200, R = 30 });
+        // стоїть за кілька одиниць від краю й нікуди не котиться — не тікає (людина-мисливець теж так чатує)
+        Put(bot, 500 - 30 - SkateCore.R - 6, 200);
+        for (var t = 0; t < 60; t++) core.Think(bot);
+        Assert.Equal(-1, bot.Want);
+        // котиться просто у воду — за 2–6 тиків «помічає» й тисне геть від ополонки
+        Put(bot, 400, 200, vx: 1200);
+        var swerved = -1;
+        for (var t = 0; t < 10 && swerved < 0; t++)
+        {
+            core.Think(bot);
+            if (bot.Want is 3 or 4 or 5) swerved = t;
+        }
+        Assert.InRange(swerved, 1, 7);
+    }
+
+    [Fact]
     public void A_fallen_bot_gets_up_after_two_seconds_and_skates_again()
     {
         var core = Bare(2, seed: 23);

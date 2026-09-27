@@ -106,7 +106,7 @@ public sealed class SkateCore(Random rng)
     /// <summary>12 ласощів на льоду, по двоє кожного виду; підхопили — нове за 4–8 с деінде.</summary>
     public const int Items = 12, RespawnMin = 100, RespawnMax = 200;
     /// <summary>Ополонок на старті раунду і їхні радіуси; тріщина стає ополонкою радіуса 26 за 5 с.</summary>
-    public const int StartHoles = 3, HoleRMin = 22, HoleRMax = 34, CrackR = 26, CrackWarn = 125, HoleRCap = 50, MaxHoles = 8;
+    public const int StartHoles = 3, HoleRMin = 22, HoleRMax = 34, CrackR = 26, CrackWarn = 125, HoleRCap = 46, MaxHoles = 7;
     /// <summary>Хто врізався останнім за 3 с до ополонки — той і зіпхнув.</summary>
     public const int CreditTicks = 75;
     /// <summary>Скільки бот може простояти на самому старті раунду (0…6 с) — як гравець, що роздивляється.</summary>
@@ -645,7 +645,11 @@ public sealed class SkateCore(Random rng)
         Decide(v);
     }
 
-    /// <summary>Попереду ополонка чи тріщина: через 14 тиків буду в ній (з запасом) чи вже на самому краю. away — геть від її центру.</summary>
+    /// <summary>
+    /// Попереду ополонка чи тріщина: котиться до неї й за 14 тиків буде в ній (з запасом) — або вже стоїть на самому
+    /// краю. away — геть від її центру. Хто стоїть біля ополонки й нікуди не котиться, той не тікає: людина-мисливець
+    /// теж так чатує, і бот тоді не виділяє її тим, що «боти біля води не стоять».
+    /// </summary>
     bool Danger(SkateVillager v, out int away)
     {
         away = -1;
@@ -653,12 +657,11 @@ public sealed class SkateCore(Random rng)
         foreach (var h in Holes)
         {
             long cx = (long)h.X * Fp, cy = (long)h.Y * Fp;
-            long far = (long)(h.R + R + 14) * Fp, near = (long)(h.R + R + 6) * Fp;
+            long far = (long)(h.R + R + 14) * Fp, near = (long)(h.R + R + 2) * Fp;
             long ex = px - cx, ey = py - cy, nx = v.X - cx, ny = v.Y - cy;
-            var ahead = ex * ex + ey * ey < far * far;
+            var ahead = ex * ex + ey * ey < far * far && nx * v.Vx + ny * v.Vy < 0;
             var edge = nx * nx + ny * ny < near * near;
-            // котиться геть — не страшно
-            if (!(ahead || edge) || (!ahead && nx * v.Vx + ny * v.Vy > 0)) continue;
+            if (!ahead && !edge) continue;
             away = nx == 0 && ny == 0 ? _rng.Next(8) : Dir8(nx, ny);
             return true;
         }

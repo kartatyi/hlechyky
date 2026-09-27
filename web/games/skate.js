@@ -146,10 +146,18 @@
       for (let x = 0; x < map[y].length; x++) {
         if (ice(x, y)) continue;
         const cx = x * CELL, cy = y * CELL;
-        if (ice(x, y + 1)) for (let k = 0; k < 3; k++) drifts.push([cx + 5 + k * 11 + rnd() * 4, cy + CELL - 2, 9 + rnd() * 4]);
-        if (ice(x, y - 1)) for (let k = 0; k < 3; k++) drifts.push([cx + 5 + k * 11 + rnd() * 4, cy + 2, 9 + rnd() * 4]);
-        if (ice(x + 1, y)) for (let k = 0; k < 3; k++) drifts.push([cx + CELL - 2, cy + 5 + k * 11 + rnd() * 4, 9 + rnd() * 4]);
-        if (ice(x - 1, y)) for (let k = 0; k < 3; k++) drifts.push([cx + 2, cy + 5 + k * 11 + rnd() * 4, 9 + rnd() * 4]);
+        // кучугури різного розміру, трохи вглиб і назовні — щоб край не був намистом
+        // (ex, ey) — початок ребра, (ix, iy) — уздовж нього, (nx, ny) — у бік льоду
+        const lump = (ex, ey, ix, iy, nx, ny) => {
+          for (let k = 0; k < 4; k++) {
+            const t = (k + 0.2 + rnd() * 0.6) / 4, r = 6 + rnd() * 9, sink = -4 + rnd() * 7;
+            drifts.push([ex + ix * t * CELL + nx * sink, ey + iy * t * CELL + ny * sink, r]);
+          }
+        };
+        if (ice(x, y + 1)) lump(cx, cy + CELL, 1, 0, 0, 1);
+        if (ice(x, y - 1)) lump(cx, cy, 1, 0, 0, -1);
+        if (ice(x + 1, y)) lump(cx + CELL, cy, 0, 1, 1, 0);
+        if (ice(x - 1, y)) lump(cx, cy, 0, 1, -1, 0);
       }
     g.fillStyle = 'rgba(60, 100, 130, .22)';
     for (const [x, y, r] of drifts) { g.beginPath(); g.arc(x + 2, y + 3, r, 0, TAU); g.fill(); }
@@ -909,12 +917,13 @@
     stars(st, g, now, n);
     splashes(st, g, now);
     picks(st, g, now);
-    labels(st, g, pal, n, phase);
 
     g.setTransform(k, 0, 0, k, 0, 0);
     snowfall(st, g, cv.w, cv.h, now);
     shade(st, g, pal, cv.w, cv.h, cx, cy, phase, playing, mine, now);
     g.setTransform(k, 0, 0, k, -cx * k, -cy * k);
+    // ніки — поверх плашки розкриття: хто стоїть угорі ставка, не ховається під заголовком
+    labels(st, g, pal, n, phase);
     if (peek) meArrow(g, st.px[st.meId], st.py[st.meId], pal, true);
     if (mine && st.mouse && canAct(st)) aim(st, g, pal);
     g.setTransform(k, 0, 0, k, 0, 0);
@@ -1033,7 +1042,7 @@
     const want = mine && st.me && alive(st) && (phase === 'go' || phase === 'start') ? st.me : null;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.font = '15px ' + EMOJI_FONT;
+    g.font = '17px ' + EMOJI_FONT;
     for (let i = 0; i + 2 < it.length; i += 3) {
       const kind = it[i + 2];
       if (kind < 0) continue;
@@ -1051,9 +1060,12 @@
           g.globalAlpha = 1;
         }
       }
-      g.fillStyle = 'rgba(40, 70, 95, .25)';
-      g.beginPath(); g.ellipse(x + 1, y + 6, 7, 2.6, 0, 0, TAU); g.fill();
-      g.fillText(kindOf(st, kind).emoji, x, y + bob);
+      // світла латочка під ласощами — щоб їх було видно на блискучому льоду й серед юрми
+      g.fillStyle = 'rgba(40, 70, 95, .28)';
+      g.beginPath(); g.ellipse(x + 1, y + 8, 9, 3, 0, 0, TAU); g.fill();
+      g.fillStyle = 'rgba(255, 252, 240, .6)';
+      g.beginPath(); g.arc(x, y + bob, 10.5, 0, TAU); g.fill();
+      g.fillText(kindOf(st, kind).emoji, x, y + bob + 1);
     }
   }
 
