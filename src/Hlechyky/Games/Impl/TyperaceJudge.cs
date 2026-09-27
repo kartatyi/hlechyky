@@ -27,8 +27,12 @@ public static class TyperaceJudge
     public const int MaxHumanCpm = 1200;
     /// <summary>Журнал може «бачити» трохи більше часу, ніж сервер (зсув моменту старту в браузері), але не більше.</summary>
     public const int ClockAheadMs = 500;
-    /// <summary>…і менше — на латентність і паузу до першого натиску.</summary>
-    public const int ClockBehindMs = 6000;
+    /// <summary>
+    /// …і менше — на латентність і на фініш, що дійшов пізно: зв'язок ліг на останній літері, клієнт повторював, доки
+    /// SignalR не перепідключився (до 20 с, які каркас тримає місце). Офіційний час однаково серверний — гравець лише
+    /// втратив секунди, а не став «ботом». Було 6 с — і чесний фініш після 12 с без зв'язку діставав 🤖.
+    /// </summary>
+    public const int ClockBehindMs = 20_000;
     public const int ScriptPercent = 10;
     public const int MetronomeRun = 10;
     public const int MetronomeMin = 40;

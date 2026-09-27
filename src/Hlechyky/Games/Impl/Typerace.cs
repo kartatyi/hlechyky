@@ -20,10 +20,12 @@ public sealed class Typerace : TyperaceRace
     public const int TailMinMs = 45_000, TailMaxMs = 120_000;
     public const double TailShare = 1.0;
     /// <summary>
-    /// Дотяжка: хвіст скінчився, а хтось за столом уже на <see cref="NearPercent"/> % тексту й друкував за останні
-    /// <see cref="MovingMs"/> мс — даємо ще <see cref="ExtraMs"/> (скільки завгодно разів, але не далі стелі партії).
+    /// Дотяжка: хвіст скінчився, а хтось за столом своїм темпом (від старту) дописав би решту за
+    /// <see cref="ReachMs"/> і друкував за останні <see cref="MovingMs"/> мс — даємо ще <see cref="ExtraMs"/>
+    /// (скільки завгодно разів, але не далі стелі партії). Перший варіант — «85 % тексту» — лишав за бортом того, хто
+    /// мав 84 % і дописав би за 7 с.
     /// </summary>
-    public const int ExtraMs = 10_000, NearPercent = 85, MovingMs = 3_000;
+    public const int ExtraMs = 10_000, ReachMs = 20_000, MovingMs = 3_000;
     /// <summary>
     /// Тиша за столом: від старту ніхто не натиснув жодної клавіші. 15 с — щоб такий «заїзд» закрився раніше за
     /// 20 с від «Почати» (Economy.MinRewardSeconds) і не платив нічийних черепків, яких більше, ніж за чесний програш.
@@ -102,10 +104,13 @@ public sealed class Typerace : TyperaceRace
     {
         var cap = GoAt!.Value.AddMilliseconds(HardCapMs(Len));
         if (now >= cap) return false;
+        var raceMs = (now - GoAt.Value).TotalMilliseconds;
         foreach (var r in Racers)
         {
-            if (!r.In || r.Gone || r.Fin is not null || !Ctx.Seated(r.Seat)) continue;
-            if ((long)r.C * 100 < (long)NearPercent * Len || (now - r.LastMove).TotalMilliseconds > MovingMs) continue;
+            if (!r.In || r.Gone || r.Fin is not null || !Ctx.Seated(r.Seat) || r.C <= 0) continue;
+            if ((now - r.LastMove).TotalMilliseconds > MovingMs) continue;
+            // решта тексту своїм середнім темпом: (len − c) знаків × (час / c)
+            if ((Len - r.C) * raceMs > (double)ReachMs * r.C) continue;
             var until = now.AddMilliseconds(ExtraMs);
             EndsAt = until < cap ? until : cap;
             Stretches++;

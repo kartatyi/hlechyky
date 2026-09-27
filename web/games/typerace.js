@@ -22,11 +22,18 @@
   // =============================================================================================
 
   /** Поля payload'ів — рівно те, що читає сервер (тест The_server_accepts_exactly_what_the_module_sends). */
-  const WIRE = { pos: ['c', 'e'], finish: ['k', 'd'], go: ['length', 'source'], stop: [] };
-  const WIRE_POS = 'pos', WIRE_FINISH = 'finish', WIRE_GO = 'go', WIRE_STOP = 'stop';
+  const WIRE = { pos: ['c', 'e'], finish: ['k', 'd'], go: ['length', 'source'], stop: [], cheer: ['r'] };
+  const WIRE_POS = 'pos', WIRE_FINISH = 'finish', WIRE_GO = 'go', WIRE_STOP = 'stop', WIRE_CHEER = 'cheer';
 
   const POS_EVERY_MS = 200;
   const MAX_EVENTS = 1600, STEP_MS = 4, MAX_STEP = 4095;
+  /**
+   * Проковтнуті натиски (s) судді потрібні лише для звірки, тож пишемо не більше чотирьох на одну червону літеру й жодного,
+   * коли до стелі журналу лишається менше, ніж треба на решту тексту + RESERVE подій. Пропущений натиск віддає свою
+   * дельту наступній події. Без цього неохайний друкар на довгому тексті переповнював журнал і діставав 🤖.
+   * Дзеркало — TyperaceLogs.AsClientWrites у тестах C#.
+   */
+  const SWALLOW_PER_RED = 4, RESERVE = 200;
   const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
   /** Клас рівності знака: 1 апострофи, 2 тире/дефіси, 3 лапки, 4 пробіл і кінець рядка; 0 — лише сам собі. */
@@ -57,10 +64,41 @@
     .forEach((p) => { LAT2UA[p[0]] = p[1]; LAT2UA[p[0].toUpperCase()] = p[1].toUpperCase(); });
   const isLatin = (ch) => /[A-Za-z]/.test(ch);
 
+  /**
+   * Програти журнал так само, як суддя (TyperaceJudge.Check, крок 2): де курсор, чи висить червоний, скільки
+   * правильних, помилок і проковтнутих поспіль. null — журнал не сходиться. Потрібно після F5: червоне, що висіло до
+   * перезавантаження, для судді висить і далі, тож і на екрані мусить висіти.
+   */
+  function replay(k, len) {
+    let cur = 0, red = false, correct = 0, wrong = 0, sInRed = 0;
+    for (let i = 0; i < k.length; i++) {
+      const e = k.charCodeAt(i) | 0x20;      // 'C' → 'c'
+      if (e === 99) { if (red || cur >= len) return null; cur++; correct++; }                   // c
+      else if (e === 120) { if (red || cur >= len) return null; red = true; wrong++; sInRed = 0; }   // x
+      else if (e === 115) { if (!red) return null; sInRed++; }                                  // s
+      else if (e === 98) { if (red) red = false; else if (cur > 0) cur--; else return null; }   // b
+      else return null;
+    }
+    return { cur, red, correct, wrong, sInRed };
+  }
+
   /** Для звірки з C# (docs/games/dev/typerace-parity.js): сценарій [[подія, мс], …] → { k, d } тим самим кодувальником. */
   window.TyperaceCore = {
-    same, enc, titleOf, WIRE,
+    same, enc, titleOf, WIRE, replay,
     log(scenario) { return { k: scenario.map((e) => e[0]).join(''), d: scenario.map((e) => enc(e[1])).join('') }; },
+    /** Що клієнт справді запише в журнал із сирого потоку натисків (правило SWALLOW_PER_RED / RESERVE). */
+    capped(scenario, len) {
+      const st = { k: '', d: '', lastAt: 0, events: 0, sInRed: 0, c: 0, red: null, len };
+      let t = 0;
+      for (const [kind, ms] of scenario) {
+        t += ms;
+        journalAt(st, kind, true, t);
+        if (kind === 'c') st.c++;
+        else if (kind === 'x') st.red = '?';
+        else if (kind === 'b') { if (st.red != null) st.red = null; else if (st.c > 0) st.c--; }
+      }
+      return { k: st.k, d: st.d };
+    },
   };
 
   // =============================================================================================
@@ -72,7 +110,13 @@
     + '<rect x="4.5" y="10.5" width="7" height="1.6" fill="var(--ok)"/><path d="M10.5 1h4.5v3.5h-4.5z" fill="var(--text)"/>'
     + '<path d="M10.5 1h1.5v1.75h-1.5zM13.5 1h1.5v1.75h-1.5zM12 2.75h1.5V4.5H12z" fill="var(--clay)"/></svg>';
 
-  const SEAT_COLORS = ['#f4c542', '#7bd389', '#c5763a', '#6fb3e8', '#e88ac0', '#b48ef0', '#4fd1c5', '#ff8a65', '#c6e377', '#9db3a5'];
+  /** Кольори місць. Десяте — біле: сіро-зелений (як --muted) мав трактор утікача, і живий №10 виглядав тим, хто встав. */
+  const SEAT_COLORS = ['#f4c542', '#7bd389', '#c5763a', '#6fb3e8', '#e88ac0', '#b48ef0', '#4fd1c5', '#ff8a65', '#c6e377', '#f2f2f2'];
+  /** Гудки з фінішу (Input 'cheer', { r }): 0 бі-біп, 1 браво, 2 вогонь, 3 равлики. Клавіші 1–4, поки ти вже доїхав. */
+  const CHEERS = [['📯', 'Бі-біп!'], ['👏', 'Браво!'], ['🔥', 'Вогонь!'], ['🐌', 'Равлики, вперед!']];
+  const CHEER_EVERY_MS = 700;
+  /** Серія правильних знаків, від якої свій трактор пихкає іскрами. */
+  const STREAK = 20;
   const LENGTHS = [['short', 'Коротко', '~150'], ['medium', 'Середньо', '~300'], ['long', 'Довго', '~600']];
   const SOURCES = [['all', 'Усе'], ['classic', 'Класика'], ['proverbs', 'Прислів’я'], ['twisters', 'Скоромовки']];
   const REASON = {
@@ -89,16 +133,19 @@
       root._tr = {
         ctx: null, key: '', round: -1, phase: '', text: '', len: 0,
         // свій заїзд
-        c: 0, red: null, wrong: 0, correct: 0, buf: '', k: '', d: '', lastAt: 0, events: 0,
-        localGo: 0, finAt: 0, finished: false, finSent: false, latinRun: 0, prev: null,
-        // мережа
-        sent: { c: -1, e: -1 }, posAt: 0, posTimer: 0,
+        c: 0, red: null, wrong: 0, correct: 0, buf: '', k: '', d: '', lastAt: 0, events: 0, sInRed: 0, streak: 0,
+        localGo: 0, finAt: 0, finished: false, finSent: false, latinRun: 0, prev: null, kdAt: 0,
+        // мережа: фініш повторюємо, доки сервер його не побачить
+        sent: { c: -1, e: -1 }, posAt: 0, posTimer: 0, finBusy: false, finTries: 0, finTimer: 0, saveTimer: 0,
+        cheerAt: 0, extraSeen: 0, ghostBest: null,
+        emo: new Float64Array(12 * 4), emoN: 0,
         // годинник: зсув сервера відносно Date.now і локальні мітки відліку
         skew: 0, readyLocal: 0, goShownAt: 0,
         // малювання
         raf: 0, lastT: 0, stopAt: 0, cv: null, bg: null, bgKey: '', lanes: 0, laneH: 0, W: 0, H: 0, pal: null,
         x: new Float64Array(10), tx: new Float64Array(10), s: new Int8Array(10).fill(-1),
-        dustAt: new Float64Array(10), mineX: 0, trackSig: '', nickW: new Float64Array(10), nickOf: new Array(10).fill(null), nickTxt: new Array(10).fill(''),
+        dustAt: new Float64Array(10), mineX: 0, trackSig: '', nickW: new Float64Array(11), nickOf: new Array(11).fill(null), nickTxt: new Array(11).fill(''),
+        laneX: new Float64Array(10),
         parts: new Float32Array(160 * 7), partN: 0,
         perf: { frames: 0, ms: 0, max: 0 },
         // DOM
@@ -121,10 +168,20 @@
   }
 
   const storeKey = (st) => 'typerace:' + (st.ctx && st.ctx.room ? st.ctx.room.id + ':' + st.ctx.room.round : '');
-  function save(st) {
+  /**
+   * Свій заїзд у sessionStorage — щоб F5 не стирав набране. Не на кожен натиск (на слабкому телефоні це синхронний
+   * запис кількох КБ десять разів на секунду), а раз на 400 мс; помилку й фініш — одразу, а перед перезавантаженням
+   * сторінки (pagehide) — те, що лишилось.
+   */
+  function save(st, urgent) {
+    if (urgent) { clearTimeout(st.saveTimer); st.saveTimer = 0; saveNow(st); return; }
+    if (!st.saveTimer) st.saveTimer = setTimeout(() => { st.saveTimer = 0; saveNow(st); }, 400);
+  }
+  function saveNow(st) {
+    if (!st.ctx || !st.localGo) return;
     try {
-      sessionStorage.setItem(storeKey(st), JSON.stringify({ buf: st.buf, k: st.k, d: st.d, lastAt: st.lastAt, wrong: st.wrong,
-        correct: st.correct, events: st.events, localGo: st.localGo, text: st.text.length }));
+      sessionStorage.setItem(storeKey(st), JSON.stringify({ buf: st.buf, k: st.k, d: st.d, lastAt: st.lastAt, red: st.red,
+        localGo: st.localGo, finAt: st.finAt, text: st.text.length }));
     } catch { /* приватне вікно — без відновлення, та й годі */ }
   }
   function restore(st) {
@@ -133,23 +190,51 @@
       if (!raw) return false;
       const o = JSON.parse(raw);
       if (typeof o.buf !== 'string' || !st.text.startsWith(o.buf) || typeof o.k !== 'string' || typeof o.d !== 'string'
-        || o.text !== st.text.length) return false;
-      st.buf = o.buf; st.c = o.buf.length; st.k = o.k; st.d = o.d; st.events = o.events | 0;
-      st.lastAt = +o.lastAt || now(); st.wrong = o.wrong | 0; st.correct = o.correct | 0; st.localGo = +o.localGo || st.lastAt;
-      st.red = null;
+        || o.d.length !== 2 * o.k.length || o.text !== st.text.length) return false;
+      // журнал — правда для судді: курсор, червоне й лічильники беремо з нього, а не з того, що бачив екран
+      const rp = replay(o.k, st.len);
+      if (!rp || rp.cur !== o.buf.length) return false;
+      st.buf = o.buf; st.c = rp.cur; st.k = o.k; st.d = o.d; st.events = o.k.length;
+      st.lastAt = +o.lastAt || now(); st.correct = rp.correct; st.wrong = rp.wrong; st.sInRed = rp.sInRed;
+      st.localGo = +o.localGo || st.lastAt;
+      st.red = rp.red ? (typeof o.red === 'string' && o.red ? o.red : '?') : null;
+      if (st.c >= st.len && !st.red) { st.finished = true; st.finAt = +o.finAt || st.lastAt; }
       return true;
     } catch { return false; }
   }
   function forget(key) { try { sessionStorage.removeItem(key); } catch { /* нема то й нема */ } }
 
-  /** Подія в журнал: вид натиску (велика літера — не людина) і дельта від попереднього. */
-  function journal(st, kind, human) {
-    if (st.events >= MAX_EVENTS) return;
+  /**
+   * Коли натиснуто: апаратний час події (keydown ловимо окремо — 'input' приходить пізніше й несе час обробки), а
+   * не мить, коли обробник нарешті відпрацював. Інакше на підвислій сторінці накопичені натиски лягали б у журнал
+   * через 0–2 мс, і суддя бачив би «чергу».
+   */
+  function evTime(ev) {
     const t = now();
+    if (!ev || !(ev.timeStamp > 0) || !performance.timeOrigin) return t;
+    const at = performance.timeOrigin + ev.timeStamp;
+    return at <= t && t - at < 5000 ? at : t;
+  }
+  function keyTime(st, ev) {
+    const t = now();
+    const kd = st.kdAt;
+    st.kdAt = 0;
+    if (kd && kd <= t && t - kd < 1000) return kd;
+    return evTime(ev);
+  }
+
+  /** Подія в журнал: вид натиску (велика літера — не людина) і дельта від попереднього. */
+  function journal(st, kind, human, t) { journalAt(st, kind, human, t == null ? now() : t); }
+  function journalAt(st, kind, human, t) {
+    if (kind === 's' && (st.sInRed >= SWALLOW_PER_RED || MAX_EVENTS - st.events <= st.len - st.c + RESERVE)) return;
+    if (st.events >= MAX_EVENTS) return;
+    if (t < st.lastAt) t = st.lastAt;
     st.k += human ? kind : kind.toUpperCase();
     st.d += enc(t - st.lastAt);
     st.lastAt = t;
     st.events++;
+    if (kind === 'x') st.sInRed = 0;
+    else if (kind === 's') st.sInRed++;
   }
 
   function isHuman(st, ev) {
@@ -157,13 +242,13 @@
     return !!((ui && ui.human ? ui.human(ev) : ev && ev.isTrusted) || (window.HPad && window.HPad.on));
   }
 
-  /** Натиснуто знак ch. */
-  function key(root, st, ch, ev) {
+  /** Натиснуто знак ch у мить t (див. keyTime). */
+  function key(root, st, ch, ev, t) {
     if (!canType(st)) return;
     const human = isHuman(st, ev);
     unlockSound(st, human);
     if (st.red != null) {
-      journal(st, 's', human);
+      journal(st, 's', human, t);
       shake(root, st);
       save(st);
       return;
@@ -173,38 +258,42 @@
       st.buf += exp;              // зберігаємо очікуваний знак, а не набраний варіант («'» стає «’»)
       st.c++;
       st.correct++;
+      st.streak++;
       st.latinRun = 0;
-      journal(st, 'c', human);
+      journal(st, 'c', human, t);
       paintWord(root, st);
       if (st.c >= st.len) { finish(root, st); return; }
+      save(st);
     } else {
       st.red = ch;
       st.wrong++;
-      journal(st, 'x', human);
+      st.streak = 0;
+      journal(st, 'x', human, t);
       layoutHint(root, st, ch, exp);
       paintWord(root, st);
       shake(root, st);
       beep(st, 'err');
       smoke(st, st.ctx.seat);
+      save(st, true);             // червоне після F5 мусить висіти й далі — пишемо одразу
     }
     schedulePos(st);
-    save(st);
   }
 
-  function backspace(root, st, ev) {
+  function backspace(root, st, ev, t) {
     if (!canType(st)) return;
     const human = isHuman(st, ev);
     if (st.red != null) {
       st.red = null;
-      journal(st, 'b', human);
+      journal(st, 'b', human, t);
     } else if (st.c > 0) {
       st.c--;
       st.buf = st.buf.slice(0, -1);
-      journal(st, 'b', human);
+      st.streak = 0;
+      journal(st, 'b', human, t);
     } else return;
     paintWord(root, st);
     schedulePos(st);
-    save(st);
+    save(st, true);
   }
 
   /** Розкладка: латинська літера на місці нашої — одразу; незрозуміла латиниця — після двох поспіль. */
@@ -234,28 +323,47 @@
 
   function finish(root, st) {
     st.finished = true;
-    st.finAt = now();
+    st.finAt = st.lastAt || now();
     if (st.posTimer) { clearTimeout(st.posTimer); st.posTimer = 0; }
     paintWord(root, st);
     confetti(st);
     beep(st, 'fin');
-    save(st);
+    save(st, true);
     const input = root.querySelector('.tr-in');
     if (input && document.activeElement === input) input.blur();
-    sendFinish(st, 0);
+    st.finTries = 0;
+    sendFinish(st);
+    paint(root, st);
   }
 
-  function sendFinish(st, attempt) {
-    if (!st.ctx) return;
+  /** Відмови сервера, після яких повтор нічого не дасть (решта — мережа: немає зв'язку, виклик обірвався). */
+  const FINAL = new Set(['Ти вже на фініші', 'Перегони вже скінчились', 'Перегони ще не почались', 'Ти в цих перегонах не їдеш']);
+
+  /**
+   * Фініш на сервер. ctx.act не кидає: без зв'язку каркас повертає { ok: false } (і тост), тож повтор дивиться на
+   * відповідь. Далі — ще раз через 1, 2, 4… с (не частіше 10 с), доки сервер не побачить фінішу (update() бачить me.fin)
+   * чи не скаже остаточне «ні»; після перепідключення вид приходить сам — і update() шле фініш одразу.
+   */
+  function sendFinish(st) {
+    if (!st.ctx || st.finBusy) return;
+    clearTimeout(st.finTimer);
+    st.finTimer = 0;
     st.finSent = true;
+    st.finBusy = true;
+    st.finTries++;
     const payload = {};
     payload[WIRE.finish[0]] = st.k;
     payload[WIRE.finish[1]] = st.d;
-    const ctx = st.ctx;
-    Promise.resolve(ctx.act(WIRE_FINISH, payload)).catch(() => {
-      // мережа кліпнула — ще раз через секунду, до трьох разів; час однаково рахує сервер від миті, коли дійде
-      if (attempt < 3 && st.ctx === ctx) setTimeout(() => sendFinish(st, attempt + 1), 1000);
-    });
+    const ctx = st.ctx, key = st.key;
+    const again = (r) => {
+      st.finBusy = false;
+      if (st.root && st.ctx === ctx) paintHelp(st.root, st);
+      if (st.ctx !== ctx || st.key !== key || (r && r.ok) || (r && FINAL.has(r.message))) return;
+      const me = meRacer(st);
+      if (st.phase !== 'go' || !me || me.fin != null) return;
+      st.finTimer = setTimeout(() => { st.finTimer = 0; if (st.finished) sendFinish(st); }, Math.min(10000, 1000 * 2 ** Math.min(4, st.finTries - 1)));
+    };
+    Promise.resolve(ctx.act(WIRE_FINISH, payload)).then(again, () => again(null));
   }
 
   /** Поле тримає лише проміжок і хвіст поточного слова — так IME Android бачить звичайне слово. */
@@ -275,8 +383,9 @@
     const v = input.value, prev = st.prev == null ? tail(st) : st.prev;
     if (v === prev) return;
     if (!canType(st)) { syncInput(input, st); return; }
-    if (v.length === prev.length + 1 && v.startsWith(prev)) key(root, st, v[v.length - 1], ev);
-    else if (v.length === prev.length - 1 && prev.startsWith(v)) backspace(root, st, ev);
+    const t = keyTime(st, ev);
+    if (v.length === prev.length + 1 && v.startsWith(prev)) key(root, st, v[v.length - 1], ev, t);
+    else if (v.length === prev.length - 1 && prev.startsWith(v)) backspace(root, st, ev, t);
     else reject(root, st);
     syncInput(input, st);
   }
@@ -301,11 +410,14 @@
         ev.preventDefault();
         const exp = st.text[st.c];
         // Enter = пробіл на межі слова чи рядка; при червоному — такий самий проковтнутий натиск, як будь-який інший
-        if (canType(st) && (st.red != null || exp === ' ' || exp === '\n')) key(root, st, st.red != null ? '\n' : ' ', ev);
+        if (canType(st) && (st.red != null || exp === ' ' || exp === '\n')) key(root, st, st.red != null ? '\n' : ' ', ev, evTime(ev));
+        st.kdAt = 0;
         syncInput(input, st);
         return;
       }
-      if (ev.key === 'Escape') { ev.preventDefault(); input.blur(); }
+      if (ev.key === 'Escape') { ev.preventDefault(); input.blur(); return; }
+      // апаратна мить натиску — для журналу; сама літера прийде слідом подією 'input'
+      st.kdAt = evTime(ev);
     });
     input.addEventListener('focus', () => { syncInput(input, st); root.querySelector('.tr-textbox').classList.add('focus'); paintHelp(root, st); });
     input.addEventListener('blur', () => { root.querySelector('.tr-textbox').classList.remove('focus'); paintHelp(root, st); });
@@ -345,9 +457,14 @@
   /** Новий заїзд (новий раунд чи новий текст у соло): чистий свій стан. */
   function resetRun(st) {
     st.c = 0; st.red = null; st.wrong = 0; st.correct = 0; st.buf = ''; st.k = ''; st.d = ''; st.lastAt = 0; st.events = 0;
+    st.sInRed = 0; st.streak = 0; st.kdAt = 0;
     st.localGo = 0; st.finAt = 0; st.finished = false; st.finSent = false; st.latinRun = 0; st.sent = { c: -1, e: -1 };
     st.ws = -1; st.we = -1; st.wordSig = ''; st.prev = null; st.inputTop = -1; st.goShownAt = 0; st.readyLocal = 0;
     if (st.posTimer) { clearTimeout(st.posTimer); st.posTimer = 0; }
+    // відкладений запис попереднього заїзду ліг би вже під ключем нового раунду
+    clearTimeout(st.saveTimer); st.saveTimer = 0;
+    clearTimeout(st.finTimer); st.finTimer = 0; st.finBusy = false; st.finTries = 0;
+    st.cheerAt = 0; st.extraSeen = 0; st.emoN = 0;
     st.x.fill(0); st.tx.fill(0); st.s.fill(-1); st.partN = 0; st.mineX = 0;
   }
 
@@ -356,8 +473,9 @@
   // =============================================================================================
 
   function laneHeight(st, n) {
-    // у підсумку траса лише показує, хто де зупинився, — нижча, щоб таблиця влізла в екран
-    if (st.phase === 'done' && n >= 5) return st.W < 600 ? 18 : 22;
+    // у підсумку траса лише показує, хто де зупинився, — нижча, щоб таблиця влізла в екран (на Деку й ноуті 1280×800
+    // десять доріжок по 22 px штовхали «Ще раз» під згин — там вони по 12)
+    if (st.phase === 'done' && n >= 5) return window.innerHeight <= 820 ? 12 : st.W < 600 ? 18 : 22;
     if (st.W < 600) return n >= 7 ? 22 : 28;
     // Steam Deck і невисокі ноути (≤ 820 px): десять доріжок по 30 з'їли б пів екрана
     if (window.innerHeight <= 820) return n <= 4 ? 38 : n <= 7 ? 28 : 22;
@@ -381,9 +499,10 @@
   function ensureTrack(root, st) {
     const host = root.querySelector('.tr-trackbox');
     if (!host || !st.ctx) return;
-    const n = Math.max(solo(st) ? 1 : 2, racers(st).length);
+    // у тренуванні з рекордом — ще доріжка для привида рекорду
+    const n = Math.max(solo(st) ? 1 : 2, racers(st).length + (ghostOn(st) ? 1 : 0));
     const theme = document.documentElement.getAttribute('data-theme') || '';
-    const sig = n + ':' + theme + ':' + (st.phase === 'done');
+    const sig = n + ':' + theme + ':' + (st.phase === 'done') + ':' + (window.innerHeight <= 820);
     if (st.cv && st.bg && st.trackSig === sig) return;
     const W = Math.max(280, Math.floor(host.clientWidth || 600));
     st.W = W;
@@ -474,18 +593,20 @@
   }
 
   const TAU = Math.PI * 2;
+  /** Частинка-іскра з димаря (серія без помилок); 2…7 — конфеті кольорами місць. */
+  const SPARK = 12, SPARK_COLOR = '#ffa03a';
 
   /**
    * Трактор, що їде праворуч: велике заднє колесо під кабіною, мале переднє під капотом, димар, номер місця на
    * капоті. (x, y) — лівий край і вісь заднього колеса; k — масштаб (на вузьких доріжках телефона трактор менший).
    */
-  function drawTractor(g, st, x, y, k, color, seat, mine, s) {
+  function drawTractor(g, st, x, y, k, color, seat, mine, s, alpha) {
     const pal = st.pal;
     const gone = s === 3;
     g.save();
     g.translate(x, y);
     g.scale(k, k);
-    g.globalAlpha = gone ? 0.4 : 1;
+    g.globalAlpha = alpha != null ? alpha : gone ? 0.4 : 1;
     const body = gone ? pal.muted : color;
     const spin = x / (7 * k);                 // кут спиць — пропорційно шляху (радіус заднього колеса 7)
     g.fillStyle = body;
@@ -517,7 +638,7 @@
     g.font = 'bold 9px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(String(seat + 1), 22, -2.5);
+    if (seat < 10) g.fillText(String(seat + 1), 22, -2.5);
     if (mine) {
       g.strokeStyle = pal.accent;
       g.lineWidth = 1.5;
@@ -532,23 +653,84 @@
     g.restore();
   }
 
-  /** Нік — праворуч від трактора, а біля фінішу, де праворуч місця нема, — ліворуч. */
-  function drawNick(g, st, x, y, k, seat, raw, gone) {
-    if (st.laneH < 28) return;
-    g.font = '11px system-ui, sans-serif';
-    // обрізаний нік і його ширину рахуємо раз на нік, а не щокадру
-    if (st.nickOf[seat] !== raw) { st.nickOf[seat] = raw; st.nickTxt[seat] = nickShort(raw); st.nickW[seat] = g.measureText(st.nickTxt[seat]).width; }
+  /**
+   * Нік — праворуч від трактора, а біля фінішу, де праворуч місця нема, — ліворуч. На вузьких доріжках (Дека й
+   * ноут з 8–10 гонщиками, телефон) цифра на капоті вже нечитна, тож нік дрібніший, посередині доріжки й із номером
+   * місця попереду: «4 · Сашко».
+   */
+  function drawNick(g, st, x, y, k, seat, raw, gone, ly) {
+    const small = st.laneH < 28;
+    g.font = small ? '10px system-ui, sans-serif' : '11px system-ui, sans-serif';
+    // обрізаний нік і його ширину рахуємо раз на нік (і розмір доріжки), а не щокадру
+    const want = (small ? 's' : 'b') + raw;
+    if (st.nickOf[seat] !== want) {
+      st.nickOf[seat] = want;
+      st.nickTxt[seat] = seat === GHOST ? raw : small ? (seat + 1) + ' · ' + nickShort(raw, 10) : nickShort(raw, 12);
+      st.nickW[seat] = g.measureText(st.nickTxt[seat]).width;
+    }
     const nick = st.nickTxt[seat], w = st.nickW[seat];
     const right = x + 36 * k;
+    const ny = small ? ly : y - 12 * k;
     g.globalAlpha = gone ? 0.5 : 0.95;
     g.fillStyle = st.pal.text;
     g.textBaseline = 'middle';
-    if (right + w < st.W - FLAG - 4) { g.textAlign = 'left'; g.fillText(nick, right, y - 12 * k); }
-    else { g.textAlign = 'right'; g.fillText(nick, x - 5, y - 12 * k); }
+    if (right + w < st.W - FLAG - 4) { g.textAlign = 'left'; g.fillText(nick, right, ny); }
+    else { g.textAlign = 'right'; g.fillText(nick, x - 5, ny); }
     g.globalAlpha = 1;
   }
 
-  const nickShort = (n) => { n = n || ''; return n.length > 12 ? n.slice(0, 11) + '…' : n; };
+  const nickShort = (n, max) => { n = n || ''; return n.length > max ? n.slice(0, max - 1) + '…' : n; };
+
+  // ---------- привид рекорду (лише тренування) ----------
+
+  /** Слот привида в масивах траси (місць — 10, привид — одинадцятий). */
+  const GHOST = 10;
+  const HARD_CAP = (len) => 60000 + 500 * len;
+  const ghostOn = (st) => solo(st) && ghostBest(st) != null;
+  function ghostBest(st) {
+    // у заїзді — рекорд, яким він був до старту: після нового рекорду привид інакше їхав би поруч із тобою
+    if (st.phase === 'ready' || st.phase === 'go' || st.phase === 'done') return st.ghostBest;
+    const me = view(st).me;
+    return me && me.best != null ? me.best : null;
+  }
+  /** Де привид: рівно зі швидкістю рекорду від твого старту; у підсумку — там, де був у мить твого фінішу. */
+  function ghostC(st) {
+    const best = ghostBest(st);
+    if (!best || !st.len) return 0;
+    let ms = 0;
+    if (st.phase === 'go' && st.localGo) ms = (st.finished && st.finAt ? st.finAt : now()) - st.localGo;
+    else if (st.phase === 'done') {
+      const r = meRacer(st);
+      ms = r && r.fin != null ? r.fin : HARD_CAP(st.len);
+    }
+    return Math.min(st.len, Math.max(0, best * ms / 60000));
+  }
+
+  // ---------- гудки з фінішу ----------
+
+  /** Гудок над трактором: плаский Float64Array на 12 записів — місце, вид, вік (мс), скільки живе. */
+  function addCheer(st, seat, r) {
+    if (reduced() && st.emoN >= 12) return;
+    let i = st.emoN;
+    if (i >= 12) { st.emo.copyWithin(0, 4); i = 11; } else st.emoN++;
+    const o = i * 4;
+    st.emo[o] = seat; st.emo[o + 1] = r; st.emo[o + 2] = 0; st.emo[o + 3] = 1400;
+  }
+
+  function sendCheer(root, st, r) {
+    if (!st.ctx || !canCheer(st)) return;
+    const t = performance.now();
+    if (t - st.cheerAt < CHEER_EVERY_MS) return;
+    st.cheerAt = t;
+    const payload = {};
+    payload[WIRE.cheer[0]] = r;
+    st.ctx.input(WIRE_CHEER, payload);
+  }
+  /** Гудіти може той, хто вже доїхав, поки решта ще їде (за столом; у тренуванні нікому). */
+  function canCheer(st) {
+    const me = meRacer(st);
+    return !!(st.ctx && st.ctx.mine && !solo(st) && st.phase === 'go' && me && !me.gone && me.fin != null);
+  }
 
   function draw(root, st, t, dt) {
     const cv = st.cv;
@@ -563,7 +745,8 @@
       const r = list[lane], i = r.seat;
       let x, s = st.s[i] >= 0 ? st.s[i] : r.s;
       let aim;
-      if (i === me && st.phase === 'go' && !r.gone) {
+      const mine = i === me && st.phase === 'go' && !r.gone;
+      if (mine) {
         // свій — з локального c, лише з легким згладжуванням 60 мс, щоб не стрибав по літері
         aim = xOf(st, st.finished ? st.len : st.c);
         st.mineX = rm || !st.mineX ? aim : st.mineX + (aim - st.mineX) * (1 - Math.exp(-dt / 60));
@@ -575,14 +758,24 @@
         else st.x[i] += (aim - st.x[i]) * k;
         x = st.x[i];
       }
+      st.laneX[i] = x;
       const y = laneY(st, lane) + 5 * kk;
-      // пил за трактором, що їде
-      if (!rm && st.phase === 'go' && s === 0 && t - st.dustAt[i] > 90 && aim - x > 0.5) {
+      // пил за трактором, що їде; свій на чистій серії (20+ без помилки) пилить густіше й пихкає іскрами з димаря
+      const hot = mine && st.streak >= STREAK && !st.finished;
+      if (!rm && st.phase === 'go' && s === 0 && t - st.dustAt[i] > (hot ? 45 : 90) && aim - x > 0.5) {
         st.dustAt[i] = t;
         spawn(st, x + 1, y + 8 * kk, -0.02 - Math.random() * 0.02, -0.01 - Math.random() * 0.01, 500, 0);
+        if (hot) spawn(st, x + 25 * kk, y - 15 * kk, -0.03 - Math.random() * 0.03, -0.05 - Math.random() * 0.04, 380, SPARK);
       }
       drawTractor(g, st, x, y, kk, st.pal.seats[i % 10], i, i === me, r.gone ? 3 : s);
-      drawNick(g, st, x, y, kk, i, r.nick, r.gone);
+      drawNick(g, st, x, y, kk, i, r.nick, r.gone, laneY(st, lane));
+    }
+    // привид рекорду — напівпрозорий на своїй доріжці під тобою
+    if (ghostOn(st) && list.length < st.lanes) {
+      const lane = list.length, y = laneY(st, lane) + 5 * kk;
+      const x = xOf(st, ghostC(st));
+      drawTractor(g, st, x, y, kk, st.pal.text, GHOST, false, 0, 0.3);
+      drawNick(g, st, x, y, kk, GHOST, '👻 рекорд ' + ghostBest(st), true, laneY(st, lane));
     }
     // частинки: рух, вигорання й стискання масиву зсувом — без алокацій
     const p = st.parts;
@@ -593,15 +786,45 @@
       if (p[o + 4] >= p[o + 5]) continue;
       const kind = p[o + 6];
       p[o] += p[o + 2] * dt; p[o + 1] += p[o + 3] * dt;
-      if (kind >= 2) p[o + 3] += 0.0004 * dt;      // конфеті падає
+      if (kind >= 2 && kind < SPARK) p[o + 3] += 0.0004 * dt;      // конфеті падає
       g.globalAlpha = 1 - p[o + 4] / p[o + 5];
-      g.fillStyle = kind === 0 ? st.pal.dust : kind === 1 ? st.pal.danger : st.pal.seats[(kind - 2) % 10];
+      g.fillStyle = kind === 0 ? st.pal.dust : kind === 1 ? st.pal.danger : kind === SPARK ? SPARK_COLOR : st.pal.seats[(kind - 2) % 10];
       const size = kind === 0 ? 4 : kind === 1 ? 5 : 3;
       g.fillRect(p[o] - size / 2, p[o + 1] - size / 2, size, size);
       if (w !== j) for (let q = 0; q < 7; q++) p[w * 7 + q] = p[o + q];
       w++;
     }
     st.partN = w;
+    // гудки: кружечок з емодзі вискакує зліва від трактора того, хто гуде (він на фініші — праворуч місця нема),
+    // злітає вгору й тане; верхня доріжка — не за край канви
+    if (st.emoN) {
+      const e = st.emo;
+      let n = 0;
+      const big = st.laneH >= 28, rad = big ? 14 : 12;
+      g.font = (big ? 18 : 15) + 'px system-ui, "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      for (let j = 0; j < st.emoN; j++) {
+        const o = j * 4;
+        e[o + 2] += dt;
+        if (e[o + 2] >= e[o + 3]) continue;
+        const seat = e[o], lane = laneOf(st, seat);
+        if (lane >= 0) {
+          const f = e[o + 2] / e[o + 3];
+          const pop = rm ? 1 : Math.min(1, 0.4 + f * 5);          // вискакує за ~120 мс
+          g.globalAlpha = f < 0.7 ? 1 : 1 - (f - 0.7) / 0.3;
+          const ex = Math.max(X0 + rad, (st.laneX[seat] || X0) - rad - 2);
+          const ey = Math.max(rad + 1, laneY(st, lane) - (rm ? 8 : f * 22));
+          g.fillStyle = st.pal.text;
+          g.beginPath(); g.arc(ex, ey, rad * pop, 0, TAU); g.fill();
+          g.fillStyle = '#111';
+          g.fillText(CHEERS[e[o + 1]] ? CHEERS[e[o + 1]][0] : '📯', ex, ey + 1);
+        }
+        if (n !== j) for (let q = 0; q < 4; q++) e[n * 4 + q] = e[o + q];
+        n++;
+      }
+      st.emoN = n;
+    }
     g.globalAlpha = 1;
     const ms = performance.now() - t0;
     st.perf.frames++; st.perf.ms += ms; if (ms > st.perf.max) st.perf.max = ms;
@@ -686,7 +909,19 @@
     const input = root.querySelector('.tr-in'), word = root.querySelector('.tr-word');
     if (!input || !word) return;
     const top = word.offsetTop;
-    if (st.inputTop !== top) { st.inputTop = top; input.style.top = top + 'px'; }
+    if (st.inputTop === top) return;
+    st.inputTop = top;
+    input.style.top = top + 'px';
+    if (document.activeElement !== input) return;
+    // новий рядок: екранна клавіатура пада (Дека) закриває низ екрана, а на телефоні знизу лежить кнопка балачки
+    // столу — тримаємо поточний рядок вище (раз на рядок, а не на натиск)
+    const kbd = document.body.classList.contains('pad-kbd');
+    if (!kbd && !(st.ctx && st.ctx.ui.coarse())) return;
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const r = input.getBoundingClientRect();
+    if (kbd || r.bottom > vh - 80 || r.top < 0) {
+      try { input.scrollIntoView({ block: 'center' }); } catch { /* старий браузер */ }
+    }
   }
 
   function fmtTime(ms) {
@@ -737,24 +972,30 @@
     const r = meRacer(st);
     if (st.ctx.mine && r && st.phase === 'go') {
       const n = myNumbers(st);
-      const cpm = st.phase === 'done' && r.cpm != null ? r.cpm : r.fin != null && r.cpm != null ? r.cpm : n.cpm;
+      const cpm = r.fin != null && r.cpm != null ? r.cpm : n.cpm;
       const acc = r.acc != null ? r.acc : n.acc;
-      const place = r.place || (st.phase === 'go' && !solo(st) && !r.flag ? n.place : null);
+      const place = r.place || (!solo(st) && !r.flag ? n.place : null);
       html = '<span title="Знаків за хвилину">⌨ <b>' + cpm + '</b> зн/хв</span><span title="Точність">🎯 ' + acc + ' %</span>'
         + (place && !solo(st) ? '<span title="Місце">🏁 ' + place + '-е</span>' : '')
-        + '<span title="Час">⏱ ' + (r.fin != null ? fmtTime(r.fin) : clock(elapsed(st))) + '</span>';
-      if (st.phase === 'go' && v.endsAt && v.tail) {
-        const left = Date.parse(v.endsAt) - now() - st.skew;
-        html += '<span class="tr-tail" title="Скільки лишилось до кінця заїзду">⌛ ' + clock(left) + '</span>';
-      }
+        + '<span title="Час">⏱ ' + (r.fin != null ? fmtTime(r.fin) : clock(elapsed(st))) + '</span>'
+        + (st.streak >= STREAK && !st.finished ? '<span class="tr-streak" title="Знаків поспіль без помилки">🔥 ' + st.streak + '</span>' : '')
+        + tailLeft(st, v);
     } else if (st.phase === 'go') {
       // глядач: лідера каже рядок статусу, тут — годинник і скільки вже доїхало
       const list = racers(st);
       const fin = list.filter((x) => x.fin != null || st.s[x.seat] === 2).length;
-      html = '<span>👁 Дивишся збоку</span><span>⏱ ' + clock(elapsed(st)) + '</span><span>🏁 ' + fin + ' з ' + list.length + '</span>';
+      html = '<span>👁 Дивишся збоку</span><span>⏱ ' + clock(elapsed(st)) + '</span><span>🏁 ' + fin + ' з ' + list.length + '</span>'
+        + tailLeft(st, v);
     }
     if (html !== st.statsSig) { st.statsSig = html; el.innerHTML = html; }
     paintLive(root, st);
+  }
+
+  /** Скільки лишилось до кінця заїзду, коли вже йде хвіст. */
+  function tailLeft(st, v) {
+    if (st.phase !== 'go' || !v.endsAt || !v.tail) return '';
+    const left = Date.parse(v.endsAt) - now() - st.skew;
+    return '<span class="tr-tail" title="Скільки лишилось до кінця заїзду">⌛ ' + clock(left) + '</span>';
   }
 
   /** Живий список праворуч (на широкій картці): місце, нік, %, зн/хв. Не частіше двох разів на секунду. */
@@ -791,6 +1032,8 @@
       el.dataset.t = text;
       el.textContent = text;
       el.hidden = !text;
+      // відлік — над трасою, а не на тексті: перший рядок саме зараз і треба прочитати
+      if (text) el.style.fontSize = Math.max(26, Math.min(60, (st.H || 60) - 14)) + 'px';
       if (text) {
         el.classList.remove('tr-pop'); void el.offsetWidth; el.classList.add('tr-pop');
         beep(st, text === 'Поїхали!' ? 'go' : 'tick');
@@ -812,15 +1055,20 @@
     const v = view(st), ctx = st.ctx;
     let html = '';
     if (st.phase === 'done' && v.result && !st.showPick) {
+      // медалі — серед тих, хто дограв за столом: утікач лишається зі своїм місцем і часом, але 🥇 — у переможця
+      let rank = 0;
       const rows = (v.result.order || []).map((seat) => {
         const r = racers(st).find((x) => x.seat === seat);
         if (!r) return '';
-        const medal = r.place === 1 ? '🥇' : r.place === 2 ? '🥈' : r.place === 3 ? '🥉' : r.place ? r.place + '.' : '·';
+        let medal = '·';
+        if (r.place != null && !r.gone) { rank++; medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank + '.'; }
+        else if (r.place != null) medal = '🚪';
+        else if (r.flag) medal = '🤖';
         const t = r.cpm != null && r.fin != null && !r.flag ? titleOf(r.cpm) : null;
         let note = '';
         if (r.flag) note = '🤖 не зараховано: ' + (REASON[r.flag] || r.flag);
-        else if (r.fin == null) note = 'не дописав: ' + Math.floor(100 * r.c / Math.max(1, v.len)) + ' %';
-        if (r.gone) note += (note ? ' · ' : '') + 'пішов';
+        else if (r.fin == null) note = 'дописано ' + Math.floor(100 * r.c / Math.max(1, v.len)) + ' %';
+        if (r.gone) note += (note ? ' · ' : '') + (r.place != null ? r.place + '-е на фініші, але встав' : 'встав з-за столу');
         return '<tr class="' + (seat === ctx.seat ? 'me' : '') + (r.gone ? ' gone' : '') + '">'
           + '<td class="tr-medal">' + medal + '</td>'
           + '<td class="tr-bnick"><span class="tr-dot tr-s' + seat + '">' + (seat + 1) + '</span>' + esc(r.nick)
@@ -831,10 +1079,13 @@
           + '<td class="tr-num">' + (r.fin != null ? fmtTime(r.fin) : '—') + '</td>'
           + '<td class="tr-title tr-opt">' + (t ? t[2] + ' ' + t[1] : '') + '</td></tr>';
       }).join('');
+      const trap = v.result.trap;
       html = (solo(st) ? soloSummary(st)
         : '<table class="tr-table"><thead><tr><th></th><th>Хто</th><th class="tr-num">Швидкість</th><th class="tr-num">Точність</th>'
           + '<th class="tr-num tr-opt">Помилок</th><th class="tr-num">Час</th><th class="tr-opt">Звання</th></tr></thead><tbody>' + rows + '</tbody></table>')
         + '<p class="tr-say">🏺 <i>' + esc(v.result.say || '') + '</i></p>'
+        + (trap && trap.word ? '<p class="tr-trap">🪤 Слово-пастка: <b>«' + esc(trap.word) + '»</b> — '
+          + (trap.n >= trap.of ? 'спіткнулись усі' : 'спіткнулись ' + trap.n + ' з ' + trap.of) + '</p>' : '')
         + '<div class="tr-acts">' + (solo(st)
           ? '<button type="button" class="primary tr-again" data-pad-first>Ще раз</button>'
             + '<button type="button" class="ghost tr-change">Змінити</button>'
@@ -852,6 +1103,10 @@
     b('.tr-train', (e) => openRoom(e.currentTarget, 'OpenSolo', 'typerace-solo', null));
   }
 
+  /**
+   * Підсумок тренування: одне велике число (з 🏆, якщо рекорд), під ним дрібно точність і час, репліка Глека — окремо,
+   * і один рядок «найкраще». Рекорд не повторюється п'ять разів (статус, тост і все інше про нього мовчать).
+   */
   function soloSummary(st) {
     const v = view(st), r = meRacer(st), me = v.me || {};
     if (!r) return '';
@@ -861,8 +1116,9 @@
         ? '<div class="tr-big">' + (me.isRecord ? '🏆 ' : '') + '<b>' + r.cpm + '</b> зн/хв' + (t ? ' · ' + t[2] + ' ' + t[1] : '') + '</div>'
           + '<div class="muted">🎯 ' + (r.acc != null ? r.acc : '—') + ' % · помилок ' + r.wrong + ' · ⏱ ' + fmtTime(r.fin)
           + (r.flag ? ' · 🤖 не зараховано: ' + esc(REASON[r.flag] || r.flag) : '') + '</div>'
-        : '<div class="tr-big">Не доїхав: ' + Math.floor(100 * r.c / Math.max(1, v.len)) + ' %</div>')
-      + '<div class="muted small">Рекорд: ' + (me.best != null ? me.best + ' зн/хв' : 'ще нема') + ' · заїздів: ' + (me.runs || 0) + '</div></div>';
+        : '<div class="tr-big">До фінішу — <b>' + Math.floor(100 * r.c / Math.max(1, v.len)) + '</b> %</div>')
+      + (me.isRecord ? '' : '<div class="muted small">Найкраще: ' + (me.best != null ? me.best + ' зн/хв' : 'ще нема') + ' · заїздів: ' + (me.runs || 0) + '</div>')
+      + '</div>';
   }
 
   function openRoom(btn, method, game, arg) {
@@ -921,7 +1177,11 @@
     const input = root.querySelector('.tr-in');
     const focused = input && document.activeElement === input;
     let text = '';
-    if (st.ctx.mine && meRacer(st) && (st.phase === 'ready' || (st.phase === 'go' && canType(st) && !focused)))
+    const me = meRacer(st);
+    // дописав, а сервер фінішу ще не бачив — кажемо чесно, що відбувається (статус каркаса без зв'язку не оновлюється)
+    if (st.ctx.mine && me && st.phase === 'go' && st.finished && me.fin == null)
+      text = st.finTries > 1 ? '📡 Зв’язок кліпнув — фініш надішлемо, щойно він повернеться. Час рахує сервер' : '📨 Фініш! Суддя дивиться журнал…';
+    else if (st.ctx.mine && me && (st.phase === 'ready' || (st.phase === 'go' && canType(st) && !focused)))
       text = coarse ? '👆 Тапни по тексту й друкуй по літері — без свайпів'
         : st.phase === 'ready' ? '⌨ Прочитай перший рядок — і руки на клавіатуру' : '⌨ Друкуй — помилка висить червоним, доки не натиснеш Backspace';
     // лобі: правила одним реченням — новачок має зрозуміти гру за п'ять секунд
@@ -971,16 +1231,20 @@
   function mount(root, ctx) {
     const st = state(root);
     st.ctx = ctx;
+    st.root = root;
     root.innerHTML = '<div class="tr-wrap">'
-      + '<div class="tr-trackbox" aria-hidden="true"></div>'
+      + '<div class="tr-trackbox" aria-hidden="true"><div class="tr-count" hidden></div></div>'
       + '<div class="tr-cols"><div class="tr-main">'
       + '<div class="tr-src muted small"></div>'
       + '<div class="tr-textbox" hidden><div class="tr-text"><span class="tr-done"></span><span class="tr-word"></span><span class="tr-rest"></span></div>'
       + '<input class="tr-in" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done"'
-      + ' aria-label="Поле для друку" data-pad-first>'
-      + '<div class="tr-count" hidden></div><div class="tr-hint" hidden role="status"></div></div>'
+      + ' aria-label="Поле для друку">'
+      + '<div class="tr-hint" hidden role="status"></div></div>'
       + '<div class="tr-help muted small" hidden></div>'
-      + '<div class="tr-stats"><span class="tr-nums"></span><span class="tr-sbtns"><button type="button" class="ghost tr-stop" hidden>■ Стоп</button>'
+      + '<div class="tr-stats"><span class="tr-nums"></span><span class="tr-sbtns">'
+      + '<span class="tr-cheers" hidden role="group" aria-label="Гудки з фінішу">'
+      + CHEERS.map((c, i) => '<button type="button" class="ghost tr-cheer" data-cheer="' + i + '" title="' + c[1] + ' (' + (i + 1) + ')" aria-label="' + c[1] + '">' + c[0] + '</button>').join('')
+      + '</span><button type="button" class="ghost tr-stop" hidden>■ Стоп</button>'
       + '<button type="button" class="ghost tr-snd" data-pad-skip></button></span></div>'
       + '<div class="tr-pick" hidden></div>'
       + '</div><div class="tr-side"><div class="tr-live"></div></div></div>'
@@ -1008,9 +1272,13 @@
       paintSnd();
     };
     paintSnd();
+    root.querySelectorAll('.tr-cheer').forEach((b) => { b.onclick = () => sendCheer(root, st, +b.dataset.cheer); });
     root.querySelector('.tr-stop').onclick = () => { if (st.ctx) st.ctx.act(WIRE_STOP, {}); };
     st.onVis = () => { if (!document.hidden) loop(root, st); };
     document.addEventListener('visibilitychange', st.onVis);
+    // F5 чи закрита вкладка: відкладений запис заїзду — одразу
+    st.onHide = () => { if (st.saveTimer) save(st, true); };
+    window.addEventListener('pagehide', st.onHide);
     if (window.ResizeObserver) {
       st.ro = new ResizeObserver(() => { st.trackSig = ''; st.inputTop = -1; placeInput(root, st); if (st.bg) loop(root, st); });
       st.ro.observe(root.querySelector('.tr-trackbox'));
@@ -1036,6 +1304,8 @@
       st.len = v.len || 0;
       resetRun(st);
       st.trackSig = '';
+      // привид їде з рекордом, яким той був до цього заїзду
+      st.ghostBest = v.me && v.me.best != null ? v.me.best : null;
       // вірш (багато коротких рядків) — у дві-три колонки, інакше на Деку й на ноуті текст лізе за екран
       let lines = st.text ? 1 : 0;
       for (let i = 0; i < st.len; i++) if (st.text.charCodeAt(i) === 10) lines++;
@@ -1053,13 +1323,28 @@
     const me = meRacer(st);
     if (st.phase === 'go' && ctx.mine && me && !me.gone && !st.localGo) {
       if (me.fin != null) { st.finished = true; st.finSent = true; st.c = st.len; st.localGo = now(); }
-      else if (!restore(st)) { st.localGo = now(); st.lastAt = st.localGo; save(st); }
+      else if (!restore(st)) {
+        // свіжий старт (чи F5 без збереженого — приватне вікно): старт беремо з годинника сервера, а не «зараз»,
+        // інакше журнал бачив би менше часу, ніж сервер, і суддя казав би «годинник не сходиться»
+        const serverGo = v.goAt && v.endsIn != null ? Date.parse(v.goAt) - st.skew : 0;
+        st.localGo = serverGo > 0 ? Math.min(now(), serverGo) : now();
+        st.lastAt = st.localGo;
+        save(st, true);
+      }
       if (!st.finished) { st.sent = { c: -1, e: -1 }; sendPos(st); }
       st.goShownAt = was === 'ready' ? performance.now() : 0;
       st.wordSig = ''; st.ws = -1;
       setTimeout(() => focusInput(root, st, false), 0);
     }
     if (me && me.fin != null && !st.finished) { st.finished = true; st.finSent = true; st.c = st.len; }
+    if (me && me.fin != null) { clearTimeout(st.finTimer); st.finTimer = 0; }
+    // дописав, а сервер фінішу ще не бачив (кліпнув зв'язок, F5 на останній літері): вид прийшов — отже, зв'язок є, шлемо ще раз
+    else if (st.phase === 'go' && ctx.mine && me && !me.gone && st.finished && !st.finBusy) sendFinish(st);
+    // хвіст дотягнули — хтось уже біля фінішу
+    if (st.phase === 'go' && (v.extra | 0) > st.extraSeen) {
+      st.extraSeen = v.extra | 0;
+      hint(root, st, '⏳ Ще ' + EXTRA_S + ' с — хтось уже біля фінішу', 2500, 'lay');
+    }
     if (st.phase === 'done' && was === 'go') st.stopAt = performance.now() + 1500;
     if (st.phase !== 'done') st.showPick = false;
 
@@ -1068,10 +1353,31 @@
     if (src.textContent !== sl) src.textContent = sl;
     wrap.dataset.phase = st.phase;
     wrap.classList.toggle('tr-solo-mode', solo(st));
+    // підсумок на 5+ гонщиках на невисокому екрані (Дека, ноут 1280×800): траса й джерело ховаються, щоб таблиця
+    // разом із «Ще раз» влізла без прокрутки — хто де зупинився, таблиця й так каже
+    wrap.classList.toggle('tr-lowdone', st.phase === 'done' && !solo(st) && racers(st).length >= 5 && window.innerHeight <= 820);
     paint(root, st);
+    padFirst(root, st);
     ensureTrack(root, st);
     if (st.cv && st.bg) draw(root, st, performance.now(), 0);
     loop(root, st);
+  }
+
+  /** Скільки секунд дає дотяжка хвоста (Typerace.ExtraMs). */
+  const EXTRA_S = 10;
+
+  /**
+   * Куди стає кільце пада. pad.js бере перший [data-pad-first] у документі, і схований — не рахується (тоді кільце
+   * стрибало на «Ефір» у шапці). Тож позначку має лише те, що справді видно: поле — поки друкуєш; «Поїхали» / «Ще раз»
+   * у тренуванні — свої; у лобі й підсумку столу — каркасні «Почати» / «Ще раз».
+   */
+  function padFirst(root, st) {
+    const input = root.querySelector('.tr-in');
+    if (input) input.toggleAttribute('data-pad-first', canType(st));
+    if (solo(st) || !st.ctx || !st.ctx.mine || (st.phase !== 'lobby' && st.phase !== 'done')) return;
+    const card = root.parentElement;
+    const btn = card && card.querySelector('.gbtns [data-do="StartRoom"], .gbtns [data-do="Rematch"]');
+    if (btn && !btn.hasAttribute('data-pad-first')) btn.setAttribute('data-pad-first', '');
   }
 
   function paint(root, st) {
@@ -1088,6 +1394,8 @@
     if (src && st.showPick) src.textContent = '';
     const stop = root.querySelector('.tr-stop');
     if (stop) stop.hidden = !(solo(st) && st.ctx && st.ctx.mine && (st.phase === 'ready' || st.phase === 'go') && !st.finished);
+    const cheers = root.querySelector('.tr-cheers');
+    if (cheers) cheers.hidden = !canCheer(st);
   }
 
   function frame(root, ctx, f) {
@@ -1103,6 +1411,9 @@
       }
       st.s[i] = s;
     }
+    // гудки з фінішу: пари «місце, вид»
+    const h = f.h;
+    if (h && h.length) for (let i = 0; i + 1 < h.length; i += 2) if (h[i] >= 0 && h[i] < 10) addCheer(st, h[i], h[i + 1] | 0);
     if (!st.raf) loop(root, st);
   }
 
@@ -1115,20 +1426,19 @@
     if (v.phase === 'go') {
       const me = ctx.mine ? (v.racers || []).find((r) => r.seat === ctx.seat) : null;
       if (me && me.fin != null) return me.flag ? 'Фініш, але не зараховано: ' + (REASON[me.flag] || me.flag)
-        : soloGame ? 'Фініш!' : 'Фініш! ' + (me.place ? me.place + '-е місце' : '') + ' — чекаємо на решту';
-      if (me && st && st.finished) return 'Фініш! Суддя дивиться журнал…';
+        : soloGame ? 'Фініш!' : 'Фініш! ' + (me.place ? me.place + '-е місце' : '') + ' — чекаємо на решту · гуди: 1–4';
+      if (me && st && st.finished) return st.finTries > 1 ? 'Фініш! Стукаємо до сервера ще раз…' : 'Фініш! Суддя дивиться журнал…';
       if (me) return 'Друкуй!';
       // глядач: лідер — з кадрів (вид приходить лише на подіях і відстає)
       const lead = st ? liveOrder(st).find((x) => !x.r.gone) : null;
       return lead ? 'Попереду ' + lead.r.nick + ' — ' + Math.floor(100 * Math.min(1, lead.c / Math.max(1, v.len))) + ' %' : 'Дивишся збоку';
     }
-    if (v.phase === 'done' && soloGame) {
+    // тренування: числа вже в підсумку — статус лише підказує, що далі
+    if (v.phase === 'done' && soloGame && ctx.mine) {
       const me = (v.racers || [])[0];
       if (!me) return '';
-      if (me.fin == null) return 'Не доїхав — спробуй коротший текст';
-      if (me.flag) return 'Не зараховано: ' + (REASON[me.flag] || me.flag);
-      const t = titleOf(me.cpm || 0);
-      return (v.me && v.me.isRecord ? 'Рекорд! ' : '') + me.cpm + ' зн/хв · ' + me.acc + ' % · ' + t[1] + ' ' + t[2];
+      if (me.fin == null) return 'Час вийшов — спробуй коротший текст (Enter — ще раз)';
+      return 'Enter — ще раз';
     }
     return '';
   }
@@ -1143,6 +1453,11 @@
       soloGo(st, {});
       return true;
     }
+    // доїхав — клавіші 1–4 гудуть тим, хто ще їде
+    if (canCheer(st) && e.key >= '1' && e.key <= String(CHEERS.length) && e.key.length === 1) {
+      sendCheer(root, st, +e.key - 1);
+      return true;
+    }
     // друкований знак чи Backspace, а поле не у фокусі — ставимо фокус, і сама літера ляже вже туди
     if (canType(st) && (e.key === 'Backspace' || (e.key && e.key.length === 1))) focusInput(root, st, true);
     return false;
@@ -1151,13 +1466,16 @@
   function unmount(root) {
     const st = root._tr;
     if (!st) return;
+    if (st.saveTimer) save(st, true);
     if (st.raf) cancelAnimationFrame(st.raf);
     st.raf = 0;
     if (st.posTimer) clearTimeout(st.posTimer);
+    clearTimeout(st.finTimer);
     clearTimeout(st.hintTimer);
     clearTimeout(st.shakeTimer);
     if (st.ro) st.ro.disconnect();
     if (st.onVis) document.removeEventListener('visibilitychange', st.onVis);
+    if (st.onHide) window.removeEventListener('pagehide', st.onHide);
     if (st.ac) { try { st.ac.close(); } catch { /* уже */ } }
     st.ctx = null;
     root._tr = null;
@@ -1169,8 +1487,8 @@
     items: [
       '⌨️ Усі друкують той самий уривок української класики — чий трактор перший доїде до прапорця',
       '🔴 Помилка? Літера червоніє, трактор стоїть: Backspace — і далі',
-      '📈 Наживо: знаків за хвилину, точність і твоє місце; наприкінці — таблиця й звання від «Равлика» до «Ракети»',
-      '🏋️ Сам? У Соло є «Клавоперегони: тренування» з рекордом і таблицею',
+      '📈 Наживо: знаків за хвилину, точність і твоє місце; доїхав — гуди решті 📯 👏 🔥 🐌',
+      '🏋️ Сам? У Соло є «Клавоперегони: тренування» з рекордом і привидом рекорду на сусідній доріжці',
       '🎮 На Steam Deck незручно — краще з клавіатури або STEAM+X',
     ],
   };
@@ -1180,6 +1498,8 @@
       id,
       icon: ICON,
       news: NEWS,
+      // чіпи в шапці — кольорами тракторів (каркасних кольорів лише чотири по колу)
+      seatClass: SEAT_COLORS.map((_, i) => 'tr-s' + i + ' tr-gs'),
       mount(root, ctx) { ctx._trroot = root; mount(root, ctx); ctx._trst = state(root); },
       update(root, ctx) { ctx._trroot = root; ctx._trst = state(root); update(root, ctx); },
       frame,
@@ -1187,7 +1507,8 @@
       onKey,
       status,
       // Стік лишаємо навігації, Ⓑ — виходу: кільце стоїть на полі для друку, Ⓐ відкриває екранну клавіатуру пада.
-      pad: { hint: 'Друкувати з пада незручно: {a} на тексті відкриває екранну клавіатуру пада, а зручніше — фізична клавіатура або STEAM+X' },
+      // Коротко й з крапкою в кінці — далі каркас дописує свої кнопки, і речення гри не має з ними зливатись.
+      pad: { hint: 'Друк з пада — для впертих: {a} клавіатура, краще STEAM+X ·' },
     };
   }
 

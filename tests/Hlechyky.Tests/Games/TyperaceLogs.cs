@@ -227,6 +227,32 @@ public static class TyperaceLogs
 
     public const int ClientSwallowsPerRed = 4, ClientReserve = 200;
 
+    /// <summary>
+    /// Сирий потік неохайного друкаря на тексті в 40 знаків (помилки на 5, 12, 20, 33 і по 6, 2, 9, 5 проковтнутих) —
+    /// той самий, що четвертий сценарій у docs/games/dev/typerace-parity.js.
+    /// </summary>
+    public static List<(char Kind, int Ms)> ScenarioSwallows()
+    {
+        var miss = new Dictionary<int, int> { [5] = 6, [12] = 2, [20] = 9, [33] = 5 };
+        var raw = new List<(char, int)>();
+        for (var i = 0; i < 40; i++)
+        {
+            if (miss.TryGetValue(i, out var n))
+            {
+                raw.Add(('x', 100 + i));
+                for (var s = 0; s < n; s++) raw.Add(('s', 50 + 7 * s));
+                raw.Add(('b', 300));
+            }
+            raw.Add(('c', 120 + i * 37 % 90));
+        }
+        return raw;
+    }
+
+    /// <summary>Що з <see cref="ScenarioSwallows"/> записав у журнал браузер (TyperaceCore.capped) — з живого прогону.</summary>
+    public static readonly (string K, string D) FromJsCapped =
+        ("cccccxssssbcccccccxssbccccccccxssssbcccccccccccccxssssbccccccc",
+         "AeAnAxAjAtAaANAOAQASB0AfApAyAlAuAhAqAcANAOBLAzAmAvAiArA0AnAwAeANAOAQASC-AjAsAfAoAyAkAuAgAqAzAmAvAiAhANAOAQASBfArA0AnAwAjAsAf");
+
     public static Log AsClientWrites(IEnumerable<(char Kind, int Ms)> raw, int len)
     {
         var b = new Builder();

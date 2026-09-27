@@ -146,17 +146,19 @@ public class TyperaceJudgeTests
     }
 
     [Fact]
-    public void A_log_up_to_six_seconds_shorter_than_server_time_still_passes()
+    public void A_log_up_to_twenty_seconds_shorter_than_server_time_still_passes()
     {
         var log = TyperaceLogs.Human(100, seed: 10);
-        Assert.Null(Check(100, log, log.Ms + 6000).Flag);
-        Assert.Equal(TyperaceJudge.Clock, Check(100, log, log.Ms + 6001).Flag);
+        // фініш дійшов на 12 с пізніше за останню літеру (зв'язок ліг і повернувся) — не бот, лише гірший час
+        Assert.Null(Check(100, log, log.Ms + 12_000).Flag);
+        Assert.Null(Check(100, log, log.Ms + 20_000).Flag);
+        Assert.Equal(TyperaceJudge.Clock, Check(100, log, log.Ms + 20_001).Flag);
         // але якщо в журналі була пауза на стелі (людина відійшла) — скільки там насправді, журнал не знає
         var b = new TyperaceLogs.Builder();
         var rng = new Random(6);
         for (var i = 0; i < 50; i++) b.Add('c', i == 25 ? 30_000 : 150 + rng.Next(100));
         var paused = b.Build();
-        Assert.Null(Check(50, paused, paused.Ms + 20_000).Flag);
+        Assert.Null(Check(50, paused, paused.Ms + 40_000).Flag);
     }
 
     [Fact]
@@ -381,6 +383,17 @@ public class TyperaceJudgeTests
         var worse = TyperaceLogs.AsClientWrites(TyperaceLogs.SloppyRaw(760, errors: 200, swallows: 12), 760);
         Assert.True(worse.K.Length <= TyperaceJudge.MaxEvents);
         Assert.Null(TyperaceJudge.Check(760, worse.K, worse.D, worse.Ms + 150).Flag);
+    }
+
+    [Fact]
+    public void The_client_journal_cap_is_the_same_in_the_browser_and_in_cs()
+    {
+        var log = TyperaceLogs.AsClientWrites(TyperaceLogs.ScenarioSwallows(), 40);
+        Assert.Equal(TyperaceLogs.FromJsCapped.K, log.K);
+        Assert.Equal(TyperaceLogs.FromJsCapped.D, log.D);
+        var v = TyperaceJudge.Check(40, log.K, log.D, log.Ms + 150);
+        Assert.Null(v.Flag);
+        Assert.Equal((4, 4 + 2 + 4 + 4), (v.Wrong, v.Swallowed));   // 6 і 9 проковтнутих стали по 4
     }
 
     [Fact]

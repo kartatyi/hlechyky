@@ -1,8 +1,9 @@
 /* Клавоперегони і тренування (web/games/typerace.js). Усе з префіксом tr-/--tr-, кольори — через змінні теми. */
 :root {
-  /* кольори місць: десять добре розрізнюваних; на тракторі й у чіпі ще й номер */
+  /* кольори місць: десять добре розрізнюваних; на тракторі й у чіпі ще й номер. Десяте — біле: сіро-зелений
+     збігався з --muted, яким фарбується трактор утікача */
   --tr-c0: #f4c542; --tr-c1: #7bd389; --tr-c2: #c5763a; --tr-c3: #6fb3e8; --tr-c4: #e88ac0;
-  --tr-c5: #b48ef0; --tr-c6: #4fd1c5; --tr-c7: #ff8a65; --tr-c8: #c6e377; --tr-c9: #9db3a5;
+  --tr-c5: #b48ef0; --tr-c6: #4fd1c5; --tr-c7: #ff8a65; --tr-c8: #c6e377; --tr-c9: #f2f2f2;
   --tr-sky: #1a2e3a;
   --tr-field: #2c4a2e;
   --tr-dust: rgba(214, 190, 140, .55);
@@ -10,7 +11,7 @@
 }
 
 .tr-wrap { width: 100%; container-type: inline-size; display: flex; flex-direction: column; gap: 10px; }
-.tr-trackbox { width: 100%; line-height: 0; }
+.tr-trackbox { width: 100%; line-height: 0; position: relative; }
 .gcanvas.tr-track { max-width: none; width: 100%; border-radius: 10px; background: var(--tr-field); }
 
 .tr-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -65,11 +66,13 @@
   opacity: .01; color: transparent; caret-color: transparent; background: transparent; font-size: 16px; z-index: 1;
 }
 
+/* відлік — над трасою, а не на тексті: перший рядок саме зараз і треба прочитати (розмір шрифту — з висоти траси) */
 .tr-count {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px;
-  font-family: var(--display, var(--font)); font-size: 60px; font-weight: 800; color: var(--accent);
-  background: rgba(15, 31, 24, .55); pointer-events: none; z-index: 2; text-shadow: 0 2px 8px rgba(0, 0, 0, .5);
+  font-family: var(--display, var(--font)); font-size: 60px; line-height: 1; font-weight: 800; color: var(--accent);
+  background: rgba(15, 31, 24, .45); pointer-events: none; z-index: 2; text-shadow: 0 2px 8px rgba(0, 0, 0, .5);
 }
+.tr-count[hidden] { display: none; }
 .tr-pop { animation: tr-pop .3s ease-out; }
 @keyframes tr-pop { from { transform: scale(1.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
@@ -89,6 +92,11 @@
 .tr-nums b { font-size: 1.15em; color: var(--accent); }
 .tr-tail { color: var(--danger); }
 .tr-snd { padding: 4px 8px; }
+.tr-streak { color: #ffa03a; }
+/* гудки з фінішу: хто доїхав, гуде решті */
+.tr-cheers { display: inline-flex; gap: 4px; }
+.tr-cheers[hidden] { display: none; }
+.tr-cheer { padding: 4px 8px; min-width: 40px; min-height: 36px; font-size: 18px; line-height: 1; }
 .tr-stop { padding: 4px 10px; }
 
 /* ---------- живий список (широка картка) ---------- */
@@ -122,6 +130,10 @@
 .tr-medal { width: 28px; text-align: center; }
 .tr-bnick { min-width: 0; }
 .tr-note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+/* на широкій картці примітка («дописано 84 %») — у тому ж рядку, що й нік: десять рядків підсумку нижчі на третину */
+@container (min-width: 700px) { .tr-note { display: inline; margin: 0 0 0 10px; } }
+.tr-wrap.tr-lowdone .tr-trackbox, .tr-wrap.tr-lowdone .tr-src { display: none; }
+.tr-wrap.tr-lowdone .tr-table td { padding-top: 3px; padding-bottom: 3px; }
 .tr-title { white-space: nowrap; }
 @container (max-width: 560px) {
   .tr-table .tr-opt { display: none; }
@@ -129,6 +141,8 @@
   .tr-table td { padding: 5px 3px; }
 }
 .tr-say { margin: 0; color: var(--text); }
+.tr-trap { margin: 0; color: var(--muted); }
+.tr-trap b { color: var(--text); }
 .tr-say i { color: var(--muted); }
 .tr-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .tr-solo { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
@@ -148,6 +162,8 @@
 
 /* ---------- телефон ---------- */
 @container (max-width: 520px) {
+  /* кругла кнопка балачки столу лежить у правому нижньому куті — під нею має бути порожньо, а не кінець уривка */
+  .tr-wrap[data-phase="go"] .tr-cols, .tr-wrap[data-phase="ready"] .tr-cols { padding-bottom: 64px; }
   .tr-textbox { padding: 10px 11px; }
   .tr-nums { font-size: 14px; gap: 2px 12px; }
   .tr-go, .tr-acts button { width: 100%; justify-content: center; }
@@ -161,4 +177,16 @@
 }
 .tr-sbtns { display: flex; gap: 4px; align-items: center; }
 /* до старту й у підсумку рядок чисел порожній — не займає місця (звук перемикається під час заїзду й у виборі соло) */
-.tr-wrap[data-phase="done"] .tr-stats, .tr-wrap[data-phase="lobby"] .tr-stats { display: none; }
+.tr-wrap[data-phase="done"] .tr-stats, .tr-wrap[data-phase="lobby"] .tr-stats, .tr-wrap[data-phase="pick"] .tr-stats { display: none; }
+
+/* чіпи місць у шапці каркаса — кольором свого трактора й з номером у кружечку того ж кольору */
+.gseat.tr-gs:not(.free) { color: var(--tr-seat); }
+.gseat.tr-gs:not(.free) i {
+  display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 999px; text-align: center;
+  background: var(--tr-seat); color: #111; font-weight: 800; font-size: .8em;
+}
+
+/* екранна клавіатура пада (Дека) закриває низ екрана: поле з поточним рядком прокручується вище за неї */
+body.pad-kbd .tr-in { scroll-margin-bottom: 45vh; }
+body.pad-kbd .tr-wrap[data-phase="go"] { padding-bottom: 45vh; }
+@media (pointer: coarse) { .tr-in { scroll-margin-bottom: 80px; } }
