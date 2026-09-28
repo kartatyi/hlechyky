@@ -74,7 +74,7 @@
     if (Q_REQ[n.q]) req.push(Q_REQ[n.q]);
     if (n.style) req.push('«' + esc(styleName(st, n.style)) + '»');
     return '<b>' + esc(wareName(st, n.ware).toLowerCase()) + ' ×' + n.n + '</b>'
-      + (req.length ? ' <span class="clkt-req">(' + req.join(' · ') + ')</span>' : '');
+      + (req.length ? ' <span class="clkl-req">(' + req.join(' · ') + ')</span>' : '');
   }
 
   const cutPct = (cut) => Math.round((cut || 0) * 100);
@@ -101,11 +101,11 @@
     const esc = (x) => api.esc(st, x);
     const built = new Set(t.built);
     const cur = t.stage ? t.stage.building : '';
-    return '<div class="clkt-row" role="list">' + c.buildings.map((b) => {
+    return '<div class="clkl-row" role="list">' + c.buildings.map((b) => {
       const on = built.has(b.key);
       const now = b.key === cur;
       const tip = on ? b.name + ' — ' + b.reward : now ? 'Будуємо: ' + b.name : (b.big ? 'Велика толока: ' : 'Далі: ') + b.name;
-      return '<span role="listitem" class="clkt-bi' + (on ? ' on' : now ? ' cur' : '') + (b.big ? ' big' : '') + '" title="' + esc(tip) + '">'
+      return '<span role="listitem" class="clkl-bi' + (on ? ' on' : now ? ' cur' : '') + (b.big ? ' big' : '') + '" title="' + esc(tip) + '">'
         + '<b>' + b.icon + '</b></span>';
     }).join('') + '</div>';
   }
@@ -113,7 +113,7 @@
   /// Смуга етапів поточної будови: готові — повні, поточний — світиться (закладений — іншим кольором).
   function stepsHtml(st, api, b, s) {
     const esc = (x) => api.esc(st, x);
-    return '<div class="clkt-steps">' + b.stages.map((x, i) => '<span class="clkt-step' + (i < s.index ? ' done' : i === s.index ? (s.endsAt ? ' laid' : ' cur') : '')
+    return '<div class="clkl-steps">' + b.stages.map((x, i) => '<span class="clkl-step' + (i < s.index ? ' done' : i === s.index ? (s.endsAt ? ' laid' : ' cur') : '')
       + '" title="' + esc((i + 1) + '. ' + x.name) + '"><i></i></span>').join('') + '</div>';
   }
 
@@ -123,21 +123,21 @@
       const want = Math.max(0, n.n - n.got);
       const ok = n.have >= want;
       const where = 'у коморі ' + api.count(n.have) + (n.got ? ' · піднесли друзі ' + api.count(n.got) : '');
-      return '<div class="clkt-need' + (ok ? ' ok' : '') + '">'
-        + '<span class="clkt-nart">' + api.wareSvg(n.ware, { style: n.style, quality: Math.max(1, n.q), cls: 'clkt-ware', slot: 'tn-' + i }) + '</span>'
-        + '<div class="clkt-ntxt">' + needText(st, api, n) + '<span class="muted small">' + where + '</span></div>'
-        + '<span class="clkt-mark">' + (ok ? '✓' : 'ще ' + (want - n.have)) + '</span></div>';
+      return '<div class="clkl-need' + (ok ? ' ok' : '') + '">'
+        + '<span class="clkl-nart">' + api.wareSvg(n.ware, { style: n.style, quality: Math.max(1, n.q), cls: 'clkl-ware', slot: 'tn-' + i }) + '</span>'
+        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">' + where + '</span></div>'
+        + '<span class="clkl-mark">' + (ok ? '✓' : 'ще ' + (want - n.have)) + '</span></div>';
     });
     const rich = (st.shown || 0) >= s.pay;
-    rows.push('<div class="clkt-need' + (rich ? ' ok' : '') + '"><span class="clkt-nart clkt-emo">💰</span>'
-      + '<div class="clkt-ntxt"><b>' + esc(api.potsShort(s.pay)) + '</b><span class="muted small">гроші на етап</span></div>'
-      + '<span class="clkt-mark">' + (rich ? '✓' : '') + '</span></div>');
+    rows.push('<div class="clkl-need' + (rich ? ' ok' : '') + '"><span class="clkl-nart clkl-emo">💰</span>'
+      + '<div class="clkl-ntxt"><b>' + esc(api.potsShort(s.pay)) + '</b><span class="muted small">гроші на етап</span></div>'
+      + '<span class="clkl-mark">' + (rich ? '✓' : '') + '</span></div>');
     const cut = cutPct(s.cut);
-    rows.push('<div class="clkt-need hours"><span class="clkt-nart clkt-emo">⏳</span>'
-      + '<div class="clkt-ntxt"><b>' + hrs(s.hours * (1 - (s.cut || 0))) + '</b><span class="muted small">'
+    rows.push('<div class="clkl-need hours"><span class="clkl-nart clkl-emo">⏳</span>'
+      + '<div class="clkl-ntxt"><b>' + hrs(s.hours * (1 - (s.cut || 0))) + '</b><span class="muted small">'
       + (cut > 0 ? 'будується замість ' + hrs(s.hours) + ' — друзі й рід скоротили на ' + cut + ' %' : 'будується годинником — глеками не пришвидшити')
-      + '</span></div><span class="clkt-mark"></span></div>');
-    return '<div class="clkt-needs">' + rows.join('') + '</div>';
+      + '</span></div><span class="clkl-mark"></span></div>');
+    return '<div class="clkl-needs">' + rows.join('') + '</div>';
   }
 
   /// Чого бракує, щоб закласти етап (порожньо — можна).
@@ -157,12 +157,12 @@
     const per = ((c && c.helperCut) || 0.15) * 100;
     const max = (c && c.helpersMax) || 3;
     if (!s.helpers.length) {
-      return '<div class="muted small clkt-help">🤝 Друзі з цеху можуть піднести вироби зі своїх комор — кожен скоротить '
+      return '<div class="muted small clkl-help">🤝 Друзі з цеху можуть піднести вироби зі своїх комор — кожен скоротить '
         + (laid ? 'будову' : 'етап') + ' на ' + Math.round(per) + ' %</div>';
     }
     const off = Math.round(Math.min(max, s.helpers.length) * per);
-    return '<div class="small clkt-help">🤝 На толоці ' + (laid ? 'були' : 'вже були') + ': <b>' + esc(s.helpers.join(', ')) + '</b> '
-      + '<span class="clkt-cut">(−' + off + ' %)</span></div>';
+    return '<div class="small clkl-help">🤝 На толоці ' + (laid ? 'були' : 'вже були') + ': <b>' + esc(s.helpers.join(', ')) + '</b> '
+      + '<span class="clkl-cut">(−' + off + ' %)</span></div>';
   }
 
   function stageHtml(st, api) {
@@ -174,15 +174,15 @@
     const sd = b.stages[s.index] || { name: '' };
     const c = cat(st);
     const bonus = Math.round(((c && c.allBonus) || 0.05) * 100);
-    let html = '<div class="clkt-cur">'
-      + '<span class="clkt-ico" aria-hidden="true">' + b.icon + '</span>'
-      + '<div class="clkt-cbody"><b class="clkt-name">' + esc(b.name) + '</b>'
-      + '<span class="muted small clkt-reward">🎁 ' + esc(b.reward) + ' · +' + bonus + ' % до всього</span></div></div>'
+    let html = '<div class="clkl-cur">'
+      + '<span class="clkl-ico" aria-hidden="true">' + b.icon + '</span>'
+      + '<div class="clkl-cbody"><b class="clkl-name">' + esc(b.name) + '</b>'
+      + '<span class="muted small clkl-reward">🎁 ' + esc(b.reward) + ' · +' + bonus + ' % до всього</span></div></div>'
       + stepsHtml(st, api, b, s)
-      + '<div class="clkt-stage">етап ' + (s.index + 1) + ' з ' + b.stages.length + ' — <b>' + esc(sd.name) + '</b></div>';
+      + '<div class="clkl-stage">етап ' + (s.index + 1) + ' з ' + b.stages.length + ' — <b>' + esc(sd.name) + '</b></div>';
     if (s.endsAt) {
-      html += '<div class="clkt-build"><div class="clkt-bline">🔨 Будується · ще <i class="clkt-cd" data-at="' + s.endsAt + '" data-done="ось-ось"></i></div>'
-        + '<div class="clkt-tbar"><i data-from="' + s.laidAt + '" data-to="' + s.endsAt + '"></i></div></div>'
+      html += '<div class="clkl-build"><div class="clkl-bline">🔨 Будується · ще <i class="clkl-cd" data-at="' + s.endsAt + '" data-done="ось-ось"></i></div>'
+        + '<div class="clkl-tbar"><i data-from="' + s.laidAt + '" data-to="' + s.endsAt + '"></i></div></div>'
         + helpersLine(st, api, s, true);
       const next = b.stages[s.index + 1];
       html += '<div class="muted small">' + (next ? 'Далі — «' + esc(next.name) + '»: вироби можна носити в комору заздалегідь.'
@@ -192,8 +192,8 @@
     const miss = lacks(st, api, s);
     html += needsHtml(st, api, s)
       + helpersLine(st, api, s, false)
-      + '<div class="clkt-btns"><button type="button" class="primary clkt-lay"' + (st.mine && !miss.length ? '' : ' disabled') + '>🏗 Закласти етап</button>'
-      + (miss.length ? '<span class="muted small clkt-miss">бракує: ' + esc(miss.join('; ')) + '</span>' : '<span class="small clkt-ready">усе є — закладай!</span>')
+      + '<div class="clkl-btns"><button type="button" class="primary clkl-lay"' + (st.mine && !miss.length ? '' : ' disabled') + '>🏗 Закласти етап</button>'
+      + (miss.length ? '<span class="muted small clkl-miss">бракує: ' + esc(miss.join('; ')) + '</span>' : '<span class="small clkl-ready">усе є — закладай!</span>')
       + '</div>';
     return html;
   }
@@ -204,12 +204,12 @@
     const sn = api.serverNow(st);
     const mult = api.dec(f.mult || 2);
     if (f.until > sn) {
-      return '<div class="clkt-fest on">🎉 <b>Фестиваль гуляє!</b> ×' + mult + ' до всього ще <i class="clkt-cd" data-at="' + f.until + '" data-done="ось-ось"></i></div>';
+      return '<div class="clkl-fest on">🎉 <b>Фестиваль гуляє!</b> ×' + mult + ' до всього ще <i class="clkl-cd" data-at="' + f.until + '" data-done="ось-ось"></i></div>';
     }
     if (f.next > sn) {
-      return '<div class="clkt-fest muted small">🎉 Наступний фестиваль — за <i class="clkt-cd" data-at="' + f.next + '" data-done="ось-ось"></i></div>';
+      return '<div class="clkl-fest muted small">🎉 Наступний фестиваль — за <i class="clkl-cd" data-at="' + f.next + '" data-done="ось-ось"></i></div>';
     }
-    return '<div class="clkt-fest"><button type="button" class="primary clkt-festgo"' + (st.mine ? '' : ' disabled') + '>🎉 Почати фестиваль</button>'
+    return '<div class="clkl-fest"><button type="button" class="primary clkl-festgo"' + (st.mine ? '' : ' disabled') + '>🎉 Почати фестиваль</button>'
       + '<span class="muted small">година ×' + mult + ' до всього, раз на добу</span></div>';
   }
 
@@ -222,7 +222,7 @@
     if (!k.v) {
       // До гривні — лише рядок-обіцянка (і лише там, де «Село» вже відкрите: розділ живе в його панелі).
       const from = (c && c.smallFrom) || 1e15;
-      api.swap(k.el, '<div class="clk-teaser muted small clkt-soon">🏗 Толока відкриється на ' + esc(api.potsShort(from)) + ' за весь час</div>');
+      api.swap(k.el, '<div class="clk-teaser muted small clkl-soon">🏗 Толока відкриється на ' + esc(api.potsShort(from)) + ' за весь час</div>');
       k.el.classList.add('closed');
       k.cds = [];
       return;
@@ -234,15 +234,15 @@
     }
     const t = k.v;
     const bonus = Math.round((t.allMult - 1) * 100);
-    let html = '<div class="clk-sub clkt-title">🏗 Толока<span class="muted small"> · збудовано ' + t.built.length + ' з ' + c.buildings.length
+    let html = '<div class="clk-sub clkl-title">🏗 Толока<span class="muted small"> · збудовано ' + t.built.length + ' з ' + c.buildings.length
       + (bonus > 0 ? ' · +' + bonus + ' % до всього' : '') + '</span>' + api.info(esc(infoText(st))) + '</div>'
       + builtRow(st, api);
     if (t.stage) html += stageHtml(st, api);
-    else if (t.waitBig) html += '<div class="clk-teaser small clkt-wait">⚓ Мала толока збудована. Велика толока почнеться з червоного золотого</div>';
-    else if (t.built.length >= c.buildings.length) html += '<div class="clkt-all">🏺 Усі ' + c.buildings.length + ' будов стоять — ти Толочанин світу!</div>';
+    else if (t.waitBig) html += '<div class="clk-teaser small clkl-wait">⚓ Мала толока збудована. Велика толока почнеться з червоного золотого</div>';
+    else if (t.built.length >= c.buildings.length) html += '<div class="clkl-all">🏺 Усі ' + c.buildings.length + ' будов стоять — ти Толочанин світу!</div>';
     html += festivalHtml(st, api);
-    if (k.err && Date.now() - k.err.at < ERR_MS) html += '<div class="small clkt-err">' + esc(k.err.text) + '</div>';
-    if (api.swap(k.el, html)) k.cds = [...k.el.querySelectorAll('.clkt-cd, .clkt-tbar i')];
+    if (k.err && Date.now() - k.err.at < ERR_MS) html += '<div class="small clkl-err">' + esc(k.err.text) + '</div>';
+    if (api.swap(k.el, html)) k.cds = [...k.el.querySelectorAll('.clkl-cd, .clkl-tbar i')];
     countdowns(st, api);
     // Бачив новий етап — нотатка на ярлику більше не кличе.
     if (st.tab === 'guild' && k.unseen) { k.unseen = false; note(st, api); }
@@ -347,7 +347,7 @@
     const k = st.toloka;
     if (!human(e) || !st.mine || !k || k.busy) return;
     k.busy = true;
-    const btn = k.el.querySelector('.clkt-lay');
+    const btn = k.el.querySelector('.clkl-lay');
     if (btn) btn.disabled = true;
     api.act(st, 'toloka', { do: 'lay' }).then((r) => {
       const kk = st.toloka;
@@ -380,8 +380,8 @@
   }
 
   function onClick(st, api, e) {
-    if (e.target.closest('.clkt-lay')) { lay(st, api, e); return; }
-    if (e.target.closest('.clkt-festgo')) festival(st, api, e);
+    if (e.target.closest('.clkl-lay')) { lay(st, api, e); return; }
+    if (e.target.closest('.clkl-festgo')) festival(st, api, e);
   }
 
   // ---------- друзі на толоці: хата друга ----------
@@ -407,52 +407,52 @@
       // Кнопка жива, лише коли в моїй коморі є хоч щось, що цей етап іще приймає.
       const mine0 = itemsOf(st);
       const any = t.needs.some((n) => (laid || n.left > 0) && mine0.some((it) => fits(n, it)));
-      return html + '<div class="clkg-btns"><button type="button" class="primary clkt-fgo"' + (can && any ? '' : ' disabled') + '>🤝 Піднести на толоку</button>'
+      return html + '<div class="clkg-btns"><button type="button" class="primary clkl-fgo"' + (can && any ? '' : ' disabled') + '>🤝 Піднести на толоку</button>'
         + '<span class="muted small">' + (any || !(laid || still.length) ? 'за кожен виріб — гостинець толоки: ' + (t.treat || 10) + ' хв твого пасиву'
           : 'у твоїй коморі нема того, що просить цей етап') + '</span></div>'
-        + (err ? '<div class="small clkt-err">' + esc(err) + '</div>' : '');
+        + (err ? '<div class="small clkl-err">' + esc(err) + '</div>' : '');
     }
     html += laid
       ? '<p class="muted small clk-note">Етап уже будується: вироби ляжуть у комору друга на наступні етапи, а твоя поміч скоротить будову. Раз на етап.</p>'
       : '<p class="muted small clk-note">Вироби йдуть у вимоги етапу; беремо не більше, ніж ще бракує. До ' + (t.max || 10) + ' за раз.</p>';
     const mine = itemsOf(st);
-    html += '<div class="clkt-fneeds">' + t.needs.map((n, i) => {
+    html += '<div class="clkl-fneeds">' + t.needs.map((n, i) => {
       const room = laid ? (t.max || 10) : n.left;
       const mineFit = mine.filter((it) => fits(n, it));
-      const head = '<div class="clkt-fhead">' + needText(st, api, n)
+      const head = '<div class="clkl-fhead">' + needText(st, api, n)
         + '<span class="muted small">' + (laid ? '' : n.left > 0 ? ' · бракує ' + n.left : ' · досить') + '</span></div>';
-      if (room <= 0) return '<div class="clkt-fneed done">' + head + '</div>';
+      if (room <= 0) return '<div class="clkl-fneed done">' + head + '</div>';
       const rows = mineFit.length
         ? mineFit.map((it, j) => {
           const top = Math.min(it.n, room, t.max || 10);
           const nums = [1, 5, 10].filter((x) => x < top).concat([top]);
-          return '<div class="clkt-fitem">' + api.wareSvg(it.ware, { style: it.style, quality: it.q, cls: 'clkt-fware', slot: 'tf-' + i + '-' + j })
-            + '<span class="small clkt-fn">×' + it.n + (it.style ? ' · ' + esc(styleName(st, it.style)) : '') + '</span>'
-            + '<span class="clkt-fbtns">' + [...new Set(nums)].map((x) => '<button type="button" class="ghost small" data-tsend="' + esc(it.key) + '" data-n="' + x + '"'
+          return '<div class="clkl-fitem">' + api.wareSvg(it.ware, { style: it.style, quality: it.q, cls: 'clkl-fware', slot: 'tf-' + i + '-' + j })
+            + '<span class="small clkl-fn">×' + it.n + (it.style ? ' · ' + esc(styleName(st, it.style)) : '') + '</span>'
+            + '<span class="clkl-fbtns">' + [...new Set(nums)].map((x) => '<button type="button" class="ghost small" data-tsend="' + esc(it.key) + '" data-n="' + x + '"'
               + (can ? '' : ' disabled') + '>+' + x + '</button>').join('') + '</span></div>';
         }).join('')
         : '<div class="muted small">у твоїй коморі такого нема</div>';
-      return '<div class="clkt-fneed">' + head + rows + '</div>';
+      return '<div class="clkl-fneed">' + head + rows + '</div>';
     }).join('') + '</div>';
-    return html + (err ? '<div class="small clkt-err">' + esc(err) + '</div>' : '');
+    return html + (err ? '<div class="small clkl-err">' + esc(err) + '</div>' : '');
   }
 
   const myNick = (st) => (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
 
   function tolokaHouse(st, api, body, d) {
     if (!body || !d) return;
-    let box = body.querySelector('.clkt-friend');
+    let box = body.querySelector('.clkl-friend');
     if (!d.toloka || !cat(st)) { if (box) box.remove(); return; }
     if (!box) {
       box = document.createElement('section');
-      box.className = 'clkt-friend';
+      box.className = 'clkl-friend';
       const anchor = body.querySelector('.clkg-hhelp');
       if (anchor) anchor.before(box); else body.appendChild(box);
     }
     const draw = () => { if (box.isConnected) box.innerHTML = friendHtml(st, api, d, box._open, box._err); };
     draw();
     box.onclick = (e) => {
-      if (e.target.closest('.clkt-fgo')) {
+      if (e.target.closest('.clkl-fgo')) {
         if (!human(e)) return;
         api.sfx('tap');
         box._open = true;
@@ -488,7 +488,7 @@
     if (!k || !st.guildPane) return;
     if (!k.el) {
       k.el = document.createElement('section');
-      k.el.className = 'clkg-card clkt';
+      k.el.className = 'clkg-card clkl';
       k.el.addEventListener('click', (e) => onClick(st, api, e));
     }
     const pane = st.guildPane;
