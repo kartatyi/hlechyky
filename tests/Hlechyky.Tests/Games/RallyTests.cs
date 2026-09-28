@@ -14,7 +14,7 @@ namespace Hlechyky.Tests.Games;
 /// міткою тика, вихід, рематч і вид — через кімнату. Паритет із браузером — журнали в <c>RallyReplays/</c>.
 /// </summary>
 [Collection(SerialPerf.Name)]
-public class RallyTests(ITestOutputHelper output)
+public partial class RallyTests(ITestOutputHelper output)
 {
     static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марко", "Зоя"];
     const int S = RallyTrack.CellSub;
@@ -116,7 +116,7 @@ public class RallyTests(ITestOutputHelper output)
     [Fact]
     public void Every_track_is_48_by_27_with_a_wall_border()
     {
-        Assert.Equal(["selo", "ozero", "nich", "kukurudza", "yarmarok"], RallyTracks.Ids);
+        Assert.Equal(["selo", "ozero", "nich", "kukurudza", "yarmarok", "vesillia", "hora"], RallyTracks.Ids);
         foreach (var t in RallyTracks.All)
         {
             Assert.Equal(RallyTrack.Rows, t.Map.Count);
@@ -734,7 +734,7 @@ public class RallyTests(ITestOutputHelper output)
         var dir = RallyReplays.Dir();
         if (Environment.GetEnvironmentVariable("RALLY_WRITE_REPLAYS") == "1") RallyReplays.WriteAll(dir);
         var files = Directory.GetFiles(dir, "*.json").OrderBy(f => f, StringComparer.Ordinal).ToArray();
-        Assert.Equal(3, files.Length);
+        Assert.Equal(4, files.Length);
         foreach (var file in files)
         {
             var journal = RallyReplays.Load(file);

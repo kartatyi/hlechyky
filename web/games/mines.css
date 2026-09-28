@@ -85,3 +85,12 @@
   .mn-wrap { overflow: auto hidden; -webkit-overflow-scrolling: touch; }
   .board.mines.huge { width: max(100%, 448px); }
 }
+
+/* табло дня (прохід №3): один-два рядки над полем, свій рядок підсвічено; вогник — серія днів */
+.mn-day { text-align: center; font-size: .85em; line-height: 1.5; color: var(--muted); margin: 2px 8px 4px; font-variant-numeric: tabular-nums; }
+.mn-day i { font-style: normal; color: var(--text); }
+.mn-day .mn-dr { white-space: nowrap; }
+.mn-day .mn-dr.me i { color: var(--accent); font-weight: 600; }
+.mn-day .mn-dl { color: var(--muted); }
+.mn-day .mn-fire { font-size: .9em; }
+.mn-day .mn-fire.dim { opacity: .6; }

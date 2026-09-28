@@ -151,14 +151,11 @@ class Bot:
     def on_view(self, v):
         self.view = v
         g = self.game
-        if g in ("tron",):
-            self.w, self.h = v.get("width", 26), v.get("height", 18)
-            self.bodies = [list(v.get("a") or []), list(v.get("b") or [])]
-        elif g == "snake":
+        if g == "snake":
             self.w, self.h = 26, 18
             self.bodies = [list(v.get("a") or []), list(v.get("b") or [])]
             self.apples = [v.get("apple")] if v.get("apple") is not None else []
-        elif g in ("tron-party", "snake-party"):
+        elif g in ("tron", "tron-party", "snake-party"):   # з проходу №3 дуель мотоциклів — у форматі гурту
             self.w, self.h = v.get("width", 26), v.get("height", 18)
             self.bodies = [list(b or []) for b in (v.get("t") or [])]
             self.apples = list(v.get("ap") or [])
@@ -174,14 +171,12 @@ class Bot:
         self.ticks += 1
         g = self.game
         old = [b[0] if b else None for b in self.bodies]
-        if g == "tron":
-            for i, key in enumerate(("ha", "hb")):
-                c = f.get(key)
-                if c is not None and i < len(self.bodies) and c not in self.seen[i]:
-                    self.seen[i].add(c)
-                    self.bodies[i].insert(0, c)
-        elif g == "tron-party":
+        if g in ("tron", "tron-party"):
+            h2 = f.get("h2") or []
             for i, c in enumerate(f.get("h") or []):
+                if i < len(h2) and h2[i] is not None and h2[i] >= 0 and i < len(self.bodies) and h2[i] not in self.seen[i]:
+                    self.seen[i].add(h2[i])
+                    self.bodies[i].insert(0, h2[i])   # турбо: перша клітинка подвійного кроку
                 if c is not None and c >= 0 and i < len(self.bodies) and c not in self.seen[i]:
                     self.seen[i].add(c)
                     self.bodies[i].insert(0, c)
@@ -308,6 +303,7 @@ async def main():
     ap.add_argument("--room")
     ap.add_argument("--create", help="гра: tron, tron-party, snake, snake-party, snake-coop, pong")
     ap.add_argument("--field", help="опція field для «…гуртом» (auto|small|big)")
+    ap.add_argument("--opts", help='інші опції столу JSON-ом, напр. {"series":"3","map":"torus","turbo":"1"}')
     ap.add_argument("--n", type=int, default=2)
     ap.add_argument("--prefix", default="бот")
     ap.add_argument("--rounds", type=int, default=1, help="скільки партій зіграти (далі — «Ще раз»)")
@@ -323,6 +319,7 @@ async def main():
         await b.start()
     if a.create:
         opts = {"field": a.field} if a.field else {}
+        if a.opts: opts.update(json.loads(a.opts))
         r = await bots[0].call("CreateRoom", [a.create, opts])
         if not r or not r.get("ok"):
             sys.exit(f"CreateRoom: {r}")

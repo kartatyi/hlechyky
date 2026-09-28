@@ -1022,7 +1022,8 @@
   function state(root, ctx) {
     if (!root._bk) {
       const st = root._bk = {
-        ctx, net: null, sprint: ctx.room.game === 'bricks-sprint',
+        ctx, net: null, sprint: ctx.room.game === 'bricks-sprint' || ctx.room.game === 'bricks-daily',
+        daily: ctx.room.game === 'bricks-daily',
         view: null, frame: null, phase: '', inTicks: 0, round: -1, seed: 0, lvl: 0, sd: -1, fwall: 0, fAt: 0,
         others: {}, order: [], mySeat: null,
         el: {}, cells: 0, layout: '', pal: null, spr: null, sprMini: null, back: null, backMini: null,
@@ -2149,6 +2150,7 @@
 
   /// Фініш: офіційний час сервера проти рекорду; новий рекорд пам'ятаємо разом із відсічками.
   function sprintFinish(st) {
+    if (st.daily) return;
     const v = st.view;
     if (!st.run || st.run.saved || !v || v.phase !== 'over' || !st.ctx.mine) return;
     st.run.saved = true;
@@ -2180,8 +2182,26 @@
       text = st.pbDelta.text;
       cls += st.pbDelta.good ? ' good' : ' bad';
     } else if (pb) text = 'рекорд ' + secText(pb.sec);
+    if (st.daily && st.phase !== 'go') text = dayLine(st);
     setText(el, text);
     if (el.className !== cls) el.className = cls;
+  }
+
+  /// «Цеглини дня №20 · 🥇 Оля 1:37 🔥3 · Петро 1:52 · ти — 3-й» — табло дня з виду (сервер тримає його в пам'яті).
+  function dayLine(st) {
+    const d = st.view && st.view.daily;
+    if (!d) return '';
+    const b = d.board, rows = (b && b.rows) || [];
+    const c = st.ctx, me = String((c && c.nickOf && c.seat != null && c.nickOf(c.seat)) || '').trim().toLowerCase();
+    const mine = rows.findIndex((r) => (r.n || '').trim().toLowerCase() === me);
+    const t = (ms) => secText(ms / 1000).replace(/,\d+$/, '');
+    const one = (r, i) => (i === 0 ? '🥇 ' : '') + r.n + ' ' + t(r.ms) + (r.a > 1 ? ' ×' + r.a : '') + (r.st >= 2 ? ' 🔥' + r.st : '');
+    let s = 'Цеглини дня №' + d.no;
+    if (!b) return s;
+    s += rows.length ? ' · ' + rows.slice(0, 3).map(one).join(' · ') : ' · сьогодні ще ніхто не склав — будь першим';
+    if (mine >= 3) s += ' · ти — ' + (mine + 1) + '-й';
+    if (d.solved && d.streak >= 2) s += ' · у тебе 🔥' + d.streak + ' дн. поспіль';
+    return s;
   }
 
   // ---------- вибулий кидає 🍅 чи 👏 у стіну живого ----------
@@ -2391,7 +2411,7 @@
       st.fx.lvl = null;
       if (v.phase === 'start') { st.inTicks = v.startIn; st.fAt = now; }
       if (st.sprint) {
-        st.pb = pbGet(st);
+        st.pb = st.daily ? null : pbGet(st);   // у «Цеглинах дня» мірило — табло дня, а не власний рекорд
         st.run = { seed: st.seed, splits: [], saved: false };
         st.pbDelta = st.pbNew = null;
       }
@@ -2453,7 +2473,10 @@
     if (!(st && st.sprint) && ctx.room && ctx.room.status === 'lobby') return lobbyLine(ctx);
     if (!ctx.playing) return '';
     if (st && st.sprint) {
-      if (ph === 'ready') return padish() ? 'Натисни Ⓐ — і поїхали' : coarse() ? 'Торкнись стіни — і поїхали' : 'Натисни будь-яку клавішу';
+      const d = ctx.view && ctx.view.daily;
+      if (d && d.solved) return 'Цеглини дня складено — нове зерно після півночі';
+      if (ph === 'ready') return (d ? 'Зерно дня однакове для всіх' + (d.attempts ? ' · спроба ' + (d.attempts + 1) : '') + ' — ' : '')
+        + (padish() ? 'натисни Ⓐ — і поїхали' : coarse() ? 'торкнись стіни — і поїхали' : 'натисни будь-яку клавішу');
       if (ph === 'start') return 'Готуйсь…';
       if (ph === 'go' && st.net.loaded) return st.net.core.lines + '/' + SPRINT_LINES + ' · ' + clockText(st.net.core.tick, false);
       return '';
@@ -2590,16 +2613,16 @@
     id: 'bricks',
     added: '2026-09-27',
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Цеглини',
+      v: '2026-09-29',
+      title: 'Цеглини: коротші дуелі, рейтинг і забіг дня',
       items: [
-        '🧱 Падають цеглинки з чотирьох квадратиків: ← → рухати, ↑ або X крутити, пробіл — кинути, C — сховати',
-        '💥 Закрив два ряди й більше — суперникові знизу лізе сміття: 2→1, 3→2, 4→4; за оберт Т і серії — більше',
-        '🎯 Утрьох-учотирьох твоє сміття летить сусідові за стрілкою, а свої ряди гасять те, що летить тобі',
-        '🏁 Хто завалився — вибув, останній бере раунд; темп росте щопівхвилини, з п’ятої хвилини земля піднімається',
-        '⏱ Сам — «Цеглини: 40 рядів» у Соло: секундомір і таблиця рекордів',
+        '⛰ Опція «Земля росте: з 2:30» — рівні суперники більше не мучаться по п’ять хвилин до раптової смерті',
+        '⚔ «Цеглини: дуель на рейтинг» — один на один з Ело (можна й на черепки), земля там росте вже з 2:30',
+        '📅 «Цеглини дня» в Соло: одне зерно на всіх на цілу добу, однакові фігурки й табло дня над стіною',
       ],
     },
   }, common));
   HGames.register(Object.assign({ id: 'bricks-sprint', added: '2026-09-27' }, common, { seatNames: ['муляр'] }));
+  HGames.register(Object.assign({ id: 'bricks-duel', added: '2026-09-29' }, common));
+  HGames.register(Object.assign({ id: 'bricks-daily', added: '2026-09-29' }, common, { seatNames: ['муляр'] }));
 })();

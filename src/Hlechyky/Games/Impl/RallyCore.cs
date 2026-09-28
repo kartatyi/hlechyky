@@ -106,10 +106,52 @@ public sealed class RallyCore
     /// <summary>Хто щойно проїхав коло цього тика — гра віддає його в рекорди.</summary>
     public bool AnyLap;
 
+    /// <summary>Живі перешкоди (№89): 0 — нема; інакше зерно, з якого кожна гонка трохи інакша. Задає гра на Start().</summary>
+    public int Live;
+    /// <summary>Де кожна перешкода цього тика (sub).</summary>
+    public readonly int[] OX, OY;
+    /// <summary>Радіус перешкоди за видом (sub): курка, гуска, віз, гість, коза.</summary>
+    public static readonly int[] CritterR = [448, 512, 1152, 512, 576];
+    public const int EvCritter = 2048;
+
+    /// <summary>
+    /// Де перешкода d на тику t при зерні live — ціла арифметика, двійник <c>critterAt</c> у rally.js
+    /// (усічення до нуля в обох мовах; добуток ≤ 98304 · 400 — далеко від int32).
+    /// </summary>
+    public static void CritterAt(int[] d, int live, int t, out int x, out int y)
+    {
+        int move = d[5], rest = d[6], period = 2 * (move + rest);
+        var off = ((live % 9973) * (2 * d[7] + 1) * 131 + d[8]) % period;
+        var p = (t + off) % period;
+        if (p < move)
+        {
+            x = d[1] + (d[3] - d[1]) * p / move;
+            y = d[2] + (d[4] - d[2]) * p / move;
+        }
+        else if (p < move + rest)
+        {
+            x = d[3];
+            y = d[4];
+        }
+        else if (p < 2 * move + rest)
+        {
+            var q = p - move - rest;
+            x = d[3] + (d[1] - d[3]) * q / move;
+            y = d[4] + (d[2] - d[4]) * q / move;
+        }
+        else
+        {
+            x = d[1];
+            y = d[2];
+        }
+    }
+
     public RallyCore(RallyTrack track, int laps)
     {
         Track = track;
         Laps = laps;
+        OX = new int[track.Critters.Length];
+        OY = new int[track.Critters.Length];
         for (var i = 0; i < Seats; i++) Cars[i] = new RallyCar { Slot = i };
     }
 
@@ -253,6 +295,8 @@ public sealed class RallyCore
 
         for (var i = 0; i < Seats; i++)
             if (Cars[i].Present) Controls(Cars[i]);
+        if (Live != 0)
+            for (var k = 0; k < OX.Length; k++) CritterAt(Track.Critters[k], Live, T, out OX[k], out OY[k]);
         for (var h = 0; h < 2; h++)
         {
             for (var i = 0; i < Seats; i++)
@@ -364,8 +408,12 @@ public sealed class RallyCore
             {
                 var code = Track.CodeAt(cx, cy);
                 if (RallySurface.IsWall(code)) Wall(c, cx, cy);
-                else if (code == RallySurface.Hay) HayBale(c, cx, cy);
+                else if (code == RallySurface.Hay)
+                    Soft(c, (cx << RallyTrack.CellShift) + RallyTrack.CellSub / 2, (cy << RallyTrack.CellShift) + RallyTrack.CellSub / 2, RWall + RHay, EvHay);
             }
+        // живність — м'яка, як копиця; хто летить із трампліна, пролітає над нею
+        if (Live != 0 && c.Air == 0)
+            for (var k = 0; k < OX.Length; k++) Soft(c, OX[k], OY[k], RWall + CritterR[Track.Critters[k][0]], EvCritter);
     }
 
     /// <summary>
@@ -437,11 +485,12 @@ public sealed class RallyCore
         if (-vn > HitEvMin) c.Ev |= EvWall;
     }
 
-    void HayBale(RallyCar c, int cx, int cy)
+    /// <summary>Кругла м'яка перешкода радіуса r (разом із машиною): копиця, курка, віз.</summary>
+    static void Soft(RallyCar c, int hx, int hy, int r, int ev)
     {
-        const int r = RWall + RHay;
-        int hx = (cx << RallyTrack.CellShift) + RallyTrack.CellSub / 2, hy = (cy << RallyTrack.CellShift) + RallyTrack.CellSub / 2;
         int dx = c.X - hx, dy = c.Y - hy;
+        // далека перешкода — одразу мимо (і квадрат відстані через усю трасу не переповнює int)
+        if (dx >= r || dx <= -r || dy >= r || dy <= -r) return;
         var d2 = dx * dx + dy * dy;
         if (d2 >= r * r) return;
         var d = Isqrt(d2);
@@ -461,7 +510,7 @@ public sealed class RallyCore
         c.VX = c.VX * damp / 256;
         c.VY = c.VY * damp / 256;
         c.Hit = true;
-        if (-vn > HayEvMin) c.Ev |= EvHay;
+        if (-vn > HayEvMin) c.Ev |= ev;
     }
 
     /// <summary>Дві машини рівної маси: розсунути навпіл і обмінятись половиною зустрічної швидкості.</summary>

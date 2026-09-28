@@ -189,3 +189,6 @@
   .bricks-sumbox { animation: none; }
   .bricks-shot { display: none; }
 }
+
+/* Цеглини дня (прохід №3): табло дня в HUD — одним рядком, щоб на телефоні стіна не з’їжджала вниз */
+.bricks-sprintmode .bricks-pbline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 100%; }

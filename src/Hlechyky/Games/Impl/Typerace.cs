@@ -291,7 +291,8 @@ public static class TyperaceOptions
             [(TyperaceBank.Short, "Коротко (~150 знаків)"), (TyperaceBank.Medium, "Середньо (~300)"), (TyperaceBank.Long, "Довго (~600)")],
             TyperaceBank.Medium),
         new GameOption("source", "Тексти",
-            [(TyperaceBank.All, "Усе разом"), (TyperaceBank.Classic, "Класика"), (TyperaceBank.Proverbs, "Прислів’я"), (TyperaceBank.Twisters, "Скоромовки")],
+            [(TyperaceBank.All, "Усе разом"), (TyperaceBank.Classic, "Класика"), (TyperaceBank.Proverbs, "Прислів’я"), (TyperaceBank.Twisters, "Скоромовки"),
+             (TyperaceChat.Chat, "💬 Наші балачки"), (TyperaceChat.Mix, "Мікс: класика + балачки")],
             TyperaceBank.All),
     ];
 }

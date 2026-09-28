@@ -55,7 +55,8 @@ public class SnakePartyTests
     {
         var info = new Registry().Info(id)!;
 
-        Assert.Equal((2, 4), (info.MinPlayers, info.MaxPlayers));
+        // мотоцикли гуртом сідають і самі — тоді з 🤖 (прохід №3)
+        Assert.Equal((id == "tron-party" ? 1 : 2, 4), (info.MinPlayers, info.MaxPlayers));
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.Equal(tick, info.TickMs);
         Assert.False(info.Rated);                   // Ело — для пар; тут таблиця перемог
@@ -178,7 +179,7 @@ public class SnakePartyTests
         h.Tick(3);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([1], h.Room.Result!.Winners);
-        Assert.StartsWith("Мотоцикли гуртом: раунд бере Петро (зелений). Рахунок: Оля 0 · Петро 1 · Іра 0", LastLog(h));
+        Assert.StartsWith("Мотоцикли гуртом: раунд бере Петро (зелений). Рахунок: Оля 0 · Петро 1", LastLog(h));
         var end = h.View(null);
         Assert.Equal("win", end.GetProperty("winner").GetString());
         Assert.Equal([1], end.GetProperty("winners").EnumerateArray().Select(e => e.GetInt32()).ToArray());

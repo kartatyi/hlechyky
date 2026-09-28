@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hlechyky.Games.Impl;
 
@@ -546,6 +547,32 @@ public sealed class MinesDaily : Game, IDailyGame
     bool _dead;
     long _ms;
     int? _last;
+    /// <summary>Ходи цієї спроби для привида: «сотні секунди від старту, o/f/c, клітинка» через пробіл.</summary>
+    readonly StringBuilder _moves = new();
+    /// <summary>Спроба записана повністю (не відновлена з половини й не задовга) — годиться в привиди.</summary>
+    bool _movesOk = true;
+    /// <summary>Стеля запису ходів: вид із привидом має лишатись легким (≈ 6 КБ).</summary>
+    public const int MaxMovesChars = 6000;
+    DailyCard? _card;
+    MinesGhosts? _ghosts;
+
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        // Табло дня й привид живуть у пам'яті сервісів; тут, поза замком, лише кажемо їм дочитати день фоном.
+        _card = Ctx.Services.GetService<DailyCard>();
+        _ghosts = Ctx.Services.GetService<MinesGhosts>();
+        _card?.Warm(Info.Id);
+        _ghosts?.Warm(Days.Today(Ctx.Clock));
+    }
+
+    void Move(char kind, int cell)
+    {
+        if (!_movesOk) return;
+        var cs = Math.Max(0, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds / 10);
+        if (_moves.Length > 0) _moves.Append(' ');
+        _moves.Append(cs.ToString(CultureInfo.InvariantCulture)).Append(kind).Append(cell.ToString(CultureInfo.InvariantCulture));
+        if (_moves.Length > MaxMovesChars) { _movesOk = false; _moves.Clear(); }
+    }
 
     /// <summary>Один ключ на ніка на день — саме з нього сервіси дістають гру й день (specs/daily.md).</summary>
     public override string SoloKey(string nickKey, IClock clock) => $"daily:{Info.Id}:{Days.Today(clock)}:{nickKey}";
@@ -569,6 +596,9 @@ public sealed class MinesDaily : Game, IDailyGame
         _dead = false;
         _last = Center;
         _startedAt = Ctx.Clock.UtcNow;
+        _moves.Clear();
+        _movesOk = true;
+        Move('o', Center);
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
@@ -585,12 +615,18 @@ public sealed class MinesDaily : Game, IDailyGame
         if (MinesWire.Cell(payload) is not { } cell || !_board.Valid(cell))
             return ActResult.Fail("Не зрозумів, куди тиснути");
 
-        if (action == "flag") return _board.Toggle(cell) ? ActResult.Done : ActResult.Fail("Тут уже відкрито");
+        if (action == "flag")
+        {
+            if (!_board.Toggle(cell)) return ActResult.Fail("Тут уже відкрито");
+            Move('f', cell);
+            return ActResult.Done;
+        }
         if (_board.IsOpen(cell)) return Chord(cell);
         if (_board.IsFlag(cell)) return ActResult.Fail("Тут прапорець — спершу зніми його");
 
         _last = cell;
         _board.Open(cell);
+        Move('o', cell);
         if (_board.IsMine(cell))
         {
             // Кімнату не закриваємо: спроба провалилась, а день — ні, і «Спробувати ще» має працювати.
@@ -622,6 +658,7 @@ public sealed class MinesDaily : Game, IDailyGame
         }
         foreach (var c in closed) _board.Open(c);
         _last = cell;
+        Move('c', cell);
         return _board.Left == 0 ? Solved() : ActResult.Done;
     }
 
@@ -634,6 +671,9 @@ public sealed class MinesDaily : Game, IDailyGame
         _ms = Math.Max(1000, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds);
         Ctx.Score(0, _ms, _attempts);
         Ctx.Award(0, 0, $"daily:{Info.Id}");
+        var nick = Ctx.NickOf(0) ?? "";
+        _card?.Note(Info.Id, nick, _attempts, (int)Math.Min(int.MaxValue, _ms));
+        if (_movesOk && _moves.Length > 0) _ghosts?.Offer(_day, new MinesGhost(nick, _attempts, (int)Math.Min(int.MaxValue, _ms), _moves.ToString()));
         Ctx.Finish([0], $"{Info.Title}: {Ctx.NickOf(0)} — поле дня чисте за {MinesWire.Seconds(_ms)}"
             + (_attempts > 1 ? $" (спроба {_attempts})" : ""));
         return ActResult.Accept($"Є! Чисто за {MinesWire.Seconds(_ms)}");
@@ -665,14 +705,19 @@ public sealed class MinesDaily : Game, IDailyGame
             solved = _solved,
             ms = _ms,
             elapsedMs = elapsed,
+            // табло дня й серія 🔥 — з пам'яті сервісу; привид — лише після власного розв'язку (інакше це підказка, де міни)
+            board = DailyCard.Wire(_card?.Get(Info.Id)),
+            streak = _card is null || Ctx.NickOf(0) is not { } me ? 0 : _card.StreakOf(Info.Id, me),
+            ghost = _solved && _ghosts?.Best(_day) is { } g ? new { n = g.Nick, a = g.Attempts, ms = g.Ms, mv = g.Moves } : null,
         };
     }
 
     /// <summary>Що лягає в game_state. Мін тут нема — вони однозначно виводяться з дня.</summary>
-    sealed record State(string Day, string Mask, DateTimeOffset StartedAt, int Attempts, bool Solved, bool Dead, long Ms, int? Last);
+    sealed record State(string Day, string Mask, DateTimeOffset StartedAt, int Attempts, bool Solved, bool Dead, long Ms, int? Last,
+        string? Moves = null);
 
     public override string? Save() =>
-        JsonSerializer.Serialize(new State(_day, _board.Mask(), _startedAt, _attempts, _solved, _dead, _ms, _last));
+        JsonSerializer.Serialize(new State(_day, _board.Mask(), _startedAt, _attempts, _solved, _dead, _ms, _last, _movesOk ? _moves.ToString() : null));
 
     public override void Load(string json)
     {
@@ -688,5 +733,9 @@ public sealed class MinesDaily : Game, IDailyGame
         _dead = s.Dead;
         _ms = s.Ms;
         _last = s.Last is { } last && _board.Valid(last) ? last : null;
+        // запис ходів дочитуємо, якщо він є; старий стан без нього — спроба в привиди вже не годиться
+        _moves.Clear();
+        _movesOk = s.Moves is { Length: > 0 and <= MaxMovesChars };
+        if (_movesOk) _moves.Append(s.Moves);
     }
 }
