@@ -16,6 +16,13 @@ sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? b
 {
     public int Clips, Resolved;
     public IReadOnlyList<string>? Categories;
+    /// <summary>Що гравці столу «закидали на радіо» — для «Хто закинув?».</summary>
+    public IReadOnlyList<MelodyRequested> Requested = [];
+    /// <summary>Довжини нарізаних уривків, по черзі.</summary>
+    public readonly System.Collections.Concurrent.ConcurrentQueue<int> Lengths = new();
+
+    public Task<IReadOnlyList<MelodyRequested>> RequestedAsync(IReadOnlyList<string> nicks, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<MelodyRequested>>([.. Requested.Where(r => r.By.Any(b => nicks.Contains(b)))]);
     readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<MelodyTrack?>> _slow = new();
 
     public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct)
@@ -46,6 +53,7 @@ sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? b
     public Task<byte[]?> ClipAsync(MelodyTrack track, double startSec, int seconds, CancellationToken ct)
     {
         Interlocked.Increment(ref Clips);
+        Lengths.Enqueue(seconds);
         return Task.FromResult(broken?.Contains(track.Id) == true ? null : new byte[5000]);
     }
 }
