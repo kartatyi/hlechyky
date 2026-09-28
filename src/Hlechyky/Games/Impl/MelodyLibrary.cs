@@ -38,7 +38,17 @@ public interface IMelodySource
 
     /// <summary>Уривок у mp3 без жодних метаданих. null — не вийшло (файл зник, ffmpeg упав).</summary>
     Task<byte[]?> ClipAsync(MelodyTrack track, double startSec, int seconds, CancellationToken ct);
+
+    /// <summary>
+    /// «Хто закинув?»: треки з файлом на диску, які хтось із <paramref name="nicks"/> сам закидав на радіо, і хто
+    /// саме (ніки — як за столом). Кожна пісня — раз. Порожньо — ніхто нічого не закидав.
+    /// </summary>
+    Task<IReadOnlyList<MelodyRequested>> RequestedAsync(IReadOnlyList<string> nicks, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<MelodyRequested>>([]);
 }
+
+/// <summary>Пісня для «Хто закинув?»: трек і хто з-за столу його закидав на радіо (ніки так, як вони за столом).</summary>
+public sealed record MelodyRequested(MelodyTrack Track, IReadOnlyList<string> By);
 
 /// <summary>
 /// Треки для гри: з історії радіо, які лежать у кеші (<c>tracks.file_path</c>), і з добірок
@@ -108,6 +118,44 @@ public sealed class MelodyLibrary(
         var cached = rows.Where(x => File.Exists(x.Track.FilePath)).ToList();
         var pools = Pools(cached, disliked, categories, Classics, rng);
         return WithReserve(Interleave(pools), count, rng);
+    }, ct);
+
+    public Task<IReadOnlyList<MelodyRequested>> RequestedAsync(IReadOnlyList<string> nicks, CancellationToken ct) => Task.Run(() =>
+    {
+        if (db is null || nicks.Count == 0) return (IReadOnlyList<MelodyRequested>)[];
+        // ключ ніка → нік за столом: «оля» в базі й «Оля» за столом — одна людина
+        var seated = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var n in nicks) seated.TryAdd(Auth.NickKey(n), n);
+        var (rows, disliked) = Load();
+        var ok = rows.Where(x => File.Exists(x.Track.FilePath)).ToDictionary(x => x.Track.Id, StringComparer.Ordinal);
+        var by = db.With(c =>
+        {
+            var map = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            using var cmd = c.CreateCommand();
+            // лише те, що людина закинула сама (source user), а не автоді-джей чи Глек
+            cmd.CommandText = "SELECT DISTINCT requested_by, track_id FROM plays WHERE source = 'user' AND requested_by IS NOT NULL";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                if (!seated.TryGetValue(Auth.NickKey(r.GetString(0)), out var nick)) continue;
+                var id = r.GetString(1);
+                if (!ok.ContainsKey(id)) continue;
+                if (!map.TryGetValue(id, out var set)) map[id] = set = new HashSet<string>(StringComparer.Ordinal);
+                set.Add(nick);
+            }
+            return map;
+        });
+        // та сама пісня з кількох завантажень — одна, з усіма, хто її закидав
+        var songs = new Dictionary<string, (MelodyTrack Track, HashSet<string> By)>(StringComparer.Ordinal);
+        foreach (var (id, who) in by)
+        {
+            var row = ok[id];
+            var key = row.SongKey.Length > 0 ? row.SongKey : SongKey.Of(row.Track.Artist, row.Track.Title);
+            if (disliked.Contains(key)) continue;
+            if (songs.TryGetValue(key, out var have)) have.By.UnionWith(who);
+            else songs[key] = (row.Track, new HashSet<string>(who, StringComparer.Ordinal));
+        }
+        return (IReadOnlyList<MelodyRequested>)[.. songs.Values.Select(x => new MelodyRequested(x.Track, [.. x.By.Order(StringComparer.Ordinal)]))];
     }, ct);
 
     /// <summary>

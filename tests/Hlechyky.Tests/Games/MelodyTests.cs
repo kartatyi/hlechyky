@@ -93,10 +93,12 @@ public class MelodyTests
 
     static int Score(RoomHarness h, int seat) => h.View(null).GetProperty("scores")[seat].GetInt32();
 
-    static RoomHarness Playing(object? options = null)
+    /// <summary>Стіл, де вже звучить трек, — і вже після бонусу швидкості (його тести окремо, решта рахує звичайні очки).</summary>
+    static RoomHarness Playing(object? options = null, bool fast = false)
     {
         var h = Table(new FakeMelodySource([Songs[0], Songs[1], Songs[2]]), options ?? new { rounds = "5" });
         Until(h, "play");
+        if (!fast) h.Clock.AdvanceMs(Melody.SpeedMs);
         return h;
     }
 
@@ -294,7 +296,8 @@ public class MelodyTests
         Assert.Equal("1", h.Room.Game.SeatName(0));
         Assert.Equal("12", h.Room.Game.SeatName(11));
 
-        // Останній за столом вгадує першим — бонус першості його, решта бере без бонусу.
+        // Останній за столом вгадує першим — бонус першості його, решта бере без бонусу (і вже без бонусу швидкості).
+        h.Clock.AdvanceMs(Melody.SpeedMs);
         Assert.True(Guess(h, 11, "обійми").Ok);
         Assert.True(Guess(h, 0, "обійми").Ok);
         Assert.Equal(Melody.TitlePoints + Melody.TitleFirst, Score(h, 11));

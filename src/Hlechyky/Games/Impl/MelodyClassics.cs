@@ -11,24 +11,31 @@ namespace Hlechyky.Games.Impl;
 public static class MelodyCategories
 {
     public const string All = "all", Ua = "ua", World = "world", Fav = "fav";
+    /// <summary>
+    /// «Хто закинув?» — пісні, які хтось із тих, хто за столом, сам закидав на радіо. «Усе» її не вмикає:
+    /// там свої правила (ще й вгадати, хто закинув), тож лише коли обрали окремо.
+    /// </summary>
+    public const string Who = "who";
 
     /// <summary>Обидві мовні категорії з радіо — те, що гра брала до появи добірок.</summary>
     public static readonly IReadOnlyList<string> Radio = [Ua, World];
 
     /// <summary>Коди, які не можна віддати добірці з файла.</summary>
-    public static readonly IReadOnlyList<string> Reserved = [All, Ua, World, Fav];
+    public static readonly IReadOnlyList<string> Reserved = [All, Ua, World, Fav, Who];
 
     public static IReadOnlyList<(string Value, string Label)> Values(MelodyClassics classics) =>
-        [(All, "Усе"), (Fav, "Ті, що ми слухаємо"), (Ua, "Українські з радіо"), (World, "Світові з радіо"), .. classics.Categories];
+        [(All, "Усе"), (Fav, "Ті, що ми слухаємо"), (Who, "Хто закинув? (наші замовлення)"), (Ua, "Українські з радіо"), (World, "Світові з радіо"), .. classics.Categories];
 
     /// <summary>Обрані категорії з рядка опції: «all», порожньо або самі невідомі — усі, крім самого «all».</summary>
     public static IReadOnlyList<string> Parse(string? value, MelodyClassics classics)
     {
         var known = Values(classics).Select(v => v.Value).Where(v => v != All).ToList();
+        var usual = known.Where(v => v != Who).ToList();
         var picked = GameOption.Split(value);
-        if (picked.Contains(All, StringComparer.Ordinal)) return known;
+        if (picked.Contains(All, StringComparer.Ordinal))
+            return picked.Contains(Who, StringComparer.Ordinal) ? known : usual;
         var chosen = known.Where(k => picked.Contains(k, StringComparer.Ordinal)).ToList();
-        return chosen.Count == 0 ? known : chosen;
+        return chosen.Count == 0 ? usual : chosen;
     }
 }
 
