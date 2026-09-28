@@ -24,6 +24,7 @@ window.rb = window.rb || {};
         if (m.type === 3) { const p = bot.pend[m.invocationId]; if (p) { delete bot.pend[m.invocationId]; p(m.result || { ok: false, message: m.error }); } }
         else if (m.type === 1 && m.target === 'room') {
           const rv = m.arguments[0];
+          if (rv && rv.room && bot.room === '*') bot.room = rv.room.id;   // соло: id столу ще не знаємо
           if (rv && rv.room && rv.room.id === bot.room) { bot.view = rv.view; bot.seat = rv.seat; }
         } else if (m.type === 1 && m.target === 'frame') {
           const f = m.arguments[0];

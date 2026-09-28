@@ -1846,7 +1846,8 @@
       if (b === 3) return '👀 Баба озирається… іти чи стояти?';
       if (st && st.view && st.view.relay) {
         const t = relayTeam(st, teamOfSeat(st, ctx.seat));
-        return '🎵 Співає — іди! Торкнись глека — очко ' + (t ? t.name : 'команді') + ' і знову від тину · свої підписані';
+        return '🎵 Співає — іди! Торкнись глека — очко ' + (t ? t.name : 'команді') + ' і знову від тину'
+          + (window.HPad && window.HPad.on ? ' · Ⓐ штурхан' : ' · свої підписані');
       }
       if (window.HPad && window.HPad.on) return '🎵 Співає — іди! Стік — іти · Ⓐ штурхан · Ⓧ де я?';
       return HGames.ui.coarse()
