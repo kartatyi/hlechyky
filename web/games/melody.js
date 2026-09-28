@@ -282,7 +282,9 @@
     const form = root.querySelector('.mgguess');
     const input = form.querySelector('input');
     const me = v.me || {};
-    const all = me.artist && me.title;
+    // У командах «усе вгадано» — командне: тіммейтові, чия команда вже має і виконавця, і назву, писати нема чого.
+    const tf = v.teams && v.teams.found && ctx.seat != null && v.teams.of[ctx.seat] >= 0 ? v.teams.found[v.teams.of[ctx.seat]] : null;
+    const all = (me.artist && me.title) || !!(tf && tf.artist && tf.title);
     const benched = benchedAt(v, ctx.seat);   // фінальна дуель, а ти лише ставиш
     const can = !!ctx.mine && !!ctx.playing && v.phase === 'play' && !all && !me.blocked && !benched;
     const opened = can && input.disabled;
@@ -300,7 +302,7 @@
       : v.phase !== 'play' ? 'Чекаємо на трек…'
         : benched ? '⚔️ Дуель — вгадують лише двоє'
           : me.blocked ? '🙈 Цей трек уже без тебе'
-            : all ? 'Є! Усе вгадано 🎉' : 'виконавець або назва…';
+            : all ? (me.artist && me.title ? 'Є! Усе вгадано 🎉' : 'Є! Команда вгадала все 🎉') : 'виконавець або назва…';
     const marks = root.querySelector('.mgmarks');
     const html = ctx.mine && ctx.playing && v.phase !== 'done' && !benched
       ? '<span class="chip' + (me.artist ? ' on' : '') + '">🎤 виконавець</span><span class="chip' + (me.title ? ' on' : '') + '">🎵 назва</span>'
@@ -318,19 +320,22 @@
     };
   }
 
-  /// Кнопка «Пропустити» і хто вже готовий. Кнопки нема тому, хто вгадав усе: йому пропускати нема чого.
+  /// Кнопка «Пропустити» і хто вже готовий. Кнопки нема тому, кому в треку вже нема чого робити. Це рахує сервер
+  /// (`done`): у командах — за командою, у «Хто закинув?» — лише коли ще й замовника назвав.
   function skipBox(root, ctx, v) {
     const el = root.querySelector('.mgskip');
     const me = v.me || {};
     const skip = v.skip || [];
     const mineSkip = skip.indexOf(ctx.seat) >= 0;
-    const can = !!ctx.mine && !!ctx.playing && v.phase === 'play' && !(me.artist && me.title) && !me.blocked && !benchedAt(v, ctx.seat);
+    const isDone = (i) => (v.done ? v.done.indexOf(i) >= 0 : false);
+    const meDone = v.done ? isDone(ctx.seat) : (me.artist && me.title);
+    const can = !!ctx.mine && !!ctx.playing && v.phase === 'play' && !meDone && !me.blocked && !benchedAt(v, ctx.seat);
     const waiting = [];
     if (v.phase === 'play') {
       for (let i = 0; i < seatsOf(ctx); i++) {
         if (!ctx.nickOf(i) || (v.left || []).indexOf(i) >= 0 || benchedAt(v, i)) continue;
         const f = (v.found || []).find((x) => x.seat === i);
-        if (f && f.artist && f.title) continue;
+        if (v.done ? isDone(i) : (f && f.artist && f.title)) continue;
         waiting.push(i);
       }
     }

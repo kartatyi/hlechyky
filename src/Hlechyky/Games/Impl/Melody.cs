@@ -591,7 +591,8 @@ public sealed class Melody : Game
             if (a < 0 || _scores[s] > _scores[a]) { b = a; a = s; }
             else if (b < 0 || _scores[s] > _scores[b]) b = s;
         }
-        if (present < DuelMin || b < 0) return;
+        // Лідер без жодного очка — не лідер, а перший-ліпший за номером місця: без дуелі (рецензія проходу №3).
+        if (present < DuelMin || b < 0 || _scores[b] <= 0) return;
         _duelA = a;
         _duelB = b;
         _duelRound = _round + 1;
@@ -626,6 +627,8 @@ public sealed class Melody : Game
         _phase = Done;
         _error = error;
         _dirty = true;
+        // Дуель оголосили, а фінальний трек так і не скачався (партія вкоротилась) — рамку «⚔️» знімаємо: її не було.
+        if (_duelA >= 0 && _round < _duelRound) _duelA = _duelB = -1;
         var seats = Present().ToArray();
         if (error is not null && _round == 0)
         {
@@ -864,7 +867,8 @@ public sealed class Melody : Game
             grow = _grow ? new { stage = _stage, sec = GrowSec, bonus = GrowBonus } : null,
             // варіанти — лише коли вже відкрились (раніше їх нема й у виді: не підгледиш)
             choices = _phase == Play && _choicesOpen && prepared is not null ? prepared.Choices : null,
-            choicesAt = _choicesOn && _phase == Play && !_choicesOpen ? _roundStart.AddMilliseconds(ClipEndMs - ChoicesLeadMs) : (DateTimeOffset?)null,
+            // …і обіцянки «тут з'являться варіанти» нема, коли виконавців у партії замало на вибір
+            choicesAt = _choicesOn && _phase == Play && !_choicesOpen && prepared is { Choices.Length: > 1 } ? _roundStart.AddMilliseconds(ClipEndMs - ChoicesLeadMs) : (DateTimeOffset?)null,
             // «Хто закинув?»: пісня з замовлень столу — можна назвати замовника; хто саме — лише після раунду
             who = prepared?.By is null || _phase == Loading ? null
                 : new { by = open ? prepared.By : null },
@@ -880,6 +884,8 @@ public sealed class Melody : Game
             },
             note = _note,
             skip = _phase == Play ? _skip.Order().ToArray() : [],
+            // кому в цьому треку вже нема чого робити — рахує сервер (команди, «Хто закинув?», дуель), клієнт лише малює
+            done = _phase == Play ? Enumerable.Range(0, Seats).Where(x => IsPresent(x) && Finished(x)).ToArray() : [],
             answer = open && prepared is not null ? new { id = prepared.Track.Id, artist = prepared.Track.Artist, title = prepared.Track.Title, thumb = prepared.Track.Thumb } : null,
             // після партії — усе, що звучало: браузер дає поставити 👎 будь-якому
             played = _phase == Done
