@@ -82,11 +82,17 @@
     return rounds * (v.options.pace === 'blitz' ? 16 : 25) + 5;
   }
 
+  /// «21 запитання», «80 запитань»: з міксом і бліцом числа тепер будь-які, а не лише круглі.
+  function questionsWord(n) {
+    const d = n % 10, h = n % 100;
+    return n + (d === 1 && h !== 11 ? ' запитання' : d >= 2 && d <= 4 && (h < 12 || h > 14) ? ' запитання' : ' запитань');
+  }
+
   function packRow(p, chosen, v) {
     const themes = (p.rounds || []).filter((r) => !r.final).map((r) => r.themes.join(', ')).join(' · ');
     return '<button type="button" class="svpack' + (chosen ? ' on' : '') + '" data-do="pack" data-id="' + esc(p.id) + '">'
       + '<b>' + esc(p.title) + '</b>'
-      + '<span class="muted small">' + esc(p.author) + ' · ' + questionsOf(p, chosen, v || {}) + ' запитань' + (p.plays ? ' · зіграно ' + p.plays : '') + '</span>'
+      + '<span class="muted small">' + esc(p.author) + ' · ' + questionsWord(questionsOf(p, chosen, v || {})) + (p.plays ? ' · зіграно ' + p.plays : '') + '</span>'
       + (themes ? '<span class="svthemes small">' + esc(themes) + '</span>' : '')
       + (p.note ? '<span class="svnote small">' + esc(p.note) + '</span>' : '')
       + '</button>';
