@@ -120,6 +120,7 @@ public sealed class Rally : Game
         _results = null;
         _record = null;
         _picked = false;
+        _photo = null;
         RefreshTop();
     }
 
@@ -349,6 +350,7 @@ public sealed class Rally : Game
                 var c = core.Cars[i];
                 if (!c.Present || (c.Ev & RallyCore.EvLap) == 0) continue;
                 view |= Lap(i, c);
+                if (c.Fin > 1 && _photo is null) view |= Photo(i, c);
                 if (c.Fin == 1)
                 {
                     view = true;
@@ -412,6 +414,27 @@ public sealed class Rally : Game
         if (beat) Ctx.Award(seat, 0, "ach:rally-record");
         if (rank <= 10) RefreshTop();
         return rank <= 10;
+    }
+
+    /// <summary>Різниця на фініші, менша за цю (мс), — «📸 Фотофініш» (№88).</summary>
+    public const int PhotoMs = 300;
+    /// <summary>Перша за гонку пара сусідів на фініші ближче ніж 0,3 с: хто, за ким, на скільки мс, на якому тику.</summary>
+    (int A, int B, int Gap, int T)? _photo;
+
+    /// <summary>Фінішер за місцем Fin−1 доїхав менше ніж на 0,3 с раніше — клієнти покажуть уповільнений фотофініш.</summary>
+    bool Photo(int seat, RallyCar c)
+    {
+        var core = _core!;
+        for (var i = 0; i < RallyCore.Seats; i++)
+        {
+            var p = core.Cars[i];
+            if (i == seat || !p.Present || p.Fin != c.Fin - 1) continue;
+            var gap = c.FinishMs - p.FinishMs;
+            if (gap >= PhotoMs) return false;
+            _photo = (i, seat, gap, core.T);
+            return true;
+        }
+        return false;
     }
 
     string? Nick(int seat) => _nicks[seat] ?? Ctx.NickOf(seat);
@@ -647,6 +670,7 @@ public sealed class Rally : Game
             plates,
             records = _top,
             results = _ph == PhOver ? _results : null,
+            photo = _photo is { } ph && _ph is PhRace or PhOver ? new[] { ph.A, ph.B, ph.Gap, ph.T } : null,
             f = Frame(),
         };
     }

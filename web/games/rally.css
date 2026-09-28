@@ -205,3 +205,5 @@ body:has(.rl-body.rl-side) .tchat.drawer:not(.open) .tc-last { display: none; }
   .rl-tracks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .rl-sw button { width: 40px; height: 40px; }
 }
+.rl-photo { flex: 1 1 100%; display: flex; justify-content: center; }
+.rl-photo button { min-height: 44px; padding: 6px 16px; border-radius: 10px; }

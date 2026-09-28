@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hlechyky.Games;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
@@ -32,6 +33,56 @@ public partial class RallyTests
         Assert.Equal("ozero", Game(h).Track.Id);                              // звичайне «Ще раз» — туди ж
         h.Tick(RallyCore.CountTicks - 10);
         Assert.False(h.Act(0, "track", new { track = "nich" }).Ok);            // світлофор уже майже зелений — пізно
+    }
+
+    // ---------- №88 фотофініш ----------
+
+    [Fact]
+    public void A_finish_closer_than_three_tenths_puts_a_photo_finish_into_the_view()
+    {
+        var h = Table(3);
+        Green(h);
+        var core = Core(h);
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("photo").ValueKind);
+        // перший і другий — на 0,28 с, третій далеко: фотофініш — пара 1–2
+        ReadyToFinish(core, 0, 2);
+        ReadyToFinish(core, 1, 2, x: 18.6);
+        for (var i = 0; i < 60 && core.Cars[1].Fin == 0; i++)
+        {
+            Ctl(h, 0, 4);
+            Ctl(h, 1, 4);
+            h.Tick();
+        }
+        Assert.Equal(1, core.Cars[0].Fin);
+        Assert.Equal(2, core.Cars[1].Fin);
+        var gap = core.Cars[1].FinishMs - core.Cars[0].FinishMs;
+        var photo = h.View(null).GetProperty("photo");
+        if (gap < Rally.PhotoMs)
+        {
+            Assert.Equal(0, photo[0].GetInt32());
+            Assert.Equal(1, photo[1].GetInt32());
+            Assert.Equal(gap, photo[2].GetInt32());
+        }
+        else Assert.Equal(JsonValueKind.Null, photo.ValueKind);
+        Assert.True(gap < Rally.PhotoMs, $"розрив {gap} мс — підсунь другого ближче");
+    }
+
+    [Fact]
+    public void A_clear_win_has_no_photo_finish()
+    {
+        var h = Table(2);
+        Green(h);
+        var core = Core(h);
+        ReadyToFinish(core, 0, 2);
+        ReadyToFinish(core, 1, 2, x: 12);
+        for (var i = 0; i < 200 && h.Room.Status == RoomStatus.Playing; i++)
+        {
+            Ctl(h, 0, 4);
+            Ctl(h, 1, 4);
+            h.Tick();
+        }
+        Assert.True(core.Cars[1].FinishMs - core.Cars[0].FinishMs >= Rally.PhotoMs);
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("photo").ValueKind);
     }
 
     // ---------- №91 гараж ----------

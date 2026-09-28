@@ -1797,6 +1797,14 @@
       while (j > 0 && (f.c[order[j - 1] * STRIDE + 9] & 15) > air) { order[j] = order[j - 1]; j--; }
       order[j] = i;
     }
+    if (photoOn(st, now)) {
+      drawPhoto(st, g, now);
+      const ms = performance.now() - t0;
+      st.perf[st.perfI] = ms;
+      st.perfI = (st.perfI + 1) % 300;
+      if (st.perfN < 300) st.perfN++;
+      return;
+    }
     drawGhost(st, g, rt);
     for (let j = 0; j < n; j++) drawCar(st, g, order[j], rt, now);
 
@@ -1817,6 +1825,115 @@
     st.perf[st.perfI] = ms;
     st.perfI = (st.perfI + 1) % 300;
     if (st.perfN < 300) st.perfN++;
+  }
+
+  // ---------- 📸 фотофініш (№88): кільце останніх кадрів сервера, уповільнений показ близького фінішу ----------
+  const PH_N = 64, PH_BEFORE = 20, PH_AFTER = 8, PH_SPEED = 0.25, PH_HOLD = 1400;
+
+  /// Кожен кадр гонки — в кільце (x, y, курс шести машин; −1 — машини нема). Без алокацій: масиви готові.
+  function photoRec(st, f) {
+    if (f.ph !== 2) return;
+    let r = st.phRing;
+    if (!r) r = st.phRing = { t: new Int32Array(PH_N), c: new Int32Array(PH_N * 18), n: 0 };
+    if (r.n > 0 && r.t[(r.n - 1) % PH_N] >= f.t) return;
+    const j = r.n % PH_N;
+    r.t[j] = f.t;
+    for (let i = 0; i < SEATS; i++) {
+      const o = i * STRIDE, q = j * 18 + i * 3;
+      r.c[q] = f.c[o + 10] < 0 ? -1 : f.c[o]; r.c[q + 1] = f.c[o + 1]; r.c[q + 2] = f.c[o + 2];
+    }
+    r.n++;
+    const p = st.photo;
+    if (p && !p.clip && f.t >= p.T + PH_AFTER) photoCut(st);
+  }
+
+  /// Вирізати з кільця кліп навколо фінішу другого з пари.
+  function photoCut(st) {
+    const p = st.photo, r = st.phRing;
+    if (!p || p.clip || !r) return;
+    const t = [], c = [];
+    for (let n = Math.max(0, r.n - PH_N); n < r.n; n++) {
+      const j = n % PH_N;
+      if (r.t[j] < p.T - PH_BEFORE || r.t[j] > p.T + PH_AFTER) continue;
+      t.push(r.t[j]);
+      for (let q = 0; q < 18; q++) c.push(r.c[j * 18 + q]);
+    }
+    p.clip = t.length >= 4 ? { t, c } : { t: [], c: [] };
+  }
+
+  /// Вид приніс фотофініш: [хто, за ким, мс, тик].
+  function photoView(st, v) {
+    const ph = v.photo;
+    if (!ph) return;
+    if (!st.photo || st.photo.T !== ph[3]) st.photo = { a: ph[0], b: ph[1], gap: ph[2], T: ph[3], clip: null, playAt: 0, played: false };
+    if (!st.photo.clip && (v.ph === 3 || (st.f && st.f.t >= ph[3] + PH_AFTER))) photoCut(st);
+  }
+
+  /// Чи крутимо фотофініш зараз. Той, хто ще їде, його не бачить — покажемо, щойно доїде (чи в підсумку).
+  function photoOn(st, now) {
+    const p = st.photo, f = st.f;
+    if (!p || !p.clip || p.clip.t.length < 4 || !f) return false;
+    if (!p.playAt) {
+      if (p.played) return false;
+      const busy = f.ph === 2 && st.mine >= 0 && f.c[st.mine * STRIDE + 10] === 0;
+      if (busy) return false;
+      p.playAt = now;
+    }
+    const len = (p.clip.t[p.clip.t.length - 1] - p.clip.t[0]) * TICK / PH_SPEED + PH_HOLD;
+    if (now - p.playAt > len) { p.playAt = 0; p.played = true; st.lowerSig = ''; paintLower(st); return false; }
+    return true;
+  }
+
+  function drawPhoto(st, g, now) {
+    const p = st.photo, cl = p.clip, T = cl.t, n = T.length;
+    let pt = T[0] + (now - p.playAt) / TICK * PH_SPEED;
+    if (pt > T[n - 1]) pt = T[n - 1];
+    let j = 0;
+    while (j < n - 2 && T[j + 1] <= pt) j++;
+    const u = Math.max(0, Math.min(1, (pt - T[j]) / Math.max(1, T[j + 1] - T[j])));
+    // лінія фінішу — шахівниця через усю ширину воріт 0
+    const td = st.td, gr = td.gates && td.gates[0] && td.gates[0][0];
+    if (gr) {
+      const vert = gr[3] >= gr[2], sq = 8;
+      const x0 = vert ? td.line[1] - sq / 2 : gr[0] * 32, y0 = vert ? gr[1] * 32 : td.line[1] - sq / 2;
+      const len = (vert ? gr[3] : gr[2]) * 32;
+      for (let q = 0; q * sq < len; q++) for (let w = 0; w < 2; w++) {
+        g.fillStyle = (q + w) & 1 ? '#111' : '#fff';
+        g.fillRect(vert ? x0 + w * sq / 2 : x0 + q * sq, vert ? y0 + q * sq : y0 + w * sq / 2, vert ? sq / 2 : sq, vert ? sq : sq / 2);
+      }
+    }
+    for (let i = 0; i < SEATS; i++) {
+      const qa = j * 18 + i * 3, qb = (j + 1) * 18 + i * 3;
+      if (cl.c[qa] < 0 || cl.c[qb] < 0) continue;
+      const x = (cl.c[qa] + (cl.c[qb] - cl.c[qa]) * u) / SUB, y = (cl.c[qa + 1] + (cl.c[qb + 1] - cl.c[qa + 1]) * u) / SUB;
+      let da = cl.c[qb + 2] - cl.c[qa + 2];
+      if (da > 512) da -= 1024; else if (da < -512) da += 1024;
+      const ang = (cl.c[qa + 2] + da * u) / 1024 * Math.PI * 2;
+      const id = (st.view && st.view.cars && st.view.cars[i]) || 'traktor';
+      const spr = sprite(st, id, i, 0);
+      g.save();
+      g.globalAlpha = i === p.a || i === p.b ? 1 : 0.45;
+      g.translate(x, y);
+      g.rotate(ang);
+      g.scale(SPR, SPR);
+      g.drawImage(spr, -spr.uw / 2, -spr.uh / 2, spr.uw, spr.uh);
+      g.restore();
+    }
+    // напис згори: хто кого й на скільки
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const F = fonts(st), ck = st.cssK, W = st.pxW;
+    const nick = (i) => (st.ctx.nickOf(i) || SEAT_NAMES[i]);
+    const text = '📸 Фотофініш: ' + nick(p.a) + ' на ' + (p.gap / 1000).toFixed(2).replace('.', ',') + ' с раніше за ' + nick(p.b);
+    g.font = F.nick;
+    const tw = Math.min(W - 24 * ck, g.measureText(text).width + 28 * ck), fh = 30 * ck;
+    g.fillStyle = 'rgba(10,16,12,.8)';
+    g.beginPath(); g.roundRect(W / 2 - tw / 2, 10 * ck, tw, fh, 10 * ck); g.fill();
+    g.fillStyle = '#fff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(text, W / 2, 10 * ck + fh / 2, tw - 16 * ck);
+    g.fillStyle = 'rgba(255,255,255,.7)';
+    g.fillText('× ' + String(PH_SPEED).replace('.', ','), W - 30 * ck, st.pxH - 16 * ck);
   }
 
   /// Що малювати для машини i — у спільний об'єкт st.cs (u, курс у кроках, швидкості й таймери).
@@ -2369,6 +2486,8 @@
     });
     lower.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('.rl-plate input')) e.target.blur(); });
     lower.addEventListener('click', (e) => {
+      const ph = e.target.closest('button[data-photo]');
+      if (ph && st.photo) { st.photo.played = false; st.photo.playAt = 0; st.lowerSig = ''; paintLower(st); wake(st, true); return; }
       if (!st.ctx || !st.ctx.mine) return;
       const pb = e.target.closest('button[data-paint]');
       if (pb) {
@@ -2588,6 +2707,9 @@
         + (v.random ? '' : '<div class="small rl-legend">' + ctx.esc(legend(st)) + '</div>') + '</div>';
     }
     if ((v.ph === 0 || v.ph === 3) && ctx.mine) html += garageHtml(st, v);
+    if (v.ph === 3 && st.photo && st.photo.clip && st.photo.clip.t.length >= 4 && !st.photo.playAt) {
+      html += '<div class="rl-photo"><button type="button" data-photo="1">📸 Фотофініш ще раз</button></div>';
+    }
     if (v.ph === 3 && ctx.mine && !v.champ) {
       const cur = v.random ? 'random' : v.track && v.track.id;
       html += '<div class="rl-next"><div class="rl-rh">🗺 Наступна гонка — клацни трасу</div><div class="rl-tracks">'
@@ -2665,6 +2787,8 @@
     for (const d of st.drawn) d.ok = false;
     st.skidOk.fill(0);
     st.finMs = 0; st.gLapT = -1; st.gRecN = 0; st.revealed = false;
+    st.photo = null;
+    if (st.phRing) st.phRing.n = 0;
     if (st.skidG) st.skidG.clearRect(0, 0, WU, HU);
   }
 
@@ -2718,6 +2842,7 @@
       const rt = st.clockOn ? srvTick(st, now) + (st.mine >= 0 ? st.lead : 1) : f.t;
       resetOthers(st, f, rt);
     }
+    photoRec(st, f);
     st.lastT = f.t;
   }
 
@@ -2772,6 +2897,7 @@
   function quiet(st, now) {
     const f = st.f;
     if (!f || (f.ph !== 0 && f.ph !== 3) || st.fitDirty || st.revealAt) return false;
+    if (st.photo && st.photo.playAt) return false;
     if (st.flashes.length || st.shakeUntil > now) return false;
     for (let i = 0; i < SEATS; i++) if (now - st.horns[i] < 400) return false;
     for (const p of st.ps.list) if (p.on) return false;
@@ -2825,6 +2951,7 @@
     const now = performance.now();
     void prevView;
     if (v.f && (!st.f || v.f.t >= st.f.t || v.f.ph !== st.f.ph)) takeFrame(st, v.f, now);
+    photoView(st, v);
     paintHud(st);
     // поле номера в фокусі — не перемальовувати з-під пальців
     if (!(document.activeElement && document.activeElement.matches && document.activeElement.matches('.rl-plate input'))) paintLower(st);
