@@ -13,10 +13,16 @@
       options: null | [{ i, text, mine, by: number[]|null, picks: number[]|null, truth: bool|null, decoy: bool|null, likes }],
       revealed: number[], note, quip, scores[8], delta[8], truthDelta[8], likeDelta[8], victims[8],
       result: null | { winners, left, scores, best: null | { q, text, by, victims, likes, hlek },
-                       recap: [{ q, text, answer, note, best: null | { text, by, victims, hlek } }] } }
+                       titles: [{ key, icon, label, seats, n, text }],
+                       recap: [{ q, text, answer, note, best: null | { text, by, victims, hlek } }] },
+      topic: null | { by, options: [{ key, label }], pick },   // фаза 'topic': хто обирає тему й із чого
+      chooser: number|null,          // хто обрав тему цього питання (−1 — Глек), null — теми не обирають
+      voice: 'ostap'|'polina'|'none', say: null | { id, text, url, seconds },   // репліка Глека
+      fresh: null | { n, of } }      // лобі й кінець: скільки питань ще не бачив ніхто за столом
   Кадрів гра не шле (тик — лише види), тож frame-хука тут нема.
 
-  Наміри: act('lie', { text }), act('lie', { auto: true }) — «🎲 Хай Глек збреше», act('pick', { i }), act('like', { i }).
+  Наміри: act('lie', { text }), act('lie', { auto: true }) — «🎲 Хай Глек збреше», act('pick', { i }), act('like', { i }),
+  act('topic', { k }) — тема наступного питання.
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -39,6 +45,10 @@
   /// часу піде саме: інакше брехня згоріла б разом із фазою, а людина певна, що її картка на столі.
   const RESCUE_MS = 2000;
   const HEART = '\u2764\ufe0f';
+  /// Де Глек говорить уголос: '1'/'0' — вибір людини, нема — типово (глядач-телевізор і господар столу).
+  const SPK_KEY = 'bluffSpeaker';
+  /// Диктування браузера (Web Speech API). Нема — нема й кнопки 🎤.
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
 
   const RULES = [
     '🤥 Питання з пропуском і дивна, але справжня відповідь. Кожен вписує свою правдоподібну брехню',
@@ -155,6 +165,7 @@
     const noText = lobby ? ''
       : done && v.result.left ? 'Партію обірвано · зіграно ' + played + ' з ' + v.of
       : done ? 'Партію зіграно · ' + v.of + ' ' + plural(v.of, 'питання', 'питання', 'питань')
+      : phase === 'topic' ? 'Питання ' + v.q + ' з ' + v.of + ' · обираємо тему'
       : v.of ? 'Питання ' + v.q + ' з ' + v.of + (v.catLabel ? ' · ' + v.catLabel : '') : '';
     if (no.textContent !== noText) no.textContent = noText;
     root.querySelector('.bluff-x2').hidden = !(ctx.playing && v.final && !done);
@@ -165,6 +176,7 @@
       if (arc) { if (arc._arc) arc._arc.stop(); arc.remove(); }
     }
     setText(root.querySelector('.bluff-snd'), muted() ? '🔇' : '🔈');
+    paintSpeaker(root, ctx, v);
 
     // ---- фінал — подія: банер і фанфара на початку останнього питання ----
     const finalNow = ctx.playing && !done && !!v.final && phase === 'read';
@@ -197,6 +209,8 @@
     const stage = root.querySelector('.bluff-stage');
     const my = v.my || {};
     const stageText = lobby || done ? ''
+      : phase === 'topic' ? ''
+      : phase === 'read' && v.chooser != null && v.catLabel ? '🎯 «' + v.catLabel + '» — ' + (v.chooser >= 0 ? 'вибір гравця ' + nick(ctx, v, v.chooser) : 'вибір Глека: гравець не встиг')
       : phase === 'read' ? (v.final ? '' : 'Читай уважно — за мить вигадуватимеш свою брехню')
       : phase === 'write' ? (waiting(ctx, v, v.wrote, seat) || (seat < 0 ? 'Байкарі брешуть…' : my.lie ? '' : 'Вигадай брехню, у яку повірять друзі. Правду писати не можна 🙂'))
       : phase === 'pick' ? (waiting(ctx, v, v.picked, seat) || (seat < 0 ? 'Гравці шукають правду…' : my.pick != null ? 'Обрано. Можна передумати, поки йде час' : 'Одна з карток — правда. Яка? Свою обрати не можна'))
@@ -205,6 +219,7 @@
     if (stage.textContent !== stageText) stage.textContent = stageText;
     stage.hidden = !stageText;
 
+    paintTopic(root, ctx, v, seat, phase, lobby, done);
     paintWrite(root, ctx, v, st, seat, phase);
     paintWho(root, ctx, v, phase, lobby, done);
     const fresh = paintCards(root, ctx, v, st, seat, phase, done);
@@ -227,6 +242,8 @@
     paintEnd(root, ctx, v, done);
     paintScore(root, ctx, v, phase, lobby, done);
     root.querySelector('.bluff-rules').hidden = !lobby;
+    paintFresh(root, v, lobby, done);
+    voice(root, ctx, v);
     const box = root.querySelector('.bluff');
     box.classList.toggle('bluff-lobby', lobby);
     box.classList.toggle('bluff-picking', !lobby && !done && phase === 'pick');
@@ -344,6 +361,7 @@
     const firstCard = cards.find((b) => !b.disabled && !b.classList.contains('mine')) || cards[0] || null;
     const want = !playing ? null
       : phase === 'write' ? root.querySelector('.bluff-in')
+      : phase === 'topic' ? root.querySelector('.bluff-tbtn:not([disabled])') || root.querySelector('.bluff-q')
       : phase === 'pick' || phase === 'reveal' || phase === 'score' ? firstCard
       : root.querySelector('.bluff-q');
     for (const el of root.querySelectorAll('[data-pad-first]')) if (el !== want) el.removeAttribute('data-pad-first');
@@ -371,7 +389,9 @@
     input.disabled = !can;
     root.querySelector('.bluff-go').disabled = !can;
     root.querySelector('.bluff-dice').disabled = !can;
-    if (!can) return;
+    const mic = root.querySelector('.bluff-mic');
+    if (mic) mic.disabled = !can;
+    if (!can) { stopMic(root); return; }
     // Нове питання — чисте поле; після F5 — те, що вже записано на сервері.
     if (st.writeQ !== v.q) {
       st.writeQ = v.q;
@@ -553,6 +573,11 @@
           + ' — ' + num(sc[win[0]]) + '</div>'
         : r.left ? '<div class="bluff-win draw">🚪 Гравці розійшлись — партію не дограли</div>'
         : '<div class="bluff-win draw">🤝 Нічия — ніхто нікого не переграв</div>';
+      const titles = r.titles || [];
+      if (titles.length)
+        html += '<div class="bluff-titles">' + titles.map((t) => '<div class="bluff-title"><span class="bluff-ti">' + t.icon + '</span>'
+          + '<span><b>' + ctx.esc(t.label) + '</b> ' + t.seats.map((i) => '<span class="bluff-nk bluff-c' + i + '">' + ctx.esc(nick(ctx, v, i)) + '</span>').join(' і ')
+          + ' <span class="muted small">· ' + ctx.esc(t.text) + '</span></span></div>').join('') + '</div>';
       if (r.left && !r.best) { /* про «нікого не надурили» мовчимо: партія просто обірвалась */ }
       else if (r.best)
         html += '<div class="bluff-best"><span class="muted small">Найкраща брехня партії</span>'
@@ -609,6 +634,138 @@
     }
     setHtml(box, html);
     box.hidden = !html;
+  }
+
+  /// Тема наступного питання: тому, чия черга, — дві великі кнопки; решті — хто обирає і з чого.
+  function paintTopic(root, ctx, v, seat, phase, lobby, done) {
+    const box = root.querySelector('.bluff-topic');
+    const t = ctx.playing && !lobby && !done && phase === 'topic' ? v.topic : null;
+    let html = '';
+    if (t) {
+      const mine = seat >= 0 && t.by === seat;
+      html = '<div class="bluff-thead">' + (mine ? '🎯 Твоя черга: обери тему наступного питання'
+        : '🎯 Тему обирає <b class="bluff-c' + t.by + '">' + ctx.esc(nick(ctx, v, t.by)) + '</b>…') + '</div>'
+        + '<div class="bluff-tbtns">' + (t.options || []).map((o) => '<button type="button" class="bluff-tbtn' + (t.pick === o.key ? ' on' : '') + '" data-k="'
+          + ctx.esc(o.key) + '"' + (mine && !t.pick ? '' : ' disabled') + '>' + ctx.esc(o.label) + '</button>').join('<span class="bluff-tor muted">чи</span>') + '</div>'
+        + (mine ? '<div class="muted small">Не встигнеш — обере Глек</div>' : '');
+    }
+    setHtml(box, html);
+    box.hidden = !html;
+  }
+
+  /// «Свіжих для цього столу: 143 з 612» — у лобі й після партії (перед «Ще раз»).
+  function paintFresh(root, v, lobby, done) {
+    const el = root.querySelector('.bluff-fresh');
+    const f = (lobby || done) && v.fresh && v.fresh.of ? v.fresh : null;
+    const text = !f ? ''
+      : f.n === 0 ? '♻ Усі ' + f.of + ' питань цей стіл уже бачив — підуть найдавніші'
+      : '🆕 Свіжих питань для цього столу: ' + f.n + ' з ' + f.of;
+    setText(el, text);
+    el.hidden = !text;
+  }
+
+  // =============================================================================================
+  // Голос Глека: звучить лише там, де «🔊 Глек тут» (типово — глядач-телевізор і господар столу), щоб не лунало з
+  // восьми телефонів разом. Радіо на час репліки притихає, як у Дотепах і «Своїй грі». Гра на голос не чекає.
+  // =============================================================================================
+
+  function speakerOn(ctx) {
+    const saved = store.get(SPK_KEY, '');
+    if (saved === '1') return true;
+    if (saved === '0') return false;
+    const host = ctx.room && ctx.me && String(ctx.room.host || '').toLowerCase() === String(ctx.me.nick || '').toLowerCase();
+    return ctx.seat == null || !!host;
+  }
+
+  function paintSpeaker(root, ctx, v) {
+    const spk = root.querySelector('.bluff-spk');
+    spk.hidden = !v.voice || v.voice === 'none';
+    const on = speakerOn(ctx);
+    setText(spk, on ? '🔊 Глек тут' : '🔇 Глек');
+    spk.classList.toggle('on', on);
+    spk.title = on ? 'Дядько Глек читає питання й вердикти вголос на цьому пристрої. Натисни — вимкнути'
+      : 'Тут Глек мовчить. Натисни — хай читає тут (телевізор, колонка)';
+  }
+
+  function duck(vs, on) {
+    const r = document.getElementById('audio');
+    if (!r) return;
+    if (on && vs.radioMuted == null) { vs.radioMuted = r.muted; r.muted = true; }
+    if (!on && vs.radioMuted != null) { r.muted = vs.radioMuted; vs.radioMuted = null; }
+  }
+
+  function hush(root) {
+    const vs = root._bfVoice;
+    if (!vs) return;
+    vs.line++;                          // обірвана репліка ще може озватись (onerror після pause) — її кінець не наш
+    const a = root.querySelector('.bluff-voice');
+    if (a && !a.paused) a.pause();
+    duck(vs, false);
+  }
+
+  function voice(root, ctx, v) {
+    const vs = root._bfVoice;
+    if (!vs) return;
+    const line = v.say;
+    if (!line || line.id === vs.sayId) return;
+    vs.sayId = line.id;
+    if (!line.url || v.voice === 'none' || !speakerOn(ctx) || !(ctx.playing || v.phase === 'done')) return;
+    hush(root);
+    const a = root.querySelector('.bluff-voice');
+    const n = ++vs.line;
+    const end = () => { if (vs.line === n) duck(vs, false); };
+    a.src = line.url;
+    a.onended = end;
+    duck(vs, true);
+    a.play().catch(end);
+  }
+
+  // =============================================================================================
+  // 🎤 Брехня голосом: диктування браузера. Текст іде в поле — «Готово» тисне людина (або спрацює порятунок).
+  // =============================================================================================
+
+  function toggleMic(root, ctx) {
+    if (root._bfRec) { stopMic(root); return; }
+    const input = root.querySelector('.bluff-in');
+    const mic = root.querySelector('.bluff-mic');
+    let rec;
+    try { rec = new SR(); } catch { mic.hidden = true; return; }
+    rec.lang = 'uk-UA';
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (e) => {
+      let text = '';
+      for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
+      text = text.replace(/\s+/g, ' ').trim().replace(/[.。]$/, '');
+      if (text.length > MAX_LIE) text = text.slice(0, MAX_LIE).trim();
+      input.value = text;
+      count(root);
+    };
+    rec.onerror = (e) => {
+      const why = e && e.error;
+      if (why === 'not-allowed' || why === 'service-not-allowed') ctx.toast('Браузер не дав мікрофон — дозволь його або пиши пальцями 🙂');
+      else if (why === 'language-not-supported') { ctx.toast('Цей браузер не розуміє українську на слух — пиши пальцями 🙂'); mic.hidden = true; }
+      else if (why === 'no-speech') ctx.toast('Нічого не почув — спробуй ще раз, ближче до мікрофона');
+    };
+    rec.onend = () => {
+      if (root._bfRec === rec) root._bfRec = null;
+      mic.classList.remove('on');
+      mic.setAttribute('aria-pressed', 'false');
+    };
+    try { rec.start(); } catch { return; }
+    root._bfRec = rec;
+    mic.classList.add('on');
+    mic.setAttribute('aria-pressed', 'true');
+  }
+
+  function stopMic(root) {
+    const rec = root._bfRec;
+    if (!rec) return;
+    root._bfRec = null;
+    try { rec.abort(); } catch { /* уже стоїть */ }
+    const mic = root.querySelector('.bluff-mic');
+    if (mic) { mic.classList.remove('on'); mic.setAttribute('aria-pressed', 'false'); }
   }
 
   /// Тихий цокіт останніх секунд — лише тому, хто ще тримає стіл (не написав чи не обрав).
@@ -711,13 +868,14 @@
     icon: ICON,
     added: '2026-09-27',
     news: {
-      v: '2026-09-28',
-      title: 'Байкарі: зручніше з телефона',
+      v: '2026-09-29',
+      title: 'Байкарі: Глек зачитує, звання й свої теми',
       items: [
-        '📱 Нове питання саме стає на екран — більше не треба гортати вгору, а картки у виборі йдуть одразу під питанням',
-        '✍ «Готово» тепер поруч із полем — його видно й над клавіатурою телефона',
-        '⏳ Написав, але не встиг «Готово»? Брехня піде сама за дві секунди до кінця часу',
-        '📊 Між питаннями рахунок сам виїжджає на екран телефона',
+        '🔊 Дядько Глек читає питання, оголошує, хто купився на чию брехню, і переможця — на телевізорі й у господаря («🔊 Глек тут»)',
+        '🦊 У підсумку — звання: Головний брехун, Нюх, Найдовірливіший і Улюбленець залу',
+        '🎯 Нова опція «Тему обирає: гравці по черзі» — перед питанням хтось обирає одну з двох тем',
+        '🎤 Брехню можна наговорити — кнопка біля поля (де браузер уміє українську на слух)',
+        '🆕 Питань стало вдвічі більше, а в лобі видно, скільки з них ваш стіл ще не бачив',
       ],
     },
     seatNames: (i) => String(i + 1),
@@ -729,6 +887,7 @@
           : padPhase === 'pick' ? '{dpad} по картках · {a} обрати правду'
           : padPhase === 'reveal' || padPhase === 'score' ? '{dpad} по картках · {a} ' + HEART + ' брехні'
           : padPhase === 'read' ? 'Читай питання — за мить брехати'
+          : padPhase === 'topic' ? '{dpad} по темах · {a} обрати'
           : '';
       },
       when: (ctx) => ctx.mine && ctx.playing,
@@ -740,15 +899,18 @@
       root.innerHTML = '<div class="bluff-wrap"><div class="bluff">'
         + '<div class="bluff-main">'
         + '<div class="bluff-top"><span class="bluff-no muted small"></span><span class="bluff-x2" hidden title="Останнє питання — очки подвійні">×2</span>'
-        + '<span class="bluff-arc"></span><button type="button" class="ghost bluff-snd" title="Звук" aria-label="Звук">🔈</button></div>'
+        + '<span class="bluff-arc"></span><button type="button" class="ghost small bluff-spk" hidden></button>'
+        + '<button type="button" class="ghost bluff-snd" title="Звук" aria-label="Звук">🔈</button></div>'
         + '<div class="bluff-final" hidden>🔥 Останнє питання — правда й жертви вдвічі дорожчі!</div>'
         + '<div class="bluff-q" aria-live="polite" data-pad-focus></div>'
         + '<div class="bluff-stage muted small"></div>'
+        + '<div class="bluff-topic" hidden></div>'
         + '<div class="bluff-write" hidden>'
         // «Готово» — поруч із полем, як «надіслати» в месенджері: над екранною клавіатурою телефона видно обидва.
         + '<div class="bluff-row"><span class="bluff-field"><input class="bluff-in" type="text" maxlength="' + MAX_LIE + '" autocomplete="off" autocorrect="off"'
         + ' autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="твоя брехня…" aria-label="Твоя брехня">'
         + '<span class="bluff-cnt muted small">0/' + MAX_LIE + '</span></span>'
+        + (SR ? '<button type="button" class="ghost bluff-mic" title="Наговорити брехню голосом" aria-label="Наговорити голосом" aria-pressed="false">🎤</button>' : '')
         + '<button type="button" class="primary bluff-go">Готово</button></div>'
         + '<div class="bluff-btns"><button type="button" class="ghost bluff-dice" title="Глек підкине брехню з банку — очки за неї твої">🎲 Хай Глек збреше</button></div>'
         + '<div class="bluff-my muted small"></div>'
@@ -759,6 +921,8 @@
         + '<div class="bluff-note" hidden><img src="/static/glek.svg" alt=""><div><div class="bluff-ntext"></div><div class="bluff-quip muted small"></div></div></div>'
         + '<div class="bluff-end" hidden></div>'
         + '<ul class="bluff-rules muted small">' + RULES.map((r) => '<li>' + r + '</li>').join('') + '</ul>'
+        + '<div class="bluff-fresh muted small" hidden></div>'
+        + '<audio class="bluff-voice" preload="auto"></audio>'
         + '</div>'
         + '<div class="bluff-score" hidden></div>'
         + '</div></div>';
@@ -775,7 +939,21 @@
         submit(root, ctx);
       });
       root.querySelector('.bluff-go').onclick = () => submit(root, ctx);
-      root.querySelector('.bluff-dice').onclick = () => ctx.act('lie', { auto: true });
+      root.querySelector('.bluff-dice').onclick = () => { stopMic(root); ctx.act('lie', { auto: true }); };
+      const mic = root.querySelector('.bluff-mic');
+      if (mic) mic.onclick = () => toggleMic(root, ctx);
+      root.querySelector('.bluff-topic').addEventListener('click', (e) => {
+        const b = e.target.closest('.bluff-tbtn');
+        if (b && !b.disabled) ctx.act('topic', { k: b.dataset.k });
+      });
+      // F5 посеред репліки — стару не повторюємо: звучить лише те, що Глек скаже вже при нас.
+      root._bfVoice = { sayId: (ctx.view && ctx.view.say && ctx.view.say.id) || 0, line: 0, radioMuted: null };
+      root.querySelector('.bluff-spk').onclick = () => {
+        const on = !speakerOn(ctx);
+        store.set(SPK_KEY, on ? '1' : '0');
+        if (!on) hush(root);
+        paintSpeaker(root, ctx, ctx.view || {});
+      };
       root.querySelector('.bluff-snd').onclick = () => {
         store.set('bluffMute', muted() ? '0' : '1');
         root.querySelector('.bluff-snd').textContent = muted() ? '🔇' : '🔈';
@@ -835,6 +1013,7 @@
       const mine = me(ctx, v) >= 0;
       const my = v.my || {};
       switch (v.phase) {
+        case 'topic': return v.topic && v.topic.by === me(ctx, v) ? '🎯 Обери тему!' : 'Обирають тему…';
         case 'read': return v.final ? '🔥 Фінал: очки вдвічі' : 'Читай питання…';
         case 'write': return !mine ? 'Байкарі брешуть…' : my.lie ? 'Записано. Чекаємо на решту…' : 'Пиши брехню й тисни «Готово»';
         case 'pick': return !mine ? 'Усі думають…' : my.pick != null ? 'Обрано. Можна передумати' : 'Де правда? Обери картку';
@@ -848,6 +1027,9 @@
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
       if (root._bfTick) { clearInterval(root._bfTick); root._bfTick = 0; }
+      stopMic(root);
+      hush(root);
+      root._bfVoice = null;
       if (root._bfFit && window.visualViewport) window.visualViewport.removeEventListener('resize', root._bfFit);
       root._bfFit = null;
       const main = root.querySelector('.bluff-main');

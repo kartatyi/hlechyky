@@ -131,7 +131,14 @@ class Bot:
             return
         # --- поводимось як людина ---
         key = f"{q}:{phase}"
-        if phase == "write" and not my.get("lie") and key not in self.done_keys and self.mode != "idle":
+        topic = v.get("topic") or {}
+        if phase == "topic" and topic.get("by") == seat and key not in self.done_keys and self.mode != "idle":
+            self.done_keys.add(key)
+            await asyncio.sleep(self.rng.uniform(0.5, 2.0))
+            opts = topic.get("options") or []
+            if opts:
+                await self.act("topic", {"k": self.rng.choice(opts)["key"]}, "topic")
+        elif phase == "write" and not my.get("lie") and key not in self.done_keys and self.mode != "idle":
             self.done_keys.add(key)
             await asyncio.sleep(self.rng.uniform(0.3, 2.0))
             if self.mode == "dice":
