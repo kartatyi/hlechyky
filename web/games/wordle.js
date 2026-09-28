@@ -607,7 +607,11 @@
     st.primed = true;
 
     const wrap = part(root, 'wr');
-    wrap.classList.toggle('spect', !me);
+    // Своє вгадав (чи відмучився), а раунд ще йде — друкувати нікуди, зате є на що дивитись: чужі дошки вже з
+    // літерами. Клавіатура ховається, а суперники стають великими картками, як у глядача (на телефоні малі
+    // картки по 60 px літер не вміщають).
+    const peeking = !!(me && v.phase === 'play' && v.mode !== 'sprint' && (me.solved || me.failed));
+    wrap.classList.toggle('spect', !me || peeking);
     // Партію зіграно — підсумкова таблиця піднімається під шапку (wordle.css): на 1280×800 вона ховалась
     // під порожньою дошкою й клавіатурою, нижче згину.
     wrap.classList.toggle('done', v.phase === 'done');
@@ -629,7 +633,7 @@
       (me.hints || []).forEach((h) => { keys[h.ch] = 'G'; });
       // Між раундами й після партії друкувати нікуди — клавіатура лише штовхала слово раунду й таблицю
       // під нижній край (на телефоні — за екран).
-      HGames.ui.keyboardUa(mine, (k) => press(root, k), keys).hidden = v.phase !== 'play';
+      HGames.ui.keyboardUa(mine, (k) => press(root, k), keys).hidden = v.phase !== 'play' || peeking;
       raceTools(mine, ctx, v, me);
       mine.hidden = false;
     } else {

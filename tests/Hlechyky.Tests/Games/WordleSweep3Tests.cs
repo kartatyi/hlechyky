@@ -187,6 +187,8 @@ public class WordleSweep3Tests(WordleWords fx) : IClassFixture<WordleWords>
         var played = Player(h.View(null), 0).GetProperty("played");
         Assert.Equal(3, played.GetArrayLength());
         Assert.True(SeesWords(h.View(null), 1));   // партію зіграно — відкрито все
+        Assert.Equal(JsonValueKind.Null, Player(h.View(null), 0).GetProperty("left").ValueKind);   // переможцеві «недогаданого» нема
+        Assert.Equal(0, Assert.Single(h.View(1).GetProperty("winners").EnumerateArray()).GetInt32());
     }
 
     [Fact]
