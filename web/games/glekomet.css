@@ -181,3 +181,4 @@
 @media (max-width: 700px) { .gk-ctl.gk-wait .gk-emos { grid-column: 1 / -1; justify-content: center; } }
 .gk-sum .gk-ser { margin-top: 6px; font-size: .92em; color: var(--muted); line-height: 1.45; }
 .gk-sum .gk-ser b { color: var(--text); }
+.gk-chip .gk-rd { color: var(--ok); font-weight: 800; }

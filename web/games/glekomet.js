@@ -29,7 +29,21 @@
     { key: 'hay', name: 'Копа сіна', chip: 'Копа', icon: '🌾', short: 'копа', tip: 'Копа сіна: насипає горб-укриття там, де впаде' },
     { key: 'stork', name: 'Лелека', chip: 'Лелека', icon: '🕊', short: 'лелека', tip: 'Лелека: переносить твою хату туди, де сяде' },
     { key: 'khrin', name: 'Хрін', chip: 'Хрін', icon: '🌿', short: 'хрін', tip: 'Хрін: −12 і отрута на три ходи по −8 усім поруч' },
+    // прикольна комора (опція столу «З приколами», прохід №3)
+    { key: 'rooster', name: 'Півень', chip: 'Півень', icon: '🐓', short: 'півень', tip: 'Півень: летить майже прямо, та вітер зносить його вдвічі; −30' },
+    { key: 'honey', name: 'Мед', chip: 'Мед', icon: '🍯', short: 'мед', tip: 'Мед: −10, і всі поруч прилипають — два ходи не рушать' },
+    { key: 'twister', name: 'Смерч', chip: 'Смерч', icon: '🌪', short: 'смерч', tip: 'Смерч: розкидає хати довкола — хто з кручі, той і впаде' },
+    { key: 'horseshoe', name: 'Підкова', chip: 'Підкова', icon: '🧲', short: 'підкова', tip: 'Підкова-магніт: де ляже, туди тягне чужі снаряди, аж до твого наступного пострілу' },
   ];
+  /// Колір хвоста снаряда за видом; решта — глина.
+  const TAILC = { 2: '#fff4df', 3: '#e8c25a', 5: '#8fd46a', 6: '#f2d27a', 7: '#e8a93a', 8: '#cfd6de', 9: '#aab4bd' };
+  /// Підкова тягне чужі снаряди в цьому радіусі (як MagR на сервері).
+  const MAG_R = 170;
+  /// Мапи (опція «Погода й мапа»): свої кольори неба й землі поверх звичайних.
+  const MAPS = {
+    winter: { sky1: '#6f8fae', sky2: '#e6eef5', sun: '#fff8e8', far: '#9fb3c4', soil: '#6d5d52', soil2: '#3e342e', grass: '#f7fbff', water: '#8fc3e0' },
+    night: { sky1: '#050a18', sky2: '#1b2742', sun: '#e9eef7', far: '#1d2b40', soil: '#3a2a1c', soil2: '#1d140c', grass: '#35573a', water: '#28496a' },
+  };
   const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--gk-g', '#b8b8b8'], ['--gk-b', '#6fb3e8'], ['--gk-p', '#e88ac0']];
   const TEAM_FLAG = ['#e25b4a', '#4a8fe2'];
   const TEAM_TEXT = ['#ffa194', '#a3c8ff'];                        // ніки на полі в командах — світлі червоний і синій
@@ -79,8 +93,9 @@
         inv: [], stats: [], wins: [0, 0, 0, 0, 0, 0], last: null, log: [], result: null,
         aimTurn: [45, 60, 0], my: { a: 45, p: 60, w: 0 }, myTurnNo: -1, preW: null, fired: -1,
         // снаряди: два останні кадри для екстраполяції й хвости
-        shA: new Float32Array(24), shB: new Float32Array(24), shN: 0, shSmooth: false, shAt: 0, shReal: 0, gap: TICK_MS,
-        tails: new Float32Array(8 * 12), tailN: new Uint8Array(8), tailAt: 0,
+        shA: new Float32Array(72), shB: new Float32Array(72), shN: 0, shSmooth: false, shAt: 0, shReal: 0, gap: TICK_MS,
+        tails: new Float32Array(24 * 12), tailN: new Uint8Array(24), tailAt: 0,
+        volley: false, ready: [false, false, false, false, false, false], map: 'plain', kinds: 6, mag: [],
         trails: [[], [], [], [], [], []], shooter: -1,
         fresh: [],                                   // [c0, c1, t0] — свіжа земля у вирвах
         // частинки: пул без алокацій
@@ -104,7 +119,9 @@
   function myTurn(st) {
     const c = st.ctx;
     const s = me(st);
-    return !!c && c.playing && s != null && st.phase === 'aim' && st.turn === s && st.huts[s].alive && st.fired !== st.turnNo;
+    // «Залп»: цілиться кожна жива хата, поки не зарядила постріл
+    const mine = st.volley ? !st.ready[s] : st.turn === s;
+    return !!c && c.playing && s != null && st.phase === 'aim' && mine && st.huts[s].alive && st.fired !== st.turnNo;
   }
   /// Хід щойно почався — клавіші й Ⓐ ще не стріляють (див. TURN_GRACE).
   const early = (st) => performance.now() - (st.turnAt || 0) < TURN_GRACE;
@@ -125,6 +142,7 @@
       seats: SEATS.map(([n, f]) => c(n, f)),
       // кольори частинок за індексом (pc): 0 глина, 1 земля, 2 тісто, 3 хрін, 4 солома, 5 вода, 6 уламки, 7 дим, 8 пір'я
       parts: [c('--clay', '#c5763a'), c('--gk-soil', '#6b4a2e'), '#fff4df', '#8fd46a', '#e8c25a', '#9fd0f0', '#2a211b', 'rgba(215,215,215,1)', '#ffffff'],
+      ...(MAPS[st.map] || {}),
     };
   }
 
@@ -154,13 +172,15 @@
     grd.addColorStop(1, pal.sky2);
     g.fillStyle = grd;
     g.fillRect(0, 0, W, HGT);
-    // сонце над обрієм: м'яке сяйво й диск
-    const sun = g.createRadialGradient(170, sy(330), 6, 170, sy(330), 90);
-    sun.addColorStop(0, 'rgba(255, 236, 180, .95)');
-    sun.addColorStop(0.25, 'rgba(255, 220, 150, .45)');
-    sun.addColorStop(1, 'rgba(255, 220, 150, 0)');
-    g.fillStyle = sun;
-    g.fillRect(60, sy(440), 220, 220);
+    // сонце над обрієм: м'яке сяйво й диск (уночі — місяць без сяйва)
+    if (st.map !== 'night') {
+      const sun = g.createRadialGradient(170, sy(330), 6, 170, sy(330), 90);
+      sun.addColorStop(0, 'rgba(255, 236, 180, .95)');
+      sun.addColorStop(0.25, 'rgba(255, 220, 150, .45)');
+      sun.addColorStop(1, 'rgba(255, 220, 150, 0)');
+      g.fillStyle = sun;
+      g.fillRect(60, sy(440), 220, 220);
+    }
     g.fillStyle = pal.sun;
     g.beginPath();
     g.arc(170, sy(330), 22, 0, Math.PI * 2);
@@ -271,6 +291,30 @@
     }
     g.stroke();
     g.lineCap = 'butt';
+    if (st.map === 'fair') paintFair(g, h);
+  }
+
+  /// Ярмарок: два стовпи над берегами ставка й гірлянда прапорців між ними.
+  function paintFair(g, h) {
+    const xa = W / 2 - 104, xb = W / 2 + 104;
+    const ya = h[col(xa)] + 72, yb = h[col(xb)] + 72;
+    g.strokeStyle = '#6b4a2e';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(xa, sy(h[col(xa)])); g.lineTo(xa, sy(ya));
+    g.moveTo(xb, sy(h[col(xb)])); g.lineTo(xb, sy(yb));
+    g.stroke();
+    const cx = W / 2, cy = Math.min(ya, yb) - 34;
+    g.strokeStyle = 'rgba(40, 30, 20, .8)';
+    g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(xa, sy(ya)); g.quadraticCurveTo(cx, sy(cy), xb, sy(yb)); g.stroke();
+    const flags = ['#e25b4a', '#f4c542', '#4a8fe2', '#7bd389'];
+    for (let k = 1; k < 14; k++) {
+      const t = k / 14, u = 1 - t;
+      const x = u * u * xa + 2 * u * t * cx + t * t * xb, y = u * u * ya + 2 * u * t * cy + t * t * yb;
+      g.fillStyle = flags[k % 4];
+      g.beginPath(); g.moveTo(x - 5, sy(y)); g.lineTo(x + 5, sy(y)); g.lineTo(x, sy(y - 11)); g.closePath(); g.fill();
+    }
   }
 
   // =============================================================================================
@@ -404,6 +448,31 @@
         shake(st, 180);
         sfx(st, 'boom', 1.4);
         break;
+      case 'rooster':
+        ring(st, x, y, r, '#f2d27a');
+        burst(st, x, y, 10, 0, 150, true, 0.8, 3, 320);
+        burst(st, x, y, 12, 8, 110, true, 1.3, 3, 50);
+        sfx(st, 'boom', 0.7);
+        break;
+      case 'honey':
+        ring(st, x, y, 50, '#e8a93a', 420);
+        for (let k = 0; k < 14; k++) spawn(st, x + (Math.random() - 0.5) * 40, y + 6, (Math.random() - 0.5) * 60, 30 + Math.random() * 40, 1.1, 4, 3.4, 260);
+        sfx(st, 'thud', 0.6);
+        break;
+      case 'twister':
+        ring(st, x, y, 110, '#cfd6de', 520);
+        for (let k = 0; k < 24; k++) {
+          const an = (k / 24) * Math.PI * 2;
+          spawn(st, x + Math.cos(an) * 16, y + k * 3, -Math.sin(an) * 120, 60 + Math.random() * 60, 1.2, 7, 5, -10);
+        }
+        shake(st, 140);
+        sfx(st, 'boom', 0.5);
+        break;
+      case 'horseshoe':
+        ring(st, x, y, 24, '#aab4bd', 300);
+        burst(st, x, y, 8, 1, 90, true, 0.6, 2, 260);
+        sfx(st, 'thud', 0.5);
+        break;
       case 'khrin':
         ring(st, x, y, 40, '#8fd46a', 420);
         for (let k = 0; k < 12; k++) spawn(st, x + (Math.random() - 0.5) * 30, y + Math.random() * 16, (Math.random() - 0.5) * 30, 8 + Math.random() * 14, 1.2 + Math.random() * 0.4, 3, 9 + Math.random() * 7, 0);
@@ -529,6 +598,12 @@
     st.result = v.result || null;
     st.last = v.last || null;
     if (v.aim) st.aimTurn = v.aim;
+    st.volley = v.mode === 'volley';
+    st.kinds = v.kinds || 6;
+    st.mag = v.mag || [];
+    if (v.ready) for (let i = 0; i < 6; i++) st.ready[i] = !!v.ready[i];
+    const map = v.map === 'mix' ? 'plain' : v.map || 'plain';
+    if (map !== st.map) { st.map = map; if (st.pal) { st.pal = palette(st); st.skyDirty = true; } }
     if (newGame) {
       st.trails = [[], [], [], [], [], []];
       st.fired = -1;
@@ -573,6 +648,7 @@
       if (!src.alive && src.reason && newGame) hut.ruined = true;
       hut.hp = src.hp; hut.alive = src.alive; hut.team = src.team; hut.poison = src.poison;
       hut.fuel = src.fuel; hut.skips = src.skips; hut.reason = src.reason;
+      hut.honey = src.honey || 0; hut.stuck = !!src.stuck;
       if (!hut.alive && hut.plays && src.hp === 0) hut.ruined = true;
       if (hut.x !== src.x || hut.y !== src.y) {
         hut.x = src.x; hut.y = src.y;
@@ -608,10 +684,11 @@
 
     // мій хід: приціл — з минулого пострілу, снаряд — наперед обраний у коморі, якщо ще є
     const s = me(st);
-    if (st.phase === 'aim' && s != null && st.turn === s && st.turnNo !== st.myTurnNo) {
+    // «Залп»: сервер чужих (і наших) прицілів не шле — беремо свій минулий, а в першому залпі — у бік села
+    if (st.phase === 'aim' && s != null && (st.volley ? st.huts[s].alive && !st.ready[s] : st.turn === s) && st.turnNo !== st.myTurnNo) {
+      const a = v.aim || (st.myTurnNo < 0 ? [st.huts[s].x < W / 2 ? 45 : 135, 60, 0] : [st.my.a, st.my.p, st.my.w]);
       st.myTurnNo = st.turnNo;
       st.turnAt = performance.now();
-      const a = v.aim || [45, 60, 0];
       st.my = { a: a[0], p: a[1], w: a[2] };
       const inv = invOf(st, s);
       if (st.preW != null && inv[st.preW] !== 0 && st.preW !== st.my.w) { st.my.w = st.preW; st.aimDirty = true; }
@@ -646,14 +723,15 @@
 
   function startShot(st) {
     st.shotTurn = st.turnNo;
-    st.shooter = st.turn;
-    if (st.shooter != null && st.shooter >= 0) st.trails[st.shooter] = [];
+    st.shooter = st.volley ? -1 : st.turn;
+    if (st.volley) st.trails = [[], [], [], [], [], []];
+    else if (st.shooter != null && st.shooter >= 0) st.trails[st.shooter] = [];
     st.tailN.fill(0);
     sfx(st, 'launch', 1);
   }
 
   function takeShells(st, sh, smooth) {
-    const n = Math.min(8, sh.length);
+    const n = Math.min(24, sh.length);
     if (smooth && n === st.shN) st.shA.set(st.shB);
     for (let i = 0; i < n; i++) { st.shB[i * 3] = sh[i][0]; st.shB[i * 3 + 1] = sh[i][1]; st.shB[i * 3 + 2] = sh[i][2]; }
     st.shSmooth = smooth && n === st.shN;
@@ -669,6 +747,14 @@
     // на кадр екрана було 7–8 %). Сітка не відходить від справжнього приходу далі ніж на один проміжок.
     st.shAt = st.shSmooth ? clamp(st.shAt + st.gap, now - st.gap, now + st.gap) : now;
     // слід пострілу: точки кадрів, блідим пунктиром до наступного пострілу цього гравця
+    // у «Залпі» кожен снаряд несе, чий він (4-те число), — і кожен стрілець має свій слід
+    if (st.volley) {
+      for (let i = 0; i < n; i++) {
+        const t2 = st.trails[sh[i][3]];
+        if (t2 && t2.length < 1600) t2.push(sh[i][0], sh[i][1]);
+      }
+      return;
+    }
     const tr = st.shooter >= 0 ? st.trails[st.shooter] : null;
     if (tr && tr.length < 1600) for (let i = 0; i < n; i++) tr.push(sh[i][0], sh[i][1]);
   }
@@ -698,8 +784,8 @@
         const hut = st.huts[i];
         if (!hut) continue;
         const fromX = hut.anim ? hut.dx : hut.x, fromY = hut.anim ? hut.dy : hut.y;
-        if (st.phase === 'aim' && i === st.turn && x !== hut.x) { hut.fuel = Math.max(0, hut.fuel - 8); sfx(st, 'step', 1); }
-        if (storkNow && i === st.shooter && !st.calm) {
+        if (st.phase === 'aim' && (i === st.turn || st.volley) && x !== hut.x) { hut.fuel = Math.max(0, hut.fuel - 8); sfx(st, 'step', 1); }
+        if (storkNow && (i === st.shooter || st.volley) && !st.calm) {
           st.stork = { seat: i, x0: hut.x, y0: hut.y, x1: x, y1: y, t0: now };
         } else if (!st.calm) {
           const drop = fromY - y;
@@ -723,6 +809,7 @@
     }
     if (f.aim) st.aimTurn = f.aim;
     if (f.em) for (const [i, e] of f.em) if (i >= 0 && i < 6 && EMOS[e]) st.emos[i] = { e, t0: now };
+    if (f.rd != null) for (let i = 0; i < 6; i++) st.ready[i] = !!(f.rd & (1 << i));
     if (f.wl != null && f.wl !== st.wat.to) st.wat = { from: st.calm ? f.wl : waterNow(st, now), to: f.wl, t0: now };
     if (f.sh) takeShells(st, f.sh, true);
     else if (st.phase !== 'fly') st.shN = 0;
@@ -938,6 +1025,17 @@
 
   function drawShell(st, g, kind, x, y, vx, vy, now, n) {
     const Y = sy(y);
+    if (kind >= 6) {
+      // приколи — емодзі: півень дивиться, куди летить, смерч крутиться
+      g.save();
+      g.translate(x, Y);
+      if (kind === 8 && !st.calm) g.rotate(now / 90);
+      if (kind === 6 && vx > 0) g.scale(-1, 1);
+      g.font = st.fonts.dmg; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(WEAPONS[kind].icon, 0, 0);
+      g.restore();
+      return;
+    }
     const z = Math.max(1, 5.5 / (st.s * 8));
     g.save();
     g.translate(x, Y);
@@ -1023,7 +1121,16 @@
   function drawClouds(st, g, now) {
     const t = now / 1000;
     const drift = st.calm ? 0 : st.wind * 7 + 1.5;
-    g.fillStyle = 'rgba(255, 250, 240, .55)';
+    if (st.map === 'winter') {
+      // сніжок: сталі пластівці, що падають і зносяться вітром
+      g.fillStyle = 'rgba(255, 255, 255, .8)';
+      for (let i = 0; i < 46; i++) {
+        const x = ((((hash(i + 300) * W + t * (drift * 3 + 8 * (hash(i + 400) - 0.5))) % W) + W) % W);
+        const y = HGT - ((hash(i + 500) * HGT + (st.calm ? 0 : t * (18 + hash(i + 600) * 22))) % HGT);
+        g.fillRect(x, y, 2.2, 2.2);
+      }
+    }
+    g.fillStyle = st.map === 'night' ? 'rgba(90, 100, 130, .35)' : 'rgba(255, 250, 240, .55)';
     for (let i = 0; i < 5; i++) {
       const base = hash(i + 7) * 1200;
       const x = ((((base + t * drift * (0.7 + hash(i + 20) * 0.6)) % 1250) + 1250) % 1250) - 125;
@@ -1223,7 +1330,11 @@
     const phase = st.phase;
     const mine = me(st);
     const aiming = phase === 'aim' && st.turn != null && st.turn >= 0;
+    // «Залп»: свій приціл бачиш лише ти; чужих нема — на те й залп
+    const vAim = st.volley && phase === 'aim' && mine != null && st.ctx.playing && st.huts[mine].alive;
     if (aiming) drawTrail(st, g, st.turn);
+    else if (vAim) drawTrail(st, g, mine);
+    if (st.mag.length) drawMagnets(st, g, now);
 
     // хати (і лелека, що несе хату): спершу руїни, потім живі — хата, що стала на руїну, не ховається під нею
     for (let n = 0; n < 12; n++) {
@@ -1245,10 +1356,12 @@
         } else if (e < 400) { x = sk.x0; y = sk.y0; } else { x = sk.x1; y = sk.y1; }
         hut.dx = x; hut.dy = y;
       }
-      const a = st.turn === i && (phase === 'aim' || phase === 'fly' || phase === 'settle')
-        ? (i === mine && phase === 'aim' ? st.my.a : st.aimTurn[0])
-        : hut.x < W / 2 ? 60 : 120;
-      if (st.turn === i && hut.alive && phase === 'aim') {
+      const a = vAim && i === mine ? st.my.a
+        : st.turn === i && (phase === 'aim' || phase === 'fly' || phase === 'settle')
+          ? (i === mine && phase === 'aim' ? st.my.a : st.aimTurn[0])
+          : hut.x < W / 2 ? 60 : 120;
+      const lit = st.volley ? phase === 'aim' && hut.alive && !st.ready[i] : st.turn === i && hut.alive && phase === 'aim';
+      if (lit) {
         g.fillStyle = pal.seats[i];
         g.globalAlpha = 0.22 + (st.calm ? 0 : 0.1 * Math.sin(now / 200));
         g.beginPath(); g.ellipse(x, sy(y) - 2, 30, 7, 0, 0, Math.PI * 2); g.fill();
@@ -1256,6 +1369,10 @@
       }
       drawHut(st, g, i, x, y, a, now);
       if (carried) drawStork(st, g, x, y + 48, now, sk.x1 < sk.x0);
+      if (hut.alive && (hut.honey > 0 || hut.stuck)) {
+        g.font = F.label; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText('🍯', x - 26, sy(y + 8));
+      }
       // дим із димаря
       if (hut.alive && !st.calm && now - st.smokeAt > 700) spawn(st, x + 9, y + 37, 0, 10, 2.4, 7, 4, -2);
     }
@@ -1268,11 +1385,18 @@
       else if (e >= 1000 && e < 1200) drawStork(st, g, sk.x1, lerp(sk.y1 + 48, HGT + 20, (e - 1000) / 200), now, sk.x1 < sk.x0);
     }
 
+    // ніч: темрява поверх села й хат, а приціл, снаряди й вибухи — уже поверх неї
+    if (st.map === 'night' && phase !== 'lobby') drawNight(st, g, now, K * z, (ox - cam.x0 * z) * K, (oy - cam.y0 * z) * K);
+
     // приціл того, хто ходить (свій — миттєво, чужий — з кадрів)
     if (aiming && st.huts[st.turn].alive) {
       const s = st.turn;
       if (s === mine && st.ctx.playing) drawAim(st, g, s, st.my.a, st.my.p, st.my.w);
       else drawAim(st, g, s, st.aimTurn[0], st.aimTurn[1], st.aimTurn[2]);
+    } else if (vAim) {
+      if (st.ready[mine] || st.fired === st.turnNo) g.globalAlpha = 0.45;   // заряджено — приціл блідий
+      drawAim(st, g, mine, st.my.a, st.my.p, st.my.w);
+      g.globalAlpha = 1;
     }
 
     // снаряди: екстраполяція на пів кадру вперед, але не під землю; хвіст з останніх положень
@@ -1296,7 +1420,7 @@
           tn = st.tailN[i] = Math.min(6, tn + 1);
         }
         if (kind !== 4) {
-          g.fillStyle = kind === 5 ? '#8fd46a' : kind === 2 ? '#fff4df' : kind === 3 ? '#e8c25a' : pal.clay;
+          g.fillStyle = TAILC[kind] || pal.clay;
           for (let q = 1; q < tn; q++) {
             g.globalAlpha = 0.45 * (1 - q / 6);
             const ty = st.tails[tb + q * 2 + 1];
@@ -1339,6 +1463,14 @@
     const tags = placeTags(st, g, now);
     for (const t of tags) if (t.on) drawTag(st, g, t.i, st.huts[t.i].dx, st.huts[t.i].dy, now, t.i === mine, Math.max(0, t.lift), t.w);
     drawEmos(st, g, now, tags);
+    // «Залп»: хто вже зарядив — зелена галочка біля хати
+    if (st.volley && phase === 'aim') {
+      g.font = F.big; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = pal.ok;
+      for (let i = 0; i < 6; i++) {
+        const hut = st.huts[i];
+        if (hut.alive && st.ready[i]) g.fillText('✓', clamp(hut.dx + 30, 12, W - 12), sy(hut.dy + 26));
+      }
+    }
 
     // цифри шкоди
     if (st.floats.length) {
@@ -1368,8 +1500,9 @@
     drawWind(st, g);
 
     // останні 5 секунд ходу — велика червона цифра біля хати, що ходить (видно всім, і глядачам теж)
-    if (st.hurry && aiming && st.huts[st.turn].alive) {
-      const hut = st.huts[st.turn];
+    const hurrySeat = aiming ? st.turn : vAim && myTurn(st) ? mine : -1;
+    if (st.hurry && hurrySeat >= 0 && st.huts[hurrySeat].alive) {
+      const hut = st.huts[hurrySeat];
       const sec = Math.max(1, Math.ceil((st.endsMs - Date.now()) / 1000));
       const x = hut.dx + (hut.dx < W / 2 ? 1 : -1) * 42, y = sy(hut.dy + 20);
       g.font = F.big;
@@ -1420,6 +1553,70 @@
       else drawBanner(st, g, st.banner.text, e < 2200 ? 1 : 1 - (e - 2200) / 400, HGT - 62 * F.k);
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /// Підкови-магніти: пульсує коло, куди вони тягнуть чужі снаряди, і сама підкова кольору власника.
+  function drawMagnets(st, g, now) {
+    const F = st.fonts;
+    for (const [x, y, o] of st.mag) {
+      const k = st.calm ? 0.5 : 0.5 + 0.5 * Math.sin(now / 260);
+      g.strokeStyle = st.pal.seats[o] || st.pal.accent;
+      g.globalAlpha = 0.18 + 0.14 * k;
+      g.lineWidth = 2 * F.k;
+      g.setLineDash([6 * F.k, 6 * F.k]);
+      g.beginPath(); g.arc(x, sy(y + 12), MAG_R, 0, Math.PI * 2); g.stroke();
+      g.setLineDash([]);
+      g.globalAlpha = 1;
+      g.font = F.dmg; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('🧲', x, sy(y + 8));
+    }
+  }
+
+  /// Ніч: поле темне, видно лише вікна й димарі хат, снаряди, спалахи вибухів (ще з секунду після) і свою хату
+  /// трохи ширше. Маска — окремий канвас: темрява мінус «дірки» світла, поверх світу, але під табличками.
+  function drawNight(st, g, now, k, tx, ty) {
+    let c = st.nightC;
+    if (!c) c = st.nightC = document.createElement('canvas');
+    if (c.width !== st.pw || c.height !== st.ph) { c.width = st.pw; c.height = st.ph; }
+    const n = c.getContext('2d');
+    n.setTransform(1, 0, 0, 1, 0, 0);
+    n.globalCompositeOperation = 'source-over';
+    n.clearRect(0, 0, c.width, c.height);
+    n.fillStyle = 'rgba(3, 6, 16, .86)';
+    n.fillRect(0, 0, c.width, c.height);
+    n.setTransform(k, 0, 0, k, tx, ty);
+    n.globalCompositeOperation = 'destination-out';
+    const hole = (x, y, r, a) => {
+      if (a <= 0.01) return;
+      const gr = n.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, 'rgba(0, 0, 0, ' + a + ')');
+      gr.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      n.fillStyle = gr;
+      n.beginPath(); n.arc(x, y, r, 0, Math.PI * 2); n.fill();
+    };
+    const mine = me(st);
+    for (let i = 0; i < 6; i++) {
+      const hut = st.huts[i];
+      if (!hut.plays || !hut.alive) continue;
+      hole(hut.dx, sy(hut.dy + 14), i === mine ? 70 : 32, i === mine ? 0.8 : 0.7);
+      hole(hut.dx + 9, sy(hut.dy + 40), 12, 0.9);
+    }
+    if (st.phase === 'fly') for (let i = 0; i < st.shN; i++) hole(st.shB[i * 3], sy(st.shB[i * 3 + 1]), 30, 0.95);
+    for (const r of st.rings) hole(r.x, sy(r.y), r.r * 3 + 50, 0.95 * (1 - clamp((now - r.t0) / r.dur, 0, 1)));
+    const b = st.camBoom;
+    if (b && now - b.t0 < 1500) hole(b.x, sy(b.y), 160, 0.9 * (1 - (now - b.t0) / 1500));
+    for (const [x, y] of st.mag) hole(x, sy(y + 8), 22, 0.8);
+    n.globalCompositeOperation = 'source-over';
+    const K0 = g.getTransform();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(c, 0, 0);
+    g.setTransform(K0);
+    // зорі — поверх темряви, лише над землею
+    g.fillStyle = 'rgba(235, 240, 255, .75)';
+    for (let i = 0; i < 40; i++) {
+      const x = hash(i + 700) * W, y = 300 + hash(i + 800) * 195;
+      if (y > st.h[col(x)] + 30) g.fillRect(x, sy(y), 1.6, 1.6);
+    }
   }
 
   /// Камера: ціль — рамка навколо снарядів у польоті, далі місце вибуху, інакше все поле; рух згладжений.
@@ -1601,7 +1798,7 @@
   }
 
   function pickWeapon(st, w) {
-    if (w < 0 || w > 5) return;
+    if (w < 0 || w >= st.kinds) return;
     const s = me(st);
     if (s == null) return;
     if (invOf(st, s)[w] === 0) { st.ctx.toast('Цього вже не лишилось', 'err'); return; }
@@ -1615,8 +1812,8 @@
     if (s == null) return;
     const inv = invOf(st, s);
     let w = myTurn(st) ? st.my.w : st.preW != null ? st.preW : st.my.w;
-    for (let k = 0; k < 6; k++) {
-      w = (w + dir + 6) % 6;
+    for (let k = 0; k < st.kinds; k++) {
+      w = (w + dir + st.kinds) % st.kinds;
       if (inv[w] !== 0) { pickWeapon(st, w); return; }
     }
   }
@@ -1717,7 +1914,7 @@
     arms.className = 'gk-arms';
     arms.innerHTML = WEAPONS.map((w, i) => '<button type="button" class="gk-arm" data-w="' + i + '" title="' + w.tip + '">'
       + '<span class="gk-emo">' + w.icon + '</span><span class="gk-name">' + w.chip + '</span><span class="gk-left"></span>'
-      + '<span class="gk-key">' + (i + 1) + '</span></button>').join('');
+      + '<span class="gk-key">' + ((i + 1) % 10) + '</span></button>').join('');
     const ctl = document.createElement('div');
     ctl.className = 'gk-ctl';
     ctl.innerHTML = '<span class="gk-grp gk-move"><button type="button" class="gk-sq" data-k="m" data-d="-1" aria-label="посунути хату ліворуч">◀</button>'
@@ -1829,7 +2026,7 @@
       const alive = st.phase === 'lobby' || hut.alive;
       const hp = st.phase === 'lobby' ? 100 : hut.hp;
       const bar = hp > 60 ? '' : hp > 30 ? ' mid' : ' low';
-      const turn = st.turn === i && (st.phase === 'aim' || st.phase === 'fly' || st.phase === 'settle');
+      const turn = st.volley ? st.phase === 'aim' && hut.alive && !st.ready[i] : st.turn === i && (st.phase === 'aim' || st.phase === 'fly' || st.phase === 'settle');
       // На вузькому екрані ніки в чіпах сховані (їх і так показують пігулки місць над столом і таблички на полі),
       // лишається колір, ❤ і «ти» на своєму — інакше над полем було шість рядів про те саме.
       html += '<span class="gk-chip' + (alive ? '' : ' out') + (turn ? ' turn' : '') + (i === mine ? ' me' : '') + '" title="' + ctx.esc(nick) + ' · ' + ctx.esc(ctx.seatName(i)) + ' хата'
@@ -1840,6 +2037,8 @@
         + (i === mine ? '<span class="gk-you">ти</span>' : '')
         + (alive ? '<span class="gk-hp">❤' + hp + '</span>' : '<span>⛔</span>')
         + (alive && hut.poison > 0 ? '<span title="отруєна хроном">🌿</span>' : '')
+        + (alive && (hut.honey > 0 || hut.stuck) ? '<span title="у меду — не рушить">🍯</span>' : '')
+        + (alive && st.volley && st.phase === 'aim' && st.ready[i] ? '<span class="gk-rd" title="постріл заряджено">✓</span>' : '')
         + (st.wins[i] ? '<span class="gk-star">★' + st.wins[i] + '</span>' : '')
         + (alive ? '<i class="gk-bar' + bar + '" style="width:' + clamp(hp, 0, 100) + '%"></i>' : '')
         + '</span>';
@@ -1859,7 +2058,7 @@
     if (keep && !E.clock.querySelector('.garc')) HGames.ui.timerArc(E.clock, new Date().toISOString(), 1000).stop();
     if (timed) {
       HGames.ui.timerArc(E.clock, st.endsAt, st.turnMs);
-      const who = st.turn === mine ? 'твій хід' : nickOf(st, st.turn);
+      const who = st.volley ? 'залп' : st.turn === mine ? 'твій хід' : nickOf(st, st.turn);
       if (E.who.textContent !== who) E.who.textContent = who;
     } else {
       const arc = E.clock.querySelector('.garc');
@@ -1879,17 +2078,19 @@
     const who = mine != null ? mine : st.turn;
     const inv = invOf(st, who != null && who >= 0 ? who : null);
     let sel = mine != null ? (myTurn(st) ? st.my.w : st.preW != null ? st.preW : st.my.w)
-      : st.phase === 'aim' || st.phase === 'fly' ? st.aimTurn[2] : -1;
+      : !st.volley && (st.phase === 'aim' || st.phase === 'fly') ? st.aimTurn[2] : -1;
     // останній вареник вистрілено — між ходами підсвічуємо вже глек, а не «Вареник ×0»
     if (mine != null && sel >= 0 && inv[sel] === 0) sel = 0;
     const ro = mine == null || !st.ctx.playing;
     const hide = st.phase === 'over';
     if (E.arms.hidden !== hide) E.arms.hidden = hide;
-    const sig = inv.join(',') + '|' + sel + '|' + ro;
+    const sig = inv.join(',') + '|' + sel + '|' + ro + '|' + st.kinds;
     if (E.sig.arms === sig) return;
     E.sig.arms = sig;
     E.arms.querySelectorAll('.gk-arm').forEach((b) => {
-      const w = +b.dataset.w, left = inv[w];
+      const w = +b.dataset.w, left = inv[w] == null ? 0 : inv[w];
+      const off = w >= st.kinds;
+      if (b.hidden !== off) b.hidden = off;
       b.classList.toggle('on', w === sel);
       b.classList.toggle('ro', ro);
       b.disabled = left === 0 || ro;
@@ -2093,14 +2294,14 @@
       hint: '{dpad} кут і сила · {a} постріл, тримай — заряд · {x} снаряд (чужий хід — емоція) · {lb}{rb} посунути хату',
     },
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Глекомети',
+      v: '2026-09-29',
+      title: 'Глекомети: залп, приколи й погода',
       items: [
-        '🏠 У кожного — хата на колесах із катапультою на даху. Цілься, дай сили — і глек полетить у сусіда',
-        '🌬 Зважай на вітер: стрілка зверху каже, куди й як сильно знесе',
-        '💥 Шість снарядів: глек, розсипний, вареник-бомба, копа сіна, лелека-телепорт і хрін',
-        '🌊 Із шостого кола підступає вода, і що менше хат лишилось, то швидше — не засиджуйся в низині, посунься або клич лелеку',
-        '🎮 ← → кут, ↑ ↓ сила, пробіл — постріл; на телефоні потягни по полю, як рогатку',
+        '💥 Опція «Хід: Залп» — усі цілять разом, чужих прицілів не видно, і снаряди летять одночасно',
+        '🐓 «Комора з приколами»: півень, мед (хата прилипає), смерч (розкидає хати) і підкова-магніт',
+        '❄ «Погода й мапа»: зима — хати ковзають, ніч — видно лише вогні й спалахи, ярмарок зі ставком',
+        '😂 Поки ходить інший — емоції над своєю хатою: 1–4, Ⓧ або кнопки внизу',
+        '📜 Після «Ще раз» — підсумок серії; на телефоні камера летить за снарядом',
       ],
     },
 
@@ -2157,7 +2358,7 @@
       if (!st.cv || !f || !st.pal) return;
       const phase = st.phase;
       applyFrame(st, f);
-      if (f.hp || f.hx || f.ph !== phase || f.aim) paintAll(st);
+      if (f.hp || f.hx || f.ph !== phase || f.aim || f.rd != null) paintAll(st);
       wake(st);
     },
 
@@ -2187,10 +2388,10 @@
           cycleWeapon(st, code === 'KeyQ' ? -1 : 1);
           return true;
         default: {
-          const m = /^(?:Digit|Numpad)([1-6])$/.exec(code || '');
-          // чужий хід: 1–4 — емоції над хатою, свій — снаряди
-          if (m && !mineNow && +m[1] <= EMOS.length) { if (!e.repeat) emote(st, +m[1] - 1); return true; }
-          if (m) { pickWeapon(st, +m[1] - 1); return true; }
+          const m = /^(?:Digit|Numpad)([0-9])$/.exec(code || '');
+          // чужий хід: 1–4 — емоції над хатою, свій — снаряди (0 — десятий, підкова)
+          if (m && !mineNow && +m[1] >= 1 && +m[1] <= EMOS.length) { if (!e.repeat) emote(st, +m[1] - 1); return true; }
+          if (m) { pickWeapon(st, (+m[1] + 9) % 10); return true; }
           if (e.key === ' ') { if (!e.repeat && mineNow && !early(st)) startCharge(st, 'key'); return true; }
           return false;
         }
@@ -2205,6 +2406,16 @@
       switch (st.phase) {
         case 'start': return 'Готуйсь…';
         case 'aim': {
+          if (st.volley) {
+            let alive = 0, rd = 0;
+            for (let i = 0; i < 6; i++) if (st.huts[i].alive) { alive++; if (st.ready[i]) rd++; }
+            const tail = ' · готові ' + rd + '/' + alive + ' · вітер ' + windText(st.wind);
+            if (s == null) return '💥 Залп: усі цілять разом' + tail;
+            if (!st.huts[s].alive) return 'Твоя хата — руїна · залп' + tail;
+            if (st.ready[s] || st.fired === st.turnNo) return '✓ Заряджено — чекаємо решту' + tail;
+            if (padOn()) return '💥 Залп! Цілься стіком, Ⓐ — зарядити' + tail;
+            return '💥 Залп! Цілься — чужих прицілів не видно, летить усе разом' + tail;
+          }
           const who = nickOf(st, st.turn);
           const wind = 'вітер ' + windText(st.wind);
           if (s == null) return 'Дивишся збоку · ходить ' + who + ' · ' + wind;
