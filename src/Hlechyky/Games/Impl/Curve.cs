@@ -2,8 +2,14 @@ using System.Text.Json;
 
 namespace Hlechyky.Games.Impl;
 
-/// <summary>Точка сліду: де була голова і чи писався в цю мить слід (у дірці — ні).</summary>
-public readonly record struct CurvePoint(double X, double Y, bool Gap);
+/// <summary>
+/// Точка сліду: де була голова і чи писався в цю мить слід (у дірці — ні). <c>Jump</c> — голова щойно
+/// перескочила крізь край поля (тор або 🚪): лінію від попередньої точки не малюємо. <c>Fat</c> — ⬛ товстий слід.
+/// </summary>
+public readonly record struct CurvePoint(double X, double Y, bool Gap, bool Jump = false, bool Fat = false);
+
+/// <summary>Кружечок бонуса на полі (прохід №3, опція «Бонуси»).</summary>
+public sealed record CurveBonus(int Kind, double X, double Y);
 
 /// <summary>
 /// Одна кривуля: де голова, куди дивиться, чи жива і як у неї справи з дірками. Слід тримаємо
@@ -26,6 +32,13 @@ public sealed class CurveHead
     /// <summary>Через скільки тиків почнеться наступна дірка.</summary>
     public int NextGapIn;
     public List<CurvePoint> Trail { get; } = [];
+    /// <summary>До якої точки сліду (включно) вона вже лягла в растр.</summary>
+    public int Painted = -1;
+    /// <summary>Скільки тиків ще діє бонус: ⚡ швидше, 🐢 повільніше, 🔄 кермо навпаки, 🚪 крізь стіни, ⬛ товстий слід.</summary>
+    public int Fast, Slow, Inv, Through, Fat;
+    /// <summary>Бонуси, що зараз діють, бітами (<see cref="CurveCore.FxFast"/>…) — для кадру.</summary>
+    public int Fx => (Fast > 0 ? CurveCore.FxFast : 0) | (Slow > 0 ? CurveCore.FxSlow : 0) | (Inv > 0 ? CurveCore.FxInv : 0)
+        | (Through > 0 ? CurveCore.FxThrough : 0) | (Fat > 0 ? CurveCore.FxFat : 0);
 }
 
 /// <summary>
@@ -106,16 +119,55 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
     /// <summary>Що лежить у клітинці растра: 0 — порожньо, інакше номер місця + 1.</summary>
     public byte Cell(int x, int y) => x < 0 || y < 0 || x >= W || y >= H ? (byte)0 : _grid[y * W + x];
 
+    // ---------- прохід №3: тор, бонуси, «хто кого» ----------
+
+    /// <summary>Поле-тор: стін нема, вилетів справа — з'явився зліва (опція «Стіни»).</summary>
+    public bool Wrap { get; init; }
+    /// <summary>На полі з'являються бонуси класичної Achtung (опція «Бонуси»).</summary>
+    public bool Bonuses { get; init; }
+
+    /// <summary>Бонуси: ⚡ собі, ⚡ усім іншим, 🐢 собі, 🐢 іншим, 🔄 кермо навпаки іншим, 🧹 стерти всі сліди, 🚪 собі крізь стіни, ⬛ товстий слід іншим.</summary>
+    public const int BFastMe = 0, BFastThem = 1, BSlowMe = 2, BSlowThem = 3, BInvert = 4, BClear = 5, BThrough = 6, BFat = 7, BonusKinds = 8;
+    public const int FxFast = 1, FxSlow = 2, FxInv = 4, FxThrough = 8, FxFat = 16;
+    /// <summary>Скільки діє бонус: ⚡🐢⬛ — 5 с, 🔄 — 4 с, 🚪 — 6 с.</summary>
+    public const int EffectTicks = 125, InvertTicks = 100, ThroughTicks = 150;
+    /// <summary>Радіус кружечка бонуса; взяв — коли голова його торкнулась.</summary>
+    public const double BonusR = 5;
+    /// <summary>Більше кружечків на полі не буває: інакше поле — ярмарок, а не гра.</summary>
+    public const int MaxBonuses = 4;
+    /// <summary>Новий бонус — кожні 2,4–5 с.</summary>
+    public const int BonusMinTicks = 60, BonusMaxTicks = 125;
+    public const double FastK = 1.75, SlowK = 0.55;
+    /// <summary>⬛ Товстий слід — радіус 3,5 замість 2.</summary>
+    public const double FatR = 3.5;
+
+    public List<CurveBonus> Items { get; } = [];
+    int _nextBonusIn = BonusMinTicks;
+    /// <summary>Скільки разів 🧹 стерло поле цього раунду: клієнт за цим числом чистить свій канвас.</summary>
+    public int Cleared { get; private set; }
+
+    /// <summary>Хто вибув цього тика і через кого: Killer — місце (чий слід чи чия голова), -1 — стіна.</summary>
+    public List<(int Victim, int Killer, bool Head)> Deaths { get; } = [];
+    /// <summary>Хто що взяв цього тика.</summary>
+    public List<(int Seat, int Kind)> Picks { get; } = [];
+
     /// <summary>Новий раунд: чистий растр, нові точки старту для тих, хто сидить за столом.</summary>
     public void Reset(IReadOnlyList<bool> present)
     {
         Array.Clear(_grid);
         RoundTicks = 0;
+        Items.Clear();
+        Cleared = 0;
+        Deaths.Clear();
+        Picks.Clear();
+        _nextBonusIn = BonusMinTicks;
         var placed = new List<(double X, double Y)>();
         for (var s = 0; s < Seats; s++)
         {
             var h = Heads[s];
             h.Trail.Clear();
+            h.Painted = -1;
+            h.Fast = h.Slow = h.Inv = h.Through = h.Fat = 0;
             h.Present = s < present.Count && present[s];
             h.Alive = h.Present;
             h.Turn = 0;
@@ -145,13 +197,23 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
         Heads[seat].Turn = Math.Sign(dir);
     }
 
+    /// <summary>Швидкість кривулі з урахуванням ⚡ і 🐢 (обидва разом — майже звична).</summary>
+    public static double SpeedOf(CurveHead h) => Speed * (h.Fast > 0 ? FastK : 1) * (h.Slow > 0 ? SlowK : 1);
+
+    readonly double[] _nx = new double[Seats], _ny = new double[Seats];
+    readonly bool[] _jump = new bool[Seats];
+    readonly int[] _killer = new int[Seats];
+    readonly bool[] _byHead = new bool[Seats];
+
     /// <summary>Один крок усіх кривуль. Повертає місця, що загинули саме цього тика.</summary>
     public List<int> Step()
     {
         RoundTicks++;
+        Deaths.Clear();
+        Picks.Clear();
         var died = new List<int>();
-        var nx = new double[Seats];
-        var ny = new double[Seats];
+        var nx = _nx;
+        var ny = _ny;
 
         // Спершу рахуємо й перевіряємо всіх — і лише потім рухаємо й малюємо. Інакше той, хто
         // йде першим у циклі, встигав би домалювати слід під носом у другого.
@@ -159,11 +221,22 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
         {
             var h = Heads[s];
             if (!h.Present || !h.Alive) continue;
-            h.A += h.Turn * TurnStep;
-            nx[s] = h.X + Math.Cos(h.A) * Speed;
-            ny[s] = h.Y + Math.Sin(h.A) * Speed;
+            h.A += (h.Inv > 0 ? -h.Turn : h.Turn) * TurnStep;
+            var sp = SpeedOf(h);
+            nx[s] = h.X + Math.Cos(h.A) * sp;
+            ny[s] = h.Y + Math.Sin(h.A) * sp;
+            _jump[s] = false;
+            var through = Wrap || h.Through > 0;
+            if (through)
+            {
+                // Крізь край: з'являємось з протилежного боку, растр теж «загорнутий» (див. HitBy/Paint).
+                if (nx[s] < 0) { nx[s] += W; _jump[s] = true; } else if (nx[s] >= W) { nx[s] -= W; _jump[s] = true; }
+                if (ny[s] < 0) { ny[s] += H; _jump[s] = true; } else if (ny[s] >= H) { ny[s] -= H; _jump[s] = true; }
+            }
             Breathe(h);
-            if (Wall(nx[s], ny[s]) || Hits(nx[s], ny[s], h.A)) died.Add(s);
+            _byHead[s] = false;
+            if (!through && Wall(nx[s], ny[s])) { died.Add(s); _killer[s] = -1; }
+            else if (HitBy(nx[s], ny[s], h.A) is var c && c > 0) { died.Add(s); _killer[s] = c - 1; }
         }
 
         // Лоб у лоб растром не ловиться: у кожного попереду ще не намальований шматок власного сліду.
@@ -172,11 +245,17 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
             {
                 if (!Heads[a].Present || !Heads[a].Alive || !Heads[b].Present || !Heads[b].Alive) continue;
                 var (dx, dy) = (nx[a] - nx[b], ny[a] - ny[b]);
+                if (Wrap)
+                {
+                    // на торі найкоротший шлях між головами може йти крізь край
+                    if (dx > W / 2.0) dx -= W; else if (dx < -W / 2.0) dx += W;
+                    if (dy > H / 2.0) dy -= H; else if (dy < -H / 2.0) dy += H;
+                }
                 if (dx * dx + dy * dy >= 4 * R * R) continue;
                 // Гине лише той, у кого чужа голова спереду — те саме правило, що й у Hits(). Лоб у лоб
                 // це обидва, а от наздогнати ззаду — біда лише заднього: лідер нічого не робив.
-                if (-dx * Math.Cos(Heads[a].A) - dy * Math.Sin(Heads[a].A) > 0 && !died.Contains(a)) died.Add(a);
-                if (dx * Math.Cos(Heads[b].A) + dy * Math.Sin(Heads[b].A) > 0 && !died.Contains(b)) died.Add(b);
+                if (-dx * Math.Cos(Heads[a].A) - dy * Math.Sin(Heads[a].A) > 0 && !died.Contains(a)) { died.Add(a); _killer[a] = b; _byHead[a] = true; }
+                if (dx * Math.Cos(Heads[b].A) + dy * Math.Sin(Heads[b].A) > 0 && !died.Contains(b)) { died.Add(b); _killer[b] = a; _byHead[b] = true; }
             }
 
         for (var s = 0; s < Seats; s++)
@@ -185,7 +264,7 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
             if (!h.Present || !h.Alive || died.Contains(s)) continue;
             h.X = nx[s];
             h.Y = ny[s];
-            h.Trail.Add(new CurvePoint(h.X, h.Y, h.Gap));
+            h.Trail.Add(new CurvePoint(h.X, h.Y, h.Gap, _jump[s], h.Fat > 0));
         }
         for (var s = 0; s < Seats; s++)
         {
@@ -194,12 +273,111 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
         }
         foreach (var s in died) Heads[s].Alive = false;
         died.Sort();
+        foreach (var s in died) Deaths.Add((s, _killer[s], _byHead[s]));
+        if (Bonuses) BonusStep();
         return died;
+    }
+
+    /// <summary>Бонуси: таймери, підбір, нові кружечки. Кличеться лише з опцією «Бонуси», тож звичайна гра генератор не смикає.</summary>
+    void BonusStep()
+    {
+        for (var s = 0; s < Seats; s++)
+        {
+            var h = Heads[s];
+            if (!h.Present || !h.Alive) continue;
+            if (h.Fast > 0) h.Fast--;
+            if (h.Slow > 0) h.Slow--;
+            if (h.Inv > 0) h.Inv--;
+            if (h.Fat > 0) h.Fat--;
+            // 🚪 скінчилась, поки голова ще в «стіні» біля краю, — не караємо, даємо доїхати в поле
+            if (h.Through > 0 && --h.Through == 0 && Wall(h.X, h.Y)) h.Through = 1;
+        }
+        for (var i = Items.Count - 1; i >= 0; i--)
+        {
+            var b = Items[i];
+            for (var s = 0; s < Seats; s++)
+            {
+                var h = Heads[s];
+                if (!h.Present || !h.Alive) continue;
+                var (dx, dy) = (h.X - b.X, h.Y - b.Y);
+                if (dx * dx + dy * dy > (BonusR + R) * (BonusR + R)) continue;
+                Items.RemoveAt(i);
+                Apply(s, b.Kind);
+                Picks.Add((s, b.Kind));
+                break;
+            }
+        }
+        if (--_nextBonusIn > 0) return;
+        _nextBonusIn = rng.Next(BonusMinTicks, BonusMaxTicks + 1);
+        if (Items.Count < MaxBonuses) TrySpawnBonus();
+    }
+
+    /// <summary>Бонус спрацював: собі, усім іншим живим чи всьому полю.</summary>
+    public void Apply(int seat, int kind)
+    {
+        var me = Heads[seat];
+        switch (kind)
+        {
+            case BFastMe: me.Fast = EffectTicks; break;
+            case BSlowMe: me.Slow = EffectTicks; break;
+            case BThrough: me.Through = ThroughTicks; break;
+            case BClear:
+                Array.Clear(_grid);
+                foreach (var h in Heads)
+                {
+                    if (!h.Present) continue;
+                    h.Trail.Clear();
+                    h.Painted = -1;
+                    if (h.Alive) h.Trail.Add(new CurvePoint(h.X, h.Y, true));
+                }
+                Cleared++;
+                break;
+            default:
+                for (var s = 0; s < Seats; s++)
+                {
+                    var h = Heads[s];
+                    if (s == seat || !h.Present || !h.Alive) continue;
+                    switch (kind)
+                    {
+                        case BFastThem: h.Fast = EffectTicks; break;
+                        case BSlowThem: h.Slow = EffectTicks; break;
+                        case BInvert: h.Inv = InvertTicks; break;
+                        case BFat: h.Fat = EffectTicks; break;
+                    }
+                }
+                break;
+        }
+    }
+
+    /// <summary>Кружечок — на порожнє місце, не під носом у когось (≥ 25 од) і не на сліді.</summary>
+    void TrySpawnBonus()
+    {
+        const int margin = 12;
+        for (var i = 0; i < 20; i++)
+        {
+            var x = Math.Round(margin + rng.NextDouble() * (W - 2 * margin));
+            var y = Math.Round(margin + rng.NextDouble() * (H - 2 * margin));
+            var kind = rng.Next(BonusKinds);
+            if (Wrap && kind == BThrough) kind = BClear;   // на торі стін і так нема
+            var ok = true;
+            foreach (var h in Heads)
+                if (h.Present && h.Alive && (h.X - x) * (h.X - x) + (h.Y - y) * (h.Y - y) < 25 * 25) ok = false;
+            foreach (var b in Items)
+                if ((b.X - x) * (b.X - x) + (b.Y - y) * (b.Y - y) < 20 * 20) ok = false;
+            for (var dy = -6; dy <= 6 && ok; dy += 3)
+                for (var dx = -6; dx <= 6 && ok; dx += 3)
+                    if (Cell((int)x + dx, (int)y + dy) != 0) ok = false;
+            if (!ok) continue;
+            Items.Add(new CurveBonus(kind, x, y));
+            return;
+        }
     }
 
     /// <summary>Раунд затягнувся — гасимо всіх, хто ще їде. Повертає їхні місця.</summary>
     public List<int> StopAll()
     {
+        Deaths.Clear();
+        Picks.Clear();
         var died = new List<int>();
         for (var s = 0; s < Seats; s++)
         {
@@ -236,41 +414,67 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
     /// Чи є слід під передньою півкулею голови. Позаду завжди свій хвіст, тому дивимось лише туди,
     /// куди їдемо: скалярний добуток на курс має бути додатним.
     /// </summary>
-    public bool Hits(double x, double y, double a)
+    public bool Hits(double x, double y, double a) => HitBy(x, y, a) != 0;
+
+    /// <summary>
+    /// Те саме, що <see cref="Hits"/>, але каже, чий слід: 0 — нічий, інакше номер місця + 1. Растр
+    /// «загорнутий» по краях: без тора голова до краю не доїжджає (стіна раніше), тож звичайній грі це байдуже.
+    /// </summary>
+    public byte HitBy(double x, double y, double a)
     {
         var (cx, cy) = (Math.Cos(a), Math.Sin(a));
-        var (hx, hy) = ((int)x, (int)y);
+        var (hx, hy) = ((int)Math.Floor(x), (int)Math.Floor(y));
         for (var dy = -2; dy <= 2; dy++)
             for (var dx = -2; dx <= 2; dx++)
             {
                 var (gx, gy) = (hx + dx, hy + dy);
-                if (gx < 0 || gy < 0 || gx >= W || gy >= H || _grid[gy * W + gx] == 0) continue;
                 var (vx, vy) = (gx + 0.5 - x, gy + 0.5 - y);
                 if (vx * vx + vy * vy > R * R) continue;
                 if (vx * cx + vy * cy <= 0) continue;
-                return true;
+                if (gx < 0) gx += W; else if (gx >= W) gx -= W;
+                if (gy < 0) gy += H; else if (gy >= H) gy -= H;
+                var c = _grid[gy * W + gx];
+                if (c != 0) return c;
             }
-        return false;
+        return 0;
     }
 
-    /// <summary>Домалювати в растр те місце, де голова була TrailLag тиків тому.</summary>
+    /// <summary>
+    /// Домалювати в растр точки сліду, що вже досить позаду голови. Звично це рівно одна точка TrailLag
+    /// тиків тому; ⬛ товстий слід чи 🐢 повільна голова просять відстати більше — інакше голова
+    /// заїжджала б передньою півкулею у власний щойно намальований слід.
+    /// </summary>
     void Paint(int seat)
     {
-        var trail = Heads[seat].Trail;
-        var i = trail.Count - 1 - TrailLag;
-        if (i < 0) return;
-        var p = trail[i];
-        if (p.Gap) return;
+        var h = Heads[seat];
+        var trail = h.Trail;
+        if (h.Painted >= trail.Count) h.Painted = trail.Count - 1;
+        var sp = SpeedOf(h);
         var id = (byte)(seat + 1);
-        var (hx, hy) = ((int)p.X, (int)p.Y);
-        for (var dy = -2; dy <= 2; dy++)
-            for (var dx = -2; dx <= 2; dx++)
-            {
-                var (gx, gy) = (hx + dx, hy + dy);
-                if (gx < 0 || gy < 0 || gx >= W || gy >= H) continue;
-                var (vx, vy) = (gx + 0.5 - p.X, gy + 0.5 - p.Y);
-                if (vx * vx + vy * vy <= R * R) _grid[gy * W + gx] = id;
-            }
+        while (h.Painted + 1 < trail.Count)
+        {
+            var i = h.Painted + 1;
+            var p = trail[i];
+            var r = p.Fat ? FatR : R;
+            // на наступній перевірці точка буде (lag + 1)·sp позаду голови — це мусить бути більше за радіус сліду
+            var lag = Math.Max(TrailLag, (int)Math.Ceiling((r + 0.6) / sp - 1e-9) - 1);
+            if (i > trail.Count - 1 - lag) break;
+            h.Painted = i;
+            if (p.Gap) continue;
+            var (hx, hy) = ((int)Math.Floor(p.X), (int)Math.Floor(p.Y));
+            var ri = (int)Math.Ceiling(r);
+            for (var dy = -ri; dy <= ri; dy++)
+                for (var dx = -ri; dx <= ri; dx++)
+                {
+                    var (gx, gy) = (hx + dx, hy + dy);
+                    var (vx, vy) = (gx + 0.5 - p.X, gy + 0.5 - p.Y);
+                    if (vx * vx + vy * vy > r * r) continue;
+                    if (!Wrap && (gx < 0 || gy < 0 || gx >= W || gy >= H)) continue;
+                    if (gx < 0) gx += W; else if (gx >= W) gx -= W;
+                    if (gy < 0) gy += H; else if (gy >= H) gy -= H;
+                    _grid[gy * W + gx] = id;
+                }
+        }
     }
 
     (double X, double Y) Spawn(List<(double X, double Y)> placed)
@@ -313,17 +517,21 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
     /// </returns>
     /// <param name="trail">Слід однієї кривулі.</param>
     /// <param name="maxPts">Стеля точок на кривулю; на повному столі її ділять на більше людей (<see cref="PtsFor"/>).</param>
-    public static (int[] Pts, int[] Gaps) Polyline(IReadOnlyList<CurvePoint> trail, int maxPts = MaxPts)
+    /// <param name="fat">Якщо дали — сюди складаються номери точок, у які слід веде ⬛ товстим (бонус).</param>
+    public static (int[] Pts, int[] Gaps) Polyline(IReadOnlyList<CurvePoint> trail, int maxPts = MaxPts, List<int>? fat = null)
     {
         var pts = new List<int>(trail.Count * 2);
         var gapAt = new List<bool>(trail.Count);
+        var fatAt = new List<bool>(trail.Count);
         var run = 0;
         foreach (var p in trail)
         {
             var (x, y) = ((int)Math.Round(p.X), (int)Math.Round(p.Y));
+            // Перескок крізь край поля — як дірка: лінію через усе поле не тягнемо.
+            var gap = p.Gap || p.Jump;
             var n = gapAt.Count;
-            if (n > 0 && !p.Gap && pts[2 * (n - 1)] == x && pts[2 * (n - 1) + 1] == y) continue;
-            if (n >= 2 && !p.Gap && !gapAt[n - 1] && run < MaxRun
+            if (n > 0 && !gap && fatAt[n - 1] == p.Fat && pts[2 * (n - 1)] == x && pts[2 * (n - 1) + 1] == y) continue;
+            if (n >= 2 && !gap && !gapAt[n - 1] && run < MaxRun && fatAt[n - 1] == p.Fat
                 && OnLine(pts[2 * (n - 2)], pts[2 * (n - 2) + 1], x, y, pts[2 * (n - 1)], pts[2 * (n - 1) + 1]))
             {
                 pts[2 * (n - 1)] = x;
@@ -333,13 +541,17 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
             }
             pts.Add(x);
             pts.Add(y);
-            gapAt.Add(p.Gap);
+            gapAt.Add(gap);
+            fatAt.Add(p.Fat);
             run = 0;
         }
-        if (gapAt.Count > maxPts) (pts, gapAt) = Thin(pts, gapAt, maxPts);
+        if (gapAt.Count > maxPts) (pts, gapAt, fatAt) = Thin(pts, gapAt, fatAt, maxPts);
         var gaps = new List<int>();
         for (var i = 0; i < gapAt.Count; i++)
+        {
             if (gapAt[i]) gaps.Add(i);
+            if (fatAt[i]) fat?.Add(i);
+        }
         return ([.. pts], [.. gaps]);
     }
 
@@ -348,22 +560,27 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
     /// переносимо на ту точку, що лишилась, — краще не домалювати кілька одиниць сліду, ніж
     /// провести лінію крізь дірку, якої на полі нема.
     /// </summary>
-    static (List<int> Pts, List<bool> GapAt) Thin(List<int> pts, List<bool> gapAt, int maxPts)
+    static (List<int> Pts, List<bool> GapAt, List<bool> FatAt) Thin(List<int> pts, List<bool> gapAt, List<bool> fatAt, int maxPts)
     {
         var k = (gapAt.Count + maxPts - 1) / maxPts;
         var thinPts = new List<int>(maxPts * 2 + 2);
         var thinGap = new List<bool>(maxPts + 1);
+        var thinFat = new List<bool>(maxPts + 1);
         var gap = false;
+        var fat = false;
         for (var i = 0; i < gapAt.Count; i++)
         {
             gap |= gapAt[i];
+            fat |= fatAt[i];
             if (i % k != 0 && i != gapAt.Count - 1) continue;
             thinPts.Add(pts[2 * i]);
             thinPts.Add(pts[2 * i + 1]);
             thinGap.Add(gap);
+            thinFat.Add(fat);
             gap = false;
+            fat = false;
         }
-        return (thinPts, thinGap);
+        return (thinPts, thinGap, thinFat);
     }
 
     /// <summary>Чи лежить точка c на відрізку a→b з точністю до пів одиниці.</summary>
@@ -387,10 +604,19 @@ public sealed class CurveGame : Game
     public override GameInfo Info { get; } = new(
         "curve", "Кривуля", "кривулю", GameGroup.Live, 2, CurveCore.Seats,
         TickMs: CurveCore.TickMs, Start: StartMode.ByHost,
+        Options:
+        [
+            new GameOption("walls", "Стіни", [("0", "смертельні"), ("1", "🍩 нема — поле-тор")], "0"),
+            new GameOption("bonus", "Бонуси", [("0", "без бонусів"), ("1", "⚡🐢🔄🧹🚪⬛ як в Achtung")], "0"),
+            new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3 / 4×4")], "0"),
+        ],
         Hint: "Їдеш уперед і лишаєш слід. Повертати можна тільки плавно. Врізався — вибув. Останній живий бере очко. До восьми за столом");
 
     /// <summary>Скільки очок за партію треба на кожного суперника.</summary>
     public const int PerRival = 10;
+
+    /// <summary>Команди: по черзі за тим, як сіли, — перше, третє, п'яте місце проти другого, четвертого…</summary>
+    public static readonly string[] TeamNames = ["🐍 Вужі", "🦎 Ящірки"];
 
     CurveCore? _core;
     int[] _scores = new int[CurveCore.Seats];
@@ -402,8 +628,24 @@ public sealed class CurveGame : Game
     int _phaseLeft;
     int[]? _winners;
 
+    // опції столу
+    bool _wrap, _bonus, _teamsOn;
+    /// <summary>Команда кожного місця на цю партію (0/1, -1 — не грає); null — кожен сам.</summary>
+    int[]? _teams;
+    readonly int[] _teamPts = new int[2];
+    /// <summary>Чому команд не вийшло — рядок для статусу.</summary>
+    string? _note;
+    /// <summary>🕸 Скільки разів у слід цього місця врізались суперники за партію.</summary>
+    readonly int[] _kills = new int[CurveCore.Seats];
+    /// <summary>Смерті й бонуси цього тика — для кадру: [жертва, через кого (-1 стіна), 1 — лоб у лоб].</summary>
+    readonly List<int[]> _ev = [];
+    readonly List<int[]> _pk = [];
+
     /// <summary>Поле партії: усі правила руху й зіткнень живуть там, а не тут.</summary>
     public CurveCore Field => Core;
+
+    /// <summary>Команди партії (для тестів і вида).</summary>
+    public int[]? Teams => _teams;
 
     /// <summary>Поле є ще до старту: стіл, що чекає на гравців, має виглядати як поле, а не як діра.</summary>
     CurveCore Core
@@ -411,10 +653,18 @@ public sealed class CurveGame : Game
         get
         {
             if (_core is not null) return _core;
-            _core = new CurveCore(Ctx.Rng);
+            _core = new CurveCore(Ctx.Rng) { Wrap = _wrap, Bonuses = _bonus };
             _core.Reset(new bool[CurveCore.Seats]);
             return _core;
         }
+    }
+
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        _wrap = options.GetValueOrDefault("walls") == "1";
+        _bonus = options.GetValueOrDefault("bonus") == "1";
+        _teamsOn = options.GetValueOrDefault("teams") == "1";
+        _core = null;
     }
 
     public override string SeatName(int seat) => seat switch
@@ -433,14 +683,34 @@ public sealed class CurveGame : Game
     public override void Start()
     {
         _seats = [.. Enumerable.Range(0, CurveCore.Seats).Select(Ctx.Seated)];
+        var n = _seats.Count(x => x);
         // Поле — під склад: до чотирьох звичне, більшому столу — ширше (CurveCore.SizeFor).
-        var (w, h) = CurveCore.SizeFor(_seats.Count(x => x));
-        _core = new CurveCore(Ctx.Rng, true, w, h);
+        var (w, h) = CurveCore.SizeFor(n);
+        _core = new CurveCore(Ctx.Rng, true, w, h) { Wrap = _wrap, Bonuses = _bonus };
         _scores = new int[CurveCore.Seats];
-        _target = PerRival * Math.Max(1, _seats.Count(x => x) - 1);
+        Array.Clear(_teamPts);
+        Array.Clear(_kills);
+        SetupTeams();
+        _target = _teams is not null ? PerRival * (n / 2) : PerRival * Math.Max(1, n - 1);
         _round = 0;
         _winners = null;
         NewRound();
+    }
+
+    /// <summary>Команди — лише на парному столі від чотирьох: 2×2, 3×3 чи 4×4. Інакше — кожен сам, і про це рядок.</summary>
+    void SetupTeams()
+    {
+        _teams = null;
+        _note = null;
+        if (!_teamsOn) return;
+        var seated = Enumerable.Range(0, CurveCore.Seats).Where(s => _seats[s]).ToArray();
+        if (seated.Length is not (4 or 6 or 8))
+        {
+            _note = "Команд не буде: треба четверо, шестеро чи восьмеро — граємо кожен сам";
+            return;
+        }
+        _teams = [.. Enumerable.Repeat(-1, CurveCore.Seats)];
+        for (var i = 0; i < seated.Length; i++) _teams[seated[i]] = i % 2;
     }
 
     void NewRound()
@@ -470,6 +740,8 @@ public sealed class CurveGame : Game
 
     public override TickResult Tick()
     {
+        _ev.Clear();
+        _pk.Clear();
         if (_winners is not null) return TickResult.None;
         switch (_phase)
         {
@@ -484,14 +756,55 @@ public sealed class CurveGame : Game
                 return TickResult.Both;
 
             default:
-                var dead = Core.RoundTicks >= CurveCore.MaxRoundTicks ? Core.StopAll() : Core.Step();
+                var timeout = Core.RoundTicks >= CurveCore.MaxRoundTicks;
+                var dead = timeout ? Core.StopAll() : Core.Step();
+                if (!timeout) Note();
                 if (dead.Count > 0)
-                    for (var s = 0; s < CurveCore.Seats; s++)
-                        if (_seats[s] && Core.Heads[s].Alive) _scores[s] += dead.Count;
-                if (Core.AliveCount > 1) return dead.Count > 0 ? TickResult.Both : TickResult.FrameOnly;
+                {
+                    if (_teams is not null) TeamScore(dead);
+                    else
+                        for (var s = 0; s < CurveCore.Seats; s++)
+                            if (_seats[s] && Core.Heads[s].Alive) _scores[s] += dead.Count;
+                }
+                if (!RoundOver()) return dead.Count > 0 || _pk.Count > 0 ? TickResult.Both : TickResult.FrameOnly;
                 EndRound();
                 return TickResult.Both;
         }
+    }
+
+    /// <summary>Хто кого і хто що взяв — у кадр, а слід-пастки — у лічильник 🕸.</summary>
+    void Note()
+    {
+        foreach (var (v, k, head) in Core.Deaths)
+        {
+            _ev.Add([v, k, head ? 1 : 0]);
+            if (!head && k >= 0 && k != v && (_teams is null || _teams[k] != _teams[v])) _kills[k]++;
+        }
+        foreach (var (s, kind) in Core.Picks) _pk.Add([s, kind]);
+    }
+
+    /// <summary>Команді — по очку за кожного вибулого суперника, поки в неї хтось ще їде.</summary>
+    void TeamScore(List<int> dead)
+    {
+        foreach (var d in dead)
+            for (var t = 0; t < 2; t++)
+                if (t != _teams![d] && TeamAlive(t)) _teamPts[t]++;
+        for (var s = 0; s < CurveCore.Seats; s++)
+            if (_teams![s] >= 0) _scores[s] = _teamPts[_teams[s]];
+    }
+
+    bool TeamAlive(int t)
+    {
+        for (var s = 0; s < CurveCore.Seats; s++)
+            if (_seats[s] && _teams![s] == t && Core.Heads[s].Alive) return true;
+        return false;
+    }
+
+    /// <summary>Раунд скінчився: живих ≤ 1, а в командах — живі лише з однієї команди.</summary>
+    bool RoundOver()
+    {
+        if (Core.AliveCount <= 1) return true;
+        return _teams is not null && !(TeamAlive(0) && TeamAlive(1));
     }
 
     /// <summary>Раунд скінчився: або йдемо на наступний, або партію зіграно.</summary>
@@ -524,11 +837,17 @@ public sealed class CurveGame : Game
         return [.. playing.Where(s => _scores[s] == best)];
     }
 
-    /// <summary>«Оля жовта 10, Петро зелена 7» — рахунок читається і на двох, і на чотирьох.</summary>
-    string Table() => string.Join(", ", Enumerable.Range(0, CurveCore.Seats)
-        .Where(s => _seats[s] && Ctx.NickOf(s) is not null)
-        .OrderByDescending(s => _scores[s])
-        .Select(s => $"{Ctx.NickOf(s)} {SeatName(s)} {_scores[s]}"));
+    /// <summary>«Оля жовта 10, Петро зелена 7» — рахунок читається і на двох, і на чотирьох; у командах — по командах.</summary>
+    string Table()
+    {
+        if (_teams is not null)
+            return string.Join(", ", Enumerable.Range(0, 2).OrderByDescending(t => _teamPts[t]).Select(t =>
+                $"{TeamNames[t]} ({string.Join(", ", Enumerable.Range(0, CurveCore.Seats).Where(s => _seats[s] && _teams[s] == t).Select(Ctx.NickOf))}) {_teamPts[t]}"));
+        return string.Join(", ", Enumerable.Range(0, CurveCore.Seats)
+            .Where(s => _seats[s] && Ctx.NickOf(s) is not null)
+            .OrderByDescending(s => _scores[s])
+            .Select(s => $"{Ctx.NickOf(s)} {SeatName(s)} {_scores[s]}"));
+    }
 
     /// <summary>
     /// Хтось встав. На двох це кінець партії, а в компанії — ні: кривуля того, хто пішов, просто гасне,
@@ -541,10 +860,12 @@ public sealed class CurveGame : Game
         // тож нехай його й видно. Місце прибере наступний Reset(_seats).
         Core.Heads[seat].Alive = false;
         var rest = Enumerable.Range(0, CurveCore.Seats).Where(s => s != seat && Ctx.Seated(s)).ToArray();
-        if (rest.Length >= 2)
+        var oneTeam = _teams is not null && rest.Length > 0 && rest.All(s => _teams[s] == _teams[rest[0]]);
+        if (rest.Length >= 2 && !oneTeam)
         {
             // Стіл поменшав — ліміт партії теж: «до 10 × (гравців − 1)» рахується від тих, хто лишився.
-            _target = PerRival * Math.Max(1, rest.Length - 1);
+            // У командах ліміт лишається: суперників менше, але й очок на раунд менше.
+            if (_teams is null) _target = PerRival * Math.Max(1, rest.Length - 1);
             var best = Leaders();
             if (best.Length > 0 && _scores[best[0]] >= _target) EndGame(best);
             return;
@@ -553,6 +874,7 @@ public sealed class CurveGame : Game
         _phase = "done";
         Ctx.Finish(rest, rest.Length == 1
             ? $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу — {Ctx.NickOf(rest[0])} лишається наодинці"
+            : oneTeam ? $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу — {TeamNames[_teams![rest[0]]]} лишаються самі"
             : $"{Info.Title}: партію не дограли");
     }
 
@@ -562,46 +884,69 @@ public sealed class CurveGame : Game
     static double R1(double v) => Math.Round(v, 1);
 
     /// <summary>Голови так, як їх малює клієнт; порожнє місце — null, щоб індекси збігались із місцями.</summary>
-    object?[] HeadsWire() => [.. Core.Heads.Select(h => h.Present
-        ? new
+    object?[] HeadsWire() => [.. Core.Heads.Select(h => !h.Present ? null
+        : _bonus
+            ? new { x = R1(h.X), y = R1(h.Y), a = (int)Math.Round(h.A * 180 / Math.PI), alive = h.Alive, gap = h.Gap, fx = h.Fx }
+            : (object)new { x = R1(h.X), y = R1(h.Y), a = (int)Math.Round(h.A * 180 / Math.PI), alive = h.Alive, gap = h.Gap })];
+
+    /// <summary>Бонуси на полі: [вид, x, y].</summary>
+    int[][] BonusWire() => [.. Core.Items.Select(b => new[] { b.Kind, (int)b.X, (int)b.Y })];
+
+    public override object? Frame()
+    {
+        var f = new Dictionary<string, object>
         {
-            x = R1(h.X),
-            y = R1(h.Y),
-            a = (int)Math.Round(h.A * 180 / Math.PI),
-            alive = h.Alive,
-            gap = h.Gap,
+            ["t"] = Core.RoundTicks,
+            ["r"] = _round,
+            ["heads"] = HeadsWire(),
+            ["s"] = (int[])_scores.Clone(),
+            ["phase"] = _phase,
+            ["startIn"] = StartIn,
+        };
+        if (_bonus)
+        {
+            f["b"] = BonusWire();
+            f["k"] = Core.Cleared;
         }
-        : null)];
+        if (_ev.Count > 0) f["ev"] = _ev.ToArray();
+        if (_pk.Count > 0) f["pk"] = _pk.ToArray();
+        return f;
+    }
 
-    public override object? Frame() => new
+    public override object View(int? seat)
     {
-        t = Core.RoundTicks,
-        r = _round,
-        heads = HeadsWire(),
-        s = (int[])_scores.Clone(),
-        phase = _phase,
-        startIn = StartIn,
-    };
-
-    public override object View(int? seat) => new
-    {
-        width = Core.W,
-        height = Core.H,
-        turn = (int?)null,
-        round = _round,
-        target = _target,
-        phase = _phase,
-        startIn = StartIn,
-        scores = (int[])_scores.Clone(),
-        heads = HeadsWire(),
-        // Растр цілком — це 60 КБ на кожне перемальовування, тому клієнтові їде ламана: пари x,y
-        // і номери точок, у які слід не веде (дірки).
-        segments = (object?[])[.. Core.Heads.Select(h =>
+        var n = Core.Heads.Count(x => x.Present);
+        var v = new Dictionary<string, object?>
         {
-            if (!h.Present) return null;
-            var (pts, gaps) = CurveCore.Polyline(h.Trail, CurveCore.PtsFor(Core.Heads.Count(x => x.Present)));
-            return (object)new { pts, gaps };
-        })],
-        winners = _winners,
-    };
+            ["width"] = Core.W,
+            ["height"] = Core.H,
+            ["turn"] = null,
+            ["round"] = _round,
+            ["target"] = _target,
+            ["phase"] = _phase,
+            ["startIn"] = StartIn,
+            ["scores"] = (int[])_scores.Clone(),
+            ["heads"] = HeadsWire(),
+            // Растр цілком — це 60 КБ на кожне перемальовування, тому клієнтові їде ламана: пари x,y
+            // і номери точок, у які слід не веде (дірки).
+            ["segments"] = (object?[])[.. Core.Heads.Select(h =>
+            {
+                if (!h.Present) return null;
+                var fat = new List<int>();
+                var (pts, gaps) = CurveCore.Polyline(h.Trail, CurveCore.PtsFor(n), fat);
+                return fat.Count > 0 ? new { pts, gaps, fat = fat.ToArray() } : (object)new { pts, gaps };
+            })],
+            ["winners"] = _winners,
+            ["kills"] = (int[])_kills.Clone(),
+        };
+        if (_wrap) v["wrap"] = true;
+        if (_bonus)
+        {
+            v["b"] = BonusWire();
+            v["k"] = Core.Cleared;
+        }
+        if (_teams is not null) v["teams"] = (int[])_teams.Clone();
+        if (_note is not null) v["note"] = _note;
+        return v;
+    }
 }
