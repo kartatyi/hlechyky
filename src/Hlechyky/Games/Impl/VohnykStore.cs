@@ -12,6 +12,9 @@ public sealed record VohnykBest(string PairKey, int Level, int Ms, int Deaths, i
     public bool Solo => !PairKey.Contains('+');
 }
 
+/// <summary>Привид пари на рівні: час того проходження і позиції героїв (base64 short, див. Vohnyk.GhostEvery).</summary>
+public sealed record VohnykGhost(string PairKey, int Level, int Ms, string Data, DateTimeOffset At);
+
 /// <summary>
 /// «Вогник і Крапля»: прогрес рівнів на нік і найкращі часи пар (specs/vohnyk.md §7.4). Усе, що читає гра, —
 /// з пам'яті (під замком кімнати SQLite не чіпаємо): таблиці піднімаються раз у конструкторі, а нові рядки
@@ -24,17 +27,20 @@ public sealed class VohnykStore : BackgroundService
           at TEXT NOT NULL, PRIMARY KEY(nick_key, level));
         CREATE TABLE IF NOT EXISTS vohnyk_best(pair_key TEXT NOT NULL, level INTEGER NOT NULL, ms INTEGER NOT NULL,
           deaths INTEGER NOT NULL, stars INTEGER NOT NULL, nicks TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY(pair_key, level));
+        CREATE TABLE IF NOT EXISTS vohnyk_ghost(pair_key TEXT NOT NULL, level INTEGER NOT NULL, ms INTEGER NOT NULL,
+          data TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY(pair_key, level));
         """;
 
     readonly Db? _db;
     readonly ILogger<VohnykStore>? _log;
     readonly ConcurrentDictionary<(string Key, int Level), int> _done = new();
     readonly ConcurrentDictionary<(string Key, int Level), VohnykBest> _best = new();
+    readonly ConcurrentDictionary<(string Key, int Level), VohnykGhost> _ghost = new();
     readonly Channel<Row> _rows = Channel.CreateUnbounded<Row>();
     readonly object _gate = new();
 
-    /// <summary>Рядок для бази: або «пройшов» (done), або рекорд пари (best).</summary>
-    sealed record Row(string Key, int Level, int Stars, VohnykBest? Best, DateTimeOffset At);
+    /// <summary>Рядок для бази: або «пройшов» (done), або рекорд пари (best), або привид пари (ghost).</summary>
+    sealed record Row(string Key, int Level, int Stars, VohnykBest? Best, DateTimeOffset At, VohnykGhost? Ghost = null);
 
     public VohnykStore(Db? db, ILogger<VohnykStore>? log = null)
     {
@@ -55,6 +61,13 @@ public sealed class VohnykStore : BackgroundService
                     {
                         var b = new VohnykBest(r.GetString(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.GetInt32(4), r.GetString(5), Ts(r.GetString(6)));
                         _best[(b.PairKey, b.Level)] = b;
+                    }
+                using (var cmd = Cmd(c, "SELECT pair_key, level, ms, data, at FROM vohnyk_ghost"))
+                using (var r = cmd.ExecuteReader())
+                    while (r.Read())
+                    {
+                        var g = new VohnykGhost(r.GetString(0), r.GetInt32(1), r.GetInt32(2), r.GetString(3), Ts(r.GetString(4)));
+                        _ghost[(g.PairKey, g.Level)] = g;
                     }
             });
         }
@@ -107,10 +120,13 @@ public sealed class VohnykStore : BackgroundService
         return list.Count > n ? list.GetRange(0, n) : list;
     }
 
-    /// <summary>Усі п'ятнадцять рівнів на три зірки — умова «Кришталевої печери».</summary>
+    /// <summary>Привид пари на рівні (з пам'яті).</summary>
+    public VohnykGhost? Ghost(string pairKey, int level) => _ghost.TryGetValue((pairKey, level), out var g) ? g : null;
+
+    /// <summary>Усі п'ятнадцять рівнів першої печери на три зірки — умова «Кришталевої печери».</summary>
     public bool AllThreeStars(string nickKey)
     {
-        for (var n = 1; n <= VohnykLevels.Count; n++)
+        for (var n = 1; n <= VohnykLevels.Cave1; n++)
             if (Stars(nickKey, n) < 3) return false;
         return true;
     }
@@ -120,7 +136,8 @@ public sealed class VohnykStore : BackgroundService
     /// лише зірки: склад мінявся посеред рівня, і час не належить жодній парі). Пам'ять одразу, база — потім,
     /// через канал (кличеться під замком кімнати, тож жодного SQLite тут).
     /// </summary>
-    public void Record(IReadOnlyList<string> nicks, int level, int ms, int deaths, int stars, DateTimeOffset at, bool best = true)
+    /// <param name="ghost">Привид цієї спроби (лише якщо він швидший за збережений привид або привида ще нема) — рядок будується лише тоді.</param>
+    public void Record(IReadOnlyList<string> nicks, int level, int ms, int deaths, int stars, DateTimeOffset at, bool best = true, Func<string>? ghost = null)
     {
         if (nicks.Count == 0) return;
         lock (_gate)
@@ -136,6 +153,12 @@ public sealed class VohnykStore : BackgroundService
             if (!best) return;
             var pair = PairKey(nicks);
             var prev = Best(pair, level);
+            if (ghost is not null && (Ghost(pair, level) is not { } old || ms < old.Ms))
+            {
+                var g = new VohnykGhost(pair, level, ms, ghost(), at);
+                _ghost[(pair, level)] = g;
+                if (_db is not null) _rows.Writer.TryWrite(new Row(pair, level, stars, null, at, g));
+            }
             if (prev is null || ms < prev.Ms)
             {
                 var row = new VohnykBest(pair, level, ms, deaths, stars, Names(nicks), at);
@@ -172,7 +195,12 @@ public sealed class VohnykStore : BackgroundService
 
     void Write(Row row) => _db!.With(c =>
     {
-        if (row.Best is { } b)
+        if (row.Ghost is { } g)
+            Exec(c, """
+                INSERT INTO vohnyk_ghost(pair_key, level, ms, data, at) VALUES($k, $l, $ms, $d, $at)
+                ON CONFLICT(pair_key, level) DO UPDATE SET ms = excluded.ms, data = excluded.data, at = excluded.at
+                """, ("$k", g.PairKey), ("$l", g.Level), ("$ms", g.Ms), ("$d", g.Data), ("$at", Iso(g.At)));
+        else if (row.Best is { } b)
             Exec(c, """
                 INSERT INTO vohnyk_best(pair_key, level, ms, deaths, stars, nicks, at) VALUES($k, $l, $ms, $d, $s, $n, $at)
                 ON CONFLICT(pair_key, level) DO UPDATE SET ms = excluded.ms, deaths = excluded.deaths, stars = excluded.stars,

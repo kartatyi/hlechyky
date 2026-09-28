@@ -20,9 +20,17 @@ public static class VohnykSetup
         // Таблиця рівня: десять найшвидших пар (і тих, хто сам за двох).
         app.MapGet("/api/games/vohnyk/best", (int? level, VohnykStore store) =>
         {
-            var n = level is >= 1 and <= VohnykLevels.Count ? level.Value : 1;
+            var n = level >= 1 && level <= VohnykLevels.Count ? level.Value : 1;
             var rows = store.Top(n, 10).Select(b => new { nicks = b.Nicks, solo = b.Solo, ms = b.Ms, deaths = b.Deaths, stars = b.Stars, at = b.At });
             return Results.Json(new { level = n, rows });
+        });
+
+        // Привид найкращого записаного проходження пари на рівні: позиції обох героїв кожні 4 кроки (80 мс).
+        // Клієнт бере його один раз на рівень (у виді — лише ms і ключ пари), тож вид лишається маленьким.
+        app.MapGet("/api/games/vohnyk/ghost", (int? level, string? pair, VohnykStore store) =>
+        {
+            if (level is not { } n || string.IsNullOrEmpty(pair) || store.Ghost(pair, n) is not { } g) return Results.NotFound();
+            return Results.Json(new { level = n, ms = g.Ms, every = Vohnyk.GhostEvery, data = g.Data });
         });
 
         // Усі рівні як лежать у файлах, разом із solution і check — для docs/games/dev/vohnyk-parity.js.

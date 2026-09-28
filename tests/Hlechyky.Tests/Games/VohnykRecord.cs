@@ -85,6 +85,11 @@ public static class VohnykRecord
         List("lifts", f.Lifts.Select(l => $"{{ \"id\": {J(l.Id)}, \"at\": {J(l.At)}, \"w\": {l.W}, \"to\": {J(l.To)}, \"by\": {J(l.By)}, \"mode\": {J(l.Mode)}, \"inv\": {J(l.Inv)} }}"));
         List("boxes", f.Boxes.Select(b => $"{{ \"at\": {J(b.At)} }}"));
         List("hints", f.Hints.Select(h => $"{{ \"at\": {J(h.At)}, \"w\": {h.W}, \"text\": {J(h.Text)} }}"));
+        // друга печера — лише там, де є
+        if (f.Mirrors.Length > 0) List("mirrors", f.Mirrors.Select(m => $"{{ \"id\": {J(m.Id)}, \"at\": {J(m.At)}, \"init\": {m.Init}, \"fixed\": {J(m.Fixed)} }}"));
+        if (f.Beams.Length > 0) List("beams", f.Beams.Select(b => $"{{ \"id\": {J(b.Id)}, \"at\": {J(b.At)}, \"dir\": {J(b.Dir)}, \"who\": {J(b.Who)}, \"by\": {J(b.By)}, \"mode\": {J(b.Mode)}, \"inv\": {J(b.Inv)} }}"));
+        if (f.Sensors.Length > 0) List("sensors", f.Sensors.Select(s => $"{{ \"id\": {J(s.Id)}, \"at\": {J(s.At)} }}"));
+        if (f.Portals.Length > 0) List("portals", f.Portals.Select(p => $"{{ \"id\": {J(p.Id)}, \"a\": {J(p.A)}, \"b\": {J(p.B)}, \"by\": {J(p.By)}, \"mode\": {J(p.Mode)}, \"inv\": {J(p.Inv)} }}"));
         sb.Append("  \"solution\": ");
         Log(f.Solution, "  ");
         if (f.Check is { } c)

@@ -31,8 +31,13 @@ public sealed class VohnykWorld
     /// <summary>Скільки int на героя в знімку стану.</summary>
     public const int HeroInts = 14;
 
+    /// <summary>Промінь: скільки клітинок щонайбільше пролітає (дзеркальна петля теж скінчиться).</summary>
+    public const int RayMaxHops = 80;
+    /// <summary>Скільки відрізків променів тримаємо для малювання (x0, y0, x1, y1, чий — по 5 int).</summary>
+    public const int RayMaxSegs = 64;
+
     public readonly VohnykLevel Level;
-    readonly int _nb, _nl, _nd, _nf, _nx;
+    readonly int _nb, _nl, _nd, _nf, _nx, _ns, _np, _ne;
 
     // ---- герої (0 — Вогник, 1 — Крапля) ----
     public readonly int[] X = new int[2], Y = new int[2], Vx = new int[2], Vy = new int[2], K = new int[2];
@@ -47,6 +52,17 @@ public sealed class VohnykWorld
     public readonly int[] LiftX, LiftY;
     public readonly int[] Lever, Button;
     public int Gems, Hold, Cleared;
+    // ---- друга печера: кришталі (1 — у них б'є промінь), портали (маска «в якому кінці стоїть» на героя) ----
+    public readonly int[] Sensor;
+    public readonly int[] PortalIn = new int[2];
+    /// <summary>
+    /// Чим цього кроку влучило в героя: біт 1 — вогняний промінь, 2 — водяний, 4 — світло. Не частина знімка: рахується
+    /// заново наприкінці кожного кроку (і на скиданні), а читається лише одразу після того.
+    /// </summary>
+    public readonly int[] RayHit = new int[2];
+    /// <summary>Відрізки променів після останнього кроку (для малювання): <see cref="RayCount"/> × (x0, y0, x1, y1, чий), su.</summary>
+    public readonly int[] Ray = new int[RayMaxSegs * 5];
+    public int RayCount;
     /// <summary>
     /// Сам за двох (один гравець веде обох). Не частина знімка: гра ставить це на старті й коли партнер устає, а
     /// клієнт — з виду. Єдине, що від цього міняється, — кнопки брам «все разом» тримаються <see cref="SoloLatch"/>.
@@ -61,6 +77,9 @@ public sealed class VohnykWorld
     readonly bool[] _riderBox;
     /// <summary>Кнопка входить у двері чи ліфт «все разом» — у соло вона тримається ще <see cref="SoloLatch"/> кроків.</summary>
     readonly bool[] _latchable;
+    /// <summary>Що стоїть у клітинці для променя: 0 — нічого, i+1 — дзеркало (індекс важеля i), −(s+1) — кришталь s.</summary>
+    readonly int[] _cell;
+    readonly int[] _portX, _portY;
 
     public VohnykWorld(VohnykLevel level)
     {
@@ -74,6 +93,22 @@ public sealed class VohnykWorld
         DoorO = new int[_nd];
         LiftX = new int[_nf]; LiftY = new int[_nf];
         Lever = new int[_nl]; Button = new int[_nb];
+        _ns = level.Sensors.Length;
+        _np = level.Portals.Length;
+        _ne = level.Beams.Length;
+        Sensor = new int[_ns];
+        _cell = new int[level.W * level.H];
+        for (var i = 0; i < _nl; i++)
+            if (level.Levers[i].Mirror) _cell[level.Levers[i].Row * level.W + level.Levers[i].Col] = i + 1;
+        for (var i = 0; i < _ns; i++) _cell[level.Sensors[i].Row * level.W + level.Sensors[i].Col] = -(i + 1);
+        // кінці порталів: [2p] — a, [2p+1] — b, верхній лівий кут прямокутника 1 × 2 плитки
+        _portX = new int[2 * _np]; _portY = new int[2 * _np];
+        for (var i = 0; i < _np; i++)
+        {
+            var p = level.Portals[i];
+            _portX[2 * i] = p.ACol * TileSu; _portY[2 * i] = p.ARow * TileSu;
+            _portX[2 * i + 1] = p.BCol * TileSu; _portY[2 * i + 1] = p.BRow * TileSu;
+        }
         _doorX = new int[_nd]; _doorY = new int[_nd]; _doorH = new int[_nd];
         for (var i = 0; i < _nd; i++)
         {
@@ -115,7 +150,8 @@ public sealed class VohnykWorld
         }
         _exitX = [level.Exits[0].Col * TileSu, level.Exits[1].Col * TileSu];
         _exitY = [level.Exits[0].Row * TileSu, level.Exits[1].Row * TileSu];
-        StateLength = 2 * HeroInts + 3 * _nx + _nd + 2 * _nf + _nl + _nb + 3;
+        // Нове другої печери — у хвості знімка й лише там, де воно є: рівні першої печери мають ті самі знімки й хеші.
+        StateLength = 2 * HeroInts + 3 * _nx + _nd + 2 * _nf + _nl + _nb + 3 + (_np > 0 ? 2 : 0) + _ns;
         Reset(keepGems: false);
     }
 
@@ -129,6 +165,7 @@ public sealed class VohnykWorld
             var m = 0;
             for (var i = 0; i < _nb; i++) if (Button[i] != 0) m |= 1 << i;
             for (var i = 0; i < _nl; i++) if (Lever[i] != 0) m |= 1 << (_nb + i);
+            for (var i = 0; i < _ns; i++) if (Sensor[i] != 0) m |= 1 << (_nb + _nl + i);
             return m;
         }
     }
@@ -163,6 +200,8 @@ public sealed class VohnykWorld
         for (var i = 0; i < _nf; i++) { LiftX[i] = _liftAX[i]; LiftY[i] = _liftAY[i]; }
         for (var i = 0; i < _nl; i++) Lever[i] = Level.Levers[i].Init;
         for (var i = 0; i < _nb; i++) Button[i] = 0;
+        for (var i = 0; i < _ns; i++) Sensor[i] = 0;
+        PortalIn[0] = PortalIn[1] = 0;
         if (!keepGems) Gems = 0;
         Hold = 0;
         Cleared = 0;
@@ -184,7 +223,9 @@ public sealed class VohnykWorld
         for (var i = 0; i < _nf; i++) { s[p++] = LiftX[i]; s[p++] = LiftY[i]; }
         for (var i = 0; i < _nl; i++) s[p++] = Lever[i];
         for (var i = 0; i < _nb; i++) s[p++] = Button[i];
-        s[p++] = Gems; s[p++] = Hold; s[p] = Cleared;
+        s[p++] = Gems; s[p++] = Hold; s[p++] = Cleared;
+        if (_np > 0) { s[p++] = PortalIn[0]; s[p++] = PortalIn[1]; }
+        for (var i = 0; i < _ns; i++) s[p++] = Sensor[i];
     }
 
     public void Load(int[] s)
@@ -201,7 +242,9 @@ public sealed class VohnykWorld
         for (var i = 0; i < _nf; i++) { LiftX[i] = s[p++]; LiftY[i] = s[p++]; }
         for (var i = 0; i < _nl; i++) Lever[i] = s[p++];
         for (var i = 0; i < _nb; i++) Button[i] = s[p++];
-        Gems = s[p++]; Hold = s[p++]; Cleared = s[p];
+        Gems = s[p++]; Hold = s[p++]; Cleared = s[p++];
+        if (_np > 0) { PortalIn[0] = s[p++]; PortalIn[1] = s[p++]; }
+        for (var i = 0; i < _ns; i++) Sensor[i] = s[p++];
     }
 
     /// <summary>FNV-1a 32-біт над знімком (кожен int — 4 байти little-endian). Так само в JS (Math.imul, &gt;&gt;&gt; 0).</summary>
@@ -239,6 +282,7 @@ public sealed class VohnykWorld
         StepHero(0, kFire & 7);
         StepHero(1, kWater & 7);
         for (var i = 0; i < _nx; i++) StepBox(i);
+        if (_np > 0) StepPortals(sig);
         UpdateSignals();
         // самоцвіти
         for (var g = 0; g < _gemX.Length; g++)
@@ -247,9 +291,9 @@ public sealed class VohnykWorld
             var who = Level.Gems[g].Who;
             if (Overlap(X[who], Y[who], HeroW, HeroH, _gemX[g], _gemY[g], 20 * Px, 20 * Px)) Gems |= 1 << g;
         }
-        // небезпека: зона ніг у чужій рідині чи болоті
+        // небезпека: зона ніг у чужій рідині чи болоті, або чужий промінь
         for (var i = 0; i < 2; i++)
-            if (Died[i] == 0 && FeetInDanger(i)) Died[i] = 1;
+            if (Died[i] == 0 && (FeetInDanger(i) || RayKills(i))) Died[i] = 1;
         // виходи
         for (var i = 0; i < 2; i++)
         {
@@ -586,7 +630,7 @@ public sealed class VohnykWorld
             {
                 var hit = false;
                 for (var c = c0; c <= c1; c++)
-                    if (SolidFor(Level.Tile(c, r), i)) { hit = true; break; }
+                    if (FloorFor(Level.Tile(c, r), i)) { hit = true; break; }
                 if (hit) { limit = Math.Min(limit, r * TileSu - HeroH); break; }
             }
             for (var d = 0; d < _nd; d++)
@@ -642,7 +686,7 @@ public sealed class VohnykWorld
         var r = FloorDiv(feet, TileSu);
         if (feet % TileSu == 0)
             for (var c = FloorDiv(x, TileSu); c <= FloorDiv(x + HeroW - 1, TileSu); c++)
-                if (SolidFor(Level.Tile(c, r), i)) return true;
+                if (FloorFor(Level.Tile(c, r), i)) return true;
         for (var d = 0; d < _nd; d++)
             if (_doorY[d] == feet && _doorH[d] - DoorO[d] > 0 && _doorX[d] < x + HeroW && _doorX[d] + TileSu > x) return true;
         for (var f = 0; f < _nf; f++)
@@ -668,8 +712,8 @@ public sealed class VohnykWorld
         var bottom = y + BoxSize;
         if (off == 0 || bottom % TileSu != 0) return;
         var r = bottom / TileSu;
-        var left = Level.Tile(c0, r) == VohnykLevel.Stone;
-        var right = Level.Tile(c0 + 1, r) == VohnykLevel.Stone;
+        var left = FloorFor(Level.Tile(c0, r), -1);
+        var right = FloorFor(Level.Tile(c0 + 1, r), -1);
         if (left == right) return;
         // тримається не на плитці, а на ліфті, дверях чи іншій скрині — то не яма
         for (var f = 0; f < _nf; f++)
@@ -719,7 +763,7 @@ public sealed class VohnykWorld
         {
             var hit = false;
             for (var c = c0; c <= c1; c++)
-                if (Level.Tile(c, r) == VohnykLevel.Stone) { hit = true; break; }
+                if (FloorFor(Level.Tile(c, r), -1)) { hit = true; break; }
             if (hit) { limit = Math.Min(limit, r * TileSu - BoxSize); break; }
         }
         for (var d = 0; d < _nd; d++)
@@ -737,6 +781,172 @@ public sealed class VohnykWorld
         if (limit != y0 + dy) BoxVy[b] = 0;
         BoxY[b] = limit;
     }
+
+    // ---------- портали ----------
+
+    /// <summary>
+    /// Герой, чий центр щойно зайшов у кінець активного порталу, виходить з другого кінця тим самим місцем і з тією
+    /// самою швидкістю. Назад не кидає: після стрибка він уже «стоїть» у другому кінці, а спрацьовує лише вхід.
+    /// </summary>
+    void StepPortals(int sig)
+    {
+        for (var h = 0; h < 2; h++)
+        {
+            var cx = X[h] + HeroW / 2;
+            var cy = Y[h] + HeroH / 2;
+            var mask = 0;
+            for (var e = 0; e < 2 * _np; e++)
+                if (cx >= _portX[e] && cx < _portX[e] + TileSu && cy >= _portY[e] && cy < _portY[e] + 2 * TileSu) mask |= 1 << e;
+            var fresh = mask & ~PortalIn[h];
+            PortalIn[h] = mask;
+            if (fresh == 0) continue;
+            var e0 = System.Numerics.BitOperations.TrailingZeroCount(fresh);
+            var def = Level.Portals[e0 >> 1];
+            if (def.ByMask != 0 && !Active(sig, def.ByMask, def.All, def.Inv)) continue;
+            var to = e0 ^ 1;
+            var nx = X[h] + _portX[to] - _portX[e0];
+            var ny = Y[h] + _portY[to] - _portY[e0];
+            if (PortalBlocked(h, nx, ny)) continue;
+            X[h] = nx;
+            Y[h] = ny;
+            PortalIn[h] = 1 << to;
+        }
+    }
+
+    /// <summary>Чи не влізе герой у другий кінець порталу: камінь чи своя рідина, зачинені двері, ліфт, скриня.</summary>
+    bool PortalBlocked(int h, int x, int y)
+    {
+        if (TileSolidIn(x, y, HeroW, HeroH, h)) return true;
+        for (var d = 0; d < _nd; d++)
+            if (_doorH[d] > DoorO[d] && Overlap(x, y, HeroW, HeroH, _doorX[d], _doorY[d], TileSu, _doorH[d] - DoorO[d])) return true;
+        for (var f = 0; f < _nf; f++)
+            if (Overlap(x, y, HeroW, HeroH, LiftX[f], LiftY[f], _liftW[f], LiftH)) return true;
+        for (var b = 0; b < _nx; b++)
+            if (Overlap(x, y, HeroW, HeroH, BoxX[b], BoxY[b], BoxSize, BoxSize)) return true;
+        return false;
+    }
+
+    // ---------- промені ----------
+
+    static readonly int[] RayDx = [1, 0, -1, 0], RayDy = [0, 1, 0, -1];
+
+    /// <summary>
+    /// Промені всіх увімкнених ліхтарів: від центру клітинки до центру сусідньої, крок за кроком. Зупиняє камінь (тонка
+    /// платформа — лише згори й знизу), герой, скриня, зачинена частина дверей, ліфт; кришталь світиться й ковтає
+    /// промінь; дзеркало повертає («/» — праворуч↔угору, «\» — праворуч↔униз). Кого зачепило — у <see cref="RayHit"/>.
+    /// </summary>
+    void TraceBeams(int sig)
+    {
+        RayHit[0] = RayHit[1] = 0;
+        RayCount = 0;
+        for (var i = 0; i < _ns; i++) Sensor[i] = 0;
+        for (var e = 0; e < _ne; e++)
+        {
+            var def = Level.Beams[e];
+            if (def.ByMask != 0 && !Active(sig, def.ByMask, def.All, def.Inv)) continue;
+            var c = def.Col;
+            var r = def.Row;
+            var d = def.Dir;
+            var x = c * TileSu + TileSu / 2;
+            var y = r * TileSu + TileSu / 2;
+            var sx = x;
+            var sy = y;
+            for (var hop = 0; hop < RayMaxHops; hop++)
+            {
+                var nc = c + RayDx[d];
+                var nr = r + RayDy[d];
+                var t = Level.Tile(nc, nr);
+                var wall = t == VohnykLevel.Stone || (t == VohnykLevel.Thin && (d & 1) != 0);
+                // куди дійде цей крок: до краю клітинки-стіни або до центру сусідньої
+                var ex = wall ? x + RayDx[d] * (TileSu / 2) : x + RayDx[d] * TileSu;
+                var ey = wall ? y + RayDy[d] * (TileSu / 2) : y + RayDy[d] * TileSu;
+                var hitWho = -1;
+                var stop = RayBlock(x, y, ex, ey, d, def.Who, ref hitWho);
+                if (stop >= 0)
+                {
+                    if ((d & 1) == 0) ex = stop; else ey = stop;
+                    if (hitWho >= 0) RayHit[hitWho] |= 1 << def.Who;
+                    AddRay(sx, sy, ex, ey, def.Who);
+                    break;
+                }
+                if (wall) { AddRay(sx, sy, ex, ey, def.Who); break; }
+                x = ex; y = ey; c = nc; r = nr;
+                var o = _cell[r * Level.W + c];
+                if (o < 0) { Sensor[-o - 1] = 1; AddRay(sx, sy, x, y, def.Who); break; }
+                if (o > 0)
+                {
+                    AddRay(sx, sy, x, y, def.Who);
+                    sx = x; sy = y;
+                    d = Lever[o - 1] != 0 ? d ^ 3 : d ^ 1;
+                }
+                if (hop == RayMaxHops - 1) AddRay(sx, sy, x, y, def.Who);
+            }
+        }
+    }
+
+    void AddRay(int x0, int y0, int x1, int y1, int who)
+    {
+        if (RayCount >= RayMaxSegs) return;
+        var p = RayCount++ * 5;
+        Ray[p] = x0; Ray[p + 1] = y0; Ray[p + 2] = x1; Ray[p + 3] = y1; Ray[p + 4] = who;
+    }
+
+    /// <summary>
+    /// Найближче тіло на відрізку променя (x0,y0)→(x1,y1) напрямку d: координата по осі руху, де промінь у нього
+    /// впирається, або −1. Порядок перевірки (герої, скрині, двері, ліфти) вирішує нічию — однаково в C# і JS. Герої —
+    /// спершу той, кого цей промінь не чіпає: стали пліч-о-пліч — він і прикрив (водяний: спершу Крапля).
+    /// </summary>
+    int RayBlock(int x0, int y0, int x1, int y1, int d, int who, ref int hero)
+    {
+        var best = -1;
+        var h0 = who == 1 ? 1 : 0;
+        if (RayCut(x0, y0, x1, y1, d, X[h0], Y[h0], HeroW, HeroH, ref best)) hero = h0;
+        if (RayCut(x0, y0, x1, y1, d, X[1 - h0], Y[1 - h0], HeroW, HeroH, ref best)) hero = 1 - h0;
+        for (var b = 0; b < _nx; b++)
+            if (RayCut(x0, y0, x1, y1, d, BoxX[b], BoxY[b], BoxSize, BoxSize, ref best)) hero = -1;
+        for (var i = 0; i < _nd; i++)
+        {
+            var dh = _doorH[i] - DoorO[i];
+            if (dh > 0 && RayCut(x0, y0, x1, y1, d, _doorX[i], _doorY[i], TileSu, dh, ref best)) hero = -1;
+        }
+        for (var f = 0; f < _nf; f++)
+            if (RayCut(x0, y0, x1, y1, d, LiftX[f], LiftY[f], _liftW[f], LiftH, ref best)) hero = -1;
+        return best;
+    }
+
+    /// <summary>Чи перетинає відрізок прямокутник ближче, ніж уже знайдене (best — точка входу по осі руху).</summary>
+    static bool RayCut(int x0, int y0, int x1, int y1, int d, int bx, int by, int bw, int bh, ref int best)
+    {
+        int at;
+        switch (d)
+        {
+            case 0:
+                if (y0 < by || y0 >= by + bh || bx >= x1 || bx + bw <= x0) return false;
+                at = bx > x0 ? bx : x0;
+                if (best >= 0 && at >= best) return false;
+                break;
+            case 2:
+                if (y0 < by || y0 >= by + bh || bx >= x0 || bx + bw <= x1) return false;
+                at = bx + bw < x0 ? bx + bw : x0;
+                if (best >= 0 && at <= best) return false;
+                break;
+            case 1:
+                if (x0 < bx || x0 >= bx + bw || by >= y1 || by + bh <= y0) return false;
+                at = by > y0 ? by : y0;
+                if (best >= 0 && at >= best) return false;
+                break;
+            default:
+                if (x0 < bx || x0 >= bx + bw || by >= y0 || by + bh <= y1) return false;
+                at = by + bh < y0 ? by + bh : y0;
+                if (best >= 0 && at <= best) return false;
+                break;
+        }
+        best = at;
+        return true;
+    }
+
+    /// <summary>Чужий промінь: Вогника гасить водяний, Краплю випаровує вогняний. Світло нікого не чіпає.</summary>
+    public bool RayKills(int i) => (RayHit[i] & (i == 0 ? 2 : 1)) != 0;
 
     // ---------- сигнали, небезпека ----------
 
@@ -762,11 +972,19 @@ public sealed class VohnykWorld
             {
                 var inside = Overlap(X[h], Y[h], HeroW, HeroH, _levX[i], _levY[i], TileSu, TileSu);
                 if (inside) { mask |= 1 << i; continue; }
-                if ((LeverIn[h] & (1 << i)) == 0) continue;
+                if ((LeverIn[h] & (1 << i)) == 0 || Level.Levers[i].Fixed) continue;
                 if (X[h] >= _levX[i] + TileSu) Lever[i] = 1;
                 else if (X[h] + HeroW <= _levX[i]) Lever[i] = 0;
             }
             LeverIn[h] = mask;
+        }
+        // Промені — останніми: дзеркала вже повернуті цим кроком, а ліхтарі вмикають лише кнопки й важелі.
+        if (_ne > 0)
+        {
+            var m = 0;
+            for (var i = 0; i < _nb; i++) if (Button[i] != 0) m |= 1 << i;
+            for (var i = 0; i < _nl; i++) if (Lever[i] != 0) m |= 1 << (_nb + i);
+            TraceBeams(m);
         }
     }
 
@@ -806,6 +1024,12 @@ public sealed class VohnykWorld
     /// <summary>Чи тверда плитка для героя who: камінь і своя рідина (Вогнику — лава, Краплі — вода). who = −1 — скриня.</summary>
     static bool SolidFor(byte t, int who) =>
         t == VohnykLevel.Stone || (who == 0 && t == VohnykLevel.Lava) || (who == 1 && t == VohnykLevel.Water);
+
+    /// <summary>
+    /// Чи тримає плитка згори (на неї падають і на ній стоять): тверда для героя/скрині або тонка платформа — її
+    /// проходять знизу й збоку, а стають лише зверху.
+    /// </summary>
+    static bool FloorFor(byte t, int who) => t == VohnykLevel.Thin || (who < 0 ? t == VohnykLevel.Stone : SolidFor(t, who));
 
     bool TileSolidIn(int x, int y, int w, int h, int who)
     {
