@@ -64,29 +64,13 @@
   const cat = (st) => (st.catalog && st.catalog.album) || null;
   const wareList = (st) => (st.catalog && st.catalog.wares) || (st.craft && st.craft.wares) || [];
   const styleKeys = (st) => [''].concat(((st.catalog && st.catalog.styles) || st.styleList || []).map((s) => s.key));
-  /// «Домашніх» стовпчиків — скільки їх на сервері (homeColumns, або size / рядки), інакше — розписи каталога. Саме по
-  /// них рахуються повні рядки, стовпчики й «усе в зірках» (v11: стовпчики світу — окремий бонус). Ніде не зашито дев'ять.
+  /// Стовпчиків у сітці — скільки їх на сервері (size / рядки), інакше — розписи каталога. Ніде не зашито дев'ять.
   const cols = (st) => {
     const a = st.album;
-    if (a && a.homeColumns > 0) return a.homeColumns;
     if (a && a.size > 0 && a.cells.length > 0) return Math.round(a.size / a.cells.length);
     return styleKeys(st).length;
   };
-  /// Усі стовпчики сітки разом зі стовпчиками світу (v11): номер клітинки для спалаху — r · allCols + c.
-  const allCols = (st) => Math.max(cols(st), styleKeys(st).length);
   const fullRow = (st) => (1 << cols(st)) - 1;
-  /// З якого «за весь час» група «світ» уже варта уваги: червоний золотий — там починається велика толока.
-  const WORLD_NEAR = 1e27;
-  /// Зірок у стовпчиках світу: біти від homeColumns і далі.
-  const worldStars = (st) => st.album.stars.reduce((n, m) => n + pc((m || 0) >>> cols(st)), 0);
-  /// Група «світ» згорнута? Вибір гравця пам'ятаємо; без нього — згорнута на телефоні й поки у світі порожньо.
-  function worldHidden(st, api) {
-    const saved = api.storeGet('clka.world', '');
-    if (saved) return saved === 'hide';
-    const narrow = window.matchMedia && window.matchMedia('(max-width: 480px)').matches;
-    const owned = (st.styleList || []).some((s) => s.tier && s.owned);
-    return narrow || (!owned && !(st.album && st.album.worldOpen));
-  }
   const styleName = (st, key) => {
     if (!key) return 'простий';
     const s = (st.styleList || []).find((x) => x.key === key);
@@ -208,13 +192,6 @@
     add('⭐', 'зірки', a.starOpen + ' з ' + n, bonusOf(st, 'star', 0.01), a.starOpen * bonusOf(st, 'star', 0.01));
     add('🌟', 'рядки в зірках', a.starRows, bonusOf(st, 'starRow', 0.05), a.starRows * bonusOf(st, 'starRow', 0.05));
     if (a.starOpen >= n && n > 0) add('✨', 'увесь альбом у зірках', '', 0, bonusOf(st, 'starAll', 0.25));
-    // Стовпчики світу (v11) — окремий бонус: клітинка й зірка там важать стільки ж, а вся сітка з ними — ще зверху.
-    if (a.worldSize > 0) {
-      const ws = worldStars(st);
-      add('🌍', 'клітинки світу', a.worldOpen + ' з ' + a.worldSize, bonusOf(st, 'cell', 0.005), a.worldOpen * bonusOf(st, 'cell', 0.005));
-      add('💫', 'зірки світу', ws + ' з ' + a.worldSize, bonusOf(st, 'star', 0.01), ws * bonusOf(st, 'star', 0.01));
-      if (a.worldFull) add('🌐', 'альбом світу зібрано', '', 0, bonusOf(st, 'worldAll', 0.25));
-    }
     const byQ = {};
     for (const t of a.stove) byQ[t.q] = (byQ[t.q] || 0) + 1;
     for (let q = topQuality(st); q >= 2; q--) {
@@ -253,8 +230,6 @@
       + '<div class="clka-rings">'
       + '<div class="clka-rg">' + ring(a.open / Math.max(1, n)) + '<span><b>' + a.open + '/' + n + '</b><i class="muted">клітинок</i></span></div>'
       + '<div class="clka-rg">' + ring(a.starOpen / Math.max(1, n), 'star') + '<span><b>' + a.starOpen + '/' + n + '</b><i class="muted">зірок</i></span></div>'
-      + (a.worldSize > 0 ? '<div class="clka-rg">' + ring(a.worldOpen / a.worldSize, 'world') + '<span><b>' + a.worldOpen + '/' + a.worldSize
-        + '</b><i class="muted">світ</i></span></div>' : '')
       + '<div class="clka-rg">' + ring(a.stove.length / 12, 'tile') + '<span><b>' + a.stove.length + '/12</b><i class="muted">кахлів</i></span></div>'
       + '<div class="clka-rg">' + ring(found / 8, 'museum') + '<span><b>' + found + '/8</b><i class="muted">знахідок</i></span></div>'
       + '<div class="clka-rg">' + ring(lv / Math.max(1, a.mastery.length * 10), 'mastery') + '<span><b>' + lv + '/' + a.mastery.length * 10
@@ -268,33 +243,28 @@
     const esc = (x) => api.esc(st, x);
     const wares = wareList(st);
     const keys = styleKeys(st);
-    const HC = cols(st);
-    const C = allCols(st);
+    const C = cols(st);
     const FR = fullRow(st);
-    // v11: стовпчики від HC і далі — розписи світу. Своя група з підписом «світ»; її можна згорнути (на телефоні
-    // типово згорнута), тоді сітка лишається такою, як до одинадцятого оновлення.
-    const wc = (c) => (c >= HC ? ' clka-wc' + (c === HC ? ' clka-wc0' : '') : '');
     if (!wares.length) return;
     const sig = a.cells.join(',') + '|' + a.stars.join(',') + '|' + a.mastery.join(',') + '|'
       + wares.map((w, i) => Math.floor(masteryProgress(st, w.key, a.mastery[i] || 0) * 20)).join(',') + '|' + keys.length
       + '|' + [...st.albumFlash].join(',') + '|' + a.show.map((s) => s.key).join(',');
-    paintWorldToggle(st, api);
     if (st.albumUi.grid._sig === sig) return;
     st.albumUi.grid._sig = sig;
     const shown = new Set(a.show.map((s) => s.key));
-    let h = '<div class="clka-scroll"><table class="clka-grid"><thead>'
-      + (C > HC ? '<tr class="clka-grprow"><th class="clka-corner"></th><th colspan="' + HC + '" class="clka-grp">дім</th>'
-        + '<th colspan="' + (C - HC) + '" class="clka-grp clka-wc clka-wc0">🌍 світ</th></tr>' : '')
-      + '<tr><th class="clka-corner"><span class="small muted">виріб \\ розпис</span></th>';
+    const starPct = pct(api, bonusOf(st, 'star', 0.01));
+    const rowPct = pct(api, bonusOf(st, 'starRow', 0.05));
+    // Сітка — CSS-грід, а не таблиця з прокруткою вбік (записки 28.09: жодного горизонтального скролу). На вузькій полиці
+    // (телефон) назва виробу стає рядком-підписом над своїми дев'ятьма клітинками — так 9 стовпчиків влазять у 300 px.
+    let h = '<div class="clka-box"><div class="clka-grid" style="--clka-cols:' + keys.length + '">'
+      + '<div class="clka-corner small muted">виріб \\ розпис</div>';
     keys.forEach((k, c) => {
       const full = a.cells.every((m) => (m >> c) & 1);
       const stars = a.stars.length && a.stars.every((m) => (m >> c) & 1);
-      // Повний стовпчик дає +6 % лише в «домашньому» альбомі; у світі він — частина «альбому світу».
-      h += '<th class="clka-colh' + (full ? ' full' : '') + (stars ? ' stars' : '') + wc(c) + '" title="' + esc(styleName(st, k))
-        + (full ? (c < HC ? ' — стовпчик зібрано, +' + pct(api, bonusOf(st, 'column', 0.06)) : ' — стовпчик зібрано') : '') + '">'
-        + api.jugSvg(k, 'clka-colj', 'alb-h-' + (k || 'plain'), '') + '</th>';
+      h += '<div class="clka-colh' + (full ? ' full' : '') + (stars ? ' stars' : '') + '" title="' + esc(styleName(st, k))
+        + (full ? ' — стовпчик зібрано, +' + pct(api, bonusOf(st, 'column', 0.06)) : '') + '">'
+        + api.jugSvg(k, 'clka-colj', 'alb-h-' + (k || 'plain'), '') + '</div>';
     });
-    h += '</tr></thead><tbody>';
     wares.forEach((w, r) => {
       const mask = a.cells[r] || 0;
       const smask = a.stars[r] || 0;
@@ -302,57 +272,96 @@
       const p = masteryProgress(st, w.key, lvl);
       const full = (mask & FR) === FR;
       const allStars = (smask & FR) === FR;
-      h += '<tr class="' + (full ? 'full' : '') + (allStars ? ' stars' : '') + '"><th class="clka-rowh" title="Майстерність ' + lvl + ' з 10 · обпалено '
-        + api.num(firedOf(st, w.key)) + '"><div class="clka-rh">'
+      const starCount = pc(smask & FR);
+      // Підказка при наведенні (на дотик — картка рядка, openRow): що означає кожна позначка біля назви.
+      const tip = w.name + ': зірок ' + starCount + ' з ' + keys.length + ' (★ — вийшов дзвінким чи розкішним, +' + starPct + ' кожна)'
+        + (allStars ? ' · ⭐ увесь рядок у зірках: ще +' + rowPct : ' · усі ' + keys.length + ' — і біля назви стане ⭐ (+' + rowPct + ')')
+        + ' · ' + (lvl >= 10 ? '🖐★ золоті руки — майстерність 10' : 'м' + lvl + ' — майстерність ' + lvl + ' з 10')
+        + ', обпалено ' + api.num(firedOf(st, w.key)) + ' · тап — докладніше';
+      h += '<button type="button" class="clka-rowh' + (full ? ' full' : '') + (allStars ? ' stars' : '') + '" data-row="' + r + '" title="' + esc(tip) + '">'
         + '<span class="clka-wn">' + esc(w.name) + '</span>'
-        + '<span class="clka-lv' + (lvl >= 10 ? ' max' : '') + '" title="' + (lvl >= 10 ? 'Золоті руки: ціна ще ×1,25' : 'Майстерність') + '">'
-        + (lvl >= 10 ? '🖐★' : 'м' + lvl) + '</span>'
-        + '<i class="clka-mbar"><i style="width:' + Math.round(p * 100) + '%"></i></i></div></th>';
+        + (allStars ? '<b class="clka-rstar" aria-label="увесь рядок у зірках">⭐</b>' : '<b class="clka-rcount" aria-label="зірок у рядку">★' + starCount + '</b>')
+        + '<span class="clka-lv' + (lvl >= 10 ? ' max' : '') + '">' + (lvl >= 10 ? '🖐★' : 'м' + lvl) + '</span>'
+        + '<i class="clka-mbar"><i style="width:' + Math.round(p * 100) + '%"></i></i></button>';
       keys.forEach((k, c) => {
         const open = (mask >> c) & 1;
         const star = (smask >> c) & 1;
         const flash = st.albumFlash.has(r * C + c);
         const onShow = shown.has(cellKey(st, r, c));
-        h += '<td class="' + wc(c).trim() + '"><button type="button" class="clka-cell' + (open ? ' open' : '') + (star ? ' star' : '') + (flash ? ' new' : '')
+        h += '<button type="button" class="clka-cell' + (open ? ' open' : '') + (star ? ' star' : '') + (flash ? ' new' : '')
           + (onShow ? ' shown' : '') + '" data-r="' + r + '" data-c="' + c
-          + '" aria-label="' + esc(w.name + ', ' + styleName(st, k) + (open ? (star ? ' — із зіркою' : '') : ' — ще не обпалено')) + '">'
+          + '" title="' + esc(w.name + ' · ' + styleName(st, k) + (open ? (star ? ' — ★ зірка: вийшов дзвінким чи розкішним, +' + starPct : ' — є; зірка — за дзвінкий') : ' — ще не обпалено')) + '"'
+          + ' aria-label="' + esc(w.name + ', ' + styleName(st, k) + (open ? (star ? ' — із зіркою' : '') : ' — ще не обпалено')) + '">'
           + (open
             ? api.wareSvg(w.key, { style: k, quality: star ? 3 : 1, cls: 'clka-w', slot: 'alb-' + r + '-' + c })
             : api.wareSvg(w.key, { style: '', quality: 1, cls: 'clka-w shadow', slot: 'alb-s-' + r }))
-          + (star ? '<i class="clka-star">★</i>' : '') + (onShow ? '<i class="clka-pin">📌</i>' : '') + '</button></td>';
+          + (star ? '<i class="clka-star">★</i>' : '') + (onShow ? '<i class="clka-pin">📌</i>' : '') + '</button>';
       });
-      h += '</tr>';
     });
-    h += '</tbody></table></div>';
+    h += '</div></div>';
     st.albumUi.grid.innerHTML = h;
     for (const b of st.albumUi.grid.querySelectorAll('.clka-cell')) b.onclick = () => openCell(st, api, +b.dataset.r, +b.dataset.c);
+    for (const b of st.albumUi.grid.querySelectorAll('.clka-rowh')) b.onclick = () => openRow(st, api, +b.dataset.row);
   }
 
-  /// Смужка над сіткою: «🌍 Світ: N з M» і кнопка показати чи згорнути стовпчики світу. Згортання — лише клас на
-  /// коробці сітки (CSS ховає стовпчики), тож сітку не перемальовуємо.
-  function paintWorldToggle(st, api) {
+  /// Легенда над сіткою (записка Smaug 27.09: «зірочки біля назви виробу — що означають, як їх отримати»): кожна
+  /// позначка словами й числом, «як дістати» — за ⓘ. Числа — з каталогу альбому, як і в картках.
+  function legendHtml(st, api) {
+    const starPct = pct(api, bonusOf(st, 'star', 0.01));
+    const rowPct = pct(api, bonusOf(st, 'starRow', 0.05));
+    const top = String(Math.round(bonusOf(st, 'masteryTop', 1.25) * 100) / 100).replace('.', ',');
+    const at = (cat(st) && cat(st).masteryAt) || MASTERY_AT;
+    return '<div class="clka-legend">'
+      + '<span class="clka-lg"><i class="clka-lgstar">★</i> у клітинці — вийшов з горна дзвінким чи розкішним · +' + starPct + '</span>'
+      + '<span class="clka-lg"><b>★5</b> біля назви — скільки зірок у рядку</span>'
+      + '<span class="clka-lg"><b>⭐</b> — зірки в усіх розписах · ще +' + rowPct + '</span>'
+      + '<span class="clka-lg"><b class="clka-lv">м4</b> — майстерність (до 10), росте від обпалених</span>'
+      + '<span class="clka-lg"><b class="clka-lv max">🖐★</b> — золоті руки (' + api.num(at[at.length - 1]) + ' обпалених) · ціна ще ×' + top + '</span>'
+      + HClicker.api.info('Як дістати зірку: обпали цей виріб у цьому розписі так, щоб він вийшов дзвінким (★★★) або розкішним (👑). '
+        + 'Що рівніше тримаєш жар у зеленій смузі горна й що гарніший розпис партії, то частіше виходять дзвінкі; розкішні бувають '
+        + 'лише з розписаної партії. Підмайстер-палій теж інколи дає дзвінкі. Клітинка без зірки — просто обпали такий самий виріб '
+        + 'ще раз. Тап по назві виробу — які розписи цього рядка ще без зірки.')
+      + '</div>';
+  }
+
+  /// Картка рядка: тап по назві виробу (на телефоні підказок при наведенні нема). Що означають позначки саме тут і
+  /// яких зірок бракує — розписи списком, щоб було ясно, що обпалювати.
+  function openRow(st, api, r) {
     const a = st.album;
-    const bar = st.albumUi.world;
-    if (!bar) return;
-    // Поки до світу далеко (нема ні клітинки, ні розпису, ні червоного золотого за весь час), групи не видно зовсім:
-    // альбом новачка лишається таким, як до одинадцятого оновлення.
-    const near = a.worldOpen > 0 || (st.total || 0) >= WORLD_NEAR || (st.styleList || []).some((x) => x.tier && x.owned);
-    const hide = !near || worldHidden(st, api);
-    st.albumUi.grid.classList.toggle('clka-noworld', a.worldSize > 0 && hide);
-    const sig = a.worldSize + '|' + a.worldOpen + '|' + a.worldFull + '|' + hide + '|' + near;
-    if (bar._sig === sig) return;
-    bar._sig = sig;
-    if (!(a.worldSize > 0) || !near) { bar.innerHTML = ''; return; }
-    bar.innerHTML = '<button type="button" class="ghost small clka-worldbtn" aria-expanded="' + !hide + '">'
-      + '🌍 Світ: <b>' + a.worldOpen + '</b> з ' + a.worldSize + (a.worldFull ? ' 🌐' : '') + ' <span class="muted">' + (hide ? 'показати ▸' : 'згорнути ▾') + '</span></button>'
-      + '<span class="muted small">' + (a.worldFull
-        ? 'альбом світу зібрано — ще +' + pct(api, bonusOf(st, 'worldAll', 0.25)) + ' до всього'
-        : 'стовпчики розписів світу: клітинка й зірка — як удома, а всі ' + (a.worldSize + (a.size || 0)) + ' клітинок разом — ще\u00a0+'
-          + pct(api, bonusOf(st, 'worldAll', 0.25)).replace(' ', '\u00a0')) + '</span>';
-    bar.querySelector('.clka-worldbtn').onclick = () => {
-      api.storeSet('clka.world', worldHidden(st, api) ? 'show' : 'hide');
-      paintWorldToggle(st, api);
-    };
+    const w = wareList(st)[r];
+    if (!a || !w) return;
+    const esc = (x) => api.esc(st, x);
+    const keys = styleKeys(st);
+    const FR = fullRow(st);
+    const smask = a.stars[r] || 0;
+    const mask = a.cells[r] || 0;
+    const lvl = a.mastery[r] || 0;
+    const at = (cat(st) && cat(st).masteryAt) || MASTERY_AT;
+    const fired = firedOf(st, w.key);
+    const starCount = pc(smask & FR);
+    const allStars = (smask & FR) === FR;
+    const miss = keys.filter((k, c) => !((smask >> c) & 1));
+    const top = String(Math.round(bonusOf(st, 'masteryTop', 1.25) * 100) / 100).replace('.', ',');
+    const list = miss.map((k, i) => {
+      const c = keys.indexOf(k);
+      const open = (mask >> c) & 1;
+      return '<span class="clka-miss' + (open ? ' open' : '') + '" title="' + esc(open ? 'є в альбомі, ще без зірки' : 'ще не обпалено') + '">'
+        + api.wareSvg(w.key, { style: open ? k : '', quality: 1, cls: 'clka-mini' + (open ? '' : ' shadow'), slot: 'alb-miss-' + i })
+        + '<i>' + esc(styleName(st, k)) + '</i></span>';
+    }).join('');
+    api.overlay(st, '<div class="clka-rowcard">'
+      + '<div class="clk-sub">' + esc(w.name) + (allStars ? ' ⭐' : '') + ' <span class="muted small">· ★' + starCount + ' з ' + keys.length
+      + ' · ' + (lvl >= 10 ? '🖐★ золоті руки' : 'майстерність ' + lvl + ' з 10') + '</span></div>'
+      + '<p class="small clka-note"><b>★ Зірка</b> — у клітинці, коли ' + esc(w.name.toLowerCase()) + ' в цьому розписі вийшов з горна дзвінким (★★★) '
+      + 'або розкішним (👑): +' + pct(api, bonusOf(st, 'star', 0.01)) + ' до всього за кожну.</p>'
+      + '<p class="small clka-note"><b>⭐ Біля назви</b> — коли зірки в усіх ' + keys.length + ' розписах: ще +' + pct(api, bonusOf(st, 'starRow', 0.05)) + '. '
+      + (allStars ? '<span class="clka-ok">Тут уже є.</span>' : 'Бракує ' + miss.length + ':') + '</p>'
+      + (miss.length ? '<div class="clka-misses">' + list + '</div>' : '')
+      + '<p class="small clka-note"><b>' + (lvl >= 10 ? '🖐★' : 'м' + lvl) + ' Майстерність</b> — росте від обпалених (зараз ' + api.num(fired) + '): '
+      + (lvl < at.length ? 'наступна за ' + api.num(Math.max(0, at[lvl] - fired)) + '. На 10-й — золоті руки 🖐★ і ціна ще ×' + top + '.'
+        : 'вище нема — золоті руки, ціна ще ×' + top + '.') + '</p>'
+      + '<p class="muted small clka-note">Дзвінкі частіше виходять, коли жар горна рівно в зеленій смузі й партія розписана; розкішні — лише з розписаної.</p>'
+      + '</div>', { cls: 'clka-ov' });
   }
 
   // ---------- 📌 виставка ----------
@@ -628,8 +637,7 @@
 
   function noticeCells(st, api, prev, prevStars) {
     const a = st.album;
-    // Усі стовпчики, разом зі світом: нова клітинка світу теж спалахує (і не плутається з наступним рядком).
-    const C = allCols(st);
+    const C = cols(st);
     if (!prev) return;
     const fresh = [];
     const stars = [];
@@ -716,7 +724,7 @@
       pane.innerHTML = '<div class="clka">'
         + '<div class="clka-head"></div>'
         + '<section class="clka-sec"><div class="clk-sub">Альбом виробів<span class="muted small clka-gridhint"></span></div>'
-        + '<div class="clka-worldbar"></div><div class="clka-gridbox"></div></section>'
+        + '<div class="clka-legendbox"></div><div class="clka-gridbox"></div></section>'
         + '<section class="clka-sec clka-showsec"></section>'
         + '<section class="clka-sec clka-stovesec"></section>'
         + '<section class="clka-sec clka-museumsec"></section>'
@@ -725,8 +733,8 @@
         pane,
         head: pane.querySelector('.clka-head'),
         hint: pane.querySelector('.clka-gridhint'),
+        legend: pane.querySelector('.clka-legendbox'),
         grid: pane.querySelector('.clka-gridbox'),
-        world: pane.querySelector('.clka-worldbar'),
         show: pane.querySelector('.clka-showsec'),
         stove: pane.querySelector('.clka-stovesec'),
         museum: pane.querySelector('.clka-museumsec'),
@@ -743,18 +751,16 @@
         rows: a.rows || 0, cols: a.cols || 0, starOpen: a.starOpen || 0, starRows: a.starRows || 0,
         stove: a.stove || [], stoveRing: !!a.stoveRing, stoveBonus: a.stoveBonus || 0, show: a.show || [],
         finds: a.finds || 0, shards: a.shards || 0, find: a.find || null, bonus: a.bonus || 0,
-        // v11: стовпчики світу — скільки «домашніх» і що відкрито у світі (старий сервер їх не шле — тоді світу нема).
-        homeColumns: a.homeColumns || 0, worldOpen: a.worldOpen || 0, worldSize: a.worldSize || 0, worldFull: !!a.worldFull,
       };
       noticeCells(st, api, st.albumPrev, st.albumPrevStars);
       st.albumPrev = a.cells.slice();
       st.albumPrevStars = (a.stars || []).slice();
       noticeFind(st, api);
       st.albumSeen = true;
-      const hint = ' · клітинка +' + pct(api, bonusOf(st, 'cell', 0.005)) + ', зірка ще +' + pct(api, bonusOf(st, 'star', 0.01))
-        + ', повний рядок +' + pct(api, bonusOf(st, 'row', 0.05)) + ', рядок у зірках ще +' + pct(api, bonusOf(st, 'starRow', 0.05))
+      const hint = ' · клітинка +' + pct(api, bonusOf(st, 'cell', 0.005)) + ', повний рядок +' + pct(api, bonusOf(st, 'row', 0.05))
         + ', повний стовпчик +' + pct(api, bonusOf(st, 'column', 0.06)) + ' · тап — картка';
       if (st.albumUi.hint.textContent !== hint) st.albumUi.hint.textContent = hint;
+      api.swap(st.albumUi.legend, legendHtml(st, api));
       paintHead(st, api);
       paintGrid(st, api);
       paintShow(st, api);

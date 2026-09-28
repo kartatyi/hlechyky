@@ -25,12 +25,18 @@ public sealed record WagonSub(string Ware, int Need, int Have);
 public sealed record WagonGiver(string Nick, int N);
 
 /// <summary>
+/// Що саме лежить на возі: виріб, розпис і якість (0 — невідома: покладене ще до 28.09, коли віз знав лише вид).
+/// Клієнт малює з цього справжні вироби на возі, а не самі горщики (записка Smaug).
+/// </summary>
+public sealed record WagonItem(string Ware, string Style, int Quality, int N);
+
+/// <summary>
 /// Віз одного дня очима одного гончаря: ціль, що вже лежить, рівень (0 — ще ні, 1 бронза, 2 срібло, 3 золото),
 /// скільки дав він сам і на який рівень уже забрав нагороду.
 /// </summary>
 public sealed record WagonInfo(
     string Day, DateTimeOffset EndsAt, int Potters, int Goal, int Total, IReadOnlyList<WagonSub> Subs,
-    IReadOnlyList<WagonGiver> Givers, int Tier, int Mine, int Claimed);
+    IReadOnlyList<WagonGiver> Givers, int Tier, int Mine, int Claimed, IReadOnlyList<WagonItem>? Items = null);
 
 /// <summary>Усе, що кімнаті треба від цеху для виду: сьогоднішній віз, вчорашній, скільки дарунків лишилось і допомога дня.</summary>
 public sealed record GuildSummary(WagonInfo Today, WagonInfo Prev, int GiftsLeft, GuildHelp Help);
@@ -133,6 +139,11 @@ public sealed partial class ClickerGuildService
     {
         public int Total { get; set; }
         public Dictionary<string, int> Wares { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>
+        /// Те саме, що <see cref="Wares"/>, але з розписом і якістю («виріб|розпис|якість» → скільки) — щоб на возі
+        /// малювались справжні вироби. Старий стан (до 28.09) його не має: ті вироби відомі лише видом.
+        /// </summary>
+        public Dictionary<string, int> Items { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, GiverRow> Givers { get; set; } = new(StringComparer.Ordinal);
         /// <summary>На який рівень кожен уже забрав нагороду.</summary>
         public Dictionary<string, int> Claimed { get; set; } = new(StringComparer.Ordinal);
@@ -241,6 +252,7 @@ public sealed partial class ClickerGuildService
         foreach (var w in s.Days.Values)
         {
             w.Wares = Clean(w.Wares);
+            w.Items = Clean(w.Items);
             w.Givers = Clean(w.Givers);
             w.Claimed = Clean(w.Claimed);
         }
@@ -324,7 +336,26 @@ public sealed partial class ClickerGuildService
             .Select(g => new WagonGiver(g.Nick, g.N))
             .ToList();
         return new WagonInfo(day, endsAt, potters, goal, total, subRows, givers, TierOf(goal, total, subRows),
-            row?.Givers.GetValueOrDefault(nickKey)?.N ?? 0, row?.Claimed.GetValueOrDefault(nickKey) ?? 0);
+            row?.Givers.GetValueOrDefault(nickKey)?.N ?? 0, row?.Claimed.GetValueOrDefault(nickKey) ?? 0, ItemsOf(row));
+    }
+
+    /// <summary>
+    /// Що лежить на возі, найбільше — першим. Покладене до 28.09 (чи старим клієнтом без розпису) відоме лише видом:
+    /// воно стає рядком «цей вид, розпис і якість невідомі» (якість 0), щоб сума зійшлась із <see cref="DayRow.Total"/>.
+    /// </summary>
+    static List<WagonItem> ItemsOf(DayRow? row)
+    {
+        var list = new List<WagonItem>();
+        if (row is null) return list;
+        foreach (var (key, n) in row.Items)
+            if (n > 0 && Clicker.ParseItem(key) is { } it) list.Add(new WagonItem(it.Ware, it.Style, it.Quality, n));
+        foreach (var (ware, n) in row.Wares)
+        {
+            var known = list.Where(x => x.Ware == ware).Sum(x => x.N);
+            if (n > known) list.Add(new WagonItem(ware, "", 0, n - known));
+        }
+        return list.OrderByDescending(x => x.N).ThenBy(x => x.Ware, StringComparer.Ordinal)
+            .ThenBy(x => x.Style, StringComparer.Ordinal).ThenByDescending(x => x.Quality).ToList();
     }
 
     WagonInfo Current(State s, DateTimeOffset now, string nickKey) =>
@@ -349,16 +380,33 @@ public sealed partial class ClickerGuildService
     }
 
     /// <summary>Покласти вироби на сьогоднішній віз. Вироби вже забрала з комори кімната — тут лише облік.</summary>
-    public WagonGive Give(string nickKey, string nick, string ware, int n, DateTimeOffset now)
+    public WagonGive Give(string nickKey, string nick, string ware, int n, DateTimeOffset now) =>
+        Give(nickKey, nick, [(ware, (ItemInfo?)null, n)], now);
+
+    /// <summary>
+    /// Покласти на віз одним махом кілька різних виробів («🛒 Усе на віз»): один запис у базу, один рядок у Журнал
+    /// про рівень. <c>Item</c> — розпис і якість (null — відомий лише вид).
+    /// </summary>
+    public WagonGive Give(string nickKey, string nick, IReadOnlyList<(string Ware, ItemInfo? Item, int N)> list, DateTimeOffset now)
     {
         lock (_lock)
         {
             var s = S();
             var day = DayOf(now);
+            var n = list.Sum(x => Math.Max(0, x.N));
             if (n <= 0) return new WagonGive(Current(s, now, nickKey), 0);
             if (!s.Days.TryGetValue(day, out var row)) s.Days[day] = row = new DayRow();
             row.Total += n;
-            row.Wares[ware] = row.Wares.GetValueOrDefault(ware) + n;
+            foreach (var (ware, item, k) in list)
+            {
+                if (k <= 0) continue;
+                row.Wares[ware] = row.Wares.GetValueOrDefault(ware) + k;
+                if (item is not null)
+                {
+                    var key = Clicker.ItemKey(item.Ware, item.Style, item.Quality);
+                    row.Items[key] = row.Items.GetValueOrDefault(key) + k;
+                }
+            }
             if (!row.Givers.TryGetValue(nickKey, out var giver)) row.Givers[nickKey] = giver = new GiverRow();
             giver.Nick = nick;
             giver.N += n;
@@ -684,7 +732,13 @@ public sealed partial class ClickerGuildService
         givers = w.Givers.Select(g => new { nick = g.Nick, n = g.N }),
         tier = w.Tier, mine = w.Mine, claimed = w.Claimed,
         pct = w.Goal > 0 ? Math.Round(100.0 * w.Total / w.Goal, 1) : 0,
+        // Що на возі (найбільше — першим): вісім видів досить і на малюнок, і на рядок «на возі» — решта «+N».
+        items = (w.Items ?? []).Take(WagonItemsShown).Select(x => new { ware = x.Ware, style = x.Style, q = x.Quality, n = x.N }),
+        kinds = (w.Items ?? []).Count,
     };
+
+    /// <summary>Скільки різних виробів воза їде у вид (вид летить щопачки кліків — не роздуваємо).</summary>
+    public const int WagonItemsShown = 8;
 
     // ---------- хата друга ----------
 

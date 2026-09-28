@@ -57,6 +57,7 @@
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
+  const CLOCK_KEEP_MS = 60 * 1000;        // серверне «зараз» — від найменш запізнілого виду за стільки (див. update)
   const NEWS_VERSION = 'v11';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   const PV = 10;                          // версія протоколу (Clicker.ProtocolVersion): ми вміємо доповнювати худий вид
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
@@ -105,6 +106,8 @@
       if (!st.el || !st.ctx || !st.lastView || !st.root) return;
       for (const el of st.el.querySelectorAll('*')) if (el._sig !== undefined) el._sig = null;
       if (st.jugBox) st.jugBox._wear = null;
+      // Вид той самий — update сам по собі його пропустив би (див. update): тут перемалювати треба.
+      st.again = true;
       MOD.update(st.root, st.ctx);
     }, 60);
   }
@@ -728,6 +731,114 @@
     if (scale !== st.jugScale) { st.jugScale = scale; st.jugBox.style.transform = 'scale(' + scale + ')'; }
   }
 
+  // ---------- плашки бафів під колом ----------
+  // Записки Smaug (27.09): «ярмарок, натхнення, розгін, серія — кожне в новому рядку, бо зараз усе в купі й не видно,
+  // скільки секунд до кінця». Було: один рядок пігулок із «…» — на ПК при п'яти бафах лишалось «🎪 Я…». Стало: кожен
+  // баф — своя клітинка сітки; ліворуч великими цифрами множник і секунди (tabular-nums і стала ширина — число не
+  // стрибає), праворуч дрібно назва — обрізатись може лише вона; під ними смужка часу, що тане. Порядок — що скоро
+  // скінчиться, те першим; останні п'ять секунд плашка світиться. Розмітка плашок складається раз: щосекунди
+  // міняється лише текст числа (коли він справді інший), а смужка тане сама — WAAPI на transform, без JS щокадру.
+  const BUFF_END_MS = 5000;
+  const BUFF_KINDS = [
+    { key: 'fair', icon: '🎪', name: () => 'Ярмарок', what: (st) => 'Ярмарок: усе ×' + dec(st.fairMult) },
+    { key: 'inspire', icon: '✨', name: () => 'Натхнення', what: (st) => 'Натхнення: клік ×' + st.inspireMult },
+    { key: 'wind', icon: '🌬', name: () => 'Вітер із поля', what: (st) => 'Вітер із поля: без тебе все ×' + dec(st.windMult) },
+    { key: 'heat', icon: '🌀', name: () => 'Розгін', what: () => 'Розгін кола: що частіше клацаєш, то більший клік; смужка — наскільки коло гаряче' },
+    { key: 'streak', icon: '🤲', name: (st) => 'Серія ' + count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
+      + Math.round(st.streakBonus * 100) + ' % більше' },
+    { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
+  ];
+
+  /// Що з бафів діє саме зараз: множник, до коли й скільки триває весь (для смужки). Лише читає стан.
+  function buffsNow(st, sn, mom) {
+    const out = [];
+    if (sn < st.fairUntil) out.push({ key: 'fair', mult: '×' + dec(st.fairMult), until: st.fairUntil, span: st.fairSpan || 66000 });
+    if (sn < st.inspireUntil) out.push({ key: 'inspire', mult: '×' + st.inspireMult, until: st.inspireUntil, span: st.inspireSpan || 20000 });
+    if (windOn(st, sn)) out.push({ key: 'wind', mult: '×' + dec(st.windMult), until: st.windUntil, span: Math.max(1000, st.windUntil - st.windAt) });
+    if (st.momentumMax > 1 && mom > 1.05) out.push({ key: 'heat', mult: '×' + dec(mom), level: (mom - 1) / (st.momentumMax - 1) });
+    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
+    if (st.fallStreak > 1) out.push({ key: 'streak', mult: '+' + Math.round(st.streakBonus * 100) + ' %' });
+    if (st.starWish) out.push({ key: 'wish', mult: '×3' });
+    return out;
+  }
+
+  /// Плашки складаємо раз на хост (.clk-buffs нового mount — нові плашки): далі лише текст, клас і смужка.
+  function buffEls(st) {
+    if (st.buffEls && st.buffEls.host === st.buffs) return st.buffEls;
+    const els = { host: st.buffs };
+    st.buffs.textContent = '';
+    for (const k of BUFF_KINDS) {
+      const el = document.createElement('span');
+      el.className = 'clk-buff ' + k.key;
+      el.hidden = true;
+      el.innerHTML = '<span class="clk-bico" aria-hidden="true">' + k.icon + '</span>'
+        + '<b class="clk-bnum"><span class="clk-bmul"></span><span class="clk-bsec"></span></b>'
+        + '<span class="clk-bname"></span><i class="clk-bbar" aria-hidden="true"></i>';
+      st.buffs.appendChild(el);
+      els[k.key] = { el, kind: k, mul: el.querySelector('.clk-bmul'), sec: el.querySelector('.clk-bsec'),
+        name: el.querySelector('.clk-bname'), bar: el.querySelector('.clk-bbar'), until: 0, anim: null, level: -1, order: '', secs: -1 };
+    }
+    st.buffEls = els;
+    return els;
+  }
+
+  /// Смужка часу: від частки, що лишилась, до нуля рівно за залишок. Під prefers-reduced-motion — сходинками раз на
+  /// секунду (paintBuffs), без безперервного руху.
+  function buffBar(b, left, span) {
+    const f = Math.max(0, Math.min(1, left / span));
+    if (b.anim) { b.anim.cancel(); b.anim = null; }
+    if ((REDUCED_MQ && REDUCED_MQ.matches) || !b.bar.animate) { b.bar.style.transform = 'scaleX(' + f.toFixed(3) + ')'; return; }
+    try {
+      b.anim = b.bar.animate([{ transform: 'scaleX(' + f.toFixed(4) + ')' }, { transform: 'scaleX(0)' }],
+        { duration: Math.max(1, left), easing: 'linear', fill: 'forwards' });
+    } catch { b.bar.style.transform = 'scaleX(' + f.toFixed(3) + ')'; }
+  }
+
+  function paintBuffs(st, sn, mom) {
+    if (!st.buffs) return;
+    const els = buffEls(st);
+    const now = buffsNow(st, sn, mom);
+    const on = new Set(now.map((x) => x.key));
+    // Що скоро скінчиться — першим; безстрокові (розгін, серія, бажання) — за ними, завжди в тому самому порядку.
+    const timed = now.filter((x) => x.until).sort((a, b) => a.until - b.until).map((x) => x.key);
+    const stepped = !!(REDUCED_MQ && REDUCED_MQ.matches);
+    for (const k of BUFF_KINDS) {
+      const b = els[k.key];
+      if (!on.has(k.key)) {
+        if (!b.el.hidden) { b.el.hidden = true; if (b.anim) { b.anim.cancel(); b.anim = null; } b.until = 0; b.level = -1; }
+        continue;
+      }
+      const x = now.find((y) => y.key === k.key);
+      if (b.el.hidden) b.el.hidden = false;
+      if (b.mul.textContent !== x.mult) { b.mul.textContent = x.mult; b.el.title = k.what(st); }
+      const name = k.name(st);
+      if (b.name.textContent !== name) b.name.textContent = name;
+      const order = String(x.until ? timed.indexOf(k.key) : 10 + BUFF_KINDS.indexOf(k));
+      if (b.order !== order) { b.order = order; b.el.style.order = order; }
+      if (x.until) {
+        const left = x.until - sn;
+        const secs = Math.max(0, Math.ceil(left / 1000));
+        if (b.secs !== secs) {
+          b.secs = secs;
+          b.sec.textContent = String(secs);
+          b.sec.classList.toggle('w3', secs >= 100);
+          if (stepped) buffBar(b, left, x.span);
+        }
+        // Новий баф чи той самий, але подовжений (ще один розписний глек) — смужка стартує наново від свого залишку.
+        if (Math.abs(b.until - x.until) > 50) { b.until = x.until; buffBar(b, left, x.span); }
+        const end = left <= BUFF_END_MS;
+        if (b.el.classList.contains('end') !== end) b.el.classList.toggle('end', end);
+      } else {
+        if (b.secs !== -1) { b.secs = -1; b.sec.textContent = ''; b.el.classList.remove('end'); }
+        // Розгін — смужка показує, наскільки коло гаряче (спадає сама, щойно перестаєш клацати); серія й бажання — без смужки.
+        const level = x.level != null ? Math.round(Math.max(0, Math.min(1, x.level)) * 100) / 100 : -1;
+        if (b.level !== level) { b.level = level; b.bar.style.transform = 'scaleX(' + Math.max(0, level) + ')'; }
+      }
+    }
+    const any = now.length > 0;
+    if (st.buffs.hidden === any) st.buffs.hidden = !any;
+  }
+
   /// Те, що не мусить жити шістдесят разів на секунду: рядок швидкості, бонуси, суперник, прогрес клейм.
   function paintSlow(st, shown) {
     const sn = serverNow(st);
@@ -739,17 +850,7 @@
       + (sec > 0 ? ' · без тебе +' + short(sec) + ' за секунду' : ' · підмайстрів ще нема');
     if (st.rate.textContent !== rate) st.rate.textContent = rate;
 
-    let buffs = '';
-    if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + dec(st.fairMult) + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
-    if (sn < st.inspireUntil) buffs += '<span class="clk-buff inspire">✨ Натхнення: клік ×' + st.inspireMult + ' · ' + Math.ceil((st.inspireUntil - sn) / 1000) + ' с</span>';
-    if (windOn(st, sn)) buffs += '<span class="clk-buff wind">🌬 Вітер із поля: без тебе ×' + dec(st.windMult) + ' · '
-      + Math.ceil((st.windUntil - sn) / 1000) + ' с</span>';
-    if (st.momentumMax > 1 && mom > 1.05) buffs += '<span class="clk-buff heat">🌀 Розгін ×' + dec(mom) + '</span>';
-    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
-    if (st.fallStreak > 1) buffs += '<span class="clk-buff streak">🤲 Серія ' + st.fallStreak + ' · глек з полиці +'
-      + Math.round(st.streakBonus * 100) + ' %</span>';
-    if (st.starWish) buffs += '<span class="clk-buff wish">🌠 Бажання: наступний глек з полиці ×3</span>';
-    if (st.buffs._html !== buffs) { st.buffs._html = buffs; st.buffs.innerHTML = buffs; st.buffs.hidden = !buffs; }
+    paintBuffs(st, sn, mom);
     const fair = sn < st.fairUntil, inspire = sn < st.inspireUntil;
     if (st.stage.classList.contains('fair') !== fair) st.stage.classList.toggle('fair', fair);
     if (st.stage.classList.contains('inspire') !== inspire) st.stage.classList.toggle('inspire', inspire);
@@ -1896,7 +1997,9 @@
     return '<div class="clk-sub">✨ Дивовижі · ' + w.found + '/' + w.total
       + (w.found ? '<span class="muted small"> · +' + pct + ' % до всього</span>' : '')
       + info('Дивовижі знаходяться самі, коли в хаті стається щось рідкісне: добрий обпал, довга серія, щедрий віз, '
-        + 'гість на свято. Кожна додає +1 % до всього й лишається в хаті назавжди. Люстро в знаряддях — удвічі частіше.')
+        + 'гість на свято. Під силуетом — звідки вона може прийти: це як пощастить, а не щоразу (Люстро в знаряддях — удвічі '
+        + 'частіше). Лише Скалка з неба приходить напевно — з першою ж спійманою зіркою. Кожна дивовижа додає +1 % до всього '
+        + 'й лишається в хаті назавжди.')
       + '</div><div class="clk-wonders">' + cells + '</div>';
   }
 
@@ -2050,6 +2153,8 @@
   /// відкриється рівно раз. «v10» — «Глек на весь світ» (docs/games/specs/clicker-v10.md §12); закриття вікна забирає
   /// подарунок. Хто пропустив «v9.2» (звання округи) чи «v9.1» (клейма після тисячі), тому ті рядки йдуть слідом —
   /// сервер каже, що гончар бачив востаннє (view.newsSeen), а подарунок v9.2 дасть сам, якщо його ще не забрано.
+  /// «v10.1» (28.09) — правки за записками «💡 Розробнику», без подарунка; хто пропустив v10 — бачить і його рядки,
+  /// і подарунок v10 забирає тим самим закриттям.
   const NEWS = {
     title: '✨ Що нового в Гончарному колі',
     lead: 'Оновлення «Толока»: усім селом будуємо Опішню — а вона відчиняє двері гончарям усього світу.',
@@ -2063,9 +2168,20 @@
     ],
     ok: 'Забрати подарунок',
   };
-  /// «v10» — для тих, хто пропустив і його.
+  /// «v10.1» — правки за записками (без подарунка): для тих, хто його не бачив.
+  const NEWS_101 = {
+    lead: 'А ще — правки за вашими записками в «💡 Розробнику»:',
+    lines: [
+      ['🔥', '<b>Горно.</b> Відлік обпалу більше не скидається й не завмирає. Ручний обпал — на одному екрані: кнопки, жар і «💨 порив вітру» видно весь час. Пічка в «Ремеслі» менша, розписи — компактною сіткою під «🎨 Розпис».'],
+      ['🖌', '<b>Розпис.</b> Пензель рахує зафарбовані пелюстки, а не натиски: зайві тики нічого не закривають, а в кінці видно «Краса · пелюсток з».'],
+      ['⏱', '<b>Плашки під колом.</b> Кожна окремо: секунди великими цифрами, смужка часу, що тане, а що скоро скінчиться — першим.'],
+      ['🛒', '<b>«Усе на віз»</b> — уся комора одним натиском, крім того, чого чекають гості й села. А на возі тепер лежать справжні вироби.'],
+      ['⭐', '<b>Зірки в альбомі</b> пояснено легендою й підказками. А перша ж спіймана 🌠 падаюча зірка напевно дає «Скалку з неба».'],
+    ],
+  };
+  /// «v10» — для тих, хто його пропустив (закриття вікна забирає подарунок v10).
   const NEWS_10 = {
-    lead: 'А ще — з минулого оновлення «Глек на весь світ»:',
+    lead: 'А ще — з минулого оновлення «Глек на весь світ»: після Січі гончарня виходить у світ.',
     lines: [
       ['🌍', '<b>Дванадцять нових щаблів.</b> Від Батуринської кахельні й Корецької порцеляни — через Одеський порт, кругосвітнє плавання, пароплав за океан і Всесвітню виставку в Парижі — до Опішні, гончарної столиці світу. Кожен щабель видно на сцені.'],
       ['₴', '<b>Гривні замість «скстлн».</b> Від квадрильйона глеків великі суми рахуються в гривнях: 1 ₴ = 1 квадрильйон глеків. Гаманець той самий, просто без зайвих нулів. А далі будуть і червоні золоті.'],
@@ -2144,12 +2260,16 @@
   function showNews(st) {
     if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
     const li = (l) => '<li><span class="clk-news-ico">' + l[0] + '</span><span>' + l[1] + '</span></li>';
-    // Хто пропустив «v9.2» — ті рядки; хто й «v9.1» — ще й ті (newsSeen — остання версія, яку гончар бачив).
+    // Хто пропустив «v10» — ті рядки; хто й «v9.2» — ще й ті; хто й «v9.1» — і ті (newsSeen — остання версія, яку
+    // гончар бачив; порожньо — ще старіше за v9.1: тоді v9.1 уже й не згадуємо, як і було).
     const seen = st.newsSeen || '';
     const block = (n) => '<p class="muted small">' + n.lead + '</p><ul>' + n.lines.map(li).join('') + '</ul>';
-    // v11: хто бачив v10 — лише нове; хто ні — ще й v10, а далі ланцюжок як був.
-    const old = seen === 'v10' ? '' : block(NEWS_10) + (seen !== 'v9.2' ? block(NEWS_92) : '')
-      + (seen && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : '');
+    // v11: хто бачив v10.1 — лише нове; хто v10 — ще правки v10.1; хто й v10 не бачив — ще й v10, а далі ланцюжок як був.
+    const miss10 = seen !== 'v10' && seen !== 'v10.1';
+    const old = (seen !== 'v10.1' ? block(NEWS_101) : '')
+      + (miss10 ? block(NEWS_10) : '')
+      + (miss10 && seen !== 'v9.2' ? block(NEWS_92) : '')
+      + (seen && miss10 && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : '');
     const html = '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
       + NEWS.lines.map(li).join('') + '</ul>' + old
       + '<button type="button" class="primary clk-news-ok">' + NEWS.ok + '</button></div>';
@@ -2838,23 +2958,43 @@
       placeInView(st);
       st.ctx = ctx;
       ctx.clk = st;
-      st.mine = !!ctx.mine;
       const v = ctx.view;
+      // Той самий вид удруге — не новина (записка Smaug №2: «обпал залагує, і час або скидається на початок, або
+      // зависає на місці»). Каркас кличе update не лише на новий вид, а й на КОЖНУ зміну лобі (подія 'rooms' →
+      // refreshAll: хтось на сайті поставив стіл чи встав із-за нього) — з тим самим видом, що вже був. Раніше ми брали
+      // з нього «правду сервера» вдруге: серверне «зараз» відкочувалось до миті, коли вид складено, — у ручному обпалі
+      // це мить розпалу, тож відлік горна скакав назад на 0:30 і стояв, поки в лобі метушились, жар не рухався, а горно
+      // не відкривалось; лічильник глеків, розгін і робота підмайстрів теж відкочувались. Свіжий вид — лише новий
+      // об'єкт від сервера. Перемалювати картку зі старим (refreshCard, частина догнала) — st.again, свій nick — mine.
+      const fresh = !!v && v !== st.lastView;
+      const mine = !!ctx.mine;
+      if (v && !fresh && !st.again && mine === st.mine) return;
+      st.again = false;
+      st.mine = mine;
       // Худий вид: без каталогу магазину (перше відкриття після перезапуску сервера) назв ще нема — просимо каталог і
       // цей вид малюємо без магазину й частин; наступний прийде вже з назвами.
       const ready = !v || v.pots == null || hydrate(st, v);
-      if (v && v.pots != null) {
+      if (v && v.pots != null && fresh) {
         // Сервер — джерело правди: беремо його число і його мітку часу, від них доліковуємо далі.
         // Усе, що вже полетіло, у цьому числі вже враховано — свій запас відпущених кліків обнуляємо.
         st.inflight = 0;
         st.inflightGain = 0;
         st.base = v.pots;
         st.total = v.total || 0;
+        // Серверне «зараз» — від найменш запізнілого з недавніх видів. Вид каже «на сервері було now», а до нас доїхав
+        // із затримкою: мережа, а на повільному ПК ще й зайнятий головний потік (вид обробляється на сотні мс пізніше).
+        // Тож now − Date.now() — нижня межа справжнього зсуву годинників, і найбільша з них — найточніша; з кожним
+        // запізнілим видом відлік горна смикався назад (заміряно: −200…−345 мс на процесорі ×6). Беремо найкращу за
+        // останні 60 с — щоб переведений годинник ПК не тягнувся за нами довше.
+        const at = Date.now();
         const now = Date.parse(v.now);
-        st.viewNow = Number.isFinite(now) ? now : Date.now();
+        const offs = (st.clockOffs || []).filter((x) => at - x[1] < CLOCK_KEEP_MS).slice(-11);
+        offs.push([(Number.isFinite(now) ? now : at) - at, at]);
+        st.clockOffs = offs;
+        st.viewNow = at + Math.max(...offs.map((x) => x[0]));
         const sync = Date.parse(v.lastSync);
         st.lastSync = Number.isFinite(sync) ? sync : st.viewNow;
-        st.recvAt = Date.now();
+        st.recvAt = at;
         st.offlineMs = (v.offlineHours || 8) * 3600 * 1000;
         st.clickBase = v.clickBase || v.perClick || 1;
         st.baseSecond = v.baseSecond != null ? v.baseSecond : v.perSecond || 0;
@@ -2863,6 +3003,9 @@
         st.inspireUntil = (v.inspire && Date.parse(v.inspire.until)) || 0;
         st.inspireMult = (v.inspire && v.inspire.mult) || 25;
         st.inspireShare = (v.inspire && v.inspire.share) || 0;
+        // Скільки триває весь баф (з «Довгим ярмарком» — удвічі): від цього смужка під плашкою знає, з якої частки танути.
+        st.fairSpan = ((v.fair && v.fair.span) || 0) * 1000;
+        st.inspireSpan = ((v.inspire && v.inspire.span) || 0) * 1000;
         st.rateOf = v.rate || 100;
         st.canSell = v.canSellToday || 0;
         st.ups = v.upgrades || {};

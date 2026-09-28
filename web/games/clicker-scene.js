@@ -748,8 +748,11 @@
       s += '<g transform="translate(20 99) scale(.34) translate(-16 -30)"><path d="' + JUG_32 + '" fill="#c56b35"/></g>'
         + '<g transform="translate(76 99) scale(.34) translate(-16 -30)"><path d="' + JUG_32 + '" fill="#2b2a2f"/></g>';
     }
-    // Хвіртка.
-    s += '<path d="M98 130V104h20v26" stroke="#6b4a2a" stroke-width="2" fill="none"/><path d="M100 110h16M100 118h16M100 110l16 8" stroke="#8a6a3e" stroke-width="1.4"/>';
+    // Хвіртка: штахети з гострими верхами на двох поперечках і клямка. Раніше були дві поперечки з косиною між ними —
+    // здалеку це читалось як літера «Z».
+    s += '<path d="M98 130V104h20v26" stroke="#6b4a2a" stroke-width="2" fill="none"/>'
+      + '<path d="M100.2 129V109.5l1.4-2.2 1.4 2.2V129zM104.2 129V109.5l1.4-2.2 1.4 2.2V129zM108.2 129V109.5l1.4-2.2 1.4 2.2V129zM112.2 129V109.5l1.4-2.2 1.4 2.2V129z" fill="#9a7446"/>'
+      + '<path d="M99.5 113h17M99.5 125h17" stroke="#6b4a2a" stroke-width="1.4"/><circle cx="114.2" cy="119" r=".9" fill="#2b2a2f"/>';
     if (e.decor.rooster) {
       s += '<g transform="translate(48 100)" class="clks-rooster"><path d="M-9 -2q-8-10-2-17 2 8 7 11z" fill="#2f5fa8"/><path d="M-10 -6q-6-6-1-12" stroke="#4c9a3f" stroke-width="1.4" fill="none"/>'
         + '<ellipse cx="0" cy="-5" rx="8" ry="5.4" fill="#6a3a1a"/><g class="clks-rhead"><circle cx="7" cy="-12" r="3.6" fill="#6a3a1a"/><path d="M5 -15.5l1.4-4 1.4 3.6 1.6-3.4 1 4z" fill="#d7372b"/>'

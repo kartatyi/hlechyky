@@ -28,6 +28,8 @@
   const TIER_ICON = ['', '🥉', '🥈', '🥇'];
   const TIER_COLOR = ['#8a6a4a', '#c07a3a', '#c9ced6', '#f4c542'];
   const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
+  /// Скільки видів виробів показує рядок «на возі» (решта — «+N»).
+  const WAGON_KINDS = 6;
   const STARS = ['', '★', '★★', '★★★', '👑'];
   // Допомога другові (§E.2): що це, як зветься й чим пахне.
   const HELP = {
@@ -84,22 +86,46 @@
 
   // ---------- віз ----------
 
+  /// Що покласти в купу на возі з count місць: справжні вироби воза (w.items — вид, розпис, якість) у своїх
+  /// пропорціях, найбільших ліпших залишків; кожен вид — хоч одним, поки місць вистачає. Старий сервер без items —
+  /// як було: підцілі у своїх пропорціях, решта — горщики.
+  function pileKinds(w, count) {
+    const items = (w.items || []).filter((x) => x.n > 0);
+    if (!items.length) {
+      const kinds = [];
+      for (const s of w.subs) for (let i = 0; i < Math.min(s.have, s.need); i++) kinds.push({ ware: s.ware, style: '', q: 1 });
+      const rest = Math.max(0, w.total - kinds.length);
+      for (let i = 0; i < rest; i++) kinds.splice(Math.floor((i * (kinds.length + 1)) / (rest + 1)) + i % 2, 0, { ware: 'pot', style: '', q: 1 });
+      while (kinds.length < Math.max(count, 1)) kinds.push({ ware: 'pot', style: '', q: 1 });
+      const step = kinds.length / Math.max(1, count);
+      return Array.from({ length: count }, (_, i) => kinds[Math.floor(i * step)] || kinds[0]);
+    }
+    const sum = items.reduce((a, x) => a + x.n, 0);
+    const seats = items.map((x) => Math.min(x.n, Math.floor((x.n / sum) * count)));
+    // Вид, що не дістав місця через дрібну частку, — хоч один, поки є вільні; далі — найбільші залишки.
+    for (let i = 0; i < items.length && seats.reduce((a, b) => a + b, 0) < count; i++) if (!seats[i]) seats[i] = 1;
+    const order = items.map((x, i) => i).sort((a, b) => ((items[b].n / sum) * count - seats[b]) - ((items[a].n / sum) * count - seats[a]));
+    for (let k = 0; seats.reduce((a, b) => a + b, 0) < count && k < order.length * 4; k++) {
+      const i = order[k % order.length];
+      if (seats[i] < items[i].n) seats[i]++;
+    }
+    // Упереміш, а не смугами: кожен вид розкладаємо рівними кроками по всій купі.
+    const pile = [];
+    items.forEach((x, i) => { for (let j = 0; j < seats[i]; j++) pile.push({ at: (j + 0.5) / seats[i] + i * 1e-3, x }); });
+    return pile.sort((a, b) => a.at - b.at).slice(0, count).map((p) => ({ ware: p.x.ware, style: p.x.style || '', q: p.x.q || 1 }));
+  }
+
   /// Віз: віл у ярмі, дерев'яна платформа з бортами, два колеса, купа виробів (до 28), прапорець рівня. viewBox 360×200.
   function wagonSvg(st, api, w) {
     const goal = Math.max(1, w.goal);
     const fill = Math.min(1, w.total / (goal * 2));
-    const count = Math.round(fill * 28);
-    // Що лежить на возі: підцілі у своїх пропорціях, решта — горщики.
-    const kinds = [];
-    for (const s of w.subs) for (let i = 0; i < Math.min(s.have, s.need); i++) kinds.push(s.ware);
-    const rest = Math.max(0, w.total - kinds.length);
-    for (let i = 0; i < rest; i++) kinds.splice(Math.floor((i * (kinds.length + 1)) / (rest + 1)) + i % 2, 0, 'pot');
-    while (kinds.length < Math.max(count, 1)) kinds.push('pot');
-    const step = kinds.length / Math.max(1, count);
+    // Хоч щось на возі — хоч один виріб у купі: інакше перші покладені «зникали» до 1/56 цілі.
+    const count = w.total > 0 ? Math.max(1, Math.min(w.total, Math.round(fill * 28))) : 0;
+    const kinds = pileKinds(w, count);
     const K = 0.5;
     let pile = '';
     for (let i = 0; i < count; i++) {
-      const ware = kinds[Math.floor(i * step)] || 'pot';
+      const it = kinds[i] || { ware: 'pot', style: '', q: 1 };
       const row = Math.floor(i / 7);
       const col = i % 7;
       const x = 124 + col * 34 + (row % 2) * 17 - 50 * K;
@@ -108,7 +134,7 @@
       // Анімація «впав на віз» — лише для щойно покладених (внутрішня <g>: CSS-transform перебив би атрибут зовнішньої).
       const fresh = st.guildPile != null && i >= st.guildPile;
       pile += '<g transform="translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ') scale(' + K + ')"><g' + (fresh ? ' class="clkg-ware" style="--d:' + ((i - st.guildPile) * 60) + 'ms"' : '') + '>'
-        + api.wareSvg(ware, { quality: 1, slot: 'wg-' + i, wrap: false }) + '</g></g>';
+        + api.wareSvg(it.ware, { style: it.style, quality: it.q, slot: 'wg-' + i, wrap: false }) + '</g></g>';
     }
     st.guildPile = count;
     const wheel = (cx) => '<g class="clkg-wheel" style="transform-origin:' + cx + 'px 152px">'
@@ -155,6 +181,42 @@
       + '<div class="clkg-mine" style="width:' + mine.toFixed(1) + '%"></div>' + marks + '</div>';
   }
 
+  /// Рядок «на возі»: до шести найчисленніших виробів мініатюрами з кількістю, решта — «+N». Той самий виріб у тому
+  /// самому розписі різної якості — однією мініатюрою (на возі їх однаково не розрізнити), сяє найкращий.
+  function loadHtml(st, api, w) {
+    const byKind = new Map();
+    for (const x of w.items || []) {
+      if (!(x.n > 0)) continue;
+      const k = x.ware + '|' + (x.q ? x.style || '' : '?');
+      const was = byKind.get(k);
+      if (was) { was.n += x.n; was.q = Math.max(was.q, x.q || 0); } else byKind.set(k, { ware: x.ware, style: x.style || '', q: x.q || 0, n: x.n });
+    }
+    const items = [...byKind.values()].sort((a, b) => b.n - a.n);
+    if (!items.length) return '';
+    const esc = (x) => api.esc(st, x);
+    const show = items.slice(0, WAGON_KINDS);
+    const shownN = show.reduce((a, x) => a + x.n, 0);
+    const more = Math.max(0, w.total - shownN);
+    const kindsMore = Math.max(0, (w.kinds || items.length) - show.length);
+    return '<div class="clkg-load"><span class="muted small">на возі:</span>'
+      + show.map((x, i) => '<span class="clkg-lcell q' + (x.q || 1) + '" title="' + esc(wareName(st, x.ware)
+        + (x.q ? ' · ' + styleName(st, x.style) : '') + ' × ' + x.n) + '">'
+        + api.wareSvg(x.ware, { style: x.style || '', quality: x.q || 1, cls: 'clkg-lico', slot: 'wl-' + i })
+        + '<b>' + api.count(x.n) + '</b></span>').join('')
+      + (more > 0 ? '<span class="clkg-lmore" title="' + esc('ще ' + kindsMore + ' ' + api.plural(kindsMore, 'вид', 'види', 'видів')
+        + ' виробів') + '">+' + api.count(more) + '</span>' : '')
+      + '</div>';
+  }
+
+  /// «🛒 Усе на віз · N» — уся комора однією дією, крім відкладеного під замовлення (правило й числа — із сервера).
+  function giveAllBtn(st, api, v, cls) {
+    const a = v.all || { n: 0, keep: 0 };
+    if (!st.mine || !(a.n > 0)) return '';
+    return '<button type="button" class="' + (cls || 'primary') + ' clkg-giveall" title="'
+      + api.esc(st, 'Покласти на віз усе з комори' + (a.keep > 0 ? ', крім ' + a.keep + ' ' + api.plural(a.keep, 'виробу', 'виробів', 'виробів')
+        + ' під замовлення гостей і сіл та майстерштук' : '')) + '">🛒 Усе на віз · ' + api.count(a.n) + '</button>';
+  }
+
   function wagonHtml(st, api, v) {
     const esc = (x) => api.esc(st, x);
     const w = v.day;
@@ -194,14 +256,18 @@
         + 'підцілі; срібло — півтори цілі; золото — дві. Ціль росте з кількістю вчорашніх гончарів (' + w.potters + '). '
         + 'Пропущений день нічого не забирає.') + '</div>'
       + wagonSvg(st, api, w)
+      + loadHtml(st, api, w)
       + '<div class="clkg-line"><b>' + w.total + '</b> з ' + w.goal + ' <span class="muted small">· '
       + (w.tier ? TIER_ICON[w.tier] + ' ' + TIER[w.tier] : 'ще до бронзи') + '</span></div>'
       + barHtml(w)
       + '<div class="clkg-subs">' + subs + '</div>'
       + givers
       + paiNote
-      + '<div class="clkg-btns"><button type="button" class="ghost clkg-give"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🧺 Покласти на віз</button>'
+      + '<div class="clkg-btns">' + giveAllBtn(st, api, v, 'ghost')
+      + '<button type="button" class="ghost clkg-give"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🧺 Вибрати, що покласти</button>'
       + claims + '</div>'
+      + (v.all && v.all.keep > 0 && v.all.n > 0 ? '<div class="muted small">' + api.count(v.all.keep) + ' ' + api.plural(v.all.keep, 'виріб', 'вироби', 'виробів')
+        + ' лишиться: відкладено під замовлення гостей і сіл та майстерштук</div>' : '')
       + '<div class="muted small">' + mineNote + '</div>'
       + prev
       + '</section>';
@@ -601,9 +667,18 @@
     let rows;
     if (mode === 'give') {
       const w = v.day;
+      const a = v.all || { n: 0, keep: 0 };
       head = '<div class="clk-sub">🧺 Покласти на віз</div><p class="muted small clk-note">Потрібні: '
         + w.subs.map((s) => esc(wareName(st, s.ware)) + ' ' + Math.min(s.have, s.need) + '/' + s.need).join(' · ')
-        + '. Будь-який розпис і якість рахуються; на воза краще класти простіші — дзвінкі згодяться для майстерштука.</p>';
+        + '. Будь-який розпис і якість рахуються; на воза краще класти простіші — дзвінкі згодяться для майстерштука.</p>'
+        + (st.mine && (a.n > 0 || a.keep > 0)
+          ? '<div class="clkg-btns clkg-allrow">' + giveAllBtn(st, api, v, 'primary')
+            + (a.keep > 0 ? '<button type="button" class="ghost clkg-giveall" data-keep="0" title="Перед обпалом: комора однаково згорить, '
+              + 'а на возі вироби ще щось дадуть">і відкладені теж · ' + api.count(a.n + a.keep) + '</button>'
+              + '<span class="muted small">' + api.count(a.keep) + ' ' + api.plural(a.keep, 'виріб', 'вироби', 'виробів')
+              + ' відкладено під замовлення гостей і сіл та майстерштук</span>' : '')
+            + '</div>'
+          : '');
       rows = items.map((it, i) => itemRow(st, api, it, i,
         '<button type="button" class="ghost small" data-give="' + esc(it.key) + '" data-n="1">+1</button>'
         + (it.n >= 5 ? '<button type="button" class="ghost small" data-give="' + esc(it.key) + '" data-n="5">+5</button>' : '')
@@ -646,6 +721,7 @@
         act(st, api, { op: 'give', key: b.dataset.give, n: +b.dataset.n }, 'wagon').then((r) => { if (r && r.ok) st.guildRoll = Date.now(); });
       };
     }
+    for (const b of body.querySelectorAll('.clkg-giveall')) b.onclick = (e) => giveAll(st, api, e, b);
     for (const b of body.querySelectorAll('[data-brag]')) {
       b.onclick = (e) => { if (human(e)) act(st, api, { op: 'brag', key: b.dataset.brag }, 'brag').then((r) => { if (r && r.ok) api.closeOverlay(st); }); };
     }
@@ -656,6 +732,43 @@
         act(st, api, { op: 'gift', nick: st.guildGiftTo, key: b.dataset.gift }, 'gift');
       };
     }
+  }
+
+  /// «🛒 Усе на віз» — одна дія на сервері (guild { op: giveAll }), а не N натисків «+1». data-keep="0" — і відкладене теж.
+  function giveAll(st, api, e, b) {
+    if (!human(e) || b.disabled) return;
+    b.disabled = true;
+    const payload = b.dataset.keep === '0' ? { op: 'giveAll', keep: false } : { op: 'giveAll' };
+    act(st, api, payload, 'wagon').then((r) => {
+      if (r && r.ok) { st.guildRoll = Date.now(); if (st.guildOv === 'give') api.closeOverlay(st); } else b.disabled = false;
+    });
+  }
+
+  /// Перед обпалом (вкладка «Клейма»): комора згорить — нагадати й дати «🛒 Усе на віз» просто там
+  /// (записка Smaug: «кнопку покласти всі вироби на віз — зручно перед клеймом»).
+  function paintFireWagon(st, api) {
+    const pane = st.panes && st.panes.fire;
+    if (!pane) return;
+    let slot = st.guildFireSlot;
+    if (!slot || !slot.isConnected || slot.parentElement !== pane) {
+      slot = document.createElement('div');
+      slot.className = 'clkg-firewagon';
+      const box = pane.querySelector('.clk-firebox');
+      if (box) box.after(slot); else pane.prepend(slot);
+      st.guildFireSlot = slot;
+    }
+    const v = st.guild;
+    const a = v && v.enabled && v.all;
+    const html = a && a.n + a.keep > 0 && st.mine
+      ? '<span class="small">🛒 У коморі ' + api.count(a.n + a.keep) + ' ' + api.plural(a.n + a.keep, 'виріб', 'вироби', 'виробів')
+        + ' — обпал спалить комору разом із глеками. На возі цеху вони ще дадуть нагороду.</span>'
+        + '<div class="clkg-btns">' + giveAllBtn(st, api, v, 'ghost')
+        + (a.keep > 0 ? '<button type="button" class="ghost clkg-giveall" data-keep="0">і відкладені теж · ' + api.count(a.n + a.keep) + '</button>' : '')
+        + '</div>'
+      : '';
+    if (!api.swap(slot, html)) return;
+    slot.hidden = !html;
+    for (const b of slot.querySelectorAll('.clkg-giveall')) b.onclick = (e) => giveAll(st, api, e, b);
   }
 
   // ---------- вкладка ----------
@@ -675,6 +788,7 @@
     const q = (sel) => st.guildBody.querySelector(sel);
     const give = q('.clkg-give');
     if (give) give.onclick = () => openPicker(st, api, 'give');
+    for (const b of st.guildBody.querySelectorAll('.clkg-giveall')) b.onclick = (e) => giveAll(st, api, e, b);
     for (const b of st.guildBody.querySelectorAll('[data-claim]')) {
       b.onclick = (e) => {
         if (!human(e)) return;
@@ -800,6 +914,7 @@
         gifts: g.gifts || { left: 0, sent: 0, got: 0 }, shelf: g.shelf || [], given: g.given || 0, next: g.next || null,
         autoKiln: !!g.autoKiln, autoOff: !!g.autoOff, kilnSlots: g.kilnSlots || 0, bragAt: g.bragAt || null,
         wagonMult: g.wagonMult || 1,
+        all: g.all || { n: 0, keep: 0 },
         help: g.help || { treatLeft: 0, lendLeft: false, cheered: [], sizes: [], treats: 0 },
         buffs: g.buffs || { lend: null, cheer: null, treat: null },
       };
@@ -808,6 +923,7 @@
       api.tabNote(st, 'guild', 'claim', st.guild.claims.length ? '🛒' : '', 1);
       api.tabNote(st, 'guild', 'buff', st.guild.buffs.lend || st.guild.buffs.cheer ? '✨' : '', 2);
       paint(st, api);
+      paintFireWagon(st, api);
       if (st.guildOv) renderPicker(st, api);
       if (st.guildHelp) renderHelp(st, api);
     },
@@ -821,6 +937,7 @@
     unmount(st) {
       st.guildPane = null;
       st.guildBody = null;
+      st.guildFireSlot = null;
       st.guildOv = null;
       st.guildOvBody = null;
       st.guildHelp = null;
