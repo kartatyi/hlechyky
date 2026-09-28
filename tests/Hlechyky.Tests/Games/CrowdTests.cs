@@ -1721,12 +1721,13 @@ public class CrowdTests(ITestOutputHelper output)
         var js = File.ReadAllText(Path.Combine(FindRoot(), "web", "games", "crowd.js"));
         var sent = System.Text.RegularExpressions.Regex.Matches(js, @"ctx\.(?:act|input)\('(\w+)'")
             .Select(m => m.Groups[1].Value).Distinct().Order().ToArray();
-        Assert.Equal(["buy", "move", "shoot"], sent);
+        Assert.Equal(["buy", "guess", "move", "shoot"], sent);
         // форми payload — ті самі, що перевіряє The_server_accepts_exactly_what_the_module_sends
         Assert.Contains("ctx.input('move', { dir: d })", js);
         Assert.Contains("ctx.input('move', { dir: -1 })", js);
         Assert.Contains("ctx.act('shoot', id == null ? {} : { id })", js);
         Assert.Contains("ctx.act('buy', stall == null ? {} : { stall })", js);
+        Assert.Contains("ctx.act('guess', seat < 0 ? { id: -1, seat: cur } : { id, seat })", js);
     }
 
     [Fact]
