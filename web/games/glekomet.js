@@ -2189,12 +2189,13 @@
     if (!rows.length) return '';
     const name = (i) => ctx.esc(nickOf(st, i));
     rows.sort((a, b) => b.r.dmg - a.r.dmg || a.i - b.i);
-    const dmg = rows.map(({ i, r }, n) => (n === 0 && r.dmg > 0 ? '👑 ' : '') + name(i) + ' ' + r.dmg).join(' · ');
+    // суми шкоди всіх уже видно в «Вечорі» каркаса — тут лише лідер
+    const dmg = rows[0].r.dmg > 0 ? ' · 👑 найбільше шкоди: ' + name(rows[0].i) + ' ' + rows[0].r.dmg : '';
     const acc = rows.filter((x) => x.r.shots >= 3).sort((a, b) => b.r.hits / b.r.shots - a.r.hits / a.r.shots)[0];
     const kil = rows.slice().sort((a, b) => b.r.kills - a.r.kills)[0];
     const n = ser.games, word = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'партії' : 'партій';
     const b = ser.best, w = b && WEAPONS[b.w];
-    return '<div class="gk-ser"><b>📜 Серія: ' + n + ' ' + word + '</b> · шкода: ' + dmg
+    return '<div class="gk-ser"><b>📜 Серія: ' + n + ' ' + word + '</b>' + dmg
       + (acc ? ' · 🎯 найвлучніший: ' + name(acc.i) + ' ' + Math.round((100 * acc.r.hits) / acc.r.shots) + '%' : '')
       + (kil && kil.r.kills > 0 ? ' · 🏚 руйнівник: ' + name(kil.i) + ' ×' + kil.r.kills : '')
       + (b && b.dmg > 0 ? '<br>🏆 Постріл серії: ' + ctx.esc(b.nick) + (b.to ? ' → ' + ctx.esc(b.to) : '') + ' ' + b.dmg
@@ -2331,7 +2332,8 @@
       };
       document.addEventListener('keyup', st.keyup);
       if (window.ResizeObserver) {
-        st.ro = new ResizeObserver(() => { fit(st); fitHeight(st); wake(st, true); });
+        // висоту поля — у наступному кадрі: зміна розміру просто в колбеку давала «ResizeObserver loop» у консолі
+        st.ro = new ResizeObserver(() => { fit(st); if (!st.fitQ) st.fitQ = requestAnimationFrame(() => { st.fitQ = 0; if (st.cv) fitHeight(st); }); wake(st, true); });
         st.ro.observe(el);
         const card = root.closest('.gtable');
         if (card) st.ro.observe(card);
@@ -2436,6 +2438,7 @@
       const st = root._gk;
       if (!st) return;
       cancelAnimationFrame(st.raf);
+      cancelAnimationFrame(st.fitQ || 0);
       st.raf = 0;
       clearTimeout(st.idleT);
       st.idleT = 0;
