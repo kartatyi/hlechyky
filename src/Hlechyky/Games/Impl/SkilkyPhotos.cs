@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -7,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// Одне фото рубрики «📷 Якого року?»: звідки качати (мініатюра Вікісховища ~1024 px), рік зйомки, підпис після
+/// Одне фото рубрики «📷 Якого року?»: звідки качати (мініатюра Вікісховища 960 px; у кеші — до 800 px і ≤ 200 КБ), рік зйомки, підпис після
 /// відповіді й атрибуція (автор, ліцензія, сторінка файлу) — її показуємо під фото на розкритті.
 /// </summary>
 public sealed class SkilkyPhoto
@@ -42,6 +43,11 @@ public sealed class SkilkyPhotos : BackgroundService
     static readonly TimeSpan FirstDelay = TimeSpan.FromSeconds(5);
     /// <summary>Пауза між файлами: Вікісховище не любить, коли його смикають пачкою.</summary>
     static readonly TimeSpan Gap = TimeSpan.FromMilliseconds(700);
+    /// <summary>Скільки може важити фото в кеші: більше — перетискаємо (мініатюри Вікісховища 960 px важать 250–400 КБ,
+    /// а з телефона на мобільному інтернеті кожне фото раунду — на очах у всіх).</summary>
+    public const int TargetBytes = 200 * 1024;
+    /// <summary>До якої ширини стискати (у грі фото не буває ширшим за ~800 px).</summary>
+    public const int TargetWidth = 800;
 
     readonly IClock _clock;
     readonly ILogger? _log;
@@ -49,9 +55,15 @@ public sealed class SkilkyPhotos : BackgroundService
     readonly ConcurrentDictionary<string, bool> _ready = new(StringComparer.Ordinal);
     readonly ConcurrentDictionary<string, (string Id, DateTimeOffset Until)> _tokens = new(StringComparer.Ordinal);
     readonly SemaphoreSlim _poke = new(0, 1);
+    /// <summary>Перетискач (у проді — ffmpeg): байти JPEG → легші байти або null. Лише у фоні, ніколи під замком кімнати.</summary>
+    readonly Func<byte[], CancellationToken, Task<byte[]?>>? _shrink;
+    /// <summary>Файли, які вже пробували перетиснути (не смикати ffmpeg щопівгодини тим самим).</summary>
+    readonly ConcurrentDictionary<string, bool> _shrinkTried = new(StringComparer.Ordinal);
 
-    public SkilkyPhotos(IReadOnlyList<SkilkyPhoto> photos, string dir, IClock clock, ILogger? log = null, bool online = true)
+    public SkilkyPhotos(IReadOnlyList<SkilkyPhoto> photos, string dir, IClock clock, ILogger? log = null, bool online = true,
+        Func<byte[], CancellationToken, Task<byte[]?>>? shrink = null)
     {
+        _shrink = shrink;
         All = photos;
         ById = photos.GroupBy(p => p.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         Dir = dir;
@@ -66,8 +78,9 @@ public sealed class SkilkyPhotos : BackgroundService
     }
 
     /// <summary>Без мережі — тести й перевірки: лише те, що вже лежить у теці.</summary>
-    public static SkilkyPhotos Offline(IReadOnlyList<SkilkyPhoto> photos, string dir, IClock? clock = null) =>
-        new(photos, dir, clock ?? new SystemClock(), online: false);
+    public static SkilkyPhotos Offline(IReadOnlyList<SkilkyPhoto> photos, string dir, IClock? clock = null,
+        Func<byte[], CancellationToken, Task<byte[]?>>? shrink = null) =>
+        new(photos, dir, clock ?? new SystemClock(), online: false, shrink: shrink);
 
     public IReadOnlyList<SkilkyPhoto> All { get; }
     public IReadOnlyDictionary<string, SkilkyPhoto> ById { get; }
@@ -159,7 +172,99 @@ public sealed class SkilkyPhotos : BackgroundService
             await Task.Delay(Gap, ct);
         }
         if (got > 0) _log?.LogInformation("«Якого року?»: докачав {Count} фото, готових {Ready} з {All}", got, _ready.Count, All.Count);
+        await ShrinkCachedAsync(ct);
         return got;
+    }
+
+    /// <summary>Докачані раніше (ще до перетискання) важкі файли — перетиснути, кожен лише раз. Повертає, скільки полегшало.</summary>
+    public async Task<int> ShrinkCachedAsync(CancellationToken ct)
+    {
+        if (_shrink is null) return 0;
+        var n = 0;
+        foreach (var p in All)
+        {
+            if (!_ready.ContainsKey(p.Id) || _shrinkTried.ContainsKey(p.Id)) continue;
+            var path = PathFor(p.Id);
+            try
+            {
+                if (new FileInfo(path).Length <= TargetBytes) continue;
+                _shrinkTried[p.Id] = true;
+                var bytes = await System.IO.File.ReadAllBytesAsync(path, ct);
+                if (await StoreAsync(p.Id, bytes, ct) && new FileInfo(path).Length < bytes.Length) n++;
+            }
+            catch (IOException) { }
+        }
+        if (n > 0) _log?.LogInformation("«Якого року?»: перетиснув {Count} важких фото", n);
+        return n;
+    }
+
+    /// <summary>Покласти в кеш, дорогою перетиснувши, якщо важче за <see cref="TargetBytes"/>. Не стиснулось — кладемо як є.</summary>
+    public async Task<bool> StoreAsync(string id, byte[] bytes, CancellationToken ct)
+    {
+        if (bytes.Length > TargetBytes && _shrink is not null)
+        {
+            try
+            {
+                if (await _shrink(bytes, ct) is { Length: > 0 } small && small.Length < bytes.Length) bytes = small;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { _log?.LogWarning("«Якого року?»: {Id} не перетиснувся — {Error}", id, ex.Message); }
+        }
+        return Store(id, bytes);
+    }
+
+    /// <summary>Справжній перетискач: ffmpeg з <c>YtDlp:FfmpegDir</c>, ширина до <see cref="TargetWidth"/>, якість 4, а якщо
+    /// й так важко — 7. Нема ffmpeg чи він упав — null (фото піде як є).</summary>
+    public static Func<byte[], CancellationToken, Task<byte[]?>> FfmpegShrinker(string ffmpeg, string tmpDir) => async (bytes, ct) =>
+    {
+        Directory.CreateDirectory(tmpDir);
+        var stem = Path.Combine(tmpDir, "shrink-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(6)));
+        var src = stem + "-in.jpg";
+        var dst = stem + "-out.jpg";
+        try
+        {
+            await System.IO.File.WriteAllBytesAsync(src, bytes, ct);
+            byte[]? best = null;
+            foreach (var q in new[] { "4", "7" })
+            {
+                if (!await RunAsync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", src, "-map_metadata", "-1",
+                        "-vf", $"scale='min({TargetWidth},iw)':-2", "-q:v", q, dst], ct)) return best;
+                best = await System.IO.File.ReadAllBytesAsync(dst, ct);
+                if (best.Length <= TargetBytes) break;
+            }
+            return best;
+        }
+        finally
+        {
+            try { System.IO.File.Delete(src); } catch (IOException) { }
+            try { System.IO.File.Delete(dst); } catch (IOException) { }
+        }
+    };
+
+    static async Task<bool> RunAsync(string exe, string[] args, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        Process? p;
+        try { p = Process.Start(psi); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return false; }
+        if (p is null) return false;
+        using (p)
+        {
+            var e = p.StandardError.ReadToEndAsync(ct);
+            var o = p.StandardOutput.ReadToEndAsync(ct);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(30));
+            try { await p.WaitForExitAsync(cts.Token); }
+            catch (OperationCanceledException)
+            {
+                try { p.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                if (ct.IsCancellationRequested) throw;
+                return false;
+            }
+            await Task.WhenAll(e, o);
+            return p.ExitCode == 0;
+        }
     }
 
     async Task<bool> FetchAsync(SkilkyPhoto p, CancellationToken ct)
@@ -172,7 +277,7 @@ public sealed class SkilkyPhotos : BackgroundService
             if (resp.Content.Headers.ContentLength > MaxBytes) return false;
             var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
             if (bytes.Length > MaxBytes) return false;
-            return Store(p.Id, bytes);
+            return await StoreAsync(p.Id, bytes, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -216,8 +321,12 @@ public static class SkilkySetup
         {
             var cache = sp.GetService<IOptionsMonitor<YtDlpOptions>>()?.CurrentValue.CacheDir ?? "cache";
             var log = sp.GetService<ILogger<SkilkyPhotos>>();
-            return new SkilkyPhotos(SkilkyPhotos.Load(Paths.Resolve(SkilkyPhotos.FileName)), Path.Combine(Paths.Resolve(cache), "skilky"),
-                sp.GetService<IClock>() ?? new SystemClock(), log);
+            var dir = Path.Combine(Paths.Resolve(cache), "skilky");
+            var ffDir = sp.GetService<IOptionsMonitor<YtDlpOptions>>()?.CurrentValue.FfmpegDir ?? "tools/yt-dlp";
+            var ffmpeg = Path.Combine(Paths.Resolve(ffDir), OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
+            if (!System.IO.File.Exists(ffmpeg)) ffmpeg = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";   // хай шукає в PATH
+            return new SkilkyPhotos(SkilkyPhotos.Load(Paths.Resolve(SkilkyPhotos.FileName)), dir, sp.GetService<IClock>() ?? new SystemClock(),
+                log, shrink: SkilkyPhotos.FfmpegShrinker(ffmpeg, Path.Combine(dir, "tmp")));
         });
         services.AddHostedService(sp => sp.GetRequiredService<SkilkyPhotos>());
         services.AddSingleton<SkilkyDailyBoard>();

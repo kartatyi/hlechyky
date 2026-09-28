@@ -1197,6 +1197,8 @@ public class SkilkyTests
         Assert.Empty(seen.LastSeen(nicks));        // п'ять запитань вибрано, але ще жодного не показано
 
         Until(h, Skilky.PhaseAsk);
+        Assert.Single(seen.Peek(nicks));           // …а пам'ять знає одразу
+        seen.Flush();
         var only = Assert.Single(seen.LastSeen(nicks));
         Assert.Equal(Question(h).Key, only.Key);
         Assert.Equal(h.Clock.UtcNow, only.Value);

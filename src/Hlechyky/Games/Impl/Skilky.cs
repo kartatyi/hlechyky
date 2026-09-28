@@ -198,6 +198,8 @@ public class Skilky : Game
     /// <summary>Лише фото, а фото ще не докачались — чесно кажемо й підганяємо фон.</summary>
     public override string? CanStart()
     {
+        // Пам'ять «хто що бачив» фон читає з бази заздалегідь — щоб перше «Почати» після рестарту вже її мало.
+        (_seen ??= new SkilkySeen(Ctx.Services.GetService<Db>())).Prefetch();
         if (_topics is { Count: 1 } only && only.Contains(SkilkyTopics.Photo))
         {
             _photos ??= Ctx.Services.GetService<SkilkyPhotos>();
@@ -277,7 +279,7 @@ public class Skilky : Game
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
         var need = Math.Max(0, _questions - ours.Count);
-        var picked = need == 0 ? [] : SkilkySeen.Freshest(pool, x => x.Q.Key, _seen!.LastSeen(Nicks()), need);
+        var picked = need == 0 ? [] : SkilkySeen.Freshest(pool, x => x.Q.Key, _seen!.Peek(Nicks()), need);
         foreach (var o in ours) picked.Insert(Ctx.Rng.Next(picked.Count + 1), o);
         return picked;
     }
@@ -473,7 +475,7 @@ public class Skilky : Game
                 if (Current is { Photo: { } photo } && _photos is not null) _photoUrl = $"/api/games/skilky/photo/{_photos.Issue(photo)}.jpg";
                 // «Бачив» — з тієї секунди, коли запитання з'явилось на екрані. Ті, до яких недограна партія
                 // так і не дійшла, лишаються свіжими. Свої питання компанії пам'ятати нема чого.
-                if (Current is { Author: < 0 }) _seen!.Mark(Nicks(), _asked[_at].Q, now);
+                if (Current is { Author: < 0 }) _seen!.Remember(Nicks(), _asked[_at].Q, now);
                 break;
             case PhaseAsk:
                 if (_teams > 0) SettleTeams();

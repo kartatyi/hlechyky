@@ -6,7 +6,7 @@
 
 Беремо лише JPEG із вільною ліцензією (Public domain / PD-* / CC0 / CC BY / CC BY-SA), де дата зйомки
 (DateTimeOriginal) містить рік категорії, ширина ≥ 800; відсіваємо війну, смерть, агітацію за словами в назві й описі.
-Адреса — мініатюра 1024 px (upload.wikimedia.org), сервер докачує її в cache/skilky сам (SkilkyPhotos).
+Адреса — мініатюра 960 px (стандартний розмір Вікісховища; нестандартні 800/1024 відповідають 400), сервер докачує її в cache/skilky сам (SkilkyPhotos).
 captions.json — {"<номер>": "Підпис після відповіді", ...}; решту полів (автор, ліцензія, сторінка) скрипт бере з API.
 """
 import json, re, sys, time, urllib.parse, urllib.request, os, html
@@ -48,7 +48,7 @@ def infos(titles):
     out = []
     for i in range(0, len(titles), 20):
         d = api(action='query', prop='imageinfo', titles='|'.join(titles[i:i + 20]), iiprop='url|size|extmetadata|mime',
-                iiurlwidth='1024')
+                iiurlwidth='960')
         for pg in d.get('query', {}).get('pages', []):
             ii = (pg.get('imageinfo') or [None])[0]
             if ii: out.append((pg['title'], ii))
@@ -78,7 +78,7 @@ def scan(args):
                 if ii.get('mime') != 'image/jpeg' or ii.get('width', 0) < 800 or not FREE.match(lic): continue
                 if str(year) not in date or re.search(r'\b(1[89]|20)\d\d\b', date.replace(str(year), '')): continue
                 if BAD.search(title + ' ' + desc): continue
-                thumb = ii.get('thumburl') or ''
+                thumb = (ii.get('thumburl') or '').replace('https://thumb.wikimedia.org/', 'https://upload.wikimedia.org/')
                 if not thumb.startswith('https://upload.wikimedia.org/'): continue
                 cand.append({'file': title, 'year': year, 'city': city, 'url': thumb.split('?')[0], 'license': lic, 'author': artist,
                              'page': 'https://commons.wikimedia.org/wiki/' + urllib.parse.quote(title.replace(' ', '_'), safe=':/'), 'desc': desc,

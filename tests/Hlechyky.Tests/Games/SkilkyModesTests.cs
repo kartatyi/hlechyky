@@ -244,6 +244,70 @@ public class SkilkyModesTests
         });
     }
 
+    [Fact]
+    public async Task Heavy_photo_is_shrunk_on_the_way_to_cache_and_light_one_is_not()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sk-shrink-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var calls = 0;
+            var list = Photos(dir).All;
+            var photos = SkilkyPhotos.Offline(list, dir, shrink: (bytes, _) => { calls++; return Task.FromResult<byte[]?>(Jpeg); });
+
+            Assert.True(await photos.StoreAsync("test-0", Jpeg, CancellationToken.None));          // легке — як є
+            Assert.Equal(0, calls);
+
+            var heavy = new byte[SkilkyPhotos.TargetBytes + 1000];
+            Assert.True(await photos.StoreAsync("test-1", heavy, CancellationToken.None));         // важке — через перетискач
+            Assert.Equal(1, calls);
+            Assert.Equal(Jpeg.Length, new FileInfo(photos.PathFor("test-1")).Length);
+
+            // Докачане ще до перетискання: важкий файл у кеші — перетиснути раз, і більше не смикати.
+            File.WriteAllBytes(photos.PathFor("test-2"), heavy);
+            photos.Rescan();
+            Assert.Equal(1, await photos.ShrinkCachedAsync(CancellationToken.None));
+            Assert.Equal(2, calls);
+            Assert.True(new FileInfo(photos.PathFor("test-2")).Length <= SkilkyPhotos.TargetBytes);
+            Assert.Equal(0, await photos.ShrinkCachedAsync(CancellationToken.None));
+            Assert.Equal(2, calls);
+
+            // Перетискач упав — не кидаємо: кладемо як є (тут байти не JPEG, тож кеш їх просто не бере).
+            var broken = SkilkyPhotos.Offline(list, dir, shrink: (_, _) => throw new InvalidOperationException("ffmpeg нема"));
+            Assert.False(await broken.StoreAsync("test-0", heavy, CancellationToken.None));
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    }
+
+    [Fact]
+    public void Seen_memory_is_filled_by_the_room_at_once_and_by_the_database_in_the_background()
+    {
+        using var temp = new TempDb();
+        var seen = new SkilkySeen(temp.Db);
+        var q = SkilkyBank.All[0];
+        var at = new DateTimeOffset(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+
+        // Кімната: пам'ять — одразу, база — після фону.
+        seen.Remember([SkilkySeen.NickKey("Оля")], q, at);
+        Assert.Equal(at, seen.Peek([SkilkySeen.NickKey("Оля")])[q.Key]);
+        seen.Flush();
+        Assert.Equal(at, seen.LastSeen([SkilkySeen.NickKey("Оля")])[q.Key]);
+
+        // Рядок, записаний «до рестарту» (просто в базу, мимо пам'яті), кімната побачить після прогріву фоном.
+        var old = SkilkyBank.All[1];
+        temp.Db.With(c =>
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "INSERT INTO skilky_seen(nick_key, q_key, seen_at) VALUES('петро', $q, $at)";
+            cmd.Parameters.AddWithValue("$q", old.Key);
+            cmd.Parameters.AddWithValue("$at", at.AddDays(-3).ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+            cmd.ExecuteNonQuery();
+        });
+        seen.Warm();
+        Assert.Equal(at.AddDays(-3), seen.Peek(["петро"])[old.Key]);
+        // Бачене Олею не губиться після прогріву, а спільна пам'ять однакова для всіх кімнат цієї бази.
+        Assert.Equal(2, new SkilkySeen(temp.Db).Peek(["петро", SkilkySeen.NickKey("Оля")]).Count);
+    }
+
     // ---------- «Скільки? дня» ----------
 
     [Fact]
