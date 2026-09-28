@@ -108,17 +108,85 @@ public class HockeyTests(ITestOutputHelper output)
         Assert.True(c.Pads[1].X > HockeyCore.Mid && c.Pads[3].X > HockeyCore.Mid);
     }
 
-    [Fact] // 3
-    public void Three_at_the_table_cannot_start_with_the_right_text()
+    [Fact] // 3 (прохід №3, п. 180: утрьох стартує з ботом-напарником)
+    public void Three_at_the_table_start_with_a_bot_partner_for_the_lonely_one()
     {
         var h = new RoomHarness("hockey");
         foreach (var n in Nicks.Take(3)) h.Join(n);
-        var r = h.Start();
-        Assert.False(r.Ok);
-        Assert.Equal(Hockey.ThreeText, r.Message);
-        Assert.Equal(RoomStatus.Lobby, h.Room.Status);
-        h.Join("Іван");
+        Assert.Equal(3, h.View(null).GetProperty("bot").GetInt32());     // у лобі вже видно, куди стане бот
+        Assert.True(h.Start().Ok, h.Reply.Message);
+        var g = Game(h);
+        var c = Core(h);
+        Assert.Equal(3, g.Bot);
+        Assert.True(c.Plays[3]);
+        Assert.Equal(c.Team[1], c.Team[3]);                               // бот — у пару до самотнього рудого
+        Assert.Equal(c.Team[0], c.Team[2]);
+        Assert.Equal(3, h.View(0).GetProperty("bot").GetInt32());
+        Assert.NotNull(Frame(h).GetProperty("p")[6].GetDouble());
+    }
+
+    [Fact] // 3b: бот справді грає — сам забиває нерухомим людям — і не отримує ні рахунку, ні нагород
+    public void Bot_scores_against_idle_humans_and_gets_no_rewards()
+    {
+        var h = new RoomHarness("hockey", new { goals = "5" }, 7);
+        foreach (var n in Nicks.Take(3)) h.Join(n);
         Assert.True(h.Start().Ok);
+        var c = Core(h);
+        var hits = 0;
+        for (var t = 0; t < 12000 && h.Room.Status == RoomStatus.Playing; t++)
+        {
+            h.Tick();
+            if (c.HitBy == 3) hits++;
+        }
+        output.WriteLine($"ударів бота {hits}, рахунок {c.S[0]}:{c.S[1]}, голи бота {c.Goals[3]}");
+        Assert.True(hits >= 5, $"бот ударив {hits} разів");
+        Assert.True(c.Goals[3] >= 1);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        var fin = h.Finished.Single();
+        Assert.DoesNotContain(3, fin.Result.Winners);
+        Assert.False(fin.Result.Scores!.ContainsKey(3));
+        Assert.Contains("🤖 бот", h.Room.Result!.Text);
+        Assert.DoesNotContain(h.Awards, a => a.Nick is null or "");
+    }
+
+    [Fact] // 3c: бот воротар — шайба, що летить у ворота, частіше відбита, ніж пропущена
+    public void Bot_goalkeeper_saves_most_straight_shots()
+    {
+        var saved = 0;
+        for (var k = 0; k < 20; k++)
+        {
+            var c = Bare(0, 1);
+            Put(c, 0, 30, 60);
+            Put(c, 1, 170, 60);
+            var y0 = 20 + k * 4;
+            // шайба з центру летить у ліві ворота (сині — місце 0 — бот)
+            c.Puck = new ArenaBody(110, y0, HockeyCore.PuckR, 1) { Vx = -380, Vy = (60 + (k % 5 - 2) * 6 - y0) * 380 / 110.0 };
+            var goal = false;
+            for (var t = 0; t < 40 && !goal; t++)
+            {
+                c.BotThink(0);
+                goal = c.Step() >= 0;
+            }
+            if (!goal) saved++;
+        }
+        output.WriteLine($"відбив {saved} з 20");
+        Assert.True(saved >= 12, $"відбив лише {saved} з 20");
+        Assert.True(saved <= 19, "бот не мусить бути стіною");
+    }
+
+    [Fact] // 3d: намір з рукою в русі — біта йде далі швидкістю руки, поки летить наступний намір
+    public void Aim_with_hand_speed_keeps_the_paddle_moving_between_intents()
+    {
+        var c = Bare(0, 1);
+        Put(c, 0, 40, 60);
+        c.Aim(0, 40, 60, 300, 0);
+        c.Step();
+        // 8 підкроків ціль повзе 300/с, далі стоїть: 40 + 300 · 0.032 = 49.6
+        Assert.Equal(40 + 300 * HockeyCore.AimLead * HockeyCore.H, c.Pads[0].X, 6);
+        c.Aim(0, 60, 60, 0, 0);
+        c.Step();
+        Assert.Equal(60, c.Pads[0].X, 6);                    // 10.4 за тик — 900/с встигає
+        Assert.Equal(HockeyCore.PadStep, 3.6, 9);
     }
 
     [Fact] // 4
@@ -185,7 +253,7 @@ public class HockeyTests(ITestOutputHelper output)
         c.Step();
         Assert.Equal(16.8 * ArenaPhysics.D, c.Pads[0].X - 30, 9);
         Assert.Equal(16.8 * ArenaPhysics.D, c.Pads[0].Y - 30, 9);
-        Assert.Equal(HockeyCore.PadSpeed, Speed(c.Pads[0]), 6);
+        Assert.Equal(HockeyCore.KeySpeed, Speed(c.Pads[0]), 6);
         c.Move(0, 5, 0);                                         // будь-яке число — лише знак
         var x = c.Pads[0].X;
         c.Step();
@@ -261,8 +329,8 @@ public class HockeyTests(ITestOutputHelper output)
         c.Puck = new ArenaBody(100, 110, HockeyCore.PuckR, 1) { Vy = 500 };
         for (var t = 0; t < 3; t++) c.Step();
         Assert.True(c.Puck.Vy < 0);
-        // 15 підкроків тертя по (1 − 0.6·0.008) і один відбій 0.92 — множники, порядок не важить
-        Assert.Equal(0.92 * 500 * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, 15), -c.Puck.Vy, 6);
+        // 30 підкроків тертя по (1 − 0.6·0.004) і один відбій 0.92 — множники, порядок не важить
+        Assert.Equal(0.92 * 500 * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, 3 * HockeyCore.Sub), -c.Puck.Vy, 6);
         Assert.True(c.Puck.Y <= HockeyCore.TableH - HockeyCore.PuckR);
     }
 
@@ -365,8 +433,8 @@ public class HockeyTests(ITestOutputHelper output)
         Put(c, 1, 180, 110);
         c.Puck = new ArenaBody(100, 60, HockeyCore.PuckR, 1) { Vy = 200 };
         for (var t = 0; t < 25; t++) c.Step();
-        // 125 підкроків по (1 − 0.6·0.008), відбої від бортів ще й по 0.92
-        var free = 200 * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, 125);
+        // 250 підкроків по (1 − 0.6·0.004), відбої від бортів ще й по 0.92
+        var free = 200 * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, 25 * HockeyCore.Sub);
         Assert.True(Speed(c.Puck) <= free + 1e-9);
         Assert.True(Speed(c.Puck) > 80);
     }
@@ -403,8 +471,8 @@ public class HockeyTests(ITestOutputHelper output)
             h.Tick();
             Assert.Equal("go", h.View(null).GetProperty("phase").GetString());
             var p = Core(h).Puck;
-            // у тику свистка шайба вже пройшла 5 підкроків тертя: 110 · 0.9952⁵ ≈ 107.4
-            Assert.Equal(HockeyCore.KickSpeed * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, 5), Speed(p), 6);
+            // у тику свистка шайба вже пройшла 10 підкроків тертя: 110 · 0.9976¹⁰ ≈ 107.4
+            Assert.Equal(HockeyCore.KickSpeed * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, HockeyCore.Sub), Speed(p), 6);
             var off = Math.Abs(Math.Atan2(p.Vy, Math.Abs(p.Vx))) * 180 / Math.PI;
             Assert.InRange(off, 14.999, 35.001);
             return p.Vx;
@@ -442,7 +510,7 @@ public class HockeyTests(ITestOutputHelper output)
         var c = Core(h);
         Assert.Equal([0, 1], c.S);
         Assert.Equal(1, c.N);
-        Assert.Equal(HockeyCore.ServeTicks, c.ServeIn);
+        Assert.Equal(HockeyCore.GoalServeTicks, c.ServeIn);
         Assert.Equal((50.0, 60.0), (c.Puck.X, c.Puck.Y));
         Assert.Equal(0, Speed(c.Puck));
         var f = Frame(h);
@@ -956,7 +1024,7 @@ public class HockeyTests(ITestOutputHelper output)
         Put(c, 0, 58, 26);
         c.Puck = new ArenaBody(50, 8, HockeyCore.PuckR, 1);
         c.Aim(0, 40, HockeyCore.PadR);                           // униз ліворуч — просто через шайбу біля борта
-        for (var t = 0; t < 20; t++)
+        for (var t = 0; t < 5; t++)                                 // біта 900/с вичавлює швидко — далі шайба вже б'ється об чужу біту
         {
             c.Step();
             PuckOutsidePads(c, $"тик {t}");

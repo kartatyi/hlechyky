@@ -12,7 +12,6 @@ public sealed class Hockey : Game
 {
     public const int MatchTicks = 6000, GoldenTicks = 3000;
     public const int PhReady = 0, PhGo = 1, PhOver = 3, PhLobby = 4;
-    public const string ThreeText = "Аерохокей — на двох або двоє на двоє. Хай четвертий сяде або хтось встане";
 
     static readonly GameOption GoalsOption = new("goals", "Грати до", [("5", "5 голів"), ("7", "7 голів"), ("10", "10 голів")], "7");
     static readonly string[] TeamNames = ["сині", "руді"];
@@ -20,7 +19,7 @@ public sealed class Hockey : Game
     public override GameInfo Info { get; } = new(
         "hockey", "Аерохокей", "аерохокей", GameGroup.Live, 2, HockeyCore.Seats, TickMs: HockeyCore.TickMs,
         Start: StartMode.ByHost, Options: [GoalsOption],
-        Hint: "Стіл, шайба, біти. Води біту мишкою чи пальцем, не пропусти. На двох або двоє на двоє, до семи");
+        Hint: "Стіл, шайба, біти. Води біту мишкою чи пальцем, не пропусти. На двох або двоє на двоє (утрьох — з 🤖 ботом), до семи");
 
     HockeyCore? _core;
     bool _started;
@@ -35,6 +34,9 @@ public sealed class Hockey : Game
     readonly Series _series = new();
     /// <summary>Останній гол партії — для підпису під «ГОЛ!» (автогол, з-під борту): команда, номер розіграшу, прапорці.</summary>
     (int Team, int N, bool Own, bool Rail)? _lastGoal;
+    /// <summary>Місце бота-напарника (утрьох — п. 180) або −1. Бот не сидить за столом: ні нагород, ні рахунку.</summary>
+    int _bot = -1;
+    public int Bot => _bot;
 
     public HockeyCore Core
     {
@@ -42,7 +44,7 @@ public sealed class Hockey : Game
         {
             if (_core is not null) return _core;
             _core = new HockeyCore(Ctx.Rng);
-            _core.Reset(Seated());
+            _core.Reset(WithBot(Seated()));
             return _core;
         }
     }
@@ -54,6 +56,16 @@ public sealed class Hockey : Game
     public bool Golden => _golden;
 
     bool[] Seated() => [.. Enumerable.Range(0, HockeyCore.Seats).Select(Ctx.Seated)];
+
+    /// <summary>Утрьох бот займає вільне місце — і за парністю місць стає в пару до самотнього.</summary>
+    static int BotSeat(bool[] seated) => seated.Count(x => x) == 3 ? Array.IndexOf(seated, false) : -1;
+
+    static bool[] WithBot(bool[] seated)
+    {
+        var b = BotSeat(seated);
+        if (b >= 0) seated[b] = true;
+        return seated;
+    }
 
     bool Lobby => !_started || (_over && Enumerable.Range(0, HockeyCore.Seats)
         .Any(s => Ctx.Seated(s) && !_startNicks.Contains(Ctx.NickOf(s) ?? "", StringComparer.OrdinalIgnoreCase)));
@@ -73,8 +85,6 @@ public sealed class Hockey : Game
         _target = options.TryGetValue("goals", out var v) && int.TryParse(v, out var n) && n is 5 or 7 or 10 ? n : 7;
     }
 
-    public override string? CanStart() => Seated().Count(x => x) == 3 ? ThreeText : null;
-
     public override void Start()
     {
         _started = true;
@@ -86,7 +96,9 @@ public sealed class Hockey : Game
         _lastGoal = null;
         _startNicks = [.. Enumerable.Range(0, HockeyCore.Seats).Where(Ctx.Seated).Select(s => Ctx.NickOf(s) ?? "")];
         _series.Begin(Ctx, HockeyCore.Seats);
-        Core.Reset(Seated());
+        var seated = Seated();
+        _bot = BotSeat(seated);
+        Core.Reset(WithBot(seated));
     }
 
     // ---------- ввід ----------
@@ -101,7 +113,8 @@ public sealed class Hockey : Game
             case "to":
                 // Світові координати: клієнт уже розвернув свій екран у світ; у половину підтягує сервер.
                 if (Num(payload, "x") is not { } x || Num(payload, "y") is not { } y) return ActResult.Fail("Тут так не ходять");
-                Core.Aim(seat, x, y);
+                // швидкість руки (необов'язкова): сервер веде ціль нею далі, поки летить наступний намір
+                Core.Aim(seat, x, y, Num(payload, "vx") ?? 0, Num(payload, "vy") ?? 0);
                 return ActResult.Done;
             case "move":
                 if (payload.ValueKind != JsonValueKind.Object) return ActResult.Fail("Тут так не ходять");
@@ -132,6 +145,12 @@ public sealed class Hockey : Game
     {
         if (_over) return TickResult.None;
         var c = Core;
+        if (_bot >= 0)
+        {
+            // на місце бота сіла людина — вона й грає цією битою
+            if (Ctx.Seated(_bot)) _bot = -1;
+            else c.BotThink(_bot);
+        }
         var wasReady = c.StartIn > 0;
         var scored = c.Step();
         if (wasReady && c.StartIn > 0) return c.Still && c.T % 5 != 0 ? TickResult.None : TickResult.FrameOnly;
@@ -163,7 +182,8 @@ public sealed class Hockey : Game
     /// <summary>Місця команди, які ще грають і сидять.</summary>
     int[] Members(int team) => [.. Enumerable.Range(0, HockeyCore.Seats).Where(s => Core.Plays[s] && Core.Team[s] == team && Ctx.Seated(s))];
 
-    string Names(int team) => string.Join(" і ", Members(team).Select(s => Ctx.NickOf(s)));
+    string Names(int team) => string.Join(" і ", Members(team).Select(s => Ctx.NickOf(s) ?? "")
+        .Concat(_bot >= 0 && Core.Plays[_bot] && Core.Team[_bot] == team ? ["🤖 бот"] : []));
 
     /// <summary>Кінець партії: команда <paramref name="team"/> (−1 — нічия), рядок Журналу, особисті голи, серія, ачівки.</summary>
     TickResult Over(int team)
@@ -227,7 +247,7 @@ public sealed class Hockey : Game
         {
             if (!Lobby) return Core;
             var preview = new HockeyCore(Ctx.Rng);   // Reset випадковості не питає — сідована партія та сама
-            preview.Reset(Seated());
+            preview.Reset(WithBot(Seated()));
             return preview;
         }
     }
@@ -254,12 +274,14 @@ public sealed class Hockey : Game
             left = lobby ? MatchTicks : _left,
             golden = !lobby && _golden,
             winner = lobby ? null : _winner,
+            bot = lobby ? (BotSeat(Seated()) is var b && b >= 0 ? b : (int?)null) : _bot >= 0 ? _bot : null,
             lastGoal = lobby || _lastGoal is not { } lg ? null : new { team = lg.Team, n = lg.N, own = lg.Own, rail = lg.Rail },
             series = _series.View(Ctx, HockeyCore.Seats),
             table = new
             {
                 w = (int)HockeyCore.W, h = (int)HockeyCore.TableH, goal = new[] { (int)HockeyCore.GoalLo, (int)HockeyCore.GoalHi },
                 puckR = HockeyCore.PuckR, padR = (int)HockeyCore.PadR, padSpeed = (int)HockeyCore.PadSpeed,
+                serve = HockeyCore.GoalServeTicks,
             },
             turn = (int?)null,
             frame = Shot(c, lobby),
