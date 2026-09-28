@@ -392,14 +392,22 @@
     const el = part(host, 'wrrivals');
     const max = v.max || 6;
     const list = (v.players || []).filter((p) => p.seat !== ctx.seat);
-    const html = list.map((p) => '<div class="wrp' + (p.solved ? ' solved' : '') + (p.failed ? ' failed' : '')
-      + (p.gone ? ' gone' : '') + (st.flash[p.seat] ? ' flash' : '') + '" data-seat="' + p.seat + '">'
-      + mini(ctx, p, max)
-      + '<div class="wrpname"><b title="' + ctx.esc(p.nick || '') + '">' + ctx.esc(p.nick || '—') + '</b></div>'
-      + '<div class="wrptot" title="Спроби й очки за партію">' + badge(p, max) + ' · ' + points(p.total)
-      + (p.gained && v.phase !== 'play' ? ' <em>+' + p.gained + '</em>' : '') + '</div>'
-      + '</div>').join('');
-    setHtml(el, html);
+    // По картці на суперника: спроба одного перемальовує лише його дошку, а не всі п'ять (на шістьох це
+    // 2,1 мс на кожен вид проти ~0,5 — на телефоні вчетверо більше, а види летять на кожну чужу спробу).
+    const keep = new Set();
+    list.forEach((p, i) => {
+      let c = el.querySelector(':scope > [data-seat="' + p.seat + '"]');
+      if (!c) { c = document.createElement('div'); c.dataset.seat = p.seat; }
+      if (el.children[i] !== c) el.insertBefore(c, el.children[i] || null);
+      const cls = 'wrp' + (p.solved ? ' solved' : '') + (p.failed ? ' failed' : '') + (p.gone ? ' gone' : '') + (st.flash[p.seat] ? ' flash' : '');
+      if (c.className !== cls) c.className = cls;
+      setHtml(c, mini(ctx, p, max)
+        + '<div class="wrpname"><b title="' + ctx.esc(p.nick || '') + '">' + ctx.esc(p.nick || '—') + '</b></div>'
+        + '<div class="wrptot" title="Спроби й очки за партію">' + badge(p, max) + ' · ' + points(p.total)
+        + (p.gained && v.phase !== 'play' ? ' <em>+' + p.gained + '</em>' : '') + '</div>');
+      keep.add(c);
+    });
+    [...el.children].forEach((c) => { if (!keep.has(c)) c.remove(); });
   }
 
   /// Шапка: раунд, дуга часу й мої очки.
