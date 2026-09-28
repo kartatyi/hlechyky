@@ -17,6 +17,7 @@ public static partial class VohnykPlans
             case 19: Level19(b); return true;
             case 20: Level20(b); return true;
             case 21: Level21(b); return true;
+            case 22: Level22(b); return true;
             default: return false;
         }
     }
@@ -106,5 +107,20 @@ public static partial class VohnykPlans
         b.Do(null, VohnykBot.Seq(b.Go(Wt, C(4)), b.Go(Wt, C(7)), b.RunUntil(+1, () => b.W.Y[Wt] < 6 * T), b.WaitFor(() => b.Ground(Wt)), b.Go(Wt, C(22))));
         b.Do(VohnykBot.Seq(b.WaitFor(() => b.FeetPx(F) <= 8 * 40 && b.Ground(F)), b.Go(F, 428), b.Go(F, C(1)), b.WaitFor(() => b.Ground(F)), b.Go(F, C(20)), b.Go(F, C(24))),
             b.Go(Wt, C(25)));
+    }
+
+    /// <summary>
+    /// «Сторожові промені»: два коридори, у кожному — чужі сторожі, а кнопки від них — у сусіда. Естафета: Крапля на
+    /// b1 — Вогник проходить синього до b2 — Крапля проходить червоного крізь важіль (другий синій гасне назавжди) —
+    /// Вогник до b3 — Крапля повз останнього червоного — і обоє до виходів.
+    /// </summary>
+    static void Level22(VohnykBot b)
+    {
+        b.Do(b.Go(F, C(4)), b.Go(Wt, C(5)));
+        b.Do(b.Go(F, C(9)), null);
+        b.Do(null, VohnykBot.Seq(b.RunJump(Wt, +1, C(6), 30, C(10)), b.Go(Wt, C(14)), b.RunJump(Wt, +1, C(14) + 4, 30, C(17))));
+        b.Do(VohnykBot.Seq(b.RunJump(F, +1, C(10) + 5, 30, C(14)), b.Go(F, C(17))), null);
+        b.Do(null, b.Go(Wt, C(25)));
+        b.Do(VohnykBot.Seq(b.RunJump(F, +1, C(18) + 5, 30, C(22)), b.Go(F, C(25))), null);
     }
 }
