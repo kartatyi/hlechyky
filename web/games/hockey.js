@@ -9,13 +9,15 @@
 
   Світ: x уздовж стола 0..200 (сині захищають x = 0), y 0..120 униз. Кожен бачить свої ворота ліворуч (ландшафт)
   або внизу (портрет); таблиця перетворень — у toScreen(). Своя біта передбачена тим самим правилом, що й на
-  сервері (stepPad = HockeyCore.StepPad, тест Prediction_matches_the_browser_fixture + docs/games/dev/arena-predict.py);
-  шайба легко екстраполюється вперед; чужі біти — інтерполяція на один інтервал позаду.
+  сервері (stepPad = HockeyCore.StepPad, тест Prediction_matches_the_browser_fixture + docs/games/dev/arena-predict.py).
+  Прохід №3 (29.09): шайба й чужі біти — на «стрічці кадрів» (рівний годинник сервера за номером тика, а не час приходу
+  кадру; малюємо на 1,25 тика позаду між двома справжніми кадрами, похибку розмазуємо за ~70 мс) — без ривків від джитера.
+  Та сама стрічка дає повтор гола (п. 181).
 */
 (() => {
   // ---- фізика біти: ті самі числа й порядок операцій, що в HockeyCore ----
   const L = 200, WD = 120, MID = 100, PAD_R = 8, PUCK_R = 4.5, GOAL_LO = 40, GOAL_HI = 80;
-  const H = 0.008, SUB_MS = 8, PAD_STEP = 420 * H, D = 0.7071067811865476;
+  const H = 0.004, SUB_MS = 4, PAD_STEP = 900 * H, KEY_STEP = 420 * H, D = 0.7071067811865476;
   const TICK_MS = 40, E_WALL = 0.92;
   const minX = (team) => (team === 0 ? PAD_R : MID + PAD_R);
   const maxX = (team) => (team === 0 ? MID - PAD_R : L - PAD_R);
@@ -37,19 +39,19 @@
         p.y += ey / d * PAD_STEP;
       }
     } else if (dx !== 0 || dy !== 0) {
-      const k = dx !== 0 && dy !== 0 ? PAD_STEP * D : PAD_STEP;
+      const k = dx !== 0 && dy !== 0 ? KEY_STEP * D : KEY_STEP;
       p.x += dx * k;
       p.y += dy * k;
     }
     p.x = clamp(p.x, minX(team), maxX(team));
     p.y = clamp(p.y, PAD_R, WD - PAD_R);
   }
-  window.HockeySim = { stepPad, clampAim, PAD_STEP };
+  window.HockeySim = { stepPad, clampAim, PAD_STEP, KEY_STEP };
 
   // ---- вигляд ----
   const LW = 800, LH = 480;                 // логічний канвас у ландшафті (у портреті — навпаки)
   const MARGIN = 14;
-  const SEND_MS = 50;
+  const SEND_MS = 40;                       // 25 намірів/с — рівно тик (квота 30)
   const TRAIL = 10;
   const DASH3 = [3, 3], NO_DASH = [];       // setLineDash без нового масиву щокадру
   const TEAM_VARS = [['--hk-blue', '#5aa9ff'], ['--clay', '#d9825b']];
@@ -128,7 +130,10 @@
     let st = root._hockey;
     if (!st) {
       st = root._hockey = {
-        ctx, cv: null, K: scale(), raf: 0, interp: HGames.ui.Interp(), last: null, prevF: null,
+        ctx, cv: null, K: scale(), raf: 0, last: null, prevF: null,
+        // стрічка кадрів (шайба, чужі біти, повтор)
+        buf: [], base: null, baseAt: 0, clkT: 0, late: 0, evT: -1, offX: 0, offY: 0, offP: new Float64Array(8), replay: null,
+        hx: new Float64Array(8), hy: new Float64Array(8), ht: new Float64Array(8), hN: 0, stick: false,
         land: true, turn: 0, k: 3.8, ox: 0, oy: 0, cw: LW, ch: LH, table: null, tableKey: '', pal: null, palAt: 0,
         // своя біта
         mine: { x: 0, y: 0 }, mineOk: false, acc: 0, at: 0, aim: false, tx: 0, ty: 0, mdx: 0, mdy: 0, rtt: 60,
@@ -196,8 +201,6 @@
     st.cv = HGames.ui.canvas(root, { w: st.cw * st.K, h: st.ch * st.K, cls: 'hkboard' + (land ? '' : ' port') });
     st.table = null;
     st.trailN = 0;
-    st.interp.reset();
-    if (st.last) st.interp.push(st.last);
     wireCanvas(root, st);
   }
 
@@ -242,7 +245,7 @@
     st.ctx.input('move', { dx, dy });
     st.echoAt = performance.now();
   }
-  /// Палець/миша: ціль у світі — локально одразу, на сервер — не частіше 20/с і лише коли зсунулась ≥ 0.5.
+  /// Палець/миша: ціль у світі — локально одразу, на сервер — з rAF раз на тик разом зі швидкістю руки.
   function aimAt(st, ev) {
     if (!canSend(st) || !st.cv || holding()) return;
     const r = st.cv.el.getBoundingClientRect();
@@ -255,23 +258,72 @@
       cy += ((my - cy) / d) * 14;
     }
     const w = toWorld(st, ((cx - r.left) / r.width) * st.cw, ((cy - r.top) / r.height) * st.ch);
-    // Округлюємо одразу до сотих — рівно те число, що полетить на сервер: передбачення веде біту до тієї ж цілі.
-    const t = { x: Math.round(w[0] * 100) / 100, y: Math.round(w[1] * 100) / 100 };
+    setAim(st, w[0], w[1], performance.now());
+  }
+  /// Ціль біти у світі (мишка, палець, стік). Округлюємо одразу до сотих — рівно те число, що полетить на сервер.
+  function setAim(st, x, y, now) {
+    const t = { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
     clampAim(myTeam(st), t);
     st.aim = true;
     st.tx = t.x;
     st.ty = t.y;
-    st.want = t;
     st.sentMove = null;
+    // історія цілі — для швидкості руки
+    const i = st.hN++ % 8;
+    st.hx[i] = t.x; st.hy[i] = t.y; st.ht[i] = now;
+  }
+  /// Швидкість руки за останні ~60 мс (од/с); рука стоїть довше за 35 мс — нуль.
+  function handSpeed(st, now) {
+    if (!st.hN) return [0, 0];
+    const last = (st.hN - 1) % 8;
+    if (now - st.ht[last] > 35) return [0, 0];
+    let j = last;
+    for (let k = 1; k < Math.min(8, st.hN); k++) {
+      const i = (st.hN - 1 - k) % 8;
+      j = i;
+      if (st.ht[last] - st.ht[i] >= 60) break;
+    }
+    const dt = (st.ht[last] - st.ht[j]) / 1000;
+    if (dt < 0.012) return [0, 0];
+    return [(st.hx[last] - st.hx[j]) / dt, (st.hy[last] - st.hy[j]) / dt];
   }
   function flush(st, now) {
-    if (!st.want || now - st.sentAt < SEND_MS || !canSend(st)) return;
-    const t = st.want;
-    if (st.sentTo && Math.abs(st.sentTo.x - t.x) < 0.5 && Math.abs(st.sentTo.y - t.y) < 0.5) { st.want = null; return; }
-    st.want = null;
+    if (!st.aim || now - st.sentAt < SEND_MS || !canSend(st)) return;
+    const [vx, vy] = handSpeed(st, now);
+    const rv = [Math.round(vx), Math.round(vy)];
+    const moved = !st.sentTo || Math.abs(st.sentTo.x - st.tx) >= 0.3 || Math.abs(st.sentTo.y - st.ty) >= 0.3;
+    const stopped = st.sentTo && (st.sentTo.vx || st.sentTo.vy) && !rv[0] && !rv[1];
+    if (!moved && !stopped) return;
     st.sentAt = now;
-    st.sentTo = t;
-    st.ctx.input('to', { x: t.x, y: t.y });
+    st.sentTo = { x: st.tx, y: st.ty, vx: rv[0], vy: rv[1] };
+    st.ctx.input('to', rv[0] || rv[1] ? { x: st.tx, y: st.ty, vx: rv[0], vy: rv[1] } : { x: st.tx, y: st.ty });
+  }
+
+  /// Стік пада (Steam Deck): положення стіка = місце біти у своїй половині. Центр — перед своїми воротами, до
+  /// суперника — аж до центральної лінії, вбік — до бортів. Відпустив — біта вертається до воріт. Хрестовина
+  /// лишається «клавішами» — повільно й точно.
+  function stickNow() {
+    let ax = 0, ay = 0;
+    const list = (navigator.getGamepads && navigator.getGamepads()) || [];
+    for (const p of list) {
+      if (!p || !p.connected) continue;
+      const a = p.axes || [];
+      if (Math.hypot(a[0] || 0, a[1] || 0) > Math.hypot(ax, ay)) { ax = a[0] || 0; ay = a[1] || 0; }
+    }
+    return [ax, ay];
+  }
+  function stickAim(st, now) {
+    if (!canSend(st) || !window.HPad || !(HPad.pads > 0)) return;
+    const [ax, ay] = stickNow();
+    const team = myTeam(st), dir = team === 0 ? 1 : -1, gx = team === 0 ? 0 : L;
+    if (Math.hypot(ax, ay) < 0.2) {
+      if (st.stick) { st.stick = false; setAim(st, gx + dir * 25, WD / 2, now); st.hN = 0; }
+      return;
+    }
+    st.stick = true;
+    const [wx, wy] = dirToWorld(st, ax, ay);
+    const fw = wx * dir;
+    setAim(st, gx + dir * (25 + (fw > 0 ? fw * 67 : fw * 17)), WD / 2 + wy * 52, now);
   }
 
   // ---- передбачення своєї біти ----
@@ -283,9 +335,15 @@
     const lead = Math.max(0, Math.min(100, (st.rtt - 20) / 2));
     const n = Math.round(lead / SUB_MS);
     for (let i = 0; i < n; i++) stepPad(srv, team, st.aim, st.tx, st.ty, st.mdx, st.mdy);
-    if (!st.mineOk || f.hit === s) { st.mine.x = srv.x; st.mine.y = srv.y; st.mineOk = true; return; }
-    st.mine.x += (srv.x - st.mine.x) * 0.3;
-    st.mine.y += (srv.y - st.mine.y) * 0.3;
+    if (!st.mineOk) { st.mine.x = srv.x; st.mine.y = srv.y; st.mineOk = true; return; }
+    // Мертва зона 2,5: передбачення веде біту до тієї ж цілі тим самим кроком, тож дрібна різниця — лише мережа.
+    // Раніше кожен кадр тягнув біту на 30 % назад до сервера (і на ударі — стрибком): біта тремтіла пилкою 25 разів/с.
+    const ex = srv.x - st.mine.x, ey = srv.y - st.mine.y, e = Math.hypot(ex, ey);
+    if (e > 2.5) {
+      const k = 0.35 * (e - 2.5) / e;
+      st.mine.x += ex * k;
+      st.mine.y += ey * k;
+    }
     const dx = st.mine.x - srv.x, dy = st.mine.y - srv.y, d = Math.hypot(dx, dy);
     if (d > 12) { st.mine.x = srv.x + (dx / d) * 12; st.mine.y = srv.y + (dy / d) * 12; }
   }
@@ -332,19 +390,119 @@
     st.mine.y = clamp(st.mine.y, PAD_R, WD - PAD_R);
   }
 
-  // ---- шайба: легка екстраполяція проти затримки ----
-  function puckNow(st, f, now) {
-    if (f.ph !== 1 || f.serveIn > 0 || f.startIn > 0) { st.vis.x = f.x; st.vis.y = f.y; return st.vis; }
-    let dt = (now - st.lastAt) / 1000;
-    if (dt > 0.2) dt = 0;                 // зв'язок пропав — шайба стоїть
-    dt = Math.min(dt, 0.05);
-    let x = f.x + f.vx * dt, y = f.y + f.vy * dt;
-    if (y < PUCK_R) y = 2 * PUCK_R - y; else if (y > WD - PUCK_R) y = 2 * (WD - PUCK_R) - y;
-    if (y < GOAL_LO || y > GOAL_HI) { if (x < PUCK_R) x = 2 * PUCK_R - x; else if (x > L - PUCK_R) x = 2 * (L - PUCK_R) - x; }
-    if (f.n !== st.lastN) { st.vis.x = x; st.vis.y = y; st.lastN = f.n; st.trailN = 0; return st.vis; }
-    st.vis.x += (x - st.vis.x) * 0.5;
-    st.vis.y += (y - st.vis.y) * 0.5;
-    return st.vis;
+  // ---- стрічка кадрів: шайба й чужі біти на рівному годиннику сервера ----
+  // Кадр t сервер рахує о base + t·40 мс нашого годинника; base — найменше (прихід − t·40) з повільним дрейфом угору.
+  // Кадр, що прийшов пізніше (черга, джитер, два в одному rAF), годинник не штовхає — картинка не смикається.
+  // Малюємо на DELAY тика позаду — між двома справжніми кадрами (шайба — сплайном «вперед з a / назад з b» з
+  // відбоями від бортів), а похибку, яку приносить новий кадр, розмазуємо за ~70 мс.
+  const DELAY = 1.25;
+  const BUF = 90;                     // 3,6 с кадрів: на повтор гола теж
+  const OFF_MS = 70;
+  const SMP = { x: 0, y: 0, vx: 0, vy: 0, f: null, p: new Float64Array(8) };
+  const P1 = [0, 0], P2 = [0, 0], BP = new Float64Array(8);
+  function flying(f) { return f.ph === 1 && !f.serveIn && !f.startIn; }
+  function clockIn(st, f, now) {
+    const o = now - f.t * TICK_MS;
+    if (st.base == null || f.t < st.clkT - 2 || o < st.base - 300) { st.base = o; st.late = 0; }
+    else {
+      st.late = st.late * 0.9 + (o - st.base) * 0.1;
+      // стабільно пізно (мережа стала повільнішою) — годинник доганяє швидше
+      st.base = Math.min(st.base + (now - st.baseAt) * (st.late > 30 ? 0.08 : 0.01), o);
+    }
+    st.baseAt = now;
+    st.clkT = f.t;
+  }
+  function renderT(st, now) { return st.base == null ? 1e9 : (now - st.base) / TICK_MS - DELAY; }
+  /// Шайба кадру f через s секунд (s < 0 — назад у часі) з відбоями від бортів і торців повз ворота.
+  function fwd(o, f, s) {
+    let x = f.x + (f.vx || 0) * s, y = f.y + (f.vy || 0) * s;
+    for (let k = 0; k < 2; k++) {
+      if (y < PUCK_R) y = 2 * PUCK_R - y; else if (y > WD - PUCK_R) y = 2 * (WD - PUCK_R) - y;
+      if (y < GOAL_LO || y > GOAL_HI) { if (x < PUCK_R) x = 2 * PUCK_R - x; else if (x > L - PUCK_R) x = 2 * (L - PUCK_R) - x; }
+    }
+    o[0] = clamp(x, -2 * PUCK_R, L + 2 * PUCK_R);
+    o[1] = clamp(y, PUCK_R, WD - PUCK_R);
+  }
+  /// Стан столу на момент rt (у тиках сервера) зі стрічки buf. Повертає out (out.f — кадр на момент rt або перед ним).
+  function sample(buf, rt, out) {
+    const n = buf.length;
+    if (!n) return null;
+    let j = n - 1;
+    while (j > 0 && buf[j].t > rt) j--;
+    const a = buf[j];
+    out.f = a;
+    const pa = a.p || [];
+    if (a.t >= rt || j === n - 1) {
+      // раніше за найстаріший — стоїмо на ньому; пізніше за найновіший — шайба летить далі (до 4 тиків: мережа загикалась)
+      const sec = a.t >= rt ? 0 : Math.min(rt - a.t, 4) * TICK_MS / 1000;
+      if (flying(a)) fwd(P1, a, sec); else { P1[0] = a.x; P1[1] = a.y; }
+      out.x = P1[0]; out.y = P1[1]; out.vx = a.vx || 0; out.vy = a.vy || 0;
+      for (let i = 0; i < 8; i++) out.p[i] = pa[i] == null ? NaN : pa[i];
+      return out;
+    }
+    const c = buf[j + 1], span = Math.max(1, c.t - a.t), u = (rt - a.t) / span, sec = span * TICK_MS / 1000;
+    const pc = c.p || [];
+    if (a.n === c.n && flying(a) && flying(c)) {
+      fwd(P1, a, u * sec);
+      fwd(P2, c, -(1 - u) * sec);
+      out.x = P1[0] + (P2[0] - P1[0]) * u;
+      out.y = P1[1] + (P2[1] - P1[1]) * u;
+    } else if (a.n !== c.n) {
+      // між ними гол чи фол: шайба долітає, куди летіла, а подачу покаже вже наступний кадр
+      if (flying(a)) fwd(P1, a, u * sec); else { P1[0] = a.x; P1[1] = a.y; }
+      out.x = P1[0]; out.y = P1[1];
+    } else {
+      out.x = a.x + (c.x - a.x) * u;
+      out.y = a.y + (c.y - a.y) * u;
+    }
+    out.vx = (a.vx || 0) + ((c.vx || 0) - (a.vx || 0)) * u;
+    out.vy = (a.vy || 0) + ((c.vy || 0) - (a.vy || 0)) * u;
+    for (let i = 0; i < 8; i++) {
+      const x0 = pa[i], x1 = pc[i];
+      out.p[i] = x0 != null && x1 != null ? x0 + (x1 - x0) * u : x1 != null ? x1 : x0 != null ? x0 : NaN;
+    }
+    return out;
+  }
+  /// Новий кадр на стрічку. Те, що вже намальовано, не стрибає: різницю «до/після» кадру забирає зсув, що згасає.
+  function arrive(st, f, now) {
+    let had = false, bx = 0, by = 0, bn = -1;
+    if (st.buf.length && st.base != null) {
+      const o = sample(st.buf, renderT(st, now), SMP);
+      if (o) { had = true; bx = o.x; by = o.y; bn = o.f.n; BP.set(o.p); }
+    }
+    const restart = st.buf.length && f.t < st.buf[st.buf.length - 1].t - 2;
+    clockIn(st, f, now);
+    if (restart) { st.buf.length = 0; st.evT = -1; had = false; }
+    if (st.buf.length && f.t <= st.buf[st.buf.length - 1].t) return;
+    st.buf.push(f);
+    if (st.buf.length > BUF) st.buf.shift();
+    if (!had) { st.offX = st.offY = 0; st.offP.fill(0); return; }
+    const o = sample(st.buf, renderT(st, now), SMP);
+    if (o.f.n !== bn) { st.offX = st.offY = 0; }
+    else { st.offX += bx - o.x; st.offY += by - o.y; }
+    for (let i = 0; i < 8; i++) {
+      const d = BP[i] - o.p[i];
+      st.offP[i] = Number.isFinite(d) ? st.offP[i] + d : 0;
+    }
+    if (Math.hypot(st.offX, st.offY) > 150) st.offX = st.offY = 0;
+  }
+  /// Стрічку з нуля: лобі, F5, «Ще раз».
+  function reset(st, f) {
+    st.buf.length = 0;
+    st.base = null;
+    st.evT = f ? f.t : -1;
+    st.offX = st.offY = 0;
+    st.offP.fill(0);
+    st.replay = null;
+    if (f) st.buf.push(f);
+  }
+  /// Події кадрів (удар, борт, гол) — коли їх доходить стрічка, а не коли кадр прилетів: «ГОЛ!» — коли шайба в сітці.
+  function fireEvents(st, rt) {
+    const b = st.buf;
+    for (let i = 0; i < b.length; i++) {
+      const f = b[i];
+      if (f.t > st.evT && f.t <= rt) { st.evT = f.t; events(st, f); }
+    }
   }
 
   // ---- іскри ----
@@ -409,6 +567,7 @@
       Snd.whistle();
     }
     if (f.goal != null && f.goal >= 0) {
+      startReplay(st, prev, f, now);
       st.goalAt = now;
       st.goalTeam = f.goal;
       st.goalRally = prev.rally || 0;
@@ -420,6 +579,29 @@
       spark(st, tmp[0], tmp[1], 24, f.goal, 160);
       st.trailN = 0;
     }
+  }
+
+  // ---- повтор гола (п. 181): після «ГОЛ!» — останні 1,1 с розіграшу вдвічі повільніше, з тієї ж стрічки ----
+  const REPLAY_TICKS = 27, REPLAY_SLOW = 0.5, REPLAY_AFTER = 850;
+  function startReplay(st, prev, f, now) {
+    const b = st.buf;
+    let from = prev.t;
+    for (let i = b.length - 1; i >= 0; i--) {
+      const x = b[i];
+      if (x.t > prev.t) continue;
+      if (x.n !== prev.n || !flying(x) || prev.t - x.t > REPLAY_TICKS) break;
+      from = x.t;
+    }
+    if (prev.t - from < 6) { st.replay = null; return; }    // розіграш на мить — повторювати нічого
+    st.replay = { from, to: f.t, at: now + (reduced() ? 400 : REPLAY_AFTER), ms: (f.t - from) * TICK_MS / REPLAY_SLOW, team: f.goal };
+  }
+  /// Момент повтору (у тиках) або null, коли повтору нема.
+  function replayT(st, now) {
+    const r = st.replay;
+    if (!r) return null;
+    if (now < r.at) return null;
+    if (now > r.at + r.ms) { st.replay = null; return null; }
+    return r.from + (now - r.at) / TICK_MS * REPLAY_SLOW;
   }
 
   // ---- стіл: офскрін, раз на розмір і орієнтацію ----
@@ -512,24 +694,6 @@
   }
 
   // ---- малювання ----
-  function blend(st) {
-    const at = st.interp.at();
-    const b = (at && at.b) || st.last;
-    if (!b || !b.p) return b;
-    const a = at && at.a;
-    const smooth = a && a !== b && a.p && a.ph === b.ph && a.t <= b.t && b.t - a.t <= 3 && a.n === b.n;
-    const t = at ? at.t : 1;
-    for (let i = 0; i < 4; i++) {
-      const x = b.p[2 * i], y = b.p[2 * i + 1];
-      if (x == null) continue;
-      if (smooth && a.p[2 * i] != null) {
-        st.px[i] = a.p[2 * i] + (x - a.p[2 * i]) * t;
-        st.py[i] = a.p[2 * i + 1] + (y - a.p[2 * i + 1]) * t;
-      } else { st.px[i] = x; st.py[i] = y; }
-    }
-    return b;
-  }
-
   /// Шайба розжарюється зі швидкістю: біла → світло-жовта → жовта. Не червона: руді й так теплого кольору.
   function puckColor(pal, sp) {
     if (sp < 200) return pal.text;
@@ -556,7 +720,12 @@
     g.fillText(t, x, y);
   }
 
+  function botSeat(st) {
+    const v = st.ctx && st.ctx.view;
+    return v && v.bot != null ? v.bot : -1;
+  }
   function nick(st, s) {
+    if (botSeat(st) === s && !(st.ctx && st.ctx.nickOf(s))) return '🤖 бот';
     const n = st.ctx && st.ctx.nickOf(s);
     if (n) { st.nicks[s] = n; return n; }
     return st.nicks[s] || (st.ctx && st.ctx.seatName(s)) || String(s + 1);
@@ -572,9 +741,27 @@
     if (!c) return;
     const pal = palette(st);
     const g = c.ctx;
-    const f = blend(st);
     const dt = st.lastDraw ? Math.min(100, now - st.lastDraw) : 16;
     st.lastDraw = now;
+    // стрічка: живий стіл на DELAY позаду або повтор гола
+    const rt = renderT(st, now);
+    fireEvents(st, rt);
+    const rp = replayT(st, now);
+    const o = sample(st.buf, rp != null ? rp : rt, SMP);
+    const f = o ? o.f : st.last;
+    const kd = Math.exp(-dt / OFF_MS);
+    st.offX *= kd; st.offY *= kd;
+    for (let i = 0; i < 8; i++) st.offP[i] *= kd;
+    if (o) {
+      const live = rp == null;
+      for (let i = 0; i < 4; i++) {
+        st.px[i] = o.p[2 * i] + (live ? st.offP[2 * i] : 0);
+        st.py[i] = o.p[2 * i + 1] + (live ? st.offP[2 * i + 1] : 0);
+      }
+      st.vis.x = o.x + (live ? st.offX : 0);
+      st.vis.y = o.y + (live ? st.offY : 0);
+      if (live) pushOut(st);
+    }
     const k = st.k;
     g.save();
     g.scale(st.K, st.K);
@@ -602,10 +789,10 @@
     }
     if (ph !== 3) scoreboard(st, g, pal, f, v);      // на підсумку рахунок і так великий посередині
     // шайба зі слідом
-    const puck = puckNow(st, f, now);
-    const sp = Math.hypot(f.vx || 0, f.vy || 0);
-    const flying = ph === 1 && !f.serveIn && !f.startIn;
-    if (!flying) st.trailN = 0;
+    const puck = st.vis;
+    const sp = o ? Math.hypot(o.vx, o.vy) : 0;
+    const inPlay = (ph === 1 || rp != null) && !f.serveIn && !f.startIn;
+    if (!inPlay) st.trailN = 0;
     else {
       // кільце: найстаріша точка — на st.trailHead, нова стає на її місце
       st.trail[2 * st.trailHead] = puck.x;
@@ -627,7 +814,7 @@
     g.globalAlpha = 1;
     // гол: шайба ще мить видна в прорізі
     const goalK = 1 - (now - st.goalAt) / 900;
-    if (!(goalK > 0.78 && ph === 1)) {
+    if (!(goalK > 0.78 && ph === 1 && rp == null)) {
       toScreen(st, puck.x, puck.y, tmp);
       g.shadowColor = colr;
       g.shadowBlur = sp >= 600 ? 16 : 10;
@@ -647,13 +834,41 @@
       const i = k < 4 ? k : me;
       if (i < 0 || (k < 4 && i === me) || !f.p || f.p[2 * i] == null) continue;
       const team = teamOf(st, i);
-      const x = i === me && st.mineOk && ph !== 4 ? st.mine.x : st.px[i], y = i === me && st.mineOk && ph !== 4 ? st.mine.y : st.py[i];
+      const own = i === me && st.mineOk && ph !== 4 && rp == null;
+      const x = own ? st.mine.x : st.px[i], y = own ? st.mine.y : st.py[i];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       paddle(st, g, pal, i, team == null ? i % 2 : team, x, y, now, i === me);
     }
     drawSparks(st, g, pal, dt);
-    overlays(st, g, pal, f, v, ph, now);
+    if (rp != null) replayBadge(st, g, pal, now);
+    else overlays(st, g, pal, f, v, ph, now);
     if (ph === 1 && st.ctx && st.ctx.playing && st.lastAt && now - st.lastAt > 1000) txt(g, pal, '⏳ зв’язок…', st.cw / 2, st.ch - 26, 18, pal.text, 700);
     g.restore();
+  }
+
+  /// Намальована шайба не пірнає в біту: сервер її однаково відіб'є, а кадр із відскоком ще в дорозі.
+  function pushOut(st) {
+    const rr = PAD_R + PUCK_R, me = mySeat(st), pk = st.vis, f = st.last;
+    if (!f || !flying(f)) return;
+    for (let i = 0; i < 4; i++) {
+      const x = i === me && st.mineOk ? st.mine.x : st.px[i], y = i === me && st.mineOk ? st.mine.y : st.py[i];
+      if (!Number.isFinite(x)) continue;
+      const dx = pk.x - x, dy = pk.y - y, d = Math.hypot(dx, dy);
+      if (d >= rr || d < 1e-6) continue;
+      pk.x = x + (dx / d) * rr;
+      pk.y = y + (dy / d) * rr;
+    }
+  }
+  function replayBadge(st, g, pal, now) {
+    const r = st.replay;
+    if (!r) return;
+    g.fillStyle = pal.shade;
+    g.globalAlpha = 0.35;
+    g.fillRect(0, st.ch - 36, st.cw, 36);
+    g.globalAlpha = 1;
+    // знизу: угорі табло й годинник; тиканням «⏪» видно, що це запис, а не гра
+    const blink = Math.floor((now - r.at) / 400) % 2 === 0;
+    txt(g, pal, (blink ? '⏪ ' : '    ') + 'Повтор · ' + TEAM_NAME[r.team] + ' забили', st.cw / 2, st.ch - 18, 17, pal.team[r.team], 800);
   }
 
   function paddle(st, g, pal, seat, team, x, y, now, mine) {
@@ -687,7 +902,7 @@
     g.font = '800 ' + Math.round(R * 0.62) + 'px ' + pal.font;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(String(seat + 1), tmp[0], tmp[1] + 0.5);
+    g.fillText(botSeat(st) === seat ? '🤖' : String(seat + 1), tmp[0], tmp[1] + 0.5);
     if (mine) {
       g.strokeStyle = pal.accent;
       g.lineWidth = 1.5;
@@ -840,7 +1055,7 @@
     const narrow = (root.clientWidth || 800) < 480;
     let html = '';
     for (let i = 0; i < 4; i++) {
-      const n = ctx.nickOf(i);
+      const n = ctx.nickOf(i) || (v.bot === i ? '🤖 бот' : null);
       if (!n) continue;
       st.nicks[i] = n;
       const team = teamOf(st, i);
@@ -931,6 +1146,7 @@
       if (!(st.ctx && st.ctx.playing) && performance.now() > st.awakeUntil) { st.raf = 0; return; }
       st.raf = requestAnimationFrame(loop);
       const now = performance.now();
+      stickAim(st, now);
       flush(st, now);
       predict(st, now);
       if (!st.cv.el.offsetParent || document.hidden) return;
@@ -949,16 +1165,16 @@
     seatNames: ['синій', 'рудий', 'синій', 'рудий'],
     seatClass: ['hks0', 'hks1', 'hks2', 'hks3'],
     // Ⓐ забираємо собі й нічого нею не робимо: інакше посеред партії вона тиснула б кнопку, на якій стоїть рамка
-    pad: { dirs: true, a: 'Space', hint: '{dpad} біта' },
+    pad: { dirs: true, a: 'Space', hint: 'стік — біта (відпустив — до воріт) · {dpad} — точно' },
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Аерохокей',
+      v: '2026-09-29',
+      title: 'Аерохокей: гладко, як по льоду',
       items: [
-        '🏒 Стіл, шайба, біти: води біту мишкою чи пальцем у своїй половині й не пропусти',
-        '🥅 Ворота вузькі — гол береться кутом від борта, а не силою',
-        '👥 На двох — класика, на чотирьох — двоє на двоє на одній половині',
-        '⏱ До 7 (або 5 чи 10); чотири хвилини без переможця — золотий гол',
-        '✋ Притиснув шайбу до борта — бий за три секунди, бо подача піде суперникам',
+        '🧈 Шайба й чужі біти більше не смикаються: стіл малюється рівно, 60 кадрів на секунду',
+        '🖐 Біта йде рівно під мишкою чи пальцем, без відставання — і б’є так сильно, як ти махнув',
+        '🎮 Steam Deck: стік — це рука (куди нахилив, там біта; відпустив — біта біля воріт), хрестовина — точно',
+        '⏪ Після гола — дві секунди повільного повтору',
+        '🤖 Утрьох тепер можна: бот стає в пару до самотнього (без нагород)',
       ],
     },
 
@@ -976,10 +1192,14 @@
       const st = state(root, ctx);
       const v = ctx.view;
       const vf = v && v.frame;
-      if (vf && (!ctx.playing || !st.last || v.phase === 'over' || v.phase === 'lobby' || vf.t < (st.last.t || 0) - 5)) {
+      if (vf && v.phase === 'over' && st.buf.length && ctx.room && ctx.room.status === 'finished') {
+        // кінець партії: стрічку не рвемо — останній гол ще долітає й повторюється
+        if (vf.t > st.buf[st.buf.length - 1].t) arrive(st, vf, performance.now());
         st.last = vf;
-        st.interp.reset();
-        st.interp.push(vf);
+        st.mineOk = false;
+      } else if (vf && (!ctx.playing || !st.last || v.phase === 'over' || v.phase === 'lobby' || vf.t < (st.last.t || 0) - 5)) {
+        st.last = vf;
+        reset(st, vf);
         st.mineOk = false;
       }
       layout(root, st);
@@ -1009,15 +1229,13 @@
     frame(root, ctx, f) {
       const st = state(root, ctx);
       if (!f) return;
-      if (st.last && (f.t < st.last.t - 2 || f.n !== st.last.n)) st.interp.reset();
-      events(st, f);
+      arrive(st, f, performance.now());
       if (f.ph === 3 && st.last && st.last.ph !== 3) {
         const t = myTeam(st);
         if (ctx.view && ctx.view.winner != null && t === ctx.view.winner) Snd.win();
       }
       st.last = f;
       st.lastAt = performance.now();
-      st.interp.push(f);
       // відлуння наміру клавішами: скільки йде дорога туди й назад (для «пів дороги» передбачення)
       if (st.echoAt && f.p && mySeat(st) >= 0) {
         const s = mySeat(st), prevX = st.prevX, x = f.p[2 * s];
@@ -1038,6 +1256,8 @@
       if (e.code === 'Space' || e.key === ' ') return !!ctx.playing;
       const k = keyOf(e);
       if (!k) return false;
+      // стрілки, що пад зробив зі стіка, — не наші: стік веде біту сам (stickAim)
+      if (e.hpad && ctx.playing && Math.hypot(...stickNow()) >= 0.2) return true;
       if (!held[k]) { held[k] = true; pushMove(st); }
       return !!ctx.playing;
     },
@@ -1051,7 +1271,7 @@
       if (!ctx.playing) {
         if (ctx.room && ctx.room.status === 'lobby') {
           const n = (ctx.room.seats || []).filter((x) => x.nick).length;
-          if (n === 3) return 'Троє — не порівну: потрібен четвертий, або хай хтось встане';
+          if (n === 3) return 'Утрьох: 🤖 бот стане в пару до самотнього. Стартує господар';
           return 'Стіл на двох або двоє на двоє. Стартує господар';
         }
         return '';
