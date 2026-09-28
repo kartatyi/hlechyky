@@ -81,7 +81,7 @@ def scan(args):
                 thumb = ii.get('thumburl') or ''
                 if not thumb.startswith('https://upload.wikimedia.org/'): continue
                 cand.append({'file': title, 'year': year, 'city': city, 'url': thumb.split('?')[0], 'license': lic, 'author': artist,
-                             'page': 'https://commons.wikimedia.org/wiki/' + urllib.parse.quote(title.replace(' ', '_')), 'desc': desc,
+                             'page': 'https://commons.wikimedia.org/wiki/' + urllib.parse.quote(title.replace(' ', '_'), safe=':/'), 'desc': desc,
                              'ua': city in UA_CITIES})
                 seen.add(title); got += 1
             print(city, year, got, file=sys.stderr)
