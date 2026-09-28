@@ -411,6 +411,7 @@ public sealed partial class Svoya
         var s = _revealOrder[_revealed++];
         var bet = _bets.GetValueOrDefault(s, 1);
         _scores[s] += _finalOk.GetValueOrDefault(s) ? bet : -bet;
+        if (!_finalOk.GetValueOrDefault(s)) NoteCost(s, bet);
         if (Machine) Speak(_finalLines.TryGetValue(s, out var line) ? line : FinalLine(s)); else Silence();
         Arm();
         _dirty = true;

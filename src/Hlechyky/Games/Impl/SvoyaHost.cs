@@ -38,6 +38,8 @@ public sealed partial class SvoyaPhrases
         ["endWin"] = ["nick", "sum"],
         ["endDraw"] = ["nicks"],
         ["endNobody"] = [],
+        ["awardFast"] = ["nick"],
+        ["awardStreak"] = ["nick", "sum"],
     };
 
     /// <summary>Сухий ведучий: по одній репліці, як було до характеру. Кінець партії — мовчки.</summary>
@@ -67,6 +69,8 @@ public sealed partial class SvoyaPhrases
         ["endWin"] = [],
         ["endDraw"] = [],
         ["endNobody"] = [],
+        ["awardFast"] = [],
+        ["awardStreak"] = [],
     });
 
     readonly Dictionary<string, string[]> _pools;

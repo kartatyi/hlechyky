@@ -91,7 +91,8 @@
     const head = '<div class="svmode muted small">Ведучий: ' + (v.mode === 'live'
       ? '🎙 жива людина — ' + esc(nick(ctx, v.host)) + ' (не грає, читає й судить)'
       : '🤖 автомат' + (v.options && v.options.voice !== 'none' ? ' з голосом' : ''))
-      + (v.options && LENGTH[v.options.length] ? ' · ' + LENGTH[v.options.length] : '') + '</div>';
+      + (v.options && LENGTH[v.options.length] ? ' · ' + LENGTH[v.options.length] : '')
+      + (v.options && v.options.pace === 'blitz' ? ' · ⚡ бліц: поле 4×4, кнопка 5 с, відповідь 10 с' : '') + '</div>';
     const chosen = v.pack
       ? '<div class="svchosen"><div class="svptitle">' + esc(v.pack.title) + '</div>'
         + (v.pack.description ? '<div class="muted small">' + esc(v.pack.description) + '</div>' : '')
@@ -534,13 +535,22 @@
       const w = (res.winners || []).map((i) => esc(nick(ctx, i))).join(' і ');
       const pts = w ? (res.scores || [])[res.winners[0]] : null;
       return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w + (pts != null ? ' — ' + pts : '') : 'Отакої — ніхто не вийшов у плюс') + '</div></div>'
-        + sayHtml(v)
+        + sayHtml(v) + awardsHtml(res)
         + (v.final && (v.final.rows || []).length ? '<div class="muted small">Фінал</div>' + finalHtml(ctx, v) : '');
     }
     if (v.phase === 'cat') return catHtml(ctx, v);
     if (v.phase === 'auction') return auctionHtml(ctx, v);
     if (['strike', 'bet', 'final', 'judging', 'finale'].indexOf(v.phase) >= 0) return finalHtml(ctx, v);
     return tvHtml(ctx, v);
+  }
+
+  /// Нагороди партії (сервер кладе в result.awards): ⚡ найшвидша рука, 🔥 серія, 🎯 найвлучніший, 💸 найдорожча помилка.
+  function awardsHtml(res) {
+    const list = res.awards || [];
+    if (!list.length) return '';
+    return '<div class="svawards">' + list.map((a) => '<div class="svaward"><span class="svaw-ico">' + esc(a.icon) + '</span>'
+      + '<span class="svaw-t"><b>' + esc(a.title) + '</b> <span class="muted small">' + esc(a.note) + '</span></span>'
+      + '<span class="svaw-n">' + esc(a.nick) + '</span></div>').join('') + '</div>';
   }
 
   /// Хвіст під кнопкою: репліка ведучого, черга натискань, спроби, оскарження. Живе ПІД кнопкою,

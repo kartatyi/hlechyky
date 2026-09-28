@@ -236,3 +236,14 @@ button.svft:not(:disabled):hover { background: var(--danger); }
 }
 .spk-warn { background: var(--bg2); border-left: 3px solid var(--accent2); padding: 8px 12px; border-radius: 6px; max-height: 200px; overflow-y: auto; }
 .spk-export { text-decoration: none; padding: 5px 10px; }
+
+/* Прохід №3: нагороди партії в підсумку, особливі пакети (🎲 Мікс, 👥 Про нас), бліц */
+.svawards { display: flex; flex-direction: column; gap: 4px; width: min(420px, 100%); margin: 8px auto 0; }
+.svaward { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg2); border-radius: 10px; animation: svin .4s ease both; }
+.svaward:nth-child(2) { animation-delay: .15s; } .svaward:nth-child(3) { animation-delay: .3s; } .svaward:nth-child(4) { animation-delay: .45s; }
+.svaw-ico { font-size: 1.3em; text-align: center; }
+.svaw-t { min-width: 0; overflow-wrap: anywhere; }
+.svaw-n { font-weight: 700; color: var(--accent); overflow-wrap: anywhere; text-align: right; }
+.svpack.off { opacity: .6; cursor: default; }
+.svpack.off:hover { border-color: var(--line); }
+.svnote { color: var(--muted); overflow-wrap: anywhere; }
