@@ -246,4 +246,4 @@ button.svft:not(:disabled):hover { background: var(--danger); }
 .svaw-n { font-weight: 700; color: var(--accent); overflow-wrap: anywhere; text-align: right; }
 .svpack.off { opacity: .6; cursor: default; }
 .svpack.off:hover { border-color: var(--line); }
-.svnote { color: var(--muted); overflow-wrap: anywhere; }
+.svnote { color: var(--muted); overflow-wrap: anywhere; white-space: normal; max-width: 100%; }
