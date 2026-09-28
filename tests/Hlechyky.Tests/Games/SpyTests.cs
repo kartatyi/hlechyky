@@ -196,7 +196,8 @@ public class SpyTests(ITestOutputHelper output)
     public void The_catalog_lists_spy_as_party_by_host_hidden_3_to_10_with_time_rounds_and_set()
     {
         var info = RoomHarness.NewRegistry().Info("spy")!;
-        Assert.Equal(("Шпигун", GameGroup.Party, 3, 10), (info.Title, info.Group, info.MinPlayers, info.MaxPlayers));
+        Assert.Equal(("Шпигун", GameGroup.Party, 2, 10), (info.Title, info.Group, info.MinPlayers, info.MaxPlayers));   // удвох — з Глеком
+        Assert.Equal("on", info.Options!.Single(o => o.Key == "glek").Default);
         Assert.Equal((250, StartMode.ByHost, true, false, false), (info.TickMs, info.Start, info.Hidden, info.Rated, info.Persistent));
         var options = info.Options!.ToDictionary(o => o.Key);
         Assert.Equal(["4", "6", "8", "10"], options["time"].Values.Select(v => v.Value).ToArray());
@@ -209,9 +210,9 @@ public class SpyTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Two_players_cannot_start_and_the_reply_says_at_least_three()
+    public void Two_players_without_glek_cannot_start_and_the_reply_says_at_least_three()
     {
-        var h = new RoomHarness("spy", services: RoomHarness.WithService(Real.Value));
+        var h = new RoomHarness("spy", new { glek = "off" }, services: RoomHarness.WithService(Real.Value));
         h.Join("Оля");
         h.Join("Петро");
         var reply = h.Start();
