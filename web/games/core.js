@@ -1408,7 +1408,10 @@
     const list = (daily && daily.puzzles) || [];
     const cards = list.map((p) => {
       const solved = p.me && p.me.solved;
-      const what = solved
+      // Щоденні «більше — краще» (Скільки? дня) міряються очками, а не спробами: старий сервер points не шле.
+      const what = solved && p.me.points != null
+        ? '✓ зіграно · ' + points(p.me.points)
+        : solved
         ? '✓ розгадано ' + (p.me.attempts ? 'за ' + tries(p.me.attempts) : '') + (p.me.ms ? ' · ' + secs(p.me.ms) : '')
         : 'ще не розгадано' + (p.solvedCount ? ' · ' + p.solvedCount + ' вже розгадали' : '');
       return '<div class="gdc' + (solved ? ' done' : '') + '">' + iconOf(p.game) + '<div><b>' + esc(p.title || titleOf(p.game)) + '</b>'
@@ -1971,6 +1974,11 @@
   const secs = (ms) => (ms == null ? '' : (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + ' с');
 
   /// «за 1 спробу», «за 3 спроби», «за 6 спроб».
+  /// «1 очко», «3 очки», «250 очок».
+  function points(n) {
+    const t = Math.abs(n) % 100, o = Math.abs(n) % 10;
+    return n + (t > 10 && t < 20 ? ' очок' : o === 1 ? ' очко' : o >= 2 && o <= 4 ? ' очки' : ' очок');
+  }
   function tries(n) {
     const t = n % 100, o = n % 10;
     if (t > 10 && t < 20) return n + ' спроб';

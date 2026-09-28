@@ -247,6 +247,16 @@ public abstract class Game
 public interface IDailyGame { }
 
 /// <summary>
+/// Очки щоденної гри «більше — краще» для панелі «☀ Сьогодні»: «Щоденний глек» сам знає лише спроби й час, а
+/// в «Скільки? дня» важать очки. Сервіс гри реєструється як <c>IDailyPoints</c> і відповідає без походу в базу.
+/// </summary>
+public interface IDailyPoints
+{
+    string Game { get; }
+    long? Points(string day, string nick);
+}
+
+/// <summary>
 /// День за київським часом — спільна точка для щоденних ігор, стель «на день» і таблиць «за сьогодні».
 /// Windows знає зону як "FLE Standard Time", Linux — як "Europe/Kyiv"; якщо не знайшли ні ту, ні ту — UTC+3
 /// (краще стабільна помилка на годину взимку, ніж падіння сервера).

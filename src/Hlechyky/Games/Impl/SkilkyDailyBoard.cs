@@ -11,8 +11,12 @@ public sealed record SkilkyDayRow(string Nick, int Points, string Marks);
 /// краще» (спроби й мілісекунди), а тут очки — тож своя таблиця <c>skilky_daily</c>. Гра звертається лише до пам'яті:
 /// запис і перше читання дня йдуть фоном (під замком кімнати — жодного SQLite).
 /// </summary>
-public sealed class SkilkyDailyBoard(Db? db)
+public sealed class SkilkyDailyBoard(Db? db) : IDailyPoints
 {
+    /// <summary>Панель «☀ Сьогодні» показує очки дня, а не «за 1 спробу».</summary>
+    string IDailyPoints.Game => "skilky-daily";
+    long? IDailyPoints.Points(string day, string nick) => Of(day, nick)?.Points;
+
     const string Schema = """
         CREATE TABLE IF NOT EXISTS skilky_daily(
             day TEXT NOT NULL, nick_key TEXT NOT NULL, nick TEXT NOT NULL, points INTEGER NOT NULL,

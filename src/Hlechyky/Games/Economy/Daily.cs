@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Hlechyky.Games.Economy;
 
 /// <summary>Мій результат у головоломці дня.</summary>
-public sealed record DailyMe(bool Solved, int Attempts, int Ms);
+public sealed record DailyMe(bool Solved, int Attempts, int Ms, long? Points = null);
 
 /// <summary>Рядок топу дня.</summary>
 public sealed record DailyTopRow(string Nick, int Attempts, int Ms);
@@ -19,8 +19,19 @@ public sealed record DailyStatus(string Day, int No, DateTimeOffset NextMidnight
 /// «Щоденний глек»: тонкий сервіс над <see cref="Days"/> з контракту. День, номер дня і сід — там;
 /// тут — хто що розв'язав, серії й топ дня (specs/daily.md).
 /// </summary>
-public sealed class Daily(EconomyStore store, GameNames names, IClock clock)
+public sealed class Daily(EconomyStore store, GameNames names, IClock clock, IEnumerable<IDailyPoints>? points = null)
 {
+    readonly IDailyPoints[] _points = points?.ToArray() ?? [];
+
+    long? PointsOf(string game, string day, string nick)
+    {
+        foreach (var p in _points)
+            if (p.Game == game)
+                try { return p.Points(day, nick); }
+                catch { return null; }
+        return null;
+    }
+
     /// <summary>Скільки днів назад дивимось, коли рахуємо серію.</summary>
     const int StreakWindow = 400;
 
@@ -104,7 +115,7 @@ public sealed class Daily(EconomyStore store, GameNames names, IClock clock)
         var puzzles = store.DailyPanel(day, Economy.Key(nick), games, TopRows).Select(p => new DailyPuzzle(
             p.Game,
             names.Title(p.Game),
-            p.Mine is null ? null : new DailyMe(p.Mine.Solved, p.Mine.Attempts, p.Mine.Ms),
+            p.Mine is null ? null : new DailyMe(p.Mine.Solved, p.Mine.Attempts, p.Mine.Ms, PointsOf(p.Game, day, nick)),
             streaks.GetValueOrDefault(p.Game),
             p.SolvedCount,
             p.Top.Select(r => new DailyTopRow(r.Nick, r.Attempts, r.Ms)).ToList())).ToList();
