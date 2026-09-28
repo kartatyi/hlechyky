@@ -1586,6 +1586,31 @@
     if (css) st.cssK = css / (mode === 'port' ? PW : WW);
   }
 
+  /// Телефон: шапка столу з вісьмома місцями штовхала мапу вниз, і кнопки опинялись під нижнім меню — видно було
+  /// або мапу, або кнопки. Раз на партію (room.startedAt), коли вона пішла, прокручуємо сторінку так, щоб рядок стану
+  /// гри став під шапку сайту: тоді мапа й кнопки вміщаються разом. Якщо й так усе видно — не чіпаємо.
+  function fitPhone(st) {
+    const ctx = st.ctx, padEl = st.padEl;
+    if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !st.hudEl || !padEl || !HGames.ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const a = st.hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку чи кнопки зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок стану
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+  }
+
   /// rAF живе, лише поки є що малювати: іде партія (кадри 25 Гц і інтерполяція між ними) або ще доживають анімації
   /// після останньої події (усе коротше за IDLE_MS). Лобі й дограний стіл — статичні: цикл засинає (раніше малював ту
   /// саму картинку 60 разів на секунду). Мапи не видно (інша вкладка сайту, прокрутили геть) — теж спить. Будять вид,
@@ -1711,6 +1736,7 @@
       hud(st);
       summary(st);
       paintClock(st, st.last && st.last.ph ? st.last : null);
+      fitPhone(st);
       wake(st);
     },
 
