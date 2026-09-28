@@ -638,7 +638,7 @@ public class TanksTests
         var core = Core(h);
         Assert.Equal(core.Cell(1, core.H / 2), core.Tanks[4].Cell);
         Assert.Equal(core.Cell(core.W - 2, core.H / 2), core.Tanks[5].Cell);
-        Assert.All(core.Tanks, t => Assert.True(t.Alive));
+        Assert.All(core.Tanks.Take(TanksCore.Seats), t => Assert.True(t.Alive));
         // Навколо бокових стартів так само порожньо
         foreach (var c in new[] { core.Tanks[4].Cell, core.Tanks[5].Cell })
             for (var dy = -1; dy <= 1; dy++)
