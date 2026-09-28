@@ -24,13 +24,17 @@ RS = b"\x1e"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def load_words():
-    path = os.path.normpath(os.path.join(HERE, '..', '..', '..', 'data', 'words', 'uk-5.txt'))
+def load_words(n=5):
+    path = os.path.normpath(os.path.join(HERE, '..', '..', '..', 'data', 'words', f'uk-{n}.txt'))
     try:
         with open(path, encoding='utf-8') as f:
-            return [w.strip() for w in f if len(w.strip()) == 5]
+            return [w.strip() for w in f if len(w.strip()) == n]
     except OSError:
         return []
+
+
+# наввипередки на 4 і 6 літер (опція «Довжина слова», прохід №3) — свої списки відповідей
+WORDS_BY_LEN = {n: load_words(n) for n in (4, 5, 6)}
 
 
 WORDS = load_words()
@@ -47,14 +51,15 @@ def fits(cand, rows):
 
 
 def score(answer, guess):
-    res = ['B'] * 5
+    n = len(answer)
+    res = ['B'] * n
     left = {}
-    for i in range(5):
+    for i in range(n):
         if guess[i] == answer[i]:
             res[i] = 'G'
         else:
             left[answer[i]] = left.get(answer[i], 0) + 1
-    for i in range(5):
+    for i in range(n):
         if res[i] == 'G':
             continue
         if left.get(guess[i], 0) > 0:
@@ -280,8 +285,11 @@ class Bot:
             if v.get('phase') == 'play':
                 if v.get('answer'):
                     self.leak('race: слово у виді посеред раунду')
+                me = v.get('me') or {}
+                # з проходу №3 хто вже вгадав чи відмучився, бачить чужі літери; у спринті — ніхто до кінця
+                peek = v.get('mode') != 'sprint' and (me.get('solved') or me.get('failed'))
                 for p in v.get('players') or []:
-                    if p.get('words') is not None and p.get('seat') != seat:
+                    if p.get('words') is not None and p.get('seat') != seat and not peek:
                         self.leak('race: чужі літери посеред раунду')
         elif g == 'mafia':
             me = v.get('me')
@@ -358,12 +366,21 @@ class Bot:
         if v.get('phase') != 'play' or not me or me.get('solved') or me.get('failed'):
             return
         rows = me.get('rows') or []
-        key = f"w:{room['round']}:{v.get('round')}:{len(rows)}"
+        hints = me.get('hints') or []
+        words = WORDS_BY_LEN.get(v.get('len') or 5) or WORDS
+        key = f"w:{room['round']}:{v.get('round')}:{len(me.get('played') or [])}:{len(rows)}:{len(hints)}"
+        # 💡 інколи бере підказку — на третій спробі й далі
+        if v.get('hint') and len(rows) >= 2 and len(hints) < (v.get('maxHints') or 0) and self.rng.random() < .5:
+            async def hint():
+                r = await self.act('hint', {})
+                self.log('підказка →', (r or {}).get('message'))
+            self.later('h' + key, 1 + self.rng.random() * 3, hint)
+            return
 
         async def go():
-            cands = [w for w in WORDS if fits(w, rows)] if rows else WORDS
+            cands = [w for w in words if fits(w, rows) and all(w[h['i']] == h['ch'] for h in hints)]
             if not cands:
-                cands = WORDS
+                cands = words
             word = self.rng.choice(cands)
             r = await self.act('guess', {'word': word})
             self.log('слово', word, f'({len(cands)} можливих)', '→', (r or {}).get('message'))

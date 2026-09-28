@@ -112,6 +112,8 @@ public sealed class WordleRace : Game
     int _seconds = DefaultSeconds;
     int _len = Len;
     bool _sprint, _hint;
+    /// <summary>Переможці спринту — клієнтові не вгадувати нічию за часом останнього слова.</summary>
+    int[]? _winners;
     /// <summary>До «Почати» — лобі: вид має казати «чекаємо», а не «партію зіграно».</summary>
     string _phase = PhaseLobby;
     string _answer = "";
@@ -172,6 +174,7 @@ public sealed class WordleRace : Game
             p.LastSolveMs = long.MaxValue;
         }
         _used.Clear();
+        _winners = null;
         if (_sprint) StartSprint(Ctx.Clock.UtcNow);
         else NewRound(Ctx.Clock.UtcNow);
         if (_sprint ? _p.Any(p => p.In && p.Answer.Length != _len) : _answer.Length != _len)
@@ -359,6 +362,7 @@ public sealed class WordleRace : Game
         var best = seats.Count == 0 ? 0 : seats.Max(s => _p[s].Words);
         var fastest = best == 0 ? 0 : seats.Where(s => _p[s].Words == best).Min(s => _p[s].LastSolveMs);
         int[] winners = best > 0 ? [.. seats.Where(s => _p[s].Words == best && _p[s].LastSolveMs == fastest)] : [];
+        _winners = winners;
         var table = string.Join(", ", seats.OrderByDescending(s => _p[s].Words).ThenBy(s => _p[s].LastSolveMs)
             .Select(s => $"{Ctx.NickOf(s)} — {_p[s].Words}"));
         var tail = winners.Length == 0 ? "Нічия — слова перемогли всіх" : "Найшвидший — 🏆 " + string.Join(" і ", winners.Select(Ctx.NickOf));
@@ -457,6 +461,7 @@ public sealed class WordleRace : Game
             target = _sprint ? SprintTarget : 0,
             hint = _hint,
             maxHints = _hint ? MaxHints : 0,
+            winners = _sprint && _phase == PhaseDone ? _winners : null,
             round = Round,
             rounds = _rounds,
             seconds = _seconds,
@@ -489,6 +494,8 @@ public sealed class WordleRace : Game
                     words = peek || s == seat ? p.Guesses.ToArray() : null,
                     hints = p.Hints.Count,
                     played = _sprint && _phase == PhaseDone ? p.Played.Select(x => new { w = x.Word, ok = x.Ok }).ToArray() : null,
+                    // спринт позаду — яке слово лишилось недогаданим
+                    left = _sprint && _phase == PhaseDone && p.Guesses.Count > 0 && p.Guesses[^1] != p.Answer ? p.Answer : null,
                     attempts = p.Guesses.Count,
                     solved = p.Solved,
                     failed = p.Failed,

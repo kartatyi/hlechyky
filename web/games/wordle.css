@@ -108,14 +108,14 @@
 
 /* Мала дошка: кольори без літер. Жовта — кружечок, а не квадрат: щоб її не сплутав і той, хто
    погано розрізняє зелене й жовте. */
-.wrmini { display: grid; grid-template-columns: repeat(5, 14px); gap: 3px; }
+.wrmini { display: grid; grid-template-columns: repeat(var(--wn, 5), 14px); gap: 3px; }
 .wrmini i { width: 14px; height: 14px; border-radius: 3px; border: 1px dashed var(--line); box-sizing: border-box;
   font-style: normal; font-size: 10px; line-height: 12px; text-align: center; text-transform: uppercase; color: #fff; }
 .wrmini i.g { background: var(--wg); border-color: var(--wg); }
 .wrmini i.y { background: var(--wy); border-color: var(--wy); border-radius: 50%; }
 .wrmini i.b { background: #56625b; border: 1px solid #56625b; color: #e8ece9; }
 .wrmini i.g, .wrmini i.y { border-style: solid; }
-.wrmini.open { grid-template-columns: repeat(5, 17px); }
+.wrmini.open { grid-template-columns: repeat(var(--wn, 5), 17px); }
 .wrmini.open i { width: 17px; height: 17px; line-height: 15px; font-size: 11px; }
 
 .wrfoot { display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -138,7 +138,7 @@
 
 @media (min-width: 1500px) {
   .wrrivals { max-width: 640px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  .wrmini, .wrmini.open { grid-template-columns: repeat(5, 21px); }
+  .wrmini, .wrmini.open { grid-template-columns: repeat(var(--wn, 5), 21px); }
   .wrmini i, .wrmini.open i { width: 21px; height: 21px; line-height: 19px; font-size: 12px; }
 }
 
@@ -148,9 +148,9 @@
   .wr .board.wtiles { width: min(270px, 100%); }
   .wrrivals { order: 0; flex-basis: 100%; max-width: none; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
   .wrp { padding: 5px 4px; }
-  .wrmini { grid-template-columns: repeat(5, 10px); gap: 2px; }
+  .wrmini { grid-template-columns: repeat(var(--wn, 5), 10px); gap: 2px; }
   .wrmini i { width: 10px; height: 10px; font-size: 0; }
-  .wrmini.open { grid-template-columns: repeat(5, 13px); }
+  .wrmini.open { grid-template-columns: repeat(var(--wn, 5), 13px); }
   .wrmini.open i { width: 13px; height: 13px; font-size: 9px; line-height: 11px; }
   .wrword i { width: 26px; height: 26px; line-height: 26px; }
 }
@@ -181,14 +181,72 @@
 @media (max-width: 560px) {
   .wr:not(.spect) .wrrivals { display: flex; justify-content: center; gap: 5px; overflow-x: auto; flex-wrap: nowrap; }
   .wr:not(.spect) .wrp { flex: 0 0 60px; width: 60px; padding: 4px 2px; gap: 2px; }
-  .wr:not(.spect) .wrmini { grid-template-columns: repeat(5, 8px); gap: 1.5px; }
+  .wr:not(.spect) .wrmini { grid-template-columns: repeat(var(--wn, 5), 8px); gap: 1.5px; }
   .wr:not(.spect) .wrmini i { width: 8px; height: 8px; border-radius: 2px; font-size: 0; }
-  .wr:not(.spect) .wrmini.open { grid-template-columns: repeat(5, 9px); }
+  .wr:not(.spect) .wrmini.open { grid-template-columns: repeat(var(--wn, 5), 9px); }
   .wr:not(.spect) .wrmini.open i { width: 9px; height: 9px; font-size: 0; }
   .wr:not(.spect) .wrpname { font-size: .72em; }
   .wr:not(.spect) .wrptot { font-size: .68em; line-height: 1.15; text-align: center; }
   .wr:not(.spect) .board.wtiles {
-    width: min(270px, 100%, max(170px, calc((100vh - var(--tabs-h, 0px) - 370px) * .83)));
-    width: min(270px, 100%, max(170px, calc((100dvh - var(--tabs-h, 0px) - 370px) * .83)));
+    width: min(270px, 100%, max(170px, calc((100vh - var(--tabs-h, 0px) - var(--wr-reserve, 370px)) * .83)));
+    width: min(270px, 100%, max(170px, calc((100dvh - var(--tabs-h, 0px) - var(--wr-reserve, 370px)) * .83)));
   }
+}
+
+/* ================================================================================================
+   Прохід №3 (29.09): дошки на 4 і 6 літер, 💡 підказка, спринт, серія й розподіл спроб.
+   ================================================================================================ */
+/* Чотири колонки — плитка ширша, тож і дошка вужча, щоб шість рядів не з'їли екран; шість — навпаки. */
+.board.wtiles.wl4 { width: min(236px, 100%); }
+.board.wtiles.wl6 { width: min(330px, 100%); }
+.board.wtiles.wl6 .cell { font-size: 1.35em; }
+.board.wtiles.wl4 .cell.flip:nth-child(4n + 1), .board.wtiles.wl6 .cell.flip:nth-child(6n + 1) { animation-delay: 0s; }
+.board.wtiles.wl4 .cell.flip:nth-child(4n + 2), .board.wtiles.wl6 .cell.flip:nth-child(6n + 2) { animation-delay: .08s; }
+.board.wtiles.wl4 .cell.flip:nth-child(4n + 3), .board.wtiles.wl6 .cell.flip:nth-child(6n + 3) { animation-delay: .16s; }
+.board.wtiles.wl4 .cell.flip:nth-child(4n + 4), .board.wtiles.wl6 .cell.flip:nth-child(6n + 4) { animation-delay: .24s; }
+.board.wtiles.wl6 .cell.flip:nth-child(6n + 5) { animation-delay: .32s; }
+.board.wtiles.wl6 .cell.flip:nth-child(6n + 6) { animation-delay: .4s; }
+.wrword i:nth-of-type(6) { animation-delay: .4s; }
+@media (max-width: 560px) {
+  .wr:not(.spect) .board.wtiles.wl4 {
+    width: min(216px, 100%, max(140px, calc((100vh - var(--tabs-h, 0px) - var(--wr-reserve, 370px)) * .66)));
+    width: min(216px, 100%, max(140px, calc((100dvh - var(--tabs-h, 0px) - var(--wr-reserve, 370px)) * .66)));
+  }
+  .wr:not(.spect) .board.wtiles.wl6 {
+    width: min(300px, 100%, max(200px, calc((100vh - var(--tabs-h, 0px) - var(--wr-reserve, 370px)) * 1)));
+    width: min(300px, 100%, max(200px, calc((100dvh - var(--tabs-h, 0px) - var(--wr-reserve, 370px)) * 1)));
+  }
+  .board.wtiles.wl6 .cell { font-size: 1.15em; }
+}
+
+/* 💡 Підказана літера: стоїть блідо на своєму місці в рядку, який зараз набираєш. */
+.board.wtiles .cell.whint { color: var(--wg); border-style: dashed; border-color: var(--wg); opacity: .8; }
+
+.wrtools { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.wrtools[hidden] { display: none; }
+.wrhint { min-height: 44px; }
+.wrhint small { color: var(--muted); }
+.wrplayed, .wrwords { display: flex; flex-wrap: wrap; gap: 4px 8px; justify-content: center; font-size: .82em; }
+.wrplayed .ok, .wrwords .ok { color: var(--wg); font-weight: 700; }
+.wrplayed .miss, .wrwords .miss { color: var(--muted); text-decoration: line-through; }
+.wrwords { justify-content: flex-start; font-size: .75em; }
+.wrwords .left { color: var(--muted); font-style: italic; }
+.wrrow .nick small { display: flex; }
+
+/* Серія й розподіл спроб на картці дограного дня. */
+.wstats { display: flex; flex-direction: column; gap: 6px; width: min(300px, 100%); }
+.wstreak { text-align: center; }
+.wdist { display: flex; flex-direction: column; gap: 3px; }
+.wdrow { display: flex; align-items: center; gap: 6px; font-size: .85em; }
+.wdrow span { width: 1em; text-align: right; color: var(--muted); }
+.wdrow i { font-style: normal; background: var(--wb); color: #e8ece9; border-radius: 4px; padding: 1px 6px;
+  text-align: right; min-width: 1.6em; box-sizing: border-box; }
+.wdrow.now i { background: var(--wg); color: #fff; font-weight: 700; }
+/* Під дошкою є 💡 чи мої зіграні слова — на телефоні дошка стискається на їхню висоту, щоб клавіатура не пішла під вкладки. */
+.wrme.wtools { --wr-reserve: 420px; }
+/* Невисокий широкий екран (Steam Deck 1280×800): рядок 💡 під дошкою — дошка трохи менша, клавіатура лишається в екрані. */
+@media (min-width: 561px) and (max-height: 860px) {
+  .wrme.wtools .board.wtiles { width: min(262px, 100%); }
+  .wrme.wtools .board.wtiles.wl4 { width: min(206px, 100%); }
+  .wrme.wtools .board.wtiles.wl6 { width: min(300px, 100%); }
 }

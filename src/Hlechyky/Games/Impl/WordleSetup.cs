@@ -27,7 +27,8 @@ public static class WordleSetup
         app.MapGet("/api/games/wordle/stats", (HttpContext c, Daily daily, Db db) =>
         {
             var nick = Auth.Nick(c);
-            if (Auth.IsGuestNick(nick)) return Results.Json(WordleStats.Empty);
+            // гостям панель «Щоденний глек» теж рахує серію — тож і тут; лише безіменний «гість» спільний на всіх
+            if (Auth.NickKey(nick) == Auth.Guest) return Results.Json(WordleStats.Empty);
             var rows = db.With(conn =>
             {
                 using var cmd = conn.CreateCommand();
