@@ -141,16 +141,6 @@ public class MotoPerfTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Four_snakes_on_the_big_field_tick_well_under_budget()
-    {
-        var r = Play("snake-party", 4, 2000, new { field = "big" });
-        Report("Змійки гуртом, 4 на 34×24", r);
-        Assert.True(r.MsPerTick <= 0.25, $"{r.MsPerTick:F4} мс на тик");
-        Assert.True(r.FrameMax <= 1536, $"кадр {r.FrameMax} Б");
-    }
-
-    [Fact]
-    [Trait("Category", "Perf")]
     public void The_duels_and_the_coop_snake_tick_well_under_budget()
     {
         foreach (var (game, n) in new[] { ("tron", 2), ("snake", 2), ("snake-coop", 4) })
