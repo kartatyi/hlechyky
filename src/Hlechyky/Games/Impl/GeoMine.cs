@@ -373,12 +373,19 @@ public sealed class GeoMine
                 }
                 return 0;
             });
+            HashSet<string> keep;
             lock (_gate)
             {
                 // закинуте, поки читали базу, не губимо
                 var have = list.Select(p => p.Id).ToHashSet();
                 _all = [.. list, .. _all.Where(p => !have.Contains(p.Id))];
+                keep = _all.Select(p => p.Id + ".jpg").ToHashSet(StringComparer.OrdinalIgnoreCase);
             }
+            // сироти: файл, який не вдалось стерти, поки його віддавали, і недописані тимчасові — геть
+            if (Directory.Exists(Dir))
+                foreach (var f in new DirectoryInfo(Dir).EnumerateFiles())
+                    if ((f.Name.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || f.Name.EndsWith(".tmp", StringComparison.Ordinal) || f.Name.StartsWith("in-", StringComparison.Ordinal))
+                        && !keep.Contains(f.Name) && f.LastWriteTimeUtc < DateTime.UtcNow.AddMinutes(-10)) TryDelete(f.FullName);
         }
         catch (Exception ex) { _log?.LogWarning("«Де це?»: не прочитав фото друзів — {Error}", ex.Message); }
     }
