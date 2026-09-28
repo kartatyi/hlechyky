@@ -79,7 +79,14 @@
       + '<b>' + esc(p.title) + '</b>'
       + '<span class="muted small">' + esc(p.author) + ' · ' + p.questions + ' запитань' + (p.plays ? ' · зіграно ' + p.plays : '') + '</span>'
       + (themes ? '<span class="svthemes small">' + esc(themes) + '</span>' : '')
+      + (p.note ? '<span class="svnote small">' + esc(p.note) + '</span>' : '')
       + '</button>';
+  }
+
+  /// Особливі пакети (🎲 Мікс, 👥 Про нас): «Про нас», якому замало даних, — сірий рядок із поясненням, а не кнопка.
+  function specialRow(p, chosen) {
+    if (p.ready !== false) return packRow(p, chosen);
+    return '<div class="svpack off" aria-disabled="true"><b>' + esc(p.title) + '</b><span class="svnote small">' + esc(p.note || '') + '</span></div>';
   }
 
   /// Коротка партія — підпис у лобі, щоб усі за столом знали, на скільки сідають. Увесь пакет — без підпису, як було.
@@ -91,7 +98,8 @@
     const head = '<div class="svmode muted small">Ведучий: ' + (v.mode === 'live'
       ? '🎙 жива людина — ' + esc(nick(ctx, v.host)) + ' (не грає, читає й судить)'
       : '🤖 автомат' + (v.options && v.options.voice !== 'none' ? ' з голосом' : ''))
-      + (v.options && LENGTH[v.options.length] ? ' · ' + LENGTH[v.options.length] : '') + '</div>';
+      + (v.options && LENGTH[v.options.length] ? ' · ' + LENGTH[v.options.length] : '')
+      + (v.options && v.options.pace === 'blitz' ? ' · ⚡ бліц: поле 4×4, кнопка 5 с, відповідь 10 с' : '') + '</div>';
     const chosen = v.pack
       ? '<div class="svchosen"><div class="svptitle">' + esc(v.pack.title) + '</div>'
         + (v.pack.description ? '<div class="muted small">' + esc(v.pack.description) + '</div>' : '')
@@ -109,7 +117,10 @@
       return items.length ? '<div class="svgroup"><div class="muted small">' + title + '</div>'
         + items.map((p) => packRow(p, v.pack && v.pack.id === p.id)).join('') + '</div>' : '';
     };
-    const list = group('Від Глечиків', s.packs.builtin) + group('Мої', s.packs.mine) + group('Публічні', s.packs.public);
+    const special = (s.packs.special || []).filter(fits);
+    const list = (special.length ? '<div class="svgroup"><div class="muted small">Особливі</div>'
+        + special.map((p) => specialRow(p, v.pack && v.pack.id === p.id)).join('') + '</div>' : '')
+      + group('Від Глечиків', s.packs.builtin) + group('Мої', s.packs.mine) + group('Публічні', s.packs.public);
     return head + chosen + '<div class="svpicker">'
       + (list || '<div class="svwait">' + (q ? 'Овва, нічого не знайшлось' : 'Пакетів ще нема — зроби свій у «🎯 Своя гра» праворуч') + '</div>')
       + '</div>';
@@ -534,13 +545,22 @@
       const w = (res.winners || []).map((i) => esc(nick(ctx, i))).join(' і ');
       const pts = w ? (res.scores || [])[res.winners[0]] : null;
       return '<div class="svintro"><div class="svptitle">' + (v.error ? esc(v.error) : w ? '🏆 ' + w + (pts != null ? ' — ' + pts : '') : 'Отакої — ніхто не вийшов у плюс') + '</div></div>'
-        + sayHtml(v)
+        + sayHtml(v) + awardsHtml(res)
         + (v.final && (v.final.rows || []).length ? '<div class="muted small">Фінал</div>' + finalHtml(ctx, v) : '');
     }
     if (v.phase === 'cat') return catHtml(ctx, v);
     if (v.phase === 'auction') return auctionHtml(ctx, v);
     if (['strike', 'bet', 'final', 'judging', 'finale'].indexOf(v.phase) >= 0) return finalHtml(ctx, v);
     return tvHtml(ctx, v);
+  }
+
+  /// Нагороди партії (сервер кладе в result.awards): ⚡ найшвидша рука, 🔥 серія, 🎯 найвлучніший, 💸 найдорожча помилка.
+  function awardsHtml(res) {
+    const list = res.awards || [];
+    if (!list.length) return '';
+    return '<div class="svawards">' + list.map((a) => '<div class="svaward"><span class="svaw-ico">' + esc(a.icon) + '</span>'
+      + '<span class="svaw-t"><b>' + esc(a.title) + '</b> <span class="muted small">' + esc(a.note) + '</span></span>'
+      + '<span class="svaw-n">' + esc(a.nick) + '</span></div>').join('') + '</div>';
   }
 
   /// Хвіст під кнопкою: репліка ведучого, черга натискань, спроби, оскарження. Живе ПІД кнопкою,
@@ -661,13 +681,13 @@
     id: 'svoya',
     added: '2026-09-19',  // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     news: {
-      v: '2026-09-28',
-      title: 'Своя гра: ведучий не барится',
+      v: '2026-09-29',
+      title: 'Своя гра: мікс, «Про нас», бліц і нагороди',
       items: [
-        '🎙 Глек озвучує репліки втричі швидше — «Правильно, Оля! Плюс двісті» звучить одразу, без «Ведучий збирається з думками…»',
-        '📱 На телефоні «Я знаю!» вище й більше не ховається під пігулкою «💬 Стіл»',
-        '🏆 Переможець лишається в підсумку, навіть коли друзі вже встали з-за столу',
-        '🔇 «Без голосу» — справді тиша: браузер більше не читає репліки своїм голосом',
+        '🎲 «Мікс» — теми з усіх пакетів, спершу ті, яких ніхто за вашим столом ще не бачив',
+        '👥 «Про нас» — тема з життя Глечиків: хто що закидав на радіо, хто вигравав, у кого більше черепків',
+        '⚡ Темп «Бліц» для двох-трьох: поле 4×4, кнопка 5 с, відповідь 10 с, текст одразу без голосу',
+        '🏅 У підсумку — нагороди: найшвидша рука, серія, найвлучніший і найдорожча помилка',
       ],
     },
     icon: ICON,

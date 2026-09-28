@@ -44,6 +44,12 @@ public sealed class SvoyaTheme
 {
     public string Name { get; set; } = "";
     public List<SvoyaQuestion> Questions { get; set; } = [];
+    /// <summary>
+    /// Звідки тема (ключ пам'яті «бачили», прохід №3, п. 19): у «🎲 Міксі» — ключ теми з її рідного пакета. Не
+    /// зберігається: у звичайному пакеті ключ рахується з id пакета, раунду й назви.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? Origin { get; set; }
 }
 
 public sealed class SvoyaRound

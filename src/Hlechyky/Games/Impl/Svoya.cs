@@ -75,6 +75,14 @@ public sealed partial class Svoya : Game
     public const string LengthFull = "full", LengthTwo = "two", LengthOne = "one";
     public static readonly int[] AnswerChoices = [10, 15, 20];
     public static readonly int[] BuzzChoices = [5, 10, 15];
+    /// <summary>
+    /// Бліц для двох-трьох (прохід №3, п. 21): поле 4×4, кнопка 5 с, відповідь 10 с, текст одразу без голосу —
+    /// удвох повний пакет тягнеться годину.
+    /// </summary>
+    public const string PaceNormal = "normal", PaceBlitz = "blitz";
+    public const int BlitzSize = 4, BlitzBuzzSec = 5, BlitzAnswerSec = 10, BlitzPickMs = 15_000, BlitzRevealMs = 2_000;
+    /// <summary>Читання в бліці — очима: стільки мс на знак, але не менше й не більше за межі (3-2-1 до кнопки).</summary>
+    public const int BlitzMsPerChar = 30, BlitzReadMinMs = 2_000, BlitzReadMaxMs = 4_500;
 
     public const string Lobby = "lobby", Intro = "intro", Board = "board", Reading = "reading", Buzz = "buzz",
         Answering = "answering", Reveal = "reveal", Done = "done";
@@ -92,6 +100,7 @@ public sealed partial class Svoya : Game
             new GameOption("voice", "Голос ведучого", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
             // Увесь пакет — це 75 запитань і година гри; на вечір «ще одну» друзям треба коротше.
             new GameOption("length", "Довжина", [(LengthFull, "Увесь пакет"), (LengthTwo, "Два раунди й фінал"), (LengthOne, "Один раунд і фінал (~15 хв)")], LengthFull),
+            new GameOption("pace", "Темп", [(PaceNormal, "Звичайний"), (PaceBlitz, "⚡ Бліц: поле 4×4, кнопка 5 с, без голосу")], PaceNormal),
         ],
         Hint: "Поле тем і цін, хто перший натиснув — той відповідає. Пакет обирає господар; ведучий — автомат або ти сам");
 
@@ -106,11 +115,20 @@ public sealed partial class Svoya : Game
     string _early = EarlyOn;
     string _voiceName = "ostap";
     string _length = LengthFull;
+    bool _blitz;
     /// <summary>Живий ведучий попросив, щоб запитання читав голос (тумблер на пульті).</summary>
     bool _liveVoice;
 
     // ---------- пакет ----------
     SvoyaPack? _pack;
+    /// <summary>Пакет, як його обрали (до укорочення й бліцу): опції лобі можна міняти й після вибору.</summary>
+    SvoyaPack? _source;
+    /// <summary>Пам'ять «бачили» (для «🎲 Міксу»). Db беремо не в конструкторі: гру створює реєстр без параметрів.</summary>
+    SvoyaSeen? _seen;
+    SvoyaSeen Seen => _seen ??= new SvoyaSeen(Ctx.Services.GetService<Db>());
+    /// <summary>Для кого зібрано мікс (ключі ніків за столом) і чи їхня пам'ять тоді вже підтяглась з бази.</summary>
+    string? _mixFor;
+    bool _mixLoaded;
 
     // ---------- партія ----------
     string _phase = Lobby;
@@ -172,6 +190,23 @@ public sealed partial class Svoya : Game
     /// <summary>Підсумок партії, обраний наперед, і рахунок, для якого його обирали (розійшовся — обрати наново).</summary>
     string? _endLine;
     int[]? _endScores;
+    /// <summary>Яку нагороду згадав підсумок, обраний наперед (розійшлась — підсумок обирається наново).</summary>
+    string _endAward = "";
+
+    // ---------- нагороди партії (прохід №3, п. 20) ----------
+    /// <summary>Найшвидша кнопка партії: хто і за скільки мс від відкриття кнопки (натиски під час читання не рахуються).</summary>
+    int? _fastSeat;
+    int _fastMs;
+    /// <summary>
+    /// Промахи партії (хто, скільки втратив; і ставка у фіналі) — для «💸 найдорожчої помилки». Списком, а не рекордом:
+    /// прийнята апеляція скасовує промах, і нагорода тоді дістається справжньому.
+    /// </summary>
+    readonly List<(int Seat, int Sum)> _misses = [];
+    /// <summary>Найдовша серія правильних поспіль за партію.</summary>
+    int? _streakSeat;
+    int _streakBest;
+    /// <summary>Скільки правильних відповідей у кожного.</summary>
+    readonly int[] _rights = new int[Seats];
 
     sealed record Try(int Seat, string? Text, bool Ok);
     sealed record Verdict(int Seat, bool Ok, int Streak);
@@ -205,7 +240,39 @@ public sealed partial class Svoya : Game
         _early = options.GetValueOrDefault("early") is EarlyOff or EarlyLock ? options["early"] : EarlyOn;
         _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
         _length = options.GetValueOrDefault("length") is LengthTwo or LengthOne ? options["length"] : LengthFull;
+        _blitz = options.GetValueOrDefault("pace") == PaceBlitz;
+        // господар поміняв довжину чи темп уже після вибору пакета — лобі одразу показує, що гратимемо
+        if (_source is not null) _pack = Shape(_source);
     }
+
+    /// <summary>Пакет, яким його гратимуть: укорочений до довжини і, в бліці, обрізаний до поля 4×4.</summary>
+    SvoyaPack Shape(SvoyaPack source)
+    {
+        var pack = Cut(source, _length);
+        return _blitz ? Blitz(pack) : pack;
+    }
+
+    /// <summary>
+    /// Поле бліцу: у звичайних раундах — перші <see cref="BlitzSize"/> тем по перших (найдешевших) <see cref="BlitzSize"/>
+    /// запитань; фінал — як є. Новий пакет зі старими запитаннями: спільний пакет із джерела не чіпаємо.
+    /// </summary>
+    public static SvoyaPack Blitz(SvoyaPack pack) => new()
+    {
+        Id = pack.Id, Title = pack.Title, Description = pack.Description, Author = pack.Author, AuthorKey = pack.AuthorKey,
+        Public = pack.Public, Source = pack.Source, CreatedAt = pack.CreatedAt, UpdatedAt = pack.UpdatedAt,
+        Rounds = [.. pack.Rounds.Select(r => r.IsFinal ? r : new SvoyaRound
+        {
+            Name = r.Name, Type = r.Type,
+            Themes = [.. r.Themes.Take(BlitzSize).Select(t => new SvoyaTheme
+            {
+                Name = t.Name, Origin = t.Origin,
+                Questions = [.. t.Questions.OrderBy(q => q.Price).Take(BlitzSize)],
+            })],
+        })],
+    };
+
+    int BuzzSec => _blitz ? BlitzBuzzSec : _buzzSec;
+    int AnswerSec => _blitz ? BlitzAnswerSec : _answerSec;
 
     /// <summary>
     /// Пакет, укорочений до обраної довжини: перші звичайні раунди й фінал (якщо він є). Пакет із джерела —
@@ -240,14 +307,81 @@ public sealed partial class Svoya : Game
     ActResult PickPack(int seat, JsonElement payload)
     {
         if (seat != Ctx.HostSeat) return ActResult.Fail("Пакет обирає господар столу");
-        if (_packs is null) return ActResult.Fail("Пакети зараз недоступні");
         var id = Str(payload, "id");
         if (string.IsNullOrEmpty(id)) return ActResult.Fail("Оберіть пакет");
-        var pack = _packs.Playable(id, Ctx.NickOf(seat) ?? "");
-        if (pack is null) return ActResult.Fail("У цей пакет грати не можна — він чужий, прихований або ще не дороблений");
-        _pack = Cut(pack, _length);
+        SvoyaPack? pack;
+        if (id == SvoyaMix.Id)
+        {
+            pack = BuildMix();
+            if (pack is null) return ActResult.Fail("Мікс не зібрати — вбудованих пакетів нема");
+        }
+        else if (id == SvoyaAbout.Id)
+        {
+            // «Про нас» збирається з бази фоном (SvoyaAbout); тут — лише готовий знімок із пам'яті
+            var about = Ctx.Services.GetService<SvoyaAbout>();
+            if (about is null) return ActResult.Fail("Тема «Про нас» тут недоступна");
+            var snap = about.Current;
+            about.Refresh();
+            if (snap is null) return ActResult.Fail("Збираю факти про нас — тицни ще раз за мить");
+            if (snap.Pack is null) return ActResult.Fail(snap.Reason);
+            pack = snap.Pack.Clone();
+        }
+        else
+        {
+            if (_packs is null) return ActResult.Fail("Пакети зараз недоступні");
+            pack = _packs.Playable(id, Ctx.NickOf(seat) ?? "");
+            if (pack is null) return ActResult.Fail("У цей пакет грати не можна — він чужий, прихований або ще не дороблений");
+        }
+        _source = pack;
+        _pack = Shape(pack);
         _dirty = true;
         return ActResult.Accept($"Пакет «{pack.Title}» на столі — гайда!");
+    }
+
+    /// <summary>Ключі ніків усіх, хто сидить за столом (і живого ведучого: теми він теж бачить).</summary>
+    List<string> SeatedKeys()
+    {
+        var keys = new List<string>(Seats);
+        for (var s = 0; s < Seats; s++)
+            if (Ctx.Seated(s) && Ctx.NickOf(s) is { } n && SvoyaSeen.NickKey(n) is var k && !keys.Contains(k)) keys.Add(k);
+        keys.Sort(StringComparer.Ordinal);
+        return keys;
+    }
+
+    /// <summary>«🎲 Мікс» для тих, хто зараз за столом: спершу теми, яких ніхто з них ще не бачив. Лише з пам'яті — без бази.</summary>
+    SvoyaPack? BuildMix()
+    {
+        var builtin = Ctx.Services.GetService<SvoyaBuiltin>();
+        if (builtin is null || builtin.Packs.Count == 0) return null;
+        var keys = SeatedKeys();
+        _mixFor = string.Join("|", keys);
+        _mixLoaded = Seen.Loaded(keys);
+        return SvoyaMix.Build(builtin.Packs, Seen.LastSeen(keys), Ctx.Rng, out _);
+    }
+
+    /// <summary>
+    /// Зібрати мікс наново, якщо за стіл хтось сів чи встав, або пам'ять столу щойно підтяглась з бази, або після
+    /// партії («Ще раз» — щойно зіграні теми вже бачені). Лобі одразу показує нові теми.
+    /// </summary>
+    void RefreshMix(bool force)
+    {
+        if (_source?.Id != SvoyaMix.Id) return;
+        var keys = SeatedKeys();
+        if (!force && string.Join("|", keys) == _mixFor && (_mixLoaded || !Seen.Loaded(keys))) return;
+        if (BuildMix() is not { } mix) return;
+        _source = mix;
+        _pack = Shape(mix);
+        _dirty = true;
+    }
+
+    /// <summary>Гравці бачать теми раунду на полі — запам'ятати (фоном), щоб «🎲 Мікс» їх більше не підсовував першими.</summary>
+    void MarkSeen()
+    {
+        if (_pack is null || _round >= _pack.Rounds.Count) return;
+        var r = R;
+        var themes = new List<string>(r.Themes.Count);
+        foreach (var t in r.Themes) themes.Add(SvoyaMix.Key(_pack.Id, _round, r, t));
+        Seen.Mark(SeatedKeys(), themes, Now);
     }
 
     // =========================================================================================
@@ -256,6 +390,7 @@ public sealed partial class Svoya : Game
 
     public override void Start()
     {
+        RefreshMix(force: _phase == Done);
         _host = _mode == Live ? Ctx.HostSeat ?? 0 : -1;
         Array.Clear(_scores);
         _left.Clear();
@@ -272,6 +407,11 @@ public sealed partial class Svoya : Game
         _nobodyRun = 0;
         _endLine = null;
         _endScores = null;
+        _endAward = "";
+        _fastSeat = _streakSeat = null;
+        _fastMs = _streakBest = 0;
+        _misses.Clear();
+        Array.Clear(_rights);
         ClearQuestion();
         ClearFinal();
         var players = Players().ToList();
@@ -282,7 +422,7 @@ public sealed partial class Svoya : Game
     }
 
     /// <summary>Голос звучить: в auto — якщо його не вимкнули в лобі; у live — якщо ведучий попросив читати за нього.</summary>
-    bool VoiceOn => (_mode == Auto || _liveVoice) && _voiceName != "none" && _voice.Enabled;
+    bool VoiceOn => (_mode == Auto || _liveVoice) && _voiceName != "none" && !_blitz && _voice.Enabled;
 
     /// <summary>Хто в цій партії читає вголос: автомат (auto, або live з увімкненим голосом) чи жива людина.</summary>
     bool Machine => _mode == Auto || _liveVoice;
@@ -350,8 +490,61 @@ public sealed partial class Svoya : Game
         _missLine = Line("wrongLast", ("nick", nick), ("sum", sum), ("answer", _q!.Answer)) + Tail(_q);
     }
 
-    /// <summary>Підсумок партії за рахунком: перемога, нічия, ніхто в плюсі. Порожньо — мовчати.</summary>
+    /// <summary>Підсумок партії за рахунком (перемога, нічия, ніхто в плюсі) і одна нагорода слідом. Порожньо — мовчати.</summary>
     string EndLine(int[] scores)
+    {
+        var award = AwardLine();
+        var end = EndWinLine(scores);
+        return award.Length == 0 ? end : end.Length == 0 ? award : end + " " + award;
+    }
+
+    /// <summary>Яку нагороду згадати голосом: серія з трьох і більше, інакше найшвидша кнопка. Ключ — щоб звірити на фініші.</summary>
+    string AwardKey() => _streakBest >= 3 && _streakSeat is { } ss ? $"s{ss}:{_streakBest}" : _fastSeat is { } fs ? $"f{fs}" : "";
+
+    string AwardLine()
+    {
+        if (_streakBest >= 3 && _streakSeat is { } ss) return Line("awardStreak", ("nick", Ctx.NickOf(ss) ?? ""), ("sum", NumberWords.Say(_streakBest)));
+        if (_fastSeat is { } fs) return Line("awardFast", ("nick", Ctx.NickOf(fs) ?? ""));
+        return "";
+    }
+
+    /// <summary>
+    /// Нагороди партії для підсумку (прохід №3, п. 20): у кожного свій момент слави. Порожні — не показуємо:
+    /// серія — від трьох, «влучний» — від трьох правильних і лише один такий.
+    /// </summary>
+    object[] Awards(string?[] nicks)
+    {
+        var list = new List<object>(4);
+        string? N(int seat) => seat >= 0 && seat < Seats ? nicks[seat] ?? Ctx.NickOf(seat) : null;
+        void Add(string icon, string title, int seat, string note)
+        {
+            if (N(seat) is { } n) list.Add(new { icon, title, seat, nick = n, note });
+        }
+        if (_fastSeat is { } fs) Add("⚡", "Найшвидша рука", fs, (_fastMs / 1000.0).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') + " с");
+        if (_streakBest >= 3 && _streakSeat is { } ss) Add("🔥", "Серія", ss, $"{_streakBest} поспіль");
+        var best = _rights.Max();
+        if (best >= 3 && _rights.Count(r => r == best) == 1) Add("🎯", "Найвлучніший", Array.IndexOf(_rights, best), $"{best} правильних");
+        var cost = -1;
+        for (var i = 0; i < _misses.Count; i++) if (_misses[i].Sum > 0 && (cost < 0 || _misses[i].Sum > _misses[cost].Sum)) cost = i;
+        if (cost >= 0) Add("💸", "Найдорожча помилка", _misses[cost].Seat, $"−{_misses[cost].Sum}");
+        return [.. list];
+    }
+
+    void NoteCost(int seat, int sum) => _misses.Add((seat, sum));
+
+    /// <summary>Апеляція скасувала промах — викреслити його з кандидатів на «💸».</summary>
+    void UnnoteCost(int seat, int sum)
+    {
+        var i = _misses.FindLastIndex(m => m.Seat == seat && m.Sum == sum);
+        if (i >= 0) _misses.RemoveAt(i);
+    }
+
+    void NoteStreak(int seat)
+    {
+        if (_streak[seat] > _streakBest) { _streakBest = _streak[seat]; _streakSeat = seat; }
+    }
+
+    string EndWinLine(int[] scores)
     {
         var seats = Players().ToArray();
         var best = seats.Length == 0 ? 0 : seats.Max(s => scores[s]);
@@ -366,6 +559,7 @@ public sealed partial class Svoya : Game
     {
         _endLine = EndLine(scores);
         _endScores = (int[])scores.Clone();
+        _endAward = AwardKey();
         if (VoiceOn && _endLine.Length > 0) Prepare([_endLine], urgent: true);
     }
 
@@ -425,13 +619,13 @@ public sealed partial class Svoya : Game
     {
         var ms = _phase switch
         {
-            Intro => Math.Max((int)(_speech * 1000) + AfterSpeechMs, R.Themes.Count * IntroThemeMs + AfterSpeechMs),
-            Board => PickMs,
+            Intro => _blitz ? R.Themes.Count * IntroThemeMs + AfterSpeechMs : Math.Max((int)(_speech * 1000) + AfterSpeechMs, R.Themes.Count * IntroThemeMs + AfterSpeechMs),
+            Board => _blitz ? BlitzPickMs : PickMs,
             Reading => ReadMs(),
-            Buzz => _buzzSec * 1000,
-            Answering => _answerSec * 1000,
+            Buzz => BuzzSec * 1000,
+            Answering => AnswerSec * 1000,
             // правильно відповіли, поки голос ще читав: репліка про відповідь прозвучить після запитання
-            Reveal => Math.Max(RevealMs, (int)(_speech * 1000) + AfterSpeechMs) + ReadLeftMs(),
+            Reveal => Math.Max(_blitz ? BlitzRevealMs : RevealMs, _blitz ? 0 : (int)(_speech * 1000) + AfterSpeechMs) + ReadLeftMs(),
             _ => SpecialMs(),
         };
         _totalMs = ms;
@@ -444,6 +638,8 @@ public sealed partial class Svoya : Game
         var media = (_q?.Media?.Seconds ?? 0) * 1000;
         // живий ведучий читає сам; якщо ж голос читає за нього — кнопка відкривається, як у автомата
         if (_mode == Live && !_liveVoice) return _q is { Text.Length: 0 } && media > 0 ? media + 500 : LiveReadMs;
+        // бліц: текст на екрані одразу, читаємо очима — пара секунд, і кнопка
+        if (_blitz) return Math.Max(Math.Clamp((_q?.Text.Length ?? 0) * BlitzMsPerChar, BlitzReadMinMs, BlitzReadMaxMs), media) + AfterReadMs;
         return Math.Max((int)(_speech * 1000), media) + AfterReadMs;
     }
 
@@ -455,6 +651,7 @@ public sealed partial class Svoya : Game
 
     void BeginIntro()
     {
+        MarkSeen();
         Phase(Intro);
         ClearQuestion();
         if (Machine) Speak(IntroLine()); else Silence();
@@ -543,6 +740,8 @@ public sealed partial class Svoya : Game
         _verdicts.Add(new Verdict(seat, true, _streak[seat]));
         _scores[seat] += _price;
         _streak[seat]++;
+        _rights[seat]++;
+        NoteStreak(seat);
         _anyRight = true;
         _correct = seat;
         _chooser = seat;
@@ -555,6 +754,7 @@ public sealed partial class Svoya : Game
         _verdicts.Add(new Verdict(seat, false, _streak[seat]));
         _scores[seat] -= _price;
         _streak[seat] = 0;
+        NoteCost(seat, _price);
         _wrong.Add(seat);
         _lastWrong = seat;
         _answering = null;
@@ -641,11 +841,12 @@ public sealed partial class Svoya : Game
         foreach (var s in seats) Ctx.Score(s, _scores[s]);
         // «Знавець» — лише за перемогу над кимось: соло-партія з автоматом ачівки не дає
         if (seats.Length >= 2) foreach (var w in winners) Ctx.Award(w, 0, "ach:svoya-win");
-        _result = new { winners, scores = (int[])_scores.Clone(), nicks = Nicks() };
+        var nicks = Nicks();
+        _result = new { winners, scores = (int[])_scores.Clone(), nicks, awards = Awards(nicks) };
         // підсумок голосом: обраний наперед, якщо рахунок відтоді не змінився (апеляція на останньому запитанні — змінює)
         if (error is null && Machine)
         {
-            if (_endLine is null || _endScores is null || !_endScores.SequenceEqual(_scores)) _endLine = EndLine(_scores);
+            if (_endLine is null || _endScores is null || !_endScores.SequenceEqual(_scores) || _endAward != AwardKey()) _endLine = EndLine(_scores);
             Speak(_endLine, wait: false);
         }
         if (error is not null && seats.Length == 0)
@@ -803,6 +1004,7 @@ public sealed partial class Svoya : Game
         }
         if (_phase is not (Reading or Buzz)) return ActResult.Fail("Кнопка закрита");
         if (_phase == Reading) _opened = Now;
+        else if ((int)(Now - _opened).TotalMilliseconds is var ms && (_fastSeat is null || ms < _fastMs)) { _fastSeat = seat; _fastMs = ms; }
         Note(seat);
         BeginAnswering(seat);
         return ActResult.Done;
@@ -877,6 +1079,7 @@ public sealed partial class Svoya : Game
             var v = later[k];
             _scores[v.Seat] += v.Ok ? -_price : _price;
             _streak[v.Seat] = v.Streak;
+            if (v.Ok) _rights[v.Seat]--; else UnnoteCost(v.Seat, _price);
             _wrong.Remove(v.Seat);
             _appeals.RemoveAll(a => a.Seat == v.Seat);
             var t = _tries.FindLastIndex(x => x.Seat == v.Seat);
@@ -886,6 +1089,9 @@ public sealed partial class Svoya : Game
         if (at >= 0) { _verdicts.RemoveRange(at, _verdicts.Count - at); _verdicts.Add(new Verdict(who, true, prev)); }
         _scores[who] += 2 * _price;          // мінус скасовано, плюс нараховано
         _streak[who] = prev + 1;
+        _rights[who]++;
+        if (at >= 0) UnnoteCost(who, _price);
+        NoteStreak(who);
         _anyRight = true;
         _wrong.Remove(who);
         var i = _tries.FindLastIndex(t => t.Seat == who && !t.Ok);
@@ -964,18 +1170,26 @@ public sealed partial class Svoya : Game
         var open = _phase is Reveal or FinalReveal;
         var showQuestion = _q is not null && _phase is Reading or Buzz or Answering or Reveal or FinalQuestion or FinalJudge or FinalReveal;
         var inRound = _pack is not null && _phase is not (Lobby or Done) && _round < _pack.Rounds.Count;
+        // лобі чи дограний стіл: пам'ять тих, хто сидить, підтягуємо фоном — до «Почати» вона встигне; мікс — під них
+        if (_phase is Lobby or Done && _source?.Id == SvoyaMix.Id)
+        {
+            Seen.Prefetch(SeatedKeys());
+            if (_phase == Lobby) RefreshMix(force: false);
+        }
         return new
         {
             phase = _phase,
             mode = _mode,
             host = _mode == Live ? (_phase == Lobby ? Ctx.HostSeat : _host) : (int?)null,
-            options = new { answer = _answerSec, buzz = _buzzSec, early = _early, voice = _voiceName, length = _length },
-            voice = new { on = VoiceOn, available = _voiceName != "none" && _voice.Enabled },
+            // бліц — без голосу: клієнт тоді й сам не читає (voice = none)
+            options = new { answer = AnswerSec, buzz = BuzzSec, early = _early, voice = _blitz ? "none" : _voiceName, length = _length, pace = _blitz ? PaceBlitz : PaceNormal },
+            voice = new { on = VoiceOn, available = _voiceName != "none" && !_blitz && _voice.Enabled },
             pack = _pack is null ? null : new
             {
                 id = _pack.Id,
                 title = _pack.Title,
                 description = _pack.Description,
+                special = _pack.Id is SvoyaMix.Id or SvoyaAbout.Id,
                 author = _pack.Author,
                 rounds = _pack.Rounds.Select(r => new { name = r.Name, final = r.IsFinal, themes = r.Themes.Select(t => t.Name).ToArray() }).ToArray(),
             },
