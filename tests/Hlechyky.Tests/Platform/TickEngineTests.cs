@@ -20,7 +20,8 @@ public class TickEngineTests
         return id;
     }
 
-    static int Run(Rooms rooms, FakeClock clock, int steps, int stepMs = TickEngine.StepMs)
+    /// <summary>Крок фейкового годинника — 20 мс (числа кроків нижче розраховані на нього); справжній цикл — TickEngine.StepMs.</summary>
+    static int Run(Rooms rooms, FakeClock clock, int steps, int stepMs = 20)
     {
         var ticks = 0;
         for (var i = 0; i < steps; i++)
@@ -45,6 +46,14 @@ public class TickEngineTests
         var ticks = Run(rooms, clock, 50);   // 50 × 20 мс = рівно секунда
         Assert.Equal(10, ticks);
         Assert.Equal(10, ((TestTicker)rooms.Find(id)!.Game).Ticks);
+    }
+
+    [Fact]
+    public void Real_loop_step_divides_every_tick_period()
+    {
+        // Крок циклу ділить TickMs кожної гри — тоді тик прокидається точно у свій час, а не через раз на крок пізніше.
+        foreach (var g in RoomHarness.NewRegistry().Catalog)
+            if (g.TickMs > 0) Assert.True(g.TickMs % TickEngine.StepMs == 0, $"{g.Id}: {g.TickMs} мс не ділиться на {TickEngine.StepMs}");
     }
 
     [Fact]
