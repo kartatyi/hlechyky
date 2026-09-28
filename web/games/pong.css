@@ -53,3 +53,8 @@ body.pad-on .pongboard.arena { max-width: min(560px, calc(100vh - 410px)); }
   .pongboard.arena { max-width: 100%; }
 }
 .ponglegend .sh { font-style: normal; }
+
+/* Прохід №3: «🤖 + бот» для одного */
+.pgbot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; margin: 8px 0 2px; }
+.pgbot .btn { min-height: 44px; }
+.pgbot .muted { font-size: 13px; }

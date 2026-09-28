@@ -81,6 +81,8 @@
     wall() { this.beep(260, 35, 'triangle', 0.04); },
     goal() { this.beep(520, 260, 'sawtooth', 0.04, 110); },
     out() { this.beep(300, 520, 'sawtooth', 0.05, 60); },
+    // смеш: низький «бах» і дзвінкий хвіст
+    smash() { this.beep(140, 140, 'sawtooth', 0.07, 60); this.beep(1400, 90, 'square', 0.03, 0, 0.02); },
     win() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.beep(f, 140, 'square', 0.04), i * 110)); },
     set(on) {
       this.on = on;
@@ -164,7 +166,14 @@
     const sp = Math.hypot(f.vx || 0, f.vy || 0);
     if (f.hit != null) {
       st.flash[f.hit] = now;
-      Snd.hit(Math.max(0, Math.min(1, (sp - min) / (max - min))));
+      if (f.smash) {
+        // смеш (п. 135): удар краєм на ходу — спалах довший, трус, напис і «бах»
+        st.smashAt = now;
+        st.smashBy = f.hit;
+        st.shake = now;
+        st.pops.push({ side: f.hit, text: '💥 СМЕШ!', at: now, big: true });
+        Snd.smash();
+      } else Snd.hit(Math.max(0, Math.min(1, (sp - min) / (max - min))));
     } else if (!f.serveIn && !f.startIn && sp > 0 && Math.hypot(prev.vx || 0, prev.vy || 0) > 0
       && ((prev.vx > 0) !== (f.vx > 0) || (prev.vy > 0) !== (f.vy > 0))) {
       Snd.wall();
@@ -187,6 +196,38 @@
       Snd.goal();
     }
     if (f.winner != null && prev.winner == null) Snd.win();
+  }
+
+  /// Бот для одного (п. 134): ім'я на його місці.
+  function botName(ctx, seat) {
+    const v = ctx && ctx.view;
+    return v && v.bot != null && v.bot === seat ? '🤖 бот' : null;
+  }
+  /// Кнопка «🤖 + бот» під полем: господар, сам за класичним столом, до старту (і між партіями).
+  function botBtn(root, st) {
+    const ctx = st.ctx, v = ctx.view || {}, room = ctx.room || {};
+    const me = ctx.me && (ctx.me.nick || ctx.me);
+    const host = !!(room.host && me && String(room.host).toLowerCase() === String(me).toLowerCase());
+    const seated = (room.seats || []).filter((x) => x && x.nick).length;
+    const show = host && v.mode === 'duo' && !ctx.playing && (seated === 1 || v.botWanted);
+    let el = root.querySelector(':scope > .pgbot');
+    if (!show) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'pgbot';
+      el.innerHTML = '<button type="button" class="btn"></button><span class="muted"></span>';
+      el.querySelector('button').addEventListener('click', () => {
+        const s = root._pong;
+        if (s) s.ctx.act('bot', { on: !(s.ctx.view && s.ctx.view.botWanted) });
+      });
+      root.appendChild(el);
+    }
+    const on = !!v.botWanted;
+    const b = el.querySelector('button'), m = el.querySelector('span');
+    const bt = on ? '🤖 Прогнати бота' : '🤖 + бот';
+    if (b.textContent !== bt) b.textContent = bt;
+    const mt = on ? 'Бот сидить навпроти — тисни «Почати». Без нагород' : 'Нема з ким? Бот стане навпроти — з реакцією людини';
+    if (m.textContent !== mt) m.textContent = mt;
   }
 
   // ---- малювання ----
@@ -502,7 +543,7 @@
       g.fillText(String(Math.ceil((f.startIn * TICK_MS) / 1000)), c.w / 2, c.h / 2);
       return;
     }
-    const nick = f.winner != null && ctx && ctx.nickOf ? ctx.nickOf(f.winner) : null;
+    const nick = f.winner != null && ctx && ctx.nickOf ? ctx.nickOf(f.winner) || botName(ctx, f.winner) : null;
     g.font = '700 36px ' + css('--font', 'system-ui, sans-serif');
     if (nick) g.fillStyle = seatColor(css, f.winner);
     g.fillText(nick ? (arena ? '👑 ' : '🏆 ') + nick : 'Партію зіграно', c.w / 2, c.h / 2 - 16);
@@ -527,7 +568,7 @@
     const goals = (ctx.view && ctx.view.goals) || [];
     const html = (f.l || []).map((l, s) => {
       if (l == null) return '';
-      const nick = ctx.nickOf(s) || ctx.seatName(s);
+      const nick = ctx.nickOf(s) || botName(ctx, s) || ctx.seatName(s);
       const hearts = l > 0 ? '♥'.repeat(Math.min(l, 7)) : 'поза грою';
       return '<span class="pgl s' + s + (l > 0 ? '' : ' out') + (ctx.seat === s ? ' me' : '') + '">'
         + '<i class="sh">' + SHAPES[s] + '</i> ' + ctx.esc(nick) + ' <span class="hp">' + hearts + '</span>'
@@ -651,15 +692,11 @@
     seatClass: ['x', 'o', 'c', 'pb'],
     pad: { dirs: true, hint: '{dpad} ракетка' },
     news: {
-      v: '2026-09-24',
-      title: 'Понг: тепер і на чотирьох',
+      v: '2026-09-29',
+      title: 'Понг: смеш і бот',
       items: [
-        '🟨🟩🟧🟦 За столом 2–4 гравці: на двох — класика, на трьох-чотирьох — квадратна арена, де кожен стереже свою стіну',
-        '♥ На арені в кожного життя: пропустив — мінус одне, скінчились — твоя стіна глухне. Останній на полі бере арену',
-        '🔄 Кожен бачить арену так, що його стіна внизу, тож керування в усіх однакове: ← → або палець',
-        '🌀 Підкрутка: відбий м\'яч, поки ракетка їде, — і він піде під гострішим кутом',
-        '🔊 М\'яч клацає, ракетка спалахує, гол трусить поле, а довгий розіграш має лічильник серії',
-        '⏱ Партія — коротка, звичайна чи довга. Стартує господар кнопкою «Почати»',
+        '💥 Смеш: удар краєм ракетки на ходу — м’яч летить на третину швидше, зі спалахом і «бахом»',
+        '🤖 Сам за столом? Тисни «🤖 + бот» — він стане навпроти (без нагород)',
       ],
     },
 
@@ -696,6 +733,7 @@
       st.cv.el.classList.toggle('play', !!ctx.mine);
       soundBtn(root);
       legend(root, st);
+      botBtn(root, st);
       pad(root, st);
       st.cv.resize();
       if (!ctx.playing) { st.interp.reset(); st.trail.length = 0; st.sent = null; }
