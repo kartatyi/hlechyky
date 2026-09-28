@@ -36,7 +36,7 @@
     if (!root._dt) root._dt = {
       keys: {}, sayId: 0, speaking: false, reading: false, next: null, later: 0, line: 0, radioMuted: null,
       drafts: {}, draftTimers: {}, local: null, jury: null, ac: null, stale: false, stats: { n: 0, sum: 0, max: 0 },
-      laughed: new Set(), timers: new Set(),
+      laughed: new Set(), timers: new Set(), pinned: new Set(), shared: new Set(), album: null,
     };
     return root._dt;
   }
@@ -228,6 +228,7 @@
       + ', ' + secs + ' с на дотеп. Найсмішніша відповідь одним рядком.</span></div>'
       + '<div class="dt-howrow"><b>🗳</b><span><i>Голосуй.</i> Відповіді виходять анонімно — обирай найдотепнішу чужу.</span></div>'
       + '<div class="dt-howrow"><b>🎭</b><span><i>Дивись, хто це написав.</i> ' + votes + '</span></div>'
+      + '<div class="dt-howrow"><b>🎯</b><span><i>Теми:</i> ' + themesText(o) + '</span></div>'
       + '<div class="dt-howsmall muted small">Троє й більше. ' + (o.voice === 'none' ? 'Цього разу Глек мовчить — усе текстом' : 'Дядько Глек зачитує все вголос')
       + '; глядачі голосують як публіка 👀 і сміються 😂</div>'
       + '<div class="dt-howtip small" hidden></div>'
@@ -235,6 +236,7 @@
         + ' enterkeyhint="send" placeholder="Своє завдання для друзів — необов\'язково" aria-label="Своє завдання">'
         + '<button class="ghost dt-ownbtn" type="submit">Додати</button></form>' : '')
       + '<div class="dt-ownst muted small"></div>'
+      + '<button type="button" class="ghost dt-albumbtn">📖 Альбом дотепів</button>'
       + '</div>';
   }
 
@@ -291,7 +293,7 @@
     if (v.say && v.say.text) html += '<div class="dt-say intro"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>';
     if (v.me) {
       html += tasks.map((t, n) => '<div class="dt-task" data-i="' + t.i + '" style="--n:' + n + '">'
-        + '<div class="dt-prompt" data-pad-focus>' + ctx.esc(t.prompt) + '</div>' + byHtml(ctx, v, t.by)
+        + '<div class="dt-prompt" data-pad-focus>' + promptHtml(ctx, t.prompt) + '</div>' + byHtml(ctx, v, t.by)
         + '<form class="dt-form"><input class="dt-in" type="text" maxlength="' + MAX + '" autocomplete="off" spellcheck="true" data-pad-first'
         + ' enterkeyhint="send" placeholder="твій дотеп…" aria-label="Відповідь на завдання ' + (n + 1) + '">'
         + '<button class="primary dt-send" type="submit">Здати</button></form>'
@@ -417,7 +419,7 @@
     const first = c.answers.findIndex((_, i) => !mine.includes(i));
     stage.innerHTML = '<div class="dt-cardhead"><span class="dt-of">' + (v.final ? 'Одне завдання — на всіх' : 'Картка ' + (c.i + 1) + ' з ' + c.of) + '</span>'
       + '<span class="dt-hint muted small"></span></div>'
-      + '<div class="dt-prompt big" data-pad-focus>' + ctx.esc(c.prompt) + '</div>' + byHtml(ctx, v, c.by)
+      + '<div class="dt-prompt big" data-pad-focus>' + promptHtml(ctx, c.prompt) + '</div>' + byHtml(ctx, v, c.by)
       + (v.final ? '<div class="dt-podium mini" hidden></div>' : '')
       + '<div class="dt-answers ' + (v.final ? 'final' : v.mode) + (k > 4 ? ' dense' : '') + ' n' + k + '">'
       + c.answers.map((a, i) => '<button type="button" class="dt-ans' + (a.stock ? ' stock' : '') + '" data-i="' + i + '" style="--n:' + i + '"' + (i === first ? ' data-pad-first' : '') + '>'
@@ -710,12 +712,176 @@
 
   // ---------- підсумок раунду й партії ----------
 
-  function bestHtml(ctx, v, b, title) {
+  function bestHtml(ctx, v, b, title, n, s) {
     if (!b) return '';
     return '<div class="dt-best" style="--c:' + col(b.seat) + '">' + (title ? '<div class="dt-besttitle">' + title + '</div>' : '')
-      + '<div class="dt-bestq">' + ctx.esc(b.prompt) + '</div>'
+      + '<div class="dt-bestq">' + promptHtml(ctx, b.prompt) + '</div>'
       + '<div class="dt-besta">«' + ctx.esc(b.text) + '»</div>'
-      + '<div class="dt-bestby"><i class="dt-dot"></i>' + ctx.esc(nickOf(ctx, v, b.seat)) + ' · <b>+' + num(b.points) + '</b></div></div>';
+      + '<div class="dt-bestby"><i class="dt-dot"></i>' + ctx.esc(nickOf(ctx, v, b.seat)) + ' · <b>+' + num(b.points) + '</b></div>'
+      + (n == null ? '' : bestActs(ctx, v, n, s)) + '</div>';
+  }
+
+  /// Під дотепом партії: «📌 В альбом» (хто грав, до двох на гравця) і «📋 У балачку» — від імені самого гравця, його дотиком.
+  function bestActs(ctx, v, n, s) {
+    const pinned = ((v.result && v.result.pinned) || []).includes(n) || s.pinned.has(n);
+    const pin = pinned ? '<span class="dt-pinned muted small">📌 в альбомі</span>'
+      : ctx.mine ? '<button type="button" class="ghost small dt-pin" data-pin="' + n + '" title="У «📖 Альбом дотепів» — його гортає будь-хто">📌 В альбом</button>' : '';
+    const nick = ctx.me && ctx.me.nick;
+    const chat = !nick ? '' : s.shared.has(n) ? '<span class="dt-pinned muted small">✓ у Балачках</span>'
+      : '<button type="button" class="ghost small dt-share" data-share="' + n + '" title="Написати в Балачки від твого імені">📋 У балачку</button>';
+    return pin || chat ? '<div class="dt-bestact">' + pin + chat + '</div>' : '';
+  }
+
+  // ---------- смайл-ребуси ----------
+
+  const PIC = /\p{Extended_Pictographic}/u;
+  const PIC_TAIL = /^[\p{Extended_Pictographic}\u200d\ufe0f\s]+$/u;
+
+  /// «Підпиши: 🐐🚜🌧» — хвіст із самих емодзі малюємо великою картинкою (на телефоні читається швидше за текст).
+  function promptHtml(ctx, text) {
+    const t = String(text || '');
+    const at = t.search(PIC);
+    if (at <= 0 || !PIC_TAIL.test(t.slice(at))) return ctx.esc(t);
+    return ctx.esc(t.slice(0, at).trim()) + '<span class="dt-pic" role="img" aria-label="смайл-ребус">' + ctx.esc(t.slice(at).replace(/\s+/g, '')) + '</span>';
+  }
+
+  // ---------- теми, «📌», «📋», «📖 Альбом дотепів» ----------
+
+  const THEMES = {
+    pobut: '🏠 побут і родина', selo: '🐓 село', robota: '💼 робота', glek: '🏺 Глечики',
+    pikant: '🌶 пікантне легке', nas: '👥 про нас', rebus: '🧩 смайл-ребуси',
+  };
+
+  function themesText(o) {
+    const picked = String(o.themes || 'all').split(',').map((x) => x.trim()).filter((x) => THEMES[x]);
+    if (!picked.length || String(o.themes || 'all').split(',').includes('all')) {
+      return 'усі. У кожному раунді — завдання <i>про вас</i> з ніком когось за столом, а через раунд — смайл-ребус 🧩';
+    }
+    return picked.map((x) => THEMES[x]).join(', ');
+  }
+
+  function post(ctx, url, body) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Nick': encodeURIComponent((ctx.me && ctx.me.nick) || '') },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()).catch(() => ({ ok: false, message: 'Халепа: сервер не відповів' }));
+  }
+
+  function onClick(root, e) {
+    const b = e.target.closest('button');
+    const ctx = root._ctx;
+    if (!b || !ctx || !root.contains(b)) return;
+    const s = st(root);
+    const v = ctx.view || {};
+    const best = (v.result && v.result.best) || [];
+    if (b.dataset.pin != null) {
+      const n = +b.dataset.pin;
+      b.disabled = true;
+      post(ctx, '/api/games/dotepy/pin', { room: ctx.room.id, i: n }).then((d) => {
+        if (d && d.message) ctx.toast(d.message, d.ok ? 'ok' : 'err');
+        if (d && (d.ok || /уже в альбомі/.test(d.message || ''))) {
+          s.pinned.add(n);
+          b.outerHTML = '<span class="dt-pinned muted small">📌 в альбомі</span>';
+        } else b.disabled = false;
+      });
+    } else if (b.dataset.share != null) {
+      const n = +b.dataset.share;
+      const x = best[n];
+      if (!x) return;
+      const text = ('😂 Дотепи: «' + x.prompt + '» — «' + x.text + '» (' + disp(nickOf(ctx, v, x.seat)) + ')').slice(0, 280);
+      b.disabled = true;
+      HGames.call('SendChat', text).then((r) => {
+        if (r && r.ok && !r.message && typeof r !== 'string') {
+          s.shared.add(n);
+          ctx.toast('📋 Пішло в Балачки від тебе', 'ok');
+          b.outerHTML = '<span class="dt-pinned muted small">✓ у Балачках</span>';
+        } else b.disabled = false;
+      });
+    } else if (b.classList.contains('dt-albumbtn')) openAlbum(root);
+    else if (b.classList.contains('dt-alclose')) closeAlbum(root);
+    else if (b.classList.contains('dt-almore')) loadAlbum(root, true);
+    else if (b.dataset.like != null) {
+      b.disabled = true;
+      post(ctx, '/api/games/dotepy/album/like', { id: +b.dataset.like }).then((d) => {
+        b.disabled = false;
+        if (!d || !d.ok) { if (d && d.message) ctx.toast(d.message, 'err'); return; }
+        b.classList.toggle('on', !!d.liked);
+        b.textContent = (d.liked ? '❤ ' : '🤍 ') + d.likes;
+      });
+    } else if (b.dataset.del != null) {
+      if (!confirm('Прибрати цей дотеп з альбому?')) return;
+      post(ctx, '/api/games/dotepy/album/delete', { id: +b.dataset.del }).then((d) => {
+        if (d && d.message) ctx.toast(d.message, d.ok ? 'ok' : 'err');
+        if (d && d.ok) { const it = b.closest('.dt-alitem'); if (it) it.remove(); }
+      });
+    }
+  }
+
+  function openAlbum(root) {
+    const s = st(root);
+    closeAlbum(root);
+    const box = document.createElement('div');
+    box.className = 'dt-album';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', 'Альбом дотепів');
+    box.innerHTML = '<div class="dt-alpanel"><div class="dt-alhead"><b>📖 Альбом дотепів</b><span class="dt-alcount muted small"></span>'
+      + '<button type="button" class="ghost small dt-alclose" aria-label="Закрити" data-pad-first>✕</button></div>'
+      + '<div class="dt-allist"></div><div class="dt-alfoot"><button type="button" class="ghost dt-almore" hidden>Гортати далі</button></div></div>';
+    root.querySelector('.dt').appendChild(box);
+    s.album = { box, before: 0, busy: false };
+    s.onAlbumKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); closeAlbum(root); } };
+    s.onAlbumBg = (e) => { if (e.target === box) closeAlbum(root); };
+    document.addEventListener('keydown', s.onAlbumKey);
+    box.addEventListener('click', s.onAlbumBg);
+    loadAlbum(root, false);
+  }
+
+  function closeAlbum(root) {
+    const s = root._dt;
+    if (!s || !s.album) return;
+    document.removeEventListener('keydown', s.onAlbumKey);
+    s.album.box.remove();
+    s.album = null;
+  }
+
+  function loadAlbum(root, more) {
+    const s = st(root);
+    const a = s.album;
+    const ctx = root._ctx;
+    if (!a || a.busy || !ctx) return;
+    a.busy = true;
+    const list = a.box.querySelector('.dt-allist');
+    if (!more) list.innerHTML = '<div class="muted small">Гортаю…</div>';
+    fetch('/api/games/dotepy/album?before=' + (more ? a.before : 0), {
+      headers: { 'X-Nick': encodeURIComponent((ctx.me && ctx.me.nick) || '') },
+    }).then((r) => r.json()).then((d) => {
+      if (s.album !== a) return;
+      a.busy = false;
+      const items = (d && d.items) || [];
+      if (!more) list.innerHTML = items.length ? '' : '<div class="dt-alempty muted">Альбом ще порожній. Після партії тисни «📌 В альбом» під найкращим дотепом — і він житиме тут.</div>';
+      list.insertAdjacentHTML('beforeend', items.map((x) => albumItem(ctx, x, d.admin)).join(''));
+      if (items.length) a.before = items[items.length - 1].id;
+      a.box.querySelector('.dt-almore').hidden = !d.more;
+      a.box.querySelector('.dt-alcount').textContent = d.total ? 'дотепів: ' + d.total : '';
+    }).catch(() => {
+      a.busy = false;
+      if (!more) list.innerHTML = '<div class="muted">Альбом не відкрився — спробуй ще раз.</div>';
+    });
+  }
+
+  function albumItem(ctx, x, admin) {
+    let when = '';
+    try { when = new Date(x.at).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }); } catch { /* старий браузер */ }
+    return '<div class="dt-alitem">'
+      + '<div class="dt-bestq">' + promptHtml(ctx, x.prompt) + '</div>'
+      + '<div class="dt-besta">«' + ctx.esc(x.text) + '»</div>'
+      + '<div class="dt-almeta small"><span>✍ <b>' + ctx.esc(disp(x.author)) + '</b>'
+      + (x.by && x.by !== x.author ? ' · 📌 ' + ctx.esc(disp(x.by)) : '') + (when ? ' · ' + when : '') + '</span>'
+      + '<span class="dt-alacts"><button type="button" class="ghost small dt-like' + (x.liked ? ' on' : '') + '" data-like="' + x.id + '" title="❤ — сподобалось">'
+      + (x.liked ? '❤ ' : '🤍 ') + x.likes + '</button>'
+      + (admin ? '<button type="button" class="ghost small dt-aldel" data-del="' + x.id + '" title="Прибрати з альбому">🗑</button>' : '')
+      + '</span></div></div>';
   }
 
   function buildTable(root, ctx, v, stage) {
@@ -751,10 +917,11 @@
       + (scored ? '<div class="dt-podium big"' + (r.early ? '' : ' data-pad-focus') + '>' + podium + '</div>' + (rest ? '<div class="dt-rest">' + rest + '</div>' : '')
       : r.early ? '' : '<div class="dt-watch" data-pad-focus>Цього разу ніхто не набрав жодного очка 🤷</div>')
       + ((r.best || []).length ? '<div class="dt-besttitle">😂 Найдотепніше партії</div><div class="dt-bestlist">'
-        + r.best.map((b) => bestHtml(ctx, v, b, '')).join('') + '</div>' : '')
+        + r.best.map((b, n) => bestHtml(ctx, v, b, '', n, st(root))).join('') + '</div>' : '')
       + (v.say && v.say.text ? '<div class="dt-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>' : '')
       + '<div class="dt-again muted small">' + ((v.players || []).filter((p) => !p.left).length >= 3
-        ? 'Ще партію? Тисни «Ану ще раз» — завдання будуть нові' : 'На «Ану ще раз» треба щонайменше троє — клич друзів') + '</div>';
+        ? 'Ще партію? Тисни «Ану ще раз» — завдання будуть нові' : 'На «Ану ще раз» треба щонайменше троє — клич друзів') + '</div>'
+      + '<div class="dt-doneal"><button type="button" class="ghost dt-albumbtn">📖 Альбом дотепів</button></div>';
   }
 
   // =============================================================================================
@@ -922,14 +1089,14 @@
     seatNames: (i) => String(i + 1),
     seatClass: ['dt0', 'dt1', 'dt2', 'dt3', 'dt4', 'dt5', 'dt6', 'dt7'],
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Дотепи',
+      v: '2026-09-29',
+      title: 'Дотепи: про нас, ребуси й альбом',
       items: [
-        '✍ Кожному — дурні завдання. Пиши найсмішнішу відповідь одним рядком, поки біжить дуга',
-        '🗳 Далі всі голосують за чужі дотепи — анонімно, хто що написав, видно лише після голосування',
-        '💥 Троє й більше голосів за одного — «Розгром!» і подвійний бонус; на розкритті тапай «😂»',
-        '🏁 «Останній дотеп»: одне завдання на всіх, роздаєш 🥇🥈🥉',
-        '🔊 Дядько Глек зачитує завдання й відповіді — тумблер «Глек тут» на картці; глядачі голосують як публіка',
+        '👥 Завдання про вас: «Що Петро насправді робить о третій ночі» — з ніком когось за столом, щораунду',
+        '🧩 Смайл-ребуси: «Підпиши: 🐐🚜🌧» — велика картинка замість довгого завдання',
+        '🎯 Опція столу «Теми»: побут, село, робота, Глечики, пікантне легке — або все разом',
+        '📌 Найкращий дотеп партії — в «📖 Альбом дотепів», його гортає будь-хто просто з лобі',
+        '📋 «У балачку» — поділись дотепом у Балачках від свого імені',
       ],
     },
     pad: { hint: '{dpad} по дотепах · {a} обрати', when: (ctx) => ctx.mine && ctx.playing },
@@ -953,6 +1120,8 @@
         if (on) unlockSound(root); else hush(root);
         paintTop(root, c, c.view || {});
       });
+      s.onClick = (e) => onClick(root, e);
+      root.addEventListener('click', s.onClick);
       s.onDown = () => unlockSound(root);
       root.addEventListener('pointerdown', s.onDown, { passive: true });
       // F5 посеред репліки — стару не повторюємо: звучить лише те, що Глек скаже вже при нас
@@ -979,6 +1148,8 @@
       s.timers.clear();
       document.removeEventListener('visibilitychange', s.onVis);
       root.removeEventListener('pointerdown', s.onDown);
+      root.removeEventListener('click', s.onClick);
+      closeAlbum(root);
       if (s.ac) { try { s.ac.close(); } catch { /* уже */ } }
       root._dt = null;
       root._ctx = null;

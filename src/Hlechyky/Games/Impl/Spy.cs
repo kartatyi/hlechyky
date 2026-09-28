@@ -80,7 +80,17 @@ public sealed class Spy : Game
     public const int VillagePts = 1;
     public const int AccuserBonus = 1;
     public const int MinSeats = 3;
+    /// <summary>Удвох стіл стартує: третім сідає Дядько Глек (опція <c>glek</c>, типово ввімкнена).</summary>
+    public const int MinHumans = 2;
     public const int MaxSeats = 10;
+    /// <summary>Ім'я Глека-гравця в таблиці й підказках. 🤖 — як у всіх ботів сайту: видно, що це не людина.</summary>
+    public const string GlekName = "🤖 Дядько Глек";
+    /// <summary>Скільки Глек «думає», перш ніж відповісти й спитати наступного.</summary>
+    public const int GlekThinkMs = 4_000;
+    /// <summary>Скільки Глек зважує голос за підозрою чи у фіналі — щоб його «так/ні» не падало тієї ж миті.</summary>
+    public const int GlekVoteMs = 3_000;
+    /// <summary>Глек-селянин відповідає туманно (як шпигун) лише зрідка, інакше — правдивою підказкою за локацією.</summary>
+    public const double GlekVagueShare = 0.3;
     public const int DefaultMinutes = 6;
     public const int DefaultRounds = 3;
     /// <summary>Значення опції «Раундів»: кожен за столом побуде шпигуном по разу.</summary>
@@ -90,7 +100,7 @@ public sealed class Spy : Game
     static readonly int[] RoundChoices = [1, 3, 5];
 
     public override GameInfo Info { get; } = new(
-        "spy", "Шпигун", "шпигуна", GameGroup.Party, MinSeats, MaxSeats,
+        "spy", "Шпигун", "шпигуна", GameGroup.Party, MinHumans, MaxSeats,
         TickMs: TickMs, Start: StartMode.ByHost, Hidden: true, Private: false, Persistent: false, Rated: false,
         Score: ScoreOrder.None,
         Options:
@@ -98,8 +108,9 @@ public sealed class Spy : Game
             new GameOption("time", "Раунд", [("4", "4 хвилини"), ("6", "6 хвилин"), ("8", "8 хвилин"), ("10", "10 хвилин")], "6"),
             new GameOption("rounds", "Раундів", [("1", "Один"), ("3", "Три"), ("5", "П'ять"), (EachRound, "Кожен по разу")], "3"),
             new GameOption("set", "Локації", SpyLocations.Sets, SpyLocations.AnySet, Multi: true),
+            new GameOption("glek", "Удвох", [("on", "🤖 Глек сідає третім"), ("off", "Ні — чекаємо третього")], "on"),
         ],
-        Hint: "Усі знають, де вони, — крім шпигуна. Питайте одне одного — у балачці столу чи вголос: село шукає шпигуна, шпигун — локацію. Троє й більше");
+        Hint: "Усі знають, де вони, — крім шпигуна. Питайте одне одного — у балачці столу чи вголос: село шукає шпигуна, шпигун — локацію. Троє й більше, удвох — з Дядьком Глеком");
 
     /// <summary>
     /// Порядок колоди — за назвою, по-українськи. Під <c>InvariantGlobalization</c> культури може не бути —
@@ -220,7 +231,31 @@ public sealed class Spy : Game
         _rules = new SpyRulesView(_minutes, _rounds, _sets, DealMs, VoteMs, FinalMs, RevealMs, AskGraceMs, _each);
         // Сервіси — тут, а не в конструкторі: гру створює реєстр без параметрів. Тести кладуть свій банк.
         _bank = Ctx.Services.GetService<SpyLocations>() ?? SpyLocations.Default;
+        _glekOn = !options.TryGetValue("glek", out var g) || g != "off";
     }
+
+    /// <summary>Удвох — лише з Глеком: без нього «Почати» чесно каже, чого бракує.</summary>
+    public override string? CanStart()
+    {
+        var n = 0;
+        for (var s = 0; s < MaxSeats; s++) if (Ctx.Seated(s)) n++;
+        return n < MinSeats && !_glekOn ? $"Замало гравців, треба щонайменше {MinSeats} — або стіл з опцією «Удвох: 🤖 Глек сідає третім»" : null;
+    }
+
+    // ---------- Дядько Глек за столом удвох ----------
+
+    bool _glekOn = true;
+    /// <summary>Місце Глека-гравця (вільне місце столу) або −1, коли людей троє й більше.</summary>
+    int _glek = -1;
+    SpyBot _bot = SpyBot.Default;
+    /// <summary>Що Глек уже казав цього раунду — щоб не повторювався.</summary>
+    readonly HashSet<string> _glekSaid = new(StringComparer.Ordinal);
+    /// <summary>Коли Глек уже проголосує (фаза vote/final) — щоб голос не падав тієї ж миті.</summary>
+    DateTimeOffset _glekAt;
+
+    public int GlekSeat => _glek;
+
+    bool IsGlek(int seat) => seat >= 0 && seat == _glek;
 
     static int Pick(IReadOnlyDictionary<string, string> options, string key, int[] allowed, int fallback) =>
         options.TryGetValue(key, out var s) && int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out var n)
@@ -236,6 +271,17 @@ public sealed class Spy : Game
 
         var seats = new List<int>();
         for (var s = 0; s < MaxSeats; s++) if (Ctx.Seated(s)) seats.Add(s);
+        // Удвох (і з опцією «Глек сідає третім») Глек займає перше вільне місце: він гравець як усі — має картку,
+        // буває шпигуном, відповідає й питає, голосує. Людей троє й більше — Глек лише ведучий, як і був.
+        _glek = -1;
+        _glekSaid.Clear();
+        _bot = Ctx.Services.GetService<SpyBot>() ?? SpyBot.Default;
+        if (_glekOn && seats.Count < MinSeats && seats.Count >= MinHumans)
+        {
+            for (var s = 0; s < MaxSeats && _glek < 0; s++) if (!seats.Contains(s)) _glek = s;
+            seats.Add(_glek);
+            seats.Sort();
+        }
         _seats = [.. seats];
         Array.Clear(_nicks);
         Array.Clear(_inMatch);
@@ -244,7 +290,7 @@ public sealed class Spy : Game
         Array.Clear(_spyTimes);
         foreach (var s in _seats)
         {
-            _nicks[s] = Ctx.NickOf(s);
+            _nicks[s] = IsGlek(s) ? GlekName : Ctx.NickOf(s);
             _inMatch[s] = true;
             _present[s] = true;
         }
@@ -304,6 +350,7 @@ public sealed class Spy : Game
         _graceShown = false;
         _clockEndsAt = null;
         _clockLeftMs = PlayMs;
+        _glekSaid.Clear();
     }
 
     /// <summary>
@@ -370,6 +417,7 @@ public sealed class Spy : Game
         _phase = phase;
         _phaseChanged = true;
         _dirty = true;
+        _glekAt = Ctx.Clock.UtcNow.AddMilliseconds(GlekVoteMs);
     }
 
     // =========================================================================================
@@ -380,6 +428,7 @@ public sealed class Spy : Game
     {
         if (_phase is SpyPhase.Lobby or SpyPhase.Done) return Take();
         var now = Ctx.Clock.UtcNow;
+        if (_glek >= 0 && _present[_glek]) GlekTick(now);
         switch (_phase)
         {
             case SpyPhase.Deal:
@@ -405,6 +454,94 @@ public sealed class Spy : Game
                 break;
         }
         return Take();
+    }
+
+    /// <summary>
+    /// Дядько Глек як гравець (удвох). Питали його — за <see cref="GlekThinkMs"/> відповідає одним рядком у балачку
+    /// столу й одразу питає наступного («… А тепер питаю — Оля: Тут дорого?»). Відповідь Глека-селянина — правдива
+    /// туманна підказка за локацією (без назви й ролей) або зрідка «ні про що»; Глек-шпигун — лише «ні про що».
+    /// Голосує за <see cref="GlekVoteMs"/>: шпигуном — завжди «так» (засудити невинну людину — його перемога),
+    /// селянином — навмання (хто з двох людей шпигун, він не знає). Локацію Глек-шпигун не називає: він чесно не
+    /// чує, про що ви говорите.
+    /// </summary>
+    void GlekTick(DateTimeOffset now)
+    {
+        switch (_phase)
+        {
+            case SpyPhase.Play:
+                if (_asker == _glek && (now - _askedAt).TotalMilliseconds >= GlekThinkMs) GlekTurn(now);
+                break;
+            case SpyPhase.Vote:
+                if (_suspect != _glek && _votes[_glek] == 0 && now >= _glekAt)
+                {
+                    _votes[_glek] = (sbyte)(_glek == _spy || Ctx.Rng.Next(2) == 0 ? 1 : -1);
+                    _dirty = true;
+                }
+                break;
+            case SpyPhase.Final:
+                if (_blame[_glek] < 0 && now >= _glekAt)
+                {
+                    var humans = new List<int>(2);
+                    foreach (var x in _seats) if (_present[x] && x != _glek) humans.Add(x);
+                    if (humans.Count > 0)
+                    {
+                        _blame[_glek] = humans[Ctx.Rng.Next(humans.Count)];
+                        _dirty = true;
+                    }
+                }
+                break;
+            case SpyPhase.Reveal:
+                if (!_ready[_glek])
+                {
+                    _ready[_glek] = true;
+                    _dirty = true;
+                }
+                break;
+        }
+    }
+
+    void GlekTurn(DateTimeOffset now)
+    {
+        var by = _askedBy;
+        var targets = new List<int>(2);
+        foreach (var x in _seats) if (_present[x] && x != _glek && x != by) targets.Add(x);
+        if (targets.Count == 0) foreach (var x in _seats) if (_present[x] && x != _glek) targets.Add(x);
+        if (targets.Count == 0) return;
+        var t = targets[Ctx.Rng.Next(targets.Count)];
+        var question = GlekPick(_bot.Ask);
+        string? answer = null;
+        if (by is { } b && b != _glek)
+        {
+            var hints = _glek != _spy && _loc is { } loc && _bot.Hints.TryGetValue(loc.Id, out var h) ? h : null;
+            answer = GlekPick(hints is not null && Ctx.Rng.NextDouble() >= GlekVagueShare ? hints : _bot.Vague);
+        }
+        Speak(answer is null ? $"Питаю — {Name(t)}: {question}" : $"{answer} А тепер питаю — {Name(t)}: {question}");
+        _askedBy = _glek;
+        _asker = t;
+        _askedAt = now;
+        _graceShown = false;
+        _dirty = true;
+    }
+
+    /// <summary>Рядок із пулу, якого Глек цього раунду ще не казав (усе сказано — будь-який).</summary>
+    string GlekPick(IReadOnlyList<string> pool)
+    {
+        var free = 0;
+        foreach (var x in pool) if (!_glekSaid.Contains(x)) free++;
+        string pick;
+        if (free == 0) pick = pool[Ctx.Rng.Next(pool.Count)];
+        else
+        {
+            var n = Ctx.Rng.Next(free);
+            pick = pool[0];
+            foreach (var x in pool)
+            {
+                if (_glekSaid.Contains(x)) continue;
+                if (n-- == 0) { pick = x; break; }
+            }
+        }
+        _glekSaid.Add(pick);
+        return pick;
     }
 
     /// <summary>Що розіслати: кадр — лише коли змінилась фаза, види — коли є що показати. Без жодного new.</summary>
@@ -626,10 +763,10 @@ public sealed class Spy : Game
     int[] Leaders()
     {
         var top = 0L;
-        foreach (var s in _seats) if (_present[s] && _scores[s] > top) top = _scores[s];
+        foreach (var s in _seats) if (_present[s] && !IsGlek(s) && _scores[s] > top) top = _scores[s];
         if (top <= 0) return [];
         var list = new List<int>();
-        foreach (var s in _seats) if (_present[s] && _scores[s] == top) list.Add(s);
+        foreach (var s in _seats) if (_present[s] && !IsGlek(s) && _scores[s] == top) list.Add(s);
         return [.. list];
     }
 
@@ -640,7 +777,7 @@ public sealed class Spy : Game
     Dictionary<int, long> ScoreMap()
     {
         var map = new Dictionary<int, long>();
-        foreach (var s in _seats) map[s] = _scores[s];
+        foreach (var s in _seats) if (!IsGlek(s)) map[s] = _scores[s];
         return map;
     }
 
@@ -931,7 +1068,7 @@ public sealed class Spy : Game
         {
             if (InMatch(x))
             {
-                list.Add(new SpyPlayerView(x, _nicks[x] ?? Ctx.NickOf(x), _present[x] && Ctx.Seated(x), _scores[x],
+                list.Add(new SpyPlayerView(x, _nicks[x] ?? Ctx.NickOf(x), _present[x] && (IsGlek(x) || Ctx.Seated(x)), _scores[x],
                     _accused[x], _ready[x]));
             }
             else if (Ctx.Seated(x))

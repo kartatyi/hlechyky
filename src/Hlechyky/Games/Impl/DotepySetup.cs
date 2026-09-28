@@ -68,6 +68,12 @@ public sealed record DotepyJuryBody(string? Room, int Card, int Pick);
 /// <summary>Тіло «😂» глядача: <c>{ room, card, i }</c>.</summary>
 public sealed record DotepyLaughBody(string? Room, int Card, int I);
 
+/// <summary>«📌 В альбом»: <c>{ room, i }</c> — номер дотепу в трійці найкращих партії.</summary>
+public sealed record DotepyPinBody(string? Room, int I);
+
+/// <summary>❤ чи прибирання в альбомі: <c>{ id }</c>.</summary>
+public sealed record DotepyAlbumIdBody(long Id);
+
 /// <summary>
 /// Підключення «Дотепів» одним рядком у <see cref="GamesSetup"/>: голос Глека поверх <see cref="TtsService"/>
 /// (його реєструє «Своя гра»), голос публіки і прогрів сталих реплік на старті сервера.
@@ -78,6 +84,7 @@ public static class DotepySetup
     {
         services.AddSingleton<IDotepyVoice, DotepyVoice>();
         services.AddSingleton<DotepyJury>();
+        services.AddSingleton(sp => new DotepyAlbum(sp.GetService<Db>(), sp.GetService<ILogger<DotepyAlbum>>()));
         services.AddHostedService<DotepyWarmup>();
         return services;
     }
@@ -110,8 +117,71 @@ public static class DotepySetup
             var r = body is null ? ActResult.Fail("Тут так не сміються") : jury.Laugh(Auth.Nick(c), body.Room, body.Card, body.I);
             return Results.Json(new { ok = r.Ok, message = r.Message });
         });
+        // «📌 В альбом» на підсумку партії: гра під замком лише видає дотеп, база — вже поза замком кімнати.
+        app.MapPost("/api/games/dotepy/pin", async (HttpContext c, Rooms rooms, DotepyAlbum album, CancellationToken ct) =>
+        {
+            var body = await Body<DotepyPinBody>(c, ct);
+            var nick = Auth.Nick(c);
+            if (body is null) return Reply(ActResult.Fail("Тут так не закидають"));
+            if (Auth.NickKey(nick) == Auth.Guest) return Reply(ActResult.Fail("Спершу скажи, як тебе кликати"));
+            if (rooms.Find(body.Room) is not { } room || room.Game is not Dotepy game) return Reply(ActResult.Fail("Такого столу вже нема"));
+            (DotepyAlbumItem? Item, string? Error) got;
+            lock (room.Sync) got = game.Pin(nick, body.I);
+            if (got.Item is not { } a) return Reply(ActResult.Fail(got.Error ?? "Не вийшло"));
+            var id = album.Add(a.Prompt, a.Text, a.Author, a.By, a.Points, a.At);
+            return Results.Json(new { ok = true, message = "📌 Дотеп в альбомі", id });
+        });
+
+        // «📖 Альбом дотепів»: гортати може будь-хто (і гість), новіші першими.
+        app.MapGet("/api/games/dotepy/album", (HttpContext c, long? before, int? n, DotepyAlbum album) =>
+        {
+            var key = Auth.NickKey(Auth.Nick(c));
+            var (items, more) = album.Page(before ?? 0, n ?? DotepyAlbum.PageSize, key == Auth.Guest ? null : key);
+            return Results.Json(new
+            {
+                items = items.Select(x => new
+                {
+                    id = x.Item.Id, prompt = x.Item.Prompt, text = x.Item.Text, author = x.Item.Author, by = x.Item.By,
+                    points = x.Item.Points, at = x.Item.At, likes = x.Item.Likes, liked = x.Liked,
+                }),
+                more,
+                total = album.Count,
+                admin = Auth.IsAdmin(c),
+            });
+        });
+
+        app.MapPost("/api/games/dotepy/album/like", async (HttpContext c, DotepyAlbum album, CancellationToken ct) =>
+        {
+            var body = await Body<DotepyAlbumIdBody>(c, ct);
+            var key = Auth.NickKey(Auth.Nick(c));
+            if (body is null) return Reply(ActResult.Fail("Тут так не лайкають"));
+            if (key == Auth.Guest) return Reply(ActResult.Fail("Спершу скажи, як тебе кликати"));
+            if (album.Like(body.Id, key) is not { } r) return Reply(ActResult.Fail("Такого дотепу вже нема"));
+            return Results.Json(new { ok = true, likes = r.Likes, liked = r.Liked });
+        });
+
+        // Адмін прибирає дотеп з альбому.
+        app.MapPost("/api/games/dotepy/album/delete", async (HttpContext c, DotepyAlbum album, CancellationToken ct) =>
+        {
+            if (!Auth.IsAdmin(c)) return Results.StatusCode(403);
+            var body = await Body<DotepyAlbumIdBody>(c, ct);
+            if (body is null) return Reply(ActResult.Fail("Нема що прибирати"));
+            return Reply(album.Delete(body.Id) ? ActResult.Accept("Прибрано з альбому") : ActResult.Fail("Такого дотепу вже нема"));
+        });
         return app;
     }
+
+    static async Task<T?> Body<T>(HttpContext c, CancellationToken ct) where T : class
+    {
+        if (c.Request.ContentLength is > MaxBody) return null;
+        // Без Content-Length (chunked) перевірка вище не спрацює — тоді Kestrel сам обірве тіло на MaxBody.
+        if (c.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+            limit.MaxRequestBodySize = MaxBody;
+        try { return await c.Request.ReadFromJsonAsync<T>(new JsonSerializerOptions(JsonSerializerDefaults.Web), ct); }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or BadHttpRequestException or IOException) { return null; }
+    }
+
+    static IResult Reply(ActResult r) => Results.Json(new { ok = r.Ok, message = r.Message });
 
     /// <summary>
     /// На старті сервера: сказати в лог, що з банком (порожній банк — партії не буде), і озвучити наперед усе, що
