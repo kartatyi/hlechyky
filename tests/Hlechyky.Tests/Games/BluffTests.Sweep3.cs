@@ -138,6 +138,25 @@ public partial class BluffTests
     }
 
     [Fact]
+    public void Chooser_leaving_does_not_hang_the_table_and_the_turn_skips_them()
+    {
+        var h = Table(4, options: new { questions = "5", topic = "turn" });
+        var by = V(h).GetProperty("topic").GetProperty("by").GetInt32();
+        var fresher = V(h).GetProperty("topic").GetProperty("options")[0].GetProperty("key").GetString();
+        Assert.True(h.Leave(Nicks[by]).Ok);
+        h.Tick();                                              // годинник стоїть: 8 с не чекаємо — Глек обирає одразу
+        Assert.Equal(Bluff.PhaseRead, Phase(h));
+        Assert.Equal(fresher, V(h).GetProperty("cat").GetString());
+        Assert.Equal(-1, V(h).GetProperty("chooser").GetInt32());
+        var left = new[] { 0, 1, 2, 3 }.Where(s => s != by).ToArray();
+        WriteAndPick(h, left);
+        foreach (var s in left) PickCard(h, s, TruthCard(h));
+        NextQuestion(h);
+        Assert.Equal(Bluff.PhaseTopic, Phase(h));
+        Assert.NotEqual(by, V(h).GetProperty("topic").GetProperty("by").GetInt32());
+    }
+
+    [Fact]
     public void One_topic_left_means_no_choice()
     {
         var h = Table(3, options: new { topic = "turn", cat = "ukraine" });
