@@ -77,8 +77,9 @@ public class DinoTests
         Assert.Equal("runner", info.Module);
         Assert.False(info.Hidden || info.Private || info.Persistent || info.Rated);
         Assert.Equal(ScoreOrder.None, info.Score);
-        Assert.Equal(["rounds", "snow"], info.Options!.Select(o => o.Key));
+        Assert.Equal(["rounds", "snow", "spirit"], info.Options!.Select(o => o.Key));
         Assert.Equal("3", info.Options![0].Default);
+        Assert.Equal("off", info.Options![2].Default);   // дух лавини — лише за бажанням столу
         Assert.True(File.Exists(Path.Combine(FindRoot(), "web", "games", "runner.js")));
     }
 

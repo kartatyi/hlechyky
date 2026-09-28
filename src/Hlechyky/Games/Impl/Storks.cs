@@ -18,6 +18,7 @@ public sealed class Storks : RunnerParty
         [
             new GameOption("rounds", "Раундів", [("1", "1 раунд"), ("3", "3 раунди"), ("5", "5 раундів")], "3"),
             new GameOption("feather", "Запасне пір'я", [("on", "Є — перший зачеп прощається"), ("off", "Нема — один зачеп і вибув")], "on"),
+            new GameOption("key", "Ключ лелек", [("off", "Кожна сама по собі"), ("on", "🪽 Поруч з іншою — падаєш повільніше")], "off"),
         ],
         Hint: "Лелеки летять над селом: тап — змах крил. Комини, дроти, гнізда, повітряні змії — однакові для всіх. Хто останній у небі — бере раунд",
         Client: "runner");
@@ -29,7 +30,30 @@ public sealed class Storks : RunnerParty
     /// <summary>Крок бігу останнього зачепу кожного місця в цьому раунді (−1 — зачепів не було).</summary>
     readonly int[] _lastHit = new int[RunnerSim.Seats];
 
-    protected override void OnRoundStart() => Array.Fill(_lastHit, -1);
+    bool _key;
+    /// <summary>Скільки кроків кожна летіла ключем цього раунду — «🪽 Найвірніша пара» в таблиці.</summary>
+    readonly int[] _keySteps = new int[RunnerSim.Seats];
+
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        base.Configure(options);
+        _key = options.TryGetValue("key", out var v) && v == "on";
+    }
+
+    protected override void OnRoundStart()
+    {
+        Array.Fill(_lastHit, -1);
+        Array.Clear(_keySteps);
+        Sim!.KeyOn = _key && N0 > 1;
+    }
+
+    /// <summary>Хто найдовше летів ключем: [місце, секунд]; null — ніхто.</summary>
+    int[]? KeyBest()
+    {
+        var best = -1;
+        for (var i = 0; i < RunnerSim.Seats; i++) if (_keySteps[i] > 0 && (best < 0 || _keySteps[i] > _keySteps[best])) best = i;
+        return best < 0 ? null : [best, _keySteps[best] * RunnerSim.StepMs / 1000];
+    }
 
     /// <summary>Зачеп, прощений пір'ям: з нього «хвилина без зачепу» починається знову.</summary>
     protected override void OnEvent(in RunnerEvent e)
@@ -43,7 +67,14 @@ public sealed class Storks : RunnerParty
     /// «Чисте небо» — хвилина польоту без жодного зачепу: від старту раунду або від останнього зачепу, прощеного
     /// пір'ям. Даємо, коли вікно перемотування (15 кроків) минуло і запізнілий ввід цього вже не переграє.
     /// </summary>
-    protected override void OnStepDone(int run) => Clean(run, RunnerSim.RewindMax);
+    protected override void OnStepDone(int run)
+    {
+        Clean(run, RunnerSim.RewindMax);
+        var sim = Sim!;
+        if (!sim.KeyOn) return;
+        var t = sim.S - 1;
+        for (var i = 0; i < RunnerSim.Seats; i++) if (sim.InKey(i, t) && !sim.P[i].Out && !sim.P[i].Down) _keySteps[i]++;
+    }
 
     /// <summary>Кінець раунду: перемотувань більше не буде — запас на вікно не потрібен.</summary>
     protected override void OnRoundEnd(int run) => Clean(run, 0);
@@ -70,6 +101,8 @@ public sealed class Storks : RunnerParty
         readySteps = ReadySteps, cap = RoundCap, pmCap = PmCap,
         rounds = Rounds, round = Round, n0 = Sim is null ? 0 : N0,
         featherOpt = Extra,
+        keyOpt = _key,
+        keyBest = _key && Phase is Over or Done ? KeyBest() : null,
         ph = Phase, s = S, seed = Seed,
         plays = Plays(), alive = Alive(), place = Places(),
         points = Points, roundPoints = RoundPoints,
@@ -77,5 +110,8 @@ public sealed class Storks : RunnerParty
         result = Result,
     };
 
-    public override object? Frame() => new RunnerFrame { S = S, Ph = Phase, P = Players(), Pg = TakePings(), Ev = TakeEvents() };
+    public override object? Frame() => new RunnerFrame
+    {
+        S = S, Ph = Phase, P = Players(), Pg = TakePings(), Ev = TakeEvents(), Ky = Sim?.WireKey(4),
+    };
 }

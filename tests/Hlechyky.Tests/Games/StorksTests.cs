@@ -101,7 +101,7 @@ public class StorksTests
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.Equal(40, info.TickMs);
         Assert.Equal("runner", info.Module);
-        Assert.Equal(["rounds", "feather"], info.Options!.Select(o => o.Key));
+        Assert.Equal(["rounds", "feather", "key"], info.Options!.Select(o => o.Key));
         Assert.Equal("on", info.Options![1].Default);
     }
 

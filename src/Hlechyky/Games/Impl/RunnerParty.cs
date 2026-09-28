@@ -17,6 +17,8 @@ public sealed class RunnerFrame
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int[][]? Sn { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int?[]? Pg { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public object[][]? Ev { get; init; }
+    /// <summary>Лелеки з «ключем»: останні вирішені блоки ключа [крок, маска, …] (RunnerSim.WireKey).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int[]? Ky { get; init; }
 }
 
 /// <summary>

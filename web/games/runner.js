@@ -28,6 +28,7 @@
   const NO_GROUND = -2147483648, SNOW_ID_BASE = 1 << 20, INT_MIN = -2147483648;
   const SNAP_N = 16, LOG_N = 64, OB_N = 64, PK_N = 32, SN_N = 16, EV_N = 64;
   const DINO = 0, STORKS = 1;
+  const KEY_G = 6, KEY_BLOCK = 4, KEY_N = 16;   // «ключ лелек» = RunnerStorks.KeyG / KeyBlock / KeyN
 
   const K = {
     Low: 1, Low2: 2, High: 3, Wide: 4, Icicle: 5, Ptero: 6, Pit: 7, Hill: 8, Snow: 9,
@@ -192,6 +193,10 @@
 
   class Sim {
     constructor(mode, seed, plays, readySteps, pmCap, snowOn, featherOn = true, hashing = false) {
+      // «ключ лелек»: розклад вирішує лише сервер (RunnerSim.DecideKey), клієнт знає його з кадрів (knowKey)
+      this.keyOn = false;
+      this.keyAt = new Int32Array(KEY_N).fill(-1);
+      this.keyMask = new Int32Array(KEY_N);
       this.mode = mode;
       this.R = RULES[mode];
       this.seed = seed;
@@ -503,11 +508,22 @@
       if (this.hashing) this.hashStep(run);
     }
 
+    inKey(seat, t) {
+      const b = t - (t & (KEY_BLOCK - 1)), i = (b / KEY_BLOCK) & (KEY_N - 1);
+      return this.keyAt[i] === b && (this.keyMask[i] & (1 << seat)) !== 0;
+    }
+
+    knowKey(b, mask) {
+      const i = (b / KEY_BLOCK) & (KEY_N - 1);
+      this.keyAt[i] = b;
+      this.keyMask[i] = mask;
+    }
+
     stepPlayer(seat, p, t, run) {
       if (run < 0) return;
       const j = t & (LOG_N - 1);
       if (this.mode === DINO) this.stepDino(seat, p, run, this.heldAt[seat][j], this.edge[seat][j] !== 0);
-      else this.stepStork(seat, p, run, this.edge[seat][j] !== 0);
+      else this.stepStork(seat, p, run, this.edge[seat][j] !== 0, this.keyOn && this.inKey(seat, t));
     }
 
     stepDino(seat, p, run, held, edge) {
@@ -640,11 +656,11 @@
       if (fresh) this.emit(kind === K.Egg ? 3 : kind === K.Pepper ? 4 : 5, seat, id, 0);
     }
 
-    stepStork(seat, p, run, edge) {
+    stepStork(seat, p, run, edge, key) {
       if (p.down) return;
       if (p.ifr > 0) p.ifr--;
       if (edge) p.vy = ST.Flap;
-      p.vy -= ST.G;
+      p.vy -= key ? KEY_G : ST.G;
       if (p.vy < ST.VyMin) p.vy = ST.VyMin;
       p.y += p.vy;
       if (p.y > ST.Ceiling) { p.y = ST.Ceiling; p.vy = 0; }
@@ -1543,7 +1559,7 @@
       vis: { lag: 0, y: 0 }, camBias: 0, lastCam: 0, camFocus: null, wasLive: null,
       prevMode: new Int8Array(SEATS).fill(-1), outAt: new Float64Array(SEATS), pops: [],
       goAt: 0, ownOutAt: 0, throwAt: 0, rematchAt: 0, finAt: 0, goNext: 0, lastLand: 0, lastDraw: 0, ownSx: null,
-      runLog: null, ghost: null,
+      runLog: null, ghost: null, fghosts: null, cup: null,
       ptr: null, ptrY: 0, ptrDuck: false, rmb: false,
       raf: 0, hudAt: 0, stripAt: 0, hudSig: '', overSig: '', perf: { frames: 0, ms: 0, max: 0 },
       flakes: null, dust: null, board: null, boardAt: 0, boardBusy: false, boardRuns: -1,
@@ -1595,6 +1611,8 @@
     const a = st.simArgs;
     const sim = new Sim(st.mode, a.seed, a.plays, a.ready, a.pmCap, a.snowOn, a.feather);
     for (const w of st.snowWire.values()) sim.knowSnow(w);
+    sim.keyOn = !!a.key;
+    if (st.keyWire) for (const [b, m] of st.keyWire) sim.knowKey(b, m);
     return sim;
   }
 
@@ -1612,8 +1630,10 @@
     const ctx = st.ctx, me = meOf(ctx, v);
     const plays = new Array(SEATS).fill(false);
     if (me != null) plays[me] = true;
-    st.simArgs = { seed: v.seed || 1, plays, ready: v.readySteps | 0, pmCap: v.pmCap || 1000, snowOn: !!v.snowOpt, feather: v.featherOpt !== false };
+    st.simArgs = { seed: v.seed || 1, plays, ready: v.readySteps | 0, pmCap: v.pmCap || 1000, snowOn: !!v.snowOpt, feather: v.featherOpt !== false,
+      key: !!v.keyOpt && (v.n0 | 0) > 1 };
     st.snowWire.clear();
+    st.keyWire = new Map();
     st.sim = makeSim(st);
     st.me = me;
     st.key = keyOf(ctx, v);
@@ -1622,7 +1642,7 @@
     st.vis.lag = st.vis.y = 0; st.camBias = 0; st.camFocus = null; st.wasLive = null;
     st.prevMode.fill(-1); st.outAt.fill(0); st.pops.length = 0;
     st.goAt = 0; st.ownOutAt = 0; st.waitView = false; st.pend.length = 0;
-    st.ghost = null; st.runLog = null;
+    st.ghost = null; st.fghosts = null; st.runLog = null;
     st.lastHeld = 0; st.edge = false;
     const s = v.s | 0;
     ffWorld(st.sim, s);
@@ -1662,7 +1682,8 @@
       if (q) {
         const nick = st.ctx.nickOf(w[1]) || st.ctx.seatName(w[1]);
         q.by = w[1];
-        q.text = to === st.me ? '❄ ' + nick + ' кидає сніжку — стрибай!' : '❄ ' + nick;
+        const ghost = st.sim.P[w[1]] && st.sim.P[w[1]].out;   // вибулий кидає — це дух лавини
+        q.text = to === st.me ? (ghost ? '👻 дух ' + nick + ' кидає брилу — стрибай!' : '❄ ' + nick + ' кидає сніжку — стрибай!') : (ghost ? '👻 ' : '❄ ') + nick;
       }
     }
     if (w[1] !== st.me) Snd.toss();
@@ -1714,6 +1735,7 @@
     const vy0 = p ? p.vy : 0;
     sim.step();
     if (st.ghost) ghostTo(st.ghost, sim.S);
+    if (st.fghosts) for (const gh of st.fghosts) ghostTo(gh, sim.S);
     if (p && fx) ownEvents(st, p, wasAir, wasOut, vy0);
     sim.clearEvents();
     if (t + 1 === sim.readySteps && sim.readySteps > 0 && fx) { st.goAt = performance.now(); Snd.go(); }
@@ -1741,8 +1763,21 @@
   function ownOut(st) {
     if (st.ownOutAt) return;
     st.ownOutAt = performance.now();
+    st.dropNext = st.ownOutAt + SPIRIT_FIRST * STEP_MS;   // 👻 дух лавини кидає не одразу (Dino.SpiritFirst)
+    st.spiritT = -1;
     if (st.mode === DINO) Snd.out();                     // камера сама плавно перейде на лідера (draw)
     else Snd.fall();
+  }
+
+  /// Розклад «ключа лелек» із кадру: [крок блоку, маска, …] — у свій Sim і в запас (makeSim після снапу).
+  function knowKeys(st, ky) {
+    if (!st.keyWire) st.keyWire = new Map();
+    for (let k = 0; k + 1 < ky.length; k += 2) {
+      if (ky[k] < 0) continue;
+      st.sim.knowKey(ky[k], ky[k + 1]);
+      st.keyWire.set(ky[k], ky[k + 1]);
+    }
+    if (st.keyWire.size > 48) for (const b of st.keyWire.keys()) { st.keyWire.delete(b); if (st.keyWire.size <= 32) break; }
   }
 
   function applyFrame(st, f) {
@@ -1757,6 +1792,7 @@
     pushFrame(st, f.s, f.p || []);
     if (f.pg && st.me != null && f.pg[st.me] != null) rttSample(st, f.pg[st.me]);
     if (f.sn) for (const w of f.sn) knowSnow(st, w, true);
+    if (f.ky) knowKeys(st, f.ky);
     if (f.ev) for (const e of f.ev) serverEvent(st, e);
     trackOuts(st, f);
     if (f.ph !== st.ph) phaseTo(st, f.ph, f);
@@ -1912,6 +1948,7 @@
   function press(st, bit) {
     Snd.wake();
     wake(st);
+    if (isSpirit(st)) { if (bit === 1) spiritDrop(st); else if (bit === 2) spiritNext(st); return; }
     if (bit === 1) { if (!(st.held & 1)) { st.held |= 1; st.edge = true; } }
     else st.held |= bit;
     if (st.daily && st.ph === 'wait' && bit === 1) dailyStart(st);
@@ -1930,6 +1967,7 @@
     send(st, 0, k);
     st.runLog = [0, k];
     st.ghost = ghostStart(st);
+    st.fghosts = friendGhosts(st);
     st.lastHeld = st.held;
     st.edge = false;
     st.acc = 0; st.adj = 0; st.eAvg = 0; st.lastT = performance.now();
@@ -1950,9 +1988,36 @@
   }
 
   function ghostStart(st) {
-    const v = st.ctx.view || {}, g = ghostLoad();
-    if (!st.daily || !g || g.day !== v.day || !(g.m > 0)) return null;
+    const v = st.ctx.view || {};
+    let g = ghostLoad();
+    if (g && g.day !== v.day) g = null;
+    // свій привид із сервера (прохід №3) — з будь-якого пристрою; локальний лишається, якщо він не гірший
+    if (v.mine && v.mine.m > 0 && (!g || !(g.m >= v.mine.m))) g = { m: v.mine.m, log: ghostDecode(v.mine.g) };
+    if (!st.daily || !g || !(g.m > 0)) return null;
     return { sim: new Sim(DINO, v.seed || 1, [true], 0, v.pmCap || 1250, false), log: g.log, idx: 0, m: g.m, outAt: 0 };
+  }
+
+  /// «Δкрок у base36 + цифра клавіш» через крапку (DinoGhosts.Encode) → [крок, клавіші, …].
+  function ghostDecode(str) {
+    const out = [];
+    if (typeof str !== 'string' || !str) return out;
+    let at = 0;
+    for (const t of str.split('.')) {
+      if (!t) continue;
+      at += t.length > 1 ? parseInt(t.slice(0, -1), 36) || 0 : 0;
+      out.push(at, (t.charCodeAt(t.length - 1) - 48) & 7);
+    }
+    return out;
+  }
+
+  // ---------- 👻 привиди друзів (прохід №3): найкращі спроби друзів за сьогодні, журнал вводу — із сервера ----------
+  function friendGhosts(st) {
+    const v = st.ctx.view || {};
+    if (!st.daily || !Array.isArray(v.ghosts) || !v.ghosts.length) return null;
+    return v.ghosts.slice(0, 3).map((g, i) => ({
+      sim: new Sim(DINO, v.seed || 1, [true], 0, v.pmCap || 1250, false),
+      log: ghostDecode(g.g), idx: 0, m: g.m | 0, n: String(g.n || ''), outAt: 0, k: i + 1,
+    }));
   }
 
   /// Привид — до кроку target (ввід із журналу подається на свій крок; той, що в минулому, пропускається).
@@ -1984,8 +2049,53 @@
     }, 30);
   }
 
+  // ---------- 👻 дух лавини (прохід №3): вибулий раз на 9 с кидає брилу перед лідером чи обраним бігуном ----------
+  const SPIRIT_STEPS = 450, SPIRIT_FIRST = 150;   // = Dino.SpiritSteps / SpiritFirst
+
+  /// Чи я зараз дух: стіл із духами, забіг іде, мене вже наздогнало.
+  function isSpirit(st) {
+    const v = st.ctx.view || {};
+    return !!(v.spirit && st.kind === 'dino' && st.me != null && st.ctx.playing && st.ph === 'run' && st.sim && st.sim.P[st.me].out);
+  }
+
+  /// Хто з живих — ціль духа: обраний (↓ перебирає) або лідер (найменше відстав).
+  /// Живий бігун за останнім кадром (дріт Wire: [0] — відставання, [3] — поза, 4 — вибув).
+  function runsNow(st, f, i) { return i !== st.me && !!f && !!f[i] && f[i][3] !== 4 && st.sim.P[i].plays; }
+
+  function spiritTarget(st) {
+    const f = st.latest && st.latest.p;
+    if (st.spiritT >= 0 && runsNow(st, f, st.spiritT)) return st.spiritT;
+    let lead = -1;
+    for (let i = 0; i < SEATS; i++) if (runsNow(st, f, i) && (lead < 0 || f[i][0] < f[lead][0])) lead = i;
+    return lead;
+  }
+
+  function spiritNext(st) {
+    const f = st.latest && st.latest.p;
+    if (!f) return;
+    const list = [];
+    for (let i = 0; i < SEATS; i++) if (runsNow(st, f, i)) list.push(i);
+    if (!list.length) return;
+    const k = list.indexOf(spiritTarget(st));
+    st.spiritT = list[(k + 1) % list.length];
+    st.ctx.toast('👻 Цілиш у ' + (st.ctx.nickOf(st.spiritT) || st.ctx.seatName(st.spiritT)));
+  }
+
+  function spiritDrop(st) {
+    const now = performance.now();
+    if (now < (st.dropNext || 0)) return;
+    const t = spiritTarget(st);
+    if (t < 0) return;
+    st.dropNext = now + 700;                       // поки сервер відповідає — не спамимо
+    Snd.wake();
+    st.ctx.act('drop', { t }).then((r) => {
+      if (r && r.ok) { st.dropNext = performance.now() + SPIRIT_STEPS * STEP_MS; Snd.toss(); } else st.dropNext = 0;
+    }).catch(() => { st.dropNext = 0; });
+  }
+
   function doThrow(st) {
     const ctx = st.ctx;
+    if (isSpirit(st)) { spiritDrop(st); return; }
     if (st.kind !== 'dino' || st.me == null || !ctx.playing || st.ph !== 'run') return;
     const now = performance.now();
     if (now - st.throwAt < 350) return;
@@ -2247,6 +2357,7 @@
     }
 
     // ---- 8½: привид своєї найкращої спроби дня ----
+    if (st.fghosts && st.spr.ghost && !lobby) for (const gh of st.fghosts) drawGhost(st, g, paceW, camPx, now, gh);
     if (st.ghost && st.spr.ghost && !lobby) drawGhost(st, g, paceW, camPx, now);
 
     // ---- 9: свій — непрозорий, кільце під ногами, стрілка над головою ----
@@ -2270,6 +2381,16 @@
       } else {
         const md = p.modeOf(STORKS);
         g.fillStyle = 'rgba(0,0,0,.22)'; g.beginPath(); g.ellipse(sx + 16, GROUND + 3, 14, 3, 0, 0, 7); g.fill();
+        // 🪽 ключ: пунктир від своєї лелеки до тих, з ким летиш ключем
+        if (sim.keyOn && md !== 4 && sim.inKey(me, sim.S)) {
+          g.save(); g.strokeStyle = pal.text; g.globalAlpha = 0.35; g.lineWidth = 1.5; g.setLineDash([3, 4]);
+          for (let q = 0; q < n; q++) {
+            const i = ORDER[q];
+            if (i === me || !sim.inKey(i, sim.S)) continue;
+            g.beginPath(); g.moveTo(sx + 16, GROUND - ownY / SUB - 18); g.lineTo(SX[i] + 16, GROUND - SY[i] / SUB - 18); g.stroke();
+          }
+          g.restore();
+        }
         const head = drawStork(st, g, me, sx, ownY, p.vy, md, p.feather ? 1 : 0, now, st.ownOutAt, true);
         if (md !== 4) {
           if (head - 24 > -st.oy) arrow(g, sx + 16, head - 6, pal.text, isReady(st, ownT) || lobby);
@@ -2335,18 +2456,19 @@
 
   const isReady = (st, t) => st.ph === 'ready' && t < st.sim.readySteps;
 
-  function drawGhost(st, g, paceW, camPx, now) {
-    const gh = st.ghost, gp = gh.sim.P[0];
+  function drawGhost(st, g, paceW, camPx, now, friend) {
+    const gh = friend || st.ghost, gp = gh.sim.P[0];
     if (gp.out && !gh.outAt) gh.outAt = now;
     if (gh.outAt && now - gh.outAt > 700) return;
     // трохи «вглиб» кризи (вище й лівіше), як чужі в табуні: поки біжите однаково, привид видно з-за свого
-    const sx = paceW - gp.lag / SUB - camPx - 8;
+    // друзі — ще трохи глибше й прозоріше за свій привид, кожен на своєму місці табуна
+    const sx = paceW - gp.lag / SUB - camPx - 8 - (friend ? GHOST_DX[gh.k] + 6 : 0);
     if (sx < -60 || sx > st.viewW + 20) return;
-    g.globalAlpha = 0.45;
+    g.globalAlpha = friend ? 0.32 : 0.45;
     const head = drawDino(st, g, 0, sx, gp.y + 9 * SUB, gp.modeOf(DINO), 0, now, gh.outAt, false, st.spr.ghost);
     g.globalAlpha = 1;
     if (gh.outAt) return;
-    const lb = label(st, 3, '👻 ' + fmtNum(gh.m) + ' м'), lw = lb._w * LB.z, lx = clamp(sx + 15 - lw / 2, 2, st.viewW - lw - 2), ly = head - 3 - LB.h;
+    const lb = label(st, 3, '👻 ' + (friend ? gh.n + ' ' : '') + fmtNum(gh.m) + ' м'), lw = lb._w * LB.z, lx = clamp(sx + 15 - lw / 2, 2, st.viewW - lw - 2), ly = head - 3 - LB.h;
     if (lbHit(lx, ly, lw) >= 0) return;          // над своїм «ти» — не пишемо
     lbPut(lx, ly, lw);
     g.globalAlpha = 0.7;
@@ -2840,8 +2962,13 @@
     el.stage.classList.toggle('rnr-live', !!(ctx.mine && ctx.playing));
     el.touch.classList.toggle('on', !!(ctx.mine && ctx.playing));
     if (el.throwBtn) {
-      const has = live && st.me != null && sim.P[st.me].snow > 0;
+      const ghost = isSpirit(st);
+      const has = ghost || (live && st.me != null && sim.P[st.me].snow > 0);
       if (el.throwBtn.hidden === has) el.throwBtn.hidden = !has;
+      const wait = ghost ? Math.ceil(((st.dropNext || 0) - performance.now()) / 1000) : 0;
+      const html = ghost ? (wait > 0 ? '👻<small>' + wait + ' с</small>' : '👻<small>Брила</small>') : '❄<small>Кинути</small>';
+      if (el.throwBtn._h !== html) { el.throwBtn._h = html; el.throwBtn.innerHTML = html; }
+      el.throwBtn.classList.toggle('rnr-wait', wait > 0);
     }
     // підказка новачку
     const how = ctx.room.status === 'lobby' || (st.daily && st.ph === 'wait' && ctx.playing);
@@ -2894,6 +3021,20 @@
     return '<p class="rnr-ovsnow">❄ Снайпер ' + what + ' — <b class="s' + sn[0] + '">' + nick + '</b>: ' + hits + ' від ' + balls + '</p>';
   }
 
+  /// 👻 Месник раунду: чий дух найчастіше влучав брилами.
+  function avengerHtml(ctx, sn) {
+    if (!Array.isArray(sn) || sn.length < 3) return '';
+    const nick = ctx.esc(ctx.nickOf(sn[0]) || ctx.seatName(sn[0]));
+    return '<p class="rnr-ovsnow">👻 Месник раунду — <b class="s' + sn[0] + '">' + nick + '</b>: '
+      + sn[1] + ' ' + plural(sn[1], 'спотик', 'спотики', 'спотиків') + ' від ' + sn[2] + ' ' + plural(sn[2], 'брили', 'брил', 'брил') + '</p>';
+  }
+
+  /// 🪽 Хто найдовше летів ключем цього раунду.
+  function keyHtml(ctx, kb) {
+    if (!Array.isArray(kb) || kb.length < 2 || !(kb[1] > 0)) return '';
+    return '<p class="rnr-ovsnow">🪽 Найвірніша в ключі — <b class="s' + kb[0] + '">' + ctx.esc(ctx.nickOf(kb[0]) || ctx.seatName(kb[0])) + '</b>: ' + kb[1] + ' с пліч-о-пліч</p>';
+  }
+
   function plural(n, one, few, many) {
     const t = n % 100, o = n % 10;
     if (t > 10 && t < 20) return many;
@@ -2918,7 +3059,7 @@
       const last = v.last || { m: 0, eggs: 0, record: false };
       html = '<div class="rnr-ovbox"><h3>' + (last.record && last.m > 0 ? '🏆 Новий рекорд дня: ' + fmtNum(last.m) + ' м' : fmtNum(last.m) + ' м · 🥚 ' + last.eggs) + '</h3>'
         + '<p class="rnr-ovsub">Рекорд дня ' + fmtNum(v.best || 0) + ' м · спроб сьогодні ' + (v.runs || 0) + '</p>'
-        + boardHtml(st) + again + '</div>';
+        + boardHtml(st) + cupHtml(st) + ghostsHtml(st) + again + '</div>';
       loadBoard(st);
     } else if (done && v.n0 === 1) {
       const run = Math.max(0, (v.s || 0) - (v.readySteps || 0));
@@ -2936,7 +3077,7 @@
         + '<table><tr><th>#</th><th>хто</th><th>очки</th>' + (st.mode === DINO ? '<th title="з них за яйця">з них 🥚</th>' : '') + '</tr>'
         + t.map((r) => '<tr class="s' + r.seat + (r.seat === ctx.seat ? ' me' : '') + '"><td>' + rank(r) + '</td><td><i></i>' + nick(r.seat) + '</td><td>' + r.points + '</td>'
           + (st.mode === DINO ? '<td>' + r.eggs + '</td>' : '') + '</tr>').join('')
-        + '</table>' + sniperHtml(ctx, v.sniperParty, 'партії') + (ctx.mine ? again : '') + '</div>';
+        + '</table>' + sniperHtml(ctx, v.sniperParty, 'партії') + avengerHtml(ctx, v.avenger) + keyHtml(ctx, v.keyBest) + (ctx.mine ? again : '') + '</div>';
     } else if (done) {
       html = '<div class="rnr-ovbox"><h3>' + esc((ctx.room.result && ctx.room.result.text) || 'Партію зіграно') + '</h3>' + (ctx.mine ? again : '') + '</div>';
     } else {
@@ -2951,7 +3092,7 @@
         + '<table><tr><th>#</th><th>хто</th><th>за місце</th>' + (st.mode === DINO ? '<th>🥚</th>' : '') + '<th>разом</th></tr>'
         + rows.map((i) => '<tr class="s' + i + (i === ctx.seat ? ' me' : '') + '"><td>' + (v.place[i] || '—') + '</td><td><i></i>' + nick(i) + '</td><td>+' + Math.max(0, (rp[i] || 0) - eggs(i)) + '</td>'
           + (st.mode === DINO ? '<td>+' + eggs(i) + '</td>' : '') + '<td>' + ((v.points && v.points[i]) || 0) + '</td></tr>').join('')
-        + '</table>' + sniperHtml(ctx, v.sniper, 'раунду') + (v.round < v.rounds ? '<p class="rnr-ovhint">Наступний раунд за мить…</p>' : '') + '</div>';
+        + '</table>' + sniperHtml(ctx, v.sniper, 'раунду') + avengerHtml(ctx, v.avenger) + keyHtml(ctx, v.keyBest) + (v.round < v.rounds ? '<p class="rnr-ovhint">Наступний раунд за мить…</p>' : '') + '</div>';
     }
     el.over.innerHTML = html;
     el.over.hidden = false;
@@ -2974,6 +3115,27 @@
         + esc(r.nick || '') + '</td><td>' + fmtNum(r.best || 0) + '</td><td>' + (r.tries || 0) + '</td></tr>').join('') + '</table>';
   }
 
+  /// 🏆 Кубок тижня (прохід №3) одним рядком: трійка лідерів і де ти — сума трьох найкращих днів тижня.
+  function cupHtml(st) {
+    const c = st.cup;
+    if (!c || !Array.isArray(c.rows) || !c.rows.length) return '';
+    const esc = st.ctx.esc, me = String((st.ctx.me && st.ctx.me.nick) || '').toLowerCase();
+    const k = c.rows.findIndex((r) => String(r.nick || '').toLowerCase() === me);
+    const top = c.rows.slice(0, 3).map((r, i) => (i + 1) + '. ' + esc(r.nick || '') + ' ' + fmtNum(r.total || 0));
+    const mine = k >= 3 ? ' · ти ' + (k + 1) + '-й, ' + fmtNum(c.rows[k].total || 0) : '';
+    const left = k >= 0 ? 3 - Math.min(3, c.rows[k].days || 0) : 0;
+    const days = left > 0 ? ' · тобі ще ' + left + ' ' + (left === 1 ? 'день' : 'дні') + ' до повної трійки' : '';
+    return '<p class="rnr-ovsub rnr-cup" title="Сума трьох найкращих днів тижня (пн–нд); у неділю ввечері переможця оголосить Журнал">🏆 Кубок тижня: '
+      + top.join(' · ') + mine + days + '</p>';
+  }
+
+  /// Хто біжить поруч наступної спроби — щоб «ще одну, обжену Олю» з'являлось ще до старту.
+  function ghostsHtml(st) {
+    const v = st.ctx.view || {};
+    if (!Array.isArray(v.ghosts) || !v.ghosts.length) return '';
+    return '<p class="rnr-ovsub">👻 Поруч біжать: ' + v.ghosts.slice(0, 3).map((g) => st.ctx.esc(g.n || '') + ' ' + fmtNum(g.m || 0) + ' м').join(', ') + '</p>';
+  }
+
   /// Таблиця «сьогодні»: не частіше ніж раз на 10 с, але нова спроба (runs змінився) — привід перечитати одразу,
   /// інакше щойно поставлений рекорд не видно. Рядок у базу пише каркас уже після Finish — тож із запасом 0,7 с.
   function loadBoard(st) {
@@ -2987,6 +3149,8 @@
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { st.board = d && Array.isArray(d.rows) ? d.rows : []; st.boardAt = Date.now(); st.overSig = null; })
       .catch(() => { st.board = st.board || []; })
+      .then(() => fetch('/api/games/dino-daily/cup').then((r) => (r.ok ? r.json() : null)).catch(() => null))
+      .then((c) => { if (c) { st.cup = c; st.overSig = null; } })
       .finally(() => { st.boardBusy = false; });
     if (fresh) setTimeout(go, 700); else go();
   }
@@ -3201,6 +3365,19 @@
       if (!p) return '';
       return (duckAhead(st) || '🌨 лавина за ' + fmtNum(gapM()) + ' м') + slow;
     }
+    if (isSpirit(st)) {
+      const t = spiritTarget(st), who = t >= 0 ? (ctx.nickOf(t) || ctx.seatName(t)) : '';
+      const drop = dev === 'pad' ? 'Ⓐ' : dev === 'touch' ? '👻' : 'пробіл';
+      const next = dev === 'pad' ? '↓' : dev === 'touch' ? '⬇' : '↓';
+      return '👻 Ти — дух лавини: ' + drop + ' — брила перед ' + (who || 'лідером') + ', ' + next + ' — інша ціль';
+    }
+    if (st.mode === STORKS && p && st.sim.keyOn && ph === 'run' && !p.out && !p.down) {
+      const f0 = st.latest && st.latest.p, pals = [];
+      if (st.sim.inKey(st.me, st.sim.S) && f0)
+        for (let i = 0; i < SEATS; i++) if (i !== st.me && f0[i] && st.sim.inKey(i, st.sim.S)) pals.push(ctx.nickOf(i) || ctx.seatName(i));
+      if (pals.length) return '🪽 Ключем з ' + andJoin(pals.slice(0, 2)) + ' — падаєш повільніше' + slow;
+      return '🪽 Лети поруч з іншою лелекою — у ключі падаєш повільніше' + slow;
+    }
     if (ph === 'ready') {
       if (!ctx.mine) return 'Зараз почнуть…';
       const jump = dev === 'pad' ? 'Ⓐ' : dev === 'touch' ? 'тап' : 'пробіл';
@@ -3314,13 +3491,11 @@
     seatClass: SEAT_CLASS,
     pad: padFor('dino'),
     news: {
-      v: '2026-09-27', title: 'Нова гра: Стрибозаври',
+      v: '2026-09-29', title: 'Стрибозаври: дух лавини',
       items: [
-        '🦖 Усі біжать по одній кризі від лавини: свій динозавр яскравий, чужі прозорі',
-        '⬆️ Пробіл, ↑ або тап — стрибок; тримай довше — стрибнеш вище',
-        '⬇️ Стрілка вниз — пригнутись під бурулькою чи птеродактилем (у повітрі — швидко вниз)',
-        '❄ Підібрав сніжку — тисни X: брила ляже під ноги тому, хто попереду',
-        '🏁 Спіткнувся — сповільнився, лавина ближче. Останній на ногах бере раунд, партія з трьох',
+        '👻 Нова опція столу «Вибулі: Дух лавини» — кого наздогнало, той не сумує, а мститься',
+        '🪨 Дух раз на 9 секунд кидає брилу перед лідером: пробіл, тап чи Ⓐ; ↓ — обрати іншу ціль',
+        '🏅 У таблиці раунду — «Месник раунду»: чий дух найчастіше збивав живих',
       ],
     },
   }));
@@ -3333,13 +3508,12 @@
     seatClass: ['o'],
     pad: padFor('daily'),
     news: {
-      v: '2026-09-27', title: 'Нова гра: Забіг дня',
+      v: '2026-09-29', title: 'Забіг дня: привиди друзів і кубок тижня',
       items: [
-        '📅 Одна траса на день для всіх — порівняй метри з друзями в Таблиці',
-        '⬆️ Пробіл, ↑ або тап — стрибок (тримай — вище), ↓ — пригнутись чи швидко вниз',
-        '🌨 Лавина не дрімає: кожен спотик — вона ближче. Дожене — забіг скінчився',
-        '🔁 Спроб скільки завгодно, у таблицю йде найкраща за день; 500 м — черепки дня',
-        '👻 Поруч біжить привид твоєї найкращої спроби сьогодні — обжени себе',
+        '👻 Поруч біжать напівпрозорі найкращі спроби друзів за сьогодні — «Оля 2 475 м», обжени!',
+        '🏆 Кубок тижня: сума трьох найкращих днів з понеділка по неділю — видно після кожної спроби',
+        '📜 У неділю ввечері Журнал оголосить, хто взяв кубок',
+        '📱 Свій привид тепер пам’ятає сервер — біжить поруч і з телефона, і з ноута',
       ],
     },
   }));
@@ -3356,12 +3530,12 @@
     seatClass: SEAT_CLASS,
     pad: padFor('storks'),
     news: {
-      v: '2026-09-27', title: 'Нова гра: Лелеки',
+      v: '2026-09-29', title: 'Лелеки: ключ лелек',
       items: [
-        '🪽 Тап, пробіл або Ⓐ — змах крил; не змахнув — падаєш',
-        '🏠 Комини, стовпи з дротами, гнізда й повітряні змії — однакові для всіх, летите поруч',
-        '🪶 Одне запасне пір\'я на раунд: перший зачеп прощається, другий — на землю',
-        '🏁 Хто останній у небі — бере раунд; партія з трьох, очки за місця',
+        '🪽 Нова опція столу «Ключ лелек»: летиш поруч з іншою (±40 px по висоті) — обидві падаєте повільніше',
+        '〰️ Пунктир між лелеками показує, з ким ти в ключі; рядок статусу підкаже, з ким саме',
+        '🤔 Тактика: триматись разом — легше, але під дріт пірнати доведеться поодинці',
+        '🏅 У таблиці — «Найвірніша в ключі»: хто найдовше летів пліч-о-пліч',
       ],
     },
   }));

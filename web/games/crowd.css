@@ -111,6 +111,22 @@
 .crowd-sc small { color: #b9c7b4; font-size: .88em; }
 .crowd-body > .crowd-sum .crowd-sc small { color: var(--muted); }
 .crowd-sc.win { box-shadow: 0 0 0 1.5px currentColor inset; }
+/* смішинки розкриття (п. 124) — рядками під фішками */
+.crowd-fun { flex-basis: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: .9em; }
+.crowd-fun span { padding: 2px 10px; border-radius: 8px; background: rgba(12, 22, 14, .84); color: #eef3ea; max-width: 100%; }
+.crowd-body > .crowd-sum .crowd-fun span { background: var(--bg2); color: var(--text); }
+/* детектив (п. 121): «це хто з гравців?» біля селянина */
+.crowd-pick {
+  position: absolute; z-index: 3; display: flex; flex-wrap: wrap; gap: 4px; max-width: min(280px, calc(100% - 8px));
+  padding: 6px; border-radius: 12px; background: rgba(12, 22, 14, .94); box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+}
+.crowd-pick-q { flex-basis: 100%; color: #eef3ea; font-size: .85em; padding: 0 4px 2px; }
+.crowd-pick button {
+  min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 999px; border: 1.5px solid currentColor;
+  background: transparent; font: inherit; font-weight: 700; cursor: pointer;
+}
+.crowd-pick button.on { background: rgba(255, 255, 255, .16); }
+.crowd-pick .crowd-pick-no { color: #b9c7b4; font-weight: 500; }
 
 @media (prefers-reduced-motion: reduce) {
   .crowd-clock.hot { animation: none; }

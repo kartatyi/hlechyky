@@ -124,6 +124,12 @@ public static class RunnerStorks
     public const int StartY = 150 * 16, Ceiling = 268 * 16, Sky = 290;
     public const int HitW = 32 * 16, HitH = 22 * 16;
     public const int IFrames = 40, MinYAfterHit = 10 * 16;
+    /// <summary>
+    /// «Ключ лелек» (прохід №3): лелека ближче ніж KeyR по висоті до іншої живої — падає повільніше (KeyG замість G).
+    /// Хто в ключі, сервер вирішує блоками по KeyBlock кроків на KeyDelay кроків наперед (клієнт, що йде попереду
+    /// сервера, отримує розклад кадром раніше, ніж до нього добіжить, — передбачення не хибить).
+    /// </summary>
+    public const int KeyG = 6, KeyR = 40 * 16, KeyBlock = 4, KeyDelay = 16, KeyN = 16;
     public const int GroundId = -2;
 }
 
@@ -743,11 +749,68 @@ public sealed class RunnerSim
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>Один крок 20 мс: курс, кожен гравець зі свого журналу вводу, вибування.</summary>
+    /// <summary>«Ключ лелек» увімкнено (опція столу).</summary>
+    public bool KeyOn;
+    readonly int[] _keyAt = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
+    readonly int[] _keyMask = new int[RunnerStorks.KeyN];
+
+    /// <summary>Місце в ключі на кроці t (з розкладу; нема блоку — ні).</summary>
+    public bool InKey(int seat, int t)
+    {
+        var b = t - (t & (RunnerStorks.KeyBlock - 1));
+        var i = (b / RunnerStorks.KeyBlock) & (RunnerStorks.KeyN - 1);
+        return _keyAt[i] == b && (_keyMask[i] & (1 << seat)) != 0;
+    }
+
+    /// <summary>Розклад ключа: блок, що почнеться з кроку b, і маска місць (клієнт отримує це кадром).</summary>
+    public void KnowKey(int b, int mask)
+    {
+        var i = (b / RunnerStorks.KeyBlock) & (RunnerStorks.KeyN - 1);
+        _keyAt[i] = b;
+        _keyMask[i] = mask;
+    }
+
+    /// <summary>Останні n вирішених блоків ключа [крок, маска, …] — у кадр (null — ключа нема).</summary>
+    public int[]? WireKey(int n)
+    {
+        if (!KeyOn) return null;
+        var last = S - 1 + RunnerStorks.KeyDelay;
+        last -= last & (RunnerStorks.KeyBlock - 1);
+        var a = new int[n * 2];
+        var k = 0;
+        for (var b = last - (n - 1) * RunnerStorks.KeyBlock; b <= last; b += RunnerStorks.KeyBlock)
+        {
+            var i = (b / RunnerStorks.KeyBlock) & (RunnerStorks.KeyN - 1);
+            a[k++] = b;
+            a[k++] = b >= 0 && _keyAt[i] == b ? _keyMask[i] : 0;
+        }
+        return a;
+    }
+
+    /// <summary>На кроці t (кратному KeyBlock) вирішити, хто летітиме ключем у блоці t + KeyDelay: пари живих ближче KeyR.</summary>
+    void DecideKey(int t)
+    {
+        var mask = 0;
+        for (var i = 0; i < Seats; i++)
+        {
+            var a = P[i];
+            if (!a.Plays || a.Out || a.Down) continue;
+            for (var j = i + 1; j < Seats; j++)
+            {
+                var b = P[j];
+                if (!b.Plays || b.Out || b.Down || Math.Abs(a.Y - b.Y) > RunnerStorks.KeyR) continue;
+                mask |= (1 << i) | (1 << j);
+            }
+        }
+        KnowKey(t + RunnerStorks.KeyDelay, mask);
+    }
+
     public void Step()
     {
         var t = S;
         var run = t - ReadySteps;
         if (run >= 0) Generate(run);
+        if (KeyOn && run >= 0 && (t & (RunnerStorks.KeyBlock - 1)) == 0) DecideKey(t);
         for (var i = 0; i < Seats; i++)
         {
             var p = P[i];
@@ -769,7 +832,7 @@ public sealed class RunnerSim
         if (run < 0) return;   // відлік: світ стоїть
         var j = t & (LogN - 1);
         if (Mode == RunnerMode.Dino) StepDino(seat, p, run, _held[seat][j], _edge[seat][j]);
-        else StepStork(seat, p, run, _edge[seat][j]);
+        else StepStork(seat, p, run, _edge[seat][j], KeyOn && InKey(seat, t));
     }
 
     void StepDino(int seat, RunnerPlayer p, int run, int held, bool edge)
@@ -978,12 +1041,12 @@ public sealed class RunnerSim
         if (fresh) Emit(kind == RunnerKind.Egg ? RunnerEvent.Egg : kind == RunnerKind.Pepper ? RunnerEvent.Pepper : RunnerEvent.SnowTake, seat, id, 0);
     }
 
-    void StepStork(int seat, RunnerPlayer p, int run, bool edge)
+    void StepStork(int seat, RunnerPlayer p, int run, bool edge, bool key)
     {
         if (p.Down) return;
         if (p.Ifr > 0) p.Ifr--;
         if (edge) p.Vy = RunnerStorks.Flap;
-        p.Vy -= RunnerStorks.G;
+        p.Vy -= key ? RunnerStorks.KeyG : RunnerStorks.G;
         if (p.Vy < RunnerStorks.VyMin) p.Vy = RunnerStorks.VyMin;
         p.Y += p.Vy;
         if (p.Y > RunnerStorks.Ceiling)

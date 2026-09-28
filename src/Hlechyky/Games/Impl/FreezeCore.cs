@@ -270,6 +270,13 @@ public sealed class FreezeCore(Random rng)
         }
     }
 
+    /// <summary>Естафета: торкнувся глека — назад до тину, як упійманий, а в кадр — подія [4, id, команда].</summary>
+    public void RelayBack(FreezeVillager v, int team)
+    {
+        SendBack(v);
+        Ev.Add([4, v.Id, team]);
+    }
+
     /// <summary>На старт: біля тину, на тій самій висоті лугу. Бот думає з чистого аркуша; гравець тримає, що тримав.</summary>
     void SendBack(FreezeVillager v)
     {
