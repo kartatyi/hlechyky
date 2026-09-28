@@ -19,6 +19,8 @@
   const SHOT_COOL_MS = 1000, BUY_COOL_MS = 2000, HAGGLE_MS = 1000;
   // затиснуту стрілку підтверджуємо раз на секунду: сервер відпускає її сам, якщо 3 с не чув (обрив зв'язку)
   const HOLD_MS = 1000, TIP_MS = 1800, F5_PEEK_MS = 3000;
+  // стіл стоїть (лобі, партію зіграно): стільки ще малюємо після останньої події — довше за найдовшу анімацію
+  const IDLE_MS = 2000;
   const TAU = Math.PI * 2;
 
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="6" r="2.2" fill="var(--clay)"/>'
@@ -480,7 +482,7 @@
         padOn: false, padH: 0, padAt: 0, labelPx: 9, lab: [],
         hudEl: null, clockEl: null, newsEl: null, sumEl: null, padEl: null, stageEl: null, seatsEl: null,
         audio: null, mute: readMute(),
-        perf: { sum: 0, n: 0, max: 0 },
+        perf: { sum: 0, n: 0, max: 0 }, wakeAt: 0,
       };
     }
     st.ctx = ctx;
@@ -504,6 +506,7 @@
     if (!toasted && st.ctx) st.ctx.toast(text, 'err');
     st.tip = text === 'Підійди до лотка ближче' ? 'Стань на стежку перед лотком' : text;
     st.tipUntil = performance.now() + TIP_MS;
+    wake(st);
   }
 
   /// Стою на прилавку якого лотка (за інтерпольованою позицією; сервер однаково перевірить сам).
@@ -1410,7 +1413,7 @@
     });
   }
 
-  function peek(st) { st.peekUntil = performance.now() + PEEK_MS; }
+  function peek(st) { st.peekUntil = performance.now() + PEEK_MS; wake(st); }
 
   /// Точка на канвасі → світ.
   function toWorld(st, e) {
@@ -1460,6 +1463,7 @@
     const el = st.cv.el;
     el.addEventListener('pointerdown', (e) => {
       unlock(st);
+      wake(st);
       st.down = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, cam: { x: st.cam.x, y: st.cam.y } };
       if (st.mode === 'port') {
         // мінімапа: тиць — туди й камера (глядачеві й мертвому)
@@ -1475,6 +1479,7 @@
     el.addEventListener('pointermove', (e) => {
       const d = st.down;
       if (d && d.id === e.pointerId) {
+        wake(st);
         const dx = e.clientX - d.x, dy = e.clientY - d.y;
         if (Math.abs(dx) + Math.abs(dy) > 6) d.moved = true;
         if (st.mode === 'port' && d.moved && !(st.ctx && st.ctx.mine && alive(st))) {
@@ -1631,7 +1636,14 @@
       const lp = clamp(Math.round(10.5 / st.cssK), 9, 16);
       if (lp !== st.labelPx) { st.labelPx = lp; st.statKey = ''; }
     }
+    wake(st);
   }
+
+  /// rAF живе, лише поки є що малювати: іде партія (кадри 25 Гц і інтерполяція між ними) або ще доживають анімації
+  /// після останньої події (спалах, камінець, підпис — усе коротше за IDLE_MS). Лобі й дограний стіл — статичні:
+  /// цикл засинає (раніше малював ту саму картинку 60 разів на секунду, ~0,6 мс кожен). Мапи не видно (інша вкладка
+  /// сайту, прокрутили геть) — теж спить. Будять вид, кадр, розкладка, мишка чи палець на мапі, «де я?» і поява мапи.
+  function wake(st) { st.wakeAt = performance.now(); spin(st); }
 
   function spin(st) {
     if (st.raf) return;
@@ -1639,7 +1651,9 @@
       if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
       // раз на секунду — чи не з'явилась (зникла) смужка пада: це лише атрибут, розкладку не чіпаємо
       if (now - st.padAt > 1000) { st.padAt = now; if (padStrip(st)) fit(st.root, st); }
-      if (!document.hidden && st.visible) draw(st);
+      const live = !!(st.ctx && st.ctx.playing) && phaseOf(st) !== 'over';
+      if (!st.visible || (!live && now - st.wakeAt > IDLE_MS)) { st.raf = 0; return; }
+      if (!document.hidden) draw(st);
       st.raf = requestAnimationFrame(loop);
     };
     st.raf = requestAnimationFrame(loop);
@@ -1712,7 +1726,7 @@
       window.addEventListener('resize', st.onResize);
       // мапу не видно (інша вкладка сайту, прокрутили геть) — не малюємо; стан приймаємо однаково
       if (window.IntersectionObserver) {
-        st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; });
+        st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; if (st.visible) wake(st); });
         st.io.observe(st.cv.el);
       }
       st.autoPeek = true;
@@ -1731,7 +1745,7 @@
       window.addEventListener('blur', st.blur);
       // F5 посеред партії: стрілка, затиснута до перезавантаження, не має вести в стіну
       if (ctx.mine && ctx.playing) ctx.input('move', { dir: -1 });
-      spin(st);
+      wake(st);
     },
 
     update(root, ctx) {
@@ -1750,13 +1764,13 @@
       hud(st);
       summary(st);
       paintClock(st, st.last && st.last.ph ? st.last : null);
-      spin(st);
+      wake(st);
     },
 
     frame(root, ctx, f) {
       const st = state(root, ctx);
       onFrame(st, f);
-      spin(st);
+      wake(st);
     },
 
     onKey(e, ctx) {

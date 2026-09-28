@@ -23,6 +23,8 @@
   const SLAP_COOL_MS = 2000, STUN_MS = 1520;
   const PULSE = [12, 10, 8];
   const PEEK_MS = 1500, NEWS_MS = 6000, LOCAL_MS = 250, SLAP_FX_MS = 450, TIP_MS = 1500, F5_PEEK_MS = 3000;
+  // стіл стоїть (лобі, партію зіграно): стільки ще малюємо після останньої події — довше за найдовшу анімацію
+  const IDLE_MS = 2000;
   const HOLD_MS = 1000;
   const TAU = Math.PI * 2;
 
@@ -723,7 +725,7 @@
         padOn: false, padH: 0, padAt: 0, cssK: 1, lab: [],
         hudEl: null, clockEl: null, newsEl: null, sumEl: null, ctlEl: null, stageEl: null, seatsEl: null,
         audio: null, mute: readMute(),
-        perf: { sum: 0, n: 0, max: 0 },
+        perf: { sum: 0, n: 0, max: 0 }, wakeAt: 0,
       };
     }
     st.ctx = ctx;
@@ -750,6 +752,7 @@
     st.tip = text;
     st.tipKind = kind;
     st.tipUntil = performance.now() + TIP_MS;
+    wake(st);
   }
 
   /// «дівчина у вінку з червоними стрічками» / «парубок у смушевій шапці й синьому поясі» — щоб описати в новинах.
@@ -1628,7 +1631,7 @@
     });
   }
 
-  function peek(st) { st.peekUntil = performance.now() + PEEK_MS; }
+  function peek(st) { st.peekUntil = performance.now() + PEEK_MS; wake(st); }
 
   function toWorld(st, e) {
     const r = st.cv.el.getBoundingClientRect();
@@ -1663,6 +1666,7 @@
   function wireCanvas(st) {
     const el = st.cv.el;
     el.addEventListener('pointerdown', (e) => {
+      wake(st);
       unlock(st);
       st.down = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, cam: { x: st.cam.x, y: st.cam.y } };
       if (st.mode === 'port') {
@@ -1676,6 +1680,7 @@
       }
     });
     el.addEventListener('pointermove', (e) => {
+      wake(st);
       const d = st.down;
       if (d && d.id === e.pointerId) {
         const dx = e.clientX - d.x, dy = e.clientY - d.y;
@@ -1846,6 +1851,7 @@
   }
 
   function fit(root, st) {
+    wake(st);
     padStrip(st);
     const cw = root.clientWidth;
     let mode = st.mode;
@@ -1863,12 +1869,20 @@
     if (css) st.cssK = css / (mode === 'port' ? PW : WW);
   }
 
+  /// rAF живе, лише поки є що малювати: іде партія (кадри 25 Гц і інтерполяція між ними) або ще доживають анімації
+  /// після останньої події (усе коротше за IDLE_MS). Лобі й дограний стіл — статичні: цикл засинає (раніше малював ту
+  /// саму картинку 60 разів на секунду). Мапи не видно (інша вкладка сайту, прокрутили геть) — теж спить. Будять вид,
+  /// кадр, розкладка, мишка чи палець на мапі, «де я?», відмова з підписом і поява мапи на екрані.
+  function wake(st) { st.wakeAt = performance.now(); spin(st); }
+
   function spin(st) {
     if (st.raf) return;
     const loop = (now) => {
       if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
       if (now - st.padAt > 1000) { st.padAt = now; if (padStrip(st)) fit(st.root, st); keyLabels(st); }
-      if (!document.hidden && st.visible) draw(st);
+      const live = !!(st.ctx && st.ctx.playing) && phaseOf(st) !== 'over';
+      if (!st.visible || (!live && now - st.wakeAt > IDLE_MS)) { st.raf = 0; return; }
+      if (!document.hidden) draw(st);
       st.raf = requestAnimationFrame(loop);
     };
     st.raf = requestAnimationFrame(loop);
@@ -1946,7 +1960,7 @@
       st.onResize = () => fit(root, st);
       window.addEventListener('resize', st.onResize);
       if (window.IntersectionObserver) {
-        st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; });
+        st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; if (st.visible) wake(st); });
         st.io.observe(st.cv.el);
       }
       st.autoPeek = true;
@@ -1964,7 +1978,7 @@
       document.addEventListener('keyup', st.keyup);
       window.addEventListener('blur', st.blur);
       if (ctx.mine && ctx.playing) ctx.input('move', { dir: -1 });
-      spin(st);
+      wake(st);
     },
 
     update(root, ctx) {
@@ -1984,13 +1998,13 @@
       hud(st);
       summary(st);
       paintClock(st, st.last && st.last.ph ? st.last : null);
-      spin(st);
+      wake(st);
     },
 
     frame(root, ctx, f) {
       const st = state(root, ctx);
       onFrame(st, f);
-      spin(st);
+      wake(st);
     },
 
     onKey(e, ctx) {
