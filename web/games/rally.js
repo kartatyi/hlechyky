@@ -526,7 +526,7 @@
   const TRACKS = [
     { id: 'selo', emoji: '🏡', title: 'Село' }, { id: 'ozero', emoji: '🧊', title: 'Крижане озеро' }, { id: 'nich', emoji: '🌙', title: 'Нічна' },
     { id: 'kukurudza', emoji: '🌽', title: 'Кукурудзяне поле' }, { id: 'yarmarok', emoji: '🎡', title: 'Ярмарок' },
-    { id: 'vesillia', emoji: '💒', title: 'Весілля' }, { id: 'hora', emoji: '⛰', title: 'Гора' },
+    { id: 'vesillia', emoji: '💒', title: 'Весілля' }, { id: 'hora', emoji: '🏔', title: 'Гора' },
     { id: 'random', emoji: '🎲', title: 'Яка випаде' },
   ];
   function myGarage() {
@@ -1969,7 +1969,7 @@
     const p = st.photo, f = st.f;
     if (!p || !p.clip || p.clip.t.length < 4 || !f) return false;
     if (!p.playAt) {
-      if (p.played) return false;
+      if (p.played || f.ph === 4) return false;   // між гонками чемпіонату — таблиця, а не повтор
       const busy = f.ph === 2 && st.mine >= 0 && f.c[st.mine * STRIDE + 10] === 0;
       if (busy) return false;
       p.playAt = now;
@@ -2318,7 +2318,7 @@
     g.textAlign = 'center';
     if (st.flashes.length && now - st.flashes[0].at >= st.flashes[0].ms) st.flashes = st.flashes.filter((fl) => now - fl.at < fl.ms);
     // гонка скінчилась — таблиця результатів сама все каже, спалах «Фініш» не лізе на неї
-    if (f.ph === 3 && st.flashes.length) st.flashes.length = 0;
+    if (f.ph >= 3 && st.flashes.length) st.flashes.length = 0;
     let fy = H * 0.3;
     for (const fl of st.flashes) {
       const a = Math.min(1, (fl.ms - (now - fl.at)) / 300);
@@ -2333,7 +2333,8 @@
       g.globalAlpha = 1;
     }
     if (f.ph === 0) lobbyOverlay(st, g);
-    if (f.ph === 3 && st.view && st.view.results) results(st, g);
+    if (st.view && st.view.champ && st.view.champ.n && (f.ph === 4 || f.ph === 3)) champTable(st, g);
+    else if (f.ph === 3 && st.view && st.view.results) results(st, g);
     if (st.clockOn && f.ph === 2 && now - st.fAt > 700) {
       g.font = F.hud;
       g.fillStyle = 'rgba(10,16,12,.7)';
@@ -2347,7 +2348,8 @@
     const W = st.pxW, ck = st.cssK, v = st.view, ctx = st.ctx;
     const fs = Math.max(12, Math.round(15 * ck));
     let text;
-    if (v && v.random) text = '🎲 Траса випаде на старті';
+    if (v && v.champ) text = '🏆 Чемпіонат: ' + v.champ.of + ' трас за жеребом';
+    else if (v && v.random) text = '🎲 Траса випаде на старті';
     else if (!ctx.mine) text = 'Чекаємо на гонщиків';
     else if (ctx.room && ctx.room.host && ctx.me && ctx.room.host.toLowerCase() === String(ctx.me.nick || '').toLowerCase()) text = 'Обери машину — і тисни «Почати»';
     else text = 'Обери машину, господар тисне «Почати»';
@@ -2392,6 +2394,78 @@
       st.resC = { cv, x: x0, y: y0, v, room, W, H, pal: st.pal };
     }
     g.drawImage(st.resC.cv, st.resC.x, st.resC.y);
+  }
+
+  /// Чемпіонат (№86): таблиця очок між гонками (ph 4, з відліком до наступної траси) і підсумок серії (ph 3).
+  /// Як і results(): малюємо раз в offscreen-канвас, щокадру лише копіюємо; між гонками — перемальовка раз на секунду.
+  function champTable(st, g) {
+    const v = st.view, f = st.f, W = st.pxW, H = st.pxH, ch = v.champ, room = st.ctx && st.ctx.room;
+    const final = f.ph === 3;
+    const sec = final ? -1 : Math.max(0, Math.ceil(f.s * TICK / 1000));
+    const rc = st.chC;
+    if (!rc || rc.v !== v || rc.room !== room || rc.W !== W || rc.H !== H || rc.pal !== st.pal || rc.sec !== sec) {
+      const rows = ch.pts || [], ck = st.cssK, pal = st.pal;
+      const fs = Math.max(11, Math.round(14 * ck)), lh = fs * 1.9;
+      const w = Math.min(W - 20 * ck, 440 * ck), h = lh * (rows.length + 2.9);
+      const x = W / 2 - w / 2, y = Math.max(8 * ck, H / 2 - h / 2);
+      const x0 = Math.floor(x), y0 = Math.floor(y), cw = Math.ceil(w) + 2, chh = Math.ceil(h) + 2;
+      const cv = rc && rc.cv.width === cw && rc.cv.height === chh ? rc.cv : offscreen(cw, chh);
+      const c = cv.getContext('2d');
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, cw, chh);
+      c.setTransform(1, 0, 0, 1, -x0, -y0);
+      c.textBaseline = 'middle';
+      c.fillStyle = 'rgba(10,16,12,.93)';
+      c.beginPath(); c.roundRect(x, y, w, h, 14 * ck); c.fill();
+      const res = room && room.result;
+      const win = final && res && res.winners && res.winners.length ? st.ctx.nickOf(res.winners[0]) : null;
+      const humans = rows.filter((r) => !r.bot).length;
+      const head = !final ? '🏆 Чемпіонат · гонка ' + ch.n + ' з ' + ch.of
+        : win ? '🏆 Чемпіон — ' + win : humans >= 2 ? '🏆 Чемпіонат: нічия' : '🏆 Чемпіонат позаду';
+      c.textAlign = 'center';
+      c.fillStyle = '#fff';
+      c.font = '800 ' + Math.round(fs * 1.15) + 'px system-ui, sans-serif';
+      c.fillText(fitText(c, head, w - 20 * ck), W / 2, y + lh * 0.7);
+      const me = String((st.ctx.me && st.ctx.me.nick) || '').toLowerCase();
+      // між гонками — місце й очки щойно минулої гонки; у підсумку серії — скільки гонок виграв
+      const gainOf = (r) => (final ? (r.wins ? '🏁×' + r.wins : '') : r.last ? place(r.last) + ' +' + r.gain : '—');
+      c.font = '600 ' + fs + 'px system-ui, sans-serif';
+      let gw = 0;
+      for (const r of rows) gw = Math.max(gw, c.measureText(gainOf(r)).width);
+      c.font = '800 ' + fs + 'px system-ui, sans-serif';
+      const pw = c.measureText('888').width;
+      const ptsR = x + w - 14 * ck, gainR = ptsR - pw - 14 * ck, nickX = x + 16 * ck + fs * 1.7;
+      const nickMax = Math.max(30 * ck, gainR - gw - 10 * ck - nickX);
+      rows.forEach((r, n) => {
+        const ry = y + lh * (n + 1.6);
+        const mine = !r.bot && String(r.nick).toLowerCase() === me;
+        c.textAlign = 'left';
+        c.font = '700 ' + fs + 'px system-ui, sans-serif';
+        c.fillStyle = mine ? pal.accent : '#fff';
+        c.fillText(n === 0 ? '🥇' : n === 1 ? '🥈' : n === 2 ? '🥉' : (n + 1) + '.', x + 14 * ck, ry);
+        c.fillText(fitText(c, ((CAR[r.car] || {}).emoji || '') + ' ' + r.nick, nickMax), nickX, ry);
+        c.textAlign = 'right';
+        c.font = '600 ' + fs + 'px system-ui, sans-serif';
+        c.fillStyle = r.last === 1 ? '#ffe27a' : pal.muted;
+        c.fillText(gainOf(r), gainR, ry);
+        c.font = '800 ' + fs + 'px system-ui, sans-serif';
+        c.fillStyle = mine ? pal.accent : '#fff';
+        c.fillText(String(r.pts), ptsR, ry);
+      });
+      c.textAlign = 'center';
+      c.fillStyle = pal.accent;
+      c.font = '600 ' + Math.round(fs * 0.92) + 'px system-ui, sans-serif';
+      const ids = ch.tracks || [];
+      const emo = (id) => (TRACKS.find((t) => t.id === id) || { emoji: '🏁' }).emoji;
+      let foot;
+      if (!final) {
+        const nx = TRACKS.find((t) => t.id === ids[ch.n]);
+        foot = 'Далі — ' + (nx ? nx.emoji + ' ' + nx.title : 'наступна траса') + ' · за ' + sec + ' с';
+      } else foot = ids.slice(0, ch.n).map(emo).join(' → ') + ' · очки 10/6/4/3/2/1';
+      c.fillText(fitText(c, foot, w - 20 * ck), W / 2, y + lh * (rows.length + 2.1));
+      st.chC = { cv, x: x0, y: y0, v, room, W, H, pal: st.pal, sec };
+    }
+    g.drawImage(st.chC.cv, st.chC.x, st.chC.y);
   }
 
   /// Текст, що не ширший за max: обрізаємо з трикрапкою (у підсумку — раз на вид, тож цикл не страшний).
@@ -2767,7 +2841,9 @@
         + (car ? car.emoji + ' ' : '') + '<span class="rl-nk">' + ctx.esc(nick || SEAT_NAMES[i]) + '</span>' + extra + '</span>';
     }
     const t = v.track || {};
-    html += '<span class="rl-chip rl-info">' + (v.random && v.ph === 0 ? '🎲 Яка випаде' : ctx.esc(t.title || '')) + ' · ' + lapsWord(v.laps || 3) + '</span>';
+    const ch = v.champ;
+    html += '<span class="rl-chip rl-info">' + (ch ? '🏆 ' + (ch.n ? ch.n + '/' + ch.of + ' · ' : 'Чемпіонат · ') : '')
+      + (v.random && v.ph === 0 ? (ch ? ch.of + ' трас' : '🎲 Яка випаде') : ctx.esc(t.title || '')) + ' · ' + lapsWord(v.laps || 3) + '</span>';
     const rec = v.records && v.records[0];
     if (rec && !(v.random && v.ph === 0)) html += '<span class="rl-chip rl-info">⏱ ' + ctx.esc(rec.nick) + ' ' + clock(rec.ms, 2) + '</span>';
     html += '<button type="button" class="rl-tog" data-t="sound" title="Звук (типово вимкнено — на сайті грає радіо)">' + (st.sound ? '🔈' : '🔇') + '</button>';
@@ -2912,7 +2988,7 @@
         sfx(st, 'green');
         if (st.solo && st.ghost) st.flashes.push({ text: '👻 Наздожени привида: ' + clock(st.ghost.ms, 2), at: now, ms: 2400, col: '#dfe8ff' });
       }
-      if (f.ph === 3 || f.ph === 0) { st.sim = null; st.others = []; }
+      if (f.ph === 3 || f.ph === 0 || f.ph === 4) { st.sim = null; st.others = []; }
       st.lastPh = f.ph;
     }
     if (f.ph === 1 && was && was.ph === 1 && Math.ceil(was.s / 25) !== Math.ceil(f.s / 25)) sfx(st, 'light');
@@ -2991,7 +3067,7 @@
   /// Лобі чи підсумок, де вже нічого не рухається: ні частинок, ні спалахів, ні трясіння, ні гудка, ні зсуву.
   function quiet(st, now) {
     const f = st.f;
-    if (!f || (f.ph !== 0 && f.ph !== 3) || st.fitDirty || st.revealAt) return false;
+    if (!f || (f.ph !== 0 && f.ph !== 3 && f.ph !== 4) || st.fitDirty || st.revealAt) return false;
     if (st.photo && st.photo.playAt) return false;
     if (st.flashes.length || st.shakeUntil > now) return false;
     for (let i = 0; i < SEATS; i++) if (now - st.horns[i] < 400) return false;
@@ -3080,13 +3156,13 @@
     },
     news: {
       v: '2026-09-29',
-      title: 'Сільське ралі: Дід Панас, живність і фотофініш',
+      title: 'Сільське ралі: чемпіонат, Весілля й Гора, Дід Панас',
       items: [
-        '🗺 Після гонки клацни трасу внизу — «Ще раз» поїде одразу туди, без нового столу. 🎲 — яка випаде',
-        '🤖 Опція «Суперники-боти»: Дід Панас на тракторі, Баба Параска й Кум Степан сідають на вільні місця до чотирьох — тихо їдуть, женуть чи ас. Черепків і рекордів їм не дають',
-        '🐔 Опція «Живність»: курка перебігає дорогу, гуси чалапають через калюжу на Селі, віз повзе Ярмарком — щогонки трохи інакше',
-        '📸 Фініш ближче ніж 0,3 с — фотофініш уповільнено: хто кого й на скільки. Переглянути ще раз — кнопкою в підсумку',
-        '🎨 Гараж у лобі: своя фарба й напис на номері до 6 літер — їде за тобою з гонки в гонку',
+        '🏆 Опція «Чемпіонат»: п\'ять гонок поспіль на різних трасах, очки 10/6/4/3/2/1, між гонками — таблиця, наприкінці — чемпіон',
+        '💒 Нові траси: Весілля — вузька вулиця повз намет, гості перебігають дорогу; ⛰ Гора — серпантин, трамплін з уступу й кози',
+        '🤖 Опція «Суперники-боти»: Дід Панас, Баба Параска й Кум Степан сідають на вільні місця до чотирьох. Черепків і рекордів їм не дають',
+        '🐔 Опція «Живність»: кури, гуси, віз, гості й кози на дорозі · 📸 фініш ближче ніж 0,3 с — фотофініш уповільнено',
+        '🗺 Після гонки клацни трасу — «Ще раз» поїде туди · 🎨 Гараж: своя фарба й напис на номері',
       ],
     },
 
@@ -3112,7 +3188,7 @@
 
     onKey(e, ctx) {
       const st = ctx._rally;
-      if (!st || !ctx.mine || !ctx.playing || !st.f || st.f.ph === 0 || st.f.ph === 3) return false;
+      if (!st || !ctx.mine || !ctx.playing || !st.f || st.f.ph === 0 || st.f.ph >= 3) return false;
       if (e.code === 'KeyH' || e.key === 'h' || e.key === 'р') { if (!e.repeat) horn(st); return true; }
       if (e.code === 'KeyR' || e.key === 'r' || e.key === 'к') { if (!e.repeat) resetCar(st); return true; }
       const key = keyOf(e);
@@ -3135,10 +3211,15 @@
         if (!ctx.mine) return '';
         const host = ctx.room && ctx.me && String(ctx.room.host || '').toLowerCase() === String(ctx.me.nick || '').toLowerCase();
         const bots = ctx.room && ctx.room.options && +ctx.room.options.bots > 0 && (ctx.room.seats || []).filter(Boolean).length < 4;
+        if (v.champ) return (host ? 'Обери машину й тисни «Почати»' : 'Обери машину, чекаємо господаря') + ' · 🏆 чемпіонат: ' + v.champ.of + ' гонок на різних трасах, очки 10/6/4/3/2/1';
         if (bots) return (host ? 'Обери машину й тисни «Почати»' : 'Обери машину, чекаємо господаря') + ' · 🤖 Дід Панас із кумами сядуть на вільні місця';
         return host ? 'Обери машину й тисни «Почати» — можна й самому, на час' : 'Обери машину, чекаємо господаря';
       }
-      if (f.ph === 1) return 'Готуйсь…';
+      if (f.ph === 1) return 'Готуйсь…' + (v.champ && v.champ.n ? ' · 🏆 гонка ' + v.champ.n + ' з ' + v.champ.of + ': ' + ((v.track && v.track.title) || '') : '');
+      if (f.ph === 4 && v.champ) {
+        const nx = TRACKS.find((t) => t.id === (v.champ.tracks || [])[v.champ.n]);
+        return '🏆 Гонка ' + v.champ.n + ' з ' + v.champ.of + ' позаду · далі — ' + (nx ? nx.emoji + ' ' + nx.title : 'наступна') + ' за ' + Math.max(0, Math.ceil(f.s * TICK / 1000)) + ' с';
+      }
       const laps = v.laps || 3;
       if (f.ph === 2) {
         if (ctx.mine && ctx.seat != null) {
