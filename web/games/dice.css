@@ -421,3 +421,16 @@
   .di-p.turn::after { animation: none !important; opacity: 1; }   /* «.dice *» псевдоелементів не бере */
   .di-rx { transform: translate(-50%, -50%); }
 }
+
+/* Прохід №3: вболівальники й сезон */
+.di-fanbox { text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; margin: 4px 0; }
+.di-fanbox[hidden] { display: none; }
+.di-fq { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; justify-content: center; }
+.di-fbtns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
+.di-fb { min-height: 44px; padding: 6px 16px; }
+.di-fb.on { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.di-fcnt { font-size: .85em; }
+.di-season { margin-top: 10px; text-align: left; }
+.di-shead { font-weight: 600; margin-bottom: 4px; }
+.di-slist { margin: 0 0 4px; padding-left: 1.1em; }
+.di-slist li { margin: 2px 0; }
