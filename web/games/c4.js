@@ -104,6 +104,12 @@
 
     legend(root, ctx, party, marks, shapes);
     footer(root, ctx, st);
+    // Порядок: хто яким кольором — над полем, серія й «Здатись» — під ним. Каркас перебудовує дошку, коли
+    // міняється її розмір (у лобі компанії поле 9×7, а вчотирьох — 10×8), і нова лягала в самий низ — тоді
+    // «Здатись» опинявся над полем, а рахунок серії — під легендою.
+    const leg = root.querySelector(':scope > .c4legend'), foot = root.querySelector(':scope > .c4foot');
+    if (board.previousElementSibling !== leg) root.insertBefore(leg, board);
+    if (board.nextElementSibling !== foot) board.after(foot);
   }
 
   /// Привид фішки під мишею. Слухачі вішаємо один раз на елемент дошки (grid() його перевикористовує).
@@ -193,29 +199,41 @@
       if (performance.now() < st.dropUntil) st.t = setTimeout(() => root._c4 && paint(root, ctx), DROP_MS + 30);
     },
     unmount(root) { const st = root._c4; if (st) clearTimeout(st.t); root._c4 = null; },
-    /// Клавіатура: 1–9 (і 0 — десята) кидають у колонку, ←/→ водять привид, Enter/пробіл кидають туди.
+    /// Клавіатура: 1–9 (і 0 — десята) кидають у колонку, ←/→ або A/D водять привид, Enter чи пробіл кидають туди.
+    /// Джойстик шле ті самі ←/→ і Enter (pad нижче), тож на Деці це працює без жодної правки.
     onKey(e, ctx) {
       const root = ctx._c4root;
-      if (!root || !root._c4 || !ctx.myTurn || e.ctrlKey || e.metaKey || e.altKey) return false;
+      if (!root || !root._c4 || !ctx.mine || !ctx.playing || e.ctrlKey || e.metaKey || e.altKey) return false;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return false;
       const w = (ctx.view && ctx.view.width) || 7;
       const st = state(root);
-      if (/^[0-9]$/.test(e.key)) {
-        const col = e.key === '0' ? 9 : +e.key - 1;
+      const code = e.code || '';
+      const digit = /^(?:Digit|Numpad)([0-9])$/.exec(code) || /^([0-9])$/.exec(e.key || '');
+      if (digit) {
+        if (!ctx.myTurn) return false;
+        const col = digit[1] === '0' ? 9 : +digit[1] - 1;
         if (col >= w) return false;
         drop(root, ctx, col);
         return true;
       }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        const d = e.key === 'ArrowLeft' ? -1 : 1;
-        st.hover = st.hover < 0 ? Math.floor(w / 2) : Math.max(0, Math.min(w - 1, st.hover + d));
+      const left = code === 'ArrowLeft' || code === 'KeyA', right = code === 'ArrowRight' || code === 'KeyD';
+      if (left || right) {
+        // Прицілитись можна й поза своїм ходом: привид з'явиться в тій колонці, щойно хід прийде.
+        st.hover = st.hover < 0 ? Math.floor(w / 2) : Math.max(0, Math.min(w - 1, st.hover + (left ? -1 : 1)));
         paint(root, ctx);
         return true;
       }
-      if (e.key === 'Enter' && st.hover >= 0) { drop(root, ctx, st.hover); return true; }
+      if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') {
+        if (!ctx.myTurn) return code === 'Space';            // пробіл поза ходом не гортає сторінку
+        if (st.hover < 0) { st.hover = Math.floor(w / 2); paint(root, ctx); return true; }
+        drop(root, ctx, st.hover);
+        return true;
+      }
       return false;
     },
+    // Дека: стік чи хрестовина водять привид по колонках, Ⓐ кидає фішку.
+    pad: { dirs: 'x', a: 'Enter', hint: '{dpad} колонка · {a} кинути фішку' },
   });
 
   HGames.register(Object.assign(mod('c4', ICON, ['жовті', 'зелені']), {
