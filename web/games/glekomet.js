@@ -40,6 +40,9 @@
   const AWAY_MS = 200, CALM_MS = 50;   // цикл малювання: схована картка / тихе лобі й підсумок (spin)
   /// Емоції над хатою (прохід №3): поки ходить інший — 1–4, Ⓧ або кнопки пульта; сервер пускає одну на 1,5 с.
   const EMOS = ['😂', '😱', '😡', '👏'], EMO_MS = 2000, EMO_GAP = 1500;
+  /// Камера за снарядом (прохід №3): на вузькому полі (телефон, < 700 px) у польоті плавно наближаємо снаряд
+  /// і вибух (до ×2), потім назад. Приціл завжди на всю ширину — рогатка міряє лише рух пальця, не світ.
+  const CAM_MAX_W = 700, CAM_Z = 2, CAM_BOOM_MS = 1100;
 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -379,6 +382,7 @@
   /// Вибух із кадру: що полетіло, те й бахнуло — кольори й шум за снарядом.
   function blast(st, x, y, r, kind) {
     const pal = st.pal;
+    if (kind !== 'out' && kind !== 'cloud') st.camBoom = { x, y, t0: performance.now() };
     switch (kind) {
       case 'pot':
         ring(st, x, y, r, pal.clay);
@@ -1184,12 +1188,13 @@
     if (st.skyDirty) paintSky(st);
     if (st.bgDirty) paintGround(st);
     const pal = st.pal, F = st.fonts;
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    const K = st.dpr * st.s;
+    const cam = camera(st, now, dt), z = cam.z;
+    g.setTransform(z, 0, 0, z, -cam.x0 * K * z, -cam.y0 * K * z);
     g.drawImage(st.bgC, 0, 0);
     let ox = 0, oy = 0;
     if (now < st.shakeUntil) { ox = (Math.random() - 0.5) * 6 * F.k; oy = (Math.random() - 0.5) * 6 * F.k; }
-    const K = st.dpr * st.s;
-    g.setTransform(K, 0, 0, K, ox * K, oy * K);
+    g.setTransform(K * z, 0, 0, K * z, (ox - cam.x0 * z) * K, (oy - cam.y0 * z) * K);
     drawClouds(st, g, now);
 
     // свіжа земля у вирвах — темніша смуга по гребеню, поки не «підсохне»
@@ -1358,6 +1363,8 @@
       g.globalAlpha = 1;
     }
 
+    // написи поверх поля — без наближення камери
+    if (z !== 1) g.setTransform(K, 0, 0, K, ox * K, oy * K);
     drawWind(st, g);
 
     // останні 5 секунд ходу — велика червона цифра біля хати, що ходить (видно всім, і глядачам теж)
@@ -1413,6 +1420,42 @@
       else drawBanner(st, g, st.banner.text, e < 2200 ? 1 : 1 - (e - 2200) / 400, HGT - 62 * F.k);
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /// Камера: ціль — рамка навколо снарядів у польоті, далі місце вибуху, інакше все поле; рух згладжений.
+  /// Повертає {z, x0, y0} — наближення й лівий верхній кут видимого шматка (у світових одиницях, y — згори).
+  function camera(st, now, dt) {
+    const c = st.cam || (st.cam = { x: W / 2, y: HGT / 2, z: 1, x0: 0, y0: 0 });
+    const on = !st.calm && st.cssW > 0 && st.cssW < CAM_MAX_W && st.phase !== 'lobby' && st.phase !== 'over';
+    let tx = W / 2, ty = HGT / 2, tz = 1;
+    const boom = st.camBoom;
+    if (on && st.phase === 'fly' && st.shN) {
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      for (let i = 0; i < st.shN; i++) {
+        const x = st.shB[i * 3], y = clamp(sy(st.shB[i * 3 + 1]), 0, HGT);
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+      tz = clamp(Math.min(W / (x1 - x0 + 380), HGT / (y1 - y0 + 230)), 1, CAM_Z);
+      tx = (x0 + x1) / 2;
+      ty = (y0 + y1) / 2;
+    } else if (on && boom && now - boom.t0 < CAM_BOOM_MS && (st.phase === 'fly' || st.phase === 'settle')) {
+      tx = boom.x; ty = sy(boom.y); tz = CAM_Z * 0.9;
+    }
+    if (!on) { c.z = 1; c.x = W / 2; c.y = HGT / 2; }
+    else {
+      const d = Math.min(0.1, dt || 0.016);
+      c.z += (tz - c.z) * (1 - Math.exp(-d * (tz > c.z ? 3.5 : st.phase === 'aim' ? 7 : 2.5)));
+      c.x += (tx - c.x) * (1 - Math.exp(-d * 7));
+      c.y += (ty - c.y) * (1 - Math.exp(-d * 7));
+      if (Math.abs(c.z - 1) < 0.004 && tz === 1) c.z = 1;
+    }
+    const hw = W / (2 * c.z), hh = HGT / (2 * c.z);
+    c.x0 = clamp(c.x, hw, W - hw) - hw;
+    c.y0 = clamp(c.y, hh, HGT - hh) - hh;
+    return c;
   }
 
   /// Емоції над хатами: вискакує, трохи пливе вгору й тане за 2 с — над табличкою з ніком, щоб її не ховати.
