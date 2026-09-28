@@ -163,6 +163,13 @@
       for (let i = 0; i < N; i++) if (st.trl[i] === s + 1) g.fillRect((i % W) * PX + 1, ((i / W) | 0) * PX + 1, PX - 2, PX - 2);
     }
 
+    // «Тебе ріжуть»: твій слід блимає червоним, поки чужа голова поруч.
+    if (st.danger && me != null && Math.floor(performance.now() / 200) % 2 === 0) {
+      g.strokeStyle = cssv(st, '--danger', '#e57373');
+      g.lineWidth = 2;
+      for (let i = 0; i < N; i++) if (st.trl[i] === me + 1) g.strokeRect((i % W) * PX + 1, ((i / W) | 0) * PX + 1, PX - 2, PX - 2);
+    }
+
     const ready = st.phase === 'ready' && st.startIn > 0 && ctx && ctx.playing;
     if (ready) {
       g.fillStyle = cssv(st, '--gshade', 'rgba(15, 31, 24, .62)');
@@ -278,6 +285,35 @@
 
   const secs = (ms) => Math.max(0, Math.ceil((ms || 0) / 1000));
 
+  /// «Тебе ріжуть» (прохід №3): чужа жива голова за ≤ 3 клітинки від твого сліду. Дивимось не весь слід,
+  /// а квадрат 7×7 довкола кожної чужої голови — це ≤ 49 клітинок на суперника.
+  const NEAR = 3;
+  function danger(st, ctx) {
+    if (!ctx || !ctx.mine || st.phase !== 'play') return false;
+    const mine = ctx.seat + 1, W = st.W, H = st.H;
+    for (let s = 0; s < st.heads.length; s++) {
+      const h = st.heads[s];
+      if (s === ctx.seat || !h || !h.on || !h.alive || h.x < 0) continue;
+      for (let y = Math.max(0, h.y - NEAR); y <= Math.min(H - 1, h.y + NEAR); y++)
+        for (let x = Math.max(0, h.x - NEAR); x <= Math.min(W - 1, h.x + NEAR); x++)
+          if (st.trl[y * W + x] === mine) return true;
+    }
+    return false;
+  }
+
+  /// Небезпека почалась — телефон вібрує (не частіше ніж раз на 1,5 с; лише після першого дотику до сторінки).
+  function warn(st, ctx) {
+    const was = st.danger;
+    st.danger = danger(st, ctx);
+    if (ctx) ctx._terrDanger = st.danger;   // status() бачить лише ctx
+    if (!st.danger || was || !navigator.vibrate) return;
+    const now = performance.now();
+    if (now - (st.buzzAt || 0) < 1500) return;
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+    st.buzzAt = now;
+    try { navigator.vibrate([90, 60, 90]); } catch (_) { /* ні то й ні */ }
+  }
+
   /// Хрестовина під палець — своя, на pointerdown: хрестовина каркаса слухає click, а він приходить аж коли
   /// палець відпустили (+50–120 мс). Голова тут біжить клітинку за 100 мс, тож запізнілий поворот — це
   /// поворот не там. Вигляд той самий (клас .dpad каркаса, видно лише на сенсорному екрані).
@@ -336,12 +372,11 @@
     seatClass: ['x', 'o', 'c', 'tq', 'tr5', 'tr6'],
     pad: { dirs: true, hint: '{dpad} куди бігти' },
     news: {
-      v: '2026-09-28',
-      title: 'Земля: поворот одразу',
+      v: '2026-09-29',
+      title: 'Земля: «тебе ріжуть» і довжина раунду',
       items: [
-        '👆 Хрестовина на телефоні повертає на дотик, а не коли відпустиш палець — поворот там, де хотів',
-        '⌨ Затиснута стрілка більше не «з’їдає» наступний поворот',
-        '📱 З початком партії поле й хрестовина стають в екран разом; на ноутбуці й Деці поле більше',
+        '⚠ Чужа голова за три клітинки від твого сліду — слід блимає червоним, телефон вібрує: тікай додому!',
+        '⏱ Опція «Раунд»: 60 с на двох, 90 як було, 150 для компанії — або «до 40 % поля», хто перший',
       ],
     },
 
@@ -377,6 +412,7 @@
       const st = state(root, ctx);
       if (!st.cv || !f) return;
       fromFrame(st, f);
+      warn(st, ctx);
       bar(root, ctx, st);
       draw(st);
     },
@@ -395,9 +431,11 @@
       // відлік живе в кадрах, а не у видах: вид приходить лише на старті й на кінець раунду
       const f = ctx.frame && ctx.frame.timeLeft != null ? ctx.frame : (ctx.view || {});
       if (f.phase === 'ready' && f.startIn > 0) return ctx.mine ? 'Готуйсь… можна вже повернути' : 'Готуйсь…';
-      const left = 'ще ' + secs(f.timeLeft) + ' с';
+      const goal = ctx.view && ctx.view.goal;
+      const left = (goal ? 'до ' + goal + ' % поля · ' : '') + 'ще ' + secs(f.timeLeft) + ' с';
       const me = ctx.mine && f.heads ? f.heads[ctx.seat] : null;
       if (me && me.on && !me.alive) return 'Отакої, згоріло! Повертаєшся за ' + secs(me.respawnIn) + ' с · ' + left;
+      if (ctx.mine && ctx._terrDanger) return '⚠ Тебе ріжуть — додому! · ' + left;
       const how = HGames.ui.coarse() ? 'Хрестовина — куди бігти' : 'Стрілки або WASD';
       return (ctx.mine ? how : 'Дивишся збоку') + ' · ' + left;
     },

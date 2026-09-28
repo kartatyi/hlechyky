@@ -95,7 +95,10 @@ public sealed class TerritoryCore(Random rng, int w = TerritoryCore.SmallW, int 
     /// <summary>Скільки тиків минуло від початку раунду.</summary>
     public int Ticks { get; private set; }
 
-    public int TicksLeft => Math.Max(0, RoundTicks - Ticks);
+    /// <summary>Довжина раунду цього столу в тиках (опція «Раунд»); типово — звичні 90 с.</summary>
+    public int RoundLen { get; set; } = RoundTicks;
+
+    public int TicksLeft => Math.Max(0, RoundLen - Ticks);
 
     /// <summary>Скільки місць грає цього раунду.</summary>
     public int Playing => Riders.Count(r => r.On);
@@ -413,6 +416,10 @@ public sealed class Territory : Game
     public override GameInfo Info { get; } = new(
         "territory", "Земля", "землю", GameGroup.Live, 2, TerritoryCore.MaxPlayers,
         TickMs: TerritoryCore.TickMs, Start: StartMode.ByHost,
+        Options:
+        [
+            new GameOption("round", "Раунд", [("90", "90 с"), ("60", "60 с — швидко, на двох"), ("150", "150 с — для компанії"), ("40", "до 40 % поля (не довше 3 хв)")], "90"),
+        ],
         Hint: "Виїжджай зі своєї землі, обводь шматок поля і повертайся — обведене твоє. Перерізали твій слід — усе згоріло. До шести за столом");
 
     /// <summary>
@@ -426,6 +433,16 @@ public sealed class Territory : Game
     /// ~2,4 КБ), а кадр вилазить за 4 КБ з ARCHITECTURE §12. Такий тик шлемо повними рядками.
     /// </summary>
     public const int BigFrame = 300;
+
+    /// <summary>Опція «до 40 % поля»: хто перший захопив стільки — перемагає одразу.</summary>
+    public const int GoalPercent = 40;
+    /// <summary>Скільки триває раунд «до 40 %», якщо ніхто не дотягнув: три хвилини.</summary>
+    public const int GoalMaxTicks = 1800;
+
+    /// <summary>Довжина раунду в тиках за опцією «Раунд».</summary>
+    int _len = TerritoryCore.RoundTicks;
+    /// <summary>Мета у відсотках поля; 0 — лише час.</summary>
+    int _goal;
 
     TerritoryCore? _core;
     /// <summary>Раунд, який уже стартував: усе, що не він, — це стіл, який ще чекає на «Почати».</summary>
@@ -457,7 +474,20 @@ public sealed class Territory : Game
     {
         var (w, h) = TerritoryCore.SizeFor(seated.Count(x => x));
         if (_core is null || _core.W != w || _core.H != h) _core = new TerritoryCore(Ctx.Rng, w, h);
+        _core.RoundLen = _len;
         _core.Reset(seated);
+    }
+
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        (_len, _goal) = options.GetValueOrDefault("round") switch
+        {
+            "60" => (600, 0),
+            "150" => (1500, 0),
+            "40" => (GoalMaxTicks, GoalPercent),
+            _ => (TerritoryCore.RoundTicks, 0),
+        };
+        if (_core is not null) _core.RoundLen = _len;
     }
 
     public override string SeatName(int seat) =>
@@ -496,7 +526,7 @@ public sealed class Territory : Game
             return _ready == 0 ? TickResult.Both : TickResult.FrameOnly;
         }
         Core.Step();
-        if (Core.TicksLeft > 0) return TickResult.FrameOnly;
+        if (Core.TicksLeft > 0 && !GoalReached()) return TickResult.FrameOnly;
         FinishRound();
         return TickResult.Both;
     }
@@ -570,6 +600,7 @@ public sealed class Territory : Game
             heads = Heads(),
             area = Areas(),
             timeLeft = Core.TicksLeft * TerritoryCore.TickMs,
+            goal = _goal,
         };
     }
 
@@ -603,6 +634,15 @@ public sealed class Territory : Game
         var i = 0;
         foreach (var c in cells) pairs[i++] = [c, map[c]];
         return pairs;
+    }
+
+    /// <summary>Опція «до 40 % поля»: хтось уже стільки захопив — раунд скінчено, найбільший і бере.</summary>
+    bool GoalReached()
+    {
+        if (_goal <= 0) return false;
+        for (var s = 0; s < TerritoryCore.MaxPlayers; s++)
+            if (Core.Riders[s].On && Core.Percent(s) >= _goal) return true;
+        return false;
     }
 
     /// <summary>Кінець раунду: перемагає найбільша площа, рівні площі — нічия.</summary>
