@@ -208,7 +208,37 @@ public sealed class GeoMineTests : IDisposable
         Assert.Empty(Directory.GetFiles(_dir, "in-*"));
     }
 
-    // ---------------------------------------------------------------- гра
+    [Fact]
+    public async Task Shrink_replaces_a_heavy_photo_atomically_and_leaves_a_broken_one_intact()
+    {
+        if (Ffmpeg() is not { } ff) return;
+        GeoShrink.Pause = TimeSpan.Zero;
+        Directory.CreateDirectory(_dir);
+        var heavy = Path.Combine(_dir, "heavy.jpg");
+        var psi = new ProcessStartInfo(ff) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+        foreach (var a in new[] { "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=2400x1800:rate=1", "-frames:v", "1", "-q:v", "1", heavy })
+            psi.ArgumentList.Add(a);
+        using (var p = Process.Start(psi)!) { await p.StandardError.ReadToEndAsync(); await p.WaitForExitAsync(); }
+        var before = new FileInfo(heavy).Length;
+        Assert.True(before > GeoShrink.Target);
+        // «JPEG», що ffmpeg не розкодує: має лишитись байт у байт, а тимчасових файлів — жодного
+        var broken = Path.Combine(_dir, "broken.jpg");
+        byte[] junk = [0xFF, 0xD8, 0xFF, 0xDB, .. Enumerable.Repeat((byte)0x42, 300 * 1024), 0xFF, 0xD9];
+        File.WriteAllBytes(broken, junk);
+        var n = await GeoShrink.AllAsync(ff, _dir, null, CancellationToken.None);
+        Assert.Equal(1, n);
+        var after = File.ReadAllBytes(heavy);
+        Assert.True(after.Length < before);
+        Assert.NotNull(GeoImage.Strip(after));
+        Assert.Equal(junk, File.ReadAllBytes(broken));
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp*"));
+        // другий прохід битий файл уже не чіпає (і не ганяє ffmpeg), а легкий — і поготів
+        var sw = Stopwatch.StartNew();
+        Assert.Equal(0, await GeoShrink.AllAsync(ff, _dir, null, CancellationToken.None));
+        Assert.True(sw.ElapsedMilliseconds < 1000, $"другий прохід {sw.ElapsedMilliseconds} мс");
+    }
+
+
 
     static RoomHarness Table(GeoCache c, GeoMine m, object options, params string[] nicks)
     {

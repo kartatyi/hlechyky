@@ -11,11 +11,23 @@ namespace Hlechyky.Games.Impl;
 /// Файли з власним тегом повороту (APP1) не чіпаємо: ffmpeg різних версій по-різному шанує EXIF-поворот, і
 /// «боком» тут гірше за «важко».
 /// </para>
+/// <para>
+/// На проді це повільна черга: один ffmpeg за раз, один потік, нижчий пріоритет і пауза між файлами
+/// (<see cref="Pause"/>), тож перший прохід по кешу (~600 фото) розтягується на пів години фону, а не з'їдає процесор
+/// посеред партій. Файл, який не вдалось полегшити (ffmpeg не дав виграшу чи впав), запам'ятовуємо з його
+/// розміром і більше не чіпаємо — інакше кожен прохід раз на 20 хвилин ганяв би ffmpeg по тих самих файлах.
+/// Будь-який збій лишає старий файл цілим: нове пишеться в тимчасовий і лише потім атомарно підміняє старий.
+/// </para>
 /// </summary>
 public static class GeoShrink
 {
     public const long Target = 230 * 1024;
     public const int MaxWidth = 1152;
+    /// <summary>Пауза між файлами — щоб фонове перетискання не з'їдало процесор проду.</summary>
+    public static TimeSpan Pause { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Файли, які вже пробували (і невдало, і вдало): шлях → розмір після спроби (змінився файл — пробуємо знову).</summary>
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> Tried = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Пройтись по теці й перетиснути все важче за <see cref="Target"/>. Скільки перетиснуто.</summary>
     public static async Task<int> AllAsync(string ffmpeg, string dir, ILogger? log, CancellationToken ct)
@@ -26,7 +38,11 @@ public static class GeoShrink
         {
             ct.ThrowIfCancellationRequested();
             if (f.Length <= Target) continue;
+            if (Tried.TryGetValue(f.FullName, out var len) && len == f.Length) continue;
             if (await OneAsync(ffmpeg, f.FullName, log, ct)) n++;
+            // і полегшений, що лишився важчим за ціль, — теж: інакше наступний прохід тиснув би його вдруге й утретє
+            try { Tried[f.FullName] = new FileInfo(f.FullName).Length; } catch (IOException) { }
+            await Task.Delay(Pause, ct);
         }
         if (n > 0) log?.LogInformation("«Де це?»: перетиснуто фото {N}", n);
         return n;
@@ -44,7 +60,7 @@ public static class GeoShrink
         {
             foreach (var q in new[] { "7", "10" })
             {
-                if (!await RunAsync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", path,
+                if (!await RunAsync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-threads", "1", "-i", path,
                         "-vf", $"scale='min({MaxWidth},iw)':-2", "-q:v", q, tmp], ct)) return false;
                 var bytes = await File.ReadAllBytesAsync(tmp, ct);
                 if (bytes.Length > Target && q == "7") continue;
@@ -55,7 +71,7 @@ public static class GeoShrink
             }
             return false;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
             log?.LogWarning("«Де це?»: не перетиснув {File} — {Error}", Path.GetFileName(path), ex.Message);
             return false;
@@ -72,6 +88,7 @@ public static class GeoShrink
         foreach (var a in args) psi.ArgumentList.Add(a);
         using var p = Process.Start(psi);
         if (p is null) return false;
+        try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch (Exception) { /* уже вийшов — не біда */ }
         var err = p.StandardError.ReadToEndAsync(ct);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(30));
