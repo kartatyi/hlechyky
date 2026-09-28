@@ -631,7 +631,7 @@ public class DurakTests
         // На 2–6 Ело й ставки каркас однаково не рахує (лише MaxPlayers == 2), тож і прапорця нема.
         Assert.False(game.Rated);
         Assert.False(game.Private);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);   // з 29.09 — сам на сам можна з Глеком 🤖 (CanStart стереже)
         Assert.Equal(6, game.MaxPlayers);
         Assert.Equal(0, game.TickMs);
         Assert.Equal("durak", game.Module);
