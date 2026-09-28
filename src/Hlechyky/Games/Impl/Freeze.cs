@@ -20,6 +20,10 @@ public sealed class FreezeSeat
     /// <summary>Слід за раунд для розкриття: кільце останніх позицій свого селянина.</summary>
     public readonly int[] TrailX = new int[Freeze.TrailLen], TrailY = new int[Freeze.TrailLen];
     public int TrailHead, TrailCount;
+    /// <summary>Естафета: команда 0/1 (на партію); -1 — кожен за себе.</summary>
+    public int Team = -1;
+    /// <summary>Естафета: скільки разів торкнувся глека за раунд.</summary>
+    public int Jugs;
 
     public bool Active => Plays && !Out;
 }
@@ -44,6 +48,12 @@ public sealed class Freeze : Game
     public const int RevealTicks = 150;
     /// <summary>Хто перший торкнувся глека — +3; як вийшов час — «сходинки»: найдальшому +2, другому +1 (якщо гравців ≥ 3).</summary>
     public const int PtJug = 3, PtFirst = 2, PtSecond = 1;
+    /// <summary>
+    /// Естафета (п. 195, опція <c>mode=relay</c>): дві команди, торкнувся глека — очко команді й назад до тину. Раунд — до
+    /// <see cref="RelayGoal"/> очок чи до кінця часу. Кожному: +1 за свій глек, +2 кожному з команди, що взяла раунд.
+    /// </summary>
+    public const int RelayGoal = 5, PtRelayJug = 1, PtRelayRound = 2;
+    public static readonly string[] TeamNames = ["🌻 Соняшники", "💠 Волошки"];
     /// <summary>У розкритті кадр летить раз на стільки тиків (усі стоять — частіше нема чого).</summary>
     public const int RevealFrameEvery = 5;
     /// <summary>Затиснуту стрілку модуль підтверджує раз на секунду; не чули 3 с — зв'язок обірвався, селянин стає.</summary>
@@ -70,6 +80,7 @@ public sealed class Freeze : Game
         [
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("crowd", "Селян", [("auto", "Як на лузі"), ("small", "Жменька (14)"), ("big", "Ціле село (40)")], "auto"),
+            new GameOption("mode", "Гра", [("solo", "Кожен за себе"), ("relay", "🏺 Естафета: дві команди")], "solo"),
         ],
         Hint: "Баба Параска співає — іди до глека. Обернулась і крикнула «Замри!» — стій, як укопаний. Ти — один із юрми, і ніхто не знає, хто з селян живий");
 
@@ -98,7 +109,7 @@ public sealed class Freeze : Game
     int[]? _winners;
 
     sealed record FreezeReveal(int[] Winners, string Why, (int Seat, int Id)[] Ids, FreezeRow[] Rows, (int Seat, int[] Pts)[] Trails);
-    sealed record FreezeRow(int Seat, int X, int Caught, int Hits, bool Win, int Pts);
+    sealed record FreezeRow(int Seat, int X, int Caught, int Hits, bool Win, int Pts, int Jugs);
 
     FreezeCore Core => _core ??= new FreezeCore(Ctx.Rng);
 
@@ -115,6 +126,32 @@ public sealed class Freeze : Game
     {
         _rounds = options.TryGetValue("rounds", out var r) && int.TryParse(r, out var n) && n is 1 or 3 or 5 ? n : 3;
         _crowd = options.TryGetValue("crowd", out var c) && c is "small" or "big" ? c : "auto";
+        _relay = options.TryGetValue("mode", out var m) && m == "relay";
+    }
+
+    bool _relay;
+    /// <summary>Естафета: очки команд за раунд і за партію, виграні раунди, вага глека (менша команда 2 на 1 — глек за два).</summary>
+    readonly int[] _teamPts = new int[2], _teamTotal = new int[2], _teamRounds = new int[2], _teamWeight = [1, 1];
+    public bool Relay => _relay;
+    public int TeamPtsForTests(int team) => _teamPts[team];
+
+    /// <summary>Команди: хто сидить — по черзі в Соняшники й Волошки. Менша вдвічі команда (2 на 1) рахує глек за два.</summary>
+    void DealTeams()
+    {
+        var k = 0;
+        int[] size = [0, 0];
+        for (var i = 0; i < Seats; i++)
+        {
+            _s[i].Team = -1;
+            if (!_relay || !_s[i].Plays) continue;
+            _s[i].Team = k % 2;
+            size[k % 2]++;
+            k++;
+        }
+        _teamWeight[0] = size[0] > 0 && size[1] > size[0] ? size[1] / size[0] : 1;
+        _teamWeight[1] = size[1] > 0 && size[0] > size[1] ? size[0] / size[1] : 1;
+        Array.Clear(_teamTotal);
+        Array.Clear(_teamRounds);
     }
 
     /// <summary>Скільки ботів за складом і опцією.</summary>
@@ -146,6 +183,7 @@ public sealed class Freeze : Game
             if (s.Plays) players++;
         }
         _n = players + BotsForTable(players);
+        DealTeams();
         NewRound();
     }
 
@@ -166,12 +204,13 @@ public sealed class Freeze : Game
         foreach (var seat in owners)
         {
             var s = _s[seat];
-            s.Caught = s.Hits = s.Pushes = 0;
+            s.Caught = s.Hits = s.Pushes = s.Jugs = 0;
             s.MoveAt = _clock;
             s.TrailHead = s.TrailCount = 0;
         }
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
+        Array.Clear(_teamPts);
         _dirty = true;
     }
 
@@ -377,6 +416,7 @@ public sealed class Freeze : Game
     /// </summary>
     void EndCheck(int babaWas)
     {
+        if (_relay) { RelayCheck(); return; }
         List<int>? jug = null;
         for (var i = 0; i < Seats; i++)
         {
@@ -401,6 +441,32 @@ public sealed class Freeze : Game
         EndRound(Podium(), "time");
     }
 
+    /// <summary>
+    /// Естафета: хто торкнувся глека (і Баба не впіймала) — очко команді (з вагою), +1 собі й назад до тину, раунд іде
+    /// далі. Команда набрала <see cref="RelayGoal"/> — раунд її; вийшов час — чия команда більше, рівно — нічия.
+    /// </summary>
+    void RelayCheck()
+    {
+        for (var i = 0; i < Seats; i++)
+        {
+            var s = _s[i];
+            if (!s.Active || s.Me < 0 || s.Team < 0) continue;
+            var v = Core.V[s.Me];
+            if (v.X < FreezeCore.FinishX || v.Caught != 0) continue;
+            s.Jugs++;   // +1 собі — на розкритті: посеред раунду «+1 Олі» назвав би, хто щойно торкнувся глека
+            _teamPts[s.Team] += _teamWeight[s.Team];
+            Core.RelayBack(v, s.Team);
+            _dirty = true;
+        }
+        int a = _teamPts[0], b = _teamPts[1];
+        if (a >= RelayGoal || b >= RelayGoal || _left <= 0)
+        {
+            var team = a > b ? 0 : b > a ? 1 : -1;
+            var winners = team < 0 ? [] : Enumerable.Range(0, Seats).Where(i => _s[i].Active && _s[i].Team == team).ToArray();
+            EndRound(winners, team < 0 ? "none" : a >= RelayGoal || b >= RelayGoal ? "relay" : "time");
+        }
+    }
+
     /// <summary>Хто далі зайшов (за x свого селянина): перші — найдальші, рівні — поруч.</summary>
     int[] Podium()
     {
@@ -415,6 +481,20 @@ public sealed class Freeze : Game
     void EndRound(int[] winners, string why)
     {
         var pts = new int[Seats];
+        if (_relay)
+        {
+            // естафета: свої глеки (+1 кожен) і раунд команді (+2 кожному)
+            for (var i = 0; i < Seats; i++) if (_s[i].Active) { pts[i] = _s[i].Jugs * PtRelayJug; _s[i].Total += pts[i]; }
+            foreach (var w in winners) { pts[w] += PtRelayRound; _s[w].Total += PtRelayRound; }
+            for (var t = 0; t < 2; t++) _teamTotal[t] += _teamPts[t];
+            if (winners.Length > 0) _teamRounds[_s[winners[0]].Team]++;
+            _reveal = RevealOf(winners, why, s => s.Active, pts);
+            StandStill();
+            _phase = PhaseReveal;
+            _left = RevealTicks;
+            _dirty = true;
+            return;
+        }
         if (why == "jug")
             foreach (var w in winners) pts[w] = PtJug;
         else if (why == "time")
@@ -458,7 +538,7 @@ public sealed class Freeze : Game
             if (!s.Plays || s.Me < 0 || !who(s)) continue;
             var win = why != "left" && Array.IndexOf(winners, i) >= 0;
             ids.Add((i, s.Me));
-            rows.Add(new FreezeRow(i, Core.V[s.Me].X, s.Caught, s.Hits, win, pts[i]));
+            rows.Add(new FreezeRow(i, Core.V[s.Me].X, s.Caught, s.Hits, win, pts[i], s.Jugs));
             trails.Add((i, TrailOf(s)));
         }
         return new FreezeReveal(winners, why, [.. ids], [.. rows], [.. trails]);
@@ -471,6 +551,7 @@ public sealed class Freeze : Game
         var active = new List<int>();
         for (var i = 0; i < Seats; i++)
             if (_s[i].Active) active.Add(i);
+        if (_relay) { FinishRelay(active); return; }
         var best = active.Count == 0 ? 0 : active.Max(i => _s[i].Total);
         var top = active.Where(i => _s[i].Total == best).ToArray();
         var winners = top.Length == active.Count ? [] : top;
@@ -480,6 +561,25 @@ public sealed class Freeze : Game
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
         var line = string.Join(" : ", order.Select(i => $"{_s[i].Nick} {_s[i].Total}"));
         Ctx.Finish(winners, winners.Length > 0 ? $"«{Info.Title}»: {line}" : $"«{Info.Title}»: {line} — нічия");
+    }
+
+    /// <summary>
+    /// Естафета: партію бере команда з більшою кількістю виграних раундів, рівно — з більшою сумою очок, рівно й тут —
+    /// нічия. Журнал: «Замри!» естафета: 🌻 Соняшники (Оля, Іван) 2 : 1 💠 Волошки (Петро, Ганна).
+    /// </summary>
+    void FinishRelay(List<int> active)
+    {
+        int Cmp() => _teamRounds[0] != _teamRounds[1] ? _teamRounds[0].CompareTo(_teamRounds[1]) : _teamTotal[0].CompareTo(_teamTotal[1]);
+        var c = Cmp();
+        var team = c > 0 ? 0 : c < 0 ? 1 : -1;
+        var winners = team < 0 ? [] : active.Where(i => _s[i].Team == team).ToArray();
+        _winners = winners;
+        _dirty = true;
+        foreach (var i in active) Ctx.Score(i, _s[i].Total);
+        string Side(int t) => $"{TeamNames[t]} ({string.Join(", ", active.Where(i => _s[i].Team == t).Select(i => _s[i].Nick))})";
+        var first = team < 0 ? 0 : team;
+        var line = $"«{Info.Title}» естафета: {Side(first)} {_teamRounds[first]} : {_teamRounds[1 - first]} {Side(1 - first)}";
+        Ctx.Finish(winners, team < 0 ? line + " — нічия" : line);
     }
 
     /// <summary>
@@ -505,7 +605,9 @@ public sealed class Freeze : Game
         var rest = new List<int>();
         for (var i = 0; i < Seats; i++)
             if (i != seat && _s[i].Active && Ctx.Seated(i)) rest.Add(i);
-        if (rest.Count > 1) return;
+        // естафета: поки в обох командах хтось є — граємо далі (друга команда зосталась сама — їй і перемога)
+        var teamGone = _relay && rest.Count > 0 && rest.All(i => _s[i].Team == _s[rest[0]].Team);
+        if (rest.Count > 1 && !teamGone) return;
         if (!(_phase == PhaseReveal && _reveal is not null)) _reveal = RevealOf([.. rest], "left", x => x.Me >= 0, new int[Seats]);
         StandStill();
         _phase = PhaseOver;
@@ -513,7 +615,9 @@ public sealed class Freeze : Game
         _endWhy = "left";
         _winners = [.. rest];
         foreach (var i in rest) Ctx.Score(i, _s[i].Total);
-        Ctx.Finish([.. rest], rest.Count == 1
+        Ctx.Finish([.. rest], teamGone && rest.Count > 1
+            ? $"«{Info.Title}»: суперники розійшлись — перемога за {TeamNames[_s[rest[0]].Team]}"
+            : rest.Count == 1
             ? $"«{Info.Title}»: усі розійшлись — {_s[rest[0]].Nick} сам-на-сам із Бабою Параскою"
             : $"«{Info.Title}»: усі розійшлись");
     }
@@ -591,13 +695,27 @@ public sealed class Freeze : Game
                     winners = r.Winners,
                     why = r.Why,
                     ids = r.Ids.Select(p => new { seat = p.Seat, id = p.Id }).ToArray(),
-                    rows = r.Rows.Select(x => new { seat = x.Seat, x = x.X, caught = x.Caught, hits = x.Hits, win = x.Win, pts = x.Pts }).ToArray(),
+                    rows = r.Rows.Select(x => new { seat = x.Seat, x = x.X, caught = x.Caught, hits = x.Hits, win = x.Win, pts = x.Pts, jugs = x.Jugs }).ToArray(),
                     trails = r.Trails.Select(p => new { seat = p.Seat, pts = p.Pts }).ToArray(),
                 }
                 : null,
             result = _phase == PhaseOver && _winners is { } w
                 ? new { winners = w, totals = _s.Select(x => x.Total).ToArray(), why = _endWhy }
                 : null,
+            // естафета — публічно: хто в якій команді, очки раунду й партії (хто ким на лузі — ні)
+            relay = !_relay ? null : new
+            {
+                goal = RelayGoal,
+                teams = Enumerable.Range(0, 2).Select(t => new
+                {
+                    name = TeamNames[t],
+                    seats = Enumerable.Range(0, Seats).Where(i => _s[i].Team == t && (live ? _s[i].Plays : Ctx.Seated(i))).ToArray(),
+                    pts = _teamPts[t],
+                    total = _teamTotal[t],
+                    rounds = _teamRounds[t],
+                    weight = _teamWeight[t],
+                }).ToArray(),
+            },
             turn = (int?)null,
         };
     }
@@ -610,6 +728,15 @@ public sealed class Freeze : Game
     {
         var s = _s[seat];
         var v = Core.V[s.Me];
-        return new { id = s.Me, cool = v.PushCool, caught = s.Caught };
+        // естафета: своїх у команді знаєш у лице — [місце, id…]; суперників — ні
+        int[]? mates = null;
+        if (_relay && s.Team >= 0)
+        {
+            var list = new List<int>();
+            for (var i = 0; i < Seats; i++)
+                if (i != seat && _s[i].Active && _s[i].Team == s.Team && _s[i].Me >= 0) { list.Add(i); list.Add(_s[i].Me); }
+            mates = [.. list];
+        }
+        return new { id = s.Me, cool = v.PushCool, caught = s.Caught, mates };
     }
 }

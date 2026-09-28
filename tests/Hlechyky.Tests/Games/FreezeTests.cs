@@ -1360,7 +1360,7 @@ public class FreezeTests(ITestOutputHelper output)
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.True(info.Hidden);
         Assert.Equal(ScoreOrder.HigherIsBetter, info.Score);
-        Assert.Equal(["rounds", "crowd"], info.Options!.Select(o => o.Key));
+        Assert.Equal(["rounds", "crowd", "mode"], info.Options!.Select(o => o.Key));
         Assert.True(File.Exists(Path.Combine(FindRoot(), "web", "games", "freeze.js")));
         Assert.True(File.Exists(Path.Combine(FindRoot(), "web", "games", "freeze.css")));
         Assert.Equal("рожевий", new Freeze().SeatName(5));
