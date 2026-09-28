@@ -12,7 +12,7 @@ namespace Hlechyky.Tests.Games;
 /// «Вогник і Крапля» (specs/vohnyk.md §8): рівні й записані проходження, фізика на синтетичних майданчиках,
 /// механізми, партія за столом, мережа (журнал вводу, перемотування), види й кадри, сховище, ачівки.
 /// </summary>
-public sealed class VohnykTests(ITestOutputHelper output)
+public sealed partial class VohnykTests(ITestOutputHelper output)
 {
     const int T = VohnykWorld.TileSu;
     const int R = VohnykWorld.KeyRight, L = VohnykWorld.KeyLeft, J = VohnykWorld.KeyJump;
@@ -129,7 +129,8 @@ public sealed class VohnykTests(ITestOutputHelper output)
     public void All_fifteen_levels_load_and_pass_validation()
     {
         var all = VohnykLevels.LoadDir(Paths.Resolve(VohnykLevels.Dir));
-        Assert.Equal(15, all.Length);
+        Assert.Equal(VohnykLevels.Count, all.Length);
+        Assert.True(all.Length > VohnykLevels.Cave1);
         for (var i = 0; i < all.Length; i++)
         {
             var l = all[i];
@@ -145,7 +146,7 @@ public sealed class VohnykTests(ITestOutputHelper output)
     public void Levels_carry_the_gems_the_spec_promises_and_grow_in_size()
     {
         int[] perHero = [1, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5];
-        foreach (var l in VohnykLevels.All)
+        foreach (var l in VohnykLevels.All.Where(l => l.N <= VohnykLevels.Cave1))
         {
             Assert.Equal(perHero[l.N - 1], l.GemsOf(0));
             Assert.Equal(perHero[l.N - 1], l.GemsOf(1));
@@ -228,7 +229,7 @@ public sealed class VohnykTests(ITestOutputHelper output)
     [Fact]
     public void Level_view_never_leaks_solution_or_check()
     {
-        var store = Unlocked(16);
+        var store = Unlocked(VohnykLevels.Count + 1);
         foreach (var l in VohnykLevels.All)
         {
             var h = Table(store, "Оля");
@@ -742,7 +743,7 @@ public sealed class VohnykTests(ITestOutputHelper output)
         Assert.Equal("pick", v.GetProperty("phase").GetString());
         Assert.Equal(1, v.GetProperty("picked").GetInt32());
         var levels = v.GetProperty("levels");
-        Assert.Equal(15, levels.GetArrayLength());
+        Assert.Equal(VohnykLevels.Count, levels.GetArrayLength());
         Assert.True(levels[0].GetProperty("unlocked").GetBoolean());
         Assert.False(levels[1].GetProperty("unlocked").GetBoolean());
         Assert.Equal("Перші кроки", v.GetProperty("level").GetProperty("name").GetString());
@@ -770,7 +771,7 @@ public sealed class VohnykTests(ITestOutputHelper output)
         var h = Table();
         var locked = h.Act(0, "pick", new { level = 2 });
         Assert.Equal("Рівень 2 ще зачинений: спершу пройдіть 1", locked.Message);
-        Assert.Equal("Такого рівня нема", h.Act(0, "pick", new { level = 16 }).Message);
+        Assert.Equal("Такого рівня нема", h.Act(0, "pick", new { level = VohnykLevels.Count + 1 }).Message);
         Assert.Equal("Такого рівня нема", h.Act(0, "pick", new { level = "три" }).Message);
         Assert.Equal("Такого рівня нема", h.Act(0, "pick", null).Message);
         Assert.Equal(1, h.View(0).GetProperty("picked").GetInt32());
@@ -782,8 +783,10 @@ public sealed class VohnykTests(ITestOutputHelper output)
         var store = Unlocked(4, "Оля");                 // Оля пройшла 1–3
         var h = Table(store, "Оля");
         Assert.Equal(4, h.View(0).GetProperty("picked").GetInt32());
-        var all = Unlocked(16, "Оля");
-        Assert.Equal(15, Table(all, "Оля").View(0).GetProperty("picked").GetInt32());
+        // пройшла першу печеру — типово шістнадцятий, перший у «Глибше»; пройшла все — останній
+        Assert.Equal(16, Table(Unlocked(16, "Оля"), "Оля").View(0).GetProperty("picked").GetInt32());
+        var all = Unlocked(VohnykLevels.Count + 1, "Оля");
+        Assert.Equal(VohnykLevels.Count, Table(all, "Оля").View(0).GetProperty("picked").GetInt32());
     }
 
     [Fact]
@@ -941,15 +944,23 @@ public sealed class VohnykTests(ITestOutputHelper output)
         h.Tick();
         Assert.Equal(2, G(h).LevelNo);
 
-        var last = Table(Unlocked(15, "Оля", "Петро"));
-        last.Act(0, "pick", new { level = 15 });
+        // п'ятнадцятий веде в другу печеру, а останній лишається останнім
+        var cave = Table(Unlocked(15, "Оля", "Петро"));
+        cave.Act(0, "pick", new { level = 15 });
+        cave.Start();
+        Play(cave, VohnykLevels.Get(15).Solution);
+        Assert.Equal(16, cave.View(0).GetProperty("result").GetProperty("next").GetInt32());
+
+        var n = VohnykLevels.Count;
+        var last = Table(Unlocked(n, "Оля", "Петро"));
+        last.Act(0, "pick", new { level = n });
         last.Start();
-        Play(last, VohnykLevels.Get(15).Solution);
+        Play(last, VohnykLevels.Get(n).Solution);
         Assert.Equal(RoomStatus.Finished, last.Room.Status);
-        Assert.Equal(15, last.View(0).GetProperty("result").GetProperty("next").GetInt32());
+        Assert.Equal(n, last.View(0).GetProperty("result").GetProperty("next").GetInt32());
         last.Rematch();
         last.Tick();
-        Assert.Equal(15, G(last).LevelNo);
+        Assert.Equal(n, G(last).LevelNo);
     }
 
     [Fact]

@@ -13,6 +13,7 @@ public static partial class VohnykPlans
         {
             case 16: Level16(b); return true;
             case 17: Level17(b); return true;
+            case 18: Level18(b); return true;
             default: return false;
         }
     }
@@ -48,5 +49,19 @@ public static partial class VohnykPlans
         b.Do(b.Go(F, C(16)), VohnykBot.Seq(b.Go(Wt, C(18)), b.Jump(Wt, 0, 30, C(18))));
         b.Do(b.Go(F, C(24)), null);
         b.Do(null, b.Go(Wt, C(26)));
+    }
+
+    /// <summary>
+    /// «Кротові нори»: самоцвіти на дошках; Крапля тримає b1 — портал горить, Вогник через воду в нього й на той бік,
+    /// лавою до b2 (тепер портал тримає він); Крапля водою в портал, стрибком через лаву, на дошку — і обоє до виходів.
+    /// </summary>
+    static void Level18(VohnykBot b)
+    {
+        b.Do(VohnykBot.Seq(b.Jump(F, 0, 30, C(3)), b.Go(F, C(5))),
+            VohnykBot.Seq(b.WaitFor(() => b.CenterPx(F) >= C(4)), b.Go(Wt, C(3)), b.Jump(Wt, 0, 30, C(3)), b.Jump(Wt, +1, 30, C(5)), b.Go(Wt, C(5)), b.Go(Wt, C(7)), b.Go(Wt, C(6))));
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.Button[0] != 0), b.RunJump(F, +1, 300, 30, C(10) + 4), b.WaitFor(() => b.Ground(F)), b.Go(F, C(19)), b.Jump(F, 0, 30, C(19)), b.Go(F, C(21))), null);
+        b.Do(null, VohnykBot.Seq(b.WaitFor(() => b.W.Button[1] != 0), b.RunUntil(+1, () => b.W.Y[Wt] < 9 * T), b.WaitFor(() => b.Ground(Wt)), b.Go(Wt, C(17)),
+            b.RunJump(Wt, +1, 690, 30, C(21)), b.Go(Wt, C(21)), b.Jump(Wt, 0, 30, C(21)), b.Go(Wt, C(25))));
+        b.Do(b.Go(F, C(23)), null);
     }
 }
