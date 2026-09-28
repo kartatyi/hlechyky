@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Hlechyky.Games;
 using Hlechyky.Games.Impl;
@@ -212,6 +213,34 @@ public partial class RallyTests
         var withLive = RallyReplays.Play(j);
         j.Live = 0;
         Assert.NotEqual(withLive, RallyReplays.Play(j));
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Tick_with_bots_and_critters_stays_cheap_and_the_frame_small()
+    {
+        var h = Table(1, new { track = "selo", laps = "7", bots = "3", live = "1" });
+        Green(h);
+        var game = Game(h);
+        var core = Core(h);
+        var pilot = new RallyPilot(game.Track);
+        long maxBytes = 0;
+        var sw = new Stopwatch();
+        var n = 0;
+        for (var i = 0; i < 3000 && h.Room.Status == RoomStatus.Playing; i++)
+        {
+            Ctl(h, 0, pilot.Mask(core, 0));
+            h.Clock.Advance(TimeSpan.FromMilliseconds(RallyCore.TickMs));
+            sw.Start();
+            game.Tick();
+            sw.Stop();
+            n++;
+            if (i % 50 == 0) maxBytes = Math.Max(maxBytes, Views.WireBytes(game.Frame()!));
+        }
+        var us = sw.Elapsed.TotalMilliseconds * 1000 / n;
+        output.WriteLine($"Tick з трьома ботами й живністю: {us:F1} мкс, кадр до {maxBytes} Б, {n} тиків");
+        Assert.True(us < 250, $"{us} мкс");
+        Assert.True(maxBytes <= 1536, $"{maxBytes} Б");
     }
 
     // ---------- №91 гараж ----------
