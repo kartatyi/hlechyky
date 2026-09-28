@@ -4,6 +4,8 @@
 :root {
   --mgdisc: #1b1b1b;
   --mgok: rgba(67, 160, 71, .18);
+  --mgt0: #e8892b;
+  --mgt1: #3b82f6;
 }
 
 .mgwrap { width: 100%; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
@@ -82,6 +84,32 @@
 .mgpt b, .mgpt i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mgpt i { font-style: normal; color: var(--muted); font-size: .88em; }
 
+/* Прохід №3: підказки лобі, «з першої ноти», варіанти, «хто закинув», дуель, команди. */
+.mghints { display: flex; flex-direction: column; gap: 4px; font-size: .9em; color: var(--muted); text-align: center; max-width: 460px; }
+.mgextra { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.mgextra:empty { display: none; }
+.mgline { max-width: 100%; }
+.mggrow { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.mggrow .chip.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.mggrow .chip.mgpast { opacity: .5; }
+.mgbtns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; width: 100%; }
+.mgbtns button { min-height: 44px; }
+.mgchoices { display: grid; grid-template-columns: 1fr 1fr; }
+.mgchoices button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgduel { display: flex; flex-direction: column; gap: 6px; align-items: center; width: 100%; padding: 8px 10px;
+  border: 2px solid var(--accent); border-radius: 10px; }
+.mgradio.small { min-width: 38px; padding: 4px 8px; }
+.mgteams { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+.mgteam { display: flex; flex-direction: column; align-items: center; padding: 6px; border-radius: 10px; background: var(--bg2); border-top: 4px solid; }
+.mgteam.mgt0 { border-color: var(--mgt0); }
+.mgteam.mgt1 { border-color: var(--mgt1); }
+.mgteam b { font-size: 1.6em; font-variant-numeric: tabular-nums; }
+.mgteam i { font-style: normal; min-height: 1.2em; }
+.mgteam.me span { font-weight: 700; }
+.mgteam.win { background: var(--mgok); }
+.mgsc.mgt0 { box-shadow: inset 4px 0 0 var(--mgt0); }
+.mgsc.mgt1 { box-shadow: inset 4px 0 0 var(--mgt1); }
+
 /*
   Телефон: поле відповіді — одразу під платівкою, а гучність і рахунок — нижче. Раніше на айфоні (видно 390×664)
   поле ховалось під краєм екрана: трек уже грає, а щоб писати, треба було спершу гортати.
@@ -95,8 +123,9 @@
   .mgtop { order: 1; }
   .mgstage { order: 2; }
   .mgguess { order: 3; }
-  .mgmarks { order: 4; }
-  .mgskip { order: 5; }
-  .mgvol { order: 6; }
-  .mgscores { order: 7; }
+  .mgextra { order: 4; }
+  .mgmarks { order: 5; }
+  .mgskip { order: 6; }
+  .mgvol { order: 7; }
+  .mgscores { order: 8; }
 }

@@ -686,7 +686,9 @@ public sealed class Melody : Game
             return ActResult.Fail($"Фінальна дуель — вгадують лише {Ctx.NickOf(_duelA)} і {Ctx.NickOf(_duelB)}. Став, хто візьме!");
 
         var now = Now;
-        if (_lastGuess.TryGetValue(seat, out var last) && (now - last).TotalMilliseconds < GuessEveryMs) return ActResult.Fail("Не так швидко");
+        // ліміт — проти перебору здогадок; варіант і замовник — і так одна спроба на трек, їх не гальмуємо
+        if (action == "guess" && _lastGuess.TryGetValue(seat, out var last) && (now - last).TotalMilliseconds < GuessEveryMs)
+            return ActResult.Fail("Не так швидко");
 
         if (!_found.TryGetValue(seat, out var mine)) _found[seat] = mine = new Found();
         if (mine.Blocked) return ActResult.Fail("Цей трек ти вже профукав на варіантах — чекай наступного");
@@ -795,7 +797,6 @@ public sealed class Melody : Game
         var nick = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("nick", out var n) && n.ValueKind == JsonValueKind.String
             ? n.GetString() ?? "" : "";
         if (nick.Length == 0) return ActResult.Fail("Кого називаєш?");
-        _lastGuess[seat] = Now;
         var key = Auth.NickKey(nick);
         var hit = by.Any(x => Auth.NickKey(x) == key);
         mine.Who = hit;
