@@ -197,9 +197,11 @@ public sealed partial class Svoya : Game
     /// <summary>Найшвидша кнопка партії: хто і за скільки мс від відкриття кнопки (натиски під час читання не рахуються).</summary>
     int? _fastSeat;
     int _fastMs;
-    /// <summary>Найдорожча помилка: хто і скільки втратив одним промахом (і ставкою у фіналі).</summary>
-    int? _costSeat;
-    int _costSum;
+    /// <summary>
+    /// Промахи партії (хто, скільки втратив; і ставка у фіналі) — для «💸 найдорожчої помилки». Списком, а не рекордом:
+    /// прийнята апеляція скасовує промах, і нагорода тоді дістається справжньому.
+    /// </summary>
+    readonly List<(int Seat, int Sum)> _misses = [];
     /// <summary>Найдовша серія правильних поспіль за партію.</summary>
     int? _streakSeat;
     int _streakBest;
@@ -406,8 +408,9 @@ public sealed partial class Svoya : Game
         _endLine = null;
         _endScores = null;
         _endAward = "";
-        _fastSeat = _costSeat = _streakSeat = null;
-        _fastMs = _costSum = _streakBest = 0;
+        _fastSeat = _streakSeat = null;
+        _fastMs = _streakBest = 0;
+        _misses.Clear();
         Array.Clear(_rights);
         ClearQuestion();
         ClearFinal();
@@ -521,13 +524,19 @@ public sealed partial class Svoya : Game
         if (_streakBest >= 3 && _streakSeat is { } ss) Add("🔥", "Серія", ss, $"{_streakBest} поспіль");
         var best = _rights.Max();
         if (best >= 3 && _rights.Count(r => r == best) == 1) Add("🎯", "Найвлучніший", Array.IndexOf(_rights, best), $"{best} правильних");
-        if (_costSeat is { } cs && _costSum > 0) Add("💸", "Найдорожча помилка", cs, $"−{_costSum}");
+        var cost = -1;
+        for (var i = 0; i < _misses.Count; i++) if (_misses[i].Sum > 0 && (cost < 0 || _misses[i].Sum > _misses[cost].Sum)) cost = i;
+        if (cost >= 0) Add("💸", "Найдорожча помилка", _misses[cost].Seat, $"−{_misses[cost].Sum}");
         return [.. list];
     }
 
-    void NoteCost(int seat, int sum)
+    void NoteCost(int seat, int sum) => _misses.Add((seat, sum));
+
+    /// <summary>Апеляція скасувала промах — викреслити його з кандидатів на «💸».</summary>
+    void UnnoteCost(int seat, int sum)
     {
-        if (sum > _costSum) { _costSum = sum; _costSeat = seat; }
+        var i = _misses.FindLastIndex(m => m.Seat == seat && m.Sum == sum);
+        if (i >= 0) _misses.RemoveAt(i);
     }
 
     void NoteStreak(int seat)
@@ -1070,7 +1079,7 @@ public sealed partial class Svoya : Game
             var v = later[k];
             _scores[v.Seat] += v.Ok ? -_price : _price;
             _streak[v.Seat] = v.Streak;
-            if (v.Ok) _rights[v.Seat]--;
+            if (v.Ok) _rights[v.Seat]--; else UnnoteCost(v.Seat, _price);
             _wrong.Remove(v.Seat);
             _appeals.RemoveAll(a => a.Seat == v.Seat);
             var t = _tries.FindLastIndex(x => x.Seat == v.Seat);
@@ -1081,6 +1090,7 @@ public sealed partial class Svoya : Game
         _scores[who] += 2 * _price;          // мінус скасовано, плюс нараховано
         _streak[who] = prev + 1;
         _rights[who]++;
+        if (at >= 0) UnnoteCost(who, _price);
         NoteStreak(who);
         _anyRight = true;
         _wrong.Remove(who);

@@ -105,6 +105,29 @@ public sealed class SvoyaSweep3Tests
     }
 
     [Fact]
+    public void A_miss_voided_by_an_appeal_is_not_the_dearest_miss()
+    {
+        var packs = new FakeSvoyaPacks();
+        packs.Packs["b_g"] = (Grid("b_g", 1, 1), "");
+        var h = Table(packs, "b_g");
+        SvoyaTests.Open(h, 0, 0);
+        Answer(h, 0, "т0п9");                                 // Оля: автомат не взяв, −100
+        Assert.True(h.Act(1, "buzz").Ok, h.Reply.Message);
+        Assert.True(h.Act(1, "answer", new { text = "т0п0" }).Ok);
+        Assert.Equal(Svoya.Reveal, SvoyaTests.Phase(h));
+        Assert.True(h.Act(0, "appeal").Ok, h.Reply.Message);
+        Assert.True(h.Act(0, "judge", new { seat = 0, accept = true }).Ok, h.Reply.Message);   // промах Олі скасовано, плюс Петра — теж
+        SvoyaTests.Until(h, Svoya.Strike);
+        Assert.True(h.Act(0, "strike", new { theme = 0 }).Ok);
+        Assert.True(h.Act(0, "strike", new { theme = 1 }).Ok);
+        Assert.True(h.Act(0, "bet", new { amount = 1 }).Ok);
+        SvoyaTests.Until(h, Svoya.FinalQuestion);
+        Assert.True(h.Act(0, "answer", new { text = "ф2" }).Ok);
+        SvoyaTests.Until(h, Svoya.Done, 400);
+        Assert.DoesNotContain(Awards(h), a => a.GetProperty("icon").GetString() == "💸");
+    }
+
+    [Fact]
     public void A_quiet_game_has_no_empty_awards()
     {
         var packs = new FakeSvoyaPacks();
