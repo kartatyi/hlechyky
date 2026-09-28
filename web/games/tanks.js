@@ -680,7 +680,7 @@
       st.evSeen = e[0];
       st.feed.push({ html: eventHtml(ctx, e), at: now });
       const [, how, a, b, n] = e;
-      if (how <= 1 && b === me) st.nemesis = a;                 // хто мене підбив — 😈 на його чіпі
+      if (how <= 1 && b === me && a < SEATS_N) st.nemesis = a;  // хто мене підбив — 😈 на його чіпі
       if (how === 1 && a === me) st.nemesis = -1;
       if (how === 3) st.banner = { text: '🌊 Хвиля ' + n, at: now };
     }

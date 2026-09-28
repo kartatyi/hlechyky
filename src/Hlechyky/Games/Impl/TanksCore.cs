@@ -704,8 +704,8 @@ public sealed class TanksCore
         t.Streak = 0;
         if (by < 0 || by >= All) return;
         var k = Tanks[by];
-        var revenge = !k.Bot && k.Nemesis == v;
-        t.Nemesis = by;
+        var revenge = !k.Bot && !t.Bot && k.Nemesis == v;
+        if (!k.Bot) t.Nemesis = by;          // помста — лише людям: слот 🤖 після підбиття віддають новому
         k.Frags += revenge && RevengeFrag ? 2 : 1;
         k.Streak++;
         k.BestStreak = Math.Max(k.BestStreak, k.Streak);

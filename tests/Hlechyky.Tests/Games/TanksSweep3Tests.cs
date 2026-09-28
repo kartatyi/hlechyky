@@ -202,6 +202,19 @@ public class TanksSweep3Tests
         Assert.Equal(3, a.BestStreak);
     }
 
+    [Fact]
+    public void A_bot_is_nobodys_nemesis()
+    {
+        var core = Empty();
+        var man = Put(core, 0, 3, 5, dir: 0);
+        var bot = Put(core, TanksCore.Seats, 6, 5, dir: 2);
+        bot.Bot = true;
+        core.Fire(TanksCore.Seats);
+        Steps(core, 3);
+        Assert.False(man.Alive);
+        Assert.Equal(-1, man.Nemesis);
+    }
+
     // ---------- 84. підсумок ----------
 
     [Fact]
