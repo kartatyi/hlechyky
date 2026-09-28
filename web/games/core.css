@@ -218,6 +218,8 @@
 .gkey.g { background: var(--ok); color: var(--accent-ink); }
 .gkey.y { background: var(--accent); color: var(--accent-ink); }
 .gkey.b { background: var(--bg2); color: var(--muted); }
+/* Під палець клавіша була 24×36 px — Глек-слово й віселицю з телефона клацали мимо сусідньої літери. */
+@media (pointer: coarse) { .gkey { min-height: 42px; } }
 
 /* ---- дуга-таймер фази ---- */
 .garc { position: relative; width: 46px; height: 46px; }
