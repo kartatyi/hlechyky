@@ -19,6 +19,7 @@ public static partial class VohnykPlans
             case 21: Level21(b); return true;
             case 22: Level22(b); return true;
             case 23: Level23(b); return true;
+            case 24: Level24(b); return true;
             default: return false;
         }
     }
@@ -139,4 +140,26 @@ public static partial class VohnykPlans
         b.Do(b.Go(F, C(2)), null);
         b.Do(null, b.Go(Wt, C(25)));
     }
+
+    /// <summary>
+    /// «Світловод»: Крапля проходить нижнє дзеркало ліворуч (світло піде праворуч) і перестрибує його назад. Вогник
+    /// сходинками-дошками нагору, крізь червоний промінь штовхає скриню на кнопку: двері на шляху світла відчинені, а
+    /// скриня кидає тінь на полицю. Тепер і Крапля по свій самоцвіт нагору; униз тими ж дошками, праворуч крізь друге
+    /// дзеркало (світло пішло вгору, у прикручене, і в кришталь) — двері до виходів відчинені.
+    /// </summary>
+    static void Level24(VohnykBot b)
+    {
+        b.Do(null, VohnykBot.Seq(b.Go(Wt, C(2)), b.Go(Wt, C(1)), b.RunJump(Wt, +1, C(2) + 6, 30, C(4))));
+        b.Do(Stairs24(b, F), null);
+        b.Do(b.Go(F, 628), Stairs24(b, Wt));
+        b.Do(Down24(b, F), b.Go(Wt, C(15)));
+        b.Do(b.Go(F, C(24)), VohnykBot.Seq(Down24(b, Wt), b.Go(Wt, C(26))));
+    }
+
+    /// <summary>Від підлоги біля старту дошками на полицю (стає на її лівий край).</summary>
+    static IEnumerable<int> Stairs24(VohnykBot b, int h) => VohnykBot.Seq(b.Go(h, C(4)), b.Jump(h, +1, 30, C(5) + 10), b.Jump(h, +1, 30, C(8) + 10),
+        b.Go(h, C(9)), b.Jump(h, +1, 30, C(10) + 10), b.Go(h, C(11)), b.Jump(h, +1, 30, 530));
+
+    /// <summary>З полиці дошками вниз і праворуч крізь друге дзеркало.</summary>
+    static IEnumerable<int> Down24(VohnykBot b, int h) => VohnykBot.Seq(b.Go(h, C(13)), b.Jump(h, -1, 30, C(11)), b.Go(h, C(9)), b.Go(h, C(7)), b.Go(h, C(20)));
 }
