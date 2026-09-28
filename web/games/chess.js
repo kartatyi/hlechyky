@@ -148,7 +148,13 @@
     // прокрутку донизу: цікавий рівно останній рядок, а не початок партії.
     const mv = ensure(root, 'chessmoves');
     const moves = movesHtml(v.moves || []);
-    if (mv._h !== moves) { setHtml(mv, moves); mv.scrollTop = mv.scrollHeight; }
+    if (mv._h !== moves) {
+      setHtml(mv, moves);
+      // Прокрутку — у наступному кадрі: читати scrollHeight одразу після нового вмісту означало синхронну
+      // розкладку всієї сторінки посеред update — ≈2 мс на кожен хід (заміряно 28.09), а в кадрі вона й так буде.
+      cancelAnimationFrame(mv._raf);
+      mv._raf = requestAnimationFrame(() => { mv.scrollTop = mv.scrollHeight; });
+    }
     buttons(root, ctx);
   }
 
