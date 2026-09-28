@@ -15,7 +15,7 @@ namespace Hlechyky.Tests.Games;
 /// подивись». Правила грають на своєму маленькому банку (<see cref="BluffBankSource"/>): справжній банк автори
 /// переписують, а тест має падати лише тоді, коли ламається гра.
 /// </summary>
-public class BluffTests(ITestOutputHelper output)
+public partial class BluffTests(ITestOutputHelper output)
 {
     const int MaxTicks = 4000;
 
@@ -1065,7 +1065,8 @@ public class BluffTests(ITestOutputHelper output)
         var v = V(h, null);
         Assert.Equal(
             ["phase", "q", "of", "final", "endsAt", "phaseMs", "cat", "catLabel", "text", "nicks", "present", "wrote", "picked", "my",
-             "options", "revealed", "note", "quip", "scores", "delta", "truthDelta", "likeDelta", "victims", "result"],
+             "options", "revealed", "note", "quip", "scores", "delta", "truthDelta", "likeDelta", "victims", "result",
+             "topic", "chooser", "voice", "say", "fresh"],
             v.EnumerateObject().Select(p => p.Name));
         Assert.Equal(JsonValueKind.Null, v.GetProperty("my").ValueKind);
         Assert.Equal(JsonValueKind.Null, v.GetProperty("result").ValueKind);
