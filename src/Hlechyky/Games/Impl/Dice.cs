@@ -21,7 +21,7 @@ public enum DicePhase { Shake, Bid, Reveal, Done }
 /// всіх з'являються лише в <c>reveal.dice</c>, коли глеки вже підняли.
 /// </para>
 /// </summary>
-public sealed class Dice : Game
+public sealed partial class Dice : Game
 {
     /// <summary>Скільки трусимо глеки на початку раунду: коротка вистава, щоб усі встигли глянути на свої.</summary>
     public const int ShakeMs = 1500;
@@ -47,6 +47,8 @@ public sealed class Dice : Game
             // Підпис «є» новачкові нічого не каже, а «нема» чипом у списку столів — і поготів: пояснюємо просто в підписі.
             new GameOption("exact", "«Точно!»", [("on", "є — вгадав рівно, повертаєш кісточку"), ("off", "без «Точно!»")], "on"),
             new GameOption("palifico", "Паліфіко", [("on", "є — на одній кісточці раунд без джокерів"), ("off", "без паліфіко")], "on"),
+            // Звучить там, де ввімкнено 🔊 (як і звуки гри): вердикт розкриття й переможець.
+            new GameOption("voice", "Глек уголос", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
         ],
         Hint: "Брехливі кості: у кожного під глеком кісточки, бачиш лише свої. Став, скільки їх на всьому столі, або кажи «Брешеш!». Одиниці — джокери");
 
@@ -104,6 +106,7 @@ public sealed class Dice : Game
             : 30_000;
         _exactRule = !(options.TryGetValue("exact", out var e) && e == "off");
         _palificoRule = !(options.TryGetValue("palifico", out var p) && p == "off");
+        ConfigureVoice(options);
     }
 
     public override void Start()
@@ -125,6 +128,8 @@ public sealed class Dice : Game
         Array.Clear(_exacts);
         Array.Clear(_catches);
         _bluff = (-1, 0, 0, 0);
+        ResetFans();
+        StartVoice();
         // Хто починає перший раунд — випадкове живе місце (один виклик Rng, до кидків).
         var starter = seats[Ctx.Rng.Next(seats.Count)];
         StartRound(starter, Ctx.Clock.UtcNow);
@@ -142,8 +147,10 @@ public sealed class Dice : Game
 
     ActResult Do(int seat, string action, JsonElement payload)
     {
-        if (action is not ("bid" or "liar" or "exact" or "ready" or "react")) return ActResult.Fail("Тут так не ходять");
+        if (action is not ("bid" or "liar" or "exact" or "ready" or "react" or "bet")) return ActResult.Fail("Тут так не ходять");
         if (_phase == DicePhase.Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
+        // Вболівальник за столом (вибулий): «правда/брехня» на ставку, що лежить на столі.
+        if (action == "bet") return BetAct(seat, payload);
         var now = Ctx.Clock.UtcNow;
         // Реакція — лише косметика: у будь-якій фазі й навіть тому, хто вже без кісточок (він же дивиться далі).
         if (action == "react") return React(seat, payload, now);
@@ -230,6 +237,7 @@ public sealed class Dice : Game
     public override TickResult Tick()
     {
         if (_phase == DicePhase.Done) return TickResult.None;
+        TrySpeak();
         var now = Ctx.Clock.UtcNow;
         switch (_phase)
         {
@@ -366,6 +374,8 @@ public sealed class Dice : Game
             react = (int[])_reactE.Clone(),
             reactN = (int[])_reactN.Clone(),
             reveal,
+            // Прохід №3 одним полем (вид на шістьох тримаємо в 2 КБ): голос Глека й вболівальники; нема нічого — null.
+            fan = FanView(),
             result = _result is { } r ? new { winner = r.Winner, places = r.Places, rounds = r.Rounds, say = r.Say, fun = r.Fun } : null,
         };
     }
@@ -439,6 +449,8 @@ public sealed class Dice : Game
     {
         var o = _core.Resolve(kind, caller);
         o.Say = DiceSay.Reveal(Ctx.Rng, o, Nick);
+        SettleBets(o);
+        VoiceReveal(o);
         _reveal = o;
         _phase = DicePhase.Reveal;
         SetTimer(now, RevealMs);
@@ -505,6 +517,12 @@ public sealed class Dice : Game
         for (var s = 0; s < DiceCore.MaxSeats; s++)
             if (_core.Dealt[s]) scores[s] = s == winner ? _core.Count[s] : 0;
         if (revealed && winner >= 0 && _core.WasAtOne[winner]) Ctx.Award(winner, 0, "ach:dice-comeback");
+        // Сезон — лише дограні партії: «усі розійшлись» звань не роздає. Переможця Глек каже, якщо кліп уже є.
+        if (revealed)
+        {
+            RecordSeason();
+            if (winner >= 0) Speak([DiceVoiceLines.Win(Nick(winner))], final: true);
+        }
         Ctx.Finish(winner >= 0 ? [winner] : [], log, scores);
     }
 
@@ -523,6 +541,8 @@ public sealed class Dice : Game
             list.Add($"🕵 Нюх на брехню — {Nick(nose)}: {_catches[nose]} {DiceSay.Plural(_catches[nose], "раз", "рази", "разів")} «Брешеш!» у яблучко");
         if (Best(_timeouts, 2) is { } sleepy)
             list.Add($"😴 Соня — {Nick(sleepy)}: {_timeouts[sleepy]} {DiceSay.Plural(_timeouts[sleepy], "хід", "ходи", "ходів")} проспано");
+        if (BestFan() is { } fan)
+            list.Add($"👃 Нюх вболівальника — {fan.Nick}: {fan.Hits} з {fan.Tries} «правда/брехня» в яблучко");
         return [.. list];
     }
 
