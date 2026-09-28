@@ -81,3 +81,11 @@
 .c4-serie .o { color: var(--ok); }
 .c4-serie .c { color: var(--gc4-c); }
 .c4-serie .d { color: var(--gc4-d); }
+
+/* Прохід №3: годинник ходу над полем і пари 2×2 у легенді. */
+.c4clk { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .9em; color: var(--muted); min-height: 36px; }
+.c4clk[hidden] { display: none; }
+.c4clk .garc { width: 32px; height: 32px; flex: none; }
+.c4pair { display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px; border-radius: 999px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.c4pair > i { font-style: normal; color: var(--muted); padding: 0 1px; }
+.c4vs { align-self: center; color: var(--muted); }

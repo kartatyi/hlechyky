@@ -310,6 +310,8 @@ public abstract class GridGame : Game
         // Годинник ходу: скільки секунд на хід і до коли (ISO) — лише коли чекаємо людину.
         clock = ClockSeconds,
         until = _turnUntil,
+        // Те саме в мілісекундах від «зараз»: годинник браузера буває не в ногу з сервером.
+        clockIn = _turnUntil is { } tu ? Math.Max(0, (int)(tu - Ctx.Clock.UtcNow).TotalMilliseconds) : (int?)null,
         // Імена Глеків на місцях (null — людина) і коли Глек, чия черга, уже «подумав».
         bots = _bots.Any(b => b is not null) ? (string?[])_bots.Clone() : null,
         botIn = _botAt is { } at ? Math.Max(0, (int)(at - Ctx.Clock.UtcNow).TotalMilliseconds) : (int?)null,
