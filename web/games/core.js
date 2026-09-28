@@ -1756,6 +1756,14 @@
     ctx.nickOf = (i) => nickAt(room, i);
     ctx.act = (action, payload) => call('Act', room.id, action, payload === undefined ? null : payload);
     ctx.input = (action, payload) => send('Input', room.id, action, payload === undefined ? null : payload);
+    // Повний вид (Game.Snapshot) ще раз, лише мені — коли в легкому виді розсилки бракує того, чого модуль не має
+    // (прохід №3, п. 247). Не частіше ніж раз на 1,5 с: вид сам прийде подією 'room'.
+    ctx.resync = () => {
+      const now = Date.now();
+      if (now - (card.resyncAt || 0) < 1500) return;
+      card.resyncAt = now;
+      send('SnapshotRoom', room.id);
+    };
     card.ctx = ctx;
     return ctx;
   }

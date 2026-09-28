@@ -1000,6 +1000,38 @@ public sealed class Rooms
         }
     }
 
+    /// <summary>
+    /// Повний вид (<see cref="Game.Snapshot"/>) для одного з'єднання, що дивиться на стіл (прохід №3, п. 247): місце —
+    /// за ніком. null — столу нема або з'єднання на нього не дивиться (відписався, поки летіла пачка).
+    /// </summary>
+    public RoomView? SnapshotFor(string roomId, string connId, string? nick)
+    {
+        if (Find(roomId) is not { } room || !room.Watchers.ContainsKey(connId)) return null;
+        lock (room.Sync)
+        {
+            int? seat = null;
+            if (!string.IsNullOrEmpty(nick))
+                for (var i = 0; i < room.Seats.Length; i++)
+                    if (string.Equals(room.Seats[i], nick, StringComparison.OrdinalIgnoreCase)) { seat = i; break; }
+            object? view;
+            try { view = room.Game.Snapshot(seat); }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Snapshot({Seat}) впав у кімнаті {Room}", seat, room.Id);
+                view = SafeView(room, seat);
+            }
+            return new RoomView(room.Summary(), seat, view);
+        }
+    }
+
+    /// <summary>З'єднання просить повний вид столу, на який дивиться (хаб SnapshotRoom). Чужий стіл — нічого.</summary>
+    public Outbox Resync(string roomId, string connId)
+    {
+        var outbox = new Outbox();
+        if (Find(roomId) is { } room && room.Watchers.ContainsKey(connId)) outbox.Add(new RoomSnapshot(room.Id, connId));
+        return outbox;
+    }
+
     object? SafeView(Room room, int? seat)
     {
         try { return room.Game.View(seat); }

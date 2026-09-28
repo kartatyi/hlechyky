@@ -210,6 +210,7 @@ type Ctx = {
   mine: boolean;                    // seat !== null
   myTurn: boolean;                  // якщо view.turn існує і === seat
   shown: boolean;                   // картку видно на екрані зараз (прохід №3); у mount уже вірне, зміни — через visible()
+  resync(): void;                   // попросити повний вид (Game.Snapshot) ще раз, лише собі; прийде подією room (прохід №3)
   act(action: string, payload?: any): Promise<RoomReply>;   // тост на помилку — сам каркас
   input(action: string, payload?: any): void;
   toast(text: string, kind?: 'ok'|'err'|'wait'): void;

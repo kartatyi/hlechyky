@@ -96,7 +96,7 @@ public class TelephoneTests
 
         Assert.Equal(3, Step(h));
         Assert.Equal(Telephone.Describe, Kind(h, 2));
-        var prompt = Task(h, 2).GetProperty("prompt");
+        var prompt = h.Snapshot(2).GetProperty("task").GetProperty("prompt");
         Assert.Equal("drawing", prompt.GetProperty("kind").GetString());
         // Ганна (2) описує ланцюжок Олі — його малював Петро (1)
         Assert.Equal(100, prompt.GetProperty("ops")[0][6].GetInt32());
@@ -147,7 +147,8 @@ public class TelephoneTests
         // малюнок, який не здали, все одно йде далі таким, яким був
         h.Input(1, "draw", new { s = 1, c = 1, w = 8, p = new[] { 1, 1, 2, 2 } });
         h.Tick(60_000 / Telephone.TickMs + 1);
-        Assert.Equal(1, Task(h, 2).GetProperty("prompt").GetProperty("ops").GetArrayLength());
+        Assert.Equal(1, h.Snapshot(2).GetProperty("task").GetProperty("prompt").GetProperty("ops").GetArrayLength());
+        Assert.Equal(1, Task(h, 2).GetProperty("prompt").GetProperty("n").GetInt32());
     }
 
     [Fact]
@@ -428,6 +429,106 @@ public class TelephoneTests
 }
 
 /// <summary>
+/// Легкий вид і знімок (прохід №3, п. 247): розсилка не возить старих малюнків, новенький отримує все.
+/// </summary>
+public class TelephoneSnapshotTests
+{
+    static readonly TelephonePhrases Phrases = new(["кіт на даху"]);
+
+    static RoomHarness Table()
+    {
+        var h = new RoomHarness("telephone", seed: 5, services: RoomHarness.WithService(Phrases));
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна" }) h.Join(nick);
+        h.Start();
+        return h;
+    }
+
+    static string Kind(RoomHarness h, int seat) => h.View(seat).GetProperty("task").GetProperty("kind").GetString()!;
+
+    static void Ink(RoomHarness h, int seat, int x = 10) => h.Input(seat, "draw", new { s = 1, c = 1, w = 8, p = new[] { x, 10, x + 50, 300 } });
+
+    static void EveryoneSubmits(RoomHarness h)
+    {
+        for (var s = 0; s < 3; s++)
+        {
+            if (Kind(h, s) == Telephone.Draw) { Ink(h, s, s * 100); Assert.True(h.Act(s, "done", new { n = 1 }).Ok); }
+            else Assert.True(h.Act(s, "done", new { text = "фраза " + s }).Ok);
+        }
+        h.Tick();
+    }
+
+    [Fact]
+    public void While_drawing_the_broadcast_view_does_not_carry_your_own_canvas_but_the_snapshot_does()
+    {
+        var h = Table();
+        EveryoneSubmits(h);
+        Assert.Equal(Telephone.Draw, Kind(h, 1));
+        Ink(h, 1);
+        Ink(h, 1, 200);
+
+        var light = h.View(1).GetProperty("task");
+        Assert.Equal(JsonValueKind.Null, light.GetProperty("ops").ValueKind);
+        Assert.Equal(2, light.GetProperty("n").GetInt32());
+        Assert.Equal(2, h.Snapshot(1).GetProperty("task").GetProperty("ops").GetArrayLength());
+    }
+
+    [Fact]
+    public void The_drawing_to_describe_comes_in_the_snapshot_and_the_light_view_says_how_big_it_is()
+    {
+        var h = Table();
+        EveryoneSubmits(h);
+        EveryoneSubmits(h);
+        Assert.Equal(Telephone.Describe, Kind(h, 2));
+
+        var light = h.View(2).GetProperty("task").GetProperty("prompt");
+        Assert.Equal("drawing", light.GetProperty("kind").GetString());
+        Assert.Equal(JsonValueKind.Null, light.GetProperty("ops").ValueKind);
+        Assert.Equal(1, light.GetProperty("n").GetInt32());
+        Assert.Equal(1, h.Snapshot(2).GetProperty("task").GetProperty("prompt").GetProperty("ops").GetArrayLength());
+    }
+
+    [Fact]
+    public void A_drawing_that_did_not_fully_arrive_rides_in_the_light_view_until_you_draw_on()
+    {
+        var h = Table();
+        EveryoneSubmits(h);
+        Ink(h, 1);
+        Assert.False(h.Act(1, "done", new { n = 2 }).Ok);   // у браузері два, на сервері один
+
+        Assert.Equal(1, h.View(1).GetProperty("task").GetProperty("ops").GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("task").GetProperty("ops").ValueKind);   // сусідам — ні
+
+        Ink(h, 1, 300);
+        Assert.Equal(JsonValueKind.Null, h.View(1).GetProperty("task").GetProperty("ops").ValueKind);
+    }
+
+    [Fact]
+    public void On_reveal_only_the_freshly_opened_entry_carries_its_drawing()
+    {
+        var h = Table();
+        for (var i = 0; i < 3; i++) EveryoneSubmits(h);
+        for (var i = 0; i < 2; i++) { h.Clock.AdvanceMs(Telephone.NextEveryMs); Assert.True(h.Act(0, "next").Ok); h.Tick(); }
+
+        var entries = h.View(null).GetProperty("reveal").GetProperty("entries");
+        Assert.Equal(3, entries.GetArrayLength());
+        var drawing = entries[1];
+        Assert.Equal("drawing", drawing.GetProperty("kind").GetString());
+        Assert.Equal(JsonValueKind.Null, drawing.GetProperty("ops").ValueKind);   // показали раніше — у всіх уже є
+        Assert.Equal(1, drawing.GetProperty("n").GetInt32());
+        Assert.Equal(1, h.Snapshot(null).GetProperty("reveal").GetProperty("entries")[1].GetProperty("ops").GetArrayLength());
+
+        h.Clock.AdvanceMs(Telephone.NextEveryMs);
+        h.Act(0, "next");
+        h.Tick();
+        // другий ланцюжок: перший запис — фраза; малюнок приїде разом із наступним «Далі»
+        h.Clock.AdvanceMs(Telephone.NextEveryMs);
+        h.Act(0, "next");
+        var fresh = h.View(null).GetProperty("reveal").GetProperty("entries")[1];
+        Assert.Equal(1, fresh.GetProperty("ops").GetArrayLength());
+    }
+}
+
+/// <summary>
 /// Швидкодія Зіпсованого телефону на десятьох (прохід 28.09): десять ланцюжків, п'ять малюнків у кожному по ~3000
 /// точок. Міряємо тик і розмір видів — на кроці й на показі, де кожне «Далі» і кожне ❤ розсилає вид кожному.
 /// </summary>
@@ -444,7 +545,7 @@ public class TelephonePerfTests(Xunit.Abstractions.ITestOutputHelper output)
         var rng = new Random(3);
         var ticks = new System.Diagnostics.Stopwatch();
         int tickCount = 0;
-        long stepViewMax = 0, revealViews = 0, revealBytes = 0, revealMax = 0;
+        long stepViewMax = 0, revealViews = 0, revealBytes = 0, revealMax = 0, snapMax = 0;
 
         void Tick()
         {
@@ -452,6 +553,7 @@ public class TelephonePerfTests(Xunit.Abstractions.ITestOutputHelper output)
             ticks.Start(); h.Tick(); ticks.Stop(); tickCount++;
             if (!h.Outbox.OfType<RoomViews>().Any()) return;
             var size = System.Text.Encoding.UTF8.GetByteCount(Views.Text(h.Room.Game.View(0)));
+            snapMax = Math.Max(snapMax, Views.WireBytes(h.Room.Game.Snapshot(0)));
             if (h.View(null).GetProperty("phase").GetString() == "reveal") { revealViews++; revealBytes += size; revealMax = Math.Max(revealMax, size); }
             else stepViewMax = Math.Max(stepViewMax, size);
         }
@@ -494,7 +596,11 @@ public class TelephonePerfTests(Xunit.Abstractions.ITestOutputHelper output)
         output.WriteLine($"тиків {tickCount}: {tickUs:F1} мкс на тик");
         output.WriteLine($"вид на кроці (одне місце): макс {stepViewMax} Б");
         output.WriteLine($"видів на показі {revealViews} (на одне місце): сер {revealBytes / Math.Max(1, revealViews)} Б, макс {revealMax} Б");
+        output.WriteLine($"знімок новенькому (одне місце): макс {snapMax} Б");
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.True(tickUs < 250, $"тик {tickUs:F0} мкс");
+        // Прохід №3, п. 247: розсилка без старих малюнків — на кроці їх нема зовсім, на показі лише щойно відкритий.
+        Assert.True(stepViewMax < 4_000, $"вид на кроці {stepViewMax} Б");
+        Assert.True(revealMax * 3 < snapMax, $"вид на показі {revealMax} Б проти знімка {snapMax} Б");
     }
 }

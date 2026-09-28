@@ -130,6 +130,13 @@ public sealed class RoomHarness
         lock (room.Sync) return Views.Json(room.Game.View(seat));
     }
 
+    /// <summary>Повний вид для новенького (Game.Snapshot, прохід №3) — у тому самому JSON, що піде на дріт.</summary>
+    public JsonElement Snapshot(int? seat)
+    {
+        var room = Room;
+        lock (room.Sync) return Views.Json(room.Game.Snapshot(seat));
+    }
+
     public string NickOf(int seat) => Room.Seats[seat] ?? throw new InvalidOperationException($"місце {seat} вільне");
 
     string Seated() => Room.Seats.FirstOrDefault(s => s is not null) ?? throw new InvalidOperationException("за столом нікого");

@@ -193,6 +193,14 @@ public abstract class Game
     public abstract object View(int? seat);
 
     /// <summary>
+    /// Повний вид для новенького (прохід №3, п. 247): того, хто щойно підійшов до столу (F5, реконект, зайшов подивитись)
+    /// чи сам попросив (хаб <c>SnapshotRoom</c>). Летить лише йому. Типово — той самий <see cref="View"/>. Гра, що
+    /// возить важке (малюнки), перекриває це, а в <see cref="View"/> для розсилок лишає легкий вид: те, що змінилось,
+    /// без старих малюнків, які в усіх уже є.
+    /// </summary>
+    public virtual object Snapshot(int? seat) => View(seat);
+
+    /// <summary>
     /// Компактний кадр для реалтайму. Не перекрила — каркас шле View(null). Перекрила й повернула null — «нема чого
     /// слати»: кадр пропускається (Rooms.SafeFrame, прохід №3).
     /// </summary>
@@ -324,6 +332,8 @@ public sealed record LobbyChanged : Outgoing;
 /// <summary>Хтось зайшов у свою соло-гру або вийшов з неї: усім летить свіжий <see cref="Rooms.SoloNow"/> (подія <c>solo</c>).</summary>
 public sealed record SoloChanged : Outgoing;
 public sealed record RoomViews(string RoomId) : Outgoing;
+/// <summary>Повний вид (<see cref="Game.Snapshot"/>) одному з'єднанню — новенькому за столом (прохід №3, п. 247).</summary>
+public sealed record RoomSnapshot(string RoomId, string ConnectionId) : Outgoing;
 public sealed record RoomFrame(string RoomId, object Frame) : Outgoing;
 /// <summary>
 /// Рядок у Журнал усім. <paramref name="RoomId"/> — живий стіл, про який цей рядок: браузер малює біля

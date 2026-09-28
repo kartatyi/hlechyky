@@ -71,6 +71,11 @@ public sealed class Telephone : Game
         public string Text { get; set; } = "";
         public Sketch Sketch { get; } = new(MaxOps, MaxPoints);
         public bool Ready { get; set; }
+        /// <summary>
+        /// Малюнок на сервері й у браузері розійшлись («дійшов не цілком»): поки людина не малюватиме далі чи не здасть,
+        /// її легкий вид везе серверну копію полотна (прохід №3, п. 247).
+        /// </summary>
+        public bool Resync { get; set; }
         /// <summary>Підказки для 🎲 — лише в завданні «фраза».</summary>
         public string[] Ideas { get; init; } = [];
     }
@@ -255,11 +260,13 @@ public sealed class Telephone : Game
             var n = Int(payload, "n", -1);
             if (n >= 0 && n != task.Sketch.Count)
             {
+                task.Resync = true;
                 _dirty = true;
                 return ActResult.Fail("Малюнок дійшов не цілком — глянь і здай ще раз");
             }
         }
         task.Ready = true;
+        task.Resync = false;
         _dirty = true;
         return ActResult.Accept("Є! Здано");
     }
@@ -276,7 +283,9 @@ public sealed class Telephone : Game
     {
         if (TaskOf(seat) is not { Kind: Draw } task) return ActResult.Fail("Зараз малювати не треба");
         if (task.Ready) return ActResult.Fail("Уже здано — тисни «Змінити»");
-        return apply(task) is { } error ? ActResult.Fail(error) : ActResult.Done;
+        if (apply(task) is { } error) return ActResult.Fail(error);
+        task.Resync = false;   // малює далі — отже, серверну копію вже отримав
+        return ActResult.Done;
     }
 
     /// <summary>Показ: наступний запис ланцюжка або наступний ланцюжок. Тисне будь-хто за столом.</summary>
@@ -383,18 +392,29 @@ public sealed class Telephone : Game
         likes = _phase == Reveal && _chain >= 0 ? _chains[_chain].Take(_shown).Select(e => e.Likes.Count).ToArray() : [],
     };
 
-    object? EntryView(Entry e, int index, int? seat) => new
+    // Легкий вид і знімок (прохід №3, п. 247). Малюнки — найважче в цій грі: до 30 тис. точок кожен. Раніше кожна
+    // розсилка (здав будь-хто, «Далі» на показі) везла кожному і його власне полотно, і чужий малюнок-завдання, і всі
+    // вже показані малюнки ланцюжка — до 126 КБ на місце. Тепер у View (розсилка) малюнків нема, лише n — скільки в
+    // них операцій; на показі — лише щойно відкритий запис. Повністю — у Snapshot (F5, підійшов, ctx.resync()).
+    // Браузер тримає малюнки в себе, а коли чогось бракує — просить знімок.
+
+    public override object View(int? seat) => Build(seat, full: false);
+
+    public override object Snapshot(int? seat) => Build(seat, full: true);
+
+    object? EntryView(Entry e, int index, int? seat, bool full) => new
     {
         index,
         seat = e.Seat,
         kind = e.Kind,
         text = e.Text,
-        ops = e.Ops,
+        ops = full || index == _shown - 1 ? e.Ops : null,
+        n = e.Ops?.Length ?? 0,
         likes = e.Likes.Count,
         liked = seat is { } s && e.Likes.Contains(s),
     };
 
-    object? TaskView(int? seat)
+    object? TaskView(int? seat, bool full)
     {
         if (seat is not { } s || TaskOf(s) is not { } task) return null;
         var prev = _chains[task.Chain].LastOrDefault();
@@ -402,16 +422,16 @@ public sealed class Telephone : Game
         {
             kind = task.Kind,
             chain = task.Chain,
-            prompt = prev is null ? null : new { kind = prev.Kind, text = prev.Text, ops = prev.Ops },
+            prompt = prev is null ? null : new { kind = prev.Kind, text = prev.Text, ops = full ? prev.Ops : null, n = prev.Ops?.Length ?? 0 },
             ready = task.Ready,
             text = task.Text,
             n = task.Sketch.Count,
-            ops = task.Kind == Draw ? task.Sketch.Ops() : null,
+            ops = task.Kind == Draw && (full || task.Resync) ? task.Sketch.Ops() : null,
             ideas = task.Ideas,
         };
     }
 
-    public override object View(int? seat) => new
+    object Build(int? seat, bool full) => new
     {
         phase = _phase,
         duo = Duo,
@@ -419,7 +439,7 @@ public sealed class Telephone : Game
         steps = _steps,
         until = _until,
         totalMs = _totalMs,
-        task = TaskView(seat),
+        task = TaskView(seat, full),
         ready = _tasks.Where(kv => kv.Value.Ready && Present(kv.Key)).Select(kv => kv.Key).Order().ToArray(),
         waiting = _tasks.Where(kv => !kv.Value.Ready && Present(kv.Key)).Select(kv => kv.Key).Order().ToArray(),
         reveal = _phase != Reveal ? null : new
@@ -430,7 +450,7 @@ public sealed class Telephone : Game
             chains = _chains.Count(HasPlayers),
             shown = _shown,
             total = _chains[_chain].Count,
-            entries = _chains[_chain].Take(_shown).Select((e, i) => EntryView(e, i, seat)).ToArray(),
+            entries = _chains[_chain].Take(_shown).Select((e, i) => EntryView(e, i, seat, full)).ToArray(),
         },
         likes = Likes(),
         left = _left.Order().ToArray(),

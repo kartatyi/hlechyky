@@ -344,7 +344,19 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         await Groups.AddToGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(id));
         // Розмову столу знімаємо вже з групою: так між знімком і підпискою не загубиться жоден рядок.
         if (rooms.TalkHistory(id, Context.ConnectionId) is { } history) outbox.Add(history);
+        // Новенькому — повний вид (Game.Snapshot), а не легкий, як решті групи (прохід №3, п. 247).
+        outbox.Add(new RoomSnapshot(id, Context.ConnectionId));
         await broadcaster.FlushAsync(outbox);
+    }
+
+    /// <summary>
+    /// Повний вид столу ще раз — лише цьому з'єднанню (прохід №3, п. 247): модуль гри бачить, що в легкому виді бракує
+    /// того, чого він не має (загубився вид повільному телефону), і просить знімок. Під квотою, як і підписка.
+    /// </summary>
+    public async Task SnapshotRoom(string roomId)
+    {
+        if (!Allow(input: true)) return;
+        await broadcaster.FlushAsync(rooms.Resync(roomId ?? "", Context.ConnectionId));
     }
 
     public async Task UnwatchRoom(string roomId)
