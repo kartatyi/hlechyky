@@ -45,6 +45,22 @@ public sealed class Bluff : Game
     public const string PhaseReveal = "reveal";
     public const string PhaseScore = "score";
     public const string PhaseDone = "done";
+    /// <summary>Перед питанням: гравець по черзі обирає одну з двох тем (опція «Тему обирає: Гравці по черзі»).</summary>
+    public const string PhaseTopic = "topic";
+
+    /// <summary>Скільки чекаємо, поки гравець обере тему; не обрав — бере Глек (першу, свіжішу).</summary>
+    public const int TopicMs = 8000;
+    public const string TopicHlek = "hlek";
+    public const string TopicTurn = "turn";
+
+    /// <summary>Голос Глека: репліку кроку розкриття ще беремо, якщо кліп доспів за стільки після відкриття картки.</summary>
+    public const int VoiceGraceMs = 1200;
+    /// <summary>Питання Глек ще може зачитати, якщо кліп доспів за стільки від появи питання (далі — лише текстом).</summary>
+    public const int QuestionGraceMs = 12_000;
+    /// <summary>Пауза після репліки перед наступною карткою.</summary>
+    public const int VoicePadMs = 400;
+    /// <summary>Стеля кроку розкриття з голосом: довга репліка не тягне шоу.</summary>
+    public const int MaxStepMs = 9000;
 
     /// <summary>Відмова, коли брехня збіглась із правдою. Одна фраза на всі випадки — звертання «ти», не розповідь.</summary>
     public const string Truthy = "Схоже, ти випадково написав правду — вигадай іншу 🙂";
@@ -93,6 +109,8 @@ public sealed class Bluff : Game
             new GameOption("questions", "Питань", [.. QuestionChoices.Select(n => (Str(n), Str(n)))], Str(DefaultQuestions)),
             new GameOption("pace", "Темп", BluffPace.All, BluffPace.Normal),
             new GameOption("cat", "Теми", BluffCats.All, BluffCats.Any, Multi: true),
+            new GameOption("topic", "Тему обирає", [(TopicHlek, "Глек"), (TopicTurn, "Гравці по черзі")], TopicHlek),
+            new GameOption("voice", "Голос Глека", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
         ],
         Hint: "Питання з пропуском і дивна правда. Кожен вписує свою брехню, потім усі шукають правду серед брехень. Надурив друга — очки тобі");
 
@@ -122,6 +140,8 @@ public sealed class Bluff : Game
     int _writeMs = BluffPace.Seconds(BluffPace.Normal).Write * 1000;
     int _pickMs = BluffPace.Seconds(BluffPace.Normal).Pick * 1000;
     IReadOnlySet<string>? _cats;
+    bool _topicTurn;
+    string _voiceName = "ostap";
 
     // ---- партія ----
     readonly List<BluffQuestion> _asked = [];
@@ -164,6 +184,35 @@ public sealed class Bluff : Game
 
     BluffSeen? _seen;
 
+    // ---- тему обирає гравець ----
+    /// <summary>Скільки питань у партії (у режимі тем питання беруться по одному, тож <see cref="_asked"/> росте).</summary>
+    int _total;
+    /// <summary>Решта питань партії від найсвіжішого — з них беремо питання обраної теми.</summary>
+    readonly List<BluffQuestion> _pool = [];
+    /// <summary>Хто обирав останнім (на старті — випадкове місце): черга йде від нього по колу.</summary>
+    int _turnFrom;
+    string[] _topics = [];
+    int _chooser = -1;
+    string? _topicPick;
+    /// <summary>Хто обрав тему кожного питання (−1 — Глек).</summary>
+    readonly List<int> _chosenBy = [];
+
+    // ---- голос Глека (як у Дотепах: гра ніколи не чекає на озвучку) ----
+    sealed record Speech(int Id, string Text, string Url, double Seconds);
+    IDotepyVoice _voice = DotepyNoVoice.Instance;
+    Speech? _say;
+    int _sayId;
+    /// <summary>Репліка, яку Глек скаже, щойно кліп доспіє (до <see cref="_wantUntil"/>), інакше — мовчки текстом.</summary>
+    string? _want;
+    DateTimeOffset _wantUntil;
+    bool _wantStretch;
+    DateTimeOffset _stepFrom;
+    /// <summary>Вердикти кроків розкриття (у порядку <see cref="_order"/>), null — крок без слів.</summary>
+    string?[] _verdicts = [];
+
+    // ---- лобі: скільки свіжих ----
+    (string Sig, DateTimeOffset At, int Fresh, int Of)? _fresh;
+
     public Bluff() => Array.Fill(_pick, -1);
 
     /// <summary>Місця — числами: на столі їх до восьми, у чіп має влізти нік.</summary>
@@ -184,6 +233,8 @@ public sealed class Bluff : Game
             _pickMs = k * 1000;
         }
         if (options.TryGetValue("cat", out var c)) _cats = BluffCats.Parse(c);
+        _topicTurn = options.GetValueOrDefault("topic") == TopicTurn;
+        _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
     }
 
     /// <summary>Банк цього столу: справжній або підкладений тестом (<see cref="BluffBankSource"/>).</summary>
@@ -212,12 +263,27 @@ public sealed class Bluff : Game
         _played.Clear();
         _result = null;
         _asked.Clear();
-        _asked.AddRange(Pick());
+        _pool.Clear();
+        _chosenBy.Clear();
+        _fresh = null;
+        if (_topicTurn)
+        {
+            // Тему обирають по черзі: уся колода від найсвіжішого, питання — по одному з обраної теми.
+            _pool.AddRange(Pick(all: true));
+            _total = Math.Min(_count, _pool.Count);
+            _turnFrom = Ctx.Rng.Next(Seats);
+        }
+        else
+        {
+            _asked.AddRange(Pick(all: false));
+            _total = _asked.Count;
+        }
         _q = 0;
         _dirty = false;
         var now = Ctx.Clock.UtcNow;
         ClearQuestion();
-        if (_asked.Count == 0)
+        StartVoice();
+        if (_total == 0)
         {
             _phase = PhaseDone;
             _endsAt = now;
@@ -225,7 +291,7 @@ public sealed class Bluff : Game
             Ctx.Finish([], $"{Info.Title}: у цих темах не знайшлось питань, партії не буде");
             return;
         }
-        BeginRead(now);
+        NextQuestion(now);
     }
 
     /// <summary>
@@ -233,7 +299,7 @@ public sealed class Bluff : Game
     /// (спершу ніким не бачені, далі — бачені найдавніше). Пам'ять — з того, що підтяглось фоном у лобі, і з позначок
     /// самого столу: Start кличуть під замком кімнати, тож у базу тут не ходимо.
     /// </summary>
-    List<BluffQuestion> Pick()
+    List<BluffQuestion> Pick(bool all)
     {
         var pool = new List<BluffQuestion>();
         foreach (var q in Bank) if (BluffCats.Fits(q, _cats)) pool.Add(q);
@@ -242,7 +308,7 @@ public sealed class Bluff : Game
             var j = Ctx.Rng.Next(i + 1);
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
-        return BluffSeen.Freshest(pool, q => q.Key, Seen.LastSeen(PresentKeys()), _count);
+        return BluffSeen.Freshest(pool, q => q.Key, Seen.LastSeen(PresentKeys()), all ? pool.Count : _count);
     }
 
     List<string> PresentKeys()
@@ -266,7 +332,7 @@ public sealed class Bluff : Game
     }
 
     BluffQuestion? Current => _q >= 0 && _q < _asked.Count ? _asked[_q] : null;
-    bool Final => _q == _asked.Count - 1;
+    bool Final => _q == _total - 1;
 
     // ---------------------------------------------------------------------------------------
     // фази (усі переходи — лише з тика)
@@ -274,6 +340,7 @@ public sealed class Bluff : Game
 
     void SetTimer(DateTimeOffset now, int ms)
     {
+        _stepFrom = now;
         _endsAt = now.AddMilliseconds(ms);
         _phaseMs = ms;
     }
@@ -297,6 +364,13 @@ public sealed class Bluff : Game
         _quip = null;
     }
 
+    /// <summary>Наступне питання: одразу читаємо або спершу гравець обирає тему.</summary>
+    void NextQuestion(DateTimeOffset now)
+    {
+        if (_topicTurn) BeginTopic(now);
+        else BeginRead(now);
+    }
+
     void BeginRead(DateTimeOffset now)
     {
         ClearQuestion();
@@ -304,6 +378,61 @@ public sealed class Bluff : Game
         SetTimer(now, ReadMs);
         // «Бачив» — з тієї миті, коли питання з'явилось на екрані; до недограних питань пам'ять не доходить.
         Seen.Mark(PresentKeys(), _asked[_q], now);
+        Want(BluffLines.Question(_asked[_q].Q, Final), now, QuestionGraceMs, stretch: false);
+    }
+
+    /// <summary>
+    /// Тему обирає гравець: дві різні теми з найсвіжіших питань, що лишились. Обирає наступний за столом по черзі;
+    /// лишилась одна тема (чи нікому обирати) — питання одразу.
+    /// </summary>
+    void BeginTopic(DateTimeOffset now)
+    {
+        ClearQuestion();
+        string? a = null, b = null;
+        foreach (var q in _pool)
+        {
+            if (a is null) a = q.Cat;
+            else if (q.Cat != a) { b = q.Cat; break; }
+        }
+        var chooser = NextChooser();
+        if (b is null || chooser < 0)
+        {
+            TakeTopic(a!, -1);
+            BeginRead(now);
+            return;
+        }
+        _topics = [a!, b];
+        _chooser = chooser;
+        _turnFrom = chooser;
+        _topicPick = null;
+        _phase = PhaseTopic;
+        SetTimer(now, TopicMs);
+    }
+
+    /// <summary>Черга обирати: наступний за столом після того, хто обирав востаннє.</summary>
+    int NextChooser()
+    {
+        for (var k = 1; k <= Seats; k++)
+        {
+            var s = (_turnFrom + k) % Seats;
+            if (_present[s]) return s;
+        }
+        return -1;
+    }
+
+    /// <summary>Найсвіжіше питання обраної теми стає наступним питанням партії.</summary>
+    void TakeTopic(string cat, int by)
+    {
+        var i = _pool.FindIndex(q => q.Cat == cat);
+        if (i < 0) i = 0;
+        _asked.Add(_pool[i]);
+        _pool.RemoveAt(i);
+        _chosenBy.Add(by);
+        _topics = [];
+        _chooser = -1;
+        _topicPick = null;
+        // Кліп питання — терміново: читати його за мить.
+        if (VoiceOn) Prepare([BluffLines.Question(_asked[^1].Q, _asked.Count == _total)], urgent: true);
     }
 
     void BeginWrite(DateTimeOffset now)
@@ -384,16 +513,43 @@ public sealed class Bluff : Game
         _order.Add(truth);
         _revealed.Clear();
         _phase = PhaseReveal;
+        PrepareVerdicts();
         OpenNext(now);
+    }
+
+    /// <summary>
+    /// Вердикти кроків розкриття — з ніками: «На гачку — Петро і Ганна! Автор брехні — Оля». Карток Глек не читає
+    /// (рішення користувача), лише хто купився, чия брехня і де правда. Картка, яку не обрав ніхто, — без слів.
+    /// Усі — одразу в чергу озвучки, по порядку: поки відкриваються перші, решта доспіває.
+    /// </summary>
+    void PrepareVerdicts()
+    {
+        _verdicts = new string?[_order.Count];
+        if (!VoiceOn) return;
+        var present = PresentSeats().Count;
+        for (var k = 0; k < _order.Count; k++)
+        {
+            var c = _cards[_order[k]];
+            _verdicts[k] = c.Truth
+                ? BluffLines.Truth(c.Text, Names(c.Picks), c.Picks.Count, present)
+                : c.Picks.Count == 0 ? null
+                : c.Decoy ? BluffLines.Decoy(Names(c.Picks))
+                : BluffLines.Lie(Names(c.Picks), Names(c.By), c.By.Count);
+        }
+        var lines = new List<string>(_verdicts.Length);
+        foreach (var v in _verdicts) if (v is not null) lines.Add(v);
+        if (lines.Count > 0) Prepare(lines, urgent: true);
     }
 
     /// <summary>Відкрити наступну картку й нарахувати за неї: правда — тим, хто її обрав; брехня гравців — авторам.</summary>
     void OpenNext(DateTimeOffset now)
     {
-        var i = _order[_revealed.Count];
+        var step = _revealed.Count;
+        var i = _order[step];
         var card = _cards[i];
         card.Open = true;
         _revealed.Add(i);
+        var verdict = step < _verdicts.Length ? _verdicts[step] : null;
         var mult = Final ? FinalMult : 1;
         if (card.Truth)
         {
@@ -411,6 +567,7 @@ public sealed class Bluff : Game
             _quip = pool[Ctx.Rng.Next(pool.Length)];
             _played.Add(new Played(_asked[_q], _cards));
             SetTimer(now, StepTruthMs);
+            Want(verdict, now, VoiceGraceMs, stretch: true);
             return;
         }
         if (!card.Decoy && card.Picks.Count > 0)
@@ -426,6 +583,7 @@ public sealed class Bluff : Game
                 }
             }
         SetTimer(now, card.Picks.Count > 0 ? StepPickedMs : StepEmptyMs);
+        Want(verdict, now, VoiceGraceMs, stretch: true);
     }
 
     void BeginScore(DateTimeOffset now)
@@ -447,10 +605,13 @@ public sealed class Bluff : Game
     {
         if (_phase == PhaseDone) return TickResult.None;
         var now = Ctx.Clock.UtcNow;
+        // Кліп доспів — Глек каже (і крок розкриття подовжується на репліку); не доспів вчасно — мовчки текстом.
+        if (_want is not null) TrySay(now);
 
         // «Готово» в усіх — таймер не чекаємо; сам перехід — нижче, в одному місці з рештою.
         if (_phase == PhaseWrite && AllWrote()) _endsAt = now;
         else if (_phase == PhasePick && AllPicked()) _endsAt = now;
+        else if (_phase == PhaseTopic && _topicPick is not null) _endsAt = now;
 
         if (now < _endsAt)
         {
@@ -462,6 +623,10 @@ public sealed class Bluff : Game
         _dirty = false;
         switch (_phase)
         {
+            case PhaseTopic:
+                TakeTopic(_topicPick ?? _topics[0], _topicPick is null ? -1 : _chooser);
+                BeginRead(now);
+                break;
             case PhaseRead:
                 BeginWrite(now);
                 break;
@@ -478,7 +643,7 @@ public sealed class Bluff : Game
                 break;
             case PhaseScore:
                 _q++;
-                BeginRead(now);
+                NextQuestion(now);
                 break;
         }
         return ViewOnly;
@@ -520,13 +685,14 @@ public sealed class Bluff : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (action is not ("lie" or "pick" or "like")) return ActResult.Fail("Тут так не ходять");
+        if (action is not ("lie" or "pick" or "like" or "topic")) return ActResult.Fail("Тут так не ходять");
         if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (seat is < 0 or >= Seats) return ActResult.Fail("Ти вже не за столом");
         return action switch
         {
             "lie" => Lie(seat, payload),
             "pick" => PickCard(seat, payload),
+            "topic" => Topic(seat, payload),
             _ => Like(seat, payload),
         };
     }
@@ -659,6 +825,23 @@ public sealed class Bluff : Game
         return ActResult.Done;
     }
 
+    /// <summary>Гравець, чия черга, обирає тему наступного питання: <c>"food"</c> чи <c>{ k: "food" }</c>.</summary>
+    ActResult Topic(int seat, JsonElement payload)
+    {
+        if (_phase != PhaseTopic) return ActResult.Fail("Зараз тему не обирають");
+        if (seat != _chooser) return ActResult.Fail($"Тему зараз обирає {Nick(_chooser)}");
+        var key = payload.ValueKind switch
+        {
+            JsonValueKind.String => payload.GetString(),
+            JsonValueKind.Object when payload.TryGetProperty("k", out var k) && k.ValueKind == JsonValueKind.String => k.GetString(),
+            _ => null,
+        };
+        if (key is null || Array.IndexOf(_topics, key) < 0) return ActResult.Fail("Нема такої теми");
+        _topicPick = key;
+        _dirty = true;
+        return ActResult.Done;
+    }
+
     ActResult Like(int seat, JsonElement payload)
     {
         if (_phase is not (PhaseReveal or PhaseScore)) return ActResult.Fail("❤ ставлять на розкритті");
@@ -690,6 +873,90 @@ public sealed class Bluff : Game
     };
 
     // ---------------------------------------------------------------------------------------
+    // голос Глека
+    // ---------------------------------------------------------------------------------------
+
+    bool VoiceOn => _voice.Enabled;
+
+    /// <summary>
+    /// На старті: голос (якщо не «без голосу» і edge-tts є), у чергу озвучки — питання партії (перше терміново) і
+    /// «Перемагає {нік}» для кожного за столом: на кінці партії чекати нема коли.
+    /// </summary>
+    void StartVoice()
+    {
+        _say = null;
+        _want = null;
+        _verdicts = [];
+        _voice = DotepyNoVoice.Instance;
+        if (_voiceName == "none") return;
+        try
+        {
+            if (Ctx.Services.GetService<IDotepyVoice>() is { } v && v.Enabled) _voice = v;
+        }
+        catch (Exception) { /* голос — чужий код; не вийшло — граємо текстом */ }
+        if (!VoiceOn) return;
+        if (_asked.Count > 0) Prepare([BluffLines.Question(_asked[0].Q, _total == 1)], urgent: true);
+        var lines = new List<string>();
+        for (var i = 1; i < _asked.Count; i++) lines.Add(BluffLines.Question(_asked[i].Q, i == _total - 1));
+        for (var s = 0; s < Seats; s++) if (_present[s] && _nicks[s] is { } nick) lines.Add(BluffLines.Win(nick));
+        lines.Add(BluffLines.Draw);
+        Prepare(lines);
+    }
+
+    // Голос — чужий код (черга, диск). Його збій не має валити партію: тоді гра просто йде текстом.
+    void Prepare(IEnumerable<string> texts, bool urgent = false)
+    {
+        try { _voice.Prepare(_voiceName, texts, urgent); }
+        catch (Exception) { /* без голосу */ }
+    }
+
+    DotepyClip? Clip(string text)
+    {
+        try { return _voice.Ready(_voiceName, text); }
+        catch (Exception) { return null; }
+    }
+
+    /// <summary>
+    /// Глек скаже це, щойно кліп доспіє, але не пізніше ніж за <paramref name="graceMs"/>: запізнілий вердикт до
+    /// іншої картки гірший за тишу. <paramref name="stretch"/> — крок розкриття подовжується на час репліки (до
+    /// <see cref="MaxStepMs"/>). Кліпа ще нема — гра йде далі, як ішла: вона ніколи не чекає на озвучку.
+    /// </summary>
+    void Want(string? line, DateTimeOffset now, int graceMs, bool stretch)
+    {
+        _want = null;
+        if (line is null || !VoiceOn) return;
+        _want = line;
+        _wantUntil = now.AddMilliseconds(graceMs);
+        _wantStretch = stretch;
+        TrySay(now);
+    }
+
+    void TrySay(DateTimeOffset now)
+    {
+        if (_want is not { } line) return;
+        if (Clip(line) is not { } clip)
+        {
+            if (now >= _wantUntil) _want = null;
+            return;
+        }
+        _want = null;
+        Say(line, clip);
+        if (!_wantStretch || _phase != PhaseReveal) return;
+        var end = now.AddMilliseconds(clip.Seconds * 1000 + VoicePadMs);
+        var cap = _stepFrom.AddMilliseconds(MaxStepMs);
+        if (end > cap) end = cap;
+        if (end <= _endsAt) return;
+        _endsAt = end;
+        _phaseMs = (int)(end - _stepFrom).TotalMilliseconds;
+    }
+
+    void Say(string line, DotepyClip clip)
+    {
+        _say = new Speech(++_sayId, line, clip.Url, Math.Round(clip.Seconds, 2));
+        _dirty = true;
+    }
+
+    // ---------------------------------------------------------------------------------------
     // кінець
     // ---------------------------------------------------------------------------------------
 
@@ -704,10 +971,18 @@ public sealed class Bluff : Game
         var best = 0L;
         foreach (var s in seats) best = Math.Max(best, _scores[s]);
         var winners = best > 0 ? seats.Where(s => _scores[s] == best).ToArray() : [];
-        if (_asked.Count >= 5 && seats.Count >= 2 && _played.Count == _asked.Count)
+        if (_total >= 5 && seats.Count >= 2 && _played.Count == _total)
             foreach (var s in seats)
-                if (_hits[s] == _asked.Count) Ctx.Award(s, 0, "ach:bluff-nose");
+                if (_hits[s] == _total) Ctx.Award(s, 0, "ach:bluff-nose");
         _result = Result(winners, left: false);
+        // Переможця Глек оголошує, лише якщо кліп уже є (ніки озвучено на старті): партія скінчилась, чекати нема чого.
+        _want = null;
+        if (VoiceOn)
+        {
+            var line = winners.Length == 1 ? BluffLines.Win(Nick(winners[0]))
+                : winners.Length > 1 ? BluffLines.Wins(Names(winners)) : BluffLines.Draw;
+            if (Clip(line) is { } clip) Say(line, clip);
+        }
         Ctx.Finish(winners, Summary(seats), seats.ToDictionary(s => s, s => _scores[s]));
     }
 
@@ -721,10 +996,13 @@ public sealed class Bluff : Game
         if (seat is < 0 or >= Seats) return;
         _present[seat] = false;
         _dirty = true;
+        // Обирав тему й пішов — Глек обере за нього на найближчому тику.
+        if (_phase == PhaseTopic && seat == _chooser) _endsAt = Ctx.Clock.UtcNow;
         if (_phase == PhaseDone || PresentSeats().Count >= 2) return;
         // Недогране питання в підсумок не йде (там лише ті, де правду вже відкрили), тож картки не чіпаємо.
         _phase = PhaseDone;
         _result = Result([], left: true);
+        _want = null;
         Ctx.Finish([], $"{Info.Title}: гравці розійшлись, партію не дограли");
     }
 
@@ -770,6 +1048,7 @@ public sealed class Bluff : Game
             winners,
             left,
             scores = (long[])_scores.Clone(),
+            titles = left ? [] : Titles(),
             best = best is not { } b ? null : new
             {
                 q = b.Q + 1,
@@ -793,6 +1072,56 @@ public sealed class Bluff : Game
                 };
             }).ToArray(),
         };
+    }
+
+    /// <summary>
+    /// Звання партії з того, що вже пораховано на картках: 🦊 Головний брехун (найбільше жертв), 👃 Нюх (найбільше
+    /// вгаданих правд), 🐑 Найдовірливіший (найчастіше вірив брехні, Глековій теж), ❤ Улюбленець залу (найбільше ❤).
+    /// Лише ті, хто за столом на кінці; рівні — усі разом; звання, яке ділять усі (чи нуль), не даємо — це не звання.
+    /// </summary>
+    object[] Titles()
+    {
+        var seats = PresentSeats();
+        if (seats.Count < 2) return [];
+        var fox = new int[Seats];
+        var nose = new int[Seats];
+        var sheep = new int[Seats];
+        var heart = new int[Seats];
+        foreach (var p in _played)
+            foreach (var c in p.Cards)
+            {
+                if (c.Truth) { foreach (var s in c.Picks) nose[s]++; continue; }
+                foreach (var s in c.Picks) sheep[s]++;
+                if (c.Decoy) continue;
+                foreach (var a in c.By)
+                {
+                    fox[a] += c.Picks.Count;
+                    heart[a] += c.LikedBy.Count;
+                }
+            }
+        var list = new List<object>(4);
+        void Add(string key, string icon, string label, int[] by, Func<int, string> what)
+        {
+            var best = 0;
+            foreach (var s in seats) best = Math.Max(best, by[s]);
+            if (best == 0) return;
+            var who = seats.Where(s => by[s] == best).ToArray();
+            if (who.Length == seats.Count) return;
+            list.Add(new { key, icon, label, seats = who, n = best, text = what(best) });
+        }
+        Add("fox", "🦊", "Головний брехун", fox, Victims);
+        Add("nose", "👃", "Нюх", nose, n => $"{Str(n)} {Plural(n, "правда", "правди", "правд")}");
+        Add("sheep", "🐑", "Найдовірливіший", sheep, n => $"{Str(n)} {Plural(n, "раз", "рази", "разів")} на гачку");
+        Add("heart", "❤️", "Улюбленець залу", heart, n => $"{Str(n)} ❤");
+        return [.. list];
+    }
+
+    /// <summary>1 правда, 2 правди, 5 правд.</summary>
+    static string Plural(int n, string one, string few, string many)
+    {
+        var d = n % 10;
+        var h = n % 100;
+        return d == 1 && h != 11 ? one : d is >= 2 and <= 4 && (h < 12 || h > 14) ? few : many;
     }
 
     /// <summary>
@@ -842,13 +1171,14 @@ public sealed class Bluff : Game
         var q = Current;
         var done = _phase == PhaseDone;
         // Лобі чи дограний стіл: той, хто зараз сидить, скоро натисне «Почати» чи «Ще раз» — пам'ять підтягуємо фоном.
-        if (_asked.Count == 0 || done) PrefetchSeated();
+        var lobby = _total == 0 || done;
+        if (lobby) PrefetchSeated();
         return new
         {
             phase = _phase,
-            q = _asked.Count == 0 ? 0 : _q + 1,
-            of = _asked.Count,
-            @final = _asked.Count > 0 && Final,
+            q = _total == 0 ? 0 : _q + 1,
+            of = _total,
+            @final = _total > 0 && Final,
             endsAt = _endsAt,
             phaseMs = _phaseMs,
             cat = q?.Cat ?? "",
@@ -875,7 +1205,42 @@ public sealed class Bluff : Game
             likeDelta = (long[])_likeDelta.Clone(),
             victims = (int[])_victims.Clone(),
             result = _result,
+            topic = _phase == PhaseTopic
+                ? new { by = _chooser, options = _topics.Select(k => new { key = k, label = BluffCats.Label(k) }).ToArray(), pick = _topicPick }
+                : null,
+            chooser = _topicTurn && q is not null && _q < _chosenBy.Count ? _chosenBy[_q] : (int?)null,
+            voice = _voiceName,
+            say = _say is { } l ? new { id = l.Id, text = l.Text, url = l.Url, seconds = l.Seconds } : null,
+            fresh = lobby ? Fresh() : null,
         };
+    }
+
+    /// <summary>
+    /// Лобі: скільки питань (за обраними темами) ще не бачив ніхто з тих, хто сидить за столом, — «свіжих для цього
+    /// столу: 143 з 612». Лише з пам'яті (<see cref="BluffSeen.LastSeen"/> у базу не ходить), не частіше ніж раз на
+    /// дві секунди на той самий склад столу: вид шлють кожному місцю.
+    /// </summary>
+    object Fresh()
+    {
+        var keys = new List<string>(Seats);
+        for (var s = 0; s < Seats; s++)
+            if (Ctx.Seated(s) && Ctx.NickOf(s) is { Length: > 0 } nick && BluffSeen.NickKey(nick) is var key && !keys.Contains(key)) keys.Add(key);
+        var sig = string.Join('|', keys);
+        var now = Ctx.Clock.UtcNow;
+        if (_fresh is not { } f || f.Sig != sig || now - f.At > TimeSpan.FromSeconds(2))
+        {
+            var seen = Seen.LastSeen(keys);
+            int n = 0, of = 0;
+            foreach (var q in Bank)
+            {
+                if (!BluffCats.Fits(q, _cats)) continue;
+                of++;
+                if (!seen.ContainsKey(q.Key)) n++;
+            }
+            f = (sig, now, n, of);
+            _fresh = f;
+        }
+        return new { n = f.Fresh, of = f.Of };
     }
 
     /// <summary>
