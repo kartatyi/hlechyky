@@ -2435,10 +2435,22 @@
     if (st.idleT) frameLoop(st);
   }
 
+  /// Лобі столу на 2+: хто сидить, бачить, чи вже можна рушати (каркас пише «Чекаємо, хто підсяде», навіть коли
+  /// господареві досить натиснути «Почати»). Глядач — без статусу, як і було.
+  function lobbyLine(ctx) {
+    const r = ctx.room;
+    if (!r || r.status !== 'lobby' || !ctx.mine) return '';
+    const seated = (r.seats || []).filter((s) => s.nick).length;
+    const host = String(r.host || '').toLowerCase() === String((ctx.me && ctx.me.nick) || '').toLowerCase();
+    if (seated < (r.minPlayers || 2)) return host ? 'Чекаємо, хто підсяде: гукни когось за стіл 📣' : 'Чекаємо, хто підсяде';
+    return host ? 'Гайда: тисни «Почати» — або зачекай, хто ще підсяде' : 'Чекаємо, поки господар тисне «Почати»';
+  }
+
   function status(ctx) {
     const st = ctx._bk;
     const f = ctx.frame;
     const ph = (st && st.phase) || (f && f.ph) || (ctx.view && ctx.view.phase) || '';
+    if (!(st && st.sprint) && ctx.room && ctx.room.status === 'lobby') return lobbyLine(ctx);
     if (!ctx.playing) return '';
     if (st && st.sprint) {
       if (ph === 'ready') return padish() ? 'Натисни Ⓐ — і поїхали' : coarse() ? 'Торкнись стіни — і поїхали' : 'Натисни будь-яку клавішу';

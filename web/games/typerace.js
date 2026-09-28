@@ -1426,10 +1426,22 @@
     if (!st.raf) loop(root, st);
   }
 
+  /// Лобі столу на 2+: хто сидить, бачить, чи вже можна рушати (каркас пише «Чекаємо, хто підсяде», навіть коли
+  /// господареві досить натиснути «Почати»). Глядач — без статусу, як і було.
+  function lobbyLine(ctx) {
+    const r = ctx.room;
+    if (!r || r.status !== 'lobby' || !ctx.mine) return '';
+    const seated = (r.seats || []).filter((s) => s.nick).length;
+    const host = String(r.host || '').toLowerCase() === String((ctx.me && ctx.me.nick) || '').toLowerCase();
+    if (seated < (r.minPlayers || 2)) return host ? 'Чекаємо, хто підсяде: гукни когось за стіл 📣' : 'Чекаємо, хто підсяде';
+    return host ? 'Гайда: тисни «Почати» — або зачекай, хто ще підсяде' : 'Чекаємо, поки господар тисне «Почати»';
+  }
+
   function status(ctx) {
     const v = ctx.view || {};
     const st = ctx._trst;
     const soloGame = ctx.room && ctx.room.maxPlayers === 1;
+    if (!soloGame && ctx.room && ctx.room.status === 'lobby') return lobbyLine(ctx);
     if (v.phase === 'pick') return v.noTexts ? 'Тексти відпочивають' : 'Обери довжину й тисни «Поїхали»';
     if (v.phase === 'ready') return 'Читай уривок — старт за три секунди';
     if (v.phase === 'go') {

@@ -1894,6 +1894,17 @@
     syncCanvasCls(st);
   }
 
+  /// Лобі столу на 2+: хто сидить, бачить, чи вже можна рушати (каркас пише «Чекаємо, хто підсяде», навіть коли
+  /// господареві досить натиснути «Почати»). Глядач — без статусу, як і було.
+  function lobbyLine(ctx) {
+    const r = ctx.room;
+    if (!r || r.status !== 'lobby' || !ctx.mine) return '';
+    const seated = (r.seats || []).filter((s) => s.nick).length;
+    const host = String(r.host || '').toLowerCase() === String((ctx.me && ctx.me.nick) || '').toLowerCase();
+    if (seated < (r.minPlayers || 2)) return host ? 'Чекаємо, хто підсяде: гукни когось за стіл 📣' : 'Чекаємо, хто підсяде';
+    return host ? 'Гайда: тисни «Почати» — або зачекай, хто ще підсяде' : 'Чекаємо, поки господар тисне «Почати»';
+  }
+
   // =============================================================================================
   // Цикл
   // =============================================================================================
@@ -2068,6 +2079,7 @@
 
     status(ctx) {
       const st = ctx._gk;
+      if (ctx.room && ctx.room.status === 'lobby') return lobbyLine(ctx);
       if (!st || !ctx.playing) return '';
       const s = me(st);
       switch (st.phase) {
