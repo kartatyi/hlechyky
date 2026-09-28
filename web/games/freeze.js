@@ -19,6 +19,8 @@
   const PW = 480, PH = 360;
   const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
   const PEEK_MS = 1500, NEWS_MS = 6000, LOCAL_MS = 250, HOLD_MS = 1000, TIP_MS = 1800, F5_PEEK_MS = 3000;
+  // стіл стоїть (лобі, партію зіграно): стільки ще малюємо після останньої події — довше за найдовшу анімацію
+  const IDLE_MS = 2000;
   const BANNER_MS = 900, FINGER_MS = 1100, POOF_MS = 450, BUMP_MS = 380, NOTE_MS = 330;
   const JUG_X = 1104, JUG_Y = 232, BABA_X = 1152, BABA_Y = 262;
   const TAU = Math.PI * 2;
@@ -514,7 +516,7 @@
         padOn: false, padH: 0, padAt: 0, lab: [], labPool: [],
         hudEl: null, clockEl: null, newsEl: null, sumEl: null, padEl: null, stageEl: null, seatsEl: null,
         audio: null, mute: readMute(),
-        perf: { sum: 0, n: 0, max: 0 },
+        perf: { sum: 0, n: 0, max: 0 }, wakeAt: 0,
       };
     }
     st.ctx = ctx;
@@ -534,6 +536,7 @@
     if (!toasted && st.ctx) st.ctx.toast(text, 'err');
     st.tip = text;
     st.tipUntil = performance.now() + TIP_MS;
+    wake(st);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1400,7 +1403,7 @@
     });
   }
 
-  function peek(st) { st.peekUntil = performance.now() + PEEK_MS; }
+  function peek(st) { st.peekUntil = performance.now() + PEEK_MS; wake(st); }
 
   function toWorld(st, e) {
     const r = st.cv.el.getBoundingClientRect();
@@ -1435,10 +1438,12 @@
   function wireCanvas(st) {
     const el = st.cv.el;
     el.addEventListener('pointerdown', (e) => {
+      wake(st);
       unlock(st);
       st.down = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, cam: st.cam.x };
     });
     el.addEventListener('pointermove', (e) => {
+      wake(st);
       const d = st.down;
       if (d && d.id === e.pointerId) {
         const dx = e.clientX - d.x;
@@ -1562,6 +1567,7 @@
 
   /// Режим камери — за шириною картки: вузько (телефон) — в'юпорт, що стежить за своїм, інакше — увесь луг.
   function fit(root, st) {
+    wake(st);
     padStrip(st);
     const cw = root.clientWidth;
     let mode = st.mode;
@@ -1580,6 +1586,37 @@
     if (css) st.cssK = css / (mode === 'port' ? PW : WW);
   }
 
+  /// Телефон: шапка столу з вісьмома місцями штовхала мапу вниз, і кнопки опинялись під нижнім меню — видно було
+  /// або мапу, або кнопки. Раз на партію (room.startedAt), коли вона пішла, прокручуємо сторінку так, щоб рядок стану
+  /// гри став під шапку сайту: тоді мапа й кнопки вміщаються разом. Якщо й так усе видно — не чіпаємо.
+  function fitPhone(st) {
+    const ctx = st.ctx, padEl = st.padEl;
+    if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !st.hudEl || !padEl || !HGames.ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const a = st.hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку чи кнопки зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок стану
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+  }
+
+  /// rAF живе, лише поки є що малювати: іде партія (кадри 25 Гц і інтерполяція між ними) або ще доживають анімації
+  /// після останньої події (усе коротше за IDLE_MS). Лобі й дограний стіл — статичні: цикл засинає (раніше малював ту
+  /// саму картинку 60 разів на секунду). Мапи не видно (інша вкладка сайту, прокрутили геть) — теж спить. Будять вид,
+  /// кадр, розкладка, мишка чи палець на мапі, «де я?», відмова з підписом і поява мапи на екрані.
+  function wake(st) { st.wakeAt = performance.now(); spin(st); }
+
   function spin(st) {
     if (st.raf) return;
     const loop = (now) => {
@@ -1589,7 +1626,9 @@
         if (padStrip(st)) fit(st.root, st);
         hud(st);                  // 👊 відійшли руки — фішка знову яскрава
       }
-      if (!document.hidden && st.visible) draw(st);
+      const live = !!(st.ctx && st.ctx.playing) && phaseOf(st) !== 'over';
+      if (!st.visible || (!live && now - st.wakeAt > IDLE_MS)) { st.raf = 0; return; }
+      if (!document.hidden) draw(st);
       st.raf = requestAnimationFrame(loop);
     };
     st.raf = requestAnimationFrame(loop);
@@ -1611,6 +1650,7 @@
       },
       hint: '{dpad} іти · {a} штурхан · {x} де я?',
     },
+    added: '2026-09-27',
     news: {
       v: '2026-09-27',
       title: 'Нова гра: Замри!',
@@ -1659,7 +1699,7 @@
       st.onResize = () => fit(root, st);
       window.addEventListener('resize', st.onResize);
       if (window.IntersectionObserver) {
-        st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; });
+        st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; if (st.visible) wake(st); });
         st.io.observe(st.cv.el);
       }
       st.autoPeek = true;
@@ -1678,7 +1718,7 @@
       document.addEventListener('keyup', st.keyup);
       window.addEventListener('blur', st.blur);
       if (ctx.mine && ctx.playing) ctx.input('move', { dir: -1 });
-      spin(st);
+      wake(st);
     },
 
     update(root, ctx) {
@@ -1697,13 +1737,14 @@
       hud(st);
       summary(st);
       paintClock(st, st.last && st.last.ph ? st.last : null);
-      spin(st);
+      fitPhone(st);
+      wake(st);
     },
 
     frame(root, ctx, f) {
       const st = state(root, ctx);
       onFrame(st, f);
-      spin(st);
+      wake(st);
     },
 
     onKey(e, ctx) {

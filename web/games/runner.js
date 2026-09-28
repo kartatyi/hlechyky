@@ -1534,7 +1534,7 @@
       // Лелеки літають до 290 px над землею, а в кризі над землею лише 240: їхня сцена вища на 52 px
       oy: kind === 'storks' ? STORK_OY : 0, vh: VIEW_H + (kind === 'storks' ? STORK_OY : 0),
       sim: null, simArgs: null, key: '', me: null, ph: '', running: false, waitView: false,
-      acc: 0, lastT: 0, adj: 0, adjUntil: 0, eAvg: 0, rate: 1 / STEP_MS, arr: [],
+      acc: 0, lastT: 0, adj: 0, adjUntil: 0, eAvg: 0, rate: 1 / STEP_MS, arr: [], wakeAt: 0,
       lead: 5, rtt: 80, rtts: [], slow: 0, pingAt: 0,
       hist: Array.from({ length: HIST_N }, () => new Player()), histAt: new Int32Array(HIST_N).fill(-1),
       held: 0, edge: false, lastHeld: 0, pend: [], sent: 0, fixes: 0, snaps: 0, snapWhy: {}, snapLog: [], fixLog: [],
@@ -1911,6 +1911,7 @@
 
   function press(st, bit) {
     Snd.wake();
+    wake(st);
     if (bit === 1) { if (!(st.held & 1)) { st.held |= 1; st.edge = true; } }
     else st.held |= bit;
     if (st.daily && st.ph === 'wait' && bit === 1) dailyStart(st);
@@ -2994,6 +2995,39 @@
   // 9. Цикл, модуль, статус, три HGames.register
   // =============================================================================================
 
+  /// Телефон: шапка столу з вісьмома місцями штовхала сцену вниз, і кнопки «Стрибок»/«Пригнись» опинялись під
+  /// нижнім меню — видно було або сцену, або кнопки. Раз на партію (room.startedAt), коли вона пішла, прокручуємо
+  /// сторінку так, щоб рядок гравців став під шапку сайту: тоді сцена й кнопки вміщаються разом. Усе й так видно —
+  /// не чіпаємо.
+  function fitPhone(st) {
+    const ctx = st.ctx, hudEl = st.el && st.el.hud, padEl = st.el && st.el.touch;
+    if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !hudEl || !padEl || !ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку чи кнопки зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+  }
+
+  /// rAF живе, лише поки сцена рухається: іде забіг (свій годинник і передбачення) або летять кадри (відлік, чужі
+  /// бігуни), плюс IDLE_MS після останньої події — дожити снігу, спотикам і написам. Лобі, кінець партії, пауза між
+  /// раундами й Забіг дня до першого стрибка — статичні: цикл засинає (раніше малював ту саму сцену 60 разів на
+  /// секунду). Будять вид, кадр, натиск і зміна розміру.
+  const IDLE_MS = 2500;
+  function wake(st) { st.wakeAt = performance.now(); loop(st); }
+
   function loop(st) {
     if (st.raf) return;
     const tick = (now) => {
@@ -3005,6 +3039,7 @@
         strip(st, now);
       }
       if (now - st.hudAt > 100) { st.hudAt = now; hud(st); rumble(st); }
+      if (!st.running && now - st.wakeAt > IDLE_MS) { hud(st); rumble(st); return; }
       st.raf = requestAnimationFrame(tick);
     };
     st.raf = requestAnimationFrame(tick);
@@ -3037,12 +3072,12 @@
     const letGo = () => { st.held = 0; st.ptr = null; st.rmb = false; };
     listen(st, window, 'blur', letGo);
     listen(st, document, 'visibilitychange', () => { if (document.hidden) { letGo(); Snd.rumbleTo(0); } });
-    if (window.ResizeObserver) { st.ro = new ResizeObserver(() => fit(st)); st.ro.observe(st.el.stage); }
-    else listen(st, window, 'resize', () => fit(st));
+    if (window.ResizeObserver) { st.ro = new ResizeObserver(() => { fit(st); wake(st); }); st.ro.observe(st.el.stage); }
+    else listen(st, window, 'resize', () => { fit(st); wake(st); });
     // Відладка (стан, заміри, найближчі перешкоди для ботів-стендів) — лише з ?rnrdebug=1: на проді готовий
     // перелік перешкод у консолі був би подарунком автострибу для Забігу дня.
     if (DEBUG) window.__rnr = debugApi(st);
-    loop(st);
+    wake(st);
   }
 
   function updateCard(root, ctx) {
@@ -3068,7 +3103,8 @@
     if (ctx.playing && st.me != null && st.ph === 'wait') st.running = false;
     fit(st);
     hud(st);
-    loop(st);
+    fitPhone(st);
+    wake(st);
   }
 
   function frameCard(root, ctx, f) {
@@ -3076,6 +3112,7 @@
     if (!st) return;
     st.ctx = ctx;
     applyFrame(st, f);
+    wake(st);
   }
 
   function unmountCard(root) {
@@ -3276,6 +3313,7 @@
     seatNames: DINO_NAMES,
     seatClass: SEAT_CLASS,
     pad: padFor('dino'),
+    added: '2026-09-26',
     news: {
       v: '2026-09-27', title: 'Нова гра: Стрибозаври',
       items: [
@@ -3295,6 +3333,7 @@
     seatNames: ['стрибозавр'],
     seatClass: ['o'],
     pad: padFor('daily'),
+    added: '2026-09-26',
     news: {
       v: '2026-09-27', title: 'Нова гра: Забіг дня',
       items: [
@@ -3318,6 +3357,7 @@
     seatNames: STORK_NAMES,
     seatClass: SEAT_CLASS,
     pad: padFor('storks'),
+    added: '2026-09-26',
     news: {
       v: '2026-09-27', title: 'Нова гра: Лелеки',
       items: [
