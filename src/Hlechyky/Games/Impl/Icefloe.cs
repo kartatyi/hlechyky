@@ -32,11 +32,19 @@ public sealed class Icefloe : Game
     static readonly GameOption WinsOption = new("wins", "Партія до",
         [("auto", "2 перемог (на 5+ — 1 раунду)"), ("1", "1 раунду"), ("2", "2 перемог"), ("3", "3 перемог")], "auto");
 
+    /// <summary>Команди (п. 182): типово кожен сам за себе.</summary>
+    static readonly GameOption TeamsOption = new("teams", "Команди",
+        [("off", "Кожен сам за себе"), ("on", "🔵🔴 Сині проти рудих (4, 6 чи 8)")], "off");
+    public const string TeamsText = "Команди — лише парно: 4, 6 чи 8 за столом";
+    public static readonly string[] TeamNames = ["сині", "руді"];
+    bool _teamsOpt;
+    /// <summary>Команда, що взяла минулий раунд (−1 — нема або кожен сам за себе).</summary>
+    int _roundTeam = -1;
     static readonly string[] Names = ["синій", "рудий", "зелений", "жовтий", "бузковий", "м’ятний", "рожевий", "сірий"];
 
     public override GameInfo Info { get; } = new(
         "icefloe", "Крижина", "крижину", GameGroup.Live, 2, IcefloeCore.Seats, TickMs: IcefloeCore.TickMs,
-        Start: StartMode.ByHost, Options: [WinsOption],
+        Start: StartMode.ByHost, Options: [WinsOption, TeamsOption],
         Hint: "Сумо на кризі: ковзай, штовхай, не шубовсни. Крижина тане й меншає, а хто випав — кидає сніжки з берега");
 
     IcefloeCore? _core;
@@ -95,6 +103,25 @@ public sealed class Icefloe : Game
     {
         _needOpt = options.TryGetValue("wins", out var v) && int.TryParse(v, out var n) && n is >= 1 and <= 3 ? n : 0;
         _need = NeedFor(2);
+        _teamsOpt = options.TryGetValue("teams", out var t) && t == "on";
+    }
+
+    public override string? CanStart()
+    {
+        if (!_teamsOpt) return null;
+        var n = Seated().Count(x => x);
+        return n < 4 || n % 2 != 0 ? TeamsText : null;
+    }
+
+    /// <summary>Грають командами (після «Почати» — за складом на старті; у лобі — за опцією).</summary>
+    public bool Teams => _teamsOpt;
+
+    /// <summary>Команди по черзі за місцями: перший, хто сів, — синій, другий — рудий, третій — синій…</summary>
+    void DealTeams(IcefloeCore c)
+    {
+        var k = 0;
+        for (var i = 0; i < IcefloeCore.Seats; i++)
+            c.Bodies[i].Team = _teamsOpt && c.Bodies[i].Plays ? k++ % 2 : -1;
     }
 
     public override void Start()
@@ -113,6 +140,7 @@ public sealed class Icefloe : Game
         _roundWinner = -1;
         _round = 1;
         Core.ResetParty(seated);
+        DealTeams(Core);
         BeginRound(ReadyFirst);
     }
 
@@ -122,6 +150,7 @@ public sealed class Icefloe : Game
         _ph = PhReady;
         _left = ready;
         _roundWinner = -1;
+        _roundTeam = -1;
     }
 
     // ---------- ввід ----------
@@ -145,6 +174,9 @@ public sealed class Icefloe : Game
             case "throw":
                 if (_ph != PhGo) return ActResult.Fail("Зачекай, зараз почнемо");
                 return Core.Throw(seat) is { } nope ? ActResult.Fail(nope) : ActResult.Done;
+            case "chip":
+                if (_ph != PhGo) return ActResult.Fail("Зачекай, зараз почнемо");
+                return Core.Chip(seat) is { } no2 ? ActResult.Fail(no2) : ActResult.Done;
             default:
                 return ActResult.Fail("Тут так не ходять");
         }
@@ -178,7 +210,8 @@ public sealed class Icefloe : Game
             case PhGo:
                 c.Step(true);
                 Expire();
-                if (c.AliveCount <= 1) return EndRound(Survivor(), false);
+                if (_teamsOpt && TeamLeft() is var tl && tl >= -1) return EndTeamRound(tl);
+                if (!_teamsOpt && c.AliveCount <= 1) return EndRound(Survivor(), false);
                 if (c.Rt >= IcefloeCore.CapTicks) return EndRound(-1, true);
                 return c.Broke ? TickResult.Both : TickResult.FrameOnly;
             default:
@@ -201,6 +234,40 @@ public sealed class Icefloe : Game
             var b = c.Bodies[s];
             if (b.Want >= 0 && c.T - Math.Max(_moveAt[s], _goAt) >= KeepTicks) b.Want = -1;
         }
+    }
+
+    /// <summary>На кризі лишилась одна команда — її номер; нікого — −1; ще б'ються дві — −2.</summary>
+    int TeamLeft()
+    {
+        var c = Core;
+        var team = -1;
+        for (var i = 0; i < IcefloeCore.Seats; i++)
+        {
+            var b = c.Bodies[i];
+            if (!b.Plays || !b.Alive) continue;
+            if (team >= 0 && b.Team != team) return -2;
+            team = b.Team;
+        }
+        return team;
+    }
+
+    /// <summary>Раунд командам: очко кожному з команди — і тим, хто вже на березі (прикривали спину).</summary>
+    TickResult EndTeamRound(int team)
+    {
+        var c = Core;
+        var rep = -1;
+        for (var i = 0; i < IcefloeCore.Seats && team >= 0; i++)
+        {
+            var b = c.Bodies[i];
+            if (!b.Plays || b.Team != team) continue;
+            b.Wins++;
+            if (rep < 0 || (b.Alive && !c.Bodies[rep].Alive)) rep = i;
+        }
+        var r = EndRound(-1, false);
+        _roundWinner = rep;
+        _roundTeam = team;
+        _lastRound = (rep, false, _lastRound?.By ?? []);
+        return r;
     }
 
     int Survivor()
@@ -232,7 +299,7 @@ public sealed class Icefloe : Game
     {
         var c = Core;
         if (_roundWinner >= 0 && c.Bodies[_roundWinner].Plays && c.Bodies[_roundWinner].Wins >= _need)
-            return Over([_roundWinner]);
+            return Over(_roundTeam >= 0 ? [.. Playing().Where(s => c.Bodies[s].Team == _roundTeam)] : [_roundWinner]);
         if (_round >= RoundsMax)
         {
             var playing = Playing();
@@ -287,7 +354,7 @@ public sealed class Icefloe : Game
         var nick = Ctx.NickOf(seat);
         c.Drop(seat);
         var left = Enumerable.Range(0, IcefloeCore.Seats).Where(s => s != seat && c.Bodies[s].Plays && Ctx.Seated(s)).ToArray();
-        if (left.Length >= 2)
+        if (left.Length >= 2 && !(_teamsOpt && left.All(s => c.Bodies[s].Team == c.Bodies[left[0]].Team)))
         {
             Ctx.Log($"{Info.Title}: {nick} встав з-за столу — решта грає далі");
             return;
@@ -315,6 +382,17 @@ public sealed class Icefloe : Game
         }
     }
 
+    /// <summary>Команда кожного місця (null — не грає); без опції — null весь масив.</summary>
+    int?[]? TeamsOf(IcefloeCore c, bool lobby)
+    {
+        if (!_teamsOpt) return null;
+        var r = new int?[IcefloeCore.Seats];
+        var k = 0;
+        for (var i = 0; i < IcefloeCore.Seats; i++)
+            if (lobby ? Ctx.Seated(i) : c.Bodies[i].Plays) r[i] = lobby ? k++ % 2 : c.Bodies[i].Team;
+        return r;
+    }
+
     public override object View(int? seat)
     {
         var lobby = Lobby;
@@ -334,6 +412,8 @@ public sealed class Icefloe : Game
             round = lobby ? 0 : _round,
             need = Need,
             roundsMax = RoundsMax,
+            teams = TeamsOf(c, lobby),
+            roundTeam = lobby ? -1 : _roundTeam,
             wins,
             pushouts,
             ice = new { r0 = c.R0, v, iv = c.Iv },
@@ -363,6 +443,18 @@ public sealed class Icefloe : Game
     /// не грає), <c>s</c> сніжки [id, x, y, vx, vy], <c>k</c> підбирачки [x, y, kind], <c>ev</c> події тика.
     /// Масиви нові щоразу: кадр серіалізують уже поза замком кімнати.
     /// </summary>
+    /// <summary>Тріщини від вибулих, що ось-ось відколються: [вершина, довжина, тиків лишилось]; null — нема.</summary>
+    static int[][]? Chips(IcefloeCore c)
+    {
+        var n = 0;
+        foreach (var b in c.Bodies) if (b.ChipIn > 0) n++;
+        if (n == 0) return null;
+        var r = new int[n][];
+        n = 0;
+        foreach (var b in c.Bodies) if (b.ChipIn > 0) r[n++] = [b.ChipS, IcefloeCore.ChipLen, b.ChipIn];
+        return r;
+    }
+
     object Shot(IcefloeCore c, bool lobby)
     {
         var p = new int[]?[IcefloeCore.Seats];
@@ -370,7 +462,8 @@ public sealed class Icefloe : Game
         {
             var b = c.Bodies[i];
             if (!b.Plays) continue;
-            var fl = (b.Alive ? 1 : 16) | (b.Spikes > 0 ? 2 : 0) | (b.Jug > 0 ? 4 : 0) | (b.Hit > 0 ? 8 : 0) | (b.Want >= 0 ? 32 : 0);
+            var fl = (b.Alive ? 1 : 16) | (b.Spikes > 0 ? 2 : 0) | (b.Jug > 0 ? 4 : 0) | (b.Hit > 0 ? 8 : 0) | (b.Want >= 0 ? 32 : 0)
+                | (!b.Alive && !b.ChipUsed ? 64 : 0);
             p[i] = b.Alive
                 ? [(int)Math.Round(b.B.X), (int)Math.Round(b.B.Y), (int)Math.Round(b.B.Vx), (int)Math.Round(b.B.Vy), b.Face, fl, b.Cd, b.Ammo]
                 : [(int)Math.Round(b.B.X), (int)Math.Round(b.B.Y), 0, 0, b.Face, fl, b.ThrowCd, b.BankAmmo];
@@ -396,6 +489,7 @@ public sealed class Icefloe : Game
             melt = c.Melt,
             iv = c.Iv,
             crack = c.CrackS >= 0 ? new[] { c.CrackS, c.CrackL } : null,
+            chips = Chips(c),
             p,
             s,
             k = kk,

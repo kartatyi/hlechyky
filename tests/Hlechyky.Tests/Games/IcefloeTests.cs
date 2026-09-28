@@ -1300,4 +1300,87 @@ public class IcefloeTests(ITestOutputHelper output)
 
         static int NeedOf(RoomHarness r) => r.View(null).GetProperty("need").GetInt32();
     }
+
+    // ---------- прохід №3: вибулі колють кригу (п. 183) ----------
+
+    [Fact]
+    public void From_the_bank_you_chip_the_ice_once_per_round_where_you_aim()
+    {
+        var h = Table(3);
+        ToGo(h);
+        var c = Core(h);
+        Assert.Equal("Лід колють із берега — спершу шубовсни", c.Chip(0));
+        Sink(h, 0);
+        h.Tick();
+        var b = c.Bodies[0];
+        Assert.False(b.Alive);
+        Assert.True((h.Room.Game.Frame() is { } fr ? Views.Json(fr).GetProperty("p")[0][5].GetInt32() : 0) is var fl && (fl & 64) != 0, "у воді — можна колоти");
+        // спиною до криги — не дістанеш
+        b.Face = IcefloeCore.SectorOf(b.BankAngle * 180 / Math.PI);
+        Assert.Equal("Цілься в кригу — туди лід не дістати", c.Chip(0));
+        // обличчям до центру — відкол навпроти себе
+        b.Face = IcefloeCore.SectorOf(b.BankAngle * 180 / Math.PI + 180);
+        var before = (double[])c.R.Clone();
+        Assert.Null(c.Chip(0));
+        Assert.Equal("Лід уже колов — раз за раунд", c.Chip(0));
+        var v = (int)Math.Round(b.BankAngle / (Math.PI / 12));
+        v = (v % 24 + 24) % 24;
+        h.Tick();
+        Assert.Equal(1, Views.Json(h.Room.Game.Frame()!).GetProperty("chips").GetArrayLength());
+        for (var i = 0; i < IcefloeCore.ChipWarn; i++) h.Tick();
+        Assert.True(c.R[v] < before[v] * 0.8, $"вершина {v}: {before[v]} → {c.R[v]}");
+        Assert.Equal(before[(v + 12) % 24], c.R[(v + 12) % 24], 6);     // протилежний бік цілий
+    }
+
+    // ---------- прохід №3: команди (п. 182) ----------
+
+    [Fact]
+    public void Teams_need_an_even_table_of_four_or_more()
+    {
+        var h = new RoomHarness("icefloe", new { teams = "on" }, 1);
+        foreach (var nick in Nicks.Take(3)) h.Join(nick);
+        Assert.False(h.Start().Ok);
+        Assert.Equal(Icefloe.TeamsText, h.Reply.Message);
+        h.Join(Nicks[3]);
+        Assert.True(h.Start().Ok, h.Reply.Message);
+        var t = h.View(null).GetProperty("teams");
+        Assert.Equal([0, 1, 0, 1], Enumerable.Range(0, 4).Select(i => t[i].GetInt32()));
+    }
+
+    [Fact]
+    public void A_team_takes_the_round_even_with_its_own_on_the_bank_and_wins_the_party_together()
+    {
+        var h = new RoomHarness("icefloe", new { teams = "on", wins = "1" }, 1);
+        foreach (var nick in Nicks.Take(4)) h.Join(nick);
+        Assert.True(h.Start().Ok);
+        ToGo(h);
+        var c = Core(h);
+        Sink(h, 0);                                    // синій упав — але синій №2 ще стоїть
+        h.Tick();
+        Assert.Equal(Icefloe.PhGo, Game(h).Phase);
+        Sink(h, 1);
+        Sink(h, 3);                                    // руді обидва у воді
+        h.Tick();
+        Assert.Equal(Icefloe.PhEnd, Game(h).Phase);
+        Assert.Equal(0, h.View(null).GetProperty("roundTeam").GetInt32());
+        Assert.Equal(1, c.Bodies[0].Wins);
+        Assert.Equal(1, c.Bodies[2].Wins);
+        Assert.Equal(0, c.Bodies[1].Wins);
+        for (var i = 0; i < 200 && h.Room.Status == RoomStatus.Playing; i++) h.Tick();
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0, 2], h.View(null).GetProperty("winners").EnumerateArray().Select(x => x.GetInt32()).Order());
+    }
+
+    [Fact]
+    public void A_teammate_pushing_you_off_is_not_a_pushout()
+    {
+        var c = Bare(4);
+        c.Bodies[0].Team = 0; c.Bodies[1].Team = 1; c.Bodies[2].Team = 0; c.Bodies[3].Team = 1;
+        var b = Put(c, 0, IcefloeCore.Cx + 2000, IcefloeCore.Cy);
+        b.LastBy = 2;
+        b.LastAt = c.T;
+        c.Step(true);
+        Assert.False(b.Alive);
+        Assert.Equal(0, c.Bodies[2].Pushouts);
+    }
 }
