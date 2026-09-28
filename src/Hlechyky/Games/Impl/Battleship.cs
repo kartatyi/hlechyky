@@ -178,25 +178,34 @@ public static class BattleshipRules
 /// Морський бій на 2–4. Гра <see cref="GameInfo.Hidden"/>: свій флот бачить лише господар, решта — самі
 /// влучання й промахи, глядач — усі поля без жодного корабля. Удвох це класика; утрьох і вчотирьох —
 /// «кожен проти кожного»: у свій хід б'єш по будь-якому живому полю, чий флот на дні — той вибув і далі
-/// дивиться, останній на плаву виграв. Тик потрібен не для руху, а для годинників (розстановка й хід):
-/// інакше той, хто пішов пити чай, лишив би стіл висіти назавжди.
+/// дивиться, останній на плаву виграв. Тик потрібен не для руху, а для годинників (розстановка й хід) і
+/// ботів: інакше той, хто пішов пити чай, лишив би стіл висіти назавжди.
+/// Порожні місця може зайняти «Глек підсідає» (<see cref="BattleshipBot"/>) — без нагород, з 🤖 в імені.
 /// </summary>
-public sealed class Battleship : Game
+public sealed partial class Battleship : Game
 {
     public const int Seats = 4;
 
     /// <summary>Тик — чверть секунди: види після пострілу летять із тика (див. spec), і секунда затримки була помітна оком.</summary>
     public const int TickMillis = 250;
 
+    /// <summary>Реакції 😱 😂 🎯 — не частіше за раз на стільки з одного місця.</summary>
+    public const int ReactGapMs = 1200;
+
     enum Phase { Lobby, Placing, Battle, Done }
 
     /// <summary>Одне поле: чий флот, чи готовий господар, куди по ньому вже стріляли і як він сам стріляв.</summary>
     sealed class Side
     {
-        /// <summary>Сидів за столом на старті партії — тобто має поле.</summary>
+        /// <summary>Сидів за столом на старті партії (або це бот) — тобто має поле.</summary>
         public bool In { get; set; }
         /// <summary>Вибув: флот на дні або встає з-за столу.</summary>
         public bool Out { get; set; }
+        /// <summary>Встав з-за столу (а не потонув): такому ні помсти, ні шелягів.</summary>
+        public bool Gone { get; set; }
+        /// <summary>Це «Глек підсідає», а не людина; <see cref="Name"/> — як його звати за столом.</summary>
+        public bool Bot { get; set; }
+        public string Name { get; set; } = "";
         public List<int[]> Ships { get; set; } = [];
         public bool Ready { get; set; }
         /// <summary>Клітинки цього поля, куди влучили.</summary>
@@ -211,23 +220,55 @@ public sealed class Battleship : Game
         public int Sank { get; set; }
 
         public bool Sunk(int[] ship) => ship.All(Hits.Contains);
+        public int[]? ShipAt(int cell) => Ships.FirstOrDefault(s => s.Contains(cell));
         public int Left => Ships.Count(s => !Sunk(s));
         public bool Alive => In && !Out;
     }
 
-    /// <summary>Один постріл для стрічки подій: хто, по кому, куди і що вийшло.</summary>
-    sealed record Shot(int By, int At, int Cell, string Res, int Size, bool Auto);
+    /// <summary>
+    /// Один постріл (чи одна штука з арсеналу) для стрічки подій: хто, по кому, куди і що вийшло. Слово
+    /// Глека (<see cref="Quip"/>) і реакції столу (<see cref="Rx"/>) чіпляються саме до нього.
+    /// </summary>
+    sealed class Shot(int by, int at, int cell, string res, int size, bool auto)
+    {
+        public int By = by, At = at, Cell = cell, Size = size;
+        public string Res = res;
+        public bool Auto = auto;
+        /// <summary>Остання помста вибулого.</summary>
+        public bool Revenge;
+        public string? Quip;
+        /// <summary>Реакція кожного місця на цей постріл: -1 — нема, 0..2 — 😱 😂 🎯.</summary>
+        public readonly int[] Rx = [-1, -1, -1, -1];
+        /// <summary>Штука з арсеналу (plane, torpedo, bomb, radar, repair) — null для звичайного пострілу.</summary>
+        public string? Tool;
+        /// <summary>Усі клітинки, яких торкнулась штука (для анімації); для пострілу — null.</summary>
+        public int[]? Cells;
+        /// <summary>Радар: скільки палуб у квадраті 3×3. Міна: куди прилетів рикошет.</summary>
+        public int? N;
+        /// <summary>Спрацювала міна: рикошет по тому, хто стріляв (hit|sunk|out або none).</summary>
+        public string? Boom;
+    }
 
     static readonly string[] Names = ["синій", "червоний", "зелений", "жовтий"];
 
     public override GameInfo Info { get; } = new(
-        "battleship", "Морський бій", "морський бій", GameGroup.Board, 2, Seats,
+        "battleship", "Морський бій", "морський бій", GameGroup.Board, 1, Seats,
         TickMs: TickMillis, Start: StartMode.ByHost, Hidden: true,
-        Options: [new GameOption("fleet", "Море",
-            [.. BattleshipRules.Seas.Select(s => (s.Key, s.Label))], BattleshipRules.Classic.Key)],
-        Hint: "Розстав кораблі, стріляй по чужих полях. Влучив — стріляєш ще. Удвох або кожен проти кожного на трьох-чотирьох");
+        Options:
+        [
+            new GameOption("fleet", "Море", [.. BattleshipRules.Seas.Select(s => (s.Key, s.Label))], BattleshipRules.Classic.Key),
+            new GameOption("mode", "Режим",
+                [("classic", "Класика"), ("arsenal", "⚓ Арсенал: радар, літак, торпеда, бомба, міна за 🪙 шеляги")], "classic"),
+            new GameOption("clock", "Годинник ходу",
+                [("20", "20 с — темп"), ("40", "40 с"), ("60", "60 с — з запасом")], "40"),
+            new GameOption("bots", "🤖 Глек підсідає на порожні місця",
+                [("0", "ні"), ("1", "один Глек"), ("2", "два"), ("3", "три")], "0"),
+        ],
+        Hint: "Розстав кораблі, стріляй по чужих полях. Влучив — стріляєш ще. Удвох або кожен проти кожного на трьох-чотирьох; порожнє місце може зайняти Глек 🤖");
 
     BattleshipSea _sea = BattleshipRules.Classic;
+    int _turnSeconds = BattleshipRules.TurnSeconds;
+    int _bots;
     Side[] _sides = Fresh();
     Phase _phase = Phase.Lobby;
     int _turn;
@@ -235,10 +276,18 @@ public sealed class Battleship : Game
     DateTimeOffset? _placeUntil;
     /// <summary>Коли гармата того, чий хід, вистрілить сама.</summary>
     DateTimeOffset? _turnUntil;
+    /// <summary>Коли бот, чий зараз постріл, натисне на гачок; null — ще не почав «думати».</summary>
+    DateTimeOffset? _botAt;
     int? _winner;
+    /// <summary>Остання помста: <c>By</c> (щойно потоплений) має один постріл по <c>On</c> (хто потопив).</summary>
+    (int By, int On)? _revenge;
     /// <summary>Хто вибув, по порядку: перший тут — останнє місце.</summary>
     readonly List<int> _sunkOrder = [];
     readonly List<Shot> _feed = [];
+    /// <summary>Реакції: остання (0..2) і лічильник на місце (клієнт показує бульбашку, коли число росте), коли.</summary>
+    readonly int[] _rxE = new int[Seats];
+    readonly int[] _rxN = new int[Seats];
+    readonly DateTimeOffset[] _rxAt = new DateTimeOffset[Seats];
     /// <summary>
     /// Стан змінився після останнього тика. У ігор з TickMs > 0 каркас не шле види після Act (Rooms.Act),
     /// тож роздати їх може лише тик — звідси й прапорець.
@@ -255,21 +304,48 @@ public sealed class Battleship : Game
     {
         if (options.TryGetValue("fleet", out var key) && BattleshipRules.Seas.FirstOrDefault(s => s.Key == key) is { } sea)
             _sea = sea;
+        if (options.TryGetValue("clock", out var clock) && clock is "20" or "40" or "60") _turnSeconds = int.Parse(clock);
+        if (options.TryGetValue("bots", out var bots) && bots is "0" or "1" or "2" or "3") _bots = int.Parse(bots);
+        ConfigureArsenal(options);
+    }
+
+    /// <summary>Сам із собою не повоюєш: треба ще хоч одна людина або Глек на порожньому місці.</summary>
+    public override string? CanStart()
+    {
+        var humans = Enumerable.Range(0, Seats).Count(Ctx.Seated);
+        return humans + Math.Min(_bots, Seats - humans) >= 2 ? null
+            : "Самому нема з ким воювати: хай хтось сяде — або відкрий стіл з «🤖 Глек підсідає»";
     }
 
     public override void Start()
     {
         _sides = Fresh();
         for (var s = 0; s < Seats; s++) _sides[s].In = Ctx.Seated(s);
+        // Глеки сідають на вільні місця за порядком; флот розставляють одразу й кажуть «Готово».
+        var bots = 0;
+        for (var s = 0; s < Seats && bots < _bots; s++)
+        {
+            if (_sides[s].In) continue;
+            var side = _sides[s];
+            side.In = side.Bot = side.Ready = true;
+            side.Name = BattleshipBot.Names[bots++];
+            side.Ships = BattleshipRules.RandomFleet(Ctx.Rng, _sea);
+        }
         _phase = Phase.Placing;
         _turn = First();
         _winner = null;
+        _revenge = null;
+        _botAt = null;
         _sunkOrder.Clear();
         _feed.Clear();
+        Array.Clear(_rxE);
+        Array.Clear(_rxN);
+        Array.Clear(_rxAt);
         _placeUntil = Ctx.Clock.UtcNow.AddSeconds(_sea.PlaceSeconds);
         _turnUntil = null;
         _dirty = false;
         _sentLeft = null;
+        StartArsenal();
     }
 
     IEnumerable<int> Players => Enumerable.Range(0, Seats).Where(s => _sides[s].In);
@@ -289,14 +365,18 @@ public sealed class Battleship : Game
         return seat;
     }
 
-    string Nick(int seat) => Ctx.NickOf(seat) ?? SeatName(seat);
+    string Nick(int seat) => _sides[seat].Bot ? _sides[seat].Name : Ctx.NickOf(seat) ?? SeatName(seat);
+
+    /// <summary>Хто зараз тисне на гачок: у помсту — вибулий месник, інакше той, чий хід.</summary>
+    int Shooter => _revenge?.By ?? _turn;
 
     // ---------- ходи ----------
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == "react") return React(seat, payload);
         if (_phase == Phase.Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
-        if (seat < 0 || seat >= Seats || !_sides[seat].In) return ActResult.Fail("Ти тут не граєш");
+        if (seat < 0 || seat >= Seats || !_sides[seat].In || _sides[seat].Bot) return ActResult.Fail("Ти тут не граєш");
         // Час на розстановку перевіряємо і тут, а не лише в Tick: між тиками є проміжок, і за нього
         // ніхто не має права ані переставити кораблі, ані сказати «Готово» після дзвінка.
         if (_phase == Phase.Placing && _placeUntil is { } until && Ctx.Clock.UtcNow >= until) ForceReady();
@@ -307,8 +387,32 @@ public sealed class Battleship : Game
             "random" => Scatter(seat),
             "ready" => Ready(seat),
             "shoot" => Shoot(seat, payload),
+            "buy" => Buy(seat, payload),
+            "sell" => Sell(seat, payload),
+            "use" => Use(seat, payload),
             _ => ActResult.Fail("Тут так не ходять"),
         };
+    }
+
+    /// <summary>
+    /// 😱 😂 🎯 на свіжий постріл: косметика, тож можна й тому, хто вже на дні (він же дивиться далі), і
+    /// після кінця. Реакція чіпляється до останнього пострілу в стрічці й показується бульбашкою над полем того, хто реагує.
+    /// </summary>
+    ActResult React(int seat, JsonElement payload)
+    {
+        if (seat < 0 || seat >= Seats || !_sides[seat].In || _sides[seat].Bot) return ActResult.Fail("Ти тут не граєш");
+        if (_phase is not (Phase.Battle or Phase.Done) || _feed.Count == 0) return ActResult.Fail("Ще нема на що реагувати");
+        var e = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("e", out var x)
+            && x.ValueKind == JsonValueKind.Number && x.TryGetInt32(out var n) ? n : -1;
+        if (e is < 0 or > 2) return ActResult.Fail("Нема такої реакції");
+        var now = Ctx.Clock.UtcNow;
+        if (now - _rxAt[seat] < TimeSpan.FromMilliseconds(ReactGapMs)) return ActResult.Fail("Не так часто — хай усі розгледять");
+        _rxAt[seat] = now;
+        _rxE[seat] = e;
+        _rxN[seat]++;
+        _feed[^1].Rx[seat] = e;
+        _dirty = true;
+        return ActResult.Done;
     }
 
     ActResult Place(int seat, JsonElement payload)
@@ -360,81 +464,160 @@ public sealed class Battleship : Game
     {
         _phase = Phase.Battle;
         _turn = First();
-        _turnUntil = Ctx.Clock.UtcNow.AddSeconds(BattleshipRules.TurnSeconds);
+        _turnUntil = Ctx.Clock.UtcNow.AddSeconds(_turnSeconds);
+        _botAt = null;
         _dirty = true;
+        DeployMines();
+    }
+
+    /// <summary>Перевірки, спільні для пострілу й штуки з арсеналу: чия черга і по кому.</summary>
+    string? CheckTurn(int seat, JsonElement payload, out int at)
+    {
+        at = -1;
+        if (_phase != Phase.Battle) return "Спершу розстав кораблі";
+        if (_revenge is { } rv)
+        {
+            if (seat != rv.By) return $"Зачекай: {Nick(rv.By)} має останній постріл";
+            if (ReadTarget(payload) is { } t && t != rv.On) return $"Помста — лише по {NickCases.Dative(Nick(rv.On))}";
+            at = rv.On;
+            return null;
+        }
+        if (_sides[seat].Out) return "Твій флот на дні — лишається дивитись";
+        if (seat != _turn) return "Не так швидко — зараз не твій хід";
+        if (ReadTarget(payload) is { } asked)
+        {
+            if (asked == seat) return "По своєму флоту не стріляють";
+            if (asked < 0 || asked >= Seats || !_sides[asked].In) return "Там ні душі";
+            if (_sides[asked].Out) return "Цей флот уже на дні";
+            at = asked;
+            return null;
+        }
+        // Удвох ціль одна, і старий клієнт (та й тести) шлють голе {cell}; у компанії треба сказати, по кому.
+        var foes = Alive.Where(s => s != seat).ToArray();
+        if (foes.Length != 1) return "Обери, по чиєму полю стріляти";
+        at = foes[0];
+        return null;
     }
 
     ActResult Shoot(int seat, JsonElement payload)
     {
-        if (_phase != Phase.Battle) return ActResult.Fail("Спершу розстав кораблі");
-        if (_sides[seat].Out) return ActResult.Fail("Твій флот на дні — лишається дивитись");
-        if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
+        if (CheckTurn(seat, payload, out var at) is { } why) return ActResult.Fail(why);
         if (ReadCell(payload) is not { } cell || cell < 0 || cell >= _sea.Cells)
             return ActResult.Fail("Не зрозумів, куди стріляти");
-
-        int at;
-        if (ReadTarget(payload) is { } asked)
-        {
-            if (asked == seat) return ActResult.Fail("По своєму флоту не стріляють");
-            if (asked < 0 || asked >= Seats || !_sides[asked].In) return ActResult.Fail("Там ні душі");
-            if (_sides[asked].Out) return ActResult.Fail("Цей флот уже на дні");
-            at = asked;
-        }
-        else
-        {
-            // Удвох ціль одна, і старий клієнт (та й тести) шлють голе {cell}; у компанії треба сказати, по кому.
-            var foes = Alive.Where(s => s != seat).ToArray();
-            if (foes.Length != 1) return ActResult.Fail("Обери, по чиєму полю стріляти");
-            at = foes[0];
-        }
-
         var foe = _sides[at];
         if (foe.Hits.Contains(cell) || foe.Misses.Contains(cell)) return ActResult.Fail("Сюди вже стріляли");
         return Fire(seat, at, cell, auto: false);
     }
 
-    /// <summary>Постріл, який уже перевірено: і людський, і той, що гармата робить сама по годиннику.</summary>
-    ActResult Fire(int seat, int at, int cell, bool auto)
-    {
-        var me = _sides[seat];
-        var foe = _sides[at];
-        me.Shots++;
-        _dirty = true;
-        _turnUntil = Ctx.Clock.UtcNow.AddSeconds(BattleshipRules.TurnSeconds);
+    enum Blow { Miss, Hit, Sunk, Out, Mine }
 
-        if (foe.Ships.FirstOrDefault(s => s.Contains(cell)) is not { } ship)
+    /// <summary>
+    /// Одна клітинка під вогнем — без жодного слова про чергу: її ділять і звичайний постріл, і штуки з
+    /// арсеналу, що б'ють кількома клітинками. <paramref name="size"/> — розмір потопленого корабля.
+    /// </summary>
+    Blow Strike(int by, int at, int cell, out int size, Shot? note = null)
+    {
+        size = 0;
+        var me = _sides[by];
+        var foe = _sides[at];
+        if (TripMine(by, at, cell, note)) return Blow.Mine;
+        if (foe.ShipAt(cell) is not { } ship)
         {
             foe.Misses.Add(cell);
-            Note(new Shot(seat, at, cell, "miss", 0, auto));
-            _turn = NextAlive(seat);
-            return ActResult.Accept("Бульк — мимо");
+            return Blow.Miss;
         }
-
         foe.Hits.Add(cell);
+        Unpatch(at, cell);
         me.Scored++;
-        if (!foe.Sunk(ship))
-        {
-            Note(new Shot(seat, at, cell, "hit", 0, auto));
-            return ActResult.Accept("Є влучання! Стріляй ще");
-        }
-
+        if (!foe.Sunk(ship)) return Blow.Hit;
         me.Sank++;
+        size = ship.Length;
         // Навколо потопленого корабля стояти нема чому — домальовуємо промахи самі, щоб не гадати руками.
         foreach (var near in BattleshipRules.Around(ship, _sea)) foe.Misses.Add(near);
-        if (foe.Left > 0)
-        {
-            Note(new Shot(seat, at, cell, "sunk", ship.Length, auto));
-            return ActResult.Accept("Є! Корабель на дні — стріляй ще");
-        }
-
+        if (foe.Left > 0) return Blow.Sunk;
         // Флот цього поля скінчився: господар вибуває і далі тільки дивиться.
         foe.Out = true;
         _sunkOrder.Add(at);
-        Note(new Shot(seat, at, cell, "out", ship.Length, auto));
-        if (Alive.Count() > 1) return ActResult.Accept($"Є! Флот {NickCases.Genitive(Nick(at))} на дні — стріляй ще");
+        return Blow.Out;
+    }
 
-        Win(seat);
-        return ActResult.Accept(Players.Count() > 2 ? "Є! Останній флот на плаву — твій!" : "Є! Флот суперника на дні — твоя взяла!");
+    static string ResOf(Blow b) => b switch
+    {
+        Blow.Miss => "miss", Blow.Hit => "hit", Blow.Sunk => "sunk", Blow.Out => "out", _ => "mine",
+    };
+
+    /// <summary>Постріл, який уже перевірено: і людський, і той, що гармата (чи бот) робить сама.</summary>
+    ActResult Fire(int seat, int at, int cell, bool auto)
+    {
+        _sides[seat].Shots++;
+        _dirty = true;
+        var shot = new Shot(seat, at, cell, "miss", 0, auto) { Revenge = _revenge is not null };
+        var blow = Strike(seat, at, cell, out var size, shot);
+        shot.Res = ResOf(blow);
+        shot.Size = size;
+        Quip(shot);
+        Note(shot);
+        return AfterBlow(seat, at, blow, shot);
+    }
+
+    /// <summary>
+    /// Що далі після пострілу чи штуки: чия черга, чи не скінчилась партія, чи не час для помсти. Тости —
+    /// лише на потоплення й перемогу: промах і влучання видно на полі за чверть секунди з анімацією, а стос
+    /// тостів на телефоні накривав своє поле (№63).
+    /// </summary>
+    ActResult AfterBlow(int seat, int at, Blow blow, Shot shot)
+    {
+        _turnUntil = Ctx.Clock.UtcNow.AddSeconds(_turnSeconds);
+        _botAt = null;
+        var alive = Alive.ToList();
+
+        // Помста відбулась (хоч би чим скінчилась): хід вертається тому, хто потопив месника.
+        if (shot.Revenge && _revenge is { } rv)
+        {
+            _revenge = null;
+            if (alive.Count <= 1 || !alive.Any(s => !_sides[s].Bot)) return Win(Leader(alive), shot);
+            _turn = _sides[rv.On].Alive ? rv.On : NextAlive(rv.On);
+            return blow == Blow.Out ? ActResult.Accept($"Помста вдалась: флот {NickCases.Genitive(Nick(at))} на дні!")
+                : blow == Blow.Sunk ? ActResult.Accept("Помста: корабель на дні!") : ActResult.Done;
+        }
+
+        if (alive.Count <= 1 || !alive.Any(s => !_sides[s].Bot)) return Win(Leader(alive), shot);
+
+        if (blow is Blow.Miss or Blow.Mine || !_sides[seat].Alive)
+        {
+            _turn = NextAlive(seat);
+            return blow == Blow.Mine ? ActResult.Accept("Бабах! Там була міна — рикошет прилетів тобі") : ActResult.Done;
+        }
+        if (blow == Blow.Out)
+        {
+            // Остання помста (№57): у компанії потоплений має один постріл по тому, хто його потопив.
+            if (Players.Count() >= 3 && !_sides[at].Gone)
+            {
+                _revenge = (at, seat);
+                return ActResult.Accept($"Є! Флот {NickCases.Genitive(Nick(at))} на дні — але за ним останній постріл по тобі");
+            }
+            return ActResult.Accept($"Є! Флот {NickCases.Genitive(Nick(at))} на дні — стріляй ще");
+        }
+        return blow == Blow.Sunk ? ActResult.Accept("Є! Корабель на дні — стріляй ще") : ActResult.Done;
+    }
+
+    /// <summary>Хто лишився головним: живий з найбільшим флотом (коли людей на плаву не лишилось — бот-переможець).</summary>
+    int Leader(List<int> alive) =>
+        alive.Count == 0 ? _turn : alive.OrderByDescending(s => _sides[s].Left).ThenBy(s => s).First();
+
+    ActResult Win(int seat, Shot? shot)
+    {
+        WinCore(seat);
+        var human = !_sides[seat].Bot && seat == shot?.By;
+        return !human ? ActResult.Done
+            : ActResult.Accept(Players.Count() > 2 ? "Є! Останній флот на плаву — твій!" : "Є! Флот суперника на дні — твоя взяла!");
+    }
+
+    /// <summary>Слово Глека на потоплення й вибування — з банку, щоб стрічка не була сухою (№60).</summary>
+    void Quip(Shot shot)
+    {
+        if (shot.Res == "out") shot.Quip = BattleshipLines.ForOut(Ctx.Rng, Nick(shot.At));
+        else if (shot.Res == "sunk") shot.Quip = BattleshipLines.ForSunk(Ctx.Rng, shot.Size);
     }
 
     void Note(Shot shot)
@@ -443,32 +626,36 @@ public sealed class Battleship : Game
         if (_feed.Count > 8) _feed.RemoveAt(0);
     }
 
-    void Win(int seat)
+    void WinCore(int seat)
     {
         _phase = Phase.Done;
         _winner = seat;
         _turnUntil = null;
+        _revenge = null;
+        SettleArsenal();
         var players = Players.ToArray();
         var scores = players.ToDictionary(s => s, s => (long)_sides[s].Sank);
+        var log = Ledger();
         if (players.Length == 2)
         {
             var lost = players.First(s => s != seat);
             // Рахунок — потоплені кораблі: у переможця весь флот суперника, у суперника стільки, скільки встиг.
             Ctx.Finish([seat],
-                $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} {_sides[seat].Sank}:{_sides[lost].Sank} "
-                + $"{Ctx.NickOf(lost)} {SeatName(lost)}, пострілів {_sides[seat].Shots}", scores);
+                $"{Info.Title}: {Nick(seat)} {SeatName(seat)} {_sides[seat].Sank}:{_sides[lost].Sank} "
+                + $"{Nick(lost)} {SeatName(lost)}, пострілів {_sides[seat].Shots}{log}", scores);
             return;
         }
         var rest = Places().Skip(1).Select(s => $"{Nick(s)} {SeatName(s)}");
         Ctx.Finish([seat],
-            $"{Info.Title}: останній флот на плаву — {Ctx.NickOf(seat)} {SeatName(seat)} (потоплено: {_sides[seat].Sank}); "
-            + $"далі {string.Join(", ", rest)}", scores);
+            $"{Info.Title}: останній флот на плаву — {Nick(seat)} {SeatName(seat)} (потоплено: {_sides[seat].Sank}); "
+            + $"далі {string.Join(", ", rest)}{log}", scores);
     }
 
     /// <summary>Місця від першого до останнього: переможець, потім вибулі у зворотному порядку.</summary>
     IEnumerable<int> Places()
     {
-        var alive = Alive.OrderByDescending(s => _sides[s].Left).ToList();
+        var alive = Alive.OrderByDescending(s => _sides[s].Left).ThenBy(s => s == _winner ? 0 : 1).ToList();
+        if (_winner is { } w && alive.Remove(w)) alive.Insert(0, w);
         return alive.Concat(Enumerable.Reverse(_sunkOrder));
     }
 
@@ -511,7 +698,7 @@ public sealed class Battleship : Game
         payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("at", out var a)
             && a.ValueKind == JsonValueKind.Number && a.TryGetInt32(out var n) ? n : null;
 
-    // ---------- годинники ----------
+    // ---------- годинники й боти ----------
 
     public override TickResult Tick()
     {
@@ -522,7 +709,16 @@ public sealed class Battleship : Game
             _dirty = false;
             return TickResult.Both;
         }
-        if (_phase == Phase.Battle && _turnUntil is { } turnUntil && now >= turnUntil) AutoShot();
+        if (_phase == Phase.Battle)
+        {
+            if (_sides[Shooter].Bot)
+            {
+                // Бот «думає» секунду: миттєвий постріл читався б як глюк, а людям треба встигнути побачити попередній.
+                if (_botAt is null) _botAt = now.AddMilliseconds(BattleshipBot.ThinkMs);
+                else if (now >= _botAt) BotMove();
+            }
+            else if (_turnUntil is { } turnUntil && now >= turnUntil) AutoShot();
+        }
         if (_dirty)
         {
             _dirty = false;
@@ -542,14 +738,40 @@ public sealed class Battleship : Game
         ? Math.Max(0, (int)Math.Ceiling((until - Ctx.Clock.UtcNow).TotalSeconds))
         : null;
 
+    /// <summary>Недобиті влучання на полі — те, що бачить кожен за столом.</summary>
+    List<int> WoundedOf(int at) => BattleshipBot.Wounded(_sides[at].Hits, _sides[at].Ships.Where(_sides[at].Sunk));
+
+    /// <summary>
+    /// Хід бота: спершу добиває підбите (на будь-якому полі), інакше — випадковий суперник і шаховий візерунок.
+    /// В Арсеналі інколи пускає в хід свою штуку. У помсту — лише по кривднику.
+    /// </summary>
+    void BotMove()
+    {
+        _botAt = null;
+        var seat = Shooter;
+        int at;
+        if (_revenge is { } rv) at = rv.On;
+        else
+        {
+            var foes = Alive.Where(s => s != seat).ToList();
+            if (foes.Count == 0) return;
+            var hurt = foes.Where(s => WoundedOf(s).Count > 0).ToList();
+            at = hurt.Count > 0 ? hurt[Ctx.Rng.Next(hurt.Count)] : foes[Ctx.Rng.Next(foes.Count)];
+            if (hurt.Count == 0 && BotTool(seat, at)) return;
+        }
+        var foe = _sides[at];
+        var cell = BattleshipBot.Aim(Ctx.Rng, _sea, foe.Hits, foe.Misses, foe.Ships.Where(foe.Sunk));
+        if (cell >= 0) Fire(seat, at, cell, auto: false);
+    }
+
     /// <summary>
     /// Хід простояв. Гармата стріляє сама — навмання, по випадковому живому полю: чекати без кінця нечесно
-    /// щодо решти столу, а пропуск ходу був би подарунком тому, хто задумався.
+    /// щодо решти столу, а пропуск ходу був би подарунком тому, хто задумався. Простояна помста — по кривднику.
     /// </summary>
     void AutoShot()
     {
-        var seat = _turn;
-        var foes = Alive.Where(s => s != seat).ToArray();
+        var seat = Shooter;
+        var foes = _revenge is { } rv ? [rv.On] : Alive.Where(s => s != seat).ToArray();
         if (foes.Length == 0) return;
         var at = foes[Ctx.Rng.Next(foes.Length)];
         var foe = _sides[at];
@@ -582,31 +804,43 @@ public sealed class Battleship : Game
 
     /// <summary>
     /// Хтось устав. Удвох — це техпоразка, як і було. У компанії партія не ламається: флот того, хто пішов,
-    /// іде на дно, решта грають далі; кінець — лише коли на плаву лишився один.
+    /// іде на дно, решта грають далі; кінець — лише коли на плаву лишився один (або самі Глеки).
     /// </summary>
     public override void OnLeave(int seat)
     {
-        if (seat < 0 || seat >= Seats || !_sides[seat].Alive || _phase is Phase.Lobby or Phase.Done) return;
+        if (seat < 0 || seat >= Seats || _phase is Phase.Lobby or Phase.Done) return;
+        if (!_sides[seat].Alive)
+        {
+            // Вибулий устав: партії це не чіпає, лише його помста (якщо ще не відбулась) згорає.
+            if (_revenge is { } gone && gone.By == seat) { _revenge = null; _turn = _sides[gone.On].Alive ? gone.On : NextAlive(gone.On); _dirty = true; }
+            _sides[seat].Gone = true;
+            return;
+        }
         var rest = Alive.Where(s => s != seat).ToArray();
         _sides[seat].Out = true;
+        _sides[seat].Gone = true;
         _sunkOrder.Add(seat);
         _dirty = true;
-        if (rest.Length >= 2)
+        if (rest.Length >= 2 && rest.Any(s => !_sides[s].Bot))
         {
-            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, флот іде на дно — решта б'ються далі");
+            Ctx.Log($"{Info.Title}: {Nick(seat)} встає з-за столу, флот іде на дно — решта б'ються далі");
             Note(new Shot(seat, seat, -1, "left", 0, false));
+            if (_revenge is { } rv && rv.On == seat) { _revenge = null; _turn = NextAlive(seat); }
             if (_phase == Phase.Placing && rest.All(s => _sides[s].Ready)) Battle();
-            else if (_phase == Phase.Battle && _turn == seat)
+            else if (_phase == Phase.Battle && _turn == seat && _revenge is null)
             {
                 _turn = NextAlive(seat);
-                _turnUntil = Ctx.Clock.UtcNow.AddSeconds(BattleshipRules.TurnSeconds);
+                _turnUntil = Ctx.Clock.UtcNow.AddSeconds(_turnSeconds);
+                _botAt = null;
             }
             return;
         }
         _phase = Phase.Done;
-        _winner = rest.Length == 1 ? rest[0] : null;
+        _winner = rest.Length == 0 ? null : rest.Length == 1 ? rest[0] : Leader([.. rest]);
         _turnUntil = null;
-        Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
+        _revenge = null;
+        SettleArsenal();
+        Ctx.Finish(_winner is { } w ? [w] : [], $"{Info.Title}: {Nick(seat)} встає з-за столу, партію не дограли");
     }
 
     // ---------- види ----------
@@ -623,6 +857,7 @@ public sealed class Battleship : Game
         ready = _sides[seat].Ready,
         hits = _sides[seat].Hits.Order().ToArray(),
         misses = _sides[seat].Misses.Order().ToArray(),
+        mines = MinesOf(seat),
     };
 
     /// <summary>
@@ -646,13 +881,16 @@ public sealed class Battleship : Game
             ready = side.Ready,
             left = LeftOf(of),
             @out = side.Out,
+            bot = side.Bot ? side.Name : null,
             reveal = _phase == Phase.Done ? side.Ships.Select(s => s.Order().ToArray()).ToArray() : null,
+            boom = BoomOf(of),
+            patched = PatchedOf(of),
         };
     }
 
     public override object View(int? seat)
     {
-        var mine = seat is >= 0 and < Seats && _sides[seat.Value].In ? seat.Value : -1;
+        var mine = seat is >= 0 and < Seats && _sides[seat.Value].In && !_sides[seat.Value].Bot ? seat.Value : -1;
         var boards = Enumerable.Range(0, Seats).Select(s => _sides[s].In ? Known(s) : null).ToArray();
         // «Чуже поле» старого виду на двох: суперник. У компанії клієнт бере boards, а тут — перший живий чужий.
         var rival = Players.Where(s => s != mine).OrderByDescending(s => _sides[s].Alive).FirstOrDefault(-1);
@@ -660,17 +898,27 @@ public sealed class Battleship : Game
         return new
         {
             phase = PhaseName,
-            turn = _phase == Phase.Battle ? _turn : (int?)null,
+            turn = _phase == Phase.Battle ? Shooter : (int?)null,
+            revenge = _phase == Phase.Battle && _revenge is { } rv ? new { by = rv.By, on = rv.On } : null,
             placeUntil = _phase == Phase.Placing ? _placeUntil?.ToString("o") : null,
             turnUntil = _phase == Phase.Battle ? _turnUntil?.ToString("o") : null,
             placeSeconds = _sea.PlaceSeconds,
-            turnSeconds = BattleshipRules.TurnSeconds,
+            turnSeconds = _turnSeconds,
             sea = new { key = _sea.Key, w = _sea.W, h = _sea.H, fleet = _sea.Fleet },
             players = Players.ToArray(),
+            bots = _bots,
             me = mine >= 0 ? Own(mine) : null,
             enemy = boards[rival] ?? Known(rival),
             boards,
-            feed = _feed.Select(f => new { by = f.By, at = f.At, cell = f.Cell, res = f.Res, size = f.Size, auto = f.Auto }).ToArray(),
+            feed = _feed.Select(f => new
+            {
+                by = f.By, at = f.At, cell = f.Cell, res = f.Res, size = f.Size, auto = f.Auto,
+                revenge = f.Revenge, quip = f.Quip, rx = f.Rx.Any(x => x >= 0) ? (int[])f.Rx.Clone() : null,
+                tool = f.Tool, cells = f.Cells, n = f.Tool == "radar" && (mine < 0 || mine == f.By) ? f.N : null, boom = f.Boom,
+            }).ToArray(),
+            react = (int[])_rxE.Clone(),
+            reactN = (int[])_rxN.Clone(),
+            arsenal = ArsenalView(mine),
             shots = _sides.Sum(s => s.Shots),
             result = _winner is { } w
                 ? new
@@ -689,7 +937,7 @@ public sealed class Battleship : Game
     public override object? Frame() => new
     {
         phase = PhaseName,
-        turn = _phase == Phase.Battle ? _turn : (int?)null,
+        turn = _phase == Phase.Battle ? Shooter : (int?)null,
         placeLeft = PlaceLeft(),
         ready = _sides.Select(s => s.Ready).ToArray(),
         left = Enumerable.Range(0, Seats).Select(LeftOf).ToArray(),
@@ -700,17 +948,21 @@ public sealed class Battleship : Game
     // ---------- збереження ----------
 
     sealed record SideSnap(int[][] Ships, bool Ready, int[] Hits, int[] Misses, int Shots,
-        bool In = true, bool Out = false, int Scored = 0, int Sank = 0);
-    sealed record ShotSnap(int By, int At, int Cell, string Res, int Size, bool Auto);
+        bool In = true, bool Out = false, int Scored = 0, int Sank = 0, bool Bot = false, string? Name = null, bool Gone = false);
+    sealed record ShotSnap(int By, int At, int Cell, string Res, int Size, bool Auto,
+        bool Revenge = false, string? Quip = null, string? Tool = null, int[]? Cells = null, int? N = null, string? Boom = null);
     sealed record Snap(string Phase, int Turn, int? Winner, DateTimeOffset? PlaceUntil, SideSnap[] Sides,
-        string? Sea = null, DateTimeOffset? TurnUntil = null, int[]? SunkOrder = null, ShotSnap[]? Feed = null);
+        string? Sea = null, DateTimeOffset? TurnUntil = null, int[]? SunkOrder = null, ShotSnap[]? Feed = null,
+        int TurnSeconds = BattleshipRules.TurnSeconds, int Bots = 0, int[]? Revenge = null, string? Arsenal = null);
 
     public override string? Save() => JsonSerializer.Serialize(new Snap(
         PhaseName, _turn, _winner, _placeUntil,
         [.. _sides.Select(s => new SideSnap(
-            [.. s.Ships], s.Ready, [.. s.Hits.Order()], [.. s.Misses.Order()], s.Shots, s.In, s.Out, s.Scored, s.Sank))],
+            [.. s.Ships], s.Ready, [.. s.Hits.Order()], [.. s.Misses.Order()], s.Shots, s.In, s.Out, s.Scored, s.Sank,
+            s.Bot, s.Bot ? s.Name : null, s.Gone))],
         _sea.Key, _turnUntil, [.. _sunkOrder],
-        [.. _feed.Select(f => new ShotSnap(f.By, f.At, f.Cell, f.Res, f.Size, f.Auto))]));
+        [.. _feed.Select(f => new ShotSnap(f.By, f.At, f.Cell, f.Res, f.Size, f.Auto, f.Revenge, f.Quip, f.Tool, f.Cells, f.N, f.Boom))],
+        _turnSeconds, _bots, _revenge is { } rv ? [rv.By, rv.On] : null, SaveArsenal()));
 
     public override void Load(string json)
     {
@@ -724,6 +976,10 @@ public sealed class Battleship : Game
         _winner = snap.Winner;
         _placeUntil = snap.PlaceUntil;
         _turnUntil = snap.TurnUntil;
+        _turnSeconds = snap.TurnSeconds;
+        _bots = snap.Bots;
+        _revenge = snap.Revenge is [var by, var on] ? (by, on) : null;
+        _botAt = null;
         _sides = Fresh();
         // Старий знімок (до компанії) мав рівно два поля і не знав про In — там сиділи обидва.
         for (var seat = 0; seat < Math.Min(Seats, snap.Sides.Length); seat++)
@@ -732,6 +988,9 @@ public sealed class Battleship : Game
             var side = _sides[seat];
             side.In = from.In;
             side.Out = from.Out;
+            side.Gone = from.Gone;
+            side.Bot = from.Bot;
+            side.Name = from.Name ?? "";
             side.Ships = [.. from.Ships];
             side.Ready = from.Ready;
             side.Shots = from.Shots;
@@ -743,7 +1002,10 @@ public sealed class Battleship : Game
         _sunkOrder.Clear();
         _sunkOrder.AddRange(snap.SunkOrder ?? []);
         _feed.Clear();
-        foreach (var f in snap.Feed ?? []) _feed.Add(new Shot(f.By, f.At, f.Cell, f.Res, f.Size, f.Auto));
+        foreach (var f in snap.Feed ?? [])
+            _feed.Add(new Shot(f.By, f.At, f.Cell, f.Res, f.Size, f.Auto)
+            { Revenge = f.Revenge, Quip = f.Quip, Tool = f.Tool, Cells = f.Cells, N = f.N, Boom = f.Boom });
+        LoadArsenal(snap.Arsenal);
         _dirty = false;
     }
 }

@@ -378,7 +378,7 @@ public class BattleshipTests
         var r = h.Act(0, "shoot", new { cell = 0 });   // 0 — ніс червоного чотирипалубного
 
         Assert.True(r.Ok);
-        Assert.Equal("Є влучання! Стріляй ще", r.Message);
+        Assert.Equal("", r.Message);   // №63: на звичайне влучання тосту нема — його видно на полі
         Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
         Assert.Equal([0], Ints(Prop(h.View(0), "enemy", "hits")));
         Assert.Equal(1, h.View(0).GetProperty("shots").GetInt32());
@@ -390,7 +390,7 @@ public class BattleshipTests
         var h = Battle();
         var r = h.Act(0, "shoot", new { cell = 99 });
 
-        Assert.Equal("Бульк — мимо", r.Message);
+        Assert.Equal("", r.Message);   // №63: і на промах тосту нема
         Assert.Equal(1, h.View(0).GetProperty("turn").GetInt32());
         Assert.Equal([99], Ints(Prop(h.View(0), "enemy", "misses")));
         Assert.True(h.Act(1, "shoot", new { cell = 99 }).Ok);   // по своєму полю стріляти можна: воно чуже для нього
@@ -605,7 +605,7 @@ public class BattleshipTests
         // на 2–4 Ело не рахується (Rewards.Elo лише для MaxPlayers == 2), тож і рейтинговою гру не звемо
         Assert.False(game.Rated);
         Assert.Equal(Battleship.TickMillis, game.TickMs);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);   // сам — лише з «🤖 Глек підсідає» (CanStart)
         Assert.Equal(4, game.MaxPlayers);
         Assert.Equal("byHost", game.Start);
         Assert.Equal("battleship", game.Module);
@@ -666,6 +666,24 @@ public class BattleshipTests
     {
         foreach (var cell in (at % 2 == 0 ? Blue : Red).SelectMany(s => s))
             Assert.True(h.Act(by, "shoot", new { cell, at }).Ok);
+        Avenge(h);
+    }
+
+    /// <summary>
+    /// Остання помста (№57): у компанії щойно потоплений має один постріл по кривднику. Тут він мститься мимо —
+    /// у найдальшу вільну клітинку, — щоб решта перевірок ішла своїм ходом.
+    /// </summary>
+    static void Avenge(RoomHarness h)
+    {
+        var v = h.View(null);
+        if (v.GetProperty("revenge").ValueKind != JsonValueKind.Object) return;
+        var by = v.GetProperty("revenge").GetProperty("by").GetInt32();
+        var on = v.GetProperty("revenge").GetProperty("on").GetInt32();
+        var board = v.GetProperty("boards")[on];
+        var shot = Ints(board.GetProperty("hits")).Concat(Ints(board.GetProperty("misses"))).ToHashSet();
+        var cells = v.GetProperty("sea").GetProperty("w").GetInt32() * v.GetProperty("sea").GetProperty("h").GetInt32();
+        var water = Enumerable.Range(0, cells).Reverse().First(c => !shot.Contains(c));
+        Assert.True(h.Act(by, "shoot", new { cell = water, at = on }).Ok);
     }
 
     /// <summary>Клітинка, де нема кораблів ні в Blue, ні в Red: гарантований промах по будь-кому.</summary>
@@ -711,7 +729,7 @@ public class BattleshipTests
     public void A_shot_lands_on_the_chosen_board_only()
     {
         var h = Company(3);
-        Assert.Equal("Є влучання! Стріляй ще", h.Act(0, "shoot", new { cell = 0, at = 2 }).Message);   // 0 — ніс Blue у зеленого
+        Assert.True(h.Act(0, "shoot", new { cell = 0, at = 2 }).Ok);   // 0 — ніс Blue у зеленого
         var v = h.View(1);
         Assert.Equal([0], Ints(Prop(v.GetProperty("boards")[2], "hits")));
         Assert.Empty(Ints(Prop(v.GetProperty("boards")[1], "hits")));
@@ -743,13 +761,14 @@ public class BattleshipTests
         Assert.True(v.GetProperty("boards")[1].GetProperty("out").GetBoolean());
         Assert.Equal(0, v.GetProperty("boards")[1].GetProperty("left").GetInt32());
         var feed = v.GetProperty("feed");
-        Assert.Equal("out", feed[feed.GetArrayLength() - 1].GetProperty("res").GetString());
+        // останній у стрічці — помста вибулого (№57), а перед нею — «увесь флот на дні»
+        Assert.Contains(feed.EnumerateArray(), f => f.GetProperty("res").GetString() == "out");
         // хто вибув, той не стріляє, і в черзі його більше нема
         Assert.Equal("Цей флот уже на дні", h.Act(0, "shoot", new { cell = 5, at = 1 }).Message);
         h.Act(0, "shoot", new { cell = Water, at = 2 });
         Assert.Equal(2, h.View(0).GetProperty("turn").GetInt32());
         Assert.Equal("Твій флот на дні — лишається дивитись", h.Act(1, "shoot", new { cell = 0, at = 0 }).Message);
-        h.Act(2, "shoot", new { cell = Water, at = 0 });
+        h.Act(2, "shoot", new { cell = Water - 1, at = 0 });
         Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
     }
 
@@ -947,7 +966,10 @@ public class BattleshipTests
         for (var s = 0; s < 3; s++) h.Act(s, "ready");
         Assert.Equal("Не зрозумів, куди стріляти", h.Act(0, "shoot", new { cell = 64, at = 1 }).Message);
         foreach (var at in new[] { 1, 2 })
+        {
             foreach (var cell in quick.SelectMany(x => x)) Assert.True(h.Act(0, "shoot", new { cell, at }).Ok);
+            if (at == 1) Avenge(h);
+        }
         Assert.Equal([0], h.Room.Result!.Winners);
         Assert.Equal(20, Ints(Prop(h.View(0), "result", "hits"))[0]);
     }

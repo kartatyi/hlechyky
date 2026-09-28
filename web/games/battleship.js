@@ -8,9 +8,14 @@
       me: { ships, ready, hits, misses } | null,
       enemy: known,                              // старе «чуже поле» на двох
       boards: [known | null] × 4,                // публічне знання про кожне поле; null — місце не грає
-      feed: [{ by, at, cell, res: 'miss'|'hit'|'sunk'|'out'|'left', size, auto }],
+      feed: [{ by, at, cell, res: 'miss'|'hit'|'sunk'|'out'|'left'|'mine', size, auto, revenge, quip, rx: [4]|null,
+               tool, cells, n, boom }],
+      revenge: { by, on } | null,                 // остання помста: вибулий by має один постріл по on
+      react: [4], reactN: [4],                     // остання реакція місця і лічильник (бульбашка — коли росте)
+      bots, arsenal,
       shots, result: { winner, shots[], hits[], sank[], places[] } | null }
-    known = { hits, misses, sunk, ready, left, out, reveal }   // reveal — увесь флот, лише після кінця
+    known = { hits, misses, sunk, ready, left, out, bot, reveal, boom, patched }   // reveal — увесь флот, лише після кінця
+    bot — ім'я Глека (з 🤖), якщо місце зайняв бот «Глек підсідає»
   Кадр: { phase, turn, placeLeft, ready[], left[], shots, winner } — кораблів там нема й бути не може:
   кадр летить усім одразу.
 
@@ -110,6 +115,10 @@
         round: 0,
         sea: '',
         fx: '',             // останній постріл, який уже анімували (щоб не блимати на кожен вид)
+        rxSeen: null,       // лічильники реакцій з минулого виду
+        rxTimers: [],
+        rxTimer: 0,
+        rxUntil: 0,
       };
     }
     return root._bs;
@@ -243,8 +252,15 @@
 
   const players = (v) => (Array.isArray(v.players) && v.players.length ? v.players : [0, 1]);
 
+  /// Імена Глеків за столом: місця ботів у каркасі порожні, тож ім'я береться з виду.
+  let BOTS = [];
+  const nameOf = (ctx, seat) => BOTS[seat] || ctx.nickOf(seat) || ctx.seatName(seat);
+
+  /// Реакції на свіжий постріл (№62): 😱 😂 🎯.
+  const REACTS = [['😱', 'ой-йой'], ['😂', 'ха!'], ['🎯', 'снайпер']];
+
   function who(ctx, seat, bold) {
-    const name = ctx.esc(ctx.nickOf(seat) || ctx.seatName(seat));
+    const name = ctx.esc(nameOf(ctx, seat));
     return '<span class="bs-who s' + seat + '">' + MARK[seat] + ' ' + (bold ? '<b>' + name + '</b>' : name) + '</span>';
   }
 
@@ -253,6 +269,12 @@
     const auto = f.auto ? '⏰ ' : '';
     const by = who(ctx, f.by), at = who(ctx, f.at);
     const tail = f.auto ? ' <i>(гармата вистрілила сама)</i>' : '';
+    if (f.tool && TOOL_LINE[f.tool]) return TOOL_LINE[f.tool](ctx, f, by, at);
+    if (f.res === 'mine') return '💥 ' + by + ' → ' + at + ': міна! Рикошет — ' + (BOOM[f.boom] || 'мимо');
+    if (f.revenge) {
+      const r = { miss: 'мимо', hit: 'влучання!', sunk: (DECKS[f.size] || 'корабель') + ' на дні!', out: 'флот на дні!' }[f.res] || '';
+      return auto + '💀 Остання помста: ' + by + ' → ' + at + ': ' + r + tail;
+    }
     switch (f.res) {
       case 'miss': return auto + '💦 ' + by + ' → ' + at + ': мимо' + tail;
       case 'hit': return auto + '🎯 ' + by + ' → ' + at + ': влучання!' + tail;
@@ -263,20 +285,80 @@
     }
   }
 
+  /// Реакції столу на постріл: смайлик кожного, хто відгукнувся (нік — у підказці).
+  function rxLine(ctx, f) {
+    if (!f.rx) return '';
+    const out = [];
+    f.rx.forEach((e, seat) => {
+      if (e >= 0 && REACTS[e]) out.push('<span class="bs-rxi" title="' + ctx.esc(nameOf(ctx, seat)) + '">' + REACTS[e][0] + '</span>');
+    });
+    return out.length ? ' <span class="bs-rxs">' + out.join('') + '</span>' : '';
+  }
+
+  /// Рядки стрічки для штук з арсеналу — див. блок «Арсенал» нижче.
+  const TOOL_LINE = {};
+  const BOOM = { hit: 'влучання по ньому самому', sunk: 'власний корабель на дні', out: 'власний флот на дні', none: 'мимо' };
+
   function feed(root, ctx, v) {
     let el = root.querySelector(':scope > .bs-feed');
-    const items = (v.feed || []).slice(-3).reverse();
-    const show = (v.phase === 'battle' || v.phase === 'done') && items.length && players(v).length > 2;
-    // Удвох стрічка — зайва балачка: усе видно на двох полях. У компанії без неї не зрозуміти, хто кого.
+    // Удвох — два останні рядки (там слово Глека, реакції й арсенал), у компанії — три: без них не зрозуміти, хто кого.
+    const items = (v.feed || []).slice(players(v).length > 2 ? -3 : -2).reverse();
+    const show = (v.phase === 'battle' || v.phase === 'done') && items.length;
     if (!show) { if (el) el.remove(); return; }
     if (!el) {
       el = document.createElement('div');
       el.className = 'bs-feed';
-      el.setAttribute('aria-live', 'polite');
+      el.innerHTML = '<div class="bs-lines" aria-live="polite"></div><div class="bs-react" hidden>'
+        + REACTS.map((r, i) => '<button type="button" class="ghost bs-rxb" data-rx="' + i + '" title="' + r[1] + '">' + r[0] + '</button>').join('')
+        + '</div>';
+      el.querySelector('.bs-react').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-rx]');
+        const o = el._o;
+        if (!b || !o || b.disabled) return;
+        const st = state(root);
+        st.rxUntil = performance.now() + 1250;
+        el.querySelectorAll('.bs-rxb').forEach((x) => { x.disabled = true; });
+        clearTimeout(st.rxTimer);
+        st.rxTimer = setTimeout(() => el.querySelectorAll('.bs-rxb').forEach((x) => { x.disabled = false; }), 1300);
+        o.ctx.act('react', { e: +b.dataset.rx }).catch(() => {});
+      });
       root.insertBefore(el, root.firstChild);
     }
-    const html = items.map((f, i) => '<div class="' + (i ? 'old' : 'new') + '">' + feedLine(ctx, f) + '</div>').join('');
-    setHtml(el, html);
+    el._o = { ctx };
+    const html = items.map((f, i) => {
+      const quip = f.quip ? '<div class="bs-quip">🏺 ' + ctx.esc(f.quip) + '</div>' : '';
+      return '<div class="' + (i ? 'old' : 'new') + '">' + feedLine(ctx, f) + (i ? '' : rxLine(ctx, f)) + (i ? '' : quip) + '</div>';
+    }).join('');
+    setHtml(el.firstElementChild, html);
+    // Реагувати може кожен, хто сидить за столом, — і той, чий флот уже на дні: йому саме є що робити.
+    const rx = el.querySelector('.bs-react');
+    const can = !!(ctx.mine && ctx.seat != null && v.boards && v.boards[ctx.seat]);
+    if (rx.hidden === can) rx.hidden = !can;
+  }
+
+  /// Бульбашка реакції над полем того, хто відреагував: лише коли його лічильник виріс.
+  function bubbles(root, ctx, v) {
+    const st = state(root);
+    const n = v.reactN || [], e = v.react || [];
+    const seen = st.rxSeen;
+    st.rxSeen = n.slice();
+    if (!seen) return;
+    for (let seat = 0; seat < 4; seat++) {
+      if (!((n[seat] | 0) > (seen[seat] | 0))) continue;
+      const key = seat === ctx.seat && ctx.mine ? 'me' : 's' + seat;
+      const cap = root.querySelector('.bs-side[data-side="' + key + '"] > .bs-cap');
+      const r = REACTS[e[seat] | 0];
+      if (!cap || !r) continue;
+      const side = cap.parentElement;
+      const old = side.querySelector(':scope > .bs-rx');
+      if (old) old.remove();
+      const b = document.createElement('span');
+      b.className = 'bs-rx';
+      b.innerHTML = '<b>' + r[0] + '</b><small>' + r[1] + '</small>';
+      side.appendChild(b);
+      const t = setTimeout(() => { b.remove(); st.rxTimers = st.rxTimers.filter((x) => x !== t); }, 1900);
+      st.rxTimers.push(t);
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -433,16 +515,19 @@
     }
     const many = players(v).length > 2;
     const meOut = ctx.mine && v.boards && v.boards[ctx.seat] && v.boards[ctx.seat].out;
+    const rv = v.revenge;
     // «Твій хід» / «Ходить …» каркас пише сам у статусі — тут лише те, чого він не знає.
     let say = '';
-    if (meOut) say = '☠️ Твій флот на дні. Дивись, хто кого';
+    if (rv && rv.by === ctx.seat && ctx.mine) say = '💀 Остання помста: один постріл по полю ' + who(ctx, rv.on, true);
+    else if (rv) say = '💀 ' + who(ctx, rv.by, true) + ' мститься: останній постріл по ' + who(ctx, rv.on);
+    else if (meOut) say = '☠️ Твій флот на дні. Дивись, хто кого';
     else if (ctx.myTurn && many) say = '🎯 Тисни клітинку на будь-якому чужому полі';
     // Удвох «Твій хід» пише каркас під карткою, але на телефоні смуга липне до низу екрана, а статус — ні.
     else if (ctx.myTurn) say = '<span class="bs-narrow">🎯 Твій постріл</span>';
     else if (!ctx.myTurn) say = '⏳ ' + who(ctx, v.turn, true) + ' цілиться';
     const sayEl = el.querySelector('.bs-say');
     setHtml(sayEl, say);
-    el.classList.toggle('mine', !!ctx.myTurn);
+    el.classList.toggle('mine', !!ctx.myTurn && (!meOut || !!(rv && rv.by === ctx.seat)));
     if (v.turnUntil) HGames.ui.timerArc(el, v.turnUntil, (v.turnSeconds || 40) * 1000);
   }
 
@@ -481,7 +566,8 @@
     }
     const html = '<b>⚓ ' + (g.key === 'quick' ? 'Швидке море 8×8, шість кораблів' : 'Класичне море 10×10, десять кораблів') + '</b>'
       + '<span>Удвох — дуель. Утрьох-учетверох — кожен проти кожного: б\'єш по кому хочеш, чий флот на дні — дивиться далі, останній на плаву виграв.</span>'
-      + '<span class="muted">Від двох до чотирьох капітанів; починає господар кнопкою «Почати».</span>';
+      + (v.bots ? '<span>🤖 На порожні місця підсяде Глек (' + v.bots + '): добиває підбите, шукає шаховим візерунком. Черепків за перемогу над ним нема.</span>' : '')
+      + '<span class="muted">Від двох до чотирьох капітанів (разом із Глеками); починає господар кнопкою «Почати». Утрьох-учетверох потоплений має останній постріл по кривднику.</span>';
     setHtml(el, html);
   }
 
@@ -529,6 +615,7 @@
 
     const seats = players(v);
     const boards = v.boards || [];
+    BOTS = boards.map((b) => (b && b.bot) || null);
     const knownOf = (seat) => boards[seat] || (seat !== ctx.seat ? v.enemy : null) || {};
     const iPlay = ctx.mine && !!v.me;
     const keep = new Set();
@@ -595,11 +682,14 @@
         keep.add(key);
         const marks = knownMarks(known);
         const dead = !!known.out;
-        const canShoot = phase === 'battle' && ctx.myTurn && iPlay && !meOut && !dead;
+        const rv = v.revenge;
+        const canShoot = phase === 'battle' && ctx.myTurn && iPlay && !dead
+          && (rv ? rv.by === ctx.seat && rv.on === seat : !meOut);
         const cap = who(ctx, seat) + ' ' + (dead ? '<b class="dead">на дні</b>'
           : '<b title="Кораблів на плаву">🚢 ' + (known.left == null ? '' : known.left) + '</b>');
         const side = ensureSide(host, key, cap, g,
-          key + (v.turn === seat && phase === 'battle' ? ' turn' : '') + (dead ? ' out' : '') + (canShoot ? ' aim' : ''));
+          key + (v.turn === seat && phase === 'battle' ? ' turn' : '') + (dead ? ' out' : '') + (canShoot ? ' aim' : '')
+            + (known.bot ? ' bot' : ''));
         paintGrid(side, g,
           (i) => (marks.get(i) || (s.pending.has(seat + ':' + i) ? 'wait' : '')) + fxOf(seat, i),
           canShoot ? (cell) => {
@@ -623,6 +713,7 @@
     tools(root, ctx, v, g);
     battleBar(root, ctx, v);
     summary(root, ctx, v);
+    bubbles(root, ctx, v);
   }
 
   HGames.register({
@@ -665,6 +756,13 @@
       if (!ctx.playing) return '';
       // фаза й відлік розстановки живуть у кадрах, а не у видах — беремо свіжіше
       const f = (ctx.frame && ctx.frame.phase) ? ctx.frame : (ctx.view || {});
+      const v = ctx.view || {};
+      if (f.phase === 'battle' && v.phase === 'battle') {
+        // Місце Глека в каркасі порожнє — «Ходить …» він би не назвав; помсту вибулого — теж.
+        const b = v.boards && v.boards[v.turn];
+        if (v.revenge) return v.revenge.by === ctx.seat ? '💀 Твоя остання помста' : '💀 Остання помста: ' + nameOf(ctx, v.revenge.by);
+        if (b && b.bot) return 'Цілиться ' + b.bot;
+      }
       if (f.phase !== 'placing') return '';   // у бою «Твій хід» каркас напише сам із view.turn
       if (ctx.seat == null) return 'Розставляють кораблі';
       const ready = !!(ctx.view && ctx.view.me && ctx.view.me.ready);
@@ -675,6 +773,7 @@
 
     unmount(root) {
       root.querySelectorAll('.garc').forEach((arc) => { if (arc._arc) arc._arc.stop(); });
+      if (root._bs) { root._bs.rxTimers.forEach(clearTimeout); clearTimeout(root._bs.rxTimer); }
       root._bs = null;
     },
 
