@@ -1600,6 +1600,9 @@
     wrap.querySelector('[data-close]').onclick = close;
     // Частина, що залежить від режиму: підказка, опції, ставка.
     const paintVar = () => {
+      // Соло-режим родини (Шахи з Глеком) — не «стіл», а гра, що відкривається одразу.
+      const go = wrap.querySelector('[data-go]');
+      if (go) go.textContent = g.maxPlayers === 1 ? 'Грати' : 'Поставити стіл';
       const opts = g.options || [];
       const stakes = stakeable(g) ? (catalog.stakes || []) : [];
       const box = wrap.querySelector('.gvar');
