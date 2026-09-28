@@ -15,9 +15,9 @@ public class ShootoutTests
     const int ResultTicks = Shootout.ResultMs / Duel.TickMs + 1;
     static readonly string[] Nicks = ["Оля", "Петро", "Ігор", "Марта"];
 
-    static RoomHarness Street(int players = 3, int seed = 42)
+    static RoomHarness Street(int players = 3, int seed = 42, string score = "rounds")
     {
-        var h = new RoomHarness("shootout", seed: seed);
+        var h = new RoomHarness("shootout", options: new { score }, seed: seed);
         for (var i = 0; i < players; i++) h.Join(Nicks[i]);
         h.Start();
         return h;

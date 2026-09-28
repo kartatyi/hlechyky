@@ -9,6 +9,12 @@
   хто читає кадри з консолі.
 
   Ввід: Input('shoot') — без payload. Стріляти можна будь-якою клавішею, кліком по сцені й кнопкою.
+
+  Прохід №3 (29.09): опційні поля кадру — sig ('word'|'bell'|'sun'|'sky', опція «Сигнал»), decoy { w, n } (обманка
+  в «Цілься…», опція «Обманки»), fid + ping[] (опція «Пінг»: клієнт відлунює кожен кадр Input('pong', { f: fid })),
+  avg[] (середня реакція за партію), rec { week: { n, ms } | null, pb[] } (рекорди «найшвидшої руки»),
+  last.bait / last.nr[] ('pb'|'week') / last.pc[] (поправка на пінг). Турнір стрільців (duelcup) — той самий кадр
+  дуелі + pair [місце ліворуч, праворуч] | null, need, cup (сітка), champ.
 */
 (() => {
   'use strict';
@@ -19,6 +25,28 @@
 
   /// Що кричить розпорядник дуелі. Порожньо — сцена мовчить (чекаємо суперника або партію зіграно).
   const CALL = { ready: 'ГОТУЙСЬ…', aim: 'ЦІЛЬСЯ…', fire: 'ВОГОНЬ!' };
+
+  /// Чим гримить «ВОГОНЬ!» (п. 67): напис зі спалахом, лише дзвін, спалах сонця чи червоне небо — «вухаті» проти «очатих».
+  const SIGS = {
+    word: { badge: '', hint: '' },
+    bell: { badge: '🔔 на дзвін', hint: '🔔 Цей раунд — на дзвін: стріляй, щойно почуєш' },
+    sun: { badge: '☀️ на сонце', hint: '☀️ Цей раунд — на сонце: стріляй, щойно воно спалахне' },
+    sky: { badge: '🌆 на небо', hint: '🌆 Цей раунд — на небо: стріляй, щойно воно почервоніє' },
+  };
+  const sigOf = (s) => (s && s.sig && SIGS[s.sig] ? s.sig : 'word');
+
+  /// Слово розпорядника. Обманка (п. 65) кричить 0,9 с тим самим червоним, що й справжнє «ВОГОНЬ!». Коли сигнал — не
+  /// напис, «ЦІЛЬСЯ…» лишається й на вогні: інакше зникле слово саме стало б сигналом.
+  function callText(st, s, phase) {
+    if (phase === 'aim' && s.decoy && st.baitUntil > performance.now()) return s.decoy.w;
+    if (phase === 'fire') {
+      const sig = sigOf(s);
+      if (sig === 'word') return CALL.fire;
+      if (sig === 'bell' && !Snd.on) return '🔔';   // без звуку дзвону не почуєш — хоч значок
+      return CALL.aim;
+    }
+    return CALL[phase] || '';
+  }
 
   /// Клавіші, якими не стріляють: службові й ті, якими люди ходять по сторінці.
   const NOT_A_TRIGGER = new Set(['Tab', 'Escape', 'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'ContextMenu', 'Enter']);
@@ -110,6 +138,8 @@
     whistle() { this.tone(700, 420, 'sine', 0.05, 2400); },
     /// «ВОГОНЬ!» — короткий дзвін, щоб і вухом почути.
     bell() { this.tone(1320, 380, 'triangle', 0.06); },
+    /// Обманка: глухий «бздинь» — схожий на сигнал рівно настільки, щоб рука смикнулась.
+    clonk() { this.tone(440, 260, 'square', 0.035, 330); },
     set(on) {
       this.on = on;
       try { localStorage.setItem('duel.sound', on ? '1' : '0'); } catch { /* приватне вікно */ }
@@ -170,19 +200,116 @@
   /// Перемалювати, лише коли рядок справді інший. Порівнювати з el.innerHTML марно: браузер серіалізує його
   /// по-своєму (&#39; → ', лапки, style), тож «інше» виходило майже завжди — і DOM перебудовувався щокадру.
   const putHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+  const putText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+  const nick = (ctx, i) => ctx.nickOf(i) || ctx.seatName(i);
+
+  /// Шкала реакцій раунду (п. 68): «⚡ сигнал → Оля 231 → Петро 305», хто поспішив — окремим рядком, а наприкінці
+  /// партії — середня реакція кожного. rows: [{ n, ms, fs, me, win, nr }].
+  function scaleHtml(ctx, rows, avg, width) {
+    const shots = rows.filter((r) => r.ms != null).sort((a, b) => a.ms - b.ms);
+    const fs = rows.filter((r) => r.fs);
+    let h = '';
+    if (shots.length) {
+      const max = Math.max(400, shots[shots.length - 1].ms) * 1.1;
+      const w = width || 400;
+      // Підписи — на «доріжках» над і під лінією: кожен на першу, де не налазить на сусіда ліворуч (на чотирьох
+      // у Перестрілці двоє з різницею в 20 мс інакше писались один по одному).
+      const lanes = [-1e9, -1e9, -1e9, -1e9];
+      let deep = false;
+      let marks = '';
+      for (const r of shots) {
+        const x = 5 + (r.ms / max) * 92;
+        const side = x < 22 ? 'l' : x > 78 ? 'r' : '';
+        const text = r.n + ' ' + r.ms + (r.nr === 'week' ? ' 🏆' : r.nr === 'pb' ? ' 🏅' : '');
+        const tw = text.length * 6.6 + 10, px = (x / 100) * w;
+        const from = side === 'l' ? px - 8 : side === 'r' ? px - tw + 8 : px - tw / 2;
+        let lane = lanes.findIndex((end) => end + 6 <= from);
+        if (lane < 0) lane = lanes.indexOf(Math.min(...lanes));
+        lanes[lane] = from + tw;
+        if (lane > 1) deep = true;
+        marks += '<span class="dsc-mark ln' + lane + (side ? ' ' + side : '') + (r.me ? ' me' : '') + (r.win ? ' win' : '')
+          + '" style="left:' + x.toFixed(1) + '%"><b>' + ctx.esc(text) + '</b></span>';
+      }
+      h += '<div class="dsc-bar' + (deep ? ' deep' : '') + '"><i class="dsc-zero" title="сигнал">⚡</i>' + marks + '</div>';
+    }
+    if (fs.length) h += '<div class="dsc-line">💨 зарано: ' + fs.map((r) => ctx.esc(r.n)).join(', ') + '</div>';
+    if (avg) h += '<div class="dsc-line dsc-avg">' + avg + '</div>';
+    return h;
+  }
+
+  /// «Середня реакція: Оля 247 мс · Петро 301 мс» — лише тим, хто хоч раз влучно стріляв.
+  function avgText(ctx, s, seats) {
+    if (!s.avg) return '';
+    const parts = seats.filter((i) => s.avg[i] != null).map((i) => ctx.esc(nick(ctx, i)) + ' ' + s.avg[i] + ' мс');
+    return parts.length ? 'Середня реакція: ' + parts.join(' · ') : '';
+  }
+
+  /// Рядок під сценою: рекорд тижня (п. 64), мій рекорд і поправка на пінг, якщо стіл з нею.
+  /// pbSeats — які місця стоять за елементами rec.pb (у дуелі й перестрілці — самі місця, у турнірі — пара).
+  function recText(ctx, s, pbSeats, pingSeats) {
+    const parts = [];
+    const r = s.rec;
+    if (r && r.week) parts.push('🏆 Найшвидша рука тижня: ' + r.week.n + ' — ' + r.week.ms + ' мс');
+    const k = ctx.mine ? pbSeats.indexOf(ctx.seat) : -1;
+    if (r && r.pb && k >= 0 && r.pb[k] != null) parts.push('твій рекорд ' + r.pb[k] + ' мс');
+    if (s.ping && pingSeats.length) {
+      parts.push('📶 поправка на пінг: ' + pingSeats.map((i) => nick(ctx, i) + ' −' + (s.ping[i] || 0)).join(' · ') + ' мс');
+    }
+    return parts.join(' · ');
+  }
+
+  /// Тости рекордів одразу після раунду: рекорд тижня бачать усі, свій особистий — лише я.
+  function recToasts(ctx, nr, seatOf, msOf) {
+    if (!nr) return;
+    nr.forEach((f, i) => {
+      if (!f) return;
+      const seat = seatOf(i);
+      if (f === 'week') ctx.toast('🏆 ' + nick(ctx, seat) + ' — найшвидша рука тижня: ' + msOf(i) + ' мс!');
+      else if (ctx.mine && seat === ctx.seat) ctx.toast('🏅 Новий рекорд: ' + msOf(i) + ' мс!');
+    });
+  }
+
+  /// Нова обманка в кадрі — кричимо її 0,9 с і глухо бздинькаємо. rerender — як перемалювати, коли вона стихне.
+  function baitCheck(st, s, rerender) {
+    if (s.phase !== 'aim' || !s.decoy || s.decoy.n === st.baitN) return;
+    st.baitN = s.decoy.n;
+    st.baitUntil = performance.now() + 900;
+    if (st.els && st.els.scene.offsetParent) Snd.clonk();
+    clearTimeout(st.baitTimer);
+    st.baitTimer = setTimeout(() => { st.baitUntil = 0; rerender(); }, 920);
+  }
+
+  /// Сигнал на вогні: напис — спалах і дзвін; дзвін — лише дзвін; сонце й небо — мовчки (CSS за data-sig).
+  function fireCue(st, s) {
+    const sig = sigOf(s);
+    if (sig === 'word') flash(st);
+    if (sig === 'word' || sig === 'bell') Snd.bell();
+  }
+
+  /// Значок сигналу в куті сцени, поки раунд живий (лише з опцією «різний»).
+  function sigBadge(st, s, phase) {
+    const live = phase === 'ready' || phase === 'aim' || phase === 'fire';
+    putText(st.els.sig, live && s.sig ? SIGS[sigOf(s)].badge : '');
+    if (st.els.scene.dataset.sig !== sigOf(s)) st.els.scene.dataset.sig = sigOf(s);
+  }
 
   function state(root, ctx) {
     let st = states.get(ctx);
     if (!st || st.root !== root) {
-      st = { root: root, last: null, seen: null, phase: '', timer: 0, els: null };
+      st = { root: root, last: null, seen: null, phase: '', timer: 0, els: null, baitN: null, baitUntil: 0, baitTimer: 0, fid: null, pairKey: '' };
       states.set(ctx, st);
     }
     return st;
   }
 
   /// Кадр несе лише те, що змінилось за фазу, а рекорди приходять видом — тому не замінюємо
-  /// стан кадром, а домішуємо його: інакше best зникав би між раундами.
-  const merge = (prev, next) => Object.assign({}, prev || {}, next || {});
+  /// стан кадром, а домішуємо його: інакше best зникав би між раундами. Обманку сервер шле лише в «Цілься…»
+  /// (поля нема — нема й обманки), тож її не домішуємо, а беремо як є.
+  const merge = (prev, next) => {
+    const o = Object.assign({}, prev || {}, next || {});
+    if (next && next.phase && !('decoy' in next)) o.decoy = null;
+    return o;
+  };
 
   /// Домішати вид — але ТІЛЬКИ якщо він справді новий. Каркас перемальовує картку і на кожну подію
   /// лобі (хтось створив стіл), причому тим самим, збереженим видом; а вид дуелі сервер шле лише на
@@ -199,26 +326,37 @@
     if (st.els && st.els.wrap.isConnected) return st;
     root.innerHTML = '';
     const wrap = document.createElement('div');
-    wrap.className = 'duel';
-    wrap.innerHTML = '<div class="dtop"><span class="gscore dwins"><b>0</b> : <b>0</b></span>'
+    wrap.className = 'duel' + (st.cup ? ' cup' : '');
+    // Турнір: над рахунком — хто з ким зараз (ніки пари), під кнопкою — сітка.
+    wrap.innerHTML = '<div class="dtop">' + (st.cup ? '<b class="dpn"></b>' : '')
+      + '<span class="gscore dwins"><b>0</b> : <b>0</b></span>' + (st.cup ? '<b class="dpn"></b>' : '')
       + '<span class="duround muted small"></span></div>'
       + '<div class="dscene" data-phase="wait" role="button" tabindex="-1" aria-label="Сцена дуелі: тисни, щоб вистрілити">'
       + '<div class="dsky"></div><div class="dsun"></div><div class="dstreet"></div><div class="dtumble"></div>'
       + '<div class="dguy sheriff">' + figure('sheriff') + '</div>'
       + '<div class="dguy bandit">' + figure('bandit') + '</div>'
-      + '<div class="dcall"></div><div class="dflash"></div></div>'
+      + '<div class="dsig"></div><div class="dcall"></div><div class="dflash"></div></div>'
       + '<div class="dmsg small"></div>'
-      + '<button type="button" class="primary dfire">🔫 Стріляти</button>';
+      + '<button type="button" class="primary dfire">🔫 Стріляти</button>'
+      // Шкала — під кнопкою: з'являється лише між раундами, і кнопка під пальцем не має стрибати.
+      + '<div class="dscale small"></div>'
+      + '<div class="drec muted small"></div>'
+      + (st.cup ? '<div class="dcup small"></div>' : '');
     root.appendChild(wrap);
     soundBtn(wrap);
     st.els = {
       wrap: wrap,
       // Рахунок збираємо один раз, а далі правимо лише текст цифр: шлях кадру HTML не парсить.
       wins: [...wrap.querySelectorAll('.dwins b')],
+      names: [...wrap.querySelectorAll('.dpn')],
       round: wrap.querySelector('.duround'),
       scene: wrap.querySelector('.dscene'),
+      sig: wrap.querySelector('.dsig'),
       call: wrap.querySelector('.dcall'),
       msg: wrap.querySelector('.dmsg'),
+      scale: wrap.querySelector('.dscale'),
+      rec: wrap.querySelector('.drec'),
+      cup: wrap.querySelector('.dcup'),
       fire: wrap.querySelector('.dfire'),
       guys: [wrap.querySelector('.dguy.sheriff'), wrap.querySelector('.dguy.bandit')],
     };
@@ -228,9 +366,20 @@
     return st;
   }
 
+  /// Яка сторона вулиці моя: у дуелі — моє місце, у турнірі — моє місце в поточній парі (-1 — я дивлюсь).
+  function mySide(st, ctx) {
+    if (!ctx.mine) return -1;
+    if (!st.cup) return ctx.seat;
+    const p = st.last && st.last.pair;
+    return p ? p.indexOf(ctx.seat) : -1;
+  }
+  /// Яке місце стоїть на стороні i.
+  const seatOf = (st, i) => (st.cup ? ((st.last && st.last.pair) || [0, 1])[i] : i);
+  const fighter = (st, ctx) => ctx.playing && mySide(st, ctx) >= 0;
+
   /// Стріляти можна й до слова «ВОГОНЬ!» — це і є фальстарт, і сервер його чесно зарахує.
   function shoot(st, ctx) {
-    if (!ctx || !ctx.mine || !ctx.playing) return;
+    if (!ctx || !fighter(st, ctx)) return;
     const phase = (st.last && st.last.phase) || '';
     if (phase === 'result' || phase === 'done' || !phase) return;
     ctx.input('shoot');
@@ -239,20 +388,23 @@
   const nameOf = (ctx, i) => ctx.nickOf(i) || ctx.seatName(i);
 
   /// Чим скінчився раунд — людською мовою і без відмінювання чужих ніків.
-  function resultText(ctx, s) {
+  function resultText(st, ctx, s) {
     const l = s && s.last;
     if (!l) return '';
     const ms = l.ms || [];
+    const n = (i) => nameOf(ctx, seatOf(st, i));
     if (l.reason === 'shot' && l.winner != null) {
       const w = l.winner, o = w === 0 ? 1 : 0;
-      return nameOf(ctx, w) + ': ' + ms[w] + ' мс · '
-        + nameOf(ctx, o) + (ms[o] != null ? ': ' + ms[o] + ' мс' : ' — без пострілу');
+      return n(w) + ': ' + ms[w] + ' мс · ' + n(o) + (ms[o] != null ? ': ' + ms[o] + ' мс' : ' — без пострілу');
     }
     if (l.reason === 'false' && l.winner != null) {
       const late = l.winner === 0 ? 1 : 0;
-      return 'Фальстарт: ' + nameOf(ctx, late) + ' — куля в небо. Раунд бере ' + nameOf(ctx, l.winner);
+      return (l.bait ? n(late) + ' стрельнув на «' + l.bait + '» — куля в небо' : 'Фальстарт: ' + n(late) + ' — куля в небо')
+        + '. Раунд бере ' + n(l.winner);
     }
-    if (l.reason === 'both-false') return 'Обидва поспішили — по кулі в небо. Раунд перегравають';
+    if (l.reason === 'both-false') {
+      return (l.bait ? 'Обидва повелись на «' + l.bait + '»' : 'Обидва поспішили') + ' — по кулі в небо. Раунд перегравають';
+    }
     if (l.reason === 'sleep') return 'Ніхто не вистрілив — раунд перегравають';
     return '';
   }
@@ -267,6 +419,44 @@
     st.timer = setTimeout(() => scene.classList.remove('flash'), 260);
   }
 
+  /// Турнір: назва кола за кількістю матчів у ньому.
+  const cupRound = (n) => (n === 1 ? 'фінал' : n === 2 ? 'півфінал' : n === 4 ? 'чвертьфінал' : '1/' + n);
+
+  /// Сітка турніру: кола стовпчиками, поточна пара підсвічена, переможці жирним, «без бою» — сірим.
+  function cupHtml(ctx, s) {
+    const cup = s.cup;
+    if (!cup || !cup.length) return '';
+    const nm = (i) => ctx.esc(nick(ctx, i)) + (ctx.mine && i === ctx.seat ? ' (ти)' : '');
+    let h = '';
+    for (const round of cup) {
+      h += '<div class="dcr"><div class="dcr-t">' + cupRound(round.length) + '</div>';
+      for (const m of round) {
+        const [a, b, w, sa, sb, walk] = m;
+        if (a == null && b == null) continue;
+        if (a == null || b == null) {
+          h += '<div class="dcm bye">' + nm(a != null ? a : b) + ' — без бою</div>';
+          continue;
+        }
+        const cur = w == null && s.pair && s.pair[0] === a && s.pair[1] === b;
+        const mid = w != null ? (walk ? '—' : sa + ':' + sb) : cur ? '⚔' : 'vs';
+        h += '<div class="dcm' + (cur ? ' cur' : '') + '"><span' + (w === a ? ' class="w"' : '') + '>' + nm(a) + '</span> <em>' + mid
+          + '</em> <span' + (w === b ? ' class="w"' : '') + '>' + nm(b) + '</span></div>';
+      }
+      h += '</div>';
+    }
+    if (s.champ != null) h += '<div class="dcr champ">🤠 ' + nm(s.champ) + '</div>';
+    return h;
+  }
+
+  /// Чи вибув я з турніру: є дограний матч зі мною, і переможець — не я.
+  function knockedOut(ctx, s) {
+    if (!s.cup || !ctx.mine) return false;
+    return s.cup.some((r) => r.some((m) => m[2] != null && (m[0] === ctx.seat || m[1] === ctx.seat) && m[2] !== ctx.seat));
+  }
+
+  /// Хто на вулиці за столом зараз (для очікування турніру).
+  const seatedCount = (ctx) => ((ctx.room && ctx.room.seats) || []).filter((x) => x && x.nick).length;
+
   function render(root, ctx) {
     const st = state(root, ctx);
     if (!st.els) return;
@@ -278,34 +468,51 @@
     const phase = over ? 'done' : ctx.playing ? (s.phase || 'ready') : 'wait';
     const wins = s.wins || [0, 0];
     const l = s.last;
+    const side = mySide(st, ctx);
+    const pair = st.cup ? s.pair || null : [0, 1];
 
-    for (let i = 0; i < 2; i++) {
-      const w = String(wins[i] || 0);
-      if (st.els.wins[i].textContent !== w) st.els.wins[i].textContent = w;
+    for (let i = 0; i < 2; i++) putText(st.els.wins[i], String(wins[i] || 0));
+    if (st.cup) {
+      // Турнір: ніки пари над рахунком і капелюхи за місцями — перемальовуємо фігури лише на зміну пари.
+      for (let i = 0; i < 2; i++) putText(st.els.names[i], pair && ctx.playing ? nick(ctx, pair[i]) : '');
+      const key = pair ? pair.join(',') : '';
+      if (st.pairKey !== key) {
+        st.pairKey = key;
+        for (let i = 0; i < 2; i++) {
+          st.els.guys[i].innerHTML = figure(pair ? S_KINDS[pair[i] % 4] : i ? 'bandit' : 'sheriff');
+        }
+      }
     }
     // Рядок під рахунком: який зараз раунд і чий рекорд руки. Чужий рекорд у картці ні до чого.
     const parts = [];
-    if (phase === 'done') parts.push('дуель зіграно');
-    else if (phase !== 'wait') parts.push('раунд ' + (s.round || 1));
-    const best = ctx.mine ? (s.best || [])[ctx.seat] : null;
-    if (best != null) parts.push('твоя найшвидша ' + best + ' мс');
-    const round = parts.join(' · ');
-    if (st.els.round.textContent !== round) st.els.round.textContent = round;
+    if (phase === 'done') parts.push(st.cup ? 'турнір зіграно' : 'дуель зіграно');
+    else if (phase !== 'wait') {
+      if (st.cup && s.cup && s.cup.length) parts.push(cupRound(s.cup[s.cup.length - 1].length) + ' · матч до ' + (s.need || 2));
+      parts.push('раунд ' + (s.round || 1));
+    }
+    const mySeatBest = ctx.mine && s.best ? s.best[ctx.seat] : null;
+    if (mySeatBest != null) parts.push('твоя найшвидша ' + mySeatBest + ' мс');
+    putText(st.els.round, parts.join(' · '));
 
+    sigBadge(st, s, phase);
     if (st.els.scene.dataset.phase !== phase) {
       const was = st.els.scene.dataset.phase;
       st.els.scene.dataset.phase = phase;
-      if (phase === 'fire') { flash(st); Snd.bell(); }
+      if (phase === 'fire') fireCue(st, s);
       // Підсумок раунду — на слух: постріл або свист кулі в небо. Лише на живому переході, а не
       // коли картку щойно відкрили посеред паузи між раундами.
       if (phase === 'result' && was && was !== 'wait' && l) {
         if (l.reason === 'shot') Snd.bang(false);
         else if (l.reason === 'false' || l.reason === 'both-false') Snd.whistle();
+        recToasts(ctx, l.nr, (i) => seatOf(st, i), (i) => (l.ms[i] || 0) + ((l.pc && l.pc[i]) || 0));
       }
     }
-    const call = CALL[phase] || '';
-    if (st.els.call.textContent !== call) st.els.call.textContent = call;
-    st.els.call.classList.toggle('big', phase === 'fire');
+    // Турнір: на старті кожного матчу розпорядник оголошує пару.
+    const intro = st.cup && phase === 'ready' && !l && pair;
+    const call = intro ? nick(ctx, pair[0]) + ' ⚔ ' + nick(ctx, pair[1]) : callText(st, s, phase);
+    putText(st.els.call, call);
+    st.els.call.classList.toggle('big', phase === 'fire' && call === CALL.fire || (phase === 'aim' && call !== CALL.aim && !!call));
+    st.els.call.classList.toggle('intro', !!intro);
 
     // Пози показуємо, поки видно підсумок раунду: переможець піднімає револьвер, той, хто
     // спізнився або поспішив, падає в пилюку. Обірвану партію лишаємо без поз — там нема кого класти.
@@ -318,17 +525,101 @@
       st.els.guys[i].classList.toggle('lost', !!showPose && l.winner !== i);
     }
 
-    const msg = ended ? resultText(ctx, s)
-      : phase === 'done' ? ''                       // партію обірвали: підсумок напише каркас
-        : phase === 'wait' ? 'Чекаємо на другого стрільця'
-          : ctx.mine ? (ctx.ui.coarse() ? 'Стріляй тапом по вулиці або кнопкою — щойно побачиш «ВОГОНЬ!»' : 'Стріляй будь-якою клавішею, кліком по вулиці або кнопкою')
-            : 'Дивишся збоку';
-    if (st.els.msg.textContent !== msg) st.els.msg.textContent = msg;
+    let msg;
+    if (st.cup && phase === 'done' && s.champ != null && s.phase === 'done') msg = '🤠 Шериф вечора — ' + nick(ctx, s.champ) + '!';
+    else if (ended) msg = resultText(st, ctx, s);
+    else if (phase === 'done') msg = '';                       // партію обірвали: підсумок напише каркас
+    else if (phase === 'wait') {
+      msg = !st.cup ? 'Чекаємо на другого стрільця'
+        : seatedCount(ctx) < 3 ? 'Чекаємо стрільців: від трьох до восьми' : 'Стрільці на місцях — господар тисне «Почати»';
+    } else if (side < 0) {
+      msg = !st.cup || !pair ? 'Дивишся збоку'
+        : 'Стріляються ' + nick(ctx, pair[0]) + ' і ' + nick(ctx, pair[1]) + ' — '
+          + (!ctx.mine ? 'дивишся збоку' : knockedOut(ctx, s) ? 'ти вибув, вболівай' : 'твоя пара попереду, вболівай');
+    } else if (phase === 'ready' && s.sig && sigOf(s) !== 'word') {
+      msg = SIGS[sigOf(s)].hint + (sigOf(s) === 'bell' && !Snd.on ? ' (звук вимкнено — покажемо 🔔)' : '');
+    } else {
+      msg = ctx.ui.coarse() ? 'Стріляй тапом по вулиці або кнопкою — щойно побачиш «ВОГОНЬ!»' : 'Стріляй будь-якою клавішею, кліком по вулиці або кнопкою';
+    }
+    putText(st.els.msg, msg);
 
-    const canFire = ctx.mine && ctx.playing && phase !== 'result' && phase !== 'done' && phase !== 'wait';
+    // Шкала раунду — поки видно підсумок; наприкінці — ще й середня реакція.
+    let scale = '';
+    if (ended && l) {
+      const rows = [0, 1].map((i) => ({
+        n: nick(ctx, seatOf(st, i)),
+        ms: l.ms ? l.ms[i] : null,
+        fs: (l.reason === 'false' && l.winner !== i) || l.reason === 'both-false',
+        me: i === side,
+        win: l.winner === i,
+        nr: l.nr ? l.nr[i] : null,
+      }));
+      const everyone = st.cup ? [0, 1, 2, 3, 4, 5, 6, 7].filter((i) => s.avg && s.avg[i] != null) : [0, 1];
+      scale = scaleHtml(ctx, rows, phase === 'done' ? avgText(ctx, s, everyone) : '', st.els.scale.clientWidth || st.els.scene.clientWidth);
+    }
+    putHtml(st.els.scale, scale);
+    putText(st.els.rec, recText(ctx, s, st.cup ? pair || [] : [0, 1], pair || []));
+    if (st.els.cup) putHtml(st.els.cup, ctx.playing || phase === 'done' ? cupHtml(ctx, s) : '');
+
+    const canFire = side >= 0 && ctx.playing && phase !== 'result' && phase !== 'done' && phase !== 'wait';
     // Дуель зіграно — кнопку ховаємо: під нею «Ще раз», і велика неактивна «Стріляти» тільки плутає.
-    st.els.fire.hidden = !ctx.mine || phase === 'done';
+    // У турнірі кнопка — лише в пари, що зараз стріляється.
+    st.els.fire.hidden = !ctx.mine || phase === 'done' || (st.cup && ctx.playing && side < 0);
     if (st.els.fire.disabled !== !canFire) st.els.fire.disabled = !canFire;
+  }
+
+  /// Спільне для дуелі й турніру: кадр → стан, відлуння для заміру пінгу, обманка, перемалювати.
+  function onFrame(root, ctx, f) {
+    const st = state(root, ctx);
+    if (!st.els || !f || !f.phase) return;
+    // Відлуння — першим ділом: сервер міряє дорогу кадру туди й назад, зайва робота до нього — зайві мілісекунди.
+    if (f.fid != null && f.fid !== st.fid) {
+      st.fid = f.fid;
+      if (ctx.mine && ctx.playing) ctx.input('pong', { f: f.fid });
+    }
+    st.last = merge(st.last, f);
+    baitCheck(st, st.last, () => render(root, st.ctx || ctx));
+    render(root, ctx);
+  }
+
+  function duelStatus(ctx, cup) {
+    const st = states.get(ctx);
+    const s = (st && st.last) || {};
+    if (s.phase === 'done' || !ctx.playing) return '';   // підсумок партії каркас напише сам
+    if (cup && st && mySide(st, ctx) < 0 && s.pair) {
+      return 'Стріляються ' + nick(ctx, s.pair[0]) + ' і ' + nick(ctx, s.pair[1]);
+    }
+    if (s.phase === 'ready') return s.sig && sigOf(s) !== 'word' ? 'Готуйсь… ' + SIGS[sigOf(s)].badge : 'Готуйсь…';
+    if (s.phase === 'aim') return 'Цілься…';
+    if (s.phase === 'fire') return sigOf(s) === 'word' ? 'ВОГОНЬ! Тисни!' : 'Цілься…';
+    // Хто скільки мілісекунд — уже написано під сценою; тут коротко, щоб не читати те саме двічі.
+    if (s.phase === 'result') {
+      const l = s.last;
+      if (l && l.winner != null) {
+        const need = cup ? s.need || 2 : 3;               // Duel.WinsNeeded
+        const last = (s.wins || []).some((w) => w >= need);
+        return 'Раунд бере ' + nameOf(ctx, cup && st ? seatOf(st, l.winner) : l.winner)
+          + (last ? (cup ? ' — і матч!' : ' — і всю дуель!') : ' — мить, і наступний');
+      }
+      return l ? 'Раунд переграють' : '';
+    }
+    return '';
+  }
+
+  function duelKey(e, ctx) {
+    if (e.repeat || NOT_A_TRIGGER.has(e.key) || /^F\d{1,2}$/.test(e.key)) return false;
+    const st = states.get(ctx);
+    if (!st) return false;
+    const phase = (st.last && st.last.phase) || '';
+    if (!fighter(st, ctx) || phase === 'result' || phase === 'done' || !phase) return false;
+    shoot(st, ctx);
+    return true;
+  }
+
+  function duelUnmount(root, ctx) {
+    const st = states.get(ctx);
+    if (st) { clearTimeout(st.timer); clearTimeout(st.baitTimer); }
+    states.delete(ctx);
   }
 
   HGames.register({
@@ -338,12 +629,14 @@
     seatClass: ['x', 'o'],
     pad: { a: 'Space', anyBtn: true, hint: '{a} стріляти (будь-яка кнопка) — щойно побачиш сигнал' },
     news: {
-      v: '2026-09-28',
-      title: 'Дуель: більша вулиця, швидший курок',
+      v: '2026-09-29',
+      title: 'Дуель: рекорди, шкала реакцій і обманки',
       items: [
-        '🔫 Кнопка «Стріляти» бахає, щойно торкнешся, а не коли відпустиш палець — на телефоні це десятки мілісекунд',
-        '🌅 На ноутбуці, Деці й великому моніторі вулиця більша',
-        '📋 Підсумок раунду вже не пишеться двічі поспіль',
+        '🏆 Найшвидша рука тижня й твій рекорд — під сценою, а побитий рекорд одразу вискакує «🏅 Новий рекорд: 173 мс!»',
+        '📏 Шкала раунду «⚡ → Оля 231 → Петро 305», а наприкінці — середня реакція кожного',
+        '🐦 Опція «Обманки»: у «Цілься…» інколи кричать «ВОДА!» чи «ВОРОН!» — хто стрельнув, той поспішив',
+        '🔔 Опція «Сигнал: різний» — раунд на дзвін, на сонце чи на червоне небо; 📶 опція «Пінг» зрівнює Wi-Fi з мобільним',
+        '🤠 Новий «Турнір стрільців» на 3–8: пари дуелять по черзі, переможець — шериф вечора',
       ],
     },
 
@@ -359,49 +652,45 @@
       fitPhone(st, ctx);
     },
 
-    frame(root, ctx, f) {
-      const st = state(root, ctx);
-      if (!st.els || !f || !f.phase) return;
-      st.last = merge(st.last, f);
-      render(root, ctx);
-    },
+    frame: onFrame,
 
     /// Стріляють будь-якою клавішею: у вестерні ніхто не шукає пробіл. Каркас уже відсіяв поля вводу
     /// й комбінації з Ctrl/Alt/Cmd, тож сюди доходить саме те, чим можна тиснути на гачок.
-    onKey(e, ctx) {
-      if (e.repeat || NOT_A_TRIGGER.has(e.key) || /^F\d{1,2}$/.test(e.key)) return false;
-      const st = states.get(ctx);
-      if (!st) return false;
-      const phase = (st.last && st.last.phase) || '';
-      if (!ctx.mine || !ctx.playing || phase === 'result' || phase === 'done' || !phase) return false;
-      shoot(st, ctx);
-      return true;
+    onKey: duelKey,
+
+    status(ctx) { return duelStatus(ctx, false); },
+
+    unmount: duelUnmount,
+  });
+
+  // Турнір стрільців (duelcup, п. 66): та сама вулиця й той самий поєдинок, лише пари міняються за сіткою.
+  HGames.register({
+    id: 'duelcup',
+    added: '2026-09-29',
+    icon: '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
+      + '<path d="M4 2h8v2.4a4 4 0 0 1-8 0z" fill="var(--accent)"/><path d="M2 3h2v2.2A2 2 0 0 1 2 3zm12 0h-2v2.2A2 2 0 0 0 14 3z" fill="var(--clay)"/>'
+      + '<rect x="7" y="8" width="2" height="3.4" fill="var(--accent)"/><rect x="4.6" y="11.4" width="6.8" height="2.4" rx=".8" fill="var(--clay)"/></svg>',
+    seatClass: ['x', 'o', 'c', 'db', 'x', 'o', 'c', 'db'],
+    pad: { a: 'Space', anyBtn: true, hint: '{a} стріляти (будь-яка кнопка), коли твоя пара на вулиці' },
+
+    mount(root, ctx) {
+      state(root, ctx).cup = true;
+      take(build(root, ctx), ctx);
+      render(root, ctx);
     },
 
-    status(ctx) {
-      const st = states.get(ctx);
-      const s = (st && st.last) || {};
-      if (s.phase === 'done' || !ctx.playing) return '';   // підсумок партії каркас напише сам
-      if (s.phase === 'ready') return 'Готуйсь…';
-      if (s.phase === 'aim') return 'Цілься…';
-      if (s.phase === 'fire') return 'ВОГОНЬ! Тисни!';
-      // Хто скільки мілісекунд — уже написано під сценою; тут коротко, щоб не читати те саме двічі.
-      if (s.phase === 'result') {
-        const l = s.last;
-        if (l && l.winner != null) {
-          const last = (s.wins || []).some((w) => w >= 3);   // Duel.WinsNeeded
-          return 'Раунд бере ' + nameOf(ctx, l.winner) + (last ? ' — і всю дуель!' : ' — мить, і наступний');
-        }
-        return l ? 'Раунд переграють' : '';
-      }
-      return '';
+    update(root, ctx) {
+      state(root, ctx).cup = true;
+      const st = build(root, ctx);
+      take(st, ctx);
+      render(root, ctx);
+      fitPhone(st, ctx);
     },
 
-    unmount(root, ctx) {
-      const st = states.get(ctx);
-      if (st) clearTimeout(st.timer);
-      states.delete(ctx);
-    },
+    frame: onFrame,
+    onKey: duelKey,
+    status(ctx) { return duelStatus(ctx, true); },
+    unmount: duelUnmount,
   });
 
   // ============================================================================================
@@ -429,7 +718,7 @@
   function sState(root, ctx) {
     let st = sstates.get(ctx);
     if (!st || st.root !== root) {
-      st = { root: root, last: null, seen: null, timer: 0, els: null, key: '', prev: null };
+      st = { root: root, last: null, seen: null, timer: 0, els: null, key: '', prev: null, baitN: null, baitUntil: 0, baitTimer: 0 };
       sstates.set(ctx, st);
     }
     return st;
@@ -459,13 +748,19 @@
       + '<div class="dsky"></div><div class="dsun"></div><div class="dstreet"></div><div class="dtumble"></div>'
       + '<div class="sguys"></div>'
       + '<svg class="slines" viewBox="0 0 100 ' + VB_H + '" preserveAspectRatio="none" aria-hidden="true"></svg>'
-      + '<div class="dcall"></div><div class="dflash"></div></div>'
+      + '<div class="dsig"></div><div class="dcall"></div><div class="dflash"></div></div>'
       + '<div class="dmsg small"></div>'
-      + '<button type="button" class="primary dfire">🔫 Стріляти</button>';
+      + '<button type="button" class="primary dfire">🔫 Стріляти</button>'
+      // Шкала — під кнопкою: з'являється лише між раундами, і кнопка під пальцем не має стрибати.
+      + '<div class="dscale small"></div>'
+      + '<div class="drec muted small"></div>';
     root.appendChild(wrap);
     soundBtn(wrap);
     st.els = {
       wrap: wrap,
+      sig: wrap.querySelector('.dsig'),
+      scale: wrap.querySelector('.dscale'),
+      rec: wrap.querySelector('.drec'),
       board: wrap.querySelector('.sboard'),
       round: wrap.querySelector('.duround'),
       scene: wrap.querySelector('.dscene'),
@@ -565,8 +860,6 @@
     putHtml(st.els.lines, html);
   }
 
-  const nick = (ctx, i) => ctx.nickOf(i) || ctx.seatName(i);
-
   /// Хто кого за раунд: «Оля ➜ Петро 231 мс · Ігор — куля в небо». Без відмінювання чужих ніків.
   function sSummary(ctx, s) {
     const l = s.last;
@@ -577,10 +870,19 @@
       const h = s.hit[i];
       parts.push(nick(ctx, i) + (h != null ? ' ➜ ' + nick(ctx, h) : ' — мимо') + ' ' + s.shot[i] + ' мс');
     }
-    for (let i = 0; i < 4; i++) if (s.fs && s.fs[i]) parts.push(nick(ctx, i) + ' — куля в небо');
-    const head = l.reason === 'last' && l.winner != null ? 'Раунд бере ' + nick(ctx, l.winner) + '!'
-      : l.reason === 'sleep' ? 'Ніхто не вистрілив — раунд переграють'
-        : 'На ногах лишились кілька — раунд нічий';
+    for (let i = 0; i < 4; i++) {
+      if (s.fs && s.fs[i]) parts.push(nick(ctx, i) + (l.bait ? ' стрельнув на «' + l.bait + '»' : ' — куля в небо'));
+    }
+    let head;
+    if (l.reason === 'points') {
+      // Очки (п. 173): «+2 Ігор ⚡ · +1 Петро» — найшвидше влучання з блискавкою.
+      const got = [0, 1, 2, 3].filter((i) => l.gain && l.gain[i] > 0).sort((a, b) => l.gain[b] - l.gain[a]);
+      head = got.length ? got.map((i) => '+' + l.gain[i] + ' ' + nick(ctx, i) + (l.fast === i ? ' ⚡' : '')).join(', ') : 'Ніхто не влучив';
+    } else {
+      head = l.reason === 'last' && l.winner != null ? 'Раунд бере ' + nick(ctx, l.winner) + '!'
+        : l.reason === 'sleep' ? 'Ніхто не вистрілив — раунд переграють'
+          : 'На ногах лишились кілька — раунд нічий';
+    }
     return head + (parts.length ? ' · ' + parts.join(' · ') : '');
   }
 
@@ -589,7 +891,8 @@
     const p = st.prev;
     st.prev = s;
     if (!p || !s || !st.els.scene.offsetParent) return;
-    if (s.phase === 'fire' && p.phase !== 'fire') Snd.bell();
+    // Дзвін на «ВОГОНЬ!» грає fireCue разом зі спалахом (і лише для сигналів «напис» і «дзвін»).
+    if (s.phase === 'result' && p.phase !== 'result' && s.last) recToasts(ctx, s.last.nr, (i) => i, (i) => s.shot[i]);
     for (let i = 0; i < 4; i++) {
       if (s.shot && s.shot[i] != null && (!p.shot || p.shot[i] == null)) Snd.bang(!(ctx.mine && i === ctx.seat));
       if (s.fs && s.fs[i] && (!p.fs || !p.fs[i])) Snd.whistle();
@@ -608,23 +911,25 @@
 
     // Табло: фігура, нік і виграні раунди кожного.
     const board = seats.map((i) => '<span class="sb s' + i + (ctx.mine && i === ctx.seat ? ' me' : '') + '"><b>'
-      + S_SHAPES[i] + '</b> ' + ctx.esc(nick(ctx, i)) + ' <em>' + (wins[i] || 0) + '</em></span>').join('');
+      + S_SHAPES[i] + '</b> ' + ctx.esc(nick(ctx, i)) + ' <em>' + (wins[i] || 0) + '</em></span>').join('')
+      + (s.pts && phase !== 'wait' ? '<span class="sb muted">очки</span>' : '');
     putHtml(st.els.board, board);
     const parts = [];
     if (phase === 'done') parts.push('перестрілку зіграно');
-    else if (phase !== 'wait') parts.push('раунд ' + (s.round || 1) + ' · до ' + (s.target || 3) + ' перемог');
+    else if (phase !== 'wait') parts.push('раунд ' + (s.round || 1) + ' · ' + (s.pts ? 'до ' + (s.target || 7) + ' очок' : 'до ' + (s.target || 3) + ' перемог'));
     const best = ctx.mine && s.best ? s.best[ctx.seat] : null;
     if (best != null) parts.push('твоя найшвидша ' + best + ' мс');
     const round = parts.join(' · ');
     if (st.els.round.textContent !== round) st.els.round.textContent = round;
 
+    sigBadge(st, s, phase);
     if (st.els.scene.dataset.phase !== phase) {
       st.els.scene.dataset.phase = phase;
-      if (phase === 'fire') flash(st);
+      if (phase === 'fire' && st.els.scene.offsetParent) fireCue(st, s);
     }
-    const call = CALL[phase] || '';
-    if (st.els.call.textContent !== call) st.els.call.textContent = call;
-    st.els.call.classList.toggle('big', phase === 'fire');
+    const call = callText(st, s, phase);
+    putText(st.els.call, call);
+    st.els.call.classList.toggle('big', phase === 'fire' && call === CALL.fire || (phase === 'aim' && call !== CALL.aim && !!call));
 
     sGuys(st, ctx, seats);
     const ended = phase === 'result' || (phase === 'done' && s.phase === 'done');
@@ -656,6 +961,7 @@
     else if (s.alive && !s.alive[ctx.seat]) msg = 'Тебе підстрелили — полеж, наступного раунду встанеш';
     else if (s.fs && s.fs[ctx.seat]) msg = 'Зарано! Куля в небо, патрона до кінця раунду нема. Сподівайся, що в тебе не влучать';
     else if (s.shot && s.shot[ctx.seat] != null) msg = 'Патрон витрачено — дивись, хто кого';
+    else if (phase === 'ready' && s.sig && sigOf(s) !== 'word') msg = SIGS[sigOf(s)].hint;
     else {
       const t = s.aim ? s.aim[ctx.seat] : null;
       msg = (t != null ? 'Ціль: ' + nick(ctx, t) + '. ' : '')
@@ -663,6 +969,18 @@
           : 'Змінити — тап по фігурі або ← →; на ВОГОНЬ стріляй кнопкою чи будь-якою іншою клавішею');
     }
     if (st.els.msg.textContent !== msg) st.els.msg.textContent = msg;
+
+    // Шкала раунду (п. 68) — поки видно підсумок; наприкінці — середня реакція; під кнопкою — рекорди (п. 64).
+    let scale = '';
+    if (ended && s.last) {
+      const rows = seats.map((i) => ({
+        n: nick(ctx, i), ms: s.shot ? s.shot[i] : null, fs: !!(s.fs && s.fs[i]), me: ctx.mine && i === ctx.seat,
+        win: s.last.winner === i || s.last.fast === i, nr: s.last.nr ? s.last.nr[i] : null,
+      }));
+      scale = scaleHtml(ctx, rows, phase === 'done' ? avgText(ctx, s, seats) : '', st.els.scale.clientWidth || st.els.scene.clientWidth);
+    }
+    putHtml(st.els.scale, scale);
+    putText(st.els.rec, recText(ctx, s, [0, 1, 2, 3], []));
 
     const armed = canAct(st, ctx) && !(s.fs && s.fs[ctx.seat]) && !(s.shot && s.shot[ctx.seat] != null);
     st.els.fire.hidden = !ctx.mine || phase === 'done';
@@ -685,12 +1003,13 @@
     seatClass: ['x', 'o', 'c', 'db'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} у кого цілишся · {a} вогонь (будь-яка кнопка)' },
     news: {
-      v: '2026-09-28',
-      title: 'Перестрілка: таблички не обрізає',
+      v: '2026-09-29',
+      title: 'Перестрілка: очки за влучання',
       items: [
-        '🏷 Таблички з ніками крайніх стрільців більше не обрізає край сцени',
-        '🔫 «Стріляти» бахає на дотик, а на телефоні кнопка з початком партії стає в екран',
-        '💻 На 1280×800 стіл влазить без прокрутки',
+        '🎯 Тепер рахунок — очки: +1 за влучання, ще +1 найшвидшому, партія до 7 (старі «раунди» — опцією столу)',
+        '📏 Під сценою — шкала реакцій раунду, наприкінці — середня реакція кожного',
+        '🏆 Найшвидша рука тижня й твій рекорд — спільні з Дуеллю',
+        '🐦 Опції «Обманки» й «Сигнал: різний» — як у Дуелі',
       ],
     },
 
@@ -711,6 +1030,7 @@
       if (!st.els || !f || !f.phase) return;
       st.last = merge(st.last, f);
       sSounds(st, ctx, st.last);
+      baitCheck(st, st.last, () => sRender(root, st.ctx || ctx));
       sRender(root, ctx);
     },
 
@@ -729,11 +1049,12 @@
       const st = sstates.get(ctx);
       const s = (st && st.last) || {};
       if (s.phase === 'done' || !ctx.playing) return '';
-      if (s.phase === 'ready') return 'Готуйсь… обери ціль';
+      if (s.phase === 'ready') return 'Готуйсь… обери ціль' + (s.sig && sigOf(s) !== 'word' ? ' · ' + SIGS[sigOf(s)].badge : '');
       if (s.phase === 'aim') return 'Цілься…';
-      if (s.phase === 'fire') return 'ВОГОНЬ!';
+      if (s.phase === 'fire') return sigOf(s) === 'word' ? 'ВОГОНЬ!' : 'Цілься…';
       if (s.phase === 'result' && s.last) {
         const l = s.last;
+        if (l.reason === 'points') return l.fast != null ? 'Найшвидше влучання — ' + nick(ctx, l.fast) + ' ⚡' : 'Ніхто не влучив';
         return l.reason === 'last' && l.winner != null ? 'Раунд бере ' + nick(ctx, l.winner) : l.reason === 'sleep' ? 'Ніхто не вистрілив' : 'Раунд нічий';
       }
       return '';
@@ -741,7 +1062,7 @@
 
     unmount(root, ctx) {
       const st = sstates.get(ctx);
-      if (st) clearTimeout(st.timer);
+      if (st) { clearTimeout(st.timer); clearTimeout(st.baitTimer); }
       sstates.delete(ctx);
     },
   });

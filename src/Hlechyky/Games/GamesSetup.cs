@@ -41,6 +41,7 @@ public static class GamesSetup
         services.AddSingleton<Impl.IMelodySource>(sp => sp.GetRequiredService<Impl.MelodyLibrary>());
         Impl.SvoyaSetup.AddSvoya(services);                 // «Своя гра»: пакети запитань
         Impl.RallySetup.AddRally(services);   // «Сільське ралі»: рекорди кіл трас
+        Impl.DuelSetup.AddDuel(services);                   // Дуель: спільні рекорди реакції («найшвидша рука»)
         Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
         Impl.DotepySetup.AddDotepy(services);               // «Дотепи»: голос Глека, голос публіки
         Impl.GeoSetup.AddGeo(services);   // «Де це?»: фото з Вікісховища в cache/geo

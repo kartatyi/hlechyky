@@ -20,17 +20,41 @@ public sealed class Shootout : Game
     public const int WinsNeeded = 3;
     /// <summary>Пауза між раундами трохи довша, ніж у дуелі: тут є що роздивитись — хто кого й за скільки.</summary>
     public const int ResultMs = 3200;
+    /// <summary>Режим «очки» (п. 173, типовий): +1 за влучання, +1 найшвидшому влучанню раунду, партія до семи.</summary>
+    public const int PointsNeeded = 7;
 
     public override GameInfo Info { get; } = new(
         "shootout", "Перестрілка", "перестрілку", GameGroup.Live, 3, Seats, TickMs: Duel.TickMs,
         Start: StartMode.ByHost, Score: ScoreOrder.LowerIsBetter, Client: "duel",
-        Hint: "Троє-четверо на одній вулиці. Поки «Цілься…» — обери, в кого цілишся. На ВОГОНЬ у кожного один патрон: хто перший, той влучив. Останній на ногах бере раунд");
+        Options:
+        [
+            new GameOption("score", "Рахунок",
+                [("points", "очки: +1 за влучання, +1 найшвидшому, до 7"), ("rounds", "раунди: останній на ногах, до 3")], "points"),
+            DuelKit.BaitOption, DuelKit.SignalOption,
+        ],
+        Hint: "Троє-четверо на одній вулиці. Поки «Цілься…» — обери, в кого цілишся. На ВОГОНЬ у кожного один патрон: хто перший, той влучив. +1 за влучання, +1 найшвидшому — до семи очок");
 
     DuelPhase _phase = DuelPhase.Ready;
     int _round = 1;
     readonly int[] _wins = new int[Seats];
-    readonly long?[] _best = new long?[Seats];
     int _idle;
+    /// <summary>Очки (п. 173) чи «останній на ногах бере раунд» (як було до 29.09).</summary>
+    bool _points = true;
+    int Target => _points ? PointsNeeded : WinsNeeded;
+    DuelKit? _kit;
+    DuelKit Kit => _kit ??= new DuelKit(this, Seats);
+    static readonly int[] All = [0, 1, 2, 3];
+    string _sig = "word";
+    DateTimeOffset? _baitAt;
+    string? _baitWord;
+    bool _baitShown;
+    DateTimeOffset _baitShownAt;
+    int _baitN;
+    readonly bool[] _baited = new bool[Seats];
+    readonly int[] _gain = new int[Seats];
+    int? _fast;
+    string? _lastBait;
+    readonly string?[] _nr = new string?[Seats];
 
     /// <summary>Хто грає цей раунд (сидів на його старті й не встав).</summary>
     readonly bool[] _plays = new bool[Seats];
@@ -56,16 +80,28 @@ public sealed class Shootout : Game
     static readonly string[] Names = ["шериф", "бандит", "шулер", "гробар"];
     public override string SeatName(int seat) => seat is >= 0 and < Seats ? Names[seat] : base.SeatName(seat);
 
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        _points = !(options.TryGetValue("score", out var sc) && sc == "rounds");
+        // Пінг тут не поправляємо: постріли розбираються в порядку приходу (вбитий уже не стріляє), і відкласти
+        // розбір на стелю поправки — означало б, що вбитий ще «встигає» вистрілити. Див. звіт проходу №3.
+        Kit.Configure(options, pingAllowed: false);
+    }
+
     public override void Start()
     {
         Array.Clear(_wins);
-        Array.Clear(_best);
+        Kit.Reset();
         Array.Clear(_aim);
         _round = 1;
         _idle = 0;
         _hasLast = false;
         _lastWinner = null;
         _lastReason = null;
+        _lastBait = null;
+        Array.Clear(_gain);
+        Array.Clear(_nr);
+        _fast = null;
         NewRound();
     }
 
@@ -80,15 +116,27 @@ public sealed class Shootout : Game
             _hit[s] = null;
             _false[s] = false;
             _killedBy[s] = null;
+            _baited[s] = false;
         }
         // Ціль із минулого раунду лишається, якщо та людина ще за столом: переобирати щоразу — морока.
         for (var s = 0; s < Seats; s++)
             _aim[s] = _plays[s] ? (_aim[s] is { } t && t != s && _plays[t] ? t : NextTarget(s, 1)) : null;
         _phase = DuelPhase.Ready;
         _aimAt = now.AddMilliseconds(Duel.ReadyMs);
-        _fireAt = _aimAt.AddMilliseconds(Duel.AimMs(Ctx.Rng));
+        var aim = Duel.AimMs(Ctx.Rng);
+        _fireAt = _aimAt.AddMilliseconds(aim);
         _deadline = _fireAt;
         _dirty = false;
+        // Обманки й сигнали — як у дуелі (DuelBout); генератор чіпаємо лише з увімкненою опцією.
+        _baitAt = null;
+        _baitWord = null;
+        _baitShown = false;
+        _sig = Kit.MixSignals ? DuelBout.Signals[Ctx.Rng.Next(DuelBout.Signals.Length)] : "word";
+        if (Kit.Decoys && aim >= DuelBout.BaitMinAimMs && Ctx.Rng.Next(100) < 65)
+        {
+            _baitAt = _aimAt.AddMilliseconds(DuelBout.BaitAfterAimMs + Ctx.Rng.Next(aim - DuelBout.BaitAfterAimMs - DuelBout.BaitBeforeFireMs));
+            _baitWord = DuelBout.Baits[Ctx.Rng.Next(DuelBout.Baits.Length)];
+        }
     }
 
     /// <summary>Наступна жива ціль від <paramref name="seat"/> по колу в бік <paramref name="step"/> (±1).</summary>
@@ -113,6 +161,8 @@ public sealed class Shootout : Game
 
         switch (action)
         {
+            case "pong":
+                return ActResult.Done;
             case "aim":
                 return Aim(seat, payload);
             case "shoot":
@@ -165,6 +215,7 @@ public sealed class Shootout : Game
     {
         if (_false[seat]) return;
         _false[seat] = true;
+        if (_baitShown && (Ctx.Clock.UtcNow - _baitShownAt).TotalMilliseconds <= DuelBout.BaitBlameMs) _baited[seat] = true;
         _dirty = true;
     }
 
@@ -208,6 +259,14 @@ public sealed class Shootout : Game
             _dirty = false;
             return TickResult.FrameOnly;
         }
+        if (_phase == DuelPhase.Aim && _baitAt is { } ba && !_baitShown && now >= ba)
+        {
+            _baitShown = true;
+            _baitShownAt = now;
+            _baitN++;
+            _dirty = false;
+            return TickResult.FrameOnly;
+        }
         if (_phase == DuelPhase.Fire && (Settled() || now >= _deadline)) return Announce(now);
         if (_dirty)
         {
@@ -223,7 +282,22 @@ public sealed class Shootout : Game
         var anyShot = Enumerable.Range(0, Seats).Any(s => _shot[s] is not null);
         var anyFalse = Enumerable.Range(0, Seats).Any(s => _false[s]);
         _lastWinner = null;
-        if (standing.Length == 1 && anyShot)
+        Array.Clear(_gain);
+        _fast = null;
+        if (_points)
+        {
+            // +1 за кожне влучання, ще +1 найшвидшому влучанню раунду. Лежати не штраф: наступного раунду знову в грі.
+            for (var s = 0; s < Seats; s++)
+            {
+                if (_hit[s] is null || _shot[s] is not { } ms) continue;
+                _gain[s]++;
+                if (_fast is not { } f || ms < _shot[f]!.Value) _fast = s;
+            }
+            if (_fast is { } fast) _gain[fast]++;
+            for (var s = 0; s < Seats; s++) _wins[s] += _gain[s];
+            _lastReason = anyShot || anyFalse ? "points" : "sleep";
+        }
+        else if (standing.Length == 1 && anyShot)
         {
             _lastWinner = standing[0];
             _wins[standing[0]]++;
@@ -233,10 +307,14 @@ public sealed class Shootout : Game
 
         for (var s = 0; s < Seats; s++)
         {
+            _nr[s] = null;
             if (_shot[s] is not { } ms) continue;
-            if (_best[s] is not { } best || ms < best) _best[s] = ms;
-            if (ms >= Duel.HumanFloorMs) Ctx.Score(s, ms);
+            Kit.Count(s, ms);
+            if (ms >= Duel.HumanFloorMs) _nr[s] = Kit.Scored(s, ms);
         }
+        var baited = false;
+        for (var s = 0; s < Seats; s++) baited |= _baited[s];
+        _lastBait = baited ? _baitWord : null;
         _idle = _lastReason == "sleep" ? _idle + 1 : 0;
         _hasLast = true;
         _phase = DuelPhase.Result;
@@ -248,9 +326,11 @@ public sealed class Shootout : Game
     TickResult Next()
     {
         var seated = Enumerable.Range(0, Seats).Where(Ctx.Seated).ToArray();
-        if (seated.Any(s => _wins[s] >= WinsNeeded))
+        var top = seated.Length == 0 ? 0 : seated.Max(s => _wins[s]);
+        // Хто перший дотягнув до мети — але лише коли він один нагорі (двоє по сім — ще раунд, до різниці).
+        if (top >= Target && seated.Count(s => _wins[s] == top) == 1)
         {
-            var won = seated.First(s => _wins[s] >= WinsNeeded);
+            var won = seated.First(s => _wins[s] == top);
             _phase = DuelPhase.Done;
             Ctx.Finish([won], $"{Info.Title}: {Board(won)}");
             return TickResult.Both;
@@ -314,12 +394,24 @@ public sealed class Shootout : Game
             ["shot"] = (long?[])_shot.Clone(),
             ["hit"] = (int?[])_hit.Clone(),
             ["fs"] = (bool[])_false.Clone(),
-            ["last"] = _hasLast ? new { winner = _lastWinner, reason = _lastReason } : null,
+            ["last"] = _hasLast ? Last() : null,
             ["nextIn"] = NextIn(),
-            ["target"] = WinsNeeded,
+            ["target"] = Target,
         };
-        if (full) o["best"] = (long?[])_best.Clone();
+        if (_points) o["pts"] = true;
+        if (Kit.MixSignals) o["sig"] = _sig;
+        if (_phase == DuelPhase.Aim && _baitShown) o["decoy"] = new { w = _baitWord, n = _baitN };
+        Kit.Fill(o, full, All);
         return o;
+    }
+
+    Dictionary<string, object?> Last()
+    {
+        var l = new Dictionary<string, object?> { ["winner"] = _lastWinner, ["reason"] = _lastReason };
+        if (_points) { l["gain"] = (int[])_gain.Clone(); l["fast"] = _fast; }
+        if (_lastBait is not null) l["bait"] = _lastBait;
+        if (Array.Exists(_nr, x => x is not null)) l["nr"] = (string?[])_nr.Clone();
+        return l;
     }
 
     /// <summary>Як і в дуелі: у «Цілься…» відліку нема — інакше він і є момент «ВОГОНЬ!».</summary>
