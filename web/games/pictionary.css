@@ -166,3 +166,61 @@
 @media (max-width: 640px) {
   .gtable:has(> .gbody > .pcwrap.live) > .gseats .gseat { display: none; }
 }
+
+/* ======================= прохід №3 (29.09) ======================= */
+
+/* реакції 😂🔥🤯: кнопки в куті полотна, емодзі пливуть угору й тануть; малюнок під ними не ховається */
+.pcfloat { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: 10px; z-index: 2; }
+.pcfloat i { position: absolute; bottom: 4%; font-style: normal; font-size: 30px; animation: pcfly 1.7s ease-out forwards; }
+@keyframes pcfly {
+  0% { transform: translateY(0) scale(.6); opacity: 0; }
+  12% { transform: translateY(-8%) scale(1.1); opacity: .95; }
+  100% { transform: translateY(-260%) scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .pcfloat i { animation-duration: .8s; } }
+.pcreact { position: absolute; right: 8px; bottom: 8px; z-index: 3; display: flex; gap: 4px; }
+.pcreact[hidden] { display: none; }
+.pcreact button {
+  width: 44px; height: 44px; font-size: 22px; padding: 0; border-radius: 50%; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 2px 10px rgba(0, 0, 0, .25);
+}
+.pcreact button:active { transform: scale(.9); }
+.pcre { font-size: 1.1em; }
+
+/* вибір слова: 🎲 інші три */
+.pcreroll { background: transparent; border: 1px dashed var(--line); color: var(--text); border-radius: 10px; padding: 8px 12px; cursor: pointer; min-height: 44px; }
+.pcskip[hidden] { display: none; }
+
+/* лобі: слова компанії й найкращі пари; оверлей лобі гортається, якщо не влазить */
+.pcover.pclobby { overflow-y: auto; align-items: start; }
+.pchome { display: flex; flex-direction: column; gap: 6px; text-align: left; border-top: 1px dashed var(--line); padding-top: 8px; }
+.pchomef { display: flex; gap: 6px; }
+.pchomef input {
+  flex: 1; min-width: 0; padding: 8px 10px; font-size: 1em; min-height: 40px;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+}
+.pchomef button { min-width: 44px; min-height: 40px; border-radius: 10px; }
+.pchomes { display: flex; flex-wrap: wrap; gap: 4px; }
+.pchomes button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
+.pcpairs { display: flex; flex-direction: column; gap: 2px; text-align: left; border-top: 1px dashed var(--line); padding-top: 8px; }
+.pcpairs div { display: flex; justify-content: space-between; gap: 12px; }
+.pcalink { color: var(--accent); }
+
+/* галерея з ❤ і 📌 */
+.pcph { width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; background: var(--pcpaper); opacity: .5; }
+.pcfigbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 36px; }
+.pcheart, .pcpin {
+  min-width: 44px; height: 36px; border-radius: 10px; cursor: pointer; font-size: 1.1em;
+  background: var(--bg2); border: 1px solid var(--line); color: var(--text);
+}
+.pcheart { filter: grayscale(1); opacity: .7; }
+.pcheart.on { filter: none; opacity: 1; border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger) inset; }
+.pcthumbs figure.voted { box-shadow: 0 0 0 2px var(--danger) inset; }
+.pcthumbs figure.best { box-shadow: 0 0 0 2px var(--accent) inset; }
+.pchearts { font-weight: 700; }
+
+@container (max-width: 640px) {
+  .pcreact button { width: 44px; height: 44px; font-size: 20px; }
+  .pcfloat i { font-size: 24px; }
+  .pcthumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

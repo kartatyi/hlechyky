@@ -884,7 +884,7 @@ public sealed class Pictionary : Game
         word = Knows(seat) && _word.Length > 0 ? _word : null,
         mask = Mask(),
         until = _until,
-        totalMs = _phase switch { Pick => PickMs, Draw => _drawMs, Reveal => RevealMs, _ => 0 },
+        totalMs = _phase switch { Pick => PickMs, Draw => _duo ? DuoMs : _drawMs, Reveal => _duo ? DuoRevealMs : RevealMs, Vote => VoteMs, _ => 0 },
         scores = (int[])_scores.Clone(),
         gained = (int[])_gained.Clone(),
         guessed = _guessed.ToArray(),
