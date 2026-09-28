@@ -15,6 +15,12 @@ public class BomberTests
 {
     // ---------- підмостки ----------
 
+    /// <summary>Класичне поле 15×13 для координат (з проходу №3 розмір — у ядра, а не статичний).</summary>
+    static readonly BomberCore Classic = new(new Random(0));
+    static int Cl(int x, int y) => y * BomberCore.W + x;
+    static int Xc(int cell) => cell % BomberCore.W;
+    static int Yc(int cell) => cell / BomberCore.W;
+
     /// <summary>Стіл на потрібну кількість гравців; бомбер стартує з кнопки господаря.</summary>
     static RoomHarness Table(int players = 2, int seed = 42)
     {
@@ -52,7 +58,7 @@ public class BomberTests
     static BomberMan Put(BomberCore core, int seat, int x, int y)
     {
         var p = core.Players[seat];
-        p.Cell = BomberCore.Cell(x, y);
+        p.Cell = Cl(x, y);
         p.Move = -1;
         p.Step = 0;
         p.Want = -1;
@@ -66,14 +72,14 @@ public class BomberTests
         for (var i = 0; i < times; i++) core.Step();
     }
 
-    static bool Burning(BomberCore core, int x, int y) => core.Flame[BomberCore.Cell(x, y)] > 0;
+    static bool Burning(BomberCore core, int x, int y) => core.Flame[Cl(x, y)] > 0;
 
     /// <summary>Та сама геометрія, що й у грі, але записана в тесті окремо — щоб перевіряти, а не повторювати.</summary>
     static bool IsWall(int x, int y) =>
         x == 0 || y == 0 || x == BomberCore.W - 1 || y == BomberCore.H - 1 || (x % 2 == 0 && y % 2 == 0);
 
-    static bool NearCorner(int x, int y) => BomberCore.Corners.Any(c =>
-        Math.Abs(BomberCore.X(c) - x) <= 1 && Math.Abs(BomberCore.Y(c) - y) <= 1);
+    static bool NearCorner(int x, int y) => Classic.Corners.Any(c =>
+        Math.Abs(Xc(c) - x) <= 1 && Math.Abs(Yc(c) - y) <= 1);
 
     static bool[] All(int n) => [.. Enumerable.Range(0, BomberCore.Seats).Select(i => i < n)];
 
@@ -85,13 +91,13 @@ public class BomberTests
         var core = Empty();
         for (var x = 0; x < BomberCore.W; x++)
         {
-            Assert.Equal(BomberTile.Wall, core.Tiles[BomberCore.Cell(x, 0)]);
-            Assert.Equal(BomberTile.Wall, core.Tiles[BomberCore.Cell(x, BomberCore.H - 1)]);
+            Assert.Equal(BomberTile.Wall, core.Tiles[Cl(x, 0)]);
+            Assert.Equal(BomberTile.Wall, core.Tiles[Cl(x, BomberCore.H - 1)]);
         }
         for (var y = 0; y < BomberCore.H; y++)
         {
-            Assert.Equal(BomberTile.Wall, core.Tiles[BomberCore.Cell(0, y)]);
-            Assert.Equal(BomberTile.Wall, core.Tiles[BomberCore.Cell(BomberCore.W - 1, y)]);
+            Assert.Equal(BomberTile.Wall, core.Tiles[Cl(0, y)]);
+            Assert.Equal(BomberTile.Wall, core.Tiles[Cl(BomberCore.W - 1, y)]);
         }
     }
 
@@ -102,7 +108,7 @@ public class BomberTests
         for (var y = 1; y < BomberCore.H - 1; y++)
             for (var x = 1; x < BomberCore.W - 1; x++)
             {
-                var wall = core.Tiles[BomberCore.Cell(x, y)] == BomberTile.Wall;
+                var wall = core.Tiles[Cl(x, y)] == BomberTile.Wall;
                 Assert.Equal(x % 2 == 0 && y % 2 == 0, wall);
             }
     }
@@ -112,11 +118,11 @@ public class BomberTests
     {
         var core = new BomberCore(new Random(5));
         core.Reset(All(4));
-        foreach (var corner in BomberCore.Corners)
+        foreach (var corner in Classic.Corners)
             for (var dy = -1; dy <= 1; dy++)
                 for (var dx = -1; dx <= 1; dx++)
                 {
-                    var cell = BomberCore.Cell(BomberCore.X(corner) + dx, BomberCore.Y(corner) + dy);
+                    var cell = Cl(Xc(corner) + dx, Yc(corner) + dy);
                     Assert.NotEqual(BomberTile.Box, core.Tiles[cell]);
                 }
     }
@@ -145,9 +151,9 @@ public class BomberTests
     {
         var core = new BomberCore(new Random(3));
         core.Reset(All(4));
-        for (var i = 0; i < BomberCore.Corners.Length; i++)
+        for (var i = 0; i < Classic.Corners.Length; i++)
         {
-            Assert.Equal(BomberCore.Corners[i], core.Players[i].Cell);
+            Assert.Equal(Classic.Corners[i], core.Players[i].Cell);
             Assert.True(core.Players[i].Alive);
         }
 
@@ -157,8 +163,8 @@ public class BomberTests
         Assert.False(core.Players[2].Alive);
         Assert.False(core.Players[3].Alive);
         var (a, b) = (core.Players[0].Cell, core.Players[1].Cell);
-        Assert.Equal(BomberCore.W - 3, Math.Abs(BomberCore.X(a) - BomberCore.X(b)));
-        Assert.Equal(BomberCore.H - 3, Math.Abs(BomberCore.Y(a) - BomberCore.Y(b)));
+        Assert.Equal(BomberCore.W - 3, Math.Abs(Xc(a) - Xc(b)));
+        Assert.Equal(BomberCore.H - 3, Math.Abs(Yc(a) - Yc(b)));
     }
 
     // ---------- рух ----------
@@ -171,7 +177,7 @@ public class BomberTests
         core.Turn(0, 3);                 // вгору, а там рамка
         Steps(core, 10);
 
-        Assert.Equal(BomberCore.Cell(1, 1), p.Cell);
+        Assert.Equal(Cl(1, 1), p.Cell);
         Assert.Equal(-1, p.Move);
     }
 
@@ -179,12 +185,12 @@ public class BomberTests
     public void A_box_stops_the_walker()
     {
         var core = Empty();
-        core.Tiles[BomberCore.Cell(2, 1)] = BomberTile.Box;
+        core.Tiles[Cl(2, 1)] = BomberTile.Box;
         var p = Put(core, 0, 1, 1);
         core.Turn(0, 0);
         Steps(core, 10);
 
-        Assert.Equal(BomberCore.Cell(1, 1), p.Cell);
+        Assert.Equal(Cl(1, 1), p.Cell);
     }
 
     [Fact]
@@ -197,7 +203,7 @@ public class BomberTests
         core.Turn(0, 0);
         Steps(core, 10);
 
-        Assert.Equal(BomberCore.Cell(1, 1), p.Cell);
+        Assert.Equal(Cl(1, 1), p.Cell);
     }
 
     [Fact]
@@ -208,11 +214,11 @@ public class BomberTests
         Assert.True(core.Bomb(0));
         core.Turn(0, 0);
         Steps(core, 4);
-        Assert.Equal(BomberCore.Cell(2, 1), p.Cell);
+        Assert.Equal(Cl(2, 1), p.Cell);
 
         core.Turn(0, 2);                 // назад, на свою ж бомбу — уже не можна
         Steps(core, 8);
-        Assert.Equal(BomberCore.Cell(2, 1), p.Cell);
+        Assert.Equal(Cl(2, 1), p.Cell);
     }
 
     [Fact]
@@ -222,13 +228,13 @@ public class BomberTests
         var p = Put(core, 0, 1, 1);
         core.Turn(0, 0);
         Steps(core, 3);
-        Assert.Equal(BomberCore.Cell(1, 1), p.Cell);
+        Assert.Equal(Cl(1, 1), p.Cell);
         core.Step();
-        Assert.Equal(BomberCore.Cell(2, 1), p.Cell);
+        Assert.Equal(Cl(2, 1), p.Cell);
 
         p.Boots = true;
         Steps(core, 3);
-        Assert.Equal(BomberCore.Cell(3, 1), p.Cell);
+        Assert.Equal(Cl(3, 1), p.Cell);
     }
 
     [Fact]
@@ -240,11 +246,11 @@ public class BomberTests
         Steps(core, 2);                  // півклітинки позаду
         core.Turn(0, -1);                // відпустив
         Steps(core, 2);
-        Assert.Equal(BomberCore.Cell(2, 1), p.Cell);
+        Assert.Equal(Cl(2, 1), p.Cell);
         Assert.Equal(-1, p.Move);
 
         Steps(core, 8);
-        Assert.Equal(BomberCore.Cell(2, 1), p.Cell);
+        Assert.Equal(Cl(2, 1), p.Cell);
     }
 
     [Fact]
@@ -254,9 +260,9 @@ public class BomberTests
         var p = Put(core, 0, 1, 1);
         core.Turn(0, 0);
         core.Step();
-        Assert.Equal(BomberCore.Cell(1, 1), BomberCore.Center(p));
+        Assert.Equal(Cl(1, 1), Classic.Center(p));
         core.Step();
-        Assert.Equal(BomberCore.Cell(2, 1), BomberCore.Center(p));
+        Assert.Equal(Cl(2, 1), Classic.Center(p));
     }
 
     // ---------- бомби й вибухи ----------
@@ -309,7 +315,7 @@ public class BomberTests
         Put(core, 0, 1, 1);
         core.Bomb(0);
         Steps(core, BomberCore.FuseTicks);
-        Assert.Equal(BomberCore.FlameTicks, core.Flame[BomberCore.Cell(1, 1)]);
+        Assert.Equal(BomberCore.FlameTicks, core.Flame[Cl(1, 1)]);
 
         Steps(core, BomberCore.FlameTicks - 1);
         Assert.True(Burning(core, 1, 1));
@@ -333,15 +339,15 @@ public class BomberTests
     public void The_blast_breaks_the_first_box_and_goes_no_further()
     {
         var core = Empty();
-        core.Tiles[BomberCore.Cell(3, 1)] = BomberTile.Box;
-        core.Tiles[BomberCore.Cell(4, 1)] = BomberTile.Box;
+        core.Tiles[Cl(3, 1)] = BomberTile.Box;
+        core.Tiles[Cl(4, 1)] = BomberTile.Box;
         var p = Put(core, 0, 1, 1);
         p.Range = 4;
         core.Bomb(0);
         Steps(core, BomberCore.FuseTicks);
 
-        Assert.Equal(BomberTile.Free, core.Tiles[BomberCore.Cell(3, 1)]);
-        Assert.Equal(BomberTile.Box, core.Tiles[BomberCore.Cell(4, 1)]);
+        Assert.Equal(BomberTile.Free, core.Tiles[Cl(3, 1)]);
+        Assert.Equal(BomberTile.Box, core.Tiles[Cl(4, 1)]);
         Assert.True(Burning(core, 3, 1));
         Assert.False(Burning(core, 4, 1));
     }
@@ -403,7 +409,7 @@ public class BomberTests
         // Увесь ланцюг рахуємо проти поля, яким воно було до вибуху: ящик зупиняє і той промінь,
         // що прийшов у ту саму клітинку вже після того, як ящик розлетівся.
         var core = Empty();
-        core.Tiles[BomberCore.Cell(5, 1)] = BomberTile.Box;
+        core.Tiles[Cl(5, 1)] = BomberTile.Box;
         var first = Put(core, 0, 1, 1);
         first.Range = 4;
         Assert.True(core.Bomb(0));
@@ -415,7 +421,7 @@ public class BomberTests
         Steps(core, BomberCore.FuseTicks - 5);
 
         Assert.Empty(core.Bombs);
-        Assert.Equal(BomberTile.Free, core.Tiles[BomberCore.Cell(5, 1)]);
+        Assert.Equal(BomberTile.Free, core.Tiles[Cl(5, 1)]);
         Assert.True(Burning(core, 5, 1));
         Assert.False(Burning(core, 6, 1));
     }
@@ -458,7 +464,7 @@ public class BomberTests
         for (var seed = 0; seed < 400; seed++)
         {
             var core = Empty(seed);
-            core.Tiles[BomberCore.Cell(2, 1)] = BomberTile.Box;
+            core.Tiles[Cl(2, 1)] = BomberTile.Box;
             Put(core, 0, 1, 1);
             core.Bomb(0);
             Steps(core, BomberCore.FuseTicks);
@@ -475,9 +481,9 @@ public class BomberTests
     {
         var core = Empty();
         var p = Put(core, 0, 1, 1);
-        core.Drops.Add(new BomberDrop { Cell = BomberCore.Cell(2, 1), Kind = BomberBonus.Range });
-        core.Drops.Add(new BomberDrop { Cell = BomberCore.Cell(3, 1), Kind = BomberBonus.Bomb });
-        core.Drops.Add(new BomberDrop { Cell = BomberCore.Cell(4, 1), Kind = BomberBonus.Boots });
+        core.Drops.Add(new BomberDrop { Cell = Cl(2, 1), Kind = BomberBonus.Range });
+        core.Drops.Add(new BomberDrop { Cell = Cl(3, 1), Kind = BomberBonus.Bomb });
+        core.Drops.Add(new BomberDrop { Cell = Cl(4, 1), Kind = BomberBonus.Boots });
         core.Turn(0, 0);
         Steps(core, 12);
 
@@ -494,8 +500,8 @@ public class BomberTests
         var p = Put(core, 0, 1, 1);
         p.Range = BomberCore.MaxRange;
         p.Bombs = BomberCore.MaxBombs;
-        core.Drops.Add(new BomberDrop { Cell = BomberCore.Cell(2, 1), Kind = BomberBonus.Range });
-        core.Drops.Add(new BomberDrop { Cell = BomberCore.Cell(3, 1), Kind = BomberBonus.Bomb });
+        core.Drops.Add(new BomberDrop { Cell = Cl(2, 1), Kind = BomberBonus.Range });
+        core.Drops.Add(new BomberDrop { Cell = Cl(3, 1), Kind = BomberBonus.Bomb });
         core.Turn(0, 0);
         Steps(core, 8);
 
@@ -508,7 +514,7 @@ public class BomberTests
     {
         var core = Empty();
         Put(core, 0, 1, 1);
-        core.Drops.Add(new BomberDrop { Cell = BomberCore.Cell(2, 1), Kind = BomberBonus.Range });
+        core.Drops.Add(new BomberDrop { Cell = Cl(2, 1), Kind = BomberBonus.Range });
         core.Bomb(0);
         Steps(core, BomberCore.FuseTicks);
 
@@ -907,15 +913,15 @@ public class BomberTests
         var core = new BomberCore(new Random(3));
         core.Reset(All(6));
 
-        Assert.Equal(BomberCore.Cell(7, 1), core.Players[4].Cell);
-        Assert.Equal(BomberCore.Cell(7, BomberCore.H - 2), core.Players[5].Cell);
+        Assert.Equal(Cl(7, 1), core.Players[4].Cell);
+        Assert.Equal(Cl(7, BomberCore.H - 2), core.Players[5].Cell);
         Assert.All(core.Players, p => Assert.True(p.Alive));
-        foreach (var mid in BomberCore.Mids)
+        foreach (var mid in Classic.Mids)
         {
-            Assert.False(IsWall(BomberCore.X(mid), BomberCore.Y(mid)));      // стоїмо в проході, а не в стовпі
+            Assert.False(IsWall(Xc(mid), Yc(mid)));      // стоїмо в проході, а не в стовпі
             for (var dy = -1; dy <= 1; dy++)
                 for (var dx = -1; dx <= 1; dx++)
-                    Assert.NotEqual(BomberTile.Box, core.Tiles[BomberCore.Cell(BomberCore.X(mid) + dx, BomberCore.Y(mid) + dy)]);
+                    Assert.NotEqual(BomberTile.Box, core.Tiles[Cl(Xc(mid) + dx, Yc(mid) + dy)]);
         }
     }
 
@@ -928,7 +934,7 @@ public class BomberTests
         {
             var four = new BomberCore(new Random(seed));
             four.Reset(All(4));
-            foreach (var mid in BomberCore.Mids)
+            foreach (var mid in Classic.Mids)
                 if (four.Tiles[mid] == BomberTile.Box) boxed++;
             Assert.False(four.Players[4].Alive);
             Assert.False(four.Players[5].Alive);
