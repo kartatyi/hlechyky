@@ -38,6 +38,7 @@ class Bot:
         self.view = None
         self.seat = None
         self.status = None
+        self.tried = {}
         self.round = 0
         self.gone = False
         self.done = asyncio.Event()
@@ -95,6 +96,8 @@ class Bot:
                         self.view = rv.get("view") or {}
                         self.seat = rv.get("seat")
                         self.status = rv["room"]["status"]
+                        seats = rv["room"].get("seats") or []
+                        self.seats = [x if isinstance(x, str) else (x or {}).get("nick") for x in seats]
                         self.react()
         except Exception as e:
             if not self.gone:
@@ -120,10 +123,37 @@ class Bot:
                 asyncio.create_task(self.leave())
                 return
             asyncio.create_task(self.play_round(self.round))
+        self.extras(v)
         if v.get("phase") == "reveal" and self.nick == self.shared["first"] and self.shared.get("shown") != v.get("round"):
             self.shared["shown"] = v.get("round")
             ans = v.get("answer") or {}
             print(f"   відповідь: {ans.get('artist')} — {ans.get('title')}; очки {v.get('scores')}", flush=True)
+
+    def extras(self, v):
+        """Прохід №3: варіанти (навмання, коли «не знає»), «хто закинув» (навмання з-за столу), ставка в дуелі."""
+        me = v.get("me") or {}
+        key = (v.get("round"), v.get("phase"))
+        if v.get("phase") == "play" and v.get("choices") and not me.get("artist") and not me.get("blocked")                 and self.tried.get("pick") != v.get("round") and self.rng.random() < 0.5:
+            self.tried["pick"] = v.get("round")
+            i = self.rng.randrange(len(v["choices"]))
+            asyncio.create_task(self.say("pick", {"i": i}, f"варіант «{v['choices'][i]}»"))
+        if v.get("phase") == "play" and v.get("who") and (me.get("artist") or me.get("title")) and me.get("who") is None                 and self.tried.get("who") != v.get("round"):
+            self.tried["who"] = v.get("round")
+            nicks = [n for n in getattr(self, "seats", []) if n]
+            if nicks:
+                asyncio.create_task(self.say("who", {"nick": self.rng.choice(nicks)}, "хто закинув"))
+        d = v.get("duel")
+        if d and d.get("winner") == -2 and not d.get("closed") and self.seat not in (d.get("a"), d.get("b"))                 and d.get("mine") == -1 and self.tried.get("bet") != d.get("round"):
+            self.tried["bet"] = d.get("round")
+            asyncio.create_task(self.say("bet", {"seat": self.rng.choice([d["a"], d["b"]])}, "ставка"))
+        if d and d.get("winner") != -2 and self.nick == self.shared["first"] and not self.shared.get("duel"):
+            self.shared["duel"] = True
+            print(f"   ⚔️ дуель {d['a']} проти {d['b']}: взяв {d['winner']}, ставки {d.get('all')}", flush=True)
+
+    async def say(self, action, payload, what):
+        await asyncio.sleep(self.rng.uniform(0.3, 1.5))
+        r = await self.act(action, payload)
+        print(f"   [{self.nick}] {what}: {(r or {}).get('message')}", flush=True)
 
     async def play_round(self, rnd):
         lo, hi = self.a.delay

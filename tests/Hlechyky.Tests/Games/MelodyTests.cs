@@ -16,6 +16,13 @@ sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? b
 {
     public int Clips, Resolved;
     public IReadOnlyList<string>? Categories;
+    /// <summary>Що гравці столу «закидали на радіо» — для «Хто закинув?».</summary>
+    public IReadOnlyList<MelodyRequested> Requested = [];
+    /// <summary>Довжини нарізаних уривків, по черзі.</summary>
+    public readonly System.Collections.Concurrent.ConcurrentQueue<int> Lengths = new();
+
+    public Task<IReadOnlyList<MelodyRequested>> RequestedAsync(IReadOnlyList<string> nicks, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<MelodyRequested>>([.. Requested.Where(r => r.By.Any(b => nicks.Contains(b)))]);
     readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<MelodyTrack?>> _slow = new();
 
     public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct)
@@ -46,6 +53,7 @@ sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? b
     public Task<byte[]?> ClipAsync(MelodyTrack track, double startSec, int seconds, CancellationToken ct)
     {
         Interlocked.Increment(ref Clips);
+        Lengths.Enqueue(seconds);
         return Task.FromResult(broken?.Contains(track.Id) == true ? null : new byte[5000]);
     }
 }
@@ -93,10 +101,12 @@ public class MelodyTests
 
     static int Score(RoomHarness h, int seat) => h.View(null).GetProperty("scores")[seat].GetInt32();
 
-    static RoomHarness Playing(object? options = null)
+    /// <summary>Стіл, де вже звучить трек, — і вже після бонусу швидкості (його тести окремо, решта рахує звичайні очки).</summary>
+    static RoomHarness Playing(object? options = null, bool fast = false)
     {
         var h = Table(new FakeMelodySource([Songs[0], Songs[1], Songs[2]]), options ?? new { rounds = "5" });
         Until(h, "play");
+        if (!fast) h.Clock.AdvanceMs(Melody.SpeedMs);
         return h;
     }
 
@@ -294,7 +304,8 @@ public class MelodyTests
         Assert.Equal("1", h.Room.Game.SeatName(0));
         Assert.Equal("12", h.Room.Game.SeatName(11));
 
-        // Останній за столом вгадує першим — бонус першості його, решта бере без бонусу.
+        // Останній за столом вгадує першим — бонус першості його, решта бере без бонусу (і вже без бонусу швидкості).
+        h.Clock.AdvanceMs(Melody.SpeedMs);
         Assert.True(Guess(h, 11, "обійми").Ok);
         Assert.True(Guess(h, 0, "обійми").Ok);
         Assert.Equal(Melody.TitlePoints + Melody.TitleFirst, Score(h, 11));
