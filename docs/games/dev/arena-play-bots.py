@@ -9,7 +9,8 @@
   curve     — сам домальовує слід з кадрів (як браузер) і щокадру дивиться на три курси вперед — обирає вільніший;
   territory — обводить прямокутні шматки поля й вертається додому, біля стіни звертає;
   duel      — стріляє за 180–450 мс після «ВОГОНЬ!», зрідка поспішає;
-  shootout  — на «Готуйсь» бере ціль навмання, на «ВОГОНЬ!» стріляє за 200–500 мс.
+  shootout  — на «Готуйсь» бере ціль навмання, на «ВОГОНЬ!» стріляє за 200–500 мс;
+  duelcup   — Турнір стрільців: як duel, але лише коли його пара на вулиці. З опцією «Пінг» боти відлунюють кадри.
 
     python arena-play-bots.py --port 8264 --room <id> --game bomber --n 5 [--prefix бот] [--secs 120]
                               [--rematch] [--leave 2:40] [--start]   # --start: бот №1 — господар, тисне «Почати»
@@ -85,6 +86,9 @@ class Bot:
                     tgt, args = m.get("target"), m.get("arguments") or []
                     if tgt == "frame" and args and args[0].get("id") == self.a.room:
                         self.frame = args[0]["f"]
+                        # Дуель з опцією «Пінг»: відлунюємо кожен кадр одразу, як браузер (прохід №3, п. 70).
+                        if isinstance(self.frame, dict) and self.frame.get("fid") is not None and self.seat is not None:
+                            await self.input("pong", {"f": self.frame["fid"]})
                         if self.idx == 1:
                             self.stats["frames"] += 1
                             self.stats["bytes"] += len(rec)
@@ -349,7 +353,7 @@ class Bot:
     async def duel(self):
         f = self.frame
         ph = f.get("phase")
-        key = (ph, f.get("round"), json.dumps(f.get("wins")))
+        key = (ph, f.get("round"), json.dumps(f.get("wins")), json.dumps(f.get("pair")), (f.get("last") or {}).get("reason"))
         if ph == "aim" and self.plan.get("key") != key:
             self.plan["key"] = key
             if self.rng.random() < 0.06:
@@ -357,6 +361,12 @@ class Bot:
         if ph == "fire" and self.plan.get("fired") != key:
             self.plan["fired"] = key
             asyncio.create_task(self.later(self.rng.uniform(0.18, 0.45), "shoot"))
+
+    async def duelcup(self):
+        # Турнір стрільців: стріляє лише той, чия пара зараз на вулиці.
+        pair = self.frame.get("pair") or []
+        if self.seat in pair:
+            await self.duel()
 
     async def shootout(self):
         f = self.frame
@@ -385,7 +395,7 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8264)
     ap.add_argument("--room", required=True)
-    ap.add_argument("--game", choices=["bomber", "tanks", "curve", "territory", "duel", "shootout"], required=True)
+    ap.add_argument("--game", choices=["bomber", "tanks", "curve", "territory", "duel", "duelcup", "shootout"], required=True)
     ap.add_argument("--n", type=int, default=1)
     ap.add_argument("--prefix", default="бот")
     ap.add_argument("--secs", type=int, default=120)
