@@ -312,3 +312,34 @@
   .dt *, .dt *::before, .dt *::after { animation: none !important; transition: none !important; }
   .dt-confetti, .dt-fly { display: none; }
 }
+
+/* Прохід №3 (29.09): смайл-ребуси, «📌 В альбом» / «📋 У балачку», «📖 Альбом дотепів» */
+.dt-pic { display: block; font-size: 2.3em; letter-spacing: .12em; line-height: 1.25; margin-top: .12em; }
+.dt-prompt.big .dt-pic { font-size: 2.6em; }
+.dt-bestq .dt-pic { font-size: 1.8em; }
+.dt-bestact { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.dt-bestact .ghost { min-height: 44px; }
+.dt-pinned { align-self: center; }
+.dt-albumbtn { min-height: 44px; align-self: flex-start; }
+.dt-doneal { display: flex; justify-content: center; margin-top: 10px; }
+.dt-album {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  padding: 16px 12px 64px; background: rgba(0, 0, 0, .55);
+}
+.dt-alpanel {
+  width: min(620px, 100%); max-height: 100%; overflow: auto; overscroll-behavior: contain;
+  background: var(--panel, #1c3328); color: var(--text, inherit); border: 1px solid var(--line, #2f4d3d);
+  border-radius: 14px; padding: 12px 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45);
+}
+.dt-alhead { display: flex; align-items: center; gap: 10px; position: sticky; top: -12px; padding: 4px 0 8px; background: inherit; z-index: 1; }
+.dt-alhead b { font-size: 1.15em; }
+.dt-alhead .dt-alclose { margin-left: auto; min-width: 44px; min-height: 44px; }
+.dt-allist { display: flex; flex-direction: column; gap: 10px; }
+.dt-alitem { background: var(--bg, #0f1f18); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.dt-almeta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; color: var(--muted); }
+.dt-almeta b { color: var(--accent); }
+.dt-alacts { display: inline-flex; gap: 6px; }
+.dt-like, .dt-aldel { min-height: 40px; min-width: 52px; }
+.dt-like.on { color: #e86aa0; }
+.dt-alfoot { display: flex; justify-content: center; padding-top: 10px; }
+.dt-alempty { padding: 18px 4px; line-height: 1.4; }
