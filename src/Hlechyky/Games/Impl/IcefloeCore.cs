@@ -32,6 +32,14 @@ public sealed class IcefloeBody
     public int Wins, Pushouts;
     /// <summary>Падав у воду під час гри хоч раз за партію (для «Сухих валянок»).</summary>
     public bool Wet;
+    /// <summary>
+    /// Відкол з берега (прохід №3, п. 183): уже колов у цьому раунді; скільки тиків до відколу (0 — нема) і з якої
+    /// вершини дуга.
+    /// </summary>
+    public bool ChipUsed;
+    public int ChipIn, ChipS;
+    /// <summary>Команда (п. 182): 0 сині, 1 руді, −1 — кожен сам за себе.</summary>
+    public int Team = -1;
     /// <summary>Службове: у цьому підкроці тіло штовхнули — після всіх ударів йому ще раз стеля швидкості.</summary>
     internal bool Touched;
 
@@ -104,6 +112,8 @@ public sealed class IcefloeCore(Random rng)
     /// <summary>Від такого імпульсу подія зіткнення летить у кадр (скалки, звук).</summary>
     public const double LoudHit = 250;
 
+    /// <summary>Відкол з берега: секунда тріщини, дуга з трьох вершин меншає на 22 % (уся крига — ні).</summary>
+    public const int ChipWarn = 25, ChipLen = 3;
     public const int FirstWarn = 250, WarnEvery = 200, Breaks = 6, WarnTicks = 50;
     public const int MeltFrom = 1300, CapTicks = 1875;
     public const double ArcShrink = 0.78, AllShrink = 0.90;
@@ -211,6 +221,7 @@ public sealed class IcefloeCore(Random rng)
     {
         CrackS = -1;
         CrackL = 0;
+        for (var i = 0; i < Seats; i++) Bodies[i].ChipIn = 0;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -268,6 +279,7 @@ public sealed class IcefloeCore(Random rng)
     /// </summary>
     public void Spawn()
     {
+        for (var i = 0; i < Seats; i++) { Bodies[i].ChipUsed = false; Bodies[i].ChipIn = 0; }
         var n = Playing;
         var k = 0;
         for (var i = 0; i < Seats; i++)
@@ -398,6 +410,7 @@ public sealed class IcefloeCore(Random rng)
         b.Plays = false;
         b.Alive = false;
         b.Want = -1;
+        b.ChipIn = 0;
         for (var i = 0; i < Seats; i++) if (Bodies[i].LastBy == seat) Bodies[i].LastBy = -1;
     }
 
@@ -453,6 +466,11 @@ public sealed class IcefloeCore(Random rng)
     void Schedule()
     {
         if (Rt >= MeltFrom) Melt++;
+        for (var i = 0; i < Seats; i++)
+        {
+            var b = Bodies[i];
+            if (b.ChipIn > 0 && --b.ChipIn == 0) BreakArc(b.ChipS, ChipLen);
+        }
         for (var k = 0; k < Breaks; k++)
         {
             var warn = FirstWarn + k * WarnEvery;
@@ -478,6 +496,42 @@ public sealed class IcefloeCore(Random rng)
         CrackL = 0;
         Broke = true;
         Event(EvBreak, s, l);
+    }
+
+    /// <summary>Відкол з берега: лише дуга меншає на 22 %, решта криги ціла.</summary>
+    public void BreakArc(int s, int l)
+    {
+        for (var k = 0; k < l; k++) R[(s + k) % Vertices] *= ArcShrink;
+        Iv++;
+        Broke = true;
+        Event(EvBreak, s, l);
+    }
+
+    /// <summary>
+    /// Вибулий раз за раунд відколює шматок краю (п. 183): туди, куди цілиться з берега, — перша крига на промені.
+    /// Секунду світиться тріщина (встигнеш відскочити), потім дуга з трьох вершин меншає. Повертає текст відмови.
+    /// </summary>
+    public string? Chip(int seat)
+    {
+        var b = Bodies[seat];
+        if (!b.Plays) return "Ти тут не граєш";
+        if (b.Alive) return "Лід колють із берега — спершу шубовсни";
+        if (b.ChipUsed) return "Лід уже колов — раз за раунд";
+        var (x0, y0) = BankPoint(b.BankAngle);
+        var cx = ArenaPhysics.Cos(b.Face);
+        var sy = ArenaPhysics.Sin(b.Face);
+        for (var d = 0.0; d <= 2 * Bank; d += 20)
+        {
+            var x = x0 + d * cx;
+            var y = y0 + d * sy;
+            if (!OnIce(x, y)) continue;
+            var v = (int)Math.Round(Math.Atan2(y - Cy, x - Cx) / (Math.PI / 12));
+            b.ChipS = ((v - ChipLen / 2) % Vertices + Vertices) % Vertices;
+            b.ChipIn = ChipWarn;
+            b.ChipUsed = true;
+            return null;
+        }
+        return "Цілься в кригу — туди лід не дістати";
     }
 
     void SpawnPickup()
@@ -636,7 +690,8 @@ public sealed class IcefloeCore(Random rng)
         {
             b.Wet = true;
             Out.Add(seat);
-            if (b.LastBy >= 0 && b.LastBy != seat && T - b.LastAt <= CreditTicks && Bodies[b.LastBy].Plays)
+            if (b.LastBy >= 0 && b.LastBy != seat && T - b.LastAt <= CreditTicks && Bodies[b.LastBy].Plays
+                && (b.Team < 0 || Bodies[b.LastBy].Team != b.Team))
             {
                 who = b.LastBy;
                 Bodies[who].Pushouts++;

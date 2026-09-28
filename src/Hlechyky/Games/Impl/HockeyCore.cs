@@ -4,24 +4,37 @@ namespace Hlechyky.Games.Impl;
 /// Стіл аерохокею без кімнат і рахунку партії: шайба, до чотирьох біт, борти, ворота, подача й застій.
 /// Стіл 200 × 120 (x — уздовж, ворота на торцях), вісь y униз. Сині (команда 0) захищають ворота x = 0,
 /// руді (1) — x = 200. П'ять підкроків по 8 мс: за підкрок шайба проходить ≤ 8, біта ≤ 3.36, а вікно
-/// контакту біта–шайба 12.5 — повз біту не проскочить. Усі числа — зі spec <c>docs/games/specs/hockey.md</c> §2.
+/// контакту біта–шайба 12.5 — повз біту не проскочить. Прохід №3 (29.09): десять підкроків по 4 мс — біта за
+/// пальцем тепер швидка (900/с), а разом із шайбою за підкрок проходять ≤ 7.6 &lt; 12.5. Усі числа — зі spec <c>docs/games/specs/hockey.md</c> §2.
 /// </summary>
 public sealed class HockeyCore(Random rng)
 {
     public const int Seats = 4;
     public const int TickMs = 40;
-    public const int Sub = 5;
-    public const double H = 0.008;
+    public const int Sub = 10;
+    public const double H = 0.004;
 
     public const double W = 200, TableH = 120, Mid = W / 2;
     public const double GoalLo = 40, GoalHi = 80;
     public const double PuckR = 4.5, PadR = 8;
-    public const double PadSpeed = 420;
-    /// <summary>Скільки біта проходить за підкрок (3.36) — те саме число рахує браузер.</summary>
-    public const double PadStep = PadSpeed * H;
+    /// <summary>
+    /// Біта за пальцем чи мишкою — 900/с: рука рідко рухається швидше, тож біта не відстає від курсора (на 420 вона
+    /// відставала на пів стола при кожному замаху — «незручно»). Клавіші й пад лишились на 420: вісім напрямків —
+    /// грубий інструмент, на 900 ним не прицілишся.
+    /// </summary>
+    public const double PadSpeed = 900, KeySpeed = 420;
+    /// <summary>Скільки біта проходить за підкрок (3.6 за мишкою, 1.68 клавішами) — ті самі числа рахує браузер.</summary>
+    public const double PadStep = PadSpeed * H, KeyStep = KeySpeed * H;
+    /// <summary>
+    /// Ціль біти їде далі швидкістю руки, що прийшла з наміром, ще до 32 мс (8 підкроків): намір летить 25 разів на
+    /// секунду, і без цього біта ривками доганяла кожну нову ціль — удар то в повну силу, то нульовий.
+    /// </summary>
+    public const int AimLead = 8;
     public const double Mu = 0.6, VMax = 1000, EWall = 0.92, EPad = 0.90;
 
     public const int StartTicks = 75, ServeTicks = 30;
+    /// <summary>Пауза після гола: «ГОЛ!» і дві секунди повільного повтору в браузері (п. 181), потім подача.</summary>
+    public const int GoalServeTicks = 85;
     /// <summary>Шайба повільніша за 15 три секунди поспіль — сервер штовхає її до центру.</summary>
     public const int IdleTicks = 75;
     /// <summary>
@@ -45,6 +58,9 @@ public sealed class HockeyCore(Random rng)
 
     readonly bool[] _aim = new bool[Seats];
     readonly double[] _tx = new double[Seats], _ty = new double[Seats];
+    /// <summary>Швидкість руки з останнього наміру й скільки підкроків тому він прийшов.</summary>
+    readonly double[] _tvx = new double[Seats], _tvy = new double[Seats];
+    readonly int[] _age = new int[Seats];
     readonly int[] _dx = new int[Seats], _dy = new int[Seats];
     readonly double[] _x0 = new double[Seats], _y0 = new double[Seats];
 
@@ -128,6 +144,7 @@ public sealed class HockeyCore(Random rng)
             Goals[i] = Own[i] = 0;
             _aim[i] = false;
             _dx[i] = _dy[i] = 0;
+            _tvx[i] = _tvy[i] = 0;
         }
         S[0] = S[1] = 0;
         T = 0;
@@ -145,6 +162,8 @@ public sealed class HockeyCore(Random rng)
         FoulTo = null;
         Array.Clear(_contact);
         Puck = new ArenaBody(Mid, TableH / 2, PuckR, 1);
+        _seenN = 0;
+        _botX = double.NaN;
         Place();
     }
 
@@ -182,14 +201,23 @@ public sealed class HockeyCore(Random rng)
     // ---------- ввід ----------
 
     /// <summary>Палець/миша: бажаний центр біти (світові координати). Ціль одразу підтягується у свою половину.</summary>
-    public void Aim(int seat, double x, double y)
+    public void Aim(int seat, double x, double y, double vx = 0, double vy = 0)
     {
         if (seat is < 0 or >= Seats || !double.IsFinite(x) || !double.IsFinite(y)) return;
         ClampAim(Team[seat], ref x, ref y);
         _tx[seat] = x;
         _ty[seat] = y;
         _aim[seat] = true;
+        if (!double.IsFinite(vx) || !double.IsFinite(vy)) vx = vy = 0;
+        var v = Math.Sqrt(vx * vx + vy * vy);
+        var k = v > PadSpeed ? PadSpeed / v : 1;
+        _tvx[seat] = vx * k;
+        _tvy[seat] = vy * k;
+        _age[seat] = 0;
     }
+
+    /// <summary>Ціль біти зараз (для бота й тестів).</summary>
+    public (double X, double Y) AimOf(int seat) => (_tx[seat], _ty[seat]);
 
     /// <summary>Ціль біти — у свою половину (те саме робить браузер перед передбаченням).</summary>
     public static void ClampAim(int team, ref double x, ref double y)
@@ -232,7 +260,7 @@ public sealed class HockeyCore(Random rng)
         }
         else if (dx != 0 || dy != 0)
         {
-            var k = dx != 0 && dy != 0 ? PadStep * ArenaPhysics.D : PadStep;
+            var k = dx != 0 && dy != 0 ? KeyStep * ArenaPhysics.D : KeyStep;
             x += dx * k;
             y += dy * k;
         }
@@ -289,7 +317,16 @@ public sealed class HockeyCore(Random rng)
             ref var p = ref Pads[i];
             _x0[i] = p.X;
             _y0[i] = p.Y;
-            StepPad(ref p.X, ref p.Y, Team[i], _aim[i], _tx[i], _ty[i], _dx[i], _dy[i]);
+            double tx = _tx[i], ty = _ty[i];
+            if (_aim[i] && (_tvx[i] != 0 || _tvy[i] != 0))
+            {
+                var lead = Math.Min(_age[i], AimLead) * H;
+                tx += _tvx[i] * lead;
+                ty += _tvy[i] * lead;
+                ClampAim(Team[i], ref tx, ref ty);
+            }
+            if (_age[i] < AimLead) _age[i]++;
+            StepPad(ref p.X, ref p.Y, Team[i], _aim[i], tx, ty, _dx[i], _dy[i]);
         }
         // Напарники на одній половині не б'ються, а розходяться навпіл — швидкості не міняються.
         for (var i = 0; i < Seats; i++)
@@ -509,7 +546,7 @@ public sealed class HockeyCore(Random rng)
         _teamTouch[0] = _teamTouch[1] = -1;
         Rally = 0;
         GoalBy = team;
-        ServeIn = ServeTicks;
+        ServeIn = GoalServeTicks;
         N++;
         Idle = 0;
         Held = 0;
@@ -567,4 +604,97 @@ public sealed class HockeyCore(Random rng)
         Puck = new ArenaBody(Mid, TableH / 2, PuckR, 1) { Vx = dir * KickSpeed * Math.Cos(a), Vy = KickSpeed * Math.Sin(a) };
         Idle = 0;
     }
+    // ---------- бот-напарник (прохід №3, п. 180) ----------
+
+    /// <summary>Бот бачить шайбу з запізненням на три тики (120 мс) — як людина, а не як сервер.</summary>
+    public const int BotDelay = 3;
+    /// <summary>Як швидко бот переставляє свою ціль: 520/с у воротах, 760/с на замаху.</summary>
+    public const double BotSpeed = 520, BotStrike = 760;
+    readonly double[] _seenX = new double[BotDelay + 2], _seenY = new double[BotDelay + 2];
+    int _seenN;
+    double _botX = double.NaN, _botY;
+
+    /// <summary>
+    /// Один тик бота на місці <paramref name="seat"/>: простий, але не дурний воротар. Стоїть перед своїми воротами
+    /// навпроти шайби; шайба летить у ворота — стає на її шлях (з відбоями від бортів); повільна шайба на своїй половині,
+    /// а людина-напарник не ближча — замах у бік чужих воріт. Бачить із запізненням і трохи маже — йому можна забити.
+    /// </summary>
+    public void BotThink(int seat)
+    {
+        if (seat is < 0 or >= Seats || !Plays[seat]) return;
+        var n = _seenX.Length;
+        _seenX[_seenN % n] = Puck.X;
+        _seenY[_seenN % n] = Puck.Y;
+        _seenN++;
+        var back = Math.Min(_seenN - 1, BotDelay);
+        var i0 = (_seenN - 1 - back) % n;
+        var i1 = (_seenN - back) % n;
+        const double dt = TickMs / 1000.0;
+        double px = _seenX[i0], py = _seenY[i0];
+        double vx = back > 0 ? (_seenX[i1] - px) / dt : 0, vy = back > 0 ? (_seenY[i1] - py) / dt : 0;
+        var team = Team[seat];
+        var dir = team == 0 ? 1 : -1;
+        var gx = team == 0 ? 0.0 : W;
+        var line = gx + dir * 20;
+        ref var me = ref Pads[seat];
+        if (double.IsNaN(_botX)) (_botX, _botY) = (me.X, me.Y);
+        // за замовчуванням — воротар: між шайбою й центром воріт
+        double wx = line, wy = Math.Clamp(TableH / 2 + (py - TableH / 2) * 0.6, GoalLo - 6, GoalHi + 6);
+        var speed = BotSpeed;
+        var live = StartIn == 0 && ServeIn == 0;
+        var ownHalf = team == 0 ? px < Mid : px > Mid;
+        if (live && vx * dir < -40)
+        {
+            // шайба летить до нас — де вона перетне лінію воріт (з відбоями від бортів)
+            var t = (line - px) / vx;
+            if (t is > 0 and < 1.2)
+            {
+                var y = py + vy * t;
+                const double span = TableH - 2 * PuckR;
+                var m = ((y - PuckR) % (2 * span) + 2 * span) % (2 * span);
+                y = PuckR + (m <= span ? m : 2 * span - m);
+                wy = Math.Clamp(y, GoalLo - 10, GoalHi + 10);
+            }
+        }
+        else if (live && ownHalf && Math.Abs(px - gx) > PadR + PuckR && Puck.Speed < 320)
+        {
+            // напарник-людина ближче до шайби — хай б'є він, бот стереже ворота
+            var mine = Dist2(me.X, me.Y, px, py);
+            var mate = double.MaxValue;
+            for (var j = 0; j < Seats; j++)
+                if (j != seat && Plays[j] && Team[j] == team) mate = Math.Min(mate, Dist2(Pads[j].X, Pads[j].Y, px, py));
+            if (mine <= mate * 1.2)
+            {
+                // замах: ціль — трохи за шайбою на лінії до чужих воріт, а коли вже поруч — крізь шайбу
+                var ox = team == 0 ? W : 0.0;
+                var aimY = TableH / 2 + (rng.NextDouble() * 2 - 1) * 14;
+                double ux = ox - px, uy = aimY - py;
+                var ul = Math.Sqrt(ux * ux + uy * uy);
+                ux /= ul;
+                uy /= ul;
+                const double rr = PadR + PuckR + 5;
+                var reach = mine < rr * rr ? 12 : -(PadR + PuckR + 3);
+                wx = px + ux * reach;
+                wy = py + uy * reach;
+                speed = BotStrike;
+            }
+        }
+        // ціль бота повзе до бажаної не швидше за speed — без ривків і телепортів
+        var step = speed * dt;
+        double ex = wx - _botX, ey = wy - _botY;
+        var d = Math.Sqrt(ex * ex + ey * ey);
+        double nx = wx, ny = wy;
+        if (d > step)
+        {
+            nx = _botX + ex / d * step;
+            ny = _botY + ey / d * step;
+        }
+        ClampAim(team, ref nx, ref ny);
+        var bvx = (nx - _botX) / dt;
+        var bvy = (ny - _botY) / dt;
+        (_botX, _botY) = (nx, ny);
+        Aim(seat, nx, ny, bvx, bvy);
+    }
+
+    static double Dist2(double ax, double ay, double bx, double by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
 }

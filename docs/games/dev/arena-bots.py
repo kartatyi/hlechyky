@@ -110,6 +110,8 @@ class Bot:
             return
         if self.a.game == "icefloe":
             await self.icefloe()
+        elif self.a.game == "pong":
+            await self.pong()
         else:
             await self.hockey()
 
@@ -161,6 +163,23 @@ class Bot:
                 self.last_throw = now
                 await self.input("throw")
 
+    async def pong(self):
+        # арена Понгу: ракетка за ближчим до своєї стіни м'ячем, з похибкою й реакцією ~0,1 с
+        f = self.frame
+        if f.get("mode") != "arena":
+            return
+        s = self.seat
+        balls = [(f["bx"], f["by"])]
+        if f.get("b2"):
+            balls.append((f["b2"][0], f["b2"][1]))
+        wall = {0: lambda b: b[0], 1: lambda b: 120 - b[0], 2: lambda b: b[1], 3: lambda b: 120 - b[1]}[s]
+        b = min(balls, key=wall)
+        along = b[1] if s < 2 else b[0]
+        now = time.time()
+        if self.sent is None or now - self.sent >= 0.1:
+            self.sent = now
+            await self.input("to", {"y": round(along + self.rng.uniform(-9, 9), 2)})
+
     async def hockey(self):
         f = self.frame
         v = self.view or {}
@@ -189,7 +208,7 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8223)
     ap.add_argument("--room", required=True)
-    ap.add_argument("--game", choices=["icefloe", "hockey"], required=True)
+    ap.add_argument("--game", choices=["icefloe", "hockey", "pong"], required=True)
     ap.add_argument("--n", type=int, default=1)
     ap.add_argument("--prefix", default="бот")
     ap.add_argument("--secs", type=int, default=120)

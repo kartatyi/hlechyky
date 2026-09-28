@@ -525,4 +525,133 @@ public class PongArenaTests
         Assert.Equal(0, v.GetProperty("scores")[0].GetInt32());
         Assert.Equal(JsonValueKind.Null, v.GetProperty("winner").ValueKind);
     }
+
+    // ---------- бонуси (прохід №3, п. 133) ----------
+
+    [Fact]
+    public void Without_the_option_no_bonus_ever_shows_up()
+    {
+        var h = new RoomHarness("pong", seed: 4);
+        foreach (var n in new[] { "Оля", "Петро", "Ігор" }) h.Join(n);
+        Assert.True(h.Start().Ok);
+        PlayOut(h, [], limit: PongArena.BonusEvery * 3);
+        var a = ((Pong)h.Room.Game).ArenaForTests!;
+        Assert.False(a.Bonuses);
+        Assert.Equal(0, a.BonusKind);
+        Assert.Equal(JsonValueKind.Null, LastFrame(h).GetProperty("bn").ValueKind);
+    }
+
+    [Fact]
+    public void With_the_option_a_bonus_appears_after_fifteen_seconds_of_play()
+    {
+        var h = new RoomHarness("pong", new { bonus = "on" }, seed: 4);
+        foreach (var n in new[] { "Оля", "Петро", "Ігор" }) h.Join(n);
+        Assert.True(h.Start().Ok);
+        var a = ((Pong)h.Room.Game).ArenaForTests!;
+        Assert.True(a.Bonuses);
+        var seen = false;
+        for (var i = 0; i < PongArena.StartTicks + PongArena.BonusEvery * 3 && !seen; i++)
+        {
+            h.Tick(1);
+            seen = a.BonusKind != 0;
+        }
+        Assert.True(seen, "за 45 с бонус так і не з'явився");
+        var bn = LastFrame(h).GetProperty("bn");
+        Assert.Equal(a.BonusKind, bn[0].GetInt32());
+        // біля центру, але не в самому центрі
+        var d = Math.Sqrt(Math.Pow(bn[1].GetDouble() - PongArena.S / 2, 2) + Math.Pow(bn[2].GetDouble() - PongArena.S / 2, 2));
+        Assert.InRange(d, 7.9, 26.1);
+    }
+
+    [Fact]
+    public void Untouched_ball_flies_through_a_bonus_but_a_hit_ball_takes_it_for_the_hitter()
+    {
+        var a = Rally();
+        a.Bonuses = true;
+        a.PlaceBonus(PongArena.BonusLong, 60, 60);
+        a.Bx = 50; a.By = 60; a.Vx = 100; a.Vy = 0;
+        a.Step();
+        Assert.Equal(PongArena.BonusLong, a.BonusKind);          // подача нічия — бонус лежить
+        a.Bx = 50; a.By = 60; a.Touch = 2;
+        a.Step();
+        Assert.Equal(0, a.BonusKind);
+        Assert.Equal(PongArena.BonusLong, a.PickKind);
+        Assert.Equal(2, a.PickBy);
+        Near(PongArena.PaddleL * PongArena.LongK / 2, a.Half(2));
+        Near(PongArena.PaddleL / 2, a.Half(0));
+        // довга ракетка ловить м'яч, повз який звичайна пролетіла б
+        a.P[2] = 60;
+        a.Bx = 60 + PongArena.PaddleL / 2 + 4; a.By = PongArena.Plane(2) + 2; a.Vx = 0; a.Vy = -80;
+        a.Step();
+        Assert.Equal(2, a.HitBy);
+        a.Bonuses = true;
+        for (var i = 0; i < PongArena.LongTicks; i++) a.Step();
+        Near(PongArena.PaddleL / 2, a.Half(2));                   // за 10 с минає
+    }
+
+    [Fact]
+    public void Slow_ball_bonus_takes_the_pace_down()
+    {
+        var a = Rally();
+        a.Bonuses = true;
+        a.PlaceBonus(PongArena.BonusSlow, 60, 60);
+        a.Bx = 55; a.By = 60; a.Vx = 130; a.Vy = 0; a.Touch = 0;
+        a.Step();
+        Assert.Equal(PongArena.BonusSlow, a.PickKind);
+        Near(130 * PongArena.SlowK, a.Speed, 1e-6);
+    }
+
+    [Fact]
+    public void Two_balls_fly_until_the_first_goal_and_either_ball_can_score()
+    {
+        var a = Rally();
+        a.Bonuses = true;
+        a.PlaceBonus(PongArena.BonusTwo, 60, 60);
+        a.Bx = 55; a.By = 60; a.Vx = 100; a.Vy = 0; a.Touch = 0;
+        a.Step();
+        Assert.True(a.Two);
+        Assert.Equal(0, a.PickBy);
+        Near(100, Math.Sqrt(a.V2x * a.V2x + a.V2y * a.V2y), 1e-6);   // та сама швидкість
+        Near(0, a.V2x, 1e-6);                                        // під прямим кутом — до верху чи низу
+        // другий м'яч летить сам: стоїть у ракетках нікого — забиває той, до кого полетів
+        var lives = (int[])a.L.Clone();
+        int? lost = null;
+        for (var i = 0; i < 400 && lost is null; i++)
+        {
+            for (var s = 0; s < 4; s++) a.Aim(s, s < 2 ? 20 : 100);  // ракетки подалі від обох м'ячів
+            lost = a.Step();
+        }
+        Assert.NotNull(lost);
+        Assert.False(a.Two);                                         // гол закриває розіграш — обидва м'ячі в центр
+        Assert.Equal(lives[lost!.Value] - 1, a.L[lost.Value]);
+        Near(PongArena.S / 2, a.Bx);
+        Assert.Equal(0, a.LastBy);                                   // очко тому, хто підібрав
+    }
+
+    [Fact]
+    public void Two_balls_do_not_multiply_and_the_frame_stays_small()
+    {
+        var h = new RoomHarness("pong", new { bonus = "on" }, seed: 9);
+        foreach (var n in new[] { "Оля", "Петро", "Ігор", "Марта" }) h.Join(n);
+        Assert.True(h.Start().Ok);
+        var a = ((Pong)h.Room.Game).ArenaForTests!;
+        h.Tick(PongArena.StartTicks + 1);
+        a.PlaceBonus(PongArena.BonusTwo, a.Bx + a.Vx * PongArena.Dt, a.By + a.Vy * PongArena.Dt);
+        a.Touch = 1;
+        h.Tick(1);
+        Assert.True(a.Two);
+        var f = LastFrame(h);
+        Assert.Equal(4, f.GetProperty("b2").GetArrayLength());
+        Assert.Equal(PongArena.BonusTwo, f.GetProperty("pk")[0].GetInt32());
+        Assert.True(Views.WireBytes(h.Outbox.OfType<RoomFrame>().Last().Frame) <= 1500);
+        // поки летять два, «два м'ячі» більше не випадає
+        for (var i = 0; i < 200; i++)
+        {
+            a.PlaceBonus(0, 0, 0);
+            typeof(PongArena).GetField("_bonusIn", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(a, 1);
+            a.Step();
+            if (!a.Two) break;
+            Assert.NotEqual(PongArena.BonusTwo, a.BonusKind);
+        }
+    }
 }

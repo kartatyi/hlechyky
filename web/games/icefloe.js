@@ -55,6 +55,7 @@
   const CAM_MARGIN = 170;              // см від найдальшого краю криги (чи тіла) до краю кадру
   const ZOOM_MAX = 2.2;
   const ZOOM_MS = 700;                 // стала часу плавного наїзду
+  const TEAM_NAMES = ['🔵 сині', '🔴 руді'];
   const SEAT_VARS = [['--if-s0', '#5aa9ff'], ['--if-s1', '#d9825b'], ['--if-s2', '#7bd389'], ['--if-s3', '#f4c542'],
     ['--if-s4', '#b48cf2'], ['--if-s5', '#6fd6c2'], ['--if-s6', '#f08cb8'], ['--if-s7', '#b7c2bd']];
   const PICK_GLYPH = ['🥾', '🏺', '❄'];
@@ -205,6 +206,7 @@
     st.pal = {
       water: c('--if-water', '#173a4f'), water2: c('--if-water2', '#0f2a3b'), snow: c('--if-snow', '#dfe9ee'),
       snow2: c('--if-snow2', '#b9cbd4'), ice: c('--if-ice', '#9fd7ff'), ice2: c('--if-ice2', '#d9f1ff'),
+      team0: c('--if-team0', '#3d8bff'), team1: c('--if-team1', '#ff5a3d'),
       edge: c('--if-edge', '#eaf8ff'), crack: c('--if-crack', '#ff6b5a'), reed: c('--if-reed', '#6e7f45'),
       text: c('--text', '#ecf1ea'), muted: c('--muted', '#9db3a5'), shade: c('--gshade', 'rgba(15, 31, 24, .62)'),
       bg2: c('--bg2', '#16291f'), accent: c('--accent', '#f4c542'), danger: c('--danger', '#ff6b5a'), ok: c('--ok', '#7bd389'),
@@ -573,6 +575,12 @@
     const q = s >= 0 && st.last && st.last.p ? st.last.p[s] : null;
     return !!q && !(q[5] & 1);
   }
+  /// З берега ще можна раз відколоти кригу (прапорець 64 у кадрі).
+  function canChip(st) {
+    const s = mySeat(st);
+    const q = s >= 0 && st.last && st.last.p ? st.last.p[s] : null;
+    return !!q && !(q[5] & 1) && !!(q[5] & 64);
+  }
   function currentWant(st) {
     if (st.stickA != null) return st.stickA;
     if (st.padA != null) return st.padA;
@@ -599,7 +607,8 @@
   }
   function dash(st) {
     if (!canSend(st)) return;
-    if (inWater(st)) { st.ctx.input('throw'); return; }
+    // у воді «ривок» — 🔨 відкол криги (раз за раунд, п. 183), а коли вже колов — сніжка, як і було
+    if (inWater(st)) { st.ctx.input(canChip(st) ? 'chip' : 'throw'); return; }
     st.ctx.input('dash');
     // ривок видно одразу: те саме, що зробить сервер (якщо перезарядка, на наш погляд, скінчилась)
     const s = mySeat(st), q = st.last && st.last.p && st.last.p[s];
@@ -826,6 +835,8 @@
     }
     // тріщина-попередження: зубчаста лінія там, де відколеться
     if (f && f.crack && f.ph === 1) drawCrack(st, g, pal, f, sc, now, melt);
+    // тріщини від вибулих (п. 183) — так само: секунда, щоб відскочити
+    if (f && f.chips && f.ph === 1) for (const c of f.chips) drawCrack(st, g, pal, { crack: c }, sc, now, melt);
   }
 
   function drawCrack(st, g, pal, f, sc, now, melt) {
@@ -962,6 +973,17 @@
   function drawBody(st, g, pal, seat, x, y, face, fl, sc, now, mine, ready, speed) {
     const R = st.bodyR * sc, color = pal.seats[seat];
     const cx = x * sc, cy = y * sc;
+    // команди (п. 182): кільце кольору команди довкола валянок — свого видно навіть у купі
+    const tm = st.ctx && st.ctx.view && st.ctx.view.teams;
+    if (tm && tm[seat] != null) {
+      g.strokeStyle = tm[seat] === 0 ? pal.team0 : pal.team1;
+      g.lineWidth = Math.max(3, R * 0.16);
+      g.globalAlpha = 0.9;
+      g.beginPath();
+      g.arc(cx, cy, R * 1.22, 0, Math.PI * 2);
+      g.stroke();
+      g.globalAlpha = 1;
+    }
     const fx = COS16[face], fy = SIN16[face];
     // на ходу валянки дрібно тупцяють: один уперед, другий назад (швидше — частіше)
     const walk = speed > 60 && !reduced() ? Math.sin(now / Math.max(45, 110 - speed / 12) + seat) * R * 0.13 : 0;
@@ -1236,7 +1258,8 @@
     if (ph === 2 && v) {
       shade(g, pal);
       const w = v.lastRound ? v.lastRound.winner : -1;
-      if (w >= 0) text(g, pal, '🧊 Раунд — ' + nick(st, w) + '!', SIZE / 2, 150, 32, pal.seats[w]);
+      if (v.roundTeam >= 0) text(g, pal, '🧊 Раунд — ' + TEAM_NAMES[v.roundTeam] + '!', SIZE / 2, 150, 32, v.roundTeam === 0 ? pal.team0 : pal.team1);
+      else if (w >= 0) text(g, pal, '🧊 Раунд — ' + nick(st, w) + '!', SIZE / 2, 150, 32, pal.seats[w]);
       else text(g, pal, drawnByTime(v) ? '⏱ Час вийшов — нічия' : 'Усі шубовснули — нічия', SIZE / 2, 150, 30);
       table(st, g, pal, v, 200, false);
       g.globalAlpha = 1;
@@ -1466,7 +1489,7 @@
         else stateTxt = ((q[5] & 2) ? '🥾' : '') + ((q[5] & 4) ? '🏺' : '') + (q[7] > 0 ? '❄' + q[7] : '');
       }
       html += '<span class="ifchip if' + s + (q && !(q[5] & 1) && plays ? ' out' : '') + (s === ctx.seat ? ' me' : '') + '" title="' + ctx.esc(n) + '">'
-        + '<i>' + (s + 1) + '</i>' + (tight && s !== ctx.seat ? '' : '<span class="ifnick">' + ctx.esc(n) + '</span>')
+        + '<i>' + (s + 1) + '</i>' + (v.teams && v.teams[s] != null ? (v.teams[s] === 0 ? '🔵' : '🔴') : '') + (tight && s !== ctx.seat ? '' : '<span class="ifnick">' + ctx.esc(n) + '</span>')
         + (plays && v.phase !== 'lobby' ? ' <b class="ifdots">' + dots(v.wins[s], need) + '</b>' : '')
         + (plays && v.pushouts[s] ? ' <span class="ifpush">💨' + v.pushouts[s] + '</span>' : '')
         + (stateTxt ? ' <span class="ifst">' + stateTxt + '</span>' : '') + '</span>';
@@ -1596,7 +1619,7 @@
     el.classList.toggle('wet', wet);
     el.querySelector('.ifthrow').classList.toggle('has', n > 0);
     const d = el.querySelector('.ifdash');
-    const dt = wet ? '❄' : '💨';
+    const dt = wet ? (q && (q[5] & 64) ? '🔨' : '❄') : '💨';
     if (d.textContent !== dt) d.textContent = dt;
   }
 
@@ -1611,7 +1634,7 @@
       if (!s || !s.ctx.mine || !s.ctx.playing) return;
       s.mouseX = e.clientX;
       s.mouseY = e.clientY;
-      if (e.button === 2) { e.preventDefault(); dash(s); return; }
+      if (e.button === 2) { e.preventDefault(); if (inWater(s)) { aimMouse(s); push(s, true); } dash(s); return; }
       if (e.button === 1) { e.preventDefault(); toss(s); return; }
       if (e.button !== 0) return;
       e.preventDefault();
@@ -1712,6 +1735,7 @@
     if (!ctx.playing) {
       if (ctx.room && ctx.room.status === 'lobby') {
         const host = ctx.room.host && ctx.me && String(ctx.room.host).toLowerCase() === String(ctx.me.nick).toLowerCase();
+        if (v.teams) return '🔵🔴 Командами: сідай по черзі — 1-й, 3-й, 5-й… сині, 2-й, 4-й… руді; треба 4, 6 чи 8. Раунд бере команда — прикривай спину';
         return host ? 'Тисни «Почати», коли всі сіли (2–8)' : 'Сумо на кризі. Стартує господар, коли зібралось 2–8';
       }
       return '';
@@ -1721,18 +1745,24 @@
     if (f.ph === 0) return 'Готуйсь… раунд ' + (v.round || 1);
     if (f.ph === 2) {
       const w = v.lastRound ? v.lastRound.winner : -1;
+      if (v.roundTeam >= 0) return 'Раунд — ' + TEAM_NAMES[v.roundTeam] + '!';
       return w >= 0 ? 'Раунд — ' + (ctx.nickOf(w) || ctx.seatName(w)) + '!' : (drawnByTime(v) ? 'Час вийшов — нічия раунду' : 'Усі шубовснули — нічия раунду');
     }
     if (!ctx.mine) return 'Дивишся збоку · раунд ' + (v.round || 1) + ' · до ' + need + (need > 1 ? ' перемог' : ' перемоги');
     const q = f.p && f.p[ctx.seat];
     if (q && !(q[5] & 1)) {
+      if (q[5] & 64) {
+        return '🌊 Ти у воді — 🔨 раз за раунд відколи кригу: ' + (padOn() ? 'цілься стіком, Ⓐ' : HGames.ui.coarse() ? 'цілься стіком, 🔨' : 'права кнопка миші туди, де колоти (чи прицілься й пробіл)')
+          + (q[7] > 0 ? ' · сніжки: ' + (padOn() ? 'Ⓧ' : HGames.ui.coarse() ? '❄' : 'клік чи X') + ' (' + q[7] + ')' : '');
+      }
       return q[7] > 0 ? '🌊 Ти у воді — ' + (padOn() ? 'стік цілить, Ⓐ кидає' : HGames.ui.coarse() ? 'стік цілить, ❄ кидає' : 'стрілки чи мишка цілять, пробіл кидає') + ' сніжку (лишилось ' + q[7] + ')'
         : '🌊 Ти у воді, сніжки скінчились — дивись, хто кого';
     }
     const extra = q ? ((q[5] & 2) ? ' · 🥾 шипи' : '') + ((q[5] & 4) ? ' · 🏺 глек' : '') : '';
     const how = padOn() ? 'Стік — ковзати, Ⓐ ривок, Ⓧ сніжка'
       : HGames.ui.coarse() ? 'Стік — ковзати, 💨 ривок, ❄ сніжка' : 'Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка';
-    return how + ' · раунд ' + (v.round || 1) + ' · до ' + need + extra;
+    const team = v.teams && v.teams[ctx.seat] != null ? ' · ти за ' + TEAM_NAMES[v.teams[ctx.seat]] : '';
+    return how + ' · раунд ' + (v.round || 1) + ' · до ' + need + team + extra;
   }
 
   HGames.register({
@@ -1743,14 +1773,12 @@
     seatClass: ['if0', 'if1', 'if2', 'if3', 'if4', 'if5', 'if6', 'if7'],
     pad: { dirs: true, a: 'Space', x: 'KeyX', hint: '{dpad} ковзати · {a} ривок · {x} сніжка' },
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Крижина',
+      v: '2026-09-29',
+      title: 'Крижина: команди й молоток',
       items: [
-        '🧊 Сумо на крижині: ковзай (стрілки чи стік) і штовхайся ривком 💨 — хто у воді, той вибув',
-        '💥 Ривок (пробіл, Ⓐ чи 💨) — раз на секунду: влучив — суперник летить, промазав — сам біля краю',
-        '🪓 Крижина тріскається й меншає, а на 52-й секунді починає танути — відсидітись не вийде',
-        '❄ Випав — не нудьгуй: із берега кидай три сніжки в тих, хто ще на кризі',
-        '🥾 Підбирай шипи (не ковзаєш), важкий глек (не зіпхнути) і сніжки',
+        '🔨 Шубовснув — не кисни: раз за раунд відколи шматок криги з берега (права кнопка туди, Ⓐ чи 🔨) — секунда тріщини, і край іде під воду',
+        '🔵🔴 Нова опція «Команди»: сині проти рудих на 4, 6 чи 8 — раунд бере команда, навіть якщо ти вже на березі',
+        '🤝 Свого зіпхнув — «випхнув» не рахується: прикривай спину, а не штовхай',
       ],
     },
 
