@@ -178,3 +178,31 @@
   .pz-clue b { font-size: 1.15em; }
 }
 .pz-table .muted { line-height: 1.3; }
+
+/* ---- Швидкі «Позивні 4×4» (прохід №3, п. 168): чотири стовпчики, плитки вищі й слова більші ---- */
+.pz-grid.pz-g4 { grid-template-columns: repeat(4, 1fr); }
+.pz-grid.pz-g4 .pz-card {
+  min-height: clamp(64px, 7.6vw, 120px);
+  min-height: clamp(64px, min(7.6vw, (100dvh - 480px) / 4), 120px);
+  font-size: clamp(.9em, 1.1vw, 1.25em);
+}
+@media (max-width: 480px) {
+  .pz-grid.pz-g4 { gap: 6px; }
+  .pz-grid.pz-g4 .pz-card { min-height: 66px; font-size: .9em; padding: 6px 4px; }
+  .pz-grid.pz-g4 .pz-card.long { font-size: .78em; }
+  .pz-grid.pz-g4 .pz-card.xlong { font-size: .68em; }
+}
+
+/* ---- Пояснення в лобі (прохід №3, п. 169): правила коротко й приклад на трьох картках ---- */
+.pz-howto { display: none; }
+.pz-lobby .pz-howto {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px;
+  background: var(--panel2); border: 1px solid var(--line); line-height: 1.35;
+}
+.pz-howto p { margin: 0; }
+.pz-ex { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.pz-ex-clue b { color: var(--accent); letter-spacing: .06em; }
+.pz-ex-cards { display: flex; gap: 8px; justify-content: center; }
+.pz-ex-cards .pz-card { min-height: 56px; width: 92px; padding: 6px 4px; font-size: .95em; cursor: default; }
+.pz-ex-cards .pz-card em { display: block; font-style: normal; font-size: .72em; font-weight: 600; opacity: .85; }
+.pz-ex-cards .pz-card > span { display: block; }

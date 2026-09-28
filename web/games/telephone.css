@@ -101,3 +101,21 @@
 @media (max-width: 640px) {
   .gtable:has(> .gbody > .tpwrap.live) > .gseats .gseat { display: none; }
 }
+
+/* ---- Показ-кіно (прохід №3, п. 166): динамік Глека, пауза, смужка кіно ---- */
+.tpspk { margin-left: auto; padding: 4px 10px; min-height: 32px; white-space: nowrap; }
+.tpspk.on { color: var(--accent); border-color: var(--accent); }
+.tpspk[hidden] { display: none; }
+.tpact .tppause { min-width: 0; }
+.tpwrap .pctime.film i { background: var(--accent); opacity: .7; }
+.tpwrap .pctime.film .pcsec { display: none; }
+@media (pointer: coarse) { .tpspk, .tpact button { min-height: 44px; } }
+
+/* ---- Звання партії (п. 224) ---- */
+.tpawards { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 4px 0 10px; }
+.tpaward {
+  display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 12px; flex: 0 1 340px;
+  background: var(--panel2); border: 1px solid var(--line); text-align: left;
+}
+.tpaward-i { font-size: 1.8em; line-height: 1; }
+.tpaward .small { overflow-wrap: anywhere; }

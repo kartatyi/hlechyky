@@ -23,9 +23,11 @@ public sealed class Pozyvni : Game
     public const int SetupMs = 45_000;
 
     public const int Cards = 25;
+    /// <summary>Швидкі «Позивні 4×4» (прохід №3, п. 168): 16 слів, розклад 6/5/4/1 — партія хвилин на п'ять.</summary>
+    public const int SmallCards = 16;
+    /// <summary>Годинник «як стіл»: на 4×4 — стільки секунд, на 5×5 — без годинника, як було.</summary>
+    public const int SmallClockSec = 60;
     const int Seats = 12;
-    /// <summary>Слів у більшої команди (вона й ходить першою) і в меншої.</summary>
-    const int FirstTeamWords = 9, SecondTeamWords = 8;
     const int MaxClueLength = 24, MinClueLength = 2, MaxCount = 9;
     /// <summary>З якого числа підказка вважається великою (ачівка «Одним словом»).</summary>
     const int BigClueCount = 4;
@@ -55,7 +57,9 @@ public sealed class Pozyvni : Game
             new GameOption("mode", "Хто проти кого",
                 [(ModeAuto, "Як збереться: 4+ — команди, менше — разом"), (ModeTeams, "Дві команди"), (ModeCoop, "Разом проти столу")], ModeAuto),
             new GameOption("topic", "Теми слів", PictionaryWords.Topics, PictionaryWords.AnyTopic, Multi: true),
-            new GameOption("clock", "Годинник", [("off", "Без нього"), .. ClockChoices.Select(n => (n.ToString(), $"{n} с"))], "off"),
+            new GameOption("size", "Стіл", [("5", "5×5 — 25 слів"), ("4", "4×4 — швидкі, 16 слів")], "5"),
+            new GameOption("clock", "Годинник",
+                [("auto", $"Як стіл: 4×4 — {SmallClockSec} с, 5×5 — без"), ("off", "Без нього"), .. ClockChoices.Select(n => (n.ToString(), $"{n} с"))], "auto"),
             new GameOption("black", "Чорних слів", [("1", "Одне"), ("2", "Двоє")], "1"),
             new GameOption("zero", "Підказка «нуль»", [("on", "Можна"), ("off", "Не можна")], "on"),
         ],
@@ -79,9 +83,15 @@ public sealed class Pozyvni : Game
     int _clues;
 
     // ---------- стіл ----------
-    readonly string[] _board = new string[Cards];
-    readonly string[] _key = new string[Cards];
-    readonly bool[] _open = new bool[Cards];
+    /// <summary>Скільки слів на столі: <see cref="Cards"/> (5×5) або <see cref="SmallCards"/> (4×4).</summary>
+    int _cards = Cards;
+    string _clockOption = "auto";
+    string[] _board = new string[Cards];
+    string[] _key = new string[Cards];
+    bool[] _open = new bool[Cards];
+    /// <summary>Слів у більшої команди (вона й ходить першою) і в меншої: 9/8 на 5×5, 6/5 на 4×4.</summary>
+    int FirstTeamWords => _cards == SmallCards ? 6 : 9;
+    int SecondTeamWords => _cards == SmallCards ? 5 : 8;
     /// <summary>Слова, які вже були за цим столом: наступна партія бере інші, поки в темах є свіжі.</summary>
     readonly HashSet<string> _used = new(StringComparer.Ordinal);
 
@@ -119,7 +129,10 @@ public sealed class Pozyvni : Game
         if (options.TryGetValue("topic", out var t)) _topics = PictionaryWords.ParseTopics(t);
         if (options.TryGetValue("black", out var b) && b == "2") _blacks = 2;
         if (options.TryGetValue("zero", out var z)) _zero = z != "off";
-        if (options.TryGetValue("clock", out var c) && int.TryParse(c, out var cn) && ClockChoices.Contains(cn)) _clockMs = cn * 1000;
+        _cards = options.GetValueOrDefault("size") == "4" ? SmallCards : Cards;
+        _clockOption = options.GetValueOrDefault("clock") ?? "auto";
+        _clockMs = int.TryParse(_clockOption, out var cn) && ClockChoices.Contains(cn) ? cn * 1000
+            : _clockOption is "auto" or "" && _cards == SmallCards ? SmallClockSec * 1000 : 0;
         if (options.TryGetValue("mode", out var m) && m is ModeTeams or ModeCoop) _mode = m;
         if (_words.Count < Cards) throw new GameError("Замало слів для столу, позивні відпочивають");
     }
@@ -139,17 +152,18 @@ public sealed class Pozyvni : Game
         _taken = 0;
         _fingers.Clear();
         _log.Clear();
+        if (_board.Length != _cards) { _board = new string[_cards]; _key = new string[_cards]; _open = new bool[_cards]; }
         Array.Clear(_open);
 
-        var picked = _words.Pick(Ctx.Rng, _topics, _used, Cards);
-        if (picked.Length < Cards) picked = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, Cards);
-        if (picked.Length < Cards)
+        var picked = _words.Pick(Ctx.Rng, _topics, _used, _cards);
+        if (picked.Length < _cards) picked = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, _cards);
+        if (picked.Length < _cards)
         {
             Ctx.Finish([], $"{Info.Title}: слів на стіл не набралось");
             _phase = Done;
             return;
         }
-        for (var i = 0; i < Cards; i++)
+        for (var i = 0; i < _cards; i++)
         {
             _board[i] = picked[i];
             _used.Add(PictionaryWords.Normalize(picked[i]));
@@ -171,17 +185,17 @@ public sealed class Pozyvni : Game
     void DealKey()
     {
         var other = Other(_turn);
-        var key = new List<string>(Cards);
+        var key = new List<string>(_cards);
         for (var i = 0; i < FirstTeamWords; i++) key.Add(_turn);
         for (var i = 0; i < SecondTeamWords; i++) key.Add(other);
         for (var i = 0; i < _blacks; i++) key.Add(Black);
-        while (key.Count < Cards) key.Add(Grey);
+        while (key.Count < _cards) key.Add(Grey);
         for (var i = key.Count - 1; i > 0; i--)
         {
             var j = Ctx.Rng.Next(i + 1);
             (key[i], key[j]) = (key[j], key[i]);
         }
-        for (var i = 0; i < Cards; i++) _key[i] = key[i];
+        for (var i = 0; i < _cards; i++) _key[i] = key[i];
     }
 
     /// <summary>Типовий розкид: місця через одне, капітани — перші в командах. Далі люди міняються самі.</summary>
@@ -210,7 +224,7 @@ public sealed class Pozyvni : Game
     bool IsBoss(int seat) => _side[seat] is { } side && _boss[side] == seat;
 
     /// <summary>Скільки своїх слів команда ще не відкрила.</summary>
-    int LeftFor(string side) => Enumerable.Range(0, Cards).Count(i => _key[i] == side && !_open[i]);
+    int LeftFor(string side) => Enumerable.Range(0, _cards).Count(i => _key[i] == side && !_open[i]);
 
     public override string SeatName(int seat)
     {
@@ -308,7 +322,7 @@ public sealed class Pozyvni : Game
         if (word.Any(c => c is ' ' or '-' or '—')) return "Підказка — одне слово";
         if (!word.All(c => char.IsLetter(c) || c is '\'' or '’' or 'ʼ')) return "Підказка — саме слово, без цифр і значків";
         if (!char.IsLetter(word[0])) return "Підказка — саме слово, без цифр і значків";
-        for (var i = 0; i < Cards; i++)
+        for (var i = 0; i < _cards; i++)
             if (!_open[i] && SameRoot(word, _board[i]))
                 return "Так не можна: це слово на столі";
         return null;
@@ -337,7 +351,7 @@ public sealed class Pozyvni : Game
         if (_side[seat] != _turn) return ActResult.Fail("Не так швидко — зараз ходить не твоя команда");
         if (IsBoss(seat)) return ActResult.Fail("Капітан свого розкладу не тикає");
         var i = Int(payload, "i", -1);
-        if (i < 0 || i >= Cards) return ActResult.Fail("Нема такого слова");
+        if (i < 0 || i >= _cards) return ActResult.Fail("Нема такого слова");
         if (_open[i]) return ActResult.Fail("Це слово вже відкрите");
 
         var mates = Field(_turn);
@@ -529,7 +543,7 @@ public sealed class Pozyvni : Game
     /// </summary>
     void TableMove()
     {
-        var mine = Enumerable.Range(0, Cards).Where(i => _key[i] == Blue && !_open[i]).ToArray();
+        var mine = Enumerable.Range(0, _cards).Where(i => _key[i] == Blue && !_open[i]).ToArray();
         if (mine.Length == 0) return;
         var i = mine[Ctx.Rng.Next(mine.Length)];
         _open[i] = true;
@@ -637,7 +651,8 @@ public sealed class Pozyvni : Game
         clues = _clues,
         turn = _phase == Clue && _boss[_turn] >= 0 ? _boss[_turn] : (int?)null,
         side = _turn,
-        board = Enumerable.Range(0, Cards)
+        size = _cards == SmallCards ? 4 : 5,
+        board = Enumerable.Range(0, _cards)
             .Select(i => new { w = _board[i] ?? "", open = _open[i] ? _key[i] : null })
             .ToArray(),
         key = KnowsKey(seat) ? (string[])_key.Clone() : null,

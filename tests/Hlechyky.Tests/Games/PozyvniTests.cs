@@ -68,7 +68,7 @@ public class PozyvniTests
     static int Card(RoomHarness h, string colour)
     {
         var key = Key(h);
-        for (var i = 0; i < Pozyvni.Cards; i++) if (key[i] == colour && !Open(h, i)) return i;
+        for (var i = 0; i < key.Length; i++) if (key[i] == colour && !Open(h, i)) return i;
         throw new InvalidOperationException($"нема закритого слова кольору {colour}");
     }
 
@@ -641,6 +641,53 @@ public class PozyvniTests
 
         Assert.NotEqual(side, Side(h));
         Assert.Equal("clue", Phase(h));
+    }
+
+    // ---------------------------------------------------------------- швидкі 4×4 (прохід №3, п. 168)
+
+    [Fact]
+    public void A_small_table_has_sixteen_words_dealt_six_five_four_one()
+    {
+        var h = Table(new { size = "4" });
+        var view = h.View(null);
+
+        Assert.Equal(4, view.GetProperty("size").GetInt32());
+        Assert.Equal(Pozyvni.SmallCards, Board(h).Length);
+        var key = Key(h);
+        Assert.Equal(16, key.Length);
+        Assert.Equal(6, key.Count(k => k == Side(h)));
+        Assert.Equal(5, key.Count(k => k == Foe(h)));
+        Assert.Equal(4, key.Count(k => k == "grey"));
+        Assert.Equal(1, key.Count(k => k == "black"));
+        Assert.False(h.Act(Field(h, Side(h)), "pick", new { i = 16 }).Ok);
+    }
+
+    [Fact]
+    public void A_small_table_ticks_a_minute_by_default_and_the_classic_one_does_not()
+    {
+        var small = Table(new { size = "4" });
+        Assert.Equal(60_000, small.View(null).GetProperty("phaseMs").GetInt32());
+        var side = Side(small);
+        small.Tick(60_000 / Pozyvni.TickMs);
+        Assert.NotEqual(side, Side(small));
+
+        var classic = Table();
+        Assert.Equal(25, Board(classic).Length);
+        Assert.Equal(JsonValueKind.Null, classic.View(null).GetProperty("endsAt").ValueKind);
+
+        var calm = Table(new { size = "4", clock = "off" });
+        Assert.Equal(JsonValueKind.Null, calm.View(null).GetProperty("endsAt").ValueKind);
+    }
+
+    [Fact]
+    public void A_small_table_can_be_won_by_finding_all_six()
+    {
+        var h = Table(new { size = "4" });
+        var side = Side(h);
+        Assert.True(Clue(h, count: 0).Ok);
+        for (var i = 0; i < 6; i++) Assert.True(Pick(h, side).Ok);
+
+        Assert.Equal("done", Phase(h));
     }
 
     // ---------------------------------------------------------------- виходи з-за столу

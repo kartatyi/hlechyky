@@ -13,7 +13,7 @@ namespace Hlechyky.Games.Impl;
 /// летять через Input і лежать тут, поки крок не скінчиться (з них же відновлюється полотно після F5).
 /// Кадр — лише на показі, коли хтось ставить ❤: лічильники ланцюжка, а не повні види з усіма малюнками.
 /// </summary>
-public sealed class Telephone : Game
+public sealed partial class Telephone : Game
 {
     public const int TickMs = 250;
     public const int MaxText = 80;
@@ -51,9 +51,17 @@ public sealed class Telephone : Game
         [
             new GameOption("tempo", "Темп", [("fast", "Швидкий"), ("normal", "Звичайний"), ("slow", "Спокійний")], "normal"),
             new GameOption("steps", "Кроків", [("all", "Скільки гравців"), ("4", "4"), ("6", "6"), ("8", "8")], "all"),
+            new GameOption("show", "Показ", [("auto", "Кіно: гортається сам"), ("manual", "Гортаємо «Далі»")], "auto"),
+            new GameOption("voice", "Голос Глека", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
         ],
-        Hint: "Пишеш фразу — сусід її малює — наступний описує малюнок — і так по колу. А потім усі разом дивляться, що вийшло. "
-            + "Удвох фразу загадує Глек");
+        Hint: "Пишеш фразу — сусід її малює — наступний описує малюнок — і так по колу. А потім усі разом дивляться кіно: "
+            + "малюнки оживають штрих за штрихом, фрази читає Глек. Удвох фразу загадує Глек, і кожен малює двічі");
+
+    /// <summary>
+    /// Удвох — чотири кроки (прохід №3, п. 167): малюєш фразу Глека → сусід описує → ти малюєш його опис власного
+    /// малюнка → він описує. «Чи впізнав він мій малюнок?» — і партія не на хвилину.
+    /// </summary>
+    public const int DuoSteps = 4;
 
     sealed class Entry
     {
@@ -112,6 +120,8 @@ public sealed class Telephone : Game
         _phrases = Ctx.Services.GetService<TelephonePhrases>() ?? TelephonePhrases.Default;
         if (options.TryGetValue("tempo", out var t) && Tempos.TryGetValue(t, out var tempo)) _tempo = tempo;
         if (options.TryGetValue("steps", out var s) && int.TryParse(s, out var n) && n is 4 or 6 or 8) _stepsOption = n;
+        _auto = options.GetValueOrDefault("show") != "manual";
+        _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
     }
 
     /// <summary>
@@ -125,10 +135,12 @@ public sealed class Telephone : Game
     {
         _order = [.. Enumerable.Range(0, Seats).Where(Ctx.Seated)];
         _chains = [.. _order.Select(_ => new List<Entry>())];
-        _steps = Math.Min(_order.Length, _stepsOption ?? _order.Length);
+        // Удвох кроків типово чотири: ланцюжок ходить туди-сюди, і кожен малює двічі. «Кроків: 6/8» теж можна.
+        _steps = Duo ? _stepsOption ?? DuoSteps : Math.Min(_order.Length, _stepsOption ?? _order.Length);
         if (Duo)
             foreach (var chain in _chains)
                 chain.Add(new Entry { Seat = Jug, Kind = "text", Text = _phrases.Random(Ctx.Rng) });
+        StartVoice();
         _left.Clear();
         _result = null;
         _chain = 0;
@@ -187,6 +199,7 @@ public sealed class Telephone : Game
                 _ => new Entry { Seat = seat, Kind = "text", Text = task.Text.Length > 0 ? task.Text : _phrases.Random(Ctx.Rng) },
             };
             _chains[task.Chain].Add(entry);
+            if (entry.Text is { } said) VoiceAhead(said);
         }
         NextStep();
     }
@@ -198,7 +211,8 @@ public sealed class Telephone : Game
         _chain = NextChain(-1);
         _shown = 1;
         _dirty = true;
-        if (_chain < 0) Over();
+        if (_chain < 0) { Over(); return; }
+        Shown();
     }
 
     int NextChain(int after)
@@ -227,6 +241,7 @@ public sealed class Telephone : Game
             "undo" => Ink(seat, t => { t.Sketch.Undo(); return null; }),
             "clear" => Ink(seat, t => { t.Sketch.Clear(); return null; }),
             "next" => Next(seat),
+            "pause" => Pause(seat),
             "like" => Like(seat, payload),
             _ => ActResult.Fail("Тут так не ходять"),
         };
@@ -296,17 +311,23 @@ public sealed class Telephone : Game
         var now = Now;
         if ((now - _lastNext).TotalMilliseconds < NextEveryMs) return ActResult.Done;
         _lastNext = now;
+        Advance();
+        return ActResult.Done;
+    }
 
+    /// <summary>Наступний запис або ланцюжок — з «Далі» чи сам (кіно).</summary>
+    void Advance()
+    {
         if (_shown < _chains[_chain].Count) _shown++;
         else
         {
             var next = NextChain(_chain);
-            if (next < 0) { Over(); return ActResult.Done; }
+            if (next < 0) { Over(); return; }
             _chain = next;
             _shown = 1;
         }
         _dirty = true;
-        return ActResult.Done;
+        Shown();
     }
 
     ActResult Like(int seat, JsonElement payload)
@@ -332,6 +353,11 @@ public sealed class Telephone : Game
     public override TickResult Tick()
     {
         if (_phase == Step && (Now >= _until || AllReady())) EndStep();
+        if (_phase == Reveal)
+        {
+            if (_auto && !_paused && Now >= _autoAt) Advance();
+            TrySay();
+        }
         var frame = _likesDirty && _phase == Reveal;
         var result = new TickResult(Frame: frame, View: _dirty);
         _dirty = _likesDirty = false;
@@ -363,7 +389,7 @@ public sealed class Telephone : Game
         var best = seats.Length == 0 ? 0 : seats.Max(s => likes[s]);
         int[] winners = best > 0 ? [.. seats.Where(s => likes[s] == best)] : [];
         foreach (var s in seats) Ctx.Score(s, likes[s]);
-        _result = new { winners, likes };
+        _result = new { winners, likes, awards = Awards() };
         var tail = winners.Length == 0 ? "без ❤, зате всі посміялись" : "найбільше ❤ у " + string.Join(" і ", winners.Select(s => NickCases.Genitive(Ctx.NickOf(s))));
         Ctx.Finish(winners, $"{Info.Title}: {Chains(_chains.Count(HasPlayers))} — {tail}",
             seats.ToDictionary(s => s, s => (long)likes[s]));
@@ -446,6 +472,12 @@ public sealed class Telephone : Game
         {
             chain = _chain,
             owner = _order[_chain],
+            auto = _auto,
+            paused = _paused,
+            autoAt = _autoAt,
+            autoMs = _autoMs,
+            drawMs = _drawMs,
+            say = _say,
             no = _chains.Take(_chain + 1).Count(HasPlayers),
             chains = _chains.Count(HasPlayers),
             shown = _shown,
@@ -454,6 +486,7 @@ public sealed class Telephone : Game
         },
         likes = Likes(),
         left = _left.Order().ToArray(),
+        voice = VoiceOn ? _voiceName : "none",
         result = _result,
     };
 
