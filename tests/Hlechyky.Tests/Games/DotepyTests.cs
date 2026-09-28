@@ -287,7 +287,8 @@ public class DotepyTests
         var h = new RoomHarness("dotepy", null, 3, services.BuildServiceProvider());
         foreach (var n in Names.Take(3)) Assert.True(h.Join(n).Ok);
         Assert.True(h.Start().Ok);
-        var texts = bank.Select(p => p.Text).ToHashSet();
+        // завдання «про нас» приходять уже з ніком когось за столом
+        var texts = bank.SelectMany(p => p.Text.Contains(Dotepy.NickSlot) ? Names.Take(3).Select(n => p.Text.Replace(Dotepy.NickSlot, n)) : [p.Text]).ToHashSet();
         Assert.All(V(h).GetProperty("prompts").EnumerateArray(), p => Assert.Contains(p.GetString()!, texts));
     }
 
@@ -305,8 +306,8 @@ public class DotepyTests
         Assert.Equal(Dotepy.TickMs, game.TickMs);
         Assert.True(game.HasCss);
         Assert.Equal("dotepy", game.Module);
-        Assert.Equal(["rounds", "write", "voice"], game.Options.Select(o => o.Key));
-        Assert.Equal(["full", "90", "ostap"], game.Options.Select(o => o.Default));
+        Assert.Equal(["rounds", "write", "voice", "themes"], game.Options.Select(o => o.Key));
+        Assert.Equal(["full", "90", "ostap", "all"], game.Options.Select(o => o.Default));
         Assert.Equal("1", new Dotepy().SeatName(0));
         Assert.Equal("8", new Dotepy().SeatName(7));
     }
@@ -1409,7 +1410,7 @@ public class DotepyTests
 
         PlayMatch(h);
         var result = V(h).GetProperty("result");
-        Assert.Equal(["winners", "scores", "best", "early"], Keys(result));
+        Assert.Equal(["winners", "scores", "best", "pinned", "early"], Keys(result));
         Assert.False(result.GetProperty("early").GetBoolean());
         Assert.Equal(Dotepy.MaxSeats, result.GetProperty("scores").GetArrayLength());
         Assert.Equal(JsonValueKind.Null, V(h).GetProperty("card").ValueKind);

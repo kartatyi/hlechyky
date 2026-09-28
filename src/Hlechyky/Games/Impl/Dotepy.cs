@@ -91,6 +91,28 @@ public sealed class Dotepy : Game
     public const int OwnMin = 8, OwnMax = 100;
     /// <summary>Скільки останніх завдань сервер пам'ятає, щоб не повторювати їх між столами.</summary>
     public const int SeenRing = 300;
+    /// <summary>Скільки дотепів партії один гравець може закинути в «📖 Альбом дотепів» (📌 на підсумку).</summary>
+    public const int PinsPerNick = 2;
+
+    /// <summary>Місце для ніка в завданні «про нас»: «Що {нік} насправді робить о третій ночі» (нік — у називному).</summary>
+    public const string NickSlot = "{нік}";
+    public const string TagNas = "про нас", TagRebus = "ребус";
+    public const string ThemeAll = "all";
+
+    /// <summary>
+    /// Теми партії (опція <c>themes</c>, кілька разом): ключ → теги банку. «Усі» — увесь банк, і тоді в кожному раунді
+    /// гарантовано є завдання «про нас» з ніком когось за столом, а смайл-ребус — через раунд (коли завдань ≥ 3 — у кожному).
+    /// </summary>
+    public static readonly (string Key, string Label, string[] Tags)[] Themes =
+    [
+        ("pobut", "🏠 Побут і родина", ["побут", "родина", "сусіди", "техніка", "їжа", "поради", "свята"]),
+        ("selo", "🐓 Село", ["село", "тварини", "прикмети", "дача"]),
+        ("robota", "💼 Робота", ["робота", "реклама", "винаходи", "новини"]),
+        ("glek", "🏺 Глечики", ["глечики", "радіо", "компанія"]),
+        ("pikant", "🌶 Пікантне легке", ["пікантне", "стосунки"]),
+        ("nas", "👥 Про нас", [TagNas]),
+        ("rebus", "🧩 Смайл-ребуси", [TagRebus]),
+    ];
 
     public const string PhaseLobby = "lobby", PhaseWrite = "write", PhaseVote = "vote", PhaseReveal = "reveal",
         PhaseTable = "table", PhaseDone = "done";
@@ -109,6 +131,7 @@ public sealed class Dotepy : Game
                 [("full", "2 раунди + Останній дотеп"), ("short", "1 раунд + Останній дотеп"), ("blitz", "Лише Останній дотеп")], "full"),
             new GameOption("write", "Час на дотеп", [("60", "60 с"), ("90", "90 с"), ("120", "120 с")], "90"),
             new GameOption("voice", "Голос Глека", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
+            new GameOption("themes", "Теми", [(ThemeAll, "Усі"), .. Themes.Select(t => (t.Key, t.Label))], ThemeAll, Multi: true),
         ],
         Hint: "Дурне завдання — смішна відповідь. Пишете анонімно, голосуєте за чуже, Дядько Глек усе зачитує. Троє й більше");
 
@@ -196,6 +219,15 @@ public sealed class Dotepy : Game
     IDotepyVoice _voice = DotepyNoVoice.Instance;
     DotepySeen _seen = DotepySeen.Shared;
     IReadOnlyList<DotepyPrompt> _bank = [];
+    /// <summary>Банк, звужений до тем столу (опція <c>themes</c>); тем не обрано чи вони порожні — увесь банк.</summary>
+    IReadOnlyList<DotepyPrompt> _pool = [];
+    /// <summary>Обрані теги тем; null — «Усі».</summary>
+    HashSet<string>? _themeTags;
+    /// <summary>У пулі є і завдання «про нас» / ребуси, і звичайні — тоді раунд гарантовано бере одне таке.</summary>
+    bool _spiceNas, _spiceRebus;
+    /// <summary>Дотепи трійки партії, які вже в альбомі (індекси), і скільки закинув кожен (ключ ніка).</summary>
+    readonly HashSet<int> _pinned = [];
+    readonly Dictionary<string, int> _pinsBy = new(StringComparer.Ordinal);
     /// <summary>Завдання, що вже грали за цим столом. Живе в екземплярі гри — тож переживає «Ще раз».</summary>
     readonly HashSet<string> _used = new(StringComparer.Ordinal);
     /// <summary>
@@ -283,7 +315,24 @@ public sealed class Dotepy : Game
         _writeMs = int.TryParse(options.GetValueOrDefault("write"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var w)
             && WriteChoices.Contains(w) ? w * 1000 : 90_000;
         _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
+        var picked = GameOption.Split(options.GetValueOrDefault("themes"));
+        HashSet<string>? tags = null;
+        if (!picked.Contains(ThemeAll))
+            foreach (var t in Themes)
+                if (picked.Contains(t.Key)) (tags ??= new HashSet<string>(StringComparer.Ordinal)).UnionWith(t.Tags);
+        _themeTags = tags;
     }
+
+    /// <summary>Банк під теми столу. Порожньо (кривий банк чи тема без завдань) — увесь банк: партія важливіша за тему.</summary>
+    static List<DotepyPrompt> ByThemes(IReadOnlyList<DotepyPrompt> bank, HashSet<string>? tags)
+    {
+        var list = new List<DotepyPrompt>(bank.Count);
+        foreach (var p in bank)
+            if (tags is null || p.Tags.Any(tags.Contains)) list.Add(p);
+        return list.Count > 0 ? list : [.. bank];
+    }
+
+    static bool Tagged(DotepyPrompt p, string tag) => p.Tags.Contains(tag);
 
     public override void Start()
     {
@@ -299,6 +348,11 @@ public sealed class Dotepy : Game
         }
         _seen = Ctx.Services.GetService<DotepySeen>() ?? DotepySeen.Shared;
         _bank = Ctx.Services.GetService<DotepyPrompts>()?.List ?? DotepyBank.All;
+        _pool = ByThemes(_bank, _themeTags);
+        _spiceNas = _pool.Any(p => Tagged(p, TagNas)) && _pool.Any(p => !Tagged(p, TagNas));
+        _spiceRebus = _pool.Any(p => Tagged(p, TagRebus)) && _pool.Any(p => !Tagged(p, TagRebus));
+        _pinned.Clear();
+        _pinsBy.Clear();
 
         var seated = new List<int>();
         for (var s = 0; s < MaxSeats; s++)
@@ -402,9 +456,10 @@ public sealed class Dotepy : Game
         var prompts = PickPrompts(count, _final);
         var duels = _mode == ModeDuel ? DuelPairs(present) : null;
         _cards.Clear();
+        var named = new List<int>(prompts.Count);
         for (var k = 0; k < prompts.Count; k++)
         {
-            var card = new Card(prompts[k]);
+            var card = new Card(Personal(prompts[k], present, duels is null ? -1 : duels[k].A, duels is null ? -1 : duels[k].B, named));
             if (duels is not null)
             {
                 card.Entries.Add(new Entry(duels[k].A));
@@ -457,6 +512,35 @@ public sealed class Dotepy : Game
     static int PairKey(int a, int b) => Math.Min(a, b) * MaxSeats + Math.Max(a, b);
 
     /// <summary>
+    /// Завдання «про нас»: <see cref="NickSlot"/> → нік когось за столом (без «гість »). Дуель бере героя не з двох
+    /// авторів (про тебе пишуть інші — так смішніше), і в одному раунді герої по змозі різні. Решта завдань — як є.
+    /// </summary>
+    DotepyPrompt Personal(DotepyPrompt p, List<int> present, int a, int b, List<int> named)
+    {
+        if (!p.Text.Contains(NickSlot, StringComparison.Ordinal) || present.Count == 0) return p;
+        var pick = new List<int>(present.Count);
+        foreach (var s in present) if (s != a && s != b && !named.Contains(s)) pick.Add(s);
+        if (pick.Count == 0) foreach (var s in present) if (s != a && s != b) pick.Add(s);
+        if (pick.Count == 0) pick.AddRange(present);
+        var hero = pick[Ctx.Rng.Next(pick.Count)];
+        named.Add(hero);
+        var text = p.Text.Replace(NickSlot, Spoken(hero), StringComparison.Ordinal);
+        return new DotepyPrompt(p.Id, text, p.Tags, p.Final);
+    }
+
+    /// <summary>Що читає Глек: у ребусі емодзі голосом не вимовиш — «…: смайл-ребус на екрані».</summary>
+    static string Heard(DotepyPrompt p)
+    {
+        if (!Tagged(p, TagRebus)) return p.Text;
+        var at = 0;
+        while (at < p.Text.Length && !char.IsSurrogate(p.Text[at])
+            && char.GetUnicodeCategory(p.Text[at]) != UnicodeCategory.OtherSymbol) at++;
+        var head = p.Text[..at].TrimEnd(' ', ':');
+        if (head.Length == 0) return "Смайл-ребус на екрані. Підпишіть!";
+        return head.EndsWith('?') ? head + " Смайл-ребус на екрані." : head + ": смайл-ребус на екрані.";
+    }
+
+    /// <summary>
     /// Пари дуелей раунду: кожен пише рівно два завдання, жодне — сам із собою. Раунд 1 — сусіди по колу
     /// <see cref="_order"/>. Раунд 2 — нове випадкове коло, у якому жодна пара раунду 1 не повторюється (при п'ятьох
     /// і більше таке коло завжди є; шукаємо перебором на <c>Ctx.Rng</c>, детерміновано). Не знайшлось — старий
@@ -507,16 +591,30 @@ public sealed class Dotepy : Game
             own.Add(prompt);
         }
         if (own.Count == count) return own;
-        var rest = PickFromBank(count - own.Count, final);
-        own.AddRange(rest);
+        // «Про нас» і ребус — гарантовано: у кожному раунді одне завдання з ніком когось за столом, ребус — через раунд
+        // (коли завдань у раунді ≥ 3 — обидва щоразу). Фінал бере з фінальних як завжди — туди вони теж потрапляють.
+        var need = count - own.Count;
+        var spice = new List<DotepyPrompt>(2);
+        if (!final)
+        {
+            var odd = _round % 2 == 1;
+            var nas = _spiceNas && (need >= 3 || odd || !_spiceRebus);
+            var rebus = _spiceRebus && (need >= 3 || !nas);
+            if (nas) spice.AddRange(PickFromBank(1, false, TagNas));
+            if (rebus && spice.Count < need) spice.AddRange(PickFromBank(1, false, TagRebus));
+        }
+        own.AddRange(PickFromBank(need - spice.Count, final, null));
+        own.AddRange(spice);
         return own;
     }
 
-    List<DotepyPrompt> PickFromBank(int count, bool final)
+    List<DotepyPrompt> PickFromBank(int count, bool final, string? tag)
     {
-        var pool = new List<DotepyPrompt>(_bank.Count);
-        foreach (var p in _bank) if (!final || p.Final) pool.Add(p);
-        if (pool.Count == 0) pool.AddRange(_bank);
+        if (count <= 0) return [];
+        var pool = new List<DotepyPrompt>(_pool.Count);
+        foreach (var p in _pool) if ((!final || p.Final) && (tag is null || Tagged(p, tag))) pool.Add(p);
+        if (pool.Count == 0 && tag is not null) return [];
+        if (pool.Count == 0) pool.AddRange(_pool);
         for (var i = pool.Count - 1; i > 0; i--)
         {
             var j = Ctx.Rng.Next(i + 1);
@@ -637,8 +735,8 @@ public sealed class Dotepy : Game
             card.Skipped = Array.TrueForAll(card.Answers, a => a.Stock);
             card.Jinx = _mode == ModeDuel && card.Answers.Length == 2 && !card.Answers[0].Stock && !card.Answers[1].Stock
                 && Same(card.Answers[0].Text, card.Answers[1].Text);
-            card.Line = card.Jinx ? DotepyLines.Jinx(card.Prompt.Text, card.Answers[0].Text)
-                : DotepyLines.Card(card.Prompt.Text, [.. card.Answers.Select(a => a.Text)]);
+            card.Line = card.Jinx ? DotepyLines.Jinx(Heard(card.Prompt), card.Answers[0].Text)
+                : DotepyLines.Card(Heard(card.Prompt), [.. card.Answers.Select(a => a.Text)]);
             if (!card.Skipped) lines.Add(card.Line);
         }
         // Усі — терміново й по порядку: звичайна черга могла б стояти за чужими репліками, і тоді кожна картка
@@ -1141,8 +1239,8 @@ public sealed class Dotepy : Game
         {
             var texts = card.Order.Select(k => card.Entries[k].Text).ToArray();
             var line = _mode == ModeDuel && texts.Length == 2 && Same(texts[0], texts[1])
-                ? DotepyLines.Jinx(card.Prompt.Text, texts[0])
-                : DotepyLines.Card(card.Prompt.Text, texts);
+                ? DotepyLines.Jinx(Heard(card.Prompt), texts[0])
+                : DotepyLines.Card(Heard(card.Prompt), texts);
             if (line != card.EarlyLine)
             {
                 Prepare([line], urgent: card.EarlyVoiced == 0);
@@ -1461,8 +1559,30 @@ public sealed class Dotepy : Game
         winners = (int[])_winners!.Clone(),
         scores = (long[])_score.Clone(),
         best = TopBests().Select(BestView).ToArray(),
+        pinned = _pinned.Order().ToArray(),
         early = _early,
     };
+
+    /// <summary>
+    /// «📌 В альбом» (HTTP, під замком кімнати): дотеп <paramref name="i"/> з трійки найкращих партії. Закидають ті, хто
+    /// грав цю партію, щонайбільше <see cref="PinsPerNick"/> кожен; один дотеп — раз. База — у викликача, поза замком.
+    /// </summary>
+    public (DotepyAlbumItem? Item, string? Error) Pin(string nick, int i)
+    {
+        if (_phase != PhaseDone || _winners is null) return (null, "В альбом закидають після партії");
+        var key = Auth.NickKey(nick);
+        var played = false;
+        for (var s = 0; s < MaxSeats && !played; s++) played = _inGame[s] && Auth.NickKey(_nicks[s]) == key;
+        if (!played) return (null, "Закидають ті, хто грав");
+        var top = TopBests();
+        if (i < 0 || i >= top.Count) return (null, "Нема такого дотепу");
+        if (_pinned.Contains(i)) return (null, "Цей уже в альбомі 📌");
+        if (_pinsBy.TryGetValue(key, out var n) && n >= PinsPerNick) return (null, $"Ти вже закинув {PinsPerNick} — хай інші теж оберуть");
+        _pinned.Add(i);
+        _pinsBy[key] = n + 1;
+        var b = top[i];
+        return (new DotepyAlbumItem(0, b.Prompt, b.Text, _nicks[b.Seat], nick, b.Points, Now, 0), null);
+    }
 
     /// <summary>
     /// Трійка партії: найбільші очки, але з різних завдань (фінал дає найбільше, і всі три були б з нього); коли
