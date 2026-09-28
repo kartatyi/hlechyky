@@ -166,7 +166,7 @@ public class BattleshipArsenalTests
         // червоний: витратив 6, отримав базу 10 → 44
         Assert.Equal(44, purse.Balance("Петро"));
         var ledger = h.View(0).GetProperty("arsenal").GetProperty("ledger");
-        Assert.Equal([20, 30, 50], Ints(ledger[0]));
+        Assert.Equal([20, 30, 50, 0], Ints(ledger[0]));
         Assert.Contains("шеляги: Оля +10, Петро +4", h.Room.Result!.Text);
     }
 
@@ -206,6 +206,35 @@ public class BattleshipArsenalTests
         foreach (var cell in Red.Take(5).SelectMany(s => s)) Assert.True(h.Act(0, "shoot", new { cell }).Ok);
         h.Leave("Петро");
         Assert.Equal(BattleshipArsenal.StartPurse + BattleshipArsenal.Income(true, 0), purse.Balance("Оля"));
+    }
+
+    [Fact]
+    public void Income_stops_at_the_daily_cap_and_comes_back_tomorrow()
+    {
+        // Рецензія проходу №3: другим ніком проти себе можна було друкувати по 50 шелягів за партію без кінця.
+        var purse = new BattleshipPurse(null);
+        var got = new List<int>();
+        for (var game = 0; game < 3; game++)
+        {
+            var h = Battle(purse);
+            foreach (var cell in Red.SelectMany(s => s)) Assert.True(h.Act(0, "shoot", new { cell }).Ok);
+            Assert.Equal(RoomStatus.Finished, h.Room.Status);
+            got.Add(Ints(h.View(0).GetProperty("arsenal").GetProperty("ledger")[0])[1]);
+            if (game == 2) Assert.Equal(50 - (BattleshipArsenal.DailyCap - 100), Ints(h.View(0).GetProperty("arsenal").GetProperty("ledger")[0])[3]);
+        }
+        Assert.Equal([50, 50, BattleshipArsenal.DailyCap - 100], got);
+        Assert.Equal(BattleshipArsenal.StartPurse + BattleshipArsenal.DailyCap, purse.Balance("Оля"));
+        // Петро — інший нік, своя стеля: база йому йде
+        Assert.Equal(BattleshipArsenal.StartPurse + 3 * BattleshipArsenal.BasePay, purse.Balance("Петро"));
+
+        purse = new BattleshipPurse(null);
+        var today = new DateTimeOffset(2026, 9, 29, 20, 0, 0, TimeSpan.Zero);
+        Assert.Equal(50, purse.Earn("Оля", 50, today.AddDays(-1)));                        // учора — окремо
+        Assert.Equal(50, purse.Earn("Оля", 50, today));
+        Assert.Equal(50, purse.Earn("оля", 50, today));                                   // той самий нік іншим регістром
+        Assert.Equal(BattleshipArsenal.DailyCap - 100, purse.Earn("Оля", 50, today));
+        Assert.Equal(0, purse.Earn("Оля", 50, today));
+        Assert.Equal(50, purse.Earn("Оля", 50, today.AddDays(1)));                         // завтра знову
     }
 
     [Fact]
