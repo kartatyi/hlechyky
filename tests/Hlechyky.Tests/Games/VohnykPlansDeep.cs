@@ -16,6 +16,7 @@ public static partial class VohnykPlans
             case 18: Level18(b); return true;
             case 19: Level19(b); return true;
             case 20: Level20(b); return true;
+            case 21: Level21(b); return true;
             default: return false;
         }
     }
@@ -93,5 +94,17 @@ public static partial class VohnykPlans
         b.Do(VohnykBot.Seq(b.Go(F, C(4)), b.Jump(F, -1, 30, C(3)), b.Jump(F, +1, 30, C(5) + 10), b.Go(F, C(20)), b.Go(F, C(12))),
             VohnykBot.Seq(b.Go(Wt, C(18)), b.Go(Wt, C(9)), b.Go(Wt, C(6)), b.RunJump(Wt, +1, C(9) - 8, 30, C(14))));
         b.Do(VohnykBot.Seq(b.Go(F, C(4)), b.RunJump(F, +1, C(9) - 8, 30, C(14)), b.Go(F, C(24))), b.Go(Wt, C(26)));
+    }
+
+    /// <summary>
+    /// «Пороми на дошках»: Вогник стоїть на ліфті біля скрині; Крапля по самоцвіт і назад крізь важіль — ліфт везе
+    /// обох нагору, — і в портал, поки він горить. Вогник дошками штовхає скриню на кнопку (портал гасне, двері
+    /// відчиняються), з ліфта вниз ліворуч і через лаву до дверей.
+    /// </summary>
+    static void Level21(VohnykBot b)
+    {
+        b.Do(null, VohnykBot.Seq(b.Go(Wt, C(4)), b.Go(Wt, C(7)), b.RunUntil(+1, () => b.W.Y[Wt] < 6 * T), b.WaitFor(() => b.Ground(Wt)), b.Go(Wt, C(22))));
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.FeetPx(F) <= 8 * 40 && b.Ground(F)), b.Go(F, 428), b.Go(F, C(1)), b.WaitFor(() => b.Ground(F)), b.Go(F, C(20)), b.Go(F, C(24))),
+            b.Go(Wt, C(25)));
     }
 }
