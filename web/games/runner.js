@@ -2995,6 +2995,32 @@
   // 9. Цикл, модуль, статус, три HGames.register
   // =============================================================================================
 
+  /// Телефон: шапка столу з вісьмома місцями штовхала сцену вниз, і кнопки «Стрибок»/«Пригнись» опинялись під
+  /// нижнім меню — видно було або сцену, або кнопки. Раз на партію (room.startedAt), коли вона пішла, прокручуємо
+  /// сторінку так, щоб рядок гравців став під шапку сайту: тоді сцена й кнопки вміщаються разом. Усе й так видно —
+  /// не чіпаємо.
+  function fitPhone(st) {
+    const ctx = st.ctx, hudEl = st.el && st.el.hud, padEl = st.el && st.el.touch;
+    if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !hudEl || !padEl || !ui.coarse()) return;
+    const key = ctx.room.startedAt || '';
+    if (st.fitFor === key) return;
+    const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    if (!a.height || !b.height) return;              // картку чи кнопки зараз не видно — спробуємо на наступному виді
+    st.fitFor = key;
+    const head = document.querySelector('header');
+    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+    const fr = fab && fab.getBoundingClientRect();
+    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
+    const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
+    if (Math.abs(dy) < 2) return;
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+  }
+
   /// rAF живе, лише поки сцена рухається: іде забіг (свій годинник і передбачення) або летять кадри (відлік, чужі
   /// бігуни), плюс IDLE_MS після останньої події — дожити снігу, спотикам і написам. Лобі, кінець партії, пауза між
   /// раундами й Забіг дня до першого стрибка — статичні: цикл засинає (раніше малював ту саму сцену 60 разів на
@@ -3077,6 +3103,7 @@
     if (ctx.playing && st.me != null && st.ph === 'wait') st.running = false;
     fit(st);
     hud(st);
+    fitPhone(st);
     wake(st);
   }
 
