@@ -19,6 +19,7 @@ public sealed class Dino : RunnerParty
         [
             new GameOption("rounds", "Раундів", [("1", "1 раунд"), ("3", "3 раунди"), ("5", "5 раундів")], "3"),
             new GameOption("snow", "Сніжки", [("on", "Є — кидай у лідера"), ("off", "Без сніжок")], "on"),
+            new GameOption("spirit", "Вибулі", [("off", "Дивляться"), ("on", "👻 Дух лавини — кидають брили")], "off"),
         ],
         Hint: "Динозаври біжать від лавини по одній кризі: стрибай через брили, пригинайся під бурульками, кидай сніжки. Хто останній на ногах — бере раунд",
         Client: "runner");
@@ -26,6 +27,19 @@ public sealed class Dino : RunnerParty
     protected override RunnerMode Mode => RunnerMode.Dino;
     protected override string[] Names => SeatNames;
     protected override string ExtraKey => "snow";
+
+    /// <summary>«👻 Дух лавини» (прохід №3): вибулий раз на <see cref="SpiritSteps"/> кроків кидає брилу перед бігуном.</summary>
+    public const int SpiritSteps = 450, SpiritFirst = 150;
+    bool _spirit;
+    readonly int[] _dropAt = new int[RunnerSim.Seats];
+    readonly int[] _drops = new int[RunnerSim.Seats], _dropHits = new int[RunnerSim.Seats];
+    readonly List<int> _spiritIds = [];
+
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        base.Configure(options);
+        _spirit = options.TryGetValue("spirit", out var v) && v == "on";
+    }
 
     /// <summary>Влучання сніжкою чекає, поки вийде вікно перемотування: запізнілий стрибок ще може його скасувати.</summary>
     readonly List<(int Seat, int Id, int By, int At)> _pending = [];
@@ -45,6 +59,10 @@ public sealed class Dino : RunnerParty
         _pending.Clear();
         Array.Clear(_throws);
         Array.Clear(_snipes);
+        Array.Clear(_drops);
+        Array.Clear(_dropHits);
+        Array.Fill(_dropAt, int.MaxValue);
+        _spiritIds.Clear();
     }
 
     protected override int Rank(RunnerPlayer p) => p.Lag;
@@ -54,7 +72,12 @@ public sealed class Dino : RunnerParty
     /// <summary>Скільки метрів пройшла лінія темпу після кроку бігу run.</summary>
     public static int Metres(RunnerSim sim, int run) => sim.PaceX(Math.Max(0, run + 1)) / RunnerDino.SubPerMetre;
 
-    protected override void OnOut(int seat, RunnerPlayer p, int run) => Far(seat, run);
+    protected override void OnOut(int seat, RunnerPlayer p, int run)
+    {
+        Far(seat, run);
+        // дух не кидає одразу: три секунди отямитись і роздивитись, у кого цілити
+        _dropAt[seat] = Sim!.S - SpiritSteps + SpiritFirst;
+    }
 
     protected override void OnSurvive(int seat, RunnerPlayer p, int run) => Far(seat, run);
 
@@ -93,6 +116,7 @@ public sealed class Dino : RunnerParty
             if (!all && sim.S - at <= RunnerSim.RewindMax) continue;
             _pending.RemoveAt(i);
             if (!sim.P[seat].HasPassed(id)) continue;
+            if (_spiritIds.Contains(id)) { _dropHits[by]++; continue; }   // брила духа — не сніжка: ні «Снайпера», ні ачівки
             _snipes[by]++;
             _snipesParty[by]++;
             Ctx.Award(by, 0, "ach:dino-snow");
@@ -114,6 +138,7 @@ public sealed class Dino : RunnerParty
     /// <summary>Кинути сніжку: брила лягає за 320 px перед тим, хто найменше відстав (dino.md §2.6).</summary>
     protected override ActResult Other(int seat, string action, JsonElement payload)
     {
+        if (action == "drop") return Drop(seat, payload);
         if (action != "throw") return ActResult.Fail("Тут так не ходять");
         var sim = Sim!;
         if (Phase != Running) return ActResult.Fail("Зачекай старту");
@@ -136,6 +161,39 @@ public sealed class Dino : RunnerParty
         _throwsParty[seat]++;
         // У балачку столу — нічого: кидків за партію десятки, посеред забігу їх ніхто не читає. Хто кинув і в кого,
         // показує сцена (брила з ціллю в кадрі, «❄ від …» над ціллю), а найвлучнішого — таблиця раунду.
+        return ActResult.Done;
+    }
+
+    /// <summary>
+    /// «👻 Дух лавини»: вибулий кидає брилу за 320 px перед бігуном — тим, кого обрав ({t}), або лідером. Раз на 9 с.
+    /// </summary>
+    ActResult Drop(int seat, JsonElement payload)
+    {
+        var sim = Sim!;
+        if (!_spirit) return ActResult.Fail("Духів лавини за цим столом не кличуть");
+        if (Phase != Running) return ActResult.Fail("Зачекай старту");
+        var me = sim.P[seat];
+        if (!me.Plays) return ActResult.Fail("Тут так не ходять");
+        if (!me.Out) return ActResult.Fail("Духом стають, лише коли лавина наздожене");
+        var wait = _dropAt[seat] == int.MaxValue ? SpiritSteps : _dropAt[seat] + SpiritSteps - sim.S;
+        if (wait > 0) return ActResult.Fail($"Дух набирає снігу — ще {(wait * RunnerSim.StepMs + 999) / 1000} с");
+        var target = -1;
+        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("t", out var t) && t.ValueKind == JsonValueKind.Number
+            && t.TryGetInt32(out var tv) && tv >= 0 && tv < RunnerSim.Seats && sim.P[tv].Plays && !sim.P[tv].Out) target = tv;
+        if (target < 0)
+            for (var i = 0; i < RunnerSim.Seats; i++)
+            {
+                var q = sim.P[i];
+                if (!q.Plays || q.Out) continue;
+                if (target < 0 || q.Lag < sim.P[target].Lag) target = i;
+            }
+        if (target < 0) return ActResult.Fail("Кидати нема в кого");
+        var run = sim.Run;
+        var id = sim.PlaceSnow(sim.PaceX(run) - sim.P[target].Lag + RunnerDino.SnowAhead, seat, run, target);
+        if (_spiritIds.Count >= 64) _spiritIds.RemoveAt(0);
+        _spiritIds.Add(id);
+        _dropAt[seat] = sim.S;
+        _drops[seat]++;
         return ActResult.Done;
     }
 
@@ -163,6 +221,8 @@ public sealed class Dino : RunnerParty
             m = sim is null ? 0 : sim.PaceX(run) / RunnerDino.SubPerMetre,
             sniper = Phase is Over or Done ? Sniper(_snipes, _throws) : null,
             sniperParty = Phase == Done ? Sniper(_snipesParty, _throwsParty) : null,
+            spirit = _spirit,
+            avenger = _spirit && Phase is Over or Done ? Sniper(_dropHits, _drops) : null,
             result = Result,
         };
     }

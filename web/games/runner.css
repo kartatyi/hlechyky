@@ -140,6 +140,7 @@
   }
   .rnr-tbtn small { font-size: .42em; color: var(--muted); }
   .rnr-tbtn:active { background: var(--clay); }
+  .rnr-tbtn.rnr-wait { opacity: .55; }
   .rnr-tbtn[hidden] { display: flex; visibility: hidden; }
   .rnr-duck { margin-left: auto; }
   .rnr-flap { flex: 1 1 auto; width: auto; }   /* у Лелек кнопка одна — хай уся смуга під сценою буде змахом */
