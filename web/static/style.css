@@ -763,6 +763,8 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   /* Стіл на весь екран, стіл узагалі чи балачки — плеєр не заважає: внизу лишаються самі вкладки. */
   body.gfull, body.g-room, body.route-chat { --mini-h: 0px; }
   body.gfull header .mini, body.g-room header .mini, body.route-chat header .mini { display: none; }
+  /* …а ⏭ тоді переїздить у шапку: пісню перемкнути можна, не виходячи зі столу. */
+  body.gfull header .hdrskip, body.g-room header .hdrskip, body.route-chat header .hdrskip { display: inline-flex; }
   /* «Я» в шапці на телефоні — аватарка й черепки, без ніка: нік і так видно в профілі. */
   header .mechip .nick { display: none; }
   header .mechip { padding-right: 8px; }
@@ -1018,7 +1020,15 @@ body.preview header .mechip .wallet { display: none; }
 /* ---- «💡 Розробнику»: кнопка в шапці, вікно записки, «Мої записки» ---- */
 header .fbbtn { position: relative; padding: 6px 9px; font-size: 1.05em; }
 header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
-.modal .card.fbcard { width: min(94vw, 520px); max-height: 92vh; overflow: auto; }
+header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
+/* dvh — висота того, що видно: на телефоні 92vh вищі за екран під рядком адреси. */
+.modal .card.fbcard { width: min(94vw, 520px); max-height: 92vh; max-height: 92dvh; overflow: auto; }
+/* Заголовок із ✕ пришпилений угорі вікна: на телефоні «Закрити» внизу ховалось під клавіатуру чи довгі «Мої записки». */
+.fbcard h3 {
+  position: sticky; top: -22px; z-index: 1; margin: -22px -22px 0; padding: 14px 12px 8px 22px;
+  background: var(--panel); border-radius: var(--radius) var(--radius) 0 0;
+}
+.fbcard h3 .fbx { margin-left: auto; font-family: var(--font); }
 .fbcard textarea {
   font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 10px;
   padding: 10px 12px; width: 100%; min-height: 120px; resize: vertical; outline: none; line-height: 1.45;

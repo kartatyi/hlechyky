@@ -432,6 +432,7 @@
     box.querySelector('.fwbtn')?.addEventListener('click', (e) => launchFireworks(e.currentTarget));
   }
   const skipNow = () => api('POST', '/api/skip').then(ok).catch(fail);
+  $('hdrSkip').onclick = (e) => busy(e.currentTarget, '', skipNow);
 
   /// Лайк, скіп, плейлист і бан — один набір обробників на обидві копії трека (панель і шапка),
   /// щоб не тримати дві однакові гілки, які розійдуться від першої ж правки.
@@ -533,6 +534,9 @@
     paintNowInto($('nowMini'), { mini: true });
 
     const playingTrack = n.track && (n.source === 'user' || n.source === 'autodj');
+    // ⏭ у шапці (видно лише на телефоні за столом і в балачках — це вирішує CSS): є що скіпати — є й кнопка.
+    $('hdrSkip').hidden = !playingTrack;
+    $('hdrSkip').disabled = !!n.skipPending;
     baseTitle = playingTrack ? `${n.track.title} — ${n.track.artist} · ${state.siteName}` : state.siteName;
     paintTitle();
     if (playState !== 'idle') updateMediaSession();
@@ -2280,7 +2284,8 @@
     $('fbCount').textContent = `${$('fbText').value.length} / 2000`;
     $('fbModal').hidden = false;
     // Є нова відповідь — одразу до неї, а не в поле нової записки (на телефоні клавіатура заступила б відповідь).
-    if (!fbMineUnread || me.role === 'admin') setTimeout(() => $('fbText').focus(), 50);
+    // На сенсорному екрані поле само не фокусується зовсім: клавіатура вискакувала б і закривала пів вікна.
+    if ((!fbMineUnread || me.role === 'admin') && matchMedia('(pointer: fine)').matches) setTimeout(() => $('fbText').focus(), 50);
     loadMyFeedback(fbMineUnread > 0 && me.role !== 'admin');
   }
   function closeFeedback() {
@@ -2289,6 +2294,7 @@
   }
   $('fbBtn').onclick = openFeedback;
   $('fbClose').onclick = closeFeedback;
+  $('fbX').onclick = closeFeedback;
   $('fbModal').addEventListener('click', (e) => { if (e.target === $('fbModal')) closeFeedback(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('fbModal').hidden) closeFeedback(); });
   $('fbKinds').querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { setFbKind(b.dataset.k); $('fbText').focus(); });
