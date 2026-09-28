@@ -169,6 +169,9 @@ body:has(.rl-body.rl-side) .tchat.drawer:not(.open) .tc-last { display: none; }
   .rl-cars button { flex-direction: column; gap: 0; font-size: .74em; padding: 4px 2px; }
   .rl-hud { gap: 4px; font-size: .74em; }
   .rl-chip { padding: 2px 7px; gap: 4px; }
+  /* телефон стоячи, гонка: ніки вже є над машинами й у рядку місць каркаса — у чіпах лишаються номер кольору,
+     машина, місце й коло. Шестеро займали чотири рядки над трасою, тепер два (прохід 28.09) */
+  .rl-body.rl-racing .rl-chip .rl-nk { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rl-touch button { transition: none; }

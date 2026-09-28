@@ -1103,8 +1103,22 @@
     const chrome = cssPx('--tabs-h') + cssPx('--mini-h');
     // смужка підказок пада (Дека) висить унизу поверх сторінки — статус і кнопки картки мусять лягти над нею
     const padBar = padBarH();
-    const below = (narrow && touch ? chrome + 10 : 86 + chrome) + (touch ? 64 : 0) + padBar, hud = st.sprint ? 50 : 30;   // у спринті HUD вищий: великий секундомір
-    let hAvail = Math.max(260, vh - Math.max(0, top) - below - hud);
+    // Під стінами на ПК — статус і кнопки картки та нижній відступ сторінки: їх міряємо (від розміру стін вони не
+    // залежать), статус — одним рядком (на відліку він буває у два). Решту похибки (підписи, секундомір спринту)
+    // знімає st.fitCut із build(). Було: сталі 86 px, і дуель на 1280…1920 гортала сторінку на 10–28 px (прохід 28.09).
+    let under = 86 + chrome;
+    const card = root.closest('.gtable');
+    if (card && !(narrow && touch)) {
+      let cardBelow = card.getBoundingClientRect().bottom - root.getBoundingClientRect().bottom;
+      const se = card.querySelector('.gstatus');
+      if (se) {
+        const sh = se.getBoundingClientRect().height, lh = parseFloat(getComputedStyle(se).lineHeight) || 18;
+        if (sh > lh + 2) cardBelow -= sh - lh;
+      }
+      under = Math.max(40, cardBelow) + 18 + chrome;
+    }
+    const below = (narrow && touch ? chrome + 10 : under) + (touch ? 64 : 0) + padBar, hud = st.sprint ? 50 : 30;   // у спринті HUD вищий: великий секундомір
+    let hAvail = Math.max(260, vh - Math.max(0, top) - below - hud - (st.fitCut || 0));
     let c;
     let kind;
     let mini = 0;
@@ -1236,6 +1250,13 @@
     st.el.sum = sum;
     st.spr = st.sprMini = st.back = st.backMini = null;
     st.dirty = true;
+    // Сторінка все ж вилазить за екран — меншаємо стіни рівно на стільки й перебудовуємо одразу, ще до малювання.
+    // Лише ПК (на телефоні сторінку гортають) і не більше двох спроб; скидається на зміну розміру вікна.
+    if (!coarse() && root.offsetParent && (st.fitTries = (st.fitTries || 0) + 1) <= 2) {
+      const doc = document.documentElement, over = doc.scrollHeight - (doc.clientHeight || window.innerHeight);
+      if (over > 0 && over < 300) { st.fitCut = (st.fitCut || 0) + over; st.layout = ''; return build(root, st); }
+    }
+    st.fitTries = 0;
     return L;
   }
 
@@ -2232,16 +2253,25 @@
 
   // ---------- цикл ----------
 
+  /// Лобі, «готовий?» спринту й підсумок: мережа стоїть, стіни не рухаються. Тоді цикл не крутить 60 порожніх кадрів
+  /// на секунду, а дрімає по 0,25 с (прохід 28.09); вид, кадр і розмір будять одразу (frameLoop).
+  const IDLE_PH = new Set(['lobby', 'ready', 'over']);
+  const IDLE_MS = 250;
+  const fxBusy = (st, now) => st.fx.parts.length || st.fx.labels.length || st.fx.splat || st.fx.shake > now
+    || (st.fx.trail && st.fx.trail.until > now) || st.fx.go > now;
+
   function frameLoop(st) {
     const loop = (now) => {
       st.raf = 0;
       const root = st.root;
       if (!root || !root.isConnected) return;
-      st.raf = requestAnimationFrame(loop);
       tickNet(st, now);
-      if (document.hidden || !root.offsetParent) return;
-      render(st, now);
+      const shown = !document.hidden && !!root.offsetParent;
+      if (shown) render(st, now);
+      if (IDLE_PH.has(st.phase) && (!shown || (!st.dirty && !fxBusy(st, now)))) st.idleT = setTimeout(() => { st.idleT = 0; st.raf = requestAnimationFrame(loop); }, IDLE_MS);
+      else st.raf = requestAnimationFrame(loop);
     };
+    if (st.idleT) { clearTimeout(st.idleT); st.idleT = 0; }
     if (!st.raf) st.raf = requestAnimationFrame(loop);
   }
 
@@ -2283,6 +2313,12 @@
     if (st.dirty || now - st.lastRender > 250) {
       // з'явився (чи зник) пад — розкладка інша: смужка його підказок унизу забирає висоту
       if (st.L && padish() !== st.L.pad && st.root) { build(st.root, st); summary(st); }
+      // стіл збудувався, поки картка була схована (build не міг поміряти прокрутку), — перевірити ще раз, раз на розкладку
+      else if (st.L && st.root && !coarse() && st.fitSeen !== st.layout + '|' + window.innerHeight) {
+        st.fitSeen = st.layout + '|' + window.innerHeight;
+        const doc = document.documentElement;
+        if (doc.scrollHeight > doc.clientHeight + 1) { st.layout = ''; build(st.root, st); summary(st); }
+      }
       hud(st, now); labels(st); stripsUpdate(st); tossBar(st); st.lastRender = now;
     } else if (st.sprint && st.phase === 'go' && now - st.lastClock > 90) {
       st.lastClock = now;
@@ -2314,7 +2350,7 @@
     // вікно втратило фокус — пальці вже не на клавішах, хоч keyup і не прийшов
     st.onBlur = () => st.net.releaseAll(performance.now());
     window.addEventListener('blur', st.onBlur);
-    st.onResize = () => { st.layout = ''; st.dirty = true; if (st.root && st.root.isConnected) update(st.root, st.ctx); };
+    st.onResize = () => { st.layout = ''; st.fitCut = 0; st.dirty = true; if (st.root && st.root.isConnected) update(st.root, st.ctx); };
     window.addEventListener('resize', st.onResize);
     // прихована вкладка: rAF мовчить, а стіна жити має — крок і пачки раз на 100 мс (браузер урізає до 1/с)
     st.timer = setInterval(() => {
@@ -2396,12 +2432,25 @@
     st.net.onFrame(f, now);
     st.dirty = true;
     if (prev !== f.ph && st.root) summary(st);
+    if (st.idleT) frameLoop(st);
+  }
+
+  /// Лобі столу на 2+: хто сидить, бачить, чи вже можна рушати (каркас пише «Чекаємо, хто підсяде», навіть коли
+  /// господареві досить натиснути «Почати»). Глядач — без статусу, як і було.
+  function lobbyLine(ctx) {
+    const r = ctx.room;
+    if (!r || r.status !== 'lobby' || !ctx.mine) return '';
+    const seated = (r.seats || []).filter((s) => s.nick).length;
+    const host = String(r.host || '').toLowerCase() === String((ctx.me && ctx.me.nick) || '').toLowerCase();
+    if (seated < (r.minPlayers || 2)) return host ? 'Чекаємо, хто підсяде: гукни когось за стіл 📣' : 'Чекаємо, хто підсяде';
+    return host ? 'Гайда: тисни «Почати» — або зачекай, хто ще підсяде' : 'Чекаємо, поки господар тисне «Почати»';
   }
 
   function status(ctx) {
     const st = ctx._bk;
     const f = ctx.frame;
     const ph = (st && st.phase) || (f && f.ph) || (ctx.view && ctx.view.phase) || '';
+    if (!(st && st.sprint) && ctx.room && ctx.room.status === 'lobby') return lobbyLine(ctx);
     if (!ctx.playing) return '';
     if (st && st.sprint) {
       if (ph === 'ready') return padish() ? 'Натисни Ⓐ — і поїхали' : coarse() ? 'Торкнись стіни — і поїхали' : 'Натисни будь-яку клавішу';
@@ -2491,6 +2540,8 @@
     if (!st) return;
     if (st.raf) cancelAnimationFrame(st.raf);
     st.raf = 0;
+    clearTimeout(st.idleT);
+    st.idleT = 0;
     clearInterval(st.timer);
     if (st.keyup) document.removeEventListener('keyup', st.keyup);
     if (st.onBlur) window.removeEventListener('blur', st.onBlur);

@@ -37,6 +37,7 @@
   /// Перші 0,6 с свого ходу пробіл/Enter/Ⓐ не стріляють: після «Ще раз» Ⓐ, натиснутий по кнопці, якої вже нема,
   /// летів у гру й одразу стріляв 45°/60 «мимо».
   const TURN_GRACE = 600;
+  const AWAY_MS = 200, CALM_MS = 50;   // цикл малювання: схована картка / тихе лобі й підсумок (spin)
 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -73,7 +74,7 @@
         inv: [], stats: [], wins: [0, 0, 0, 0, 0, 0], last: null, log: [], result: null,
         aimTurn: [45, 60, 0], my: { a: 45, p: 60, w: 0 }, myTurnNo: -1, preW: null, fired: -1,
         // снаряди: два останні кадри для екстраполяції й хвости
-        shA: new Float32Array(24), shB: new Float32Array(24), shN: 0, shSmooth: false, shAt: 0, gap: TICK_MS,
+        shA: new Float32Array(24), shB: new Float32Array(24), shN: 0, shSmooth: false, shAt: 0, shReal: 0, gap: TICK_MS,
         tails: new Float32Array(8 * 12), tailN: new Uint8Array(8), tailAt: 0,
         trails: [[], [], [], [], [], []], shooter: -1,
         fresh: [],                                   // [c0, c1, t0] — свіжа земля у вирвах
@@ -654,9 +655,13 @@
     st.shN = n;
     // Справжній проміжок між кадрами: годинник сервера на Windows тикає рідше за 25/с (≈ 19/с), і
     // екстраполяція на сталі 40 мс доганяла б кадр і стояла — снаряд смикався б.
-    const now = performance.now(), gap = now - st.shAt;
+    const now = performance.now(), gap = now - st.shReal;
     if (st.shSmooth && gap > 15 && gap < 160) st.gap += (gap - st.gap) * 0.2;
-    st.shAt = now;
+    st.shReal = now;
+    // Кадр — на рівну сітку часу (попередній + середній проміжок), а не «щойно прийшов»: кадри летять із тремтінням
+    // 15–63 мс, і снаряд, що від кожного кадру рушав наново, то стояв, то стрибав (прохід 28.09: зупинок і ривків
+    // на кадр екрана було 7–8 %). Сітка не відходить від справжнього приходу далі ніж на один проміжок.
+    st.shAt = st.shSmooth ? clamp(st.shAt + st.gap, now - st.gap, now + st.gap) : now;
     // слід пострілу: точки кадрів, блідим пунктиром до наступного пострілу цього гравця
     const tr = st.shooter >= 0 ? st.trails[st.shooter] : null;
     if (tr && tr.length < 1600) for (let i = 0; i < n; i++) tr.push(sh[i][0], sh[i][1]);
@@ -1264,7 +1269,7 @@
 
     // снаряди: екстраполяція на пів кадру вперед, але не під землю; хвіст з останніх положень
     if (phase === 'fly' && st.shN) {
-      const k = st.shSmooth ? clamp((now - st.shAt) / st.gap, 0, 1) : 0;
+      const k = st.shSmooth ? clamp((now - st.shAt) / st.gap, -1, 1.5) : 0;
       const sample = now - st.tailAt > 28;
       if (sample) st.tailAt = now;
       for (let i = 0; i < st.shN; i++) {
@@ -1889,29 +1894,65 @@
     syncCanvasCls(st);
   }
 
+  /// Лобі столу на 2+: хто сидить, бачить, чи вже можна рушати (каркас пише «Чекаємо, хто підсяде», навіть коли
+  /// господареві досить натиснути «Почати»). Глядач — без статусу, як і було.
+  function lobbyLine(ctx) {
+    const r = ctx.room;
+    if (!r || r.status !== 'lobby' || !ctx.mine) return '';
+    const seated = (r.seats || []).filter((s) => s.nick).length;
+    const host = String(r.host || '').toLowerCase() === String((ctx.me && ctx.me.nick) || '').toLowerCase();
+    if (seated < (r.minPlayers || 2)) return host ? 'Чекаємо, хто підсяде: гукни когось за стіл 📣' : 'Чекаємо, хто підсяде';
+    return host ? 'Гайда: тисни «Почати» — або зачекай, хто ще підсяде' : 'Чекаємо, поки господар тисне «Почати»';
+  }
+
   // =============================================================================================
   // Цикл
   // =============================================================================================
 
+  /// Лобі чи підсумок без разових анімацій (лелека, вибухи, цифри шкоди, свіжа земля, повтор найкращого пострілу):
+  /// рухаються лише хмари й дим — їм досить 20 кадрів на секунду.
+  function calmNow(st, now) {
+    if (st.phase !== 'lobby' && st.phase !== 'over') return false;
+    if (st.stork || st.rings.length || st.floats.length || st.fresh.length || now < st.shakeUntil) return false;
+    return !(st.replay && !st.replay.boom);
+  }
+
+  /// rAF — лише поки треба (прохід 28.09): схована картка чи вкладка — перевірка раз на 0,2 с без rAF; тихе лобі й
+  /// підсумок — 20 кадрів/с; вид чи розмір будять одразу (wake). Було 60 повних кадрів/с усюди, і в схованій картці теж.
   function spin(st) {
-    if (st.raf) return;
+    if (st.raf || st.idleT) return;
     st.lastT = performance.now();
     const loop = () => {
+      st.raf = 0;
       const el = st.cv && st.cv.el;
-      if (!el || !el.isConnected) { st.raf = 0; return; }
-      st.raf = requestAnimationFrame(loop);
-      if (document.hidden || !el.offsetParent) return;
+      if (!el || !el.isConnected) return;
+      const shown = !document.hidden && !!el.offsetParent;
+      st.away = !shown;
       const now = performance.now();
-      const dt = Math.min(0.05, (now - st.lastT) / 1000);
-      st.lastT = now;
-      if (!st.bgC) fit(st);
-      if (!st.bgC) return;
-      tickInput(st, now);
-      const t0 = performance.now();
-      draw(st, now, dt);
-      st.perf[st.perfN++ % st.perf.length] = performance.now() - t0;
+      if (shown) {
+        const dt = Math.min(0.1, (now - st.lastT) / 1000);
+        st.lastT = now;
+        if (!st.bgC) fit(st);
+        if (st.bgC) {
+          tickInput(st, now);
+          const t0 = performance.now();
+          draw(st, now, dt);
+          st.perf[st.perfN++ % st.perf.length] = performance.now() - t0;
+        }
+      }
+      const gap = !shown ? AWAY_MS : calmNow(st, now) ? CALM_MS : 0;
+      if (gap) st.idleT = setTimeout(() => { st.idleT = 0; st.raf = requestAnimationFrame(loop); }, gap);
+      else st.raf = requestAnimationFrame(loop);
     };
     st.raf = requestAnimationFrame(loop);
+  }
+
+  /// Цикл дрімає — розбудити зараз; force — і тоді, коли картка була схована (кадри в схованій будити не мусять).
+  function wake(st, force) {
+    if (!st || !st.idleT || (st.away && !force)) return;
+    clearTimeout(st.idleT);
+    st.idleT = 0;
+    spin(st);
   }
 
   HGames.register({
@@ -1971,12 +2012,12 @@
       };
       document.addEventListener('keyup', st.keyup);
       if (window.ResizeObserver) {
-        st.ro = new ResizeObserver(() => { fit(st); fitHeight(st); });
+        st.ro = new ResizeObserver(() => { fit(st); fitHeight(st); wake(st, true); });
         st.ro.observe(el);
         const card = root.closest('.gtable');
         if (card) st.ro.observe(card);
       }
-      st.onResize = () => fitHeight(st);
+      st.onResize = () => { fitHeight(st); wake(st, true); };
       window.addEventListener('resize', st.onResize);
       fit(st);
       spin(st);
@@ -1989,6 +2030,7 @@
       fit(st);
       paintAll(st);
       fitHeight(st);
+      wake(st, true);
       spin(st);
     },
 
@@ -1998,6 +2040,7 @@
       const phase = st.phase;
       applyFrame(st, f);
       if (f.hp || f.hx || f.ph !== phase || f.aim) paintAll(st);
+      wake(st);
     },
 
     onKey(e, ctx) {
@@ -2036,6 +2079,7 @@
 
     status(ctx) {
       const st = ctx._gk;
+      if (ctx.room && ctx.room.status === 'lobby') return lobbyLine(ctx);
       if (!st || !ctx.playing) return '';
       const s = me(st);
       switch (st.phase) {
@@ -2062,6 +2106,8 @@
       if (!st) return;
       cancelAnimationFrame(st.raf);
       st.raf = 0;
+      clearTimeout(st.idleT);
+      st.idleT = 0;
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.ro) st.ro.disconnect();
       if (st.onResize) window.removeEventListener('resize', st.onResize);

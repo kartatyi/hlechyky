@@ -483,6 +483,7 @@
   const STRIDE = 15, SEATS = 6, TICK = 40;
   const EXTRAPOLATE = true;                      // чужі — екстраполяція (spec §5.6); false — інтерполяція назад
   const LEAD0 = 2, LEAD_MIN = 1, LEAD_MAX = 8;
+  const AWAY_MS = 200, QUIET_MS = 250;           // цикл малювання: схована картка / тихе лобі й підсумок (loop)
   const GMAX = 1500;                             // привид: коло до 60 с (довше — не пишемо)
   // іконка: «запорожець» збоку, що курить пилом
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -2358,7 +2359,7 @@
     window.addEventListener('blur', st.blur);
     document.addEventListener('visibilitychange', st.vis);
     if (window.ResizeObserver) {
-      st.ro = new ResizeObserver(() => { layout(st); ensureTrack(st); if (st.centred) centreCanvas(st); });
+      st.ro = new ResizeObserver(() => { layout(st); ensureTrack(st); if (st.centred) centreCanvas(st); wake(st, true); });
       st.ro.observe(wrap);
       // ширина тіла картки (⛶ ховає балачки й розсуває стіл) від канваса не залежить — петлі нема
       st.ro2 = new ResizeObserver(() => {
@@ -2367,10 +2368,11 @@
         st.rootW = w;
         st.fitDirty = true;
         st.fitGrow = true;
+        wake(st, true);
       });
       st.ro2.observe(root);
     }
-    st.onResize = () => { st.fitDirty = true; st.fitGrow = true; };
+    st.onResize = () => { st.fitDirty = true; st.fitGrow = true; wake(st, true); };
     window.addEventListener('resize', st.onResize);
   }
 
@@ -2673,21 +2675,48 @@
     } else { st.wrong = false; st.wrongN = 0; }
   }
 
+  /// Лобі чи підсумок, де вже нічого не рухається: ні частинок, ні спалахів, ні трясіння, ні гудка, ні зсуву.
+  function quiet(st, now) {
+    const f = st.f;
+    if (!f || (f.ph !== 0 && f.ph !== 3) || st.fitDirty || st.revealAt) return false;
+    if (st.flashes.length || st.shakeUntil > now) return false;
+    for (let i = 0; i < SEATS; i++) if (now - st.horns[i] < 400) return false;
+    for (const p of st.ps.list) if (p.on) return false;
+    return true;
+  }
+
+  /// rAF — лише поки є що малювати (прохід 28.09). Картка схована (інший розділ сайту, лобі ігор) чи вкладка —
+  /// перевіряємо раз на 0,2 с без rAF; лобі й підсумок, де нічого не рухається, — 4 кадри на секунду, а новий вид,
+  /// кадр чи розмір будять одразу (wake). Було: 60 повних кадрів траси на секунду й у підсумку (1,2 мс на Full HD),
+  /// і порожні колбеки в схованій картці.
   function loop(st) {
-    if (st.raf) return;
+    if (st.raf || st.idleT) return;
     const tick = (now) => {
       st.raf = 0;
       if (!st.cv || !st.cv.isConnected) return;
-      if (!document.hidden && st.cv.offsetParent) {
+      const shown = !document.hidden && !!st.cv.offsetParent;
+      st.away = !shown;
+      if (shown) {
         if (st.fitDirty) { st.fitDirty = false; fitHeight(st); }
         if (now - (st.sideAt || 0) > 500) { st.sideAt = now; sideCheck(st); }
         if (st.revealAt && now > st.revealAt) { st.revealAt = 0; revealButtons(st); }
         draw(st, now);
         engineSound(st);
       }
-      st.raf = requestAnimationFrame(tick);
+      const gap = !shown ? AWAY_MS : quiet(st, now) ? QUIET_MS : 0;
+      if (gap) st.idleT = setTimeout(() => { st.idleT = 0; st.raf = requestAnimationFrame(tick); }, gap);
+      else st.raf = requestAnimationFrame(tick);
     };
     st.raf = requestAnimationFrame(tick);
+  }
+
+  /// Цикл дрімає — розбудити зараз (force — навіть якщо картка була схована: вид приходить і тоді, коли стіл знову
+  /// на екрані, а кадри гонки в схованій картці будити не мусять — там досить перевірки раз на 0,2 с).
+  function wake(st, force) {
+    if (!st || !st.idleT || (st.away && !force)) return;
+    clearTimeout(st.idleT);
+    st.idleT = 0;
+    loop(st);
   }
 
   function apply(root, ctx) {
@@ -2708,6 +2737,7 @@
     paintTouch(st);
     // висоти над і під канвасом міряємо в наступному кадрі: каркас домальовує статус і кнопки після update
     st.fitDirty = true;
+    wake(st, true);
     loop(st);
   }
 
@@ -2760,6 +2790,7 @@
       takeFrame(st, f, performance.now());
       paintHud(st);
       paintTouch(st);
+      wake(st);
     },
 
     onKey(e, ctx) {
@@ -2820,6 +2851,8 @@
       if (!st) return;
       cancelAnimationFrame(st.raf);
       st.raf = 0;
+      clearTimeout(st.idleT);
+      st.idleT = 0;
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.blur) window.removeEventListener('blur', st.blur);
       if (st.vis) document.removeEventListener('visibilitychange', st.vis);

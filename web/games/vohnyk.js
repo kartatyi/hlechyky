@@ -24,6 +24,7 @@
   // Поки тримаєш клавішу, раз на пів секунди нагадуємо про неї серверу: хто мовчить понад 1,5 с (Vohnyk.StaleSteps),
   // того сервер вважає зниклим і відпускає йому клавіші — щоб герой зниклого не бігав у воду раз у раз.
   const HEARTBEAT = 25;
+  const AWAY_MS = 200, CALM_MS = 50;  // цикл малювання: схована картка / лобі й підсумок без ефектів (spin)
   const SOLO_LATCH = 100;       // VohnykWorld.SoloLatch: сам за двох кнопка брами «все разом» тримається ще 2 с
   const NAMES = ['Вогник', 'Крапля'];
   const EMO = ['🔥', '💧'];
@@ -1303,6 +1304,9 @@
       ? '<div class="vh-res ok"><b>' + (v.solo ? 'Сам за двох!' : 'Разом!') + '</b> Рівень ' + r.level + name + ' за ' + clockTenths(r.ms)
         + ' <span class="vh-stars">' + stars(r.stars) + '</span> · 💎 ' + r.gems + '/' + r.gemsAll + deaths
       : '<div class="vh-res"><b>Не дограли</b> рівень ' + r.level + name + deaths;
+    // останній рівень печери — не просто «Ще раз 15-й»: сказати, що пройдено все й що далі (прохід 28.09)
+    if (r.cleared && r.level === (v.levels || []).length)
+      html += '<div class="small">🏆 Овва — усю печеру пройдено! Далі — на час: побийте свій рекорд на будь-якому рівні</div>';
     if (ctx.mine) {
       const nextLv = (v.levels || [])[r.next - 1];
       html += '<div class="vh-acts">';
@@ -1520,6 +1524,7 @@
     if (window.ResizeObserver) {
       st.ro = new ResizeObserver(() => {
         fit(st);
+        wake(st, true);
         // телефон лежачи: ⛶ чи поворот міняють розмір — полотно знову між шапкою й вкладками
         if (playing(st) && phoneLandscape()) { clearTimeout(st.centreT); st.centreT = setTimeout(() => centre(st), 120); }
       });
@@ -1573,6 +1578,7 @@
     st.hudAt = 0;
     hud(st);
     panel(st);
+    wake(st, true);
     spin(st);
   }
 
@@ -1594,18 +1600,34 @@
     } catch (_) { /* без прокрутки теж можна грати */ }
   }
 
+  /// rAF — лише поки треба (прохід 28.09): схована картка чи вкладка — перевірка раз на 0,2 с без rAF; лобі й
+  /// підсумок, де вже не летять іскри й не трусить, — 20 кадрів/с (хвилі рідин і так повільні); вид і розмір будять
+  /// одразу (wake). Було 60 повних кадрів/с усюди, і порожні колбеки в схованій картці.
   function spin(st) {
-    if (st.raf) return;
+    if (st.raf || st.idleT) return;
     const loop = (now) => {
-      if (!st.root.isConnected || st.root._vh !== st) { st.raf = 0; return; }
-      if (!document.hidden && st.cv && st.cv.el.offsetParent) {
+      st.raf = 0;
+      if (!st.root.isConnected || st.root._vh !== st) return;
+      const shown = !document.hidden && !!st.cv && !!st.cv.el.offsetParent;
+      st.away = !shown;
+      if (shown) {
         if (playing(st)) pump(st, now);
         draw(st);
         hud(st);
       } else st.lastNow = 0;
-      st.raf = requestAnimationFrame(loop);
+      const gap = !shown ? AWAY_MS : !playing(st) && !st.parts.length && !(st.shake > 0) ? CALM_MS : 0;
+      if (gap) st.idleT = setTimeout(() => { st.idleT = 0; st.raf = requestAnimationFrame(loop); }, gap);
+      else st.raf = requestAnimationFrame(loop);
     };
     st.raf = requestAnimationFrame(loop);
+  }
+
+  /// Цикл дрімає — розбудити зараз; force — і тоді, коли картка була схована (кадри в схованій будити не мусять).
+  function wake(st, force) {
+    if (!st || !st.idleT || (st.away && !force)) return;
+    clearTimeout(st.idleT);
+    st.idleT = 0;
+    spin(st);
   }
 
   HGames.register({
@@ -1652,6 +1674,7 @@
       const st = state(root, ctx);
       if (!st.world || !playing(st)) return;
       onFrame(st, f);
+      wake(st);
     },
 
     onKey(e, ctx) {
@@ -1720,6 +1743,9 @@
       if (!st) return;
       cancelAnimationFrame(st.raf);
       st.raf = 0;
+      clearTimeout(st.idleT);
+      clearTimeout(st.centreT);
+      st.idleT = 0;
       if (st.rTimer) clearTimeout(st.rTimer);
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.blur) window.removeEventListener('blur', st.blur);
