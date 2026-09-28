@@ -434,6 +434,15 @@
       el.querySelectorAll('.mgch').forEach((b) => b.onclick = () => act('pick', { i: +b.dataset.v }));
       el.querySelectorAll('.mgwho').forEach((b) => b.onclick = () => act('who', { nick: b.textContent }));
       el.querySelectorAll('.mgbet').forEach((b) => b.onclick = () => act('bet', { seat: +b.dataset.v }));
+      // На телефоні варіанти з'являються під полем — нижній ряд ховався під вкладками сайту, а на все про все 5 с:
+      // раз на трек підкручуємо, щоб було видно всі чотири (scroll-margin у melody.css — запас під вкладки).
+      const ch = el.querySelector('.mgchoices');
+      const s = st(root);
+      if (!ch) s.chSeen = false;
+      else if (!s.chSeen) {
+        s.chSeen = true;
+        if (ch.getBoundingClientRect().bottom > window.innerHeight - 72) ch.scrollIntoView({ block: 'end', behavior: 'smooth' });
+      }
     }
   }
 

@@ -94,7 +94,7 @@
 .mggrow .chip.mgpast { opacity: .5; }
 .mgbtns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; width: 100%; }
 .mgbtns button { min-height: 44px; }
-.mgchoices { display: grid; grid-template-columns: 1fr 1fr; }
+.mgchoices { display: grid; grid-template-columns: 1fr 1fr; scroll-margin-bottom: 72px; }
 .mgchoices button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mgduel { display: flex; flex-direction: column; gap: 6px; align-items: center; width: 100%; padding: 8px 10px;
   border: 2px solid var(--accent); border-radius: 10px; }
