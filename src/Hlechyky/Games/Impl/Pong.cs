@@ -737,7 +737,7 @@ public sealed class Pong : Game
         [("short", "Коротка"), ("normal", "Звичайна"), ("long", "Довга")], "normal");
     /// <summary>Бонуси на арені (п. 133): типово вимкнені — арена як була.</summary>
     static readonly GameOption BonusOpt = new("bonus", "Бонуси (арена, 3–4)",
-        [("off", "Без бонусів"), ("on", "⭐ Раз на 15 с: ↔ довга ракетка, ⚾ два м'ячі, 🐢 повільний м'яч")], "off");
+        [("off", "Без бонусів"), ("on", "⭐ Є — раз на 15 с у центрі")], "off");
     bool _bonuses;
 
     public override GameInfo Info { get; } = new(

@@ -23,6 +23,7 @@ body.pad-on .pongboard.arena { max-width: min(560px, calc(100vh - 410px)); }
 
 .ponglegend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin-top: 6px; }
 .ponglegend .pgl { white-space: nowrap; }
+.ponglegend .pgl.pgtip { white-space: normal; flex-basis: 100%; text-align: center; }
 .ponglegend .pgl.s0 .sh, .ponglegend .pgl.s0 .hp { color: var(--accent); }
 .ponglegend .pgl.s1 .sh, .ponglegend .pgl.s1 .hp { color: var(--ok); }
 .ponglegend .pgl.s2 .sh, .ponglegend .pgl.s2 .hp { color: var(--clay); }

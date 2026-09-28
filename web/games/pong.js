@@ -18,7 +18,9 @@
   const DUO = { W: 160, H: 100, SC: 3.5 };   // 560 × 350: канвас не розтягується, тож і не милиться
   const ARENA = { S: 120, SC: 4, CORNER: 14, OFF: 4, L: 22, PW: 2, R: 1.8 };
   const TICK_MS = 40;
-  const TRAIL = 10;              // скільки слідів тягне за собою м'яч
+  const TRAIL = 10;
+  /// Бонуси арени (п. 133): номер із кадру → значок і назва.
+  const BONUS = { 1: { icon: '↔', name: 'Довга ракетка' }, 2: { icon: '⚾', name: 'Два м’ячі!' }, 3: { icon: '🐢', name: 'Повільний м’яч' } };              // скільки слідів тягне за собою м'яч
   const SEND_MS = 40;            // не частіше 25 вводів на секунду: хаб пускає 30
   const AWAKE_MS = 1500;         // скільки ще малювати після останньої події: спалахи й «+1» живуть до 1.1 с
 
@@ -82,6 +84,7 @@
     goal() { this.beep(520, 260, 'sawtooth', 0.04, 110); },
     out() { this.beep(300, 520, 'sawtooth', 0.05, 60); },
     // смеш: низький «бах» і дзвінкий хвіст
+    bonus() { this.beep(660, 160, 'triangle', 0.05, 1320); },
     smash() { this.beep(140, 140, 'sawtooth', 0.07, 60); this.beep(1400, 90, 'square', 0.03, 0, 0.02); },
     win() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.beep(f, 140, 'square', 0.04), i * 110)); },
     set(on) {
@@ -148,10 +151,12 @@
       : (!a.s || !b.s || a.s[0] !== b.s[0] || a.s[1] !== b.s[1]);
     const L = HGames.ui.lerp, t = at.t;
     const p = b.p.map((y, i) => (y == null || a.p[i] == null ? y : L(a.p[i], y, t)));
+    // другий м'яч (бонус арени): щойно з'явився — малюємо як є, далі так само між кадрами
+    const b2 = b.b2 && a.b2 && !jump ? [L(a.b2[0], b.b2[0], t), L(a.b2[1], b.b2[1], t), b.b2[2], b.b2[3]] : b.b2;
     return Object.assign({}, b, {
       bx: jump ? b.bx : L(a.bx, b.bx, t),
       by: jump ? b.by : L(a.by, b.by, t),
-      p, jump,
+      p, jump, b2,
     });
   }
 
@@ -177,6 +182,15 @@
     } else if (!f.serveIn && !f.startIn && sp > 0 && Math.hypot(prev.vx || 0, prev.vy || 0) > 0
       && ((prev.vx > 0) !== (f.vx > 0) || (prev.vy > 0) !== (f.vy > 0))) {
       Snd.wall();
+    }
+    if (arena && f.pk && f.t !== prev.t) {
+      // бонус підібрано (п. 133): напис біля того, хто вдарив, і дзвіночок
+      const b = BONUS[f.pk[0]];
+      if (b) {
+        st.pops.push({ side: f.pk[1], text: b.icon + ' ' + b.name, at: now, big: true });
+        st.flash[f.pk[1]] = now;
+        Snd.bonus();
+      }
     }
     if (arena) {
       if (f.n !== prev.n && f.lost != null && prev.l && f.l && f.l[f.lost] < prev.l[f.lost]) {
@@ -373,6 +387,45 @@
     g.shadowBlur = 0;
   }
 
+  /// Бонус на полі: кружок, що дихає, зі значком. Малюємо в повернутій системі — значок крутимо назад, щоб стояв рівно.
+  function bonusMark(g, bn, css, SC, now) {
+    const b = BONUS[bn[0]];
+    if (!b) return;
+    const x = bn[1] * SC, y = bn[2] * SC;
+    const r = (4.5 + 0.6 * Math.sin(now / 180)) * SC;
+    g.fillStyle = css('--accent', '#f5c542');
+    g.globalAlpha = 0.22;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = 1;
+    g.strokeStyle = css('--accent', '#f5c542');
+    g.lineWidth = 2;
+    g.stroke();
+    g.save();
+    g.translate(x, y);
+    const m = g.getTransform();
+    g.rotate(-Math.atan2(m.b, m.a));
+    g.font = '700 ' + Math.round(4.6 * SC) + 'px ' + css('--font', 'system-ui, sans-serif');
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = css('--text', '#e8f1ea');
+    g.fillText(b.icon, 0, 1);
+    g.restore();
+  }
+
+  /// Другий м'яч — без сліду, щоб два хвости не зливались у кашу.
+  function ball2(g, f, css, SC) {
+    const colr = ballColor(css, { vx: f.b2[2], vy: f.b2[3] }, true);
+    g.fillStyle = colr;
+    g.shadowColor = colr;
+    g.shadowBlur = 10;
+    g.beginPath();
+    g.arc(f.b2[0] * SC, f.b2[1] * SC, ARENA.R * SC, 0, Math.PI * 2);
+    g.fill();
+    g.shadowBlur = 0;
+  }
+
   /// «Серія 8» — коли розіграш затягнувся, хай усі бачать, що це вже подія.
   function rallyBadge(g, c, f, css) {
     if (!f.rally || f.rally < 6 || f.winner != null) return;
@@ -496,7 +549,7 @@
       g.fillStyle = colr;
       if (lit > 0) { g.shadowColor = colr; g.shadowBlur = 18 * lit; }
       const thick = PW * SC + lit * 4;
-      const len = L * SC;
+      const len = L * SC * (f.lg && f.lg[s] ? 1.5 : 1);
       const off = OFF * SC;
       g.beginPath();
       if (s < 2) g.roundRect((s === 0 ? off : c.w - off) - thick / 2, p[s] * SC - len / 2, thick, len, thick / 2);
@@ -504,6 +557,8 @@
       g.fill();
       g.shadowBlur = 0;
     }
+    if (f.bn) bonusMark(g, f.bn, css, SC, now);
+    if (f.b2) ball2(g, f, css, SC);
     ball(st, g, f, css, SC, true);
     g.restore();
 
@@ -573,7 +628,7 @@
       return '<span class="pgl s' + s + (l > 0 ? '' : ' out') + (ctx.seat === s ? ' me' : '') + '">'
         + '<i class="sh">' + SHAPES[s] + '</i> ' + ctx.esc(nick) + ' <span class="hp">' + hearts + '</span>'
         + (goals[s] ? ' <span class="muted">· влучань ' + goals[s] + '</span>' : '') + '</span>';
-    }).join('');
+    }).join('') + (f.lg ? '<span class="pgl pgtip muted">⭐ бонус у центрі бере той, хто вдарив останнім: ↔ довга ракетка · ⚾ два м’ячі · 🐢 повільний</span>' : '');
     if (html !== st.legend) { st.legend = html; el.innerHTML = html; }
   }
 
@@ -693,10 +748,11 @@
     pad: { dirs: true, hint: '{dpad} ракетка' },
     news: {
       v: '2026-09-29',
-      title: 'Понг: смеш і бот',
+      title: 'Понг: смеш, бот і бонуси',
       items: [
         '💥 Смеш: удар краєм ракетки на ходу — м’яч летить на третину швидше, зі спалахом і «бахом»',
         '🤖 Сам за столом? Тисни «🤖 + бот» — він стане навпроти (без нагород)',
+        '⭐ Арена на 3–4 з опцією «Бонуси»: ↔ довга ракетка, ⚾ два м’ячі, 🐢 повільний м’яч — бере той, хто вдарив останнім',
       ],
     },
 
