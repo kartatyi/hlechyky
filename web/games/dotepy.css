@@ -339,7 +339,7 @@
 .dt-almeta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; color: var(--muted); }
 .dt-almeta b { color: var(--accent); }
 .dt-alacts { display: inline-flex; gap: 6px; }
-.dt-like, .dt-aldel { min-height: 40px; min-width: 52px; }
+.dt-like, .dt-aldel { min-height: 44px; min-width: 52px; }
 .dt-like.on { color: #e86aa0; }
 .dt-alfoot { display: flex; justify-content: center; padding-top: 10px; }
 .dt-alempty { padding: 18px 4px; line-height: 1.4; }
