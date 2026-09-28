@@ -1747,7 +1747,9 @@
     const card = el.closest('.gtable');
     const below = Math.max(48, card ? card.getBoundingClientRect().bottom - r.bottom : 92) + 22;
     const h = window.innerHeight - (r.top + (window.scrollY || 0)) - below - st.padH;
-    const w = clamp(Math.floor(h * 1.5), 420, 960);
+    // толока менша за інші мапи (768 од.): на екрані з DPR 1 ширша за 768 px мапа розтягувалась і мила ніки й людей —
+    // тож не ширше, ніж дає роздільність канваса (на Retina й телефонах — як і було, до 960)
+    const w = clamp(Math.floor(h * 1.5), 420, Math.min(960, Math.round(WW * Math.max(1, window.devicePixelRatio || 1))));
     const cur = parseFloat(el.style.maxWidth) || 0;
     if (Math.abs(cur - w) >= 3) el.style.maxWidth = w + 'px';
   }
