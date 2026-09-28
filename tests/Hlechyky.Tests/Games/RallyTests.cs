@@ -116,7 +116,7 @@ public partial class RallyTests(ITestOutputHelper output)
     [Fact]
     public void Every_track_is_48_by_27_with_a_wall_border()
     {
-        Assert.Equal(["selo", "ozero", "nich", "kukurudza", "yarmarok"], RallyTracks.Ids);
+        Assert.Equal(["selo", "ozero", "nich", "kukurudza", "yarmarok", "vesillia", "hora"], RallyTracks.Ids);
         foreach (var t in RallyTracks.All)
         {
             Assert.Equal(RallyTrack.Rows, t.Map.Count);

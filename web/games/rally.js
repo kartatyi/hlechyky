@@ -526,6 +526,7 @@
   const TRACKS = [
     { id: 'selo', emoji: '🏡', title: 'Село' }, { id: 'ozero', emoji: '🧊', title: 'Крижане озеро' }, { id: 'nich', emoji: '🌙', title: 'Нічна' },
     { id: 'kukurudza', emoji: '🌽', title: 'Кукурудзяне поле' }, { id: 'yarmarok', emoji: '🎡', title: 'Ярмарок' },
+    { id: 'vesillia', emoji: '💒', title: 'Весілля' }, { id: 'hora', emoji: '⛰', title: 'Гора' },
     { id: 'random', emoji: '🎲', title: 'Яка випаде' },
   ];
   function myGarage() {
@@ -663,6 +664,8 @@
     nich: { road: '#3a3f45', edge: '#2b2f34', grass: '#2f4a2a', fence: 'dark', yard: '#263d22' },
     kukurudza: { road: '#6b5a46', edge: '#584935', grass: '#5d7a35', fence: 'wood', yard: '#4c6a2b' },
     yarmarok: { road: '#6f5e49', edge: '#5b4c3a', grass: '#4f7d3a', fence: 'flags', yard: '#44703a' },
+    vesillia: { road: '#75654f', edge: '#5f513f', grass: '#5a8a3e', fence: 'flags', yard: '#4a7a35' },
+    hora: { road: '#6e6a62', edge: '#57534c', grass: '#6f8a4a', fence: 'rock', yard: '#8a857b' },
   };
   const lookOf = (id) => LOOK[id] || LOOK.selo;
 
@@ -878,6 +881,19 @@
           for (let yy = y; yy <= y1; yy++) for (let xx = x; xx <= x1; xx++) houses.add(yy * S.COLS + xx);
           const w = (x1 - x + 1) * C, h = (y1 - y + 1) * C;
           paintHouse(g, px, py, w, h, td.id, rnd);
+        } else if (k === S.FENCE && look.fence === 'rock') {
+          // Гора: скеля замість тину — сірий камінь із брилами, темний уступ до дороги
+          g.fillStyle = rnd() < 0.5 ? '#7d786f' : '#868177';
+          g.fillRect(px, py, C, C);
+          g.fillStyle = 'rgba(255,255,255,.12)';
+          g.beginPath(); g.arc(px + 6 + rnd() * 20, py + 6 + rnd() * 20, 5 + rnd() * 6, 0, Math.PI * 2); g.fill();
+          g.fillStyle = 'rgba(0,0,0,.16)';
+          g.beginPath(); g.arc(px + 6 + rnd() * 20, py + 6 + rnd() * 20, 3 + rnd() * 5, 0, Math.PI * 2); g.fill();
+          g.fillStyle = 'rgba(40,36,32,.55)';
+          if (open(x, y - 1)) g.fillRect(px, py, C, 4);
+          if (open(x, y + 1)) g.fillRect(px, py + C - 4, C, 4);
+          if (open(x - 1, y)) g.fillRect(px, py, 4, C);
+          if (open(x + 1, y)) g.fillRect(px + C - 4, py, 4, C);
         } else if (k === S.FENCE) {
           if (look.fence === 'snow') {
             g.fillStyle = '#f4f8fb';
@@ -926,6 +942,31 @@
   function paintHouse(g, px, py, w, h, id, rnd) {
     g.fillStyle = 'rgba(0,0,0,.3)';
     g.fillRect(px + 5, py + 6, w - 4, h - 4);
+    if (id === 'vesillia' && w >= 256) {
+      // весільний намет: біле полотно, рожеві фестони по краю, гребінь і прапорці
+      g.fillStyle = '#f7f3ee';
+      g.fillRect(px + 3, py + 3, w - 6, h - 6);
+      g.fillStyle = 'rgba(0,0,0,.07)';
+      g.fillRect(px + 3, py + h / 2, w - 6, h / 2 - 3);
+      g.fillStyle = '#e88ac0';
+      for (let sx = px + 3; sx < px + w - 6; sx += 16) {
+        g.beginPath(); g.arc(sx + 8, py + 3, 8, 0, Math.PI); g.fill();
+        g.beginPath(); g.arc(sx + 8, py + h - 3, 8, Math.PI, Math.PI * 2); g.fill();
+      }
+      g.strokeStyle = 'rgba(160,90,120,.55)';
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(px + 3, py + h / 2); g.lineTo(px + w - 3, py + h / 2); g.stroke();
+      const fl = ['#e05a4f', '#f4c542', '#5aa0e0', '#7bd389', '#e88ac0'];
+      for (let i = 0, fx = px + 12; fx < px + w - 8; fx += 20, i++) {
+        g.fillStyle = fl[i % fl.length];
+        g.beginPath(); g.moveTo(fx - 4, py + h / 2); g.lineTo(fx + 4, py + h / 2); g.lineTo(fx, py + h / 2 + 7); g.closePath(); g.fill();
+      }
+      g.font = '28px serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('💒', px + w / 2, py + h / 2 - 22);
+      return;
+    }
     if (id === 'yarmarok') {
       // смугаста ятка
       const cols = ['#d9534f', '#f2efe6'];
