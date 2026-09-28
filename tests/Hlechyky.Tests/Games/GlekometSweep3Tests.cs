@@ -329,6 +329,34 @@ public partial class GlekometTests
     }
 
     [Fact]
+    [Trait("Category", "Perf")]
+    public void Volley_of_six_shard_pots_ticks_fast_and_frames_stay_small()
+    {
+        var h = Table(6, options: new { mode = "volley", arms = "jokes" });
+        Ready(h);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ticks = 0;
+        var biggest = 0;
+        for (var round = 0; round < 6 && h.Room.Status == RoomStatus.Playing; round++)
+        {
+            for (var s = 0; s < 6; s++)
+                if (Core(h).Huts[s].Alive) h.Act(s, "fire", new { a = Core(h).Huts[s].X < 500 ? 60 : 120, p = 70, w = round < 2 ? GlekometCore.Shards : GlekometCore.Rooster });
+            for (var i = 0; i < 400 && h.Room.Status == RoomStatus.Playing && (i == 0 || Phase(h) != Glekomet.PhaseAim); i++)
+            {
+                var mark = h.Outbox.Count;
+                h.Tick(1);
+                ticks++;
+                foreach (var f in Frames(h, mark)) biggest = Math.Max(biggest, f.GetRawText().Length);
+            }
+        }
+        sw.Stop();
+        output.WriteLine($"Залп на шістьох: {ticks} тиків, {sw.Elapsed.TotalMilliseconds / Math.Max(1, ticks):F4} мс/тик (з розсилкою), найбільший кадр {biggest} Б");
+        Assert.True(ticks > 100);
+        Assert.True(biggest < 1536, $"{biggest} Б");
+        Assert.True(sw.Elapsed.TotalMilliseconds / ticks < 1.0, $"{sw.Elapsed.TotalMilliseconds / ticks} мс/тик");
+    }
+
+    [Fact]
     public void Volley_moving_is_allowed_before_the_shot_is_locked()
     {
         var h = Table(2, options: new { mode = "volley" });
