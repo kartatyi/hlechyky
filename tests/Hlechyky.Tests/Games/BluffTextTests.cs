@@ -349,6 +349,16 @@ public class BluffTextTests
     }
 
     [Fact]
+    public void A_symbol_twin_next_to_an_apostrophe_is_still_the_letter()
+    {
+        // Рецензія проходу №3: «∏'ять» проскакувало повз «п'ять» — ∏ бачив сусідом апостроф, а не літеру.
+        Assert.True(BluffText.LooksTrue("∏'ять", ["п'ять"]));
+        Assert.True(BluffText.LooksTrue("∏’ЯТЬ", ["п'ять"]));   // типографський апостроф
+        Assert.True(BluffText.LooksTrue("м'ят℮", ["м'яте"]));
+        Assert.Equal("5", BluffText.Norm("5 €"));                   // окремо — як і було, валюта
+    }
+
+    [Fact]
     public void A_glued_or_split_truth_is_still_the_truth()
     {
         // Рецензія: звичайною клавіатурою, без жодних особливих знаків, правду склеювали чи розбивали — і вона проходила.

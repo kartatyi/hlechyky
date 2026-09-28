@@ -48,7 +48,7 @@ public static class BluffText
             var rune = runes[i];
             var c = rune.Value;
             var twin = SymbolTwin(c);
-            if (twin != '\0' && (LetterAt(runes, i - 1) || LetterAt(runes, i + 1)))
+            if (twin != '\0' && (LetterAt(runes, i, -1) || LetterAt(runes, i, +1)))
             {
                 if (gap && sb.Length > 0) sb.Append(' ');
                 gap = false;
@@ -67,9 +67,16 @@ public static class BluffText
         return sb.ToString();
     }
 
-    /// <summary>Сусід — літера чи теж знак-двійник («∏℮ТРО»: ∏ стоїть біля ℮, а той — біля літери).</summary>
-    static bool LetterAt(List<Rune> runes, int i) =>
-        i >= 0 && i < runes.Count && (Rune.IsLetter(runes[i]) || SymbolTwin(runes[i].Value) != '\0');
+    /// <summary>
+    /// Сусід у бік <paramref name="step"/> — літера чи теж знак-двійник («∏℮ТРО»: ∏ стоїть біля ℮, а той — біля
+    /// літери). Апостроф — частина слова, тож дивимось крізь нього: «∏'ять» — це «п'ять».
+    /// </summary>
+    static bool LetterAt(List<Rune> runes, int i, int step)
+    {
+        i += step;
+        while (i >= 0 && i < runes.Count && (runes[i].Value == '\'' || IsApostrophe(runes[i].Value))) i += step;
+        return i >= 0 && i < runes.Count && (Rune.IsLetter(runes[i]) || SymbolTwin(runes[i].Value) != '\0');
+    }
 
     /// <summary>
     /// Знаки, що на великій картці біля літери вдають літеру: × ✕ ╳ — Х, | │ — І, ◯ ○ ° ∅ — О, € і ∈ — Є, ∏ — П,
