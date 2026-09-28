@@ -219,6 +219,18 @@ public partial class GlekometTests
     }
 
     [Fact]
+    public void Fair_pond_splashes_a_pot_at_its_own_level()
+    {
+        var core = Bare();
+        core.Map = GlekometCore.MapFair;
+        for (var c = 115; c <= 135; c++) core.H[c] = 10;
+        core.BeginShot(0, GlekometCore.Pot);
+        core.Spawn(GlekometCore.Pot, 500, 200, 0, -50, false, 0);
+        var end = Fly(core)!.Value;
+        Assert.Equal(("splash", GlekometCore.PondLevel), (end.Kind, end.Y));
+    }
+
+    [Fact]
     public void Winter_slides_a_hit_hut_away_and_plain_does_not()
     {
         foreach (var winter in new[] { false, true })

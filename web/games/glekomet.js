@@ -294,9 +294,28 @@
     if (st.map === 'fair') paintFair(g, h);
   }
 
+  /// Ставок ярмарку: вода до рівня 70 u в улоговині посередині (сервер: WaterAt, PondLevel), якщо село ще не затопило вище.
+  function drawPond(st, g) {
+    const lvl = 70, half = 130;
+    if (waterNow(st, performance.now()) >= lvl) return;
+    g.fillStyle = st.pal.water;
+    g.globalAlpha = 0.88;
+    g.beginPath();
+    let open = false;
+    for (let c = Math.floor((W / 2 - half) / STEP); c <= Math.ceil((W / 2 + half) / STEP); c++) {
+      const x = c * STEP + 2;
+      if (st.h[c] >= lvl || x <= W / 2 - half || x >= W / 2 + half) { open = false; continue; }
+      g.rect(x - STEP / 2, sy(lvl), STEP + 0.6, lvl - st.h[c]);
+      open = true;
+    }
+    g.fill();
+    g.globalAlpha = 1;
+    return open;
+  }
+
   /// Ярмарок: два стовпи над берегами ставка й гірлянда прапорців між ними.
   function paintFair(g, h) {
-    const xa = W / 2 - 104, xb = W / 2 + 104;
+    const xa = W / 2 - 124, xb = W / 2 + 124;
     const ya = h[col(xa)] + 72, yb = h[col(xb)] + 72;
     g.strokeStyle = '#6b4a2e';
     g.lineWidth = 3;
@@ -1325,6 +1344,7 @@
     }
 
     const lvl = st.wat.to;
+    if (st.map === 'fair') drawPond(st, g);
     if (lvl > 0) drawWater(st, g, now);
 
     const phase = st.phase;

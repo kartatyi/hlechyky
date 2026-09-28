@@ -93,7 +93,8 @@ public sealed class GlekometCore
     public const double MagAcc = 900;
     /// <summary>Мапи: звичайне село, зима (хати ковзають), ніч (лише вогні — малює клієнт), ярмарок зі ставком посередині.</summary>
     public const int MapPlain = 0, MapWinter = 1, MapNight = 2, MapFair = 3;
-    public const int PondHalf = 110, PondBottom = 2;
+    /// <summary>Ставок ярмарку: улоговина ±130 u до дна 2, а вода в ній — до 70 (хоч би де була вода села).</summary>
+    public const int PondHalf = 130, PondBottom = 2, PondLevel = 70;
 
     /// <summary>Комора. Порядок і ключі — ті самі, що в клієнті (glekomet.js WEAPONS).</summary>
     public static readonly GlekometWeapon[] Weapons =
@@ -184,6 +185,9 @@ public sealed class GlekometCore
     }
 
     public static int Col(int x) => x < 0 ? 0 : x >= W ? Cols - 1 : x / ColW;
+
+    /// <summary>Рівень води над точкою x: у ставку ярмарку — щонайменше <see cref="PondLevel"/>.</summary>
+    public int WaterAt(double x) => Map == MapFair && x > W / 2 - PondHalf && x < W / 2 + PondHalf ? Math.Max(Water, PondLevel) : Water;
 
     public static int Col(double x) => x < 0 ? 0 : x >= W ? Cols - 1 : (int)(x / ColW);
 
@@ -276,12 +280,15 @@ public sealed class GlekometCore
         // Ярмарок: посередині села — ставок (улоговина нижче води), хати стоять на березі, а не в ньому.
         if (Map == MapFair)
         {
+            // чаша: рівне дно ±70, береги плавно до 110 на ±130, далі круто вгору до природного рельєфу
             for (var c = 0; c < Cols; c++)
             {
-                var t = Math.Abs(c * ColW + 2 - W / 2) / (double)PondHalf;
-                if (t >= 1) continue;
-                var k = t * t * (3 - 2 * t);
-                H[c] = (int)Math.Round(PondBottom + (H[c] - PondBottom) * k);
+                var d = Math.Abs(c * ColW + 2 - W / 2);
+                double bowl;
+                if (d < 70) bowl = PondBottom;
+                else if (d < PondHalf) { var t = (d - 70) / 60.0; bowl = PondBottom + (110 - PondBottom) * t * t * (3 - 2 * t); }
+                else { var t = (d - PondHalf) / 100.0; bowl = 110 + t * t * 400; }
+                if (bowl < H[c]) H[c] = (int)Math.Round(bowl);
             }
             for (var i = 0; i < n; i++)
                 if (slots[i] > W / 2 - PondHalf + 6 && slots[i] < W / 2 + PondHalf - 6)
@@ -534,12 +541,13 @@ public sealed class GlekometCore
             Event(s.X < 0 ? 0 : W, Round(s.Y), 0, ExOut);
             return;
         }
-        if (s.Y < Water)
+        var water = WaterAt(s.X);
+        if (s.Y < water)
         {
             s.Alive = false;
             ShotSplash++;
             if (own) SplashBy[o]++;
-            Event(Round(s.X), Water, 0, ExSplash);
+            Event(Round(s.X), water, 0, ExSplash);
             return;
         }
         var hit = HutAt(s.X, s.Y);
@@ -798,7 +806,7 @@ public sealed class GlekometCore
                 if (off == 0 && sign > 0) continue;
                 var tx = sx + sign * off;
                 if (tx < MinX || tx > MaxX) continue;
-                if (Ground(tx) <= Water) continue;
+                if (Ground(tx) <= WaterAt(tx)) continue;
                 if (Near(seat, tx)) continue;
                 return tx;
             }
@@ -838,7 +846,7 @@ public sealed class GlekometCore
                 MovedMask |= 1 << i;
                 if (drop > SafeDrop) Fall(i, (drop - SafeDrop) / 2);
             }
-            if (h.Alive && h.Y < Water) Kill(i, "drown");
+            if (h.Alive && h.Y < WaterAt(h.X)) Kill(i, "drown");
         }
     }
 
@@ -892,7 +900,7 @@ public sealed class GlekometCore
         var drop = h.Y - ground;
         h.Y = ground;
         if (drop > SafeDrop) Fall(seat, (drop - SafeDrop) / 2);
-        if (h.Alive && h.Y < Water) Kill(seat, "drown");
+        if (h.Alive && h.Y < WaterAt(h.X)) Kill(seat, "drown");
         return null;
     }
 }
