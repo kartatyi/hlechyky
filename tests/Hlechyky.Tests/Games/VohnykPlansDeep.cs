@@ -18,6 +18,7 @@ public static partial class VohnykPlans
             case 20: Level20(b); return true;
             case 21: Level21(b); return true;
             case 22: Level22(b); return true;
+            case 23: Level23(b); return true;
             default: return false;
         }
     }
@@ -122,5 +123,20 @@ public static partial class VohnykPlans
         b.Do(VohnykBot.Seq(b.RunJump(F, +1, C(10) + 5, 30, C(14)), b.Go(F, C(17))), null);
         b.Do(null, b.Go(Wt, C(25)));
         b.Do(VohnykBot.Seq(b.RunJump(F, +1, C(18) + 5, 30, C(22)), b.Go(F, C(25))), null);
+    }
+
+    /// <summary>
+    /// «Навхрест»: Крапля знизу в лавовій половині, Вогник — у водяній; портал кожного запалює друг. Крапля стрибає
+    /// на кнопку між калюжами — Вогник через воду в свій портал і додому, дорогою перекидає важіль (горить портал
+    /// Краплі й відчиняються її двері); Крапля порталом у свою половину й на кнопку дверей Вогника — він до виходу, тоді й вона.
+    /// </summary>
+    static void Level23(VohnykBot b)
+    {
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.Button[0] != 0), b.RunJump(F, -1, C(24) - 5, 30, C(21)), b.RunJump(F, -1, C(20) - 5, 30, C(17)),
+                b.RunUntil(-1, () => b.W.Y[F] < 8 * T), b.WaitFor(() => b.Ground(F)), b.Go(F, C(6))),
+            VohnykBot.Seq(b.RunJump(Wt, +1, C(3) + 5, 30, C(6) + 8), b.WaitFor(() => b.W.Lever[0] == 0), b.Go(Wt, C(7)), b.RunJump(Wt, +1, C(7) + 5, 30, C(10)),
+                b.RunUntil(+1, () => b.W.Y[Wt] < 8 * T), b.WaitFor(() => b.Ground(Wt)), b.Go(Wt, C(21)), b.Go(Wt, C(18))));
+        b.Do(b.Go(F, C(2)), null);
+        b.Do(null, b.Go(Wt, C(25)));
     }
 }
