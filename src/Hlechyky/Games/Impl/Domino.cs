@@ -53,16 +53,56 @@ public sealed class Domino : Game
     const int MaxSeats = 4;
 
     public override GameInfo Info { get; } = new(
-        "domino", "Доміно", "доміно", GameGroup.Board, 2, MaxSeats,
+        "domino", "Доміно", "доміно", GameGroup.Board, 1, MaxSeats,
         Start: StartMode.ByHost, Hidden: true,
-        Options: [new GameOption("target", "Партія", Targets, "50")],
-        Hint: "Класичне доміно на 2–4: прикладай кістки однаковими половинками. Один раунд, до 50 або до 100 очок");
+        Options:
+        [
+            new GameOption("mode", "Гра", [("classic", "Класика: кожен сам за себе"), ("kozel", "🐐 «Козел» 2×2: пари через одного, до 101 — хто набрав, той козел")], "classic"),
+            new GameOption("target", "Партія (класика)", Targets, "50"),
+            BoardBots.Option(3),
+        ],
+        Hint: "Доміно на 2–4: прикладай кістки однаковими половинками. Класика — до 50 чи 100 очок; «Козел» — дворове парами до 101. "
+            + "Бракує людей — підсяде Глек 🤖");
+
+    /// <summary>«Козел»: рахунок штрафний, пара, що першою набрала стільки, — козли.</summary>
+    public const int KozelTarget = 101;
 
     /// <summary>Скільки очок закриває партію; 1 — партія з одного раунду.</summary>
     int _target = 50;
+    /// <summary>Дворовий «Козел» парами (№208).</summary>
+    bool _kozel;
+    int _botsWanted;
+    /// <summary>Імена Глеків на місцях (null — людина або пусто).</summary>
+    string?[] _bots = new string?[MaxSeats];
+    DateTimeOffset? _botAt;
+    int _botSeat = -1;
+    /// <summary>Козли минулої партії «Козла» — ніки (або імена Глеків), для 🐐 біля ніка.</summary>
+    string[] _goats = [];
 
-    public override void Configure(IReadOnlyDictionary<string, string> options) =>
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
         _target = options.TryGetValue("target", out var t) && int.TryParse(t, out var n) && Targets.Any(x => x.Value == t) ? n : 50;
+        _kozel = options.TryGetValue("mode", out var m) && m == "kozel";
+        _botsWanted = BoardBots.Read(options, 3);
+        if (_kozel) _target = KozelTarget;
+    }
+
+    /// <summary>Сам із собою не зіграєш; «Козел» — рівно вчотирьох (люди й Глеки разом).</summary>
+    public override string? CanStart()
+    {
+        var humans = BoardBots.Humans(Ctx, MaxSeats);
+        var total = humans + Math.Min(_botsWanted, MaxSeats - humans);
+        if (_kozel && total < 4) return "«Козел» — це дві пари, рівно четверо: хай підсядуть люди або відкрий стіл з 🤖 Глеком";
+        return total >= 2 ? null : "Самому нема з ким: хай хтось сяде — або відкрий стіл з «🤖 Глек підсідає»";
+    }
+
+    bool IsBot(int seat) => seat >= 0 && seat < MaxSeats && _bots[seat] is not null;
+
+    /// <summary>Ім'я за столом: нік або «Глек 🤖».</summary>
+    string Nick(int seat) => IsBot(seat) ? _bots[seat]! : Ctx.NickOf(seat) ?? SeatName(seat);
+
+    /// <summary>Пара в «Козлі»: 0 з 2, 1 з 3.</summary>
+    static int Team(int seat) => seat % 2;
 
     /// <summary>Рука кожного місця. Масив завжди на всі місця — індекс тут це номер місця, а не гравця.</summary>
     readonly List<DominoBone>[] _hands = [.. Enumerable.Range(0, MaxSeats).Select(_ => new List<DominoBone>())];
@@ -101,6 +141,9 @@ public sealed class Domino : Game
 
     public override void Start()
     {
+        _bots = BoardBots.Seat(Ctx, MaxSeats, _botsWanted);
+        _botAt = null;
+        _botSeat = -1;
         _scores = new int[MaxSeats];
         _round = 0;
         _winner = null;
@@ -108,6 +151,7 @@ public sealed class Domino : Game
         _last = null;
         _draw = false;
         Deal();
+        Arm();
     }
 
     /// <summary>Нова роздача всередині тієї самої партії: рахунок лишається, кістки — ні.</summary>
@@ -119,13 +163,14 @@ public sealed class Domino : Game
         for (var seat = 0; seat < MaxSeats; seat++)
         {
             _hands[seat].Clear();
-            _in[seat] = Ctx.Seated(seat);
+            _in[seat] = Ctx.Seated(seat) || _bots[seat] is not null;
         }
 
         var deck = Deck();
         Shuffle(deck);
         // Двоє беруть по сім, компанія — по п'ять: інакше на чотирьох базару майже не лишиться.
-        var each = Alive == 2 ? 7 : 5;
+        // «Козел» — уся кістка на руки, по сім кожному, базару нема.
+        var each = Alive == 2 || _kozel ? 7 : 5;
         foreach (var seat in Seats())
         {
             for (var i = 0; i < each && deck.Count > 0; i++)
@@ -169,6 +214,10 @@ public sealed class Domino : Game
     int FirstSeat()
     {
         if (_lastWinner is { } won && _in[won]) return won;
+        // «Козла» на першій роздачі (і після риби) відкриває той, у кого дубль 1-1 — так заведено у дворі.
+        if (_kozel)
+            foreach (var seat in Seats())
+                if (_hands[seat].Any(b => b.A == 1 && b.B == 1)) return seat;
         var best = -1;
         var bestRank = -1;
         foreach (var seat in Seats())
@@ -191,17 +240,77 @@ public sealed class Domino : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == BoardBots.Nudge) return BotTurn();
         if (action is not ("play" or "draw" or "pass")) return ActResult.Fail("Тут так не ходять");
         if (_winner is not null || _draw) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
-        if (!_in[seat]) return ActResult.Fail("Ти вже не в цій партії");
+        if (seat < 0 || seat >= MaxSeats || !_in[seat] || IsBot(seat)) return ActResult.Fail("Ти вже не в цій партії");
         if (seat != _turn) return ActResult.Fail("Не так швидко — зараз не твій хід");
 
-        return action switch
+        var result = action switch
         {
             "play" => Play(seat, payload),
             "draw" => Draw(seat),
             _ => Pass(seat),
         };
+        if (result.Ok) Arm();
+        return result;
+    }
+
+    /// <summary>Черга дійшла до Глека — хай «подумає» перед ходом.</summary>
+    void Arm()
+    {
+        if (_winner is not null || _draw || !IsBot(_turn)) { _botAt = null; _botSeat = -1; return; }
+        if (_botAt is null || _botSeat != _turn)
+        {
+            _botAt = Ctx.Clock.UtcNow.AddMilliseconds(BoardBots.ThinkMs);
+            _botSeat = _turn;
+        }
+    }
+
+    /// <summary>
+    /// Хід Глека (його штовхає клієнт людини): тягне з базару, поки нема чим ходити, і кладе найважчу кістку —
+    /// дублі й великі очки на руках лише шкодять. Нема чим і базар порожній — пас.
+    /// </summary>
+    ActResult BotTurn()
+    {
+        if (_winner is not null || _draw || !IsBot(_turn) || _botAt is not { } at || Ctx.Clock.UtcNow < at)
+            return ActResult.Fail("Глек ще думає");
+        var seat = _turn;
+        _botAt = null;
+        while (!CanPlay(seat) && _boneyard.Count > 0)
+        {
+            _hands[seat].Add(_boneyard[^1]);
+            _boneyard.RemoveAt(_boneyard.Count - 1);
+        }
+        Sort(_hands[seat]);
+        if (!CanPlay(seat))
+        {
+            NextTurn();
+            CheckFish();
+            Arm();
+            return ActResult.Done;
+        }
+        DominoBone? best = null;
+        string? end = null;
+        foreach (var bone in _hands[seat])
+        {
+            var fits = _line.Count == 0 || bone.Has(_line[0].A) || bone.Has(_line[^1].B);
+            if (!fits) continue;
+            if (best is { } b && (bone.Double ? 1000 : 0) + bone.Pips <= (b.Double ? 1000 : 0) + b.Pips) continue;
+            best = bone;
+            end = _line.Count == 0 ? null : bone.Has(_line[^1].B) ? "right" : "left";
+        }
+        var i = _hands[seat].FindIndex(x => x.Same(best!.Value));
+        Put(best!.Value, end);
+        _hands[seat].RemoveAt(i);
+        if (_hands[seat].Count == 0) EndRound(seat, Seats().Where(s => s != seat).Sum(Pips), "out");
+        else
+        {
+            NextTurn();
+            CheckFish();
+        }
+        Arm();
+        return ActResult.Done;
     }
 
     ActResult Play(int seat, JsonElement payload)
@@ -341,6 +450,14 @@ public sealed class Domino : Game
     {
         if (_boneyard.Count > 0 || Seats().Any(CanPlay)) return;
 
+        if (_kozel)
+        {
+            // «Козел»: риба — пара, в якої на руках більше, забирає очки всіх чотирьох рук. Порівну — нікому.
+            var a = Seats().Where(s => Team(s) == 0).Sum(Pips);
+            var b = Seats().Where(s => Team(s) == 1).Sum(Pips);
+            EndRound(a == b ? null : a > b ? 1 : 0, a == b ? 0 : a + b, "fish");
+            return;
+        }
         var low = Seats().Min(Pips);
         var best = Seats().Where(s => Pips(s) == low).ToArray();
         if (best.Length != 1)
@@ -356,6 +473,11 @@ public sealed class Domino : Game
 
     void EndRound(int? winner, int points, string reason)
     {
+        if (_kozel)
+        {
+            KozelRound(winner, points, reason);
+            return;
+        }
         _last = new RoundEnd(winner, points, reason, _round,
             [.. Enumerable.Range(0, MaxSeats).Select(s => _in[s] ? _hands[s].Select(b => b.Wire).ToArray() : [])]);
         // Переможець раунду відкриває наступний. Після риби з рівними руками переможця нема — тоді
@@ -383,13 +505,42 @@ public sealed class Domino : Game
     }
 
     /// <summary>
+    /// Кінець роздачі «Козла». <paramref name="winner"/> — хто вийшов (його пара виграла роздачу), а при рибі — будь-хто
+    /// з пари, що виграла рибу. Штраф пишеться парі, що програла: при виході — очки на руках обох її гравців, при рибі —
+    /// <paramref name="points"/> (усі руки). Хто перша набрала 101 — та пара козли, друга перемагає.
+    /// </summary>
+    void KozelRound(int? winner, int points, string reason)
+    {
+        var loserTeam = winner is { } w ? 1 - Team(w) : -1;
+        if (reason == "out" && loserTeam >= 0) points = Seats().Where(s => Team(s) == loserTeam).Sum(Pips);
+        _last = new RoundEnd(winner, points, reason, _round,
+            [.. Enumerable.Range(0, MaxSeats).Select(s => _in[s] ? _hands[s].Select(b => b.Wire).ToArray() : [])]);
+        // Наступну роздачу відкриває той, хто вийшов; після риби — знову власник 1-1.
+        _lastWinner = reason == "out" ? winner : null;
+        if (loserTeam >= 0)
+            // Рахунок пари тримаємо на обох місцях, щоб вид лишився той самий: scores[i] — очки пари місця i.
+            for (var s = loserTeam; s < MaxSeats; s += 2) _scores[s] += points;
+        if (loserTeam >= 0 && _scores[loserTeam] >= KozelTarget)
+        {
+            var won = 1 - loserTeam;
+            _winner = won;
+            _goats = [Nick(loserTeam), Nick(loserTeam + 2)];
+            Ctx.Finish([won, won + 2],
+                $"{Info.Title} «Козел»: {Nick(loserTeam)} і {Nick(loserTeam + 2)} — козли 🐐 ({_scores[loserTeam]} : {_scores[won]}, "
+                + $"за {Rounds(_round)}); перемога — {Nick(won)} і {Nick(won + 2)}");
+            return;
+        }
+        Deal();
+    }
+
+    /// <summary>
     /// «Доміно: Оля 104 : Петро 61 (за 9 раундів)» — переможець першим, ніки в називному, бо відмінювати
     /// їх нема як. Це єдиний слід партії в Журналі, тому раунди рахуємо тут же.
     /// </summary>
     string Scoreline(int winner)
     {
         var order = Seats().OrderByDescending(s => s == winner).ThenByDescending(s => _scores[s]);
-        return $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{Ctx.NickOf(s)} {_scores[s]}"))
+        return $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{Nick(s)} {_scores[s]}"))
             + $" (за {Rounds(_round)})";
     }
 
@@ -408,6 +559,24 @@ public sealed class Domino : Game
     {
         if (_winner is not null || _draw || seat < 0 || seat >= MaxSeats || !_in[seat]) return;
 
+        // Людей за столом не лишилось — Глеки самі з собою не догравають.
+        if (!Seats().Any(s => s != seat && !IsBot(s)))
+        {
+            _winner = null;
+            _draw = true;
+            _botAt = null;
+            Ctx.Finish([], $"{Info.Title}: {Nick(seat)} встає з-за столу, а з Глеками догравати нікому");
+            return;
+        }
+        // «Козел» без четвертого не живе: замість того, хто встав, сідає Глек і грає його кістками.
+        if (_kozel)
+        {
+            var used = _bots.Count(b => b is not null);
+            _bots[seat] = BoardBots.Names[used % BoardBots.Names.Length];
+            Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу — його кістки бере {_bots[seat]}");
+            Arm();
+            return;
+        }
         _in[seat] = false;
         _boneyard.AddRange(_hands[seat]);
         _hands[seat].Clear();
@@ -424,6 +593,7 @@ public sealed class Domino : Game
         Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, кістки йдуть у базар");
         if (_turn == seat) NextTurn();
         CheckFish();
+        Arm();
     }
 
     // ---------- вид ----------
@@ -454,6 +624,11 @@ public sealed class Domino : Game
                 round = _last.Round, left = _last.Left,
             },
             result = !over ? null : new { winner = _winner, scores = (int[])_scores.Clone() },
+            // Прохід №3: «Козел» (пари 0+2 і 1+3, scores — штраф пари), Глеки на місцях і коли Глек «подумав».
+            kozel = _kozel,
+            bots = _bots.Any(b => b is not null) ? (string?[])_bots.Clone() : null,
+            botIn = _botAt is { } at && !over ? Math.Max(0, (int)(at - Ctx.Clock.UtcNow).TotalMilliseconds) : (int?)null,
+            goats = _goats.Length > 0 ? (string[])_goats.Clone() : null,
         };
     }
 

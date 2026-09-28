@@ -10,6 +10,8 @@
   - під мишею в колонці світиться «привид» фішки там, куди вона впаде; клавіші 1–9/0 і ←/→ + Enter;
   - на компанію — у кожного свій колір і своя позначка (● ▲ ■ ◆), щоб розрізняв і дальтонік;
   - рахунок серії «Ще раз» і кнопка «Здатись» (у два дотики).
+  Прохід №3 (29.09): годинник ходу (clock/clockIn — простояв, і фішка падає сама), «Глек підсідає» в c4x
+  (bots — імена по місцях, botIn — коли Глек «подумав»; ходить на штовхан нашого клієнта) і пари 2×2 (pairs).
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -49,6 +51,51 @@
   function landing(cells, w, h, col) {
     for (let r = h - 1; r >= 0; r--) if (!cells[r * w + col]) return r * w + col;
     return -1;
+  }
+
+  /// Ім'я на місці: нік людини або «Глек 🤖» (місце бота в каркасі порожнє).
+  const nameAt = (ctx, i) => ctx.nickOf(i) || (ctx.view && ctx.view.bots && ctx.view.bots[i]) || '';
+
+  /// Сервер без тика: Глека, чия черга, і годинник того, хто задумався, «штовхаємо» ми. Першим штовхає перший
+  /// гравець-людина за столом, решта — із запасом, на випадок коли його вкладка спить. Зарано чи вдруге —
+  /// сервер відмовить, а send шле без тосту.
+  function nudge(root, ctx) {
+    const st = state(root);
+    const v = ctx.view || {};
+    clearTimeout(st.nt);
+    st.nt = 0;
+    const bots = v.bots || [];
+    if (!ctx.playing || ctx.seat == null || bots[ctx.seat] || !HGames.send) return;
+    let rank = 0;
+    for (let i = 0; i < ctx.seat; i++) if (ctx.nickOf(i)) rank++;
+    const action = typeof v.botIn === 'number' ? 'bot' : typeof v.clockIn === 'number' ? 'timeout' : '';
+    if (!action) return;
+    // За себе годинник штовхає сам той, хто задумався, — без запасу.
+    const mine = action === 'timeout' && v.turn === ctx.seat;
+    const wait = (action === 'bot' ? v.botIn : v.clockIn) + 60 + (mine ? 0 : rank * 700 + (action === 'timeout' ? 400 : 0));
+    const fire = () => {
+      if (!root._c4 || !ctx.room) return;
+      HGames.send('Act', ctx.room.id, action, null);
+      st.nt = setTimeout(fire, 1500);                        // відповідь — новий вид, і nudge заведе все наново
+    };
+    st.nt = setTimeout(fire, Math.max(0, wait));
+  }
+
+  /// Годинник ходу над полем: дуга каркаса й підпис, чий час спливає.
+  function clock(root, ctx) {
+    const v = ctx.view || {};
+    const el = ensure(root, 'c4clk');
+    const on = !!(ctx.playing && v.clock > 0 && typeof v.clockIn === 'number');
+    el.hidden = !on;
+    if (!on) return;
+    const st = state(root);
+    const key = v.turn + '|' + (v.cells || []).join(',');
+    if (st.clkKey !== key) { st.clkKey = key; st.clkUntil = new Date(Date.now() + v.clockIn).toISOString(); }
+    if (HGames.ui.timerArc) HGames.ui.timerArc(el, st.clkUntil, v.clock * 1000);
+    let lab = el.querySelector(':scope > .c4clk-t');
+    if (!lab) { lab = document.createElement('span'); lab.className = 'c4clk-t'; el.appendChild(lab); }
+    const txt = v.turn === ctx.seat ? 'Твій час на хід — простоїш, і фішка впаде сама' : 'Годинник: ходить ' + nameAt(ctx, v.turn);
+    if (lab.textContent !== txt) lab.textContent = txt;
   }
 
   const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -104,11 +151,14 @@
 
     legend(root, ctx, party, marks, shapes);
     footer(root, ctx, st);
+    clock(root, ctx);
     // Порядок: хто яким кольором — над полем, серія й «Здатись» — під ним. Каркас перебудовує дошку, коли
     // міняється її розмір (у лобі компанії поле 9×7, а вчотирьох — 10×8), і нова лягала в самий низ — тоді
     // «Здатись» опинявся над полем, а рахунок серії — під легендою.
     const leg = root.querySelector(':scope > .c4legend'), foot = root.querySelector(':scope > .c4foot');
-    if (board.previousElementSibling !== leg) root.insertBefore(leg, board);
+    const clk = root.querySelector(':scope > .c4clk');
+    if (board.previousElementSibling !== clk) root.insertBefore(clk, board);
+    if (clk.previousElementSibling !== leg) root.insertBefore(leg, clk);
     if (board.nextElementSibling !== foot) board.after(foot);
   }
 
@@ -145,14 +195,19 @@
     el.hidden = false;
     const v = ctx.view || {};
     const act = v.active || [];
-    let html = '';
-    for (let i = 0; i < (ctx.room.maxPlayers || 4); i++) {
-      const nick = ctx.nickOf(i);
-      if (!nick) continue;
+    const who = (i) => {
+      const nick = nameAt(ctx, i);
+      if (!nick) return '';
       const out = ctx.playing && act.length > i && act[i] === false;
-      html += '<span class="c4who' + (out ? ' out' : '') + (ctx.playing && v.turn === i ? ' turn' : '') + '">'
+      return '<span class="c4who' + (out ? ' out' : '') + (ctx.playing && v.turn === i ? ' turn' : '') + '">'
         + '<b class="c4dot ' + LETTERS[i] + '">' + (shapes ? ctx.esc(marks[i] || '') : '') + '</b>' + ctx.esc(nick) + '</span>';
-    }
+    };
+    let html = '';
+    if (v.pairs && ctx.playing) {
+      // Пари через одного: жовті з рудими проти зелених з білими.
+      html = '<span class="c4pair">' + who(0) + '<i>+</i>' + who(2) + '</span><span class="c4vs">⚔</span>'
+        + '<span class="c4pair">' + who(1) + '<i>+</i>' + who(3) + '</span>';
+    } else for (let i = 0; i < (ctx.room.maxPlayers || 4); i++) html += who(i);
     setHtml(el, html);
   }
 
@@ -190,15 +245,39 @@
     icon,
     seatNames,
     seatClass: LETTERS,
-    mount(root, ctx) { paint(root, ctx); },
+    mount(root, ctx) { paint(root, ctx); nudge(root, ctx); },
     update(root, ctx) {
+      const prev = state(root).lastSeen;
       paint(root, ctx);
+      nudge(root, ctx);
+      const v = ctx.view || {};
+      // Хід за годинником — скажемо всім, чому фішка впала «сама».
+      if (v.auto && typeof v.last === 'number' && prev !== undefined && prev !== v.last) {
+        const who = v.cells && v.cells[v.last] ? LETTERS.indexOf(v.cells[v.last]) : -1;
+        if (who >= 0) ctx.toast(who === ctx.seat ? '⏰ Час вийшов — фішка впала сама' : '⏰ ' + nameAt(ctx, who) + ' задумався — фішка впала сама');
+      }
       // Коли фішка долетить — перемалювати без класу drop, щоб наступний кадр її вже не смикав.
       const st = state(root);
       clearTimeout(st.t);
       if (performance.now() < st.dropUntil) st.t = setTimeout(() => root._c4 && paint(root, ctx), DROP_MS + 30);
     },
-    unmount(root) { const st = root._c4; if (st) clearTimeout(st.t); root._c4 = null; },
+    unmount(root) { const st = root._c4; if (st) { clearTimeout(st.t); clearTimeout(st.nt); } root._c4 = null; },
+    /// Місце Глека в каркасі порожнє — «Ходить …» він би не назвав; у лобі MinPlayers = 1 заради Глека.
+    status(ctx) {
+      const room = ctx.room || {};
+      const v = ctx.view || {};
+      const opt = room.options || {};
+      if (room.status === 'lobby' && room.maxPlayers > 2) {
+        let people = 0;
+        for (let i = 0; i < 4; i++) if (ctx.nickOf(i)) people++;
+        const bots = +(opt.bots || 0);
+        if (opt.teams === '1' && people + bots < 4) return '👥 Пари 2×2 — чекаємо, поки сяде четверо (або відкрий стіл з 🤖 Глеком)';
+        return people + bots < 3 ? 'Чекаємо, хто підсяде: треба троє (або відкрий стіл з «🤖 Глек підсідає»)' : '';
+      }
+      if (!ctx.playing || v.turn == null) return '';
+      if (v.bots && v.bots[v.turn]) return v.bots[v.turn] + ' думає…';
+      return '';
+    },
     /// Клавіатура: 1–9 (і 0 — десята) кидають у колонку, ←/→ або A/D водять привид, Enter чи пробіл кидають туди.
     /// Джойстик шле ті самі ←/→ і Enter (pad нижче), тож на Деці це працює без жодної правки.
     onKey(e, ctx) {
@@ -238,22 +317,22 @@
 
   HGames.register(Object.assign(mod('c4', ICON, ['жовті', 'зелені']), {
     news: {
-      v: '2026-09-28',
-      title: 'Чотири в ряд: джойстик і клавіші',
+      v: '2026-09-29',
+      title: 'Чотири в ряд: годинник ходу',
       items: [
+        '⏱ Опція столу «20 с на хід»: хто задумався, за того фішка падає сама у випадкову колонку',
         '🎮 На Деці стік чи хрестовина водять фішку по колонках, Ⓐ кидає',
-        '⌨️ З клавіатури ще й A/D і пробіл; прицілитись можна й поки ходить суперник',
       ],
     },
   }));
   HGames.register(Object.assign(mod('c4x', ICON_PARTY, ['жовті', 'зелені', 'руді', 'білі']), {
     news: {
-      v: '2026-09-28',
-      title: 'Чотири в ряд на компанію: порядок і джойстик',
+      v: '2026-09-29',
+      title: 'Чотири в ряд на компанію: пари, Глек і годинник',
       items: [
-        '🏳️ Учотирьох «Здатись» і рахунок серії знову під полем, а не між легендою й полем',
-        '🎮 На Деці стік чи хрестовина водять фішку по колонках, Ⓐ кидає',
-        '⌨️ З клавіатури ще й A/D і пробіл; прицілитись можна й поки ходять інші',
+        '👥 Учотирьох — пари 2×2 через одного: четвірка з фішок напарника теж рахується',
+        '🤖 Бракує людей — на порожнє місце підсяде Глек (без черепків і рейтингу)',
+        '⏱ Годинник 20 с на хід: хто задумався, за того фішка падає сама',
       ],
     },
   }));

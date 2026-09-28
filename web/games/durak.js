@@ -67,6 +67,29 @@
   }
 
   const nameOf = (ctx, i) => ctx.nickOf(i) || ((ctx.view || {}).names || [])[i] || SEATS[i] || ('гравець ' + (i + 1));
+  /// Погони (№211): дурень минулої партії носить 🎖 біля ніка, доки не скінчиться наступна.
+  const tagged = (ctx, i) => {
+    const n = nameOf(ctx, i);
+    return n && (ctx.view || {}).pogony === n ? n + ' 🎖' : n;
+  };
+
+  /// Глеки ходять на штовхан нашого клієнта (тика в гри нема): першим штовхає перша людина за столом, решта — із
+  /// запасом. Зарано чи вдруге — сервер відмовить, а send шле без тосту.
+  function nudge(root, ctx) {
+    const st = state(root);
+    const v = ctx.view || {};
+    clearTimeout(st.nt);
+    st.nt = 0;
+    if (!ctx.playing || !ctx.mine || typeof v.botIn !== 'number' || !HGames.send) return;
+    let rank = 0;
+    for (let i = 0; i < ctx.seat; i++) if (ctx.nickOf(i)) rank++;
+    const fire = () => {
+      if (!root._durak || !ctx.room) return;
+      HGames.send('Act', ctx.room.id, 'bot', null);
+      st.nt = setTimeout(fire, 1500);
+    };
+    st.nt = setTimeout(fire, v.botIn + 60 + rank * 700);
+  }
 
   /// Хто за столом: кожен суперник — фішка з ніком, сорочками карт і роллю в цьому відбої.
   function foes(host, ctx, v) {
@@ -95,7 +118,7 @@
       if (!v.result && inn[i] && passed[i]) role += '<em class="pass">пас</em>';
       const fan = '<span class="dbacks">' + '<i></i>'.repeat(Math.min(cnt, 8)) + '</span>';
       out.push('<div class="' + cls + (!v.result && v.turn === i ? ' now' : '') + '">'
-        + '<span class="dwho"><u>' + MARKS[i] + '</u>' + ctx.esc(nameOf(ctx, i)) + '</span>'
+        + '<span class="dwho"><u>' + MARKS[i] + '</u>' + ctx.esc(tagged(ctx, i)) + '</span>'
         + '<span class="dcnt">' + fan + '<b>' + cnt + '</b></span>'
         + '<span class="drole">' + role + '</span></div>');
     }
@@ -189,6 +212,14 @@
     if (live && ctx.mine && !iDefend && table.length && canAdd) {
       if (v.phase === 'taking') out.push('<button class="primary" data-act="done">Досить</button>');
       else if (v.phase === 'attack') out.push('<button class="primary" data-act="done">' + (iAttack ? 'Біто' : 'Пас') + '</button>');
+    }
+    if (live && iDefend && v.phase === 'defend' && v.canTransfer && table.length) {
+      // Переводний: перевести найдешевшою картою того самого номіналу (козир — лише коли іншої нема).
+      const rank = (c) => String(c).slice(0, -1);
+      const want = rank(table[0].attack);
+      const same = (v.hand || []).filter((c) => rank(c) === want)
+        .sort((a, b) => (a.slice(-1) === v.trump) - (b.slice(-1) === v.trump));
+      if (same.length) out.push('<button class="primary" data-act="transfer" data-card="' + ctx.esc(same[0]) + '">🔁 Перевести ' + ctx.esc(same[0]) + '</button>');
     }
     if (live && iDefend && v.phase === 'defend') out.push('<button class="ghost" data-act="take">Беру</button>');
     setHtml(host, out.join(''));
@@ -287,7 +318,7 @@
       bt._wired = 1;
       bt.addEventListener('click', (e) => {
         const b = e.target.closest('[data-act]');
-        if (b && bt._act) bt._act(b.dataset.act);
+        if (b && bt._act) bt._act(b.dataset.act, b.dataset.card ? { card: b.dataset.card } : undefined);
       });
     }
   }
@@ -298,31 +329,36 @@
     seatNames: SEATS,
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o'],
     news: {
-      v: '2026-09-24',
-      title: 'Дурень: тепер компанією до шести',
+      v: '2026-09-29',
+      title: 'Дурень: переводний, Глек і погони',
       items: [
-        '🃏 За стіл сідає 2–6 гравців — господар тисне «Почати», коли всі зібрались',
-        '🤲 Підкидають усі, крім того, хто відбивається; кому нема чого додати — тисне «Пас»',
-        '🛡 Узяв — пропускаєш хід: заходить наступний за тобою',
-        '🏁 Хто скинув карти, той вийшов; останній із картами — дурень, і стіл скаже це вголос',
-        '🚪 Встав посеред партії компанією — решта грає далі без тебе',
+        '🔁 Новий режим «Переводний»: відбиваєшся — можеш перевести карту тим самим номіналом далі',
+        '🤖 Бракує людей — на порожні місця підсядуть Глеки (без черепків)',
+        '🎖 Дурень носить погони біля ніка до кінця наступної партії',
       ],
     },
 
-    mount(root, ctx) { paint(root, ctx); },
-    update(root, ctx) { paint(root, ctx); },
-    unmount(root) { root._durak = null; },
+    mount(root, ctx) { paint(root, ctx); nudge(root, ctx); },
+    update(root, ctx) { paint(root, ctx); nudge(root, ctx); },
+    unmount(root) { const st = root._durak; if (st) clearTimeout(st.nt); root._durak = null; },
 
     status(ctx) {
       const v = ctx.view || {};
+      const room = ctx.room || {};
+      if (room.status === 'lobby') {
+        // MinPlayers = 1 заради Глека: сам-на-сам каркас сказав би «Можна рушати», а старт відмовить.
+        let people = 0;
+        for (let i = 0; i < 6; i++) if (ctx.nickOf(i)) people++;
+        return people < 2 && !+((room.options || {}).bots || 0) ? 'Чекаємо, хто підсяде (або відкрий стіл з «🤖 Глек підсідає»)' : '';
+      }
       if (!ctx.playing && !v.result) return '';
       if (v.result) {
         if (v.result.reason === 'both') return 'Вийшли разом — нічия';
         const fool = v.result.fool != null ? v.result.fool : (v.result.winner === 0 ? 1 : 0);
         // Той, хто встав, уже не сидить — його нік бережемо у виді, інакше вийшло б «Дурень — перший».
-        const name = v.result.foolNick || ctx.nickOf(fool) || ctx.seatName(fool);
+        const name = v.result.foolNick || nameOf(ctx, fool);
         // Для гравця за столом «не дурень» — це й є перемога: «Є!»; глядачеві — просто хто.
-        return ctx.seat === fool ? 'Отакої — дурень цього разу ти' : (ctx.mine ? 'Є! ' : '') + 'Дурень — ' + name;
+        return ctx.seat === fool ? 'Отакої — дурень цього разу ти, носи погони 🎖' : (ctx.mine ? 'Є! ' : '') + 'Дурень — ' + name + ' 🎖';
       }
       if (!ctx.mine) return 'Дивишся збоку';
       if ((v.in || [])[ctx.seat] === false) return 'Є! Ти без карт — чекай, хто лишиться дурнем';
@@ -330,10 +366,11 @@
       const att = nameOf(ctx, v.attacker);
       const def = nameOf(ctx, v.defender);
       if (ctx.seat === v.defender) {
-        if (v.phase === 'defend') return 'Відбивайся або бери';
+        if (v.phase === 'defend') return v.canTransfer ? 'Відбивайся, переводь або бери' : 'Відбивайся або бери';
         if (v.phase === 'taking') return 'Береш — чекай, чи докинуть';
         return table.length ? 'Є! Відбито — чекай, чи підкинуть ще' : 'На тебе заходить ' + att;
       }
+      if (typeof v.botIn === 'number' && v.bots && v.bots[v.turn] && !v.canAdd) return nameOf(ctx, v.turn) + ' думає…';
       if (v.phase === 'defend') return def + ' відбивається';
       if (v.canAdd) {
         if (!table.length) return 'Заходь на ' + def;
