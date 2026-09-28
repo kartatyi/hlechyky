@@ -1652,7 +1652,7 @@
   // Загальна дія каркаса: сервер (Rooms.TableReact) лише пересилає номер групі столу, гра про це не знає.
   // ---------------------------------------------------------------------------------------------
   const REACTS = ['😂', '🔥', '🤯', '👏', '😱'];
-  const REACT_GAMES = new Set(['chess', 'checkers', 'domino', 'durak', 'c4', 'c4x', 'ttt', 'ttt3']);
+  const REACT_GAMES = new Set(['chess', 'checkers', 'domino', 'durak', 'c4', 'c4x', 'ttt', 'ttt3', 'zirka']);
   const REACT_GAP_MS = 1500;   // = Rooms.ReactGapMs
   let reactUntil = 0;
   function paintReacts(card, rv) {
