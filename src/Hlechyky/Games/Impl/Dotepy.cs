@@ -599,7 +599,7 @@ public sealed class Dotepy : Game
         {
             var odd = _round % 2 == 1;
             var nas = _spiceNas && (need >= 3 || odd || !_spiceRebus);
-            var rebus = _spiceRebus && (need >= 3 || !nas);
+            var rebus = _spiceRebus && (need >= 3 || !nas || _roundsTotal == 2);
             if (nas) spice.AddRange(PickFromBank(1, false, TagNas));
             if (rebus && spice.Count < need) spice.AddRange(PickFromBank(1, false, TagRebus));
         }
