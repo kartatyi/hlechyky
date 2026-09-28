@@ -1578,7 +1578,17 @@
       return (rv.seat != null && res.winners.includes(rv.seat) ? 'Є! ' : '')
         + 'Перемога: ' + res.winners.map((i) => nickAt(r, i) || seatNameOf(rv, i)).join(', ');
     }
-    if (r.status === 'lobby') return solo ? '' : freeSeat(r) >= 0 ? 'Чекаємо, хто підсяде' : 'Чекаємо на старт';
+    if (r.status === 'lobby') {
+      if (solo) return '';
+      // Стіл, що стартує з руки господаря: коли людей уже досить, «Чекаємо, хто підсяде» вводило в оману —
+      // господар сидів і чекав, хоча міг тиснути «Почати».
+      const g = gameOf(r.game) || {};
+      if (g.start === 'byHost' && takenSeats(r) >= r.minPlayers) {
+        return sameNick(r.host, me.nick) ? 'Можна рушати: тисни «Почати»'
+          + (freeSeat(r) >= 0 ? ' або зачекай ще когось' : '') : 'Чекаємо, поки ' + (r.host || 'господар') + ' почне';
+      }
+      return freeSeat(r) >= 0 ? 'Чекаємо, хто підсяде' : 'Чекаємо на старт';
+    }
     const t = turnOf(rv);
     if (t != null) return t === rv.seat ? 'Твій хід' : 'Ходить ' + (nickAt(r, t) || seatNameOf(rv, t));
     return rv.seat == null ? 'Дивишся збоку' : '';
