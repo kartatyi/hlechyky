@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace Hlechyky.Games.Impl;
 
@@ -18,6 +19,11 @@ public sealed class SkilkyStats(Db? db, IClock clock)
     [
         "plays7d", "plays30d", "likesTotal", "tracksTotal",
         "voiceTotal", "chatTotal", "minutesPlayed30d", "topRequesterCount7d",
+        // Ігри сайту (прохід №3, пункт 45): «ого, стільки?!» і заразом реклама інших ігор.
+        "gamesTotal", "games7d", "gamesPlayers", "soloTotal", "dailySolved", "achievementsTotal", "richestEarned",
+        "games:tron", "games:skilky", "games:bomber", "games:territory", "games:melody", "games:snake",
+        "games:tanks", "games:pictionary", "games:duel", "games:telephone", "games:curve", "games:vohnyk",
+        "games:rally", "games:bluff", "games:mafia", "games:battleship",
     ];
 
     /// <summary>
@@ -51,6 +57,59 @@ public sealed class SkilkyStats(Db? db, IClock clock)
         return value;
     }
 
+    /// <summary>
+    /// Спільні числа на всю базу: їх рахує фон, а кімната лише підглядає (<see cref="Peek"/>). Так «Почати» під замком
+    /// кімнати не чекає на SQLite (правило каркаса: жодного I/O в Start/Act/Tick).
+    /// </summary>
+    sealed class Shared
+    {
+        public Dictionary<string, long> Values = new(StringComparer.Ordinal);
+        public DateTimeOffset At = DateTimeOffset.MinValue;
+        public int Busy;
+    }
+
+    static readonly ConditionalWeakTable<Db, Shared> Pool = new();
+
+    /// <summary>
+    /// Число з фонового кешу: миттєво, без бази. Застаріло чи ще не рахувалось — віддаємо що є (0 на першому
+    /// «Почати» після рестарту: динамічне просто не потрапить у цю партію) і просимо фон перерахувати всі ключі.
+    /// </summary>
+    public long Peek(string? key)
+    {
+        if (db is null || string.IsNullOrWhiteSpace(key)) return 0;
+        var shared = Pool.GetValue(db, _ => new Shared());
+        Dictionary<string, long> values;
+        bool stale;
+        lock (shared) { values = shared.Values; stale = clock.UtcNow - shared.At >= Ttl || shared.At > clock.UtcNow; }
+        if (stale && Interlocked.CompareExchange(ref shared.Busy, 1, 0) == 0)
+            _ = Task.Run(() => Refresh(shared));
+        return values.GetValueOrDefault(key);
+    }
+
+    /// <summary>Порахувати все зараз (тести й прогрів). Кличе фон; під замком кімнати — ні.</summary>
+    public void Warm()
+    {
+        if (db is null) return;
+        var shared = Pool.GetValue(db, _ => new Shared());
+        Interlocked.Exchange(ref shared.Busy, 1);
+        Refresh(shared);
+    }
+
+    void Refresh(Shared shared)
+    {
+        try
+        {
+            var fresh = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var key in Keys)
+            {
+                try { fresh[key] = Read(key); }
+                catch (Exception) { fresh[key] = 0; }
+            }
+            lock (shared) { shared.Values = fresh; shared.At = clock.UtcNow; }
+        }
+        finally { Interlocked.Exchange(ref shared.Busy, 0); }
+    }
+
     long Read(string key) => key switch
     {
         "plays7d" => Scalar("SELECT COUNT(*) FROM plays WHERE started_at >= $s", ("$s", Since(7))),
@@ -76,6 +135,18 @@ public sealed class SkilkyStats(Db? db, IClock clock)
                 WHERE source = 'user' AND requested_by IS NOT NULL AND started_at >= $s
                 GROUP BY requested_by)
             """, ("$s", Since(7))),
+        // Партія компанії — це пара (кімната, номер партії); соло-результати й щоденні — окремо.
+        "gamesTotal" => Scalar("SELECT COUNT(*) FROM (SELECT DISTINCT room_id, round FROM game_results WHERE outcome <> 'solo')"),
+        "games7d" => Scalar("SELECT COUNT(*) FROM (SELECT DISTINCT room_id, round FROM game_results WHERE outcome <> 'solo' AND created_at >= $s)",
+            ("$s", Since(7))),
+        "gamesPlayers" => Scalar("SELECT COUNT(DISTINCT nick_key) FROM game_results"),
+        "soloTotal" => Scalar("SELECT COUNT(*) FROM game_results WHERE outcome = 'solo'"),
+        "dailySolved" => Scalar("SELECT COUNT(*) FROM daily_results WHERE solved = 1"),
+        "achievementsTotal" => Scalar("SELECT COUNT(*) FROM achievements"),
+        "richestEarned" => Scalar("SELECT COALESCE(MAX(earned), 0) FROM wallets"),
+        _ when key.StartsWith("games:", StringComparison.Ordinal) => Scalar(
+            "SELECT COUNT(*) FROM (SELECT DISTINCT room_id, round FROM game_results WHERE game = $g AND outcome <> 'solo')",
+            ("$g", key[6..])),
         _ => 0,
     };
 

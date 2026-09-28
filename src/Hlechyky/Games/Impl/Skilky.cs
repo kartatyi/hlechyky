@@ -23,7 +23,7 @@ namespace Hlechyky.Games.Impl;
 /// Гра <c>Hidden</c>: доки триває фаза відповіді, чужих чисел у виді нема взагалі, лише галочки «відповів».
 /// </para>
 /// </summary>
-public sealed class Skilky : Game
+public class Skilky : Game
 {
     /// <summary>Скільки запитань у партії, якщо господар не обрав іншого. Менше буває лише тоді, коли тема геть куца.</summary>
     public const int Questions = 5;
@@ -43,6 +43,8 @@ public sealed class Skilky : Game
 
     public const string PhaseBetween = "between";
     public const string PhaseAsk = "ask";
+    /// <summary>«Ставлю на чуже»: числа вже видно без правди, кожен тисне, чиє найближче.</summary>
+    public const string PhaseBet = "bet";
     public const string PhaseReveal = "reveal";
     public const string PhaseDone = "done";
 
@@ -58,6 +60,16 @@ public sealed class Skilky : Game
     /// <summary>За однакової відстані швидшому хоча б на <see cref="SpeedGap"/>.</summary>
     public const int SpeedBonus = 1;
     public static readonly TimeSpan SpeedGap = TimeSpan.FromSeconds(1);
+    /// <summary>«Ставлю на чуже»: вгадав, чиє число найближче, — стільки очок.</summary>
+    public const int BetBonus = 2;
+    /// <summary>Скільки секунд на ставку.</summary>
+    public const int BetSeconds = 10;
+    /// <summary>Ставки мають сенс від трьох за столом: удвох «чиє найближче» — це просто «чи не я».</summary>
+    public const int BetMinPlayers = 3;
+    /// <summary>Назви команд (опція «Команди»).</summary>
+    public static readonly string[] TeamNames = ["🔴 Червоні", "🔵 Сині", "🟢 Зелені", "🟡 Жовті"];
+    /// <summary>«Питання про нас»: межі тексту й одиниці.</summary>
+    public const int OursMin = 8, OursMax = 160, OursUnitMax = 24;
 
     /// <summary>
     /// Шкала точності для звичайних чисел: промах у частках від правильної відповіді → очки. Далі за 50 %
@@ -68,7 +80,7 @@ public sealed class Skilky : Game
     static readonly (double Off, int Points)[] YearTiers = [(0, Bullseye), (2, 4), (5, 3), (15, 2), (50, 1)];
 
     /// <summary>Рядок таблиці розкриття: чиє число, наскільки повз і скільки за що дали.</summary>
-    sealed record Row(int Seat, double Value, double Diff, int Accuracy, int Bonus = 0, int Fast = 0)
+    private protected sealed record Row(int Seat, double Value, double Diff, int Accuracy, int Bonus = 0, int Fast = 0, int Team = -1)
     {
         public int Points => Accuracy + Bonus + Fast;
     }
@@ -77,7 +89,8 @@ public sealed class Skilky : Game
     /// Одне зігране запитання для підсумку партії: що питали, яка правда і хто підібрався найближче.
     /// Наприкінці люди хочуть не лише рахунок, а й «а пам'ятаєш Маттергорн?» — список усіх запитань.
     /// </summary>
-    sealed record Recap(string Question, string? Unit, double Answer, bool Years, int[] Best, double? Value, int Points);
+    private protected sealed record Recap(string Question, string? Unit, double Answer, bool Years, int[] Best, double? Value, int Points,
+        int By = -1, bool Photo = false);
 
     // Мінімум — один: господар може почати й сам, а хто встигне підсісти до старту, грає разом.
     public override GameInfo Info { get; } = new(
@@ -88,6 +101,8 @@ public sealed class Skilky : Game
             new GameOption("questions", "Питань", [.. QuestionChoices.Select(n => (Str(n), Str(n)))], Str(Questions)),
             new GameOption("seconds", "Час на відповідь", [.. SecondChoices.Select(n => (Str(n), $"{n} с"))], Str(AskSeconds)),
             new GameOption("topic", "Теми", SkilkyTopics.All, SkilkyTopics.Any, Multi: true),
+            new GameOption("bets", "Ставлю на чуже", [("off", "ні"), ("on", "так: +2 за вгадане чуже число (від трьох)")], "off"),
+            new GameOption("teams", "Команди", [("off", "кожен сам"), ("2", "2 команди"), ("3", "3 команди"), ("4", "4 команди")], "off"),
         ],
         Hint: "Питання, на яке ніхто не знає точної відповіді. Кожен пише число: що ближче — то більше очок і черепків. Можна й самому");
 
@@ -99,19 +114,46 @@ public sealed class Skilky : Game
     int _seconds = AskSeconds;
     /// <summary>Теми запитань цієї кімнати (опція «Теми», можна кілька); null — усі.</summary>
     IReadOnlySet<string>? _topics;
+    /// <summary>Опція «Ставлю на чуже».</summary>
+    bool _bets;
+    /// <summary>Опція «Команди»: 0 — кожен сам, інакше 2–4.</summary>
+    int _teamsOpt;
 
     /// <summary>Запитання цієї партії разом із уже порахованою правильною відповіддю.</summary>
-    readonly List<(SkilkyQuestion Q, double A)> _asked = [];
+    private protected readonly List<(SkilkyQuestion Q, double A)> _asked = [];
     readonly double?[] _answers = new double?[MaxSeats];
     /// <summary>Коли прийшло останнє число місця: за однакової відстані швидший бере <see cref="SpeedBonus"/>.</summary>
     readonly DateTimeOffset[] _answeredAt = new DateTimeOffset[MaxSeats];
-    readonly long[] _scores = new long[MaxSeats];
+    private protected readonly long[] _scores = new long[MaxSeats];
     /// <summary>Уже розкриті запитання цієї партії — для підсумку в кінці.</summary>
-    readonly List<Recap> _recap = [];
+    private protected readonly List<Recap> _recap = [];
 
-    int _at;
-    string _phase = PhaseBetween;
-    DateTimeOffset _endsAt;
+    /// <summary>«Ставлю на чуже»: на чиє число поставило місце (−1 — ще ні).</summary>
+    readonly int[] _betOn = new int[MaxSeats];
+    /// <summary>Ставки розкритого раунду: хто, на кого, чи вгадав.</summary>
+    (int Seat, int On, bool Ok)[] _betRows = [];
+
+    /// <summary>Команда місця (−1 — команд нема або місце порожнє).</summary>
+    readonly int[] _teamOf = new int[MaxSeats];
+    /// <summary>Скільки команд у цій партії (0 — кожен сам).</summary>
+    int _teams;
+    /// <summary>Капітан кожної команди в цьому питанні — він подає число команди.</summary>
+    readonly int[] _captain = new int[4];
+    /// <summary>Число, яке подав капітан.</summary>
+    readonly double?[] _teamFinal = new double?[4];
+    readonly DateTimeOffset[] _teamAt = new DateTimeOffset[4];
+    /// <summary>Пропозиції в команді: 👍 (+1) і 👎 (−1) — голосує [хто, за чию].</summary>
+    readonly sbyte[,] _vote = new sbyte[MaxSeats, MaxSeats];
+
+    /// <summary>«Питання про нас», що чекають на наступну партію: одне від місця.</summary>
+    readonly SkilkyQuestion?[] _ours = new SkilkyQuestion?[MaxSeats];
+
+    /// <summary>Фото поточного запитання «Якого року?» — адреса з токеном (null — не фото).</summary>
+    string? _photoUrl;
+
+    private protected int _at;
+    private protected string _phase = PhaseBetween;
+    private protected DateTimeOffset _endsAt;
     IReadOnlyList<Row>? _reveal;
     /// <summary>
     /// Слово Глека про цей раунд («Точнісінько — Оля! Шапки геть»). Живе у виді під таблицею розкриття, а не в
@@ -120,7 +162,7 @@ public sealed class Skilky : Game
     string? _say;
     double _answer;
     bool _years;
-    int[]? _winners;
+    private protected int[]? _winners;
     /// <summary>Хтось щойно написав число — на наступному тику треба розіслати не лише кадр, а й види.</summary>
     bool _touched;
 
@@ -128,6 +170,8 @@ public sealed class Skilky : Game
     SkilkyStats? _stats;
     /// <summary>Хто які запитання вже бачив. Без бази — мовчить, і запитання просто тасуються.</summary>
     SkilkySeen? _seen;
+    /// <summary>Бібліотека фото «Якого року?». Нема сервісу (тести) — фото-питань теж нема.</summary>
+    private protected SkilkyPhotos? _photos;
 
     /// <summary>Місця називаємо числами: на столі їх до дванадцяти, і «гравець одинадцятий» у чіп не влізе.</summary>
     public override string SeatName(int seat) => (seat + 1).ToString(CultureInfo.InvariantCulture);
@@ -144,6 +188,28 @@ public sealed class Skilky : Game
         if (options.TryGetValue("seconds", out var s) && int.TryParse(s, CultureInfo.InvariantCulture, out var sec)
             && SecondChoices.Contains(sec)) _seconds = sec;
         if (options.TryGetValue("topic", out var t)) _topics = SkilkyTopics.Parse(t);
+        _bets = options.TryGetValue("bets", out var b) && b == "on";
+        _teamsOpt = options.TryGetValue("teams", out var tm) && int.TryParse(tm, CultureInfo.InvariantCulture, out var k) && k is >= 2 and <= 4 ? k : 0;
+    }
+
+    /// <summary>«Питання про нас» можна дописати ще в лобі, до «Почати».</summary>
+    public override bool ActsInLobby => true;
+
+    /// <summary>Лише фото, а фото ще не докачались — чесно кажемо й підганяємо фон.</summary>
+    public override string? CanStart()
+    {
+        // Пам'ять «хто що бачив» фон читає з бази заздалегідь — щоб перше «Почати» після рестарту вже її мало.
+        (_seen ??= new SkilkySeen(Ctx.Services.GetService<Db>())).Prefetch();
+        if (_topics is { Count: 1 } only && only.Contains(SkilkyTopics.Photo))
+        {
+            _photos ??= Ctx.Services.GetService<SkilkyPhotos>();
+            if (_photos is null || _photos.ReadyCount == 0)
+            {
+                _photos?.Poke();
+                return "Фото для «Якого року?» ще качаються — спробуй за хвилинку або додай іншу тему";
+            }
+        }
+        return null;
     }
 
     public override void Start()
@@ -153,12 +219,14 @@ public sealed class Skilky : Game
         var db = Ctx.Services.GetService<Db>();
         _stats ??= new SkilkyStats(db, Ctx.Clock);
         _seen ??= new SkilkySeen(db);
+        _photos ??= Ctx.Services.GetService<SkilkyPhotos>();
 
         Array.Clear(_scores);
         Array.Clear(_answers);
         Array.Clear(_answeredAt);
         _asked.Clear();
         _recap.Clear();
+        SplitTeams();
         _asked.AddRange(Pick());
         _at = 0;
         _reveal = null;
@@ -177,43 +245,90 @@ public sealed class Skilky : Game
         Open(Ctx.Clock.UtcNow);
     }
 
+    /// <summary>Команди: сидячі по черзі в 1-шу, 2-гу… Менше людей, ніж команд, — команд стільки, скільки людей.</summary>
+    void SplitTeams()
+    {
+        Array.Fill(_teamOf, -1);
+        var seated = Enumerable.Range(0, MaxSeats).Where(Ctx.Seated).ToList();
+        _teams = _teamsOpt == 0 ? 0 : Math.Min(_teamsOpt, seated.Count);
+        if (_teams < 2) { _teams = 0; return; }
+        for (var i = 0; i < seated.Count; i++) _teamOf[seated[i]] = i % _teams;
+    }
+
+    /// <summary>Сидячі члени команди в порядку місць.</summary>
+    List<int> Members(int team) => [.. Enumerable.Range(0, MaxSeats).Where(s => _teamOf[s] == team && Ctx.Seated(s))];
+
     /// <summary>
     /// Різні запитання обраних тем на партію: спершу ті, яких ніхто за столом ще не бачив, далі — бачені
-    /// найдавніше. Динамічне беремо лише тоді, коли база вже щось назбирала: питати «скільки треків
-    /// зіграло», коли відповідь нуль, — не загадка, а знущання.
+    /// найдавніше. Динамічне беремо лише тоді, коли фон уже порахував щось ненульове: питати «скільки треків
+    /// зіграло», коли відповідь нуль, — не загадка, а знущання. «Питання про нас» ідуть понад те, врозсип.
     /// </summary>
-    List<(SkilkyQuestion Q, double A)> Pick()
+    private protected virtual List<(SkilkyQuestion Q, double A)> Pick()
     {
-        var pool = new List<(SkilkyQuestion Q, double A)>();
-        foreach (var q in SkilkyBank.All)
-        {
-            if (!SkilkyTopics.Fits(q, _topics)) continue;
-            if (q.IsDynamic)
-            {
-                var value = _stats!.Value(q.Dyn);
-                if (value > 0) pool.Add((q, value));
-            }
-            else if (q.A is { } a) pool.Add((q, a));
-        }
+        var ours = new List<(SkilkyQuestion Q, double A)>();
+        for (var s = 0; s < MaxSeats; s++)
+            if (_ours[s] is { } mine && Ctx.Seated(s)) { ours.Add((mine, mine.A!.Value)); _ours[s] = null; }
+
+        var pool = Pool(_topics);
+        // Обрана тема виявилась порожньою (скажімо, «Наше» на свіжій базі) — краще всі теми, ніж порожня партія.
+        if (pool.Count == 0 && _topics is not null) pool = Pool(null);
         // Повне тасування Фішера — Єйтса: серед однаково свіжих (зокрема всіх небачених) порядок випадковий.
         for (var i = pool.Count - 1; i > 0; i--)
         {
             var j = Ctx.Rng.Next(i + 1);
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
-        var last = _seen!.LastSeen(Nicks());
-        return SkilkySeen.Freshest(pool, x => x.Q.Key, last, _questions);
+        var need = Math.Max(0, _questions - ours.Count);
+        var picked = need == 0 ? [] : SkilkySeen.Freshest(pool, x => x.Q.Key, _seen!.Peek(Nicks()), need);
+        foreach (var o in ours) picked.Insert(Ctx.Rng.Next(picked.Count + 1), o);
+        return picked;
     }
+
+    /// <summary>Усі запитання обраних тем (null — усі), з уже порахованою правдою.</summary>
+    private protected List<(SkilkyQuestion Q, double A)> Pool(IReadOnlySet<string>? topics)
+    {
+        var pool = new List<(SkilkyQuestion Q, double A)>();
+        foreach (var q in SkilkyBank.All)
+        {
+            if (!SkilkyTopics.Fits(q, topics)) continue;
+            if (q.IsDynamic)
+            {
+                var value = _stats!.Peek(q.Dyn);
+                if (value > 0) pool.Add((q, value));
+            }
+            else if (q.A is { } a) pool.Add((q, a));
+        }
+        if (_photos is not null && (topics is null || topics.Contains(SkilkyTopics.Photo)))
+            foreach (var p in _photos.ReadyPhotos) pool.Add((PhotoQuestion(p), p.Year));
+        return pool;
+    }
+
+    /// <summary>Запитання рубрики «📷 Якого року?» з фото бібліотеки.</summary>
+    public static SkilkyQuestion PhotoQuestion(SkilkyPhoto p) => new()
+    {
+        Q = "📷 Якого року це фото?", A = p.Year, Unit = "рік", Topic = SkilkyTopics.Photo, Photo = p.Id,
+    };
 
     /// <summary>Ключі ніків за столом — так їх пам'ятає <see cref="SkilkySeen"/>.</summary>
     List<string> Nicks() => [.. Enumerable.Range(0, MaxSeats)
         .Where(Ctx.Seated).Select(s => Ctx.NickOf(s)).OfType<string>().Select(SkilkySeen.NickKey).Distinct()];
 
     /// <summary>Нове запитання: чистий стіл і коротке «готуйсь».</summary>
-    void Open(DateTimeOffset now)
+    private protected void Open(DateTimeOffset now)
     {
         Array.Clear(_answers);
         Array.Clear(_answeredAt);
+        Array.Fill(_betOn, -1);
+        Array.Clear(_vote);
+        Array.Clear(_teamFinal);
+        _betRows = [];
+        _photoUrl = null;
+        for (var t = 0; t < _teams; t++)
+        {
+            // Капітан по колу: кожне питання — інший, щоб подавати число встиг кожен.
+            var m = Members(t);
+            _captain[t] = m.Count == 0 ? -1 : m[_at % m.Count];
+        }
         _reveal = null;
         _say = null;
         _touched = false;
@@ -223,10 +338,16 @@ public sealed class Skilky : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == "ours") return Ours(seat, payload);
+        if (Ctx.Seated(seat) && _phase != PhaseDone && _asked.Count == 0) return ActResult.Fail("Чекаємо на «Почати»");
+        if (action == "bet") return Bet(seat, payload);
+        if (action == "vote") return Vote(seat, payload);
         if (action != "answer") return ActResult.Fail("Тут так не ходять");
         if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
+        if (_phase == PhaseBet || _phase == PhaseReveal) return ActResult.Fail("Час на число вийшов");
         if (_phase != PhaseAsk) return ActResult.Fail("Мить — зараз буде запитання");
         if (Ctx.Clock.UtcNow >= _endsAt) return ActResult.Fail("От халепа — час вийшов");
+        if (Current is { Author: var by } && by == seat) return ActResult.Fail("Це твоє питання — ти й так знаєш 😉 Дивись, як мучаться інші");
         if (Number(payload) is not { } value) return ActResult.Fail("Тут треба число");
         if (double.IsNaN(value) || double.IsInfinity(value)) return ActResult.Fail("Тут треба число");
         if (Math.Abs(value) > 1e15) return ActResult.Fail("Це вже занадто велике число");
@@ -235,9 +356,75 @@ public sealed class Skilky : Game
         // Час саме останнього числа: хто передумав, той і відповів пізніше.
         _answeredAt[seat] = Ctx.Clock.UtcNow;
         _touched = true;
+        var shown = Current is { } q && IsYears(q) && value == Math.Round(value) ? Math.Round(value).ToString(CultureInfo.InvariantCulture) : Num(value);
+        if (_teams > 0 && _teamOf[seat] is var team and >= 0)
+        {
+            // У команді число капітана — це число команди; решта пропонує, а команда голосує 👍/👎.
+            if (_captain[team] == seat)
+            {
+                _teamFinal[team] = value;
+                _teamAt[team] = Ctx.Clock.UtcNow;
+                return ActResult.Accept($"Подав від команди: {shown}");
+            }
+            for (var v = 0; v < MaxSeats; v++) _vote[v, seat] = 0;   // нова пропозиція — голоси з нуля
+            return ActResult.Accept($"Запропонував команді: {shown}. Подає капітан");
+        }
         // Реалтайм-кімната не розсилає види з Act (Rooms.Act, counts == false), тож підтвердження
         // гравцеві — оцей рядок; галочки в усіх інших приїдуть найближчим тиком.
-        return ActResult.Accept($"Записав: {(Current is { } q && IsYears(q) && value == Math.Round(value) ? Math.Round(value).ToString(CultureInfo.InvariantCulture) : Num(value))}");
+        return ActResult.Accept($"Записав: {shown}");
+    }
+
+    /// <summary>«Питання про нас»: одне від місця, на наступну партію. Порожній текст — забрати своє.</summary>
+    ActResult Ours(int seat, JsonElement payload)
+    {
+        if (!Ctx.Seated(seat)) return ActResult.Fail("Питання дописують ті, хто за столом");
+        var q = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("q", out var qe) && qe.ValueKind == JsonValueKind.String
+            ? string.Join(' ', (qe.GetString() ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) : "";
+        if (q.Length == 0)
+        {
+            if (_ours[seat] is null) return ActResult.Fail("Своє питання ти ще не писав");
+            _ours[seat] = null;
+            return ActResult.Accept("Твоє питання прибрано");
+        }
+        if (q.Length < OursMin) return ActResult.Fail("Закоротке питання — допиши, про що саме");
+        if (q.Length > OursMax) return ActResult.Fail($"Задовге питання — не більше {OursMax} знаків");
+        var a = payload.TryGetProperty("a", out var ae) ? Number(ae) : null;
+        if (a is not { } answer || double.IsNaN(answer) || double.IsInfinity(answer) || Math.Abs(answer) > 1e15)
+            return ActResult.Fail("Відповідь — число: «42», «1 500», «2,5»");
+        var unit = payload.TryGetProperty("unit", out var ue) && ue.ValueKind == JsonValueKind.String ? (ue.GetString() ?? "").Trim() : "";
+        if (unit.Length > OursUnitMax) return ActResult.Fail("Одиниця — коротко: «км», «разів», «рік»");
+        if (!q.EndsWith('?')) q += "?";
+        _ours[seat] = new SkilkyQuestion { Q = q, A = answer, Unit = unit.Length == 0 ? null : unit, Author = seat, Topic = "ours" };
+        var later = _phase is PhaseDone || _asked.Count == 0 ? "у партії" : "у наступній партії";
+        return ActResult.Accept($"Записав! Твоє питання буде {later}, а ти на нього не відповідаєш");
+    }
+
+    /// <summary>«Ставлю на чуже»: чиє число, на мою думку, найближче. Своє не можна.</summary>
+    ActResult Bet(int seat, JsonElement payload)
+    {
+        if (_phase != PhaseBet) return ActResult.Fail("Ставки — після чисел, коли вони вже на столі");
+        if (!Ctx.Seated(seat)) return ActResult.Fail("Ставлять ті, хто за столом");
+        var on = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("seat", out var se) && se.TryGetInt32(out var x) ? x
+            : payload.ValueKind == JsonValueKind.Number && payload.TryGetInt32(out var y) ? y : -1;
+        if (on == seat) return ActResult.Fail("На себе не ставлять — вгадай, хто з інших найточніший");
+        if (on is < 0 or >= MaxSeats || _answers[on] is null) return ActResult.Fail("У цього місця нема числа");
+        _betOn[seat] = on;
+        _touched = true;
+        return ActResult.Accept($"Ставиш на {Ctx.NickOf(on) ?? SeatName(on)}");
+    }
+
+    /// <summary>👍/👎 пропозиції тіммейта; вдруге те саме — зняти голос.</summary>
+    ActResult Vote(int seat, JsonElement payload)
+    {
+        if (_teams == 0 || _teamOf[seat] < 0) return ActResult.Fail("Голосують лише в командах");
+        if (_phase != PhaseAsk) return ActResult.Fail("Голосувати можна, поки думаємо над числом");
+        var on = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("seat", out var se) && se.TryGetInt32(out var x) ? x : -1;
+        if (on is < 0 or >= MaxSeats || on == seat || _teamOf[on] != _teamOf[seat] || _answers[on] is null)
+            return ActResult.Fail("Голосують за пропозиції тіммейтів");
+        sbyte v = payload.TryGetProperty("up", out var ue) && ue.ValueKind == JsonValueKind.False ? (sbyte)-1 : (sbyte)1;
+        _vote[seat, on] = _vote[seat, on] == v ? (sbyte)0 : v;
+        _touched = true;
+        return ActResult.Done;
     }
 
     /// <summary>Число приймаємо і як <c>{value: 2061}</c>, і як голе число, і як рядок — клієнтам так простіше.</summary>
@@ -261,12 +448,13 @@ public sealed class Skilky : Game
 
     public override TickResult Tick()
     {
-        if (_phase == PhaseDone) return TickResult.None;
+        if (_phase == PhaseDone || _asked.Count == 0) return TickResult.None;
         var now = Ctx.Clock.UtcNow;
 
         // Усі, хто за столом, уже написали — чекати на таймер нема сенсу. Розкриємо наступним рухом циклу,
         // щоб усі переходи фаз лишались в одному місці.
         if (_phase == PhaseAsk && AllAnswered()) _endsAt = now;
+        if (_phase == PhaseBet && AllBet()) _endsAt = now;
 
         if (now < _endsAt)
         {
@@ -284,11 +472,17 @@ public sealed class Skilky : Game
             case PhaseBetween:
                 _phase = PhaseAsk;
                 _endsAt = now.AddSeconds(_seconds);
+                if (Current is { Photo: { } photo } && _photos is not null) _photoUrl = $"/api/games/skilky/photo/{_photos.Issue(photo)}.jpg";
                 // «Бачив» — з тієї секунди, коли запитання з'явилось на екрані. Ті, до яких недограна партія
-                // так і не дійшла, лишаються свіжими.
-                _seen!.Mark(Nicks(), _asked[_at].Q, now);
+                // так і не дійшла, лишаються свіжими. Свої питання компанії пам'ятати нема чого.
+                if (Current is { Author: < 0 }) _seen!.Remember(Nicks(), _asked[_at].Q, now);
                 break;
             case PhaseAsk:
+                if (_teams > 0) SettleTeams();
+                if (BetsNow()) { _phase = PhaseBet; _endsAt = now.AddSeconds(BetSeconds); }
+                else Reveal(now);
+                break;
+            case PhaseBet:
                 Reveal(now);
                 break;
             case PhaseReveal:
@@ -299,12 +493,71 @@ public sealed class Skilky : Game
         return TickResult.Both;
     }
 
-    bool AllAnswered()
+    /// <summary>Капітан не подав — команда йде з найвподобанішою пропозицією (рівні — хто раніше).</summary>
+    void SettleTeams()
     {
+        for (var t = 0; t < _teams; t++)
+        {
+            if (_teamFinal[t] is not null) continue;
+            int best = -1, bestVotes = int.MinValue;
+            foreach (var s in Members(t))
+            {
+                if (_answers[s] is null) continue;
+                var votes = 0;
+                for (var v = 0; v < MaxSeats; v++) votes += _vote[v, s];
+                if (votes > bestVotes || votes == bestVotes && _answeredAt[s] < _answeredAt[best])
+                { best = s; bestVotes = votes; }
+            }
+            if (best < 0) continue;
+            _teamFinal[t] = _answers[best];
+            _teamAt[t] = _answeredAt[best];
+        }
+    }
+
+    /// <summary>Ставки — лише коли опція ввімкнена, людей від трьох і на столі хоч два числа.</summary>
+    bool BetsNow()
+    {
+        if (!_bets || _teams > 0) return false;
         var seated = 0;
+        var numbers = 0;
         for (var s = 0; s < MaxSeats; s++)
         {
             if (!Ctx.Seated(s)) continue;
+            seated++;
+            if (_answers[s] is not null) numbers++;
+        }
+        return seated >= BetMinPlayers && numbers >= 2;
+    }
+
+    /// <summary>Усі, кому є на кого ставити, поставили.</summary>
+    bool AllBet()
+    {
+        for (var s = 0; s < MaxSeats; s++)
+        {
+            if (!Ctx.Seated(s) || _betOn[s] >= 0) continue;
+            for (var o = 0; o < MaxSeats; o++) if (o != s && _answers[o] is not null) return false;
+        }
+        return true;
+    }
+
+    bool AllAnswered()
+    {
+        if (_teams > 0)
+        {
+            var any = false;
+            for (var t = 0; t < _teams; t++)
+            {
+                if (Members(t).Count == 0) continue;
+                any = true;
+                if (_teamFinal[t] is null) return false;
+            }
+            return any;
+        }
+        var seated = 0;
+        var by = Current?.Author ?? -1;
+        for (var s = 0; s < MaxSeats; s++)
+        {
+            if (!Ctx.Seated(s) || s == by) continue;
             seated++;
             if (_answers[s] is null) return false;
         }
@@ -316,40 +569,74 @@ public sealed class Skilky : Game
     /// (<see cref="Accuracy"/>). Найближчим — ще <see cref="BestBonus"/> (двоє однаково близьких беруть обидва,
     /// і навіть коли всі далеко: тоді найближчий хоч одне очко таки має). У кожній групі однакової відстані
     /// той, хто відповів раніше за решту хоча б на <see cref="SpeedGap"/>, бере ще <see cref="SpeedBonus"/>.
+    /// У командах те саме, лише «гравець» — команда (її число подав капітан), а очки беруть усі її члени.
     /// </summary>
     void Reveal(DateTimeOffset now)
     {
         var (question, target) = _asked[_at];
         var years = IsYears(question);
         var sorted = new List<Row>();
-        for (var s = 0; s < MaxSeats; s++)
-            if (Ctx.Seated(s) && _answers[s] is { } raw)
-            {
-                var v = InUnits(raw, target, question.Unit);
-                sorted.Add(new Row(s, v, Math.Abs(v - target), Accuracy(v, target, years)));
-            }
+        var at = new Dictionary<int, DateTimeOffset>();
+        if (_teams > 0)
+        {
+            for (var t = 0; t < _teams; t++)
+                if (_teamFinal[t] is { } raw && Members(t) is { Count: > 0 } m)
+                {
+                    var rep = _captain[t] >= 0 && Ctx.Seated(_captain[t]) ? _captain[t] : m[0];
+                    var v = InUnits(raw, target, question.Unit);
+                    sorted.Add(new Row(rep, v, Math.Abs(v - target), Accuracy(v, target, years), Team: t));
+                    at[rep] = _teamAt[t];
+                }
+        }
+        else
+        {
+            for (var s = 0; s < MaxSeats; s++)
+                if (Ctx.Seated(s) && _answers[s] is { } raw)
+                {
+                    var v = InUnits(raw, target, question.Unit);
+                    sorted.Add(new Row(s, v, Math.Abs(v - target), Accuracy(v, target, years)));
+                    at[s] = _answeredAt[s];
+                }
+        }
         sorted = [.. sorted.OrderBy(r => r.Diff).ThenBy(r => r.Seat)];
 
         // Групи однакової відстані рахуємо з допуском, а не точною рівністю double: 36.4 і 36.8 промахнулись
         // повз 36.6 однаково, але в бітах це 0.20000000000000284 і 0.19999999999999574. Гравці побачили б
         // однакову різницю й бонус лише в одного. Усередині групи першим стоїть швидший.
         var rows = new List<Row>(sorted.Count);
-        var company = Enumerable.Range(0, MaxSeats).Count(Ctx.Seated) > 1;
+        var company = _teams > 0 ? sorted.Count > 1 || Enumerable.Range(0, _teams).Count(t => Members(t).Count > 0) > 1
+            : Enumerable.Range(0, MaxSeats).Count(Ctx.Seated) > 1;
         for (var i = 0; i < sorted.Count;)
         {
             var j = i + 1;
             while (j < sorted.Count && SameDiff(sorted[j].Diff, sorted[i].Diff)) j++;
-            var group = sorted.GetRange(i, j - i).OrderBy(r => _answeredAt[r.Seat]).ThenBy(r => r.Seat).ToList();
-            var faster = group.Count > 1 && _answeredAt[group[1].Seat] - _answeredAt[group[0].Seat] >= SpeedGap;
+            var group = sorted.GetRange(i, j - i).OrderBy(r => at[r.Seat]).ThenBy(r => r.Seat).ToList();
+            var faster = group.Count > 1 && at[group[1].Seat] - at[group[0].Seat] >= SpeedGap;
             for (var k = 0; k < group.Count; k++)
                 rows.Add(group[k] with { Bonus = i == 0 && company ? BestBonus : 0, Fast = faster && k == 0 ? SpeedBonus : 0 });
             i = j;
         }
-        foreach (var r in rows) _scores[r.Seat] += r.Points;
+        foreach (var r in rows)
+        {
+            if (r.Team < 0) _scores[r.Seat] += r.Points;
+            else foreach (var s in Members(r.Team)) _scores[s] += r.Points;
+        }
         // Найближчі (однаково близьких може бути кілька) — у підсумок партії.
         var best = rows.Count == 0 ? [] : rows.Where(r => SameDiff(r.Diff, rows[0].Diff)).Select(r => r.Seat).ToArray();
+
+        // «Ставлю на чуже»: вгадав одного з найближчих — +2.
+        var bets = new List<(int Seat, int On, bool Ok)>();
+        for (var s = 0; s < MaxSeats; s++)
+            if (Ctx.Seated(s) && _betOn[s] >= 0)
+            {
+                var ok = best.Contains(_betOn[s]);
+                if (ok) _scores[s] += BetBonus;
+                bets.Add((s, _betOn[s], ok));
+            }
+        _betRows = [.. bets];
+
         _recap.Add(new Recap(question.Q, question.Unit, target, years, best,
-            rows.Count == 0 ? null : rows[0].Value, rows.Count == 0 ? 0 : rows[0].Points));
+            rows.Count == 0 ? null : rows[0].Value, rows.Count == 0 ? 0 : rows[0].Points, question.Author, question.Photo is not null));
 
         _answer = target;
         _years = years;
@@ -360,7 +647,7 @@ public sealed class Skilky : Game
     }
 
     /// <summary>Запитання про рік міряємо в роках, решту — у частках від відповіді.</summary>
-    static bool IsYears(SkilkyQuestion q) => q.Unit == "рік";
+    private protected static bool IsYears(SkilkyQuestion q) => q.Unit == "рік";
 
     /// <summary>Множник, закладений в одиницю: «млн км» означає, що відповідь у мільйонах кілометрів.</summary>
     static double Multiplier(string? unit)
@@ -429,7 +716,7 @@ public sealed class Skilky : Game
     /// отримує черепок за кожні <see cref="PointsPerShard"/> очок — і вдвох, і самому. Це понад звичайну
     /// виплату каркаса за перемогу чи участь (та — лише в компанії й зі стелею партій на день).
     /// </summary>
-    void Done()
+    private protected virtual void Done()
     {
         _phase = PhaseDone;
         var seats = Enumerable.Range(0, MaxSeats).Where(Ctx.Seated).ToList();
@@ -463,6 +750,11 @@ public sealed class Skilky : Game
     public override void OnLeave(int seat)
     {
         _answers[seat] = null;
+        _ours[seat] = null;
+        _betOn[seat] = -1;
+        // Капітан пішов — подає наступний у команді (його вже подане число команди лишається).
+        if (_teams > 0 && _teamOf[seat] is var team and >= 0 && _captain[team] == seat)
+            _captain[team] = Members(team).FirstOrDefault(s => s != seat, -1);
         var left = Enumerable.Range(0, MaxSeats).Where(s => s != seat && Ctx.Seated(s)).ToList();
         if (left.Count >= Info.MinPlayers) return;
         _phase = PhaseDone;
@@ -474,43 +766,99 @@ public sealed class Skilky : Game
     // види
     // ---------------------------------------------------------------------------------------
 
-    public override object View(int? seat) => new
+    public override object View(int? seat)
     {
-        round = _at + 1,
-        of = _asked.Count,
-        phase = _phase,
-        // У паузі перед запитанням його ще не показуємо: тексту нема ні на екрані, ні у виді, тож
-        // зазирнути в консоль на три секунди раніше за інших не вийде.
-        question = _phase == PhaseBetween ? "" : Current?.Q ?? "",
-        unit = _phase == PhaseBetween ? null : Current?.Unit,
-        endsAt = _endsAt,
-        // Скільки триває відповідь у цій кімнаті — клієнтові для повної дуги таймера.
-        seconds = _seconds,
-        answered = Answered(),
-        // Єдине, що в цьому виді своє для кожного місця: чуже число до розкриття не бачить ніхто.
-        my = seat is { } s && s >= 0 && s < MaxSeats ? _answers[s] : null,
-        reveal = _reveal is null ? null : new
+        var me = seat is { } s0 && s0 >= 0 && s0 < MaxSeats ? s0 : -1;
+        var hidden = _phase == PhaseBetween;
+        var photo = Current?.Photo is { } pid && _photos is not null && _photos.ById.TryGetValue(pid, out var ph) ? ph : null;
+        return new
         {
-            answer = _answer,
-            // Клієнтові треба знати, як підписати промах: «на 12 % менше» чи просто «різниця 12» для років.
-            years = _years,
-            // Глек коментує раунд прямо на картці, під таблицею.
-            say = _say,
-            rows = _reveal.Select(r => new
+            round = _at + 1,
+            of = _asked.Count,
+            phase = _phase,
+            // У паузі перед запитанням його ще не показуємо: тексту нема ні на екрані, ні у виді, тож
+            // зазирнути в консоль на три секунди раніше за інших не вийде.
+            question = hidden ? "" : Current?.Q ?? "",
+            unit = hidden ? null : Current?.Unit,
+            // «Питання про нас»: чиє це питання (автор на нього не відповідає).
+            by = hidden || Current is not { Author: >= 0 } cur ? (int?)null : cur.Author,
+            // Фото «Якого року?» — лише адреса з токеном; підпис і атрибуція — на розкритті.
+            photo = hidden ? null : _photoUrl,
+            credit = photo is null || _phase is not (PhaseReveal or PhaseDone) ? null : new
             {
-                seat = r.Seat, value = r.Value, diff = r.Diff, points = r.Points,
-                accuracy = r.Accuracy, bonus = r.Bonus, fast = r.Fast,
+                caption = photo.Caption, author = photo.Author, license = photo.License, page = photo.Page,
+            },
+            endsAt = _endsAt,
+            // Скільки триває відповідь у цій кімнаті — клієнтові для повної дуги таймера.
+            seconds = _seconds,
+            answered = Answered(),
+            // Єдине, що в цьому виді своє для кожного місця: чуже число до розкриття не бачить ніхто.
+            my = me >= 0 ? _answers[me] : null,
+            opts = new { bets = _bets, teams = _teamsOpt },
+            teams = _teams == 0 ? null : Enumerable.Range(0, _teams).Select(t => new
+            {
+                name = TeamNames[t], seats = Members(t).ToArray(), captain = _captain[t], done = _teamFinal[t] is not null,
             }).ToArray(),
-        },
-        scores = (long[])_scores.Clone(),
-        result = _winners is null ? null : new { winners = (int[])_winners.Clone(), scores = (long[])_scores.Clone() },
-        // Підсумок усіх запитань — лише коли партію зіграно: посеред гри він лише відволікав би.
-        recap = _phase != PhaseDone ? null : _recap.Select(r => new
+            // Своя команда бачить пропозиції одне одного й голоси; чужа — ні (Hidden).
+            team = TeamView(me),
+            // «Ставлю на чуже»: числа вже на столі, правди ще нема.
+            bet = _phase != PhaseBet ? null : new
+            {
+                values = Enumerable.Range(0, MaxSeats).Where(x => Ctx.Seated(x) && _answers[x] is not null)
+                    .OrderBy(x => _answers[x]).Select(x => new { seat = x, value = _answers[x]!.Value }).ToArray(),
+                on = me >= 0 && _betOn[me] >= 0 ? _betOn[me] : (int?)null,
+            },
+            ours = new
+            {
+                mine = me >= 0 && _ours[me] is { } o ? new { q = o.Q, a = o.A, unit = o.Unit } : null,
+                seats = Enumerable.Range(0, MaxSeats).Where(x => _ours[x] is not null).ToArray(),
+            },
+            reveal = _reveal is null ? null : new
+            {
+                answer = _answer,
+                // Клієнтові треба знати, як підписати промах: «на 12 % менше» чи просто «різниця 12» для років.
+                years = _years,
+                // Глек коментує раунд прямо на картці, під таблицею.
+                say = _say,
+                rows = _reveal.Select(r => new
+                {
+                    seat = r.Seat, value = r.Value, diff = r.Diff, points = r.Points,
+                    accuracy = r.Accuracy, bonus = r.Bonus, fast = r.Fast, team = r.Team,
+                }).ToArray(),
+                bets = _betRows.Select(b => new { seat = b.Seat, on = b.On, ok = b.Ok }).ToArray(),
+            },
+            scores = (long[])_scores.Clone(),
+            result = _winners is null ? null : new { winners = (int[])_winners.Clone(), scores = (long[])_scores.Clone() },
+            // Підсумок усіх запитань — лише коли партію зіграно: посеред гри він лише відволікав би.
+            recap = _phase != PhaseDone ? null : _recap.Select(r => new
+            {
+                question = r.Question, unit = r.Unit, answer = r.Answer, years = r.Years,
+                best = r.Best, value = r.Value, points = r.Points, by = r.By >= 0 ? r.By : (int?)null, photo = r.Photo,
+            }).ToArray(),
+            daily = DailyView(me),
+        };
+    }
+
+    /// <summary>Пропозиції своєї команди (лише під час відповіді).</summary>
+    object? TeamView(int me)
+    {
+        if (_teams == 0 || me < 0 || _teamOf[me] is not (var t and >= 0) || _phase != PhaseAsk) return null;
+        return new
         {
-            question = r.Question, unit = r.Unit, answer = r.Answer, years = r.Years,
-            best = r.Best, value = r.Value, points = r.Points,
-        }).ToArray(),
-    };
+            t,
+            captain = _captain[t],
+            final = _teamFinal[t],
+            drafts = Members(t).Where(x => _answers[x] is not null).Select(x =>
+            {
+                int up = 0, down = 0;
+                for (var v = 0; v < MaxSeats; v++) { if (_vote[v, x] > 0) up++; else if (_vote[v, x] < 0) down++; }
+                return new { seat = x, value = _answers[x]!.Value, up, down, mine = (int)_vote[me, x] };
+            }).ToArray(),
+        };
+    }
+
+    /// <summary>Своє для «Скільки? дня» (таблиця дня, рядок «поділитись»). У звичайній грі — нічого.</summary>
+    private protected virtual object? DailyView(int me) => null;
 
     /// <summary>Кадр — лише разом із новиною (чиєсь число, зміна фази): відлік, галочки й рахунок. Нічого прихованого — кадр летить усій кімнаті.</summary>
     public override object? Frame() => new
@@ -523,12 +871,13 @@ public sealed class Skilky : Game
         scores = (long[])_scores.Clone(),
     };
 
-    SkilkyQuestion? Current => _at >= 0 && _at < _asked.Count ? _asked[_at].Q : null;
+    private protected SkilkyQuestion? Current => _at >= 0 && _at < _asked.Count ? _asked[_at].Q : null;
 
     bool[] Answered()
     {
         var flags = new bool[MaxSeats];
-        for (var s = 0; s < MaxSeats; s++) flags[s] = _answers[s] is not null;
+        // У фазі ставок галочка — «поставив», інакше — «написав число» (у командах — пропозицію).
+        for (var s = 0; s < MaxSeats; s++) flags[s] = _phase == PhaseBet ? _betOn[s] >= 0 : _answers[s] is not null;
         return flags;
     }
 
@@ -601,7 +950,7 @@ public sealed class Skilky : Game
         // Найближчий без жодного очка за точність: у компанії він бере бонус («очко втіхи»), самому — нічого.
         var bank = best.Accuracy == 0 ? (best.Bonus > 0 ? Wide : Lonely) : SameDiff(best.Diff, 0) ? Exact : Flavors;
         return string.Format(CultureInfo.InvariantCulture, bank[Ctx.Rng.Next(bank.Length)],
-            Ctx.NickOf(best.Seat) ?? SeatName(best.Seat), Num(best.Diff));
+            best.Team >= 0 ? TeamNames[best.Team] : Ctx.NickOf(best.Seat) ?? SeatName(best.Seat), Num(best.Diff));
     }
 
     /// <summary>
@@ -609,7 +958,7 @@ public sealed class Skilky : Game
     /// ставимо руками, а не культурою «uk-UA»: збірка може піти в режимі InvariantGlobalization, і тоді
     /// культура мовчки віддала б крапку — а людина набирала «2,5» і чекає «2,5» назад.
     /// </summary>
-    static string Num(double v) =>
+    private protected static string Num(double v) =>
         Math.Abs(v - Math.Round(v)) < 1e-9 && Math.Abs(v) < 1e15
             ? Math.Round(v).ToString("#,##0", CultureInfo.InvariantCulture).Replace(",", " ")
             : v.ToString("#,##0.###", CultureInfo.InvariantCulture).Replace(",", " ").Replace('.', ',');

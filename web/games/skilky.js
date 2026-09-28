@@ -17,7 +17,7 @@
     + '<path d="M5.2 5.5a2.8 2.8 0 1 1 3.7 2.7c-.7.3-1 .8-1 1.5v.4" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round"/>'
     + '<circle cx="7.9" cy="13" r="1.3" fill="var(--clay)"/></svg>';
 
-  const MS = { between: 3000, ask: 30000, reveal: 6000 };
+  const MS = { between: 3000, ask: 30000, bet: 10000, reveal: 6000 };
 
   /// Шкала очок словами — та сама, що в Skilky.Accuracy на сервері. Міняєш там — міняй і тут.
   const RULES = 'Очки за точність: до 2 % — 5, до 10 % — 4 (промах на одиницю — теж 4), до 25 % — 3, до 50 % — 2, '
@@ -54,6 +54,53 @@
     'хромосом': ['хромосома', 'хромосоми'], 'хребців': ['хребець', 'хребці'], 'ніг': ['нога', 'ноги'], 'станцій': ['станція', 'станції'],
     'пісень': ['пісня', 'пісні'], 'фільмів': ['фільм', 'фільми'], 'світлових років': ['світловий рік', 'світлові роки'],
     'вершин': ['вершина', 'вершини'], 'планет': ['планета', 'планети'], 'кольорів': ['колір', 'кольори'], 'медалей': ['медаль', 'медалі'],
+    // Прохід №3: решта лічильних одиниць банку — «3 п'ятниці», а не «3 п'ятниць».
+    'партій': ['партія', 'партії'], 'клавіш': ['клавіша', 'клавіші'], 'карт': ['карта', 'карти'],
+    'байтів': ['байт', 'байти'], '«Оскарів»': ['«Оскар»', '«Оскари»'], 'бітів': ['біт', 'біти'],
+    'знаків': ['знак', 'знаки'], 'контактів': ['контакт', 'контакти'], 'сходинок': ['сходинка', 'сходинки'],
+    'депутатів': ['депутат', 'депутати'], 'штатів': ['штат', 'штати'], 'зірок': ['зірка', 'зірки'],
+    'пар': ['пара', 'пари'], 'м\'язів': ['м\'яз', 'м\'язи'], 'симфоній': ['симфонія', 'симфонії'],
+    'кілець': ['кільце', 'кільця'], 'нулів': ['нуль', 'нулі'], 'бань': ['баня', 'бані'], 'аркушів': ['аркуш', 'аркуші'],
+    'статей': ['стаття', 'статті'], 'творів': ['твір', 'твори'], 'томів': ['том', 'томи'], 'звуків': ['звук', 'звуки'],
+    'отворів': ['отвір', 'отвори'], 'позицій': ['позиція', 'позиції'], 'комбінацій': ['комбінація', 'комбінації'],
+    'біткоїнів': ['біткоїн', 'біткоїни'], 'ієрогліфів': ['ієрогліф', 'ієрогліфи'], 'областей': ['область', 'області'],
+    'суддів': ['суддя', 'судді'], 'смуг': ['смуга', 'смуги'], 'поясів': ['пояс', 'пояси'],
+    'материків': ['материк', 'материки'], 'сузір\'їв': ['сузір\'я', 'сузір\'я'], 'очей': ['око', 'ока'],
+    'півтонів': ['півтон', 'півтони'], 'кадрів': ['кадр', 'кадри'], 'фігур': ['фігура', 'фігури'],
+    'кісточок': ['кісточка', 'кісточки'], 'лунок': ['лунка', 'лунки'], 'доріжок': ['доріжка', 'доріжки'],
+    'раундів': ['раунд', 'раунди'], 'елементів': ['елемент', 'елементи'], 'сердечок': ['сердечко', 'сердечка'],
+    'голосових': ['голосове', 'голосові'], 'повідомлень': ['повідомлення', 'повідомлення'], 'ачівок': ['ачівка', 'ачівки'],
+    'черепків': ['черепок', 'черепки'], 'держав': ['держава', 'держави'],
+    'градусів морозу': ['градус морозу', 'градуси морозу'], 'веж': ['вежа', 'вежі'], 'відтінків': ['відтінок', 'відтінки'],
+    'козаків': ['козак', 'козаки'], 'куренів': ['курінь', 'курені'], 'частин': ['частина', 'частини'],
+    'рублів': ['рубль', 'рублі'], 'універсалів': ['універсал', 'універсали'], 'карбованців': ['карбованець', 'карбованці'],
+    'байок': ['байка', 'байки'], 'відмінків': ['відмінок', 'відмінки'], 'кнопок': ['кнопка', 'кнопки'],
+    'педалей': ['педаль', 'педалі'], 'інструментів': ['інструмент', 'інструменти'], 'тактів': ['такт', 'такти'],
+    'сонат': ['соната', 'сонати'], 'ноктюрнів': ['ноктюрн', 'ноктюрни'], 'рапсодій': ['рапсодія', 'рапсодії'],
+    'каприсів': ['каприс', 'каприси'], 'прелюдій': ['прелюдія', 'прелюдії'], 'дітей': ['дитина', 'дитини'],
+    'балів': ['бал', 'бали'], 'категорій': ['категорія', 'категорії'], 'плиток': ['плитка', 'плитки'],
+    'вагончиків': ['вагончик', 'вагончики'], 'номінацій': ['номінація', 'номінації'], 'книжок': ['книжка', 'книжки'],
+    'гномів': ['гном', 'гноми'], 'романів': ['роман', 'романи'], 'покемонів': ['покемон', 'покемони'],
+    'рівнів': ['рівень', 'рівні'], 'крапок': ['крапка', 'крапки'], 'прибульців': ['прибулець', 'прибульці'],
+    'ділянок': ['ділянка', 'ділянки'], 'шашок': ['шашка', 'шашки'], 'перетинів': ['перетин', 'перетини'],
+    'брусків': ['брусок', 'бруски'], 'тайлів': ['тайл', 'тайли'], 'шестикутників': ['шестикутник', 'шестикутники'],
+    'підказок': ['підказка', 'підказки'], 'способів': ['спосіб', 'способи'], 'наліпок': ['наліпка', 'наліпки'],
+    'ходів': ['хід', 'ходи'], 'фаланг': ['фаланга', 'фаланги'], 'квіток': ['квітка', 'квітки'],
+    'одиниць': ['одиниця', 'одиниці'], 'кігтів': ['кіготь', 'кігті'], 'голок': ['голка', 'голки'],
+    'кінцівок': ['кінцівка', 'кінцівки'], 'щілин': ['щілина', 'щілини'], 'присосок': ['присоска', 'присоски'],
+    'змахів': ['змах', 'змахи'], 'фасеток': ['фасетка', 'фасетки'], 'листків': ['листок', 'листки'],
+    'дотиків': ['дотик', 'дотики'], 'пелюсток': ['пелюстка', 'пелюстки'], 'хвоїнок': ['хвоїнка', 'хвоїнки'],
+    'шипів': ['шип', 'шипи'], 'польотів': ['політ', 'польоти'], 'атомів': ['атом', 'атоми'], 'чисел': ['число', 'числа'],
+    'діагоналей': ['діагональ', 'діагоналі'], 'граней': ['грань', 'грані'], 'озер': ['озеро', 'озера'],
+    'островів': ['острів', 'острови'], 'кантонів': ['кантон', 'кантони'], 'провінцій': ['провінція', 'провінції'],
+    'земель': ['земля', 'землі'], 'префектур': ['префектура', 'префектури'], 'регіонів': ['регіон', 'регіони'],
+    'спільнот': ['спільнота', 'спільноти'], 'заклепок': ['заклепка', 'заклепки'], 'поверхів': ['поверх', 'поверхи'],
+    'колон': ['колона', 'колони'], 'ключок': ['ключка', 'ключки'], 'пір\'їн': ['пір\'їна', 'пір\'їни'],
+    'голів': ['голова', 'голови'], 'п\'ятниць': ['п\'ятниця', 'п\'ятниці'], 'місць': ['місце', 'місця'],
+    'ламп': ['лампа', 'лампи'], 'пікселів': ['піксель', 'пікселі'], 'патентів': ['патент', 'патенти'],
+    'адресатів': ['адресат', 'адресати'], 'баронів': ['барон', 'барони'], 'воїнів': ['воїн', 'воїни'],
+    'серверів': ['сервер', 'сервери'], 'адрес': ['адреса', 'адреси'], 'переходів': ['перехід', 'переходи'],
+    'афоризмів': ['афоризм', 'афоризми'], 'транзисторів': ['транзистор', 'транзистори'], 'колонок': ['колонка', 'колонки'],
   };
 
   function unitFor(n, unit) {
@@ -135,7 +182,7 @@
     if (!box) return;
     const done = ticks(ctx, v);
     // У лобі склад столу вже видно в шапці картки — другий раз його малювати нема чого.
-    const show = ctx.playing && (v.phase === 'ask' || v.phase === 'between');
+    const show = ctx.playing && (v.phase === 'ask' || v.phase === 'between' || v.phase === 'bet') && !v.teams;
     const html = show ? seats(ctx).map((i) => '<span class="skchip' + (done[i] ? ' on' : '') + '">'
       + (done[i] ? '✓ ' : '') + ctx.esc(ctx.nickOf(i)) + '</span>').join('') : '';
     setHtml(box, html);
@@ -207,7 +254,7 @@
       // --n — порядковий номер рядка: рядки випливають по черзі, від найближчого (skilky.css).
       return '<div class="skrow' + (x.points ? ' on' : '') + (bonus ? ' best' : '') + '" style="--n:' + n + '">'
         + '<span class="skn">' + (bonus ? '🏆 ' : '') + (fast ? '⚡ ' : '')
-        + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + '</span>'
+        + ctx.esc(whoOf(ctx, v, x)) + '</span>'
         + '<span class="skv">' + yearOr(r.years, x.value) + '</span>'
         + '<span class="skd muted small">' + missText(r, x) + '</span>'
         + '<span class="skp"' + (why ? ' title="' + why + '"' : '') + '>'
@@ -283,6 +330,192 @@
     }, () => {});
   }
 
+
+  // ---------------------------------------------------------------- прохід №3 (29.09)
+
+  const TEAM_CLASS = ['skt0', 'skt1', 'skt2', 'skt3'];
+
+  /// Хто це в рядку: у командах — назва команди, інакше нік.
+  function whoOf(ctx, v, x) {
+    if (x.team != null && x.team >= 0 && v.teams && v.teams[x.team]) return v.teams[x.team].name;
+    return ctx.nickOf(x.seat) || ctx.seatName(x.seat);
+  }
+
+  /// Числова пряма (№42): усі числа крапками, правда — прапорцем. Роки — лінійно, решта — логарифмом, коли
+  /// числа розкидані на порядки: тоді чиєсь «у 38 000 разів більше» видно, наскільки воно далеко.
+  function lineHtml(ctx, v) {
+    const r = v.reveal;
+    const rows = (r && r.rows) || [];
+    if (!rows.length) return '';
+    const vals = rows.map((x) => x.value).concat([r.answer]);
+    const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    if (!(hi > lo)) return '';
+    const log = !r.years && lo > 0 && hi / lo > 4;
+    const f = (x) => (log ? Math.log10(x) : x);
+    const a = f(lo), b = f(hi);
+    const pos = (x) => 3 + 94 * (f(x) - a) / (b - a);
+    const narrow = rows.length > 5;
+    const lanes = [-1e9, -1e9, -1e9];
+    const dots = rows.map((x, n) => ({ x, n, p: pos(x.value) })).sort((p, q) => p.p - q.p).map((d) => {
+      let lane = lanes.findIndex((l) => d.p - l > (narrow ? 7 : 13));
+      if (lane < 0) lane = lanes.indexOf(Math.min.apply(null, lanes));
+      lanes[lane] = d.p;
+      const who = whoOf(ctx, v, d.x);
+      const label = narrow ? String(d.n + 1) : who;
+      return '<span class="skdot' + (d.x.bonus ? ' best' : '') + '" style="left:' + d.p.toFixed(1) + '%;--l:' + lane + '" title="'
+        + ctx.esc(who + ': ' + yearOr(r.years, d.x.value)) + '"><i></i><b>' + ctx.esc(label) + '</b></span>';
+    }).join('');
+    const flag = '<span class="skflag" style="left:' + pos(r.answer).toFixed(1) + '%" title="Правда: ' + yearOr(r.years, r.answer) + '">🚩</span>';
+    return '<div class="skline" aria-hidden="true"><div class="skaxis">' + dots + flag + '</div>'
+      + '<div class="skends muted small"><span>' + yearOr(r.years, lo) + '</span>'
+      + (log ? '<span>шкала в разах</span>' : '') + '<span>' + yearOr(r.years, hi) + '</span></div></div>';
+  }
+
+  /// Ставки розкритого раунду: хто на кого поставив і чи вгадав.
+  function betsHtml(ctx, v) {
+    const list = (v.reveal && v.reveal.bets) || [];
+    if (!list.length) return '';
+    return '<div class="skbets small"><b>🎲 Ставки:</b> ' + list.map((b) => '<span class="' + (b.ok ? 'ok' : 'no') + '">'
+      + ctx.esc(ctx.nickOf(b.seat) || ctx.seatName(b.seat)) + ' → ' + ctx.esc(ctx.nickOf(b.on) || ctx.seatName(b.on))
+      + (b.ok ? ' ✓ +2' : ' ✗') + '</span>').join(' ') + '</div>';
+  }
+
+  /// Фаза ставок (№41): числа вже на столі, правди ще нема — тисни, чиє найближче.
+  function betHtml(ctx, v) {
+    const bet = v.bet;
+    if (!bet) return '';
+    const can = ctx.mine && ctx.playing;
+    const unit = v.unit === 'рік';
+    return '<div class="skbetq">🎲 Чиє число найближче до правди? Вгадаєш — <b>+2</b></div><div class="skbetl">'
+      + bet.values.map((x) => {
+        const own = x.seat === ctx.seat;
+        const on = bet.on === x.seat;
+        return '<button type="button" class="skbetb' + (on ? ' on' : '') + '" data-bet="' + x.seat + '"'
+          + (!can || own ? ' disabled' : '') + '><span>' + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + (own ? ' (ти)' : '')
+          + '</span><b>' + yearOr(unit, x.value) + '</b></button>';
+      }).join('') + '</div>';
+  }
+
+  /// Своя команда під час відповіді (№47): пропозиції, 👍/👎 і «Подати» для капітана.
+  function teamHtml(ctx, v) {
+    const t = v.team;
+    if (!t || !v.teams) return '';
+    const team = v.teams[t.t] || {};
+    const cap = t.captain === ctx.seat;
+    const unit = v.unit === 'рік';
+    const head = '<div class="skteamh ' + TEAM_CLASS[t.t] + '"><b>' + ctx.esc(team.name || '') + '</b> · капітан: '
+      + ctx.esc(ctx.nickOf(t.captain) || '—') + (cap ? ' <i>(ти — подаєш число команди)</i>' : '') + '</div>';
+    const fin = t.final != null ? '<div class="skteamf">✅ Подано від команди: <b>' + yearOr(unit, t.final) + '</b></div>' : '';
+    const rows = (t.drafts || []).map((d) => {
+      const own = d.seat === ctx.seat;
+      return '<div class="skdraft"><span>' + ctx.esc(ctx.nickOf(d.seat) || '') + '</span><b>' + yearOr(unit, d.value) + '</b>'
+        + '<span class="skvotes">' + (own ? '<i>👍 ' + d.up + ' · 👎 ' + d.down + '</i>'
+          : '<button type="button" class="ghost' + (d.mine > 0 ? ' on' : '') + '" data-vote="' + d.seat + '" data-up="1">👍 ' + d.up + '</button>'
+          + '<button type="button" class="ghost' + (d.mine < 0 ? ' on' : '') + '" data-vote="' + d.seat + '" data-up="0">👎 ' + d.down + '</button>')
+        + (cap && !own ? '<button type="button" class="primary" data-take="' + d.value + '">Подати</button>' : '') + '</span></div>';
+    }).join('');
+    const hint = cap ? '' : '<div class="muted small">Пиши своє — це пропозиція. Подає капітан; мовчить — піде найвподобаніша 👍</div>';
+    return head + fin + rows + hint;
+  }
+
+  /// Команди в лобі й у паузі: хто з ким.
+  function teamsLine(ctx, v) {
+    if (!v.teams) return '';
+    return '<div class="skteams small">' + v.teams.map((t, i) => '<span class="' + TEAM_CLASS[i] + '"><b>' + ctx.esc(t.name) + '</b> '
+      + t.seats.map((s) => ctx.esc(ctx.nickOf(s) || '')).join(', ') + '</span>').join('') + '</div>';
+  }
+
+  /// «Питання про нас» (№44): форма в лобі й між партіями.
+  function oursHtml(ctx, v) {
+    const o = v.ours || {};
+    const who = (o.seats || []).map((s) => ctx.esc(ctx.nickOf(s) || '')).filter(Boolean);
+    const others = who.length ? '<div class="muted small">📝 Своє питання вже дописали: ' + who.join(', ') + '</div>' : '';
+    if (!ctx.mine) return others;
+    if (o.mine) {
+      return '<div class="skoursme small">📝 Твоє питання чекає: «' + ctx.esc(o.mine.q) + '» — ' + num(o.mine.a)
+        + (o.mine.unit ? ' ' + ctx.esc(o.mine.unit) : '') + ' <button type="button" class="ghost" data-ours-del>Прибрати</button></div>' + others;
+    }
+    return '<details class="skoursf"><summary>📝 Дописати своє питання про нас</summary>'
+      + '<div class="muted small">Про компанію: «Скільки км Влад проїхав на велику?» Відповідь знаєш лише ти — ти й не відповідаєш.</div>'
+      + '<input class="skoq" maxlength="160" placeholder="Скільки…?" aria-label="Питання">'
+      + '<div class="skoarow"><input class="skoa" inputmode="decimal" placeholder="відповідь (число)" aria-label="Відповідь">'
+      + '<input class="skou" maxlength="24" placeholder="одиниця: км, разів, рік" aria-label="Одиниця">'
+      + '<button type="button" class="primary" data-ours-save>Записати</button></div></details>' + others;
+  }
+
+  /// Підсумок «Скільки? дня» (№48): таблиця дня й рядок «поділитись».
+  function dailyHtml(ctx, v) {
+    const d = v.daily;
+    if (!d) return '';
+    if (v.phase !== 'done' || !d.board) {
+      return '<div class="skdayh">☀ Скільки? дня №' + d.no + ' — п’ять питань, однакових для всіх, одна спроба'
+        + (d.players ? ' · сьогодні вже зіграли: ' + d.players : '') + '</div>';
+    }
+    const rows = d.board.map((r, i) => '<div class="skdayr' + (d.place === i + 1 ? ' me' : '') + '"><span>' + (i + 1) + '.</span><span>'
+      + ctx.esc(r.nick) + '</span><span class="skdaym">' + ctx.esc(r.marks) + '</span><b>' + r.points + '</b></div>').join('');
+    return '<div class="skdayh">☀ Таблиця дня №' + d.no + (d.place ? ' · ти ' + d.place + '-й з ' + d.players : '') + '</div>'
+      + '<div class="skdayt">' + rows + '</div>'
+      + (d.share ? '<button type="button" class="ghost" data-share>📋 Скопіювати результат для Балачок</button>' : '')
+      + '<div class="muted small">Нові питання — завтра опівночі</div>';
+  }
+
+  function paintNew(root, ctx) {
+    const v = ctx.view || {};
+    const phase = v.phase || 'between';
+    // Фото «Якого року?» — src міняємо лише коли адреса інша (інакше кожен вид перезавантажував би картинку).
+    const ph = root.querySelector('.skphoto');
+    const img = ph.querySelector('img');
+    // На підсумку партії фото вже не треба — там таблиця.
+    const src = v.photo && (phase === 'ask' || phase === 'bet' || phase === 'reveal') ? v.photo : '';
+    if (img.getAttribute('src') !== src) {
+      if (src) img.setAttribute('src', src); else img.removeAttribute('src');
+      ph.classList.remove('skzoom');
+    }
+    ph.hidden = !src;
+    const c = v.credit;
+    setHtml(ph.querySelector('.skcredit'), c ? '<b>' + ctx.esc(c.caption) + '</b><span class="muted">Фото: ' + ctx.esc(c.author) + ' · '
+      + ctx.esc(c.license) + ' · <a href="' + ctx.esc(c.page) + '" target="_blank" rel="noopener">Вікісховище</a></span>' : '');
+
+    const by = root.querySelector('.skby');
+    const byText = v.by != null && phase !== 'between' ? (v.by === ctx.seat && ctx.mine
+      ? '📝 Це твоє питання — ти мовчиш, дивись, як мучаються інші 😉' : '📝 Питання від ' + (ctx.nickOf(v.by) || 'когось із нас')) : '';
+    if (by.textContent !== byText) by.textContent = byText;
+    by.hidden = !byText;
+
+    setHtml(root.querySelector('.skbet'), phase === 'bet' ? betHtml(ctx, v) : '');
+    setHtml(root.querySelector('.skteam'), phase === 'ask' ? teamHtml(ctx, v) : '');
+    setHtml(root.querySelector('.skteamsl'), (phase === 'between' || !ctx.playing) ? teamsLine(ctx, v) : '');
+    setHtml(root.querySelector('.skextra'), phase === 'reveal' ? lineHtml(ctx, v) + betsHtml(ctx, v) : '');
+    const oursOn = !v.daily && (!ctx.playing || phase === 'done');
+    const ob = root.querySelector('.skours');
+    // Форму не перебудовуємо, поки людина в ній пише.
+    if (!ob.contains(document.activeElement)) setHtml(ob, oursOn ? oursHtml(ctx, v) : '');
+    setHtml(root.querySelector('.skdaily'), dailyHtml(ctx, v));
+  }
+
+  function onClick(root, ctx, e) {
+    // Тап по фото — на весь екран і назад (на телефоні фото дрібне, а рік ховається в деталях).
+    const fig = e.target.closest('.skphoto');
+    if (fig && e.target.tagName === 'IMG') { fig.classList.toggle('skzoom'); return; }
+    const t = e.target.closest('button');
+    if (!t || !root.contains(t)) return;
+    if (t.dataset.bet != null) ctx.act('bet', { seat: +t.dataset.bet });
+    else if (t.dataset.vote != null) ctx.act('vote', { seat: +t.dataset.vote, up: t.dataset.up === '1' });
+    else if (t.dataset.take != null) ctx.act('answer', { value: +t.dataset.take });
+    else if (t.hasAttribute('data-ours-del')) ctx.act('ours', { q: '' });
+    else if (t.hasAttribute('data-ours-save')) {
+      const q = (root.querySelector('.skoq') || {}).value || '';
+      const a = (root.querySelector('.skoa') || {}).value || '';
+      const unit = (root.querySelector('.skou') || {}).value || '';
+      Promise.resolve(ctx.act('ours', { q, a, unit })).then((r) => { if (r && r.ok && document.activeElement) document.activeElement.blur(); paint(root, ctx); }, () => {});
+    } else if (t.hasAttribute('data-share')) {
+      const text = ((ctx.view || {}).daily || {}).share || '';
+      const done = () => ctx.toast('Скопійовано — встав у Балачки');
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => ctx.toast(text));
+      else ctx.toast(text);
+    }
+  }
+
   function paint(root, ctx) {
     const v = ctx.view || {};
     const st = state(root);
@@ -327,7 +560,8 @@
     const input = root.querySelector('.skin');
     if (st.round !== v.round) { st.round = v.round; input.value = ''; }
     st.my = phase === 'ask' ? v.my : null;
-    const canAsk = mine && phase === 'ask';
+    // Автор «питання про нас» на своє не відповідає.
+    const canAsk = mine && phase === 'ask' && v.by !== ctx.seat;
     const opened = canAsk && ask.hidden;
     ask.hidden = !canAsk;
     input.disabled = !canAsk;
@@ -341,6 +575,8 @@
     const unitText = v.unit || '';
     if (unit.textContent !== unitText) unit.textContent = unitText;
     unit.hidden = !unitText || !canAsk;
+    const ph = v.team ? (v.team.captain === ctx.seat ? 'число команди' : 'пропозиція команді') : 'твоє число';
+    if (input.placeholder !== ph) input.placeholder = ph;
 
     const my = root.querySelector('.skmy');
     const myText = v.my != null && phase === 'ask' ? 'Твоє число: ' + yearOr(v.unit === 'рік', v.my) + '. Можна змінити, поки є час'
@@ -359,17 +595,21 @@
 
     paintWho(root, ctx);
     paintScores(root, ctx);
+    paintNew(root, ctx);
   }
 
-  HGames.register({
+  // Той самий модуль малює і стіл, і «Скільки? дня» (сервер: Client = "skilky").
+  const MOD = {
     id: 'skilky',
     news: {
-      v: '2026-09-28',
-      title: 'Скільки?: хто переміг — видно одразу',
+      v: '2026-09-29',
+      title: 'Скільки?: ставки, команди, питання про нас і фото',
       items: [
-        '🏆 Наприкінці вгорі картки — переможець партії і твоє місце (а 🏆 «найближчий у питанні» більше не плутає)',
-        '🔢 Поки набираєш, під полем видно число з пробілами: «= 13 800 000 000» — нуль не загубиться',
-        '📱 На телефоні після відповіді клавіатура ховається, а рахунок з’являється, щойно в когось є очки',
+        '📷 Нова тема «Якого року?»: 140 фото подій, людей і дивовиж 1851–2022 — вгадай рік зйомки; тап по фото — на весь екран',
+        '☀ «Скільки? дня»: п’ять питань, однакових для всіх, таблиця дня й рядок для Балачок',
+        '🎲 «Ставлю на чуже» (опція): числа на столі без правди — вгадай, чиє найближче, +2',
+        '👥 Команди 2–4 (опція) і 📝 питання про нас: допиши своє в лобі — інші вгадують',
+        '📏 У розкритті — числова пряма з усіма числами й 🚩 правдою; 🏺 тема «Наше» про ігри сайту',
       ],
     },
     icon: ICON,
@@ -383,16 +623,24 @@
         + '<div class="skmain">'
         + '<div class="sktop"><span class="skno muted small"></span></div>'
         + '<div class="skpod" hidden></div>'
+        + '<div class="skdaily"></div>'
+        + '<div class="skby small" hidden></div>'
         + '<div class="skq"></div>'
+        + '<figure class="skphoto" hidden><img alt="Фото — якого року?" decoding="async"><figcaption class="skcredit small"></figcaption></figure>'
         + '<div class="skrules muted small" hidden>' + RULES + '</div>'
         + '<div class="skask" hidden><input class="skin" type="text" inputmode="decimal" autocomplete="off"'
         + ' placeholder="твоє число" aria-label="Твоє число"><span class="skunit muted small"></span>'
         + '<button type="button" class="primary skgo">Відповісти</button></div>'
         + '<div class="skprev small" aria-live="polite"></div>'
         + '<div class="skmy muted small"></div>'
+        + '<div class="skteamsl"></div>'
+        + '<div class="skbet"></div>'
+        + '<div class="skteam"></div>'
         + '<div class="skrev"></div>'
+        + '<div class="skextra"></div>'
         + '<div class="skrecapbox"></div>'
         + '<div class="skwho"></div>'
+        + '<div class="skours"></div>'
         + '</div>'
         + '<div class="skscore"></div>'
         + '</div>';
@@ -403,6 +651,9 @@
         answer(root, ctx);
       });
       root.querySelector('.skin').addEventListener('input', () => paintPreview(root));
+      root.querySelector('.skwrap').addEventListener('click', (e) => onClick(root, ctx, e));
+      const img = root.querySelector('.skphoto img');
+      img.fetchPriority = 'high';
       paint(root, ctx);
     },
 
@@ -421,6 +672,9 @@
       // випереджає — а от після «Ще раз» кадр ще секунду тримає фазу минулої партії.
       const s = ctx.view || {};
       if (s.phase === 'ask') return ctx.mine ? 'Пиши число й тисни Enter' : 'Гравці думають…';
+      if (s.phase === 'bet') return ctx.mine ? 'Тисни, чиє число найближче: +2, якщо вгадаєш' : 'Ставки: чиє число найближче?';
+      if (s.phase === 'ask' && s.by === ctx.seat && ctx.mine) return 'Твоє питання — цього разу ти лише дивишся';
+      if (s.phase === 'ask' && s.team) return s.team.captain === ctx.seat ? 'Ти капітан: подай число команди' : 'Пропонуй число — подає капітан';
       if (s.phase === 'reveal') return 'Ось як було насправді';
       if (s.phase === 'between') return 'Зараз буде питання…';
       return '';
@@ -431,5 +685,13 @@
       if (arc && arc._arc) arc._arc.stop();
       root._sk = null;
     },
-  });
+  };
+  HGames.register(MOD);
+  HGames.register(Object.assign({}, MOD, {
+    id: 'skilky-daily',
+    added: '2026-09-29',
+    news: undefined,
+    icon: '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2" fill="var(--clay)"/>'
+      + '<path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  }));
 })();

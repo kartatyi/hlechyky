@@ -137,3 +137,58 @@
   .skrow { gap: 6px; padding: 5px 7px; font-size: .86em; }
   .skd { display: none; }
 }
+
+/* ---- прохід №3 (29.09): фото, числова пряма, ставки, команди, питання про нас, «Скільки? дня» ---- */
+.skphoto { margin: 8px 0; text-align: center; }
+.skphoto img { display: block; margin: 0 auto; max-width: 100%; max-height: min(52vh, 460px); border-radius: 10px;
+  background: var(--panel2, rgba(127,127,127,.12)); min-height: 120px; object-fit: contain; }
+.skphoto img[src] { cursor: zoom-in; }
+/* Низький екран (айфон 390×664, Steam Deck 1280×800): фото нижче, щоб поле відповіді не тікало за край; дрібниці — тап, і фото на весь екран. */
+@media (max-height: 820px) { .skphoto img { max-height: 40vh; } }
+@media (max-height: 700px) { .skphoto img { max-height: 28vh; min-height: 90px; } }
+.skphoto.skzoom img { position: fixed; inset: 0; margin: auto; z-index: 60; max-width: 96vw; max-height: 92vh; cursor: zoom-out;
+  box-shadow: 0 0 0 100vmax rgba(0,0,0,.82); }
+.skcredit { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.skcredit:empty { display: none; }
+.skcredit a { color: inherit; }
+.skby { margin: 4px 0; font-weight: 600; color: var(--accent); }
+.skline { margin: 12px 4px 4px; }
+.skaxis { position: relative; height: 64px; border-bottom: 2px solid var(--muted, #888); }
+.skdot { position: absolute; bottom: calc(-6px + var(--l, 0) * 18px); transform: translateX(-50%); display: flex;
+  flex-direction: column-reverse; align-items: center; pointer-events: auto; }
+.skdot i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg, #fff); }
+.skdot.best i { background: var(--ok, #2a2); }
+.skdot b { font-size: 11px; font-weight: 600; white-space: nowrap; max-width: 90px; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.1; margin-bottom: 1px; }
+.skflag { position: absolute; bottom: -4px; transform: translateX(-20%); font-size: 20px; line-height: 1; }
+.skends { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.skbets { margin: 6px 0; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.skbets .ok { color: var(--ok, #2a2); }
+.skbets .no { opacity: .7; }
+.skbetq { margin: 8px 0 6px; font-weight: 600; }
+.skbetl { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.skbetb { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; }
+.skbetb.on { outline: 2px solid var(--accent); background: var(--accent); color: var(--accent-ink, #fff); }
+.skteamh { margin: 8px 0 4px; }
+.skteamf { margin: 4px 0; }
+.skdraft { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,.2); }
+.skdraft > b { margin-left: auto; }
+.skvotes { display: flex; gap: 4px; align-items: center; }
+.skvotes button { min-height: 40px; min-width: 44px; }
+.skvotes button.on { outline: 2px solid var(--accent); }
+.skteams { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0; }
+.skt0 b { color: #d33; } .skt1 b { color: #36c; } .skt2 b { color: #2a8a3a; } .skt3 b { color: #c90; }
+.skours { margin-top: 8px; }
+.skoursf summary { cursor: pointer; min-height: 32px; font-weight: 600; }
+.skoursf input { width: 100%; margin-top: 6px; box-sizing: border-box; min-height: 40px; }
+.skoarow { display: flex; flex-wrap: wrap; gap: 6px; }
+.skoarow input { flex: 1 1 120px; width: auto; }
+.skoarow button { margin-top: 6px; min-height: 40px; }
+.skoursme { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.skdayh { font-weight: 600; margin: 4px 0 6px; }
+.skdayt { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.skdayr { display: grid; grid-template-columns: 2em 1fr auto 3em; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 6px; }
+.skdayr.me { background: var(--skrow, rgba(127,127,127,.15)); }
+.skdayr b { text-align: right; }
+.skdaym { letter-spacing: 1px; }
+@media (prefers-reduced-motion: reduce) { .skdot, .skflag { transition: none; } }

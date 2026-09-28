@@ -45,6 +45,7 @@ public static class GamesSetup
         Impl.DotepySetup.AddDotepy(services);               // «Дотепи»: голос Глека, голос публіки
         Impl.GeoSetup.AddGeo(services);   // «Де це?»: фото з Вікісховища в cache/geo
         Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
+        Impl.SkilkySetup.AddSkilky(services);   // «Скільки?»: фото «Якого року?» в cache/skilky, таблиця дня
         Impl.PictionarySetup.AddPictionary(services);       // Піктіонарі: публічний альбом і рекорди пар
         return services;
     }
@@ -61,6 +62,7 @@ public static class GamesSetup
         Impl.VohnykSetup.MapVohnyk(app);                   // /api/games/vohnyk/best — таблиця рівня
         Impl.DotepySetup.MapDotepy(app);                    // /api/games/dotepy/jury — голос публіки «Дотепів»
         Impl.GeoSetup.MapGeo(app);   // /api/games/geo/<токен>.jpg
+        Impl.SkilkySetup.MapSkilky(app);   // /api/games/skilky/photo/<токен>.jpg
         Impl.PictionarySetup.MapPictionary(app);            // /api/games/pictionary/… — альбом, 📌, реакції глядачів, пари
         return app;
     }
