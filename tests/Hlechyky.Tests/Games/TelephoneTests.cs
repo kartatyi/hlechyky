@@ -359,7 +359,7 @@ public class TelephoneTests
 
         Assert.Equal("step", Phase(h));
         Assert.True(h.View(null).GetProperty("duo").GetBoolean());
-        Assert.Equal(2, h.View(null).GetProperty("steps").GetInt32());
+        Assert.Equal(Telephone.DuoSteps, h.View(null).GetProperty("steps").GetInt32());
         for (var s = 0; s < 2; s++)
         {
             Assert.Equal(Telephone.Draw, Kind(h, s));
@@ -387,12 +387,11 @@ public class TelephoneTests
     public void Two_players_reveal_the_jug_phrase_first_and_nobody_likes_it()
     {
         var h = Table(2);
-        EveryoneSubmits(h, 2);
-        EveryoneSubmits(h, 2);
+        for (var i = 0; i < Telephone.DuoSteps; i++) EveryoneSubmits(h, 2);
 
         Assert.Equal("reveal", Phase(h));
         var reveal = h.View(0).GetProperty("reveal");
-        Assert.Equal(3, reveal.GetProperty("total").GetInt32());
+        Assert.Equal(1 + Telephone.DuoSteps, reveal.GetProperty("total").GetInt32());
         Assert.Equal(2, reveal.GetProperty("chains").GetInt32());
         var first = reveal.GetProperty("entries")[0];
         Assert.Equal(Telephone.Jug, first.GetProperty("seat").GetInt32());
@@ -406,17 +405,38 @@ public class TelephoneTests
     public void Two_players_play_to_the_end_and_likes_decide()
     {
         var h = Table(2);
-        EveryoneSubmits(h, 2);
-        EveryoneSubmits(h, 2);
+        for (var i = 0; i < Telephone.DuoSteps; i++) EveryoneSubmits(h, 2);
 
         Next(h);                                                    // малюнок Олі в її ланцюжку
         Assert.True(h.Act(1, "like", new { chain = 0, index = 1 }).Ok);
-        for (var i = 0; i < 6 && Phase(h) != "done"; i++) Next(h);
+        for (var i = 0; i < 12 && Phase(h) != "done"; i++) Next(h);
 
         Assert.Equal("done", Phase(h));
         var finished = Assert.Single(h.Finished);
         Assert.Equal([0], finished.Result.Winners);
         Assert.Contains("2 ланцюжки", finished.Result.Text);
+    }
+
+    [Fact]
+    public void Two_players_go_four_steps_and_draw_the_neighbours_description_of_their_own_drawing()
+    {
+        var h = Table(2);
+        EveryoneSubmits(h, 2);                                      // малюють фразу Глека
+        EveryoneSubmits(h, 2);                                      // описують чужий малюнок
+
+        Assert.Equal("step", Phase(h));
+        Assert.Equal(3, Step(h));
+        for (var s = 0; s < 2; s++)
+        {
+            Assert.Equal(Telephone.Draw, Kind(h, s));
+            Assert.Equal(s, Task(h, s).GetProperty("chain").GetInt32());   // знову свій ланцюжок — опис сусіда
+            Assert.Equal($"describe від {1 - s} крок 2", Task(h, s).GetProperty("prompt").GetProperty("text").GetString());
+        }
+        EveryoneSubmits(h, 2);
+        Assert.Equal(Telephone.Describe, Kind(h, 0));
+        Assert.Equal(1, Task(h, 0).GetProperty("chain").GetInt32());
+        EveryoneSubmits(h, 2);
+        Assert.Equal("reveal", Phase(h));
     }
 
     [Fact]
