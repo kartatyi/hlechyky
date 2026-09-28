@@ -8,7 +8,12 @@
   Сталь не міняється за партію, тому її шле лише вид: { width, height, sub, walls, need, ... }.
 
   Ввід: Input('move', { dir }) — 0 праворуч, 1 вниз, 2 ліворуч, 3 вгору, -1 стоп (напрямок «тримають»);
-  Input('fire') — постріл у напрямку дула.
+  Input('fire', { on: true|false }) — затиснув / відпустив «💥» (сервер стріляє сам, щойно можна);
+  Input('fire') без on — один натиск (зарано на ~150 мс — сервер його запам'ятає).
+
+  Прохід №3 (29.09): кадр ще має ev (події [id, як, хто, кого, серія]), e (ворожі 🤖 [слот, x, y, дуло, щит]) і wv
+  ([хвиля, скільки 🤖 лишилось]); вид — bush/ice (кущі й лід), teams, bases ([клітинка, команда, цілий]), coop
+  (скільки хвиль), note, end ('base' | 'waves' | 'time'), sum (підсумок, див. summary()).
 */
 (() => {
   // Розмір поля каже вид (width/height): до чотирьох — 21×15, на п'ятьох-шістьох — 27×19.
@@ -33,8 +38,11 @@
   const DELTA = [[1, 0], [0, 1], [-1, 0], [0, -1]];
   const SEATS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--muted', '#9db3a5'], ['--tblue', '#6fb3e8'], ['--tpink', '#e88ac0']];
   const BOOM_MS = 380;
-  const GLYPH = { speed: '⚡', twin: '🔫', rapid: '🚀', shield: '🛡', pierce: '💥' };
-  const PERK = { s: '⚡', t: '🔫', r: '🚀', p: '💥' };
+  const GLYPH = { speed: '⚡', twin: '🔫', rapid: '🚀', shield: '🛡', pierce: '💥', bounce: '🪃' };
+  const PERK = { s: '⚡', t: '🔫', r: '🚀', p: '💥', b: '🪃' };
+  const TEAMS = ['🥒 Огірки', '🍅 Помідори'];
+  const FEED_MS = 3000, BANNER_MS = 1600;
+  const SEATS_N = 6;
 
   const at = (cell, W) => [(cell % W) * PX, Math.floor(cell / W) * PX];
   /// На звичайному моніторі (DPR 1) мапа розтягується на 620+ пікселів і милиться — малюємо вдвічі щільніше.
@@ -63,6 +71,11 @@
       danger: st.css('--danger', '#e57373'),
       text: st.css('--text', '#ecf1ea'),
       shade: st.css('--gshade', 'rgba(15, 31, 24, .62)'),
+      ice: st.css('--tice', '#a9d6ea'),
+      bush: st.css('--tbush', '#3f8f4a'),
+      bush2: st.css('--tbush2', '#2c6b36'),
+      bot: st.css('--tbot', '#b0524a'),
+      ok: st.css('--ok', '#7bd389'),
       seats: SEATS.map(([name, fallback]) => st.css(name, fallback)),
     };
   }
@@ -95,6 +108,54 @@
     }
   }
 
+  function drawIce(pal, g, cells, W) {
+    for (const cell of cells || []) {
+      const [x, y] = at(cell, W);
+      g.fillStyle = pal.ice;
+      g.globalAlpha = 0.5;
+      g.fillRect(x, y, PX, PX);
+      g.globalAlpha = 0.9;
+      g.strokeStyle = pal.text;
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(x + 4, y + PX - 7); g.lineTo(x + 10, y + PX - 13);
+      g.moveTo(x + 11, y + PX - 5); g.lineTo(x + 18, y + PX - 12);
+      g.stroke();
+      g.globalAlpha = 1;
+    }
+  }
+
+  function drawBushes(pal, g, cells, W) {
+    for (const cell of cells || []) {
+      const [x, y] = at(cell, W);
+      g.fillStyle = pal.bush2;
+      g.fillRect(x, y, PX, PX);
+      g.fillStyle = pal.bush;
+      for (const [a, b, r] of [[6, 6, 6], [16, 7, 6], [8, 16, 6], [16, 16, 6], [11, 11, 5]]) {
+        g.beginPath();
+        g.arc(x + a, y + b, r, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+  }
+
+  /// Глеки-бази команд: плитка кольору команди й 🏺; розбитий — черепки.
+  function drawBases(pal, g, bases, W) {
+    for (const [cell, team, up] of bases || []) {
+      const [x, y] = at(cell, W);
+      g.fillStyle = team === 0 ? pal.ok : pal.danger;
+      g.globalAlpha = 0.35;
+      g.beginPath();
+      g.roundRect(x + 1, y + 1, PX - 2, PX - 2, 5);
+      g.fill();
+      g.globalAlpha = 1;
+      g.font = '15px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(up ? '🏺' : '💥', x + PX / 2, y + PX / 2 + 1);
+    }
+  }
+
   function drawLoot(pal, g, drops, now) {
     for (const d of drops || []) {
       const x = d.x * PX, y = d.y * PX;
@@ -113,11 +174,19 @@
 
   /// i — місце (його номер пишемо на башті: шість кольорів близькі, а цифру не сплутає й дальтонік),
   /// mine — це мій танк (кільце й стрілочка), start — іде відлік (тоді ще й «ти»).
-  function drawTank(pal, g, m, color, now, i, mine, start) {
+  function drawTank(pal, g, m, color, now, i, mine, start, team) {
     const px = (m.x / SUB) * PX, py = (m.y / SUB) * PX;
     const cx = px + PX / 2, cy = py + PX / 2;
     const [dx, dy] = DELTA[m.d] || DELTA[0];
     const horizontal = dy === 0;
+    if (team === 0 || team === 1) {
+      // Команда — кільцем під танком: 🥒 зелене, 🍅 червоне (номер і колір місця лишаються).
+      g.strokeStyle = team === 0 ? pal.ok : pal.danger;
+      g.lineWidth = 2;
+      g.beginPath();
+      g.roundRect(px - 1, py - 1, PX + 2, PX + 2, 6);
+      g.stroke();
+    }
     // гусениці — дві смуги по боках, перпендикулярно до руху
     g.fillStyle = pal.dark;
     if (horizontal) { g.fillRect(px + 2, py + 1, PX - 4, 5); g.fillRect(px + 2, py + PX - 6, PX - 4, 5); }
@@ -143,7 +212,7 @@
     g.font = '700 7px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(String(i + 1), cx, cy + 0.5);
+    g.fillText(i < SEATS_N ? String(i + 1) : '×', cx, cy + 0.5);
     if (mine) {
       // Своя стрілочка над танком: на шістьох «де я?» — перше питання після кожного повернення.
       const top = py - 2;
@@ -219,6 +288,24 @@
     return n + (t > 10 && t < 20 ? ' фрагів' : o === 1 ? ' фраг' : o >= 2 && o <= 4 ? ' фраги' : ' фрагів');
   };
 
+  /// Плашка просто на мапі: великий заголовок і рядок під ним.
+  function plate(pal, g, c, u, title, color, sub) {
+    g.fillStyle = pal.dark;
+    g.globalAlpha = 0.85;
+    g.beginPath();
+    g.roundRect(24, c.h / 2 - 36 * u, c.w - 48, 70 * u, 14);
+    g.fill();
+    g.globalAlpha = 1;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = '700 ' + Math.round(24 * u) + 'px system-ui, sans-serif';
+    g.fillStyle = color;
+    g.fillText(title, c.w / 2, c.h / 2 - 9 * u, c.w - 60);
+    g.font = Math.round(14 * u) + 'px system-ui, sans-serif';
+    g.fillStyle = pal.text;
+    g.fillText(sub, c.w / 2, c.h / 2 + 17 * u, c.w - 60);
+  }
+
   function drawShade(pal, g, c, f, waiting, st) {
     if (f.phase === 'go' || (f.phase === 'start' && waiting)) return;
     g.fillStyle = pal.shade;
@@ -228,6 +315,18 @@
       const ctx = st && st.ctx;
       const res = ctx && ctx.room && ctx.room.result;
       if (!res) return;
+      const v = ctx.view || {};
+      const u0 = c.w / (21 * PX);
+      if (v.coop || (v.teams && res.winners && res.winners.length) || (v.teams && v.end)) {
+        const won = v.coop ? v.end === 'waves' : true;
+        const team = !v.coop && res.winners && res.winners.length ? v.teams[res.winners[0]] : -1;
+        const wave = (f.wv && f.wv[0]) || 0;
+        const title = v.coop ? (won ? '🏆 Глек вистояв!' : '💔 Глек розбили') : team >= 0 ? '🏆 ' + TEAMS[team] : 'Нічия';
+        const sub = v.coop ? (won ? 'відбили ' + wave + ' з ' + v.coop + ' хвиль' : 'на ' + wave + '-й хвилі 🤖')
+          : team < 0 ? 'фрагів порівну' : v.end === 'base' ? 'розбили чужий глек' : 'більше фрагів за час';
+        plate(pal, g, c, u0, title, team === 0 ? pal.ok : team === 1 ? pal.danger : won ? pal.accent : pal.danger, sub);
+        return;
+      }
       const who = res.winners || [];
       const one = who.length === 1 ? who[0] : -1;
       const nick = one >= 0 ? (ctx.nickOf(one) || ctx.seatName(one)) : '';
@@ -265,7 +364,8 @@
     if (!f) return null;
     const a = cur && cur.a;
     const smooth = a && a !== f && a.p && a.t <= f.t && a.phase === f.phase;
-    if (!smooth) return { f, men: f.p || [], shells: f.s || [] };
+    const bots = (f.e || []).map((b) => ({ x: b[1], y: b[2], d: b[3], shield: b[4] ? 1 : 0, alive: true, slot: b[0] }));
+    if (!smooth) return { f, men: f.p || [], shells: f.s || [], bots };
     const k = cur.t;
     const was = new Map((a.s || []).map((s) => [s.i, s]));
     return {
@@ -277,6 +377,11 @@
       shells: (f.s || []).map((s) => {
         const w = was.get(s.i);
         return !w ? s : Object.assign({}, s, { x: lerp(w.x, s.x, k), y: lerp(w.y, s.y, k) });
+      }),
+      // 🤖 — за слотом; слот після підбиття віддають новому, тож далекий стрибок не згладжуємо
+      bots: bots.map((b) => {
+        const w = (a.e || []).find((o) => o[0] === b.slot);
+        return !w || Math.abs(w[1] - b.x) + Math.abs(w[2] - b.y) > SUB ? b : Object.assign(b, { x: lerp(w[1], b.x, k), y: lerp(w[2], b.y, k) });
       }),
     };
   }
@@ -302,7 +407,7 @@
     const el = st.cv.el;
     const L = st.layer || (st.layer = document.createElement('canvas'));
     if (L.width === el.width && L.height === el.height && st.layerPal === pal && st.layerWalls === st.walls
-      && sameCells(st.layerBricks, bricks)) return L;
+      && st.layerIce === st.ice && sameCells(st.layerBricks, bricks)) return L;
     if (L.width !== el.width) L.width = el.width;
     if (L.height !== el.height) L.height = el.height;
     const g = L.getContext('2d');
@@ -310,12 +415,38 @@
     g.setTransform(k, 0, 0, k, 0, 0);
     g.fillStyle = pal.bg2;
     g.fillRect(0, 0, st.W * PX, st.H * PX);
+    drawIce(pal, g, st.ice, st.W);
     drawWalls(pal, g, st.walls, st.W);
     drawBricks(pal, g, bricks, st.W);
     st.layerPal = pal;
     st.layerWalls = st.walls;
+    st.layerIce = st.ice;
     st.layerBricks = bricks ? bricks.slice() : [];
     return L;
+  }
+
+  /// Кущі — теж окремим канвасом, але поверх танків: хто в кущі, того не видно ні суперникам, ні глядачам.
+  function bushLayer(st, pal) {
+    if (!st.bush || !st.bush.length) return null;
+    const el = st.cv.el;
+    const L = st.bushL || (st.bushL = document.createElement('canvas'));
+    if (L.width === el.width && L.height === el.height && st.bushPal === pal && st.bushOf === st.bush) return L;
+    L.width = el.width;
+    L.height = el.height;
+    const g = L.getContext('2d');
+    const k = el.width / (st.W * PX);
+    g.setTransform(k, 0, 0, k, 0, 0);
+    drawBushes(pal, g, st.bush, st.W);
+    st.bushPal = pal;
+    st.bushOf = st.bush;
+    return L;
+  }
+
+  /// Чи центр танка в кущі.
+  function inBush(st, m) {
+    if (!st.bushSet || !st.bushSet.size) return false;
+    const x = Math.floor((m.x + SUB / 2) / SUB), y = Math.floor((m.y + SUB / 2) / SUB);
+    return st.bushSet.has(y * st.W + x);
   }
 
   function draw(st, waiting) {
@@ -333,12 +464,40 @@
     if (cur) {
       const f = cur.f;
       const me = st.ctx && st.ctx.mine ? st.ctx.seat : null;
+      const v = st.ctx && st.ctx.view;
+      const teams = v && v.teams;
+      drawBases(pal, g, v && v.bases, st.W);
       drawLoot(pal, g, f.pw, now);
+      const start = f.phase === 'start' && !waiting;
       for (let i = 0; i < cur.men.length; i++) {
         const m = cur.men[i];
-        if (m && m.alive) drawTank(pal, g, m, pal.seats[i] || SEATS[i][1], now, i, i === me, f.phase === 'start' && !waiting);
+        if (m && m.alive) drawTank(pal, g, m, pal.seats[i] || SEATS[i][1], now, i, i === me, start, teams && !v.coop ? teams[i] : -1);
+      }
+      for (const b of cur.bots) drawTank(pal, g, b, pal.bot, now, SEATS_N, false, false, -1);
+      const bushes = bushLayer(st, pal);
+      if (bushes) {
+        g.drawImage(bushes, 0, 0, box.w, box.h);
+        // Себе й своїх видно крізь кущ — напівпрозоро; суперників і 🤖 — ні.
+        g.globalAlpha = 0.6;
+        for (let i = 0; i < cur.men.length; i++) {
+          const m = cur.men[i];
+          const own = i === me || (me !== null && teams && teams[me] >= 0 && teams[i] === teams[me]);
+          if (m && m.alive && own && inBush(st, m)) drawTank(pal, g, m, pal.seats[i] || SEATS[i][1], now, i, i === me, start, teams && !v.coop ? teams[i] : -1);
+        }
+        g.globalAlpha = 1;
       }
       drawShells(pal, g, cur.shells);
+      if (st.banner && now - st.banner.at < BANNER_MS && f.phase === 'go') {
+        const k = (now - st.banner.at) / BANNER_MS;
+        g.globalAlpha = k < 0.8 ? 1 : (1 - k) * 5;
+        const u = box.w / (21 * PX);
+        g.fillStyle = pal.text;
+        g.font = '700 ' + Math.round(30 * u) + 'px system-ui, sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(st.banner.text, box.w / 2, box.h / 2);
+        g.globalAlpha = 1;
+      }
       drawBooms(pal, g, st.booms, now);
       drawShade(pal, g, box, f, waiting, st);
     }
@@ -349,7 +508,8 @@
   // Рядок над полем і керування пальцем
   // ---------------------------------------------------------------------------------------------
 
-  function hud(root, ctx, f) {
+  function hud(root, ctx, f, st) {
+    const v = ctx.view || {};
     let el = root.querySelector(':scope > .thud');
     if (!el) {
       el = document.createElement('div');
@@ -363,11 +523,20 @@
       if (!nick) continue;
       const m = men[i] || {};
       const perks = String(m.perks || '').split('').map((k) => PERK[k] || '').join('');
+      const team = v.teams && !v.coop ? v.teams[i] : -1;
       html += '<span class="tchip s' + i + (m.alive === false ? ' out' : '') + (i === ctx.seat ? ' me' : '') + '">'
+        + (team >= 0 ? '<span class="tk-team">' + TEAMS[team].split(' ')[0] + '</span>' : '')
         + '<i>' + (i + 1) + '</i><span class="tnick">' + ctx.esc(nick) + '</span> <b>' + (m.frags || 0) + '</b>' + (perks ? ' <span class="tperks">' + perks + '</span>' : '')
-        + (m.back > 0 ? ' <span class="tback">⌛</span>' : '') + '</span>';
+        + (m.back > 0 ? ' <span class="tback">⌛</span>' : '')
+        + (st && st.nemesis === i && ctx.mine && i !== ctx.seat ? ' <span class="tk-nem" title="Підбив тебе — помстися">😈</span>' : '') + '</span>';
     }
-    if (f && f.phase === 'go') html += '<span class="tchip tclock' + ((f.left || 0) * TICK_MS <= 15000 ? ' hot' : '') + '">⏱ ' + clock(f.left || 0) + '</span>';
+    if (v.teams && !v.coop && f && f.p) {
+      const sum = [0, 0];
+      for (let i = 0; i < SEATS_N; i++) if (v.teams[i] >= 0 && f.p[i]) sum[v.teams[i]] += f.p[i].frags || 0;
+      html += '<span class="tchip tk-score">' + TEAMS[0].split(' ')[0] + ' ' + sum[0] + ' : ' + sum[1] + ' ' + TEAMS[1].split(' ')[0] + '</span>';
+    }
+    if (f && f.wv && f.phase === 'go') html += '<span class="tchip tk-wave">🌊 ' + Math.max(1, f.wv[0]) + '/' + (v.coop || 5) + ' · 🤖 ' + f.wv[1] + '</span>';
+    else if (f && f.phase === 'go') html += '<span class="tchip tclock' + ((f.left || 0) * TICK_MS <= 15000 ? ' hot' : '') + '">⏱ ' + clock(f.left || 0) + '</span>';
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
       el.innerHTML = html;
@@ -393,13 +562,23 @@
         const b = e.target.closest('button');
         if (!b) return;
         e.preventDefault();
-        if (b.classList.contains('tfire')) { el._tanksCtx.input('fire'); return; }
         try { b.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер */ }
+        if (b.classList.contains('tfire')) {
+          // Тримаєш — сервер стріляє сам, щойно перезарядився; відпустив — перестав.
+          st.firePid = e.pointerId;
+          el._tanksCtx.input('fire', { on: true });
+          return;
+        }
         st.pid = e.pointerId;
         st.touch = +b.dataset.dir;
         steer(st, el._tanksCtx);
       });
       const release = (e) => {
+        if (st.firePid === e.pointerId) {
+          st.firePid = null;
+          el._tanksCtx.input('fire', { on: false });
+          return;
+        }
         if (st.pid !== e.pointerId) return;
         st.pid = null;
         st.touch = -1;
@@ -446,7 +625,8 @@
     if (!root._tanks) {
       root._tanks = {
         cv: null, walls: [], last: null, held: -1, pid: null, fireDown: false, booms: [],
-        keys: [], touch: -1, seenAt: 0,
+        keys: [], touch: -1, seenAt: 0, firePid: null,
+        feed: [], evSeen: 0, nemesis: -1, banner: null, bush: null, bushSet: null, ice: null,
         raf: 0, keyup: null, blur: null, phase: '', css: ctx.css, W: 21, H: 15, K: scale(),
       };
     }
@@ -475,6 +655,83 @@
         st.booms.push({ x: (a.x / SUB) * PX + PX / 2, y: (a.y / SUB) * PX + PX / 2, at: now });
     }
     st.booms = st.booms.filter((b) => now - b.at < BOOM_MS);
+  }
+
+  const who = (ctx, i) => i >= SEATS_N || i < 0 ? '🤖' : '<b class="tk-n s' + i + '">' + ctx.esc(ctx.nickOf(i) || ctx.seatName(i)) + '</b>';
+  const IN_ROW = { 3: 'три', 4: 'чотири', 5: 'п\'ять', 6: 'шість', 7: 'сім', 8: 'вісім', 9: 'дев\'ять', 10: 'десять' };
+
+  function eventHtml(ctx, e) {
+    const [, how, a, b, n] = e;
+    if (how === 2) return '🏺 ' + who(ctx, a) + ' розбиває глек!';
+    if (how === 3) return '🌊 Хвиля ' + n + '!';
+    if (how === 4) return '🏆 Усі хвилі відбито!';
+    const row = n >= 3 && a < SEATS_N ? ' — 🔥 ' + (IN_ROW[n] || n) + ' поспіль!' : '';
+    const rv = ctx.view && ctx.view.rv ? ' +1' : '';
+    return how === 1 ? '😈 помста' + rv + ': ' + who(ctx, a) + ' → ' + who(ctx, b) + row : '💥 ' + who(ctx, a) + ' → ' + who(ctx, b) + row;
+  }
+
+  /// Нові події з кадру: подія їде в кадрах три секунди — беремо кожну раз, за id.
+  function takeEvents(st, ctx, f) {
+    if (!f || !f.ev) return;
+    const now = performance.now();
+    const me = ctx.mine ? ctx.seat : -1;
+    for (const e of f.ev) {
+      if (e[0] <= st.evSeen) continue;
+      st.evSeen = e[0];
+      st.feed.push({ html: eventHtml(ctx, e), at: now });
+      const [, how, a, b, n] = e;
+      if (how <= 1 && b === me && a < SEATS_N) st.nemesis = a;  // хто мене підбив — 😈 на його чіпі
+      if (how === 1 && a === me) st.nemesis = -1;
+      if (how === 3) st.banner = { text: '🌊 Хвиля ' + n, at: now };
+    }
+    if (st.feed.length > 3) st.feed = st.feed.slice(-3);
+  }
+
+  function feed(root, ctx, st) {
+    let el = root.querySelector(':scope > .tk-feed');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'tk-feed';
+      el.setAttribute('aria-live', 'polite');
+      st.cv.el.insertAdjacentElement('afterend', el);   // одразу під полем, над хрестовиною
+    }
+    el.classList.toggle('tk-live', !!ctx.playing);
+    const now = performance.now();
+    st.feed = st.feed.filter((x) => now - x.at < FEED_MS);
+    const html = st.feed.map((x) => '<span>' + x.html + '</span>').join('');
+    if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
+  }
+
+  /// Підсумок партії: рядок на кожного — фраги, смерті, влучність, найдовша серія, хто найчастіше діставав.
+  /// Мені — ще й «ну я тобі» тому, хто підбивав мене найчастіше: реванш за кнопкою «Ще раз».
+  function summary(root, ctx, st) {
+    let el = root.querySelector(':scope > .tk-sum');
+    const v = ctx.view || {};
+    const show = v.phase === 'over' && v.sum && v.sum.length;
+    if (!show) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'tk-sum';
+      const after = root.querySelector(':scope > .tk-feed') || st.cv.el;
+      after.insertAdjacentElement('afterend', el);
+    }
+    const rows = v.sum.slice().sort((a, b) => b[1] - a[1] || a[2] - b[2]);
+    const me = ctx.mine ? ctx.seat : -1;
+    let html = '';
+    for (const [seat, fr, deaths, shots, hits, best, nem, nemN, rv] of rows) {
+      const acc = shots ? Math.round((100 * hits) / shots) + '%' : '—';
+      html += '<div class="tk-row' + (seat === me ? ' me' : '') + '"><span class="tk-who">' + who(ctx, seat) + '</span>'
+        + '<span title="фраги">💥 ' + fr + '</span><span title="підбили">💀 ' + deaths + '</span>'
+        + '<span title="влучність: ' + hits + ' з ' + shots + '">🎯 ' + acc + '</span>'
+        + (best >= 2 ? '<span title="найдовша серія без смерті">🔥 ' + best + '</span>' : '')
+        + (rv ? '<span title="помст">😈 ' + rv + '</span>' : '')
+        + (nem >= 0 && nemN >= 2 ? '<span class="tk-nemsum">дістав(ла) найчастіше: ' + who(ctx, nem) + ' ×' + nemN + '</span>' : '')
+        + '</div>';
+    }
+    const mine = v.sum.find((r) => r[0] === me);
+    if (mine && mine[6] >= 0 && mine[7] >= 2)
+      html += '<div class="tk-grr">😤 Ну я тобі, ' + who(ctx, mine[6]) + '! Реванш — «Ще раз»</div>';
+    if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
   }
 
   function syncHeld(st) {
@@ -507,15 +764,15 @@
     icon: ICON,
     seatNames: ['жовтий', 'зелений', 'рудий', 'сірий', 'синій', 'рожевий'],
     seatClass: ['x', 'o', 'c', 'd', 'tb', 'tp'],
-    pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} їхати · {a} бахнути (будь-яка кнопка)' },
+    pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} їхати · {a} бахнути, тримай — стріляє сам' },
     news: {
-      v: '2026-09-28',
-      title: 'Танчики: переможець на мапі',
+      v: '2026-09-29',
+      title: 'Танчики: команди, хвилі 🤖, кущі й автовогонь',
       items: [
-        '🏆 Наприкінці просто на мапі видно, хто взяв партію і скільки фрагів',
-        '🎮 Затиснув →, додав ↑ і відпустив ↑ — танк знову їде праворуч, а не стає',
-        '📱 На телефоні з початком партії мапа й хрестовина стають в екран разом',
-        '🧹 Більше нема вибухів-привидів і стрибків танків, коли хтось сідає за інший стіл',
+        '💥 Тримай пробіл чи «💥» — танк стріляє сам, щойно перезарядився; натиск трохи зарано теж не пропаде',
+        '🏺 Опція «Грають»: команди з глеком-базою («Бережи базу») або разом проти хвиль ворожих 🤖',
+        '🌳 Мапа з кущами (ховають танк) і ❄ льодом (ковзко); новий бонус 🪃 — снаряд відскакує від сталі за ріг',
+        '🔥 Серії й 😈 помста в стрічці під полем, а наприкінці — підсумок: влучність, серії, хто кого діставав',
       ],
     },
 
@@ -524,7 +781,11 @@
       st.interp = HGames.ui.Interp();
       st.cv = HGames.ui.canvas(root, { w: st.W * PX * st.K, h: st.H * PX * st.K, cls: 'tboard' });
       st.keyup = (e) => {
-        if (isFire(e)) { st.fireDown = false; return; }
+        if (isFire(e)) {
+          if (st.fireDown && st.ctx && st.ctx.mine && st.ctx.playing) st.ctx.input('fire', { on: false });
+          st.fireDown = false;
+          return;
+        }
         const d = dirOf(e);
         if (d === undefined || st.keys.indexOf(d) < 0) return;
         st.keys = st.keys.filter((k) => k !== d);
@@ -534,7 +795,9 @@
       st.blur = () => {
         st.keys = [];
         st.touch = -1;
+        if ((st.fireDown || st.firePid !== null) && st.ctx && st.ctx.mine && st.ctx.playing) st.ctx.input('fire', { on: false });
         st.fireDown = false;
+        st.firePid = null;
         steer(st, st.ctx);
       };
       document.addEventListener('keyup', st.keyup);
@@ -564,6 +827,14 @@
         st.booms = [];
       }
       if (v && v.walls && v.walls.length) st.walls = v.walls;
+      // Кущі й лід не міняються за партію: беремо новий масив, лише коли він справді інший.
+      if (v && v.p && !sameCells(st.bush, v.bush || null)) { st.bush = v.bush || null; st.bushSet = new Set(v.bush || []); }
+      if (v && v.p && !sameCells(st.ice, v.ice || null)) st.ice = v.ice || null;
+      if (ctx.room && ctx.room.startedAt && ctx.room.startedAt !== st.startKey) {
+        st.startKey = ctx.room.startedAt;                // нова партія — стара помста й стрічка не тягнуться
+        st.nemesis = -1;
+        st.feed = [];
+      }
       // Вид накладаємо рівно раз. Каркас кличе update() і на кожну подію лобі, з тим самим давно збереженим
       // видом, а вид танчиків приходить лише на старті й наприкінці партії. Раніше такий старий вид ставав
       // «останнім кадром»: танки на мить відскакували на старти, а наступний кадр бачив «живий → підбитий»
@@ -577,7 +848,9 @@
         st.interp.push(v);
       }
       pad(root, ctx, st);
-      hud(root, ctx, st.last);
+      hud(root, ctx, st.last, st);
+      feed(root, ctx, st);
+      summary(root, ctx, st);
       fitPhone(root, st, ctx, '.thud', '.tpad');
       syncHeld(st);
       st.cv.resize();
@@ -589,10 +862,12 @@
       st.ctx = ctx;
       if (!st.cv || !f) return;
       noteBooms(st, f);
+      takeEvents(st, ctx, f);
       st.last = f;
       st.seenAt = performance.now();
       st.interp.push(f);
-      hud(root, ctx, f);
+      hud(root, ctx, f, st);
+      feed(root, ctx, st);
       syncHeld(st);
       spin(st);
     },
@@ -601,7 +876,7 @@
       const st = ctx._tanks;
       if (!st || !ctx.mine || !ctx.playing) return false;
       if (isFire(e)) {
-        if (!st.fireDown) { st.fireDown = true; ctx.input('fire'); }
+        if (!st.fireDown) { st.fireDown = true; ctx.input('fire', { on: true }); }
         return true;
       }
       const dir = dirOf(e);
@@ -615,11 +890,14 @@
     status(ctx) {
       const f = ctx.frame || ctx.view;
       if (!ctx.playing || !f || !f.phase) return '';
-      if (f.phase === 'start') return 'Готуйсь…';
+      const v = ctx.view || {};
+      if (f.phase === 'start') return v.note ? '⚠ ' + v.note : v.coop ? 'Готуйсь: 🤖 лізуть справа — бережіть 🏺 ліворуч!'
+        : v.teams ? 'Готуйсь: розбий чужий 🏺 і бережи свій' : 'Готуйсь…';
       if (f.phase === 'over') return '';
-      const need = (ctx.view && ctx.view.need) || 5;
-      const how = HGames.ui.coarse() ? 'Хрестовина — їхати, 💥 — бахнути' : 'Стрілки або WASD, пробіл — бахнути';
-      return (ctx.mine ? how : 'Дивишся збоку') + ' · до ' + need + ' фрагів';
+      const how = HGames.ui.coarse() ? 'Хрестовина — їхати, тримай 💥 — стріляє сам' : 'Стрілки або WASD, тримай пробіл — стріляє сам';
+      const goal = v.coop ? 'бережіть 🏺 від ' + (v.coop || 5) + ' хвиль 🤖' : v.teams ? 'розбий чужий 🏺 або більше фрагів за 3 хв'
+        : 'до ' + (v.need || 5) + ' фрагів';
+      return (ctx.mine ? how : 'Дивишся збоку') + ' · ' + goal;
     },
 
     unmount(root) {
