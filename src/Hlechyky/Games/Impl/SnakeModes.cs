@@ -21,156 +21,72 @@ static class SnakeModesTurns
 }
 
 /// <summary>
-/// Мотоцикли: та сама змійка, але хвіст не коротшає і яблук нема — за кожним тягнеться стіна, яка лишається
-/// до кінця раунду. Ядро беремо готове (<see cref="SnakeCore"/> з <c>tailShrinks: false</c>), бо різниця між
-/// дуеллю і мотоциклами — рівно два прапорці, а не нові правила.
+/// Мотоцикли вдвох — рейтингова дуель на ставки. З проходу №3 їздить на спільному ядрі гурту
+/// (<see cref="ArenaCore"/> на 26×18, двоє стартують рівно там, де стартували завжди), бо мапи, турбо, серія
+/// раундів і «хто кого підрізав» потрібні обом. Правила кроку ті самі клітинка в клітинку. Опції столу видно
+/// обом ще до того, як другий сяде, тож рейтингова партія чесна: однакові правила для обох, а серія «до 3/5»
+/// — це одна партія каркаса з одним результатом (одна ставка, одна зміна Ело).
 /// </summary>
-public sealed class TronGame : Game
+public sealed class TronGame : ArenaGame
 {
     /// <summary>Швидше за змійку: слід росте щотика, і на 120 мс поле закінчувалось би надто мляво.</summary>
     public const int TickMs = 100;
-    /// <summary>Три секунди «готуйсь». Ядро рахує їх під 120 мс дуелі, тож своє число ставимо самі.</summary>
+    /// <summary>Три секунди «готуйсь».</summary>
     public const int StartTicks = 30;
-    /// <summary>
-    /// Хвилина на раунд. Двом слідам на полі в 468 клітинок стільки не протриматись — це страховка від
-    /// вічного раунду, а не правило, з яким доведеться рахуватись гравцям. Саме тому межа не константа:
-    /// звичайною грою її не дістати, а неперевіреної гілки в грі бути не має — тест опускає число і
-    /// проходить нічию по-справжньому.
-    /// </summary>
-    public int MaxMoves { get; set; } = 600;
 
     public override GameInfo Info { get; } = new(
         "tron", "Мотоцикли", "мотоцикли", GameGroup.Live, 2, 2, TickMs: TickMs, Rated: true,
+        Options: [SeriesOption, ArenaMaps.Option, TurboOption],
         Hint: "За тобою тягнеться стіна, яка не зникає. Хто врізався перший — програв. Стрілки або WASD",
-        Client: "snake-modes");   // обидва режими малює один web/games/snake-modes.js
+        Client: "snake-modes");   // усі режими малює один web/games/snake-modes.js
 
-    SnakeCore? _core;
-    /// <summary>Хто сидів за столом на минулій партії — щоб знати, чи рахунок серії ще чийсь.</summary>
-    string?[] _was = [];
-    /// <summary>«x», «o», «draw» або null — та сама мова, що й у дуелі.</summary>
-    string? _winner;
-    int _moves;
-
-    /// <summary>Скільки кроків зробили мотоцикли в цьому раунді (відлік «готуйсь» сюди не рахується).</summary>
-    public int Moves => _moves;
-
-    /// <summary>Поле готове ще до старту: стіл, що чекає на суперника, має виглядати як поле, а не як порожнеча.</summary>
-    SnakeCore Core
-    {
-        get
-        {
-            if (_core is not null) return _core;
-            _core = new SnakeCore(Ctx.Rng, tailShrinks: false, apples: false);
-            NewRound();
-            return _core;
-        }
-    }
-
-    void NewRound()
-    {
-        var core = Core;          // рекурсії тут нема: гетер спершу кладе ядро в поле, а вже потім кличе нас
-        core.Reset();
-        core.StartIn = StartTicks;
-        _moves = 0;
-    }
-
-    public override string SeatName(int seat) => seat == 0 ? "жовтий" : "зелений";
-
-    public override void Start()
-    {
-        var now = new[] { Ctx.NickOf(0), Ctx.NickOf(1) };
-        // «Ще раз» обертає місця — разом з ними їде й рахунок; будь-яка інша зміна складу його обнуляє.
-        if (SnakeModesTurns.Same(_was, now)) { }
-        else if (_was.Length == 2 && SnakeModesTurns.Same([_was[1], _was[0]], now)) (Core.WinsA, Core.WinsB) = (Core.WinsB, Core.WinsA);
-        else (Core.WinsA, Core.WinsB) = (0, 0);
-        _was = now;
-        _winner = null;
-        NewRound();
-    }
-
+    protected override bool Tails => false;
+    protected override int CountdownTicks => StartTicks;
     /// <summary>
-    /// Встав посеред раунду — техпоразка. Базовий <see cref="Game.OnLeave"/> сам порахує, кому дісталась
-    /// перемога, а нам лишається закрити раунд і в самій грі: без цього <c>winner</c> лишався б null, і
-    /// клієнт не притемнив би поле — воно застигло б яскравим, ніби партія ще триває.
+    /// Хвилина на раунд. Двом слідам на полі в 468 клітинок стільки не протриматись — це страховка від
+    /// вічного раунду; тест опускає число і проходить нічию по-справжньому.
     /// </summary>
-    public override void OnLeave(int seat)
+    public override int MaxMoves { get; set; } = 600;
+    protected override string[] Colors => ["жовтий", "зелений"];
+
+
+    /// <summary>«x», «o», «draw» або null — та сама мова, що й у дуелі змійки.</summary>
+    string? XO => Outcome is null ? null : WinnerSeats.Length == 1 ? (WinnerSeats[0] == 0 ? "x" : "o") : "draw";
+
+    /// <summary>«Мотоцикли: Оля жовтий 2:1 Петро зелений» — рахунок з боку переможця.</summary>
+    string Score(int won)
     {
-        _winner = seat == 0 ? "o" : "x";
-        base.OnLeave(seat);
+        var lost = 1 - won;
+        var w = Wins();
+        return $"{Ctx.NickOf(won)} {SeatName(won)} {w[won]}:{w[lost]} {Ctx.NickOf(lost)} {SeatName(lost)}";
     }
 
-    /// <summary>Реалтайм-ввід: повороти. Помилки нікого не цікавлять, наступний кадр усе перемалює.</summary>
-    public override ActResult Act(int seat, string action, JsonElement payload)
+    protected override string RoundText(int[] winners) => winners.Length == 1
+        ? $"{Info.Title}: {Score(winners[0])}"
+        : $"{Info.Title}: {Ctx.NickOf(0)} {SeatName(0)} і {Ctx.NickOf(1)} {SeatName(1)} врізались одночасно";
+
+    protected override string TimeUpText(int[] winners) =>
+        $"{Info.Title}: хвилина минула, {Ctx.NickOf(0)} і {Ctx.NickOf(1)} розійшлись внічию";
+
+    protected override string SeriesText(int[] champs) => champs.Length == 1
+        ? $"{Info.Title}: серія до {Target} — {Score(champs[0])}"
+        : $"{Info.Title}: серія до {Target} — нічия, {Wins()[0]}:{Wins()[1]}";
+
+    protected override string LeaveText(int seat, int[] winners) =>
+        $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли";
+
+    protected override void ViewExtra(Dictionary<string, object?> view)
     {
-        if (action != "turn") return ActResult.Fail("Тут так не ходять");
-        if (SnakeModesTurns.Dir(payload) is { } dir) Core.Turn(seat, dir);
-        return ActResult.Done;
+        var w = Wins();
+        view["duel"] = true;
+        view["winsA"] = w[0];
+        view["winsB"] = w[1];
+        view["dirA"] = Arena.Dirs[0];
+        view["dirB"] = Arena.Dirs[1];
+        view["winner"] = XO;
     }
 
-    public override TickResult Tick()
-    {
-        if (_winner is not null) return TickResult.None;
-        if (Core.StartIn > 0)
-        {
-            Core.StartIn--;
-            return TickResult.FrameOnly;
-        }
-
-        var (deadA, deadB) = Core.Step();
-        _moves++;
-        if (!deadA && !deadB)
-        {
-            if (_moves < MaxMoves) return TickResult.FrameOnly;
-            _winner = "draw";
-            Ctx.Finish([], $"{Info.Title}: хвилина минула, {Ctx.NickOf(0)} і {Ctx.NickOf(1)} розійшлись внічию");
-            return TickResult.Both;
-        }
-
-        _winner = deadA && deadB ? "draw" : deadA ? "o" : "x";
-        if (_winner == "x") Core.WinsA++;
-        else if (_winner == "o") Core.WinsB++;
-
-        if (_winner == "draw")
-        {
-            Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(0)} {SeatName(0)} і {Ctx.NickOf(1)} {SeatName(1)} врізались одночасно");
-        }
-        else
-        {
-            // Рахунок пишемо з боку переможця, щоб «2:1» читалось на його користь.
-            var (won, lost) = _winner == "x" ? (0, 1) : (1, 0);
-            var (score, other) = won == 0 ? (Core.WinsA, Core.WinsB) : (Core.WinsB, Core.WinsA);
-            Ctx.Finish([won], $"{Info.Title}: {Ctx.NickOf(won)} {SeatName(won)} {score}:{other} {Ctx.NickOf(lost)} {SeatName(lost)}");
-        }
-        return TickResult.Both;
-    }
-
-    /// <summary>
-    /// Кадр — дельта: самі голови. Сліди ростуть до сотень клітинок, і слати їх двадцять разів на секунду
-    /// означало б класти канал заради даних, які в клієнта вже є. Повний стан живе у <see cref="View"/>,
-    /// і на кожну подію <c>room</c> клієнт перемальовує поле з нуля.
-    /// </summary>
-    public override object? Frame() => new
-    {
-        ha = Core.A[0],
-        hb = Core.B[0],
-        startIn = Core.StartIn,
-        winner = _winner,
-    };
-
-    public override object View(int? seat) => new
-    {
-        width = SnakeCore.W,
-        height = SnakeCore.H,
-        turn = (int?)null,
-        a = Core.A.ToArray(),
-        b = Core.B.ToArray(),
-        dirA = Core.DirA,
-        dirB = Core.DirB,
-        winsA = Core.WinsA,
-        winsB = Core.WinsB,
-        startIn = Core.StartIn,
-        winner = _winner,
-    };
+    protected override void FrameExtra(Dictionary<string, object?> frame) => frame["winner"] = XO;
 }
 
 /// <summary>

@@ -77,3 +77,28 @@ body.pad-on .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 350
   .dpad[data-dirs="3"] button[data-dir], .dpad[data-dirs="1"] button[data-dir],
   .dpad[data-dirs="2"] button[data-dir], .dpad[data-dirs="0"] button[data-dir] { grid-column: 1; grid-row: 1; }
 }
+
+/* Прохід №3 (мотоцикли): ✂ підрізи й 🚀 турбо в табло, стрічка «хто кого», кнопка турбо під пальцем. */
+.ascore em { font-style: normal; color: var(--danger); margin-left: 3px; }
+.ascore .moto-tb { text-decoration: none; margin-left: 3px; opacity: .35; filter: grayscale(1); }
+.ascore .moto-tb.ok { opacity: 1; filter: none; }
+.ascore .moto-tb.on { opacity: 1; filter: none; text-shadow: 0 0 6px var(--accent); }
+.moto-feed {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; min-height: 1.35em;
+  font-size: .85em; color: var(--muted); line-height: 1.35;
+}
+.moto-feed span { white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+.dpad .moto-boost {
+  grid-column: 3; grid-row: 1; min-height: 44px; min-width: 44px; padding: 0;
+  font-size: 1.2em; border-radius: 12px; touch-action: manipulation;
+}
+.dpad .moto-boost:disabled { opacity: .35; filter: grayscale(1); }
+@media (pointer: fine) { .dpad .moto-boost { display: none; } }
+/* Під табло мотоциклів — ще й стрічка «хто кого» (≈20 px) — поле на стільки ж нижче, щоб «Встати» лишалось на екрані. */
+.moto-feed ~ .arenaboard { max-width: min(560px, max(300px, calc((100vh - 345px) * 26 / 18))); }
+.moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 345px) * 34 / 24))); }
+body.pad-on .moto-feed ~ .arenaboard { max-width: min(560px, max(300px, calc((100vh - 395px) * 26 / 18))); }
+body.pad-on .moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 395px) * 34 / 24))); }
+@media (min-width: 1600px) and (min-height: 900px) {
+  .moto-feed ~ .arenaboard.big { max-width: min(780px, calc((100vh - 345px) * 34 / 24)); }
+}

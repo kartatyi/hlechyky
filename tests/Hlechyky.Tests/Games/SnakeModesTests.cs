@@ -41,7 +41,7 @@ public class SnakeModesTests
     static void ReadyCoop(RoomHarness h) => h.Tick(CoopSnakeCore.StartTicks);
 
     static int[] Cells(JsonElement view, string name) =>
-        [.. view.GetProperty(name).EnumerateArray().Select(e => e.GetInt32())];
+        [.. (name is "a" or "b" && view.TryGetProperty("t", out var t) ? t[name == "a" ? 0 : 1] : view.GetProperty(name)).EnumerateArray().Select(e => e.GetInt32())];
 
     static string LastLog(RoomHarness h) => h.Outbox.OfType<Journal>().Last().Text;
 
@@ -78,11 +78,11 @@ public class SnakeModesTests
         Assert.Equal(TronGame.StartTicks, h.View(0).GetProperty("startIn").GetInt32());
         Assert.Equal(3_000, TronGame.StartTicks * TronGame.TickMs);   // рівно три секунди «готуйсь»
 
-        var before = h.View(0).GetProperty("a").ToString();
+        var before = h.View(0).GetProperty("t")[0].ToString();
         h.Tick(5);
 
         Assert.Equal(TronGame.StartTicks - 5, h.View(0).GetProperty("startIn").GetInt32());
-        Assert.Equal(before, h.View(0).GetProperty("a").ToString());
+        Assert.Equal(before, h.View(0).GetProperty("t")[0].ToString());
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class SnakeModesTests
         var h = Tron();
         var v = h.View(0);
 
-        foreach (var name in new[] { "width", "height", "turn", "a", "b", "dirA", "dirB", "winsA", "winsB", "startIn", "winner" })
+        foreach (var name in new[] { "width", "height", "turn", "t", "dirA", "dirB", "winsA", "winsB", "startIn", "winner" })
             Assert.True(Views.Has(v, name), name);
         Assert.Equal(SnakeCore.W, v.GetProperty("width").GetInt32());
         Assert.Equal(0, v.GetProperty("dirA").GetInt32());
@@ -300,9 +300,9 @@ public class SnakeModesTests
         h.Tick(1);
         var frame = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
 
-        Assert.Equal(new[] { "ha", "hb", "startIn", "winner" }, frame.EnumerateObject().Select(p => p.Name).ToArray());
-        Assert.Equal(SnakeCore.Cell(3, RowA), frame.GetProperty("ha").GetInt32());
-        Assert.Equal(SnakeCore.Cell(SnakeCore.W - 4, RowB), frame.GetProperty("hb").GetInt32());
+        Assert.Equal(new[] { "h", "al", "startIn", "winner" }, frame.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(SnakeCore.Cell(3, RowA), frame.GetProperty("h")[0].GetInt32());
+        Assert.Equal(SnakeCore.Cell(SnakeCore.W - 4, RowB), frame.GetProperty("h")[1].GetInt32());
         Assert.Equal(JsonValueKind.Null, frame.GetProperty("winner").ValueKind);
     }
 
@@ -317,7 +317,7 @@ public class SnakeModesTests
         var client = new TronTrail();
         client.ApplyView(start);
         foreach (var frame in h.Outbox.OfType<RoomFrame>())
-            client.AddHead(Views.Json(frame.Frame).GetProperty("ha").GetInt32());
+            client.AddHead(Views.Json(frame.Frame).GetProperty("h")[0].GetInt32());
 
         Assert.Equal(Cells(h.View(null), "a"), client.Cells);
         Assert.Equal(15, client.Cells.Count);
@@ -335,7 +335,7 @@ public class SnakeModesTests
         var client = new TronTrail();
         client.ApplyView(start);
         foreach (var frame in h.Outbox.OfType<RoomFrame>())
-            client.AddHead(Views.Json(frame.Frame).GetProperty("ha").GetInt32());
+            client.AddHead(Views.Json(frame.Frame).GetProperty("h")[0].GetInt32());
         // Посеред раунду вид не приходить (Tick віддає самі кадри), але update() смикається на кожну подію
         // 'rooms' — і приносить ТОЙ САМИЙ, стартовий вид із кешу. Застосувати його вдруге означало б
         // відкотити слід до трьох клітинок, а середину вже ніхто не домалює: кадр несе лише голову.
