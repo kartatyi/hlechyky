@@ -1304,6 +1304,9 @@
       ? '<div class="vh-res ok"><b>' + (v.solo ? 'Сам за двох!' : 'Разом!') + '</b> Рівень ' + r.level + name + ' за ' + clockTenths(r.ms)
         + ' <span class="vh-stars">' + stars(r.stars) + '</span> · 💎 ' + r.gems + '/' + r.gemsAll + deaths
       : '<div class="vh-res"><b>Не дограли</b> рівень ' + r.level + name + deaths;
+    // останній рівень печери — не просто «Ще раз 15-й»: сказати, що пройдено все й що далі (прохід 28.09)
+    if (r.cleared && r.level === (v.levels || []).length)
+      html += '<div class="small">🏆 Овва — усю печеру пройдено! Далі — на час: побийте свій рекорд на будь-якому рівні</div>';
     if (ctx.mine) {
       const nextLv = (v.levels || [])[r.next - 1];
       html += '<div class="vh-acts">';
