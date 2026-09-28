@@ -920,6 +920,15 @@
     },
 
     status(ctx) {
+      const room = ctx.room || {};
+      if (room.status === 'lobby') {
+        // MinPlayers = 1 заради «Глек підсідає», тож каркас сам-на-сам каже «Можна рушати», а старт
+        // без Глека відмовить. Поки людей менше двох і Глека не кликали, кажемо, як є.
+        const bots = +((room.options && room.options.bots) || 0);
+        let people = 0;
+        for (let i = 0; i < 4; i++) if (ctx.nickOf(i)) people++;
+        return people < 2 && !bots ? 'Чекаємо, хто підсяде (або відкрий стіл з «🤖 Глек підсідає»)' : '';
+      }
       if (!ctx.playing) return '';
       // фаза й відлік розстановки живуть у кадрах, а не у видах — беремо свіжіше
       const f = (ctx.frame && ctx.frame.phase) ? ctx.frame : (ctx.view || {});
