@@ -20,6 +20,7 @@ public static partial class VohnykPlans
             case 22: Level22(b); return true;
             case 23: Level23(b); return true;
             case 24: Level24(b); return true;
+            case 25: Level25(b); return true;
             default: return false;
         }
     }
@@ -162,4 +163,20 @@ public static partial class VohnykPlans
 
     /// <summary>З полиці дошками вниз і праворуч крізь друге дзеркало.</summary>
     static IEnumerable<int> Down24(VohnykBot b, int h) => VohnykBot.Seq(b.Go(h, C(13)), b.Jump(h, -1, 30, C(11)), b.Go(h, C(9)), b.Go(h, C(7)), b.Go(h, C(20)));
+
+    /// <summary>
+    /// «Серце глибини»: Вогник лавою й крізь дзеркало до нори, униз у коридор — важіль туди й назад (праворуч). Крапля
+    /// через лаву, у дзеркало й назад ліворуч (світло в кришталь), перестрибує його й нору, стає на кнопку в синьому
+    /// промені — портал горить, Вогник ним до брами. Крапля штовхає скриню крізь синій промінь з полиці на кнопку
+    /// внизу, стрибає слідом — брама відчинена: кришталь, скриня, важіль.
+    /// </summary>
+    static void Level25(VohnykBot b)
+    {
+        b.Do(VohnykBot.Seq(b.Go(F, C(10)), b.WaitFor(() => b.Ground(F)), b.Go(F, C(2)), b.Go(F, C(5)), b.Go(F, C(12)), b.Go(F, C(14))), null);
+        b.Do(null, VohnykBot.Seq(b.RunJump(Wt, +1, C(2) + 6, 30, C(5)), b.Go(Wt, C(6)), b.Go(Wt, C(5)), b.Jump(Wt, +1, 30, C(8)), b.Go(Wt, C(9)),
+            b.RunJump(Wt, +1, C(9) + 6, 30, C(12)), b.Go(Wt, C(14))));
+        b.Do(VohnykBot.Seq(b.RunUntil(+1, () => b.W.X[F] > 19 * T), b.WaitFor(() => b.Ground(F)), b.Go(F, C(23))), null);
+        b.Do(null, VohnykBot.Seq(b.Go(Wt, 750), b.Wait(30), b.Go(Wt, C(22))));
+        b.Do(b.Go(F, C(26)), b.Go(Wt, C(28)));
+    }
 }
