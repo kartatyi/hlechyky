@@ -26,6 +26,10 @@
   const W = 4000, H = 2730;            // сітка мапи — та сама, що GeoMap.W/H на сервері
   const KMAX = 12;
   const MAP_URL = '/games/geo-map.json';
+  /// Детальний шар (прохід №3): підписи областей, більші міста, траси М (data/geo/build-detail.py).
+  const DETAIL_URL = '/games/geo-detail.json';
+  /// З якого масштабу видно міста рівня 1–4 (1 — завжди, 2 — решта обласних центрів, 3–4 — більші міста).
+  const CITY_K = [0, 0, 1.8, 2.6, 4];
   /// Десять місць — десять різних відтінків (жовтий, зелений, помаранчевий, блакитний, рожевий, фіалковий, білий,
   /// синій, бірюзовий, лаймовий); червоного серед них нема — червоно-біла мішень лише в правди.
   const SEAT_COLORS = ['#f4c542', '#7bd389', '#e8833a', '#6fb3e8', '#e88ac0', '#b48cf2', '#f0f0f0', '#5c7cfa', '#5ad1c9', '#a3e635'];
@@ -64,6 +68,9 @@
       mapPromise = fetch(MAP_URL)
         .then((r) => { if (!r.ok) throw new Error('мапа ' + r.status); return r.json(); })
         .then(buildMap)
+        // детальний шар — не обов'язковий: не прийшов — мапа та сама, що й була
+        .then((m) => fetch(DETAIL_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+          .then((d) => { if (d) addDetail(m, d); return m; }))
         .catch((e) => { mapPromise = null; throw e; });
     }
     return mapPromise;
@@ -123,6 +130,29 @@
       }
     }
     return { land, borders, outline, river, riverBig, riverLabels, cities: raw.cities || [], points, regionPath };
+  }
+
+  /// Траси — один Path2D, номер «М-06» — на середині найдовшого шматка (довгі траси — двічі).
+  function addDetail(m, d) {
+    const roads = new Path2D();
+    const refs = [];
+    for (const r of d.roads || []) {
+      let best = null, bestLen = 0;
+      for (const l of r.lines) {
+        roads.moveTo(l[0], l[1]);
+        let len = 0;
+        for (let k = 2; k < l.length; k += 2) { roads.lineTo(l[k], l[k + 1]); len += Math.hypot(l[k] - l[k - 2], l[k + 1] - l[k - 1]); }
+        if (len > bestLen) { bestLen = len; best = l; }
+      }
+      if (!best) continue;
+      const at = bestLen > 1500 ? [0.3, 0.7] : [0.5];
+      for (const f of at) { const i = Math.floor(best.length / 2 * f) * 2; refs.push({ ref: r.ref, x: best[i], y: best[i + 1] }); }
+    }
+    m.roads = roads;
+    m.roadRefs = refs;
+    m.labels = d.labels || [];
+    m.cities = m.cities.concat(d.cities || []);
+    m.attr = d.attr || '';
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -318,6 +348,7 @@
       outline: c('--accent2', '#d9a92f'), river: c('--geo-river', '#4a8fb3'), muted: c('--muted', '#9db3a5'),
       text: c('--text', '#ecf1ea'), accent: c('--accent', '#f4c542'), danger: c('--danger', '#e57373'),
       ink: c('--accent-ink', '#2a1e03'), shade: c('--gshade', 'rgba(15,31,24,.62)'), bg: c('--bg', '#0f1f18'),
+      road: c('--geo-road', '#d8b779'),
     };
     st.colors = SEAT_COLORS.map((f, i) => c('--geo-p' + i, f));
   }
@@ -359,6 +390,14 @@
       g.fill(m.land, 'evenodd');
       g.lineJoin = 'round';
       g.lineCap = 'round';
+      if (hints === 'full' && m.roads) {
+        // траси — під межами й річками, приглушені: орієнтир, а не атлас автошляхів
+        g.globalAlpha = st.k >= 2.6 ? 0.6 : 0.42;
+        g.strokeStyle = c.road;
+        g.lineWidth = (st.k >= 2.6 ? 1.6 : 1.1) / sc(st);
+        g.stroke(m.roads);
+        g.globalAlpha = 1;
+      }
       if (hints !== 'none') {
         g.strokeStyle = c.border;
         g.lineWidth = 1 / sc(st);
@@ -372,36 +411,95 @@
       g.strokeStyle = c.outline;
       g.lineWidth = 1.5 / sc(st);
       g.stroke(m.outline);
-      if (hints === 'full') {
-        g.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
-        g.textBaseline = 'middle';
-        const small = st.cw < 480;
-        if (st.k >= 1.5) {
-          g.font = 'italic ' + (small ? 10 : 11) + 'px system-ui, sans-serif';
-          g.textAlign = 'center';
-          for (const r of m.riverLabels) {
-            const x = sx(st, r.x), y = sy(st, r.y);
-            if (x < -60 || y < -20 || x > st.cw + 60 || y > st.ch + 20) continue;
-            label(g, r.name, x, y, c.river, c.bg);
-          }
-        }
-        g.textAlign = 'left';
-        for (const city of m.cities) {
-          if (city.lvl > 1 && st.k < 1.8) continue;
-          const x = sx(st, city.x), y = sy(st, city.y);
-          if (x < -90 || y < -20 || x > st.cw + 10 || y > st.ch + 20) continue;
-          g.fillStyle = c.text;
-          g.beginPath();
-          g.arc(x, y, city.lvl === 1 ? 2.6 : 2, 0, Math.PI * 2);
-          g.fill();
-          g.font = (city.lvl === 1 ? '600 ' : '') + (small ? 10 : city.lvl === 1 ? 13 : 11) + 'px system-ui, sans-serif';
-          label(g, city.name, x + 5, y - 1, city.lvl === 1 ? c.text : c.muted, c.bg);
-        }
-      }
+      if (hints !== 'none') paintLabels(st, g, m, hints);
     }
     st.staticDirty = false;
     st.perf.statics++;
     st.perf.staticMs += performance.now() - t0;
+  }
+
+  /// Усі підписи мапи з пріоритетом і без налізання: що не влазить поруч із важливішим — не пишемо.
+  /// Порядок: великі міста → обласні центри → назви областей → річки → інші міста → номери трас.
+  function paintLabels(st, g, m, hints) {
+    const c = st.css, full = hints === 'full';
+    g.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
+    g.textBaseline = 'middle';
+    const small = st.cw < 480;
+    const taken = [];
+    const free = (x0, y0, w, h) => {
+      for (const r of taken) if (x0 < r[2] && x0 + w > r[0] && y0 < r[3] && y0 + h > r[1]) return false;
+      taken.push([x0, y0, x0 + w, y0 + h]);
+      return true;
+    };
+    const off = (x, y, pad) => x < -pad || y < -20 || x > st.cw + pad || y > st.ch + 20;
+    const city = (ct) => {
+      if (st.k < CITY_K[ct.lvl]) return;
+      const x = sx(st, ct.x), y = sy(st, ct.y);
+      if (off(x, y, 90)) return;
+      const big = ct.lvl === 1;
+      g.font = (big ? '600 ' : '') + (small ? 10 : big ? 13 : ct.lvl === 2 ? 11 : 10.5) + 'px system-ui, sans-serif';
+      const w = g.measureText(ct.name).width;
+      const fits = free(x + 3, y - 8, w + 4, 15);
+      // обласні центри з крапкою завжди (крапка — теж підказка); дрібніші — лише разом з назвою
+      if (!fits && ct.lvl > 2) return;
+      g.fillStyle = ct.lvl <= 2 ? c.text : c.muted;
+      g.beginPath();
+      g.arc(x, y, big ? 2.6 : ct.lvl === 2 ? 2 : 1.6, 0, Math.PI * 2);
+      g.fill();
+      if (fits) { g.textAlign = 'left'; label(g, ct.name, x + 5, y - 1, big ? c.text : c.muted, c.bg); }
+    };
+    if (full) for (const ct of m.cities) if (ct.lvl <= 2) city(ct);
+    // назви областей — великими, прозоро, у «найглибшій» точці області; не влазить — трохи вище/нижче або ніяк
+    if (m.labels && m.labels.length) {
+      g.font = '600 ' + (small ? 9 : 10) + 'px system-ui, sans-serif';
+      g.textAlign = 'center';
+      try { g.letterSpacing = '0.06em'; } catch { /* старий браузер — без розрядки */ }
+      for (const r of m.labels) {
+        let x = sx(st, r.x);
+        const y = sy(st, r.y);
+        if (off(x, y, 60)) continue;
+        const text = r.n.toUpperCase();
+        const w = g.measureText(text).width;
+        // не за край рамки: «Закарпатська» при k = 1 обрізалась до «карпатська»
+        x = clamp(x, w / 2 + 3, st.cw - w / 2 - 3);
+        for (const dy of [0, 13, -13, 26, -26]) {
+          if (!free(x - w / 2 - 2, y + dy - 7, w + 4, 13)) continue;
+          g.globalAlpha = 0.72;
+          label(g, text, x, y + dy, c.muted, c.bg);
+          g.globalAlpha = 1;
+          break;
+        }
+      }
+      try { g.letterSpacing = '0px'; } catch { /* див. вище */ }
+    }
+    if (!full) return;
+    if (st.k >= 1.5) {
+      g.font = 'italic ' + (small ? 10 : 11) + 'px system-ui, sans-serif';
+      g.textAlign = 'center';
+      for (const r of m.riverLabels) {
+        const x = sx(st, r.x), y = sy(st, r.y);
+        if (off(x, y, 60)) continue;
+        const w = g.measureText(r.name).width;
+        if (free(x - w / 2, y - 7, w, 14)) label(g, r.name, x, y, c.river, c.bg);
+      }
+    }
+    for (const ct of m.cities) if (ct.lvl > 2) city(ct);
+    // номери трас — жовтою табличкою, як на дорожніх знаках
+    if (st.k >= 2.2 && m.roadRefs) {
+      g.font = '600 ' + (small ? 9 : 10) + 'px system-ui, sans-serif';
+      g.textAlign = 'center';
+      for (const r of m.roadRefs) {
+        const x = sx(st, r.x), y = sy(st, r.y);
+        if (off(x, y, 30)) continue;
+        const w = g.measureText(r.ref).width + 8;
+        if (!free(x - w / 2, y - 7, w, 14)) continue;
+        g.fillStyle = c.road;
+        roundRect(g, x - w / 2, y - 7, w, 14, 3);
+        g.fill();
+        g.fillStyle = '#1d1a10';
+        g.fillText(r.ref, x, y + 0.5);
+      }
+    }
   }
 
   function label(g, text, x, y, fill, halo) {
@@ -521,6 +619,9 @@
     g.fill(m.land, 'evenodd');
     g.lineJoin = 'round';
     g.lineCap = 'round';
+    if (hints === 'full' && m.roads) {
+      g.globalAlpha = 0.42; g.strokeStyle = css.road; g.lineWidth = 1.1 * u / s; g.stroke(m.roads); g.globalAlpha = 1;
+    }
     if (hints !== 'none') {
       g.strokeStyle = css.border; g.lineWidth = u / s; g.stroke(m.borders);
       g.strokeStyle = css.river; g.lineWidth = 1.2 * u / s; g.stroke(m.river);
@@ -1186,6 +1287,10 @@
     const mapEl = root.querySelector('.geomap');
     mapEl.classList.toggle('can', canPin(st, ctx));
     mapEl.classList.toggle('dim', phaseOf(ctx) === 'between');
+    // траси — з OpenStreetMap: атрибуція обов'язкова, щойно їх видно
+    const attr = root.querySelector('.geoattr');
+    const showAttr = !!(st.map && st.map.roads && (V(ctx).hints || 'full') === 'full');
+    if (attr.hidden === showAttr) attr.hidden = !showAttr;
   }
 
   /// На початку кожного раунду фото, мапа й «Готово» мають бути в полі зору: на телефоні з десятьма гравцями
@@ -1335,6 +1440,7 @@
         + '</div><div class="geocap" hidden></div></div>'
         + '<div class="geomap"><canvas class="geocanvas" aria-label="Мапа України: тицьни, де знято фото"></canvas>'
         + '<div class="geomapmsg">мапа вантажиться…</div>'
+        + '<a class="geoattr" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" hidden>© OpenStreetMap</a>'
         + '<div class="geozoom geozoomm">' + zoom + '</div></div>'
         + '</div>'
         + '<div class="geobar"><div class="geozoom geozoomb" hidden>' + zoom + '</div>'

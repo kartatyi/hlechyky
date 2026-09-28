@@ -222,3 +222,5 @@
   .geoarea { order: 2; min-height: 50px; min-width: 50px; padding: 0 10px; }
   .geoarea span { display: none; }
 }
+.geoattr { position: absolute; left: 6px; bottom: 3px; font-size: 9.5px; line-height: 1.2; color: var(--muted); opacity: .75; text-decoration: none; pointer-events: auto; }
+.geoattr[hidden] { display: none; }
