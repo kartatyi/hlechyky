@@ -403,7 +403,7 @@
     for (let r = 0; r < H; r++)
       for (let cc = 0; cc < W; cc++) {
         const t = L.tiles[r * W + cc];
-        if (t < 2) continue;
+        if (t < 2 || t > 4) continue;                       // 5 — дошка, не рідина
         g.fillStyle = t === 2 ? '#0d3552' : t === 3 ? '#5a1a08' : '#16280c';
         g.fillRect(cc * TILE, r * TILE, TILE, TILE);
       }
