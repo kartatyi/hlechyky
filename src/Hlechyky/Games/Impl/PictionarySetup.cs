@@ -107,8 +107,11 @@ public static class PictionarySetup
     static async Task<T?> Read<T>(HttpContext c, CancellationToken ct) where T : class
     {
         if (c.Request.ContentLength is > MaxBody) return null;
+        // Без Content-Length (chunked) перевірка вище не спрацює — тоді Kestrel сам обірве тіло на MaxBody.
+        if (c.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+            limit.MaxRequestBodySize = MaxBody;
         try { return await c.Request.ReadFromJsonAsync<T>(Web, ct); }
-        catch (Exception e) when (e is JsonException or InvalidOperationException or BadHttpRequestException) { return null; }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or BadHttpRequestException or IOException) { return null; }
     }
 
     static IResult Reply(ActResult r) => Results.Json(new { ok = r.Ok, message = r.Message });
