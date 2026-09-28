@@ -32,7 +32,16 @@
     agreed: 'Нічия за згодою', left: 'Хтось встав з-за столу', time: 'Упав прапорець — час вийшов',
     'time-material': 'Прапорець упав, але матувати нічим — нічия',
     'anti-nopieces': 'Піддавки: фігур не лишилось — це перемога', 'anti-nomoves': 'Піддавки: ходити нічим — це перемога',
+    solved: 'Мат! Задачу розв\'язано', reveal: 'Розв\'язок підглянуто — ключ підсвічено',
   };
+  /// Шахи з Глеком і задача дня малюються цим самим модулем (Client: "chess" у ChessGlek.cs / ChessDaily.cs).
+  const kindOf = (ctx) => (ctx.room && ctx.room.game === 'chess-glek' ? 'glek' : ctx.room && ctx.room.game === 'chess-daily' ? 'daily' : 'table');
+  const LEVELS = [['easy', '🙂 Легкий'], ['medium', '🧐 Середній']];
+  const COLORS = [['turn', '⇄ По черзі'], ['white', '♔ Білими'], ['black', '♚ Чорними']];
+  const VARIANTS = [['classic', 'Класика'], ['960', 'Фішера'], ['anti', 'Піддавки']];
+  const PREFS = 'chessGlekPrefs';
+  const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREFS) || 'null'); } catch { return null; } };
+  const savePrefs = (p) => { try { localStorage.setItem(PREFS, JSON.stringify(p)); } catch { /* приватне вікно */ } };
   const dark = (sq) => ((sq % 8) + (sq / 8 | 0)) % 2 === 1;
 
   function state(root) {
@@ -82,8 +91,9 @@
     const st = state(root);
     const board = v.board || '.'.repeat(64);
     const legal = v.legal || [];
-    // Дошку повертають лише чорні; глядач і білі дивляться однаково — знизу білі.
-    const flip = ctx.seat === 1;
+    // Дошку повертають лише чорні; глядач і білі дивляться однаково — знизу білі. З Глеком і в задачі
+    // колір людини каже сам вид (me): людина там завжди на місці 0, а грати може й чорними.
+    const flip = v.me ? v.me === 'b' && ctx.seat === 0 : ctx.seat === 1;
     const at = (i) => (flip ? 63 - i : i);
 
     // Куди можна піти з вибраної фігури. Рокіровка приходить двома записами (поле тури й поле короля),
@@ -92,6 +102,8 @@
     if (st.sel) for (const m of legal) if (m.from === st.sel && m.to !== m.from) (targets[m.to] = targets[m.to] || []).push(m);
 
     const last = v.lastMove || null;
+    // Задачу закрито — ключовий хід підсвічено, щоб було видно, як треба було.
+    const key = v.puzzle && v.puzzle.key;
     const checkSq = v.check ? kingSquare(board, v.toMove) : -1;
     // Фігура, що щойно походила, доїжджає зі свого старого поля. Першу картинку не анімуємо.
     const lastKey = last ? last.from + last.to + (v.moves || []).length : '';
@@ -122,6 +134,7 @@
         if (last && (nm === last.from || nm === last.to)) cls.push('lm');
         if (sq === checkSq) cls.push('chk');
         if (targets[nm]) cls.push(ch === '.' ? 'dot' : 'cap');
+        if (key && (nm === key.from || nm === key.to)) cls.push('chs-key');
         // Координати по краю дошки: букви в нижньому ряду, цифри в лівому стовпчику (з боку того, хто дивиться).
         let co = '';
         if (i >= 56) co += '<span class="co f">' + nm[0] + '</span>';
@@ -207,6 +220,9 @@
     const v = ctx.view || {};
     const st = state(root);
     const el = ensure(root, 'chessacts');
+    const kind = kindOf(ctx);
+    if (kind === 'glek') { glekBar(root, ctx, el); return; }
+    if (kind === 'daily') { dailyBar(root, ctx, el); return; }
     if (!ctx.mine || !ctx.playing) {
       st.resign = null;
       let res = v.result && REASON[v.result.reason];
@@ -239,6 +255,133 @@
       st.resign = null;
       ctx.act(b.dataset.act);
     });
+  }
+
+  // ---- Шахи з Глеком ----------------------------------------------------------------------------
+  // Рівень, колір і варіант — прямо під дошкою: соло відкривається без лобі, тож опцій столу тут нема.
+  // Будь-який вибір — нова партія (дія set); обране пам'ятаємо в браузері й наступного разу ставимо самі.
+
+  function chips(name, list, cur) {
+    return '<span class="chs-chips" role="group">' + list.map(([k, t]) => '<button type="button" class="ghost' + (k === cur ? ' on' : '')
+      + '" data-set="' + name + '" data-v="' + k + '"' + (k === cur ? ' aria-pressed="true"' : '') + '>' + t + '</button>').join('') + '</span>';
+  }
+
+  function glekBar(root, ctx, el) {
+    const v = ctx.view || {};
+    const st = state(root);
+    const g = v.glek || {};
+    const fen = v.fen || '';
+    const armed = st.resign !== null && st.resign === fen;
+    const over = ctx.room.status === 'finished';
+    let top;
+    if (over) {
+      const r = v.result || {};
+      const who = r.winner === 0 ? '🎉 Глека обіграно! ' : r.winner === 1 ? '🤖 Глек узяв гору. ' : '';
+      top = '<span class="chessres">' + who + (r.reason === 'resign' ? '' : REASON[r.reason] || '') + '</span>';
+    } else {
+      top = '<button type="button" class="ghost danger" data-act="' + (armed ? 'resign' : 'ask') + '">' + (armed ? 'Точно здатись?' : 'Здатись') + '</button>';
+    }
+    const html = top + '<div class="chs-glek">' + chips('level', LEVELS, g.level) + chips('color', COLORS, g.color)
+      + chips('variant', VARIANTS, v.variant) + '</div>'
+      + (over ? '<span class="muted small">Обране діє з наступної партії — тисни «Ану ще раз»</span>'
+        : '<span class="muted small">Зміна — нова партія. Без рейтингу й черепків.</span>');
+    setHtml(el, html);
+    el.querySelectorAll('button').forEach((b) => b.onclick = () => {
+      if (b.dataset.act === 'ask') { st.resign = fen; paint(root, ctx); return; }
+      if (b.dataset.act) { st.resign = null; ctx.act(b.dataset.act); return; }
+      const p = { level: g.level, color: g.color, variant: v.variant };
+      p[b.dataset.set] = b.dataset.v;
+      savePrefs(p);
+      if (!over) ctx.act('set', { [b.dataset.set]: b.dataset.v });
+      else ctx.toast('Запам\'ятав — так і зіграємо наступну партію');
+    });
+  }
+
+  /// Відкрили стіл з Глеком уперше за цей показ — поставити те, що людина обирала минулого разу (якщо партія ще не йде).
+  function glekPrefs(root, ctx) {
+    const st = state(root);
+    if (kindOf(ctx) !== 'glek' || !ctx.playing || st.prefsRound === ctx.room.round) return;
+    st.prefsRound = ctx.room.round;
+    const p = loadPrefs();
+    const v = ctx.view || {};
+    const g = v.glek || {};
+    if (!p || (v.moves || []).length > 1) return;
+    const diff = {};
+    if (p.level && p.level !== g.level) diff.level = p.level;
+    if (p.color && p.color !== g.color) diff.color = p.color;
+    if (p.variant && p.variant !== v.variant) diff.variant = p.variant;
+    if (Object.keys(diff).length) ctx.act('set', diff);
+  }
+
+  // ---- Задача дня -------------------------------------------------------------------------------
+
+  function mmss(ms) {
+    const s = Math.max(0, Math.round(ms / 1000));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  function dailyBar(root, ctx, el) {
+    const v = ctx.view || {};
+    const st = state(root);
+    const p = v.puzzle || {};
+    const armed = st.reveal === p.attempts;
+    let html = '';
+    if (p.solved) html += '<span class="chessres">🏆 Мат! ' + mmss(p.ms) + (p.attempts > 1 ? ' · спроб ' + p.attempts : ' з першої спроби') + '</span>';
+    else if (p.gaveUp) html += '<span class="chessres">👀 Ключ: <b>' + ctx.esc((p.key && p.key.san) || '') + '</b> — завтра нова задача</span>';
+    else html += '<button type="button" class="ghost" data-act="' + (armed ? 'reveal' : 'ask') + '">'
+      + (armed ? 'Точно підглянути? Результату не буде' : '🏳 Показати розв\'язок') + '</button>';
+    if (p.solved && p.key) html += '<span class="muted small">Ключ: <b>' + ctx.esc(p.key.san) + '</b></span>';
+    html += dayBoardHtml(ctx);
+    setHtml(el, html);
+    el.querySelectorAll('button').forEach((b) => b.onclick = () => {
+      if (b.dataset.act === 'ask') { st.reveal = p.attempts; paint(root, ctx); return; }
+      st.reveal = null;
+      ctx.act(b.dataset.act);
+    });
+  }
+
+  /// Табло дня: хто розв'язав, за скільки й з якої спроби, 🔥 — днів поспіль (DailyCard, як у Сапера дня).
+  function dayBoardHtml(ctx) {
+    const b = (ctx.view || {}).daily;
+    if (!b) return '';
+    const me = String((ctx.nickOf && ctx.nickOf(0)) || '').trim().toLowerCase();
+    const rows = b.rows || [];
+    const fire = (n) => (n >= 2 ? ' <span title="Днів поспіль">🔥' + n + '</span>' : '');
+    const cell = (r, i) => '<span class="chs-dr' + ((r.n || '').trim().toLowerCase() === me ? ' me' : '') + '">' + (i === 0 ? '🥇 ' : '')
+      + '<i>' + ctx.esc(r.n) + '</i> ' + mmss(r.ms) + (r.a > 1 ? '<small> ×' + r.a + '</small>' : '') + fire(r.st) + '</span>';
+    let html = rows.length ? '<b>Сьогодні:</b> ' + rows.slice(0, 6).map(cell).join(' · ') + (rows.length > 6 ? ' <small>і ще ' + (rows.length - 6) + '</small>' : '')
+      : 'Сьогодні ще ніхто не розв\'язав — будь першим';
+    const wait = (b.wait || []).filter((w) => (w.n || '').trim().toLowerCase() !== me);
+    if (wait.length) html += '<br><b>Ще не пробували:</b> ' + wait.map((w) => '<i>' + ctx.esc(w.n) + '</i>' + fire(w.st)).join(', ');
+    return '<div class="chs-day">' + html + '</div>';
+  }
+
+  /// Смуга над дошкою: номер задачі, «мат у N», хто починає, час і спроба. Цокає раз на секунду, лише поки задача відкрита.
+  function puzzleHead(root, ctx) {
+    const v = ctx.view || {};
+    const p = v.puzzle;
+    let el = root.querySelector(':scope > .chs-puz');
+    const st = state(root);
+    clearInterval(st.puzTimer);
+    st.puzTimer = 0;
+    if (!p) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'chs-puz';
+      root.insertBefore(el, root.firstChild);
+    }
+    const over = p.solved || p.gaveUp;
+    const k = p.startedAt + '|' + p.attempts;
+    if (st.puzKey !== k) { st.puzKey = k; st.puzAt = performance.now() - (p.elapsedMs || 0); }
+    const draw = () => {
+      const ms = over ? p.ms || p.elapsedMs : performance.now() - st.puzAt;
+      setHtml(el, '🧩 <b>Задача №' + p.no + '</b> · мат у ' + p.n + ' · ' + (v.me === 'b' ? 'ходять чорні' : 'ходять білі')
+        + (over ? '' : ' · ходів лишилось: <b>' + p.left + '</b>')
+        + ' · <span class="chs-t">⏱ ' + mmss(ms) + '</span>' + (p.attempts > 1 ? ' · спроба ' + p.attempts : '')
+        + (v.streak >= 2 ? ' · 🔥' + v.streak : ''));
+    };
+    draw();
+    if (!over && ctx.playing) st.puzTimer = setInterval(() => { if (!document.hidden && root._chess) draw(); }, 1000);
   }
 
   // ---- годинник ---------------------------------------------------------------------------------
@@ -325,19 +468,21 @@
       + (s.draws ? ' · нічиїх <b>' + s.draws + '</b>' : '') + '</span>';
   }
 
-  HGames.register({
+  const MOD = {
     id: 'chess',
     icon: ICON,
     seatNames: ['білі', 'чорні'],
     seatClass: ['x', 'd'],
 
-    mount(root, ctx) { state(root); paint(root, ctx); },
+    mount(root, ctx) { state(root); paint(root, ctx); puzzleHead(root, ctx); glekPrefs(root, ctx); },
 
     update(root, ctx) {
       const st = state(root);
       // Партія скінчилась або пішов чужий хід — недовибраний намір тримати нема сенсу.
       if (!ctx.myTurn) { st.sel = null; st.promo = null; }
       paint(root, ctx);
+      puzzleHead(root, ctx);
+      glekPrefs(root, ctx);
       // Коли фігура доїде — перемалювати без класу slide, щоб наступний кадр її вже не смикав.
       clearTimeout(st.t);
       if (performance.now() < st.slideUntil) st.t = setTimeout(() => root._chess && paint(root, ctx), SLIDE_MS + 30);
@@ -345,20 +490,39 @@
 
     status(ctx) {
       const v = ctx.view || {};
+      const kind = kindOf(ctx);
+      if (kind === 'glek' && ctx.playing) {
+        if (v.glek && v.glek.thinking) return '🤖 Глек думає…';
+        return 'Твій хід' + (v.check ? ' — шах!' : '') + (v.variant === 'anti' ? ' · піддавки: віддавай фігури' : '');
+      }
+      if (kind === 'daily' && ctx.playing && v.puzzle && !v.puzzle.solved && !v.puzzle.gaveUp) {
+        return v.puzzle.left === 1 ? 'Мат одним ходом — знайди його!' : 'Знайди хід, після якого мат неминучий за ' + v.puzzle.left;
+      }
       if (!ctx.playing || !v.check) return '';   // порожньо — каркас напише «Твій хід» сам
       const base = ctx.myTurn ? 'Твій хід' : 'Ходить ' + (ctx.nickOf(v.turn) || ctx.seatName(v.turn));
       return base + ' — шах!';
     },
 
-    unmount(root) { if (root._chess) clearTimeout(root._chess.t); root._chess = null; stopClock(root); },
+    unmount(root) {
+      if (root._chess) { clearTimeout(root._chess.t); clearInterval(root._chess.puzTimer); }
+      root._chess = null;
+      stopClock(root);
+    },
 
     news: {
-      v: '2026-09-28',
-      title: 'Шахи: дошку видно краще',
+      v: '2026-09-29',
+      title: 'Шахи: Дядько Глек і задача дня',
       items: [
-        '♟ Поля дошки контрастніші: світлі й темні розрізняються з першого погляду — діагоналі читаються',
-        '🎯 Крапки «сюди можна» темні й помітні на обох полях',
+        '🤖 «Шахи з Глеком» — нема з ким? Дядько Глек сяде навпроти: легкий або середній, білими, чорними чи по черзі. Без рейтингу й черепків',
+        '🧩 «Шахова задача дня» — мат у 2–3 ходи, одна на всіх на добу; табло за часом і спробами, 🔥 днів поспіль',
+        '🙃 Глек уміє й піддавки та шахи Фішера — перемикається просто під дошкою',
       ],
     },
-  });
+  };
+  HGames.register(MOD);
+  // Той самий модуль малює й соло-столи (Client: "chess"): каркас шукає модуль за Id гри, тож реєструємо ще двічі.
+  // «Що нового» в них нема — це нові ігри (added), новину про них каже класичний стіл.
+  const solo = (id) => Object.assign({}, MOD, { id, news: undefined, added: '2026-09-29' });
+  HGames.register(solo('chess-glek'));
+  HGames.register(solo('chess-daily'));
 })();

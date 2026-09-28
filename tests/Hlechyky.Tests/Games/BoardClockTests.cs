@@ -158,8 +158,8 @@ public class BoardClockTests
     [Fact]
     public void Checkers_passport_offers_the_clock()
     {
-        var opt = Assert.Single(new Checkers().Info.Options!);
-        Assert.Equal("clock", opt.Key);
+        // Поряд із годинником з проходу №3 є ще варіант (піддавки) — годинник шукаємо за ключем.
+        var opt = Assert.Single(new Checkers().Info.Options!, o => o.Key == "clock");
         Assert.Equal("none", opt.Default);
     }
 

@@ -1,0 +1,15 @@
+/* Китайські шашки на зірці — усі класи з префіксом zk-. */
+.zk-board { width: min(92vw, 520px, calc(100vh - 260px)); min-width: 260px; margin: 0 auto; }
+.zk-board svg { width: 100%; height: auto; display: block; touch-action: manipulation; }
+.zk-hole { fill: var(--panel2, #2a3a30); stroke: var(--muted, #889); stroke-width: .05; cursor: pointer; }
+.zk-hole.zk-to { fill: var(--ok) !important; fill-opacity: .75 !important; stroke: var(--text); stroke-width: .08; }
+.zk-peg { stroke: rgba(0, 0, 0, .55); stroke-width: .07; cursor: default; }
+.zk-peg.zk-can { cursor: pointer; stroke: var(--text); stroke-width: .08; }
+.zk-peg.zk-sel { stroke: var(--text); stroke-width: .16; }
+.zk-trail { fill: none; stroke: var(--text); stroke-opacity: .45; stroke-width: .1; stroke-dasharray: .25 .18; stroke-linecap: round; }
+.zk-info { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; margin-top: 6px; font-size: .9em; }
+.zk-p { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 10px; }
+.zk-p.on { outline: 2px solid var(--accent); }
+.zk-p i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.zk-res { width: 100%; text-align: center; font-weight: 600; }
+.zk-hit { fill: transparent; cursor: pointer; }
