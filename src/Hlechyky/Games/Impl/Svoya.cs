@@ -249,7 +249,10 @@ public sealed partial class Svoya : Game
     SvoyaPack Shape(SvoyaPack source)
     {
         var pack = Cut(source, _length);
-        return _blitz ? Blitz(pack) : pack;
+        if (_blitz) pack = Blitz(pack);
+        if (source.Id == SvoyaMix.Id && !ReferenceEquals(pack, source))
+            pack.Description = SvoyaMix.Describe(pack, Seen.LastSeen(SeatedKeys()));
+        return pack;
     }
 
     /// <summary>
@@ -1191,6 +1194,7 @@ public sealed partial class Svoya : Game
                 description = _pack.Description,
                 special = _pack.Id is SvoyaMix.Id or SvoyaAbout.Id,
                 author = _pack.Author,
+                questions = _pack.QuestionCount,
                 rounds = _pack.Rounds.Select(r => new { name = r.Name, final = r.IsFinal, themes = r.Themes.Select(t => t.Name).ToArray() }).ToArray(),
             },
             round = inRound ? _round + 1 : 0,

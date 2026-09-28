@@ -169,3 +169,9 @@
 `grow`, `choices`, `choicesAt`, `who`, `teams`, `duel`, `note`, `result.teams/team`. Ходи: `pick`, `who`, `bet`
 (`GuessEveryMs` — лише для `guess`: варіант і замовник і так одна спроба).
 Тести: `MelodyModesTests.cs`; боти `docs/games/dev/melody-bots.py` уміють варіанти, замовника й ставки.
+
+### Фініш проходу №3 (28.09, пакет fin-tails)
+- Вид має `done` — місця, яким у треку вже нема чого робити (`Finished`: команди, «Хто закинув?», дуель, 🙈). Клієнт за ним ховає «Пропустити» і рахує «хто ще думає»: у «Хто закинув?» кнопка лишається, поки замовника не названо; тіммейт, чия команда має все, бачить «Є! Команда вгадала все» і неактивне поле.
+- Дуель не оголошується, коли в другого лідера 0 очок; оголошену дуель, чий трек так і не скачався (партія вкоротилась), `Over` знімає з виду.
+- `choicesAt` (обіцянка варіантів) — лише коли для треку є ≥ 2 варіанти.
+Тести: `Done_is_counted_by_the_server_for_who_asked_and_for_teams`, `No_duel_when_the_leaders_have_nothing`, `A_duel_whose_track_never_came_is_taken_down`, `No_promise_of_choices_when_there_is_nothing_to_choose_from`.

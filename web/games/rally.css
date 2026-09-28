@@ -101,6 +101,8 @@
 /* ---- керування пальцем: великі напівпрозорі кнопки поверх канваса ---- */
 .rl-touch { display: none; }
 @media (pointer: coarse) {
+  /* 🔇 і «⛽ автогаз» у HUD — під палець (були 23 px заввишки; фініш проходу №3) */
+  .rl-hud .rl-tog { min-height: 44px; min-width: 44px; padding: 0 12px; font-size: 1.05em; }
   .rl-touch.show { display: block; position: absolute; inset: 0; pointer-events: none; }
   .rl-touch button {
     pointer-events: auto; position: absolute; width: 64px; height: 64px; border-radius: 50%; justify-content: center;
@@ -207,3 +209,6 @@ body:has(.rl-body.rl-side) .tchat.drawer:not(.open) .tc-last { display: none; }
 }
 .rl-photo { flex: 1 1 100%; display: flex; justify-content: center; }
 .rl-photo button { min-height: 44px; padding: 6px 16px; border-radius: 10px; }
+
+/* 🏆 чемпіонат: траси за жеребом — чіп обраної при створенні траси в шапці столу вводив в оману (rally.js champChip) */
+.gtable.rl-champtrk .gtitle + .gmode:not(.stake) { display: none; }

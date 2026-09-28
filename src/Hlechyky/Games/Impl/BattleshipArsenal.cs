@@ -31,6 +31,11 @@ public static class BattleshipArsenal
     public const int ThriftCap = 30;
     /// <summary>Скільки пострілів мусить бути в бою, щоб за нього платили (вийти одразу — не заробіток).</summary>
     public const int MinShots = 6;
+    /// <summary>
+    /// Стеля доходу на нік за київську добу: три-чотири чесні перемоги. Далі бої безкоштовні, але без заробітку —
+    /// щоб «другим ніком проти себе» чи проти Глека шеляги не друкувались мішками (рецензія проходу №3).
+    /// </summary>
+    public const int DailyCap = 120;
 
     public static readonly BattleshipTool[] Tools =
     [
@@ -62,6 +67,8 @@ public sealed class BattleshipPurse : BackgroundService
     readonly Db? _db;
     readonly ILogger<BattleshipPurse>? _log;
     readonly ConcurrentDictionary<string, (int Coins, int Games)> _coins = new();
+    /// <summary>Заробіток за сьогодні: лише пам'ять (перезапуск сервера — рідкість, а стеля — від фарму, не від гри).</summary>
+    readonly Dictionary<string, (string Day, int Earned)> _today = [];
     readonly Channel<(string Key, string Nick, int Coins, int Games, DateTimeOffset At)> _rows = Channel.CreateUnbounded<(string, string, int, int, DateTimeOffset)>();
     readonly object _gate = new();
 
@@ -100,6 +107,24 @@ public sealed class BattleshipPurse : BackgroundService
             _coins[key] = (coins, games + 1);
             if (_db is not null) _rows.Writer.TryWrite((key, nick, coins, games + 1, at));
             return coins;
+        }
+    }
+
+    /// <summary>
+    /// Скільки з доходу <paramref name="income"/> ще влазить у денну стелю ніка (<see cref="BattleshipArsenal.DailyCap"/>);
+    /// влізле одразу записується як зароблене сьогодні.
+    /// </summary>
+    public int Earn(string nick, int income, DateTimeOffset at)
+    {
+        if (income <= 0) return income;
+        lock (_gate)
+        {
+            var key = Key(nick);
+            var day = Days.Of(at);
+            var earned = _today.TryGetValue(key, out var t) && t.Day == day ? t.Earned : 0;
+            var take = Math.Min(income, Math.Max(0, BattleshipArsenal.DailyCap - earned));
+            _today[key] = (day, earned + take);
+            return take;
         }
     }
 
@@ -471,9 +496,10 @@ public sealed partial class Battleship
             var kit = _kits[s];
             if (!side.In || side.Bot || kit.Nick is null) continue;
             var spent = kit.Spent;
-            var income = played && !side.Gone ? BattleshipArsenal.Income(_winner == s && fullWin, spent) : 0;
+            var earned = played && !side.Gone ? BattleshipArsenal.Income(_winner == s && fullWin, spent) : 0;
+            var income = Purse.Earn(kit.Nick, earned, Ctx.Clock.UtcNow);
             var now = Purse.Add(kit.Nick, income - spent, Ctx.Clock.UtcNow);
-            kit.Ledger = [spent, income, now];
+            kit.Ledger = [spent, income, now, earned - income];     // останнє — скільки з'їла денна стеля
         }
     }
 

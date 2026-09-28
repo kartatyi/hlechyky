@@ -173,7 +173,19 @@
   на вищих телефонах (411 × 784) воно й далі на всю ширину.
 */
 @container (max-width: 640px) {
-  .pcwrap.drw .pcstage { width: min(100%, max(240px, calc((100dvh - var(--pctop, 230px) - 224px) * 4 / 3))); justify-self: center; }
+  .pcwrap.drw .pcstage { width: min(100%, max(240px, calc((100dvh - var(--pctop, 230px) - 232px) * 4 / 3))); justify-self: center; }
+  /*
+    Фініш проходу №3: інструменти вищі під палець (36 → 40 px, на високих телефонах — 44), а рядок не ширший за
+    «картка мінус кнопка 💬 Стіл»: та висить праворуч унизу й на 390 px накривала ◯. Тепер ◯ ╱ переходять у другий
+    рядок до ↶ 🗑, а праворуч від них — місце для «Стіл».
+  */
+  .pcsz, .pct, .pca { height: 40px; }
+  .pctools .pcrow { max-width: calc(100% - 72px); }
+}
+@media (min-height: 740px) {
+  @container (max-width: 640px) {
+    .pcsz, .pct, .pca { height: 44px; }
+  }
 }
 
 /* ======================= прохід №3 (29.09) ======================= */

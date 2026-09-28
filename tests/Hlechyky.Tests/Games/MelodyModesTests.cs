@@ -332,6 +332,80 @@ public class MelodyModesTests
         Assert.Equal(before + Melody.BetPoints, Score(h, 2));
     }
 
+    // ---------------------------------------------------------------- фініш проходу №3: хвости рецензії
+
+    static int[] Done(RoomHarness h) => [.. h.View(null).GetProperty("done").EnumerateArray().Select(x => x.GetInt32())];
+
+    [Fact]
+    public void Done_is_counted_by_the_server_for_who_asked_and_for_teams()
+    {
+        // «Хто закинув?»: вгадав виконавця й назву, але замовника ще не назвав — не «готово», пропустити можна
+        var h = Table(Asked(5, "Оля", "Петро"), new { rounds = "5", cat = "who" });
+        Until(h, "play");
+        h.Clock.AdvanceMs(Melody.SpeedMs);
+        var k = Array.FindIndex(Songs, t => Guess(h, 1, t.Artist + " " + t.Title).Ok);
+        Assert.True(k >= 0);
+        Assert.DoesNotContain(1, Done(h));
+        Assert.True(Do(h, 1, "skip", new { }).Ok);
+        Assert.True(Do(h, 1, "who", new { nick = "Оля" }).Ok);
+        Assert.Contains(1, Done(h));
+
+        // команди: команда 0 має все — «готово» всім її гравцям, хоч особисто вони нічого не вгадали
+        var t = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "1" }, Six);
+        Until(t, "play");
+        Assert.True(Guess(t, 0, "Океан Ельзи Обійми").Ok);
+        Assert.Equal([0, 2, 4], Done(t));
+    }
+
+    [Fact]
+    public void No_duel_when_the_leaders_have_nothing()
+    {
+        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", duel = "1" }, "Оля", "Петро", "Ганна");
+        Until(h, "play");
+        h.Clock.AdvanceMs(Melody.SpeedMs);
+        Assert.True(Guess(h, 2, "Обійми").Ok);                            // очки лише в Ганни — другого лідера нема
+        EndRound(h);
+        for (var i = 0; i < 3; i++) { NextRound(h); EndRound(h); }
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("duel").ValueKind);
+        NextRound(h);
+        Assert.True(Guess(h, 0, "Journey").Ok);                           // останній трек — для всіх
+    }
+
+    [Fact]
+    public void A_duel_whose_track_never_came_is_taken_down()
+    {
+        // останній трек ще качається (порожній id — не з кешу), коли після четвертого оголошують дуель
+        MelodyTrack[] songs = [.. Songs.Take(4), new("", "Journey", "The Hardkiss", 0, null, "")];
+        var src = new FakeMelodySource(songs, slow: new HashSet<string> { "Journey" });
+        var h = Table(src, new { rounds = "5", duel = "1" }, "Оля", "Петро", "Ганна");
+        Until(h, "play");
+        for (var round = 1; round <= 4; round++)
+        {
+            h.Clock.AdvanceMs(Melody.SpeedMs);
+            Assert.True(Guess(h, 0, Songs[round - 1].Title).Ok);
+            Assert.True(Guess(h, 1, Songs[round - 1].Artist).Ok);
+            EndRound(h);
+            if (round < 4) NextRound(h);
+        }
+        Assert.NotEqual(JsonValueKind.Null, h.View(2).GetProperty("duel").ValueKind);   // оголосили
+        src.Release("Journey", ok: false);                                              // а трек не скачався
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        Until(h, "done");
+        Assert.True(JsonValueKind.Null == h.View(2).GetProperty("duel").ValueKind, h.View(2).GetRawText());
+    }
+
+    [Fact]
+    public void No_promise_of_choices_when_there_is_nothing_to_choose_from()
+    {
+        MelodyTrack[] one = [.. Songs.Select(t => t with { Artist = "Океан Ельзи" })];
+        var h = Table(new FakeMelodySource(one), new { rounds = "5", choices = "1", clip = "15" });
+        Until(h, "play");
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("choicesAt").ValueKind);
+        var two = Table(new FakeMelodySource(Songs), new { rounds = "5", choices = "1", clip = "15" });
+        Until(two, "play");
+        Assert.NotEqual(JsonValueKind.Null, two.View(0).GetProperty("choicesAt").ValueKind);
+    }
+
     [Fact]
     public void No_duel_for_two()
     {
