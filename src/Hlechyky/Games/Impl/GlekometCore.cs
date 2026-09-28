@@ -9,7 +9,8 @@ namespace Hlechyky.Games.Impl;
 /// <param name="Crater">Радіус вирви (r); 0 — землю не рве.</param>
 /// <param name="Reach">Радіус шкоди (R): далі — нуль, ближче — лінійно до D.</param>
 /// <param name="WindK">Яку частку вітру відчуває в польоті.</param>
-public sealed record GlekometWeapon(string Key, string Name, string Icon, int Stock, int Damage, int Crater, int Reach, double WindK);
+/// <param name="GravK">Яку частку тяжіння відчуває (півень летить майже прямо).</param>
+public sealed record GlekometWeapon(string Key, string Name, string Icon, int Stock, int Damage, int Crater, int Reach, double WindK, double GravK = 1.0);
 
 /// <summary>
 /// Снаряд у польоті. Структура в масиві на вісім слотів — щоб підкрок не народжував жодного об'єкта.
@@ -27,6 +28,8 @@ public struct GlekometShell
     public bool Split;
     /// <summary>Номер підкроку, у якому народився: скалки, що з'явились посеред підкроку, рушають із наступного.</summary>
     public long Born;
+    /// <summary>Чий снаряд (місце): у «Залпі» летять снаряди всіх, і шкоду рахуємо кожному стрільцеві окремо.</summary>
+    public int Owner;
 }
 
 /// <summary>Хата на колесах одного місця. Координати цілі: x — центр, y — рівень підлоги (поверхня під центром).</summary>
@@ -46,6 +49,10 @@ public sealed class GlekometHut
     public int Fuel;
     /// <summary>Чому руїна: hit, fall, drown, afk, left, poison; порожньо — ціла або порожнє місце.</summary>
     public string Reason = "";
+    /// <summary>🍯 Скільки ще ходів хата в меду (не рушить).</summary>
+    public int Honey;
+    /// <summary>Цей хід хата прилипла: крок не можна.</summary>
+    public bool Stuck;
 }
 
 /// <summary>
@@ -69,11 +76,24 @@ public sealed class GlekometCore
     public const int FuelMax = 120, FuelCost = 8, MoveStep = 8, MaxClimb = 12, SafeDrop = 24;
     public const int WaterStart = 20, WaterRise = 15, WaterTop = 400;
     public const int HayW = 30, HayH = 26, PoisonTurns = 3, PoisonDmg = 8, StorkReach = 60, HutGap = 40;
-    public const int MaxShells = 8, MaxEx = 16;
+    /// <summary>Слотів снарядів: у «Залпі» шестеро можуть кинути по розсипному — 24 скалки.</summary>
+    public const int MaxShells = 24, MaxEx = 32;
     public const int HMin = 60, HMax = 340, RampCols = 8;
 
     public const int Pot = 0, Shards = 1, Varenyk = 2, Hay = 3, Stork = 4, Khrin = 5;
-    public const int ExSplash = 6, ExOut = 7, ExCloud = 8;
+    /// <summary>Снаряди-приколи (опція «Комора: з приколами»): півень, мед, смерч, підкова.</summary>
+    public const int Rooster = 6, Honey = 7, Twister = 8, Horseshoe = 9;
+    /// <summary>Скільки снарядів у звичайній коморі й у коморі з приколами.</summary>
+    public const int BaseKinds = 6, AllKinds = 10;
+    public const int ExSplash = 10, ExOut = 11, ExCloud = 12;
+    /// <summary>Мед тримає хату два ходи; смерч відносить до 80 u; взимку хату від вибуху відкидає до 40 u і несе по льоду вниз.</summary>
+    public const int HoneyTurns = 2, TwistPush = 80, IcePush = 40, IceSlide = 12;
+    /// <summary>Підкова-магніт: тягне чужі снаряди в радіусі 170 u, найсильніше — зблизька.</summary>
+    public const int MagR = 170;
+    public const double MagAcc = 900;
+    /// <summary>Мапи: звичайне село, зима (хати ковзають), ніч (лише вогні — малює клієнт), ярмарок зі ставком посередині.</summary>
+    public const int MapPlain = 0, MapWinter = 1, MapNight = 2, MapFair = 3;
+    public const int PondHalf = 110, PondBottom = 2;
 
     /// <summary>Комора. Порядок і ключі — ті самі, що в клієнті (glekomet.js WEAPONS).</summary>
     public static readonly GlekometWeapon[] Weapons =
@@ -84,10 +104,14 @@ public sealed class GlekometCore
         new("hay", "Копа сіна", "🌾", 2, 0, 0, 0, 1.0),
         new("stork", "Лелека", "🕊", 1, 0, 0, 0, 1.0),
         new("khrin", "Хрін", "🌿", 2, 12, 12, 40, 1.0),
+        new("rooster", "Півень", "🐓", 2, 30, 16, 34, 2.0, 0.45),
+        new("honey", "Мед", "🍯", 2, 10, 0, 50, 1.0),
+        new("twister", "Смерч", "🌪", 1, 8, 0, 110, 1.0),
+        new("horseshoe", "Підкова", "🧲", 1, 0, 0, 0, 1.0),
     ];
 
-    /// <summary>Імена подій у кадрі (<c>ex</c>): шість снарядів, бризки, виліт за край, хмари.</summary>
-    public static readonly string[] ExNames = ["pot", "shards", "varenyk", "hay", "stork", "khrin", "splash", "out", "cloud"];
+    /// <summary>Імена подій у кадрі (<c>ex</c>): десять снарядів, бризки, виліт за край, хмари.</summary>
+    public static readonly string[] ExNames = ["pot", "shards", "varenyk", "hay", "stork", "khrin", "rooster", "honey", "twister", "horseshoe", "splash", "out", "cloud"];
 
     /// <summary>Розліт скалок від верхівки: додатки до швидкості розсипного глека.</summary>
     static readonly int[] ShardVx = [-90, -30, 30, 90], ShardVy = [30, 50, 50, 30];
@@ -103,6 +127,13 @@ public sealed class GlekometCore
     public int Wind;
     /// <summary>Чи граємо командами — тоді «своя» шкода — ще й по хаті союзника.</summary>
     public bool Teams;
+    /// <summary>Мапа партії (<see cref="MapPlain"/>…): зима міняє фізику після вибуху, ярмарок — рельєф.</summary>
+    public int Map;
+    /// <summary>Підкови-магніти по власниках: де лежить і коли покладено (номер ходу гри, <see cref="Stamp"/>).</summary>
+    public readonly int[] MagX = new int[Seats], MagY = new int[Seats], MagAt = new int[Seats];
+    public int MagMask;
+    /// <summary>Номер ходу, яким гра мітить покладену підкову.</summary>
+    public int Stamp;
     long _sub;
 
     // ---------- позначки тика: що змінилось (для кадру); скидає ClearMarks ----------
@@ -128,6 +159,19 @@ public sealed class GlekometCore
     public int ShotHay;
     /// <summary>Лелека: 1 — переніс хату, -1 — змарновано, 0 — не летіла.</summary>
     public int ShotStork;
+
+    // ---------- той самий підсумок по стрільцях (у «Залпі» їх кілька; по черзі — один, ShotBy) ----------
+    /// <summary>Шкода від вибухів: [стрілець · 6 + хата].</summary>
+    public readonly int[] DmgBy = new int[Seats * Seats];
+    /// <summary>Маски по стрільцях: пряме влучання, отруєні хроном, у меду, відкинуті смерчем/льодом.</summary>
+    public readonly int[] DirectBy = new int[Seats], PoisonedBy = new int[Seats], HoneyBy = new int[Seats], ShovedBy = new int[Seats];
+    /// <summary>Лічильники по стрільцях: бризки, виліт за край, хмари, вибухи, копи, лелека, підкова лягла.</summary>
+    public readonly int[] SplashBy = new int[Seats], OutBy = new int[Seats], CloudBy = new int[Seats], BoomsBy = new int[Seats],
+        HayBy = new int[Seats], StorkBy = new int[Seats], MagBy = new int[Seats];
+    /// <summary>Звідки й чим стріляв кожен (-1 — не стріляв цим пострілом/залпом).</summary>
+    public readonly int[] FromX = new int[Seats], WBy = new int[Seats];
+    /// <summary>Чий вибух добив хату (-1 — не вибух).</summary>
+    public readonly int[] KillBy = new int[Seats];
 
     /// <summary>Порядок вибування (для рядка Журналу: останній вибулий — першим після переможця).</summary>
     public readonly int[] OutOrder = new int[Seats];
@@ -229,9 +273,25 @@ public sealed class GlekometCore
             (slots[i], slots[j]) = (slots[j], slots[i]);
         }
 
+        // Ярмарок: посередині села — ставок (улоговина нижче води), хати стоять на березі, а не в ньому.
+        if (Map == MapFair)
+        {
+            for (var c = 0; c < Cols; c++)
+            {
+                var t = Math.Abs(c * ColW + 2 - W / 2) / (double)PondHalf;
+                if (t >= 1) continue;
+                var k = t * t * (3 - 2 * t);
+                H[c] = (int)Math.Round(PondBottom + (H[c] - PondBottom) * k);
+            }
+            for (var i = 0; i < n; i++)
+                if (slots[i] > W / 2 - PondHalf + 6 && slots[i] < W / 2 + PondHalf - 6)
+                    slots[i] = slots[i] < W / 2 || (slots[i] == W / 2 && i % 2 == 0) ? W / 2 - PondHalf - 6 : W / 2 + PondHalf + 6;
+        }
+
         Water = WaterStart;
         Wind = 0;
         OutCount = 0;
+        MagMask = 0;
         ClearShells();
         var next = 0;
         Span<bool> pad = stackalloc bool[Cols];
@@ -297,6 +357,8 @@ public sealed class GlekometCore
         hut.PoisonBy = -1;
         hut.Fuel = 0;
         hut.Reason = "";
+        hut.Honey = 0;
+        hut.Stuck = false;
     }
 
     /// <summary>Для тестів: рівне поле заданої висоти, без жодної хати.</summary>
@@ -306,6 +368,7 @@ public sealed class GlekometCore
         Water = WaterStart;
         Wind = 0;
         OutCount = 0;
+        MagMask = 0;
         ClearShells();
         for (var s = 0; s < Seats; s++) Reset(Huts[s], s);
     }
@@ -321,6 +384,8 @@ public sealed class GlekometCore
         hut.Reason = "";
         hut.Poison = 0;
         hut.PoisonBy = -1;
+        hut.Honey = 0;
+        hut.Stuck = false;
         hut.X = x;
         hut.Y = Ground(x);
         return hut;
@@ -371,23 +436,47 @@ public sealed class GlekometCore
     /// <summary>Постріл із хати місця: кут у градусах (0 — праворуч, 90 — угору), сила 5..100, снаряд w.</summary>
     public void Fire(int seat, int a, int p, int w)
     {
-        var hut = Huts[seat];
         BeginShot(seat, w);
+        Throw(seat, a, p, w);
+    }
+
+    /// <summary>Снаряд місця в повітря (у «Залпі» — кожного по черзі місць, після <see cref="BeginVolley"/>).</summary>
+    public void Throw(int seat, int a, int p, int w)
+    {
+        var hut = Huts[seat];
+        FromX[seat] = hut.X;
+        WBy[seat] = w;
         var v = VPerPower * p;
         var rad = a * Math.PI / 180;
-        Spawn(w, hut.X, hut.Y + Launch, v * Math.Cos(rad), v * Math.Sin(rad), false);
+        Spawn(w, hut.X, hut.Y + Launch, v * Math.Cos(rad), v * Math.Sin(rad), false, seat);
     }
 
     /// <summary>Новий постріл місця: підсумок попереднього забуваємо.</summary>
     public void BeginShot(int seat, int w)
     {
+        BeginVolley();
         ShotBy = seat;
         ShotW = w;
         ShotFromX = Huts[seat].X;
+        FromX[seat] = ShotFromX;
+        WBy[seat] = w;
+    }
+
+    /// <summary>Новий залп: підсумки всіх стрільців з нуля; хто стрілятиме — скаже <see cref="Throw"/>.</summary>
+    public void BeginVolley()
+    {
+        ShotBy = -1;
+        ShotW = 0;
         Array.Clear(ShotDmg);
         Array.Clear(ShotFall);
         ShotDirect = ShotPoisoned = ShotDied = 0;
         ShotSplash = ShotOut = ShotCloud = ShotBooms = ShotHay = ShotStork = 0;
+        Array.Clear(DmgBy);
+        Array.Clear(DirectBy); Array.Clear(PoisonedBy); Array.Clear(HoneyBy); Array.Clear(ShovedBy);
+        Array.Clear(SplashBy); Array.Clear(OutBy); Array.Clear(CloudBy); Array.Clear(BoomsBy);
+        Array.Clear(HayBy); Array.Clear(StorkBy); Array.Clear(MagBy);
+        Array.Fill(WBy, -1);
+        Array.Fill(KillBy, -1);
     }
 
     /// <summary>Те саме з іншим вітром (тести).</summary>
@@ -398,12 +487,12 @@ public sealed class GlekometCore
     }
 
     /// <summary>Снаряд у вільний слот. Повертає індекс або -1 (слотів вісім — більше чотирьох скалок не буває).</summary>
-    public int Spawn(int kind, double x, double y, double vx, double vy, bool split)
+    public int Spawn(int kind, double x, double y, double vx, double vy, bool split, int owner = -1)
     {
         for (var i = 0; i < MaxShells; i++)
         {
             if (Shells[i].Alive) continue;
-            Shells[i] = new GlekometShell { Alive = true, Kind = kind, X = x, Y = y, Vx = vx, Vy = vy, Split = split, Born = _sub };
+            Shells[i] = new GlekometShell { Alive = true, Kind = kind, X = x, Y = y, Vx = vx, Vy = vy, Split = split, Born = _sub, Owner = owner < 0 ? ShotBy : owner };
             return i;
         }
         return -1;
@@ -426,17 +515,22 @@ public sealed class GlekometCore
 
     void Advance(ref GlekometShell s)
     {
-        var ax = Wind * WindAcc * Weapons[s.Kind].WindK;
+        var wpn = Weapons[s.Kind];
+        var ax = Wind * WindAcc * wpn.WindK;
         s.Vx += ax * Dt;
-        s.Vy -= G * Dt;
+        s.Vy -= G * wpn.GravK * Dt;
+        if (MagMask != 0) Pull(ref s);
         s.X += s.Vx * Dt;
         s.Y += s.Vy * Dt;
         s.Steps++;
+        var o = s.Owner;
+        var own = o >= 0 && o < Seats;
 
         if (s.X < 0 || s.X > W)
         {
             s.Alive = false;
             ShotOut++;
+            if (own) OutBy[o]++;
             Event(s.X < 0 ? 0 : W, Round(s.Y), 0, ExOut);
             return;
         }
@@ -444,6 +538,7 @@ public sealed class GlekometCore
         {
             s.Alive = false;
             ShotSplash++;
+            if (own) SplashBy[o]++;
             Event(Round(s.X), Water, 0, ExSplash);
             return;
         }
@@ -451,28 +546,44 @@ public sealed class GlekometCore
         if (hit >= 0)
         {
             s.Alive = false;
-            Explode(s.Kind, Round(s.X), Round(s.Y), hit);
+            Explode(s.Kind, Round(s.X), Round(s.Y), hit, o);
             return;
         }
         var ground = H[Col(s.X)];
         if (s.Y <= ground)
         {
             s.Alive = false;
-            Explode(s.Kind, Round(s.X), ground, -1);
+            Explode(s.Kind, Round(s.X), ground, -1, o);
             return;
         }
         if (s.Kind == Shards && !s.Split && s.Steps >= SplitSteps && s.Vy <= 0)
         {
             s.Alive = false;
             double x = s.X, y = s.Y, vx = s.Vx, vy = s.Vy;
-            for (var j = 0; j < 4; j++) Spawn(Shards, x, y, vx + ShardVx[j], vy + ShardVy[j], true);
+            for (var j = 0; j < 4; j++) Spawn(Shards, x, y, vx + ShardVx[j], vy + ShardVy[j], true, o);
             return;
         }
         if (s.Steps >= MaxAgeSteps)
         {
             s.Alive = false;
             ShotCloud++;
+            if (own) CloudBy[o]++;
             Event(Round(s.X), Math.Min(Hgt, Round(s.Y)), 0, ExCloud);
+        }
+    }
+
+    /// <summary>🧲 Підкови тягнуть чужі снаряди (свої й союзницькі — ні): що ближче, то сильніше, далі за 170 u — ніяк.</summary>
+    void Pull(ref GlekometShell s)
+    {
+        for (var m = 0; m < Seats; m++)
+        {
+            if ((MagMask & (1 << m)) == 0 || m == s.Owner || (Teams && s.Owner >= 0 && m % 2 == s.Owner % 2)) continue;
+            double dx = MagX[m] - s.X, dy = MagY[m] + 12 - s.Y, d2 = dx * dx + dy * dy;
+            if (d2 >= MagR * MagR || d2 < 1) continue;
+            var d = Math.Sqrt(d2);
+            var f = MagAcc * (1 - d / MagR) / d;
+            s.Vx += f * dx * Dt;
+            s.Vy += f * dy * Dt;
         }
     }
 
@@ -502,23 +613,41 @@ public sealed class GlekometCore
     public static int Falloff(int damage, int reach, double d) =>
         d >= reach ? 0 : (int)Math.Round(damage * (1 - d / reach), MidpointRounding.AwayFromZero);
 
-    /// <summary>Вибух снаряда kind у точці (ex, ey); direct — хата, у яку влетіли (-1 — земля).</summary>
-    public void Explode(int kind, int ex, int ey, int direct)
+    /// <summary>
+    /// Вибух снаряда kind у точці (ex, ey); direct — хата, у яку влетіли (-1 — земля); owner — чий снаряд
+    /// (типово — той, хто стріляв цим пострілом).
+    /// </summary>
+    public void Explode(int kind, int ex, int ey, int direct, int owner = -2)
     {
+        var o = owner == -2 ? ShotBy : owner;
+        var own = o >= 0 && o < Seats;
         var wpn = Weapons[kind];
         switch (kind)
         {
             case Hay:
                 Mound(ex);
                 ShotHay++;
+                if (own) HayBy[o]++;
                 Event(ex, ey, HayW, Hay);
                 return;
             case Stork:
-                Land(ex);
+                Land(ex, o);
                 Event(ex, ey, 0, Stork);
+                return;
+            case Horseshoe:
+                if (own)
+                {
+                    MagX[o] = ex;
+                    MagY[o] = ey;
+                    MagAt[o] = Stamp;
+                    MagMask |= 1 << o;
+                    MagBy[o]++;
+                }
+                Event(ex, ey, 0, Horseshoe);
                 return;
         }
         ShotBooms++;
+        if (own) BoomsBy[o]++;
         Crater(ex, ey, wpn.Crater);
         for (var i = 0; i < Seats; i++)
         {
@@ -526,27 +655,75 @@ public sealed class GlekometCore
             if (!h.Alive) continue;
             var d = i == direct ? 0 : Distance(h, ex, ey);
             var dmg = i == direct ? wpn.Damage : Falloff(wpn.Damage, wpn.Reach, d);
-            if (i == direct) ShotDirect |= 1 << i;
+            if (i == direct)
+            {
+                ShotDirect |= 1 << i;
+                if (own) DirectBy[o] |= 1 << i;
+            }
             if (kind == Khrin && d < wpn.Reach)
             {
                 h.Poison = PoisonTurns;
-                h.PoisonBy = ShotBy;
+                h.PoisonBy = o;
                 ShotPoisoned |= 1 << i;
+                if (own) PoisonedBy[o] |= 1 << i;
             }
-            if (dmg > 0) Hurt(i, dmg);
+            if (kind == Honey && d < wpn.Reach)
+            {
+                h.Honey = HoneyTurns;
+                if (own) HoneyBy[o] |= 1 << i;
+            }
+            if (dmg > 0) Hurt(i, dmg, o);
+            if (!h.Alive) continue;
+            var side = h.X > ex ? 1 : h.X < ex ? -1 : (ex < W / 2 ? 1 : -1);
+            var push = kind == Twister && d < wpn.Reach ? (int)Math.Round(TwistPush * (1 - d / wpn.Reach))
+                : Map == MapWinter && dmg > 0 ? Math.Min(IcePush, dmg) : 0;
+            if (push > 0 && Shove(i, side * push) && own) ShovedBy[o] |= 1 << i;
         }
         Event(ex, ey, wpn.Crater, kind);
     }
 
     /// <summary>Шкода рахується справжня: хаті з 10 здоров'я глек знімає 10, а не 35.</summary>
-    void Hurt(int seat, int dmg)
+    void Hurt(int seat, int dmg, int owner)
     {
         var h = Huts[seat];
         dmg = Math.Min(dmg, h.Hp);
         h.Hp -= dmg;
         ShotDmg[seat] += dmg;
+        if (owner >= 0 && owner < Seats) DmgBy[owner * Seats + seat] += dmg;
         HpChanged = true;
-        if (h.Hp == 0) Kill(seat, "hit");
+        if (h.Hp == 0)
+        {
+            Kill(seat, "hit");
+            KillBy[seat] = owner;
+        }
+    }
+
+    /// <summary>
+    /// Відкинути хату на dx (смерч, лід): крок по 4 u, поки не край села й не чужа хата; узимку далі ще сама
+    /// з'їжджає вниз схилом (до 12 кроків). Падіння й утоплення — в <see cref="Settle"/> наприкінці тика.
+    /// true — зрушила.
+    /// </summary>
+    public bool Shove(int seat, int dx)
+    {
+        var h = Huts[seat];
+        if (!h.Alive || dx == 0) return false;
+        var dir = dx > 0 ? 1 : -1;
+        var x0 = h.X;
+        for (var k = Math.Abs(dx) / ColW; k > 0; k--)
+            if (!StepTo(seat, h.X + dir * ColW)) break;
+        if (Map == MapWinter)
+            for (var k = 0; k < IceSlide && Ground(h.X + dir * ColW) < Ground(h.X); k++)
+                if (!StepTo(seat, h.X + dir * ColW)) break;
+        if (h.X == x0) return false;
+        MovedMask |= 1 << seat;
+        return true;
+    }
+
+    bool StepTo(int seat, int nx)
+    {
+        if (nx < MinX || nx > MaxX || Near(seat, nx)) return false;
+        Huts[seat].X = nx;
+        return true;
     }
 
     /// <summary>Хата стає руїною з причиною; стоїть на місці до кінця партії.</summary>
@@ -599,17 +776,16 @@ public sealed class GlekometCore
     }
 
     /// <summary>Лелека несе хату того, хто стріляв, у найближчу суху й вільну точку біля падіння (±60 u).</summary>
-    void Land(int sx)
+    void Land(int sx, int seat)
     {
-        var seat = ShotBy;
-        if (seat < 0 || !Huts[seat].Alive) { ShotStork = -1; return; }
+        if (seat < 0 || seat >= Seats || !Huts[seat].Alive) { ShotStork = -1; if (seat >= 0 && seat < Seats) StorkBy[seat] = -1; return; }
         var tx = StorkSpot(seat, sx);
-        if (tx < 0) { ShotStork = -1; return; }
+        if (tx < 0) { ShotStork = StorkBy[seat] = -1; return; }
         var hut = Huts[seat];
         hut.X = tx;
         hut.Y = Ground(tx);
         MovedMask |= 1 << seat;
-        ShotStork = 1;
+        ShotStork = StorkBy[seat] = 1;
     }
 
     /// <summary>Де лелека може сісти: спершу sx, далі ±4, ±8… до ±60; -1 — ніде.</summary>
@@ -701,6 +877,7 @@ public sealed class GlekometCore
     {
         var h = Huts[seat];
         if (dir is not (-1 or 1)) return "Такого напрямку нема";
+        if (h.Stuck) return "Хата в меду — цей хід не рушить";
         if (h.Fuel < FuelCost) return "Пальне скінчилось";
         var nx = h.X + MoveStep * dir;
         if (nx < MinX || nx > MaxX) return "Далі — край села";

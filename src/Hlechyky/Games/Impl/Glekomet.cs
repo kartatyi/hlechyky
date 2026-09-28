@@ -21,7 +21,11 @@ public sealed class Glekomet : Game
     /// <summary>Емоція над хатою (😂 😱 😡 👏) — не частіше ніж раз на 1,5 с від хати: розмова, а не спам.</summary>
     public const int EmoGap = 38, Emos = 4;
     public const string PhaseLobby = "lobby", PhaseStart = "start", PhaseAim = "aim", PhaseFly = "fly", PhaseSettle = "settle", PhaseOver = "over";
-    const int Seats = GlekometCore.Seats, Kinds = 6;
+    const int Seats = GlekometCore.Seats, Kinds = GlekometCore.AllKinds;
+    /// <summary>«Залп»: скільки секунд усі цілять разом (при «45 с на хід» — 30).</summary>
+    public const int VolleySecs = 20, VolleySecsLong = 30;
+    /// <summary>Ключі мап у виді: той самий порядок, що <see cref="GlekometCore.MapPlain"/>….</summary>
+    public static readonly string[] MapKeys = ["plain", "winter", "night", "fair"];
 
     /// <summary>Страховка від нескінченної партії; тести опускають її, щоб дійти до межі швидко.</summary>
     public int MaxRounds { get; set; } = 40;
@@ -34,6 +38,10 @@ public sealed class Glekomet : Game
             new GameOption("teams", "Склад", [("solo", "Кожен за себе"), ("teams", "Дві команди (парні проти непарних місць)")], "solo"),
             new GameOption("turn", "Час на хід", [("20", "20 с"), ("30", "30 с"), ("45", "45 с")], "30"),
             new GameOption("water", "Вода", [("6", "Підступає з 6-го кола"), ("10", "З 10-го кола"), ("0", "Без води")], "6"),
+            new GameOption("mode", "Хід", [("turns", "По черзі"), ("volley", "💥 Залп — усі цілять разом, летить разом")], "turns"),
+            new GameOption("arms", "Комора", [("plain", "Звичайна"), ("jokes", "З приколами: 🐓 півень, 🍯 мед, 🌪 смерч, 🧲 підкова")], "plain"),
+            new GameOption("map", "Погода й мапа", [("plain", "☀ Звичайне село"), ("winter", "❄ Зима — хати ковзають"), ("night", "🌙 Ніч — видно лише вогні"),
+                ("fair", "🎪 Ярмарок зі ставком"), ("mix", "🎲 Щоразу інша")], "plain"),
         ],
         Hint: "Артилерія хатами: цілься, дай сили, зваж на вітер — і глек полетить у сусідську хату. Земля рветься, вода підступає");
 
@@ -41,6 +49,15 @@ public sealed class Glekomet : Game
     bool _teamsWanted;
     int _turnSecs = 30;
     int _waterFrom = 6;
+    bool _volley, _jokes;
+    /// <summary>Мапа зі столу: 0..3 — як <see cref="MapKeys"/>, -1 — «щоразу інша».</summary>
+    int _mapWanted;
+    int _map;
+    int _kinds = GlekometCore.BaseKinds;
+    // ---------- «Залп»: хто вже зарядив постріл (і чим; -1 — пропускає) ----------
+    readonly bool[] _lock = new bool[Seats];
+    readonly int[] _lockW = new int[Seats];
+    bool _pendRd, _rdMark;
 
     // ---------- партія ----------
     GlekometCore? _core;
@@ -133,6 +150,9 @@ public sealed class Glekomet : Game
         _teamsWanted = options.TryGetValue("teams", out var t) && t == "teams";
         _turnSecs = options.TryGetValue("turn", out var s) && int.TryParse(s, out var n) && n is 20 or 30 or 45 ? n : 30;
         _waterFrom = options.TryGetValue("water", out var w) && int.TryParse(w, out var m) && m is 0 or 6 or 10 ? m : 6;
+        _volley = options.TryGetValue("mode", out var md) && md == "volley";
+        _jokes = options.TryGetValue("arms", out var ar) && ar == "jokes";
+        _mapWanted = options.TryGetValue("map", out var mp) ? mp == "mix" ? -1 : Math.Max(0, Array.IndexOf(MapKeys, mp)) : 0;
     }
 
     // =============================================================================================
@@ -160,10 +180,17 @@ public sealed class Glekomet : Game
         if (_teamsWanted && !_teams) Note("Команди — лише парним складом: граємо кожен за себе");
 
         _core.Teams = _teams;
+        _kinds = _jokes ? GlekometCore.AllKinds : GlekometCore.BaseKinds;
+        // «Щоразу інша» — жереб лише тоді, коли його обрали: звичайний стіл за тим самим сідом відтворюється як був
+        _map = _mapWanted >= 0 ? _mapWanted : Ctx.Rng.Next(MapKeys.Length);
+        _core.Map = _map;
+        _core.Stamp = 0;
         _core.Generate(plays);
         for (var s = 0; s < Seats; s++)
         {
-            for (var w = 0; w < Kinds; w++) _inv[s][w] = plays[s] ? GlekometCore.Weapons[w].Stock : 0;
+            _lock[s] = false;
+            _lockW[s] = -1;
+            for (var w = 0; w < Kinds; w++) _inv[s][w] = plays[s] && w < _kinds ? GlekometCore.Weapons[w].Stock : 0;
             _aimA[s] = _core.Huts[s].X < GlekometCore.W / 2 ? 45 : 135;
             _aimP[s] = 60;
             _aimW[s] = 0;
@@ -229,6 +256,11 @@ public sealed class Glekomet : Game
         if (_phase == PhaseOver) return "Партію вже зіграно";
         if (_phase is PhaseStart or PhaseLobby || _core is null) return "Зачекай, зараз почнемо";
         if (_phase is PhaseFly or PhaseSettle) return "Зачекай, глек ще летить";
+        if (_volley)
+        {
+            if (seat < 0 || seat >= Seats || !_core.Huts[seat].Alive) return "Твоя хата вже руїна — дивись далі";
+            return _lock[seat] ? "Постріл уже заряджено — чекаємо решту" : null;
+        }
         if (seat != _turn) return "Зараз не твій хід";
         if (seat < 0 || seat >= Seats || !_core.Huts[seat].Alive) return "Твоя хата вже руїна — дивись далі";
         return null;
@@ -242,7 +274,7 @@ public sealed class Glekomet : Game
     {
         if (Gate(seat) is { } no) return ActResult.Fail(no);
         var w = Int(payload, "w");
-        if (w is null or < 0 or >= Kinds) return ActResult.Fail("Такої зброї в коморі нема");
+        if (w is null || w < 0 || w >= _kinds) return ActResult.Fail("Такої зброї в коморі нема");
         if (_inv[seat][w.Value] == 0) return ActResult.Fail("Цього вже не лишилось");
         var a = Int(payload, "a");
         if (a is null or < 0 or > 180) return ActResult.Fail("Кут — від 0 до 180");
@@ -250,10 +282,22 @@ public sealed class Glekomet : Game
         if (p is null or < 5 or > 100) return ActResult.Fail("Сила — від 5 до 100");
 
         var core = _core!;
-        if (_inv[seat][w.Value] > 0) _inv[seat][w.Value]--;
         _aimA[seat] = a.Value;
         _aimP[seat] = p.Value;
         _aimW[seat] = w.Value;
+        if (_volley)
+        {
+            // Залп: постріл заряджено, полетить разом з усіма; запас списуємо на вильоті, щоб комора не видала, чим цілиш
+            _lock[seat] = true;
+            _lockW[seat] = w.Value;
+            _skips[seat] = 0;
+            _idle = 0;
+            _shotThisRound = true;
+            _pendRd = true;
+            return ActResult.Done;
+        }
+        if (_inv[seat][w.Value] > 0) _inv[seat][w.Value]--;
+        core.Stamp = _turnNo;
         core.Fire(seat, a.Value, p.Value, w.Value);
         _phase = PhaseFly;
         _left = 0;
@@ -281,7 +325,13 @@ public sealed class Glekomet : Game
         if (core.ShotFall[seat] > 0)
             Note(hut.Alive ? $"{Name(seat)}: хата впала у вирву −{core.ShotFall[seat]}" : $"{Name(seat)}: хата впала у вирву — руїна");
         if (!hut.Alive && hut.Reason == "drown") Note($"{Name(seat)}: хату затопило");
-        if (!hut.Alive)
+        if (!hut.Alive && _volley)
+        {
+            // у залпі решта цілиться далі — лише перевірка кінця
+            _pendView = true;
+            CheckEnd();
+        }
+        else if (!hut.Alive)
         {
             // на полі в паузі — саме цей рядок, а не минулий постріл
             var drowned = hut.Reason == "drown";
@@ -304,6 +354,13 @@ public sealed class Glekomet : Game
     {
         if (Gate(seat) is { } no) return ActResult.Fail(no);
         _skips[seat] = 0;
+        if (_volley)
+        {
+            _lock[seat] = true;
+            _lockW[seat] = -1;
+            _pendRd = true;
+            return ActResult.Accept("Цей залп — без тебе");
+        }
         var text = $"{Name(seat)}: хід пропущено";
         Note(text);
         _last = new { by = seat, w = -1, hits = Array.Empty<object>(), text };
@@ -316,11 +373,13 @@ public sealed class Glekomet : Game
     /// <summary>Косметичний приціл того, хто ходить: лише для кадру, правил не міняє.</summary>
     ActResult Aim(int seat, JsonElement payload)
     {
-        if (_phase != PhaseAim || seat != _turn || _core is null || !_core.Huts[seat].Alive) return ActResult.Fail("Зараз не твій хід");
+        if (_phase != PhaseAim || seat < 0 || seat >= Seats || (_volley ? _lock[seat] : seat != _turn) || _core is null || !_core.Huts[seat].Alive)
+            return ActResult.Fail("Зараз не твій хід");
         var a = Int(payload, "a");
         var p = Int(payload, "p");
         var w = Int(payload, "w");
-        if (a is null or < 0 or > 180 || p is null or < 5 or > 100 || w is null or < 0 or >= Kinds) return ActResult.Fail("Такого прицілу нема");
+        if (a is null or < 0 or > 180 || p is null or < 5 or > 100 || w is null || w < 0 || w >= _kinds) return ActResult.Fail("Такого прицілу нема");
+        if (_volley) return ActResult.Done;                               // у залпі чужих прицілів не видно — нікому не шлемо
         Wake();
         if (_aimA[seat] == a && _aimP[seat] == p && _aimW[seat] == w) return ActResult.Done;
         _aimA[seat] = a.Value;
@@ -350,7 +409,7 @@ public sealed class Glekomet : Game
     /// <summary>Сонний хід, а людина ворухнулась — віддаємо повний; новий endsAt летить видом, дуга в усіх подовжиться.</summary>
     void Wake()
     {
-        if (_phase != PhaseAim || _turnLen >= _turnSecs) return;
+        if (_volley || _phase != PhaseAim || _turnLen >= _turnSecs) return;
         _turnLen = _turnSecs;
         _deadline = _turnAt.AddSeconds(_turnSecs);
         _pendView = true;
@@ -371,10 +430,11 @@ public sealed class Glekomet : Game
         _aimMark = _pendAim;
         _wlMark = false;
         _emoMark = _pendEmo;
+        _rdMark = _pendRd;
         var view = _pendView;
         _pendMoved = _pendEmo = 0;
-        _pendHp = _pendAim = _pendView = false;
-        var frame = _aimMark || core.MovedMask != 0 || core.HpChanged || _emoMark != 0;
+        _pendHp = _pendAim = _pendView = _pendRd = false;
+        var frame = _aimMark || core.MovedMask != 0 || core.HpChanged || _emoMark != 0 || _rdMark;
 
         switch (_phase)
         {
@@ -389,6 +449,15 @@ public sealed class Glekomet : Game
                 break;
             case PhaseAim:
                 --_left;
+                if (_volley)
+                {
+                    if (Ctx.Clock.UtcNow >= _deadline || AllLocked())
+                    {
+                        LaunchVolley();
+                        view = frame = true;
+                    }
+                    break;
+                }
                 if (Ctx.Clock.UtcNow >= _deadline)
                 {
                     TimeOut();
@@ -423,6 +492,7 @@ public sealed class Glekomet : Game
     /// </summary>
     void NextTurn()
     {
+        if (_volley) { NextVolley(); return; }
         var core = _core!;
         for (var guard = 0; guard < 4 * Seats; guard++)
         {
@@ -461,24 +531,17 @@ public sealed class Glekomet : Game
             }
             _cursor = s;
             var hut = core.Huts[s];
-            if (hut.Poison > 0)
+            if (Poisoned(s))
             {
-                var dmg = Math.Min(GlekometCore.PoisonDmg, hut.Hp);
-                hut.Hp -= dmg;
-                hut.Poison--;
-                core.HpChanged = true;
-                Note($"Хрін дошкуляє: {Name(s)} −{dmg}");
-                var by = hut.PoisonBy;
-                if (by >= 0 && by != s && !Ally(by, s)) _stats[by].Dmg += dmg;
-                if (hut.Hp <= 0)
-                {
-                    core.Kill(s, "poison");
-                    Note($"{Name(s)}: хрін добив хату");
-                    if (by >= 0 && by != s && !Ally(by, s)) _stats[by].Kills++;
-                    if (CheckEnd()) return;
-                    continue;
-                }
+                if (CheckEnd()) return;
+                continue;
             }
+            // мед: цей хід хата не рушить; підкова цієї хати відслужила своє коло; підкови руїн — геть
+            for (var i = 0; i < Seats; i++) core.Huts[i].Stuck = false;
+            hut.Stuck = hut.Honey > 0;
+            if (hut.Stuck) hut.Honey--;
+            for (var m = 0; m < Seats; m++)
+                if (m == s || !core.Huts[m].Alive) core.MagMask &= ~(1 << m);
             core.Wind = Ctx.Rng.Next(11) - 5;
             _turn = s;
             _turnNo++;
@@ -491,6 +554,164 @@ public sealed class Glekomet : Game
         }
         // сюди звичайна гра не доходить; хай краще буде нічия, ніж зависла партія
         Over([], "draw", $"{Info.Title}: усі хати в руїнах — нічия");
+    }
+
+    /// <summary>Хрін на вході в хід: −8 і лічильник униз. true — хрін добив хату.</summary>
+    bool Poisoned(int s)
+    {
+        var core = _core!;
+        var hut = core.Huts[s];
+        if (hut.Poison <= 0) return false;
+        var dmg = Math.Min(GlekometCore.PoisonDmg, hut.Hp);
+        hut.Hp -= dmg;
+        hut.Poison--;
+        core.HpChanged = true;
+        Note($"Хрін дошкуляє: {Name(s)} −{dmg}");
+        var by = hut.PoisonBy;
+        if (by >= 0 && by != s && !Ally(by, s)) _stats[by].Dmg += dmg;
+        if (hut.Hp > 0) return false;
+        core.Kill(s, "poison");
+        Note($"{Name(s)}: хрін добив хату");
+        if (by >= 0 && by != s && !Ally(by, s)) _stats[by].Kills++;
+        return true;
+    }
+
+    // =============================================================================================
+    // «Залп»: усі цілять разом (чужих прицілів не видно), потім снаряди летять разом
+    // =============================================================================================
+
+    int VolleyLen => _turnSecs >= 45 ? VolleySecsLong : VolleySecs;
+
+    /// <summary>Нове коло залпу: порожні кола, вода, хрін, мед, підкови, вітер — і всі живі цілять разом.</summary>
+    void NextVolley()
+    {
+        var core = _core!;
+        if (_phase == PhaseOver) return;
+        if (core.AliveCount == 0) { CheckEnd(); return; }
+        if (_round > 0)
+        {
+            _idle = _shotThisRound ? 0 : _idle + 1;
+            if (_idle >= IdleLimit)
+            {
+                Over([], "idle", $"{Info.Title}: так ніхто й не стрельнув — розійшлись");
+                return;
+            }
+        }
+        _shotThisRound = false;
+        _round++;
+        if (_round > MaxRounds)
+        {
+            Over([], "draw", $"{Info.Title}: село стоїть, порох скінчився — нічия");
+            return;
+        }
+        if (_waterFrom > 0 && _round >= _waterFrom && core.Water < GlekometCore.WaterTop)
+        {
+            core.RaiseWater(GlekometCore.WaterRiseFor(core.AliveCount));
+            _wlMark = true;
+            Note("Вода піднялась");
+            for (var i = 0; i < Seats; i++)
+                if ((core.ShotDied & (1 << i)) != 0) Note($"{Name(i)}: хату затопило");
+            if (CheckEnd()) return;
+        }
+        for (var s = 0; s < Seats; s++)
+            if (core.Huts[s].Alive && Poisoned(s) && CheckEnd()) return;
+        _turnNo++;
+        for (var s = 0; s < Seats; s++)
+        {
+            var hut = core.Huts[s];
+            hut.Stuck = hut.Alive && hut.Honey > 0;
+            if (hut.Stuck) hut.Honey--;
+            _lock[s] = false;
+            _lockW[s] = -1;
+            // підкова тягне весь наступний залп після того, у якому лягла
+            if ((core.MagMask & (1 << s)) != 0 && (!hut.Alive || core.MagAt[s] <= _turnNo - 2)) core.MagMask &= ~(1 << s);
+        }
+        core.Wind = Ctx.Rng.Next(11) - 5;
+        _turn = -1;
+        _phase = PhaseAim;
+        _turnLen = VolleyLen;
+        _left = _turnLen * 1000 / TickMs;
+        _turnAt = Ctx.Clock.UtcNow;
+        _deadline = _turnAt.AddSeconds(_turnLen);
+        _pendRd = true;
+    }
+
+    bool AllLocked()
+    {
+        for (var s = 0; s < Seats; s++)
+            if (_core!.Huts[s].Alive && !_lock[s]) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Час вийшов або всі готові: хто проспав — пропуск (третій поспіль — хата вибуває, а три кола без пострілу — нічия),
+    /// решта — снаряди в повітря одночасно, у порядку місць (шкода в одному тику лягає детерміновано).
+    /// </summary>
+    void LaunchVolley()
+    {
+        var core = _core!;
+        var fired = false;
+        int sleepers = 0, dozing = 0;
+        for (var s = 0; s < Seats; s++)
+        {
+            if (!core.Huts[s].Alive) continue;
+            if (_lock[s] && _lockW[s] >= 0) fired = true;
+            if (_lock[s]) continue;
+            sleepers |= 1 << s;
+            if (_skips[s] + 1 >= SkipLimit) dozing++;
+        }
+        if (!fired && dozing > 0 && _idle + 1 >= IdleLimit)
+        {
+            Over([], "idle", $"{Info.Title}: так ніхто й не стрельнув — розійшлись");
+            return;
+        }
+        if (sleepers != 0)
+        {
+            var names = new List<string>();
+            for (var s = 0; s < Seats; s++) if ((sleepers & (1 << s)) != 0) names.Add(Name(s));
+            Note("Проспали залп: " + string.Join(", ", names));
+            for (var s = 0; s < Seats; s++)
+            {
+                if ((sleepers & (1 << s)) == 0 || ++_skips[s] < SkipLimit) continue;
+                core.Kill(s, "afk");
+                Note($"{Name(s)}: хата заснула — вибула");
+            }
+            if (CheckEnd()) return;
+        }
+        if (!fired)
+        {
+            const string text = "Залп: ніхто не стрельнув";
+            Note(text);
+            _last = new { by = -1, w = -1, hits = Array.Empty<object>(), text };
+            _phase = PhaseSettle;
+            _left = SettleSkip;
+            return;
+        }
+        core.BeginVolley();
+        core.Stamp = _turnNo;
+        for (var s = 0; s < Seats; s++)
+        {
+            var w = _lockW[s];
+            if (!core.Huts[s].Alive || !_lock[s] || w < 0) continue;
+            if (_inv[s][w] > 0) _inv[s][w]--;
+            _stats[s].Shots++;
+            core.Throw(s, _aimA[s], _aimP[s], w);
+        }
+        _phase = PhaseFly;
+        _left = 0;
+    }
+
+    /// <summary>Рядок про залп: три найсмачніші влучання («Оля→Петро −35 · Іван→Оля −12»).</summary>
+    string VolleyText()
+    {
+        var core = _core!;
+        var pairs = new List<(int Dmg, int By, int To)>();
+        for (var o = 0; o < Seats; o++)
+            for (var t = 0; t < Seats; t++)
+                if (t != o && core.DmgBy[o * Seats + t] > 0) pairs.Add((core.DmgBy[o * Seats + t], o, t));
+        if (pairs.Count == 0) return "Залп: без влучань";
+        pairs.Sort((a, b) => a.Dmg != b.Dmg ? b.Dmg - a.Dmg : a.By - b.By);
+        return Clip("Залп: " + string.Join(" · ", pairs.Take(3).Select(x => $"{Name(x.By)}→{Name(x.To)} −{x.Dmg}")));
     }
 
     int NextAlive(int after)
@@ -536,50 +757,36 @@ public sealed class Glekomet : Game
         for (var i = 0; i < GlekometCore.MaxShells; i++) core.Shells[i].Alive = false;
         var by = core.ShotBy;
         var w = core.ShotW;
-        var st = _stats[by];
         var hits = new List<object>();
-        int total = 0, top = -1, topDmg = 0;
         for (var t = 0; t < Seats; t++)
+            if (core.ShotDmg[t] > 0) hits.Add(new { seat = t, dmg = core.ShotDmg[t], kind = "hit" });
+        if (_volley)
         {
-            var dmg = core.ShotDmg[t];
-            if (dmg <= 0) continue;
-            hits.Add(new { seat = t, dmg, kind = "hit" });
-            if (t == by || Ally(by, t)) { st.Self += dmg; continue; }
-            st.Dmg += dmg;
-            total += dmg;
-            if (dmg > topDmg) { topDmg = dmg; top = t; }
+            for (var o = 0; o < Seats; o++)
+                if (core.WBy[o] >= 0) Score(o);
         }
-        // Влучання — постріл, що зачепив хоч одну чужу хату: розсипний у трьох — одне влучання, а не три,
-        // інакше в підсумку виходило «4 влучання з 3 пострілів».
-        if (total > 0) st.Hits++;
+        else Score(by);
         for (var t = 0; t < Seats; t++)
         {
             if (core.ShotFall[t] > 0) hits.Add(new { seat = t, dmg = core.ShotFall[t], kind = "fall" });
             if ((core.ShotPoisoned & (1 << t)) != 0) hits.Add(new { seat = t, dmg = 0, kind = "poison" });
             if ((core.ShotDied & (1 << t)) != 0 && core.Huts[t].Reason == "drown") hits.Add(new { seat = t, dmg = 0, kind = "drown" });
         }
-        if (core.ShotSplash > 0 && core.ShotBooms == 0 && core.ShotHay == 0 && core.ShotStork == 0)
+        if (!_volley && core.ShotSplash > 0 && core.ShotBooms == 0 && core.ShotHay == 0 && core.ShotStork == 0 && core.MagBy[by] == 0)
             hits.Add(new { seat = by, dmg = 0, kind = "splash" });
-        st.Best = Math.Max(st.Best, total);
-        if (total > _bestDmg)
-        {
-            _bestDmg = total;
-            _bestSeat = by;
-            _bestW = w;
-            _bestTo = top;
-        }
 
-        // «Далекобійник»: пряме в чужу хату з пів села.
-        for (var t = 0; t < Seats; t++)
+        string text;
+        if (_volley)
         {
-            if ((core.ShotDirect & (1 << t)) == 0 || t == by || Ally(by, t)) continue;
-            if (Math.Abs(core.ShotFromX - core.Huts[t].X) < SniperGap || (_sniperGiven & (1 << by)) != 0) continue;
-            _sniperGiven |= 1 << by;
-            Ctx.Award(by, 0, "ach:glekomet-sniper");
+            for (var o = 0; o < Seats; o++)
+                if (core.WBy[o] >= 0) Note(ShotText(o, core.WBy[o]));
+            text = VolleyText();
         }
-
-        var text = ShotText(by, w);
-        Note(text);
+        else
+        {
+            text = ShotText(by, w);
+            Note(text);
+        }
         for (var t = 0; t < Seats; t++)
         {
             if (core.ShotFall[t] > 0 && core.Huts[t].Reason != "fall")
@@ -588,16 +795,57 @@ public sealed class Glekomet : Game
             switch (core.Huts[t].Reason)
             {
                 case "hit":
-                    Note(t == by ? $"{Name(t)}: хата в руїнах (сама себе)" : $"{Name(t)}: хата в руїнах ({Name(by)})");
-                    if (t != by && !Ally(by, t)) st.Kills++;
+                    var k = core.KillBy[t] >= 0 ? core.KillBy[t] : by;
+                    Note(t == k ? $"{Name(t)}: хата в руїнах (сама себе)" : k >= 0 ? $"{Name(t)}: хата в руїнах ({Name(k)})" : $"{Name(t)}: хата в руїнах");
+                    if (k >= 0 && t != k && !Ally(k, t)) _stats[k].Kills++;
                     break;
                 case "fall": Note($"{Name(t)}: хата впала у вирву — руїна"); break;
                 case "drown": Note($"{Name(t)}: хату затопило"); break;
             }
         }
-        _last = new { by, w, hits = hits.ToArray(), text };
+        _last = _volley ? new { by = -1, w = -1, hits = hits.ToArray(), text } : new { by, w, hits = hits.ToArray(), text };
         _phase = PhaseSettle;
         _left = SettleShot;
+    }
+
+    /// <summary>
+    /// Статистика одного стрільця за постріл (у залпі — за свій снаряд): шкода чужим, «по своїх», влучання,
+    /// найкращий постріл партії, «Далекобійник».
+    /// </summary>
+    void Score(int by)
+    {
+        if (by < 0 || by >= Seats) return;
+        var core = _core!;
+        var st = _stats[by];
+        int total = 0, top = -1, topDmg = 0;
+        for (var t = 0; t < Seats; t++)
+        {
+            var dmg = core.DmgBy[by * Seats + t];
+            if (dmg <= 0) continue;
+            if (t == by || Ally(by, t)) { st.Self += dmg; continue; }
+            st.Dmg += dmg;
+            total += dmg;
+            if (dmg > topDmg) { topDmg = dmg; top = t; }
+        }
+        // Влучання — постріл, що зачепив хоч одну чужу хату: розсипний у трьох — одне влучання, а не три,
+        // інакше в підсумку виходило «4 влучання з 3 пострілів».
+        if (total > 0) st.Hits++;
+        st.Best = Math.Max(st.Best, total);
+        if (total > _bestDmg)
+        {
+            _bestDmg = total;
+            _bestSeat = by;
+            _bestW = core.WBy[by];
+            _bestTo = top;
+        }
+        // «Далекобійник»: пряме в чужу хату з пів села.
+        for (var t = 0; t < Seats; t++)
+        {
+            if ((core.DirectBy[by] & (1 << t)) == 0 || t == by || Ally(by, t)) continue;
+            if (Math.Abs(core.FromX[by] - core.Huts[t].X) < SniperGap || (_sniperGiven & (1 << by)) != 0) continue;
+            _sniperGiven |= 1 << by;
+            Ctx.Award(by, 0, "ach:glekomet-sniper");
+        }
     }
 
     /// <summary>Рядок про постріл без дієслів із ніком-підметом («Оля → Петро: −35», «Оля: мимо»).</summary>
@@ -612,38 +860,48 @@ public sealed class Glekomet : Game
             GlekometCore.Varenyk => "вареник",
             GlekometCore.Hay => "копа",
             GlekometCore.Stork => "лелека",
+            GlekometCore.Rooster => "півень",
+            GlekometCore.Honey => "мед",
+            GlekometCore.Twister => "смерч",
+            GlekometCore.Horseshoe => "підкова",
             _ => "хрін",
         };
-        if (w == GlekometCore.Hay && core.ShotHay > 0) return $"{me}: копа сіна виросла";
+        if (w == GlekometCore.Hay && core.HayBy[by] > 0) return $"{me}: копа сіна виросла";
         if (w == GlekometCore.Stork)
         {
-            if (core.ShotStork > 0) return $"Лелека несе хату: {me}";
-            if (core.ShotSplash > 0) return $"{me}: лелека на воду не сідає";
-            if (core.ShotOut > 0) return $"{me}: лелека — у сусіднє село";
+            if (core.StorkBy[by] > 0) return $"Лелека несе хату: {me}";
+            if (core.SplashBy[by] > 0) return $"{me}: лелека на воду не сідає";
+            if (core.OutBy[by] > 0) return $"{me}: лелека — у сусіднє село";
             if (!core.Huts[by].Alive) return $"{me}: лелеці нема кого нести";   // устав з-за столу посеред польоту
             return $"{me}: лелеці ніде сісти";
         }
+        if (w == GlekometCore.Horseshoe && core.MagBy[by] > 0) return $"{me}: підкова лягла — тягне чужі снаряди";
 
         var parts = new List<string>();
         int targets = 0, single = -1, selfOnly = 1;
         for (var t = 0; t < Seats; t++)
         {
-            if (core.ShotDmg[t] <= 0) continue;
+            var dmg = core.DmgBy[by * Seats + t];
+            if (dmg <= 0) continue;
             targets++;
             single = t;
             if (t != by) selfOnly = 0;
-            parts.Add($"{Name(t)} −{core.ShotDmg[t]}");
+            parts.Add($"{Name(t)} −{dmg}");
         }
         string text;
-        if (targets == 1 && w == GlekometCore.Pot && single != by) text = $"{me} → {Name(single)}: −{core.ShotDmg[single]}";
+        if (targets == 1 && w is GlekometCore.Pot or GlekometCore.Rooster && single != by) text = $"{me} → {Name(single)}: −{core.DmgBy[by * Seats + single]}";
         else if (targets > 0) text = $"{me}: {lower} → {string.Join(", ", parts)}" + (selfOnly == 1 ? " (у свою хату!)" : "");
-        else if (w == GlekometCore.Khrin && core.ShotPoisoned != 0) text = $"{me}: хрін → {Poisoned()} отруєно";
-        else if (core.ShotBooms > 0) text = me + Vary(Misses, by).Replace("{w}", lower);
-        else if (core.ShotSplash > 0) text = me + Vary(Splashes, by);
-        else if (core.ShotOut > 0) text = me + Vary(Outs, by).Replace("{w}", lower);
-        else if (core.ShotCloud > 0) text = $"{me}: {lower} — у хмари";
+        else if (w == GlekometCore.Khrin && core.PoisonedBy[by] != 0) text = $"{me}: хрін → {Names(core.PoisonedBy[by])} отруєно";
+        else if (w == GlekometCore.Honey && core.HoneyBy[by] != 0) text = $"{me}: мед → {Names(core.HoneyBy[by])} прилипли";
+        else if (w == GlekometCore.Twister && core.ShovedBy[by] != 0) text = $"{me}: смерч розкидав хати";
+        else if (core.BoomsBy[by] > 0) text = me + Vary(Misses, by).Replace("{w}", lower);
+        else if (core.SplashBy[by] > 0) text = me + Vary(Splashes, by);
+        else if (core.OutBy[by] > 0) text = me + Vary(Outs, by).Replace("{w}", lower);
+        else if (core.CloudBy[by] > 0) text = $"{me}: {lower} — у хмари";
         else text = $"{me}: мимо";
-        if (w == GlekometCore.Khrin && targets > 0 && core.ShotPoisoned != 0) text += ", отрута";
+        if (targets > 0 && w == GlekometCore.Khrin && core.PoisonedBy[by] != 0) text += ", отрута";
+        if (targets > 0 && w == GlekometCore.Honey && core.HoneyBy[by] != 0) text += ", липко";
+        if (targets > 0 && w == GlekometCore.Twister && core.ShovedBy[by] != 0) text += ", розкидало";
         return Clip(text);
     }
 
@@ -659,11 +917,11 @@ public sealed class Glekomet : Game
 
     string Vary(string[] pool, int by) => pool[(_turnNo + by) % pool.Length];
 
-    string Poisoned()
+    string Names(int mask)
     {
         var names = new List<string>();
         for (var t = 0; t < Seats; t++)
-            if ((_core!.ShotPoisoned & (1 << t)) != 0) names.Add(Name(t));
+            if ((mask & (1 << t)) != 0) names.Add(Name(t));
         return string.Join(", ", names);
     }
 
@@ -886,10 +1144,17 @@ public sealed class Glekomet : Game
                 fuel = here ? (lobby ? GlekometCore.FuelMax : h.Fuel) : 0,
                 skips = lobby ? 0 : _skips[s],
                 reason = lobby || !here ? "" : h.Reason,
+                honey = lobby ? 0 : h.Honey,
+                stuck = !lobby && h.Stuck && _phase == PhaseAim && (_volley || _turn == s),
             };
         }
         var inv = new int[Seats][];
-        for (var s = 0; s < Seats; s++) inv[s] = lobby ? [.. GlekometCore.Weapons.Select(w => Ctx.Seated(s) ? w.Stock : 0)] : (int[])_inv[s].Clone();
+        for (var s = 0; s < Seats; s++)
+            inv[s] = lobby ? [.. GlekometCore.Weapons.Take(_jokes ? GlekometCore.AllKinds : GlekometCore.BaseKinds).Select(w => Ctx.Seated(s) ? w.Stock : 0)] : _inv[s][.._kinds];
+        var mag = new List<int[]>();
+        if (!lobby)
+            for (var s = 0; s < Seats; s++)
+                if ((core.MagMask & (1 << s)) != 0) mag.Add([core.MagX[s], core.MagY[s], s]);
         var stats = new object[Seats];
         for (var s = 0; s < Seats; s++) stats[s] = _stats[s].Wire();
         var wins = new int[Seats];
@@ -916,7 +1181,7 @@ public sealed class Glekomet : Game
             huts,
             inv,
             aim = aiming ? new[] { _aimA[_turn], _aimP[_turn], _aimW[_turn] } : null,
-            shells = Shells(core),
+            shells = Shells(core, _volley),
             last = _last,
             log = _log.ToArray(),
             stats,
@@ -925,10 +1190,16 @@ public sealed class Glekomet : Game
             turnNo = _turnNo,
             t = _t,
             series = Series(),
+            mode = _volley ? "volley" : "turns",
+            ready = (bool[])_lock.Clone(),
+            map = lobby ? (_mapWanted < 0 ? "mix" : MapKeys[_mapWanted]) : MapKeys[_map],
+            kinds = lobby ? (_jokes ? GlekometCore.AllKinds : GlekometCore.BaseKinds) : _kinds,
+            mag,
         };
     }
 
-    static int[][] Shells(GlekometCore core)
+    /// <summary>Живі снаряди [x, y, kind]; у «Залпі» — ще й чий (4-те число), щоб кожному малювати свій слід.</summary>
+    static int[][] Shells(GlekometCore core, bool owners)
     {
         var n = core.LiveShells;
         var list = new int[n][];
@@ -937,7 +1208,7 @@ public sealed class Glekomet : Game
         {
             ref var s = ref core.Shells[i];
             if (!s.Alive) continue;
-            list[k++] = [(int)Math.Round(s.X), (int)Math.Round(s.Y), s.Kind];
+            list[k++] = owners ? [(int)Math.Round(s.X), (int)Math.Round(s.Y), s.Kind, s.Owner] : [(int)Math.Round(s.X), (int)Math.Round(s.Y), s.Kind];
         }
         return list;
     }
@@ -952,7 +1223,7 @@ public sealed class Glekomet : Game
             ["t"] = _t,
             ["ph"] = _phase,
         };
-        if (_phase == PhaseFly || (_phase == PhaseSettle && _left == SettleShot)) f["sh"] = Shells(core);
+        if (_phase == PhaseFly || (_phase == PhaseSettle && _left == SettleShot)) f["sh"] = Shells(core, _volley);
         if (core.MovedMask != 0)
         {
             var moved = new List<int[]>();
@@ -992,6 +1263,12 @@ public sealed class Glekomet : Game
         if (_aimMark && _turn >= 0) f["aim"] = new[] { _aimA[_turn], _aimP[_turn], _aimW[_turn] };
         if (_phase == PhaseStart) f["si"] = _left;
         if (_wlMark) f["wl"] = core.Water;
+        if (_rdMark)
+        {
+            var rd = 0;
+            for (var s = 0; s < Seats; s++) if (_lock[s]) rd |= 1 << s;
+            f["rd"] = rd;
+        }
         if (_emoMark != 0)
         {
             var em = new List<int[]>();
