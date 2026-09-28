@@ -298,7 +298,9 @@
     const now = performance.now();
     st.feed = st.feed.filter((e) => now - e.at < FEED_MS);
     if (!st.feed.length) return;
-    const fs = Math.max(7, Math.round(7.5 * u));
+    // На телефоні поле вужче за 300 px — шрифт тримаємо не дрібнішим за ~10 px на екрані.
+    const ppu = (st.cv.el.clientWidth || st.W) / st.W;
+    const fs = Math.max(7, Math.round(7.5 * u), Math.ceil(10 / ppu));
     g.font = '600 ' + fs + 'px system-ui, sans-serif';
     g.textAlign = 'left';
     g.textBaseline = 'top';

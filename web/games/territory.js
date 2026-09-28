@@ -163,10 +163,12 @@
       for (let i = 0; i < N; i++) if (st.trl[i] === s + 1) g.fillRect((i % W) * PX + 1, ((i / W) | 0) * PX + 1, PX - 2, PX - 2);
     }
 
-    // «Тебе ріжуть»: твій слід блимає червоним, поки чужа голова поруч.
-    if (st.danger && me != null && Math.floor(performance.now() / 200) % 2 === 0) {
+    // «Тебе ріжуть»: твій слід у червоній рамці, поки чужа голова поруч, і рамка пульсує (товща-тонша
+    // через кадр — кадри йдуть 10 разів на секунду, окремий rAF заради цього не заводимо).
+    if (st.danger && me != null) {
+      st.blink = !st.blink;
       g.strokeStyle = cssv(st, '--danger', '#e57373');
-      g.lineWidth = 2;
+      g.lineWidth = st.blink ? 3 : 1.5;
       for (let i = 0; i < N; i++) if (st.trl[i] === me + 1) g.strokeRect((i % W) * PX + 1, ((i / W) | 0) * PX + 1, PX - 2, PX - 2);
     }
 
