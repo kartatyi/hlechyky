@@ -35,6 +35,23 @@ public sealed class CrowdSeat
     public bool Eye;
     /// <summary>Тик раунду, коли список скуплено; -1 — ще ні.</summary>
     public int CompletedAt = -1;
+    /// <summary>Покупок не зі свого списку (чи вдруге того самого) — блеф, для смішинки «🥸 Найкращий блеф».</summary>
+    public int Bluffs;
+    /// <summary>Останній блеф: лоток і тик раунду — чи хтось «купився» й стрельнув у бота біля того лотка.</summary>
+    public int BluffStall = -1, BluffT = -10_000;
+    /// <summary>Хто купився на блеф (місце); -1 — ніхто.</summary>
+    public int Fooled = -1;
+    /// <summary>Камінців, що влучили в ботів.</summary>
+    public int BotHits;
+    /// <summary>Хто цього збив (місце); -1 — живий чи ніхто.</summary>
+    public int KilledBy = -1;
+    /// <summary>
+    /// Детектив (п. 121): вибулий клацає по селянину «це Оля?». Guess[місце] — id селянина, якого він вважає тим
+    /// місцем, -1 — не вгадував. Таємниця самого вгадувача: чужі здогадки нікому не показуємо.
+    /// </summary>
+    public readonly int[] Guess = [-1, -1, -1, -1, -1, -1, -1, -1];
+    /// <summary>Влучних здогадок за раунд: +1 очко кожна.</summary>
+    public int GuessHits;
 
     public bool Active => Plays && !Out;
     public bool Complete => Done[0] && Done[1] && Done[2] && Done[3];
@@ -62,6 +79,12 @@ public sealed class Crowd : Game
     public const int HaggleTicks = CrowdCore.HaggleTicks;
     public const int BuyCoolTicks = 50;
     public const int PtBuy = 1, PtKill = 2, PtRound = 3;
+    /// <summary>Детективу — за кожну влучну здогадку.</summary>
+    public const int PtGuess = 1;
+    /// <summary>Смішинки: «купився на блеф» — постріл у бота ≤ 5 с після блефу й ≤ 80 од від того прилавка.</summary>
+    public const int BluffTicks = 125, BluffNear = 80;
+    /// <summary>Смішинки: «поруч» — ближче за 44 од (трохи більше клітинки); рядок — від 8 с разом.</summary>
+    public const int NearR = 44, NearMinSamples = 17;
     /// <summary>У розкритті кадр летить раз на стільки тиків (усі стоять — частіше нема чого).</summary>
     public const int RevealFrameEvery = 5;
     /// <summary>
@@ -120,8 +143,13 @@ public sealed class Crowd : Game
     CrowdReveal? _reveal;
     int[]? _winners;
 
-    sealed record CrowdReveal(int[] Winners, string Why, (int Seat, int Id)[] Ids, CrowdRow[] Rows, (int Seat, int[] Pts)[] Trails);
-    sealed record CrowdRow(int Seat, int Buy, int Kills, bool Win, int Pts);
+    sealed record CrowdReveal(int[] Winners, string Why, (int Seat, int Id)[] Ids, CrowdRow[] Rows, (int Seat, int[] Pts)[] Trails, string[] Fun);
+    sealed record CrowdRow(int Seat, int Buy, int Kills, bool Win, int Pts, int Guess);
+
+    /// <summary>Скільки разів (проби сліду, раз на <see cref="TrailEvery"/> тиків) бот id стояв біля місця: [місце * 64 + id].</summary>
+    readonly int[] _nearBot = new int[Seats * 64];
+    /// <summary>Скільки проб двоє гравців стояли поруч: [a * 8 + b], a &lt; b.</summary>
+    readonly int[] _nearPair = new int[Seats * Seats];
 
     CrowdCore Core => _core ??= new CrowdCore(Ctx.Rng);
 
@@ -200,8 +228,14 @@ public sealed class Crowd : Game
             s.TrailHead = s.TrailCount = 0;
             s.Eye = false;
             s.CompletedAt = -1;
+            s.Bluffs = s.BotHits = s.GuessHits = 0;
+            s.BluffStall = s.Fooled = s.KilledBy = -1;
+            s.BluffT = -10_000;
+            Array.Fill(s.Guess, -1);
             DealList(rng, s);
         }
+        Array.Clear(_nearBot);
+        Array.Clear(_nearPair);
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
         _dirty = true;
@@ -243,8 +277,39 @@ public sealed class Crowd : Game
             "move" => Move(seat, payload),
             "shoot" => Shoot(seat, payload),
             "buy" => Buy(seat, payload),
+            "guess" => GuessAct(seat, payload),
             _ => ActResult.Fail("Тут так не ходять"),
         };
+    }
+
+    /// <summary>
+    /// Детектив (п. 121): вибулий показує на селянина — «це Оля?». <c>{id, seat}</c>; <c>id: -1</c> — забрати
+    /// здогадку. Один селянин — одне ім'я: те саме id на інше місце переносить здогадку. Рахуємо на розкритті (і в
+    /// мить, коли того гравця збили), +1 очко за кожну влучну.
+    /// </summary>
+    ActResult GuessAct(int seat, JsonElement payload)
+    {
+        var s = _s[seat];
+        if (_phase == PhaseStart) return ActResult.Fail("Зачекай, ярмарок ще не відкрився");
+        if (_phase != PhaseGo) return ActResult.Fail("Раунд скінчився");
+        if (s.Alive) return ActResult.Fail("Вгадують ті, кого вже збили — а ти ще в грі");
+        var id = Field(payload, "id", out var ok1);
+        var who = Field(payload, "seat", out var ok2);
+        if (!ok1 || !ok2 || id is null || who is not { } t || t < 0 || t >= Seats) return ActResult.Fail("Такого селянина нема");
+        var target = _s[t];
+        if (t == seat || !target.Active || !target.Alive || target.Me < 0) return ActResult.Fail("Цього вже не вгадаєш — він не в грі");
+        if (id.Value == -1)
+        {
+            s.Guess[t] = -1;
+            _dirty = true;
+            return ActResult.Done;
+        }
+        if (id.Value < 0 || id.Value >= Core.N || Core.V[id.Value].Dead) return ActResult.Fail("Такого селянина нема");
+        for (var i = 0; i < Seats; i++)
+            if (s.Guess[i] == id.Value) s.Guess[i] = -1;
+        s.Guess[t] = id.Value;
+        _dirty = true;
+        return ActResult.Done;
     }
 
     ActResult Move(int seat, JsonElement payload)
@@ -332,10 +397,26 @@ public sealed class Crowd : Game
             s.Kills++;
             s.Total += PtKill;
             if (s.Shots == 1) s.Eye = true;
+            victim.KilledBy = seat;
+            // детективи: хто вгадав збитого до пострілу — влучив; далі його ім'я й так знають усі
+            for (var g = 0; g < Seats; g++)
+            {
+                if (_s[g].Guess[hit.Owner] == target) _s[g].GuessHits++;
+                _s[g].Guess[hit.Owner] = -1;
+            }
             _pending.Add([1, me.Id, target, 1, hit.Owner]);
         }
         else
         {
+            s.BotHits++;
+            // «купився на блеф»: камінець у бота біля лотка, де щойно (≤ 5 с) блефував інший гравець
+            for (var b = 0; b < Seats; b++)
+            {
+                var bl = _s[b];
+                if (b == seat || !bl.Active || bl.BluffStall < 0 || _t - bl.BluffT > BluffTicks) continue;
+                var st = CrowdMap.Stalls[bl.BluffStall];
+                if (CrowdCore.Dist2(hit, st.Fx, st.Fy) <= (long)BluffNear * BluffNear) bl.Fooled = seat;
+            }
             hit.Fallen = CrowdCore.FallTicks;
             hit.Moving = false;
             CrowdCore.Forget(hit);
@@ -462,6 +543,21 @@ public sealed class Crowd : Game
             s.TrailY[s.TrailHead] = v.Y;
             s.TrailHead = (s.TrailHead + 1) % TrailLen;
             if (s.TrailCount < TrailLen) s.TrailCount++;
+            if (_phase == PhaseGo) Near(i, v);
+        }
+    }
+
+    /// <summary>Хто стоїть поруч із живим гравцем: боти — на «🐑 Найвірнішого бота», гравці — на «👀 Поруч і не знали».</summary>
+    void Near(int seat, CrowdVillager me)
+    {
+        const long r2 = (long)NearR * NearR;
+        var all = Core.V;
+        for (var k = 0; k < all.Length; k++)
+        {
+            var q = all[k];
+            if (q.Id == me.Id || q.Dead || CrowdCore.Dist2(q, me.X, me.Y) > r2) continue;
+            if (q.Owner < 0) { if (q.Id < 64) _nearBot[seat * 64 + q.Id]++; }
+            else if (q.Owner > seat && _s[q.Owner].Alive) _nearPair[seat * Seats + q.Owner]++;
         }
     }
 
@@ -514,8 +610,11 @@ public sealed class Crowd : Game
             s.Bought++;
             s.Total += PtBuy;
             if (s.Complete) s.CompletedAt = _t;
-            break;
+            return;
         }
+        s.Bluffs++;
+        s.BluffStall = stall;
+        s.BluffT = _t;
     }
 
     /// <summary>Кінець раунду: хтось скупився цього тика → живих ≤ 1 → вийшов час.</summary>
@@ -558,6 +657,7 @@ public sealed class Crowd : Game
         }
         for (var i = 0; i < Seats; i++)
             if (_s[i].Active && _s[i].Eye) Ctx.Award(i, 0, "ach:crowd-eye");
+        ScoreGuesses();
         _reveal = RevealOf(winners, why, s => s.Active);
         foreach (var v in Core.V)
         {
@@ -584,10 +684,98 @@ public sealed class Crowd : Game
             // «усі розійшлись» — не виграний раунд: +3 не платимо, тож і в рядку його нема
             var win = why != "left" && Array.IndexOf(winners, i) >= 0;
             ids.Add((i, s.Me));
-            rows.Add(new CrowdRow(i, s.Bought, s.Kills, win, s.Bought * PtBuy + s.Kills * PtKill + (win ? PtRound : 0)));
+            rows.Add(new CrowdRow(i, s.Bought, s.Kills, win,
+                s.Bought * PtBuy + s.Kills * PtKill + (win ? PtRound : 0) + s.GuessHits * PtGuess, s.GuessHits));
             trails.Add((i, TrailOf(s)));
         }
-        return new CrowdReveal(winners, why, [.. ids], [.. rows], [.. trails]);
+        return new CrowdReveal(winners, why, [.. ids], [.. rows], [.. trails], Fun(winners, why, who));
+    }
+
+    /// <summary>Здогадки живих ще гравців — на розкритті: влучна → +1 вгадувачу (збитих порахував уже постріл).</summary>
+    void ScoreGuesses()
+    {
+        for (var g = 0; g < Seats; g++)
+        {
+            var d = _s[g];
+            if (!d.Active) continue;
+            for (var t = 0; t < Seats; t++)
+            {
+                var x = _s[t];
+                if (d.Guess[t] >= 0 && t != g && x.Active && x.Alive && x.Me == d.Guess[t]) d.GuessHits++;
+                d.Guess[t] = -1;
+            }
+            d.Total += d.GuessHits * PtGuess;
+        }
+    }
+
+    static readonly string[] Heads = ["", "одного", "двох", "трьох", "чотирьох", "п’ятьох", "шістьох", "сімох"];
+    static readonly string[] Times = ["", "", "двічі", "тричі"];
+    /// <summary>Скільки найбільше смішинок на розкритті: більше — вже стіна тексту.</summary>
+    public const int FunMax = 4;
+
+    /// <summary>
+    /// Смішинки розкриття (п. 124) — лише з того, що сервер і так знає: здогадки, перший камінець, блеф і хто на нього
+    /// купився, хто з ботів ходив хвостиком, хто з гравців стояв поруч і не здогадався, хто мазав по ботах.
+    /// </summary>
+    string[] Fun(int[] winners, string why, Func<CrowdSeat, bool> who)
+    {
+        var lines = new List<string>(FunMax);
+        bool Ok(int i) => _s[i].Plays && _s[i].Me >= 0 && who(_s[i]);
+        string Nick(int i) => _s[i].Nick;
+        static string Sec(int samples) => $"{(samples * TrailEvery * TickMs + 500) / 1000} с";
+
+        for (var i = 0; i < Seats && lines.Count < 2; i++)
+            if (Ok(i) && _s[i].GuessHits > 0)
+                lines.Add($"🕵 {Nick(i)} {(_s[i].GuessHits < Heads.Length ? "вгадав " + Heads[_s[i].GuessHits] : "вгадав усіх")} — +{_s[i].GuessHits * PtGuess}");
+
+        var eyes = new List<string>();
+        for (var i = 0; i < Seats; i++)
+            if (Ok(i) && _s[i].Eye) eyes.Add(Nick(i));
+        if (eyes.Count > 0) lines.Add($"🎯 Снайпер: {string.Join(" і ", eyes)} — першим же камінцем");
+
+        int bl = -1;
+        for (var i = 0; i < Seats; i++)
+            if (Ok(i) && _s[i].Bluffs > 0 && (bl < 0 || _s[i].Bluffs > _s[bl].Bluffs || (_s[i].Fooled >= 0 && _s[bl].Fooled < 0))) bl = i;
+        if (bl >= 0)
+        {
+            var n = _s[bl].Bluffs;
+            var times = n < Times.Length ? Times[n] : $"{n} рази";
+            var fool = _s[bl].Fooled is var f && f >= 0 && f != bl ? $", а {Nick(f)} на це купився" : "";
+            lines.Add($"🥸 Найкращий блеф: {Nick(bl)}{(times.Length > 0 ? " " + times : "")} купив не зі свого списку{fool}");
+        }
+
+        int pa = -1, pb = -1, pn = NearMinSamples - 1;
+        for (var a = 0; a < Seats; a++)
+            for (var b = a + 1; b < Seats; b++)
+                if (_nearPair[a * Seats + b] > pn && Ok(a) && Ok(b) && _s[a].KilledBy != b && _s[b].KilledBy != a)
+                { pn = _nearPair[a * Seats + b]; pa = a; pb = b; }
+        if (pa >= 0) lines.Add($"👀 {Nick(pa)} і {Nick(pb)} {Sec(pn)} стояли поруч — і ніхто не здогадався");
+
+        int sa = -1, sb = -1, sn = NearMinSamples - 1;
+        for (var a = 0; a < Seats; a++)
+        {
+            if (!Ok(a)) continue;
+            for (var id = 0; id < 64 && id < Core.N; id++)
+                if (_nearBot[a * 64 + id] > sn) { sn = _nearBot[a * 64 + id]; sa = a; sb = id; }
+        }
+        if (sa >= 0)
+        {
+            var bot = Core.V[sb];
+            var name = CrowdMap.Names[bot.Name];
+            var she = bot.Name % 2 == 0;   // імена в CrowdMap.Names чергуються: дівчина, хлопець, дівчина…
+            lines.Add($"🐑 {Nick(sa)} мав вірного хвостика: {name} {Sec(sn)} {(she ? "трималась" : "тримався")} поруч");
+        }
+
+        int mz = -1;
+        for (var i = 0; i < Seats; i++)
+            if (Ok(i) && _s[i].BotHits >= 2 && (mz < 0 || _s[i].BotHits > _s[mz].BotHits)) mz = i;
+        if (mz >= 0) lines.Add($"🙈 {Nick(mz)} поцілив у {Heads[Math.Min(_s[mz].BotHits, 3)]} ботів — селяни ображені");
+
+        if (why == "list")
+            foreach (var w in winners)
+                if (_s[w].Shots == 0 && Ok(w)) { lines.Add($"🧺 {Nick(w)} скупився, жодного разу не стрельнувши"); break; }
+
+        return [.. lines.Take(FunMax)];
     }
 
     void FinishMatch()
@@ -732,8 +920,9 @@ public sealed class Crowd : Game
                     winners = r.Winners,
                     why = r.Why,
                     ids = r.Ids.Select(p => new { seat = p.Seat, id = p.Id }).ToArray(),
-                    rows = r.Rows.Select(x => new { seat = x.Seat, buy = x.Buy, kills = x.Kills, win = x.Win, pts = x.Pts }).ToArray(),
+                    rows = r.Rows.Select(x => new { seat = x.Seat, buy = x.Buy, kills = x.Kills, win = x.Win, pts = x.Pts, guess = x.Guess }).ToArray(),
                     trails = r.Trails.Select(p => new { seat = p.Seat, pts = p.Pts }).ToArray(),
+                    fun = r.Fun,
                 }
                 : null,
             result = _phase == PhaseOver && _winners is { } w
@@ -757,6 +946,18 @@ public sealed class Crowd : Game
             buyCool = s.BuyCool,
             haggle = v.Haggle,
             alive = s.Alive,
+            // свої здогадки детектива (лише вибулому й лише йому): [місце, id, місце, id…]
+            guess = s.Alive ? null : GuessOf(s),
         };
+    }
+
+    static int[] GuessOf(CrowdSeat s)
+    {
+        var n = 0;
+        for (var i = 0; i < Seats; i++) if (s.Guess[i] >= 0) n++;
+        var a = new int[n * 2];
+        for (int i = 0, k = 0; i < Seats; i++)
+            if (s.Guess[i] >= 0) { a[k++] = i; a[k++] = s.Guess[i]; }
+        return a;
     }
 }
