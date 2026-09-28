@@ -16,6 +16,10 @@ data/words/*
 !data/words/curation-keep.txt
 !data/words/LICENSE.txt
 !data/words/make-lists.py
+# відповіді Глек-слова наввипередки на 4 і 6 літер (make-46.py)
+!data/words/uk-4.txt
+!data/words/uk-6.txt
+!data/words/make-46.py
 # Банк запитань «Скільки?» — маленький текстовий файл, який має їхати разом із грою
 # (без нього гра не має в що грати). Той самий покроковий виняток, що й для словників.
 !data/questions/
