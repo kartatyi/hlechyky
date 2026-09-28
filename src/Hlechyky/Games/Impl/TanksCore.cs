@@ -204,6 +204,8 @@ public sealed class TanksCore
     public bool RevengeFrag;
     /// <summary>Хвилі ворожих 🤖 проти команди 0.</summary>
     public bool Waves;
+    /// <summary>Перша хвиля — за три секунди після «Готуйсь»: роз'їхатись і стати біля глека.</summary>
+    public const int FirstWaveTicks = 75;
     public const int WaveCount = 5, WaveGapTicks = 100, BotSpawnTicks = 40, BotReloadTicks = 25, BotShieldTicks = 25;
     public int Wave { get; private set; }
     /// <summary>Скільки 🤖 цієї хвилі ще не виїхало.</summary>
@@ -270,13 +272,21 @@ public sealed class TanksCore
         return [Cell(x, 1), Cell(x, H - 2), Cell(x, q), Cell(x, H - 1 - q)];
     }
 
-    /// <summary>Цегла навколо глека: підковою, відкритою до сталевої рамки.</summary>
+    /// <summary>
+    /// Цегла навколо глека: дві підкови, відкриті до сталевої рамки. Одна тоненька падала від першого ж 🤖 за
+    /// кілька секунд — з двома є час доїхати й заступитись.
+    /// </summary>
     int[] Ring(int team)
     {
         var b = BaseCell[team];
         var (x, y) = (X(b), Y(b));
         var dx = team == 0 ? 1 : -1;
-        return [Cell(x, y - 1), Cell(x, y + 1), Cell(x + dx, y - 1), Cell(x + dx, y), Cell(x + dx, y + 1)];
+        return
+        [
+            Cell(x, y - 1), Cell(x, y + 1), Cell(x + dx, y - 1), Cell(x + dx, y), Cell(x + dx, y + 1),
+            Cell(x, y - 2), Cell(x + dx, y - 2), Cell(x + 2 * dx, y - 2), Cell(x + 2 * dx, y - 1), Cell(x + 2 * dx, y),
+            Cell(x + 2 * dx, y + 1), Cell(x + 2 * dx, y + 2), Cell(x + dx, y + 2), Cell(x, y + 2),
+        ];
     }
 
     // ---------- поле ----------
@@ -296,7 +306,7 @@ public sealed class TanksCore
             Tanks[i] = new Tank { Cell = Starts[i], Home = Starts[i], Want = Tanks[i].Want, Dir = X(Starts[i]) < W / 2 ? 0 : 2 };
         for (var i = Seats; i < All; i++) Tanks[i] = new Tank { Bot = true, Cell = BotSpawns[0], Dir = 2 };
         Wave = WaveLeft = _spawnIn = _spawnAt = 0;
-        _waveGap = 1;
+        _waveGap = FirstWaveTicks;
         Won = false;
     }
 
@@ -818,7 +828,8 @@ public sealed class TanksCore
 
     int Choose(Tank t)
     {
-        var target = BaseCell[0] >= 0 && BaseUp[0] ? BaseCell[0] : -1;
+        // Здебільшого — на глек, але частина думок — про найближчу людину: інакше 🤖 не помічали б, хто їх б'є.
+        var target = BaseCell[0] >= 0 && BaseUp[0] && _rng.Next(100) < 45 ? BaseCell[0] : -1;
         if (target < 0)
         {
             var best = int.MaxValue;
@@ -830,6 +841,7 @@ public sealed class TanksCore
                 if (d < best) { best = d; target = h.Cell; }
             }
         }
+        if (target < 0 && BaseUp[0] && BaseCell[0] >= 0) target = BaseCell[0];
         if (target < 0 || _rng.Next(100) < 20) return _rng.Next(4);
         var dx = X(target) - X(t.Cell);
         var dy = Y(target) - Y(t.Cell);

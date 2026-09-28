@@ -410,7 +410,6 @@ public class TanksSweep3Tests
         Ready(h);
         var core = Core(h);
         var jug = core.BaseCell[1];
-        foreach (var c in new[] { jug - 1, jug - 1 - core.W, jug - 1 + core.W }) core.Tiles[c] = TankTile.Free;
         Lane(core, core.Y(jug), core.X(jug) - 3, core.X(jug) - 1);
         Put(core, 0, core.X(jug) - 3, core.Y(jug), dir: 0);
         h.Act(0, "fire");
@@ -453,6 +452,8 @@ public class TanksSweep3Tests
     {
         var h = Table(2, options: new { mode = "waves" });
         Ready(h);
+        h.Tick(TanksCore.FirstWaveTicks - 2);
+        Assert.Equal(0, h.View(null).GetProperty("wv")[0].GetInt32());     // три секунди роз'їхатись
         h.Tick(60);
         var v = h.View(null);
         Assert.Equal(1, v.GetProperty("wv")[0].GetInt32());
@@ -468,7 +469,7 @@ public class TanksSweep3Tests
     {
         var h = Table(2, options: new { mode = "waves" });
         Ready(h);
-        h.Tick(3);
+        h.Tick(TanksCore.FirstWaveTicks + 3);
         var core = Core(h);
         var jug = core.BaseCell[0];
         Lane(core, core.Y(jug), core.X(jug) + 1, core.X(jug) + 3);

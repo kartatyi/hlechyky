@@ -7,6 +7,10 @@
   --tdark: #0d1a13;     /* гусениці, башта, дуло */
   --tblue: #6fb3e8;     /* п'яте місце */
   --tpink: #e88ac0;     /* шосте місце */
+  --tice: #a9d6ea;      /* ❄ лід */
+  --tbush: #3f8f4a;     /* 🌳 кущ */
+  --tbush2: #2c6b36;
+  --tbot: #b0524a;      /* ворожі 🤖 хвиль */
 }
 
 .tboard { max-width: 620px; }
@@ -50,6 +54,41 @@
   .tchip { padding: 2px 7px; gap: 4px; }
   /* довгі ніки не розносять рядок на чотири поверхи: хто це — видно з номера й кольору, повний нік — у шапці */
   .tchip .tnick { max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ---- прохід №3: команди, хвилі, 😈, стрічка подій під полем і підсумок ---- */
+.tchip .tk-team { font-size: .92em; }
+.tchip .tk-nem { font-size: .95em; }
+.tchip.tk-score, .tchip.tk-wave { color: var(--text); font-variant-numeric: tabular-nums; }
+.tk-feed {
+  display: flex; gap: 4px 12px; flex-wrap: wrap; justify-content: center; font-size: .82em; color: var(--muted);
+}
+.tk-feed.tk-live { min-height: 1.45em; }
+.tk-feed > span { white-space: nowrap; animation: tk-in .3s ease-out; }
+@keyframes tk-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .tk-feed > span { animation: none; } }
+.tk-n.s0 { color: var(--accent); }
+.tk-n.s1 { color: var(--ok); }
+.tk-n.s2 { color: var(--clay); }
+.tk-n.s3 { color: var(--muted); }
+.tk-n.s4 { color: var(--tblue); }
+.tk-n.s5 { color: var(--tpink); }
+.tk-sum {
+  display: grid; gap: 4px; margin: 6px auto 0; padding: 8px 12px; border-radius: 12px; background: var(--bg2);
+  font-size: .86em; max-width: 620px; width: fit-content;
+}
+.tk-row { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.tk-row.me { font-weight: 600; }
+.tk-row .tk-who { min-width: 6.5em; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-row .tk-nemsum { color: var(--muted); font-size: .92em; }
+.tk-grr { margin-top: 2px; text-align: center; }
+@media (max-width: 480px) {
+  .tk-feed { font-size: .74em; gap: 2px 8px; }
+  /* на телефоні видно дві останні події — третя штовхала б хрестовину під меню */
+  .tk-feed > span:nth-last-child(n+3) { display: none; }
+  .tk-sum { font-size: .8em; padding: 6px 10px; }
+  .tk-row { gap: 1px 8px; }
+  .tk-row .tk-nemsum { flex-basis: 100%; }
 }
 
 /* ---- керування пальцем: напрямок тримають, тому pointerdown/pointerup, а не клік ---- */
