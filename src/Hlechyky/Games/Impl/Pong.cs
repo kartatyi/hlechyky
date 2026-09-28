@@ -338,7 +338,12 @@ public sealed class PongArena(Random rng)
             _aim[s] = null;
             _moved[s] = 0;
             Goals[s] = 0;
+            LongFor[s] = 0;
         }
+        BonusKind = PickKind = 0;
+        PickBy = -1;
+        Two = false;
+        _bonusIn = BonusEvery;
         Out.Clear();
         _next = -1;
         _idle = 0;
@@ -357,6 +362,7 @@ public sealed class PongArena(Random rng)
     {
         if (!Alive(seat)) return;
         L[seat] = 0;
+        LongFor[seat] = 0;
         Out.Add(seat);
         if (Touch == seat) Touch = null;
     }
@@ -381,7 +387,12 @@ public sealed class PongArena(Random rng)
         T++;
         HitBy = null;
         Smash = false;
+        PickKind = 0;
+        PickBy = -1;
         MovePaddles();
+        // довга ракетка тане за справжнім годинником — і в паузі після гола теж
+        for (var s = 0; s < Seats; s++)
+            if (LongFor[s] > 0) LongFor[s]--;
         if (StartIn > 0)
         {
             StartIn--;
@@ -402,8 +413,25 @@ public sealed class PongArena(Random rng)
             return null;
         }
 
-        // Два півкроки: у квадраті є кути й до чотирьох ракеток, і на повній швидкості м'яч за цілий тик
-        // пролітає 5.6 одиниці — забагато, щоб чесно розібратись, об що саме він ударився першим.
+        if (Bonuses) BonusTick();
+        if (StepBall() is { } side) return Lose(side);
+        if (Two)
+        {
+            // Другий м'яч (бонус «два м'ячі») рахуємо тим самим кодом: міняємо м'ячі місцями й назад.
+            // Гол другим м'ячем закриває розіграш так само, як і першим: Lose → Center прибирає обидва.
+            Swap();
+            if (StepBall() is { } side2) { Two = false; return Lose(side2); }
+            Swap();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Політ одного м'яча за тик. Два півкроки: у квадраті є кути й до чотирьох ракеток, і на повній швидкості
+    /// м'яч за цілий тик пролітає 5.6 одиниці — забагато, щоб чесно розібратись, об що саме він ударився першим.
+    /// </summary>
+    int? StepBall()
+    {
         for (var half = 0; half < 2; half++)
         {
             var (x0, y0) = (Bx, By);
@@ -413,9 +441,115 @@ public sealed class PongArena(Random rng)
                 if (Alive(s)) Hit(s, x0, y0);
             Walls();
             Corners();
-            if (Gone() is { } side) return Lose(side);
+            if (BonusKind != 0) Pickup();
+            if (Gone() is { } side) return side;
         }
         return null;
+    }
+
+    // ---- Бонуси на арені (прохід №3, п. 133) ----
+    /// <summary>Бонус з'являється раз на 15 с живої гри і лежить 10 с; довга ракетка — теж 10 с.</summary>
+    public const int BonusEvery = 375, BonusLife = 250, LongTicks = 250;
+    /// <summary>Довга ракетка — у півтора раза; «повільний м'яч» — швидкість × 0.6, але не менше за 0.8 подачі.</summary>
+    public const double LongK = 1.5, SlowK = 0.6, BonusR = 4.5;
+    public const int BonusLong = 1, BonusTwo = 2, BonusSlow = 3;
+    /// <summary>Опція столу «бонуси»: без неї арена така, як була.</summary>
+    public bool Bonuses { get; set; }
+    /// <summary>Що лежить на полі: 0 — нічого, далі <see cref="BonusLong"/>/<see cref="BonusTwo"/>/<see cref="BonusSlow"/>.</summary>
+    public int BonusKind { get; private set; }
+    public double BonusX { get; private set; }
+    public double BonusY { get; private set; }
+    /// <summary>Скільки тиків ще довга ракетка в кожного місця.</summary>
+    public int[] LongFor { get; } = new int[Seats];
+    /// <summary>Бонус, підібраний у цьому тику (0 — ні), і хто його підібрав (останній дотик м'яча).</summary>
+    public int PickKind { get; private set; }
+    public int PickBy { get; private set; } = -1;
+    /// <summary>На полі другий м'яч (до першого гола).</summary>
+    public bool Two { get; private set; }
+    public double B2x { get; private set; }
+    public double B2y { get; private set; }
+    public double V2x { get; private set; }
+    public double V2y { get; private set; }
+    int? _touch2;
+    int _bonusIn = BonusEvery, _bonusLeft;
+
+    /// <summary>Половина довжини ракетки місця (довша, поки діє бонус).</summary>
+    public double Half(int side) => (LongFor[side] > 0 ? PaddleL * LongK : PaddleL) / 2;
+
+    /// <summary>Для тестів: покласти бонус просто зараз у задане місце.</summary>
+    public void PlaceBonus(int kind, double x, double y)
+    {
+        BonusKind = kind;
+        BonusX = x;
+        BonusY = y;
+        _bonusLeft = BonusLife;
+    }
+
+    void BonusTick()
+    {
+        if (BonusKind != 0)
+        {
+            if (--_bonusLeft <= 0) { BonusKind = 0; _bonusIn = BonusEvery; }
+            return;
+        }
+        if (--_bonusIn > 0) return;
+        // Два м'ячі вже летять — третього не даємо, лише ракетку чи уповільнення.
+        var k = rng.Next(Two ? 2 : 3);
+        var kind = Two ? (k == 0 ? BonusLong : BonusSlow) : k + 1;
+        // Біля центру, але не в самому центрі: з центру подають, а м'яч, якого ще ніхто не торкався, бонус не бере.
+        var a = rng.NextDouble() * Math.PI * 2;
+        var r = 8 + rng.NextDouble() * 18;
+        PlaceBonus(kind, S / 2 + r * Math.Cos(a), S / 2 + r * Math.Sin(a));
+    }
+
+    /// <summary>М'яч, якого хтось торкався, зачепив бонус — бонус тому, хто вдарив останнім.</summary>
+    void Pickup()
+    {
+        if (Touch is not { } by) return;
+        var dx = Bx - BonusX;
+        var dy = By - BonusY;
+        var reach = BonusR + BallR;
+        if (dx * dx + dy * dy > reach * reach) return;
+        var kind = BonusKind;
+        BonusKind = 0;
+        _bonusIn = BonusEvery;
+        PickKind = kind;
+        PickBy = by;
+        switch (kind)
+        {
+            case BonusLong:
+                LongFor[by] = LongTicks;
+                break;
+            case BonusSlow:
+            {
+                var sp = Speed;
+                var want = Math.Max(StartSpeed * 0.8, sp * SlowK);
+                if (sp > want) { Vx *= want / sp; Vy *= want / sp; }
+                break;
+            }
+            case BonusTwo when !Two:
+            {
+                // Другий м'яч вилітає з того самого місця під прямим кутом — до когось іншого.
+                var sign = rng.Next(2) == 0 ? 1 : -1;
+                Two = true;
+                B2x = Bx;
+                B2y = By;
+                V2x = -sign * Vy;
+                V2y = sign * Vx;
+                _touch2 = by;
+                break;
+            }
+        }
+    }
+
+    /// <summary>Міняє місцями перший і другий м'яч — щоб другий літав тим самим кодом, що й перший.</summary>
+    void Swap()
+    {
+        (Bx, B2x) = (B2x, Bx);
+        (By, B2y) = (B2y, By);
+        (Vx, V2x) = (V2x, Vx);
+        (Vy, V2y) = (V2y, Vy);
+        (Touch, _touch2) = (_touch2, Touch);
     }
 
     void MovePaddles()
@@ -427,7 +561,8 @@ public sealed class PongArena(Random rng)
             var was = P[s];
             if (_aim[s] is { } want) P[s] += Math.Clamp(want - P[s], -step, step);
             else P[s] += _dir[s] * step;
-            P[s] = Math.Clamp(P[s], MinP, MaxP);
+            var half = Half(s);
+            P[s] = Math.Clamp(P[s], Corner + half, S - Corner - half);
             var d = P[s] - was;
             _moved[s] = Math.Abs(d) >= step / 2 ? Math.Sign(d) : 0;
         }
@@ -462,9 +597,10 @@ public sealed class PongArena(Random rng)
         var t1 = vertical ? By : Bx;
         var t = t0 + (t1 - t0) * k;
         var off = t - P[side];
-        if (Math.Abs(off) > PaddleL / 2 + BallR) return;
+        var halfL = Half(side);
+        if (Math.Abs(off) > halfL + BallR) return;
 
-        var rel = Math.Clamp(off / (PaddleL / 2), -1, 1);
+        var rel = Math.Clamp(off / halfL, -1, 1);
         var deg = Math.Clamp(rel * BounceAngle + _moved[side] * SpinAngle, -BounceAngle, BounceAngle);
         var a = deg * Math.PI / 180;
         Smash = _moved[side] != 0 && Math.Abs(rel) >= PongCore.SmashEdge;
@@ -567,6 +703,7 @@ public sealed class PongArena(Random rng)
         ServeIn = ServeTicks;
         Rally = 0;
         Touch = null;
+        Two = false;
         _idle = 0;
         Serve++;
     }
@@ -598,10 +735,14 @@ public sealed class Pong : Game
 {
     static readonly GameOption Length = new("len", "Партія",
         [("short", "Коротка"), ("normal", "Звичайна"), ("long", "Довга")], "normal");
+    /// <summary>Бонуси на арені (п. 133): типово вимкнені — арена як була.</summary>
+    static readonly GameOption BonusOpt = new("bonus", "Бонуси (арена, 3–4)",
+        [("off", "Без бонусів"), ("on", "⭐ Раз на 15 с: ↔ довга ракетка, ⚾ два м'ячі, 🐢 повільний м'яч")], "off");
+    bool _bonuses;
 
     public override GameInfo Info { get; } = new(
         "pong", "Понг", "понг", GameGroup.Live, 1, PongArena.Seats, TickMs: PongCore.TickMs,
-        Start: StartMode.ByHost, Options: [Length],
+        Start: StartMode.ByHost, Options: [Length, BonusOpt],
         Hint: "На двох — класика до семи, на трьох-чотирьох — арена: кожен стереже свою стіну. Самому — з 🤖 ботом. Стрілки або тягни пальцем");
 
     public const string AloneText = "Сам на сам не пограєш: тисни «🤖 + бот» — або зачекай друга";
@@ -621,6 +762,8 @@ public sealed class Pong : Game
     /// <summary>Місце бота в цій партії або −1. Бот не сидить: ні нагород, ні рейтингу, у Журналі — «🤖 бот».</summary>
     int _bot = -1;
     public int Bot => _bot;
+    /// <summary>Для тестів: арена поточної партії (null — класика або ще не стартували).</summary>
+    public PongArena? ArenaForTests => _arena;
     /// <summary>Бот: ціль ракетки (оновлюється раз на три тики — реакція) і його похибка на цей підліт м'яча.</summary>
     double _botAim = PongCore.H / 2, _botErr;
     int _botSeen = -1;
@@ -709,6 +852,9 @@ public sealed class Pong : Game
         var len = options.TryGetValue("len", out var l) ? l : Length.Default;
         if (!Length.Values.Any(v => v.Value == len)) throw new GameError("Такої довжини партії нема");
         _len = len;
+        var bonus = options.TryGetValue("bonus", out var b) ? b : BonusOpt.Default;
+        if (!BonusOpt.Values.Any(v => v.Value == bonus)) throw new GameError("Таких бонусів нема");
+        _bonuses = bonus == "on";
     }
 
     public override void Start()
@@ -724,7 +870,7 @@ public sealed class Pong : Game
         _botSeen = -1;
         if (_isArena)
         {
-            _arena = new PongArena(Ctx.Rng);
+            _arena = new PongArena(Ctx.Rng) { Bonuses = _bonuses };
             _arena.Reset(seated, Lives);
         }
         else
@@ -1003,8 +1149,15 @@ public sealed class Pong : Game
             lost = a.LastLost,
             from = a.LastBy,
             n = a.Serve,
+            // бонуси (п. 133): що лежить [вид, x, y], другий м'яч [x, y, vx, vy], у кого довга ракетка, хто що підібрав
+            bn = a.BonusKind != 0 ? new[] { a.BonusKind, R(a.BonusX), R(a.BonusY) } : null,
+            b2 = a.Two ? new[] { R(a.B2x), R(a.B2y), R(a.V2x), R(a.V2y) } : null,
+            lg = a.Bonuses ? LongOf(a) : null,
+            pk = a.PickKind != 0 ? new[] { a.PickKind, a.PickBy } : null,
         };
     }
 
     static double R(double v) => Math.Round(v, 1);
+
+    static int[] LongOf(PongArena a) => [a.LongFor[0] > 0 ? 1 : 0, a.LongFor[1] > 0 ? 1 : 0, a.LongFor[2] > 0 ? 1 : 0, a.LongFor[3] > 0 ? 1 : 0];
 }
