@@ -47,7 +47,8 @@
 /* ---- дошка ---- */
 .scr-board { display: flex; justify-content: center; }
 .board.scr-sboard {
-  width: min(100%, 520px); gap: 2px; padding: 4px; background: var(--bg2); border-radius: 8px;
+  /* Висота теж рахується: на ноуті 1512×862 і Деці 1280×800 дошка на 520 px виштовхувала «Готово» за край екрана. */
+  width: min(100%, 520px, max(360px, 100vh - 380px)); gap: 2px; padding: 4px; background: var(--bg2); border-radius: 8px;
 }
 .board.scr-sboard .cell {
   font-size: 1em; border-radius: 3px; background: var(--scr-empty); border-color: transparent;
