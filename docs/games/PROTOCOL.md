@@ -148,6 +148,7 @@ HGames.register({
   update(root, ctx) {},            // на кожну подію `room` (і одразу після mount)
   frame(root, ctx, f) {},          // на кожну подію `frame` (реалтайм); може не бути
   unmount(root, ctx) {},           // картка зникає; прибрати таймери/rAF
+  visible(root, ctx, on) {},       // картку сховано (on=false: пішов у лобі, інший розділ, інша вкладка) / знову видно; може не бути
   onKey(e, ctx) { return false },  // keydown, коли ця кімната активна; true — оброблено (preventDefault)
   status(ctx) { return '' },       // рядок статусу під тілом; порожньо → каркас пише своє («Твій хід», «Ходить X»)
   pad: { dirs: true, a: 'Space', hint: '{dpad} бігати · {a} бомба' },   // джойстик; докладно нижче
@@ -202,6 +203,7 @@ type Ctx = {
   playing: boolean;                 // room.status === 'playing'
   mine: boolean;                    // seat !== null
   myTurn: boolean;                  // якщо view.turn існує і === seat
+  shown: boolean;                   // картку видно на екрані зараз (прохід №3); у mount уже вірне, зміни — через visible()
   act(action: string, payload?: any): Promise<RoomReply>;   // тост на помилку — сам каркас
   input(action: string, payload?: any): void;
   toast(text: string, kind?: 'ok'|'err'|'wait'): void;

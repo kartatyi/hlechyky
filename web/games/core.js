@@ -1006,6 +1006,7 @@
     if (!v) return;
     const room = view.kind === 'room' ? view.id : null;
     placeCards(room);
+    syncShown();
     root.querySelector('.gbar').hidden = view.kind !== 'panel';
     root.querySelector('.groom').hidden = !room;
     v.hidden = !!room;
@@ -1580,6 +1581,27 @@
     setTimeout(done, 3000);
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Картку сховано / показано (прохід №3, п. 240). Стіл, за яким сидиш, лишається змонтованим на складі, коли йдеш
+  // у лобі, в інший розділ сайту чи в іншу вкладку браузера, — і реалтайм-гра крутила rAF у порожнечу або сама
+  // опитувала offsetParent / ставила IntersectionObserver. Тепер каркас каже сам: ctx.shown — чи картку видно зараз,
+  // а необов'язковий mod.visible(root, ctx, on) кличеться лише на зміну (після mount; сам mount бачить ctx.shown).
+  // Старий модуль без visible нічого не помітить.
+  // ---------------------------------------------------------------------------------------------
+  const cardOn = (c) => shown && !document.hidden && view.kind === 'room' && view.id === c.id && !c.el.hidden
+    && c.el.isConnected;
+  function syncShown() {
+    for (const id in cards) {
+      const c = cards[id];
+      if (!c.mounted || !c.ctx) continue;
+      const on = cardOn(c);
+      if (on === c.vis) continue;
+      c.vis = c.ctx.shown = on;
+      if (c.mod && c.mod.visible) { try { c.mod.visible(c.body, c.ctx, on); } catch (e) { console.warn('[games] visible', e); } }
+    }
+  }
+  document.addEventListener('visibilitychange', syncShown);
+
   function dropCard(id) {
     const c = cards[id];
     if (!c) return;
@@ -1773,6 +1795,8 @@
       if (!card.mounted) {
         card.body.innerHTML = '';
         card.mounted = true;
+        // Модуль бачить, чи його видно, вже в mount; далі про зміну скаже visible() (п. 240).
+        card.vis = ctx.shown = cardOn(card);
         try { if (card.mod.mount) card.mod.mount(card.body, ctx); }
         catch (e) { console.warn('[games] mount ' + rv.room.game, e); }
       }
@@ -2136,6 +2160,7 @@
 
     hide() {
       shown = false;
+      syncShown();
       setFull(false);
       document.body.classList.remove('g-room', 'g-arcade');
       syncWatch();
