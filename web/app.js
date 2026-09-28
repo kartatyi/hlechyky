@@ -59,13 +59,31 @@
   const djGen = () => state?.djNameGen || 'Дядька Глека';
 
   // ---------- toasts / busy buttons ----------
+  // Стос тостів закривав поле гри на телефоні (морський бій: відповідь на кожен постріл), тож той самий текст, що ще
+  // висить, не множимо — лише подовжуємо йому життя, а разом на екрані не більше трьох: найстаріший іде першим.
+  const TOASTS_MAX = 3;
   function toast(text, kind) {
-    const el = document.createElement('div');
-    el.className = 'toast ' + (kind || '');
-    el.innerHTML = (kind === 'wait' ? '<span class="spin"></span>' : '') + esc(text);
-    $('toasts').appendChild(el);
+    const box = $('toasts');
+    const cls = 'toast ' + (kind || '');
     const ttl = kind === 'err' ? 5000 : 3200;
-    setTimeout(() => el.remove(), ttl);
+    if (kind !== 'wait') {
+      for (const t of box.children) {
+        if (t._text !== text || t.className !== cls) continue;
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => t.remove(), ttl);
+        return t;
+      }
+    }
+    // Лічимо й виганяємо лише звичайні тости: «Зачекай…» зі спінером прибирає той, хто чекає, а заклик до столу
+    // й ачівку (core.js кладе їх сам) дрібниця на кшталт «Мимо!» витісняти не має.
+    const plain = [...box.children].filter((t) => t._text !== undefined && !t.classList.contains('wait'));
+    while (plain.length >= TOASTS_MAX) plain.shift().remove();
+    const el = document.createElement('div');
+    el.className = cls;
+    el.innerHTML = (kind === 'wait' ? '<span class="spin"></span>' : '') + esc(text);
+    el._text = text;
+    box.appendChild(el);
+    el._timer = setTimeout(() => el.remove(), ttl);
     return el;
   }
   const ok = (r) => toast(r.message, 'ok');

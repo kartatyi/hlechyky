@@ -370,7 +370,7 @@
       const cls = it && typeof it === 'object' && it.cls ? ' ' + it.cls : '';
       return '<div class="gcard' + off + cls + '" data-i="' + i + '">' + render(it, i) + '</div>';
     }).join('');
-    if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
+    setHtml(el, html);   // свій рядок пам'ятаємо властивістю, а не атрибутом: рука карт у data-sig роздувала DOM
     return {
       el,
       selected: () => [...el.querySelectorAll('.gcard.sel')].map((c) => (el._items || [])[+c.dataset.i]),
