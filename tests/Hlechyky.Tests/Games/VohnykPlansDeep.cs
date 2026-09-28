@@ -15,6 +15,7 @@ public static partial class VohnykPlans
             case 17: Level17(b); return true;
             case 18: Level18(b); return true;
             case 19: Level19(b); return true;
+            case 20: Level20(b); return true;
             default: return false;
         }
     }
@@ -80,5 +81,17 @@ public static partial class VohnykPlans
         b.Do(null, VohnykBot.Seq(b.WaitFor(() => b.W.Button[1] != 0), b.Go(Wt, C(16)), b.Jump(Wt, -1, 30, C(12)), b.Jump(Wt, -1, 30, C(9)),
             b.RunUntil(-1, () => b.FeetPx(Wt) > 400), b.WaitFor(() => b.Ground(Wt)), b.Go(Wt, C(3)), b.Go(Wt, C(4)), b.RunJump(Wt, +1, C(5), 30, C(10)), b.Go(Wt, C(25))));
         b.Do(b.Go(F, C(23)), null);
+    }
+
+    /// <summary>
+    /// «Дзеркальна зала»: обидва дзеркала спершу кидають світло ліворуч, а кришталі праворуч. Крапля внизу проходить
+    /// дзеркало туди (самоцвіти) й назад — світло пішло в кришталь, — і перестрибує дзеркало з кришталем. Вогник
+    /// сходами на дошки, так само туди й назад, униз з лівого краю і теж стрибком до дверей.
+    /// </summary>
+    static void Level20(VohnykBot b)
+    {
+        b.Do(VohnykBot.Seq(b.Go(F, C(4)), b.Jump(F, -1, 30, C(3)), b.Jump(F, +1, 30, C(5) + 10), b.Go(F, C(20)), b.Go(F, C(12))),
+            VohnykBot.Seq(b.Go(Wt, C(18)), b.Go(Wt, C(9)), b.Go(Wt, C(6)), b.RunJump(Wt, +1, C(9) - 8, 30, C(14))));
+        b.Do(VohnykBot.Seq(b.Go(F, C(4)), b.RunJump(F, +1, C(9) - 8, 30, C(14)), b.Go(F, C(24))), b.Go(Wt, C(26)));
     }
 }
