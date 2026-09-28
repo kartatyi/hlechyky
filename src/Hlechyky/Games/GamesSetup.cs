@@ -48,6 +48,7 @@ public static class GamesSetup
         Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
         Impl.SkilkySetup.AddSkilky(services);   // «Скільки?»: фото «Якого року?» в cache/skilky, таблиця дня
         Impl.PictionarySetup.AddPictionary(services);       // Піктіонарі: публічний альбом і рекорди пар
+        Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         return services;
     }
 

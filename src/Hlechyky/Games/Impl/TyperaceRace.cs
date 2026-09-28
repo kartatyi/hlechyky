@@ -76,6 +76,10 @@ public abstract class TyperaceRace : Game
 
     protected Racer[] Racers = [];
     protected TyperaceBank Bank = null!;
+    /// <summary>«Наші балачки» (null — сервісу нема, як у старих тестах: тоді джерело «балачки» їде класикою).</summary>
+    protected TyperaceChat? ChatBank;
+    /// <summary>Чому цей заїзд не з Балачок, хоч просили (замало реплік, ще дочитуємо) — рядок під текстом; null — усе гаразд.</summary>
+    protected string? SrcNote;
     protected string Length = TyperaceBank.Medium;
     protected string Source = TyperaceBank.All;
     /// <summary>Пам'ять кімнати: які записи банку вже були (spec §7.4).</summary>
@@ -103,6 +107,8 @@ public abstract class TyperaceRace : Game
     protected void TakeBank()
     {
         Bank = Ctx.Services.GetService<TyperaceBank>() ?? TyperaceBank.Default;
+        ChatBank = Ctx.Services.GetService<TyperaceChat>();
+        ChatBank?.Warm();   // з Configure — поза замком; сама вибірка однаково йде фоном
         if (Racers.Length != Seats)
         {
             Racers = new Racer[Seats];
@@ -116,7 +122,7 @@ public abstract class TyperaceRace : Game
     /// <summary>Узяти новий текст і почати відлік. false — банк порожній.</summary>
     protected bool BeginReady()
     {
-        var pick = Bank.Pick(Length, Source, Ctx.Rng, Used);
+        var pick = PickText();
         if (pick is null) return false;
         Text = pick.Text;
         Src = pick.Src;
@@ -133,6 +139,34 @@ public abstract class TyperaceRace : Game
         ViewDirty = true;
         FrameDirty = false;
         return true;
+    }
+
+    /// <summary>
+    /// Текст заїзду. «Наші балачки» — з пам'яті <see cref="TyperaceChat"/>; «мікс» — навпіл з рештою банку. Реплік
+    /// замало (чи ще дочитуються) — їдемо класикою, а <see cref="SrcNote"/> пояснює чому.
+    /// </summary>
+    TyperacePick? PickText()
+    {
+        SrcNote = null;
+        var source = Source;
+        if (source is TyperaceChat.Chat or TyperaceChat.Mix)
+        {
+            var lines = ChatBank?.Lines ?? [];
+            var wantChat = source == TyperaceChat.Chat || Ctx.Rng.Next(2) == 0;
+            if (lines.Count >= TyperaceChat.MinLines)
+            {
+                if (wantChat) return TyperaceChat.Pick(lines, Length, Ctx.Rng, Used);
+                source = TyperaceBank.All;
+            }
+            else
+            {
+                SrcNote = ChatBank is { Loaded: false }
+                    ? "💬 Балачки ще дочитуються — цей заїзд класикою, наступний уже з наших"
+                    : $"💬 У Балачках поки замало реплік для заїзду ({lines.Count} з {TyperaceChat.MinLines}: беремо лише від власників акаунтів, без посилань, латиниці й лайки) — їдемо класикою";
+                source = source == TyperaceChat.Chat ? TyperaceBank.Classic : TyperaceBank.All;
+            }
+        }
+        return Bank.Pick(Length, source, Ctx.Rng, Used);
     }
 
     /// <summary>Стеля партії: 60 с + 0,5 с на знак.</summary>
@@ -387,6 +421,7 @@ public abstract class TyperaceRace : Game
             ["len"] = showText ? Len : 0,
             ["text"] = showText ? Text : null,
             ["src"] = showText && Src is { } s ? new { kind = s.Kind, author = s.Author, title = s.Title, year = s.Year } : null,
+            ["srcNote"] = showText ? SrcNote : null,
             ["opts"] = new { length = Length, source = Source },
             ["readyAt"] = showText ? Iso(ReadyAt) : null,
             ["goAt"] = showText ? Iso(GoAt) : null,
