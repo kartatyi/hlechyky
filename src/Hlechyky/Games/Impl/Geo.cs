@@ -30,6 +30,8 @@ public sealed class Geo : Game
             new GameOption("cat", "Місця", GeoCats.List, GeoCats.All, Multi: true),
             new GameOption("level", "Складність", [(GeoRules.LevelAll, "Усяка"), (GeoRules.LevelEasy, "Знайомі місця"), (GeoRules.LevelHard, "Для бувалих")], GeoRules.LevelAll),
             new GameOption("hints", "Мапа", [(GeoRules.HintsFull, "З підказками"), (GeoRules.HintsBorders, "Лише області"), (GeoRules.HintsNone, "Голий контур")], GeoRules.HintsFull),
+            new GameOption("mode", "Режим", [(GeoRules.ModeClassic, "Звичайний"), (GeoRules.ModeDuel, "⚡ Дуель на час: 15 с, хто перший і ближче 50 км — +1000")], GeoRules.ModeClassic),
+            new GameOption("area", "Підказка «область»", [("on", "💡 Можна, за −40 % очок раунду"), ("off", "Без підказки")], "on"),
         ],
         Hint: "Фото звідкись з України — тицьни на мапу, де це. Що ближче, то більше очок. П'ять раундів. Можна й самому");
 
@@ -52,8 +54,10 @@ public sealed class Geo : Game
             GeoCats.Parse(options.GetValueOrDefault("cat")),
             Of("level", GeoRules.LevelAll, GeoRules.LevelAll, GeoRules.LevelEasy, GeoRules.LevelHard),
             Of("hints", GeoRules.HintsFull, GeoRules.HintsFull, GeoRules.HintsBorders, GeoRules.HintsNone),
-            Solo: false);
-        _m = new GeoMatch(Ctx, rules, Ctx.Services.GetService<GeoPhotos>(), MaxSeats, Info.Title);
+            Solo: false,
+            Mode: Of("mode", GeoRules.ModeClassic, GeoRules.ModeClassic, GeoRules.ModeDuel),
+            Area: Of("area", "on", "on", "off") == "on");
+        _m = new GeoMatch(Ctx, rules, Ctx.Services.GetService<GeoPhotos>(), MaxSeats, Info.Title, Ctx.Services.GetService<GeoSeen>());
     }
 
     public override string? CanStart() => _m.CanStart();
