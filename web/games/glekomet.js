@@ -38,6 +38,8 @@
   /// летів у гру й одразу стріляв 45°/60 «мимо».
   const TURN_GRACE = 600;
   const AWAY_MS = 200, CALM_MS = 50;   // цикл малювання: схована картка / тихе лобі й підсумок (spin)
+  /// Емоції над хатою (прохід №3): поки ходить інший — 1–4, Ⓧ або кнопки пульта; сервер пускає одну на 1,5 с.
+  const EMOS = ['😂', '😱', '😡', '👏'], EMO_MS = 2000, EMO_GAP = 1500;
 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -83,7 +85,7 @@
         pl: new Float32Array(PN), pm: new Float32Array(PN), pc: new Uint8Array(PN), ps: new Float32Array(PN), pg: new Float32Array(PN),
         rings: [], floats: [], shakeUntil: 0, banner: null, stork: null, smokeAt: 0,
         charge: null, holds: { a: null, p: null }, lastMove: 0, aimDirty: false, aimSent: '', aimSentAt: 0,
-        drag: null, skipArm: 0,
+        drag: null, skipArm: 0, emos: [null, null, null, null, null, null], emoAt: 0, emoNext: 0,
         raf: 0, lastT: 0, keyup: null, ro: null, perf: new Float32Array(300), perfN: 0,
         sound: store.get('glekomet.sound', '0') === '1', ac: null, noise: null,
         els: null, calm: calm(),
@@ -131,7 +133,7 @@
       nick: f(600, small ? 9 : 11), label: f(600, small ? 9 : 11), dmg: f(800, small ? 12 : 15),
       big: f(800, small ? 16 : 22), count: f(800, small ? 40 : 64), wind: f(700, small ? 9 : 12), tiny: f(500, small ? 8 : 10),
       // рядок пострілу на телефоні — дрібніше й у два рядки: 16 px в один рядок ширшали за поле й накривали його
-      banner: f(800, small ? 12 : 22), small,
+      banner: f(800, small ? 12 : 22), emo: f(400, small ? 20 : 28), small,
       k,
     };
   }
@@ -716,6 +718,7 @@
       }
     }
     if (f.aim) st.aimTurn = f.aim;
+    if (f.em) for (const [i, e] of f.em) if (i >= 0 && i < 6 && EMOS[e]) st.emos[i] = { e, t0: now };
     if (f.wl != null && f.wl !== st.wat.to) st.wat = { from: st.calm ? f.wl : waterNow(st, now), to: f.wl, t0: now };
     if (f.sh) takeShells(st, f.sh, true);
     else if (st.phase !== 'fly') st.shN = 0;
@@ -1330,6 +1333,7 @@
     st.tagOrder.sort((a, b) => (st.huts[b].alive - st.huts[a].alive) || a - b);
     const tags = placeTags(st, g, now);
     for (const t of tags) if (t.on) drawTag(st, g, t.i, st.huts[t.i].dx, st.huts[t.i].dy, now, t.i === mine, Math.max(0, t.lift), t.w);
+    drawEmos(st, g, now, tags);
 
     // цифри шкоди
     if (st.floats.length) {
@@ -1409,6 +1413,45 @@
       else drawBanner(st, g, st.banner.text, e < 2200 ? 1 : 1 - (e - 2200) / 400, HGT - 62 * F.k);
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /// Емоції над хатами: вискакує, трохи пливе вгору й тане за 2 с — над табличкою з ніком, щоб її не ховати.
+  function drawEmos(st, g, now, tags) {
+    const F = st.fonts;
+    let any = false;
+    for (let i = 0; i < 6; i++) {
+      const em = st.emos[i];
+      if (!em) continue;
+      const e = now - em.t0;
+      const hut = st.huts[i];
+      if (e > EMO_MS || !hut.plays) { st.emos[i] = null; continue; }
+      if (!any) { any = true; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = F.emo; }
+      const t = tags.find((q) => q.i === i);
+      const lift = t && t.on ? Math.max(0, t.lift) + 16 * F.k : 0;
+      const k = st.calm ? 1 : Math.min(1, e / 160);
+      const sc = 0.55 + 0.45 * k * (2 - k);
+      const x = clamp(hut.dx, 18 * F.k, W - 18 * F.k);
+      const y = Math.max(16 * F.k, sy(hut.dy) - 50 - lift - 20 * F.k - (st.calm ? 0 : (e / EMO_MS) * 10 * F.k));
+      g.globalAlpha = e > EMO_MS - 400 ? (EMO_MS - e) / 400 : 1;
+      g.save();
+      g.translate(x, y);
+      g.scale(sc, sc);
+      g.fillText(EMOS[em.e], 0, 0);
+      g.restore();
+    }
+    g.globalAlpha = 1;
+  }
+
+  /// Емоція від мене (1–4, Ⓧ, кнопки пульта): лише за столом посеред партії; частіше за 1,5 с не шлемо.
+  function emote(st, e) {
+    const s = me(st);
+    if (s == null || !st.ctx.playing || st.phase === 'lobby' || st.phase === 'over' || !EMOS[e]) return false;
+    const now = performance.now();
+    if (now - st.emoAt < EMO_GAP) return true;
+    st.emoAt = now;
+    st.emoNext = (e + 1) % EMOS.length;
+    st.ctx.input('emo', { e });
+    return true;
   }
 
   /// Підсумок: найкращий постріл партії ще раз — пунктир росте за 1,6 с кольором стрільця, на кінці — вибух і «🏆 −55».
@@ -1643,7 +1686,8 @@
       + '<span class="gk-grp"><span class="gk-lbl">сила</span><button type="button" class="gk-sq" data-k="p" data-d="-1" aria-label="слабше">−</button>'
       + '<b class="gk-p">60</b><button type="button" class="gk-sq" data-k="p" data-d="1" aria-label="сильніше">+</button></span>'
       + '<span class="gk-shoot"><button type="button" class="primary gk-fire" data-k="f"><i class="gk-charge"></i><span>💥 Постріл</span></button>'
-      + '<button type="button" class="gk-skip" data-k="s">Пропустити</button></span>';
+      + '<button type="button" class="gk-skip" data-k="s">Пропустити</button></span>'
+      + '<span class="gk-grp gk-emos" title="Емоція над своєю хатою (1–4)">' + EMOS.map((m, i) => '<button type="button" class="gk-sq gk-emo-b" data-k="e" data-e="' + i + '" aria-label="емоція ' + m + '">' + m + '</button>').join('') + '</span>';
     const tip = document.createElement('div');
     tip.className = 'gk-tip';
     tip.hidden = true;
@@ -1678,7 +1722,7 @@
       const b = e.target.closest('button');
       if (!b || b.disabled) return;
       const k = b.dataset.k;
-      if (k === 's') return;
+      if (k === 's' || k === 'e') return;
       e.preventDefault();
       try { b.setPointerCapture(e.pointerId); } catch { /* старий браузер */ }
       b._pid = e.pointerId;
@@ -1710,6 +1754,7 @@
         setTimeout(() => { if (performance.now() - st.skipArm >= 2400 && b.isConnected) b.textContent = 'Пропустити'; }, 2600);
         return;
       }
+      if (k === 'e') { emote(st, +b.dataset.e); return; }
       if (e.detail !== 0) return;                   // мишу й палець уже обробив pointerdown
       if (k === 'f') fire(st);
       else if (k === 'm') move(st, +b.dataset.d);
@@ -1814,12 +1859,17 @@
     if (!E) return;
     // пульт є тим, хто сидить, поки йде партія; у лобі й після кінця він лише заважав би підсумку
     // руїні ходити вже нічим — пульт ховаємо, лишається комора й підсумок
+    // руїні лишаються тільки емоції (клас gk-dead ховає решту)
     const mine0 = me(st);
-    const show = !!st.ctx.mine && st.ctx.playing && st.phase !== 'over' && (st.phase === 'start' || (mine0 != null && st.huts[mine0].alive));
+    const show = !!st.ctx.mine && st.ctx.playing && st.phase !== 'over' && mine0 != null;
     if (E.ctl.hidden === show) E.ctl.hidden = !show;
     if (!show) return;
     const mine = me(st);
     const can = myTurn(st);
+    const dead = st.phase !== 'start' && !st.huts[mine].alive;
+    // не мій хід — замість «Постріл / Пропустити» кнопки емоцій (той самий рядок, поле не смикається)
+    if (E.ctl.classList.contains('gk-wait') === can) E.ctl.classList.toggle('gk-wait', !can);
+    if (E.ctl.classList.contains('gk-dead') !== dead) E.ctl.classList.toggle('gk-dead', dead);
     const a = st.my;
     const fuel = st.huts[mine] ? st.huts[mine].fuel : 0;
     const t1 = a.a + '°', t2 = String(a.p), t3 = '⛽ ' + fuel;
@@ -1831,7 +1881,7 @@
     E.sig.ctl = sig;
     E.ctl.querySelectorAll('button').forEach((b) => {
       const k = b.dataset.k;
-      const off = !can || (k === 'm' && fuel < 8);
+      const off = k !== 'e' && (!can || (k === 'm' && fuel < 8));
       if (b.disabled !== off) b.disabled = off;
     });
     if (!can && E.skip.textContent !== 'Пропустити') E.skip.textContent = 'Пропустити';
@@ -1880,8 +1930,32 @@
       : 'Цього разу обійшлось без влучань';
     const why = { last: 'остання хата в селі', team: 'остання команда в селі', draw: 'нічия', idle: 'ніхто не стріляв — розійшлись', left: 'партію не дограли' }[r.reason] || '';
     const html = '<table><tr><th>хата</th><th>шкода</th><th title="влучних пострілів із усіх">влучно</th><th>руїн</th><th title="шкода своїй хаті й союзникам">по своїх</th></tr>' + rows.join('') + '</table>'
-      + '<div class="gk-best">' + best + '</div>' + (why ? '<div class="gk-rs">' + why + ' · кіл: ' + st.round + '</div>' : '');
+      + '<div class="gk-best">' + best + '</div>' + (why ? '<div class="gk-rs">' + why + ' · кіл: ' + st.round + '</div>' : '')
+      + seriesLine(st);
     if (E.sig.sum !== html) { E.sig.sum = html; E.sum.innerHTML = html; }
+  }
+
+  /// Підсумок серії (з другої партії): шкода за всі «Ще раз», найвлучніший, руйнівник і постріл серії.
+  /// Перемоги вечора тут не рахуємо — їх показує каркас.
+  function seriesLine(st) {
+    const ser = st.view && st.view.series, ctx = st.ctx;
+    if (!ser || ser.games < 2) return '';
+    const rows = [];
+    for (let i = 0; i < 6; i++) if (ser.rows && ser.rows[i]) rows.push({ i, r: ser.rows[i] });
+    if (!rows.length) return '';
+    const name = (i) => ctx.esc(nickOf(st, i));
+    rows.sort((a, b) => b.r.dmg - a.r.dmg || a.i - b.i);
+    const dmg = rows.map(({ i, r }, n) => (n === 0 && r.dmg > 0 ? '👑 ' : '') + name(i) + ' ' + r.dmg).join(' · ');
+    const acc = rows.filter((x) => x.r.shots >= 3).sort((a, b) => b.r.hits / b.r.shots - a.r.hits / a.r.shots)[0];
+    const kil = rows.slice().sort((a, b) => b.r.kills - a.r.kills)[0];
+    const n = ser.games, word = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'партії' : 'партій';
+    const b = ser.best, w = b && WEAPONS[b.w];
+    return '<div class="gk-ser"><b>📜 Серія: ' + n + ' ' + word + '</b> · шкода: ' + dmg
+      + (acc ? ' · 🎯 найвлучніший: ' + name(acc.i) + ' ' + Math.round((100 * acc.r.hits) / acc.r.shots) + '%' : '')
+      + (kil && kil.r.kills > 0 ? ' · 🏚 руйнівник: ' + name(kil.i) + ' ×' + kil.r.kills : '')
+      + (b && b.dmg > 0 ? '<br>🏆 Постріл серії: ' + ctx.esc(b.nick) + (b.to ? ' → ' + ctx.esc(b.to) : '') + ' ' + b.dmg
+        + (w ? ' (' + w.icon + ' ' + w.short + ', партія ' + b.game + ')' : '') : '')
+      + '</div>';
   }
 
   function paintAll(st) {
@@ -1967,12 +2041,13 @@
       x: 'KeyE',
       on(btn, ctx) {
         const st = ctx._gk;
+        if (st && btn === 'x' && !myTurn(st)) return emote(st, st.emoNext);   // чужий хід: Ⓧ — емоція по колу
         if (!st || (btn !== 'lb' && btn !== 'rb')) return false;
         move(st, btn === 'lb' ? -1 : 1);
         return true;
       },
       // Ⓐ коротко — постріл із тією силою, що виставив стіком; тримати — заряд із нуля (сила — скільки тримав)
-      hint: '{dpad} кут і сила · {a} постріл, тримай — заряд · {x} снаряд · {lb}{rb} посунути хату',
+      hint: '{dpad} кут і сила · {a} постріл, тримай — заряд · {x} снаряд (чужий хід — емоція) · {lb}{rb} посунути хату',
     },
     news: {
       v: '2026-09-27',
@@ -2070,6 +2145,8 @@
           return true;
         default: {
           const m = /^(?:Digit|Numpad)([1-6])$/.exec(code || '');
+          // чужий хід: 1–4 — емоції над хатою, свій — снаряди
+          if (m && !mineNow && +m[1] <= EMOS.length) { if (!e.repeat) emote(st, +m[1] - 1); return true; }
           if (m) { pickWeapon(st, +m[1] - 1); return true; }
           if (e.key === ' ') { if (!e.repeat && mineNow && !early(st)) startCharge(st, 'key'); return true; }
           return false;

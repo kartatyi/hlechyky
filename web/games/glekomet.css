@@ -171,3 +171,13 @@
 @media (prefers-reduced-motion: reduce) {
   .gk-fire .gk-charge { transition: none; }
 }
+
+/* прохід №3: емоції над хатою — у чужий хід замість «Постріл / Пропустити»; руїні — лише вони */
+.gk-ctl .gk-emos { display: none; gap: 4px; }
+.gk-ctl.gk-wait .gk-emos { display: inline-flex; }
+.gk-ctl.gk-wait .gk-shoot { display: none !important; }
+.gk-ctl.gk-dead > .gk-grp:not(.gk-emos) { display: none; }
+.gk-ctl button.gk-emo-b { padding: 4px 6px; font-size: 1.15em; line-height: 1; }
+@media (max-width: 700px) { .gk-ctl.gk-wait .gk-emos { grid-column: 1 / -1; justify-content: center; } }
+.gk-sum .gk-ser { margin-top: 6px; font-size: .92em; color: var(--muted); line-height: 1.45; }
+.gk-sum .gk-ser b { color: var(--text); }

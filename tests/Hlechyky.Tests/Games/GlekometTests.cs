@@ -11,7 +11,7 @@ namespace Hlechyky.Tests.Games;
 /// рівно туди, куди треба), а черги, пропуски, кінець партії й вид — через кімнату (spec glekomet.md §8).
 /// </summary>
 [Collection(SerialPerf.Name)]
-public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
+public partial class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марта", "Тарас"];
 

@@ -18,6 +18,8 @@ public sealed class Glekomet : Game
     /// поки хата засне втретє. Ворухнувся (приціл, крок) — хід одразу стає повним.
     /// </summary>
     public const int SleepySecs = 10;
+    /// <summary>Емоція над хатою (😂 😱 😡 👏) — не частіше ніж раз на 1,5 с від хати: розмова, а не спам.</summary>
+    public const int EmoGap = 38, Emos = 4;
     public const string PhaseLobby = "lobby", PhaseStart = "start", PhaseAim = "aim", PhaseFly = "fly", PhaseSettle = "settle", PhaseOver = "over";
     const int Seats = GlekometCore.Seats, Kinds = 6;
 
@@ -78,6 +80,16 @@ public sealed class Glekomet : Game
     // ---------- серія перемог за ніками («Ще раз» обертає місця, а серія їде з людиною) ----------
     readonly Dictionary<string, int> _wins = new(StringComparer.Ordinal);
     string _crew = "";
+
+    // ---------- емоції над хатами: остання від кожної хати й коли (тик) ----------
+    readonly int[] _emoE = new int[Seats], _emoAt = new int[Seats];
+    int _pendEmo, _emoMark;
+
+    // ---------- підсумок серії за ніками: шкода, влучання, руїни за всі «Ще раз» (перемоги вечора — у каркаса) ----------
+    readonly Dictionary<string, GlekometStat> _ser = new(StringComparer.Ordinal);
+    int _serGames;
+    object? _serBest;
+    int _serBestDmg;
 
     // ---------- що змінилось між тиками (ходи приходять між ними, а кадр будує тик) ----------
     int _pendMoved;
@@ -176,6 +188,8 @@ public sealed class Glekomet : Game
         _pendMoved = 0;
         _pendHp = _pendAim = false;
         _pendView = true;
+        _pendEmo = _emoMark = 0;
+        Array.Fill(_emoAt, -1000);
     }
 
     void BeginSeries()
@@ -184,6 +198,10 @@ public sealed class Glekomet : Game
         if (crew == _crew) return;
         _crew = crew;
         _wins.Clear();
+        _ser.Clear();
+        _serGames = 0;
+        _serBest = null;
+        _serBestDmg = 0;
     }
 
     static string Key(string nick) => nick.Trim().ToLowerInvariant();
@@ -200,6 +218,7 @@ public sealed class Glekomet : Game
             case "move": return Move(seat, payload);
             case "skip": return Skip(seat);
             case "aim": return Aim(seat, payload);
+            case "emo": return Emo(seat, payload);
             default: return ActResult.Fail("Тут так не ходять");
         }
     }
@@ -311,6 +330,23 @@ public sealed class Glekomet : Game
         return ActResult.Done;
     }
 
+    /// <summary>
+    /// Емоція над своєю хатою (Input 'emo' {e: 0..3}): поки ходить інший, чекання стає розмовою. Правил не міняє;
+    /// частіше ніж раз на 1,5 с — мовчки ігноруємо. Руїна теж може зойкнути — вона ж за столом.
+    /// </summary>
+    ActResult Emo(int seat, JsonElement payload)
+    {
+        if (_core is null || _phase is PhaseLobby or PhaseOver || seat < 0 || seat >= Seats || !_core.Huts[seat].Plays)
+            return ActResult.Fail("Зараз не до емоцій");
+        int? e = payload.ValueKind == JsonValueKind.Number && payload.TryGetInt32(out var bare) ? bare : Int(payload, "e");
+        if (e is null or < 0 or >= Emos) return ActResult.Fail("Такої емоції нема");
+        if (_t - _emoAt[seat] < EmoGap) return ActResult.Done;
+        _emoAt[seat] = _t;
+        _emoE[seat] = e.Value;
+        _pendEmo |= 1 << seat;
+        return ActResult.Done;
+    }
+
     /// <summary>Сонний хід, а людина ворухнулась — віддаємо повний; новий endsAt летить видом, дуга в усіх подовжиться.</summary>
     void Wake()
     {
@@ -334,10 +370,11 @@ public sealed class Glekomet : Game
         core.HpChanged |= _pendHp;
         _aimMark = _pendAim;
         _wlMark = false;
+        _emoMark = _pendEmo;
         var view = _pendView;
-        _pendMoved = 0;
+        _pendMoved = _pendEmo = 0;
         _pendHp = _pendAim = _pendView = false;
-        var frame = _aimMark || core.MovedMask != 0 || core.HpChanged;
+        var frame = _aimMark || core.MovedMask != 0 || core.HpChanged || _emoMark != 0;
 
         switch (_phase)
         {
@@ -734,6 +771,7 @@ public sealed class Glekomet : Game
         };
         foreach (var s in winners)
             if (_nick[s].Length > 0) _wins[Key(_nick[s])] = _wins.GetValueOrDefault(Key(_nick[s])) + 1;
+        AddSeries();
         // «Ні подряпини» — лише за виграний бій: хтось із суперників упав у бою (а не заснув чи встав), а сам
         // переможець хоч раз стрельнув
         if (reason is "last" or "team" && Fought(winners))
@@ -744,6 +782,40 @@ public sealed class Glekomet : Game
             if (core.Huts[s].Plays && Ctx.Seated(s)) scores[s] = _stats[s].Dmg;
         _pendView = true;
         Ctx.Finish(winners, text, scores);
+    }
+
+    /// <summary>Партію зіграно — у підсумок серії: шкода, влучання, руїни кожного ніка й найкращий постріл усієї серії.</summary>
+    void AddSeries()
+    {
+        _serGames++;
+        for (var s = 0; s < Seats; s++)
+        {
+            if (!_core!.Huts[s].Plays || _nick[s].Length == 0) continue;
+            var key = Key(_nick[s]);
+            if (!_ser.TryGetValue(key, out var acc)) _ser[key] = acc = new GlekometStat();
+            var st = _stats[s];
+            acc.Shots += st.Shots;
+            acc.Hits += st.Hits;
+            acc.Dmg += st.Dmg;
+            acc.Kills += st.Kills;
+            acc.Self += st.Self;
+            acc.Best = Math.Max(acc.Best, st.Best);
+        }
+        if (_bestSeat >= 0 && _bestDmg > _serBestDmg)
+        {
+            _serBestDmg = _bestDmg;
+            _serBest = new { nick = _nick[_bestSeat], to = _bestTo >= 0 ? _nick[_bestTo] : "", dmg = _bestDmg, w = _bestW, game = _serGames };
+        }
+    }
+
+    /// <summary>Серія по місцях теперішнього столу (ніки — ключ, бо «Ще раз» обертає місця); null — ще жодної партії.</summary>
+    object? Series()
+    {
+        if (_serGames == 0) return null;
+        var rows = new object?[Seats];
+        for (var s = 0; s < Seats; s++)
+            rows[s] = Ctx.NickOf(s) is { } n && _ser.TryGetValue(Key(n), out var acc) ? acc.Wire() : null;
+        return new { games = _serGames, rows, best = _serBest };
     }
 
     /// <summary>
@@ -852,6 +924,7 @@ public sealed class Glekomet : Game
             result = _result,
             turnNo = _turnNo,
             t = _t,
+            series = Series(),
         };
     }
 
@@ -919,6 +992,13 @@ public sealed class Glekomet : Game
         if (_aimMark && _turn >= 0) f["aim"] = new[] { _aimA[_turn], _aimP[_turn], _aimW[_turn] };
         if (_phase == PhaseStart) f["si"] = _left;
         if (_wlMark) f["wl"] = core.Water;
+        if (_emoMark != 0)
+        {
+            var em = new List<int[]>();
+            for (var s = 0; s < Seats; s++)
+                if ((_emoMark & (1 << s)) != 0) em.Add([s, _emoE[s]]);
+            f["em"] = em;
+        }
         return f;
     }
 }
