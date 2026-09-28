@@ -224,7 +224,7 @@ public sealed class SkilkyPhotos : BackgroundService
     }
 
     /// <summary>Справжній перетискач: ffmpeg з <c>YtDlp:FfmpegDir</c>, ширина до <see cref="TargetWidth"/>, якість 4, а якщо
-    /// й так важко — 7. Нема ffmpeg чи він упав — null (фото піде як є).</summary>
+    /// й так важко — 7, а тоді ще й 640 px. Нема ffmpeg чи він упав — null (фото піде як є).</summary>
     public static Func<byte[], CancellationToken, Task<byte[]?>> FfmpegShrinker(string ffmpeg, string tmpDir) => async (bytes, ct) =>
     {
         Directory.CreateDirectory(tmpDir);
@@ -235,10 +235,11 @@ public sealed class SkilkyPhotos : BackgroundService
         {
             await System.IO.File.WriteAllBytesAsync(src, bytes, ct);
             byte[]? best = null;
-            foreach (var q in new[] { "4", "7" })
+            foreach (var (w, q) in new[] { (TargetWidth, "4"), (TargetWidth, "7"), (640, "7") })
             {
+                // Висока вузька картинка на 800 px ширини буває завелика — тоді ще й менша ширина.
                 if (!await RunAsync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", src, "-map_metadata", "-1",
-                        "-vf", $"scale='min({TargetWidth},iw)':-2", "-q:v", q, dst], ct)) return best;
+                        "-vf", $"scale='min({w},iw)':-2", "-q:v", q, dst], ct)) return best;
                 best = await System.IO.File.ReadAllBytesAsync(dst, ct);
                 if (best.Length <= TargetBytes) break;
             }
