@@ -2986,6 +2986,8 @@
           },
           album: { show: (h && h.show) || [], stove: (h && h.stove) || [] },
           secrets: [],
+          // Толока друга (v11): знімок цеху шле готові будови — майдан за його хатою такий, як у нього.
+          toloka: h && Array.isArray(h.built) && h.built.length ? { built: h.built } : null,
         };
         const sky = (st2 && st2.scn && st2.scn.sky) || st.scn.sky;
         // Свої id (градієнти хати друга не мусять зникати, коли головну сцену сховало Око майстра) і ті самі змінні неба.
