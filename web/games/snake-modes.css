@@ -94,11 +94,11 @@ body.pad-on .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 350
 }
 .dpad .moto-boost:disabled { opacity: .35; filter: grayscale(1); }
 @media (pointer: fine) { .dpad .moto-boost { display: none; } }
-/* Під табло мотоциклів — ще й стрічка «хто кого» (≈20 px) — поле на стільки ж нижче, щоб «Встати» лишалось на екрані. */
-.moto-feed ~ .arenaboard { max-width: min(560px, max(300px, calc((100vh - 345px) * 26 / 18))); }
-.moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 345px) * 34 / 24))); }
-body.pad-on .moto-feed ~ .arenaboard { max-width: min(560px, max(300px, calc((100vh - 395px) * 26 / 18))); }
-body.pad-on .moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 395px) * 34 / 24))); }
+/* Під табло мотоциклів — ще й стрічка «хто кого» (≈20 px) і запас ~15 px — поле на стільки ж нижче, щоб «Встати» лишалось на екрані й на 1280×800 (Дека). */
+.moto-feed ~ .arenaboard { max-width: min(560px, max(300px, calc((100vh - 360px) * 26 / 18))); }
+.moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 360px) * 34 / 24))); }
+body.pad-on .moto-feed ~ .arenaboard { max-width: min(560px, max(300px, calc((100vh - 410px) * 26 / 18))); }
+body.pad-on .moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 410px) * 34 / 24))); }
 @media (min-width: 1600px) and (min-height: 900px) {
-  .moto-feed ~ .arenaboard.big { max-width: min(780px, calc((100vh - 345px) * 34 / 24)); }
+  .moto-feed ~ .arenaboard.big { max-width: min(780px, calc((100vh - 360px) * 34 / 24)); }
 }
