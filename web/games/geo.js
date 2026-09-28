@@ -75,7 +75,11 @@
     const refs = new Uint8Array(arcs.length);
     for (const r of raw.regions || []) for (const ring of r.rings) for (const id of ring) refs[Math.abs(id) - 1]++;
     const land = new Path2D(), borders = new Path2D(), outline = new Path2D();
+    // кожна область окремо — для підказки «💡 область» (підсвітити одну) і підписів областей
+    const regionPath = Object.create(null);
     for (const r of raw.regions || []) {
+      const rp = new Path2D();
+      const bb = [1e9, 1e9, -1e9, -1e9];
       for (const ring of r.rings) {
         let first = true;
         for (const id of ring) {
@@ -83,11 +87,15 @@
           const n = a.length / 2;
           for (let k = first ? 0 : 1; k < n; k++) {
             const i = id > 0 ? k : n - 1 - k;
-            if (first) { land.moveTo(a[2 * i], a[2 * i + 1]); first = false; } else land.lineTo(a[2 * i], a[2 * i + 1]);
+            const X = a[2 * i], Y = a[2 * i + 1];
+            if (first) { land.moveTo(X, Y); rp.moveTo(X, Y); first = false; } else { land.lineTo(X, Y); rp.lineTo(X, Y); }
+            if (X < bb[0]) bb[0] = X; if (Y < bb[1]) bb[1] = Y; if (X > bb[2]) bb[2] = X; if (Y > bb[3]) bb[3] = Y;
           }
         }
         land.closePath();
+        rp.closePath();
       }
+      regionPath[r.name] = { p: rp, bb, short: r.short };
     }
     let points = 0;
     arcs.forEach((a, i) => {
@@ -114,7 +122,38 @@
         riverLabels.push({ name: rv.name, x: best[m], y: best[m + 1] });
       }
     }
-    return { land, borders, outline, river, riverBig, riverLabels, cities: raw.cities || [], points };
+    return { land, borders, outline, river, riverBig, riverLabels, cities: raw.cities || [], points, regionPath };
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // фото без очікування: наступне тягнемо запечатаним під час розкриття, ключ приходить у «Готуйсь»
+  // ---------------------------------------------------------------------------------------------
+
+  /// адреса .bin → проміс із шифром (AES-GCM: nonce(12) ‖ шифр ‖ tag). Два-три записи, не більше.
+  const sealed = new Map();
+  const canUnseal = () => { try { return !!(window.crypto && crypto.subtle && window.isSecureContext); } catch { return false; } };
+
+  function prefetch(url) {
+    if (!url || sealed.has(url) || !canUnseal()) return;
+    if (sealed.size > 2) sealed.clear();
+    const p = fetch(url, { credentials: 'same-origin' }).then((r) => { if (!r.ok) throw new Error('фото ' + r.status); return r.arrayBuffer(); });
+    p.catch(() => sealed.delete(url));
+    sealed.set(url, p);
+  }
+
+  async function unseal(p, keyB64) {
+    const buf = await p;
+    const raw = Uint8Array.from(atob(keyB64), (ch) => ch.charCodeAt(0));
+    const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(buf, 0, 12) }, key, new Uint8Array(buf, 12));
+    return URL.createObjectURL(new Blob([plain], { type: 'image/jpeg' }));
+  }
+
+  function setSrc(st, img, src) {
+    if (st.blobUrl && st.blobUrl !== src) { URL.revokeObjectURL(st.blobUrl); st.blobUrl = ''; }
+    if (src.startsWith('blob:')) st.blobUrl = src;
+    st.photoSrc = src;
+    img.src = src;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -512,6 +551,19 @@
       if (st.map && !st.staticDirty && (st.fly || now - st.viewT < SETTLE_MS)) preview(st, g, hints);
       else { renderStatic(st, hints); markView(st, hints); g.drawImage(st.stat, 0, 0); }
     } else g.drawImage(st.stat, 0, 0);
+    // 💡 підказка «область»: своя область правди — підсвічена під шпильками (лише в того, хто взяв)
+    const area = phase === 'guess' && v.area && st.map && st.map.regionPath[v.area];
+    if (area) {
+      const s = st.dpr * sc(st);
+      g.setTransform(s, 0, 0, s, st.dpr * st.ox, st.dpr * st.oy);
+      g.globalAlpha = 0.22;
+      g.fillStyle = c.accent;
+      g.fill(area.p, 'evenodd');
+      g.globalAlpha = 1;
+      g.strokeStyle = c.accent;
+      g.lineWidth = 2.5 / sc(st);
+      g.stroke(area.p);
+    }
     g.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
 
     const rv = (phase === 'reveal' || phase === 'done') && v.reveal ? v.reveal : null;
@@ -765,7 +817,7 @@
     const el = document.createElement('div');
     el.className = 'geofull';
     el.innerHTML = '<img alt="Фото місця" draggable="false"><button type="button" class="geofullx" data-pad-first>✕ назад до мапи</button>';
-    el.querySelector('img').src = url;
+    el.querySelector('img').src = st.photoSrc || url;
     el.addEventListener('click', () => closeFull(st));
     document.body.appendChild(el);
     st.full = el;
@@ -786,7 +838,14 @@
       img.dataset.src = url;
       st.imgOk = false;
       root.querySelector('.geoerr').hidden = true;
-      img.src = url;
+      // стягнуте наперед запечатане фото — розпечатати ключем «Готуйсь»; не вийшло — звичайним шляхом
+      const seal = v.seal, pre = seal && seal.url && sealed.get(seal.url);
+      if (pre && phase === 'between') {
+        unseal(pre, seal.key).then((blob) => {
+          if (img.dataset.src !== url || !root._geo) { URL.revokeObjectURL(blob); return; }
+          setSrc(st, img, blob);
+        }).catch(() => { if (img.dataset.src === url) setSrc(st, img, url); });
+      } else setSrc(st, img, url);
     }
     if (!url && img.dataset.src) { img.dataset.src = ''; img.removeAttribute('src'); }
     frame.classList.toggle('empty', !url);
@@ -803,7 +862,7 @@
     curtain.classList.toggle('wait', loading && phase !== 'between');
     root.querySelector('.geofullbtn').hidden = !url || phase === 'between';
     if (st.full && (!url || phase === 'between')) closeFull(st);
-    if (st.full && url) { const fi = st.full.querySelector('img'); if (fi.getAttribute('src') !== url) fi.src = url; }
+    if (st.full && url) { const fi = st.full.querySelector('img'), src = st.photoSrc || url; if (fi.getAttribute('src') !== src) fi.src = src; }
 
     // підпис — лише після розкриття: назва, область, автор і ліцензія знімка
     const cap = root.querySelector('.geocap');
@@ -892,6 +951,8 @@
       else if (st.readyRound === v.round) { label = 'Чекаємо решту…'; h = 'Шпилька зафіксована'; }
       else if (pinned) { label = 'Готово ✓'; dis = false; h = 'Шпилька зарахується й так; «Готово» — щоб не чекати' + (coarse ? '' : ' (Enter)'); }
       else { label = 'Постав шпильку'; h = coarse ? 'Тапни на мапі, де це знято · два пальці — масштаб' : 'Клікни на мапі, де це знято · колесо — масштаб · тягни мапу — рух'; }
+      if (ctx.mine && v.area && st.readyRound !== v.round) h = '💡 Це ' + v.area + ' — очки раунду ×0,6';
+      else if (v.mode === 'duel' && ctx.mine && st.readyRound !== v.round) h = '⚡ Хто перший і ближче 50 км — +1000 · ' + h;
     } else if (phase === 'reveal') {
       const f = fresh(ctx);
       if (st.nextRound === v.round || (f && (f.nxt || []).includes(ctx.seat))) label = 'Чекаємо решту…';
@@ -902,6 +963,8 @@
     // кнопки масштабу на пальці — тут, під мапою, а не на ній (там вони закривали Сумщину й шпильки)
     const zb = bar.querySelector('.geozoom');
     if (zb) zb.hidden = !(show && (phase === 'guess' || phase === 'reveal'));
+    const ab = bar.querySelector('.geoarea');
+    if (ab) ab.hidden = !(show && phase === 'guess' && v.areaOn && !v.area && st.readyRound !== v.round);
     if (btn.textContent !== label) btn.textContent = label;
     if (btn.disabled !== dis) btn.disabled = dis;
     if (hint.textContent !== h) hint.textContent = h;
@@ -930,7 +993,8 @@
     return meHtml(ctx, rows) + '<div class="georows">' + rows.map((r, n) =>
       '<div class="georow' + (r.best ? ' best' : '') + (r.x == null ? ' none' : '') + (ctx.mine && r.seat === ctx.seat ? ' me' : '') + '" style="--n:' + n + '">'
       + '<span class="geon ' + SEAT_CLASS[r.seat % 10] + '"><i class="geodot"></i>' + (r.best ? '🏆 ' : '') + (r.bull ? '🎯 ' : '')
-      + ctx.esc(nick(ctx, r.seat)) + '</span>'
+      + ctx.esc(nick(ctx, r.seat)) + (r.fast ? ' <i class="geotag" title="перший і ближче 50 км: +1000">⚡</i>' : '')
+      + (r.area ? ' <i class="geotag" title="брав підказку «область»: очки ×0,6">💡</i>' : '') + '</span>'
       + '<span class="geokm">' + (r.km == null ? '— без шпильки' : km(r.km)) + '</span>'
       + '<b class="geop">' + (r.points ? '+' + r.points : '0') + '</b></div>').join('') + '</div>' + say;
   }
@@ -1008,7 +1072,9 @@
           : 'Ти — ' + (PLACE[place - 1] || place + '-е') + ' місце з ' + seats.length + ' · ' + num(sc[ctx.seat]);
       }
     }
-    const again = againOf(root) ? '<button type="button" class="primary geoagain" data-pad-first>Ще раз</button>' : '';
+    // «Де це? дня» — одна спроба на добу: замість «Ще раз» — чесне «нові фото після півночі»
+    const again = v.day ? '<span class="muted small">Нові фото — після півночі</span>'
+      : againOf(root) ? '<button type="button" class="primary geoagain" data-pad-first>Ще раз</button>' : '';
     return '<div class="geopodl">' + head + (sub ? '<span class="geopods muted">' + sub + '</span>' : '') + '</div>' + again;
   }
 
@@ -1041,7 +1107,12 @@
     const sh = phase === 'lobby' ? '' : scoreHtml(ctx, v);
     if (score.dataset.sig !== sh) { score.dataset.sig = sh; score.innerHTML = sh; }
     const recap = root.querySelector('.georecapbox');
-    const rh = phase === 'done' ? recapHtml(ctx, v) : '';
+    // «Де це? дня»: рядок похвалитись — скопіювати й кинути в Балачки
+    const share = phase === 'done' && v.share
+      ? '<div class="geoshare"><span>' + ctx.esc(v.share) + '</span><button type="button" class="ghost" data-geo-copy>📋 Скопіювати</button></div>'
+        + '<div class="muted small">Нові п’ять фото — після півночі. Порівняй з друзями: Таблиця → Де це? дня → за день</div>'
+      : '';
+    const rh = phase === 'done' ? share + recapHtml(ctx, v) : '';
     // порівнюємо з тим, що малювали, а не з innerHTML: інакше кожне оновлення згортало б розгорнуте людиною
     if (recap.dataset.sig !== rh) { recap.dataset.sig = rh; recap.innerHTML = rh; }
     const res = root.querySelector('.georesult');
@@ -1087,6 +1158,13 @@
       if (v.my.ready) st.readyRound = v.round;
     }
     if (st.hints !== v.hints) { st.hints = v.hints; st.staticDirty = true; }
+    // 💡 взяв підказку — мапа підлітає до області (раз на раунд)
+    if (phase === 'guess' && v.area && st.areaRound !== v.round && st.map && st.map.regionPath[v.area]) {
+      st.areaRound = v.round;
+      const bb = st.map.regionPath[v.area].bb;
+      flyTo(st, [[bb[0], bb[1]], [bb[2], bb[3]]], 6);
+    }
+    if (phase === 'reveal') prefetch(v.pre);
     // рамка червоніє за 5 с до кінця — розбудити малювання саме тоді (до того кадрів нема взагалі)
     clearTimeout(st.redTimer);
     if (phase === 'guess' && v.endsAt) {
@@ -1259,7 +1337,9 @@
         + '<div class="geomapmsg">мапа вантажиться…</div>'
         + '<div class="geozoom geozoomm">' + zoom + '</div></div>'
         + '</div>'
-        + '<div class="geobar"><div class="geozoom geozoomb" hidden>' + zoom + '</div><span class="geohint muted small"></span>'
+        + '<div class="geobar"><div class="geozoom geozoomb" hidden>' + zoom + '</div>'
+        + '<button type="button" class="ghost geoarea" hidden title="Підсвітити область, де знято фото: очки раунду ×0,6">💡<span> Область −40 %</span></button>'
+        + '<span class="geohint muted small"></span>'
         + '<button type="button" class="primary geogo" data-pad-first hidden></button></div>'
         + '<div class="georesult" hidden><div class="georev"></div><div class="geoscore"></div></div>'
         + '<div class="georecapbox"></div>'
@@ -1273,6 +1353,18 @@
 
       const img = root.querySelector('.geoimg');
       root.querySelector('.geogo').onclick = () => readyOrNext(st);
+      root.querySelector('.geoarea').onclick = (e) => {
+        e.currentTarget.hidden = true;
+        st.ctx.act('area').then((r) => { if (r && !r.ok && st.ctx) paintBar(root, st.ctx); }).catch(() => {});
+      };
+      root.querySelector('.georecapbox').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-geo-copy]');
+        if (!b || !st.ctx) return;
+        const text = V(st.ctx).share || '';
+        const ok = () => { b.textContent = '✓ Скопійовано — встав у Балачки'; };
+        const manual = () => { try { window.prompt('Скопіюй і встав у Балачки:', text); } catch { /* ні то ні */ } };
+        try { navigator.clipboard.writeText(text).then(ok, manual); } catch { manual(); }
+      });
       root.querySelector('.geofullbtn').onclick = () => openFull(st);
       // Фото раунду — найважливіше на сторінці: хай браузер тягне його поперед решти й розпаковує не в головному потоці.
       img.fetchPriority = 'high';
@@ -1433,6 +1525,7 @@
       if (st.onVis) document.removeEventListener('visibilitychange', st.onVis);
       if (st.ro) st.ro.disconnect();
       closeFull(st);
+      if (st.blobUrl) { URL.revokeObjectURL(st.blobUrl); st.blobUrl = ''; }
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
       st.cv = null;
@@ -1444,17 +1537,18 @@
     id: 'geo',
     added: '2026-09-27',
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Де це?',
+      v: '2026-09-29',
+      title: 'Де це?: фото дня, дуель і підказка',
       items: [
-        '📷 Фото звідкись з України — тицьни на мапу, де це знято',
-        '📏 Що ближче шпилька, то більше очок: 5000 за влучання, 2885 за сто кілометрів, крихти за пів країни',
-        '⏱ 45 секунд на раунд; «Готово» — і не чекаємо таймера, коли всі визначились',
-        '🔍 Мапу можна наблизити колесом чи щипком, фото — розгорнути на весь екран (F)',
-        '🏆 П’ять раундів, підсумок і черепки за очки; самому — «Тренування» в Соло з таблицею рекордів',
+        '📍 «Де це? дня» в Соло: ті самі п’ять фото всім на цілу добу, одна спроба, рядок 🟩🟨⬛ похвалитись',
+        '⚡ Режим «Дуель на час»: 15 секунд на фото, хто перший і ближче 50 км — +1000',
+        '💡 Підказка «область»: підсвітить область, де знято, за −40 % очок раунду',
+        '🧠 Гра пам’ятає, які місця ти вже бачив, — нові йдуть першими',
+        '🚀 Фото легші й тягнуться наперед — раунд починається без порожньої рамки',
       ],
     },
   }, common));
 
   HGames.register(Object.assign({ id: 'geo-solo', added: '2026-09-27' }, common));
+  HGames.register(Object.assign({ id: 'geo-daily', added: '2026-09-29' }, common));
 })();

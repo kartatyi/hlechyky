@@ -210,3 +210,15 @@
   .georow, .geopod, .geocurtain.wait { animation: none; }
   .geoimg, .geocanvas, .geozoom { transition: none; }
 }
+
+/* прохід №3: 💡 область, ⚡/💡 у рядках розкриття, рядок «Де це? дня» */
+.geoarea { flex: none; min-height: 42px; padding: 0 12px; white-space: nowrap; }
+.geoarea[hidden] { display: none; }
+.geotag { font-style: normal; }
+.geoshare { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 6px; font-size: 1.1em; }
+.geoshare > span { font-weight: 600; letter-spacing: .02em; }
+.geoshare button { min-height: 44px; }
+@media (max-width: 520px) {
+  .geoarea { order: 2; min-height: 50px; min-width: 50px; padding: 0 10px; }
+  .geoarea span { display: none; }
+}
