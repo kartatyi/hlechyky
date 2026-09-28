@@ -514,6 +514,10 @@
     try { const g = JSON.parse(store.get('rally.garage', '') || 'null'); if (g && typeof g === 'object') return { paint: g.paint | 0, plate: String(g.plate || '').slice(0, 6) }; } catch { /* зіпсоване */ }
     return null;
   }
+  /// Хто за кермом: нік людини, «🤖 Дід Панас» бота (№87) чи колір місця.
+  function whoOf(st, i) {
+    return st.ctx.nickOf(i) || (st.view && st.view.bots && st.view.bots[i]) || SEAT_NAMES[i];
+  }
   function carColor(st, seat) {
     const p = st.view && st.view.paint ? st.view.paint[seat] : -1;
     return p >= 0 && p < PAINTS.length ? PAINTS[p] : st.pal.seats[seat];
@@ -1922,7 +1926,7 @@
     // напис згори: хто кого й на скільки
     g.setTransform(1, 0, 0, 1, 0, 0);
     const F = fonts(st), ck = st.cssK, W = st.pxW;
-    const nick = (i) => (st.ctx.nickOf(i) || SEAT_NAMES[i]);
+    const nick = (i) => whoOf(st, i);
     const text = '📸 Фотофініш: ' + nick(p.a) + ' на ' + (p.gap / 1000).toFixed(2).replace('.', ',') + ' с раніше за ' + nick(p.b);
     g.font = F.nick;
     const tw = Math.min(W - 24 * ck, g.measureText(text).width + 28 * ck), fh = 30 * ck;
@@ -2103,7 +2107,7 @@
     for (let q = 0; q < n; q++) {
       const i = ord[q], s = st.drawn[i];
       const mine = i === st.mine;
-      const nick = st.ctx.nickOf(i) || SEAT_NAMES[i];
+      const nick = whoOf(st, i);
       const plate = st.view && st.view.plates ? st.view.plates[i] : null;
       const text = (mine ? 'ти' : nick) + (plate ? ' ▭' + plate : '');
       const maxW = (plate ? 120 : 76) * ck;
@@ -2326,7 +2330,7 @@
     g.fillStyle = '#fff';
     g.font = '800 ' + Math.round(fs * 1.15) + 'px system-ui, sans-serif';
     g.fillText(fitText(g, (solo ? '⏱ Заїзд на час · ' : '🏁 ') + ((v.track && v.track.title) || '') + ' · ' + lapsWord(L), w - 20 * ck), W / 2, y + lh * 0.7);
-    const nickOf = (r) => st.ctx.nickOf(r.seat) || SEAT_NAMES[r.seat];
+    const nickOf = (r) => whoOf(st, r.seat);
     const timeOf = (r) => (!r.fin ? (narrow ? '✕ ' : 'без фінішу · ') + r.laps + '/' + L
       : solo || r === win || !win ? clock(r.ms, 1) : gap(r.ms - win.ms));
     const bestOf = (r) => {
@@ -2656,7 +2660,7 @@
     const lobby = v.ph === 0 || !f || f.ph === 0;
     const fl = field(f);
     for (let i = 0; !lobby && i < SEATS; i++) {
-      const nick = ctx.nickOf(i);
+      const nick = ctx.nickOf(i) || (v.bots && v.bots[i]);
       const o = i * STRIDE;
       const present = f && f.c[o + 10] >= 0;
       if (!nick && !(f && f.ph >= 1 && present)) continue;
@@ -3039,6 +3043,8 @@
       if (f.ph === 0) {
         if (!ctx.mine) return '';
         const host = ctx.room && ctx.me && String(ctx.room.host || '').toLowerCase() === String(ctx.me.nick || '').toLowerCase();
+        const bots = ctx.room && ctx.room.options && +ctx.room.options.bots > 0 && (ctx.room.seats || []).filter(Boolean).length < 4;
+        if (bots) return (host ? 'Обери машину й тисни «Почати»' : 'Обери машину, чекаємо господаря') + ' · 🤖 Дід Панас із кумами сядуть на вільні місця';
         return host ? 'Обери машину й тисни «Почати» — можна й самому, на час' : 'Обери машину, чекаємо господаря';
       }
       if (f.ph === 1) return 'Готуйсь…';
@@ -3059,7 +3065,7 @@
         }
         let lead = -1;
         for (let i = 0; i < SEATS; i++) if (f.r && f.r[i] === 1) lead = i;
-        return lead >= 0 ? 'Дивишся збоку · веде ' + (ctx.nickOf(lead) || SEAT_NAMES[lead]) + ', коло ' + Math.min(laps, f.c[lead * STRIDE + 6] + 1) + '/' + laps : 'Дивишся збоку';
+        return lead >= 0 ? 'Дивишся збоку · веде ' + (ctx.nickOf(lead) || (v.bots && v.bots[lead]) || SEAT_NAMES[lead]) + ', коло ' + Math.min(laps, f.c[lead * STRIDE + 6] + 1) + '/' + laps : 'Дивишся збоку';
       }
       if (f.ph === 3 && v.results && v.results.length === 1 && ctx.room && ctx.room.result && ctx.room.result.draw) {
         const r = v.results[0];
@@ -3085,6 +3091,17 @@
       root._rally = null;
     },
   });
+
+  /// Для перевірок: показати фотофініш [хто, за ким, мс, тик] на кадрах, що лежать у кільці (після гонки).
+  window.__rallyPhoto = (ph) => {
+    const el = document.querySelector('.rl-body');
+    const st = el && el._rally;
+    if (!st || !st.view) return false;
+    st.photo = null;
+    photoView(st, { photo: ph, ph: 3 });
+    wake(st, true);
+    return !!(st.photo && st.photo.clip && st.photo.clip.t.length);
+  };
 
   /// Для перевірок: середній і найдовший час draw за останні 300 кадрів (мс).
   window.__rallyPerf = () => {

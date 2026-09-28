@@ -37,6 +37,8 @@ public sealed class Rally : Game
                 [("selo", "Село"), ("ozero", "Крижане озеро"), ("nich", "Нічна"), ("kukurudza", "Кукурудзяне поле"),
                  ("yarmarok", "Ярмарок"), ("random", "Яка випаде")], "selo"),
             new GameOption("laps", "Кіл", [("3", "3 кола"), ("5", "5 кіл"), ("7", "7 кіл")], "3"),
+            new GameOption("bots", "Суперники-боти",
+                [("0", "без ботів"), ("1", "🤖 Дід Панас: тихо їде"), ("2", "🤖 Дід Панас: жене"), ("3", "🤖 Дід Панас: ас")], "0"),
         ],
         Hint: "Гонки згори на всю трасу: трактор проти «запорожця», занос ручником, калюжі, копиці й турбо. Можна й самому — на час");
 
@@ -81,8 +83,25 @@ public sealed class Rally : Game
 
     public override bool ActsInLobby => true;
 
+    /// <summary>Скільки машин разом із ботами (№87): Дід Панас із компанією добирають вільні місця до чотирьох.</summary>
+    public const int BotsUpTo = 4;
+    /// <summary>Боти: ім'я, машина, стеля швидкості для складності «тихо їде».</summary>
+    public static readonly (string Name, string Car)[] BotCrew =
+        [("🤖 Дід Панас", "traktor"), ("🤖 Баба Параска", "viz"), ("🤖 Кум Степан", "motoblok")];
+    /// <summary>Стеля газу пілота за складністю (sub/тик; 0 — без стелі): 1 — тихо їде, 2 — жене, 3 — ас.</summary>
+    static readonly int[] BotCap = [0, 600, 740, 0];
+    int _botLevel;
+    readonly bool[] _bot = new bool[RallyCore.Seats];
+    int _bots;
+    RallyPilot? _pilot;
+    /// <summary>Тиків поспіль, коли бот стоїть (застряг) — повертаємо його на трасу, як людина тисне ↺.</summary>
+    readonly int[] _botSlow = new int[RallyCore.Seats];
+
+    public bool IsBot(int seat) => _bot[seat];
+
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
+        _botLevel = options.TryGetValue("bots", out var b) && int.TryParse(b, out var bl) && bl is >= 0 and <= 3 ? bl : 0;
         _trackOpt = options.TryGetValue("track", out var t) && (t == "random" || RallyTracks.Ids.Contains(t)) ? t : "selo";
         _laps = options.TryGetValue("laps", out var l) && int.TryParse(l, out var n) && n is 3 or 5 or 7 ? n : 3;
         _track = RallyTracks.Get(_trackOpt);
@@ -106,8 +125,24 @@ public sealed class Rally : Game
             _carByNick[_nicks[i]!] = car;
             _core.Grid(i, car);
         }
+        // Дід Панас із компанією — на вільні місця, поки машин не стане чотири (без нагород, рекордів і ачівок)
+        Array.Clear(_bot);
+        Array.Clear(_botSlow);
+        _bots = 0;
+        _pilot = null;
+        if (_botLevel > 0)
+            for (var i = 0; i < RallyCore.Seats && _players + _bots < BotsUpTo; i++)
+            {
+                if (_nicks[i] is not null) continue;
+                var (name, car) = BotCrew[_bots];
+                _nicks[i] = name;
+                _bot[i] = true;
+                _bots++;
+                _core.Grid(i, car);
+            }
+        if (_bots > 0) _pilot = new RallyPilot(_track) { Cap = BotCap[_botLevel], Care = _botLevel == 3 ? 1 : 2 };
         _core.Rank();
-        _solo = _players == 1;
+        _solo = _players == 1 && _bots == 0;
         _ph = PhCount;
         _round = Ctx.Round;
         _simAt = Ctx.Clock.UtcNow;
@@ -140,6 +175,9 @@ public sealed class Rally : Game
         _players = 0;
         _solo = false;
         Array.Clear(_nicks);
+        Array.Clear(_bot);
+        _bots = 0;
+        _pilot = null;
         RefreshTop();
     }
 
@@ -327,6 +365,7 @@ public sealed class Rally : Game
     TickResult Step()
     {
         var core = _core!;
+        if (_pilot is not null) Drive(core);
         core.Tick();
         Heard(core);
         if (_ph == PhCount)
@@ -334,7 +373,7 @@ public sealed class Rally : Game
             if (core.T >= RallyCore.CountTicks)
             {
                 _ph = PhRace;
-                for (var i = 0; i < RallyCore.Seats; i++) _atGreen += core.Cars[i].Present ? 1 : 0;
+                for (var i = 0; i < RallyCore.Seats; i++) _atGreen += core.Cars[i].Present && !_bot[i] ? 1 : 0;
             }
             var s = RallyCore.CountTicks - core.T;
             var any = false;
@@ -364,6 +403,8 @@ public sealed class Rally : Game
             }
 
         if (AllFinished()) return Over();
+        // люди всі доїхали, а боти ще в дорозі — чекаємо їх лише 5 с, а не 20
+        if (_bots > 0 && HumansFinished() && (_left == 0 || _left > BotWaitTicks)) _left = BotWaitTicks;
         // таймаут рахуємо з наступного тика після фінішу: 500 повних тиків решті
         if (!fresh && _left > 0 && --_left == 0) return Over();
         if (core.T - RallyCore.CountTicks >= RallyCore.MaxRaceTicks)
@@ -380,6 +421,25 @@ public sealed class Rally : Game
         return view ? TickResult.Both : TickResult.FrameOnly;
     }
 
+    /// <summary>Боти кермують: маска пілота на наступний тик; застряг на 4 с — назад на трасу.</summary>
+    void Drive(RallyCore core)
+    {
+        for (var i = 0; i < RallyCore.Seats; i++)
+        {
+            if (!_bot[i]) continue;
+            var c = core.Cars[i];
+            if (!c.Present) continue;
+            core.Schedule(i, core.T + 1, _pilot!.Mask(core, i));
+            if (_ph != PhRace || c.Ghost) continue;
+            _botSlow[i] = Math.Abs(c.VF) < 60 ? _botSlow[i] + 1 : 0;
+            if (_botSlow[i] >= 100 && c.ResetCd == 0)
+            {
+                _botSlow[i] = 0;
+                core.Respawn(i);
+            }
+        }
+    }
+
     /// <summary>
     /// Хтось із присутніх змінив маску (кермо, газ, гальмо, ручник), сигналив чи повертався на трасу — гонку
     /// ведуть. Дивимось на чинні маски ядра, а не на дії: так рахується й ввід, що приїхав наперед у кільце.
@@ -389,7 +449,7 @@ public sealed class Rally : Game
         for (var i = 0; i < RallyCore.Seats; i++)
         {
             var c = core.Cars[i];
-            if (!c.Present) continue;
+            if (!c.Present || _bot[i]) continue;
             if (c.Mask != _masks[i] || (c.Ev & (RallyCore.EvHorn | RallyCore.EvReset)) != 0) _heardT = core.T;
             _masks[i] = c.Mask;
         }
@@ -398,7 +458,7 @@ public sealed class Rally : Game
     /// <summary>Коло в рекорди траси; true — змінилась десятка у виді.</summary>
     bool Lap(int seat, RallyCar c)
     {
-        if (_records is null || Nick(seat) is not { } nick) return false;
+        if (_records is null || _bot[seat] || Nick(seat) is not { } nick) return false;
         // хто тримав рекорд до цього кола — щоб Глек сказав, чий рекорд упав (кола рідкі, копія з одного — дрібниця)
         var top = _records.Top(_track.Id, 1);
         var (rank, beat) = _records.Post(_track.Id, nick, c.Car, c.LastMs, Ctx.Clock.UtcNow);
@@ -439,6 +499,22 @@ public sealed class Rally : Game
 
     string? Nick(int seat) => _nicks[seat] ?? Ctx.NickOf(seat);
 
+    /// <summary>Скільки ще чекаємо ботів, коли всі люди вже на фініші (5 с).</summary>
+    public const int BotWaitTicks = 125;
+
+    bool HumansFinished()
+    {
+        var any = false;
+        for (var i = 0; i < RallyCore.Seats; i++)
+        {
+            var c = _core!.Cars[i];
+            if (!c.Present || _bot[i]) continue;
+            any = true;
+            if (c.Fin == 0) return false;
+        }
+        return any;
+    }
+
     bool AllFinished()
     {
         var any = false;
@@ -472,6 +548,24 @@ public sealed class Rally : Game
 
         int[] winners;
         var first = ranked.Count > 0 && core.Cars[ranked[0]].Fin > 0 ? ranked[0] : -1;
+        if (_bots > 0)
+        {
+            // з ботами переможець у черепках — найкраща людина на фініші, і лише коли людей хоча б двоє
+            var humans = 0;
+            var bestHuman = -1;
+            foreach (var s in ranked)
+                if (!_bot[s])
+                {
+                    humans++;
+                    if (bestHuman < 0 && core.Cars[s].Fin > 0) bestHuman = s;
+                }
+            var log0 = LogLine(ranked, first, first >= 0 ? [first] : []);
+            var rec0 = RecordLine();
+            if (rec0 is not null) Ctx.Say($"⏱ Новий рекорд «{_track.Title}»: {rec0}!");
+            if (humans >= 3 && bestHuman >= 0 && _atGreen >= 3) Ctx.Award(bestHuman, 0, "ach:rally-win3");
+            Ctx.Finish(humans >= 2 && bestHuman >= 0 ? [bestHuman] : [], rec0 is null ? log0 : $"{log0} · новий рекорд траси: {rec0}");
+            return TickResult.Both;
+        }
         if (first >= 0) winners = [first];
         else if (ranked.Count > 0)
         {
@@ -568,7 +662,8 @@ public sealed class Rally : Game
         // теперішній час — рід ніка невідомий («зійшов/зійшла»), а «сход» — калька
         Ctx.Log($"{Info.Title}: {nick} сходить з траси");
         var any = false;
-        for (var i = 0; i < RallyCore.Seats; i++) any |= i != seat && _core.Cars[i].Present;
+        // самі боти гонку не доїжджають: людей не лишилось — роз'їхались
+        for (var i = 0; i < RallyCore.Seats; i++) any |= i != seat && _core.Cars[i].Present && !_bot[i];
         if (!any)
         {
             _ph = PhOver;
@@ -577,6 +672,13 @@ public sealed class Rally : Game
             return;
         }
         if (AllFinished()) Over();
+    }
+
+    string?[] BotNames()
+    {
+        var names = new string?[RallyCore.Seats];
+        for (var i = 0; i < RallyCore.Seats; i++) names[i] = _bot[i] ? _nicks[i] : null;
+        return names;
     }
 
     // ---------- вид і кадр ----------
@@ -668,6 +770,7 @@ public sealed class Rally : Game
             cars,
             paint,
             plates,
+            bots = _bots > 0 ? BotNames() : null,
             records = _top,
             results = _ph == PhOver ? _results : null,
             photo = _photo is { } ph && _ph is PhRace or PhOver ? new[] { ph.A, ph.B, ph.Gap, ph.T } : null,

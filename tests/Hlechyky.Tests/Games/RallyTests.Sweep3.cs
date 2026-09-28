@@ -85,6 +85,71 @@ public partial class RallyTests
         Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("photo").ValueKind);
     }
 
+    // ---------- №87 Дід Панас ----------
+
+    [Fact]
+    public void Grandpa_bots_fill_free_seats_up_to_four_drive_a_race_and_take_no_rewards_or_records()
+    {
+        var laps = new RallyLaps(new MemoryGameStore(), a => a());
+        var h = Table(1, new { track = "selo", laps = "3", bots = "3" }, services: RoomHarness.WithService(laps));
+        var game = Game(h);
+        var core = Core(h);
+        Assert.Equal(3, Enumerable.Range(0, 6).Count(game.IsBot));
+        Assert.Equal(4, core.Cars.Count(c => c.Present));
+        var v = h.View(null);
+        Assert.Equal("🤖 Дід Панас", v.GetProperty("bots")[1].GetString());
+        Assert.Equal("traktor", v.GetProperty("cars")[1].GetString());
+        // людину теж веде автопілот (тихіший за аса) — гонка доїжджає до кінця
+        Green(h);
+        Pilot(h, new RallyPilot(game.Track) { Cap = 700 }, [0], () => h.Room.Status != RoomStatus.Playing);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(core.Cars[1].Fin > 0 || core.Cars[2].Fin > 0 || core.Cars[3].Fin > 0, "хтось із ботів мав би доїхати");
+        Assert.True(core.Cars[0].Fin > 0, "людина мала б доїхати");
+        // рекордів боти не пишуть, людина одна — нагород за «перемогу» нема
+        Assert.DoesNotContain(laps.Top("selo", 20), r => r.Nick.Contains("🤖"));
+        Assert.Empty(h.Room.Result!.Winners);
+        Assert.Contains("🤖", LastJournal(h));
+    }
+
+    [Fact]
+    public void Four_people_leave_no_room_for_bots_and_without_the_option_nobody_joins()
+    {
+        var h = Table(4, new { track = "selo", laps = "3", bots = "1" });
+        Assert.Equal(4, Core(h).Cars.Count(c => c.Present));
+        Assert.Equal(JsonValueKind.Null, h.View(null).GetProperty("bots").ValueKind);
+        var plain = Table(1);
+        Assert.Equal(1, Core(plain).Cars.Count(c => c.Present));
+    }
+
+    [Fact]
+    public void Bots_driving_do_not_keep_an_idle_race_alive_and_leaving_leaves_no_bot_only_race()
+    {
+        var h = Table(2, new { track = "selo", laps = "7", bots = "2" });
+        Green(h);
+        h.Leave(h.NickOf(1));
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        h.Leave(h.NickOf(0));
+        Assert.Contains("роз'їхались", LastJournal(h));
+    }
+
+    [Fact]
+    public void Pilot_levels_differ_in_pace()
+    {
+        int Lapped(string level)
+        {
+            var h = Table(1, new { track = "yarmarok", laps = "7", bots = level });
+            Green(h);
+            Ctl(h, 0, 0);
+            h.Tick(1400);
+            var core = Core(h);
+            return core.Passed(core.Cars[1]);
+        }
+        var slow = Lapped("1");
+        var fast = Lapped("3");
+        output.WriteLine($"за 56 с: тихо — {slow} воріт, ас — {fast}");
+        Assert.True(fast > slow, $"ас {fast} ≤ тихо {slow}");
+    }
+
     // ---------- №91 гараж ----------
 
     [Fact]

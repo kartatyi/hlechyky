@@ -1,9 +1,10 @@
-using Hlechyky.Games.Impl;
+using System.Runtime.CompilerServices;
 
-namespace Hlechyky.Tests.Games;
+namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// Автопілот для тестів і журналів паритету: поле відстаней до кожних воріт (Дейкстра по клітинках, узбіччя
+/// Автопілот: із проходу №3 — ще й «🤖 Дід Панас» на вільних місцях (№87), до того — лише тести й журнали
+/// паритету. Поле відстаней до кожних воріт (Дейкстра по клітинках, узбіччя
 /// й трава дорожчі), машина дивиться на кілька клітинок уперед уздовж спуску й кермує туди. Не ідеальний
 /// гонщик, а чесний водій: вписується в повороти, гальмує перед крутими, інколи тягне ручник і, застрягши,
 /// здає назад. Детермінований, якщо детермінований <see cref="Random"/>, — журнали пишуться з фіксованим сідом.
@@ -19,6 +20,10 @@ public sealed class RallyPilot
     readonly int[] _back = new int[RallyCore.Seats];
     readonly int[] _gate = new int[RallyCore.Seats];
     readonly Random? _rng;
+    /// <summary>Поля трас рахуються раз на трасу (Дейкстра — ~1 мс; у Start() під замком кімнати — не щоразу).</summary>
+    static readonly ConditionalWeakTable<RallyTrack, Tuple<int[][], int[][]>> Fields = new();
+    /// <summary>Стеля швидкості, вище якої пілот не тисне газ (sub/тик): так Дід Панас буває повільнішим; 0 — без стелі.</summary>
+    public int Cap { get; init; } = 0;
     /// <summary>Ймовірність (у тисячних на тик) смикнути ручник на повороті — для різноманіття журналів.</summary>
     public int Drift { get; init; } = 0;
     /// <summary>Наскільки обережно: 0 — завжди газ, більше — раніше гальмує.</summary>
@@ -28,20 +33,28 @@ public sealed class RallyPilot
     {
         _t = track;
         _rng = rng;
-        _dist = new int[track.K][];
-        _next = new int[track.K][];
-        for (var g = 0; g < track.K; g++) (_dist[g], _next[g]) = Field(g);
+        var f = Fields.GetValue(track, t =>
+        {
+            var dist = new int[t.K][];
+            var next = new int[t.K][];
+            for (var g = 0; g < t.K; g++) (dist[g], next[g]) = Field(t, g);
+            return Tuple.Create(dist, next);
+        });
+        (_dist, _next) = (f.Item1, f.Item2);
     }
 
-    bool Open(int x, int y)
+    /// <summary>Застряглий на місці тиків поспіль (для «↺ на трасу» ботів).</summary>
+    public int Stuck(int seat) => _stuck[seat];
+
+    static bool Open(RallyTrack t, int x, int y)
     {
-        var code = _t.CodeAt(x, y);
+        var code = t.CodeAt(x, y);
         return !RallySurface.IsWall(code) && code != RallySurface.Hay;
     }
 
-    int Penalty(int x, int y)
+    static int Penalty(RallyTrack t, int x, int y)
     {
-        var code = _t.CodeAt(x, y);
+        var code = t.CodeAt(x, y);
         var p = code switch
         {
             RallySurface.Grass or RallySurface.Corn => 14,
@@ -51,11 +64,11 @@ public sealed class RallyPilot
         };
         for (var dy = -1; dy <= 1; dy++)
             for (var dx = -1; dx <= 1; dx++)
-                if (!Open(x + dx, y + dy)) { p += 10; dy = 2; break; }
+                if (!Open(t, x + dx, y + dy)) { p += 10; dy = 2; break; }
         return p;
     }
 
-    (int[] Dist, int[] Next) Field(int g)
+    static (int[] Dist, int[] Next) Field(RallyTrack t, int g)
     {
         var dist = new int[Cells];
         var next = new int[Cells];
@@ -63,7 +76,7 @@ public sealed class RallyPilot
         Array.Fill(next, -1);
         var pq = new PriorityQueue<int, int>();
         for (var c = 0; c < Cells; c++)
-            if (_t.GateAt[c] == g && Open(c % Cols, c / Cols))
+            if (t.GateAt[c] == g && Open(t, c % Cols, c / Cols))
             {
                 dist[c] = 0;
                 pq.Enqueue(c, 0);
@@ -77,11 +90,11 @@ public sealed class RallyPilot
                 {
                     if (dx == 0 && dy == 0) continue;
                     int nx = x + dx, ny = y + dy;
-                    if (!Open(nx, ny)) continue;
-                    if (dx != 0 && dy != 0 && (!Open(x + dx, y) || !Open(x, y + dy))) continue;
+                    if (!Open(t, nx, ny)) continue;
+                    if (dx != 0 && dy != 0 && (!Open(t, x + dx, y) || !Open(t, x, y + dy))) continue;
                     // шукаємо шлях від воріт назад: n — звідки їдуть у c
                     var n = ny * Cols + nx;
-                    var nd = d + (dx != 0 && dy != 0 ? 14 : 10) + Penalty(nx, ny);
+                    var nd = d + (dx != 0 && dy != 0 ? 14 : 10) + Penalty(t, nx, ny);
                     if (nd >= dist[n]) continue;
                     dist[n] = nd;
                     next[n] = c;
@@ -134,7 +147,7 @@ public sealed class RallyPilot
         if (diff > 10) mask |= 2;
         else if (diff < -10) mask |= 1;
         var turn = Math.Abs(diff);
-        if (turn < 110 || speed < 300) mask |= 4;
+        if ((turn < 110 || speed < 300) && (Cap == 0 || c.VF < Cap)) mask |= 4;
         else if (turn > 170 * Care && speed > 520) mask |= 8;
         if (Drift > 0 && _rng is not null && turn > 90 && speed > 500 && _rng.Next(1000) < Drift) mask |= 16;
         return mask;
