@@ -418,8 +418,12 @@
     // Фото «Якого року?» — src міняємо лише коли адреса інша (інакше кожен вид перезавантажував би картинку).
     const ph = root.querySelector('.skphoto');
     const img = ph.querySelector('img');
-    const src = v.photo && phase !== 'between' ? v.photo : '';
-    if (img.getAttribute('src') !== src) { if (src) img.setAttribute('src', src); else img.removeAttribute('src'); }
+    // На підсумку партії фото вже не треба — там таблиця.
+    const src = v.photo && (phase === 'ask' || phase === 'bet' || phase === 'reveal') ? v.photo : '';
+    if (img.getAttribute('src') !== src) {
+      if (src) img.setAttribute('src', src); else img.removeAttribute('src');
+      ph.classList.remove('skzoom');
+    }
     ph.hidden = !src;
     const c = v.credit;
     setHtml(ph.querySelector('.skcredit'), c ? '<b>' + ctx.esc(c.caption) + '</b><span class="muted">Фото: ' + ctx.esc(c.author) + ' · '
@@ -443,6 +447,9 @@
   }
 
   function onClick(root, ctx, e) {
+    // Тап по фото — на весь екран і назад (на телефоні фото дрібне, а рік ховається в деталях).
+    const fig = e.target.closest('.skphoto');
+    if (fig && e.target.tagName === 'IMG') { fig.classList.toggle('skzoom'); return; }
     const t = e.target.closest('button');
     if (!t || !root.contains(t)) return;
     if (t.dataset.bet != null) ctx.act('bet', { seat: +t.dataset.bet });
@@ -551,7 +558,7 @@
       v: '2026-09-29',
       title: 'Скільки?: ставки, команди, питання про нас і фото',
       items: [
-        '📷 Нова тема «Якого року?»: фото з Вікісховища — вгадай рік зйомки',
+        '📷 Нова тема «Якого року?»: 140 фото подій, людей і дивовиж 1851–2022 — вгадай рік зйомки; тап по фото — на весь екран',
         '☀ «Скільки? дня»: п’ять питань, однакових для всіх, таблиця дня й рядок для Балачок',
         '🎲 «Ставлю на чуже» (опція): числа на столі без правди — вгадай, чиє найближче, +2',
         '👥 Команди 2–4 (опція) і 📝 питання про нас: допиши своє в лобі — інші вгадують',

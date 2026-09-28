@@ -142,6 +142,12 @@
 .skphoto { margin: 8px 0; text-align: center; }
 .skphoto img { display: block; margin: 0 auto; max-width: 100%; max-height: min(52vh, 460px); border-radius: 10px;
   background: var(--panel2, rgba(127,127,127,.12)); min-height: 120px; object-fit: contain; }
+.skphoto img[src] { cursor: zoom-in; }
+/* Низький екран (айфон 390×664, Steam Deck 1280×800): фото нижче, щоб поле відповіді не тікало за край; дрібниці — тап, і фото на весь екран. */
+@media (max-height: 820px) { .skphoto img { max-height: 40vh; } }
+@media (max-height: 700px) { .skphoto img { max-height: 28vh; min-height: 90px; } }
+.skphoto.skzoom img { position: fixed; inset: 0; margin: auto; z-index: 60; max-width: 96vw; max-height: 92vh; cursor: zoom-out;
+  box-shadow: 0 0 0 100vmax rgba(0,0,0,.82); }
 .skcredit { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
 .skcredit:empty { display: none; }
 .skcredit a { color: inherit; }
