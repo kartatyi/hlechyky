@@ -103,7 +103,19 @@
   const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
   /// Колір ніка — той самий, що в балачках (web/people.js вантажиться після нас, але малюємо ми вже після всіх).
   const hueOf = (n) => (window.HPeople ? window.HPeople.hue(n) : 0);
-  const cssVar = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  /// ctx.css — CSS-змінна кольору чи розміру. getComputedStyle на кожен виклик коштував реалтайм-іграм сотні викликів
+  /// за секунду (палітра на кожен кадр), тож пам'ятаємо непорожнє. Скидаємо, коли стилі могли змінитись: розмір вікна
+  /// (@media перевизначає змінні), нова таблиця стилів гри чи її підміна після деплою.
+  const cssCache = new Map();
+  const cssVar = (name, fallback) => {
+    let v = cssCache.get(name);
+    if (v === undefined) {
+      v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      if (v) cssCache.set(name, v);
+    }
+    return v || fallback;
+  };
+  window.addEventListener('resize', () => cssCache.clear());
   const coarse = () => window.matchMedia('(pointer: coarse)').matches;
   /// Вписати html, лише коли він справді інший. Порівнювати з el.innerHTML не можна: браузер серіалізує по-своєму
   /// (апостроф з esc — &#39; проти ', &quot;, <br/>, лапки атрибутів), і «однаково» майже не траплялось — DOM
@@ -625,6 +637,7 @@
     l.rel = 'stylesheet';
     l.href = '/games/' + f + '.css' + verQ('games/' + f + '.css');
     l.dataset.game = f;
+    l.onload = () => cssCache.clear();   // змінні гри з'явились лише тепер — забуваємо порожні відповіді до неї
     document.head.appendChild(l);
   }
 
@@ -721,7 +734,7 @@
 
   function swapCss(f, v) {
     const l = document.querySelector('link[data-game="' + f + '"]');
-    if (l && v) l.href = '/games/' + f + '.css?v=' + encodeURIComponent(v);
+    if (l && v) { l.onload = () => cssCache.clear(); l.href = '/games/' + f + '.css?v=' + encodeURIComponent(v); }
   }
   function swapModule(f, ver) {
     for (const id in cards) if (fileOfRoom(id) === f) dropCard(id);
