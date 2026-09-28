@@ -110,3 +110,20 @@
   .chs-clock { width: min(92vw, 340px); }
   .chessmoves { max-height: 64px; }
 }
+
+/* ---- Шахи з Глеком: рівень, колір, варіант під дошкою ---- */
+.chs-glek { display: flex; flex-wrap: wrap; gap: 6px 10px; justify-content: center; width: 100%; }
+.chs-chips { display: inline-flex; border: 1px solid var(--line, rgba(127,127,127,.35)); border-radius: 10px; overflow: hidden; }
+.chessacts .chs-chips button { border: 0; border-radius: 0; min-height: 36px; padding: 5px 9px; }
+.chessacts .chs-chips button + button { border-left: 1px solid var(--line, rgba(127,127,127,.35)); }
+.chessacts .chs-chips button.on { background: var(--accent); color: var(--bg, #111); font-weight: 600; }
+
+/* ---- Задача дня ---- */
+.chs-puz { text-align: center; font-size: .92em; margin: 0 0 6px; line-height: 1.5; }
+.chs-puz .chs-t { font-variant-numeric: tabular-nums; }
+.chs-day { width: 100%; font-size: .84em; text-align: center; color: var(--muted); line-height: 1.6; margin-top: 4px; }
+.chs-day b { color: var(--text); font-weight: 600; }
+.chs-day i { font-style: normal; color: var(--text); }
+.chs-dr.me i { color: var(--accent); font-weight: 600; }
+.board.chessb .cell.chs-key { box-shadow: inset 0 0 0 3px var(--ok); }
+@media (pointer: coarse) { .chessacts .chs-chips button { min-height: 44px; } }
