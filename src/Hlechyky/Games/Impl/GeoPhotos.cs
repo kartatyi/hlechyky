@@ -157,7 +157,7 @@ public sealed class GeoPhotos : BackgroundService
     readonly TimeSpan _pause;
     readonly bool _online;
     readonly SemaphoreSlim _poke = new(0, 1);
-    readonly ConcurrentDictionary<string, (string Path, DateTimeOffset Expires)> _tokens = new(StringComparer.Ordinal);
+    readonly ConcurrentDictionary<string, (string Path, DateTimeOffset Expires, byte[]? Key)> _tokens = new(StringComparer.Ordinal);
     readonly ConcurrentDictionary<string, int> _fails = new(StringComparer.Ordinal);
     readonly ConcurrentDictionary<string, string> _alias = new(StringComparer.Ordinal);
     readonly ConcurrentDictionary<string, bool> _asleep = new(StringComparer.Ordinal);
@@ -192,6 +192,8 @@ public sealed class GeoPhotos : BackgroundService
 
     public GeoBank Bank { get; }
     public string Dir { get; }
+    /// <summary>ffmpeg для перетискання фото до ~180 КБ (<see cref="GeoShrink"/>); null — не тиснемо.</summary>
+    public string? Ffmpeg { get; init; }
 
     /// <summary>Ім'я файла в кеші для адреси фото: хеш і нічого більше.</summary>
     public static string FileNameFor(string url) =>
@@ -247,11 +249,29 @@ public sealed class GeoPhotos : BackgroundService
     public string Issue(string placeId, int photoIdx)
     {
         var place = Bank.Find(placeId) ?? throw new ArgumentException("нема такого місця", nameof(placeId));
-        var path = PathFor(place.Photos[photoIdx]);
+        return IssueFile(PathFor(place.Photos[photoIdx]));
+    }
+
+    /// <summary>Токен на будь-який файл, який гра сама вибрала (фото друзів — <see cref="GeoMine"/>).</summary>
+    public string IssueFile(string path) => Add(path, null);
+
+    /// <summary>
+    /// Запечатане фото наступного раунду: токен на <c>.bin</c> (файл, зашифрований AES-GCM) і ключ до нього.
+    /// Браузер тягне шифр, поки всі дивляться розкриття, а ключ приходить лише у «Готуйсь» — тож наперед
+    /// скачане не підглянеш навіть у консолі. За цим токеном <c>.jpg</c> не віддається.
+    /// </summary>
+    public (string Token, byte[] Key) IssueSealed(string path)
+    {
+        var key = RandomNumberGenerator.GetBytes(32);
+        return (Add(path, key), key);
+    }
+
+    string Add(string path, byte[]? key)
+    {
         var now = _clock.UtcNow;
         if (_tokens.Count >= MaxTokens) Trim(now);
         var token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12));
-        _tokens[token] = (path, now + TokenLife);
+        _tokens[token] = (path, now + TokenLife, key);
         return token;
     }
 
@@ -270,7 +290,29 @@ public sealed class GeoPhotos : BackgroundService
         if (!IsToken(token)) return null;
         if (!_tokens.TryGetValue(token!, out var hit)) return null;
         if (hit.Expires <= _clock.UtcNow) { _tokens.TryRemove(token!, out _); return null; }
-        return hit.Path;
+        return hit.Key is null ? hit.Path : null;
+    }
+
+    /// <summary>Шлях і ключ запечатаного фото; null — токен кривий, протух або це звичайний (не запечатаний).</summary>
+    public (string Path, byte[] Key)? ResolveSealed(string? token)
+    {
+        if (!IsToken(token) || !_tokens.TryGetValue(token!, out var hit) || hit.Key is null) return null;
+        if (hit.Expires <= _clock.UtcNow) { _tokens.TryRemove(token!, out _); return null; }
+        return (hit.Path, hit.Key);
+    }
+
+    /// <summary>
+    /// Шифр для запечатаного фото: <c>nonce(12) ‖ шифротекст ‖ tag(16)</c> — саме те, що WebCrypto
+    /// <c>AES-GCM</c> розшифровує одним викликом (tag у кінці, як і в нього).
+    /// </summary>
+    public static byte[] Seal(byte[] plain, byte[] key)
+    {
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var outp = new byte[12 + plain.Length + 16];
+        nonce.CopyTo(outp, 0);
+        using var gcm = new AesGcm(key, 16);
+        gcm.Encrypt(nonce, plain, outp.AsSpan(12, plain.Length), outp.AsSpan(12 + plain.Length, 16));
+        return outp;
     }
 
     public static bool IsToken(string? token)
@@ -491,6 +533,7 @@ public sealed class GeoPhotos : BackgroundService
                 Rescan();
                 var got = await PassAsync(ct);
                 var gone = Sweep();
+                if (Ffmpeg is not null) await GeoShrink.AllAsync(Ffmpeg, Dir, _log, ct);
                 if (got > 0 || gone > 0)
                     _log?.LogInformation("«Де це?»: фото докачано {Got}, прибрано {Gone}; готових місць {Ready} з {All}", got, gone, ReadyPlaces, Bank.Places.Count);
             }

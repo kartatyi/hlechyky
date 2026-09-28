@@ -21,7 +21,7 @@ public sealed class GeoSolo : Game
     public override string SeatName(int seat) => "1";
 
     public override void Configure(IReadOnlyDictionary<string, string> options) =>
-        _m = new GeoMatch(Ctx, GeoRules.Training, Ctx.Services.GetService<GeoPhotos>(), 1, Info.Title);
+        _m = new GeoMatch(Ctx, GeoRules.Training, Ctx.Services.GetService<GeoPhotos>(), 1, Info.Title, Ctx.Services.GetService<GeoSeen>());
 
     /// <summary>«Ще раз» без готових фото — чесна відмова тостом, а не порожня партія.</summary>
     public override string? CanStart() => _m.CanStart();
