@@ -828,6 +828,37 @@ public sealed class Rooms
         return (outbox, null);
     }
 
+    // ---------- реакції-емодзі (п. 231) ----------
+
+    /// <summary>Скільки різних реакцій (😂🔥🤯👏😱 — малює core.js, сервер знає лише номер).</summary>
+    public const int ReactKinds = 5;
+    /// <summary>Не частіше за раз на стільки від одного ніка за столом: підколоти — так, засипати дошку — ні.</summary>
+    public const int ReactGapMs = 1500;
+
+    /// <summary>
+    /// Реакція-емодзі за столом: кидає той, хто сидить, або глядач цього столу. Ніщо в грі не міняється,
+    /// у балачку не пишеться — лише подія tableReact групі столу. Error — лише тому, хто кидав.
+    /// </summary>
+    public (Outbox Out, string? Error) TableReact(string id, string? connId, string nick, int e)
+    {
+        var outbox = new Outbox();
+        if (!Named(nick)) return (outbox, Say.NoNick);
+        if (e is < 0 or >= ReactKinds) return (outbox, "Такої реакції нема");
+        if (Find(id) is not { } room || !room.Talks) return (outbox, Say.NoRoom);
+        lock (room.Sync)
+        {
+            var seat = room.SeatOf(nick);
+            if (seat is null && (connId is null || !room.Watchers.ContainsKey(connId))) return (outbox, "Спершу підійди до столу");
+            var now = _clock.UtcNow;
+            if (room.ReactAt.TryGetValue(nick, out var at) && now - at < TimeSpan.FromMilliseconds(ReactGapMs))
+                return (outbox, "Не так часто — хай усі розгледять");
+            if (room.ReactAt.Count > 64) room.ReactAt.Clear();   // стіл живе довго, а глядачі приходять і йдуть
+            room.ReactAt[nick] = now;
+            outbox.Add(new TableReact(room.Id, nick, seat, e));
+        }
+        return (outbox, null);
+    }
+
     /// <summary>
     /// Чому цьому ніку (з цього з'єднання) зараз не можна говорити за столом; null — можна. Хаб питає це до
     /// лічильника флуду, а «пише…» — щоб не видавати, скажімо, мертвих у мафії.
@@ -1191,6 +1222,7 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         winners = winners.Where(s => s >= 0 && s < room.Seats.Length).Distinct().Order().ToArray();
         room.Result = new RoomResult(winners, winners.Length == 0, log, scores);
         room.Status = RoomStatus.Finished;
+        room.TallyEvening(winners, scores);
         room.FinishedAt = now;
         room.LastActivity = now;
 

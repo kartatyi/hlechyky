@@ -334,6 +334,8 @@ public sealed record TableLine(long Id, string Nick, string Text, string Kind, D
 
 /// <summary>Нова репліка в балачці столу — усім, хто на цей стіл дивиться.</summary>
 public sealed record TableSaid(string RoomId, TableLine Line) : Outgoing;
+/// <summary>Реакція-емодзі за столом (п. 231): пливе над карткою в усіх, хто на стіл дивиться; у балачку не пишеться.</summary>
+public sealed record TableReact(string RoomId, string Nick, int? Seat, int E) : Outgoing;
 
 /// <summary>Уся балачка столу одному з'єднанню, щойно воно підписалось на стіл (F5, реконект, зайшов подивитись).</summary>
 public sealed record TableHistory(string RoomId, string ConnectionId, IReadOnlyList<TableLine> Lines) : Outgoing;

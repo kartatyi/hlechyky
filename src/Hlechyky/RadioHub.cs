@@ -140,6 +140,18 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     }
 
     /// <summary>
+    /// Реакція-емодзі за столом (😂🔥🤯👏😱 — номер <paramref name="e"/>): пливе над карткою в усіх, хто за столом і дивиться.
+    /// Квота — Rooms.ReactGapMs на нік; помилку бачить лише той, хто кидав.
+    /// </summary>
+    public async Task<string?> TableReact(string roomId, int e)
+    {
+        var (outbox, error) = rooms.TableReact(roomId ?? "", Context.ConnectionId, Nick(), e);
+        if (error is not null) return error;
+        await broadcaster.FlushAsync(outbox);
+        return null;
+    }
+
+    /// <summary>
     /// «Оля пише…». Браузер шле це раз на кілька секунд, поки людина набирає; <paramref name="roomId"/> — балачка
     /// столу (чують лише ті, хто на нього дивиться), null — загальні Балачки. Відповіді нема: це не більше ніж натяк.
     /// </summary>

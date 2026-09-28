@@ -150,6 +150,9 @@
 /* Варіант, обраний при створенні столу (зникаючі хрестики, ставка) — підписуємо чіпом. */
 .gmode { padding: 2px 8px; border-radius: 999px; border: 1px dashed var(--line); color: var(--muted); font-size: .78em; }
 .gmode.stake { color: var(--clay); border-style: solid; }
+/* Рахунок вечора за столом: окремим рядком під чіпами, дрібно, щоб не пхатись поперед гри */
+.gevening { flex-basis: 100%; color: var(--muted); font-size: .8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-ev { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gseat { padding: 3px 9px; border-radius: 999px; background: var(--bg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42%; }
 .gseat i { font-style: normal; color: var(--muted); font-size: .82em; margin-right: 5px; }
 .gseat.x { color: var(--accent); }
@@ -481,3 +484,18 @@
   .gtile { padding: 9px 10px; }
   .glbrow { gap: 6px; padding: 5px 8px; }
 }
+
+/* Реакції-емодзі за настільним столом (п. 231): смужка під кнопками й емодзі, що пливе над карткою */
+.gtable.grx-on { position: relative; }
+.grx { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }
+.grx-b { min-width: 44px; min-height: 40px; padding: 2px 6px; font-size: 1.25em; line-height: 1; border-radius: 999px; }
+.grx.wait .grx-b { opacity: .45; }
+.grx-fly { position: absolute; bottom: 22%; z-index: 6; pointer-events: none; display: flex; flex-direction: column; align-items: center;
+  font-size: 2.3rem; line-height: 1; transform: translateX(-50%); animation: grx-up 2.2s ease-out forwards; }
+.grx-fly i { font-style: normal; font-size: .75rem; color: var(--muted); background: var(--panel); border-radius: 999px; padding: 1px 6px; margin-top: 2px; }
+@keyframes grx-up {
+  0% { opacity: 0; transform: translate(-50%, 20px) scale(.6); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -160px) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .grx-fly { animation-duration: 1.4s; } }

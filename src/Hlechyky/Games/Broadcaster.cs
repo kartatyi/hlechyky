@@ -205,6 +205,10 @@ public sealed class Broadcaster(
                     // Балачка столу — лише тим, хто на нього дивиться, як і види з кадрами.
                     sends.Add(new Send(new ToGroup(RoomGroup(said.RoomId)), "tableChat", new { id = said.RoomId, line = said.Line }));
                     break;
+                case TableReact rx:
+                    sends.Add(new Send(new ToGroup(RoomGroup(rx.RoomId)), "tableReact",
+                        new { id = rx.RoomId, nick = rx.Nick, seat = rx.Seat, e = rx.E }));
+                    break;
                 case TableHistory history:
                     sends.Add(new Send(new ToConnections([history.ConnectionId]), "tableHistory",
                         new { id = history.RoomId, lines = history.Lines }));

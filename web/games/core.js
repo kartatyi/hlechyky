@@ -76,6 +76,13 @@
       hint: 'Класична змійка: дуель двох, гуртом до чотирьох або одна змійка на всіх, де кожен крутить свої стрілки.' },
     { id: 'tron', title: 'Мотоцикли', games: [['tron', 'Удвох'], ['tron-party', 'Гуртом 2–4']],
       hint: 'За тобою тягнеться стіна, яка не зникає. Хто врізався — програв. Стрілки або WASD.' },
+    // Юрма: одна забава «серед натовпу селян сховались друзі» в семи місцях — у кожного місця свої правила й хитрощі.
+    { id: 'crowd', title: 'Юрма', games: [['crowd', '🎪 Ярмарок'], ['skate', '⛸ Ковзанка'], ['dance', '💃 Вечорниці'],
+      ['tavern', '🍺 Корчма'], ['potato', '🔥 Гарячий горщик'], ['kupala', '🌙 Купальська ніч'], ['freeze', '🧍 Замри!']],
+      hint: 'Повно селян — і десь серед них твої друзі. Ніхто не знає, хто живий: вдавай селянина й вистежуй інших. Сім місць — сім забав.' },
+    // Бігуни: той самий забіг «хто останній на ногах» — по кризі від лавини або в небі лелекою. Забіг дня — окремо, у «Сьогодні».
+    { id: 'dino', title: 'Стрибозаври', games: [['dino', '🧊 Крига'], ['storks', '🪽 Небо (лелеки)']],
+      hint: 'Одна траса для всіх: динозавром по кризі від лавини або лелекою над селом. Хто останній на ногах чи в небі — бере раунд.' },
   ];
   const familyOf = {};
   for (const f of FAMILIES) for (const [id] of f.games) familyOf[id] = f;
@@ -681,7 +688,7 @@
   function ensureNames() {
     if (names) return names;
     names = api('GET', '/api/games/catalog').then((c) => {
-      catalog = { games: (c && c.games) || [], stakes: (c && c.stakes) || [0], files: (c && c.files) || {} };
+      catalog = { games: (c && c.games) || [], stakes: (c && c.stakes) || [0], files: (c && c.files) || {}, added: (c && c.added) || {} };
       for (const g of catalog.games) byId[g.id] = g;
       return catalog;
     }).catch((e) => {
@@ -802,7 +809,13 @@
   const newsOf = (id) => {
     const m = modules[id];
     if (!m || !m.news || !m.news.v || !(m.news.items || []).length) return null;
-    return m.added && m.news.v <= m.added ? null : m.news;
+    const a = addedOf(id);
+    return a && m.news.v <= a ? null : m.news;
+  };
+  /// Коли гра з'явилась: added у модулі, а як автор забув — день, коли сервер уперше її побачив (каталог, GameAdded.cs).
+  const addedOf = (id) => {
+    const m = modules[id];
+    return (m && m.added) || (catalog.added && catalog.added[id]) || null;
   };
   const playedIt = (id) => played == null || played.has(id);
   /// Оновлення, якого людина ще не бачила, у грі, в яку вона вже грала (вікно «що нового» — без терміну давності).
@@ -811,8 +824,8 @@
   const hasNews = (id) => unseenNews(id) && !(daysSince(newsOf(id).v) > UPD_DAYS);
   /// Нова гра: модуль каже added, минуло менше двох тижнів, і я в неї ще не грав.
   const isNewGame = (id) => {
-    const m = modules[id];
-    return !!(m && m.added) && daysSince(m.added) <= NEW_DAYS && !(played && played.has(id));
+    const a = addedOf(id);
+    return !!a && daysSince(a) <= NEW_DAYS && !(played && played.has(id));
   };
 
   function markNews(id, v) {
@@ -1097,6 +1110,28 @@
 
   /// Резюме столу в лобі — окремий елемент, а НЕ копія картки: картка з модулем гри
   /// живе лише на сторінці столу.
+  /// «Рахунок вечора за столом» (Room.Evening на сервері): хто скільки перемог узяв за всі «Ану ще раз».
+  /// Показуємо з другої дограної партії (після першої це те саме, що «Перемога: …»). Старий сервер evening не шле — тоді й рядка нема.
+  /// short — для лобі: лише трійка перших.
+  function eveningText(r, short) {
+    const ev = r && r.evening;
+    if (!ev || !(ev.games >= 2) || !(ev.rows || []).length) return '';
+    const rows = ev.rows.slice(0, short ? 3 : 6);
+    const pts = ev.rows.some((x) => x.points != null && x.points !== 0);
+    const top = ev.rows[0].wins;
+    const line = rows.map((x, i) => x.nick + ' ' + x.wins + (x.wins > 0 && x.wins === top ? '🏆' : '')
+      + (pts && x.points != null && !short ? ' (' + x.points + ')' : '')).join(' · ');
+    return '🌙 Вечір: ' + line + (ev.rows.length > rows.length ? ' · …' : '');
+  }
+  function eveningTitle(r) {
+    const ev = r && r.evening;
+    if (!ev) return '';
+    const n = ev.games;
+    const pl = n % 10 === 1 && n % 100 !== 11 ? 'партію' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'партії' : 'партій';
+    return 'За цим столом зіграли ' + n + ' ' + pl + ':\n' + ev.rows.map((x) => x.nick + ' — перемог ' + x.wins + ' з ' + x.games
+      + (x.points != null ? ', очок ' + x.points : '')).join('\n');
+  }
+
   function roomSummaryHtml(r) {
     const rv = views[r.id];
     const seat = seatOfMe(r);
@@ -1122,6 +1157,7 @@
       + '<div class="gs-who">' + (nicks.length ? who : '<span class="muted">поки ні душі</span>')
       + (free > 0 && all > 1 ? ' <span class="muted">· вільно ' + free + '</span>' : '')
       + ' · ' + status + (r.watchers ? ' <span class="muted">· 👁 ' + r.watchers + '</span>' : '') + '</div>'
+      + (eveningText(r, true) ? '<div class="gs-ev muted small" title="' + esc(eveningTitle(r)) + '">' + esc(eveningText(r, true)) + '</div>' : '')
       + '<div class="gs-btns">' + btns + '</div></div>';
   }
 
@@ -1475,6 +1511,55 @@
     return card;
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Реакції-емодзі за настільним столом (прохід №3, п. 231): настільні мовчазні, а підколоти хочеться.
+  // Загальна дія каркаса: сервер (Rooms.TableReact) лише пересилає номер групі столу, гра про це не знає.
+  // ---------------------------------------------------------------------------------------------
+  const REACTS = ['😂', '🔥', '🤯', '👏', '😱'];
+  const REACT_GAMES = new Set(['chess', 'checkers', 'domino', 'durak', 'c4', 'c4x', 'ttt', 'ttt3']);
+  const REACT_GAP_MS = 1500;   // = Rooms.ReactGapMs
+  let reactUntil = 0;
+  function paintReacts(card, rv) {
+    const want = REACT_GAMES.has(rv.room.game) && rv.room.maxPlayers > 1 && !!me.nick;
+    if (!want) {
+      if (card.rx) { card.rx.remove(); card.rx = null; card.el.classList.remove('grx-on'); }
+      return;
+    }
+    if (card.rx) return;
+    const bar = document.createElement('div');
+    bar.className = 'grx';
+    bar.innerHTML = REACTS.map((x, i) => '<button type="button" class="ghost grx-b" data-rx="' + i + '" title="Кинути ' + x
+      + ' усім за столом">' + x + '</button>').join('');
+    bar.onclick = (ev) => { const b = ev.target.closest('[data-rx]'); if (b) sendReact(card, +b.dataset.rx); };
+    card.btns.after(bar);
+    card.el.classList.add('grx-on');
+    card.rx = bar;
+  }
+  function sendReact(card, e) {
+    const now = Date.now();
+    if (now < reactUntil) return;
+    reactUntil = now + REACT_GAP_MS;
+    const bar = card.rx;
+    if (bar) { bar.classList.add('wait'); setTimeout(() => bar.classList.remove('wait'), REACT_GAP_MS); }
+    if (!conn || conn.state !== 'Connected') return;
+    // Хаб відповідає рядком помилки або null; старий сервер методу не знає — мовчки нічого.
+    conn.invoke('TableReact', card.id, e).then((err) => { if (err) errToast(err); }).catch(() => {});
+  }
+  function flyReact(x) {
+    const card = x && cards[x.id];
+    const emo = card && REACTS[x.e | 0];
+    if (!emo || !card.el.isConnected || card.el.offsetParent === null || document.hidden) return;
+    if (card.el.querySelectorAll('.grx-fly').length >= 12) return;   // хай і завалили — дошку не ховаємо
+    const s = document.createElement('span');
+    s.className = 'grx-fly';
+    s.style.left = (12 + Math.random() * 76).toFixed(1) + '%';
+    s.innerHTML = emo + '<i>' + esc(x.nick || '') + '</i>';
+    card.el.appendChild(s);
+    const done = () => s.remove();
+    s.addEventListener('animationend', done);
+    setTimeout(done, 3000);
+  }
+
   function dropCard(id) {
     const c = cards[id];
     if (!c) return;
@@ -1562,7 +1647,10 @@
       + modes.join('')
       + (room.stake ? '<span class="gmode stake">🏺' + room.stake + '</span>' : '')
       + chips.join('')
-      + (room.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + room.watchers + '</span>' : '');
+      + (room.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + room.watchers + '</span>' : '')
+      // Рахунок вечора — між партіями (лобі столу й підсумок); посеред гри шапку не ширимо.
+      + (room.status !== 'playing' && eveningText(room) ? '<span class="gevening" title="' + esc(eveningTitle(room)) + '">'
+        + esc(eveningText(room)) + '</span>' : '');
   }
 
   function defaultStatus(rv) {
@@ -1635,7 +1723,7 @@
     if (mod && card.mod !== mod) card.mod = mod;
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
-      rv.room.options, rv.room.result, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
+      rv.room.options, rv.room.result, rv.room.evening, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
     const roomChanged = sig !== card.sig;
     if (roomChanged) {
       card.sig = sig;
@@ -1680,6 +1768,7 @@
     }
 
     paintStatus(card, rv);
+    paintReacts(card, rv);
     if (view.kind === 'room' && view.id === id) syncArcade();
   }
 
@@ -1965,6 +2054,7 @@
         notifyTable();                                      // сів, встав, партія почалась — балачці столу це важливо
         checkTurns();                                       // «🎲 Твій хід» у заголовку вкладки й на «Іграх»
       });
+      c.on('tableReact', flyReact);
       c.on('frame', (f) => {
         if (!f || !f.id) return;
         const card = cards[f.id];
