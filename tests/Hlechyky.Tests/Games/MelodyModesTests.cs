@@ -341,4 +341,56 @@ public class MelodyModesTests
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("duel").ValueKind);
         Assert.True(Guess(h, 1, "Journey").Ok);
     }
+
+    // ---------------------------------------------------------------- рецензія: вихід посеред дуелі й команд
+
+    [Fact]
+    public void Duelist_leaving_mid_duel_does_not_hang_the_track_and_bets_settle()
+    {
+        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", duel = "1" }, "Оля", "Петро", "Ганна", "Іван");
+        Until(h, "play");
+        for (var round = 1; round <= 4; round++)
+        {
+            h.Clock.AdvanceMs(Melody.SpeedMs);
+            var t = Songs[round - 1];
+            Assert.True(Guess(h, 0, t.Title).Ok);
+            Assert.True(Guess(h, 1, t.Artist).Ok);
+            EndRound(h);
+            if (round < 4) NextRound(h);
+        }
+        Assert.True(Do(h, 2, "bet", new { seat = 1 }).Ok);
+        Assert.True(Do(h, 3, "bet", new { seat = 0 }).Ok);
+        NextRound(h);
+        h.Leave("Оля");                                                   // лідер пішов посеред дуелі
+        Assert.True(Guess(h, 1, "The Hardkiss Journey").Ok);
+        h.Tick();                                                         // решта лише ставить — чекати нема кого
+        Assert.Equal("reveal", Phase(h));
+        Assert.Equal(1, h.View(2).GetProperty("duel").GetProperty("winner").GetInt32());
+        var before = Score(h, 2);
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        h.Tick();
+        Assert.Equal("done", Phase(h));
+        Assert.Equal(before, Score(h, 2));                                // ставку зараховано ще на розкритті
+        Assert.True(Score(h, 2) >= Melody.BetPoints);
+        Assert.Equal(0, Score(h, 3));                                     // ставив на того, хто пішов
+    }
+
+    [Fact]
+    public void Team_player_leaving_mid_track_does_not_hang_and_the_team_still_wins()
+    {
+        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "1" }, Six);
+        Until(h, "play");
+        h.Clock.AdvanceMs(Melody.SpeedMs);
+        Assert.True(Guess(h, 0, "Океан Ельзи Обійми").Ok);
+        h.Leave("Оля");
+        for (var s = 1; s < 6; s += 2) Assert.True(h.Act(s, "skip").Ok);
+        h.Tick();
+        Assert.Equal("reveal", Phase(h));                                 // команда 0 має все, команда 1 пропустила
+        for (var i = 0; i < 4; i++) { NextRound(h); EndRound(h); }
+        h.Clock.AdvanceMs(Melody.RevealMs + 100);
+        h.Tick();
+        var res = h.View(1).GetProperty("result");
+        Assert.Equal(0, res.GetProperty("team").GetInt32());
+        Assert.Equal([2, 4], res.GetProperty("winners").EnumerateArray().Select(x => x.GetInt32()));
+    }
 }
