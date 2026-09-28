@@ -49,7 +49,8 @@ public sealed partial class Mafia
     /// <summary>Лобі: «🤖 Додати гравця» / «прибрати бота». Будь-хто за столом — свої ж люди.</summary>
     ActResult LobbyAct(string action, JsonElement payload)
     {
-        if (action != "bots") return ActResult.Fail("Партія ще не почалась");
+        // Решта ходів у лобі — як і раніше в каркаса (Say.Waiting): агенти MCP на цю відповідь розраховують.
+        if (action != "bots") return ActResult.Fail("Чекаємо на гравців");
         var n = payload.ValueKind == JsonValueKind.Number && payload.TryGetInt32(out var v) ? v
             : payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("n", out var e) && e.TryGetInt32(out var w) ? w : -1;
         var room = Info.MaxPlayers - Humans();
