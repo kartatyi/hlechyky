@@ -436,13 +436,13 @@ public abstract class ArenaGame : Game
     protected static GameOption SeriesOption => new("series", "Партія",
         [("1", "один раунд"), ("3", "до 3 перемог"), ("5", "до 5 перемог")], "1");
     protected static GameOption TurboOption => new("turbo", "Турбо",
-        [("0", "без турбо"), ("1", "🚀 турбо: пробіл / Ⓐ / подвійний тап")], "0");
+        [("0", "без турбо"), ("1", "🚀 з турбо")], "0");
     protected static GameOption SqueezeOption => new("squeeze", "Край поля",
-        [("0", "стоїть"), ("1", "🧱 після 40 с обростає стіною")], "0");
+        [("0", "стоїть"), ("1", "🧱 звужується після 40 с")], "0");
     protected static GameOption BotsOption => new("bots", "Боти",
         [("0", "без ботів"), ("1", "+1 🤖"), ("2", "+2 🤖"), ("3", "+3 🤖")], "0");
     protected static GameOption TeamsOption => new("teams", "Грають",
-        [("0", "кожен сам"), ("1", "команди 2×2: 🔥 жовтий+рожевий, ❄️ зелений+синій")], "0");
+        [("0", "кожен сам"), ("1", "🔥❄️ команди 2×2")], "0");
 
     /// <summary>true — змійки: хвіст іде за головою, є яблука; false — мотоцикли: слід не зникає.</summary>
     protected abstract bool Tails { get; }
@@ -847,15 +847,18 @@ public abstract class ArenaGame : Game
     string CutsLine()
     {
         var parts = _cutLog.Take(6).Select((c, i) => i == 0
-            ? $"{c.Victim} влітає у слід {NickCases.Genitive(c.Killer)}"
-            : $"{c.Victim} — у слід {NickCases.Genitive(c.Killer)}");
+            ? $"{c.Victim} влітає у слід {Gen(c.Killer)}"
+            : $"{c.Victim} — у слід {Gen(c.Killer)}");
         return "✂ " + string.Join(", ", parts) + (_cutLog.Count > 6 ? "…" : "");
     }
+
+    /// <summary>Родовий відмінок імені; у бота відмінюємо ім'я без «🤖 » («у слід 🤖 Гайки»).</summary>
+    static string Gen(string name) => name.StartsWith("🤖 ", StringComparison.Ordinal) ? "🤖 " + NickCases.Genitive(name[3..]) : NickCases.Genitive(name);
 
     /// <summary>«Оля, Петро і Іра»; <paramref name="genitive"/> — «Олі і Петра» для «найдовша в …» (через NickCases).</summary>
     protected string Names(IEnumerable<int> seats, bool genitive = false)
     {
-        var names = seats.Select(s => genitive ? NickCases.Genitive(Name(s)) : Name(s)).ToList();
+        var names = seats.Select(s => genitive ? Gen(Name(s)) : Name(s)).ToList();
         return names.Count <= 1 ? string.Concat(names) : string.Join(", ", names[..^1]) + " і " + names[^1];
     }
 
@@ -960,6 +963,7 @@ public abstract class ArenaGame : Game
         {
             v["cuts"] = Cuts();
             v["ko"] = _ko.ToArray();
+            v["kt"] = KoTexts();
             v["map"] = _roundMap;
             if (core.Walls.Count > 0) v["walls"] = core.Walls.ToArray();
             if (core.Wrap) v["wrap"] = true;
@@ -973,6 +977,29 @@ public abstract class ArenaGame : Game
         else if (_teamsOn && _started) v["noteams"] = true;
         ViewExtra(v);
         return v;
+    }
+
+    /// <summary>
+    /// Стрічка «хто кого» цього раунду готовими рядками — відмінювати ніки вміє лише сервер (<see cref="NickCases"/>).
+    /// Лоб у лоб — один рядок на пару, а не два.
+    /// </summary>
+    string[] KoTexts()
+    {
+        var list = new List<string>(_ko.Count);
+        foreach (var k in _ko)
+        {
+            var (s, o, how) = (k[0], k[1], k[2]);
+            if (how == ArenaCore.CauseHead && o >= 0 && o < s && _ko.Any(x => x[0] == o && x[1] == s)) continue;
+            list.Add(how switch
+            {
+                ArenaCore.CauseTrail when o >= 0 => $"✂ {Name(s)} влітає у слід {Gen(Name(o))}",
+                ArenaCore.CauseHead when o >= 0 => $"💥 {Name(s)} і {Name(o)} — лоб у лоб",
+                ArenaCore.CauseSelf => $"🌀 {Name(s)} — у власний слід",
+                ArenaCore.CauseSqueeze => $"🧱 {Name(s)}: стіна наздогнала",
+                _ => $"💥 {Name(s)} — у стіну",
+            });
+        }
+        return [.. list];
     }
 
     /// <summary>Дуель додає свої поля (winsA/winsB, «x»/«o»), не ламаючи спільного виду.</summary>
