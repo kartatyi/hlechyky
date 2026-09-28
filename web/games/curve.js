@@ -2,9 +2,12 @@
   Кривуля. Реалтайм: сервер тикає раз на 40 мс і шле кадр із головами, а слід ми домальовуємо самі —
   щокадру відрізок від попередньої голови до нової. Тому кадр і лишається кількасот байтів.
 
-  Кадр   (Impl/Curve.cs): { t, r, heads: [{x,y,a,alive,gap}|null], s: [очки], phase, startIn }.
+  Кадр   (Impl/Curve.cs): { t, r, heads: [{x,y,a,alive,gap[,fx]}|null], s: [очки], phase, startIn
+           [, b: [[вид,x,y]…], k: скільки разів 🧹 стерло поле] [, ev: [[жертва, через кого (-1 стіна), лоб?]…]]
+           [, pk: [[місце, вид бонуса]…]] }.
   Вид    (він же — правда після перемальовування): { width, height, round, target, phase, startIn,
-           scores, heads, segments: [{ pts: [x,y,…], gaps: [номери точок] }|null], winners }.
+           scores, heads, segments: [{ pts: [x,y,…], gaps: [номери точок][, fat: [номери]] }|null], winners,
+           kills [, wrap] [, b, k] [, teams] [, note] }.
   Ввід:  Input('turn', { d: -1 | 0 | 1 }) — це утримання, а не крок: натиснув — шлемо ±1, відпустив — 0.
 
   Слід живе на власному канвасі: щокадру домальовуємо один відрізок, а не тисячу, і лише коли приходить
@@ -12,9 +15,17 @@
 
   Поле — за складом (24.09.2026): до чотирьох звичні 300×200, на п'ятьох-шістьох 360×240, на сімох-вісьмох
   420×280. Розмір каже вид (width/height), і канваси перебудовуються під нього.
+
+  Прохід №3 (29.09.2026):
+  - плавні голови: між кадрами голова їде далі сама (екстраполяція на ≤ 1 кадр, rAF лише поки йде раунд
+    і поле видно) — без затримки, яку дала б інтерполяція «на кадр позаду»;
+  - «хто кого»: стрічка на полі з подій кадру ev, наприкінці — 🕸 павук партії з kills вида;
+  - повтор раунду: кадри раунду пишемо в пам'ять і між раундами за ~2 с програємо весь слід наново;
+  - опції столу: поле-тор (wrap), бонуси (b/k/pk/fx), команди (teams).
 */
 (() => {
   const THICK = 4;              // товщина сліду = два радіуси голови, як на сервері
+  const FAT = 7;                // ⬛ товстий слід: радіус 3,5
   const OVER = 3;               // канвас сліду тримаємо втричі дрібнішим за одиницю поля — щоб не милити
   const SEATS = 8;
   // Вісім кольорів, як у класичній Achtung: п'ятий–восьмий — свої змінні з curve.css.
@@ -22,6 +33,13 @@
     ['--cblue', '#6fb3e8'], ['--cpink', '#e88ac0'], ['--cviolet', '#a98bef'], ['--cred', '#ef5b5b']];
   const TURN = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1 };
   const BOOM_MS = 650;
+  const FEED_MS = 4000;         // скільки висить рядок «хто кого»
+  const REPLAY_MS = 2200;       // повтор раунду — не довше за це (пауза між раундами — 3 с)
+  const TEAMS = ['🐍 Вужі', '🦎 Ящірки'];
+  // Бонуси: значок і кому — собі (зелений обідок), іншим (червоний), усім (синій).
+  const BONUS = [['⚡', 'me'], ['⚡', 'them'], ['🐢', 'me'], ['🐢', 'them'], ['🔄', 'them'], ['🧹', 'all'], ['🚪', 'me'], ['⬛', 'them']];
+  const BONUS_SAY = ['⚡ собі', '⚡ усім іншим', '🐢 собі', '🐢 усім іншим', '🔄 кермо навпаки іншим', '🧹 чисте поле', '🚪 крізь стіни', '⬛ товстий слід іншим'];
+  const FX_INV = 4, FX_THROUGH = 8, FX_FAT = 16;
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<path d="M1.5 12.5c3.4 0 3.4-9 6.8-9s3.4 9 6.2 9" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>'
     + '<circle cx="14.2" cy="12.5" r="1.8" fill="var(--ok)"/></svg>';
@@ -45,24 +63,45 @@
   /// по-своєму (&#39; → ', лапки, style), тож «інше» виходило майже завжди — і DOM перебудовувався щокадру.
   const putHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
 
+  const nick = (ctx, i) => ctx.nickOf(i) || ctx.seatName(i);
+  const teamsOf = (ctx) => (ctx.view && Array.isArray(ctx.view.teams) ? ctx.view.teams : null);
+
   function state(root, ctx) {
     if (root._curve) return root._curve;
     const st = {
       cv: null, tr: null, trc: null, W: 0, H: 0, K: scale(),
       prev: [],        // остання голова кожного місця — від неї малюємо наступний відрізок
+      vel: [],         // зсув голови за останній кадр — щоб між кадрами вести її далі (плавні голови)
       r: -1, t: -1,    // номер раунду й тик останнього кадра: за ними видно, що раунд почався наново
+      k: 0,            // скільки разів 🧹 уже стерло поле цього раунду
       keys: [],        // затиснуті клавіші повороту, остання головніша
       touch: 0,        // палець на кнопці або на половині поля
       sent: 0,         // що ми востаннє сказали серверу — щоб не слати те саме 25 разів на секунду
       view: undefined, // вид, з якого востаннє перемальовували поле
       booms: [],       // де щойно хтось урізався — спалах на пів секунди
+      feed: [],        // «хто кого» на полі: [{ parts: [[текст, колір]…], at }]
       alive: [],       // хто був живий у попередньому кадрі
-      raf: 0,          // домальовування спалахів між кадрами (після кінця раунду кадрів уже нема)
+      rec: null,       // запис раунду для повтору: { r, ok, fr: [{ k, d: Float32Array }] }
+      rp: null,        // повтор, що зараз іде: { at, dur, n, done, cv, c }
+      phase: '',
+      raf: 0,          // один rAF на все: плавні голови, спалахи, повтор
       up: null, blur: null,
     };
     root._curve = st;
     ctx._curve = st;   // onKey отримує лише ctx, а стан нам потрібен і там
     return st;
+  }
+
+  function trailCanvas(w, h) {
+    const tr = document.createElement('canvas');
+    tr.width = w * OVER;
+    tr.height = h * OVER;
+    const c = tr.getContext('2d');
+    c.setTransform(OVER, 0, 0, OVER, 0, 0);
+    c.lineWidth = THICK;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    return { tr, c };
   }
 
   /// Канваси під розмір поля: головний (з DPR і нашим масштабом) і прихований канвас сліду.
@@ -71,17 +110,11 @@
     st.W = w;
     st.H = h;
     st.cv = HGames.ui.canvas(root, { w: w * st.K, h: h * st.K, cls: 'curveboard' + (w > 300 ? ' big' : '') });
-    const tr = document.createElement('canvas');
-    tr.width = w * OVER;
-    tr.height = h * OVER;
-    const trc = tr.getContext('2d');
-    trc.setTransform(OVER, 0, 0, OVER, 0, 0);
-    trc.lineWidth = THICK;
-    trc.lineCap = 'round';
-    trc.lineJoin = 'round';
-    st.tr = tr;
-    st.trc = trc;
+    const t = trailCanvas(w, h);
+    st.tr = t.tr;
+    st.trc = t.c;
     st.prev = [];
+    st.rp = null;
     return true;
   }
 
@@ -108,14 +141,18 @@
     send(ctx, st, want(st));
   }
 
-  // ---------- малювання ----------
+  // ---------- малювання сліду ----------
 
-  function clearTrail(st) {
-    st.trc.save();
-    st.trc.setTransform(1, 0, 0, 1, 0, 0);
-    st.trc.clearRect(0, 0, st.tr.width, st.tr.height);
-    st.trc.restore();
+  function wipe(c, cv) {
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, cv.width, cv.height);
+    c.restore();
   }
+  const clearTrail = (st) => wipe(st.trc, st.tr);
+
+  /// Стрибок крізь край (тор чи 🚪): лінію через усе поле не тягнемо.
+  const jumped = (st, a, b) => Math.abs(a.x - b.x) > st.W / 2 || Math.abs(a.y - b.y) > st.H / 2;
 
   /// Повне перемальовування з ламаних: єдине місце, де клієнт довіряє серверу, а не своїй пам'яті.
   function rebuild(st, ctx) {
@@ -123,26 +160,44 @@
     const segs = v.segments || [];
     clearTrail(st);
     st.prev = [];
+    st.vel = [];
     for (let i = 0; i < segs.length && i < SEATS; i++) {
       const s = segs[i];
       const pts = s && s.pts;
       if (!pts || pts.length < 2) continue;
       const n = pts.length >> 1;
       const gaps = new Set(s.gaps || []);
+      const fat = new Set(s.fat || []);
       st.trc.strokeStyle = color(ctx, i);
-      st.trc.beginPath();
-      let pen = false;
-      for (let k = 1; k < n; k++) {
-        if (gaps.has(k)) { pen = false; continue; }
-        if (!pen) { st.trc.moveTo(pts[2 * k - 2], pts[2 * k - 1]); pen = true; }
-        st.trc.lineTo(pts[2 * k], pts[2 * k + 1]);
+      for (const wide of fat.size ? [false, true] : [false]) {
+        st.trc.lineWidth = wide ? FAT : THICK;
+        st.trc.beginPath();
+        let pen = false;
+        for (let k = 1; k < n; k++) {
+          if (gaps.has(k) || fat.has(k) !== wide) { pen = false; continue; }
+          if (!pen) { st.trc.moveTo(pts[2 * k - 2], pts[2 * k - 1]); pen = true; }
+          st.trc.lineTo(pts[2 * k], pts[2 * k + 1]);
+        }
+        st.trc.stroke();
       }
-      st.trc.stroke();
+      st.trc.lineWidth = THICK;
       st.prev[i] = { x: pts[2 * n - 2], y: pts[2 * n - 1] };
     }
     st.r = v.round == null ? -1 : v.round;
     st.t = -1;
+    st.k = v.k || 0;
     st.alive = (v.heads || []).map((h) => !!(h && h.alive));
+  }
+
+  /// Відрізок сліду одного кадру на будь-якому канвасі сліду.
+  function seg(c, col, a, b, fat) {
+    c.strokeStyle = col;
+    c.lineWidth = fat ? FAT : THICK;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.moveTo(a.x, a.y);
+    c.lineTo(b.x, b.y);
+    c.stroke();
   }
 
   /// Кадр: один відрізок на кожну живу голову. Дірка — просто не малюємо цей шматок.
@@ -150,18 +205,122 @@
     const heads = f.heads || [];
     for (let i = 0; i < heads.length && i < SEATS; i++) {
       const h = heads[i];
-      if (!h) { st.prev[i] = null; continue; }
+      if (!h) { st.prev[i] = null; st.vel[i] = null; continue; }
       const p = st.prev[i];
-      if (p && h.alive && !h.gap) {
-        st.trc.strokeStyle = color(ctx, i);
-        st.trc.beginPath();
-        st.trc.moveTo(p.x, p.y);
-        st.trc.lineTo(h.x, h.y);
-        st.trc.stroke();
-      }
+      const jump = p && jumped(st, p, h);
+      if (p && h.alive && !h.gap && !jump) seg(st.trc, color(ctx, i), p, h, h.fx & FX_FAT);
+      st.vel[i] = p && h.alive && !jump ? { x: h.x - p.x, y: h.y - p.y } : null;
       st.prev[i] = h.alive ? { x: h.x, y: h.y } : null;
     }
   }
+
+  // ---------- повтор раунду ----------
+
+  /// Пишемо кожен кадр раунду: 3 числа на голову (x, y, прапорці). Хвилина вісьмох — ~150 КБ, і живе лише до
+  /// наступного раунду. Хто підключився посеред раунду, записав не все — тому й повтору в нього не буде.
+  function record(st, f) {
+    const heads = f.heads || [];
+    if (!st.rec || st.rec.r !== f.r) st.rec = { r: f.r, ok: f.t <= 2, fr: [], t: f.t };
+    const rec = st.rec;
+    // кадр смерті, що закінчив раунд, уже каже 'between' — його теж пишемо (новий тик), повтори того самого тика — ні
+    if (f.phase === 'ready' || !rec.ok || f.t <= rec.t) return;
+    if (f.t - rec.t > 3) { rec.ok = false; return; }   // пропустили кадри — повтор був би брехнею
+    rec.t = f.t;
+    const d = new Float32Array(SEATS * 3);
+    for (let i = 0; i < SEATS; i++) {
+      const h = heads[i];
+      if (!h) continue;
+      d[3 * i] = h.x;
+      d[3 * i + 1] = h.y;
+      d[3 * i + 2] = 8 | (h.alive ? 1 : 0) | (h.gap ? 2 : 0) | (h.fx & FX_FAT ? 4 : 0);
+    }
+    rec.fr.push({ k: f.k || 0, d });
+  }
+
+  function startReplay(st) {
+    const rec = st.rec;
+    if (!rec || !rec.ok || rec.fr.length < 25 || st.rp) return;
+    const t = trailCanvas(st.W, st.H);
+    // Коротку сутичку (до 2 с) крутимо як є, довгу — стискаємо в REPLAY_MS.
+    st.rp = { at: performance.now(), dur: Math.min(REPLAY_MS, rec.fr.length * 40), n: 0, cv: t.tr, c: t.c, k: rec.fr[0].k };
+    rec.ok = false;   // один раз на раунд
+  }
+
+  /// Домалювати повтор до «зараз». Повертає номер кадру запису, на якому ми (для голів), або -1.
+  function stepReplay(st, ctx) {
+    const rp = st.rp;
+    const fr = st.rec && st.rec.fr;
+    if (!rp || !fr) return -1;
+    const k = Math.min(1, (performance.now() - rp.at) / rp.dur);
+    const upto = Math.max(1, Math.round(k * (fr.length - 1)));
+    for (let j = Math.max(1, rp.n); j <= upto; j++) {
+      const a = fr[j - 1], b = fr[j];
+      if (b.k !== rp.k) { wipe(rp.c, rp.cv); rp.k = b.k; continue; }
+      for (let i = 0; i < SEATS; i++) {
+        const fa = a.d[3 * i + 2], fb = b.d[3 * i + 2];
+        if (!(fa & 1) || !(fb & 1) || (fb & 2)) continue;
+        const pa = { x: a.d[3 * i], y: a.d[3 * i + 1] }, pb = { x: b.d[3 * i], y: b.d[3 * i + 1] };
+        if (!jumped(st, pa, pb)) seg(rp.c, color(ctx, i), pa, pb, fb & 4);
+      }
+    }
+    rp.n = upto + 1;
+    if (k >= 1) { st.rp = null; return -1; }
+    return upto;
+  }
+
+  // ---------- «хто кого» ----------
+
+  function say(st, parts) {
+    st.feed.push({ parts, at: performance.now() });
+    if (st.feed.length > 4) st.feed.shift();
+  }
+
+  function noteEvents(st, ctx, f) {
+    const teams = teamsOf(ctx);
+    for (const e of f.ev || []) {
+      const [v, k, head] = e;
+      const cv = color(ctx, v);
+      if (k < 0) say(st, [[nick(ctx, v), cv], [' ➜ стіна', null]]);
+      else if (k === v) say(st, [[nick(ctx, v), cv], [' ➜ свій слід 🤦', null]]);
+      else if (head) say(st, [[nick(ctx, v), cv], [' ⚔ ', null], [nick(ctx, k), color(ctx, k)], [' лоб у лоб', null]]);
+      else {
+        const own = teams && teams[k] === teams[v];
+        say(st, [[nick(ctx, v), cv], [' ➜ слід ', null], [nick(ctx, k), color(ctx, k)], [own ? ' (свій!)' : '', null]]);
+      }
+    }
+    for (const p of f.pk || []) {
+      const [s, kind] = p;
+      say(st, [[nick(ctx, s), color(ctx, s)], [': ' + (BONUS_SAY[kind] || '?'), null]]);
+    }
+  }
+
+  function drawFeed(st, ctx, g, u) {
+    const now = performance.now();
+    st.feed = st.feed.filter((e) => now - e.at < FEED_MS);
+    if (!st.feed.length) return;
+    const fs = Math.max(7, Math.round(7.5 * u));
+    g.font = '600 ' + fs + 'px system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.textBaseline = 'top';
+    g.lineWidth = 2.5;
+    g.strokeStyle = cssv(ctx, '--bg2', '#16291f');
+    const text = cssv(ctx, '--text', '#ecf1ea');
+    st.feed.forEach((e, row) => {
+      g.globalAlpha = Math.min(1, (FEED_MS - (now - e.at)) / 600);
+      let x = 5;
+      const y = 4 + row * (fs + 2);
+      for (const [s, col] of e.parts) {
+        if (!s) continue;
+        g.strokeText(s, x, y);
+        g.fillStyle = col || text;
+        g.fillText(s, x, y);
+        x += g.measureText(s).width;
+      }
+    });
+    g.globalAlpha = 1;
+  }
+
+  // ---------- спалахи ----------
 
   /// Хто щойно врізався: живий у минулому кадрі, неживий у цьому (того самого раунду).
   function noteBooms(st, f) {
@@ -194,13 +353,19 @@
       g.fill();
       g.globalAlpha = 1;
     }
-    // Кадри йдуть 25 разів на секунду лише в грі; спалах останнього в раунді дограємо самі.
-    if (live && !st.raf) {
-      st.raf = requestAnimationFrame(() => {
-        st.raf = 0;
-        if (st.cv && st.cv.el.isConnected && st.ctx) paint(st, st.ctx, st.lastF);
-      });
-    }
+    return live;
+  }
+
+  // ---------- rAF: один на все ----------
+
+  /// Потрібен лише, поки є що рухати між кадрами: голови в грі, спалах, повтор. Поле не видно — не крутимо.
+  function kick(st) {
+    if (st.raf || document.hidden || st.hidden) return;
+    st.raf = requestAnimationFrame(() => {
+      st.raf = 0;
+      if (!st.cv || !st.cv.el.isConnected || !st.ctx) return;
+      if (paint(st, st.ctx, st.lastF)) kick(st);
+    });
   }
 
   /// Підпис над головою на відліку: хто де народився, а своя — «ти».
@@ -215,83 +380,174 @@
     g.fillText(text, h.x, h.y - 6);
   }
 
+  function drawBonuses(ctx, g, items) {
+    if (!items || !items.length) return;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = '6px system-ui, sans-serif';
+    const rim = { me: cssv(ctx, '--ok', '#7bd389'), them: cssv(ctx, '--danger', '#e57373'), all: cssv(ctx, '--cblue', '#6fb3e8') };
+    for (const [kind, x, y] of items) {
+      const b = BONUS[kind] || ['?', 'all'];
+      g.fillStyle = cssv(ctx, '--bg', '#0f1f18');
+      g.strokeStyle = rim[b[1]];
+      g.lineWidth = 1.3;
+      g.beginPath();
+      g.arc(x, y, 5, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.fillStyle = cssv(ctx, '--text', '#ecf1ea');
+      g.fillText(b[0], x, y + 0.4);
+    }
+  }
+
+  function drawHead(st, ctx, g, i, x, y, a, me, fx) {
+    g.strokeStyle = g.fillStyle = color(ctx, i);
+    g.lineWidth = 1.4;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + Math.cos(a) * 5, y + Math.sin(a) * 5);
+    g.stroke();
+    g.beginPath();
+    g.arc(x, y, fx & FX_FAT ? 3.8 : 2.8, 0, Math.PI * 2);
+    g.fill();
+    // Око: без нього голова губиться на власному сліді того ж кольору.
+    g.fillStyle = cssv(ctx, '--bg2', '#16291f');
+    g.beginPath();
+    g.arc(x, y, 1.1, 0, Math.PI * 2);
+    g.fill();
+    if (i === me) {
+      // Своя голова — у білому кільці: на повному столі «де я?» — перше питання раунду.
+      g.strokeStyle = cssv(ctx, '--text', '#ecf1ea');
+      g.lineWidth = 0.9;
+      g.beginPath();
+      g.arc(x, y, 5, 0, Math.PI * 2);
+      g.stroke();
+    }
+    if (fx & (FX_INV | FX_THROUGH)) {
+      g.font = '6px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'bottom';
+      g.fillText((fx & FX_INV ? '🔄' : '') + (fx & FX_THROUGH ? '🚪' : ''), x, y - 5);
+    }
+  }
+
+  /// Малюємо поле. Повертає true, коли є що рухати й далі (тоді kick() попросить ще кадр).
   function paint(st, ctx, f) {
     const c = st.cv;
-    if (!c) return;
+    if (!c) return false;
     st.lastF = f;
     st.ctx = ctx;
     // Картку не видно (лобі, інша вкладка сайту, схована вкладка браузера) — поле не малюємо, лише
     // запам'ятовуємо, що воно застаріло: слід на своєму канвасі кадри домальовують і далі. Раніше кожен
     // кадр перемальовував невидиме поле 25 разів на секунду.
-    if (document.hidden || st.hidden) { st.stale = true; return; }
+    if (document.hidden || st.hidden) { st.stale = true; return false; }
     st.stale = false;
     const g = c.ctx;
     const W = st.W, H = st.H;
+    const u = W / 300;   // шрифти ростуть разом із полем, щоб на великому полі не дрібніли
+    const v = ctx.view || {};
     c.resize();
     g.save();
     g.scale(st.K, st.K);
     g.fillStyle = cssv(ctx, '--bg2', '#16291f');
     g.fillRect(0, 0, W, H);
-    g.drawImage(st.tr, 0, 0, W, H);
+    const ri = stepReplay(st, ctx);
+    const replay = ri >= 0;
+    g.drawImage(replay ? st.rp.cv : st.tr, 0, 0, W, H);
+    if (v.wrap) {
+      // Поле-тор: пунктир по краю — стін нема, край прохідний.
+      g.strokeStyle = cssv(ctx, '--muted', '#8aa597');
+      g.lineWidth = 0.8;
+      g.setLineDash([3, 4]);
+      g.strokeRect(0.5, 0.5, W - 1, H - 1);
+      g.setLineDash([]);
+    }
 
     const phase = f && f.phase;
     const heads = (f && f.heads) || [];
     const me = ctx.mine ? ctx.seat : null;
-    // Тінь поза грою кладемо під голови: на відліку вони мають світитись, а не тонути разом зі слідом.
-    if (phase && phase !== 'play') {
-      g.fillStyle = cssv(ctx, '--gshade', 'rgba(15, 31, 24, .62)');
-      g.fillRect(0, 0, W, H);
-    }
-    for (let i = 0; i < heads.length && i < SEATS; i++) {
-      const h = heads[i];
-      if (!h || !h.alive) continue;
-      const a = (h.a || 0) * Math.PI / 180;
-      g.strokeStyle = g.fillStyle = color(ctx, i);
-      g.lineWidth = 1.4;
-      g.beginPath();
-      g.moveTo(h.x, h.y);
-      g.lineTo(h.x + Math.cos(a) * 5, h.y + Math.sin(a) * 5);
-      g.stroke();
-      g.beginPath();
-      g.arc(h.x, h.y, 2.8, 0, Math.PI * 2);
-      g.fill();
-      // Око: без нього голова губиться на власному сліді того ж кольору.
-      g.fillStyle = cssv(ctx, '--bg2', '#16291f');
-      g.beginPath();
-      g.arc(h.x, h.y, 1.1, 0, Math.PI * 2);
-      g.fill();
-      if (i === me) {
-        // Своя голова — у білому кільці: на повному столі «де я?» — перше питання раунду.
-        g.strokeStyle = cssv(ctx, '--text', '#ecf1ea');
-        g.lineWidth = 0.9;
-        g.beginPath();
-        g.arc(h.x, h.y, 5, 0, Math.PI * 2);
-        g.stroke();
+    let more = replay;
+    if (!replay) {
+      if (phase === 'play') drawBonuses(ctx, g, f.b);
+      // Тінь поза грою кладемо під голови: на відліку вони мають світитись, а не тонути разом зі слідом.
+      if (phase && phase !== 'play') {
+        g.fillStyle = cssv(ctx, '--gshade', 'rgba(15, 31, 24, .62)');
+        g.fillRect(0, 0, W, H);
       }
-      if (phase === 'ready' && (f.startIn || 0) > 0) {
-        const nick = i === me ? 'ти' : (ctx.nickOf(i) || ctx.seatName(i));
-        label(g, ctx, h, nick.length > 12 ? nick.slice(0, 11) + '…' : nick, color(ctx, i), i === me);
+      // Плавні голови: між кадрами ведемо голову далі тим самим кроком (не довше за один кадр).
+      const live = phase === 'play' && performance.now() - (st.frameAt || 0) < 120;
+      const k = live ? Math.min(1, (performance.now() - st.frameAt) / 40) : 0;
+      const teams = teamsOf(ctx);
+      for (let i = 0; i < heads.length && i < SEATS; i++) {
+        const h = heads[i];
+        if (!h || !h.alive) continue;
+        const vel = st.vel[i];
+        let x = h.x, y = h.y;
+        if (k > 0 && vel) {
+          x += vel.x * k;
+          y += vel.y * k;
+          if (!h.gap) seg(g, color(ctx, i), h, { x, y }, h.fx & FX_FAT);
+        }
+        drawHead(st, ctx, g, i, x, y, (h.a || 0) * Math.PI / 180, me, h.fx || 0);
+        if (phase === 'ready' && (f.startIn || 0) > 0) {
+          let name = i === me ? 'ти' : nick(ctx, i);
+          if (name.length > 12) name = name.slice(0, 11) + '…';
+          if (teams && teams[i] >= 0) name = TEAMS[teams[i]].split(' ')[0] + ' ' + name;
+          label(g, ctx, { x, y }, name, color(ctx, i), i === me);
+        }
       }
+      more = live;
+    } else {
+      // Повтор: голови там, де вони були в цю мить раунду.
+      const d = st.rec.fr[ri].d, p = st.rec.fr[Math.max(0, ri - 1)].d;
+      for (let i = 0; i < SEATS; i++) {
+        if (!(d[3 * i + 2] & 1)) continue;
+        const a = Math.atan2(d[3 * i + 1] - p[3 * i + 1], d[3 * i] - p[3 * i]);
+        drawHead(st, ctx, g, i, d[3 * i], d[3 * i + 1], a, me, 0);
+      }
+      g.font = '700 ' + Math.round(9 * u) + 'px system-ui, sans-serif';
+      g.textAlign = 'right';
+      g.textBaseline = 'top';
+      g.fillStyle = cssv(ctx, '--text', '#ecf1ea');
+      g.globalAlpha = 0.8;
+      g.fillText('⏪ повтор раунду', W - 6, 5);
+      g.globalAlpha = 1;
     }
-    drawBooms(st, ctx, g);
+    if (drawBooms(st, ctx, g)) more = true;
+    drawFeed(st, ctx, g, u);
 
     if (phase && phase !== 'play') {
-      const u = W / 300;   // шрифти ростуть разом із полем, щоб на великому полі не дрібніли
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       if (phase === 'between' || phase === 'done') {
-        // Хто взяв раунд (чи партію) — просто на полі, а не лише дрібним рядком під ним.
+        // Хто взяв раунд (чи партію) — просто на полі, а не лише дрібним рядком під ним. На повторі — внизу,
+        // щоб не затуляти сам повтор і стрічку «хто кого» вгорі.
         let who = heads.map((h, i) => (h && h.alive ? i : -1)).filter((i) => i >= 0);
-        if (phase === 'done' && ctx.view && Array.isArray(ctx.view.winners)) who = ctx.view.winners;
-        const names = who.map((i) => ctx.nickOf(i) || ctx.seatName(i)).join(', ');
-        g.font = '700 ' + Math.round(17 * u) + 'px system-ui, sans-serif';
+        if (phase === 'done' && Array.isArray(v.winners)) who = v.winners;
+        const teams = teamsOf(ctx);
+        const team = teams && who.length && who.every((i) => teams[i] === teams[who[0]]) ? teams[who[0]] : -1;
+        const names = team >= 0 ? TEAMS[team] : who.map((i) => nick(ctx, i)).join(', ');
+        const cy = replay ? H - 14 * u : H / 2 - 30 * u;
+        g.font = '700 ' + Math.round((replay ? 13 : 17) * u) + 'px system-ui, sans-serif';
+        g.lineWidth = 3;
+        g.strokeStyle = cssv(ctx, '--bg2', '#16291f');
         g.fillStyle = who.length === 1 ? color(ctx, who[0]) : cssv(ctx, '--text', '#ecf1ea');
-        g.fillText(who.length ? '🏆 ' + names : 'Усі вибули разом', W / 2, H / 2 - 30 * u, W - 20);
-        g.font = Math.round(10 * u) + 'px system-ui, sans-serif';
-        g.fillStyle = cssv(ctx, '--text', '#ecf1ea');
-        g.fillText(phase === 'done' ? 'партію зіграно' : (who.length ? 'бере раунд' : 'раунд — нікому'), W / 2, H / 2 - 14 * u);
+        const line = who.length ? '🏆 ' + names : 'Усі вибули разом';
+        if (replay) g.strokeText(line, W / 2, cy, W - 20);
+        g.fillText(line, W / 2, cy, W - 20);
+        if (!replay) {
+          g.font = Math.round(10 * u) + 'px system-ui, sans-serif';
+          g.fillStyle = cssv(ctx, '--text', '#ecf1ea');
+          const verb = team >= 0 ? 'беруть' : 'бере';
+          g.fillText(phase === 'done' ? 'партію зіграно' : (who.length ? verb + ' раунд' : 'раунд — нікому'), W / 2, H / 2 - 14 * u);
+          const spider = phase === 'done' ? spiderLine(ctx, v) : '';
+          if (spider) {
+            g.font = Math.round(9 * u) + 'px system-ui, sans-serif';
+            g.fillText(spider, W / 2, H / 2 + 14 * u, W - 20);
+          }
+        }
       }
-      if (phase === 'ready' || phase === 'between') {
+      if ((phase === 'ready' || phase === 'between') && !replay) {
         g.fillStyle = cssv(ctx, '--text', '#ecf1ea');
         g.font = '700 ' + Math.round(40 * u) + 'px system-ui, sans-serif';
         // Стіл у лобі теж стоїть у фазі 'ready', але без відліку: велике біле «0» посеред поля
@@ -301,9 +557,21 @@
       }
     }
     g.restore();
+    return more || st.feed.length > 0 && phase !== 'play' && phase !== 'between';
   }
 
-  /// Рахунок раундів: чіп на кожного — кружечок кольору, нік і очки; своє обведено.
+  /// «🕸 Павук партії: Петро — у його слід урізались 7 разів» — хто найбільше «замкнув» інших.
+  function spiderLine(ctx, v) {
+    const kills = v.kills || [];
+    let best = -1;
+    for (let i = 0; i < SEATS; i++) if ((kills[i] || 0) > 0 && (best < 0 || kills[i] > kills[best])) best = i;
+    if (best < 0) return '';
+    const n = kills[best];
+    const times = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'рази' : 'разів';
+    return '🕸 Павук партії: ' + nick(ctx, best) + ' — у слід урізались ' + n + ' ' + times;
+  }
+
+  /// Рахунок раундів: чіп на кожного — кружечок кольору, нік і очки; своє обведено. У командах — по командах.
   function score(root, ctx, f) {
     let el = root.querySelector(':scope > .gscore');
     if (!el) {
@@ -313,16 +581,27 @@
     }
     const s = (f && (f.s || f.scores)) || [];
     const heads = (f && f.heads) || [];
-    const parts = [];
-    for (let i = 0; i < SEATS; i++) {
-      const nick = ctx.nickOf(i);
-      if (!nick) continue;
+    const teams = teamsOf(ctx);
+    const chip = (i, withScore) => {
       const out = f && f.phase === 'play' && heads[i] && !heads[i].alive;
-      parts.push('<span class="cchip c' + i + (i === ctx.seat ? ' me' : '') + (out ? ' out' : '') + '"><i></i>'
-        + ctx.esc(nick) + ' <b>' + (s[i] || 0) + '</b></span>');
+      return '<span class="cchip c' + i + (i === ctx.seat ? ' me' : '') + (out ? ' out' : '') + '"><i></i>'
+        + ctx.esc(ctx.nickOf(i)) + (withScore ? ' <b>' + (s[i] || 0) + '</b>' : '') + '</span>';
+    };
+    const parts = [];
+    if (teams) {
+      for (let t = 0; t < 2; t++) {
+        const seats = [];
+        for (let i = 0; i < SEATS; i++) if (teams[i] === t && ctx.nickOf(i)) seats.push(i);
+        if (!seats.length) continue;
+        parts.push('<span class="curve-team"><span class="curve-tname">' + TEAMS[t] + ' <b>' + (s[seats[0]] || 0) + '</b></span>'
+          + seats.map((i) => chip(i, false)).join('') + '</span>');
+      }
+    } else {
+      for (let i = 0; i < SEATS; i++) if (ctx.nickOf(i)) parts.push(chip(i, true));
     }
-    const target = ctx.view && ctx.view.target;
-    const html = parts.join('') + (target ? '<span class="muted small">до ' + target + '</span>' : '');
+    const v = ctx.view || {};
+    const html = parts.join('') + (v.target ? '<span class="muted small">до ' + v.target + '</span>' : '')
+      + (v.note ? '<span class="muted small curve-note">' + ctx.esc(v.note) + '</span>' : '');
     putHtml(el, html);
   }
 
@@ -418,12 +697,14 @@
     seatClass: ['x', 'o', 'c', 'd', 'cb', 'cp', 'cv', 'cr'],
     pad: { dirs: 'x', hint: '{dpad} повертати ліворуч-праворуч' },
     news: {
-      v: '2026-09-28',
-      title: 'Кривуля: поле більше, слід рівніший',
+      v: '2026-09-29',
+      title: 'Кривуля: бонуси, тор, команди й повтор',
       items: [
-        '🔍 На ноутбуці й Деці поле більше — і влазить без прокрутки навіть на вісьмох',
-        '📱 На телефоні з початком партії поле й кнопки ◀ ▶ стають в екран разом, над «💬 Стіл»',
-        '〰 Коли хтось урізається, слід решти більше не зрізає кути',
+        '⚡ Опція «Бонуси», як в Achtung: ⚡🐢 собі чи іншим, 🔄 кермо навпаки, 🧹 чисте поле, 🚪 крізь стіни, ⬛ товстий слід',
+        '🍩 Опція «Стіни: нема» — поле-тор, вилетів справа — з\'явився зліва',
+        '🐍 Команди 2×2, 3×3 і 4×4 — очко команді за кожного вибулого суперника',
+        '💥 На полі видно, хто в чий слід урізався, а між раундами — ⏪ повтор усього раунду',
+        '🧈 Голови їдуть плавно, без стрибків між кадрами',
       ],
     },
 
@@ -445,7 +726,7 @@
       window.addEventListener('blur', st.blur);
       // Видно картку чи ні — каже IntersectionObserver (без читання розкладки щокадру); знову видно —
       // домальовуємо те, що пропустили.
-      const wake = () => { if (st.stale && st.ctx && st.cv) paint(st, st.ctx, st.lastF); };
+      const wake = () => { if (st.stale && st.ctx && st.cv && paint(st, st.ctx, st.lastF)) kick(st); };
       if (window.IntersectionObserver) {
         st.io = new IntersectionObserver((es) => { st.hidden = !es[es.length - 1].isIntersecting; if (!st.hidden) wake(); });
         st.io.observe(st.cv.el);
@@ -473,14 +754,15 @@
         // проріджену ламану вида (на вісьмох — лише 250 точок на кривулю). У компанії вид летить на кожну
         // смерть, і перемальовувати з нього все поле було і дарма (3–6 мс), і грубше: кути сліду зрізались.
         // Після реконекту, повернення до столу чи нового розміру кадрів щойно не було — тоді з вида.
-        const v = ctx.view || {};
         const live = !resized && v.round === st.r && performance.now() - st.frameAt < 300;
         if (!live) rebuild(st, ctx);
+        if (st.phase === 'play' && (v.phase === 'between' || v.phase === 'done')) startReplay(st);
+        st.phase = v.phase || st.phase;
       }
-      const f = fresh ? (ctx.view || {}) : (ctx.frame || ctx.view || {});
+      const f = fresh ? v : (ctx.frame || v);
       score(root, ctx, f);
       fitPhone(root, st, ctx, '.cscore', '.cpad');
-      paint(st, ctx, f);
+      if (paint(st, ctx, f)) kick(st);
       if (!ctx.playing) st.sent = 0;   // партія стала — наступне натискання має долетіти
     },
 
@@ -491,8 +773,11 @@
       if (f.r !== st.r || f.t < st.t) {
         clearTrail(st);
         st.prev = [];
+        st.vel = [];
         st.booms = [];
         st.alive = [];
+        st.k = 0;
+        st.rp = null;
         st.r = f.r;
         // Сервер на старті раунду забуває, хто що тримав, а браузер автоповтору вже не пришле:
         // нагадуємо йому те, що палець і досі тримає, інакше кривуля поїде прямо. Глядачеві
@@ -502,12 +787,25 @@
           send(ctx, st, want(st));
         }
       }
+      // 🧹 стерло поле — стираємо й ми; слід далі росте від голів.
+      if ((f.k || 0) !== st.k) {
+        st.k = f.k || 0;
+        clearTrail(st);
+      }
       st.t = f.t;
       st.frameAt = performance.now();
+      record(st, f);
+      if (st.phase === 'play' && (f.phase === 'between' || f.phase === 'done')) startReplay(st);
+      st.phase = f.phase;
       noteBooms(st, f);
+      noteEvents(st, ctx, f);
+      if (f.ev && ctx.mine && f.ev.some((e) => e[0] === ctx.seat) && navigator.vibrate
+        && !(navigator.userActivation && !navigator.userActivation.hasBeenActive)) {
+        try { navigator.vibrate(120); } catch (_) { /* ні то й ні */ }
+      }
       grow(st, ctx, f);
       score(root, ctx, f);
-      paint(st, ctx, f);
+      if (paint(st, ctx, f)) kick(st);
     },
 
     onKey(e, ctx) {
@@ -522,12 +820,18 @@
       if (!ctx.playing) return '';
       const f = ctx.frame && ctx.frame.phase ? ctx.frame : ctx.view;
       if (!f) return '';
-      if (f.phase === 'ready') return 'Готуйсь…';
+      if (f.phase === 'ready') {
+        const teams = teamsOf(ctx);
+        if (teams && ctx.mine && teams[ctx.seat] >= 0) return 'Готуйсь… ти за ' + TEAMS[teams[ctx.seat]];
+        return 'Готуйсь…';
+      }
       if (f.phase === 'between') return 'Наступний раунд…';
       if (f.phase === 'done') return '';
       if (!ctx.mine) return 'Дивишся збоку';
       const me = (f.heads || [])[ctx.seat];
       if (me && !me.alive) return 'Аварія! Чекай на наступний раунд';
+      if (me && me.fx & FX_INV) return '🔄 Кермо навпаки!';
+      if (me && me.fx & FX_THROUGH) return '🚪 Можна крізь стіни!';
       return HGames.ui.coarse() ? 'Тримай ліворуч або праворуч' : '← → або A/D, тримати';
     },
 
@@ -539,6 +843,9 @@
       if (st.vis) document.removeEventListener('visibilitychange', st.vis);
       if (st.io) st.io.disconnect();
       if (st.raf) cancelAnimationFrame(st.raf);
+      st.raf = 0;
+      st.rec = null;
+      st.rp = null;
       root._curve = null;
       if (ctx) ctx._curve = null;
     },
