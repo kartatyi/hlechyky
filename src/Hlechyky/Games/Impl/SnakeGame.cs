@@ -38,6 +38,8 @@ public sealed class SnakeCore(Random rng, bool tailShrinks = true, bool apples =
     public int StartIn { get; set; } = StartTicks;
 
     public bool TailShrinks => tailShrinks;
+    /// <summary>Тор (прохід №3, №155): стін по краю нема — виповз праворуч, з'явився ліворуч.</summary>
+    public bool Wrap { get; set; }
     public bool Apples => apples;
 
     public static int Cell(int x, int y) => y * W + x;
@@ -81,8 +83,8 @@ public sealed class SnakeCore(Random rng, bool tailShrinks = true, bool apples =
     {
         if (_turnsA.Count > 0) DirA = _turnsA.Dequeue();
         if (_turnsB.Count > 0) DirB = _turnsB.Dequeue();
-        var (nextA, okA) = Ahead(A[0], DirA);
-        var (nextB, okB) = Ahead(B[0], DirB);
+        var (nextA, okA) = Next(A[0], DirA);
+        var (nextB, okB) = Next(B[0], DirB);
         var ateA = apples && okA && nextA == Apple;
         var ateB = apples && okB && nextB == Apple;
         var growA = ateA || !tailShrinks;
@@ -99,6 +101,14 @@ public sealed class SnakeCore(Random rng, bool tailShrinks = true, bool apples =
         if (okB) { B.Insert(0, nextB); if (!growB) B.RemoveAt(B.Count - 1); }
         if (ateA || ateB) PlaceApple();
         return (deadA, deadB);
+    }
+
+    /// <summary>Наступна клітинка з урахуванням тору: на торі стіни нема ніколи.</summary>
+    public (int Cell, bool Ok) Next(int head, int dir)
+    {
+        if (!Wrap) return Ahead(head, dir);
+        var (dx, dy) = Deltas[dir];
+        return (Cell((head % W + dx + W) % W, (head / W + dy + H) % H), true);
     }
 
     /// <summary>Куди дивиться голова; ok = false, якщо це вже стіна.</summary>
@@ -129,7 +139,16 @@ public sealed class SnakeGame : Game
 {
     public override GameInfo Info { get; } = new(
         "snake", "Змійка", "змійку", GameGroup.Live, 2, 2, TickMs: SnakeCore.TickMs, Rated: true,
-        Hint: "Дуель на двох: стрілки або WASD, поле зі стінами. Врізався в стіну, у себе чи в суперника — програв.");
+        Options: [new("wrap", "Край поля", [("0", "стіни"), ("1", "🌀 тор: виповз праворуч — з'явився ліворуч")], "0")],
+        Hint: "Дуель на двох: стрілки або WASD. Врізався в стіну, у себе чи в суперника — програв.");
+
+    bool _wrap;
+
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        _wrap = options.GetValueOrDefault("wrap") == "1";
+        if (_core is not null) _core.Wrap = _wrap;
+    }
 
     SnakeCore? _core;
     /// <summary>Хто сидів за столом на минулій партії — щоб знати, чи рахунок серії ще чийсь.</summary>
@@ -143,7 +162,7 @@ public sealed class SnakeGame : Game
         get
         {
             if (_core is not null) return _core;
-            _core = new SnakeCore(Ctx.Rng);
+            _core = new SnakeCore(Ctx.Rng) { Wrap = _wrap };
             _core.Reset();
             return _core;
         }
@@ -160,6 +179,7 @@ public sealed class SnakeGame : Game
         else (Core.WinsA, Core.WinsB) = (0, 0);
         _was = now;
         _winner = null;
+        Core.Wrap = _wrap;
         Core.Reset();
     }
 
@@ -224,6 +244,7 @@ public sealed class SnakeGame : Game
     public override object View(int? seat) => new
     {
         width = SnakeCore.W,
+        wrap = _wrap,
         height = SnakeCore.H,
         turn = (int?)null,
         a = Core.A.ToArray(),

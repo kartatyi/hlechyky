@@ -1107,19 +1107,3 @@ public sealed class TronPartyGame : ArenaGame
     public override int MaxMoves { get; set; } = 1200;
     protected override string[] Colors => ["жовтий", "зелений", "синій", "рожевий"];
 }
-
-/// <summary>Змійки на 2–4: яблука, хвіст за головою, розбита змійка зникає; раунд бере остання жива.</summary>
-public sealed class SnakePartyGame : ArenaGame
-{
-    public override GameInfo Info { get; } = new(
-        "snake-party", "Змійки гуртом", "змійки гуртом", GameGroup.Live, 2, Seats, TickMs: SnakeCore.TickMs,
-        Start: StartMode.ByHost, Options: [FieldOption],
-        Hint: "Змійки на 2–4: їж яблука, не врізайся. Раунд бере остання жива, а за три хвилини — найдовша. Стрілки або WASD",
-        Client: "snake-modes");
-
-    protected override bool Tails => true;
-    protected override int CountdownTicks => SnakeCore.StartTicks;
-    /// <summary>Три хвилини по 120 мс — далі перемагає найдовша.</summary>
-    public override int MaxMoves { get; set; } = 1500;
-    protected override string[] Colors => ["жовта", "зелена", "синя", "рожева"];
-}

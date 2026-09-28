@@ -51,7 +51,6 @@ public class SnakePartyTests
 
     [Theory]
     [InlineData("tron-party", TronGame.TickMs)]
-    [InlineData("snake-party", SnakeCore.TickMs)]
     public void The_party_tables_seat_two_to_four_and_start_on_the_hosts_word(string id, int tick)
     {
         var info = new Registry().Info(id)!;
@@ -349,98 +348,6 @@ public class SnakePartyTests
 
         Assert.Equal(Views.Text(h.View(0)), Views.Text(h.View(null)));
         Assert.Equal(Views.Text(h.View(3)), Views.Text(h.View(null)));
-    }
-
-    // =============================================================================================
-    // Змійки гуртом
-    // =============================================================================================
-
-    [Fact]
-    public void Snakes_get_one_apple_for_two_and_two_apples_for_a_crowd()
-    {
-        Assert.Single(Party("snake-party", 2).View(null).GetProperty("ap").EnumerateArray());
-        Assert.Equal(2, Party("snake-party", 3).View(null).GetProperty("ap").GetArrayLength());
-    }
-
-    [Fact]
-    public void A_crashed_snake_leaves_the_field_and_the_round_goes_on()
-    {
-        var h = Party("snake-party", 3);
-        Ready(h);
-        h.Input(0, "turn", new { dir = 3 });
-        h.Tick(9);
-
-        var v = h.View(null);
-        Assert.Equal(RoomStatus.Playing, h.Room.Status);
-        Assert.Empty(Bodies(v)[0]);                  // змійка не лишає по собі стіни
-        Assert.NotEqual(-1, v.GetProperty("crash")[0].GetInt32());
-        Assert.Equal(0b110, Alive(v));
-    }
-
-    [Fact]
-    public void A_snake_grows_on_an_apple_and_a_new_one_appears()
-    {
-        var h = Party("snake-party", 2);
-        Ready(h);
-        var apple = h.View(null).GetProperty("ap")[0].GetInt32();   // посередині поля, на ряд нижче жовтої
-        var core = new ArenaCore(new Random(1), SnakeCore.W, SnakeCore.H, 4, true, 0);
-        Assert.Equal(core.Cell(SnakeCore.W / 2, SnakeCore.H / 2), apple);
-
-        // жовта: праворуч до колонки яблука, тоді вниз на три ряди
-        h.Tick(SnakeCore.W / 2 - ArenaCore.StartLen);
-        h.Input(0, "turn", new { dir = 1 });
-        h.Tick(3);
-
-        var v = h.View(null);
-        Assert.Equal(ArenaCore.StartLen + 1, Bodies(v)[0].Length);
-        Assert.DoesNotContain(apple, v.GetProperty("ap").EnumerateArray().Select(e => e.GetInt32()));
-        Assert.Single(v.GetProperty("ap").EnumerateArray());
-    }
-
-    [Fact]
-    public void The_snake_frame_carries_whole_bodies_and_apples()
-    {
-        var h = Party("snake-party", 2);
-        h.Tick(1);
-        var frame = Views.Json(h.Outbox.OfType<RoomFrame>().Last().Frame);
-
-        Assert.Equal(["t", "ap", "al", "startIn", "winner"], frame.EnumerateObject().Select(p => p.Name).ToArray());
-    }
-
-    [Fact]
-    public void When_time_runs_out_the_longest_snake_takes_the_round()
-    {
-        var h = Party("snake-party", 2);
-        var game = (ArenaGame)h.Room.Game;
-        Ready(h);
-        h.Tick(SnakeCore.W / 2 - ArenaCore.StartLen);
-        h.Input(0, "turn", new { dir = 1 });
-        h.Tick(3);                                   // жовта з'їла яблуко — на клітинку довша
-        game.MaxMoves = game.Moves + 1;
-        h.Tick(1);
-
-        Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Contains("час вийшов — найдовша в Олі", LastLog(h));
-    }
-
-    [Fact]
-    public void The_same_seed_plays_out_the_same_snake_round()
-    {
-        static string Play()
-        {
-            var h = Party("snake-party", 4);
-            Ready(h);
-            for (var i = 0; i < 15; i++)
-            {
-                if (i == 3) h.Input(0, "turn", new { dir = 1 });
-                if (i == 7) h.Input(2, "turn", new { dir = 0 });
-                h.Tick(1);
-            }
-            return Views.Text(h.View(null));
-        }
-
-        Assert.Equal(Play(), Play());
     }
 
     // =============================================================================================

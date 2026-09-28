@@ -19,6 +19,14 @@
     const at = (cell) => [(cell % W) * PX, Math.floor(cell / W) * PX];
     ctx.fillStyle = st.css('--bg2', '#16291f');
     ctx.fillRect(0, 0, c.w, c.h);
+    if (st.wrap) {
+      // тор (прохід №3): край — пунктир, а не стіна
+      ctx.strokeStyle = 'rgba(111, 179, 232, .55)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
+      ctx.strokeRect(1, 1, c.w - 2, c.h - 2);
+      ctx.setLineDash([]);
+    }
 
     if (f.apple != null) {
       const [ax, ay] = at(f.apple);
@@ -128,9 +136,10 @@
     seatClass: ['x', 'o'],
     pad: { dirs: true, hint: '{dpad} куди повзти' },
     news: {
-      v: '2026-09-28',
-      title: 'Змійка: свайпом по полю',
+      v: '2026-09-29',
+      title: 'Змійка: поле-тор',
       items: [
+        '🌀 Нова опція столу «Край поля: тор» — стін нема, виповзла праворуч — з’явилась ліворуч',
         '👆 На телефоні крути свайпом просто по полю, а стрілки під полем спрацьовують на дотик, а не на відпускання',
         '⌨️ Затиснута стрілка більше не з\'їдає наступного повороту',
         '🐍 Змійки більше не смикаються на мить назад, коли хтось на сайті ставить чи закриває стіл',
@@ -152,7 +161,7 @@
       const touch = ctx.mine && ctx.playing ? 'none' : '';
       if (st.cv.el.style.touchAction !== touch) st.cv.el.style.touchAction = touch;
       // Новий вид (подія 'room') свіжіший за кадри — малюємо з нього. Той самий об'єкт удруге — застарілий кеш.
-      if (ctx.view && ctx.view.a && ctx.view !== st.view) { st.view = ctx.view; st.last = ctx.view; }
+      if (ctx.view && ctx.view.a && ctx.view !== st.view) { st.view = ctx.view; st.last = ctx.view; st.wrap = !!ctx.view.wrap; }
       const f = st.last;
       score(root, f);
       st.cv.resize();
@@ -184,7 +193,8 @@
       const f = ctx.frame && ctx.frame.startIn != null ? ctx.frame
         : (ctx.view && ctx.view.startIn != null ? ctx.view : null);
       if (f && f.startIn > 0) return 'Готуйсь…';
-      return ctx.mine ? 'Стрілки або WASD' : 'Дивишся збоку';
+      const tor = ctx.view && ctx.view.wrap ? ' · 🌀 тор: край наскрізь' : '';
+      return ctx.mine ? 'Стрілки або WASD' + tor : 'Дивишся збоку' + tor;
     },
 
     unmount(root) { root._snake = null; },
