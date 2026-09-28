@@ -504,4 +504,7 @@
    («Скільки?», слова). Поки пишеш у полі гри — шторки не видно; відпустив поле — вона знову на місці. */
 @media (max-width: 900px) {
   body:has(.gbody input:focus, .gbody textarea:focus) .tchat.drawer:not(.open) { display: none; }
+  /* Рука дурня вчотирьох, поле «Скільки?» — низ столу під згорнутою шторкою: запас знизу, щоб його можна було
+     докрутити над кнопкою (шторка ~44 px + відступ). Посеред аркади шторки нема (g-arcade) — там запасу не треба. */
+  body:not(.g-arcade):has(.tchat.drawer:not(.open)) .groom { padding-bottom: 64px; }
 }
