@@ -687,6 +687,10 @@
         if (id === st.meId) st.caughtN++;
         news(st, '👵 ' + esc(nm) + (FEMALE.has(nm) ? ' ворухнулась' : ' ворухнувся') + ' — назад до тину!' + (id === st.meId ? ' Ой, це ж ти…' : ''));
         sfx(st, 'caught');
+      } else if (e[0] === 4) {
+        const nm = nameOf(st, id), team = relayTeam(st, e[2]);
+        news(st, '🏺 ' + esc(nm) + (FEMALE.has(nm) ? ' торкнулась' : ' торкнувся') + ' глека — ' + esc(team ? team.name : 'команда') + ' +'
+          + ((team && team.weight) || 1) + '!' + (id === st.meId ? ' Молодець, тепер знову від тину' : ''));
       } else if (e[0] === 3) {
         st.poofs.push({ x: f.v[id * 4], y: f.v[id * 4 + 1], at: now });
         if (st.poofs.length > 10) st.poofs.shift();
@@ -881,6 +885,7 @@
     // свій іде, а Баба вже кричить — «Стій!» над собою (бачу лише я)
     if (mine && phase === 'go' && freezing && st.ps[st.meId] === 1) warn(g, st.px[st.meId], st.py[st.meId] - 40, now);
     labels(st, g, pal, n, phase);
+    mateLabels(st, g, pal, n, phase);
 
     g.setTransform(k, 0, 0, k, 0, 0);
     if (freezing) cold(st, g, pal, cv.w, cv.h, now);
@@ -1087,6 +1092,49 @@
     }
   }
 
+  // ---------- естафета (п. 195) ----------
+  const relayTeam = (st, t) => { const r = st.view && st.view.relay; return (r && r.teams && r.teams[t]) || null; };
+  const teamOfSeat = (st, seat) => {
+    const r = st.view && st.view.relay;
+    if (!r || !r.teams) return -1;
+    for (let t = 0; t < r.teams.length; t++) if ((r.teams[t].seats || []).includes(seat)) return t;
+    return -1;
+  };
+  const teamEmoji = (st, t) => { const x = relayTeam(st, t); return x ? String(x.name).split(' ')[0] : ''; };
+
+  /// Своїх у команді бачиш у лице: кільце кольору місця й нік — лише тобі, поки раунд іде.
+  function mateLabels(st, g, pal, n, phase) {
+    const m = st.me && st.me.mates;
+    if (!m || !m.length || (phase !== 'go' && phase !== 'start')) return;
+    const px = st.mode === 'port' ? 13 : 11, h = px + 4;
+    g.font = '700 ' + px + 'px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = 2;
+    for (let i = 0; i + 1 < m.length; i += 2) {
+      const seat = m[i], id = m[i + 1];
+      if (id < 0 || id >= n) continue;
+      const x = st.px[id], y = st.py[id];
+      g.setLineDash([4, 3]);
+      g.strokeStyle = pal.seats[seat] || pal.text;
+      g.beginPath(); g.ellipse(x, y + 4, 13, 6, 0, 0, TAU); g.stroke();
+      g.setLineDash([]);
+      const text = teamEmoji(st, teamOfSeat(st, seat)) + ' ' + nickOfSeat(st, seat), w = g.measureText(text).width + 10;
+      g.fillStyle = 'rgba(12, 22, 14, .72)';
+      g.beginPath(); g.roundRect(x - w / 2, y - 40 - h / 2, w, h, h / 2); g.fill();
+      g.fillStyle = pal.seats[seat] || pal.text;
+      g.fillText(text, x, y - 40 + 0.5);
+    }
+  }
+
+  /// Рахунок естафети одним рядком: «🌻 3 : 1 💠 · до 5».
+  function relayScore(st) {
+    const r = st.view && st.view.relay;
+    if (!r || !r.teams) return '';
+    const [a, b] = r.teams;
+    return teamEmoji(st, 0) + ' ' + (a.pts | 0) + ' : ' + (b.pts | 0) + ' ' + teamEmoji(st, 1) + ' · до ' + (r.goal | 0);
+  }
+
   function labels(st, g, pal, n, phase) {
     const v = st.view;
     if (!v || !v.reveal || !(phase === 'reveal' || phase === 'over' || v.phase === 'reveal' || v.phase === 'over')) return;
@@ -1236,6 +1284,12 @@
     if (!r) return '';
     const head = short ? '' : 'Раунд ' + v.round + ' з ' + v.of + ' · ';
     const who = (r.winners || []).map((s) => nickOfSeat(st, s)).join(' і ');
+    if (v.relay) {
+      const t = (r.winners || []).length ? relayTeam(st, teamOfSeat(st, r.winners[0])) : null;
+      if (r.why === 'relay' && t) return head + '🏺 ' + t.name + ' першими до ' + (v.relay.goal | 0) + ' — раунд їхній!';
+      if (t) return head + '⏱ Час вийшов — раунд за ' + t.name;
+      return head + '⏱ Час вийшов — команди порівну';
+    }
     switch (r.why) {
       case 'jug': return head + '🏺 До глека перш' + ((r.winners || []).length > 1 ? 'і — ' : 'ий — ') + who;
       case 'time': return head + '⏱ Час вийшов — найдалі зайш' + ((r.winners || []).length > 1 ? 'ли ' : 'ов ') + who;
@@ -1250,6 +1304,10 @@
       return res.winners.length ? '🚪 Суперники розійшлись — перемога: ' + res.winners.map((s) => nickOfSeat(st, s)).join(', ') : '🚪 Усі розійшлись';
     }
     if (!res.winners.length) return '🤝 Нічия';
+    if (v.relay) {
+      const t = relayTeam(st, teamOfSeat(st, res.winners[0]));
+      return '🏆 Перемога: ' + (t ? t.name + ' — ' : '') + res.winners.map((s) => nickOfSeat(st, s)).join(', ');
+    }
     return '🏆 Перемога: ' + res.winners.map((s) => nickOfSeat(st, s) + ' ' + (res.totals[s] | 0)).join(', ');
   }
 
@@ -1302,6 +1360,7 @@
     const ctx = st.ctx, v = st.view, el = st.hudEl;
     if (!el || !v) return;
     let html = '<span class="freeze-chip">Раунд ' + Math.max(1, v.round | 0) + '/' + (v.of | 0) + '</span>';
+    if (v.relay) html += '<span class="freeze-chip freeze-relay" title="Естафета: торкнувся глека — очко команді">🏺 ' + ctx.esc(relayScore(st)) + '</span>';
     if (v.me) {
       const ready = pushReady(performance.now(), st);
       html += '<span class="freeze-chip freeze-hand' + (ready ? '' : ' cool') + '" title="Штурхан: пробіл, Ⓐ або тиць по сусідові">👊</span>';
@@ -1315,7 +1374,7 @@
     let row = '';
     for (const s of v.seats || []) {
       row += '<span class="freeze-seat freeze-s' + s.seat + (s.out ? ' out' : '') + (s.seat === ctx.seat ? ' me' : '') + '">'
-        + '<i></i>' + ctx.esc(s.nick) + ' <b>' + (s.total | 0) + '</b></span>';
+        + '<i></i>' + (v.relay ? teamEmoji(st, teamOfSeat(st, s.seat)) + ' ' : '') + ctx.esc(s.nick) + ' <b>' + (s.total | 0) + '</b></span>';
     }
     const se = st.seatsEl;
     if (se && se.dataset.sig !== row) {
@@ -1349,7 +1408,13 @@
         + (champ.includes(x.seat) ? (over ? '🏆 ' : '⭐ ') : '') + '<b>' + st.ctx.esc(nickOfSeat(st, x.seat)) + '</b> '
         + '<em>' + total(x.seat) + '</em> <small title="за раунд: очки, пройдений шлях, скільки впіймала Баба, скількох звалив">+' + x.pts
         + ' · ' + (x.x >= FINISH_X ? '🏺' : Math.round(clamp((x.x - START_X) / dist, 0, 1) * 100) + '%')
-        + (x.caught ? ' · 😵' + x.caught : '') + (x.hits ? ' · 👊' + x.hits : '') + '</small></span>').join('');
+        + (x.jugs ? ' · 🏺' + x.jugs : '') + (x.caught ? ' · 😵' + x.caught : '') + (x.hits ? ' · 👊' + x.hits : '') + '</small></span>').join('');
+      const rl = v.relay;
+      if (rl && rl.teams) {
+        const [ta, tb] = rl.teams;
+        html += '<div class="freeze-teams"><span>' + st.ctx.esc(ta.name) + ' <b>' + (ta.pts | 0) + '</b> : <b>' + (tb.pts | 0) + '</b> ' + st.ctx.esc(tb.name)
+          + (v.of > 1 ? ' · раунди ' + (ta.rounds | 0) + ' : ' + (tb.rounds | 0) : '') + '</span></div>';
+      }
     }
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
@@ -1651,14 +1716,16 @@
       hint: '{dpad} іти · {a} штурхан · {x} де я?',
     },
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Замри!',
+      v: '2026-09-29',
+      title: 'Замри!: естафета до глека',
       items: [
         '🎵 Баба Параска співає «Море хвилюється» — юрма селян іде до її глека. Ти — один із них, і ніхто не знає, хто з селян живий',
         '🧊 Обернулась і крикнула «Замри!» — за мить стій як укопаний. Ворухнувся — Баба вертає тебе до тину',
         '👀 Інколи вона лише озирається через плече — хто злякався й став, той втратив час',
         '👊 Пробіл (Ⓐ) — штурхан сусідові: гравець упаде, а штурхнеш бота — сам отетерієш на очах у всіх',
-        '🏺 Раунд бере перший, хто торкнувся глека; як вийшов час — хто зайшов найдалі',
+        '🏺 Нове: опція «Естафета» — 🌻 Соняшники проти 💠 Волошок. Торкнувся глека — очко команді й знову від тину',
+        '🤝 В естафеті своїх бачиш у лице (підписані на лузі), суперників — ні. Раунд — до 5 очок',
+        '⚖️ Утрьох — двоє на одного: глек самітника йде за два',
       ],
     },
 
@@ -1777,6 +1844,10 @@
       const b = st ? st.b : 0;
       if (b === 1 || b === 2) return '🧊 Замри! Не ворушись, доки Баба дивиться';
       if (b === 3) return '👀 Баба озирається… іти чи стояти?';
+      if (st && st.view && st.view.relay) {
+        const t = relayTeam(st, teamOfSeat(st, ctx.seat));
+        return '🎵 Співає — іди! Торкнись глека — очко ' + (t ? t.name : 'команді') + ' і знову від тину · свої підписані';
+      }
       if (window.HPad && window.HPad.on) return '🎵 Співає — іди! Стік — іти · Ⓐ штурхан · Ⓧ де я?';
       return HGames.ui.coarse()
         ? '🎵 Співає — іди! Хрестовина — іти · 👊 штурхан · 👁 де я?'
