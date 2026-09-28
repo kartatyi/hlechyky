@@ -54,7 +54,9 @@
     return el;
   }
 
-  const setHtml = (el, html) => { if (el.innerHTML !== html) el.innerHTML = html; };
+  /// Порівнюємо з тим рядком, що клали самі: innerHTML браузер серіалізує по-своєму (&#39; → ', data-x → data-x=""),
+  /// і порівняння з ним майже ніколи не каже «однаково» — DOM перебудовувався б на кожен вид.
+  const setHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
 
   /// Поле короля того, хто зараз ходить — щоб підсвітити шах червоним.
   function kingSquare(board, toMove) {
@@ -145,9 +147,8 @@
     // Список ходів вищий за своє віконце вже з десятого ходу, тож після кожного нового ходу дотягуємо
     // прокрутку донизу: цікавий рівно останній рядок, а не початок партії.
     const mv = ensure(root, 'chessmoves');
-    const before = mv.innerHTML;
-    setHtml(mv, movesHtml(v.moves || []));
-    if (mv.innerHTML !== before) mv.scrollTop = mv.scrollHeight;
+    const moves = movesHtml(v.moves || []);
+    if (mv._h !== moves) { setHtml(mv, moves); mv.scrollTop = mv.scrollHeight; }
     buttons(root, ctx);
   }
 
@@ -251,7 +252,7 @@
     const c = (ctx.view || {}).clock;
     const st = root._clk || (root._clk = { key: '', base: null, at: 0, timer: 0, flagged: '' });
     if (!c) {
-      root.querySelectorAll(':scope > .bclock').forEach((el) => el.remove());
+      root.querySelectorAll(':scope > .chs-clock').forEach((el) => el.remove());
       clearInterval(st.timer);
       st.timer = 0;
       return;
@@ -259,16 +260,18 @@
     const key = JSON.stringify(c);
     if (key !== st.key) { st.key = key; st.base = c; st.at = performance.now(); }
     for (const [anchor, pos, seat] of [[topAnchor, 'top', topSeat], [bottomAnchor, 'bottom', 1 - topSeat]]) {
-      let el = root.querySelector(':scope > .bclock.' + pos);
+      let el = root.querySelector(':scope > .chs-clock.' + pos);
       if (!el) {
         el = document.createElement('div');
-        el.className = 'bclock ' + pos;
+        el.className = 'chs-clock ' + pos;
         anchor.insertAdjacentElement(pos === 'top' ? 'beforebegin' : 'afterend', el);
       }
       el.dataset.seat = String(seat);
     }
     tickClock(root, ctx);
-    if (!st.timer) st.timer = setInterval(() => tickClock(root, ctx), 200);
+    // Цокає лише посеред партії: після кінця стрілки стоять, і таймер на 200 мс нема чого тримати.
+    if (ctx.playing && c.running != null) { if (!st.timer) st.timer = setInterval(() => { if (!document.hidden) tickClock(root, ctx); }, 200); }
+    else if (st.timer) { clearInterval(st.timer); st.timer = 0; }
   }
 
   function tickClock(root, ctx) {
@@ -276,14 +279,14 @@
     if (!st || !st.base) return;
     const c = st.base;
     const now = performance.now();
-    root.querySelectorAll(':scope > .bclock').forEach((el) => {
+    root.querySelectorAll(':scope > .chs-clock').forEach((el) => {
       const seat = +el.dataset.seat;
       const run = ctx.playing && c.running === seat;
       const left = (c.ms[seat] || 0) - (run ? now - st.at : 0);
       const nick = ctx.nickOf(seat) || ctx.seatName(seat);
       const html = '<span class="who">' + ctx.esc(nick) + (seat === ctx.seat ? ' <i>(ти)</i>' : '') + '</span>'
         + '<b>' + fmtMs(left) + '</b>';
-      if (el.innerHTML !== html) el.innerHTML = html;
+      setHtml(el, html);
       el.classList.toggle('run', run);
       el.classList.toggle('low', run && left < 20000);
       el.classList.toggle('out', left <= 0);
@@ -312,7 +315,7 @@
     const s = (ctx.view || {}).series;
     if (!s || !s.wins) return '';
     const parts = [0, 1].map((i) => ctx.esc(ctx.nickOf(i) || ctx.seatName(i)) + ' <b>' + (s.wins[i] || 0) + '</b>');
-    return '<span class="gserie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(' : ')
+    return '<span class="chs-serie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(' : ')
       + (s.draws ? ' · нічиїх <b>' + s.draws + '</b>' : '') + '</span>';
   }
 

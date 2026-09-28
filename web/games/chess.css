@@ -60,23 +60,23 @@
 @media (prefers-reduced-motion: reduce) { .board.chessb .pc.slide { animation: none; } }
 
 /* ---- годинник, чим скінчилось, серія ---- */
-.bclock {
+.chs-clock {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   width: min(92vw, 420px); padding: 4px 10px; border-radius: 8px; background: var(--bg2);
   font-variant-numeric: tabular-nums; color: var(--muted); font-size: .92em;
 }
-.bclock .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bclock .who i { font-style: normal; opacity: .7; font-size: .9em; }
-.bclock b { font-size: 1.25em; color: var(--text); font-weight: 700; letter-spacing: .02em; }
-.bclock.run { background: var(--panel3); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent2); }
-.bclock.run b { color: var(--accent); }
-.bclock.low b { color: var(--danger); animation: bclow 1s steps(2, jump-none) infinite; }
-.bclock.out b { color: var(--danger); }
-@keyframes bclow { 50% { opacity: .55; } }
-@media (prefers-reduced-motion: reduce) { .bclock.low b { animation: none; } }
+.chs-clock .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chs-clock .who i { font-style: normal; opacity: .7; font-size: .9em; }
+.chs-clock b { font-size: 1.25em; color: var(--text); font-weight: 700; letter-spacing: .02em; }
+.chs-clock.run { background: var(--panel3); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent2); }
+.chs-clock.run b { color: var(--accent); }
+.chs-clock.low b { color: var(--danger); animation: chs-low 1s steps(2, jump-none) infinite; }
+.chs-clock.out b { color: var(--danger); }
+@keyframes chs-low { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .chs-clock.low b { animation: none; } }
 .chessres { color: var(--text); font-weight: 600; }
-.gserie { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .92em; }
-.gserie b { color: var(--text); }
+.chs-serie { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .92em; }
+.chs-serie b { color: var(--text); }
 
 /* ---- взяті фігури над дошкою і під нею ---- */
 .chesscap { min-height: 20px; display: flex; align-items: center; gap: 1px; font-size: 1.15em; line-height: 1; flex-wrap: wrap; }
@@ -105,6 +105,6 @@
 
 @media (max-width: 480px) {
   .board.chessb { width: min(92vw, 340px); }
-  .bclock { width: min(92vw, 340px); }
+  .chs-clock { width: min(92vw, 340px); }
   .chessmoves { max-height: 64px; }
 }

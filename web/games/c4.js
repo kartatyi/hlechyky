@@ -41,7 +41,9 @@
     if (!el) { el = document.createElement('div'); el.className = cls; root.appendChild(el); }
     return el;
   }
-  const setHtml = (el, html) => { if (el.innerHTML !== html) el.innerHTML = html; };
+  /// Порівнюємо з тим рядком, що клали самі: innerHTML браузер серіалізує по-своєму (&#39; → ', data-x → data-x=""),
+  /// і порівняння з ним майже ніколи не каже «однаково» — DOM перебудовувався б на кожен вид.
+  const setHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
 
   /// Куди впаде фішка в колонці col: найнижча вільна клітинка, або -1.
   function landing(cells, w, h, col) {
@@ -160,7 +162,7 @@
         const nick = ctx.nickOf(i);
         if (nick) parts.push('<span class="' + LETTERS[i] + '">' + ctx.esc(nick) + ' <b>' + s.wins[i] + '</b></span>');
       }
-      html += '<span class="gserie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(ctx.room.maxPlayers > 2 ? ' · ' : ' : ')
+      html += '<span class="c4-serie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(ctx.room.maxPlayers > 2 ? ' · ' : ' : ')
         + (s.draws ? ' · нічиїх <b>' + s.draws + '</b>' : '') + '</span>';
     }
     const inGame = ctx.mine && ctx.playing && (!v.active || v.active[ctx.seat] !== false);

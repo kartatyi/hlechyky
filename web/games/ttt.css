@@ -26,7 +26,7 @@
 .tttfoot:empty { display: none; }
 .tttfoot button { font-size: .9em; padding: 5px 12px; min-height: 36px; }
 .tttfoot .danger { color: var(--danger); border-color: var(--danger); }
-.gserie { color: var(--muted); font-variant-numeric: tabular-nums; }
-.gserie b { color: var(--text); }
-.gserie .x { color: var(--accent); }
-.gserie .o { color: var(--ok); }
+.ttt-serie { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ttt-serie b { color: var(--text); }
+.ttt-serie .x { color: var(--accent); }
+.ttt-serie .o { color: var(--ok); }

@@ -31,6 +31,10 @@
 
   const reduced = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  /// Порівнюємо з тим рядком, що клали самі: innerHTML браузер серіалізує по-своєму (&#39; → ', title="…"),
+  /// і порівняння з ним майже ніколи не каже «однаково» — підписи й стрічка перебудовувались на кожен вид.
+  const setHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+
   // ---------------------------------------------------------------------------------------------
   // Геометрія: та сама, що на сервері, тільки коротша. g — море з виду: { w, h, fleet }
   // ---------------------------------------------------------------------------------------------
@@ -148,6 +152,13 @@
       const b = e.target.closest('.bs-cell');
       if (b && !b.disabled && grid._onCell) grid._onCell(+b.dataset.i);
     });
+    // Мишею в розстановці видно корабель цілком ще до кліку (пальцем наведення нема — там тап одразу ставить).
+    grid.addEventListener('pointerover', (e) => {
+      if (e.pointerType !== 'mouse' || !grid._onHover) return;
+      const b = e.target.closest('.bs-cell');
+      grid._onHover(b ? +b.dataset.i : -1);
+    });
+    grid.addEventListener('pointerleave', () => { if (grid._onHover) grid._onHover(-1); });
     grid._cells = [...grid.querySelectorAll('.bs-cell')];
     side.appendChild(grid);
     return grid;
@@ -164,7 +175,7 @@
     const want = 'bs-side' + (cls ? ' ' + cls : '');
     if (side.className !== want) side.className = want;
     const cap = side.querySelector(':scope > .bs-cap');
-    if (cap.innerHTML !== caption) cap.innerHTML = caption;
+    setHtml(cap, caption);
     ensureGrid(side, g);
     return side;
   }
@@ -185,6 +196,22 @@
       const dis = !can || !can(i);
       if (b.disabled !== dis) b.disabled = dis;
     }
+  }
+
+  /// Тінь корабля під мишею в розстановці: де він ляже, якщо клікнути; червонувата — сюди не стане.
+  function preview(grid, g, s, size, at) {
+    for (const c of grid._pv || []) grid._cells[c].classList.remove('pv', 'pvbad');
+    grid._pv = [];
+    grid._hoverAt = at == null ? -1 : at;
+    if (!(at >= 0) || !size || s.plan.some((sh) => sh.cells.includes(at))) return;
+    const x = at % g.w, y = (at / g.w) | 0, show = [];
+    for (let i = 0; i < size; i++) {
+      const nx = s.horiz ? x + i : x, ny = s.horiz ? y : y + i;
+      if (nx < g.w && ny < g.h) show.push(ny * g.w + nx);
+    }
+    const cls = fits(g, s.plan, at, size, s.horiz, -1) ? 'pv' : 'pvbad';
+    for (const c of show) grid._cells[c].classList.add(cls);
+    grid._pv = show;
   }
 
   /// Мітки чужого поля: промах, влучання, потоплений; після кінця — ще й кораблі, що вціліли.
@@ -249,7 +276,7 @@
       root.insertBefore(el, root.firstChild);
     }
     const html = items.map((f, i) => '<div class="' + (i ? 'old' : 'new') + '">' + feedLine(ctx, f) + '</div>').join('');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    setHtml(el, html);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -335,7 +362,7 @@
       return '<span class="bs-mate' + (b.ready ? ' ok' : '') + '">' + who(ctx, seat)
         + (b.ready ? ' ✓' : ' <i>розставляє…</i>') + '</span>';
     }).join('');
-    if (crew.innerHTML !== crewHtml) crew.innerHTML = crewHtml;
+    setHtml(crew, crewHtml);
 
     if (mine) {
       const left = rest(g, s.plan);
@@ -358,7 +385,7 @@
         acts = document.createElement('div');
         acts.className = 'bs-acts';
         acts.innerHTML = '<button type="button" data-bs="random">🎲 Випадково</button>'
-          + '<button type="button" data-bs="turn" class="ghost" title="Повернути корабель, що ставиш">↻ Боком</button>'
+          + '<button type="button" data-bs="turn" class="ghost" title="Повернути корабель, що ставиш (клавіша R)">↻ Боком</button>'
           + '<button type="button" data-bs="clear" class="ghost">Скинути</button>'
           + '<button type="button" data-bs="ready" class="primary" data-pad-first>Готово</button>';
         acts.addEventListener('click', (e) => {
@@ -410,9 +437,11 @@
     let say = '';
     if (meOut) say = '☠️ Твій флот на дні. Дивись, хто кого';
     else if (ctx.myTurn && many) say = '🎯 Тисни клітинку на будь-якому чужому полі';
+    // Удвох «Твій хід» пише каркас під карткою, але на телефоні смуга липне до низу екрана, а статус — ні.
+    else if (ctx.myTurn) say = '<span class="bs-narrow">🎯 Твій постріл</span>';
     else if (!ctx.myTurn) say = '⏳ ' + who(ctx, v.turn, true) + ' цілиться';
     const sayEl = el.querySelector('.bs-say');
-    if (sayEl.innerHTML !== say) sayEl.innerHTML = say;
+    setHtml(sayEl, say);
     el.classList.toggle('mine', !!ctx.myTurn);
     if (v.turnUntil) HGames.ui.timerArc(el, v.turnUntil, (v.turnSeconds || 40) * 1000);
   }
@@ -436,7 +465,7 @@
     }).join('');
     const html = '<table><thead><tr><th></th><th>капітан</th><th title="Скільки чужих кораблів пущено на дно">потоплено</th>'
       + '<th title="Влучань із пострілів">влучність</th></tr></thead><tbody>' + rows + '</tbody></table>';
-    if (el.innerHTML !== html) el.innerHTML = html;
+    setHtml(el, html);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -453,13 +482,14 @@
     const html = '<b>⚓ ' + (g.key === 'quick' ? 'Швидке море 8×8, шість кораблів' : 'Класичне море 10×10, десять кораблів') + '</b>'
       + '<span>Удвох — дуель. Утрьох-учетверох — кожен проти кожного: б\'єш по кому хочеш, чий флот на дні — дивиться далі, останній на плаву виграв.</span>'
       + '<span class="muted">Від двох до чотирьох капітанів; починає господар кнопкою «Почати».</span>';
-    if (el.innerHTML !== html) el.innerHTML = html;
+    setHtml(el, html);
   }
 
   function paint(root, ctx) {
     const s = state(root);
     const v = ctx.view || {};
     const g = seaOf(v);
+    ctx._bsRoot = root;                   // onKey бачить лише ctx, а розстановка живе на картці
     const status = (ctx.room && ctx.room.status) || 'playing';
     // Стіл у лобі (зокрема після «дограли й хтось підсів») — жодних полів, лише що тут буде.
     const inLobby = status === 'lobby' || v.phase === 'lobby';
@@ -542,6 +572,10 @@
       paintGrid(meSide, g, (i) => (mine.get(i) || '') + fxOf(ctx.seat, i),
         editable ? (cell) => placeClick(root, ctx, g, cell) : null,
         (i) => editable && (mine.has(i) || free(i)));
+      const grid = meSide.querySelector(':scope > .bs-grid');
+      grid._onHover = editable ? (i) => preview(grid, g, s, pick, i) : null;
+      // paintGrid щойно переписав класи — тінь під мишею, що стоїть на місці, треба покласти знову.
+      preview(grid, g, s, editable ? pick : 0, editable ? grid._hoverAt : -1);
     }
 
     // Чужі поля: у розстановці їх не малюємо (там нема на що дивитись), лише список, хто готовий.
@@ -609,8 +643,22 @@
       host.querySelectorAll('.bs-side[data-side^="s"] .bs-cap b[title]').forEach((b) => {
         const seat = +b.closest('.bs-side').dataset.side.slice(1);
         const t = '🚢 ' + f.left[seat];
-        if (b.textContent !== t) b.textContent = t;
+        if (b.textContent === t) return;
+        b.textContent = t;
+        b.closest('.bs-cap')._h = null;   // підпис уже не той, що клав вид, — наступний вид перепише його чесно
       });
+    },
+
+    /// R — повернути корабель, що ставиш (те саме, що «↻ Боком»), поки розстановка не скінчилась.
+    onKey(e, ctx) {
+      const root = ctx._bsRoot, v = ctx.view || {};
+      if (e.code !== 'KeyR' || e.ctrlKey || e.metaKey || e.altKey || !root || !root._bs) return false;
+      if (!ctx.playing || !ctx.mine || v.phase !== 'placing' || !v.me || v.me.ready) return false;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return false;
+      root._bs.horiz = !root._bs.horiz;
+      paint(root, ctx);
+      return true;
     },
 
     status(ctx) {

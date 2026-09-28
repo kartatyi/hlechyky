@@ -30,7 +30,9 @@
     if (!el) { el = document.createElement('div'); el.className = cls; root.appendChild(el); }
     return el;
   }
-  const setHtml = (el, html) => { if (el.innerHTML !== html) el.innerHTML = html; };
+  /// Порівнюємо з тим рядком, що клали самі: innerHTML браузер серіалізує по-своєму (&#39; → ', data-x → data-x=""),
+  /// і порівняння з ним майже ніколи не каже «однаково» — DOM перебудовувався б на кожен вид.
+  const setHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
 
   function paint(root, ctx, fading) {
     const v = ctx.view || {};
@@ -94,7 +96,7 @@
         const nick = ctx.nickOf(i);
         if (nick) parts.push('<span class="' + (i ? 'o' : 'x') + '">' + ctx.esc(nick) + ' <b>' + (s.wins[i] || 0) + '</b></span>');
       }
-      html += '<span class="gserie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(' : ')
+      html += '<span class="ttt-serie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(' : ')
         + (s.draws ? ' · нічиїх <b>' + s.draws + '</b>' : '') + '</span>';
     }
     // Здатись — лише в зникаючих: у класиці партія на дев'ять ходів, а там нічиєї не буває й гра може тягтись.
