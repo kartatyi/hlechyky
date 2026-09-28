@@ -483,6 +483,7 @@
         hudEl: null, clockEl: null, newsEl: null, sumEl: null, padEl: null, stageEl: null, seatsEl: null,
         audio: null, mute: readMute(),
         perf: { sum: 0, n: 0, max: 0 }, wakeAt: 0,
+        pick: null, specGuess: new Map(), specHits: 0, specTried: new Set(), specSum: null,
       };
     }
     st.ctx = ctx;
@@ -605,7 +606,12 @@
       st.fallAt.clear();
       st.shotAt = st.buyAt = -1e9;
       st.haggleUntil = 0;
+      st.specGuess.clear();
+      st.specTried.clear();
+      st.specHits = 0;
+      st.specSum = null;
     }
+    if (v.phase !== 'go' || (st.me && st.me.alive)) closePick(st);
     if (st.me && st.me.haggle > 0) st.haggleUntil = Math.max(st.haggleUntil, performance.now() + st.me.haggle * TICK_MS);
     // повернувся посеред раунду (F5, реконект) — сам підсвічуємо, де ти, як на відліку
     if (st.autoPeek && st.me) {
@@ -659,6 +665,8 @@
         const name = nameOf(st, b), she = FEMALE.has(name);
         const from = 'камінець від когось ' + looksLike(st, a);
         if (kind === 1) {
+          if (st.specGuess.get(seat) === b) st.specHits++;
+          st.specGuess.delete(seat);
           news(st, '💥 <b class="crowd-s' + seat + '">' + st.ctx.esc(nickOfSeat(st, seat)) + '</b> вибуває — це ' + (she ? 'була ' : 'був ')
             + st.ctx.esc(name) + '! ' + (a === st.meId ? 'Твій камінець' : 'Влучив хтось ' + looksLike(st, a)));
           sfx(st, 'out');
@@ -863,6 +871,7 @@
       if (now < st.haggleUntil) haggleRing(g, st.px[st.meId], st.py[st.meId], pal, 1 - (st.haggleUntil - now) / HAGGLE_MS);
     }
     labels(st, g, pal, n, phase);
+    guessLabels(st, g, pal, n, phase);
 
     g.setTransform(k, 0, 0, k, 0, 0);
     shade(st, g, pal, cv.w, cv.h, cx, cy, phase, playing, mine, now);
@@ -1342,7 +1351,11 @@
       html = rows.map((x) => '<span class="crowd-sc crowd-s' + x.seat + (champ.includes(x.seat) ? ' win' : '') + '">'
         + (champ.includes(x.seat) ? (over ? '🏆 ' : '⭐ ') : '') + '<b>' + st.ctx.esc(nickOfSeat(st, x.seat)) + '</b> '
         + '<em>' + total(x.seat) + '</em> <small title="за раунд: покупки зі списку, збиті гравці">+' + x.pts
-        + ' · 🧺' + x.buy + (x.kills ? ' · 🎯' + x.kills : '') + '</small></span>').join('');
+        + ' · 🧺' + x.buy + (x.kills ? ' · 🎯' + x.kills : '') + (x.guess ? ' · 🕵' + x.guess : '') + '</small></span>').join('');
+      const fun = (r.fun || []).slice();
+      const spec = specScore(st, r);
+      if (spec) fun.unshift(spec);
+      if (fun.length) html += '<div class="crowd-fun">' + fun.map((l) => '<span>' + st.ctx.esc(l) + '</span>').join('') + '</div>';
     }
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
@@ -1459,11 +1472,116 @@
     return !!(ctx && ctx.mine && ctx.playing && alive(st) && phaseOf(st) === 'go');
   }
 
+  // ---------- детектив (п. 121) ----------
+  // Хто вибув або дивиться, тицяє по селянину: «це Оля?». Вибулому здогадки тримає сервер (+1 очко за влучну на
+  // розкритті), глядачеві — сама сторінка: на розкритті скажемо, скільки вгадав. Чужих здогадок не бачить ніхто.
+
+  const sleuth = (st) => {
+    const c = st.ctx;
+    return !!(c && c.playing && phaseOf(st) === 'go' && (c.mine ? st.me && !st.me.alive : true));
+  };
+
+  /// Здогадки: місце → id селянина.
+  function guesses(st) {
+    if (!(st.ctx && st.ctx.mine)) return st.specGuess;
+    const m = new Map(), g = (st.me && st.me.guess) || [];
+    for (let i = 0; i + 1 < g.length; i += 2) m.set(g[i], g[i + 1]);
+    return m;
+  }
+
+  const suspects = (st) => ((st.view && st.view.seats) || []).filter((s) => s.alive && !s.out);
+
+  function closePick(st) {
+    if (!st.pick) return;
+    st.pick.el.remove();
+    st.pick = null;
+  }
+
+  function openPick(st, id, e) {
+    closePick(st);
+    const list = suspects(st), esc = st.ctx.esc;
+    if (!list.length || !st.stageEl) return;
+    let cur = -1;
+    for (const [s, x] of guesses(st)) if (x === id) cur = s;
+    const el = document.createElement('div');
+    el.className = 'crowd-pick';
+    el.innerHTML = '<div class="crowd-pick-q">🕵 ' + esc(nameOf(st, id)) + ' — це хто з гравців?</div>'
+      + list.map((s) => '<button type="button" class="crowd-s' + s.seat + (cur === s.seat ? ' on' : '') + '" data-seat="' + s.seat + '">'
+        + esc(s.nick) + '?</button>').join('')
+      + (cur >= 0 ? '<button type="button" class="crowd-pick-no" data-seat="-1">✕ просто селянин</button>' : '');
+    st.stageEl.appendChild(el);
+    const r = st.stageEl.getBoundingClientRect();
+    const x = clamp(e.clientX - r.left - el.offsetWidth / 2, 4, Math.max(4, r.width - el.offsetWidth - 4));
+    const below = e.clientY - r.top + 18, above = e.clientY - r.top - el.offsetHeight - 18;
+    el.style.left = x + 'px';
+    el.style.top = (above >= 4 ? above : Math.min(below, Math.max(4, r.height - el.offsetHeight - 4))) + 'px';
+    el.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+    el.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      guess(st, id, b.dataset.seat | 0, cur);
+      closePick(st);
+    });
+    st.pick = { el, id };
+  }
+
+  function guess(st, id, seat, cur) {
+    const ctx = st.ctx;
+    if (ctx.mine) {
+      ctx.act('guess', seat < 0 ? { id: -1, seat: cur } : { id, seat });
+    } else if (seat < 0) {
+      st.specGuess.delete(cur);
+    } else {
+      for (const [s, x] of st.specGuess) if (x === id) st.specGuess.delete(s);
+      st.specGuess.set(seat, id);
+      st.specTried.add(seat);
+    }
+    wake(st);
+  }
+
+  /// Глядачеві на розкритті: «🕵 Ти вгадав двох із трьох» (раз на раунд, далі тримаємо).
+  function specScore(st, r) {
+    if (st.ctx && st.ctx.mine) return '';
+    if (!st.specSum && st.specTried.size) {
+      let hits = st.specHits;
+      for (const p of r.ids || []) if (st.specGuess.get(p.seat) === p.id) hits++;
+      st.specGuess.clear();
+      st.specSum = '🕵 Ти вгадав ' + hits + ' з ' + st.specTried.size + (hits && hits === st.specTried.size ? ' — Шерлок ярмарку!' : '');
+    }
+    return st.specSum || '';
+  }
+
+  /// «Оля?» над селянином, на якого я показав, — лише мені.
+  function guessLabels(st, g, pal, n, phase) {
+    if (phase !== 'go' || !sleuth(st)) return;
+    const gs = guesses(st);
+    if (!gs.size) return;
+    const px = st.mode === 'port' ? 14 : 12, h = px + 5;
+    g.font = 'italic 700 ' + px + 'px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    for (const [seat, id] of gs) {
+      if (id < 0 || id >= n || st.ps[id] >= 3) continue;
+      const text = nickOfSeat(st, seat) + '?', w = g.measureText(text).width + 12;
+      const x = st.px[id], y = st.py[id] - (st.ps[id] >= 2 ? 16 : 34);
+      g.fillStyle = 'rgba(12, 22, 14, .7)';
+      g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, h / 2); g.fill();
+      g.setLineDash([3, 3]);
+      g.strokeStyle = pal.seats[seat] || pal.text;
+      g.lineWidth = 1.5;
+      g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = pal.seats[seat] || pal.text;
+      g.fillText(text, x, y + 0.5);
+    }
+  }
+
   function wireCanvas(st) {
     const el = st.cv.el;
     el.addEventListener('pointerdown', (e) => {
       unlock(st);
       wake(st);
+      closePick(st);
       st.down = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, cam: { x: st.cam.x, y: st.cam.y } };
       if (st.mode === 'port') {
         // мінімапа: тиць — туди й камера (глядачеві й мертвому)
@@ -1506,7 +1624,14 @@
       if (!d || d.id !== e.pointerId) return;
       st.down = null;
       st.drag = false;
-      if (d.moved || e.type === 'pointercancel' || !canAct(st)) return;
+      if (d.moved || e.type === 'pointercancel') return;
+      if (!canAct(st)) {
+        if (!sleuth(st)) return;
+        const [gx, gy] = toWorld(st, e);
+        const gid = pickVillager(st, gx, gy, e.pointerType === 'mouse' ? 20 : 26);
+        if (gid >= 0) openPick(st, gid, e);
+        return;
+      }
       const [x, y] = toWorld(st, e);
       const hit = clickAt(st, x, y, e.pointerType === 'mouse' ? 20 : 24);
       if (hit.stall >= 0) buy(st, hit.stall);
@@ -1701,14 +1826,13 @@
       hint: '{dpad} іти · {a} рогатка · {x} купити · {lb} де я?',
     },
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Юрма',
+      v: '2026-09-29',
+      title: 'Юрма: детектив і смішинки',
       items: [
-        '👥 Ярмарок повен селян — і ти один із них. Ніхто не знає, хто з юрми живий',
-        '🧺 Обійди 4 лотки зі свого списку (вони пульсують на мапі): підійди й натисни E (Ⓧ) — лоток спалахне для всіх',
-        '🪨 Три камінці в рогатці: пробіл (Ⓐ) — постріл у того, хто перед тобою, або клік по селянину. Влучив у бота — видав себе',
-        '👁 Забув, хто ти? Q (LB) підсвітить тебе на півтори секунди. Тільки тобі',
-        '🏆 Раунд бере перший, хто скупився, або останній живий; партія — з трьох раундів',
+        '🕵 Тебе збили — не нудьгуй: тицяй по селянину «це Оля?». Влучна здогадка — +1 очко на розкритті',
+        '👀 Глядачі теж вгадують — на розкритті сторінка скаже, скільки з них ти розкусив',
+        '🥸 На розкритті — смішинки раунду: снайпер, найкращий блеф і хто на нього купився, вірний хвостик-бот',
+        '🙈 …і хто двадцять секунд стояв поруч із суперником, так нічого й не запідозривши',
       ],
     },
 
@@ -1828,8 +1952,8 @@
         return v && v.round >= v.of ? 'Підсумок партії за ' + s + ' с' : 'Наступний раунд за ' + s + ' с';
       }
       if (ph !== 'go') return '';
-      if (!ctx.mine) return HGames.ui.coarse() ? 'Вгадуй разом із гравцями, хто з юрми живий · тягни мапу пальцем' : 'Вгадуй разом із гравцями, хто з юрми живий';
-      if (st && st.me && !st.me.alive) return 'Тебе збили — дивись, хто кого';
+      if (!ctx.mine) return HGames.ui.coarse() ? '🕵 Тиць по селянину — вгадай, хто з юрми живий · тягни мапу пальцем' : '🕵 Клацни по селянину — вгадай, хто з юрми живий';
+      if (st && st.me && !st.me.alive) return '🕵 Тебе збили — тицяй по селянах і вгадуй, хто з них гравці: +1 за кожного влучного';
       if (st && performance.now() < st.haggleUntil) return '🧺 Торгуєшся… ще мить — стій, не тікай';
       if (window.HPad && window.HPad.on) return 'Стік — іти · Ⓐ рогатка · Ⓧ купити · LB — де я? Купують, стоячи на стежці перед лотком';
       return HGames.ui.coarse()
