@@ -230,3 +230,59 @@
   .bs-cell.wait::after, .bs-cell.fx::before, .bs-cell.fx, .bs-feed .new { animation: none; }
   .bs-side, .bs-grid { transition: none; }
 }
+
+/* прохід №3: слово Глека, реакції, помста, боти */
+.bs-feed .bs-lines { display: flex; flex-direction: column; gap: 2px; align-items: center; width: 100%; }
+.bs-quip { font-size: .9em; color: var(--muted); font-style: italic; }
+.bs-rxs { margin-left: 4px; white-space: nowrap; }
+.bs-rxi { font-size: 1.05em; }
+.bs-react { display: flex; gap: 6px; justify-content: center; margin-top: 2px; }
+.bs-react[hidden] { display: none; }
+.bs-rxb { min-width: 44px; height: 36px; padding: 0 8px; justify-content: center; font-size: 1.1em; border-radius: 10px; }
+.bs-side { position: relative; }
+.bs-rx {
+  position: absolute; left: 50%; top: 0; z-index: 3; pointer-events: none;
+  display: flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  background: var(--card, var(--bg)); box-shadow: 0 2px 10px rgba(0, 0, 0, .25); border: 1px solid var(--seat);
+  transform: translate(-50%, -40%); animation: bs-rx 1.8s ease-out both;
+}
+.bs-rx b { font-size: 1.3em; line-height: 1; }
+.bs-rx small { font-size: .78em; font-weight: 600; }
+@keyframes bs-rx { 0% { opacity: 0; transform: translate(-50%, 0) scale(.6); } 12% { opacity: 1; transform: translate(-50%, -40%) scale(1.08); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%); } }
+@media (max-width: 520px) { .bs-rxb { height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .bs-rx { animation: none; } }
+
+/* ⚓ Арсенал */
+.bs-grid { position: relative; }
+.bs-cell.rd::after { content: attr(data-n); position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; font-size: .78em; color: var(--accent); }
+.bs-cell.rd { position: relative; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+.bs-cell.boom { background: color-mix(in srgb, var(--danger) 30%, transparent); }
+.bs-cell.boom::after { content: '💥'; position: absolute; inset: 0; display: grid; place-items: center; font-size: .7em; }
+.bs-cell.patch { box-shadow: inset 0 0 0 2px var(--ok); }
+.bs-cell.mine { position: relative; }
+.bs-cell.mine:not(.boom)::after { content: '🧨'; position: absolute; inset: 0; display: grid; place-items: center; font-size: .62em; opacity: .75; }
+.bs-cell.fix { outline: 2px dashed var(--ok); outline-offset: -2px; cursor: pointer; }
+.bs-side.armed .bs-grid { border-color: var(--clay); box-shadow: 0 0 0 2px var(--clay); }
+.bs-fly { position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; font-size: 1.35em; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); }
+.bs-shop { width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 6px; font-size: .9em; }
+.bs-shop-h { text-align: center; }
+.bs-shop-f { color: var(--muted); font-size: .88em; text-align: center; }
+.bs-its { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.bs-it { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; align-items: center; padding: 6px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); }
+.bs-it.got { border-color: var(--accent); }
+.bs-it > button[data-buy] { display: flex; align-items: center; gap: 6px; min-height: 44px; justify-content: flex-start; text-align: left; }
+.bs-it > button[data-buy] b { margin-left: auto; white-space: nowrap; }
+.bs-ico { font-size: 1.2em; }
+.bs-sell { min-height: 44px; padding: 0 10px; }
+.bs-it small { grid-column: 1 / -1; color: var(--muted); font-size: .84em; line-height: 1.25; }
+.bs-arm { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; width: 100%; font-size: .9em; }
+.bs-arm button { min-height: 44px; }
+.bs-arm-h { color: var(--muted); font-size: .9em; flex-basis: 100%; text-align: center; min-height: 1.2em; }
+.bs-mines { color: var(--muted); }
+.bs-coins { margin-top: 6px; text-align: center; font-size: .92em; }
+@media (max-width: 520px) {
+  .bs-its { grid-template-columns: 1fr; }
+  .bs-it small { display: none; }
+  .bs-it.got small, .bs-it:first-child small { display: block; }
+}
+@media (prefers-reduced-motion: reduce) { .bs-fly { display: none; } }

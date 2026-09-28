@@ -44,6 +44,7 @@ public static class GamesSetup
         Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
         Impl.DotepySetup.AddDotepy(services);               // «Дотепи»: голос Глека, голос публіки
         Impl.GeoSetup.AddGeo(services);   // «Де це?»: фото з Вікісховища в cache/geo
+        Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
         Impl.PictionarySetup.AddPictionary(services);       // Піктіонарі: публічний альбом і рекорди пар
         return services;
     }

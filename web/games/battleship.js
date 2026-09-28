@@ -8,9 +8,14 @@
       me: { ships, ready, hits, misses } | null,
       enemy: known,                              // старе «чуже поле» на двох
       boards: [known | null] × 4,                // публічне знання про кожне поле; null — місце не грає
-      feed: [{ by, at, cell, res: 'miss'|'hit'|'sunk'|'out'|'left', size, auto }],
+      feed: [{ by, at, cell, res: 'miss'|'hit'|'sunk'|'out'|'left'|'mine', size, auto, revenge, quip, rx: [4]|null,
+               tool, cells, n, boom }],
+      revenge: { by, on } | null,                 // остання помста: вибулий by має один постріл по on
+      react: [4], reactN: [4],                     // остання реакція місця і лічильник (бульбашка — коли росте)
+      bots, arsenal,
       shots, result: { winner, shots[], hits[], sank[], places[] } | null }
-    known = { hits, misses, sunk, ready, left, out, reveal }   // reveal — увесь флот, лише після кінця
+    known = { hits, misses, sunk, ready, left, out, bot, reveal, boom, patched }   // reveal — увесь флот, лише після кінця
+    bot — ім'я Глека (з 🤖), якщо місце зайняв бот «Глек підсідає»
   Кадр: { phase, turn, placeLeft, ready[], left[], shots, winner } — кораблів там нема й бути не може:
   кадр летить усім одразу.
 
@@ -110,6 +115,11 @@
         round: 0,
         sea: '',
         fx: '',             // останній постріл, який уже анімували (щоб не блимати на кожен вид)
+        rxSeen: null,       // лічильники реакцій з минулого виду
+        rxTimers: [],
+        rxTimer: 0,
+        rxUntil: 0,
+        arm: '',            // штука з трюму, якою цілюсь зараз (замість пострілу)
       };
     }
     return root._bs;
@@ -185,7 +195,7 @@
     host.querySelectorAll(':scope > .bs-side').forEach((el) => { if (!keep.has(el.dataset.side)) el.remove(); });
   }
 
-  function paintGrid(side, g, cls, onCell, can) {
+  function paintGrid(side, g, cls, onCell, can, lab) {
     const grid = ensureGrid(side, g);
     grid._onCell = onCell || null;
     for (let i = 0; i < g.w * g.h; i++) {
@@ -195,6 +205,9 @@
       if (b.className !== want) b.className = want;
       const dis = !can || !can(i);
       if (b.disabled !== dis) b.disabled = dis;
+      // Число радара (скільки цілих палуб у квадраті) — лише на своїх розвідданих клітинках.
+      const n = lab ? lab(i) : '';
+      if ((b.dataset.n || '') !== n) { if (n) b.dataset.n = n; else delete b.dataset.n; }
     }
   }
 
@@ -221,6 +234,8 @@
     for (const c of (known && known.misses) || []) m.set(c, 'miss');
     for (const c of (known && known.hits) || []) m.set(c, 'hit');
     for (const ship of (known && known.sunk) || []) for (const c of ship) m.set(c, 'sunk');
+    for (const c of (known && known.boom) || []) m.set(c, 'miss boom');
+    for (const c of (known && known.patched) || []) if (!m.has(c)) m.set(c, 'patch');
     return m;
   }
 
@@ -234,6 +249,7 @@
       for (const c of ship) m.set(c, dead ? 'ship sunk' : hits.has(c) ? 'ship hit' : 'ship');
     }
     for (const c of hits) if (!m.has(c)) m.set(c, 'hit');
+    for (const c of (me && me.mines) || []) m.set(c, (m.get(c) || '') + ' mine');
     return m;
   }
 
@@ -243,8 +259,15 @@
 
   const players = (v) => (Array.isArray(v.players) && v.players.length ? v.players : [0, 1]);
 
+  /// Імена Глеків за столом: місця ботів у каркасі порожні, тож ім'я береться з виду.
+  let BOTS = [];
+  const nameOf = (ctx, seat) => BOTS[seat] || ctx.nickOf(seat) || ctx.seatName(seat);
+
+  /// Реакції на свіжий постріл (№62): 😱 😂 🎯.
+  const REACTS = [['😱', 'ой-йой'], ['😂', 'ха!'], ['🎯', 'снайпер']];
+
   function who(ctx, seat, bold) {
-    const name = ctx.esc(ctx.nickOf(seat) || ctx.seatName(seat));
+    const name = ctx.esc(nameOf(ctx, seat));
     return '<span class="bs-who s' + seat + '">' + MARK[seat] + ' ' + (bold ? '<b>' + name + '</b>' : name) + '</span>';
   }
 
@@ -253,6 +276,12 @@
     const auto = f.auto ? '⏰ ' : '';
     const by = who(ctx, f.by), at = who(ctx, f.at);
     const tail = f.auto ? ' <i>(гармата вистрілила сама)</i>' : '';
+    if (f.tool && TOOL_LINE[f.tool]) return TOOL_LINE[f.tool](ctx, f, by, at);
+    if (f.res === 'mine') return '💥 ' + by + ' → ' + at + ': міна! Рикошет — ' + (BOOM[f.boom] || 'мимо');
+    if (f.revenge) {
+      const r = { miss: 'мимо', hit: 'влучання!', sunk: (DECKS[f.size] || 'корабель') + ' на дні!', out: 'флот на дні!' }[f.res] || '';
+      return auto + '💀 Остання помста: ' + by + ' → ' + at + ': ' + r + tail;
+    }
     switch (f.res) {
       case 'miss': return auto + '💦 ' + by + ' → ' + at + ': мимо' + tail;
       case 'hit': return auto + '🎯 ' + by + ' → ' + at + ': влучання!' + tail;
@@ -263,20 +292,91 @@
     }
   }
 
+  /// Реакції столу на постріл: смайлик кожного, хто відгукнувся (нік — у підказці).
+  function rxLine(ctx, f) {
+    if (!f.rx) return '';
+    const out = [];
+    f.rx.forEach((e, seat) => {
+      if (e >= 0 && REACTS[e]) out.push('<span class="bs-rxi" title="' + ctx.esc(nameOf(ctx, seat)) + '">' + REACTS[e][0] + '</span>');
+    });
+    return out.length ? ' <span class="bs-rxs">' + out.join('') + '</span>' : '';
+  }
+
+  /// Рядки стрічки для штук з арсеналу — див. блок «Арсенал» нижче.
+  const cellName = (g, c) => COLS[c % g.w] + (((c / g.w) | 0) + 1);
+  let SEA = CLASSIC;
+  const outcome = (f) => (f.res === 'mine' ? '💥 збито міною, рикошет — ' + (BOOM[f.boom] || 'мимо')
+    : { miss: 'усе мимо', hit: 'влучання!', sunk: (DECKS[f.size] || 'корабель') + ' на дні!', out: 'флот на дні!' }[f.res] || '');
+  const TOOL_LINE = {
+    plane: (ctx, f, by, at) => '✈️ ' + by + ' → ' + at + ': літак над рядком ' + (((f.cell / SEA.w) | 0) + 1) + ' — ' + outcome(f),
+    torpedo: (ctx, f, by, at) => '🚀 ' + by + ' → ' + at + ': торпеда стовпцем ' + COLS[f.cell % SEA.w] + ' — ' + outcome(f),
+    bomb: (ctx, f, by, at) => '💣 ' + by + ' → ' + at + ': бомба на ' + cellName(SEA, (f.cells || [f.cell])[0]) + ' — ' + outcome(f),
+    radar: (ctx, f, by, at) => '📡 ' + by + ' → ' + at + ': радар на ' + cellName(SEA, f.cell)
+      + (f.n == null ? '' : ' — цілих палуб: <b>' + f.n + '</b>'),
+    repair: (ctx, f, by) => '🔧 ' + by + ' латає свій корабель',
+  };
+  const BOOM = { hit: 'влучання по ньому самому', sunk: 'власний корабель на дні', out: 'власний флот на дні', none: 'мимо' };
+
   function feed(root, ctx, v) {
     let el = root.querySelector(':scope > .bs-feed');
-    const items = (v.feed || []).slice(-3).reverse();
-    const show = (v.phase === 'battle' || v.phase === 'done') && items.length && players(v).length > 2;
-    // Удвох стрічка — зайва балачка: усе видно на двох полях. У компанії без неї не зрозуміти, хто кого.
+    // Удвох — два останні рядки (там слово Глека, реакції й арсенал), у компанії — три: без них не зрозуміти, хто кого.
+    const items = (v.feed || []).slice(players(v).length > 2 ? -3 : -2).reverse();
+    const show = (v.phase === 'battle' || v.phase === 'done') && items.length;
     if (!show) { if (el) el.remove(); return; }
     if (!el) {
       el = document.createElement('div');
       el.className = 'bs-feed';
-      el.setAttribute('aria-live', 'polite');
+      el.innerHTML = '<div class="bs-lines" aria-live="polite"></div><div class="bs-react" hidden>'
+        + REACTS.map((r, i) => '<button type="button" class="ghost bs-rxb" data-rx="' + i + '" title="' + r[1] + '">' + r[0] + '</button>').join('')
+        + '</div>';
+      el.querySelector('.bs-react').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-rx]');
+        const o = el._o;
+        if (!b || !o || b.disabled) return;
+        const st = state(root);
+        st.rxUntil = performance.now() + 1250;
+        el.querySelectorAll('.bs-rxb').forEach((x) => { x.disabled = true; });
+        clearTimeout(st.rxTimer);
+        st.rxTimer = setTimeout(() => el.querySelectorAll('.bs-rxb').forEach((x) => { x.disabled = false; }), 1300);
+        o.ctx.act('react', { e: +b.dataset.rx }).catch(() => {});
+      });
       root.insertBefore(el, root.firstChild);
     }
-    const html = items.map((f, i) => '<div class="' + (i ? 'old' : 'new') + '">' + feedLine(ctx, f) + '</div>').join('');
-    setHtml(el, html);
+    el._o = { ctx };
+    const html = items.map((f, i) => {
+      const quip = f.quip ? '<div class="bs-quip">🏺 ' + ctx.esc(f.quip) + '</div>' : '';
+      return '<div class="' + (i ? 'old' : 'new') + '">' + feedLine(ctx, f) + (i ? '' : rxLine(ctx, f)) + (i ? '' : quip) + '</div>';
+    }).join('');
+    setHtml(el.firstElementChild, html);
+    // Реагувати може кожен, хто сидить за столом, — і той, чий флот уже на дні: йому саме є що робити.
+    const rx = el.querySelector('.bs-react');
+    const can = !!(ctx.mine && ctx.seat != null && v.boards && v.boards[ctx.seat]);
+    if (rx.hidden === can) rx.hidden = !can;
+  }
+
+  /// Бульбашка реакції над полем того, хто відреагував: лише коли його лічильник виріс.
+  function bubbles(root, ctx, v) {
+    const st = state(root);
+    const n = v.reactN || [], e = v.react || [];
+    const seen = st.rxSeen;
+    st.rxSeen = n.slice();
+    if (!seen) return;
+    for (let seat = 0; seat < 4; seat++) {
+      if (!((n[seat] | 0) > (seen[seat] | 0))) continue;
+      const key = seat === ctx.seat && ctx.mine ? 'me' : 's' + seat;
+      const cap = root.querySelector('.bs-side[data-side="' + key + '"] > .bs-cap');
+      const r = REACTS[e[seat] | 0];
+      if (!cap || !r) continue;
+      const side = cap.parentElement;
+      const old = side.querySelector(':scope > .bs-rx');
+      if (old) old.remove();
+      const b = document.createElement('span');
+      b.className = 'bs-rx';
+      b.innerHTML = '<b>' + r[0] + '</b><small>' + r[1] + '</small>';
+      side.appendChild(b);
+      const t = setTimeout(() => { b.remove(); st.rxTimers = st.rxTimers.filter((x) => x !== t); }, 1900);
+      st.rxTimers.push(t);
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -433,16 +533,19 @@
     }
     const many = players(v).length > 2;
     const meOut = ctx.mine && v.boards && v.boards[ctx.seat] && v.boards[ctx.seat].out;
+    const rv = v.revenge;
     // «Твій хід» / «Ходить …» каркас пише сам у статусі — тут лише те, чого він не знає.
     let say = '';
-    if (meOut) say = '☠️ Твій флот на дні. Дивись, хто кого';
+    if (rv && rv.by === ctx.seat && ctx.mine) say = '💀 Остання помста: один постріл по полю ' + who(ctx, rv.on, true);
+    else if (rv) say = '💀 ' + who(ctx, rv.by, true) + ' мститься: останній постріл по ' + who(ctx, rv.on);
+    else if (meOut) say = '☠️ Твій флот на дні. Дивись, хто кого';
     else if (ctx.myTurn && many) say = '🎯 Тисни клітинку на будь-якому чужому полі';
     // Удвох «Твій хід» пише каркас під карткою, але на телефоні смуга липне до низу екрана, а статус — ні.
     else if (ctx.myTurn) say = '<span class="bs-narrow">🎯 Твій постріл</span>';
     else if (!ctx.myTurn) say = '⏳ ' + who(ctx, v.turn, true) + ' цілиться';
     const sayEl = el.querySelector('.bs-say');
     setHtml(sayEl, say);
-    el.classList.toggle('mine', !!ctx.myTurn);
+    el.classList.toggle('mine', !!ctx.myTurn && (!meOut || !!(rv && rv.by === ctx.seat)));
     if (v.turnUntil) HGames.ui.timerArc(el, v.turnUntil, (v.turnSeconds || 40) * 1000);
   }
 
@@ -463,8 +566,11 @@
       return '<tr' + (seat === ctx.seat ? ' class="me"' : '') + '><td>' + medals[i] + '</td><td>' + who(ctx, seat) + '</td>'
         + '<td>🔥 ' + sank + '</td><td>🎯 ' + hits + '/' + shots + ' <i>' + pct + '%</i></td></tr>';
     }).join('');
+    const led = v.arsenal && v.arsenal.ledger && ctx.mine ? v.arsenal.ledger[ctx.seat] : null;
+    const money = led ? '<div class="bs-coins">⚓ Шеляги: витрачено 🪙 ' + led[0] + ', за бій 🪙 ' + led[1]
+      + ' → у гаманці <b>🪙 ' + led[2] + '</b></div>' : '';
     const html = '<table><thead><tr><th></th><th>капітан</th><th title="Скільки чужих кораблів пущено на дно">потоплено</th>'
-      + '<th title="Влучань із пострілів">влучність</th></tr></thead><tbody>' + rows + '</tbody></table>';
+      + '<th title="Влучань із пострілів">влучність</th></tr></thead><tbody>' + rows + '</tbody></table>' + money;
     setHtml(el, html);
   }
 
@@ -481,7 +587,9 @@
     }
     const html = '<b>⚓ ' + (g.key === 'quick' ? 'Швидке море 8×8, шість кораблів' : 'Класичне море 10×10, десять кораблів') + '</b>'
       + '<span>Удвох — дуель. Утрьох-учетверох — кожен проти кожного: б\'єш по кому хочеш, чий флот на дні — дивиться далі, останній на плаву виграв.</span>'
-      + '<span class="muted">Від двох до чотирьох капітанів; починає господар кнопкою «Почати».</span>';
+      + (v.arsenal ? '<span>⚓ <b>Арсенал:</b> на розстановці купуєш за 🪙 шеляги до трьох штук — радар, бомбу, торпеду, літак, міну чи ремонт — і в бою пускаєш замість пострілу. Хто переміг ощадливо, той отримає більше.</span>' : '')
+      + (v.bots ? '<span>🤖 На порожні місця підсяде Глек (' + v.bots + '): добиває підбите, шукає шаховим візерунком. Черепків за перемогу над ним нема.</span>' : '')
+      + '<span class="muted">Від двох до чотирьох капітанів (разом із Глеками); починає господар кнопкою «Почати». Утрьох-учетверох потоплений має останній постріл по кривднику.</span>';
     setHtml(el, html);
   }
 
@@ -529,6 +637,7 @@
 
     const seats = players(v);
     const boards = v.boards || [];
+    BOTS = boards.map((b) => (b && b.bot) || null);
     const knownOf = (seat) => boards[seat] || (seat !== ctx.seat ? v.enemy : null) || {};
     const iPlay = ctx.mine && !!v.me;
     const keep = new Set();
@@ -539,7 +648,9 @@
     const lastKey = last ? last.by + ':' + last.at + ':' + last.cell + ':' + (v.shots || 0) : '';
     const fresh = lastKey && lastKey !== s.fx && !reduced();
     s.fx = lastKey;
-    const fxOf = (seat, i) => (last && last.at === seat && last.cell === i ? (fresh ? ' last fx ' + last.res : ' last') : '');
+    const hitCells = last && last.tool !== 'radar' && last.tool !== 'repair' ? (last.cells || [last.cell]) : [];
+    const fxOf = (seat, i) => (last && last.at === seat && hitCells.includes(i) ? (fresh ? ' last fx ' + last.res : ' last') : '');
+    SEA = g;
 
     if (iPlay) {
       const me = v.me || {};
@@ -569,9 +680,13 @@
       const meSide = ensureSide(host, 'me', cap, g,
         's' + ctx.seat + ' mine' + (v.turn === ctx.seat && phase === 'battle' ? ' turn' : '') + (out ? ' out' : ''));
       keep.add('me');
-      paintGrid(meSide, g, (i) => (mine.get(i) || '') + fxOf(ctx.seat, i),
-        editable ? (cell) => placeClick(root, ctx, g, cell) : null,
-        (i) => editable && (mine.has(i) || free(i)));
+      // Ремонт: у свій хід тиснеш підбиту палубу свого ще живого корабля.
+      const fixing = phase === 'battle' && s.arm === 'repair' && ctx.myTurn && !v.revenge && !out;
+      const fixable = (i) => mine.get(i) === 'ship hit';
+      paintGrid(meSide, g, (i) => (mine.get(i) || '') + fxOf(ctx.seat, i) + (fixing && fixable(i) ? ' fix' : ''),
+        editable ? (cell) => placeClick(root, ctx, g, cell)
+          : fixing ? (cell) => { s.arm = ''; ctx.act('use', { item: 'repair', cell, at: ctx.seat }); paint(root, ctx); } : null,
+        (i) => (editable && (mine.has(i) || free(i))) || (fixing && fixable(i)));
       const grid = meSide.querySelector(':scope > .bs-grid');
       grid._onHover = editable ? (i) => preview(grid, g, s, pick, i) : null;
       // paintGrid щойно переписав класи — тінь під мишею, що стоїть на місці, треба покласти знову.
@@ -583,6 +698,9 @@
       const meOut = iPlay && boards[ctx.seat] && boards[ctx.seat].out;
       // Постріли, на які вже прийшла відповідь, знімаємо з «польоту» ДО малювання: інакше після влучання
       // (хід лишається в мене, нового виду не буде) поля так і стояли б замкнені до годинника.
+      // Штука з трюму може й не зачепити клітинку, яку тиснули (літак збили раніше, радар не стріляє), —
+      // тож її «політ» знімаємо, щойно в стрічці з'явився новий запис.
+      if (s.toolKey != null && s.toolKey !== lastKey) { s.pending.clear(); s.toolKey = null; }
       for (const k of [...s.pending]) {
         const [seat, cell] = k.split(':').map(Number);
         const known = knownOf(seat);
@@ -595,34 +713,174 @@
         keep.add(key);
         const marks = knownMarks(known);
         const dead = !!known.out;
-        const canShoot = phase === 'battle' && ctx.myTurn && iPlay && !meOut && !dead;
+        const rv = v.revenge;
+        const canShoot = phase === 'battle' && ctx.myTurn && iPlay && !dead
+          && (rv ? rv.by === ctx.seat && rv.on === seat : !meOut);
         const cap = who(ctx, seat) + ' ' + (dead ? '<b class="dead">на дні</b>'
           : '<b title="Кораблів на плаву">🚢 ' + (known.left == null ? '' : known.left) + '</b>');
         const side = ensureSide(host, key, cap, g,
-          key + (v.turn === seat && phase === 'battle' ? ' turn' : '') + (dead ? ' out' : '') + (canShoot ? ' aim' : ''));
+          key + (v.turn === seat && phase === 'battle' ? ' turn' : '') + (dead ? ' out' : '') + (canShoot ? ' aim' : '')
+            + (known.bot ? ' bot' : ''));
+        const arm = canShoot && !rv && s.arm && s.arm !== 'repair' ? s.arm : '';
+        const intel = new Map();
+        for (const it of ((v.arsenal && v.arsenal.intel) || [])) if (it[0] === seat) intel.set(it[1], String(it[2]));
         paintGrid(side, g,
-          (i) => (marks.get(i) || (s.pending.has(seat + ':' + i) ? 'wait' : '')) + fxOf(seat, i),
+          (i) => (marks.get(i) || (s.pending.has(seat + ':' + i) ? 'wait' : '')) + fxOf(seat, i) + (intel.has(i) ? ' rd' : ''),
           canShoot ? (cell) => {
             s.pending.add(seat + ':' + cell);
             // Види в цієї гри приходять з тиком, тож до відповіді сервера тримаємо клітинку «в польоті».
-            ctx.act('shoot', { cell, at: seat }).then((r) => {
+            const go = arm ? ctx.act('use', { item: arm, cell, at: seat }) : ctx.act('shoot', { cell, at: seat });
+            if (arm) { s.arm = ''; s.toolKey = lastKey; }
+            go.then((r) => {
               if (r && r.ok) return;
               s.pending.delete(seat + ':' + cell);
+              s.toolKey = null;
               paint(root, ctx);
             });
             paint(root, ctx);
           } : null,
           // Поки постріл у польоті, усі поля замкнені: вид (а з ним і ctx.myTurn) прийде аж із тиком, тож
           // інакше другий клік поспіль летів би на сервер і повертався червоним «Зараз не твій хід».
-          (i) => canShoot && !s.pending.size && !marks.has(i));
+          // Штука з арсеналу б'є рядком/стовпцем/хрестом, тож цілитись нею можна й в обстріляну клітинку.
+          (i) => canShoot && !s.pending.size && (!marks.has(i) || (!!arm && arm !== 'radar')),
+          (i) => intel.get(i) || '');
+        side.classList.toggle('armed', !!arm);
       }
     }
     prune(host, keep);
 
     feed(root, ctx, v);
     tools(root, ctx, v, g);
+    shop(root, ctx, v);
     battleBar(root, ctx, v);
+    armory(root, ctx, v);
     summary(root, ctx, v);
+    bubbles(root, ctx, v);
+    if (fresh && last && last.cells && (last.tool === 'plane' || last.tool === 'torpedo')) {
+      const key = iPlay && last.at === ctx.seat ? 'me' : 's' + last.at;
+      const side = host.querySelector(':scope > .bs-side[data-side="' + key + '"]');
+      if (side) fly(side, last);
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // ⚓ Арсенал: крамниця на розстановці, штуки в бою, політ літака й торпеди
+  // ---------------------------------------------------------------------------------------------
+
+  const itemsOf = (v) => (v.arsenal && v.arsenal.items) || [];
+
+  function shop(root, ctx, v) {
+    let el = root.querySelector(':scope > .bs-shop');
+    const a = v.arsenal;
+    const show = a && v.phase === 'placing' && ctx.playing && ctx.mine && v.me;
+    if (!show) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'bs-shop';
+      el.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-buy],[data-sell]');
+        const o = el._o;
+        if (!b || b.disabled || !o) return;
+        if (b.dataset.buy) o.ctx.act('buy', { item: b.dataset.buy });
+        else o.ctx.act('sell', { item: b.dataset.sell });
+      });
+      const tools = root.querySelector(':scope > .bs-tools');
+      root.insertBefore(el, tools ? tools.nextSibling : null);
+    }
+    el._o = { ctx };
+    const bought = a.bought || {};
+    const count = Object.values(bought).reduce((x, y) => x + y, 0);
+    const cost = itemsOf(v).reduce((x, it) => x + it.price * (bought[it.key] || 0), 0);
+    const ready = !!v.me.ready;
+    const purse = a.purse | 0;
+    const cards = itemsOf(v).map((it) => {
+      const n = bought[it.key] || 0;
+      const can = !ready && n < it.max && count < a.hold && cost + it.price <= purse;
+      return '<div class="bs-it' + (n ? ' got' : '') + '">'
+        + '<button type="button" data-buy="' + it.key + '"' + (can ? '' : ' disabled') + ' title="' + ctx.esc(it.text) + '">'
+        + '<span class="bs-ico">' + it.icon + '</span><span class="bs-nm">' + it.name + '</span><b>🪙 ' + it.price + '</b></button>'
+        + (n ? '<button type="button" class="ghost bs-sell" data-sell="' + it.key + '"' + (ready ? ' disabled' : '')
+          + ' title="Повернути в крамницю">×' + n + ' ✕</button>' : '')
+        + '<small>' + ctx.esc(it.text) + (it.max > 1 ? ' (до ' + it.max + ')' : '') + '</small></div>';
+    }).join('');
+    const pay = a.pay || { base: 10, win: 10, cap: 30 };
+    const html = '<div class="bs-shop-h"><b>⚓ Арсенал</b> · у гаманці <b>🪙 ' + purse + '</b> шелягів · у трюмі <b>' + count + '/' + a.hold + '</b>'
+      + (cost ? ' · беру на 🪙 ' + cost : '') + '</div>'
+      + '<div class="bs-its">' + cards + '</div>'
+      + '<div class="bs-shop-f">Платиш лише за те, що пустиш у хід. За бій — 🪙 ' + pay.base + ' кожному, переможцю ще '
+      + pay.win + ' і скільки лишилось від ' + pay.cap + ' після витраченого: перемога без арсеналу — найщедріша.</div>';
+    setHtml(el, html);
+  }
+
+  function armory(root, ctx, v) {
+    let el = root.querySelector(':scope > .bs-arm');
+    const a = v.arsenal;
+    const s = state(root);
+    const meOut = ctx.mine && v.boards && v.boards[ctx.seat] && v.boards[ctx.seat].out;
+    const show = a && v.phase === 'battle' && ctx.playing && ctx.mine && v.me && !meOut;
+    if (!show) { if (el) el.remove(); s.arm = ''; return; }
+    const left = itemsOf(v).filter((it) => it.target !== 'none')
+      .map((it) => ({ it, n: ((a.bought || {})[it.key] || 0) - ((a.used || {})[it.key] || 0) }))
+      .filter((x) => x.n > 0);
+    const mines = (v.me.mines || []).length;
+    if (!left.length && !mines) { if (el) el.remove(); s.arm = ''; return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'bs-arm';
+      el.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-arm]');
+        const o = el._o;
+        if (!b || b.disabled || !o) return;
+        const st = state(root);
+        st.arm = st.arm === b.dataset.arm ? '' : b.dataset.arm;
+        paint(root, o.ctx);
+      });
+      const bar = root.querySelector(':scope > .bs-bar');
+      root.insertBefore(el, bar ? bar.nextSibling : null);
+    }
+    el._o = { ctx };
+    const can = ctx.myTurn && !v.revenge;
+    if (!can) s.arm = '';
+    if (s.arm && !left.some((x) => x.it.key === s.arm)) s.arm = '';
+    const cur = left.find((x) => x.it.key === s.arm);
+    const HINT = {
+      plane: 'тисни клітинку чужого поля — літак полетить її рядком від ближчого краю',
+      torpedo: 'тисни клітинку чужого поля — торпеда піде її стовпцем від ближчого краю',
+      bomb: 'тисни клітинку чужого поля — бомба вдарить хрестом',
+      radar: 'тисни клітинку чужого поля — радар порахує цілі палуби в квадраті 3×3',
+      repair: 'тисни підбиту палубу на своєму полі',
+    };
+    const html = left.map((x) => '<button type="button" class="' + (x.it.key === s.arm ? 'primary' : 'ghost') + '" data-arm="' + x.it.key + '"'
+      + (can ? '' : ' disabled') + ' title="' + ctx.esc(x.it.text) + '">' + x.it.icon + ' ' + x.it.name + (x.n > 1 ? ' ×' + x.n : '') + '</button>').join('')
+      + (mines ? '<span class="bs-mines" title="Міни на твоїй воді: хто в них стрельне — отримає рикошет">🧨 ×' + mines + '</span>' : '')
+      + '<span class="bs-arm-h">' + (cur ? cur.it.icon + ' ' + HINT[cur.it.key] + ' · ще раз — скасувати'
+        : can && left.length ? 'Замість пострілу можна пустити штуку з трюму' : '') + '</span>';
+    setHtml(el, html);
+  }
+
+  /// Літак чи торпеда пролітає своїм шляхом над полем — від першої клітинки до тієї, де вибухнув.
+  function fly(side, f) {
+    const grid = side.querySelector(':scope > .bs-grid');
+    const cells = f.cells || [];
+    if (!grid || !cells.length || !grid.animate) return;
+    const a = grid._cells[cells[0]], b = grid._cells[cells[cells.length - 1]];
+    if (!a || !b) return;
+    const sp = document.createElement('span');
+    sp.className = 'bs-fly';
+    sp.textContent = f.tool === 'plane' ? '✈️' : '🚀';
+    const x0 = a.offsetLeft + a.offsetWidth / 2, y0 = a.offsetTop + a.offsetHeight / 2;
+    const x1 = b.offsetLeft + b.offsetWidth / 2, y1 = b.offsetTop + b.offsetHeight / 2;
+    // Емодзі дивиться на північний схід (−45°): повертаємо його туди, куди летить.
+    const deg = (x1 === x0 && y1 === y0) ? 0 : Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI + 45;
+    const dx = x1 - x0, dy = y1 - y0;
+    // Стартуємо на клітинку раніше, щоб було видно, звідки заходить.
+    const len = Math.max(1, Math.hypot(dx, dy)), ux = dx / len, uy = dy / len, step = a.offsetWidth || 24;
+    const from = 'translate(' + (x0 - ux * step) + 'px,' + (y0 - uy * step) + 'px) translate(-50%,-50%) rotate(' + deg + 'deg)';
+    const to = 'translate(' + x1 + 'px,' + y1 + 'px) translate(-50%,-50%) rotate(' + deg + 'deg)';
+    grid.appendChild(sp);
+    const anim = sp.animate([{ transform: from, opacity: 0.2 }, { transform: from, opacity: 1, offset: 0.08 }, { transform: to, opacity: 1, offset: 0.92 }, { transform: to, opacity: 0 }],
+      { duration: Math.max(420, 110 * cells.length + 200), easing: 'linear' });
+    anim.onfinish = () => sp.remove();
   }
 
   HGames.register({
@@ -662,9 +920,25 @@
     },
 
     status(ctx) {
+      const room = ctx.room || {};
+      if (room.status === 'lobby') {
+        // MinPlayers = 1 заради «Глек підсідає», тож каркас сам-на-сам каже «Можна рушати», а старт
+        // без Глека відмовить. Поки людей менше двох і Глека не кликали, кажемо, як є.
+        const bots = +((room.options && room.options.bots) || 0);
+        let people = 0;
+        for (let i = 0; i < 4; i++) if (ctx.nickOf(i)) people++;
+        return people < 2 && !bots ? 'Чекаємо, хто підсяде (або відкрий стіл з «🤖 Глек підсідає»)' : '';
+      }
       if (!ctx.playing) return '';
       // фаза й відлік розстановки живуть у кадрах, а не у видах — беремо свіжіше
       const f = (ctx.frame && ctx.frame.phase) ? ctx.frame : (ctx.view || {});
+      const v = ctx.view || {};
+      if (f.phase === 'battle' && v.phase === 'battle') {
+        // Місце Глека в каркасі порожнє — «Ходить …» він би не назвав; помсту вибулого — теж.
+        const b = v.boards && v.boards[v.turn];
+        if (v.revenge) return v.revenge.by === ctx.seat ? '💀 Твоя остання помста' : '💀 Остання помста: ' + nameOf(ctx, v.revenge.by);
+        if (b && b.bot) return 'Цілиться ' + b.bot;
+      }
       if (f.phase !== 'placing') return '';   // у бою «Твій хід» каркас напише сам із view.turn
       if (ctx.seat == null) return 'Розставляють кораблі';
       const ready = !!(ctx.view && ctx.view.me && ctx.view.me.ready);
@@ -675,16 +949,19 @@
 
     unmount(root) {
       root.querySelectorAll('.garc').forEach((arc) => { if (arc._arc) arc._arc.stop(); });
+      if (root._bs) { root._bs.rxTimers.forEach(clearTimeout); clearTimeout(root._bs.rxTimer); }
       root._bs = null;
     },
 
     news: {
-      v: '2026-09-28',
-      title: 'Морський бій: зручніше розставляти й цілитись',
+      v: '2026-09-29',
+      title: 'Морський бій: Арсенал, Глек за столом і остання помста',
       items: [
-        '🖱 Розставляєш мишею — корабель видно цілком ще до кліку, червоний — туди не стане; R повертає його боком',
-        '🚢 Список кораблів і відлік тепер одразу під полем, а не під кнопками',
-        '📱 На телефоні смуга ходу з годинником липне до низу екрана: цілишся в будь-яке поле — і бачиш, скільки лишилось',
+        '⚓ Новий режим «Арсенал»: за 🪙 шеляги — радар, бомба, торпеда, літак, що бомбить рядок до першого корабля, міна й ремонт',
+        '🤖 «Глек підсідає» — бот на порожнє місце: добиває підбите й шукає шаховим візерунком',
+        '💀 Утрьох-учетверох потоплений має останній постріл по тому, хто його потопив',
+        '😱 😂 🎯 Реакції на постріл, слово Глека на кожне потоплення, годинник ходу 20/40/60 с',
+        '🔕 Тости — лише на потоплення й перемогу: поле більше не засипає «Бульк — мимо»',
       ],
     },
   });
