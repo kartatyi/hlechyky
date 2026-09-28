@@ -625,7 +625,7 @@ public class PongTests
         Assert.Equal("live", game.Group);
         Assert.Equal("Понг", game.Title);
         Assert.Equal(PongCore.TickMs, game.TickMs);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);                     // сам — з ботом (прохід №3)
         Assert.Equal(4, game.MaxPlayers);
         // Рейтинг Ело й ставки платформа знає лише для ігор рівно на двох — понг на арені від них відмовився.
         Assert.False(game.Rated);
@@ -640,5 +640,91 @@ public class PongTests
         var h = Table();
         Assert.Equal("ліва", h.Room.SafeSeatName(0));
         Assert.Equal("права", h.Room.SafeSeatName(1));
+    }
+
+    // ---------- прохід №3: смеш (135) і бот для одного (134) ----------
+
+    [Fact]
+    public void Edge_hit_on_the_move_is_a_smash_and_flies_faster()
+    {
+        double Hit(bool moving, double off)
+        {
+            var core = Rally();
+            core.P[0] = 50;
+            core.Bx = PongCore.Plane(0) + 2;
+            core.By = 50 + off;
+            core.Vx = -100;
+            core.Vy = 0;
+            if (moving) core.Move(0, 1); else core.Move(0, 0);
+            core.Step();
+            Assert.Equal(0, core.HitBy);
+            return core.Speed;
+        }
+        var plain = Hit(false, 8);                // край, але стоїть — звичайний удар
+        Assert.Equal(100 * PongCore.SpeedUp, plain, 6);
+        var centre = Hit(true, 1);                // на ходу, але центром — теж звичайний
+        Assert.Equal(100 * PongCore.SpeedUp, centre, 6);
+        var core2 = Rally();
+        core2.P[0] = 50;
+        core2.Bx = PongCore.Plane(0) + 2;
+        core2.By = 50 + 8;
+        core2.Vx = -100;
+        core2.Move(0, 1);
+        core2.Step();
+        Assert.True(core2.Smash);
+        Assert.Equal(100 * PongCore.SpeedUp * PongCore.SmashBoost, core2.Speed, 6);
+        // стеля смешу вища за звичайну, але теж є
+        core2.Vx = -PongCore.MaxSpeed;
+        core2.Vy = 0;
+        core2.Bx = PongCore.Plane(0) + 5;
+        core2.By = core2.P[0] + 8;
+        core2.Step();
+        Assert.True(core2.Smash);
+        Assert.Equal(PongCore.MaxSpeed * PongCore.SmashCap, core2.Speed, 6);
+    }
+
+    [Fact]
+    public void Alone_cannot_start_until_the_host_calls_a_bot()
+    {
+        var h = new RoomHarness("pong");
+        h.Join("Оля");
+        var r = h.Start();
+        Assert.False(r.Ok);
+        Assert.Equal(Pong.AloneText, r.Message);
+        Assert.True(h.Act(0, "bot", new { on = true }).Ok);
+        Assert.Equal(1, h.View(0).GetProperty("bot").GetInt32());
+        Assert.True(h.Start().Ok, h.Reply.Message);
+        Assert.Equal(1, ((Pong)h.Room.Game).Bot);
+        Assert.Equal("права", h.Room.SafeSeatName(1));
+    }
+
+    [Fact]
+    public void Bot_returns_balls_and_can_be_beaten_but_gets_no_win()
+    {
+        var h = new RoomHarness("pong", seed: 5);
+        h.Join("Оля");
+        h.Act(0, "bot", new { on = true });
+        Assert.True(h.Start().Ok);
+        var g = (Pong)h.Room.Game;
+        var botHits = 0;
+        for (var t = 0; t < 30000 && h.Room.Status == RoomStatus.Playing; t++)
+        {
+            // людина-«стіна»: ракетка завжди під м'ячем — бот мусить колись пропустити від її кутів
+            var f = LastFrameOrNull(h);
+            if (f is { } fr) h.Input(0, "to", new { y = fr.GetProperty("by").GetDouble() + 6 });
+            h.Tick();
+            if (LastFrameOrNull(h) is { } x && x.GetProperty("hit").ValueKind == JsonValueKind.Number && x.GetProperty("hit").GetInt32() == 1) botHits++;
+        }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.True(botHits >= 10, $"бот відбив лише {botHits}");
+        var fin = h.Finished.Single();
+        Assert.DoesNotContain(1, fin.Result.Winners);
+        Assert.Contains("🤖 бот", h.Room.Result!.Text);
+    }
+
+    static JsonElement? LastFrameOrNull(RoomHarness h)
+    {
+        var f = h.Outbox.OfType<RoomFrame>().LastOrDefault();
+        return f is null ? null : Views.Json(f.Frame);
     }
 }
