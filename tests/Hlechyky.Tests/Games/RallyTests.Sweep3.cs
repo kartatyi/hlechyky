@@ -150,6 +150,70 @@ public partial class RallyTests
         Assert.True(fast > slow, $"ас {fast} ≤ тихо {slow}");
     }
 
+    // ---------- №89 живі перешкоди ----------
+
+    [Fact]
+    public void A_critter_walks_there_waits_walks_back_and_waits()
+    {
+        var d = RallyTrack.Critter(0, 10, 1, 10, 6, 50, 150);
+        // зерно 9973 → зсув 0: на тику 0 курка в A
+        RallyCore.CritterAt(d, 9973, 0, out var x, out var y);
+        Assert.Equal((d[1], d[2]), (x, y));
+        RallyCore.CritterAt(d, 9973, 25, out x, out y);
+        Assert.Equal(d[2] + (d[4] - d[2]) / 2, y);
+        RallyCore.CritterAt(d, 9973, 100, out x, out y);
+        Assert.Equal(d[4], y);
+        RallyCore.CritterAt(d, 9973, 225, out x, out y);
+        Assert.Equal(d[4] + (d[2] - d[4]) / 2, y);
+        RallyCore.CritterAt(d, 9973, 300, out x, out y);
+        Assert.Equal(d[2], y);
+        RallyCore.CritterAt(d, 9973, 400, out x, out y);                          // період — 400 тиків
+        Assert.Equal(d[2], y);
+    }
+
+    [Fact]
+    public void A_car_hits_a_chicken_slows_down_and_gets_the_event_but_flies_over_it_from_a_ramp()
+    {
+        var track = new RallyTrack("arena-live", "Арена", [.. Arena().Map], Arena().Gates, [.. Arena().Slots],
+            Critters: [RallyTrack.Critter(0, 20, 10, 20, 10, 50, 150)]);   // курка стоїть на місці
+        var core = Bare(track);
+        core.Live = 9973;
+        var c = core.Put(0, At(16.5), At(10.5), 0, 800);
+        c.Mask = 4;
+        var ev = 0;
+        for (var i = 0; i < 20; i++) { core.Tick(); ev |= c.Ev; }
+        Assert.True((ev & RallyCore.EvCritter) != 0);
+        Assert.True(c.VF < 700, $"швидкість {c.VF}");
+        // без живності та сама машина їде крізь те місце
+        var bare = Bare(track);
+        var b = bare.Put(0, At(16.5), At(10.5), 0, 800);
+        b.Mask = 4;
+        for (var i = 0; i < 20; i++) bare.Tick();
+        Assert.True(b.X > c.X);
+        // у повітрі — над куркою
+        var fly = Bare(track);
+        fly.Live = 9973;
+        var f = fly.Put(0, At(18.5), At(10.5), 0, 800);
+        f.Air = 14;
+        fly.Tick();
+        fly.Tick();
+        Assert.Equal(0, f.Ev & RallyCore.EvCritter);
+    }
+
+    [Fact]
+    public void Live_option_seeds_critters_on_tracks_that_have_them_and_the_journal_really_meets_them()
+    {
+        Assert.Equal(0, Core(Table(1)).Live);                                   // типово — як було
+        Assert.NotEqual(0, Core(Table(1, new { track = "selo", laps = "3", live = "1" })).Live);
+        Assert.Equal(0, Core(Table(1, new { track = "ozero", laps = "3", live = "1" })).Live);   // на озері живності нема
+        var h = Table(1, new { track = "yarmarok", laps = "3", live = "1" });
+        Assert.Equal(2, h.View(null).GetProperty("track").GetProperty("critters").GetArrayLength());
+        var j = RallyReplays.Load(Path.Combine(RallyReplays.Dir(), "4-selo-live.json"));
+        var withLive = RallyReplays.Play(j);
+        j.Live = 0;
+        Assert.NotEqual(withLive, RallyReplays.Play(j));
+    }
+
     // ---------- №91 гараж ----------
 
     [Fact]

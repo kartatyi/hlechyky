@@ -734,7 +734,7 @@ public partial class RallyTests(ITestOutputHelper output)
         var dir = RallyReplays.Dir();
         if (Environment.GetEnvironmentVariable("RALLY_WRITE_REPLAYS") == "1") RallyReplays.WriteAll(dir);
         var files = Directory.GetFiles(dir, "*.json").OrderBy(f => f, StringComparer.Ordinal).ToArray();
-        Assert.Equal(3, files.Length);
+        Assert.Equal(4, files.Length);
         foreach (var file in files)
         {
             var journal = RallyReplays.Load(file);

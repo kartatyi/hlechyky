@@ -28,7 +28,7 @@
     const JUMP_MIN = 512, AIR_TICKS = 14, OIL_TICKS = 30, OIL_GRIP = 10, HB_GRIP = 30;
     const STALL = 25, RESET_CD = 75, HORN_CD = 25, MAX_AHEAD = 10;
     const E_WALL = 90, WALL_FRICTION = 64, HAY_BACK = 320, HAY_DAMP = 160, HAY_EV_MIN = 32, E_CAR = 384, HIT_EV_MIN = 128;
-    const EV = { wall: 1, car: 2, lap: 4, boost: 8, puddle: 16, oil: 32, hay: 64, jump: 128, horn: 256, land: 512, reset: 1024 };
+    const EV = { wall: 1, car: 2, lap: 4, boost: 8, puddle: 16, oil: 32, hay: 64, jump: 128, horn: 256, land: 512, reset: 1024, critter: 2048 };
 
     // поверхні: = ~ * . c M o + J H # T D W
     const ROAD = 0, PUDDLE = 1, ICE = 2, GRASS = 3, CORN = 4, MUD = 5, OIL = 6, BOOST = 7, RAMP = 8, HAY = 9;
@@ -97,7 +97,7 @@
       const slots = td.slots || [];
       const slotX = slots.map((s) => s[0] * CELL + CELL / 2), slotY = slots.map((s) => s[1] * CELL + CELL / 2);
       return {
-        id: td.id, map, gates, K, tile, gateAt, gateCX, gateCY, gateA, slotX, slotY,
+        id: td.id, map, gates, K, tile, gateAt, gateCX, gateCY, gateA, slotX, slotY, critters: td.critters || [],
         heading: td.heading | 0, lineAxis, lineEdge, lineDir,
         codeAt: (x, y) => (x < 0 || y < 0 || x >= COLS || y >= ROWS ? FENCE : tile[y * COLS + x]),
       };
@@ -114,10 +114,26 @@
 
     const cellOf = (x, y) => (y >> SHIFT) * COLS + (x >> SHIFT);
 
+    /// Живі перешкоди (№89): радіус за видом і де перешкода на тику t — двійник RallyCore.CritterAt.
+    const CRITTER_R = [448, 512, 1152, 512, 576];
+    function critterAt(d, live, t, out) {
+      const move = d[5], rest = d[6], period = 2 * (move + rest);
+      const off = ((live % 9973) * (2 * d[7] + 1) * 131 + d[8]) % period;
+      const p = (t + off) % period;
+      if (p < move) { out[0] = d[1] + (((d[3] - d[1]) * p / move) | 0); out[1] = d[2] + (((d[4] - d[2]) * p / move) | 0); }
+      else if (p < move + rest) { out[0] = d[3]; out[1] = d[4]; }
+      else if (p < 2 * move + rest) {
+        const q = p - move - rest;
+        out[0] = d[3] + (((d[1] - d[3]) * q / move) | 0); out[1] = d[4] + (((d[2] - d[4]) * q / move) | 0);
+      } else { out[0] = d[1]; out[1] = d[2]; }
+      return out;
+    }
+
     function create(track, laps) {
       const cars = [];
       for (let i = 0; i < SEATS; i++) cars.push(newCar());
-      const sim = { track, laps, cars, T: 0, finished: 0, anyLap: false };
+      const sim = { track, laps, cars, T: 0, finished: 0, anyLap: false, live: 0 };
+      const crN = (track.critters || []).length, ox = new Int32Array(crN), oy = new Int32Array(crN), cp = [0, 0];
 
       function reset(c) {
         c.present = c.ghost = false;
@@ -244,11 +260,10 @@
         if (-vn > HIT_EV_MIN) c.ev |= EV.wall;
       }
 
-      function hay(c, cx, cy) {
-        const r = RWALL + RHAY;
-        const hx = (cx << SHIFT) + CELL / 2, hy = (cy << SHIFT) + CELL / 2;
+      function soft(c, hx, hy, r, ev) {
         let dx = c.x - hx;
         const dy = c.y - hy;
+        if (dx >= r || dx <= -r || dy >= r || dy <= -r) return;
         const d2 = dx * dx + dy * dy;
         if (d2 >= r * r) return;
         let d = isqrt(d2);
@@ -266,7 +281,7 @@
         c.vx = (c.vx * damp / 256) | 0;
         c.vy = (c.vy * damp / 256) | 0;
         c.hit = true;
-        if (-vn > HAY_EV_MIN) c.ev |= EV.hay;
+        if (-vn > HAY_EV_MIN) c.ev |= ev;
       }
 
       function walls(c) {
@@ -276,9 +291,10 @@
           for (let cx = x0; cx <= x1; cx++) {
             const code = track.codeAt(cx, cy);
             if (isWall(code)) wall(c, cx, cy);
-            else if (code === HAY) hay(c, cx, cy);
+            else if (code === HAY) soft(c, (cx << SHIFT) + CELL / 2, (cy << SHIFT) + CELL / 2, RWALL + RHAY, EV.hay);
           }
         }
+        if (sim.live !== 0 && c.air === 0) for (let k = 0; k < crN; k++) soft(c, ox[k], oy[k], RWALL + CRITTER_R[track.critters[k][0]], EV.critter);
       }
 
       function bump(a, b) {
@@ -385,6 +401,7 @@
           return;
         }
         for (let i = 0; i < SEATS; i++) if (cars[i].present) controls(cars[i]);
+        if (sim.live !== 0) for (let k = 0; k < crN; k++) { critterAt(track.critters[k], sim.live, sim.T, cp); ox[k] = cp[0]; oy[k] = cp[1]; }
         for (let h = 0; h < 2; h++) {
           for (let i = 0; i < SEATS; i++) {
             const c = cars[i];
@@ -446,7 +463,8 @@
 
     /// Журнал паритету: те саме, що RallyReplays.Play у C#. Повертає hex-хеш стану після всіх тиків.
     function replay(j) {
-      const sim = create(buildTrack({ id: j.track, map: j.map, gates: j.gates, slots: j.slots, heading: j.heading }), j.laps);
+      const sim = create(buildTrack({ id: j.track, map: j.map, gates: j.gates, slots: j.slots, heading: j.heading, critters: j.critters }), j.laps);
+      sim.live = j.live | 0;
       j.cars.forEach((car, s) => { if (car) sim.grid(s, car); });
       let h = FNV_START, next = 0;
       for (let i = 0; i < j.ticks; i++) {
@@ -469,7 +487,7 @@
     return {
       SIN, COS, EV, SURF, DRAG, GRIP, ACC, COLS, ROWS, CELL, SHIFT, SEATS, TICK_MS, COUNT, RWALL, BOOST_CAP,
       ROAD, PUDDLE, ICE, GRASS, CORN, MUD, OIL, BOOST, RAMP, HAY, FENCE, TREE, HOUSE, WATER,
-      isWall, cellOf, buildTrack, create, replay, isqrt, mix, hex, FNV_START,
+      isWall, cellOf, buildTrack, create, replay, isqrt, mix, hex, FNV_START, critterAt, CRITTER_R,
       tables: () => ({ sin: tableHash(SIN), cos: tableHash(COS) }),
     };
   })();
@@ -1459,6 +1477,7 @@
   function startSim(st, f) {
     const seat = st.mine;
     st.sim = S.create(st.track, st.view.laps || 3);
+    st.sim.live = st.view.live | 0;
     st.sim.T = f.t;
     const c = st.sim.load(seat, f.c, seat * STRIDE);
     c.car = (st.view.cars && st.view.cars[seat]) || 'traktor';
@@ -1542,6 +1561,7 @@
       // одна симуляція на місце на всю гонку: кадр лише перезаписує стан машини
       let sim = st.oSims[i];
       if (!sim || sim.track !== st.track) sim = st.oSims[i] = S.create(st.track, 99);
+      sim.live = (st.view && st.view.live) | 0;
       sim.T = f.t;
       const c = sim.load(i, f.c, o);
       c.car = (st.view && st.view.cars && st.view.cars[i]) || 'traktor';
@@ -1686,6 +1706,8 @@
       sfx(st, 'hit');
     }
     if (ev & S.EV.hay) { for (let n = 0; n < 10 * rm; n++) spawn(ps, x, y, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.5, 2, '#e6c35a', 0); sfx(st, 'hit'); }
+    // живність: пір'я на все подвір'я
+    if (ev & S.EV.critter) { for (let n = 0; n < 12 * rm; n++) spawn(ps, x, y, (Math.random() - 0.5) * 2.5, (Math.random() - 0.5) * 2.5, 0.8, 2.2, '#fbf6e8', 0); sfx(st, 'hit'); }
     if (ev & S.EV.car) { for (let n = 0; n < 5 * rm; n++) spawn(ps, x, y, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.25, 1.5, '#ffffff', 2); sfx(st, 'hit'); }
     if (ev & S.EV.oil) for (let n = 0; n < 6 * rm; n++) spawn(ps, x, y, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 0.4, 2, '#2a2440', 0);
     if (ev & S.EV.boost) sfx(st, 'boost');
@@ -1810,6 +1832,7 @@
       return;
     }
     drawGhost(st, g, rt);
+    if (st.view && st.view.live && st.track && st.track.critters.length) drawCritters(st, g, ph === 2 ? rt : f.t);
     for (let j = 0; j < n; j++) drawCar(st, g, order[j], rt, now);
 
     tickParticles(st, g, dt);
@@ -1829,6 +1852,33 @@
     st.perf[st.perfI] = ms;
     st.perfI = (st.perfI + 1) % 300;
     if (st.perfN < 300) st.perfN++;
+  }
+
+  // ---------- живність (№89): курка, гуси, віз, гості, коза — де й сервер, за тиком ----------
+  const CRITTER_EMO = ['🐔', '🦢', '🐂', '💃', '🐐'];
+  const CRITTER_FONT = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+  const crA = [0, 0], crB = [0, 0];
+  function drawCritters(st, g, rt) {
+    const cr = st.track.critters, live = st.view.live | 0, t0 = Math.floor(rt), u = rt - t0;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    for (let k = 0; k < cr.length; k++) {
+      const d = cr[k];
+      S.critterAt(d, live, t0, crA);
+      S.critterAt(d, live, t0 + 1, crB);
+      const x = (crA[0] + (crB[0] - crA[0]) * u) / SUB, y = (crA[1] + (crB[1] - crA[1]) * u) / SUB;
+      const r = S.CRITTER_R[d[0]] / SUB;
+      if (d[0] === 2) {
+        // віз: дерев'яна платформа з сіном, віл попереду
+        const dir = crB[0] < crA[0] ? -1 : 1;
+        g.fillStyle = '#7a5230';
+        g.fillRect(x - r * 0.9 - dir * r * 0.5, y - r * 0.55, r * 1.3, r * 1.1);
+        g.fillStyle = '#e6c35a';
+        g.fillRect(x - r * 0.8 - dir * r * 0.5, y - r * 0.45, r * 1.1, r * 0.9);
+      }
+      g.font = Math.round(r * 2.6) + 'px ' + CRITTER_FONT;
+      g.fillText(CRITTER_EMO[d[0]] || '🐔', d[0] === 2 ? x + (crB[0] < crA[0] ? -1 : 1) * r * 0.5 : x, y);
+    }
   }
 
   // ---------- 📸 фотофініш (№88): кільце останніх кадрів сервера, уповільнений показ близького фінішу ----------
@@ -2988,14 +3038,14 @@
       hint: '{dpad} кермо (стік убік) · {a} газ · {x} ручник · {lb} гудок · {rb} на трасу',
     },
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Сільське ралі',
+      v: '2026-09-29',
+      title: 'Сільське ралі: Дід Панас, живність і фотофініш',
       items: [
-        '🚜 Обери машину в лобі — трактор, «запорожець», мопед, віз, мотоблок чи «копійка». Їздять однаково, різняться виглядом і гудком',
-        '⌨️ Стрілки або WASD: ↑ газ, ↓ гальмо й задній хід, ← → кермо, пробіл — ручник для заносу, R — назад на трасу. На паді: стік убік, Ⓐ газ, Ⓧ ручник',
-        '🏁 Три кола (або 5/7), невидимі ворота проти зрізів, хто перший — той і взяв. Після першого фінішера решті 20 секунд',
-        '🌧 П\'ять трас: Село з калюжами, Крижане озеро, Нічна з фарами, Кукурудзяне поле й Ярмарок із трампліном і турбо',
-        '⏱ Сам — заїзд на час: найкращі кола кожної траси лишаються в рекордах, а привид твого найкращого кола їде поруч. Перебий чужий рекорд — буде ачівка',
+        '🗺 Після гонки клацни трасу внизу — «Ще раз» поїде одразу туди, без нового столу. 🎲 — яка випаде',
+        '🤖 Опція «Суперники-боти»: Дід Панас на тракторі, Баба Параска й Кум Степан сідають на вільні місця до чотирьох — тихо їдуть, женуть чи ас. Черепків і рекордів їм не дають',
+        '🐔 Опція «Живність»: курка перебігає дорогу, гуси чалапають через калюжу на Селі, віз повзе Ярмарком — щогонки трохи інакше',
+        '📸 Фініш ближче ніж 0,3 с — фотофініш уповільнено: хто кого й на скільки. Переглянути ще раз — кнопкою в підсумку',
+        '🎨 Гараж у лобі: своя фарба й напис на номері до 6 літер — їде за тобою з гонки в гонку',
       ],
     },
 

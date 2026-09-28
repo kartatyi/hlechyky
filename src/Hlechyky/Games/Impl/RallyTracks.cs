@@ -49,9 +49,21 @@ public sealed class RallyTrack
     public int LineEdge { get; }
     public int LineDir { get; }
 
+    /// <summary>
+    /// Живі перешкоди (№89): кожна — <c>[вид, ax, ay, bx, by, хід, стоянка, гурт, зсув]</c>, координати в sub. Ходить
+    /// A→B за «хід» тиків, стоїть у B «стоянку», вертається й стоїть в A. Гурт — ті, хто ходить разом (гуси), зсув — на
+    /// скільки тиків відстає від гурту. Вид: 0 курка, 1 гуска, 2 віз, 3 весільний гість, 4 коза.
+    /// </summary>
+    public int[][] Critters { get; }
+
+    /// <summary>Перешкода з клітинок: центр клітинки A → центр клітинки B.</summary>
+    public static int[] Critter(int kind, int ax, int ay, int bx, int by, int move, int rest, int group = 0, int lag = 0) =>
+        [kind, ax * CellSub + CellSub / 2, ay * CellSub + CellSub / 2, bx * CellSub + CellSub / 2, by * CellSub + CellSub / 2, move, rest, group, lag];
+
     public RallyTrack(string id, string title, string[] Map, int[][][] Gates, (int X, int Y)[] Slots,
-        int Heading = 0, bool Night = false, bool Ice = false, bool Corn = false)
+        int Heading = 0, bool Night = false, bool Ice = false, bool Corn = false, int[][]? Critters = null)
     {
+        this.Critters = Critters ?? [];
         Id = id;
         Title = title;
         this.Map = Map;
@@ -256,6 +268,7 @@ public sealed class RallyTrack
         night = Night,
         ice = Ice,
         corn = Corn,
+        critters = Critters,
         map = Map,
         gates = Gates,
         // центри воріт і точки повернення — в u (1/64 від sub), курси — 0..1023
@@ -305,7 +318,15 @@ public static class RallyTracks
                 "################################################",
             ],
             Gates: [[[20, 1, 1, 6]], [[34, 1, 1, 6]], [[39, 9, 6, 1]], [[39, 15, 6, 1]], [[30, 19, 1, 6]], [[18, 15, 1, 6]], [[2, 13, 6, 1]], [[2, 8, 6, 1]]],
-            Slots: [(19, 2), (19, 4), (17, 3), (17, 5), (15, 2), (15, 4)]),
+            Slots: [(19, 2), (19, 4), (17, 3), (17, 5), (15, 2), (15, 4)],
+            // живі перешкоди (№89), лише з опцією «Живність»
+            Critters:
+            [
+                RallyTrack.Critter(0, 28, 1, 28, 6, 50, 150),
+                RallyTrack.Critter(1, 2, 11, 7, 11, 90, 200, group: 1, lag: 0),
+                RallyTrack.Critter(1, 2, 12, 7, 12, 90, 200, group: 1, lag: 12),
+                RallyTrack.Critter(1, 2, 13, 7, 13, 90, 200, group: 1, lag: 24),
+            ]),
         new("ozero", "Крижане озеро", Night: false, Ice: true, Corn: false,
             Map:
             [
@@ -404,7 +425,12 @@ public static class RallyTracks
                 "################################################",
             ],
             Gates: [[[15, 1, 1, 8]], [[20, 1, 1, 8]], [[34, 1, 1, 12]], [[38, 16, 8, 1]], [[33, 16, 1, 10]], [[20, 16, 1, 10]], [[8, 18, 8, 1], [16, 17, 1, 2]], [[1, 9, 8, 1]]],
-            Slots: [(14, 3), (14, 5), (12, 4), (12, 6), (10, 3), (10, 5)]),
+            Slots: [(14, 3), (14, 5), (12, 4), (12, 6), (10, 3), (10, 5)],
+            // живі перешкоди (№89), лише з опцією «Живність»
+            Critters:
+            [
+                RallyTrack.Critter(0, 24, 18, 24, 23, 55, 160),
+            ]),
         new("yarmarok", "Ярмарок", Night: false, Ice: false, Corn: false,
             Map:
             [
@@ -437,7 +463,13 @@ public static class RallyTracks
                 "################################################",
             ],
             Gates: [[[24, 1, 1, 6]], [[36, 1, 1, 6]], [[39, 9, 6, 1]], [[39, 16, 6, 1]], [[30, 19, 1, 6]], [[10, 19, 1, 6]], [[2, 14, 6, 1]], [[2, 8, 6, 1]]],
-            Slots: [(23, 2), (23, 4), (21, 3), (21, 5), (19, 2), (19, 4)]),
+            Slots: [(23, 2), (23, 4), (21, 3), (21, 5), (19, 2), (19, 4)],
+            // живі перешкоди (№89), лише з опцією «Живність»
+            Critters:
+            [
+                RallyTrack.Critter(2, 7, 23, 40, 23, 300, 125),
+                RallyTrack.Critter(0, 30, 1, 30, 6, 50, 170, group: 1),
+            ]),
     ];
 
     public static readonly string[] Ids = [.. All.Select(t => t.Id)];

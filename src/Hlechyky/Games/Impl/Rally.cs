@@ -39,6 +39,7 @@ public sealed class Rally : Game
             new GameOption("laps", "Кіл", [("3", "3 кола"), ("5", "5 кіл"), ("7", "7 кіл")], "3"),
             new GameOption("bots", "Суперники-боти",
                 [("0", "без ботів"), ("1", "🤖 Дід Панас: тихо їде"), ("2", "🤖 Дід Панас: жене"), ("3", "🤖 Дід Панас: ас")], "0"),
+            new GameOption("live", "Живність", [("0", "без живності"), ("1", "🐔 курка, гуси, віз")], "0"),
         ],
         Hint: "Гонки згори на всю трасу: трактор проти «запорожця», занос ручником, калюжі, копиці й турбо. Можна й самому — на час");
 
@@ -91,6 +92,8 @@ public sealed class Rally : Game
     /// <summary>Стеля газу пілота за складністю (sub/тик; 0 — без стелі): 1 — тихо їде, 2 — жене, 3 — ас.</summary>
     static readonly int[] BotCap = [0, 600, 740, 0];
     int _botLevel;
+    /// <summary>Живі перешкоди (№89): курка через дорогу, гуси на Селі, віз на Ярмарку — щоразу з іншим зерном.</summary>
+    bool _live;
     readonly bool[] _bot = new bool[RallyCore.Seats];
     int _bots;
     RallyPilot? _pilot;
@@ -102,6 +105,7 @@ public sealed class Rally : Game
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
         _botLevel = options.TryGetValue("bots", out var b) && int.TryParse(b, out var bl) && bl is >= 0 and <= 3 ? bl : 0;
+        _live = options.TryGetValue("live", out var lv) && lv == "1";
         _trackOpt = options.TryGetValue("track", out var t) && (t == "random" || RallyTracks.Ids.Contains(t)) ? t : "selo";
         _laps = options.TryGetValue("laps", out var l) && int.TryParse(l, out var n) && n is 3 or 5 or 7 ? n : 3;
         _track = RallyTracks.Get(_trackOpt);
@@ -114,6 +118,7 @@ public sealed class Rally : Game
     {
         if (_trackOpt == "random") _track = RallyTracks.All[Ctx.Rng.Next(RallyTracks.All.Length)];
         _core = new RallyCore(_track, _laps);
+        if (_live && _track.Critters.Length > 0) _core.Live = Ctx.Rng.Next(1, 9973);
         _players = 0;
         for (var i = 0; i < RallyCore.Seats; i++)
         {
@@ -771,6 +776,7 @@ public sealed class Rally : Game
             paint,
             plates,
             bots = _bots > 0 ? BotNames() : null,
+            live = _core?.Live ?? 0,
             records = _top,
             results = _ph == PhOver ? _results : null,
             photo = _photo is { } ph && _ph is PhRace or PhOver ? new[] { ph.A, ph.B, ph.Gap, ph.T } : null,

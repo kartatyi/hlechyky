@@ -21,6 +21,9 @@ public sealed class RallyJournal
     [JsonPropertyName("gates")] public int[][][] Gates { get; set; } = [];
     [JsonPropertyName("slots")] public int[][] Slots { get; set; } = [];
     [JsonPropertyName("heading")] public int Heading { get; set; }
+    /// <summary>Живі перешкоди (прохід №3): зерно й самі перешкоди траси; у старих журналах їх нема.</summary>
+    [JsonPropertyName("live")] public int Live { get; set; }
+    [JsonPropertyName("critters")] public int[][] Critters { get; set; } = [];
 }
 
 public static class RallyReplays
@@ -40,7 +43,7 @@ public static class RallyReplays
         JsonSerializer.Deserialize<RallyJournal>(File.ReadAllText(file)) ?? throw new InvalidOperationException(file);
 
     static RallyTrack TrackOf(RallyJournal j) =>
-        new(j.Track, j.Track, j.Map, j.Gates, [.. j.Slots.Select(s => (s[0], s[1]))], j.Heading);
+        new(j.Track, j.Track, j.Map, j.Gates, [.. j.Slots.Select(s => (s[0], s[1]))], j.Heading, Critters: j.Critters);
 
     /// <summary>
     /// Прокрутити журнал голим ядром: перед тиком t — ввід із міткою t (як сервер, що отримав його вчасно),
@@ -48,7 +51,7 @@ public static class RallyReplays
     /// </summary>
     public static string Play(RallyJournal j)
     {
-        var core = new RallyCore(TrackOf(j), j.Laps);
+        var core = new RallyCore(TrackOf(j), j.Laps) { Live = j.Live };
         for (var s = 0; s < j.Cars.Length; s++)
             if (j.Cars[s] is { } car) core.Grid(s, car);
         var h = RallyCore.FnvStart;
@@ -67,19 +70,20 @@ public static class RallyReplays
     }
 
     /// <summary>Записати журнал автопілотом: маска кожного місця на кожен тик, у журнал — лише зміни.</summary>
-    public static RallyJournal Record(string trackId, int laps, int drivers, int ticks, int seed, int drift)
+    public static RallyJournal Record(string trackId, int laps, int drivers, int ticks, int seed, int drift, int live = 0)
     {
         var t = RallyTracks.Get(trackId);
         var rng = new Random(seed);
         var cars = new string?[RallyCore.Seats];
         for (var s = 0; s < drivers; s++) cars[s] = Rally.Cars[(s + seed) % Rally.Cars.Length].Id;
-        var core = new RallyCore(t, laps);
+        var core = new RallyCore(t, laps) { Live = live };
         for (var s = 0; s < drivers; s++) core.Grid(s, cars[s]!);
         var pilot = new RallyPilot(t, rng) { Drift = drift };
         var j = new RallyJournal
         {
             Track = t.Id, Laps = laps, Cars = cars, Ticks = ticks,
             Map = [.. t.Map], Gates = t.Gates, Slots = [.. t.Slots.Select(s => new[] { s.X, s.Y })], Heading = t.Heading,
+            Live = live, Critters = live != 0 ? t.Critters : [],
         };
         var last = new int[RallyCore.Seats];
         Array.Fill(last, -1);
@@ -108,6 +112,7 @@ public static class RallyReplays
         Save(Path.Combine(dir, "1-selo-drift.json"), Record("selo", 3, 1, 1500, seed: 1, drift: 250));
         Save(Path.Combine(dir, "2-yarmarok-six.json"), Record("yarmarok", 3, 6, 2500, seed: 2, drift: 60));
         Save(Path.Combine(dir, "3-ozero-two.json"), Record("ozero", 3, 2, 1500, seed: 3, drift: 120));
+        Save(Path.Combine(dir, "4-selo-live.json"), Record("selo", 3, 4, 2000, seed: 4, drift: 80, live: 4242));
     }
 
     static void Save(string file, RallyJournal j)
