@@ -51,10 +51,24 @@
     }
   }
 
+  /// Палітра з CSS-змінних: getComputedStyle — раз на колір і вид, а не на кожен кадр.
+  function palette(css) {
+    const m = new Map();
+    return (name, fallback) => {
+      let v = m.get(name);
+      if (v === undefined) { v = css(name, fallback); m.set(name, v); }
+      return v;
+    };
+  }
+
   function state(root, ctx) {
+    // view — вид, з якого вже взято поле. Каркас кладе в ctx.view КЕШОВАНИЙ вид останньої події 'room' і смикає
+    // update() ще й на кожну 'rooms' (будь-хто на сайті створив чи покинув стіл); посеред раунду 'room' не летить,
+    // тож без цієї позначки змійки на мить відскакували б на стартові місця — туди, де їх застав той старий вид.
     if (!root._snake) {
-      root._snake = { cv: null, last: null, css: ctx.css };
+      root._snake = { cv: null, last: null, view: null, css: palette(ctx.css) };
     }
+    root._snake.ctx = ctx;
     return root._snake;
   }
 
@@ -66,7 +80,45 @@
       root.insertBefore(el, root.firstChild);
     }
     const html = '<b>' + (f && f.winsA != null ? f.winsA : 0) + '</b> : <b>' + (f && f.winsB != null ? f.winsB : 0) + '</b>';
-    if (el.innerHTML !== html) el.innerHTML = html;
+    // порівнюємо з тим, що клали самі: el.innerHTML браузер серіалізує по-своєму
+    if (el._h !== html) { el._h = html; el.innerHTML = html; }
+  }
+
+  function turn(ctx, dir) {
+    if (ctx && ctx.mine && ctx.playing) ctx.input('turn', { dir });
+  }
+
+  /// Хрестовина потрібна лише тому, хто грає: сів глядач за стіл — вона з'явиться тут.
+  function pad(root, ctx) {
+    if (!ctx.mine) { const d = root.querySelector(':scope > .dpad'); if (d) d.remove(); return; }
+    const el = HGames.ui.dpad(root, (d) => turn(ctx, d));
+    // без подвійного тапу-зуму, коли швидко тиснуть сусідні стрілки
+    if (el && el.style.touchAction !== 'manipulation') el.style.touchAction = 'manipulation';
+  }
+
+  /// Свайп по полю (≥ 18 px — поворот у бік переважної осі; не відриваючи пальця, можна крутити далі).
+  /// Прокрутку пальцем по полю забираємо лише в того, хто грає.
+  function swipe(root, el) {
+    if (el._swipe) return;
+    el._swipe = true;
+    let from = null;
+    const live = () => { const s = root._snake; return s && s.ctx.mine && s.ctx.playing ? s.ctx : null; };
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || !live()) return;
+      from = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      try { el.setPointerCapture(e.pointerId); } catch { /* стара миша без capture */ }
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!from || e.pointerId !== from.id) return;
+      const dx = e.clientX - from.x, dy = e.clientY - from.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 18) return;
+      from.x = e.clientX;
+      from.y = e.clientY;
+      turn(live(), Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3));
+    });
+    const end = (e) => { if (from && e.pointerId === from.id) from = null; };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
   }
 
   HGames.register({
@@ -75,21 +127,33 @@
     seatNames: ['жовта', 'зелена'],
     seatClass: ['x', 'o'],
     pad: { dirs: true, hint: '{dpad} куди повзти' },
+    news: {
+      v: '2026-09-28',
+      title: 'Змійка: свайпом по полю',
+      items: [
+        '👆 На телефоні крути свайпом просто по полю, а стрілки під полем спрацьовують на дотик, а не на відпускання',
+        '⌨️ Затиснута стрілка більше не з\'їдає наступного повороту',
+        '🐍 Змійки більше не смикаються на мить назад, коли хтось на сайті ставить чи закриває стіл',
+      ],
+    },
 
     mount(root, ctx) {
       const st = state(root, ctx);
       st.cv = HGames.ui.canvas(root, { w: W * PX, h: H * PX, cls: 'snakeboard' });
+      swipe(root, st.cv.el);
     },
 
     update(root, ctx) {
       const st = state(root, ctx);
       if (!st.cv) return;
+      st.css = palette(ctx.css);
       // хрестовина потрібна лише тому, хто грає: сів глядач за стіл — вона з'явиться тут
-      if (ctx.mine) HGames.ui.dpad(root, (d) => ctx.input('turn', { dir: d }));
-      else { const d = root.querySelector(':scope > .dpad'); if (d) d.remove(); }
-      // 'room' приходить рідше за кадри, але після нього вид свіжіший: малюємо з нього
-      const f = (ctx.view && ctx.view.a) ? ctx.view : st.last;
-      if (f) st.last = f;
+      pad(root, ctx);
+      const touch = ctx.mine && ctx.playing ? 'none' : '';
+      if (st.cv.el.style.touchAction !== touch) st.cv.el.style.touchAction = touch;
+      // Новий вид (подія 'room') свіжіший за кадри — малюємо з нього. Той самий об'єкт удруге — застарілий кеш.
+      if (ctx.view && ctx.view.a && ctx.view !== st.view) { st.view = ctx.view; st.last = ctx.view; }
+      const f = st.last;
       score(root, f);
       st.cv.resize();
       draw(st, f, !ctx.playing);
@@ -106,7 +170,10 @@
     onKey(e, ctx) {
       const dir = DIRS[e.code];
       if (dir === undefined || !ctx.mine || !ctx.playing) return false;
-      ctx.input('turn', { dir });
+      // Автоповтор затиснутої клавіші (~30 на секунду на Windows) з'їдав квоту каркаса — 30 Input на секунду, —
+      // і справжній поворот у ту саму секунду мовчки губився. Клавішу з'їдаємо, щоб сторінка не гортала.
+      if (e.repeat) return true;
+      turn(ctx, dir);
       return true;
     },
 

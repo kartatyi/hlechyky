@@ -12,8 +12,11 @@
 
 /* Канвас уже має max-width із core.css; тут лише пропорція й поведінка пальця. */
 .pongboard { aspect-ratio: 16 / 10; }
-/* Арена квадратна: на ноутбуці 560 px заввишки вже не влазить разом із шапкою картки. */
-.pongboard.arena { aspect-ratio: 1; max-width: min(560px, calc(100vh - 290px)); min-width: min(280px, 100%); }
+/* Арена квадратна: на ноутбуці 560 px заввишки вже не влазить разом із шапкою картки. Над полем ≈175 px
+   (шапки сайту й столу), під ним ≈185 (легенда, звук, статус, «Встати»): з −290 на MacBook 1512×862 сторінку
+   доводилось гортати на 55 px, на 1280×800 — на 67. Смужка підказок пада (Steam Deck) забирає ще 50. */
+.pongboard.arena { aspect-ratio: 1; max-width: min(560px, calc(100vh - 360px)); min-width: min(280px, 100%); }
+body.pad-on .pongboard.arena { max-width: min(560px, calc(100vh - 410px)); }
 /* Гравцеві рух пальцем по полю — це ракетка, а не скрол сторінки; глядачеві скрол лишаємо. */
 .pongboard.play { touch-action: none; cursor: ns-resize; }
 .pongboard.arena.play { cursor: ew-resize; }

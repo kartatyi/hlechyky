@@ -1663,10 +1663,16 @@
     if (Math.abs(d) > 24) window.scrollBy({ top: d, behavior: reduced() ? 'auto' : 'smooth' });
   }
 
+  /// Цикл живе, поки йде партія (кадри, передбачення свого тіла, пад, ввід), і ще AWAKE_MS після останньої
+  /// події — догорають бризки, скалки й накладки. У лобі й на підсумку засинає: 60 разів на секунду
+  /// перемальовувати застиглий ставок нема чого. Будять update(), frame() і зміна розміру вікна.
+  const AWAKE_MS = 1500;
   function spin(root, st) {
+    st.awakeUntil = performance.now() + AWAKE_MS;
     if (st.raf) return;
     const loop = () => {
       if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
+      if (!(st.ctx && st.ctx.playing) && performance.now() > st.awakeUntil) { st.raf = 0; return; }
       st.raf = requestAnimationFrame(loop);
       const now = performance.now();
       readPad(st);
@@ -1735,6 +1741,7 @@
     seatNames: ['синій', 'рудий', 'зелений', 'жовтий', 'бузковий', 'м’ятний', 'рожевий', 'сірий'],
     seatClass: ['if0', 'if1', 'if2', 'if3', 'if4', 'if5', 'if6', 'if7'],
     pad: { dirs: true, a: 'Space', x: 'KeyX', hint: '{dpad} ковзати · {a} ривок · {x} сніжка' },
+    added: '2026-09-26',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     news: {
       v: '2026-09-27',
       title: 'Нова гра: Крижина',
@@ -1757,7 +1764,7 @@
       st.cv.el.classList.toggle('play', !!ctx.mine);
       wireCanvas(root, st);
       controls(root, st);
-      st.onResize = () => { const s = root._icefloe; if (s) fit(root, s); };
+      st.onResize = () => { const s = root._icefloe; if (s) { fit(root, s); spin(root, s); } };
       window.addEventListener('resize', st.onResize);
       fit(root, st);
       spin(root, st);
@@ -1814,6 +1821,7 @@
       const hk = hudKey(f);
       if (hk !== st.hudK) { st.hudK = hk; hud(root, st); }
       if (ctx.mine && HGames.ui.coarse()) controls(root, st);
+      spin(root, st);
     },
 
     onKey(e, ctx) {

@@ -20,6 +20,7 @@
   const TICK_MS = 40;
   const TRAIL = 10;              // скільки слідів тягне за собою м'яч
   const SEND_MS = 40;            // не частіше 25 вводів на секунду: хаб пускає 30
+  const AWAKE_MS = 1500;         // скільки ще малювати після останньої події: спалахи й «+1» живуть до 1.1 с
 
   /// Кольори й позначки місць: колір — для ока, фігура — для тих, кому кольори зливаються.
   const SEAT_VARS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#d9825b'], ['--pong-blue', '#6fb3e8']];
@@ -124,7 +125,7 @@
     if (!st) {
       st = root._pong = {
         cv: null, mode: '', ctx, interp: HGames.ui.Interp(), last: null, prev: null, trail: [],
-        raf: 0, want: null, sentAt: 0, sent: null, was: false,
+        raf: 0, loop: null, awakeUntil: 0, want: null, sentAt: 0, sent: null, was: false,
         flash: [0, 0, 0, 0], hurt: [0, 0, 0, 0], shake: 0, pops: [], legend: '',
       };
       live.add(st);
@@ -203,12 +204,23 @@
     return css('--danger', '#ff6b5a');
   }
 
+  /// Палітра з CSS-змінних: getComputedStyle — раз на колір і вид, а не два десятки разів на кожен кадр.
+  /// update() бере свіжу — нова тема підхопиться з першою ж подією.
+  function palette(css) {
+    const m = new Map();
+    return (name, fallback) => {
+      let v = m.get(name);
+      if (v === undefined) { v = css(name, fallback); m.set(name, v); }
+      return v;
+    };
+  }
+
   function draw(st) {
     const c = st.cv;
     if (!c) return;
     const g = c.ctx;
     const f = blend(st);
-    const css = (n, d) => (st.ctx ? st.ctx.css(n, d) : d);
+    const css = st.pal || ((n, d) => (st.ctx ? st.ctx.css(n, d) : d));
     const now = performance.now();
     g.save();
     g.clearRect(0, 0, c.w, c.h);
@@ -542,6 +554,15 @@
     } else {
       st.want = Math.max(0, Math.min(DUO.H, ((ev.clientY - r.top) / r.height) * DUO.H));
     }
+    wake(st);
+  }
+
+  /// Цикл малювання живе, лише поки є що малювати: летять кадри, догоряють спалахи й спливні написи, палець
+  /// чекає відправки. У лобі й на підсумку він засинає, а будять його update(), frame() і палець. Раніше rAF
+  /// крутився весь час, поки картка в DOM, і 60 разів на секунду перемальовував застиглу картинку.
+  function wake(st) {
+    st.awakeUntil = Math.max(st.awakeUntil, performance.now() + AWAKE_MS);
+    if (!st.raf && st.loop) st.raf = requestAnimationFrame(st.loop);
   }
 
   /// Останню позицію пальця відправляємо з rAF-циклу: так вона не губиться і не б'є у квоту хаба.
@@ -646,20 +667,25 @@
       const st = state(root, ctx);
       if (ctx.view && ctx.view.frame) st.last = ctx.view.frame;
       field(root, st);
-      const loop = () => {
-        if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
-        st.raf = requestAnimationFrame(loop);
+      st.loop = () => {
+        st.raf = 0;
+        if (!st.cv || !st.cv.el.isConnected || root._pong !== st) return;
+        const now = performance.now();
+        // заснути: кадри не летять, спалахи догоріли, палець нічого не чекає
+        if (now > st.awakeUntil && st.want == null) return;
+        st.raf = requestAnimationFrame(st.loop);
+        flush(st, now);
         // Пішли на «Ефір» — картка лишається в DOM під display:none. Малювати в невидимий канвас
-        // сто разів на секунду означає просто їсти акумулятор; цикл при цьому живий і сам прокинеться.
-        if (!st.cv.el.offsetParent) return;
-        flush(st, performance.now());
+        // сто разів на секунду означає просто їсти акумулятор.
+        if (!st.cv.el.offsetParent || document.hidden) return;
         draw(st);
       };
-      st.raf = requestAnimationFrame(loop);
+      wake(st);
     },
 
     update(root, ctx) {
       const st = state(root, ctx);
+      st.pal = palette(ctx.css);
       // Перший вид приходить ще до кадрів — з нього й малюємо поле, поки тик не поїхав. Посеред партії
       // свіжіші за вид кадри, тож вид беремо лише поза грою (лобі, кінець) або коли змінилось саме поле.
       const vf = ctx.view && ctx.view.frame;
@@ -677,6 +703,7 @@
       // бо в паузі ми напрямок не слали. Шлемо його заново, щойно за карткою знову можна грати.
       else if (!st.was && holding()) { st.sent = null; pushDir(); }
       st.was = !!ctx.playing;
+      wake(st);
     },
 
     frame(root, ctx, f) {
@@ -688,6 +715,7 @@
       events(st, f);
       st.interp.push(f);
       if (isArena(f)) legend(root, st);
+      wake(st);
     },
 
     onKey(e, ctx) {
@@ -724,6 +752,8 @@
       const st = root._pong;
       if (!st) return;
       cancelAnimationFrame(st.raf);
+      st.raf = 0;
+      st.loop = null;
       live.delete(st);
       root._pong = null;
     },
