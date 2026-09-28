@@ -327,7 +327,7 @@ public class PictionaryTests
         var f = LastFrame(h);
         Assert.Equal(1, f.GetProperty("from").GetInt32());
         Assert.Equal(2, f.GetProperty("n").GetInt32());
-        Assert.Equal(1, Ops(f).Count);
+        Assert.Single(Ops(f));
     }
 
     [Fact]
