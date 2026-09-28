@@ -143,6 +143,121 @@
     if (el.textContent !== text) el.textContent = text;
   }
 
+  const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  /// Табло дня просто над полем: «Сьогодні: Оля 1:23 🔥4 · Петро 2:10 · ти — 2-й» і хто цього тижня грав, а сьогодні ще ні.
+  /// Дані — з виду (сервер тримає їх у пам'яті), тож тут лише рядок; порожнє табло — запрошення бути першим.
+  function dayBoard(root, ctx) {
+    let el = root.querySelector(':scope > .mn-day');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'mn-day';
+      const bar = root.querySelector(':scope > .mn-bar');
+      root.insertBefore(el, bar ? bar.nextSibling : root.firstChild);
+    }
+    const v = ctx.view || {};
+    const b = v.board;
+    const me = String((ctx.nickOf && ctx.seat != null && ctx.nickOf(ctx.seat)) || '').trim().toLowerCase();
+    let html = '';
+    if (b) {
+      const rows = b.rows || [];
+      const mine = rows.findIndex((r) => (r.n || '').trim().toLowerCase() === me);
+      const fire = (n) => (n >= 2 ? ' <span class="mn-fire" title="Днів поспіль">🔥' + n + '</span>' : '');
+      const cell = (r, i) => '<span class="mn-dr' + (i === mine ? ' me' : '') + '">' + (i === 0 ? '🥇 ' : '')
+        + '<i>' + escHtml(r.n) + '</i> ' + timeText(r.ms) + (r.a > 1 ? '<small> ×' + r.a + '</small>' : '') + fire(r.st) + '</span>';
+      html = rows.length
+        ? '<span class="mn-dl">Сьогодні:</span> ' + rows.slice(0, 5).map(cell).join(' · ')
+          + (mine >= 5 ? ' · <span class="mn-dr me">ти — ' + (mine + 1) + '-й</span>' : '')
+          + (rows.length > 5 && mine < 5 ? ' <small>і ще ' + (rows.length - 5) + '</small>' : '')
+        : '<span class="mn-dl">Сьогодні ще ніхто не розмінував — будь першим</span>';
+      const wait = (b.wait || []).filter((w) => (w.n || '').trim().toLowerCase() !== me);
+      if (wait.length) html += '<br><span class="mn-dl">Ще не проходили:</span> '
+        + wait.map((w) => '<i>' + escHtml(w.n) + '</i>' + (w.st >= 2 ? ' <span class="mn-fire dim" title="Вогник згасне опівночі">🔥' + w.st + '</span>' : '')).join(', ');
+    }
+    el.hidden = !html;
+    setHtml(el, html);
+  }
+
+  /// «👻 Привид найшвидшого»: розібрати запис ходів («сотні секунди, o/f/c, клітинка») у список кроків.
+  function ghostMoves(mv) {
+    const out = [];
+    for (const t of String(mv || '').split(' ')) {
+      const m = /^(\d+)([ofc])(\d+)$/.exec(t);
+      if (m) out.push({ t: +m[1] * 10, k: m[2], c: +m[3] });
+    }
+    return out;
+  }
+
+  /// Програти привида на своєму (вже розв'язаному) полі: числа й міни відомі з виду, відкриття з повінню — як на сервері.
+  function ghostStart(root, ctx) {
+    const v = ctx.view || {};
+    const g = v.ghost;
+    if (!g || !v.cells) return;
+    const st = state(root);
+    ghostStop(root);
+    const w = v.w || 16, n = v.cells.length, h = Math.ceil(n / w);
+    st.ghost = { nick: g.n, ms: g.ms, moves: ghostMoves(g.mv), i: 0, t0: Date.now(), speed: 1, at: 0, base: 0,
+      w, h, num: v.cells, open: new Uint8Array(n), flag: new Uint8Array(n), last: null, cells: '' };
+    ghostCells(st.ghost);
+    st.ghost.timer = setInterval(() => ghostStep(root), 50);
+    ghostStep(root);
+  }
+
+  function ghostStop(root) {
+    const st = root._mines;
+    if (!st || !st.ghost) return;
+    clearInterval(st.ghost.timer);
+    st.ghost = null;
+  }
+
+  function ghostNear(g, c) {
+    const x = c % g.w, y = (c / g.w) | 0, out = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < g.w && ny < g.h) out.push(ny * g.w + nx);
+    }
+    return out;
+  }
+
+  function ghostOpen(g, c) {
+    const stack = [c];
+    while (stack.length) {
+      const i = stack.pop();
+      if (g.open[i] || g.flag[i]) continue;
+      g.open[i] = 1;
+      if (g.num[i] === '0') for (const j of ghostNear(g, i)) if (!g.open[j]) stack.push(j);
+    }
+  }
+
+  function ghostCells(g) {
+    let s = '';
+    for (let i = 0; i < g.num.length; i++) s += g.open[i] ? g.num[i] : g.flag[i] ? 'F' : '#';
+    g.cells = s;
+  }
+
+  function ghostStep(root) {
+    const st = root._mines;
+    const g = st && st.ghost;
+    if (!g) return;
+    if (document.hidden) { g.t0 = Date.now() - g.at / g.speed; return; }   // у схованій вкладці привид чекає
+    g.at = (Date.now() - g.t0) * g.speed;
+    let moved = false;
+    while (g.i < g.moves.length && g.moves[g.i].t <= g.at) {
+      const m = g.moves[g.i++];
+      if (m.k === 'f') g.flag[m.c] ^= 1;
+      else if (m.k === 'c') { for (const j of ghostNear(g, m.c)) if (!g.open[j] && !g.flag[j]) ghostOpen(g, j); }
+      else ghostOpen(g, m.c);
+      g.last = m.c;
+      moved = true;
+    }
+    const done = g.i >= g.moves.length;
+    if (done) { g.at = g.ms; clearInterval(g.timer); g.timer = 0; }
+    if (moved || done) { ghostCells(g); paint(root, st.ctx, true); }
+    const el = root.querySelector('.mn-time b');
+    if (el) { const t = timeText(Math.min(g.at, g.ms)); if (el.textContent !== t) el.textContent = t; }
+  }
+
   /// Кнопки під полем: режим прапорця (для пальця), «Ану ще раз» в дні, «Здаюсь» у дуелі.
   function buttons(root, ctx, daily) {
     const st = state(root);
@@ -163,10 +278,26 @@
       out.push('<button type="button" class="ghost mn-flag' + (st.flagMode ? ' on' : '') + '" data-m="flag">🚩 Прапорець</button>');
     if (daily && ctx.mine && dead) out.push('<button type="button" class="primary" data-m="restart">Ану ще раз</button>');
     if (!daily && ctx.mine && ctx.playing && !dead) out.push('<button type="button" class="ghost" data-m="resign">Здаюсь</button>');
+    if (daily && v.solved && v.ghost) {
+      const g = st.ghost;
+      if (!g) out.push('<button type="button" class="primary" data-m="ghost">👻 Привид: ' + escHtml(v.ghost.n) + ' ' + timeText(v.ghost.ms) + '</button>');
+      else {
+        out.push('<button type="button" class="ghost" data-m="gspeed">' + (g.speed === 1 ? '⏩ Швидше ×4' : '▶ Звичайно') + '</button>');
+        out.push('<button type="button" class="ghost" data-m="gstop">⏹ Годі</button>');
+      }
+    }
     const html = out.join('');
     setHtml(el, html);
     el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
       if (b.dataset.m === 'flag') { st.flagMode = !st.flagMode; buttons(root, ctx, daily); return; }
+      if (b.dataset.m === 'ghost') { ghostStart(root, ctx); buttons(root, ctx, daily); return; }
+      if (b.dataset.m === 'gstop') { ghostStop(root); paint(root, ctx, daily); return; }
+      if (b.dataset.m === 'gspeed') {
+        const g = st.ghost;
+        if (g) { g.speed = g.speed === 1 ? 4 : 1; g.t0 = Date.now() - g.at / g.speed; if (!g.timer) g.timer = setInterval(() => ghostStep(root), 50); }
+        buttons(root, ctx, daily);
+        return;
+      }
       ctx.act(b.dataset.m);
     });
   }
@@ -243,16 +374,21 @@
   }
 
   function paint(root, ctx, daily) {
-    const v = ctx.view || {};
+    const st = state(root);
+    st.ctx = ctx;
+    // привид грає лише на розв'язаному полі; нова спроба/інший вид — привида геть
+    if (st.ghost && !(ctx.view && ctx.view.solved)) ghostStop(root);
+    const g = st.ghost;
+    const v = g ? Object.assign({}, ctx.view, { cells: g.cells, lastOpen: g.last }) : (ctx.view || {});
     const w = v.w || (daily ? 16 : 9);
     const cells = v.cells || '';
-    const st = state(root);
-    const live = !!ctx.myTurn;
+    const live = !g && !!ctx.myTurn;
     if (!live) st.flagMode = false;      // не твій хід — режим прапорця нема сенсу тримати
 
-    bar(root, ctx, daily);
-    if (daily) clock(root, ctx);
-    else rule(root, ctx, v);
+    bar(root, g ? Object.assign({}, ctx, { view: v }) : ctx, daily);
+    if (daily) dayBoard(root, ctx);
+    if (daily && !g) clock(root, ctx);
+    else if (!daily) rule(root, ctx, v);
     const owners = v.owners || '';
     const lastCls = v.lastBy != null ? ' by' + v.lastBy : '';
 
@@ -278,17 +414,21 @@
     icon: ICON,
     seatNames: ['жовтий', 'зелений', 'глиняний', 'сірий'],
     seatClass: ['x', 'o', 'c', 'd'],
-    mount(root, ctx) { paint(root, ctx, daily); },
-    update(root, ctx) { paint(root, ctx, daily); },
+    mount(root, ctx) { ctx._root = root; paint(root, ctx, daily); },
+    update(root, ctx) { ctx._root = root; paint(root, ctx, daily); },
     unmount(root) {
       const st = root._mines;
       if (st && st.timer) clearInterval(st.timer);
+      ghostStop(root);
       root._mines = null;
     },
     status(ctx) {
       const v = ctx.view || {};
       if (!daily) return '';                       // дуелі вистачає «Твій хід» / «Ходить …» від каркаса
-      if (v.solved) return 'Є! Поле чисте за ' + timeText(v.ms || 0) + (v.attempts > 1 ? ' · спроба ' + v.attempts : '');
+      const g = ctx._root && ctx._root._mines && ctx._root._mines.ghost;
+      if (v.solved && g) return '👻 Привид: ' + g.nick + ' розміновує за ' + timeText(g.ms) + (g.speed > 1 ? ' · ×4' : '');
+      if (v.solved) return 'Є! Поле чисте за ' + timeText(v.ms || 0) + (v.attempts > 1 ? ' · спроба ' + v.attempts : '')
+        + (v.streak >= 2 ? ' · 🔥 ' + v.streak + ' дн. поспіль' : '');
       if (v.result && v.result.reason === 'boom') return 'Бабах! Це була міна — тисни «Ану ще раз»';
       if (!ctx.playing) return '';
       return 'Лишилось клітинок: ' + (v.left == null ? '?' : v.left);
@@ -309,12 +449,12 @@
   }));
   HGames.register(Object.assign(mod('mines-daily', true), {
     news: {
-      v: '2026-09-24',
-      title: 'Сапер дня: швидше по числах',
+      v: '2026-09-29',
+      title: 'Сапер дня: табло, вогник і привид',
       items: [
-        '👆 Тисни на відкрите число, довкола якого вже стоять усі прапорці, — решта сусідів відкриється одним махом',
-        '💥 Прапорець стояв не там — бабах, як у справжньому сапері, тож став їх чесно',
-        '🔧 На ПК поле більше не стискається в дрібну сітку',
+        '🏆 Над полем — табло дня: хто сьогодні вже розмінував і за скільки, а хто цього тижня грав, та сьогодні ще ні',
+        '🔥 Вогник біля ніка — скільки днів поспіль людина розміновує поле дня',
+        '👻 Розмінував — тисни «Привид» і дивись, як найшвидший сьогодні пройшов те саме поле, хід за ходом (можна ×4)',
       ],
     },
   }));

@@ -27,7 +27,7 @@ public sealed class TyperaceBank
     public static int TargetLen(string length) => length switch { Short => 150, Long => 600, _ => 300 };
 
     public static readonly string[] Lengths = [Short, Medium, Long];
-    public static readonly string[] Sources = [All, Classic, Proverbs, Twisters];
+    public static readonly string[] Sources = [All, Classic, Proverbs, Twisters, TyperaceChat.Chat, TyperaceChat.Mix];
 
     static readonly Lazy<TyperaceBank> Cached = new(() => Load(Paths.Resolve(FileName)));
 

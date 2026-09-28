@@ -621,7 +621,7 @@ public class TyperaceTests
         Assert.True(FinishAt(h, 0, 30_000).Ok);
         var v = h.View(null);
         Assert.Equal(
-            ["phase", "turn", "len", "text", "src", "opts", "readyAt", "goAt", "endsAt", "goIn", "endsIn", "tail", "racers", "result", "extra"],
+            ["phase", "turn", "len", "text", "src", "srcNote", "opts", "readyAt", "goAt", "endsAt", "goIn", "endsIn", "tail", "racers", "result", "extra"],
             v.EnumerateObject().Select(p => p.Name));
         Assert.Equal(JsonValueKind.Null, v.GetProperty("turn").ValueKind);
         Assert.Equal(["kind", "author", "title", "year"], v.GetProperty("src").EnumerateObject().Select(p => p.Name));
