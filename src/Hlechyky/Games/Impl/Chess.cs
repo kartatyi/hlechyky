@@ -17,7 +17,7 @@ public sealed class Chess : Game
     sealed record Outcome(int? Winner, string Reason);
 
     /// <summary>Рядок легального ходу для браузера. Рокіровка приходить двома записами — див. <see cref="Wire"/>.</summary>
-    sealed record LegalMove(string From, string To, string? Promo, string? Castle);
+    internal sealed record LegalMove(string From, string To, string? Promo, string? Castle);
 
     public override GameInfo Info { get; } = new(
         "chess", "Шахи", "шахи", GameGroup.Board, 2, 2, Rated: true,
@@ -283,7 +283,7 @@ public sealed class Chess : Game
     /// «король бере свою туру» (стандарт 960) і звичне «король на g1/c1». Якщо (from, to) — це водночас
     /// і простий хід короля, і рокіровка (у 960 буває), виграє простий хід: рокіровку тоді просять полем castle.
     /// </summary>
-    ChessMove? Resolve(JsonElement payload, List<ChessMove> legal)
+    internal static ChessMove? Resolve(JsonElement payload, List<ChessMove> legal)
     {
         if (Str(payload, "castle") is { Length: > 0 } side)
         {
@@ -347,10 +347,12 @@ public sealed class Chess : Game
     /// Легальні ходи для браузера. Рокіровку віддаємо двома записами — на поле тури (стандарт 960) і на
     /// звичне поле короля, — щоб клацнути можна було по обох; коли вони збігаються, запис один.
     /// </summary>
-    LegalMove[] Wire()
+    LegalMove[] Wire() => _result is not null ? [] : WireOf(_core);
+
+    /// <summary>Легальні ходи позиції для браузера — спільне для столу, Глека й задачі дня.</summary>
+    internal static LegalMove[] WireOf(ChessCore core)
     {
-        if (_result is not null) return [];
-        var moves = _core.Legal();
+        var moves = core.Legal();
         var wire = new List<LegalMove>(moves.Count + 2);
         foreach (var m in moves)
         {
@@ -372,7 +374,7 @@ public sealed class Chess : Game
         return [.. wire];
     }
 
-    static string? PromoLetter(sbyte promo) => promo == 0 ? null : " pnbrqk"[promo].ToString();
+    internal static string? PromoLetter(sbyte promo) => promo == 0 ? null : " pnbrqk"[promo].ToString();
 
     // ------------------------------------------------------------------------------------------
     // Збереження (партія за столом його не потребує, але вид після Load має бути той самий)
