@@ -28,6 +28,7 @@
   const NO_GROUND = -2147483648, SNOW_ID_BASE = 1 << 20, INT_MIN = -2147483648;
   const SNAP_N = 16, LOG_N = 64, OB_N = 64, PK_N = 32, SN_N = 16, EV_N = 64;
   const DINO = 0, STORKS = 1;
+  const KEY_G = 6, KEY_BLOCK = 4, KEY_N = 16;   // «ключ лелек» = RunnerStorks.KeyG / KeyBlock / KeyN
 
   const K = {
     Low: 1, Low2: 2, High: 3, Wide: 4, Icicle: 5, Ptero: 6, Pit: 7, Hill: 8, Snow: 9,
@@ -192,6 +193,10 @@
 
   class Sim {
     constructor(mode, seed, plays, readySteps, pmCap, snowOn, featherOn = true, hashing = false) {
+      // «ключ лелек»: розклад вирішує лише сервер (RunnerSim.DecideKey), клієнт знає його з кадрів (knowKey)
+      this.keyOn = false;
+      this.keyAt = new Int32Array(KEY_N).fill(-1);
+      this.keyMask = new Int32Array(KEY_N);
       this.mode = mode;
       this.R = RULES[mode];
       this.seed = seed;
@@ -503,11 +508,22 @@
       if (this.hashing) this.hashStep(run);
     }
 
+    inKey(seat, t) {
+      const b = t - (t & (KEY_BLOCK - 1)), i = (b / KEY_BLOCK) & (KEY_N - 1);
+      return this.keyAt[i] === b && (this.keyMask[i] & (1 << seat)) !== 0;
+    }
+
+    knowKey(b, mask) {
+      const i = (b / KEY_BLOCK) & (KEY_N - 1);
+      this.keyAt[i] = b;
+      this.keyMask[i] = mask;
+    }
+
     stepPlayer(seat, p, t, run) {
       if (run < 0) return;
       const j = t & (LOG_N - 1);
       if (this.mode === DINO) this.stepDino(seat, p, run, this.heldAt[seat][j], this.edge[seat][j] !== 0);
-      else this.stepStork(seat, p, run, this.edge[seat][j] !== 0);
+      else this.stepStork(seat, p, run, this.edge[seat][j] !== 0, this.keyOn && this.inKey(seat, t));
     }
 
     stepDino(seat, p, run, held, edge) {
@@ -640,11 +656,11 @@
       if (fresh) this.emit(kind === K.Egg ? 3 : kind === K.Pepper ? 4 : 5, seat, id, 0);
     }
 
-    stepStork(seat, p, run, edge) {
+    stepStork(seat, p, run, edge, key) {
       if (p.down) return;
       if (p.ifr > 0) p.ifr--;
       if (edge) p.vy = ST.Flap;
-      p.vy -= ST.G;
+      p.vy -= key ? KEY_G : ST.G;
       if (p.vy < ST.VyMin) p.vy = ST.VyMin;
       p.y += p.vy;
       if (p.y > ST.Ceiling) { p.y = ST.Ceiling; p.vy = 0; }
@@ -1595,6 +1611,8 @@
     const a = st.simArgs;
     const sim = new Sim(st.mode, a.seed, a.plays, a.ready, a.pmCap, a.snowOn, a.feather);
     for (const w of st.snowWire.values()) sim.knowSnow(w);
+    sim.keyOn = !!a.key;
+    if (st.keyWire) for (const [b, m] of st.keyWire) sim.knowKey(b, m);
     return sim;
   }
 
@@ -1612,8 +1630,10 @@
     const ctx = st.ctx, me = meOf(ctx, v);
     const plays = new Array(SEATS).fill(false);
     if (me != null) plays[me] = true;
-    st.simArgs = { seed: v.seed || 1, plays, ready: v.readySteps | 0, pmCap: v.pmCap || 1000, snowOn: !!v.snowOpt, feather: v.featherOpt !== false };
+    st.simArgs = { seed: v.seed || 1, plays, ready: v.readySteps | 0, pmCap: v.pmCap || 1000, snowOn: !!v.snowOpt, feather: v.featherOpt !== false,
+      key: !!v.keyOpt && (v.n0 | 0) > 1 };
     st.snowWire.clear();
+    st.keyWire = new Map();
     st.sim = makeSim(st);
     st.me = me;
     st.key = keyOf(ctx, v);
@@ -1749,6 +1769,17 @@
     else Snd.fall();
   }
 
+  /// Розклад «ключа лелек» із кадру: [крок блоку, маска, …] — у свій Sim і в запас (makeSim після снапу).
+  function knowKeys(st, ky) {
+    if (!st.keyWire) st.keyWire = new Map();
+    for (let k = 0; k + 1 < ky.length; k += 2) {
+      if (ky[k] < 0) continue;
+      st.sim.knowKey(ky[k], ky[k + 1]);
+      st.keyWire.set(ky[k], ky[k + 1]);
+    }
+    if (st.keyWire.size > 48) for (const b of st.keyWire.keys()) { st.keyWire.delete(b); if (st.keyWire.size <= 32) break; }
+  }
+
   function applyFrame(st, f) {
     const sim = st.sim;
     if (!sim || !f) return;
@@ -1761,6 +1792,7 @@
     pushFrame(st, f.s, f.p || []);
     if (f.pg && st.me != null && f.pg[st.me] != null) rttSample(st, f.pg[st.me]);
     if (f.sn) for (const w of f.sn) knowSnow(st, w, true);
+    if (f.ky) knowKeys(st, f.ky);
     if (f.ev) for (const e of f.ev) serverEvent(st, e);
     trackOuts(st, f);
     if (f.ph !== st.ph) phaseTo(st, f.ph, f);
@@ -2349,6 +2381,16 @@
       } else {
         const md = p.modeOf(STORKS);
         g.fillStyle = 'rgba(0,0,0,.22)'; g.beginPath(); g.ellipse(sx + 16, GROUND + 3, 14, 3, 0, 0, 7); g.fill();
+        // 🪽 ключ: пунктир від своєї лелеки до тих, з ким летиш ключем
+        if (sim.keyOn && md !== 4 && sim.inKey(me, sim.S)) {
+          g.save(); g.strokeStyle = pal.text; g.globalAlpha = 0.35; g.lineWidth = 1.5; g.setLineDash([3, 4]);
+          for (let q = 0; q < n; q++) {
+            const i = ORDER[q];
+            if (i === me || !sim.inKey(i, sim.S)) continue;
+            g.beginPath(); g.moveTo(sx + 16, GROUND - ownY / SUB - 18); g.lineTo(SX[i] + 16, GROUND - SY[i] / SUB - 18); g.stroke();
+          }
+          g.restore();
+        }
         const head = drawStork(st, g, me, sx, ownY, p.vy, md, p.feather ? 1 : 0, now, st.ownOutAt, true);
         if (md !== 4) {
           if (head - 24 > -st.oy) arrow(g, sx + 16, head - 6, pal.text, isReady(st, ownT) || lobby);
@@ -2987,6 +3029,12 @@
       + sn[1] + ' ' + plural(sn[1], 'спотик', 'спотики', 'спотиків') + ' від ' + sn[2] + ' ' + plural(sn[2], 'брили', 'брил', 'брил') + '</p>';
   }
 
+  /// 🪽 Хто найдовше летів ключем цього раунду.
+  function keyHtml(ctx, kb) {
+    if (!Array.isArray(kb) || kb.length < 2 || !(kb[1] > 0)) return '';
+    return '<p class="rnr-ovsnow">🪽 Найвірніша в ключі — <b class="s' + kb[0] + '">' + ctx.esc(ctx.nickOf(kb[0]) || ctx.seatName(kb[0])) + '</b>: ' + kb[1] + ' с пліч-о-пліч</p>';
+  }
+
   function plural(n, one, few, many) {
     const t = n % 100, o = n % 10;
     if (t > 10 && t < 20) return many;
@@ -3044,7 +3092,7 @@
         + '<table><tr><th>#</th><th>хто</th><th>за місце</th>' + (st.mode === DINO ? '<th>🥚</th>' : '') + '<th>разом</th></tr>'
         + rows.map((i) => '<tr class="s' + i + (i === ctx.seat ? ' me' : '') + '"><td>' + (v.place[i] || '—') + '</td><td><i></i>' + nick(i) + '</td><td>+' + Math.max(0, (rp[i] || 0) - eggs(i)) + '</td>'
           + (st.mode === DINO ? '<td>+' + eggs(i) + '</td>' : '') + '<td>' + ((v.points && v.points[i]) || 0) + '</td></tr>').join('')
-        + '</table>' + sniperHtml(ctx, v.sniper, 'раунду') + avengerHtml(ctx, v.avenger) + (v.round < v.rounds ? '<p class="rnr-ovhint">Наступний раунд за мить…</p>' : '') + '</div>';
+        + '</table>' + sniperHtml(ctx, v.sniper, 'раунду') + avengerHtml(ctx, v.avenger) + keyHtml(ctx, v.keyBest) + (v.round < v.rounds ? '<p class="rnr-ovhint">Наступний раунд за мить…</p>' : '') + '</div>';
     }
     el.over.innerHTML = html;
     el.over.hidden = false;
@@ -3322,6 +3370,13 @@
       const drop = dev === 'pad' ? 'Ⓐ' : dev === 'touch' ? '👻' : 'пробіл';
       const next = dev === 'pad' ? '↓' : dev === 'touch' ? '⬇' : '↓';
       return '👻 Ти — дух лавини: ' + drop + ' — брила перед ' + (who || 'лідером') + ', ' + next + ' — інша ціль';
+    }
+    if (st.mode === STORKS && p && st.sim.keyOn && ph === 'run' && !p.out && !p.down) {
+      const f0 = st.latest && st.latest.p, pals = [];
+      if (st.sim.inKey(st.me, st.sim.S) && f0)
+        for (let i = 0; i < SEATS; i++) if (i !== st.me && f0[i] && st.sim.inKey(i, st.sim.S)) pals.push(ctx.nickOf(i) || ctx.seatName(i));
+      if (pals.length) return '🪽 Ключем з ' + andJoin(pals.slice(0, 2)) + ' — падаєш повільніше' + slow;
+      return '🪽 Лети поруч з іншою лелекою — у ключі падаєш повільніше' + slow;
     }
     if (ph === 'ready') {
       if (!ctx.mine) return 'Зараз почнуть…';
