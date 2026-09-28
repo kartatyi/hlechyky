@@ -19,7 +19,7 @@ public enum MafiaPhase { Lobby, Intro, Night, Day, Vote, Done }
 // ---------------------------------------------------------------------------------------------
 
 /// <summary>Гравець у списку. <c>Role</c> — null, коли цей глядач її ще не заслужив бачити.</summary>
-public sealed record MafiaPlayerView(int Seat, string? Nick, bool Alive, string? Role);
+public sealed record MafiaPlayerView(int Seat, string? Nick, bool Alive, string? Role, bool Bot = false);
 
 /// <summary>Рядок нічного чату мафії.</summary>
 public sealed record MafiaChatLine(int Seat, string Text);
@@ -70,7 +70,7 @@ public sealed record MafiaRulesView(
 /// Правила й стан живуть тільки тут. Клієнт малює те, що йому дали у виді, і шле наміри; чого у виді
 /// нема — того в консолі браузера не видобути (тому гра <c>Hidden</c>, і вид збирається окремо на кожне місце).
 /// </summary>
-public sealed class Mafia : Game
+public sealed partial class Mafia : Game
 {
     /// <summary>Скільки всі дивляться на свою роль, перш ніж село засне (спокійний темп).</summary>
     public const int IntroMs = 10_000;
@@ -104,7 +104,8 @@ public sealed class Mafia : Game
         };
 
     public override GameInfo Info { get; } = new(
-        "mafia", "Мафія", "мафію", GameGroup.Party, TrioSize, 12,
+        // Людей — від двох: утрьох стіл добирає «🤖 Додати гравця» (CanStart рахує й ботів).
+        "mafia", "Мафія", "мафію", GameGroup.Party, 2, 12,
         TickMs: TickMs, Start: StartMode.ByHost, Hidden: true, Rated: false,
         Options:
         [
@@ -116,6 +117,7 @@ public sealed class Mafia : Game
             new GameOption("votes", "Голоси вдень", [("open", "Відкриті"), ("secret", "Таємні")], "open"),
             new GameOption("reveal", "Роль вигнаного", [("on", "Розкривати"), ("off", "Мовчати")], "on"),
             new GameOption("first", "Перша ніч", [("kill", "З кров'ю"), ("quiet", "Тиха")], "kill"),
+            new GameOption("voice", "Глек уголос", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
             new GameOption("extra", "Додаткові ролі",
                 [("none", "Без них"), ("don", "Дон"), ("maniac", "Маньяк"), ("kuma", "Кума")], "none", Multi: true),
         ],
@@ -217,6 +219,7 @@ public sealed class Mafia : Game
         if (options.TryGetValue("votes", out var votes)) _openVotes = votes != "secret";
         if (options.TryGetValue("reveal", out var reveal)) _reveal = reveal != "off";
         if (options.TryGetValue("first", out var first)) _firstKill = first != "quiet";
+        _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
         if (options.TryGetValue("extra", out var extra))
         {
             var picked = GameOption.Split(extra);
@@ -267,9 +270,10 @@ public sealed class Mafia : Game
 
     public override void Start()
     {
-        _seats = [.. Enumerable.Range(0, Info.MaxPlayers).Where(Ctx.Seated)];
         _nicks = new string?[Info.MaxPlayers];
-        foreach (var seat in _seats) _nicks[seat] = Ctx.NickOf(seat);
+        int[] humans = [.. Enumerable.Range(0, Info.MaxPlayers).Where(Ctx.Seated)];
+        foreach (var seat in humans) _nicks[seat] = Ctx.NickOf(seat);
+        _seats = SeatBots(humans);
 
         _roles.Clear();
         _dead.Clear();
@@ -305,6 +309,7 @@ public sealed class Mafia : Game
 
         _day = 1;
         Deal();
+        StartVoice();
         // Сервіси беремо тут, а не в конструкторі: гру створює реєстр без параметрів. Живого Глека
         // може й не бути (нема ключа, вимкнений бот, тести) — тоді просто мовчить.
         _brain ??= Ctx.Services.GetService<DjBrain>();
@@ -398,6 +403,8 @@ public sealed class Mafia : Game
 
         var what = _lead;
         Say(Lead(line));
+        VoiceEnter(phase);
+        PlanBots();
         // Живе слівце просимо рівно на початку дня — коли є про що говорити і є кому слухати.
         if (phase == MafiaPhase.Day) Flavor(what ?? "у селі настав ранок");
     }
@@ -405,7 +412,9 @@ public sealed class Mafia : Game
     public override TickResult Tick()
     {
         FlushLines();
+        TrySpeak();
         if (_phase is MafiaPhase.Done or MafiaPhase.Lobby) return Take(false);
+        BotsAct();
         // Ніч кінчається достроково, коли всім, кому було що робити, робити вже нічого.
         if (Ctx.Clock.UtcNow < _endsAt && !NightDone()) return Take(false);
         Advance();
@@ -500,6 +509,7 @@ public sealed class Mafia : Game
         }
         _fallen = [.. fallen];
         _killed = fallen.Count > 0 ? fallen[0] : null;
+        _voiceLead = Morning();
 
         if (fallen.Count >= 2)
         {
@@ -572,6 +582,7 @@ public sealed class Mafia : Game
             if (!tie && top.Count * 2 > alive) exiled = top.Seat;
         }
 
+        _voiceLead = [exiled is { } ex ? MafiaVoiceLines.Exiled(Name(ex)) : MafiaVoiceLines.NoExile];
         if (exiled is { } seat)
         {
             _dead.Add(seat);
@@ -636,12 +647,13 @@ public sealed class Mafia : Game
         var names = string.Join(", ", _seats.Where(s => IsMafia(_roles[s])).Select(Name));
         _log.Add(mafiaWon ? $"Перемогла мафія: {names}" : $"Перемогли мирні. Мафія: {names}");
         Say(Lead(MafiaGlek.Pick(Ctx.Rng, mafiaWon ? MafiaGlek.MafiaWin : MafiaGlek.CivilWin)));
-        Ctx.Finish(_winners, mafiaWon
+        VoiceEnd(mafiaWon ? MafiaVoiceLines.MafiaWin : MafiaVoiceLines.CivilWin);
+        Ctx.Finish(People(_winners), mafiaWon
             ? $"{Info.Title}: перемогла мафія ({names})"
             : $"{Info.Title}: перемогли мирні, мафія в кайданах ({names})");
         // Ачівку за роль платформа сама не побачить — ролі знає тільки гра (ARCHITECTURE §8).
         if (mafiaWon)
-            foreach (var seat in _winners) Ctx.Award(seat, 0, "ach:mafia-win");
+            foreach (var seat in People(_winners)) Ctx.Award(seat, 0, "ach:mafia-win");
     }
 
     void WinManiac()
@@ -654,8 +666,9 @@ public sealed class Mafia : Game
         var names = string.Join(", ", _winners.Select(Name));
         _log.Add($"Переміг маньяк: {names}");
         Say(Lead(MafiaGlek.Pick(Ctx.Rng, MafiaGlek.ManiacWin)));
-        Ctx.Finish(_winners, $"{Info.Title}: усіх пересидів маньяк ({names})");
-        foreach (var seat in _winners) Ctx.Award(seat, 0, "ach:mafia-maniac");
+        VoiceEnd(MafiaVoiceLines.ManiacWin);
+        Ctx.Finish(People(_winners), $"{Info.Title}: усіх пересидів маньяк ({names})");
+        foreach (var seat in People(_winners)) Ctx.Award(seat, 0, "ach:mafia-maniac");
     }
 
     void Draw()
@@ -666,6 +679,7 @@ public sealed class Mafia : Game
         _dirty = true;
         _log.Add("У селі ні душі — нічия");
         Say(Lead(MafiaGlek.Pick(Ctx.Rng, MafiaGlek.Draw)));
+        VoiceEnd(MafiaVoiceLines.Draw);
         Ctx.Finish([], $"{Info.Title}: у селі не лишилось кому судити — нічия");
     }
 
@@ -676,7 +690,7 @@ public sealed class Mafia : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_phase == MafiaPhase.Done) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
-        if (_phase == MafiaPhase.Lobby) return ActResult.Fail("Партія ще не почалась");
+        if (_phase == MafiaPhase.Lobby) return LobbyAct(action, payload);
         if (!_roles.TryGetValue(seat, out var role)) return ActResult.Fail("Ти тут не граєш");
         if (_dead.Contains(seat)) return ActResult.Fail("Мертві мовчать");
 
@@ -729,7 +743,7 @@ public sealed class Mafia : Game
         _checks[t] = mafia;
         _checkedTonight = true;
         _dirty = true;
-        if (mafia && !_sheriffAwarded)
+        if (mafia && !_sheriffAwarded && !IsBot(seat))
         {
             _sheriffAwarded = true;
             Ctx.Award(seat, 0, "ach:sheriff");
@@ -893,7 +907,11 @@ public sealed class Mafia : Game
             x,
             Newcomer(x) ? Ctx.NickOf(x) : _nicks.Length > x ? _nicks[x] ?? Ctx.NickOf(x) : Ctx.NickOf(x),
             Newcomer(x) || !_dead.Contains(x),
-            !Newcomer(x) && ShowsRole(x, me, myRole, seeAll) && _roles.TryGetValue(x, out var r) ? Wire(r) : null)).ToArray();
+            !Newcomer(x) && ShowsRole(x, me, myRole, seeAll) && _roles.TryGetValue(x, out var r) ? Wire(r) : null,
+            _bots.Contains(x) && !Newcomer(x))).ToList();
+        // У лобі боти ще не сіли — показуємо, де сядуть, щоб усі бачили склад наперед.
+        if (_phase == MafiaPhase.Lobby)
+            foreach (var (bs, bn) in LobbyBots()) players.Add(new MafiaPlayerView(bs, bn, true, null, true));
 
         return new
         {
@@ -903,6 +921,10 @@ public sealed class Mafia : Game
             phaseMs = Length(_phase),
             rules = Rules(seats.Length),
             players,
+            bots = _botWanted,
+            voice = _voiceName,
+            // Голос ведучого — лише тим, хто за столом (живим і мертвим); глядачеві-телевізору його не віддаємо.
+            say = me is null ? null : _speech,
             me = me is null || myRole is null ? null : new MafiaMeView(Wire(myRole.Value), !dead),
             night = Night(me, myRole, seeAll),
             dayInfo = _phase is MafiaPhase.Day or MafiaPhase.Vote || done ? new MafiaDayView(_killed, _saved, _fallen) : null,
@@ -992,7 +1014,8 @@ public sealed class Mafia : Game
         Dictionary<int, int?> Votes, string[] Log, string? Team, int[] Winners, bool SheriffAwarded, int Flavors,
         int? Stab, int? Block, int? BlockedLast, int[] Fallen,
         string Pace, string MafiaOpt, bool SheriffOn, string DoctorOpt,
-        bool SelfHeal, bool OpenVotes, bool Reveal, bool FirstKill, bool Don, bool ManiacOn, bool KumaOn);
+        bool SelfHeal, bool OpenVotes, bool Reveal, bool FirstKill, bool Don, bool ManiacOn, bool KumaOn,
+        int[]? Bots = null, int BotWanted = 0, string? Voice = null);
 
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -1005,7 +1028,8 @@ public sealed class Mafia : Game
         new Dictionary<int, int?>(_votes), [.. _log], _team, _winners, _sheriffAwarded, _flavors,
         _stab, _block, _blockedLast, _fallen,
         _pace, _mafiaOpt, _sheriffOn, _doctorOpt,
-        _selfHeal, _openVotes, _reveal, _firstKill, _don, _maniacOn, _kumaOn), Json);
+        _selfHeal, _openVotes, _reveal, _firstKill, _don, _maniacOn, _kumaOn,
+        [.. _bots], _botWanted, _voiceName), Json);
 
     public override void Load(string json)
     {
@@ -1059,6 +1083,13 @@ public sealed class Mafia : Game
         _don = s.Don;
         _maniacOn = s.ManiacOn;
         _kumaOn = s.KumaOn;
+        _bots.Clear();
+        foreach (var b in s.Bots ?? []) _bots.Add(b);
+        _botWanted = s.BotWanted;
+        _voiceName = s.Voice is "polina" or "none" ? s.Voice : "ostap";
+        // Боти після відновлення ходять заново: план фази — не стан, його складемо на вході в наступну.
+        _botPlan.Clear();
+        if (_phase is MafiaPhase.Night or MafiaPhase.Vote) PlanBots();
         _dirty = true;
     }
 
@@ -1145,6 +1176,9 @@ public sealed class Mafia : Game
     // =========================================================================================
 
     IEnumerable<int> Alive() => _seats.Where(s => !_dead.Contains(s));
+
+    /// <summary>Переможці без ботів: каркасу — лише люди (ботам ні черепків, ні ачівок, ні рядків у таблицях).</summary>
+    int[] People(int[] seats) => _bots.Count == 0 ? seats : [.. seats.Where(s => !_bots.Contains(s))];
 
     /// <summary>Ім'я місця: беремо збережене на старті, щоб той, хто виїхав, не став «гравцем 5».</summary>
     string Name(int seat) =>

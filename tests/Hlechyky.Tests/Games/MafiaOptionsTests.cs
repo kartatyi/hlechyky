@@ -737,7 +737,7 @@ public class MafiaOptionsTests
         var info = new Mafia().Info;
         var options = info.Options!.ToDictionary(o => o.Key);
 
-        Assert.Equal(["pace", "mafia", "sheriff", "doctor", "selfheal", "votes", "reveal", "first", "extra"],
+        Assert.Equal(["pace", "mafia", "sheriff", "doctor", "selfheal", "votes", "reveal", "first", "voice", "extra"],
             info.Options!.Select(o => o.Key));
         // Типове значення завжди має бути серед своїх — інакше каркас звів би його до першого-ліпшого.
         Assert.All(info.Options!, o => Assert.Contains(o.Default, o.Values.Select(v => v.Value)));
