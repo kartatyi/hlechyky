@@ -48,6 +48,7 @@ public static class GamesSetup
         Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
         Impl.SkilkySetup.AddSkilky(services);   // «Скільки?»: фото «Якого року?» в cache/skilky, таблиця дня
         Impl.PictionarySetup.AddPictionary(services);       // Піктіонарі: публічний альбом і рекорди пар
+        Impl.WordleSetup.AddWordle(services);               // Глек-слово: слова на 4 і 6 літер для гри наввипередки
         return services;
     }
 
@@ -65,6 +66,7 @@ public static class GamesSetup
         Impl.GeoSetup.MapGeo(app);   // /api/games/geo/<токен>.jpg
         Impl.SkilkySetup.MapSkilky(app);   // /api/games/skilky/photo/<токен>.jpg
         Impl.PictionarySetup.MapPictionary(app);            // /api/games/pictionary/… — альбом, 📌, реакції глядачів, пари
+        Impl.WordleSetup.MapWordle(app);                    // /api/games/wordle/stats — серія й розподіл спроб
         return app;
     }
 }

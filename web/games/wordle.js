@@ -5,9 +5,13 @@
   Вид із сервера: { day, no, rows: [{ word, marks }], attempts, max, solved, failed,
                     answer, keys: { 'а': 'G'|'Y'|'B' }, share, noWords }.
   marks — рядок із п'яти літер: G (на місці), Y (є, але не тут), B (нема).
+  Дограний день показує серію й розподіл спроб — GET /api/games/wordle/stats (Impl/WordleSetup.cs).
 */
 (() => {
   const LEN = 5;
+  /// Довжина слова: щоденне — завжди п'ять, наввипередки — 4/5/6 (опція столу, v.len).
+  const lenOf = (v) => (v && v.len) || LEN;
+  const lettersSpelled = (n) => (n === 4 ? 'чотири літери' : n === 6 ? 'шість літер' : 'п\'ять літер');
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<rect x="1" y="2.4" width="4.2" height="4.2" rx="1.2" fill="var(--ok)"/>'
     + '<rect x="5.9" y="2.4" width="4.2" height="4.2" rx="1.2" fill="none" stroke="var(--muted)" stroke-width="1.2"/>'
@@ -114,14 +118,18 @@
 
   // ------------------------------------------------------------------------------------ малювання
 
-  /// Дошка 6×5: відкриті ряди з кольорами, а в першому порожньому — те, що людина зараз набирає.
-  function drawBoard(host, ctx, st, rows, max, typing) {
+  /// Дошка 6×N: відкриті ряди з кольорами, а в першому порожньому — те, що людина зараз набирає.
+  /// hints — 💡 підказані літери: блідо стоять на своїх місцях у рядку, який зараз набирається.
+  function drawBoard(host, ctx, st, rows, max, typing, len, hints) {
+    const n = len || LEN;
+    const hint = {};
+    (hints || []).forEach((h) => { hint[h.i] = h.ch; });
     HGames.ui.grid(host, {
-      cols: LEN,
+      cols: n,
       rows: max,
-      cls: 'wtiles',
+      cls: 'wtiles' + (n !== LEN ? ' wl' + n : ''),
       cell: (i) => {
-        const r = Math.floor(i / LEN), c = i % LEN;
+        const r = Math.floor(i / n), c = i % n;
         const row = rows[r];
         if (row) {
           return {
@@ -132,6 +140,7 @@
         }
         const drafting = r === rows.length && typing;
         const ch = drafting ? st.draft[c] : '';
+        if (!ch && drafting && hint[c]) return { html: ctx.esc(hint[c]), cls: 'whint', disabled: true };
         return { html: ctx.esc(ch || ''), cls: (ch ? 'typed' : '') + (drafting && st.bad ? ' bad' : ''), disabled: true };
       },
     });
@@ -151,7 +160,8 @@
     if (st.flipFrom === null) st.flipFrom = rows.length;
 
     drawBoard(root, ctx, st, rows, max, !over(v) && ctx.mine);
-    HGames.ui.keyboardUa(root, (k) => press(root, k), v.keys || {});
+    // день дограно — друкувати нікуди, а клавіатура штовхала серію й «Скопіювати» за нижній край телефона
+    HGames.ui.keyboardUa(root, (k) => press(root, k), v.keys || {}).hidden = over(v);
     foot(root, ctx, v);
   }
 
@@ -172,7 +182,9 @@
       return;
     }
     const race = raceInCatalog();
-    const html = (v.share ? '<button class="ghost" data-copy>Скопіювати результат</button>' : '')
+    wantStats(root, ctx);
+    const html = statsHtml(state(root).stats, v)
+      + (v.share ? '<button class="ghost" data-copy>Скопіювати результат</button>' : '')
       + '<div class="muted small wnext">' + ctx.esc(nextWordIn()) + '</div>'
       + (race ? '<button class="ghost wracego" data-race title="Інші слова, не слово дня">🏁 Ану ще слово — наввипередки з друзями</button>' : '');
     if (el.dataset.sig !== html) {
@@ -183,6 +195,43 @@
       const g = el.querySelector('[data-race]');
       if (g) g.onclick = () => openRace(ctx, g);
     }
+  }
+
+  /// Серія й розподіл спроб — раз на картку, коли день дограно. Не прийшло — підвал просто без них.
+  function wantStats(root, ctx) {
+    const st = state(root);
+    if (st.stats || st.statsAsk || !ctx.mine || typeof fetch !== 'function') return;
+    st.statsAsk = true;
+    fetch('/api/games/wordle/stats', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (root._wordle !== st) return;   // картку вже закрили
+        st.stats = d || { none: true };
+        if (st.ctx) paint(root, st.ctx);
+      }, () => {});
+  }
+
+  /// «Серія 🔥 12 · найдовша 20» і стовпчики 1…6, як у класиці; сьогоднішній рядок підсвічено.
+  /// Результат дня пишеться в базу подією, тож запит міг його випередити — тоді докладаємо сьогодні самі.
+  function statsHtml(s, v) {
+    if (!s || s.none) return '';
+    const dist = (s.dist || []).slice(0, 6);
+    while (dist.length < 6) dist.push(0);
+    let streak = s.streak | 0, best = s.best | 0, solved = s.solved | 0;
+    const today = v.solved ? v.attempts : 0;
+    if (today && !s.today) {
+      dist[today - 1]++;
+      solved++;
+      streak++;
+      best = Math.max(best, streak);
+    }
+    if (!solved) return '';
+    const top = Math.max(1, ...dist);
+    const bars = dist.map((n, i) => '<div class="wdrow' + (today === i + 1 ? ' now' : '') + '"><span>' + (i + 1) + '</span>'
+      + '<i style="width:' + Math.max(8, Math.round(n / top * 100)) + '%">' + n + '</i></div>').join('');
+    return '<div class="wstats">'
+      + '<div class="wstreak">Серія <b>🔥 ' + streak + '</b> · найдовша ' + best + ' · узято днів: ' + solved + '</div>'
+      + '<div class="wdist" title="За скільки спроб узято слово дня">' + bars + '</div></div>';
   }
 
   const raceInCatalog = () => ((HGames.catalog && HGames.catalog.games) || []).some((g) => g.id === 'wordle-race');
@@ -217,7 +266,7 @@
     }
     const ch = String(key || '').toLowerCase();
     if (ch.length !== 1 || ALPHABET.indexOf(ch) < 0) return false;
-    if (st.draft.length >= LEN) return false;
+    if (st.draft.length >= lenOf(v)) return false;
     st.draft += ch;
     st.repaint(root, ctx);
     return true;
@@ -227,7 +276,8 @@
     const st = state(root);
     const ctx = st.ctx;
     if (!ctx || st.sending || !st.draft) return false;
-    if (st.draft.length < LEN) { shake(root); ctx.toast('Ану-но, треба п\'ять літер', 'err'); return true; }
+    const need = lenOf(ctx.view);
+    if (st.draft.length < need) { shake(root); ctx.toast('Ану-но, треба ' + lettersSpelled(need), 'err'); return true; }
     const word = st.draft;
     st.sending = true;
     ctx.act('guess', { word }).then((r) => {
@@ -296,12 +346,11 @@
     },
 
     news: {
-      v: '2026-09-28',
-      title: 'Глек-слово: друкуй як зручно',
+      v: '2026-09-29',
+      title: 'Глек-слово: серія на картці',
       items: [
-        '⌨ Можна друкувати й на англійській (чи російській) розкладці — літери самі стануть українськими, як на ЙЦУКЕН; ґ — на клавіші «\\»',
-        '📱 На невисокому телефоні дошка й клавіатура тепер влазять в екран разом — без прокрутки туди-сюди',
-        '🏁 А ще «Глек-слово наввипередки» в «Компанії» — одне слово на всіх, від двох до шести',
+        '🔥 Дограв день — на картці серія, найдовша серія і стовпчики «за скільки спроб», як у класиці',
+        '🏁 Наввипередки з друзями: хто вгадав — бачить чужі дошки з літерами, а ще спринт «кожен своє слово» і слова на 4 чи 6 літер',
       ],
     },
 
@@ -314,9 +363,11 @@
   });
   // =================================================================================================
   // Глек-слово наввипередки (Impl/WordleRace.cs). Те саме слово для всіх за столом, чужі спроби —
-  // самими кольорами. Вид: { phase: 'play'|'reveal'|'done', round, rounds, seconds, revealSeconds,
-  //   endsAt, max, answer, answers, me: { rows, keys, solved, failed, attempts } | null,
-  //   players: [{ seat, nick, marks[], words[]|null, attempts, solved, failed, ms, first, gained, total, solvedWords, gone }] }
+  // самими кольорами (хто вже вгадав чи відмучився — з літерами). Вид: { phase: 'play'|'reveal'|'done',
+  //   mode: 'same'|'sprint', len, target, hint, maxHints, winners (спринт), round, rounds, seconds, revealSeconds,
+  //   endsAt, max, answer, answers, me: { rows, keys, solved, failed, attempts, hints: [{i, ch}], played } | null,
+  //   players: [{ seat, nick, marks[], words[]|null, attempts, solved, failed, ms, first, gained, total, solvedWords,
+  //   gone, hints, played, left }] }
   // =================================================================================================
 
   const RACE_ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -367,22 +418,25 @@
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
   }
 
-  /// Мала дошка суперника: 6×5 кольорових клітинок. Літери — лише коли раунд позаду (words від сервера).
-  function mini(ctx, p, max) {
+  /// Мала дошка суперника: 6×N кольорових клітинок. Літери — коли раунд позаду або я своє вже відгадав
+  /// (words від сервера).
+  function mini(ctx, p, max, len) {
+    const n = len || LEN;
     let cells = '';
     for (let r = 0; r < max; r++) {
       const m = (p.marks || [])[r] || '';
       const w = (p.words || [])[r] || '';
-      for (let c = 0; c < LEN; c++) {
+      for (let c = 0; c < n; c++) {
         const k = m[c];
         cells += '<i class="' + (k ? CLS[k] || 'b' : '') + '">' + (k && w ? ctx.esc(w[c] || '') : '') + '</i>';
       }
     }
-    return '<div class="wrmini' + ((p.words || []).length ? ' open' : '') + '">' + cells + '</div>';
+    return '<div class="wrmini' + ((p.words || []).length ? ' open' : '') + '" style="--wn:' + n + '">' + cells + '</div>';
   }
 
-  function badge(p, max) {
+  function badge(p, max, sprint) {
     if (p.gone) return '<span class="wrst gone">поза грою</span>';
+    if (sprint) return '<span class="wrst' + (p.solvedWords ? ' ok' : '') + '">✓' + p.solvedWords + '</span> · ' + p.attempts + '/' + max;
     if (p.solved) return '<span class="wrst ok">✓ ' + p.attempts + '/' + max + (p.first ? ' ⚡' : '') + '</span>';
     if (p.failed) return '<span class="wrst bad">✗</span>';
     return '<span class="wrst">' + p.attempts + '/' + max + '</span>';
@@ -401,10 +455,14 @@
       if (el.children[i] !== c) el.insertBefore(c, el.children[i] || null);
       const cls = 'wrp' + (p.solved ? ' solved' : '') + (p.failed ? ' failed' : '') + (p.gone ? ' gone' : '') + (st.flash[p.seat] ? ' flash' : '');
       if (c.className !== cls) c.className = cls;
-      setHtml(c, mini(ctx, p, max)
-        + '<div class="wrpname"><b title="' + ctx.esc(p.nick || '') + '">' + ctx.esc(p.nick || '—') + '</b></div>'
-        + '<div class="wrptot" title="Спроби й очки за партію">' + badge(p, max) + ' · ' + points(p.total)
-        + (p.gained && v.phase !== 'play' ? ' <em>+' + p.gained + '</em>' : '') + '</div>');
+      const sprint = v.mode === 'sprint';
+      setHtml(c, mini(ctx, p, max, lenOf(v))
+        + '<div class="wrpname"><b title="' + ctx.esc(p.nick || '') + '">' + ctx.esc(p.nick || '—') + '</b>'
+        + (p.hints ? '<span class="wrst" title="Узяв підказок">💡' + p.hints + '</span>' : '') + '</div>'
+        + (sprint
+          ? '<div class="wrptot" title="Вгадано слів і спроби над теперішнім">' + badge(p, max, true) + '</div>'
+          : '<div class="wrptot" title="Спроби й очки за партію">' + badge(p, max) + ' · ' + points(p.total)
+            + (p.gained && v.phase !== 'play' ? ' <em>+' + p.gained + '</em>' : '') + '</div>'));
       keep.add(c);
     });
     [...el.children].forEach((c) => { if (!keep.has(c)) c.remove(); });
@@ -415,14 +473,17 @@
     const el = part(host, 'wrhead');
     const me = (v.players || []).find((p) => p.seat === ctx.seat);
     const text = part(el, 'wrround', 'b');
-    const t = v.phase === 'done' ? 'Партію зіграно' : 'Раунд ' + v.round + ' з ' + v.rounds
-      + (v.phase === 'reveal' ? ' · зараз нове слово' : '');
+    const sprint = v.mode === 'sprint';
+    const t = v.phase === 'done' ? 'Партію зіграно'
+      : sprint ? '🏃 Спринт до ' + v.target + ' слів'
+      : 'Раунд ' + v.round + ' з ' + v.rounds + (v.phase === 'reveal' ? ' · зараз нове слово' : '');
     if (text.textContent !== t) text.textContent = t;
     const mine = part(el, 'wrmine', 'span');
-    const m = me ? 'у тебе ' + points(me.total) : '';
+    const m = !me ? '' : sprint ? 'у тебе ' + me.solvedWords + ' з ' + v.target : 'у тебе ' + points(me.total);
     if (mine.textContent !== m) mine.textContent = m;
     if (v.phase !== 'done' && v.endsAt) {
-      st.arc = HGames.ui.timerArc(el, v.endsAt, (v.phase === 'reveal' ? v.revealSeconds : v.seconds) * 1000);
+      const whole = v.phase === 'reveal' ? v.revealSeconds : sprint ? v.seconds * (v.target || 1) : v.seconds;
+      st.arc = HGames.ui.timerArc(el, v.endsAt, whole * 1000);
     } else if (st.arc) {
       st.arc.stop();
       st.arc.el.remove();
@@ -435,6 +496,7 @@
     const el = part(host, 'wrfoot');
     const players = (v.players || []).slice();
     if (v.phase === 'play') { setHtml(el, ''); return; }
+    if (v.mode === 'sprint') { sprintFoot(el, ctx, v, players); return; }
     const word = '<div class="wrword"><span>Слово було:</span> '
       + String(v.answer || '').split('').map((ch) => '<i>' + ctx.esc(ch) + '</i>').join('') + '</div>';
     if (v.phase === 'reveal') {
@@ -460,6 +522,51 @@
     setHtml(el, word + '<div class="wrtable">' + rows + '</div>' + words);
   }
 
+  /// Спринт позаду: хто скільки вгадав, його слова (✓/✗) і що лишилось недогаданим.
+  function sprintFoot(el, ctx, v, players) {
+    const win = new Set(v.winners || []);
+    players.sort((a, b) => (win.has(b.seat) - win.has(a.seat)) || b.solvedWords - a.solvedWords);
+    const rows = players.map((p, i) => {
+      const words = (p.played || []).map((x) => '<span class="' + (x.ok ? 'ok' : 'miss') + '">' + (x.ok ? '✓ ' : '✗ ')
+        + ctx.esc(String(x.w).toUpperCase()) + '</span>').join(' ')
+        + (p.left ? ' <span class="left" title="Не встиг">… ' + ctx.esc(String(p.left).toUpperCase()) + '</span>' : '');
+      return '<div class="wrrow' + (p.seat === ctx.seat ? ' me' : '') + (p.gone ? ' gone' : '') + '">'
+        + '<span class="n">' + (win.has(p.seat) ? '🏆' : (i + 1) + '.') + '</span>'
+        + '<span class="nick">' + ctx.esc(p.nick || '—') + '<small class="wrwords">' + words + '</small></span>'
+        + '<b>' + p.solvedWords + ' з ' + v.target + '</b></div>';
+    }).join('');
+    setHtml(el, '<div class="wrtable">' + rows + '</div>');
+  }
+
+  /// Під моєю дошкою: 💡 підказка (коли стіл її дозволив) і в спринті — мої вже зіграні слова.
+  function raceTools(mine, ctx, v, me) {
+    const el = part(mine, 'wrtools');
+    const kb = mine.querySelector(':scope > .gkbd');
+    if (kb && el.nextSibling !== kb) mine.insertBefore(el, kb);
+    let html = '';
+    if (v.phase === 'play' && v.hint && !me.solved && !me.failed) {
+      const left = (v.maxHints || 0) - (me.hints || []).length;
+      html += '<button class="ghost wrhint" data-hint' + (left > 0 ? '' : ' disabled')
+        + ' title="Відкриває одну літеру на своєму місці; з виграшу за слово — мінус очко">💡 Літера за очко'
+        + (left > 0 ? ' <small>(ще ' + left + ')</small>' : ' <small>(усе)</small>') + '</button>';
+    }
+    if (v.mode === 'sprint' && (me.played || []).length) {
+      html += '<div class="wrplayed">' + me.played.map((x) => '<span class="' + (x.ok ? 'ok' : 'miss') + '">'
+        + (x.ok ? '✓ ' : '✗ ') + ctx.esc(String(x.w).toUpperCase()) + '</span>').join('') + '</div>';
+    }
+    if (el.dataset.sig !== html) {
+      el.dataset.sig = html;
+      el.innerHTML = html;
+      const b = el.querySelector('[data-hint]');
+      if (b) b.onclick = () => {
+        b.disabled = true;
+        ctx.act('hint', {}).then((r) => { if (!(r && r.ok)) b.disabled = false; }, () => { b.disabled = false; });
+      };
+    }
+    el.hidden = !html;
+    mine.classList.toggle('wtools', !!html);
+  }
+
   function paintRace(root, ctx) {
     const st = state(root);
     st.ctx = ctx;
@@ -474,19 +581,23 @@
     // Новий раунд — чиста чернетка, і все, що відкриється, перевертається. Перший малюнок (F5 посеред
     // раунду) не перевертає нічого, як і в щоденному.
     // «Ще раз» знову починає з раунду 1 — тож ключ раунду включає й номер партії за столом
-    const key = (ctx.room ? ctx.room.round : 0) + ':' + v.round;
+    // у спринті нове слово приходить кожному своє — ключ і на кількість уже зіграних моїх слів
+    const key = (ctx.room ? ctx.room.round : 0) + ':' + v.round + (v.mode === 'sprint' && me ? ':' + (me.played || []).length : '');
     let fresh = false;
     if (st.round !== key) {
       st.flipFrom = st.round == null ? rows.length : 0;
       if (st.round != null) st.draft = '';
+      const sameMatch = st.round != null && st.round.split(':')[0] === key.split(':')[0] && v.mode === 'sprint';
       st.round = key;
-      st.solvedSeen = {};
+      if (!sameMatch) st.solvedSeen = {};
       fresh = true;
     }
     // Хтось щойно вгадав — його дошка на мить спалахує: без літер це єдиний спосіб помітити, що суперник уже все.
     (v.players || []).forEach((p) => {
-      if (p.solved && !st.solvedSeen[p.seat]) {
-        st.solvedSeen[p.seat] = true;
+      // у спринті «вгадав» — це ще одне слово в копилці, а не прапорець раунду
+      const got = v.mode === 'sprint' ? p.solvedWords : (p.solved ? 1 : 0);
+      if (got > (st.solvedSeen[p.seat] || 0)) {
+        st.solvedSeen[p.seat] = got;
         if (st.primed && p.seat !== ctx.seat) {
           st.flash[p.seat] = true;
           setTimeout(() => { delete st.flash[p.seat]; if (st.ctx) paintRace(root, st.ctx); }, 1200);
@@ -496,21 +607,18 @@
     st.primed = true;
 
     const wrap = part(root, 'wr');
-    wrap.classList.toggle('spect', !me);
+    // Своє вгадав (чи відмучився), а раунд ще йде — друкувати нікуди, зате є на що дивитись: чужі дошки вже з
+    // літерами. Клавіатура ховається, а суперники стають великими картками, як у глядача (на телефоні малі
+    // картки по 60 px літер не вміщають).
+    const peeking = !!(me && v.phase === 'play' && v.mode !== 'sprint' && (me.solved || me.failed));
+    wrap.classList.toggle('spect', !me || peeking);
     // Партію зіграно — підсумкова таблиця піднімається під шапку (wordle.css): на 1280×800 вона ховалась
     // під порожньою дошкою й клавіатурою, нижче згину.
     wrap.classList.toggle('done', v.phase === 'done');
     if (!v.phase || v.phase === 'lobby') {
       // до старту — правила: без них новачок бачить порожню картку і не розуміє, у що сідає
       if (st.arc) { st.arc.stop(); st.arc = null; }
-      setHtml(wrap, '<div class="wrrules"><b>Як грати</b><ul>'
-        + '<li>Слово одне на всіх — п’ять літер, у кожного шість спроб.</li>'
-        + '<li>🟩 літера на місці, 🟨 є, але не тут, ⬛ нема зовсім.</li>'
-        + '<li>Чужі спроби видно самими кольорами, без літер — видно, хто вже близько.</li>'
-        + '<li>Вгадав з першої — 6 очок, з шостої — 1; хто вгадав першим, бере ще +1.</li>'
-        + '<li>Раундів: ' + (ctx.room && ctx.room.options && ctx.room.options.rounds || 3) + ', на слово — '
-        + ctx.esc(secsLabel(ctx.room && ctx.room.options && ctx.room.options.seconds)) + '.</li></ul>'
-        + '<div class="muted small">Господар тисне «Почати», коли всі сіли. Грати можна вдвох — і до шести.</div></div>');
+      setHtml(wrap, rulesHtml(ctx));
       return;
     }
     if (wrap.querySelector(':scope > .wrrules')) { wrap.innerHTML = ''; delete wrap.dataset.sig; }
@@ -519,16 +627,45 @@
     rivals(main, ctx, v, st);
     const mine = part(main, 'wrme');
     if (me) {
-      drawBoard(mine, ctx, st, rows, v.max || 6, !raceLocked(v));
+      drawBoard(mine, ctx, st, rows, v.max || 6, !raceLocked(v), lenOf(v), me.hints);
+      // підказана літера на клавіатурі — зелена: вона точно є і вже відомо де
+      const keys = Object.assign({}, me.keys || {});
+      (me.hints || []).forEach((h) => { keys[h.ch] = 'G'; });
       // Між раундами й після партії друкувати нікуди — клавіатура лише штовхала слово раунду й таблицю
       // під нижній край (на телефоні — за екран).
-      HGames.ui.keyboardUa(mine, (k) => press(root, k), me.keys || {}).hidden = v.phase !== 'play';
+      HGames.ui.keyboardUa(mine, (k) => press(root, k), keys).hidden = v.phase !== 'play' || peeking;
+      raceTools(mine, ctx, v, me);
       mine.hidden = false;
     } else {
       mine.hidden = true;
     }
     raceFoot(wrap, ctx, v);
     if (fresh && me && v.phase === 'play') raceInView(wrap);
+  }
+
+  /// Правила до старту — під опції столу: без них новачок бачить порожню картку і не розуміє, у що сідає.
+  function rulesHtml(ctx) {
+    const o = (ctx.room && ctx.room.options) || {};
+    const n = +o.len || LEN;
+    const letters = lettersSpelled(n).replace('\'', '’');
+    const time = ctx.esc(secsLabel(o.seconds));
+    const li = [];
+    if (o.mode === 'sprint') {
+      li.push('🏃 Спринт: у кожного своє слово на ' + letters + ', шість спроб на кожне.');
+      li.push('Вгадав — одразу наступне слово; шість промахів — теж наступне, але не зараховане.');
+      li.push('Хто перший вгадає 3 слова — переміг. На все про все — ' + ctx.esc(secsLabel((+o.seconds || 180) * 3))
+        + '; вийде час — перемагає, у кого більше слів.');
+      li.push('🟩 літера на місці, 🟨 є, але не тут, ⬛ нема зовсім. Суперників видно кольорами, а слова — після партії.');
+    } else {
+      li.push('Слово одне на всіх — ' + letters + ', у кожного шість спроб.');
+      li.push('🟩 літера на місці, 🟨 є, але не тут, ⬛ нема зовсім.');
+      li.push('Чужі спроби видно кольорами, а вгадав (чи спроби скінчились) — бачиш їх уже з літерами.');
+      li.push('Вгадав з першої — 6 очок, з шостої — 1; хто вгадав першим, бере ще +1.');
+      if (o.hint === 'on') li.push('💡 Підказка відкриває літеру на своєму місці — мінус очко з виграшу (до двох на слово).');
+      li.push('Раундів: ' + (o.rounds || 3) + ', на слово — ' + time + '.');
+    }
+    return '<div class="wrrules"><b>Як грати</b><ul><li>' + li.join('</li><li>') + '</li></ul>'
+      + '<div class="muted small">Господар тисне «Почати», коли всі сіли. Грати можна вдвох — і до шести.</div></div>';
   }
 
   /// Новий раунд — моя дошка й клавіатура мають бути в полі зору. На телефоні з п'ятьма суперниками дошка
@@ -575,6 +712,12 @@
       const v = ctx.view;
       if (!v || !v.phase) return '';
       if (v.phase === 'lobby') return 'Чекаємо, поки господар натисне «Почати»';
+      if (v.phase === 'done' && v.mode === 'sprint') {
+        const win = (v.players || []).filter((p) => (v.winners || []).indexOf(p.seat) >= 0);
+        if (!win.length) return 'Нічия: слова перемогли всіх';
+        const yes = win.some((p) => p.seat === ctx.seat && ctx.seat != null) ? 'Є! ' : '';
+        return yes + '🏆 ' + win.map((p) => p.nick).join(' і ') + ' — ' + win[0].solvedWords + ' з ' + v.target;
+      }
       if (v.phase === 'done') {
         const ps = (v.players || []).filter((p) => !p.gone);
         const best = Math.max(0, ...ps.map((p) => p.total));
@@ -584,8 +727,13 @@
       }
       if (v.phase === 'reveal') return 'Раунд ' + (v.round + 1) + ' з ' + v.rounds + ' — за кілька секунд';
       if (!v.me) return 'Дивишся збоку: літер не видно, лише кольори';
-      if (v.me.solved) return 'Є! Вгадано — дивись, як мучаться інші';
-      if (v.me.failed) return 'Спроби скінчились — чекаємо на інших';
+      if (v.mode === 'sprint') {
+        const mp = (v.players || []).find((p) => p.seat === ctx.seat);
+        return 'Слово №' + ((v.me.played || []).length + 1) + ' · вгадано ' + (mp ? mp.solvedWords : 0) + ' з ' + v.target
+          + ' · спроба ' + Math.min(v.me.attempts + 1, v.max) + ' з ' + v.max;
+      }
+      if (v.me.solved) return 'Є! Вгадано — тепер тобі видно чужі літери';
+      if (v.me.failed) return 'Спроби скінчились — зате видно чужі літери';
       return 'Спроба ' + Math.min(v.me.attempts + 1, v.max) + ' з ' + v.max + ' · слово в усіх те саме';
     },
 
@@ -597,12 +745,13 @@
     },
 
     news: {
-      v: '2026-09-28',
-      title: 'Глек-слово наввипередки: зручніше на телефоні',
+      v: '2026-09-29',
+      title: 'Глек-слово наввипередки: спринт і чужі літери',
       items: [
-        '📱 Суперники — одним рядком над твоєю дошкою, а на початку раунду сторінка сама стає так, щоб дошка й клавіатура були видні',
-        '🏆 Партію зіграно — таблиця одразу вгорі, а між раундами клавіатура ховається й не закриває слово',
-        '⌨ Друкувати можна й на англійській розкладці — літери стануть українськими',
+        '👀 Вгадав (чи спроби скінчились) — бачиш чужі дошки вже з літерами: дивись, як сусід утретє пише ГРОЗА по-різному',
+        '🏃 Режим «Спринт»: у кожного своє слово, хто перший вгадає три — переміг. Удвох — чистий азарт без чекання',
+        '🔤 Опція «Довжина слова»: 4, 5 чи 6 літер',
+        '💡 Опція «Підказки»: літера на своєму місці за очко з виграшу',
       ],
     },
   });

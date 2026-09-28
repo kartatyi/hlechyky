@@ -166,11 +166,13 @@ public sealed class Wordle : Game, IDailyGame
     /// <returns>Рядок із <see cref="Len"/> символів: G — на місці, Y — є, але не тут, B — нема.</returns>
     public static string Marks(string? answer, string? guess)
     {
-        if (answer is not { Length: Len } || guess is not { Length: Len }) return new string('B', Len);
+        // довжина — за відповіддю: щоденне п'ятилітерне, а наввипередки буває й на 4 чи 6 літер
+        if (string.IsNullOrEmpty(answer) || guess is null || guess.Length != answer.Length) return new string('B', Len);
 
-        var marks = new char[Len];
+        var n = answer.Length;
+        var marks = new char[n];
         var left = new Dictionary<char, int>();
-        for (var i = 0; i < Len; i++)
+        for (var i = 0; i < n; i++)
         {
             if (guess[i] == answer[i]) marks[i] = 'G';
             else
@@ -179,7 +181,7 @@ public sealed class Wordle : Game, IDailyGame
                 left[answer[i]] = left.GetValueOrDefault(answer[i]) + 1;
             }
         }
-        for (var i = 0; i < Len; i++)
+        for (var i = 0; i < n; i++)
         {
             if (marks[i] == 'G') continue;
             if (left.GetValueOrDefault(guess[i]) <= 0) continue;
@@ -201,7 +203,7 @@ public sealed class Wordle : Game, IDailyGame
         foreach (var w in guesses)
         {
             var marks = Marks(answer, w);
-            for (var i = 0; i < Len; i++)
+            for (var i = 0; i < marks.Length && i < w.Length; i++)
             {
                 var key = w[i].ToString();
                 var rank = marks[i] switch { 'G' => 3, 'Y' => 2, _ => 1 };
