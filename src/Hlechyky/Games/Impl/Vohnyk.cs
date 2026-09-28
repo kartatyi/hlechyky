@@ -38,6 +38,13 @@ public sealed class Vohnyk : Game
 
     /// <summary>Чому скидали рівень (кадр dc): для напису на полотні.</summary>
     public const int CauseNone = 0, CauseFireWater = 1, CauseWaterLava = 2, CauseMud = 3, CauseBoth = 4, CauseReset = 5;
+    /// <summary>Друга печера: чужий промінь (Вогника погасив водяний, Краплю випарував вогняний).</summary>
+    public const int CauseBeam = 6;
+
+    /// <summary>Привид: позиції обох героїв кожні <see cref="GhostEvery"/> кроків годинника рівня (80 мс).</summary>
+    public const int GhostEvery = 4;
+    /// <summary>Скільки знімків привида щонайбільше (15 хвилин рівня) — далі привид просто стоїть.</summary>
+    public const int GhostMax = 15 * 60 * 50 / GhostEvery;
 
     public override GameInfo Info { get; } = new(
         "vohnyk", "Вогник і Крапля", "«Вогника і Краплю»", GameGroup.Live, 1, 2, TickMs: StepMs * StepsPerTick,
@@ -77,6 +84,9 @@ public sealed class Vohnyk : Game
     readonly int[] _lastN = new int[2];
     /// <summary>На якому кроці сервера від героя востаннє щось прийшло (будь-який ввід, і нагадування теж).</summary>
     readonly int[] _heard = new int[2];
+    // привид цієї спроби: на знімок 4 short — x·2+погляд і y обох героїв, у px (виділяється раз на гру)
+    short[] _ghost = [];
+    int _ghostN;
     // що бачив клієнт востаннє: кадр шлемо лише на зміну (плюс keepalive)
     uint _sentHash;
     int _sentPhase = int.MinValue, _sentActive = -1, _ticks;
@@ -183,6 +193,8 @@ public sealed class Vohnyk : Game
         _jCount[0] = _jCount[1] = 0;
         _lastN[0] = _lastN[1] = 0;
         _heard[0] = _heard[1] = 0;
+        if (_ghost.Length == 0) _ghost = new short[GhostMax * 4];
+        _ghostN = 0;
         var len = _world.StateLength;
         _snap = new int[Rewind + 1][];
         for (var i = 0; i < _snap.Length; i++)
@@ -233,7 +245,7 @@ public sealed class Vohnyk : Game
         if (phase is PhGo or PhDead or PhClear) return ActResult.Fail("Партія вже йде");
         if (phase != PhReady && Ctx.HostSeat != seat) return ActResult.Fail("Рівень обирає господар столу");
         if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("level", out var lv)
-            || lv.ValueKind != JsonValueKind.Number || !lv.TryGetInt32(out var n) || n is < 1 or > VohnykLevels.Count)
+            || lv.ValueKind != JsonValueKind.Number || !lv.TryGetInt32(out var n) || n < 1 || n > VohnykLevels.Count)
             return ActResult.Fail("Такого рівня нема");
         if (!Unlocked(n)) return ActResult.Fail($"Рівень {n} ще зачинений: спершу пройдіть {n - 1}");
         _picked = n;
@@ -364,6 +376,7 @@ public sealed class Vohnyk : Game
         if (w.Died[0] != 0 && w.Died[1] != 0) return CauseBoth;
         var who = w.Died[0] != 0 ? 0 : 1;
         var tile = w.DeathTile(who);
+        if (tile == VohnykLevel.Air && w.RayKills(who)) return CauseBeam;
         return tile == VohnykLevel.Mud ? CauseMud : who == 0 ? CauseFireWater : CauseWaterLava;
     }
 
@@ -442,11 +455,13 @@ public sealed class Vohnyk : Game
                 ReleaseStale();
                 w.Step(KAt(0, _s), KAt(1, _s));
                 _t++;
+                SampleGhost();
                 if (w.AnyDied) EnterDead(DeathCause());
                 else if (w.Cleared != 0) EnterClear();
                 break;
             case PhDead:
                 _t++;
+                SampleGhost();
                 if (--_pt <= 0)
                 {
                     w.Reset(keepGems: true);
@@ -466,6 +481,27 @@ public sealed class Vohnyk : Game
                 break;
         }
         w.Save(Snap(_s));
+    }
+
+    /// <summary>Знімок для привида кожні <see cref="GhostEvery"/> кроків годинника: де стоять обоє й куди дивляться.</summary>
+    void SampleGhost()
+    {
+        if (_t % GhostEvery != 0 || _ghostN >= GhostMax) return;
+        var w = _world!;
+        var p = _ghostN++ * 4;
+        for (var h = 0; h < 2; h++)
+        {
+            _ghost[p + 2 * h] = (short)((w.X[h] / VohnykWorld.Px) * 2 + (w.Facing[h] != 0 ? 1 : 0));
+            _ghost[p + 2 * h + 1] = (short)(w.Y[h] / VohnykWorld.Px);
+        }
+    }
+
+    /// <summary>Привид цієї спроби рядком base64 (short little-endian) — для сховища.</summary>
+    string GhostData()
+    {
+        var bytes = new byte[_ghostN * 8];
+        Buffer.BlockCopy(_ghost, 0, bytes, 0, bytes.Length);
+        return Convert.ToBase64String(bytes);
     }
 
     /// <summary>
@@ -524,7 +560,9 @@ public sealed class Vohnyk : Game
         EnterOver(next);
         // Зірки й «пройдено» — усім, хто сидить (і тому, хто встає просто на «Разом!»). Рекорд пари — лише коли склад
         // той самий, що на старті: інакше час пари ліг би в соло-таблицю того, хто лишився догравати.
-        Store.Record(nicks, lv.N, ms, _deaths, stars, Ctx.Clock.UtcNow, best: VohnykStore.PairKey(nicks) == _crew);
+        var same = VohnykStore.PairKey(nicks) == _crew;
+        // привид — лише тієї самої пари, що стартувала (як і рекорд), і лише якщо він кращий або першого ще нема
+        Store.Record(nicks, lv.N, ms, _deaths, stars, Ctx.Clock.UtcNow, best: same, ghost: same && _ghostN > 0 ? (Func<string>)GhostData : null);
         var scores = new Dictionary<int, long>();
         for (var s = 0; s < 2; s++)
             if (Ctx.Seated(s)) scores[s] = ms;
@@ -651,8 +689,18 @@ public sealed class Vohnyk : Game
                 gemsAll = shown.Gems.Length,
             },
             result = over ? _result : null,
+            ghost = GhostMeta(shown.N),
             f = InPlay || (over && _world is not null) ? Frame() : null,   // після кінця — останній світ, щоб F5 бачив, де все скінчилось
         };
+    }
+
+    /// <summary>Чи є в цієї пари привид на рівні n: ms і ключ пари, за яким клієнт його забере (/api/games/vohnyk/ghost).</summary>
+    object? GhostMeta(int n)
+    {
+        var nicks = Nicks();
+        if (nicks.Count == 0) return null;
+        var pair = VohnykStore.PairKey(nicks);
+        return Store.Ghost(pair, n) is { } g ? new { ms = g.Ms, pair } : null;
     }
 
     object[] LevelList()
@@ -702,7 +750,12 @@ public sealed class Vohnyk : Game
             gems = l.Gems.Select(g => new { who = Who(g.Who), at = new[] { g.Col, g.Row } }).ToArray(),
             exits = new { fire = new[] { l.Exits[0].Col, l.Exits[0].Row }, water = new[] { l.Exits[1].Col, l.Exits[1].Row } },
             buttons = l.Buttons.Select(b => new { id = b.Id, at = new[] { b.Col, b.Row } }).ToArray(),
-            levers = l.Levers.Select(x => new { id = x.Id, at = new[] { x.Col, x.Row }, init = x.Init }).ToArray(),
+            levers = l.Levers.Where(x => !x.Mirror).Select(x => new { id = x.Id, at = new[] { x.Col, x.Row }, init = x.Init }).ToArray(),
+            // друга печера (порожні масиви — у першій): дзеркала йдуть після важелів, як і в сигналах
+            mirrors = l.Levers.Where(x => x.Mirror).Select(x => new { id = x.Id, at = new[] { x.Col, x.Row }, init = x.Init, @fixed = x.Fixed }).ToArray(),
+            beams = l.Beams.Select(b => new { id = b.Id, at = new[] { b.Col, b.Row }, dir = "rdlu"[b.Dir].ToString(), who = b.Who == 0 ? "fire" : b.Who == 1 ? "water" : "light", by = b.By, mode = b.All ? "all" : "any", inv = b.Inv }).ToArray(),
+            sensors = l.Sensors.Select(s => new { id = s.Id, at = new[] { s.Col, s.Row } }).ToArray(),
+            portals = l.Portals.Select(p => new { id = p.Id, a = new[] { p.ACol, p.ARow }, b = new[] { p.BCol, p.BRow }, by = p.By, mode = p.All ? "all" : "any", inv = p.Inv }).ToArray(),
             doors = l.Doors.Select(d => new { id = d.Id, at = new[] { d.Col, d.Row }, h = d.Tiles, by = d.By, mode = d.All ? "all" : "any", inv = d.Inv }).ToArray(),
             lifts = l.Lifts.Select(x => new { id = x.Id, at = new[] { x.Col, x.Row }, w = x.Tiles, to = new[] { x.ToCol, x.ToRow }, by = x.By, mode = x.All ? "all" : "any", inv = x.Inv }).ToArray(),
             boxes = l.Boxes.Select(b => new { at = new[] { b.Col, b.Row } }).ToArray(),

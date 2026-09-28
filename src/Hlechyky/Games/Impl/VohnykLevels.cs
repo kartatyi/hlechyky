@@ -15,8 +15,24 @@ public sealed record VohnykGemDef(int Who, int Col, int Row);
 /// <summary>Кнопка: пластина внизу клітинки.</summary>
 public sealed record VohnykButtonDef(string Id, int Col, int Row);
 
-/// <summary>Важіль: клітинка й початковий стан.</summary>
-public sealed record VohnykLeverDef(string Id, int Col, int Row, int Init);
+/// <summary>
+/// Важіль: клітинка й початковий стан. Дзеркало (друга печера) — той самий важіль: перемикається, коли герой виходить
+/// із клітинки (праворуч — «/», ліворуч — «\»), і повертає промінь; <see cref="Fixed"/> — прикручене, не крутиться.
+/// </summary>
+public sealed record VohnykLeverDef(string Id, int Col, int Row, int Init, bool Mirror = false, bool Fixed = false);
+
+/// <summary>
+/// Ліхтар (друга печера): промінь із центру клітинки в бік <see cref="Dir"/> (0 →, 1 ↓, 2 ←, 3 ↑). Чий: 0 — вогняний
+/// (червоний, палить Краплю), 1 — водяний (синій, гасить Вогника), 2 — світло (нікого не чіпає). Без сигналів світить
+/// завжди; <see cref="ByMask"/> — лише кнопки й важелі.
+/// </summary>
+public sealed record VohnykBeamDef(string Id, int Col, int Row, int Dir, int Who, string[] By, int ByMask, bool All, bool Inv);
+
+/// <summary>Кришталь-приймач: світиться, поки в нього б'є промінь, — і це сигнал, як кнопка.</summary>
+public sealed record VohnykSensorDef(string Id, int Col, int Row);
+
+/// <summary>Портал: два кінці 1 × 2 плитки (at — верхня клітинка). Герой зайшов центром в один — вийшов з другого.</summary>
+public sealed record VohnykPortalDef(string Id, int ACol, int ARow, int BCol, int BRow, string[] By, int ByMask, bool All, bool Inv);
 
 /// <summary>Двері на <see cref="Tiles"/> плиток заввишки; <see cref="ByMask"/> — біти сигналів (кнопки, потім важелі).</summary>
 public sealed record VohnykDoorDef(string Id, int Col, int Row, int Tiles, string[] By, int ByMask, bool All, bool Inv);
@@ -42,10 +58,10 @@ public sealed class VohnykSoloRun
     public VohnykCheck? Check { get; set; }
 }
 
-/// <summary>Розібраний рівень. Плитки: 0 повітря, 1 камінь, 2 вода, 3 лава, 4 болото.</summary>
+/// <summary>Розібраний рівень. Плитки: 0 повітря, 1 камінь, 2 вода, 3 лава, 4 болото, 5 тонка платформа (друга печера).</summary>
 public sealed class VohnykLevel
 {
-    public const byte Air = 0, Stone = 1, Water = 2, Lava = 3, Mud = 4;
+    public const byte Air = 0, Stone = 1, Water = 2, Lava = 3, Mud = 4, Thin = 5;
 
     public required int N { get; init; }
     public required string Name { get; init; }
@@ -64,6 +80,9 @@ public sealed class VohnykLevel
     public required VohnykLiftDef[] Lifts { get; init; }
     public required VohnykBoxDef[] Boxes { get; init; }
     public required VohnykHintDef[] Hints { get; init; }
+    public VohnykBeamDef[] Beams { get; init; } = [];
+    public VohnykSensorDef[] Sensors { get; init; } = [];
+    public VohnykPortalDef[] Portals { get; init; } = [];
     /// <summary>Журнал вводу проходження: [крок від першого кроку go (1-based), герой, k].</summary>
     public required int[][] Solution { get; init; }
     public VohnykCheck? Check { get; init; }
@@ -102,6 +121,10 @@ public sealed class VohnykLevelFile
     public VohnykLiftFile[] Lifts { get; set; } = [];
     public VohnykAtFile[] Boxes { get; set; } = [];
     public VohnykHintFile[] Hints { get; set; } = [];
+    public VohnykMirrorFile[] Mirrors { get; set; } = [];
+    public VohnykBeamFile[] Beams { get; set; } = [];
+    public VohnykIdAtFile[] Sensors { get; set; } = [];
+    public VohnykPortalFile[] Portals { get; set; } = [];
     public int[][] Solution { get; set; } = [];
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public VohnykCheck? Check { get; set; }
@@ -153,23 +176,58 @@ public sealed class VohnykLiftFile : VohnykIdAtFile
     public bool Inv { get; set; }
 }
 
+public sealed class VohnykMirrorFile : VohnykIdAtFile
+{
+    public int Init { get; set; }
+    public bool Fixed { get; set; }
+}
+
+public sealed class VohnykBeamFile : VohnykIdAtFile
+{
+    /// <summary>r, d, l, u.</summary>
+    public string Dir { get; set; } = "r";
+    /// <summary>fire, water, light.</summary>
+    public string Who { get; set; } = "light";
+    public string[] By { get; set; } = [];
+    public string Mode { get; set; } = "any";
+    public bool Inv { get; set; }
+}
+
+public sealed class VohnykPortalFile
+{
+    public string Id { get; set; } = "";
+    public int[] A { get; set; } = [0, 0];
+    public int[] B { get; set; } = [0, 0];
+    public string[] By { get; set; } = [];
+    public string Mode { get; set; } = "any";
+    public bool Inv { get; set; }
+}
+
 public sealed class VohnykHintFile : VohnykAtFile
 {
     public int W { get; set; } = 6;
     public string Text { get; set; } = "";
 }
 
-/// <summary>Усі 15 рівнів, раз на процес. Кривий файл — виняток з іменем файла при першому зверненні.</summary>
+/// <summary>
+/// Усі рівні, раз на процес: перша печера 01..15 і друга «Глибше» 16..(скільки лежить файлів підряд, до 30). Кривий
+/// файл — виняток з іменем файла при першому зверненні.
+/// </summary>
 public static class VohnykLevels
 {
-    public const int Count = 15;
+    /// <summary>Рівнів у першій печері (і стільки мусить лежати завжди).</summary>
+    public const int Cave1 = 15;
+    /// <summary>Стеля: більше файлів не шукаємо.</summary>
+    public const int MaxLevels = 30;
+    /// <summary>Скільки рівнів разом (обидві печери).</summary>
+    public static int Count => All.Length;
     public const string Dir = "data/vohnyk/levels";
 
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 
     static readonly Lazy<VohnykLevel[]> Cached = new(() => LoadDir(Paths.Resolve(Dir)));
 
-    /// <summary>Рівні 1..15 (індекс = n − 1).</summary>
+    /// <summary>Рівні 1..Count (індекс = n − 1).</summary>
     public static VohnykLevel[] All => Cached.Value;
 
     /// <summary>Чи лежать рівні на диску — без винятку (для Configure, щоб не валити сервер).</summary>
@@ -177,7 +235,7 @@ public static class VohnykLevels
     {
         get
         {
-            try { return All.Length == Count; }
+            try { return All.Length >= Cave1; }
             catch (Exception) { return false; }
         }
     }
@@ -186,14 +244,17 @@ public static class VohnykLevels
 
     public static VohnykLevel[] LoadDir(string dir)
     {
-        var list = new VohnykLevel[Count];
-        for (var n = 1; n <= Count; n++)
+        var list = new List<VohnykLevel>(MaxLevels);
+        for (var n = 1; n <= MaxLevels; n++)
         {
             var path = Path.Combine(dir, $"{n:00}.json");
-            list[n - 1] = LoadFile(path);
-            if (list[n - 1].N != n) throw new InvalidDataException($"{path}: n = {list[n - 1].N}, а має бути {n}");
+            // перша печера — обов'язково вся; далі — скільки лежить підряд (рівні другої печери додаються частинами)
+            if (n > Cave1 && !File.Exists(path)) break;
+            var level = LoadFile(path);
+            if (level.N != n) throw new InvalidDataException($"{path}: n = {level.N}, а має бути {n}");
+            list.Add(level);
         }
-        return list;
+        return [.. list];
     }
 
     public static VohnykLevel LoadFile(string path)
@@ -237,12 +298,17 @@ public static class VohnykLevels
                     'W' => VohnykLevel.Water,
                     'L' => VohnykLevel.Lava,
                     'M' => VohnykLevel.Mud,
+                    '_' => VohnykLevel.Thin,
                     _ => VohnykLevel.Air,
                 };
         }
         var signals = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var b in f.Buttons) signals.TryAdd(b.Id, signals.Count);
         foreach (var l in f.Levers) signals.TryAdd(l.Id, signals.Count);
+        foreach (var m in f.Mirrors) signals.TryAdd(m.Id, signals.Count);
+        // промінь вмикають лише кнопки, важелі й дзеркала (не кришталі — інакше світло вмикало б саме себе)
+        var beamBits = signals.Count;
+        foreach (var s in f.Sensors) signals.TryAdd(s.Id, signals.Count);
         int Mask(string[] by)
         {
             var m = 0;
@@ -256,6 +322,21 @@ public static class VohnykLevels
             "any" or "" => false,
             _ => throw new InvalidDataException($"mode «{mode}» — лише any або all"),
         };
+        int Dir(string d) => d switch
+        {
+            "r" => 0, "d" => 1, "l" => 2, "u" => 3,
+            _ => throw new InvalidDataException($"dir «{d}» — лише r, d, l, u"),
+        };
+        int BeamWho(string w) => w switch
+        {
+            "fire" => 0, "water" => 1, "light" or "" => 2,
+            _ => throw new InvalidDataException($"промінь: who «{w}» — лише fire, water, light"),
+        };
+        int BeamMask(string[] by, string id)
+        {
+            var m = Mask(by);
+            return m >> beamBits == 0 ? m : throw new InvalidDataException($"промінь {id}: вмикати можна лише кнопками й важелями");
+        }
 
         return new VohnykLevel
         {
@@ -270,7 +351,16 @@ public static class VohnykLevels
             Exits = [At(f.Exits.Fire, "exits.fire"), At(f.Exits.Water, "exits.water")],
             Gems = [.. f.Gems.Select(g => { var (c, r) = At(g.At, "gem"); return new VohnykGemDef(Who(g.Who), c, r); })],
             Buttons = [.. f.Buttons.Select(b => { var (c, r) = At(b.At, b.Id); return new VohnykButtonDef(b.Id, c, r); })],
-            Levers = [.. f.Levers.Select(l => { var (c, r) = At(l.At, l.Id); return new VohnykLeverDef(l.Id, c, r, l.Init); })],
+            Levers = [.. f.Levers.Select(l => { var (c, r) = At(l.At, l.Id); return new VohnykLeverDef(l.Id, c, r, l.Init); }),
+                      .. f.Mirrors.Select(m => { var (c, r) = At(m.At, m.Id); return new VohnykLeverDef(m.Id, c, r, m.Init, Mirror: true, Fixed: m.Fixed); })],
+            Beams = [.. f.Beams.Select(b => { var (c, r) = At(b.At, b.Id); return new VohnykBeamDef(b.Id, c, r, Dir(b.Dir), BeamWho(b.Who), b.By, BeamMask(b.By, b.Id), All(b.Mode), b.Inv); })],
+            Sensors = [.. f.Sensors.Select(s => { var (c, r) = At(s.At, s.Id); return new VohnykSensorDef(s.Id, c, r); })],
+            Portals = [.. f.Portals.Select(p =>
+            {
+                var (ac, ar) = At(p.A, p.Id + ".a");
+                var (bc, br) = At(p.B, p.Id + ".b");
+                return new VohnykPortalDef(p.Id, ac, ar, bc, br, p.By, Mask(p.By), All(p.Mode), p.Inv);
+            })],
             Doors = [.. f.Doors.Select(d => { var (c, r) = At(d.At, d.Id); return new VohnykDoorDef(d.Id, c, r, d.H, d.By, Mask(d.By), All(d.Mode), d.Inv); })],
             Lifts = [.. f.Lifts.Select(l =>
             {
@@ -299,7 +389,7 @@ public static class VohnykLevels
             var row = l.Rows[r];
             if (row.Length != l.W) e.Add($"рядок {r}: довжина {row.Length}, а w = {l.W}");
             foreach (var ch in row)
-                if ("#.WLM".IndexOf(ch) < 0) { e.Add($"рядок {r}: символ «{ch}»"); break; }
+                if ("#.WLM_".IndexOf(ch) < 0) { e.Add($"рядок {r}: символ «{ch}»"); break; }
         }
         if (e.Count > 0) return e;
         for (var c = 0; c < l.W; c++)
@@ -313,13 +403,14 @@ public static class VohnykLevels
         {
             var (c, r) = l.Spawn[who];
             if (!Inside(c, r) || l.Tile(c, r) != VohnykLevel.Air) e.Add($"спавн {who}: не повітря");
-            else if (l.Tile(c, r + 1) != VohnykLevel.Stone && l.Tile(c, r + 1) != Own(who)) e.Add($"спавн {who}: під ногами нема опори");
+            else if (l.Tile(c, r + 1) != VohnykLevel.Stone && l.Tile(c, r + 1) != VohnykLevel.Thin && l.Tile(c, r + 1) != Own(who)) e.Add($"спавн {who}: під ногами нема опори");
             var (ec, er) = l.Exits[who];
             if (!Inside(ec, er) || l.Tile(ec, er) != VohnykLevel.Air || l.Tile(ec, er + 1) != VohnykLevel.Air) e.Add($"вихід {who}: не два повітря");
-            else if (l.Tile(ec, er + 2) != VohnykLevel.Stone) e.Add($"вихід {who}: не на камені");
+            else if (l.Tile(ec, er + 2) is not (VohnykLevel.Stone or VohnykLevel.Thin)) e.Add($"вихід {who}: не на камені");
         }
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var id in l.Buttons.Select(b => b.Id).Concat(l.Levers.Select(x => x.Id)).Concat(l.Doors.Select(d => d.Id)).Concat(l.Lifts.Select(x => x.Id)))
+        foreach (var id in l.Buttons.Select(b => b.Id).Concat(l.Levers.Select(x => x.Id)).Concat(l.Doors.Select(d => d.Id)).Concat(l.Lifts.Select(x => x.Id))
+                     .Concat(l.Beams.Select(x => x.Id)).Concat(l.Sensors.Select(x => x.Id)).Concat(l.Portals.Select(x => x.Id)))
             if (string.IsNullOrEmpty(id) || !ids.Add(id)) e.Add($"id «{id}» порожній або не унікальний");
         foreach (var d in l.Doors)
         {
@@ -335,7 +426,28 @@ public static class VohnykLevels
             if (x.Col == x.ToCol && x.Row == x.ToRow) e.Add($"ліфт {x.Id}: стоїть на місці");
         }
         foreach (var x in l.Levers)
+        {
             if (x.Init is not (0 or 1)) e.Add($"важіль {x.Id}: init = {x.Init}");
+            if (x.Mirror && (!Inside(x.Col, x.Row) || l.Tile(x.Col, x.Row) != VohnykLevel.Air)) e.Add($"дзеркало {x.Id}: не в повітрі");
+        }
+        var cells = new HashSet<(int, int)>();
+        foreach (var x in l.Levers.Where(v => v.Mirror)) if (!cells.Add((x.Col, x.Row))) e.Add($"дзеркало {x.Id}: клітинка зайнята");
+        foreach (var x in l.Sensors)
+        {
+            if (!Inside(x.Col, x.Row) || l.Tile(x.Col, x.Row) != VohnykLevel.Air) e.Add($"кришталь {x.Id}: не в повітрі");
+            if (!cells.Add((x.Col, x.Row))) e.Add($"кришталь {x.Id}: клітинка зайнята");
+        }
+        foreach (var x in l.Beams)
+            if (!Inside(x.Col, x.Row) || l.Tile(x.Col, x.Row) != VohnykLevel.Air) e.Add($"ліхтар {x.Id}: не в повітрі");
+        foreach (var p in l.Portals)
+            foreach (var (pc, pr) in new[] { (p.ACol, p.ARow), (p.BCol, p.BRow) })
+                if (!Inside(pc, pr) || !Inside(pc, pr + 1) || l.Tile(pc, pr) == VohnykLevel.Stone || l.Tile(pc, pr + 1) == VohnykLevel.Stone)
+                    e.Add($"портал {p.Id}: кінець [{pc},{pr}] у камені чи поза рівнем");
+        if (l.Levers.Length > 8) e.Add("важелів і дзеркал понад 8");
+        if (l.Beams.Length > 4) e.Add("ліхтарів понад 4");
+        if (l.Sensors.Length > 4) e.Add("кришталів понад 4");
+        if (l.Portals.Length > 3) e.Add("порталів понад 3");
+        if (l.Buttons.Length + l.Levers.Length + l.Sensors.Length > 30) e.Add("сигналів понад 30");
         foreach (var g in l.Gems)
             if (!Inside(g.Col, g.Row) || l.Tile(g.Col, g.Row) != VohnykLevel.Air) e.Add($"самоцвіт [{g.Col},{g.Row}]: не в повітрі");
         foreach (var b in l.Boxes)
@@ -345,7 +457,6 @@ public static class VohnykLevels
         if (l.Doors.Length > 8) e.Add("дверей понад 8");
         if (l.Lifts.Length > 4) e.Add("ліфтів понад 4");
         if (l.Buttons.Length > 8) e.Add("кнопок понад 8");
-        if (l.Levers.Length > 4) e.Add("важелів понад 4");
         if (l.Hints.Length > 4) e.Add("підказок понад 4");
         if (l.Hints.Length > 0 && l.N > 2) e.Add("підказки — лише на рівнях 1–2");
         if (l.Par <= 0) e.Add("par має бути додатним");
