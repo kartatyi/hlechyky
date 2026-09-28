@@ -145,6 +145,9 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     /// </summary>
     public async Task<string?> TableReact(string roomId, int e)
     {
+        // Спершу загальна квота з'єднання (як Input): без неї скрипт міг смикати хаб без ліку — Rooms.ReactGapMs
+        // лише відмовляє, а кожна відмова однаково коштує замка й пошуку кімнати.
+        if (!Allow(input: true)) return null;
         var (outbox, error) = rooms.TableReact(roomId ?? "", Context.ConnectionId, Nick(), e);
         if (error is not null) return error;
         await broadcaster.FlushAsync(outbox);

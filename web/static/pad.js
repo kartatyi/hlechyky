@@ -58,6 +58,9 @@
   let ring = null;
   let hintBar = null;
   let helpBox = null;
+  /// Коли довідка відкрилась сама (перший дотик до пада на Деку); 0 — її відкрили кнопкою. Сама відкрита довідка
+  /// ввід не забирає: перший натиск іде в гру, як і мав, а наступний (чи Ⓑ) її закриває.
+  let helpAuto = 0;
   let kbd = null;                  // { el, target, layout, shift, cur }
   let cursor = null;               // { el, x, y, down, target } — режим «стік замість миші»
   let hintsOff = store.get('padHintsOff', '') === '1';
@@ -227,7 +230,7 @@
 
   function mode() {
     if (kbd) return 'kbd';
-    if (helpBox) return 'help';
+    if (helpBox && !helpAuto) return 'help';
     if (cursor) return 'cursor';
     const g = claim();
     return g && g.p.dirs ? 'game' : 'nav';
@@ -252,6 +255,10 @@
   const FIRE = [A, X, Y, LB, RB, LT, RT];
 
   function buttonDown(i, now) {
+    if (helpBox && helpAuto) {
+      if (i === B || performance.now() - helpAuto > 800) closeHelp();
+      if (i === B) return;
+    }
     const m = mode();
     if (m === 'kbd') return kbdButton(i, true);
     if (m === 'help') {
@@ -895,6 +902,7 @@
 
   function openHelp() {
     if (helpBox) return closeHelp();
+    helpAuto = 0;
     helpBox = el('div', 'padhelp', HELP());
     document.body.appendChild(helpBox);
     helpBox.querySelector('[data-close]').onclick = closeHelp;
@@ -908,6 +916,7 @@
     if (!helpBox) return;
     helpBox.remove();
     helpBox = null;
+    helpAuto = 0;
     paintHints();
     paintRing();
   }
@@ -916,6 +925,8 @@
   function helpOnce() {
     if (!deck() || store.get('padHelpSeen', '') === '1') return;
     openHelp();
+    helpAuto = performance.now();
+    paintHints();
   }
 
   // ---------- миша й палець забирають кільце назад ----------
