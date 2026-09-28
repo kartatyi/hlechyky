@@ -5,7 +5,7 @@
   `bets`), 44 питання про нас (лобі й між партіями), 47 команди 2–4 (опція `teams`), 48 «Скільки? дня» (`SkilkyDaily`,
   `SkilkyDailyBoard`). Звіт: `D:/or-wt/_sweep3/reports/skilky.md`, spec — розділ «Прохід №3».
 - Етап Б: сервер і клієнт теми «📷 Якого року?» (`SkilkyPhotos.cs`, `/api/games/skilky/photo/<токен>.jpg`, кеш
-  `cache/skilky`), фото й у «Скільки? дня». Маніфест `data/skilky/photos.json` — **23 фото** (16 УКР-міст… фактично
+  `cache/skilky`), фото й у «Скільки? дня». Маніфест `data/skilky/photos.json` — **23 фото** (
   12 Україна + 11 світ), живцем докачались 23/23.
 
 ## Лишилось (списком)
