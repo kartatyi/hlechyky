@@ -1125,15 +1125,24 @@ public sealed class Rooms
         return outbox;
     }
 
+    /// <summary>
+    /// Кадр для розсилки. Гра, що <c>Frame()</c> не перекрила, шле публічний вид (як завжди). Гра, що перекрила й повернула
+    /// null, каже «нема чого слати» — кадр пропускаємо (п. 246): раніше тут летів повний View(null), і модуль отримував
+    /// у <c>frame</c> вид замість кадру.
+    /// </summary>
     object? SafeFrame(Room room)
     {
-        try { return room.Game.Frame() ?? room.Game.View(null); }
+        try { return room.Game.Frame() ?? (OwnFrame(room.Game) ? null : room.Game.View(null)); }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Frame() впав у кімнаті {Room}", room.Id);
             return null;
         }
     }
+
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> OwnFrames = new();
+    static bool OwnFrame(Game game) => OwnFrames.GetOrAdd(game.GetType(),
+        t => t.GetMethod(nameof(Game.Frame), Type.EmptyTypes)?.DeclaringType != typeof(Game));
 
     /// <summary>Прибирання за ARCHITECTURE §4.4: порожні, засиджені в лобі й дограні кімнати.</summary>
     public Outbox Housekeeping(DateTimeOffset now)

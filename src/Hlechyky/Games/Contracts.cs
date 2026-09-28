@@ -188,7 +188,10 @@ public abstract class Game
     /// <summary>Що бачить місце seat; null — глядач. Повертати новий об'єкт, не внутрішні колекції.</summary>
     public abstract object View(int? seat);
 
-    /// <summary>Компактний кадр для реалтайму; null — каркас візьме View(null).</summary>
+    /// <summary>
+    /// Компактний кадр для реалтайму. Не перекрила — каркас шле View(null). Перекрила й повернула null — «нема чого
+    /// слати»: кадр пропускається (Rooms.SafeFrame, прохід №3).
+    /// </summary>
     public virtual object? Frame() => null;
 
     /// <summary>

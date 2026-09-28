@@ -118,3 +118,22 @@ public class TableReactTests
         Assert.NotNull(h.Rooms.TableReact("нема", null, "Оля", 0).Error);
     }
 }
+
+/// <summary>Rooms.SafeFrame (прохід №3, п. 246): null із перекритого Frame() — «нема чого слати», а не «шли весь вид».</summary>
+public class SafeFrameTests
+{
+    [Fact]
+    public void Null_frame_from_a_game_is_skipped_not_replaced_by_the_view()
+    {
+        var h = new RoomHarness("t-frameless");
+        h.Join("Оля");
+        h.Start();
+        h.Outbox.Clear();
+        h.Tick(3);
+        Assert.DoesNotContain(h.Outbox, o => o is RoomFrame);
+
+        ((TestFrameless)h.Room.Game).Empty = false;
+        h.Tick();
+        Assert.Single(h.Outbox.OfType<RoomFrame>());
+    }
+}
