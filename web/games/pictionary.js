@@ -634,7 +634,8 @@
     const el = root.querySelector('.pchead');
     const f = fresh(ctx, v);
     const duo = v.duo;
-    const text = v.phase === 'done' ? 'Партію зіграно'
+    const text = lobby(ctx) ? ''
+      : v.phase === 'done' ? 'Партію зіграно'
       : v.phase === 'vote' ? '❤ Галерея партії'
         : duo ? 'Удвох · вгадано ' + ((f && f.dc != null) ? f.dc : duo.count) + (duo.best ? ' · рекорд пари ' + duo.best : '') + ' · малює ' + (ctx.nickOf(v.drawer) || '—')
           : v.turns ? 'Коло ' + (v.round || 1) + ' з ' + (v.rounds || 1) + ' · малює ' + (ctx.nickOf(v.drawer) || '—') : '';
@@ -1073,6 +1074,7 @@
     const wrap = root.querySelector('.pcwrap');
     wrap.classList.toggle('drw', canDraw(ctx));   // на телефоні художнику поле здогадки ні до чого
     wrap.classList.toggle('live', !!ctx.playing);  // на телефоні в партії чіпи місць ховаються (pictionary.css)
+    wrap.classList.toggle('lobby', lobby(ctx));    // у лобі полотно ні до чого — правила й слова компанії стоять на його місці
     if (!canDraw(ctx)) { s.cur = null; s.local = []; s.shape = null; }
     fitStage(root);
     paintSoon(root);

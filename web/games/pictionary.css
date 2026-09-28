@@ -192,7 +192,10 @@
 .pcskip[hidden] { display: none; }
 
 /* лобі: слова компанії й найкращі пари; оверлей лобі гортається, якщо не влазить */
-.pcover.pclobby { overflow-y: auto; align-items: start; }
+/* у лобі полотна нема: правила, слова компанії й пари стоять на його місці на всю висоту, а не обрізаються 4:3 */
+.pcwrap.lobby .pccanvas { display: none; }
+.pcwrap.lobby .pcover { position: static; background: none; padding: 0; }
+.pcwrap.lobby .pcbox { box-shadow: none; }
 .pchome { display: flex; flex-direction: column; gap: 6px; text-align: left; border-top: 1px dashed var(--line); padding-top: 8px; }
 .pchomef { display: flex; gap: 6px; }
 .pchomef input {

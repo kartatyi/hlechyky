@@ -1,7 +1,7 @@
 /* Публічний Альбом Піктіонарі. Кольори — змінні сайту (/static/style.css); папір малюнка завжди білий. */
 .pa-body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
-.pa-wrap { max-width: 1200px; margin: 0 auto; padding: 16px 16px 40px; box-sizing: border-box; }
-.pa-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.pa-wrap { display: block; width: auto; max-width: 1200px; margin: 0 auto; padding: 16px 16px 40px; box-sizing: border-box; }
+.pa-head { position: static; min-height: 0; border: 0; background: none; padding: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .pa-head h1 { margin: 0 0 4px; font-size: 1.6em; }
 .pa-sub { margin: 0; color: var(--muted); max-width: 640px; }
 .pa-back { color: var(--accent); white-space: nowrap; padding: 8px 0; }
