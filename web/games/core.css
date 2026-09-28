@@ -91,7 +91,10 @@
   display: flex; flex-direction: column; gap: 6px;
 }
 .gtile:hover { border-color: var(--panel3); }
-.gt-head { display: flex; align-items: center; gap: 7px; font-size: 1.02em; }
+/* Довга назва + «🆕 нова гра» не влазять у рядок («Клавоперегони»): бейдж переходить на другий рядок праворуч,
+   а не вилазить за плитку. */
+.gt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; font-size: 1.02em; }
+.gt-head b { min-width: 0; overflow-wrap: anywhere; }
 .gt-head .gico { width: 17px; height: 17px; }
 /* Підказку тримаємо в два рядки: повний текст усе одно в попапі столу. Обрізає ВНУТРІШНІЙ span, а росте
    зовнішній блок: коли обрізаний елемент ще й flex: 1 тягнувся на висоту плитки, Chrome ставив «…» після
