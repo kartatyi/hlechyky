@@ -7,14 +7,19 @@
   --bbox: #8f5527;    /* дошки на ящику */
   --bblue: #6fb3e8;   /* п'яте місце */
   --bpink: #e88ac0;   /* шосте місце */
+  --bm-rv: #9b6fd8;   /* помста привида й череп */
+  --bm-sq: #5d4a3a;   /* стіни стискання — темніші за стовпи, щоб було видно, що вони нові */
 }
 
 .bboard { max-width: 420px; }
+/* Просторе поле 19×15 (прохід №3): ширше за класичне, інакше клітинки дрібнішають */
+.bboard.bm-big { max-width: 480px; }
 /* Ноутбук, Дека (1280×800) і Full HD: поле 15×13 на 420 px губилось посеред порожньої картки — даємо йому
    рости, але так, щоб повний стіл (шість чіпів у два ряди, рядок гравців, статус і кнопки) влазив по висоті.
    Прохід 28.09: раніше правило діяло лише від 1500×860, і на MacBook 1512×862 сторінка вже прокручувалась. */
 @media (min-width: 1000px) and (min-height: 700px) {
-  .bboard { max-width: min(600px, calc((100vh - 386px) * 15 / 13)); }
+  .bboard { max-width: min(600px, calc((100vh - 410px) * 15 / 13)); }
+  .bboard.bm-big { max-width: min(680px, calc((100vh - 410px) * 19 / 15)); }
 }
 
 /* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
@@ -80,4 +85,39 @@
   .bchip:not(.me) .bups { display: none; }
   /* довгі ніки не розносять рядок на чотири поверхи: хто це — видно з номера й кольору, повний нік — у шапці */
   .bchip .bnick { max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ---- прохід №3: команди, стрічка подій, підсумок партії ---- */
+.bchip.bm-t0 { box-shadow: inset 3px 0 0 var(--ok); }
+.bchip.bm-t1 { box-shadow: inset 3px 0 0 var(--danger); }
+.bchip.me.bm-t0 { box-shadow: 0 0 0 1px currentColor inset, inset 3px 0 0 var(--ok); }
+.bchip.me.bm-t1 { box-shadow: 0 0 0 1px currentColor inset, inset 3px 0 0 var(--danger); }
+.bchip.bm-score { color: var(--muted); }
+.bm-score .bm-t0n { color: var(--ok); }
+.bm-score .bm-t1n { color: var(--danger); }
+
+.bm-feed {
+  display: flex; gap: 4px 12px; flex-wrap: wrap; justify-content: center; font-size: .82em; color: var(--muted);
+}
+.bm-feed.bm-live { min-height: 1.45em; }
+.bm-feed > span { white-space: nowrap; animation: bm-in .3s ease-out; }
+@keyframes bm-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .bm-feed > span { animation: none; } }
+.bm-n.s0 { color: var(--accent); }
+.bm-n.s1 { color: var(--ok); }
+.bm-n.s2 { color: var(--clay); }
+.bm-n.s3 { color: var(--muted); }
+.bm-n.s4 { color: var(--bblue); }
+.bm-n.s5 { color: var(--bpink); }
+
+.bm-sum {
+  display: grid; gap: 3px; justify-content: center; margin: 6px auto 0; padding: 8px 14px; border-radius: 12px;
+  background: var(--bg2); font-size: .88em; max-width: 100%;
+}
+.bm-sum .bm-sumt { color: var(--muted); }
+.bm-sum .bm-sumn { color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) {
+  .bm-feed { font-size: .74em; gap: 2px 8px; }
+  /* на телефоні видно дві останні події — третя штовхала б хрестовину під меню */
+  .bm-feed > span:nth-last-child(n+3) { display: none; }
 }
