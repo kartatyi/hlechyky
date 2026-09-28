@@ -75,9 +75,9 @@
 .c4foot:empty { display: none; }
 .c4foot button { font-size: .9em; padding: 5px 12px; min-height: 36px; }
 .c4foot .danger { color: var(--danger); border-color: var(--danger); }
-.gserie { color: var(--muted); font-variant-numeric: tabular-nums; }
-.gserie b { color: var(--text); }
-.gserie .x { color: var(--accent); }
-.gserie .o { color: var(--ok); }
-.gserie .c { color: var(--gc4-c); }
-.gserie .d { color: var(--gc4-d); }
+.c4-serie { color: var(--muted); font-variant-numeric: tabular-nums; }
+.c4-serie b { color: var(--text); }
+.c4-serie .x { color: var(--accent); }
+.c4-serie .o { color: var(--ok); }
+.c4-serie .c { color: var(--gc4-c); }
+.c4-serie .d { color: var(--gc4-d); }

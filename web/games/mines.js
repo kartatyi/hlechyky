@@ -28,6 +28,10 @@
   const MARK = ['●', '▲', '■', '◆'];
   const OUT = { boom: '💥', resign: '🏳', left: '🚪' };
 
+  /// Порівнюємо з тим рядком, що клали самі: innerHTML браузер серіалізує по-своєму (&#39; → ', data-x → data-x=""),
+  /// і порівняння з ним майже ніколи не каже «однаково» — DOM перебудовувався б на кожен вид.
+  const setHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+
   function state(root) {
     if (!root._mines) root._mines = { flagMode: false, base: 0, at: 0, frozen: true, timer: 0 };
     return root._mines;
@@ -54,10 +58,10 @@
 
   /// Рядок над полем: скільки мін лишилось незакритими прапорцями, час (день) або рахунок (дуель).
   function bar(root, ctx, daily) {
-    let el = root.querySelector(':scope > .mbar');
+    let el = root.querySelector(':scope > .mn-bar');
     if (!el) {
       el = document.createElement('div');
-      el.className = 'mbar';
+      el.className = 'mn-bar';
       root.insertBefore(el, root.firstChild);
     }
     const v = ctx.view || {};
@@ -69,10 +73,10 @@
       ? '<span title="Мін ще ніхто не знайшов">💣 <b>' + (v.unclaimed == null ? v.mines : v.unclaimed) + '</b></span>'
       : '<span>🚩 <b>' + ((v.mines || 0) - flags) + '</b></span>';
     const html = daily
-      ? left + '<span class="mtime">⏱ <b>' + timeText(v.solved ? (v.ms || 0) : (v.elapsedMs || 0)) + '</b></span>'
+      ? left + '<span class="mn-time">⏱ <b>' + timeText(v.solved ? (v.ms || 0) : (v.elapsedMs || 0)) + '</b></span>'
         + (v.attempts > 1 ? '<span>спроба ' + v.attempts + '</span>' : '')
       : left + scoresHtml(ctx, v) + (hunt ? '' : '<span>лишилось ' + (v.left == null ? '?' : v.left) + '</span>');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    setHtml(el, html);
     return el;
   }
 
@@ -82,20 +86,20 @@
     const sc = v.scores || [];
     const out = v.out || [];
     if (seats.length === 2 && !out.some(Boolean)) {
-      return '<span><b class="mseat' + seats[0] + '">' + (sc[seats[0]] || 0) + '</b> : '
-        + '<b class="mseat' + seats[1] + '">' + (sc[seats[1]] || 0) + '</b></span>';
+      return '<span><b class="mn-seat' + seats[0] + '">' + (sc[seats[0]] || 0) + '</b> : '
+        + '<b class="mn-seat' + seats[1] + '">' + (sc[seats[1]] || 0) + '</b></span>';
     }
     return seats.map((i) => {
       const nick = ctx.esc(ctx.nickOf(i) || ctx.seatName(i));
       const gone = out[i];
-      return '<span class="mp mseat' + i + (gone ? ' gone' : '') + (v.turn === i ? ' now' : '') + '" title="' + nick + '">'
+      return '<span class="mn-p mn-seat' + i + (gone ? ' gone' : '') + (v.turn === i ? ' now' : '') + '" title="' + nick + '">'
         + MARK[i] + ' <i>' + nick + '</i> <b>' + (sc[i] || 0) + '</b>' + (gone ? ' ' + (OUT[gone] || '') : '') + '</span>';
     }).join('');
   }
 
   /// Одне речення про правила над полем — у мисливців і в компанії вони не ті, що в класичному сапері.
   function rule(root, ctx, v) {
-    let el = root.querySelector(':scope > .mrule');
+    let el = root.querySelector(':scope > .mn-rule');
     const seats = (v.players || []).length;
     let text = '';
     if (ctx.playing && v.mode === 'hunt') text = '💣 Мисливці: знайшов міну — очко і ходиш ще; порожня клітинка — хід далі';
@@ -108,8 +112,8 @@
     if (!text) { if (el) el.remove(); return; }
     if (!el) {
       el = document.createElement('div');
-      el.className = 'mrule';
-      const bar = root.querySelector(':scope > .mbar');
+      el.className = 'mn-rule';
+      const bar = root.querySelector(':scope > .mn-bar');
       root.insertBefore(el, bar ? bar.nextSibling : root.firstChild);
     }
     if (el.textContent !== text) el.textContent = text;
@@ -123,13 +127,15 @@
     st.at = Date.now();
     // Підірвався — спроба скінчилась, час стоїть; розв'язав — теж.
     st.frozen = !!v.solved || !!(v.result && v.result.reason === 'boom') || !ctx.playing;
-    if (!st.timer) st.timer = setInterval(() => tickClock(root), 100);
+    // Цокає лише живий час: розв'язане чи підірване поле стоїть, і таймер на 100 мс тоді ні до чого.
+    if (!st.frozen && !st.timer) st.timer = setInterval(() => { if (!document.hidden) tickClock(root); }, 100);
+    else if (st.frozen && st.timer) { clearInterval(st.timer); st.timer = 0; }
     tickClock(root);
   }
 
   function tickClock(root) {
     const st = root._mines;
-    const el = root.querySelector('.mtime b');
+    const el = root.querySelector('.mn-time b');
     if (!st || !el) return;
     if (!el.isConnected) return;
     const ms = st.frozen ? st.base : st.base + (Date.now() - st.at);
@@ -141,10 +147,10 @@
   function buttons(root, ctx, daily) {
     const st = state(root);
     const v = ctx.view || {};
-    let el = root.querySelector(':scope > .mbtns');
+    let el = root.querySelector(':scope > .mn-btns');
     if (!el) {
       el = document.createElement('div');
-      el.className = 'mbtns';
+      el.className = 'mn-btns';
       root.appendChild(el);
     }
     // Поле каркас міг перебудувати (змінився розмір) — тоді воно опиниться після кнопок.
@@ -154,11 +160,11 @@
     const dead = daily ? !!(v.result && v.result.reason === 'boom') : !!(ctx.mine && v.out && v.out[ctx.seat]);
     const out = [];
     if (ctx.mine && ctx.playing && !dead)
-      out.push('<button type="button" class="ghost mflag' + (st.flagMode ? ' on' : '') + '" data-m="flag">🚩 Прапорець</button>');
+      out.push('<button type="button" class="ghost mn-flag' + (st.flagMode ? ' on' : '') + '" data-m="flag">🚩 Прапорець</button>');
     if (daily && ctx.mine && dead) out.push('<button type="button" class="primary" data-m="restart">Ану ще раз</button>');
     if (!daily && ctx.mine && ctx.playing && !dead) out.push('<button type="button" class="ghost" data-m="resign">Здаюсь</button>');
     const html = out.join('');
-    if (el.innerHTML !== html) el.innerHTML = html;
+    setHtml(el, html);
     el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
       if (b.dataset.m === 'flag') { st.flagMode = !st.flagMode; buttons(root, ctx, daily); return; }
       ctx.act(b.dataset.m);
@@ -227,10 +233,10 @@
   /// Поле живе у власній обгортці, а не просто в корені картки: на телефоні велике поле краще дати
   /// прокрутити вбік, ніж стиснути до клітинки в палець завтовшки (решта — у mines.css).
   function boardHost(root) {
-    let el = root.querySelector(':scope > .mwrap');
+    let el = root.querySelector(':scope > .mn-wrap');
     if (!el) {
       el = document.createElement('div');
-      el.className = 'mwrap';
+      el.className = 'mn-wrap';
       root.appendChild(el);
     }
     return el;

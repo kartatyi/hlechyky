@@ -9,27 +9,27 @@
 }
 
 /* ---- рядок над полем: скільки мін лишилось, час або рахунок ---- */
-.mbar {
+.mn-bar {
   display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
   font-variant-numeric: tabular-nums; font-size: .95em; color: var(--muted);
 }
-.mbar b { color: var(--text); }
-.mbar .mseat0 { color: var(--accent); }
-.mbar .mseat1 { color: var(--ok); }
-.mbar .mseat2 { color: var(--clay); }
-.mbar .mseat3 { color: var(--muted); }
+.mn-bar b { color: var(--text); }
+.mn-bar .mn-seat0 { color: var(--accent); }
+.mn-bar .mn-seat1 { color: var(--ok); }
+.mn-bar .mn-seat2 { color: var(--clay); }
+.mn-bar .mn-seat3 { color: var(--muted); }
 /* у компанії — окремий чіп на кожного: позначка, нік, очки; вибулий закреслений, чий хід — обведений */
-.mbar .mp { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 8px; border-radius: 999px; background: var(--bg2); max-width: 11em; }
-.mbar .mp i { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.mbar .mp b { color: inherit; }
-.mbar .mp.now { box-shadow: 0 0 0 1px currentColor inset; }
-.mbar .mp.gone { opacity: .55; }
-.mbar .mp.gone i { text-decoration: line-through; }
-.mrule { text-align: center; font-size: .85em; color: var(--muted); }
+.mn-bar .mn-p { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 8px; border-radius: 999px; background: var(--bg2); max-width: 11em; }
+.mn-bar .mn-p i { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.mn-bar .mn-p b { color: inherit; }
+.mn-bar .mn-p.now { box-shadow: 0 0 0 1px currentColor inset; }
+.mn-bar .mn-p.gone { opacity: .55; }
+.mn-bar .mn-p.gone i { text-decoration: line-through; }
+.mn-rule { text-align: center; font-size: .85em; color: var(--muted); }
 
 /* ---- поле ---- */
 /* Обгортка поля: на широкому екрані нічого не робить, на телефоні дає полю прокрутку вбік. */
-.mwrap { display: block; width: 100%; }   /* .gbody — колонка з align-items: center: без ширини обгортка стискалась до 240 px */
+.mn-wrap { display: block; width: 100%; }   /* .gbody — колонка з align-items: center: без ширини обгортка стискалась до 240 px */
 .board.mines { width: min(420px, 100%); gap: 3px; }
 .board.mines .cell {
   font-size: 1.05em; font-weight: 700; border-radius: 6px;
@@ -61,8 +61,8 @@
 .board.mines .cell.bomb.own1 { background: var(--ok); }
 .board.mines .cell.bomb.own2 { background: var(--clay); }
 .board.mines .cell.bomb.own3 { background: var(--muted); }
-.board.mines .cell.bomb.own { animation: mclaim .4s ease-out; }
-@keyframes mclaim { 40% { transform: scale(1.2); } }
+.board.mines .cell.bomb.own { animation: mn-claim .4s ease-out; }
+@keyframes mn-claim { 40% { transform: scale(1.2); } }
 @media (prefers-reduced-motion: reduce) { .board.mines .cell.bomb.own { animation: none; } }
 
 .board.mines .cell.n1 { color: var(--gmine1); }
@@ -72,16 +72,16 @@
 .board.mines .cell.n7, .board.mines .cell.n8 { color: var(--accent); }
 
 /* ---- кнопки під полем ---- */
-.mbtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-.mbtns .mflag.on { background: var(--clay); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.mn-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.mn-btns .mn-flag.on { background: var(--clay); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 
 @media (max-width: 480px) {
   .board.mines { gap: 2px; }
   .board.mines .cell { border-radius: 5px; font-size: .95em; }
   .board.mines.tiny .cell { font-size: .7em; border-radius: 3px; }
-  .mbar { gap: 7px; font-size: .88em; }
+  .mn-bar { gap: 7px; font-size: .88em; }
   /* Велике поле в телефон цілим не лізе: 16 колонок у 310 px — це клітинка 17 px, учетверо дрібніша
      за палець. Тож не стискаємо, а даємо прокрутити вбік: 16 × ~26 px + проміжки = 448 px. */
-  .mwrap { overflow: auto hidden; -webkit-overflow-scrolling: touch; }
+  .mn-wrap { overflow: auto hidden; -webkit-overflow-scrolling: touch; }
   .board.mines.huge { width: max(100%, 448px); }
 }

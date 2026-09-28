@@ -102,6 +102,9 @@
 /* свій корабель — після підсвітки, бо він важливіший за неї */
 .bs-cell.ship { background: var(--bs-ship); border-color: var(--panel3); }
 .bs-cell:not(:disabled):hover { background: var(--accent); }
+/* розстановка мишею: тінь корабля там, де він ляже після кліку; червонувата — сюди не стане */
+.bs-cell.pv, .bs-cell.pv:not(:disabled):hover { background: var(--bs-ship); border-color: var(--accent); }
+.bs-cell.pvbad, .bs-cell.pvbad:not(:disabled):hover { background: rgba(255, 90, 60, .35); border-color: var(--danger); }
 /* після кінця: чужий корабель, що вцілів, — контуром */
 .bs-cell.ghost { border: 1px dashed var(--seat, var(--muted)); background: rgba(255, 255, 255, .06); }
 
@@ -159,6 +162,7 @@
 /* смуга бою: чий хід і дуга на постріл */
 .bs-bar { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; width: 100%; font-size: .92em; color: var(--muted); }
 .bs-bar.mine { color: var(--text); font-weight: 600; }
+.bs-narrow { display: none; }
 
 /* смуга розстановки: хто готовий, список кораблів, кнопки й дуга таймера */
 .bs-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; width: 100%; }
@@ -166,6 +170,10 @@
 .bs-mate i { color: var(--muted); font-style: normal; }
 .bs-mate.ok { color: var(--ok); }
 .bs-tools .ghand { flex-wrap: wrap; justify-content: center; gap: 6px; }
+/* Що ставити (список кораблів) і скільки лишилось часу — одразу під полем; кнопки й «хто готовий» — нижче.
+   На телефоні інакше список опинявся під нижнім меню, і його треба було шукати прокруткою. */
+.bs-tools .ghand { order: -2; }
+.bs-tools .garc { order: -1; }
 .bs-tools .gcard {
   padding: 5px 7px;
   min-width: 0;
@@ -202,6 +210,20 @@
   .bs-seas.battle .bs-side.mine { width: min(230px, 72%); order: 1; }   /* на телефоні ціль — угорі, своє поле — під нею */
   .bs-feed { font-size: .82em; }
   .bs-sum td, .bs-sum th { padding: 3px 5px; }
+  /* Поля на телефоні — стовпчиком на півтора-два екрани, а смуга ходу з дугою годинника була аж у самому низу:
+     цілишся в поле згори — і не бачиш, скільки лишилось. Тепер вона липне до низу екрана над вкладками
+     й пігулкою балачки (їхні висоти — змінні каркаса), як смужка вгадування в «Шпигуні». */
+  .bs-bar {
+    position: sticky; bottom: calc(var(--tabs-h, 0px) + var(--mini-h, 0px) + 62px); z-index: 3;
+    width: auto; max-width: 100%; box-sizing: border-box; padding: 5px 12px; border-radius: 999px;
+    background: var(--panel2); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
+  }
+  .bs-bar.mine { border-color: var(--accent); }
+  /* в один рядок і нижча: смуга лежить поверх полів, тож має займати якнайменше */
+  .bs-bar { flex-wrap: nowrap; gap: 8px; font-size: .85em; line-height: 1.25; text-align: left; }
+  .bs-bar .bs-say { min-width: 0; }
+  .bs-bar .garc { width: 34px; height: 34px; flex: none; }
+  .bs-narrow { display: inline; }
 }
 
 @media (prefers-reduced-motion: reduce) {

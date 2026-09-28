@@ -49,6 +49,10 @@
   const points = (n) => n + ' ' + (n % 100 >= 11 && n % 100 <= 14 ? 'очок'
     : n % 10 === 1 ? 'очко' : n % 10 >= 2 && n % 10 <= 4 ? 'очки' : 'очок');
 
+  /// Порівнюємо з тим рядком, що клали самі: innerHTML браузер серіалізує по-своєму (&#39; → ', data-mix → data-mix=""),
+  /// і порівняння з ним майже ніколи не каже «однаково» — шапка, кнопки й журнал перебудовувались на кожен клік.
+  const setHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+
   function state(root, ctx) {
     if (!root._scr) root._scr = { sel: null, pend: [], mode: 'play', swap: [], blank: null, sig: '', order: null, rackSig: '', cur: null, dir: 1 };
     ctx._scr = root._scr;                 // status() і onKey бачать лише ctx, а намір живе тут
@@ -144,7 +148,7 @@
     chips.push('<span class="scr-bag" title="Фішок у мішку">🎒 ' + (v.bag || 0) + quick + '</span>');
     if (v.smallDict) chips.push('<span class="scr-warn" title="Великого словника нема: слова приймаються, але їх можна оскаржити">малий словник</span>');
     const html = chips.join('');
-    if (host.innerHTML !== html) host.innerHTML = html;
+    setHtml(host, html);
   }
 
   // ---------------------------------------------------------------- дошка
@@ -159,7 +163,7 @@
     HGames.ui.grid(host, {
       cols: SIZE,
       rows: SIZE,
-      cls: 'sboard',
+      cls: 'scr-sboard',
       cell: (i) => {
         const ch = cells[i] || '.';
         if (ch !== '.') {
@@ -289,7 +293,7 @@
         ? 'Перше слово має пройти через ★. Візьми фішку зі стійки і тицьни в клітинку — або тицьни клітинку й друкуй'
         : 'Візьми фішку зі стійки і тицьни в клітинку — або тицьни клітинку й друкуй слово';
     } else if (v.last) html = 'Останнє слово: ' + v.last.words.map((w) => ctx.esc(w.word)).join(', ') + ' +' + v.last.total;
-    if (host.innerHTML !== html) host.innerHTML = html;
+    setHtml(host, html);
   }
 
   /// Підсумок партії під дошкою: хто переміг, рахунок усіх і чому партія скінчилась.
@@ -326,7 +330,8 @@
       out.push('<button class="ghost" data-mix title="Перемішати фішки на стійці">🔀</button>');
     }
     const html = out.join('');
-    if (host.innerHTML === html) return;
+    if (host._h === html) return;
+    host._h = html;
     host.innerHTML = html;
 
     const root = host.parentNode;
@@ -362,10 +367,13 @@
   // ---------------------------------------------------------------- попап літери для порожньої фішки
 
   function blankBox(host, ctx, st) {
-    if (!st.blank) { if (host.innerHTML) host.innerHTML = ''; return; }
-    host.innerHTML = '<div class="scr-pick"><span class="muted small">Яка це літера?</span><div class="scr-letters">'
+    if (!st.blank) { setHtml(host, ''); return; }
+    const html = '<div class="scr-pick"><span class="muted small">Яка це літера?</span><div class="scr-letters">'
       + ALPHABET.split('').map((ch) => '<button type="button" data-ch="' + ch + '">' + ch + '</button>').join('')
       + '</div><button class="ghost" data-cancel>Скасувати</button></div>';
+    if (host._h === html) return;          // попап уже на місці: не перебудовувати 33 кнопки на кожен вид
+    host._h = html;
+    host.innerHTML = html;
     const root = host.parentNode;
     host.querySelectorAll('[data-ch]').forEach((b) => b.onclick = () => {
       st.pend.push({ cell: st.blank.cell, ri: st.blank.ri, letter: b.dataset.ch, blank: true });
@@ -387,7 +395,7 @@
         + '<span><i class="bw2">×2</i> слово ×2</span><span><i class="bw3">×3</i> слово ×3</span>'
         + '<span>сім фішок за хід — <b>+50</b></span>'
       : '';
-    if (host.innerHTML !== html) host.innerHTML = html;
+    setHtml(host, html);
   }
 
   // ---------------------------------------------------------------- журнал ходів
@@ -397,7 +405,7 @@
     const html = moves.slice(-6).reverse()
       .map((m) => '<div class="scr-row"><i>' + ctx.esc(ctx.nickOf(m.seat) || ctx.seatName(m.seat)) + '</i>'
         + '<span>' + ctx.esc(m.text) + '</span></div>').join('');
-    if (host.innerHTML !== html) host.innerHTML = html;
+    setHtml(host, html);
   }
 
   // ---------------------------------------------------------------- складання картки

@@ -41,7 +41,9 @@
     if (!el) { el = document.createElement('div'); el.className = cls; root.appendChild(el); }
     return el;
   }
-  const setHtml = (el, html) => { if (el.innerHTML !== html) el.innerHTML = html; };
+  /// Порівнюємо з тим рядком, що клали самі: innerHTML браузер серіалізує по-своєму (&#39; → ', data-x → data-x=""),
+  /// і порівняння з ним майже ніколи не каже «однаково» — DOM перебудовувався б на кожен вид.
+  const setHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
 
   /// Куди впаде фішка в колонці col: найнижча вільна клітинка, або -1.
   function landing(cells, w, h, col) {
@@ -102,6 +104,12 @@
 
     legend(root, ctx, party, marks, shapes);
     footer(root, ctx, st);
+    // Порядок: хто яким кольором — над полем, серія й «Здатись» — під ним. Каркас перебудовує дошку, коли
+    // міняється її розмір (у лобі компанії поле 9×7, а вчотирьох — 10×8), і нова лягала в самий низ — тоді
+    // «Здатись» опинявся над полем, а рахунок серії — під легендою.
+    const leg = root.querySelector(':scope > .c4legend'), foot = root.querySelector(':scope > .c4foot');
+    if (board.previousElementSibling !== leg) root.insertBefore(leg, board);
+    if (board.nextElementSibling !== foot) board.after(foot);
   }
 
   /// Привид фішки під мишею. Слухачі вішаємо один раз на елемент дошки (grid() його перевикористовує).
@@ -160,7 +168,7 @@
         const nick = ctx.nickOf(i);
         if (nick) parts.push('<span class="' + LETTERS[i] + '">' + ctx.esc(nick) + ' <b>' + s.wins[i] + '</b></span>');
       }
-      html += '<span class="gserie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(ctx.room.maxPlayers > 2 ? ' · ' : ' : ')
+      html += '<span class="c4-serie" title="Скільки партій виграв кожен за цим столом">Серія: ' + parts.join(ctx.room.maxPlayers > 2 ? ' · ' : ' : ')
         + (s.draws ? ' · нічиїх <b>' + s.draws + '</b>' : '') + '</span>';
     }
     const inGame = ctx.mine && ctx.playing && (!v.active || v.active[ctx.seat] !== false);
@@ -191,52 +199,61 @@
       if (performance.now() < st.dropUntil) st.t = setTimeout(() => root._c4 && paint(root, ctx), DROP_MS + 30);
     },
     unmount(root) { const st = root._c4; if (st) clearTimeout(st.t); root._c4 = null; },
-    /// Клавіатура: 1–9 (і 0 — десята) кидають у колонку, ←/→ водять привид, Enter/пробіл кидають туди.
+    /// Клавіатура: 1–9 (і 0 — десята) кидають у колонку, ←/→ або A/D водять привид, Enter чи пробіл кидають туди.
+    /// Джойстик шле ті самі ←/→ і Enter (pad нижче), тож на Деці це працює без жодної правки.
     onKey(e, ctx) {
       const root = ctx._c4root;
-      if (!root || !root._c4 || !ctx.myTurn || e.ctrlKey || e.metaKey || e.altKey) return false;
+      if (!root || !root._c4 || !ctx.mine || !ctx.playing || e.ctrlKey || e.metaKey || e.altKey) return false;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return false;
       const w = (ctx.view && ctx.view.width) || 7;
       const st = state(root);
-      if (/^[0-9]$/.test(e.key)) {
-        const col = e.key === '0' ? 9 : +e.key - 1;
+      const code = e.code || '';
+      const digit = /^(?:Digit|Numpad)([0-9])$/.exec(code) || /^([0-9])$/.exec(e.key || '');
+      if (digit) {
+        if (!ctx.myTurn) return false;
+        const col = digit[1] === '0' ? 9 : +digit[1] - 1;
         if (col >= w) return false;
         drop(root, ctx, col);
         return true;
       }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        const d = e.key === 'ArrowLeft' ? -1 : 1;
-        st.hover = st.hover < 0 ? Math.floor(w / 2) : Math.max(0, Math.min(w - 1, st.hover + d));
+      const left = code === 'ArrowLeft' || code === 'KeyA', right = code === 'ArrowRight' || code === 'KeyD';
+      if (left || right) {
+        // Прицілитись можна й поза своїм ходом: привид з'явиться в тій колонці, щойно хід прийде.
+        st.hover = st.hover < 0 ? Math.floor(w / 2) : Math.max(0, Math.min(w - 1, st.hover + (left ? -1 : 1)));
         paint(root, ctx);
         return true;
       }
-      if (e.key === 'Enter' && st.hover >= 0) { drop(root, ctx, st.hover); return true; }
+      if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') {
+        if (!ctx.myTurn) return code === 'Space';            // пробіл поза ходом не гортає сторінку
+        if (st.hover < 0) { st.hover = Math.floor(w / 2); paint(root, ctx); return true; }
+        drop(root, ctx, st.hover);
+        return true;
+      }
       return false;
     },
+    // Дека: стік чи хрестовина водять привид по колонках, Ⓐ кидає фішку.
+    pad: { dirs: 'x', a: 'Enter', hint: '{dpad} колонка · {a} кинути фішку' },
   });
 
   HGames.register(Object.assign(mod('c4', ICON, ['жовті', 'зелені']), {
     news: {
-      v: '2026-09-24',
-      title: 'Чотири в ряд: фішки падають, а за стіл — хоч учотирьох',
+      v: '2026-09-28',
+      title: 'Чотири в ряд: джойстик і клавіші',
       items: [
-        '🎉 Нова гра поруч — «Чотири в ряд: компанія»: 3–4 гравці на ширшому полі, кожен своїм кольором і позначкою',
-        '⬇️ Фішка тепер справді падає згори, а остання кинута підсвічена — видно, хто куди сходив',
-        '👻 Наведи мишу на колонку — побачиш, куди ляже фішка; з клавіатури — цифри 1–9 або ←/→ і Enter',
-        '🏳️ Кнопка «Здатись» і рахунок серії, якщо тиснете «Ще раз»',
+        '🎮 На Деці стік чи хрестовина водять фішку по колонках, Ⓐ кидає',
+        '⌨️ З клавіатури ще й A/D і пробіл; прицілитись можна й поки ходить суперник',
       ],
     },
   }));
   HGames.register(Object.assign(mod('c4x', ICON_PARTY, ['жовті', 'зелені', 'руді', 'білі']), {
     news: {
-      v: '2026-09-24',
-      title: 'Чотири в ряд — тепер на компанію',
+      v: '2026-09-28',
+      title: 'Чотири в ряд на компанію: порядок і джойстик',
       items: [
-        '👥 Троє — поле 9×7, четверо — 10×8. Стіл ставить господар і тисне «Почати»',
-        '🎨 У кожного свій колір і позначка: ● ▲ ■ ◆ — не сплутаєш навіть без кольорів',
-        '🧱 Блокують тут усі: поки ти пильнуєш одного сусіда, інший уже складає свою четвірку',
-        '🏳️ Хто здався чи встав — випадає з черги, його фішки лишаються на полі. Останній, хто лишився, виграє',
+        '🏳️ Учотирьох «Здатись» і рахунок серії знову під полем, а не між легендою й полем',
+        '🎮 На Деці стік чи хрестовина водять фішку по колонках, Ⓐ кидає',
+        '⌨️ З клавіатури ще й A/D і пробіл; прицілитись можна й поки ходять інші',
       ],
     },
   }));

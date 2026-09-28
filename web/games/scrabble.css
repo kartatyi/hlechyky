@@ -46,34 +46,35 @@
 
 /* ---- дошка ---- */
 .scr-board { display: flex; justify-content: center; }
-.board.sboard {
-  width: min(100%, 520px); gap: 2px; padding: 4px; background: var(--bg2); border-radius: 8px;
+.board.scr-sboard {
+  /* Висота теж рахується: на ноуті 1512×862 і Деці 1280×800 дошка на 520 px виштовхувала «Готово» за край екрана. */
+  width: min(100%, 520px, max(360px, 100vh - 380px)); gap: 2px; padding: 4px; background: var(--bg2); border-radius: 8px;
 }
-.board.sboard .cell {
+.board.scr-sboard .cell {
   font-size: 1em; border-radius: 3px; background: var(--scr-empty); border-color: transparent;
   padding: 0; overflow: hidden; position: relative; line-height: 1;
 }
-.board.sboard .cell b { font-weight: 700; font-size: min(2.6vw, 15px); }
-.board.sboard .cell u { display: none; }
-.board.sboard .cell i { font-style: normal; font-size: min(1.7vw, 9px); color: var(--text); opacity: .72; }
-.board.sboard .cell:not(:disabled):hover { background: var(--panel3); }
+.board.scr-sboard .cell b { font-weight: 700; font-size: min(2.6vw, 15px); }
+.board.scr-sboard .cell u { display: none; }
+.board.scr-sboard .cell i { font-style: normal; font-size: min(1.7vw, 9px); color: var(--text); opacity: .72; }
+.board.scr-sboard .cell:not(:disabled):hover { background: var(--panel3); }
 
-.board.sboard .cell.bl2 { background: var(--scr-dl); }
-.board.sboard .cell.bl3 { background: var(--scr-tl); }
-.board.sboard .cell.bw2 { background: var(--scr-dw); }
-.board.sboard .cell.bw3 { background: var(--scr-tw); }
-.board.sboard .cell.bc { background: var(--clay); }
+.board.scr-sboard .cell.bl2 { background: var(--scr-dl); }
+.board.scr-sboard .cell.bl3 { background: var(--scr-tl); }
+.board.scr-sboard .cell.bw2 { background: var(--scr-dw); }
+.board.scr-sboard .cell.bw3 { background: var(--scr-tw); }
+.board.scr-sboard .cell.bc { background: var(--clay); }
 
-.board.sboard .cell.tile {
+.board.scr-sboard .cell.tile {
   background: linear-gradient(160deg, var(--scr-tile), var(--scr-tile2));
   color: var(--accent-ink); opacity: 1;
 }
 /* фішка, покладена цим ходом, але ще не відправлена на сервер */
-.board.sboard .cell.tile.pend { box-shadow: 0 0 0 2px var(--accent) inset; }
+.board.scr-sboard .cell.tile.pend { box-shadow: 0 0 0 2px var(--accent) inset; }
 /* останнє викладене слово */
-.board.sboard .cell.tile.last { box-shadow: 0 0 0 2px var(--accent2) inset; }
+.board.scr-sboard .cell.tile.last { box-shadow: 0 0 0 2px var(--accent2) inset; }
 /* порожня фішка: літера є, очок нема */
-.board.sboard .cell.tile.wild b { opacity: .72; font-style: italic; }
+.board.scr-sboard .cell.tile.wild b { opacity: .72; font-style: italic; }
 
 /* ---- стійка ---- */
 .scr-rack { display: flex; justify-content: center; }
@@ -114,10 +115,10 @@
      сторінка вбік не їде (прокручується тільки .scr-board), зате клітинка виростає до ~27 px.
      justify-content: flex-start — інакше центрування ховає лівий край за початком прокрутки. */
   .scr-board { overflow-x: auto; justify-content: flex-start; }
-  .board.sboard { width: max(100%, 420px); flex: none; margin: 0; gap: 1px; padding: 2px; }
-  .board.sboard .cell { border-radius: 2px; }
-  .board.sboard .cell b { font-size: min(3.1vw, 13px); }
-  .board.sboard .cell i { font-size: min(2vw, 8px); }
+  .board.scr-sboard { width: max(100%, 420px); flex: none; margin: 0; gap: 1px; padding: 2px; }
+  .board.scr-sboard .cell { border-radius: 2px; }
+  .board.scr-sboard .cell b { font-size: min(3.1vw, 13px); }
+  .board.scr-sboard .cell i { font-size: min(2vw, 8px); }
   .scr-rack .gcard { min-width: 30px; padding: 6px 4px 4px; }
   .scr-p { max-width: 100%; }
   .scr-letters button { min-width: 26px; }
@@ -125,8 +126,8 @@
 
 /* ---- оновлення 24.09.2026: курсор для друку, легенда, попередній рахунок, великий екран ---- */
 .gbody > .scr-legend { width: 100%; }
-.board.sboard .cell.cur { box-shadow: 0 0 0 2px var(--accent) inset; }
-.board.sboard .cell i.arrow { color: var(--accent); opacity: 1; font-size: min(3vw, 16px); font-weight: 700; }
+.board.scr-sboard .cell.cur { box-shadow: 0 0 0 2px var(--accent) inset; }
+.board.scr-sboard .cell i.arrow { color: var(--accent); opacity: 1; font-size: min(3vw, 16px); font-weight: 700; }
 .scr-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: center; font-size: .78em; color: var(--muted); }
 .scr-legend:empty { display: none; }
 .scr-legend i {
@@ -139,15 +140,15 @@
 .scr-hint b { color: var(--text); }
 .scr-hint .scr-bad { color: var(--clay); }
 /* Покладена цим ходом фішка з'являється не миттєво, а «лягає». */
-.board.sboard .cell.tile.pend, .board.sboard .cell.tile.last { animation: scr-drop .25s ease-out; }
+.board.scr-sboard .cell.tile.pend, .board.scr-sboard .cell.tile.last { animation: scr-drop .25s ease-out; }
 @keyframes scr-drop { from { transform: scale(.6); } to { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .board.sboard .cell.tile.pend, .board.sboard .cell.tile.last { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .board.scr-sboard .cell.tile.pend, .board.scr-sboard .cell.tile.last { animation: none; } }
 
 /* Full HD: дошка на 520 px губилась посеред екрана — даємо їй вирости. */
 @media (min-width: 1600px) and (min-height: 900px) {
-  .board.sboard { width: min(100%, 680px, 60vh); }
-  .board.sboard .cell b { font-size: 19px; }
-  .board.sboard .cell i { font-size: 11px; }
+  .board.scr-sboard { width: min(100%, 680px, 60vh); }
+  .board.scr-sboard .cell b { font-size: 19px; }
+  .board.scr-sboard .cell i { font-size: 11px; }
   .scr-rack .gcard { min-width: 42px; padding: 9px 8px 6px; }
   .scr-rack .gcard b { font-size: 1.45em; }
 }

@@ -21,12 +21,12 @@
 
   // Ті самі дев'ять позицій, що й у кубика в app.js: половинка кістки — це сітка 3×3.
   const PIPS = { 0: [], 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-  const half = (n) => '<span class="dhalf">'
+  const half = (n) => '<span class="dom-half">'
     + Array.from({ length: 9 }, (_, i) => '<i' + (PIPS[n] && PIPS[n].includes(i) ? ' class="on"' : '') + '></i>').join('')
     + '</span>';
   /// Кістка: дві половинки й риска між ними. Дубль ставимо вертикально — так його видно в ланцюгу.
-  const boneHtml = (t, cls) => '<span class="dbone' + (t[0] === t[1] ? ' dbl' : '') + (cls ? ' ' + cls : '') + '">'
-    + half(t[0]) + '<span class="dbar"></span>' + half(t[1]) + '</span>';
+  const boneHtml = (t, cls) => '<span class="dom-bone' + (t[0] === t[1] ? ' dom-dbl' : '') + (cls ? ' ' + cls : '') + '">'
+    + half(t[0]) + '<span class="dom-bar"></span>' + half(t[1]) + '</span>';
 
   const TARGET = 100;   // класична межа; стіл може грати коротше — тоді її каже view.target
   const targetOf = (v) => (v && v.target) || TARGET;
@@ -55,11 +55,11 @@
     const my = !idle && !!ctx.myTurn;
     if (!my && st.pick) st.pick = null;          // не твій хід — нема чого й обирати бік
 
-    box(root, 'dhead', idle ? '' : head(v, ctx));
+    box(root, 'dom-head', idle ? '' : head(v, ctx));
     // Нова кістка в ланцюгу злітає на місце — ловимо її, порівнюючи з тим, що було до цього виду.
     const fresh = idle ? '' : freshSide(st, line);
-    box(root, 'dround', idle ? '' : roundBox(v, ctx, line));
-    box(root, 'dline', idle ? '' : (line.length
+    box(root, 'dom-round', idle ? '' : roundBox(v, ctx, line));
+    box(root, 'dom-line', idle ? '' : (line.length
       ? line.map((b, i) => boneHtml(b.tile, (fresh === 'left' && i === 0) || (fresh === 'right' && i === line.length - 1) ? 'fresh' : '')).join('')
       : '<span class="muted small">' + (my ? 'Твій хід — бахни будь-яку кістку' : 'Чекаємо першу кістку') + '</span>'));
 
@@ -75,8 +75,8 @@
       },
     });
 
-    box(root, 'dctl', idle ? '' : controls(v, ctx, st));
-    root.querySelectorAll('.dctl [data-act]').forEach((b) => b.onclick = () => {
+    box(root, 'dom-ctl', idle ? '' : controls(v, ctx, st));
+    root.querySelectorAll('.dom-ctl [data-act]').forEach((b) => b.onclick = () => {
       const what = b.dataset.act;
       if (what === 'left' || what === 'right') {
         const tile = st.pick;
@@ -113,28 +113,28 @@
     const left = (last.left || []).map((bones, i) => {
       if (!bones || !bones.length || !ctx.nickOf(i)) return '';
       const sum = bones.reduce((a, t) => a + t[0] + t[1], 0);
-      return '<div class="drl"><i>' + ctx.esc(ctx.nickOf(i)) + '</i>' + bones.map((t) => boneHtml(t, 'mini')).join('')
+      return '<div class="dom-rl"><i>' + ctx.esc(ctx.nickOf(i)) + '</i>' + bones.map((t) => boneHtml(t, 'mini')).join('')
         + '<b>' + pips(sum) + '</b></div>';
     }).join('');
-    return '<div class="drt">Раунд ' + (last.round || Math.max(1, (v.round || 2) - 1)) + ': ' + title + '</div>' + left;
+    return '<div class="dom-rt">Раунд ' + (last.round || Math.max(1, (v.round || 2) - 1)) + ': ' + title + '</div>' + left;
   }
 
   function head(v, ctx) {
     const seats = (ctx.room && ctx.room.seats) || [];
     const scores = v.scores || [];
     const counts = v.counts || [];
-    const chips = seats.filter((s) => s.nick).map((s) => '<span class="dsc' + (s.i === v.turn ? ' on' : '') + '">'
+    const chips = seats.filter((s) => s.nick).map((s) => '<span class="dom-sc' + (s.i === v.turn ? ' on' : '') + '">'
       + ctx.esc(s.nick) + ' <b>' + (scores[s.i] || 0) + '</b>'
       + '<i>(' + (counts[s.i] || 0) + ')</i></span>').join('');
     // Поки на столі великий підсумок раунду (новий ще не почався), рядок у шапці його лише дублював би.
     const last = v.lastRound && v.lastRound.reason && (v.line || []).length && !v.result
-      ? '<span class="dlast">' + (v.lastRound.winner == null
+      ? '<span class="dom-last">' + (v.lastRound.winner == null
         ? 'минулий раунд: риба, очки нікому'
         : 'минулий раунд: ' + ctx.esc(ctx.nickOf(v.lastRound.winner) || ctx.seatName(v.lastRound.winner))
           + ' +' + v.lastRound.points) + '</span>'
       : '';
     const goal = targetOf(v) <= 1 ? 'один раунд' : 'до ' + targetOf(v);
-    const ends = v.ends ? '<span class="chip dends" title="Вільні кінці ланцюга">кінці <b>' + v.ends[0] + '</b> · <b>' + v.ends[1] + '</b></span>' : '';
+    const ends = v.ends ? '<span class="chip dom-ends" title="Вільні кінці ланцюга">кінці <b>' + v.ends[0] + '</b> · <b>' + v.ends[1] + '</b></span>' : '';
     return '<span class="chip">раунд ' + (v.round || 1) + ' · ' + goal + '</span>'
       + '<span class="chip">базар ' + (v.boneyard || 0) + '</span>' + ends
       + chips + last;
@@ -185,7 +185,7 @@
     },
     // Свій маркер на тілі картки: під ним живуть усі правила, що чіпають спільні .ghand/.gcard,
     // інакше вони поїхали б і в чужі ігри — файл стилів вантажиться на весь сайт.
-    mount(root, ctx) { root.classList.add('dgame'); paint(root, ctx); },
+    mount(root, ctx) { root.classList.add('dom-game'); paint(root, ctx); },
     update(root, ctx) { paint(root, ctx); },
     status(ctx) {
       const v = ctx.view || {};
