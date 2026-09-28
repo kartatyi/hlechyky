@@ -899,8 +899,8 @@ public class BricksTests(ITestOutputHelper output)
         Assert.Equal("byHost", game.Start);
         Assert.False(game.Hidden);
         Assert.False(game.Rated);
-        Assert.Equal(["wins", "speed", "garbage"], game.Options.Select(o => o.Key));
-        Assert.Equal(["1", "normal", "normal"], game.Options.Select(o => o.Default));
+        Assert.Equal(["wins", "speed", "garbage", "ground"], game.Options.Select(o => o.Key));
+        Assert.Equal(["1", "normal", "normal", "5"], game.Options.Select(o => o.Default));
         Assert.Equal("bricks", game.Module);
         Assert.True(game.HasCss);
         Assert.True(File.Exists(Paths.Resolve("web/games/bricks.js")));

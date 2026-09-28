@@ -8,8 +8,21 @@ namespace Hlechyky.Games.Impl;
 /// суддя: переганяє журнали натисків через <see cref="BricksCore"/>, роздає сміття, вирішує вибування,
 /// раунди й партію. Кадр летить лише тоді, коли щось змінилось, і несе ряди лише тих стін, що змінились.
 /// </summary>
-public sealed class Bricks : Game
+public class Bricks : Game
 {
+    /// <summary>Звичайний стіл на 2–4 (без рейтингу).</summary>
+    public Bricks() : this(rated: false) { }
+
+    /// <summary>
+    /// <paramref name="rated"/> — рейтингова дуель 1×1 (<see cref="BricksDuel"/>): той самий рушій, але двоє, Ело й ставка, а
+    /// земля типово росте вже з 2:30 — рівні суперники інакше мучаться до раптової смерті по п'ять хвилин.
+    /// </summary>
+    protected Bricks(bool rated)
+    {
+        Info = rated ? RatedInfo : TableInfo;
+        _ground = rated ? GroundShort : GroundLong;
+        _sudden = SuddenOf(_ground);
+    }
     public const int Seats = 4;
     /// <summary>Відлік перед раундом (тиків каркаса по 40 мс): три секунди.</summary>
     public const int StartTicks = 75;
@@ -32,15 +45,41 @@ public sealed class Bricks : Game
         sprintG = BricksCore.SprintG, sprintLines = BricksCore.SprintLines,
     };
 
-    public override GameInfo Info { get; } = new(
+    public override GameInfo Info { get; }
+
+    /// <summary>Коли в раунді починає рости земля (раптова смерть): «5» — з 5:00, як було; «2» — з 2:30.</summary>
+    public const string GroundLong = "5", GroundShort = "2";
+
+    static GameOption GroundOption(string def) => new("ground", "Земля росте",
+        [(GroundLong, "з 5:00 — довгі раунди"), (GroundShort, "з 2:30 — коротші й гарячіші")], def);
+
+    /// <summary>Тиків стіни (60 Гц) від «go» до першого підйому землі.</summary>
+    public static int SuddenOf(string ground) => ground == GroundShort ? BricksCore.Sudden / 2 : BricksCore.Sudden;
+
+    /// <summary>Стеля раунду: від першого підйому землі — стільки ж, скільки й завжди (три хвилини).</summary>
+    public static int CapOf(int sudden) => sudden + (BricksCore.Cap - BricksCore.Sudden);
+
+    static readonly GameInfo TableInfo = new(
         "bricks", "Цеглини", "цеглини", GameGroup.Live, 2, Seats, TickMs: 40, Start: StartMode.ByHost,
         Options:
         [
             new GameOption("wins", "Партія до", [("1", "одного раунду"), ("2", "двох виграних"), ("3", "трьох виграних")], "1"),
             new GameOption("speed", "Темп", [("calm", "Спокійно"), ("normal", "Звичайно"), ("fast", "Швидко")], "normal"),
             new GameOption("garbage", "Сміття", [("normal", "Звичайне"), ("hard", "Люте"), ("none", "Без сміття — хто довше")], "normal"),
+            GroundOption(GroundLong),
         ],
         Hint: "Падають цеглинки з чотирьох квадратиків. Закрив два ряди й більше — суперникові знизу лізе сміття. Хто завалився — вибув, останній бере раунд");
+
+    static readonly GameInfo RatedInfo = new(
+        "bricks-duel", "Цеглини: дуель на рейтинг", "рейтингову дуель у цеглини", GameGroup.Live, 2, 2, TickMs: 40, Rated: true,
+        Options:
+        [
+            new GameOption("wins", "Партія до", [("1", "одного раунду"), ("2", "двох виграних"), ("3", "трьох виграних")], "1"),
+            new GameOption("speed", "Темп", [("calm", "Спокійно"), ("normal", "Звичайно"), ("fast", "Швидко")], "normal"),
+            GroundOption(GroundShort),
+        ],
+        Hint: "Цеглини один на один на рейтинг: кожна партія рухає Ело, можна й на черепки. Земля росте вже з 2:30 — раунди короткі й гарячі",
+        Client: "bricks");
 
     readonly BricksSeat[] _seats = [new(), new(), new(), new()];
     readonly BricksJournal _journal = new();
@@ -64,6 +103,8 @@ public sealed class Bricks : Game
     int _stageTicks = 1800;
     int _mode = BricksCore.ModeNormal;
     int _nextSudden = BricksCore.Sudden;
+    string _ground;
+    int _sudden;
     int _lastSec = -1;
     bool _phaseDirty, _viewDirty;
     int _frameWall;
@@ -81,6 +122,8 @@ public sealed class Bricks : Game
         _garbage = options.TryGetValue("garbage", out var g) && g is "normal" or "hard" or "none" ? g : "normal";
         _stageTicks = StageFor(_speed);
         _mode = _garbage switch { "hard" => BricksCore.ModeHard, "none" => BricksCore.ModeNone, _ => BricksCore.ModeNormal };
+        if (options.TryGetValue("ground", out var gr) && gr is GroundLong or GroundShort) _ground = gr;
+        _sudden = SuddenOf(_ground);
     }
 
     /// <summary>Скільки тиків стіни (60 Гц) триває етап темпу.</summary>
@@ -124,7 +167,7 @@ public sealed class Bricks : Game
         }
         _phase = PhaseStart;
         _startIn = StartTicks;
-        _nextSudden = BricksCore.Sudden;
+        _nextSudden = _sudden;
         _lastSec = -1;
         _ev.Clear();
         _phaseDirty = true;
@@ -514,14 +557,15 @@ public sealed class Bricks : Game
         CheckRound();
         if (_phase != PhaseGo) return;
 
-        while (wall >= _nextSudden && _nextSudden < BricksCore.Cap)
+        var cap = CapOf(_sudden);
+        while (wall >= _nextSudden && _nextSudden < cap)
         {
             // Раптова смерть: земля підіймається всім живим, посилка дозріла одразу.
             for (var s = 0; s < Seats; s++) Credit(s, 1, -1, ripeNow: true);
             _nextSudden += BricksCore.SuddenEvery;
             _phaseDirty = true;
         }
-        if (wall >= BricksCore.Cap)
+        if (wall >= cap)
         {
             CapRound();
             return;
@@ -593,7 +637,10 @@ public sealed class Bricks : Game
 
     int Level(int wall) => _phase == PhaseGo || _phase == PhasePause ? wall / _stageTicks : 0;
 
-    int Sd(int wall) => _phase == PhaseGo && wall >= BricksCore.Sudden ? Math.Max(0, _nextSudden - wall) : -1;
+    /// <summary>З якого тику стіни в цьому столі росте земля (для тестів і підказок).</summary>
+    public int SuddenAt => _sudden;
+
+    int Sd(int wall) => _phase == PhaseGo && wall >= _sudden ? Math.Max(0, _nextSudden - wall) : -1;
 
     public override object View(int? seat)
     {
@@ -665,4 +712,14 @@ public sealed class Bricks : Game
     public string Phase => _phase;
     public uint Seed => _seed;
     public int WallTick => Wall();
+}
+
+/// <summary>
+/// «Цеглини: дуель на рейтинг» — стіл 1×1 з Ело й ставкою (як Мотоцикли поруч із «Гуртом»). Правила ті самі, що й у
+/// <see cref="Bricks"/>; інше лише в паспорті: двоє, <c>Rated</c>, земля типово росте з 2:30, без опції сміття
+/// (у дуелі воно й вирішує).
+/// </summary>
+public sealed class BricksDuel : Bricks
+{
+    public BricksDuel() : base(rated: true) { }
 }

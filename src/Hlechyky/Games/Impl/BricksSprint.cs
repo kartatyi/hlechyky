@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hlechyky.Games.Impl;
 
@@ -8,8 +9,27 @@ namespace Hlechyky.Games.Impl;
 /// «Готовий?» → відлік → секундомір → сорок рядів. Стіну передбачає браузер, а час рахує сервер зі своєї
 /// копії: не швидше, ніж годинник сервера мінус пів секунди на дорогу. Таблиця — найкращий час у секундах.
 /// </summary>
-public sealed class BricksSprint : Game
+public class BricksSprint : Game
 {
+    public BricksSprint() : this(daily: false) { }
+
+    /// <summary><paramref name="daily"/> — «Цеглини дня» (<see cref="BricksDaily"/>): зерно від дня, спроби, таблиця дня.</summary>
+    protected BricksSprint(bool daily)
+    {
+        _daily = daily;
+        Info = daily ? DailyInfo : SprintInfo;
+    }
+
+    readonly bool _daily;
+    /// <summary>Ключ зерна дня: один на всіх, свідомо не Id — щоб і назва гри могла мінятись, а фігурки дня лишались.</summary>
+    const string Puzzle = "bricks";
+    public const string DoneToday = "Цеглини дня вже складено — нове зерно після півночі. А поки — «40 рядів» у Соло";
+    string _day = "";
+    /// <summary>Скільки спроб дня почато (тиснули «поїхали»); у таблицю — спроби першого складеного забігу.</summary>
+    int _attempts;
+    bool _solved;
+    DailyCard? _card;
+    int _cardVer = -1;
     public const int StartTicks = 75;
     /// <summary>Хвилина без жодного натиску у фазі «go» — стіну покинуто (тики стіни, 60 Гц).</summary>
     public const int IdleTicks = 3600;
@@ -21,11 +41,33 @@ public sealed class BricksSprint : Game
 
     public const string PhaseReady = "ready", PhaseStart = "start", PhaseGo = "go", PhaseOver = "over";
 
-    public override GameInfo Info { get; } = new(
+    public override GameInfo Info { get; }
+
+    static readonly GameInfo SprintInfo = new(
         "bricks-sprint", "Цеглини: 40 рядів", "цеглини на час", GameGroup.Solo, 1, 1, TickMs: 40,
         Start: StartMode.Immediate, Score: ScoreOrder.LowerIsBetter,
         Hint: "Сорок рядів на час. Сам, без сміття — лише ти, стіна й секундомір. Таблиця — найкращий час",
         Client: "bricks");
+
+    static readonly GameInfo DailyInfo = new(
+        "bricks-daily", "Цеглини дня", "цеглини дня", GameGroup.Solo, 1, 1, TickMs: 40,
+        Start: StartMode.Immediate, Private: true, Persistent: true, Score: ScoreOrder.LowerIsBetter,
+        Hint: "Сорок рядів на однакових для всіх фігурках — одне зерно на цілу добу. Перший складений забіг іде в таблицю дня",
+        Client: "bricks");
+
+    /// <summary>Один ключ на ніка на день — з нього щоденні сервіси дістають гру й день (specs/daily.md).</summary>
+    public override string SoloKey(string nickKey, IClock clock) =>
+        _daily ? $"daily:{Info.Id}:{Days.Today(clock)}:{nickKey}" : base.SoloKey(nickKey, clock);
+
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        if (!_daily) return;
+        _card = Ctx.Services.GetService<DailyCard>();
+        _card?.Warm(Info.Id);   // поза замком: табло дня дочитується фоном
+    }
+
+    /// <summary>«Ще раз» після складеного дня — чесна відмова: у таблицю йде перший складений забіг.</summary>
+    public override string? CanStart() => _daily && _solved && _day == Days.Today(Ctx.Clock) ? DoneToday : null;
 
     readonly BricksSeat _seat = new();
     readonly BricksJournal _journal = new();
@@ -45,7 +87,14 @@ public sealed class BricksSprint : Game
 
     public override void Start()
     {
-        _seed = (uint)Ctx.Rng.Next(1, int.MaxValue);
+        if (_daily)
+        {
+            var today = Days.Today(Ctx.Clock);
+            if (_day != today) { _day = today; _attempts = 0; _solved = false; }
+            // Сід від дня, а не від кімнати: інакше в кожного були б свої фігурки й порівнювати час не було б сенсу.
+            _seed = (uint)Math.Max(1, Days.Seed(Puzzle, _day));
+        }
+        else _seed = (uint)Ctx.Rng.Next(1, int.MaxValue);
         _seat.Plays = true;
         _seat.Nick = Ctx.NickOf(0);
         _seat.Rank = 0;
@@ -76,7 +125,9 @@ public sealed class BricksSprint : Game
         switch (action)
         {
             case "ready":
+                if (_daily && _solved) return ActResult.Fail(DoneToday);
                 if (_phase != PhaseReady) return ActResult.Fail("Уже почали");
+                if (_daily) _attempts++;
                 _phase = PhaseStart;
                 _startIn = StartTicks;
                 _phaseDirty = true;
@@ -133,9 +184,31 @@ public sealed class BricksSprint : Game
         _viewDirty = true;
         var sec = Seconds(_finishTicks);
         var nick = Ctx.NickOf(0);
+        if (_daily)
+        {
+            DoneDaily(sec, nick ?? "");
+            return;
+        }
         Ctx.Score(0, sec);
         if (sec < FastSeconds) Ctx.Award(0, 0, "ach:bricks-sprint-2m");
         Ctx.Finish([0], $"Цеглини: {nick} — 40 рядів за {Clock(sec)}", new Dictionary<int, long> { [0] = _finishTicks });
+    }
+
+    /// <summary>
+    /// Забіг дня складено: у щоденну таблицю — мілісекунди й спроби окремо (як Сапер дня: хто склав з першого разу,
+    /// вищий за того, хто вже знав фігурки), черепки дня, табло на картці одразу.
+    /// </summary>
+    void DoneDaily(double sec, string nick)
+    {
+        _solved = true;
+        var ms = (int)Math.Max(1000, Math.Round(sec * 1000));
+        var attempts = Math.Max(1, _attempts);
+        Ctx.Score(0, ms, attempts);
+        Ctx.Award(0, 0, $"daily:{Info.Id}");
+        if (sec < FastSeconds) Ctx.Award(0, 0, "ach:bricks-sprint-2m");
+        _card?.Note(Info.Id, nick, attempts, ms);
+        Ctx.Finish([0], $"Цеглини дня: {nick} — 40 рядів за {Clock(sec)}" + (attempts > 1 ? $" (спроба {attempts})" : ""),
+            new Dictionary<int, long> { [0] = _finishTicks });
     }
 
     void Fell()
@@ -174,6 +247,12 @@ public sealed class BricksSprint : Game
     public override TickResult Tick()
     {
         _rt++;
+        // табло дня змінилось (хтось склав, базу дочитано) — вид оновити; поза забігом, щоб не смикати стіну
+        if (_card is not null && _phase != PhaseGo && _card.Version(Info.Id) is var cv && cv != _cardVer)
+        {
+            _cardVer = cv;
+            _viewDirty = true;
+        }
         switch (_phase)
         {
             case PhaseReady:
@@ -250,6 +329,15 @@ public sealed class BricksSprint : Game
 
     public override object View(int? seat) => new
     {
+        daily = _daily ? new
+        {
+            day = _day,
+            no = Days.Number(_day),
+            attempts = _attempts,
+            solved = _solved,
+            board = DailyCard.Wire(_card?.Get(Info.Id)),
+            streak = _card is null || Ctx.NickOf(0) is not { } me ? 0 : _card.StreakOf(Info.Id, me),
+        } : null,
         turn = (int?)null,
         phase = _phase,
         startIn = _startIn,
@@ -271,7 +359,37 @@ public sealed class BricksSprint : Game
             : null,
     };
 
+    sealed record State(string Day, int Attempts, bool Solved, int Ticks);
+
+    public override string? Save() => _daily ? JsonSerializer.Serialize(new State(_day, _attempts, _solved, _finishTicks)) : null;
+
+    public override void Load(string json)
+    {
+        if (!_daily) return;
+        State? s;
+        try { s = JsonSerializer.Deserialize<State>(json); }
+        catch (JsonException) { return; }
+        if (s is null || s.Day != _day) return;
+        _attempts = Math.Max(0, s.Attempts);
+        _solved = s.Solved;
+        if (!_solved) return;
+        // день уже складено: картка одразу показує підсумок, «поїхали» чесно відмовить
+        _finishTicks = Math.Max(0, s.Ticks);
+        _phase = PhaseOver;
+        _seat.Rank = 1;
+        _phaseDirty = _viewDirty = true;
+    }
+
     public BricksSeat SeatState => _seat;
     public string Phase => _phase;
     public int WallTick => Wall();
+}
+
+/// <summary>
+/// «Цеглини дня» — спринт на 40 рядів з одним зерном на добу для всіх: однакові фігурки, чесне порівняння. Щоденна
+/// (<see cref="IDailyGame"/>): у «Щоденному глеку» й таблиці дня — спроби, потім час першого складеного забігу.
+/// </summary>
+public sealed class BricksDaily : BricksSprint, IDailyGame
+{
+    public BricksDaily() : base(daily: true) { }
 }
