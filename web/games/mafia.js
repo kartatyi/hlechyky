@@ -19,6 +19,12 @@
     + '<circle cx="5.6" cy="12" r="1.6" fill="var(--muted)"/><circle cx="10.4" cy="12" r="1.6" fill="var(--muted)"/>'
     + '</svg>';
 
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* приватне вікно — не біда */ } },
+  };
+  const SPK_KEY = 'mafiaSpeaker';
+
   // Запасні тривалості (спокійний темп) — якщо сервер старий і phaseMs у кадрі ще нема.
   const PHASE_MS = { intro: 10000, night: 45000, day: 95000, vote: 45000 };
   const PHASE_TITLE = { lobby: 'Збираємось', intro: 'Знайомство', night: 'Ніч', day: 'День', vote: 'Голосування', done: 'Кінець' };
@@ -138,6 +144,7 @@
       + '<div class="mf-arc"></div>'
       + '<div class="mf-head"><b class="mf-phase"></b><span class="mf-hint muted small"></span></div>'
       + '<span class="mf-me chip"></span>'
+      + '<button type="button" class="ghost mf-spk" hidden></button>'
       + '</div>'
       + '<div class="mf-rules muted small"></div>'
       + '<div class="mf-players"></div>'
@@ -145,8 +152,24 @@
       + '<div class="mf-chat" hidden><div class="mf-lines"></div>'
       + '<form class="mf-say"><input class="mf-input" type="text" maxlength="200" placeholder="шепнути своїм…" autocomplete="off">'
       + '<button class="primary" type="submit">Шепнути</button></form></div>'
-      + '<details class="mf-logbox"><summary class="muted small">Хроніка села</summary><div class="mf-log"></div></details>';
+      + '<details class="mf-logbox"><summary class="muted small">Хроніка села</summary><div class="mf-log"></div></details>'
+      + '<audio class="mf-voice" preload="auto"></audio>';
     root.appendChild(el);
+    // F5 посеред репліки — стару не повторюємо: звучить лише те, що Глек скаже вже при нас.
+    el._mfVoice = { sayId: (ctx.view && ctx.view.say && ctx.view.say.id) || 0, line: 0, radioMuted: null };
+    el.querySelector('.mf-spk').onclick = () => {
+      const on = !speakerOn();
+      store.set(SPK_KEY, on ? '1' : '0');
+      if (!on) hush(el);
+      const c = el._mfCtx || ctx;
+      paintSpeaker(el, c, c.view || {});
+    };
+    el.querySelector('.mf-act').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-bots]');
+      const c = el._mfCtx;
+      if (!b || b.disabled || !c) return;
+      c.act('bots', { n: Math.max(0, ((c.view && c.view.bots) || 0) + (+b.dataset.bots)) });
+    });
 
     // Слухачі вішаємо раз, а свіжий ctx кладемо на елемент: інакше клік назавжди пішов би в перший.
     el.querySelector('.mf-players').addEventListener('click', async (e) => {
@@ -204,6 +227,8 @@
     // Забув, що вміє твоя роль, — наведи на чіп (картка з поясненням була лише на знайомстві).
     const card = v.me && ROLE_CARD[v.me.role];
     if (card) me.title = card.text; else me.removeAttribute('title');
+    paintSpeaker(el, ctx, v);
+    voice(el, ctx, v);
     const rules = el.querySelector('.mf-rules');
     const rulesText = rulesLine(v);
     if (rules.dataset.sig !== rulesText) { rules.dataset.sig = rulesText; rules.textContent = rulesText; }
@@ -221,6 +246,7 @@
     const rows = (v.players || []).map((p) => {
       const d = deed(v, p, mySeat, checked);
       const tags = [];
+      if (p.bot) tags.push('<span class="mf-tag mf-bot" title="Вбудований бот: мовчить, ходить обережно, черепків не отримує">бот</span>');
       if (p.role) tags.push('<span class="mf-tag ' + roleCls(p.role) + '">' + ctx.esc(roleTitle(p.role)) + '</span>');
       else if (checks[p.seat] != null) tags.push('<span class="mf-tag ' + (checks[p.seat] ? 'mf-r-mafia' : 'mf-r-civil') + '">'
         + (checks[p.seat] ? 'мафія' : 'не мафія') + '</span>');
@@ -299,12 +325,79 @@
     return '';
   }
 
+  // =============================================================================================
+  // Глек-ведучий уголос: лише тим, хто за столом (глядачеві сервер репліки не дає) і ввімкнув «🔊 Глек». Типово тихо:
+  // друзі часто сидять в одній кімнаті, і вісім телефонів разом звучали б луною. Радіо на час репліки притихає.
+  // Гра на голос не чекає: не встигла репліка — то й не звучить.
+  // =============================================================================================
+
+  function speakerOn() { return store.get(SPK_KEY, '0') === '1'; }
+
+  function paintSpeaker(el, ctx, v) {
+    const spk = el.querySelector('.mf-spk');
+    const show = ctx.seat != null && !!v.voice && v.voice !== 'none';
+    spk.hidden = !show;
+    if (!show) return;
+    const on = speakerOn();
+    const text = on ? '🔊 Глек' : '🔇 Глек';
+    if (spk.textContent !== text) spk.textContent = text;
+    spk.classList.toggle('on', on);
+    spk.title = on ? 'Дядько Глек веде партію вголос на цьому пристрої. Натисни — вимкнути'
+      : 'Глек мовчить. Натисни — хай веде вголос: «Село засинає…», ранок, вигнання';
+  }
+
+  function duck(vs, on) {
+    const r = document.getElementById('audio');
+    if (!r) return;
+    if (on && vs.radioMuted == null) { vs.radioMuted = r.muted; r.muted = true; }
+    if (!on && vs.radioMuted != null) { r.muted = vs.radioMuted; vs.radioMuted = null; }
+  }
+
+  function hush(el) {
+    const vs = el._mfVoice;
+    if (!vs) return;
+    vs.line++;                          // обірвана репліка ще може озватись (onerror після pause) — її кінець не наш
+    const a = el.querySelector('.mf-voice');
+    if (a && !a.paused) a.pause();
+    duck(vs, false);
+  }
+
+  /// Нова репліка — шматки грають один за одним («Ранок…» + «Уночі не стало — Петро»).
+  function voice(el, ctx, v) {
+    const vs = el._mfVoice;
+    const line = v.say;
+    if (!vs || !line || line.id === vs.sayId) return;
+    vs.sayId = line.id;
+    const parts = (line.parts || []).filter((x) => x && x.url);
+    if (!parts.length || v.voice === 'none' || ctx.seat == null || !speakerOn() || !(ctx.playing || v.phase === 'done')) return;
+    hush(el);
+    const a = el.querySelector('.mf-voice');
+    const n = ++vs.line;
+    let i = 0;
+    const end = () => { if (vs.line === n) duck(vs, false); };
+    const next = () => {
+      if (vs.line !== n) return;
+      if (i >= parts.length) { end(); return; }
+      a.src = parts[i++].url;
+      a.play().catch(end);
+    };
+    a.onended = next;
+    duck(vs, true);
+    next();
+  }
+
   /// Рядок «що зараз робити» — головна підказка картки, бо правила гри тримає сервер.
   function advice(v, ctx) {
     const chat = '<button class="ghost" data-chat>💬 До суперечки</button>';
     if (v.phase === 'lobby') {
-      return '<span class="muted small">Чекаємо, поки господар почне. Треба щонайменше троє'
-        + ' (утрьох — коротка партія: перша ніч тиха, і все вирішує один день).</span>';
+      const bots = v.bots || 0;
+      const n = (v.players || []).length;
+      const seated = ctx.seat != null;
+      return '<span class="muted small">Чекаємо, поки господар почне. Треба щонайменше троє разом із ботами'
+        + ' (утрьох — коротка партія: перша ніч тиха, і все вирішує один день). Мало людей — посади 🤖 селян:'
+        + ' вони мовчать, ходять обережно й черепків не беруть.</span>'
+        + (seated ? '<span class="mf-bots"><button type="button" class="ghost" data-bots="1"' + (n >= 12 ? ' disabled' : '') + '>🤖 Додати гравця</button>'
+          + (bots > 0 ? '<button type="button" class="ghost" data-bots="-1" title="Прибрати одного бота">− бот</button>' : '') + '</span>' : '');
     }
     if (v.phase === 'done') {
       const t = v.result ? (TEAM[v.result.team] || '') : '';
@@ -354,11 +447,12 @@
   HGames.register({
     id: 'mafia',
     news: {
-      v: '2026-09-28',
-      title: 'Мафія: зручніше з телефона',
+      v: '2026-09-29',
+      title: 'Мафія: Глек веде вголос, а мало людей — добирай ботів',
       items: [
-        '🗳 У твоєму рядку більше нема «Вигнати» — голос проти себе випадковим дотиком уже не віддаси',
-        '📱 Кнопки нічних справ на телефоні більші, а новина ранку («хто не прокинувся») більше не обрізається',
+        '🔊 Дядько Глек-ведучий уголос: «Село засинає… Прокидається мафія», ранок, вигнання, переможець. Вмикай «🔇 Глек» угорі картки — чути лише тобі, ролей він не видає',
+        '🤖 «Додати гравця» в лобі: вбудовані селяни добирають стіл. Мовчать, ходять обережно, черепків не беруть',
+        '👥 Тепер можна й удвох — третім сяде бот',
       ],
     },
     // Розмова тут і є гра: балачку столу каркас розгортає сам, щойно людина підійшла до столу.
@@ -380,6 +474,8 @@
 
     unmount(root) {
       arcTo(root.querySelector('.mf-arc'), null);
+      const el = root.querySelector(':scope > .mafia');
+      if (el) hush(el);
     },
 
     status(ctx) {
