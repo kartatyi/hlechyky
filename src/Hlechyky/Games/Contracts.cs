@@ -54,8 +54,12 @@ public sealed record GameInfo(
     ScoreOrder Score = ScoreOrder.None,
     IReadOnlyList<GameOption>? Options = null,
     string Hint = "",
-    string Client = "")
+    string Client = "",
+    bool Coop = false)
 {
+    // Coop — усі за столом грають разом проти гри (Змійка на всіх): таблиця — рекорди Ctx.Score, як у соло,
+    // а не перемоги (прохід №3, п. 248).
+
     public bool RealTime => TickMs > 0;
     public bool Solo => MaxPlayers == 1;
     /// <summary>

@@ -137,3 +137,22 @@ public class SafeFrameTests
         Assert.Single(h.Outbox.OfType<RoomFrame>());
     }
 }
+
+/// <summary>Таблиця для коопу (прохід №3, п. 248): «Змійка на всіх» — рекорди довжини, а не перемоги.</summary>
+public class CoopBoardTests
+{
+    [Fact]
+    public void Coop_snake_board_lists_records_like_solo()
+    {
+        using var rig = new EconomyRig();
+        var reg = RoomHarness.NewRegistry();
+        var names = new Hlechyky.Games.Economy.GameNames(reg);
+        Assert.True(names.Get("snake-coop")!.Coop);
+        rig.Rewards.OnSolo(new SoloScoreEvent("snake-coop", "Оля", 17, ScoreOrder.HigherIsBetter, null, rig.Clock.UtcNow, null));
+        rig.Rewards.OnSolo(new SoloScoreEvent("snake-coop", "Петро", 17, ScoreOrder.HigherIsBetter, null, rig.Clock.UtcNow, null));
+        var boards = new Hlechyky.Games.Economy.Leaderboards(rig.Store, rig.Ratings, rig.Achievements, rig.Daily, names, rig.Economy, rig.Clock);
+        var json = JsonSerializer.SerializeToElement(boards.Leaderboard("snake-coop", "all", null));
+        Assert.Equal("solo", json.GetProperty("kind").GetString());
+        Assert.Equal(2, json.GetProperty("rows").GetArrayLength());
+    }
+}
