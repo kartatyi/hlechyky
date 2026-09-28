@@ -1833,6 +1833,8 @@
     if (r.status === 'finished') {
       const res = r.result;
       if (!res) return 'Партію зіграно';
+      // Кооп і партії з ботами: порожні winners там — «без нагород», а не нічия; гра сама каже, чим скінчилось.
+      if (res.verdict) return res.verdict;
       // соло: «перемога над собою» звучить дивно, тому беремо те, що написала гра
       if (solo) return res.text || (res.draw ? 'Цього разу не вийшло' : 'Є! Готово');
       if (res.draw || !(res.winners || []).length) return 'Нічия';

@@ -498,6 +498,7 @@ public class TanksSweep3Tests
         var done = Assert.Single(h.Finished);
         Assert.Empty(done.Result.Winners);
         Assert.Contains("глек розбили", done.Result.Text);
+        Assert.StartsWith("💔 Глек розбили", done.Result.Verdict);   // статус столу — не «Нічия»
         Assert.Empty(h.Scores);                                 // проти 🤖 — не в таблицю
     }
 

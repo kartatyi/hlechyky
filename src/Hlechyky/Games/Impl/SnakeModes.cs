@@ -330,7 +330,7 @@ public sealed class SnakeCoopGame : Game
             names.Count == 1
                 ? $"{Info.Title}: {who} наодинці — змійка доросла до {len}"
                 : $"{Info.Title}: {who} виростили змійку до {len}",
-            seated.ToDictionary(s => s, _ => (long)len));
+            seated.ToDictionary(s => s, _ => (long)len), verdict: $"🐍 Змійка доросла до {len}");
         return TickResult.Both;
     }
 

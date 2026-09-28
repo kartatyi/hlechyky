@@ -103,7 +103,8 @@ public sealed class SystemClock : IClock
 }
 
 /// <summary>Підсумок партії, який каркас віддає сервісам (черепки, рейтинги, ачівки) і кладе в RoomSummary.result.</summary>
-public sealed record RoomResult(int[] Winners, bool Draw, string Text, IReadOnlyDictionary<int, long>? Scores);
+public sealed record RoomResult(int[] Winners, bool Draw, string Text, IReadOnlyDictionary<int, long>? Scores,
+    string? Verdict = null);
 
 /// <summary>
 /// Що гра може просити в каркаса. Живе один на кімнату; Rooms виставляє його до Configure(). Усі методи
@@ -132,8 +133,12 @@ public interface IRoomContext
     /// стає найстарше зайняте місце — тому це властивість, а не число, запам'ятоване на старті.
     /// </summary>
     int? HostSeat { get; }
-    /// <summary>Партія скінчилась. Порожній winners — нічия. Другий виклик у тій самій партії ігнорується.</summary>
-    void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null);
+    /// <summary>
+    /// Партія скінчилась. Порожній winners — нічия. Другий виклик у тій самій партії ігнорується.
+    /// <paramref name="verdict"/> — підпис результату замість «Нічия»/«Перемога: …» у статусі столу: для коопу
+    /// й партій з ботами, де порожній winners означає «без нагород», а не нічию («🏆 Глек вистояв», «💔 Глек розбили»).
+    /// </summary>
+    void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null, string? verdict = null);
     /// <summary>Рядок у Журнал усім.</summary>
     void Log(string text);
     /// <summary>

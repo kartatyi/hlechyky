@@ -11,7 +11,9 @@ public sealed record SeatSlot(int I, string? Nick,
     string? Bot = null);
 
 /// <summary>Підсумок партії для лобі й для картки кімнати. Scores лишаються всередині — лобі вони ні до чого.</summary>
-public sealed record RoomResultDto(int[] Winners, bool Draw, string Text);
+public sealed record RoomResultDto(int[] Winners, bool Draw, string Text,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Verdict = null);
 
 /// <summary>
 /// Кімната так, як її бачить браузер (PROTOCOL §2). Будується під замком кімнати і летить у лобі та в
@@ -207,7 +209,7 @@ public sealed class Room
         return new RoomSummary(
             Id, Info.Id, Status.ToString().ToLowerInvariant(), slots, names, Host,
             Info.MinPlayers, Info.MaxPlayers, Options, Stake, Round, Watchers.Count,
-            Result is { } r ? new RoomResultDto(r.Winners, r.Draw, r.Text) : null,
+            Result is { } r ? new RoomResultDto(r.Winners, r.Draw, r.Text, r.Verdict) : null,
             CreatedAt, StartedAt, FinishedAt, EveningSummary());
     }
 }

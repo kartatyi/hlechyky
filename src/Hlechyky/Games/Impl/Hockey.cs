@@ -209,7 +209,9 @@ public sealed class Hockey : Game
             log = $"{Info.Title}: {Names(0)} {c.S[0]}:{c.S[1]} {Names(1)} — нічия";
         }
         _series.Record(Ctx, winners);
-        Ctx.Finish(winners, log, playing.ToDictionary(s => s, s => (long)c.Goals[s]));
+        // Команда самого бота виграла — winners порожні, але це не нічия.
+        Ctx.Finish(winners, log, playing.ToDictionary(s => s, s => (long)c.Goals[s]),
+            verdict: team >= 0 && winners.Length == 0 ? $"🤖 Бот переміг {c.S[team]}:{c.S[1 - team]}" : null);
         return TickResult.Both;
     }
 

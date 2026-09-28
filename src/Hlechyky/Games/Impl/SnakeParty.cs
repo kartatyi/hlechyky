@@ -840,7 +840,8 @@ public abstract class ArenaGame : Game
         _over = true;
         if (_cutLog.Count > 0) log += " " + CutsLine();
         // з ботами — без нагород і рейтингу: результат іде нічиєю, а хто взяв — видно в рядку Журналу
-        Ctx.Finish(HasBots ? [] : winners, HasBots ? $"{log} (з 🤖 — без нагород)" : log);
+        Ctx.Finish(HasBots ? [] : winners, HasBots ? $"{log} (з 🤖 — без нагород)" : log,
+            verdict: !HasBots ? null : winners.Length == 0 ? "🤝 Нічия · з 🤖 — на інтерес" : $"🏆 {Names(winners)} · з 🤖 — на інтерес");
     }
 
     /// <summary>«✂ Петро влітає у слід Олі, Іра — у слід Петра» — привід для підколок.</summary>

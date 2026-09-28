@@ -1258,7 +1258,7 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         return new Scope(this);
     }
 
-    public void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null)
+    public void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null, string? verdict = null)
     {
         if (room.Status == RoomStatus.Finished)
         {
@@ -1267,7 +1267,8 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         }
         var now = rooms.Clock.UtcNow;
         winners = winners.Where(s => s >= 0 && s < room.Seats.Length).Distinct().Order().ToArray();
-        room.Result = new RoomResult(winners, winners.Length == 0, log, scores);
+        room.Result = new RoomResult(winners, winners.Length == 0, log, scores,
+            string.IsNullOrWhiteSpace(verdict) ? null : verdict.Trim());
         room.Status = RoomStatus.Finished;
         room.TallyEvening(winners, scores);
         room.FinishedAt = now;
