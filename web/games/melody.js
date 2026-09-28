@@ -403,7 +403,7 @@
     }
 
     // варіанти виконавців
-    const teamGot = (k) => v.teams && v.teams.found && ctx.seat != null && v.teams.of[ctx.seat] >= 0 && v.teams.found[v.teams.of[ctx.seat]][k];
+    const teamGot = (k) => (v.teams && v.teams.found && ctx.seat != null && v.teams.of[ctx.seat] >= 0 ? v.teams.found[v.teams.of[ctx.seat]][k] : null);
     if (play && mine) {
       if (me.blocked) parts.push('<div class="mgline small">🙈 Не той варіант — цей трек уже без тебе</div>');
       else if (v.choices && !me.artist && !teamGot('artist')) {
@@ -417,8 +417,10 @@
       if (v.who.by && v.phase === 'reveal') {
         parts.push('<div class="mgline">📻 Закинув' + (v.who.by.length > 1 ? 'и' : '') + ' на радіо: <b>' + v.who.by.map(ctx.esc).join(', ') + '</b></div>');
       } else if (play && mine) {
-        if (me.who === true) parts.push('<div class="mgline small">📻 Замовника вгадано: +50</div>');
-        else if (me.who === false) parts.push('<div class="mgline small">📻 Не той замовник — побачимо після треку</div>');
+        const tw = teamGot('who');   // у командній грі замовника називають раз на команду
+        const said = me.who != null ? me.who : tw != null ? tw : null;
+        if (said === true) parts.push('<div class="mgline small">📻 Замовника вгадано: +50</div>');
+        else if (said === false) parts.push('<div class="mgline small">📻 Не той замовник — побачимо після треку</div>');
         else if (me.artist || me.title || teamGot('artist') || teamGot('title')) {
           const btns = [];
           for (let i = 0; i < seatsOf(ctx); i++) if (ctx.nickOf(i) && (v.left || []).indexOf(i) < 0) btns.push(nickBtn(ctx, i, 'mgwho', ctx.esc(ctx.nickOf(i)), false));

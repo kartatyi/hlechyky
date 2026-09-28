@@ -869,7 +869,7 @@ public sealed class Melody : Game
             who = prepared?.By is null || _phase == Loading ? null
                 : new { by = open ? prepared.By : null },
             teams = _teams ? new { of = (int[])_team.Clone(), scores = (int[])_teamScore.Clone(), names = TeamNames,
-                found = _phase == Play ? _teamFound.Select(f => new { artist = f.Artist, title = f.Title }).ToArray() : null } : null,
+                found = _phase == Play ? _teamFound.Select(f => new { artist = f.Artist, title = f.Title, who = f.Who }).ToArray() : null } : null,
             duel = _duelA < 0 ? null : new
             {
                 a = _duelA, b = _duelB, round = _duelRound, closed = _betsClosed, winner = _duelWinner,
