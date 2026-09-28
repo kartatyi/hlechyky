@@ -230,8 +230,10 @@ public sealed class Checkers : Game
     const int MaxPathLength = 13;
 
     public override GameInfo Info { get; } = new(
-        "checkers", "Шашки", "шашки", GameGroup.Board, 2, 2, Rated: true, Options: [BoardClock.Option],
-        Hint: "Російські шашки: бити обов'язково, дамка ходить на всю діагональ");
+        "checkers", "Шашки", "шашки", GameGroup.Board, 2, 2, Rated: true,
+        Options: [new GameOption("variant", "Варіант",
+            [("classic", "Класика"), ("anti", "Піддавки: хто перший позбувся шашок — виграв")], "classic"), BoardClock.Option],
+        Hint: "Російські шашки: бити обов'язково, дамка ходить на всю діагональ. У піддавках навпаки — віддай усе першим");
 
     char[] _b = CheckersRules.Start();
     int _turn;
@@ -250,10 +252,19 @@ public sealed class Checkers : Game
     string[]? _lastTaken;
     readonly BoardClock _clock = new();
     readonly Series _series = new();
+    /// <summary>
+    /// Піддавки: ті самі ходи й те саме обов'язкове взяття, лише мета навпаки — виграє той, у кого не лишилось
+    /// шашок або ходу. Бити обов'язково — тож «віддати» шашку тут означає підставити її так, щоб суперник мусив брати.
+    /// </summary>
+    bool _anti;
 
     public override string SeatName(int seat) => seat == 0 ? "білі" : "чорні";
 
-    public override void Configure(IReadOnlyDictionary<string, string> options) => _clock.Configure(options);
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        _anti = options.TryGetValue("variant", out var v) && v == "anti";
+        _clock.Configure(options);
+    }
 
     public override void Start()
     {
@@ -324,8 +335,9 @@ public sealed class Checkers : Game
         else _quiet++;
         _turn = seat == 0 ? 1 : 0;
 
-        if (CheckersRules.Count(_b, _turn) == 0) return Won(seat, "nopieces");
-        if (!CheckersRules.HasMove(_b, _turn)) return Won(seat, "nomoves");
+        // У піддавках той, кому нічим або нема чим ходити, — якраз переможець: він усе віддав першим.
+        if (CheckersRules.Count(_b, _turn) == 0) return _anti ? Won(_turn, "anti-nopieces") : Won(seat, "nopieces");
+        if (!CheckersRules.HasMove(_b, _turn)) return _anti ? Won(_turn, "anti-nomoves") : Won(seat, "nomoves");
         if (_quiet >= QuietLimit * 2) return Drawn("kings15");   // _quiet рахує півходи
         var key = $"{new string(_b)}{_turn}";
         _seen[key] = _seen.GetValueOrDefault(key) + 1;
@@ -412,8 +424,9 @@ public sealed class Checkers : Game
         Over(seat, reason);
         var lost = Other(seat);
         // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
-        End([seat], $"{Info.Title}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(lost)} {SeatName(lost)}");
-        return ActResult.Accept("Твоя взяла!");
+        End([seat], $"{Info.Title}{(_anti ? " (піддавки)" : "")}: {Ctx.NickOf(seat)} {SeatName(seat)} 1:0 {Ctx.NickOf(lost)} {SeatName(lost)}");
+        // У піддавках переможець — не той, хто щойно походив: «Твоя взяла!» ходовому тут було б знущанням.
+        return ActResult.Accept(_anti && reason.StartsWith("anti-", StringComparison.Ordinal) ? "Усе віддано суперникові — і це його перемога!" : "Твоя взяла!");
     }
 
     ActResult Drawn(string reason)
@@ -448,6 +461,7 @@ public sealed class Checkers : Game
         return new
         {
             board = new string(_b),
+            variant = _anti ? "anti" : "classic",
             turn = _over ? null : (int?)_turn,
             toMove = _turn == 0 ? "w" : "b",
             legal = legal.Select(m => m.Path.Select(CheckersRules.Name).ToArray()).ToArray(),
@@ -468,10 +482,10 @@ public sealed class Checkers : Game
     /// <summary>Знімок партії. Гра не Persistent, але стан у неї цілком серіалізовний — і тестам так видніше.</summary>
     public sealed record Snapshot(
         string Board, int Turn, string[]? Last, int? Offer, bool Over, int? Winner, string? Reason,
-        int Quiet, Dictionary<string, int> Seen, BoardClock.Snapshot? Clock = null, string[]? LastTaken = null);
+        int Quiet, Dictionary<string, int> Seen, BoardClock.Snapshot? Clock = null, string[]? LastTaken = null, bool Anti = false);
 
     public override string? Save() =>
-        JsonSerializer.Serialize(new Snapshot(new string(_b), _turn, _last, _offer, _over, _winner, _reason, _quiet, new(_seen), _clock.Save(), _lastTaken));
+        JsonSerializer.Serialize(new Snapshot(new string(_b), _turn, _last, _offer, _over, _winner, _reason, _quiet, new(_seen), _clock.Save(), _lastTaken, _anti));
 
     public override void Load(string json)
     {
@@ -488,5 +502,6 @@ public sealed class Checkers : Game
         foreach (var (k, v) in s.Seen) _seen[k] = v;
         _clock.Load(s.Clock);
         _lastTaken = s.LastTaken;
+        _anti = s.Anti;
     }
 }
