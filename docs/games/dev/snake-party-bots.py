@@ -139,11 +139,7 @@ class Bot:
         if not alive:
             if not self.timed and time.time() - self.last_drop > 5.3 and not (f.get("dc") or [0] * 4)[s]:
                 self.last_drop = time.time()
-                kind = "r" if self.rng.random() < 0.5 else "a"
-                r = await self.call("Act", [self.room, "drop", {"cell": -1, "k": kind}])
-                self.stats["drops"] += 1
-                if r and not r.get("ok"):
-                    self.stats["drop_fail"] += 1
+                asyncio.create_task(self.drop("r" if self.rng.random() < 0.5 else "a"))   # відповідь читає цей самий reader
             return
         body = self.bodies[s] if s < len(self.bodies) else []
         if len(body) < 2:
@@ -177,6 +173,14 @@ class Bot:
             await self.send("Input", [self.room, "turn", {"dir": best_d}])
         elif best_d == cur:
             self.sent_dir = None
+
+    async def drop(self, kind):
+        r = await self.call("Act", [self.room, "drop", {"cell": -1, "k": kind}])
+        self.stats["drops"] += 1
+        if r and not r.get("ok"):
+            self.stats["drop_fail"] += 1
+            if self.stats["drop_fail"] <= 3:
+                print("  кидок не вдався:", r.get("message"), flush=True)
 
     def flood(self, start, busy, cap):
         seen, stack = {start}, [start]
@@ -212,6 +216,8 @@ async def main():
         a.room = r.get("roomId")
         for b in bots:
             b.room = a.room
+        for b in bots:
+            await b.send("WatchRoom", [a.room])   # кадри летять лише тим, хто дивиться стіл
         for b in bots[1:]:
             await b.call("JoinRoom", [a.room])
         print("стіл", a.room, flush=True)
@@ -219,6 +225,7 @@ async def main():
         print("StartRoom:", await bots[0].call("StartRoom", [a.room]), flush=True)
     else:
         for b in bots:
+            await b.send("WatchRoom", [a.room])
             print(b.nick, "JoinRoom:", await b.call("JoinRoom", [a.room]), flush=True)
     t0 = time.time()
     while time.time() - t0 < a.secs and stats["finished"] < a.rounds:

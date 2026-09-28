@@ -374,7 +374,7 @@
       g.fillText('Наступний раунд за ' + Math.ceil((st.nx * TICK) / 1000) + '… · до ' + st.ser + ' перемог', cw / 2, ch / 2 + 22 * k, cw - 24);
     } else if (st.ser && st.over && who.length) {
       g.font = '600 ' + Math.round(16 * k) + 'px system-ui, sans-serif';
-      g.fillText('серія до ' + st.ser + ' — ваша!', cw / 2, ch / 2 + 26 * k, cw - 24);
+      g.fillText((who.length > 1 ? 'ділять' : 'бере') + ' партію до ' + st.ser + ' перемог', cw / 2, ch / 2 + 26 * k, cw - 24);
     }
   }
 
@@ -391,7 +391,7 @@
       root.insertBefore(el, root.firstChild);
     }
     const parts = [];
-    if (st.ser) parts.push('<em>Раунд ' + st.round + ' · до ' + st.ser + '</em>');
+    if (st.ser) parts.push('<em>' + (st.round ? 'Раунд ' + st.round + ' · до ' + st.ser : 'Партія до ' + st.ser + ' перемог') + '</em>');
     if (st.timed) {
       const sec = Math.ceil(((st.startIn > 0 && !st.tl ? st.timed : st.tl) * TICK) / 1000);
       parts.push('<em class="snp-clock' + (sec <= 10 && st.winner == null ? ' snp-hot' : '') + '">⏱ '
