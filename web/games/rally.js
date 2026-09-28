@@ -501,6 +501,23 @@
     { id: 'kopiyka', title: '«Копійка»', emoji: '🚙' },
   ];
   const CAR = Object.fromEntries(CARS.map((c) => [c.id, c]));
+  /// Гараж (прохід №3): фарби за номером, як їх перевіряє сервер (Rally.Paints); −1 — колір місця.
+  const PAINTS = ['#d9412b', '#f08a24', '#f4d03f', '#9bd14b', '#2f9e4f', '#2fb3a8', '#3f78d8', '#8a5ad6', '#e88ac0', '#f2f2ee', '#34363a', '#a9b0b6'];
+  const PAINT_NAMES = ['червона', 'помаранчева', 'жовта', 'салатова', 'зелена', 'бірюзова', 'синя', 'фіолетова', 'рожева', 'біла', 'чорна', 'срібляста'];
+  /// Траси для вибору між гонками (№85): id — як у RallyTracks, емодзі — мініатюра на кнопці.
+  const TRACKS = [
+    { id: 'selo', emoji: '🏡', title: 'Село' }, { id: 'ozero', emoji: '🧊', title: 'Крижане озеро' }, { id: 'nich', emoji: '🌙', title: 'Нічна' },
+    { id: 'kukurudza', emoji: '🌽', title: 'Кукурудзяне поле' }, { id: 'yarmarok', emoji: '🎡', title: 'Ярмарок' },
+    { id: 'random', emoji: '🎲', title: 'Яка випаде' },
+  ];
+  function myGarage() {
+    try { const g = JSON.parse(store.get('rally.garage', '') || 'null'); if (g && typeof g === 'object') return { paint: g.paint | 0, plate: String(g.plate || '').slice(0, 6) }; } catch { /* зіпсоване */ }
+    return null;
+  }
+  function carColor(st, seat) {
+    const p = st.view && st.view.paint ? st.view.paint[seat] : -1;
+    return p >= 0 && p < PAINTS.length ? PAINTS[p] : st.pal.seats[seat];
+  }
   const SEAT_VARS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--text', '#ecf1ea'],
     ['--rl-blue', '#6fb3e8'], ['--rl-pink', '#e88ac0']];
   const SEAT_NAMES = ['жовтий', 'зелений', 'рудий', 'білий', 'синій', 'рожевий'];
@@ -1043,7 +1060,8 @@
   }
 
   function sprite(st, id, seat, phase) {
-    const key = id + ':' + seat + ':' + (phase || 0) + ':' + st.sprK;
+    const color = carColor(st, seat);
+    const key = id + ':' + color + ':' + (phase || 0) + ':' + st.sprK;
     let c = st.sprites.get(key);
     if (c) return c;
     const k = st.sprK, pad = 4;
@@ -1055,7 +1073,7 @@
     g.setTransform(k, 0, 0, k, w / 2, h / 2);
     g.fillStyle = 'rgba(0,0,0,.28)';
     g.beginPath(); g.roundRect(-L / 2 + 1.5, -W / 2 + 2, L, W, 4); g.fill();
-    paintCar(g, id, st.pal.seats[seat], phase);
+    paintCar(g, id, color, phase);
     c.uw = (L + pad * 2); c.uh = (W + pad * 2);
     st.sprites.set(key, c);
     return c;
@@ -1969,8 +1987,9 @@
       const i = ord[q], s = st.drawn[i];
       const mine = i === st.mine;
       const nick = st.ctx.nickOf(i) || SEAT_NAMES[i];
-      const text = mine ? 'ти' : nick;
-      const maxW = 76 * ck;
+      const plate = st.view && st.view.plates ? st.view.plates[i] : null;
+      const text = (mine ? 'ти' : nick) + (plate ? ' ▭' + plate : '');
+      const maxW = (plate ? 120 : 76) * ck;
       const tw = Math.min(labelWidth(st, g, i, text), maxW);
       let w = tw + r * 2 + 6 * ck;
       const x = s.x * k;
@@ -2340,9 +2359,27 @@
         if (st.sim) flush(st, st.sim.T + 1);
       }
     });
+    lower.addEventListener('toggle', (e) => { if (e.target.matches('.rl-garage')) st.garageOpen = e.target.open; }, true);
+    lower.addEventListener('change', (e) => {
+      if (!e.target.matches('.rl-plate input') || !st.ctx || !st.ctx.mine) return;
+      const loc = myGarage();
+      const v = st.view;
+      const paint = loc ? loc.paint : (v && v.paint ? v.paint[st.ctx.seat] : -1);
+      setGarage(st, paint, e.target.value);
+    });
+    lower.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('.rl-plate input')) e.target.blur(); });
     lower.addEventListener('click', (e) => {
+      if (!st.ctx || !st.ctx.mine) return;
+      const pb = e.target.closest('button[data-paint]');
+      if (pb) {
+        const inp = lower.querySelector('.rl-plate input');
+        setGarage(st, +pb.dataset.paint, inp ? inp.value : '');
+        return;
+      }
+      const tb = e.target.closest('button[data-track]');
+      if (tb) { again(st, tb.dataset.track); return; }
       const b = e.target.closest('button[data-car]');
-      if (!b || !st.ctx || !st.ctx.mine) return;
+      if (!b) return;
       const id = b.dataset.car;
       st.ctx.act('car', { car: id });
     });
@@ -2550,6 +2587,13 @@
         + '<div class="muted small rl-note">Фізика в усіх однакова — різняться виглядом і гудком</div>'
         + (v.random ? '' : '<div class="small rl-legend">' + ctx.esc(legend(st)) + '</div>') + '</div>';
     }
+    if ((v.ph === 0 || v.ph === 3) && ctx.mine) html += garageHtml(st, v);
+    if (v.ph === 3 && ctx.mine && !v.champ) {
+      const cur = v.random ? 'random' : v.track && v.track.id;
+      html += '<div class="rl-next"><div class="rl-rh">🗺 Наступна гонка — клацни трасу</div><div class="rl-tracks">'
+        + TRACKS.map((t) => '<button type="button" data-track="' + t.id + '"' + (t.id === cur ? ' class="on"' : '') + ' title="' + t.title + '"><span class="rl-emo">' + t.emoji + '</span><span>' + t.title + '</span></button>').join('')
+        + '</div></div>';
+    }
     const recs = v.records || [];
     if (v.ph === 0 && !v.random) {
       const me = String((ctx.me && ctx.me.nick) || '').toLowerCase();
@@ -2559,6 +2603,55 @@
           : '<div class="muted small">Ще жодного кола — будь першим</div>') + '</div>';
     }
     if (html !== st.lowerSig) { st.lowerSig = html; st.lower.innerHTML = html; }
+  }
+
+  /// «🎨 Гараж»: фарба й напис на номері. Згорнутий, щоб лобі лишалось коротким; пам'ятається в браузері за ніком.
+  function garageHtml(st, v) {
+    const seat = st.ctx.seat;
+    const loc = myGarage();
+    const paint = v.ph === 3 && loc ? loc.paint : (v.paint ? v.paint[seat] : -1);
+    const plate = v.ph === 3 && loc ? loc.plate : ((v.plates && v.plates[seat]) || '');
+    const sw = [-1].concat(PAINTS.map((_, n) => n)).map((n) => '<button type="button" data-paint="' + n + '"' + (n === paint ? ' class="on" aria-pressed="true"' : '')
+      + ' style="--rl-sw:' + (n < 0 ? st.pal.seats[seat] : PAINTS[n]) + '" aria-label="' + (n < 0 ? 'колір місця' : PAINT_NAMES[n]) + '">' + (n < 0 ? '↺' : '') + '</button>').join('');
+    return '<details class="rl-garage"' + (st.garageOpen ? ' open' : '') + '><summary>🎨 Гараж: фарба й номер' + (plate ? ' · ▭' + st.ctx.esc(plate) : '') + '</summary>'
+      + '<div class="rl-sw">' + sw + '</div>'
+      + '<label class="rl-plate">Номер <input type="text" maxlength="6" value="' + st.ctx.esc(plate) + '" placeholder="ВЛАД77" autocomplete="off" spellcheck="false"></label>'
+      + (v.ph === 3 ? '<div class="muted small">Поїде з наступної гонки</div>' : '') + '</details>';
+  }
+
+  /// Змінили гараж: у браузер, а в лобі — і на сервер (у підсумку сервер слухає вже на відліку «Ще раз»).
+  function setGarage(st, paint, plate) {
+    const g = { paint, plate: String(plate || '').toUpperCase().replace(/[^\p{L}\p{N} -]/gu, '').slice(0, 6).trim() };
+    store.set('rally.garage', JSON.stringify(g));
+    st.garageSent = '';
+    syncGarage(st);
+    st.lowerSig = '';
+    paintLower(st);
+  }
+
+  /// Гараж із браузера — на сервер, якщо там інакше (новий стіл, «Ще раз», F5). Раз на той самий вид.
+  function syncGarage(st) {
+    const ctx = st.ctx, v = st.view;
+    if (!ctx || !ctx.mine || !v || !(v.ph === 0 || v.ph === 1) || ctx.seat == null) return;
+    const g = myGarage();
+    if (!g) return;
+    const srvP = v.paint ? v.paint[ctx.seat] : -1, srvN = (v.plates && v.plates[ctx.seat]) || '';
+    if (srvP === g.paint && srvN === g.plate) return;
+    const key = g.paint + ':' + g.plate + ':' + (ctx.room && ctx.room.round);
+    if (st.garageSent === key) return;
+    st.garageSent = key;
+    ctx.act('garage', g);
+  }
+
+  /// Після гонки: «Ще раз» каркаса і тут же обрана траса — сервер перебудовує відлік на ній (як мапа рівнів у Вогнику).
+  async function again(st, track) {
+    if (st.againBusy || !st.ctx || !st.ctx.room) return;
+    st.againBusy = true;
+    try {
+      const id = st.ctx.room.id;
+      const r = await HGames.call('Rematch', id);
+      if (r && r.ok && track) await HGames.call('Act', id, 'track', { track });
+    } finally { st.againBusy = false; }
   }
 
   // ===============================================================================================
@@ -2733,7 +2826,9 @@
     void prevView;
     if (v.f && (!st.f || v.f.t >= st.f.t || v.f.ph !== st.f.ph)) takeFrame(st, v.f, now);
     paintHud(st);
-    paintLower(st);
+    // поле номера в фокусі — не перемальовувати з-під пальців
+    if (!(document.activeElement && document.activeElement.matches && document.activeElement.matches('.rl-plate input'))) paintLower(st);
+    syncGarage(st);
     paintTouch(st);
     // висоти над і під канвасом міряємо в наступному кадрі: каркас домальовує статус і кнопки після update
     st.fitDirty = true;

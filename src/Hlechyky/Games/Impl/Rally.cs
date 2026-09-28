@@ -119,6 +119,7 @@ public sealed class Rally : Game
         _why = 0;
         _results = null;
         _record = null;
+        _picked = false;
         RefreshTop();
     }
 
@@ -176,6 +177,10 @@ public sealed class Rally : Game
                 _carByNick[nick] = Cars[found].Id;
                 return ActResult.Accept($"{Cars[found].Emoji} {Cars[found].Title} — твоя");
             }
+            case "track":
+                return PickTrack(payload);
+            case "garage":
+                return Garage(seat, payload);
             case "ctl":
             {
                 if (_core is null || _ph is not (PhCount or PhRace)) return ActResult.Fail("Гонка ще не почалась");
@@ -208,6 +213,63 @@ public sealed class Rally : Game
             default:
                 return ActResult.Fail("Тут так не ходять");
         }
+    }
+
+    /// <summary>Скільки тиків відліку після «Ще раз» можна ще перекинути гонку на іншу трасу (1 с — червоне світло).</summary>
+    public const int PickTicks = 25;
+    /// <summary>Трасу цієї гонки вже обрали з підсумку — вдруге не перекидаємо (двоє клацнули різне — хто перший).</summary>
+    bool _picked;
+
+    /// <summary>
+    /// Вибір траси між гонками (прохід №3, №85): у підсумку людина клацає трасу — клієнт тисне «Ще раз» каркаса і
+    /// тут же шле <c>track</c>; на першій секунді відліку гонка перебудовується на обраній трасі. Далі «Ще раз» їде
+    /// туди ж, поки хтось не обере іншу. 🎲 — «яка випаде» щоразу.
+    /// </summary>
+    ActResult PickTrack(JsonElement payload)
+    {
+        var id = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("track", out var t) && t.ValueKind == JsonValueKind.String
+            ? t.GetString() : null;
+        if (id is null || (id != "random" && !RallyTracks.Ids.Contains(id))) return ActResult.Fail("Такої траси в селі нема");
+        if (_core is null || _ph != PhCount || _core.T > PickTicks || _picked) return ActResult.Fail("Гонка вже рушила — трасу обереш наступного разу");
+        _trackOpt = id;
+        _track = RallyTracks.Get(id);
+        Start();
+        _picked = true;
+        return ActResult.Accept(id == "random" ? "🎲 Яка випаде — така й буде" : $"Їдемо: {_track.Title}");
+    }
+
+    /// <summary>Фарб у гаражі (клієнт знає їхні кольори за номером); −1 — колір місця, як було.</summary>
+    public const int Paints = 12;
+    /// <summary>Найдовший напис на номері.</summary>
+    public const int PlateMax = 6;
+    /// <summary>Гараж за ніком (№91): фарба й напис на номері їдуть за людиною, як і машина.</summary>
+    readonly Dictionary<string, (int Paint, string Plate)> _garage = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// «🎨 Гараж»: фарба машини (0..11, −1 — колір місця) і напис на номері до шести літер/цифр. У лобі й на відліку
+    /// (підсумок каркас до гри не пускає: клієнт пам'ятає вибір і шле його на відліку «Ще раз»). Без тосту.
+    /// </summary>
+    ActResult Garage(int seat, JsonElement payload)
+    {
+        if (_ph is not (PhLobby or PhCount)) return ActResult.Fail("Посеред гонки в гараж не заїжджають");
+        if (Ctx.NickOf(seat) is not { } nick) return ActResult.Fail("Ти тут не граєш");
+        if (payload.ValueKind != JsonValueKind.Object) return ActResult.Fail("Кривий гараж");
+        var paint = payload.TryGetProperty("paint", out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var pv) ? pv : -2;
+        if (paint < -1 || paint >= Paints) return ActResult.Fail("Такої фарби в селі нема");
+        var raw = payload.TryGetProperty("plate", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() ?? "" : "";
+        if (Plate(raw) is not { } plate) return ActResult.Fail($"На номері — до {PlateMax} літер і цифр");
+        _garage[nick] = (paint, plate);
+        return ActResult.Done;
+    }
+
+    /// <summary>Напис на номері: великі літери, цифри, пробіл і дефіс, до шести; інакше null.</summary>
+    public static string? Plate(string raw)
+    {
+        var t = raw.Trim().ToUpperInvariant();
+        if (t.Length > PlateMax) return null;
+        foreach (var ch in t)
+            if (!char.IsLetterOrDigit(ch) && ch != ' ' && ch != '-') return null;
+        return t;
     }
 
     /// <summary>{ t: ціле, k: 0..31 } — інакше це не ввід, а сміття.</summary>
@@ -564,6 +626,15 @@ public sealed class Rally : Game
             cars[i] = _core is null
                 ? (Ctx.Seated(i) ? CarOf(i) : null)
                 : _core.Cars[i].Present ? _core.Cars[i].Car : null;
+        var paint = new int[RallyCore.Seats];
+        var plates = new string?[RallyCore.Seats];
+        for (var i = 0; i < RallyCore.Seats; i++)
+        {
+            paint[i] = -1;
+            if (cars[i] is null || Ctx.NickOf(i) is not { } nick || !_garage.TryGetValue(nick, out var g)) continue;
+            paint[i] = g.Paint;
+            plates[i] = g.Plate.Length > 0 ? g.Plate : null;
+        }
         return new
         {
             turn = (int?)null,
@@ -572,6 +643,8 @@ public sealed class Rally : Game
             random = _trackOpt == "random",
             track = _track.Wire,
             cars,
+            paint,
+            plates,
             records = _top,
             results = _ph == PhOver ? _results : null,
             f = Frame(),

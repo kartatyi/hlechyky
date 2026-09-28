@@ -14,7 +14,7 @@ namespace Hlechyky.Tests.Games;
 /// міткою тика, вихід, рематч і вид — через кімнату. Паритет із браузером — журнали в <c>RallyReplays/</c>.
 /// </summary>
 [Collection(SerialPerf.Name)]
-public class RallyTests(ITestOutputHelper output)
+public partial class RallyTests(ITestOutputHelper output)
 {
     static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марко", "Зоя"];
     const int S = RallyTrack.CellSub;
