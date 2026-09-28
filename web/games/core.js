@@ -2292,7 +2292,9 @@
     },
 
     /// Каталог і модулі ігор (іконки, назви) — для «Хто скільки» й профілів: проміс, що каталог уже є.
-    ready: () => ensureCatalog() || Promise.resolve(),
+    /// Модулі тепер довантажуються в тиші (п. 241): чекаємо їх (заради справжніх іконок при першому заході) щонайбільше 1,5 с.
+    ready: () => Promise.race([ensureCatalog() || Promise.resolve(),
+      ensureNames().then(() => new Promise((r) => setTimeout(r, 1500)))]),
     iconOf,
     titleOf,
     roomOf,
