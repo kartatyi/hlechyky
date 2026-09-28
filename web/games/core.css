@@ -499,3 +499,12 @@
   100% { opacity: 0; transform: translate(-50%, -160px) scale(1); }
 }
 @media (prefers-reduced-motion: reduce) { .grx-fly { animation-duration: 1.4s; } }
+
+/* Телефон: згорнута шторка «💬 Стіл» (style.css, fixed праворуч унизу) лягала на праву частину поля відповіді
+   («Скільки?», слова). Поки пишеш у полі гри — шторки не видно; відпустив поле — вона знову на місці. */
+@media (max-width: 900px) {
+  body:has(.gbody input:focus, .gbody textarea:focus) .tchat.drawer:not(.open) { display: none; }
+  /* Рука дурня вчотирьох, поле «Скільки?» — низ столу під згорнутою шторкою: запас знизу, щоб його можна було
+     докрутити над кнопкою (шторка ~44 px + відступ). Посеред аркади шторки нема (g-arcade) — там запасу не треба. */
+  body:not(.g-arcade):has(.tchat.drawer:not(.open)) .groom { padding-bottom: 64px; }
+}

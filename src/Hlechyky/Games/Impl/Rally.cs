@@ -644,7 +644,12 @@ public sealed class Rally : Game
             var rec0 = RecordLine();
             if (rec0 is not null) Ctx.Say($"⏱ Новий рекорд «{_track.Title}»: {rec0}!");
             if (humans >= 3 && bestHuman >= 0 && _atGreen >= 3) Ctx.Award(bestHuman, 0, "ach:rally-win3");
-            Ctx.Finish(humans >= 2 && bestHuman >= 0 ? [bestHuman] : [], rec0 is null ? log0 : $"{log0} · новий рекорд траси: {rec0}");
+            var won0 = humans >= 2 && bestHuman >= 0 ? [bestHuman] : Array.Empty<int>();
+            // з ботами порожні winners — «на інтерес», а не нічия: статус столу каже, хто справді перший
+            var verdict0 = first < 0 ? "🏁 До фінішу ніхто не доїхав"
+                : $"🏁 Першим — {Nick(first)}" + (won0.Length > 0 && won0[0] != first ? $" · з людей — {Nick(won0[0])}" : "")
+                    + (won0.Length == 0 ? " · з 🤖 — на інтерес" : "");
+            Ctx.Finish(won0, rec0 is null ? log0 : $"{log0} · новий рекорд траси: {rec0}", verdict: verdict0);
             return TickResult.Both;
         }
         if (first >= 0) winners = [first];
@@ -663,7 +668,9 @@ public sealed class Rally : Game
         // «Перший на селі» — лише справжня гонка: троє на зеленому світлі й хоч один суперник не встав до кінця
         if (!_solo && first >= 0 && _atGreen >= 3 && ranked.Count >= 2) Ctx.Award(first, 0, "ach:rally-win3");
         var log = LogLine(ranked, first, winners);
-        Ctx.Finish(_solo ? [] : winners, recLine is null || ranked.Count == 0 ? log : $"{log} · новий рекорд траси: {recLine}");
+        Ctx.Finish(_solo ? [] : winners, recLine is null || ranked.Count == 0 ? log : $"{log} · новий рекорд траси: {recLine}",
+            verdict: !_solo || ranked.Count == 0 ? null
+                : core.Cars[ranked[0]].Fin > 0 ? $"⏱ Фініш за {Clock(core.Cars[ranked[0]].FinishMs, 1)}" : "⏱ Цього разу без фінішу");
         return TickResult.Both;
     }
 

@@ -473,6 +473,7 @@ public class SnakeModesTests
         // де програти неможливо. Довжина від цього не губиться, вона йде окремо, у Scores.
         Assert.Empty(h.Room.Result!.Winners);
         Assert.True(h.Room.Result.Draw);
+        Assert.Equal($"🐍 Змійка доросла до {len}", h.Room.Summary().Result!.Verdict);   // а не «Нічия»
         Assert.Equal($"Змійка на всіх: Оля і Петро виростили змійку до {len}", LastLog(h));
         Assert.Equal("end", h.View(null).GetProperty("winner").GetString());
     }

@@ -322,7 +322,8 @@ public sealed class Tanks : Game
         var who = string.Join(", ", Playing().Select(s => $"{Ctx.NickOf(s)} {Core.Tanks[s].Frags}"));
         Ctx.Finish([], held
             ? $"{Info.Title} 🤖: відбили {Core.Wave} {Waves(Core.Wave)} — глек цілий ({who})"
-            : $"{Info.Title} 🤖: глек розбили на {Core.Wave}-й хвилі ({who})");
+            : $"{Info.Title} 🤖: глек розбили на {Core.Wave}-й хвилі ({who})",
+            verdict: held ? $"🏆 Глек вистояв: відбили {Core.Wave} {Waves(Core.Wave)}" : $"💔 Глек розбили на {Core.Wave}-й хвилі");
         return TickResult.Both;
     }
 

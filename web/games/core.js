@@ -70,6 +70,11 @@
       hint: 'Хто перший виставить три в ряд. У зникаючих у кожного на полі лише три мітки — четверта стирає першу. Ультимативні — дев’ять полів в одному: куди сходив, туди йде суперник.' },
     { id: 'c4', title: 'Чотири в ряд', games: [['c4', 'Удвох'], ['c4x', 'Компанія на 3–4']],
       hint: 'Кидаєш фішку в колонку, вона падає вниз. Виграє той, хто першим збере чотири в ряд.' },
+    // Шахи: удвох на рейтинг або проти 🤖 Глека (соло — стіл відкривається одразу). Задача дня — у «Сьогодні», не тут.
+    { id: 'chess', title: 'Шахи', games: [['chess', 'Удвох'], ['chess-glek', 'З Глеком 🤖']],
+      hint: 'Шахи удвох на рейтинг — або сам проти Дядька Глека 🤖, легкого чи середнього, для розминки.' },
+    { id: 'checkers', title: 'Шашки', games: [['checkers', 'Удвох'], ['zirka', 'Китайські на 2–3']],
+      hint: 'Класичні шашки удвох — або китайські на зірці для двох-трьох: стрибай через фішки й переведи своїх у протилежний куток.' },
     { id: 'bricks', title: 'Цеглини', games: [['bricks', 'Гуртом 2–4'], ['bricks-duel', 'Дуель на рейтинг']],
       hint: 'Складай ряди з фігурок — кожен знесений ряд летить сміттям під стіну суперника. Чия стіна вистоїть, той і переміг.' },
     { id: 'duel', title: 'Дуель', games: [['duel', 'Двоє'], ['shootout', 'Перестрілка на 3–4'], ['duelcup', 'Турнір на 3–8']],
@@ -143,6 +148,12 @@
     const s = room && room.seats && room.seats[i];
     if (s == null) return null;
     return typeof s === 'string' ? (s || null) : (s.nick || null);
+  }
+  /// Бот гри на місці без людини («🤖 Глек»): сервер кладе його в seats[i].bot, поки йде чи дограна партія.
+  /// Старий сервер його не шле — тоді місце, як і було, «вільно».
+  function botAt(room, i) {
+    const s = room && room.seats && room.seats[i];
+    return s && typeof s === 'object' && !s.nick && s.bot ? s.bot : null;
   }
   const seatCount = (room) => (room.seats ? room.seats.length : room.maxPlayers || 0);
   const takenSeats = (room) => { let n = 0; for (let i = 0; i < seatCount(room); i++) if (nickAt(room, i)) n++; return n; };
@@ -247,8 +258,10 @@
     // Поворот — на дотик, а не на click: той приходить лише після відпускання пальця, +50–120 мс на телефоні,
     // і в змійці чи мотоциклах цього вистачало, щоб врізатись. click лишається для Enter/пробілу з клавіатури.
     const fire = (e) => {
-      const b = e.target.closest('button');
-      if (b && el._onDir) el._onDir(+b.dataset.dir);
+      // Лише стрілки: гра може підкласти в хрестовину свою кнопку (💥), і вона слала поворот NaN.
+      const b = e.target.closest('button[data-dir]');
+      const d = b ? +b.dataset.dir : NaN;
+      if (Number.isFinite(d) && el._onDir) el._onDir(d);
     };
     el.addEventListener('pointerdown', (e) => { e.preventDefault(); fire(e); });
     el.addEventListener('click', (e) => { if (e.detail === 0) fire(e); });
@@ -1275,7 +1288,10 @@
     const took = takenSeats(r), all = seatCount(r);
     const nicks = [];
     for (let i = 0; i < all; i++) { const n = nickAt(r, i); if (n) nicks.push(n); }
-    const free = all - took;
+    let bots = '';
+    let nb = 0;
+    for (let i = 0; i < all; i++) { const b = botAt(r, i); if (b) { nb++; bots += ', <span class="gbot">' + esc(b) + '</span>'; } }
+    const free = all - took - nb;
     // Ніки клікабельні: картка людини (web/people.js ловить data-who).
     const who = nicks.map((n) => '<span class="who-n" data-who="' + esc(n) + '" style="--h:' + hueOf(n) + '">' + esc(n) + '</span>').join(', ');
     const myTurn = mine && r.status === 'playing' && rv && turnOf(rv) === seat;
@@ -1290,7 +1306,7 @@
       + '<div class="gs-head"><span class="gtitle">' + iconOf(r.game) + esc(titleOf(r.game)) + '</span>'
       + (r.stake ? '<span class="gmode stake">🏺' + r.stake + '</span>' : '')
       + '<span class="chip">' + (all > 1 ? took + '/' + all : 'соло') + '</span></div>'
-      + '<div class="gs-who">' + (nicks.length ? who : '<span class="muted">поки ні душі</span>')
+      + '<div class="gs-who">' + (nicks.length ? who + bots : '<span class="muted">поки ні душі</span>')
       + (free > 0 && all > 1 ? ' <span class="muted">· вільно ' + free + '</span>' : '')
       + ' · ' + status + (r.watchers ? ' <span class="muted">· 👁 ' + r.watchers + '</span>' : '') + '</div>'
       + (eveningText(r, true) ? '<div class="gs-ev muted small" title="' + esc(eveningTitle(r)) + '">' + esc(eveningText(r, true)) + '</div>' : '')
@@ -1399,7 +1415,10 @@
     const list = (daily && daily.puzzles) || [];
     const cards = list.map((p) => {
       const solved = p.me && p.me.solved;
-      const what = solved
+      // Щоденні «більше — краще» (Скільки? дня) міряються очками, а не спробами: старий сервер points не шле.
+      const what = solved && p.me.points != null
+        ? '✓ зіграно · ' + points(p.me.points)
+        : solved
         ? '✓ розгадано ' + (p.me.attempts ? 'за ' + tries(p.me.attempts) : '') + (p.me.ms ? ' · ' + secs(p.me.ms) : '')
         : 'ще не розгадано' + (p.solvedCount ? ' · ' + p.solvedCount + ' вже розгадали' : '');
       return '<div class="gdc' + (solved ? ' done' : '') + '">' + iconOf(p.game) + '<div><b>' + esc(p.title || titleOf(p.game)) + '</b>'
@@ -1581,6 +1600,9 @@
     wrap.querySelector('[data-close]').onclick = close;
     // Частина, що залежить від режиму: підказка, опції, ставка.
     const paintVar = () => {
+      // Соло-режим родини (Шахи з Глеком) — не «стіл», а гра, що відкривається одразу.
+      const go = wrap.querySelector('[data-go]');
+      if (go) go.textContent = g.maxPlayers === 1 ? 'Грати' : 'Поставити стіл';
       const opts = g.options || [];
       const stakes = stakeable(g) ? (catalog.stakes || []) : [];
       const box = wrap.querySelector('.gvar');
@@ -1782,13 +1804,13 @@
       // На великих столах (мафія, піктіонарі — до 12) чіпи вільних місць займали на телефоні три рядки над грою:
       // від трьох вільних показуємо їх одним «вільно ×N».
       let free = 0;
-      for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i)) free++;
+      for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i) && !botAt(room, i)) free++;
       const fold = free > 2;
       // Від п'яти гравців на телефоні чіпи ніків стояли 4–5 рядками над грою. Там лишаємо свій чіп, чий хід
       // і «👥 N» — дотик розгортає всіх (core.css, .gseats.many). На широкому екрані видно всіх, як і було.
       const taken = seatCount(room) - free;
       for (let i = 0; i < seatCount(room); i++) {
-        const nick = nickAt(room, i);
+        const nick = nickAt(room, i) || botAt(room, i);
         if (fold && !nick) continue;
         const turn = room.status === 'playing' && turnOf(rv) === i;
         chips.push('<span class="gseat ' + seatClassOf(rv, i) + (nick ? '' : ' free') + (turn ? ' turn' : '')
@@ -1824,12 +1846,14 @@
     if (r.status === 'finished') {
       const res = r.result;
       if (!res) return 'Партію зіграно';
+      // Кооп і партії з ботами: порожні winners там — «без нагород», а не нічия; гра сама каже, чим скінчилось.
+      if (res.verdict) return res.verdict;
       // соло: «перемога над собою» звучить дивно, тому беремо те, що написала гра
       if (solo) return res.text || (res.draw ? 'Цього разу не вийшло' : 'Є! Готово');
       if (res.draw || !(res.winners || []).length) return 'Нічия';
       // «Є!» — лише переможцеві: суперник і глядач бачать просто, чия перемога.
       return (rv.seat != null && res.winners.includes(rv.seat) ? 'Є! ' : '')
-        + 'Перемога: ' + res.winners.map((i) => nickAt(r, i) || seatNameOf(rv, i)).join(', ');
+        + 'Перемога: ' + res.winners.map((i) => nickAt(r, i) || botAt(r, i) || seatNameOf(rv, i)).join(', ');
     }
     if (r.status === 'lobby') {
       if (solo) return '';
@@ -1843,7 +1867,7 @@
       return freeSeat(r) >= 0 ? 'Чекаємо, хто підсяде' : 'Чекаємо на старт';
     }
     const t = turnOf(rv);
-    if (t != null) return t === rv.seat ? 'Твій хід' : 'Ходить ' + (nickAt(r, t) || seatNameOf(rv, t));
+    if (t != null) return t === rv.seat ? 'Твій хід' : 'Ходить ' + (nickAt(r, t) || botAt(r, t) || seatNameOf(rv, t));
     return rv.seat == null ? 'Дивишся збоку' : '';
   }
 
@@ -1960,6 +1984,11 @@
   const secs = (ms) => (ms == null ? '' : (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + ' с');
 
   /// «за 1 спробу», «за 3 спроби», «за 6 спроб».
+  /// «1 очко», «3 очки», «250 очок».
+  function points(n) {
+    const t = Math.abs(n) % 100, o = Math.abs(n) % 10;
+    return n + (t > 10 && t < 20 ? ' очок' : o === 1 ? ' очко' : o >= 2 && o <= 4 ? ' очки' : ' очок');
+  }
   function tries(n) {
     const t = n % 100, o = n % 10;
     if (t > 10 && t < 20) return n + ' спроб';

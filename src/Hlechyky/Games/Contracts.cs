@@ -103,7 +103,8 @@ public sealed class SystemClock : IClock
 }
 
 /// <summary>Підсумок партії, який каркас віддає сервісам (черепки, рейтинги, ачівки) і кладе в RoomSummary.result.</summary>
-public sealed record RoomResult(int[] Winners, bool Draw, string Text, IReadOnlyDictionary<int, long>? Scores);
+public sealed record RoomResult(int[] Winners, bool Draw, string Text, IReadOnlyDictionary<int, long>? Scores,
+    string? Verdict = null);
 
 /// <summary>
 /// Що гра може просити в каркаса. Живе один на кімнату; Rooms виставляє його до Configure(). Усі методи
@@ -132,8 +133,12 @@ public interface IRoomContext
     /// стає найстарше зайняте місце — тому це властивість, а не число, запам'ятоване на старті.
     /// </summary>
     int? HostSeat { get; }
-    /// <summary>Партія скінчилась. Порожній winners — нічия. Другий виклик у тій самій партії ігнорується.</summary>
-    void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null);
+    /// <summary>
+    /// Партія скінчилась. Порожній winners — нічия. Другий виклик у тій самій партії ігнорується.
+    /// <paramref name="verdict"/> — підпис результату замість «Нічия»/«Перемога: …» у статусі столу: для коопу
+    /// й партій з ботами, де порожній winners означає «без нагород», а не нічию («🏆 Глек вистояв», «💔 Глек розбили»).
+    /// </summary>
+    void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null, string? verdict = null);
     /// <summary>Рядок у Журнал усім.</summary>
     void Log(string text);
     /// <summary>
@@ -163,6 +168,13 @@ public abstract class Game
 
     /// <summary>«білі»/«чорні», «жовта»/«зелена» — для чіпів місць і рядків Журналу.</summary>
     public virtual string SeatName(int seat) => seat == 0 ? "перший" : seat == 1 ? "другий" : $"гравець {seat + 1}";
+
+    /// <summary>
+    /// Хто сидить на місці, де людини нема, — бот гри («🤖 Глек»). Каркас кладе це в шапку кімнати: чіп місця,
+    /// «Ходить …» і підсумок кажуть ім'я бота замість «вільно»/назви місця. null — місце справді вільне або людське.
+    /// Кличеться під замком кімнати на кожну шапку — лише читання полів, без алокацій понад рядок.
+    /// </summary>
+    public virtual string? SeatBot(int seat) => null;
 
     /// <summary>Опції з лобі (варіант, розмір). Невалідні значення — GameError; тоді кімната не створюється.</summary>
     public virtual void Configure(IReadOnlyDictionary<string, string> options) { }
@@ -233,6 +245,16 @@ public abstract class Game
 
 /// <summary>Маркер: гра входить у «Щоденний глек» (одна головоломка на день, спільна для всіх, таблиця за днем).</summary>
 public interface IDailyGame { }
+
+/// <summary>
+/// Очки щоденної гри «більше — краще» для панелі «☀ Сьогодні»: «Щоденний глек» сам знає лише спроби й час, а
+/// в «Скільки? дня» важать очки. Сервіс гри реєструється як <c>IDailyPoints</c> і відповідає без походу в базу.
+/// </summary>
+public interface IDailyPoints
+{
+    string Game { get; }
+    long? Points(string day, string nick);
+}
 
 /// <summary>
 /// День за київським часом — спільна точка для щоденних ігор, стель «на день» і таблиць «за сьогодні».

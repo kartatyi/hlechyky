@@ -983,7 +983,9 @@ public sealed class Pong : Game
         _over = true;
         // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
         Ctx.Finish(won == _bot ? [] : [won],
-            $"{Info.Title}: {Nick(won)} {SeatName(won)} {Core.S[scorer.Value]}:{Core.S[1 - scorer.Value]} {Nick(lost)} {SeatName(lost)}");
+            $"{Info.Title}: {Nick(won)} {SeatName(won)} {Core.S[scorer.Value]}:{Core.S[1 - scorer.Value]} {Nick(lost)} {SeatName(lost)}",
+            verdict: _bot < 0 ? null : won == _bot ? $"🤖 Бот переміг {Core.S[scorer.Value]}:{Core.S[1 - scorer.Value]}"
+                : $"🏆 {Nick(won)} — перемога над ботом {Core.S[scorer.Value]}:{Core.S[1 - scorer.Value]}");
         return TickResult.Both;
     }
 

@@ -310,6 +310,7 @@ public class MotoSweep3Tests(ITestOutputHelper output)
         var done = Assert.Single(h.Finished);
         Assert.Empty(done.Result.Winners);                 // з ботами — без нагород і таблиць
         Assert.Contains("🤖", LastLog(h));
+        Assert.Contains("на інтерес", done.Result.Verdict); // а в статусі столу — не «Нічия»
     }
 
     [Fact]

@@ -128,6 +128,25 @@ public class DailyTests
         Assert.True(Views.Has(e, "puzzles"));
     }
 
+    sealed class FakePoints : IDailyPoints
+    {
+        public string Game => "skilky-daily";
+        public long? Points(string day, string nick) => nick == "Оля" ? 4200 : null;
+    }
+
+    [Fact]
+    public void Daily_with_points_carries_them_to_the_panel_instead_of_one_attempt()
+    {
+        using var rig = new EconomyRig();
+        var daily = new Daily(rig.Store, new GameNames(RoomHarness.NewRegistry()), rig.Clock, [new FakePoints()]);
+        daily.Record("skilky-daily", "Оля", true, 1, 0);
+        daily.Record("wordle", "Оля", true, 3, 0);
+
+        var st = daily.Status("Оля");
+        Assert.Equal(4200, st.Puzzles.Single(p => p.Game == "skilky-daily").Me!.Points);
+        Assert.Null(st.Puzzles.Single(p => p.Game == "wordle").Me!.Points);   // спроби лишаються спробами
+    }
+
     [Fact]
     public void Status_lists_every_registered_daily_puzzle()
     {

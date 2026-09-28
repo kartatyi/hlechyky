@@ -366,6 +366,7 @@ public sealed partial class Battleship : Game
     }
 
     string Nick(int seat) => _sides[seat].Bot ? _sides[seat].Name : Ctx.NickOf(seat) ?? SeatName(seat);
+    public override string? SeatBot(int seat) => seat >= 0 && seat < _sides.Length && _sides[seat].Bot ? _sides[seat].Name : null;
 
     /// <summary>Хто зараз тисне на гачок: у помсту — вибулий месник, інакше той, чий хід.</summary>
     int Shooter => _revenge?.By ?? _turn;
