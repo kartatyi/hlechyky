@@ -1882,6 +1882,7 @@
 
   HGames.register({
     id: 'kupala',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: SEAT_NAMES,
     seatClass: ['x', 'o', 'c', 'd', 'kupala-b', 'kupala-p', 'kupala-v', 'kupala-r'],

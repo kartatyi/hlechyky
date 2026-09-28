@@ -1830,6 +1830,7 @@
 
   HGames.register({
     id: 'tavern',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: SEAT_NAMES,
     seatClass: ['x', 'o', 'c', 'd', 'tavern-b', 'tavern-p', 'tavern-v', 'tavern-r'],

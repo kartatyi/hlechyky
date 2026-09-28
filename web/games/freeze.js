@@ -1597,6 +1597,7 @@
 
   HGames.register({
     id: 'freeze',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: SEAT_NAMES,
     seatClass: ['x', 'o', 'c', 'd', 'freeze-b', 'freeze-p', 'freeze-v', 'freeze-r'],

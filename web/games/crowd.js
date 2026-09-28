@@ -1647,6 +1647,7 @@
 
   HGames.register({
     id: 'crowd',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: SEAT_NAMES,
     seatClass: ['x', 'o', 'c', 'd', 'crowd-b', 'crowd-p', 'crowd-v', 'crowd-r'],

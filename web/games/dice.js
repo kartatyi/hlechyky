@@ -988,6 +988,7 @@
 
   HGames.register({
     id: 'dice',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: SEATS,
     // Чотири кольори каркаса + свої для четвертого, п'ятого й шостого (dice.css): сірий «d» каркаса

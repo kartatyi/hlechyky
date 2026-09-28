@@ -3271,6 +3271,7 @@
 
   HGames.register(Object.assign(makeModule('dino'), {
     id: 'dino',
+    added: '2026-09-27',
     icon: DINO_ICON,
     seatNames: DINO_NAMES,
     seatClass: SEAT_CLASS,
@@ -3289,6 +3290,7 @@
 
   HGames.register(Object.assign(makeModule('daily'), {
     id: 'dino-daily',
+    added: '2026-09-27',
     icon: DINO_ICON.replace('</svg>', '<rect x="10" y="10" width="5" height="5" rx="1" fill="var(--clay)"/><path d="M11 12h3" stroke="#fff" stroke-width="1"/></svg>'),
     seatNames: ['стрибозавр'],
     seatClass: ['o'],
@@ -3307,6 +3309,7 @@
 
   HGames.register(Object.assign(makeModule('storks'), {
     id: 'storks',
+    added: '2026-09-27',
     icon: '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
       + '<path d="M2 9c3-3 6-4 9-3l3-2-1 3c-1 3-4 5-8 5H3l2-2z" fill="var(--text)"/>'
       + '<path d="M11 6l4-1" stroke="var(--clay)" stroke-width="1.4" stroke-linecap="round"/>'
