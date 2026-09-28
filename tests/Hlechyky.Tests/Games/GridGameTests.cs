@@ -328,7 +328,7 @@ public class GridGameTests
     public void Party_table_is_three_or_four_and_waits_for_the_host()
     {
         var info = Assert.Single(new Registry().Catalog, g => g.Id == "c4x");
-        Assert.Equal(3, info.MinPlayers);
+        Assert.Equal(1, info.MinPlayers);                  // з 29.09 — бо на порожні місця може підсісти Глек
         Assert.Equal(4, info.MaxPlayers);
         Assert.Equal("byHost", info.Start);
         Assert.Equal("c4", info.Module);
