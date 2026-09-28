@@ -224,3 +224,40 @@
 }
 .geoattr { position: absolute; left: 6px; bottom: 3px; font-size: 9.5px; line-height: 1.2; color: var(--muted); opacity: .75; text-decoration: none; pointer-events: auto; }
 .geoattr[hidden] { display: none; }
+
+/* «📸 Мої фото» (п. 52): кнопка в шапці й панель поверх гри (на телефоні — на весь екран) */
+.geo-minebtn { order: 3; margin-left: auto; min-height: 36px; padding: 4px 10px; font-size: .9em; }
+.geo-minebtn[hidden] { display: none; }
+.geo-minebtn:not([hidden]) + .geosnd { margin-left: 0; }
+.geo-mine { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, .55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.geo-mine-box { background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 14px; width: min(760px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; }
+.geo-mine-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 1.05em; }
+.geo-mine-x { min-width: 44px; min-height: 44px; }
+.geo-mine-body { padding: 10px 14px 14px; overflow: auto; }
+.geo-mine-body p { margin: 0 0 10px; line-height: 1.45; }
+.geo-mine-note { color: var(--accent); font-weight: 600; }
+.geo-mine-row { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin: 8px 0 12px; }
+.geo-mine-row button { min-height: 44px; }
+.geo-mine-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.geo-mine-list li { display: grid; grid-template-columns: 72px 1fr auto; gap: 8px; align-items: start; padding: 6px; border: 1px solid var(--line); border-radius: 10px; }
+.geo-mine-list img { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; background: var(--panel3); }
+.geo-mine-list li > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.geo-mine-del { min-width: 44px; min-height: 44px; padding: 0; }
+.geo-mine-story { white-space: pre-line; overflow-wrap: anywhere; }
+.geo-mine-add2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; align-items: stretch; }
+.geo-mine-prev { width: 100%; max-height: 300px; object-fit: contain; border-radius: 8px; background: var(--panel3); }
+.geo-mine-pick .geomap { position: relative; width: 100%; height: auto; aspect-ratio: 4000 / 2730; border-radius: 8px; overflow: hidden; }
+.geo-mine-pick .geozoomm { opacity: 1; pointer-events: auto; }
+.geo-mine-pick .geocanvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.geo-mine-hint { margin: 8px 0 !important; }
+.geo-mine-f { display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px; font-size: .9em; color: var(--muted); }
+.geo-mine-f input, .geo-mine-f textarea { font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.geo-mine-f textarea { resize: vertical; min-height: 64px; }
+.geo-mine-cap { margin-top: 2px; }
+@media (max-width: 640px) {
+  .geo-mine { padding: 0; }
+  .geo-mine-box { width: 100%; height: 100dvh; max-height: none; border-radius: 0; border: 0; }
+  .geo-mine-add2 { grid-template-columns: 1fr; }
+  .geo-mine-prev { max-height: 150px; }
+  .geo-mine-pick .geomap { width: 100%; }
+}
