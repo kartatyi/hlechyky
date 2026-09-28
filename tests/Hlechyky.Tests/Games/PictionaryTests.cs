@@ -46,6 +46,9 @@ public class PictionaryTests
     static JsonElement LastFrame(RoomHarness h) =>
         Views.Json(h.Outbox.OfType<RoomFrame>().Last(f => f.RoomId == h.RoomId).Frame);
 
+    /// <summary>Малюнок на дроті — рядком (SketchWire, прохід №3); тут — назад у масиви.</summary>
+    internal static List<int[]> Ops(JsonElement holder) => SketchWire.Unpack(holder.GetProperty("z").GetString())!;
+
     static object Line(int stroke, params int[] p) => new { s = stroke, c = 1, w = 8, p };
 
     // ---------------------------------------------------------------- вибір слова
@@ -306,7 +309,7 @@ public class PictionaryTests
 
         var f = LastFrame(h);
         Assert.Equal(1, f.GetProperty("n").GetInt32());
-        var op = f.GetProperty("ops")[0].EnumerateArray().Select(e => e.GetInt32()).ToArray();
+        var op = Ops(f)[0];
         Assert.Equal([0, 1, 1, 8, 10, 10, 200, 200], op);
         Assert.Equal(1, h.View(2).GetProperty("drawing").GetProperty("n").GetInt32());
     }
@@ -324,7 +327,7 @@ public class PictionaryTests
         var f = LastFrame(h);
         Assert.Equal(1, f.GetProperty("from").GetInt32());
         Assert.Equal(2, f.GetProperty("n").GetInt32());
-        Assert.Equal(1, f.GetProperty("ops").GetArrayLength());
+        Assert.Equal(1, Ops(f).Count);
     }
 
     [Fact]
@@ -345,7 +348,7 @@ public class PictionaryTests
         Assert.Equal(ver + 1, f.GetProperty("ver").GetInt32());
         Assert.Equal(0, f.GetProperty("from").GetInt32());
         Assert.Equal(1, f.GetProperty("n").GetInt32());
-        Assert.Equal(1, f.GetProperty("ops")[0][1].GetInt32());
+        Assert.Equal(1, Ops(f)[0][1]);
     }
 
     [Fact]
@@ -372,9 +375,9 @@ public class PictionaryTests
         h.Input(0, "draw", new { s = 4, c = 1, w = 8, p = Enumerable.Repeat(1, (Pictionary.MaxChunkPoints + 1) * 2).ToArray() });
         h.Tick();
 
-        var ops = h.View(1).GetProperty("drawing").GetProperty("ops");
-        Assert.Equal(1, ops.GetArrayLength());
-        Assert.Equal([0, 1, 1, 8, 0, Pictionary.CanvasH, 20, 30], ops[0].EnumerateArray().Select(e => e.GetInt32()).ToArray());
+        var ops = Ops(h.View(1).GetProperty("drawing"));
+        Assert.Single(ops);
+        Assert.Equal([0, 1, 1, 8, 0, Pictionary.CanvasH, 20, 30], ops[0]);
     }
 
     [Fact]
