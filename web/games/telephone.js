@@ -7,14 +7,19 @@
       task: null | { kind: 'phrase'|'draw'|'describe', chain, prompt: null | { kind: 'text'|'drawing', text, ops },
                      ready, text, n, ops, ideas: string[] },
       ready: seat[], waiting: seat[],
-      reveal: null | { chain, owner, no, chains, shown, total,
+      reveal: null | { chain, owner, no, chains, shown, total, auto, paused, autoAt, autoMs, drawMs,
+                       say: null | { id, url, seconds },
                        entries: [{ index, seat, kind: 'text'|'drawing', text, ops, likes, liked }] },
-      likes: number[], left: seat[], result }
+      likes: number[], left: seat[], voice: 'ostap'|'polina'|'none',
+      result: null | { winners, likes, awards: [{ icon, title, seats, text, owner?, from?, to? }] } }
   Кадр (подія 'frame') — лише на показі, коли хтось ставить чи знімає ❤: { chain, likes: [скільки ❤ у записів 0..shown-1] };
   повний вид заради лічильника ❤ більше не летить (прохід 28.09). Своє «❤ стоїть» модуль пам'ятає сам (p.liked).
   Ходи: Input('text', { text }) — чернетка; Act('done', { text } | { n }), Act('edit');
   Input('draw', { s, c, w, p }), Input('fill', { s, c, x, y }), Input('undo'), Input('clear');
-  Act('next'), Act('like', { chain, index }).
+  Act('next'), Act('pause'), Act('like', { chain, index }).
+
+  Показ-кіно (прохід №3, п. 166): сервер гортає сам (autoAt), свіжий малюнок тут відтворюється штрих за штрихом за
+  drawMs, фразу читає Глек (say) — лише з увімкненим «🔊 Глек» на цьому пристрої. «Далі» гортає одразу, «⏸» — для всіх.
 
   Малюнок — як у Піктіонарі: операції [вид, штрих, колір, товщина, x0, y0, …] на полотні 1000 × 750.
   Тут художник один на своєму полотні, тож правда про малюнок — у браузері, а на сервер летить копія.
@@ -37,6 +42,13 @@
   /// Спрощення штриха перед відправкою — як у pictionary.js (миша на 1000 Гц слала ~500 точок на секунду,
   /// а малюнок на сервері має межу в 30 000 точок: активні півтори хвилини — і «Полотно переповнене»).
   const SIMPLIFY = 0.9;
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* приватне вікно — не біда */ } },
+  };
+  /// Глек уголос на показі — типово тихо (як у Мафії): друзі часто в одній кімнаті, і п'ять телефонів звучали б луною.
+  const SPK_KEY = 'telephoneSpeaker';
   /// Скільки готових картинок показу тримати (кожна — полотно 1000 × 750, ~3 МБ).
   const RENDER_KEEP = 8;
 
@@ -177,6 +189,9 @@
         seen: new Map(),        // chain → entries, які вже показали: з них гортаємо альбом після партії
         liked: new Set(),       // 'chain:index' записів, яким я поставив ❤ (вид каже правду, між видами — ми самі)
         mark: null,             // знімок полотна після останньої заливки: «↶» не перезаливає все наново
+        animated: new Set(),    // 'chain:index' малюнків, які вже відтворились штрих за штрихом (кіно — раз)
+        anim: 0,                // rAF відтворення
+        sayId: 0, line: 0, radioMuted: null,   // Глек уголос: остання репліка, номер програвання, радіо до репліки
       };
       wipe(root._tp);
     }
@@ -406,13 +421,16 @@
     const v = ctx.view || {};
     const box = root.querySelector('.pctime');
     if (!box) return;
-    const live = ctx.playing && v.phase === 'step';
+    const r = v.phase === 'reveal' && v.reveal;
+    const film = !!(r && r.auto && !r.paused && r.autoAt);   // кіно: смужка — скільки ще до наступного запису
+    const live = ctx.playing && v.phase === 'step' || film;
     box.style.visibility = live ? 'visible' : 'hidden';
+    box.classList.toggle('film', film);
     if (!live) return;
-    const left = Math.max(0, new Date(v.until).getTime() - Date.now());
+    const left = Math.max(0, new Date(film ? r.autoAt : v.until).getTime() - Date.now());
     const bar = box.querySelector('i');
-    bar.style.width = Math.max(0, Math.min(100, left / (v.totalMs || 1) * 100)) + '%';
-    bar.classList.toggle('hot', left < 10000);
+    bar.style.width = Math.max(0, Math.min(100, left / ((film ? r.autoMs : v.totalMs) || 1) * 100)) + '%';
+    bar.classList.toggle('hot', !film && left < 10000);
     const t = String(Math.ceil(left / 1000));
     const num = box.querySelector('.pcsec');
     if (num.textContent !== t) num.textContent = t;
@@ -607,34 +625,153 @@
       if (entries.some((e) => e.kind === 'drawing' && !e.ops && opsN(e))) resync(root, ctx);
     }
     const body = root.querySelector('.tpbody');
-    const key = 'reveal|' + (r ? r.chain + ':' + r.shown + ':' + (ctx.mine ? 'm' : '') + (ctx.playing ? 'p' : '') : '');
+    const key = 'reveal|' + (r ? r.chain + ':' + r.shown + ':' + (ctx.mine ? 'm' : '') + (ctx.playing ? 'p' : '') + (r.paused ? 'z' : '') : '');
+    if (r) voice(root, ctx, v);
     if (body.dataset.key === key) { if (r) { paintLikes(root, r.chain); wireChain(root, body, entries, r.chain, true); } return; }
     const scrollToEnd = !r || body.dataset.chain !== String(r.chain) || +body.dataset.shown < r.shown;
     body.dataset.key = key;
     if (!r) { body.innerHTML = ''; return; }
     body.dataset.chain = String(r.chain);
     body.dataset.shown = String(r.shown);
-    const more = r.shown < r.total ? 'Гортай далі ▸' : r.no < r.chains ? 'Наступний ланцюжок ▸' : 'Підсумки ▸';
+    const more = r.shown < r.total ? 'Далі ▸' : r.no < r.chains ? 'Наступний ланцюжок ▸' : 'Підсумки ▸';
+    const pause = r.auto && ctx.mine && ctx.playing
+      ? '<button type="button" class="ghost tppause" data-do="pause">' + (r.paused ? '▶ Кіно далі' : '⏸ Пауза') + '</button>' : '';
     body.innerHTML = '<div class="tptitle">Ланцюжок ' + r.no + ' з ' + r.chains + ' · від ' + nick(ctx, r.owner) + '</div>'
       + '<div class="tpchain">' + entries.map((e, i) => entryHtml(ctx, e, r.chain, i === entries.length - 1, p.liked.has(r.chain + ':' + e.index))).join('') + '</div>'
-      + (ctx.mine ? '<div class="tpact"><button type="button" class="primary" data-do="next">' + more + '</button></div>'
-        : '<div class="tpwho">Гравці гортають ланцюжок</div>');
-    wireChain(root, body, entries, r.chain);
+      + (ctx.mine ? '<div class="tpact">' + pause + '<button type="button" class="primary" data-do="next">' + more + '</button></div>'
+        : '<div class="tpwho">' + (r.auto ? '🎬 Кіно: ланцюжок гортається сам' : 'Гравці гортають ланцюжок') + '</div>');
+    wireChain(root, body, entries, r.chain, false, r.drawMs || 0);
     const next = body.querySelector('[data-do="next"]');
     if (next) next.onclick = () => { const c = root._ctx; if (c) c.act('next'); };
+    const hold = body.querySelector('[data-do="pause"]');
+    if (hold) hold.onclick = () => { const c = root._ctx; if (c) c.act('pause'); };
     if (scrollToEnd) {
       const last = body.querySelector('.tpentry.fresh');
       if (last) requestAnimationFrame(() => last.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
     }
   }
 
+  /// Малюнок відтворюється за ms: операції в тому порядку, як їх малювали, останній штрих — частково. Штрихи
+  /// мають вагу за кількістю точок (заливка — як короткий штрих), тож довгий штрих іде довше за крапку.
+  /// Полотно пропало (гортнули далі, пішли з показу) — відтворення стає саме.
+  function replay(root, el, ops, ms) {
+    const p = pad(root);
+    if (p.anim) { cancelAnimationFrame(p.anim); p.anim = 0; }
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { show(el, ops); return; }
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const c = cv.getContext('2d', { willReadFrequently: true });
+    c.fillStyle = '#fff';
+    c.fillRect(0, 0, W, H);
+    const w = ops.map((op) => (op[0] === 1 ? 30 : Math.max(1, (op.length - 4) / 2)));
+    const total = w.reduce((a, b) => a + b, 0) || 1;
+    let done = 0, acc = 0, t0 = 0;
+    el._anim = true;
+    const step = (now) => {
+      p.anim = 0;
+      if (!el.isConnected) { el._anim = false; return; }
+      if (!t0) t0 = now;
+      const target = Math.min(1, (now - t0) / ms) * total;
+      while (done < ops.length && acc + w[done] <= target) { drawOp(c, ops[done]); acc += w[done]; done++; }
+      if (done >= ops.length) { el._anim = false; show(el, ops); return; }
+      const rect = el.getBoundingClientRect();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const pw = Math.max(1, Math.round(rect.width * dpr)), ph = Math.max(1, Math.round(rect.height * dpr));
+      if (el.width !== pw || el.height !== ph) { el.width = pw; el.height = ph; }
+      const g = el.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.drawImage(cv, 0, 0, pw, ph);
+      const op = ops[done];
+      const pts = Math.floor(target - acc);
+      if (op[0] !== 1 && pts >= 1) {
+        g.setTransform(pw / W, 0, 0, ph / H, 0, 0);
+        drawOp(g, op.slice(0, 4 + 2 * Math.min(pts, (op.length - 4) / 2)));
+        g.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      p.anim = requestAnimationFrame(step);
+    };
+    p.anim = requestAnimationFrame(step);
+  }
+
+  // Глек уголос — як у Мафії: лише з «🔊 Глек» на цьому пристрої, радіо на час репліки притихає, гра не чекає.
+  function speakerOn() { return store.get(SPK_KEY, '0') === '1'; }
+
+  function paintSpeaker(root, ctx, v) {
+    const spk = root.querySelector('.tpspk');
+    if (!spk) return;
+    const show = (v.phase === 'reveal' || v.phase === 'step' && ctx.playing) && !!v.voice && v.voice !== 'none';
+    spk.hidden = !show;
+    if (!show) return;
+    const on = speakerOn();
+    const text = on ? '🔊 Глек' : '🔇 Глек';
+    if (spk.textContent !== text) spk.textContent = text;
+    spk.classList.toggle('on', on);
+    spk.title = on ? 'Глек читає фрази на показі вголос на цьому пристрої. Натисни — вимкнути'
+      : 'Глек мовчить. Натисни — хай читає фрази на показі вголос';
+  }
+
+  function duck(p, on) {
+    const r = document.getElementById('audio');
+    if (!r) return;
+    if (on && p.radioMuted == null) { p.radioMuted = r.muted; r.muted = true; }
+    if (!on && p.radioMuted != null) { r.muted = p.radioMuted; p.radioMuted = null; }
+  }
+
+  function hush(root) {
+    const p = root._tp;
+    if (!p) return;
+    p.line++;
+    const a = root.querySelector('.tpvoice');
+    if (a && !a.paused) a.pause();
+    duck(p, false);
+  }
+
+  function voice(root, ctx, v) {
+    const p = pad(root);
+    const say = v.reveal && v.reveal.say;
+    if (!say || say.id === p.sayId) return;
+    p.sayId = say.id;
+    if (!say.url || v.voice === 'none' || !speakerOn()) return;
+    hush(root);
+    const a = root.querySelector('.tpvoice');
+    if (!a) return;
+    const n = ++p.line;
+    const end = () => { if (p.line === n) duck(p, false); };
+    a.onended = end;
+    a.src = say.url;
+    duck(p, true);
+    a.play().catch(end);
+  }
+
+  /// Звання партії (прохід №3, п. 224) — картки над таблицею ❤.
+  function awardsHtml(ctx, v) {
+    const list = (v.result && v.result.awards) || [];
+    if (!list.length) return '';
+    return '<div class="tpawards">' + list.map((a) => {
+      const names = (a.seats || []).map((s) => nick(ctx, s));
+      const who = names.length ? (names.length > 1 ? names.slice(0, -1).join(', ') + ' і ' + names[names.length - 1] : names[0])
+        : a.owner != null ? 'ланцюжок від ' + nick(ctx, a.owner) : '';
+      const what = a.from != null ? '«' + ctx.esc(a.from) + '» → «' + ctx.esc(a.to || '') + '»' : ctx.esc(a.text || '');
+      return '<div class="tpaward"><span class="tpaward-i">' + ctx.esc(a.icon || '🏆') + '</span><div><b>' + ctx.esc(a.title || '') + '</b>'
+        + (who ? ' — ' + who : '') + '<div class="muted small">' + what + '</div></div></div>';
+    }).join('') + '</div>';
+  }
+
   /// only — лише домалювати полотна, чиї малюнки приїхали пізніше (знімок після ctx.resync()), без нових слухачів.
-  function wireChain(root, body, entries, chain, only) {
+  function wireChain(root, body, entries, chain, only, drawMs) {
+    const p = pad(root);
+    const fresh = entries.length ? entries[entries.length - 1].index : -1;
     body.querySelectorAll('canvas.tpshow').forEach((el) => {
       const e = entries.find((x) => x.index === +el.dataset.index);
       if (!e || !e.ops || el._ops === e.ops) return;
       el._ops = e.ops;
-      requestAnimationFrame(() => show(el, e.ops));
+      if (el._anim) return;                  // ще оживає — домалює саме
+      const k = chain + ':' + e.index;
+      // Кіно: щойно відкритий малюнок оживає штрих за штрихом — один раз, далі (F5, ❤, альбом) — готовий.
+      if (drawMs > 0 && e.index === fresh && !p.animated.has(k)) {
+        p.animated.add(k);
+        requestAnimationFrame(() => replay(root, el, e.ops, drawMs));
+      } else requestAnimationFrame(() => show(el, e.ops));
     });
     if (only) return;
     body.querySelectorAll('.tplike').forEach((b) => b.onclick = () => {
@@ -661,11 +798,11 @@
     rows.sort((a, b) => b.n - a.n);
     const chains = [...p.seen.keys()].sort((a, b) => a - b);
     const pick = p.album != null && p.seen.has(p.album) ? p.album : chains[0];
-    const key = 'done|' + likes.join(',') + '|' + pick + '|' + chains.join(',');
+    const key = 'done|' + likes.join(',') + '|' + pick + '|' + chains.join(',') + '|' + ((v.result && v.result.awards) || []).length;
     if (body.dataset.key === key) return;
     body.dataset.key = key;
     const medal = ['🥇', '🥈', '🥉'];
-    let html = '<div class="tptitle">Партію зіграно</div><div class="pcfinal">'
+    let html = '<div class="tptitle">Партію зіграно</div>' + awardsHtml(ctx, v) + '<div class="pcfinal">'
       + rows.map((r, k) => '<div><span>' + (medal[k] || (k + 1) + '.') + ' ' + nick(ctx, r.i) + '</span><b>❤ ' + r.n + '</b></div>').join('')
       + '</div>';
     if (chains.length) {
@@ -701,6 +838,8 @@
     if (v.phase === 'step') { stepScreen(root, ctx, v); fitStep(root); }
     else if (v.phase === 'reveal') revealScreen(root, ctx, v);
     else if (v.phase === 'done') doneScreen(root, ctx, v);
+    if (v.phase !== 'reveal') { const p = root._tp; if (p && p.line && p.radioMuted != null) hush(root); }
+    paintSpeaker(root, ctx, v);
     timer(root, ctx);
   }
 
@@ -709,21 +848,33 @@
     added: '2026-09-17',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     news: {
-      v: '2026-09-28',
-      title: 'Зіпсований телефон: легше й зручніше',
+      v: '2026-09-29',
+      title: 'Зіпсований телефон: показ-кіно',
       items: [
-        '🖥 Полотно, палітра й «Готово» тепер влазять в екран ноутбука й Deck, а на телефоні полотно на всю ширину',
-        '❤ Вподобайки на показі ставляться миттєво — без перемальовування всього ланцюжка',
-        '🤷 Хто не встиг намалювати, того видно одразу: замість білого аркуша — «полотно лишилось порожнім»',
+        '🎬 Показ гортається сам: малюнки оживають штрих за штрихом, «Далі» — швидше, «⏸» — зупинити для всіх',
+        '🔊 Дядько Глек читає фрази вголос — увімкни «🔇 Глек» угорі (голос — у налаштуваннях столу)',
+        '👫 Удвох тепер чотири кроки: малюєш — сусід описує — ти малюєш його опис свого ж малюнка. Чи впізнав?',
+        '🏆 Звання партії: 🎨 Пікассо, ✍ Поет і 🌀 Злам сенсу — ланцюжок, що втратив геть усе',
       ],
     },
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd', 'x', 'o'],
 
     mount(root, ctx) {
       root.innerHTML = '<div class="tpwrap">'
-        + '<div class="tptop"><div class="tphead muted small"></div><div class="pctime"><i></i><span class="pcsec"></span></div></div>'
-        + '<div class="tpbody"></div></div>';
+        + '<div class="tptop"><div class="tphead muted small"></div><button type="button" class="ghost tpspk" hidden></button>'
+        + '<div class="pctime"><i></i><span class="pcsec"></span></div></div>'
+        + '<div class="tpbody"></div><audio class="tpvoice" preload="none"></audio></div>';
       const p = pad(root);
+      // F5 посеред показу — стару репліку не повторюємо: звучить лише те, що Глек скаже вже при нас.
+      const was = ctx.view && ctx.view.reveal && ctx.view.reveal.say;
+      p.sayId = was ? was.id : 0;
+      root.querySelector('.tpspk').onclick = () => {
+        const on = !speakerOn();
+        store.set(SPK_KEY, on ? '1' : '0');
+        if (!on) hush(root);
+        const c = root._ctx || ctx;
+        paintSpeaker(root, c, c.view || {});
+      };
       p.timer = setInterval(() => { if (root._ctx) timer(root, root._ctx); }, 250);
       // інша ширина вікна — інакше лягають чіпи місць і заголовок, і полотно починається деінде
       // У наступному кадрі — так само, як у Піктіонарі: fitStep міняє висоту того, за ким стежить спостерігач.
@@ -750,6 +901,8 @@
       clearTimeout(p.flushTimer);
       clearTimeout(p.draftTimer);
       if (p.raf) cancelAnimationFrame(p.raf);
+      if (p.anim) cancelAnimationFrame(p.anim);
+      hush(root);
     },
 
     onKey(e, ctx) {
@@ -760,7 +913,12 @@
     status(ctx) {
       const v = ctx.view || {};
       if (v.phase === 'done' || !ctx.playing) return v.phase === 'done' ? 'Гортай ланцюжки — кнопки з іменами' : '';
-      if (v.phase === 'reveal') return ctx.mine ? 'Став ❤ вподобайки смішним записам і гортай далі' : 'Дивишся збоку';
+      if (v.phase === 'reveal') {
+        if (!ctx.mine) return 'Дивишся збоку';
+        const r = v.reveal || {};
+        return r.auto ? (r.paused ? 'Кіно на паузі — гортай «Далі» або тисни «▶»' : 'Кіно! Став ❤ смішним записам, «Далі» — швидше')
+          : 'Став ❤ вподобайки смішним записам і гортай далі';
+      }
       if (!ctx.mine) return 'Дивишся збоку';
       const t = v.task;
       if (!t) return 'Чекаємо на інших';

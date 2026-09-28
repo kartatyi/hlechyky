@@ -192,7 +192,9 @@ public sealed partial class Telephone
         var best = 0;
         foreach (var s in _order) if (!_left.Contains(s)) best = Math.Max(best, likes[s]);
         if (best == 0) return null;
-        return ([.. _order.Where(s => !_left.Contains(s) && likes[s] == best)], best);
+        int[] seats = [.. _order.Where(s => !_left.Contains(s) && likes[s] == best)];
+        // Звання «всім порівну» нічого не каже — тоді його просто нема.
+        return seats.Length > 1 && seats.Length == _order.Count(s => !_left.Contains(s)) ? null : (seats, best);
     }
 
     /// <summary>

@@ -210,6 +210,19 @@ public class TelephoneShowTests
     }
 
     [Fact]
+    public void A_title_everyone_shares_is_no_title()
+    {
+        var h = ToReveal(new { show = "manual" });
+        Finish(h, (chain, index) =>
+        {
+            var e = Reveal(h).GetProperty("entries")[index];
+            var seat = e.GetProperty("seat").GetInt32();
+            if (e.GetProperty("kind").GetString() == "drawing") Assert.True(h.Act(seat == 0 ? 1 : 0, "like", new { chain, index }).Ok);
+        });
+        Assert.DoesNotContain(Awards(h), a => a.GetProperty("title").GetString() == "Пікассо");
+    }
+
+    [Fact]
     public void No_likes_no_picasso_and_the_chain_that_lost_all_sense_is_named()
     {
         // фрази першого кроку й описи третього не мають жодного спільного кореня — усі три ланцюжки «зламані»
