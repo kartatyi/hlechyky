@@ -209,6 +209,14 @@ public sealed class DinoDaily : Game
     object? _last;
     int? _ping;
     RunnerPacer _pacer;
+    /// <summary>Журнал вводу спроби [крок, клавіші, …] за кроками — для «👻 привидів друзів» (DinoGhosts).</summary>
+    int[] _log = new int[64];
+    int _logN;
+    bool _logFull;
+    DinoGhosts? _ghosts;
+    object[]? _ghostWire;
+    object? _mineWire;
+    int _ghostVer = -1;
 
     /// <summary>Світ поточної спроби (тести й діагностика).</summary>
     public RunnerSim? World => _sim;
@@ -241,7 +249,41 @@ public sealed class DinoDaily : Game
         _phase = Wait;
         _fresh = false;
         _ping = null;
+        _logN = 0;
+        _logFull = false;
+        _ghosts ??= Ctx.Services.GetService(typeof(DinoGhosts)) as DinoGhosts;
+        _ghostVer = -1;   // привидів перечитаємо на кожну спробу: друзі тим часом могли побігти краще
+        _ghosts?.Warm(_day);
     }
+
+    /// <summary>Записати прийнятий ввід у журнал спроби, тримаючи порядок кроків (запізнілий ввід стає на своє місце).</summary>
+    void Note(int s, int k)
+    {
+        if (_logFull) return;
+        if (_logN + 2 > DinoGhosts.MaxInputs * 2) { _logFull = true; return; }
+        if (_logN + 2 > _log.Length) Array.Resize(ref _log, _log.Length * 2);
+        var i = _logN;
+        while (i > 0 && _log[i - 2] > s) { _log[i] = _log[i - 2]; _log[i + 1] = _log[i - 1]; i -= 2; }
+        _log[i] = s;
+        _log[i + 1] = k;
+        _logN += 2;
+    }
+
+    /// <summary>Привиди на цю спробу: до трьох друзів поруч із моїм рекордом і свій (з сервера — на будь-якому пристрої).</summary>
+    void PickGhosts()
+    {
+        if (_ghosts is null || _day is null) { _ghostWire = []; return; }
+        var ver = _ghosts.Version(_day);
+        if (ver == _ghostVer && _ghostWire is not null) return;
+        _ghostVer = ver;
+        var (friends, mine) = _ghosts.Pick(_day, EconomyKey(), _best);
+        var w = new object[friends.Count];
+        for (var i = 0; i < friends.Count; i++) w[i] = new { n = friends[i].Nick, m = friends[i].Metres, g = friends[i].Log };
+        _ghostWire = w;
+        _mineWire = mine is null ? null : new { m = mine.Metres, g = mine.Log };
+    }
+
+    string EconomyKey() => Hlechyky.Games.Economy.EconomyStore.Key(Ctx.NickOf(0) ?? "");
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
@@ -258,10 +300,14 @@ public sealed class DinoDaily : Game
                     _fresh = true;
                     _pacer.Reset();
                     _sim.Input(0, 0, k);
+                    Note(0, k);
                     return ActResult.Done;
                 }
                 if (_phase != Running) return ActResult.Fail("Забіг скінчився — тисни «Ану ще раз»");
-                return _sim.Input(0, s, k) ? ActResult.Done : ActResult.Fail("Запізно");
+                var at = Math.Min(s, _sim.S + RunnerSim.FutureMax);
+                if (!_sim.Input(0, s, k)) return ActResult.Fail("Запізно");
+                Note(at, k);
+                return ActResult.Done;
             case "ping":
                 if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("t", out var t)
                     || t.ValueKind != JsonValueKind.Number || !t.TryGetInt32(out var tv)) return ActResult.Fail("Тут так не ходять");
@@ -313,6 +359,8 @@ public sealed class DinoDaily : Game
             _loggedAt = now;
         }
         _last = new { m = metres, eggs = p.Eggs, record = metres > before };
+        if (!_logFull && _day is not null && Ctx.NickOf(0) is { Length: > 0 } nick)
+            _ghosts?.Offer(_day, _seed, EconomyKey(), nick, metres, _log, _logN);
         _phase = Done;
         Ctx.Finish([0], log);
     }
@@ -338,7 +386,14 @@ public sealed class DinoDaily : Game
             m = Metres(run),
             best = _best, runs = _runs, eggsTotal = _eggs,
             last = _last,
+            ghosts = Ghosts(), mine = _mineWire,
         };
+    }
+
+    object[] Ghosts()
+    {
+        if (_phase == Wait) PickGhosts();
+        return _ghostWire ?? [];
     }
 
     int Metres(int run) => _sim is null || run <= 0 ? 0 : _sim.PaceX(run) / RunnerDino.SubPerMetre;

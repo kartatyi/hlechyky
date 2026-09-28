@@ -1543,7 +1543,7 @@
       vis: { lag: 0, y: 0 }, camBias: 0, lastCam: 0, camFocus: null, wasLive: null,
       prevMode: new Int8Array(SEATS).fill(-1), outAt: new Float64Array(SEATS), pops: [],
       goAt: 0, ownOutAt: 0, throwAt: 0, rematchAt: 0, finAt: 0, goNext: 0, lastLand: 0, lastDraw: 0, ownSx: null,
-      runLog: null, ghost: null,
+      runLog: null, ghost: null, fghosts: null, cup: null,
       ptr: null, ptrY: 0, ptrDuck: false, rmb: false,
       raf: 0, hudAt: 0, stripAt: 0, hudSig: '', overSig: '', perf: { frames: 0, ms: 0, max: 0 },
       flakes: null, dust: null, board: null, boardAt: 0, boardBusy: false, boardRuns: -1,
@@ -1622,7 +1622,7 @@
     st.vis.lag = st.vis.y = 0; st.camBias = 0; st.camFocus = null; st.wasLive = null;
     st.prevMode.fill(-1); st.outAt.fill(0); st.pops.length = 0;
     st.goAt = 0; st.ownOutAt = 0; st.waitView = false; st.pend.length = 0;
-    st.ghost = null; st.runLog = null;
+    st.ghost = null; st.fghosts = null; st.runLog = null;
     st.lastHeld = 0; st.edge = false;
     const s = v.s | 0;
     ffWorld(st.sim, s);
@@ -1714,6 +1714,7 @@
     const vy0 = p ? p.vy : 0;
     sim.step();
     if (st.ghost) ghostTo(st.ghost, sim.S);
+    if (st.fghosts) for (const gh of st.fghosts) ghostTo(gh, sim.S);
     if (p && fx) ownEvents(st, p, wasAir, wasOut, vy0);
     sim.clearEvents();
     if (t + 1 === sim.readySteps && sim.readySteps > 0 && fx) { st.goAt = performance.now(); Snd.go(); }
@@ -1930,6 +1931,7 @@
     send(st, 0, k);
     st.runLog = [0, k];
     st.ghost = ghostStart(st);
+    st.fghosts = friendGhosts(st);
     st.lastHeld = st.held;
     st.edge = false;
     st.acc = 0; st.adj = 0; st.eAvg = 0; st.lastT = performance.now();
@@ -1950,9 +1952,36 @@
   }
 
   function ghostStart(st) {
-    const v = st.ctx.view || {}, g = ghostLoad();
-    if (!st.daily || !g || g.day !== v.day || !(g.m > 0)) return null;
+    const v = st.ctx.view || {};
+    let g = ghostLoad();
+    if (g && g.day !== v.day) g = null;
+    // свій привид із сервера (прохід №3) — з будь-якого пристрою; локальний лишається, якщо він не гірший
+    if (v.mine && v.mine.m > 0 && (!g || !(g.m >= v.mine.m))) g = { m: v.mine.m, log: ghostDecode(v.mine.g) };
+    if (!st.daily || !g || !(g.m > 0)) return null;
     return { sim: new Sim(DINO, v.seed || 1, [true], 0, v.pmCap || 1250, false), log: g.log, idx: 0, m: g.m, outAt: 0 };
+  }
+
+  /// «Δкрок у base36 + цифра клавіш» через крапку (DinoGhosts.Encode) → [крок, клавіші, …].
+  function ghostDecode(str) {
+    const out = [];
+    if (typeof str !== 'string' || !str) return out;
+    let at = 0;
+    for (const t of str.split('.')) {
+      if (!t) continue;
+      at += t.length > 1 ? parseInt(t.slice(0, -1), 36) || 0 : 0;
+      out.push(at, (t.charCodeAt(t.length - 1) - 48) & 7);
+    }
+    return out;
+  }
+
+  // ---------- 👻 привиди друзів (прохід №3): найкращі спроби друзів за сьогодні, журнал вводу — із сервера ----------
+  function friendGhosts(st) {
+    const v = st.ctx.view || {};
+    if (!st.daily || !Array.isArray(v.ghosts) || !v.ghosts.length) return null;
+    return v.ghosts.slice(0, 3).map((g, i) => ({
+      sim: new Sim(DINO, v.seed || 1, [true], 0, v.pmCap || 1250, false),
+      log: ghostDecode(g.g), idx: 0, m: g.m | 0, n: String(g.n || ''), outAt: 0, k: i + 1,
+    }));
   }
 
   /// Привид — до кроку target (ввід із журналу подається на свій крок; той, що в минулому, пропускається).
@@ -2247,6 +2276,7 @@
     }
 
     // ---- 8½: привид своєї найкращої спроби дня ----
+    if (st.fghosts && st.spr.ghost && !lobby) for (const gh of st.fghosts) drawGhost(st, g, paceW, camPx, now, gh);
     if (st.ghost && st.spr.ghost && !lobby) drawGhost(st, g, paceW, camPx, now);
 
     // ---- 9: свій — непрозорий, кільце під ногами, стрілка над головою ----
@@ -2335,18 +2365,19 @@
 
   const isReady = (st, t) => st.ph === 'ready' && t < st.sim.readySteps;
 
-  function drawGhost(st, g, paceW, camPx, now) {
-    const gh = st.ghost, gp = gh.sim.P[0];
+  function drawGhost(st, g, paceW, camPx, now, friend) {
+    const gh = friend || st.ghost, gp = gh.sim.P[0];
     if (gp.out && !gh.outAt) gh.outAt = now;
     if (gh.outAt && now - gh.outAt > 700) return;
     // трохи «вглиб» кризи (вище й лівіше), як чужі в табуні: поки біжите однаково, привид видно з-за свого
-    const sx = paceW - gp.lag / SUB - camPx - 8;
+    // друзі — ще трохи глибше й прозоріше за свій привид, кожен на своєму місці табуна
+    const sx = paceW - gp.lag / SUB - camPx - 8 - (friend ? GHOST_DX[gh.k] + 6 : 0);
     if (sx < -60 || sx > st.viewW + 20) return;
-    g.globalAlpha = 0.45;
+    g.globalAlpha = friend ? 0.32 : 0.45;
     const head = drawDino(st, g, 0, sx, gp.y + 9 * SUB, gp.modeOf(DINO), 0, now, gh.outAt, false, st.spr.ghost);
     g.globalAlpha = 1;
     if (gh.outAt) return;
-    const lb = label(st, 3, '👻 ' + fmtNum(gh.m) + ' м'), lw = lb._w * LB.z, lx = clamp(sx + 15 - lw / 2, 2, st.viewW - lw - 2), ly = head - 3 - LB.h;
+    const lb = label(st, 3, '👻 ' + (friend ? gh.n + ' ' : '') + fmtNum(gh.m) + ' м'), lw = lb._w * LB.z, lx = clamp(sx + 15 - lw / 2, 2, st.viewW - lw - 2), ly = head - 3 - LB.h;
     if (lbHit(lx, ly, lw) >= 0) return;          // над своїм «ти» — не пишемо
     lbPut(lx, ly, lw);
     g.globalAlpha = 0.7;
@@ -2918,7 +2949,7 @@
       const last = v.last || { m: 0, eggs: 0, record: false };
       html = '<div class="rnr-ovbox"><h3>' + (last.record && last.m > 0 ? '🏆 Новий рекорд дня: ' + fmtNum(last.m) + ' м' : fmtNum(last.m) + ' м · 🥚 ' + last.eggs) + '</h3>'
         + '<p class="rnr-ovsub">Рекорд дня ' + fmtNum(v.best || 0) + ' м · спроб сьогодні ' + (v.runs || 0) + '</p>'
-        + boardHtml(st) + again + '</div>';
+        + boardHtml(st) + cupHtml(st) + ghostsHtml(st) + again + '</div>';
       loadBoard(st);
     } else if (done && v.n0 === 1) {
       const run = Math.max(0, (v.s || 0) - (v.readySteps || 0));
@@ -2974,6 +3005,26 @@
         + esc(r.nick || '') + '</td><td>' + fmtNum(r.best || 0) + '</td><td>' + (r.tries || 0) + '</td></tr>').join('') + '</table>';
   }
 
+  /// 🏆 Кубок тижня (прохід №3) одним рядком: трійка лідерів і де ти — сума трьох найкращих днів тижня.
+  function cupHtml(st) {
+    const c = st.cup;
+    if (!c || !Array.isArray(c.rows) || !c.rows.length) return '';
+    const esc = st.ctx.esc, me = String((st.ctx.me && st.ctx.me.nick) || '').toLowerCase();
+    const k = c.rows.findIndex((r) => String(r.nick || '').toLowerCase() === me);
+    const top = c.rows.slice(0, 3).map((r, i) => (i + 1) + '. ' + esc(r.nick || '') + ' ' + fmtNum(r.total || 0));
+    const mine = k >= 3 ? ' · ти ' + (k + 1) + '-й, ' + fmtNum(c.rows[k].total || 0) : k < 0 ? '' : '';
+    const days = k >= 0 ? ' (' + Math.min(3, c.rows[k].days || 0) + ' дн. з 3)' : '';
+    return '<p class="rnr-ovsub rnr-cup" title="Сума трьох найкращих днів тижня (пн–нд); у неділю ввечері переможця оголосить Журнал">🏆 Кубок тижня: '
+      + top.join(' · ') + mine + days + '</p>';
+  }
+
+  /// Хто біжить поруч наступної спроби — щоб «ще одну, обжену Олю» з'являлось ще до старту.
+  function ghostsHtml(st) {
+    const v = st.ctx.view || {};
+    if (!Array.isArray(v.ghosts) || !v.ghosts.length) return '';
+    return '<p class="rnr-ovsub">👻 Поруч біжать: ' + v.ghosts.slice(0, 3).map((g) => st.ctx.esc(g.n || '') + ' ' + fmtNum(g.m || 0) + ' м').join(', ') + '</p>';
+  }
+
   /// Таблиця «сьогодні»: не частіше ніж раз на 10 с, але нова спроба (runs змінився) — привід перечитати одразу,
   /// інакше щойно поставлений рекорд не видно. Рядок у базу пише каркас уже після Finish — тож із запасом 0,7 с.
   function loadBoard(st) {
@@ -2987,6 +3038,8 @@
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { st.board = d && Array.isArray(d.rows) ? d.rows : []; st.boardAt = Date.now(); st.overSig = null; })
       .catch(() => { st.board = st.board || []; })
+      .then(() => fetch('/api/games/dino-daily/cup').then((r) => (r.ok ? r.json() : null)).catch(() => null))
+      .then((c) => { if (c) { st.cup = c; st.overSig = null; } })
       .finally(() => { st.boardBusy = false; });
     if (fresh) setTimeout(go, 700); else go();
   }
