@@ -460,7 +460,7 @@ public sealed partial class Battleship
     /// Кінець партії: кожному (людині) — рахунок гаманця. Платимо лише за штуки, пущені в хід (куплене, але не
     /// використане — лишається в гаманці), дохід — за справжній бій, і хто встав, той без доходу.
     /// </summary>
-    void SettleArsenal()
+    void SettleArsenal(bool fullWin = true)
     {
         if (!_arsenal || _settled) return;
         _settled = true;
@@ -471,7 +471,7 @@ public sealed partial class Battleship
             var kit = _kits[s];
             if (!side.In || side.Bot || kit.Nick is null) continue;
             var spent = kit.Spent;
-            var income = played && !side.Gone ? BattleshipArsenal.Income(_winner == s, spent) : 0;
+            var income = played && !side.Gone ? BattleshipArsenal.Income(_winner == s && fullWin, spent) : 0;
             var now = Purse.Add(kit.Nick, income - spent, Ctx.Clock.UtcNow);
             kit.Ledger = [spent, income, now];
         }

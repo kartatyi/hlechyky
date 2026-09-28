@@ -839,7 +839,10 @@ public sealed partial class Battleship : Game
         _winner = rest.Length == 0 ? null : rest.Length == 1 ? rest[0] : Leader([.. rest]);
         _turnUntil = null;
         _revenge = null;
-        SettleArsenal();
+        // Техперемога платить бонус переможця, лише коли флот утікача вже наполовину на дні. Інакше «сядь другим
+        // ніком, стрельни шість разів і встань» друкувало б по 50 шелягів за пів хвилини; база за бій — лишається.
+        var fled = _sides[seat];
+        SettleArsenal(fullWin: fled.Ships.Count(fled.Sunk) * 2 >= fled.Ships.Count);
         Ctx.Finish(_winner is { } w ? [w] : [], $"{Info.Title}: {Nick(seat)} встає з-за столу, партію не дограли");
     }
 
@@ -914,7 +917,8 @@ public sealed partial class Battleship : Game
             {
                 by = f.By, at = f.At, cell = f.Cell, res = f.Res, size = f.Size, auto = f.Auto,
                 revenge = f.Revenge, quip = f.Quip, rx = f.Rx.Any(x => x >= 0) ? (int[])f.Rx.Clone() : null,
-                tool = f.Tool, cells = f.Cells, n = f.Tool == "radar" && (mine < 0 || mine == f.By) ? f.N : null, boom = f.Boom,
+                // Число радара — лише тому, хто його пустив: глядач (чи телевізор) поруч із гравцем — теж підказка.
+                tool = f.Tool, cells = f.Cells, n = f.Tool == "radar" && mine >= 0 && mine == f.By ? f.N : null, boom = f.Boom,
             }).ToArray(),
             react = (int[])_rxE.Clone(),
             reactN = (int[])_rxN.Clone(),

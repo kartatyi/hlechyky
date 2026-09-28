@@ -171,6 +171,44 @@ public class BattleshipArsenalTests
     }
 
     [Fact]
+    public void The_radar_number_is_hidden_from_watchers_too()
+    {
+        var h = Battle(new BattleshipPurse(null), blue: ["radar"]);
+        h.Act(0, "use", new { item = "radar", cell = 11 });
+        var feed = h.View(null).GetProperty("feed");
+        Assert.Equal(JsonValueKind.Null, feed[feed.GetArrayLength() - 1].GetProperty("n").ValueKind);
+        feed = h.View(0).GetProperty("feed");
+        Assert.Equal(6, feed[feed.GetArrayLength() - 1].GetProperty("n").GetInt32());
+    }
+
+    [Fact]
+    public void A_walkover_does_not_print_the_winner_bonus()
+    {
+        // Другий нік стріляє шість разів мимо й устає: база за бій — так, бонус переможця — ні.
+        var purse = new BattleshipPurse(null);
+        var h = Battle(purse);
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.True(h.Act(0, "shoot", new { cell = 99 - i }).Ok);
+            Assert.True(h.Act(1, "shoot", new { cell = 99 - i }).Ok);
+        }
+        h.Leave("Петро");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(BattleshipArsenal.StartPurse + BattleshipArsenal.BasePay, purse.Balance("Оля"));
+        Assert.Equal(BattleshipArsenal.StartPurse, purse.Balance("Петро"));
+    }
+
+    [Fact]
+    public void A_walkover_after_half_the_fleet_is_down_pays_like_a_win()
+    {
+        var purse = new BattleshipPurse(null);
+        var h = Battle(purse);
+        foreach (var cell in Red.Take(5).SelectMany(s => s)) Assert.True(h.Act(0, "shoot", new { cell }).Ok);
+        h.Leave("Петро");
+        Assert.Equal(BattleshipArsenal.StartPurse + BattleshipArsenal.Income(true, 0), purse.Balance("Оля"));
+    }
+
+    [Fact]
     public void A_bot_with_an_arsenal_plays_to_the_end()
     {
         var h = new RoomHarness("battleship", options: new { mode = "arsenal", bots = "2", fleet = "quick" }, seed: 11,
