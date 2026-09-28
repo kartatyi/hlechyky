@@ -392,11 +392,16 @@ public static class ArenaMaps
         }
         else if (map == Cross)
         {
+            // планки завтовшки дві клітинки — інакше на парному полі хрест не стане симетричним
             var bar = new List<int>();
-            for (var x = w / 4; x < w - w / 4; x++) bar.Add(C(x, h / 2));
+            for (var y = h / 2 - 1; y <= h / 2; y++)
+                for (var x = w / 4; x < w - w / 4; x++) bar.Add(C(x, y));
             list.Add([.. bar]);
+            var across = bar.ToHashSet();
             bar.Clear();
-            for (var y = h / 4; y < h - h / 4; y++) if (y != h / 2) bar.Add(C(w / 2, y));
+            for (var x = w / 2 - 1; x <= w / 2; x++)
+                for (var y = h / 4; y < h - h / 4; y++)
+                    if (!across.Contains(C(x, y))) bar.Add(C(x, y));
             list.Add([.. bar]);
         }
         return list;
