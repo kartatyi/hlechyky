@@ -143,3 +143,8 @@
 @media (prefers-reduced-motion: reduce) {
   .durak .dcard.fly, .durak .dverdict { animation: none; }
 }
+
+/* Пари 2×2 (№232): напарник помітний серед суперників. */
+.durak .dfoe.dk-mate { border-style: dashed; border-color: var(--ok); }
+.durak .drole em.dk-mate { color: var(--ok); }
+.durak .drole em.dk-pair { color: var(--text); }
