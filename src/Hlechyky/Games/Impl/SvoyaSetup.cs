@@ -36,6 +36,9 @@ public static class SvoyaSetup
         services.AddSingleton<SvoyaPacks>();
         services.AddSingleton<SvoyaImport>();
         services.AddSingleton<ISvoyaPackSource>(sp => sp.GetRequiredService<SvoyaPacks>());
+        // «👥 Про нас» (прохід №3): автотема з бази — назви ігор беремо з реєстру
+        services.AddSingleton(sp => new SvoyaAbout(sp.GetService<Db>(), sp.GetRequiredService<IClock>(),
+            id => sp.GetService<Registry>()?.Info(id)?.Title, sp.GetService<ILogger<SvoyaAbout>>()));
         return services;
     }
 

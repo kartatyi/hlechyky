@@ -133,7 +133,7 @@ public sealed class SvoyaBuiltin
 /// </summary>
 public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFiles files, IClock clock,
     IOptionsMonitor<SvoyaOptions>? options = null, ILogger<SvoyaPacks>? log = null, ISvoyaVoice? voice = null,
-    SvoyaUploads? uploads = null) : ISvoyaPackSource
+    SvoyaUploads? uploads = null, SvoyaAbout? about = null) : ISvoyaPackSource
 {
     readonly ILogger _log = (ILogger?)log ?? NullLogger.Instance;
     SvoyaOptions O => options?.CurrentValue ?? new SvoyaOptions();
@@ -152,11 +152,40 @@ public sealed class SvoyaPacks(SvoyaStore store, SvoyaBuiltin builtin, SvoyaFile
         var mine = store.Mine(key);
         return new
         {
+            special = Special(plays),
             builtin = builtin.Packs.Select(p => Summary(p, null, plays, u)).ToArray(),
             @public = store.Public(withHidden: u.Admin).Where(r => r.OwnerKey != key).Select(r => Summary(r.Pack(), r, plays, u)).ToArray(),
             mine = mine.Select(r => Summary(r.Pack(), r, plays, u)).ToArray(),
             canCreate = CanCreate(u),
         };
+    }
+
+    /// <summary>
+    /// Особливі пакети (прохід №3): «🎲 Мікс» незіграних тем і «👥 Про нас» з життя сайту. Їхні теми залежать від столу
+    /// й бази, тож у рядку — лише пояснення; «Про нас», якого замало, приходить із <c>ready = false</c> і причиною.
+    /// </summary>
+    object[] Special(IReadOnlyDictionary<string, int> plays)
+    {
+        var list = new List<object>(2);
+        if (builtin.Packs.Count > 0)
+            list.Add(new
+            {
+                id = SvoyaMix.Id, title = SvoyaMix.Title, author = SvoyaBuiltin.Author, note = SvoyaMix.Note, special = true,
+                rounds = Array.Empty<object>(), questions = SvoyaMix.Rounds * SvoyaMix.ThemesPerRound * 5 + SvoyaMix.FinalThemes,
+                plays = plays.GetValueOrDefault(SvoyaMix.Id), ready = true,
+            });
+        if (about is not null)
+        {
+            var s = about.Get();
+            list.Add(new
+            {
+                id = SvoyaAbout.Id, title = SvoyaAbout.Title, author = SvoyaBuiltin.Author, special = true,
+                note = s.Pack is null ? s.Reason : "Автотема з життя сайту: хто що закидав на радіо, хто вигравав, у кого більше черепків",
+                rounds = s.Pack?.Rounds.Select(r => new { name = r.Name, final = r.IsFinal, themes = r.Themes.Select(t => t.Name).ToArray() }).ToArray() ?? [],
+                questions = s.Questions, plays = plays.GetValueOrDefault(SvoyaAbout.Id), ready = s.Pack is not null, unready = s.Pack is null,
+            });
+        }
+        return [.. list];
     }
 
     /// <summary>Рядок списку. Лише назви: раунди й теми, щоб гравці знали, на що йдуть, — але не що всередині.</summary>

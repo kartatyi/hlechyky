@@ -79,7 +79,14 @@
       + '<b>' + esc(p.title) + '</b>'
       + '<span class="muted small">' + esc(p.author) + ' · ' + p.questions + ' запитань' + (p.plays ? ' · зіграно ' + p.plays : '') + '</span>'
       + (themes ? '<span class="svthemes small">' + esc(themes) + '</span>' : '')
+      + (p.note ? '<span class="svnote small">' + esc(p.note) + '</span>' : '')
       + '</button>';
+  }
+
+  /// Особливі пакети (🎲 Мікс, 👥 Про нас): «Про нас», якому замало даних, — сірий рядок із поясненням, а не кнопка.
+  function specialRow(p, chosen) {
+    if (p.ready !== false) return packRow(p, chosen);
+    return '<div class="svpack off" aria-disabled="true"><b>' + esc(p.title) + '</b><span class="svnote small">' + esc(p.note || '') + '</span></div>';
   }
 
   /// Коротка партія — підпис у лобі, щоб усі за столом знали, на скільки сідають. Увесь пакет — без підпису, як було.
@@ -110,7 +117,10 @@
       return items.length ? '<div class="svgroup"><div class="muted small">' + title + '</div>'
         + items.map((p) => packRow(p, v.pack && v.pack.id === p.id)).join('') + '</div>' : '';
     };
-    const list = group('Від Глечиків', s.packs.builtin) + group('Мої', s.packs.mine) + group('Публічні', s.packs.public);
+    const special = (s.packs.special || []).filter(fits);
+    const list = (special.length ? '<div class="svgroup"><div class="muted small">Особливі</div>'
+        + special.map((p) => specialRow(p, v.pack && v.pack.id === p.id)).join('') + '</div>' : '')
+      + group('Від Глечиків', s.packs.builtin) + group('Мої', s.packs.mine) + group('Публічні', s.packs.public);
     return head + chosen + '<div class="svpicker">'
       + (list || '<div class="svwait">' + (q ? 'Овва, нічого не знайшлось' : 'Пакетів ще нема — зроби свій у «🎯 Своя гра» праворуч') + '</div>')
       + '</div>';

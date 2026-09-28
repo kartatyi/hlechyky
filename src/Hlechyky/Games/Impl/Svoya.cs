@@ -123,6 +123,12 @@ public sealed partial class Svoya : Game
     SvoyaPack? _pack;
     /// <summary>Пакет, як його обрали (до укорочення й бліцу): опції лобі можна міняти й після вибору.</summary>
     SvoyaPack? _source;
+    /// <summary>Пам'ять «бачили» (для «🎲 Міксу»). Db беремо не в конструкторі: гру створює реєстр без параметрів.</summary>
+    SvoyaSeen? _seen;
+    SvoyaSeen Seen => _seen ??= new SvoyaSeen(Ctx.Services.GetService<Db>());
+    /// <summary>Для кого зібрано мікс (ключі ніків за столом) і чи їхня пам'ять тоді вже підтяглась з бази.</summary>
+    string? _mixFor;
+    bool _mixLoaded;
 
     // ---------- партія ----------
     string _phase = Lobby;
@@ -299,15 +305,81 @@ public sealed partial class Svoya : Game
     ActResult PickPack(int seat, JsonElement payload)
     {
         if (seat != Ctx.HostSeat) return ActResult.Fail("Пакет обирає господар столу");
-        if (_packs is null) return ActResult.Fail("Пакети зараз недоступні");
         var id = Str(payload, "id");
         if (string.IsNullOrEmpty(id)) return ActResult.Fail("Оберіть пакет");
-        var pack = _packs.Playable(id, Ctx.NickOf(seat) ?? "");
-        if (pack is null) return ActResult.Fail("У цей пакет грати не можна — він чужий, прихований або ще не дороблений");
+        SvoyaPack? pack;
+        if (id == SvoyaMix.Id)
+        {
+            pack = BuildMix();
+            if (pack is null) return ActResult.Fail("Мікс не зібрати — вбудованих пакетів нема");
+        }
+        else if (id == SvoyaAbout.Id)
+        {
+            // «Про нас» збирається з бази фоном (SvoyaAbout); тут — лише готовий знімок із пам'яті
+            var about = Ctx.Services.GetService<SvoyaAbout>();
+            if (about is null) return ActResult.Fail("Тема «Про нас» тут недоступна");
+            var snap = about.Current;
+            about.Refresh();
+            if (snap is null) return ActResult.Fail("Збираю факти про нас — тицни ще раз за мить");
+            if (snap.Pack is null) return ActResult.Fail(snap.Reason);
+            pack = snap.Pack.Clone();
+        }
+        else
+        {
+            if (_packs is null) return ActResult.Fail("Пакети зараз недоступні");
+            pack = _packs.Playable(id, Ctx.NickOf(seat) ?? "");
+            if (pack is null) return ActResult.Fail("У цей пакет грати не можна — він чужий, прихований або ще не дороблений");
+        }
         _source = pack;
         _pack = Shape(pack);
         _dirty = true;
         return ActResult.Accept($"Пакет «{pack.Title}» на столі — гайда!");
+    }
+
+    /// <summary>Ключі ніків усіх, хто сидить за столом (і живого ведучого: теми він теж бачить).</summary>
+    List<string> SeatedKeys()
+    {
+        var keys = new List<string>(Seats);
+        for (var s = 0; s < Seats; s++)
+            if (Ctx.Seated(s) && Ctx.NickOf(s) is { } n && SvoyaSeen.NickKey(n) is var k && !keys.Contains(k)) keys.Add(k);
+        keys.Sort(StringComparer.Ordinal);
+        return keys;
+    }
+
+    /// <summary>«🎲 Мікс» для тих, хто зараз за столом: спершу теми, яких ніхто з них ще не бачив. Лише з пам'яті — без бази.</summary>
+    SvoyaPack? BuildMix()
+    {
+        var builtin = Ctx.Services.GetService<SvoyaBuiltin>();
+        if (builtin is null || builtin.Packs.Count == 0) return null;
+        var keys = SeatedKeys();
+        _mixFor = string.Join("|", keys);
+        _mixLoaded = Seen.Loaded(keys);
+        return SvoyaMix.Build(builtin.Packs, Seen.LastSeen(keys), Ctx.Rng, out _);
+    }
+
+    /// <summary>
+    /// Зібрати мікс наново, якщо за стіл хтось сів чи встав, або пам'ять столу щойно підтяглась з бази, або після
+    /// партії («Ще раз» — щойно зіграні теми вже бачені). Лобі одразу показує нові теми.
+    /// </summary>
+    void RefreshMix(bool force)
+    {
+        if (_source?.Id != SvoyaMix.Id) return;
+        var keys = SeatedKeys();
+        if (!force && string.Join("|", keys) == _mixFor && (_mixLoaded || !Seen.Loaded(keys))) return;
+        if (BuildMix() is not { } mix) return;
+        _source = mix;
+        _pack = Shape(mix);
+        _dirty = true;
+    }
+
+    /// <summary>Гравці бачать теми раунду на полі — запам'ятати (фоном), щоб «🎲 Мікс» їх більше не підсовував першими.</summary>
+    void MarkSeen()
+    {
+        if (_pack is null || _round >= _pack.Rounds.Count) return;
+        var r = R;
+        var themes = new List<string>(r.Themes.Count);
+        foreach (var t in r.Themes) themes.Add(SvoyaMix.Key(_pack.Id, _round, r, t));
+        Seen.Mark(SeatedKeys(), themes, Now);
     }
 
     // =========================================================================================
@@ -316,6 +388,7 @@ public sealed partial class Svoya : Game
 
     public override void Start()
     {
+        RefreshMix(force: _phase == Done);
         _host = _mode == Live ? Ctx.HostSeat ?? 0 : -1;
         Array.Clear(_scores);
         _left.Clear();
@@ -569,6 +642,7 @@ public sealed partial class Svoya : Game
 
     void BeginIntro()
     {
+        MarkSeen();
         Phase(Intro);
         ClearQuestion();
         if (Machine) Speak(IntroLine()); else Silence();
@@ -1086,6 +1160,12 @@ public sealed partial class Svoya : Game
         var open = _phase is Reveal or FinalReveal;
         var showQuestion = _q is not null && _phase is Reading or Buzz or Answering or Reveal or FinalQuestion or FinalJudge or FinalReveal;
         var inRound = _pack is not null && _phase is not (Lobby or Done) && _round < _pack.Rounds.Count;
+        // лобі чи дограний стіл: пам'ять тих, хто сидить, підтягуємо фоном — до «Почати» вона встигне; мікс — під них
+        if (_phase is Lobby or Done && _source?.Id == SvoyaMix.Id)
+        {
+            Seen.Prefetch(SeatedKeys());
+            if (_phase == Lobby) RefreshMix(force: false);
+        }
         return new
         {
             phase = _phase,
@@ -1099,6 +1179,7 @@ public sealed partial class Svoya : Game
                 id = _pack.Id,
                 title = _pack.Title,
                 description = _pack.Description,
+                special = _pack.Id is SvoyaMix.Id or SvoyaAbout.Id,
                 author = _pack.Author,
                 rounds = _pack.Rounds.Select(r => new { name = r.Name, final = r.IsFinal, themes = r.Themes.Select(t => t.Name).ToArray() }).ToArray(),
             },

@@ -165,4 +165,186 @@ public sealed class SvoyaSweep3Tests
         Assert.Equal(5, h.View(null).GetProperty("board").GetArrayLength());
         Assert.Equal("normal", h.View(null).GetProperty("options").GetProperty("pace").GetString());
     }
+
+    // ---------- 19. «🎲 Мікс» незіграних тем ----------
+
+    static string TempDb() => Path.Combine(Path.GetTempPath(), $"svoya-s3-{Guid.NewGuid():N}.db");
+
+    static void Drop(string path)
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        foreach (var f in new[] { path, path + "-wal", path + "-shm" })
+            try { File.Delete(f); } catch (IOException) { /* хай лежить у temp */ }
+    }
+
+    static string[] Themes(SvoyaPack p, bool final = false) => [.. p.Rounds.Where(r => r.IsFinal == final).SelectMany(r => r.Themes).Select(t => t.Name)];
+
+    [Fact]
+    public void Mix_takes_unseen_themes_first_keeps_difficulty_and_reprices()
+    {
+        var a = Grid("b_a", 5, 5, rounds: 3);
+        var b = Grid("b_b", 5, 5, rounds: 3);
+        var seen = a.Rounds.Where(r => !r.IsFinal).SelectMany((r, ri) => r.Themes.Select(t => SvoyaMix.Key(a.Id, ri, r, t)))
+            .ToDictionary(k => k, _ => DateTimeOffset.UnixEpoch);
+        seen["b_a/0/b_a р0 т0"] = DateTimeOffset.UnixEpoch.AddDays(1);
+        var mix = SvoyaMix.Build([a, b], seen, new Random(3), out var fresh)!;
+
+        Assert.Equal(SvoyaMix.Id, mix.Id);
+        Assert.Empty(mix.Validate());
+        Assert.Equal(4, mix.Rounds.Count);                                               // три раунди й фінал
+        Assert.All(Themes(mix), n => Assert.StartsWith("b_b", n));                        // усе бачене — позаду
+        Assert.All(mix.Rounds[0].Themes, t => Assert.StartsWith("b_b р0", t.Name));       // легкі — у першому раунді
+        Assert.All(mix.Rounds[2].Themes, t => Assert.StartsWith("b_b р2", t.Name));
+        Assert.Equal([300, 600, 900, 1200, 1500], mix.Rounds[2].Themes[0].Questions.Select(q => q.Price));
+        Assert.Equal(15 + 5, fresh);                                                      // і фінальні теми ще ніхто не бачив
+        Assert.Contains("Усі 20 тем", mix.Description);
+        Assert.Equal(2, b.Rounds[2].Themes[0].Questions[0].Price / 100 - 1);                // рідний пакет не зачеплено (300)
+    }
+
+    [Fact]
+    public void Mix_skips_themes_with_media()
+    {
+        var a = Grid("b_a", 2, 2);
+        a.Rounds[0].Themes[0].Questions[0].Media = new SvoyaMedia { Kind = SvoyaMedia.Image, File = "abc.jpg" };
+        var mix = SvoyaMix.Build([a], new Dictionary<string, DateTimeOffset>(), new Random(1), out _)!;
+        Assert.Equal(["b_a р0 т1"], Themes(mix));
+    }
+
+    [Fact]
+    public void Themes_seen_at_one_table_are_left_out_of_the_mix_at_the_next()
+    {
+        var path = TempDb();
+        try
+        {
+            var db = new Db(path);
+            var a = Grid("b_a", 5, 5, rounds: 3);
+            var b = Grid("b_b", 5, 5, rounds: 3);
+            var packs = new FakeSvoyaPacks();
+            packs.Packs["b_a"] = (a, "");
+            void Services(ServiceCollection sc)
+            {
+                sc.AddSingleton(db);
+                sc.AddSingleton(new SvoyaBuiltin([a, b]));
+            }
+
+            Table(packs, "b_a", more: Services);                                           // перший раунд b_a — на полі: бачили
+            SvoyaSeen.Idle.Wait();
+
+            var h = Table(packs, SvoyaMix.Id, more: Services, start: false);
+            Assert.Equal(SvoyaMix.Title, h.View(0).GetProperty("pack").GetProperty("title").GetString());
+            SvoyaSeen.Idle.Wait();                                                            // пам'ять столу підтяглась з бази
+            h.View(0);                                                                        // …і мікс зібрано під неї
+            var rounds = h.View(0).GetProperty("pack").GetProperty("rounds");
+            var names = rounds.EnumerateArray().SelectMany(r => r.GetProperty("themes").EnumerateArray()).Select(t => t.GetString()!).ToList();
+            Assert.DoesNotContain(names, n => n.StartsWith("b_a р0", StringComparison.Ordinal));
+            Assert.True(h.Start().Ok, h.Reply.Message);
+            SvoyaTests.Until(h, Svoya.Board);
+            Assert.Equal(5, h.View(null).GetProperty("board").GetArrayLength());
+        }
+        finally { Drop(path); }
+    }
+
+    // ---------- 18. «👥 Про нас» ----------
+
+    static SvoyaAbout.Facts Rich() => new()
+    {
+        WeekRequests = [new("владік", 20), new("Smaug", 12)],
+        WeekLikes = [new("Smaug", 115), new("владік", 13)],
+        TopTracks = [new("Реклама глека", 30, "18+ Анекдоти"), new("Я Канівес", 20, "MC Петя"), new("Потяг на Південь", 19, "Zwyntar")],
+        LikedTracks = [new("Riders on the Storm", 4, "The Doors"), new("The House of the Rising Sun", 4, "The Animals")],   // нічия — не питаємо
+        WeekGames = [new("tanks", 28), new("duel", 15)],
+        WeekWins = [new("владік", 73), new("микола ( справжній )", 53)],
+        GameWinners = [("tanks", [new("микола ( справжній )", 30), new("Smaug", 10)])],
+        Earned = [new("владік", 4802), new("Smaug", 3330)],
+        Achievements = [new("Smaug", 61), new("владік", 60)],
+    };
+
+    static string? Title(string id) => id switch { "tanks" => "Танчики", "duel" => "Дуель", _ => null };
+
+    [Fact]
+    public void About_asks_only_clear_facts_with_a_single_leader()
+    {
+        var (pack, n, reason) = SvoyaAbout.Compose(Rich(), Title, DateTimeOffset.UnixEpoch);
+        Assert.NotNull(pack);
+        Assert.Equal("", reason);
+        Assert.Empty(pack.Validate());
+        var qs = pack.Rounds.Single().Themes.SelectMany(t => t.Questions).ToList();
+        Assert.Equal(n, qs.Count);
+        Assert.Equal(["Радіо", "Ігри", "Черепки й коло"], Themes(pack));
+        Assert.Contains(qs, q => q.Answer == "Я Канівес" && q.Comment!.Contains("MC Петя"));   // реклама — не пісня
+        Assert.DoesNotContain(qs, q => q.Answer is "Riders on the Storm" or "The House of the Rising Sun");
+        Assert.Contains(qs, q => q.Answer == "Танчики");
+        var tanks = qs.Single(q => q.Text.Contains("«Танчики»"));
+        Assert.Equal("микола ( справжній )", tanks.Answer);
+        Assert.True(SvoyaAnswer.Hits("микола", tanks.Answers));                           // друзі пишуть коротко
+        Assert.False(SvoyaAnswer.Hits("Smaug", tanks.Answers));
+        Assert.All(qs, q => Assert.False(string.IsNullOrEmpty(q.Comment)));                // число для перевірки — завжди
+    }
+
+    [Fact]
+    public void About_is_unavailable_with_a_reason_when_the_site_is_quiet()
+    {
+        var quiet = new SvoyaAbout.Facts { WeekRequests = [new("Оля", 5)], WeekWins = [new("Оля", 2), new("Петро", 2)] };
+        var (pack, n, reason) = SvoyaAbout.Compose(quiet, Title, DateTimeOffset.UnixEpoch);
+        Assert.Null(pack);
+        Assert.Equal(1, n);
+        Assert.Contains("Замало", reason);
+    }
+
+    [Fact]
+    public void Nick_answers_accept_the_short_forms()
+    {
+        Assert.Contains("микола", SvoyaAbout.NickAccept("микола ( справжній )"));
+        Assert.Contains("Ivan", SvoyaAbout.NickAccept("гість Ivan"));
+        Assert.Contains("Mariana", SvoyaAbout.NickAccept("Mariana Matviienko"));
+        Assert.Empty(SvoyaAbout.NickAccept("Smaug"));
+        Assert.Equal(["Stefania"], SvoyaAbout.TitleAccept("Stefania (Kalush Orchestra)"));
+    }
+
+    [Fact]
+    public void About_reads_the_site_database_and_the_game_plays_it()
+    {
+        var path = TempDb();
+        try
+        {
+            var db = new Db(path);
+            var clock = new FakeClock();
+            var at = clock.UtcNow.AddDays(-1).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+            db.With(c =>
+            {
+                using var cmd = c.CreateCommand();
+                var sql = new System.Text.StringBuilder();
+                sql.Append($"INSERT INTO tracks(id, title, artist, source_url, created_at) VALUES('t1', 'Потяг на Південь', 'Zwyntar', 'x', '{at}'), ('t2', 'Інша', 'Хтось', 'x', '{at}');");
+                for (var i = 0; i < 5; i++) sql.Append($"INSERT INTO plays(track_id, source, requested_by, started_at) VALUES('t1', 'user', 'Оля', '{at}');");
+                sql.Append($"INSERT INTO plays(track_id, source, requested_by, started_at) VALUES('t2', 'user', 'Петро', '{at}');");
+                for (var i = 0; i < 4; i++) sql.Append($"INSERT INTO likes(track_id, nick, created_at) VALUES('t{i % 2 + 1}', 'нік{i}', '{at}');");   // нічия 2:2 — без запитання
+                for (var i = 0; i < 3; i++) sql.Append($"INSERT INTO achievements(nick_key, key, nick, unlocked_at) VALUES('оля', 'a{i}', 'Оля', '{at}');");
+                for (var i = 0; i < 6; i++)
+                    sql.Append($"INSERT INTO game_results(room_id, game, round, nick_key, nick, outcome, created_at) VALUES('r{i}', 'tanks', 1, 'оля', 'Оля', 'win', '{at}'), ('r{i}', 'tanks', 1, 'петро', 'Петро', 'loss', '{at}');");
+                sql.Append($"INSERT INTO wallets(nick_key, nick, balance, earned, updated_at) VALUES('петро', 'Петро', 10, 500, '{at}'), ('оля', 'Оля', 5, 90, '{at}');");
+                cmd.CommandText = sql.ToString();
+                return cmd.ExecuteNonQuery();
+            });
+            var about = new SvoyaAbout(db, clock, Title);
+            var snap = about.Get();
+            Assert.True(snap.Pack is not null, snap.Reason);
+            var qs = snap.Pack.Rounds[0].Themes.SelectMany(t => t.Questions).ToList();
+            Assert.Contains(qs, q => q.Text.Contains("закинув") && q.Answer == "Оля");
+            Assert.Contains(qs, q => q.Answer == "Потяг на Південь");
+            Assert.Contains(qs, q => q.Text.Contains("«Танчики»") && q.Answer == "Оля");
+            Assert.Contains(qs, q => q.Text.Contains("черепків") && q.Answer == "Петро");
+
+            // гра бере готовий знімок із пам'яті; порожній сервіс — «збираю», а не база під замком
+            var packs = new FakeSvoyaPacks();
+            var cold = Table(packs, "b_mini", more: sc => sc.AddSingleton(new SvoyaAbout(null, clock)), start: false);
+            Assert.Contains("Збираю факти", cold.Act(0, "pack", new { id = SvoyaAbout.Id }).Message);
+            var h = Table(packs, "b_mini", more: sc => sc.AddSingleton(about), start: false);
+            Assert.True(h.Act(0, "pack", new { id = SvoyaAbout.Id }).Ok, h.Reply.Message);
+            Assert.True(h.Start().Ok, h.Reply.Message);
+            var c = SvoyaTests.Open(h, 0, 0);
+            Assert.Contains("?", h.View(null).GetProperty("question").GetProperty("text").GetString());
+            Assert.True(c >= 0);
+        }
+        finally { Drop(path); }
+    }
 }

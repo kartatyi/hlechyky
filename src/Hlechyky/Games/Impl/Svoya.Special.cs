@@ -283,6 +283,7 @@ public sealed partial class Svoya
         ClearFinal();
         _finalists.AddRange(Players().Where(s => _scores[s] > 0).OrderBy(s => _scores[s]).ThenBy(s => s));
         if (_finalists.Count == 0) { Over(null); return; }
+        MarkSeen();
         PrepareRound(_round);
         Phase(Strike);
         _turn = _finalists[0];
