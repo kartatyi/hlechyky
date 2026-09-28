@@ -225,6 +225,29 @@ public sealed class SvoyaSweep3Tests
     }
 
     [Fact]
+    public void A_short_blitz_mix_describes_and_counts_only_what_is_on_the_board()
+    {
+        // Рецензія проходу №3: з «Один раунд і фінал» чи бліцом опис міксу казав «Усі 20 тем», а список — «80 запитань».
+        var a = Grid("b_a", 5, 5, rounds: 3);
+        var b = Grid("b_b", 5, 5, rounds: 3);
+        var h = Table(new FakeSvoyaPacks(), SvoyaMix.Id, new { length = "one", pace = "blitz" },
+            more: sc => sc.AddSingleton(new SvoyaBuiltin([a, b])), start: false);
+        var pack = h.View(0).GetProperty("pack");
+        var rounds = pack.GetProperty("rounds").EnumerateArray().ToList();
+        Assert.Equal(2, rounds.Count);                                                   // один раунд і фінал
+        var themes = rounds.Sum(r => r.GetProperty("themes").GetArrayLength());
+        var finals = rounds[1].GetProperty("themes").GetArrayLength();
+        Assert.Equal(4 + finals, themes);                                                // поле бліцу — 4 теми
+        Assert.Contains($"Усі {themes} тем", pack.GetProperty("description").GetString());
+        Assert.Equal(4 * 4 + finals, pack.GetProperty("questions").GetInt32());
+
+        // повна довжина — опис як і був, на весь мікс
+        var full = Table(new FakeSvoyaPacks(), SvoyaMix.Id, more: sc => sc.AddSingleton(new SvoyaBuiltin([a, b])), start: false);
+        Assert.Contains($"Усі {15 + finals} тем", full.View(0).GetProperty("pack").GetProperty("description").GetString());
+        Assert.Equal(75 + finals, full.View(0).GetProperty("pack").GetProperty("questions").GetInt32());
+    }
+
+    [Fact]
     public void Mix_skips_themes_with_media()
     {
         var a = Grid("b_a", 2, 2);

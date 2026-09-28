@@ -73,19 +73,28 @@
     if (root._ctx) render(root, root._ctx);
   }
 
-  function packRow(p, chosen) {
+  /// Скільки запитань у рядку списку: у пакета на столі — скільки справді зіграємо (довжина, бліц), у 🎲 Міксу —
+  /// за опціями столу (3 раунди × 5 тем × 5 запитань + 5 фінальних; бліц — поле 4×4). Решта — як каже список.
+  function questionsOf(p, chosen, v) {
+    if (chosen && v.pack && typeof v.pack.questions === 'number') return v.pack.questions;
+    if (p.id !== 'x_mix' || !v.options) return p.questions;
+    const rounds = v.options.length === 'one' ? 1 : v.options.length === 'two' ? 2 : 3;
+    return rounds * (v.options.pace === 'blitz' ? 16 : 25) + 5;
+  }
+
+  function packRow(p, chosen, v) {
     const themes = (p.rounds || []).filter((r) => !r.final).map((r) => r.themes.join(', ')).join(' · ');
     return '<button type="button" class="svpack' + (chosen ? ' on' : '') + '" data-do="pack" data-id="' + esc(p.id) + '">'
       + '<b>' + esc(p.title) + '</b>'
-      + '<span class="muted small">' + esc(p.author) + ' · ' + p.questions + ' запитань' + (p.plays ? ' · зіграно ' + p.plays : '') + '</span>'
+      + '<span class="muted small">' + esc(p.author) + ' · ' + questionsOf(p, chosen, v || {}) + ' запитань' + (p.plays ? ' · зіграно ' + p.plays : '') + '</span>'
       + (themes ? '<span class="svthemes small">' + esc(themes) + '</span>' : '')
       + (p.note ? '<span class="svnote small">' + esc(p.note) + '</span>' : '')
       + '</button>';
   }
 
   /// Особливі пакети (🎲 Мікс, 👥 Про нас): «Про нас», якому замало даних, — сірий рядок із поясненням, а не кнопка.
-  function specialRow(p, chosen) {
-    if (p.ready !== false) return packRow(p, chosen);
+  function specialRow(p, chosen, v) {
+    if (p.ready !== false) return packRow(p, chosen, v);
     return '<div class="svpack off" aria-disabled="true"><b>' + esc(p.title) + '</b><span class="svnote small">' + esc(p.note || '') + '</span></div>';
   }
 
@@ -115,11 +124,11 @@
     const group = (title, list) => {
       const items = (list || []).filter((p) => p.ready !== false).filter(fits);
       return items.length ? '<div class="svgroup"><div class="muted small">' + title + '</div>'
-        + items.map((p) => packRow(p, v.pack && v.pack.id === p.id)).join('') + '</div>' : '';
+        + items.map((p) => packRow(p, v.pack && v.pack.id === p.id, v)).join('') + '</div>' : '';
     };
     const special = (s.packs.special || []).filter(fits);
     const list = (special.length ? '<div class="svgroup"><div class="muted small">Особливі</div>'
-        + special.map((p) => specialRow(p, v.pack && v.pack.id === p.id)).join('') + '</div>' : '')
+        + special.map((p) => specialRow(p, v.pack && v.pack.id === p.id, v)).join('') + '</div>' : '')
       + group('Від Глечиків', s.packs.builtin) + group('Мої', s.packs.mine) + group('Публічні', s.packs.public);
     return head + chosen + '<div class="svpicker">'
       + (list || '<div class="svwait">' + (q ? 'Овва, нічого не знайшлось' : 'Пакетів ще нема — зроби свій у «🎯 Своя гра» праворуч') + '</div>')

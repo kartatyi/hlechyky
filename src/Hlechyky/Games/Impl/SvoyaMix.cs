@@ -80,9 +80,27 @@ public static class SvoyaMix
                 Name = "Фінал", Type = SvoyaRound.Final,
                 Themes = [.. finals.Select(x => new SvoyaTheme { Name = x.Theme.Name, Origin = x.Key, Questions = [Copy(x.Theme.Questions[0], 0)] })],
             });
-        var total = chosen.Count + finals.Count;
-        pack.Description = fresh == total ? $"{Note}. Усі {total} тем — нові для вас" : $"{Note}. Нових для вас — {fresh} із {total}";
+        pack.Description = Describe(chosen.Count + finals.Count, fresh);
         return pack;
+    }
+
+    static string Describe(int total, int fresh) =>
+        fresh == total ? $"{Note}. Усі {total} тем — нові для вас" : $"{Note}. Нових для вас — {fresh} із {total}";
+
+    /// <summary>
+    /// Опис міксу, яким його гратимуть: «Один раунд і фінал» чи бліц лишають на полі менше тем, ніж зібрано, — тож
+    /// рахуємо лише ті, що лишились (рецензія проходу №3: писало «Усі 20 тем» при полі 5+5).
+    /// </summary>
+    public static string Describe(SvoyaPack shaped, IReadOnlyDictionary<string, DateTimeOffset> lastSeen)
+    {
+        int total = 0, fresh = 0;
+        foreach (var r in shaped.Rounds)
+            foreach (var t in r.Themes)
+            {
+                total++;
+                if (t.Origin is null || !lastSeen.ContainsKey(t.Origin)) fresh++;
+            }
+        return Describe(total, fresh);
     }
 
     static List<Pick> Freshest(List<Pick> all, IReadOnlyDictionary<string, DateTimeOffset> lastSeen, Random rng)
