@@ -42,7 +42,10 @@ public sealed class SkilkyPhotos : BackgroundService
     static readonly TimeSpan Every = TimeSpan.FromMinutes(30);
     static readonly TimeSpan FirstDelay = TimeSpan.FromSeconds(5);
     /// <summary>Пауза між файлами: Вікісховище не любить, коли його смикають пачкою.</summary>
-    static readonly TimeSpan Gap = TimeSpan.FromMilliseconds(700);
+    static readonly TimeSpan Gap = TimeSpan.FromMilliseconds(1500);
+    /// <summary>Вікісховище сказало 429 («забагато») — коло зупиняємо й приходимо знову за стільки.</summary>
+    static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(3);
+    bool _throttled;
     /// <summary>Скільки може важити фото в кеші: більше — перетискаємо (мініатюри Вікісховища 960 px важать 250–400 КБ,
     /// а з телефона на мобільному інтернеті кожне фото раунду — на очах у всіх).</summary>
     public const int TargetBytes = 200 * 1024;
@@ -156,7 +159,7 @@ public sealed class SkilkyPhotos : BackgroundService
             try { await PassAsync(ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
             catch (Exception ex) { _log?.LogWarning(ex, "«Якого року?»: прохід докачування впав"); }
-            try { await _poke.WaitAsync(Every, ct); } catch (OperationCanceledException) { return; }
+            try { await _poke.WaitAsync(_throttled ? Cooldown : Every, ct); } catch (OperationCanceledException) { return; }
         }
     }
 
@@ -165,10 +168,16 @@ public sealed class SkilkyPhotos : BackgroundService
     {
         Directory.CreateDirectory(Dir);
         var got = 0;
+        _throttled = false;
         foreach (var p in All)
         {
             if (_ready.ContainsKey(p.Id)) continue;
             if (await FetchAsync(p, ct)) got++;
+            if (_throttled)
+            {
+                _log?.LogInformation("«Якого року?»: Вікісховище просить пригальмувати (429) — решту докачаю за {Min} хв", Cooldown.TotalMinutes);
+                break;
+            }
             await Task.Delay(Gap, ct);
         }
         if (got > 0) _log?.LogInformation("«Якого року?»: докачав {Count} фото, готових {Ready} з {All}", got, _ready.Count, All.Count);
@@ -198,10 +207,11 @@ public sealed class SkilkyPhotos : BackgroundService
         return n;
     }
 
-    /// <summary>Покласти в кеш, дорогою перетиснувши, якщо важче за <see cref="TargetBytes"/>. Не стиснулось — кладемо як є.</summary>
+    /// <summary>Покласти в кеш, дорогою перетиснувши, якщо важче за <see cref="TargetBytes"/> або JPEG кривий. Не вийшло — кладемо як є.</summary>
     public async Task<bool> StoreAsync(string id, byte[] bytes, CancellationToken ct)
     {
-        if (bytes.Length > TargetBytes && _shrink is not null)
+        // Перетискаємо й «криві» JPEG (хвіст після кінця картинки тощо), які інакше кеш не бере: ffmpeg пише чистий.
+        if (_shrink is not null && (bytes.Length > TargetBytes || GeoImage.Strip(bytes) is null))
         {
             try
             {
@@ -272,6 +282,7 @@ public sealed class SkilkyPhotos : BackgroundService
         try
         {
             using var resp = await _http!.GetAsync(p.Url, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (resp.StatusCode == HttpStatusCode.TooManyRequests) { _throttled = true; return false; }
             if (resp.StatusCode != HttpStatusCode.OK) { _log?.LogWarning("«Якого року?»: {Id} відповів {Code}", p.Id, (int)resp.StatusCode); return false; }
             if (!string.Equals(resp.Content.Headers.ContentType?.MediaType, "image/jpeg", StringComparison.OrdinalIgnoreCase)) return false;
             if (resp.Content.Headers.ContentLength > MaxBytes) return false;

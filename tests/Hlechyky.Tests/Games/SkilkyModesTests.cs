@@ -260,6 +260,9 @@ public class SkilkyModesTests
             var heavy = new byte[SkilkyPhotos.TargetBytes + 1000];
             Assert.True(await photos.StoreAsync("test-1", heavy, CancellationToken.None));         // важке — через перетискач
             Assert.Equal(1, calls);
+            Assert.True(await photos.StoreAsync("test-0", [.. Jpeg, 0x00, 0x01], CancellationToken.None));   // кривий хвіст — теж
+            Assert.Equal(2, calls);
+            calls = 1;
             Assert.Equal(Jpeg.Length, new FileInfo(photos.PathFor("test-1")).Length);
 
             // Докачане ще до перетискання: важкий файл у кеші — перетиснути раз, і більше не смикати.
