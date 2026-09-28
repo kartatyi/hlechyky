@@ -98,3 +98,34 @@
 @media (pointer: coarse) {
   .dom-game .ghand .gcard { padding: 8px; }
 }
+
+/* Прохід №3: «Козел» (пари в шапці), вимикач грюку і сам грюк «Риба!». */
+.dom-game { position: relative; }
+.dom-pair { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 2px; border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 6%, transparent); }
+.dom-pair > em { font-style: normal; color: var(--muted); }
+.dom-pair > b { color: var(--accent); font-variant-numeric: tabular-nums; margin-left: 2px; }
+.dom-snd { min-width: 44px; min-height: 36px; padding: 2px 8px; }
+.dom-slam { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(.6); pointer-events: none;
+  font-size: clamp(28px, 7vw, 54px); font-weight: 800; color: var(--accent); opacity: 0; z-index: 3; white-space: nowrap;
+  text-shadow: 0 3px 0 color-mix(in srgb, var(--bg, #000) 70%, transparent); }
+.dom-slam.go { animation: dom-slam 1.3s ease-out both; }
+.dom-game:has(.dom-slam.go) .dom-line { animation: dom-shake .38s cubic-bezier(.36, .07, .19, .97) both; }
+@keyframes dom-slam {
+  0% { opacity: 0; transform: translate(-50%, -120%) scale(1.8); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(.95); }
+  26% { transform: translate(-50%, -50%) scale(1.05); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes dom-shake {
+  10%, 90% { transform: translate(-1px, 1px); }
+  20%, 80% { transform: translate(3px, -2px); }
+  30%, 50%, 70% { transform: translate(-5px, 2px); }
+  40%, 60% { transform: translate(5px, -1px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dom-slam.go { animation-duration: 1.6s; animation-name: dom-fade; }
+  .dom-game:has(.dom-slam.go) .dom-line { animation: none; }
+  @keyframes dom-fade { 0%, 100% { opacity: 0; transform: translate(-50%, -50%); } 15%, 80% { opacity: 1; transform: translate(-50%, -50%); } }
+}
