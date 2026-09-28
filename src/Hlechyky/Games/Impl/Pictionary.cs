@@ -39,17 +39,34 @@ public sealed class Pictionary : Game
     const int MaxGuessLength = 40;
     const int Seats = 10;
 
+    // ---------- прохід №3 (29.09) ----------
+    /// <summary>«Удвох: скільки встигнемо» — стільки на всю партію; і коротке «слово було» між словами.</summary>
+    public const int DuoMs = 180_000, DuoRevealMs = 1_500;
+    /// <summary>Галерея наприкінці: стільки на ❤ найкращому чужому малюнку (усі проголосували — раніше).</summary>
+    public const int VoteMs = 30_000;
+    /// <summary>Черепків «Митцю партії» — тому, чий малюнок зібрав найбільше ❤.</summary>
+    public const int ArtistShards = 5;
+    /// <summary>Реакція 😂🔥🤯 — не частіше з місця чи глядача.</summary>
+    public const int ReactEveryMs = 500;
+    public static readonly string[] Reactions = ["😂", "🔥", "🤯"];
+    /// <summary>Слова компанії: по стільки на людину, стільки всього, такої довжини.</summary>
+    public const int HomePerSeat = 3, HomeMax = 30, HomeMaxLength = 30;
+    /// <summary>Скільки малюнків партії одна людина може закинути в публічний альбом.</summary>
+    public const int PinsPerNick = 3;
+    public const string Party = "party", Duo = "duo";
+
     public static readonly int[] RoundChoices = [1, 2, 3];
     public static readonly int[] SecondChoices = [60, 80, 100, 120];
     public const int DefaultRounds = 2, DefaultSeconds = 80;
 
-    const string Pick = "pick", Draw = "draw", Reveal = "reveal", Done = "done";
+    const string Pick = "pick", Draw = "draw", Reveal = "reveal", Vote = "vote", Done = "done";
 
     public override GameInfo Info { get; } = new(
         "pictionary", "Піктіонарі", "піктіонарі", GameGroup.Party, 2, Seats,
         TickMs: TickMs, Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
+            new GameOption("mode", "Режим", [(Party, "Компанією"), (Duo, "Удвох: скільки встигнемо")], Party),
             new GameOption("rounds", "Кола", [.. RoundChoices.Select(n => (n.ToString(), n == 1 ? "1 коло" : $"{n} кола"))], DefaultRounds.ToString()),
             new GameOption("seconds", "Час на малюнок", [.. SecondChoices.Select(n => (n.ToString(), $"{n} с"))], DefaultSeconds.ToString()),
             new GameOption("topic", "Теми", PictionaryWords.Topics, PictionaryWords.AnyTopic, Multi: true),
@@ -61,6 +78,9 @@ public sealed class Pictionary : Game
     IReadOnlySet<string>? _topics;
     int _rounds = DefaultRounds;
     int _drawMs = DefaultSeconds * 1000;
+    bool _duo;
+    PictionaryStore? _store;
+    bool _started;
 
     // ---------- партія ----------
     int[] _order = [];
@@ -109,6 +129,44 @@ public sealed class Pictionary : Game
 
     sealed record FeedItem(int Id, int Seat, string Kind, string? Text);
 
+    // ---------- пропустити слово (п. 28) ----------
+    /// <summary>Хто вже брав три нові слова в цій партії (раз на партію).</summary>
+    readonly HashSet<int> _rerolled = [];
+
+    // ---------- слова компанії (п. 25) ----------
+    sealed record HomeWord(string Key, string Nick, string Word);
+    readonly List<HomeWord> _home = [];
+    readonly HashSet<string> _homeUsed = new(StringComparer.Ordinal);
+    bool[] _choiceHome = [];
+    HomeWord? _homeNow;
+
+    // ---------- удвох (п. 29) ----------
+    int _duoCount;
+    DateTimeOffset _duoUntil;
+    int _pairBest;
+    bool _pairRecord;
+
+    // ---------- реакції (п. 27) ----------
+    readonly int[] _reactRing = new int[32];
+    int _reactId, _reactSent, _frameReactFrom;
+    readonly int[] _turnReacts = new int[3];
+    readonly Dictionary<int, DateTimeOffset> _lastReact = [];
+    readonly Dictionary<string, DateTimeOffset> _fanReact = new(StringComparer.Ordinal);
+
+    // ---------- галерея, ❤ і альбом (п. 26) ----------
+    sealed record Art(int T, int Seat, string Nick, string Word, bool Home, string Z, int[] Re);
+    readonly List<Art> _art = [];
+    readonly Dictionary<int, int> _votes = [];
+    int[] _hearts = [];
+    int[] _artists = [];
+    readonly HashSet<string> _roster = new(StringComparer.Ordinal);
+    readonly HashSet<int> _pinned = [];
+    readonly Dictionary<string, int> _pinsBy = new(StringComparer.Ordinal);
+
+    // ---------- компактний малюнок (п. 32) ----------
+    string _packed = "";
+    int _packedVer = -1, _packedN = -1;
+
     // =========================================================================================
     // Налаштування і старт
     // =========================================================================================
@@ -119,6 +177,8 @@ public sealed class Pictionary : Game
         if (options.TryGetValue("rounds", out var r) && int.TryParse(r, out var rn) && RoundChoices.Contains(rn)) _rounds = rn;
         if (options.TryGetValue("seconds", out var s) && int.TryParse(s, out var sn) && SecondChoices.Contains(sn)) _drawMs = sn * 1000;
         if (options.TryGetValue("topic", out var t)) _topics = PictionaryWords.ParseTopics(t);
+        _duo = options.TryGetValue("mode", out var m) && m == Duo;
+        _store = Ctx.Services.GetService<PictionaryStore>();
         if (_words.Count == 0) throw new GameError("Нема словника, піктіонарі відпочиває");
     }
 
@@ -132,10 +192,38 @@ public sealed class Pictionary : Game
         _lastSync.Clear();
         _feed.Clear();
         _result = null;
+        _started = true;
+        _rerolled.Clear();
+        _lastReact.Clear();
+        _fanReact.Clear();
+        _art.Clear();
+        _votes.Clear();
+        _hearts = [];
+        _artists = [];
+        _pinned.Clear();
+        _pinsBy.Clear();
         _order = [.. Enumerable.Range(0, Seats).Where(Ctx.Seated)];
-        _turns = _order.Length * _rounds;
+        _roster.Clear();
+        foreach (var s in _order) _roster.Add(Auth.NickKey(Ctx.NickOf(s)));
+        _turns = _duo ? int.MaxValue : _order.Length * _rounds;
+        _duoCount = 0;
+        _pairRecord = false;
+        _pairBest = _duo && _store is not null ? _store.Pair(PictionaryStore.PairKey(_order.Select(NickOrEmpty)))?.Best ?? 0 : 0;
+        _duoUntil = Now.AddMilliseconds(DuoMs);
         _turn = -1;
         NextTurn();
+    }
+
+    string NickOrEmpty(int seat) => Ctx.NickOf(seat) ?? "";
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart()
+    {
+        if (!_duo) return null;
+        var n = 0;
+        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s)) n++;
+        return n == 2 ? null : "«Скільки встигнемо» — рівно на двох: хай зайві стануть глядачами або обери режим «Компанією»";
     }
 
     IEnumerable<int> Present() => Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) && !_left.Contains(s));
@@ -169,6 +257,11 @@ public sealed class Pictionary : Game
             "undo" => Undo(seat),
             "clear" => Clear(seat),
             "sync" => Sync(seat),
+            "reroll" => Reroll(seat),
+            "react" => React(seat, payload),
+            "vote" => VoteFor(seat, payload),
+            "home" => AddHome(seat, payload),
+            "unhome" => RemoveHome(seat, payload),
             _ => ActResult.Fail("Тут так не ходять"),
         };
     }
@@ -179,9 +272,202 @@ public sealed class Pictionary : Game
         if (seat != _drawer) return ActResult.Fail("Слово обирає художник");
         var i = Int(payload, "i", -1);
         if (i < 0 || i >= _choices.Length) return ActResult.Fail("Нема такого слова");
-        BeginDraw(_choices[i]);
+        BeginDraw(i);
         return ActResult.Done;
     }
+
+    /// <summary>
+    /// «Пропустити слово» (п. 28): раз за партію художник бере три нові слова замість трьох непосильних. Годинник
+    /// вибору не стоїть. Удвох — інакше: пропустити слово посеред малювання можна скільки завгодно, бо час і так спільний.
+    /// </summary>
+    ActResult Reroll(int seat)
+    {
+        if (seat != _drawer) return ActResult.Fail("Слова міняє лише художник");
+        if (_duo)
+        {
+            if (_phase != Draw) return ActResult.Fail("Зараз нема чого пропускати");
+            AddFeed(-1, "pass", _word);
+            _choices = Deal(1, []);
+            if (_choices.Length == 0) return ActResult.Fail("Слова скінчились 🙂");
+            WipeCanvas();
+            _guessed.Clear();
+            BeginDraw(0);
+            return ActResult.Done;
+        }
+        if (_phase != Pick) return ActResult.Fail("Слово вже обрано");
+        if (!_rerolled.Add(seat)) return ActResult.Fail("Нові слова — лише раз за партію");
+        var was = _choices;
+        for (var k = 0; k < was.Length; k++)
+            if (k >= _choiceHome.Length || !_choiceHome[k]) _used.Add(PictionaryWords.Normalize(was[k]));
+        _choices = Deal(Choices, was);
+        _viewDirty = true;
+        return ActResult.Accept("Тримай три нові — годинник іде");
+    }
+
+    /// <summary>Три (удвох — одне) слова на вибір; якщо є свіже слово компанії не від художника — одне з них 🏠.</summary>
+    string[] Deal(int count, string[] skip)
+    {
+        var picked = _words.Pick(Ctx.Rng, _topics, _used, count);
+        if (picked.Length == 0) picked = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, count);
+        _choiceHome = new bool[picked.Length];
+        if (picked.Length > 0 && HomeFor(_drawer, skip) is { } hw)
+        {
+            var i = Ctx.Rng.Next(picked.Length);
+            picked[i] = hw.Word;
+            _choiceHome[i] = true;
+        }
+        return picked;
+    }
+
+    HomeWord? HomeFor(int drawer, string[] skip)
+    {
+        if (_home.Count == 0) return null;
+        var key = Auth.NickKey(Ctx.NickOf(drawer));
+        var fit = _home.Where(h => h.Key != key && !_homeUsed.Contains(PictionaryWords.Normalize(h.Word)) && !skip.Contains(h.Word)).ToList();
+        return fit.Count == 0 ? null : fit[Ctx.Rng.Next(fit.Count)];
+    }
+
+    // ---------------------------------------------------------------- слова компанії (п. 25)
+
+    /// <summary>Слово компанії: у лобі кожен докидає до трьох своїх — їх малюватимуть інші, не автор.</summary>
+    ActResult AddHome(int seat, JsonElement payload)
+    {
+        if (_started) return ActResult.Fail("Свої слова докидають, поки стіл збирається");
+        var word = CleanHome(Str(payload, "text"));
+        if (word is null) return ActResult.Fail("Слово з літер, 2–30 знаків: «кумів трактор» підійде");
+        var key = Auth.NickKey(Ctx.NickOf(seat));
+        if (_home.Count(h => h.Key == key) >= HomePerSeat) return ActResult.Fail("Три своїх слова — досить, дай іншим");
+        if (_home.Count >= HomeMax) return ActResult.Fail("Торба слів компанії вже повна");
+        var norm = PictionaryWords.Normalize(word);
+        if (_home.Any(h => PictionaryWords.Normalize(h.Word) == norm)) return ActResult.Fail("Таке слово вже в торбі");
+        _home.Add(new HomeWord(key, Ctx.NickOf(seat) ?? "", word));
+        return ActResult.Accept("🏠 Слово в торбі — малюватиме хтось інший");
+    }
+
+    ActResult RemoveHome(int seat, JsonElement payload)
+    {
+        if (_started) return ActResult.Fail("Партія вже йде — слова в грі");
+        var key = Auth.NickKey(Ctx.NickOf(seat));
+        var word = Str(payload, "text");
+        var i = _home.FindIndex(h => h.Key == key && h.Word == word);
+        if (i < 0) return ActResult.Fail("Нема такого твого слова");
+        _home.RemoveAt(i);
+        return ActResult.Done;
+    }
+
+    /// <summary>Літери (і цифри), пробіли, дефіс, апостроф; щонайменше дві літери. null — не годиться.</summary>
+    public static string? CleanHome(string? raw)
+    {
+        var s = string.Join(' ', (raw ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)).Replace('’', '\'').Replace('ʼ', '\'');
+        if (s.Length is < 2 or > HomeMaxLength) return null;
+        var letters = 0;
+        foreach (var ch in s)
+        {
+            if (char.IsLetter(ch)) letters++;
+            else if (!char.IsDigit(ch) && ch is not (' ' or '-' or '\'')) return null;
+        }
+        return letters >= 2 ? s : null;
+    }
+
+    // ---------------------------------------------------------------- реакції (п. 27)
+
+    /// <summary>😂🔥🤯 над полотном: хто вже вгадав (художник — ні), а на «слово було» — будь-хто за столом.</summary>
+    ActResult React(int seat, JsonElement payload)
+    {
+        var e = Int(payload, "e", -1);
+        if (e < 0 || e >= Reactions.Length) return ActResult.Fail("Нема такої реакції");
+        if (_phase is not (Draw or Reveal)) return ActResult.Fail("Зараз нема на що реагувати");
+        if (_phase == Draw && (seat == _drawer || !_guessed.Contains(seat))) return ActResult.Fail("Спершу вгадай 🙂");
+        var now = Now;
+        if (_lastReact.TryGetValue(seat, out var last) && (now - last).TotalMilliseconds < ReactEveryMs) return ActResult.Done;
+        _lastReact[seat] = now;
+        AddReact(e);
+        return ActResult.Done;
+    }
+
+    /// <summary>Реакція глядача (HTTP, <see cref="PictionarySetup"/>): ті самі фази, своя квота на нік.</summary>
+    public ActResult FanReact(string nickKey, int e)
+    {
+        if (e < 0 || e >= Reactions.Length) return ActResult.Fail("Нема такої реакції");
+        if (_phase is not (Draw or Reveal)) return ActResult.Fail("Зараз нема на що реагувати");
+        var now = Now;
+        if (_fanReact.TryGetValue(nickKey, out var last) && (now - last).TotalMilliseconds < ReactEveryMs) return ActResult.Done;
+        if (_fanReact.Count > 256) _fanReact.Clear();
+        _fanReact[nickKey] = now;
+        AddReact(e);
+        return ActResult.Done;
+    }
+
+    void AddReact(int e)
+    {
+        _reactRing[_reactId % _reactRing.Length] = e;
+        _reactId++;
+        _turnReacts[e]++;
+        _frameDirty = true;
+    }
+
+    // ---------------------------------------------------------------- галерея й ❤ (п. 26)
+
+    /// <summary>❤ найкращому чужому малюнку партії; передумав — голос переїжджає.</summary>
+    ActResult VoteFor(int seat, JsonElement payload)
+    {
+        if (_phase != Vote) return ActResult.Fail("Голосують після останнього малюнка");
+        if (_left.Contains(seat)) return ActResult.Fail("Ти вже не за столом");
+        var t = Int(payload, "t", -1);
+        var art = _art.Find(a => a.T == t);
+        if (art is null) return ActResult.Fail("Нема такого малюнка");
+        if (art.Seat == seat) return ActResult.Fail("За свій не можна — вибери чужий шедевр 🙂");
+        _votes[seat] = t;
+        _viewDirty = true;
+        if (AllVoted()) Over();
+        return ActResult.Done;
+    }
+
+    bool CanVote(int s)
+    {
+        foreach (var a in _art) if (a.Seat != s) return true;
+        return false;
+    }
+
+    bool AllVoted()
+    {
+        for (var s = 0; s < Seats; s++)
+            if (Ctx.Seated(s) && !_left.Contains(s) && CanVote(s) && !_votes.ContainsKey(s)) return false;
+        return true;
+    }
+
+    void StartVote()
+    {
+        var voters = 0;
+        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s) && !_left.Contains(s) && CanVote(s)) voters++;
+        if (_duo || _art.Count < 2 || voters < 2 || PresentCount() < 2) { Over(); return; }
+        _phase = Vote;
+        _phaseStart = Now;
+        _until = _phaseStart.AddMilliseconds(VoteMs);
+        _votes.Clear();
+        _frameDirty = _viewDirty = true;
+    }
+
+    /// <summary>Малюнок партії для публічного альбому (HTTP): лише після партії, лише тим, хто грав, до трьох на людину.</summary>
+    public (PictionaryArt? Art, string? Error) Pin(string nick, int t)
+    {
+        var key = Auth.NickKey(nick);
+        if (_phase != Done) return (null, "Закидати в альбом можна після партії");
+        if (!_roster.Contains(key)) return (null, "Закидають ті, хто грав");
+        var i = _art.FindIndex(a => a.T == t);
+        if (i < 0) return (null, "Нема такого малюнка");
+        if (_pinned.Contains(t)) return (null, "Цей уже в альбомі 📌");
+        if (_pinsBy.TryGetValue(key, out var n) && n >= PinsPerNick) return (null, $"Ти вже закинув {PinsPerNick} — хай інші теж оберуть");
+        if (_art[i].Z.Length > PictionaryStore.MaxArtChars) return (null, "Цей малюнок завеликий для альбому");
+        _pinned.Add(t);
+        _pinsBy[key] = n + 1;
+        var a = _art[i];
+        var hearts = i < _hearts.Length ? _hearts[i] : 0;
+        return (new PictionaryArt(0, a.Word, a.Nick, nick, hearts, a.Home, Now, a.Z), null);
+    }
+
+    /// <summary>Малюнок ходу <paramref name="t"/> (штрихами) — для галереї тих, хто цей хід не застав.</summary>
+    public string? ArtZ(int t) => _art.Find(a => a.T == t)?.Z;
 
     ActResult Guess(int seat, JsonElement payload)
     {
@@ -201,12 +487,23 @@ public sealed class Pictionary : Game
 
         if (Matches(raw, _word))
         {
-            var left = Math.Max(0, (_until - now).TotalMilliseconds);
-            var points = MinGuessPoints + (int)Math.Round((MaxGuessPoints - MinGuessPoints) * left / _drawMs);
-            if (_guessed.Count == 0) points += FirstBonus;
+            int points;
+            if (_duo)
+            {
+                // удвох рахунок спільний: скільки слів угадали разом
+                points = 1;
+                _duoCount++;
+                foreach (var s in _order) { _scores[s] = _duoCount; _gained[s] = 1; }
+            }
+            else
+            {
+                var left = Math.Max(0, (_until - now).TotalMilliseconds);
+                points = MinGuessPoints + (int)Math.Round((MaxGuessPoints - MinGuessPoints) * left / _drawMs);
+                if (_guessed.Count == 0) points += FirstBonus;
+                _scores[seat] += points;
+                _gained[seat] += points;
+            }
             _guessed.Add(seat);
-            _scores[seat] += points;
-            _gained[seat] += points;
             AddFeed(seat, "ok", null);
             _viewDirty = true;
             if (!Guessers().Any(s => !_guessed.Contains(s))) EndTurn();
@@ -341,10 +638,19 @@ public sealed class Pictionary : Game
         {
             Over();
         }
+        else if (_duo && _phase is Draw or Reveal && now >= _duoUntil)
+        {
+            if (_phase == Draw) EndTurn();
+            Over();
+        }
         else if (_phase == Pick)
         {
             if (_left.Contains(_drawer) || !Ctx.Seated(_drawer)) EndTurn();
-            else if (now >= _until) BeginDraw(_choices[Ctx.Rng.Next(_choices.Length)]);
+            else if (now >= _until) BeginDraw(Ctx.Rng.Next(_choices.Length));
+        }
+        else if (_phase == Vote)
+        {
+            if (now >= _until || AllVoted()) Over();
         }
         else if (_phase == Draw)
         {
@@ -362,6 +668,8 @@ public sealed class Pictionary : Game
             _sent = _sketch.Count;
             _frameFeedFrom = _feedSent;
             _feedSent = _feedId;
+            _frameReactFrom = _reactSent;
+            _reactSent = _reactId;
         }
         var result = new TickResult(_frameDirty, _viewDirty);
         _frameDirty = _viewDirty = false;
@@ -390,7 +698,7 @@ public sealed class Pictionary : Game
     void PlanHints()
     {
         _letters = [.. Enumerable.Range(0, _word.Length).Where(i => char.IsLetter(_word[i]))];
-        _hintsAllowed = _letters.Length < 5 ? 0 : Math.Min(3, _letters.Length / 3);
+        _hintsAllowed = _duo || _letters.Length < 5 ? 0 : Math.Min(3, _letters.Length / 3);
         NextHintAt();
     }
 
@@ -398,13 +706,17 @@ public sealed class Pictionary : Game
         ? _phaseStart.AddMilliseconds(_drawMs * HintMarks[_hinted.Count])
         : DateTimeOffset.MaxValue;
 
-    void BeginDraw(string word)
+    void BeginDraw(int choice)
     {
+        var word = _choices[choice];
         _word = word;
-        _used.Add(PictionaryWords.Normalize(word));
+        _homeNow = choice < _choiceHome.Length && _choiceHome[choice] ? _home.Find(h => h.Word == word) : null;
+        if (_homeNow is not null) _homeUsed.Add(PictionaryWords.Normalize(word));
+        else _used.Add(PictionaryWords.Normalize(word));
+        _hinted.Clear();
         _phase = Draw;
         _phaseStart = Now;
-        _until = _phaseStart.AddMilliseconds(_drawMs);
+        _until = _duo ? _duoUntil : _phaseStart.AddMilliseconds(_drawMs);
         _mask = BuildMask();
         PlanHints();
         _frameDirty = _viewDirty = true;
@@ -414,7 +726,7 @@ public sealed class Pictionary : Game
     void EndTurn()
     {
         var possible = Math.Max(1, _order.Count(s => s != _drawer && Ctx.Seated(s) && !_left.Contains(s)));
-        if (_guessed.Count > 0 && Ctx.Seated(_drawer) && !_left.Contains(_drawer))
+        if (!_duo && _guessed.Count > 0 && Ctx.Seated(_drawer) && !_left.Contains(_drawer))
         {
             // половина середнього: хороший малюнок вигідний, але вгадувати все одно вигідніше
             var share = _guessed.Sum(s => _gained[s]) / (2 * possible);
@@ -423,29 +735,40 @@ public sealed class Pictionary : Game
         }
         if (_word.Length > 0) AddFeed(-1, "word", _word);
         else AddFeed(_drawer, "skip", null);
+        // малюнок ходу — у галерею наприкінці й на «📌 в альбом» (штрихами, п. 26/32)
+        if (_word.Length > 0 && _sketch.Count > 0)
+            _art.Add(new Art(_turn + 1, _drawer, NickOrEmpty(_drawer), _word, _homeNow is not null, PackedAll(), (int[])_turnReacts.Clone()));
         _phase = Reveal;
         _phaseStart = Now;
-        _until = _phaseStart.AddMilliseconds(RevealMs);
+        _until = _phaseStart.AddMilliseconds(_duo ? DuoRevealMs : RevealMs);
         _frameDirty = _viewDirty = true;
     }
 
     void NextTurn()
     {
+        if (_duo && Now >= _duoUntil) { Over(); return; }
         _turn++;
         while (_turn < _turns && !Present().Contains(_order[_turn % _order.Length])) _turn++;
-        if (_turn >= _turns) { Over(); return; }
+        if (_turn >= _turns) { StartVote(); return; }
 
         _drawer = _order[_turn % _order.Length];
-        _choices = _words.Pick(Ctx.Rng, _topics, _used, Choices);
-        if (_choices.Length == 0) _choices = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, Choices);
+        _choices = Deal(_duo ? 1 : Choices, []);
         if (_choices.Length == 0) { Over(); return; }
         _word = "";
         _mask = "";
+        _homeNow = null;
         _hinted.Clear();
         _nextHint = DateTimeOffset.MaxValue;
         _guessed.Clear();
         Array.Clear(_gained);
+        Array.Clear(_turnReacts);
         WipeCanvas();
+        if (_duo)
+        {
+            // удвох без вибору: слово одразу, малюєте по черзі, годинник спільний
+            BeginDraw(0);
+            return;
+        }
         _phase = Pick;
         _phaseStart = Now;
         _until = _phaseStart.AddMilliseconds(PickMs);
@@ -458,12 +781,52 @@ public sealed class Pictionary : Game
         _phase = Done;
         _frameDirty = _viewDirty = true;
         var seats = Present().ToArray();
+        if (_duo) { OverDuo(seats); return; }
         var best = seats.Length == 0 ? 0 : seats.Max(s => _scores[s]);
         int[] winners = best > 0 ? [.. seats.Where(s => _scores[s] == best)] : [];
         foreach (var s in seats) Ctx.Score(s, _scores[s]);
+        var artist = CountHearts();
         _result = new { winners, scores = (int[])_scores.Clone() };
-        Ctx.Finish(winners, Told(seats, winners), seats.ToDictionary(s => s, s => (long)_scores[s]));
+        Ctx.Finish(winners, Told(seats, winners) + artist, seats.ToDictionary(s => s, s => (long)_scores[s]));
     }
+
+    /// <summary>❤ галереї → «Митець партії»: хто зібрав найбільше (нічия — усі), черепки й рядок у Журнал.</summary>
+    string CountHearts()
+    {
+        _hearts = new int[_art.Count];
+        foreach (var t in _votes.Values)
+        {
+            var i = _art.FindIndex(a => a.T == t);
+            if (i >= 0) _hearts[i]++;
+        }
+        var max = _hearts.Length == 0 ? 0 : _hearts.Max();
+        if (max == 0) { _artists = []; return ""; }
+        _artists = [.. Enumerable.Range(0, _art.Count).Where(i => _hearts[i] == max).Select(i => _art[i].Seat).Distinct()];
+        foreach (var s in _artists)
+            if (Ctx.Seated(s) && !_left.Contains(s)) Ctx.Award(s, ArtistShards, "🎨 Митець партії в піктіонарі");
+        return $" · 🎨 Митець партії — {string.Join(" і ", _artists.Select(NickOrEmpty))} ({max} ❤)";
+    }
+
+    /// <summary>Кінець «Скільки встигнемо»: спільний рахунок, рекорд пари — якщо обоє дограли.</summary>
+    void OverDuo(int[] seats)
+    {
+        var both = seats.Length == 2;
+        if (both && _store is not null) _pairRecord = _store.RecordPair([.. seats.Select(NickOrEmpty)], _duoCount, Now);
+        foreach (var s in seats) Ctx.Score(s, _duoCount);
+        int[] winners = both && _duoCount > 0 ? seats : [];
+        _result = new { winners, scores = (int[])_scores.Clone(), duo = _duoCount, best = _pairBest, record = _pairRecord };
+        var names = string.Join(" і ", _order.Select(NickOrEmpty));
+        var tail = _pairRecord ? " — рекорд пари!" : _pairBest > 0 ? $" (рекорд пари — {_pairBest})" : "";
+        Ctx.Finish(winners, $"{Info.Title} удвох: {names} встигли {_duoCount} {WordsOf(_duoCount)} за три хвилини{tail}",
+            seats.ToDictionary(s => s, s => (long)_duoCount));
+    }
+
+    static string WordsOf(int n) => (n % 10, n % 100) switch
+    {
+        (1, not 11) => "слово",
+        (2 or 3 or 4, not (12 or 13 or 14)) => "слова",
+        _ => "слів",
+    };
 
     string Told(int[] seats, int[] winners)
     {
@@ -504,7 +867,7 @@ public sealed class Pictionary : Game
     }
 
     bool Knows(int? seat) =>
-        _phase is Reveal or Done || seat is { } s && (s == _drawer || _guessed.Contains(s));
+        _phase is Reveal or Vote or Done || seat is { } s && (s == _drawer || _guessed.Contains(s));
 
     object[] Feed(int take) => [.. _feed.TakeLast(take).Select(f => new { id = f.Id, seat = f.Seat, kind = f.Kind, text = f.Text })];
 
@@ -521,15 +884,52 @@ public sealed class Pictionary : Game
         word = Knows(seat) && _word.Length > 0 ? _word : null,
         mask = Mask(),
         until = _until,
-        totalMs = _phase switch { Pick => PickMs, Draw => _drawMs, Reveal => RevealMs, _ => 0 },
+        totalMs = _phase switch { Pick => PickMs, Draw => _duo ? DuoMs : _drawMs, Reveal => _duo ? DuoRevealMs : RevealMs, Vote => VoteMs, _ => 0 },
         scores = (int[])_scores.Clone(),
         gained = (int[])_gained.Clone(),
         guessed = _guessed.ToArray(),
         left = _left.Order().ToArray(),
-        drawing = new { ver = _ver, n = _sketch.Count, ops = _sketch.Ops() },
+        drawing = new { ver = _ver, n = _sketch.Count, z = PackedAll() },
         feed = Feed(FeedKeep),
         result = _result,
+        mode = _duo ? Duo : Party,
+        reroll = seat is { } me && me == _drawer && (_duo ? _phase == Draw : _phase == Pick && !_rerolled.Contains(me)),
+        choicesHome = _phase == Pick && seat == _drawer ? (bool[])_choiceHome.Clone() : null,
+        homeBy = Knows(seat) && _homeNow is not null && _word.Length > 0 ? _homeNow.Nick : null,
+        home = new { n = _home.Count, mine = MyHome(seat) },
+        duo = _duo ? new { count = _duoCount, until = _duoUntil, totalMs = DuoMs, best = _pairBest, record = _pairRecord } : null,
+        reacts = (int[])_turnReacts.Clone(),
+        gallery = _phase is Vote or Done && _art.Count > 0 ? Gallery() : null,
+        myVote = seat is { } vs && _votes.TryGetValue(vs, out var vt) ? vt : (int?)null,
+        votes = _votes.Count,
+        artists = _phase == Done ? (int[])_artists.Clone() : [],
+        pinned = _pinned.Order().ToArray(),
     };
+
+    string[] MyHome(int? seat)
+    {
+        if (seat is not { } s || Ctx.NickOf(s) is not { } nick) return [];
+        var key = Auth.NickKey(nick);
+        return [.. _home.Where(h => h.Key == key).Select(h => h.Word)];
+    }
+
+    object[] Gallery() => [.. _art.Select((a, i) => new
+    {
+        t = a.T, seat = a.Seat, nick = a.Nick, word = a.Word, home = a.Home, re = a.Re,
+        hearts = _phase == Done && i < _hearts.Length ? _hearts[i] : (int?)null,
+    })];
+
+    /// <summary>Увесь малюнок рядком — один раз на версію, а не на кожне місце (десять видів — одне пакування).</summary>
+    string PackedAll()
+    {
+        if (_packedVer != _ver || _packedN != _sketch.Count)
+        {
+            _packed = SketchWire.Pack(_sketch.Ops());
+            _packedVer = _ver;
+            _packedN = _sketch.Count;
+        }
+        return _packed;
+    }
 
     /// <summary>Публічний кадр: без слова. Дописані операції від <see cref="_frameFrom"/>, маска, таймер, стрічка.</summary>
     public override object? Frame() => new
@@ -539,12 +939,23 @@ public sealed class Pictionary : Game
         ver = _ver,
         from = _frameFrom,
         n = _sketch.Count,
-        ops = _sketch.Ops(_frameFrom),
+        z = SketchWire.Pack(_sketch.Ops(_frameFrom)),
         mask = Mask(),
         until = _until,
         guessed = _guessed.ToArray(),
         feed = _feedId > _frameFeedFrom ? Feed(Math.Min(FeedInFrame, _feedId - _frameFeedFrom)) : null,
+        re = _reactId > _frameReactFrom ? NewReacts() : null,
+        dc = _duo ? _duoCount : (int?)null,
     };
+
+    /// <summary>Реакції, що з'явились після минулого кадру (не більше, ніж вміщає кільце).</summary>
+    int[] NewReacts()
+    {
+        var n = Math.Min(_reactRing.Length, _reactId - _frameReactFrom);
+        var list = new int[n];
+        for (var k = 0; k < n; k++) list[k] = _reactRing[(_reactId - n + k) % _reactRing.Length];
+        return list;
+    }
 
     // =========================================================================================
     // Дрібниці

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Альбом Піктіонарі — Глечики</title>
+<meta name="description" content="Найкращі малюнки з партій у Піктіонарі на Глечиках: слово, художник, серця.">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="album.css">
+</head>
+<body class="pa-body">
+<div class="pa-wrap">
+  <div class="pa-head">
+    <div>
+      <h1>📖 Альбом Піктіонарі</h1>
+      <p class="pa-sub">Найкращі малюнки з наших партій — гравці закидають їх сюди 📌 після гри. Слово, художник і серця ❤ від столу.</p>
+    </div>
+    <a class="pa-back" href="/#games">← до ігор</a>
+  </div>
+  <p class="pa-empty" hidden>Альбом ще порожній. Зіграйте партію в Піктіонарі — і після гри тисніть 📌 під найкращими малюнками.</p>
+  <section class="pa-grid" aria-live="polite"></section>
+  <div class="pa-more"><button type="button" hidden>Показати ще</button></div>
+</div>
+<dialog class="pa-big">
+  <canvas width="1000" height="750"></canvas>
+  <div class="pa-bigcap"></div>
+  <form method="dialog"><button>Закрити</button></form>
+</dialog>
+<script>
+  // Модуль гри знає палітру, заливку й дріт (web/games/pictionary.js, art) — беремо звідти, щоб малюнок був той самий.
+  window.HGames = { register(m) { window.PCART = m.art; } };
+</script>
+<script src="/games/pictionary.js"></script>
+<script src="album.js"></script>
+</body>
+</html>

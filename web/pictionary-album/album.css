@@ -1,0 +1,30 @@
+/* Публічний Альбом Піктіонарі. Кольори — змінні сайту (/static/style.css); папір малюнка завжди білий. */
+.pa-body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+.pa-wrap { display: block; width: auto; max-width: 1200px; margin: 0 auto; padding: 16px 16px 40px; box-sizing: border-box; }
+.pa-head { position: static; min-height: 0; border: 0; background: none; padding: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.pa-head h1 { margin: 0 0 4px; font-size: 1.6em; }
+.pa-sub { margin: 0; color: var(--muted); max-width: 640px; }
+.pa-back { color: var(--accent); white-space: nowrap; padding: 8px 0; }
+.pa-empty { color: var(--muted); padding: 30px 0; text-align: center; }
+.pa-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.pa-card { position: relative; margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.pa-card canvas { width: 100%; aspect-ratio: 4 / 3; background: #fff; border-radius: 8px; display: block; cursor: zoom-in; }
+.pa-card figcaption { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pa-card figcaption b { overflow-wrap: anywhere; font-size: 1.05em; }
+.pa-meta { font-size: .9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-dim { color: var(--muted); font-size: .82em; }
+.pa-del { position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+.pa-more { display: flex; justify-content: center; margin-top: 18px; }
+.pa-more button { min-height: 44px; padding: 0 22px; border-radius: 12px; cursor: pointer; }
+.pa-more button[hidden] { display: none; }
+.pa-big { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text); padding: 12px; max-width: min(96vw, 1040px); }
+.pa-big::backdrop { background: rgba(0, 0, 0, .6); }
+.pa-big canvas { width: min(92vw, 1000px, calc((90vh - 110px) * 4 / 3)); aspect-ratio: 4 / 3; background: #fff; border-radius: 8px; display: block; }
+.pa-bigcap { padding: 8px 2px; }
+.pa-big form { display: flex; justify-content: flex-end; }
+.pa-big form button { min-height: 44px; padding: 0 18px; border-radius: 10px; cursor: pointer; }
+@media (max-width: 520px) {
+  .pa-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pa-card { padding: 6px; }
+  .pa-head h1 { font-size: 1.3em; }
+}
