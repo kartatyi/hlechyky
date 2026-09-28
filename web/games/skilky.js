@@ -8,7 +8,7 @@
       reveal: null | { answer, years, say, rows: [{ seat, value, diff, points, accuracy, bonus, fast }] },
       scores: number[], result: null | { winners, scores } }
   points = accuracy (за точність) + bonus (найближчому) + fast (швидшому за однакової відстані).
-  Кадр (подія 'frame', раз на секунду, летить усій кімнаті — прихованого в ньому нема):
+  Кадр (подія 'frame', лише разом із новиною — чиєсь число чи зміна фази; летить усій кімнаті, прихованого нема):
     { round, of, phase, endsAt, answered, scores }
   Хід: Act('answer', { value }) — число або рядок («10 000», «2,54» сервер розбере сам).
 */
@@ -71,6 +71,41 @@
     return root._sk;
   }
 
+  /// innerHTML лише коли HTML справді інший. Порівнюємо з тим, що самі клали, а не з el.innerHTML: браузер
+  /// серіалізує по-своєму (апостроф з esc — «&#39;» проти «'»), і рівність не наставала ніколи — вузли
+  /// перебудовувались на кожен кадр, а анімації розкриття починались спочатку.
+  function setHtml(el, html) {
+    if (el._h === html) return;
+    el._h = html;
+    el.innerHTML = html;
+  }
+
+  /// Те саме читання числа, що й на сервері (Skilky.Text): пробіли геть, кома — крапка. null — не число.
+  function parseNum(raw) {
+    const clean = String(raw || '').replace(/\s+/g, '').replace(/,/g, '.');
+    if (!clean || !/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(clean)) return null;
+    const n = Number(clean);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /// Підказка під полем, поки людина набирає: «13800000000» на телефоні не прочитати, «= 13 800 000 000» —
+  /// одразу видно, чи не загубився нуль. Для малих чисел мовчить: «42» і так видно.
+  function paintPreview(root) {
+    const input = root.querySelector('.skin');
+    const box = root.querySelector('.skprev');
+    if (!input || !box) return;
+    const raw = (input.value || '').trim();
+    const n = raw ? parseNum(raw) : null;
+    // Уже надіслане число й так стоїть рядком нижче («Твоє число: …») — двічі не пишемо.
+    const sent = root._sk && root._sk.my;
+    const text = !raw || input.disabled || (n != null && sent != null && Math.abs(n - sent) < 1e-9) ? ''
+      : n == null ? 'Не схоже на число — лише цифри, пробіли й кома'
+      : Math.abs(n) >= 10000 || Math.abs(n - Math.round(n)) > 1e-9 ? '= ' + num(n)
+      : '';
+    if (box.textContent !== text) box.textContent = text;
+    box.classList.toggle('bad', !!raw && n == null);
+  }
+
   /// Кадр свіжіший за вид (він летить щосекунди), але вірити йому можна лише в межах того самого раунду
   /// й фази: після «Ще раз» ctx.frame ще секунду тримає останній кадр минулої партії — з чужим рахунком
   /// і зі старою розсадкою.
@@ -103,7 +138,7 @@
     const show = ctx.playing && (v.phase === 'ask' || v.phase === 'between');
     const html = show ? seats(ctx).map((i) => '<span class="skchip' + (done[i] ? ' on' : '') + '">'
       + (done[i] ? '✓ ' : '') + ctx.esc(ctx.nickOf(i)) + '</span>').join('') : '';
-    if (box.innerHTML !== html) box.innerHTML = html;
+    setHtml(box, html);
   }
 
   function paintScores(root, ctx) {
@@ -113,8 +148,10 @@
     const box = root.querySelector('.skscore');
     if (!box) return;
     const win = (v.result && v.result.winners) || [];
-    // Рахунок з'являється разом із партією: у лобі всі нулі нікому нічого не кажуть.
-    const html = !ctx.playing && !v.result ? '' : seats(ctx)
+    const list = seats(ctx);
+    // Рахунок з'являється, щойно в когось є очки: у лобі й до першого розкриття всі нулі нікому нічого не
+    // кажуть, а на телефоні дванадцять рядків нулів штовхали вниз усе інше.
+    const html = (!ctx.playing && !v.result) || (!v.result && !list.some((i) => sc[i])) ? '' : list
       .slice()
       .sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b)
       .map((i) => {
@@ -125,7 +162,7 @@
           + (shards > 0 ? '<i class="skshard" title="черепки за очки">🏺+' + shards + '</i>' : '')
           + '<b>' + (sc[i] || 0) + '</b></div>';
       }).join('');
-    if (box.innerHTML !== html) box.innerHTML = html;
+    setHtml(box, html);
   }
 
   /// «Рази» після числа: дробове — «2,5 раза», ціле — «3 рази», «5 разів».
@@ -201,13 +238,49 @@
     return d === 1 && h !== 11 ? one : d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many;
   }
 
+  const PLACE = ['перше', 'друге', 'третє', 'четверте', 'п’яте', 'шосте', 'сьоме', 'восьме', 'дев’яте', 'десяте', 'одинадцяте', 'дванадцяте'];
+  const pts = (n) => n + ' ' + plural(Math.abs(n), 'очко', 'очки', 'очок');
+  const shardsOf = (n) => Math.floor((n || 0) / POINTS_PER_SHARD);
+
+  /// Підсумок угорі картки, коли партію зіграно: хто виграв — першим рядком, нижче — твоє місце. Раніше тут
+  /// лишалась таблиця останнього розкриття, і її 🏆 («найближчий у цьому питанні») плутали з переможцем партії;
+  /// саме те питання й так є в «Як це було».
+  function podiumHtml(ctx, v) {
+    if (v.phase !== 'done' || !v.result) return '';
+    const sc = v.scores || [];
+    const list = seats(ctx);
+    if (!list.length) return '';
+    const bonus = (n) => (shardsOf(n) > 0 ? ' <span class="skshard">🏺+' + shardsOf(n) + '</span>' : '');
+    if (list.length === 1) {
+      const i = list[0], n = sc[i] || 0;
+      return '<div class="skpodt">🎯 ' + (i === ctx.seat ? 'Твій результат' : ctx.esc(ctx.nickOf(i))) + ': <b>' + pts(n) + '</b>' + bonus(n) + '</div>';
+    }
+    const win = v.result.winners || [];
+    if (!win.length) return '<div class="skpodt">🤷 Ніхто нічого не вгадав — нічия</div>';
+    let html = '<div class="skpodt">🏆 ' + win.map((i) => '<b>' + ctx.esc(ctx.nickOf(i) || ctx.seatName(i)) + '</b>').join(' і ')
+      + ' — ' + pts(sc[win[0]] || 0) + '</div>';
+    if (ctx.mine && list.includes(ctx.seat)) {
+      const my = sc[ctx.seat] || 0;
+      const place = 1 + list.filter((i) => (sc[i] || 0) > my).length;
+      const where = win.includes(ctx.seat)
+        ? (win.length > 1 ? 'Ти серед переможців!' : 'Це ти — перше місце з ' + list.length + '!')
+        : 'Ти — ' + (PLACE[place - 1] || place + '-е') + ' місце з ' + list.length + ' · ' + pts(my);
+      html += '<div class="skpods muted">' + where + bonus(my) + '</div>';
+    }
+    return html;
+  }
+
   function answer(root, ctx) {
     const input = root.querySelector('.skin');
     if (!input) return;
     const raw = (input.value || '').trim();
     if (!raw) { ctx.toast('Ану, напиши число', 'err'); input.focus(); return; }
     // Шлемо рядком: «10 000» і «2,54» сервер прочитає сам, а число з input.value і так було б рядком.
-    ctx.act('answer', { value: raw });
+    Promise.resolve(ctx.act('answer', { value: raw })).then((r) => {
+      // На телефоні після відповіді клавіатура ховається: вона закривала пів екрана — і галочки, хто вже
+      // відповів, і розкриття. Передумав — тапни в поле ще раз.
+      if (r && r.ok && HGames.ui.coarse() && document.activeElement === input) input.blur();
+    }, () => {});
   }
 
   function paint(root, ctx) {
@@ -217,8 +290,13 @@
     const mine = ctx.mine && ctx.playing;
 
     const no = root.querySelector('.skno');
-    const noText = v.of ? 'Питання ' + v.round + ' з ' + v.of : '';
+    const noText = !v.of ? '' : phase === 'done' ? 'Зіграно ' + v.of + ' ' + plural(v.of, 'питання', 'питання', 'питань')
+      : 'Питання ' + v.round + ' з ' + v.of;
     if (no.textContent !== noText) no.textContent = noText;
+    const pod = root.querySelector('.skpod');
+    const podHtml = podiumHtml(ctx, v);
+    setHtml(pod, podHtml);
+    pod.hidden = !podHtml;
 
     // Дуга живе лише поки партія йде: у лобі та після кінця відліку нема.
     const top = root.querySelector('.sktop');
@@ -237,6 +315,8 @@
       : (v.question || '');
     if (q.textContent !== qText) q.textContent = qText;
     q.classList.toggle('wait', phase === 'between');
+    // Партію зіграно — замість останнього запитання підсумок угорі (воно саме є в «Як це було»).
+    q.hidden = !!podHtml;
 
     // Шкала очок — поки чекаємо: у лобі й у паузі перед запитанням. Під час відповіді вона лише заважає.
     const rules = root.querySelector('.skrules');
@@ -246,6 +326,7 @@
     const ask = root.querySelector('.skask');
     const input = root.querySelector('.skin');
     if (st.round !== v.round) { st.round = v.round; input.value = ''; }
+    st.my = phase === 'ask' ? v.my : null;
     const canAsk = mine && phase === 'ask';
     const opened = canAsk && ask.hidden;
     ask.hidden = !canAsk;
@@ -268,12 +349,13 @@
     if (my.textContent !== myText) my.textContent = myText;
 
     const rev = root.querySelector('.skrev');
-    const html = phase === 'reveal' || phase === 'done' ? revealHtml(ctx, v) : '';
-    if (rev.innerHTML !== html) rev.innerHTML = html;
+    const html = phase === 'reveal' || (phase === 'done' && !podHtml) ? revealHtml(ctx, v) : '';
+    setHtml(rev, html);
     const recap = root.querySelector('.skrecapbox');
     const recapText = phase === 'done' ? recapHtml(ctx, v) : '';
     // Порівнюємо з тим, що малювали, а не з innerHTML: інакше кожен кадр згортав би розгорнуте людиною.
-    if (recap.dataset.sig !== recapText) { recap.dataset.sig = recapText; recap.innerHTML = recapText; }
+    setHtml(recap, recapText);
+    paintPreview(root);
 
     paintWho(root, ctx);
     paintScores(root, ctx);
@@ -282,14 +364,12 @@
   HGames.register({
     id: 'skilky',
     news: {
-      v: '2026-09-24b',
-      title: 'Скільки?: підсумок партії',
+      v: '2026-09-28',
+      title: 'Скільки?: хто переміг — видно одразу',
       items: [
-        '🏺 Дядько Глек коментує раунд прямо на картці, під таблицею, — у загальні Балачки більше не пише',
-        '📜 Наприкінці — «Як це було»: усі запитання, правильні відповіді й хто влучив найближче',
-        '✨ Розкриття ожило: правильна відповідь падає на стіл, а числа випливають по черзі від найближчого',
-        '⌨ Щойно з’явилось запитання — курсор уже в полі, пиши число одразу',
-        '🔧 «72 роки» замість «72 років», «у 12 разів» замість «у 12,3 раза», а Дядько Глек більше не обіцяє очко втіхи, коли граєш сам',
+        '🏆 Наприкінці вгорі картки — переможець партії і твоє місце (а 🏆 «найближчий у питанні» більше не плутає)',
+        '🔢 Поки набираєш, під полем видно число з пробілами: «= 13 800 000 000» — нуль не загубиться',
+        '📱 На телефоні після відповіді клавіатура ховається, а рахунок з’являється, щойно в когось є очки',
       ],
     },
     icon: ICON,
@@ -302,11 +382,13 @@
       root.innerHTML = '<div class="skwrap">'
         + '<div class="skmain">'
         + '<div class="sktop"><span class="skno muted small"></span></div>'
+        + '<div class="skpod" hidden></div>'
         + '<div class="skq"></div>'
         + '<div class="skrules muted small" hidden>' + RULES + '</div>'
         + '<div class="skask" hidden><input class="skin" type="text" inputmode="decimal" autocomplete="off"'
         + ' placeholder="твоє число" aria-label="Твоє число"><span class="skunit muted small"></span>'
         + '<button type="button" class="primary skgo">Відповісти</button></div>'
+        + '<div class="skprev small" aria-live="polite"></div>'
         + '<div class="skmy muted small"></div>'
         + '<div class="skrev"></div>'
         + '<div class="skrecapbox"></div>'
@@ -320,6 +402,7 @@
         e.preventDefault();
         answer(root, ctx);
       });
+      root.querySelector('.skin').addEventListener('input', () => paintPreview(root));
       paint(root, ctx);
     },
 

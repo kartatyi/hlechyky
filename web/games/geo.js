@@ -626,6 +626,8 @@
   /// Чи є що рухати в наступному кадрі. Ні — rAF зупиняється, і картка не коштує нічого.
   function busy(st, now) {
     const ctx = st.ctx, v = V(ctx), phase = phaseOf(ctx);
+    // картка на складі (людина пішла в лобі посеред раунду) — малювати нікому; повернеться — розбудить ResizeObserver
+    if (!st.cv.offsetParent) return false;
     if (st.fly) return true;
     if (st.cur && (st.keys.l || st.keys.r || st.keys.u || st.keys.d)) return true;
     // після руху — ще кадр-другий, доки статичний шар не перемалюється начисто
@@ -662,7 +664,7 @@
     }
     moveCursor(st, dt, now);
     // схована вкладка — не малюємо (стан приймаємо далі; повернеться — домалюємо)
-    if (!document.hidden && st.cw) draw(st, now);
+    if (!document.hidden && st.cw && st.cv.offsetParent) draw(st, now);
     if (busy(st, now)) st.raf = requestAnimationFrame(() => loop(st));
     else st.lastT = 0;
   }
@@ -782,6 +784,7 @@
     const url = phase === 'lobby' ? null : v.photo || null;
     if (url && img.dataset.src !== url) {
       img.dataset.src = url;
+      st.imgOk = false;
       root.querySelector('.geoerr').hidden = true;
       img.src = url;
     }
@@ -789,10 +792,15 @@
     frame.classList.toggle('empty', !url);
     frame.classList.toggle('geoblur', phase === 'between');
     const curtain = root.querySelector('.geocurtain');
+    // Повільна мережа: фото на 570 КБ на 3G вантажиться ~3 с, а «Готуйсь…» триває 2 — раунд починався з
+    // порожньою темною рамкою, і людина не розуміла, чого чекати. Тепер так і пишемо.
+    const loading = !!url && !st.imgOk && root.querySelector('.geoerr').hidden;
     const ct = phase === 'between' ? 'Раунд ' + v.round + ' з ' + v.rounds
-      : !url ? '📷 Тут буде фото' : '';
+      : !url ? '📷 Тут буде фото'
+      : loading ? '📷 Фото вантажиться…' : '';
     if (curtain.textContent !== ct) curtain.textContent = ct;
     curtain.hidden = !ct;
+    curtain.classList.toggle('wait', loading && phase !== 'between');
     root.querySelector('.geofullbtn').hidden = !url || phase === 'between';
     if (st.full && (!url || phase === 'between')) closeFull(st);
     if (st.full && url) { const fi = st.full.querySelector('img'); if (fi.getAttribute('src') !== url) fi.src = url; }
@@ -1266,8 +1274,18 @@
       const img = root.querySelector('.geoimg');
       root.querySelector('.geogo').onclick = () => readyOrNext(st);
       root.querySelector('.geofullbtn').onclick = () => openFull(st);
-      img.addEventListener('error', () => { if (img.dataset.src) root.querySelector('.geoerr').hidden = false; });
-      img.addEventListener('load', () => { root.querySelector('.geoerr').hidden = true; });
+      // Фото раунду — найважливіше на сторінці: хай браузер тягне його поперед решти й розпаковує не в головному потоці.
+      img.fetchPriority = 'high';
+      img.decoding = 'async';
+      img.addEventListener('error', () => {
+        if (!img.dataset.src) return;
+        root.querySelector('.geoerr').hidden = false;
+        if (root._geo && root._geo.ctx) paintPhoto(root, root._geo.ctx);
+      });
+      img.addEventListener('load', () => {
+        root.querySelector('.geoerr').hidden = true;
+        if (root._geo) { root._geo.imgOk = true; if (root._geo.ctx) paintPhoto(root, root._geo.ctx); }
+      });
       img.addEventListener('click', () => openFull(st));
       root.querySelector('.geoerr button').onclick = () => { img.src = img.dataset.src + '#' + Date.now(); };
       root.querySelectorAll('.geozoom').forEach((z) => z.addEventListener('click', (e) => {
@@ -1287,7 +1305,8 @@
       document.addEventListener('keyup', st.keyup);
       st.onVis = () => { if (!document.hidden) { st.staticDirty = true; kick(st); } };
       document.addEventListener('visibilitychange', st.onVis);
-      st.ro = new ResizeObserver(() => resize(st));
+      // і при поверненні картки зі складу (display:none → видно): розмір той самий, але кадр треба домалювати
+      st.ro = new ResizeObserver(() => { resize(st); kick(st); });
       st.ro.observe(root.querySelector('.geomap'));
 
       loadMap().then((m) => {
@@ -1423,6 +1442,7 @@
 
   HGames.register(Object.assign({
     id: 'geo',
+    added: '2026-09-27',
     news: {
       v: '2026-09-27',
       title: 'Нова гра: Де це?',
@@ -1436,5 +1456,5 @@
     },
   }, common));
 
-  HGames.register(Object.assign({ id: 'geo-solo' }, common));
+  HGames.register(Object.assign({ id: 'geo-solo', added: '2026-09-27' }, common));
 })();

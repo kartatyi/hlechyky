@@ -20,6 +20,24 @@
   const ALPHABET = 'абвгґдеєжзиіїйклмнопрстуфхцчшщьюя';
   const CLS = { G: 'g', Y: 'y', B: 'b' };
 
+  /// Фізична клавіша → українська літера (ЙЦУКЕН). Потрібно, коли в системі ввімкнена латинка чи російська:
+  /// раніше «q» чи «ы» мовчки нічого не робили, і людина не розуміла, чому дошка не пише. Ґ — на клавіші «\»,
+  /// як у розширеній українській розкладці Windows.
+  const CODE_UA = {
+    KeyQ: 'й', KeyW: 'ц', KeyE: 'у', KeyR: 'к', KeyT: 'е', KeyY: 'н', KeyU: 'г', KeyI: 'ш', KeyO: 'щ', KeyP: 'з',
+    BracketLeft: 'х', BracketRight: 'ї', KeyA: 'ф', KeyS: 'і', KeyD: 'в', KeyF: 'а', KeyG: 'п', KeyH: 'р', KeyJ: 'о',
+    KeyK: 'л', KeyL: 'д', Semicolon: 'ж', Quote: 'є', Backslash: 'ґ', KeyZ: 'я', KeyX: 'ч', KeyC: 'с', KeyV: 'м',
+    KeyB: 'и', KeyN: 'т', KeyM: 'ь', Comma: 'б', Period: 'ю',
+  };
+
+  /// Літера з натиску: українська розкладка — як є, будь-яка інша — за місцем клавіші.
+  function letterOf(e) {
+    const ch = String(e.key || '').toLowerCase();
+    if (ch.length !== 1) return '';
+    if (ALPHABET.indexOf(ch) >= 0) return ch;
+    return CODE_UA[e.code] || '';
+  }
+
   /// «за 1 спробу», «за 3 спроби», «за 6 спроб» — інакше рядок статусу читається як телеграма.
   function tries(n) {
     const t = n % 100, o = n % 10;
@@ -146,12 +164,11 @@
       root.appendChild(el);
     }
     if (v.noWords) {
-      const html = '<div class="muted small">Словника на цьому сервері нема — сьогодні без слова.</div>';
-      if (el.innerHTML !== html) el.innerHTML = html;
+      setHtml(el, '<div class="muted small">Словника на цьому сервері нема — сьогодні без слова.</div>');
       return;
     }
     if (!over(v)) {
-      if (el.innerHTML !== '') el.innerHTML = '';
+      setHtml(el, '');
       return;
     }
     const race = raceInCatalog();
@@ -242,8 +259,8 @@
     // віддаємо рівно те, що сталось: на true каркас робить preventDefault, а він гасить і Enter
     // на сфокусованій кнопці картки
     if (e.key === 'Enter' || e.key === 'Backspace') return press(root, e.key);
-    const ch = String(e.key || '').toLowerCase();
-    if (ch.length !== 1 || ALPHABET.indexOf(ch) < 0) return false;
+    const ch = letterOf(e);
+    if (!ch) return false;
     return press(root, ch);
   }
 
@@ -279,12 +296,12 @@
     },
 
     news: {
-      v: '2026-09-24',
-      title: 'Глек-слово: тепер і наввипередки',
+      v: '2026-09-28',
+      title: 'Глек-слово: друкуй як зручно',
       items: [
-        '🏁 Нова гра в «Компанії» — «Глек-слово наввипередки»: одне слово на всіх, від двох до шести гравців',
-        '🟩 Суперників видно кольорами без літер, очки — за швидкість і за менше спроб',
-        '🫙 Слово дня лишається як було — одне на добу, серія не зламається',
+        '⌨ Можна друкувати й на англійській (чи російській) розкладці — літери самі стануть українськими, як на ЙЦУКЕН; ґ — на клавіші «\\»',
+        '📱 На невисокому телефоні дошка й клавіатура тепер влазять в екран разом — без прокрутки туди-сюди',
+        '🏁 А ще «Глек-слово наввипередки» в «Компанії» — одне слово на всіх, від двох до шести',
       ],
     },
 
@@ -375,14 +392,22 @@
     const el = part(host, 'wrrivals');
     const max = v.max || 6;
     const list = (v.players || []).filter((p) => p.seat !== ctx.seat);
-    const html = list.map((p) => '<div class="wrp' + (p.solved ? ' solved' : '') + (p.failed ? ' failed' : '')
-      + (p.gone ? ' gone' : '') + (st.flash[p.seat] ? ' flash' : '') + '" data-seat="' + p.seat + '">'
-      + mini(ctx, p, max)
-      + '<div class="wrpname"><b title="' + ctx.esc(p.nick || '') + '">' + ctx.esc(p.nick || '—') + '</b></div>'
-      + '<div class="wrptot" title="Спроби й очки за партію">' + badge(p, max) + ' · ' + points(p.total)
-      + (p.gained && v.phase !== 'play' ? ' <em>+' + p.gained + '</em>' : '') + '</div>'
-      + '</div>').join('');
-    setHtml(el, html);
+    // По картці на суперника: спроба одного перемальовує лише його дошку, а не всі п'ять (на шістьох це
+    // 2,1 мс на кожен вид проти ~0,5 — на телефоні вчетверо більше, а види летять на кожну чужу спробу).
+    const keep = new Set();
+    list.forEach((p, i) => {
+      let c = el.querySelector(':scope > [data-seat="' + p.seat + '"]');
+      if (!c) { c = document.createElement('div'); c.dataset.seat = p.seat; }
+      if (el.children[i] !== c) el.insertBefore(c, el.children[i] || null);
+      const cls = 'wrp' + (p.solved ? ' solved' : '') + (p.failed ? ' failed' : '') + (p.gone ? ' gone' : '') + (st.flash[p.seat] ? ' flash' : '');
+      if (c.className !== cls) c.className = cls;
+      setHtml(c, mini(ctx, p, max)
+        + '<div class="wrpname"><b title="' + ctx.esc(p.nick || '') + '">' + ctx.esc(p.nick || '—') + '</b></div>'
+        + '<div class="wrptot" title="Спроби й очки за партію">' + badge(p, max) + ' · ' + points(p.total)
+        + (p.gained && v.phase !== 'play' ? ' <em>+' + p.gained + '</em>' : '') + '</div>');
+      keep.add(c);
+    });
+    [...el.children].forEach((c) => { if (!keep.has(c)) c.remove(); });
   }
 
   /// Шапка: раунд, дуга часу й мої очки.
@@ -450,11 +475,13 @@
     // раунду) не перевертає нічого, як і в щоденному.
     // «Ще раз» знову починає з раунду 1 — тож ключ раунду включає й номер партії за столом
     const key = (ctx.room ? ctx.room.round : 0) + ':' + v.round;
+    let fresh = false;
     if (st.round !== key) {
       st.flipFrom = st.round == null ? rows.length : 0;
       if (st.round != null) st.draft = '';
       st.round = key;
       st.solvedSeen = {};
+      fresh = true;
     }
     // Хтось щойно вгадав — його дошка на мить спалахує: без літер це єдиний спосіб помітити, що суперник уже все.
     (v.players || []).forEach((p) => {
@@ -470,6 +497,9 @@
 
     const wrap = part(root, 'wr');
     wrap.classList.toggle('spect', !me);
+    // Партію зіграно — підсумкова таблиця піднімається під шапку (wordle.css): на 1280×800 вона ховалась
+    // під порожньою дошкою й клавіатурою, нижче згину.
+    wrap.classList.toggle('done', v.phase === 'done');
     if (!v.phase || v.phase === 'lobby') {
       // до старту — правила: без них новачок бачить порожню картку і не розуміє, у що сідає
       if (st.arc) { st.arc.stop(); st.arc = null; }
@@ -490,12 +520,38 @@
     const mine = part(main, 'wrme');
     if (me) {
       drawBoard(mine, ctx, st, rows, v.max || 6, !raceLocked(v));
-      HGames.ui.keyboardUa(mine, (k) => press(root, k), me.keys || {});
+      // Між раундами й після партії друкувати нікуди — клавіатура лише штовхала слово раунду й таблицю
+      // під нижній край (на телефоні — за екран).
+      HGames.ui.keyboardUa(mine, (k) => press(root, k), me.keys || {}).hidden = v.phase !== 'play';
       mine.hidden = false;
     } else {
       mine.hidden = true;
     }
     raceFoot(wrap, ctx, v);
+    if (fresh && me && v.phase === 'play') raceInView(wrap);
+  }
+
+  /// Новий раунд — моя дошка й клавіатура мають бути в полі зору. На телефоні з п'ятьма суперниками дошка
+  /// починалась нижче згину, і друкувати доводилось наосліп або прокручуючи туди-сюди. Раз на раунд і лише коли
+  /// низ клавіатури справді схований під нижніми вкладками: підкручуємо рівно настільки, щоб він виринув, але не
+  /// далі, ніж шапка раунду (з таймером) доїде до шапки сайту.
+  function raceInView(wrap) {
+    requestAnimationFrame(() => {
+      const head = wrap.querySelector('.wrhead');
+      const kbd = wrap.querySelector('.wrme:not([hidden]) .gkbd');
+      if (!head || !kbd || !kbd.offsetParent) return;
+      const cs = getComputedStyle(document.documentElement);
+      const bars = parseFloat(cs.getPropertyValue('--tabs-h')) || 0;
+      const site = document.querySelector('header');
+      const top = site ? Math.max(0, site.getBoundingClientRect().bottom) : 0;
+      const over = kbd.getBoundingClientRect().bottom - (innerHeight - bars - 8);
+      const room = head.getBoundingClientRect().top - top - 6;
+      const dy = Math.min(over, room);
+      if (over > 1 && dy > 1) {
+        const calm = matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+      }
+    });
   }
 
   HGames.register({
@@ -541,13 +597,12 @@
     },
 
     news: {
-      v: '2026-09-24',
-      title: '🏁 Глек-слово наввипередки',
+      v: '2026-09-28',
+      title: 'Глек-слово наввипередки: зручніше на телефоні',
       items: [
-        '👥 Одне слово на всіх за столом — від двох до шести гравців',
-        '🟩 Чужі спроби видно кольорами, але без літер: видно, хто вже близько',
-        '⚡ Менше спроб — більше очок, а перший, хто вгадав, бере ще +1',
-        '🔁 Кілька раундів поспіль і таймер на слово — обираєш, коли ставиш стіл',
+        '📱 Суперники — одним рядком над твоєю дошкою, а на початку раунду сторінка сама стає так, щоб дошка й клавіатура були видні',
+        '🏆 Партію зіграно — таблиця одразу вгорі, а між раундами клавіатура ховається й не закриває слово',
+        '⌨ Друкувати можна й на англійській розкладці — літери стануть українськими',
       ],
     },
   });
