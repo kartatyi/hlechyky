@@ -1629,6 +1629,7 @@
 
   HGames.register({
     id: 'vohnyk',
+    added: '2026-09-27',               // нова гра хвилі 2: плитка світиться «🆕» два тижні тим, хто ще не грав
     icon: ICON,
     seatNames: NAMES,
     seatClass: ['vhf', 'vhw'],

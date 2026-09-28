@@ -2743,6 +2743,7 @@
 
   HGames.register({
     id: 'rally',
+    added: '2026-09-27',
     icon: ICON,
     seatNames: SEAT_NAMES,
     seatClass: ['x', 'o', 'c', 'rl-w', 'rl-b', 'rl-p'],
