@@ -2192,7 +2192,7 @@
     const d = st.view && st.view.daily;
     if (!d) return '';
     const b = d.board, rows = (b && b.rows) || [];
-    const me = ((st.ctx && st.ctx.me) || '').trim().toLowerCase();
+    const c = st.ctx, me = String((c && c.nickOf && c.seat != null && c.nickOf(c.seat)) || '').trim().toLowerCase();
     const mine = rows.findIndex((r) => (r.n || '').trim().toLowerCase() === me);
     const t = (ms) => secText(ms / 1000).replace(/,\d+$/, '');
     const one = (r, i) => (i === 0 ? '🥇 ' : '') + r.n + ' ' + t(r.ms) + (r.a > 1 ? ' ×' + r.a : '') + (r.st >= 2 ? ' 🔥' + r.st : '');

@@ -413,6 +413,9 @@ public class Bricks : Game
         foreach (var s in played) _finalRanks[s] = 1 + played.Count(o => Better(o, s));
         MarkLeft();
         var winners = played.Where(s => _seats[s].Plays && _seats[s].Wins >= _need).ToArray();
+        // У рейтинговій дуелі «виграли обидва» (стіни впали на тому самому тику) — це нічия: інакше Ело віддало б
+        // перемогу тому, хто сидить на першому місці.
+        if (Info.Rated && winners.Length > 1) winners = [];
         var order = played.OrderBy(s => _finalRanks[s]).ThenBy(s => s).ToList();
         var scores = played.ToDictionary(s => s, s => (long)_seats[s].MatchLines);
         var log = $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{_seats[s].MatchNick} {_seats[s].Wins}"));

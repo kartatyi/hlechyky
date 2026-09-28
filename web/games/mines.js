@@ -157,7 +157,7 @@
     }
     const v = ctx.view || {};
     const b = v.board;
-    const me = (ctx.me || '').trim().toLowerCase();
+    const me = String((ctx.nickOf && ctx.seat != null && ctx.nickOf(ctx.seat)) || '').trim().toLowerCase();
     let html = '';
     if (b) {
       const rows = b.rows || [];

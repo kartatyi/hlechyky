@@ -64,6 +64,16 @@ public class BricksDailyDuelTests
         Assert.Equal([1], fin.Result.Winners);
     }
 
+    [Fact]
+    public void Duel_where_both_walls_fall_on_the_same_tick_is_a_draw_for_elo()
+    {
+        var h = Table("bricks-duel");   // обоє нічого не тиснуть, фігурки однакові — стіни падають разом
+        for (var i = 0; i < 20_000 && h.Finished.Count == 0; i++) { Later(h, 6); h.Tick(); }
+        var fin = Assert.Single(h.Finished);
+        Assert.True(fin.Result.Draw);
+        Assert.Empty(fin.Result.Winners);
+    }
+
     // ------------------------------------------------------------------ Цеглини дня
 
     static RoomHarness Daily(DailyCard? card = null, string nick = "Оля", RoomHarness? reuse = null)
