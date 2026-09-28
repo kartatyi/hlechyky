@@ -75,7 +75,8 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
 
         // саме Solo, а не «має ScoreOrder»: гра на двох теж може виставляти Score (очки за партію,
         // найкраща реакція в дуелі), але її таблиця — це перемоги чи Ело, а не соло-рекорди
-        if (info is { Solo: true })
+        // Кооп (Змійка на всіх) — теж рекорди: перемог там нема, а Ctx.Score пише довжину кожному за столом.
+        if (info is { Solo: true } or { Coop: true })
         {
             var higher = info.Score != ScoreOrder.LowerIsBetter;
             return new

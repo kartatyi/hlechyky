@@ -28,6 +28,7 @@ public static class GamesSetup
         services.TryAddSingleton<IStakes, NoStakes>();
         services.TryAddSingleton<IGameStore, MemoryGameStore>();
         services.AddHostedService<TickEngine>();
+        services.AddSingleton<GameAdded>();                // «🆕»: коли сервер уперше побачив гру
         services.AddSingleton<GameNews>();                 // «що нового»: яку версію оновлення гри нік уже бачив
         services.AddSingleton<Tournament>();
         services.AddHostedService(sp => sp.GetRequiredService<Tournament>());
@@ -50,7 +51,8 @@ public static class GamesSetup
     public static WebApplication MapHlechykyGames(this WebApplication app)
     {
         // Лобі будується з каталогу, а не з хардкоду в JS: додав клас гри — вона з'явилась на сайті.
-        app.MapGet("/api/games/catalog", (Registry registry, FrontPrint front) => new Catalog(registry.Catalog, Rooms.Stakes, front.Games()));
+        app.MapGet("/api/games/catalog", (Registry registry, FrontPrint front, GameAdded added) =>
+            new Catalog(registry.Catalog, Rooms.Stakes, front.Games(), added.Map(registry.Catalog)));
         GameNews.Map(app);                                  // /api/games/news — «бачив що нового»
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»

@@ -140,6 +140,18 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     }
 
     /// <summary>
+    /// Реакція-емодзі за столом (😂🔥🤯👏😱 — номер <paramref name="e"/>): пливе над карткою в усіх, хто за столом і дивиться.
+    /// Квота — Rooms.ReactGapMs на нік; помилку бачить лише той, хто кидав.
+    /// </summary>
+    public async Task<string?> TableReact(string roomId, int e)
+    {
+        var (outbox, error) = rooms.TableReact(roomId ?? "", Context.ConnectionId, Nick(), e);
+        if (error is not null) return error;
+        await broadcaster.FlushAsync(outbox);
+        return null;
+    }
+
+    /// <summary>
     /// «Оля пише…». Браузер шле це раз на кілька секунд, поки людина набирає; <paramref name="roomId"/> — балачка
     /// столу (чують лише ті, хто на нього дивиться), null — загальні Балачки. Відповіді нема: це не більше ніж натяк.
     /// </summary>
@@ -332,7 +344,19 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         await Groups.AddToGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(id));
         // Розмову столу знімаємо вже з групою: так між знімком і підпискою не загубиться жоден рядок.
         if (rooms.TalkHistory(id, Context.ConnectionId) is { } history) outbox.Add(history);
+        // Новенькому — повний вид (Game.Snapshot), а не легкий, як решті групи (прохід №3, п. 247).
+        outbox.Add(new RoomSnapshot(id, Context.ConnectionId));
         await broadcaster.FlushAsync(outbox);
+    }
+
+    /// <summary>
+    /// Повний вид столу ще раз — лише цьому з'єднанню (прохід №3, п. 247): модуль гри бачить, що в легкому виді бракує
+    /// того, чого він не має (загубився вид повільному телефону), і просить знімок. Під квотою, як і підписка.
+    /// </summary>
+    public async Task SnapshotRoom(string roomId)
+    {
+        if (!Allow(input: true)) return;
+        await broadcaster.FlushAsync(rooms.Resync(roomId ?? "", Context.ConnectionId));
     }
 
     public async Task UnwatchRoom(string roomId)

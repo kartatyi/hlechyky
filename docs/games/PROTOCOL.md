@@ -134,7 +134,13 @@ type RoomView = {
 
 ## 3. Модуль гри на клієнті (`web/games/<id>.js`)
 
-Файл завантажується після `core.js`; у ньому один виклик:
+Файл завантажується після `core.js`. Модулі вантажаться ліниво (прохід №3, п. 241): модуль столу — коли стіл відкрили чи навели на плитку; лобі бере іконку,
+`added`, `news` і `talk` із запису `gamesMeta1` у localStorage, який каркас робить сам при `register` (з відбитком файлу).
+У тиші довантажуються лише модулі із застарілим записом і ті, що вішають панелі; коло (`HEAVY` у core.js) — ніколи
+заздалегідь. Тож `register`/`registerPanel` — на верхньому рівні файлу (каркас дізнається файл із `document.currentScript`),
+а модуль не має розраховувати, що сусідні модулі вже є.
+
+У файлі модуля один виклик:
 
 ```js
 HGames.register({
@@ -148,6 +154,7 @@ HGames.register({
   update(root, ctx) {},            // на кожну подію `room` (і одразу після mount)
   frame(root, ctx, f) {},          // на кожну подію `frame` (реалтайм); може не бути
   unmount(root, ctx) {},           // картка зникає; прибрати таймери/rAF
+  visible(root, ctx, on) {},       // картку сховано (on=false: пішов у лобі, інший розділ, інша вкладка) / знову видно; може не бути
   onKey(e, ctx) { return false },  // keydown, коли ця кімната активна; true — оброблено (preventDefault)
   status(ctx) { return '' },       // рядок статусу під тілом; порожньо → каркас пише своє («Твій хід», «Ходить X»)
   pad: { dirs: true, a: 'Space', hint: '{dpad} бігати · {a} бомба' },   // джойстик; докладно нижче
@@ -202,6 +209,8 @@ type Ctx = {
   playing: boolean;                 // room.status === 'playing'
   mine: boolean;                    // seat !== null
   myTurn: boolean;                  // якщо view.turn існує і === seat
+  shown: boolean;                   // картку видно на екрані зараз (прохід №3); у mount уже вірне, зміни — через visible()
+  resync(): void;                   // попросити повний вид (Game.Snapshot) ще раз, лише собі; прийде подією room (прохід №3)
   act(action: string, payload?: any): Promise<RoomReply>;   // тост на помилку — сам каркас
   input(action: string, payload?: any): void;
   toast(text: string, kind?: 'ok'|'err'|'wait'): void;

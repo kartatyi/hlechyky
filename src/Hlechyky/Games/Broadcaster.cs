@@ -58,7 +58,8 @@ public sealed class Broadcaster(
             // Рядок-заклик — не Журнал, а репліка в Балачках від імені того, хто кличе (kind invite).
             sends = Plan(all, rooms.Snapshot, rooms.SoloNow, rooms.ViewsFor, presence.Get, presence.ConnectionsOf,
                 (text, roomId) => db.AddChat(site.CurrentValue.Name, text, "system", roomId, topic: "games"),
-                (by, text, roomId) => db.AddChat(by, text, "invite", roomId));
+                (by, text, roomId) => db.AddChat(by, text, "invite", roomId),
+                (roomId, conn) => rooms.SnapshotFor(roomId, conn, presence.Get(conn)));
         }
         catch (Exception ex)
         {
@@ -150,11 +151,22 @@ public sealed class Broadcaster(
         Func<string, string?> nickOf,
         Func<string, IReadOnlyList<string>> connectionsOf,
         Func<string, string?, object> journal,
-        Func<string, string, string, object>? inviteLine = null)
+        Func<string, string, string, object>? inviteLine = null,
+        Func<string, string, RoomView?>? snapshotFor = null)
     {
         var keep = Coalesce(messages);
         var sends = new List<Send>();
         Send? lobby = null;
+        // Новенькі (RoomSnapshot) цієї ж пачки легкого виду не отримують: їм летить повний, і двічі те саме ні до чого.
+        Dictionary<string, HashSet<string>>? fresh = null;
+        if (snapshotFor is not null)
+            foreach (var m in messages)
+            {
+                if (m is not RoomSnapshot rs) continue;
+                fresh ??= new(StringComparer.Ordinal);
+                if (!fresh.TryGetValue(rs.RoomId, out var set)) fresh[rs.RoomId] = set = new(StringComparer.Ordinal);
+                set.Add(rs.ConnectionId);
+            }
         foreach (var index in keep)
         {
             switch (messages[index])
@@ -169,7 +181,14 @@ public sealed class Broadcaster(
                     sends.Add(new Send(new ToAll(), "solo", soloNow()));
                     break;
                 case RoomViews views:
-                    if (viewsFor(views.RoomId) is { } b) sends.AddRange(ViewSends(b, nickOf));
+                    if (viewsFor(views.RoomId) is { } b)
+                        sends.AddRange(ViewSends(b, nickOf, fresh is not null && fresh.TryGetValue(views.RoomId, out var skip) ? skip : null));
+                    break;
+                case RoomSnapshot snap:
+                    // Старий виклик без snapshotFor (тести) — хай буде бодай звичайна розсилка виду.
+                    if (snapshotFor is null) { if (viewsFor(snap.RoomId) is { } b2) sends.AddRange(ViewSends(b2, nickOf)); }
+                    else if (snapshotFor(snap.RoomId, snap.ConnectionId) is { } full)
+                        sends.Add(new Send(new ToConnections([snap.ConnectionId]), "room", full));
                     break;
                 case RoomFrame frame:
                     sends.Add(new Send(new ToGroup(RoomGroup(frame.RoomId)), "frame", new { id = frame.RoomId, f = frame.Frame }));
@@ -204,6 +223,10 @@ public sealed class Broadcaster(
                 case TableSaid said:
                     // Балачка столу — лише тим, хто на нього дивиться, як і види з кадрами.
                     sends.Add(new Send(new ToGroup(RoomGroup(said.RoomId)), "tableChat", new { id = said.RoomId, line = said.Line }));
+                    break;
+                case TableReact rx:
+                    sends.Add(new Send(new ToGroup(RoomGroup(rx.RoomId)), "tableReact",
+                        new { id = rx.RoomId, nick = rx.Nick, seat = rx.Seat, e = rx.E }));
                     break;
                 case TableHistory history:
                     sends.Add(new Send(new ToConnections([history.ConnectionId]), "tableHistory",
@@ -264,11 +287,12 @@ public sealed class Broadcaster(
     /// решта групи бачить вид глядача одним повідомленням. Гравець, який зараз не дивиться на кімнату,
     /// не отримує нічого — він на іншій вкладці, і це правильно.
     /// </summary>
-    static IEnumerable<Send> ViewSends(RoomBroadcast b, Func<string, string?> nickOf)
+    static IEnumerable<Send> ViewSends(RoomBroadcast b, Func<string, string?> nickOf, HashSet<string>? skip = null)
     {
         var seated = new Dictionary<int, List<string>>();
         foreach (var conn in b.Watchers)
         {
+            if (skip is not null && skip.Contains(conn)) continue;
             if (b.SeatOf(nickOf(conn)) is not { } seat) continue;
             if (!seated.TryGetValue(seat, out var list)) seated[seat] = list = [];
             list.Add(conn);
@@ -278,6 +302,7 @@ public sealed class Broadcaster(
                 new RoomView(b.Summary, seat, b.SeatViews.TryGetValue(seat, out var v) ? v : b.WatcherView));
 
         var mine = seated.Values.SelectMany(x => x).ToList();
+        if (skip is not null) mine.AddRange(skip);
         yield return new Send(new ToGroupExcept(RoomGroup(b.RoomId), mine), "room", new RoomView(b.Summary, null, b.WatcherView));
     }
 }

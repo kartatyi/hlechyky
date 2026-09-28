@@ -99,3 +99,14 @@
   кінця, «Ще раз», встати посеред партії, оновити сторінку посеред партії (F5 → місце має вціліти в grace),
   подивитись збоку третьою вкладкою;
 - на вузькому вікні (≤ 480 px) картка не ламає розкладку, керування є для пальця.
+
+### Стенд у headless Chrome (прохід №3, п. 254)
+
+`D:/or-wt/_tools/cdp2.py` (docstring — усі прапорці) бачить і телефонні гілки коду:
+- `--mobile` — телефонний в'юпорт із дотиком; `--coarse` — дотик без телефонного в'юпорта (`pointer: coarse`,
+  `hover: none`, `maxTouchPoints = 5`, кліки — дотиками), напр. Steam Deck з пальцем;
+- `--dpr 2|3` — щільний екран: полотна ігор малюються на 2–3× пікселів, перф міряти саме так;
+- `--fakepad` — `docs/games/dev/fakepad.js` до всіх скриптів сторінки (до `web/static/pad.js`): пад Steam Deck і
+  `padHit/padHold/padAxis/padNudge` у консолі; лише з `--url`;
+- `--instr` — `docs/games/dev/instr.js` до всіх скриптів: `__perf.on = true; __perf.reset(); … __perf.report()` —
+  rAF за колбеками, обробники `frame`/`room`, `getComputedStyle`, `__perf.listeners` (витік слухачів після виходу зі столу).

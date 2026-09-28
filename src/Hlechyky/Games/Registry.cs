@@ -29,7 +29,9 @@ public sealed record CatalogGame(
 /// Відповідь каталогу: ігри, дозволені ставки й відбитки файлів модулів (<c>"games/bomber.js" → "3f9a0c…"</c>, Front.cs) —
 /// core.js тягне модулі з <c>?v=</c>, і браузер тримає їх у кеші, доки вміст не зміниться.
 /// </summary>
-public sealed record Catalog(IReadOnlyList<CatalogGame> Games, IReadOnlyList<int> Stakes, IReadOnlyDictionary<string, string>? Files = null);
+/// <c>Added</c> — коли гру вперше побачив сервер (GameAdded), для «🆕»; старих ігор там нема.
+public sealed record Catalog(IReadOnlyList<CatalogGame> Games, IReadOnlyList<int> Stakes, IReadOnlyDictionary<string, string>? Files = null,
+    IReadOnlyDictionary<string, string>? Added = null);
 
 /// <summary>
 /// Усі ігри збірки. Нова гра = новий клас-нащадок <see cref="Game"/> з публічним конструктором без

@@ -76,6 +76,13 @@
       hint: 'Класична змійка: дуель двох, гуртом до чотирьох або одна змійка на всіх, де кожен крутить свої стрілки.' },
     { id: 'tron', title: 'Мотоцикли', games: [['tron', 'Удвох'], ['tron-party', 'Гуртом 2–4']],
       hint: 'За тобою тягнеться стіна, яка не зникає. Хто врізався — програв. Стрілки або WASD.' },
+    // Юрма: одна забава «серед натовпу селян сховались друзі» в семи місцях — у кожного місця свої правила й хитрощі.
+    { id: 'crowd', title: 'Юрма', games: [['crowd', '🎪 Ярмарок'], ['skate', '⛸ Ковзанка'], ['dance', '💃 Вечорниці'],
+      ['tavern', '🍺 Корчма'], ['potato', '🔥 Гарячий горщик'], ['kupala', '🌙 Купальська ніч'], ['freeze', '🧍 Замри!']],
+      hint: 'Повно селян — і десь серед них твої друзі. Ніхто не знає, хто живий: вдавай селянина й вистежуй інших. Сім місць — сім забав.' },
+    // Бігуни: той самий забіг «хто останній на ногах» — по кризі від лавини або в небі лелекою. Забіг дня — окремо, у «Сьогодні».
+    { id: 'dino', title: 'Стрибозаври', games: [['dino', '🧊 Крига'], ['storks', '🪽 Небо (лелеки)']],
+      hint: 'Одна траса для всіх: динозавром по кризі від лавини або лелекою над селом. Хто останній на ногах чи в небі — бере раунд.' },
   ];
   const familyOf = {};
   for (const f of FAMILIES) for (const [id] of f.games) familyOf[id] = f;
@@ -148,7 +155,9 @@
 
   const gameOf = (id) => byId[id] || null;
   const titleOf = (id) => (byId[id] && byId[id].title) || id;
-  const iconOf = (id) => (modules[id] && modules[id].icon) || '<span class="gemo">🎲</span>';
+  /// Модуль гри, а поки він не приїхав (лінивий вантаж, п. 241), — те, що він сказав про себе минулого разу (gamesMeta).
+  const infoOf = (id) => modules[id] || metaById[id] || null;
+  const iconOf = (id) => { const m = infoOf(id); return (m && m.icon) || '<span class="gemo">' + (NO_ICON[id] || '🎲') + '</span>'; };
   const groupOf = (id) => (byId[id] && byId[id].group) || 'board';
 
   // =============================================================================================
@@ -317,23 +326,45 @@
     const fg = el.querySelector('.fg'), num = el.querySelector('b');
     const LEN = 2 * Math.PI * 17;
     fg.style.strokeDasharray = LEN;
-    const st = { until: Date.parse(untilIso) || Date.now(), total: totalMs || 1000, raf: 0 };
-    function step() {
-      if (!el.isConnected) { st.raf = 0; return; }
-      const left = Math.max(0, st.until - Date.now());
+    // Прохід №3, п. 243: без rAF. Дугу веде CSS-перехід (браузер сам, без JS щокадру), а цифру — таймер раз на секунду.
+    // Схована картка (display:none) перехід губить — тоді на найближчому тику, коли її знову видно, заводимо наново.
+    const st = { until: Date.parse(untilIso) || Date.now(), total: totalMs || 1000, t: 0, shown: false };
+    const leftMs = () => Math.max(0, st.until - Date.now());
+    function run() {
+      const left = leftMs();
       const k = Math.max(0, Math.min(1, left / st.total));
+      fg.style.transition = 'none';
       fg.style.strokeDashoffset = LEN * (1 - k);
+      st.shown = el.offsetParent !== null;
+      if (left > 0 && st.shown) {
+        void fg.getBoundingClientRect();   // зафіксувати старт, інакше перехід стрибне одразу в кінець
+        fg.style.transition = 'stroke-dashoffset ' + left + 'ms linear';
+        fg.style.strokeDashoffset = LEN;
+      }
+    }
+    function tick() {
+      st.t = 0;
+      if (!el.isConnected) return;
+      const left = leftMs();
       const s = String(Math.ceil(left / 1000));
       if (num.textContent !== s) num.textContent = s;
-      // На нулі дуга вже порожня: далі крутити кадри — лише палити батарею, поки фаза чекає сервера.
-      // Новий час принесе set(), і він заведе цикл знову.
-      st.raf = left > 0 ? requestAnimationFrame(step) : 0;
+      if (!st.shown && el.offsetParent !== null) run();
+      else if (st.shown && el.offsetParent === null) st.shown = false;
+      // На нулі дуга вже порожня: далі — тиша, поки фаза чекає сервера; новий час принесе set().
+      // Час сплив, поки картка ховалась, — перехід так і не пішов; спорожнюємо дугу самі, щоб не застигла на півдорозі.
+      if (left > 0) st.t = setTimeout(tick, (left % 1000) || 1000);
+      else if (!st.shown) { fg.style.transition = 'none'; fg.style.strokeDashoffset = LEN; }
     }
-    st.raf = requestAnimationFrame(step);
+    function start() { clearTimeout(st.t); run(); tick(); }
+    start();
     const handle = {
       el,
-      set(u, total) { st.until = Date.parse(u) || Date.now(); st.total = total || st.total; if (!st.raf) st.raf = requestAnimationFrame(step); },
-      stop() { cancelAnimationFrame(st.raf); st.raf = 0; if (el._arc === handle) el._arc = null; },
+      set(u, total) {
+        const until = Date.parse(u) || Date.now(), tot = total || st.total;
+        if (until === st.until && tot === st.total && (st.t || leftMs() === 0)) return;   // той самий хід — не смикаємо дугу
+        st.until = until; st.total = tot; start();
+      },
+      stop() { clearTimeout(st.t); st.t = 0; if (el._arc === handle) el._arc = null; },
     };
     el._arc = handle;
     return handle;
@@ -646,7 +677,7 @@
   /// Тягнемо рівно один файл (разом із його css, інакше пізній loadModules його проґавить) і кличемо
   /// ready(), коли модуль зареєструвався. Поки він летить, на кнопці стоїть 🎲 — і це не помилка.
   function ensureIcon(gameId, ready) {
-    if (modules[gameId]) return;
+    if (modules[gameId] || (metaById[gameId] && metaById[gameId].icon)) return;   // іконка вже є з gamesMeta (п. 241)
     // Спершу каталог: без нього ми не знаємо навіть, у якому файлі ця гра живе.
     ensureNames().then(() => {
       const g = byId[gameId];
@@ -657,23 +688,131 @@
       .catch(() => { /* каталог не прочитався — лишається 🎲, і це не привід шуміти */ });
   }
 
-  /// Вантажимо всі модулі одразу: у каталозі їх буде два десятки, а послідовні await —
-  /// це два десятки round-trip-ів поспіль. Один файл вантажимо рівно раз, скільки б ігор у ньому
-  /// не реєструвалось. Вердикт «не завантажився» ставимо лише коли все відстрілялось.
-  async function loadModules() {
-    const want = catalog.games.filter((g) => !modules[g.id]);
-    const files = [...new Set(want.map(moduleOf))];
-    for (const g of want) addCss(g, moduleOf(g));
-    const res = await Promise.all(files.map(async (f) => [f, await loadFile(f)]));
-    const loaded = Object.fromEntries(res);
-    for (const g of want) {
-      if (modules[g.id]) continue;
+  // ---------------------------------------------------------------------------------------------
+  // Лінивий вантаж модулів (прохід №3, п. 241). Колись «Ігри» тягнули всі ~60 модулів одразу — з колом і його
+  // частинами під 4 МБ і десятки мілісекунд розбору на телефоні, хоча людина відкриє один-два столи. Тепер:
+  //  • модуль столу — коли стіл відкрили (картка сама кличе loadGame), а плитки — ще при наведенні чи дотику;
+  //  • лобі малюється одразу: іконку, added і news кожен модуль сам лишає в localStorage (gamesMeta) з відбитком
+  //    свого файлу, і наступного разу плитка бере їх звідти;
+  //  • у тиші (requestIdleCallback) довантажуємо лише ті модулі, чиї записи застаріли (файл змінився — могли прийти
+  //    «що нового») чи яких ще нема, і ті, що вішають панелі (Своя гра — «📦 Пакети»);
+  //  • важкі (HEAVY — Гончарне коло тягне ще дев'ять частин) заздалегідь не тягнемо ніколи: лише стіл чи наведення.
+  // Старий модуль про це нічого не знає: register() той самий, запис робить каркас.
+  // ---------------------------------------------------------------------------------------------
+  const META_LS = 'gamesMeta1';
+  const HEAVY = new Set(['clicker']);
+  const NO_ICON = { clicker: '🏺' };   // іконка-заглушка, поки важкий модуль жодного разу не приїжджав
+  let meta = {};                        // файл модуля → { v: відбиток, g: { id: { icon, added, news } }, p: 1 — має панель }
+  let metaById = {};
+  function reindexMeta() {
+    metaById = {};
+    for (const f in meta) for (const id in (meta[f] && meta[f].g) || {}) metaById[id] = meta[f].g[id];
+  }
+  try { meta = JSON.parse(localStorage.getItem(META_LS) || '{}') || {}; } catch { meta = {}; }
+  reindexMeta();
+  let metaSaveT = 0;
+  function saveMetaLater() {
+    reindexMeta();
+    if (metaSaveT) return;
+    metaSaveT = setTimeout(() => {
+      metaSaveT = 0;
+      try { localStorage.setItem(META_LS, JSON.stringify(meta)); } catch { /* приватне вікно — наступного разу потягнемо ще раз */ }
+    }, 800);
+  }
+  /// Який файл зараз виконується (register/registerPanel кличуть на верхньому рівні модуля) і з яким відбитком.
+  function scriptNow() {
+    const src = document.currentScript && document.currentScript.src;
+    if (!src) return null;
+    const u = new URL(src, location.href);
+    const m = /^\/games\/([^/]+)\.js$/.exec(u.pathname);
+    return m ? { f: m[1], v: u.searchParams.get('v') || (catalog.files && catalog.files['games/' + m[1] + '.js']) || '' } : null;
+  }
+  function metaFile(f, v) {
+    let e = meta[f];
+    if (!e || e.v !== v) e = meta[f] = { v, g: {} };
+    return e;
+  }
+  function rememberModule(mod) {
+    const s = scriptNow();
+    const g = byId[mod.id];
+    const f = s ? s.f : g ? moduleOf(g) : null;
+    if (!f) return;
+    const v = s ? s.v : (catalog.files && catalog.files['games/' + f + '.js']) || '';
+    const rec = {};
+    if (typeof mod.icon === 'string') rec.icon = mod.icon;
+    if (mod.added) rec.added = String(mod.added);
+    if (mod.talk) rec.talk = String(mod.talk);
+    if (mod.news && mod.news.v) rec.news = { v: String(mod.news.v), title: String(mod.news.title || ''), items: (mod.news.items || []).map(String) };
+    metaFile(f, v).g[mod.id] = rec;
+    saveMetaLater();
+  }
+  function rememberPanel() {
+    const s = scriptNow();
+    if (!s) return;
+    metaFile(s.f, s.v).p = 1;
+    saveMetaLater();
+  }
+  /// Запис про файл застарів: файлу ще не бачили, він змінився, або старий сервер відбитків не дає.
+  const metaStale = (f) => {
+    const e = meta[f], v = catalog.files && catalog.files['games/' + f + '.js'];
+    return !e || !v || e.v !== v;
+  };
+
+  /// Файл довантажився (або ні): ігри з нього, що так і не зареєструвались, — «не завантажився».
+  function settleFile(f, ok) {
+    let bad = false;
+    for (const g of catalog.games) {
+      if (moduleOf(g) !== f || modules[g.id] || failed.has(g.id)) continue;
       failed.add(g.id);
-      const f = moduleOf(g);
+      bad = true;
       console.warn('[games] модуль ' + g.id + ' не завантажився'
-        + (loaded[f] ? ' (є ' + f + '.js, але register(' + g.id + ') не викликано)' : ' (нема ' + f + '.js)'));
+        + (ok ? ' (є ' + f + '.js, але register(' + g.id + ') не викликано)' : ' (нема ' + f + '.js)'));
     }
-    refreshAll();
+    if (bad) refreshAll();
+  }
+  /// Модуль однієї гри (і всієї його родини в тому ж файлі). Двічі той самий файл не тягнемо (loadFile).
+  function loadGame(id) {
+    if (modules[id]) return Promise.resolve(true);
+    const g = byId[id];
+    if (!g || failed.has(id)) return Promise.resolve(false);   // каталогу ще нема — loadModules прийде сюди ще раз
+    const f = moduleOf(g);
+    for (const x of catalog.games) if (moduleOf(x) === f) addCss(x, f);
+    return loadFile(f).then((ok) => { settleFile(f, ok); return !!modules[id]; });
+  }
+
+  let idleRun = null;
+  /// Фонове довантаження: по кілька файлів за раз, коли браузерові нічого робити. Вертає проміс «усе, що треба, є».
+  function idleLoad() {
+    if (idleRun) return idleRun;
+    const files = [...new Set(catalog.games.map(moduleOf))]
+      .filter((f) => !HEAVY.has(f) && !loadedFiles.has(f) && (metaStale(f) || (meta[f] && meta[f].p)));
+    if (!files.length) return Promise.resolve();
+    const later = window.requestIdleCallback ? (fn) => requestIdleCallback(fn, { timeout: 1500 }) : (fn) => setTimeout(fn, 120);
+    idleRun = new Promise((resolve) => {
+      const step = () => {
+        const batch = files.splice(0, 4);
+        if (!batch.length) { idleRun = null; resolve(); return; }   // наступний каталог (оновлення без F5) перевірить знову
+        Promise.all(batch.map((f) => {
+          for (const x of catalog.games) if (moduleOf(x) === f) addCss(x, f);
+          return loadFile(f).then((ok) => settleFile(f, ok));
+        })).then(() => later(step));
+      };
+      later(step);
+    });
+    return idleRun;
+  }
+
+  /// Після каталогу: модулі столів, що вже відкриті (F5 за столом), — одразу; решта — у тиші.
+  function loadModules() {
+    for (const id in cards) if (views[id]) loadGame(views[id].room.game);
+    return idleLoad();
+  }
+
+  /// Наведення чи дотик до плитки (data-pre="id id…") — модуль уже летить, поки людина тисне «Грати».
+  function prefetchFrom(e) {
+    const t = e.target && e.target.closest && e.target.closest('[data-pre]');
+    if (!t || !catalog.games.length) return;
+    for (const id of t.dataset.pre.split(' ')) if (id) loadGame(id);
   }
 
   /// Самі назви ігор, без двох десятків модулів: стільки треба балачкам, щоб написати «Мафія», а не
@@ -681,7 +820,7 @@
   function ensureNames() {
     if (names) return names;
     names = api('GET', '/api/games/catalog').then((c) => {
-      catalog = { games: (c && c.games) || [], stakes: (c && c.stakes) || [0], files: (c && c.files) || {} };
+      catalog = { games: (c && c.games) || [], stakes: (c && c.stakes) || [0], files: (c && c.files) || {}, added: (c && c.added) || {} };
       for (const g of catalog.games) byId[g.id] = g;
       return catalog;
     }).catch((e) => {
@@ -800,9 +939,15 @@
   const daysSince = (iso) => (Date.now() - Date.parse(String(iso).slice(0, 10) + 'T12:00:00')) / 86400000;
   /// «Нова гра: …» з тією ж датою, що added, — знайомство, а не оновлення: ні «оновлено» на плитці, ні вікна.
   const newsOf = (id) => {
-    const m = modules[id];
+    const m = infoOf(id);
     if (!m || !m.news || !m.news.v || !(m.news.items || []).length) return null;
-    return m.added && m.news.v <= m.added ? null : m.news;
+    const a = addedOf(id);
+    return a && m.news.v <= a ? null : m.news;
+  };
+  /// Коли гра з'явилась: added у модулі, а як автор забув — день, коли сервер уперше її побачив (каталог, GameAdded.cs).
+  const addedOf = (id) => {
+    const m = infoOf(id);
+    return (m && m.added) || (catalog.added && catalog.added[id]) || null;
   };
   const playedIt = (id) => played == null || played.has(id);
   /// Оновлення, якого людина ще не бачила, у грі, в яку вона вже грала (вікно «що нового» — без терміну давності).
@@ -811,8 +956,8 @@
   const hasNews = (id) => unseenNews(id) && !(daysSince(newsOf(id).v) > UPD_DAYS);
   /// Нова гра: модуль каже added, минуло менше двох тижнів, і я в неї ще не грав.
   const isNewGame = (id) => {
-    const m = modules[id];
-    return !!(m && m.added) && daysSince(m.added) <= NEW_DAYS && !(played && played.has(id));
+    const a = addedOf(id);
+    return !!a && daysSince(a) <= NEW_DAYS && !(played && played.has(id));
   };
 
   function markNews(id, v) {
@@ -936,7 +1081,7 @@
     const rv = views[view.id];
     if (!rv || !rv.room || rv.loose || (rv.room.maxPlayers || 0) <= 1) return null;
     const g = rv.room.game;
-    return { id: rv.room.id, game: g, title: titleOf(g), main: !!(modules[g] && modules[g].talk === 'main'), seat: rv.seat, status: rv.room.status };
+    return { id: rv.room.id, game: g, title: titleOf(g), main: !!(infoOf(g) && infoOf(g).talk === 'main'), seat: rv.seat, status: rv.room.status };
   }
   let tableSig = null;
   /// Сказати app.js, що змінився стіл (або його стан, або ⛶). Однакове двічі не кажемо.
@@ -973,6 +1118,7 @@
     if (!v) return;
     const room = view.kind === 'room' ? view.id : null;
     placeCards(room);
+    syncShown();
     root.querySelector('.gbar').hidden = view.kind !== 'panel';
     root.querySelector('.groom').hidden = !room;
     v.hidden = !!room;
@@ -1097,6 +1243,29 @@
 
   /// Резюме столу в лобі — окремий елемент, а НЕ копія картки: картка з модулем гри
   /// живе лише на сторінці столу.
+  /// «Рахунок вечора за столом» (Room.Evening на сервері): хто скільки перемог узяв за всі «Ану ще раз».
+  /// Показуємо з другої дограної партії (після першої це те саме, що «Перемога: …»). Старий сервер evening не шле — тоді й рядка нема.
+  /// short — для лобі: лише трійка перших.
+  function eveningText(r, short) {
+    const ev = r && r.evening;
+    // Сам за столом (проти ботів гри) — нема з ким мірятись: рядок лише з двох людей.
+    if (!ev || !(ev.games >= 2) || !((ev.rows || []).length >= 2)) return '';
+    const rows = ev.rows.slice(0, short ? 3 : 6);
+    const pts = ev.rows.some((x) => x.points != null && x.points !== 0);
+    const top = ev.rows[0].wins;
+    const line = rows.map((x, i) => x.nick + ' ' + x.wins + (x.wins > 0 && x.wins === top ? '🏆' : '')
+      + (pts && x.points != null && !short ? ' (' + x.points + ')' : '')).join(' · ');
+    return '🌙 Вечір: ' + line + (ev.rows.length > rows.length ? ' · …' : '');
+  }
+  function eveningTitle(r) {
+    const ev = r && r.evening;
+    if (!ev) return '';
+    const n = ev.games;
+    const pl = n % 10 === 1 && n % 100 !== 11 ? 'партію' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'партії' : 'партій';
+    return 'За цим столом зіграли ' + n + ' ' + pl + ':\n' + ev.rows.map((x) => x.nick + ' — перемог ' + x.wins + ' з ' + x.games
+      + (x.points != null ? ', очок ' + x.points : '')).join('\n');
+  }
+
   function roomSummaryHtml(r) {
     const rv = views[r.id];
     const seat = seatOfMe(r);
@@ -1122,6 +1291,7 @@
       + '<div class="gs-who">' + (nicks.length ? who : '<span class="muted">поки ні душі</span>')
       + (free > 0 && all > 1 ? ' <span class="muted">· вільно ' + free + '</span>' : '')
       + ' · ' + status + (r.watchers ? ' <span class="muted">· 👁 ' + r.watchers + '</span>' : '') + '</div>'
+      + (eveningText(r, true) ? '<div class="gs-ev muted small" title="' + esc(eveningTitle(r)) + '">' + esc(eveningText(r, true)) + '</div>' : '')
       + '<div class="gs-btns">' + btns + '</div></div>';
   }
 
@@ -1177,7 +1347,7 @@
     const fresh = isNewGame(e.ids[0]);
     const extra = e.ids.includes('svoya') && extraPanels.some((p) => p.id === 'svoya')
       ? '<button class="ghost gt-extra" data-go="#games/x:svoya" title="Пакети запитань: грати свої, збирати нові">📦 Пакети</button>' : '';
-    return '<div class="gtile' + (fresh ? ' fresh' : '') + (now.length ? ' live' : '') + '">'
+    return '<div class="gtile' + (fresh ? ' fresh' : '') + (now.length ? ' live' : '') + '" data-pre="' + esc(e.ids.join(' ')) + '">'
       + '<div class="gt-head">' + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b>' + badgeOf(e) + '</div>'
       + (now.length ? '<div class="gt-now" title="' + esc(whoTitle(now)) + '"><i class="gdot"></i><span>' + esc(whoShort(now, 3))
         + ' <span class="muted">' + (now.length > 1 ? 'грають' : 'грає') + '</span></span></div>' : '')
@@ -1274,7 +1444,7 @@
     const favRow = favs.length && filter === 'all' && !want
       ? '<div class="gfavs"><span class="muted small">⭐ Часто граємо:</span>' + favs.map((e) => {
         const act = e.solo ? 'data-solo="' + esc(e.g.id) + '"' : 'data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '"';
-        return '<button class="gfav" ' + act + ' title="' + esc(playsOf(e) + ' ' + (playsOf(e) % 10 >= 2 && playsOf(e) % 10 <= 4 && (playsOf(e) % 100 < 12 || playsOf(e) % 100 > 14) ? 'партії' : 'партій') + ' за місяць') + '">'
+        return '<button class="gfav" data-pre="' + esc(e.ids.join(' ')) + '" ' + act + ' title="' + esc(playsOf(e) + ' ' + (playsOf(e) % 10 >= 2 && playsOf(e) % 10 <= 4 && (playsOf(e) % 100 < 12 || playsOf(e) % 100 > 14) ? 'партії' : 'партій') + ' за місяць') + '">'
           + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b><span class="muted small">' + (e.solo ? 'грати' : '+ стіл') + '</span></button>';
       }).join('') + '</div>'
       : '';
@@ -1475,6 +1645,76 @@
     return card;
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Реакції-емодзі за настільним столом (прохід №3, п. 231): настільні мовчазні, а підколоти хочеться.
+  // Загальна дія каркаса: сервер (Rooms.TableReact) лише пересилає номер групі столу, гра про це не знає.
+  // ---------------------------------------------------------------------------------------------
+  const REACTS = ['😂', '🔥', '🤯', '👏', '😱'];
+  const REACT_GAMES = new Set(['chess', 'checkers', 'domino', 'durak', 'c4', 'c4x', 'ttt', 'ttt3']);
+  const REACT_GAP_MS = 1500;   // = Rooms.ReactGapMs
+  let reactUntil = 0;
+  function paintReacts(card, rv) {
+    const want = REACT_GAMES.has(rv.room.game) && rv.room.maxPlayers > 1 && !!me.nick;
+    if (!want) {
+      if (card.rx) { card.rx.remove(); card.rx = null; card.el.classList.remove('grx-on'); }
+      return;
+    }
+    if (card.rx) return;
+    const bar = document.createElement('div');
+    bar.className = 'grx';
+    bar.innerHTML = REACTS.map((x, i) => '<button type="button" class="ghost grx-b" data-rx="' + i + '" title="Кинути ' + x
+      + ' усім за столом">' + x + '</button>').join('');
+    bar.onclick = (ev) => { const b = ev.target.closest('[data-rx]'); if (b) sendReact(card, +b.dataset.rx); };
+    card.btns.after(bar);
+    card.el.classList.add('grx-on');
+    card.rx = bar;
+  }
+  function sendReact(card, e) {
+    const now = Date.now();
+    if (now < reactUntil) return;
+    reactUntil = now + REACT_GAP_MS;
+    const bar = card.rx;
+    if (bar) { bar.classList.add('wait'); setTimeout(() => bar.classList.remove('wait'), REACT_GAP_MS); }
+    if (!conn || conn.state !== 'Connected') return;
+    // Хаб відповідає рядком помилки або null; старий сервер методу не знає — мовчки нічого.
+    conn.invoke('TableReact', card.id, e).then((err) => { if (err) errToast(err); }).catch(() => {});
+  }
+  function flyReact(x) {
+    const card = x && cards[x.id];
+    const emo = card && REACTS[x.e | 0];
+    if (!emo || !card.el.isConnected || card.el.offsetParent === null || document.hidden) return;
+    if (card.el.querySelectorAll('.grx-fly').length >= 12) return;   // хай і завалили — дошку не ховаємо
+    const s = document.createElement('span');
+    s.className = 'grx-fly';
+    s.style.left = (12 + Math.random() * 76).toFixed(1) + '%';
+    s.innerHTML = emo + '<i>' + esc(x.nick || '') + '</i>';
+    card.el.appendChild(s);
+    const done = () => s.remove();
+    s.addEventListener('animationend', done);
+    setTimeout(done, 3000);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Картку сховано / показано (прохід №3, п. 240). Стіл, за яким сидиш, лишається змонтованим на складі, коли йдеш
+  // у лобі, в інший розділ сайту чи в іншу вкладку браузера, — і реалтайм-гра крутила rAF у порожнечу або сама
+  // опитувала offsetParent / ставила IntersectionObserver. Тепер каркас каже сам: ctx.shown — чи картку видно зараз,
+  // а необов'язковий mod.visible(root, ctx, on) кличеться лише на зміну (після mount; сам mount бачить ctx.shown).
+  // Старий модуль без visible нічого не помітить.
+  // ---------------------------------------------------------------------------------------------
+  const cardOn = (c) => shown && !document.hidden && view.kind === 'room' && view.id === c.id && !c.el.hidden
+    && c.el.isConnected;
+  function syncShown() {
+    for (const id in cards) {
+      const c = cards[id];
+      if (!c.mounted || !c.ctx) continue;
+      const on = cardOn(c);
+      if (on === c.vis) continue;
+      c.vis = c.ctx.shown = on;
+      if (c.mod && c.mod.visible) { try { c.mod.visible(c.body, c.ctx, on); } catch (e) { console.warn('[games] visible', e); } }
+    }
+  }
+  document.addEventListener('visibilitychange', syncShown);
+
   function dropCard(id) {
     const c = cards[id];
     if (!c) return;
@@ -1519,6 +1759,14 @@
     ctx.nickOf = (i) => nickAt(room, i);
     ctx.act = (action, payload) => call('Act', room.id, action, payload === undefined ? null : payload);
     ctx.input = (action, payload) => send('Input', room.id, action, payload === undefined ? null : payload);
+    // Повний вид (Game.Snapshot) ще раз, лише мені — коли в легкому виді розсилки бракує того, чого модуль не має
+    // (прохід №3, п. 247). Не частіше ніж раз на 1,5 с: вид сам прийде подією 'room'.
+    ctx.resync = () => {
+      const now = Date.now();
+      if (now - (card.resyncAt || 0) < 1500) return;
+      card.resyncAt = now;
+      send('SnapshotRoom', room.id);
+    };
     card.ctx = ctx;
     return ctx;
   }
@@ -1562,7 +1810,10 @@
       + modes.join('')
       + (room.stake ? '<span class="gmode stake">🏺' + room.stake + '</span>' : '')
       + chips.join('')
-      + (room.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + room.watchers + '</span>' : '');
+      + (room.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + room.watchers + '</span>' : '')
+      // Рахунок вечора — між партіями (лобі столу й підсумок); посеред гри шапку не ширимо.
+      + (room.status !== 'playing' && eveningText(room) ? '<span class="gevening" title="' + esc(eveningTitle(room)) + '">'
+        + esc(eveningText(room)) + '</span>' : '');
   }
 
   function defaultStatus(rv) {
@@ -1633,9 +1884,10 @@
 
     const mod = modules[rv.room.game] || null;
     if (mod && card.mod !== mod) card.mod = mod;
+    if (!mod) loadGame(rv.room.game);   // лінивий вантаж (п. 241): модуль приїде — register() перемалює картку
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
-      rv.room.options, rv.room.result, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
+      rv.room.options, rv.room.result, rv.room.evening, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
     const roomChanged = sig !== card.sig;
     if (roomChanged) {
       card.sig = sig;
@@ -1665,6 +1917,8 @@
       if (!card.mounted) {
         card.body.innerHTML = '';
         card.mounted = true;
+        // Модуль бачить, чи його видно, вже в mount; далі про зміну скаже visible() (п. 240).
+        card.vis = ctx.shown = cardOn(card);
         try { if (card.mod.mount) card.mod.mount(card.body, ctx); }
         catch (e) { console.warn('[games] mount ' + rv.room.game, e); }
       }
@@ -1680,6 +1934,7 @@
     }
 
     paintStatus(card, rv);
+    paintReacts(card, rv);
     if (view.kind === 'room' && view.id === id) syncArcade();
   }
 
@@ -1868,6 +2123,7 @@
   // Публічний API
   // =============================================================================================
 
+  let lobbyT = 0;
   const HGames = {
     ui,
 
@@ -1875,14 +2131,17 @@
       if (!mod || !mod.id) { console.warn('[games] register без id'); return; }
       modules[mod.id] = mod;
       failed.delete(mod.id);
+      try { rememberModule(mod); } catch (e) { console.warn('[games] gamesMeta', e); }
       for (const id in cards) if (views[id] && views[id].room.game === mod.id) refreshCard(id);
-      if (shown && root && root.querySelector('.gtiles')) renderView();
+      // Модулі тепер приїжджають по одному у тиші — лобі перемальовуємо раз на пачку, а не на кожен.
+      if (!lobbyT) lobbyT = setTimeout(() => { lobbyT = 0; if (shown && root && root.querySelector('.gtiles')) renderView(); }, 150);
       if (shown && view.kind === 'room') renderRoomHead(view.id);
       notifyTable();   // модуль міг приїхати пізніше за стіл — і сказати, що розмова тут головна (talk: 'main')
     },
 
     registerPanel(p) {
       if (!p || !p.id || !p.mount) { console.warn('[games] registerPanel без id/mount'); return; }
+      try { rememberPanel(); } catch { /* не з модуля гри (tournament.js з index.html) — і не треба */ }
       const i = extraPanels.findIndex((x) => x.id === p.id);
       if (i >= 0) extraPanels[i] = p; else extraPanels.push(p);
       renderShell();
@@ -1908,6 +2167,7 @@
       if (o.online) online = o.online;
       if (o.askNick) askNick = o.askNick;
       root = o.root || (o.$ ? o.$('games') : document.getElementById('games'));
+      if (root) { root.addEventListener('pointerover', prefetchFrom, { passive: true }); root.addEventListener('focusin', prefetchFrom); }
       booted = true;
       renderShell();
       // Каталог і модуль кожної гри тягнемо в show(): слухачеві, який у «Ігри» не заходить,
@@ -1965,6 +2225,7 @@
         notifyTable();                                      // сів, встав, партія почалась — балачці столу це важливо
         checkTurns();                                       // «🎲 Твій хід» у заголовку вкладки й на «Іграх»
       });
+      c.on('tableReact', flyReact);
       c.on('frame', (f) => {
         if (!f || !f.id) return;
         const card = cards[f.id];
@@ -2026,6 +2287,7 @@
 
     hide() {
       shown = false;
+      syncShown();
       setFull(false);
       document.body.classList.remove('g-room', 'g-arcade');
       syncWatch();
@@ -2033,7 +2295,9 @@
     },
 
     /// Каталог і модулі ігор (іконки, назви) — для «Хто скільки» й профілів: проміс, що каталог уже є.
-    ready: () => ensureCatalog() || Promise.resolve(),
+    /// Модулі тепер довантажуються в тиші (п. 241): чекаємо їх (заради справжніх іконок при першому заході) щонайбільше 1,5 с.
+    ready: () => Promise.race([ensureCatalog() || Promise.resolve(),
+      ensureNames().then(() => new Promise((r) => setTimeout(r, 1500)))]),
     iconOf,
     titleOf,
     roomOf,

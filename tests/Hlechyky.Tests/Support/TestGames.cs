@@ -255,3 +255,23 @@ public sealed class TestLobby : Game
 
     public override object View(int? seat) => new { pack = Pack, host = Ctx.HostSeat };
 }
+
+/// <summary>
+/// Реалтайм, чий <c>Frame()</c> інколи каже null — «нема чого слати» (прохід №3, п. 246). Раніше каркас тоді розсилав
+/// повний публічний вид замість кадру; тепер кадр пропускає.
+/// </summary>
+public sealed class TestFrameless : Game
+{
+    public override GameInfo Info { get; } = new(
+        "t-frameless", "Тестовий без кадру", "тестовий без кадру", GameGroup.Live, 1, 2, TickMs: 50, Start: StartMode.ByHost);
+
+    public bool Empty { get; set; } = true;
+
+    public override void Start() { }
+
+    public override TickResult Tick() => TickResult.FrameOnly;
+
+    public override object? Frame() => Empty ? null : new { f = 1 };
+
+    public override object View(int? seat) => new { big = new string('в', 200) };
+}

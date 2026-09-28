@@ -390,7 +390,17 @@
   // =========================================================================================
 
   const nick = (ctx, i) => ctx.esc(ctx.nickOf(i) || 'хтось');
-  const blank = (ops) => !ops || !ops.length;
+  /// Скільки операцій у малюнку. Легкий вид (прохід №3, п. 247) старих малюнків не везе, лише n; старий сервер n не дає.
+  const opsN = (x) => (x ? (x.n != null ? x.n : x.ops ? x.ops.length : 0) : 0);
+  /// Бракує малюнка, якого в нас нема, — просимо в сервера повний вид (лише собі). Каркас сам не частить;
+  /// старий core.js ctx.resync не знає — тоді напряму, але теж не частіше ніж раз на 1,5 с.
+  function resync(root, ctx) {
+    if (ctx.resync) { ctx.resync(); return; }
+    const p = pad(root), now = Date.now();
+    if (now - (p.resyncAt || 0) < 1500) return;
+    p.resyncAt = now;
+    if (window.HGames && HGames.send) HGames.send('SnapshotRoom', ctx.room.id);
+  }
 
   function timer(root, ctx) {
     const v = ctx.view || {};
@@ -417,15 +427,19 @@
           : 'Опиши, що бачиш на малюнку';
     const key = [v.step, t ? t.kind + ':' + t.chain : 'none'].join('|');
     const body = root.querySelector('.tpbody');
+    const p = pad(root);
+    // Чужий малюнок-завдання легкий вид не везе (прохід №3, п. 247): його приносить знімок — тримаємо в себе.
+    const pr = t && t.prompt && t.prompt.kind === 'drawing' ? t.prompt : null;
+    if (pr && pr.ops) p.promptOps = { key, ops: pr.ops };
+    const promptOps = pr ? pr.ops || (p.promptOps && p.promptOps.key === key ? p.promptOps.ops : null) : null;
 
     if (body.dataset.key !== key) {
       body.dataset.key = key;
-      const p = pad(root);
       let html = '<div class="tptitle">' + ctx.esc(title) + '</div>';
       if (t && t.prompt && t.prompt.kind === 'text') html += '<div class="tpprompt">«' + ctx.esc(t.prompt.text) + '»</div>';
       // Порожнє полотно (сусід не встиг) — краще сказати словами, ніж показувати білий аркуш і гадати, чи він довантажиться.
       if (t && t.prompt && t.prompt.kind === 'drawing') {
-        html += blank(t.prompt.ops) ? '<div class="tpprompt tpempty">🤷 Сусідові забракло часу — полотно порожнє. Вигадай, що там мало бути!</div>'
+        html += !opsN(t.prompt) ? '<div class="tpprompt tpempty">🤷 Сусідові забракло часу — полотно порожнє. Вигадай, що там мало бути!</div>'
           : '<canvas class="tpshow big"></canvas>';
       }
       if (t && t.kind === 'draw') html += '<canvas class="tpcanvas"></canvas><div class="tptools"></div>';
@@ -440,8 +454,12 @@
       body.innerHTML = html;
 
       if (t && t.kind === 'draw') {
-        // Нове завдання — чисте полотно. Після F5 посеред кроку беремо копію з сервера.
-        p.ops = (t.ops || []).map((o) => o.slice());
+        // Нове завдання — чисте полотно. Після F5 посеред кроку беремо копію з сервера (вона їде лише у знімку).
+        // Те саме завдання наново (сервер сказав «дійшов не цілком») без копії — лишаємо своє, копія ще в дорозі.
+        const same = p.taskKey === key;
+        p.taskKey = key;
+        p.needOps = !t.ops;
+        p.ops = t.ops ? t.ops.map((o) => o.slice()) : same ? p.ops : [];
         p.stroke = p.ops.reduce((m, o) => Math.max(m, o[1]), 0) + 1;
         p.cur = null;
         if (p.mark) p.mark.n = 0;          // знімок чужого (попереднього) малюнка сюди не годиться
@@ -467,11 +485,23 @@
           input.dispatchEvent(new Event('input'));
         };
       }
-      if (t && t.prompt && t.prompt.kind === 'drawing' && !blank(t.prompt.ops)) {
+      if (pr && opsN(pr)) {
         const el = body.querySelector('.tpshow');
-        requestAnimationFrame(() => show(el, t.prompt.ops));
-        new ResizeObserver(() => show(el, t.prompt.ops)).observe(el);
+        new ResizeObserver(() => { if (el._ops) show(el, el._ops); }).observe(el);
       }
+    } else if (t && t.kind === 'draw' && t.ops && p.needOps && !p.cur) {
+      // Копія полотна з сервера приїхала пізніше за завдання (знімок після F5, відповідь на «дійшов не цілком»).
+      p.needOps = false;
+      p.ops = t.ops.map((o) => o.slice());
+      p.stroke = p.ops.reduce((m, o) => Math.max(m, o[1]), 0) + 1;
+      if (p.mark) p.mark.n = 0;
+      rebuild(p);
+      paintSoon(root);
+    }
+    if (pr && opsN(pr)) {
+      const el = body.querySelector('.tpshow');
+      if (!promptOps) resync(root, ctx);
+      else if (el && el._ops !== promptOps) { el._ops = promptOps; requestAnimationFrame(() => show(el, promptOps)); }
     }
 
     // Те, що міняється без нового завдання: здано / змінити, хто ще працює.
@@ -510,11 +540,8 @@
     if (t.kind === 'draw') {
       if (p.cur) flush(root, true);
       ctx.act('done', { n: p.ops.length }).then((r) => {
-        // сервер отримав не все — довіряємо його копії, людина подивиться й здасть ще раз
-        if (r && !r.ok && /не цілком/.test(r.message || '')) {
-          const body = root.querySelector('.tpbody');
-          if (body) body.dataset.key = '';
-        }
+        // сервер отримав не все — довіряємо його копії (приїде наступним видом), людина подивиться й здасть ще раз
+        if (r && !r.ok && /не цілком/.test(r.message || '')) pad(root).needOps = true;
       });
       return;
     }
@@ -528,7 +555,7 @@
     const jug = e.seat < 0;
     const who = '<div class="tpby">' + (jug ? '🏺 Глек загадав:' : nick(ctx, e.seat) + (e.kind === 'drawing' ? ' малює:' : e.index === 0 ? ' починає:' : ' бачить:')) + '</div>';
     const body = e.kind === 'drawing'
-      ? (blank(e.ops) ? '<div class="tptext tpempty">🤷 полотно лишилось порожнім</div>'
+      ? (!opsN(e) ? '<div class="tptext tpempty">🤷 полотно лишилось порожнім</div>'
         : '<canvas class="tpshow" data-chain="' + chain + '" data-index="' + e.index + '"></canvas>')
       : '<div class="tptext">«' + ctx.esc(e.text || '') + '»</div>';
     const own = e.seat === ctx.seat;
@@ -566,13 +593,22 @@
   function revealScreen(root, ctx, v) {
     const r = v.reveal;
     const p = pad(root);
+    let entries = [];
     if (r) {
       syncLiked(p, r.chain, r.entries);
-      p.seen.set(r.chain, { owner: r.owner, entries: r.entries.map((e) => Object.assign({}, e)) });
+      // Легкий вид везе малюнок лише щойно відкритого запису (прохід №3, п. 247): решту беремо з того, що вже бачили.
+      const old = p.seen.get(r.chain);
+      entries = r.entries.map((e) => {
+        const c = Object.assign({}, e);
+        if (!c.ops) { const o = old && old.entries.find((x) => x.index === e.index); if (o && o.ops) c.ops = o.ops; }
+        return c;
+      });
+      p.seen.set(r.chain, { owner: r.owner, entries });
+      if (entries.some((e) => e.kind === 'drawing' && !e.ops && opsN(e))) resync(root, ctx);
     }
     const body = root.querySelector('.tpbody');
     const key = 'reveal|' + (r ? r.chain + ':' + r.shown + ':' + (ctx.mine ? 'm' : '') + (ctx.playing ? 'p' : '') : '');
-    if (body.dataset.key === key) { if (r) paintLikes(root, r.chain); return; }
+    if (body.dataset.key === key) { if (r) { paintLikes(root, r.chain); wireChain(root, body, entries, r.chain, true); } return; }
     const scrollToEnd = !r || body.dataset.chain !== String(r.chain) || +body.dataset.shown < r.shown;
     body.dataset.key = key;
     if (!r) { body.innerHTML = ''; return; }
@@ -580,10 +616,10 @@
     body.dataset.shown = String(r.shown);
     const more = r.shown < r.total ? 'Гортай далі ▸' : r.no < r.chains ? 'Наступний ланцюжок ▸' : 'Підсумки ▸';
     body.innerHTML = '<div class="tptitle">Ланцюжок ' + r.no + ' з ' + r.chains + ' · від ' + nick(ctx, r.owner) + '</div>'
-      + '<div class="tpchain">' + r.entries.map((e, i) => entryHtml(ctx, e, r.chain, i === r.entries.length - 1, p.liked.has(r.chain + ':' + e.index))).join('') + '</div>'
+      + '<div class="tpchain">' + entries.map((e, i) => entryHtml(ctx, e, r.chain, i === entries.length - 1, p.liked.has(r.chain + ':' + e.index))).join('') + '</div>'
       + (ctx.mine ? '<div class="tpact"><button type="button" class="primary" data-do="next">' + more + '</button></div>'
         : '<div class="tpwho">Гравці гортають ланцюжок</div>');
-    wireChain(root, body, r.entries, r.chain);
+    wireChain(root, body, entries, r.chain);
     const next = body.querySelector('[data-do="next"]');
     if (next) next.onclick = () => { const c = root._ctx; if (c) c.act('next'); };
     if (scrollToEnd) {
@@ -592,12 +628,15 @@
     }
   }
 
-  function wireChain(root, body, entries, chain) {
+  /// only — лише домалювати полотна, чиї малюнки приїхали пізніше (знімок після ctx.resync()), без нових слухачів.
+  function wireChain(root, body, entries, chain, only) {
     body.querySelectorAll('canvas.tpshow').forEach((el) => {
       const e = entries.find((x) => x.index === +el.dataset.index);
-      if (!e) return;
+      if (!e || !e.ops || el._ops === e.ops) return;
+      el._ops = e.ops;
       requestAnimationFrame(() => show(el, e.ops));
     });
+    if (only) return;
     body.querySelectorAll('.tplike').forEach((b) => b.onclick = () => {
       const c = root._ctx;
       if (!c) return;

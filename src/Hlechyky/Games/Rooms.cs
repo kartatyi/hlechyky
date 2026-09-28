@@ -828,6 +828,37 @@ public sealed class Rooms
         return (outbox, null);
     }
 
+    // ---------- реакції-емодзі (п. 231) ----------
+
+    /// <summary>Скільки різних реакцій (😂🔥🤯👏😱 — малює core.js, сервер знає лише номер).</summary>
+    public const int ReactKinds = 5;
+    /// <summary>Не частіше за раз на стільки від одного ніка за столом: підколоти — так, засипати дошку — ні.</summary>
+    public const int ReactGapMs = 1500;
+
+    /// <summary>
+    /// Реакція-емодзі за столом: кидає той, хто сидить, або глядач цього столу. Ніщо в грі не міняється,
+    /// у балачку не пишеться — лише подія tableReact групі столу. Error — лише тому, хто кидав.
+    /// </summary>
+    public (Outbox Out, string? Error) TableReact(string id, string? connId, string nick, int e)
+    {
+        var outbox = new Outbox();
+        if (!Named(nick)) return (outbox, Say.NoNick);
+        if (e is < 0 or >= ReactKinds) return (outbox, "Такої реакції нема");
+        if (Find(id) is not { } room || !room.Talks) return (outbox, Say.NoRoom);
+        lock (room.Sync)
+        {
+            var seat = room.SeatOf(nick);
+            if (seat is null && (connId is null || !room.Watchers.ContainsKey(connId))) return (outbox, "Спершу підійди до столу");
+            var now = _clock.UtcNow;
+            if (room.ReactAt.TryGetValue(nick, out var at) && now - at < TimeSpan.FromMilliseconds(ReactGapMs))
+                return (outbox, "Не так часто — хай усі розгледять");
+            if (room.ReactAt.Count > 64) room.ReactAt.Clear();   // стіл живе довго, а глядачі приходять і йдуть
+            room.ReactAt[nick] = now;
+            outbox.Add(new TableReact(room.Id, nick, seat, e));
+        }
+        return (outbox, null);
+    }
+
     /// <summary>
     /// Чому цьому ніку (з цього з'єднання) зараз не можна говорити за столом; null — можна. Хаб питає це до
     /// лічильника флуду, а «пише…» — щоб не видавати, скажімо, мертвих у мафії.
@@ -969,6 +1000,38 @@ public sealed class Rooms
         }
     }
 
+    /// <summary>
+    /// Повний вид (<see cref="Game.Snapshot"/>) для одного з'єднання, що дивиться на стіл (прохід №3, п. 247): місце —
+    /// за ніком. null — столу нема або з'єднання на нього не дивиться (відписався, поки летіла пачка).
+    /// </summary>
+    public RoomView? SnapshotFor(string roomId, string connId, string? nick)
+    {
+        if (Find(roomId) is not { } room || !room.Watchers.ContainsKey(connId)) return null;
+        lock (room.Sync)
+        {
+            int? seat = null;
+            if (!string.IsNullOrEmpty(nick))
+                for (var i = 0; i < room.Seats.Length; i++)
+                    if (string.Equals(room.Seats[i], nick, StringComparison.OrdinalIgnoreCase)) { seat = i; break; }
+            object? view;
+            try { view = room.Game.Snapshot(seat); }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Snapshot({Seat}) впав у кімнаті {Room}", seat, room.Id);
+                view = SafeView(room, seat);
+            }
+            return new RoomView(room.Summary(), seat, view);
+        }
+    }
+
+    /// <summary>З'єднання просить повний вид столу, на який дивиться (хаб SnapshotRoom). Чужий стіл — нічого.</summary>
+    public Outbox Resync(string roomId, string connId)
+    {
+        var outbox = new Outbox();
+        if (Find(roomId) is { } room && room.Watchers.ContainsKey(connId)) outbox.Add(new RoomSnapshot(room.Id, connId));
+        return outbox;
+    }
+
     object? SafeView(Room room, int? seat)
     {
         try { return room.Game.View(seat); }
@@ -1094,15 +1157,24 @@ public sealed class Rooms
         return outbox;
     }
 
+    /// <summary>
+    /// Кадр для розсилки. Гра, що <c>Frame()</c> не перекрила, шле публічний вид (як завжди). Гра, що перекрила й повернула
+    /// null, каже «нема чого слати» — кадр пропускаємо (п. 246): раніше тут летів повний View(null), і модуль отримував
+    /// у <c>frame</c> вид замість кадру.
+    /// </summary>
     object? SafeFrame(Room room)
     {
-        try { return room.Game.Frame() ?? room.Game.View(null); }
+        try { return room.Game.Frame() ?? (OwnFrame(room.Game) ? null : room.Game.View(null)); }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Frame() впав у кімнаті {Room}", room.Id);
             return null;
         }
     }
+
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> OwnFrames = new();
+    static bool OwnFrame(Game game) => OwnFrames.GetOrAdd(game.GetType(),
+        t => t.GetMethod(nameof(Game.Frame), Type.EmptyTypes)?.DeclaringType != typeof(Game));
 
     /// <summary>Прибирання за ARCHITECTURE §4.4: порожні, засиджені в лобі й дограні кімнати.</summary>
     public Outbox Housekeeping(DateTimeOffset now)
@@ -1191,6 +1263,7 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         winners = winners.Where(s => s >= 0 && s < room.Seats.Length).Distinct().Order().ToArray();
         room.Result = new RoomResult(winners, winners.Length == 0, log, scores);
         room.Status = RoomStatus.Finished;
+        room.TallyEvening(winners, scores);
         room.FinishedAt = now;
         room.LastActivity = now;
 

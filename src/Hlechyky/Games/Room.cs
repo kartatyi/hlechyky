@@ -28,7 +28,27 @@ public sealed record RoomSummary(
     RoomResultDto? Result,
     DateTimeOffset CreatedAt,
     DateTimeOffset? StartedAt,
-    DateTimeOffset? FinishedAt);
+    DateTimeOffset? FinishedAt,
+    EveningDto? Evening = null);
+
+/// <summary>
+/// «Рахунок вечора» (п. 225): скільки партій дограли за цим столом за всі «Ану ще раз» і хто скільки взяв.
+/// <c>Points</c> — сума очок, які гра віддала в <c>Finish(scores)</c>; null, якщо гра очок не рахує.
+/// </summary>
+public sealed record EveningDto(int Games, IReadOnlyList<EveningRowDto> Rows);
+
+public sealed record EveningRowDto(string Nick, int Wins, int Games, long? Points);
+
+/// <summary>Рядок вечора в кімнаті: живе, поки живе стіл; ключ — нік без огляду на регістр.</summary>
+public sealed class EveningRow
+{
+    public required string Nick { get; set; }
+    public int Wins { get; set; }
+    public int Games { get; set; }
+    public long Points { get; set; }
+    public bool HasPoints { get; set; }
+    public int Order { get; init; }
+}
 
 /// <summary>Те, що летить подією <c>room</c>: шапка кімнати, моє місце (null — глядач) і вид цього місця.</summary>
 public sealed record RoomView(RoomSummary Room, int? Seat, object? View);
@@ -97,6 +117,41 @@ public sealed class Room
     /// <see cref="Sync"/>; живе й помирає разом зі столом, як і сама партія.
     /// </summary>
     public List<TableLine> Talk { get; } = [];
+
+    /// <summary>Рахунок вечора: партії, дограні за цим столом (зі «Ану ще раз» і новими гостями). Лише під <see cref="Sync"/>.</summary>
+    public Dictionary<string, EveningRow> Evening { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public int EveningGames { get; set; }
+
+    /// <summary>Коли нік востаннє кидав реакцію-емодзі (квота Rooms.ReactGapMs). Лише під <see cref="Sync"/>.</summary>
+    public Dictionary<string, DateTimeOffset> ReactAt { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Записати дограну партію у вечір (кличе RoomContext.Finish під замком). Соло сюди не йде.</summary>
+    public void TallyEvening(int[] winners, IReadOnlyDictionary<int, long>? scores)
+    {
+        if (Info.Solo) return;
+        EveningGames++;
+        var points = scores is { Count: > 0 } && Info.Score != ScoreOrder.LowerIsBetter;
+        for (var i = 0; i < Seats.Length; i++)
+        {
+            if (Seats[i] is not { } nick) continue;
+            if (!Evening.TryGetValue(nick, out var row))
+                Evening[nick] = row = new EveningRow { Nick = nick, Order = Evening.Count };
+            row.Nick = nick;
+            row.Games++;
+            if (Array.IndexOf(winners, i) >= 0) row.Wins++;
+            if (points && scores!.TryGetValue(i, out var v)) { row.Points += v; row.HasPoints = true; }
+        }
+    }
+
+    EveningDto? EveningSummary()
+    {
+        if (EveningGames == 0 || Evening.Count == 0) return null;
+        var rows = Evening.Values
+            .OrderByDescending(r => r.Wins).ThenByDescending(r => r.HasPoints ? r.Points : 0).ThenBy(r => r.Order)
+            .Select(r => new EveningRowDto(r.Nick, r.Wins, r.Games, r.HasPoints ? r.Points : null))
+            .ToArray();
+        return new EveningDto(EveningGames, rows);
+    }
     /// <summary>Чи є в цього столу своя балачка: у соло й приватній кімнаті говорити нема з ким.</summary>
     public bool Talks => !Info.Solo && !Info.Private;
 
@@ -141,6 +196,6 @@ public sealed class Room
             Id, Info.Id, Status.ToString().ToLowerInvariant(), slots, names, Host,
             Info.MinPlayers, Info.MaxPlayers, Options, Stake, Round, Watchers.Count,
             Result is { } r ? new RoomResultDto(r.Winners, r.Draw, r.Text) : null,
-            CreatedAt, StartedAt, FinishedAt);
+            CreatedAt, StartedAt, FinishedAt, EveningSummary());
     }
 }

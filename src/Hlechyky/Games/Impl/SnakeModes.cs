@@ -313,7 +313,7 @@ public sealed class SnakeCoopGame : Game
 {
     public override GameInfo Info { get; } = new(
         "snake-coop", "Змійка на всіх", "змійку на всіх", GameGroup.Live, 1, CoopSnakeCore.Seats,
-        TickMs: SnakeCore.TickMs, Start: StartMode.ByHost, Rated: false, Score: ScoreOrder.HigherIsBetter,
+        TickMs: SnakeCore.TickMs, Start: StartMode.ByHost, Rated: false, Score: ScoreOrder.HigherIsBetter, Coop: true,
         Hint: "Одна змійка на всіх: кожен крутить лише свої стрілки (удвох — вгору-вниз і вліво-вправо, вчотирьох — по одній). Домовляйтесь!",
         Client: "snake-modes");
 
