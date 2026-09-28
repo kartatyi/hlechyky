@@ -128,7 +128,7 @@ public class DiceTests
         Assert.Equal("«Під глеком»", info.Accusative);
         Assert.DoesNotContain("п'ять", info.Hint);   // з опцією «3 — швидка партія» п'яти кісточок нема
         var opts = info.Options!.ToDictionary(o => o.Key, o => o.Default);
-        Assert.Equal(new Dictionary<string, string> { ["dice"] = "5", ["turn"] = "30", ["exact"] = "on", ["palifico"] = "on" }, opts);
+        Assert.Equal(new Dictionary<string, string> { ["dice"] = "5", ["turn"] = "30", ["exact"] = "on", ["palifico"] = "on", ["voice"] = "ostap" }, opts);
         var cat = registry.Catalog.Single(g => g.Id == "dice");
         Assert.True(cat.HasCss);
         Assert.Equal("party", cat.Group);
@@ -1439,7 +1439,8 @@ public class DiceTests
         {
             int? seat = s == 6 ? null : s;
             var bytes = Encoding.UTF8.GetByteCount(Views.Text(h.Room.Game.View(seat)));
-            Assert.True(bytes <= 2048, $"вид місця {seat?.ToString() ?? "глядача"} — {bytes} Б");
+            // 2 КБ + поле «fan» проходу №3 (голос і вболівальники; порожнє — 11 Б): до нього вид був 2042 Б.
+            Assert.True(bytes <= 2048 + 64, $"вид місця {seat?.ToString() ?? "глядача"} — {bytes} Б");
         }
     }
 

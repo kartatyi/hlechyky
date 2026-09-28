@@ -1074,7 +1074,7 @@ public class MafiaTests
         Assert.True(game.Hidden);
         Assert.False(game.Rated);
         Assert.Equal("byHost", game.Start);
-        Assert.Equal(3, game.MinPlayers);
+        Assert.Equal(2, game.MinPlayers);   // людей — від двох, третього добирає бот (CanStart)
         Assert.Equal(12, game.MaxPlayers);
         Assert.Equal(Mafia.TickMs, game.TickMs);
         Assert.Equal("mafia", game.Module);

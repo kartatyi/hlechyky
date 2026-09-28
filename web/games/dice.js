@@ -159,6 +159,7 @@
         + ' title="' + r[1] + '" aria-label="реакція: ' + r[1] + '">' + r[0] + '</button>').join('') + '</div></div>'
       + '<div class="di-pal" hidden></div>'
       + '<div class="di-hist"></div>'
+      + '<div class="di-fanbox" hidden></div>'
       + '<div class="di-reveal" hidden></div>'
       + '<div class="di-win" hidden></div>'
       + '<div class="di-bottom">'
@@ -174,7 +175,8 @@
       + '</div>'
       + '</div>'
       + '</div>'
-      + '<div class="di-foot"></div>';
+      + '<div class="di-foot"></div>'
+      + '<audio class="di-voice" preload="auto"></audio>';
     root.appendChild(el);
     return el;
   }
@@ -901,6 +903,9 @@
     paintHist(box.querySelector('.di-hist'), ctx, v);
     paintReveal(box.querySelector('.di-reveal'), ctx, v, st);
     paintWin(box.querySelector('.di-win'), ctx, v);
+    paintFans(box.querySelector('.di-fanbox'), ctx, v, st);
+    paintSeason(box.querySelector('.di-win'), ctx, v, st);
+    voice(box, ctx, v, st);
     paintMe(box.querySelector('.di-me'), ctx, v);
     paintAct(box.querySelector('.di-act'), ctx, v, st);
     paintFoot(box.querySelector('.di-foot'), ctx);
@@ -908,6 +913,116 @@
     // Пігулка «💬 Стіл» (шторка балачки) лежить унизу праворуч — даємо столу низ, щоб не накрила «Точно!».
     const pill = !!document.querySelector('.tchat.drawer');
     if (box.classList.contains('di-pill') !== pill) box.classList.toggle('di-pill', pill);
+  }
+
+  // =============================================================================================
+  // Прохід №3: вболівальники, голос Глека, сезон
+  // =============================================================================================
+
+  /// «Правда/брехня» від того, хто не грає: вибулий ставить ходом, глядач — через HTTP (Rooms.Act пускає лише тих,
+  /// хто сидить). Свій вибір пам'ятаємо тут: у виді глядача всі однакові.
+  function bet(root, ctx, truth) {
+    const st = state(root);
+    const v = ctx.view || {};
+    const key = v.fan && v.fan.bets ? v.fan.bets.key : (v.round * 1000 + (v.history || []).length);
+    const prev = st.bet;
+    st.bet = { key, truth };
+    const undo = (msg) => { st.bet = prev; if (msg && ctx.toast) ctx.toast(msg, 'err'); paint(root, ctx); };
+    paint(root, ctx);
+    if (ctx.seat != null) {
+      Promise.resolve(ctx.act('bet', { truth })).then((r) => { if (r && r.ok === false) undo(); });
+      return;
+    }
+    fetch('/api/games/dice/bet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Nick': encodeURIComponent((ctx.me && ctx.me.nick) || '') },
+      body: JSON.stringify({ room: ctx.room && ctx.room.id, truth }),
+    }).then((r) => r.json()).then((d) => { if (!d || !d.ok) undo((d && d.message) || 'Ставка не пройшла'); })
+      .catch(() => undo('Ставка не пройшла — зв\'язок?'));
+  }
+
+  function paintFans(el, ctx, v, st) {
+    const fan = v.fan || {};
+    const canBet = v.phase === 'bid' && !!v.bid && !alive(v, ctx.seat) && !!(ctx.me && ctx.me.nick);
+    const counts = fan.bets ? '<span class="di-fcnt muted">' + fan.bets.truth + ' за правду · ' + fan.bets.lie + ' за брехню</span>' : '';
+    let html = '';
+    if (canBet) {
+      const key = fan.bets ? fan.bets.key : (v.round * 1000 + (v.history || []).length);
+      const mine = st.bet && st.bet.key === key ? st.bet.truth : null;
+      html = '<div class="di-fq">👀 Вболіваєш: чи є на столі ' + bidHtml(v.bid) + '?</div>'
+        + '<div class="di-fbtns"><button type="button" class="ghost di-fb' + (mine === true ? ' on' : '') + '" data-truth="1">👍 Правда</button>'
+        + '<button type="button" class="ghost di-fb' + (mine === false ? ' on' : '') + '" data-truth="0">👎 Брехня</button>' + counts + '</div>';
+    } else if (v.phase === 'bid' && fan.bets) {
+      html = '<div class="di-fq muted">👀 Вболівальники: ' + counts + '</div>';
+    } else if (v.phase === 'reveal' && fan.settled) {
+      html = '<div class="di-fq">👀 ' + fan.settled.map((f) => ctx.esc(f.nick) + ' ' + (f.hit ? '✓' : '✗')
+        + ' <span class="muted">(' + (f.truth ? 'правда' : 'брехня') + ')</span>').join(' · ') + '</div>';
+    } else if (v.phase === 'done' && fan.table && fan.table.length) {
+      html = '<div class="di-fq"><b>👃 Нюх вболівальника</b> ' + fan.table.map((f) => ctx.esc(f.nick) + ' ' + f.hits + '/' + f.tries).join(' · ') + '</div>';
+    }
+    el.hidden = !html;
+    setHtml(el, html);
+  }
+
+  /// Сезон: смішні звання за тиждень — під підсумком партії (раз на партію, з сервера).
+  function paintSeason(win, ctx, v, st) {
+    const res = v.result;
+    if (!res || win.hidden) return;
+    let box = win.querySelector('.di-season');
+    if (!box) { box = document.createElement('div'); box.className = 'di-season'; win.appendChild(box); }
+    const key = (ctx.room && ctx.room.id) + ':' + res.rounds + ':' + res.winner + ':' + (ctx.room && ctx.room.round);
+    if (st.seasonKey === key) { if (st.seasonHtml && box.innerHTML !== st.seasonHtml) box.innerHTML = st.seasonHtml; return; }
+    st.seasonKey = key;
+    st.seasonHtml = '';
+    fetch('/api/games/dice/season?period=week').then((r) => r.json()).then((d) => {
+      if (!root0(win) || st.seasonKey !== key) return;
+      const t = (d && d.titles) || [];
+      if (!t.length) return;
+      st.seasonHtml = '<div class="di-shead">🏆 Сезон під глеком — 7 днів</div><ul class="di-slist">'
+        + t.map((x) => '<li>' + x.icon + ' ' + ctx.esc(x.title) + ' — <b>' + ctx.esc(x.rows[0].nick) + '</b> ×' + x.rows[0].n
+          + (x.rows[1] ? ' <span class="muted">(далі ' + ctx.esc(x.rows[1].nick) + ' ×' + x.rows[1].n + ')</span>' : '') + '</li>').join('')
+        + '</ul><a class="muted small" href="#stats/games">усі таблиці →</a>';
+      box.innerHTML = st.seasonHtml;
+    }).catch(() => {});
+  }
+  const root0 = (el) => el && el.isConnected;
+
+  function duck(st, on) {
+    const r = document.getElementById('audio');
+    if (!r) return;
+    if (on && st.radioMuted == null) { st.radioMuted = r.muted; r.muted = true; }
+    if (!on && st.radioMuted != null) { r.muted = st.radioMuted; st.radioMuted = null; }
+  }
+
+  function hush(box, st) {
+    st.line = (st.line || 0) + 1;
+    const a = box && box.querySelector('.di-voice');
+    if (a && !a.paused) a.pause();
+    duck(st, false);
+  }
+
+  /// Глек читає вердикт і переможця там, де ввімкнено 🔊 (як і звуки гри). F5 посеред репліки — стару не повторюємо.
+  function voice(box, ctx, v, st) {
+    const say = v.fan && v.fan.say;
+    if (st.sayId == null) { st.sayId = say ? say.id : 0; return; }
+    if (!say || say.id === st.sayId) return;
+    st.sayId = say.id;
+    const parts = (say.parts || []).filter((x) => x && x.url);
+    if (!parts.length || !soundOn()) return;
+    hush(box, st);
+    const a = box.querySelector('.di-voice');
+    const n = st.line;
+    let i = 0;
+    const end = () => { if (st.line === n) duck(st, false); };
+    const next = () => {
+      if (st.line !== n) return;
+      if (i >= parts.length) { end(); return; }
+      a.src = parts[i++].url;
+      a.play().catch(end);
+    };
+    a.onended = next;
+    duck(st, true);
+    next();
   }
 
   // =============================================================================================
@@ -930,6 +1045,7 @@
       else if (t.classList.contains('di-liar')) liar(root, ctx);
       else if (t.classList.contains('di-exact')) exact(root, ctx);
       else if (t.classList.contains('di-next')) ready(root, ctx);
+      else if (t.classList.contains('di-fb')) bet(root, ctx, t.dataset.truth === '1');
       else if (t.dataset.rx != null) react(root, ctx, +t.dataset.rx);
       else if (t.dataset.tg) toggle(root, ctx, t.dataset.tg);
     });
@@ -995,14 +1111,12 @@
     // тут читався б як «вибув».
     seatClass: ['x', 'o', 'c', 'div', 'dib', 'dip'],
     news: {
-      v: '2026-09-27',
-      title: 'Нова гра: Під глеком',
+      v: '2026-09-29',
+      title: 'Під глеком: вболівальники, голос Глека і сезон',
       items: [
-        '🏺 У кожного під глеком п’ять кісточок (у швидкій партії — три) — бачиш лише свої',
-        '🗣 По колу кажи, скільки кісточок із такою гранню на всьому столі: кожна наступна ставка — вища',
-        '⚀ Одиниці — глечики-джокери: рахуються за будь-яку грань. На глечики — від половини, з глечиків — удвоє плюс один',
-        '🤥 Не віриш — тисни «Брешеш!»: глеки піднімаються, хто помилився — губить кісточку',
-        '🎯 «Точно!» можна крикнути поза чергою: вгадав рівно — повернув кісточку. Хто лишився з кісточками — переміг',
+        '👀 Вибув чи дивишся збоку — ставь «👍 правда / 👎 брехня» на ставку, що на столі. Влучні — у «👃 нюх вболівальника»',
+        '🔊 Дядько Глек читає вердикт уголос («Брехня! Загнув — Петро») і переможця — там, де ввімкнено 🔊',
+        '🏆 Сезон: звання партій за тиждень — 🤥 Блефер тижня, 🕵 Нюх на брехню, 🎯 Снайпер — під підсумком і в «📊 Хто скільки»',
       ],
     },
     pad: {
@@ -1070,6 +1184,7 @@
       }
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
+      if (st) hush(root.querySelector(':scope > .dice') || root, st);
       if (root._diceUp) document.removeEventListener('keyup', root._diceUp);
       root._diceUp = null;
       root._dice = null;

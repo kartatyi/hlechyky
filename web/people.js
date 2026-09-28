@@ -421,6 +421,7 @@
       + '</select></div><div class="glbbox"><div class="gwait"><span class="spin"></span> рахую…</div></div></section>';
     body.querySelector('.glbgame').onchange = (e) => { lbGame = e.target.value; lsSet('gamesLbGame', lbGame); drawStatsBody(); };
     const box = body.querySelector('.glbbox');
+    if (lbGame === 'dice') seasonDice(body, t);   // «Під глеком»: смішні звання партій за період (прохід №3, №130)
     const r = await o.api('GET', '/api/games/leaderboard?game=' + encodeURIComponent(lbGame) + '&period=' + encodeURIComponent(period));
     if (stale(t) || !box.isConnected) return;
     const rows = asList(r);
@@ -433,6 +434,21 @@
         + '<span class="glb-who">' + ava(x.nick || '', 'ava sm') + nickLink(x.nick || '') + '</span>'
         + cols.map(([k]) => '<span>' + esc(k === 'ms' ? secs(x[k]) : (x[k] == null ? '—' : lbNum(x[k]))) + '</span>').join('')
         + '</div>').join('') + '</div>';
+  }
+
+  /// «Блефер сезону» — звання партій «Під глеком» (сервер: /api/games/dice/season). «Сьогодні» рахуємо як тиждень.
+  async function seasonDice(body, t) {
+    const d = await o.api('GET', '/api/games/dice/season?period=' + (period === 'month' || period === 'all' ? period : 'week')).catch(() => null);
+    const titles = (d && d.titles) || [];
+    if (stale(t) || !titles.length || !body.isConnected) return;
+    const sec = document.createElement('section');
+    sec.className = 'panel stbox';
+    sec.innerHTML = '<h4>🏆 Сезон під глеком — ' + esc(d.period === 'all' ? 'за весь час' : d.period === 'month' ? 'за 30 днів' : 'за 7 днів') + '</h4>'
+      + '<div class="glb wide"><div class="glbrow head"><span>звання</span><span>хто</span><span>скільки</span></div>'
+      + titles.map((x) => x.rows.map((r, i) => '<div class="glbrow' + (same(r.nick, o.me.nick) ? ' me' : '') + '"><span>' + (i ? '' : esc(x.icon + ' ' + x.title)) + '</span>'
+        + '<span class="glb-who">' + ava(r.nick, 'ava sm') + nickLink(r.nick) + '</span><span>×' + r.n + '</span></div>').join('')).join('')
+      + '</div>';
+    body.appendChild(sec);
   }
 
   // ---------- час ----------
