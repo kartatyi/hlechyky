@@ -11,7 +11,7 @@ namespace Hlechyky.Tests.Games;
 /// рівно туди, куди треба), а черги, пропуски, кінець партії й вид — через кімнату (spec glekomet.md §8).
 /// </summary>
 [Collection(SerialPerf.Name)]
-public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
+public partial class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марта", "Тарас"];
 
@@ -138,7 +138,7 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
     // =============================================================================================
 
     [Fact]
-    public void Catalog_lists_glekomet_as_live_by_host_2_to_6_with_three_options()
+    public void Catalog_lists_glekomet_as_live_by_host_2_to_6_with_its_options()
     {
         var g = RoomHarness.NewRegistry().Catalog.Single(c => c.Id == "glekomet");
         Assert.Equal("Глекомети", g.Title);
@@ -146,8 +146,8 @@ public class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.Equal("byHost", g.Start);
         Assert.Equal((2, 6, 40), (g.MinPlayers, g.MaxPlayers, g.TickMs));
         Assert.False(g.Hidden);
-        Assert.Equal(["teams", "turn", "water"], g.Options.Select(o => o.Key));
-        Assert.Equal(["solo", "30", "6"], g.Options.Select(o => o.Default));
+        Assert.Equal(["teams", "turn", "water", "mode", "arms", "map"], g.Options.Select(o => o.Key));
+        Assert.Equal(["solo", "30", "6", "turns", "plain", "plain"], g.Options.Select(o => o.Default));
         Assert.Equal(["20", "30", "45"], g.Options[1].Values.Select(v => v[0]));
         Assert.Equal(["6", "10", "0"], g.Options[2].Values.Select(v => v[0]));
         Assert.Equal("glekomet", g.Module);

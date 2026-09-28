@@ -71,12 +71,16 @@ gk.plan = (v, seat, skill) => {
   else if (inv[5] > 0 && r < 0.44) w = 5;
   else if (inv[3] > 0 && r < 0.5) w = 3;
   else if (inv[4] > 0 && r < 0.55) w = 4;
+  else if (inv[6] > 0 && r < 0.63) w = 6;          // приколи (прохід №3), якщо комора їх має
+  else if (inv[7] > 0 && r < 0.69) w = 7;
+  else if (inv[8] > 0 && r < 0.74) w = 8;
+  else if (inv[9] > 0 && r < 0.78) w = 9;
   const right = t.x > me.x;
   let best = null;
   for (let a0 = 30; a0 <= 80; a0 += 5) {
     const a = right ? a0 : 180 - a0;
     for (let p = 20; p <= 100; p += 2) {
-      const end = gk.sim(v, seat, a, p, w === 4 ? 0 : w, seat);
+      const end = gk.sim(v, seat, a, p, w === 4 || w >= 6 ? 0 : w, seat);
       const miss = end.hut === t.seat ? 0 : Math.abs(end.x - t.x) + (end.out ? 500 : 0) + (end.hut === seat ? 800 : 0);
       if (!best || miss < best.miss) best = { a, p, w, miss };
     }
@@ -121,7 +125,8 @@ gk.bot = async (nick, opts) => {
   bot.close = () => { clearInterval(bot.ping); try { ws.close(); } catch { /* уже */ } };
   bot.think = () => {
     const v = bot.view;
-    if (bot.opts.idle || !v || v.phase !== 'aim' || v.turn !== bot.seat || bot.turnNo === v.turnNo) return;
+    const mine = v && (v.mode === 'volley' ? v.huts[bot.seat] && v.huts[bot.seat].alive && !(v.ready || [])[bot.seat] : v.turn === bot.seat);
+    if (bot.opts.idle || !v || v.phase !== 'aim' || !mine || bot.turnNo === v.turnNo) return;
     bot.turnNo = v.turnNo;
     const turnNo = v.turnNo;
     setTimeout(async () => {
@@ -150,18 +155,19 @@ gk.autopilot = (on, opts) => {
   gk.apLog = gk.apLog || [];
   gk.ap = setInterval(async () => {
     const st = gk.st();
-    if (!st || gk.apBusy || !st.view || !st.ctx || !st.ctx.mine || st.phase !== 'aim' || st.turn !== st.ctx.seat || st.fired === st.turnNo || st.myTurnNo !== st.turnNo) return;
+    const myAim = () => st.volley ? st.huts[st.ctx.seat].alive && !st.ready[st.ctx.seat] : st.turn === st.ctx.seat;
+    if (!st || gk.apBusy || !st.view || !st.ctx || !st.ctx.mine || st.phase !== 'aim' || !myAim() || st.fired === st.turnNo || st.myTurnNo !== st.turnNo) return;
     gk.apBusy = true;
     const turnNo = st.turnNo;
     // хід міг згоріти чи партія скінчитись посеред прицілювання — тоді кидаємо, а не крутимо стрілки вічно
     // (раніше автопілот так відкрутив кут Олі до 180° у наступній партії, і вона прогавила хід)
-    const still = () => st.phase === 'aim' && st.turn === st.ctx.seat && st.turnNo === turnNo && st.fired !== turnNo;
+    const still = () => st.phase === 'aim' && myAim() && st.turnNo === turnNo && st.fired !== turnNo;
     try {
       await sleep(700);                              // перші 0,6 с ходу Enter не стріляє (TURN_GRACE)
       if (!still()) return;
       const plan = gk.plan(st.view, st.ctx.seat, opts && opts.skill);
       const cur = st.my;
-      if (plan.w !== cur.w) { gk.key('Digit' + (plan.w + 1)); await sleep(60); }
+      if (plan.w !== cur.w) { gk.key('Digit' + ((plan.w + 1) % 10)); await sleep(60); }
       let da = plan.a - st.my.a, guard = 0;
       while (Math.abs(da) >= 5 && still() && guard++ < 200) { gk.key(da > 0 ? 'ArrowLeft' : 'ArrowRight', { shift: true }); await sleep(25); da = plan.a - st.my.a; }
       while (da !== 0 && still() && guard++ < 400) { gk.key(da > 0 ? 'ArrowLeft' : 'ArrowRight'); await sleep(25); da = plan.a - st.my.a; }
