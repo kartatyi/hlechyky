@@ -626,6 +626,8 @@
   /// Чи є що рухати в наступному кадрі. Ні — rAF зупиняється, і картка не коштує нічого.
   function busy(st, now) {
     const ctx = st.ctx, v = V(ctx), phase = phaseOf(ctx);
+    // картка на складі (людина пішла в лобі посеред раунду) — малювати нікому; повернеться — розбудить ResizeObserver
+    if (!st.cv.offsetParent) return false;
     if (st.fly) return true;
     if (st.cur && (st.keys.l || st.keys.r || st.keys.u || st.keys.d)) return true;
     // після руху — ще кадр-другий, доки статичний шар не перемалюється начисто
@@ -662,7 +664,7 @@
     }
     moveCursor(st, dt, now);
     // схована вкладка — не малюємо (стан приймаємо далі; повернеться — домалюємо)
-    if (!document.hidden && st.cw) draw(st, now);
+    if (!document.hidden && st.cw && st.cv.offsetParent) draw(st, now);
     if (busy(st, now)) st.raf = requestAnimationFrame(() => loop(st));
     else st.lastT = 0;
   }
@@ -1303,7 +1305,8 @@
       document.addEventListener('keyup', st.keyup);
       st.onVis = () => { if (!document.hidden) { st.staticDirty = true; kick(st); } };
       document.addEventListener('visibilitychange', st.onVis);
-      st.ro = new ResizeObserver(() => resize(st));
+      // і при поверненні картки зі складу (display:none → видно): розмір той самий, але кадр треба домалювати
+      st.ro = new ResizeObserver(() => { resize(st); kick(st); });
       st.ro.observe(root.querySelector('.geomap'));
 
       loadMap().then((m) => {
