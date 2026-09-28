@@ -109,7 +109,7 @@
 .tpact .tppause { min-width: 0; }
 .tpwrap .pctime.film i { background: var(--accent); opacity: .7; }
 .tpwrap .pctime.film .pcsec { display: none; }
-@media (pointer: coarse) { .tpspk, .tpact .tppause { min-height: 44px; } }
+@media (pointer: coarse) { .tpspk, .tpact button { min-height: 44px; } }
 
 /* ---- Звання партії (п. 224) ---- */
 .tpawards { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 4px 0 10px; }
