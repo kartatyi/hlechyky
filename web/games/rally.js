@@ -3109,9 +3109,21 @@
     loop(st);
   }
 
+  /// Чемпіонат бере траси жеребом, а каркас у шапці столу підписує трасу, обрану при створенні (чіп опції «Траса»),
+  /// хоч серія її й не гратиме. Опція «Траса» — перша в списку, тож її чіп, коли він є, стоїть одразу за назвою гри:
+  /// ховаємо його класом на картці (клас переживає перемальовку шапки каркасом).
+  function champChip(root, ctx, v) {
+    const table = root.closest && root.closest('.gtable');
+    if (!table) return;
+    const opts = (ctx.room && ctx.room.options) || {};
+    const on = !!(v && v.champ) && !!opts.track && opts.track !== 'selo';
+    table.classList.toggle('rl-champtrk', on);
+  }
+
   function apply(root, ctx) {
     const st = state(root, ctx);
     const v = ctx.view;
+    champChip(root, ctx, v);
     if (!v || !v.track) return;
     const prevView = st.view;
     st.view = v;
@@ -3247,6 +3259,8 @@
     },
 
     unmount(root) {
+      const table = root.closest && root.closest('.gtable');
+      if (table) table.classList.remove('rl-champtrk');
       const st = root._rally;
       if (!st) return;
       cancelAnimationFrame(st.raf);
