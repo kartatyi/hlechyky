@@ -97,22 +97,46 @@
 }
 @keyframes clkaring { 0% { opacity: 1; transform: scale(.8); } 100% { opacity: 0; transform: scale(1.35); } }
 
-/* ---- стовпчики світу (v11) ---- */
-/* Своя група з підписом «світ»: блакитна риска ліворуч від першого стовпчика й ледь блакитні клітинки. Згорнута
-   група (.clka-noworld) — сітка така сама, як до одинадцятого оновлення; на телефоні вона типово згорнута, а
-   розгорнута гортається лише всередині .clka-scroll, сторінка вбік не їде. */
+/* ---- стовпчики світу (v11) ----
+   Своя група «🌍 світ» (.clka-box.world) — без жодної прокрутки вбік. На широкій полиці вона стоїть поруч із домашньою
+   і ділить із нею стовпчики й рядки (subgrid) — одна сітка на 15 стовпчиків. На вузькій — окрема сітка під домашньою,
+   назва виробу — рядком-підписом (.clka-wrow). Згорнута група (.clka-noworld) — сітка така сама, як до v11. */
 .clka-worldbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
 .clka-worldbar:empty { display: none; }
 .clka-worldbtn { padding: 2px 10px; }
 .clka-worldbtn b { color: #7fb0e0; }
-.clka-grprow th { height: auto; }
-.clka-grp { font-size: .68em; font-weight: 500; color: var(--muted); text-align: center; letter-spacing: .04em; padding: 0 0 1px !important; }
-.clka-grp.clka-wc { color: #7fb0e0; border-bottom: 2px solid rgba(79, 143, 192, .55); }
-.clka-grid .clka-wc0 { box-shadow: inset 2px 0 0 rgba(79, 143, 192, .55); padding-left: 3px !important; }
-.clka-grid td.clka-wc .clka-cell { background: rgba(79, 143, 192, .1); min-width: 31px; }
-.clka-grid td.clka-wc .clka-cell.open { background: radial-gradient(circle at 50% 70%, rgba(127, 176, 224, .2), rgba(0, 0, 0, .1)); }
-.clka-noworld .clka-wc, .clka-noworld .clka-grprow { display: none; }
+.clka-duo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.clka-grp {
+  grid-column: 1 / -1; font-size: .68em; font-weight: 500; color: var(--muted); text-align: center; letter-spacing: .04em;
+  line-height: 1.3; border-bottom: 2px solid var(--line); min-width: 0;
+}
+.clka-box.world { border-color: rgba(79, 143, 192, .45); }
+.clka-box.world .clka-grp { color: #7fb0e0; border-bottom-color: rgba(79, 143, 192, .55); }
+.clka-box.world .clka-grid { grid-template-columns: repeat(var(--clka-cols, 6), minmax(0, 1fr)); }
+.clka-box.world .clka-cell { background: rgba(79, 143, 192, .1); }
+.clka-box.world .clka-cell.open { background: radial-gradient(circle at 50% 70%, rgba(127, 176, 224, .2), rgba(0, 0, 0, .1)); }
+.clka-wrow { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 6px; padding: 3px 6px 1px; margin-top: 3px; min-width: 0; }
+.clka-wrow i { font-style: normal; font-size: .7em; white-space: nowrap; }
+.clka-noworld .clka-box.world { display: none; }
 .clka-ring.world .fg { stroke: #7fb0e0; }
+@container clkside (min-width: 560px) {
+  .clka-duo.two {
+    display: grid; column-gap: 2px; align-items: start;
+    grid-template-columns: minmax(0, max-content) repeat(var(--clka-hc, 9), minmax(0, 1fr)) repeat(var(--clka-wc, 6), minmax(0, 1fr));
+  }
+  /* Без бічних відступів коробки: subgrid віднімає їх від крайніх стовпчиків, і клітинки світу виходили б вужчими. */
+  .clka-duo.two > .clka-box { display: grid; grid-template-columns: subgrid; row-gap: 2px; padding: 2px 0; }
+  .clka-duo.two > .clka-box.home { grid-column: 1 / var(--clka-hend, 11); }
+  .clka-duo.two > .clka-box.world { grid-column: var(--clka-hend, 11) / -1; }
+  .clka-duo.two .clka-grid { display: contents; }
+  .clka-duo.two .clka-wrow { display: none; }
+  /* Згорнуто — назад до домашньої сітки, як у fb: без subgrid і без місця під світ. */
+  .clka-noworld .clka-duo.two { display: flex; align-items: stretch; }
+  .clka-noworld .clka-duo.two > .clka-box { display: block; padding: 2px; }
+  .clka-noworld .clka-duo.two > .clka-box.world { display: none; }
+  .clka-noworld .clka-duo.two .clka-grid { display: grid; }
+}
+.clka-noworld .clka-grp { display: none; }
 
 /* ---- розписи світу в Майстерні (вузол ядра «🎨 Розписи», clicker.js styles()) ---- */
 .clk-worldsub { margin-top: 6px; }
