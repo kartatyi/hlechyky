@@ -931,7 +931,7 @@ public class SkilkyTests
     [InlineData("world,космос,ukraine,world", "ukraine,world")]   // лише знайомі, без повторів, у порядку паспорта
     [InlineData(" tech , culture ", "culture,tech")]
     [InlineData("ukraine,all", "all")]                              // «усі» перемагають решту
-    [InlineData("radio", "all")]                                    // радіо окремою темою не обирають
+    [InlineData("radio", "radio")]                                  // з 29.09 «🏺 Наше» обирають і окремо
     [InlineData("космос", "all")]
     [InlineData("", "all")]
     [InlineData(",,", "all")]
@@ -948,7 +948,7 @@ public class SkilkyTests
         Assert.Null(SkilkyTopics.Parse(null));
         Assert.Null(SkilkyTopics.Parse("all"));
         Assert.Null(SkilkyTopics.Parse("science,all"));
-        Assert.Null(SkilkyTopics.Parse("radio"));
+        Assert.Equal(["radio"], SkilkyTopics.Parse("radio")!);
         Assert.Equal(["science", "ukraine"], SkilkyTopics.Parse("science,ukraine")!.Order());
 
         var radio = new SkilkyQuestion { Q = "Скільки треків?", Dyn = "plays7d", Topic = SkilkyTopics.Radio };
@@ -987,8 +987,8 @@ public class SkilkyTests
             if (q.IsDynamic) Assert.Equal(SkilkyTopics.Radio, q.Topic);
             else Assert.Contains(q.Topic!, known);
         });
-        // Кожну тему є з чого грати навіть на п'ятнадцять запитань по кілька разів.
-        Assert.All(known, k => Assert.True(SkilkyBank.All.Count(q => q.Topic == k) >= 150, k));
+        // Кожну тему є з чого грати навіть на п'ятнадцять запитань по кілька разів («Наше» й фото — окрема історія).
+        Assert.All(known.Where(k => k is not (SkilkyTopics.Radio or SkilkyTopics.Photo)), k => Assert.True(SkilkyBank.All.Count(q => q.Topic == k) >= 150, k));
     }
 
     // ---------- приховане, види й кадри ----------
@@ -1119,6 +1119,8 @@ public class SkilkyTests
         new SkilkySeen(temp.Db).Mark([SkilkySeen.NickKey("Оля"), SkilkySeen.NickKey("Петро")],
             SkilkyBank.All.Where(q => !q.IsDynamic), DateTimeOffset.UtcNow.AddDays(-1));
 
+        // Числа рахує фон (під замком кімнати бази нема) — у тесті прогріваємо їх одразу.
+        new SkilkyStats(temp.Db, new FakeClock()).Warm();
         var asked = AskedQuestions(Table(2, seed: 1, services: services));
         Assert.NotEmpty(asked);
         Assert.All(asked, q => Assert.Contains(q, dynamic));
@@ -1259,10 +1261,10 @@ public class SkilkyTests
         Assert.Equal(Skilky.MaxSeats, game.MaxPlayers);
         Assert.Equal("skilky", game.Module);
         Assert.True(game.HasCss);
-        Assert.Equal(["questions", "seconds", "topic"], game.Options.Select(o => o.Key));
+        Assert.Equal(["questions", "seconds", "topic", "bets", "teams"], game.Options.Select(o => o.Key));
         Assert.Equal("5", game.Options[0].Default);
         Assert.Equal(["3", "5", "7", "10", "15"], game.Options[0].Values.Select(v => v[0]));
-        Assert.Equal([false, false, true], game.Options.Select(o => o.Multi));   // теми — можна кілька
+        Assert.Equal([false, false, true, false, false], game.Options.Select(o => o.Multi));   // теми — можна кілька
         Assert.Equal("all", game.Options[2].Default);
     }
 
