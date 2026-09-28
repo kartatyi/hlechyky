@@ -74,7 +74,7 @@
         inv: [], stats: [], wins: [0, 0, 0, 0, 0, 0], last: null, log: [], result: null,
         aimTurn: [45, 60, 0], my: { a: 45, p: 60, w: 0 }, myTurnNo: -1, preW: null, fired: -1,
         // снаряди: два останні кадри для екстраполяції й хвости
-        shA: new Float32Array(24), shB: new Float32Array(24), shN: 0, shSmooth: false, shAt: 0, gap: TICK_MS,
+        shA: new Float32Array(24), shB: new Float32Array(24), shN: 0, shSmooth: false, shAt: 0, shReal: 0, gap: TICK_MS,
         tails: new Float32Array(8 * 12), tailN: new Uint8Array(8), tailAt: 0,
         trails: [[], [], [], [], [], []], shooter: -1,
         fresh: [],                                   // [c0, c1, t0] — свіжа земля у вирвах
@@ -655,9 +655,13 @@
     st.shN = n;
     // Справжній проміжок між кадрами: годинник сервера на Windows тикає рідше за 25/с (≈ 19/с), і
     // екстраполяція на сталі 40 мс доганяла б кадр і стояла — снаряд смикався б.
-    const now = performance.now(), gap = now - st.shAt;
+    const now = performance.now(), gap = now - st.shReal;
     if (st.shSmooth && gap > 15 && gap < 160) st.gap += (gap - st.gap) * 0.2;
-    st.shAt = now;
+    st.shReal = now;
+    // Кадр — на рівну сітку часу (попередній + середній проміжок), а не «щойно прийшов»: кадри летять із тремтінням
+    // 15–63 мс, і снаряд, що від кожного кадру рушав наново, то стояв, то стрибав (прохід 28.09: зупинок і ривків
+    // на кадр екрана було 7–8 %). Сітка не відходить від справжнього приходу далі ніж на один проміжок.
+    st.shAt = st.shSmooth ? clamp(st.shAt + st.gap, now - st.gap, now + st.gap) : now;
     // слід пострілу: точки кадрів, блідим пунктиром до наступного пострілу цього гравця
     const tr = st.shooter >= 0 ? st.trails[st.shooter] : null;
     if (tr && tr.length < 1600) for (let i = 0; i < n; i++) tr.push(sh[i][0], sh[i][1]);
@@ -1265,7 +1269,7 @@
 
     // снаряди: екстраполяція на пів кадру вперед, але не під землю; хвіст з останніх положень
     if (phase === 'fly' && st.shN) {
-      const k = st.shSmooth ? clamp((now - st.shAt) / st.gap, 0, 1) : 0;
+      const k = st.shSmooth ? clamp((now - st.shAt) / st.gap, -1, 1.5) : 0;
       const sample = now - st.tailAt > 28;
       if (sample) st.tailAt = now;
       for (let i = 0; i < st.shN; i++) {
