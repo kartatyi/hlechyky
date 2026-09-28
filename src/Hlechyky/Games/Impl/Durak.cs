@@ -265,6 +265,7 @@ public sealed class DurakCore
         if (!Valid(seat) || !In[seat]) return "Ти вже поза грою — дивись, хто лишиться дурнем";
         if (seat == Defender) return Table.Count == 0 ? "Зараз ходить суперник" : "Ти відбиваєшся — підкидають інші";
         if (Table.Count == 0 && seat != Attacker) return "Зараз ходить суперник";
+        if (Mates(seat, Defender)) return "Своєму напарникові не підкидають";
         if (Phase is not (DurakPhase.Attack or DurakPhase.Taking)) return "Спершу дай суперникові відбитись";
         if (!Hands[seat].Contains(card)) return "Такої карти в тебе нема";
         if (Table.Count > 0)
@@ -311,6 +312,15 @@ public sealed class DurakCore
     public bool AllowTransfer { get; set; }
 
     /// <summary>
+    /// Пари 2×2 (№232): номер пари кожного місця (0/1, -1 — не грає) або null — кожен сам за себе.
+    /// Напарник того, хто відбивається, йому не підкидає; пара, в якої вийшли обоє, — у безпеці.
+    /// </summary>
+    public int[]? Team { get; set; }
+
+    /// <summary>Чи ці двоє — одна пара (сам собі не напарник).</summary>
+    public bool Mates(int a, int b) => Team is { } t && a != b && Valid(a) && Valid(b) && t[a] >= 0 && t[a] == t[b];
+
+    /// <summary>
     /// Чи може захисник перевести: ще нічого не побито, у нього є карта того самого номіналу, а в наступного за ним —
     /// досить карт, щоб відбиватись від усього столу (і не більше шести).
     /// </summary>
@@ -318,7 +328,7 @@ public sealed class DurakCore
     {
         if (!AllowTransfer || Over is not null || seat != Defender || Phase != DurakPhase.Defend || Table.Count == 0) return false;
         if (Table.Any(p => p.Defend is not null)) return false;
-        var next = NextIn(seat);
+        var next = Foe(seat);
         if (next == seat || Table.Count + 1 > Math.Min(MaxAttacks, Hands[next].Count)) return false;
         var rank = DurakCards.Rank(Table[0].Attack);
         return Hands[seat].Any(c => DurakCards.Rank(c) == rank);
@@ -334,7 +344,7 @@ public sealed class DurakCore
         if (Table.Any(p => p.Defend is not null)) return "Уже почав відбиватись — переводити пізно";
         if (!Hands[seat].Contains(card)) return "Такої карти в тебе нема";
         if (DurakCards.Rank(card) != DurakCards.Rank(Table[0].Attack)) return "Переводять картою того самого номіналу";
-        var next = NextIn(seat);
+        var next = Foe(seat);
         if (next == seat || Table.Count + 1 > Math.Min(MaxAttacks, Hands[next].Count)) return "У наступного стільки карт нема — не переведеш";
 
         Hands[seat].Remove(card);
@@ -380,11 +390,11 @@ public sealed class DurakCore
     }
 
     /// <summary>Гра на двох обірвана: хтось встав, і дурнем лишається він. <paramref name="winner"/> — хто лишився.</summary>
-    public void Quit(int? winner)
+    public void Quit(int? winner, int? foolSeat = null)
     {
         if (Over is not null) return;
         Phase = DurakPhase.Done;
-        var fool = winner is { } w ? Enumerable.Range(0, Seats).Where(s => s != w && In[s]).Select(s => (int?)s).FirstOrDefault() : null;
+        var fool = foolSeat ?? (winner is { } w ? Enumerable.Range(0, Seats).Where(s => s != w && In[s]).Select(s => (int?)s).FirstOrDefault() : null);
         Over = new DurakOver(winner, "left") { Fool = fool };
     }
 
@@ -450,6 +460,8 @@ public sealed class DurakCore
     bool CanThrow(int seat)
     {
         if (!In[seat] || seat == Defender || Hands[seat].Count == 0) return false;
+        // Своєму напарникові не підкидають — у парах це було б грою проти себе.
+        if (Mates(seat, Defender)) return false;
         if (Table.Count == 0) return false;
         if (Table.Count >= MaxAttacks || Table.Count >= Limit) return false;
         var ranks = TableRanks();
@@ -482,6 +494,20 @@ public sealed class DurakCore
             if (In[s]) return s;
         }
         return seat;
+    }
+
+    /// <summary>
+    /// На кого йти від цього місця: наступний за колом, хто ще грає, — а в парах наступний суперник (напарник,
+    /// що лишився без пари суперників поруч, пропускається: своїх не атакують і на своїх не переводять).
+    /// </summary>
+    int Foe(int seat)
+    {
+        for (var i = 1; i <= Seats; i++)
+        {
+            var s = (seat + i) % Seats;
+            if (In[s] && !Mates(seat, s)) return s;
+        }
+        return NextIn(seat);
     }
 
     int PrevIn(int seat)
@@ -529,7 +555,7 @@ public sealed class DurakCore
         if (Over is not null) return;
         if (!In[next]) next = NextIn(next);
         Attacker = next;
-        Defender = NextIn(next);
+        Defender = Foe(next);
         StartBout();
     }
 
@@ -564,6 +590,14 @@ public sealed class DurakCore
             if (In[seat] && Hands[seat].Count == 0) { In[seat] = false; Places.Add(seat); }
         }
         var left = Enumerable.Range(0, Seats).Where(s => In[s]).ToArray();
+        // У парах гра скінчена, щойно з картами лишилась одна пара: дурень — той із двох, у кого карт більше.
+        if (Team is { } team && left.Length == 2 && Mates(left[0], left[1]))
+        {
+            Phase = DurakPhase.Done;
+            var fool = Hands[left[1]].Count > Hands[left[0]].Count ? left[1] : left[0];
+            Over = new DurakOver(Places.Count > 0 ? Places[0] : null, "out") { Fool = fool };
+            return;
+        }
         if (left.Length >= 2) return;
         Phase = DurakPhase.Done;
         Over = left.Length == 1
@@ -583,14 +617,17 @@ public sealed class Durak : Game
         Options:
         [
             new GameOption("mode", "Дурень", [("podkydnoy", "Підкидний"), ("perevodnoy", "🔁 Переводний: відбиваєшся — можеш перевести тим самим номіналом далі")], "podkydnoy"),
+            new GameOption("teams", "Склад", [("0", "кожен сам за себе"), ("1", "👥 пари 2×2: рівно вчотирьох, напарник — через одного й тобі не підкидає, дурень — уся пара")], "0"),
             BoardBots.Option(5),
         ],
-        Hint: "Дурень на 2–6: 36 карт, козир, відбивайся або бери. Підкидний або переводний; бракує людей — підсяде Глек 🤖. "
+        Hint: "Дурень на 2–6: 36 карт, козир, відбивайся або бери. Підкидний або переводний, можна й парами 2×2; бракує людей — підсяде Глек 🤖. "
             + "Дурень носить 🎖 погони до наступної партії");
 
     static readonly string[] Names = ["перший", "другий", "третій", "четвертий", "п'ятий", "шостий"];
 
     bool _transfer;
+    /// <summary>Пари 2×2 (№232): лише вчотирьох; напарники — через одного в порядку місць.</summary>
+    bool _teams;
     int _botsWanted;
     string?[] _bots = new string?[DurakCore.MaxSeats];
     DateTimeOffset? _botAt;
@@ -601,11 +638,19 @@ public sealed class Durak : Game
     {
         _transfer = options.TryGetValue("mode", out var m) && m == "perevodnoy";
         _botsWanted = BoardBots.Read(options, 5);
+        _teams = options.TryGetValue("teams", out var t) && t == "1";
     }
 
     public override string? CanStart()
     {
         var humans = BoardBots.Humans(Ctx, DurakCore.MaxSeats);
+        if (_teams)
+        {
+            var all = humans + Math.Min(_botsWanted, Math.Max(0, 4 - humans));
+            return all == 4 ? null : all < 4
+                ? $"Парами грають рівно вчотирьох, а за столом {all}: хай хтось підсяде — або відкрий стіл з «🤖 Глек підсідає»"
+                : $"Парами грають рівно вчотирьох, а за столом {all}: хтось зайвий — або грайте кожен сам за себе";
+        }
         return humans + Math.Min(_botsWanted, DurakCore.MaxSeats - humans) >= 2 ? null
             : "Самому нема з ким: хай хтось сяде — або відкрий стіл з «🤖 Глек підсідає»";
     }
@@ -628,8 +673,16 @@ public sealed class Durak : Game
     public override void Start()
     {
         _core = new DurakCore(DurakCore.MaxSeats) { AllowTransfer = _transfer };
-        _bots = BoardBots.Seat(Ctx, DurakCore.MaxSeats, _botsWanted);
+        _bots = BoardBots.Seat(Ctx, DurakCore.MaxSeats,
+            _teams ? Math.Min(_botsWanted, Math.Max(0, 4 - BoardBots.Humans(Ctx, DurakCore.MaxSeats))) : _botsWanted);
         var seats = Enumerable.Range(0, DurakCore.MaxSeats).Where(s => Ctx.Seated(s) || _bots[s] is not null).ToArray();
+        if (_teams && seats.Length == 4)
+        {
+            // Пари — через одного за колом: перший і третій проти другого й четвертого.
+            var team = Enumerable.Repeat(-1, DurakCore.MaxSeats).ToArray();
+            for (var i = 0; i < seats.Length; i++) team[seats[i]] = i % 2;
+            _core.Team = team;
+        }
         _nicks = [.. Enumerable.Range(0, DurakCore.MaxSeats).Select(s => _bots[s] ?? Ctx.NickOf(s))];
         _core.Deal(Ctx.Rng, seats);
         _announced = false;
@@ -718,6 +771,19 @@ public sealed class Durak : Game
             Ctx.Finish([], $"{Info.Title}: {nick} встає з-за столу, а з Глеками догравати нікому");
             return;
         }
+        // Пари: хто встав — підвів напарника, дурнями лишається їхня пара.
+        if (_core.Team is { } team)
+        {
+            _core.Quit(null, seat);
+            _announced = true;
+            _foolNick = nick;
+            _pogony = nick;
+            _botAt = null;
+            var mate = Enumerable.Range(0, _core.Seats).First(s => _core.Mates(s, seat));
+            var rest = Enumerable.Range(0, _core.Seats).Where(s => _core.Dealt[s] && team[s] != team[seat] && Ctx.Seated(s)).ToArray();
+            Ctx.Finish(rest, $"{Info.Title}: {nick} встає з-за столу — пара {nick} і {_nicks[mate]} лишається дурнями");
+            return;
+        }
         if (_core.Playing > 2)
         {
             _core.Leave(seat);
@@ -784,6 +850,8 @@ public sealed class Durak : Game
             bots = _bots.Any(b => b is not null) ? (string?[])_bots.Clone() : null,
             botIn = _botAt is { } at && over is null ? Math.Max(0, (int)(at - Ctx.Clock.UtcNow).TotalMilliseconds) : (int?)null,
             pogony = _pogony,
+            // Пари 2×2: номер пари кожного місця (-1 — не грає) або null.
+            teams = _core.Team is { } tm ? (int[])tm.Clone() : null,
         };
     }
 
@@ -809,6 +877,15 @@ public sealed class Durak : Game
             Ctx.Finish([], two
                 ? $"{Info.Title}: {_nicks[dealt[0]]} і {_nicks[dealt[1]]} вийшли разом — нічия"
                 : $"{Info.Title}: останні вийшли разом — дурня цього разу нема, нічия");
+            return;
+        }
+        if (_core.Team is { } team)
+        {
+            // Пари: дурень — уся пара того, хто лишився з картами; погони — йому самому.
+            var mate = dealt.First(s => _core.Mates(s, fool));
+            var champs = dealt.Where(s => team[s] != team[fool]).ToArray();
+            Ctx.Finish([.. champs.Where(Ctx.Seated)],
+                $"{Info.Title}: дурні — пара {_nicks[fool]} 🎖 і {_nicks[mate]}, бере пара {_nicks[champs[0]]} і {_nicks[champs[1]]}");
             return;
         }
         var winners = dealt.Where(s => s != fool && Ctx.Seated(s)).ToArray();

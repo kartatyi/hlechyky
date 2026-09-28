@@ -118,4 +118,121 @@ public class DurakSweep3Tests
         h.Join("Оля");
         Assert.False(h.Start().Ok);
     }
+
+    // ---------- №232: пари 2×2 ----------
+
+    static DurakCore Pairs() => new(4) { Team = [0, 1, 0, 1] };
+
+    [Fact]
+    public void Partner_of_the_defender_does_not_throw_in()
+    {
+        var core = Pairs();
+        core.Arrange("♠", [["6♥", "7♠"], ["8♥", "9♥"], ["6♦"], ["6♣"]], deck: ["A♠"], attacker: 0);
+        Assert.Null(core.Attack(0, Card("6♥")));
+        Assert.Null(core.Defend(1, Card("6♥"), Card("8♥")));
+        Assert.True(core.CanAddFor(2));
+        Assert.False(core.CanAddFor(3));   // 3 — напарник захисника 1
+        Assert.Equal("Своєму напарникові не підкидають", core.Attack(3, Card("6♣")));
+
+        var solo = new DurakCore(4);
+        solo.Arrange("♠", [["6♥", "7♠"], ["8♥", "9♥"], ["6♦"], ["6♣"]], deck: ["A♠"], attacker: 0);
+        solo.Attack(0, Card("6♥"));
+        solo.Defend(1, Card("6♥"), Card("8♥"));
+        Assert.True(solo.CanAddFor(3));
+    }
+
+    [Fact]
+    public void Match_ends_when_one_pair_is_out_and_the_fool_is_the_one_with_more_cards()
+    {
+        var core = Pairs();
+        core.Arrange("♠", [["6♥"], ["7♥", "8♣", "K♦"], ["6♣"], ["9♦", "10♦"]], deck: [], attacker: 0);
+        Assert.Null(core.Attack(0, Card("6♥")));
+        Assert.Null(core.Defend(1, Card("6♥"), Card("7♥")));
+        Assert.Null(core.Attack(2, Card("6♣")));
+        Assert.Null(core.Defend(1, Card("6♣"), Card("8♣")));
+        if (core.Over is null) Assert.Null(core.Done(0));
+
+        Assert.NotNull(core.Over);
+        Assert.Equal(3, core.Over!.Fool);
+    }
+
+    static RoomHarness PairsTable(params string[] nicks) => PairsTable("podkydnoy", 5, nicks);
+
+    static RoomHarness PairsTable(string mode, int seed, params string[] nicks)
+    {
+        var h = new RoomHarness("durak", new { teams = "1", bots = "3", mode }, seed: seed);
+        foreach (var n in nicks) h.Join(n);
+        return h;
+    }
+
+    [Fact]
+    public void Pairs_need_exactly_four_at_the_table()
+    {
+        var h = new RoomHarness("durak", new { teams = "1" });
+        h.Join("Оля"); h.Join("Петро"); h.Join("Іра");
+        Assert.False(h.Start().Ok);
+        h.Join("Тарас");
+        Assert.True(h.Start().Ok);
+        Assert.Equal([0, 1, 0, 1, -1, -1], h.View(0).GetProperty("teams").EnumerateArray().Select(e => e.GetInt32()));
+
+        var five = new RoomHarness("durak", new { teams = "1" });
+        foreach (var n in new[] { "а", "б", "в", "г", "ґ" }) five.Join(n);
+        Assert.False(five.Start().Ok);
+
+        // Глеки добирають рівно до чотирьох, скільки б їх не просили.
+        var bots = PairsTable("Оля", "Петро");
+        Assert.True(bots.Start().Ok);
+        Assert.Equal(2, bots.View(0).GetProperty("bots").EnumerateArray().Count(b => b.ValueKind == JsonValueKind.String));
+
+        var plain = new RoomHarness("durak");
+        plain.Join("Оля"); plain.Join("Петро");
+        plain.Start();
+        Assert.Equal(JsonValueKind.Null, plain.View(0).GetProperty("teams").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("podkydnoy")]
+    [InlineData("perevodnoy")]
+    public void Pairs_play_a_whole_match_with_bots_and_the_whole_pair_of_the_fool_loses(string mode)
+    {
+        for (var seed = 1; seed <= 15; seed++) PairsMatch(PairsTable(mode, seed, "Оля"));
+    }
+
+    static void PairsMatch(RoomHarness h)
+    {
+        Assert.True(h.Start().Ok);
+        for (var step = 0; step < 5000 && h.Room.Status == RoomStatus.Playing; step++)
+        {
+            var v = h.View(0);
+            if (v.GetProperty("botIn").ValueKind == JsonValueKind.Number)
+            {
+                h.Clock.AdvanceMs(BoardBots.ThinkMs);
+                if (h.Act(0, BoardBots.Nudge).Ok) continue;
+            }
+            Human(h, 0);
+        }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        var result = h.View(0).GetProperty("result");
+        var journal = h.Outbox.OfType<Journal>().Last().Text;
+        if (result.GetProperty("fool").ValueKind == JsonValueKind.Number)
+        {
+            var fool = result.GetProperty("fool").GetInt32();
+            // Оля (місце 0) грає в парі з Глеком на місці 2: або вони обоє дурні, або Оля серед переможців.
+            Assert.Equal(fool % 2 == 1, h.Room.Result!.Winners.Contains(0));
+            Assert.StartsWith("Дурень: дурні — пара ", journal);
+        }
+    }
+
+    [Fact]
+    public void Leaving_in_pairs_makes_the_leavers_pair_the_fools()
+    {
+        var h = new RoomHarness("durak", new { teams = "1" });
+        foreach (var n in new[] { "Оля", "Петро", "Іра", "Тарас" }) h.Join(n);
+        Assert.True(h.Start().Ok);
+        h.Leave("Петро");
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0, 2], h.Room.Result!.Winners.Order());
+        Assert.Equal("Дурень: Петро встає з-за столу — пара Петро і Тарас лишається дурнями", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Петро", h.View(0).GetProperty("pogony").GetString());
+    }
 }

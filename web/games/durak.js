@@ -116,6 +116,11 @@
       else if (!v.result && i === v.defender) { role = '<em class="def">🛡 відбивається</em>'; cls += ' isdef'; }
       else if (!v.result && i === v.attacker) role = '<em class="atk">⚔ заходить</em>';
       if (!v.result && inn[i] && passed[i]) role += '<em class="pass">пас</em>';
+      // Пари 2×2 (№232): напарника видно одразу; глядачеві — хто в якій парі.
+      if (v.teams && v.teams[i] >= 0) {
+        if (me >= 0 && v.teams[me] === v.teams[i]) { role = '<em class="dk-mate">👥 напарник</em>' + role; cls += ' dk-mate'; }
+        else if (me < 0) role = '<em class="dk-pair">👥 пара ' + (v.teams[i] + 1) + '</em>' + role;
+      }
       const fan = '<span class="dbacks">' + '<i></i>'.repeat(Math.min(cnt, 8)) + '</span>';
       out.push('<div class="' + cls + (!v.result && v.turn === i ? ' now' : '') + '">'
         + '<span class="dwho"><u>' + MARKS[i] + '</u>' + ctx.esc(tagged(ctx, i)) + '</span>'
@@ -172,6 +177,14 @@
   }
 
   /// Підсумок партії прямо на столі: хто вийшов першим, хто лишився дурнем.
+  /// Напарник цього місця в парах 2×2 або -1.
+  function mateOf(v, i) {
+    const t = v.teams;
+    if (!t || i == null || t[i] == null || t[i] < 0) return -1;
+    for (let j = 0; j < t.length; j++) if (j !== i && t[j] === t[i]) return j;
+    return -1;
+  }
+
   function summary(ctx, v) {
     const r = v.result;
     const medals = ['🥇', '🥈', '🥉'];
@@ -183,7 +196,12 @@
     if (r.reason === 'both') fool = '<div class="dverdict">Вийшли разом — дурня цього разу нема 🤝</div>';
     else if (r.fool != null) {
       const who = r.foolNick || nameOf(ctx, r.fool);
-      fool = '<div class="dverdict">' + (ctx.seat === r.fool ? 'Дурень цього разу — ти 🃏' : '🃏 Дурень — ' + ctx.esc(who))
+      const mate = mateOf(v, r.fool);
+      const mine = ctx.mine && (ctx.seat === r.fool || ctx.seat === mate);
+      fool = '<div class="dverdict">' + (mate >= 0
+        ? (mine ? 'Дурні цього разу — ти й ' + ctx.esc(nameOf(ctx, ctx.seat === r.fool ? mate : r.fool)) + ' 🃏'
+          : '🃏 Дурні — пара ' + ctx.esc(who) + ' і ' + ctx.esc(nameOf(ctx, mate)))
+        : ctx.seat === r.fool ? 'Дурень цього разу — ти 🃏' : '🃏 Дурень — ' + ctx.esc(who))
         + (r.reason === 'left' ? ' <small>(втеча з-за столу)</small>' : '') + '</div>';
     }
     return '<div class="dsum">' + fool + (places ? '<div class="dplaces">' + places + '</div>' : '') + '</div>';
@@ -201,6 +219,7 @@
       else if (v.phase === 'attack' && !table.length && iAttack) text = 'Заходь: тицьни будь-яку карту';
       else if (canAdd && v.phase === 'taking') text = 'Бере! Можна докинути карту того ж номіналу, що на столі';
       else if (canAdd) text = 'Можна підкинути карту того ж номіналу, що на столі, — або «' + (iAttack ? 'Біто' : 'Пас') + '»';
+      else if (mateOf(v, ctx.seat) === v.defender) text = '👥 Відбивається твій напарник — своїм не підкидають, лише вболівай';
     }
     setHtml(host, text ? ctx.esc(text) : '');
   }
@@ -330,8 +349,9 @@
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o'],
     news: {
       v: '2026-09-29',
-      title: 'Дурень: переводний, Глек і погони',
+      title: 'Дурень: переводний, пари, Глек і погони',
       items: [
+        '👥 Парами 2×2 (опція «Склад», рівно вчотирьох): напарник — через одного, своїм не підкидають, дурні — уся пара',
         '🔁 Новий режим «Переводний»: відбиваєшся — можеш перевести карту тим самим номіналом далі',
         '🤖 Бракує людей — на порожні місця підсядуть Глеки (без черепків)',
         '🎖 Дурень носить погони біля ніка до кінця наступної партії',
@@ -349,7 +369,13 @@
         // MinPlayers = 1 заради Глека: сам-на-сам каркас сказав би «Можна рушати», а старт відмовить.
         let people = 0;
         for (let i = 0; i < 6; i++) if (ctx.nickOf(i)) people++;
-        return people < 2 && !+((room.options || {}).bots || 0) ? 'Чекаємо, хто підсяде (або відкрий стіл з «🤖 Глек підсідає»)' : '';
+        const opts = room.options || {};
+        if (opts.teams === '1') {
+          const all = people + Math.min(+opts.bots || 0, Math.max(0, 4 - people));
+          if (all !== 4) return 'Парами — рівно вчотирьох, а зараз ' + all + (all < 4 ? ': хай хтось підсяде або Глек' : ': хтось зайвий');
+          return 'Пари: напарник сидить через одного';
+        }
+        return people < 2 && !+(opts.bots || 0) ? 'Чекаємо, хто підсяде (або відкрий стіл з «🤖 Глек підсідає»)' : '';
       }
       if (!ctx.playing && !v.result) return '';
       if (v.result) {
@@ -357,6 +383,11 @@
         const fool = v.result.fool != null ? v.result.fool : (v.result.winner === 0 ? 1 : 0);
         // Той, хто встав, уже не сидить — його нік бережемо у виді, інакше вийшло б «Дурень — перший».
         const name = v.result.foolNick || nameOf(ctx, fool);
+        const mate = mateOf(v, fool);
+        if (mate >= 0) {
+          if (ctx.mine && (ctx.seat === fool || ctx.seat === mate)) return 'Отакої — дурні цього разу ви з напарником' + (ctx.seat === fool ? ', погони 🎖 — тобі' : '');
+          return (ctx.mine ? 'Є! ' : '') + 'Дурні — пара ' + name + ' 🎖 і ' + nameOf(ctx, mate);
+        }
         // Для гравця за столом «не дурень» — це й є перемога: «Є!»; глядачеві — просто хто.
         return ctx.seat === fool ? 'Отакої — дурень цього разу ти, носи погони 🎖' : (ctx.mine ? 'Є! ' : '') + 'Дурень — ' + name + ' 🎖';
       }
