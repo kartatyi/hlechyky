@@ -324,23 +324,43 @@
     const fg = el.querySelector('.fg'), num = el.querySelector('b');
     const LEN = 2 * Math.PI * 17;
     fg.style.strokeDasharray = LEN;
-    const st = { until: Date.parse(untilIso) || Date.now(), total: totalMs || 1000, raf: 0 };
-    function step() {
-      if (!el.isConnected) { st.raf = 0; return; }
-      const left = Math.max(0, st.until - Date.now());
+    // Прохід №3, п. 243: без rAF. Дугу веде CSS-перехід (браузер сам, без JS щокадру), а цифру — таймер раз на секунду.
+    // Схована картка (display:none) перехід губить — тоді на найближчому тику, коли її знову видно, заводимо наново.
+    const st = { until: Date.parse(untilIso) || Date.now(), total: totalMs || 1000, t: 0, shown: false };
+    const leftMs = () => Math.max(0, st.until - Date.now());
+    function run() {
+      const left = leftMs();
       const k = Math.max(0, Math.min(1, left / st.total));
+      fg.style.transition = 'none';
       fg.style.strokeDashoffset = LEN * (1 - k);
+      st.shown = el.offsetParent !== null;
+      if (left > 0 && st.shown) {
+        void fg.getBoundingClientRect();   // зафіксувати старт, інакше перехід стрибне одразу в кінець
+        fg.style.transition = 'stroke-dashoffset ' + left + 'ms linear';
+        fg.style.strokeDashoffset = LEN;
+      }
+    }
+    function tick() {
+      st.t = 0;
+      if (!el.isConnected) return;
+      const left = leftMs();
       const s = String(Math.ceil(left / 1000));
       if (num.textContent !== s) num.textContent = s;
-      // На нулі дуга вже порожня: далі крутити кадри — лише палити батарею, поки фаза чекає сервера.
-      // Новий час принесе set(), і він заведе цикл знову.
-      st.raf = left > 0 ? requestAnimationFrame(step) : 0;
+      if (!st.shown && el.offsetParent !== null) run();
+      else if (st.shown && el.offsetParent === null) st.shown = false;
+      // На нулі дуга вже порожня: далі — тиша, поки фаза чекає сервера; новий час принесе set().
+      if (left > 0) st.t = setTimeout(tick, (left % 1000) || 1000);
     }
-    st.raf = requestAnimationFrame(step);
+    function start() { clearTimeout(st.t); run(); tick(); }
+    start();
     const handle = {
       el,
-      set(u, total) { st.until = Date.parse(u) || Date.now(); st.total = total || st.total; if (!st.raf) st.raf = requestAnimationFrame(step); },
-      stop() { cancelAnimationFrame(st.raf); st.raf = 0; if (el._arc === handle) el._arc = null; },
+      set(u, total) {
+        const until = Date.parse(u) || Date.now(), tot = total || st.total;
+        if (until === st.until && tot === st.total && (st.t || leftMs() === 0)) return;   // той самий хід — не смикаємо дугу
+        st.until = until; st.total = tot; start();
+      },
+      stop() { clearTimeout(st.t); st.t = 0; if (el._arc === handle) el._arc = null; },
     };
     el._arc = handle;
     return handle;
