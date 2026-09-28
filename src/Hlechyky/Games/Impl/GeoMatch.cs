@@ -5,8 +5,10 @@ namespace Hlechyky.Games.Impl;
 
 /// <summary>Правила однієї партії «Де це?»: стіл читає їх з опцій, тренування підставляє фіксовані.</summary>
 public sealed record GeoRules(int Rounds, int Seconds, IReadOnlySet<string> Cats, string Level, string Hints, bool Solo,
-    string Mode = GeoRules.ModeClassic, bool Area = true)
+    string Mode = GeoRules.ModeClassic, bool Area = true, string Friends = GeoRules.FriendsOff)
 {
+    /// <summary>«📸 Фото друзів» (п. 52): вимк, домішувати (до третини раундів) чи лише наші.</summary>
+    public const string FriendsOff = "off", FriendsMix = "mix", FriendsOnly = "only";
     public const string LevelAll = "all", LevelEasy = "easy", LevelHard = "hard";
     public const string HintsFull = "full", HintsBorders = "borders", HintsNone = "none";
     /// <summary>Режими: звичайний і «⚡ Дуель на час» (15 с на фото, найшвидший влучний — +1000).</summary>
@@ -66,9 +68,13 @@ public sealed class GeoMatch
 
     public const string NoBank = "Банк місць порожній — гра ще не готова";
     public const string NoPhotos = "Фото ще качаються — спробуй за пів хвилини";
+    public const string NoFriends = "Ще ніхто не закинув своїх фото — «📸 Мої фото» в лобі гри";
+    public const string OwnPhoto = "Це твоє фото — дивись, як інші шукають";
 
-    sealed class Round(GeoPlace place, int photo, string path)
+    sealed class Round(GeoPlace place, int photo, string path, GeoMinePhoto? mine = null)
     {
+        /// <summary>Фото друга (п. 52): автор, історія; null — фото з банку.</summary>
+        public GeoMinePhoto? Mine { get; } = mine;
         public GeoPlace Place { get; } = place;
         public int Photo { get; } = photo;
         /// <summary>Файл фото на диску (кеш банку чи фото друзів) — лише для токенів, у вид не йде ніколи.</summary>
@@ -81,9 +87,10 @@ public sealed class GeoMatch
         public string? SealedUrl => Sealed is null ? null : $"/api/games/geo/{Sealed}.bin";
     }
 
-    sealed record Row(int Seat, int? X, int? Y, double? Km, int Points, bool Best, bool Bull, DateTimeOffset At, bool Area = false, bool Fast = false);
+    sealed record Row(int Seat, int? X, int? Y, double? Km, int Points, bool Best, bool Bull, DateTimeOffset At, bool Area = false, bool Fast = false,
+        bool Own = false);
 
-    sealed record RevealData(int X, int Y, GeoPlace Place, GeoPhoto Photo, string? Say, IReadOnlyList<Row> Rows);
+    sealed record RevealData(int X, int Y, GeoPlace Place, GeoPhoto Photo, string? Say, IReadOnlyList<Row> Rows, GeoMinePhoto? Mine);
 
     /// <summary>Рядок «Як це було»: <c>Best</c> — 🏆 раунду (лише в компанії), <c>Top</c> — найближчий (і самому).</summary>
     public sealed record Recap(string Name, string Region, string? Photo, int[] Best, int? Top, double? Km, int Points);
@@ -102,7 +109,10 @@ public sealed class GeoMatch
     readonly int[] _pinX, _pinY;
     readonly DateTimeOffset[] _pinAt;
     readonly bool[] _ready, _next, _left, _pinnedEver, _bullAsked, _area;
+    /// <summary>Хто за столом — автор фото цього раунду: він не вгадує, а дивиться, як шукають інші.</summary>
+    readonly bool[] _own;
     readonly GeoSeen? _memory;
+    readonly GeoMine? _mine;
     readonly long[] _scores;
     /// <summary>
     /// Хто грав на кожному місці цієї партії. Каркас забуває нік, щойно людина встала (чи закрила вкладку вже
@@ -116,10 +126,12 @@ public sealed class GeoMatch
     readonly HashSet<string> _seen = new(StringComparer.Ordinal);
     bool _dirty, _frameDirty;
 
-    public GeoMatch(IRoomContext ctx, GeoRules rules, GeoPhotos? photos, int maxSeats, string title, GeoSeen? memory = null)
+    public GeoMatch(IRoomContext ctx, GeoRules rules, GeoPhotos? photos, int maxSeats, string title, GeoSeen? memory = null,
+        GeoMine? mine = null)
     {
         _ctx = ctx;
         _memory = memory;
+        _mine = mine;
         _rules = rules;
         _photos = photos;
         _max = maxSeats;
@@ -133,6 +145,7 @@ public sealed class GeoMatch
         _pinnedEver = new bool[maxSeats];
         _bullAsked = new bool[maxSeats];
         _area = new bool[maxSeats];
+        _own = new bool[maxSeats];
         _scores = new long[maxSeats];
         _nicks = new string?[maxSeats];
         Array.Fill(_pinX, -1);
@@ -190,6 +203,7 @@ public sealed class GeoMatch
     public string? CanStart()
     {
         if (_photos is null || _photos.Bank.Places.Count == 0) return NoBank;
+        if (FriendsOn && _rules.Friends == GeoRules.FriendsOnly) return FriendPool(fresh: false).Count > 0 ? null : NoFriends;
         if (Pool(fresh: false).Count > 0) return null;
         _photos.Poke();
         return NoPhotos;
@@ -223,7 +237,10 @@ public sealed class GeoMatch
         // бачені найдавніше. OrderBy стабільний — порядок однаково свіжих лишається з тасування.
         var last = _memory?.LastSeen(NickKeys());
         if (last is { Count: > 0 }) pool = [.. pool.OrderBy(p => last.TryGetValue(p.Id, out var at) ? at : DateTimeOffset.MinValue)];
-        if (pool.Count < _rules.Rounds)
+        // 📸 Фото друзів: «лише наші» — усі раунди з них, «домішувати» — до третини (хоч одне, якщо є).
+        var friends = !FriendsOn ? [] : PickFriends(_rules.Friends == GeoRules.FriendsOnly ? _rules.Rounds : Math.Max(1, _rules.Rounds / 3), rng, last);
+        var need = _rules.Friends == GeoRules.FriendsOnly && FriendsOn ? 0 : _rules.Rounds - friends.Count;
+        if (pool.Count < need)
         {
             // Свіжого на цілу партію вже нема: беремо все свіже, а бракуюче добираємо з уже баченого (теж
             // навмання). Пам'ять починається наново з цієї партії — що не випало зараз, наступного разу знову
@@ -235,14 +252,55 @@ public sealed class GeoMatch
             pool.AddRange(seen);
             _seen.Clear();
         }
-        var take = Math.Min(_rules.Rounds, pool.Count);
+        var take = Math.Min(need, pool.Count);
         for (var i = 0; i < take; i++)
         {
             var ready = _photos!.ReadyPhotos(pool[i].Id);
             var idx = ready[ready.Count == 1 ? 0 : rng.Next(ready.Count)];
             _rounds.Add(new Round(pool[i], idx, _photos.PathFor(pool[i].Photos[idx])));
         }
+        // фото друзів — на випадкові місця партії, а не гуртом у кінці
+        foreach (var f in friends) _rounds.Insert(rng.Next(_rounds.Count + 1), new Round(f.Place(), 0, _mine!.PathOf(f.Id), f));
         Begin();
+    }
+
+    /// <summary>Фото друзів за цим столом узагалі можливі: не тренування, не «Де це? дня», опція не «вимк».</summary>
+    bool FriendsOn => _mine is not null && !_rules.Solo && Day is null && _rules.Friends != GeoRules.FriendsOff;
+
+    /// <summary>
+    /// Фото друзів, що годяться цьому столу: усі, крім тих, чий автор тут сам-один (нікому шукати).
+    /// <paramref name="fresh"/> — без уже бачених за цим столом. Лише пам'ять <see cref="GeoMine.All"/>.
+    /// </summary>
+    List<GeoMinePhoto> FriendPool(bool fresh)
+    {
+        var list = new List<GeoMinePhoto>();
+        if (!FriendsOn) return list;
+        var keys = new List<string>(_max);
+        for (var s = 0; s < _max; s++)
+            if (Present(s) && _ctx.NickOf(s) is { } n && Auth.NickKey(n) is var k && !keys.Contains(k)) keys.Add(k);
+        foreach (var p in _mine!.All)
+        {
+            if (fresh && _seen.Contains(p.PlaceId)) continue;
+            if (keys.Count == 1 && keys[0] == p.NickKey) continue;
+            list.Add(p);
+        }
+        return list;
+    }
+
+    /// <summary>До <paramref name="n"/> фото друзів: спершу свіжі за столом і не бачені гравцями, далі — бачені найдавніше.</summary>
+    List<GeoMinePhoto> PickFriends(int n, Random rng, Dictionary<string, DateTimeOffset>? last)
+    {
+        var pool = FriendPool(fresh: true);
+        Shuffle(pool, rng);
+        if (last is { Count: > 0 }) pool = [.. pool.OrderBy(p => last.TryGetValue(p.PlaceId, out var at) ? at : DateTimeOffset.MinValue)];
+        if (pool.Count < n)
+        {
+            var seen = FriendPool(fresh: false).Where(p => _seen.Contains(p.PlaceId)).ToList();
+            Shuffle(seen, rng);
+            if (last is { Count: > 0 }) seen = [.. seen.OrderBy(p => last.TryGetValue(p.PlaceId, out var at) ? at : DateTimeOffset.MinValue)];
+            pool.AddRange(seen);
+        }
+        return pool.Count > n ? pool.GetRange(0, n) : pool;
     }
 
     /// <summary>
@@ -307,7 +365,7 @@ public sealed class GeoMatch
     }
 
     /// <summary>Тасування Фішера — Єйтса на <c>Ctx.Rng</c>: той самий сід — ті самі місця.</summary>
-    static void Shuffle(List<GeoPlace> list, Random rng)
+    static void Shuffle<T>(List<T> list, Random rng)
     {
         for (var i = list.Count - 1; i > 0; i--)
         {
@@ -327,6 +385,10 @@ public sealed class GeoMatch
         _reveal = null;
         Array.Clear(_area);
         var r = _rounds[round - 1];
+        Array.Clear(_own);
+        if (r.Mine is { } m)
+            for (var s = 0; s < _max; s++)
+                if ((_ctx.NickOf(s) ?? _nicks[s]) is { } n && Auth.NickKey(n) == m.NickKey) _own[s] = true;
         r.Token ??= _photos!.IssueFile(r.Path);
         _seen.Add(r.Place.Id);
         _memory?.Mark(NickKeys(), r.Place.Id, now);
@@ -359,6 +421,7 @@ public sealed class GeoMatch
         if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase != PhaseGuess) return ActResult.Fail("Зараз не вгадують");
         if (_left[seat]) return ActResult.Fail("Ти вже встав з-за столу");
+        if (_own[seat]) return ActResult.Fail(OwnPhoto);
         if (_ready[seat]) return ActResult.Fail("Ти вже натиснув «Готово»");
         if (!ReadXY(payload, out var x, out var y)) return ActResult.Fail("Тут треба дві цілі координати");
         if (!GeoMap.Inside(x, y)) return ActResult.Fail("Шпилька поза мапою");
@@ -380,6 +443,7 @@ public sealed class GeoMatch
         if (_phase == PhaseDone) return ActResult.Fail("Партію зіграно, тисни «Ану ще раз»");
         if (_phase != PhaseGuess) return ActResult.Fail("Зараз не вгадують");
         if (_left[seat]) return ActResult.Fail("Ти вже встав з-за столу");
+        if (_own[seat]) return ActResult.Fail(OwnPhoto);
         if (_pinX[seat] < 0) return ActResult.Fail("Спершу постав шпильку на мапу");
         if (_ready[seat]) return ActResult.Fail("Уже готово");
         _ready[seat] = true;
@@ -398,6 +462,7 @@ public sealed class GeoMatch
         if (!_rules.Area) return ActResult.Fail("За цим столом без підказок");
         if (_left[seat]) return ActResult.Fail("Ти вже встав з-за столу");
         if (_ready[seat]) return ActResult.Fail("Ти вже натиснув «Готово»");
+        if (_own[seat]) return ActResult.Fail(OwnPhoto);
         if (_area[seat]) return ActResult.Fail("Підказку вже взято");
         _area[seat] = true;
         _dirty = true;
@@ -444,7 +509,7 @@ public sealed class GeoMatch
         if (_phase == PhaseDone || _phase == PhaseLobby) return TickResult.None;
         var now = _ctx.Clock.UtcNow;
         // Усі визначились — таймер не чекаємо: перехід цим же тиком (тобто за ≤ 500 мс після останнього «Готово»).
-        if ((_phase == PhaseGuess && AllPresent(_ready)) || (_phase == PhaseReveal && AllPresent(_next))) _endsAt = now;
+        if ((_phase == PhaseGuess && AllPresent(_ready, skipOwn: true)) || (_phase == PhaseReveal && AllPresent(_next))) _endsAt = now;
 
         if (now < _endsAt)
         {
@@ -473,12 +538,13 @@ public sealed class GeoMatch
         return TickResult.Both;
     }
 
-    bool AllPresent(bool[] flags)
+    /// <param name="skipOwn">Автора фото раунду не чекаємо: він не вгадує.</param>
+    bool AllPresent(bool[] flags, bool skipOwn = false)
     {
         var any = false;
         for (var s = 0; s < _max; s++)
         {
-            if (!Present(s)) continue;
+            if (!Present(s) || (skipOwn && _own[s])) continue;
             if (!flags[s]) return false;
             any = true;
         }
@@ -499,7 +565,7 @@ public sealed class GeoMatch
         var min = double.MaxValue;
         for (var s = 0; s < _max; s++)
         {
-            if (!Present(s)) continue;
+            if (!Present(s) || _own[s]) continue;
             present++;
             if (_pinX[s] < 0) { rows.Add(new Row(s, null, null, null, 0, false, false, DateTimeOffset.MaxValue, _area[s])); continue; }
             var km = GeoScore.KmFromGrid(_pinX[s], _pinY[s], place.Lat, place.Lon);
@@ -518,6 +584,16 @@ public sealed class GeoMatch
                 for (var i = 0; i < rows.Count; i++)
                     if (rows[i].Km is { } k && k <= GeoRules.DuelKm && rows[i].At == first)
                         rows[i] = rows[i] with { Points = rows[i].Points + GeoRules.DuelBonus, Fast = true };
+        }
+        // 📸 Автор фото: половина середнього очок тих, хто шукав (з бонусами). Сфоткав легке — друзі влучили —
+        // тобі половина; «лише наші» автора не карає, а фармити своїми фото не вийде.
+        if (round.Mine is not null)
+        {
+            long sum = 0;
+            foreach (var r in rows) sum += r.Points;
+            var half = rows.Count == 0 ? 0 : (int)Math.Round(sum / (double)rows.Count / 2, MidpointRounding.AwayFromZero);
+            for (var s = 0; s < _max; s++)
+                if (Present(s) && _own[s]) rows.Add(new Row(s, null, null, null, half, false, false, DateTimeOffset.MaxValue, Own: true));
         }
         // 🏆 найближчим — з допуском в один метр; самому — ні: «найближчий з одного» — не заслуга.
         if (present > 1)
@@ -548,7 +624,7 @@ public sealed class GeoMatch
         // підсумок і самому, і вдвох-після-того-як-хтось-устав казав, чия це відстань.
         var best = rows.Where(r => r.Best).Select(r => r.Seat).ToArray();
         _recap.Add(new Recap(place.Name, place.Region, round.Url, best, top?.Seat, top?.Km, top?.Points ?? 0));
-        _reveal = new RevealData(tx, ty, place, place.Photos[round.Photo], say, rows);
+        _reveal = new RevealData(tx, ty, place, place.Photos[round.Photo], say, rows, round.Mine);
         _phase = PhaseReveal;
         _phaseMs = RevealMs;
         _endsAt = now.AddMilliseconds(RevealMs);
@@ -673,6 +749,8 @@ public sealed class GeoMatch
             pre = _phase == PhaseReveal && _round < _rounds.Count ? _rounds[_round].SealedUrl : null,
             seal = _phase == PhaseBetween && round?.Key is { } key ? new { url = round.SealedUrl, key = Convert.ToBase64String(key) } : null,
             day = Day,
+            // 📸 фото друга: чиє (видно з «Готуйсь») і які місця за столом — його автор (не вгадує); інакше null
+            by = _phase is PhaseBetween or PhaseGuess or PhaseReveal && round?.Mine is { } bm ? new { nick = bm.Nick, seats = Seats(_own) } : null,
             share = Day is not null && _phase == PhaseDone ? Share() : null,
             // Фото — лише токен. У підсумку партії (done) лишається останнє: розкриття вже публічне.
             photo = _phase == PhaseLobby ? null : round?.Url,
@@ -691,7 +769,10 @@ public sealed class GeoMatch
                 region = rv.Place.Region,
                 cat = rv.Place.Cat,
                 wikidata = rv.Place.Wikidata,
-                photo = new { title = rv.Photo.Title, author = rv.Photo.Author, license = rv.Photo.License, licenseUrl = rv.Photo.LicenseUrl, page = rv.Photo.Page },
+                // фото друга — історія автора замість підпису Вікісховища (і лише тут, після розкриття)
+                photo = rv.Mine is { } mp
+                    ? (object)new { title = mp.Title, author = mp.Nick, license = "", licenseUrl = "", page = "", story = mp.Story, mine = true }
+                    : new { title = rv.Photo.Title, author = rv.Photo.Author, license = rv.Photo.License, licenseUrl = rv.Photo.LicenseUrl, page = rv.Photo.Page },
                 say = rv.Say,
                 rows = rv.Rows.Select(r => new
                 {

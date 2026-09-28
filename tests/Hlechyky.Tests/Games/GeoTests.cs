@@ -97,8 +97,8 @@ public class GeoTests
         Assert.False(geo.Rated);
         Assert.Equal(500, geo.TickMs);
         Assert.Equal((1, 10), (geo.MinPlayers, geo.MaxPlayers));
-        Assert.Equal(["rounds", "seconds", "cat", "level", "hints", "mode", "area"], geo.Options.Select(o => o.Key));
-        Assert.Equal(["5", "45", "all", "all", "full", "classic", "on"], geo.Options.Select(o => o.Default));
+        Assert.Equal(["rounds", "seconds", "cat", "level", "hints", "mode", "area", "friends"], geo.Options.Select(o => o.Key));
+        Assert.Equal(["5", "45", "all", "all", "full", "classic", "on", "off"], geo.Options.Select(o => o.Default));
         Assert.True(geo.Options.Single(o => o.Key == "cat").Multi);
         Assert.Equal(["5", "7", "10"], geo.Options[0].Values.Select(v => v[0]));
         Assert.True(geo.HasCss);
@@ -1007,7 +1007,7 @@ public class GeoTests
         }
     }
 
-    static readonly string[] ViewKeys = ["phase", "round", "rounds", "endsAt", "phaseMs", "seconds", "hints", "mode", "areaOn", "area", "pre", "seal", "day", "share", "photo",
+    static readonly string[] ViewKeys = ["phase", "round", "rounds", "endsAt", "phaseMs", "seconds", "hints", "mode", "areaOn", "area", "pre", "seal", "day", "by", "share", "photo",
         "pinned", "ready", "next", "my", "reveal", "scores", "left", "nicks", "result", "recap", "turn"];
 
     [Fact]
