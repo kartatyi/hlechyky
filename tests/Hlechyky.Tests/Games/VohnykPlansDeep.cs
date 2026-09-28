@@ -14,6 +14,7 @@ public static partial class VohnykPlans
             case 16: Level16(b); return true;
             case 17: Level17(b); return true;
             case 18: Level18(b); return true;
+            case 19: Level19(b); return true;
             default: return false;
         }
     }
@@ -62,6 +63,22 @@ public static partial class VohnykPlans
         b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.Button[0] != 0), b.RunJump(F, +1, 300, 30, C(10) + 4), b.WaitFor(() => b.Ground(F)), b.Go(F, C(19)), b.Jump(F, 0, 30, C(19)), b.Go(F, C(21))), null);
         b.Do(null, VohnykBot.Seq(b.WaitFor(() => b.W.Button[1] != 0), b.RunUntil(+1, () => b.W.Y[Wt] < 9 * T), b.WaitFor(() => b.Ground(Wt)), b.Go(Wt, C(17)),
             b.RunJump(Wt, +1, 690, 30, C(21)), b.Go(Wt, C(21)), b.Jump(Wt, 0, 30, C(21)), b.Go(Wt, C(25))));
+        b.Do(b.Go(F, C(23)), null);
+    }
+
+    /// <summary>
+    /// «Скриня-щит»: Вогник зіштовхує скриню в нору — вона падає в синій промінь коридору й кидає тінь праворуч; Крапля
+    /// дошкою над лавою до b1 (двері відчинені), Вогник у тіні скрині до b2; Крапля назад, у коридор по самоцвіт біля
+    /// ліхтаря (їй синій не страшний) — і обоє до виходів.
+    /// </summary>
+    static void Level19(VohnykBot b)
+    {
+        b.Do(VohnykBot.Seq(b.Go(F, C(6) + 12), b.Wait(40)), null);
+        b.Do(VohnykBot.Seq(b.WaitFor(() => b.W.Button[0] != 0), b.Go(F, C(21))),
+            VohnykBot.Seq(b.RunJump(Wt, +1, C(6), 30, C(9)), b.Go(Wt, C(10)), b.Jump(Wt, +1, 30, C(12)), b.Go(Wt, C(12)),
+                b.Jump(Wt, +1, 30, C(17)), b.Go(Wt, C(18))));
+        b.Do(null, VohnykBot.Seq(b.WaitFor(() => b.W.Button[1] != 0), b.Go(Wt, C(16)), b.Jump(Wt, -1, 30, C(12)), b.Jump(Wt, -1, 30, C(9)),
+            b.RunUntil(-1, () => b.FeetPx(Wt) > 400), b.WaitFor(() => b.Ground(Wt)), b.Go(Wt, C(3)), b.Go(Wt, C(4)), b.RunJump(Wt, +1, C(5), 30, C(10)), b.Go(Wt, C(25))));
         b.Do(b.Go(F, C(23)), null);
     }
 }
