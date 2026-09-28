@@ -687,7 +687,8 @@
       const p = pad(root);
       p.timer = setInterval(() => { if (root._ctx) timer(root, root._ctx); }, 250);
       // інша ширина вікна — інакше лягають чіпи місць і заголовок, і полотно починається деінде
-      new ResizeObserver(() => fitStep(root)).observe(root.querySelector('.tpwrap'));
+      // У наступному кадрі — так само, як у Піктіонарі: fitStep міняє висоту того, за ким стежить спостерігач.
+      new ResizeObserver(() => requestAnimationFrame(() => fitStep(root))).observe(root.querySelector('.tpwrap'));
       render(root, ctx);
     },
 

@@ -383,7 +383,9 @@
 
     new ResizeObserver(() => paintSoon(root)).observe(el);
     // інша ширина вікна — інакше лягають чіпи місць над карткою, і полотно починається деінде
-    new ResizeObserver(() => fitStage(root)).observe(root.querySelector('.pcwrap'));
+    // У наступному кадрі, а не просто в колбеку: fitStage міняє --pctop, від якого залежить висота .pcwrap, і зміна
+    // розміру всередині спостерігача давала «ResizeObserver loop completed…» і зайвий перерахунок у тому ж кадрі.
+    new ResizeObserver(() => requestAnimationFrame(() => fitStage(root))).observe(root.querySelector('.pcwrap'));
   }
 
   // =========================================================================================
