@@ -155,7 +155,9 @@
 
   const gameOf = (id) => byId[id] || null;
   const titleOf = (id) => (byId[id] && byId[id].title) || id;
-  const iconOf = (id) => (modules[id] && modules[id].icon) || '<span class="gemo">🎲</span>';
+  /// Модуль гри, а поки він не приїхав (лінивий вантаж, п. 241), — те, що він сказав про себе минулого разу (gamesMeta).
+  const infoOf = (id) => modules[id] || metaById[id] || null;
+  const iconOf = (id) => { const m = infoOf(id); return (m && m.icon) || '<span class="gemo">' + (NO_ICON[id] || '🎲') + '</span>'; };
   const groupOf = (id) => (byId[id] && byId[id].group) || 'board';
 
   // =============================================================================================
@@ -673,7 +675,7 @@
   /// Тягнемо рівно один файл (разом із його css, інакше пізній loadModules його проґавить) і кличемо
   /// ready(), коли модуль зареєструвався. Поки він летить, на кнопці стоїть 🎲 — і це не помилка.
   function ensureIcon(gameId, ready) {
-    if (modules[gameId]) return;
+    if (modules[gameId] || (metaById[gameId] && metaById[gameId].icon)) return;   // іконка вже є з gamesMeta (п. 241)
     // Спершу каталог: без нього ми не знаємо навіть, у якому файлі ця гра живе.
     ensureNames().then(() => {
       const g = byId[gameId];
@@ -684,23 +686,131 @@
       .catch(() => { /* каталог не прочитався — лишається 🎲, і це не привід шуміти */ });
   }
 
-  /// Вантажимо всі модулі одразу: у каталозі їх буде два десятки, а послідовні await —
-  /// це два десятки round-trip-ів поспіль. Один файл вантажимо рівно раз, скільки б ігор у ньому
-  /// не реєструвалось. Вердикт «не завантажився» ставимо лише коли все відстрілялось.
-  async function loadModules() {
-    const want = catalog.games.filter((g) => !modules[g.id]);
-    const files = [...new Set(want.map(moduleOf))];
-    for (const g of want) addCss(g, moduleOf(g));
-    const res = await Promise.all(files.map(async (f) => [f, await loadFile(f)]));
-    const loaded = Object.fromEntries(res);
-    for (const g of want) {
-      if (modules[g.id]) continue;
+  // ---------------------------------------------------------------------------------------------
+  // Лінивий вантаж модулів (прохід №3, п. 241). Колись «Ігри» тягнули всі ~60 модулів одразу — з колом і його
+  // частинами під 4 МБ і десятки мілісекунд розбору на телефоні, хоча людина відкриє один-два столи. Тепер:
+  //  • модуль столу — коли стіл відкрили (картка сама кличе loadGame), а плитки — ще при наведенні чи дотику;
+  //  • лобі малюється одразу: іконку, added і news кожен модуль сам лишає в localStorage (gamesMeta) з відбитком
+  //    свого файлу, і наступного разу плитка бере їх звідти;
+  //  • у тиші (requestIdleCallback) довантажуємо лише ті модулі, чиї записи застаріли (файл змінився — могли прийти
+  //    «що нового») чи яких ще нема, і ті, що вішають панелі (Своя гра — «📦 Пакети»);
+  //  • важкі (HEAVY — Гончарне коло тягне ще дев'ять частин) заздалегідь не тягнемо ніколи: лише стіл чи наведення.
+  // Старий модуль про це нічого не знає: register() той самий, запис робить каркас.
+  // ---------------------------------------------------------------------------------------------
+  const META_LS = 'gamesMeta1';
+  const HEAVY = new Set(['clicker']);
+  const NO_ICON = { clicker: '🏺' };   // іконка-заглушка, поки важкий модуль жодного разу не приїжджав
+  let meta = {};                        // файл модуля → { v: відбиток, g: { id: { icon, added, news } }, p: 1 — має панель }
+  let metaById = {};
+  function reindexMeta() {
+    metaById = {};
+    for (const f in meta) for (const id in (meta[f] && meta[f].g) || {}) metaById[id] = meta[f].g[id];
+  }
+  try { meta = JSON.parse(localStorage.getItem(META_LS) || '{}') || {}; } catch { meta = {}; }
+  reindexMeta();
+  let metaSaveT = 0;
+  function saveMetaLater() {
+    reindexMeta();
+    if (metaSaveT) return;
+    metaSaveT = setTimeout(() => {
+      metaSaveT = 0;
+      try { localStorage.setItem(META_LS, JSON.stringify(meta)); } catch { /* приватне вікно — наступного разу потягнемо ще раз */ }
+    }, 800);
+  }
+  /// Який файл зараз виконується (register/registerPanel кличуть на верхньому рівні модуля) і з яким відбитком.
+  function scriptNow() {
+    const src = document.currentScript && document.currentScript.src;
+    if (!src) return null;
+    const u = new URL(src, location.href);
+    const m = /^\/games\/([^/]+)\.js$/.exec(u.pathname);
+    return m ? { f: m[1], v: u.searchParams.get('v') || (catalog.files && catalog.files['games/' + m[1] + '.js']) || '' } : null;
+  }
+  function metaFile(f, v) {
+    let e = meta[f];
+    if (!e || e.v !== v) e = meta[f] = { v, g: {} };
+    return e;
+  }
+  function rememberModule(mod) {
+    const s = scriptNow();
+    const g = byId[mod.id];
+    const f = s ? s.f : g ? moduleOf(g) : null;
+    if (!f) return;
+    const v = s ? s.v : (catalog.files && catalog.files['games/' + f + '.js']) || '';
+    const rec = {};
+    if (typeof mod.icon === 'string') rec.icon = mod.icon;
+    if (mod.added) rec.added = String(mod.added);
+    if (mod.talk) rec.talk = String(mod.talk);
+    if (mod.news && mod.news.v) rec.news = { v: String(mod.news.v), title: String(mod.news.title || ''), items: (mod.news.items || []).map(String) };
+    metaFile(f, v).g[mod.id] = rec;
+    saveMetaLater();
+  }
+  function rememberPanel() {
+    const s = scriptNow();
+    if (!s) return;
+    metaFile(s.f, s.v).p = 1;
+    saveMetaLater();
+  }
+  /// Запис про файл застарів: файлу ще не бачили, він змінився, або старий сервер відбитків не дає.
+  const metaStale = (f) => {
+    const e = meta[f], v = catalog.files && catalog.files['games/' + f + '.js'];
+    return !e || !v || e.v !== v;
+  };
+
+  /// Файл довантажився (або ні): ігри з нього, що так і не зареєструвались, — «не завантажився».
+  function settleFile(f, ok) {
+    let bad = false;
+    for (const g of catalog.games) {
+      if (moduleOf(g) !== f || modules[g.id] || failed.has(g.id)) continue;
       failed.add(g.id);
-      const f = moduleOf(g);
+      bad = true;
       console.warn('[games] модуль ' + g.id + ' не завантажився'
-        + (loaded[f] ? ' (є ' + f + '.js, але register(' + g.id + ') не викликано)' : ' (нема ' + f + '.js)'));
+        + (ok ? ' (є ' + f + '.js, але register(' + g.id + ') не викликано)' : ' (нема ' + f + '.js)'));
     }
-    refreshAll();
+    if (bad) refreshAll();
+  }
+  /// Модуль однієї гри (і всієї його родини в тому ж файлі). Двічі той самий файл не тягнемо (loadFile).
+  function loadGame(id) {
+    if (modules[id]) return Promise.resolve(true);
+    const g = byId[id];
+    if (!g || failed.has(id)) return Promise.resolve(false);   // каталогу ще нема — loadModules прийде сюди ще раз
+    const f = moduleOf(g);
+    for (const x of catalog.games) if (moduleOf(x) === f) addCss(x, f);
+    return loadFile(f).then((ok) => { settleFile(f, ok); return !!modules[id]; });
+  }
+
+  let idleRun = null;
+  /// Фонове довантаження: по кілька файлів за раз, коли браузерові нічого робити. Вертає проміс «усе, що треба, є».
+  function idleLoad() {
+    if (idleRun) return idleRun;
+    const files = [...new Set(catalog.games.map(moduleOf))]
+      .filter((f) => !HEAVY.has(f) && !loadedFiles.has(f) && (metaStale(f) || (meta[f] && meta[f].p)));
+    if (!files.length) return Promise.resolve();
+    const later = window.requestIdleCallback ? (fn) => requestIdleCallback(fn, { timeout: 1500 }) : (fn) => setTimeout(fn, 120);
+    idleRun = new Promise((resolve) => {
+      const step = () => {
+        const batch = files.splice(0, 4);
+        if (!batch.length) { idleRun = null; resolve(); return; }   // наступний каталог (оновлення без F5) перевірить знову
+        Promise.all(batch.map((f) => {
+          for (const x of catalog.games) if (moduleOf(x) === f) addCss(x, f);
+          return loadFile(f).then((ok) => settleFile(f, ok));
+        })).then(() => later(step));
+      };
+      later(step);
+    });
+    return idleRun;
+  }
+
+  /// Після каталогу: модулі столів, що вже відкриті (F5 за столом), — одразу; решта — у тиші.
+  function loadModules() {
+    for (const id in cards) if (views[id]) loadGame(views[id].room.game);
+    return idleLoad();
+  }
+
+  /// Наведення чи дотик до плитки (data-pre="id id…") — модуль уже летить, поки людина тисне «Грати».
+  function prefetchFrom(e) {
+    const t = e.target && e.target.closest && e.target.closest('[data-pre]');
+    if (!t || !catalog.games.length) return;
+    for (const id of t.dataset.pre.split(' ')) if (id) loadGame(id);
   }
 
   /// Самі назви ігор, без двох десятків модулів: стільки треба балачкам, щоб написати «Мафія», а не
@@ -827,14 +937,14 @@
   const daysSince = (iso) => (Date.now() - Date.parse(String(iso).slice(0, 10) + 'T12:00:00')) / 86400000;
   /// «Нова гра: …» з тією ж датою, що added, — знайомство, а не оновлення: ні «оновлено» на плитці, ні вікна.
   const newsOf = (id) => {
-    const m = modules[id];
+    const m = infoOf(id);
     if (!m || !m.news || !m.news.v || !(m.news.items || []).length) return null;
     const a = addedOf(id);
     return a && m.news.v <= a ? null : m.news;
   };
   /// Коли гра з'явилась: added у модулі, а як автор забув — день, коли сервер уперше її побачив (каталог, GameAdded.cs).
   const addedOf = (id) => {
-    const m = modules[id];
+    const m = infoOf(id);
     return (m && m.added) || (catalog.added && catalog.added[id]) || null;
   };
   const playedIt = (id) => played == null || played.has(id);
@@ -969,7 +1079,7 @@
     const rv = views[view.id];
     if (!rv || !rv.room || rv.loose || (rv.room.maxPlayers || 0) <= 1) return null;
     const g = rv.room.game;
-    return { id: rv.room.id, game: g, title: titleOf(g), main: !!(modules[g] && modules[g].talk === 'main'), seat: rv.seat, status: rv.room.status };
+    return { id: rv.room.id, game: g, title: titleOf(g), main: !!(infoOf(g) && infoOf(g).talk === 'main'), seat: rv.seat, status: rv.room.status };
   }
   let tableSig = null;
   /// Сказати app.js, що змінився стіл (або його стан, або ⛶). Однакове двічі не кажемо.
@@ -1234,7 +1344,7 @@
     const fresh = isNewGame(e.ids[0]);
     const extra = e.ids.includes('svoya') && extraPanels.some((p) => p.id === 'svoya')
       ? '<button class="ghost gt-extra" data-go="#games/x:svoya" title="Пакети запитань: грати свої, збирати нові">📦 Пакети</button>' : '';
-    return '<div class="gtile' + (fresh ? ' fresh' : '') + (now.length ? ' live' : '') + '">'
+    return '<div class="gtile' + (fresh ? ' fresh' : '') + (now.length ? ' live' : '') + '" data-pre="' + esc(e.ids.join(' ')) + '">'
       + '<div class="gt-head">' + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b>' + badgeOf(e) + '</div>'
       + (now.length ? '<div class="gt-now" title="' + esc(whoTitle(now)) + '"><i class="gdot"></i><span>' + esc(whoShort(now, 3))
         + ' <span class="muted">' + (now.length > 1 ? 'грають' : 'грає') + '</span></span></div>' : '')
@@ -1331,7 +1441,7 @@
     const favRow = favs.length && filter === 'all' && !want
       ? '<div class="gfavs"><span class="muted small">⭐ Часто граємо:</span>' + favs.map((e) => {
         const act = e.solo ? 'data-solo="' + esc(e.g.id) + '"' : 'data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '"';
-        return '<button class="gfav" ' + act + ' title="' + esc(playsOf(e) + ' ' + (playsOf(e) % 10 >= 2 && playsOf(e) % 10 <= 4 && (playsOf(e) % 100 < 12 || playsOf(e) % 100 > 14) ? 'партії' : 'партій') + ' за місяць') + '">'
+        return '<button class="gfav" data-pre="' + esc(e.ids.join(' ')) + '" ' + act + ' title="' + esc(playsOf(e) + ' ' + (playsOf(e) % 10 >= 2 && playsOf(e) % 10 <= 4 && (playsOf(e) % 100 < 12 || playsOf(e) % 100 > 14) ? 'партії' : 'партій') + ' за місяць') + '">'
           + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b><span class="muted small">' + (e.solo ? 'грати' : '+ стіл') + '</span></button>';
       }).join('') + '</div>'
       : '';
@@ -1763,6 +1873,7 @@
 
     const mod = modules[rv.room.game] || null;
     if (mod && card.mod !== mod) card.mod = mod;
+    if (!mod) loadGame(rv.room.game);   // лінивий вантаж (п. 241): модуль приїде — register() перемалює картку
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
       rv.room.options, rv.room.result, rv.room.evening, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
@@ -2001,6 +2112,7 @@
   // Публічний API
   // =============================================================================================
 
+  let lobbyT = 0;
   const HGames = {
     ui,
 
@@ -2008,14 +2120,17 @@
       if (!mod || !mod.id) { console.warn('[games] register без id'); return; }
       modules[mod.id] = mod;
       failed.delete(mod.id);
+      try { rememberModule(mod); } catch (e) { console.warn('[games] gamesMeta', e); }
       for (const id in cards) if (views[id] && views[id].room.game === mod.id) refreshCard(id);
-      if (shown && root && root.querySelector('.gtiles')) renderView();
+      // Модулі тепер приїжджають по одному у тиші — лобі перемальовуємо раз на пачку, а не на кожен.
+      if (!lobbyT) lobbyT = setTimeout(() => { lobbyT = 0; if (shown && root && root.querySelector('.gtiles')) renderView(); }, 150);
       if (shown && view.kind === 'room') renderRoomHead(view.id);
       notifyTable();   // модуль міг приїхати пізніше за стіл — і сказати, що розмова тут головна (talk: 'main')
     },
 
     registerPanel(p) {
       if (!p || !p.id || !p.mount) { console.warn('[games] registerPanel без id/mount'); return; }
+      try { rememberPanel(); } catch { /* не з модуля гри (tournament.js з index.html) — і не треба */ }
       const i = extraPanels.findIndex((x) => x.id === p.id);
       if (i >= 0) extraPanels[i] = p; else extraPanels.push(p);
       renderShell();
@@ -2041,6 +2156,7 @@
       if (o.online) online = o.online;
       if (o.askNick) askNick = o.askNick;
       root = o.root || (o.$ ? o.$('games') : document.getElementById('games'));
+      if (root) { root.addEventListener('pointerover', prefetchFrom, { passive: true }); root.addEventListener('focusin', prefetchFrom); }
       booted = true;
       renderShell();
       // Каталог і модуль кожної гри тягнемо в show(): слухачеві, який у «Ігри» не заходить,
