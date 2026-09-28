@@ -700,7 +700,7 @@ public class DominoTests
 
         Assert.Equal("Доміно", game.Title);
         Assert.Equal("board", game.Group);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);   // з 29.09 — сам на сам можна з Глеком 🤖 (CanStart стереже)
         Assert.Equal(4, game.MaxPlayers);
         Assert.Equal("byHost", game.Start);
         Assert.True(game.Hidden);
@@ -795,8 +795,7 @@ public class DominoTests
     public void The_option_is_offered_in_the_catalog()
     {
         var game = Assert.Single(new Registry().Catalog, g => g.Id == "domino");
-        var option = Assert.Single(game.Options);
-        Assert.Equal("target", option.Key);
+        var option = Assert.Single(game.Options, o => o.Key == "target");
         Assert.Equal("50", option.Default);
     }
 }
