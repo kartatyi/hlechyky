@@ -256,6 +256,7 @@ public sealed class Spy : Game
     public int GlekSeat => _glek;
 
     bool IsGlek(int seat) => seat >= 0 && seat == _glek;
+    public override string? SeatBot(int seat) => IsGlek(seat) ? GlekName : null;
 
     static int Pick(IReadOnlyDictionary<string, string> options, string key, int[] allowed, int fallback) =>
         options.TryGetValue(key, out var s) && int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out var n)

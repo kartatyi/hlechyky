@@ -97,6 +97,7 @@ public sealed class Domino : Game
     }
 
     bool IsBot(int seat) => seat >= 0 && seat < MaxSeats && _bots[seat] is not null;
+    public override string? SeatBot(int seat) => IsBot(seat) ? _bots[seat] : null;
 
     /// <summary>Ім'я за столом: нік або «Глек 🤖».</summary>
     string Nick(int seat) => IsBot(seat) ? _bots[seat]! : Ctx.NickOf(seat) ?? SeatName(seat);

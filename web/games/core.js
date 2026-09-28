@@ -144,6 +144,12 @@
     if (s == null) return null;
     return typeof s === 'string' ? (s || null) : (s.nick || null);
   }
+  /// Бот гри на місці без людини («🤖 Глек»): сервер кладе його в seats[i].bot, поки йде чи дограна партія.
+  /// Старий сервер його не шле — тоді місце, як і було, «вільно».
+  function botAt(room, i) {
+    const s = room && room.seats && room.seats[i];
+    return s && typeof s === 'object' && !s.nick && s.bot ? s.bot : null;
+  }
   const seatCount = (room) => (room.seats ? room.seats.length : room.maxPlayers || 0);
   const takenSeats = (room) => { let n = 0; for (let i = 0; i < seatCount(room); i++) if (nickAt(room, i)) n++; return n; };
   const freeSeat = (room) => { for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i)) return i; return -1; };
@@ -1275,7 +1281,10 @@
     const took = takenSeats(r), all = seatCount(r);
     const nicks = [];
     for (let i = 0; i < all; i++) { const n = nickAt(r, i); if (n) nicks.push(n); }
-    const free = all - took;
+    let bots = '';
+    let nb = 0;
+    for (let i = 0; i < all; i++) { const b = botAt(r, i); if (b) { nb++; bots += ', <span class="gbot">' + esc(b) + '</span>'; } }
+    const free = all - took - nb;
     // Ніки клікабельні: картка людини (web/people.js ловить data-who).
     const who = nicks.map((n) => '<span class="who-n" data-who="' + esc(n) + '" style="--h:' + hueOf(n) + '">' + esc(n) + '</span>').join(', ');
     const myTurn = mine && r.status === 'playing' && rv && turnOf(rv) === seat;
@@ -1290,7 +1299,7 @@
       + '<div class="gs-head"><span class="gtitle">' + iconOf(r.game) + esc(titleOf(r.game)) + '</span>'
       + (r.stake ? '<span class="gmode stake">🏺' + r.stake + '</span>' : '')
       + '<span class="chip">' + (all > 1 ? took + '/' + all : 'соло') + '</span></div>'
-      + '<div class="gs-who">' + (nicks.length ? who : '<span class="muted">поки ні душі</span>')
+      + '<div class="gs-who">' + (nicks.length ? who + bots : '<span class="muted">поки ні душі</span>')
       + (free > 0 && all > 1 ? ' <span class="muted">· вільно ' + free + '</span>' : '')
       + ' · ' + status + (r.watchers ? ' <span class="muted">· 👁 ' + r.watchers + '</span>' : '') + '</div>'
       + (eveningText(r, true) ? '<div class="gs-ev muted small" title="' + esc(eveningTitle(r)) + '">' + esc(eveningText(r, true)) + '</div>' : '')
@@ -1782,13 +1791,13 @@
       // На великих столах (мафія, піктіонарі — до 12) чіпи вільних місць займали на телефоні три рядки над грою:
       // від трьох вільних показуємо їх одним «вільно ×N».
       let free = 0;
-      for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i)) free++;
+      for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i) && !botAt(room, i)) free++;
       const fold = free > 2;
       // Від п'яти гравців на телефоні чіпи ніків стояли 4–5 рядками над грою. Там лишаємо свій чіп, чий хід
       // і «👥 N» — дотик розгортає всіх (core.css, .gseats.many). На широкому екрані видно всіх, як і було.
       const taken = seatCount(room) - free;
       for (let i = 0; i < seatCount(room); i++) {
-        const nick = nickAt(room, i);
+        const nick = nickAt(room, i) || botAt(room, i);
         if (fold && !nick) continue;
         const turn = room.status === 'playing' && turnOf(rv) === i;
         chips.push('<span class="gseat ' + seatClassOf(rv, i) + (nick ? '' : ' free') + (turn ? ' turn' : '')
@@ -1829,7 +1838,7 @@
       if (res.draw || !(res.winners || []).length) return 'Нічия';
       // «Є!» — лише переможцеві: суперник і глядач бачать просто, чия перемога.
       return (rv.seat != null && res.winners.includes(rv.seat) ? 'Є! ' : '')
-        + 'Перемога: ' + res.winners.map((i) => nickAt(r, i) || seatNameOf(rv, i)).join(', ');
+        + 'Перемога: ' + res.winners.map((i) => nickAt(r, i) || botAt(r, i) || seatNameOf(rv, i)).join(', ');
     }
     if (r.status === 'lobby') {
       if (solo) return '';
@@ -1843,7 +1852,7 @@
       return freeSeat(r) >= 0 ? 'Чекаємо, хто підсяде' : 'Чекаємо на старт';
     }
     const t = turnOf(rv);
-    if (t != null) return t === rv.seat ? 'Твій хід' : 'Ходить ' + (nickAt(r, t) || seatNameOf(rv, t));
+    if (t != null) return t === rv.seat ? 'Твій хід' : 'Ходить ' + (nickAt(r, t) || botAt(r, t) || seatNameOf(rv, t));
     return rv.seat == null ? 'Дивишся збоку' : '';
   }
 

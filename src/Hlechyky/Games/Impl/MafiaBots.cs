@@ -32,6 +32,7 @@ public sealed partial class Mafia
     public override bool ActsInLobby => true;
 
     public bool IsBot(int seat) => _bots.Contains(seat);
+    public override string? SeatBot(int seat) => IsBot(seat) && seat < _nicks.Length ? _nicks[seat] : null;
     public int BotsWanted => _botWanted;
 
     /// <summary>Скільки людей сидить за столом зараз.</summary>

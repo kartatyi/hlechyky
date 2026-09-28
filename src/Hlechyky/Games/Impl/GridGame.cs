@@ -97,6 +97,7 @@ public abstract class GridGame : Game
     int Partner(int seat) => _pairs ? (seat + 2) % 4 : seat;
 
     bool IsBot(int seat) => seat >= 0 && seat < _bots.Length && _bots[seat] is not null;
+    public override string? SeatBot(int seat) => IsBot(seat) ? _bots[seat] : null;
 
     /// <summary>Ім'я за столом: нік людини або «Глек 🤖».</summary>
     protected string Nick(int seat) => IsBot(seat) ? _bots[seat]! : Ctx.NickOf(seat) ?? SeatName(seat);

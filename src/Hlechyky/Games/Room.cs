@@ -2,8 +2,13 @@ using System.Collections.Concurrent;
 
 namespace Hlechyky.Games;
 
-/// <summary>Місце в кімнаті так, як його бачить лобі: індекс і хто на ньому сидить.</summary>
-public sealed record SeatSlot(int I, string? Nick);
+/// <summary>
+/// Місце в кімнаті так, як його бачить лобі: індекс і хто на ньому сидить. <c>Bot</c> — ім'я бота гри на місці без
+/// людини (<see cref="Game.SeatBot"/>); на дріт іде лише тоді, коли є.
+/// </summary>
+public sealed record SeatSlot(int I, string? Nick,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Bot = null);
 
 /// <summary>Підсумок партії для лобі й для картки кімнати. Scores лишаються всередині — лобі вони ні до чого.</summary>
 public sealed record RoomResultDto(int[] Winners, bool Draw, string Text);
@@ -182,6 +187,13 @@ public sealed class Room
         catch { return seat == 0 ? "перший" : seat == 1 ? "другий" : $"гравець {seat + 1}"; }
     }
 
+    /// <summary>Бот гри на порожньому місці; крива гра не валить шапку (як <see cref="SafeSeatName"/>).</summary>
+    public string? SafeSeatBot(int seat)
+    {
+        try { return Game.SeatBot(seat); }
+        catch { return null; }
+    }
+
     /// <summary>Шапка кімнати для дроту. Кличеться під <see cref="Sync"/>.</summary>
     public RoomSummary Summary()
     {
@@ -189,7 +201,7 @@ public sealed class Room
         var names = new string[Seats.Length];
         for (var i = 0; i < Seats.Length; i++)
         {
-            slots[i] = new SeatSlot(i, Seats[i]);
+            slots[i] = new SeatSlot(i, Seats[i], Seats[i] is null && Status != RoomStatus.Lobby ? SafeSeatBot(i) : null);
             names[i] = SafeSeatName(i);
         }
         return new RoomSummary(

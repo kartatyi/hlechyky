@@ -164,6 +164,13 @@ public abstract class Game
     /// <summary>«білі»/«чорні», «жовта»/«зелена» — для чіпів місць і рядків Журналу.</summary>
     public virtual string SeatName(int seat) => seat == 0 ? "перший" : seat == 1 ? "другий" : $"гравець {seat + 1}";
 
+    /// <summary>
+    /// Хто сидить на місці, де людини нема, — бот гри («🤖 Глек»). Каркас кладе це в шапку кімнати: чіп місця,
+    /// «Ходить …» і підсумок кажуть ім'я бота замість «вільно»/назви місця. null — місце справді вільне або людське.
+    /// Кличеться під замком кімнати на кожну шапку — лише читання полів, без алокацій понад рядок.
+    /// </summary>
+    public virtual string? SeatBot(int seat) => null;
+
     /// <summary>Опції з лобі (варіант, розмір). Невалідні значення — GameError; тоді кімната не створюється.</summary>
     public virtual void Configure(IReadOnlyDictionary<string, string> options) { }
 

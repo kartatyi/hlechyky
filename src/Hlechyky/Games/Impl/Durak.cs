@@ -611,6 +611,7 @@ public sealed class Durak : Game
     }
 
     bool IsBot(int seat) => seat >= 0 && seat < _bots.Length && _bots[seat] is not null;
+    public override string? SeatBot(int seat) => IsBot(seat) ? _bots[seat] : null;
 
     DurakCore _core = new(DurakCore.MaxSeats);
     /// <summary>Чи вже сказали каркасові про кінець: Finish буває лише раз на партію.</summary>

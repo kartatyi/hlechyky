@@ -266,8 +266,14 @@ public sealed class Rooms
         }
 
         var outbox = new Outbox();
+        // «Можна почати вже» — лише коли гра й справді пустить: доміно, дурень, c4x самотужки без Глеків не стартують.
+        string? cant = null;
+        if (info.MinPlayers <= 1)
+            lock (room.Sync)
+                try { cant = room.Game.CanStart(); }
+                catch { cant = null; }
         var reply = new RoomReply(true, info.MinPlayers <= 1
-            ? "Стіл готовий. Можна почати вже, а можна гукнути друзів"
+            ? cant is null ? "Стіл готовий. Можна почати вже, а можна гукнути друзів" : "Стіл готовий. " + cant
             : "Стіл готовий. Треба ще " + ((info.MinPlayers - 1) switch
             {
                 1 => "одного гравця", 2 => "двох гравців", 3 => "трьох гравців", var n => n + " гравців",
