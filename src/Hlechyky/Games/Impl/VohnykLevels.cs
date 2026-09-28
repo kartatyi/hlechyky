@@ -458,7 +458,7 @@ public static class VohnykLevels
         if (l.Lifts.Length > 4) e.Add("ліфтів понад 4");
         if (l.Buttons.Length > 8) e.Add("кнопок понад 8");
         if (l.Hints.Length > 4) e.Add("підказок понад 4");
-        if (l.Hints.Length > 0 && l.N > 2) e.Add("підказки — лише на рівнях 1–2");
+        if (l.Hints.Length > 0 && l.N > 2 && l.N <= VohnykLevels.Cave1) e.Add("підказки — лише на рівнях 1–2 і в другій печері (де з'являється нова механіка)");
         if (l.Par <= 0) e.Add("par має бути додатним");
         foreach (var s in l.Solution.Concat(l.Solo?.Solution ?? []))
             if (s is not { Length: 3 } || s[0] < 1 || s[1] is not (0 or 1) || s[2] is < 0 or > 7) { e.Add("solution: запис має бути [крок ≥ 1, 0|1, 0..7]"); break; }

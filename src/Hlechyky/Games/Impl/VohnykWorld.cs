@@ -861,7 +861,7 @@ public sealed class VohnykWorld
                 var ex = wall ? x + RayDx[d] * (TileSu / 2) : x + RayDx[d] * TileSu;
                 var ey = wall ? y + RayDy[d] * (TileSu / 2) : y + RayDy[d] * TileSu;
                 var hitWho = -1;
-                var stop = RayBlock(x, y, ex, ey, d, ref hitWho);
+                var stop = RayBlock(x, y, ex, ey, d, def.Who, ref hitWho);
                 if (stop >= 0)
                 {
                     if ((d & 1) == 0) ex = stop; else ey = stop;
@@ -893,13 +893,15 @@ public sealed class VohnykWorld
 
     /// <summary>
     /// Найближче тіло на відрізку променя (x0,y0)→(x1,y1) напрямку d: координата по осі руху, де промінь у нього
-    /// впирається, або −1. Порядок перевірки (герої, скрині, двері, ліфти) вирішує нічию — однаково в C# і JS.
+    /// впирається, або −1. Порядок перевірки (герої, скрині, двері, ліфти) вирішує нічию — однаково в C# і JS. Герої —
+    /// спершу той, кого цей промінь не чіпає: стали пліч-о-пліч — він і прикрив (водяний: спершу Крапля).
     /// </summary>
-    int RayBlock(int x0, int y0, int x1, int y1, int d, ref int hero)
+    int RayBlock(int x0, int y0, int x1, int y1, int d, int who, ref int hero)
     {
         var best = -1;
-        for (var h = 0; h < 2; h++)
-            if (RayCut(x0, y0, x1, y1, d, X[h], Y[h], HeroW, HeroH, ref best)) hero = h;
+        var h0 = who == 1 ? 1 : 0;
+        if (RayCut(x0, y0, x1, y1, d, X[h0], Y[h0], HeroW, HeroH, ref best)) hero = h0;
+        if (RayCut(x0, y0, x1, y1, d, X[1 - h0], Y[1 - h0], HeroW, HeroH, ref best)) hero = 1 - h0;
         for (var b = 0; b < _nx; b++)
             if (RayCut(x0, y0, x1, y1, d, BoxX[b], BoxY[b], BoxSize, BoxSize, ref best)) hero = -1;
         for (var i = 0; i < _nd; i++)

@@ -23,13 +23,18 @@
   const FeetInset = 4 * Px, FeetH = 16 * Px;
   const KeyLeft = 1, KeyRight = 2, KeyJump = 4;
   const HeroInts = 14;
-  const Air = 0, Stone = 1, Water = 2, Lava = 3, Mud = 4;
+  const Air = 0, Stone = 1, Water = 2, Lava = 3, Mud = 4, Thin = 5;
+  // друга печера: промінь щонайбільше 80 клітинок, відрізків для малювання — до 64 (VohnykWorld.RayMaxHops/RayMaxSegs)
+  const RayMaxHops = 80, RayMaxSegs = 64;
+  const RayDx = [1, 0, -1, 0], RayDy = [0, 1, 0, -1];
 
   const trunc = Math.trunc;
   const floorDiv = (a, b) => (a >= 0 ? trunc(a / b) : -trunc((-a + b - 1) / b));
   const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
   const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
   const solidFor = (t, who) => t === Stone || (who === 0 && t === Lava) || (who === 1 && t === Water);
+  // тримає згори: тверде або тонка платформа (її проходять знизу й збоку); who < 0 — скриня
+  const floorFor = (t, who) => t === Thin || (who < 0 ? t === Stone : solidFor(t, who));
 
   /** Рівень із виду (або з файла): плитки байтами, сутності з масками сигналів — як VohnykLevels.Build. */
   function parseLevel(src) {
@@ -39,22 +44,30 @@
       const row = src.rows[r];
       for (let c = 0; c < W && c < row.length; c++) {
         const ch = row[c];
-        tiles[r * W + c] = ch === '#' ? Stone : ch === 'W' ? Water : ch === 'L' ? Lava : ch === 'M' ? Mud : Air;
+        tiles[r * W + c] = ch === '#' ? Stone : ch === 'W' ? Water : ch === 'L' ? Lava : ch === 'M' ? Mud : ch === '_' ? Thin : Air;
       }
     }
     const signals = {};
     let n = 0;
     for (const b of src.buttons || []) if (!(b.id in signals)) signals[b.id] = n++;
     for (const l of src.levers || []) if (!(l.id in signals)) signals[l.id] = n++;
+    for (const m of src.mirrors || []) if (!(m.id in signals)) signals[m.id] = n++;
+    for (const s of src.sensors || []) if (!(s.id in signals)) signals[s.id] = n++;
     const mask = (by) => { let m = 0; for (const id of by || []) m |= 1 << signals[id]; return m; };
     const who = (s) => (s === 'fire' ? 0 : 1);
+    const dirs = { r: 0, d: 1, l: 2, u: 3 };
     return {
       n: src.n, W, H, tiles,
       spawn: [src.spawn.fire, src.spawn.water],
       exits: [src.exits.fire, src.exits.water],
       gems: (src.gems || []).map((g) => ({ who: who(g.who), col: g.at[0], row: g.at[1] })),
       buttons: (src.buttons || []).map((b) => ({ id: b.id, col: b.at[0], row: b.at[1] })),
-      levers: (src.levers || []).map((l) => ({ id: l.id, col: l.at[0], row: l.at[1], init: l.init || 0 })),
+      // дзеркала — ті самі важелі після справжніх (як VohnykLevels.Build)
+      levers: (src.levers || []).map((l) => ({ id: l.id, col: l.at[0], row: l.at[1], init: l.init || 0, mirror: false, fixed: false }))
+        .concat((src.mirrors || []).map((m) => ({ id: m.id, col: m.at[0], row: m.at[1], init: m.init || 0, mirror: true, fixed: !!m.fixed }))),
+      beams: (src.beams || []).map((b) => ({ id: b.id, col: b.at[0], row: b.at[1], dir: dirs[b.dir || 'r'], who: b.who === 'fire' ? 0 : b.who === 'water' ? 1 : 2, mask: mask(b.by), all: b.mode === 'all', inv: !!b.inv })),
+      sensors: (src.sensors || []).map((s) => ({ id: s.id, col: s.at[0], row: s.at[1] })),
+      portals: (src.portals || []).map((p) => ({ id: p.id, a: p.a, b: p.b, mask: mask(p.by), all: p.mode === 'all', inv: !!p.inv })),
       doors: (src.doors || []).map((d) => ({ id: d.id, col: d.at[0], row: d.at[1], tiles: d.h || 2, mask: mask(d.by), all: d.mode === 'all', inv: !!d.inv })),
       lifts: (src.lifts || []).map((l) => ({ id: l.id, col: l.at[0], row: l.at[1], tiles: l.w || 2, toCol: l.to[0], toRow: l.to[1], mask: mask(l.by), all: l.mode === 'all', inv: !!l.inv })),
       boxes: (src.boxes || []).map((b) => ({ col: b.at[0], row: b.at[1] })),
@@ -73,6 +86,20 @@
     this.BoxX = I(nx); this.BoxY = I(nx); this.BoxVy = I(nx);
     this.DoorO = I(nd); this.LiftX = I(nf); this.LiftY = I(nf); this.Lever = I(nl); this.Button = I(nb);
     this.Gems = 0; this.Hold = 0; this.Cleared = 0;
+    // друга печера: кришталі, «в якому кінці порталу стоїть», чим влучило (не в знімку), відрізки променів
+    const ns = this.ns = L.sensors.length, np = this.np = L.portals.length;
+    this.ne = L.beams.length;
+    this.Sensor = I(ns); this.PortalIn = I(2); this.RayHit = I(2);
+    this.Ray = I(RayMaxSegs * 5); this.RayCount = 0;
+    this._cell = I(L.W * L.H);
+    for (let i = 0; i < nl; i++) if (L.levers[i].mirror) this._cell[L.levers[i].row * L.W + L.levers[i].col] = i + 1;
+    for (let i = 0; i < ns; i++) this._cell[L.sensors[i].row * L.W + L.sensors[i].col] = -(i + 1);
+    this._portX = I(2 * np); this._portY = I(2 * np);
+    for (let i = 0; i < np; i++) {
+      const p = L.portals[i];
+      this._portX[2 * i] = p.a[0] * T; this._portY[2 * i] = p.a[1] * T;
+      this._portX[2 * i + 1] = p.b[0] * T; this._portY[2 * i + 1] = p.b[1] * T;
+    }
     // сам за двох: не частина знімка, клієнт бере з виду (як Solo у C#)
     this.solo = false;
     this._doorX = I(nd); this._doorY = I(nd); this._doorH = I(nd);
@@ -98,7 +125,7 @@
     for (let i = 0; i < 2; i++) { this._exitX[i] = L.exits[i][0] * T; this._exitY[i] = L.exits[i][1] * T; }
     this._riderHero = [false, false];
     this._riderBox = new Array(nx).fill(false);
-    this.stateLength = 2 * HeroInts + 3 * nx + nd + 2 * nf + nl + nb + 3;
+    this.stateLength = 2 * HeroInts + 3 * nx + nd + 2 * nf + nl + nb + 3 + (np > 0 ? 2 : 0) + ns;
     this._hashBuf = new Int32Array(this.stateLength);
     this.reset(false);
   }
@@ -114,6 +141,7 @@
     let m = 0;
     for (let i = 0; i < this.nb; i++) if (this.Button[i] !== 0) m |= 1 << i;
     for (let i = 0; i < this.nl; i++) if (this.Lever[i] !== 0) m |= 1 << (this.nb + i);
+    for (let i = 0; i < this.ns; i++) if (this.Sensor[i] !== 0) m |= 1 << (this.nb + this.nl + i);
     return m;
   };
 
@@ -138,6 +166,8 @@
     for (let i = 0; i < this.nf; i++) { this.LiftX[i] = this._liftAX[i]; this.LiftY[i] = this._liftAY[i]; }
     for (let i = 0; i < this.nl; i++) this.Lever[i] = L.levers[i].init;
     for (let i = 0; i < this.nb; i++) this.Button[i] = 0;
+    for (let i = 0; i < this.ns; i++) this.Sensor[i] = 0;
+    this.PortalIn[0] = this.PortalIn[1] = 0;
     if (!keepGems) this.Gems = 0;
     this.Hold = 0;
     this.Cleared = 0;
@@ -156,7 +186,9 @@
     for (let i = 0; i < this.nf; i++) { s[p++] = this.LiftX[i]; s[p++] = this.LiftY[i]; }
     for (let i = 0; i < this.nl; i++) s[p++] = this.Lever[i];
     for (let i = 0; i < this.nb; i++) s[p++] = this.Button[i];
-    s[p++] = this.Gems; s[p++] = this.Hold; s[p] = this.Cleared;
+    s[p++] = this.Gems; s[p++] = this.Hold; s[p++] = this.Cleared;
+    if (this.np > 0) { s[p++] = this.PortalIn[0]; s[p++] = this.PortalIn[1]; }
+    for (let i = 0; i < this.ns; i++) s[p++] = this.Sensor[i];
   };
 
   P.load = function (s) {
@@ -171,7 +203,9 @@
     for (let i = 0; i < this.nf; i++) { this.LiftX[i] = s[p++]; this.LiftY[i] = s[p++]; }
     for (let i = 0; i < this.nl; i++) this.Lever[i] = s[p++];
     for (let i = 0; i < this.nb; i++) this.Button[i] = s[p++];
-    this.Gems = s[p++]; this.Hold = s[p++]; this.Cleared = s[p];
+    this.Gems = s[p++]; this.Hold = s[p++]; this.Cleared = s[p++];
+    if (this.np > 0) { this.PortalIn[0] = s[p++]; this.PortalIn[1] = s[p++]; }
+    for (let i = 0; i < this.ns; i++) this.Sensor[i] = s[p++];
   };
 
   /** FNV-1a 32-біт над знімком (кожне ціле — 4 байти little-endian), беззнаково. */
@@ -203,6 +237,7 @@
     this.stepHero(0, kFire & 7);
     this.stepHero(1, kWater & 7);
     for (let i = 0; i < this.nx; i++) this.stepBox(i);
+    if (this.np > 0) this.stepPortals(sig);
     this.updateSignals();
     const gems = this.L.gems;
     for (let g = 0; g < gems.length; g++) {
@@ -210,7 +245,7 @@
       const who = gems[g].who;
       if (overlap(this.X[who], this.Y[who], HeroW, HeroH, this._gemX[g], this._gemY[g], 20 * Px, 20 * Px)) this.Gems |= 1 << g;
     }
-    for (let i = 0; i < 2; i++) if (this.Died[i] === 0 && this.feetInDanger(i)) this.Died[i] = 1;
+    for (let i = 0; i < 2; i++) if (this.Died[i] === 0 && (this.feetInDanger(i) || this.rayKills(i))) this.Died[i] = 1;
     for (let i = 0; i < 2; i++) {
       const cx = this.X[i] + trunc(HeroW / 2), cy = this.Y[i] + trunc(HeroH / 2);
       this.InExit[i] = this.Grounded[i] !== 0 && cx >= this._exitX[i] && cx < this._exitX[i] + T && cy >= this._exitY[i] && cy < this._exitY[i] + 2 * T ? 1 : 0;
@@ -473,7 +508,7 @@
       const feet = y0 + HeroH;
       for (let r = floorDiv(feet - 1, T) + 1; r <= floorDiv(limit + HeroH - 1, T); r++) {
         let hit = false;
-        for (let c = c0; c <= c1; c++) if (solidFor(this.tile(c, r), i)) { hit = true; break; }
+        for (let c = c0; c <= c1; c++) if (floorFor(this.tile(c, r), i)) { hit = true; break; }
         if (hit) { limit = Math.min(limit, r * T - HeroH); break; }
       }
       for (let d = 0; d < this.nd; d++) {
@@ -516,7 +551,7 @@
     const r = floorDiv(feet, T);
     if (feet % T === 0)
       for (let c = floorDiv(x, T); c <= floorDiv(x + HeroW - 1, T); c++)
-        if (solidFor(this.tile(c, r), i)) return true;
+        if (floorFor(this.tile(c, r), i)) return true;
     for (let d = 0; d < this.nd; d++)
       if (this._doorY[d] === feet && this._doorH[d] - this.DoorO[d] > 0 && this._doorX[d] < x + HeroW && this._doorX[d] + T > x) return true;
     for (let f = 0; f < this.nf; f++)
@@ -535,8 +570,8 @@
     const bottom = y + BoxSize;
     if (off === 0 || bottom % T !== 0) return;
     const r = trunc(bottom / T);
-    const left = this.tile(c0, r) === Stone;
-    const right = this.tile(c0 + 1, r) === Stone;
+    const left = floorFor(this.tile(c0, r), -1);
+    const right = floorFor(this.tile(c0 + 1, r), -1);
     if (left === right) return;
     for (let f = 0; f < this.nf; f++)
       if (this.LiftY[f] === bottom && this.LiftX[f] < x + BoxSize && this.LiftX[f] + this._liftW[f] > x) return;
@@ -576,7 +611,7 @@
     const bottom = y0 + BoxSize;
     for (let r = floorDiv(bottom - 1, T) + 1; r <= floorDiv(limit + BoxSize - 1, T); r++) {
       let hit = false;
-      for (let c = c0; c <= c1; c++) if (this.tile(c, r) === Stone) { hit = true; break; }
+      for (let c = c0; c <= c1; c++) if (floorFor(this.tile(c, r), -1)) { hit = true; break; }
       if (hit) { limit = Math.min(limit, r * T - BoxSize); break; }
     }
     for (let d = 0; d < this.nd; d++) {
@@ -614,13 +649,145 @@
       for (let i = 0; i < this.nl; i++) {
         const inside = overlap(this.X[h], this.Y[h], HeroW, HeroH, this._levX[i], this._levY[i], T, T);
         if (inside) { mask |= 1 << i; continue; }
-        if ((this.LeverIn[h] & (1 << i)) === 0) continue;
+        if ((this.LeverIn[h] & (1 << i)) === 0 || this.L.levers[i].fixed) continue;
         if (this.X[h] >= this._levX[i] + T) this.Lever[i] = 1;
         else if (this.X[h] + HeroW <= this._levX[i]) this.Lever[i] = 0;
       }
       this.LeverIn[h] = mask;
     }
+    // промені — останніми: дзеркала вже повернуті, ліхтарі вмикають лише кнопки й важелі
+    if (this.ne > 0) {
+      let m = 0;
+      for (let i = 0; i < this.nb; i++) if (this.Button[i] !== 0) m |= 1 << i;
+      for (let i = 0; i < this.nl; i++) if (this.Lever[i] !== 0) m |= 1 << (this.nb + i);
+      this.traceBeams(m);
+    }
   };
+
+  // ---------- портали ----------
+
+  P.stepPortals = function (sig) {
+    for (let h = 0; h < 2; h++) {
+      const cx = this.X[h] + trunc(HeroW / 2), cy = this.Y[h] + trunc(HeroH / 2);
+      let mask = 0;
+      for (let e = 0; e < 2 * this.np; e++)
+        if (cx >= this._portX[e] && cx < this._portX[e] + T && cy >= this._portY[e] && cy < this._portY[e] + 2 * T) mask |= 1 << e;
+      const fresh = mask & ~this.PortalIn[h];
+      this.PortalIn[h] = mask;
+      if (fresh === 0) continue;
+      const e0 = 31 - Math.clz32(fresh & -fresh);
+      const def = this.L.portals[e0 >> 1];
+      if (def.mask !== 0 && !active(sig, def.mask, def.all, def.inv)) continue;
+      const to = e0 ^ 1;
+      const nx = this.X[h] + this._portX[to] - this._portX[e0];
+      const ny = this.Y[h] + this._portY[to] - this._portY[e0];
+      if (this.portalBlocked(h, nx, ny)) continue;
+      this.X[h] = nx;
+      this.Y[h] = ny;
+      this.PortalIn[h] = 1 << to;
+    }
+  };
+
+  P.portalBlocked = function (h, x, y) {
+    if (this.tileSolidIn(x, y, HeroW, HeroH, h)) return true;
+    for (let d = 0; d < this.nd; d++)
+      if (this._doorH[d] > this.DoorO[d] && overlap(x, y, HeroW, HeroH, this._doorX[d], this._doorY[d], T, this._doorH[d] - this.DoorO[d])) return true;
+    for (let f = 0; f < this.nf; f++)
+      if (overlap(x, y, HeroW, HeroH, this.LiftX[f], this.LiftY[f], this._liftW[f], LiftH)) return true;
+    for (let b = 0; b < this.nx; b++)
+      if (overlap(x, y, HeroW, HeroH, this.BoxX[b], this.BoxY[b], BoxSize, BoxSize)) return true;
+    return false;
+  };
+
+  // ---------- промені (VohnykWorld.TraceBeams) ----------
+
+  P.traceBeams = function (sig) {
+    this.RayHit[0] = this.RayHit[1] = 0;
+    this.RayCount = 0;
+    for (let i = 0; i < this.ns; i++) this.Sensor[i] = 0;
+    const L = this.L;
+    const hit = [-1];
+    for (let e = 0; e < this.ne; e++) {
+      const def = L.beams[e];
+      if (def.mask !== 0 && !active(sig, def.mask, def.all, def.inv)) continue;
+      let c = def.col, r = def.row, d = def.dir;
+      let x = c * T + trunc(T / 2), y = r * T + trunc(T / 2);
+      let sx = x, sy = y;
+      for (let hop = 0; hop < RayMaxHops; hop++) {
+        const nc = c + RayDx[d], nr = r + RayDy[d];
+        const t = this.tile(nc, nr);
+        const wall = t === Stone || (t === Thin && (d & 1) !== 0);
+        let ex = wall ? x + RayDx[d] * trunc(T / 2) : x + RayDx[d] * T;
+        let ey = wall ? y + RayDy[d] * trunc(T / 2) : y + RayDy[d] * T;
+        hit[0] = -1;
+        const stop = this.rayBlock(x, y, ex, ey, d, def.who, hit);
+        if (stop >= 0) {
+          if ((d & 1) === 0) ex = stop; else ey = stop;
+          if (hit[0] >= 0) this.RayHit[hit[0]] |= 1 << def.who;
+          this.addRay(sx, sy, ex, ey, def.who);
+          break;
+        }
+        if (wall) { this.addRay(sx, sy, ex, ey, def.who); break; }
+        x = ex; y = ey; c = nc; r = nr;
+        const o = this._cell[r * L.W + c];
+        if (o < 0) { this.Sensor[-o - 1] = 1; this.addRay(sx, sy, x, y, def.who); break; }
+        if (o > 0) {
+          this.addRay(sx, sy, x, y, def.who);
+          sx = x; sy = y;
+          d = this.Lever[o - 1] !== 0 ? d ^ 3 : d ^ 1;
+        }
+        if (hop === RayMaxHops - 1) this.addRay(sx, sy, x, y, def.who);
+      }
+    }
+  };
+
+  P.addRay = function (x0, y0, x1, y1, who) {
+    if (this.RayCount >= RayMaxSegs) return;
+    const p = this.RayCount++ * 5, R = this.Ray;
+    R[p] = x0; R[p + 1] = y0; R[p + 2] = x1; R[p + 3] = y1; R[p + 4] = who;
+  };
+
+  /** Найближче тіло на відрізку: координата входу по осі руху або −1; hit[0] — герой, якщо впирається в героя. */
+  P.rayBlock = function (x0, y0, x1, y1, d, who, hit) {
+    const best = [-1];
+    // герої — спершу той, кого цей промінь не чіпає: пліч-о-пліч він і прикриває
+    const h0 = who === 1 ? 1 : 0;
+    if (rayCut(x0, y0, x1, y1, d, this.X[h0], this.Y[h0], HeroW, HeroH, best)) hit[0] = h0;
+    if (rayCut(x0, y0, x1, y1, d, this.X[1 - h0], this.Y[1 - h0], HeroW, HeroH, best)) hit[0] = 1 - h0;
+    for (let b = 0; b < this.nx; b++) if (rayCut(x0, y0, x1, y1, d, this.BoxX[b], this.BoxY[b], BoxSize, BoxSize, best)) hit[0] = -1;
+    for (let i = 0; i < this.nd; i++) {
+      const dh = this._doorH[i] - this.DoorO[i];
+      if (dh > 0 && rayCut(x0, y0, x1, y1, d, this._doorX[i], this._doorY[i], T, dh, best)) hit[0] = -1;
+    }
+    for (let f = 0; f < this.nf; f++) if (rayCut(x0, y0, x1, y1, d, this.LiftX[f], this.LiftY[f], this._liftW[f], LiftH, best)) hit[0] = -1;
+    return best[0];
+  };
+
+  function rayCut(x0, y0, x1, y1, d, bx, by, bw, bh, best) {
+    let at;
+    if (d === 0) {
+      if (y0 < by || y0 >= by + bh || bx >= x1 || bx + bw <= x0) return false;
+      at = bx > x0 ? bx : x0;
+      if (best[0] >= 0 && at >= best[0]) return false;
+    } else if (d === 2) {
+      if (y0 < by || y0 >= by + bh || bx >= x0 || bx + bw <= x1) return false;
+      at = bx + bw < x0 ? bx + bw : x0;
+      if (best[0] >= 0 && at <= best[0]) return false;
+    } else if (d === 1) {
+      if (x0 < bx || x0 >= bx + bw || by >= y1 || by + bh <= y0) return false;
+      at = by > y0 ? by : y0;
+      if (best[0] >= 0 && at >= best[0]) return false;
+    } else {
+      if (x0 < bx || x0 >= bx + bw || by >= y0 || by + bh <= y1) return false;
+      at = by + bh < y0 ? by + bh : y0;
+      if (best[0] >= 0 && at <= best[0]) return false;
+    }
+    best[0] = at;
+    return true;
+  }
+
+  /** Чужий промінь: Вогника гасить водяний, Краплю випаровує вогняний. */
+  P.rayKills = function (i) { return (this.RayHit[i] & (i === 0 ? 2 : 1)) !== 0; };
 
   P.deathTile = function (i) {
     const fx0 = this.X[i] + FeetInset, fx1 = this.X[i] + HeroW - FeetInset;
@@ -684,7 +851,7 @@
     save: (w, s) => w.save(s),
     load: (w, s) => w.load(s),
     hash: (w) => w.hash(),
-    C: { Px, T, HeroW, HeroH, BoxSize, LiftH, KeyLeft, KeyRight, KeyJump, HeroInts, Air, Stone, Water, Lava, Mud, ExitHold, SoloLatch },
+    C: { Px, T, HeroW, HeroH, BoxSize, LiftH, KeyLeft, KeyRight, KeyJump, HeroInts, Air, Stone, Water, Lava, Mud, Thin, ExitHold, SoloLatch },
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.VohnykSim = api;

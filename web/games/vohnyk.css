@@ -147,6 +147,15 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
 /* ---- мапа рівнів у лобі й підсумок ---- */
 .vh-pick { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
 .vh-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+/* друга печера: вкладки мапи «Печера / Глибше» (цілі під палець ≥ 44 px) */
+.vh-caves { display: flex; gap: 6px; margin: 0 0 6px; }
+.vh-caves button {
+  flex: 1; min-height: 44px; border-radius: 10px; border: 2px solid transparent; background: var(--bg2); color: var(--text);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.vh-caves button.sel { border-color: var(--accent); background: var(--panel2); }
+.vh-cave-note { margin: 0 0 6px; }
+.vh-ghost.off { opacity: .5; text-decoration: line-through; }
 .vh-lv {
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 8px; border-radius: 10px;
   background: var(--bg2); border: 2px solid transparent; color: var(--text); text-align: left; font: inherit; font-size: .82em;

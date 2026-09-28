@@ -8,7 +8,7 @@ namespace Hlechyky.Tests.Games;
 /// це «як автор рівня його пройшов», а не частина гри. Координати — центри героїв у px (плитка = 40 px:
 /// центр клітинки c — c·40+20).
 /// </summary>
-public static class VohnykPlans
+public static partial class VohnykPlans
 {
     const int F = 0, Wt = 1;
 
@@ -35,7 +35,9 @@ public static class VohnykPlans
             case 13: Level13(b); break;
             case 14: Level14(b); break;
             case 15: Level15(b); break;
-            default: throw new InvalidOperationException($"для рівня {level.N} плану ще нема");
+            default:
+                if (!Deep(b, level.N)) throw new InvalidOperationException($"для рівня {level.N} плану ще нема");
+                break;
         }
         // обоє у своїх дверях — стоїмо, доки рівень не зарахує вихід
         b.Do(b.WaitFor(() => b.W.Cleared != 0), b.Wait(0));

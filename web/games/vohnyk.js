@@ -43,7 +43,23 @@
     3: ['Болото не питає, хто ти', 'Загруз. Болото не жартує', 'Болото — 1 : герої — 0'],
     4: ['Обоє разом. Хоч синхронно', 'Подвійна — це вже мистецтво', 'Обоє. Зате дружно'],
     5: ['Ще раз, з початку', 'З чистого аркуша', 'Спробуймо інакше'],
+    6: ['Не той промінь — не той герой', 'Світло буває й таким', 'Засвітились. Невдало'],
   };
+  // друга печера: кольори променів (вогняний, водяний, світло) і порталів
+  const RAY_COLORS = ['#ff6a3d', '#3db8ff', '#fff3b0'];
+  const PORTAL_COLORS = ['#c39bff', '#7fe0d0', '#ffcf7a'];
+  /// Рівнів у першій печері (VohnykLevels.Cave1): далі — друга, «Глибше».
+  const CAVE1 = 15;
+  /// Чому загинув один герой: болото, чужий промінь чи чужа рідина (як Vohnyk.DeathCause на сервері).
+  const causeOf = (w) => {
+    if (w.Died[0] && w.Died[1]) return 4;
+    const h = w.Died[0] ? 0 : 1, t = w.deathTile(h);
+    if (t === 4) return 3;
+    if (t === 0 && w.rayKills && w.rayKills(h)) return 6;
+    return h === 0 ? 1 : 2;
+  };
+  /// Привид увімкнено (кожен глядач вирішує сам; типово — так).
+  let ghostOn = (() => { try { return localStorage.getItem('vohnykGhost') !== '0'; } catch (_) { return true; } })();
 
   // prefers-reduced-motion питаємо раз і слухаємо зміну — не створюємо MediaQueryList десятки разів за кадр
   const rmq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -158,6 +174,8 @@
         leverAng: [], banner: null, deadText: '', deadFor: -1, dShown: 0, clearFor: -1, gemsSeen: 0, pal: null, palAt: 0,
         drawMs: new Float32Array(300), drawN: 0, drawI: 0, hudSig: '', hudAt: 0,
         ip: null, wire: [], sigWas: 0, best: {}, giveupArm: 0, pickSig: '', againBusy: false,
+        // привид найкращого проходження пари: { key, level, ms, data: Int16Array }; вкладка мапи (1 — печера, 2 — глибше)
+        ghost: null, ghostKey: '', cave: 0, cavePicked: 0,
       };
     }
     const st = root._vh;
@@ -205,7 +223,7 @@
       oBox: 28, oDoor: 28 + 3 * nx, oLift: 28 + 3 * nx + nd,
     };
     // кольори сигналів: кнопки, потім важелі (як біти масок у симуляції); у кожного механізму — кольори його сигналів
-    const nsig = st.L.buttons.length + st.L.levers.length;
+    const nsig = st.L.buttons.length + st.L.levers.length + st.L.sensors.length;
     st.sigColor = [];
     for (let i = 0; i < nsig; i++) st.sigColor.push(SIG_COLORS[i % SIG_COLORS.length]);
     st.wire = new Float64Array(nsig);
@@ -414,12 +432,25 @@
       g.textBaseline = 'middle';
       g.fillText(EMO[h], x + 20, y + 20);
     }
+    // тонкі платформи: дошка зверху клітинки — стають лише згори
+    for (let r = 0; r < H; r++)
+      for (let cc = 0; cc < W; cc++) {
+        if (L.tiles[r * W + cc] !== 5) continue;
+        const x = cc * TILE, y = r * TILE;
+        g.fillStyle = '#8a5a2b';
+        g.fillRect(x, y, TILE, 8);
+        g.fillStyle = '#c08a4e';
+        g.fillRect(x, y, TILE, 3);
+        g.fillStyle = 'rgba(0,0,0,.35)';
+        g.fillRect(x + 19, y + 1, 2, 6);
+      }
     // гнізда кнопок і важелів
     for (const b of L.buttons) {
       g.fillStyle = '#1b262d';
       g.fillRect(b.col * TILE + 2, b.row * TILE + 36, 36, 4);
     }
     for (const l of L.levers) {
+      if (l.mirror) continue;
       g.fillStyle = '#3a4a55';
       g.beginPath(); g.arc(l.col * TILE + 20, l.row * TILE + 38, 8, Math.PI, 0); g.fill();
     }
@@ -505,7 +536,7 @@
         st.t++;
         if (w.anyDied()) {
           st.ph = PH_DEAD; st.pt = DEAD; st.d++;
-          st.cause = w.Died[0] && w.Died[1] ? 4 : w.deathTile(w.Died[0] ? 0 : 1) === 4 ? 3 : w.Died[0] ? 1 : 2;
+          st.cause = causeOf(w);
         } else if (w.Cleared) { st.ph = PH_CLEAR; st.pt = CLEAR; }
         break;
       case PH_DEAD:
@@ -890,6 +921,7 @@
       const l = L.levers[i];
       const target = w.Lever[i] ? 1 : -1;
       st.leverAng[i] += (target - st.leverAng[i]) * ease;
+      if (l.mirror) { drawMirror(g, l, st.leverAng[i]); continue; }
       const px = l.col * TILE + 20, py = l.row * TILE + 36, a = st.leverAng[i] * 0.6;
       g.strokeStyle = '#d8c9a3';
       g.lineWidth = 3;
@@ -900,6 +932,7 @@
       g.fillStyle = w.Lever[i] ? pal.ok : '#e57373';
       g.beginPath(); g.arc(px + (w.Lever[i] ? 9 : -9), py + 1, 2, 0, Math.PI * 2); g.fill();
     }
+    drawDeep(st, g, pal, tt, w);
     // скрині
     for (let i = 0; i < L.boxes.length; i++) {
       const x = ip.bx[i], y = ip.by[i];
@@ -941,6 +974,144 @@
     }
   }
 
+  /// Дзеркало: блискуча планка навскіс («/» — стан 1, «\\» — 0), повертається плавно; прикручене — з болтом.
+  function drawMirror(g, l, ang) {
+    const cx = l.col * TILE + 20, cy = l.row * TILE + 20, a = -ang * Math.PI / 4;
+    const dx = Math.cos(a) * 17, dy = Math.sin(a) * 17;
+    g.lineCap = 'round';
+    g.strokeStyle = '#5b6b78';
+    g.lineWidth = 7;
+    g.beginPath(); g.moveTo(cx - dx, cy - dy); g.lineTo(cx + dx, cy + dy); g.stroke();
+    g.strokeStyle = '#e9f6ff';
+    g.lineWidth = 3;
+    g.beginPath(); g.moveTo(cx - dx, cy - dy); g.lineTo(cx + dx, cy + dy); g.stroke();
+    g.fillStyle = l.fixed ? '#9aa7b1' : '#3a4a55';
+    g.beginPath(); g.arc(cx, cy, l.fixed ? 3 : 2.5, 0, Math.PI * 2); g.fill();
+  }
+
+  /// Друга печера: портали, ліхтарі з променями, кришталі. Промені — з тієї самої симуляції (w.Ray), тож видно саме те,
+  /// що вирішує, хто загинув і який кришталь світиться.
+  function drawDeep(st, g, pal, tt, w) {
+    const L = st.L;
+    if (!L.beams.length && !L.sensors.length && !L.portals.length) return;
+    const sig = w.signalMask();
+    const on = (d) => !d.mask || ((d.all ? (sig & d.mask) === d.mask : (sig & d.mask) !== 0) !== d.inv);
+    const still = reduced();
+    // портали: овальні брами кольору пари; вимкнений — тьмяний пунктир
+    for (let p = 0; p < L.portals.length; p++) {
+      const d = L.portals[p], live = on(d), col = PORTAL_COLORS[p % PORTAL_COLORS.length];
+      for (const end of [d.a, d.b]) {
+        const cx = end[0] * TILE + 20, cy = end[1] * TILE + 42;
+        g.globalAlpha = live ? 0.28 + (still ? 0 : 0.1 * Math.sin(tt / 300 + p)) : 0.08;
+        g.fillStyle = col;
+        g.beginPath(); g.ellipse(cx, cy, 15, 34, 0, 0, Math.PI * 2); g.fill();
+        g.globalAlpha = live ? 1 : 0.45;
+        g.strokeStyle = col;
+        g.lineWidth = 3;
+        if (!live) g.setLineDash([5, 5]);
+        g.beginPath(); g.ellipse(cx, cy, 15, 34, 0, 0, Math.PI * 2); g.stroke();
+        g.setLineDash([]);
+        if (live && !still) {
+          g.lineWidth = 1.5;
+          const k = (tt / 900 + p * 0.3) % 1;
+          g.beginPath(); g.ellipse(cx, cy, 15 * k, 34 * k, 0, 0, Math.PI * 2); g.stroke();
+        }
+        g.globalAlpha = 1;
+      }
+      if (d.mask) sigDots(st, g, d.mask, d.all, d.inv, d.a[0] * TILE + 20, d.a[1] * TILE + 2);
+    }
+    // промені: широке сяйво й тонке ядро
+    g.lineCap = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < w.RayCount; i++) {
+        const q = i * 5, who = w.Ray[q + 4];
+        g.strokeStyle = pass ? (who === 2 ? '#fffbe6' : '#fff') : RAY_COLORS[who];
+        g.globalAlpha = pass ? 0.9 : 0.45 + (still ? 0 : 0.12 * Math.sin(tt / 90 + i));
+        g.lineWidth = pass ? 1.6 : 6;
+        g.beginPath(); g.moveTo(w.Ray[q] / SU, w.Ray[q + 1] / SU); g.lineTo(w.Ray[q + 2] / SU, w.Ray[q + 3] / SU); g.stroke();
+      }
+    }
+    g.globalAlpha = 1;
+    // ліхтарі: корпус біля стіни, лінза кольору променя (вимкнений — темна)
+    for (const b of L.beams) {
+      const cx = b.col * TILE + 20, cy = b.row * TILE + 20, lit = on(b);
+      const bx = [-1, 0, 1, 0][b.dir], by = [0, -1, 0, 1][b.dir];
+      g.fillStyle = '#2b3740';
+      g.beginPath(); g.arc(cx + bx * 8, cy + by * 8, 12, 0, Math.PI * 2); g.fill();
+      g.fillStyle = lit ? RAY_COLORS[b.who] : '#4a5560';
+      g.shadowColor = RAY_COLORS[b.who];
+      g.shadowBlur = lit ? 12 : 0;
+      g.beginPath(); g.arc(cx, cy, 7, 0, Math.PI * 2); g.fill();
+      g.shadowBlur = 0;
+      if (b.mask) sigDots(st, g, b.mask, b.all, b.inv, cx, cy - 16);
+    }
+    // кришталі: ромб кольору свого сигналу, світиться, поки в нього б'є промінь
+    const base = L.buttons.length + L.levers.length;
+    for (let i = 0; i < L.sensors.length; i++) {
+      const s = L.sensors[i], cx = s.col * TILE + 20, cy = s.row * TILE + 22, lit = w.Sensor[i] !== 0;
+      g.fillStyle = '#26323a';
+      g.fillRect(cx - 10, cy + 10, 20, 8);
+      g.fillStyle = lit ? '#f6fbff' : '#6f8594';
+      g.shadowColor = st.sigColor[base + i];
+      g.shadowBlur = lit ? 16 : 0;
+      g.beginPath(); g.moveTo(cx, cy - 14); g.lineTo(cx + 9, cy - 2); g.lineTo(cx, cy + 10); g.lineTo(cx - 9, cy - 2); g.closePath(); g.fill();
+      g.shadowBlur = 0;
+      g.strokeStyle = st.sigColor[base + i];
+      g.lineWidth = 2.5;
+      g.stroke();
+    }
+  }
+
+  /// Привид найкращого проходження пари: напівпрозорі герої там, де ви були на цю мить рівня («ви вчора»).
+  function drawGhost(st, g, pal) {
+    const gh = st.ghost;
+    if (!ghostOn || !gh || gh.level !== st.lvN || !playing(st) || st.ph === PH_READY) return;
+    const n = gh.data.length >> 2;
+    if (!n) return;
+    const f = Math.max(0, (st.t - 1 + st.alpha) / gh.every - 1);
+    const i0 = Math.min(n - 1, Math.floor(f)), i1 = Math.min(n - 1, i0 + 1), a = f - Math.floor(f);
+    g.save();
+    for (let h = 0; h < 2; h++) {
+      const p0 = i0 * 4 + h * 2, p1 = i1 * 4 + h * 2;
+      const x0 = gh.data[p0] >> 1, x1 = gh.data[p1] >> 1;
+      const x = Math.abs(x1 - x0) < 40 ? x0 + (x1 - x0) * a : x1;
+      const y0 = gh.data[p0 + 1], y1 = gh.data[p1 + 1];
+      const y = Math.abs(y1 - y0) < 40 ? y0 + (y1 - y0) * a : y1;
+      const face = gh.data[p1] & 1 ? 1 : -1, cx = x + 12;
+      g.globalAlpha = 0.34;
+      g.fillStyle = h === 0 ? pal.fire : pal.water;
+      g.beginPath();
+      if (h === 0) { g.moveTo(cx, y + 2); g.quadraticCurveTo(cx + 14, y + 18, cx + 11, y + 28); g.arc(cx, y + 26, 11, 0, Math.PI, false); g.quadraticCurveTo(cx - 12, y + 16, cx, y + 2); }
+      else { g.moveTo(cx, y + 4); g.bezierCurveTo(cx + 6, y + 12, cx + 12, y + 18, cx + 11, y + 26); g.arc(cx, y + 26, 11, 0, Math.PI, false); g.bezierCurveTo(cx - 12, y + 18, cx - 6, y + 12, cx, y + 4); }
+      g.fill();
+      g.globalAlpha = 0.55;
+      g.fillStyle = '#fff';
+      g.beginPath(); g.arc(cx - 4 + face * 2, y + 22, 2.2, 0, Math.PI * 2); g.arc(cx + 4 + face * 2, y + 22, 2.2, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+  }
+
+  /// Забрати привид пари з сервера (раз на рівень і час): у виді лише ms і ключ пари, щоб вид лишався малим.
+  function loadGhost(st, meta) {
+    if (!meta || !st.lvN) { st.ghost = null; st.ghostKey = ''; return; }
+    const key = meta.pair + ':' + st.lvN + ':' + meta.ms;
+    if (st.ghostKey === key) return;
+    st.ghostKey = key;
+    st.ghost = null;
+    const lv = st.lvN;
+    fetch('/api/games/vohnyk/ghost?level=' + lv + '&pair=' + encodeURIComponent(meta.pair), { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!j || st.ghostKey !== key) return;
+        const bin = atob(j.data || '');
+        const bytes = new Uint8Array(bin.length & ~1);
+        for (let i = 0; i < bytes.length; i++) bytes[i] = bin.charCodeAt(i);
+        st.ghost = { level: lv, ms: j.ms, every: j.every || 4, data: new Int16Array(bytes.buffer) };
+        st.hudAt = 0;
+      })
+      .catch(() => {});
+  }
+
   const firstBit = (m) => { for (let i = 0; i < 31; i++) if (m & (1 << i)) return i; return 0; };
 
   /// «Дроти»: щойно кнопку натиснули чи важіль перемкнули — пунктир його кольору до всього, що він рухає (1,4 с).
@@ -951,7 +1122,9 @@
       const age = now - st.wire[i];
       if (!st.wire[i] || age > 1400) continue;
       if (!any) { any = true; g.save(); g.lineWidth = 2.5; g.setLineDash([7, 6]); g.lineDashOffset = -now / 40; }
-      const src = i < nb ? L.buttons[i] : L.levers[i - nb];
+      const nl = L.levers.length;
+      const src = i < nb ? L.buttons[i] : i < nb + nl ? L.levers[i - nb] : L.sensors[i - nb - nl];
+      if (!src) continue;
       const sx = src.col * TILE + 20, sy = src.row * TILE + (i < nb ? 30 : 20);
       g.strokeStyle = st.sigColor[i];
       g.globalAlpha = Math.min(1, (1400 - age) / 500) * 0.9;
@@ -959,6 +1132,8 @@
       for (const d of L.doors) if (d.mask & (1 << i)) { g.moveTo(sx, sy); g.lineTo(d.col * TILE + 20, d.row * TILE + 6); }
       for (let f = 0; f < L.lifts.length; f++)
         if (L.lifts[f].mask & (1 << i)) { g.moveTo(sx, sy); g.lineTo(ip.lx[f] + L.lifts[f].tiles * TILE / 2, ip.ly[f] + 8); }
+      for (const p of L.portals) if (p.mask & (1 << i)) { g.moveTo(sx, sy); g.lineTo(p.a[0] * TILE + 20, p.a[1] * TILE + 8); }
+      for (const b of L.beams) if (b.mask & (1 << i)) { g.moveTo(sx, sy); g.lineTo(b.col * TILE + 20, b.row * TILE + 20); }
       g.stroke();
     }
     if (any) g.restore();
@@ -1171,6 +1346,7 @@
     const v = view(st);
     const me = myHeroes(st);
     const labels = playing(st) && !v.solo && (st.ph === PH_READY || st.ph === PH_DEAD);
+    drawGhost(st, g, pal);
     const first = v.solo && st.active === 0 ? 1 : 0;
     const dying = playing(st) && st.ph === PH_DEAD;
     for (let n = 0; n < 2; n++) {
@@ -1179,6 +1355,8 @@
       if (dying && w.Died[h]) {
         die = w.deathTile(h);
         dieK = 1 - st.pt / DEAD;
+        // чужий промінь: Вогник гасне, як у воді, Крапля википає, як у лаві
+        if (!die && w.rayKills && w.rayKills(h)) die = h === 0 ? 2 : 3;
         if (!die || reduced()) continue;                    // без анімацій — просто зник у спалаху
       }
       const x = ip.hx[h] + st.off[h][0], y = ip.hy[h] + st.off[h][1];
@@ -1225,6 +1403,9 @@
         + (HGames.ui.coarse() ? 'Потримай, щоб почати рівень заново' : 'Почати рівень заново: утримай R або клацни двічі') + '"'
         + (mine(st) && playing(st) ? '' : ' disabled') + '>☠ ' + (armed ? 'Заново?' : st.d) + '</button>';
     }
+    if (st.ghost && st.ghost.level === st.lvN && ctx.room.status !== 'lobby')
+      html += '<button type="button" class="vh-chip vh-ghost' + (ghostOn ? '' : ' off') + '" data-vh="ghost" data-pad-skip title="Привид вашого найкращого проходження: '
+        + (ghostOn ? 'сховати' : 'показати') + '">👻 ' + clockTenths(st.ghost.ms) + '</button>';
     html += '<button type="button" class="vh-chip vh-snd" data-vh="mute" data-pad-skip aria-label="звук">' + (snd.muted ? '🔇' : '🔈') + '</button>';
     if (mine(st) && playing(st)) html += '<button type="button" class="vh-chip vh-give" data-vh="giveup">' + (st.giveupArm > now ? 'Точно здатись?' : 'Здатись') + '</button>';
     if (html !== st.hudSig) { st.hudSig = html; el.innerHTML = html; }
@@ -1245,8 +1426,23 @@
     const other = ctx.seat === 0 ? 1 : 0;
     const otherNick = ctx.seat != null ? ctx.nickOf(other) : null;
     const res = v.result;
-    let html = '<div class="vh-grid' + (mini ? ' mini' : '') + '">';
-    for (const l of v.levels || []) {
+    const all = v.levels || [];
+    // дві печери: вкладки «Печера» (1–15) і «Глибше» (16+); типово — та, де обраний рівень
+    const deep = all.length > CAVE1;
+    const focus = mini && res ? res.level : v.picked || 1;
+    if (st.cavePicked !== focus) { st.cavePicked = focus; st.cave = 0; }
+    const cave = !deep ? 1 : mini ? (focus > CAVE1 ? 2 : 1) : st.cave || (focus > CAVE1 ? 2 : 1);
+    let html = '';
+    if (deep && !mini) {
+      const open2 = all[CAVE1] && all[CAVE1].unlocked;
+      html += '<div class="vh-caves" role="tablist">'
+        + '<button type="button" role="tab" data-cave="1" class="' + (cave === 1 ? 'sel' : '') + '" aria-selected="' + (cave === 1) + '">⛰ Печера</button>'
+        + '<button type="button" role="tab" data-cave="2" class="' + (cave === 2 ? 'sel' : '') + '" aria-selected="' + (cave === 2) + '">🕳 Глибше' + (open2 ? '' : ' 🔒') + '</button></div>';
+      if (cave === 2 && !open2) html += '<div class="muted small vh-cave-note">Друга печера відчиниться, коли хтось за столом пройде 15-й рівень: дошки, промені, дзеркала й портали</div>';
+    }
+    html += '<div class="vh-grid' + (mini ? ' mini' : '') + '">';
+    for (const l of all) {
+      if ((l.n > CAVE1 ? 2 : 1) !== cave) continue;
       const my = ctx.seat != null ? l.stars[ctx.seat] : null, ot = otherNick ? l.stars[other] : null;
       const sel = mini ? res && l.n === res.level : l.n === v.picked;
       const tip = '«' + l.name + '» · 💎 ' + l.gems[0] + ' 🔥 + ' + l.gems[1] + ' 💧 · ⏱ ' + clock(l.par) + ' — встигнете, і буде третя зірка'
@@ -1305,8 +1501,11 @@
         + ' <span class="vh-stars">' + stars(r.stars) + '</span> · 💎 ' + r.gems + '/' + r.gemsAll + deaths
       : '<div class="vh-res"><b>Не дограли</b> рівень ' + r.level + name + deaths;
     // останній рівень печери — не просто «Ще раз 15-й»: сказати, що пройдено все й що далі (прохід 28.09)
-    if (r.cleared && r.level === (v.levels || []).length)
-      html += '<div class="small">🏆 Овва — усю печеру пройдено! Далі — на час: побийте свій рекорд на будь-якому рівні</div>';
+    const total = (v.levels || []).length;
+    if (r.cleared && r.level === CAVE1 && total > CAVE1)
+      html += '<div class="small">🕳 Овва — першу печеру пройдено! Відчинилась друга, «Глибше»: дошки, промені, дзеркала й портали</div>';
+    else if (r.cleared && r.level === total)
+      html += '<div class="small">🏆 Овва — ' + (total > CAVE1 ? 'обидві печери пройдено' : 'усю печеру пройдено') + '! Далі — на час: побийте свій рекорд на будь-якому рівні</div>';
     if (ctx.mine) {
       const nextLv = (v.levels || [])[r.next - 1];
       html += '<div class="vh-acts">';
@@ -1465,6 +1664,11 @@
         if (!snd.muted) snd.wake();
         st.hudAt = 0;
         hud(st);
+      } else if (b.dataset.vh === 'ghost') {
+        ghostOn = !ghostOn;
+        try { localStorage.setItem('vohnykGhost', ghostOn ? '1' : '0'); } catch (_) { /* приватне вікно */ }
+        st.hudAt = 0;
+        hud(st);
       } else if (b.dataset.vh === 'reset') {
         // мишею — двома клацаннями за 3 с (перше лише питає «Заново?»); пальцем — довгим дотиком нижче
         if (HGames.ui.coarse()) return;
@@ -1487,6 +1691,8 @@
     st.hudEl.addEventListener('pointercancel', cancel);
     st.hudEl.addEventListener('pointerleave', cancel);
     st.pickEl.addEventListener('click', (e) => {
+      const cv = e.target.closest('[data-cave]');
+      if (cv) { st.cave = +cv.dataset.cave; panel(st); return; }
       const b = e.target.closest('[data-lv]');
       if (!b || b.disabled) return;
       st.ctx.act('pick', { level: +b.dataset.lv });
@@ -1549,6 +1755,7 @@
     else if (v.level) st.src = v.level;
     st.gi = gi;
     if (st.world) st.world.solo = !!v.solo;
+    loadGhost(st, ctx.room.status === 'lobby' ? null : v.ghost);
     if (v.solo && !st.soloInit) { st.active = ctx.seat != null ? ctx.seat : v.active || 0; st.soloInit = true; }
     if (!v.solo) st.soloInit = false;
     if (ctx.room.status !== 'playing' && st.world) {
@@ -1714,7 +1921,7 @@
         const res = v.result;
         if (!res) return '';
         if (!ctx.mine) return res.cleared ? 'Пройшли рівень ' + res.level : 'Не дограли';
-        if (res.cleared) return res.next !== res.level ? 'Пройдено! «Ще раз» — рівень ' + res.next + ', або обери будь-який на мапі' : 'Усі 15 пройдено! «Ще раз» — знову 15-й, або обери на мапі';
+        if (res.cleared) return res.next !== res.level ? 'Пройдено! «Ще раз» — рівень ' + res.next + ', або обери будь-який на мапі' : 'Усе пройдено! «Ще раз» — знову ' + res.level + '-й, або обери на мапі';
         return '«Ще раз» — той самий рівень, або обери інший на мапі';
       }
       if (!st || !st.world || !st.L) return 'Готуйсь…';

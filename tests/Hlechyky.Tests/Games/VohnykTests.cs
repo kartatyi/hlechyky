@@ -222,7 +222,7 @@ public sealed class VohnykTests(ITestOutputHelper output)
     {
         foreach (var l in VohnykLevels.All)
             if (l.N <= 2) Assert.NotEmpty(l.Hints);
-            else Assert.Empty(l.Hints);
+            else if (l.N <= VohnykLevels.Cave1) Assert.Empty(l.Hints);
     }
 
     [Fact]

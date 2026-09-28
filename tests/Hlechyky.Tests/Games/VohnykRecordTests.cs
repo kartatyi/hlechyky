@@ -28,6 +28,8 @@ public sealed class VohnykRecordTests(ITestOutputHelper output)
     public static int Par(int n, int botMs, int filePar)
     {
         if (n <= 2) return Math.Max(filePar, (int)Math.Ceiling(botMs / 0.6 / 5000.0) * 5000);
+        // друга печера — для тих, хто першу взяв на ★★★ з першого разу: третя зірка за 3 × робота, а не за 4
+        if (n > VohnykLevels.Cave1) return Math.Max(25000, (int)Math.Ceiling(botMs * 3 / 5000.0) * 5000);
         return Math.Max(25000, (int)Math.Ceiling(botMs * 4 / 5000.0) * 5000);
     }
 
