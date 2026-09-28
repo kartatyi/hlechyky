@@ -488,7 +488,7 @@
 /* Реакції-емодзі за настільним столом (п. 231): смужка під кнопками й емодзі, що пливе над карткою */
 .gtable.grx-on { position: relative; }
 .grx { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }
-.grx-b { min-width: 44px; min-height: 40px; padding: 2px 6px; font-size: 1.25em; line-height: 1; border-radius: 999px; }
+.grx-b { min-width: 44px; min-height: 44px; padding: 2px 6px; font-size: 1.25em; line-height: 1; border-radius: 999px; }
 .grx.wait .grx-b { opacity: .45; }
 .grx-fly { position: absolute; bottom: 22%; z-index: 6; pointer-events: none; display: flex; flex-direction: column; align-items: center;
   font-size: 2.3rem; line-height: 1; transform: translateX(-50%); animation: grx-up 2.2s ease-out forwards; }

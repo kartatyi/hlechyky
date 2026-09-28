@@ -351,7 +351,9 @@
       if (!st.shown && el.offsetParent !== null) run();
       else if (st.shown && el.offsetParent === null) st.shown = false;
       // На нулі дуга вже порожня: далі — тиша, поки фаза чекає сервера; новий час принесе set().
+      // Час сплив, поки картка ховалась, — перехід так і не пішов; спорожнюємо дугу самі, щоб не застигла на півдорозі.
       if (left > 0) st.t = setTimeout(tick, (left % 1000) || 1000);
+      else if (!st.shown) { fg.style.transition = 'none'; fg.style.strokeDashoffset = LEN; }
     }
     function start() { clearTimeout(st.t); run(); tick(); }
     start();
@@ -1246,7 +1248,8 @@
   /// short — для лобі: лише трійка перших.
   function eveningText(r, short) {
     const ev = r && r.evening;
-    if (!ev || !(ev.games >= 2) || !(ev.rows || []).length) return '';
+    // Сам за столом (проти ботів гри) — нема з ким мірятись: рядок лише з двох людей.
+    if (!ev || !(ev.games >= 2) || !((ev.rows || []).length >= 2)) return '';
     const rows = ev.rows.slice(0, short ? 3 : 6);
     const pts = ev.rows.some((x) => x.points != null && x.points !== 0);
     const top = ev.rows[0].wins;

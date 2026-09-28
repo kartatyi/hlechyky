@@ -74,6 +74,38 @@ public class EveningTests
     }
 
     [Fact]
+    public void A_draw_counts_the_game_but_gives_nobody_a_win()
+    {
+        var h = new RoomHarness("ttt");
+        h.Join("Оля");
+        h.Join("Петро");
+        XWins(h);
+        h.Room.TallyEvening([], null);   // нічия: Finish без переможців
+
+        var ev = h.Room.Summary().Evening!;
+        Assert.Equal(2, ev.Games);
+        Assert.Equal(1, ev.Rows[0].Wins);
+        Assert.Equal(0, ev.Rows[1].Wins);
+        Assert.All(ev.Rows, r => Assert.Equal(2, r.Games));
+    }
+
+    [Fact]
+    public void Lower_is_better_games_add_no_points_so_milliseconds_do_not_look_like_a_score()
+    {
+        var h = new RoomHarness("duel");
+        h.Join("Оля");
+        h.Join("Петро");
+        // У Дуелі «очки» — мілісекунди реакції (менше — краще): у рядок вечора їх не складаємо.
+        h.Room.TallyEvening([0], new Dictionary<int, long> { [0] = 240, [1] = 310 });
+        h.Room.TallyEvening([1], new Dictionary<int, long> { [0] = 400, [1] = 200 });
+
+        var ev = h.Room.Summary().Evening!;
+        Assert.Equal(2, ev.Games);
+        Assert.All(ev.Rows, r => Assert.Null(r.Points));
+        Assert.Equal("Оля", ev.Rows[0].Nick);   // рівно по перемозі — хто раніше сів
+    }
+
+    [Fact]
     public void Solo_tables_keep_no_evening()
     {
         var h = new RoomHarness("bricks-sprint");
