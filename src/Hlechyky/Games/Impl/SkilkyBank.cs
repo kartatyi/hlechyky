@@ -23,6 +23,14 @@ public sealed class SkilkyQuestion
     /// <summary>Тема для налаштування столу — один із ключів <see cref="SkilkyTopics.All"/>.</summary>
     public string? Topic { get; init; }
 
+    /// <summary>
+    /// Фото рубрики «📷 Якого року?» — ідентифікатор із маніфесту <see cref="SkilkyPhotos"/>. У файлі банку не буває:
+    /// такі запитання складає гра з готових фото.
+    /// </summary>
+    public string? Photo { get; init; }
+    /// <summary>Місце автора «питання про нас» (−1 — питання з банку). Автор на своє питання не відповідає.</summary>
+    public int Author { get; init; } = -1;
+
     public bool IsDynamic => !string.IsNullOrWhiteSpace(Dyn);
 
     string? _key;
@@ -36,8 +44,8 @@ public sealed class SkilkyQuestion
 }
 
 /// <summary>
-/// Теми банку. Господар обирає одну, кілька або «Усі теми». «radio» — динамічні запитання про наше радіо:
-/// окремою темою їх не обирають, вони йдуть лише в «Усі теми».
+/// Теми банку. Господар обирає одну, кілька або «Усі теми». «radio» — динамічні запитання про наше радіо й ігри
+/// сайту (з 29.09 їх можна обрати й окремо: «🏺 Наше»), «photo» — рубрика «📷 Якого року?».
 /// </summary>
 public static class SkilkyTopics
 {
@@ -53,7 +61,12 @@ public static class SkilkyTopics
         ("science", "Наука, природа й тіло"),
         ("world", "Світ, спорт і побут"),
         ("tech", "IT, техніка й історія"),
+        (Photo, "📷 Якого року?"),
+        (Radio, "🏺 Наше: радіо й ігри"),
     ];
+
+    /// <summary>Рубрика «📷 Якого року?»: фото з Вікісховища, вгадуєш рік зйомки (<see cref="SkilkyPhotos"/>).</summary>
+    public const string Photo = "photo";
 
     /// <summary>
     /// Обрані теми з опції столу («ukraine,science»). null — усі теми разом із радіо: так і коли обрано «Усі
