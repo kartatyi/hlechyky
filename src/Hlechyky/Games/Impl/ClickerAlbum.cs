@@ -70,10 +70,22 @@ public sealed partial class Clicker
         new("whorl", "Пряслице"),
     ];
 
-    /// <summary>Стовпчиків у сітці: простий + усі розписи.</summary>
+    /// <summary>Стовпчиків у сітці: простий + усі розписи (з одинадцятого оновлення — і шість розписів світу).</summary>
     public static int AlbumColumns => Styles.Length + 1;
-    public static int AlbumSize => Wares.Length * AlbumColumns;
+    /// <summary>
+    /// «Домашній» альбом — простий і вісім розписів, як до одинадцятого оновлення. Усі старі бонуси, ачівки й звання
+    /// (повний рядок, стовпчик, «усе в зірках») рахуються саме по ньому: шість нових стовпчиків не відбирають у гравця
+    /// «повний альбом», який він уже зібрав. Нові клітинки — окремим бонусом (<see cref="AlbumWorldBonus"/>).
+    /// </summary>
+    public static int AlbumHomeColumns => HomeStyles + 1;
+    public static int AlbumSize => Wares.Length * AlbumHomeColumns;
+    /// <summary>Уся сітка разом зі стовпчиками світу.</summary>
+    public static int AlbumWorldSize => Wares.Length * AlbumColumns;
     static int FullRowMask => (1 << AlbumColumns) - 1;
+    static int HomeRowMask => (1 << AlbumHomeColumns) - 1;
+    static int WorldRowMask => FullRowMask & ~HomeRowMask;
+    /// <summary>Уся сітка світу (15 стовпчиків на всіх виробах) — ще стільки до всього.</summary>
+    public const double AlbumWorldAllBonus = 0.25;
     static int FullMuseumMask => (1 << Finds.Length) - 1;
     /// <summary>Найвища якість, яку знає гра: і ціна виробу, і бонус кахлі мусять її знати.</summary>
     static int AlbumTopQuality => Math.Min(QualityMult.Length, StoveQualityBonus.Length) - 1;
@@ -122,27 +134,27 @@ public sealed partial class Clicker
     }
 
     /// <summary>Скільки клітинок відкрито в масках рядків.</summary>
-    public static int AlbumOpenCount(IReadOnlyList<int> cells) => cells.Sum(m => BitOperations.PopCount((uint)(m & FullRowMask)));
+    public static int AlbumOpenCount(IReadOnlyList<int> cells) => cells.Sum(m => BitOperations.PopCount((uint)(m & HomeRowMask)));
 
     /// <summary>Скільки виробів зібрано в усіх розписах.</summary>
-    public static int AlbumFullRows(IReadOnlyList<int> cells) => cells.Count(m => (m & FullRowMask) == FullRowMask);
+    public static int AlbumFullRows(IReadOnlyList<int> cells) => cells.Count(m => (m & HomeRowMask) == HomeRowMask);
 
     /// <summary>Скільки розписів зібрано на всіх виробах.</summary>
     public static int AlbumFullColumns(IReadOnlyList<int> cells)
     {
         if (cells.Count < Wares.Length) return 0;
-        var all = FullRowMask;
+        var all = HomeRowMask;
         foreach (var m in cells) all &= m;
         return BitOperations.PopCount((uint)all);
     }
 
     /// <summary>Скільки клітинок із зіркою.</summary>
     public static int AlbumStarCount(IReadOnlyList<int>? stars) =>
-        stars is null ? 0 : stars.Sum(m => BitOperations.PopCount((uint)(m & FullRowMask)));
+        stars is null ? 0 : stars.Sum(m => BitOperations.PopCount((uint)(m & HomeRowMask)));
 
     /// <summary>Скільки виробів зібрано в зірках у всіх розписах.</summary>
     public static int AlbumStarRows(IReadOnlyList<int>? stars) =>
-        stars is null ? 0 : stars.Count(m => (m & FullRowMask) == FullRowMask);
+        stars is null ? 0 : stars.Count(m => (m & HomeRowMask) == HomeRowMask);
 
     /// <summary>Сітка: клітинки, повні рядки й стовпчики, зірки, рядки зірок і весь альбом у зірках.</summary>
     public static double AlbumGridBonus(IReadOnlyList<int> cells, IReadOnlyList<int>? stars)
@@ -151,9 +163,29 @@ public sealed partial class Clicker
             + AlbumRowBonus * AlbumFullRows(cells)
             + AlbumColumnBonus * AlbumFullColumns(cells);
         var starN = AlbumStarCount(stars);
+        grid += AlbumWorldBonus(cells, stars);
         if (starN == 0) return grid;
         return grid + AlbumStarBonus * starN + AlbumStarRowBonus * AlbumStarRows(stars)
             + (starN >= AlbumSize ? AlbumStarAllBonus : 0);
+    }
+
+    /// <summary>Скільки клітинок відкрито в стовпчиках світу (v11).</summary>
+    public static int AlbumWorldOpen(IReadOnlyList<int> cells) => cells.Sum(m => BitOperations.PopCount((uint)(m & WorldRowMask)));
+
+    /// <summary>Чи зібрано всю сітку — усі п'ятнадцять стовпчиків на всіх виробах.</summary>
+    public static bool AlbumWorldFull(IReadOnlyList<int> cells) =>
+        cells.Count >= Wares.Length && cells.Take(Wares.Length).All(m => (m & FullRowMask) == FullRowMask);
+
+    /// <summary>
+    /// Стовпчики світу (v11): кожна клітинка й зірка — як і в домашньому альбомі (+0,5 % і +1 %), а вся сітка з
+    /// п'ятнадцятьма стовпчиками — ще +25 %. Повних рядків і стовпчиків тут не рахуємо: вони вже є в домашньому.
+    /// </summary>
+    public static double AlbumWorldBonus(IReadOnlyList<int> cells, IReadOnlyList<int>? stars)
+    {
+        var open = AlbumWorldOpen(cells);
+        if (open == 0) return 0;
+        var starN = stars is null ? 0 : stars.Sum(m => BitOperations.PopCount((uint)(m & WorldRowMask)));
+        return AlbumCellBonus * open + AlbumStarBonus * starN + (AlbumWorldFull(cells) ? AlbumWorldAllBonus : 0);
     }
 
     /// <summary>Піч: кожна кахля за своєю якістю, повна ще +5 %, а вся з дзвінких і кращих — +10 % замість.</summary>
@@ -208,14 +240,15 @@ public sealed partial class Clicker
         {
             _albumCells[row] |= bit;
             AwayNote(newStar ? $"📒 Альбом: нова клітинка, ще й із зіркою — {what}" : $"📒 Альбом: нова клітинка — {what}");
-            if (_albumCells[row] == FullRowMask) Achieve("potter-album-row");
+            if ((_albumCells[row] & HomeRowMask) == HomeRowMask) Achieve("potter-album-row");
             if (AlbumOpenCount(_albumCells) == AlbumSize) Achieve("potter-album-all");
+            if (AlbumWorldFull(_albumCells)) Achieve("potter-album-world");
         }
         if (newStar)
         {
             _albumStars[row] |= bit;
             if (!fresh) AwayNote($"⭐ Альбом: зірка — {what}");
-            if (_albumStars[row] == FullRowMask)
+            if ((_albumStars[row] & HomeRowMask) == HomeRowMask && (bit & HomeRowMask) != 0)
             {
                 AwayNote($"⭐ Увесь рядок у зірках: {WareOf(item.Ware)!.Name.ToLowerInvariant()} — +5 % до всього");
                 Wonder("album-row-stars");
@@ -248,8 +281,9 @@ public sealed partial class Clicker
         if ((_albumCells[row] & bit) != 0) return;
         _albumCells[row] |= bit;
         AwayNote($"📒 Альбом: нова клітинка з дарунка — {WareOf(item.Ware)!.Name.ToLowerInvariant()}, {StyleWord(item.Style)}");
-        if (_albumCells[row] == FullRowMask) Achieve("potter-album-row");
+        if ((_albumCells[row] & HomeRowMask) == HomeRowMask) Achieve("potter-album-row");
         if (AlbumOpenCount(_albumCells) == AlbumSize) Achieve("potter-album-all");
+        if (AlbumWorldFull(_albumCells)) Achieve("potter-album-world");
     }
 
     /// <summary>Виліплено виріб: копнули глини — може, щось трипільське. Повний музей більше не шукає.</summary>
@@ -440,6 +474,11 @@ public sealed partial class Clicker
             stars = _albumStars,
             open = AlbumOpenCount(_albumCells),
             size = AlbumSize,
+            // Стовпчики світу (v11): скільки відкрито з усієї сітки й чи вона повна.
+            homeColumns = AlbumHomeColumns,
+            worldOpen = AlbumWorldOpen(_albumCells),
+            worldSize = AlbumWorldSize - AlbumSize,
+            worldFull = AlbumWorldFull(_albumCells),
             rows = AlbumFullRows(_albumCells),
             cols = AlbumFullColumns(_albumCells),
             // Зірки — окремим лічильником, щоб клієнт склав розклад бонусу тими самими числами, що й сервер.
@@ -477,6 +516,8 @@ public sealed partial class Clicker
         star = AlbumStarBonus,
         starRow = AlbumStarRowBonus,
         starAll = AlbumStarAllBonus,
+        // Уся сітка з п'ятнадцятьма стовпчиками (v11) — клієнт кладе в розклад бонусу.
+        worldAll = AlbumWorldAllBonus,
         starQuality = StarQuality,
         stoveSlots = StoveSlots,
         stoveQuality = StoveQualityBonus,
@@ -524,6 +565,13 @@ public sealed partial class Clicker
         ["kosiv"] = new { place = "Косів, Івано-Франківщина", text = "Мальована кераміка — у списку нематеріальної спадщини ЮНЕСКО з 2019. Розпис продряпують по білому ангобу; зелений, жовтий, коричневий; вершники, олені, птахи." },
         ["opishnia"] = new { place = "Опішня, Полтавщина", text = "Найвідоміший гончарний осередок, з 1986 року тут Національний музей-заповідник українського гончарства. Техніки — фляндрування й ріжкування." },
         ["mezhyhirya"] = new { place = "Межигір'я, під Києвом", text = "Межигірська фаянсова фабрика (XVIII–XIX ст.) робила фаянс — тонкий білий посуд." },
+        // Розписи світу (одинадцяте оновлення): лише загальновідоме.
+        ["jingdezhen"] = new { place = "Цзиндечжень, Китай", text = "Порцелянова столиця Китаю: синій кобальтовий розпис під прозорою поливою тут пишуть уже багато століть." },
+        ["iznik"] = new { place = "Ізнік, Туреччина", text = "Османські кахлі й посуд з тюльпанами й гвоздиками — синє, бірюзове й знамените «коралове» червоне на білому." },
+        ["delft"] = new { place = "Делфт, Нідерланди", text = "Синьо-біла кераміка під олов'яною поливою: голландські майстри так змагались із китайською порцеляною." },
+        ["meissen"] = new { place = "Майсен, Саксонія", text = "Перша в Європі тверда порцеляна. Її знак — два схрещені сині мечі." },
+        ["sevres"] = new { place = "Севр, Франція", text = "Королівська мануфактура під Парижем: густа «королівська блакить» і золото." },
+        ["raku"] = new { place = "Японія", text = "Раку — посуд для чайної церемонії: виріб виймають з печі розпеченим, і полива тріскається, як хоче вогонь." },
         ["petrykivka"] = new { place = "Петриківка, Дніпропетровщина", text = "Петриківський розпис — у списку ЮНЕСКО з 2013, але це розпис не на кераміці: його малюють на папері, дереві, стінах. На глеку — фантазія гончаря." },
         ["trypillia"] = new { place = "Трипільська культура", text = "Мальована кераміка зі спіралями, біноклеподібні посудини, жіночі статуетки. Посуд ліпили без гончарного кола." },
     };

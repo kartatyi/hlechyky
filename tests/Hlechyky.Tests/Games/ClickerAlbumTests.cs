@@ -143,9 +143,9 @@ public class ClickerAlbumTests
 
     static int PopCount(int x) => System.Numerics.BitOperations.PopCount((uint)x);
 
-    static int[] Full() => Enumerable.Repeat((1 << Clicker.AlbumColumns) - 1, Clicker.Wares.Length).ToArray();
+    static int[] Full() => Enumerable.Repeat((1 << Clicker.AlbumHomeColumns) - 1, Clicker.Wares.Length).ToArray();
 
-    static int[] FullRows(int rows) => Enumerable.Range(0, Clicker.Wares.Length).Select(i => i < rows ? (1 << Clicker.AlbumColumns) - 1 : 0).ToArray();
+    static int[] FullRows(int rows) => Enumerable.Range(0, Clicker.Wares.Length).Select(i => i < rows ? (1 << Clicker.AlbumHomeColumns) - 1 : 0).ToArray();
 
     static List<StoveTile> Tiles(int n, int q, string style = "kosiv") => Enumerable.Repeat(new StoveTile(style, q), n).ToList();
 
@@ -157,9 +157,12 @@ public class ClickerAlbumTests
     [Fact]
     public void The_grid_is_wares_by_styles_and_grows_with_the_catalogs()
     {
-        // Ні 12, ні 9 ніде не зашито: додасться виріб чи розпис — сітка сама стане більшою.
+        // Ні 12, ні 9 ніде не зашито: додасться виріб чи розпис — сітка сама стане більшою. З одинадцятого оновлення
+        // сітка — це «домашні» 9 стовпчиків (старі бонуси й ачівки) і стовпчики світу поруч.
         Assert.Equal(Clicker.Styles.Length + 1, Clicker.AlbumColumns);
-        Assert.Equal(Clicker.Wares.Length * Clicker.AlbumColumns, Clicker.AlbumSize);
+        Assert.Equal(Clicker.HomeStyles + 1, Clicker.AlbumHomeColumns);
+        Assert.Equal(Clicker.Wares.Length * Clicker.AlbumHomeColumns, Clicker.AlbumSize);
+        Assert.Equal(Clicker.Wares.Length * Clicker.AlbumColumns, Clicker.AlbumWorldSize);
         Assert.Equal(0, Clicker.AlbumStyleIndex(""));
         Assert.Equal(0, Clicker.AlbumStyleIndex(null));
         Assert.Equal(1, Clicker.AlbumStyleIndex("gavarets"));
@@ -186,7 +189,7 @@ public class ClickerAlbumTests
         var cells = FullRows(1);
         Assert.Equal(1, Clicker.AlbumFullRows(cells));
         Assert.Equal(0, Clicker.AlbumFullColumns(cells));
-        Assert.Equal(Clicker.AlbumColumns * 0.005 + 0.05, Bonus(cells), 9);
+        Assert.Equal(Clicker.AlbumHomeColumns * 0.005 + 0.05, Bonus(cells), 9);
     }
 
     [Fact]
@@ -205,8 +208,8 @@ public class ClickerAlbumTests
         var cells = Full();
         Assert.Equal(Clicker.AlbumSize, Clicker.AlbumOpenCount(cells));
         Assert.Equal(Clicker.Wares.Length, Clicker.AlbumFullRows(cells));
-        Assert.Equal(Clicker.AlbumColumns, Clicker.AlbumFullColumns(cells));
-        Assert.Equal(Clicker.AlbumSize * 0.005 + Clicker.Wares.Length * 0.05 + Clicker.AlbumColumns * 0.06, Bonus(cells), 9);
+        Assert.Equal(Clicker.AlbumHomeColumns, Clicker.AlbumFullColumns(cells));
+        Assert.Equal(Clicker.AlbumSize * 0.005 + Clicker.Wares.Length * 0.05 + Clicker.AlbumHomeColumns * 0.06, Bonus(cells), 9);
     }
 
     [Fact]
@@ -214,8 +217,8 @@ public class ClickerAlbumTests
     {
         var cells = new int[Clicker.Wares.Length];
         var stars = new int[Clicker.Wares.Length];
-        cells[0] = 1 << 12;
-        stars[0] = 1 << 12;
+        cells[0] = 1 << Clicker.AlbumColumns;
+        stars[0] = 1 << Clicker.AlbumColumns;
         Assert.Equal(0, Clicker.AlbumOpenCount(cells));
         Assert.Equal(0, Clicker.AlbumStarCount(stars));
         Assert.Equal(0, Bonus(cells, stars, null, 1 << 9));
@@ -240,9 +243,9 @@ public class ClickerAlbumTests
     {
         var cells = FullRows(1);
         var stars = FullRows(1);
-        Assert.Equal(Clicker.AlbumColumns, Clicker.AlbumStarCount(stars));
+        Assert.Equal(Clicker.AlbumHomeColumns, Clicker.AlbumStarCount(stars));
         Assert.Equal(1, Clicker.AlbumStarRows(stars));
-        Assert.Equal(Clicker.AlbumColumns * 0.005 + 0.05 + Clicker.AlbumColumns * 0.01 + 0.05, Bonus(cells, stars), 9);
+        Assert.Equal(Clicker.AlbumHomeColumns * 0.005 + 0.05 + Clicker.AlbumHomeColumns * 0.01 + 0.05, Bonus(cells, stars), 9);
     }
 
     [Fact]
@@ -252,7 +255,7 @@ public class ClickerAlbumTests
         var stars = Full();
         var n = Clicker.AlbumSize;
         var rows = Clicker.Wares.Length;
-        var expect = n * 0.005 + rows * 0.05 + Clicker.AlbumColumns * 0.06 + n * 0.01 + rows * 0.05 + 0.25;
+        var expect = n * 0.005 + rows * 0.05 + Clicker.AlbumHomeColumns * 0.06 + n * 0.01 + rows * 0.05 + 0.25;
         Assert.Equal(expect, Bonus(cells, stars), 9);
         // Дванадцять виробів — +361 %; коли пакет «Ремесло» долучить три нові, та сама формула дасть +431,5 %.
         Assert.True(expect >= 3.6, expect.ToString());
@@ -483,7 +486,7 @@ public class ClickerAlbumTests
                 var star = new JsonArray();
                 all.Add("");
                 if (w.Key != "pot") star.Add("");
-                foreach (var st in Clicker.Styles) { all.Add(st.Key); star.Add(st.Key); }
+                foreach (var st in Clicker.Styles.Take(Clicker.HomeStyles)) { all.Add(st.Key); star.Add(st.Key); }
                 cells[w.Key] = all;
                 stars[w.Key] = star;
             }
@@ -498,7 +501,7 @@ public class ClickerAlbumTests
         var al = Album(h);
         Assert.Equal(Clicker.Wares.Length, al.GetProperty("starRows").GetInt32());
         Assert.Contains(h.Awards, x => x.Reason == "ach:potter-album-stars");
-        var expect = Clicker.AlbumSize * 0.005 + Clicker.Wares.Length * 0.05 + Clicker.AlbumColumns * 0.06
+        var expect = Clicker.AlbumSize * 0.005 + Clicker.Wares.Length * 0.05 + Clicker.AlbumHomeColumns * 0.06
             + Clicker.AlbumSize * 0.01 + Clicker.Wares.Length * 0.05 + 0.25;
         Assert.Equal(expect, al.GetProperty("bonus").GetDouble(), 9);
     }

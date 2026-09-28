@@ -105,6 +105,7 @@ public static class LavkaSetup
     public sealed record BuyRequest(string? Item, string? For);
     public sealed record WearRequest(string? Slot, string? Item);
     public sealed record DedicateRequest(string? To, string? Phrase);
+    public sealed record TakeDownRequest(string? Nick);
 
     public static IServiceCollection AddHlechykyLavka(this IServiceCollection services)
     {
@@ -114,6 +115,8 @@ public static class LavkaSetup
         services.TryAddSingleton<ILavkaVoice, TtsLavkaVoice>();
         services.TryAddSingleton<ILavkaWire, HubLavkaWire>();
         services.AddSingleton<Lavka>();
+        services.TryAddSingleton(_ => new LavkaPhotoDir(Paths.Resolve("data/avatars")));
+        services.AddSingleton<LavkaPhotos>();
         return services;
     }
 
@@ -125,6 +128,11 @@ public static class LavkaSetup
         api.MapPost("/buy", Buy);
         api.MapPost("/wear", Wear);
         api.MapPost("/dedicate", Dedicate);
+        api.MapPost("/photo", SetPhoto);
+        api.MapDelete("/photo", RemovePhoto);
+        api.MapGet("/photo/{file}", (string file, LavkaPhotos photos, HttpContext c) => PhotoFile(file, photos, c));
+        api.MapGet("/photos", AdminPhotos);
+        api.MapPost("/photos/remove", TakeDown);
         return app;
     }
 
@@ -149,6 +157,75 @@ public static class LavkaSetup
     /// <summary>POST /api/lavka/dedicate { to, phrase } → { ok, message }; to — нік або «*» (усім).</summary>
     public static async Task<IResult> Dedicate(HttpContext c, DedicateRequest b, Lavka lavka) =>
         Reply(await lavka.DedicateAsync(Auth.Nick(c), Auth.IsUser(c), b.To, b.Phrase));
+
+    // ---------- своя фотка ----------
+
+    /// <summary>
+    /// POST /api/lavka/photo — тіло запиту й є фото (JPEG/PNG/WebP, до <see cref="LavkaPhotos.MaxBytes"/>), обрізане
+    /// браузером. → { ok, message, url, readyAt }. Тип визначають магічні байти, а не Content-Type запиту.
+    /// </summary>
+    public static async Task<IResult> SetPhoto(HttpContext c, LavkaPhotos photos)
+    {
+        var bytes = await ReadCapped(c.Request.Body, LavkaPhotos.MaxBytes + 1, c.RequestAborted);
+        return PhotoReply(photos.Set(Auth.Nick(c), Auth.IsUser(c), bytes));
+    }
+
+    /// <summary>DELETE /api/lavka/photo — прибрати своє фото. → { ok, message, url: null, readyAt }.</summary>
+    public static IResult RemovePhoto(HttpContext c, LavkaPhotos photos) => PhotoReply(photos.Remove(Auth.Nick(c), Auth.IsUser(c)));
+
+    /// <summary>
+    /// GET /api/lavka/photo/&lt;хеш ніка&gt;-&lt;версія&gt;.&lt;jpg|png|webp&gt; — саме фото. Тип — за магічними байтами файла,
+    /// nosniff, кеш на рік: нове фото — нова адреса, тож старе з кешу ніде не вилізе. Чуже ім'я чи нема файла — 404.
+    /// </summary>
+    public static IResult PhotoFile(string file, LavkaPhotos photos, HttpContext c)
+    {
+        if (photos.Resolve(file) is not { } path) return Results.NotFound();
+        Span<byte> head = stackalloc byte[16];
+        int n;
+        try
+        {
+            using var f = File.OpenRead(path);
+            n = f.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+        }
+        catch (IOException) { return Results.NotFound(); }     // саме прибрали
+        if (LavkaImage.MimeOf(head[..n]) is not { } mime) return Results.NotFound();
+        c.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        c.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return Results.File(path, mime);
+    }
+
+    /// <summary>GET /api/lavka/photos — адміну: усі поставлені фото (нік, адреса, коли, розмір), свіжі згори.</summary>
+    public static IResult AdminPhotos(HttpContext c, LavkaPhotos photos) => !Auth.IsAdmin(c)
+        ? Results.BadRequest(new { ok = false, message = "Це бачить лише розробник" })
+        : Results.Ok(new { items = photos.All().Select(p => new { nick = p.Nick, url = p.Url, at = p.At, bytes = p.Bytes }) });
+
+    /// <summary>POST /api/lavka/photos/remove { nick } — адмін знімає фото. → { ok, message }.</summary>
+    public static IResult TakeDown(HttpContext c, TakeDownRequest b, LavkaPhotos photos)
+    {
+        if (!Auth.IsAdmin(c)) return Results.BadRequest(new { ok = false, message = "Це вміє лише розробник" });
+        var r = photos.TakeDown(b.Nick);
+        return Reply(new LavkaReply(r.Ok, r.Message));
+    }
+
+    static IResult PhotoReply(LavkaPhotoReply r)
+    {
+        var body = new { ok = r.Ok, message = r.Message, url = r.Url, readyAt = r.ReadyAt };
+        return r.Ok ? Results.Ok(body) : Results.BadRequest(body);
+    }
+
+    /// <summary>Тіло запиту, але не більше <paramref name="max"/> байтів: решту не читаємо — на завелике досить знати, що воно завелике.</summary>
+    static async Task<byte[]> ReadCapped(Stream body, int max, CancellationToken ct)
+    {
+        var buf = new byte[max];
+        var n = 0;
+        while (n < max)
+        {
+            var k = await body.ReadAsync(buf.AsMemory(n), ct);
+            if (k == 0) break;
+            n += k;
+        }
+        return buf[..n];
+    }
 
     static IResult Reply(LavkaReply r) =>
         r.Ok ? Results.Ok(new { ok = true, message = r.Message }) : Results.BadRequest(new { ok = false, message = r.Message });

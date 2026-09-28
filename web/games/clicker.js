@@ -57,7 +57,8 @@
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
-  const NEWS_VERSION = 'v10';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const CLOCK_KEEP_MS = 60 * 1000;        // серверне «зараз» — від найменш запізнілого виду за стільки (див. update)
+  const NEWS_VERSION = 'v11';             // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   const PV = 10;                          // версія протоколу (Clicker.ProtocolVersion): ми вміємо доповнювати худий вид
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
@@ -75,7 +76,7 @@
   /// Ремесло, жива хата, горно, альбом, ярмарок і цех живуть в окремих файлах clicker-<id>.js (+ .css): інакше
   /// цей файл виріс би втричі, а паралельні роботи бились би в одному місці. Частина кличе HClicker.part({...}) і
   /// дістає ті самі st, що й ядро, плюс спільний api. Каркас ігор знає лише clicker.js — частини вантажимо самі.
-  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles', 'guests'];
+  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles', 'guests', 'toloka'];
   const H = window.HClicker = window.HClicker || { parts: [], mounted: new Set(), loaded: false };
 
   /// Одна частина впала — решта гри живе далі: помилку в консоль, а не білу картку.
@@ -105,6 +106,8 @@
       if (!st.el || !st.ctx || !st.lastView || !st.root) return;
       for (const el of st.el.querySelectorAll('*')) if (el._sig !== undefined) el._sig = null;
       if (st.jugBox) st.jugBox._wear = null;
+      // Вид той самий — update сам по собі його пропустив би (див. update): тут перемалювати треба.
+      st.again = true;
       MOD.update(st.root, st.ctx);
     }, 60);
   }
@@ -319,6 +322,68 @@
       decor: '<path d="M35 36.5h30M35 62h30" stroke="#2a1a12" stroke-width="1.6"/><path d="M35 39.8h30M35 58.7h30" stroke="#f1e4cc" stroke-width=".8"/>'
         + '<path d="M37.6 49.4c0-5.2 7.2-5.2 7.2 0 0 3-4 3.4-4 .8M62.4 48.6c0 5.2-7.2 5.2-7.2 0 0-3 4-3.4 4-.8" stroke="#2a1a12" stroke-width="1.5" fill="none"/>'
         + '<path d="M44.8 49.4c2.6-4.4 7.8 3.6 10.4-.8" stroke="#2a1a12" stroke-width="1.5" fill="none"/>',
+    },
+    // Розписи світу (одинадцяте оновлення, пакет C): та сама сітка — пояси 36…62, середина на 50.
+    /// Цзиндечжень: кобальт на білій порцеляні — лотос у кучерях пагонів між подвійними поясами.
+    jingdezhen: {
+      body: '#f3f5f8',
+      decor: '<path d="M35 37.8h30M35 61.2h30" stroke="#1f3f9a" stroke-width="1.6"/><path d="M35 40.1h30M35 58.9h30" stroke="#1f3f9a" stroke-width=".5"/>'
+        + '<circle cx="50" cy="50" r="7.2" fill="#9fb4de" opacity=".4"/>'
+        + '<path d="M50 43.6c-2.5 2.7-2.5 6.1 0 8.6 2.5-2.5 2.5-5.9 0-8.6zM50 52.2c-3.1-1.1-6.2-.6-7.8 1.7 2.7 1.4 5.8 1 7.8-1.7zM50 52.2c3.1-1.1 6.2-.6 7.8 1.7-2.7 1.4-5.8 1-7.8-1.7z" fill="#1f3f9a"/>'
+        + '<path d="M37.4 49.6c1.8-3.6 5.6-3.8 6.2-.4-.2 1.8-2.3 2.1-2.7.6M62.6 49.6c-1.8-3.6-5.6-3.8-6.2-.4.2 1.8 2.3 2.1 2.7.6" stroke="#1f3f9a" stroke-width=".9" fill="none"/>'
+        + '<path d="M44 29.5h12" stroke="#1f3f9a" stroke-width="1"/>',
+    },
+    /// Ізнік: біле тіло, коралово-червоний тюльпан на бірюзовому пагоні, кобальтові пояси.
+    iznik: {
+      body: '#fbf8f1',
+      decor: '<path d="M35 38h30M35 61h30" stroke="#1d4e9e" stroke-width="1.8"/><path d="M35 40.2h30M35 58.8h30" stroke="#2aa198" stroke-width=".8"/>'
+        + '<path d="M50 58.2V47.5" stroke="#2aa198" stroke-width="1.1"/>'
+        + '<path d="M50 57.6c-4.3-.9-7.3-4-8.3-8.3 3.3.7 6.3 3.5 8.3 8.3zM50 55.4c4-1 6.6-3.7 7.6-7.7-3.1.8-5.7 3.3-7.6 7.7z" fill="#2aa198"/>'
+        + '<path d="M46.4 46.8c0-3 1.2-5 1.9-6.1.5 1.6 1.1 2.7 1.7 2.7s1.2-1.1 1.7-2.7c.7 1.1 1.9 3.1 1.9 6.1 0 2-1.6 3.1-3.6 3.1s-3.6-1.1-3.6-3.1z" fill="#c8372d"/>'
+        + '<g fill="#c8372d"><circle cx="39.4" cy="45" r="1.3"/><circle cx="60.6" cy="45" r="1.3"/></g>'
+        + '<g fill="#1d4e9e"><circle cx="39.4" cy="54.6" r=".9"/><circle cx="60.6" cy="54.6" r=".9"/></g>'
+        + '<path d="M44 29.5h12" stroke="#1d4e9e" stroke-width="1"/>',
+    },
+    /// Делфт: синім по олов'яній поливі — вітряк над берегом, пташки й рамка.
+    delft: {
+      body: '#eef2f6',
+      decor: '<path d="M35 37.6h30M35 61.6h30" stroke="#2c5aa0" stroke-width="1.5"/><path d="M35 39.8h30M35 59.4h30" stroke="#2c5aa0" stroke-width=".5" stroke-dasharray="1.4 1"/>'
+        + '<path d="M36 56.6q7-2 14 0t14 0" stroke="#2c5aa0" stroke-width=".9" fill="none"/>'
+        + '<path d="M47.6 56.4l.9-7.4h3l.9 7.4z" fill="#2c5aa0"/>'
+        + '<path d="M50 48.6l-5.2-5.2M50 48.6l5.2-5.2M50 48.6l-5.2 5.2M50 48.6l5.2 5.2" stroke="#2c5aa0" stroke-width="1.5" stroke-linecap="round"/>'
+        + '<circle cx="50" cy="48.6" r="1" fill="#eef2f6"/>'
+        + '<path d="M39 44.4l1.2 1 1.2-1M58.6 42.6l1.1.9 1.1-.9" stroke="#2c5aa0" stroke-width=".6" fill="none"/>'
+        + '<path d="M44 29.5h12" stroke="#2c5aa0" stroke-width="1"/>',
+    },
+    /// Майсен: біла тверда порцеляна, сині схрещені мечі й квіткова гілочка, золото на плечі.
+    meissen: {
+      body: '#fdfdfa',
+      decor: '<path d="M35 38.2h30" stroke="#c9a13a" stroke-width="1.1"/><path d="M35 61.4h30" stroke="#c9a13a" stroke-width=".8"/>'
+        + '<path d="M45.2 55.6l9.6-10.2M54.8 55.6l-9.6-10.2" stroke="#2745a3" stroke-width="1.3" stroke-linecap="round"/>'
+        + '<path d="M45.9 48.5l2.4-2.2M51.7 46.3l2.4 2.2" stroke="#2745a3" stroke-width="1.1" stroke-linecap="round"/>'
+        + '<g fill="#d9607a"><circle cx="40" cy="44.8" r="1.7"/><circle cx="60.2" cy="57" r="1.3"/></g>'
+        + '<g fill="#f7c3cf"><circle cx="40" cy="44.8" r=".7"/></g><circle cx="61.4" cy="44.2" r="1.1" fill="#3f63c4"/>'
+        + '<path d="M41.4 46.2c1.6.8 2.3 2.3 2 3.8M58.8 45.4c-1.2.9-1.6 2.4-1.2 3.6" stroke="#5a8a3a" stroke-width=".7" fill="none"/>'
+        + '<path d="M44 29.5h12" stroke="#c9a13a" stroke-width="1.1"/>',
+    },
+    /// Севр: густа «королівська блакить» і золото — білий медальйон із трояндою в золотій рамці.
+    sevres: {
+      body: '#1f3f91',
+      decor: '<path d="M35 37.8h30M35 61.4h30" stroke="#d4af37" stroke-width="1.5"/>'
+        + '<path d="M35 40.8q3.75 2.4 7.5 0t7.5 0 7.5 0 7.5 0" stroke="#d4af37" stroke-width=".8" fill="none"/>'
+        + '<ellipse cx="50" cy="50.4" rx="6.6" ry="7.8" fill="#fbf7ee" stroke="#d4af37" stroke-width="1.3"/>'
+        + '<circle cx="50" cy="49.6" r="2" fill="#d9607a"/><circle cx="50" cy="49.6" r=".8" fill="#f7c3cf"/>'
+        + '<path d="M50 51.6v2.8M48 53.4c1 .1 1.6-.4 2-1.2" stroke="#5a8a3a" stroke-width=".7" fill="none"/>'
+        + '<g fill="#d4af37"><circle cx="39.6" cy="50.4" r=".9"/><circle cx="60.4" cy="50.4" r=".9"/><circle cx="39.6" cy="56" r=".6"/><circle cx="60.4" cy="56" r=".6"/></g>'
+        + '<path d="M44 29.5h12" stroke="#d4af37" stroke-width="1.1"/>',
+    },
+    /// Раку: темна полива з кракелюром і мідним відблиском, який лишає вогонь і тирса.
+    raku: {
+      body: '#2a2522',
+      decor: '<ellipse cx="45" cy="47" rx="8" ry="6" fill="#b8733a" opacity=".55"/><ellipse cx="56" cy="55" rx="7" ry="4.5" fill="#3f8f84" opacity=".4"/>'
+        + '<ellipse cx="44" cy="45.4" rx="3.4" ry="1.9" fill="#f0c27a" opacity=".5"/>'
+        + '<path d="M36 42l5 3 3-4 6 5 4-3 5 4 5-2M35 51.6l6-2 4 4 5-3 6 3 5-2M37 59.6l4-3 5 2 4-3 6 3 5-1M41 45l-1 6.6M50 46l1 5.4M55 43l-.6 7M46 53.6l-1 5M57 52l1 6.4" stroke="#d8cfc0" stroke-width=".35" fill="none" opacity=".75"/>'
+        + '<path d="M44 29.5h12" stroke="#b8733a" stroke-width="1"/>',
     },
     /// Той, що з'являється на колі й чекає, щоб його впіймали: золотий із петриківською квіткою.
     golden: {
@@ -666,6 +731,114 @@
     if (scale !== st.jugScale) { st.jugScale = scale; st.jugBox.style.transform = 'scale(' + scale + ')'; }
   }
 
+  // ---------- плашки бафів під колом ----------
+  // Записки Smaug (27.09): «ярмарок, натхнення, розгін, серія — кожне в новому рядку, бо зараз усе в купі й не видно,
+  // скільки секунд до кінця». Було: один рядок пігулок із «…» — на ПК при п'яти бафах лишалось «🎪 Я…». Стало: кожен
+  // баф — своя клітинка сітки; ліворуч великими цифрами множник і секунди (tabular-nums і стала ширина — число не
+  // стрибає), праворуч дрібно назва — обрізатись може лише вона; під ними смужка часу, що тане. Порядок — що скоро
+  // скінчиться, те першим; останні п'ять секунд плашка світиться. Розмітка плашок складається раз: щосекунди
+  // міняється лише текст числа (коли він справді інший), а смужка тане сама — WAAPI на transform, без JS щокадру.
+  const BUFF_END_MS = 5000;
+  const BUFF_KINDS = [
+    { key: 'fair', icon: '🎪', name: () => 'Ярмарок', what: (st) => 'Ярмарок: усе ×' + dec(st.fairMult) },
+    { key: 'inspire', icon: '✨', name: () => 'Натхнення', what: (st) => 'Натхнення: клік ×' + st.inspireMult },
+    { key: 'wind', icon: '🌬', name: () => 'Вітер із поля', what: (st) => 'Вітер із поля: без тебе все ×' + dec(st.windMult) },
+    { key: 'heat', icon: '🌀', name: () => 'Розгін', what: () => 'Розгін кола: що частіше клацаєш, то більший клік; смужка — наскільки коло гаряче' },
+    { key: 'streak', icon: '🤲', name: (st) => 'Серія ' + count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
+      + Math.round(st.streakBonus * 100) + ' % більше' },
+    { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
+  ];
+
+  /// Що з бафів діє саме зараз: множник, до коли й скільки триває весь (для смужки). Лише читає стан.
+  function buffsNow(st, sn, mom) {
+    const out = [];
+    if (sn < st.fairUntil) out.push({ key: 'fair', mult: '×' + dec(st.fairMult), until: st.fairUntil, span: st.fairSpan || 66000 });
+    if (sn < st.inspireUntil) out.push({ key: 'inspire', mult: '×' + st.inspireMult, until: st.inspireUntil, span: st.inspireSpan || 20000 });
+    if (windOn(st, sn)) out.push({ key: 'wind', mult: '×' + dec(st.windMult), until: st.windUntil, span: Math.max(1000, st.windUntil - st.windAt) });
+    if (st.momentumMax > 1 && mom > 1.05) out.push({ key: 'heat', mult: '×' + dec(mom), level: (mom - 1) / (st.momentumMax - 1) });
+    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
+    if (st.fallStreak > 1) out.push({ key: 'streak', mult: '+' + Math.round(st.streakBonus * 100) + ' %' });
+    if (st.starWish) out.push({ key: 'wish', mult: '×3' });
+    return out;
+  }
+
+  /// Плашки складаємо раз на хост (.clk-buffs нового mount — нові плашки): далі лише текст, клас і смужка.
+  function buffEls(st) {
+    if (st.buffEls && st.buffEls.host === st.buffs) return st.buffEls;
+    const els = { host: st.buffs };
+    st.buffs.textContent = '';
+    for (const k of BUFF_KINDS) {
+      const el = document.createElement('span');
+      el.className = 'clk-buff ' + k.key;
+      el.hidden = true;
+      el.innerHTML = '<span class="clk-bico" aria-hidden="true">' + k.icon + '</span>'
+        + '<b class="clk-bnum"><span class="clk-bmul"></span><span class="clk-bsec"></span></b>'
+        + '<span class="clk-bname"></span><i class="clk-bbar" aria-hidden="true"></i>';
+      st.buffs.appendChild(el);
+      els[k.key] = { el, kind: k, mul: el.querySelector('.clk-bmul'), sec: el.querySelector('.clk-bsec'),
+        name: el.querySelector('.clk-bname'), bar: el.querySelector('.clk-bbar'), until: 0, anim: null, level: -1, order: '', secs: -1 };
+    }
+    st.buffEls = els;
+    return els;
+  }
+
+  /// Смужка часу: від частки, що лишилась, до нуля рівно за залишок. Під prefers-reduced-motion — сходинками раз на
+  /// секунду (paintBuffs), без безперервного руху.
+  function buffBar(b, left, span) {
+    const f = Math.max(0, Math.min(1, left / span));
+    if (b.anim) { b.anim.cancel(); b.anim = null; }
+    if ((REDUCED_MQ && REDUCED_MQ.matches) || !b.bar.animate) { b.bar.style.transform = 'scaleX(' + f.toFixed(3) + ')'; return; }
+    try {
+      b.anim = b.bar.animate([{ transform: 'scaleX(' + f.toFixed(4) + ')' }, { transform: 'scaleX(0)' }],
+        { duration: Math.max(1, left), easing: 'linear', fill: 'forwards' });
+    } catch { b.bar.style.transform = 'scaleX(' + f.toFixed(3) + ')'; }
+  }
+
+  function paintBuffs(st, sn, mom) {
+    if (!st.buffs) return;
+    const els = buffEls(st);
+    const now = buffsNow(st, sn, mom);
+    const on = new Set(now.map((x) => x.key));
+    // Що скоро скінчиться — першим; безстрокові (розгін, серія, бажання) — за ними, завжди в тому самому порядку.
+    const timed = now.filter((x) => x.until).sort((a, b) => a.until - b.until).map((x) => x.key);
+    const stepped = !!(REDUCED_MQ && REDUCED_MQ.matches);
+    for (const k of BUFF_KINDS) {
+      const b = els[k.key];
+      if (!on.has(k.key)) {
+        if (!b.el.hidden) { b.el.hidden = true; if (b.anim) { b.anim.cancel(); b.anim = null; } b.until = 0; b.level = -1; }
+        continue;
+      }
+      const x = now.find((y) => y.key === k.key);
+      if (b.el.hidden) b.el.hidden = false;
+      if (b.mul.textContent !== x.mult) { b.mul.textContent = x.mult; b.el.title = k.what(st); }
+      const name = k.name(st);
+      if (b.name.textContent !== name) b.name.textContent = name;
+      const order = String(x.until ? timed.indexOf(k.key) : 10 + BUFF_KINDS.indexOf(k));
+      if (b.order !== order) { b.order = order; b.el.style.order = order; }
+      if (x.until) {
+        const left = x.until - sn;
+        const secs = Math.max(0, Math.ceil(left / 1000));
+        if (b.secs !== secs) {
+          b.secs = secs;
+          b.sec.textContent = String(secs);
+          b.sec.classList.toggle('w3', secs >= 100);
+          if (stepped) buffBar(b, left, x.span);
+        }
+        // Новий баф чи той самий, але подовжений (ще один розписний глек) — смужка стартує наново від свого залишку.
+        if (Math.abs(b.until - x.until) > 50) { b.until = x.until; buffBar(b, left, x.span); }
+        const end = left <= BUFF_END_MS;
+        if (b.el.classList.contains('end') !== end) b.el.classList.toggle('end', end);
+      } else {
+        if (b.secs !== -1) { b.secs = -1; b.sec.textContent = ''; b.el.classList.remove('end'); }
+        // Розгін — смужка показує, наскільки коло гаряче (спадає сама, щойно перестаєш клацати); серія й бажання — без смужки.
+        const level = x.level != null ? Math.round(Math.max(0, Math.min(1, x.level)) * 100) / 100 : -1;
+        if (b.level !== level) { b.level = level; b.bar.style.transform = 'scaleX(' + Math.max(0, level) + ')'; }
+      }
+    }
+    const any = now.length > 0;
+    if (st.buffs.hidden === any) st.buffs.hidden = !any;
+  }
+
   /// Те, що не мусить жити шістдесят разів на секунду: рядок швидкості, бонуси, суперник, прогрес клейм.
   function paintSlow(st, shown) {
     const sn = serverNow(st);
@@ -677,17 +850,7 @@
       + (sec > 0 ? ' · без тебе +' + short(sec) + ' за секунду' : ' · підмайстрів ще нема');
     if (st.rate.textContent !== rate) st.rate.textContent = rate;
 
-    let buffs = '';
-    if (sn < st.fairUntil) buffs += '<span class="clk-buff fair">🎪 Ярмарок ×' + dec(st.fairMult) + ' · ' + Math.ceil((st.fairUntil - sn) / 1000) + ' с</span>';
-    if (sn < st.inspireUntil) buffs += '<span class="clk-buff inspire">✨ Натхнення: клік ×' + st.inspireMult + ' · ' + Math.ceil((st.inspireUntil - sn) / 1000) + ' с</span>';
-    if (windOn(st, sn)) buffs += '<span class="clk-buff wind">🌬 Вітер із поля: без тебе ×' + dec(st.windMult) + ' · '
-      + Math.ceil((st.windUntil - sn) / 1000) + ' с</span>';
-    if (st.momentumMax > 1 && mom > 1.05) buffs += '<span class="clk-buff heat">🌀 Розгін ×' + dec(mom) + '</span>';
-    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
-    if (st.fallStreak > 1) buffs += '<span class="clk-buff streak">🤲 Серія ' + st.fallStreak + ' · глек з полиці +'
-      + Math.round(st.streakBonus * 100) + ' %</span>';
-    if (st.starWish) buffs += '<span class="clk-buff wish">🌠 Бажання: наступний глек з полиці ×3</span>';
-    if (st.buffs._html !== buffs) { st.buffs._html = buffs; st.buffs.innerHTML = buffs; st.buffs.hidden = !buffs; }
+    paintBuffs(st, sn, mom);
     const fair = sn < st.fairUntil, inspire = sn < st.inspireUntil;
     if (st.stage.classList.contains('fair') !== fair) st.stage.classList.toggle('fair', fair);
     if (st.stage.classList.contains('inspire') !== inspire) st.stage.classList.toggle('inspire', inspire);
@@ -1478,10 +1641,14 @@
         + '<i class="clk-ubar"><i></i></i>'
         + '</button>';
     }).join('');
+    // Гончарі світу (v11): щабель відмикає будова Толоки, а не попередній рівень.
+    const gate = teaser && st.shopCat && st.shopCat.gates && st.shopCat.gates[teaser];
     const more = teaser
       ? '<div class="clk-teaser muted small">' + (H.api.upIcon ? '<span class="clk-uico locked">' + H.api.upIcon(teaser) + '</span>' : '')
-        + 'Далі на драбині ще є верстати: наступний відкриється після першого рівня «'
-        + esc(ups[prevIdle(ups, teaser)].name) + '»</div>'
+        + (gate && ups[prevIdle(ups, teaser)].level > 0
+          ? '⚓ «' + esc(ups[teaser].name || teaser) + '» відкриє будова Толоки «' + esc(gate.name) + '» — вкладка «🤝 Село»'
+          : 'Далі на драбині ще є верстати: наступний відкриється після першого рівня «' + esc(ups[prevIdle(ups, teaser)].name) + '»')
+        + '</div>'
       : '';
     if (swap(st.shop, cards + more)) {
       st.buys = [...st.shop.querySelectorAll('[data-buy]')];
@@ -1526,20 +1693,35 @@
     const esc = ctx.esc;
     const list = st.styleList;
     const owned = list.filter((s) => s.owned).length;
-    const html = '<div class="clk-sub">Розписи · ' + owned + ' з ' + list.length
+    // Одинадцяте оновлення: розписи світу (s.tier — щабель гончарів світу) — окремим рядком. Поки нема першого рівня
+    // свого щабля, розпис не купиш: сіра картка «привезуть із …» без кнопки (назва щабля — з каталогу магазину).
+    const home = list.filter((s) => !s.tier);
+    const world = list.filter((s) => s.tier);
+    // Довгі назви світу («Цзиндечженська») на телефоні не влазять у картку: м'який перенос перед «-ська/-цька».
+    const name = (s) => (s.tier ? esc(s.name).replace(/([^\s&;]{5,})(ськ|цьк)/g, '$1&shy;$2') : esc(s.name));
+    const card = (s) => {
+      const on = st.wear === s.key;
+      const u = st.ups && st.ups[s.tier];
+      if (s.tier && !s.owned && !(u && u.level > 0)) {
+        return '<div class="clk-style clk-far" title="' + esc(s.name + ' — продадуть, щойно матимеш перший рівень щабля') + '">'
+          + jugSvg(s.key, 'clk-mini locked', 's-' + s.key) + '<b>' + name(s) + '</b>'
+          + '<span class="clk-price done clk-farnote">🚢 привезуть із «' + esc((u && u.name) || s.tier) + '»</span></div>';
+      }
+      return '<button type="button" class="clk-style' + (s.owned ? ' owned' : '') + (on ? ' on' : '') + '" data-style="' + esc(s.key)
+        + '" data-owned="' + (s.owned ? 1 : 0) + '" data-price="' + s.price + '" disabled>'
+        // Некуплений розпис видно приглушеним: купують те, що бачать, а не сірий силует.
+        + jugSvg(s.key, 'clk-mini' + (s.owned ? '' : ' locked'), 's-' + s.key)
+        + '<b>' + name(s) + '</b>'
+        + '<span class="clk-price' + (s.owned ? ' done' : '') + '">' + (on ? 'на колі' : s.owned ? 'поставити' : short(s.price)) + '</span>'
+        + '</button>';
+    };
+    const worldOwned = world.filter((s) => s.owned).length;
+    const html = '<div class="clk-sub">Розписи · ' + (owned - worldOwned) + ' з ' + home.length
       + '<span class="muted small"> · кожен +5 % до всього, лишаються й після обпалу</span></div>'
-      + '<div class="clk-styles">'
-      + list.map((s) => {
-        const on = st.wear === s.key;
-        return '<button type="button" class="clk-style' + (s.owned ? ' owned' : '') + (on ? ' on' : '') + '" data-style="' + esc(s.key)
-          + '" data-owned="' + (s.owned ? 1 : 0) + '" data-price="' + s.price + '" disabled>'
-          // Некуплений розпис видно приглушеним: купують те, що бачать, а не сірий силует.
-          + jugSvg(s.key, 'clk-mini' + (s.owned ? '' : ' locked'), 's-' + s.key)
-          + '<b>' + esc(s.name) + '</b>'
-          + '<span class="clk-price' + (s.owned ? ' done' : '') + '">' + (on ? 'на колі' : s.owned ? 'поставити' : short(s.price)) + '</span>'
-          + '</button>';
-      }).join('')
-      + '</div>'
+      + '<div class="clk-styles">' + home.map(card).join('') + '</div>'
+      + (world.length ? '<div class="clk-sub clk-worldsub">🌍 Розписи світу · ' + worldOwned + ' з ' + world.length
+        + '<span class="muted small"> · теж +5 % до всього; кожен привозять, коли маєш перший рівень його щабля</span></div>'
+        + '<div class="clk-styles clk-styles-world">' + world.map(card).join('') + '</div>' : '')
       + (owned ? '<button type="button" class="ghost small clk-plain"' + (st.wear ? '' : ' disabled') + '>Простий глиняний на колі</button>' : '');
     if (swap(st.styles, html)) {
       st.styleBtns = [...st.styles.querySelectorAll('[data-style]')];
@@ -1586,11 +1768,33 @@
       + block('Дідівські секрети', 'друге коло — те, що дід тримав у скрині', ring(2))
       + block('Прадідівські секрети', 'третє коло — на мільйони клейм, для тих, хто пройшов усе', third)
       + '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: він лишається, хоч витрать усі.</div>';
-    if (swap(st.fire._static, head + secrets)) {
+    if (swap(st.fire._static, head + secrets + relics(st, esc))) {
       st.secretBtns = [...st.fire._static.querySelectorAll('[data-secret]')];
       for (const b of st.secretBtns) b.onclick = () => order(st, 'secret', { key: b.dataset.secret });
+      for (const b of st.fire._static.querySelectorAll('[data-relic]')) b.onclick = () => order(st, 'relic', { key: b.dataset.relic });
     }
     st.slowAt = 0;
+  }
+
+  /// Скарбниця роду (v11 §4): реліквії з рівнями за клейма. Кнопка — «наступний рівень за N клейм»; що дає — з
+  /// каталогу магазину (крок і межа), сума зараз — з виду.
+  const RELIC_ICON = { basket3: '🧺', cat3: '🐈', fiddle: '🎻', towel: '🌾', ember3: '🔥', seal2: '🏛', hands: '🧑‍🎓', toloka: '🏗' };
+  function relics(st, esc) {
+    const list = st.relicList;
+    const cat = st.shopCat && st.shopCat.relics;
+    if (!list || !cat) return '';
+    const pct = (x) => dec(Math.round(x * 1000) / 10);
+    return '<div class="clk-sub">🗝 Скарбниця роду<span class="muted small"> · реліквії за клейма: рівні без стелі, кожен утричі дорожчий</span></div>'
+      + '<div class="clk-secrets clk-relics">' + list.map((r) => {
+        const c = cat.find((x) => x.key === r.key);
+        if (!c) return '';
+        const capped = c.cap > 0 && r.sum >= c.cap - 1e-9;
+        return '<button type="button" class="clk-secret clk-relic' + (r.level ? ' owned' : '') + '" data-relic="' + esc(r.key) + '"'
+          + (!st.mine || !r.can || capped ? ' disabled' : '') + '>'
+          + '<b>' + (RELIC_ICON[r.key] || '🗝') + ' ' + esc(c.name) + (r.level ? ' · рівень ' + r.level : '') + '</b>'
+          + '<span class="muted small">' + esc(c.desc) + (r.level ? ' · зараз ' + pct(r.sum) + ' %' : '') + '</span>'
+          + '<span class="clk-price stamp">' + (capped ? '✓ на межі' : '🔖 ' + count(r.price)) + '</span></button>';
+      }).join('') + '</div>';
   }
 
   /// Наука майстра у вкладці Клейма: від кого вчимось, скільки в нього клейм і коли наука знову готова. Хто сам
@@ -1793,7 +1997,9 @@
     return '<div class="clk-sub">✨ Дивовижі · ' + w.found + '/' + w.total
       + (w.found ? '<span class="muted small"> · +' + pct + ' % до всього</span>' : '')
       + info('Дивовижі знаходяться самі, коли в хаті стається щось рідкісне: добрий обпал, довга серія, щедрий віз, '
-        + 'гість на свято. Кожна додає +1 % до всього й лишається в хаті назавжди. Люстро в знаряддях — удвічі частіше.')
+        + 'гість на свято. Під силуетом — звідки вона може прийти: це як пощастить, а не щоразу (Люстро в знаряддях — удвічі '
+        + 'частіше). Лише Скалка з неба приходить напевно — з першою ж спійманою зіркою. Кожна дивовижа додає +1 % до всього '
+        + 'й лишається в хаті назавжди.')
       + '</div><div class="clk-wonders">' + cells + '</div>';
   }
 
@@ -1947,9 +2153,35 @@
   /// відкриється рівно раз. «v10» — «Глек на весь світ» (docs/games/specs/clicker-v10.md §12); закриття вікна забирає
   /// подарунок. Хто пропустив «v9.2» (звання округи) чи «v9.1» (клейма після тисячі), тому ті рядки йдуть слідом —
   /// сервер каже, що гончар бачив востаннє (view.newsSeen), а подарунок v9.2 дасть сам, якщо його ще не забрано.
+  /// «v10.1» (28.09) — правки за записками «💡 Розробнику», без подарунка; хто пропустив v10 — бачить і його рядки,
+  /// і подарунок v10 забирає тим самим закриттям.
   const NEWS = {
     title: '✨ Що нового в Гончарному колі',
-    lead: 'Оновлення «Глек на весь світ»: після Січі гончарня виходить у світ.',
+    lead: 'Оновлення «Толока»: усім селом будуємо Опішню — а вона відчиняє двері гончарям усього світу.',
+    lines: [
+      ['🏗', '<b>Толока.</b> Дванадцять будов на майдані — від криниці з журавлем до Глека на майдані. Етап закладаєш глеками й виробами з горна, а далі він будується годинами — і ніякий множник цього не пришвидшить. Мала толока — з гривні, велика — з червоного золотого. Кожна будова — +5 % до всього і своя вічна пільга.'],
+      ['🤝', '<b>Друзі на толоці.</b> Піднеси виріб другові з цеху — його етап будується на 15 % швидше (до трьох друзів), а тобі — гостинець.'],
+      ['🏯', '<b>Гончарі світу.</b> Пристань, музей, інститут, зала й фестиваль відчиняють шість нових щаблів: Цзиндечжень, Ізнік, Делфт, Майсен, Севр і раку. Кожен привозить свій розпис — альбом росте до п\'ятнадцяти стовпчиків, а все, що вже зібрано, лишається зібраним.'],
+      ['🗝', '<b>Скарбниця роду.</b> Клеймам нарешті є куди йти: вісім реліквій з рівнями без стелі — полиця, кіт, скрипка, рушник, жар, печатка, руки й толока.'],
+      ['🎉', '<b>Фестиваль.</b> Коли збудуєш фестивальну сцену — раз на добу година ×2 до всього.'],
+      ['🎁', '<b>Подарунок:</b> три години твого «без тебе» і двадцять в\'язок соломи.'],
+    ],
+    ok: 'Забрати подарунок',
+  };
+  /// «v10.1» — правки за записками (без подарунка): для тих, хто його не бачив.
+  const NEWS_101 = {
+    lead: 'А ще — правки за вашими записками в «💡 Розробнику»:',
+    lines: [
+      ['🔥', '<b>Горно.</b> Відлік обпалу більше не скидається й не завмирає. Ручний обпал — на одному екрані: кнопки, жар і «💨 порив вітру» видно весь час. Пічка в «Ремеслі» менша, розписи — компактною сіткою під «🎨 Розпис».'],
+      ['🖌', '<b>Розпис.</b> Пензель рахує зафарбовані пелюстки, а не натиски: зайві тики нічого не закривають, а в кінці видно «Краса · пелюсток з».'],
+      ['⏱', '<b>Плашки під колом.</b> Кожна окремо: секунди великими цифрами, смужка часу, що тане, а що скоро скінчиться — першим.'],
+      ['🛒', '<b>«Усе на віз»</b> — уся комора одним натиском, крім того, чого чекають гості й села. А на возі тепер лежать справжні вироби.'],
+      ['⭐', '<b>Зірки в альбомі</b> пояснено легендою й підказками. А перша ж спіймана 🌠 падаюча зірка напевно дає «Скалку з неба».'],
+    ],
+  };
+  /// «v10» — для тих, хто його пропустив (закриття вікна забирає подарунок v10).
+  const NEWS_10 = {
+    lead: 'А ще — з минулого оновлення «Глек на весь світ»: після Січі гончарня виходить у світ.',
     lines: [
       ['🌍', '<b>Дванадцять нових щаблів.</b> Від Батуринської кахельні й Корецької порцеляни — через Одеський порт, кругосвітнє плавання, пароплав за океан і Всесвітню виставку в Парижі — до Опішні, гончарної столиці світу. Кожен щабель видно на сцені.'],
       ['₴', '<b>Гривні замість «скстлн».</b> Від квадрильйона глеків великі суми рахуються в гривнях: 1 ₴ = 1 квадрильйон глеків. Гаманець той самий, просто без зайвих нулів. А далі будуть і червоні золоті.'],
@@ -1959,7 +2191,6 @@
       ['⚡', '<b>Легше й рівніше.</b> Коло більше не смикається на айфоні, на ПК стіл уміщається в екран, а гра менше навантажує комп\'ютер.'],
       ['🎁', '<b>Подарунок:</b> чотири години твого «без тебе» глеками одразу.'],
     ],
-    ok: 'Забрати подарунок',
   };
   /// «v9.2» — для тих, хто його пропустив.
   const NEWS_92 = {
@@ -2029,10 +2260,16 @@
   function showNews(st) {
     if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
     const li = (l) => '<li><span class="clk-news-ico">' + l[0] + '</span><span>' + l[1] + '</span></li>';
-    // Хто пропустив «v9.2» — ті рядки; хто й «v9.1» — ще й ті (newsSeen — остання версія, яку гончар бачив).
+    // Хто пропустив «v10» — ті рядки; хто й «v9.2» — ще й ті; хто й «v9.1» — і ті (newsSeen — остання версія, яку
+    // гончар бачив; порожньо — ще старіше за v9.1: тоді v9.1 уже й не згадуємо, як і було).
     const seen = st.newsSeen || '';
     const block = (n) => '<p class="muted small">' + n.lead + '</p><ul>' + n.lines.map(li).join('') + '</ul>';
-    const old = (seen !== 'v9.2' ? block(NEWS_92) : '') + (seen && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : '');
+    // v11: хто бачив v10.1 — лише нове; хто v10 — ще правки v10.1; хто й v10 не бачив — ще й v10, а далі ланцюжок як був.
+    const miss10 = seen !== 'v10' && seen !== 'v10.1';
+    const old = (seen !== 'v10.1' ? block(NEWS_101) : '')
+      + (miss10 ? block(NEWS_10) : '')
+      + (miss10 && seen !== 'v9.2' ? block(NEWS_92) : '')
+      + (seen && miss10 && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : '');
     const html = '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
       + NEWS.lines.map(li).join('') + '</ul>' + old
       + '<button type="button" class="primary clk-news-ok">' + NEWS.ok + '</button></div>';
@@ -2721,23 +2958,43 @@
       placeInView(st);
       st.ctx = ctx;
       ctx.clk = st;
-      st.mine = !!ctx.mine;
       const v = ctx.view;
+      // Той самий вид удруге — не новина (записка Smaug №2: «обпал залагує, і час або скидається на початок, або
+      // зависає на місці»). Каркас кличе update не лише на новий вид, а й на КОЖНУ зміну лобі (подія 'rooms' →
+      // refreshAll: хтось на сайті поставив стіл чи встав із-за нього) — з тим самим видом, що вже був. Раніше ми брали
+      // з нього «правду сервера» вдруге: серверне «зараз» відкочувалось до миті, коли вид складено, — у ручному обпалі
+      // це мить розпалу, тож відлік горна скакав назад на 0:30 і стояв, поки в лобі метушились, жар не рухався, а горно
+      // не відкривалось; лічильник глеків, розгін і робота підмайстрів теж відкочувались. Свіжий вид — лише новий
+      // об'єкт від сервера. Перемалювати картку зі старим (refreshCard, частина догнала) — st.again, свій nick — mine.
+      const fresh = !!v && v !== st.lastView;
+      const mine = !!ctx.mine;
+      if (v && !fresh && !st.again && mine === st.mine) return;
+      st.again = false;
+      st.mine = mine;
       // Худий вид: без каталогу магазину (перше відкриття після перезапуску сервера) назв ще нема — просимо каталог і
       // цей вид малюємо без магазину й частин; наступний прийде вже з назвами.
       const ready = !v || v.pots == null || hydrate(st, v);
-      if (v && v.pots != null) {
+      if (v && v.pots != null && fresh) {
         // Сервер — джерело правди: беремо його число і його мітку часу, від них доліковуємо далі.
         // Усе, що вже полетіло, у цьому числі вже враховано — свій запас відпущених кліків обнуляємо.
         st.inflight = 0;
         st.inflightGain = 0;
         st.base = v.pots;
         st.total = v.total || 0;
+        // Серверне «зараз» — від найменш запізнілого з недавніх видів. Вид каже «на сервері було now», а до нас доїхав
+        // із затримкою: мережа, а на повільному ПК ще й зайнятий головний потік (вид обробляється на сотні мс пізніше).
+        // Тож now − Date.now() — нижня межа справжнього зсуву годинників, і найбільша з них — найточніша; з кожним
+        // запізнілим видом відлік горна смикався назад (заміряно: −200…−345 мс на процесорі ×6). Беремо найкращу за
+        // останні 60 с — щоб переведений годинник ПК не тягнувся за нами довше.
+        const at = Date.now();
         const now = Date.parse(v.now);
-        st.viewNow = Number.isFinite(now) ? now : Date.now();
+        const offs = (st.clockOffs || []).filter((x) => at - x[1] < CLOCK_KEEP_MS).slice(-11);
+        offs.push([(Number.isFinite(now) ? now : at) - at, at]);
+        st.clockOffs = offs;
+        st.viewNow = at + Math.max(...offs.map((x) => x[0]));
         const sync = Date.parse(v.lastSync);
         st.lastSync = Number.isFinite(sync) ? sync : st.viewNow;
-        st.recvAt = Date.now();
+        st.recvAt = at;
         st.offlineMs = (v.offlineHours || 8) * 3600 * 1000;
         st.clickBase = v.clickBase || v.perClick || 1;
         st.baseSecond = v.baseSecond != null ? v.baseSecond : v.perSecond || 0;
@@ -2746,6 +3003,9 @@
         st.inspireUntil = (v.inspire && Date.parse(v.inspire.until)) || 0;
         st.inspireMult = (v.inspire && v.inspire.mult) || 25;
         st.inspireShare = (v.inspire && v.inspire.share) || 0;
+        // Скільки триває весь баф (з «Довгим ярмарком» — удвічі): від цього смужка під плашкою знає, з якої частки танути.
+        st.fairSpan = ((v.fair && v.fair.span) || 0) * 1000;
+        st.inspireSpan = ((v.inspire && v.inspire.span) || 0) * 1000;
         st.rateOf = v.rate || 100;
         st.canSell = v.canSellToday || 0;
         st.ups = v.upgrades || {};
@@ -2754,6 +3014,8 @@
         st.marksAll = v.marksAll || 0;
         st.styleList = v.styles || [];
         st.secretList = v.secrets || [];
+        // Скарбниця роду (v11): null — ще не відкрилась; тексти — у каталозі магазину.
+        st.relicList = v.relics || null;
         st.wear = v.wear || '';
         st.stamps = v.stamps || 0;
         st.stampsFree = v.stampsFree || 0;

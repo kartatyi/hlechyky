@@ -157,7 +157,9 @@ public class ClickerTitlesTests
         Assert.True(r.Ok, r.Message);
         Assert.Contains("Подарунок округи", r.Message);
         // З десятого оновлення новини v10 несуть ще й свій подарунок (чотири години): хто пропустив звання, дістає обидва.
-        Assert.Equal(Math.Floor(perSecond * Clicker.GiftMinutes * 60) + Math.Floor(perSecond * Clicker.GiftV10Minutes * 60), Pots(h) - before);
+        // З одинадцятого — ще й подарунок «Толоки» (три години).
+        Assert.Equal(Math.Floor(perSecond * Clicker.GiftMinutes * 60) + Math.Floor(perSecond * Clicker.GiftV10Minutes * 60)
+            + Math.Floor(perSecond * Clicker.GiftV11Minutes * 60), Pots(h) - before);
         Assert.True(T(h).GetProperty("gift").GetBoolean());
 
         // Удруге нічого: новини вже бачив, подарунок уже забрав.

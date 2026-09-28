@@ -591,6 +591,7 @@
     s += cloud(60, 30, 1, 'c1') + cloud(230, 20, 0.8, 'c2');
     if (grey) s += cloud(150, 38, 1.2, 'c3') + cloud(310, 42, 1, 'c1');
     // Далекі пагорби: музей, школа, Цар-глек.
+    s += tolokaFar(e, e.fresh);           // v11: майдан Толоки за хатою й гончарі світу на обрії
     s += '<path d="M0 80C40 68 80 72 120 76S200 62 250 68 330 78 360 72V152H0z" style="fill:var(--clks-far)"/>';
     if (t.museum >= 1) {
       const lights = t.museum >= 50 ? '<g class="clks-lit" fill="#ffd27a"><rect x="-10" y="-9" width="2" height="5"/><rect x="-1" y="-9" width="2" height="5"/><rect x="8" y="-9" width="2" height="5"/></g>' : '';
@@ -614,6 +615,7 @@
     // Річка з чайкою.
     s += '<path d="M0 88C80 83 160 92 240 87S330 85 360 88V96C300 94 220 99 140 95S40 97 0 98z" style="fill:var(--clks-river)"/>'
       + '<path class="clks-ripple" d="M30 92h14M120 93h10M200 91h16M290 92h12" stroke="#cfe6f6" stroke-width=".8" opacity=".5"/>';
+    s += tolokaRiver(e, e.fresh);         // v11: пристань Толоки на тому березі
     if (t.chaika >= 1) {
       const boat = (cls, k) => '<g class="clks-boat ' + cls + '"><g transform="scale(' + k + ')"><path d="M-14 -2h28l-5 5h-18z" fill="#6b4423"/><path d="M0 -2v-17" stroke="#3a2a1a" stroke-width="1"/>'
         + '<path d="M1 -18c7 3 9 8 8 14H1z" fill="#f4efe3"/>' + (t.chaika >= 25 ? '<path d="M3 -14l3 3M6 -14l-3 3" stroke="#d7372b" stroke-width=".8"/>' : '') + '</g></g>';
@@ -662,6 +664,7 @@
     // Тин із глечиками, хвіртка, півень, пора року.
     s += fenceSvg(e);
     s += worldFront(e);                   // v10: заморські гості й прапорці фестивалю
+    s += '<g class="clks-tfxslot"></g>';  // v11: святковий ефект готового етапу (api.sceneToloka)
     // Погода: дощ чи сніг над світом (у морозну днину — сніжинки).
     if (e.weather === 'rain') s += '<g class="clks-rain" clip-path="url(#clks-bandclip)" stroke="#b8d4ea" stroke-width=".8" opacity=".6">' + streaks(40, 11) + '</g>';
     else if (e.weather === 'frost' || (e.season === 'winter' && e.weather === 'cloud')) s += '<g class="clks-snow" clip-path="url(#clks-bandclip)" fill="#fff" opacity=".85">' + flakes(34, 5) + '</g>';
@@ -745,8 +748,11 @@
       s += '<g transform="translate(20 99) scale(.34) translate(-16 -30)"><path d="' + JUG_32 + '" fill="#c56b35"/></g>'
         + '<g transform="translate(76 99) scale(.34) translate(-16 -30)"><path d="' + JUG_32 + '" fill="#2b2a2f"/></g>';
     }
-    // Хвіртка.
-    s += '<path d="M98 130V104h20v26" stroke="#6b4a2a" stroke-width="2" fill="none"/><path d="M100 110h16M100 118h16M100 110l16 8" stroke="#8a6a3e" stroke-width="1.4"/>';
+    // Хвіртка: штахети з гострими верхами на двох поперечках і клямка. Раніше були дві поперечки з косиною між ними —
+    // здалеку це читалось як літера «Z».
+    s += '<path d="M98 130V104h20v26" stroke="#6b4a2a" stroke-width="2" fill="none"/>'
+      + '<path d="M100.2 129V109.5l1.4-2.2 1.4 2.2V129zM104.2 129V109.5l1.4-2.2 1.4 2.2V129zM108.2 129V109.5l1.4-2.2 1.4 2.2V129zM112.2 129V109.5l1.4-2.2 1.4 2.2V129z" fill="#9a7446"/>'
+      + '<path d="M99.5 113h17M99.5 125h17" stroke="#6b4a2a" stroke-width="1.4"/><circle cx="114.2" cy="119" r=".9" fill="#2b2a2f"/>';
     if (e.decor.rooster) {
       s += '<g transform="translate(48 100)" class="clks-rooster"><path d="M-9 -2q-8-10-2-17 2 8 7 11z" fill="#2f5fa8"/><path d="M-10 -6q-6-6-1-12" stroke="#4c9a3f" stroke-width="1.4" fill="none"/>'
         + '<ellipse cx="0" cy="-5" rx="8" ry="5.4" fill="#6a3a1a"/><g class="clks-rhead"><circle cx="7" cy="-12" r="3.6" fill="#6a3a1a"/><path d="M5 -15.5l1.4-4 1.4 3.6 1.6-3.4 1 4z" fill="#d7372b"/>'
@@ -1692,6 +1698,394 @@
       + '<path d="M24.6 33.4a15 15 0 0 1 9-9.4" stroke="#ffffff" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".8"/></svg>';
   }
 
+  // ---------- одинадцяте оновлення «Толока»: майдан за хатою й гончарі світу (clicker-v11.md §6) ----------
+  //
+  // Майдан — далекий пагорб ліворуч за хатою, позаду пагорбів із музеєм, школою й Цар-глеком: усе наявне стоїть перед
+  // ним і нічого з того не затулено. Будови стають на гребінь (задній ряд, менші) і на схил (передній ряд), пристань —
+  // на тому березі Ворскли. Кожна будова — шари за етапами: готові етапи намальовано, той, що будується, — блідий
+  // контур у риштуванні. Гончарі світу — ще далі, на синьому обрії праворуч.
+  // Рух — лише CSS transform/opacity (крила вітряка, гойдалка, толочани, вимпели); малюнок будується разом із хатою,
+  // коли змінився підпис (готовий етап, нова будова, фестиваль), — жодної роботи щокадру.
+
+  /// Шість щаблів «Гончарі світу» — той самий порядок, що Clicker.MasterTiers на сервері.
+  const MASTERS = ['jingdezhen', 'iznik', 'delft', 'meissen', 'sevres', 'raku'];
+
+  /// Висота гребеня майдану над x: майже рівний верх від лівого краю до x ≈ 160, далі схил до пагорбів біля Цар-глека.
+  const hillY = (x) => 42 + 4 * ((x - 80) / 100) ** 2 + 26 * smooth(160, 250, x);
+  const HILL = (() => {
+    let d = 'M-6 ' + f1(hillY(-6));
+    for (let x = 0; x <= 258; x += 6) d += 'L' + x + ' ' + f1(hillY(x));
+    return d + 'V110H-6z';
+  })();
+
+  /// Де стоїть будова: x, основа y, масштаб (задній ряд — .8: далі й менше). Пристань — на річці.
+  const TSLOT = {
+    hall: { x: 11, y: 45.5, s: 0.8 }, mill: { x: 34, y: 43.8, s: 0.8 }, school: { x: 58, y: 42.6, s: 0.8 },
+    well: { x: 82, y: 42.4, s: 0.8 }, square: { x: 106, y: 42.8, s: 0.8 }, forge: { x: 130, y: 43.6, s: 0.8 },
+    museum: { x: 154, y: 45, s: 0.8 }, bigkiln: { x: 178, y: 48.6, s: 0.8 },
+    institute: { x: 70, y: 71, s: 0.85 }, festival: { x: 141, y: 71, s: 0.85 }, bigjug: { x: 226, y: 70, s: 1 },
+    pier: { x: 18, y: 89.4, s: 1 },
+  };
+
+  /// Вимпели — кожен одного кольору (правило v10: жодних смугастих чи «державних» прапорців).
+  const PENNANT = ['#d7372b', '#f2c230', '#2f5fa8', '#4c9a3f', '#7a4aa8', '#e07a2a', '#2aa8a0', '#c9577a'];
+  /// Колір вимпела друга — сталий для ніку, щоб той самий друг щоразу мав свій.
+  const pennantOf = (nick) => {
+    let h = 7;
+    for (const ch of String(nick)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    return PENNANT[h % PENNANT.length];
+  };
+
+  const WHITE = '#efe6d2';
+  /// Будови: w×h — рамка для риштування (у своїх одиницях, основа в (0,0)); layers — по шару на етап, у порядку етапів
+  /// сервера (ClickerToloka.Buildings): готовий етап додає свій шар — так будова «виростає».
+  const TB = {
+    // Криниця з журавлем: яма, дубовий зруб, журавель із відром.
+    well: { w: 26, h: 27, layers: [
+      '<ellipse cy="-.6" rx="7" ry="2" fill="#2a1f18"/><path d="M-13 0q2.4-4.4 5.4-.4zM8 0q2.2-3.4 4.8 0z" fill="#8a6a44"/>',
+      '<path d="M-6.4 0v-7h12.8v7z" fill="#8a5a30"/><path d="M-6.4-2.4h12.8M-6.4-4.8h12.8" stroke="#5a3a1e" stroke-width=".7"/><path d="M-7.4-7.6h14.8v1.6h-14.8z" fill="#6b4423"/>',
+      '<path d="M10 0v-15" stroke="#6b4423" stroke-width="1.8"/><path d="M8.6-15.6l1.4 1.8 1.4-1.8" stroke="#6b4423" stroke-width=".9" fill="none"/>'
+        + '<path d="M-3-26L19-7" stroke="#7a5a3a" stroke-width="1.2" stroke-linecap="round"/><path d="M16.2-10.6l4 3.4-1.6 1.8-4-3.4z" fill="#5a4030"/>'
+        + '<path d="M-3-26v14" stroke="#8a6a44" stroke-width=".6"/><path d="M-5.2-12h4.4l-.6 3.2h-3.2z" fill="#8c9299" stroke="#4d5258" stroke-width=".4"/>',
+    ] },
+    // Вітряк (козловий): кам'яний підмурок, хатка на стовпі з крилами, жорна й мішки.
+    mill: { w: 30, h: 36, layers: [
+      '<path d="M-8 0q1-3 3-3h10q2 0 3 3z" fill="#9a9488"/><path d="M-6-1.6h3M0-2h3M4-1.4h2" stroke="#6e685e" stroke-width=".5"/><path d="M0-3v-6" stroke="#6b4423" stroke-width="2"/>',
+      '<path d="M6-10L15 0" stroke="#6b4423" stroke-width="1"/><path d="M-6-8v-12h12v12z" fill="#8a6a44"/><path d="M-6-14h12" stroke="#6b4a2a" stroke-width=".5"/>'
+        + '<path d="M-7.4-19.6L0-26l7.4 6.4z" fill="#6b4a2a"/><path d="M-2-8v4" stroke="#6b4423" stroke-width=".8"/>'
+        + '<g transform="translate(0 -17)"><g class="clks-tsail">'
+        + [20, 110, 200, 290].map((a) => '<g transform="rotate(' + a + ')"><path d="M0 0v-15" stroke="#6b4423" stroke-width=".8"/>'
+          + '<path d="M.4-4h3.6v-11H.4z" fill="#efe6d2" stroke="#8a6a44" stroke-width=".4"/><path d="M.4-7.6h3.6M.4-11.2h3.6" stroke="#8a6a44" stroke-width=".3"/></g>').join('')
+        + '<circle r="1.3" fill="#4a3020"/></g></g>',
+      '<circle cx="-11" cy="-3" r="3" fill="#b9b1a3" stroke="#6e685e" stroke-width=".5"/><circle cx="-11" cy="-3" r=".8" fill="#6e685e"/>'
+        + '<path d="M8.6 0v-3.6q1.6-1.4 3.2 0V0zM12.2 0v-3q1.4-1.2 2.8 0V0z" fill="#e6d9b8" stroke="#b8a888" stroke-width=".3"/>',
+    ] },
+    // Кузня з димком: горн і міх у кам'яниці, ковадло, вивіска з підковою.
+    forge: { w: 30, h: 26, layers: [
+      '<path d="M-10 0v-10h20V0z" fill="#9a8f80"/><path d="M-10-5h20" stroke="#7a7064" stroke-width=".4"/><path d="M-11.6-10L0-17l11.6 7z" fill="#5a4a3e"/>'
+        + '<rect x="4.6" y="-20.4" width="3.6" height="7" fill="#6b5a4a"/><path d="M-4 0v-6.4a3 3 0 0 1 6 0V0z" fill="#2a1508"/>'
+        + '<path d="M-3.2 0v-4.4a2.2 2.2 0 0 1 4.4 0V0z" fill="#ff8a3d" opacity=".85"/>' + '<g transform="translate(6.4 -21) scale(.55)"><g class="clks-puff frg"><circle r="4"/><circle r="4"/></g></g>',
+      '<path d="M12 0l1-1.4h1.6V-3h-3.4l-1-1.6h8.4l-.6 1.6h-1.8v1.6h1.6L19 0z" fill="#3a3a40"/>',
+      '<path d="M-10-8h-5.4" stroke="#3a2a1a" stroke-width=".8"/><path d="M-14-8v1.6" stroke="#3a2a1a" stroke-width=".5"/>'
+        + '<path d="M-16.2-6.2c0 3 1.1 4.6 2.2 4.6s2.2-1.6 2.2-4.6" stroke="#9aa3ad" stroke-width="1.3" fill="none"/>',
+    ] },
+    // Ярмарковий майдан: бруківка, намети й ятки, гойдалка для дітей.
+    square: { w: 32, h: 22, layers: [
+      '<ellipse cy="-1" rx="15" ry="2.6" fill="#b9ad94"/><g fill="#9a8e76"><circle cx="-9" cy="-1.4" r=".7"/><circle cx="-3" cy="-.6" r=".7"/><circle cx="3" cy="-1.6" r=".7"/><circle cx="9" cy="-.8" r=".7"/></g>',
+      '<g transform="translate(1 -1)"><path d="M0-12l7 11H-7z" fill="#d7372b"/><path d="M0-12l2.4 11h-4.8z" fill="#f4efe3"/><path d="M0-12v-3" stroke="#6b4423" stroke-width=".6"/><path d="M0-15l3.6 1-3.6 1z" fill="#f2c230"/></g>'
+        + '<g transform="translate(11 -1) scale(.8)"><path d="M0-12l7 11H-7z" fill="#2f5fa8"/><path d="M0-12l2.4 11h-4.8z" fill="#f2c230"/></g>',
+      '<path d="M-16.4 0l1.4-9M-15.6-9h7.2M-7.2 0l-1.4-9" stroke="#6b4423" stroke-width=".8" fill="none"/>'
+        + '<g transform="translate(-12 -9) rotate(12)"><path d="M-1.6 0v6M1.6 0v6" stroke="#8a6a44" stroke-width=".4"/><path d="M-2.4 6h4.8" stroke="#6b4423" stroke-width="1.1"/></g>',
+    ] },
+    // Гончарна школа: стіни з лампача, класи з колами, дзвоник.
+    school: { w: 30, h: 22, layers: [
+      '<path d="M-11 0v-9h22v9z" fill="#e9dcc0"/><path d="M-11-4.5h22" stroke="#d4c5a4" stroke-width=".4"/>',
+      '<path d="M-12.6-8.6L0-16l12.6 7.4z" fill="#a8844a"/><g fill="#4a6a8a"><rect x="-8.6" y="-7" width="3.4" height="3.4"/><rect x="4.8" y="-7" width="3.4" height="3.4"/></g>'
+        + '<g class="clks-lit" fill="#ffd27a"><rect x="-8.6" y="-7" width="3.4" height="3.4"/><rect x="4.8" y="-7" width="3.4" height="3.4"/></g>'
+        + '<rect x="-1.6" y="-5" width="3.2" height="5" fill="#6b4423"/><circle cy="-11" r="1.7" fill="none" stroke="#6b4423" stroke-width=".6"/><path d="M0-12.7v3.4M-1.7-11h3.4" stroke="#6b4423" stroke-width=".35"/>',
+      '<path d="M13 0v-12M18 0v-12M12.4-12h6.2" stroke="#6b4423" stroke-width=".8" fill="none"/><path d="M15.5-12v1" stroke="#555" stroke-width=".4"/>'
+        + '<path d="M13.9-8c0-2 .7-3 1.6-3s1.6 1 1.6 3z" fill="#d9a92f"/>',
+    ] },
+    // Пристань на Ворсклі (основа — рівень води): палі, поміст, човни, ліхтар.
+    pier: { w: 38, h: 20, layers: [
+      '<path d="M-14 3v-5M-6 3v-5M2 3v-5M10 3v-5" stroke="#5a4028" stroke-width="1.3"/>',
+      '<path d="M-17-2h30v1.8h-30z" fill="#8a6a44"/><path d="M-17-2h30" stroke="#b08a5a" stroke-width=".5"/>',
+      '<path d="M-2 2.4h14l-2.2 2.6h-9.6z" fill="#6b4423"/><path d="M4.6 2.4v-12" stroke="#3a2a1a" stroke-width=".6"/><path d="M5.1-9.2q5 4 4.6 11H5.1z" fill="#f4efe3"/>'
+        + '<path d="M-15 3.6h8l-1.2 1.6h-5.6z" fill="#7a4a26"/>',
+      '<path d="M-15-2v-11" stroke="#3a3a40" stroke-width=".8"/><rect x="-16.4" y="-15.4" width="2.8" height="2.6" fill="#ffe7a0" stroke="#3a3a40" stroke-width=".4"/>'
+        + '<path d="M-16.8-15.4h3.6L-15-17z" fill="#3a3a40"/><circle cx="-15" cy="-14" r="3.6" fill="#ffd27a" fill-opacity=".45" class="clks-lit"/>',
+    ] },
+    // Горн-велетень: фундамент, склепіння з цегли, труба до неба, перший вогонь.
+    bigkiln: { w: 28, h: 38, layers: [
+      '<path d="M-13 0v-3.4h26V0z" fill="#8a8274"/><path d="M-13-1.7h26M-6-3.4v1.7M4-1.7V0" stroke="#6e685e" stroke-width=".4"/>',
+      '<path d="M-11-3.4v-6a11 11 0 0 1 22 0v6z" fill="#a8583a"/><path d="M-11-6.4h22M-10.2-10.4h20.4M-7.6-13.8h15.2" stroke="#7a3a22" stroke-width=".45"/>'
+        + '<path d="M-4.4-3.4v-4a4.4 4.4 0 0 1 8.8 0v4z" fill="#2a1508"/>',
+      '<path d="M4-16.6h5v-18H4z" fill="#8b3a22"/><path d="M3.4-35.2h6.2v1.6H3.4z" fill="#6b2a18"/><path d="M4-21h5M4-25h5M4-29h5" stroke="#6b2a18" stroke-width=".4"/>',
+      '<path d="M-3.2-3.4c0-3 1.4-4 1.4-6 1.4 1 2.4 1.4 2-.8 2 1.6 3.2 3.6 3.2 6.8z" fill="#ff8a3d"/><circle cy="-6" r="7" fill="#ffb04a" opacity=".32" class="clks-lit"/>'
+        + '<g fill="#d8d4ce" opacity=".55"><circle cx="7.4" cy="-38.6" r="2.2"/><circle cx="9.6" cy="-42.4" r="2.8"/></g>',
+    ] },
+    // Музей гончарства: стіни, вітрини, зала під черепицею, відкриття — глек на постаменті й стрічка.
+    museum: { w: 34, h: 24, layers: [
+      '<path d="M-12 0v-11h24V0z" fill="' + WHITE + '"/><path d="M-12-5.6h24" stroke="#d9ccb0" stroke-width=".4"/>',
+      '<g fill="#5b7fa8"><path d="M-9.4-2.4v-4.4a1.6 1.6 0 0 1 3.2 0v4.4zM6.2-2.4v-4.4a1.6 1.6 0 0 1 3.2 0v4.4z"/></g>'
+        + '<g class="clks-lit" fill="#ffd27a"><path d="M-9.4-2.4v-4.4a1.6 1.6 0 0 1 3.2 0v4.4zM6.2-2.4v-4.4a1.6 1.6 0 0 1 3.2 0v4.4z"/></g>'
+        + '<path d="M-2.2 0v-5a2.2 2.2 0 0 1 4.4 0V0z" fill="#6b4423"/>',
+      '<path d="M-13.6-10.6L0-18l13.6 7.4z" fill="#b4573a"/><path d="M-13.6-10.6h27.2" stroke="#8a3a22" stroke-width=".8"/>'
+        + '<g transform="translate(0 -11.4) scale(.17) translate(-16 -29)"><path d="' + JUG_32 + '" fill="#f4efe3"/></g>',
+      '<rect x="-18" y="-2.6" width="4.6" height="2.6" fill="#cfc4ae"/><g transform="translate(-15.7 -2.6) scale(.3) translate(-16 -29)"><path d="' + JUG_32 + '" fill="#c56b35"/></g>'
+        + '<path d="M-3-3.6h6" stroke="#c62f25" stroke-width=".8"/>',
+    ] },
+    // Інститут керамології: лабораторія, бібліотека черепків, піч для дослідів, вчена рада під банею.
+    institute: { w: 32, h: 30, layers: [
+      '<path d="M-13 0v-9h26V0z" fill="#e3d9c6"/><g fill="#5b7fa8"><rect x="-10.6" y="-7" width="3" height="4"/><rect x="-5.4" y="-7" width="3" height="4"/><rect x="2.4" y="-7" width="3" height="4"/><rect x="7.6" y="-7" width="3" height="4"/></g>'
+        + '<rect x="-1.4" y="-5" width="2.8" height="5" fill="#6b4423"/>',
+      '<path d="M-13-9v-8h26v8z" fill="#d8ccb4"/><path d="M-13.8-9h27.6" stroke="#b8a888" stroke-width=".8"/><path d="M-13.8-17h27.6v1H-13.8z" fill="#9a8a6e"/>'
+        + '<g fill="#5b7fa8"><rect x="-10.6" y="-15" width="3" height="4"/><rect x="-5.4" y="-15" width="3" height="4"/><rect x="2.4" y="-15" width="3" height="4"/><rect x="7.6" y="-15" width="3" height="4"/></g>'
+        + '<g class="clks-lit" fill="#ffd27a"><rect x="-5.4" y="-15" width="3" height="4"/><rect x="7.6" y="-15" width="3" height="4"/><rect x="-10.6" y="-7" width="3" height="4"/></g>',
+      '<rect x="8.6" y="-22" width="3" height="5" fill="#8b3a22"/><path d="M8.2-22.6h3.8" stroke="#6b2a18" stroke-width=".8"/>',
+      '<path d="M-5-17a5 5 0 0 1 10 0z" fill="#4f9a73"/><path d="M0-22v-3.4" stroke="#6b5a3a" stroke-width=".6"/><circle cy="-25.8" r="1" fill="#f2c230"/>',
+    ] },
+    // Виставкова зала: світлі зали, постаменти з вазами у вікнах, дах, вернісаж.
+    hall: { w: 32, h: 22, layers: [
+      '<path d="M-13 0v-10h26V0z" fill="#f1ebdd"/><path d="M-13-.8h26" stroke="#cfc4ae" stroke-width="1.2"/>',
+      [-8, 0, 8].map((x) => '<path d="M' + (x - 2.4) + '-1.6v-5a2.4 2.4 0 0 1 4.8 0v5z" fill="#5b7fa8"/><path d="M' + (x - 2.4) + '-1.6v-5a2.4 2.4 0 0 1 4.8 0v5z" fill="#ffd27a" class="clks-lit"/>'
+        + '<g transform="translate(' + x + ' -1.8) scale(.12) translate(-16 -29)"><path d="' + JUG_32 + '" fill="#2b2a2f"/></g>').join(''),
+      '<path d="M-14-10h28l-2-2.6h-24z" fill="#8a7a64"/><path d="M-6.4-12.6L0-17l6.4 4.4z" fill="#8a7a64"/>',
+      '<rect x="-2.6" y="-16" width="5.2" height="2.6" fill="#c62f25"/><path d="M-13 0h26" stroke="#c62f25" stroke-width=".6"/>'
+        + '<g class="clks-lit" fill="#ffe08a"><circle cx="-12" cy="-10.6" r=".8"/><circle cx="12" cy="-10.6" r=".8"/><circle cy="-17.2" r=".8"/></g>',
+    ] },
+    // Фестивальна сцена: поміст, ряди майстрів з ятками, арка із завісами, ліхтарики на ніч.
+    festival: { w: 50, h: 28, layers: [
+      '<path d="M-15 0v-5h30V0z" fill="#8a5a30"/><path d="M-15-5h30" stroke="#b08a5a" stroke-width=".6"/><path d="M-12 0v-5M-4 0v-5M4 0v-5M12 0v-5" stroke="#6b4423" stroke-width=".5"/>',
+      '<path d="M-25 0v-6h7v6M18 0v-6h7v6" stroke="#6b4423" stroke-width=".7" fill="#c9a06a"/><path d="M-26-6h9l-1.4-3h-6.2zM17-6h9l-1.4-3h-6.2z" fill="#b3261e"/>'
+        + '<g transform="translate(-21.5 -6) scale(.14) translate(-16 -29)"><path d="' + JUG_32 + '" fill="#c56b35"/></g><g transform="translate(21.5 -6) scale(.14) translate(-16 -29)"><path d="' + JUG_32 + '" fill="#2b2a2f"/></g>',
+      '<path d="M-14-5v-16M14-5v-16" stroke="#6b4423" stroke-width="1.4"/><path d="M-14-21q14-7 28 0" stroke="#6b4423" stroke-width="1.4" fill="none"/>'
+        + '<path d="M-13.3-20.4q5-2 5.6 0-1 8 0 15.4h-5.6zM13.3-20.4q-5-2-5.6 0 1 8 0 15.4h5.6z" fill="#b3261e"/>'
+        + '<g transform="translate(0 -23.4) scale(.2) translate(-16 -29)"><path d="' + JUG_32 + '" fill="#f2c14e"/></g>',
+      '<path d="M-14-17q14 5 28 0" stroke="#6b4a2a" stroke-width=".4" fill="none"/><g fill="#ffd27a"><circle cx="-8" cy="-15.6" r=".9"/><circle cy="-14.6" r=".9"/><circle cx="8" cy="-15.6" r=".9"/></g>'
+        + '<g class="clks-lit" fill="#ffc766" fill-opacity=".4"><circle cx="-8" cy="-15.6" r="2.6"/><circle cy="-14.6" r="2.6"/><circle cx="8" cy="-15.6" r="2.6"/></g>',
+    ] },
+    // Глек на майдані — найбільший глек округи: каркас, глина на глину, розпис на весь бік, готовий на постаменті.
+    bigjug: { w: 46, h: 66, layers: [
+      '<g transform="translate(0 -3.4) scale(2.75) translate(-16 -29)"><path d="' + JUG_32 + '" fill="none" stroke="#8a6a44" stroke-width=".5"/>'
+        + '<path d="M9 18h14M9.4 23h13.2M11 13h10M16 8v22" stroke="#8a6a44" stroke-width=".35"/></g>',
+      '<g transform="translate(0 -3.4) scale(2.75) translate(-16 -29)"><path d="' + JUG_32 + '" fill="#c56b35" stroke="#7a3f18" stroke-width=".4"/></g>',
+      '<g transform="translate(0 -3.4) scale(2.75) translate(-16 -29)"><path d="M8.7 17.6h14.6" stroke="#f4efe3" stroke-width="1.1"/><path d="M8.9 24h14.2" stroke="#2b2a2f" stroke-width=".9"/>'
+        + '<path d="M16 22.6c-2-1.4-2.8-2.6-2-3.4.7-.7 1.6-.4 2 .3.4-.7 1.3-1 2-.3.8.8 0 2-2 3.4z" fill="#f4efe3"/>'
+        + '<path d="M11.4 21.4q1.4-1.6 2.4 0M18.2 21.4q1.4-1.6 2.4 0" stroke="#3f7d3a" stroke-width=".5" fill="none"/></g>',
+      '<path d="M-12-3.4h24V0h-24z" fill="#cfc4ae"/><path d="M-12-3.4h24" stroke="#a89c84" stroke-width=".5"/>'
+        + '<path d="M-9-38c-2.6 6-2.6 15 0 22" stroke="#fff6cf" stroke-width="2" fill="none" stroke-linecap="round" opacity=".55"/>',
+    ] },
+  };
+
+  /// Гончарі світу на обрії (основа в (0,0), ~16×20): кожен — своя впізнавана річ.
+  const MASTER_ART = {
+    // Цзиндечжень — синя пагода-піч із вогнем у челюстях.
+    jingdezhen: '<path d="M-5 0v-5h10V0z" fill="#f4f6fb"/><path d="M-8-5h16l-2.4-2.2h-11.2z" fill="#2446a8"/><path d="M-4-7.2v-4h8v4z" fill="#f4f6fb"/>'
+      + '<path d="M-6.4-11.2h12.8l-2-2h-8.8z" fill="#2446a8"/><path d="M-2.8-13.2v-3h5.6v3z" fill="#f4f6fb"/><path d="M-4.6-16.2h9.2L0-20.4z" fill="#2446a8"/>'
+      + '<path d="M-1.4 0v-3a1.4 1.4 0 0 1 2.8 0V0z" fill="#ff8a3d"/><path d="M-2.4-9.2h4.8" stroke="#2446a8" stroke-width=".5"/>',
+    // Ізнік — кахляна арка з червоним тюльпаном.
+    iznik: '<path d="M-7 0v-11a7 7 0 0 1 14 0V0z" fill="#2aa0a0"/><path d="M-4.6 0v-10a4.6 4.6 0 0 1 9.2 0V0z" fill="#f7f8fc"/>'
+      + '<g fill="#1f6f9a"><circle cx="-5.8" cy="-4" r=".7"/><circle cx="5.8" cy="-4" r=".7"/><circle cx="-5.8" cy="-8.6" r=".7"/><circle cx="5.8" cy="-8.6" r=".7"/><circle cy="-16.6" r=".7"/></g>'
+      + '<path d="M0-.6v-6M0-3q-2.4-.6-3 1.4M0-3.6q2.4-.6 3 1.4" stroke="#3f8a3a" stroke-width=".6" fill="none"/>'
+      + '<path d="M-2-7q0-3 2-4 2 1 2 4-2 1.4-4 0z" fill="#d7372b"/><path d="M0-11v3.4" stroke="#a82a20" stroke-width=".4"/>',
+    // Делфт — високий синій вітряк-вежа з білими крилами хрестом (наш — дерев'яна хатка на стовпі).
+    delft: '<path d="M-4 0l1.4-13h5.2L4 0z" fill="#2b4f9e"/><path d="M-3.6-4h7.2M-3.2-8.4h6.4" stroke="#f4f6fb" stroke-width=".4"/>'
+      + '<path d="M-5.4-6.4h10.8" stroke="#1d3a6a" stroke-width=".8"/><path d="M-3-13.2q3-3.2 6 0z" fill="#1d3a6a"/><rect x="-.8" y="-3" width="1.6" height="3" fill="#f4f6fb"/>'
+      + '<g transform="translate(0 -13.6)">'
+      + [45, 135, 225, 315].map((a) => '<g transform="rotate(' + a + ')"><path d="M0 0v-11" stroke="#1d3a6a" stroke-width=".6"/><path d="M.3-3h2.8v-8H.3z" fill="#f4f6fb" stroke="#2b4f9e" stroke-width=".35"/></g>').join('')
+      + '<circle r=".9" fill="#1d3a6a"/></g>',
+    // Майсен — вивіска з синіми схрещеними мечами на білій порцеляні.
+    meissen: '<path d="M-6 0v-18M-6.4-17.2h11" stroke="#5a4030" stroke-width="1" fill="none"/><path d="M-2.4-17v1.6M3-17v1.6" stroke="#5a4030" stroke-width=".4"/>'
+      + '<rect x="-3.6" y="-15.4" width="8" height="7.4" rx=".9" fill="#f7f8fc" stroke="#98a4be" stroke-width=".45"/>'
+      + '<path d="M-2.2-9.4l5.2-4.6M3-9.4L-2.2-14" stroke="#2446a8" stroke-width=".8" stroke-linecap="round"/><path d="M-1.6-11.2l1 1M2.4-11.2l-1 1" stroke="#2446a8" stroke-width=".7"/>',
+    // Севр — королівська синя ваза із золотом на постаменті.
+    sevres: '<rect x="-3.4" y="-2" width="6.8" height="2" fill="#cfc4ae"/>'
+      + '<path d="M-1.6-2l-.6-1.4q-3.2-2-3.2-6.6 0-3.4 2.8-5.2l-.4-1.6h6l-.4 1.6q2.8 1.8 2.8 5.2 0 4.6-3.2 6.6L1.6-2z" fill="#1f3f9a" stroke="#d9b24a" stroke-width=".5"/>'
+      + '<path d="M-5.2-10h10.4" stroke="#d9b24a" stroke-width=".7"/><ellipse cy="-7.2" rx="2.2" ry="1.6" fill="#f7f8fc" stroke="#d9b24a" stroke-width=".35"/>'
+      + '<path d="M-4.4-14.4q-2.4.6-1.8 3M4.4-14.4q2.4.6 1.8 3" stroke="#d9b24a" stroke-width=".6" fill="none"/>',
+    // Раку — чайний будиночок під вигнутим дахом і чорна чаша біля порога, що ще жаріє.
+    raku: '<path d="M-7 0v-7h14V0z" fill="#d9ccb0"/><path d="M-3.4 0v-5.4h6.8V0z" fill="#efe6d2" stroke="#8a7a60" stroke-width=".35"/><path d="M0 0v-5.4M-3.4-2.7h6.8" stroke="#8a7a60" stroke-width=".3"/>'
+      + '<path d="M-10.4-6.4Q-5-7.4 0-12.4 5-7.4 10.4-6.4q-2 1-10.4.4-8.4.6-10.4-.4z" fill="#3a3530"/><path d="M0-12.4v-1.8" stroke="#3a3530" stroke-width=".8"/>'
+      + '<path d="M6.4-1.8h4.4q-.3 1.8-2.2 1.8t-2.2-1.8z" fill="#2a2420"/><circle cx="8.6" cy="-1" r="1.6" fill="#ff8a3d" fill-opacity=".5" class="clks-lit"/>',
+  };
+  for (const k of MASTERS) EMBLEM[k] = '<g transform="translate(16 29.4) scale(1.3)">' + MASTER_ART[k] + '</g>';
+
+  /// Що з Толоки видно на сцені — для підпису хати: готові будови, поточна, скільки її етапів готово, чи будується,
+  /// вимпели друзів і чи гуляє фестиваль. null — Толоки ще нема (хата як була, до пікселя).
+  function tolokaEnv(st, v) {
+    const t = v && v.toloka;
+    if (!t || typeof t !== 'object') return null;
+    const built = (Array.isArray(t.built) ? t.built : []).filter((k) => TB[k]);
+    const sg = t.stage && typeof t.stage === 'object' ? t.stage : null;
+    const cur = sg && TB[sg.building] && !built.includes(sg.building) ? sg.building : '';
+    const k = cur ? clamp(sg.index | 0, 0, TB[cur].layers.length - 1) : 0;
+    const laid = !!(cur && sg.laidAt);
+    // Друзі підносять вироби ще до закладин (сервер зараховує їх лише незакладеному етапу) — вимпел ставимо одразу.
+    const help = cur && Array.isArray(sg.helpers) ? sg.helpers.slice(0, 4).map(pennantOf) : [];
+    let fest = false;
+    if (built.includes('festival') && t.festival && t.festival.until) {
+      const until = Date.parse(t.festival.until);
+      const now = st && st.api && st.viewNow ? st.api.serverNow(st) : Date.now();
+      fest = Number.isFinite(until) && now < until;
+    }
+    return { built, cur, k, laid, help, fest };
+  }
+
+  /// Який шар щойно став готовим (порівняно з минулим малюнком цієї картки): той самий етап +1 — його шар, нова
+  /// будова — її останній. Перший малюнок нічого не «вирощує».
+  function tolokaFresh(scn, t) {
+    const prev = scn.tolPrev;
+    scn.tolPrev = t ? { cur: t.cur, k: t.k, built: t.built.slice() } : null;
+    if (!t || !prev) return null;
+    if (t.cur && t.cur === prev.cur && t.k > prev.k) return { key: t.cur, layer: t.k - 1 };
+    const nb = t.built.find((b) => !prev.built.includes(b));
+    return nb ? { key: nb, layer: TB[nb].layers.length - 1 } : null;
+  }
+
+  /// Риштування навколо рамки w×h (основа в (0,0)): стояки, дошки, розкоси; зверху — по вимпелу за кожного друга.
+  function scaffold(w, h, flags) {
+    const x0 = -w / 2 - 1.6, x1 = w / 2 + 1.6, top = -h - 2;
+    let d = 'M' + f1(x0) + ' 0V' + f1(top) + 'M' + f1(x1) + ' 0V' + f1(top);
+    for (let y = -6; y > top; y -= 7) d += 'M' + f1(x0 - 1) + ' ' + y + 'H' + f1(x1 + 1);
+    let br = '';
+    for (let y = 0; y - 7 > top; y -= 14) br += 'M' + f1(x0) + ' ' + y + 'L' + f1(x0 + 5) + ' ' + (y - 7) + 'M' + f1(x1) + ' ' + y + 'L' + f1(x1 - 5) + ' ' + (y - 7);
+    let s = '<g class="clks-tscaf"><path d="' + d + '" stroke="#c9a06a" stroke-width=".9" fill="none"/><path d="' + br + '" stroke="#a8844a" stroke-width=".5" fill="none"/>';
+    return s + pennants([x0, x1, x0 + (x1 - x0) / 3, x0 + (2 * (x1 - x0)) / 3], top, flags) + '</g>';
+  }
+
+  /// Вимпели друзів на жердинках: xs — де, top — звідки ростуть жердинки, colors — по кольору на друга.
+  function pennants(xs, top, colors) {
+    let s = '';
+    colors.forEach((c, i) => {
+      const x = f1(xs[i]);
+      s += '<path d="M' + x + ' ' + f1(top) + 'v-5" stroke="#6b4423" stroke-width=".5"/><path d="M' + x + ' ' + f1(top - 5) + 'l4.4 1.4-4.4 1.4z" fill="' + c + '"/>';
+    });
+    return s;
+  }
+
+  /// Толочанин (ноги в (0,0), зріст ~10): щось несе — цеглу, глечик, дошку чи відро.
+  const TOL_SHIRT = ['#f4efe3', '#e9dcc0', '#f1e7d4', '#e8d9b5'];
+  const TOL_LOAD = [
+    '<rect x="1.6" y="-9.4" width="4" height="1.6" fill="#a8583a"/>',
+    '<g transform="translate(3.6 -5) scale(.16) translate(-16 -29)"><path d="' + JUG_32 + '" fill="#c56b35"/></g>',
+    '<path d="M-5-9.6l10 1.2" stroke="#b08a5a" stroke-width="1"/>',
+    '<path d="M2.4-6h3l-.4 2.4h-2.2z" fill="#8c9299"/>',
+  ];
+  function tolochanyn(i) {
+    return '<g><path d="M-1 0v-3.6M1 0v-3.6" stroke="#3b3d52" stroke-width="1.1"/>'
+      + '<path d="M-2.2-3.4h4.4l-.5-4.4h-3.4z" fill="' + TOL_SHIRT[i % 4] + '"/><path d="M-2.2-3.9h4.4" stroke="#c62f25" stroke-width=".6"/>'
+      + '<circle cy="-9.2" r="1.5" fill="#e2b68c"/>' + (i % 2 ? '<path d="M-2-9.8h4" stroke="#d9b45a" stroke-width=".9"/>' : '<path d="M-1.5-9.6q1.5-2.2 3 0" fill="#5a3a1e"/>')
+      + TOL_LOAD[i % 4] + '</g>';
+  }
+  /// Двоє-четверо толочан ходять туди-сюди біля будови. Кожен стоїть у своїй точці — без руху (reduced motion) не злипаються.
+  function tolochany(w, n) {
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      const x = f1(-w / 2 + (w * (i + 0.5)) / n);
+      const go = f1(Math.max(4, w / (n * 2)));
+      s += '<g transform="translate(' + x + ' 0)"><g class="clks-tman" style="--tw:' + go + 'px;--td:' + (7 + i * 1.7).toFixed(1) + 's;--tdl:-' + (i * 2.3).toFixed(1) + 's">' + tolochanyn(i) + '</g></g>';
+    }
+    return s;
+  }
+
+  /// Кілки з мотузкою — ділянка під будову, до якої ще не взялись.
+  const stakes = (w, rope) => {
+    const a = f1(-w / 2), b = f1(w / 2);
+    return '<path d="M' + a + ' 0v-4M' + b + ' 0v-4' + (rope ? 'M' + f1(-w / 4) + ' -.6v-3.4M' + f1(w / 4) + ' -.6v-3.4' : '') + '" stroke="#8a6a44" stroke-width=".8"/>'
+      + (rope ? '<path d="M' + a + ' -3.4Q0 -2.2 ' + b + ' -3.4" stroke="#e6d9b8" stroke-width=".4" fill="none"/>' : '');
+  };
+
+  /// Одна будова в своєму гнізді: готові шари, шар, що будується (блідий), риштування й толочани, або кілки.
+  /// fresh — шар, який щойно став готовим: він виростає (раз, CSS).
+  function tolokaBuilding(key, t, fresh) {
+    const b = TB[key], p = TSLOT[key];
+    const done = t.built.includes(key);
+    const isCur = t.cur === key;
+    let inner = '';
+    if (done || isCur) {
+      const n = done ? b.layers.length : t.k;
+      for (let i = 0; i < n; i++) {
+        const isNew = fresh && fresh.key === key && fresh.layer === i;
+        inner += isNew ? '<g class="clks-tnew">' + b.layers[i] + '</g>' : b.layers[i];
+      }
+      if (isCur && t.laid) {
+        inner += '<g class="clks-tghost">' + b.layers[t.k] + '</g>' + scaffold(b.w, b.h, t.help)
+          + tolochany(b.w, 2 + Math.min(2, t.help.length));
+      } else if (isCur) {
+        if (t.k === 0) inner += stakes(b.w * 0.7, true);
+        // Друзі вже піднесли вироби на етап, який ще не заклали: їхні вимпели — на кілках ділянки.
+        if (t.help.length) inner += pennants([-b.w * 0.35, b.w * 0.35, -b.w * 0.12, b.w * 0.12], -3.4, t.help);
+      }
+    } else inner = stakes(b.w * 0.5, false);
+    return '<g class="clks-tslot" data-tb="' + key + '" transform="translate(' + p.x + ' ' + p.y + ')' + (p.s !== 1 ? ' scale(' + p.s + ')' : '') + '">' + inner + '</g>';
+  }
+
+  /// Фестиваль (поки гуляє): вимпели над майданом, троє музик на помості, уночі — феєрверк над сценою.
+  function festivalSvg() {
+    const p = TSLOT.festival;
+    // Вимпели на двох жердинах над сценою — нижче гребеня, щоб не перекреслювати будов.
+    let s = '<g class="clks-tfest"><path d="M92 73V51M190 73V51" stroke="#6b4423" stroke-width=".9"/>' + garland(92, 51, 141, 66, 190, 51, 16, PENNANT, 1);
+    const man = (x, inst, i) => '<g transform="translate(' + x + ' ' + f1(p.y - 5 * p.s) + ') scale(' + p.s + ')"><g class="clks-tmus' + (i ? ' m' + i : '') + '">'
+      + '<path d="M-1 0v-3.6M1 0v-3.6" stroke="#3b3d52" stroke-width="1.1"/><path d="M-2.2-3.4h4.4l-.5-4.4h-3.4z" fill="#f4efe3"/>'
+      + '<path d="M-2.2-3.9h4.4" stroke="#c62f25" stroke-width=".6"/><circle cy="-9.2" r="1.5" fill="#e2b68c"/><path d="M-2-9.8h4" stroke="#2b2a2f" stroke-width=".9"/>' + inst + '</g></g>';
+    s += man(p.x - 7, '<path d="M1.4-7.6l3.4-1.2 .6 1.6-3.4 1.2z" fill="#8a4a1e"/><path d="M-.4-8.6l5.6 3" stroke="#ddd" stroke-width=".3"/>', 0)      // скрипка
+      + man(p.x, '<ellipse cx="2.4" cy="-5.4" rx="2.2" ry="2.8" fill="#b07a45" stroke="#6b4423" stroke-width=".4"/><path d="M2-8l1.4-3" stroke="#6b4423" stroke-width=".6"/>', 1)  // бандура
+      + man(p.x + 7, '<circle cx="-2.6" cy="-7.4" r="1.9" fill="#e6d9b8" stroke="#8a5a30" stroke-width=".5"/>', 2);   // бубон
+    s += '<g style="opacity:var(--clks-stars)">' + burst(p.x - 12, 22, '#f2c230', 'f2') + burst(p.x + 14, 16, '#ff7a6a', '') + '</g>';
+    return s + '</g>';
+  }
+
+  /// Майдан за хатою (перед далекими пагорбами, тож наявне світу стоїть перед ним) і гончарі світу на обрії.
+  function tolokaFar(e, fresh) {
+    let s = '';
+    const ms = MASTERS.filter((k) => lv(e, k));
+    if (ms.length) {
+      // Далекий синій обрій праворуч, за Цар-глеком: гончарі світу стоять на ньому по черзі щаблів.
+      const ridge = 'M262 80Q290 61 318 63T364 59V100H262z';
+      s += '<path d="' + ridge + '" style="fill:var(--clks-far)"/><path d="' + ridge + '" style="fill:var(--clks-sky2)" opacity=".45"/>';
+      MASTERS.forEach((k, i) => {
+        if (!lv(e, k)) return;
+        const x = 291.4 + i * 12.2, y = 64.4 - (i > 2 ? 1 : 0);
+        s += '<g transform="translate(' + f1(x) + ' ' + f1(y) + ') scale(.72)">' + MASTER_ART[k] + '</g>';
+      });
+    }
+    const t = e.toloka;
+    if (!t) return s;
+    // Пагорб трохи блідіший за ближні — він далі; утоптаний майдан по гребеню.
+    s += '<g class="clks-toloka"><path d="' + HILL + '" style="fill:var(--clks-far)"/><path d="' + HILL + '" style="fill:var(--clks-sky2)" opacity=".28"/>'
+      + '<path d="M-6 47Q90 38 196 48" style="stroke:var(--clks-road)" stroke-width="2.4" fill="none" opacity=".45"/>';
+    for (const key of Object.keys(TB)) if (key !== 'pier') s += tolokaBuilding(key, t, fresh);
+    if (t.fest) s += festivalSvg();
+    return s + '</g>';
+  }
+
+  /// Пристань на тому березі Ворскли — після річки, перед чайкою й гостями.
+  const tolokaRiver = (e, fresh) => (e.toloka ? tolokaBuilding('pier', e.toloka, fresh) : '');
+
+  // ---------- святковий ефект на місці будови (api.sceneToloka) ----------
+
+  const TFX_MS = 2400;
+  /// Етап готовий: спалах, промені й одноколірні вимпели, що злітають, — над гніздом будови.
+  function tfxSvg(key) {
+    const b = TB[key], p = TSLOT[key];
+    const cy = p.y - b.h * p.s * 0.55;
+    let s = '<g class="clks-tfx" transform="translate(' + p.x + ' ' + f1(cy) + ')"><circle class="clks-tfxg" r="' + f1(Math.max(12, b.w * p.s * 0.6)) + '" fill="#ffe7a0"/>'
+      + burst(0, 0, '#f2c230', 'tfxr');
+    for (let i = 0; i < 7; i++) {
+      const a = -Math.PI / 2 + (i - 3) * 0.42;
+      const dx = f1(Math.cos(a) * 20), dy = f1(Math.sin(a) * 18 - 4);
+      s += '<path class="clks-tconf" style="--cx:' + dx + 'px;--cy:' + dy + 'px;animation-delay:' + (i * 40) + 'ms" d="M-2 -1.2h4l-2 4z" fill="' + PENNANT[i % PENNANT.length] + '"/>';
+    }
+    return s + '</g>';
+  }
+
+  /// Поставити ефект у гніздо хати. Хату перемалювали посеред ефекту (готовий етап міняє підпис) — ставимо в новий
+  /// малюнок із від'ємною затримкою, щоб він не починався спочатку.
+  function tfxPlace(st) {
+    const scn = st.scn;
+    const f = scn && scn.tfx;
+    if (!f || !st.house) return;
+    const age = performance.now() - f.at;
+    if (age > TFX_MS) { scn.tfx = null; return; }
+    const slot = st.house.querySelector('.clks-tfxslot');
+    if (!slot || (f.node && f.node.parentNode === slot)) return;
+    f.node = svgNode(tfxSvg(f.key));
+    if (age > 50) for (const el of f.node.querySelectorAll('*')) el.style.animationDelay = -Math.round(age) + 'ms';
+    slot.appendChild(f.node);
+  }
+
+  function sceneToloka(st, key) {
+    const scn = st && st.scn;
+    if (!TB[key] || !scn || !st.house || !st.mine) return false;
+    if (scn.tfx) { clearTimeout(scn.tfx.timer); if (scn.tfx.node) scn.tfx.node.remove(); }
+    const f = { key, at: performance.now(), node: null, timer: 0 };
+    scn.tfx = f;
+    f.timer = setTimeout(() => { if (f.node) f.node.remove(); if (st.scn && st.scn.tfx === f) st.scn.tfx = null; }, TFX_MS);
+    tfxPlace(st);
+    return true;
+  }
+
   const DEFS = '<defs>'
     + '<linearGradient id="clks-skyg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--clks-sky1)"/><stop offset="1" style="stop-color:var(--clks-sky2)"/></linearGradient>'
     + '<linearGradient id="clks-wallg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--clks-wall2)"/><stop offset=".35" style="stop-color:var(--clks-wall)"/><stop offset="1" style="stop-color:var(--clks-wall2)"/></linearGradient>'
@@ -1710,6 +2104,7 @@
     const tiers = {};
     for (const k of TIERS) tiers[k] = step(lvl(k));
     for (const k of WORLD) tiers[k] = step(lvl(k));
+    for (const k of MASTERS) tiers[k] = lvl(k) >= 1 ? 1 : 0;   // v11: гончарі світу — лише «є чи нема»
     const hs = v.house || {};
     const tools = {};
     const decor = {};
@@ -1748,6 +2143,7 @@
       apprentice: a >= 50 ? 50 : a >= 25 ? 25 : a >= 10 ? 10 : a >= 1 ? 1 : 0,
       kiln: lvl('kiln') >= 1 ? 1 : 0, kilnLvl: Math.min(60, Math.floor(lvl('kiln') / 5) * 5), workshop: step(lvl('workshop')),
       cat: (v.secrets || []).some((s) => s.key === 'cat' && s.owned),
+      toloka: tolokaEnv(st, v),           // v11: майдан Толоки (null — ще нема)
     };
   }
 
@@ -1780,8 +2176,10 @@
     const sig = JSON.stringify(e);
     if (scn.houseSig === sig) return;
     scn.houseSig = sig;
+    e.fresh = tolokaFresh(scn, e.toloka); // v11: шар будови, що щойно став готовим, — виростає
     st.house.innerHTML = houseSvg(e);
     guestPlace(st);                       // гість посеред візиту переїжджає в новий малюнок
+    tfxPlace(st);                         // v11: святковий ефект етапу теж
     st.house.dataset.weather = e.weather || 'none';
     st.house.dataset.season = e.season;
   }
@@ -2557,6 +2955,7 @@
         handsOn: false, awayPending: false, clay: null, squash: st.el.querySelector('.clk-squash'),
         lookSig: '', wonderSeen: null, wonderNew: null,
         guest: null, guestQueue: [], guestNext: 0,
+        tolPrev: null, tfx: null,
       };
       Snd.load(api);
       Mus.load(api);
@@ -2590,6 +2989,8 @@
           },
           album: { show: (h && h.show) || [], stove: (h && h.stove) || [] },
           secrets: [],
+          // Толока друга (v11): знімок цеху шле готові будови — майдан за його хатою такий, як у нього.
+          toloka: h && Array.isArray(h.built) && h.built.length ? { built: h.built } : null,
         };
         const sky = (st2 && st2.scn && st2.scn.sky) || st.scn.sky;
         // Свої id (градієнти хати друга не мусять зникати, коли головну сцену сховало Око майстра) і ті самі змінні неба.
@@ -2612,6 +3013,18 @@
       };
       /// Монета для вікна-церемонії ядра: 'hryvnia' | 'gold' → SVG-рядок 64×64.
       api.coinSvg = (kind) => coinSvg(kind);
+      /// Етап Толоки готовий (кличе пакет «Толока»): короткий святковий ефект на місці будови. Можна
+      /// sceneToloka(building, stage) — на кожній своїй картці, або sceneToloka(st, building, stage) — на одній.
+      /// building — ключ будови (well, mill, … bigjug); stage — номер етапу (ефект від нього не залежить). true — показали.
+      api.sceneToloka = (a, b) => {
+        const one = a && typeof a === 'object' ? a : null;
+        const key = one ? b : a;
+        let ok = false;
+        for (const s of one ? [one] : HClicker.mounted) {
+          try { if (sceneToloka(s, key)) ok = true; } catch (e) { console.error('[clicker:scene] toloka', e); }
+        }
+        return ok;
+      };
       // Руки гончаря — у SVG кола, над виробом (не обертаються з кругом).
       const wsvg = st.wheel && st.wheel.querySelector('svg');
       if (wsvg && !wsvg.querySelector('.clks-hands')) {
@@ -2693,6 +3106,7 @@
       if (st.scn.sound) { st.scn.sound.closeAt(); if (st.el) st.el.removeEventListener('pointerdown', st.scn.sound.wake, { capture: true }); }
       clearTimeout(st.scn.guestNext);
       if (st.scn.guest) clearTimeout(st.scn.guest.timer);
+      if (st.scn.tfx) clearTimeout(st.scn.tfx.timer);
       st.scn = null;
     },
   });

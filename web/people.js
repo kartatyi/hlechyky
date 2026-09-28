@@ -51,16 +51,29 @@
   const nickCls = (nick) => { const l = lookOf(nick); return l && l.color === 'rainbow' ? ' rainbow' : ''; };
   /// Значок як HTML. Прапор малюємо самі: Windows прапорів-емодзі не має — показав би «UA».
   const emo = (icon) => (icon === '🇺🇦' ? '<i class="fl-ua" role="img" aria-label="прапор України"></i>' : esc(icon));
-  /// Куплений значок — маленьким перед ніком у балачках.
-  const badge = (nick) => { const l = lookOf(nick); return l && l.icon ? '<i class="nico" aria-hidden="true">' + emo(l.icon) + '</i>' : ''; };
-  /// Перша літера ніка в кружечку його кольору («гість Вася» — це «В», а не «Г»); купив значок — значок, рамку — рамка.
-  function ava(nick, cls, id) {
+  /// Своя фотка з Лавки. lazy — у довгих списках («Хто скільки», балачки) фото тягнуться, лише коли доїхали до екрана.
+  const photoImg = (url) => '<img src="' + esc(url) + '" alt="" loading="lazy" decoding="async" draggable="false">';
+  /// Куплений значок — маленьким перед ніком у балачках; є своя фотка — фото (значок у такому кружечку вже не розгледіти).
+  const badge = (nick) => {
     const l = lookOf(nick);
+    if (l && l.photo) return '<i class="nico ph" aria-hidden="true">' + photoImg(l.photo) + '</i>';
+    return l && l.icon ? '<i class="nico" aria-hidden="true">' + emo(l.icon) + '</i>' : '';
+  };
+  /// Кружечок аватарки з вигляду l: фото (рамка — поверх, значок — маленьким кружечком у куточку), значок або перша
+  /// літера ніка («гість Вася» — це «В», а не «Г»). who — нік для data-ava: за ним Лавка перемальовує аватарку на льоту
+  /// (без нього — вітрина: «як виглядав би», перемальовувати нема чого).
+  function avaHtml(nick, l, cls, id, who) {
     const n = String(nick || '').replace(/^гість\s+/i, '').trim();
-    const ch = l && l.icon ? emo(l.icon) : esc(n ? [...n][0].toUpperCase() : '?');
-    return '<span' + (id ? ' id="' + id + '"' : '') + ' class="' + (cls || 'ava') + (l && l.icon ? ' ico' : '') + (l && l.frame ? ' fr fr-' + esc(l.frame) : '')
-      + nickCls(nick) + '" data-ava="' + esc(nick) + '" style="--h:' + hue(nick) + '" aria-hidden="true">' + ch + '</span>';
+    const ph = l && l.photo;
+    const ch = ph ? photoImg(ph) + (l.icon ? '<i class="ava-ic">' + emo(l.icon) + '</i>' : '')
+      : l && l.icon ? emo(l.icon) : esc(n ? [...n][0].toUpperCase() : '?');
+    const h = l && typeof l.color === 'number' ? l.color : hueRaw(nick);
+    return '<span' + (id ? ' id="' + id + '"' : '') + ' class="' + (cls || 'ava') + (ph ? ' ph' : l && l.icon ? ' ico' : '')
+      + (l && l.frame ? ' fr fr-' + esc(l.frame) : '') + (l && l.color === 'rainbow' ? ' rainbow' : '') + '"'
+      + (who != null ? ' data-ava="' + esc(who) + '"' : '') + ' style="--h:' + h + '" aria-hidden="true">' + ch + '</span>';
   }
+  /// Аватарка людини так, як її бачать усі: значок, рамка, колір і фото — з Лавки.
+  const ava = (nick, cls, id) => avaHtml(nick, lookOf(nick), cls, id, nick);
   const nickLink = (n, cls) => '<span class="' + (cls || 'who-n') + ' who-n' + nickCls(n) + '" data-who="' + esc(n) + '" style="--h:' + hue(n) + '">' + esc(n) + '</span>';
   /// Титул — під ніком у картці й у профілі.
   const titleChip = (nick) => { const l = lookOf(nick); return l && l.title ? '<span class="lv-titlechip">' + esc(l.title) + '</span>' : ''; };
@@ -647,7 +660,7 @@
       o = opts;
       if (o.esc) esc = o.esc;
     },
-    hue, hueRaw, nickCls, badge, emo, ava, nickLink, dur, lbNum, shards,
+    hue, hueRaw, nickCls, badge, emo, ava, avaHtml, nickLink, dur, lbNum, shards,
     /// Куди веде кнопка «📊 Хто скільки»: на вкладку, де людина була востаннє.
     statsHash: () => '#stats/' + statsTab,
     show(kind, tail) {

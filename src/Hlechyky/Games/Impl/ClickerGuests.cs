@@ -210,6 +210,8 @@ public sealed partial class Clicker
     {
         if (GuestIndex(key) < 0 || delta <= 0) return 0;
         var before = GuestLevel(key);
+        // Виставкова зала Толоки й «Прадідова печатка» (v11) множать шану.
+        delta = (int)Math.Ceiling(delta * TolokaGuestRepMult * (1 + Relic("seal2") / 2));
         _gRep[key] = (int)Math.Min(1_000_000L, (long)GuestPoints(key) + delta);
         GuestsRecount();
         var after = GuestLevel(key);
@@ -221,7 +223,7 @@ public sealed partial class Clicker
     // ---------- двір ----------
 
     /// <summary>Скільки замовлень уміщає двір: по місцю на гостя, але не більше трьох; «Заморська карта» — ще одне.</summary>
-    int GuestSlots => Math.Min(_gMet.Count, GuestSlotsMax) + (Has("seamap") ? GuestSeamapSlots : 0);
+    int GuestSlots => Math.Min(_gMet.Count, GuestSlotsMax) + (Has("seamap") ? GuestSeamapSlots : 0) + (_gMet.Count > 0 ? TolokaGuestSlots : 0);
 
     TimeSpan GuestGap() => TimeSpan.FromMinutes(
         (GuestGapMinMinutes + Ctx.Rng.NextDouble() * (GuestGapMaxMinutes - GuestGapMinMinutes)) * (Has("seamap") ? GuestSeamapGap : 1));
@@ -239,7 +241,7 @@ public sealed partial class Clicker
     static int GuestRepFor(GuestOrderRow o) => Math.Max(1, 4 + 2 * o.Count + 2 * (o.Quality - 2) + (o.Style.Length > 0 ? 3 : 0));
 
     /// <summary>У скільки разів гість платить понад ціну виробу: ×8 (гончарі світу — ×12) і +10 % за рівень його шани.</summary>
-    double GuestPayMult(GuestOrderRow o) => GuestOf(o.Guest).PayMult * (1 + GuestPayPerLevel * GuestLevel(o.Guest));
+    double GuestPayMult(GuestOrderRow o) => GuestOf(o.Guest).PayMult * (1 + GuestPayPerLevel * GuestLevel(o.Guest)) * (1 + Relic("seal2"));
 
     /// <summary>Скільки замовлення заплатить, якщо віддати рівно те, що просять (у виді — як обіцянка).</summary>
     double GuestPay(GuestOrderRow o) => Math.Max(1, ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * GuestPayMult(o)));
@@ -510,7 +512,7 @@ public sealed partial class Clicker
             if (o is null || o.Id <= 0 || o.Guest is null || !_gMet.ContainsKey(o.Guest) || o.Ware is null || WareOf(o.Ware) is null
                 || o.Style is null || (o.Style.Length > 0 && Styles.All(s => s.Key != o.Style))
                 || o.Quality is < 1 or > QualityMax || o.Count is < 1 or > 10 || o.Until <= o.At
-                || _gOrders.Count >= GuestSlotsMax + GuestSeamapSlots + 2)
+                || _gOrders.Count >= GuestSlotsMax + GuestSeamapSlots + TolokaGuestSlotsMax + 2)
                 continue;
             _gOrders.Add(o with { Who = Math.Clamp(o.Who, 0, GuestOf(o.Guest).People.Length - 1) });
         }

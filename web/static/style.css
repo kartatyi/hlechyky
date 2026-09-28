@@ -1027,13 +1027,37 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 .fbrow { align-items: center; }
 .fbcount { margin-left: auto; font-variant-numeric: tabular-nums; }
 .fbcard details summary { cursor: pointer; color: var(--text); font-weight: 600; padding: 4px 0; }
-.fbmine { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-height: 40vh; overflow: auto; }
-.fbm { background: var(--bg2); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; border: 1px solid transparent; }
+.fbmine { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.fbm { background: var(--bg2); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; border: 1px solid transparent; }
 .fbm.fresh { border-color: var(--accent2); }
 .fbm-head { display: flex; align-items: center; gap: 6px; }
 .fbm-head .muted { margin-left: auto; }
-.fbm-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92em; }
-.fbm-reply { font-size: .9em; padding: 4px 8px; border-left: 3px solid var(--accent2); background: var(--panel); border-radius: 6px; }
+
+/* ---- переписка в записці (пакет notes): бульбашки, як у месенджері — свої праворуч, співрозмовника ліворуч.
+   Спільне для «Моїх записок» (людина) і вкладки «Пропозиції» (розробник); у кожного «свої» — свої. ---- */
+.fbt { display: flex; flex-direction: column; gap: 4px; }
+.fbb {
+  max-width: 86%; padding: 5px 10px 3px; border-radius: 12px; background: var(--panel2);
+  display: flex; flex-direction: column; font-size: .92em; line-height: 1.4; min-width: 0;
+}
+.fbb.me { align-self: flex-end; background: var(--panel3); border-bottom-right-radius: 4px; }
+.fbb.them { align-self: flex-start; border-bottom-left-radius: 4px; }
+.fbb-who { font-size: .76em; font-weight: 700; color: var(--accent); }
+.fbb-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.fbb-at { font-size: .7em; color: var(--muted); align-self: flex-end; font-variant-numeric: tabular-nums; }
+/* нове від співрозмовника, поки його не прочитали: рамка й тепліше тло, без анімації — перемальовування її б смикало */
+.fbb.fresh { box-shadow: inset 0 0 0 1.5px var(--accent2); background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); }
+.fbx-st { align-self: center; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; font-size: .8em; color: var(--muted); }
+.fbx-st.fresh { color: var(--text); }
+.fbsay { display: flex; gap: 6px; align-items: flex-end; }
+.fbsay textarea, .fbcard .fbsay textarea {
+  flex: 1; width: auto; min-width: 0; min-height: 36px; max-height: 160px; resize: none; padding: 7px 10px;
+  font: inherit; font-size: .9em; line-height: 1.35; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; outline: none;
+}
+.fbsay textarea:focus { border-color: var(--accent2); }
+.fbsay button { flex: none; }
+.fbm .fbadd { align-self: flex-start; font-size: .85em; padding: 4px 10px; }
 
 /* ---- вкладка розробника «💡 Пропозиції й баги» ---- */
 .fbseg { flex-wrap: wrap; }
@@ -1047,8 +1071,9 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 .fbi-head .fbi-st { margin-left: auto; font: inherit; font-size: .85em; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
 .fbi-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .fbi-ctx:empty { display: none; }
-.fbi-reply { display: flex; gap: 6px; }
-.fbi-reply input { padding: 6px 10px; font-size: .9em; }
+/* записка, де людина відписала: згори списку, у рамці й з позначкою «↩ відповідь» */
+.list.fblist li.fbi.hot { box-shadow: inset 0 0 0 1.5px var(--accent2); }
+.fbi-hot { font-weight: 700; }
 
 /* =====================================================================================================
    Лавка Дядька Глека: вбрання людей (значок, рамка, колір ніка, титул, тло) і сама вітрина (web/lavka.js).
@@ -1228,8 +1253,83 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 .lv-item.owned .lv-state { color: var(--ok); }
 .lv-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: auto; }
 .lv-btns button { padding: 5px 11px; font-size: .88em; }
+/* сезонне поза сезоном — рядок «ще будуть» під полицею, а не картки з «Не сезон» */
+.lv-soon { margin-top: 14px; display: grid; gap: 6px; }
+.lv-soon-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.lv-soon-it {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border-radius: 999px;
+  background: var(--bg2); font-size: .88em; min-width: 0; opacity: .85;
+}
+.lv-soon-art { font-size: 1.25em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
 @media (max-width: 600px) {
   .lv-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .lv-sign img { width: 40px; height: 40px; }
   .lv-sign h2 { font-size: 1.2em; }
 }
+
+/* =====================================================================================================
+   Лавка: «📷 Своя фотка» (пакет fb/lavka, 28.09.2026) — окремим блоком, щоб легко зводилось з іншими правками.
+   Фото в кружечку аватарки, значок у куточку, фото перед ніком у балачках, вікно обрізки, полиця «Своя фотка»
+   і адмінська вкладка «📷 Фото» в Бібліотеці. Малює web/people.js (avaHtml, badge) і web/lavka.js.
+   ===================================================================================================== */
+/* Фото — у кружечку; рамка з Лавки (border + свій шар фону border-box) лишається поверх, бо фото сидить усередині
+   рамки. Специфічніше за «.list img» (36×36, квадрат), щоб у списках аватарка не ставала квадратною мініатюрою. */
+.ava.ph { position: relative; }
+.ava.ph:not(.fr) { box-shadow: 0 0 0 1px hsl(var(--h) 50% 45% / .7); }
+.ava.ph > img { grid-area: 1 / 1; display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--panel3); }
+/* значок, коли є фото, — маленьким кружечком у правому нижньому куточку */
+.ava .ava-ic {
+  position: absolute; right: -14%; bottom: -14%; width: 54%; height: 54%; border-radius: 50%; display: grid; place-items: center;
+  background: hsl(var(--h) 42% 24%); box-shadow: 0 0 0 1.5px var(--bg); font-style: normal; font-weight: 400; line-height: 1;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; font-size: 9px; overflow: hidden;
+}
+.ava.sm .ava-ic { font-size: 7px; box-shadow: 0 0 0 1px var(--bg); }
+.ava.xl .ava-ic { font-size: 14px; }
+.ava.xxl .ava-ic { font-size: 22px; box-shadow: 0 0 0 2px var(--bg); }
+.ava .ava-ic .fl-ua { width: 1.1em; height: .76em; }
+/* балачки й «хто тут»: фото замість значка перед ніком */
+.nico.ph {
+  display: inline-block; width: 1.25em; height: 1.25em; border-radius: 50%; overflow: hidden; vertical-align: -.28em; margin-right: 4px;
+  background: var(--panel3); box-shadow: 0 0 0 1px hsl(var(--h) 50% 50% / .7);
+}
+.nico.ph > img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+
+/* ---- полиця «📷 Своя фотка» ---- */
+.lv-photo { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 16px; border-radius: 12px; background: var(--bg2); }
+.lv-ph-art { flex: none; display: grid; place-items: center; width: 124px; height: 124px; }
+.lv-ph-art .ava.xxl { width: 108px; height: 108px; font-size: 2.7em; }
+.lv-ph-art .ava.xxl.ico { font-size: 3.3em; }
+.lv-ph-art .ava.xxl .ava-ic { font-size: 28px; box-shadow: 0 0 0 3px var(--bg2); }
+.lv-ph-main { flex: 1; min-width: 210px; display: flex; flex-direction: column; gap: 8px; }
+.lv-ph-main .lv-name { font-size: 1.1em; }
+.lv-ph-main .lv-btns { justify-content: flex-start; margin-top: 2px; }
+.lv-ph-main .lv-btns button { padding: 7px 14px; font-size: .95em; }
+@media (max-width: 600px) {
+  .lv-photo { flex-direction: column; text-align: center; }
+  .lv-ph-main { min-width: 0; width: 100%; }
+  .lv-ph-main .lv-btns { justify-content: center; }
+}
+
+/* ---- вікно обрізки: квадратне полотно, поза колом — затемнено ---- */
+.lv-crop .card { width: min(94vw, 380px); max-height: 96vh; overflow: auto; }
+.lv-crop-stage {
+  position: relative; align-self: center; flex: none; width: min(78vw, 300px); height: min(78vw, 300px); border-radius: 14px; overflow: hidden;
+  background: #111; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.lv-crop-stage:active { cursor: grabbing; }
+.lv-crop-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lv-crop-stage canvas { display: block; width: 100%; height: 100%; }
+.lv-crop-ring {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 999px rgba(8, 10, 9, .62), inset 0 0 0 2px rgba(255, 255, 255, .75);
+}
+.lv-crop-zoom { display: flex; align-items: center; gap: 8px; font-size: .9em; color: var(--muted); }
+.lv-crop-zoom input { flex: 1; min-width: 0; accent-color: var(--accent); }
+@media (max-height: 640px) { .lv-crop-stage { width: min(78vw, 250px); height: min(78vw, 250px); } }
+
+/* ---- адміну: усі фотки з кнопкою «Зняти» ---- */
+.lv-adm-note { margin-bottom: 10px; }
+.list.lv-adm li.lv-adm-row { grid-template-columns: 56px 1fr auto; gap: 12px; }
+.list .lv-adm-img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; display: block; background: var(--panel3); }
+.lv-adm-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lv-adm-row button { border: 1px solid var(--line); }

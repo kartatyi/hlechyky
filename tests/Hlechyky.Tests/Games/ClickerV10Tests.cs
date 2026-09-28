@@ -67,7 +67,7 @@ public class ClickerV10Tests
     {
         var idle = Clicker.Shop.Where(u => u.Kind == ClickerKind.Idle).Select(u => u.Key).ToList();
         var sich = idle.IndexOf("sich");
-        Assert.Equal(Clicker.WorldTiers, idle.Skip(sich + 1).ToArray());
+        Assert.Equal(Clicker.WorldTiers, idle.Skip(sich + 1).Take(Clicker.WorldTiers.Length).ToArray());
         var prev = Clicker.Shop.Single(u => u.Key == "sich");
         foreach (var key in Clicker.WorldTiers)
         {
@@ -115,8 +115,9 @@ public class ClickerV10Tests
     [Fact]
     public void The_catalogue_holds_162_marks_and_every_one_past_a_hundred_is_a_modifier()
     {
-        Assert.Equal(162, Clicker.MarksAll);
-        Assert.Equal(162, AllMarks.Count());
+        // v11 додав шість щаблів гончарів світу — лише з віхами ×2 на 25/50/100.
+        Assert.Equal(180, Clicker.MarksAll);
+        Assert.Equal(180, AllMarks.Count());
         foreach (var up in Clicker.Shop)
             Assert.All(up.Steps.Where(s => s.Level > 100 || (up.Key is "apprentice" or "kiln" && s.Level > 50)),
                 s => Assert.NotEqual(MarkEffect.Double, s.Effect));
@@ -147,7 +148,8 @@ public class ClickerV10Tests
         Assert.Equal(0.05, SumOf(MarkEffect.Lucky), 9);
         Assert.Equal(0.12, SumOf(MarkEffect.Hand), 9);
         // 45 старих ×2 (разом із трьома «старими» віхами кола) + 57 плану віх + 60 нових щаблів.
-        Assert.Equal(12 * 3 + 2 * 3 + 12 * 3, CountOf(MarkEffect.Double));
+        // v11: ще шість щаблів гончарів світу по три віхи ×2.
+        Assert.Equal(12 * 3 + 2 * 3 + 12 * 3 + 6 * 3, CountOf(MarkEffect.Double));
     }
 
     [Fact]
@@ -195,7 +197,7 @@ public class ClickerV10Tests
         Assert.Equal("«Друга майстерня»: пасив +25 %", r.Message.Replace('\u00a0', ' '));
         Assert.False(Act(h, "mark", new { key = "workshop:150" }).Ok);
         Assert.Equal(1, View(h).GetProperty("marksOwned").GetInt32());
-        Assert.Equal(162, View(h).GetProperty("marksAll").GetInt32());
+        Assert.Equal(Clicker.MarksAll, View(h).GetProperty("marksAll").GetInt32());
     }
 
     [Fact]
@@ -570,12 +572,13 @@ public class ClickerV10Tests
     {
         var h = Wheel();
         Levels(h, ("sich", 20));
-        Patch(h, s => { s["news"] = "v9.2"; s["total"] = 5e21; s["titles"]!["gifts"] = new JsonArray("v9.2"); });
-        Assert.Equal("v10", View(h).GetProperty("news").GetString());
+        // v11 уже видав свій подарунок (щоб тут міряти лише чотири години v10); новини тепер — «v11».
+        Patch(h, s => { s["news"] = "v9.2"; s["total"] = 5e21; s["titles"]!["gifts"] = new JsonArray("v9.2", "v11"); });
+        Assert.Equal(Clicker.NewsVersion, View(h).GetProperty("news").GetString());
         Assert.Equal("v9.2", View(h).GetProperty("newsSeen").GetString());
         var pots = Num(h, "pots");
         var passive = Num(h, "baseSecond");
-        var r = Act(h, "news", new { v = "v10" });
+        var r = Act(h, "news", new { v = Clicker.NewsVersion });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("чотири години", r.Message);
         Assert.Equal(pots + passive * 4 * 3600, Num(h, "pots"), Math.Max(10, passive * 60));
@@ -593,10 +596,32 @@ public class ClickerV10Tests
         var h = Wheel();
         Levels(h, ("sich", 20));
         Patch(h, s => { s["news"] = "v9.1"; s["titles"]!["gifts"] = new JsonArray(); });
-        var r = Act(h, "news", new { v = "v10" });
+        var r = Act(h, "news", new { v = Clicker.NewsVersion });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("Подарунок округи", r.Message);
         Assert.Contains("Глек на весь світ", r.Message);
+        Assert.Contains("Толока", r.Message);
+    }
+
+    [Fact]
+    public void One_who_saw_v10_sees_the_fixes_once_without_a_second_gift()
+    {
+        var h = Wheel();
+        Levels(h, ("sich", 20));
+        // бачив v10 ще до гривень, а тепер доріс — церемонія гривні ще попереду
+        // v11: подарунок «Толоки» вже забрано, щоб міряти лише «без другого подарунка v10»; новини тепер v11 (з рядками v10.1).
+        Patch(h, s => { s["news"] = "v10"; s["total"] = 5e21; s["coinSeen"] = 0; s["titles"]!["gifts"] = new JsonArray("v9.2", Clicker.GiftV10Key, Clicker.GiftV11Key); });
+        Assert.Equal(Clicker.NewsVersion, View(h).GetProperty("news").GetString());
+        Assert.Equal("v10", View(h).GetProperty("newsSeen").GetString());
+        var pots = Num(h, "pots");
+        Assert.False(Act(h, "news", new { v = "v10" }).Ok);
+        var r = Act(h, "news", new { v = Clicker.NewsVersion });
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(pots, Num(h, "pots"), Math.Max(10, Num(h, "baseSecond") * 60));
+        Assert.Equal(JsonValueKind.Null, View(h).GetProperty("news").ValueKind);
+        // v10.1 гривні не пояснює — церемонія лишається
+        Assert.Equal(0, View(h).GetProperty("coinSeen").GetInt32());
+        Assert.True(View(h).GetProperty("coin").GetInt32() >= 1);
     }
 
     // ---------- ачівки щаблів ----------
