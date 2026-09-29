@@ -181,9 +181,10 @@
   /* пальцем палітра — 14 кольорів у два рядки по сім (≈43 px, було 20 по 27–30 px): полотну на ~27 px менше */
   @media (pointer: coarse) {
     .pcwrap.drw .pcstage { width: min(100%, max(240px, calc((100dvh - var(--pctop, 230px) - 260px) * 4 / 3))); }
-    .pcpal { grid-template-columns: repeat(7, minmax(0, 1fr)); max-width: none; gap: 5px; }
-    .pcsw:is(:nth-child(4), :nth-child(10), :nth-child(12), :nth-child(13), :nth-child(16), :nth-child(20)) { display: none; }
-    .pcsz, .pct, .pca { min-width: 40px; touch-action: manipulation; }
+    /* лише в Піктіонарі: класи pc* ділить із ним Зіпсований телефон, а цей файл лишається підвантаженим */
+    .pcwrap .pcpal { grid-template-columns: repeat(7, minmax(0, 1fr)); max-width: none; gap: 5px; }
+    .pcwrap .pcsw:is(:nth-child(4), :nth-child(10), :nth-child(12), :nth-child(13), :nth-child(16), :nth-child(20)) { display: none; }
+    .pcwrap :is(.pcsz, .pct, .pca) { min-width: 40px; touch-action: manipulation; }
   }
   /*
     Фініш проходу №3: інструменти вищі під палець (36 → 40 px, на високих телефонах — 44), а рядок не ширший за
