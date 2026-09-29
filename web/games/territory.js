@@ -248,7 +248,15 @@
     // Раунд зіграно — хто взяв поле, пишемо просто на ньому.
     const room = ctx && ctx.room;
     if (room && room.status === 'finished' && room.result && st.seen) {
-      const who = room.result.winners || [];
+      let who = room.result.winners || [];
+      // Переміг 🤖 бот — у результаті переможців нема (партія з ботом без нагород), тож «Нічия» тут брехала б:
+      // беремо найбільший наділ просто з поля.
+      const bots = (ctx.view && ctx.view.bot) || [];
+      if (!who.length && bots.length) {
+        const on = SEATS.map((_, s) => s).filter((s) => st.heads[s] && st.heads[s].on);
+        const top = Math.max(...on.map((s) => st.area[s] || 0));
+        who = on.filter((s) => (st.area[s] || 0) === top);
+      }
       g.fillStyle = cssv(st, '--gshade', 'rgba(15, 31, 24, .62)');
       g.fillRect(0, 0, CW, CH);
       g.textAlign = 'center';
