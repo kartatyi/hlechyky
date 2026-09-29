@@ -155,6 +155,9 @@ public sealed class SnakeArenaCore
         return [a, b, c, d];
     }
 
+    /// <summary>Чи чекає в черзі поворот місця — бот не підкладає другого, поки не відпрацював перший.</summary>
+    public bool Turning(int seat) => _turns[seat].Count > 0;
+
     /// <summary>Поворот: розворот на 180° і повтор ігноруємо, наступний міряємо від останнього в черзі — як у дуелі.</summary>
     public void Turn(int seat, int dir)
     {
@@ -550,9 +553,15 @@ public sealed class SnakePartyGame : Game
     public const int DropCooldown = 42;
     /// <summary>Страховка від вічної серії, де раунд за раундом нічия.</summary>
     const int MaxRoundsPerWin = 4;
+    /// <summary>
+    /// Скільки ботів сідає до того, хто сам натиснув «🤖 + бот». Двоє: утрьох на великому полі арена вже живе —
+    /// два яблука, розсипи з розбитих, кидки вибулого, — а шанс бути останньою живою ще чесний (третина, а не
+    /// чверть); з одним ботом вийшла б та сама дуель, що й у «Змійці», тільки без рахунку серії.
+    /// </summary>
+    public const int SoloBots = 2;
 
     public override GameInfo Info { get; } = new(
-        "snake-party", "Змійки гуртом", "змійки гуртом", GameGroup.Live, 2, Seats, TickMs: SnakeCore.TickMs,
+        "snake-party", "Змійки гуртом", "змійки гуртом", GameGroup.Live, 1, Seats, TickMs: SnakeCore.TickMs,
         Start: StartMode.ByHost,
         Options: [
             new("field", "Поле", [("auto", "Під склад"), ("small", "Мале 26×18"), ("big", "Велике 34×24")], "auto"),
@@ -560,8 +569,9 @@ public sealed class SnakePartyGame : Game
             new("mode", "Раунд", [("last", "до останньої живої"), ("time", "⏱ на час: 90 с, розбилась — знову в грі")], "last"),
             new("wrap", "Край поля", [("0", "стіни"), ("1", "🌀 тор: виповз праворуч — з'явився ліворуч")], "0"),
             new("bonus", "Бонуси", [("0", "без бонусів"), ("1", "⭐ золоте яблуко, ✂ ножиці, ❄ сповільнення")], "0"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Змійки на 2–4: їж яблука, не врізайся. Розбита змійка розсипається яблуками, а вибулі кидають яблука й камінці. Раунд бере остання жива, за три хвилини — найдовша",
+        Hint: "Змійки на 2–4: їж яблука, не врізайся. Розбита змійка розсипається яблуками, а вибулі кидають яблука й камінці. Раунд бере остання жива, за три хвилини — найдовша. Самому — з 🤖 ботами",
         Client: "snake-party");
 
     /// <summary>Скільки кроків раунд «до останньої» може тривати — далі перемагає найдовша (три хвилини).</summary>
@@ -585,6 +595,11 @@ public sealed class SnakePartyGame : Game
     string? _winner;
     int[] _winners = [];
     readonly StringBuilder _sb = new();
+    /// <summary>«🤖 + бот»: кликали чи ні і якого рівня (опція столу).</summary>
+    readonly SoloBot _solo = new();
+    readonly SnakeBrain _brain = new();
+    /// <summary>Боти цієї партії за місцями (ім'я), null — людина або порожньо.</summary>
+    readonly string?[] _bots = new string?[Seats];
 
     public int Moves => _moves;
     public int Round => _round;
@@ -603,9 +618,32 @@ public sealed class SnakePartyGame : Game
         _wrap = options.GetValueOrDefault("wrap") == "1";
         _bonus = options.GetValueOrDefault("bonus") == "1";
         _core = null;
+        _solo.Configure(options);
     }
 
     int[] Seated() => [.. Enumerable.Range(0, Seats).Where(Ctx.Seated)];
+
+    /// <summary>Хто повзе цієї партії: люди, що сидять, і боти.</summary>
+    int[] Riders() => [.. Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) || _bots[s] is not null)];
+
+    bool HasBots => _bots.Any(b => b is not null);
+
+    /// <summary>Ім'я місця: нік, бот або колір.</summary>
+    string Name(int seat) => Ctx.NickOf(seat) ?? _bots[seat] ?? SeatName(seat);
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, Seats);
+
+    public override string? SeatBot(int seat) => _started && seat is >= 0 and < Seats && !Ctx.Seated(seat) ? _bots[seat] : null;
+
+    /// <summary>Місця ботів: у партії — де сидять, у лобі — куди сядуть, якщо почати зараз.</summary>
+    int[] BotSeats()
+    {
+        if (HasBots) return [.. Enumerable.Range(0, Seats).Where(s => _bots[s] is not null && !Ctx.Seated(s))];
+        if (!_solo.Active(Ctx, Seats)) return [];
+        return [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)];
+    }
 
     (int W, int H) Size(int players) => _field switch
     {
@@ -637,7 +675,14 @@ public sealed class SnakePartyGame : Game
 
     public override void Start()
     {
-        var seated = Seated();
+        Array.Clear(_bots);
+        if (_solo.Active(Ctx, Seats))
+        {
+            var k = 0;
+            for (var s = 0; s < Seats && k < SoloBots; s++)
+                if (!Ctx.Seated(s)) _bots[s] = ArenaGame.BotNames[k++ % ArenaGame.BotNames.Length];
+        }
+        var seated = Riders();
         var (w, h) = Size(seated.Length);
         _core = new SnakeArenaCore(Ctx.Rng, w, h, Seats, ApplesFor(seated.Length), _wrap, _bonus);
         _started = true;
@@ -648,7 +693,7 @@ public sealed class SnakePartyGame : Game
         NewRound(SnakeCore.StartTicks);
 
         // «Ще раз»: рахунок живе, поки за столом ті самі люди (порядок не важить — «Ще раз» його обертає).
-        var crew = seated.Select(s => Ctx.NickOf(s)!).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        var crew = seated.Select(Name).Order(StringComparer.OrdinalIgnoreCase).ToArray();
         if (!crew.SequenceEqual(_crew, StringComparer.OrdinalIgnoreCase)) _wins.Clear();
         _crew = crew;
     }
@@ -656,7 +701,7 @@ public sealed class SnakePartyGame : Game
     void NewRound(int startTicks)
     {
         var core = _core!;
-        var seated = Seated().Where(s => !_gone[s]).ToArray();
+        var seated = Riders().Where(s => !_gone[s]).ToArray();
         core.Reset(seated, startTicks);
         _round++;
         _moves = 0;
@@ -670,6 +715,7 @@ public sealed class SnakePartyGame : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle) return _solo.Switch(Ctx, seat, payload, Seats);
         if (action == "turn")
         {
             if (SnakeModesTurns.Dir(payload) is { } dir && _started && _winner is null) Core.Turn(seat, dir);
@@ -701,6 +747,15 @@ public sealed class SnakePartyGame : Game
     {
         if (!_started || _over || seat is < 0 or >= Seats) return;
         var core = Core;
+        if (HasBots)
+        {
+            // людина з ботами одна: встала — партію не дограли, боти самі собі не повзають
+            if (core.Alive[seat]) core.Kill(seat, core.Bodies[seat].Count > 0 ? core.Bodies[seat][0] : -1);
+            _winners = [];
+            _winner = "draw";
+            Close([], $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію з 🤖 не дограли");
+            return;
+        }
         _gone[seat] = true;
         _respawn[seat] = 0;
         var left = 0;
@@ -742,6 +797,7 @@ public sealed class SnakePartyGame : Game
             return TickResult.FrameOnly;
         }
 
+        if (HasBots) BotsThink(core);
         var alive = core.AliveCount;
         var died = core.Step();
         _moves++;
@@ -765,7 +821,8 @@ public sealed class SnakePartyGame : Game
         }
 
         foreach (var s in died) _place[s] = alive - died.Count + 1;   // одночасно розбиті ділять місце
-        if (core.AliveCount <= 1)
+        // людина з ботами розбилась — раунд їхній: дивитись, як боти ще три хвилини кружляють, нема чого
+        if (core.AliveCount <= 1 || (HasBots && !Riders().Any(s => Ctx.Seated(s) && core.Alive[s])))
         {
             Settle(died);
             return TickResult.Both;
@@ -789,12 +846,14 @@ public sealed class SnakePartyGame : Game
         for (var s = 0; s < Seats; s++) if (core.Present[s]) present++;
         int[] winners;
         if (core.AliveCount == 1) winners = [Array.FindIndex(core.Alive, a => a)];
+        else if (core.AliveCount > 1) winners = [.. Enumerable.Range(0, Seats).Where(s => core.Alive[s])];   // живі боти
         else if (lastDied.Count > 0 && lastDied.Count < present) winners = [.. lastDied];
         else winners = [];
         RoundWon(winners, winners.Length switch
         {
             0 => $"{Info.Title}: усі врізались одночасно — нічия. {Series()}",
-            1 => $"{Info.Title}: раунд бере {Ctx.NickOf(winners[0])} ({SeatName(winners[0])}). {Series(winners)}",
+            1 => $"{Info.Title}: раунд бере {Name(winners[0])} ({SeatName(winners[0])}). {Series(winners)}",
+            _ when core.AliveCount > 1 => $"{Info.Title}: раунд беруть {Names(winners)} — людей на полі не лишилось. {Series(winners)}",
             _ => $"{Info.Title}: {Names(winners)} врізались останніми в один тик — очко кожній. {Series(winners)}",
         });
     }
@@ -828,7 +887,7 @@ public sealed class SnakePartyGame : Game
         foreach (var s in winners) _place[s] = 1;
         if (_target <= 1)
         {
-            foreach (var s in winners) if (Ctx.NickOf(s) is { } nick) _wins[nick] = _wins.GetValueOrDefault(nick) + 1;
+            foreach (var s in winners) _wins[Name(s)] = _wins.GetValueOrDefault(Name(s)) + 1;
             Close(winners, text);
             return;
         }
@@ -856,7 +915,7 @@ public sealed class SnakePartyGame : Game
             champs = [.. inSeries.Where(s => _sw[s] == best)];
             if (champs.Length == inSeries.Length && inSeries.Length > 1) champs = [];
         }
-        foreach (var s in champs) if (Ctx.NickOf(s) is { } nick) _wins[nick] = _wins.GetValueOrDefault(nick) + 1;
+        foreach (var s in champs) _wins[Name(s)] = _wins.GetValueOrDefault(Name(s)) + 1;
         _winners = champs;
         _winner = champs.Length == 0 ? "draw" : "win";
         var who = champs.Length == 0 ? "нічия" : $"перемога — {Names(champs)}";
@@ -867,12 +926,42 @@ public sealed class SnakePartyGame : Game
     {
         _over = true;
         _pause = 0;
-        Ctx.Finish(winners, log);
+        if (!HasBots)
+        {
+            Ctx.Finish(winners, log);
+            return;
+        }
+        // з ботами — без нагород: людина одна, тож Rewards не дасть нічого й з нею в переможцях; ботів у них нема
+        var human = winners.Where(Ctx.Seated).ToArray();
+        Ctx.Finish(human, $"{log} (з 🤖 — без нагород)",
+            verdict: winners.Length == 0 ? "🤝 Нічия · з 🤖 — на інтерес"
+                : human.Length == 0 ? $"🤖 {Names(winners)} — {(winners.Length == 1 ? "перемога" : "перемога на двох")}"
+                : $"🏆 {Names(human)} — перемога над {LiveBots.Of(_solo.Level)} ботами");
+    }
+
+    /// <summary>
+    /// Боти кладуть повороти в ту саму чергу, що й люди, — раз на крок і лише коли попередній уже відпрацював.
+    /// Бачать усе поле: тіла (своє й чужі), камінці, яблука, здобич і бонуси (бонус теж «їжа» — золоте росте на 3).
+    /// </summary>
+    void BotsThink(SnakeArenaCore core)
+    {
+        for (var b = 0; b < Seats; b++)
+        {
+            if (_bots[b] is null || !core.Alive[b] || core.Turning(b)) continue;
+            _brain.Begin(core.W, core.H, core.Wrap);
+            for (var s = 0; s < Seats; s++)
+                if (core.Alive[s]) _brain.Body(core.Bodies[s], core.Grow[s], rival: s != b);
+            var items = core.Items;
+            for (var c = 0; c < items.Length; c++)
+                if (items[c] == SnakeArenaCore.Rock) _brain.Block(c);
+                else if (items[c] != SnakeArenaCore.None) _brain.Food(c);
+            if (_brain.Decide(core.Bodies[b][0], core.Dirs[b], core.Bodies[b].Count, _solo.Level, Ctx.Rng) is { } dir) core.Turn(b, dir);
+        }
     }
 
     string Names(IEnumerable<int> seats, bool genitive = false)
     {
-        var names = seats.Select(s => Ctx.NickOf(s) is { } n ? genitive ? NickCases.Genitive(n) : n : SeatName(s)).ToList();
+        var names = seats.Select(s => Ctx.NickOf(s) is { } n ? genitive ? NickCases.Genitive(n) : n : _bots[s] ?? SeatName(s)).ToList();
         return names.Count <= 1 ? string.Concat(names) : string.Join(", ", names[..^1]) + " і " + names[^1];
     }
 
@@ -880,19 +969,20 @@ public sealed class SnakePartyGame : Game
     string Series(int[]? justWon = null)
     {
         var core = Core;
-        var parts = Enumerable.Range(0, Seats).Where(s => core.Present[s] && Ctx.NickOf(s) is not null)
-            .Select(s => $"{Ctx.NickOf(s)} {Score(s, justWon)}");
+        var parts = Enumerable.Range(0, Seats).Where(s => core.Present[s] && (Ctx.NickOf(s) is not null || _bots[s] is not null))
+            .Select(s => $"{Name(s)} {Score(s, justWon)}");
         return "Рахунок: " + string.Join(" · ", parts);
     }
 
     int Score(int s, int[]? justWon = null)
     {
         if (_target > 1) return _sw[s];
-        var n = Ctx.NickOf(s) is { } nick ? _wins.GetValueOrDefault(nick) : 0;
+        var n = Ctx.NickOf(s) is not null || _bots[s] is not null ? _wins.GetValueOrDefault(Name(s)) : 0;
         return n + (justWon is not null && justWon.Contains(s) ? 1 : 0);   // лог пишемо до того, як рахунок оновився
     }
 
-    int[] Wins() => [.. Enumerable.Range(0, Seats).Select(s => _target > 1 ? _sw[s] : Ctx.NickOf(s) is { } n ? _wins.GetValueOrDefault(n) : 0)];
+    int[] Wins() => [.. Enumerable.Range(0, Seats).Select(s => _target > 1 ? _sw[s]
+        : Ctx.NickOf(s) is not null || (_started && _bots[s] is not null) ? _wins.GetValueOrDefault(Name(s)) : 0)];
 
     int Mask(bool[] xs)
     {
@@ -982,6 +1072,11 @@ public sealed class SnakePartyGame : Game
         if (_bonus) v["bonus"] = true;
         if (_timed) v["timed"] = TimedMoves;
         if (_target > 1) { v["ser"] = _target; v["round"] = _round; v["over"] = _over; }
+        v["botOffer"] = _solo.Offer(Ctx, Seats);
+        v["botWanted"] = _solo.Wanted;
+        v["botLvl"] = _solo.LevelKey;
+        v["bot"] = BotSeats();
+        if (HasBots) v["bots"] = _bots.ToArray();
         Extras(core, v);
         return v;
     }

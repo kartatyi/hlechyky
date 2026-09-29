@@ -455,6 +455,14 @@ public abstract class ArenaGame : Game
     /// <summary>Скільки місць за столом: дуель — 2, гурт — 4.</summary>
     protected int N => Info.MaxPlayers;
 
+    /// <summary>
+    /// «🤖 + бот» (мотоцикли вдвох): стан виклику бота або null — гра садить ботів інакше (гурт — опцією «Боти»).
+    /// Коли кликали й людина сама, на вільне місце сідає один бот рівня з опції столу.
+    /// </summary>
+    protected virtual SoloBot? Solo => null;
+    /// <summary>У цій партії сидить бот, покликаний «🤖 + бот» (а не опцією гурту).</summary>
+    bool _soloBot;
+
     ArenaCore? _core;
     string _field = "auto", _map = ArenaMaps.Empty, _roundMap = ArenaMaps.Empty;
     int _target = 1, _botsWanted;
@@ -561,12 +569,31 @@ public abstract class ArenaGame : Game
 
     bool HasBots => _bots.Any(b => b is not null);
 
+    /// <summary>Бот на порожньому місці під час і після партії — каркас покаже його в списку й підсумку.</summary>
+    public override string? SeatBot(int seat) => _started && seat >= 0 && seat < _bots.Length && !Ctx.Seated(seat) ? _bots[seat] : null;
+
+    /// <summary>Місце бота «🤖 + бот»: у партії — де сидить, у лобі — куди сяде, якщо почати зараз; null — нема.</summary>
+    protected int? SoloBotSeat()
+    {
+        if (_soloBot)
+            for (var s = 0; s < N; s++) if (_bots[s] is not null && !Ctx.Seated(s)) return s;
+        if (Solo is { } solo && solo.Active(Ctx, N))
+            for (var s = 0; s < N; s++) if (!Ctx.Seated(s)) return s;
+        return null;
+    }
+
     public override void Start()
     {
         EnsureArrays();
         var seated = Seated();
         Array.Clear(_bots);
-        if (BotsAllowed)
+        _soloBot = false;
+        if (Solo is { } solo && solo.Active(Ctx, N))
+        {
+            for (var s = 0; s < N; s++)
+                if (!Ctx.Seated(s)) { _bots[s] = LiveBots.Name; _soloBot = true; break; }
+        }
+        else if (BotsAllowed)
         {
             // сам за столом — один бот навіть без опції: інакше раунд закінчувався б, не почавшись
             var want = Math.Max(_botsWanted, seated.Length < 2 ? 1 : 0);
@@ -702,7 +729,7 @@ public abstract class ArenaGame : Game
             return TickResult.FrameOnly;
         }
 
-        if (HasBots) _brain.Think(core, _bots, Ctx.Rng);
+        if (HasBots) _brain.Think(core, _bots, Ctx.Rng, _soloBot ? Solo?.Level : null);
         var alive = core.AliveCount;
         var died = core.Step();
         _moves++;
@@ -839,6 +866,16 @@ public abstract class ArenaGame : Game
     {
         _over = true;
         if (_cutLog.Count > 0) log += " " + CutsLine();
+        if (_soloBot && Solo is { } solo)
+        {
+            // «🤖 + бот»: людина одна, тож Rewards не дасть нічого й з нею в переможцях; бота в переможцях нема
+            var human = winners.Where(Ctx.Seated).ToArray();
+            Ctx.Finish(human, $"{log} (з 🤖 — без нагород)",
+                verdict: winners.Length == 0 ? "🤝 Нічия · з 🤖 — на інтерес"
+                    : human.Length == 0 ? "🤖 Бот переміг"
+                    : $"🏆 {Names(human)} — перемога над {LiveBots.Of(solo.Level)} ботом");
+            return;
+        }
         // з ботами — без нагород і рейтингу: результат іде нічиєю, а хто взяв — видно в рядку Журналу
         Ctx.Finish(HasBots ? [] : winners, HasBots ? $"{log} (з 🤖 — без нагород)" : log,
             verdict: !HasBots ? null : winners.Length == 0 ? "🤝 Нічия · з 🤖 — на інтерес" : $"🏆 {Names(winners)} · з 🤖 — на інтерес");
@@ -1022,14 +1059,40 @@ public sealed class BotBrain
     int[] _stamp = [], _queue = [];
     int _mark;
 
-    public void Think(ArenaCore core, string?[] bots, Random rng)
+    /// <summary>
+    /// Як їздить бот: скільки клітинок заливки досить, скільки ходів навмання на тисячу рішень, як боїться лоба в лоб
+    /// і чи тисне на суперника (обирає хід, після якого тому лишається менше місця).
+    /// </summary>
+    readonly record struct Style(int Reach, int Blunders, int HeadFear, bool Press);
+
+    /// <summary>Боти гурту — як їздили завжди (без помилок навмання, без тиску).</summary>
+    static readonly Style Party = new(Reach, 0, 40, false);
+
+    /// <summary>«🤖 + бот» у мотоциклах удвох: легкий / звичайний / сильний.</summary>
+    static readonly Style[] Solo =
+    [
+        new(14, 25, 10, false),    // легкий: бачить на кілька клітинок, частіше схибить — заганяє себе в кут
+        new(Reach, 4, 40, false),  // звичайний: як боти гурту, зрідка схибить
+        new(220, 1, 60, true),     // сильний: бачить далеко й підрізає
+    ];
+
+    /// <param name="level">Рівень «🤖 + бот»; null — боти гурту.</param>
+    public void Think(ArenaCore core, string?[] bots, Random rng, LiveBots.Level? level = null)
     {
         if (_stamp.Length != core.W * core.H) { _stamp = new int[core.W * core.H]; _queue = new int[core.W * core.H]; _mark = 0; }
+        var st = level is { } l ? Solo[LiveBots.Index(l)] : Party;
         for (var s = 0; s < bots.Length && s < core.Seats; s++)
         {
             if (bots[s] is null || !core.Alive[s] || core.Turning(s)) continue;
             var cur = core.Dirs[s];
             var head = core.Bodies[s][0];
+            if (st.Blunders > 0 && rng.Next(1000) < st.Blunders)
+            {
+                var d = (cur + 3 + rng.Next(3)) % 4;   // ліворуч, прямо чи праворуч — не дивлячись
+                if (d != cur) core.Turn(s, d);
+                continue;
+            }
+            var rival = st.Press ? Rival(core, s) : -1;
             int best = cur, bestScore = int.MinValue;
             for (var i = 0; i < 3; i++)
             {
@@ -1039,14 +1102,33 @@ public sealed class BotBrain
                 if (!ok || Blocked(core, s, next)) score = -1000 + rng.Next(3);
                 else
                 {
-                    score = Fill(core, s, next) * 4 + (i == 0 ? 3 : 0) + rng.Next(3);
-                    if (NearHead(core, s, next)) score -= 40;
+                    score = Fill(core, s, next, st.Reach) * 4 + (i == 0 ? 3 : 0) + rng.Next(3);
+                    if (rival >= 0) score -= Squeezed(core, rival, next, st.Reach) * 2;
+                    if (NearHead(core, s, next)) score -= st.HeadFear;
                 }
                 if (score > bestScore) { bestScore = score; best = dir; }
             }
             if (best != cur) core.Turn(s, best);
-            else if (core.TurboOn && bestScore >= Reach * 4 && rng.Next(40) == 0) core.Boost(s);
+            else if (core.TurboOn && bestScore >= st.Reach * 4 && rng.Next(40) == 0) core.Boost(s);
         }
+    }
+
+    /// <summary>Перший живий суперник (у дуелі він один) — на нього тисне сильний бот; −1 — нема.</summary>
+    static int Rival(ArenaCore core, int s)
+    {
+        for (var o = 0; o < core.Seats; o++)
+            if (o != s && core.Alive[o] && core.Bodies[o].Count > 0) return o;
+        return -1;
+    }
+
+    /// <summary>Скільки місця лишиться суперникові, якщо бот стане на <paramref name="cell"/>: клітинку на мить займаємо й повертаємо.</summary>
+    int Squeezed(ArenaCore core, int rival, int cell, int reach)
+    {
+        var was = core.Occ[cell];
+        core.Occ[cell] = -1;
+        var n = Fill(core, rival, core.Bodies[rival][0], reach);
+        core.Occ[cell] = was;
+        return n;
     }
 
     static bool Blocked(ArenaCore core, int s, int cell)
@@ -1071,16 +1153,16 @@ public sealed class BotBrain
         return false;
     }
 
-    int Fill(ArenaCore core, int s, int from)
+    int Fill(ArenaCore core, int s, int from, int reach)
     {
         _mark++;
         int head = 0, tail = 0;
         _queue[tail++] = from;
         _stamp[from] = _mark;
-        while (head < tail && tail < Reach)
+        while (head < tail && tail < reach)
         {
             var c = _queue[head++];
-            for (var d = 0; d < 4 && tail < Reach; d++)
+            for (var d = 0; d < 4 && tail < reach; d++)
             {
                 var (n, ok) = core.Ahead(c, d);
                 if (!ok || _stamp[n] == _mark || Blocked(core, s, n)) continue;

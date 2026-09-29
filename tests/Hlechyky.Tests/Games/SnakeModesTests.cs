@@ -56,7 +56,7 @@ public class SnakeModesTests
 
         Assert.Equal("live", game.Group);
         Assert.Equal(TronGame.TickMs, game.TickMs);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);   // сам — лише з «🤖 + бот»; рейтинг і ставка — як і були, на двох людей
         Assert.Equal(2, game.MaxPlayers);
         Assert.True(game.Rated);          // рівно двоє + рейтинг = ставка можлива
     }

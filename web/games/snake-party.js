@@ -364,7 +364,7 @@
       }
       return;
     }
-    const who = (st.winners || []).map((s) => ctx.nickOf(s) || ctx.seatName(s));
+    const who = (st.winners || []).map((s) => ctx.nameOf(s) || ctx.seatName(s));
     const between = st.ser && st.nx > 0;
     g.font = '700 ' + Math.round(26 * k) + 'px system-ui, sans-serif';
     const title = st.winner === 'draw' || !who.length ? 'Нічия' : '🏆 ' + who.join(' і ');
@@ -400,7 +400,7 @@
     for (let s = 0; s < 4; s++) {
       if (!st.present[s]) continue;
       const out = !st.timed && st.startIn <= 0 && !alive(st, s) && st.place[s] !== 1;
-      const nick = ctx.nickOf(s) || ctx.seatName(s);
+      const nick = ctx.nameOf(s) || ctx.seatName(s);   // бот — «🤖 Залізяка» (SeatBot), а не колір
       const len = st.timed && st.t[s] ? ' <small>' + st.t[s].length + '</small>' : '';
       parts.push('<span class="snp-s' + s + (out ? ' snp-out' : '') + (ctx.seat === s ? ' snp-me' : '') + '"><i>'
         + RIDERS[s].mark + '</i>' + ctx.esc(nick) + ' <b>' + (st.wins[s] || 0) + '</b>' + len + '</span>');
@@ -500,14 +500,12 @@
     seatClass: ['snp-s0', 'snp-s1', 'snp-s2', 'snp-s3'],
     pad: { dirs: true, a: 'KeyF', x: 'KeyR', hint: '{dpad} куди повзти · вибула: {a} кинути яблуко, {x} камінь' },
     news: {
-      v: '2026-09-29',
-      title: 'Змійки гуртом: яблука з розбитих, кидки й бонуси',
+      v: '2026-09-30',
+      title: 'Змійки гуртом: можна й самій — з ботами',
       items: [
-        '🍎 Розбита змійка розсипається яблуками — хапай здобич, поки не вхопили інші',
-        '🪨 Вибула? Тапни по полю — кинь яблуко чи камінець на 3 с (раз на 5 с, не під самий ніс)',
-        '🔁 Партія до 3 чи 5 перемог: наступний раунд стартує сам, без «Ще раз»',
-        '⏱ Режим «на час»: 90 с, розбилась — за 2 с знову на полі, перемагає найдовша',
-        '🌀 Поле-тор без стін і ✨ бонуси: ⭐ +3, ✂ хвіст навпіл, ❄ пригальмувати решту',
+        '🤖 Сама за столом? Тисни «🤖 + бот» — на арену виповзуть двоє ботів: їдять яблука, хапають здобич, не лізуть у тупики',
+        '🎚 Рівень ботів — опція столу «🤖 Бот, коли граєш сам»: легкий, звичайний чи сильний',
+        '🎯 Партія з ботами — на інтерес, без черепків і таблиць; розбилась — раунд ботів, без трихвилинного чекання',
       ],
     },
 
