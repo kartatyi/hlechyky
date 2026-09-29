@@ -21,7 +21,7 @@
 @supports (height: 100dvh) {
   .tpwrap { --tpw: min(560px, max(300px, calc((100dvh - var(--tptop, 300px) - 170px) * 4 / 3))); }
   /* пальцем палітра у два рядки по десять — під нею треба ще ~50 px */
-  @media (pointer: coarse) { .tpwrap { --tpw: min(560px, max(300px, calc((100dvh - var(--tptop, 300px) - 225px) * 4 / 3))); } }
+  @media (pointer: coarse) { .tpwrap { --tpw: min(560px, max(300px, calc((100dvh - var(--tptop, 300px) - 252px) * 4 / 3))); } }
 }
 .tpbody > .tpcanvas, .tpbody > .tpshow.big, .tpbody > .tptools { max-width: var(--tpw); }
 /* на телефоні в екран однаково не влізе — там полотно на всю ширину: пальцем на більшому малювати легше */
@@ -34,7 +34,7 @@
   display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--tppaper);
   border: 1px solid var(--line); border-radius: 10px;
 }
-.tpcanvas { touch-action: auto; }
+.tpcanvas { touch-action: auto; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .tpcanvas.can { cursor: crosshair; touch-action: none; }
 .tpcanvas.can[data-tool="fill"] { cursor: cell; }
 .tptools[hidden] { display: none; }
@@ -110,6 +110,34 @@
 .tpwrap .pctime.film i { background: var(--accent); opacity: .7; }
 .tpwrap .pctime.film .pcsec { display: none; }
 @media (pointer: coarse) { .tpspk, .tpact button { min-height: 44px; } }
+
+/*
+  Телефон (прохід «Телефон», 30.09): полотно на всю ширину, тож «Готово» під ним опинялась під нижнім меню (на 360×740 —
+  цілком за екраном), а смужка часу зникала, щойно гортаєш до неї. Тепер обидві липнуть: час — під шапку сайту, «Готово» —
+  над нижнім меню й шторкою (--gdock-h дає каркас). Порожнє поле довкола кнопки дотиків не ловить — палітра під ним жива.
+  Палітра пальцем — 14 кольорів у два рядки по сім (≈43 px замість 20 по 27–32), інструменти 40 px.
+*/
+.tpdone { display: none; }
+@container (max-width: 520px) {
+  .tptop { position: sticky; top: var(--gtop-h, 56px); z-index: 4; background: var(--panel); padding-block: 4px; }
+  .tpact { position: sticky; bottom: calc(var(--gdock-h, 56px) + 6px); z-index: 4; pointer-events: none; }
+  .tpact > * { pointer-events: auto; }
+  .tpact .tpok { background: var(--panel); padding: 6px 10px; border-radius: 10px; }
+}
+@media (pointer: coarse) {
+  .tpwrap .pcpal { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+  .tpwrap .pcsw:is(:nth-child(4), :nth-child(10), :nth-child(12), :nth-child(13), :nth-child(16), :nth-child(20)) { display: none; }
+  .tpwrap :is(.pcsz, .pct, .pca) { min-width: 40px; height: 40px; touch-action: manipulation; }
+  .tplike { min-height: 40px; padding: 4px 14px; }
+}
+@media (pointer: coarse) {
+  @container (max-width: 520px) {
+    /* «Готово» — у рядку інструментів, праворуч від ↶ 🗑; нижня кнопка тоді зайва, поки малюєш */
+    .tpwrap .tpdone { display: block; flex: 0 0 auto; min-width: 104px; height: 40px; padding: 0 16px; }
+    .tptools:not([hidden]) ~ .tpact:has([data-do="done"]) { display: none; }
+    .tpwrap .pcsep { width: 4px; }
+  }
+}
 
 /* ---- Звання партії (п. 224) ---- */
 .tpawards { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 4px 0 10px; }

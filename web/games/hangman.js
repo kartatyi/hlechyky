@@ -250,7 +250,7 @@
         + '</div>'
         + '<div class="hscores"></div>'
         + '<form class="hword" hidden><input type="text" maxlength="24" placeholder="ціле слово" autocomplete="off" '
-        + 'spellcheck="false" enterkeyhint="send"><button class="primary" type="submit">Назвати</button></form>';
+        + 'autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send"><button class="primary" type="submit">Назвати</button></form>';
       paint(root, ctx);
     },
 
