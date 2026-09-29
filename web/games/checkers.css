@@ -34,7 +34,7 @@
 .board.ck .cell.last { box-shadow: inset 0 0 0 999px var(--cklast); }
 .board.ck .cell.pick { box-shadow: inset 0 0 0 999px var(--ckpick); }
 .board.ck .cell.sel { box-shadow: inset 0 0 0 3px var(--accent); }
-.board.ck .cell:not(:disabled):hover { background: var(--ckdark); filter: brightness(1.15); }
+@media (hover: hover) { .board.ck .cell:not(:disabled):hover { background: var(--ckdark); filter: brightness(1.15); } }
 
 /* Шашка — кружечок. Дрібний варіант живе в смужці рахунку, великий — на дошці. */
 .ckp {

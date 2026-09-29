@@ -33,7 +33,7 @@
 .board.chessb .cell.chk { background: var(--danger); }
 /* Каркас на :hover заливає клітинку своїм кольором — шаховій дошці це стерло б поля,
    тому колір повертаємо на місце, а підсвічуємо яскравістю. */
-.board.chessb .cell:not(:disabled):hover { filter: brightness(1.2); }
+@media (hover: hover) { .board.chessb .cell:not(:disabled):hover { filter: brightness(1.2); } }
 .board.chessb .cell.lt:not(:disabled):hover { background: var(--gchess-lt); }
 .board.chessb .cell.dk:not(:disabled):hover { background: var(--gchess-dk); }
 .board.chessb .cell.chk:not(:disabled):hover { background: var(--danger); }
@@ -127,3 +127,22 @@
 .chs-dr.me i { color: var(--accent); font-weight: 600; }
 .board.chessb .cell.chs-key { box-shadow: inset 0 0 0 3px var(--ok); }
 @media (pointer: coarse) { .chessacts .chs-chips button { min-height: 44px; } }
+
+/* Налаштування «з Глеком» — у <details>: на ПК відкриті (як були), на телефоні згорнуті в один рядок. */
+.chs-set { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.chs-set > summary { cursor: pointer; color: var(--muted); font-size: .9em; padding: 4px 10px; list-style: none; }
+.chs-set > summary::-webkit-details-marker { display: none; }
+.chs-set[open] > summary { display: none; }
+.chs-set > .muted { display: block; margin-top: 6px; }
+/* Дотик: «Нічия?», «Здатись», «Показати розв'язок», «⚙️» — цілі під палець, координати читабельні. */
+@media (pointer: coarse) {
+  .chessacts button, .chs-set > summary { min-height: 40px; }
+  .chs-set > summary { display: inline-flex; align-items: center; border: 1px solid var(--line, rgba(127,127,127,.35)); border-radius: 10px; }
+  .chs-set[open] > summary { display: inline-flex; }
+  .board.chessb .co { font-size: 11px; }
+}
+/* Задача дня: хід не той — видно прямо над дошкою, а не лише тостом. */
+.chs-miss { color: var(--danger); font-weight: 600; }
+.board.chessb.chs-shake { animation: chs-shake .35s; }
+@keyframes chs-shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+@media (prefers-reduced-motion: reduce) { .board.chessb.chs-shake { animation: none; } }
