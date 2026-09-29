@@ -115,7 +115,9 @@
   }
 
   const me = (st) => (st.ctx && st.ctx.mine ? st.ctx.seat : null);
-  const nickOf = (st, i) => (st.ctx && st.ctx.nickOf(i)) || st.nicks[i] || (st.ctx ? st.ctx.seatName(i) : '');
+  // nameOf, а не nickOf: хату 🤖 бота каркас називає сам (соло з ботом)
+  const nameAt = (ctx, i) => (ctx.nameOf ? ctx.nameOf(i) : ctx.nickOf(i));
+  const nickOf = (st, i) => (st.ctx && nameAt(st.ctx, i)) || st.nicks[i] || (st.ctx ? st.ctx.seatName(i) : '');
   function myTurn(st) {
     const c = st.ctx;
     const s = me(st);
@@ -660,7 +662,7 @@
       const src = (v.huts || [])[i];
       const hut = st.huts[i];
       if (!src) continue;
-      const nick = st.ctx.nickOf(i) || src.nick;
+      const nick = nameAt(st.ctx, i) || src.nick;
       if (nick) st.nicks[i] = nick;
       hut.plays = src.alive || !!src.reason;
       if (hut.alive && !src.alive && hut.plays && st.phase !== 'lobby' && !newGame) ruin(st, i, src.reason);
@@ -2041,7 +2043,8 @@
     let html = '';
     for (let i = 0; i < 6; i++) {
       const hut = st.huts[i];
-      const nick = ctx.nickOf(i) || (hut.plays && st.phase !== 'lobby' ? st.nicks[i] : '');
+      // у лобі хата бота теж підписана: plays іде з виду, тож чужий старий нік на порожньому місці не вилізе
+      const nick = nameAt(ctx, i) || (hut.plays ? st.nicks[i] : '');
       if (!nick) continue;
       const alive = st.phase === 'lobby' || hut.alive;
       const hp = st.phase === 'lobby' ? 100 : hut.hp;
@@ -2315,14 +2318,12 @@
       hint: '{dpad} кут і сила · {a} постріл, тримай — заряд · {x} снаряд (чужий хід — емоція) · {lb}{rb} посунути хату',
     },
     news: {
-      v: '2026-09-29',
-      title: 'Глекомети: залп, приколи й погода',
+      v: '2026-09-30',
+      title: 'Глекомети: соло з ботом',
       items: [
-        '💥 Опція «Хід: Залп» — усі цілять разом, чужих прицілів не видно, і снаряди летять одночасно',
-        '🐓 «Комора з приколами»: півень, мед (хата прилипає), смерч (розкидає хати) і підкова-магніт',
-        '❄ «Погода й мапа»: зима — хати ковзають, ніч — видно лише вогні й спалахи, ярмарок зі ставком',
-        '😂 Поки ходить інший — емоції над своєю хатою: 1–4, Ⓧ або кнопки внизу',
-        '📜 Після «Ще раз» — підсумок серії; на телефоні камера летить за снарядом',
+        '🤖 Сам у селі? Тисни «🤖 + бот» — навпроти стане хата бота-гармаша (без ачівок і ★ серії)',
+        '🎯 Бот пристрілюється, як людина: перший глек «на око», далі пам’ятає недоліт і вчиться, як зносить вітер',
+        '🎚 Опція «🤖 Бот»: легкий майже не зважає на вітер, сильний за два-три ходи бере в «вилку»',
       ],
     },
 

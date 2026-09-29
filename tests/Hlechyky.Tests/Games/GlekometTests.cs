@@ -138,28 +138,28 @@ public partial class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
     // =============================================================================================
 
     [Fact]
-    public void Catalog_lists_glekomet_as_live_by_host_2_to_6_with_its_options()
+    public void Catalog_lists_glekomet_as_live_by_host_1_to_6_with_its_options()
     {
         var g = RoomHarness.NewRegistry().Catalog.Single(c => c.Id == "glekomet");
         Assert.Equal("Глекомети", g.Title);
         Assert.Equal("live", g.Group);
         Assert.Equal("byHost", g.Start);
-        Assert.Equal((2, 6, 40), (g.MinPlayers, g.MaxPlayers, g.TickMs));
+        Assert.Equal((1, 6, 40), (g.MinPlayers, g.MaxPlayers, g.TickMs));   // сам — лише з 🤖 ботом
         Assert.False(g.Hidden);
-        Assert.Equal(["teams", "turn", "water", "mode", "arms", "map"], g.Options.Select(o => o.Key));
-        Assert.Equal(["solo", "30", "6", "turns", "plain", "plain"], g.Options.Select(o => o.Default));
+        Assert.Equal(["teams", "turn", "water", "mode", "arms", "map", "botlvl"], g.Options.Select(o => o.Key));
+        Assert.Equal(["solo", "30", "6", "turns", "plain", "plain", "normal"], g.Options.Select(o => o.Default));
         Assert.Equal(["20", "30", "45"], g.Options[1].Values.Select(v => v[0]));
         Assert.Equal(["6", "10", "0"], g.Options[2].Values.Select(v => v[0]));
         Assert.Equal("glekomet", g.Module);
     }
 
     [Fact]
-    public void Two_players_cannot_start_alone_and_host_starts_when_two_are_seated()
+    public void One_player_cannot_start_without_the_bot_and_host_starts_when_two_are_seated()
     {
         var h = new RoomHarness("glekomet", seed: 5);
         h.Join("Оля");
         Assert.False(h.Start().Ok);
-        Assert.Contains("Замало гравців", h.Reply.Message);
+        Assert.Equal(LiveBots.AloneText, h.Reply.Message);
         Assert.Equal("lobby", V(h).GetProperty("phase").GetString());
         h.Join("Петро");
         Assert.True(h.Start().Ok);
