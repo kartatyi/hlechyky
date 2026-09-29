@@ -15,7 +15,7 @@ namespace Hlechyky.Tests.Games;
 /// (<see cref="RoomHarness"/>). Клас у серійній колекції через перф-тест.
 /// </summary>
 [Collection(SerialPerf.Name)]
-public class TavernTests(ITestOutputHelper output)
+public partial class TavernTests(ITestOutputHelper output)
 {
     static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марта", "Юрко", "Соня", "Богдан"];
 
@@ -1761,13 +1761,13 @@ public class TavernTests(ITestOutputHelper output)
         Assert.Equal("Корчма", info.Title);
         Assert.Equal("корчму", info.Accusative);
         Assert.Equal(GameGroup.Live, info.Group);
-        Assert.Equal((2, 8), (info.MinPlayers, info.MaxPlayers));
+        Assert.Equal((1, 8), (info.MinPlayers, info.MaxPlayers));   // сам — лише з «🤖 + бот» (TavernBotTests)
         Assert.Equal(40, info.TickMs);
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.True(info.Hidden);
         Assert.False(info.Rated);
         Assert.Equal(ScoreOrder.HigherIsBetter, info.Score);
-        Assert.Equal(["rounds", "crowd"], info.Options!.Select(o => o.Key));
+        Assert.Equal(["rounds", "crowd", "botlvl"], info.Options!.Select(o => o.Key));
         Assert.Equal("5", info.Options![0].Default);
         var root = FindRoot();
         Assert.True(File.Exists(Path.Combine(root, "web", "games", "tavern.js")));

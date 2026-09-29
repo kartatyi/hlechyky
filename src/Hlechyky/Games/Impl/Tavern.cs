@@ -83,14 +83,15 @@ public sealed class Tavern : Game
     };
 
     public override GameInfo Info { get; } = new(
-        "tavern", "Корчма", "корчму", GameGroup.Live, 2, Seats, TickMs: TickMs,
+        "tavern", "Корчма", "корчму", GameGroup.Live, 1, Seats, TickMs: TickMs,
         Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("rounds", "Раундів", [("5", "5 раундів"), ("3", "3 раунди"), ("7", "7 раундів")], "5"),
             new GameOption("crowd", "Люду", [("auto", "Як у суботу"), ("small", "Будній день (24)"), ("big", "Весілля (40)")], "auto"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Повна корчма люду — і десь серед них твої друзі. Знайди й дай кулаком або тихенько випий три кухлі. Тільки не бийся, як корчмар дивиться");
+        Hint: "Повна корчма люду — і десь серед них твої друзі. Знайди й дай кулаком або тихенько випий три кухлі. Тільки не бийся, як корчмар дивиться. Самому — з 🤖 ботом, що ховається серед люду");
 
     static readonly string[] SeatNames = ["жовтий", "зелений", "рудий", "сірий", "синій", "рожевий", "фіолетовий", "червоний"];
 
@@ -115,6 +116,13 @@ public sealed class Tavern : Game
     int[][] _evFrame = [];
     TavernReveal? _reveal;
     int[]? _winners;
+    /// <summary>
+    /// «🤖 + бот»: людина сама за столом — на вільне місце сідає гравець-бот (<see cref="TavernPilot"/>). Один: другий
+    /// лише швидше допивав би три кухлі раніше за людину, а бійок і так вистачає від юрми.
+    /// </summary>
+    readonly SoloBot _solo = new();
+    int _bot = -1;
+    TavernPilot? _pilot;
 
     sealed record TavernReveal(int[] Winners, string Why, (int Seat, int Id)[] Ids, TavernRow[] Rows, (int Seat, int[] Pts)[] Trails);
     sealed record TavernRow(int Seat, int Mugs, int Hits, int Kos, bool Win, int Pts);
@@ -124,6 +132,23 @@ public sealed class Tavern : Game
     /// <summary>Для тестів: ядро й місця напряму.</summary>
     public TavernCore CoreForTests => Core;
     public TavernSeat SeatForTests(int seat) => _s[seat];
+    /// <summary>Місце гравця-бота в цій партії (-1 — партія людська) і його мозок.</summary>
+    public int Bot => _bot;
+    public TavernPilot? PilotForTests => _pilot;
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, Seats);
+
+    public override string? SeatBot(int seat) => seat == _bot && seat >= 0 && !Ctx.Seated(seat) ? LiveBots.Name : null;
+
+    /// <summary>Куди сяде бот: перше вільне місце.</summary>
+    int BotSeat()
+    {
+        for (var i = 0; i < Seats; i++)
+            if (!Ctx.Seated(i)) return i;
+        return -1;
+    }
     public string Phase => _phase;
     public int Left => _left;
     public int RoundNo => _round;
@@ -134,6 +159,7 @@ public sealed class Tavern : Game
     {
         _rounds = options.TryGetValue("rounds", out var r) && int.TryParse(r, out var n) && n is 3 or 5 or 7 ? n : 5;
         _crowd = options.TryGetValue("crowd", out var c) && c is "small" or "big" ? c : "auto";
+        _solo.Configure(options);
     }
 
     /// <summary>Скільки ботів за складом і опцією.</summary>
@@ -155,12 +181,15 @@ public sealed class Tavern : Game
         _ev.Clear();
         _evFrame = [];
         var players = 0;
+        _bot = _solo.Active(Ctx, Seats) ? BotSeat() : -1;
+        // бот діє тими самими «punch» і «drink», що й людина (ті самі перевірки й відмови)
+        _pilot = _bot >= 0 ? new TavernPilot(Core, Ctx.Rng, _solo.Level, dir => PunchAs(_bot, dir), () => DrinkAct(_bot)) : null;
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            s.Plays = Ctx.Seated(i);
+            s.Plays = Ctx.Seated(i) || i == _bot;
             s.Out = false;
-            s.Nick = Ctx.NickOf(i) ?? "";
+            s.Nick = i == _bot ? LiveBots.Name : Ctx.NickOf(i) ?? "";
             s.Total = s.ShownTotal = 0;
             if (s.Plays) players++;
         }
@@ -196,6 +225,7 @@ public sealed class Tavern : Game
         }
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
+        if (_bot >= 0) _pilot!.Reset(_s[_bot].Me, Core.N, _s[_bot]);
         _dirty = true;
     }
 
@@ -205,6 +235,8 @@ public sealed class Tavern : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return !_started || _phase == PhaseOver ? _solo.Switch(Ctx, seat, payload, Seats) : ActResult.Fail("Партія вже йде");
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= Seats || !_s[seat].Active) return ActResult.Fail("Тут так не ходять");
         return action switch
@@ -268,9 +300,15 @@ public sealed class Tavern : Game
 
     ActResult Punch(int seat, JsonElement payload)
     {
-        var s = _s[seat];
         var dir = Field(payload, "dir", out var ok);
         if (!ok || dir is < 0 or > 3) return ActResult.Fail("Такого напрямку нема");
+        return PunchAs(seat, dir);
+    }
+
+    /// <summary>Кулак місця (людини з <c>Act</c> чи гравця-бота): ті самі перевірки й той самий замах.</summary>
+    ActResult PunchAs(int seat, int? dir)
+    {
+        var s = _s[seat];
         if (PhaseRefusal(s) is { } no) return no;
         var me = Core.V[s.Me];
         if (Busy(me) is { } busy) return ActResult.Fail(busy);
@@ -337,6 +375,7 @@ public sealed class Tavern : Game
                 HeldKeys();
                 Core.BarmanTick();
                 Core.ThinkAll();
+                BotThink();
                 Core.StepAll();
                 Trail();
                 if (--_left <= 0)
@@ -357,6 +396,7 @@ public sealed class Tavern : Game
                 foreach (var id in Core.Struck) Strike(Core.V[id]);
                 foreach (var id in Core.Drank) Drank(Core.V[id]);
                 Core.ThinkAll();
+                BotThink();
                 Core.StepAll();
                 Trail();
                 _left--;
@@ -378,6 +418,15 @@ public sealed class Tavern : Game
         }
     }
 
+    /// <summary>Гравець-бот бачить події тика (удари, «за двері») і думає після юрми — тими самими діями, що й людина.</summary>
+    void BotThink()
+    {
+        if (_bot < 0 || _pilot is null) return;
+        foreach (var e in _ev) _pilot.See(e);
+        var s = _s[_bot];
+        if (s.Active && s.Alive && s.Me >= 0) _pilot.Think(Core.V[s.Me]);
+    }
+
     TickResult Flush(bool frame)
     {
         _evFrame = _ev.Count == 0 ? [] : [.. _ev];
@@ -392,7 +441,7 @@ public sealed class Tavern : Game
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            if (!s.Active || !s.Alive || s.Me < 0) continue;
+            if (!s.Active || !s.Alive || s.Me < 0 || i == _bot) continue;
             var v = Core.V[s.Me];
             if (v.Want >= 0 && _clock - s.MoveAt > MoveHoldTicks) v.Want = -1;
         }
@@ -565,10 +614,10 @@ public sealed class Tavern : Game
         foreach (var w in winners)
         {
             _s[w].Total += PtRound;
-            if (why == "mugs" && _s[w].Punches == 0) Ctx.Award(w, 0, "ach:tavern-quiet");
+            if (_bot < 0 && why == "mugs" && _s[w].Punches == 0) Ctx.Award(w, 0, "ach:tavern-quiet");
         }
         for (var i = 0; i < Seats; i++)
-            if (_s[i].Active && _s[i].Kos >= 2) Ctx.Award(i, 0, "ach:tavern-ko");
+            if (_bot < 0 && _s[i].Active && _s[i].Kos >= 2) Ctx.Award(i, 0, "ach:tavern-ko");   // з ботом — без ачівок
         _reveal = RevealOf(winners, why, s => s.Active);
         Freeze();
         _phase = PhaseReveal;
@@ -620,6 +669,7 @@ public sealed class Tavern : Game
         var best = active.Count == 0 ? 0 : active.Max(i => _s[i].Total);
         var top = active.Where(i => _s[i].Total == best).ToArray();
         var winners = top.Length == active.Count ? [] : top;
+        if (_bot >= 0) { FinishWithBot(active, top); return; }
         _winners = winners;
         _dirty = true;
         foreach (var i in active) Ctx.Score(i, _s[i].Total);
@@ -632,6 +682,24 @@ public sealed class Tavern : Game
     /// Хтось устав: його відвідувач лишається в корчмі й стає ботом — вихід нікого не викриває. Лишився один — партія
     /// його; нікого — нічия.
     /// </summary>
+    /// <summary>
+    /// Кінець партії з ботом: переможець — лише людина (бот у переможці каркаса не йде; рахунку в профіль нема).
+    /// </summary>
+    void FinishWithBot(List<int> active, int[] top)
+    {
+        var human = active.FirstOrDefault(i => i != _bot, -1);
+        var line = string.Join(" : ", active.OrderByDescending(i => _s[i].Total).Select(i => $"{_s[i].Nick} {_s[i].Total}"));
+        int hp = human >= 0 ? _s[human].Total : 0, bp = _s[_bot].Total;
+        var draw = top.Length == active.Count;
+        var won = human >= 0 && !draw && Array.IndexOf(top, human) >= 0;
+        _winners = won ? [human] : draw ? [] : [_bot];
+        _dirty = true;
+        Ctx.Finish(won ? [human] : [], $"{Info.Title}: {line}{(draw ? " — нічия" : "")}",
+            verdict: won ? $"🏆 {_s[human].Nick} — перемога над {LiveBots.Of(_solo.Level)} ботом {hp}:{bp}"
+                : draw ? $"🤝 Нічия з ботом {hp}:{bp}"
+                : $"🤖 Бот переміг {bp}:{hp}");
+    }
+
     public override void OnLeave(int seat)
     {
         if (!_started || seat < 0 || seat >= Seats || _phase == PhaseOver) return;
@@ -754,6 +822,11 @@ public sealed class Tavern : Game
                 ? new { winners = w, totals = _s.Select(x => x.Total).ToArray(), why = _endWhy }
                 : null,
             turn = (int?)null,
+            // «🤖 + бот» (кнопку малює core.js): у лобі — куди сяде, у партії й після — де сидів
+            bot = live && _bot >= 0 ? _bot : _solo.Wanted && BotSeat() is var bs && bs >= 0 ? bs : (int?)null,
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
         };
     }
 

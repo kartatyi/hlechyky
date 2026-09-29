@@ -493,7 +493,7 @@ public sealed class PotatoCore(Random rng)
     }
 
     /// <summary>Найближчий носій горщика в межах <see cref="ShyRange"/> (id) і як той горщик димить.</summary>
-    int NearCarrier(PotatoVillager v, out int heat)
+    public int NearCarrier(PotatoVillager v, out int heat)
     {
         heat = 0;
         int best = -1;
@@ -509,7 +509,7 @@ public sealed class PotatoCore(Random rng)
     }
 
     /// <summary>Крок геть від <paramref name="from"/>: по довшій осі, а де не пролізти — по іншій.</summary>
-    static void Away(PotatoVillager v, PotatoVillager from)
+    public static void Away(PotatoVillager v, PotatoVillager from)
     {
         int dx = v.X - from.X, dy = v.Y - from.Y;
         int hx = dx >= 0 ? 0 : 2, hy = dy >= 0 ? 1 : 3;
@@ -567,7 +567,7 @@ public sealed class PotatoCore(Random rng)
     }
 
     /// <summary>Найближчий, кому можна віддати (хоч би як далеко); -1 — нікого.</summary>
-    int Nearest(PotatoVillager g, PotatoPot p)
+    public int Nearest(PotatoVillager g, PotatoPot p)
     {
         int best = -1;
         long bestD = long.MaxValue;
@@ -582,7 +582,7 @@ public sealed class PotatoCore(Random rng)
     }
 
     /// <summary>До точки (x, y): поруч — навпростець по довшій осі, далеко — першим кроком BFS, тримаючи свою смугу.</summary>
-    void Toward(PotatoVillager v, int x, int y)
+    public void Toward(PotatoVillager v, int x, int y)
     {
         int dx = x - v.X, dy = y - v.Y;
         var cell = PotatoMap.CellOf(v.X, v.Y);
@@ -611,7 +611,7 @@ public sealed class PotatoCore(Random rng)
     }
 
     /// <summary>Скинути прогулянку й «відходжу від горщика»: наступного разу — нова ціль.</summary>
-    static void ForgetWalk(PotatoVillager v)
+    public static void ForgetWalk(PotatoVillager v)
     {
         v.Target = -1;
         v.Wander = 0;
@@ -670,7 +670,7 @@ public sealed class PotatoCore(Random rng)
     /// Прогулянка, як у «Юрмі»: до цілі своєю смугою, посеред дороги інколи вагається, дійшовши — стоїть будь-де в
     /// клітинці (звичайно 0,5–3 с, кожен четвертий — довше), стоячи інколи переступає, після стояння інколи тиняється.
     /// </summary>
-    void Walk(PotatoVillager v)
+    public void Walk(PotatoVillager v)
     {
         if (v.Wander > 0)
         {

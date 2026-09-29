@@ -14,7 +14,7 @@ namespace Hlechyky.Tests.Games;
 /// (<see cref="RoomHarness"/>). Клас у серійній колекції через перф-тест.
 /// </summary>
 [Collection(SerialPerf.Name)]
-public class PotatoTests(ITestOutputHelper output)
+public partial class PotatoTests(ITestOutputHelper output)
 {
     static readonly string[] Nicks = ["Оля", "Петро", "Ганна", "Іван", "Марта", "Юрко", "Соня", "Богдан"];
 
@@ -1495,12 +1495,12 @@ public class PotatoTests(ITestOutputHelper output)
         Assert.Equal("potato", info.Id);
         Assert.Equal("Гарячий горщик", info.Title);
         Assert.Equal(GameGroup.Live, info.Group);
-        Assert.Equal((2, 8), (info.MinPlayers, info.MaxPlayers));
+        Assert.Equal((1, 8), (info.MinPlayers, info.MaxPlayers));   // сам — лише з «🤖 + бот» (PotatoBotTests)
         Assert.Equal(40, info.TickMs);
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.True(info.Hidden);
         Assert.Equal(ScoreOrder.HigherIsBetter, info.Score);
-        Assert.Equal(["rounds", "crowd", "pots"], info.Options!.Select(o => o.Key));
+        Assert.Equal(["rounds", "crowd", "pots", "botlvl"], info.Options!.Select(o => o.Key));
         var root = FindRoot();
         Assert.True(File.Exists(Path.Combine(root, "web", "games", "potato.js")));
         Assert.True(File.Exists(Path.Combine(root, "web", "games", "potato.css")));
