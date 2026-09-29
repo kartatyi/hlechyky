@@ -64,7 +64,7 @@
       const [x, y] = XY[i];
       const c = cornerOf(i, v.homes);
       const tint = c ? ' style="fill:' + COLORS[c.seat] + ';fill-opacity:' + (c.home ? '.16' : '.3') + '"' : '';
-      holes += '<circle class="zk-hole' + (targets.has(i) ? ' zk-to' : '') + '" data-i="' + i + '" cx="' + x.toFixed(3) + '" cy="' + y.toFixed(3) + '" r=".34"' + tint + '/>';
+      holes += '<circle class="zk-hole' + (targets.has(i) ? ' zk-to' : '') + '" data-i="' + i + '" cx="' + x.toFixed(3) + '" cy="' + y.toFixed(3) + '" r="' + (targets.has(i) ? '.44' : '.34') + '"' + tint + '/>';
       const ch = cells[i];
       if (ch && ch !== '.') {
         const s = +ch;
@@ -84,7 +84,9 @@
     }
     // Невидимі «зони дотику» на всю відстань між лунками: сама лунка на телефоні — 16 px, пальцем не влучиш.
     const hits = XY.map(([x, y], i) => '<circle class="zk-hit" data-i="' + i + '" cx="' + x.toFixed(3) + '" cy="' + y.toFixed(3) + '" r=".5"/>').join('');
-    setHtml(board, '<svg viewBox="-7.7 -7.7 15.4 15.4" role="img" aria-label="Зірка"><g transform="rotate(' + rot.toFixed(1) + ')">'
+    // viewBox — впритул до крайніх зон дотику (зірка вістрям донизу: ±6 по x, ±6,93 по y, плюс .5): порожні поля
+    // по боках з'їдали п'яту частину ширини, а на телефоні кожен піксель лунки — влучання пальцем.
+    setHtml(board, '<svg viewBox="-6.55 -7.45 13.1 14.9" role="img" aria-label="Зірка"><g transform="rotate(' + rot.toFixed(1) + ')">'
       + holes + trail + pegs + hits + '</g></svg>');
 
     // Хто є хто: колір, нік, скільки вже вдома.

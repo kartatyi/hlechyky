@@ -1,8 +1,13 @@
 /* Китайські шашки на зірці — усі класи з префіксом zk-. */
-.zk-board { width: min(92vw, 520px, calc(100vh - 260px)); min-width: 260px; margin: 0 auto; }
+/* viewBox вужчий за висоту (13,1 × 14,9): ширина × .88 — висота дошки на ПК та сама, що й була з квадратом. */
+.zk-board { width: calc(min(92vw, 520px, calc(100vh - 260px)) * .88); min-width: 240px; margin: 0 auto; }
+/* Телефон: зірка на всю ширину екрана поза відступами картки — лунка з кроком ~29 px на 390, ~27 на 360. */
+@media (max-width: 480px) {
+  .gbody > .zk-board { width: calc(100vw - 8px); max-width: none; min-width: 0; margin-inline: calc(50% - 50vw + 4px); }
+}
 .zk-board svg { width: 100%; height: auto; display: block; touch-action: manipulation; }
 .zk-hole { fill: var(--panel2, #2a3a30); stroke: var(--muted, #889); stroke-width: .05; cursor: pointer; }
-.zk-hole.zk-to { fill: var(--ok) !important; fill-opacity: .75 !important; stroke: var(--text); stroke-width: .08; }
+.zk-hole.zk-to { fill: var(--ok) !important; fill-opacity: .8 !important; stroke: var(--text); stroke-width: .1; }
 .zk-peg { stroke: rgba(0, 0, 0, .55); stroke-width: .07; cursor: default; }
 .zk-peg.zk-can { cursor: pointer; stroke: var(--text); stroke-width: .08; }
 .zk-peg.zk-sel { stroke: var(--text); stroke-width: .16; }
