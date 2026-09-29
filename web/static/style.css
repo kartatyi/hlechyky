@@ -78,7 +78,7 @@ input:focus { border-color: var(--accent2); }
 .chip.err { color: var(--danger); }
 /* Причина помилки в черзі буває на пів екрана ("відео 18+, YouTube віддає…"): у рядок вона розтягувала сторінку до 692 px
    на телефоні, а з нею й усі fixed-елементи. Переносимо. */
-.chip.err { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.chip.err { white-space: normal; overflow-wrap: anywhere; max-width: 100%; flex: 0 1 auto; min-width: min(12em, 100%); }
 .chip.dj { color: var(--accent); background: #3a2d0a; }
 .chip.badge { background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 0 6px; min-width: 18px; justify-content: center; font-size: .72em; }
 .spin { display: inline-block; width: 1em; height: 1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
