@@ -1531,6 +1531,13 @@
       st.hudSig = '';
       hud(root, st);
     }
+    // телефон лежачи: стік ліворуч від ставка, «💨/❄» праворуч, ставок за висотою екрана (icefloe.css, .ifland)
+    const land = phone && HGames.ui.coarse() && window.innerWidth > window.innerHeight && window.innerHeight <= 500;
+    if (land !== !!st.land) {
+      st.land = land;
+      root.classList.toggle('ifland', land);
+      if (st.ctx && st.ctx.playing) setTimeout(() => fitView(root, st), 80);   // повернули посеред партії — знову в кадр
+    }
     if (phone) {
       if (cv.style.maxWidth || cv.style.width) { cv.style.maxWidth = ''; cv.style.width = ''; }
       st.labelPx = 12;
@@ -1672,6 +1679,17 @@
     }, 80);
   }
 
+  /// Скільки в'юпорта вільно: каркасний ui.fit(), а без нього — липка шапка й нижні панелі з CSS-змінних.
+  function fitNow() {
+    if (HGames.ui.fit) return HGames.ui.fit();
+    const cs = getComputedStyle(document.documentElement);
+    const n = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
+    const hd = document.querySelector('header');
+    const top = hd && getComputedStyle(hd).position === 'sticky' ? hd.getBoundingClientRect().height : 0;
+    const vv = window.visualViewport;
+    return { w: vv ? vv.width : window.innerWidth, h: vv ? vv.height : window.innerHeight, top, dock: n('--tabs-h') + n('--mini-h') };
+  }
+
   /// Телефон: на старті партії підкручуємо сторінку так, щоб ставок і стік із кнопками стали між шапкою й
   /// нижніми панелями. Раз на партію (і після F5) — далі людина гортає сама.
   function fitView(root, st) {
@@ -1679,8 +1697,9 @@
     const a = st.cv.el.getBoundingClientRect();
     const ctl = root.querySelector(':scope > .ifctl');
     const bottomEl = ctl ? ctl.getBoundingClientRect().bottom : a.bottom;
-    const h = bottomEl - a.top;
-    const top = 60, bottom = window.innerHeight - 116;
+    const h = st.land ? a.height : bottomEl - a.top;   // лежачи керування обабіч ставка
+    const f = fitNow();
+    const top = f.top + 4, bottom = f.h - f.dock - 4;
     const want = h <= bottom - top ? top + (bottom - top - h) / 2 : bottom - h;
     const d = a.top - want;
     if (Math.abs(d) > 24) window.scrollBy({ top: d, behavior: reduced() ? 'auto' : 'smooth' });
@@ -1794,6 +1813,8 @@
       controls(root, st);
       st.onResize = () => { const s = root._icefloe; if (s) { fit(root, s); spin(root, s); } };
       window.addEventListener('resize', st.onResize);
+      // поворот, ⛶ і шторка міняють місце під ставок без resize вікна — каркас кличе нас сам
+      if (HGames.ui.onFit) HGames.ui.onFit(root, () => st.onResize());
       fit(root, st);
       spin(root, st);
     },
@@ -1873,7 +1894,7 @@
       cancelAnimationFrame(st.raf);
       st.raf = 0;
       if (st.onResize) window.removeEventListener('resize', st.onResize);
-      root.classList.remove('ifside', 'ifplay');
+      root.classList.remove('ifside', 'ifplay', 'ifland');
       live.delete(st);
       root._icefloe = null;
     },

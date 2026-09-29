@@ -59,3 +59,19 @@ body.pad-on .pongboard.arena { max-width: min(560px, calc(100vh - 410px)); }
 .pgbot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; margin: 8px 0 2px; }
 .pgbot .btn { min-height: 44px; }
 .pgbot .muted { font-size: 13px; }
+
+/* ---- телефон (live2) ---- */
+@media (pointer: coarse) {
+  .pongsnd { min-width: 40px; min-height: 36px; touch-action: manipulation; }
+  .pongpad button { -webkit-user-select: none; -webkit-touch-callout: none; }
+  .pongboard { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+}
+/* Телефон лежачи: поле за висотою видимої смуги (класиці стелі не було — низ і кнопки йшли під меню). */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .pongboard:not(.arena) { max-width: min(100%, calc((var(--gfit-h, calc(100vh - 114px)) - 8px) * 1.6)); }
+  .pongboard.arena { max-width: min(100%, calc(var(--gfit-h, calc(100vh - 114px)) - 8px)); min-width: 0; }
+  /* g-land (каркас: поле ліворуч, решта праворуч): ↑ над ↓ стовпчиком під правим великим пальцем */
+  body.g-land .gbody > .pongpad[data-mode="duo"] { grid-template-columns: 96px; grid-template-rows: 84px 84px; width: auto; }
+  body.g-land .gbody > .pongpad[data-mode="arena"] { grid-template-columns: repeat(2, 72px); width: auto; }
+  body.g-land .gbody > .pongpad button { padding: 0; }
+}

@@ -212,3 +212,31 @@ body:has(.rl-body.rl-side) .tchat.drawer:not(.open) .tc-last { display: none; }
 
 /* 🏆 чемпіонат: траси за жеребом — чіп обраної при створенні траси в шапці столу вводив в оману (rally.js champChip) */
 .gtable.rl-champtrk .gtitle + .gmode:not(.stake) { display: none; }
+
+/* ---- телефон (live2) ---- */
+/* Стоячи: кнопки не на кутах траси (закривали ~¼ висоти поля), а смужкою під канвасом: ◀ ▶ ліворуч,
+   🛑 ⛽ праворуч, над ними 📣 ↺ і 🅷. Траса відкрита цілком. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .rl-wrap > .rl-touch.show { position: relative; inset: auto; height: 124px; margin-top: 8px; }
+  .rl-wrap > .rl-touch button {
+    width: 56px; height: 56px; font-size: 1.35em; background: var(--panel3); border-color: var(--line); color: var(--text);
+  }
+  .rl-wrap > .rl-touch button.on { background: var(--accent); color: var(--accent-ink); }
+  .rl-wrap > .rl-touch .rl-tl button[data-k="l"] { left: 4px; bottom: 0; }
+  .rl-wrap > .rl-touch .rl-tl button[data-k="r"] { left: 70px; bottom: 0; }
+  .rl-wrap > .rl-touch .rl-br .rl-gas { right: 4px; bottom: 0; }
+  .rl-wrap > .rl-touch .rl-br .rl-brake { right: 70px; bottom: 0; width: 56px; height: 56px; }
+  .rl-wrap > .rl-touch .rl-br .rl-hb { right: 4px; bottom: 66px; width: 48px; height: 48px; font-size: 1.15em; }
+  .rl-wrap > .rl-touch.auto .rl-br .rl-brake { right: 4px; }
+  .rl-wrap > .rl-touch.auto .rl-br .rl-hb { right: 70px; bottom: 0; width: 56px; height: 56px; }
+  .rl-wrap > .rl-touch .rl-tr .rl-sm { width: 44px; height: 44px; font-size: 1em; top: 0; right: auto; }
+  .rl-wrap > .rl-touch .rl-tr .rl-sm[data-a="horn"] { left: 4px; }
+  .rl-wrap > .rl-touch .rl-tr .rl-sm[data-a="reset"] { left: 58px; }
+}
+@media (pointer: coarse) {
+  .rl-touch button { -webkit-touch-callout: none; }
+}
+/* Лежачи: траса — за видимою смугою від каркаса (--gfit-h; у ⛶/g-imm шапки й меню нема, і стеля росте сама). */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .rl-wrap { max-width: calc((var(--gfit-h, calc(100vh - 56px - var(--tabs-h, 0px) - var(--mini-h, 0px))) - 16px) * 16 / 9); }
+}

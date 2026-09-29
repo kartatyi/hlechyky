@@ -151,3 +151,28 @@
   .potato-chip, .potato-seat { padding: 2px 7px; }
   .potato-news { font-size: .78em; }
 }
+
+/* ---- телефон (live2) ---- */
+@media (pointer: coarse) {
+  /* звук — під палець; кнопки дій не зумлять подвійним тапом і не кличуть лупу/меню */
+  .potato-mute { min-width: 40px; min-height: 36px; }
+  .potato-acts button, .potato-mute { touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .potato-pad { -webkit-touch-callout: none; }
+  /* лежачи (клас ставить модуль): potato-dirs ліворуч, мапа посередині за висотою, рядок гравців і кнопки праворуч */
+  .potato-body.potato-land {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto 1fr;
+    column-gap: 10px; row-gap: 6px; align-items: center;
+  }
+  .potato-land > .potato-stage { grid-column: 2; grid-row: 1 / span 2; justify-self: center; margin: 0; }
+  .potato-land > .potato-hud {
+    grid-column: 3; grid-row: 1; align-self: start; flex-direction: column; align-items: stretch; flex-wrap: nowrap;
+    max-width: 150px; max-height: calc(var(--gfit-h, calc(100vh - 114px)) - 150px); overflow-y: auto; font-size: .74em;
+  }
+  .potato-land > .potato-hud > * { justify-content: flex-start; }
+  .potato-land > .potato-pad { display: contents; }
+  .potato-land .potato-dirs { grid-column: 1; grid-row: 1 / span 2; }
+  .potato-land .potato-acts { grid-column: 3; grid-row: 2; align-self: end; }
+  .potato-land > :not(.potato-hud):not(.potato-stage):not(.potato-pad) { grid-column: 1 / -1; }
+  /* гравцеві палець, що зіслизнув із керування на мапу, не гортає сторінку */
+  .potato-land:has(.potato-pad) .potato-board { touch-action: none; }
+}

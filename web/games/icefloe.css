@@ -134,3 +134,28 @@
   .ifstick { width: 108px; height: 108px; }
   .ifbtn { width: 64px; height: 64px; font-size: 1.5em; }
 }
+
+/* ---- телефон (live2) ---- */
+@media (pointer: coarse) {
+  /* звук — під палець; кнопки не зумлять подвійним тапом і не кличуть лупу/меню при утриманні */
+  .ifchip.ifsnd { min-width: 40px; min-height: 36px; justify-content: center; touch-action: manipulation; }
+  .ifctl, .ifbtn, .ifboard { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  /* Лежачи (клас .ifland ставить модуль): рядок гравців і стік ліворуч, ставок за висотою смуги посередині,
+     «💨/❄» стовпчиком праворуч під великим пальцем. Селектори важчі за каркасне body.g-land .gbody > … */
+  body .gtable > .gbody.ifland:has(> canvas.ifboard) {
+    display: grid; grid-template-columns: auto minmax(0, max-content) auto; grid-template-rows: auto 1fr;
+    column-gap: 12px; row-gap: 6px; align-items: center; justify-content: center; justify-items: center;
+  }
+  body .gtable > .gbody.ifland > canvas.ifboard {
+    grid-column: 2; grid-row: 1 / span 2; margin: 0; min-width: 0; max-width: 100%; height: auto;
+    width: calc(var(--gfit-h, calc(100vh - 114px)) - 12px);
+  }
+  body .gtable > .gbody.ifland:has(> canvas.ifboard) > .ifhud {
+    grid-column: 1; grid-row: 1; align-self: start; flex-direction: column; flex-wrap: nowrap; align-items: stretch;
+    max-width: 130px; max-height: calc(var(--gfit-h, calc(100vh - 114px)) - 150px); overflow-y: auto;
+  }
+  body .gtable > .gbody.ifland:has(> canvas.ifboard) > .ifctl { display: contents; }
+  body .gtable > .gbody.ifland:has(> canvas.ifboard) .ifstick { grid-column: 1; grid-row: 2; align-self: end; }
+  body .gtable > .gbody.ifland:has(> canvas.ifboard) .ifbtns { grid-column: 3; grid-row: 1 / span 2; flex-direction: column; align-self: end; }
+  body .gtable > .gbody.ifland:has(> canvas.ifboard) > .ifmeta { display: none; }
+}
