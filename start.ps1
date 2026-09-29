@@ -80,10 +80,13 @@ function Ensure-Icecast {
     throw 'Icecast так і не піднявся, дивись D:\radio\logs'
 }
 
+# Радіо ніколи не тримає сайт: restart кличе це між Stop-Server і Start-Server, і 30.09 завислий Docker-рушій
+# (docker compose up -d не повертався) лишив сайт лежати на 22 хв. Тепер compose — з таймаутом, а будь-яка невдача
+# радіо — лише попередження: сервер однаково стартує, а liquidsoap і Icecast підтягне автонагляд (Watch-Radio).
 function Start-Liquidsoap {
-    Ensure-Icecast
-    Push-Location (Join-Path $Root 'liquidsoap')
-    try { docker compose @ComposeArgs up -d } finally { Pop-Location }
+    try { Ensure-Icecast } catch { Write-Host "Увага: $($_.Exception.Message) — сервер однаково запускаю" }
+    $r = Invoke-Docker (@('compose') + $ComposeArgs + @('up', '-d')) 90
+    if (-not $r.Ok) { Write-Host "Увага: liquidsoap не піднявся ($($r.Out)) — сервер однаково запускаю, радіо підтягне автонагляд" }
 }
 
 # Автозапуск і автонагляд — завдання в Планувальнику, як у LeBot: при вході у Windows і далі щохвилини.
@@ -205,7 +208,8 @@ function Invoke-Docker([string[]]$Arguments, [int]$TimeoutSec = 120) {
         -RedirectStandardOutput $out -RedirectStandardError $err
     $null = $p.Handle   # без цього ExitCode лишається порожнім
     if (-not $p.WaitForExit($TimeoutSec * 1000)) {
-        try { $p.Kill() } catch { }
+        # docker.exe лише обгортка: compose висить у дочірньому docker-compose.exe, тож гасимо все дерево
+        try { & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null } catch { }   # ErrorAction Stop кидає на будь-який рядок stderr
         return [pscustomobject]@{ Ok = $false; Out = "docker $($Arguments -join ' ') не відповів за $TimeoutSec с" }
     }
     $text = ((Get-Content $out -Raw -ErrorAction SilentlyContinue) + (Get-Content $err -Raw -ErrorAction SilentlyContinue))
@@ -342,7 +346,9 @@ try {
         'stop'    {
             New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
             Set-Content $StopFlag (Get-Date -Format 's')
-            Stop-Caddy; Stop-Server; Push-Location (Join-Path $Root 'liquidsoap'); try { docker compose @ComposeArgs stop } finally { Pop-Location }
+            Stop-Caddy; Stop-Server
+            $r = Invoke-Docker (@('compose') + $ComposeArgs + @('stop')) 90
+            if (-not $r.Ok) { Write-Host "Увага: liquidsoap не зупинився ($($r.Out))" }
             Write-Host 'Автонагляд на паузі, доки не буде start'
         }
         'restart' { Remove-Item $StopFlag -ErrorAction SilentlyContinue; Stop-Server; Invoke-Build; Start-Liquidsoap; Start-Server; Start-Caddy }
