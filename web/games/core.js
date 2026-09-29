@@ -2014,7 +2014,9 @@
   function syncArcade() {
     const rv = shown && view.kind === 'room' ? views[view.id] : null;
     const g = rv && gameOf(rv.room.game);
-    const on = !!(g && g.group === 'live' && rv.seat != null && rv.room.status === 'playing');
+    // Аркада — жива гра (group live) або соло-реалтайм, що сказав про себе `arcade: true` у register (забіг, цеглини).
+    const mod = rv && modules[rv.room.game];
+    const on = !!(g && (g.group === 'live' || (mod && mod.arcade)) && rv.seat != null && rv.room.status === 'playing');
     if (document.body.classList.contains('g-arcade') !== on) document.body.classList.toggle('g-arcade', on);
     // Заклики «Х кличе… [Сісти]» лишались висіти над хрестовиною, коли вже сів: посеред аркади й за столом на
     // телефоні їх прибираємо (особисті — ні: «кличе тебе» важливіше).
@@ -2292,7 +2294,7 @@
       for (const id in cards) if (views[id] && views[id].room.game === mod.id) refreshCard(id);
       // Модулі тепер приїжджають по одному у тиші — лобі перемальовуємо раз на пачку, а не на кожен.
       if (!lobbyT) lobbyT = setTimeout(() => { lobbyT = 0; if (shown && root && root.querySelector('.gtiles')) renderView(); }, 150);
-      if (shown && view.kind === 'room') renderRoomHead(view.id);
+      if (shown && view.kind === 'room') { renderRoomHead(view.id); syncArcade(); }   // arcade: модуль міг приїхати пізніше
       notifyTable();   // модуль міг приїхати пізніше за стіл — і сказати, що розмова тут головна (talk: 'main')
     },
 
