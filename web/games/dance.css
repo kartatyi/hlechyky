@@ -201,3 +201,13 @@ body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-stage {
 }
 body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-ctl > .dance-dirs { grid-column: 1; grid-row: 1 / span 12; max-width: none; }
 body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-ctl > .dance-figs { order: 9; }
+
+/* ---- телефон (live1): довгий натиск на керуванні не виділяє текст і не кличе лупу чи меню (iOS) ---- */
+@media (pointer: coarse) {
+  .dance-ctl, .dance-ctl * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
+/* 390 px: хрестовина й ромб фігур (152 + 16 + 176) виходили на 6 px за ліве поле картки */
+@media (pointer: coarse) and (max-width: 400px) and (min-width: 381px) {
+  .dance-ctl { gap: 10px; }
+  .dance-figs { grid-template-columns: repeat(3, 52px); }
+}

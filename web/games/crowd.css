@@ -188,3 +188,8 @@ body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-stage {
 }
 body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-pad > .crowd-dirs { grid-column: 1; grid-row: 1 / span 12; max-width: none; }
 body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-pad > .crowd-acts { order: 9; }
+
+/* ---- телефон (live1): довгий натиск на керуванні не виділяє текст і не кличе лупу чи меню (iOS) ---- */
+@media (pointer: coarse) {
+  .crowd-pad, .crowd-pad * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}

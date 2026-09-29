@@ -192,3 +192,8 @@ body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-throw[hidden] { display: n
 body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-throw:not([hidden]) { grid-column: 3; grid-row: 3; align-self: start; min-height: 0; height: 38%; }
 body.g-land .rnr:not(.rnr-storks) > .rnr-touch:has(> .rnr-throw:not([hidden])) > .rnr-jump { align-self: end; height: 58%; }
 body.g-land .rnr:not(.rnr-storks).rnr-showover > .rnr-touch.on { display: none; }
+
+/* ---- телефон (live1): довгий натиск на керуванні не виділяє текст і не кличе лупу чи меню (iOS) ---- */
+@media (pointer: coarse) {
+  .rnr-touch, .rnr-touch * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
