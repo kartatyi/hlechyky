@@ -63,7 +63,8 @@
   /// по-своєму (&#39; → ', лапки, style), тож «інше» виходило майже завжди — і DOM перебудовувався щокадру.
   const putHtml = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
 
-  const nick = (ctx, i) => ctx.nickOf(i) || ctx.seatName(i);
+  // nameOf — нік або ім'я 🤖 бота на цьому місці: боти соло інакше лишались би безіменними кольорами.
+  const nick = (ctx, i) => ctx.nameOf(i) || ctx.seatName(i);
   const teamsOf = (ctx) => (ctx.view && Array.isArray(ctx.view.teams) ? ctx.view.teams : null);
 
   function state(root, ctx) {
@@ -587,19 +588,19 @@
     const chip = (i, withScore) => {
       const out = f && f.phase === 'play' && heads[i] && !heads[i].alive;
       return '<span class="cchip c' + i + (i === ctx.seat ? ' me' : '') + (out ? ' out' : '') + '"><i></i>'
-        + ctx.esc(ctx.nickOf(i)) + (withScore ? ' <b>' + (s[i] || 0) + '</b>' : '') + '</span>';
+        + ctx.esc(ctx.nameOf(i)) + (withScore ? ' <b>' + (s[i] || 0) + '</b>' : '') + '</span>';
     };
     const parts = [];
     if (teams) {
       for (let t = 0; t < 2; t++) {
         const seats = [];
-        for (let i = 0; i < SEATS; i++) if (teams[i] === t && ctx.nickOf(i)) seats.push(i);
+        for (let i = 0; i < SEATS; i++) if (teams[i] === t && ctx.nameOf(i)) seats.push(i);
         if (!seats.length) continue;
         parts.push('<span class="curve-team"><span class="curve-tname">' + TEAMS[t] + ' <b>' + (s[seats[0]] || 0) + '</b></span>'
           + seats.map((i) => chip(i, false)).join('') + '</span>');
       }
     } else {
-      for (let i = 0; i < SEATS; i++) if (ctx.nickOf(i)) parts.push(chip(i, true));
+      for (let i = 0; i < SEATS; i++) if (ctx.nameOf(i)) parts.push(chip(i, true));
     }
     const v = ctx.view || {};
     const html = parts.join('') + (v.target ? '<span class="muted small">до ' + v.target + '</span>' : '')
@@ -699,14 +700,11 @@
     seatClass: ['x', 'o', 'c', 'd', 'cb', 'cp', 'cv', 'cr'],
     pad: { dirs: 'x', hint: '{dpad} повертати ліворуч-праворуч' },
     news: {
-      v: '2026-09-29',
-      title: 'Кривуля: бонуси, тор, команди й повтор',
+      v: '2026-09-30',
+      title: 'Кривуля: соло з ботами',
       items: [
-        '⚡ Опція «Бонуси», як в Achtung: ⚡🐢 собі чи іншим, 🔄 кермо навпаки, 🧹 чисте поле, 🚪 крізь стіни, ⬛ товстий слід',
-        '🍩 Опція «Стіни: нема» — поле-тор, вилетів справа — з\'явився зліва',
-        '🐍 Команди 2×2, 3×3 і 4×4 — очко команді за кожного вибулого суперника',
-        '💥 На полі видно, хто в чий слід урізався, а між раундами — ⏪ повтор усього раунду',
-        '🧈 Голови їдуть плавно, без стрибків між кадрами',
+        '🤖 Сам за столом? Тисни «🤖 + бот» — на поле виїдуть троє ботів, і різатимуть і тебе, й одне одного (без нагород)',
+        '🎚 Опція «🤖 Бот»: легкий бачить недалеко й сам урізається, сильний обминає голови й підрізає перед носом',
       ],
     },
 

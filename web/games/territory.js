@@ -203,7 +203,7 @@
         g.stroke();
       }
       if (ready) {
-        const nick = s === me ? 'ти' : (ctx.nickOf(s) || ctx.seatName(s));
+        const nick = s === me ? 'ти' : (ctx.nameOf(s) || ctx.seatName(s));
         g.font = (s === me ? '700 13px' : '600 11px') + ' system-ui, sans-serif';
         g.textBaseline = 'bottom';
         g.lineWidth = 3;
@@ -255,7 +255,7 @@
       g.textBaseline = 'middle';
       g.font = '700 30px system-ui, sans-serif';
       g.fillStyle = who.length === 1 ? (colour[who[0]] || text) : text;
-      const names = who.map((i) => ctx.nickOf(i) || ctx.seatName(i)).join(', ');
+      const names = who.map((i) => ctx.nameOf(i) || ctx.seatName(i)).join(', ');
       g.fillText(who.length ? '🏆 ' + names : 'Нічия', CW / 2, CH / 2 - 12, CW - 30);
       g.font = '15px system-ui, sans-serif';
       g.fillStyle = text;
@@ -275,7 +275,8 @@
       root.insertBefore(el, root.firstChild);
     }
     const html = SEATS.map((name, s) => {
-      const nick = ctx.nickOf(s);
+      // nameOf — нік або ім'я 🤖 бота: наділи ботів соло теж мають підпис у смузі площ.
+      const nick = ctx.nameOf(s);
       if (!nick) return '';
       const dead = st.heads[s] && st.heads[s].on && !st.heads[s].alive;
       const pct = st.area[s] == null ? 0 : st.area[s];
@@ -374,11 +375,11 @@
     seatClass: ['x', 'o', 'c', 'tq', 'tr5', 'tr6'],
     pad: { dirs: true, hint: '{dpad} куди бігти' },
     news: {
-      v: '2026-09-29',
-      title: 'Земля: «тебе ріжуть» і довжина раунду',
+      v: '2026-09-30',
+      title: 'Земля: соло з ботами',
       items: [
-        '⚠ Чужа голова за три клітинки від твого сліду — слід блимає червоним, телефон вібрує: тікай додому!',
-        '⏱ Опція «Раунд»: 60 с на двох, 90 як було, 150 для компанії — або «до 40 % поля», хто перший',
+        '🤖 Сам за столом? Тисни «🤖 + бот» — поле ділитимуть ще двоє ботів (без нагород)',
+        '🎚 Опція «🤖 Бот»: легкий обводить крихти й не озирається, звичайний тікає додому, коли ти близько, сильний ріже чужі сліди',
       ],
     },
 
