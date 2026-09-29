@@ -31,7 +31,7 @@ public sealed class Glekomet : Game
     public int MaxRounds { get; set; } = 40;
 
     public override GameInfo Info { get; } = new(
-        "glekomet", "Глекомети", "глекомети", GameGroup.Live, 2, Seats, TickMs: TickMs,
+        "glekomet", "Глекомети", "глекомети", GameGroup.Live, 1, Seats, TickMs: TickMs,
         Start: StartMode.ByHost,
         Options:
         [
@@ -42,8 +42,27 @@ public sealed class Glekomet : Game
             new GameOption("arms", "Комора", [("plain", "Звичайна"), ("jokes", "З приколами: 🐓 півень, 🍯 мед, 🌪 смерч, 🧲 підкова")], "plain"),
             new GameOption("map", "Погода й мапа", [("plain", "☀ Звичайне село"), ("winter", "❄ Зима — хати ковзають"), ("night", "🌙 Ніч — видно лише вогні"),
                 ("fair", "🎪 Ярмарок зі ставком"), ("mix", "🎲 Щоразу інша")], "plain"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Артилерія хатами: цілься, дай сили, зваж на вітер — і глек полетить у сусідську хату. Земля рветься, вода підступає");
+        Hint: "Артилерія хатами: цілься, дай сили, зваж на вітер — і глек полетить у сусідську хату. Земля рветься, вода підступає. Самому — з 🤖 ботом");
+
+    // ---------- «🤖 + бот»: сам за столом — навпроти хата бота (один: хід по черзі, кожен зайвий бот — ще одне чекання) ----------
+    readonly SoloBot _solo = new();
+    readonly GlekometBot _brain = new();
+    /// <summary>Місце бота в цій партії; -1 — партія людська.</summary>
+    int _bot = -1;
+    /// <summary>Партію почали з ботом: ні ачівок, ні ★ перемог серії — навіть якщо на місце бота потім хтось сів.</summary>
+    bool _botGame;
+    /// <summary>Бот цього ходу: для якого <see cref="_turnNo"/> план, коли показати приціл і коли стріляти.</summary>
+    int _botPlanFor = -1;
+    DateTimeOffset _botAimAt, _botFireAt;
+    GlekometBot.Shot? _botShot;
+    /// <summary>Глек бота в повітрі: де бачили востаннє — щоб, коли впаде, бот знав свій недоліт/переліт.</summary>
+    bool _botFlying, _botSeen;
+    double _botLastX;
+    public int Bot => _bot;
+    public bool BotGame => _botGame;
+    public GlekometBot Brain => _brain;
 
     // ---------- налаштування столу ----------
     bool _teamsWanted;
@@ -153,7 +172,22 @@ public sealed class Glekomet : Game
         _volley = options.TryGetValue("mode", out var md) && md == "volley";
         _jokes = options.TryGetValue("arms", out var ar) && ar == "jokes";
         _mapWanted = options.TryGetValue("map", out var mp) ? mp == "mix" ? -1 : Math.Max(0, Array.IndexOf(MapKeys, mp)) : 0;
+        _solo.Configure(options);
     }
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, Seats);
+
+    /// <summary>Куди сяде бот: перше вільне місце після людини (у командах тоді — навпроти, парне проти непарного).</summary>
+    int BotSeat()
+    {
+        if (!_solo.Active(Ctx, Seats)) return -1;
+        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s)) return s == 0 ? 1 : 0;
+        return -1;
+    }
+
+    public override string? SeatBot(int seat) => seat == _bot && !Ctx.Seated(seat) ? LiveBots.Name : null;
 
     // =============================================================================================
     // Старт
@@ -164,10 +198,16 @@ public sealed class Glekomet : Game
         _core ??= new GlekometCore(Ctx.Rng);
         var plays = new bool[Seats];
         int even = 0, odd = 0;
+        _bot = BotSeat();
+        _botGame = _bot >= 0;
+        _brain.Reset(_solo.Level);
+        _botPlanFor = -1;
+        _botShot = null;
+        _botFlying = false;
         for (var s = 0; s < Seats; s++)
         {
-            plays[s] = Ctx.Seated(s);
-            _nick[s] = Ctx.NickOf(s) ?? "";
+            plays[s] = Ctx.Seated(s) || s == _bot;
+            _nick[s] = s == _bot ? LiveBots.Name : Ctx.NickOf(s) ?? "";
             if (!plays[s]) continue;
             if (s % 2 == 0) even++; else odd++;
         }
@@ -239,6 +279,8 @@ public sealed class Glekomet : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return _started && _phase != PhaseOver ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, Seats);
         switch (action)
         {
             case "fire": return Fire(seat, payload);
@@ -423,6 +465,8 @@ public sealed class Glekomet : Game
     {
         if (_core is null || _phase is PhaseOver or PhaseLobby) return TickResult.None;
         var core = _core;
+        // Бот ходить до знімка «що змінилось»: його постріл і приціл ідуть у цей самий тик, як хід людини між тиками.
+        BotTick();
         _t++;
         core.ClearMarks();
         core.MovedMask |= _pendMoved;
@@ -466,6 +510,7 @@ public sealed class Glekomet : Game
                 break;
             case PhaseFly:
                 core.Step();
+                BotWatch(core);
                 _left++;
                 frame = true;
                 if (core.LiveShells == 0 || _left >= FlyTicks)
@@ -842,7 +887,7 @@ public sealed class Glekomet : Game
         for (var t = 0; t < Seats; t++)
         {
             if ((core.DirectBy[by] & (1 << t)) == 0 || t == by || Ally(by, t)) continue;
-            if (Math.Abs(core.FromX[by] - core.Huts[t].X) < SniperGap || (_sniperGiven & (1 << by)) != 0) continue;
+            if (Math.Abs(core.FromX[by] - core.Huts[t].X) < SniperGap || (_sniperGiven & (1 << by)) != 0 || _botGame) continue;
             _sniperGiven |= 1 << by;
             Ctx.Award(by, 0, "ach:glekomet-sniper");
         }
@@ -1027,19 +1072,27 @@ public sealed class Glekomet : Game
             reason,
             best = _bestSeat < 0 ? null : new { seat = _bestSeat, dmg = _bestDmg, w = _bestW, to = _bestTo },
         };
-        foreach (var s in winners)
-            if (_nick[s].Length > 0) _wins[Key(_nick[s])] = _wins.GetValueOrDefault(Key(_nick[s])) + 1;
+        // З ботом — без ★ перемог серії й без ачівок (spec «Соло з ботом»).
+        if (!_botGame)
+            foreach (var s in winners)
+                if (_nick[s].Length > 0) _wins[Key(_nick[s])] = _wins.GetValueOrDefault(Key(_nick[s])) + 1;
         AddSeries();
         // «Ні подряпини» — лише за виграний бій: хтось із суперників упав у бою (а не заснув чи встав), а сам
         // переможець хоч раз стрельнув
-        if (reason is "last" or "team" && Fought(winners))
+        if (!_botGame && reason is "last" or "team" && Fought(winners))
             foreach (var s in winners)
                 if (core.Huts[s].Alive && core.Huts[s].Hp == 100 && _stats[s].Shots > 0) Ctx.Award(s, 0, "ach:glekomet-clean");
         var scores = new Dictionary<int, long>();
         for (var s = 0; s < Seats; s++)
             if (core.Huts[s].Plays && Ctx.Seated(s)) scores[s] = _stats[s].Dmg;
         _pendView = true;
-        Ctx.Finish(winners, text, scores);
+        if (!_botGame) { Ctx.Finish(winners, text, scores); return; }
+        // Бот не сидить у каркасі: його перемога — порожні winners і вердикт, людська — вердикт з рівнем бота.
+        var people = winners.Where(s => s != _bot).ToArray();
+        string? verdict = null;
+        if (people.Length > 0) verdict = $"🏆 {_nick[people[0]]} — перемога над {LiveBots.Of(_solo.Level)} ботом";
+        else if (winners.Length > 0) verdict = "🤖 Бот переміг — остання хата в селі його";
+        Ctx.Finish(people, text, scores, verdict);
     }
 
     /// <summary>Партію зіграно — у підсумок серії: шкода, влучання, руїни кожного ніка й найкращий постріл усієї серії.</summary>
@@ -1109,6 +1162,97 @@ public sealed class Glekomet : Game
     }
 
     // =============================================================================================
+    // «🤖 + бот»: хід бота тим самим fire, що й людини
+    // =============================================================================================
+
+    /// <summary>
+    /// Хід бота: на початку ходу — «подумати» (скільки — за рівнем), на півдорозі показати приціл, потім стрельнути.
+    /// Стріляє через <see cref="Fire"/> з тими самими перевірками; у «Залпі» — заряджає постріл, як усі.
+    /// </summary>
+    void BotTick()
+    {
+        if (_bot < 0 || _phase != PhaseAim || _core is null) return;
+        if (Ctx.Seated(_bot)) { _bot = -1; return; }                // на місце бота сіла людина — хата тепер її
+        var core = _core;
+        if (!core.Huts[_bot].Alive || (_volley ? _lock[_bot] : _turn != _bot)) return;
+        var now = Ctx.Clock.UtcNow;
+        if (_botPlanFor != _turnNo)
+        {
+            _botPlanFor = _turnNo;
+            _botShot = null;
+            var think = _brain.ThinkMs(Ctx.Rng);
+            _botFireAt = now.AddMilliseconds(think);
+            _botAimAt = now.AddMilliseconds(think / 2);
+        }
+        // Вода під порогом — спершу виїхати вище, як зробила б людина (раз на тик, поки є пальне).
+        if (_botShot is null && !_volley && BotFlee(core)) return;
+        if (_botShot is null && now >= _botAimAt)
+        {
+            _botShot = _brain.Plan(core, _bot, Target(core), _inv[_bot], _kinds, Ctx.Rng);
+            if (!_volley && _botShot is { } sh)
+            {
+                // приціл видно всім, як людський, — щоб хід бота не був «тиша — і бах»
+                _aimA[_bot] = sh.A;
+                _aimP[_bot] = sh.P;
+                _aimW[_bot] = sh.W;
+                _pendAim = true;
+            }
+        }
+        if (now < _botFireAt || _botShot is not { } shot) return;
+        var r = Fire(_bot, JsonSerializer.SerializeToElement(new { w = shot.W, a = shot.A, p = shot.P }));
+        if (!r.Ok) { Skip(_bot); return; }
+        _botFlying = true;
+        _botSeen = false;
+    }
+
+    /// <summary>Вода підступила ближче за 45 u — крок туди, де земля вища (той самий move, що й у людини). true — поїхав.</summary>
+    bool BotFlee(GlekometCore core)
+    {
+        var hut = core.Huts[_bot];
+        if (_waterFrom == 0 || hut.Stuck || hut.Fuel < GlekometCore.FuelCost || core.Water + 45 < hut.Y) return false;
+        int Ground(int dx) => core.H[GlekometCore.Col(Math.Clamp(hut.X + dx, GlekometCore.MinX, GlekometCore.MaxX))];
+        int left = Ground(-60), right = Ground(60);
+        if (Math.Max(left, right) <= hut.Y) return false;
+        return Move(_bot, JsonSerializer.SerializeToElement(right >= left ? 1 : -1)).Ok;
+    }
+
+    /// <summary>Найближча жива чужа хата (у дуелі з ботом — хата людини).</summary>
+    int Target(GlekometCore core)
+    {
+        int best = -1, bestD = int.MaxValue;
+        for (var s = 0; s < Seats; s++)
+        {
+            if (s == _bot || !core.Huts[s].Alive || (_teams && Ally(s, _bot))) continue;
+            var d = Math.Abs(core.Huts[s].X - core.Huts[_bot].X);
+            if (d < bestD) { bestD = d; best = s; }
+        }
+        return best;
+    }
+
+    /// <summary>Стежимо за глеком бота: зник — там він і впав (точніше — найближчий вибух цього тика).</summary>
+    void BotWatch(GlekometCore core)
+    {
+        if (!_botFlying) return;
+        var any = false;
+        for (var i = 0; i < GlekometCore.MaxShells; i++)
+        {
+            ref var sh = ref core.Shells[i];
+            if (!sh.Alive || sh.Owner != _bot) continue;
+            any = true;
+            _botLastX = sh.X;
+        }
+        if (any) { _botSeen = true; return; }
+        if (!_botSeen && core.LiveShells > 0) return;             // у «Залпі» ще не вилетів
+        _botFlying = false;
+        if (!_botSeen) return;
+        var x = _botLastX;
+        var bestD = double.MaxValue;
+        for (var e = 0; e < core.ExCount; e++)
+            if (Math.Abs(core.ExX[e] - _botLastX) < bestD) { bestD = Math.Abs(core.ExX[e] - _botLastX); x = core.ExX[e]; }
+        _brain.Landed(x);
+    }
+
+    // =============================================================================================
     // Вид і кадр
     // =============================================================================================
 
@@ -1126,15 +1270,18 @@ public sealed class Glekomet : Game
         var lobby = !_started || _core is null;
         var core = lobby ? Preview() : _core!;
         var huts = new object[Seats];
+        // Де бот: у лобі (і між партіями) — куди сяде, у партії — де його хата.
+        var botAt = lobby || _phase == PhaseOver ? BotSeat() : _bot;
+        if (_phase == PhaseOver && botAt < 0) botAt = _bot;
         for (var s = 0; s < Seats; s++)
         {
             var h = core.Huts[s];
-            var here = lobby ? Ctx.Seated(s) : h.Plays;
+            var here = lobby ? Ctx.Seated(s) || s == botAt : h.Plays;
             huts[s] = new
             {
                 seat = s,
                 // нік того, чия хата: хто встав посеред партії, того каркас уже не назве, а руїна підписана
-                nick = lobby ? Ctx.NickOf(s) ?? "" : here ? _nick[s] ?? "" : "",
+                nick = lobby ? (s == botAt && !Ctx.Seated(s) ? LiveBots.Name : Ctx.NickOf(s) ?? "") : here ? _nick[s] ?? "" : "",
                 x = h.X,
                 y = h.Y,
                 hp = here ? (lobby ? 100 : h.Hp) : 0,
@@ -1150,7 +1297,7 @@ public sealed class Glekomet : Game
         }
         var inv = new int[Seats][];
         for (var s = 0; s < Seats; s++)
-            inv[s] = lobby ? [.. GlekometCore.Weapons.Take(_jokes ? GlekometCore.AllKinds : GlekometCore.BaseKinds).Select(w => Ctx.Seated(s) ? w.Stock : 0)] : _inv[s][.._kinds];
+            inv[s] = lobby ? [.. GlekometCore.Weapons.Take(_jokes ? GlekometCore.AllKinds : GlekometCore.BaseKinds).Select(w => Ctx.Seated(s) || s == botAt ? w.Stock : 0)] : _inv[s][.._kinds];
         var mag = new List<int[]>();
         if (!lobby)
             for (var s = 0; s < Seats; s++)
@@ -1195,6 +1342,10 @@ public sealed class Glekomet : Game
             map = lobby ? (_mapWanted < 0 ? "mix" : MapKeys[_mapWanted]) : MapKeys[_map],
             kinds = lobby ? (_jokes ? GlekometCore.AllKinds : GlekometCore.BaseKinds) : _kinds,
             mag,
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
+            bot = botAt >= 0 ? botAt : (int?)null,
         };
     }
 

@@ -53,10 +53,20 @@ public sealed class Duel : Game
     public const int HumanFloorMs = 80;
 
     public override GameInfo Info { get; } = new(
-        "duel", "Дуель", "дуель", GameGroup.Live, 2, 2, TickMs: TickMs, Rated: true,
+        "duel", "Дуель", "дуель", GameGroup.Live, 1, 2, TickMs: TickMs, Rated: true,
         Score: ScoreOrder.LowerIsBetter,
-        Options: [DuelKit.BaitOption, DuelKit.SignalOption, DuelKit.PingOption],
-        Hint: "Двоє на курній вулиці. «Готуйсь… цілься…» — і на слово ВОГОНЬ тисни першим. Поспішив — куля в небо");
+        Options: [DuelKit.BaitOption, DuelKit.SignalOption, DuelKit.PingOption, LiveBots.LevelOption],
+        Hint: "Двоє на курній вулиці. «Готуйсь… цілься…» — і на слово ВОГОНЬ тисни першим. Поспішив — куля в небо. Самому — з 🤖 ботом");
+
+    readonly SoloBot _solo = new();
+    readonly DuelBot _brain = new();
+    /// <summary>Місце бота в цій партії; -1 — партія людська.</summary>
+    int _bot = -1;
+    /// <summary>Партію почали з ботом: рекордів і таблиці реакцій за неї нема, навіть якщо на місце бота хтось сів.</summary>
+    bool _botGame;
+    bool _started;
+    public int Bot => _bot;
+    public bool BotGame => _botGame;
 
     DuelBout? _bout;
     DuelKit? _kit;
@@ -70,15 +80,40 @@ public sealed class Duel : Game
     /// <summary>Скільки триває «Цілься…». Випадковість — тільки з сідованого генератора кімнати.</summary>
     public static int AimMs(Random rng) => AimMinMs + rng.Next(AimMaxMs - AimMinMs + 1);
 
-    public override void Configure(IReadOnlyDictionary<string, string> options) => Kit.Configure(options);
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        Kit.Configure(options);
+        _solo.Configure(options);
+    }
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, 2);
+
+    /// <summary>Куди сяде бот: на вільне з двох місць, якщо його кликали й людина одна.</summary>
+    int BotSeat() => _solo.Active(Ctx, 2) ? (Ctx.Seated(0) ? 1 : 0) : -1;
+
+    public override string? SeatBot(int seat) => seat == _bot && !Ctx.Seated(seat) ? LiveBots.Name : null;
+
+    /// <summary>Нік для журналу й підсумку: бота каркас не знає, тож підставляємо його ім'я самі.</summary>
+    string Nick(int seat) => SeatBot(seat) ?? Ctx.NickOf(seat) ?? SeatName(seat);
 
     public override void Start()
     {
         // Партія — це вся серія до трьох перемог, тож «Ще раз» починає нову дуель з чистого рахунку.
+        _started = true;
+        _bot = BotSeat();
+        _botGame = _bot >= 0;
         Kit.Reset();
         Kit.Wire(Bout);
+        // З ботом — ні таблиці реакцій, ні рекордів «найшвидшої руки», ні ачівки «Швидка рука»: усе це йде через
+        // Scored (Ctx.Score + DuelRecords), тож просто не підключаємо його. Середня реакція за партію лишається.
+        if (_botGame) Bout.Scored = null;
+        _brain.Reset(_solo.Level);
         Bout.Reset(Ctx.Clock.UtcNow);
     }
+
+    bool Playing => _started && Bout.Phase != DuelPhase.Done;
 
     /// <summary>
     /// Постріл (<c>shoot</c>) — клієнт шле його через <c>Input</c>, але <c>Act</c> теж приймаємо. <c>pong</c> — відлуння
@@ -86,8 +121,12 @@ public sealed class Duel : Game
     /// </summary>
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return Playing ? ActResult.Fail("Дуель уже йде") : _solo.Switch(Ctx, seat, payload, 2);
+        if (!Playing) return ActResult.Fail(_started ? "Дуель зіграно, тисни «Ану ще раз»" : "Чекаємо на гравців");
         if (action == "pong") { Kit.Pong(seat, payload); return ActResult.Done; }
         if (action != "shoot") return ActResult.Fail("Тут так не ходять");
+        if (seat == _bot) return ActResult.Fail("Ти тут не граєш");
         if (seat is < 0 or > 1) return ActResult.Fail("Ти тут не граєш");
         return Bout.Shoot(seat, Ctx.Clock.UtcNow, "Дуель зіграно, тисни «Ану ще раз»");
     }
@@ -97,7 +136,13 @@ public sealed class Duel : Game
         var b = Bout;
         if (b.Phase == DuelPhase.Done) return TickResult.None;
         var now = Ctx.Clock.UtcNow;
-        switch (b.Tick(now))
+        if (_bot >= 0 && Ctx.Seated(_bot)) _bot = -1;   // на місце бота сіла людина — далі стріляє вона
+        // Бот тисне до тика поєдинку: його постріл, що «визрів» між тиками, має потрапити в той самий раунд,
+        // а мілісекунди він отримує свої, а не округлені до тика (див. DuelBot.Due).
+        if (_bot >= 0 && _brain.Due(now) is { } at) b.Shoot(_bot, at, "");
+        var tick = b.Tick(now);
+        if (_bot >= 0) _brain.See(b, now, Ctx.Rng);
+        switch (tick)
         {
             case BoutTick.Frame:
                 return Kit.Mark(TickResult.FrameOnly, now);
@@ -120,14 +165,18 @@ public sealed class Duel : Game
             var lost = 1 - won;
             b.Finish();
             // Ніки чужі, відмінювати їх нема як, тому рахунок замість речення з відмінками.
-            Ctx.Finish([won], $"{Info.Title}: {Ctx.NickOf(won)} {SeatName(won)} {b.Wins[won]}:{b.Wins[lost]} {Ctx.NickOf(lost)} {SeatName(lost)}");
+            var log = $"{Info.Title}: {Nick(won)} {SeatName(won)} {b.Wins[won]}:{b.Wins[lost]} {Nick(lost)} {SeatName(lost)}";
+            if (_bot < 0) Ctx.Finish([won], log);
+            else if (won == _bot) Ctx.Finish([], log, verdict: $"🤖 Бот переміг {b.Wins[won]}:{b.Wins[lost]}");
+            else Ctx.Finish([won], log,
+                verdict: $"🏆 {Nick(won)} — перемога над {LiveBots.Of(_solo.Level)} ботом {b.Wins[won]}:{b.Wins[lost]}");
             return TickResult.Both;
         }
         if (b.Idle >= IdleRounds)
         {
             // За столом нікого: три раунди поспіль ніхто навіть не смикнувся. Нічия — ставки назад.
             b.Finish();
-            Ctx.Finish([], $"{Info.Title}: {Ctx.NickOf(0)} і {Ctx.NickOf(1)} так і не вистрілили — дуель не відбулась");
+            Ctx.Finish([], $"{Info.Title}: {Nick(0)} і {Nick(1)} так і не вистрілили — дуель не відбулась");
             return TickResult.Both;
         }
         b.Next(now);
@@ -143,6 +192,15 @@ public sealed class Duel : Game
         var o = new Dictionary<string, object?>();
         Bout.Fill(o, Ctx.Clock.UtcNow);
         Kit.Fill(o, full, PairSeats);
+        if (full)
+        {
+            o["botOffer"] = _solo.Offer(Ctx, 2);
+            o["botWanted"] = _solo.Wanted;
+            o["botLvl"] = _solo.LevelKey;
+            // У лобі — де сяде бот, у партії — де він стріляє.
+            var bot = Playing ? _bot : BotSeat();
+            o["bot"] = bot >= 0 ? bot : null;
+        }
         return o;
     }
 }

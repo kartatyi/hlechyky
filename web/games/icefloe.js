@@ -677,9 +677,12 @@
     }
   }
 
+  /// Ім'я місця: нік або «🤖 бот рудий» (соло з ботами, core.js nameOf).
+  const nameAt = (ctx, s) => (ctx.nameOf ? ctx.nameOf(s) : ctx.nickOf(s));
+
   /// Нік місця; хто вже встав — з пам'яті (підсумок партії має казати «Оля», а не «синій»).
   function nick(st, s) {
-    const n = st.ctx && st.ctx.nickOf(s);
+    const n = st.ctx && nameAt(st.ctx, s);
     if (n) { st.nicks[s] = n; return n; }
     return st.nicks[s] || (st.ctx && st.ctx.seatName(s)) || String(s + 1);
   }
@@ -1179,7 +1182,7 @@
       const s = k < 0 ? me : k;
       if (s < 0 || (k >= 0 && s === me) || !st.lOn[s]) continue;
       if (small && s !== me && st.players > 4) continue;
-      const nk = st.ctx && st.ctx.nickOf(s);
+      const nk = st.ctx && nameAt(st.ctx, s);
       if (!nk) continue;
       const l = label(st, pal, s, nk);
       // ніки — поза наїздом камери: тіла ростуть, а літери лишаються сталими; біля краю — всередину кадру
@@ -1474,11 +1477,11 @@
     const side = !!st.side;
     let html = '';
     let seated = 0;
-    for (let s = 0; s < 8; s++) if (ctx.nickOf(s)) seated++;
+    for (let s = 0; s < 8; s++) if (nameAt(ctx, s)) seated++;
     // рядком на п'ятьох і більше — лише номери (свій — із ніком); стовпчиком обабіч ставка ніки влазять усі
     const tight = seated > 4 && !side;
     for (let s = 0; s < 8; s++) {
-      const n = ctx.nickOf(s);
+      const n = nameAt(ctx, s);
       if (!n) continue;
       st.nicks[s] = n;
       const q = f && f.p ? f.p[s] : null;
@@ -1723,7 +1726,7 @@
     if (!res) return '';
     const ws = res.winners || [];
     if (res.draw || !ws.length) return 'Партію зіграно — нічия';
-    return 'Перемога: ' + ws.map((i) => ctx.nickOf(i) || ctx.seatName(i)).join(', ');
+    return 'Перемога: ' + ws.map((i) => nameAt(ctx, i) || ctx.seatName(i)).join(', ');
   }
 
   /// Рядок статусу під грою (і в правому стовпчику на широкому екрані, де рядок картки сховано).
@@ -1746,7 +1749,7 @@
     if (f.ph === 2) {
       const w = v.lastRound ? v.lastRound.winner : -1;
       if (v.roundTeam >= 0) return 'Раунд — ' + TEAM_NAMES[v.roundTeam] + '!';
-      return w >= 0 ? 'Раунд — ' + (ctx.nickOf(w) || ctx.seatName(w)) + '!' : (drawnByTime(v) ? 'Час вийшов — нічия раунду' : 'Усі шубовснули — нічия раунду');
+      return w >= 0 ? 'Раунд — ' + (nameAt(ctx, w) || ctx.seatName(w)) + '!' : (drawnByTime(v) ? 'Час вийшов — нічия раунду' : 'Усі шубовснули — нічия раунду');
     }
     if (!ctx.mine) return 'Дивишся збоку · раунд ' + (v.round || 1) + ' · до ' + need + (need > 1 ? ' перемог' : ' перемоги');
     const q = f.p && f.p[ctx.seat];
@@ -1773,12 +1776,12 @@
     seatClass: ['if0', 'if1', 'if2', 'if3', 'if4', 'if5', 'if6', 'if7'],
     pad: { dirs: true, a: 'Space', x: 'KeyX', hint: '{dpad} ковзати · {a} ривок · {x} сніжка' },
     news: {
-      v: '2026-09-29',
-      title: 'Крижина: команди й молоток',
+      v: '2026-09-30',
+      title: 'Крижина: соло з ботами',
       items: [
-        '🔨 Шубовснув — не кисни: раз за раунд відколи шматок криги з берега (права кнопка туди, Ⓐ чи 🔨) — секунда тріщини, і край іде під воду',
-        '🔵🔴 Нова опція «Команди»: сині проти рудих на 4, 6 чи 8 — раунд бере команда, навіть якщо ти вже на березі',
-        '🤝 Свого зіпхнув — «випхнув» не рахується: прикривай спину, а не штовхай',
+        '🤖 Сам біля ставка? Тисни «🤖 + бот» — на кригу вийдуть двоє ботів, і штовхатимуть і тебе, й одне одного (без нагород)',
+        '❄ Боти бережуть край і заходять з боку центру; шубовснули — кидають сніжки й колють лід з берега',
+        '🎚 Опція «🤖 Бот»: легкий пре навпростець і сам буває у воді, сильний тримає інерцію й б’є на впередження',
       ],
     },
 
