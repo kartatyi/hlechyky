@@ -43,7 +43,7 @@ public class SnakePartyTests
         foreach (var id in new[] { "tron", "snake" })
         {
             var info = registry.Info(id)!;
-            Assert.Equal((2, 2), (info.MinPlayers, info.MaxPlayers));
+            Assert.Equal((1, 2), (info.MinPlayers, info.MaxPlayers));   // сам — лише з «🤖 + бот» (без Ело й нагород)
             Assert.True(info.Rated);                        // Ело й ставки живуть лише на столі рівно на двох
             Assert.Equal(StartMode.WhenFull, info.Start);   // другий сів — поїхали, без «Почати»
         }

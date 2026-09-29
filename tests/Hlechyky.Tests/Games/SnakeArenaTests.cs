@@ -64,7 +64,7 @@ public class SnakeArenaTests(ITestOutputHelper output)
     {
         var info = new Registry().Info("snake-party")!;
 
-        Assert.Equal((2, 4), (info.MinPlayers, info.MaxPlayers));
+        Assert.Equal((1, 4), (info.MinPlayers, info.MaxPlayers));   // сама — з «🤖 + бот» (двоє ботів)
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.Equal(SnakeCore.TickMs, info.TickMs);
         Assert.False(info.Rated);

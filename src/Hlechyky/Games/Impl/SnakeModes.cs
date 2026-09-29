@@ -35,10 +35,27 @@ public sealed class TronGame : ArenaGame
     public const int StartTicks = 30;
 
     public override GameInfo Info { get; } = new(
-        "tron", "Мотоцикли", "мотоцикли", GameGroup.Live, 2, 2, TickMs: TickMs, Rated: true,
-        Options: [SeriesOption, ArenaMaps.Option, TurboOption],
-        Hint: "За тобою тягнеться стіна, яка не зникає. Хто врізався перший — програв. Стрілки або WASD",
+        "tron", "Мотоцикли", "мотоцикли", GameGroup.Live, 1, 2, TickMs: TickMs, Rated: true,
+        Options: [SeriesOption, ArenaMaps.Option, TurboOption, LiveBots.LevelOption],
+        Hint: "За тобою тягнеться стіна, яка не зникає. Хто врізався перший — програв. Стрілки або WASD. Самому — з 🤖 ботом",
         Client: "snake-modes");   // усі режими малює один web/games/snake-modes.js
+
+    /// <summary>«🤖 + бот»: сам за столом — навпроти сідає бот (мозок той самий, що в гурту, з рівнем зі столу).</summary>
+    readonly SoloBot _solo = new();
+    protected override SoloBot? Solo => _solo;
+
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        base.Configure(options);
+        _solo.Configure(options);
+    }
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, N);
+
+    public override ActResult Act(int seat, string action, JsonElement payload) =>
+        action == LiveBots.Toggle ? _solo.Switch(Ctx, seat, payload, N) : base.Act(seat, action, payload);
 
     protected override bool Tails => false;
     protected override int CountdownTicks => StartTicks;
@@ -58,15 +75,15 @@ public sealed class TronGame : ArenaGame
     {
         var lost = 1 - won;
         var w = Wins();
-        return $"{Ctx.NickOf(won)} {SeatName(won)} {w[won]}:{w[lost]} {Ctx.NickOf(lost)} {SeatName(lost)}";
+        return $"{Name(won)} {SeatName(won)} {w[won]}:{w[lost]} {Name(lost)} {SeatName(lost)}";
     }
 
     protected override string RoundText(int[] winners) => winners.Length == 1
         ? $"{Info.Title}: {Score(winners[0])}"
-        : $"{Info.Title}: {Ctx.NickOf(0)} {SeatName(0)} і {Ctx.NickOf(1)} {SeatName(1)} врізались одночасно";
+        : $"{Info.Title}: {Name(0)} {SeatName(0)} і {Name(1)} {SeatName(1)} врізались одночасно";
 
     protected override string TimeUpText(int[] winners) =>
-        $"{Info.Title}: хвилина минула, {Ctx.NickOf(0)} і {Ctx.NickOf(1)} розійшлись внічию";
+        $"{Info.Title}: хвилина минула, {Name(0)} і {Name(1)} розійшлись внічию";
 
     protected override string SeriesText(int[] champs) => champs.Length == 1
         ? $"{Info.Title}: серія до {Target} — {Score(champs[0])}"
@@ -84,6 +101,10 @@ public sealed class TronGame : ArenaGame
         view["dirA"] = Arena.Dirs[0];
         view["dirB"] = Arena.Dirs[1];
         view["winner"] = XO;
+        view["botOffer"] = _solo.Offer(Ctx, N);
+        view["botWanted"] = _solo.Wanted;
+        view["botLvl"] = _solo.LevelKey;
+        view["bot"] = SoloBotSeat();
     }
 
     protected override void FrameExtra(Dictionary<string, object?> frame) => frame["winner"] = XO;
