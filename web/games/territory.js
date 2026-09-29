@@ -383,7 +383,8 @@
     const fit = HGames.ui.fit ? HGames.ui.fit() : null;
     const head = document.querySelector('header');
     const top = (fit ? fit.top : (head ? head.getBoundingClientRect().bottom : 0)) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    // --tabs-h — calc(58px + safe-area), parseFloat з нього дає 0; --gdock-h каркас пише числом (весь зайнятий низ)
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h')) || 64;
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
     const limit = (fit ? innerHeight - fit.dock : fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
