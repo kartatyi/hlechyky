@@ -170,3 +170,25 @@
   .rnr-stage .rnr-cv { border-radius: 0; }
   .rnr-over { padding: 6px 10px 0; }
 }
+
+/* ---- телефон лежачи (body.g-land ставить каркас) — live1: сцена посередині за висотою, «⬇ Пригнись» під лівим
+   великим пальцем, «⬆ Стрибок» — під правим, на всю висоту сцени. Раніше кнопки стояли під сценою і лежачи
+   йшли під нижнє меню; стрибати можна було тапом по полю, а пригнутись — лише свайпом. Лелек не чіпаємо. */
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) > .gseats { display: none; }  /* ніки — у чіпах над сценою */
+body.g-land .rnr:not(.rnr-storks) {
+  display: grid; grid-template-columns: 88px minmax(0, 1fr) 104px; column-gap: 8px; row-gap: 4px; max-width: none;
+}
+body.g-land .rnr:not(.rnr-storks) > * { grid-column: 1 / -1; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-stage {
+  grid-column: 2; grid-row: 3; justify-self: center; margin: 0;
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 185px) * 8 / 3));
+}
+body.g-land .rnr:not(.rnr-storks) > .rnr-stage .rnr-cv { border-radius: 10px; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch.on { display: contents; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-tbtn { width: 100%; height: auto; min-height: 84px; align-self: stretch; margin: 0; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-duck { grid-column: 1; grid-row: 3; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-jump { grid-column: 3; grid-row: 3; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-throw[hidden] { display: none; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-throw:not([hidden]) { grid-column: 3; grid-row: 3; align-self: start; min-height: 0; height: 38%; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch:has(> .rnr-throw:not([hidden])) > .rnr-jump { align-self: end; height: 58%; }
+body.g-land .rnr:not(.rnr-storks).rnr-showover > .rnr-touch.on { display: none; }

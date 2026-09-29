@@ -1744,7 +1744,10 @@
     padStrip(st);
     const cw = root.clientWidth;
     let mode = st.mode;
-    if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
+    // Телефон лежачи (g-land): картка стає сіткою «хрестовина | мапа | дії» (.gbody — contents, ширини в нього
+    // нема), і мапі лишається ~330 px висоти — камера 4:3, як стоячи, а не вся мапа дрібно.
+    if (document.body.classList.contains('g-land')) mode = 'port';
+    else if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
     sizeStage(st, mode);
     if (!st.cv || mode !== st.mode) {
       st.mode = mode;
@@ -1873,6 +1876,8 @@
       }
       st.onResize = () => fit(root, st);
       window.addEventListener('resize', st.onResize);
+      // поворот телефона: каркас ставить/знімає g-land у своєму resize — перераховуємо вже після нього
+      if (HGames.ui.onFit) HGames.ui.onFit(root, st.onResize);
       // мапу не видно (інша вкладка сайту, прокрутили геть) — не малюємо; стан приймаємо однаково
       if (window.IntersectionObserver) {
         st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; if (st.visible) wake(st); });

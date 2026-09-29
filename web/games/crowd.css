@@ -171,3 +171,20 @@
   .crowd-chip, .crowd-seat { padding: 2px 7px; }
   .crowd-news { font-size: .78em; }
 }
+
+/* ---- телефон лежачи (body.g-land ставить каркас) — live1: хрестовина під лівим великим пальцем, мапа
+   посередині за висотою (камера 4:3, як стоячи), праворуч — фішки, дії, статус і кнопки столу під правим.
+   Раніше мапа 600 px стояла над хрестовиною, і та лягала за край екрана. */
+body.g-land .gtable:has(> .gbody.crowd-body) {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 10px; row-gap: 4px;
+  align-items: center; align-content: center; justify-items: center;
+}
+body.g-land .gtable:has(> .gbody.crowd-body) > .gbody, body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-pad { display: contents; }
+body.g-land .gtable:has(> .gbody.crowd-body) > .gseats { display: none; }   /* хто за столом — видно у фішках гри */
+body.g-land .gtable:has(> .gbody.crowd-body) > * , body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > *, body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-pad > * { grid-column: 3; max-width: 26vw; margin: 0; }
+body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-stage {
+  grid-column: 2; grid-row: 1 / span 12; max-width: none !important;
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 64px) * 4 / 3));
+}
+body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-pad > .crowd-dirs { grid-column: 1; grid-row: 1 / span 12; max-width: none; }
+body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-pad > .crowd-acts { order: 9; }
