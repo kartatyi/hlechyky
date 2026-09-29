@@ -1621,8 +1621,13 @@
   function showStage(st) {
     if (!ui.coarse() || window.innerHeight > 520 || !st.el.stage) return;
     const r = st.el.stage.getBoundingClientRect();
-    if (r.top < 0 || r.bottom > window.innerHeight - 70) {
-      try { st.el.stage.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }); } catch (_) { /* старий браузер */ }
+    // смуга між липкою шапкою й тим, що прибито внизу (меню, міні-плеєр, шторка «💬 Стіл»); у g-imm їх нема.
+    // block:'center' не зважав на них: верх сцени ховався під шапкою, низ — під меню.
+    const f = ui.fit ? ui.fit() : { h: window.innerHeight, top: 56, dock: 70 };
+    const top = f.top + 4, bottom = f.h - f.dock - 4;
+    if (r.top < top || r.bottom > bottom) {
+      const want = r.height <= bottom - top ? top + (bottom - top - r.height) / 2 : top;
+      window.scrollBy({ top: r.top - want, behavior: reducedMotion() ? 'auto' : 'smooth' });
     }
   }
 

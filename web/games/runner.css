@@ -170,3 +170,9 @@
   .rnr-stage .rnr-cv { border-radius: 0; }
   .rnr-over { padding: 6px 10px 0; }
 }
+
+/* ---- Лелеки на телефоні лежачи (live2): небо за видимою смугою від каркаса (--gfit-h: без шапки й меню в
+   g-imm), а не «100vh − 150px», що лишало низ сцени під меню ---- */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .rnr.rnr-storks { max-width: calc((var(--gfit-h, calc(100vh - 114px)) - 80px) * 25 / 11); }
+}

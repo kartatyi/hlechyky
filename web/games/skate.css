@@ -162,9 +162,10 @@
   .skate-land > .skate-stage { grid-column: 2; grid-row: 1 / span 2; justify-self: center; margin: 0; }
   .skate-land > .skate-hud {
     grid-column: 3; grid-row: 1; align-self: start; flex-direction: column; align-items: stretch; flex-wrap: nowrap;
-    max-width: 150px; max-height: calc(var(--gfit-h, calc(100vh - 114px)) - 150px); overflow-y: auto; font-size: .74em;
+    max-width: 150px; max-height: calc(var(--gfit-h, calc(100vh - 114px)) - 196px); overflow-y: auto; font-size: .74em;
   }
   .skate-land > .skate-hud > * { justify-content: flex-start; }
+  .skate-land > .skate-hud .skate-mute { align-self: flex-start; }
   .skate-land > .skate-pad { display: contents; }
   .skate-land .skate-stick { grid-column: 1; grid-row: 1 / span 2; }
   .skate-land .skate-acts { grid-column: 3; grid-row: 2; align-self: end; }

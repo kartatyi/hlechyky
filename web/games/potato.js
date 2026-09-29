@@ -1806,8 +1806,9 @@
     if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !st.hudEl || !padEl || !HGames.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     if (st.fitFor === key) return;
-    // лежачи хрестовина й кнопки стоять обабіч мапи, тож у кадр треба саму мапу
-    const a = (st.land ? st.stageEl : st.hudEl).getBoundingClientRect(), b = (st.land ? st.stageEl : padEl).getBoundingClientRect();
+    // лежачи хрестовина й кнопки стоять обабіч мапи, тож у кадр треба всю сітку (мапа, рядок гравців, кнопки)
+    const box = st.stageEl.parentElement || st.stageEl;
+    const a = (st.land ? box : st.hudEl).getBoundingClientRect(), b = (st.land ? box : padEl).getBoundingClientRect();
     if (!a.height || !b.height) return;              // картку чи кнопки зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
     const head = document.querySelector('header');

@@ -1935,6 +1935,14 @@
     arms.innerHTML = WEAPONS.map((w, i) => '<button type="button" class="gk-arm" data-w="' + i + '" title="' + w.tip + '">'
       + '<span class="gk-emo">' + w.icon + '</span><span class="gk-name">' + w.chip + '</span><span class="gk-left"></span>'
       + '<span class="gk-key">' + ((i + 1) % 10) + '</span></button>').join('');
+    // на телефоні ряд зброї гортається вбік — тінь і стрілка на краю кажуть, що там є ще (glekomet.css .gk-more-*)
+    const armsEdge = () => {
+      const rest = arms.scrollWidth - arms.clientWidth - arms.scrollLeft;
+      arms.classList.toggle('gk-more-r', rest > 4);
+      arms.classList.toggle('gk-more-l', arms.scrollLeft > 4);
+    };
+    arms.addEventListener('scroll', armsEdge, { passive: true });
+    st.armsEdge = armsEdge;
     const ctl = document.createElement('div');
     ctl.className = 'gk-ctl';
     ctl.innerHTML = '<span class="gk-grp gk-move"><button type="button" class="gk-sq" data-k="m" data-d="-1" aria-label="посунути хату ліворуч">◀</button>'
@@ -2353,12 +2361,12 @@
       document.addEventListener('keyup', st.keyup);
       if (window.ResizeObserver) {
         // висоту поля — у наступному кадрі: зміна розміру просто в колбеку давала «ResizeObserver loop» у консолі
-        st.ro = new ResizeObserver(() => { fit(st); if (!st.fitQ) st.fitQ = requestAnimationFrame(() => { st.fitQ = 0; if (st.cv) fitHeight(st); }); wake(st, true); });
+        st.ro = new ResizeObserver(() => { fit(st); if (st.armsEdge) st.armsEdge(); if (!st.fitQ) st.fitQ = requestAnimationFrame(() => { st.fitQ = 0; if (st.cv) fitHeight(st); }); wake(st, true); });
         st.ro.observe(el);
         const card = root.closest('.gtable');
         if (card) st.ro.observe(card);
       }
-      st.onResize = () => { fitHeight(st); wake(st, true); };
+      st.onResize = () => { fitHeight(st); wake(st, true); if (st.armsEdge) st.armsEdge(); };
       window.addEventListener('resize', st.onResize);
       fit(st);
       spin(st);

@@ -174,9 +174,10 @@
   .kupala-land > .kupala-stage { grid-column: 2; grid-row: 1 / span 2; justify-self: center; margin: 0; }
   .kupala-land > .kupala-hud {
     grid-column: 3; grid-row: 1; align-self: start; flex-direction: column; align-items: stretch; flex-wrap: nowrap;
-    max-width: 150px; max-height: calc(var(--gfit-h, calc(100vh - 114px)) - 150px); overflow-y: auto; font-size: .74em;
+    max-width: 150px; max-height: calc(var(--gfit-h, calc(100vh - 114px)) - 196px); overflow-y: auto; font-size: .74em;
   }
   .kupala-land > .kupala-hud > * { justify-content: flex-start; }
+  .kupala-land > .kupala-hud .kupala-mute { align-self: flex-start; }
   .kupala-land > .kupala-pad { display: contents; }
   .kupala-land .kupala-dirs { grid-column: 1; grid-row: 1 / span 2; }
   .kupala-land .kupala-acts { grid-column: 3; grid-row: 2; align-self: end; }
