@@ -602,15 +602,33 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
 public sealed class CurveGame : Game
 {
     public override GameInfo Info { get; } = new(
-        "curve", "Кривуля", "кривулю", GameGroup.Live, 2, CurveCore.Seats,
+        "curve", "Кривуля", "кривулю", GameGroup.Live, 1, CurveCore.Seats,
         TickMs: CurveCore.TickMs, Start: StartMode.ByHost,
         Options:
         [
             new GameOption("walls", "Стіни", [("0", "смертельні"), ("1", "🍩 нема — поле-тор")], "0"),
             new GameOption("bonus", "Бонуси", [("0", "без бонусів"), ("1", "⚡🐢🔄🧹🚪⬛ як в Achtung")], "0"),
             new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3 / 4×4")], "0"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Їдеш уперед і лишаєш слід. Повертати можна тільки плавно. Врізався — вибув. Останній живий бере очко. До восьми за столом");
+        Hint: "Їдеш уперед і лишаєш слід. Повертати можна тільки плавно. Врізався — вибув. Останній живий бере очко. До восьми за столом. Самому — з 🤖 ботами");
+
+    /// <summary>
+    /// Скільки ботів, коли людина сама: троє. «Останній живий» на двох — це дуель, де все вирішує одна помилка;
+    /// учотирьох поле 300×200 (те саме, що й на двох, див. <see cref="CurveCore.SizeFor"/>) стає класичною Achtung:
+    /// боти ріжуть і одне одного, можна пересидіти тісняву, а очки за кожного вибулого роблять і друге місце вартим.
+    /// </summary>
+    public const int SoloBots = 3;
+    /// <summary>Імена ботів — у чоловічому роді кольору місця: «🤖 бот зелений» (як «🤖 бот рудий» у Крижині).</summary>
+    static readonly string[] BotColours = ["жовтий", "зелений", "глиняний", "білий", "синій", "рожевий", "фіалковий", "червоний"];
+    readonly SoloBot _solo = new();
+    /// <summary>Місця ботів у цій партії (порожньо — партія людська).</summary>
+    int[] _bots = [];
+    readonly CurveBot?[] _brain = new CurveBot?[CurveCore.Seats];
+    /// <summary>Партія вже стартувала хоч раз: до того стіл — лобі, де дія одна — покликати бота.</summary>
+    bool _started;
+    public IReadOnlyList<int> Bots => _bots;
+    public LiveBots.Level BotLevel => _solo.Level;
 
     /// <summary>Скільки очок за партію треба на кожного суперника.</summary>
     public const int PerRival = 10;
@@ -664,8 +682,24 @@ public sealed class CurveGame : Game
         _wrap = options.GetValueOrDefault("walls") == "1";
         _bonus = options.GetValueOrDefault("bonus") == "1";
         _teamsOn = options.GetValueOrDefault("teams") == "1";
+        _solo.Configure(options);
         _core = null;
     }
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, CurveCore.Seats);
+
+    /// <summary>Куди сядуть боти: перші вільні місця, якщо їх кликали й людина одна.</summary>
+    int[] BotSeats() => _solo.Active(Ctx, CurveCore.Seats)
+        ? [.. Enumerable.Range(0, CurveCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+
+    /// <summary>Троє ботів з однаковим ім'ям плутались би в рахунку — додаємо колір місця.</summary>
+    public override string? SeatBot(int seat) =>
+        seat is >= 0 and < CurveCore.Seats && !Ctx.Seated(seat) && Array.IndexOf(_started ? _bots : BotSeats(), seat) >= 0
+            ? $"{LiveBots.Name} {BotColours[seat]}" : null;
+
+    string? Name(int seat) => SeatBot(seat) ?? Ctx.NickOf(seat);
 
     public override string SeatName(int seat) => seat switch
     {
@@ -682,7 +716,12 @@ public sealed class CurveGame : Game
 
     public override void Start()
     {
-        _seats = [.. Enumerable.Range(0, CurveCore.Seats).Select(Ctx.Seated)];
+        _started = true;
+        _bots = BotSeats();
+        Array.Clear(_brain);
+        // Думають у різні тики, щоб не смикались хором.
+        for (var i = 0; i < _bots.Length; i++) _brain[_bots[i]] = new CurveBot(_solo.Level, i);
+        _seats = [.. Enumerable.Range(0, CurveCore.Seats).Select(s => Ctx.Seated(s) || _bots.Contains(s))];
         var n = _seats.Count(x => x);
         // Поле — під склад: до чотирьох звичне, більшому столу — ширше (CurveCore.SizeFor).
         var (w, h) = CurveCore.SizeFor(n);
@@ -703,6 +742,12 @@ public sealed class CurveGame : Game
         _teams = null;
         _note = null;
         if (!_teamsOn) return;
+        if (_bots.Length > 0)
+        {
+            // Боти — кожен сам за себе: «людина з ботом проти двох ботів» була б не соло, а лотерея напарника.
+            _note = "З ботами команд нема — кожен сам";
+            return;
+        }
         var seated = Enumerable.Range(0, CurveCore.Seats).Where(s => _seats[s]).ToArray();
         if (seated.Length is not (4 or 6 or 8))
         {
@@ -724,6 +769,9 @@ public sealed class CurveGame : Game
     /// <summary>Реалтайм-ввід: утримання повороту. Хиби нікого не цікавлять — наступний кадр усе перемалює.</summary>
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return _started && _winners is null ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, CurveCore.Seats);
+        if (!_started) return ActResult.Fail("Чекаємо на гравців");   // як казав каркас, поки лобі було не наше
         if (action != "turn") return ActResult.Fail("Тут так не ходять");
         if (Dir(payload) is not { } d) return ActResult.Fail("Не зрозумів, куди повертати");
         Core.Turn(seat, d);
@@ -757,6 +805,8 @@ public sealed class CurveGame : Game
 
             default:
                 var timeout = Core.RoundTicks >= CurveCore.MaxRoundTicks;
+                // Боти кермують до кроку поля — їхній ввід лягає в цей тик, як людський між тиками.
+                if (!timeout) BotsThink();
                 var dead = timeout ? Core.StopAll() : Core.Step();
                 if (!timeout) Note();
                 if (dead.Count > 0)
@@ -781,6 +831,19 @@ public sealed class CurveGame : Game
             if (!head && k >= 0 && k != v && (_teams is null || _teams[k] != _teams[v])) _kills[k]++;
         }
         foreach (var (s, kind) in Core.Picks) _pk.Add([s, kind]);
+    }
+
+    /// <summary>
+    /// Боти кермують кожен у свій тик тим самим <see cref="CurveCore.Turn"/>, що й людський <c>turn</c>: та сама
+    /// швидкість, той самий крок повороту. Місце, на яке сіла людина, бот уже не чіпає.
+    /// </summary>
+    void BotsThink()
+    {
+        foreach (var s in _bots)
+        {
+            if (Ctx.Seated(s) || _brain[s] is not { } bot || !Core.Heads[s].Alive || !bot.Due(Core.RoundTicks)) continue;
+            Core.Turn(s, bot.Think(Core, s, Ctx.Rng));
+        }
     }
 
     /// <summary>Команді — по очку за кожного вибулого суперника, поки в неї хтось ще їде.</summary>
@@ -825,7 +888,17 @@ public sealed class CurveGame : Game
     {
         _winners = best;
         _phase = "done";
-        Ctx.Finish(best, $"{Info.Title}: {Table()}");
+        if (_bots.Length == 0)
+        {
+            Ctx.Finish(best, $"{Info.Title}: {Table()}");
+            return;
+        }
+        // З ботами — без нагород: переміг бот — winners порожні й вердикт; людина — вердикт з рівнем.
+        var people = best.Where(Ctx.Seated).ToArray();
+        var verdict = people.Length == 0 ? $"🤖 Кривулю взяв {Name(best[0])}"
+            : best.Length == 1 ? $"🏆 {Ctx.NickOf(people[0])} — перемога над {LiveBots.Of(_solo.Level)}и ботами"
+            : $"🤝 {Ctx.NickOf(people[0])} нарівні з {LiveBots.Of(_solo.Level)}и ботами";
+        Ctx.Finish(people, $"{Info.Title}: {Table()}", verdict: verdict);
     }
 
     /// <summary>Місця з найбільшим рахунком серед тих, хто ще за столом.</summary>
@@ -844,9 +917,9 @@ public sealed class CurveGame : Game
             return string.Join(", ", Enumerable.Range(0, 2).OrderByDescending(t => _teamPts[t]).Select(t =>
                 $"{TeamNames[t]} ({string.Join(", ", Enumerable.Range(0, CurveCore.Seats).Where(s => _seats[s] && _teams[s] == t).Select(Ctx.NickOf))}) {_teamPts[t]}"));
         return string.Join(", ", Enumerable.Range(0, CurveCore.Seats)
-            .Where(s => _seats[s] && Ctx.NickOf(s) is not null)
+            .Where(s => _seats[s] && Name(s) is not null)
             .OrderByDescending(s => _scores[s])
-            .Select(s => $"{Ctx.NickOf(s)} {SeatName(s)} {_scores[s]}"));
+            .Select(s => SeatBot(s) is { } bot ? $"{bot} {_scores[s]}" : $"{Ctx.NickOf(s)} {SeatName(s)} {_scores[s]}"));
     }
 
     /// <summary>
@@ -938,6 +1011,10 @@ public sealed class CurveGame : Game
             })],
             ["winners"] = _winners,
             ["kills"] = (int[])_kills.Clone(),
+            ["botOffer"] = _solo.Offer(Ctx, CurveCore.Seats),
+            ["botWanted"] = _solo.Wanted,
+            ["botLvl"] = _solo.LevelKey,
+            ["bot"] = !_started ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
         };
         if (_wrap) v["wrap"] = true;
         if (_bonus)

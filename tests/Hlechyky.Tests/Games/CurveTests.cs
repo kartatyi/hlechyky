@@ -732,7 +732,7 @@ public class CurveTests
 
         Assert.Equal("live", game.Group);
         Assert.Equal("byHost", game.Start);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);   // сам — з 🤖 ботами (CurveBotTests)
         Assert.Equal(8, game.MaxPlayers);
         Assert.Equal(CurveCore.TickMs, game.TickMs);
         Assert.False(game.Rated);            // ставки тут неможливі: їх дають лише рейтинговим іграм на двох

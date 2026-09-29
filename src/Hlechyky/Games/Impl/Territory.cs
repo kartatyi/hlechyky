@@ -414,13 +414,33 @@ public sealed class Territory : Game
     static readonly string[] Colours = ["жовта", "зелена", "глиняна", "блакитна", "рожева", "фіалкова"];
 
     public override GameInfo Info { get; } = new(
-        "territory", "Земля", "землю", GameGroup.Live, 2, TerritoryCore.MaxPlayers,
+        "territory", "Земля", "землю", GameGroup.Live, 1, TerritoryCore.MaxPlayers,
         TickMs: TerritoryCore.TickMs, Start: StartMode.ByHost,
         Options:
         [
             new GameOption("round", "Раунд", [("90", "90 с"), ("60", "60 с — швидко, на двох"), ("150", "150 с — для компанії"), ("40", "до 40 % поля (не довше 3 хв)")], "90"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Виїжджай зі своєї землі, обводь шматок поля і повертайся — обведене твоє. Перерізали твій слід — усе згоріло. До шести за столом");
+        Hint: "Виїжджай зі своєї землі, обводь шматок поля і повертайся — обведене твоє. Перерізали твій слід — усе згоріло. До шести за столом. Самому — з 🤖 ботами");
+
+    /// <summary>
+    /// Скільки ботів, коли людина сама: двоє. Один на один «Земля» — це тиха гонка площ, де суперник далеко; утрьох
+    /// на полі 40×30 (розмір той самий, що й на двох) боти ріжуть і одне одного, а людині є кого різати й від кого
+    /// тікати. Більше — і наділи стоять упритул, петлю вже нема де обвести.
+    /// </summary>
+    public const int SoloBots = 2;
+    /// <summary>Імена ботів — у чоловічому роді кольору наділу: «🤖 бот зелений» (як «🤖 бот рудий» у Крижині).</summary>
+    static readonly string[] BotColours = ["жовтий", "зелений", "глиняний", "блакитний", "рожевий", "фіалковий"];
+    readonly SoloBot _solo = new();
+    /// <summary>Місця ботів у цій партії (порожньо — партія людська).</summary>
+    int[] _bots = [];
+    readonly TerritoryBot?[] _brain = new TerritoryBot?[TerritoryCore.MaxPlayers];
+    /// <summary>Раунд іде (між «Почати» і Finish): лише тоді бота вже не кличуть і не проганяють.</summary>
+    bool _running;
+    public IReadOnlyList<int> Bots => _bots;
+    public LiveBots.Level BotLevel => _solo.Level;
+    /// <summary>Голова бота на місці (для тестів).</summary>
+    public TerritoryBot? Brain(int seat) => seat is >= 0 and < TerritoryCore.MaxPlayers ? _brain[seat] : null;
 
     /// <summary>
     /// «Готуйсь» перед раундом — три секунди. Без нього голови рушали тієї ж миті, коли господар тиснув
@@ -488,13 +508,33 @@ public sealed class Territory : Game
             _ => (TerritoryCore.RoundTicks, 0),
         };
         if (_core is not null) _core.RoundLen = _len;
+        _solo.Configure(options);
     }
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, TerritoryCore.MaxPlayers);
+
+    /// <summary>Куди сядуть боти: перші вільні місця, якщо їх кликали й людина одна.</summary>
+    int[] BotSeats() => _solo.Active(Ctx, TerritoryCore.MaxPlayers)
+        ? [.. Enumerable.Range(0, TerritoryCore.MaxPlayers).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+
+    /// <summary>Двоє ботів з однаковим ім'ям плутались би в рахунку — додаємо колір наділу.</summary>
+    public override string? SeatBot(int seat) =>
+        seat is >= 0 and < TerritoryCore.MaxPlayers && !Ctx.Seated(seat)
+            && Array.IndexOf(Ctx.Round == _startedRound ? _bots : BotSeats(), seat) >= 0 ? $"{LiveBots.Name} {BotColours[seat]}" : null;
+
+    string? Name(int seat) => SeatBot(seat) ?? Ctx.NickOf(seat);
 
     public override string SeatName(int seat) =>
         seat >= 0 && seat < Colours.Length ? Colours[seat] : $"гравець {seat + 1}";
 
     public override void Start()
     {
+        _bots = BotSeats();
+        Array.Clear(_brain);
+        foreach (var b in _bots) _brain[b] = new TerritoryBot(_solo.Level);
+        _running = true;
         Lay(SeatedMask());
         _startedRound = Ctx.Round;
         _ready = ReadyTicks;
@@ -503,6 +543,9 @@ public sealed class Territory : Game
     /// <summary>Реалтайм-ввід: самі повороти. Помилки нікого не цікавлять — наступний кадр усе перемалює.</summary>
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return _running ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, TerritoryCore.MaxPlayers);
+        if (!_running) return ActResult.Fail("Чекаємо на гравців");   // як казав каркас, поки лобі було не наше
         if (action != "turn") return ActResult.Fail("Тут так не ходять");
         if (Dir(payload) is { } dir) Core.Turn(seat, dir);
         return ActResult.Done;
@@ -525,6 +568,7 @@ public sealed class Territory : Game
             _ready--;
             return _ready == 0 ? TickResult.Both : TickResult.FrameOnly;
         }
+        BotsThink();
         Core.Step();
         if (Core.TicksLeft > 0 && !GoalReached()) return TickResult.FrameOnly;
         FinishRound();
@@ -545,12 +589,24 @@ public sealed class Territory : Game
             rider.On = false;
             rider.RespawnIn = 0;
         }
-        if (rest.Length >= Info.MinPlayers)
+        // Дограють лише двоє людей і більше: сам на сам (чи з ботами, яких кликали не для нього) — уже не та партія.
+        if (rest.Length >= 2)
         {
             Ctx.Log($"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу — земля згоріла");
             return;
         }
+        _running = false;
         Ctx.Finish(rest, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
+    }
+
+    /// <summary>
+    /// Боти повертають тим самим <see cref="TerritoryCore.Turn"/>, що й людський <c>turn</c>, перед кроком поля —
+    /// як людський ввід між тиками. Місце, на яке сіла людина, бот уже не чіпає.
+    /// </summary>
+    void BotsThink()
+    {
+        foreach (var s in _bots)
+            if (!Ctx.Seated(s) && _brain[s] is { } bot && bot.Think(Core, s, Ctx.Rng) is { } d) Core.Turn(s, d);
     }
 
     /// <summary>
@@ -601,16 +657,22 @@ public sealed class Territory : Game
             area = Areas(),
             timeLeft = Core.TicksLeft * TerritoryCore.TickMs,
             goal = _goal,
+            botOffer = _solo.Offer(Ctx, TerritoryCore.MaxPlayers),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
+            bot = Ctx.Round == _startedRound ? _bots.Where(s => !Ctx.Seated(s)).ToArray() : BotSeats(),
         };
     }
 
     /// <summary>«ready» — іде відлік, «play» — їдуть. Поле лобі теж «ready», але з нульовим відліком.</summary>
     string Phase => _ready > 0 || Ctx.Round != _startedRound ? "ready" : "play";
 
+    /// <summary>Хто на полі: люди за столом плюс боти (у лобі — ті, що сядуть; їхні наділи видно ще до старту).</summary>
     bool[] SeatedMask()
     {
         var mask = new bool[TerritoryCore.MaxPlayers];
         for (var s = 0; s < mask.Length; s++) mask[s] = Ctx.Seated(s);
+        foreach (var b in _running || Ctx.Round == _startedRound ? _bots : BotSeats()) mask[b] = true;
         return mask;
     }
 
@@ -649,6 +711,7 @@ public sealed class Territory : Game
     void FinishRound()
     {
         var seats = Enumerable.Range(0, TerritoryCore.MaxPlayers).Where(s => Core.Riders[s].On).ToArray();
+        _running = false;
         if (seats.Length == 0)
         {
             Ctx.Finish([], $"{Info.Title}: грати не було кому");
@@ -658,11 +721,21 @@ public sealed class Territory : Game
         var winners = seats.Where(s => Core.Area(s) == best).ToArray();
         var board = string.Join(", ", seats
             .OrderByDescending(Core.Area)
-            .Select(s => $"{Ctx.NickOf(s)} {SeatName(s)} {Core.Percent(s).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}%"));
+            .Select(s => $"{(SeatBot(s) is { } bot ? bot : $"{Ctx.NickOf(s)} {SeatName(s)}")} {Core.Percent(s).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}%"));
         // Ніки чужі, відмінювати їх нема як, тому в Журнал іде табличка відсотків. Переможця називаємо
         // окремо кольором: різниця в одну клітинку — це 0,08 в. п., тож у табличці два однакові відсотки
         // читались би як нічия, якою вони не є.
-        if (winners.Length == seats.Length) Ctx.Finish([], $"{Info.Title}: {board} — нічия");
+        if (_bots.Length > 0)
+        {
+            // З ботами — без нагород: переміг бот — winners порожні й вердикт; людина — вердикт з рівнем.
+            var people = winners.Where(Ctx.Seated).ToArray();
+            var pct = Core.Percent(winners[0]).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+            var verdict = people.Length == 0 ? $"🤖 Землю взяв {Name(winners[0])} — {pct}% поля"
+                : winners.Length == 1 ? $"🏆 {Ctx.NickOf(people[0])} — перемога над {LiveBots.Of(_solo.Level)}и ботами, {pct}% поля"
+                : $"🤝 {Ctx.NickOf(people[0])} нарівні з {LiveBots.Of(_solo.Level)}и ботами";
+            Ctx.Finish(people, $"{Info.Title}: {board}", verdict: verdict);
+        }
+        else if (winners.Length == seats.Length) Ctx.Finish([], $"{Info.Title}: {board} — нічия");
         else if (winners.Length == 1) Ctx.Finish(winners, $"{Info.Title}: {board} — перемогла {SeatName(winners[0])}");
         else Ctx.Finish(winners, $"{Info.Title}: {board} — перемогли {string.Join(" і ", winners.Select(SeatName))}");
     }
