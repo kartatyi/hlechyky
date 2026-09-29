@@ -937,3 +937,56 @@
 /* Довгі написи на кнопках («🔥 Почати наново: +1,23 млн клейм», «Продати все звичайне…») на 360 px вилазили за
    картку на 4–9 px: кнопка за замовчуванням не переносить рядок. Тепер переносить і не ширша за свій рядок. */
 .clk .clk-fire, .clk .clkw-sellall { white-space: normal; max-width: 100%; text-align: center; justify-content: center; }
+
+/* ---- телефон: коло, смуга «Шлях виробу» і рядок «Далі» — в один екран над нижнім меню (прохід «Телефон», 30.09) ----
+   Було: сцена 4:5 на всю ширину (415 px на 390) — і рядок «Далі: Обпалити» з кнопкою лежав під нижнім меню сайту,
+   на 360×740 під ним була вся смуга. Тепер сцена не вища, ніж лишає вікно: 100svh мінус те, що над сценою
+   (--clk-ph-top, міряє phoneFit у clicker.js), смуга з рядком «Далі» (--clk-ph-path) і нижнє меню (--gdock-h від
+   каркаса, поки його нема — 64 px). Нижче ~250 px сцена не стискається: коло лишається великою ціллю.
+   Табличку «Хата гончаря» кладемо на небо сцени (як на ПК, .clk.fit) і ховаємо рядок місць — ще 50 px сцені. */
+@media (max-width: 560px) {
+  .gtable.clk-wide > .gseats { display: none; }
+  .clk .clk-scene > * { order: 2; }
+  .clk .clk-head, .clk .clk-rate, .clk .clk-rival { order: 0; }
+  .clk .clk-sign {
+    order: 1; position: relative; top: 6px; z-index: 2; margin-bottom: calc(-1.75em - 6px);
+    align-self: flex-start; margin-left: 8px; max-width: calc(100% - 104px);
+  }
+  .clk .clk-scene:has(.clk-stage[hidden]) .clk-sign { order: 0; top: 0; margin: 0; align-self: center; max-width: 100%; }
+  .clk .clk-stage {
+    max-width: min(var(--clk-stage-w, 620px), max(250px,
+      calc((100svh - var(--clk-ph-top, 240px) - var(--clk-ph-path, 124px) - var(--gdock-h, 64px) - 6px) * .8)));
+  }
+}
+/* Лежачи (844×390): сцена 432×540 не влазила між шапкою й меню — коло було за екраном. Тепер сцена не вища за
+   видиму смугу вікна: догорнув до неї — і коло вже під пальцем. */
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 561px) {
+  .clk .clk-stage { max-width: min(var(--clk-stage-w, 620px), max(180px, calc((100svh - 56px - var(--gdock-h, 64px) - 12px) * .8))); }
+}
+/* Дотик: дрібні цілі (ⓘ на плитці кроку 26 px, «і»-згортка 16 px) — невидимою рамкою до 40 px; свайп по колу не
+   забирає натиск під прокрутку (pointercancel губив клік); підказка 💡, що лягає на низ кола, не краде дотик. */
+@media (pointer: coarse) {
+  .clk .clk-wheel { touch-action: none; }
+  .clk .clk-sti::after {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px;
+  }
+  .clk .clk-info > summary { position: relative; }
+  .clk .clk-info > summary::after {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px;
+  }
+  .clk .clk-tip { pointer-events: none; }
+  .clk .clk-tip i { pointer-events: auto; position: relative; padding: 6px 8px; margin: -6px -8px -6px auto; }
+  .clk .clk-signin { font-size: 16px; }
+}
+/* Техніки розпису в горні: вісім по 36–40 px в один ряд — у запалі легко промахнутись. На телефоні — 44 px, два ряди по чотири. */
+@media (pointer: coarse) and (max-width: 480px) {
+  .clk .clkk-techrow { display: grid; grid-template-columns: repeat(4, 44px); gap: 6px; }
+  .clk .clkk-tbtn { width: 44px; height: 44px; font-size: 19px; }
+}
+/* Текст смуги на вузькій картці: назви кроків 11 px і підписи 10 px — тепер від 12 px. */
+@media (max-width: 460px) {
+  .clk .clk-sttxt b { font-size: .78em; }
+  .clk .clk-stsub { font-size: .75em; }
+  /* Плитка тут стовпчиком (значок над назвою), ⓘ сидить у верхньому куті — місце праворуч під нього назві не потрібне. */
+  .clk .clk-step.hasi { padding-right: 2px; }
+}
