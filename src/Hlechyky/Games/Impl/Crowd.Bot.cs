@@ -44,14 +44,7 @@ public sealed partial class Crowd
     public override string? SeatBot(int seat) =>
         _started && Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat) ? LiveBots.Name : null;
 
-    /// <summary>Перші вільні місця — туди сядуть боти.</summary>
-    int[] BotSeats()
-    {
-        var a = new List<int>(BotCount);
-        for (var i = 0; i < Seats && a.Count < BotCount; i++)
-            if (!Ctx.Seated(i)) a.Add(i);
-        return [.. a];
-    }
+    int[] BotSeats() => CrowdBots.FreeSeats(Ctx, Seats, BotCount);
 
     /// <summary>Поле виду <c>bot</c>: місця ботів у партії (і після неї), у лобі — куди сядуть, якщо кликали.</summary>
     int[]? BotView() =>
@@ -59,8 +52,7 @@ public sealed partial class Crowd
         : (!_started || _phase == PhaseOver) && _solo.Wanted ? BotSeats()
         : null;
 
-    /// <summary>Два боти — у журналі з кольором місця, щоб не було «🤖 бот 5 : 🤖 бот 3».</summary>
-    string BotNick(int seat) => _s[seat].Bot && _bots.Length > 1 ? $"{LiveBots.Name} ({SeatNames[seat]})" : _s[seat].Nick;
+    string BotNick(int seat) => CrowdBots.Nick(_s[seat].Bot, _bots.Length, _s[seat].Nick, SeatNames[seat]);
 
     void BotsNewRound()
     {
@@ -189,26 +181,12 @@ public sealed partial class Crowd
             if (q.Upright && CrowdCore.CounterAt(q) == stall) _eye.Add(q.Id, CrowdEye.Flash);
     }
 
-    /// <summary>
-    /// Кінець партії з ботами: без очок у таблицю й без ачівок. Переміг бот (чи боти) — winners порожні й вердикт
-    /// «🤖»; людина сама на вершині — вона переможець; нарівні з ботом — нічия.
-    /// </summary>
+    /// <summary>Кінець партії з ботами: без очок у таблицю й без ачівок (<see cref="CrowdBots.Finish"/>).</summary>
     void FinishWithBots(int[] winners, string line)
     {
         var human = -1;
         for (var i = 0; i < Seats; i++)
             if (_s[i].Active && !_s[i].Bot) human = i;
-        var lvl = LiveBots.Of(_solo.Level);
-        string verdict;
-        int[] real = [];
-        if (winners.Length == 0) verdict = $"🤝 Нічия з {lvl} ботами";
-        else if (human >= 0 && winners is [var w] && w == human)
-        {
-            real = [human];
-            verdict = $"🏆 {_s[human].Nick} — перемога над {lvl} ботами";
-        }
-        else if (human >= 0 && Array.IndexOf(winners, human) >= 0) verdict = $"🤝 {_s[human].Nick} нарівні з {lvl} ботом";
-        else verdict = $"🤖 Бот переміг: {line}";
-        Ctx.Finish(real, $"{Info.Title}: {line}", verdict: verdict);
+        CrowdBots.Finish(Ctx, winners, human, human >= 0 ? _s[human].Nick : "", _solo.Level, $"{Info.Title}: {line}", line);
     }
 }

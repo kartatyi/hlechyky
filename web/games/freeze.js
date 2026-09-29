@@ -525,7 +525,7 @@
   }
 
   const seatOf = (st, i) => (st.view && st.view.seats || []).find((s) => s.seat === i) || null;
-  const nickOfSeat = (st, i) => { const s = seatOf(st, i); return (s && s.nick) || (st.ctx && st.ctx.nickOf(i)) || SEAT_NAMES[i] || '?'; };
+  const nickOfSeat = (st, i) => { const s = seatOf(st, i); return (s && s.nick) || (st.ctx && (st.ctx.nameOf || st.ctx.nickOf)(i)) || SEAT_NAMES[i] || '?'; };
   const nameOf = (st, id) => (st.names && st.names[id]) || 'селянин';
   const phaseOf = (st) => (st.vphase === 'over' ? 'over' : st.fph || st.vphase);
   const mineNow = (st) => !!(st.ctx && st.ctx.mine) && st.meId >= 0;

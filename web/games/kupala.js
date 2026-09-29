@@ -487,7 +487,7 @@
   }
 
   const seatOf = (st, i) => (st.view && st.view.seats || []).find((s) => s.seat === i) || null;
-  const nickOfSeat = (st, i) => { const s = seatOf(st, i); return (s && s.nick) || (st.ctx && st.ctx.nickOf(i)) || SEAT_NAMES[i] || '?'; };
+  const nickOfSeat = (st, i) => { const s = seatOf(st, i); return (s && s.nick) || (st.ctx && (st.ctx.nameOf || st.ctx.nickOf)(i)) || SEAT_NAMES[i] || '?'; };
   const lookOf = (st, id) => { const l = st.looks; return [l[id * 4] | 0, l[id * 4 + 1] | 0, l[id * 4 + 2] | 0, l[id * 4 + 3] | 0]; };
   const nameOf = (st, id) => (st.names && st.names[id]) || 'селянин';
   const alive = (st) => !!(st.me && st.me.alive);

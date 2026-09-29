@@ -7,6 +7,8 @@ public sealed class DanceSeat
 {
     /// <summary>Сидів на старті партії.</summary>
     public bool Plays;
+    /// <summary>Гравець-бот (🤖): місце порожнє в каркасі, танцюристом керує сервер (<c>Dance.Bot.cs</c>).</summary>
+    public bool Bot;
     /// <summary>Устав посеред партії: його танцюрист — уже бот, а очки лишаються в таблиці.</summary>
     public bool Out;
     public string Nick = "";
@@ -42,7 +44,7 @@ public sealed class DanceSeat
 /// вибий суперників ляпасом. Правила поля — у <see cref="DanceCore"/>, тут фази, виклики, очки, дії, вид і кадр
 /// (spec: docs/games/specs/dance.md).
 /// </summary>
-public sealed class Dance : Game
+public sealed partial class Dance : Game
 {
     public const string PhaseLobby = "lobby", PhaseStart = "start", PhaseGo = "go", PhaseReveal = "reveal", PhaseOver = "over";
     public const int Seats = 8;
@@ -89,14 +91,15 @@ public sealed class Dance : Game
     };
 
     public override GameInfo Info { get; } = new(
-        "dance", "Вечорниці", "вечорниці", GameGroup.Live, 2, Seats, TickMs: TickMs,
+        "dance", "Вечорниці", "вечорниці", GameGroup.Live, 1, Seats, TickMs: TickMs,
         Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("crowd", "Люду", [("auto", "Як на вечорницях"), ("small", "Небагато (20)"), ("big", "Повна хата (48)")], "auto"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Музики кличуть фігури — плескай, присідай, крутись. Ти один із танцюристів, і ніхто не знає, хто живий. Витанцюй стрічку в колі або вибий суперників ляпасом");
+        Hint: "Музики кличуть фігури — плескай, присідай, крутись. Ти один із танцюристів, і ніхто не знає, хто живий. Витанцюй стрічку в колі або вибий суперників ляпасом. Самому — з 🤖 ботами");
 
     static readonly string[] SeatNames = ["жовтий", "зелений", "рудий", "сірий", "синій", "рожевий", "фіолетовий", "червоний"];
 
@@ -149,6 +152,7 @@ public sealed class Dance : Game
     {
         _rounds = options.TryGetValue("rounds", out var r) && int.TryParse(r, out var n) && n is 1 or 3 or 5 ? n : 3;
         _crowd = options.TryGetValue("crowd", out var c) && c is "small" or "big" ? c : "auto";
+        _solo.Configure(options);
     }
 
     public int BotsForTable(int players) => _crowd switch
@@ -169,13 +173,15 @@ public sealed class Dance : Game
         _pending.Clear();
         _ev.Clear();
         _evFrame = [];
+        _bots = _solo.Active(Ctx, Seats) ? BotSeats() : [];
         var players = 0;
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            s.Plays = Ctx.Seated(i);
+            s.Bot = Array.IndexOf(_bots, i) >= 0;
+            s.Plays = Ctx.Seated(i) || s.Bot;
             s.Out = false;
-            s.Nick = Ctx.NickOf(i) ?? "";
+            s.Nick = s.Bot ? LiveBots.Name : Ctx.NickOf(i) ?? "";
             s.Total = s.ShownTotal = 0;
             if (s.Plays) players++;
         }
@@ -218,6 +224,7 @@ public sealed class Dance : Game
         }
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
+        BotsNewRound();
         _dirty = true;
     }
 
@@ -227,8 +234,10 @@ public sealed class Dance : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle && (!_started || _phase == PhaseOver)) return _solo.Switch(Ctx, seat, payload, Seats);
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= Seats || !_s[seat].Active) return ActResult.Fail("Тут так не танцюють");
+        if (_s[seat].Bot) return ActResult.Fail("Тут танцює 🤖 бот — зачекай кінця партії");
         return action switch
         {
             "move" => Move(seat, payload),
@@ -302,6 +311,13 @@ public sealed class Dance : Game
 
     ActResult Slap(int seat, JsonElement payload)
     {
+        var id = Field(payload, "id", out var ok);
+        return SlapAt(seat, id, ok);
+    }
+
+    /// <summary>Ляпас — одна дорога і для людини, і для 🤖 бота (та сама перезарядка, дальність і отетеріння).</summary>
+    ActResult SlapAt(int seat, int? id, bool ok = true)
+    {
         var s = _s[seat];
         if (PhaseRefusal(s) is { } no) return no;
         var me = Core.V[s.Me];
@@ -309,7 +325,6 @@ public sealed class Dance : Game
         if (me.Pose > 0) return ActResult.Fail("Спершу дотанцюй");
         if (s.SlapCool > 0) return ActResult.Fail("Рука ще не відійшла");
 
-        var id = Field(payload, "id", out var ok);
         if (!ok) return ActResult.Fail("Такого танцюриста нема");
         int target;
         if (id is { } want)
@@ -331,6 +346,7 @@ public sealed class Dance : Game
         s.SlapCool = SlapCoolTicks;
         s.Slaps++;
         var hit = Core.V[target];
+        BotsSawShot(me.Id);
         // обернутись до того, кого б'єш (клік міг бути й збоку)
         int dx = hit.X - me.X, dy = hit.Y - me.Y;
         if (dx != 0 || dy != 0) me.Dir = Math.Abs(dx) >= Math.Abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
@@ -353,6 +369,7 @@ public sealed class Dance : Game
         else
         {
             // бот ображено сідає, а той, хто вдарив, отетерів — і всім видно, хто це був
+            _eye.Clear(target);     // сів ображений — отже, просто танцюрист: це бачать усі, і боти теж
             hit.Offended = DanceCore.OffendTicks;
             hit.Pose = 0;
             hit.Miss = 0;
@@ -382,7 +399,9 @@ public sealed class Dance : Game
                 HeldKeys();
                 Core.TimersAll();
                 Core.ThinkAll();
+                BotsThink();
                 Core.StepAll();
+                BotsWatch();
                 Trail();
                 if (--_left <= 0)
                 {
@@ -404,7 +423,9 @@ public sealed class Dance : Game
                 Timers();
                 if (!_calling && _t == _beat - _lead) Announce();
                 Core.ThinkAll();
+                BotsThink();
                 Core.StepAll();
+                BotsWatch();
                 Trail();
                 if (_calling && !_judged && _t == _beat + DanceCore.Late + 1) Judge();
                 if (_calling && _t >= _beat + DanceCore.LateMax) EndCall();
@@ -434,6 +455,7 @@ public sealed class Dance : Game
         _calling = true;
         _judged = false;
         Core.Announce(_callFig, _beat);
+        BotsPlan();
     }
 
     /// <summary>Вікно такту закрилось: хто схибив — «?» над головою (і бот, і гравець), гравцям — серія й очки.</summary>
@@ -441,6 +463,7 @@ public sealed class Dance : Game
     {
         _judged = true;
         Core.Judge();
+        BotsSawMiss();
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
@@ -583,13 +606,15 @@ public sealed class Dance : Game
 
     void EndRound(int[] winners, string why)
     {
+        // з 🤖 ботами — без ачівок: партія тренувальна
+        var awards = _bots.Length == 0;
         foreach (var w in winners)
         {
             _s[w].Total += PtRound;
-            if (why == "ribbon" && _s[w].Slaps == 0) Ctx.Award(w, 0, "ach:dance-ribbon");
+            if (awards && why == "ribbon" && _s[w].Slaps == 0) Ctx.Award(w, 0, "ach:dance-ribbon");
         }
         for (var i = 0; i < Seats; i++)
-            if (_s[i].Active && _s[i].Eye) Ctx.Award(i, 0, "ach:dance-slap");
+            if (awards && _s[i].Active && _s[i].Eye) Ctx.Award(i, 0, "ach:dance-slap");
         _reveal = RevealOf(winners, why, s => s.Active);
         Freeze();
         _phase = PhaseReveal;
@@ -643,9 +668,14 @@ public sealed class Dance : Game
         var winners = top.Length == active.Count ? [] : top;
         _winners = winners;
         _dirty = true;
-        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
-        var line = string.Join(" : ", order.Select(i => $"{_s[i].Nick} {_s[i].Total}"));
+        var line = string.Join(" : ", order.Select(i => $"{BotNick(i)} {_s[i].Total}"));
+        if (_bots.Length > 0)
+        {
+            FinishWithBots(winners, line);
+            return;
+        }
+        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         Ctx.Finish(winners, winners.Length > 0 ? $"{Info.Title}: {line}" : $"{Info.Title}: {line} — нічия");
     }
 
@@ -775,6 +805,10 @@ public sealed class Dance : Game
                 ? new { winners = w, totals = _s.Select(x => x.Total).ToArray(), why = _endWhy }
                 : null,
             turn = (int?)null,
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
+            bot = BotView(),
         };
     }
 

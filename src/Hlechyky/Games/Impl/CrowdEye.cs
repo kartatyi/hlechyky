@@ -8,7 +8,7 @@ namespace Hlechyky.Games.Impl;
 /// Що видає людину серед NPC (NPC так не роблять ніколи чи майже ніколи):
 /// <list type="bullet">
 /// <item>постріл / ляпас — NPC не б'ються зовсім (<see cref="Shooter"/>);</item>
-/// <item>стояв там, де щойно спалахнуло завдання, — NPC роблять це рідко (<see cref="Flash"/>);</item>
+/// <item>стояв там, де щойно спалахнуло завдання, — NPC роблять це рідко (<see cref="Flash"/>); збився з фігури (<see cref="Miss"/>);</item>
 /// <item>розворот на 180° на ходу — NPC ідуть до цілі й зупиняються, а не смикаються назад (<see cref="Reverse"/>);</item>
 /// <item>довго тисне в стіну — NPC одразу беруть нову ціль, а тиняються щонайбільше 24 тики (<see cref="WallHold"/>).</item>
 /// </list>
@@ -16,7 +16,7 @@ namespace Hlechyky.Games.Impl;
 /// </summary>
 public sealed class CrowdEye
 {
-    public const int Shooter = 100, Flash = 45, Reverse = 12, WallHold = 25, WallTicks = 30;
+    public const int Shooter = 100, Flash = 45, Miss = 20, Reverse = 12, WallHold = 25, WallTicks = 30;
     /// <summary>Підозра тане на 10 % кожні стільки тиків (≈ 5 с при 40 мс) — давнє забувається.</summary>
     public const int DecayEvery = 125;
     /// <summary>Відомий селянин (упав від удару — отже, NPC): більше не підозрюємо до кінця раунду.</summary>
@@ -84,5 +84,45 @@ public sealed class CrowdEye
         for (var i = 0; i < _sus.Length; i++)
             if (i != self && _sus[i] > bs && ok(i)) { bs = _sus[i]; best = i; }
         return best;
+    }
+}
+
+/// <summary>
+/// Спільне «🤖 + бот» юрма-ігор, що справді однакове в усіх: куди сідають боти-гравці, як їх звати в журналі й чим
+/// кінчається партія з ними (без очок у таблицю — гра просто не кличе <c>Ctx.Score</c>).
+/// </summary>
+public static class CrowdBots
+{
+    /// <summary>Перші <paramref name="count"/> вільних місць — туди сядуть боти.</summary>
+    public static int[] FreeSeats(IRoomContext ctx, int seats, int count)
+    {
+        var a = new List<int>(count);
+        for (var i = 0; i < seats && a.Count < count; i++)
+            if (!ctx.Seated(i)) a.Add(i);
+        return [.. a];
+    }
+
+    /// <summary>Два боти — у журналі з кольором місця, щоб не було «🤖 бот 5 : 🤖 бот 3».</summary>
+    public static string Nick(bool bot, int bots, string nick, string seatName) =>
+        bot && bots > 1 ? $"{LiveBots.Name} ({seatName})" : nick;
+
+    /// <summary>
+    /// Кінець партії з ботами. Людина сама на вершині — вона переможець («🏆»); бот на вершині — winners порожні й
+    /// вердикт «🤖»; нарівні з ботом чи всі однаково — нічия «🤝». <paramref name="winners"/> — за правилами гри (місця).
+    /// </summary>
+    public static void Finish(IRoomContext ctx, int[] winners, int human, string humanNick, LiveBots.Level level, string log, string line)
+    {
+        var lvl = LiveBots.Of(level);
+        string verdict;
+        int[] real = [];
+        if (winners.Length == 0) verdict = $"🤝 Нічия з {lvl} ботом";
+        else if (human >= 0 && winners is [var w] && w == human)
+        {
+            real = [human];
+            verdict = $"🏆 {humanNick} — перемога над {lvl} ботом";
+        }
+        else if (human >= 0 && Array.IndexOf(winners, human) >= 0) verdict = $"🤝 {humanNick} нарівні з {lvl} ботом";
+        else verdict = $"🤖 Бот переміг: {line}";
+        ctx.Finish(real, log, verdict: verdict);
     }
 }
