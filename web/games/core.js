@@ -2376,7 +2376,13 @@
         };
         pinned.delete(id);
         if (view.kind === 'room' && view.id === id && !cards[id]) renderView();
-        else if (cards[id]) refreshCard(id);
+        else if (cards[id]) {
+          refreshCard(id);
+          // Шапку столу малювали ще до першого виду (соло, вхід за посиланням) — там лишалось «Стіл» замість назви гри,
+          // а на ≤480 назва тепер лише в шапці. Перемальовуємо на першому виді й коли міняється те, що вона показує.
+          if (view.kind === 'room' && view.id === id
+            && (!old || old.room.status !== rv.room.status || old.room.watchers !== rv.room.watchers)) renderRoomHead(id);
+        }
         else if (view.kind === 'lobby') renderView();      // «твій хід» на резюме в лобі
         syncWatch();
         notifyTable();                                      // сів, встав, партія почалась — балачці столу це важливо
