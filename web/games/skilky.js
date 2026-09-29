@@ -628,7 +628,7 @@
         + '<div class="skq"></div>'
         + '<figure class="skphoto" hidden><img alt="Фото — якого року?" decoding="async"><figcaption class="skcredit small"></figcaption></figure>'
         + '<div class="skrules muted small" hidden>' + RULES + '</div>'
-        + '<div class="skask" hidden><input class="skin" type="text" inputmode="decimal" autocomplete="off"'
+        + '<div class="skask" hidden><input class="skin" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off"'
         + ' placeholder="твоє число" aria-label="Твоє число"><span class="skunit muted small"></span>'
         + '<button type="button" class="primary skgo">Відповісти</button></div>'
         + '<div class="skprev small" aria-live="polite"></div>'
@@ -671,7 +671,7 @@
       // Фазу беремо з виду: сервер міняє її тільки разом із видом (TickResult.Both), тож кадр її не
       // випереджає — а от після «Ще раз» кадр ще секунду тримає фазу минулої партії.
       const s = ctx.view || {};
-      if (s.phase === 'ask') return ctx.mine ? 'Пиши число й тисни Enter' : 'Гравці думають…';
+      if (s.phase === 'ask') return ctx.mine ? (ctx.ui.coarse() ? 'Пиши число й тисни «Відповісти»' : 'Пиши число й тисни Enter') : 'Гравці думають…';
       if (s.phase === 'bet') return ctx.mine ? 'Тисни, чиє число найближче: +2, якщо вгадаєш' : 'Ставки: чиє число найближче?';
       if (s.phase === 'ask' && s.by === ctx.seat && ctx.mine) return 'Твоє питання — цього разу ти лише дивишся';
       if (s.phase === 'ask' && s.team) return s.team.captain === ctx.seat ? 'Ти капітан: подай число команди' : 'Пропонуй число — подає капітан';

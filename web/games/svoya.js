@@ -717,7 +717,7 @@
         + '<div class="svstage"></div>'
         + '<div class="svhostbox"></div>'
         + '<button type="button" class="svbuzz" data-do="buzz" hidden>🔔</button>'
-        + '<form class="svform" hidden><input type="text" maxlength="120" autocomplete="off" spellcheck="false" enterkeyhint="send" placeholder="твоя відповідь…">'
+        + '<form class="svform" hidden><input type="text" maxlength="120" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" placeholder="твоя відповідь…">'
         + '<button class="primary" type="submit">➤</button></form>'
         + '<form class="svnum" hidden><span class="muted small"></span><input type="number" inputmode="numeric"><button class="primary" type="submit"></button></form>'
         + '<div class="svtail"></div>'

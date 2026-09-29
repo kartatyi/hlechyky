@@ -68,6 +68,12 @@
 .mgnote { color: var(--text); font-weight: 600; }
 .mgvol button { min-width: 38px; padding: 4px 6px; font-size: 1.1em; }
 .mgvol input { width: min(240px, 60%); accent-color: var(--accent); }
+/* iOS: гучність уривка міняють лише кнопки телефона — повзунок ховаємо, 🔊/🔇 глушить. Палець — повзунок вищий. */
+.mgvol.mgnovol input { display: none; }
+@media (pointer: coarse) {
+  .mgvol input { height: 32px; }
+  .mgvol button { min-width: 44px; min-height: 40px; }
+}
 
 /* «Пропустити» і хто вже готовий. */
 .mgskip { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 0; text-align: center; }

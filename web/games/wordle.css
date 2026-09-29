@@ -250,3 +250,42 @@
   .wrme.wtools .board.wtiles.wl4 { width: min(206px, 100%); }
   .wrme.wtools .board.wtiles.wl6 { width: min(300px, 100%); }
 }
+
+/* ================================================================================================
+   Телефон (прохід «Телефон», 30.09): клавіатура під палець і компактна обв'язка наввипередки.
+   ================================================================================================ */
+/* Клавіатура Глек-слова (і соло, і наввипередки; віселицю не чіпаємо — вона без .wtiles): подвійний дотик по
+   тій самій літері (ГОРОХ, ⌫⌫) на iOS зумив сторінку; довге натискання не виділяє букву й не кличе меню. */
+.board.wtiles ~ .gkbd { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.board.wtiles ~ .gkbd .gkey { touch-action: manipulation; }
+@media (pointer: coarse) {
+  /* вищі й ширші клавіші: 12 у ряд, тож зазор менший (4→3 px), а висота 42→48 px */
+  .board.wtiles ~ .gkbd { gap: 6px; }
+  .board.wtiles ~ .gkbd .gkrow { gap: 3px; }
+  .board.wtiles ~ .gkbd .gkey { min-height: 48px; padding: 0; font-size: 1.05em; border-radius: 7px; }
+  .board.wtiles ~ .gkbd .gkey.wide { font-size: .85em; }
+}
+/* Клавіатура вища на ~20 px — дошка під висоту екрана стискається на стільки ж (348/370/420 — у правилах вище). */
+@media (pointer: coarse) and (max-width: 900px) {
+  .gbody > .board.wtiles {
+    width: min(300px, 100%, max(190px, calc((100dvh - var(--tabs-h, 0px) - 368px) * .83)));
+  }
+}
+@media (pointer: coarse) and (max-width: 560px) {
+  .wrme { --wr-reserve: 390px; }
+  .wrme.wtools { --wr-reserve: 440px; }
+}
+
+/* Телефон, я граю: суперники — не картками з малою дошкою (110 px заввишки навіть для одного), а смужкою
+   пігулок «нік · 3/6» ≤ 40 px. Малі дошки видно глядачеві й тому, хто вже дограв слово (.spect). */
+@media (max-width: 560px) {
+  .wr { gap: 6px; }
+  .wrhead { min-height: 34px; gap: 8px; }
+  .wr:not(.spect) .wrrivals { flex-wrap: wrap; gap: 4px; overflow: visible; }
+  .wr:not(.spect) .wrp { flex: 0 1 auto; width: auto; max-width: 132px; flex-direction: row; gap: 5px;
+    padding: 3px 9px; border-radius: 999px; }
+  .wr:not(.spect) .wrmini { display: none; }
+  .wr:not(.spect) .wrpname { font-size: .78em; min-width: 0; }
+  .wr:not(.spect) .wrptot { font-size: .72em; white-space: nowrap; }
+  .wr:not(.spect) .wrmain { gap: 8px; }
+}
