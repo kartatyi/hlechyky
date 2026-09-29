@@ -246,3 +246,9 @@
 @media (min-width: 900px) and (max-height: 860px) {
   .duel.shoot .dscene { max-width: min(640px, calc((100vh - 520px) * 16 / 9)); }
 }
+
+/* ---- Перестрілка на телефоні лежачи (live2): сцена за висотою смуги, щоб над нею рахунок, а під нею
+   «🔫 Стріляти» влазили разом (було 640×360 без стелі висоти — кнопка йшла під меню) ---- */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .duel.shoot .dscene { max-width: min(640px, calc((var(--gfit-h, calc(100vh - 114px)) - 150px) * 16 / 9)); }
+}

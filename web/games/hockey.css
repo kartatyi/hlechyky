@@ -54,3 +54,15 @@
   .hkhud { gap: 4px; font-size: .74em; }
   .hkchip { padding: 2px 7px; gap: 4px; }
 }
+
+/* Телефон (live2): кнопка звуку — під палець; довге натискання не виділяє й не кличе меню. */
+@media (pointer: coarse) {
+  .hkchip.hksnd { min-width: 40px; min-height: 36px; justify-content: center; touch-action: manipulation; }
+  .hkhud, .hkboard { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+}
+/* Телефон лежачи: стіл 5:3 за висотою видимої смуги (--gfit-h від каркаса; без нього — мінус шапка й меню),
+   без нижньої межі 320px, що виштовхувала низ столу під меню. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .hkboard:not(.port) { max-width: calc((var(--gfit-h, calc(100vh - 114px)) - 8px) * 5 / 3); min-width: 0; }
+  body:not(.g-land) .hkboard:not(.port) { max-width: calc((var(--gfit-h, calc(100vh - 114px)) - 40px) * 5 / 3); }
+}

@@ -1731,10 +1731,31 @@
     return true;
   }
 
+  /// Телефон лежачи: мапа посередині за висотою екрана, хрестовина ліворуч, кнопки праворуч (клас skate-land).
+  function phoneLand() {
+    return HGames.ui.coarse() && window.innerWidth > window.innerHeight && window.innerHeight <= 500;
+  }
+  /// Скільки в'юпорта вільно: каркасний ui.fit(), а без нього — липка шапка й нижні панелі з CSS-змінних.
+  function fitNow() {
+    if (HGames.ui.fit) return HGames.ui.fit();
+    const cs = getComputedStyle(document.documentElement);
+    const n = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
+    const hd = document.querySelector('header');
+    const top = hd && getComputedStyle(hd).position === 'sticky' ? hd.getBoundingClientRect().height : 0;
+    const vv = window.visualViewport;
+    return { w: vv ? vv.width : window.innerWidth, h: vv ? vv.height : window.innerHeight, top, dock: n('--tabs-h') + n('--mini-h') };
+  }
+
   /// Мапа 3:2 має влізти у вікно разом зі статусом і кнопками під нею (як у Юрми).
   function sizeStage(st, mode) {
     const el = st.stageEl;
     if (!el || !el.isConnected) return;
+    if (st.land) {                               // лежачи: уся висота смуги — мапі, без нижньої межі 480
+      const f = fitNow();
+      const lw = clamp(Math.floor((f.h - f.top - f.dock - 12) * 1.5), 240, 960);
+      if (Math.abs((parseFloat(el.style.maxWidth) || 0) - lw) >= 3) el.style.maxWidth = lw + 'px';
+      return;
+    }
     if (mode === 'port') { if (el.style.maxWidth) el.style.maxWidth = ''; return; }
     const r = el.getBoundingClientRect();
     const card = el.closest('.gtable');
@@ -1750,8 +1771,11 @@
     wake(st);
     padStrip(st);
     const cw = root.clientWidth;
+    const land = phoneLand(), turned = land !== !!st.land;
+    if (turned) { st.land = land; root.classList.toggle('skate-land', land); st.fitFor = ''; }
     let mode = st.mode;
-    if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
+    if (land) mode = 'full';
+    else if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
     sizeStage(st, mode);
     if (!st.cv || mode !== st.mode) {
       st.mode = mode;
@@ -1762,6 +1786,7 @@
       placePad(root, st);
       placeSeats(root, st);
     } else st.cv.resize();
+    if (turned) setTimeout(() => fitPhone(st), 80);
     const css = st.cv.el.clientWidth;
     if (css) st.cssK = css / (mode === 'port' ? PW : WW);
   }
@@ -1774,16 +1799,19 @@
     if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !st.hudEl || !padEl || !HGames.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     if (st.fitFor === key) return;
-    const a = st.hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
+    // лежачи хрестовина й кнопки стоять обабіч мапи, тож у кадр треба всю сітку (мапа, рядок гравців, кнопки)
+    const box = st.stageEl.parentElement || st.stageEl;
+    const a = (st.land ? box : st.hudEl).getBoundingClientRect(), b = (st.land ? box : padEl).getBoundingClientRect();
     if (!a.height || !b.height) return;              // картку чи кнопки зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
     const head = document.querySelector('header');
-    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    let top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
     const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
     // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
-    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    let limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    if (HGames.ui.fit) { const f = HGames.ui.fit(); top = f.top + 4; limit = f.h - f.dock - 6; }
     const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
     const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок стану
     if (Math.abs(dy) < 2) return;
@@ -1874,6 +1902,8 @@
       }
       st.onResize = () => fit(root, st);
       window.addEventListener('resize', st.onResize);
+      // поворот, ⛶ і шторка міняють місце під мапу без resize вікна — каркас кличе нас сам
+      if (HGames.ui.onFit) HGames.ui.onFit(root, () => fit(root, st));
       if (window.IntersectionObserver) {
         st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; if (st.visible) wake(st); });
         st.io.observe(st.cv.el);

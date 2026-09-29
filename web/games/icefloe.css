@@ -134,3 +134,37 @@
   .ifstick { width: 108px; height: 108px; }
   .ifbtn { width: 64px; height: 64px; font-size: 1.5em; }
 }
+
+/* ---- телефон (live2) ---- */
+@media (pointer: coarse) {
+  /* звук — під палець; кнопки не зумлять подвійним тапом і не кличуть лупу/меню при утриманні */
+  .ifchip.ifsnd { min-width: 40px; min-height: 36px; justify-content: center; touch-action: manipulation; }
+  .ifctl, .ifbtn, .ifboard { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  /* Лежачи (клас .ifland ставить модуль): рядок гравців і стік ліворуч, ставок за висотою смуги посередині,
+     «💨/❄» стовпчиком праворуч під великим пальцем. У g-land каркас робить .gbody display: contents і ставить усе,
+     крім полотна, у праву колонку — друга назва кожного правила важча за каркасну, тож .gbody лишається нашою сіткою. */
+  body .gtable > .gbody.ifland, body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland {
+    display: grid; grid-template-columns: auto minmax(0, max-content) auto; grid-template-rows: auto 1fr;
+    column-gap: 12px; row-gap: 6px; align-items: center; justify-content: center; justify-items: center;
+    grid-column: 1; grid-row: 1 / span 12; width: 100%; max-width: none; margin: 0;
+  }
+  body .gtable > .gbody.ifland > canvas.ifboard, body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland > canvas.ifboard {
+    grid-column: 2; grid-row: 1 / span 2; margin: 0; min-width: 0; max-width: 100%; height: auto;
+    width: calc(var(--gfit-h, calc(100vh - 114px)) - 12px);
+  }
+  body .gtable > .gbody.ifland > .ifhud, body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland > .ifhud {
+    grid-column: 1; grid-row: 1; align-self: start; flex-direction: column; flex-wrap: nowrap; align-items: stretch;
+    max-width: 130px; max-height: calc(var(--gfit-h, calc(100vh - 114px)) - 150px); overflow-y: auto; margin: 0;
+  }
+  body .gtable > .gbody.ifland > .ifhud .ifsnd, body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland > .ifhud .ifsnd { align-self: flex-start; }
+  body .gtable > .gbody.ifland > .ifctl, body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland > .ifctl { display: contents; }
+  body .gtable > .gbody.ifland .ifstick, body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland .ifstick { grid-column: 1; grid-row: 2; align-self: end; }
+  body .gtable > .gbody.ifland .ifbtns, body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland .ifbtns { grid-column: 3; grid-row: 1 / span 2; flex-direction: column; align-self: end; }
+  body .gtable > .gbody.ifland > .ifmeta, body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland > .ifmeta { display: none; }
+  /* g-land: рядок місць дублює стовпчик гравців ліворуч — ховаємо; статус і «Встати» — вузькою колонкою справа,
+     щоб «💨/❄» стояли ближче до краю екрана. Ставок — за висотою мінус рядок столу над карткою. */
+  body.g-land .gtable:has(> .gbody.ifland) > .gseats { display: none; }
+  body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland { justify-content: space-between; }
+  body.g-land .gtable.gtable:has(> .gbody.ifland) > :not(.gbody) { max-width: 120px; font-size: .82em; }
+  body.g-land .gtable:has(> .gbody.ifland) > .gbody.ifland > canvas.ifboard { width: calc(var(--gfit-h, 100dvh) - 56px); }
+}
