@@ -24,7 +24,7 @@ public sealed class Tanks : Game
     public static readonly string[] TeamNames = ["🥒 Огірки", "🍅 Помідори"];
 
     public override GameInfo Info { get; } = new(
-        "tanks", "Танчики", "танчики", GameGroup.Live, 2, TanksCore.Seats, TickMs: TanksCore.TickMs,
+        "tanks", "Танчики", "танчики", GameGroup.Live, 1, TanksCore.Seats, TickMs: TanksCore.TickMs,
         Start: StartMode.ByHost, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
@@ -32,10 +32,24 @@ public sealed class Tanks : Game
             new GameOption("mode", "Грають", [("ffa", "кожен сам"), ("teams", "🏺 команди: бережи глек (2, 4, 6)"), ("waves", "🤖 разом проти хвиль (2–4)")], "ffa"),
             new GameOption("map", "Мапа", [("classic", "цегла й сталь"), ("wild", "🌳 з кущами й ❄ льодом")], "classic"),
             new GameOption("revenge", "Помста", [("0", "лише слава"), ("1", "😈 +1 фраг за помсту")], "0"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Танчики згори: їдеш, стріляєш, ламаєш цеглу. Хто перший набере фрагів — той і взяв. Тримай 💥 — стріляє сам. Є команди з глеком і кооп проти хвиль 🤖");
+        Hint: "Танчики згори: їдеш, стріляєш, ламаєш цеглу. Хто перший набере фрагів — той і взяв. Тримай 💥 — стріляє сам. Є команди з глеком і кооп проти хвиль 🤖. Самому — з 🤖 ботами або проти хвиль");
 
     TanksCore? _core;
+
+    /// <summary>
+    /// «🤖 + бот»: людина сама — на вільні місця сідають <see cref="SoloBots"/> боти-гравці (звичайні танки, не 🤖 хвиль).
+    /// Троє: «кожен сам» на чотирьох — боти б'ються й між собою, на людину не гуртом; у командах це 2×2 — людина з
+    /// ботом проти двох, глек на глек. У коопі проти хвиль ботів не кличемо: там і так грають проти 🤖, тож людина
+    /// рушає сама (гравець-бот лише забирав би її фраги).
+    /// </summary>
+    public const int SoloBots = 3;
+    readonly SoloBot _solo = new();
+    readonly bool[] _isBot = new bool[TanksCore.Seats];
+    TanksBot[] _brains = [];
+    bool _botGame;
+
     string _phase = PhaseStart;
     int _startIn = StartTicks;
     /// <summary>Скільки фрагів до перемоги; 0 — «за столом», рахується на «Почати» зі складу.</summary>
@@ -91,6 +105,24 @@ public sealed class Tanks : Game
         _core.Reset(plays);
     }
 
+    /// <summary>На полі: людина за столом або бот-гравець цієї партії.</summary>
+    bool In(int s) => Ctx.Seated(s) || _isBot[s];
+
+    string Nick(int s) => Ctx.NickOf(s) ?? (_isBot[s] ? LiveBots.Name : SeatName(s));
+
+    bool WavesMode => _mode == "waves";
+
+    int[] BotSeats() => WavesMode || !_solo.Active(Ctx, TanksCore.Seats) ? []
+        : [.. Enumerable.Range(0, TanksCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)];
+
+    public override bool ActsInLobby => true;
+
+    /// <summary>Хвилі — і самому без бота; решта режимів самому — лише з ботами.</summary>
+    public override string? CanStart() => WavesMode ? null : _solo.CanStart(Ctx, TanksCore.Seats);
+
+    public override string? SeatBot(int seat) =>
+        _started && seat >= 0 && seat < TanksCore.Seats && _isBot[seat] && !Ctx.Seated(seat) ? LiveBots.Name : null;
+
     public override string SeatName(int seat) => seat switch
     {
         0 => "жовтий",
@@ -108,6 +140,7 @@ public sealed class Tanks : Game
         _mode = options.GetValueOrDefault("mode") is "teams" or "waves" ? options["mode"] : "ffa";
         _wild = options.GetValueOrDefault("map") == "wild";
         _revengeFrag = options.GetValueOrDefault("revenge") == "1";
+        _solo.Configure(options);
     }
 
     public override void Start()
@@ -118,7 +151,12 @@ public sealed class Tanks : Game
         _sum = null;
         _end = null;
         _feed.Clear();
-        var plays = Enumerable.Range(0, TanksCore.Seats).Select(Ctx.Seated).ToArray();
+        Array.Clear(_isBot);
+        var bots = BotSeats();
+        foreach (var b in bots) _isBot[b] = true;
+        _botGame = bots.Length > 0;
+        _brains = [.. bots.Select((b, k) => new TanksBot(b, _solo.Level, k))];
+        var plays = Enumerable.Range(0, TanksCore.Seats).Select(In).ToArray();
         for (var i = 0; i < TanksCore.Seats; i++) _roster[i] = plays[i];
         SetupSides(plays);
         _need = _frags > 0 ? _frags : FragsFor(plays.Count(p => p));
@@ -161,6 +199,10 @@ public sealed class Tanks : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return _started && _phase != PhaseOver ? ActResult.Fail("Партія вже йде")
+                : WavesMode ? ActResult.Fail("Проти хвиль бот не потрібен — рушай і сам")
+                : _solo.Switch(Ctx, seat, payload, TanksCore.Seats);
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= TanksCore.Seats) return ActResult.Fail("Ти тут не граєш");
         if (_phase == PhaseOver) return ActResult.Fail("Партію вже зіграно");
@@ -225,6 +267,9 @@ public sealed class Tanks : Game
                 _phase = PhaseGo;
                 return TickResult.FrameOnly;
             default:
+                // Боти-гравці думають перед кроком світу — тим самим вводом, що й людина між тиками.
+                foreach (var bot in _brains)
+                    if (_isBot[bot.Seat] && !Ctx.Seated(bot.Seat)) bot.Think(Core, Ctx.Rng);
                 Core.Step();
                 Drain();
                 if (_coop)
@@ -257,14 +302,14 @@ public sealed class Tanks : Game
             _feed.Add((++_evId, Core.Ticks, ev));
             if (ev.How is TankHow.Kill or TankHow.Revenge && ev.A < TanksCore.Seats && ev.N is 5 or 8)
                 Ctx.Say(ev.N == 5
-                    ? $"🔥 {Ctx.NickOf(ev.A)}: п'ять поспіль! Хто-небудь, зупиніть цей танк"
-                    : $"🔥🔥 {Ctx.NickOf(ev.A)}: вісім поспіль — це вже не танк, це стихійне лихо");
+                    ? $"🔥 {Nick(ev.A)}: п'ять поспіль! Хто-небудь, зупиніть цей танк"
+                    : $"🔥🔥 {Nick(ev.A)}: вісім поспіль — це вже не танк, це стихійне лихо");
         }
         events.Clear();
         if (_feed.Count > 8) _feed.RemoveRange(0, _feed.Count - 8);
     }
 
-    int[] Playing() => [.. Enumerable.Range(0, TanksCore.Seats).Where(s => Ctx.Seated(s) && Core.Tanks[s].Plays)];
+    int[] Playing() => [.. Enumerable.Range(0, TanksCore.Seats).Where(s => In(s) && Core.Tanks[s].Plays)];
 
     int[] TeamSeats(int team) => [.. Playing().Where(s => _teams![s] == team)];
 
@@ -290,24 +335,45 @@ public sealed class Tanks : Game
     TickResult Over(int[] winners)
     {
         _phase = PhaseOver;
-        winners = [.. winners.Where(Ctx.Seated)];
+        winners = [.. winners.Where(In)];
         _sum = Summary();
         string score;
         if (_teams is not null)
         {
             var first = winners.Length > 0 ? _teams[winners[0]] : 0;
             score = string.Join(" : ", new[] { first, 1 - first }.Select(t =>
-                $"{TeamNames[t]} ({string.Join(", ", TeamSeats(t).Select(Ctx.NickOf))}) {TeamFrags(t)}"));
+                $"{TeamNames[t]} ({string.Join(", ", TeamSeats(t).Select(Nick))}) {TeamFrags(t)}"));
             if (_end == "base") score += " — глек розбито";
         }
         else
         {
-            var rest = Enumerable.Range(0, TanksCore.Seats).Where(s => Ctx.Seated(s) && !winners.Contains(s));
-            score = string.Join(" : ", winners.Concat(rest).Select(s => $"{Ctx.NickOf(s)} {Core.Tanks[s].Frags}"));
+            var rest = Enumerable.Range(0, TanksCore.Seats).Where(s => In(s) && !winners.Contains(s));
+            score = string.Join(" : ", winners.Concat(rest).Select(s => $"{Nick(s)} {Core.Tanks[s].Frags}"));
+        }
+        var log = winners.Length > 0 ? $"{Info.Title}: {score}" : $"{Info.Title}: {score} — нічия";
+        if (_botGame)
+        {
+            FinishSolo(winners, log, score);   // з ботами — без таблиці фрагів і без нагород
+            return TickResult.Both;
         }
         foreach (var s in Playing()) Ctx.Score(s, Core.Tanks[s].Frags);
-        Ctx.Finish(winners, winners.Length > 0 ? $"{Info.Title}: {score}" : $"{Info.Title}: {score} — нічия");
+        Ctx.Finish(winners, log);
         return TickResult.Both;
+    }
+
+    /// <summary>Кінець партії з ботами: переможці — лише люди, вердикт — над ким перемога (команда з ботом — теж людини).</summary>
+    void FinishSolo(int[] winners, string log, string score)
+    {
+        var people = winners.Where(Ctx.Seated).ToArray();
+        var human = Enumerable.Range(0, TanksCore.Seats).FirstOrDefault(Ctx.Seated, -1);
+        var foes = Enumerable.Range(0, TanksCore.Seats)
+            .Count(s => _isBot[s] && (_teams is null || human < 0 || _teams[s] != _teams[human]));
+        var lvl = _solo.Level switch { LiveBots.Level.Easy => "легкими", LiveBots.Level.Hard => "сильними", _ => "звичайними" };
+        var many = foes switch { 1 => $"{LiveBots.Of(_solo.Level)} ботом", 2 => $"двома {lvl} ботами", _ => $"трьома {lvl} ботами" };
+        var verdict = people.Length > 0 ? $"🏆 {Nick(people[0])} — перемога над {many}"
+            : winners.Length > 0 ? $"🤖 Бот переміг — {score}"
+            : "🤝 Нічия з ботами";
+        Ctx.Finish(people, log, verdict: verdict);
     }
 
     /// <summary>
@@ -415,6 +481,11 @@ public sealed class Tanks : Game
         if (_note is not null) v["note"] = _note;
         if (_end is not null) v["end"] = _end;
         if (_sum is not null) v["sum"] = _sum;
+        // «🤖 + бот»: кнопку малює core.js (у хвилях — ні: там рушають і самі); bot — місця ботів (у лобі — куди сядуть)
+        v["botOffer"] = !WavesMode && _solo.Offer(Ctx, TanksCore.Seats);
+        v["botWanted"] = _solo.Wanted;
+        v["botLvl"] = _solo.LevelKey;
+        v["bot"] = _started ? Enumerable.Range(0, TanksCore.Seats).Where(s => _isBot[s]).ToArray() : BotSeats();
         return v;
     }
 
