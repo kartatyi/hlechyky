@@ -174,6 +174,16 @@
     btn.addEventListener('click', (e) => { if (e.detail === 0) fire(); });
   }
 
+  /// Скільки знизу в'юпорта зайнято (нижнє меню, міні-плеєр, шторка «💬 Стіл»): --gdock-h від каркаса, без нього —
+  /// від самого меню. Раніше тут читали --tabs-h, а там calc(58px + safe-area): parseFloat давав NaN → 0, і
+  /// підгонка «в кадр» вважала, що меню нема (кнопки лишались під ним).
+  function dockH() {
+    const d = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h'));
+    if (Number.isFinite(d)) return d;
+    const m = document.querySelector('.mtabs'), r = m && m.getBoundingClientRect();
+    return r && r.height ? Math.max(0, innerHeight - r.top) : 0;
+  }
+
   /// Телефон: у Перестрілці на чотирьох шапка столу й табло штовхали сцену вниз, і кнопка «Стріляти»
   /// ховалась під нижнім меню та «💬 Стіл». Раз на партію (room.startedAt), коли вона пішла, прокручуємо
   /// так, щоб рахунок, сцена й кнопка стали між шапкою сайту й меню. Усе й так видно — не чіпаємо.
@@ -207,7 +217,7 @@
     } else {
       const head = document.querySelector('header');
       top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-      const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+      const tabs = dockH();
       const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
       const fr = fab && fab.getBoundingClientRect();
       limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;

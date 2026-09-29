@@ -1767,6 +1767,16 @@
     wake(st);
   }
 
+  /// Скільки знизу в'юпорта зайнято (нижнє меню, міні-плеєр, шторка «💬 Стіл»): --gdock-h від каркаса, без нього —
+  /// від самого меню. Раніше тут читали --tabs-h, а там calc(58px + safe-area): parseFloat давав NaN → 0, і
+  /// підгонка «в кадр» вважала, що меню нема (кнопки лишались під ним).
+  function dockH() {
+    const d = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h'));
+    if (Number.isFinite(d)) return d;
+    const m = document.querySelector('.mtabs'), r = m && m.getBoundingClientRect();
+    return r && r.height ? Math.max(0, innerHeight - r.top) : 0;
+  }
+
   /// Телефон: шапка столу з вісьмома місцями штовхала мапу вниз, і кнопки опинялись під нижнім меню — видно було
   /// або мапу, або кнопки. Раз на партію (room.startedAt), коли вона пішла, прокручуємо сторінку так, щоб рядок стану
   /// гри став під шапку сайту: тоді мапа й кнопки вміщаються разом. Якщо й так усе видно — не чіпаємо.
@@ -1780,7 +1790,7 @@
     st.fitFor = key;
     const head = document.querySelector('header');
     const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    const tabs = dockH();
     // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();

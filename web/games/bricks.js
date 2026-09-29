@@ -1089,6 +1089,16 @@
     return v && v.boards ? v.boards.map((b) => b.s) : [];
   }
 
+  /// Скільки знизу в'юпорта зайнято (нижнє меню, міні-плеєр, шторка «💬 Стіл»): --gdock-h від каркаса, без нього —
+  /// від самого меню. Раніше тут читали --tabs-h, а там calc(58px + safe-area): parseFloat давав NaN → 0, і
+  /// підгонка «в кадр» вважала, що меню нема (кнопки лишались під ним).
+  function dockH() {
+    const d = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h'));
+    if (Number.isFinite(d)) return d;
+    const m = document.querySelector('.mtabs'), r = m && m.getBoundingClientRect();
+    return r && r.height ? Math.max(0, innerHeight - r.top) : 0;
+  }
+
   function layout(root, st) {
     const ctx = st.ctx;
     const mine = ctx.mine && st.view && (st.view.boards || []).some((b) => b.s === ctx.seat);
@@ -1105,7 +1115,7 @@
     const touch = mine && coarse() && ctx.playing;
     // Унизу: на телефоні — міні-плеєр і вкладки сайту (фіксовані, стіна під ними не видна) і кнопки під палець,
     // статус і «Встати» можна догорнути; на ПК — статус і кнопки картки, щоб усе було в одному екрані.
-    const chrome = cssPx('--tabs-h') + cssPx('--mini-h');
+    const chrome = dockH();   // меню + міні-плеєр (+ шторка); у g-imm — 0
     // смужка підказок пада (Дека) висить унизу поверх сторінки — статус і кнопки картки мусять лягти над нею
     const padBar = padBarH();
     // Під стінами на ПК — статус і кнопки картки та нижній відступ сторінки: їх міряємо (від розміру стін вони не
@@ -2629,7 +2639,7 @@
       ],
     },
   }, common));
-  HGames.register(Object.assign({ id: 'bricks-sprint', added: '2026-09-27' }, common, { seatNames: ['муляр'] }));
+  HGames.register(Object.assign({ id: 'bricks-sprint', added: '2026-09-27' }, common, { seatNames: ['муляр'], arcade: true }));
   HGames.register(Object.assign({ id: 'bricks-duel', added: '2026-09-29' }, common));
-  HGames.register(Object.assign({ id: 'bricks-daily', added: '2026-09-29' }, common, { seatNames: ['муляр'] }));
+  HGames.register(Object.assign({ id: 'bricks-daily', added: '2026-09-29' }, common, { seatNames: ['муляр'], arcade: true }));
 })();
