@@ -544,6 +544,7 @@ body.g-imm .grhead { flex-wrap: nowrap; min-height: 0; gap: 6px; }
 body.g-imm .grhead button { padding: 4px 9px; }
 body.g-imm .grhead .grother, body.g-imm .grhead .gwatchers, body.g-imm .grhead .grcall { display: none; }
 body.g-imm .grbox > .gtable { padding: 6px 8px 8px; }
+body.g-imm .grbox .gseats .gtitle, body.g-imm .grbox .gseats .gwatchers { display: none; }   /* назва — лише в .grhead */
 
 /* ---- лежачи (body.g-land = g-imm + телефон лежить): поле ліворуч за висотою, решта — колонкою праворуч ----
    Лише коли полотно — пряма дитина .gbody (ui.canvas(root, …)). .gbody тоді display: contents — його діти
