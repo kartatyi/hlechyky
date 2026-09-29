@@ -89,3 +89,8 @@
 .c4pair { display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px; border-radius: 999px; background: color-mix(in srgb, var(--text) 6%, transparent); }
 .c4pair > i { font-style: normal; color: var(--muted); padding: 0 1px; }
 .c4vs { align-self: center; color: var(--muted); }
+
+/* Телефон, компанія (8–9 колонок): дошка на всю ширину екрана поза відступами картки — кружок ~37 px замість 31. */
+@media (max-width: 480px) {
+  .gbody > .board.c4b.party { width: calc(100vw - 6px); max-width: none; margin-inline: calc(50% - 50vw + 3px); gap: 4px; padding: 4px; }
+}
