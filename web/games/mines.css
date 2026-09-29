@@ -42,10 +42,10 @@
 .board.mines.tiny .cell { font-size: .8em; border-radius: 4px; }
 
 .board.mines .cell.open { background: var(--bg2); box-shadow: none; }
-.board.mines .cell.closed:not(:disabled):hover { filter: brightness(1.22); }
+@media (hover: hover) { .board.mines .cell.closed:not(:disabled):hover { filter: brightness(1.22); } }
 /* відкрите число в дні можна тиснути (відкрити сусідів) — підсвічуємо лише під мишею */
 .board.mines .cell.chord:not(:disabled) { cursor: pointer; }
-.board.mines .cell.chord:not(:disabled):hover { background: var(--panel); }
+@media (hover: hover) { .board.mines .cell.chord:not(:disabled):hover { background: var(--panel); } }
 .board.mines .cell.flag { color: var(--danger); font-size: .9em; }
 .board.mines.tiny .cell.flag { font-size: .68em; }
 .board.mines .cell.bomb { background: var(--danger); color: var(--accent-ink); box-shadow: none; font-size: .9em; }
@@ -78,12 +78,20 @@
 @media (max-width: 480px) {
   .board.mines { gap: 2px; }
   .board.mines .cell { border-radius: 5px; font-size: .95em; }
-  .board.mines.tiny .cell { font-size: .7em; border-radius: 3px; }
+  .board.mines.tiny .cell { font-size: .85em; border-radius: 3px; }
+  .board.mines.tiny .cell.flag, .board.mines.tiny .cell.bomb { font-size: .75em; }
   .mn-bar { gap: 7px; font-size: .88em; }
-  /* Велике поле в телефон цілим не лізе: 16 колонок у 310 px — це клітинка 17 px, учетверо дрібніша
-     за палець. Тож не стискаємо, а даємо прокрутити вбік: 16 × ~26 px + проміжки = 448 px. */
-  .mn-wrap { overflow: auto hidden; -webkit-overflow-scrolling: touch; }
-  .board.mines.huge { width: max(100%, 448px); }
+  /* Велике поле (16×16): у картці 332 px видно було лише 12 колонок, решта — прихована прокрутка вбік.
+     Тепер поле на всю ширину екрана поза відступами картки: 16 клітинок по ~23 px (390) / ~21 px (360),
+     без прокрутки. Кнопка «🔍 Крупніше» (.mn-zoom) — явна прокрутка вбік з клітинкою 32 px і тінню на краях. */
+  .gbody > .mn-wrap:has(.huge) { width: calc(100vw - 6px); max-width: none; margin-inline: calc(50% - 50vw + 3px); }
+  .board.mines.huge { width: 100%; gap: 1px; }
+  .board.mines.huge .cell { border-radius: 3px; }
+  .mn-wrap.mn-zoom { overflow: auto hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
+  .mn-wrap.mn-zoom .board.mines.huge { width: 527px; max-width: none; margin: 0 12px; }
+  .mn-wrap.mn-zoom .board.mines.huge .cell { font-size: 1em; }
 }
 
 /* табло дня (прохід №3): один-два рядки над полем, свій рядок підсвічено; вогник — серія днів */
