@@ -529,6 +529,11 @@
   .gtable > .gseats { order: -2; }
   /* Посеред аркади рядок столу — в одну лінію: «← Лобі · назва · ⛶», без глядачів і сусідніх столів. */
   body.g-arcade .grhead { flex-wrap: nowrap; }
+  /* Гра прокручує поле «в кадр» (хокей, крижини, бомбер на 360) — рядок столу з «← Лобі» і ⛶ лишається під
+     шапкою сайту, а не їде за верх екрана: лягає на рядок місць, поле не чіпає. */
+  body.g-arcade:not(.g-imm) .grhead {
+    position: sticky; top: var(--gtop-h, 0px); z-index: 4; background: var(--bg); margin: -4px 0; padding: 4px 0;
+  }
   body.g-arcade .grhead .grother, body.g-arcade .grhead .gwatchers, body.g-arcade .grhead .grcall { display: none; }
   body.g-arcade .gseats { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; font-size: .85em; scrollbar-width: none; }
   body.g-arcade .gseats .gfreeall, body.g-arcade .gseats .gseat.free { display: none; }
@@ -552,17 +557,26 @@ body.g-imm .grbox .gseats .gtitle, body.g-imm .grbox .gseats .gwatchers { displa
    розкладкою робить її під body.g-land сама (специфічніше за ці правила). */
 body.g-land .gtable:has(> .gbody > canvas.gcanvas) {
   display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 12px; row-gap: 0;
-  align-items: center; align-content: center; justify-items: center;
+  align-items: center; align-content: center; align-content: safe center; justify-items: center;   /* safe: вища за картку колонка не вилазить угору, куди не догорнути */
 }
 body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gbody { display: contents; }
+/* Стіл лежачи — рівно на видимий екран: --gland-h = висота картки (екран мінус рядок столу 31 + проміжок 6 і
+   відступи main). Вищою картка не буває: якщо права колонка довша, вона гортається всередині картки, а полотно
+   (sticky) лишається на місці — сторінка під пальцем не їде. Ігри зі своєю розкладкою рахують від --gland-h. */
+body.g-land {
+  --gland-h: calc(var(--gfit-h, 100dvh) - 37px - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)));
+}
+body.g-land main { padding-top: max(4px, env(safe-area-inset-top)); padding-bottom: max(4px, env(safe-area-inset-bottom)); }
+body.g-land .grbox > .gtable { max-height: var(--gland-h); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+body.g-land .grbox > .gtable::-webkit-scrollbar { display: none; }
 body.g-land .gtable > .gbody > canvas.gcanvas {
-  grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center;
-  /* права колонка (хрестовина, місця, кнопки) бере свою природну ширину, полотно — решту, але не вище за екран:
-     висота — видимий екран мінус рядок столу й відступи */
-  width: 100%; max-width: calc((var(--gfit-h, 100dvh) - 72px) * var(--gar)); height: auto; justify-self: center;
+  grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center; position: sticky; top: 0;
+  /* права колонка (хрестовина, місця, кнопки) бере свою природну ширину, полотно — решту, але не вище за картку
+     (мінус її відступи 6 + 8 і рамку) */
+  width: 100%; max-width: calc((var(--gland-h, 330px) - 16px) * var(--gar)); height: auto; justify-self: center;
 }
 body.g-land .gtable:has(> .gbody > canvas.gcanvas) > :not(.gbody),
-body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gbody > :not(canvas.gcanvas) { grid-column: 2; max-width: 38vw; margin: 3px 0; }
+body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gbody > :not(canvas.gcanvas) { grid-column: 2; max-width: 38vw; margin: 2px 0; }
 body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gseats { font-size: .82em; }
 body.g-land .gtable > .grx { display: none; }
 /* ⛶ стоячи (телефон): полотно — за висотою, якщо воно вище за видиме місце. */

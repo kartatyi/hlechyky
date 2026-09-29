@@ -436,6 +436,10 @@
   /// коли щось змінилось: поворот, resize, ⛶, аркада, шторка, маршрут. Опис API — D:/or-wt/_mobile/fix-core.md.
   let fitLast = '', fitRaf = 0, fitProbe = null, fitBooted = false;
   const fitHosts = new Set();
+  /// Сховані картки («на складі», display: none у предка) колбеків не отримують — лише позначку; колбек прийде,
+  /// щойно картку знову видно (наступний applyFit чи повторний onFit із update гри).
+  const fitStale = new Set();
+  const fitHidden = (host) => !host.getClientRects().length;
   function safeBottom() {
     if (!fitProbe) {
       fitProbe = document.createElement('div');
@@ -483,17 +487,23 @@
     syncImm();
     const f = fit();
     const key = [f.w, f.h, f.top, f.dock, f.imm, f.land].join();
-    if (key === fitLast) return;
-    fitLast = key;
-    const rs = document.documentElement.style;
-    rs.setProperty('--gtop-h', f.top + 'px');
-    rs.setProperty('--gdock-h', f.dock + 'px');
-    rs.setProperty('--gfit-h', Math.max(0, f.h - f.top - f.dock) + 'px');
-    for (const host of fitHosts) {
-      if (!host.isConnected) { fitHosts.delete(host); continue; }
+    const changed = key !== fitLast;
+    if (!changed && !fitStale.size) return;
+    if (changed) {
+      fitLast = key;
+      const rs = document.documentElement.style;
+      rs.setProperty('--gtop-h', f.top + 'px');
+      rs.setProperty('--gdock-h', f.dock + 'px');
+      rs.setProperty('--gfit-h', Math.max(0, f.h - f.top - f.dock) + 'px');
+    }
+    // місце змінилось — усім видимим; ні — лише тим, хто пропустив зміну схованим і тепер знову на екрані
+    for (const host of changed ? fitHosts : fitStale) {
+      if (!host.isConnected) { fitHosts.delete(host); fitStale.delete(host); continue; }
+      if (fitHidden(host)) { fitStale.add(host); continue; }
+      fitStale.delete(host);
       try { if (host._hgFit) host._hgFit(f); } catch (e) { console.error(e); }
     }
-    document.dispatchEvent(new CustomEvent('hgames:fit', { detail: f }));
+    if (changed) document.dispatchEvent(new CustomEvent('hgames:fit', { detail: f }));
   }
   function refit() {
     if (!fitBooted) fitBoot();
@@ -520,10 +530,15 @@
     if (!host) return;
     const had = fitHosts.has(host);
     host._hgFit = fn || null;
-    if (!fn) { fitHosts.delete(host); return; }
+    if (!fn) { fitHosts.delete(host); fitStale.delete(host); return; }
     fitHosts.add(host);
     if (!fitBooted) refit();
-    if (!had) requestAnimationFrame(() => { if (host.isConnected && host._hgFit) host._hgFit(fit()); });
+    if (!had || fitStale.has(host)) requestAnimationFrame(() => {
+      if (!host.isConnected || !host._hgFit) return;
+      if (fitHidden(host)) { fitStale.add(host); return; }
+      fitStale.delete(host);
+      host._hgFit(fit());
+    });
   }
 
   const ui = { grid, canvas, dpad, keyboardUa, lerp, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
