@@ -2426,10 +2426,18 @@
       st.ov.keep = (opts && opts.keep) || null;
       st.ov.el.hidden = false;
       // Картка буває вища за екран: вікно стає там, куди гравець зараз дивиться, а не вгорі картки.
+      // Видима смуга — між липкою шапкою сайту й нижнім меню (телефон): інакше верх вікна під шапкою, а низ
+      // («Закрити», кнопки дії) під меню.
       const r = st.el.getBoundingClientRect();
       const box = st.ov.el.firstElementChild;
-      box.style.marginTop = Math.max(0, Math.min(-r.top + 12, r.height - 160)) + 'px';
-      box.style.maxHeight = Math.max(240, window.innerHeight - 24) + 'px';
+      // Вікно живе в межах картки (.clk-overlay — inset: 0 на ній), тож і низ не нижче за картку.
+      const band = viewBand();
+      const lo = r.top + 12;                                  // верх вікна при marginTop 0
+      let mt = Math.max(0, band.top + 8 - lo);
+      const mh = Math.max(240, Math.min(band.bottom - 8, r.bottom - 12) - (lo + mt));
+      if (lo + mt + mh > r.bottom - 12) mt = Math.max(0, r.bottom - 12 - mh - lo);
+      box.style.marginTop = mt + 'px';
+      box.style.maxHeight = mh + 'px';
       return st.ov.body;
     },
     closeOverlay(st) {
@@ -2460,6 +2468,7 @@
   /// з'їдала б ~100 px висоти, а сцена 4:5 за кожен піксель висоти віддає 0,8 px ширини: на 768 px заввишки коло
   /// лишилось би 113 px, а так — 150 px.
   const SIDE_PATH_H = 800;
+  const PHONE_NEXT_H = 6 + 50 + 6 + 4;   // телефон: зазор, рядок «Далі» (50 px), зазор сцени й запас над меню
 
   /// Обгортка сцени тримає лише сцену й Око майстра. Частини ставлять свої рядки «одразу після сцени»
   /// (st.stage.insertAdjacentElement('afterend', …) — так робить смуга «Шлях виробу» в clicker-craft.js), і такий
@@ -2529,7 +2538,38 @@
       side = window.innerHeight - above - below < SIDE_PATH_H;
     }
     if (st.el.classList.contains('pathside') !== side) st.el.classList.toggle('pathside', side);
+    if (!fit) phoneFit(st);
     placeRows(st);
+  }
+
+  /// Частина вікна, яку не закривають липка шапка сайту згори й нижнє меню (телефон) знизу, — у px від верху вікна.
+  function viewBand() {
+    const h = window.innerHeight;
+    let top = 0, bottom = h;
+    const hdr = document.querySelector('body > header, header');
+    if (hdr && hdr.getClientRects().length && /sticky|fixed/.test(getComputedStyle(hdr).position)) {
+      top = Math.max(0, Math.min(h / 3, hdr.getBoundingClientRect().bottom));
+    }
+    const nav = document.querySelector('nav.mtabs');
+    if (nav && nav.getClientRects().length && getComputedStyle(nav).position === 'fixed') {
+      bottom = Math.max(h * 2 / 3, Math.min(h, nav.getBoundingClientRect().top));
+    }
+    return { top, bottom };
+  }
+
+  /// Телефон (≤ 560 px): сцена така, щоб під нею над нижнім меню сайту вміщались смуга «Шлях виробу» й рядок «Далі»
+  /// з кнопкою кроку. Міряємо, де сцена починається на сторінці і скільки заввишки смуга; висоту вікна й меню бере css
+  /// (100svh і --gdock-h, див. кінець clicker.css). Рядок «Далі» то є, то нема — місце під нього тримаємо завжди,
+  /// інакше сцена стрибала б щоразу, як він з'являється.
+  function phoneFit(st) {
+    if (window.innerWidth > 560) return;
+    const box = st.el.querySelector('.clk-stagebox');
+    if (!box || !box.getClientRects().length) return;
+    const top = Math.round(box.getBoundingClientRect().top + window.scrollY);
+    const steps = st.el.querySelector('.clk-path .clk-steps');
+    const path = steps && steps.getClientRects().length ? Math.ceil(steps.getBoundingClientRect().height) + PHONE_NEXT_H : 0;
+    if (st.phTop !== top) { st.phTop = top; st.el.style.setProperty('--clk-ph-top', top + 'px'); }
+    if (st.phPath !== path) { st.phPath = path; st.el.style.setProperty('--clk-ph-path', path + 'px'); }
   }
 
   /// Стіл міряє себе знову, коли щось зрушило: вікно, картка (балачки згорнули, «⛶»), висота сторінки (над столом
