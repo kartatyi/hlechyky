@@ -168,7 +168,8 @@
     if (board._c4wired) return;
     board._c4wired = true;
     board.addEventListener('pointermove', (e) => {
-      if (e.pointerType === 'touch') return;             // на пальці наведення нема — тап одразу кидає фішку
+      // на пальці наведення нема — тап одразу кидає фішку; сумісні «мишачі» події після тапу привида теж не малюють
+      if (e.pointerType !== 'mouse' || !window.matchMedia('(hover: hover)').matches) return;
       const b = e.target.closest('.cell');
       const o = board._c4;
       const col = b ? (+b.dataset.i) % o.w : -1;
