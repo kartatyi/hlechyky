@@ -648,6 +648,18 @@ public sealed class TavernCore(Random rng)
         v.Blocked = false;
     }
 
+    /// <summary>
+    /// Гравець-бот (<see cref="TavernPilot"/>) сам вибирає, куди йти: клітинка (і приступка — щоб там і хильнути, -1 — ні),
+    /// точка в ній — як у юрми; далі йде тим самим <see cref="Think"/>.
+    /// </summary>
+    public void Aim(TavernGuest v, int cell, int place)
+    {
+        ForgetPath(v);
+        v.Target = cell;
+        v.TargetPlace = place;
+        (v.Tx, v.Ty) = Spot(cell);
+    }
+
     /// <summary>Бот устав після падіння чи став ботом після виходу гравця: думає з чистого аркуша, образ не тримає.</summary>
     public static void Forget(TavernGuest v)
     {
