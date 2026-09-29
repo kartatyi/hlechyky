@@ -28,7 +28,7 @@ public sealed class Bomber : Game
     public static readonly string[] TeamNames = ["🥒 Огірки", "🍅 Помідори"];
 
     public override GameInfo Info { get; } = new(
-        "bomber", "Бомбер", "бомбер", GameGroup.Live, 2, BomberCore.Seats, TickMs: BomberCore.TickMs,
+        "bomber", "Бомбер", "бомбер", GameGroup.Live, 1, BomberCore.Seats, TickMs: BomberCore.TickMs,
         Start: StartMode.ByHost,
         Options:
         [
@@ -39,10 +39,25 @@ public sealed class Bomber : Game
             new GameOption("ghosts", "Підірвані", [("0", "чекають раунду"), ("1", "👻 привидами з помстою")], "0"),
             new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3")], "0"),
             new GameOption("ff", "Свої бомби", [("0", "своїх не ранять"), ("1", "дружній вогонь")], "0"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Ставиш бомби, ламаєш ящики, підриваєш суперників. Останній живий бере раунд");
+        Hint: "Ставиш бомби, ламаєш ящики, підриваєш суперників. Останній живий бере раунд. Самому — з трьома 🤖 ботами");
 
     BomberCore? _core;
+
+    /// <summary>
+    /// «🤖 + бот»: людина сама за столом — на вільні місця сідають <see cref="SoloBots"/> боти. Троє, бо бомбер —
+    /// гра «останній живий» на чотирьох кутах: удвох із ботом раунд — дуель, а вчотирьох боти б'ються й між
+    /// собою, на людину не гуртом, і вижити серед хаосу цікавіше. З опцією «команди» це якраз 2×2: людина з ботом проти двох.
+    /// </summary>
+    public const int SoloBots = 3;
+    readonly SoloBot _solo = new();
+    /// <summary>Місця ботів цієї партії (після неї — теж, для підсумку).</summary>
+    readonly bool[] _isBot = new bool[BomberCore.Seats];
+    BomberBot[] _brains = [];
+    /// <summary>Партія з ботами: без нагород і з вердиктом «перемога над ботами».</summary>
+    bool _botGame;
+
     readonly int[] _wins = new int[BomberCore.Seats];
     string _phase = PhaseStart;
     int _startIn = StartTicks;
@@ -95,9 +110,26 @@ public sealed class Bomber : Game
     int SeatedCount()
     {
         var n = 0;
-        for (var s = 0; s < BomberCore.Seats; s++) if (Ctx.Seated(s)) n++;
+        for (var s = 0; s < BomberCore.Seats; s++) if (In(s)) n++;
         return n;
     }
+
+    /// <summary>На полі: людина за столом або бот цієї партії.</summary>
+    bool In(int s) => Ctx.Seated(s) || _isBot[s];
+
+    /// <summary>Нік для рядка Журналу; бот — «🤖 бот».</summary>
+    string Nick(int s) => Ctx.NickOf(s) ?? (_isBot[s] ? LiveBots.Name : SeatName(s));
+
+    /// <summary>Куди сядуть боти, якщо їх покликали (і людина сама): перші вільні місця.</summary>
+    int[] BotSeats() => !_solo.Active(Ctx, BomberCore.Seats) ? []
+        : [.. Enumerable.Range(0, BomberCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)];
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, BomberCore.Seats);
+
+    public override string? SeatBot(int seat) =>
+        _started && seat >= 0 && seat < BomberCore.Seats && _isBot[seat] && !Ctx.Seated(seat) ? LiveBots.Name : null;
 
     (int W, int H) SizeFor(int seated) =>
         _size == "19" || (_size == "auto" && seated >= 5) ? (BomberCore.BigW, BomberCore.BigH) : (BomberCore.W, BomberCore.H);
@@ -125,6 +157,7 @@ public sealed class Bomber : Game
         _ghosts = options.GetValueOrDefault("ghosts") == "1";
         _teamsOn = options.GetValueOrDefault("teams") == "1";
         _ff = options.GetValueOrDefault("ff") == "1";
+        _solo.Configure(options);
         _core = null;
     }
 
@@ -149,6 +182,11 @@ public sealed class Bomber : Game
         _started = true;
         _phase = PhaseStart;
         _startIn = StartTicks;
+        Array.Clear(_isBot);
+        var bots = BotSeats();
+        foreach (var b in bots) _isBot[b] = true;
+        _botGame = bots.Length > 0;
+        _brains = [.. bots.Select(b => new BomberBot(b, _solo.Level))];
         SetupTeams();
         _core = NewCore(SeatedCount());
         Core.Reset(Plays());
@@ -163,7 +201,7 @@ public sealed class Bomber : Game
         _teams = null;
         _note = null;
         if (!_teamsOn) return;
-        var seated = Enumerable.Range(0, BomberCore.Seats).Where(Ctx.Seated).ToArray();
+        var seated = Enumerable.Range(0, BomberCore.Seats).Where(In).ToArray();
         if (seated.Length is not (4 or 6))
         {
             _note = "Команд не буде: треба четверо або шестеро за столом — граємо кожен сам";
@@ -174,7 +212,7 @@ public sealed class Bomber : Game
     }
 
     /// <summary>Хто цього раунду на полі. Місця, з яких устали, назад не повертаються.</summary>
-    bool[] Plays() => [.. Enumerable.Range(0, BomberCore.Seats).Select(Ctx.Seated)];
+    bool[] Plays() => [.. Enumerable.Range(0, BomberCore.Seats).Select(In)];
 
     // ---------- ввід ----------
 
@@ -184,6 +222,8 @@ public sealed class Bomber : Game
     /// </summary>
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return _started && _phase != PhaseOver ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, BomberCore.Seats);
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= BomberCore.Seats) return ActResult.Fail("Ти тут не граєш");
 
@@ -249,9 +289,16 @@ public sealed class Bomber : Game
 
     TickResult Play()
     {
+        // Боти думають перед кроком світу — тим самим вводом, що й людина між тиками.
+        foreach (var bot in _brains)
+            if (_isBot[bot.Seat] && !Ctx.Seated(bot.Seat)) bot.Think(Core, Ctx.Rng);
         Core.Step();
         Drain();
-        if (!Core.RoundOver) return TickResult.FrameOnly;
+        // Соло з ботами (кожен сам): людину підірвали — чекати, поки боти доб'ють одне одного, нудно, а сильні можуть
+        // кружляти й до нічиєї за часом. Раунд тоді за ботами, що встояли, — кожному по перемозі.
+        var botsTake = _botGame && _teams is null && !Core.RoundOver
+            && !Enumerable.Range(0, BomberCore.Seats).Any(s => Ctx.Seated(s) && Core.Players[s].Alive);
+        if (!Core.RoundOver && !botsTake) return TickResult.FrameOnly;
 
         // підсумок раунду: хто скільки прожив і скільки ящиків розбив
         for (var s = 0; s < BomberCore.Seats; s++)
@@ -261,6 +308,15 @@ public sealed class Bomber : Game
         }
 
         if (_teams is not null) return TeamRound();
+        if (botsTake)
+        {
+            var alive = Enumerable.Range(0, BomberCore.Seats).Where(s => _isBot[s] && Core.Players[s].Alive).ToArray();
+            foreach (var s in alive) _wins[s]++;
+            var done = alive.Where(s => _wins[s] >= WinsToTake).ToArray();
+            if (done.Length > 0) return Over(done);
+            if (_round >= MaxRounds) return Over(Leaders());
+            return Pause();
+        }
 
         var took = Core.LastStanding;    // -1 — усі полягли разом або вийшов час
         if (took >= 0) _wins[took]++;
@@ -282,7 +338,7 @@ public sealed class Bomber : Game
         return Pause();
     }
 
-    int[] TeamSeats(int team) => [.. Enumerable.Range(0, BomberCore.Seats).Where(s => _teams![s] == team && Ctx.Seated(s))];
+    int[] TeamSeats(int team) => [.. Enumerable.Range(0, BomberCore.Seats).Where(s => _teams![s] == team && In(s))];
 
     TickResult Pause()
     {
@@ -314,7 +370,7 @@ public sealed class Bomber : Game
     /// <summary>Хто попереду за раундами; порожньо — якщо попереду всі одразу (тоді це нічия).</summary>
     int[] Leaders()
     {
-        var playing = Enumerable.Range(0, BomberCore.Seats).Where(Ctx.Seated).ToArray();
+        var playing = Enumerable.Range(0, BomberCore.Seats).Where(In).ToArray();
         if (playing.Length == 0) return [];
         var best = playing.Max(s => _wins[s]);
         var leaders = playing.Where(s => _wins[s] == best).ToArray();
@@ -325,7 +381,7 @@ public sealed class Bomber : Game
     TickResult Over(int[] winners)
     {
         _phase = PhaseOver;
-        winners = [.. winners.Where(Ctx.Seated)];
+        winners = [.. winners.Where(In)];
         _sum = Summary();
         string score;
         if (_teams is not null)
@@ -334,16 +390,36 @@ public sealed class Bomber : Game
             score = string.Join(" : ", new[] { first, 1 - first }.Select(t =>
             {
                 var seats = TeamSeats(t);
-                return $"{TeamNames[t]} ({string.Join(", ", seats.Select(Ctx.NickOf))}) {(seats.Length > 0 ? _wins[seats[0]] : 0)}";
+                return $"{TeamNames[t]} ({string.Join(", ", seats.Select(Nick))}) {(seats.Length > 0 ? _wins[seats[0]] : 0)}";
             }));
         }
         else
         {
-            var rest = Enumerable.Range(0, BomberCore.Seats).Where(s => Ctx.Seated(s) && !winners.Contains(s));
-            score = string.Join(" : ", winners.Concat(rest).Select(s => $"{Ctx.NickOf(s)} {_wins[s]}"));
+            var rest = Enumerable.Range(0, BomberCore.Seats).Where(s => In(s) && !winners.Contains(s));
+            score = string.Join(" : ", winners.Concat(rest).Select(s => $"{Nick(s)} {_wins[s]}"));
         }
-        Ctx.Finish(winners, winners.Length > 0 ? $"{Info.Title}: {score}" : $"{Info.Title}: {score} — нічия");
+        var log = winners.Length > 0 ? $"{Info.Title}: {score}" : $"{Info.Title}: {score} — нічия";
+        if (_botGame) FinishSolo(winners, log, score);
+        else Ctx.Finish(winners, log);
         return TickResult.Both;
+    }
+
+    /// <summary>
+    /// Кінець партії з ботами: переможці — лише люди (бот нагород не бере, та й Rewards рахує від двох людей), а
+    /// вердикт каже, над ким перемога. Команда людини з ботом виграла — перемога людини.
+    /// </summary>
+    void FinishSolo(int[] winners, string log, string score)
+    {
+        var people = winners.Where(Ctx.Seated).ToArray();
+        var human = Enumerable.Range(0, BomberCore.Seats).FirstOrDefault(Ctx.Seated, -1);
+        var foes = Enumerable.Range(0, BomberCore.Seats)
+            .Count(s => _isBot[s] && (_teams is null || human < 0 || _teams[s] != _teams[human]));
+        var lvl = _solo.Level switch { LiveBots.Level.Easy => "легкими", LiveBots.Level.Hard => "сильними", _ => "звичайними" };
+        var many = foes switch { 1 => $"{LiveBots.Of(_solo.Level)} ботом", 2 => $"двома {lvl} ботами", _ => $"трьома {lvl} ботами" };
+        var verdict = people.Length > 0 ? $"🏆 {Nick(people[0])} — перемога над {many}"
+            : winners.Length > 0 ? $"🤖 Бот переміг — {score}"
+            : "🤝 Нічия з ботами";
+        Ctx.Finish(people, log, verdict: verdict);
     }
 
     /// <summary>
@@ -352,7 +428,7 @@ public sealed class Bomber : Game
     /// </summary>
     object[] Summary()
     {
-        var seated = Enumerable.Range(0, BomberCore.Seats).Where(Ctx.Seated).ToArray();
+        var seated = Enumerable.Range(0, BomberCore.Seats).Where(In).ToArray();
         var list = new List<object>();
         void Title(string key, int[] by)
         {
@@ -441,6 +517,11 @@ public sealed class Bomber : Game
         }
         if (_note is not null) v["note"] = _note;
         if (_sum is not null) v["sum"] = _sum;
+        // «🤖 + бот»: кнопку малює core.js; bot — місця ботів цієї партії (у лобі — куди сядуть)
+        v["botOffer"] = _solo.Offer(Ctx, BomberCore.Seats);
+        v["botWanted"] = _solo.Wanted;
+        v["botLvl"] = _solo.LevelKey;
+        v["bot"] = _started ? Enumerable.Range(0, BomberCore.Seats).Where(s => _isBot[s]).ToArray() : BotSeats();
         return v;
     }
 
