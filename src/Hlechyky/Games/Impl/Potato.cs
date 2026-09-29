@@ -75,15 +75,16 @@ public sealed class Potato : Game
     public static int PotsFor(int players) => players >= 5 ? 2 : 1;
 
     public override GameInfo Info { get; } = new(
-        "potato", "Гарячий горщик", "гарячий горщик", GameGroup.Live, 2, Seats, TickMs: TickMs,
+        "potato", "Гарячий горщик", "гарячий горщик", GameGroup.Live, 1, Seats, TickMs: TickMs,
         Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("crowd", "Люду", [("auto", "Як на толоці"), ("small", "Рідко (12)"), ("big", "Тісно (30)")], "auto"),
             new GameOption("pots", "Горщиків", [("auto", "Як вийде"), ("1", "Один"), ("2", "Два")], "auto"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Толокою ходить горщик із жаром — і от-от рвоне. Передай його впритул, ляпни підозрілого, не тримай довго. Ніхто не знає, хто з селян живий");
+        Hint: "Толокою ходить горщик із жаром — і от-от рвоне. Передай його впритул, ляпни підозрілого, не тримай довго. Ніхто не знає, хто з селян живий. Самому — з 🤖 ботом, що ховається в юрмі");
 
     static readonly string[] SeatNames = ["жовтий", "зелений", "рудий", "сірий", "синій", "рожевий", "фіолетовий", "червоний"];
 
@@ -109,6 +110,13 @@ public sealed class Potato : Game
     int[]? _winners;
     /// <summary>Ачівки, зароблені цього раунду: видаємо лише на розкритті — сповіщення посеред раунду назвало б гравця.</summary>
     readonly HashSet<(int Seat, string Key)> _awards = [];
+    /// <summary>
+    /// «🤖 + бот»: людина сама за столом — на вільне місце сідає гравець-бот (<see cref="PotatoPilot"/>). Один: горщик
+    /// і так ходить юрмою, а другий бот лише частіше забирав би в людини раунди «останній на ногах».
+    /// </summary>
+    readonly SoloBot _solo = new();
+    int _bot = -1;
+    PotatoPilot? _pilot;
 
     sealed record PotatoReveal(int[] Winners, string Why, (int Seat, int Id)[] Ids, PotatoRow[] Rows, (int Seat, int[] Pts)[] Trails);
     sealed record PotatoRow(int Seat, int Held, int Catches, int Burns, int Slaps, bool Alive, bool Win, int Pts);
@@ -122,6 +130,23 @@ public sealed class Potato : Game
     public int Left => _left;
     public int RoundNo => _round;
     public int PotCount => _pots;
+    /// <summary>Місце гравця-бота в цій партії (-1 — партія людська) і його мозок.</summary>
+    public int Bot => _bot;
+    public PotatoPilot? PilotForTests => _pilot;
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, Seats);
+
+    public override string? SeatBot(int seat) => seat == _bot && seat >= 0 && !Ctx.Seated(seat) ? LiveBots.Name : null;
+
+    /// <summary>Куди сяде бот: перше вільне місце.</summary>
+    int BotSeat()
+    {
+        for (var i = 0; i < Seats; i++)
+            if (!Ctx.Seated(i)) return i;
+        return -1;
+    }
 
     public override string SeatName(int seat) => seat >= 0 && seat < Seats ? SeatNames[seat] : base.SeatName(seat);
 
@@ -130,6 +155,7 @@ public sealed class Potato : Game
         _rounds = options.TryGetValue("rounds", out var r) && int.TryParse(r, out var n) && n is 1 or 3 or 5 ? n : 3;
         _crowd = options.TryGetValue("crowd", out var c) && c is "small" or "big" ? c : "auto";
         _potsOpt = options.TryGetValue("pots", out var p) && p is "1" or "2" ? p : "auto";
+        _solo.Configure(options);
     }
 
     public int BotsForTable(int players) => _crowd switch
@@ -158,12 +184,14 @@ public sealed class Potato : Game
         _ev.Clear();
         _evFrame = [];
         var players = 0;
+        _bot = _solo.Active(Ctx, Seats) ? BotSeat() : -1;
+        _pilot = _bot >= 0 ? new PotatoPilot(Core, Ctx.Rng, _solo.Level) : null;
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            s.Plays = Ctx.Seated(i);
+            s.Plays = Ctx.Seated(i) || i == _bot;
             s.Out = false;
-            s.Nick = Ctx.NickOf(i) ?? "";
+            s.Nick = i == _bot ? LiveBots.Name : Ctx.NickOf(i) ?? "";
             s.Total = s.ShownTotal = 0;
             if (s.Plays) players++;
         }
@@ -197,6 +225,7 @@ public sealed class Potato : Game
         }
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
+        if (_bot >= 0) _pilot!.Reset(_s[_bot].Me, Core.N);
         _dirty = true;
     }
 
@@ -206,6 +235,8 @@ public sealed class Potato : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return !_started || _phase == PhaseOver ? _solo.Switch(Ctx, seat, payload, Seats) : ActResult.Fail("Партія вже йде");
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= Seats || !_s[seat].Active) return ActResult.Fail("Тут так не ходять");
         return action switch
@@ -312,6 +343,7 @@ public sealed class Potato : Game
         if (log.Count == 0) return;
         foreach (var e in log)
         {
+            _pilot?.See(e);
             switch (e.Kind)
             {
                 case PotatoEvent.Pass:
@@ -380,6 +412,7 @@ public sealed class Potato : Game
                 HeldKeys();
                 Core.TimersAll();
                 Core.ThinkAll();
+                BotThink();
                 Core.StepAll();
                 Trail();
                 if (--_left <= 0)
@@ -400,6 +433,7 @@ public sealed class Potato : Game
                 Core.TimersAll();
                 Drain(_ev);
                 Core.ThinkAll();
+                BotThink();
                 Drain(_ev);
                 Core.StepAll();
                 Hold();
@@ -423,6 +457,14 @@ public sealed class Potato : Game
         }
     }
 
+    /// <summary>Гравець-бот думає після юрми, тим самим вводом, що й людина (Want, передача, ляпас).</summary>
+    void BotThink()
+    {
+        if (_bot < 0 || _pilot is null) return;
+        var s = _s[_bot];
+        if (s.Active && s.Alive && s.Me >= 0) _pilot.Think(Core.V[s.Me]);
+    }
+
     void OpenEvents()
     {
         _ev.Clear();
@@ -443,7 +485,7 @@ public sealed class Potato : Game
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            if (!s.Active || !s.Alive || s.Me < 0) continue;
+            if (!s.Active || !s.Alive || s.Me < 0 || i == _bot) continue;
             var v = Core.V[s.Me];
             if (v.Want >= 0 && _clock - s.MoveAt > MoveHoldTicks) v.Want = -1;
         }
@@ -531,8 +573,10 @@ public sealed class Potato : Game
             _s[w].Total += PtRound;
             if (_s[w].Catches >= CoolCatches) _awards.Add((w, "ach:potato-cool"));
         }
-        foreach (var (seat, key) in _awards.OrderBy(a => a.Seat).ThenBy(a => a.Key, StringComparer.Ordinal))
-            if (_s[seat].Active) Ctx.Award(seat, 0, key);
+        // партія з ботом — без ачівок (як і без черепків та рекордів)
+        if (_bot < 0)
+            foreach (var (seat, key) in _awards.OrderBy(a => a.Seat).ThenBy(a => a.Key, StringComparer.Ordinal))
+                if (_s[seat].Active) Ctx.Award(seat, 0, key);
         _awards.Clear();
         _reveal = RevealOf(winners, why, s => s.Active);
         Freeze();
@@ -583,12 +627,31 @@ public sealed class Potato : Game
         var best = active.Count == 0 ? 0 : active.Max(i => _s[i].Total);
         var top = active.Where(i => _s[i].Total == best).ToArray();
         var winners = top.Length == active.Count ? [] : top;
+        if (_bot >= 0) { FinishWithBot(active, top); return; }
         _winners = winners;
         _dirty = true;
         foreach (var i in active) Ctx.Score(i, _s[i].Total);
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
         var line = string.Join(" : ", order.Select(i => $"{_s[i].Nick} {_s[i].Total}"));
         Ctx.Finish(winners, winners.Length > 0 ? $"{Info.Title}: {line}" : $"{Info.Title}: {line} — нічия");
+    }
+
+    /// <summary>
+    /// Кінець партії з ботом: переможець — лише людина (бот у переможці каркаса не йде; рахунку в профіль нема).
+    /// </summary>
+    void FinishWithBot(List<int> active, int[] top)
+    {
+        var human = active.FirstOrDefault(i => i != _bot, -1);
+        var line = string.Join(" : ", active.OrderByDescending(i => _s[i].Total).Select(i => $"{_s[i].Nick} {_s[i].Total}"));
+        int hp = human >= 0 ? _s[human].Total : 0, bp = _s[_bot].Total;
+        var draw = top.Length == active.Count;
+        var won = human >= 0 && !draw && Array.IndexOf(top, human) >= 0;
+        _winners = won ? [human] : draw ? [] : [_bot];
+        _dirty = true;
+        Ctx.Finish(won ? [human] : [], $"{Info.Title}: {line}{(draw ? " — нічия" : "")}",
+            verdict: won ? $"🏆 {_s[human].Nick} — перемога над {LiveBots.Of(_solo.Level)} ботом {hp}:{bp}"
+                : draw ? $"🤝 Нічия з ботом {hp}:{bp}"
+                : $"🤖 Бот переміг {bp}:{hp}");
     }
 
     /// <summary>
@@ -701,6 +764,11 @@ public sealed class Potato : Game
                 ? new { winners = w, totals = _s.Select(x => x.Total).ToArray(), why = _endWhy }
                 : null,
             turn = (int?)null,
+            // «🤖 + бот» (кнопку малює core.js): у лобі — куди сяде, у партії й після — де сидів
+            bot = live && _bot >= 0 ? _bot : _solo.Wanted && BotSeat() is var b && b >= 0 ? b : (int?)null,
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
         };
     }
 
