@@ -417,7 +417,7 @@ public class TerritoryTests
         Assert.Equal("live", game.Group);
         Assert.Equal("byHost", game.Start);
         Assert.Equal(TerritoryCore.TickMs, game.TickMs);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);   // сам — з 🤖 ботами (TerritoryBotTests)
         Assert.Equal(6, game.MaxPlayers);
         Assert.False(game.Rated);                      // ставок тут нема: вони лише в рейтингових іграх на двох
         Assert.True(game.HasCss);
