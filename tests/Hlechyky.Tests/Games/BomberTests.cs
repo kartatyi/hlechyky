@@ -837,7 +837,7 @@ public class BomberTests
         Assert.Equal("live", game.Group);
         Assert.Equal(BomberCore.TickMs, game.TickMs);
         Assert.Equal("byHost", game.Start);
-        Assert.Equal(2, game.MinPlayers);
+        Assert.Equal(1, game.MinPlayers);    // самому — з 🤖 ботами (без них «Почати» не пускає: BomberBotTests)
         Assert.Equal(BomberCore.Seats, game.MaxPlayers);
         Assert.False(game.Rated);            // на чотирьох ставок і Ело не буває
         Assert.Equal("bomber", game.Module);
