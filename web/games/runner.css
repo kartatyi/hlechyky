@@ -179,11 +179,16 @@ body.g-land .rnr:not(.rnr-storks) {
   display: grid; grid-template-columns: 88px minmax(0, 1fr) 104px; column-gap: 8px; row-gap: 4px; max-width: none;
 }
 body.g-land .rnr:not(.rnr-storks) > * { grid-column: 1 / -1; }
-body.g-land .rnr:not(.rnr-storks) > .rnr-stage {
-  grid-column: 2; grid-row: 3; justify-self: center; margin: 0;
-  width: min(100%, calc((var(--gfit-h, 100dvh) - 185px) * 8 / 3));
+body.g-land .rnr:not(.rnr-storks) > .rnr-stage { grid-column: 2; grid-row: 3; justify-self: stretch; width: auto; margin: 0; }
+/* висота сцени = видимий екран мінус рядок столу, статус, рахунок і смужка над нею; ширина — з пропорції полотна
+   (--gar ставить ui.canvas: у Забігу дня сцена вища, ніж 8:3) */
+body.g-land .rnr:not(.rnr-storks) > .rnr-stage .rnr-cv {
+  border-radius: 10px; margin: 0 auto;
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 185px) * var(--gar, 2.667)));
 }
-body.g-land .rnr:not(.rnr-storks) > .rnr-stage .rnr-cv { border-radius: 10px; }
+body.g-land .rnr:not(.rnr-storks):has(> .rnr-dhud) > .rnr-stage .rnr-cv {
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 160px) * var(--gar, 1.867)));
+}
 body.g-land .rnr:not(.rnr-storks) > .rnr-touch.on { display: contents; }
 body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-tbtn { width: 100%; height: auto; min-height: 84px; align-self: stretch; margin: 0; }
 body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-duck { grid-column: 1; grid-row: 3; }
