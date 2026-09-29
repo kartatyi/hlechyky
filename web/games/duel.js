@@ -178,18 +178,40 @@
   /// ховалась під нижнім меню та «💬 Стіл». Раз на партію (room.startedAt), коли вона пішла, прокручуємо
   /// так, щоб рахунок, сцена й кнопка стали між шапкою сайту й меню. Усе й так видно — не чіпаємо.
   function fitPhone(st, ctx) {
+    // Поворот телефона чи ⛶ — підгонку повторюємо (раз на партію її лишаємо для прокрутки самої людини).
+    // Лише справжня зміна екрана, а не смикання адресного рядка під час прокрутки.
+    const host = st.els && st.els.wrap.parentNode;
+    if (host && !st.fitHook && ctx.ui.onFit) {
+      st.fitW = innerWidth; st.fitH = innerHeight;
+      st.fitHook = (f) => {
+        const w = (f && f.w) || innerWidth, h = (f && f.h) || innerHeight;
+        if (st.fitW === w && Math.abs(st.fitH - h) < 100) return;
+        st.fitW = w; st.fitH = h;
+        st.fitFor = null;
+        if (st.ctx) fitPhone(st, st.ctx);
+      };
+      ctx.ui.onFit(host, st.fitHook);
+    }
     if (!st.els || !ctx.mine || !ctx.playing || !ctx.room || !ctx.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     if (st.fitFor === key) return;
     const a = st.els.wrap.getBoundingClientRect(), b = st.els.fire.getBoundingClientRect();
     if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
-    const head = document.querySelector('header');
-    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
-    const fr = fab && fab.getBoundingClientRect();
-    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    let top, limit;
+    if (ctx.ui.fit) {
+      // каркас знає, що зараз зайнято згори й знизу (у ⛶ і лежачи шапки й меню нема)
+      const f = ctx.ui.fit();
+      top = f.top + 4;
+      limit = f.h - f.dock - 6;
+    } else {
+      const head = document.querySelector('header');
+      top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+      const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+      const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+      const fr = fab && fab.getBoundingClientRect();
+      limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    }
     const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
     const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;
     if (Math.abs(dy) < 2) return;
