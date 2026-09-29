@@ -59,10 +59,14 @@
   background: rgba(0, 0, 0, .38); border-radius: 10px;
 }
 .pcover[hidden] { display: none; }
+/* Трек сітки — не ширший за полотно: інакше вибір слова з трьох кнопок розпирав сторінку на телефоні до 423 px
+   (увесь сайт зменшувався й гортався вбік). Не влізе по висоті — гортається всередині, а не вилазить. */
+.pcover { grid-template-columns: minmax(0, 1fr); overflow: auto; overscroll-behavior: contain; }
 .pcbox {
   background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
   padding: 14px 18px; text-align: center; display: flex; flex-direction: column; gap: 10px; max-width: 100%;
   box-shadow: 0 8px 30px rgba(0, 0, 0, .25);
+  min-width: 0; box-sizing: border-box;
 }
 .pctitle { font-weight: 700; font-size: 1.05em; }
 .pcrules { max-width: 420px; line-height: 1.4; }
@@ -174,6 +178,13 @@
 */
 @container (max-width: 640px) {
   .pcwrap.drw .pcstage { width: min(100%, max(240px, calc((100dvh - var(--pctop, 230px) - 232px) * 4 / 3))); justify-self: center; }
+  /* пальцем палітра — 14 кольорів у два рядки по сім (≈43 px, було 20 по 27–30 px): полотну на ~27 px менше */
+  @media (pointer: coarse) {
+    .pcwrap.drw .pcstage { width: min(100%, max(240px, calc((100dvh - var(--pctop, 230px) - 260px) * 4 / 3))); }
+    .pcpal { grid-template-columns: repeat(7, minmax(0, 1fr)); max-width: none; gap: 5px; }
+    .pcsw:is(:nth-child(4), :nth-child(10), :nth-child(12), :nth-child(13), :nth-child(16), :nth-child(20)) { display: none; }
+    .pcsz, .pct, .pca { min-width: 40px; touch-action: manipulation; }
+  }
   /*
     Фініш проходу №3: інструменти вищі під палець (36 → 40 px, на високих телефонах — 44), а рядок не ширший за
     «картка мінус кнопка 💬 Стіл»: та висить праворуч унизу й на 390 px накривала ◯. Тепер ◯ ╱ переходять у другий
@@ -244,6 +255,11 @@
 .pchearts { font-weight: 700; }
 
 @container (max-width: 640px) {
+  /* вибір слова на телефоні: три слова в один-два рядки й «🎲 Інші три» — у висоту полотна (249 px на 390) */
+  .pcover { padding: 8px; }
+  .pcbox { padding: 10px 12px; gap: 8px; }
+  .pcchoices { gap: 6px; }
+  .pcchoices button { padding: 9px 10px; min-height: 44px; }
   .pcreact button { width: 44px; height: 44px; font-size: 20px; }
   .pcfloat i { font-size: 24px; }
   .pcthumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); }

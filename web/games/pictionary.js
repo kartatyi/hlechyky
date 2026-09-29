@@ -754,7 +754,7 @@
     let html = '<div class="pchome"><div><b>🏠 Слова компанії</b> <span class="muted small">— докинь до трьох своїх («кумів трактор»): '
       + 'малюватимуть інші, не ти</span></div>';
     if (ctx.mine && mine.length < 3) {
-      html += '<form class="pchomef"><input class="pchomein" type="text" maxlength="30" autocomplete="off" placeholder="Своє слово…" enterkeyhint="done">'
+      html += '<form class="pchomef"><input class="pchomein" type="text" maxlength="30" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Своє слово…" enterkeyhint="done">'
         + '<button type="submit">＋</button></form>';
     }
     if (mine.length) html += '<div class="pchomes">' + mine.map((w) => '<span class="chip">' + ctx.esc(w) + ' <button type="button" data-unhome="' + ctx.esc(w) + '" title="Прибрати">✕</button></span>').join('') + '</div>';
@@ -1104,7 +1104,7 @@
         + '<div class="pcstage"><canvas class="pccanvas"></canvas><div class="pcfloat" aria-hidden="true"></div><div class="pcover" hidden></div>'
         + '<div class="pcreact" hidden>' + REACTS.map((r, i) => '<button type="button" data-e="' + i + '" title="Реакція">' + r + '</button>').join('') + '</div></div>'
         + '<div class="pcside"><div class="pcscores"></div><div class="pcfeed"></div>'
-        + '<form class="pcguess"><input type="text" maxlength="40" autocomplete="off" spellcheck="false" enterkeyhint="send">'
+        + '<form class="pcguess"><input type="text" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">'
         + '<button class="primary" type="submit">➤</button></form></div>'
         + '<div class="pctools" hidden></div>'
         + '</div><div class="pcalbum" hidden></div></div>';
