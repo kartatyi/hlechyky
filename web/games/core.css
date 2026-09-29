@@ -42,7 +42,7 @@
 .gpanel h3 { margin: 0; font-family: var(--display); font-size: 1.05em; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .gfilters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .gchip { cursor: pointer; border: 1px solid transparent; padding: 4px 11px; font-size: .88em; }
-.gchip:hover { background: var(--panel3); color: var(--text); }
+@media (hover: hover) { .gchip:hover { background: var(--panel3); color: var(--text); } }  /* на дотику :hover «прилипав» після тапу */
 .gchip.on { background: var(--panel3); color: var(--text); border-color: var(--line); }
 /* два класи, бо input[type=search] у style.css тягне width: 100% і виграє в одинарного класу */
 .gfilters .gfind {
@@ -90,7 +90,7 @@
   background: var(--panel2); border: 1px solid transparent; border-radius: 12px; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 6px;
 }
-.gtile:hover { border-color: var(--panel3); }
+@media (hover: hover) { .gtile:hover { border-color: var(--panel3); } }  /* на дотику :hover «прилипав» після тапу */
 /* Довга назва + «🆕 нова гра» не влазять у рядок («Клавоперегони»): бейдж переходить на другий рядок праворуч,
    а не вилазить за плитку. */
 .gt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; font-size: 1.02em; }
@@ -171,13 +171,13 @@
 /* ---- дошка з клітинок (хрестики, чотири в ряд, сапер) ---- */
 /* Спільна дошка з клітинок (хрестики, чотири в ряд, сапер). Шахи, шашки й ерудит ставлять
    свою стелю у власному css — кожна гра піднімає її в себе, коли захоче більше місця. */
-.board { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 7px; width: min(360px, 100%); margin: 0 auto; }
+.board { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 7px; width: min(360px, 100%); margin: 0 auto; }
 .board .cell {
   aspect-ratio: 1; padding: 0; display: grid; place-items: center; font-size: 2.1em; font-weight: 700;
   background: var(--bg2); border-radius: 12px; justify-content: center;
 }
 .board .cell:disabled { opacity: 1; }
-.board .cell:not(:disabled):hover { background: var(--panel3); }
+@media (hover: hover) { .board .cell:not(:disabled):hover { background: var(--panel3); } }  /* на дотику :hover «прилипав» після тапу */
 .board .cell.x { color: var(--accent); }
 .board .cell.o { color: var(--ok); }
 .board .cell.win { background: var(--gwin); border-color: var(--accent2); }
@@ -190,7 +190,7 @@
 .board.discs .cell.o { background: var(--ok); }
 .board.discs .cell.win { box-shadow: 0 0 0 3px var(--accent2), 0 0 12px rgba(244, 197, 66, .5); background: var(--accent); }
 .board.discs .cell.o.win { background: var(--ok); }
-.board.discs .cell:not(:disabled):hover { background: var(--panel3); }
+@media (hover: hover) { .board.discs .cell:not(:disabled):hover { background: var(--panel3); } }  /* на дотику :hover «прилипав» після тапу */
 
 /* ---- канвас реалтайму (змійка, понг, кривуля) ---- */
 /* Стеля ширини реалтайм-канваса. На сторінці столу місця тепер вистачає, тож канвас більший;
@@ -220,7 +220,7 @@
   flex: 1 1 0; min-width: 0; padding: 9px 0; justify-content: center; font-size: .95em;
   background: var(--panel3); border-color: transparent; text-transform: uppercase;
 }
-.gkey.wide { flex: 1.6 1 0; font-size: .8em; text-transform: none; }
+.gkey.wide { flex: 1.4 1 0; font-size: 1.05em; text-transform: none; }
 .gkey.g { background: var(--ok); color: var(--accent-ink); }
 .gkey.y { background: var(--accent); color: var(--accent-ink); }
 .gkey.b { background: var(--bg2); color: var(--muted); }
@@ -241,7 +241,7 @@
   min-width: 44px; padding: 10px 8px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line);
   cursor: pointer; text-align: center; user-select: none; transition: transform .1s, border-color .15s;
 }
-.gcard:hover { transform: translateY(-3px); }
+@media (hover: hover) { .gcard:hover { transform: translateY(-3px); } }  /* на дотику :hover «прилипав» після тапу */
 .gcard.sel { border-color: var(--accent); transform: translateY(-6px); }
 .gcard.off { opacity: .45; cursor: default; transform: none; }
 
@@ -299,7 +299,7 @@
   cursor: pointer; gap: 5px; max-width: 100%; min-width: 0; padding: 4px 11px; font-size: .86em;
   color: var(--text); border: 1px solid var(--glive);
 }
-.gsolo-g:hover { background: var(--panel3); }
+@media (hover: hover) { .gsolo-g:hover { background: var(--panel3); } }  /* на дотику :hover «прилипав» після тапу */
 .gsolo-g .gico { width: 14px; height: 14px; }
 .gsolo-g .gw { color: var(--ok); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: no-preference) {
@@ -471,7 +471,13 @@
 }
 .gseat.gmany { display: none; border: 0; font: inherit; color: var(--text); cursor: pointer; }
 @media (max-width: 480px) {
-  .gtable { padding: 8px 9px 10px; }
+  /* Назва гри й глядачі вже є в рядку столу (.grhead) — у шапці картки вдруге не треба. */
+  .grbox .gseats .gtitle, .grbox .gseats .gwatchers { display: none; }
+  /* Два класи, як у .grbox > .gtable вище, — інакше те перебивало, і гра мала по 29 px порожнечі з кожного боку. */
+  .gtable, .grbox > .gtable { padding: 8px 8px 10px; }
+  /* Клавіатура — на всю ширину картки: 12 клавіш у ряд були по 22–24 px. */
+  .gkbd { width: calc(100% + 12px); max-width: none; margin-inline: -6px; }
+  .gkrow { gap: 3px; }
   .gseats { gap: 5px; font-size: .86em; }
   .gseat { max-width: 100%; }
   /* Великий стіл: свій чіп, чий хід і «👥 N»; решта — після дотику на «👥». */
@@ -504,7 +510,59 @@
    («Скільки?», слова). Поки пишеш у полі гри — шторки не видно; відпустив поле — вона знову на місці. */
 @media (max-width: 900px) {
   body:has(.gbody input:focus, .gbody textarea:focus) .tchat.drawer:not(.open) { display: none; }
-  /* Рука дурня вчотирьох, поле «Скільки?» — низ столу під згорнутою шторкою: запас знизу, щоб його можна було
-     докрутити над кнопкою (шторка ~44 px + відступ). Посеред аркади шторки нема (g-arcade) — там запасу не треба. */
-  body:not(.g-arcade):has(.tchat.drawer:not(.open)) .groom { padding-bottom: 64px; }
 }
+
+/* ---- телефон: прохід 30.09 (каркас столу) ---- */
+/* Логічне відношення сторін полотна (ставить ui.canvas) — щоб стелити полотно за висотою без спотворення. */
+.gcanvas { --gar: 1.6; }
+@media (pointer: coarse) {
+  /* Довге натискання по полю не виділяє текст і не кличе меню; у полях вводу — як завжди. */
+  .groom .gbody { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .groom .gbody input, .groom .gbody textarea, .groom .gbody [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+  .gtable button, .gkbd, .board, .board .cell, .dpad { touch-action: manipulation; }
+  .gchip { padding: 7px 12px; }
+}
+@media (max-width: 900px) {
+  /* «Твій хід…» — над полем: у високих іграх статус під полем опинявся за екраном чи під шторкою. */
+  .gtable { display: flex; flex-direction: column; }
+  .gtable > .gstatus { order: -1; }
+  .gtable > .gseats { order: -2; }
+  /* Посеред аркади рядок столу — в одну лінію: «← Лобі · назва · ⛶», без глядачів і сусідніх столів. */
+  body.g-arcade .grhead { flex-wrap: nowrap; }
+  body.g-arcade .grhead .grother, body.g-arcade .grhead .gwatchers, body.g-arcade .grhead .grcall { display: none; }
+  body.g-arcade .gseats { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; font-size: .85em; scrollbar-width: none; }
+  body.g-arcade .gseats .gfreeall, body.g-arcade .gseats .gseat.free { display: none; }
+}
+/* Згорнута шторка «💬 Стіл» лягала на низ поля: запас знизу — рівно на її висоту (--gdock-h ставить core.js). */
+@media (max-width: 900px) {
+  body.g-room:not(.g-imm) .groom { padding-bottom: max(0px, calc(var(--gdock-h, 64px) - var(--tabs-h, 0px) - var(--mini-h, 0px))); }
+}
+
+/* ---- занурений режим (body.g-imm): ⛶ на телефоні або аркада лежачи ---- */
+body.g-imm .groom { gap: 6px; }
+body.g-imm .grhead { flex-wrap: nowrap; min-height: 0; gap: 6px; }
+body.g-imm .grhead button { padding: 4px 9px; }
+body.g-imm .grhead .grother, body.g-imm .grhead .gwatchers, body.g-imm .grhead .grcall { display: none; }
+body.g-imm .grbox > .gtable { padding: 6px 8px 8px; }
+
+/* ---- лежачи (body.g-land = g-imm + телефон лежить): поле ліворуч за висотою, решта — колонкою праворуч ----
+   Лише коли полотно — пряма дитина .gbody (ui.canvas(root, …)). .gbody тоді display: contents — його діти
+   (полотно, хрестовина, рахунок) стають у сітку картки поруч із місцями, статусом і кнопками. Гра зі своєю
+   розкладкою робить її під body.g-land сама (специфічніше за ці правила). */
+body.g-land .gtable:has(> .gbody > canvas.gcanvas) {
+  display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 12px; row-gap: 0;
+  align-items: center; align-content: center; justify-items: center;
+}
+body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gbody { display: contents; }
+body.g-land .gtable > .gbody > canvas.gcanvas {
+  grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center;
+  /* права колонка (хрестовина, місця, кнопки) бере свою природну ширину, полотно — решту, але не вище за екран:
+     висота — видимий екран мінус рядок столу й відступи */
+  width: 100%; max-width: calc((var(--gfit-h, 100dvh) - 72px) * var(--gar)); height: auto; justify-self: center;
+}
+body.g-land .gtable:has(> .gbody > canvas.gcanvas) > :not(.gbody),
+body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gbody > :not(canvas.gcanvas) { grid-column: 2; max-width: 38vw; margin: 3px 0; }
+body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gseats { font-size: .82em; }
+body.g-land .gtable > .grx { display: none; }
+/* ⛶ стоячи (телефон): полотно — за висотою, якщо воно вище за видиме місце. */
+body.g-imm:not(.g-land) .gbody > canvas.gcanvas { max-width: min(100%, calc((var(--gfit-h, 100dvh) - 150px) * var(--gar))); }
