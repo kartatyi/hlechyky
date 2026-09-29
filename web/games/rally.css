@@ -240,3 +240,21 @@ body:has(.rl-body.rl-side) .tchat.drawer:not(.open) .tc-last { display: none; }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   .rl-wrap { max-width: calc((var(--gfit-h, calc(100vh - 56px - var(--tabs-h, 0px) - var(--mini-h, 0px))) - 16px) * 16 / 9); }
 }
+/* Лежачи (body.g-land, аркада): траса ліворуч на всю висоту картки (--gland-h від каркаса), праворуч колонкою —
+   статус, 🔇, «⛽ автогаз» і «Встати». Раніше рядок HUD стояв над трасою, «Встати» — під нею, сторінка була 600 px
+   заввишки, і після прокрутки до траси «← Лобі», ⛶, 🔇 і ⛽ опинялись над екраном. Підказка ⛶ тут зайва — і так
+   на весь екран. */
+body.g-land .gtable:has(> .rl-body) {
+  display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 10px; row-gap: 6px;
+  align-content: center; align-items: center; justify-items: center;
+}
+body.g-land .gtable:has(> .rl-body) > .rl-body { display: contents; }
+body.g-land .gtable:has(> .rl-body) > .gseats { display: none; }
+body.g-land .gtable:has(> .rl-body) > :not(.rl-body),
+body.g-land .gtable:has(> .rl-body) > .rl-body > :not(.rl-wrap) { grid-column: 2; max-width: 22vw; margin: 0; font-size: .9em; }
+body.g-land .gtable:has(> .rl-body) > .rl-body > .rl-wrap {
+  grid-column: 1; grid-row: 1 / span 8; width: 100%; margin: 0;
+  max-width: calc((var(--gland-h, 330px) - 16px) * 16 / 9);
+}
+body.g-land .gtable:has(> .rl-body) > .rl-body > .rl-hud { flex-direction: column; align-items: stretch; }
+body.g-land .rl-fullhint { display: none; }

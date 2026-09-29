@@ -1881,7 +1881,7 @@
       wireCanvas(st);
       // розкладку перераховуємо лише на зміну: ширина картки (ResizeObserver), висота вікна (resize), смужка пада
       if (window.ResizeObserver) {
-        st.ro = new ResizeObserver(() => fit(root, st));
+        st.ro = new ResizeObserver(() => { if (!st.roQ) st.roQ = requestAnimationFrame(() => { st.roQ = 0; if (root.isConnected) fit(root, st); }); });   // через rAF: синхронна зміна розміру в колбеку RO давала «ResizeObserver loop completed…»
         st.ro.observe(root);
       }
       st.onResize = () => fit(root, st);

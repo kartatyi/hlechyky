@@ -208,3 +208,11 @@ body.g-land .rnr:not(.rnr-storks).rnr-showover > .rnr-touch.on { display: none; 
 @media (pointer: coarse) {
   .rnr-touch, .rnr-touch * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 }
+/* Лежачи (body.g-land): картка столу — рівно на екран (--gland-h від каркаса). Статус і «Закрити»/«Встати» — одним
+   рядком над сценою, сцена — за рештою висоти (раніше «Закрити» падало за низ екрана). Лелек не чіпаємо. */
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) { flex-flow: row wrap; align-items: center; column-gap: 10px; row-gap: 6px; }
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) > .gstatus { order: 0; flex: 1 1 0; min-width: 0; margin: 0; }
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) > .gbtns { order: 1; margin: 0; flex-wrap: nowrap; }
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) > .gbody { order: 2; flex: 1 0 100%; min-width: 0; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-stage .rnr-cv { width: min(100%, calc((var(--gland-h, 330px) - 175px) * var(--gar, 2.667))); }
+body.g-land .rnr:not(.rnr-storks):has(> .rnr-dhud) > .rnr-stage .rnr-cv { width: min(100%, calc((var(--gland-h, 330px) - 150px) * var(--gar, 1.867))); }

@@ -1752,7 +1752,8 @@
     if (!el || !el.isConnected) return;
     if (st.land) {                               // лежачи: уся висота смуги — мапі, без нижньої межі 480
       const f = fitNow();
-      const lw = clamp(Math.floor((f.h - f.top - f.dock - 12) * 1.5), 240, 960);
+      // g-land: картка столу рівно на екран, над мапою — рядок «статус · Встати» (css), тож мінус її відступи, і той рядок
+      const lw = clamp(Math.floor((f.h - f.top - f.dock - (f.land ? 104 : 12)) * 1.5), 240, 960);
       if (Math.abs((parseFloat(el.style.maxWidth) || 0) - lw) >= 3) el.style.maxWidth = lw + 'px';
       return;
     }
@@ -1897,7 +1898,7 @@
       st.cv = HGames.ui.canvas(st.stageEl, { w: WW, h: WH, cls: 'skate-board' });
       wireCanvas(st);
       if (window.ResizeObserver) {
-        st.ro = new ResizeObserver(() => fit(root, st));
+        st.ro = new ResizeObserver(() => { if (!st.roQ) st.roQ = requestAnimationFrame(() => { st.roQ = 0; if (root.isConnected) fit(root, st); }); });   // через rAF: синхронна зміна розміру в колбеку RO давала «ResizeObserver loop completed…»
         st.ro.observe(root);
       }
       st.onResize = () => fit(root, st);

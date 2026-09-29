@@ -1144,9 +1144,12 @@
     const f = fitNow();
     const top = f.top + 4, bottom = f.h - f.dock - 4;
     const band = bottom - top;
-    const want = r.height <= band ? top + (band - r.height) / 2 : top;
-    const d = r.top - want;
-    if (Math.abs(d) > 24) window.scrollBy({ top: d, behavior: reduced() ? 'auto' : 'smooth' });
+    // Мінімальна прокрутка, а не «поле посередині»: центрування гнало рядок столу («← Лобі», ⛶) за верх екрана,
+    // хоч поле влазило й без того. Поле вище за смугу — верх поля під шапку.
+    let d = 0;
+    if (r.height > band || r.top < top) d = r.top - top;
+    else if (r.bottom > bottom) d = r.bottom - bottom;
+    if (Math.abs(d) > 8) window.scrollBy({ top: d, behavior: reduced() ? 'auto' : 'smooth' });
   }
 
   /// Цикл живе, поки йде партія (кадри, передбачення своєї біти, ввід), і ще AWAKE_MS після останньої події —

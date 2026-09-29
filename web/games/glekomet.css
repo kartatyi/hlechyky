@@ -197,3 +197,6 @@
   .gk-arm, .gk-sound { touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   .gk-ctl { -webkit-touch-callout: none; }
 }
+/* Лежачи (body.g-land): права колонка вища за екран — чіпи місць каркаса ховаємо (гравці є в рядку над ручками),
+   щоб «💥 Постріл» і «Пропустити» влазили в картку. */
+body.g-land .gtable:has(> .gbody > .gk-top) > .gseats { display: none; }

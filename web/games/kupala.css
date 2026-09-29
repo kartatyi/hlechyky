@@ -185,3 +185,11 @@
   /* гравцеві палець, що зіслизнув із керування на мапу, не гортає сторінку */
   .kupala-land:has(.kupala-pad) .kupala-board { touch-action: none; }
 }
+/* Лежачи (body.g-land): картка столу — рівно на екран (--gland-h від каркаса). Статус і «Встати» — одним рядком над
+   мапою (мапу модуль міряє з урахуванням цього рядка), щоб «Встати» й кнопки дій не падали за низ картки. */
+body.g-land .gtable:has(> .gbody.kupala-body) { flex-flow: row wrap; align-items: center; column-gap: 10px; row-gap: 6px; }
+body.g-land .gtable:has(> .gbody.kupala-body) > .gstatus { order: 0; flex: 1 1 0; min-width: 0; margin: 0; }
+body.g-land .gtable:has(> .gbody.kupala-body) > .gbtns { order: 1; margin: 0; flex-wrap: nowrap; }
+body.g-land .gtable:has(> .gbody.kupala-body) > .gbody { order: 2; flex: 1 0 100%; min-width: 0; }
+body.g-land .kupala-body.kupala-land { max-height: calc(var(--gland-h, 330px) - 59px); grid-template-rows: minmax(0, auto) minmax(0, 1fr); }
+body.g-land .kupala-land > .kupala-hud { max-height: calc(var(--gland-h, 330px) - 135px); }

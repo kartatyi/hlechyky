@@ -190,3 +190,9 @@
 body.pad-kbd .tr-in { scroll-margin-bottom: 45vh; }
 body.pad-kbd .tr-wrap[data-phase="go"] { padding-bottom: 45vh; }
 @media (pointer: coarse) { .tr-in { scroll-margin-bottom: 80px; } }
+/* Лежачи (body.g-land): картка столу — рівно на екран. Статус і «Встати» — одним рядком над полем, щоб 🔈 і «Встати»
+   не падали за низ картки. */
+body.g-land .gtable:has(> .gbody > .tr-wrap) { flex-flow: row wrap; align-items: center; column-gap: 10px; row-gap: 6px; }
+body.g-land .gtable:has(> .gbody > .tr-wrap) > .gstatus { order: 0; flex: 1 1 0; min-width: 0; margin: 0; }
+body.g-land .gtable:has(> .gbody > .tr-wrap) > .gbtns { order: 1; margin: 0; flex-wrap: nowrap; }
+body.g-land .gtable:has(> .gbody > .tr-wrap) > .gbody { order: 2; flex: 1 0 100%; min-width: 0; }
