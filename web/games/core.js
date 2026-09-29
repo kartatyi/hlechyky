@@ -1898,8 +1898,10 @@
       out.push('<button class="primary" data-do="Rematch">Ану ще раз</button>');
     // щоденна головоломка одна на день — «Ану ще раз» там не пропонуємо
     if (solo && r.status === 'finished' && !(gameOf(r.game) || {}).daily) out.push('<button class="primary" data-do="Rematch">Ану ще раз</button>');
-    if (rv.seat != null && r.status === 'lobby' && sameNick(r.host, me.nick) && (gameOf(r.game) || {}).start === 'byHost'
-      && takenSeats(r) >= r.minPlayers)
+    // Бот уже сидить навпроти: «Почати» і в грі, що стартує сама, коли стіл повний (змійка, дуель), — StartByHost
+    // каркаса режиму старту не питає, а без кнопки сам із ботом так і сидів би.
+    if (rv.seat != null && r.status === 'lobby' && sameNick(r.host, me.nick) && takenSeats(r) >= r.minPlayers
+      && ((gameOf(r.game) || {}).start === 'byHost' || (botOffered(rv) && rv.view.botWanted)))
       out.push('<button class="primary" data-do="StartRoom">Почати</button>');
     // «🤖 + бот» живих ігор (LiveBots.cs): господар сам за столом кличе суперника; гра каже botOffer у виді.
     if (botOffered(rv))
