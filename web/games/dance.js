@@ -1855,7 +1855,10 @@
     padStrip(st);
     const cw = root.clientWidth;
     let mode = st.mode;
-    if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
+    // Телефон лежачи (g-land): картка стає сіткою «хрестовина | мапа | дії» (.gbody — contents, ширини в нього
+    // нема), і мапі лишається ~330 px висоти — камера 4:3, як стоячи, а не вся мапа дрібно.
+    if (document.body.classList.contains('g-land')) mode = 'port';
+    else if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
     sizeStage(st, mode);
     if (!st.cv || mode !== st.mode) {
       st.mode = mode;
@@ -1867,6 +1870,16 @@
     } else st.cv.resize();
     const css = st.cv.el.clientWidth;
     if (css) st.cssK = css / (mode === 'port' ? PW : WW);
+  }
+
+  /// Скільки знизу в'юпорта зайнято (нижнє меню, міні-плеєр, шторка «💬 Стіл»): --gdock-h від каркаса, без нього —
+  /// від самого меню. Раніше тут читали --tabs-h, а там calc(58px + safe-area): parseFloat давав NaN → 0, і
+  /// підгонка «в кадр» вважала, що меню нема (кнопки лишались під ним).
+  function dockH() {
+    const d = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h'));
+    if (Number.isFinite(d)) return d;
+    const m = document.querySelector('.mtabs'), r = m && m.getBoundingClientRect();
+    return r && r.height ? Math.max(0, innerHeight - r.top) : 0;
   }
 
   /// Телефон: шапка столу з вісьмома місцями штовхала мапу вниз, і кнопки опинялись під нижнім меню — видно було
@@ -1882,7 +1895,7 @@
     st.fitFor = key;
     const head = document.querySelector('header');
     const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    const tabs = dockH();
     // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
@@ -1984,6 +1997,8 @@
       }
       st.onResize = () => fit(root, st);
       window.addEventListener('resize', st.onResize);
+      // поворот телефона: каркас ставить/знімає g-land у своєму resize — перераховуємо вже після нього
+      if (HGames.ui.onFit) HGames.ui.onFit(root, st.onResize);
       if (window.IntersectionObserver) {
         st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; if (st.visible) wake(st); });
         st.io.observe(st.cv.el);

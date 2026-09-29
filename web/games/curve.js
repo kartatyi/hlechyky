@@ -607,11 +607,24 @@
     putHtml(el, html);
   }
 
+  /// Кожен палець — свій напрям (pointerId → -1/1); поворот — за тим, що натиснули останнім із тих, що ще
+  /// тримають. Раніше напрям був одним числом: тримаєш ◀, торкнувся ▶ і відпустив його — ◀ ще під пальцем,
+  /// а кривуля їхала прямо. d = 0 — палець відпустили. true — цей палець був наш.
+  function hold(st, id, d) {
+    if (!st.ptrs) st.ptrs = new Map();
+    const had = st.ptrs.delete(id);
+    if (d) st.ptrs.set(id, d);
+    let t = 0;
+    for (const v of st.ptrs.values()) t = v;
+    st.touch = t;
+    return had || !!d;
+  }
+
   /// Дві кнопки під палець: не тап, а утримання, тож слухаємо саме pointer-події.
   function pad(root, ctx, st) {
     let el = root.querySelector(':scope > .cpad');
     // Кнопки лише поки йде партія: у лобі й після кінця вони штовхали «Почати» / «Ану ще раз» під нижнє меню.
-    if (!ctx.mine || !ctx.playing) { if (el) { el.remove(); st.touch = 0; } return; }
+    if (!ctx.mine || !ctx.playing) { if (el) { el.remove(); st.touch = 0; if (st.ptrs) st.ptrs.clear(); } return; }
     if (el) {
       // канвас могли перебудувати під нове поле — кнопки лишаються під ним
       if (el.nextElementSibling) root.appendChild(el);
@@ -625,19 +638,29 @@
       const b = e.target.closest('button');
       if (!b) return;
       e.preventDefault();
-      st.touch = +b.dataset.d;
+      hold(st, e.pointerId, +b.dataset.d);
       send(ctx, st, want(st));
     });
     const off = (e) => {
-      if (!st.touch) return;
+      if (!st.ptrs || !st.ptrs.has(e.pointerId)) return;
       e.preventDefault();
-      st.touch = 0;
+      hold(st, e.pointerId, 0);
       send(ctx, st, want(st));
     };
     el.addEventListener('pointerup', off);
     el.addEventListener('pointercancel', off);
     el.addEventListener('pointerleave', off);
     root.appendChild(el);
+  }
+
+  /// Скільки знизу в'юпорта зайнято (нижнє меню, міні-плеєр, шторка «💬 Стіл»): --gdock-h від каркаса, без нього —
+  /// від самого меню. Раніше тут читали --tabs-h, а там calc(58px + safe-area): parseFloat давав NaN → 0, і
+  /// підгонка «в кадр» вважала, що меню нема (кнопки лишались під ним).
+  function dockH() {
+    const d = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h'));
+    if (Number.isFinite(d)) return d;
+    const m = document.querySelector('.mtabs'), r = m && m.getBoundingClientRect();
+    return r && r.height ? Math.max(0, innerHeight - r.top) : 0;
   }
 
   /// Телефон: на вісьмох шапка столу з місцями й чіпи очок штовхали поле вниз, і кнопки ◀ ▶ ховались під
@@ -654,7 +677,7 @@
     st.fitFor = key;
     const head = document.querySelector('header');
     const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    const tabs = dockH();
     // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
@@ -678,13 +701,13 @@
     el.addEventListener('pointerdown', (e) => {
       if (!el.classList.contains('hold')) return;
       e.preventDefault();
-      st.touch = e.clientX - el.getBoundingClientRect().left < el.clientWidth / 2 ? -1 : 1;
+      hold(st, e.pointerId, e.clientX - el.getBoundingClientRect().left < el.clientWidth / 2 ? -1 : 1);
       send(ctx, st, want(st));
     });
     const off = (e) => {
-      if (!st.touch) return;
+      if (!st.ptrs || !st.ptrs.has(e.pointerId)) return;
       e.preventDefault();
-      st.touch = 0;
+      hold(st, e.pointerId, 0);
       send(ctx, st, want(st));
     };
     el.addEventListener('pointerup', off);
@@ -722,6 +745,7 @@
       st.blur = () => {
         st.keys = [];
         st.touch = 0;
+        if (st.ptrs) st.ptrs.clear();
         send(ctx, st, 0);
       };
       document.addEventListener('keyup', st.up);

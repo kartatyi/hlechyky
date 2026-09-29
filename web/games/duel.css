@@ -252,3 +252,29 @@
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   .duel.shoot .dscene { max-width: min(640px, calc((var(--gfit-h, calc(100vh - 114px)) - 150px) * 16 / 9)); }
 }
+/* ---- телефон (live1): звук — ціль під палець; кнопки не виділяються й не кличуть лупу довгим натиском ---- */
+@media (pointer: coarse) {
+  .duel .dsnd { min-height: 40px; min-width: 44px; padding: 6px 12px; }
+  .duel .dfire, .duel .dsnd {
+    touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .duel .dscene { -webkit-touch-callout: none; -webkit-user-select: none; }
+}
+/* ---- телефон лежачи (body.g-land ставить каркас): сцена ліворуч за висотою екрана, праворуч колонкою —
+   рахунок, підказка, статус, «Встати» і внизу під правим великим пальцем «🔫 Стріляти». Раніше кнопка
+   стояла під сценою й лежачи виходила за екран (стріляти можна було лише тапом по сцені). Перестрілку
+   (.duel.shoot) робить свій виправлювач. */
+body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, max-content); column-gap: 12px; row-gap: 4px;
+  align-items: center; align-content: center; justify-items: center;
+}
+body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody, body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel { display: contents; }
+body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gseats { display: none; }   /* хто з ким — у рахунку над сценою */
+body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > :not(.gbody), body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > * { grid-column: 2; max-width: 30vw; margin: 0; }
+body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > .dscene {
+  grid-column: 1; grid-row: 1 / span 12; max-width: none;
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 60px) * 16 / 9));
+}
+body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > .dmsg { min-height: 0; }
+body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > .dcup { max-height: 42vh; overflow: auto; }
+body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > .dfire { order: 9; width: 30vw; min-height: 64px; }

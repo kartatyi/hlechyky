@@ -184,3 +184,30 @@
   .dance-hud { font-size: .76em; gap: 4px; }
   .dance-chip, .dance-seat { padding: 2px 7px; }
 }
+
+/* ---- телефон лежачи (body.g-land ставить каркас) — live1: хрестовина під лівим великим пальцем, мапа
+   посередині за висотою (камера 4:3, як стоячи), праворуч — фішки, дії, статус і кнопки столу під правим.
+   Раніше мапа 600 px стояла над хрестовиною, і та лягала за край екрана. */
+body.g-land .gtable:has(> .gbody.dance-body) {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 10px; row-gap: 4px;
+  align-items: center; align-content: center; justify-items: center;
+}
+body.g-land .gtable:has(> .gbody.dance-body) > .gbody, body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-ctl { display: contents; }
+body.g-land .gtable:has(> .gbody.dance-body) > .gseats { display: none; }   /* хто за столом — видно у фішках гри */
+body.g-land .gtable:has(> .gbody.dance-body) > * , body.g-land .gtable:has(> .gbody.dance-body) > .gbody > *, body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-ctl > * { grid-column: 3; max-width: 26vw; margin: 0; }
+body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-stage {
+  grid-column: 2; grid-row: 1 / span 12; max-width: none !important;
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 64px) * 4 / 3));
+}
+body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-ctl > .dance-dirs { grid-column: 1; grid-row: 1 / span 12; max-width: none; }
+body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-ctl > .dance-figs { order: 9; }
+
+/* ---- телефон (live1): довгий натиск на керуванні не виділяє текст і не кличе лупу чи меню (iOS) ---- */
+@media (pointer: coarse) {
+  .dance-ctl, .dance-ctl * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
+/* 390 px: хрестовина й ромб фігур (152 + 16 + 176) виходили на 6 px за ліве поле картки */
+@media (pointer: coarse) and (max-width: 400px) and (min-width: 381px) {
+  .dance-ctl { gap: 10px; }
+  .dance-figs { grid-template-columns: repeat(3, 52px); }
+}
