@@ -1321,7 +1321,11 @@
       const bar = st.root.querySelector('.geobar');
       const last = bar && !bar.hidden && bar.offsetParent ? bar : map;
       const cs = getComputedStyle(document.documentElement);
-      const bars = (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + (parseFloat(cs.getPropertyValue('--mini-h')) || 0);
+      // + згорнута шторка «💬 Стіл» (fixed унизу праворуч): «Готово / Далі →» заходила під неї на 13 px
+      const dockRaw = cs.getPropertyValue('--gdock-h').trim();
+      const drawer = document.querySelector('.tchat.drawer:not(.open)');
+      const dock = dockRaw ? parseFloat(dockRaw) || 0 : drawer && drawer.getClientRects().length ? 56 : 0;
+      const bars = (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + (parseFloat(cs.getPropertyValue('--mini-h')) || 0) + dock;
       const head = document.querySelector('header');
       const top = head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
       const bottom = last.getBoundingClientRect().bottom, limit = innerHeight - bars - 8;
@@ -1825,7 +1829,8 @@
       if (phase === 'guess') {
         if (!ctx.mine) return 'Гравці думають…';
         if (st && st.readyRound === v.round) return 'Готово! Чекаємо решту…';
-        if ((st && st.pin && st.pinRound === v.round) || v.my) return 'Шпилька стоїть — зарахується й так; «Готово» — щоб не чекати';
+        // на пальці те саме вже пише підказка під мапою — у статусі лише коротко
+        if ((st && st.pin && st.pinRound === v.round) || v.my) return ctx.ui.coarse() ? 'Шпилька стоїть ✓' : 'Шпилька стоїть — зарахується й так; «Готово» — щоб не чекати';
         return 'Тицьни на мапу, де це';
       }
       if (phase === 'reveal') return 'Ось де це насправді';

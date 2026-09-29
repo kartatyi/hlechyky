@@ -640,7 +640,13 @@
       mine.hidden = true;
     }
     raceFoot(wrap, ctx, v);
-    if (fresh && me && v.phase === 'play') raceInView(wrap);
+    if (fresh && me && v.phase === 'play') {
+      raceInView(wrap);
+      // Зайшов у вже запущений раунд (F5, повернувся з лобі): каркас ще докладає шапку столу й прокручує сторінку
+      // вгору — першу спробу гасило, і клавіатура лишалась нижче екрана. Ще раз, коли все вляглось.
+      if (!st.shown) setTimeout(() => { if (root._wordle === st && wrap.isConnected) raceInView(wrap); }, 400);
+    }
+    if (v.phase) st.shown = true;
   }
 
   /// Правила до старту — під опції столу: без них новачок бачить порожню картку і не розуміє, у що сідає.
@@ -672,13 +678,22 @@
   /// починалась нижче згину, і друкувати доводилось наосліп або прокручуючи туди-сюди. Раз на раунд і лише коли
   /// низ клавіатури справді схований під нижніми вкладками: підкручуємо рівно настільки, щоб він виринув, але не
   /// далі, ніж шапка раунду (з таймером) доїде до шапки сайту.
+  /// Висота згорнутої шторки «💬 Стіл» над нижніми вкладками: вона fixed унизу праворуч і лягала на «ю» й «⌫»
+  /// (дотик відкривав балачку замість стерти літеру). Каркас кладе її в --gdock-h; поки не поклав — 56, якщо шторку видно.
+  function dockH(cs) {
+    const raw = cs.getPropertyValue('--gdock-h').trim();
+    if (raw) return parseFloat(raw) || 0;
+    const d = document.querySelector('.tchat.drawer:not(.open)');
+    return d && d.getClientRects().length ? 56 : 0;
+  }
+
   function raceInView(wrap) {
     requestAnimationFrame(() => {
       const head = wrap.querySelector('.wrhead');
       const kbd = wrap.querySelector('.wrme:not([hidden]) .gkbd');
       if (!head || !kbd || !kbd.offsetParent) return;
       const cs = getComputedStyle(document.documentElement);
-      const bars = parseFloat(cs.getPropertyValue('--tabs-h')) || 0;
+      const bars = (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + dockH(cs);
       const site = document.querySelector('header');
       const top = site ? Math.max(0, site.getBoundingClientRect().bottom) : 0;
       const over = kbd.getBoundingClientRect().bottom - (innerHeight - bars - 8);
