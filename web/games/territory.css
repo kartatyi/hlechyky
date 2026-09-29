@@ -60,3 +60,6 @@
 
 /* Своя хрестовина (pointerdown замість click): палець на ній не гортає сторінку й не виділяє текст */
 .dpad.tdp { touch-action: none; user-select: none; -webkit-user-select: none; }
+
+/* Лежачи (body.g-land): чіпи місць каркаса ховаємо — ті самі гравці з рахунком уже є в табло праворуч, а висоти обмаль. */
+body.g-land .gtable:has(> .gbody > .gterr) > .gseats { display: none; }

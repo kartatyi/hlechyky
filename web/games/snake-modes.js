@@ -816,11 +816,15 @@
         if (!ctx.mine) return 'Дивишся збоку';
         const al = f && f.al != null ? f.al : 15;
         if (!(al & (1 << ctx.seat))) return o.out;
+        // на дотиковому екрані — про свайп і кнопки, а не про клавіатуру
+        const touch = HGames.ui.coarse && HGames.ui.coarse();
+        const play = touch ? o.touch || o.play : o.play;
         if (st && st.tb) {
           const t = st.tb[ctx.seat] || 0;
-          return o.play + (t > 0 ? ' · 🚀 жени!' : t < 0 ? ' · 🚀 за ' + Math.ceil((-t * TRON_MS) / 1000) + ' с' : ' · 🚀 пробіл / Ⓐ / подвійний тап — турбо');
+          return play + (t > 0 ? ' · 🚀 жени!' : t < 0 ? ' · 🚀 за ' + Math.ceil((-t * TRON_MS) / 1000) + ' с'
+            : touch ? ' · 🚀 кнопка чи подвійний тап — турбо' : ' · 🚀 пробіл / Ⓐ / подвійний тап — турбо');
         }
-        return o.play;
+        return play;
       },
 
       unmount(root) {
@@ -840,6 +844,7 @@
     seats: ['жовтий', 'зелений'],
     hint: '{dpad} куди їхати · {a} турбо',
     play: 'Стрілки або WASD — і не наїдь на слід',
+    touch: 'Свайп по полю або стрілки — і не наїдь на слід',
     out: 'Аварія!',
     news: NEWS_TRON,
   });
@@ -849,6 +854,7 @@
     seats: ['жовтий', 'зелений', 'синій', 'рожевий'],
     hint: '{dpad} куди їхати · {a} турбо',
     play: 'Стрілки або WASD — і не наїдь на чужий слід',
+    touch: 'Свайп по полю або стрілки — і не наїдь на чужий слід',
     out: 'Аварія! Дивись, хто кого пережене',
     news: {
       v: '2026-09-29',

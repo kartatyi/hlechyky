@@ -197,3 +197,10 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
 @media (prefers-reduced-motion: reduce) {
   .vh-touch button { transition: none; }
 }
+
+/* Телефон: кнопки над полем («☠» — рівень заново, звук, «Здатись») були 20 px заввишки — під палець ≥ 40. */
+@media (pointer: coarse) {
+  button.vh-chip { min-height: 40px; min-width: 40px; padding: 6px 12px; justify-content: center; }
+}
+/* Лежачи (body.g-land): чіпи місць каркаса ховаємо — хто вогник, хто крапля, видно в рядку над полем. */
+body.g-land .gtable:has(.vh-stage) > .gseats { display: none; }

@@ -6,3 +6,10 @@
 */
 .snakeboard { max-width: min(560px, max(300px, calc((100vh - 300px) * 26 / 18))); }
 body.pad-on .snakeboard { max-width: min(560px, max(300px, calc((100vh - 350px) * 26 / 18))); }
+
+/* Телефон лежачи: нижня межа 300 px вище не зважала на висоту — поле з'їжджало під нижні вкладки. Тут поле —
+   за видимою висотою (--gfit-h від каркаса: без шапки й меню; мінус рядок столу й табло). У зануреному режимі
+   (body.g-land, я граю) розмір полотна задає каркас — його правило специфічніше. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .snakeboard { max-width: min(560px, calc((var(--gfit-h, 100dvh) - 110px) * 26 / 18)); }
+}

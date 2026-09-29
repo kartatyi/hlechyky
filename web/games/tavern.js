@@ -1592,7 +1592,7 @@
     const now = performance.now();
     const me = st.me;
     if (me && !me.alive) { refuse(st, 'Тебе вже винесли — дивись, хто кого'); return; }
-    if (myState(st) === 2) { refuse(st, 'Сидячи не розмахнешся — встань (F)'); return; }
+    if (myState(st) === 2) { refuse(st, HGames.ui.coarse() ? 'Сидячи не розмахнешся — встань 🪑' : 'Сидячи не розмахнешся — встань (F)'); return; }
     if (now - st.punchAt < PUNCH_COOL_MS + WIND_MS) { refuse(st, 'Кулак ще не відпочив'); return; }
     if (dir != null) { st.localDir = dir; st.localUntil = now + LOCAL_MS; }
     ctx.act('punch', dir == null ? {} : { dir }).then((r) => {
@@ -1805,7 +1805,10 @@
     padStrip(st);
     const cw = root.clientWidth;
     let mode = st.mode;
-    if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
+    // Телефон лежачи (body.g-land): мапа — посередині між хрестовиною й кнопками, заввишки з екран (~300 px), тож
+    // уся корчма там дрібна — беремо в'юпорт за своїм, як стоячи.
+    if (document.body.classList.contains('g-land')) mode = 'port';
+    else if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
     sizeStage(st, mode);
     if (!st.cv || mode !== st.mode) {
       st.mode = mode;
@@ -1834,13 +1837,16 @@
     const a = st.hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
     if (!a.height || !b.height) return;              // картку чи кнопки зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
+    // верх і низ видимого місця: шапка сайту, а внизу меню, міні-плеєр і згорнута шторка «💬 Стіл» (--gdock-h каркаса;
+    // у зануреному режимі g-imm їх нема — 0)
+    const fit = HGames.ui.fit ? HGames.ui.fit() : null;
     const head = document.querySelector('header');
-    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const top = (fit ? fit.top : (head ? head.getBoundingClientRect().bottom : 0)) + 4;
+    // --tabs-h — calc(58px + safe-area), parseFloat з нього дає 0; --gdock-h каркас пише числом (весь зайнятий низ)
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h')) || 64;
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
-    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const limit = (fit ? innerHeight - fit.dock : fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
     const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
     const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок стану
     if (Math.abs(dy) < 2) return;
@@ -1934,6 +1940,15 @@
       }
       st.onResize = () => fit(root, st);
       window.addEventListener('resize', st.onResize);
+      // Поворот телефона чи ⛶ (g-imm/g-land): режим камери й розмір мапи — наново, а мапа з кнопками знову в кадр.
+      if (HGames.ui.onFit) HGames.ui.onFit(root, (f) => {
+        fit(root, st);
+        const k = (f.w > f.h ? 'L' : 'P') + (f.imm ? 'i' : '');
+        if (k === st.fitKey) return;
+        const was = st.fitKey;
+        st.fitKey = k;
+        if (was) { st.fitFor = null; fitPhone(st); }
+      });
       if (window.IntersectionObserver) {
         st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; if (st.visible) wake(st); });
         st.io.observe(st.cv.el);
