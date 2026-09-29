@@ -1097,7 +1097,11 @@
     const W = Math.max(280, root.clientWidth || 320);
     const top = root.getBoundingClientRect().top;
     const vh = document.documentElement.clientHeight || window.innerHeight || 800;
-    const narrow = W < 640;
+    // Телефон лежачи (g-land від каркаса): шапки сайту й меню нема, статус і кнопки столу — колонкою праворуч
+    // (bricks.css), а кнопки під палець — обабіч своєї стіни. Тож стіна рахується від усієї висоти екрана,
+    // а ширина — за вирахуванням кнопок. Раніше клітинка виходила 12 px і кнопки лягали за край.
+    const land = document.body.classList.contains('g-land');
+    const narrow = W < 640 && !land;
     const touch = mine && coarse() && ctx.playing;
     // Унизу: на телефоні — міні-плеєр і вкладки сайту (фіксовані, стіна під ними не видна) і кнопки під палець,
     // статус і «Встати» можна догорнути; на ПК — статус і кнопки картки, щоб усе було в одному екрані.
@@ -1118,7 +1122,7 @@
       }
       under = Math.max(40, cardBelow) + 18 + chrome;
     }
-    const below = (narrow && touch ? chrome + 10 : under) + (touch ? 64 : 0) + padBar, hud = st.sprint ? 50 : 30;   // у спринті HUD вищий: великий секундомір
+    const below = land ? 14 + padBar : (narrow && touch ? chrome + 10 : under) + (touch ? 64 : 0) + padBar, hud = st.sprint ? 50 : 30;   // у спринті HUD вищий: великий секундомір
     let hAvail = Math.max(260, vh - Math.max(0, top) - below - hud - (st.fitCut || 0));
     let c;
     let kind;
@@ -1149,7 +1153,8 @@
       const extra = others.length === 0 ? 0 : others.length === 1 ? 10.8 : 11.2;
       // три чужі стіни — у два ряди, і кожен ряд має ще й підпис: своя стіна мусить лишити їм місце
       const extraH = others.length > 2 ? 2 * LBL_H + 12 - 30 : 0;
-      c = Math.floor(Math.min((W - 40) / (15.6 + extra), (hAvail - extraH) / ROWS));
+      const tw = land && touch ? 252 : 0;   // лежачи: по дві колонки кнопок 56 px ліворуч і праворуч від стіни
+      c = Math.floor(Math.min((W - 40 - tw) / (15.6 + extra), (hAvail - extraH) / ROWS));
     }
     c = Math.max(kind === 'narrow' ? 10 : 12, Math.min(34, c | 0));
     if (kind === 'wide') mini = others.length > 1 ? Math.max(6, Math.floor(c / 2)) : c;
@@ -1164,7 +1169,7 @@
       if (m3 > mini) { mini = m3; row3 = true; }
     }
     const pad = padish();
-    const sig = [kind, c, mini, row3, strips, seats.join(','), mine ? ctx.seat : -1, touch, st.sprint, pad].join('|');
+    const sig = [kind, c, mini, row3, strips, seats.join(','), mine ? ctx.seat : -1, touch, st.sprint, pad, land].join('|');
     return { kind, c, mini, mine, others, seats, touch, sig, narrow, row3, strips, pad };
   }
 
@@ -2372,6 +2377,8 @@
     window.addEventListener('blur', st.onBlur);
     st.onResize = () => { st.layout = ''; st.fitCut = 0; st.dirty = true; if (st.root && st.root.isConnected) update(st.root, st.ctx); };
     window.addEventListener('resize', st.onResize);
+    // поворот телефона: каркас ставить/знімає g-land у своєму resize — перебудовуємо вже після нього
+    if (HGames.ui.onFit) HGames.ui.onFit(root, st.onResize);
     // прихована вкладка: rAF мовчить, а стіна жити має — крок і пачки раз на 100 мс (браузер урізає до 1/с)
     st.timer = setInterval(() => {
       if (!document.hidden) return;
