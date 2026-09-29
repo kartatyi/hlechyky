@@ -316,7 +316,8 @@ public sealed class CrowdCore(Random rng)
         if (k >= 0 && CounterAt(v) == k)
         {
             v.Dir = CrowdMap.Stalls[k].Face;
-            if (_rng.Next(1000) < BotBuyMilli && Trading)
+            // гравець-бот (🤖, Owner ≥ 0) сам вирішує, чи торгуватись, — через ту саму дію, що й людина
+            if (v.Owner < 0 && _rng.Next(1000) < BotBuyMilli && Trading)
             {
                 v.Haggle = HaggleTicks - 1;     // гравець: Act між тиками, і таймер тикає вже в першому тику стояння
                 v.HaggleStall = k;
@@ -370,6 +371,31 @@ public sealed class CrowdCore(Random rng)
             if (CrowdMap.BoxFits(x, y)) return (x, y);
         }
         return (cx + _rng.Next(-TightMax, TightMax + 1), cy + _rng.Next(-TightMax, TightMax + 1));
+    }
+
+    /// <summary>
+    /// Гравець-бот (🤖) обрав, куди йти: ціль — клітинка <paramref name="cell"/> (прилавок <paramref name="stall"/>
+    /// чи -1), точка в ній — та сама <see cref="Spot"/>, що в юрми, тож і смуга, і стояння лишаються «селянськими».
+    /// </summary>
+    public void Aim(CrowdVillager v, int cell, int stall)
+    {
+        v.Target = cell;
+        v.TargetStall = stall;
+        (v.Tx, v.Ty) = Spot(cell);
+        v.Stand = 0;
+        v.Wander = 0;
+        v.WanderNext = false;
+    }
+
+    /// <summary>Гравець-бот іде просто до точки (за підозрілим): точка селянина завжди прохідна для коробки.</summary>
+    public static void AimAt(CrowdVillager v, int x, int y)
+    {
+        v.Target = CrowdMap.CellOf(x, y);
+        v.TargetStall = -1;
+        (v.Tx, v.Ty) = (x, y);
+        v.Stand = 0;
+        v.Wander = 0;
+        v.WanderNext = false;
     }
 
     /// <summary>Бот устав після падіння чи став ботом після виходу гравця: думає з чистого аркуша, недоторгованого не купує.</summary>

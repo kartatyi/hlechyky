@@ -1702,13 +1702,13 @@ public class CrowdTests(ITestOutputHelper output)
         Assert.Equal("Юрма", info.Title);
         Assert.Equal("юрму", info.Accusative);
         Assert.Equal(GameGroup.Live, info.Group);
-        Assert.Equal((2, 8), (info.MinPlayers, info.MaxPlayers));
+        Assert.Equal((1, 8), (info.MinPlayers, info.MaxPlayers));   // самому — з 🤖 ботами (без них CanStart не пустить)
         Assert.Equal(40, info.TickMs);
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.True(info.Hidden);
         Assert.False(info.Rated);
         Assert.Equal(ScoreOrder.HigherIsBetter, info.Score);
-        Assert.Equal(["rounds", "crowd"], info.Options!.Select(o => o.Key));
+        Assert.Equal(["rounds", "crowd", "botlvl"], info.Options!.Select(o => o.Key));
         var root = FindRoot();
         Assert.True(File.Exists(Path.Combine(root, "web", "games", "crowd.js")));
         Assert.True(File.Exists(Path.Combine(root, "web", "games", "crowd.css")));

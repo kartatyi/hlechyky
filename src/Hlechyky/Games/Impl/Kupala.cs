@@ -6,6 +6,8 @@ namespace Hlechyky.Games.Impl;
 public sealed class KupalaSeat
 {
     public bool Plays;
+    /// <summary>Гравець-бот (🤖): місце порожнє в каркасі, селянином керує сервер (<c>Kupala.Bot.cs</c>).</summary>
+    public bool Bot;
     /// <summary>Устав посеред партії: його селянин — уже бот, а очки лишаються в таблиці.</summary>
     public bool Out;
     public string Nick = "";
@@ -41,7 +43,7 @@ public sealed class KupalaSeat
 /// суперників ляпасом. Правила поля — у <see cref="KupalaCore"/>, тут фази, очки, дії, вид і кадр
 /// (spec: docs/games/specs/kupala.md).
 /// </summary>
-public sealed class Kupala : Game
+public sealed partial class Kupala : Game
 {
     public const string PhaseLobby = "lobby", PhaseStart = "start", PhaseGo = "go", PhaseReveal = "reveal", PhaseOver = "over";
     public const int Seats = 8;
@@ -75,14 +77,15 @@ public sealed class Kupala : Game
     };
 
     public override GameInfo Info { get; } = new(
-        "kupala", "Купальська ніч", "купальську ніч", GameGroup.Live, 2, Seats, TickMs: TickMs,
+        "kupala", "Купальська ніч", "купальську ніч", GameGroup.Live, 1, Seats, TickMs: TickMs,
         Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("folk", "Люду", [("auto", "Як на Купала"), ("small", "Жменька (16)"), ("big", "Усе село (40)")], "auto"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Ніч на Івана Купала: у темряві не видно нікого — навіть себе. Пусти три вінки на воду або вистеж друзів ляпасом. Біля вогнищ світло, решту пам'ятай напам'ять");
+        Hint: "Ніч на Івана Купала: у темряві не видно нікого — навіть себе. Пусти три вінки на воду або вистеж друзів ляпасом. Біля вогнищ світло, решту пам'ятай напам'ять. Самому — з 🤖 ботами");
 
     static readonly string[] SeatNames = ["жовтий", "зелений", "рудий", "сірий", "синій", "рожевий", "фіолетовий", "червоний"];
 
@@ -125,6 +128,7 @@ public sealed class Kupala : Game
     {
         _rounds = options.TryGetValue("rounds", out var r) && int.TryParse(r, out var n) && n is 1 or 3 or 5 ? n : 3;
         _folk = options.TryGetValue("folk", out var c) && c is "small" or "big" ? c : "auto";
+        _solo.Configure(options);
     }
 
     public int BotsForTable(int players) => _folk switch
@@ -145,13 +149,15 @@ public sealed class Kupala : Game
         _pending.Clear();
         _raw.Clear();
         _evFrame = [];
+        _bots = _solo.Active(Ctx, Seats) ? BotSeats() : [];
         var players = 0;
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            s.Plays = Ctx.Seated(i);
+            s.Bot = Array.IndexOf(_bots, i) >= 0;
+            s.Plays = Ctx.Seated(i) || s.Bot;
             s.Out = false;
-            s.Nick = Ctx.NickOf(i) ?? "";
+            s.Nick = s.Bot ? LiveBots.Name : Ctx.NickOf(i) ?? "";
             s.Total = s.ShownTotal = 0;
             if (s.Plays) players++;
         }
@@ -188,6 +194,7 @@ public sealed class Kupala : Game
             s.CompletedAt = -1;
             DealList(rng, s);
         }
+        BotsNewRound();
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
         _dirty = true;
@@ -213,8 +220,10 @@ public sealed class Kupala : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle && (!_started || _phase == PhaseOver)) return _solo.Switch(Ctx, seat, payload, Seats);
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= Seats || !_s[seat].Active) return ActResult.Fail("Тут так не ходять");
+        if (_s[seat].Bot) return ActResult.Fail("Тут грає 🤖 бот — зачекай кінця партії");
         return action switch
         {
             "move" => Move(seat, payload),
@@ -267,12 +276,18 @@ public sealed class Kupala : Game
 
     ActResult Slap(int seat, JsonElement payload)
     {
+        var id = Field(payload, "id", out var ok);
+        return SlapAt(seat, id, ok);
+    }
+
+    /// <summary>Ляпас — одна дорога і для людини, і для 🤖 бота (та сама рука, дальність і отетеріння).</summary>
+    ActResult SlapAt(int seat, int? id, bool ok = true)
+    {
         var s = _s[seat];
         if (Refusal(s) is { } no) return no;
         var me = Core.V[s.Me];
         if (me.Busy > 0) return ActResult.Fail("Руки зайняті — ти пускаєш вінок");
         if (s.SlapCool > 0) return ActResult.Fail("Рука ще не відійшла");
-        var id = Field(payload, "id", out var ok);
         if (!ok) return ActResult.Fail("Такого селянина нема");
         int target;
         if (id is { } want)
@@ -325,11 +340,16 @@ public sealed class Kupala : Game
 
     ActResult Launch(int seat, JsonElement payload)
     {
+        var want = Field(payload, "spot", out var ok);
+        return LaunchAt(seat, want, ok);
+    }
+
+    ActResult LaunchAt(int seat, int? want, bool ok = true)
+    {
         var s = _s[seat];
         if (Refusal(s) is { } no) return no;
         var me = Core.V[s.Me];
         if (me.Busy > 0) return ActResult.Fail("Ти вже пускаєш вінок");
-        var want = Field(payload, "spot", out var ok);
         if (!ok) return ActResult.Fail("Такої кладки нема");
         if (want is { } bad && (bad < 0 || bad >= KupalaMap.Spots.Length)) return ActResult.Fail("Такої кладки нема");
 
@@ -378,6 +398,7 @@ public sealed class Kupala : Game
                 HeldKeys();
                 Core.LightsTick();
                 Core.ThinkAll();
+                BotsThink();
                 Core.StepAll();
                 Core.ComputeLit(true);
                 Trail();
@@ -398,8 +419,10 @@ public sealed class Kupala : Game
                 Timers();
                 Core.LightsTick();
                 Core.ThinkAll();
+                BotsThink();
                 Core.StepAll();
                 Core.ComputeLit(Core.Sky > 0);
+                BotsSee();
                 Trail();
                 _left--;
                 EndCheck();
@@ -584,7 +607,7 @@ public sealed class Kupala : Game
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            if (!s.Active) continue;
+            if (!s.Active || _bots.Length > 0) continue;       // з 🤖 ботами — без ачівок: партія тренувальна
             if (s.Fern) Ctx.Award(i, 0, "ach:kupala-fern");
             if (s.Blind) Ctx.Award(i, 0, "ach:kupala-blind");
         }
@@ -638,9 +661,14 @@ public sealed class Kupala : Game
         var winners = top.Length == active.Count ? [] : top;
         _winners = winners;
         _dirty = true;
-        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
-        var line = string.Join(" : ", order.Select(i => $"{_s[i].Nick} {_s[i].Total}"));
+        var line = string.Join(" : ", order.Select(i => $"{BotNick(i)} {_s[i].Total}"));
+        if (_bots.Length > 0)
+        {
+            FinishWithBots(winners, line);
+            return;
+        }
+        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         Ctx.Finish(winners, winners.Length > 0 ? $"{Info.Title}: {line}" : $"{Info.Title}: {line} — нічия");
     }
 
@@ -770,6 +798,10 @@ public sealed class Kupala : Game
                 ? new { winners = w, totals = _s.Select(x => x.Total).ToArray(), why = _endWhy }
                 : null,
             turn = (int?)null,
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
+            bot = BotView(),
         };
     }
 

@@ -7,6 +7,8 @@ public sealed class FreezeSeat
 {
     /// <summary>Сидів на старті партії.</summary>
     public bool Plays;
+    /// <summary>Гравець-бот (🤖): місце порожнє в каркасі, селянином керує сервер (<c>Freeze.Bot.cs</c>).</summary>
+    public bool Bot;
     /// <summary>Устав посеред партії: його селянин — уже бот, а очки лишаються в таблиці.</summary>
     public bool Out;
     public string Nick = "";
@@ -35,7 +37,7 @@ public sealed class FreezeSeat
 /// вертає на старт. Перший, хто торкнувся глека, бере раунд. Правила лугу — у <see cref="FreezeCore"/>, тут фази, очки,
 /// дії, вид і кадр (spec: docs/games/specs/freeze.md).
 /// </summary>
-public sealed class Freeze : Game
+public sealed partial class Freeze : Game
 {
     public const string PhaseLobby = "lobby", PhaseStart = "start", PhaseGo = "go", PhaseReveal = "reveal", PhaseOver = "over";
     public const int Seats = 8;
@@ -74,15 +76,16 @@ public sealed class Freeze : Game
     };
 
     public override GameInfo Info { get; } = new(
-        "freeze", "Замри!", "«Замри!»", GameGroup.Live, 2, Seats, TickMs: TickMs,
+        "freeze", "Замри!", "«Замри!»", GameGroup.Live, 1, Seats, TickMs: TickMs,
         Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("crowd", "Селян", [("auto", "Як на лузі"), ("small", "Жменька (14)"), ("big", "Ціле село (40)")], "auto"),
             new GameOption("mode", "Гра", [("solo", "Кожен за себе"), ("relay", "🏺 Естафета: дві команди")], "solo"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Баба Параска співає — іди до глека. Обернулась і крикнула «Замри!» — стій, як укопаний. Ти — один із юрми, і ніхто не знає, хто з селян живий");
+        Hint: "Баба Параска співає — іди до глека. Обернулась і крикнула «Замри!» — стій, як укопаний. Ти — один із юрми, і ніхто не знає, хто з селян живий. Самому — з 🤖 ботами");
 
     static readonly string[] SeatNames = ["жовтий", "зелений", "рудий", "сірий", "синій", "рожевий", "фіолетовий", "червоний"];
 
@@ -127,6 +130,7 @@ public sealed class Freeze : Game
         _rounds = options.TryGetValue("rounds", out var r) && int.TryParse(r, out var n) && n is 1 or 3 or 5 ? n : 3;
         _crowd = options.TryGetValue("crowd", out var c) && c is "small" or "big" ? c : "auto";
         _relay = options.TryGetValue("mode", out var m) && m == "relay";
+        _solo.Configure(options);
     }
 
     bool _relay;
@@ -172,13 +176,15 @@ public sealed class Freeze : Game
         _reveal = null;
         _pending.Clear();
         _evFrame = [];
+        _bots = _solo.Active(Ctx, Seats) ? BotSeats() : [];
         var players = 0;
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            s.Plays = Ctx.Seated(i);
+            s.Bot = Array.IndexOf(_bots, i) >= 0;
+            s.Plays = Ctx.Seated(i) || s.Bot;
             s.Out = false;
-            s.Nick = Ctx.NickOf(i) ?? "";
+            s.Nick = s.Bot ? LiveBots.Name : Ctx.NickOf(i) ?? "";
             s.Total = 0;
             if (s.Plays) players++;
         }
@@ -211,6 +217,7 @@ public sealed class Freeze : Game
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
         Array.Clear(_teamPts);
+        BotsNewRound();
         _dirty = true;
     }
 
@@ -220,8 +227,10 @@ public sealed class Freeze : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle && (!_started || _phase == PhaseOver)) return _solo.Switch(Ctx, seat, payload, Seats);
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= Seats || !_s[seat].Active) return ActResult.Fail("Тут так не ходять");
+        if (_s[seat].Bot) return ActResult.Fail("Тут грає 🤖 бот — зачекай кінця партії");
         return action switch
         {
             "move" => Move(seat, payload),
@@ -266,6 +275,13 @@ public sealed class Freeze : Game
 
     ActResult Push(int seat, JsonElement payload)
     {
+        var id = Field(payload, "id", out var ok);
+        return PushAt(seat, id, ok);
+    }
+
+    /// <summary>Штурхан — одна дорога і для людини, і для 🤖 бота (ті самі руки, дальність і отетеріння).</summary>
+    ActResult PushAt(int seat, int? id, bool ok = true)
+    {
         if (_phase == PhaseStart) return ActResult.Fail("Зачекай, Баба ще не заспівала");
         if (_phase != PhaseGo) return ActResult.Fail("Раунд скінчився");
         var s = _s[seat];
@@ -276,7 +292,6 @@ public sealed class Freeze : Game
         if (me.Dazed > 0) return ActResult.Fail("Ти ще отетерілий");
         if (me.PushCool > 0) return ActResult.Fail("Руки ще не відійшли");
 
-        var id = Field(payload, "id", out var ok);
         if (!ok) return ActResult.Fail("Такого селянина нема");
         int target;
         if (id is { } want)
@@ -331,7 +346,9 @@ public sealed class Freeze : Game
                 _clock++;
                 HeldKeys();
                 var babaWas = Core.Baba;
+                BotsThink();
                 Core.TickGo();
+                BotsSee();
                 foreach (var e in Core.Ev)
                     if (e[0] == 2 && Core.V[e[1]].Owner >= 0) _s[Core.V[e[1]].Owner].Caught++;
                 Trail();
@@ -429,8 +446,10 @@ public sealed class Freeze : Game
         {
             // «Під самим носом»: дійшов, коли Баба вже кричала «Замри!» (благодать)
             var bold = babaWas == FreezeCore.Turn || Core.Baba == FreezeCore.Turn;
+            // з 🤖 ботами — без ачівок: партія тренувальна
             foreach (var w in jug)
             {
+                if (_bots.Length > 0) break;
                 if (bold) Ctx.Award(w, 0, "ach:freeze-bold");
                 if (_s[w].Caught == 0) Ctx.Award(w, 0, "ach:freeze-clean");
             }
@@ -557,9 +576,14 @@ public sealed class Freeze : Game
         var winners = top.Length == active.Count ? [] : top;
         _winners = winners;
         _dirty = true;
-        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
-        var line = string.Join(" : ", order.Select(i => $"{_s[i].Nick} {_s[i].Total}"));
+        var line = string.Join(" : ", order.Select(i => $"{BotNick(i)} {_s[i].Total}"));
+        if (_bots.Length > 0)
+        {
+            FinishWithBots(winners, $"«{Info.Title}»: {line}", line);
+            return;
+        }
+        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         Ctx.Finish(winners, winners.Length > 0 ? $"«{Info.Title}»: {line}" : $"«{Info.Title}»: {line} — нічия");
     }
 
@@ -575,10 +599,15 @@ public sealed class Freeze : Game
         var winners = team < 0 ? [] : active.Where(i => _s[i].Team == team).ToArray();
         _winners = winners;
         _dirty = true;
-        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         string Side(int t) => $"{TeamNames[t]} ({string.Join(", ", active.Where(i => _s[i].Team == t).Select(i => _s[i].Nick))})";
         var first = team < 0 ? 0 : team;
         var line = $"«{Info.Title}» естафета: {Side(first)} {_teamRounds[first]} : {_teamRounds[1 - first]} {Side(1 - first)}";
+        if (_bots.Length > 0)
+        {
+            FinishWithBots(winners, line, $"{Side(first)} {_teamRounds[first]} : {_teamRounds[1 - first]} {Side(1 - first)}");
+            return;
+        }
+        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         Ctx.Finish(winners, team < 0 ? line + " — нічия" : line);
     }
 
@@ -717,6 +746,10 @@ public sealed class Freeze : Game
                 }).ToArray(),
             },
             turn = (int?)null,
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
+            bot = BotView(),
         };
     }
 
