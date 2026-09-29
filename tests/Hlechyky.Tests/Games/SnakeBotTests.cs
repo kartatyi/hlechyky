@@ -134,6 +134,7 @@ public class SnakeBotTests(ITestOutputHelper output)
             if (h.Room.Result is not { Winners: [0] } r) continue;
             Assert.Equal("🏆 Оля — перемога над легким ботом, 1:0", r.Verdict);
             Assert.Contains("без нагород", r.Text);
+            AssertNoRewards("snake", Assert.Single(h.Finished));   // і перемога над ботом Ело не рушить
             return;
         }
         Assert.Fail("за шість партій манекен так і не переміг легкого бота");
@@ -171,16 +172,24 @@ public class SnakeBotTests(ITestOutputHelper output)
     [Theory]
     [InlineData("snake")]
     [InlineData("tron")]
-    public void A_game_with_the_bot_moves_no_rating(string game)
+    [InlineData("snake-party")]
+    public void A_game_with_the_bot_moves_no_rating_and_pays_nothing(string game)
     {
         var h = WithBot(game);
         h.Tick(400);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        AssertNoRewards(game, Assert.Single(h.Finished));
+    }
+
+    /// <summary>Подія кінця партії через справжні Rewards: ні Ело, ні черепків, ні ачівок.</summary>
+    static void AssertNoRewards(string game, RoomFinishedEvent e)
+    {
         using var rig = new EconomyRig();
-        rig.Events.Raise(Assert.Single(h.Finished));
+        rig.Events.Raise(e);
         var r = rig.Ratings.Of("Оля", game);
         Assert.Equal(1000, r.Elo);
         Assert.Equal(0, r.Games);
+        Assert.Equal(0, rig.Paid("Оля", ""));
     }
 
     [Fact]
