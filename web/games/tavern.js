@@ -1592,7 +1592,7 @@
     const now = performance.now();
     const me = st.me;
     if (me && !me.alive) { refuse(st, 'Тебе вже винесли — дивись, хто кого'); return; }
-    if (myState(st) === 2) { refuse(st, 'Сидячи не розмахнешся — встань (F)'); return; }
+    if (myState(st) === 2) { refuse(st, HGames.ui.coarse() ? 'Сидячи не розмахнешся — встань 🪑' : 'Сидячи не розмахнешся — встань (F)'); return; }
     if (now - st.punchAt < PUNCH_COOL_MS + WIND_MS) { refuse(st, 'Кулак ще не відпочив'); return; }
     if (dir != null) { st.localDir = dir; st.localUntil = now + LOCAL_MS; }
     ctx.act('punch', dir == null ? {} : { dir }).then((r) => {
@@ -1805,7 +1805,10 @@
     padStrip(st);
     const cw = root.clientWidth;
     let mode = st.mode;
-    if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
+    // Телефон лежачи (body.g-land): мапа — посередині між хрестовиною й кнопками, заввишки з екран (~300 px), тож
+    // уся корчма там дрібна — беремо в'юпорт за своїм, як стоячи.
+    if (document.body.classList.contains('g-land')) mode = 'port';
+    else if (cw) mode = cw < 600 ? 'port' : cw > 640 ? 'full' : st.mode;
     sizeStage(st, mode);
     if (!st.cv || mode !== st.mode) {
       st.mode = mode;
@@ -1936,6 +1939,15 @@
       }
       st.onResize = () => fit(root, st);
       window.addEventListener('resize', st.onResize);
+      // Поворот телефона чи ⛶ (g-imm/g-land): режим камери й розмір мапи — наново, а мапа з кнопками знову в кадр.
+      if (HGames.ui.onFit) HGames.ui.onFit(root, (f) => {
+        fit(root, st);
+        const k = (f.w > f.h ? 'L' : 'P') + (f.imm ? 'i' : '');
+        if (k === st.fitKey) return;
+        const was = st.fitKey;
+        st.fitKey = k;
+        if (was) { st.fitFor = null; fitPhone(st); }
+      });
       if (window.IntersectionObserver) {
         st.io = new IntersectionObserver((es) => { for (const e of es) st.visible = e.isIntersecting; if (st.visible) wake(st); });
         st.io.observe(st.cv.el);

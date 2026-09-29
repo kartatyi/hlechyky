@@ -125,7 +125,7 @@
 @media (pointer: coarse) {
   .tavern-pad {
     display: flex; gap: 14px; align-items: center; justify-content: center; margin-top: 2px;
-    touch-action: none; user-select: none; -webkit-user-select: none;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   }
   .tavern-dirs {
     display: grid; grid-template-columns: repeat(3, 50px); grid-template-rows: repeat(3, 50px); gap: 4px;
@@ -155,7 +155,38 @@
   .tavern-pad { gap: 10px; }
 }
 @media (max-width: 480px) {
-  .tavern-hud { font-size: .76em; gap: 4px; }
+  /* ≥ 12 px на телефоні: при .76em чипи «Раунд», ❤ були по 10 px, а «Кухлі:» — 8,6 */
+  .tavern-hud { font-size: .86em; gap: 4px; }
+  .tavern-hud small { font-size: .9em; }
+  .tavern-hud .tavern-chips { font-size: 1em; }   /* display: contents, але розмір шрифту дітям передає: ще ×.82 */
   .tavern-chip, .tavern-seat { padding: 2px 7px; }
   .tavern-news { font-size: .78em; }
 }
+
+/* ---- телефон лежачи (body.g-land ставить каркас): хрестовина ліворуч, мапа посередині за висотою екрана,
+   👊 🍺 🪑 праворуч — обидва великі пальці на своїх кнопках, мапа між ними. Над хрестовиною — годинник і корчмар,
+   над кнопками — хто живий. Чіпи місць каркаса ховаємо: ті самі гравці — у .tavern-seats праворуч. ---- */
+body.g-land .gtable:has(> .gbody.tavern-body) > .gseats { display: none; }
+/* «Встати» — у рядок статусу, праворуч: під мапою йому місця нема */
+body.g-land .gtable:has(> .gbody.tavern-body) { display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 10px; row-gap: 4px; align-items: center; }
+body.g-land .gtable:has(> .gbody.tavern-body) > * { grid-column: 1 / -1; }
+body.g-land .gtable:has(> .gbody.tavern-body) > .gstatus { grid-column: 1; grid-row: 1; }
+body.g-land .gtable:has(> .gbody.tavern-body) > .gbtns { grid-column: 2; grid-row: 1; margin: 0; }
+body.g-land .gbody.tavern-body {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; grid-template-rows: auto 1fr auto;
+  column-gap: 12px; row-gap: 6px; align-items: center; min-height: 0;
+}
+body.g-land .tavern-body > .tavern-stage {
+  grid-column: 2; grid-row: 1 / span 3; justify-self: center; width: 100%;
+  max-width: calc((var(--gfit-h, 100dvh) - 120px) * 4 / 3);
+}
+body.g-land .tavern-body > .tavern-hud,
+body.g-land .tavern-body > .tavern-seats {
+  display: flex; flex-wrap: wrap; justify-content: flex-start; align-self: start; max-width: 168px; font-size: .8em; gap: 4px;
+}
+body.g-land .tavern-body > .tavern-hud { grid-column: 1; grid-row: 1; }
+body.g-land .tavern-body > .tavern-seats { grid-column: 3; grid-row: 1; }
+body.g-land .tavern-body > .tavern-pad { display: contents; }
+body.g-land .tavern-body > .tavern-pad > .tavern-dirs { grid-column: 1; grid-row: 2 / span 2; align-self: end; }
+body.g-land .tavern-body > .tavern-pad > .tavern-acts { grid-column: 3; grid-row: 2 / span 2; align-self: end; justify-self: end; }
+body.g-land .tavern-body > .tavern-sum { grid-column: 1 / -1; }
