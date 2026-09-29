@@ -1075,6 +1075,8 @@ public sealed class Pong : Game
             target = Target,
             bot = lobby ? (BotSeat() is var b && b >= 0 ? b : (int?)null) : _bot >= 0 ? _bot : null,
             botWanted = _botWanted,
+            // кнопку «🤖 + бот» малює core.js (спільна для живих ігор, LiveBots.cs)
+            botOffer = _botWanted || SeatedCount == 1,
             turn = (int?)null,   // ходів тут нема, але каркас питає це поле в кожної гри
             frame = Shot(),      // щоб картка намалювала поле ще до першого кадру
         };

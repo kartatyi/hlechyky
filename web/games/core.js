@@ -1781,6 +1781,8 @@
     ctx.css = cssVar;
     ctx.seatName = (i) => seatNameOf(rv, i);
     ctx.nickOf = (i) => nickAt(room, i);
+    // Ім'я на місці: людина або бот гри (SeatBot, «🤖 бот»), — для підписів на полі, де nickOf бота не знає.
+    ctx.nameOf = (i) => nickAt(room, i) || botAt(room, i);
     ctx.act = (action, payload) => call('Act', room.id, action, payload === undefined ? null : payload);
     ctx.input = (action, payload) => send('Input', room.id, action, payload === undefined ? null : payload);
     // Повний вид (Game.Snapshot) ще раз, лише мені — коли в легкому виді розсилки бракує того, чого модуль не має
@@ -1860,6 +1862,12 @@
       // Стіл, що стартує з руки господаря: коли людей уже досить, «Чекаємо, хто підсяде» вводило в оману —
       // господар сидів і чекав, хоча міг тиснути «Почати».
       const g = gameOf(r.game) || {};
+      // Сам за столом гри з ботом: без «🤖 + бот» партія не почнеться (LiveBots.AloneText) — кажемо це одразу.
+      if (rv.view && rv.view.botOffer && takenSeats(r) === 1) {
+        if (!sameNick(r.host, me.nick)) return 'Чекаємо, поки ' + (r.host || 'господар') + ' почне';
+        return rv.view.botWanted ? 'Бот сидить навпроти — тисни «Почати». Без нагород'
+          : 'Сам за столом: поклич «🤖 + бот» або зачекай друга';
+      }
       if (g.start === 'byHost' && takenSeats(r) >= r.minPlayers) {
         return sameNick(r.host, me.nick) ? 'Можна рушати: тисни «Почати»'
           + (freeSeat(r) >= 0 ? ' або зачекай ще когось' : '') : 'Чекаємо, поки ' + (r.host || 'господар') + ' почне';
@@ -1869,6 +1877,12 @@
     const t = turnOf(rv);
     if (t != null) return t === rv.seat ? 'Твій хід' : 'Ходить ' + (nickAt(r, t) || botAt(r, t) || seatNameOf(rv, t));
     return rv.seat == null ? 'Дивишся збоку' : '';
+  }
+
+  /// Кнопка «🤖 + бот»: господар, сидить, партія не йде, а гра пропонує бота (сам за столом чи бота вже кликали).
+  function botOffered(rv) {
+    const r = rv.room, v = rv.view;
+    return !!(v && v.botOffer) && rv.seat != null && r.status !== 'playing' && sameNick(r.host, me.nick);
   }
 
   function btnsHtml(rv) {
@@ -1887,6 +1901,9 @@
     if (rv.seat != null && r.status === 'lobby' && sameNick(r.host, me.nick) && (gameOf(r.game) || {}).start === 'byHost'
       && takenSeats(r) >= r.minPlayers)
       out.push('<button class="primary" data-do="StartRoom">Почати</button>');
+    // «🤖 + бот» живих ігор (LiveBots.cs): господар сам за столом кличе суперника; гра каже botOffer у виді.
+    if (botOffered(rv))
+      out.push('<button class="ghost" data-bot="1">' + (rv.view.botWanted ? '🤖 Прогнати бота' : '🤖 + бот') + '</button>');
     if (rv.seat != null) out.push('<button class="ghost" data-do="LeaveRoom">' + (solo ? 'Закрити' : 'Встати') + '</button>');
     // сісти нема куди (або сидиш за іншим столом) — хоч скажемо, чому кнопок нема
     else if (!solo && !canSit) out.push('<span class="muted small">Дивлюсь збоку</span>');
@@ -1913,7 +1930,8 @@
     if (!mod) loadGame(rv.room.game);   // лінивий вантаж (п. 241): модуль приїде — register() перемалює картку
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
-      rv.room.options, rv.room.result, rv.room.evening, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod]);
+      rv.room.options, rv.room.result, rv.room.evening, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
+      botOffered(rv), !!(rv.view && rv.view.botWanted)]);
     const roomChanged = sig !== card.sig;
     if (roomChanged) {
       card.sig = sig;
@@ -1932,6 +1950,10 @@
           }
         });
       });
+      card.btns.querySelectorAll('[data-bot]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, '…', () => {
+        const v = views[id] && views[id].view;
+        return call('Act', id, 'bot', { on: !(v && v.botWanted) });
+      }));
       card.el.classList.toggle('mine', rv.seat != null);
     }
 
