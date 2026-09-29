@@ -164,6 +164,7 @@ public sealed class HockeyCore(Random rng)
         Puck = new ArenaBody(Mid, TableH / 2, PuckR, 1);
         _seenN = 0;
         _botX = double.NaN;
+        _botKey = -1;
         Place();
     }
 
@@ -604,31 +605,54 @@ public sealed class HockeyCore(Random rng)
         Puck = new ArenaBody(Mid, TableH / 2, PuckR, 1) { Vx = dir * KickSpeed * Math.Cos(a), Vy = KickSpeed * Math.Sin(a) };
         Idle = 0;
     }
-    // ---------- бот-напарник (прохід №3, п. 180) ----------
+    // ---------- бот: напарник утрьох (прохід №3, п. 180) і суперник соло (30.09) ----------
 
-    /// <summary>Бот бачить шайбу з запізненням на три тики (120 мс) — як людина, а не як сервер.</summary>
+    /// <summary>Рівень бота — опція столу <see cref="LiveBots.LevelOption"/>; діє і на напарника, і на суперника.</summary>
+    public LiveBots.Level BotLevel { get; set; } = LiveBots.Level.Normal;
+
+    /// <summary>Звичайний бот бачить шайбу з запізненням на три тики (120 мс) — як людина, а не як сервер.</summary>
     public const int BotDelay = 3;
-    /// <summary>Як швидко бот переставляє свою ціль: 520/с у воротах, 760/с на замаху.</summary>
+    /// <summary>Як швидко звичайний бот переставляє свою ціль: 520/с у воротах, 760/с на замаху.</summary>
     public const double BotSpeed = 520, BotStrike = 760;
-    readonly double[] _seenX = new double[BotDelay + 2], _seenY = new double[BotDelay + 2];
+
+    // Таблиці рівнів (легкий, звичайний, сильний). Звичайний — рівно той бот, що був напарником до рівнів.
+    /// <summary>Запізнення погляду, тиків: 200 / 120 / 40 мс.</summary>
+    static readonly int[] BotDelays = [5, BotDelay, 1];
+    static readonly double[] BotSpeeds = [360, BotSpeed, 700], BotStrikes = [520, BotStrike, 900];
+    /// <summary>Похибка перехоплення (±, своя на кожен підліт): легкий стає «десь туди», решті вистачає запізнення.</summary>
+    static readonly double[] BotMiss = [16, 0, 0];
+    /// <summary>Розкид прицілу удару по висоті воріт (±).</summary>
+    static readonly double[] BotAimSpread = [26, 14, 7];
+    /// <summary>До якої швидкості шайби на своїй половині бот іде бити, а не стоїть у воротах.</summary>
+    static readonly double[] BotAttack = [200, 320, 420];
+
+    /// <summary>Буфер погляду: вистачає на найбільше запізнення з запасом.</summary>
+    const int SeenLen = 8;
+    readonly double[] _seenX = new double[SeenLen], _seenY = new double[SeenLen];
     int _seenN;
     double _botX = double.NaN, _botY;
+    /// <summary>Похибки бота на цей підліт: розіграш і номер удару, коли їх кинуто, похибка ловлі й прицілу, «через борт».</summary>
+    long _botKey = -1;
+    double _botMiss, _botAim;
+    bool _botBank;
 
     /// <summary>
-    /// Один тик бота на місці <paramref name="seat"/>: простий, але не дурний воротар. Стоїть перед своїми воротами
-    /// навпроти шайби; шайба летить у ворота — стає на її шлях (з відбоями від бортів); повільна шайба на своїй половині,
-    /// а людина-напарник не ближча — замах у бік чужих воріт. Бачить із запізненням і трохи маже — йому можна забити.
+    /// Один тик бота на місці <paramref name="seat"/>: простий, але не дурний воротар своєї команди. Стоїть перед
+    /// своїми воротами навпроти шайби; шайба летить у ворота — стає на її шлях (легкий — без відбоїв від бортів);
+    /// повільна шайба на своїй половині, а людина-напарник не ближча — замах у бік чужих воріт (сильний, коли пряму
+    /// закрила чужа біта, б'є через борт). Бачить із запізненням і трохи маже — йому можна забити. Ввід — той самий
+    /// <see cref="Aim"/>, що й у людини: біта їздить з тією самою швидкістю й у тій самій половині.
     /// </summary>
     public void BotThink(int seat)
     {
         if (seat is < 0 or >= Seats || !Plays[seat]) return;
-        var n = _seenX.Length;
-        _seenX[_seenN % n] = Puck.X;
-        _seenY[_seenN % n] = Puck.Y;
+        var lvl = LiveBots.Index(BotLevel);
+        _seenX[_seenN % SeenLen] = Puck.X;
+        _seenY[_seenN % SeenLen] = Puck.Y;
         _seenN++;
-        var back = Math.Min(_seenN - 1, BotDelay);
-        var i0 = (_seenN - 1 - back) % n;
-        var i1 = (_seenN - back) % n;
+        var back = Math.Min(_seenN - 1, BotDelays[lvl]);
+        var i0 = (_seenN - 1 - back) % SeenLen;
+        var i1 = (_seenN - back) % SeenLen;
         const double dt = TickMs / 1000.0;
         double px = _seenX[i0], py = _seenY[i0];
         double vx = back > 0 ? (_seenX[i1] - px) / dt : 0, vy = back > 0 ? (_seenY[i1] - py) / dt : 0;
@@ -638,25 +662,37 @@ public sealed class HockeyCore(Random rng)
         var line = gx + dir * 20;
         ref var me = ref Pads[seat];
         if (double.IsNaN(_botX)) (_botX, _botY) = (me.X, me.Y);
+        // новий підліт (розіграш чи удар) — нові похибки: у межах одного підльоту бот не тремтить
+        var key = (long)N * 100000 + Rally;
+        if (key != _botKey)
+        {
+            _botKey = key;
+            _botMiss = (rng.NextDouble() * 2 - 1) * BotMiss[lvl];
+            _botAim = (rng.NextDouble() * 2 - 1) * BotAimSpread[lvl];
+            _botBank = lvl == 2 && rng.NextDouble() < 0.25;
+        }
         // за замовчуванням — воротар: між шайбою й центром воріт
         double wx = line, wy = Math.Clamp(TableH / 2 + (py - TableH / 2) * 0.6, GoalLo - 6, GoalHi + 6);
-        var speed = BotSpeed;
+        var speed = BotSpeeds[lvl];
         var live = StartIn == 0 && ServeIn == 0;
         var ownHalf = team == 0 ? px < Mid : px > Mid;
         if (live && vx * dir < -40)
         {
-            // шайба летить до нас — де вона перетне лінію воріт (з відбоями від бортів)
+            // шайба летить до нас — де вона перетне лінію воріт (легкий не рахує відбоїв від бортів)
             var t = (line - px) / vx;
             if (t is > 0 and < 1.2)
             {
                 var y = py + vy * t;
                 const double span = TableH - 2 * PuckR;
-                var m = ((y - PuckR) % (2 * span) + 2 * span) % (2 * span);
-                y = PuckR + (m <= span ? m : 2 * span - m);
-                wy = Math.Clamp(y, GoalLo - 10, GoalHi + 10);
+                if (lvl > 0)
+                {
+                    var m = ((y - PuckR) % (2 * span) + 2 * span) % (2 * span);
+                    y = PuckR + (m <= span ? m : 2 * span - m);
+                }
+                wy = Math.Clamp(y + _botMiss, GoalLo - 10, GoalHi + 10);
             }
         }
-        else if (live && ownHalf && Math.Abs(px - gx) > PadR + PuckR && Puck.Speed < 320)
+        else if (live && ownHalf && Math.Abs(px - gx) > PadR + PuckR && Puck.Speed < BotAttack[lvl])
         {
             // напарник-людина ближче до шайби — хай б'є він, бот стереже ворота
             var mine = Dist2(me.X, me.Y, px, py);
@@ -667,7 +703,10 @@ public sealed class HockeyCore(Random rng)
             {
                 // замах: ціль — трохи за шайбою на лінії до чужих воріт, а коли вже поруч — крізь шайбу
                 var ox = team == 0 ? W : 0.0;
-                var aimY = TableH / 2 + (rng.NextDouble() * 2 - 1) * 14;
+                var aimY = TableH / 2 + _botAim;
+                // сильний: пряму закрила чужа біта (або просто захотілось) — у дзеркальні ворота за ближчим бортом
+                if (lvl == 2 && (_botBank || Blocked(team, px, py, ox, aimY)))
+                    aimY = py < TableH / 2 ? 2 * PuckR - aimY : 2 * (TableH - PuckR) - aimY;
                 double ux = ox - px, uy = aimY - py;
                 var ul = Math.Sqrt(ux * ux + uy * uy);
                 ux /= ul;
@@ -676,7 +715,7 @@ public sealed class HockeyCore(Random rng)
                 var reach = mine < rr * rr ? 12 : -(PadR + PuckR + 3);
                 wx = px + ux * reach;
                 wy = py + uy * reach;
-                speed = BotStrike;
+                speed = BotStrikes[lvl];
             }
         }
         // ціль бота повзе до бажаної не швидше за speed — без ривків і телепортів
@@ -694,6 +733,21 @@ public sealed class HockeyCore(Random rng)
         var bvy = (ny - _botY) / dt;
         (_botX, _botY) = (nx, ny);
         Aim(seat, nx, ny, bvx, bvy);
+    }
+
+    /// <summary>Чи стоїть біта іншої команди на прямій від шайби до цілі (ближче за біту з шайбою разом).</summary>
+    bool Blocked(int team, double px, double py, double tx, double ty)
+    {
+        double ux = tx - px, uy = ty - py;
+        var l2 = ux * ux + uy * uy;
+        if (l2 < 1) return false;
+        for (var j = 0; j < Seats; j++)
+        {
+            if (!Plays[j] || Team[j] == team) continue;
+            var k = Math.Clamp(((Pads[j].X - px) * ux + (Pads[j].Y - py) * uy) / l2, 0, 1);
+            if (Dist2(Pads[j].X, Pads[j].Y, px + ux * k, py + uy * k) < (PadR + PuckR + 2) * (PadR + PuckR + 2)) return true;
+        }
+        return false;
     }
 
     static double Dist2(double ax, double ay, double bx, double by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);

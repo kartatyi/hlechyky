@@ -888,12 +888,14 @@ public class HockeyTests(ITestOutputHelper output)
     {
         var h = Table(2);
         var info = h.Room.Info;
-        Assert.Equal(("hockey", GameGroup.Live, 2, 4, 40, StartMode.ByHost, false, false),
+        // сам за столом можна з «🤖 + бот» (30.09), тож MinPlayers = 1, а без бота старт не пускає CanStart
+        Assert.Equal(("hockey", GameGroup.Live, 1, 4, 40, StartMode.ByHost, false, false),
             (info.Id, info.Group, info.MinPlayers, info.MaxPlayers, info.TickMs, info.Start, info.Rated, info.Hidden));
         Assert.Equal("7", info.Options![0].Default);
         var one = new RoomHarness("hockey");
         one.Join("Оля");
         Assert.False(one.Start().Ok);
+        Assert.Equal(LiveBots.AloneText, one.Reply.Message);
     }
 
     [Fact] // 43
