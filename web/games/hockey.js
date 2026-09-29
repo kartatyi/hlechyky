@@ -1133,7 +1133,7 @@
     const hd = document.querySelector('header');
     const top = hd && getComputedStyle(hd).position === 'sticky' ? hd.getBoundingClientRect().height : 0;
     const vv = window.visualViewport;
-    return { w: vv ? vv.width : window.innerWidth, h: vv ? vv.height : window.innerHeight, top, dock: n('--tabs-h') + n('--mini-h') };
+    return { w: vv ? vv.width : window.innerWidth, h: vv ? vv.height : window.innerHeight, top, dock: n('--gdock-h') || 64 };   // --tabs-h — calc(58px + safe-area), parseFloat дає NaN
   }
 
   /// Телефон: на старті партії підкручуємо сторінку так, щоб стіл цілком став між шапкою й нижніми панелями.
