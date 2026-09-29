@@ -123,7 +123,7 @@ public sealed class Duel : Game
     {
         if (action == LiveBots.Toggle)
             return Playing ? ActResult.Fail("Дуель уже йде") : _solo.Switch(Ctx, seat, payload, 2);
-        if (!Playing) return ActResult.Fail(_started ? "Дуель зіграно, тисни «Ану ще раз»" : "Дуель ще не почалась");
+        if (!Playing) return ActResult.Fail(_started ? "Дуель зіграно, тисни «Ану ще раз»" : "Чекаємо на гравців");
         if (action == "pong") { Kit.Pong(seat, payload); return ActResult.Done; }
         if (action != "shoot") return ActResult.Fail("Тут так не ходять");
         if (seat == _bot) return ActResult.Fail("Ти тут не граєш");

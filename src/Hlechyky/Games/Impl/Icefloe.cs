@@ -43,9 +43,25 @@ public sealed class Icefloe : Game
     static readonly string[] Names = ["синій", "рудий", "зелений", "жовтий", "бузковий", "м’ятний", "рожевий", "сірий"];
 
     public override GameInfo Info { get; } = new(
-        "icefloe", "Крижина", "крижину", GameGroup.Live, 2, IcefloeCore.Seats, TickMs: IcefloeCore.TickMs,
-        Start: StartMode.ByHost, Options: [WinsOption, TeamsOption],
-        Hint: "Сумо на кризі: ковзай, штовхай, не шубовсни. Крижина тане й меншає, а хто випав — кидає сніжки з берега");
+        "icefloe", "Крижина", "крижину", GameGroup.Live, 1, IcefloeCore.Seats, TickMs: IcefloeCore.TickMs,
+        Start: StartMode.ByHost, Options: [WinsOption, TeamsOption, LiveBots.LevelOption],
+        Hint: "Сумо на кризі: ковзай, штовхай, не шубовсни. Крижина тане й меншає, а хто випав — кидає сніжки з берега. Самому — з 🤖 ботами");
+
+    /// <summary>
+    /// Скільки ботів, коли людина сама: двоє. Сумо на трьох — не дуель «хто кого»: боти штовхають і одне одного,
+    /// можна вичікувати, поки двоє зчепились, а хто шубовснув — кидає сніжки з берега, тож і вибулий бот грає далі.
+    /// </summary>
+    public const int SoloBots = 2;
+    readonly SoloBot _solo = new();
+    /// <summary>Місця ботів у цій партії (порожньо — партія людська) і їхні «голови».</summary>
+    int[] _bots = [];
+    readonly IcefloeBot?[] _brain = new IcefloeBot?[IcefloeCore.Seats];
+    /// <summary>Партію почали з ботами: ні ачівок, ні серії — навіть якщо на місце бота хтось сів.</summary>
+    bool _botGame;
+    /// <summary>Готові payload-и для <see cref="Act"/> від бота: сектор −1..15 — без алокацій на тик.</summary>
+    static readonly JsonElement[] SectorEl = [.. Enumerable.Range(-1, 17).Select(a => JsonSerializer.SerializeToElement(a))];
+    public IReadOnlyList<int> Bots => _bots;
+    public bool BotGame => _botGame;
 
     IcefloeCore? _core;
     bool _started;
@@ -90,6 +106,31 @@ public sealed class Icefloe : Game
 
     bool[] Seated() => [.. Enumerable.Range(0, IcefloeCore.Seats).Select(Ctx.Seated)];
 
+    /// <summary>Куди сядуть боти: перші вільні місця, якщо їх кликали й людина одна.</summary>
+    int[] BotSeats() => _solo.Active(Ctx, IcefloeCore.Seats)
+        ? [.. Enumerable.Range(0, IcefloeCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+
+    /// <summary>Хто на кризі: люди за столом плюс боти (у лобі — де сядуть).</summary>
+    bool[] WithBots(int[] bots)
+    {
+        var r = Seated();
+        foreach (var s in bots) r[s] = true;
+        return r;
+    }
+
+    bool IsBot(int seat) => Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat);
+
+    /// <summary>
+    /// Двоє ботів з однаковим ім'ям плутались би в рахунку — додаємо колір місця: «🤖 бот рудий». У лобі — ті, що сядуть
+    /// (їхні тіла вже стоять на прев'ю-кризі), у партії й після неї — ті, що грали.
+    /// </summary>
+    public override string? SeatBot(int seat) =>
+        !Ctx.Seated(seat) && Array.IndexOf(_started ? _bots : BotSeats(), seat) >= 0 ? $"{LiveBots.Name} {SeatName(seat)}" : null;
+
+    string Name(int seat) => SeatBot(seat) ?? Ctx.NickOf(seat) ?? SeatName(seat);
+
+    public override bool ActsInLobby => true;
+
     /// <summary>
     /// Стіл чекає старту: партії ще не було, або дограний стіл відкрив новий гравець (сів той, кого не було на
     /// старті) — тоді показуємо свіжу кригу під новий склад, а не старий підсумок (правило з понга).
@@ -104,10 +145,13 @@ public sealed class Icefloe : Game
         _needOpt = options.TryGetValue("wins", out var v) && int.TryParse(v, out var n) && n is >= 1 and <= 3 ? n : 0;
         _need = NeedFor(2);
         _teamsOpt = options.TryGetValue("teams", out var t) && t == "on";
+        _solo.Configure(options);
     }
 
     public override string? CanStart()
     {
+        if (_solo.CanStart(Ctx, IcefloeCore.Seats) is { } alone) return alone;
+        // Команди — лише людьми: боти грають кожен сам за себе, тож «🤖 + бот» з опцією «Команди» не стартує.
         if (!_teamsOpt) return null;
         var n = Seated().Count(x => x);
         return n < 4 || n % 2 != 0 ? TeamsText : null;
@@ -127,13 +171,20 @@ public sealed class Icefloe : Game
     public override void Start()
     {
         _started = true;
-        var seated = Seated();
+        _bots = BotSeats();
+        _botGame = _bots.Length > 0;
+        Array.Clear(_brain);
+        // Думають у різні тики, щоб не смикались хором.
+        for (var i = 0; i < _bots.Length; i++) _brain[_bots[i]] = new IcefloeBot(_solo.Level, i * 2);
+        var seated = WithBots(_bots);
         _startNicks = [.. Enumerable.Range(0, IcefloeCore.Seats).Where(Ctx.Seated).Select(s => Ctx.NickOf(s) ?? "")];
-        _startPlayers = seated.Count(x => x);
-        _need = NeedFor(_startPlayers);
+        // Людей на старті: від цього ачівки (з ботами людина одна — ачівок нема); крига й «до скількох» — за всіма тілами.
+        _startPlayers = Enumerable.Range(0, IcefloeCore.Seats).Count(Ctx.Seated);
+        var bodies = seated.Count(x => x);
+        _need = NeedFor(bodies);
         Array.Clear(_moveAt);
         _goAt = 0;
-        _r0 = IcefloeCore.BaseRadius(_startPlayers);
+        _r0 = IcefloeCore.BaseRadius(bodies);
         _series.Begin(Ctx, IcefloeCore.Seats);
         _winners = [];
         _lastRound = null;
@@ -157,7 +208,9 @@ public sealed class Icefloe : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (!_started) return ActResult.Fail("Партія ще не почалась");
+        if (action == LiveBots.Toggle)
+            return _started && _ph != PhOver ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, IcefloeCore.Seats);
+        if (!_started) return ActResult.Fail("Чекаємо на гравців");   // як казав каркас, поки лобі було не наше
         if (seat is < 0 or >= IcefloeCore.Seats || !Core.Bodies[seat].Plays) return ActResult.Fail("Ти тут не граєш");
         if (_ph == PhOver) return ActResult.Fail("Партію вже зіграно");
         switch (action)
@@ -208,6 +261,8 @@ public sealed class Icefloe : Game
                 _goAt = c.T;
                 return TickResult.Both;
             case PhGo:
+                // Боти ходять до кроку світу — їхній ввід лягає в цей тик, як людський між тиками.
+                BotsThink(c);
                 c.Step(true);
                 Expire();
                 if (_teamsOpt && TeamLeft() is var tl && tl >= -1) return EndTeamRound(tl);
@@ -311,8 +366,25 @@ public sealed class Icefloe : Game
         return TickResult.Both;
     }
 
-    /// <summary>Хто ще грає партію й сидить за столом.</summary>
-    int[] Playing() => [.. Enumerable.Range(0, IcefloeCore.Seats).Where(s => Core.Bodies[s].Plays && Ctx.Seated(s))];
+    /// <summary>Хто ще грає партію: сидить за столом або бот цієї партії.</summary>
+    int[] Playing() => [.. Enumerable.Range(0, IcefloeCore.Seats).Where(s => Core.Bodies[s].Plays && (Ctx.Seated(s) || IsBot(s)))];
+
+    /// <summary>
+    /// Боти думають кожен у свій тик і діють тим самим <see cref="Act"/>, що й людина: move/dash/throw/chip з усіма
+    /// перевірками й перезарядками ядра.
+    /// </summary>
+    void BotsThink(IcefloeCore c)
+    {
+        foreach (var s in _bots)
+        {
+            if (Ctx.Seated(s) || _brain[s] is not { } bot || !c.Bodies[s].Plays || !bot.Due(c.T)) continue;
+            var m = bot.Think(c, s, Ctx.Rng);
+            if (m.Sector is { } a) Act(s, "move", SectorEl[a + 1]);
+            if (m.Dash) Act(s, "dash", default);
+            if (m.Throw) Act(s, "throw", default);
+            if (m.Chip) Act(s, "chip", default);
+        }
+    }
 
     /// <summary>Кінець партії: рядок Журналу, випхнуті кожного в таблицю результатів, серія й ачівки.</summary>
     TickResult Over(int[] winners)
@@ -328,8 +400,18 @@ public sealed class Icefloe : Game
             foreach (var s in playing)
                 if (c.Bodies[s].Pushouts >= 5) Ctx.Award(s, 0, "ach:icefloe-push5");
         }
-        _series.Record(Ctx, winners);
-        Ctx.Finish(winners, Journal(winners, playing), playing.ToDictionary(s => s, s => (long)c.Bodies[s].Pushouts));
+        var scores = playing.Where(Ctx.Seated).ToDictionary(s => s, s => (long)c.Bodies[s].Pushouts);
+        if (!_botGame)
+        {
+            _series.Record(Ctx, winners);
+            Ctx.Finish(winners, Journal(winners, playing), scores);
+            return TickResult.Both;
+        }
+        // З ботами — без серії й нагород: перемога бота — порожні winners і вердикт, людська — вердикт з рівнем.
+        var people = winners.Where(Ctx.Seated).ToArray();
+        var verdict = people.Length > 0 ? $"🏆 {Ctx.NickOf(people[0])} — перемога над {LiveBots.Of(_solo.Level)}и ботами"
+            : winners.Length > 0 ? $"🤖 Крижину взяв {Name(winners[0])}" : null;
+        Ctx.Finish(people, Journal(winners, playing), scores, verdict);
         return TickResult.Both;
     }
 
@@ -339,7 +421,7 @@ public sealed class Icefloe : Game
         var c = Core;
         var order = winners.Concat(playing.Where(s => !winners.Contains(s))
             .OrderByDescending(s => c.Bodies[s].Wins).ThenByDescending(s => c.Bodies[s].Pushouts).ThenBy(s => s));
-        var line = $"{Info.Title}: {string.Join(" : ", order.Select(s => $"{Ctx.NickOf(s)} {c.Bodies[s].Wins}"))}";
+        var line = $"{Info.Title}: {string.Join(" : ", order.Select(s => $"{Name(s)} {c.Bodies[s].Wins}"))}";
         return winners.Length == 0 ? line + " — нічия" : line;
     }
 
@@ -361,7 +443,7 @@ public sealed class Icefloe : Game
         }
         _ph = PhOver;
         _winners = left;
-        _series.Record(Ctx, left);
+        if (!_botGame) _series.Record(Ctx, left);
         Ctx.Finish(left, $"{Info.Title}: {nick} встав з-за столу, партію не дограли",
             left.ToDictionary(s => s, s => (long)c.Bodies[s].Pushouts));
     }
@@ -374,7 +456,7 @@ public sealed class Icefloe : Game
         get
         {
             if (!Lobby) return Core;
-            var seated = Seated();
+            var seated = WithBots(BotSeats());
             var preview = new IcefloeCore(Ctx.Rng);   // генератора не чіпає: Flat і Spawn випадковості не питають
             preview.ResetParty(seated);
             preview.Flat(IcefloeCore.BaseRadius(Math.Max(2, seated.Count(x => x))));
@@ -432,6 +514,10 @@ public sealed class Icefloe : Game
             winners = !lobby && _ph == PhOver ? (int[])_winners.Clone() : [],
             series = _series.View(Ctx, IcefloeCore.Seats),
             turn = (int?)null,
+            botOffer = _solo.Offer(Ctx, IcefloeCore.Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
+            bot = lobby ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
             frame = Shot(c, lobby),
         };
     }
