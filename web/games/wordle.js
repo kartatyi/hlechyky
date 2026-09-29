@@ -679,12 +679,14 @@
   /// низ клавіатури справді схований під нижніми вкладками: підкручуємо рівно настільки, щоб він виринув, але не
   /// далі, ніж шапка раунду (з таймером) доїде до шапки сайту.
   /// Висота згорнутої шторки «💬 Стіл» над нижніми вкладками: вона fixed унизу праворуч і лягала на «ю» й «⌫»
-  /// (дотик відкривав балачку замість стерти літеру). Каркас кладе її в --gdock-h; поки не поклав — 56, якщо шторку видно.
-  function dockH(cs) {
+  /// (дотик відкривав балачку замість стерти літеру). Каркас кладе в --gdock-h увесь зайнятий низ (вкладки + міні-плеєр
+  /// + шторка + safe-area) — тоді беремо лише його; без каркаса — вкладки + міні-плеєр + 56, якщо шторку видно.
+  function bottomTaken(cs) {
     const raw = cs.getPropertyValue('--gdock-h').trim();
     if (raw) return parseFloat(raw) || 0;
     const d = document.querySelector('.tchat.drawer:not(.open)');
-    return d && d.getClientRects().length ? 56 : 0;
+    return (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + (parseFloat(cs.getPropertyValue('--mini-h')) || 0)
+      + (d && d.getClientRects().length ? 56 : 0);
   }
 
   function raceInView(wrap) {
@@ -693,7 +695,7 @@
       const kbd = wrap.querySelector('.wrme:not([hidden]) .gkbd');
       if (!head || !kbd || !kbd.offsetParent) return;
       const cs = getComputedStyle(document.documentElement);
-      const bars = (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + dockH(cs);
+      const bars = bottomTaken(cs);
       const site = document.querySelector('header');
       const top = site ? Math.max(0, site.getBoundingClientRect().bottom) : 0;
       const over = kbd.getBoundingClientRect().bottom - (innerHeight - bars - 8);

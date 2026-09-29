@@ -1321,11 +1321,13 @@
       const bar = st.root.querySelector('.geobar');
       const last = bar && !bar.hidden && bar.offsetParent ? bar : map;
       const cs = getComputedStyle(document.documentElement);
-      // + згорнута шторка «💬 Стіл» (fixed унизу праворуч): «Готово / Далі →» заходила під неї на 13 px
+      // Зайнятий низ: каркас дає його весь у --gdock-h (вкладки + міні-плеєр + шторка «💬 Стіл» + safe-area) — тоді лише
+      // його; без каркаса — вкладки + міні-плеєр + 56 за видимої шторки («Готово / Далі →» заходила під неї на 13 px)
       const dockRaw = cs.getPropertyValue('--gdock-h').trim();
       const drawer = document.querySelector('.tchat.drawer:not(.open)');
-      const dock = dockRaw ? parseFloat(dockRaw) || 0 : drawer && drawer.getClientRects().length ? 56 : 0;
-      const bars = (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + (parseFloat(cs.getPropertyValue('--mini-h')) || 0) + dock;
+      const bars = dockRaw ? parseFloat(dockRaw) || 0
+        : (parseFloat(cs.getPropertyValue('--tabs-h')) || 0) + (parseFloat(cs.getPropertyValue('--mini-h')) || 0)
+          + (drawer && drawer.getClientRects().length ? 56 : 0);
       const head = document.querySelector('header');
       const top = head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
       const bottom = last.getBoundingClientRect().bottom, limit = innerHeight - bars - 8;
