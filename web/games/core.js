@@ -504,6 +504,9 @@
     window.addEventListener('resize', refit);
     window.addEventListener('orientationchange', refit);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', refit);
+    // миша ↔ дотик (планшет із клавіатурою, емулятор) — розміри ті самі, а режим інший
+    const mq = window.matchMedia('(pointer: coarse)');
+    if (mq.addEventListener) mq.addEventListener('change', refit);
     const ro = window.ResizeObserver ? new ResizeObserver(refit) : null;
     const watch = () => { if (ro) document.querySelectorAll('header, nav.mtabs, .tchat').forEach((el) => ro.observe(el)); };
     watch();
@@ -2011,7 +2014,9 @@
   function syncArcade() {
     const rv = shown && view.kind === 'room' ? views[view.id] : null;
     const g = rv && gameOf(rv.room.game);
-    const on = !!(g && g.group === 'live' && rv.seat != null && rv.room.status === 'playing');
+    // Аркада — жива гра (group live) або соло-реалтайм, що сказав про себе `arcade: true` у register (забіг, цеглини).
+    const mod = rv && modules[rv.room.game];
+    const on = !!(g && (g.group === 'live' || (mod && mod.arcade)) && rv.seat != null && rv.room.status === 'playing');
     if (document.body.classList.contains('g-arcade') !== on) document.body.classList.toggle('g-arcade', on);
     // Заклики «Х кличе… [Сісти]» лишались висіти над хрестовиною, коли вже сів: посеред аркади й за столом на
     // телефоні їх прибираємо (особисті — ні: «кличе тебе» важливіше).
@@ -2289,7 +2294,7 @@
       for (const id in cards) if (views[id] && views[id].room.game === mod.id) refreshCard(id);
       // Модулі тепер приїжджають по одному у тиші — лобі перемальовуємо раз на пачку, а не на кожен.
       if (!lobbyT) lobbyT = setTimeout(() => { lobbyT = 0; if (shown && root && root.querySelector('.gtiles')) renderView(); }, 150);
-      if (shown && view.kind === 'room') renderRoomHead(view.id);
+      if (shown && view.kind === 'room') { renderRoomHead(view.id); syncArcade(); }   // arcade: модуль міг приїхати пізніше
       notifyTable();   // модуль міг приїхати пізніше за стіл — і сказати, що розмова тут головна (talk: 'main')
     },
 
@@ -2373,7 +2378,13 @@
         };
         pinned.delete(id);
         if (view.kind === 'room' && view.id === id && !cards[id]) renderView();
-        else if (cards[id]) refreshCard(id);
+        else if (cards[id]) {
+          refreshCard(id);
+          // Шапку столу малювали ще до першого виду (соло, вхід за посиланням) — там лишалось «Стіл» замість назви гри,
+          // а на ≤480 назва тепер лише в шапці. Перемальовуємо на першому виді й коли міняється те, що вона показує.
+          if (view.kind === 'room' && view.id === id
+            && (!old || old.room.status !== rv.room.status || old.room.watchers !== rv.room.watchers)) renderRoomHead(id);
+        }
         else if (view.kind === 'lobby') renderView();      // «твій хід» на резюме в лобі
         syncWatch();
         notifyTable();                                      // сів, встав, партія почалась — балачці столу це важливо
