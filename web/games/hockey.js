@@ -132,7 +132,7 @@
       st = root._hockey = {
         ctx, cv: null, K: scale(), raf: 0, last: null, prevF: null,
         // стрічка кадрів (шайба, чужі біти, повтор)
-        buf: [], base: null, baseAt: 0, clkT: 0, late: 0, evT: -1, offX: 0, offY: 0, offP: new Float64Array(8), replay: null,
+        buf: [], clock: HGames.ui.Clock(TICK_MS), evT: -1, offX: 0, offY: 0, offP: new Float64Array(8), replay: null,
         hx: new Float64Array(8), hy: new Float64Array(8), ht: new Float64Array(8), hN: 0, stick: false,
         land: true, turn: 0, k: 3.8, ox: 0, oy: 0, cw: LW, ch: LH, table: null, tableKey: '', pal: null, palAt: 0,
         // своя біта
@@ -391,28 +391,16 @@
   }
 
   // ---- стрічка кадрів: шайба й чужі біти на рівному годиннику сервера ----
-  // Кадр t сервер рахує о base + t·40 мс нашого годинника; base — найменше (прихід − t·40) з повільним дрейфом угору.
-  // Кадр, що прийшов пізніше (черга, джитер, два в одному rAF), годинник не штовхає — картинка не смикається.
-  // Малюємо на DELAY тика позаду — між двома справжніми кадрами (шайба — сплайном «вперед з a / назад з b» з
-  // відбоями від бортів), а похибку, яку приносить новий кадр, розмазуємо за ~70 мс.
-  const DELAY = 1.25;
+  // Годинник — спільний HGames.ui.Clock: кадр t ставимо на base + t·40 мс, а не на час приходу, тож кадр, що прийшов
+  // пізніше (черга, джитер, два в одному rAF), картинку не смикає. Малюємо на запас позаду (1,25 тика на тихій мережі,
+  // до 3,5 на гикавій — сам підлаштовується) — між двома справжніми кадрами (шайба — сплайном «вперед з a / назад з b»
+  // з відбоями від бортів), а похибку, яку приносить новий кадр, розмазуємо за ~70 мс.
   const BUF = 90;                     // 3,6 с кадрів: на повтор гола теж
   const OFF_MS = 70;
   const SMP = { x: 0, y: 0, vx: 0, vy: 0, f: null, p: new Float64Array(8) };
   const P1 = [0, 0], P2 = [0, 0], BP = new Float64Array(8);
   function flying(f) { return f.ph === 1 && !f.serveIn && !f.startIn; }
-  function clockIn(st, f, now) {
-    const o = now - f.t * TICK_MS;
-    if (st.base == null || f.t < st.clkT - 2 || o < st.base - 300) { st.base = o; st.late = 0; }
-    else {
-      st.late = st.late * 0.9 + (o - st.base) * 0.1;
-      // стабільно пізно (мережа стала повільнішою) — годинник доганяє швидше
-      st.base = Math.min(st.base + (now - st.baseAt) * (st.late > 30 ? 0.08 : 0.01), o);
-    }
-    st.baseAt = now;
-    st.clkT = f.t;
-  }
-  function renderT(st, now) { return st.base == null ? 1e9 : (now - st.base) / TICK_MS - DELAY; }
+  function renderT(st, now) { return st.clock.at(now); }
   /// Шайба кадру f через s секунд (s < 0 — назад у часі) з відбоями від бортів і торців повз ворота.
   function fwd(o, f, s) {
     let x = f.x + (f.vx || 0) * s, y = f.y + (f.vy || 0) * s;
@@ -466,12 +454,12 @@
   /// Новий кадр на стрічку. Те, що вже намальовано, не стрибає: різницю «до/після» кадру забирає зсув, що згасає.
   function arrive(st, f, now) {
     let had = false, bx = 0, by = 0, bn = -1;
-    if (st.buf.length && st.base != null) {
+    if (st.buf.length && st.clock.ready) {
       const o = sample(st.buf, renderT(st, now), SMP);
       if (o) { had = true; bx = o.x; by = o.y; bn = o.f.n; BP.set(o.p); }
     }
     const restart = st.buf.length && f.t < st.buf[st.buf.length - 1].t - 2;
-    clockIn(st, f, now);
+    st.clock.in(f.t, now);
     if (restart) { st.buf.length = 0; st.evT = -1; had = false; }
     if (st.buf.length && f.t <= st.buf[st.buf.length - 1].t) return;
     st.buf.push(f);
@@ -489,7 +477,7 @@
   /// Стрічку з нуля: лобі, F5, «Ще раз».
   function reset(st, f) {
     st.buf.length = 0;
-    st.base = null;
+    st.clock.reset();
     st.evT = f ? f.t : -1;
     st.offX = st.offY = 0;
     st.offP.fill(0);
@@ -743,7 +731,7 @@
     const g = c.ctx;
     const dt = st.lastDraw ? Math.min(100, now - st.lastDraw) : 16;
     st.lastDraw = now;
-    // стрічка: живий стіл на DELAY позаду або повтор гола
+    // стрічка: живий стіл на запас годинника позаду або повтор гола
     const rt = renderT(st, now);
     fireEvents(st, rt);
     const rp = replayT(st, now);

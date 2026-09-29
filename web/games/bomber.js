@@ -918,7 +918,7 @@
 
     mount(root, ctx) {
       const st = state(root, ctx);
-      st.interp = HGames.ui.Interp();
+      st.interp = HGames.ui.Interp(TICK_MS);
       board(root, st);
       // Каркас віддає модулю лише keydown, а напрямок тут тримають — відпускання ловимо самі.
       st.keyup = (e) => {
