@@ -281,7 +281,7 @@
       el.className = 'gkbd';
       el.innerHTML = KB_ROWS.map((r, ri) => {
         let row = r.split('').map((ch) => '<button type="button" class="gkey" data-k="' + ch + '">' + ch + '</button>').join('');
-        if (ri === 2) row = '<button type="button" class="gkey wide" data-k="Enter">Enter</button>' + row + '<button type="button" class="gkey wide" data-k="Backspace">⌫</button>';
+        if (ri === 2) row = '<button type="button" class="gkey wide" data-k="Enter" aria-label="Enter" title="Enter">↵</button>' + row + '<button type="button" class="gkey wide" data-k="Backspace">⌫</button>';
         return '<div class="gkrow">' + row + '</div>';
       }).join('');
       el.addEventListener('click', (e) => {
