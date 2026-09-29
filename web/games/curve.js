@@ -607,11 +607,24 @@
     putHtml(el, html);
   }
 
+  /// Кожен палець — свій напрям (pointerId → -1/1); поворот — за тим, що натиснули останнім із тих, що ще
+  /// тримають. Раніше напрям був одним числом: тримаєш ◀, торкнувся ▶ і відпустив його — ◀ ще під пальцем,
+  /// а кривуля їхала прямо. d = 0 — палець відпустили. true — цей палець був наш.
+  function hold(st, id, d) {
+    if (!st.ptrs) st.ptrs = new Map();
+    const had = st.ptrs.delete(id);
+    if (d) st.ptrs.set(id, d);
+    let t = 0;
+    for (const v of st.ptrs.values()) t = v;
+    st.touch = t;
+    return had || !!d;
+  }
+
   /// Дві кнопки під палець: не тап, а утримання, тож слухаємо саме pointer-події.
   function pad(root, ctx, st) {
     let el = root.querySelector(':scope > .cpad');
     // Кнопки лише поки йде партія: у лобі й після кінця вони штовхали «Почати» / «Ану ще раз» під нижнє меню.
-    if (!ctx.mine || !ctx.playing) { if (el) { el.remove(); st.touch = 0; } return; }
+    if (!ctx.mine || !ctx.playing) { if (el) { el.remove(); st.touch = 0; if (st.ptrs) st.ptrs.clear(); } return; }
     if (el) {
       // канвас могли перебудувати під нове поле — кнопки лишаються під ним
       if (el.nextElementSibling) root.appendChild(el);
@@ -625,13 +638,13 @@
       const b = e.target.closest('button');
       if (!b) return;
       e.preventDefault();
-      st.touch = +b.dataset.d;
+      hold(st, e.pointerId, +b.dataset.d);
       send(ctx, st, want(st));
     });
     const off = (e) => {
-      if (!st.touch) return;
+      if (!st.ptrs || !st.ptrs.has(e.pointerId)) return;
       e.preventDefault();
-      st.touch = 0;
+      hold(st, e.pointerId, 0);
       send(ctx, st, want(st));
     };
     el.addEventListener('pointerup', off);
@@ -678,13 +691,13 @@
     el.addEventListener('pointerdown', (e) => {
       if (!el.classList.contains('hold')) return;
       e.preventDefault();
-      st.touch = e.clientX - el.getBoundingClientRect().left < el.clientWidth / 2 ? -1 : 1;
+      hold(st, e.pointerId, e.clientX - el.getBoundingClientRect().left < el.clientWidth / 2 ? -1 : 1);
       send(ctx, st, want(st));
     });
     const off = (e) => {
-      if (!st.touch) return;
+      if (!st.ptrs || !st.ptrs.has(e.pointerId)) return;
       e.preventDefault();
-      st.touch = 0;
+      hold(st, e.pointerId, 0);
       send(ctx, st, want(st));
     };
     el.addEventListener('pointerup', off);
@@ -722,6 +735,7 @@
       st.blur = () => {
         st.keys = [];
         st.touch = 0;
+        if (st.ptrs) st.ptrs.clear();
         send(ctx, st, 0);
       };
       document.addEventListener('keyup', st.up);
