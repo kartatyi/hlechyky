@@ -115,3 +115,25 @@
   .tfire { width: 64px; height: 64px; font-size: 1.5em; }
   .tpad { gap: 10px; }
 }
+.tdirs button.on { background: var(--clay); }
+@media (pointer: coarse) {
+  .tpad, .tdirs, .tfire { -webkit-user-select: none; -webkit-touch-callout: none; }
+  .tdirs { touch-action: none; }
+}
+
+/* ---- телефон лежачи (body.g-land ставить каркас): хрестовина ліворуч від мапи, 💥 — праворуч, як на геймпаді:
+   тримаєш напрям одним великим пальцем і стріляєш другим. Мапа — посередині, за висотою екрана. Чіпи місць
+   каркаса ховаємо — ті самі гравці з фрагами вже є в рядку .thud праворуч (стовпчиком). ---- */
+body.g-land .gtable:has(> .gbody > canvas.tboard) { grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 10px; }
+body.g-land .gtable > .gbody > canvas.tboard { grid-column: 2; }
+body.g-land .gtable:has(> .gbody > canvas.tboard) > :not(.gbody),
+body.g-land .gtable:has(> .gbody > canvas.tboard) > .gbody > :not(canvas.gcanvas) { grid-column: 3; max-width: 21vw; font-size: .9em; }
+body.g-land .gtable:has(> .gbody > canvas.tboard) > .gseats { display: none; }
+body.g-land .gbody > .tpad { display: contents; }
+body.g-land .gbody > .tpad > .tdirs {
+  grid-column: 1; grid-row: 1 / span 12; align-self: center;
+  grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 48px);
+}
+body.g-land .gbody > .tpad > .tfire { grid-column: 3; width: 80px; height: 80px; margin: 6px 0; }
+body.g-land .gbody > .thud { flex-direction: column; align-items: stretch; }
+body.g-land .gbody > .thud .tchip { justify-content: space-between; }

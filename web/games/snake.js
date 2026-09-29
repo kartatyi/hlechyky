@@ -194,7 +194,8 @@
         : (ctx.view && ctx.view.startIn != null ? ctx.view : null);
       if (f && f.startIn > 0) return 'Готуйсь…';
       const tor = ctx.view && ctx.view.wrap ? ' · 🌀 тор: край наскрізь' : '';
-      return ctx.mine ? 'Стрілки або WASD' + tor : 'Дивишся збоку' + tor;
+      const how = HGames.ui.coarse && HGames.ui.coarse() ? 'Свайп по полю або стрілки під ним' : 'Стрілки або WASD';
+      return ctx.mine ? how + tor : 'Дивишся збоку' + tor;
     },
 
     unmount(root) { root._snake = null; },

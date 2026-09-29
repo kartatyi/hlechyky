@@ -102,3 +102,13 @@ body.pad-on .moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc
 @media (min-width: 1600px) and (min-height: 900px) {
   .moto-feed ~ .arenaboard.big { max-width: min(780px, calc((100vh - 360px) * 34 / 24)); }
 }
+
+/* Телефон лежачи: нижня межа 300 px вище не зважала на висоту — поле з'їжджало під нижні вкладки. Тут поле —
+   за видимою висотою (--gfit-h від каркаса: без шапки й меню; мінус рядок столу й табло). У зануреному режимі
+   (body.g-land, я граю) розмір полотна задає каркас — його правило специфічніше. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .arenaboard, .moto-feed ~ .arenaboard { max-width: min(560px, calc((var(--gfit-h, 100dvh) - 110px) * 26 / 18)); }
+  .arenaboard.big, .moto-feed ~ .arenaboard.big { max-width: min(680px, calc((var(--gfit-h, 100dvh) - 110px) * 34 / 24)); }
+}
+/* Лежачи (body.g-land): чіпи місць каркаса ховаємо — ті самі гравці з рахунком уже є в табло праворуч, а висоти обмаль. */
+body.g-land .gtable:has(> .gbody > .ascore) > .gseats { display: none; }

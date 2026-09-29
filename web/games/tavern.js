@@ -1834,13 +1834,15 @@
     const a = st.hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
     if (!a.height || !b.height) return;              // картку чи кнопки зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
+    // верх і низ видимого місця: шапка сайту, а внизу меню, міні-плеєр і згорнута шторка «💬 Стіл» (--gdock-h каркаса;
+    // у зануреному режимі g-imm їх нема — 0)
+    const fit = HGames.ui.fit ? HGames.ui.fit() : null;
     const head = document.querySelector('header');
-    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const top = (fit ? fit.top : (head ? head.getBoundingClientRect().bottom : 0)) + 4;
     const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
-    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const limit = (fit ? innerHeight - fit.dock : fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
     const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
     const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок стану
     if (Math.abs(dy) < 2) return;

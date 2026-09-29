@@ -558,19 +558,41 @@
       el.innerHTML = '<div class="tdirs">'
         + [3, 2, 0, 1].map((d) => '<button type="button" data-dir="' + d + '" aria-label="' + aria[d] + '">' + label[d] + '</button>').join('')
         + '</div><button type="button" class="tfire" aria-label="постріл">💥</button>';
+      // Хрестовина — одна зона, як у Корчмі: тримаєш палець і ведеш його з ↑ на → — танк повертає, не відриваючи.
+      // Напрям — від центру хрестовини (мертва зона 12 %), тож і проміжки між стрілками не глухі.
+      const dirs = el.querySelector('.tdirs');
+      const arrows = dirs.querySelectorAll('button');
+      const light = (d) => arrows.forEach((a) => a.classList.toggle('on', +a.dataset.dir === d));
+      const aim = (e) => {
+        const r = dirs.getBoundingClientRect();
+        const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+        if (Math.abs(dx) < r.width * 0.12 && Math.abs(dy) < r.height * 0.12) return st.touch;
+        return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+      };
       el.addEventListener('pointerdown', (e) => {
         const b = e.target.closest('button');
-        if (!b) return;
-        e.preventDefault();
-        try { b.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер */ }
-        if (b.classList.contains('tfire')) {
+        if (b && b.classList.contains('tfire')) {
+          e.preventDefault();
+          try { b.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер */ }
           // Тримаєш — сервер стріляє сам, щойно перезарядився; відпустив — перестав.
           st.firePid = e.pointerId;
           el._tanksCtx.input('fire', { on: true });
           return;
         }
+        if (!e.target.closest('.tdirs')) return;
+        e.preventDefault();
+        try { dirs.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер */ }
         st.pid = e.pointerId;
-        st.touch = +b.dataset.dir;
+        st.touch = b ? +b.dataset.dir : aim(e);
+        light(st.touch);
+        steer(st, el._tanksCtx);
+      });
+      dirs.addEventListener('pointermove', (e) => {
+        if (st.pid !== e.pointerId) return;
+        const d = aim(e);
+        if (d === st.touch) return;
+        st.touch = d;
+        light(d);
         steer(st, el._tanksCtx);
       });
       const release = (e) => {
@@ -582,10 +604,12 @@
         if (st.pid !== e.pointerId) return;
         st.pid = null;
         st.touch = -1;
+        light(-1);
         steer(st, el._tanksCtx);
       };
       el.addEventListener('pointerup', release);
       el.addEventListener('pointercancel', release);
+      dirs.addEventListener('lostpointercapture', release);
       root.appendChild(el);
     }
     el._tanksCtx = ctx;
@@ -603,13 +627,15 @@
     const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
     if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
+    // верх і низ видимого місця: шапка сайту, а внизу меню, міні-плеєр і згорнута шторка «💬 Стіл» (--gdock-h каркаса;
+    // у зануреному режимі g-imm їх нема — 0)
+    const fit = HGames.ui.fit ? HGames.ui.fit() : null;
     const head = document.querySelector('header');
-    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
+    const top = (fit ? fit.top : (head ? head.getBoundingClientRect().bottom : 0)) + 4;
     const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
-    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const limit = (fit ? innerHeight - fit.dock : fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
     const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
     const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
     if (Math.abs(dy) < 2) return;
@@ -780,6 +806,15 @@
       const st = state(root, ctx);
       st.interp = HGames.ui.Interp();
       st.cv = HGames.ui.canvas(root, { w: st.W * PX * st.K, h: st.H * PX * st.K, cls: 'tboard' });
+      // Поворот телефона чи ⛶: полотно перераховує розмір, а мапа з кнопками знову стає в кадр.
+      if (HGames.ui.onFit) HGames.ui.onFit(root, (f) => {
+        if (st.cv) st.cv.resize();
+        const k = (f.w > f.h ? 'L' : 'P') + (f.imm ? 'i' : '');
+        if (k === st.fitKey) return;
+        const was = st.fitKey;
+        st.fitKey = k;
+        if (was && st.ctx) { st.fitFor = null; fitPhone(root, st, st.ctx, '.thud', '.tpad'); }
+      });
       st.keyup = (e) => {
         if (isFire(e)) {
           if (st.fireDown && st.ctx && st.ctx.mine && st.ctx.playing) st.ctx.input('fire', { on: false });
