@@ -566,3 +566,9 @@ body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gseats { font-size: .82em;
 body.g-land .gtable > .grx { display: none; }
 /* ⛶ стоячи (телефон): полотно — за висотою, якщо воно вище за видиме місце. */
 body.g-imm:not(.g-land) .gbody > canvas.gcanvas { max-width: min(100%, calc((var(--gfit-h, 100dvh) - 150px) * var(--gar))); }
+/* Попап «Поставити стіл»: на короткому екрані картка гортається разом із тлом (style.css .modal), а рядок кнопок —
+   пришпилений до низу, щоб «Поставити стіл» було видно, поки перебираєш опції. */
+.gmodal .card > .grow:last-child:has(> [data-go]) {
+  position: sticky; bottom: -12px; z-index: 1; margin: 0 -22px -22px; padding: 12px 22px 22px;
+  background: var(--panel); border-radius: 0 0 var(--radius) var(--radius); box-shadow: 0 -10px 16px -12px rgba(0, 0, 0, .6);
+}

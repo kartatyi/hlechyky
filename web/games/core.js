@@ -504,6 +504,9 @@
     window.addEventListener('resize', refit);
     window.addEventListener('orientationchange', refit);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', refit);
+    // миша ↔ дотик (планшет із клавіатурою, емулятор) — розміри ті самі, а режим інший
+    const mq = window.matchMedia('(pointer: coarse)');
+    if (mq.addEventListener) mq.addEventListener('change', refit);
     const ro = window.ResizeObserver ? new ResizeObserver(refit) : null;
     const watch = () => { if (ro) document.querySelectorAll('header, nav.mtabs, .tchat').forEach((el) => ro.observe(el)); };
     watch();
