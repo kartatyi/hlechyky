@@ -763,31 +763,52 @@
       el = document.createElement('div');
       el.className = 'bpad';
       const label = { 0: '→', 1: '↓', 2: '←', 3: '↑' };
-      const aria = { 0: 'праворуч', 1: 'вниз', 2: 'ліворуч', 3: 'вгору' };
-      el.innerHTML = '<div class="bdirs">'
-        + [3, 2, 0, 1].map((d) => '<button type="button" data-dir="' + d + '" aria-label="' + aria[d] + '">' + label[d] + '</button>').join('')
+      // Хрестовина — одна зона, як у Юрмі: напрямок рахуємо від центру за пальцем, тож палець «переїжджає»
+      // з ↓ на →, не відриваючись. Раніше кожна стрілка захоплювала палець, і з'їхати на сусідню було не можна.
+      el.innerHTML = '<div class="bdirs" role="group" aria-label="хрестовина: тримай і веди пальцем">'
+        + [3, 2, 0, 1].map((d) => '<span class="barr" data-dir="' + d + '">' + label[d] + '</span>').join('')
         + '</div><button type="button" class="bbomb" aria-label="бомба">💣</button>';
-      // Напрямок «тримають», тому слухаємо саме натиск і відпускання, а не клік.
+      const dirs = el.querySelector('.bdirs');
+      const arrows = dirs.querySelectorAll('.barr');
+      const light = (d) => arrows.forEach((x) => x.classList.toggle('on', +x.dataset.dir === d));
+      /// Куди показує палець: за довшою віссю від центру; біля самого центру — лишаємо, що було.
+      const aim = (e) => {
+        const r = dirs.getBoundingClientRect();
+        const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+        if (Math.abs(dx) < r.width * 0.12 && Math.abs(dy) < r.height * 0.12) return st.touch;
+        return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
+      };
       el.addEventListener('pointerdown', (e) => {
-        const b = e.target.closest('button');
-        if (!b) return;
+        if (e.target.closest('.bbomb')) { e.preventDefault(); el._bomberCtx.input('bomb'); return; }
+        if (!e.target.closest('.bdirs')) return;
         e.preventDefault();
-        if (b.classList.contains('bbomb')) { el._bomberCtx.input('bomb'); return; }
-        // Захоплюємо вказівник: інакше палець (чи миша в мобільному вигляді), з'їхавши з кнопки,
-        // забирає з собою pointerup — і бомбер біг би далі, поки не впреться.
-        try { b.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер — переживемо */ }
+        // Захоплюємо вказівник на всю зону: палець, що з'їхав за край, не забирає з собою pointerup —
+        // інакше бомбер біг би далі, поки не впреться. Бомбу другим пальцем це не чіпає: у неї свій pointerId.
+        try { dirs.setPointerCapture(e.pointerId); } catch (_) { /* старий браузер — переживемо */ }
         st.pid = e.pointerId;
-        st.touch = +b.dataset.dir;
+        st.touch = aim(e);
+        light(st.touch);
+        steer(st, el._bomberCtx);
+      });
+      dirs.addEventListener('pointermove', (e) => {
+        if (st.pid !== e.pointerId) return;
+        const d = aim(e);
+        if (d === st.touch) return;
+        st.touch = d;
+        light(d);
         steer(st, el._bomberCtx);
       });
       const release = (e) => {
         if (st.pid !== e.pointerId) return;
         st.pid = null;
         st.touch = -1;
+        light(-1);
         steer(st, el._bomberCtx);
       };
-      el.addEventListener('pointerup', release);
-      el.addEventListener('pointercancel', release);
+      dirs.addEventListener('pointerup', release);
+      dirs.addEventListener('pointercancel', release);
+      dirs.addEventListener('lostpointercapture', release);
+      el.addEventListener('contextmenu', (e) => e.preventDefault());
       root.appendChild(el);
     }
     // привидом кнопка кидає помсту — хай і виглядає інакше
@@ -806,24 +827,36 @@
   function fitPhone(root, st, ctx, hudSel, padSel) {
     if (!ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
-    if (st.fitFor === key) return;
+    // Перші ~2 с після першого заміру ще доганяємо: розкладка доростає (рядок гравців, стрічка), і один замір
+    // на старті прокручував на 4 px замість 28 — ↓ лишалась під меню. Далі — не чіпаємо, хай людина гортає сама.
+    const now = performance.now();
+    if (st.fitFor === key && now - st.fitAt > 2000) return;
+    if (now < (st.fitBusy || 0)) return;            // ще їде плавна прокрутка — міряти посеред неї марно
     const hudEl = root.querySelector(':scope > ' + hudSel), padEl = root.querySelector(':scope > ' + padSel);
     if (!hudEl || !padEl) return;
     const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
     if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
-    st.fitFor = key;
+    if (st.fitFor !== key) { st.fitFor = key; st.fitAt = now; }
     const head = document.querySelector('header');
-    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
-    const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
-    const fr = fab && fab.getBoundingClientRect();
-    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const hr = head && head.getBoundingClientRect();
+    const top = (hr && hr.height ? hr.bottom : 0) + 4;
+    const cs = getComputedStyle(document.documentElement);
+    const dock = parseFloat(cs.getPropertyValue('--gdock-h'));
+    let limit;
+    if (Number.isFinite(dock)) limit = innerHeight - dock - 6;     // каркас сам рахує меню, міні-плеєр і шторку
+    else {
+      const tabs = parseFloat(cs.getPropertyValue('--tabs-h')) || 0;
+      // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+      const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
+      const fr = fab && fab.getBoundingClientRect();
+      limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    }
     const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
     const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
     if (Math.abs(dy) < 2) return;
     const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.scrollBy({ top: dy, behavior: calm ? 'auto' : 'smooth' });
+    st.fitBusy = now + 450;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -981,7 +1014,22 @@
       hud(root, ctx, st.last, st);
       feed(root, ctx, st);
       summary(root, ctx, st);
-      fitPhone(root, st, ctx, '.bhud', '.bpad');
+      fitPhone(root, st, ctx, '.bhud', '.bpad > .bdirs');
+      // Поворот телефона, ⛶, шторка: підгонку «в кадр» повторюємо (раніше — раз на партію, і після повороту
+      // хрестовина лишалась за екраном). Без каркасного onFit — хоча б на resize.
+      if (!st.fitHook) {
+        st.fitW = innerWidth; st.fitH = innerHeight;
+        st.fitHook = (f) => {
+          // лише справжня зміна екрана (поворот, ⛶), а не смикання адресного рядка під час прокрутки
+          const w = (f && f.w) || innerWidth, h = (f && f.h) || innerHeight;
+          if (st.fitW === w && Math.abs(st.fitH - h) < 100) return;
+          st.fitW = w; st.fitH = h;
+          st.fitFor = null;
+          if (st.ctx) fitPhone(root, st, st.ctx, '.bhud', '.bpad > .bdirs');
+        };
+        if (HGames.ui.onFit) HGames.ui.onFit(root, st.fitHook);
+        else window.addEventListener('resize', st.fitHook);
+      }
       syncHeld(st);
       st.cv.resize();
       spin(st);        // якщо картку колись перемонтують — цикл малювання не загубиться
@@ -998,6 +1046,9 @@
       st.seenAt = now;
       st.interp.push(f);
       takeEvents(st, ctx, f);
+      // вид із началом партії міг прийти, поки картку ще не показано (висоти 0) — тоді «в кадр» доганяємо тут;
+      // коли вже вписали, fitPhone виходить на першій же перевірці
+      fitPhone(root, st, ctx, '.bhud', '.bpad > .bdirs');
       hud(root, ctx, f, st);
       feed(root, ctx, st);
       pad(root, ctx, st);
@@ -1054,6 +1105,7 @@
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.blur) window.removeEventListener('blur', st.blur);
       if (st.io) st.io.disconnect();
+      if (st.fitHook && !HGames.ui.onFit) window.removeEventListener('resize', st.fitHook);
       st.cv = null;
       root._bomber = null;
     },
