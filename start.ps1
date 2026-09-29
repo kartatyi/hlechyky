@@ -110,6 +110,20 @@ function Install-Autostart {
     Write-Host "Автозапуск і автонагляд встановлено: завдання «$TaskName» у Планувальнику (при вході і щохвилини), лог дій: $WatchLog"
 }
 
+# Сервер і Caddy — вище звичайного пріоритету. Планувальник запускає автонагляд (а з ним і деплой, і restart) з
+# пріоритетом 7 — BelowNormal, і обидва його успадковували. Поки машина відпочиває, різниці нема; щойно її займає
+# збірка, тести, агенти чи гра — цикл тика голодує, і реалтайм-ігри смикаються всім. Заміри 29.09 (аерохокей, 14 з 16
+# потоків зайняті): BelowNormal — кадр у середньому раз на 105 мс замість 40, паузи до 0,85 с, 17 тиків пропало за 14 с;
+# AboveNormal — рівні 40 ± 2 мс, жодного пропуску. Автонагляд підтягує й уже запущені (Watch-Server, Watch-Caddy).
+function Set-Priority($p) {
+    if (-not $p) { return }
+    try {
+        $p.Refresh()
+        if ($p.PriorityClass -in 'Idle', 'BelowNormal', 'Normal') { $p.PriorityClass = 'AboveNormal' }
+    }
+    catch { }
+}
+
 function Start-Server {
     if (Get-Server) { Write-Host 'Сервер уже працює'; return }
     if (-not (Test-Path $Dll)) { Invoke-Build }
@@ -120,6 +134,7 @@ function Start-Server {
     }
     $p = Start-Process -FilePath 'dotnet' -ArgumentList "`"$Dll`"" -WorkingDirectory $Root `
         -RedirectStandardOutput $Log -RedirectStandardError $ErrLog -WindowStyle Hidden -PassThru
+    Set-Priority $p
     Set-Content $PidFile $p.Id
     Write-Host "Сервер запущено (pid $($p.Id)), лог: $Log"
 }
@@ -142,6 +157,7 @@ function Start-Caddy {
     if ($LASTEXITCODE -ne 0) { $check | Write-Host; throw 'Caddyfile не проходить перевірку' }
     $p = Start-Process -FilePath $Caddy -ArgumentList 'run', '--config', "`"$Caddyfile`"", '--adapter', 'caddyfile' -WorkingDirectory $Root `
         -RedirectStandardOutput (Join-Path $Root 'logs\caddy.out.log') -RedirectStandardError (Join-Path $Root 'logs\caddy.err.log') -WindowStyle Hidden -PassThru
+    Set-Priority $p
     Set-Content $CaddyPidFile $p.Id
     Write-Host "Caddy запущено (pid $($p.Id)), лог: logs\caddy.log"
 }
@@ -260,6 +276,7 @@ function Watch-Server($st, [long]$now) {
         if ($p) { Set-Content $PidFile $p.Id; Write-Watch "сервер працював без data\server.pid (pid $($p.Id)) — підхопив" }
     }
     if ($p) {
+        Set-Priority $p
         try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 'http://127.0.0.1:8080/api/me' | Out-Null; $st.httpFails = 0; return }
         catch { $st.httpFails++ }
         if ($st.httpFails -lt 3) { return }
@@ -283,9 +300,10 @@ function Watch-Server($st, [long]$now) {
 
 function Watch-Caddy {
     if (-not (Test-Path $Caddy)) { return }
-    if (Get-Caddy) { return }
+    $p = Get-Caddy
+    if ($p) { Set-Priority $p; return }
     $p = Find-Listener 443 'caddy'
-    if ($p) { Set-Content $CaddyPidFile $p.Id; Write-Watch "Caddy працював без data\caddy.pid (pid $($p.Id)) — підхопив"; return }
+    if ($p) { Set-Priority $p; Set-Content $CaddyPidFile $p.Id; Write-Watch "Caddy працював без data\caddy.pid (pid $($p.Id)) — підхопив"; return }
     Write-Watch 'Caddy не працює — запускаю'
     Start-Caddy | Out-Null
 }
