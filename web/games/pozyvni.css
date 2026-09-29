@@ -242,3 +242,8 @@
 .pz-ex-cards .pz-card { min-height: 56px; width: 92px; padding: 6px 4px; font-size: .95em; cursor: default; }
 .pz-ex-cards .pz-card em { display: block; font-style: normal; font-size: .72em; font-weight: 600; opacity: .85; }
 .pz-ex-cards .pz-card > span { display: block; }
+/* Низький телефон (360×740): останній ряд лягав під згорнуту «💬 Стіл» — плитки на 4 px нижчі, проміжки щільніші. */
+@media (max-width: 480px) and (max-height: 760px) {
+  .pz { gap: 6px; }
+  .pz-grid:not(.pz-g4) .pz-card { min-height: 45px; }
+}
