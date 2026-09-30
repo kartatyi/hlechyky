@@ -644,6 +644,13 @@ public sealed class Pozyvni : Game
     /// <summary>Розклад бачать лише капітани — і всі, коли партія скінчилась.</summary>
     bool KnowsKey(int? seat) => _phase == Done || (seat is { } s && s >= 0 && s < Seats && IsBoss(s));
 
+    /// <summary>
+    /// Голос столу (Посиденьки): капітан мовчить, поки ходить його команда (думає над підказкою чи команда шукає
+    /// слова), — щоб не підказував голосом чи інтонацією. Чує всіх; коли ходить суперник — говорить знову.
+    /// </summary>
+    public override VoiceRule? Voice(int? seat) =>
+        _phase is Clue or Guess && seat is { } s && s >= 0 && s < Seats && IsBoss(s) && _side[s] == _turn ? VoiceRule.Listen : null;
+
     public override object View(int? seat) => new
     {
         phase = _phase,

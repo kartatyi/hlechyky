@@ -8,8 +8,12 @@
   - Позивний (peer) вкладка вигадує собі сама й тримає, поки відкрита. Сервер перезапустився з деплоєм — заходимо
     знову з тим самим позивним, а вже встановлені з'єднання з людьми живуть далі: голос не рветься. Тому людину, що
     зникла зі списку, тримаємо ще 15 с (GRACE_MS), перш ніж рвати з нею з'єднання.
-  - Домовляємось за «чемними переговорами» (perfect negotiation, MDN): обидва боки можуть почати, а колізію
-    розводить чемність — чемний (у кого позивний більший) відступає.
+  - Домовляємось за «чемними переговорами» (perfect negotiation, MDN): колізію розводить чемність — чемний (у кого
+    позивний більший) відступає; перше знайомство починає лише нечемний.
+  - Кожне з'єднання має свій номер сесії (sid, росте з часом), і кожен лист несе обидва: s — мого з'єднання, r — яке
+    з'єднання того боку я знаю. Лист до мого старого з'єднання (r не мій) і від їхнього старого (s менший) — у кошик;
+    у них новіше (s більший) — і я роблю нове. Нове з'єднання одразу каже «hello». Так пара не німіє, коли один бік
+    зробив нове з'єднання (вийшов-зайшов, телефон довго був без мережі), а другий ще тримає старе.
   - Мікрофон іде через AudioWorklet (static/voice-worklet.js): там голосова активація й кнопка «говорити» — у фоні
     вони працюють так само, як на видноті. Той самий доріжковий трек (sendTrack) іде всім; кому слухати не можна
     (правила гри за столом), тому трек знімаємо (replaceTrack(null)), а чужий голос, який мені не можна, глушимо.
@@ -29,6 +33,10 @@
   const HOME = 'home';
   const GRACE_MS = 15000;        // скільки тримати з'єднання з людиною, що зникла зі списку (сервер перезапускається)
   const SLOW_MS = 15000;         // стільки з'єднуємось — і досі ні: показуємо «нема зв'язку»
+  const NUDGE_MS = 4000;         // чемний чекає на першу пропозицію стільки, а тоді починає сам
+  const STUCK_MS = 10000;        // домовились, а зв'язку нема стільки — перезапуск ICE
+  const DEAD_MS = 25000;         // і досі нема — нечемний робить з'єднання наново (чемний — удвічі пізніше)
+  const MAX_SIGNAL = 24000;      // довший лист SignalR (32 КБ) не прийме й закриє з'єднання з сервером
   const TALK_DB = -55;           // чужий голос тихіший за це — мовчить (у нього свої ворота, тиша там справжня)
 
   // ---------- налаштування ----------
@@ -57,7 +65,12 @@
   let deaf = false;
   let mutedBeforeDeaf = false;
   let listenOnly = false;        // мікрофона нема чи не дали — лише слухаю
-  let pressed = false;           // тримаю кнопку «говорити»
+  let pressed = false;           // тримаю кнопку «говорити» — клавіша, пад чи кнопка на екрані (press)
+  const press = { key: false, pad: false, hold: false };
+  let acStuck = false;           // браузер приспав звук (айфон: дзвінок, заблокований екран) — чекаємо дотику
+  const nickMem = new Map();     // позивний → нік: після деплою людина кілька секунд не в списку, а гучність її лишається
+  // На айфоні гучність <audio> лише для читання — повзунки там не показуємо, щоб не брехали.
+  const volWorks = (() => { try { const a = document.createElement('audio'); a.volume = 0.5; return a.volume === 0.5; } catch { return false; } })();
   let myTalk = false, myLevel = -120;
   const peers = new Map();       // позивний → з'єднання
   let links = new Map();         // позивний → { send, recv, watch } з останнього voiceMe
@@ -67,7 +80,9 @@
   let box = null;                // схований контейнер для <audio> людей
 
   // ---------- вхід / вихід ----------
-  async function join() {
+  /// Зайти: table — одразу в голос цього столу (кнопка «🎙 Говорити» на картці), null — у Посиденьки,
+  /// або в голос столу, за яким сидиш (на компанію), — як і при переході.
+  async function join(table) {
     if (!o.me.account) { o.toast('Посиденьки — лише для акаунтів: зареєструй нік, і заходь'); o.askNick(true, 'register'); return; }
     if (want) return;
     if (!window.RTCPeerConnection || !window.AudioWorkletNode) { o.toast('Цей браузер голосу не вміє — спробуй Chrome чи свіжий Safari', 'err'); return; }
@@ -75,7 +90,7 @@
     paint();
     try {
       await startAudio();
-      await enter(null);
+      await enter(table || autoTable());
     } catch (e) {
       console.warn('[voice] join', e);
       o.toast('Халепа: не зайшлось у Посиденьки — ' + (e.message || e), 'err');
@@ -115,6 +130,8 @@
 
   /// Прибрати все своє: з'єднання, мікрофон, притишення радіо.
   function leaveLocal() {
+    stopShare(false);
+    closeViewer(false);
     want = false;
     ready = false;
     queued = [];
@@ -122,7 +139,7 @@
     links = new Map();
     for (const p of [...peers.values()]) closePeer(p);
     stopAudio();
-    pressed = false;
+    releaseAll();
     myTalk = false;
     setDuck(false);
     paint();
@@ -146,6 +163,16 @@
     tellGate();
     await openMic();
     if (ac.state === 'suspended') await ac.resume().catch(() => {});
+    // Айфон приспить звук (дзвінок, заблокований екран, Bluetooth) — і мікрофон, і лічильники мовчатимуть. Будимо; не
+    // вийшло — просимо дотику й чесно кажемо в панелі.
+    const ctx = ac;
+    ctx.onstatechange = () => {
+      if (ctx !== ac) return;
+      if (ctx.state === 'running') { if (acStuck) { acStuck = false; paint(); } return; }
+      if (ctx.state === 'closed') return;
+      ctx.resume().catch(() => {});
+      setTimeout(() => { if (ctx === ac && ctx.state !== 'running') { acStuck = true; needGesture(); paint(); } }, 600);
+    };
   }
 
   async function openMic() {
@@ -212,63 +239,110 @@
     for (const p of peers.values()) applyPlayback(p);
     tellGate();
   }
-  function setDeaf(on) { setDeafLocal(on); tellServer(); paint(); updateDuck(); }
-
-  function setPressed(on) {
-    if (pressed === on) return;
-    pressed = on;
-    tellGate();
+  function setDeaf(on) {
+    setDeafLocal(on);
+    if (viewer) viewer.querySelector('video').muted = deaf;
+    tellServer();
     paint();
+    updateDuck();
   }
 
+  function setPressed(src, on) {
+    press[src] = on;
+    const now = press.key || press.pad || press.hold;
+    if (pressed === now) return;
+    pressed = now;
+    tellGate();
+    paintTalk();
+  }
+  function releaseAll() { press.key = press.pad = press.hold = false; setPressed('key', false); }
+
   // ---------- з'єднання з людьми ----------
+  let sidSeq = 0;
+  const newSid = () => Date.now() * 1000 + (sidSeq++ % 1000);
+
   function ensurePeer(id) {
-    let p = peers.get(id);
+    const p = peers.get(id);
     if (p) { p.goneAt = 0; return p; }
+    return makePeer(id);
+  }
+
+  /// Зробити з'єднання наново (у того боку нове, чи наше давно не піднімається): те, що вже знали, — лишаємо.
+  function recreatePeer(p) {
+    const link = p.link, goneAt = p.goneAt;
+    closePeer(p, true);
+    const q = makePeer(p.id);
+    q.goneAt = goneAt;
+    q.slow = p.slow;
+    q.born = p.born;   // «нема зв'язку» рахуємо від першої спроби, а не від кожного нового з'єднання
+    applyLink(q, link);
+    return q;
+  }
+
+  function makePeer(id) {
     const pc = new RTCPeerConnection({ iceServers: ice });
-    p = {
+    const p = {
       id, pc, polite: peerId > id, makingOffer: false, ignoreOffer: false, chain: Promise.resolve(),
       link: { send: false, recv: false, watch: false }, sender: null, audio: null, stream: null, src: null, meter: null,
       level: -120, talk: false, state: 'new', since: Date.now(), goneAt: 0, restartAt: 0, iceOut: [], iceTimer: 0,
+      negotiated: false, nudged: false, mySid: newSid(), theirSid: 0, discAt: 0, born: Date.now(),
     };
     peers.set(id, p);
     p.sender = pc.addTrack(sendTrack, dest.stream);
     p.sender.replaceTrack(null).catch(() => {});
-    pc.onnegotiationneeded = async () => {
-      try {
-        p.makingOffer = true;
-        await pc.setLocalDescription();
-        sendSignal(p, { d: pc.localDescription });
-      } catch (e) { console.warn('[voice] offer', e); }
-      finally { p.makingOffer = false; }
+    // Перше знайомство починає лише нечемний бік. Коли обидва кидали пропозиції разом, чемний відкочував свою, і
+    // Chrome після такого відкату переставав збирати кандидатів: з'єднання вічно висіло «new» (заміри 30.09).
+    // Чемний чекає на пропозицію; не дочекався за NUDGE_MS — починає сам (сторож нижче). Далі — як завжди.
+    pc.onnegotiationneeded = () => { if (!p.polite || p.negotiated) makeOffer(p); };
+    pc.onsignalingstatechange = () => {
+      if (pc.signalingState !== 'stable' || !pc.remoteDescription || p.negotiated) return;
+      p.negotiated = true;
+      if (p.link.watch && screen) shareTo(p);
     };
     pc.onicecandidate = (e) => { if (e.candidate) queueIce(p, e.candidate); };
     pc.onconnectionstatechange = () => {
       p.state = pc.connectionState;
+      p.discAt = p.state === 'disconnected' ? Date.now() : 0;
       if (p.state === 'failed') restartIce(p);
       paintPeers();
     };
     pc.ontrack = (e) => onTrack(p, e);
+    sendSignal(p, { hello: 1 });   // «це моє нове з'єднання»: хто тримає старе, зробить нове й собі
     return p;
   }
 
-  function closePeer(p) {
-    peers.delete(p.id);
+  async function makeOffer(p) {
+    try {
+      p.makingOffer = true;
+      await p.pc.setLocalDescription();
+      sendSignal(p, { d: p.pc.localDescription });
+    } catch (e) { console.warn('[voice] offer', e); }
+    finally { p.makingOffer = false; }
+  }
+
+  function closePeer(p, again) {
+    if (peers.get(p.id) === p) peers.delete(p.id);
     clearTimeout(p.iceTimer);
     try { p.pc.close(); } catch { /* уже */ }
     if (p.src) try { p.src.disconnect(); } catch { /* уже */ }
     if (p.meter) try { p.meter.disconnect(); } catch { /* уже */ }
     if (p.audio) { p.audio.srcObject = null; p.audio.remove(); }
     if (p.talk) { p.talk = false; updateDuck(); }
+    if (viewing === p.id && !again) closeViewer(false);
   }
 
   function sendSignal(p, msg) {
     if (!conn || conn.state !== 'Connected') return;
-    conn.invoke('VoiceSignal', p.id, JSON.stringify(msg)).catch(() => {});
+    msg.s = p.mySid;
+    msg.r = p.theirSid || 0;
+    const data = JSON.stringify(msg);
+    if (data.length > MAX_SIGNAL) { console.warn('[voice] завеликий лист, не шлю', data.length); return; }
+    conn.invoke('VoiceSignal', p.id, data).catch(() => {});
   }
 
   /// Кандидати летять пачками: з десятком людей їх були б сотні окремих листів.
   function queueIce(p, c) {
+    p.iceSent = (p.iceSent || 0) + 1;
     p.iceOut.push(c.toJSON ? c.toJSON() : c);
     if (p.iceTimer) return;
     p.iceTimer = setTimeout(() => {
@@ -276,7 +350,7 @@
       const list = p.iceOut;
       p.iceOut = [];
       if (list.length) sendSignal(p, { c: list });
-    }, 80);
+    }, 150);
   }
 
   function restartIce(p) {
@@ -291,9 +365,16 @@
     if (!ready) { queued.push(['signal', x]); return; }
     let msg;
     try { msg = JSON.parse(x.data); } catch { return; }
-    const p = ensurePeer(x.from);
+    const s = +msg.s || 0, r = +msg.r || 0;
+    let p = peers.get(x.from) || makePeer(x.from);
     if (!links.has(x.from)) p.goneAt = p.goneAt || Date.now();   // прийшов раніше за voiceMe — нехай доведе, що він тут
-    p.chain = p.chain.then(() => handleSignal(p, msg)).catch((e) => console.warn('[voice] signal', e));
+    if (r && r !== p.mySid) return;                               // до мого старого з'єднання
+    if (!p.theirSid) p.theirSid = s;
+    else if (s < p.theirSid) return;                              // від їхнього старого з'єднання
+    else if (s > p.theirSid) { p = recreatePeer(p); p.theirSid = s; }   // у них нове — і в мене буде нове
+    if (msg.hello) return;
+    const target = p;
+    target.chain = target.chain.then(() => handleSignal(target, msg)).catch((e) => console.warn('[voice] signal', e));
   }
 
   async function handleSignal(p, msg) {
@@ -309,6 +390,7 @@
         sendSignal(p, { d: pc.localDescription });
       }
     }
+    p.iceGot = (p.iceGot || 0) + (msg.c || []).length;
     for (const c of msg.c || []) {
       try { await pc.addIceCandidate(c); }
       catch (e) { if (!p.ignoreOffer) console.warn('[voice] ice', e); }
@@ -316,8 +398,9 @@
   }
 
   function onTrack(p, e) {
-    if (e.track.kind !== 'audio') return;
     const stream = (e.streams && e.streams[0]) || new MediaStream([e.track]);
+    // Екран людини (відео й, якщо поділились, його звук) — окремий потік, не той, що з мікрофона.
+    if (e.track.kind === 'video' || (p.stream && stream.id !== p.stream.id)) { onScreenTrack(p, stream); return; }
     p.stream = stream;
     if (!box) {
       box = document.createElement('div');
@@ -379,8 +462,124 @@
   function applyLink(p, link) {
     p.link = link;
     p.sender.replaceTrack(link.send ? sendTrack : null).catch(() => {});
+    if (link.watch && screen) shareTo(p); else unshareTo(p);
     applyPlayback(p);
     if (!link.recv && p.talk) { p.talk = false; paintTalk(); updateDuck(); }
+  }
+
+  // ---------- показ екрана ----------
+  // Екран летить лише тим, хто сам натиснув «Дивитись» (сервер каже це в link.watch): кожному глядачеві — свій потік,
+  // тож показувати всім підряд — це марно палити віддачу. До 2,5 Мбіт/с і 30 кадрів на глядача. Доріжки екрана
+  // живуть в окремих трансиверах з'єднання: перестав показувати — вони стають неактивними, почав знову — ті самі
+  // трансивери оживають (m-рядки в описі з'єднання не множаться).
+  let screen = null;             // мій екран (getDisplayMedia), поки показую
+  let viewing = null;            // чий екран я дивлюсь (позивний)
+  let viewer = null;             // вікно глядача
+  const canShare = () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+
+  async function startShare() {
+    if (!ready || screen) return;
+    if (!canShare()) { o.toast('Цей браузер не вміє показувати екран — спробуй Chrome на комп\'ютері'); return; }
+    try {
+      screen = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: true });
+    } catch (e) {
+      if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') o.toast('Не вийшло показати екран — ' + (e.message || e), 'err');
+      return;
+    }
+    const v = screen.getVideoTracks()[0];
+    if (v) {
+      try { v.contentHint = 'motion'; } catch { /* старий браузер */ }
+      v.addEventListener('ended', () => stopShare(true));   // «Припинити показ» у самому браузері
+    }
+    if (conn && conn.state === 'Connected') conn.invoke('VoiceShare', true).catch(() => {});
+    for (const p of peers.values()) if (p.link.watch) shareTo(p);
+    paint();
+  }
+
+  function stopShare(tell) {
+    if (!screen) return;
+    screen.getTracks().forEach((t) => t.stop());
+    screen = null;
+    for (const p of peers.values()) unshareTo(p);
+    if (tell && ready && conn && conn.state === 'Connected') conn.invoke('VoiceShare', false).catch(() => {});
+    paint();
+  }
+
+  function shareTo(p) {
+    if (!screen || !p.negotiated) return;
+    p.shareTr = p.shareTr || {};
+    for (const t of screen.getTracks()) {
+      const tr = p.shareTr[t.kind];
+      if (tr && tr.sender.track === t) continue;
+      if (!tr) {
+        const opts = { direction: 'sendonly', streams: [screen] };
+        if (t.kind === 'video') opts.sendEncodings = [{ maxBitrate: 2500000, maxFramerate: 30 }];
+        p.shareTr[t.kind] = p.pc.addTransceiver(t, opts);
+      } else {
+        tr.direction = 'sendonly';
+        tr.sender.replaceTrack(t).catch(() => {});
+        try { tr.sender.setStreams(screen); } catch { /* старий браузер */ }
+      }
+    }
+  }
+
+  function unshareTo(p) {
+    for (const tr of Object.values(p.shareTr || {})) {
+      if (!tr.sender.track && tr.direction === 'inactive') continue;
+      tr.sender.replaceTrack(null).catch(() => {});
+      try { tr.direction = 'inactive'; } catch { /* з'єднання вже закрите */ }
+    }
+  }
+
+  function onScreenTrack(p, stream) {
+    p.screen = stream;
+    if (viewing === p.id) showViewer(p);
+  }
+
+  async function watch(peer) {
+    if (!ready || !conn) return;
+    if (viewing && viewing !== peer) closeViewer(true);
+    viewing = peer;
+    const err = await conn.invoke('VoiceWatch', peer, true).catch(() => 'Не вийшло');
+    if (err) { viewing = null; o.toast(err); paint(); return; }
+    const p = peers.get(peer);
+    if (p && p.screen && p.screen.getVideoTracks().some((t) => t.readyState === 'live')) showViewer(p);
+    else showViewer(p || { id: peer }, true);
+    paint();
+  }
+
+  function showViewer(p, waiting) {
+    if (!viewer) {
+      viewer = document.createElement('div');
+      viewer.className = 'vcscreen';
+      viewer.innerHTML = '<div class="vcs-bar"><b class="vcs-who"></b><button type="button" class="icon ghost" data-vcs="full" title="На весь екран">⛶</button>'
+        + '<button type="button" class="icon ghost" data-vcs="close" title="Не дивитись">✕</button></div>'
+        + '<video class="vcs-video" autoplay playsinline></video><p class="vcs-wait muted small">Чекаю на картинку…</p>';
+      document.body.appendChild(viewer);
+      viewer.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-vcs]');
+        if (!b) return;
+        if (b.dataset.vcs === 'close') { closeViewer(true); return; }
+        const v = viewer.querySelector('video');
+        if (v.requestFullscreen) v.requestFullscreen().catch(() => {});
+        else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+      });
+      viewer.querySelector('video').addEventListener('playing', () => { viewer.querySelector('.vcs-wait').hidden = true; });
+    }
+    viewer.querySelector('.vcs-who').textContent = '🖥 ' + (nickOf(p.id) || 'екран');
+    const v = viewer.querySelector('video');
+    if (!waiting && p.screen && v.srcObject !== p.screen) { v.srcObject = p.screen; v.play().catch(() => needGesture()); }
+    v.muted = deaf;
+    if (waiting) viewer.querySelector('.vcs-wait').hidden = false;
+    viewer.hidden = false;
+  }
+
+  function closeViewer(tell) {
+    if (tell && viewing && ready && conn && conn.state === 'Connected') conn.invoke('VoiceWatch', viewing, false).catch(() => {});
+    const was = viewing;
+    viewing = null;
+    if (viewer) { const v = viewer.querySelector('video'); v.srcObject = null; viewer.hidden = true; }
+    if (was) paint();
   }
 
   // ---------- події сервера ----------
@@ -392,9 +591,13 @@
     links = new Map((x.links || []).map((l) => [l.peer, l]));
     for (const p of [...peers.values()]) {
       if (links.has(p.id)) continue;
-      // Перейшли в іншу кімнату — рвемо одразу; людина зникла зі списку — даємо їй час повернутись (сервер перезапускається).
-      if (moved) closePeer(p);
-      else if (!p.goneAt) p.goneAt = Date.now();
+      // Людина зникла зі списку — даємо їй 15 с повернутись: сервер перезапускається, і тоді голос іде далі як ішов.
+      // Але якщо в іншу кімнату перейшов я сам — з тими, хто лишився, глушимось в обидва боки одразу (за столом мафії
+      // Посиденьки чути не мають). З'єднання не рвемо: за стіл зазвичай переходять ті самі люди, по одному, і коли
+      // людина дійде, голос піде тим самим з'єднанням, без секунди тиші на нове.
+      // За столом (мафія!) і тому, хто просто зник, — одразу тиша в обидва боки: 15 с чужих вух тут забагато.
+      if (moved || room !== HOME) applyLink(p, { peer: p.id, send: false, recv: false, watch: false });
+      if (!p.goneAt) p.goneAt = Date.now();
     }
     for (const l of links.values()) applyLink(ensurePeer(l.peer), l);
     paint();
@@ -403,6 +606,7 @@
   function onRoster(r) {
     known = true;
     roster = r && r.rooms ? r : { rooms: [] };
+    for (const x of roster.rooms) for (const m of x.members || []) if (m.peer) nickMem.set(m.peer, m.nick);
     for (const p of peers.values()) applyPlayback(p);   // гучність — за ніком, а нік міг щойно з'явитись
     paint();
     if (o && o.onRoster) o.onRoster();
@@ -413,14 +617,26 @@
     o.toast((x && x.text) || 'Тебе вивели з Посиденьок');
   }
 
-  // Раз на секунду: ті, хто зник і не повернувся, — геть; хто довго не з'єднується — показати.
+  // Раз на секунду: ті, хто зник і не повернувся, — геть; хто довго не з'єднується — показати; сторож переговорів.
   setInterval(() => {
     const now = Date.now();
     let changed = false;
     for (const p of [...peers.values()]) {
-      if (p.goneAt && now - p.goneAt > GRACE_MS) { closePeer(p); changed = true; }
-      else if (p.state !== 'connected' && now - p.since > SLOW_MS && !p.slow) { p.slow = true; changed = true; }
+      if (p.goneAt && now - p.goneAt > GRACE_MS) { closePeer(p); changed = true; continue; }
+      if (p.state !== 'connected' && now - p.born > SLOW_MS && !p.slow) { p.slow = true; changed = true; }
       else if (p.state === 'connected' && p.slow) { p.slow = false; changed = true; }
+      if (p.goneAt) continue;
+      // Чемний так і не дочекався пропозиції (лист загубився, нечемний перезапускався) — починає сам.
+      if (p.polite && !p.negotiated && !p.nudged && now - p.since > NUDGE_MS && p.pc.signalingState === 'stable') {
+        p.nudged = true;
+        makeOffer(p);
+      }
+      // Домовились, а зв'язку нема: кандидати загубились чи мережа змінилась — перезапускаємо ICE (нечемний, щоб не вдвох).
+      if (p.negotiated && p.state !== 'connected' && now - p.since > STUCK_MS && (!p.polite || now - p.since > 2 * STUCK_MS)) restartIce(p);
+      // Зв'язок хитається вже 5 с — не чекаємо, поки браузер сам визнає «failed» (це ще пів хвилини).
+      if (p.discAt && now - p.discAt > 5000 && !p.polite) restartIce(p);
+      // Так і не піднялось — робимо з'єднання наново (той бік побачить новий номер сесії і зробить своє).
+      if (p.state !== 'connected' && now - p.since > (p.polite ? 2 * DEAD_MS : DEAD_MS)) recreatePeer(p);
     }
     if (changed) paintPeers();
   }, 1000);
@@ -461,14 +677,14 @@
     }
     if (!ready || set.mode !== 'ptt' || !set.ptt.code || e.code !== set.ptt.code || e.repeat) return;
     if (typing(e.target) && e.key.length === 1) return;   // друкуєш у полі — це буква, а не «говорити»
-    setPressed(true);
+    setPressed('key', true);
   }, true);
   addEventListener('keyup', (e) => {
-    if (set.ptt.code && e.code === set.ptt.code) setPressed(false);
+    if (set.ptt.code && e.code === set.ptt.code) setPressed('key', false);
   }, true);
   // Відпускання клавіші у схованій вкладці не прийде — відпускаємо самі.
-  addEventListener('blur', () => setPressed(false));
-  document.addEventListener('visibilitychange', () => { if (document.hidden) setPressed(false); });
+  addEventListener('blur', releaseAll);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 
   function keyLabel(e) {
     if (e.code.startsWith('Key')) return e.code.slice(3);
@@ -487,7 +703,7 @@
     if (binding) {
       const i = now.findIndex((v, j) => v && !padPrev[j]);
       if (i >= 0) { set.ptt = { code: '', label: 'кнопка пада ' + i, pad: i }; save(); stopBinding(); }
-    } else if (ready && set.mode === 'ptt' && set.ptt.pad >= 0) setPressed(!!now[set.ptt.pad]);
+    } else if (ready && set.mode === 'ptt' && set.ptt.pad >= 0) setPressed('pad', !!now[set.ptt.pad]);
     padPrev = now;
   }
   function syncPadPoll() {
@@ -503,7 +719,7 @@
   function homeRoom() { return roster.rooms.find((r) => r.id === HOME) || null; }
   function nickOf(peer) {
     for (const r of roster.rooms) for (const m of r.members || []) if (m.peer === peer) return m.nick;
-    return '';
+    return nickMem.get(peer) || '';
   }
   function memberOf(peer) {
     for (const r of roster.rooms) for (const m of r.members || []) if (m.peer === peer) return m;
@@ -533,6 +749,7 @@
     panel.addEventListener('click', onPanelClick);
     panel.addEventListener('input', onPanelInput);
     panel.addEventListener('change', onPanelInput);
+    panel.addEventListener('focusout', () => setTimeout(flushPaint, 0));
     // «Тримай і говори» пальцем: вказівник захоплюємо, щоб відпускання прийшло сюди, навіть коли палець з'їхав.
     let holding = false;
     panel.addEventListener('pointerdown', (e) => {
@@ -541,10 +758,13 @@
       e.preventDefault();
       try { hold.setPointerCapture(e.pointerId); } catch { /* старий браузер */ }
       holding = true;
-      setPressed(true);
+      setPressed('hold', true);
     });
-    const release = () => { if (holding) { holding = false; setPressed(false); } };
-    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) panel.addEventListener(ev, release);
+    // Відпускання слухаємо на всьому документі: панель могла перемалюватись, поки палець тримав кнопку.
+    const release = () => { if (holding) { holding = false; setPressed('hold', false); flushPaint(); } };
+    for (const ev of ['pointerup', 'pointercancel']) document.addEventListener(ev, release, true);
+    panel.addEventListener('lostpointercapture', release);
+    isHolding = () => holding;
     panel.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-hold]')) e.preventDefault(); });
     // Шлях події, а не closest: кнопка, на яку клацнули, могла вже зникнути з перемальованої панелі.
     document.addEventListener('click', (e) => {
@@ -565,11 +785,22 @@
     paint();
   }
 
+  let isHolding = () => false;
+  let paintLater = false;
+  /// Людина саме тягне повзунок, тримає «говорити» чи розгорнула список — innerHTML вибив би це з-під пальця.
+  function busyPanel() {
+    const a = document.activeElement;
+    return isHolding() || !!(a && panel && panel.contains(a) && /^(INPUT|SELECT)$/.test(a.tagName) && a.type !== 'checkbox');
+  }
+  function flushPaint() { if (paintLater) { paintLater = false; paint(); } }
+
   function paint() {
     syncPadPoll();
     paintBtn();
+    decorateAll();
     if (!panel || !open) return;
-    const sig = JSON.stringify([want, ready, room, listenOnly, muted, deaf, set.mode, set.ptt, set.duck, binding, o.me.account,
+    if (busyPanel()) { paintLater = true; paintPeers(); paintTalk(); return; }
+    const sig = JSON.stringify([want, ready, room, listenOnly, muted, deaf, set.mode, set.ptt, set.duck, binding, o.me.account, table, !!screen, viewing, acStuck,
       roster, [...links.values()], mics.map((m) => m.deviceId), set.mic]);
     if (sig !== listSig) {
       listSig = sig;
@@ -604,11 +835,14 @@
     const p = meRow ? null : peers.get(m.peer);
     const l = meRow ? null : links.get(m.peer);
     const marks = [];
+    if (m.share && !meRow) marks.push('<button type="button" class="vc-watch' + (viewing === m.peer ? ' on' : '') + '" data-act="watch" data-peer="'
+      + esc(m.peer) + '">' + (viewing === m.peer ? '🖥 Дивишся' : '🖥 Дивитись') + '</button>');
+    else if (m.share) marks.push('<span title="ти показуєш екран">🖥</span>');
     if (m.deaf) marks.push('<span title="нікого не чує">🙉</span>');
     else if (m.muted) marks.push('<span title="мікрофон вимкнено">🔇</span>');
     if (l && !l.recv) marks.push('<span class="vc-rule" title="За правилами гри ти зараз його не чуєш">🌙 не чути</span>');
     if (l && !l.send) marks.push('<span class="vc-rule" title="За правилами гри він зараз тебе не чує">🤫 тебе не чує</span>');
-    const vol = meRow ? '' : '<input class="vc-vol" type="range" min="0" max="100" step="1" data-vol="' + esc(m.nick) + '" value="'
+    const vol = meRow || !volWorks ? '' : '<input class="vc-vol" type="range" min="0" max="100" step="1" data-vol="' + esc(m.nick) + '" value="'
       + Math.round(volOf(m.nick) * 100) + '" title="Гучність: ' + esc(m.nick) + '" aria-label="Гучність ' + esc(m.nick) + '">';
     const hue = window.HPeople && HPeople.hue ? HPeople.hue(m.nick) : 200;
     return '<div class="vc-m' + (meRow ? ' me' : '') + '" data-peer="' + esc(m.peer) + '" style="--h:' + hue + '">'
@@ -641,6 +875,9 @@
     const r = myRoom();
     const mine = r ? r.members : [];
     const meM = mine.find((m) => m.peer === peerId) || { peer: peerId, nick: o.me.nick, muted, deaf };
+    if (acStuck) h.push('<p class="vc-rulebar">⚠ Браузер приспав звук — тицни будь-де на сторінці, щоб тебе знову було чути</p>');
+    const rule = ruleText();
+    if (rule) h.push('<p class="vc-rulebar">' + rule + '</p>');
     h.push('<div class="vc-list">' + memberRow(meM, true) + mine.filter((m) => m.peer !== peerId).map((m) => memberRow(m, false)).join('')
       + (mine.length <= 1 ? '<p class="muted small vc-alone">Поки ти тут сам — поклич когось у Балачках.</p>' : '') + '</div>');
     // керування
@@ -648,22 +885,40 @@
       + '<button type="button" class="vc-b' + (muted || listenOnly ? ' off' : '') + '" data-act="mute"' + (listenOnly ? ' disabled title="Мікрофона нема — лише слухаєш"' : '') + '>'
       + (muted || listenOnly ? '🔇 Мікрофон вимкнено' : '🎙 Мікрофон') + '</button>'
       + '<button type="button" class="vc-b' + (deaf ? ' off' : '') + '" data-act="deaf" title="Нікого не чути (і тебе теж)">' + (deaf ? '🙉 Нікого не чую' : '🎧 Чую всіх') + '</button>'
+      + (canShare() ? '<button type="button" class="vc-b' + (screen ? ' on' : '') + '" data-act="share">' + (screen ? '🖥 Зупинити показ' : '🖥 Показати екран') + '</button>' : '')
       + '<button type="button" class="vc-b vc-leave" data-act="leave">Вийти</button></div>');
     if (set.mode === 'ptt' && !listenOnly) {
       h.push('<button type="button" class="vc-hold" data-hold title="Тримай і говори">'
         + (set.ptt.label ? 'Тримай «' + esc(set.ptt.label) + '» або цю кнопку — і говори' : 'Тримай цю кнопку — і говори') + '</button>');
     }
-    if (room !== HOME) h.push('<button type="button" class="ghost small vc-home" data-act="home">↩ Назад у Посиденьки</button>');
+    const moves = [];
+    if (table && room !== 't:' + table.id) moves.push('<button type="button" class="ghost small" data-act="table">🎲 До голосу столу «' + esc(table.title) + '»</button>');
+    if (room !== HOME) moves.push('<button type="button" class="ghost small" data-act="home">↩ Назад у Посиденьки</button>');
+    if (moves.length) h.push('<div class="vc-moves">' + moves.join('') + '</div>');
     h.push(settingsHtml());
     h.push(othersHtml());
     return h.join('');
   }
 
+  /// Коли гра за столом ділить голос (мафія вночі, мертві, капітан у Позивних) — одним рядком, чому когось не чути.
+  function ruleText() {
+    const all = [...links.values()];
+    if (room === HOME || !all.length) return '';
+    const hear = all.filter((l) => l.recv).length, heard = all.filter((l) => l.send).length;
+    if (hear === all.length && heard === all.length) return '';
+    if (!hear && !heard) return '🌙 Зараз ти нікого не чуєш і тебе ніхто — так велить гра';
+    if (!heard) return '🤫 Зараз тебе не чути — так велить гра, а ти слухай';
+    if (heard < all.length && hear === all.length) return '🪑 Ти на лаві: чуєш усіх, а тебе — лише такі самі, як ти';
+    return '🎲 Гра ділить голос: чуєш ' + hear + ' з ' + all.length + ', тебе — ' + heard;
+  }
+
   function othersHtml() {
     const others = roster.rooms.filter((r) => r.id !== room && (r.id !== HOME || (want && ready)));
     if (!others.length) return '';
-    return '<div class="vc-else">' + others.map((r) => '<div class="small"><b>' + esc(roomLabel(r)) + '</b>: '
-      + r.members.map((m) => esc(m.nick)).join(', ') + '</div>').join('') + '</div>';
+    // Стіл — посиланням: відкрити його й звідти вже «🎙 Говорити» (у голос столу пускають тих, хто за ним сидить чи дивиться).
+    return '<div class="vc-else">' + others.map((r) => '<div class="small">'
+      + (r.table ? '<a href="#games/room/' + encodeURIComponent(r.table) + '" data-act="close">' + esc(roomLabel(r)) + '</a>' : '<b>' + esc(roomLabel(r)) + '</b>')
+      + ': ' + r.members.map((m) => esc(m.nick)).join(', ') + '</div>').join('') + '</div>';
   }
 
   function settingsHtml() {
@@ -686,6 +941,11 @@
   /// Живе: хто говорить (кільця), стан з'єднань — без перемальовування панелі.
   function paintTalk() {
     if (btn) btn.classList.toggle('talk', (want && ready && myTalk) || [...peers.values()].some((p) => p.talk));
+    // Кільце на чіпі за столом — лише тим, кого я справді чую (і собі, коли мене чути).
+    const talking = new Set();
+    if (want && ready && myTalk) talking.add(key(o.me.nick));
+    for (const p of peers.values()) if (p.talk) talking.add(key(nickOf(p.id)));
+    for (const chip of document.querySelectorAll('.gtable .gseat[data-nick]')) chip.classList.toggle('vc-talk', talking.has(key(chip.dataset.nick)));
     if (!panel || !open) return;
     for (const el of panel.querySelectorAll('.vc-m')) {
       const peer = el.dataset.peer;
@@ -743,6 +1003,9 @@
     else if (act === 'deaf') setDeaf(!deaf);
     else if (act === 'bind') { if (binding) stopBinding(); else startBinding(); }
     else if (act === 'home') follow(null, true);
+    else if (act === 'share') { if (screen) stopShare(true); else startShare(); }
+    else if (act === 'watch') { if (viewing === b.dataset.peer) closeViewer(true); else watch(b.dataset.peer); }
+    else if (act === 'table' && table) follow(table.id, true);
   }
 
   function onPanelInput(e) {
@@ -756,7 +1019,7 @@
     const k = t.dataset.set;
     if (!k || e.type === 'input' && k !== 'threshold') return;
     if (k === 'threshold') { set.threshold = +t.value; save(); tellGate(); paintMeter(); return; }
-    if (k === 'mode') { set.mode = t.value; setPressed(false); }
+    if (k === 'mode') { set.mode = t.value; releaseAll(); }
     else if (k === 'duck') { set.duck = t.checked; updateDuck(); }
     else if (k === 'mic') { set.mic = t.value; if (ac) openMic().then(() => { tellServer(); paint(); }); }
     save();
@@ -764,12 +1027,75 @@
     paint();
   }
 
-  // ---------- столи (етап 2 доповнює) ----------
+  // ---------- голос столу ----------
+  // Сів за стіл на компанію (3+ місця: мафія, шпигун, Своя гра, дурень на чотирьох) — голос іде за стіл: там свої
+  // правила (мафія вночі чує лише мафію), а хто не грає, не чує, про що домовляються за столом. Встав — сервер сам
+  // поверне в Посиденьки. На дуелях сам не переходиш: двоє за шахами зазвичай балакають з усіма в Посиденьках, а
+  // перейти можна кнопкою «🎙» на картці. «↩ Назад у Посиденьки» запам'ятовує стіл — туди вже не тягне.
+  let table = null;              // стіл на екрані — те, що каже core.js через app.js: { id, title, seat, max, … }
+  const stayHome = new Set();    // столи, з яких людина сама пішла в Посиденьки
+
+  /// Стіл, куди голос іде сам: на екрані, я за ним сиджу, він на компанію, і звідти я сам не йшов.
+  function autoTable() {
+    return table && table.seat != null && (table.max || 0) >= 3 && !stayHome.has(table.id) ? table.id : null;
+  }
+
+  function onTable(t) {
+    table = t;
+    const auto = autoTable();
+    if (auto && want && ready && room !== 't:' + auto) follow(auto, false);
+    paint();
+  }
+
   /// Перейти в голос столу (null — у Посиденьки). byHand — людина сама натиснула: відмову показати.
-  async function follow(table, byHand) {
+  async function follow(tableId, byHand) {
     if (!ready || !conn || conn.state !== 'Connected') return;
-    const err = await conn.invoke('VoiceFollow', table).catch(() => null);
+    if (byHand) {
+      if (tableId) stayHome.delete(tableId);
+      else if (room && room !== HOME) stayHome.add(room.slice(2));
+    }
+    const err = await conn.invoke('VoiceFollow', tableId).catch(() => null);
     if (err && byHand) o.toast(err);
+  }
+
+  /// Картка столу (core.js кличе після кожного перемальовування шапки, а ми — коли змінився голос): 🎙 на чіпах тих,
+  /// хто в голосі столу, кільце на тих, хто говорить, і кнопка голосу — лише на столі, що зараз на екрані.
+  function decorate(el) {
+    if (!el || !el.dataset || !el.dataset.room) return;
+    const id = el.dataset.room;
+    const head = el.querySelector('.gseats');
+    if (!head) return;
+    const r = roster.rooms.find((x) => x.id === 't:' + id);
+    const inTable = new Set(r ? r.members.map((m) => key(m.nick)) : []);
+    for (const chip of head.querySelectorAll('.gseat[data-nick]')) chip.classList.toggle('vc-in', inTable.has(key(chip.dataset.nick)));
+    let b = head.querySelector('.gvc');
+    const show = !!(table && table.id === id && o.me.account && window.RTCPeerConnection);
+    if (!show) { if (b) b.remove(); return; }
+    if (!b) {
+      b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'gseat gvc';
+      b.dataset.vc = id;
+      head.appendChild(b);
+    }
+    const here = want && ready && room === 't:' + id;
+    const n = r ? r.members.length : 0;
+    b.classList.toggle('on', here);
+    b.textContent = here ? '🎙 Голос столу · ' + n : n ? '🎙 Тут говорять · ' + n : '🎙 Говорити';
+    b.title = here ? 'Ти в голосі цього столу — натисни, щоб керувати' : 'Зайти в голос цього столу';
+  }
+
+  function decorateAll() {
+    for (const el of document.querySelectorAll('.gtable[data-room]')) decorate(el);
+  }
+
+  function onVcClick(e) {
+    const b = e.target.closest('[data-vc]');
+    if (!b) return;
+    const id = b.dataset.vc;
+    if (!want) join(id);
+    else if (room !== 't:' + id) follow(id, true);
+    else setOpen(!open);
   }
 
   // ---------- публічне ----------
@@ -778,7 +1104,12 @@
       o = opts;
       if (o.esc) esc = o.esc;
       mountUi();
+      document.addEventListener('click', onVcClick);
     },
+    /// app.js: біля якого столу стоїмо (core.js tableInfo) — або null.
+    onTable,
+    /// core.js: шапку картки столу щойно перемальовано.
+    decorate,
     attach(c) {
       conn = c;
       c.on('voice', onRoster);
@@ -788,9 +1119,13 @@
     },
     /// Після реконекту (чи сервера після деплою) — зайти знову з тим самим позивним: з'єднання з людьми живуть.
     reconnected() {
-      if (!want) return;
+      // Поки браузер питав дозволу на мікрофон, хаб перепідключився: вхід сам зайде, коли звук запуститься.
+      if (!want || !dest) return;
       const table = room && room !== HOME ? room.slice(2) : null;
-      enter(table).catch((e) => console.warn('[voice] rejoin', e));
+      enter(table).then(() => {
+        // Листи, що летіли, поки зв'язку з сервером не було, пропали — хто не з'єднаний, пробує ще раз.
+        for (const p of peers.values()) if (p.state !== 'connected' && !p.polite && p.negotiated) restartIce(p);
+      }).catch((e) => console.warn('[voice] rejoin', e));
     },
     /// Для списку людей: 🎙 біля тих, хто в голосі.
     inVoice(nick) { return roster.rooms.some((r) => (r.members || []).some((m) => same(m.nick, nick))); },
@@ -800,7 +1135,9 @@
     stats: () => ({
       peer: peerId, want, ready, room, muted, deaf, listenOnly, talk: myTalk, level: myLevel, mode: set.mode,
       peers: [...peers.values()].map((p) => ({ id: p.id, nick: nickOf(p.id), state: p.state, talk: p.talk, level: p.level,
-        send: p.link.send, recv: p.link.recv, gone: !!p.goneAt, polite: p.polite })),
+        send: p.link.send, recv: p.link.recv, gone: !!p.goneAt, polite: p.polite, sig: p.pc.signalingState, ice: p.pc.iceConnectionState,
+        local: p.pc.localDescription && p.pc.localDescription.type, remote: p.pc.remoteDescription && p.pc.remoteDescription.type,
+        offering: p.makingOffer, ignored: p.ignoreOffer, gather: p.pc.iceGatheringState, iceSent: p.iceSent || 0, iceGot: p.iceGot || 0 })),
     }),
   };
 })();

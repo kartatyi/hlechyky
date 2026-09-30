@@ -77,8 +77,13 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
 
     /// <summary>Найдовший лист між браузерами (SDP з відео — кілька КБ; кандидати браузер шле пачками).</summary>
     public const int MaxSignalChars = 24_000;   // SignalR типово не приймає повідомлень, більших за 32 КБ
-    /// <summary>Листів за секунду з одного з'єднання: з'єднання з десятком людей — це десятки листів за раз.</summary>
-    public const int SignalsPerSecond = 60;
+    /// <summary>
+    /// Листів за секунду з одного з'єднання. Новачок у кімнаті на десятьох шле кожному привіт, опис і кілька пачок
+    /// кандидатів — це десятки листів за раз, а загублений лист коштує з'єднання, яке сторож піднімає секунди.
+    /// </summary>
+    public const int SignalsPerSecond = 200;
+    /// <summary>Хто де (подія voice) — не частіше: інакше один акаунт, клацаючи мікрофоном, смикав би весь сайт.</summary>
+    public const int RosterGapMs = 250;
 
     public const string NotAccount = "Посиденьки — лише для акаунтів: зареєструй нік, і заходь";
     public const string Off = "Посиденьки зараз зачинені";
@@ -117,8 +122,17 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
     /// <summary>Що зараз знає з'єднання про себе (останній voiceMe); null — його нема в голосі.</summary>
     public VoiceMeDto? MeOf(string conn) { lock (_lock) return _byConn.TryGetValue(conn, out var m) ? m.Me : null; }
 
-    /// <summary>Хто де говорить зараз — новенькому з'єднанню одразу при підключенні.</summary>
+    /// <summary>Хто де говорить зараз (з позивними — для тих, хто в голосі).</summary>
     public VoiceRosterDto Roster { get { lock (_lock) return _roster; } }
+
+    /// <summary>
+    /// Те саме без позивних — для всіх, хто не в голосі (новенькому з'єднанню — одразу при підключенні): їм досить ніків,
+    /// а знаючи чужий позивний, після перезапуску сервера його можна було б зайняти раніше за власника.
+    /// </summary>
+    public VoiceRosterDto PublicRoster => Public(Roster);
+
+    static VoiceRosterDto Public(VoiceRosterDto r) =>
+        new([.. r.Rooms.Select(x => x with { Members = [.. x.Members.Select(m => m with { Peer = "" })] })]);
 
     // ---------- вхід і вихід ----------
 
@@ -391,6 +405,8 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
         if (hub is null) return;
         foreach (var s in sends)
         {
+            // Хто де — склеюємо: летить найсвіжіший список не частіше за RosterGapMs.
+            if (s.To is null && s.Event == "voice") { ScheduleRoster(); continue; }
             try
             {
                 var client = s.To is null ? hub.Clients.All : hub.Clients.Client(s.To);
@@ -398,5 +414,30 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
             }
             catch (Exception ex) { log?.LogWarning(ex, "голос: не відправилось {Event}", s.Event); }
         }
+    }
+
+    int _rosterQueued;
+    long _rosterSentAt = long.MinValue / 2;
+
+    void ScheduleRoster()
+    {
+        if (Interlocked.Exchange(ref _rosterQueued, 1) == 1) return;   // уже летить — прихопить і цю зміну
+        var wait = RosterGapMs - (Environment.TickCount64 - Interlocked.Read(ref _rosterSentAt));
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (wait > 0) await Task.Delay((int)wait);
+                Interlocked.Exchange(ref _rosterQueued, 0);
+                Interlocked.Exchange(ref _rosterSentAt, Environment.TickCount64);
+                VoiceRosterDto full;
+                string[] members;
+                lock (_lock) { full = _roster; members = [.. _byConn.Keys]; }
+                // Тим, хто в голосі, — з позивними (їм з'єднуватись), решті — лише ніки.
+                if (members.Length > 0) await hub!.Clients.Clients(members).SendAsync("voice", full);
+                await hub!.Clients.AllExcept(members).SendAsync("voice", Public(full));
+            }
+            catch (Exception ex) { log?.LogWarning(ex, "голос: не відправився список"); }
+        });
     }
 }

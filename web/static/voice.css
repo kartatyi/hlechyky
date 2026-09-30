@@ -46,7 +46,7 @@ header .vcbtn.talk { box-shadow: 0 0 0 2px var(--ok); }
 .vc-b { padding: 7px 10px; font-size: .92em; }
 .vc-b.off { background: color-mix(in srgb, var(--danger) 20%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
 .vc-leave { margin-left: auto; }
-.vc-home { align-self: flex-start; }
+.vc-moves { display: flex; flex-wrap: wrap; gap: 6px; }
 .vc-hold {
   width: 100%; padding: 16px 12px; font-weight: 600; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
@@ -75,3 +75,10 @@ header .vcbtn.talk { box-shadow: 0 0 0 2px var(--ok); }
   }
   .vc-vol { width: 84px; }
 }
+
+/* Картка столу: 🎙 на тих, хто в голосі столу, кільце — хто говорить, і кнопка голосу (web/voice.js, decorate). */
+.gtable .gseat.vc-in::after { content: '🎙'; margin-left: 4px; font-size: .8em; }
+.gtable .gseat.vc-talk { box-shadow: 0 0 0 2px var(--ok); }
+.gtable .gseat.gvc { cursor: pointer; border-style: dashed; }
+.gtable .gseat.gvc.on { border-style: solid; border-color: color-mix(in srgb, var(--ok) 60%, var(--line)); background: color-mix(in srgb, var(--ok) 22%, var(--panel2)); }
+.vc-rulebar { font-size: .88em; padding: 6px 9px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 12%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }

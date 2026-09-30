@@ -876,6 +876,26 @@ public sealed partial class Mafia : Game
         return _dead.Contains(s) ? "Мертві мовчать — дочекайся кінця партії" : null;
     }
 
+    /// <summary>Канал голосу, у якому вночі шепочеться мафія (дон теж).</summary>
+    public const string MafiaVoice = "mafia";
+    static readonly VoiceRule NightMafia = new([MafiaVoice], [MafiaVoice]);
+    /// <summary>Мертві знають усі ролі (spec §Фази, п. 6) — тож чують і нічну мафію; говорять лише між собою й глядачами.</summary>
+    static readonly VoiceRule Ghost = new([VoiceRule.Bench], [VoiceRule.Table, VoiceRule.Bench, MafiaVoice]);
+
+    /// <summary>
+    /// Голос столу (Посиденьки). Удень говорять живі, мертві й глядачі — лише на лаві (чують усе, їх — лише свої).
+    /// Уночі мафія шепочеться між собою, решта живих спить: ні слова, ні звуку. Мертві чують і нічну мафію — ролі їм
+    /// однаково відомі; глядач ролей не знає, тож нічної мафії не чує. У лобі й після партії — усі всіх (каркас).
+    /// </summary>
+    public override VoiceRule? Voice(int? seat)
+    {
+        if (_phase is MafiaPhase.Lobby or MafiaPhase.Done) return null;
+        if (seat is not { } s || !_roles.ContainsKey(s)) return VoiceRule.OnBench;
+        if (_dead.Contains(s)) return Ghost;
+        if (_phase != MafiaPhase.Night) return VoiceRule.All;
+        return IsMafia(_roles[s]) ? NightMafia : VoiceRule.Sleep;
+    }
+
     // =========================================================================================
     // Види
     // =========================================================================================

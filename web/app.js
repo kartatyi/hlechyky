@@ -1744,6 +1744,7 @@
   }
   /// Каркас ігор каже, біля якого столу ми стоїмо (null — ні біля якого) і чи стіл на весь екран.
   function onTable(info, layout) {
+    if (window.HVoice) HVoice.onTable(info);   // сів за стіл на компанію — голос іде за стіл (web/voice.js)
     table.full = !!(layout && layout.full);
     const id = info ? info.id : null;
     const changed = id !== table.id;

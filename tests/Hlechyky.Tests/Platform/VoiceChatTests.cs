@@ -270,6 +270,18 @@ public sealed class VoiceChatTests
     }
 
     [Fact]
+    public void Public_roster_hides_peers()
+    {
+        var v = NewVoice(new RoomHarness("t-party"));
+        v.Join("c1", "Оля", true, PeerA, null, true, false);
+        Assert.Equal(PeerA, v.Roster.Rooms.Single().Members.Single().Peer);
+        var pub = v.PublicRoster.Rooms.Single().Members.Single();
+        Assert.Equal("", pub.Peer);
+        Assert.Equal("Оля", pub.Nick);
+        Assert.True(pub.Muted);
+    }
+
+    [Fact]
     public void Turn_gets_time_limited_credentials()
     {
         var o = new VoiceChatOptions { TurnSecret = "s3cret", TurnUrls = ["turn:example.test:3478"], TurnTtlHours = 2 };

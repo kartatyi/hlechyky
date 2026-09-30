@@ -1096,7 +1096,8 @@
     const rv = views[view.id];
     if (!rv || !rv.room || rv.loose || (rv.room.maxPlayers || 0) <= 1) return null;
     const g = rv.room.game;
-    return { id: rv.room.id, game: g, title: titleOf(g), main: !!(infoOf(g) && infoOf(g).talk === 'main'), seat: rv.seat, status: rv.room.status };
+    return { id: rv.room.id, game: g, title: titleOf(g), main: !!(infoOf(g) && infoOf(g).talk === 'main'), seat: rv.seat, status: rv.room.status,
+      max: rv.room.maxPlayers || 0 };
   }
   let tableSig = null;
   /// Сказати app.js, що змінився стіл (або його стан, або ⛶). Однакове двічі не кажемо.
@@ -1813,8 +1814,11 @@
         const nick = nickAt(room, i) || botAt(room, i);
         if (fold && !nick) continue;
         const turn = room.status === 'playing' && turnOf(rv) === i;
+        // data-nick — людям (не ботам): за ним 🎙 Посиденьки (web/voice.js) підсвічують, хто за столом говорить.
+        const human = nickAt(room, i);
         chips.push('<span class="gseat ' + seatClassOf(rv, i) + (nick ? '' : ' free') + (turn ? ' turn' : '')
-          + (i === rv.seat ? ' me' : '') + '"><i>' + esc(seatNameOf(rv, i)) + '</i>' + esc(nick || 'вільно') + '</span>');
+          + (i === rv.seat ? ' me' : '') + '"' + (human ? ' data-nick="' + esc(human) + '"' : '') + '><i>' + esc(seatNameOf(rv, i)) + '</i>'
+          + esc(nick || 'вільно') + '</span>');
       }
       if (fold) chips.push('<span class="gseat free gfreeall">вільно ×' + free + '</span>');
       if (taken > 4) chips.push('<button type="button" class="gseat gmany" data-many title="Показати всіх за столом">👥 '
@@ -1918,6 +1922,8 @@
     if (roomChanged) {
       card.sig = sig;
       card.head.innerHTML = headHtml(rv);
+      // 🎙 голос столу: хто в ньому, хто говорить, кнопка «Говорити» (web/voice.js). Шапку щойно перемальовано.
+      if (window.HVoice) { try { HVoice.decorate(card.el); } catch (e) { console.warn('[games] voice', e); } }
       card.head.classList.toggle('many', !!card.head.querySelector('[data-many]'));
       card.btns.innerHTML = btnsHtml(rv);
       card.btns.querySelectorAll('[data-do]').forEach((b) => b.onclick = async (e) => {

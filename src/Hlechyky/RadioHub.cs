@@ -35,7 +35,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         // Хто зараз у своїй соло-грі — теж одразу, а не з першою зміною: плитки в лобі мають знати це з порога.
         try { await Clients.Caller.SendAsync("solo", rooms.SoloNow()); } catch (Exception) { /* так само не привід не пустити */ }
         // Хто в Посиденьках і за якими столами говорять — шапка показує це з порога, навіть гостеві.
-        await Clients.Caller.SendAsync("voice", voice.Roster);
+        await Clients.Caller.SendAsync("voice", voice.PublicRoster);
         await Clients.All.SendAsync("state", engine.Snapshot());
         try { await Clients.Caller.SendAsync("tournament", tournament.Snapshot()); } catch (Exception) { /* турнір — не привід не пустити */ }
         tournament.PresenceChanged();
@@ -299,7 +299,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     /// <summary>Мікрофон вимкнено / нікого не чую — щоб решта бачила.</summary>
     public async Task VoiceSet(bool muted, bool deaf)
     {
-        if (!Allow(input: true)) return;
+        if (!Allow(input: false)) return;   // кожна зміна — список усьому сайту, тож під суворішою квотою
         await voice.DispatchAsync(voice.Set(Context.ConnectionId, muted, deaf));
     }
 
