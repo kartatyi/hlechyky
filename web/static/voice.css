@@ -1,0 +1,77 @@
+/* 🎙 Посиденьки — голосовий чат (web/voice.js). Кнопка в шапці й панель під нею (на телефоні — шторка знизу). */
+
+header .vcbtn { position: relative; padding: 6px 9px; font-size: 1.05em; }
+header .vcbtn .badge { position: absolute; top: -4px; right: -4px; }
+header .vcbtn.live:not(.on) .vc-ico { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ok) 70%, transparent)); }
+header .vcbtn.on { background: color-mix(in srgb, var(--ok) 28%, var(--panel2)); border-color: color-mix(in srgb, var(--ok) 60%, var(--line)); }
+header .vcbtn.on.muted { background: color-mix(in srgb, var(--danger) 22%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
+header .vcbtn.talk { box-shadow: 0 0 0 2px var(--ok); }
+
+.vcpanel {
+  position: fixed; z-index: 60; top: 58px; right: 16px; width: min(380px, calc(100vw - 32px));
+  max-height: calc(100vh - 80px); overflow: auto; overscroll-behavior: contain;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .45); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.vcpanel[hidden] { display: none; }
+.vcpanel p { margin: 0; line-height: 1.4; }
+.vc-head { display: flex; align-items: center; gap: 8px; }
+.vc-head b { flex: 1; font-family: var(--display); font-size: 1.1em; }
+.vc-x { padding: 4px 8px; }
+.vc-join { width: 100%; padding: 11px 14px; font-size: 1.02em; }
+.vc-who b { font-weight: 600; }
+
+.vc-list { display: flex; flex-direction: column; gap: 4px; }
+.vc-alone { padding: 2px 4px; }
+.vc-m {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: "ava nick marks" "ava state vol";
+  align-items: center; column-gap: 8px; padding: 5px 6px; border-radius: 10px;
+}
+.vc-m:hover { background: var(--panel2); }
+.vc-ava {
+  grid-area: ava; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: .9em;
+  background: hsl(var(--h, 200) 45% 32%); color: hsl(var(--h, 200) 80% 88%); box-shadow: 0 0 0 2px transparent; transition: box-shadow .12s;
+}
+.vc-m.talk .vc-ava { box-shadow: 0 0 0 2px var(--ok), 0 0 10px color-mix(in srgb, var(--ok) 60%, transparent); }
+.vc-nick { grid-area: nick; background: none; border: 0; padding: 0; text-align: left; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.vc-nick:hover { background: none; text-decoration: underline; }
+.vc-marks { grid-area: marks; display: flex; gap: 6px; align-items: center; font-size: .85em; }
+.vc-rule { color: var(--muted); font-size: .9em; white-space: nowrap; }
+.vc-state { grid-area: state; font-size: .78em; color: var(--muted); min-height: 1em; }
+.vc-state.bad { color: var(--danger); cursor: help; }
+.vc-vol { grid-area: vol; width: 96px; accent-color: var(--accent); }
+.vc-m.me { grid-template-areas: "ava nick marks" "ava state state"; }
+
+.vc-ctl { display: flex; flex-wrap: wrap; gap: 6px; }
+.vc-b { padding: 7px 10px; font-size: .92em; }
+.vc-b.off { background: color-mix(in srgb, var(--danger) 20%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.vc-leave { margin-left: auto; }
+.vc-home { align-self: flex-start; }
+.vc-hold {
+  width: 100%; padding: 16px 12px; font-weight: 600; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.vc-hold.on { background: color-mix(in srgb, var(--ok) 35%, var(--panel2)); border-color: var(--ok); }
+
+.vc-set { border-top: 1px solid var(--line); padding-top: 8px; }
+.vc-set summary { cursor: pointer; color: var(--muted); font-size: .92em; }
+.vc-set[open] summary { margin-bottom: 8px; }
+.vc-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 6px 0; font-size: .92em; }
+.vc-row select { max-width: 60%; font: inherit; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 5px 6px; }
+.vc-row input[type=range] { flex: 1; max-width: 60%; accent-color: var(--accent); }
+.vc-check { justify-content: flex-start; }
+.vc-meter { position: relative; height: 8px; border-radius: 4px; background: var(--bg2); overflow: hidden; margin: 2px 0 8px; }
+.vc-meter .vc-lvl { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--muted); transition: width .06s linear; }
+.vc-meter .vc-lvl.open { background: var(--ok); }
+.vc-meter .vc-thr { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--accent); }
+.vc-else { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 3px; color: var(--muted); }
+.vc-else b { color: var(--text); font-weight: 600; }
+
+#online .vc-mark { margin-right: 2px; }
+
+@media (max-width: 900px) {
+  .vcpanel {
+    top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 78vh; border-radius: var(--radius) var(--radius) 0 0;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+  .vc-vol { width: 84px; }
+}

@@ -275,3 +275,21 @@ public sealed class TestFrameless : Game
 
     public override object View(int? seat) => new { big = new string('в', 200) };
 }
+
+/// <summary>
+/// Голос за столом (Посиденьки): глядачі посеред партії мовчать (<see cref="Game.TalkBlock"/> — отже, каркас садить їх
+/// на лаву), а місце 1 лише слухає (<see cref="Game.Voice"/> — як капітан у Позивних).
+/// </summary>
+public sealed class TestVoice : Game
+{
+    public override GameInfo Info { get; } = new(
+        "t-voice", "Тестовий голос", "тестовий голос", GameGroup.Party, 2, 4, Start: StartMode.ByHost);
+
+    public override void Start() { }
+
+    public override string? TalkBlock(int? seat) => seat is null ? "Глядачі мовчать" : null;
+
+    public override VoiceRule? Voice(int? seat) => seat == 1 ? VoiceRule.Listen : null;
+
+    public override object View(int? seat) => new { turn = 0 };
+}

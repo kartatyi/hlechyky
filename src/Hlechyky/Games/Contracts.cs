@@ -224,6 +224,14 @@ public abstract class Game
     /// </summary>
     public virtual string? TalkBlock(int? seat) => null;
 
+    /// <summary>
+    /// Хто кого чує в голосі столу (Посиденьки, VoiceChat.cs): місце <paramref name="seat"/> (null — глядач) говорить у
+    /// канали <see cref="VoiceRule.Talk"/> і чує <see cref="VoiceRule.Hear"/>. null — як скаже каркас: посеред партії
+    /// той, кому <see cref="TalkBlock"/> не дає писати, говорить лише на лаву (<see cref="VoiceRule.OnBench"/>), решта —
+    /// усім. Кличеться під замком кімнати й лише посеред партії: у лобі й після неї чують усі всіх.
+    /// </summary>
+    public virtual VoiceRule? Voice(int? seat) => null;
+
     /// <summary>Хтось встав посеред партії. Типово — техпоразка тому, хто пішов.</summary>
     public virtual void OnLeave(int seat)
     {
@@ -346,6 +354,31 @@ public interface IGameStore
     void SaveState(string key, string json);
     string? LoadState(string key);
     void DeleteState(string key);
+}
+
+/// <summary>
+/// Голос за столом (<see cref="Game.Voice"/>): у які канали людина говорить і які чує. Людину A чує B, коли хоч один канал
+/// з <c>A.Talk</c> є в <c>B.Hear</c>. Канали — просто рядки: спільні <see cref="Table"/> і <see cref="Bench"/>, решту гра
+/// вигадує сама (у мафії вночі — «mafia»).
+/// </summary>
+public sealed record VoiceRule(IReadOnlyList<string> Talk, IReadOnlyList<string> Hear)
+{
+    /// <summary>Увесь стіл.</summary>
+    public const string Table = "table";
+    /// <summary>Лава: ті, кому зараз за столом слова не дають (глядачі, мертві), — між собою.</summary>
+    public const string Bench = "bench";
+
+    /// <summary>Говорить усім і чує всіх.</summary>
+    public static readonly VoiceRule All = new([Table], [Table]);
+    /// <summary>Говорить лише з лавою, чує і стіл, і лаву.</summary>
+    public static readonly VoiceRule OnBench = new([Bench], [Table, Bench]);
+    /// <summary>Мовчить, але чує стіл (капітан у Позивних, поки його команда думає).</summary>
+    public static readonly VoiceRule Listen = new([], [Table]);
+    /// <summary>Ні слова, ні звуку (мирні вночі).</summary>
+    public static readonly VoiceRule Sleep = new([], []);
+
+    /// <summary>Чи чує цей <paramref name="speaker"/>-а.</summary>
+    public bool Hears(VoiceRule speaker) => speaker.Talk.Any(Hear.Contains);
 }
 
 /// <summary>Повідомлення для Broadcaster'а. Каркас збирає їх у список під замком і розсилає поза ним.</summary>

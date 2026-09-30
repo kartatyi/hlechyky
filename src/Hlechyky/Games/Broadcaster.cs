@@ -41,11 +41,19 @@ public sealed class Broadcaster(
     /// <summary>Сервіси (WP1) кладуть сюди своє з інших потоків; зливає TickEngine.</summary>
     public void Post(Outgoing message) => _posted.Enqueue(message);
 
+    /// <summary>
+    /// Пачка пішла на розсилку. Так голос столу (VoiceChat) дізнається, що за столом щось змінилось, — мафія заснула,
+    /// хтось устав, — не встромляючись у кожне місце, де це стається.
+    /// </summary>
+    public event Action<IReadOnlyList<Outgoing>>? Flushed;
+
     /// <summary>Розіслати. Разом із чергою від сервісів, щоб нічого не зависало до наступного тика.</summary>
     public async Task FlushAsync(IEnumerable<Outgoing> messages, CancellationToken ct = default)
     {
         var all = Drain(messages);
         if (all.Count == 0) return;
+        try { Flushed?.Invoke(all); }
+        catch (Exception ex) { log.LogWarning(ex, "підписник розсилки впав"); }
 
         // Дедлайн на всю пачку: те, що не дописалось повільному клієнтові за 2 с, для нього пропадає.
         var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);

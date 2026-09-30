@@ -29,6 +29,7 @@ builder.Services.Configure<DjBotOptions>(cfg.GetSection("DjBot"));
 builder.Services.Configure<DeployOptions>(cfg.GetSection("Deploy"));
 builder.Services.Configure<MelodyOptions>(cfg.GetSection("Melody"));
 builder.Services.Configure<CurfewOptions>(cfg.GetSection("Curfew"));
+builder.Services.Configure<VoiceChatOptions>(cfg.GetSection("VoiceChat"));   // Посиденьки: голос (VoiceChat.cs)
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Paths.Resolve("data/keys")));
@@ -50,6 +51,7 @@ builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<Curfew>();      // нічний відбій для окремих гравців (Curfew.cs)
 builder.Services.AddSingleton<ChatFlood>();   // один лічильник флуду на Балачки, столи й агентів
+builder.Services.AddSingleton<VoiceChat>();   // Посиденьки: хто де говорить, листи між браузерами (VoiceChat.cs)
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
 builder.Services.AddSingleton<IOnAir>(sp => sp.GetRequiredService<RadioEngine>());
@@ -77,6 +79,8 @@ var app = builder.Build();
 // За Caddy (той самий хост): X-Forwarded-Proto робить Request.IsHttps правдивим, X-Forwarded-For віддає IP слухача
 app.UseForwardedHeaders(new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto });
 app.Logger.LogInformation("Глечики: root={Root}, port={Port}", root, port);
+// Голос столу стежить за розсилкою: мафія заснула, хтось устав — хто кого чує, треба перерахувати.
+app.Services.GetRequiredService<Broadcaster>().Flushed += app.Services.GetRequiredService<VoiceChat>().OnFlushed;
 
 app.UseHlechykyAuth();
 app.UseDefaultFiles();

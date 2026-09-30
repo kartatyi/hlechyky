@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock, Calls calls, Lavka lavka) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock, Calls calls, Lavka lavka, VoiceChat voice) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
@@ -34,6 +34,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         await Clients.Caller.SendAsync("rooms", lobby);
         // Хто зараз у своїй соло-грі — теж одразу, а не з першою зміною: плитки в лобі мають знати це з порога.
         try { await Clients.Caller.SendAsync("solo", rooms.SoloNow()); } catch (Exception) { /* так само не привід не пустити */ }
+        // Хто в Посиденьках і за якими столами говорять — шапка показує це з порога, навіть гостеві.
+        await Clients.Caller.SendAsync("voice", voice.Roster);
         await Clients.All.SendAsync("state", engine.Snapshot());
         try { await Clients.Caller.SendAsync("tournament", tournament.Snapshot()); } catch (Exception) { /* турнір — не привід не пустити */ }
         tournament.PresenceChanged();
@@ -44,6 +46,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         var gone = presence.Get(Context.ConnectionId);
         presence.Remove(Context.ConnectionId);
         var left = rooms.DropWatcher(Context.ConnectionId);
+        // Із голосу — одразу: хто лишився, побачать, що людини нема. Браузер повернеться з тим самим позивним — зайде знову.
+        await voice.DispatchAsync(voice.Drop(Context.ConnectionId));
         playClock.Drop(Context.ConnectionId);
         rates.Forget(Context.ConnectionId);
         LastTyping.TryRemove(Context.ConnectionId, out _);
@@ -260,6 +264,67 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         // Свідома зміна ніка — це те саме, що встати з-за столу: grace тут ні до чого.
         if (old is not null && !presence.IsOnline(old)) await broadcaster.FlushAsync(rooms.DropNick(old));
     }
+
+    // ---------- Посиденьки: голос (VoiceChat.cs) ----------
+    // Сам голос іде напряму між браузерами; тут — лише хто де, хто кого чує і листи, поки браузери домовляються.
+
+    /// <summary>
+    /// Зайти в голос: <paramref name="table"/> null — у Посиденьки, інакше — у голос столу. <paramref name="peer"/> —
+    /// позивний, який вкладка вигадала собі сама (той самий після реконекту — з'єднання з людьми не рвуться).
+    /// </summary>
+    public async Task<VoiceJoinReply> VoiceJoin(string peer, string? table, bool muted, bool deaf)
+    {
+        if (!Allow(input: false)) return VoiceJoinReply.Fail(Games.Say.TooFast);
+        var http = Context.GetHttpContext();
+        var o = voice.Join(Context.ConnectionId, Nick(), http is not null && Auth.IsUser(http), peer, table, muted, deaf);
+        await voice.DispatchAsync(o.Sends);
+        return o.Reply;
+    }
+
+    public async Task VoiceLeave()
+    {
+        if (!Allow(input: false)) return;
+        await voice.DispatchAsync(voice.Leave(Context.ConnectionId));
+    }
+
+    /// <summary>Перейти в голос столу <paramref name="table"/> (null — назад у Посиденьки). Відмова — текстом.</summary>
+    public async Task<string?> VoiceFollow(string? table)
+    {
+        if (!Allow(input: false)) return Games.Say.TooFast;
+        var o = voice.Follow(Context.ConnectionId, table);
+        await voice.DispatchAsync(o.Sends);
+        return o.Reply;
+    }
+
+    /// <summary>Мікрофон вимкнено / нікого не чую — щоб решта бачила.</summary>
+    public async Task VoiceSet(bool muted, bool deaf)
+    {
+        if (!Allow(input: true)) return;
+        await voice.DispatchAsync(voice.Set(Context.ConnectionId, muted, deaf));
+    }
+
+    /// <summary>Показую екран чи вже ні.</summary>
+    public async Task VoiceShare(bool on)
+    {
+        if (!Allow(input: false)) return;
+        await voice.DispatchAsync(voice.Share(Context.ConnectionId, on));
+    }
+
+    /// <summary>Дивитись екран <paramref name="peer"/> (чи вже ні). Відмова — текстом.</summary>
+    public async Task<string?> VoiceWatch(string peer, bool on)
+    {
+        if (!Allow(input: false)) return Games.Say.TooFast;
+        var o = voice.Watch(Context.ConnectionId, peer ?? "", on);
+        await voice.DispatchAsync(o.Sends);
+        return o.Reply;
+    }
+
+    /// <summary>
+    /// Лист іншому браузерові в тій самій кімнаті голосу (опис з'єднання, кандидати). Своя квота (VoiceChat.SignalsPerSecond):
+    /// коли заходиш до десятка людей, листів за секунду більше, ніж пускає загальна.
+    /// </summary>
+    public async Task VoiceSignal(string to, string data) =>
+        await voice.DispatchAsync(voice.Signal(Context.ConnectionId, to, data, clock.UtcNow.ToUnixTimeSeconds()));
 
     // ---------- «Вгадай мелодію» ----------
 

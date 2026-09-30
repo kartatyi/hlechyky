@@ -32,6 +32,7 @@
 <link rel="stylesheet" href="/static/pad.css">
 <link rel="stylesheet" href="/games/core.css">
 <link rel="stylesheet" href="/games/tournament.css">
+<link rel="stylesheet" href="/static/voice.css">
 </head>
 <body class="route-efir">
 <header>
@@ -66,6 +67,8 @@
     </a>
     <!-- ⏭ у шапці — лише на телефоні за столом і в балачках, де міні-плеєр унизу сховано (style.css, renderNow). -->
     <button id="hdrSkip" class="icon hdrskip" type="button" title="Перемкнути на наступний трек" aria-label="Скіп — наступний трек" hidden>⏭</button>
+    <!-- 🎙 Посиденьки: голосовий чат (web/voice.js). Бейдж — скільки людей зараз у голосі; панель — по кліку. -->
+    <button id="vcBtn" class="icon vcbtn" type="button" title="Посиденьки — голосовий чат" aria-label="Посиденьки — голосовий чат" aria-expanded="false"><span class="vc-ico">🎙</span><span class="vc-n chip badge" hidden>0</span></button>
     <!-- «💡 Розробнику»: пропозиції й баги. Бейдж — скільки записок чекає (адміну) або в скількох своїх записках нова відповідь розробника (решті). -->
     <button id="fbBtn" class="icon fbbtn" type="button" title="Пропозиції й баги — розробнику" aria-label="Написати розробнику">💡<span id="fbBadge" class="chip badge" hidden>0</span></button>
     <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
@@ -328,6 +331,8 @@
 <script src="/lavka.js"></script>
 <!-- жива реклама: 🔥 прожарка в Лавці й блок у «📣 Реклама» — до app.js, той кличе HLiveAds.init() -->
 <script src="/liveads.js"></script>
+<!-- 🎙 Посиденьки: голос напряму між браузерами — до app.js, той кличе HVoice.init() і attach(conn) -->
+<script src="/voice.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

@@ -313,11 +313,13 @@
   const VOL_DB = 50;
   const posToVol = (p) => p <= 0 ? 0 : Math.pow(10, -VOL_DB * (1 - p / 100) / 20);
   const volToPos = (v) => v <= 0 ? 0 : Math.min(100, Math.max(1, Math.round(100 * (1 + 20 * Math.log10(v) / VOL_DB))));
+  // Посиденьки (web/voice.js) притишують радіо, коли хтось говорить: множник поверх гучності з повзунка.
+  let duckBy = 1;
   function setVolPos(p, save) {
     p = Math.min(100, Math.max(0, p));
     vol.value = p;
     const v = posToVol(p);
-    audio.volume = v;
+    audio.volume = v * duckBy;
     vol.title = p ? `Гучність ${p} (${(20 * Math.log10(v)).toFixed(1)} дБ) · колесо миші — по кроку` : 'Гучність: тиша';
     if (save) localStorage.setItem('volume', String(v));
   }
@@ -907,9 +909,11 @@
     state.online.forEach(learnNick);
     const people = state.online.slice().sort((a, b) => listens(b) - listens(a));
     // Клік по людині — її картка (web/people.js ловить data-who на всій сторінці).
+    // 🎙 — людина в Посиденьках чи в голосі столу (web/voice.js).
+    const talks = (n) => (window.HVoice && HVoice.inVoice(n) ? '<span class="vc-mark" title="у голосі">🎙</span>' : '');
     $('online').innerHTML = people.map((n) => listens(n)
-      ? `<button type="button" class="chip listening who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="${esc(n)} зараз слухає ефір">🎧 ${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`
-      : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="тусить на сайті, але плеєр вирублений">${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">ні душі</span>';
+      ? `<button type="button" class="chip listening who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="${esc(n)} зараз слухає ефір">🎧 ${talks(n)}${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`
+      : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="тусить на сайті, але плеєр вирублений">${talks(n)}${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">ні душі</span>';
     HPeople.refreshWhere();          // на відкритому профілі «на сайті / слухає» — живе
   }
   $('listeners').onclick = () => { if (state) toast(listenersText()); };
@@ -3483,6 +3487,7 @@
     conn.on('fbUnread', fbOnUnread);   // «💡»: розробник відповів на мою записку
     conn.on('fbDev', fbOnDev);         // «💡» розробнику: нова записка чи відповідь людини
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
+    if (window.HVoice) HVoice.attach(conn);   // 🎙 Посиденьки — web/voice.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
     // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
     // лишався б без кнопки аж до наступної новини з лобі.
@@ -3533,6 +3538,7 @@
       HLavka.loadLooks();            // поки зв'язку не було, хтось міг перевдягтись
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       HGames.reconnected();
+      if (window.HVoice) HVoice.reconnected();   // той самий позивний: з'єднання з людьми живуть і через деплой
       checkFront(true);              // зв'язок рветься здебільшого через деплой — глянути, що змінилось на сайті
       fbResync();                    // поки зв'язку не було, у записках могли відповісти
       toast('Є! Знову на зв\'язку', 'ok');
@@ -3645,6 +3651,12 @@
   HLavka.loadLooks();
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
+  // 🎙 Посиденьки (web/voice.js): duck — притишити радіо (1 — як на повзунку), onRoster — хто в голосі змінився.
+  if (window.HVoice) HVoice.init({
+    $, esc, toast, me, askNick,
+    duck: (f) => { duckBy = f; audio.volume = posToVol(+vol.value) * duckBy; },
+    onRoster: () => { if (state) renderOnline(); },
+  });
   // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри,
   // onTurn — за якими столами мій хід (заголовок вкладки й «Ігри»), online — хто на сайті (кого покликати за стіл).
   HGames.init({

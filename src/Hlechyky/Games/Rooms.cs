@@ -876,6 +876,50 @@ public sealed class Rooms
         lock (room.Sync) return Silenced(room, connId, nick);
     }
 
+    // ---------- голос столу (Посиденьки, VoiceChat.cs) ----------
+
+    /// <summary>
+    /// Голос столу <paramref name="id"/> для тих, хто в ньому: кожному — правило (<see cref="VoiceRule"/>) або null, якщо
+    /// йому тут більше не місце (не сидить і не дивиться цим з'єднанням). null замість усього — столу нема чи в нього
+    /// нема розмови (соло, приватна). Title — назва гри для списку «хто де говорить».
+    /// </summary>
+    public (string Game, string Title, VoiceRule?[] Rules)? VoiceRules(string id, IReadOnlyList<(string Nick, string ConnId)> who)
+    {
+        if (Find(id) is not { } room || !room.Talks) return null;
+        lock (room.Sync)
+        {
+            var rules = new VoiceRule?[who.Count];
+            for (var i = 0; i < who.Count; i++)
+            {
+                var seat = room.SeatOf(who[i].Nick);
+                if (seat is null && !room.Watchers.ContainsKey(who[i].ConnId)) continue;
+                rules[i] = VoiceRuleOf(room, seat);
+            }
+            return (room.Info.Id, room.Info.Title, rules);
+        }
+    }
+
+    /// <summary>Чи може цей нік (з цього з'єднання) зайти в голос столу: сидить за ним або дивиться на нього.</summary>
+    public bool VoiceAllowed(string id, string nick, string connId)
+    {
+        if (Find(id) is not { } room || !room.Talks) return false;
+        lock (room.Sync) return room.Has(nick) || room.Watchers.ContainsKey(connId);
+    }
+
+    /// <summary>Правило голосу для місця (null — глядач). Під замком кімнати.</summary>
+    VoiceRule VoiceRuleOf(Room room, int? seat)
+    {
+        // Як і з балачкою: гру питаємо лише посеред партії, у лобі й після неї говорять усі.
+        if (room.Status != RoomStatus.Playing) return VoiceRule.All;
+        try { return room.Game.Voice(seat) ?? (room.Game.TalkBlock(seat) is null ? VoiceRule.All : VoiceRule.OnBench); }
+        catch (Exception ex)
+        {
+            // Крива гра не має глушити всіх за столом.
+            _log.LogWarning(ex, "Voice впав у кімнаті {Room}", room.Id);
+            return VoiceRule.All;
+        }
+    }
+
     /// <summary>Балачка столу знімком (для агента: те саме, що браузер отримує при підписці).</summary>
     public IReadOnlyList<TableLine> TableLines(string id)
     {
