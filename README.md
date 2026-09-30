@@ -3,7 +3,7 @@
 Спільне радіо для своїх: один потік, спільна черга, чат, і Дядько Глек — авто-DJ, який радить схоже і крутить своє, коли черга порожня.
 
 - Сайт: `https://hlechyky.pp.ua`, відкритий для всіх: зайшов, назвав нік, слухаєш. Нік із паролем або через Google — твій і лише твій; без них ти «гість Вася» (див. «Акаунти»). Старе `http://134.249.147.16:8080` теж працює.
-- Потік на сайті: `https://hlechyky.pp.ua/radio.mp3` (через Caddy). Для ETS2 і плеєрів: `http://hlechyky.pp.ua:8000/radio.mp3` (Icecast напряму). Твій старий `/spotify.mp3` лишається і працює як резерв.
+- Потік на сайті: `https://hlechyky.pp.ua/radio.mp3` (через Caddy). Для ETS2 і плеєрів: `http://hlechyky.pp.ua:8000/radio.mp3` (простий http через той самий Caddy).
 - Адмін заходить один раз через `https://hlechyky.pp.ua/?k=<AdminKey>` (кука на рік). Ключі (адмін, Last.fm) лежать у `appsettings.Local.json`, він не в гіті.
 - Код: https://github.com/kartatyi/hlechyky. Хочеш щось доробити: [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -11,16 +11,17 @@
 
 ```
 браузер ──HTTPS──▶ Caddy (:80/:443, сертифікат Let's Encrypt сам)
-                     ├─ /radio.mp3, /spotify.mp3 ──▶ Icecast :8000
+                     ├─ /radio.mp3 (і http :8000/radio.mp3 для ETS2) ──▶ liquidsoap 127.0.0.1:8001
                      └─ все інше ──HTTP/SignalR──▶ Hlechyky (ASP.NET Core, :8080)
                               │ yt-dlp: качає аудіо в cache\
-                              │ telnet :1234: userq.push / autoq.push / radio.skip / request.all
+                              │ telnet 127.0.0.1:1234: userq.push / autoq.push / spare.skip / request.all / listeners
                               ▼
-                        liquidsoap (Docker) ──▶ Icecast :8000 /radio.mp3 ──▶ слухачі, ETS2
-                              ▲ fallback: /spotify.mp3 (стрім із D:\radio)
+                        liquidsoap (tools\liquidsoap, без Docker і Icecast) ──▶ /radio.mp3 ──▶ слухачі, ETS2
+                              ▲ запаска: data\spare.m3u — знайоме з кешу, коли нове не вантажиться
 ```
 
-- **Черга людей** (`userq`) має пріоритет, далі **Дядько Глек** (`autoq`), далі Spotify-стрім, далі тиша.
+- **Черга людей** (`userq`) має пріоритет, далі **Дядько Глек** (`autoq`), далі **запаска**, далі тиша.
+- **Запаска**: коли нове не вантажиться (yt-dlp зламався, YouTube лежить, навіть сервер упав), liquidsoap сам крутить знайоме з кешу — список `data\spare.m3u` пише сервер (`SpareList.cs`: спершу ❤ і те, що грало ≥ 3 разів). На сайті такий трек видно з чіпом «запаска», його так само лайкають і скіпають; замовлення людини запаску перебиває одразу, а трек Глека чекає, доки вона дограє. Між треками запаски реклама йде за своєю частотою (вкладка «📣 Реклама», типово раз на 3 треки, не частіше ніж раз на 10 хв).
 - Сервер тримає в liquidsoap рівно один "наступний" запит на чергу, тож переходи між треками без пауз; решта черги живе в сервері, її можна рухати і прибирати.
 - Що грає, сервер дізнається з callback'а liquidsoap (`/api/liq/track`) і зі свого опитування раз на 3 с.
 - **Черга переживає рестарт сервера.** Вона зберігається в SQLite, а на старті сервер ще й "усиновлює" те, що liquidsoap уже тримає: трек в ефірі (з правильним прогресом) і запушені запити. Тобто `start.ps1 restart` для слухачів непомітний.
@@ -131,7 +132,7 @@ Spotify як джерело не годиться: рекомендації й �
   Клавішу, яку вже з'їла гра, розділи не перехоплюють.
 - Заголовки набрані власним шрифтом Onest (`web/static/fonts`, OFL, без Google Fonts). Не подобається —
   `--display: var(--font)` у `:root` `web/static/style.css`, і все повертається на системний.
-- Кожна кнопка показує, що клік дійшов: спінер до відповіді сервера, "перемикаю…" на скіпі (в ефірі змінюється з затримкою буфера Icecast), "закидаю…" на додаванні. Новий трек у черзі підсвічується, у кожного видно, коли він заграє ("за ~5 хв").
+- Кожна кнопка показує, що клік дійшов: спінер до відповіді сервера, "перемикаю…" на скіпі (в ефірі змінюється з затримкою буфера потоку), "закидаю…" на додаванні. Новий трек у черзі підсвічується, у кожного видно, коли він заграє ("за ~5 хв").
 - Чат розділений на **Балачки** (люди, кубик і монетка, Дядько Глек, коли його кличуть) і **Журнал** (хто що
   додав, скіпнув, лайкнув, які столи й підсумки партій). Непрочитане рахує лише людей: слова Глека бейджа не смикають.
 - Балачки йдуть по днях («Сьогодні», «Вчора», «19 вересня»), кілька реплік поспіль від одного автора (до п'яти
@@ -190,13 +191,13 @@ Spotify як джерело не годиться: рекомендації й �
 
 ### Рейтинг
 
-Вкладка «Рейтинг» під чергою (`/api/rating?days=7|30|3650&sort=plays|completion|listeners|likes`): скільки разів трек грав, скільки в середньому дослуховують (секунди в ефірі від довжини файлу; хто дограв без 10 секунд — дограв), скільки людей слухало, лайки і скіпи. «Слухали» — ніки, у яких на сайті був увімкнений плеєр, коли трек грав (вкладка сама каже серверу про «Врубити»/«Стоп»); ETS2, VLC та інші підключення до потоку видно лише числом — пік слухачів Icecast за трек. Слухачів записуємо з 13.09.2026, програвання й дослуховування — за всю історію.
+Вкладка «Рейтинг» під чергою (`/api/rating?days=7|30|3650&sort=plays|completion|listeners|likes`): скільки разів трек грав, скільки в середньому дослуховують (секунди в ефірі від довжини файлу; хто дограв без 10 секунд — дограв), скільки людей слухало, лайки і скіпи. «Слухали» — ніки, у яких на сайті був увімкнений плеєр, коли трек грав (вкладка сама каже серверу про «Врубити»/«Стоп»); ETS2, VLC та інші підключення до потоку видно лише числом — пік слухачів потоку за трек. Слухачів записуємо з 13.09.2026, програвання й дослуховування — за всю історію.
 
 ## Запуск
 
-Подвійний клік по `start.cmd`. Він сам підніме Docker Desktop та Icecast через `D:\radio\radio.ps1`, якщо вони не працюють, потім liquidsoap, сервер і Caddy. `stop.cmd` зупиняє Caddy, сервер і liquidsoap, Icecast зі Spotify-стрімом не чіпає.
+Подвійний клік по `start.cmd`: liquidsoap, сервер і Caddy. `stop.cmd` зупиняє все троє. liquidsoap — звичайна Windows-збірка в `tools\liquidsoap` (її качає `setup.ps1`), він сам віддає потік, тож ні Docker, ні Icecast не потрібні (до 30.09.2026 були: Docker Desktop з WSL їв ~3 ГБ пам'яті й часом зависав). Змінив `liquidsoap\radio.liq` — `start.ps1 radio` (ефір замовкне на кілька секунд); `restart` liquidsoap не чіпає.
 
-У копії для розробки (нема `D:\radio` і `caddy.exe`) той самий `start.ps1` підіймає Icecast із `liquidsoap\docker-compose.dev.yml` і пропускає Caddy. Як підняти таку копію і віддати зміни, описано в [CONTRIBUTING.md](CONTRIBUTING.md).
+У копії для розробки (нема `caddy.exe`) той самий `start.ps1` пропускає Caddy, потік тоді на `http://127.0.0.1:8001/radio.mp3`. Як підняти таку копію і віддати зміни, описано в [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 status
@@ -211,12 +212,11 @@ powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # авто�
 
 - **сервер** не працює — запускає; процес живий, але 3 хвилини поспіль не відповідає на `/api/me` — вбиває і запускає знову. Попередній лог лишається в `logs\server.prev.log`, там і шукати причину падіння. Падає раз у раз (5 запусків за пів години) — далі пробує раз на 10 хвилин;
 - **Caddy** не працює — запускає;
-- **liquidsoap**: 2 хвилини нема `/radio.mp3` в Icecast і контейнер стоїть — `docker compose up -d`; контейнер працює, а маунта нема 5 хвилин — `docker restart hlechyky-liq` (не частіше ніж раз на 15 хвилин);
-- **Docker Desktop та Icecast** стереже наглядач `D:\radio\radio.ps1 run`; watchdog лише стежить, щоб той сам був живий.
+- **liquidsoap** не працює — запускає (попередній лог — `logs\liquidsoap.prev.log`); процес живий, але потік 3 хвилини не слухає або годинник ефіру (`clock.dump`) стоїть дві перевірки поспіль — перезапускає (не частіше ніж раз на 5 хвилин). Годинник — бо 30.09.2026 на пробі Windows-збірка раз «замерзла» мовчки: процес живий, telnet відповідає, а потік віддає 0 байт.
 
 Пише в `logs\watchdog.log` тільки тоді, коли щось робить; чи нагляд живий, показує `start.ps1 status`. Після `stop` нагляд на паузі (`data\stopped.flag`), доки не буде `start` чи `restart`. Поки йде `restart` або деплой, нагляд нічого не чіпає: `start`/`stop`/`restart`/`watchdog` ходять по одному через спільний м'ютекс, а деплой видно по `data\deploy.lock`.
 
-Нагляд працює лише після входу в акаунт: Docker Desktop без сесії не запускається. Щоб сайт сам піднімався після нічного перезавантаження від Windows Update, потрібен автоматичний вхід у Windows.
+Нагляд працює лише після входу в акаунт (завдання Interactive). Щоб сайт сам піднімався після нічного перезавантаження від Windows Update, потрібен автоматичний вхід у Windows.
 
 ### Автодеплой
 
@@ -239,7 +239,7 @@ powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # авто�
 
 `hlechyky.pp.ua` куплений на nic.ua, DNS там же (name servers NIC.UA, записи `@` і `www` типу A на 134.249.147.16). У name servers на nic.ua своя дата закінчення, окремо від домену: не дай їй проскочити.
 
-Caddy (`tools\caddy\caddy.exe`, конфіг `Caddyfile`) слухає 80/443, сам бере і оновлює сертифікат Let's Encrypt (лежить у `data\caddy\`), проксує сайт на :8080 і потоки на Icecast :8000, `www` перекидає на голий домен, http на https. Лог: `logs\caddy.log`; якщо Caddy не стартує, причина в `logs\caddy.err.log`.
+Caddy (`tools\caddy\caddy.exe`, конфіг `Caddyfile`) слухає 80/443, сам бере і оновлює сертифікат Let's Encrypt (лежить у `data\caddy\`), проксує сайт на :8080, `/radio.mp3` на liquidsoap 127.0.0.1:8001 і слухає простий http на :8000 для ETS2, `www` перекидає на голий домен, http на https. Лог: `logs\caddy.log`; якщо Caddy не стартує, причина в `logs\caddy.err.log`.
 
 - На MikroTik прокинуті 80, 443, 8080, 8000 на цей ПК. Правила мають бути з hairpin (як для 8000), інакше з домашньої мережі домен не відкриється.
 - Windows Firewall при першому старті Caddy питає дозвіл: треба натиснути "Дозволити", інакше ззовні буде тиша.
@@ -259,8 +259,8 @@ tools/caddy/              caddy.exe (https://caddyserver.com/api/download?os=win
 src/Hlechyky/             сервер (.NET 10, ASP.NET Core minimal API + SignalR + SQLite; DjBrain.cs — чат-бот)
 src/Hlechyky/Mcp/         MCP-сервер для аі-агентів: POST /mcp, агент сідає за стіл нарівні з людьми (docs/games/MCP.md)
 web/                      фронт без збірки: index.html, app.js, static/ (style.css, fonts/ (Onest, OFL), glek.svg, icon.svg)
-liquidsoap/               radio.liq, docker-compose.yml, .env (пароль Icecast, ключ callback'а; шаблон .env.example),
-                          docker-compose.dev.yml (Icecast + liquidsoap для копії без D:\radio)
+liquidsoap/               radio.liq, .env (ключ callback'а, порти; шаблон .env.example)
+tools/liquidsoap/         liquidsoap.exe (офіційна Windows-збірка, setup.ps1 качає; у шляху не має бути «\цифра»)
 tools/yt-dlp/             yt-dlp.exe, ffmpeg.exe, ffprobe.exe (setup.ps1 качає)
 cache/                    завантажені треки і голосові (voice-<id>.mp3)
 data/                     hlechyky.db (акаунти, історія, лайки, чат, черга, плейлисти, кеш Last.fm), ключі cookie, data/caddy (сертифікати)
@@ -294,10 +294,10 @@ data/telephone/           phrases.txt — фрази-підказки для п�
 
 | Ключ | Що робить |
 |---|---|
-| `Site:Name` | назва в інтерфейсі і в Icecast |
+| `Site:Name` | назва в інтерфейсі |
 | `Site:DjName`, `Site:DjNameGen` | як звати авто-DJ (називний і родовий відмінок) |
 | `Site:PublicStreamUrl` | адреса потоку для плеєра на сайті |
-| `Site:StreamDelaySeconds` | поправка прогрес-бару на буфер Icecast |
+| `Site:StreamDelaySeconds` | поправка прогрес-бару на буфер потоку |
 | `YtDlp:CookiesFile` | шлях до `cookies.txt` залогіненого акаунту; береться лише для відео 18+ (див. "Джерела треків") |
 | `YtDlp:CookiesFromBrowser` | те саме, але читати куки з браузера (`firefox`); працює, лише якщо там залогінений YouTube |
 | `YtDlp:MaxDurationSeconds` | ліміт довжини треку для не-адмінів |
@@ -392,8 +392,7 @@ Discover — пад бачить одразу; Chrome із Discover у Game Mode
 - В черзі "відео 18+, YouTube віддає його тільки залогіненому акаунту": потрібні куки, дивись `YtDlp:CookiesFile` у "Джерела треків". Перевірити вручну: `tools\yt-dlp\yt-dlp.exe --cookies data\cookies.txt --simulate <url>`.
 - Посилання Spotify не розбирається: `curl https://open.spotify.com/embed/track/<id>` має містити `__NEXT_DATA__` з `entity.name`; якщо Spotify змінив embed, лишається oEmbed (тільки назва без артиста).
 - Альбом чи плейлист не відкривається: `curl https://open.spotify.com/embed/album/<id>` (чи `embed/playlist/<id>`) має містити `__NEXT_DATA__` з `entity.trackList`; для YouTube Music розбір сторінок перевіряють фікстури в `tests/Hlechyky.Tests/Fixtures/albums` — впав тест `AlbumsTests`, значить YouTube Music переклав сторінку. Скільки знайшлось і чого нема — рядок `spotify album|playlist … у YouTube Music` у `logs/server.log`.
-- Docker Desktop не стартує: стара проблема з сокетами, `D:\radio\radio.ps1` це лікує.
 - `https://hlechyky.pp.ua` не відкривається, а `:8080` працює: дивись `logs\caddy.log`. Для сертифіката Let's Encrypt має ходити на 80 або 443 ззовні (NAT на MikroTik, Windows Firewall). Перевірити зовні: https://check-host.net/check-tcp?host=134.249.147.16:443.
-- Сайт відкривається, а потік на сайті мовчить: `curl --max-time 6 https://hlechyky.pp.ua/radio.mp3 -o x.mp3` має принести десятки кілобайт; якщо ні, дивись, чи живий Icecast (`:8000/status-json.xsl`).
-- Ефір червоний у шапці сайту: liquidsoap не відповідає, `docker logs hlechyky-liq`.
+- Сайт відкривається, а потік на сайті мовчить: `curl --max-time 6 https://hlechyky.pp.ua/radio.mp3 -o x.mp3` має принести десятки кілобайт; якщо ні, дивись `start.ps1 status` і `logs\liquidsoap.log`; напряму: `curl --max-time 6 http://127.0.0.1:8001/radio.mp3 -o x.mp3`.
+- Ефір червоний у шапці сайту: liquidsoap не відповідає, дивись `logs\liquidsoap.log` (і `.prev.log` після перезапуску).
 - Хочеться подивитись, що liquidsoap тримає: `request.all`, `request.metadata <rid>`, `userq.queue`, `autoq.queue`, `radio.metadata` через telnet на 1234.

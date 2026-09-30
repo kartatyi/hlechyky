@@ -1,21 +1,22 @@
 ﻿<#
 .SYNOPSIS
-  Глечики — launcher. build | start | stop | restart | status | logs | autostart | watchdog
+  Глечики — launcher. build | start | stop | restart | radio | status | logs | autostart | watchdog
 
-  start     — liquidsoap (Docker) + сервер + Caddy у фоні (логи в logs\server.log, logs\caddy.log); знімає автонагляд з паузи
+  start     — liquidsoap + сервер + Caddy у фоні (логи в logs\server.log, logs\liquidsoap.log, logs\caddy.log); знімає автонагляд з паузи
   build     — зібрати Release у build\ (start робить це сам, якщо build\ порожній)
   stop      — зупинити Caddy, сервер і liquidsoap; автонагляд стає на паузу, доки не буде start
-  restart   — перезібрати і перезапустити сервер; Caddy не чіпає (слухачі не відвалюються)
+  restart   — перезібрати і перезапустити сервер; Caddy і liquidsoap не чіпає (слухачі не відвалюються)
+  radio     — перезапустити liquidsoap (після правок liquidsoap\radio.liq); ефір замовкне на кілька секунд
   status    — що працює
   logs      — хвіст логу сервера
   autostart — завдання «Hlechyky» у Планувальнику: при вході у Windows і щохвилини запускає watchdog
-  watchdog  — одна перевірка: піднімає те, що впало (сервер, Caddy, liquidsoap, наглядач D:\radio), завислий сервер
+  watchdog  — одна перевірка: піднімає те, що впало (сервер, Caddy, liquidsoap), завислий сервер
               перезапускає. Пише в logs\watchdog.log лише тоді, коли щось робить
 
-  У копії для розробки (нема D:\radio\radio.ps1) Icecast підіймається разом із liquidsoap з liquidsoap\docker-compose.dev.yml,
-  а без tools\caddy\caddy.exe крок Caddy пропускається. Дивись CONTRIBUTING.md.
+  liquidsoap живе в tools\liquidsoap (звичайна Windows-збірка, качає setup.ps1) і сам віддає потік на 127.0.0.1:8001/radio.mp3 —
+  ні Docker, ні Icecast більше не потрібні. Без tools\caddy\caddy.exe крок Caddy пропускається. Дивись CONTRIBUTING.md.
 #>
-param([ValidateSet('build', 'start', 'stop', 'restart', 'status', 'logs', 'autostart', 'watchdog')][string]$Cmd = 'status')
+param([ValidateSet('build', 'start', 'stop', 'restart', 'radio', 'status', 'logs', 'autostart', 'watchdog')][string]$Cmd = 'status')
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
@@ -34,9 +35,13 @@ $DeployLock = Join-Path $Root 'data\deploy.lock'
 $TaskName = 'Hlechyky'
 $Vbs = Join-Path $Root 'Hlechyky.vbs'
 $env:HLECHYKY_ROOT = $Root   # читають і сервер, і Caddyfile ({$HLECHYKY_ROOT})
-# Icecast власника живе окремо (D:\radio). Нема того скрипта (копія для розробки) — Icecast іде з docker-compose.dev.yml разом із liquidsoap.
-$OwnerIcecast = 'D:\radio\radio.ps1'
-$ComposeArgs = if (Test-Path $OwnerIcecast) { @() } else { @('-f', 'docker-compose.dev.yml') }
+$Liq = Join-Path $Root 'tools\liquidsoap\liquidsoap.exe'
+$LiqScript = Join-Path $Root 'liquidsoap\radio.liq'
+$LiqEnvFile = Join-Path $Root 'liquidsoap\.env'
+$LiqPidFile = Join-Path $Root 'data\liquidsoap.pid'
+$LiqLog = Join-Path $Root 'logs\liquidsoap.log'
+$LiqErrLog = Join-Path $Root 'logs\liquidsoap.err.log'
+$SpareList = Join-Path $Root 'data\spare.m3u'
 
 function Get-ProcessFromPidFile([string]$File, [string]$Name) {
     if (-not (Test-Path $File)) { return $null }
@@ -48,6 +53,7 @@ function Get-ProcessFromPidFile([string]$File, [string]$Name) {
 
 function Get-Server { Get-ProcessFromPidFile $PidFile 'dotnet' }
 function Get-Caddy { Get-ProcessFromPidFile $CaddyPidFile 'caddy' }
+function Get-Liquidsoap { Get-ProcessFromPidFile $LiqPidFile 'liquidsoap' }
 
 # Процес, що слухає порт, якщо це саме той, кого чекаємо (pid-файл загубився, а процес живий).
 function Find-Listener([int]$Port, [string]$Name) {
@@ -67,26 +73,52 @@ function Invoke-Build {
     try { Set-Content (Join-Path $Root 'data\built.sha') (git -C $Root rev-parse HEAD) -Encoding ASCII } catch { }
 }
 
-function Test-Icecast {
-    try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 'http://127.0.0.1:8000/status-json.xsl' | Out-Null; return $true } catch { return $false }
+# liquidsoap\.env: ключ для зворотних викликів сервера (RT_API_KEY == Liquidsoap:ApiKey), адреса сервера, порти.
+function Read-LiqEnv {
+    $vars = [ordered]@{ HARBOR_PORT = '8001'; TELNET_PORT = '1234'; RT_API_URL = 'http://127.0.0.1:8080'; RT_API_KEY = '' }
+    if (Test-Path $LiqEnvFile) {
+        foreach ($line in Get-Content $LiqEnvFile -Encoding UTF8) {
+            if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$') { $vars[$Matches[1]] = $Matches[2] }
+        }
+    }
+    # .env лишився з часів Docker: сервер тепер на цій же машині, а не на host.docker.internal
+    $vars.RT_API_URL = $vars.RT_API_URL -replace 'host\.docker\.internal', '127.0.0.1'
+    return $vars
 }
 
-function Ensure-Icecast {
-    if (Test-Icecast) { return }
-    if (-not (Test-Path $OwnerIcecast)) { return }   # копія для розробки: Icecast підніме docker-compose.dev.yml
-    Write-Host 'Icecast не працює, піднімаю через D:\radio\radio.ps1 start (Docker Desktop може стартувати хвилину-дві)…'
-    powershell -NoProfile -ExecutionPolicy Bypass -File $OwnerIcecast start | Out-Null
-    for ($i = 0; $i -lt 60; $i++) { if (Test-Icecast) { Write-Host 'Icecast піднявся'; return }; Start-Sleep 3 }
-    throw 'Icecast так і не піднявся, дивись D:\radio\logs'
-}
-
-# Радіо ніколи не тримає сайт: restart кличе це між Stop-Server і Start-Server, і 30.09 завислий Docker-рушій
-# (docker compose up -d не повертався) лишив сайт лежати на 22 хв. Тепер compose — з таймаутом, а будь-яка невдача
-# радіо — лише попередження: сервер однаково стартує, а liquidsoap і Icecast підтягне автонагляд (Watch-Radio).
+# Радіо ніколи не тримає сайт: restart кличе це між Stop-Server і Start-Server, тож будь-яка невдача liquidsoap —
+# лише попередження: сервер однаково стартує, а liquidsoap підтягне автонагляд (Watch-Radio).
 function Start-Liquidsoap {
-    try { Ensure-Icecast } catch { Write-Host "Увага: $($_.Exception.Message) — сервер однаково запускаю" }
-    $r = Invoke-Docker (@('compose') + $ComposeArgs + @('up', '-d')) 90
-    if (-not $r.Ok) { Write-Host "Увага: liquidsoap не піднявся ($($r.Out)) — сервер однаково запускаю, радіо підтягне автонагляд" }
+    try {
+        if (Get-Liquidsoap) { return }
+        $v = Read-LiqEnv
+        $p = Find-Listener ([int]$v.TELNET_PORT) 'liquidsoap'
+        if ($p) { Set-Content $LiqPidFile $p.Id; return }
+        if (-not (Test-Path $Liq)) { Write-Host "liquidsoap пропускаю: нема $Liq (його качає setup.ps1)"; return }
+        New-Item -ItemType Directory -Force (Join-Path $Root 'logs'), (Join-Path $Root 'data') | Out-Null
+        # список запаски пише сервер; поки його нема, liquidsoap має за чим стежити
+        if (-not (Test-Path $SpareList)) { New-Item -ItemType File $SpareList | Out-Null }
+        foreach ($k in $v.Keys) { Set-Item "env:$k" $v[$k] }
+        $env:SPARE_PLAYLIST = $SpareList -replace '\\', '/'
+        foreach ($f in $LiqLog, $LiqErrLog) {
+            try { if ((Test-Path $f) -and (Get-Item $f).Length -gt 0) { Move-Item $f ($f -replace '\.log$', '.prev.log') -Force } } catch { }
+        }
+        # Робоча тека — tools\liquidsoap: там збірка тримає свій кеш скриптів. Шлях без «\цифра»: liquidsoap на
+        # Windows падає, коли в шляху до нього є таке (пастка з 30.09.2026).
+        $p = Start-Process -FilePath $Liq -ArgumentList "`"$LiqScript`"" -WorkingDirectory (Split-Path $Liq) `
+            -RedirectStandardOutput $LiqLog -RedirectStandardError $LiqErrLog -WindowStyle Hidden -PassThru
+        Set-Priority $p   # потік не має заїкатись, коли машину займає збірка чи гра
+        Set-Content $LiqPidFile $p.Id
+        Write-Host "liquidsoap запущено (pid $($p.Id)), потік: http://127.0.0.1:$($v.HARBOR_PORT)/radio.mp3, лог: $LiqLog"
+    }
+    catch { Write-Host "Увага: liquidsoap не піднявся ($($_.Exception.Message)) — сервер однаково запускаю, радіо підтягне автонагляд" }
+}
+
+function Stop-Liquidsoap {
+    $p = Get-Liquidsoap
+    if (-not $p) { $p = Find-Listener ([int](Read-LiqEnv).TELNET_PORT) 'liquidsoap' }
+    if ($p) { Stop-Process -Id $p.Id -Force; Remove-Item $LiqPidFile -ErrorAction SilentlyContinue; Write-Host 'liquidsoap зупинено' }
+    else { Write-Host 'liquidsoap не працював' }
 }
 
 # Автозапуск і автонагляд — завдання в Планувальнику, як у LeBot: при вході у Windows і далі щохвилини.
@@ -187,7 +219,7 @@ function Write-Watch([string]$Message) {
 }
 
 function Read-WatchState {
-    $d = [ordered]@{ lastRun = 0; httpFails = 0; iceMisses = 0; mountMisses = 0; radioMisses = 0; liqRestartAt = 0; serverStarts = @() }
+    $d = [ordered]@{ lastRun = 0; httpFails = 0; mountMisses = 0; clockMisses = 0; liqClock = 0; liqClockAt = 0; liqRestartAt = 0; liqStarts = @(); serverStarts = @() }
     $s = $null
     try { if (Test-Path $WatchState) { $s = Get-Content $WatchState -Raw | ConvertFrom-Json } } catch { }
     if ($s) { foreach ($k in @($d.Keys)) { if ($null -ne $s.$k) { $d[$k] = $s.$k } } }
@@ -200,77 +232,63 @@ function Test-DeployRunning {
     try { [IO.File]::Open($DeployLock, 'Open', 'Read', 'ReadWrite').Dispose(); return $false } catch { return $true }
 }
 
-# docker при напівживому Docker Desktop може висіти вічно, а автонагляд не має права зависнути разом із ним (тримав би м'ютекс).
-function Invoke-Docker([string[]]$Arguments, [int]$TimeoutSec = 120) {
-    $out = Join-Path $Root 'data\watchdog.docker.out'
-    $err = Join-Path $Root 'data\watchdog.docker.err'
-    $p = Start-Process -FilePath 'docker' -ArgumentList $Arguments -WorkingDirectory (Join-Path $Root 'liquidsoap') -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput $out -RedirectStandardError $err
-    $null = $p.Handle   # без цього ExitCode лишається порожнім
-    if (-not $p.WaitForExit($TimeoutSec * 1000)) {
-        # docker.exe лише обгортка: compose висить у дочірньому docker-compose.exe, тож гасимо все дерево
-        try { & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null } catch { }   # ErrorAction Stop кидає на будь-який рядок stderr
-        return [pscustomobject]@{ Ok = $false; Out = "docker $($Arguments -join ' ') не відповів за $TimeoutSec с" }
+# Годинник ефіру liquidsoap у секундах (telnet «clock.dump»); $null — не відповів. 30.09.2026 на пробі Windows-збірка раз
+# «замерзла» мовчки: процес живий, telnet відповідає, порт слухає, а годинник стоїть і потік віддає 0 байт.
+function Get-LiqClock([int]$Port) {
+    $c = New-Object Net.Sockets.TcpClient
+    try {
+        if (-not $c.ConnectAsync('127.0.0.1', $Port).Wait(3000)) { return $null }
+        $s = $c.GetStream()
+        $s.ReadTimeout = 3000
+        $b = [Text.Encoding]::ASCII.GetBytes("clock.dump`nquit`n")
+        $s.Write($b, 0, $b.Length)
+        $r = New-Object IO.StreamReader($s)
+        $text = $r.ReadToEnd()
+        if ($text -match 'time: ([0-9.]+)s') { return [double]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture) }
+        return $null
     }
-    $text = ((Get-Content $out -Raw -ErrorAction SilentlyContinue) + (Get-Content $err -Raw -ErrorAction SilentlyContinue))
-    return [pscustomobject]@{ Ok = ($p.ExitCode -eq 0); Out = "$text".Trim() }
+    catch { return $null }
+    finally { $c.Dispose() }
 }
 
-function Get-RadioSupervisor {
-    Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like '*radio.ps1*run*' } | Select-Object -First 1
-}
-
-# Docker Desktop та Icecast на проді стереже наглядач D:\radio (radio.ps1 run, щопівхвилини) — наша справа, щоб він сам був живий.
-# liquidsoap стережемо самі: контейнер не працює — compose up; працює, але /radio.mp3 в Icecast нема 5 хв — docker restart.
+# liquidsoap: процесу нема — запустити; процес є, а потік (harbor) не слухає 3 хв або годинник ефіру стоїть 2 перевірки
+# поспіль — перезапустити. Падає раз у раз (скажімо, помилка в radio.liq) — не молотимо щохвилини, як і з сервером.
 function Watch-Radio($st, [long]$now) {
-    if (Test-Path $OwnerIcecast) {
-        if (Get-RadioSupervisor) { $st.radioMisses = 0 }
-        else {
-            $st.radioMisses++
-            # після входу у Windows його запускає SpotifyRadio.vbs з автозавантаження: дамо кілька хвилин, щоб не було двох наглядачів
-            if ($st.radioMisses -ge 3) {
-                Write-Watch 'наглядач D:\radio (radio.ps1 run) не працює — запускаю'
-                Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$OwnerIcecast`"", 'run' -WindowStyle Hidden
-                $st.radioMisses = 0
-            }
-        }
+    if (-not (Test-Path $Liq)) { return }
+    $v = Read-LiqEnv
+    $p = Get-Liquidsoap
+    if (-not $p) {
+        $p = Find-Listener ([int]$v.TELNET_PORT) 'liquidsoap'
+        if ($p) { Set-Content $LiqPidFile $p.Id; Write-Watch "liquidsoap працював без data\liquidsoap.pid (pid $($p.Id)) — підхопив" }
     }
-
-    $status = try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 'http://127.0.0.1:8000/status-json.xsl').Content } catch { $null }
-    if ($null -eq $status) {
-        $st.iceMisses++
-        $st.mountMisses = 0
-        if (Test-Path $OwnerIcecast) {
-            if ($st.iceMisses -eq 5) { Write-Watch 'Icecast не відповідає вже 5 хв; його піднімає D:\radio\radio.ps1 run, дивись D:\radio\logs\launcher.log' }
-        }
-        elseif ($st.iceMisses -ge 2) {   # копія для розробки: Icecast у docker-compose.dev.yml разом із liquidsoap
-            Write-Watch 'Icecast не відповідає — docker compose up -d'
-            $r = Invoke-Docker (@('compose') + $ComposeArgs + @('up', '-d'))
-            if (-not $r.Ok) { Write-Watch "  не вийшло: $($r.Out)" }
-        }
-        return
-    }
-    $st.iceMisses = 0
-    if ($status -match 'listenurl"\s*:\s*"[^"]*/radio\.mp3"') { $st.mountMisses = 0; return }
-
-    $st.mountMisses++
-    if ($st.mountMisses -lt 2) { return }   # хвилинна дірка буває, коли liquidsoap сам перепідключається
-    $r = Invoke-Docker @('ps', '-q', '--filter', 'name=^hlechyky-liq$', '--filter', 'status=running')
-    if (-not $r.Ok) { Write-Watch "liquidsoap: docker не відповідає ($($r.Out))"; return }
-    if (-not $r.Out) {
-        Write-Watch 'liquidsoap не працює — docker compose up -d'
-        $r = Invoke-Docker (@('compose') + $ComposeArgs + @('up', '-d'))
-        if (-not $r.Ok) { Write-Watch "  не вийшло: $($r.Out)" }
-        return
-    }
-    if ($st.mountMisses -ge 5 -and $now - [long]$st.liqRestartAt -ge 900) {
-        Write-Watch "liquidsoap працює, але /radio.mp3 в Icecast нема вже $($st.mountMisses) хв — docker restart hlechyky-liq"
-        $r = Invoke-Docker @('restart', 'hlechyky-liq')
-        if (-not $r.Ok) { Write-Watch "  не вийшло: $($r.Out)" }
+    if ($p) {
+        Set-Priority $p
+        # годинник мав піти вперед хоч на пів того часу, що минув від минулої перевірки
+        $clock = Get-LiqClock ([int]$v.TELNET_PORT)
+        $prevClock = [double]$st.liqClock
+        $frozen = $null -eq $clock -or ($st.liqClockAt -and $clock -ge $prevClock -and $clock - $prevClock -lt ($now - [long]$st.liqClockAt) / 2)
+        $st.liqClock = if ($null -eq $clock) { 0 } else { $clock }
+        $st.liqClockAt = $now
+        if ($frozen) { $st.clockMisses++ } else { $st.clockMisses = 0 }
+        $listening = [bool](Get-NetTCPConnection -State Listen -LocalPort ([int]$v.HARBOR_PORT) -ErrorAction SilentlyContinue)
+        if ($listening) { $st.mountMisses = 0 } else { $st.mountMisses++ }
+        if ($st.mountMisses -lt 3 -and $st.clockMisses -lt 2) { return }
+        if ($now - [long]$st.liqRestartAt -lt 300) { return }
+        $why = if ($st.clockMisses -ge 2) { "годинник ефіру стоїть ($($st.clockMisses) перевірки поспіль, потік мовчить)" } else { "потік :$($v.HARBOR_PORT) не слухає вже $($st.mountMisses) хв" }
+        Write-Watch "liquidsoap працює, але $why — перезапускаю"
+        Stop-Liquidsoap | Out-Null
         $st.liqRestartAt = $now
         $st.mountMisses = 0
+        $st.clockMisses = 0
+        $st.liqClockAt = 0
     }
+    $recent = @(@($st.liqStarts) | Where-Object { $now - [long]$_ -lt 1800 })
+    $last = if ($recent.Count) { [long]($recent | Measure-Object -Maximum).Maximum } else { 0 }
+    if ($recent.Count -ge 5 -and $now - $last -lt 600) { return }
+    if (-not $p) { Write-Watch 'liquidsoap не працює — запускаю (попередній лог: logs\liquidsoap.prev.log)' }
+    Start-Liquidsoap | Out-Null
+    $st.liqStarts = @($recent) + $now
+    if ($st.liqStarts.Count -ge 5) { Write-Watch "  liquidsoap запускався $($st.liqStarts.Count) разів за пів години — далі пробую раз на 10 хв, дивись logs\liquidsoap.prev.log" }
 }
 
 function Watch-Server($st, [long]$now) {
@@ -320,7 +338,7 @@ function Invoke-Watchdog {
     try {
         if (Test-Path $StopFlag) { return }      # зупинили руками (stop) — чекаємо start
         if (Test-DeployRunning) { return }       # deploy.ps1 сам перезапускає сервер і сам відкочується
-        try { Watch-Radio $st $now } catch { Write-Watch "помилка в перевірці Icecast/liquidsoap: $_" }
+        try { Watch-Radio $st $now } catch { Write-Watch "помилка в перевірці liquidsoap: $_" }
         try { Watch-Server $st $now } catch { Write-Watch "помилка в перевірці сервера: $_" }
         try { Watch-Caddy } catch { Write-Watch "помилка в перевірці Caddy: $_" }
     }
@@ -330,7 +348,7 @@ function Invoke-Watchdog {
 # ---------- команди ----------
 
 $locked = $false
-if ($Cmd -in 'start', 'stop', 'restart', 'watchdog') {
+if ($Cmd -in 'start', 'stop', 'restart', 'radio', 'watchdog') {
     $wait = if ($Cmd -eq 'watchdog') { 0 } else { 600 }
     $locked = Enter-Launcher $wait
     if (-not $locked) {
@@ -346,22 +364,19 @@ try {
         'stop'    {
             New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
             Set-Content $StopFlag (Get-Date -Format 's')
-            Stop-Caddy; Stop-Server
-            $r = Invoke-Docker (@('compose') + $ComposeArgs + @('stop')) 90
-            if (-not $r.Ok) { Write-Host "Увага: liquidsoap не зупинився ($($r.Out))" }
+            Stop-Caddy; Stop-Server; Stop-Liquidsoap
             Write-Host 'Автонагляд на паузі, доки не буде start'
         }
         'restart' { Remove-Item $StopFlag -ErrorAction SilentlyContinue; Stop-Server; Invoke-Build; Start-Liquidsoap; Start-Server; Start-Caddy }
+        'radio'   { Stop-Liquidsoap; Start-Sleep 1; Start-Liquidsoap }
         'status'  {
             $p = Get-Server
             Write-Host ("Сервер:     " + $(if ($p) { "працює (pid $($p.Id))" } else { 'зупинений' }))
             $c = Get-Caddy
             Write-Host ("Caddy:      " + $(if ($c) { "працює (pid $($c.Id)), https://hlechyky.pp.ua" } else { 'зупинений' }))
-            $liq = docker ps --filter 'name=hlechyky-liq' --format '{{.Status}}'
-            Write-Host ("liquidsoap: " + $(if ($liq) { $liq } else { 'зупинений' }))
-            $ice = docker ps --filter 'name=icecast' --format '{{.Names}}: {{.Status}}'
-            $iceHint = if (Test-Path $OwnerIcecast) { 'D:\radio\radio.ps1 start' } else { 'docker compose -f liquidsoap\docker-compose.dev.yml up -d' }
-            Write-Host ("Icecast:    " + $(if ($ice) { $ice } else { "зупинений ($iceHint)" }))
+            $l = Get-Liquidsoap
+            $hp = (Read-LiqEnv).HARBOR_PORT
+            Write-Host ("liquidsoap: " + $(if ($l) { "працює (pid $($l.Id)), потік http://127.0.0.1:$hp/radio.mp3" } elseif (Test-Path $Liq) { 'зупинений' } else { "нема $Liq (setup.ps1)" }))
             $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
             $last = [long](Read-WatchState).lastRun
             $watch = if (-not $task) { 'не встановлено (start.ps1 autostart)' }

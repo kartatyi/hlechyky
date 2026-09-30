@@ -7,7 +7,6 @@
 - Windows 10/11. Скрипти запуску написані на PowerShell; на Linux/macOS сервер теж збирається, але yt-dlp/ffmpeg і шляхи в `appsettings.json` доведеться підправити руками.
 - git.
 - .NET 10 SDK: https://dotnet.microsoft.com/download/dotnet/10.0
-- Docker Desktop, тільки якщо хочеш чути ефір (Icecast + liquidsoap). Для правок інтерфейсу можна й без нього.
 
 ## Перший запуск
 
@@ -15,16 +14,13 @@
 git clone https://github.com/kartatyi/hlechyky.git
 cd hlechyky
 powershell -ExecutionPolicy Bypass -File setup.ps1
-docker compose -f liquidsoap\docker-compose.dev.yml up -d
-dotnet run --project src\Hlechyky
+powershell -ExecutionPolicy Bypass -File start.ps1 start
 ```
 
-- `setup.ps1` качає yt-dlp і ffmpeg у `tools\` (близько 100 МБ) і створює `appsettings.Local.json` та `liquidsoap\.env` з випадковими ключами. Ці два файли в `.gitignore`, вони тільки твої.
+- `setup.ps1` качає yt-dlp, ffmpeg і liquidsoap у `tools\` (близько 150 МБ) і створює `appsettings.Local.json` та `liquidsoap\.env` з випадковими ключами. Ці два файли в `.gitignore`, вони тільки твої.
 - Він же качає великий український словник (`data\words\uk-all.txt`, 18 МБ стисненого, 80 МБ на диску) — з нього Ерудит перевіряє слова. Пропустив або не вийшло: сайт працює, Ерудит вмикає режим «малий словник». Малі списки (Глек-слово, Віселиця) уже в репозиторії.
-- `docker compose … up -d` підіймає Icecast і liquidsoap на цій машині. Пропустив цей крок: сайт працює, але ефір у шапці червоний, треки не грають, і все, що штовхає чергу в liquidsoap, відповідає "liquidsoap не відповідає". Для верстки, пошуку, чату, плейлистів цього досить.
+- `start.ps1 start` підіймає liquidsoap (ефір, потік на `http://127.0.0.1:8001/radio.mp3`) і сервер у фоні (лог у `logs\server.log`, `logs\liquidsoap.log`); без `tools\caddy\caddy.exe` Caddy пропускає. `start.ps1 status`, `stop`, `logs` теж працюють. Можна й просто `dotnet run --project src\Hlechyky`: сайт працює, але ефір у шапці червоний, треки не грають. Для верстки, пошуку, чату, плейлистів цього досить.
 - Далі http://localhost:8080. Адмінка: `http://localhost:8080/?k=<AdminKey>`, ключ у своєму `appsettings.Local.json`.
-- Windows Firewall при першому запуску може спитати дозвіл для `dotnet`/`Hlechyky.exe`. Потрібен, щоб liquidsoap із Docker достукався до сервера (callback про зміну треку).
-- Замість `dotnet run` можна `powershell -ExecutionPolicy Bypass -File start.ps1 start`: той самий сценарій, що на проді, у фоні (лог у `logs\server.log`). Без `D:\radio` він сам підіймає Icecast з `docker-compose.dev.yml`, без `tools\caddy\caddy.exe` пропускає Caddy. `start.ps1 status`, `stop`, `logs` теж працюють.
 - Last.fm необов'язковий: без ключа Дядько Глек радить тільки з YouTube Music. Ключ безкоштовний (https://www.last.fm/api/account/create), вписується в `LastFm:ApiKey` у `appsettings.Local.json`.
 
 ## Де що лежить

@@ -386,13 +386,15 @@
   audio.addEventListener('waiting', () => { if (playState === 'live') { playState = 'connecting'; setPlayUi(); } });
   audio.addEventListener('error', () => { if (playState !== 'idle') { stopAudio(); toast('Ой-йой, потік обірвався. Натисни «Врубити» ще раз', 'err'); } });
   audio.addEventListener('ended', () => { if (playState !== 'idle') { stopAudio(); toast('Ой-йой, потік закінчився. Натисни «Врубити» ще раз', 'err'); } });
+  /// В ефірі справжній трек: замовлення, вибір Глека чи трек запаски (нове не вантажиться — грає знайоме з кешу).
+  const trackOnAir = (n) => n.source === 'user' || n.source === 'autodj' || n.source === 'spare';
   function updateMediaSession() {
     if (!('mediaSession' in navigator) || !state) return;
     const n = state.now, t = n.track;
-    const playingTrack = t && (n.source === 'user' || n.source === 'autodj');
+    const playingTrack = t && trackOnAir(n);
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: playingTrack ? t.title : (n.spotifyLive ? 'Spotify-резерв' : 'Тиша'),
+        title: playingTrack ? t.title : 'Тиша',
         artist: playingTrack ? t.artist : state.siteName,
         album: state.siteName,
         artwork: playingTrack && t.thumbUrl ? [{ src: t.thumbUrl, sizes: '512x512', type: 'image/jpeg' }] : [],
@@ -408,7 +410,7 @@
   function nowRemaining() {
     if (!state) return 0;
     const n = state.now;
-    if (!(n.source === 'user' || n.source === 'autodj')) return 0;
+    if (!trackOnAir(n)) return 0;
     const elapsed = (Date.now() - new Date(n.startedAt).getTime()) / 1000 - (state.streamDelaySeconds || 0);
     return Math.max(0, (n.durationSec || 0) - elapsed);
   }
@@ -456,12 +458,11 @@
   /// і міні-плеєр у шапці (o.mini). Шапка бере коротку версію — обкладинка, назва, ❤ і ⏭.
   function paintNowInto(box, o) {
     const n = state.now;
-    const live = n.source === 'user' || n.source === 'autodj';
+    const live = trackOnAir(n);
     const mini = !!o.mini;
     if (!live) {
-      const spot = n.spotifyLive;
-      const title = spot ? 'Spotify-резерв' : 'Тиша';
-      const sub = spot ? (n.spotifyTitle || '') : `${dj()} думає, що б його врубити…`;
+      const title = 'Тиша';
+      const sub = `${dj()} думає, що б його врубити…`;
       box.innerHTML = mini
         ? `<a class="mini-cv" href="#efir" title="Перейти в Ефір"><img src="/static/glek.svg" alt=""></a>
            <a class="mini-tt" href="#efir" title="${esc(title)}"><b>${esc(title)}</b><small>${esc(sub)}</small></a>`
@@ -469,7 +470,7 @@
         <div class="nowinfo">
           <div class="title">${esc(title)}</div>
           <div class="artist"><span class="art">${esc(sub)}</span></div>
-          <div class="why">${spot ? 'грає резервний потік, поки в черзі порожньо' : 'закинь щось або зачекай'}</div>
+          <div class="why">закинь щось або зачекай</div>
           <div class="actions"><span class="reacts">${reactsHtml()}</span>${fwHtml()}</div>
         </div>`;
       if (!mini) wireReacts(box);
@@ -489,7 +490,9 @@
     }
     const by = n.source === 'user'
       ? `від ${nickHtml(n.requestedBy, 'bynick', false, fromNick(n.requestedBy))}${n.via === 'suggestion' ? ` <span class="chip dj">порада ${esc(djGen())}</span>` : ''}`
-      : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
+      : n.source === 'spare'
+        ? `<b>${esc(dj())}</b> <span class="chip dj" title="Нове зараз не вантажиться, тож грає вже знайоме з полиці">запаска</span>`
+        : `<b>${esc(dj())}</b> <span class="chip dj">авто</span>`;
     // адмін банить безкоштовно; решта — за черепки, і голосові не банять
     const banPrice = me.role === 'admin' ? 0 : (me.banPrice || 0);
     const canBan = me.role === 'admin' || (banPrice > 0 && !isVoice(t));
@@ -518,7 +521,7 @@
   function renderNow() {
     const n = state.now;
     const sig = JSON.stringify([n.playId, n.itemId, n.source, n.track?.id, n.likers, n.skipPending, n.requestedBy, n.via, n.reason,
-      n.durationSec, n.startedAt, n.spotifyLive, n.spotifyTitle, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName,
+      n.durationSec, n.startedAt, state.liquidsoapOk, state.listeners, me.role, me.nick, me.banPrice, state.siteName, state.djName,
       !!HLavka.perk('fireworks')?.owned]);
     if (sig === nowSig) return;
     nowSig = sig;
@@ -533,7 +536,7 @@
     paintNowInto($('now'), {});
     paintNowInto($('nowMini'), { mini: true });
 
-    const playingTrack = n.track && (n.source === 'user' || n.source === 'autodj');
+    const playingTrack = n.track && trackOnAir(n);
     // ⏭ у шапці (видно лише на телефоні за столом і в балачках — це вирішує CSS): є що скіпати — є й кнопка.
     $('hdrSkip').hidden = !playingTrack;
     $('hdrSkip').disabled = !!n.skipPending;
@@ -546,7 +549,7 @@
   function tick() {
     if (!state) return;
     const n = state.now;
-    const live = n.source === 'user' || n.source === 'autodj';
+    const live = trackOnAir(n);
     const d = live ? (n.durationSec || 0) : 0;
     let elapsed = 0, pct = 0;
     if (live) {
@@ -3144,6 +3147,11 @@
           <input id="adsMins" type="number" min="0" max="600" value="${r.minMinutes}"><span>хв</span>
           <button class="ghost" id="adsSaveEvery">Зберегти</button>
         </div>
+        <div class="ads-row" title="Запаска — коли нове не вантажиться і в ефірі крутиться знайоме з кешу">
+          <span>У запасці раз на</span><input id="adsSpareEvery" type="number" min="1" max="100" value="${r.spareEveryTracks}"><span>тр., не частіше ніж раз на</span>
+          <input id="adsSpareMins" type="number" min="0" max="600" value="${r.spareMinMinutes}"><span>хв</span>
+          <button class="ghost" id="adsSaveSpare">Зберегти</button>
+        </div>
         <div class="ads-row">
           <button class="primary" id="adsNow" title="Наступна реклама з колоди стане в чергу">📻 Наступну в чергу</button>
           <button class="ghost" id="adsAllOn">Усі в ротацію</button>
@@ -3174,6 +3182,8 @@
     const again = () => loadLib();
     $('adsSaveEvery').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/air/every',
       { everyTracks: +$('adsEvery').value, minMinutes: +$('adsMins').value }).then(ok).then(again).catch(fail));
+    $('adsSaveSpare').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/air/spare-every',
+      { everyTracks: +$('adsSpareEvery').value, minMinutes: +$('adsSpareMins').value }).then(ok).then(again).catch(fail));
     $('adsNow').onclick = (e) => busy(e.currentTarget, 'закидаю…', () => api('POST', '/api/ads/air/now').then(ok).catch(fail));
     $('adsAllOn').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/library/all', { enabled: true }).then(ok).then(again).catch(fail));
     $('adsAllOff').onclick = (e) => confirm('Вимкнути всі реклами з ротації?') && busy(e.currentTarget, '…',

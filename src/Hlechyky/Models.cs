@@ -30,7 +30,7 @@ public sealed class QueueItem
 public sealed class NowPlaying
 {
     public TrackInfo? Track { get; set; }
-    /// <summary>user | autodj | fallback | silence</summary>
+    /// <summary>user | autodj | spare (трек із запаски, коли нове не вантажиться) | silence</summary>
     public string Source { get; set; } = "silence";
     public string? ItemId { get; set; }
     public string? RequestedBy { get; set; }
@@ -41,8 +41,6 @@ public sealed class NowPlaying
     public List<string> Likers { get; set; } = new();
     /// <summary>A skip was sent to liquidsoap and the next track has not started yet.</summary>
     public bool SkipPending { get; set; }
-    public bool SpotifyLive { get; set; }
-    public string? SpotifyTitle { get; set; }
     public long PlayId { get; set; }
     /// <summary>Від якого сіда Глек підібрав цей авто-трек (для швидкого скіпу); клієнту не потрібне.</summary>
     [System.Text.Json.Serialization.JsonIgnore]

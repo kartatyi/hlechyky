@@ -67,7 +67,14 @@ public sealed class AdLibraryStore
     public AdLibraryStore(Db db)
     {
         _db = db;
-        _db.With(c => { Exec(c, Schema); return 0; });
+        _db.With(c =>
+        {
+            Exec(c, Schema);
+            // частота реклами між треками запаски (30.09.2026) — окремо від звичайної
+            foreach (var col in new[] { "spare_every", "spare_min" })
+                try { Exec(c, $"ALTER TABLE ad_air ADD COLUMN {col} INTEGER"); } catch (SqliteException) { /* уже є */ }
+            return 0;
+        });
     }
 
     public long Add(string trackId, string title, int seconds, bool enabled, DateTimeOffset now) => _db.With(c =>
@@ -107,6 +114,22 @@ public sealed class AdLibraryStore
         Exec(c, """
             INSERT INTO ad_air(id, every_tracks, min_minutes, updated_at) VALUES(1, $e, $m, $now)
             ON CONFLICT(id) DO UPDATE SET every_tracks = excluded.every_tracks, min_minutes = excluded.min_minutes,
+                updated_at = excluded.updated_at
+            """, ("$e", everyTracks), ("$m", minMinutes), ("$now", Iso(now))));
+
+    /// <summary>Частота реклами, поки грає запаска; null — господар не ставив, береться <c>Ad:Spare*</c>.</summary>
+    public (int? EveryTracks, int? MinMinutes) SpareFrequency() => _db.With<(int?, int?)>(c =>
+    {
+        using var cmd = Cmd(c, "SELECT spare_every, spare_min FROM ad_air WHERE id = 1");
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return (null, null);
+        return (r.IsDBNull(0) ? null : r.GetInt32(0), r.IsDBNull(1) ? null : r.GetInt32(1));
+    });
+
+    public void SetSpareFrequency(int everyTracks, int minMinutes, DateTimeOffset now) => _db.With(c =>
+        Exec(c, """
+            INSERT INTO ad_air(id, spare_every, spare_min, updated_at) VALUES(1, $e, $m, $now)
+            ON CONFLICT(id) DO UPDATE SET spare_every = excluded.spare_every, spare_min = excluded.spare_min,
                 updated_at = excluded.updated_at
             """, ("$e", everyTracks), ("$m", minMinutes), ("$now", Iso(now))));
 
@@ -249,6 +272,8 @@ public sealed class AdLibrary(AdLibraryStore store, IVoiceSaver voice, IClock cl
 public interface IAdOnAir
 {
     (string? TrackId, bool SkipPending) Now();
+    /// <summary>Грає запаска (нове не вантажиться) — реклама йде за своєю частотою, <c>AdJingle.SpareFrequency</c>.</summary>
+    bool OnSpare() => false;
 }
 
 public sealed class RadioOnAir(RadioEngine engine) : IAdOnAir
@@ -258,6 +283,8 @@ public sealed class RadioOnAir(RadioEngine engine) : IAdOnAir
         var n = engine.Snapshot().Now;
         return (n.Track?.Id, n.SkipPending);
     }
+
+    public bool OnSpare() => engine.NowSource == "spare";
 }
 
 /// <summary>

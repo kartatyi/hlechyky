@@ -21,6 +21,13 @@ public sealed class AdOptions
     public int EveryTracks { get; set; } = 6;
     /// <summary>…і не частіше ніж раз на стільки хвилин.</summary>
     public int MinMinutes { get; set; } = 25;
+    /// <summary>
+    /// Те саме, поки грає запаска (нове не вантажиться і крутиться знайоме з кешу): реклама раз на стільки треків…
+    /// Господар міняє обидва числа у вкладці «📣 Реклама», тут — лише типові.
+    /// </summary>
+    public int SpareEveryTracks { get; set; } = 3;
+    /// <summary>…і не частіше ніж раз на стільки хвилин.</summary>
+    public int SpareMinMinutes { get; set; } = 10;
 
     /// <summary>Черепки кожному, хто прослухав рекламу з увімкненим плеєром. 0 — не нараховувати.</summary>
     public int ListenReward { get; set; } = 2;
@@ -53,7 +60,8 @@ public sealed class RadioAir(RadioEngine engine) : IAdAir
 /// останньої умови реклама крутилась би о четвертій ранку сама собі.
 /// </summary>
 public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRewards rewards, IAdAir air, IVoiceSaver voice,
-    Presence presence, IClock clock, IOptionsMonitor<AdOptions> opts, ILogger<AdJingle> log, ILiveAdSource? live = null)
+    Presence presence, IClock clock, IOptionsMonitor<AdOptions> opts, ILogger<AdJingle> log, ILiveAdSource? live = null,
+    IAdOnAir? onAir = null)
 {
     public const string AdTitle = "Реклама глека";
     public const int MaxEveryTracks = 100;
@@ -108,7 +116,8 @@ public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRe
         // Ротація кожен трек може бути вже інша: господар вмикає й вимикає рекламу просто посеред ефіру.
         var hasLibrary = library.HasLive();
         if (!hasLibrary && live is null) return;
-        var (every, minutes) = Frequency();
+        // грає запаска — своя частота: зазвичай частіше, бо нових треків однаково нема
+        var (every, minutes) = onAir?.OnSpare() == true ? SpareFrequency() : Frequency();
 
         lock (_lock)
         {
@@ -208,6 +217,24 @@ public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRe
         return (Math.Max(1, every ?? o.EveryTracks), Math.Max(0, minutes ?? o.MinMinutes));
     }
 
+    /// <summary>Частота, поки грає запаска: те, що поставив господар, а поки не ставив — <c>Ad:SpareEveryTracks</c>/<c>Ad:SpareMinMinutes</c>.</summary>
+    public (int EveryTracks, int MinMinutes) SpareFrequency()
+    {
+        var (every, minutes) = store.SpareFrequency();
+        var o = opts.CurrentValue;
+        return (Math.Max(1, every ?? o.SpareEveryTracks), Math.Max(0, minutes ?? o.SpareMinMinutes));
+    }
+
+    public (bool Ok, string Message) SetSpareFrequency(int everyTracks, int minMinutes)
+    {
+        if (everyTracks is < 1 or > MaxEveryTracks) return (false, $"Треків — від 1 до {MaxEveryTracks}");
+        if (minMinutes is < 0 or > MaxMinMinutes) return (false, $"Хвилин — від 0 до {MaxMinMinutes}");
+        store.SetSpareFrequency(everyTracks, minMinutes, clock.UtcNow);
+        return (true, minMinutes == 0
+            ? $"У запасці реклама — раз на {everyTracks} тр."
+            : $"У запасці реклама — раз на {everyTracks} тр., але не частіше ніж раз на {minMinutes} хв");
+    }
+
     public (bool Ok, string Message) SetFrequency(int everyTracks, int minMinutes)
     {
         if (everyTracks is < 1 or > MaxEveryTracks) return (false, $"Треків — від 1 до {MaxEveryTracks}");
@@ -273,6 +300,7 @@ public static class AdSetup
     public static object LibraryView(AdLibrary library, AdJingle jingle, IVoiceSaver voice, AdOptions o)
     {
         var (every, minutes) = jingle.Frequency();
+        var (spareEvery, spareMinutes) = jingle.SpareFrequency();
         return new
         {
             items = library.All().Select(a => new
@@ -282,6 +310,7 @@ public static class AdSetup
                 missing = voice.FilePath(a.TrackId) is null,
             }),
             everyTracks = every, minMinutes = minutes, since = jingle.Since,
+            spareEveryTracks = spareEvery, spareMinMinutes = spareMinutes,
             jingle = o.Enabled && o.Jingle,
             reward = new { amount = Math.Max(0, o.ListenReward), dailyCap = o.ListenDailyCap },
             fallback = (object?)null,
@@ -321,6 +350,9 @@ public static class AdSetup
 
         app.MapPost("/api/ads/air/every", (HttpContext c, AdEveryRequest req, AdJingle jingle) =>
             Auth.IsAdmin(c) ? Reply(jingle.SetFrequency(req.EveryTracks, req.MinMinutes)) : Deny());
+
+        app.MapPost("/api/ads/air/spare-every", (HttpContext c, AdEveryRequest req, AdJingle jingle) =>
+            Auth.IsAdmin(c) ? Reply(jingle.SetSpareFrequency(req.EveryTracks, req.MinMinutes)) : Deny());
 
         app.MapPost("/api/ads/air/now", (HttpContext c, AdJingle jingle) =>
             Auth.IsAdmin(c) ? Reply(jingle.PlayNow()) : Deny());

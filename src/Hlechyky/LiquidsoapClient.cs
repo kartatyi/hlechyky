@@ -90,16 +90,18 @@ public sealed class LiquidsoapClient(IOptionsMonitor<LiquidsoapOptions> options,
     }
 
     /// <summary>
-    /// Шлях до файла всередині контейнера liquidsoap: у нього змонтовано всю теку кешу, тож підтеки
-    /// («Вгадай мелодію» тримає свої пісні в <c>cache/melody</c>) треба зберігати. Пласке
-    /// <c>Path.GetFileName</c> віддавало <c>/cache/x.m4a</c> на файл із <c>cache/melody</c>, liquidsoap
-    /// такого не знаходив, викидав запит — і ефір падав на запасну спотіфай-трансляцію.
-    /// <c>null</c> — файл поза кешем, у контейнері його не видно взагалі, штовхати нема сенсу.
+    /// Шлях до файла, яким його бачить liquidsoap. Він живе на цій же машині (<c>CacheMount</c> порожній) — той самий
+    /// повний шлях, лише з прямими скісними. Для liquidsoap у контейнері (<c>CacheMount</c> = "/cache") змонтовано
+    /// всю теку кешу, тож підтеки («Вгадай мелодію» тримає свої пісні в <c>cache/melody</c>) треба зберігати:
+    /// пласке <c>Path.GetFileName</c> віддавало <c>/cache/x.m4a</c> на файл із <c>cache/melody</c>, і liquidsoap
+    /// викидав запит. <c>null</c> — файл поза кешем: такого ефір не бере.
     /// </summary>
     public string? ContainerPath(string hostPath)
     {
-        var rel = Path.GetRelativePath(Paths.Resolve(ytdlp.CurrentValue.CacheDir), Path.GetFullPath(hostPath));
+        var full = Path.GetFullPath(hostPath);
+        var rel = Path.GetRelativePath(Paths.Resolve(ytdlp.CurrentValue.CacheDir), full);
         if (rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel)) return null;
+        if (string.IsNullOrEmpty(O.CacheMount)) return full.Replace('\\', '/');
         return O.CacheMount.TrimEnd('/') + "/" + rel.Replace('\\', '/');
     }
 
@@ -153,9 +155,16 @@ public sealed class LiquidsoapClient(IOptionsMonitor<LiquidsoapOptions> options,
         return current;
     }
 
-    /// <summary>Skip the current request of a specific queue (userq / autoq), or whatever is on air.</summary>
+    /// <summary>Skip the current request of a specific queue (userq / autoq), the spare's track, or whatever is on air.</summary>
     public Task SkipAsync(string? queue, CancellationToken ct = default) =>
-        CommandAsync(queue is "userq" or "autoq" ? $"{queue}.skip" : "radio.skip", ct);
+        CommandAsync(queue is "userq" or "autoq" or "spare" ? $"{queue}.skip" : "radio.skip", ct);
+
+    /// <summary>Скільки людей зараз тягнуть потік (лічильник у radio.liq; раніше це казав Icecast).</summary>
+    public async Task<int?> ListenersAsync(CancellationToken ct = default)
+    {
+        var r = (await CommandAsync("listeners", ct)).Trim();
+        return int.TryParse(r, out var n) ? n : null;
+    }
 
     /// <summary>liquidsoap uptime in seconds ("0d 01h 04m 15s"); a drop means it restarted.</summary>
     public async Task<long> UptimeSecondsAsync(CancellationToken ct = default)

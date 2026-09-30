@@ -29,4 +29,22 @@ public class LiquidsoapPathTests
     [Fact]
     public void File_outside_the_cache_has_no_container_path() =>
         Assert.Null(Client().ContainerPath(Path.Combine(Paths.Root, "data", "zgIfcF3WPA4.m4a")));
+
+    /// <summary>liquidsoap без Docker, на тій самій машині: той самий повний шлях, лише з прямими скісними.</summary>
+    static LiquidsoapClient Native() => new(
+        new FixedOptions<LiquidsoapOptions>(new LiquidsoapOptions()),
+        new FixedOptions<YtDlpOptions>(new YtDlpOptions { CacheDir = "cache" }),
+        NullLogger<LiquidsoapClient>.Instance);
+
+    [Fact]
+    public void Native_liquidsoap_gets_the_full_path_with_forward_slashes()
+    {
+        var file = InCache("melody", "zgIfcF3WPA4.m4a");
+        Assert.Equal(file.Replace('\\', '/'), Native().ContainerPath(file));
+        Assert.DoesNotContain('\\', Native().ContainerPath(file)!);
+    }
+
+    [Fact]
+    public void Native_liquidsoap_still_takes_nothing_from_outside_the_cache() =>
+        Assert.Null(Native().ContainerPath(Path.Combine(Paths.Root, "data", "zgIfcF3WPA4.m4a")));
 }

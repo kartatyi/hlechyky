@@ -18,10 +18,9 @@ www.hlechyky.pp.ua {
 }
 
 hlechyky.pp.ua {
-	# Потоки Icecast: віддавати байти одразу, без буферизації і без таймаутів на відповідь
-	@stream path /radio.mp3 /spotify.mp3
-	handle @stream {
-		reverse_proxy 127.0.0.1:8000 {
+	# Потік віддає сам liquidsoap (harbor на 127.0.0.1:8001): байти одразу, без буферизації і без таймаутів на відповідь
+	handle /radio.mp3 {
+		reverse_proxy 127.0.0.1:8001 {
 			flush_interval -1
 		}
 	}
@@ -30,5 +29,18 @@ hlechyky.pp.ua {
 	handle {
 		encode zstd gzip
 		reverse_proxy 127.0.0.1:8080
+	}
+}
+
+# Простий http на :8000 — для ETS2 й плеєрів, що знають старе http://hlechyky.pp.ua:8000/radio.mp3 (колись там був Icecast).
+# Будь-яке ім'я хоста: ETS2 може ходити й за IP. liquidsoap назовні не світиться, порт 8000 тримає Caddy.
+http://:8000 {
+	handle /radio.mp3 {
+		reverse_proxy 127.0.0.1:8001 {
+			flush_interval -1
+		}
+	}
+	handle {
+		respond "Глечики: потік — /radio.mp3" 404
 	}
 }

@@ -360,11 +360,11 @@ public sealed class DjBrain : IHostedService
         {
             var gone = (int)(DateTimeOffset.UtcNow - st.Now.StartedAt).TotalSeconds;
             var left = Math.Max(0, st.Now.DurationSec - gone);
-            var who = st.Now.Source == "user" ? $"замовлення — {st.Now.RequestedBy}" : "твій вибір";
+            var who = st.Now.Source switch { "user" => $"замовлення — {st.Now.RequestedBy}", "spare" => "запаска з кешу: нове зараз не вантажиться", _ => "твій вибір" };
             sb.AppendLine($"Зараз грає: {t.Label} ({who}, лишилось ~{left / 60} хв {left % 60} с)");
             if (st.Now.Likers.Count > 0) sb.AppendLine($"Вподобайки цьому треку: {string.Join(", ", st.Now.Likers)}");
         }
-        else sb.AppendLine(st.Now.SpotifyLive ? $"Зараз в ефірі Spotify: {st.Now.SpotifyTitle}" : "Зараз тиша в ефірі.");
+        else sb.AppendLine("Зараз тиша в ефірі.");
 
         if (st.Queue.Count == 0) sb.AppendLine("Черга порожня.");
         else

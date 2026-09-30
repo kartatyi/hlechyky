@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Глечики — перший запуск після git clone. Качає yt-dlp і ffmpeg у tools\, створює appsettings.Local.json і liquidsoap\.env
+  Глечики — перший запуск після git clone. Качає yt-dlp, ffmpeg і liquidsoap у tools\, створює appsettings.Local.json і liquidsoap\.env
   з випадковими ключами (ті два файли в .gitignore) і великий словник для Ерудита в data\words\.
   Запускати можна скільки завгодно: те, що вже є, не чіпає.
 
@@ -41,6 +41,24 @@ else {
     Remove-Item $zip -Force; Remove-Item $tmp -Recurse -Force
 }
 
+# 1б. Ефір: liquidsoap (офіційна Windows-збірка) у tools\liquidsoap\. Він сам віддає потік на 127.0.0.1:8001/radio.mp3,
+#     ні Docker, ні Icecast не потрібні. Шлях до нього не має містити «\цифра» — liquidsoap на Windows на такому падає.
+$liqDir = Join-Path $Root 'tools\liquidsoap'
+$liqVer = '2.4.5'
+if (Test-Path (Join-Path $liqDir 'liquidsoap.exe')) { Write-Host 'liquidsoap.exe вже є' }
+else {
+    Write-Host "Качаю liquidsoap $liqVer (~50 МБ)…"
+    $zip = Join-Path $env:TEMP 'hlechyky-liquidsoap.zip'
+    $tmp = Join-Path $env:TEMP 'hlechyky-liquidsoap'
+    Invoke-WebRequest -UseBasicParsing "https://github.com/savonet/liquidsoap-release-assets/releases/download/v$liqVer/liquidsoap-$liqVer-win64.zip" -OutFile $zip
+    if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+    Expand-Archive $zip $tmp
+    $exe = Get-ChildItem $tmp -Recurse -Filter liquidsoap.exe | Select-Object -First 1
+    New-Item -ItemType Directory -Force $liqDir | Out-Null
+    Copy-Item (Join-Path $exe.DirectoryName '*') $liqDir -Recurse -Force
+    Remove-Item $zip -Force; Remove-Item $tmp -Recurse -Force
+}
+
 # 2. Секрети: appsettings.Local.json і liquidsoap\.env. Ключ liquidsoap-callback має збігатися в обох файлах.
 $local = Join-Path $Root 'appsettings.Local.json'
 $envFile = Join-Path $Root 'liquidsoap\.env'
@@ -61,7 +79,7 @@ if (Test-Path $envFile) { Write-Host 'liquidsoap\.env вже є' }
 else {
     if (-not $liqKey) { $liqKey = New-Key 24; Write-Warning "У appsettings.Local.json порожній Liquidsoap:ApiKey; впиши туди $liqKey" }
     (Get-Content (Join-Path $Root 'liquidsoap\.env.example') -Raw) `
-        -replace '<IcecastSourcePassword>', (New-Key 12) -replace '<LiquidsoapApiKey>', $liqKey |
+        -replace '<LiquidsoapApiKey>', $liqKey |
         Set-Content $envFile -Encoding ASCII -NoNewline
     Write-Host 'Створив liquidsoap\.env'
 }
@@ -182,5 +200,5 @@ public static class HlechykyWords {
 
 Write-Host ''
 Write-Host 'Готово. Далі:'
-Write-Host '  docker compose -f liquidsoap\docker-compose.dev.yml up -d   # Icecast + liquidsoap (необов''язково)'
-Write-Host '  dotnet run --project src\Hlechyky                             # сайт на http://localhost:8080'
+Write-Host '  .\start.ps1 start                  # liquidsoap + сайт на http://localhost:8080 (потік: http://127.0.0.1:8001/radio.mp3)'
+Write-Host '  dotnet run --project src\Hlechyky   # або лише сайт, без ефіру'

@@ -71,7 +71,10 @@ public class AdLibraryTests
     {
         public string? TrackId { get; set; }
         public bool SkipPending { get; set; }
+        /// <summary>Грає запаска (нове не вантажиться) — у джингла своя частота.</summary>
+        public bool Spare { get; set; }
         public (string? TrackId, bool SkipPending) Now() => (TrackId, SkipPending);
+        public bool OnSpare() => Spare;
     }
 
     sealed class AdRig : IDisposable
@@ -104,7 +107,7 @@ public class AdLibraryTests
 
         /// <summary>Джингл на тій самій базі, але з порожньою пам'яттю — як після перезапуску сервера.</summary>
         public AdJingle Cold() => new(Library, new AdLibraryStore(Eco.Db), Rewards, Air, Voice, Presence, Clock,
-            new FixedOptions<AdOptions>(Options), NullLogger<AdJingle>.Instance);
+            new FixedOptions<AdOptions>(Options), NullLogger<AdJingle>.Instance, onAir: OnAir);
 
         /// <summary>Залити рекламу в бібліотеку — вона одразу в ротації.</summary>
         public AdClip Add(string title, int seconds = 20)
@@ -287,6 +290,65 @@ public class AdLibraryTests
         r.Jingle.OnTrackStarted(r.Air.Played[0]);
         for (var i = 0; i < 3; i++) r.TrackOnAir();       // жодних 25 хвилин: господар поставив нуль
         Assert.Equal(2, r.Air.Played.Count);
+    }
+
+    // =============================================================================================
+    // Запаска: нове не вантажиться, крутиться знайоме з кешу — у реклами своя частота
+    // =============================================================================================
+
+    [Fact]
+    public void On_the_spare_an_ad_goes_every_three_tracks_but_not_more_often_than_every_ten_minutes()
+    {
+        using var r = new AdRig();
+        r.OnAir.Spare = true;
+        var clip = r.Add("Глекминатор");
+
+        r.TrackOnAir("s-1");
+        r.TrackOnAir("s-2");
+        Assert.Empty(r.Air.Played);
+        r.TrackOnAir("s-3");
+        Assert.Single(r.Air.Played);                      // три треки запаски — і реклама, хоч звичайних шести не було
+
+        r.AdOnAir(clip);
+        for (var i = 4; i < 10; i++) r.TrackOnAir($"s-{i}");
+        Assert.Single(r.Air.Played);                      // треків досить, а десяти хвилин ще нема
+
+        r.Clock.Advance(TimeSpan.FromMinutes(11));
+        r.TrackOnAir("s-10");
+        Assert.Equal(2, r.Air.Played.Count);
+    }
+
+    [Fact]
+    public void Back_from_the_spare_the_usual_frequency_rules_again()
+    {
+        using var r = new AdRig();
+        r.Add("Глекминатор");
+        r.OnAir.Spare = true;
+        r.TrackOnAir("s-1");
+        r.TrackOnAir("s-2");
+
+        r.OnAir.Spare = false;                            // нове знову вантажиться
+        for (var i = 0; i < 3; i++) r.TrackOnAir();
+        Assert.Empty(r.Air.Played);                       // 5 треків — до звичайних шести ще один
+        r.TrackOnAir();
+        Assert.Single(r.Air.Played);
+    }
+
+    [Fact]
+    public void Spare_frequency_from_the_admin_is_its_own_and_survives_a_restart()
+    {
+        using var r = new AdRig();
+        Assert.Equal((3, 10), r.Jingle.SpareFrequency());   // типове: раз на 3 треки, не частіше ніж раз на 10 хв
+
+        Assert.Equal((true, "У запасці реклама — раз на 2 тр., але не частіше ніж раз на 5 хв"), r.Jingle.SetSpareFrequency(2, 5));
+        Assert.Equal((2, 5), r.Cold().SpareFrequency());
+        Assert.Equal((6, 25), r.Cold().Frequency());         // звичайна частота не зачеплена
+
+        r.Jingle.SetFrequency(4, 0);
+        Assert.Equal((2, 5), r.Cold().SpareFrequency());     // і навпаки
+        Assert.False(r.Jingle.SetSpareFrequency(0, 5).Ok);
+        Assert.False(r.Jingle.SetSpareFrequency(3, 601).Ok);
+        Assert.Equal((2, 5), r.Jingle.SpareFrequency());
     }
 
     [Theory]

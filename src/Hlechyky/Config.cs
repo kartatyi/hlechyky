@@ -75,14 +75,17 @@ public sealed class LiquidsoapOptions
     public string Host { get; set; } = "127.0.0.1";
     public int Port { get; set; } = 1234;
     public string ApiKey { get; set; } = "";
-    public string CacheMount { get; set; } = "/cache";
-}
-
-public sealed class IcecastOptions
-{
-    public string StatusUrl { get; set; } = "http://127.0.0.1:8000/status-json.xsl";
-    public string RadioMount { get; set; } = "/radio.mp3";
-    public string SpotifyMount { get; set; } = "/spotify.mp3";
+    /// <summary>
+    /// Як liquidsoap бачить теку кешу. Порожньо — той самий шлях, що й у сервера (liquidsoap живе на цій же машині,
+    /// tools\liquidsoap). Колись він жив у Docker і бачив кеш як "/cache".
+    /// </summary>
+    public string CacheMount { get; set; } = "";
+    /// <summary>Список запаски, який пише <see cref="SpareList"/> і читає liquidsoap (SPARE_PLAYLIST у start.ps1).</summary>
+    public string SparePlaylist { get; set; } = "data/spare.m3u";
+    /// <summary>Як часто переписувати список запаски.</summary>
+    public int SpareRefreshMinutes { get; set; } = 30;
+    /// <summary>Скільки треків максимум у запасці.</summary>
+    public int SpareMax { get; set; } = 300;
 }
 
 public sealed class LastFmOptions

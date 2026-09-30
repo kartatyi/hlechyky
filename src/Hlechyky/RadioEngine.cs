@@ -15,9 +15,9 @@ public sealed class Presence
     /// <summary>Плеєр на сторінці грає (вкладка сама каже про «Врубити» і «Стоп»).</summary>
     /// <returns>Чи щось змінилося: повторне «граю» від тієї ж вкладки розсилки стану не варте.</returns>
     public bool SetListening(string connId, bool on) => on ? _listening.TryAdd(connId, 0) : _listening.TryRemove(connId, out _);
-    /// <summary>Ніки, у яких зараз грає плеєр на сайті. ETS2 і VLC сюди не потрапляють — їх видно лише в Icecast.</summary>
+    /// <summary>Ніки, у яких зараз грає плеєр на сайті. ETS2 і VLC сюди не потрапляють — їх видно лише в лічильнику потоку.</summary>
     public List<string> Listening => _listening.Keys.Select(Get).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
-    /// <summary>Скільки вкладок сайту тягнуть потік: Icecast рахує кожну, тож решта його числа — ETS2, VLC тощо.</summary>
+    /// <summary>Скільки вкладок сайту тягнуть потік: лічильник потоку (radio.liq) рахує кожну, тож решта його числа — ETS2, VLC тощо.</summary>
     public int ListeningTabs => _listening.Count;
     public string? Get(string connId) => _conns.TryGetValue(connId, out var n) ? n : null;
     public List<string> Online => _conns.Values.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
@@ -54,7 +54,6 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     readonly IOptionsMonitor<SiteOptions> _site;
     readonly IOptionsMonitor<YtDlpOptions> _yt;
     readonly IOptionsMonitor<AutoDjOptions> _adj;
-    readonly IOptionsMonitor<IcecastOptions> _ice;
     readonly IOptionsMonitor<VoiceOptions> _voice;
 
     readonly object _lock = new();
@@ -69,13 +68,11 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     NowPlaying _now = new();
     bool _liqOk;
     int _listeners;
-    bool _spotifyLive;
-    string? _spotifyTitle;
     readonly SemaphoreSlim _dlGate = new(2, 2);
     readonly SemaphoreSlim _tickGate = new(1, 1);
     /// <summary>Тік попросили, поки інший ще йшов: той, хто тримає ворота, пройде ще раз (див. <see cref="TickAsync"/>).</summary>
     volatile bool _tickAgain;
-    DateTime _lastIcecast = DateTime.MinValue;
+    DateTime _lastListeners = DateTime.MinValue;
     DateTime _lastReconcile = DateTime.MinValue;
     long _liqUptime = -1;
     long _persistVer, _persistedVer;
@@ -91,26 +88,28 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     readonly Dictionary<string, DateTime> _dismissed = new();
     Task? _suggestTask;
     DateTime _suggestRetryAt = DateTime.MinValue;
-    /// <summary>Identity of the seed the current suggestions were built from: "t:{trackId}", "s:{spotify title}" or "none".</summary>
+    /// <summary>Identity of the seed the current suggestions were built from: "t:{trackId}" or "none".</summary>
     string? _suggestSeedKey;
     TrackInfo? _suggestSeed;
     /// <summary>Під що саме підбирали: «те, що зараз грає», «останнє, що грало» чи «те, що тут замовляли».</summary>
     string _suggestSeedNote = "";
-    (string Title, TrackInfo? Seed)? _spotifySeed;
 
     public RadioEngine(Db db, YtDlpService ytdlp, YtMusicClient ytm, Albums albums, LiquidsoapClient liq, AutoDj autoDj, RoomTaste taste, LastFmClient lastFm,
         Presence presence, IHubContext<RadioHub> hub, ILogger<RadioEngine> log,
         IOptionsMonitor<SiteOptions> site, IOptionsMonitor<YtDlpOptions> yt, IOptionsMonitor<AutoDjOptions> adj,
-        IOptionsMonitor<IcecastOptions> ice, IOptionsMonitor<VoiceOptions> voice)
+        IOptionsMonitor<VoiceOptions> voice)
     {
         _db = db; _ytdlp = ytdlp; _ytm = ytm; _albums = albums; _liq = liq; _autoDj = autoDj; _taste = taste; _lastFm = lastFm; _presence = presence; _hub = hub; _log = log;
-        _site = site; _yt = yt; _adj = adj; _ice = ice; _voice = voice;
+        _site = site; _yt = yt; _adj = adj; _voice = voice;
     }
 
     string Dj => _site.CurrentValue.DjName;
     string DjGen => _site.CurrentValue.DjNameGen;
 
     // ---------- snapshot / broadcast ----------
+
+    /// <summary>Що грає зараз (user | autodj | spare | silence) — без знімка всього стану.</summary>
+    public string NowSource { get { lock (_lock) return _now.Source; } }
 
     public StateSnapshot Snapshot()
     {
@@ -121,7 +120,6 @@ public sealed class RadioEngine : BackgroundService, IOnAir
                 Track = _now.Track, Source = _now.Source, ItemId = _now.ItemId, RequestedBy = _now.RequestedBy, Reason = _now.Reason, Via = _now.Via,
                 StartedAt = _now.StartedAt, DurationSec = _now.DurationSec, PlayId = _now.PlayId, SkipPending = _now.SkipPending,
                 Likers = _now.Track is null ? new() : _db.Likers(_now.Track.Id),
-                SpotifyLive = _spotifyLive, SpotifyTitle = _spotifyTitle,
             };
             return new StateSnapshot
             {
@@ -480,9 +478,9 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         string? seedId;
         lock (_lock)
         {
-            if (_now.Source is not ("user" or "autodj")) return (false, "Зараз нема що скіпати");
+            if (!IsTrackSource(_now.Source)) return (false, "Зараз нема що скіпати");
             if (_now.SkipPending) return (true, "Уже перемикаю — ще мить");
-            queue = _now.Source == "user" ? "userq" : "autoq";
+            queue = _now.Source switch { "user" => "userq", "spare" => "spare", _ => "autoq" };
             label = _now.Track?.Label;
             // авто-трек скіпнули, ледь він заграв — це «не те», а не «вже набридло»
             if (_now.Source == "autodj" && _now.Track is not null && !VoiceService.IsVoice(_now.Track.Id)
@@ -604,15 +602,17 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     }
 
     /// <summary>
-    /// What the suggestions follow: the track on air, else the Spotify fallback's title, else "none"
+    /// What the suggestions follow: the track on air (a spare one too — it is a track people like), else "none"
     /// (last played is used). A voice message is nobody's musical taste: while one is on air the key
     /// stays as it was, so the panel keeps the suggestions built from the last real track.
     /// </summary>
     string CurrentSeedKey() =>
-        _now.Source is "user" or "autodj" && _now.Track is not null
+        IsTrackSource(_now.Source) && _now.Track is not null
             ? VoiceService.IsVoice(_now.Track.Id) ? _suggestSeedKey ?? "none" : "t:" + _now.Track.Id
-        : _spotifyLive && !string.IsNullOrWhiteSpace(_spotifyTitle) ? "s:" + _spotifyTitle
         : "none";
+
+    /// <summary>У ефірі справжній трек: замовлення, вибір Глека чи трек запаски (не тиша).</summary>
+    static bool IsTrackSource(string? source) => source is "user" or "autodj" or "spare";
 
     /// <summary>Keeps <see cref="SuggestionTarget"/> suggestions for the current seed; a new track on air throws the old set away.</summary>
     void EnsureSuggestions()
@@ -643,7 +643,6 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             int need;
             TrackInfo? seed;
             bool seedFromUser, fresh;
-            string? spotifyTitle;
             lock (_lock)
             {
                 exclude = _queue.Select(q => q.Track.Id).ToHashSet();
@@ -659,12 +658,11 @@ public sealed class RadioEngine : BackgroundService, IOnAir
                 if (_autoNext is not null) exclude.Add(_autoNext.Track.Id);
                 need = SuggestionTarget - _suggestions.Count;
                 fresh = _suggestions.Count == 0;
-                seed = _now.Source is "user" or "autodj" && !VoiceService.IsVoice(_now.Track?.Id) ? _now.Track : null;
+                seed = IsTrackSource(_now.Source) && !VoiceService.IsVoice(_now.Track?.Id) ? _now.Track : null;
                 seedFromUser = seed is not null && _now.Source == "user";
-                spotifyTitle = seed is null && _spotifyLive ? _spotifyTitle : null;
             }
             if (need <= 0) return;
-            seed ??= await SpotifySeedAsync(spotifyTitle) ?? _autoDj.FallbackSeed();
+            seed ??= _autoDj.FallbackSeed();
             var o = _adj.CurrentValue;
 
             // Трек поставила людина — її вибір і є смак кімнати, від нього й шукаємо. А от коли в ефірі
@@ -734,27 +732,6 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         }
     }
 
-    /// <summary>While the Spotify fallback is on air, its current "Artist - Title" seeds the suggestions.</summary>
-    async Task<TrackInfo?> SpotifySeedAsync(string? title)
-    {
-        if (string.IsNullOrWhiteSpace(title)) return null;
-        var dash = title.IndexOf(" - ", StringComparison.Ordinal);
-        if (dash <= 0) return null;
-        if (_spotifySeed is { } cached && cached.Title == title) return cached.Seed;
-        TrackInfo? seed = null;
-        try
-        {
-            var r = await _ytm.ResolveAsync(title[..dash].Trim(), title[(dash + 3)..].Trim(), CancellationToken.None);
-            if (r is not null) seed = AutoDj.ToTrack(r);
-        }
-        catch (Exception ex)
-        {
-            _log.LogDebug(ex, "spotify seed resolve failed for {Title}", title);
-        }
-        _spotifySeed = (title, seed);
-        return seed;
-    }
-
     // ---------- liquidsoap events ----------
 
     public async Task OnLiquidsoapTrackAsync(Dictionary<string, string> m)
@@ -762,7 +739,8 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         m.TryGetValue("rt_kind", out var kind);
         m.TryGetValue("rt_item", out var itemId);
         _log.LogInformation("liquidsoap track: kind={Kind} item={Item} title={Title}", kind, itemId, m.GetValueOrDefault("title"));
-        if (kind is not ("user" or "autodj")) return; // fallback / silence are detected by polling
+        if (kind == "spare") { await OnSpareTrackAsync(m); return; }
+        if (kind is not ("user" or "autodj")) return; // silence is detected by polling
         var queue = kind == "user" ? "userq" : "autoq";
 
         QueueItem? item = null;
@@ -808,6 +786,39 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             };
         }
         if (item?.Kind == "user") PersistQueue();
+        await AfterTrackStartedAsync(prevPlay, kind, itemId);
+    }
+
+    /// <summary>Причина під треком запаски — видно на сайті, чому грає «старе».</summary>
+    public const string SpareReason = "запаска з полиці: нове зараз не вантажиться, тож граю вже знайоме";
+
+    /// <summary>
+    /// Заграв трек запаски (liquidsoap узяв його сам, бо в черзі й у Глека порожньо). Для сайту це звичайний трек:
+    /// його видно, лайкають, скіпають, з нього будуються поради, а джингл між такими ставить рекламу за своєю частотою.
+    /// </summary>
+    async Task OnSpareTrackAsync(Dictionary<string, string> m)
+    {
+        var tid = m.GetValueOrDefault("track_id");
+        long prevPlay;
+        string itemId;
+        lock (_lock)
+        {
+            // зворотний виклик і опитування наввипередки на свіжому треку — це той самий трек
+            if (_now.Source == "spare" && _now.Track?.Id == tid && (DateTimeOffset.UtcNow - _now.StartedAt).TotalSeconds < 15) return;
+            prevPlay = _now.PlayId;
+            var track = string.IsNullOrEmpty(tid) ? null : _db.GetTrack(tid);
+            itemId = $"spare:{tid}:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            _now = new NowPlaying
+            {
+                Track = track, Source = "spare", ItemId = itemId, StartedAt = DateTimeOffset.UtcNow,
+                Reason = SpareReason, DurationSec = track?.DurationSec ?? 0,
+            };
+        }
+        await AfterTrackStartedAsync(prevPlay, "spare", itemId);
+    }
+
+    async Task AfterTrackStartedAsync(long prevPlay, string kind, string? itemId)
+    {
         EnsureSuggestions(); // a new track on air: the old suggestions go, new ones are built from this one
         if (prevPlay > 0) _db.EndPlay(prevPlay, skipped: false);
         if (_now.Track is not null)
@@ -934,6 +945,23 @@ public sealed class RadioEngine : BackgroundService, IOnAir
                     Track = track, Source = kind, ItemId = onAirItem, StartedAt = DateTimeOffset.UtcNow.AddSeconds(-elapsed),
                     RequestedBy = kind == "user" ? by : null, Reason = reason, Via = via,
                     DurationSec = dur, PlayId = pid,
+                };
+            }
+        }
+        else if (onAir.GetValueOrDefault("rt_kind") == "spare" && remaining is not null && onAir.GetValueOrDefault("track_id") is { Length: > 0 } spareId)
+        {
+            var track = _db.GetTrack(spareId);
+            var dur = track?.DurationSec ?? 0;
+            var elapsed = dur > 0 && remaining is { } rem && rem <= dur ? dur - rem : 0;
+            var pid = _db.OpenPlayId(spareId);
+            _db.EndOpenPlaysExcept(pid);
+            if (pid == 0 && track is not null) pid = _db.StartPlay(spareId, "spare", null, SpareReason, null);
+            lock (_lock)
+            {
+                _now = new NowPlaying
+                {
+                    Track = track, Source = "spare", ItemId = $"spare:{spareId}:0", StartedAt = DateTimeOffset.UtcNow.AddSeconds(-elapsed),
+                    Reason = SpareReason, DurationSec = dur, PlayId = pid,
                 };
             }
         }
@@ -1068,6 +1096,15 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         _liqOk = true;
         _log.LogInformation("dispatched {Label} to {Queue} as rid {Rid}", item.Track.Label, queue, rid);
         Broadcast();
+        // Людина закинула трек, а грає запаска: чекати, доки та дограє, нема чого. Голосові й реклама чекають (джингл
+        // ставить рекламу саме між треками запаски), Глекові треки теж: запаска просто дограє своє.
+        bool onSpare;
+        lock (_lock) onSpare = _now.Source == "spare" && !_now.SkipPending;
+        if (onSpare && queue == "userq" && item.Kind == "user" && !VoiceService.IsVoice(item.Track.Id))
+        {
+            try { await _liq.SkipAsync("spare", ct); }
+            catch (Exception ex) { _log.LogWarning(ex, "skip of the spare track failed"); }
+        }
     }
 
     void StartDownload(QueueItem item)
@@ -1162,30 +1199,36 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             lock (_lock) current = _now.ItemId;
             if (meta.TryGetValue("rt_item", out var it) && it != current) await OnLiquidsoapTrackAsync(meta);
         }
-        else if (remaining is null)
+        else if (remaining is not null && kind == "spare")
+        {
+            bool known;
+            lock (_lock) known = _now.Source == "spare" && _now.Track?.Id == meta.GetValueOrDefault("track_id");
+            if (!known) await OnLiquidsoapTrackAsync(meta);
+        }
+        else if (remaining is null || kind == "silence")
         {
             var changed = false;
             lock (_lock)
             {
-                if (_now.Source is "user" or "autodj")
+                if (IsTrackSource(_now.Source))
                 {
-                    _now = new NowPlaying { Source = "fallback", StartedAt = DateTimeOffset.UtcNow };
+                    _now = new NowPlaying { Source = "silence", StartedAt = DateTimeOffset.UtcNow };
                     changed = true;
                 }
             }
             if (changed)
             {
                 _db.EndOpenPlays();
-                await PollIcecastAsync(ct);
+                await PollListenersAsync(ct);
                 Broadcast();
                 await TickSafeAsync(ct);
             }
         }
 
-        if (DateTime.UtcNow - _lastIcecast > TimeSpan.FromSeconds(10))
+        if (DateTime.UtcNow - _lastListeners > TimeSpan.FromSeconds(10))
         {
-            _lastIcecast = DateTime.UtcNow;
-            await PollIcecastAsync(ct);
+            _lastListeners = DateTime.UtcNow;
+            await PollListenersAsync(ct);
         }
         if (DateTime.UtcNow - _lastReconcile > TimeSpan.FromSeconds(15))
         {
@@ -1214,7 +1257,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
             if (_now.Source == "user") _queue.Insert(0, item);
             else if (_autoNext is null) _autoNext = item;
             _log.LogWarning("liquidsoap restarted while playing {Label}; re-queued", _now.Track.Label);
-            _now = new NowPlaying { Source = "fallback", StartedAt = DateTimeOffset.UtcNow };
+            _now = new NowPlaying { Source = "silence", StartedAt = DateTimeOffset.UtcNow };
         }
         _db.EndOpenPlays();
         PersistQueue();
@@ -1282,11 +1325,11 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         }
     }
 
-    /// <summary>Для рейтингу: хто слухав трек, що зараз в ефірі. Кличеться разом з опитуванням Icecast, раз на ~10 секунд.</summary>
+    /// <summary>Для рейтингу: хто слухав трек, що зараз в ефірі. Кличеться разом з опитуванням слухачів потоку, раз на ~10 секунд.</summary>
     void NoteListeners()
     {
         long pid;
-        lock (_lock) pid = _now.Source is "user" or "autodj" && !_now.SkipPending ? _now.PlayId : 0;
+        lock (_lock) pid = IsTrackSource(_now.Source) && !_now.SkipPending ? _now.PlayId : 0;
         if (pid <= 0) return;
         try { _db.NotePlayListeners(pid, _listeners, _presence.Listening); }
         catch (Exception ex) { _log.LogDebug(ex, "listeners note failed"); }
@@ -1304,42 +1347,20 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         }
     }
 
-    async Task PollIcecastAsync(CancellationToken ct)
+    /// <summary>Скільки людей тягне потік — питаємо сам liquidsoap (лічильник у radio.liq), раз на ~10 с.</summary>
+    async Task PollListenersAsync(CancellationToken ct)
     {
         try
         {
-            var o = _ice.CurrentValue;
-            var json = await Http.GetStringAsync(o.StatusUrl, ct);
-            var root = JsonNode.Parse(json);
-            var sources = root?["icestats"]?["source"] switch
-            {
-                JsonArray a => a.Where(x => x is not null).ToList(),
-                JsonObject s => [s],
-                _ => new List<JsonNode?>(),
-            };
-            var listeners = 0;
-            var spotifyLive = false;
-            string? spotifyTitle = null;
-            foreach (var s in sources)
-            {
-                var url = s?["listenurl"]?.GetValue<string>() ?? "";
-                if (url.EndsWith(o.RadioMount, StringComparison.Ordinal)) listeners = (int)(s?["listeners"]?.GetValue<double>() ?? 0);
-                if (url.EndsWith(o.SpotifyMount, StringComparison.Ordinal))
-                {
-                    spotifyLive = true;
-                    spotifyTitle = s?["title"]?.ToString();
-                }
-            }
-            var changed = listeners != _listeners || spotifyLive != _spotifyLive || spotifyTitle != _spotifyTitle;
+            if (await _liq.ListenersAsync(ct) is not { } listeners) return;
+            var changed = listeners != _listeners;
             _listeners = listeners;
-            _spotifyLive = spotifyLive;
-            _spotifyTitle = spotifyTitle;
             if (changed) Broadcast();
             NoteListeners();
         }
         catch (Exception ex)
         {
-            _log.LogDebug(ex, "icecast status failed");
+            _log.LogDebug(ex, "listeners poll failed");
         }
     }
 }
