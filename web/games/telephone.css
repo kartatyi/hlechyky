@@ -127,7 +127,7 @@
 @media (pointer: coarse) {
   .tpwrap .pcpal { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
   .tpwrap .pcsw:is(:nth-child(4), :nth-child(10), :nth-child(12), :nth-child(13), :nth-child(16), :nth-child(20)) { display: none; }
-  .tpwrap :is(.pcsz, .pct, .pca) { min-width: 40px; height: 40px; touch-action: manipulation; }
+  .tpwrap .pcsz, .tpwrap .pct, .tpwrap .pca { min-width: 40px; height: 40px; touch-action: manipulation; }
   .tplike { min-height: 40px; padding: 4px 14px; }
 }
 @media (pointer: coarse) {
