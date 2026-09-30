@@ -23,7 +23,7 @@ public static class ReversiEngine
 
     public static readonly Level Easy = new("easy", "легкий", 1, 1_000, 0, 20, 30);
     public static readonly Level Medium = new("medium", "звичайний", 3, 40_000, 0, 0, 3);
-    public static readonly Level Hard = new("hard", "сильний", 8, 250_000, 12, 0, 0);
+    public static readonly Level Hard = new("hard", "сильний", 8, 160_000, 12, 0, 0);
 
     public static Level? LevelOf(string? key) => key switch
     {
@@ -49,10 +49,17 @@ public static class ReversiEngine
     const ulong Corners = 0x8100000000000081UL;
 
     /// <summary>Кут і три його сусіди: поки кут порожній, сусіди — пастка; коли зайнятий, вони вже безпечні.</summary>
-    static readonly (int Corner, int[] Near)[] CornerZones =
+    static readonly (ulong Corner, ulong C, ulong X)[] CornerZones =
     [
-        (0, [1, 8, 9]), (7, [6, 15, 14]), (56, [57, 48, 49]), (63, [62, 55, 54]),
+        (Bit(0), Bit(1) | Bit(8), Bit(9)), (Bit(7), Bit(6) | Bit(15), Bit(14)),
+        (Bit(56), Bit(57) | Bit(48), Bit(49)), (Bit(63), Bit(62) | Bit(55), Bit(54)),
     ];
+    const int CWeight = -20, XWeight = -50;
+
+    /// <summary>Таблиця ваг, згорнута в маски за вагою: оцінка — кілька popcount замість циклу по 64 полях.</summary>
+    static readonly (int W, ulong Mask)[] Classes =
+        [.. Enumerable.Range(0, 64).GroupBy(i => W[i]).Where(g => g.Key != 0)
+            .Select(g => (g.Key, g.Aggregate(0UL, (m, i) => m | Bit(i))))];
 
     /// <summary>Поля в порядку перебору: кути першими, X-поля останніми — альфа-бета від цього відсікає більше.</summary>
     static readonly int[] Order = [.. Enumerable.Range(0, 64).OrderByDescending(i => W[i]).ThenBy(i => i)];
@@ -63,21 +70,12 @@ public static class ReversiEngine
     public static int Evaluate(ulong me, ulong opp)
     {
         var score = 0;
-        for (var i = 0; i < 64; i++)
+        foreach (var (w, mask) in Classes) score += w * (Pop(me & mask) - Pop(opp & mask));
+        foreach (var (corner, c, x) in CornerZones)
         {
-            var b = Bit(i);
-            if ((me & b) != 0) score += W[i];
-            else if ((opp & b) != 0) score -= W[i];
-        }
-        foreach (var (corner, near) in CornerZones)
-        {
-            if (((me | opp) & Bit(corner)) == 0) continue;
-            foreach (var n in near)   // кут уже зайнятий — штраф біля нього знімаємо
-            {
-                var b = Bit(n);
-                if ((me & b) != 0) score -= W[n];
-                else if ((opp & b) != 0) score += W[n];
-            }
+            if (((me | opp) & corner) == 0) continue;
+            // Кут уже зайнятий — штраф біля нього знімаємо (сусіди кута тоді вже не пастка).
+            score -= CWeight * (Pop(me & c) - Pop(opp & c)) + XWeight * (Pop(me & x) - Pop(opp & x));
         }
         int mm = Pop(Moves(me, opp)), om = Pop(Moves(opp, me));
         score += 6 * (mm - om);
@@ -109,16 +107,18 @@ public static class ReversiEngine
 
         if (level.Depth <= 1) return PickEasy(me, opp, list, level, rng);
 
-        var empties = 64 - Pop(me | opp);
-        if (level.Exact > 0 && empties <= level.Exact)
+        // Точна кінцівка бере весь бюджет; не вклалась — звичайний пошук на половині бюджету (з 12 порожніх
+        // глибина 8 і так бачить майже до кінця). Найгірший випадок — півтора бюджети.
+        var budget = level.Nodes;
+        if (level.Exact > 0 && 64 - Pop(me | opp) <= level.Exact)
         {
-            var exact = new Search(level.Nodes * 2);
-            var best = Root(me, opp, list, empties + 1, exact, true, null, out _);
-            if (!exact.Out && best >= 0) return best;
+            var (cell, _, done) = SolveExact(core, level.Nodes);
+            if (done) return cell;
+            budget /= 2;
         }
 
         // Ітеративне поглиблення: глибина, яку бюджет не дорахував, не рахується — лишається попередня.
-        var search = new Search(level.Nodes);
+        var search = new Search(budget);
         int pick = list[0];
         Dictionary<int, int>? noise = level.Noise > 0 ? list.ToDictionary(c => c, _ => rng.Next(-level.Noise, level.Noise + 1)) : null;
         for (var depth = 1; depth <= level.Depth; depth++)
@@ -130,6 +130,17 @@ public static class ReversiEngine
             list = [.. list.OrderByDescending(c => scores[c])];
         }
         return pick;
+    }
+
+    /// <summary>Перебір до кінця партії: найкращий хід за точною різницею фішок, скільки вузлів пішло і чи вклались.</summary>
+    public static (int Cell, int Nodes, bool Done) SolveExact(ReversiCore core, int budget)
+    {
+        ulong me = core.Discs[core.Side], opp = core.Discs[1 - core.Side];
+        var list = Cells(Moves(me, opp)).ToList();
+        if (list.Count == 0) return (-1, 0, true);
+        var s = new Search(budget);
+        var best = Root(me, opp, list, 64, s, true, null, out _);
+        return (best, s.Nodes, !s.Out);
     }
 
     static int PickEasy(ulong me, ulong opp, List<int> list, Level level, Random rng)
@@ -176,12 +187,41 @@ public static class ReversiEngine
         }
         if (depth <= 0 && !exact) return Evaluate(me, opp);
 
+        if (exact && 64 - Pop(me | opp) > 6) return FastestFirst(me, opp, moves, alpha, beta, s);
+
         var best = -Inf;
         foreach (var c in Order)
         {
             if ((moves & Bit(c)) == 0) continue;
             var f = Flips(me, opp, c);
             var v = -Negamax(opp & ~f, me | f | Bit(c), depth - 1, -beta, -alpha, s, exact, false);
+            if (s.Out) return 0;
+            if (v > best) best = v;
+            if (v > alpha) alpha = v;
+            if (alpha >= beta) break;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Точна кінцівка: спершу ходи, після яких у суперника найменше відповідей («найшвидший першим») — так
+    /// перебір до кінця партії з 12 порожніх укладається в бюджет.
+    /// </summary>
+    static int FastestFirst(ulong me, ulong opp, ulong moves, int alpha, int beta, Search s)
+    {
+        Span<(int Key, int Cell, ulong Flips)> list = stackalloc (int, int, ulong)[Pop(moves)];
+        var n = 0;
+        foreach (var c in Cells(moves))
+        {
+            var f = Flips(me, opp, c);
+            ulong nme = opp & ~f, nopp = me | f | Bit(c);
+            list[n++] = (Pop(Moves(nme, nopp)) * 4 - (IsCorner(c) ? 3 : 0), c, f);
+        }
+        list.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Cell.CompareTo(b.Cell));
+        var best = -Inf;
+        foreach (var (_, c, f) in list)
+        {
+            var v = -Negamax(opp & ~f, me | f | Bit(c), 0, -beta, -alpha, s, true, false);
             if (s.Out) return 0;
             if (v > best) best = v;
             if (v > alpha) alpha = v;

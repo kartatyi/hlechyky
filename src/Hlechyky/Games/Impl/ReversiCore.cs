@@ -15,9 +15,6 @@ public sealed class ReversiCore
 {
     public const int Black = 0, White = 1;
 
-    const ulong NotA = 0xFEFEFEFEFEFEFEFEUL;   // без стовпця a (біти i % 8 == 0)
-    const ulong NotH = 0x7F7F7F7F7F7F7F7FUL;   // без стовпця h (біти i % 8 == 7)
-
     /// <summary>Бітборди: [0] — чорні, [1] — білі.</summary>
     public ulong[] Discs { get; } = new ulong[2];
     /// <summary>Чия черга: 0 — чорні, 1 — білі.</summary>
@@ -53,35 +50,41 @@ public sealed class ReversiCore
 
     // ---------- бітова механіка (статична — нею ж рахує двигун) ----------
 
-    /// <summary>Зсув бітборда на крок у напрямку d (0..7): → ← ↓ ↑ ↘ ↙ ↗ ↖. Край дошки обриває, а не загортає.</summary>
-    public static ulong Shift(ulong b, int d) => d switch
-    {
-        0 => (b << 1) & NotA,   // стовпець +1
-        1 => (b >> 1) & NotH,   // стовпець −1
-        2 => b << 8,            // рядок +1
-        3 => b >> 8,            // рядок −1
-        4 => (b << 9) & NotA,   // рядок +1, стовпець +1
-        5 => (b << 7) & NotH,   // рядок +1, стовпець −1
-        6 => (b >> 7) & NotA,   // рядок −1, стовпець +1
-        _ => (b >> 9) & NotH,   // рядок −1, стовпець −1
-    };
-
     /// <summary>Усі поля, куди може поставити фішку той, чиї фішки <paramref name="me"/>.</summary>
+    /// <remarks>Чужі фішки в стовпцях a і h для бокових напрямків маскуємо: їх однаково не затиснеш, а зсув
+    /// тоді не загортається через край — і перевіряти край на кожному кроці не треба.</remarks>
     public static ulong Moves(ulong me, ulong opp)
     {
         var empty = ~(me | opp);
-        ulong moves = 0;
-        for (var d = 0; d < 8; d++)
-        {
-            var x = Shift(me, d) & opp;
-            x |= Shift(x, d) & opp;
-            x |= Shift(x, d) & opp;
-            x |= Shift(x, d) & opp;
-            x |= Shift(x, d) & opp;
-            x |= Shift(x, d) & opp;
-            moves |= Shift(x, d) & empty;
-        }
-        return moves;
+        var side = opp & Inner;
+        return MovesL(me, side, empty, 1) | MovesR(me, side, empty, 1)
+            | MovesL(me, opp, empty, 8) | MovesR(me, opp, empty, 8)
+            | MovesL(me, side, empty, 7) | MovesR(me, side, empty, 7)
+            | MovesL(me, side, empty, 9) | MovesR(me, side, empty, 9);
+    }
+
+    const ulong Inner = 0x7E7E7E7E7E7E7E7EUL;   // без стовпців a і h
+
+    static ulong MovesL(ulong me, ulong opp, ulong empty, int s)
+    {
+        var x = (me << s) & opp;
+        x |= (x << s) & opp;
+        x |= (x << s) & opp;
+        x |= (x << s) & opp;
+        x |= (x << s) & opp;
+        x |= (x << s) & opp;
+        return (x << s) & empty;
+    }
+
+    static ulong MovesR(ulong me, ulong opp, ulong empty, int s)
+    {
+        var x = (me >> s) & opp;
+        x |= (x >> s) & opp;
+        x |= (x >> s) & opp;
+        x |= (x >> s) & opp;
+        x |= (x >> s) & opp;
+        x |= (x >> s) & opp;
+        return (x >> s) & empty;
     }
 
     /// <summary>Фішки, що перевернуться від ходу на поле <paramref name="cell"/> (0 — хід незаконний).</summary>
@@ -89,15 +92,27 @@ public sealed class ReversiCore
     {
         var at = Bit(cell);
         if (((me | opp) & at) != 0) return 0;
-        ulong flips = 0;
-        for (var d = 0; d < 8; d++)
-        {
-            ulong run = 0;
-            var x = Shift(at, d);
-            while ((x & opp) != 0) { run |= x; x = Shift(x, d); }
-            if ((x & me) != 0) flips |= run;
-        }
-        return flips;
+        var side = opp & Inner;
+        return FlipL(at, me, side, 1) | FlipR(at, me, side, 1)
+            | FlipL(at, me, opp, 8) | FlipR(at, me, opp, 8)
+            | FlipL(at, me, side, 7) | FlipR(at, me, side, 7)
+            | FlipL(at, me, side, 9) | FlipR(at, me, side, 9);
+    }
+
+    static ulong FlipL(ulong at, ulong me, ulong opp, int s)
+    {
+        ulong run = 0;
+        var x = at << s;
+        while ((x & opp) != 0) { run |= x; x <<= s; }
+        return (x & me) != 0 ? run : 0;
+    }
+
+    static ulong FlipR(ulong at, ulong me, ulong opp, int s)
+    {
+        ulong run = 0;
+        var x = at >> s;
+        while ((x & opp) != 0) { run |= x; x >>= s; }
+        return (x & me) != 0 ? run : 0;
     }
 
     public static int Pop(ulong b) => BitOperations.PopCount(b);
