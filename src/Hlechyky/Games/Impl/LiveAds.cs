@@ -20,6 +20,8 @@ public sealed class LiveAdsOptions
     public int TargetCooldownMinutes { get; set; } = 45;
     /// <summary>Той самий факт тій самій людині — не частіше ніж раз на стільки годин.</summary>
     public int FactCooldownHours { get; set; } = 24;
+    /// <summary>Те саме для лору — фактів за весь час (гачі, перше замовлення, улюблений виконавець…): вони не міняються.</summary>
+    public int LoreCooldownHours { get; set; } = 72;
 
     public int OrderPrice { get; set; } = 100;
     public int OrderAnonPrice { get; set; } = 150;
@@ -409,8 +411,15 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
     {
         var lines = Lines;
         var now = clock.UtcNow;
-        var used = ignoreFactCooldown ? [] : store.AboutSince(target, now.AddHours(-Math.Max(1, O.FactCooldownHours)))
-            .Where(r => r.Status is "sent" or "aired").SelectMany(r => r.FactKinds).ToHashSet();
+        // Сьогоднішні факти — раз на добу, лор (гачі, перше замовлення…) — раз на кілька діб; замовлена прожарка
+        // сьогоднішніх не стереже (за неї заплатили), але лор і їй не повторюється, бо інакше кожна була б про те саме.
+        var (factH, loreH) = (Math.Max(1, O.FactCooldownHours), Math.Max(1, O.LoreCooldownHours));
+        var used = store.AboutSince(target, now.AddHours(-Math.Max(factH, loreH)))
+            .Where(r => r.Status is "sent" or "aired")
+            .SelectMany(r => r.FactKinds.Where(k => LiveFacts.IsLore(k)
+                ? (r.SentAt ?? r.CreatedAt) >= now.AddHours(-loreH)
+                : !ignoreFactCooldown && (r.SentAt ?? r.CreatedAt) >= now.AddHours(-factH)))
+            .ToHashSet();
         var present = presence.Online;
         var all = facts.For(target, present);
         var picked = new List<(LiveFact Fact, LiveLine Line)>();

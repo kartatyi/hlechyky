@@ -49,13 +49,13 @@ public sealed class LiveAdsSamplesTests
 
         var db = new Db(dbPath);
         _ = new LavkaStore(db);
-        var clock = new FakeClock { UtcNow = new DateTimeOffset(2026, 9, 29, 20, 30, 0, TimeSpan.Zero) };   // 23:30 Києва, 29.09
+        var clock = new FakeClock { UtcNow = new DateTimeOffset(2026, 9, 30, 20, 50, 0, TimeSpan.Zero) };   // 23:50 Києва, 30.09
         var names = new GameNames(new Registry());
         var econStore = new EconomyStore(db);
         var outbox = new FakeOutbox();
         var economy = new Economy(econStore, names, clock, new FixedOptions<EconomyOptions>(new EconomyOptions()), outbox, NullLogger<Economy>.Instance);
         var presence = new Presence();
-        foreach (var n in new[] { "владік", "Smaug", "микола ( справжній )", "Назар" })
+        foreach (var n in new[] { "владік", "Smaug", "микола ( справжній )", "Назар", "Mariana Matviienko" })
         {
             presence.Set("c-" + n, n);
             presence.SetListening("c-" + n, true);
@@ -64,7 +64,8 @@ public sealed class LiveAdsSamplesTests
         var ttsO = new FixedOptions<TtsOptions>(new TtsOptions { Python = python });
         var liveO = new LiveAdsOptions { BedsDir = LiveAdsTests.RepoFile("data/liveads/beds") };
         using var tts = new EdgeTtsEngine(ttsO, yt, NullLogger<EdgeTtsEngine>.Instance);
-        var renderer = new FfmpegLiveRenderer(tts, new FixedOptions<LiveAdsOptions>(liveO), ttsO, yt, NullLogger<FfmpegLiveRenderer>.Instance);
+        var renderer = new FfmpegLiveRenderer(tts, new FixedOptions<LiveAdsOptions>(liveO), ttsO, yt, NullLogger<FfmpegLiveRenderer>.Instance,
+            new FixedOptions<AdOptions>(new AdOptions()));
         var store = new LiveAdsStore(db);
         var facts = new LiveFacts(db, names, clock);
         var live = new LiveAds(store, facts, renderer, economy, presence, outbox, clock, new FixedOptions<LiveAdsOptions>(liveO),
@@ -74,10 +75,10 @@ public sealed class LiveAdsSamplesTests
         };
 
         var md = new StringBuilder();
-        md.AppendLine("# Зразки живої реклами (30.09.2026)");
+        md.AppendLine("# Зразки живої реклами (30.09.2026, з лором і гучніші)");
         md.AppendLine();
-        md.AppendLine("Згенеровано тестом `LiveAdsSamplesTests.Make_samples` на копії прод-бази (прод лише читали), годинник — 29.09 23:30 за Києвом, ");
-        md.AppendLine("онлайн і слухають: владік, Smaug, микола ( справжній ), Назар. Голоси — edge-tts (Остап = Глек, Поліна), темп −4 %, ");
+        md.AppendLine("Згенеровано тестом `LiveAdsSamplesTests.Make_samples` на копії прод-бази (прод лише читали), годинник — 30.09 23:50 за Києвом, ");
+        md.AppendLine("онлайн і слухають: владік, Smaug, микола ( справжній ), Назар, Мар'яна. Голоси — edge-tts (Остап = Глек, Поліна), темп −4 %, ");
         md.AppendLine("спортивний блок новин +12 %. «[ба-дум-тсс]» — місце, де звучить удар.");
         md.AppendLine();
 
@@ -96,12 +97,12 @@ public sealed class LiveAdsSamplesTests
             md.AppendLine();
         }
 
-        // ---- по дві живі прожарки на трьох гравців: друга — вже з кулдауном фактів після першої ----
-        foreach (var nick in new[] { "владік", "Smaug", "микола ( справжній )" })
+        // ---- по три живі прожарки на чотирьох гравців: наступна — вже з кулдауном фактів після попередньої ----
+        foreach (var nick in new[] { "владік", "Smaug", "микола ( справжній )", "Mariana Matviienko" })
         {
             var all = facts.For(nick, presence.Online);
             md.AppendLine($"<!-- {nick}: {string.Join("; ", all.Select(f => $"{f.Kind} {f.Juice:0.00}"))} -->");
-            for (var k = 1; k <= 2; k++)
+            for (var k = 1; k <= 3; k++)
             {
                 var script = live.Roast(nick, "roast", new Dictionary<string, string> { ["target"] = live.Lines.Say(nick) }, 2, false)
                     ?? live.Roast(nick, "roast", new Dictionary<string, string> { ["target"] = live.Lines.Say(nick) }, 2, true);

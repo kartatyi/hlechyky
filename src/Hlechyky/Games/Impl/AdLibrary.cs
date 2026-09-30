@@ -17,11 +17,16 @@ public interface IVoiceSaver
     /// <summary>Файл готового запису або null, якщо його вже нема в кеші.</summary>
     string? FilePath(string id);
     void Delete(string id);
+    /// <summary>Підтягнути запис до гучності реклами (<see cref="AdOptions.LoudnessLufs"/>); false — лишився як був.</summary>
+    Task<bool> LouderAsync(string id, CancellationToken ct) => Task.FromResult(false);
 }
 
 /// <summary>Справжній конвеєр голосових: файл → ffmpeg → mp3 у кеші.</summary>
-public sealed class VoiceSaver(VoiceService voice) : IVoiceSaver
+public sealed class VoiceSaver(VoiceService voice, IOptionsMonitor<AdOptions> ad) : IVoiceSaver
 {
+    public Task<bool> LouderAsync(string id, CancellationToken ct) =>
+        voice.FilePath(id) is { } path ? AdLoudness.BoostAsync(voice.Ffmpeg, path, ad.CurrentValue.LoudnessLufs, ct) : Task.FromResult(false);
+
     public bool Enabled => voice.Enabled;
     public long MaxUploadBytes => voice.MaxUploadBytes;
 
@@ -220,11 +225,29 @@ public sealed class AdLibrary(AdLibraryStore store, IVoiceSaver voice, IClock cl
         TrackInfo track;
         try { (track, _) = await voice.SaveAsync(body, nick, ct); }
         catch (Exception ex) { return (false, "Халепа: не вийшло взяти файл — " + ex.Message); }
+        // Голосове зводиться до −14 LUFS, а реклама мусить звучати врівень із музикою; не вийшло — піде тихішою
+        if (!await voice.LouderAsync(track.Id, ct)) log.LogInformation("реклама {Track} лишилась тихою: не вийшло підтягнути гучність", track.Id);
         var name = Clean(title) ?? $"Реклама {clock.UtcNow.ToLocalTime():dd.MM HH:mm}";
         store.Add(track.Id, name, track.DurationSec, enabled: true, clock.UtcNow);
         Forget();
         log.LogInformation("у бібліотеку реклам лягла «{Title}» ({Track}, {Sec} с)", name, track.Id, track.DurationSec);
         return (true, $"Є! «{name}» у бібліотеці й у ротації");
+    }
+
+    /// <summary>
+    /// Підтягнути гучність усієї бібліотеки — для роликів, залитих до <see cref="AdOptions.LoudnessLufs"/>. Ті, що вже
+    /// гучні, не чіпаються; той, що саме грає, Windows переписати не дасть — його підхопить наступний прогін.
+    /// </summary>
+    public async Task<(bool Ok, string Message)> LouderAllAsync(CancellationToken ct)
+    {
+        int ok = 0, failed = 0;
+        foreach (var clip in store.All().Where(a => voice.FilePath(a.TrackId) is not null))
+        {
+            if (await voice.LouderAsync(clip.TrackId, ct)) ok++;
+            else failed++;
+        }
+        log.LogInformation("гучність бібліотеки реклам: {Ok} готові, {Failed} не вийшло", ok, failed);
+        return (true, failed == 0 ? $"Гучність підтягнуто: {ok}" : $"Гучність підтягнуто: {ok}, не вийшло: {failed}");
     }
 
     public (bool Ok, string Message) Rename(long id, string? title)

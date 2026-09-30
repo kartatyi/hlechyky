@@ -33,25 +33,38 @@ public sealed class AdOptions
     public int ListenReward { get; set; } = 2;
     /// <summary>Скільки черепків на день можна набрати прослуханою рекламою.</summary>
     public int ListenDailyCap { get; set; } = 40;
+
+    /// <summary>
+    /// До якої гучності (LUFS) підтягувати рекламу — і залиту в бібліотеку, і живу. Музика в ефірі приходить із
+    /// ютуба на −7…−9 LUFS, і реклама на −14/−15 під нею просто губилась. Ціль −10, на ділі виходить −11…−12:
+    /// мова з паузами пікова, і далі лімітер уже ріже голос (див. <see cref="AdLoudness"/>).
+    /// </summary>
+    public double LoudnessLufs { get; set; } = -10;
 }
 
 /// <summary>
-/// Єдина дірочка реклами в ефір: поставити готове голосове в кінець черги. Інтерфейс тут для тестів —
+/// Єдина дірочка реклами в ефір: поставити готове голосове наступним у черзі. Інтерфейс тут для тестів —
 /// справжній <see cref="RadioEngine"/> тягне за собою пів сервера, а перевірити треба лише «коли саме».
 /// </summary>
 public interface IAdAir
 {
     (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick);
+
+    /// <summary>У черзі ще стоїть реклама, що не заграла: нову поруч не ставимо, щоб вони не накопичувались.</summary>
+    bool AdWaiting() => false;
 }
 
 /// <summary>
 /// Справжній ефір: той самий публічний метод, яким у чергу лягають звичайні голосові, лише без рядка в Журналі —
-/// реклама заходить щокілька треків, і «Дядько Глек записує голосове» засипало б Журнал.
+/// реклама заходить щокілька треків, і «Дядько Глек записує голосове» засипало б Журнал. І не в кінець, а
+/// наступною: у кінці довгої черги вона не грала годинами, а джингл тим часом докидав туди ще й ще.
 /// </summary>
 public sealed class RadioAir(RadioEngine engine) : IAdAir
 {
     public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick) =>
-        engine.AddVoice(track, filePath, nick, journal: false);
+        engine.AddVoice(track, filePath, nick, journal: false, next: true);
+
+    public bool AdWaiting() => engine.InQueue(t => t.Title == AdJingle.AdTitle && t.Id.StartsWith("voice-", StringComparison.Ordinal));
 }
 
 /// <summary>
@@ -127,6 +140,8 @@ public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRe
             // стоїть у черзі, тримає _waitingUntil.
             if (live is not null && presence.Count > 0 && !Waiting() && live.TakeOrdered() is { } ordered && QueueLive(ordered).Ok) return;
             if (_since < every) return;
+            // Попередня ще стоїть у черзі (господар її посунув чи ефір не встиг) — друга поруч не стає
+            if (air.AdWaiting()) return;
             // Лічильник далі не росте, але й не скидається: щойно з'явиться слухач — реклама піде.
             if (presence.Count == 0) return;
             if (_lastAt is { } last && clock.UtcNow - last < TimeSpan.FromMinutes(minutes)) return;
@@ -136,7 +151,7 @@ public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRe
         }
     }
 
-    bool Waiting() => _waitingUntil is { } w && clock.UtcNow < w;
+    bool Waiting() => _waitingUntil is { } w && clock.UtcNow < w || air.AdWaiting();
 
     /// <summary>Живий ролик — у чергу ефіру; відмова ефіру повертає його живій рекламі чекати наступного слоту.</summary>
     (bool Ok, string Message) QueueLive(LiveClip clip)
@@ -384,6 +399,10 @@ public static class AdSetup
 
         app.MapDelete("/api/ads/library/{id:long}", (HttpContext c, long id, AdLibrary library) =>
             Auth.IsAdmin(c) ? Reply(library.Delete(id)) : Deny());
+
+        // Підтягнути гучність усього, що залито до Ad:LoudnessLufs (гучні ролики пропускаються)
+        app.MapPost("/api/ads/library/louder", async (HttpContext c, AdLibrary library, CancellationToken ct) =>
+            Auth.IsAdmin(c) ? Reply(await library.LouderAllAsync(ct)) : Deny());
 
         app.MapPost("/api/ads/library/{id:long}/now", (HttpContext c, long id, AdJingle jingle) =>
             Auth.IsAdmin(c) ? Reply(jingle.PlayClip(id)) : Deny());

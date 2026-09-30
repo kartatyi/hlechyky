@@ -57,6 +57,9 @@ public class AdLibraryTests
         public List<TrackInfo> Played { get; } = new();
         /// <summary>Ефір відмовив («уже в черзі») — джингл має спробувати ще раз пізніше.</summary>
         public bool Refuse { get; set; }
+        /// <summary>У черзі ще стоїть реклама, що не заграла.</summary>
+        public bool Waiting { get; set; }
+        public bool AdWaiting() => Waiting;
 
         public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick)
         {
@@ -149,6 +152,21 @@ public class AdLibraryTests
         Assert.Equal(AdJingle.AdTitle, ad.Title);
         Assert.Equal("Глекминатор", ad.Artist);
         Assert.Equal(18, ad.DurationSec);
+    }
+
+    [Fact]
+    public void While_an_ad_still_waits_in_the_queue_no_second_one_joins_it()
+    {
+        using var r = new AdRig();
+        r.Add("Глекминатор", 18);
+        r.Air.Waiting = true;          // попередню господар посунув у кінець — вона ще не грала
+
+        for (var i = 0; i < 12; i++) r.TrackOnAir();
+        Assert.Empty(r.Air.Played);
+
+        r.Air.Waiting = false;
+        r.TrackOnAir();
+        Assert.Single(r.Air.Played);
     }
 
     [Fact]
