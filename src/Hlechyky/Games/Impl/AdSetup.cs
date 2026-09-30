@@ -53,7 +53,7 @@ public sealed class RadioAir(RadioEngine engine) : IAdAir
 /// останньої умови реклама крутилась би о четвертій ранку сама собі.
 /// </summary>
 public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRewards rewards, IAdAir air, IVoiceSaver voice,
-    Presence presence, IClock clock, IOptionsMonitor<AdOptions> opts, ILogger<AdJingle> log)
+    Presence presence, IClock clock, IOptionsMonitor<AdOptions> opts, ILogger<AdJingle> log, ILiveAdSource? live = null)
 {
     public const string AdTitle = "Реклама глека";
     public const int MaxEveryTracks = 100;
@@ -62,6 +62,12 @@ public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRe
     readonly object _lock = new();
     int _since;
     DateTimeOffset? _lastAt;
+    /// <summary>
+    /// До якої миті в черзі ефіру ще стоїть реклама, що не заграла. Замовлена прожарка не чекає частоти, але й не
+    /// стає впритул до іншої реклами; стеля — бо господар міг зняти рекламу з черги, і «чекати» вічно не можна.
+    /// </summary>
+    DateTimeOffset? _waitingUntil;
+    public static readonly TimeSpan WaitingCap = TimeSpan.FromMinutes(20);
 
     /// <summary>Скільки треків минуло від останньої реклами — видно у вкладці «📣 Реклама», у тестах і в лозі.</summary>
     public int Since { get { lock (_lock) return _since; } }
@@ -88,27 +94,65 @@ public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRe
         {
             // Це грає сама реклама: не рахуємо її за трек, починаємо відлік від цієї миті і платимо слухачам
             if (library.IsAd(track.Id)) library.Played(track.Id);
+            else live?.Started(track.Id);
             rewards.Start(track);
             lock (_lock)
             {
                 _since = 0;
                 _lastAt = clock.UtcNow;
+                _waitingUntil = null;
             }
             return;
         }
         if (!o.Jingle) return;
         // Ротація кожен трек може бути вже інша: господар вмикає й вимикає рекламу просто посеред ефіру.
-        if (!library.HasLive()) return;
+        var hasLibrary = library.HasLive();
+        if (!hasLibrary && live is null) return;
         var (every, minutes) = Frequency();
 
         lock (_lock)
         {
             _since++;
+            // Замовлена прожарка — за неї заплатили: іде на найближчій межі треку, частоти не чекає. Але між двома
+            // рекламами хоч один трек: _since ≥ 1 тут завжди (щойно заграв не-рекламний трек), а реклама, що ще
+            // стоїть у черзі, тримає _waitingUntil.
+            if (live is not null && presence.Count > 0 && !Waiting() && live.TakeOrdered() is { } ordered && QueueLive(ordered).Ok) return;
             if (_since < every) return;
             // Лічильник далі не росте, але й не скидається: щойно з'явиться слухач — реклама піде.
             if (presence.Count == 0) return;
             if (_lastAt is { } last && clock.UtcNow - last < TimeSpan.FromMinutes(minutes)) return;
-            if (library.Take() is { } clip && Queue(clip).Ok) _since = 0;     // відмова — уже в черзі або в ефірі, спробуємо наступного разу
+            // Жива (реакція, новини, прожарка присутніх) — першою; не дала нічого — бібліотека, як завжди
+            if (live?.Take(!hasLibrary) is { } fresh && QueueLive(fresh).Ok) return;
+            if (hasLibrary && library.Take() is { } clip && Queue(clip).Ok) _since = 0;     // відмова — уже в черзі або в ефірі, спробуємо наступного разу
+        }
+    }
+
+    bool Waiting() => _waitingUntil is { } w && clock.UtcNow < w;
+
+    /// <summary>Живий ролик — у чергу ефіру; відмова ефіру повертає його живій рекламі чекати наступного слоту.</summary>
+    (bool Ok, string Message) QueueLive(LiveClip clip)
+    {
+        (bool Ok, string Message) r = File.Exists(clip.FilePath)
+            ? air.AddVoice(new TrackInfo(clip.TrackId, AdTitle, clip.Title, clip.Seconds, null, $"/api/voice/{clip.TrackId}.mp3", null), clip.FilePath, "Дядько Глек")
+            : (false, "Файлу живої реклами вже нема");
+        live?.Sent(clip, r.Ok);
+        if (r.Ok)
+        {
+            _since = 0;
+            _lastAt = clock.UtcNow;
+            _waitingUntil = clock.UtcNow + WaitingCap;
+            log.LogInformation("жива реклама {Track} («{Title}») стала в чергу", clip.TrackId, clip.Title);
+        }
+        return r;
+    }
+
+    /// <summary>Господар натиснув «Прожарити зараз» / «Новини зараз»: готовий живий ролик — у чергу без лічильника й хвилин.</summary>
+    public (bool Ok, string Message) PlayLive(LiveClip clip)
+    {
+        lock (_lock)
+        {
+            var r = QueueLive(clip);
+            return r.Ok ? (true, $"«{clip.Title}» стала в чергу") : r;
         }
     }
 
@@ -144,6 +188,7 @@ public sealed class AdJingle(AdLibrary library, AdLibraryStore store, AdListenRe
         if (r.Ok)
         {
             _lastAt = clock.UtcNow;
+            _waitingUntil = clock.UtcNow + WaitingCap;
             log.LogInformation("реклама {Track} («{Title}») стала в чергу", clip.TrackId, clip.Title);
         }
         return r;
@@ -212,6 +257,7 @@ public static class AdSetup
         services.AddSingleton<AdListenRewards>();
         services.AddSingleton<AdJingle>();
         services.AddHostedService<AdJingleHook>();
+        services.AddLiveAds();     // жива реклама: факти гравців, прожарки, новини — джингл бере її через ILiveAdSource
         return services;
     }
 
@@ -310,6 +356,7 @@ public static class AdSetup
         app.MapPost("/api/ads/library/{id:long}/now", (HttpContext c, long id, AdJingle jingle) =>
             Auth.IsAdmin(c) ? Reply(jingle.PlayClip(id)) : Deny());
 
+        app.MapLiveAds();          // /api/liveads* — картка прожарки в Лавці й блок «Жива реклама» для господаря
         return app;
     }
 }
