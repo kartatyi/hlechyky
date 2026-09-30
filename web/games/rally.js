@@ -1538,10 +1538,17 @@
     else if (st.gLapT < 0 || st.gLapN !== lapNow) { st.gLapT = -1; st.gRecN = 0; }
   }
 
+  /// Своя симуляція зібрана не з тієї траси чи не з тим зерном живності, що в чинному виді. Кадр нової гонки
+  /// чемпіонату сервер шле в одній пачці з видом, але ПЕРЕД ним: симуляція вставала на трасі минулої гонки й так
+  /// їхала до фінішу — сервер виправляв її щокадру, і з другої траси машина смикалась.
+  function staleSim(st) {
+    return st.sim.track.id !== st.track.id || st.sim.live !== ((st.view && st.view.live) | 0);
+  }
+
   /// Кадр сервера про свою машину: збіглось — нічого; ні — переписати історію й переграти свої маски.
   function reconcile(st, f, now) {
     const seat = st.mine, o = seat * STRIDE, c = f.c;
-    if (!st.sim || f.t > st.sim.T || st.sim.T - f.t > 60) { startSim(st, f); return; }
+    if (!st.sim || staleSim(st) || f.t > st.sim.T || st.sim.T - f.t > 60) { startSim(st, f); return; }
     const was = st.ring[f.t & 63];
     const tm = c[o + 9];
     const same = was.t === f.t && was.x === c[o] && was.y === c[o + 1] && was.a === c[o + 2] && was.vf === c[o + 3] && was.vl === c[o + 4]
