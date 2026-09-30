@@ -42,6 +42,10 @@ $LiqPidFile = Join-Path $Root 'data\liquidsoap.pid'
 $LiqLog = Join-Path $Root 'logs\liquidsoap.log'
 $LiqErrLog = Join-Path $Root 'logs\liquidsoap.err.log'
 $SpareList = Join-Path $Root 'data\spare.m3u'
+# Windows-збірка liquidsoap тече пам'яттю на кожного слухача (див. radio.liq, chunk). Понад Quiet МБ — перезапуск, щойно
+# ніхто не слухає; понад Hard — перезапуск будь-що (слухачі перепідключаться).
+$LiqMemQuietMB = 800
+$LiqMemHardMB = 2500
 
 function Get-ProcessFromPidFile([string]$File, [string]$Name) {
     if (-not (Test-Path $File)) { return $null }
@@ -234,21 +238,24 @@ function Test-DeployRunning {
 
 # Годинник ефіру liquidsoap у секундах (telnet «clock.dump»); $null — не відповів. 30.09.2026 на пробі Windows-збірка раз
 # «замерзла» мовчки: процес живий, telnet відповідає, порт слухає, а годинник стоїть і потік віддає 0 байт.
-function Get-LiqClock([int]$Port) {
+function Invoke-LiqTelnet([int]$Port, [string]$Command) {
     $c = New-Object Net.Sockets.TcpClient
     try {
         if (-not $c.ConnectAsync('127.0.0.1', $Port).Wait(3000)) { return $null }
         $s = $c.GetStream()
         $s.ReadTimeout = 3000
-        $b = [Text.Encoding]::ASCII.GetBytes("clock.dump`nquit`n")
+        $b = [Text.Encoding]::ASCII.GetBytes("$Command`nquit`n")
         $s.Write($b, 0, $b.Length)
-        $r = New-Object IO.StreamReader($s)
-        $text = $r.ReadToEnd()
-        if ($text -match 'time: ([0-9.]+)s') { return [double]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture) }
-        return $null
+        return (New-Object IO.StreamReader($s)).ReadToEnd()
     }
     catch { return $null }
     finally { $c.Dispose() }
+}
+
+function Get-LiqClock([int]$Port) {
+    $text = Invoke-LiqTelnet $Port 'clock.dump'
+    if ($text -match 'time: ([0-9.]+)s') { return [double]::Parse($Matches[1], [Globalization.CultureInfo]::InvariantCulture) }
+    return $null
 }
 
 # liquidsoap: процесу нема — запустити; процес є, а потік (harbor) не слухає 3 хв або годинник ефіру стоїть 2 перевірки
@@ -272,9 +279,17 @@ function Watch-Radio($st, [long]$now) {
         if ($frozen) { $st.clockMisses++ } else { $st.clockMisses = 0 }
         $listening = [bool](Get-NetTCPConnection -State Listen -LocalPort ([int]$v.HARBOR_PORT) -ErrorAction SilentlyContinue)
         if ($listening) { $st.mountMisses = 0 } else { $st.mountMisses++ }
-        if ($st.mountMisses -lt 3 -and $st.clockMisses -lt 2) { return }
+        $mb = [int]($p.WorkingSet64 / 1MB)
+        $fat = $false
+        if ($mb -ge $LiqMemQuietMB) {
+            $n = if ((Invoke-LiqTelnet ([int]$v.TELNET_PORT) 'listeners') -match '^\s*(\d+)') { [int]$Matches[1] } else { -1 }
+            $fat = $n -eq 0 -or $mb -ge $LiqMemHardMB
+        }
+        if ($st.mountMisses -lt 3 -and $st.clockMisses -lt 2 -and -not $fat) { return }
         if ($now - [long]$st.liqRestartAt -lt 300) { return }
-        $why = if ($st.clockMisses -ge 2) { "годинник ефіру стоїть ($($st.clockMisses) перевірки поспіль, потік мовчить)" } else { "потік :$($v.HARBOR_PORT) не слухає вже $($st.mountMisses) хв" }
+        $why = if ($st.clockMisses -ge 2) { "годинник ефіру стоїть ($($st.clockMisses) перевірки поспіль, потік мовчить)" }
+            elseif ($fat) { "з'їв $mb МБ пам'яті (витік Windows-збірки)" + $(if ($mb -lt $LiqMemHardMB) { ', а зараз ніхто не слухає' } else { '' }) }
+            else { "потік :$($v.HARBOR_PORT) не слухає вже $($st.mountMisses) хв" }
         Write-Watch "liquidsoap працює, але $why — перезапускаю"
         Stop-Liquidsoap | Out-Null
         $st.liqRestartAt = $now
