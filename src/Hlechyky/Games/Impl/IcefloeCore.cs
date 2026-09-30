@@ -297,7 +297,9 @@ public sealed class IcefloeCore(Random rng)
 
     /// <summary>
     /// Спавни: рівномірно на колі 0.6·R0, перший (найменше місце) угорі, далі за годинниковою; обличчям до
-    /// центру. Намір, який тримають, переживає новий раунд — людина ж не відпускала клавішу.
+    /// центру. Намір, який тримають, переживає новий раунд — людина ж не відпускала клавішу. Але в того, хто
+    /// стояв на березі, «намір» — це приціл сніжки, а не рух: його гасимо, інакше раунд почався б із ковзання
+    /// туди, куди він востаннє цілився.
     /// </summary>
     public void Spawn()
     {
@@ -307,6 +309,7 @@ public sealed class IcefloeCore(Random rng)
         for (var i = 0; i < Seats; i++)
         {
             var b = Bodies[i];
+            if (b.Plays && !b.Alive) b.Want = -1;
             b.Alive = b.Plays;
             b.Cd = b.Hit = b.ThrowCd = b.Ammo = b.BankAmmo = b.Spikes = b.Jug = b.Skates = b.Fist = b.Frozen = 0;
             b.LastBy = -1;

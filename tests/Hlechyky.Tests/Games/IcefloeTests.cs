@@ -271,6 +271,22 @@ public class IcefloeTests(ITestOutputHelper output)
         Assert.Equal(12, c.Bodies[0].Face);
     }
 
+    [Fact]
+    public void New_round_drops_the_bank_aim_but_keeps_a_survivor_held_key()
+    {
+        var c = Bare(3, radius: 1188);
+        c.Bodies[1].Alive = false;                         // на березі: стрілки цілять сніжку
+        c.Move(1, 4);
+        c.Move(0, 8);                                      // вцілілий тримає клавішу через відлік
+        c.NewRound(1100);
+        Assert.Equal(-1, c.Bodies[1].Want);
+        Assert.Equal(8, c.Bodies[0].Want);
+        Assert.Equal(8, c.Bodies[0].Face);
+        for (var t = 0; t < 10; t++) c.Step(true);
+        Assert.Equal(0, Speed(c.Bodies[1]), 9);            // раунд почався без ковзання туди, куди цілився
+        Assert.True(Speed(c.Bodies[0]) > 200);
+    }
+
     [Fact] // 9
     public void Spikes_cut_terminal_speed_and_slide_distance()
     {
@@ -1448,6 +1464,7 @@ public class IcefloeTests(ITestOutputHelper output)
         {
             if (t % 10 == 0) k.Input(1, "move", new { a = 4 });
             k.Tick();
+            if (Game(k).RoundNo > 1) break;               // шубовснув і дочекався нового раунду: приціл з берега гасне
             Assert.Equal(4, c.Want);
         }
     }
