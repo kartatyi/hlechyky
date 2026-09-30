@@ -14,16 +14,18 @@ public sealed class IcefloeBody
     public int Face;
     /// <summary>Тиків до наступного ривка.</summary>
     public int Cd;
-    /// <summary>Тиків «удару» після ривка: поки більше нуля, у зіткненнях маса подвоєна.</summary>
+    /// <summary>Тиків «удару» після ривка: поки більше нуля, у зіткненнях маса подвоєна (з кулаком — утричі).</summary>
     public int Hit;
     /// <summary>Тиків до наступної сніжки.</summary>
     public int ThrowCd;
-    /// <summary>Сніжки з підбирачки ❄ (на кризі, до двох).</summary>
+    /// <summary>Сніжки з підбирачки ❄ (на кризі, до трьох).</summary>
     public int Ammo;
-    /// <summary>Сніжки з берега (три на раунд після падіння).</summary>
+    /// <summary>Сніжки з берега (чотири на раунд після падіння).</summary>
     public int BankAmmo;
-    /// <summary>Тиків ефекту шипів і глека.</summary>
-    public int Spikes, Jug;
+    /// <summary>Тиків ефекту шипів, глека, ковзанів і кулака. Шипи й ковзани одне одного знімають.</summary>
+    public int Spikes, Jug, Skates, Fist;
+    /// <summary>Тиків інею: тяги й ривка нема, тіло лише ковзає.</summary>
+    public int Frozen;
     /// <summary>Кут, під яким шубовснув: там на березі й стоїть.</summary>
     public double BankAngle;
     /// <summary>Хто зачепив останнім і коли (номер тика) — кому зарахувати «випхнув».</summary>
@@ -43,9 +45,15 @@ public sealed class IcefloeBody
     /// <summary>Службове: у цьому підкроці тіло штовхнули — після всіх ударів йому ще раз стеля швидкості.</summary>
     internal bool Touched;
 
-    public double Mu => Spikes > 0 ? IcefloeCore.SpikeMu : IcefloeCore.Mu;
-    public double Thrust => Jug > 0 ? IcefloeCore.JugThrust : IcefloeCore.Thrust;
+    public double Mu => Spikes > 0 ? IcefloeCore.SpikeMu : Skates > 0 ? IcefloeCore.SkateMu : IcefloeCore.Mu;
+    /// <summary>Тяга — таблицею, не множенням: браузер бере рівно ці числа, і передбачення сходиться до біта.</summary>
+    public double Thrust => Spikes > 0 || Skates > 0
+        ? (Jug > 0 ? IcefloeCore.JugFastThrust : IcefloeCore.FastThrust)
+        : (Jug > 0 ? IcefloeCore.JugThrust : IcefloeCore.Thrust);
     public double Mass => Jug > 0 ? IcefloeCore.JugMass : IcefloeCore.Mass;
+    public double DashImpulse => Fist > 0 ? IcefloeCore.FistDash : IcefloeCore.DashImpulse;
+    /// <summary>У скільки разів важчий у зіткненні, поки триває «удар» ривка.</summary>
+    public int HitMass => Fist > 0 ? 3 : 2;
 }
 
 /// <summary>Сніжка в польоті: прямо, без гальмування, 3 секунди або до першого влучання.</summary>
@@ -56,7 +64,7 @@ public struct IcefloeBall
     public double X, Y, Vx, Vy;
 }
 
-/// <summary>Підбирачка на кризі: шипи, важкий глек або сніжка.</summary>
+/// <summary>Підбирачка на кризі: шипи, глек, сніжки, завірюха, ковзани, іній або кулак.</summary>
 public struct IcefloePickup
 {
     public bool On;
@@ -99,13 +107,15 @@ public sealed class IcefloeCore(Random rng)
     public const int Vertices = 24;
 
     public const double BodyR = 60;
-    public const double Mass = 1.0, JugMass = 1.8;
-    public const double Thrust = 1800, JugThrust = 1400;
-    public const double Mu = 2.0, SpikeMu = 5.0;
+    public const double Mass = 1.0, JugMass = 2.5;
+    /// <summary>Тяга: звичайна, з глеком, у шипах чи ковзанах (FastThrust) і глек разом із ними.</summary>
+    public const double Thrust = 1800, JugThrust = 1600, FastThrust = 2700, JugFastThrust = 2400;
+    /// <summary>Тертя: шипи тримають (гранична ≈ 400 см/с, удар відносить утричі менше), ковзани несуть далі.</summary>
+    public const double Mu = 2.0, SpikeMu = 6.0, SkateMu = 1.2;
     public const double VMax = 1100;
     public const double E = 0.85;
 
-    public const double DashImpulse = 520;
+    public const double DashImpulse = 520, FistDash = 832;
     public const int DashCd = 25, HitTicks = 6;
     /// <summary>Удар за останні дві секунди — і падіння зараховується тому, хто вдарив.</summary>
     public const int CreditTicks = 50;
@@ -118,12 +128,24 @@ public sealed class IcefloeCore(Random rng)
     public const int MeltFrom = 1300, CapTicks = 1875;
     public const double ArcShrink = 0.78, AllShrink = 0.90;
 
-    public const double BallSpeed = 800, BallR = 14, BallPush = 300, BallMuzzle = 70;
-    public const int BallTtl = 75, BankAmmoMax = 3, BankThrowCd = 50, IceThrowCd = 25, IceAmmoMax = 2, BallSlots = 16;
+    /// <summary>Сніжка штовхає на 600 см/с поділені на масу (глек тримає удар) — сильніше за ривок.</summary>
+    public const double BallSpeed = 800, BallR = 14, BallPush = 600, BallMuzzle = 70;
+    public const int BallTtl = 75, BankAmmoMax = 4, BankThrowCd = 50, IceThrowCd = 25, IceAmmoMax = 3, BallPickup = 2, BallSlots = 16;
 
-    public const int PickupFrom = 125, PickupEvery = 150, PickupMax = 2, PickupTtl = 300, EffectTicks = 200;
+    /// <summary>
+    /// Підбирачки: з третьої секунди кожні 4 с, поки на кризі менше <see cref="PickupCap"/>; лежать 16 с (інакше
+    /// четверта не встигала б з'явитись, поки лежить перша); ефект 10 с.
+    /// </summary>
+    public const int PickupFrom = 75, PickupEvery = 100, PickupMax = 4, PickupTtl = 400, EffectTicks = 250;
     public const double PickupReach = BodyR + 22;
-    public const int KindSpikes = 0, KindJug = 1, KindBall = 2;
+    public const int KindSpikes = 0, KindJug = 1, KindBall = 2, KindGust = 3, KindSkates = 4, KindFrost = 5, KindFist = 6, Kinds = 7;
+    /// <summary>Завірюха: суперників до 450 см (центр до центру) відкидає від того, хто підібрав, — 600 впритул, 300 на краю.</summary>
+    public const double GustR = 450, GustPush = 600;
+    /// <summary>Іній: суперники 1.2 с без тяги й ривка.</summary>
+    public const int FrostTicks = 30;
+
+    /// <summary>Скільки підбирачок водночас на кризі: на шістьох і більше — чотири, інакше три.</summary>
+    public static int PickupCap(int players) => players >= 6 ? 4 : 3;
 
     // Коди подій кадру (spec §4.3).
     public const int EvBump = 1, EvSplash = 2, EvDash = 3, EvPickup = 4, EvBall = 5, EvBreak = 6, EvRound = 7;
@@ -275,7 +297,9 @@ public sealed class IcefloeCore(Random rng)
 
     /// <summary>
     /// Спавни: рівномірно на колі 0.6·R0, перший (найменше місце) угорі, далі за годинниковою; обличчям до
-    /// центру. Намір, який тримають, переживає новий раунд — людина ж не відпускала клавішу.
+    /// центру. Намір, який тримають, переживає новий раунд — людина ж не відпускала клавішу. Але в того, хто
+    /// стояв на березі, «намір» — це приціл сніжки, а не рух: його гасимо, інакше раунд почався б із ковзання
+    /// туди, куди він востаннє цілився.
     /// </summary>
     public void Spawn()
     {
@@ -285,8 +309,9 @@ public sealed class IcefloeCore(Random rng)
         for (var i = 0; i < Seats; i++)
         {
             var b = Bodies[i];
+            if (b.Plays && !b.Alive) b.Want = -1;
             b.Alive = b.Plays;
-            b.Cd = b.Hit = b.ThrowCd = b.Ammo = b.BankAmmo = b.Spikes = b.Jug = 0;
+            b.Cd = b.Hit = b.ThrowCd = b.Ammo = b.BankAmmo = b.Spikes = b.Jug = b.Skates = b.Fist = b.Frozen = 0;
             b.LastBy = -1;
             b.LastAt = int.MinValue / 2;
             b.B = new ArenaBody(Cx, Cy, BodyR, 1 / Mass);
@@ -359,9 +384,10 @@ public sealed class IcefloeCore(Random rng)
         var b = Bodies[seat];
         if (!b.Plays) return "Ти тут не граєш";
         if (!b.Alive) return "Ти у воді — кидай сніжки";
+        if (b.Frozen > 0) return "Замерз — ще мить";
         if (b.Cd > 0) return "Ще не готово";
-        b.B.Vx += DashImpulse * ArenaPhysics.Cos(b.Face);
-        b.B.Vy += DashImpulse * ArenaPhysics.Sin(b.Face);
+        b.B.Vx += b.DashImpulse * ArenaPhysics.Cos(b.Face);
+        b.B.Vy += b.DashImpulse * ArenaPhysics.Sin(b.Face);
         ArenaPhysics.Cap(ref b.B, VMax);
         b.Cd = DashCd;
         b.Hit = HitTicks;
@@ -435,10 +461,13 @@ public sealed class IcefloeCore(Random rng)
             var b = Bodies[i];
             if (b.Cd > 0) b.Cd--;
             if (b.ThrowCd > 0) b.ThrowCd--;
+            if (b.Frozen > 0) b.Frozen--;
             if (play)
             {
                 if (b.Spikes > 0) b.Spikes--;
                 if (b.Jug > 0) b.Jug--;
+                if (b.Skates > 0) b.Skates--;
+                if (b.Fist > 0) b.Fist--;
             }
         }
         for (var i = 0; i < BallSlots; i++)
@@ -538,11 +567,16 @@ public sealed class IcefloeCore(Random rng)
     {
         if (Rt < PickupFrom || (Rt - PickupFrom) % PickupEvery != 0) return;
         var slot = -1;
-        for (var i = 0; i < PickupMax; i++) if (!Pickups[i].On) { slot = i; break; }
-        if (slot < 0) return;
+        var on = 0;
+        for (var i = 0; i < PickupMax; i++)
+        {
+            if (Pickups[i].On) on++;
+            else if (slot < 0) slot = i;
+        }
+        if (slot < 0 || on >= PickupCap(Playing)) return;
         var phi = rng.NextDouble() * 2 * Math.PI;
         var rho = (0.2 + 0.5 * rng.NextDouble()) * EdgeAt(phi);
-        var kind = rng.Next(3);
+        var kind = rng.Next(Kinds);
         Pickups[slot] = new IcefloePickup { On = true, Kind = kind, Ttl = PickupTtl, X = Cx + rho * Math.Cos(phi), Y = Cy + rho * Math.Sin(phi) };
     }
 
@@ -561,15 +595,60 @@ public sealed class IcefloeCore(Random rng)
                 if (dx * dx + dy * dy >= PickupReach * PickupReach) continue;
                 switch (p.Kind)
                 {
-                    case KindSpikes: b.Spikes = EffectTicks; break;
+                    case KindSpikes: b.Spikes = EffectTicks; b.Skates = 0; break;
                     case KindJug: b.Jug = EffectTicks; break;
-                    default: b.Ammo = Math.Min(IceAmmoMax, b.Ammo + 1); break;
+                    case KindSkates: b.Skates = EffectTicks; b.Spikes = 0; break;
+                    case KindFist: b.Fist = EffectTicks; break;
+                    case KindGust: Gust(s); break;
+                    case KindFrost: Frost(s); break;
+                    default: b.Ammo = Math.Min(IceAmmoMax, b.Ammo + BallPickup); break;
                 }
                 p.On = false;
                 Event(EvPickup, s, p.Kind);
                 break;
             }
         }
+    }
+
+    /// <summary>Суперник для завірюхи й інею: живий, не той, хто підібрав, і не з його команди.</summary>
+    bool Rival(int seat, int of)
+    {
+        if (seat == of) return false;
+        var b = Bodies[seat];
+        return b.Plays && b.Alive && (b.Team < 0 || b.Team != Bodies[of].Team);
+    }
+
+    /// <summary>
+    /// Завірюха: суперників поруч відкидає від того, хто підібрав, — ближчих сильніше (600 впритул, 300 на
+    /// <see cref="GustR"/>), глек тримає за масою. Упав за дві секунди — «випхнув» тому, хто підібрав.
+    /// </summary>
+    public void Gust(int seat)
+    {
+        var src = Bodies[seat];
+        for (var i = 0; i < Seats; i++)
+        {
+            if (!Rival(i, seat)) continue;
+            var b = Bodies[i];
+            var dx = b.B.X - src.B.X;
+            var dy = b.B.Y - src.B.Y;
+            var d = Math.Sqrt(dx * dx + dy * dy);
+            if (d > GustR) continue;
+            var (nx, ny) = d > 1e-9 ? (dx / d, dy / d) : (1.0, 0.0);
+            var near = Math.Clamp((d - 2 * BodyR) / (GustR - 2 * BodyR), 0, 1);
+            var dv = GustPush * (1 - 0.5 * near) / b.Mass;
+            b.B.Vx += dv * nx;
+            b.B.Vy += dv * ny;
+            ArenaPhysics.Cap(ref b.B, VMax);
+            b.LastBy = seat;
+            b.LastAt = T;
+        }
+    }
+
+    /// <summary>Іній: усі суперники на <see cref="FrostTicks"/> без тяги й ривка — лише ковзають.</summary>
+    public void Frost(int seat)
+    {
+        for (var i = 0; i < Seats; i++)
+            if (Rival(i, seat)) Bodies[i].Frozen = FrostTicks;
     }
 
     /// <summary>
@@ -594,8 +673,8 @@ public sealed class IcefloeCore(Random rng)
         {
             var b = Bodies[i];
             if (!b.Plays || !b.Alive) continue;
-            Glide(ref b.B, b.Want, b.Mu, b.Thrust);
-            b.B.InvM = 1 / (b.Mass * (b.Hit > 0 ? 2 : 1));
+            Glide(ref b.B, b.Frozen > 0 ? -1 : b.Want, b.Mu, b.Thrust);
+            b.B.InvM = 1 / (b.Mass * (b.Hit > 0 ? b.HitMass : 1));
             b.Touched = false;
         }
 
@@ -643,8 +722,9 @@ public sealed class IcefloeCore(Random rng)
                 var dx = b.B.X - ball.X;
                 var dy = b.B.Y - ball.Y;
                 if (dx * dx + dy * dy >= hit * hit) continue;
-                b.B.Vx += BallPush / BallSpeed * ball.Vx;
-                b.B.Vy += BallPush / BallSpeed * ball.Vy;
+                var push = BallPush / BallSpeed / b.Mass;
+                b.B.Vx += push * ball.Vx;
+                b.B.Vy += push * ball.Vy;
                 b.Touched = true;
                 if (Bodies[ball.Owner].Plays)
                 {
@@ -684,7 +764,7 @@ public sealed class IcefloeCore(Random rng)
         b.ThrowCd = 0;
         b.Ammo = 0;
         b.Cd = b.Hit = 0;
-        b.Spikes = b.Jug = 0;
+        b.Spikes = b.Jug = b.Skates = b.Fist = b.Frozen = 0;
         var who = -1;
         if (play)
         {

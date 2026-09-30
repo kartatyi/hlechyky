@@ -463,7 +463,7 @@ public sealed class Icefloe : Game
             var b = c.Bodies[i];
             if (!b.Plays) continue;
             var fl = (b.Alive ? 1 : 16) | (b.Spikes > 0 ? 2 : 0) | (b.Jug > 0 ? 4 : 0) | (b.Hit > 0 ? 8 : 0) | (b.Want >= 0 ? 32 : 0)
-                | (!b.Alive && !b.ChipUsed ? 64 : 0);
+                | (!b.Alive && !b.ChipUsed ? 64 : 0) | (b.Skates > 0 ? 128 : 0) | (b.Fist > 0 ? 256 : 0) | (b.Frozen > 0 ? 512 : 0);
             p[i] = b.Alive
                 ? [(int)Math.Round(b.B.X), (int)Math.Round(b.B.Y), (int)Math.Round(b.B.Vx), (int)Math.Round(b.B.Vy), b.Face, fl, b.Cd, b.Ammo]
                 : [(int)Math.Round(b.B.X), (int)Math.Round(b.B.Y), 0, 0, b.Face, fl, b.ThrowCd, b.BankAmmo];

@@ -271,6 +271,22 @@ public class IcefloeTests(ITestOutputHelper output)
         Assert.Equal(12, c.Bodies[0].Face);
     }
 
+    [Fact]
+    public void New_round_drops_the_bank_aim_but_keeps_a_survivor_held_key()
+    {
+        var c = Bare(3, radius: 1188);
+        c.Bodies[1].Alive = false;                         // на березі: стрілки цілять сніжку
+        c.Move(1, 4);
+        c.Move(0, 8);                                      // вцілілий тримає клавішу через відлік
+        c.NewRound(1100);
+        Assert.Equal(-1, c.Bodies[1].Want);
+        Assert.Equal(8, c.Bodies[0].Want);
+        Assert.Equal(8, c.Bodies[0].Face);
+        for (var t = 0; t < 10; t++) c.Step(true);
+        Assert.Equal(0, Speed(c.Bodies[1]), 9);            // раунд почався без ковзання туди, куди цілився
+        Assert.True(Speed(c.Bodies[0]) > 200);
+    }
+
     [Fact] // 9
     public void Spikes_cut_terminal_speed_and_slide_distance()
     {
@@ -285,14 +301,14 @@ public class IcefloeTests(ITestOutputHelper output)
         }
 
         var ratio = Slide(false) / Slide(true);
-        Assert.InRange(ratio, 2.3, 2.7);
+        Assert.InRange(ratio, 2.8, 3.2);                // тертя 6 проти 2 — утричі коротше
 
         var k = Bare(1, radius: 1188);
         var s = Put(k, 0, C - 900, C);
         s.Spikes = 100000;
         k.Move(0, 0);
         for (var t = 0; t < 60; t++) k.Step(true);
-        Assert.InRange(Speed(s), 300, 360);   // гранична в шипах ≈ 1800·0.9/5 = 324
+        Assert.InRange(Speed(s), 370, 410);   // гранична в шипах ≈ 2700·0.02·0.88/0.12 = 396
     }
 
     [Fact] // 10
@@ -487,7 +503,7 @@ public class IcefloeTests(ITestOutputHelper output)
     }
 
     [Fact] // 21
-    public void Fallen_player_stands_on_the_bank_at_the_fall_angle_with_three_snowballs()
+    public void Fallen_player_stands_on_the_bank_at_the_fall_angle_with_four_snowballs()
     {
         var h = Table(3);
         ToGo(h);
@@ -506,12 +522,12 @@ public class IcefloeTests(ITestOutputHelper output)
         Assert.Equal(IcefloeCore.ShoreOf(800) + IcefloeCore.BankGap, bank);   // трійко на кризі 800 — берег близько
         Assert.Equal(Math.Round(C + bank * Math.Cos(angle)), p[0].GetInt32());
         Assert.Equal(Math.Round(C + bank * Math.Sin(angle)), p[1].GetInt32());
-        Assert.Equal(3, p[7].GetInt32());
+        Assert.Equal(4, p[7].GetInt32());
         Assert.Equal([1], h.View(null).GetProperty("out").EnumerateArray().Select(x => x.GetInt32()));
     }
 
     [Fact] // 22
-    public void Bank_throw_flies_straight_and_shoves_the_target_by_three_hundred()
+    public void Bank_throw_flies_straight_and_shoves_the_target_by_six_hundred()
     {
         var c = Bare(2, radius: 1188);
         var thrower = c.Bodies[0];
@@ -533,7 +549,8 @@ public class IcefloeTests(ITestOutputHelper output)
             if (!hit) Assert.Equal(0, target.B.Vx);
         }
         Assert.True(hit);
-        Assert.InRange(target.B.Vx, 300 * 0.96 - 1e-6, 300);
+        Assert.Equal(600, IcefloeCore.BallPush);
+        Assert.InRange(target.B.Vx, IcefloeCore.BallPush * 0.96 - 1e-6, IcefloeCore.BallPush);
         Assert.Equal(0, target.B.Vy, 9);
         Assert.Equal(0, target.LastBy);
         Assert.DoesNotContain(c.Balls, x => x.On);
@@ -557,7 +574,7 @@ public class IcefloeTests(ITestOutputHelper output)
     }
 
     [Fact] // 23
-    public void Bank_throws_are_limited_to_three_with_two_second_cooldown()
+    public void Bank_throws_are_limited_to_four_with_two_second_cooldown()
     {
         var h = Table(2);
         ToGo(h);
@@ -570,11 +587,12 @@ public class IcefloeTests(ITestOutputHelper output)
         var b = c.Bodies[2];
         b.Alive = false;
         b.BankAngle = 0;
-        b.BankAmmo = 3;
+        b.BankAmmo = IcefloeCore.BankAmmoMax;
+        Assert.Equal(4, b.BankAmmo);
         b.Face = 8;
         Assert.Null(c.Throw(2));
         Assert.Equal("Не так швидко", c.Throw(2));
-        for (var k = 0; k < 2; k++)
+        for (var k = 0; k < IcefloeCore.BankAmmoMax - 1; k++)
         {
             for (var t = 0; t < IcefloeCore.BankThrowCd - 1; t++) c.Step(true);
             Assert.Equal("Не так швидко", c.Throw(2));
@@ -722,8 +740,9 @@ public class IcefloeTests(ITestOutputHelper output)
     // ---------- підбирачки ----------
 
     [Fact] // 31
-    public void Pickups_spawn_from_tick_125_every_150_ticks_up_to_two_on_the_ice()
+    public void Pickups_spawn_from_tick_75_every_100_ticks_up_to_three_on_the_ice()
     {
+        Assert.Equal((75, 100), (IcefloeCore.PickupFrom, IcefloeCore.PickupEvery));
         var c = new IcefloeCore(new Random(9));
         c.ResetParty(new bool[IcefloeCore.Seats]);
         c.NewRound(1100);
@@ -737,14 +756,46 @@ public class IcefloeTests(ITestOutputHelper output)
         c.Step(true);
         Assert.Equal(2, Count());
         while (c.Rt < IcefloeCore.PickupFrom + 2 * IcefloeCore.PickupEvery) c.Step(true);
-        Assert.Equal(2, Count());                         // місця нема — третя не з'являється
-        foreach (var p in c.Pickups) Assert.True(c.OnIce(p.X, p.Y));
-        Assert.All(c.Pickups, p => Assert.InRange(p.Kind, 0, 2));
+        Assert.Equal(3, Count());
+        while (c.Rt < IcefloeCore.PickupFrom + 3 * IcefloeCore.PickupEvery) c.Step(true);
+        Assert.Equal(3, Count());                         // на п'ятьох і менше стеля — три, четверта не з'являється
+        foreach (var p in c.Pickups.Where(p => p.On)) Assert.True(c.OnIce(p.X, p.Y));
+        Assert.All(c.Pickups, p => Assert.InRange(p.Kind, 0, IcefloeCore.Kinds - 1));
+    }
+
+    [Fact]
+    public void Six_or_more_players_get_four_pickups_and_every_kind_turns_up()
+    {
+        Assert.Equal(3, IcefloeCore.PickupCap(2));
+        Assert.Equal(3, IcefloeCore.PickupCap(5));
+        Assert.Equal(4, IcefloeCore.PickupCap(6));
+        Assert.Equal(4, IcefloeCore.PickupCap(8));
+
+        var c = Bare(6, seed: 5, radius: 1188);
+        for (var i = 0; i < 6; i++) c.Bodies[i].Alive = false;   // на березі — ніхто не підбирає
+        var most = 0;
+        for (var t = 0; t < 600; t++)
+        {
+            c.Step(true);
+            most = Math.Max(most, c.Pickups.Count(p => p.On));
+        }
+        Assert.Equal(4, most);                            // лежать 16 с, з'являються раз на 4 — четверта встигає
+
+        var kinds = new HashSet<int>();
+        for (var r = 0; r < 60; r++)
+        {
+            c.NewRound(1100);
+            for (var i = 0; i < 6; i++) c.Bodies[i].Alive = false;
+            while (c.Rt < IcefloeCore.PickupFrom) c.Step(true);
+            foreach (var p in c.Pickups) if (p.On) kinds.Add(p.Kind);
+        }
+        Assert.Equal(IcefloeCore.Kinds, kinds.Count);
     }
 
     [Fact] // 32
-    public void Spikes_jug_and_snowball_pickups_apply_their_effects_for_200_ticks()
+    public void Spikes_jug_and_snowball_pickups_apply_their_effects_for_ten_seconds()
     {
+        Assert.Equal(250, IcefloeCore.EffectTicks);
         var c = Bare(1, radius: 1188);
         var b = Put(c, 0, C, C);
         c.Rt = 10;
@@ -755,20 +806,210 @@ public class IcefloeTests(ITestOutputHelper output)
         Assert.Equal(IcefloeCore.EffectTicks, b.Jug);
         Assert.Equal(IcefloeCore.SpikeMu, b.Mu);
         Assert.Equal(IcefloeCore.JugMass, b.Mass);
-        Assert.Equal(IcefloeCore.JugThrust, b.Thrust);
+        Assert.Equal(IcefloeCore.JugFastThrust, b.Thrust);   // шипи з глеком — тяга «шипів» трохи слабша
         Assert.Contains(Events(c), e => e is [IcefloeCore.EvPickup, 0, IcefloeCore.KindSpikes]);
         for (var t = 0; t < IcefloeCore.EffectTicks - 1; t++) c.Step(true);
         Assert.Equal(1, b.Spikes);
         c.Step(true);
         Assert.Equal(0, b.Spikes);
         Assert.Equal(IcefloeCore.Mu, b.Mu);
+        Assert.Equal(IcefloeCore.Thrust, b.Thrust);
 
-        for (var k = 0; k < 3; k++)
+        c.Pickups[0] = new IcefloePickup { On = true, Kind = IcefloeCore.KindBall, Ttl = 300, X = b.B.X, Y = b.B.Y };
+        c.Step(true);
+        Assert.Equal(2, b.Ammo);                          // одна підбирачка — дві сніжки
+        for (var k = 0; k < 2; k++)
         {
             c.Pickups[0] = new IcefloePickup { On = true, Kind = IcefloeCore.KindBall, Ttl = 300, X = b.B.X, Y = b.B.Y };
             c.Step(true);
         }
-        Assert.Equal(IcefloeCore.IceAmmoMax, b.Ammo);     // більше двох сніжок у кишеню не лізе
+        Assert.Equal(3, IcefloeCore.IceAmmoMax);
+        Assert.Equal(IcefloeCore.IceAmmoMax, b.Ammo);     // більше трьох сніжок у кишеню не лізе
+    }
+
+    // ---------- сильніші сніжки й нові предмети (30.09) ----------
+
+    /// <summary>Підбирачку — просто під ноги тілу, і один тик: підібрав.</summary>
+    static void Give(IcefloeCore c, int seat, int kind)
+    {
+        var b = c.Bodies[seat];
+        c.Rt = 10;
+        c.Pickups[0] = new IcefloePickup { On = true, Kind = kind, Ttl = 300, X = b.B.X, Y = b.B.Y };
+        c.Step(true);
+        Assert.False(c.Pickups[0].On);
+    }
+
+    [Fact]
+    public void Snowball_outhits_a_dash_but_a_jug_holds_it_by_its_mass()
+    {
+        Assert.True(IcefloeCore.BallPush > IcefloeCore.DashImpulse);
+        double Hit(bool jug)
+        {
+            var c = Bare(2, radius: 1188);
+            var target = Put(c, 1, C, C);
+            target.Jug = jug ? 1000 : 0;
+            Put(c, 0, C - 500, C - 500);
+            c.Balls[0] = new IcefloeBall { On = true, Id = 1, Owner = 0, Ttl = 20, X = C - 100, Y = C, Vx = IcefloeCore.BallSpeed, Vy = 0 };
+            c.Step(true);
+            Assert.Contains(Events(c), e => e[0] == IcefloeCore.EvBall && e[1] == 1);
+            return target.B.Vx;
+        }
+
+        var plain = Hit(false);
+        var heavy = Hit(true);
+        Assert.InRange(plain, IcefloeCore.BallPush * 0.9, IcefloeCore.BallPush);
+        Assert.Equal(plain / IcefloeCore.JugMass, heavy, 6);
+    }
+
+    [Fact]
+    public void Gust_blows_rivals_away_nearer_harder_and_credits_the_picker()
+    {
+        var c = Bare(4, radius: 1188);
+        var me = Put(c, 0, C, C);
+        var near = Put(c, 1, C + 130, C);                 // впритул
+        var far = Put(c, 2, C - 400, C);                  // ще в завірюсі
+        var away = Put(c, 3, C, C + 600);                 // за GustR — не чіпає
+        Give(c, 0, IcefloeCore.KindGust);
+        Assert.Contains(Events(c), e => e is [IcefloeCore.EvPickup, 0, IcefloeCore.KindGust]);
+        Assert.True(near.B.Vx > 500, $"впритул {near.B.Vx}");
+        Assert.True(far.B.Vx < -250 && far.B.Vx > -near.B.Vx, $"далеко {far.B.Vx}");
+        Assert.Equal(0, far.B.Vy, 9);
+        Assert.Equal(0, away.B.Vx, 9);
+        Assert.Equal(0, away.B.Vy, 9);
+        Assert.Equal(0, Speed(me), 9);
+        Assert.Equal((0, 0), (near.LastBy, far.LastBy));
+        Assert.Equal(-1, away.LastBy);
+
+        // з глеком тримаєшся, а свою команду завірюха не чіпає
+        var t = Bare(4, radius: 1188);
+        Put(t, 0, C, C).Team = 0;
+        var mate = Put(t, 1, C + 150, C);
+        mate.Team = 0;
+        var foe = Put(t, 2, C - 150, C);
+        foe.Team = 1;
+        var heavy = Put(t, 3, C, C + 150);
+        heavy.Team = 1;
+        heavy.Jug = 1000;
+        Give(t, 0, IcefloeCore.KindGust);
+        Assert.Equal(0, Speed(mate), 9);
+        Assert.True(-foe.B.Vx > 400);
+        Assert.InRange(heavy.B.Vy, -foe.B.Vx / IcefloeCore.JugMass - 5, -foe.B.Vx / IcefloeCore.JugMass + 5);
+    }
+
+    [Fact]
+    public void Gust_that_blows_someone_in_counts_as_a_pushout()
+    {
+        var c = Bare(2, radius: 800);
+        Put(c, 0, C + 560, C);
+        var victim = Put(c, 1, C + 700, C);                // 100 см до краю
+        Give(c, 0, IcefloeCore.KindGust);
+        for (var t = 0; t < 30 && victim.Alive; t++) c.Step(true);
+        Assert.False(victim.Alive);
+        Assert.Equal(1, c.Bodies[0].Pushouts);
+    }
+
+    [Fact]
+    public void Frost_freezes_rivals_for_a_moment_but_not_the_picker_or_teammates()
+    {
+        var c = Bare(3, radius: 1188);
+        var me = Put(c, 0, C, C);
+        me.Team = 0;
+        var mate = Put(c, 1, C + 300, C);
+        mate.Team = 0;
+        var foe = Put(c, 2, C - 300, C);
+        foe.Team = 1;
+        Give(c, 0, IcefloeCore.KindFrost);
+        Assert.Equal(0, me.Frozen);
+        Assert.Equal(0, mate.Frozen);
+        Assert.Equal(IcefloeCore.FrostTicks, foe.Frozen);
+        Assert.Equal("Замерз — ще мить", c.Dash(2));
+        c.Move(2, 8);                                     // тягне ліворуч — а стоїть
+        c.Move(0, 0);
+        for (var t = 0; t < 10; t++) c.Step(true);
+        Assert.Equal(0, Speed(foe), 9);
+        Assert.Equal(8, foe.Face);                        // обличчям уже повернувся
+        Assert.True(me.B.Vx > 200);
+        for (var t = 0; t < IcefloeCore.FrostTicks; t++) c.Step(true);
+        Assert.Equal(0, foe.Frozen);
+        Assert.True(foe.B.Vx < -100, "розморозився — поїхав");
+        Assert.Null(c.Dash(2));
+    }
+
+    [Fact]
+    public void Skates_speed_you_up_and_carry_you_further_and_swap_with_spikes()
+    {
+        (double Speed, double Slide) Run(int kind)
+        {
+            var c = Bare(1, radius: 1188);
+            var b = Put(c, 0, C - 1000, C);
+            if (kind >= 0) Give(c, 0, kind);
+            b.B.X = C - 1000;
+            b.B.Vx = b.B.Vy = 0;
+            c.Move(0, 0);
+            for (var t = 0; t < 12; t++) c.Step(true);
+            var v = b.B.Vx;
+            c.Move(0, -1);
+            var x0 = b.B.X;
+            for (var t = 0; t < 150; t++) c.Step(true);
+            return (v, b.B.X - x0);
+        }
+
+        var plain = Run(-1);
+        var skates = Run(IcefloeCore.KindSkates);
+        Assert.True(skates.Speed > plain.Speed * 1.35, $"розгін {skates.Speed} проти {plain.Speed}");
+        Assert.True(skates.Slide > plain.Slide * 1.8, $"ковзання {skates.Slide} проти {plain.Slide}");
+
+        var c = Bare(1, radius: 1188);
+        var b = Put(c, 0, C, C);
+        Give(c, 0, IcefloeCore.KindSpikes);
+        Give(c, 0, IcefloeCore.KindSkates);
+        Assert.Equal((0, IcefloeCore.EffectTicks), (b.Spikes, b.Skates));
+        Assert.Equal(IcefloeCore.SkateMu, b.Mu);
+        Assert.Equal(IcefloeCore.FastThrust, b.Thrust);
+        Give(c, 0, IcefloeCore.KindSpikes);
+        Assert.Equal(0, b.Skates);
+        Assert.Equal(IcefloeCore.SpikeMu, b.Mu);
+        b.Jug = 100;
+        Assert.Equal(IcefloeCore.JugFastThrust, b.Thrust);
+    }
+
+    [Fact]
+    public void Fist_makes_the_dash_and_its_hit_much_heavier()
+    {
+        double Knock(bool fist)
+        {
+            var c = Bare(2, radius: 1188);
+            var a = Put(c, 0, C - 200, C);
+            var b = Put(c, 1, C - 75, C);
+            a.Face = 0;
+            a.Fist = fist ? 1000 : 0;
+            Assert.Null(c.Dash(0));
+            Assert.Equal(fist ? IcefloeCore.FistDash : IcefloeCore.DashImpulse, a.B.Vx, 9);
+            c.Step(true);
+            return b.B.Vx;
+        }
+
+        var plain = Knock(false);
+        var fist = Knock(true);
+        Assert.True(fist > plain * 1.3, $"кулак {fist} проти {plain}");
+        Assert.Equal(3, new IcefloeBody { Fist = 1 }.HitMass);
+        Assert.Equal(2, new IcefloeBody().HitMass);
+    }
+
+    [Fact]
+    public void Frame_flags_carry_skates_fist_and_frost()
+    {
+        var h = Table(2);
+        ToGo(h);
+        var c = Core(h);
+        c.Bodies[0].Skates = 50;
+        c.Bodies[0].Fist = 50;
+        c.Bodies[1].Frozen = 10;
+        var p = Frame(h).GetProperty("p");
+        var f0 = p[0][5].GetInt32();
+        var f1 = p[1][5].GetInt32();
+        Assert.Equal(128 | 256, f0 & (128 | 256 | 512));
+        Assert.Equal(512, f1 & (128 | 256 | 512));
     }
 
     // ---------- партія і кімната ----------
@@ -1223,6 +1464,7 @@ public class IcefloeTests(ITestOutputHelper output)
         {
             if (t % 10 == 0) k.Input(1, "move", new { a = 4 });
             k.Tick();
+            if (Game(k).RoundNo > 1) break;               // шубовснув і дочекався нового раунду: приціл з берега гасне
             Assert.Equal(4, c.Want);
         }
     }

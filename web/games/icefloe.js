@@ -5,7 +5,9 @@
     bank, bodyR, lastRound: { winner, by }, out, winner, winners, series, frame }.
   Кадр (25 Гц у грі): { t, ph, left, melt, iv, crack: [s, L] | null,
     p: [8 × [x, y, vx, vy, face, fl, cd, ammo] | null], s: [[id, x, y, vx, vy]], k: [[x, y, kind]], ev: [[код, …]] }.
-    fl: 1 живий · 2 шипи · 4 глек · 8 удар ривка · 16 на березі · 32 тримає напрямок.
+    fl: 1 живий · 2 шипи · 4 глек · 8 удар ривка · 16 на березі · 32 тримає напрямок · 64 ще може колоти ·
+    128 ковзани · 256 кулак · 512 іній.
+    kind: 0 шипи · 1 глек · 2 сніжки · 3 завірюха · 4 ковзани · 5 іній · 6 кулак.
   Ввід: Input('move', { a: −1..15 }) — сектор по 22.5° (0 праворуч, за годинниковою), Input('dash'), Input('throw').
 
   Своє тіло не чекає сервера: між кадрами його веде та сама формула, що й сервер (glide — рівно IcefloeCore.Glide,
@@ -15,7 +17,9 @@
 (() => {
   // ---- фізика: ті самі числа й той самий порядок операцій, що в IcefloeCore/ArenaPhysics ----
   const H = 0.02, SUB_MS = 20, TICK_MS = 40;
-  const VMAX = 1100, MU = 2.0, SPIKE_MU = 5.0, THRUST = 1800, JUG_THRUST = 1400, DASH = 520, DASH_CD = 25;
+  const VMAX = 1100, MU = 2.0, SPIKE_MU = 6.0, SKATE_MU = 1.2, DASH = 520, FIST_DASH = 832, DASH_CD = 25;
+  const THRUST = 1800, JUG_THRUST = 1600, FAST_THRUST = 2700, JUG_FAST_THRUST = 2400;   // IcefloeBody.Thrust — таблицею
+  const GUST_R = 450;                          // IcefloeCore.GustR — кого зачепила завірюха
   const CAP_TICKS = 1875, MELT_FROM = 1300;   // IcefloeCore.CapTicks, IcefloeCore.MeltFrom
   const C1 = 0.9238795325112867, S1 = 0.3826834323650898, D = 0.7071067811865476;
   const COS16 = [1, C1, D, S1, 0, -S1, -D, -C1, -1, -C1, -D, -S1, 0, S1, D, C1];
@@ -58,10 +62,10 @@
   const TEAM_NAMES = ['🔵 сині', '🔴 руді'];
   const SEAT_VARS = [['--if-s0', '#5aa9ff'], ['--if-s1', '#d9825b'], ['--if-s2', '#7bd389'], ['--if-s3', '#f4c542'],
     ['--if-s4', '#b48cf2'], ['--if-s5', '#6fd6c2'], ['--if-s6', '#f08cb8'], ['--if-s7', '#b7c2bd']];
-  const PICK_GLYPH = ['🥾', '🏺', '❄'];
+  const PICK_GLYPH = ['🥾', '🏺', '❄', '🌬', '⛸', '🧊', '💪'];
   const DASH3 = [3, 3], DASH5 = [5, 5], NO_DASH = [];
   const ringDash = [0, 0];                                 // рятувальне коло: довжини залежать від розміру
-  const PICK_NAME = ['🥾 шипи', '🏺 глек', '❄ сніжка'];
+  const PICK_NAME = ['🥾 шипи', '🏺 глек', '❄ дві сніжки', '🌬 завірюха!', '⛸ ковзани', '🧊 іній!', '💪 кулак'];
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<path d="M4 2.5 10.5 2 14 5.5 13.5 11 9.5 14 3.5 13 1.5 8.5 2 4.5Z" fill="var(--if-ice, #9fd7ff)"/>'
     + '<circle cx="6" cy="7" r="2.1" fill="var(--clay)"/><circle cx="10.2" cy="9" r="2.1" fill="var(--ok)"/>'
@@ -133,6 +137,8 @@
     crack() { this.noise(200, 400, 0.05); },
     ball() { this.noise(60, 2500, 0.03); },
     pick() { this.beep(880, 70, 'triangle', 0.035); this.beep(1320, 90, 'triangle', 0.03, 0, 0.07); },
+    gust() { this.noise(420, 700, 0.045); this.beep(160, 380, 'sine', 0.03, 520); },
+    frost() { [1568, 2093, 2637].forEach((f, i) => this.beep(f, 90, 'triangle', 0.022, 0, i * 0.05)); },
     round() { [523, 659, 784].forEach((f, i) => this.beep(f, 130, 'square', 0.035, 0, i * 0.11)); },
     win() { [523, 659, 784, 1046].forEach((f, i) => this.beep(f, 150, 'square', 0.04, 0, i * 0.11)); },
     set(on) {
@@ -356,12 +362,60 @@
         g.lineWidth = 1.3;
         g.beginPath(); g.moveTo(8, 14); g.quadraticCurveTo(14, 16.5, 20, 14); g.stroke();
       }),
-      tile((g) => {        // сніжка
-        g.fillStyle = '#ffffff';
-        g.beginPath(); g.arc(14, 14, 7.5, 0, Math.PI * 2); g.fill();
-        g.fillStyle = 'rgba(120, 170, 200, 0.55)';
-        g.beginPath(); g.arc(16, 16, 3, 0, Math.PI * 2); g.fill();
-        g.beginPath(); g.arc(11, 12.5, 1.4, 0, Math.PI * 2); g.fill();
+      tile((g) => {        // дві сніжки
+        for (const [x, y, r] of [[10.5, 16, 6], [17.5, 11.5, 5.5]]) {
+          g.fillStyle = '#ffffff';
+          g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+          g.fillStyle = 'rgba(120, 170, 200, 0.55)';
+          g.beginPath(); g.arc(x + r * 0.3, y + r * 0.3, r * 0.4, 0, Math.PI * 2); g.fill();
+        }
+      }),
+      tile((g) => {        // завірюха: три хвости вітру із завитками
+        g.strokeStyle = '#eaf8ff';
+        g.lineWidth = 2.2;
+        g.lineCap = 'round';
+        g.beginPath(); g.moveTo(4.5, 10); g.lineTo(16, 10); g.arc(16, 7, 3, Math.PI / 2, -Math.PI * 0.9, true); g.stroke();
+        g.beginPath(); g.moveTo(4.5, 15); g.lineTo(20, 15); g.arc(20, 11.5, 3.5, Math.PI / 2, -Math.PI * 0.9, true); g.stroke();
+        g.beginPath(); g.moveTo(6.5, 20); g.lineTo(15, 20); g.arc(15, 22.5, 2.5, -Math.PI / 2, Math.PI * 0.9); g.stroke();
+      }),
+      tile((g) => {        // ковзан: черевик на лезі
+        g.fillStyle = '#e9e1d4';
+        g.beginPath();
+        g.moveTo(8, 4.5); g.lineTo(14, 4.5); g.lineTo(14, 12); g.quadraticCurveTo(21, 12, 21.5, 17);
+        g.lineTo(21.5, 18.5); g.lineTo(7, 18.5); g.lineTo(8, 12); g.closePath();
+        g.fill();
+        g.strokeStyle = '#c7d3da';
+        g.lineWidth = 1.6;
+        g.beginPath(); g.moveTo(9, 18.5); g.lineTo(9, 21.5); g.moveTo(19, 18.5); g.lineTo(19, 21.5); g.stroke();
+        g.lineWidth = 2;
+        g.beginPath(); g.moveTo(5, 22); g.lineTo(21, 22); g.quadraticCurveTo(24.5, 22, 24, 19); g.stroke();
+      }),
+      tile((g) => {        // іній: шестипроменева крижинка
+        g.strokeStyle = '#bfeaff';
+        g.lineWidth = 2;
+        g.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+          const a = i * Math.PI / 3, c = Math.cos(a), s = Math.sin(a);
+          g.beginPath(); g.moveTo(14 - c * 9, 14 - s * 9); g.lineTo(14 + c * 9, 14 + s * 9); g.stroke();
+        }
+        g.lineWidth = 1.4;
+        for (let i = 0; i < 6; i++) {
+          const a = i * Math.PI / 3, x = 14 + Math.cos(a) * 6, y = 14 + Math.sin(a) * 6;
+          g.beginPath();
+          g.moveTo(x + Math.cos(a + 2.4) * 3, y + Math.sin(a + 2.4) * 3); g.lineTo(x, y);
+          g.lineTo(x + Math.cos(a - 2.4) * 3, y + Math.sin(a - 2.4) * 3);
+          g.stroke();
+        }
+      }),
+      tile((g) => {        // кулак: червона рукавиця з білим манжетом
+        g.fillStyle = '#d8453a';
+        g.beginPath(); g.ellipse(15, 11.5, 7, 7.5, 0, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.ellipse(7.5, 13, 3, 4.5, -0.5, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#f2ece2';
+        g.beginPath(); g.roundRect(9, 18, 12, 6, 2); g.fill();
+        g.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+        g.lineWidth = 1.2;
+        g.beginPath(); g.moveTo(11, 8); g.quadraticCurveTo(15, 5.5, 19, 8); g.stroke();
       }),
     ];
     return st.picks;
@@ -510,8 +564,14 @@
     const ctx = st.ctx;
     return ctx && ctx.mine && ctx.seat != null ? ctx.seat : -1;
   }
-  function myMu(q) { return q && (q[5] & 2) ? SPIKE_MU : MU; }
-  function myThrust(q) { return q && (q[5] & 4) ? JUG_THRUST : THRUST; }
+  function myMu(q) { return q && (q[5] & 2) ? SPIKE_MU : q && (q[5] & 128) ? SKATE_MU : MU; }
+  function myThrust(q) {
+    const fast = q && (q[5] & 130), jug = q && (q[5] & 4);
+    return fast ? (jug ? JUG_FAST_THRUST : FAST_THRUST) : (jug ? JUG_THRUST : THRUST);
+  }
+  /// Замерзлий (іній) не тягне: сервер веде його з наміром −1, і передбачення теж.
+  function myWant(st, q) { return q && (q[5] & 512) ? -1 : currentWant(st); }
+  function myDash(q) { return q && (q[5] & 256) ? FIST_DASH : DASH; }
 
   /// Новий кадр: де сервер бачить моє тіло «зараз» (кадр плюс пів дороги мережею) і м'яка поправка.
   function correct(st, f) {
@@ -524,14 +584,14 @@
     if (st.pendingDash && now - st.pendingDash > 350) st.pendingDash = 0;
     if (st.pendingDash && q[6] === 0) {
       // ривок, який я вже показав, серверу ще не долетів — докладаємо його й до цілі, інакше смикне назад
-      tg.vx += DASH * COS16[st.dashFace];
-      tg.vy += DASH * SIN16[st.dashFace];
+      tg.vx += myDash(q) * COS16[st.dashFace];
+      tg.vy += myDash(q) * SIN16[st.dashFace];
       const s2 = tg.vx * tg.vx + tg.vy * tg.vy;
       if (s2 > VMAX * VMAX) { const c = VMAX / Math.sqrt(s2); tg.vx *= c; tg.vy *= c; }
     }
     const lead = Math.max(0, Math.min(120, (st.rtt - 20) / 2));
     const steps = Math.round(lead / SUB_MS);
-    const want = currentWant(st);
+    const want = myWant(st, q);
     for (let i = 0; i < steps; i++) glide(tg, want, myMu(q), myThrust(q));
     if (!st.meOk) {
       Object.assign(st.me, tg);
@@ -562,7 +622,7 @@
     st.meAt = now;
     if (now - st.lastFrameAt > 400) return;     // зв'язок пропав — не фантазуємо далі
     st.meAcc += dt;
-    const q = st.meQ, want = currentWant(st);
+    const q = st.meQ, want = myWant(st, q);
     while (st.meAcc >= SUB_MS) {
       glide(st.me, want, myMu(q), myThrust(q));
       st.meAcc -= SUB_MS;
@@ -613,12 +673,12 @@
     // ривок видно одразу: те саме, що зробить сервер (якщо перезарядка, на наш погляд, скінчилась)
     const s = mySeat(st), q = st.last && st.last.p && st.last.p[s];
     const ticksSince = (performance.now() - st.lastFrameAt) / TICK_MS;
-    if (st.meOk && q && phaseOf(st) === 1 && q[6] - ticksSince <= 0.5 && !st.pendingDash) {
+    if (st.meOk && q && phaseOf(st) === 1 && q[6] - ticksSince <= 0.5 && !st.pendingDash && !(q[5] & 512)) {
       const face = st.want >= 0 ? st.want : q[4];
       st.dashFace = face;
       st.pendingDash = performance.now();
-      st.me.vx += DASH * COS16[face];
-      st.me.vy += DASH * SIN16[face];
+      st.me.vx += myDash(q) * COS16[face];
+      st.me.vy += myDash(q) * SIN16[face];
       const s2 = st.me.vx * st.me.vx + st.me.vy * st.me.vy;
       if (s2 > VMAX * VMAX) { const c = VMAX / Math.sqrt(s2); st.me.vx *= c; st.me.vy *= c; }
       trail(st, st.me.x, st.me.y, face);
@@ -733,6 +793,29 @@
           const q = f.p && f.p[e[1]];
           if (q) st.pops.push({ text: PICK_NAME[e[2]] || '', x: q[0] * sc, y: q[1] * sc - 26, at: now, color: st.pal ? st.pal.text : '#fff' });
           if (e[1] === me) Snd.pick();
+          if (!q || !f.p) break;
+          const vs = (s) => {                         // кого зачепило: живі суперники (у командах — чужі)
+            const tm = st.ctx && st.ctx.view && st.ctx.view.teams;
+            const o = f.p[s];
+            return s !== e[1] && o && (o[5] & 1) && !(tm && tm[s] != null && tm[s] === tm[e[1]]);
+          };
+          if (e[2] === 3) {  // завірюха: хвиля від того, хто підібрав
+            const x = q[0] * sc, y = q[1] * sc;
+            for (let r = 0; r < 3; r++) spawn(st, K_RING, x, y, 0, 0, 420 + r * 110, (GUST_R / 4) * sc * (0.45 + r * 0.25));
+            burst(st, K_PUFF, x, y, 16, 260, 520, 3);
+            Snd.gust();
+            for (let s = 0; s < 8; s++) {
+              const o = f.p[s];
+              if (vs(s) && Math.hypot(o[0] - q[0], o[1] - q[1]) <= GUST_R + 60) st.hitFlash[s] = now;
+            }
+          } else if (e[2] === 5) {   // іній: скалки на кожному суперникові
+            for (let s = 0; s < 8; s++) {
+              if (!vs(s)) continue;
+              burst(st, K_SHARD, f.p[s][0] * sc, f.p[s][1] * sc, 8, 90, 480, 3.4);
+              if (s === me) { st.shake = now; st.shakeAmp = 3; st.shakeMs = 160; }
+            }
+            Snd.frost();
+          }
           break;
         }
         case 5: {           // сніжка влучила
@@ -1001,6 +1084,28 @@
       g.beginPath();
       g.ellipse(bx, by, R * 0.36, R * 0.26, bootA, 0, Math.PI * 2);
       g.fill();
+      if (fl & 128) {      // ковзани: срібне лезо вздовж валянка — носок стирчить з-під кожуха вперед
+        g.strokeStyle = '#dfe8ee';
+        g.lineWidth = Math.max(2, R * 0.13);
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(bx - fx * R * 0.3, by - fy * R * 0.3);
+        g.lineTo(bx + fx * R * 0.8, by + fy * R * 0.8);
+        g.stroke();
+        g.strokeStyle = '#6b7c86';
+        g.lineWidth = 1;
+        g.stroke();
+      }
+    }
+    // кулак: дві червоні рукавиці обабіч, напоготові
+    if (fl & 256) {
+      g.fillStyle = '#d8453a';
+      for (let k = -1; k <= 1; k += 2) {
+        const mx = cx + fx * R * 0.55 - fy * R * 0.9 * k, my = cy + fy * R * 0.55 + fx * R * 0.9 * k;
+        g.beginPath();
+        g.arc(mx, my, R * 0.3, 0, Math.PI * 2);
+        g.fill();
+      }
     }
     // глек на спині
     if (fl & 4) {
@@ -1058,10 +1163,20 @@
         g.fill();
       }
     }
-    // «удар» ривка — біле кільце; щойно зачепили — спалах
+    // іній: блакитна кірка поверх кожуха й шапки
+    if (fl & 512) {
+      g.fillStyle = 'rgba(190, 235, 255, 0.55)';
+      g.strokeStyle = '#eaf8ff';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(cx, cy, R * 1.04, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    }
+    // «удар» ривка — біле кільце (з кулаком — червоне); щойно зачепили — спалах
     const lit = Math.max(0, 1 - (now - st.hitFlash[seat]) / 200);
     if ((fl & 8) || lit > 0) {
-      g.strokeStyle = '#ffffff';
+      g.strokeStyle = (fl & 8) && (fl & 256) ? '#ff6b5a' : '#ffffff';
       g.globalAlpha = (fl & 8) ? 0.9 : lit;
       g.lineWidth = 3;
       g.beginPath();
@@ -1440,7 +1555,7 @@
     if (f.p) {
       for (let i = 0; i < 8; i++) {
         const q = f.p[i];
-        k = (k * 31 + (q ? (q[5] & 23) * 8 + Math.min(7, q[7]) + 1 : 0)) % 1000000007;
+        k = (k * 31 + (q ? (q[5] & 919) * 8 + Math.min(7, q[7]) + 1 : 0)) % 1000000007;
       }
     }
     return k;
@@ -1486,7 +1601,8 @@
       let stateTxt = '';
       if (q && plays && v.phase !== 'lobby' && v.phase !== 'over') {
         if (!(q[5] & 1)) stateTxt = '🌊' + (q[7] > 0 ? ' ❄' + q[7] : '');
-        else stateTxt = ((q[5] & 2) ? '🥾' : '') + ((q[5] & 4) ? '🏺' : '') + (q[7] > 0 ? '❄' + q[7] : '');
+        else stateTxt = ((q[5] & 512) ? '🧊' : '') + ((q[5] & 2) ? '🥾' : '') + ((q[5] & 128) ? '⛸' : '') + ((q[5] & 4) ? '🏺' : '')
+          + ((q[5] & 256) ? '💪' : '') + (q[7] > 0 ? '❄' + q[7] : '');
       }
       html += '<span class="ifchip if' + s + (q && !(q[5] & 1) && plays ? ' out' : '') + (s === ctx.seat ? ' me' : '') + '" title="' + ctx.esc(n) + '">'
         + '<i>' + (s + 1) + '</i>' + (v.teams && v.teams[s] != null ? (v.teams[s] === 0 ? '🔵' : '🔴') : '') + (tight && s !== ctx.seat ? '' : '<span class="ifnick">' + ctx.esc(n) + '</span>')
@@ -1758,7 +1874,9 @@
       return q[7] > 0 ? '🌊 Ти у воді — ' + (padOn() ? 'стік цілить, Ⓐ кидає' : HGames.ui.coarse() ? 'стік цілить, ❄ кидає' : 'стрілки чи мишка цілять, пробіл кидає') + ' сніжку (лишилось ' + q[7] + ')'
         : '🌊 Ти у воді, сніжки скінчились — дивись, хто кого';
     }
-    const extra = q ? ((q[5] & 2) ? ' · 🥾 шипи' : '') + ((q[5] & 4) ? ' · 🏺 глек' : '') : '';
+    if (q && (q[5] & 512)) return '🧊 Замерз! Ще мить — і знову ковзаєш';
+    const extra = q ? ((q[5] & 2) ? ' · 🥾 шипи' : '') + ((q[5] & 128) ? ' · ⛸ ковзани' : '') + ((q[5] & 4) ? ' · 🏺 глек' : '')
+      + ((q[5] & 256) ? ' · 💪 кулак' : '') : '';
     const how = padOn() ? 'Стік — ковзати, Ⓐ ривок, Ⓧ сніжка'
       : HGames.ui.coarse() ? 'Стік — ковзати, 💨 ривок, ❄ сніжка' : 'Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка';
     const team = v.teams && v.teams[ctx.seat] != null ? ' · ти за ' + TEAM_NAMES[v.teams[ctx.seat]] : '';
@@ -1773,12 +1891,13 @@
     seatClass: ['if0', 'if1', 'if2', 'if3', 'if4', 'if5', 'if6', 'if7'],
     pad: { dirs: true, a: 'Space', x: 'KeyX', hint: '{dpad} ковзати · {a} ривок · {x} сніжка' },
     news: {
-      v: '2026-09-29',
-      title: 'Крижина: команди й молоток',
+      v: '2026-09-30',
+      title: 'Крижина: нові предмети й сніжки вдвічі',
       items: [
-        '🔨 Шубовснув — не кисни: раз за раунд відколи шматок криги з берега (права кнопка туди, Ⓐ чи 🔨) — секунда тріщини, і край іде під воду',
-        '🔵🔴 Нова опція «Команди»: сині проти рудих на 4, 6 чи 8 — раунд бере команда, навіть якщо ти вже на березі',
-        '🤝 Свого зіпхнув — «випхнув» не рахується: прикривай спину, а не штовхай',
+        '❄ Сніжка б\'є вдвічі сильніше — дужче за ривок; з берега їх тепер чотири, а підбирачка дає одразу дві',
+        '🌬 Завірюха — підібрав, і всіх поруч відкидає від тебе хвилею · 🧊 Іній — суперники секунду без керування',
+        '⛸ Ковзани — розгін у півтора раза, але й несе далі · 💪 Кулак — ривок і удар ривка значно важчі',
+        '🎁 Предмети з\'являються частіше (раз на 4 с, до 3–4 на кризі) і діють 10 с; глек тепер тримає й сніжки, шипи — ще міцніше',
       ],
     },
 
@@ -1843,6 +1962,9 @@
       }
       st.last = f;
       st.lastFrameAt = performance.now();
+      // У воді мишка цілить і без натиснутої кнопки (mouseA). Вийшов на кригу (новий раунд чи партія) — приціл мусить
+      // згаснути, інакше досилання раз на 0.4 с тягло тіло туди, куди востаннє цілився з берега.
+      if (st.mouseA != null && !st.mouseDown && !inWater(st)) { st.mouseA = null; push(st, true); }
       st.interp.push(f);
       correct(st, f);
       // рядок над полем — лише коли в кадрі змінилось те, що він показує
