@@ -167,6 +167,11 @@ public sealed partial class Clicker : Game
     public const double InspireMult = 25;
     public static readonly TimeSpan InspireFor = TimeSpan.FromSeconds(20);
     /// <summary>
+    /// Скільки додає ярмаркові й натхненню полиця майстра, що стала посеред них (30.09): бонус її не чекає, а
+    /// секунди, з'їдені полицею, вертаються. Лише раз на полицю — за промах і нову полицю нічого.
+    /// </summary>
+    public static readonly TimeSpan EyeBonusExtra = TimeSpan.FromSeconds(10);
+    /// <summary>
     /// Дев'яте оновлення: під натхненням кожен клік несе ще три відсотки пасиву — і вже потім усе це множиться
     /// на ×25 і на розгін. Без цього натхнення мовчало в того, хто ще не купив «Легку руку» з «Руками майстра».
     /// </summary>
@@ -1236,15 +1241,45 @@ public sealed partial class Clicker : Game
     }
 
     /// <summary>
-    /// Що на сцені зараз коштує гравцеві секунд: ярмарок, натхнення, розписний глек, глек у польоті, бафи села
-    /// й три випадковості дев'ятого оновлення. Поки триває хоч одне — Око майстра не перебиває (§A.2): полиця
-    /// з'їдала б саме ті секунди, заради яких гравець і сидить біля кола.
+    /// Що на сцені зараз коштує гравцеві секунд: розписний глек, глек у польоті, бафи села й три випадковості
+    /// дев'ятого оновлення. Поки триває хоч одне — Око майстра не перебиває (§A.2): полиця з'їдала б саме ті
+    /// секунди, заради яких гравець і сидить біля кола. Ярмарок і натхнення з 30.09 полицю не тримають — вона їх
+    /// подовжує (<see cref="EyeBonusExtra"/>): ярмарок на хвилину з гаком ховав майстра надто часто.
     /// </summary>
     bool BonusOn(DateTimeOffset now) =>
-        FairOn || InspireOn || FairBuffOn(now)
+        FairBuffOn(now)
         || (now >= _golden.At - EarlyGrace && now <= _golden.Until + CatchGrace)
-        || (now >= _fall.At - EarlyGrace && now <= _fall.Until + CatchGrace)
+        || FallFlying(now)
         || CatOn(now) || StarOn(now) || During(_wind, now);
+
+    /// <summary>Глек з полиці летить (разом із запасом на пінг): тут майстер не питає навіть через підозру (30.09).</summary>
+    bool FallFlying(DateTimeOffset now) => now >= _fall.At - EarlyGrace && now <= _fall.Until + CatchGrace;
+
+    /// <summary>Звичайна перевірка майстра — і ярмаркові з натхненням, що саме тривають, секунди назад.</summary>
+    string EyeCheck(DateTimeOffset now)
+    {
+        _guard.Check();
+        return EyeExtend(now);
+    }
+
+    /// <summary>Полиця через підозрілий почерк — так само з секундами назад ярмаркові й натхненню.</summary>
+    void EyeSuspect(string why, DateTimeOffset now)
+    {
+        _guard.Suspect(why);
+        EyeExtend(now);
+    }
+
+    /// <summary>
+    /// Полиця щойно стала: ярмарок і натхнення, що тривають, стоять довше на <see cref="EyeBonusExtra"/>. Порожньо —
+    /// нічого не тривало, інакше хвостик для тосту.
+    /// </summary>
+    string EyeExtend(DateTimeOffset now)
+    {
+        var what = new List<string>(2);
+        if (_fairUntil > now) { _fairUntil += EyeBonusExtra; what.Add("🎪"); }
+        if (_inspireUntil > now) { _inspireUntil += EyeBonusExtra; what.Add("✨"); }
+        return what.Count == 0 ? "" : $" ({string.Join(" і ", what)} +{EyeBonusExtra.TotalSeconds:0} с)";
+    }
 
     /// <summary>Скільки з проміжку [from, to] припало на вікно події.</summary>
     static TimeSpan Overlap(DateTimeOffset from, DateTimeOffset to, DateTimeOffset at, DateTimeOffset until)
@@ -1277,7 +1312,9 @@ public sealed partial class Clicker : Game
         {
             // Пачка, на якій почерк видав робота, не рахується, і далі — жодного кліка, доки не пройде полицю.
             // Глеків, зароблених раніше, не забираємо: так само виглядають тачпад і рівна рука на грубому таймері.
-            _guard.Suspect(why);
+            // Поки глек летить з полиці, полиці майстра не ставимо (30.09): гравець дивиться на глек. Пачка однаково
+            // не рахується, а почерк лишається в пам'яті — полиця стане на першій пачці після приземлення.
+            if (!FallFlying(now)) EyeSuspect(why, now);
             return ActResult.Done;
         }
 
@@ -1289,7 +1326,7 @@ public sealed partial class Clicker : Game
         if (taken > 0) FormBy(taken, now);
         _guard.SpendClicks(taken);
         // Поки на сцені хоч щось діється, не перебиваємо: бонус тікає секундами, а перевірка почекає (§A.2).
-        if (_guard.Due && !BonusOn(now)) _guard.Check();
+        if (_guard.Due && !BonusOn(now)) EyeCheck(now);
         return ActResult.Done;
     }
 
@@ -1618,13 +1655,13 @@ public sealed partial class Clicker : Game
     /// <summary>
     /// Майстер питає ПІСЛЯ спійманого, а не замість нього (дев'яте оновлення §A.2): перевірка, що коштує глека
     /// в польоті, — це покарання за чесність. Бот нічого не виграв: наступного глека він уже не спіймає, доки
-    /// не пройде полицю. І не питаємо, поки на сцені триває бонус: ярмарок і натхнення біжать секундами.
+    /// не пройде полицю. І не питаємо, поки на сцені щось біжить секундами (<see cref="BonusOn"/>); ярмарок і
+    /// натхнення, щойно спіймані чи ті, що вже тривали, майстра не тримають — полиця їх подовжує (30.09).
     /// </summary>
     string AskAfter(DateTimeOffset now)
     {
         if (!_guard.Due || _guard.Pending || _guard.Locked(now) || BonusOn(now)) return "";
-        _guard.Check();
-        return " · 👁 майстер хоче глянути на твої руки";
+        return " · 👁 майстер хоче глянути на твої руки" + EyeCheck(now);
     }
 
     /// <summary>

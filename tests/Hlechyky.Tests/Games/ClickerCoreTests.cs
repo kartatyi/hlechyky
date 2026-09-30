@@ -233,15 +233,13 @@ public class ClickerCoreTests
     // ---------- A.2 Око не перебиває ----------
 
     [Fact]
-    public void The_master_waits_out_the_fair_before_asking()
+    public void The_master_no_longer_waits_out_the_fair_he_lengthens_it()
     {
+        // 30.09: ярмарок на хвилину з гаком ховав майстра надто часто — тепер полиця стає й під ним, а ярмарок
+        // за це стоїть на десять секунд довше (ClickerGuardTests — докладно).
         var h = Wheel();
         BonusFor(h, 60);
         ShelfDue(h);
-        Human(h);
-        Assert.True(Free(h));                          // бонус тікає секундами — полиця почекає
-
-        h.Clock.Advance(61);
         Human(h);
         Assert.False(Free(h));
     }
