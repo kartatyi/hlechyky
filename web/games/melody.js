@@ -75,7 +75,11 @@
     p = Math.min(100, Math.max(0, p));
     const v = posToVol(p);
     const a = player(root);
-    if (a) a.volume = v;
+    if (a) {
+      a.volume = v;
+      // iOS Safari: volume лише для читання (завжди 1) — 🔇 глушить через muted, інакше кнопка нічого не робила
+      a.muted = p === 0;
+    }
     const range = root.querySelector('.mgvol input');
     if (range && +range.value !== p) range.value = p;
     const icon = root.querySelector('.mgvol button');
@@ -83,11 +87,21 @@
     if (save) { try { localStorage.setItem(VOL_KEY, String(v)); } catch { /* приватне вікно */ } }
   }
 
+  let fixedVol = null;
+  function volFixed() {
+    if (fixedVol === null) {
+      try { const t = new Audio(); t.volume = 0.5; fixedVol = Math.abs(t.volume - 0.5) > 0.01; } catch { fixedVol = false; }
+    }
+    return fixedVol;
+  }
+
   function bindVolume(root) {
     const box = root.querySelector('.mgvol');
     const range = box.querySelector('input');
     const icon = box.querySelector('button');
     let before = 60;
+    // Повзунок, що нічого не міняє (iOS: гучність — лише кнопками телефона), ховаємо; 🔊/🔇 лишається
+    box.classList.toggle('mgnovol', volFixed());
     setVolume(root, volToPos(savedVolume()), false);
     range.oninput = () => setVolume(root, parseInt(range.value, 10), true);
     icon.onclick = () => {
@@ -558,7 +572,7 @@
         + '<div class="mgextra"></div>'
         + '<div class="mgmarks"></div>'
         + '<div class="mgskip"></div>'
-        + '<form class="mgguess"><input type="text" maxlength="80" autocomplete="off" spellcheck="false" enterkeyhint="send">'
+        + '<form class="mgguess"><input type="text" maxlength="80" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send">'
         + '<button class="primary" type="submit">➤</button></form>'
         + '<div class="mgscores"></div>'
         + '</div>';

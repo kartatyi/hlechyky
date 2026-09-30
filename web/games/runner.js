@@ -1621,8 +1621,13 @@
   function showStage(st) {
     if (!ui.coarse() || window.innerHeight > 520 || !st.el.stage) return;
     const r = st.el.stage.getBoundingClientRect();
-    if (r.top < 0 || r.bottom > window.innerHeight - 70) {
-      try { st.el.stage.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }); } catch (_) { /* старий браузер */ }
+    // смуга між липкою шапкою й тим, що прибито внизу (меню, міні-плеєр, шторка «💬 Стіл»); у g-imm їх нема.
+    // block:'center' не зважав на них: верх сцени ховався під шапкою, низ — під меню.
+    const f = ui.fit ? ui.fit() : { h: window.innerHeight, top: 56, dock: 70 };
+    const top = f.top + 4, bottom = f.h - f.dock - 4;
+    if (r.top < top || r.bottom > bottom) {
+      const want = r.height <= bottom - top ? top + (bottom - top - r.height) / 2 : top;
+      window.scrollBy({ top: r.top - want, behavior: reducedMotion() ? 'auto' : 'smooth' });
     }
   }
 
@@ -3159,6 +3164,16 @@
   // 9. Цикл, модуль, статус, три HGames.register
   // =============================================================================================
 
+  /// Скільки знизу в'юпорта зайнято (нижнє меню, міні-плеєр, шторка «💬 Стіл»): --gdock-h від каркаса, без нього —
+  /// від самого меню. Раніше тут читали --tabs-h, а там calc(58px + safe-area): parseFloat давав NaN → 0, і
+  /// підгонка «в кадр» вважала, що меню нема (кнопки лишались під ним).
+  function dockH() {
+    const d = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h'));
+    if (Number.isFinite(d)) return d;
+    const m = document.querySelector('.mtabs'), r = m && m.getBoundingClientRect();
+    return r && r.height ? Math.max(0, innerHeight - r.top) : 0;
+  }
+
   /// Телефон: шапка столу з вісьмома місцями штовхала сцену вниз, і кнопки «Стрибок»/«Пригнись» опинялись під
   /// нижнім меню — видно було або сцену, або кнопки. Раз на партію (room.startedAt), коли вона пішла, прокручуємо
   /// сторінку так, щоб рядок гравців став під шапку сайту: тоді сцена й кнопки вміщаються разом. Усе й так видно —
@@ -3173,7 +3188,7 @@
     st.fitFor = key;
     const head = document.querySelector('header');
     const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+    const tabs = dockH();
     // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
@@ -3502,6 +3517,7 @@
 
   HGames.register(Object.assign(makeModule('daily'), {
     id: 'dino-daily',
+    arcade: true,   // соло, але реалтайм: каркас ставить g-arcade (і лежачи g-imm/g-land), як живим іграм
     added: '2026-09-27',
     icon: DINO_ICON.replace('</svg>', '<rect x="10" y="10" width="5" height="5" rx="1" fill="var(--clay)"/><path d="M11 12h3" stroke="#fff" stroke-width="1"/></svg>'),
     seatNames: ['стрибозавр'],

@@ -58,6 +58,39 @@
   const dj = () => state?.djName || 'Дядько Глек';
   const djGen = () => state?.djNameGen || 'Дядька Глека';
 
+  // ---------- екранна клавіатура (телефон) ----------
+  // Поки пишеш у полі — body.kbd: вкладки й міні-плеєр ховаються (на Android вони лягали над клавіатурою), а шторка
+  // «💬 Стіл» стає над клавіатурою. --kb — скільки знизу закрила клавіатура (iOS стискає лише visualViewport, fixed-низ
+  // лишався під нею), --vvh — видима висота. Android із interactive-widget=resizes-content стискає макет сам (--kb ≈ 0).
+  (() => {
+    const vv = window.visualViewport, de = document.documentElement;
+    const field = (el) => !!el && (el.tagName === 'TEXTAREA' || el.isContentEditable || el.tagName === 'SELECT'
+      || (el.tagName === 'INPUT' && !/^(checkbox|radio|range|button|submit|reset|file|color|image)$/i.test(el.type)));
+    // Поле з фокусом може просто зникнути з DOM (раунд скінчився, гра перемалювала) — Chrome тоді не шле focusout,
+    // і kbd залипав би з схованими вкладками. Тож поки kbd, стежимо за зникненням вузлів (лише поки пишеш — дешево).
+    let gone = null;
+    const upd = () => {
+      const a = document.activeElement;
+      const on = field(a) && a.isConnected && window.matchMedia('(pointer: coarse)').matches;
+      if (document.body.classList.contains('kbd') !== on) document.body.classList.toggle('kbd', on);
+      if (on && !gone && window.MutationObserver) {
+        gone = new MutationObserver((ms) => {
+          const el = document.activeElement;
+          if (ms.some((m) => m.removedNodes.length) && !(field(el) && el.isConnected)) upd();
+        });
+        gone.observe(document.body, { childList: true, subtree: true });
+      } else if (!on && gone) { gone.disconnect(); gone = null; }
+      if (vv) {
+        de.style.setProperty('--kb', Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + 'px');
+        de.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+      }
+    };
+    document.addEventListener('focusin', upd);
+    document.addEventListener('focusout', () => setTimeout(upd, 0));
+    window.addEventListener('hashchange', () => setTimeout(upd, 0));
+    if (vv) { vv.addEventListener('resize', upd); vv.addEventListener('scroll', upd); }
+  })();
+
   // ---------- toasts / busy buttons ----------
   // Стос тостів закривав поле гри на телефоні (морський бій: відповідь на кожен постріл), тож той самий текст, що ще
   // висить, не множимо — лише подовжуємо йому життя, а разом на екрані не більше трьох: найстаріший іде першим.

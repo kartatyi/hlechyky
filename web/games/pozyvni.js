@@ -51,7 +51,7 @@
       + '<div class="pz-grid"></div>'
       + '<div class="pz-panel">'
       + '<form class="pz-give" hidden>'
-      + '<input class="pz-word" type="text" maxlength="24" placeholder="слово і число, як «море 2»…" autocomplete="off" spellcheck="false">'
+      + '<input class="pz-word" type="text" maxlength="24" placeholder="слово і число, як «море 2»…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">'
       + '<div class="pz-counts"></div>'
       + '<button class="primary" type="submit">Сказати</button>'
       + '</form>'
@@ -133,6 +133,7 @@
     // Малювати його — брехати: показуємо тільки те, чого чекаємо.
     const lobby = !!ctx.room && ctx.room.status === 'lobby';
     el.classList.toggle('pz-lobby', lobby);
+    el.classList.toggle('pz-setup', !lobby && v.phase === 'setup');
 
     // ---- шапка ----
     const arc = el.querySelector('.pz-arc');
@@ -150,9 +151,12 @@
 
     // ---- підказка ----
     const clue = el.querySelector('.pz-clue');
+    // «Досить» — у тому ж рядку, що й підказка: над столом, а не під ним (на телефоні там уже нижнє меню).
+    const canPass = !lobby && v.phase === 'guess' && myTurn(v) && !iAmBoss(v);
     const clueText = lobby ? '' : v.clue
-      ? '<b>' + ctx.esc(v.clue.word.toUpperCase()) + '</b> · ' + (v.clue.count === 0 ? '∞' : v.clue.count)
-        + '<span class="muted small"> лишилось ' + (v.clue.count === 0 ? '—' : v.clue.left) + '</span>'
+      ? '<div class="pz-cluetext"><b>' + ctx.esc(v.clue.word.toUpperCase()) + '</b> · ' + (v.clue.count === 0 ? '∞' : v.clue.count)
+        + '<span class="muted small"> лишилось ' + (v.clue.count === 0 ? '—' : v.clue.left) + '</span></div>'
+        + (canPass ? '<button class="ghost pz-pass" data-act="pass">Досить</button>' : '')
       : '';
     if (clue.dataset.sig !== clueText) { clue.dataset.sig = clueText; clue.innerHTML = clueText; }
     clue.hidden = !clueText;
@@ -169,6 +173,7 @@
       const longest = (c.w || '').split(' ').reduce((n, part) => Math.max(n, part.length), 0);
       if ((c.w || '').length > 14 || longest > 11) cls.push('xlong');
       else if (longest >= 8) cls.push('long');   // дрібнішає лише на телефоні: там «гойдалк-а» рвалась посеред слова
+      if (longest >= 10 && longest <= 11) cls.push('l10');   // «супермаркет» у плитку 56 px на телефоні — ще дрібніше
       if (open) cls.push('open', 'pz-' + open);
       else if (key) cls.push('key', 'pz-k-' + key[i]);
       const at = fingers[i] || [];
@@ -337,8 +342,7 @@
     if (v.phase === 'clue') return '<span class="muted small">Капітан думає.</span>';
     return '<span class="muted small">' + (mates(v) > 1
       ? 'Тисни слово — це «показую пальцем». Відкриється, коли покажуть усі; передумав — тисни ще раз.'
-      : 'Тисніть слова, поки впевнені.') + '</span>'
-      + '<button class="ghost" data-act="pass">Досить</button>';
+      : 'Тисніть слова, поки впевнені.') + ' Досить — кнопка біля підказки.</span>';
   }
 
   HGames.register({

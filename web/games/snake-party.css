@@ -59,3 +59,14 @@ body.pad-on .snp-board.snp-big { max-width: min(680px, max(300px, calc((100vh - 
 }
 .snp-drop button.snp-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .snp-drop span { min-width: 8em; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Телефон лежачи: нижня межа 300 px вище не зважала на висоту — поле з'їжджало під нижні вкладки. Тут поле —
+   за видимою висотою (--gfit-h від каркаса: без шапки й меню; мінус рядок столу й табло). У зануреному режимі
+   (body.g-land, я граю) розмір полотна задає каркас — його правило специфічніше. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .snp-board { max-width: min(560px, calc((var(--gfit-h, 100dvh) - 110px) * 26 / 18)); }
+  .snp-board.snp-big { max-width: min(680px, calc((var(--gfit-h, 100dvh) - 110px) * 34 / 24)); }
+}
+
+/* Лежачи (body.g-land): чіпи місць каркаса ховаємо — ті самі гравці з рахунком уже є в табло праворуч, а висоти обмаль. */
+body.g-land .gtable:has(> .gbody > .snp-score) > .gseats { display: none; }

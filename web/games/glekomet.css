@@ -182,3 +182,21 @@
 .gk-sum .gk-ser { margin-top: 6px; font-size: .92em; color: var(--muted); line-height: 1.45; }
 .gk-sum .gk-ser b { color: var(--text); }
 .gk-chip .gk-rd { color: var(--ok); font-weight: 800; }
+
+/* ---- телефон (live2) ---- */
+/* Ряд зброї гортається вбік (6 снарядів до x≈700 на 390 px), і цього не було видно: на краю, за яким ще є
+   снаряди, — згасання (класи ставить модуль за scrollLeft). */
+.gk-arms.gk-more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); }
+.gk-arms.gk-more-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 44px), transparent); }
+.gk-arms.gk-more-l.gk-more-r {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 44px, #000 calc(100% - 44px), transparent);
+}
+@media (pointer: coarse) {
+  .gk-sound { min-width: 40px; min-height: 36px; touch-action: manipulation; }
+  .gk-arm, .gk-sound { touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .gk-ctl { -webkit-touch-callout: none; }
+}
+/* Лежачи (body.g-land): права колонка вища за екран — чіпи місць каркаса ховаємо (гравці є в рядку над ручками),
+   щоб «💥 Постріл» і «Пропустити» влазили в картку. */
+body.g-land .gtable:has(> .gbody > .gk-top) > .gseats { display: none; }

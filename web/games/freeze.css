@@ -144,3 +144,25 @@
 .freeze-teams span { padding: 2px 12px; border-radius: 8px; background: rgba(12, 22, 14, .84); color: #eef3ea; }
 .freeze-body > .freeze-sum .freeze-teams span { background: var(--bg2); color: var(--text); }
 .freeze-relay { white-space: nowrap; }
+
+/* ---- телефон лежачи (body.g-land ставить каркас) — live1: хрестовина під лівим великим пальцем, мапа
+   посередині за висотою (камера 4:3, як стоячи), праворуч — фішки, дії, статус і кнопки столу під правим.
+   Раніше мапа 600 px стояла над хрестовиною, і та лягала за край екрана. */
+body.g-land .gtable:has(> .gbody.freeze-body) {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 10px; row-gap: 4px;
+  align-items: center; align-content: center; justify-items: center;
+}
+body.g-land .gtable:has(> .gbody.freeze-body) > .gbody, body.g-land .gtable:has(> .gbody.freeze-body) > .gbody > .freeze-pad { display: contents; }
+body.g-land .gtable:has(> .gbody.freeze-body) > .gseats { display: none; }   /* хто за столом — видно у фішках гри */
+body.g-land .gtable:has(> .gbody.freeze-body) > * , body.g-land .gtable:has(> .gbody.freeze-body) > .gbody > *, body.g-land .gtable:has(> .gbody.freeze-body) > .gbody > .freeze-pad > * { grid-column: 3; max-width: 26vw; margin: 0; }
+body.g-land .gtable:has(> .gbody.freeze-body) > .gbody > .freeze-stage {
+  grid-column: 2; grid-row: 1 / span 12; max-width: none !important;
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 64px) * 4 / 3));
+}
+body.g-land .gtable:has(> .gbody.freeze-body) > .gbody > .freeze-pad > .freeze-dirs { grid-column: 1; grid-row: 1 / span 12; max-width: none; }
+body.g-land .gtable:has(> .gbody.freeze-body) > .gbody > .freeze-pad > .freeze-acts { order: 9; }
+
+/* ---- телефон (live1): довгий натиск на керуванні не виділяє текст і не кличе лупу чи меню (iOS) ---- */
+@media (pointer: coarse) {
+  .freeze-pad, .freeze-pad * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}

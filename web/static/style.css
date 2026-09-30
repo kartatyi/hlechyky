@@ -44,7 +44,7 @@ body {
   font-family: var(--font);
   background: radial-gradient(1200px 600px at 20% -10%, #1d3a2c 0%, var(--bg) 55%);
   color: var(--text);
-  min-height: 100vh;
+  min-height: 100vh; min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
 }
 a { color: var(--accent); }
@@ -76,6 +76,9 @@ input:focus { border-color: var(--accent2); }
 .chip.ok { color: var(--ok); }
 .chip.warn { color: var(--accent); }
 .chip.err { color: var(--danger); }
+/* Причина помилки в черзі буває на пів екрана ("відео 18+, YouTube віддає…"): у рядок вона розтягувала сторінку до 692 px
+   на телефоні, а з нею й усі fixed-елементи. Переносимо — лише в списках: у шапці (.who) чип стану мусить лишатись вузьким. */
+.qitem .chip.err, .list .chip.err { white-space: normal; overflow-wrap: anywhere; max-width: 100%; flex: 0 1 auto; min-width: min(12em, 100%); }
 .chip.dj { color: var(--accent); background: #3a2d0a; }
 .chip.badge { background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 0 6px; min-width: 18px; justify-content: center; font-size: .72em; }
 .spin { display: inline-block; width: 1em; height: 1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
@@ -458,7 +461,7 @@ button.vplay { padding: 3px 8px; }
 .libhead h2 { margin: 0; flex: none; }
 #libFind { max-width: 260px; margin-left: auto; padding: 6px 10px; font-size: .9em; }
 /* Списки в Бібліотеці тягнуться до низу екрана: це головне, по що сюди заходять. */
-.libpage .list { max-height: calc(100vh - 200px); }
+.libpage .list { max-height: calc(100vh - 200px); max-height: calc(100dvh - 200px); }
 @container (min-width: 760px) {
   /* селектор такий самий, як у правила маршруту вище, інакше display: flex переможе за вагою */
   body.route-lib #viewLib { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -721,8 +724,10 @@ button.vplay { padding: 3px 8px; }
 .tchat.drawer .tc-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88em; color: var(--muted); }
 .tchat.drawer .tc-body { display: none; }
 .tchat.drawer.open .tc-head { display: none; }
+/* Заввишки з розмову, але не вище за стелю: `.tc-body { flex: 1 }` однаково перебивав height (шторка була з вміст), тож
+   прямо — flex: none, height: auto і max-height; стрічка всередині гортається. */
 .tchat.drawer.open .tc-body {
-  display: flex; width: min(420px, calc(100vw - 32px)); height: min(60vh, 520px); padding: 10px 12px;
+  flex: none; display: flex; width: min(420px, calc(100vw - 32px)); height: auto; min-height: 160px; max-height: min(60vh, 520px); padding: 10px 12px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45);
 }
 
@@ -741,8 +746,11 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   .nightbar { margin-top: 10px; padding: 0 10px; }
   .nightbar > div { padding: 10px 12px; gap: 10px; font-size: .92em; }
   .updbar .nb-moon { display: none; }
-  :root { --tabs-h: 58px; --mini-h: 54px; }
+  /* --tabs-h уже з домашньою смужкою айфона: 58 px лишаються під кнопки, а все, що стоїть над вкладками, піднімається само. */
+  :root { --sab: env(safe-area-inset-bottom, 0px); --tabs-h: calc(58px + var(--sab)); --mini-h: 54px; }
   header { gap: 8px; padding: 8px 12px; backdrop-filter: none; background: #101f18; }
+  /* Лежачи на айфоні з «чубчиком» і в PWA на весь екран — не заходимо під виріз. */
+  header { padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
   header .brand span, header #volume { display: none; }
   header .hdrtitle { display: block; }
   /* Міні-плеєр переїздить униз, над вкладки: він потрібен на кожному екрані, а в шапці місця нема.
@@ -770,14 +778,18 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   header .mechip { padding-right: 8px; }
   /* На телефоні балачки — окрема вкладка внизу, тож рейка тут не потрібна взагалі. */
   main { grid-template-columns: 1fr; padding: 12px; padding-bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); gap: 12px; --rail: 0px; --rail-gap: 0px; }
+  main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  /* ⛶ на вузькому екрані: базове body.gfull main (вище) знімало запас під вкладки — низ столу ховався під ними. */
+  body.gfull main { padding: 10px max(12px, env(safe-area-inset-right)) calc(var(--tabs-h) + var(--mini-h) + 12px) max(12px, env(safe-area-inset-left)); }
   section.panel, aside.panel { padding: 12px; }
-  .chat { height: calc(100vh - 60px - var(--tabs-h) - var(--mini-h) - 24px); position: static; min-height: 0; }
+  /* dvh: на айфоні 100vh — висота без панелей Safari, і поле вводу балачки ховалось під вкладками. */
+  .chat { height: calc(100vh - 60px - var(--tabs-h) - var(--mini-h) - 24px); height: calc(100dvh - 60px - var(--tabs-h) - var(--mini-h) - 24px); position: static; min-height: 0; }
   #colChat { display: none; }
   body.route-chat #colChat { display: flex; }
   body.route-chat #colMain { display: none; }
   .chat .chat-close { display: none; }
   header .vswitch, header .chat-toggle { display: none; }
-  .mtabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: var(--tabs-h); z-index: 6; background: rgba(15, 31, 24, .96); backdrop-filter: blur(8px); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  .mtabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: var(--tabs-h); z-index: 6; background: rgba(15, 31, 24, .96); backdrop-filter: blur(8px); border-top: 1px solid var(--line); padding: 0 env(safe-area-inset-right) var(--sab) env(safe-area-inset-left); }
   .mtabs button { flex: 1; min-width: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: .74em; justify-content: center; flex-direction: column; gap: 1px; padding: 6px 1px; position: relative; white-space: nowrap; }
   .mtabs button .ico { font-size: 1.35em; line-height: 1; }
   .mtabs button.on { color: var(--accent); }
@@ -786,7 +798,10 @@ body.gfull main { max-width: none; padding: 10px 12px; }
   /* Шторка балачки столу — над міні-плеєром і вкладками; розгорнута — на всю ширину. */
   .tchat.drawer { right: 12px; bottom: calc(var(--tabs-h) + var(--mini-h) + 10px); }
   .tchat.drawer.open { left: 12px; }
-  .tchat.drawer.open .tc-body { width: 100%; height: min(62vh, 560px); }
+  /* 45 %, а не 62: у розмовних іграх (мафія, шпигун, позивні) над розгорнутою шторкою мають лишатись гравці й кнопки голосування. */
+  .tchat.drawer.open .tc-body { width: 100%; max-height: min(45vh, 380px); max-height: min(45dvh, 380px); }
+  /* За столом згорнута шторка — лише значок і лічильник: з останньою реплікою вона була 85 px і лягала на низ поля. */
+  body.g-room .tchat.drawer:not(.open) .tc-last { display: none; }
   /* Посеред аркади згорнута шторка лягала на кнопки керування; великими пальцями в балачку однаково не пишуть. */
   body.g-arcade .tchat.drawer:not(.open) { display: none; }
   /* бокове меню бібліотеки на телефоні — чипи, що переносяться (без гортання вбік, де половину не видно);
@@ -804,17 +819,23 @@ body.gfull main { max-width: none; padding: 10px 12px; }
 }
 @media (max-width: 480px) {
   .qitem .btns { flex-direction: column; }
+  /* 8 px збоку замість 12: разом із тоншою карткою столу — +24 px ширини кожній грі. */
+  main { padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
 }
 
 /* ---- toast / modal ---- */
 .toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 20; width: max-content; max-width: 92vw; }
 /* На телефоні — над міні-плеєром і вкладками (після базового правила, інакше воно перебиває: тост накривав вкладки). */
-@media (max-width: 900px) { .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px + env(safe-area-inset-bottom)); } }
+@media (max-width: 900px) { .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); } }
 .toast { background: #0b1712; border: 1px solid var(--line); color: var(--text); padding: 10px 14px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.5); animation: pop .15s ease-out; display: flex; gap: 8px; align-items: center; }
 .toast.err { border-color: var(--danger); }
 .toast.ok { border-color: var(--ok); }
 @keyframes pop { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: none; } }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; padding: 12px; }
+/* Висока картка на короткому екрані (стіл «Скільки?» — 707 px, телефон лежачи — 390) гортається разом із тлом:
+   margin:auto центрує, поки влазить, а коли ні — картка стає від верху й низ догортається. */
+.modal { overflow-y: auto; overscroll-behavior: contain; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+.modal > .card { margin: auto; }
 .modal .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; width: min(92vw, 400px); display: flex; flex-direction: column; gap: 12px; }
 .modal h3 { margin: 0; display: flex; align-items: center; gap: 10px; }
 .modal h3 img { width: 40px; height: 40px; }
@@ -992,7 +1013,7 @@ kbd {
 .stp-bar i { display: block; height: 100%; border-radius: 999px; background: hsl(var(--h) 60% 55%); }
 .stp b { color: var(--accent); font-variant-numeric: tabular-nums; }
 .stdj { padding: 2px 6px; }
-.strating { max-height: calc(100vh - 300px); }
+.strating { max-height: calc(100vh - 300px); max-height: calc(100dvh - 300px); }
 .stcache { margin-top: 2px; }
 .glb-who { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; }
 .glb-who .who-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1321,7 +1342,7 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 }
 
 /* ---- вікно обрізки: квадратне полотно, поза колом — затемнено ---- */
-.lv-crop .card { width: min(94vw, 380px); max-height: 96vh; overflow: auto; }
+.lv-crop .card { width: min(94vw, 380px); max-height: 96vh; max-height: 96dvh; overflow: auto; }
 .lv-crop-stage {
   position: relative; align-self: center; flex: none; width: min(78vw, 300px); height: min(78vw, 300px); border-radius: 14px; overflow: hidden;
   background: #111; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
@@ -1379,4 +1400,51 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 @media (max-width: 600px) {
   .la-card { padding: 12px; }
   .la-o-at { margin-left: 0; }
+}
+
+/* ---- телефон: прохід 30.09 (каркас сайту) ---- */
+/* Одна довга назва чи чип більше не розтягує сторінку вбік: інакше разом із нею їдуть і всі fixed-елементи
+   (вкладки, міні-плеєр, картка «Хто прийшов?» — половиною за екран). clip, а не hidden: sticky-шапка лишається живою. */
+@media (max-width: 900px) { html, body { overflow-x: clip; } }
+/* Лежачи iOS роздуває шрифти сам — вимикаємо; сіра «підсвітка дотику» на кнопках лише блимає. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button { -webkit-tap-highlight-color: transparent; }
+/* Подвійний дотик по кнопці (подвоєна літера, ⌫⌫, «Швидше коло» ×2, ❤ у балачці) на айфоні зумив сторінку. */
+button, [role=button], summary, label, a, select, input, textarea, #messages, .messages { touch-action: manipulation; }
+@media (pointer: coarse) {
+  /* Поле зі шрифтом < 16 px айфон при фокусі зумить (а назад — ні). Одне правило на всі поля сайту й ігор. */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]), textarea, select {
+    font-size: max(16px, 1em) !important;
+  }
+  /* Цілі дотику, що були 22–29 px заввишки. */
+  .tabs button { padding: 9px 12px; }
+  .tabs.seg button { padding: 6px 10px; }
+  .list .btns button { padding: 7px 10px; min-height: 36px; }
+  .msg .macts button { padding: 6px 12px; }
+}
+/* Тости не ловлять дотиків: «Такого слова не знаю» лягав на Enter і ⌫, а тиснути треба саме їх. Кнопки в тості — живі. */
+.toasts { pointer-events: none; }
+.toast button, .toast a { pointer-events: auto; }
+@media (max-width: 900px) {
+  /* За столом тости — вгору під шапку: внизу руки, клавіатура й хрестовина. */
+  body.g-room .toasts { top: calc(var(--gtop-h, 56px) + 8px); bottom: auto; }
+}
+
+/* ---- занурений режим гри (body.g-imm, ставить games/core.js): ⛶ на дотиковому екрані або аркада лежачи ----
+   Шапка, вкладки, міні-плеєр і згорнута шторка сховані; стіл — на весь видимий екран. */
+body.g-imm { --tabs-h: 0px; --mini-h: 0px; --rail: 0px; --rail-gap: 0px; }
+body.g-imm header, body.g-imm .mtabs, body.g-imm #colChat, body.g-imm .tchat.drawer:not(.open),
+body.g-imm .nightbar, body.g-imm .hellobar { display: none; }
+body.g-imm main {
+  max-width: none;
+  padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+}
+body.g-imm .toasts { top: calc(6px + env(safe-area-inset-top)); bottom: auto; }
+
+/* ---- екранна клавіатура поля вводу (iOS не стискає макет, fixed-низ лишається під клавіатурою) ----
+   --kb (app.js, visualViewport) — скільки знизу закрила клавіатура. Поки пишеш — вкладки не потрібні. */
+@media (max-width: 900px) {
+  body.kbd .mtabs, body.kbd header .mini { display: none; }
+  body.kbd .tchat.drawer.open { bottom: calc(var(--kb, 0px) + 6px); }
+  body.kbd .tchat.drawer.open .tc-body { max-height: min(45dvh, 380px, calc(var(--vvh, 100dvh) - 70px)); }
 }

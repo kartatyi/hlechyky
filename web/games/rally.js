@@ -2750,8 +2750,10 @@
       const cs = getComputedStyle(document.body);
       const px = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
       const head = document.querySelector('header');
-      const top = head ? head.getBoundingClientRect().bottom : 0;
-      const bottom = window.innerHeight - px('--tabs-h') - px('--mini-h');
+      let top = head ? head.getBoundingClientRect().bottom : 0;
+      let bottom = window.innerHeight - px('--tabs-h') - px('--mini-h');
+      // каркас знає точніше: у g-imm шапки й меню нема, а шторка «💬 Стіл» — є чи нема
+      if (HGames.ui.fit) { const f = HGames.ui.fit(); top = f.top; bottom = f.h - f.dock; }
       const r = st.wrap.getBoundingClientRect();
       window.scrollBy(0, r.top - (top + Math.max(0, (bottom - top - r.height) / 2)));
     } catch { /* без прокрутки теж можна грати */ }
@@ -2794,7 +2796,8 @@
       if (!btns || !btns.firstElementChild) return;
       const cs = getComputedStyle(document.body);
       const px = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
-      const bottom = window.innerHeight - px('--tabs-h') - px('--mini-h') - 6;
+      const f = HGames.ui.fit && HGames.ui.fit();
+      const bottom = (f ? f.h - f.dock : window.innerHeight - px('--tabs-h') - px('--mini-h')) - 6;
       const r = btns.getBoundingClientRect();
       if (r.bottom > bottom) window.scrollBy(0, r.bottom - bottom);
     } catch { /* без прокрутки кнопку теж видно — трохи нижче */ }

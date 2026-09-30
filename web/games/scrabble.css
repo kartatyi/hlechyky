@@ -21,7 +21,11 @@
 .gbody > .scr-blank,
 .gbody > .scr-hint,
 .gbody > .scr-btns,
+.gbody > .scr-dock,
+.scr-dock > *,
 .gbody > .scr-log { width: 100%; }
+/* Стійка, попап літери, підказка й кнопки — одним блоком: на телефоні він липне над нижнім меню. */
+.scr-dock { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 
 /* Своя підказка: каркасний рядок статусу оновлюється лише на подію 'room', а ця — на кожен клік. */
 .scr-hint { text-align: center; color: var(--muted); font-size: .85em; min-height: 1.15em; }
@@ -57,7 +61,7 @@
 .board.scr-sboard .cell b { font-weight: 700; font-size: min(2.6vw, 15px); }
 .board.scr-sboard .cell u { display: none; }
 .board.scr-sboard .cell i { font-style: normal; font-size: min(1.7vw, 9px); color: var(--text); opacity: .72; }
-.board.scr-sboard .cell:not(:disabled):hover { background: var(--panel3); }
+@media (hover: hover) { .board.scr-sboard .cell:not(:disabled):hover { background: var(--panel3); } }
 
 .board.scr-sboard .cell.bl2 { background: var(--scr-dl); }
 .board.scr-sboard .cell.bl3 { background: var(--scr-tl); }
@@ -111,17 +115,33 @@
 
 /* ---- телефон ---- */
 @media (max-width: 480px) {
-  /* 15 колонок на 375 px дають клітинку в 19 px — для пальця замало. Даємо дошці власну прокрутку:
-     сторінка вбік не їде (прокручується тільки .scr-board), зате клітинка виростає до ~27 px.
-     justify-content: flex-start — інакше центрування ховає лівий край за початком прокрутки. */
-  .scr-board { overflow-x: auto; justify-content: flex-start; }
-  .board.scr-sboard { width: max(100%, 420px); flex: none; margin: 0; gap: 1px; padding: 2px; }
+  /* Дошка на всю ширину екрана (поза відступами картки), без прихованої прокрутки вбік: 15 клітинок по ~25 px
+     на 390, ~23 px на 360 — квадратні й майже без проміжків, пальцем влучати можна. Картка по центру екрана,
+     тож calc(50% - 50vw) виводить блок рівно до країв в'юпорта. */
+  .gbody > .scr-board { width: calc(100vw - 6px); max-width: none; margin-inline: calc(50% - 50vw + 3px); }
+  .board.scr-sboard { width: 100%; max-width: none; gap: 1px; padding: 1px; border-radius: 4px; }
   .board.scr-sboard .cell { border-radius: 2px; }
-  .board.scr-sboard .cell b { font-size: min(3.1vw, 13px); }
-  .board.scr-sboard .cell i { font-size: min(2vw, 8px); }
-  .scr-rack .gcard { min-width: 30px; padding: 6px 4px 4px; }
+  .board.scr-sboard .cell b { font-size: clamp(12px, 3.7vw, 15px); }
+  .board.scr-sboard .cell i { font-size: clamp(8px, 2.3vw, 9px); opacity: .85; }
+  .gbody .board.scr-sboard .cell i.arrow { font-size: clamp(13px, 4vw, 16px); }
+  /* Стійка + кнопки — липка смуга над нижнім меню: і дошку, і фішки, і «Готово» видно разом. */
+  .gbody > .scr-dock {
+    position: sticky; bottom: var(--gdock-h, 64px); z-index: 3;
+    width: calc(100vw - 6px); max-width: none; margin-inline: calc(50% - 50vw + 3px);
+    gap: 5px; padding: 6px 4px 7px; border-radius: 10px;
+    background: var(--panel); box-shadow: 0 -4px 12px rgba(0, 0, 0, .35);
+  }
+  .scr-dock .scr-hint { font-size: .78em; line-height: 1.25; }
+  .scr-dock .scr-hint:empty { display: none; }
+  .scr-dock .scr-blank:empty { display: none; }
+  .scr-rack .ghand { gap: 5px; flex-wrap: nowrap; }
+  .scr-rack .gcard { min-width: 40px; min-height: 46px; padding: 6px 4px 4px; justify-content: center; }
+  .scr-btns button { min-height: 40px; }
   .scr-p { max-width: 100%; }
-  .scr-letters button { min-width: 26px; }
+  .scr-letters button { min-width: 36px; min-height: 36px; }
+  /* Легенда бонусів і журнал — під смугою, щоб не стояли між дошкою й фішками. */
+  .gbody > .scr-legend { order: 1; }
+  .gbody > .scr-log { order: 2; }
 }
 
 /* ---- оновлення 24.09.2026: курсор для друку, легенда, попередній рахунок, великий екран ---- */

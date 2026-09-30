@@ -187,7 +187,8 @@
 
   /// Орієнтація й розміри: ландшафт — стіл лежить (мої ворота ліворуч), портрет — стоїть (мої ворота внизу).
   function layout(root, st) {
-    const land = (root.clientWidth || 800) >= 640 && window.innerWidth > window.innerHeight;
+    // телефон лежачи — теж ландшафт, хоч каркас (g-land) і віддає столу лише ліву колонку
+    const land = window.innerWidth > window.innerHeight && ((root.clientWidth || 800) >= 640 || HGames.ui.coarse());
     const turn = myTeam(st) === 1 ? 1 : 0;     // глядач — як сині
     if (st.cv && land === st.land && turn === st.turn) return;
     st.land = land;
@@ -202,6 +203,8 @@
     st.table = null;
     st.trailN = 0;
     wireCanvas(root, st);
+    // ui.canvas переписує className — вертаємо «play» (touch-action: none), інакше після повороту палець гортає сторінку
+    st.cv.el.classList.toggle('play', !!(st.ctx && st.ctx.mine && st.ctx.playing));
   }
 
   /// Світ → екран (у логічних пікселях канваса). Таблиця зі spec §6.1:
@@ -1110,16 +1113,31 @@
     el.addEventListener('pointerleave', () => el.classList.remove('own'));
   }
 
+  /// Скільки в'юпорта вільно: каркасний ui.fit(), а без нього — липка шапка й нижні панелі з CSS-змінних.
+  function fitNow() {
+    if (HGames.ui.fit) return HGames.ui.fit();
+    const cs = getComputedStyle(document.documentElement);
+    const n = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
+    const hd = document.querySelector('header');
+    const top = hd && getComputedStyle(hd).position === 'sticky' ? hd.getBoundingClientRect().height : 0;
+    const vv = window.visualViewport;
+    return { w: vv ? vv.width : window.innerWidth, h: vv ? vv.height : window.innerHeight, top, dock: n('--gdock-h') || 64 };   // --tabs-h — calc(58px + safe-area), parseFloat дає NaN
+  }
+
   /// Телефон: на старті партії підкручуємо сторінку так, щоб стіл цілком став між шапкою й нижніми панелями.
   /// Раз на партію (і після F5) — далі людина гортає сама, ми не воюємо.
   function fitView(el) {
     if (!el || !HGames.ui.coarse()) return;
     const r = el.getBoundingClientRect();
-    const top = 60, bottom = window.innerHeight - 116;
+    const f = fitNow();
+    const top = f.top + 4, bottom = f.h - f.dock - 4;
     const band = bottom - top;
-    const want = r.height <= band ? top + (band - r.height) / 2 : top;
-    const d = r.top - want;
-    if (Math.abs(d) > 24) window.scrollBy({ top: d, behavior: reduced() ? 'auto' : 'smooth' });
+    // Мінімальна прокрутка, а не «поле посередині»: центрування гнало рядок столу («← Лобі», ⛶) за верх екрана,
+    // хоч поле влазило й без того. Поле вище за смугу — верх поля під шапку.
+    let d = 0;
+    if (r.height > band || r.top < top) d = r.top - top;
+    else if (r.bottom > bottom) d = r.bottom - bottom;
+    if (Math.abs(d) > 8) window.scrollBy({ top: d, behavior: reduced() ? 'auto' : 'smooth' });
   }
 
   /// Цикл живе, поки йде партія (кадри, передбачення своєї біти, ввід), і ще AWAKE_MS після останньої події —
@@ -1169,8 +1187,17 @@
       if (ctx.view && ctx.view.frame) st.last = ctx.view.frame;
       hud(root, st);
       layout(root, st);
-      st.onResize = () => { const s = root._hockey; if (s) { layout(root, s); s.cv.resize(); spin(root, s); } };
+      st.onResize = () => {
+        const s = root._hockey;
+        if (!s) return;
+        const was = s.land;
+        layout(root, s); s.cv.resize(); spin(root, s);
+        // повернули телефон посеред партії — стіл знову цілком у кадр
+        if (was !== s.land && s.ctx && s.ctx.playing) setTimeout(() => fitView(s.cv && s.cv.el), 60);
+      };
       window.addEventListener('resize', st.onResize);
+      // поворот, ⛶ і шторка міняють місце під стіл без resize вікна — каркас кличе нас сам
+      if (HGames.ui.onFit) HGames.ui.onFit(root, () => st.onResize());
       spin(root, st);
     },
 

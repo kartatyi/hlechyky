@@ -170,3 +170,49 @@
   .rnr-stage .rnr-cv { border-radius: 0; }
   .rnr-over { padding: 6px 10px 0; }
 }
+
+/* ---- Лелеки на телефоні лежачи (live2): небо за видимою смугою від каркаса (--gfit-h: без шапки й меню в
+   g-imm), а не «100vh − 150px», що лишало низ сцени під меню ---- */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .rnr.rnr-storks { max-width: calc((var(--gfit-h, calc(100vh - 114px)) - 80px) * 25 / 11); }
+}
+
+/* ---- телефон лежачи (body.g-land ставить каркас) — live1: сцена посередині за висотою, «⬇ Пригнись» під лівим
+   великим пальцем, «⬆ Стрибок» — під правим, на всю висоту сцени. Раніше кнопки стояли під сценою і лежачи
+   йшли під нижнє меню; стрибати можна було тапом по полю, а пригнутись — лише свайпом. Лелек не чіпаємо. */
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) > .gseats { display: none; }  /* ніки — у чіпах над сценою */
+body.g-land .rnr:not(.rnr-storks) {
+  display: grid; grid-template-columns: 88px minmax(0, 1fr) 104px; column-gap: 8px; row-gap: 4px; max-width: none;
+}
+body.g-land .rnr:not(.rnr-storks) > * { grid-column: 1 / -1; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-stage { grid-column: 2; grid-row: 3; justify-self: stretch; width: auto; margin: 0; }
+/* висота сцени = видимий екран мінус рядок столу, статус, рахунок і смужка над нею; ширина — з пропорції полотна
+   (--gar ставить ui.canvas: у Забігу дня сцена вища, ніж 8:3) */
+body.g-land .rnr:not(.rnr-storks) > .rnr-stage .rnr-cv {
+  border-radius: 10px; margin: 0 auto;
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 185px) * var(--gar, 2.667)));
+}
+body.g-land .rnr:not(.rnr-storks):has(> .rnr-dhud) > .rnr-stage .rnr-cv {
+  width: min(100%, calc((var(--gfit-h, 100dvh) - 160px) * var(--gar, 1.867)));
+}
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch.on { display: contents; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-tbtn { width: 100%; height: auto; min-height: 84px; align-self: stretch; margin: 0; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-duck { grid-column: 1; grid-row: 3; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-jump { grid-column: 3; grid-row: 3; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-throw[hidden] { display: none; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch > .rnr-throw:not([hidden]) { grid-column: 3; grid-row: 3; align-self: start; min-height: 0; height: 38%; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-touch:has(> .rnr-throw:not([hidden])) > .rnr-jump { align-self: end; height: 58%; }
+body.g-land .rnr:not(.rnr-storks).rnr-showover > .rnr-touch.on { display: none; }
+
+/* ---- телефон (live1): довгий натиск на керуванні не виділяє текст і не кличе лупу чи меню (iOS) ---- */
+@media (pointer: coarse) {
+  .rnr-touch, .rnr-touch * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
+/* Лежачи (body.g-land): картка столу — рівно на екран (--gland-h від каркаса). Статус і «Закрити»/«Встати» — одним
+   рядком над сценою, сцена — за рештою висоти (раніше «Закрити» падало за низ екрана). Лелек не чіпаємо. */
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) { flex-flow: row wrap; align-items: center; column-gap: 10px; row-gap: 6px; }
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) > .gstatus { order: 0; flex: 1 1 0; min-width: 0; margin: 0; }
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) > .gbtns { order: 1; margin: 0; flex-wrap: nowrap; }
+body.g-land .gtable:has(> .gbody > .rnr:not(.rnr-storks)) > .gbody { order: 2; flex: 1 0 100%; min-width: 0; }
+body.g-land .rnr:not(.rnr-storks) > .rnr-stage .rnr-cv { width: min(100%, calc((var(--gland-h, 330px) - 175px) * var(--gar, 2.667))); }
+body.g-land .rnr:not(.rnr-storks):has(> .rnr-dhud) > .rnr-stage .rnr-cv { width: min(100%, calc((var(--gland-h, 330px) - 150px) * var(--gar, 1.867))); }

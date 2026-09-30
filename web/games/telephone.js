@@ -369,6 +369,8 @@
         + '<span class="pcsep"></span>'
         + '<button type="button" class="pca" data-a="undo" title="Скасувати (Ctrl+Z)">↶</button>'
         + '<button type="button" class="pca" data-a="clear" title="Очистити все">🗑</button>'
+        // «Готово» ще й тут: на телефоні ця кнопка в рядку ↶ 🗑 (telephone.css), а не під нижнім меню
+        + '<button type="button" class="primary tpdone" data-a="done">Готово</button>'
         + '</div>';
       bar.addEventListener('click', (e) => {
         const b = e.target.closest('button');
@@ -378,6 +380,7 @@
         else if (b.dataset.z != null) p.size = +b.dataset.z;
         else if (b.dataset.t) p.tool = b.dataset.t;
         else if (b.dataset.a === 'undo') undo(root);
+        else if (b.dataset.a === 'done') { submit(root); return; }
         else if (b.dataset.a === 'clear' && canDraw(ctx) && confirm('Стерти весь малюнок?')) {
           p.ops = [];
           p.cur = null;

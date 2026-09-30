@@ -349,6 +349,32 @@
     el._ctx = ctx;   // колбек — з останнього update
   }
 
+  /// Свайп по полю — як у змійок і мотоциклів: ≥ 18 px — поворот у бік переважної осі; не відриваючи пальця, можна
+  /// крутити далі. Прокрутку пальцем по полю забираємо лише в того, хто грає (touch-action ставить update).
+  function swipe(root, el) {
+    if (el._swipe) return;
+    el._swipe = true;
+    let from = null;
+    const live = () => { const s = root._terr; const c = s && s.ctx; return c && c.mine && c.playing ? c : null; };
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || e.pointerType === 'mouse' || !live()) return;
+      from = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      try { el.setPointerCapture(e.pointerId); } catch { /* старий браузер */ }
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!from || e.pointerId !== from.id) return;
+      const dx = e.clientX - from.x, dy = e.clientY - from.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 18) return;
+      from.x = e.clientX;
+      from.y = e.clientY;
+      const c = live();
+      if (c) c.input('turn', { dir: Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3) });
+    });
+    const end = (e) => { if (from && e.pointerId === from.id) from = null; };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+
   /// Телефон: на шістьох шапка столу й смуга площ штовхали поле вниз, і хрестовина ховалась під нижнім
   /// меню. Раз на партію (room.startedAt), коли вона пішла, прокручуємо так, щоб поле з хрестовиною стало між
   /// шапкою сайту й меню (і над «💬 Стіл»). Усе й так видно — не чіпаємо.
@@ -361,13 +387,16 @@
     const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();
     if (!a.height || !b.height) return;              // картку зараз не видно — спробуємо на наступному виді
     st.fitFor = key;
+    // верх і низ видимого місця: шапка сайту, а внизу меню, міні-плеєр і згорнута шторка «💬 Стіл» (--gdock-h каркаса;
+    // у зануреному режимі g-imm їх нема — 0)
+    const fit = HGames.ui.fit ? HGames.ui.fit() : null;
     const head = document.querySelector('header');
-    const top = (head ? head.getBoundingClientRect().bottom : 0) + 4;
-    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
-    // кнопки мають стати над нижнім меню й над плаваючою кнопкою балачки столу («💬 Стіл»)
+    const top = (fit ? fit.top : (head ? head.getBoundingClientRect().bottom : 0)) + 4;
+    // --tabs-h — calc(58px + safe-area), parseFloat з нього дає 0; --gdock-h каркас пише числом (весь зайнятий низ)
+    const tabs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h')) || 64;
     const fab = document.querySelector('.tchat.drawer:not(.open) .tc-head');
     const fr = fab && fab.getBoundingClientRect();
-    const limit = (fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
+    const limit = (fit ? innerHeight - fit.dock : fr && fr.height ? Math.min(fr.top, innerHeight - tabs) : innerHeight - tabs) - 6;
     const lo = b.bottom - limit, hi = a.top - top;   // на скільки прокрутити: не менше lo, не більше hi
     const dy = lo <= hi ? Math.min(Math.max(0, lo), hi) : lo;   // не влазить усе — кнопки важливіші за рядок гравців
     if (Math.abs(dy) < 2) return;
@@ -394,6 +423,16 @@
     mount(root, ctx) {
       const st = state(root, ctx);
       st.cv = HGames.ui.canvas(root, { w: CW * st.K, h: CH * st.K, cls: 'territoryboard' });
+      swipe(root, st.cv.el);
+      // Поворот телефона чи ⛶: полотно перераховує розмір, а поле з хрестовиною знову стає в кадр.
+      if (HGames.ui.onFit) HGames.ui.onFit(root, (f) => {
+        if (st.cv) { st.cv.resize(); draw(st); }
+        const k = (f.w > f.h ? 'L' : 'P') + (f.imm ? 'i' : '');
+        if (k === st.fitKey) return;
+        const was = st.fitKey;
+        st.fitKey = k;
+        if (was && st.ctx) { st.fitFor = null; fitPhone(root, st, st.ctx, '.gterr', '.dpad'); }
+      });
       const v = ctx.view || {};
       size(st, v.width || 40, v.height || 30);
       // Видно картку чи ні — каже IntersectionObserver (без читання розкладки щокадру); знову видно —
@@ -410,9 +449,12 @@
     update(root, ctx) {
       const st = state(root, ctx);
       if (!st.cv) return;
+      st.ctx = ctx;
       pal.sig = null;   // тема могла змінитись — кольори зберемо заново
       // хрестовина потрібна лише тому, хто грає: сів глядач за стіл — вона з'явиться тут
       dpad(root, ctx);
+      const touch = ctx.mine && ctx.playing ? 'none' : '';
+      if (st.cv.el.style.touchAction !== touch) st.cv.el.style.touchAction = touch;
       fromView(st, ctx.view);
       bar(root, ctx, st);
       fitPhone(root, st, ctx, '.gterr', '.dpad');
@@ -447,7 +489,7 @@
       const me = ctx.mine && f.heads ? f.heads[ctx.seat] : null;
       if (me && me.on && !me.alive) return 'Отакої, згоріло! Повертаєшся за ' + secs(me.respawnIn) + ' с · ' + left;
       if (ctx.mine && ctx._terrDanger) return '⚠ Тебе ріжуть — додому! · ' + left;
-      const how = HGames.ui.coarse() ? 'Хрестовина — куди бігти' : 'Стрілки або WASD';
+      const how = HGames.ui.coarse() ? 'Свайп по полю або хрестовина — куди бігти' : 'Стрілки або WASD';
       return (ctx.mine ? how : 'Дивишся збоку') + ' · ' + left;
     },
 

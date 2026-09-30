@@ -162,6 +162,7 @@ body:has(.spy) .tchat.drawer.open .tc-body { flex: none; }
 .spy-dos { display: flex; gap: 5px; flex: none; }
 .spy-do { min-height: 40px; padding: 6px 10px; font-size: .85em; border-radius: 10px; }
 .spy-ask { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 600; }
+.spy-acc:not(.spy-sure) { border: 1px solid var(--muted); border-color: color-mix(in srgb, var(--danger) 60%, transparent); background: var(--bg2); }   /* кнопка, а не напис: на телефоні hover-підсвітки нема */
 .spy-acc.spy-sure { background: var(--danger); color: var(--spy-on-danger); border-color: transparent; font-weight: 600; }
 .spy-blame.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 .spy-do[aria-busy="true"], .spy-big[aria-busy="true"] { opacity: .6; cursor: progress; }
@@ -236,7 +237,7 @@ body:has(.spy) .tchat.drawer.open .tc-body { flex: none; }
   .spy-top { gap: 8px; }
   .spy-locs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .spy-p { padding: 5px 6px; gap: 6px; }
-  .spy-do { padding: 6px 8px; font-size: .82em; }
+  .spy-do { padding: 6px 8px; font-size: .82em; min-height: 40px; }
   .spy-cardin { padding: 12px; gap: 11px; }
   .spy-cico { font-size: 2.1em; }
   .spy-rcard { min-width: 84px; }

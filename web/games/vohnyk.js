@@ -1797,9 +1797,12 @@
     try {
       const cs = getComputedStyle(document.body);
       const px = (v) => parseFloat(cs.getPropertyValue(v)) || 0;
+      // верх і низ видимого місця — від каркаса (ui.fit: шапка сайту; меню, міні-плеєр і шторка знизу, у g-imm — 0).
+      // --tabs-h тут не годиться: це calc(58px + safe-area), і parseFloat з нього дає 0.
+      const fit = HGames.ui.fit ? HGames.ui.fit() : null;
       const head = document.querySelector('header');
-      const top = head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
-      const bottom = window.innerHeight - px('--tabs-h') - px('--mini-h');
+      const top = fit ? fit.top : head ? Math.max(0, head.getBoundingClientRect().bottom) : 0;
+      const bottom = window.innerHeight - (fit ? fit.dock : px('--gdock-h') || 64);
       const r = st.wrap.getBoundingClientRect();
       const hudTop = st.hudEl.getBoundingClientRect().top;
       if (r.bottom - hudTop <= bottom - top) window.scrollBy(0, hudTop - top - 2);

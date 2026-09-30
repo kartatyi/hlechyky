@@ -192,3 +192,30 @@
 
 /* Цеглини дня (прохід №3): табло дня в HUD — одним рядком, щоб на телефоні стіна не з’їжджала вниз */
 .bricks-sprintmode .bricks-pbline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 100%; }
+
+/* ---- телефон лежачи (body.g-land ставить каркас) — live1: стіни на всю висоту, статус і кнопки столу —
+   вузькою колонкою праворуч, кнопки під палець — обабіч своєї стіни: ◁ ▷ ▽ під лівим великим пальцем,
+   ↺ ⧉ ↻ ⤓ — під правим. Розмір клітинки під це рахує layout() у bricks.js. */
+body.g-land .gtable:has(> .gbody > .bricks-scene) {
+  display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 8px; row-gap: 6px;
+  align-items: center; align-content: center;
+}
+body.g-land .gtable:has(> .gbody > .bricks-scene) > .gbody { grid-column: 1; grid-row: 1 / span 6; }
+body.g-land .gtable:has(> .gbody > .bricks-scene) > :not(.gbody) { grid-column: 2; max-width: 20vw; margin: 0; }
+body.g-land .gtable:has(> .gbody > .bricks-scene) > .gseats { display: none; }   /* ніки — над стінами */
+body.g-land .gtable:has(> .gbody > .bricks-scene) > .gbtns { flex-direction: column; }
+body.g-land .bricks-me:has(> .bricks-touch) {
+  display: grid; grid-template-columns: 56px 56px auto 56px 56px; column-gap: 6px; row-gap: 8px;
+  align-items: center; justify-items: center;
+}
+body.g-land .bricks-me:has(> .bricks-touch) > * { grid-column: 1 / -1; }
+body.g-land .bricks-me:has(> .bricks-touch) > canvas { grid-column: 3; grid-row: 2 / span 3; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch { display: contents; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch > button { width: 56px; height: 56px; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch > [data-k="L"] { grid-column: 1; grid-row: 3; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch > [data-k="R"] { grid-column: 2; grid-row: 3; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch > [data-k="D"] { grid-column: 1 / span 2; grid-row: 4; width: 100%; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch > [data-k="CCW"] { grid-column: 4; grid-row: 2; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch > [data-k="HOLD"] { grid-column: 5; grid-row: 2; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch > [data-k="CW"] { grid-column: 4 / span 2; grid-row: 3; width: 100%; }
+body.g-land .bricks-me:has(> .bricks-touch) > .bricks-touch > [data-k="HARD"] { grid-column: 4 / span 2; grid-row: 4; width: 100%; }

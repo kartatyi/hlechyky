@@ -134,11 +134,17 @@ audio.svmedia { width: min(420px, 100%); }
 .svadj button { padding: 2px 5px; font-size: .8em; }
 
 @media (max-width: 520px) {
-  /* теми — трохи ширші й дрібніші: «ВИНАХОДИ» на айфоні рвалось на «ВИНАХОД / И»; клітинки — 44 px під палець */
-  .svboard { grid-template-columns: minmax(76px, 1.3fr) repeat(var(--cols), minmax(34px, 1fr)); gap: 3px; padding: 4px; }
-  .svtheme { font-size: .66em; padding: 4px; letter-spacing: 0; hyphens: auto; }
-  .svcell { min-height: 44px; font-size: 1em; }
-  .svscores { grid-template-columns: 1fr 1fr; }
+  /* Тема — окремим рядком на всю ширину над своїми клітинками: у колонці 76 px назви були по 10 px і рвались
+     («НАСТІЛЬНІ / ІГРИ»); тепер читаються, а клітинки ширші (≈64×42 під палець). */
+  .svboard { grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 3px; padding: 4px; }
+  .svtheme { grid-column: 1 / -1; font-size: .8em; padding: 3px 8px; min-height: 0; letter-spacing: .02em; hyphens: auto; }
+  .svcell { min-height: 42px; font-size: 1em; }
+  /* minmax(0, …): довгий нік обрізається трикрапкою, а не розпирає сторінку вбік (було 425 px на 390) */
+  .svscores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .svsc { min-width: 0; gap: 4px; padding: 6px 8px; }
+  .svn { min-width: 0; }
+  .svsc b { min-width: 2.2em; }
+  .svadj button { padding: 2px 3px; font-size: .72em; }
   /* Телефон: «Я знаю!» має бути видно разом із запитанням, без гортання. Раніше на айфоні (видно 390×664) кнопка
      лягала під самий низ — під плаваючу пігулку «💬 Стіл», і натиск по правому краю відкривав балачку. */
   .svstage { min-height: 0; }

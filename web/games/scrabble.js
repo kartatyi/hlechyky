@@ -180,7 +180,7 @@
           disabled: !mine,
         };
       },
-      onCell: (i) => place(host.parentNode, ctx, st, i),
+      onCell: (i) => place(rootUp(host), ctx, st, i),
     });
   }
 
@@ -231,6 +231,31 @@
     return true;
   }
 
+  /// Стійка й кнопки живуть у .scr-dock (на телефоні — липка смуга внизу), тож «корінь» картки — .gbody, а не батько.
+  const rootUp = (el) => el.closest('.gbody') || el.parentNode;
+
+  /// Перша вільна клітинка від c у напрямку курсора (зайняті й уже покладені цим ходом — перестрибуємо); -1 — край.
+  function freeFrom(st, cells, c) {
+    while (c >= 0 && c < CELLS && (cells[c] !== '.' || pendAt(st, c) >= 0)) c = advance(c, st.dir);
+    return c >= 0 && c < CELLS ? c : -1;
+  }
+
+  /// Курсор стоїть, а тицьнули фішку на стійці — кладемо її під курсор і ведемо курсор далі. Так слово на телефоні
+  /// складається дотиками: клітинка (→, ще раз — ↓), а тоді фішки по черзі.
+  function putAtCursor(root, ctx, st, ri) {
+    const v = ctx.view || {};
+    const rack = v.rack || [];
+    const cells = v.board || '';
+    const c = freeFrom(st, cells, st.cur);
+    if (c < 0) { st.cur = null; st.sel = ri; return repaint(root, ctx); }
+    const next = freeFrom(st, cells, advance(c, st.dir));
+    if (isBlank(rack[ri])) { st.blank = { cell: c, ri, next }; st.cur = null; return repaint(root, ctx); }
+    st.pend.push({ cell: c, ri, letter: rack[ri], blank: false });
+    st.sel = null;
+    st.cur = next >= 0 ? next : null;
+    repaint(root, ctx);
+  }
+
   /// Наступна клітинка в напрямку; -1 — вийшли за край рядка чи дошки.
   function advance(cell, dir) {
     if (cell < 0) return -1;
@@ -254,7 +279,7 @@
     });
     HGames.ui.hand(host, items, {
       render: (it) => it.html,
-      onItem: (it) => pick(host.parentNode, ctx, st, it.ri),
+      onItem: (it) => pick(rootUp(host), ctx, st, it.ri),
     });
   }
 
@@ -263,6 +288,8 @@
     if (st.mode === 'swap') {
       const at = st.swap.indexOf(i);
       if (at >= 0) st.swap.splice(at, 1); else st.swap.push(i);
+    } else if (st.cur != null && !used(st, i)) {
+      return putAtCursor(root, ctx, st, i);
     } else {
       st.sel = st.sel === i ? null : i;
       // Фішка в руці — курсор не потрібен: наступний клік по клітинці її покладе.
@@ -289,9 +316,10 @@
           + (st.pend.length === RACK ? ' (бінго — файно!)' : '') + '. Тисни «Готово»'
           : '';
     } else if (ctx.myTurn && ctx.playing) {
-      html = firstMove
-        ? 'Перше слово має пройти через ★. Візьми фішку зі стійки і тицьни в клітинку — або тицьни клітинку й друкуй'
-        : 'Візьми фішку зі стійки і тицьни в клітинку — або тицьни клітинку й друкуй слово';
+      // На телефоні клавіатури під рукою нема — про друк не згадуємо.
+      const kb = !(HGames.ui.coarse && HGames.ui.coarse()) ? ' — або друкуй' : '';
+      html = (firstMove ? 'Перше слово має пройти через ★. ' : '')
+        + 'Тицьни клітинку (ще раз — ↓) і клади фішки по черзі' + kb;
     } else if (v.last) html = 'Останнє слово: ' + v.last.words.map((w) => ctx.esc(w.word)).join(', ') + ' +' + v.last.total;
     setHtml(host, html);
   }
@@ -334,7 +362,7 @@
     host._h = html;
     host.innerHTML = html;
 
-    const root = host.parentNode;
+    const root = rootUp(host);
     const on = (sel, fn) => { const b = host.querySelector(sel); if (b) b.onclick = fn; };
     on('[data-go]', () => submit(root, ctx, st));
     on('[data-reset]', () => { st.pend = []; st.sel = null; st.cur = null; repaint(root, ctx); });
@@ -374,14 +402,15 @@
     if (host._h === html) return;          // попап уже на місці: не перебудовувати 33 кнопки на кожен вид
     host._h = html;
     host.innerHTML = html;
-    const root = host.parentNode;
+    const root = rootUp(host);
     host.querySelectorAll('[data-ch]').forEach((b) => b.onclick = () => {
       st.pend.push({ cell: st.blank.cell, ri: st.blank.ri, letter: b.dataset.ch, blank: true });
+      if (st.blank.next != null) st.cur = st.blank.next >= 0 ? st.blank.next : null;
       st.blank = null;
       st.sel = null;
       repaint(root, ctx);
     });
-    host.querySelector('[data-cancel]').onclick = () => { st.blank = null; repaint(root, ctx); };
+    host.querySelector('[data-cancel]').onclick = () => { if (st.blank.next != null) st.cur = st.blank.cell; st.blank = null; repaint(root, ctx); };
   }
 
   // ---------------------------------------------------------------- легенда бонусів
@@ -445,8 +474,8 @@
       const card = root.closest('.gtable');
       if (card) card.classList.add('scr-table');
       root.innerHTML = '<div class="scr-top"></div><div class="scr-board"></div><div class="scr-legend"></div>'
-        + '<div class="scr-rack"></div><div class="scr-blank"></div><div class="scr-hint"></div>'
-        + '<div class="scr-btns"></div><div class="scr-log"></div>';
+        + '<div class="scr-dock"><div class="scr-rack"></div><div class="scr-blank"></div><div class="scr-hint"></div>'
+        + '<div class="scr-btns"></div></div><div class="scr-log"></div>';
       state(root, ctx);
       repaint(root, ctx);
     },

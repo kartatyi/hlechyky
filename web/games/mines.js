@@ -278,6 +278,9 @@
       out.push('<button type="button" class="ghost mn-flag' + (st.flagMode ? ' on' : '') + '" data-m="flag">🚩 Прапорець</button>');
     if (daily && ctx.mine && dead) out.push('<button type="button" class="primary" data-m="restart">Ану ще раз</button>');
     if (!daily && ctx.mine && ctx.playing && !dead) out.push('<button type="button" class="ghost" data-m="resign">Здаюсь</button>');
+    // Велике поле на телефоні вписане в ширину (клітинка ~23 px); кому дрібно — крупніше з прокруткою вбік.
+    if ((v.w || (daily ? 16 : 9)) > 12 && window.matchMedia('(max-width: 480px)').matches)
+      out.push('<button type="button" class="ghost mn-zoombtn" data-m="zoom">' + (st.zoom ? '🔍 Ціле поле' : '🔍 Крупніше') + '</button>');
     if (daily && v.solved && v.ghost) {
       const g = st.ghost;
       if (!g) out.push('<button type="button" class="primary" data-m="ghost">👻 Привид: ' + escHtml(v.ghost.n) + ' ' + timeText(v.ghost.ms) + '</button>');
@@ -290,6 +293,7 @@
     setHtml(el, html);
     el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
       if (b.dataset.m === 'flag') { st.flagMode = !st.flagMode; buttons(root, ctx, daily); return; }
+      if (b.dataset.m === 'zoom') { st.zoom = !st.zoom; paint(root, ctx, daily); return; }
       if (b.dataset.m === 'ghost') { ghostStart(root, ctx); buttons(root, ctx, daily); return; }
       if (b.dataset.m === 'gstop') { ghostStop(root); paint(root, ctx, daily); return; }
       if (b.dataset.m === 'gspeed') {
@@ -392,7 +396,9 @@
     const owners = v.owners || '';
     const lastCls = v.lastBy != null ? ' by' + v.lastBy : '';
 
-    const board = HGames.ui.grid(boardHost(root), {
+    const wrap = boardHost(root);
+    wrap.classList.toggle('mn-zoom', !!st.zoom && w > 12);
+    const board = HGames.ui.grid(wrap, {
       cols: w,
       // до першого виду cells порожній: малюємо поле повного розміру, а не смужку в один ряд
       rows: cells.length ? Math.ceil(cells.length / w) : (v.h || w),

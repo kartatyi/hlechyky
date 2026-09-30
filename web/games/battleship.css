@@ -101,7 +101,7 @@
 
 /* свій корабель — після підсвітки, бо він важливіший за неї */
 .bs-cell.ship { background: var(--bs-ship); border-color: var(--panel3); }
-.bs-cell:not(:disabled):hover { background: var(--accent); }
+@media (hover: hover) { .bs-cell:not(:disabled):hover { background: var(--accent); } }
 /* розстановка мишею: тінь корабля там, де він ляже після кліку; червонувата — сюди не стане */
 .bs-cell.pv, .bs-cell.pv:not(:disabled):hover { background: var(--bs-ship); border-color: var(--accent); }
 .bs-cell.pvbad, .bs-cell.pvbad:not(:disabled):hover { background: rgba(255, 90, 60, .35); border-color: var(--danger); }
@@ -214,7 +214,7 @@
      цілишся в поле згори — і не бачиш, скільки лишилось. Тепер вона липне до низу екрана над вкладками
      й пігулкою балачки (їхні висоти — змінні каркаса), як смужка вгадування в «Шпигуні». */
   .bs-bar {
-    position: sticky; bottom: calc(var(--tabs-h, 0px) + var(--mini-h, 0px) + 62px); z-index: 3;
+    position: sticky; bottom: calc(var(--gdock-h, 64px) + 6px); z-index: 3;
     width: auto; max-width: 100%; box-sizing: border-box; padding: 5px 12px; border-radius: 999px;
     background: var(--panel2); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
   }
@@ -224,6 +224,17 @@
   .bs-bar .bs-say { min-width: 0; }
   .bs-bar .garc { width: 34px; height: 34px; flex: none; }
   .bs-narrow { display: inline; }
+  /* Поля — на всю ширину екрана поза відступами картки: клітинка ~33 px на 390 замість 28 (на 360 — ~30). */
+  .gbody > .bs { width: calc(100vw - 6px); max-width: none; margin-inline: calc(50% - 50vw + 3px); }
+  .bs-side, .bs-seas.n1 .bs-side { width: 100%; }
+  .bs-grid { gap: 1px; padding: 3px; }
+  .bs-lab { font-size: 11px; }
+}
+/* Розстановка пальцем: список кораблів — цілі ≥ 40 px, палуби видно. */
+@media (pointer: coarse) {
+  .bs-tools .gcard { min-height: 42px; min-width: 46px; display: inline-flex; align-items: center; justify-content: center; }
+  .bs-ship i { width: 13px; height: 13px; }
+  .bs-acts button { min-height: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

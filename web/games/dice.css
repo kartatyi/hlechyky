@@ -434,3 +434,9 @@
 .di-shead { font-weight: 600; margin-bottom: 4px; }
 .di-slist { margin: 0 0 4px; padding-left: 1.1em; }
 .di-slist li { margin: 2px 0; }
+
+/* Пальцем (прохід «Телефон», 30.09): реакції були 32×28, перемикачі «шанси/звук» — 25 px заввишки. */
+@media (pointer: coarse) {
+  .dice .di-rxb { width: 40px; height: 36px; touch-action: manipulation; }
+  .dice .di-tg { min-height: 36px; }
+}

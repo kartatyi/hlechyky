@@ -68,6 +68,10 @@
 }
 .pz-clue b { font-size: 1.35em; letter-spacing: .06em; color: var(--accent); font-family: var(--display, inherit); }
 .pz-clue span { margin-left: 8px; letter-spacing: 0; }
+/* «Досить» живе в рядку підказки, праворуч: текст по центру вільного місця, кнопка не гуляє разом із ним. */
+.pz-clue:has(.pz-pass) { display: flex; align-items: center; gap: 10px; padding-block: 5px; }
+.pz-cluetext { flex: 1 1 auto; min-width: 0; }
+.pz-pass { flex: none; min-height: 40px; padding: 0 14px; }
 
 /* ---- стіл ---- */
 .pz-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 100%; }
@@ -177,6 +181,38 @@
   .pz-col { flex: 1 1 100%; padding: 7px 9px; }
   .pz-clue b { font-size: 1.15em; }
 }
+
+/*
+  Телефон у партії (прохід «Телефон», 30.09): стіл 5×5 починався аж на y≈528 з 844 — над ним чіпи місць каркаса,
+  шапка й склад «команда / стіл» стовпчиком (188 px). Тепер склад — дві колонки поруч і лише головне, чіпи місць
+  сховані (ті самі люди є в складі), а капітанові число підказки — над полем, під пальцем і видно з клавіатурою.
+*/
+@media (max-width: 520px) {
+  .gtable:has(> .gbody > .pz:not(.pz-lobby):not(.pz-setup)) > .gseats .gseat { display: none; }
+}
+@media (max-width: 480px) {
+  .pz { gap: 8px; }
+  .pz:not(.pz-setup) .pz-teams { flex-wrap: nowrap; }
+  .pz:not(.pz-setup) .pz-col { flex: 1 1 0; min-width: 0; gap: 4px; padding: 6px 8px; }
+  .pz:not(.pz-setup) .pz-table .muted { display: none; }
+  .pz:not(.pz-setup) .pz-mates { gap: 3px; }
+  .pz:not(.pz-setup) .pz-mate { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 7px; font-size: .8em; }
+  .pz:not(.pz-setup) .pz-role { display: none; }
+  .pz-colhead { flex-wrap: wrap; column-gap: 6px; }
+  /* Слово в плитці не рветься посеред літер: вужчі поля плитки, трохи щільніші літери, розмір — за найдовшим словом. */
+  .pz-grid:not(.pz-g4) { gap: 3px; }
+  .pz-card { font-size: .8em; padding: 5px 1px; letter-spacing: -.02em; }
+  .pz-card.long { font-size: .72em; }
+  .pz-card.l10 { font-size: .62em; }
+  .pz-card.xlong { font-size: .62em; }
+  /* Капітан: числа над полем — два рядки по п'ять, під пальцем; поле й «Сказати» — під ними. */
+  .pz-give .pz-counts { order: -1; width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .pz-give .pz-word { flex: 1 1 0; min-width: 0; }
+}
+@media (pointer: coarse) {
+  .pz-n { min-width: 40px; min-height: 40px; font-size: 1em; }
+  .pz-pass, .pz-acts .ghost { min-height: 44px; }
+}
 .pz-table .muted { line-height: 1.3; }
 
 /* ---- Швидкі «Позивні 4×4» (прохід №3, п. 168): чотири стовпчики, плитки вищі й слова більші ---- */
@@ -206,3 +242,8 @@
 .pz-ex-cards .pz-card { min-height: 56px; width: 92px; padding: 6px 4px; font-size: .95em; cursor: default; }
 .pz-ex-cards .pz-card em { display: block; font-style: normal; font-size: .72em; font-weight: 600; opacity: .85; }
 .pz-ex-cards .pz-card > span { display: block; }
+/* Низький телефон (360×740): останній ряд лягав під згорнуту «💬 Стіл» — плитки на 4 px нижчі, проміжки щільніші. */
+@media (max-width: 480px) and (max-height: 760px) {
+  .pz { gap: 6px; }
+  .pz-grid:not(.pz-g4) .pz-card { min-height: 45px; }
+}

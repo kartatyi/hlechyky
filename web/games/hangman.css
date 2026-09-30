@@ -101,3 +101,10 @@
   .hgal { width: 136px; }
   .hl { min-width: 30px; font-size: 2em; }
 }
+
+/* Телефон (прохід 30.09): клавіші на всю ширину картки дає каркас (≈28 px), тут — вищі (42 → 48 px) і з більшим
+   проміжком між рядами: по висоті місця вдосталь, а промах у сусідній ряд — найчастіший. */
+@media (pointer: coarse) {
+  .gbody:has(> .hword) > .gkbd { gap: 7px; }
+  .gbody:has(> .hword) > .gkbd .gkey { min-height: 48px; touch-action: manipulation; }
+}

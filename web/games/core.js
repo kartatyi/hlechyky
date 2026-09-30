@@ -234,6 +234,7 @@
     }
     if (el.className !== cls) el.className = cls;
     el.style.aspectRatio = w + ' / ' + h;
+    el.style.setProperty('--gar', String(w / h));   // core.css стелить полотно за висотою (g-land, ⛶)
     const c = { el, ctx: el.getContext('2d'), w, h, resize };
     function resize() {
       const dpr = Math.min(3, window.devicePixelRatio || 1);
@@ -283,7 +284,7 @@
       el.className = 'gkbd';
       el.innerHTML = KB_ROWS.map((r, ri) => {
         let row = r.split('').map((ch) => '<button type="button" class="gkey" data-k="' + ch + '">' + ch + '</button>').join('');
-        if (ri === 2) row = '<button type="button" class="gkey wide" data-k="Enter">Enter</button>' + row + '<button type="button" class="gkey wide" data-k="Backspace">⌫</button>';
+        if (ri === 2) row = '<button type="button" class="gkey wide" data-k="Enter" aria-label="Enter" title="Enter">↵</button>' + row + '<button type="button" class="gkey wide" data-k="Backspace">⌫</button>';
         return '<div class="gkrow">' + row + '</div>';
       }).join('');
       el.addEventListener('click', (e) => {
@@ -498,7 +499,118 @@
   /// питав саме `ev.isTrusted` (Око майстра Гончарного кола), має стояти оце.
   const human = (ev) => !!ev && (ev.isTrusted || ev.hpad === true);
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, Clock, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml };
+  // ---------- підгонка під екран телефона (прохід 30.09) ----------
+  /// Скільки екрана справді є для столу: зверху липка шапка сайту, знизу вкладки, міні-плеєр і згорнута шторка
+  /// «💬 Стіл». Каркас тримає це в змінних :root (--gtop-h, --gdock-h, --gfit-h) і кличе підписників ui.onFit,
+  /// коли щось змінилось: поворот, resize, ⛶, аркада, шторка, маршрут. Опис API — D:/or-wt/_mobile/fix-core.md.
+  let fitLast = '', fitRaf = 0, fitProbe = null, fitBooted = false;
+  const fitHosts = new Set();
+  /// Сховані картки («на складі», display: none у предка) колбеків не отримують — лише позначку; колбек прийде,
+  /// щойно картку знову видно (наступний applyFit чи повторний onFit із update гри).
+  const fitStale = new Set();
+  const fitHidden = (host) => !host.getClientRects().length;
+  function safeBottom() {
+    if (!fitProbe) {
+      fitProbe = document.createElement('div');
+      fitProbe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none';
+      document.body.appendChild(fitProbe);
+    }
+    return fitProbe.offsetHeight || 0;
+  }
+  function boxOf(el) {
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return null;
+    const r = el.getBoundingClientRect();
+    return r.height > 0 ? r : null;
+  }
+  function fit() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const he = document.querySelector('header'), hd = boxOf(he);
+    const top = hd && getComputedStyle(he).position !== 'static' ? Math.max(0, Math.round(hd.bottom)) : 0;
+    // Знизу: вкладки, міні-плеєр і згорнута шторка — що з них видно, те й займає низ.
+    let low = h;
+    for (const el of document.querySelectorAll('nav.mtabs, header .mini, .tchat.drawer:not(.open)')) {
+      const r = boxOf(el);
+      if (r && r.top > h / 2) low = Math.min(low, r.top);   // усе це fixed знизу; на ПК міні-плеєр — у шапці, угорі
+    }
+    const dock = low < h ? Math.round(h - low) : safeBottom();
+    const b = document.body.classList;
+    return { w, h, top, dock, imm: b.contains('g-imm'), land: b.contains('g-land'), coarse: coarse() };
+  }
+  /// Занурений режим на телефоні: ⛶ — будь-яка гра, або сама аркада, коли телефон лежить. style.css/core.css
+  /// тоді ховають шапку, вкладки, міні-плеєр і шторку; g-land — ще й поле ліворуч, керування праворуч.
+  function syncImm() {
+    const b = document.body.classList;
+    const land = window.innerWidth > window.innerHeight;
+    const imm = !!(shown && view.kind === 'room' && coarse()
+      && (full || (b.contains('g-arcade') && land && window.innerHeight <= 500)));
+    if (b.contains('g-imm') !== imm) {
+      b.toggle('g-imm', imm);
+      if (imm) window.scrollTo(0, 0);   // шапки вже нема — стіл стає під верх екрана
+    }
+    if (b.contains('g-land') !== (imm && land)) b.toggle('g-land', imm && land);
+  }
+  function applyFit() {
+    fitRaf = 0;
+    syncImm();
+    const f = fit();
+    const key = [f.w, f.h, f.top, f.dock, f.imm, f.land].join();
+    const changed = key !== fitLast;
+    if (!changed && !fitStale.size) return;
+    if (changed) {
+      fitLast = key;
+      const rs = document.documentElement.style;
+      rs.setProperty('--gtop-h', f.top + 'px');
+      rs.setProperty('--gdock-h', f.dock + 'px');
+      rs.setProperty('--gfit-h', Math.max(0, f.h - f.top - f.dock) + 'px');
+    }
+    // місце змінилось — усім видимим; ні — лише тим, хто пропустив зміну схованим і тепер знову на екрані
+    for (const host of changed ? fitHosts : fitStale) {
+      if (!host.isConnected) { fitHosts.delete(host); fitStale.delete(host); continue; }
+      if (fitHidden(host)) { fitStale.add(host); continue; }
+      fitStale.delete(host);
+      try { if (host._hgFit) host._hgFit(f); } catch (e) { console.error(e); }
+    }
+    if (changed) document.dispatchEvent(new CustomEvent('hgames:fit', { detail: f }));
+  }
+  function refit() {
+    if (!fitBooted) fitBoot();
+    if (!fitRaf) fitRaf = requestAnimationFrame(applyFit);
+  }
+  function fitBoot() {
+    fitBooted = true;
+    window.addEventListener('resize', refit);
+    window.addEventListener('orientationchange', refit);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', refit);
+    // миша ↔ дотик (планшет із клавіатурою, емулятор) — розміри ті самі, а режим інший
+    const mq = window.matchMedia('(pointer: coarse)');
+    if (mq.addEventListener) mq.addEventListener('change', refit);
+    const ro = window.ResizeObserver ? new ResizeObserver(refit) : null;
+    const watch = () => { if (ro) document.querySelectorAll('header, nav.mtabs, .tchat').forEach((el) => ro.observe(el)); };
+    watch();
+    // класи body (g-room, g-arcade, gfull, маршрут, kbd) і шторка, що з'являється в body пізніше
+    new MutationObserver((ms) => { if (ms.some((m) => m.type === 'childList')) watch(); refit(); })
+      .observe(document.body, { attributes: true, attributeFilter: ['class'], childList: true });
+  }
+  /// ui.onFit(host, fn): fn(fit) на кожну зміну місця. Ідемпотентно (з mount і кожного update); відписка — сама,
+  /// коли host вийшов із документа, або onFit(host, null).
+  function onFit(host, fn) {
+    if (!host) return;
+    const had = fitHosts.has(host);
+    host._hgFit = fn || null;
+    if (!fn) { fitHosts.delete(host); fitStale.delete(host); return; }
+    fitHosts.add(host);
+    if (!fitBooted) refit();
+    if (!had || fitStale.has(host)) requestAnimationFrame(() => {
+      if (!host.isConnected || !host._hgFit) return;
+      if (fitHidden(host)) { fitStale.add(host); return; }
+      fitStale.delete(host);
+      host._hgFit(fit());
+    });
+  }
+
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, Clock, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
 
   // =============================================================================================
   // Хаб
@@ -1155,8 +1267,26 @@
   function setFull(on) {
     full = !!on && view.kind === 'room';
     document.body.classList.toggle('gfull', full);
+    // На телефоні ⛶ — справжній повний екран (Android: без рядка адреси й системних панелей). На айфоні API нема —
+    // там досить g-imm (сховані шапка й вкладки). Вийшли жестом «назад» — знімаємо й ⛶ (fullscreenchange нижче).
+    const de = document.documentElement;
+    if (full && coarse() && !document.fullscreenElement && de.requestFullscreen) {
+      fsMine = true;
+      try { const p = de.requestFullscreen({ navigationUI: 'hide' }); if (p && p.catch) p.catch(() => { fsMine = false; }); } catch { fsMine = false; }
+    } else if (!full && fsMine) {
+      fsMine = false;
+      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    }
+    syncImm();
+    refit();
     notifyTable();   // на весь екран панелі нема — балачка столу переїжджає в шторку
   }
+  let fsMine = false;
+  document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement || !fsMine) return;
+    fsMine = false;
+    if (full) { setFull(false); if (view.kind === 'room' && view.id) renderRoomHead(view.id); }
+  });
 
   /// Стіл, біля якого людина зараз стоїть: лише сторінка столу й лише стіл на кількох (соло говорити нема з ким).
   /// main — гра, де розмова і є гра (мафія): балачку столу там розгортаємо самі.
@@ -1991,8 +2121,17 @@
   function syncArcade() {
     const rv = shown && view.kind === 'room' ? views[view.id] : null;
     const g = rv && gameOf(rv.room.game);
-    const on = !!(g && g.group === 'live' && rv.seat != null && rv.room.status === 'playing');
+    // Аркада — жива гра (group live) або соло-реалтайм, що сказав про себе `arcade: true` у register (забіг, цеглини).
+    const mod = rv && modules[rv.room.game];
+    const on = !!(g && (g.group === 'live' || (mod && mod.arcade)) && rv.seat != null && rv.room.status === 'playing');
     if (document.body.classList.contains('g-arcade') !== on) document.body.classList.toggle('g-arcade', on);
+    // Заклики «Х кличе… [Сісти]» лишались висіти над хрестовиною, коли вже сів: посеред аркади й за столом на
+    // телефоні їх прибираємо (особисті — ні: «кличе тебе» важливіше).
+    if (on || (rv && window.matchMedia('(max-width: 900px)').matches)) {
+      document.querySelectorAll('#toasts .ginvite:not(.personal)').forEach((e) => e.remove());
+    }
+    syncImm();
+    refit();
   }
 
   function refreshCard(id) {
@@ -2214,6 +2353,10 @@
     if (!box) { toast(inv.text, 'ok'); return; }
     const was = box.querySelector('.ginvite[data-room="' + CSS.escape(inv.roomId) + '"]');
     if (was) was.remove();
+    // На телефоні заклики не громадяться стосом на чверть екрана: новий замінює старі (особистий — усі).
+    if (window.matchMedia('(max-width: 900px)').matches) {
+      box.querySelectorAll('.ginvite' + (personal ? '' : ':not(.personal)')).forEach((e) => e.remove());
+    }
     if (personal) ping();
     const el = document.createElement('div');
     el.className = 'toast ok ginvite' + (personal ? ' personal' : '');
@@ -2265,7 +2408,7 @@
       for (const id in cards) if (views[id] && views[id].room.game === mod.id) refreshCard(id);
       // Модулі тепер приїжджають по одному у тиші — лобі перемальовуємо раз на пачку, а не на кожен.
       if (!lobbyT) lobbyT = setTimeout(() => { lobbyT = 0; if (shown && root && root.querySelector('.gtiles')) renderView(); }, 150);
-      if (shown && view.kind === 'room') renderRoomHead(view.id);
+      if (shown && view.kind === 'room') { renderRoomHead(view.id); syncArcade(); }   // arcade: модуль міг приїхати пізніше
       notifyTable();   // модуль міг приїхати пізніше за стіл — і сказати, що розмова тут головна (talk: 'main')
     },
 
@@ -2349,7 +2492,13 @@
         };
         pinned.delete(id);
         if (view.kind === 'room' && view.id === id && !cards[id]) renderView();
-        else if (cards[id]) refreshCard(id);
+        else if (cards[id]) {
+          refreshCard(id);
+          // Шапку столу малювали ще до першого виду (соло, вхід за посиланням) — там лишалось «Стіл» замість назви гри,
+          // а на ≤480 назва тепер лише в шапці. Перемальовуємо на першому виді й коли міняється те, що вона показує.
+          if (view.kind === 'room' && view.id === id
+            && (!old || old.room.status !== rv.room.status || old.room.watchers !== rv.room.watchers)) renderRoomHead(id);
+        }
         else if (view.kind === 'lobby') renderView();      // «твій хід» на резюме в лобі
         syncWatch();
         notifyTable();                                      // сів, встав, партія почалась — балачці столу це важливо

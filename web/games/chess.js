@@ -284,11 +284,19 @@
     } else {
       top = '<button type="button" class="ghost danger" data-act="' + (armed ? 'resign' : 'ask') + '">' + (armed ? 'Точно здатись?' : 'Здатись') + '</button>';
     }
-    const html = top + '<div class="chs-glek">' + chips('level', LEVELS, g.level) + chips('color', COLORS, g.color)
+    // На телефоні три ряди чіпів (по 44 px) виштовхували «Закрити» під нижнє меню — там вони згорнуті
+    // в «⚙️» (розгорнуто — пам'ятаємо до кінця показу); на ПК, як і були, відкриті.
+    if (st.setOpen == null) st.setOpen = !(HGames.ui.coarse && HGames.ui.coarse());
+    const lvl = (LEVELS.find(([k]) => k === g.level) || [])[1] || '';
+    const html = top + '<details class="chs-set"' + (st.setOpen ? ' open' : '') + '><summary>⚙️ Налаштування'
+      + (lvl ? ' <span class="muted">· ' + lvl + '</span>' : '') + '</summary>'
+      + '<div class="chs-glek">' + chips('level', LEVELS, g.level) + chips('color', COLORS, g.color)
       + chips('variant', VARIANTS, v.variant) + '</div>'
       + (over ? '<span class="muted small">Обране діє з наступної партії — тисни «Ану ще раз»</span>'
-        : '<span class="muted small">Зміна — нова партія. Без рейтингу й черепків.</span>');
+        : '<span class="muted small">Зміна — нова партія. Без рейтингу й черепків.</span>') + '</details>';
     setHtml(el, html);
+    const det = el.querySelector('details.chs-set');
+    if (det) det.ontoggle = () => { st.setOpen = det.open; };
     el.querySelectorAll('button').forEach((b) => b.onclick = () => {
       if (b.dataset.act === 'ask') { st.resign = fen; paint(root, ctx); return; }
       if (b.dataset.act) { st.resign = null; ctx.act(b.dataset.act); return; }
@@ -374,6 +382,16 @@
       root.insertBefore(el, root.firstChild);
     }
     const over = p.solved || p.gaveUp;
+    // Не той хід: сервер скидає дошку й додає спробу. Тост про це легко проґавити (на телефоні — тим паче),
+    // тож кажемо прямо над дошкою, поки не зробиш наступного ходу, і коротко струшуємо дошку.
+    if (st.seenAtt != null && p.attempts > st.seenAtt && !over) {
+      st.missAtt = p.attempts;
+      const bd = root.querySelector('.board.chessb');
+      if (bd) { bd.classList.remove('chs-shake'); void bd.offsetWidth; bd.classList.add('chs-shake'); setTimeout(() => bd.classList.remove('chs-shake'), 400); }
+    }
+    st.seenAtt = p.attempts;
+    const miss = !over && st.missAtt === p.attempts && p.left === p.n
+      ? '<br><span class="chs-miss">✗ Не той хід — Глек викрутився, дошка знову на початку</span>' : '';
     const k = p.startedAt + '|' + p.attempts;
     if (st.puzKey !== k) { st.puzKey = k; st.puzAt = performance.now() - (p.elapsedMs || 0); }
     const draw = () => {
@@ -381,7 +399,7 @@
       setHtml(el, '🧩 <b>Задача №' + p.no + '</b> · мат у ' + p.n + ' · ' + (v.me === 'b' ? 'ходять чорні' : 'ходять білі')
         + (over ? '' : ' · ходів лишилось: <b>' + p.left + '</b>')
         + ' · <span class="chs-t">⏱ ' + mmss(ms) + '</span>' + (p.attempts > 1 ? ' · спроба ' + p.attempts : '')
-        + (v.streak >= 2 ? ' · 🔥' + v.streak : ''));
+        + (v.streak >= 2 ? ' · 🔥' + v.streak : '') + miss);
     };
     draw();
     if (!over && ctx.playing) st.puzTimer = setInterval(() => { if (!document.hidden && root._chess) draw(); }, 1000);

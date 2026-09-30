@@ -98,7 +98,7 @@
     display: grid; grid-template-columns: auto auto; gap: 16px; align-items: center;
     justify-content: center; margin-top: 4px; touch-action: none; user-select: none;
   }
-  .tdirs { display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 40px); gap: 5px; }
+  .tdirs { display: grid; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(3, 46px); gap: 5px; }
   .tdirs button { justify-content: center; font-size: 1.15em; }
   .tdirs button[data-dir="3"] { grid-column: 2; grid-row: 1; }
   .tdirs button[data-dir="2"] { grid-column: 1; grid-row: 2; }
@@ -111,7 +111,29 @@
   .tfire:active { background: var(--clay); }
 }
 @media (max-width: 380px) {
-  .tdirs { grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(3, 38px); }
+  .tdirs { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 42px); }
   .tfire { width: 64px; height: 64px; font-size: 1.5em; }
   .tpad { gap: 10px; }
 }
+.tdirs button.on { background: var(--clay); }
+@media (pointer: coarse) {
+  .tpad, .tdirs, .tfire { -webkit-user-select: none; -webkit-touch-callout: none; }
+  .tdirs { touch-action: none; }
+}
+
+/* ---- телефон лежачи (body.g-land ставить каркас): хрестовина ліворуч від мапи, 💥 — праворуч, як на геймпаді:
+   тримаєш напрям одним великим пальцем і стріляєш другим. Мапа — посередині, за висотою екрана. Чіпи місць
+   каркаса ховаємо — ті самі гравці з фрагами вже є в рядку .thud праворуч (стовпчиком). ---- */
+body.g-land .gtable:has(> .gbody > canvas.tboard) { grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 10px; }
+body.g-land .gtable > .gbody > canvas.tboard { grid-column: 2; }
+body.g-land .gtable:has(> .gbody > canvas.tboard) > :not(.gbody),
+body.g-land .gtable:has(> .gbody > canvas.tboard) > .gbody > :not(canvas.gcanvas) { grid-column: 3; max-width: 21vw; font-size: .9em; }
+body.g-land .gtable:has(> .gbody > canvas.tboard) > .gseats { display: none; }
+body.g-land .gbody > .tpad { display: contents; }
+body.g-land .gbody > .tpad > .tdirs {
+  grid-column: 1; grid-row: 1 / span 12; align-self: center;
+  grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 48px);
+}
+body.g-land .gbody > .tpad > .tfire { grid-column: 3; width: 80px; height: 80px; margin: 6px 0; }
+body.g-land .gbody > .thud { flex-direction: column; align-items: stretch; }
+body.g-land .gbody > .thud .tchip { justify-content: space-between; }
