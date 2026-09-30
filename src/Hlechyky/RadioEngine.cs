@@ -287,15 +287,23 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     /// <remarks>
     /// <paramref name="journal"/> = false — без рядка в Журналі: так у чергу лягає реклама, яку Глек сам ставить
     /// щокілька треків. Інакше «Дядько Глек записує голосове» займало б Журнал частіше за всі людські дії разом.
+    /// <paramref name="next"/> = true — не в кінець, а наступним: одразу за треком, що вже пішов у liquidsoap. Так
+    /// стає реклама: з кінця довгої черги вона не грала годинами, а джингл тим часом докидав нові.
     /// </remarks>
-    public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick, bool journal = true) =>
+    public (bool Ok, string Message) AddVoice(TrackInfo track, string filePath, string nick, bool journal = true, bool next = false) =>
         Enqueue(track, nick, isAdmin: true, via: null, reason: null, quiet: !journal, filePath: filePath,
-            chat: $"{nick} записує голосове ({Mmss(track.DurationSec)})", reply: $"Голосове закинуто ({Mmss(track.DurationSec)})");
+            chat: $"{nick} записує голосове ({Mmss(track.DurationSec)})", reply: $"Голосове закинуто ({Mmss(track.DurationSec)})", next: next);
+
+    /// <summary>Чи стоїть у черзі (ще не заграв) трек, що підходить під умову, — джингл так питає, чи не чекає вже реклама.</summary>
+    public bool InQueue(Func<TrackInfo, bool> match)
+    {
+        lock (_lock) return _queue.Any(q => match(q.Track));
+    }
 
     (bool Ok, string Message) Enqueue(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, bool quiet,
-        string? filePath = null, string? chat = null, string? reply = null)
+        string? filePath = null, string? chat = null, string? reply = null, bool next = false)
     {
-        switch (Admit(track, nick, isAdmin, via, reason, filePath))
+        switch (Admit(track, nick, isAdmin, via, reason, filePath, next))
         {
             case Refusal.Banned: return (false, "Цей трек у бані. Викупити можна у вкладці «🚫 Бан»");
             case Refusal.TooLong:
@@ -312,8 +320,11 @@ public sealed class RadioEngine : BackgroundService, IOnAir
 
     enum Refusal { Banned, TooLong, InQueue, OnAir }
 
-    /// <summary>Перевірки замовлення і місце в кінці черги. null — трек став; інакше чому ні.</summary>
-    Refusal? Admit(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, string? filePath = null)
+    /// <summary>
+    /// Перевірки замовлення і місце в кінці черги (<paramref name="next"/> — наступним, за вже відправленими в
+    /// liquidsoap: їх не посунеш). null — трек став; інакше чому ні.
+    /// </summary>
+    Refusal? Admit(TrackInfo track, string nick, bool isAdmin, string? via, string? reason, string? filePath = null, bool next = false)
     {
         if (_db.IsBanned(track.Id)) return Refusal.Banned;
         if (!isAdmin && track.DurationSec > _yt.CurrentValue.MaxDurationSeconds) return Refusal.TooLong;
@@ -321,11 +332,13 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         {
             if (_queue.Any(q => q.Track.Id == track.Id)) return Refusal.InQueue;
             if (_now.Track?.Id == track.Id && _now.Source is "user" or "autodj") return Refusal.OnAir;
-            _queue.Add(new QueueItem
+            var item = new QueueItem
             {
                 Track = track, RequestedBy = nick, Via = via, Reason = reason,
                 FilePath = filePath, Status = filePath is null ? ItemStatus.Queued : ItemStatus.Ready,
-            });
+            };
+            if (next) _queue.Insert(_queue.TakeWhile(q => q.Status == ItemStatus.Dispatched).Count(), item);
+            else _queue.Add(item);
         }
         return null;
     }

@@ -18,11 +18,11 @@ public interface ILiveRenderer
 /// <summary>
 /// Справжній рендер: кожна репліка через <see cref="ITtsEngine"/> (паузи стиснуті, як у Tts), склейка з ~0,3 с тиші,
 /// «ба-дум-тсс» після позначених реплік, підпис наприкінці. Під голос — підкладка по колу: ~1,5 с музики наперед,
-/// під голосом притишена sidechain-компресором, після — ~2 с хвоста з затуханням. Гучність — loudnorm до −14 LUFS,
-/// як решта ефіру, моно 44,1 кГц 96k.
+/// під голосом притишена sidechain-компресором, після — ~2 с хвоста з затуханням. Гучність — спершу loudnorm до −14
+/// LUFS, потім <see cref="AdLoudness"/> до <c>Ad:LoudnessLufs</c>, як і реклама з бібліотеки; моно 44,1 кГц 96k.
 /// </summary>
 public sealed class FfmpegLiveRenderer(ITtsEngine tts, IOptionsMonitor<LiveAdsOptions> options, IOptionsMonitor<TtsOptions> ttsOptions,
-    IOptionsMonitor<YtDlpOptions> yt, ILogger<FfmpegLiveRenderer> log) : ILiveRenderer
+    IOptionsMonitor<YtDlpOptions> yt, ILogger<FfmpegLiveRenderer> log, IOptionsMonitor<AdOptions>? ad = null) : ILiveRenderer
 {
     public const double Intro = 1.5, Gap = 0.3, RimGap = 0.1, Tail = 2.2;
 
@@ -74,6 +74,9 @@ public sealed class FfmpegLiveRenderer(ITtsEngine tts, IOptionsMonitor<LiveAdsOp
                 log.LogWarning("ffmpeg не зібрав живу рекламу ({Code}): {Err}", code, err.Trim().Split('\n').LastOrDefault());
                 return null;
             }
+            // Не вийшло підтягнути — ролик однаково йде, лише тихіший
+            if (ad is not null && !await AdLoudness.BoostAsync(Ffmpeg, outPath, ad.CurrentValue.LoudnessLufs, ct))
+                log.LogInformation("жива реклама {File} лишилась на −14 LUFS: не вийшло підтягнути гучність", Path.GetFileName(outPath));
             return total;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return null; }
@@ -127,7 +130,7 @@ public sealed class FfmpegLiveRenderer(ITtsEngine tts, IOptionsMonitor<LiveAdsOp
         return path;
     }
 
-    static async Task<(int Code, string Err)> Run(string exe, IEnumerable<string> args, TimeSpan timeout, CancellationToken ct)
+    internal static async Task<(int Code, string Err)> Run(string exe, IEnumerable<string> args, TimeSpan timeout, CancellationToken ct)
     {
         var psi = new ProcessStartInfo(exe) { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
         foreach (var a in args) psi.ArgumentList.Add(a);

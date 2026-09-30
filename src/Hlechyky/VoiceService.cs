@@ -20,6 +20,7 @@ public sealed class VoiceService(IOptionsMonitor<YtDlpOptions> yt, IOptionsMonit
     string CacheDir => Paths.Resolve(yt.CurrentValue.CacheDir);
     string Tool(string name) => Path.Combine(Paths.Resolve(yt.CurrentValue.FfmpegDir), OperatingSystem.IsWindows() ? name + ".exe" : name);
 
+    public string Ffmpeg => Tool("ffmpeg");
     public bool Enabled => O.Enabled;
     public int MaxSeconds => Math.Clamp(O.MaxSeconds, 5, 900);
     public long MaxUploadBytes => Math.Max(64 * 1024, O.MaxUploadBytes);

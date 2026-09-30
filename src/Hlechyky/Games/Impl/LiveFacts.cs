@@ -43,8 +43,18 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
         "rich" or "poor" or "hoarder" or "wallet" => "wallet",
         "site_time" or "listen_time" => "time",
         "skips_self" or "ne_te" => "picky",
+        "same_track" or "fav_track" => "track",
+        "worst_game" or "best_game" => "game_all",
+        "skipped_by_others" or "skip_rate" => "skipped",
         _ => kind,
     };
+
+    /// <summary>
+    /// Факти за весь час («лор» гравця): гачі, перше замовлення, улюблений виконавець… Сьогоднішні цифри щодня нові, а
+    /// ці майже не міняються, тож і звучать рідше — у них свій кулдаун (<c>LiveAds:LoreCooldownHours</c>).
+    /// </summary>
+    public static bool IsLore(string kind) => kind is "gachi" or "first_order" or "top_artist" or "fav_track" or "worst_game"
+        or "best_game" or "orders_total" or "skip_rate" or "liker" or "chatty" or "ach_total";
 
     // =================================================================================================================
     // Факти про одного гравця
@@ -73,6 +83,8 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
             DailyTries(c, key, say, list);
             Rival(c, key, say, present ?? [], list);
             First(c, key, say, list);
+            Lore(c, nick, say, list);
+            LoreGames(c, nick, key, say, list);
         });
         return list.OrderByDescending(f => f.Juice).ToList();
     }
@@ -302,6 +314,114 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
             var local = TimeZoneInfo.ConvertTime(DateTimeOffset.Parse(at, CultureInfo.InvariantCulture), Days.Kyiv);
             list.Add(LiveFact.Of("first_today", 0.35, ("nick", say), ("hh", local.Hour), ("mm", local.Minute.ToString("00"))));
         }
+    }
+
+    /// <summary>Гачі-ремікс за назвою чи каналом: ютубівські ремікси підписані «Gachi», «♂», «Right version».</summary>
+    static readonly Regex Gachi = new(@"gachi|гачі|♂|right\s*version", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    static readonly Regex Brackets = new(@"\s*[\(\[][^\)\]]*[\)\]]", RegexOptions.Compiled);
+    static readonly Regex GachiTail = new(@"\s*(♂|\||\bby\b|gachi|гачі|right\s*version).*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Гачі-трек уголос: сама пісня без «♂Right version♂ by sandykit (Gachi remix)» — інакше жарт тоне в хвостах.
+    /// «Наталія Май - Перший дзвоник пролунає ♂Right version♂…» → «Наталія Май - Перший дзвоник пролунає».
+    /// </summary>
+    public static string GachiTrack(string title)
+    {
+        var t = GachiTail.Replace(Brackets.Replace(title, ""), "").Trim(' ', '-', '—', '.', ',', '|');
+        return Track(t.Length > 0 ? t : title);
+    }
+
+    static readonly string[] Months = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня",
+        "жовтня", "листопада", "грудня"];
+
+    /// <summary>
+    /// Лор гравця на радіо — за весь час: гачі, перше замовлення, улюблений виконавець і трек, скіпи, місце серед
+    /// замовників. Голосові (voice-*) за музику не рахуються: у владіка «улюблений виконавець» інакше — він сам.
+    /// </summary>
+    void Lore(SqliteConnection c, string nick, string say, List<LiveFact> list)
+    {
+        const string Music = "p.source = 'user' AND p.requested_by = $n AND p.track_id NOT LIKE 'voice-%'";
+
+        var gachi = Rows(c, $"SELECT t.title, t.artist FROM plays p JOIN tracks t ON t.id = p.track_id WHERE {Music}",
+                r => (Title: r.GetString(0), Artist: r.GetString(1)), ("$n", nick))
+            .Where(t => Gachi.IsMatch(t.Title) || Gachi.IsMatch(t.Artist)).ToList();
+        if (gachi.Count > 0)
+        {
+            var top = gachi.GroupBy(t => t.Title).OrderByDescending(g => g.Count()).First();
+            list.Add(LiveFact.Of("gachi", Math.Min(1, 0.7 + 0.05 * gachi.Count), ("nick", say), ("n", gachi.Count),
+                ("track", GachiTrack(top.Key)), ("m", top.Count())));
+        }
+
+        var orders = Scalar(c, $"SELECT COUNT(*) FROM plays p WHERE {Music}", ("$n", nick));
+        if (orders < 10) return;     // хто замовив три пісні, про того лору ще нема
+
+        var first = Rows(c, $"""
+            SELECT t.title, t.artist, p.started_at FROM plays p JOIN tracks t ON t.id = p.track_id WHERE {Music}
+            ORDER BY p.started_at LIMIT 1
+            """, r => (Title: r.GetString(0), Artist: r.GetString(1), At: r.GetString(2)), ("$n", nick)).FirstOrDefault();
+        if (first.Title is not null && DateTimeOffset.TryParse(first.At, CultureInfo.InvariantCulture, DateTimeStyles.None, out var at))
+        {
+            var local = TimeZoneInfo.ConvertTime(at, Days.Kyiv);
+            list.Add(LiveFact.Of("first_order", 0.5, ("nick", say), ("track", Track(first.Title)), ("artist", Track(first.Artist)),
+                ("date", $"{local.Day} {Months[local.Month - 1]}")));
+        }
+
+        var artist = Rows(c, $"""
+            SELECT t.artist, COUNT(*) FROM plays p JOIN tracks t ON t.id = p.track_id WHERE {Music}
+            GROUP BY t.artist ORDER BY 2 DESC LIMIT 1
+            """, r => (Artist: r.GetString(0), N: r.GetInt32(1)), ("$n", nick)).FirstOrDefault();
+        if (artist.N >= 6 && !string.Equals(artist.Artist, nick, StringComparison.OrdinalIgnoreCase))
+            list.Add(LiveFact.Of("top_artist", Math.Min(0.7, 0.4 + 0.01 * artist.N), ("nick", say), ("artist", Track(artist.Artist)),
+                ("n", artist.N)));
+
+        var fav = Rows(c, $"""
+            SELECT t.title, t.artist, COUNT(*) FROM plays p JOIN tracks t ON t.id = p.track_id WHERE {Music}
+            GROUP BY p.track_id ORDER BY 3 DESC LIMIT 1
+            """, r => (Title: r.GetString(0), Artist: r.GetString(1), N: r.GetInt32(2)), ("$n", nick)).FirstOrDefault();
+        if (fav.N >= 5)
+            list.Add(LiveFact.Of("fav_track", Math.Min(0.75, 0.4 + 0.02 * fav.N), ("nick", say), ("track", Track(fav.Title)),
+                ("artist", Track(fav.Artist)), ("n", fav.N)));
+
+        // Скільки замовлень людини хтось (чи вона сама) скіпнув — за весь час
+        var skipped = Scalar(c, $"SELECT COUNT(*) FROM plays p WHERE {Music} AND p.skipped = 1", ("$n", nick));
+        var rate = (int)Math.Round(100.0 * skipped / orders);
+        if (orders >= 30 && rate >= 12)
+            list.Add(LiveFact.Of("skip_rate", 0.35 + rate / 200.0, ("nick", say), ("p", rate), ("n", skipped), ("m", orders)));
+
+        // Місце серед замовників (без Глека); перше-друге — привід для жарту, далі вже не так
+        var place = 1 + Scalar(c, """
+            SELECT COUNT(*) FROM (SELECT requested_by, COUNT(*) AS n FROM plays WHERE source = 'user' AND requested_by IS NOT NULL
+            AND requested_by <> 'Дядько Глек' AND track_id NOT LIKE 'voice-%' GROUP BY requested_by) WHERE n > $o
+            """, ("$o", orders));
+        if (orders >= 50)
+            list.Add(LiveFact.Of("orders_total", place <= 2 ? 0.4 : 0.25, ("nick", say), ("n", orders), ("place", place)));
+    }
+
+    /// <summary>Ігри й сайт за весь час: найгірша й найкраща гра, лайки, балачки, ачівки.</summary>
+    void LoreGames(SqliteConnection c, string nick, string key, string say, List<LiveFact> list)
+    {
+        var games = Rows(c, """
+            SELECT game, SUM(outcome = 'win'), SUM(outcome = 'loss') FROM game_results
+            WHERE nick_key = $k AND game <> 'clicker' GROUP BY game
+            """, r => (Game: r.GetString(0), W: r.GetInt32(1), L: r.GetInt32(2)), ("$k", key));
+        // Найгірша — де перемог не більше чверті; з кількох — найнижча частка, а за рівної — більше поразок
+        var worst = games.Where(g => g.W + g.L >= 12 && g.W * 4 <= g.W + g.L)
+            .OrderBy(g => (double)g.W / (g.W + g.L)).ThenByDescending(g => g.L).FirstOrDefault();
+        if (worst.Game is not null)
+            list.Add(LiveFact.Of("worst_game", worst.W == 0 ? 0.8 : 0.6, ("nick", say), ("game", Title(worst.Game)), ("w", worst.W), ("l", worst.L)));
+        var best = games.Where(g => g.W + g.L >= 15 && g.W * 100 >= (g.W + g.L) * 55).OrderByDescending(g => g.W).FirstOrDefault();
+        if (best.Game is not null)
+            list.Add(LiveFact.Of("best_game", 0.35, ("nick", say), ("game", Title(best.Game)), ("w", best.W), ("l", best.L)));
+
+        var likes = Scalar(c, "SELECT COUNT(*) FROM likes WHERE nick = $n", ("$n", nick));
+        if (likes >= 100)
+            list.Add(LiveFact.Of("liker", 0.35 + Math.Min(0.25, likes / 2000.0), ("nick", say), ("n", likes)));
+        var chat = Scalar(c, "SELECT COUNT(*) FROM chat WHERE kind = 'chat' AND nick = $n", ("$n", nick));
+        if (chat >= 100)
+            list.Add(LiveFact.Of("chatty", 0.25, ("nick", say), ("n", chat)));
+        var ach = Scalar(c, "SELECT COUNT(*) FROM achievements WHERE nick_key = $k", ("$k", key));
+        if (ach >= 40)
+            list.Add(LiveFact.Of("ach_total", 0.2, ("nick", say), ("n", ach)));
     }
 
     // =================================================================================================================

@@ -220,7 +220,7 @@ public class LiveAdsTests
         ["nick"] = "Назар", ["target"] = "Назар", ["buyer"] = "Смауг", ["rival"] = "владік", ["n"] = "7", ["m"] = "3", ["w"] = "2",
         ["g"] = "5", ["b"] = "900", ["h"] = "3", ["min"] = "190", ["wh"] = "12", ["all"] = "9", ["game"] = "Мотоцикли",
         ["track"] = "Я Канівес", ["artist"] = "Ем Сі Петя", ["ach"] = "Шериф", ["item"] = "Веселка", ["nicks"] = "владік, Смауг",
-        ["hh"] = "7", ["mm"] = "05",
+        ["hh"] = "7", ["mm"] = "05", ["l"] = "19", ["p"] = "22", ["place"] = "2", ["date"] = "16 вересня",
     };
 
     static IEnumerable<(string Where, string Template)> AllTemplates(LiveLines l)
@@ -374,6 +374,71 @@ public class LiveAdsTests
         var f = Fact(r.Facts.For("владік"), "same_track")!;
         Assert.Equal("Я Канівес", f.Values["track"]);
         Assert.Equal("3", f.Values["n"]);
+    }
+
+    [Fact]
+    public void Gachi_is_found_by_title_and_read_without_the_right_version_tail()
+    {
+        using var r = new Rig();
+        r.Exec("INSERT INTO tracks(id, title, artist, source_url, created_at) VALUES('g1', 'Наталія Май - Перший дзвоник пролунає ♂Right version♂ by sandykit (Gachi remix)', 'sandykit', 'u', $n), ('s1', 'Тисяча пісень', 'Zwyntar', 'u', $n)",
+            ("$n", Rig.Iso(r.Clock.UtcNow)));
+        for (var i = 0; i < 4; i++)
+            r.Exec("INSERT INTO plays(track_id, source, requested_by, started_at) VALUES('g1', 'user', 'Smaug', $at)", ("$at", Rig.Iso(r.Clock.UtcNow.AddDays(-20 + i))));
+        r.Exec("INSERT INTO plays(track_id, source, requested_by, started_at) VALUES('s1', 'user', 'Smaug', $at)", ("$at", Rig.Iso(r.Clock.UtcNow)));
+
+        var f = r.Facts.For("Smaug");
+        var gachi = Fact(f, "gachi")!;
+        Assert.Equal("4", gachi.Values["n"]);
+        Assert.Equal("Наталія Май - Перший дзвоник пролунає", gachi.Values["track"]);
+        Assert.Equal("gachi", f[0].Kind);                  // найсоковитіше — першим
+        Assert.Null(Fact(r.Facts.For("владік"), "gachi"));
+        Assert.Equal("Gorillaz - Feel Good Inc", LiveFacts.GachiTrack("Gorillaz - Feel Good Inc. (Right Version) ♂ Gachi Remix | ft. @gachimouse"));
+    }
+
+    [Fact]
+    public void Lore_first_order_favourite_artist_and_worst_game_over_all_time()
+    {
+        using var r = new Rig();
+        r.Exec("INSERT INTO tracks(id, title, artist, source_url, created_at) VALUES('cf', 'Axel F', 'Crazy Frog', 'u', $n), ('z', 'Тисяча пісень', 'Zwyntar', 'u', $n), ('v', 'Голосове', 'Smaug', 'u', $n)",
+            ("$n", Rig.Iso(r.Clock.UtcNow)));
+        var start = new DateTimeOffset(2026, 9, 16, 7, 22, 0, TimeSpan.Zero);
+        r.Exec("INSERT INTO plays(track_id, source, requested_by, started_at) VALUES('cf', 'user', 'Smaug', $at)", ("$at", Rig.Iso(start)));
+        for (var i = 1; i <= 9; i++)
+            r.Exec("INSERT INTO plays(track_id, source, requested_by, started_at) VALUES('z', 'user', 'Smaug', $at)", ("$at", Rig.Iso(start.AddHours(i))));
+        // голосове — не музика: ні в першому замовленні, ні в улюбленому виконавці
+        r.Exec("INSERT INTO plays(track_id, source, requested_by, started_at) VALUES('voice-1', 'user', 'Smaug', $at)", ("$at", Rig.Iso(start.AddDays(-1))));
+        r.Results("Smaug", "tron", "loss", 12);
+        r.Result("Smaug", "tron", "win", r.Clock.UtcNow.AddDays(-3));
+
+        var f = r.Facts.For("Smaug");
+        var first = Fact(f, "first_order")!;
+        Assert.Equal("Axel F", first.Values["track"]);
+        Assert.Equal("16 вересня", first.Values["date"]);
+        Assert.Equal("Zwyntar", Fact(f, "top_artist")!.Values["artist"]);
+        Assert.Equal("9", Fact(f, "fav_track")!.Values["n"]);
+        var worst = Fact(f, "worst_game")!;
+        Assert.Equal(("Мотоцикли", "1", "12"), (worst.Values["game"], worst.Values["w"], worst.Values["l"]));
+        Assert.All(f.Where(x => LiveFacts.IsLore(x.Kind)), x => Assert.NotNull(Bank.Value.Facts.GetValueOrDefault(x.Kind)));
+    }
+
+    [Fact]
+    public void Lore_facts_rest_for_three_days_after_they_aired()
+    {
+        using var r = new Rig();
+        r.Online("Smaug");
+        r.Exec("INSERT INTO tracks(id, title, artist, source_url, created_at) VALUES('g1', 'Пісня ♂Right version♂', 'x', 'u', $n)", ("$n", Rig.Iso(r.Clock.UtcNow)));
+        r.Exec("INSERT INTO plays(track_id, source, requested_by, started_at) VALUES('g1', 'user', 'Smaug', $at)", ("$at", Rig.Iso(r.Clock.UtcNow.AddDays(-5))));
+        r.Results("Smaug", "tron", "loss", 4);
+        Assert.Contains("gachi", r.Live.Roast("Smaug", "roast", new() { ["target"] = "Смауг" }, 3, false)!.Facts);
+
+        var id = r.Store.Add("roast", "Smaug", null, false, 0, "queued", r.Clock.UtcNow);
+        r.Store.Ready(id, "т", "gachi", "f.mp3", 20, r.Clock.UtcNow);
+        r.Store.Move(id, "ready", "sent", r.Clock.UtcNow);
+        r.Clock.Advance(TimeSpan.FromHours(30));
+        // навіть замовлена (сьогоднішні факти їй дозволені) не повторює гачі через добу
+        Assert.DoesNotContain("gachi", r.Live.Roast("Smaug", "order", new() { ["target"] = "Смауг", ["buyer"] = "владік" }, 3, true)?.Facts ?? []);
+        r.Clock.Advance(TimeSpan.FromHours(43));
+        Assert.Contains("gachi", r.Live.Roast("Smaug", "order", new() { ["target"] = "Смауг", ["buyer"] = "владік" }, 3, true)!.Facts);
     }
 
     [Fact]
@@ -1010,6 +1075,35 @@ public class LiveAdsTests
         }
 
         public Task<double> DurationAsync(string path, CancellationToken ct) => Task.FromResult(2.0);
+    }
+
+    [FfmpegFact]
+    public async Task Ads_are_boosted_towards_the_music_and_a_second_pass_leaves_them_alone()
+    {
+        var ffmpeg = Path.Combine(FfmpegDir()!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
+        var dir = Path.Combine(Path.GetTempPath(), "hlechyky-loud-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // «мова»: шум, що вмикається й вимикається, як склади з паузами, тихо — десь −20 LUFS
+            var path = Path.Combine(dir, "voice-test.mp3");
+            var psi = new System.Diagnostics.ProcessStartInfo(ffmpeg) { RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+            foreach (var arg in new[] { "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anoisesrc=d=12:c=pink:a=0.08",
+                "-af", "volume='if(lt(mod(t,0.6),0.35),1,0.3)':eval=frame", "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "96k", path })
+                psi.ArgumentList.Add(arg);
+            using (var p = System.Diagnostics.Process.Start(psi)!) await p.WaitForExitAsync();
+            var before = (await AdLoudness.MeasureAsync(ffmpeg, path, null, default))!.Value;
+            Assert.True(before < -16, $"заготовка мала бути тихою, а вийшла {before:0.0}");
+
+            Assert.True(await AdLoudness.BoostAsync(ffmpeg, path, -10, default));
+            var after = (await AdLoudness.MeasureAsync(ffmpeg, path, null, default))!.Value;
+            Assert.True(after >= before + 5 && after <= -9, $"було {before:0.0}, стало {after:0.0}");
+
+            var stamp = File.GetLastWriteTimeUtc(path);
+            Assert.True(await AdLoudness.BoostAsync(ffmpeg, path, -10, default));
+            Assert.Equal(stamp, File.GetLastWriteTimeUtc(path));     // уже гучна — другий прогін не пережимає
+        }
+        finally { Directory.Delete(dir, true); }
     }
 
     [FfmpegFact]
