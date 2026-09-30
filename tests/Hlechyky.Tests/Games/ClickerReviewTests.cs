@@ -54,32 +54,32 @@ public class ClickerReviewTests
         Assert.NotEqual(JsonValueKind.Null, Guard(h).ValueKind);
         // Повна платня — 46 000; за один клік із шести тисяч майстер дає його частку, тобто копійки.
         var gain = Guard(h).GetProperty("gain").GetDouble();
-        Assert.InRange(gain, 0, 46_000.0 / ClickerGuard.CalmMin + 1);
+        Assert.InRange(gain, 0, 442_000.0 / ClickerGuard.CalmMin + 1);
 
         var before = Pots(h);
         var r = PotterHands.Pass(h);
         Assert.True(r.Ok);
-        Assert.InRange(Pots(h) - before, 0, 46_000.0 / ClickerGuard.CalmMin + 1);
+        Assert.InRange(Pots(h) - before, 0, 442_000.0 / ClickerGuard.CalmMin + 1);
     }
 
     [Fact]
-    public void Half_the_clicks_is_half_the_pay_and_a_full_share_is_the_whole_two_hours()
+    public void Half_the_clicks_is_half_the_pay_and_a_full_share_is_the_whole_day()
     {
         var h = Wheel();
         Levels(h, ("apprentice", 10));                 // 5 глеків за секунду, клік = 1
         Patch(h, s => { s["guard"]!["left"] = 0; s["guard"]!["clicks"] = ClickerGuard.CalmMin / 2 - 1; });
         Human(h);                                       // цей клік — останній із половини
         Assert.True(Guard(h).GetProperty("pays").GetBoolean());
-        Assert.Equal((5 * 7200 + 10_000) * 0.5, Guard(h).GetProperty("gain").GetDouble(), 0);
+        Assert.Equal((5 * 86_400 + 10_000) * 0.5, Guard(h).GetProperty("gain").GetDouble(), 0);
 
         var g = Wheel("Галя");
         Levels(g, ("apprentice", 10));
         Patch(g, s => { s["guard"]!["left"] = 0; s["guard"]!["clicks"] = ClickerGuard.CalmMax; });
         Human(g);
-        Assert.Equal(5 * 7200 + 10_000, Guard(g).GetProperty("gain").GetDouble());
+        Assert.Equal(5 * 86_400 + 10_000, Guard(g).GetProperty("gain").GetDouble());
         var before = Pots(g);
         Assert.Contains("відсипав", PotterHands.Pass(g).Message);
-        Assert.Equal(before + 46_000, Pots(g));
+        Assert.Equal(before + 442_000, Pots(g));
     }
 
     [Fact]
@@ -100,15 +100,14 @@ public class ClickerReviewTests
     [Fact]
     public void The_merchant_never_gives_less_than_before_the_ninth_update()
     {
-        // До дев'ятого оновлення купець давав min(15 % кишені, 15 хв пасиву); тепер — не менше й з дном у шість хвилин.
-        var flat = 100.0 * Clicker.MerchantSeconds;
+        // До дев'ятого оновлення купець давав min(15 % кишені, 15 хв пасиву), у дев'ятому — не більше 15 хв;
+        // з 30.09 — години пасиву, тож за будь-якої кишені не менше, ніж будь-коли раніше.
+        var now = 100.0 * Clicker.MerchantSeconds;
         foreach (var pots in new[] { 0.0, 1e4, 1e6, 1e9 })
         {
             var old = Math.Min(pots * 0.15, 100.0 * 900);
-            var now = flat + Math.Min(pots * Clicker.MerchantShare, flat * Clicker.MerchantCapShare);
             Assert.True(now >= old, $"кишеня {pots}: було {old}, стало {now}");
         }
-        Assert.Equal(100.0 * 900, flat + Math.Min(1e9 * Clicker.MerchantShare, flat * Clicker.MerchantCapShare));
     }
 
     // ---------- Серія від кота ----------

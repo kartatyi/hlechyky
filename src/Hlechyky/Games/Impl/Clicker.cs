@@ -34,7 +34,7 @@ public enum MarkEffect
     Fall,
     /// <summary>Ярмарок розписного глека ще +N.</summary>
     Fair,
-    /// <summary>Щедрий купець ще +N хв пасиву.</summary>
+    /// <summary>Щедрий купець ще +N год пасиву.</summary>
     Merchant,
     /// <summary>Коло крутиться без тебе ще +N год (разом не більше доби).</summary>
     Night,
@@ -172,15 +172,13 @@ public sealed partial class Clicker : Game
     /// </summary>
     public const double InspireShare = 0.03;
     /// <summary>
-    /// Щедрий купець (дев'яте оновлення): шість хвилин роботи як дно плюс десята частина того, що лежить, але
-    /// теж не більше шести хвилин. Було «15 % кишені, не більше чверті години» — у пізній грі це майже нічого.
+    /// Щедрий купець: чотири години золота за секунду (30.09). Було «шість хвилин пасиву плюс частка кишені, не
+    /// більше 15 хв» — у пізній грі це 0,06 % гаманця, у 40–50 разів менше за ярмарок і натхнення. Тепер у владіка
+    /// (4 віхи купця, чорна глина) ≈ 100 тис. золотих.
     /// </summary>
-    public const double MerchantShare = 0.15;
-    /// <summary>Стеля частки кишені — ще півтори «плоскі» частини: разом 360…900 с пасиву, як і до v9 у найкращому разі.</summary>
-    public const double MerchantCapShare = 1.5;
-    public const double MerchantSeconds = 360;
-    /// <summary>Купець із віхами «щедрий купець ще +1 хв» (десяте оновлення).</summary>
-    double MerchantSecondsNow => MerchantSeconds + 60 * Perk(MarkEffect.Merchant);
+    public const double MerchantSeconds = 4 * 3600;
+    /// <summary>Купець із віхами «щедрий купець ще +1 год» (десяте оновлення; до 30.09 — +1 хв).</summary>
+    double MerchantSecondsNow => MerchantSeconds + 3600 * Perk(MarkEffect.Merchant);
     public const int GoldenForAchievement = 50;
 
     /// <summary>Що буде в розписному глеку. Вирішується, коли глек з'являється, а гравцеві показується, лише коли впіймав.</summary>
@@ -188,8 +186,11 @@ public sealed partial class Clicker : Game
 
     // ---------- дев'яте оновлення: Око платить, серія без стелі, випадковості на сцені ----------
 
-    /// <summary>Платня за пройдену спокійну полицю: дві години пасиву й десять тисяч кліків.</summary>
-    public const double EyeSeconds = 7200;
+    /// <summary>
+    /// Платня за пройдену спокійну полицю: доба пасиву й десять тисяч кліків (30.09; було дві години — 0,26 %
+    /// гаманця в пізній грі). У владіка ≈ 200 тис. золотих, удвічі більше за купця.
+    /// </summary>
+    public const double EyeSeconds = 24 * 3600;
     public const int EyeClicks = 10_000;
     /// <summary>Скільки спокійних полиць треба пройти для ачівки «Майстер кивнув».</summary>
     public const int CalmShelvesForAchievement = 10;
@@ -426,8 +427,8 @@ public sealed partial class Clicker : Game
 
     /// <summary>Скільки дає одна віха свого ефекту — це й є всі «ручки» балансу віх (docs/games/specs/clicker-v10.md §4).</summary>
     public const double MarkPassive = 0.25, MarkHand = 0.01, MarkMomentum = 0.5, MarkTemper = 1, MarkLucky = 0.01,
-        MarkFall = 0.25, MarkFair = 1, MarkMerchantMinutes = 1, MarkNightHours = 1, MarkGoldenSeconds = 3,
-        MarkFallSeconds = 0.5, MarkEyeHours = 1;
+        MarkFall = 0.25, MarkFair = 1, MarkMerchantHours = 1, MarkNightHours = 1, MarkGoldenSeconds = 3,
+        MarkFallSeconds = 0.5, MarkEyeHours = 3;
 
     /// <summary>Віха-модифікатор із сумою за замовчуванням для свого ефекту.</summary>
     static ClickerMark M(int level, string name, MarkEffect effect) => new(level, name, effect, effect switch
@@ -439,7 +440,7 @@ public sealed partial class Clicker : Game
         MarkEffect.Lucky => MarkLucky,
         MarkEffect.Fall => MarkFall,
         MarkEffect.Fair => MarkFair,
-        MarkEffect.Merchant => MarkMerchantMinutes,
+        MarkEffect.Merchant => MarkMerchantHours,
         MarkEffect.Night => MarkNightHours,
         MarkEffect.GoldenShown => MarkGoldenSeconds,
         MarkEffect.FallShown => MarkFallSeconds,
@@ -1338,7 +1339,7 @@ public sealed partial class Clicker : Game
     }
 
     /// <summary>
-    /// Скільки платить майстер за пройдену спокійну полицю: дві години пасиву й десять тисяч кліків. Це не
+    /// Скільки платить майстер за пройдену спокійну полицю: доба пасиву й десять тисяч кліків. Це не
     /// подарунок, а плата за руку: полиця, що прийшла через підозру, пильний крок чи паузу, не платить нічого,
     /// інакше автоклікер із господарем при ньому доїв би майстра щодві хвилини.
     /// </summary>
@@ -1468,7 +1469,7 @@ public sealed partial class Clicker : Game
             MarkEffect.Lucky => $"ще +{Pct(m.Amount)} кліків б'є в ×50",
             MarkEffect.Fall => $"глек з полиці +{Pct(m.Amount)}",
             MarkEffect.Fair => $"ярмарок розписного глека ще +{Num(m.Amount)}",
-            MarkEffect.Merchant => $"щедрий купець ще +{Num(m.Amount)} хв пасиву",
+            MarkEffect.Merchant => $"щедрий купець ще +{Num(m.Amount)} год пасиву",
             MarkEffect.Night => $"коло крутиться без тебе ще +{Num(m.Amount)} год",
             MarkEffect.GoldenShown => $"розписний глек стоїть на колі ще +{Num(m.Amount)} с",
             MarkEffect.FallShown => $"глек з полиці летить ще +{Num(m.Amount)} с",
@@ -1597,10 +1598,8 @@ public sealed partial class Clicker : Game
                 text = $"✨ Натхнення! Клік ×{InspireMult:0} на {BuffLonger(InspireFor).TotalSeconds:0} с";
                 break;
             default:
-                // Шість хвилин роботи як дно плюс десята частина кишені (теж не більше шести хвилин): купець
-                // мусить щось важити і на голому колі, і на квадрильйонах.
-                var flat = PassiveBase * MerchantSecondsNow;
-                var gain = ToPots((flat + Math.Min(_pots * MerchantShare, flat * MerchantCapShare)) * ClayNow.Loot) + 13;
+                // Години золота за секунду: купець мусить важити поруч із ярмарком і натхненням (30.09).
+                var gain = ToPots(PassiveBase * MerchantSecondsNow * ClayNow.Loot) + 13;
                 Add(gain);
                 text = $"🧺 Щедрий купець: +{PotsShort(gain)}";
                 break;

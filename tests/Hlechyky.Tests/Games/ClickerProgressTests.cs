@@ -337,30 +337,31 @@ public class ClickerProgressTests
     }
 
     [Fact]
-    public void The_merchant_pays_six_minutes_of_work_and_a_tenth_of_the_pile_on_top()
+    public void The_merchant_pays_four_hours_of_passive()
     {
-        // Дев'яте оновлення §A.7: було «15 % кишені, не більше чверті години» — і на квадрильйонах купець
-        // приносив копійки. Тепер шість хвилин роботи як дно плюс 15 % кишені (до ще дев'яти хвилин — стеля 900 с, як була).
+        // 30.09: було «шість хвилин роботи плюс 15 % кишені, не більше 15 хв» — у пізній грі 0,06 % гаманця,
+        // у десятки разів менше за ярмарок і натхнення. Тепер чотири години пасиву.
         var h = Wheel();
-        Levels(h, ("kiln", 1));                         // 3 глеки за секунду: шість хвилин — 1 080
+        Levels(h, ("kiln", 1));                         // 3 глеки за секунду: чотири години — 43 200
         Give(h, 1_000_000);
         JugNow(h, Clicker.GoldenKind.Merchant);
 
-        Assert.Equal("🧺 Щедрий купець: +2 713 глеків", Plain(Act(h, "catch").Message));
-        Assert.Equal(1_000_000 + 2_713, Pots(h));
-        Assert.Equal(1_000_000 + 2_713, Total(h));
+        Assert.Equal("🧺 Щедрий купець: +43 213 глеків", Plain(Act(h, "catch").Message));
+        Assert.Equal(1_000_000 + 43_213, Pots(h));
+        Assert.Equal(1_000_000 + 43_213, Total(h));
     }
 
     [Fact]
-    public void The_merchants_share_of_the_pile_never_beats_six_more_minutes_of_work()
+    public void The_merchant_does_not_look_into_the_pocket()
     {
+        // Гаманець на купця не впливає: хто копить, не отримує більше за того, хто все вкладає у верстати.
         var h = Wheel();
         Levels(h, ("kiln", 1));                         // 3 глеки за секунду
-        Give(h, 1_000_000_000);                         // 15 % — сто п'ятдесят мільйонів, а це вже не дев'ять хвилин
+        Give(h, 1_000_000_000);
         JugNow(h, Clicker.GoldenKind.Merchant);
 
         Assert.True(Act(h, "catch").Ok);
-        Assert.Equal(1_000_000_000 + 1_080 + 1_620 + 13, Pots(h));
+        Assert.Equal(1_000_000_000 + 43_213, Pots(h));
     }
 
     [Fact]
