@@ -116,7 +116,18 @@
         leaveLocal();
         return;
       }
-      ice = (r.ice || []).map((s) => ({ urls: s.urls, username: s.username || undefined, credential: s.credential || undefined }));
+      const fresh = (r.ice || []).map((s) => ({ urls: s.urls, username: s.username || undefined, credential: s.credential || undefined }));
+      // Після деплою логін ретранслятора новий, а старих кімнаток на ньому вже нема: відкритим з'єднанням — новий
+      // список, щоб їхній ICE-рестарт (сторож) зайшов із ним.
+      if (JSON.stringify(fresh) !== JSON.stringify(ice)) {
+        ice = fresh;
+        for (const x of peers.values()) {
+          try { x.pc.setConfiguration({ iceServers: ice }); } catch (e) { console.warn('[voice] ice', e); }
+          // Ішли через ретранслятор — його кімнатки згинули разом із сервером: не чекаємо, поки ICE це помітить. Але
+          // лише коли людина знову в кімнаті (onMe): інакше сервер викине лист, і обидва чекатимуть на загублене.
+          if (x.relay && !x.polite && x.negotiated) x.restartPending = true;
+        }
+      }
       ready = true;
       watchAck = false;   // після перезапуску сервер не пам'ятає, хто чий екран дивився — попросимо знову (onRoster)
       const q = queued;
@@ -140,6 +151,7 @@
     want = false;
     ready = false;
     queued = [];
+    outbox = [];
     room = null;
     links = new Map();
     for (const p of [...peers.values()]) closePeer(p);
@@ -334,6 +346,7 @@
       if (!p.polite || p.negotiated) makeOffer(p);
     };
     pc.onsignalingstatechange = () => {
+      p.sigSince = pc.signalingState === 'stable' ? 0 : Date.now();
       if (pc.signalingState !== 'stable' || !pc.remoteDescription || p.negotiated) return;
       p.negotiated = true;
       if (p.link.watch && screen) shareTo(p);
@@ -342,14 +355,48 @@
     pc.onconnectionstatechange = () => {
       p.state = pc.connectionState;
       p.discAt = p.state === 'disconnected' ? Date.now() : 0;
-      if (p.state === 'connected') p.downSince = 0;
+      if (p.state === 'connected') { p.downSince = 0; if (!p.reportedOk) { p.reportedOk = true; report(p, 'ok'); } }
       else if (!p.downSince) p.downSince = Date.now();
-      if (p.state === 'failed') restartIce(p);
+      if (p.state === 'failed') { if (!p.polite) restartIce(p); if (!p.reportedFail) { p.reportedFail = true; report(p, 'failed'); } }
       paintPeers();
     };
     pc.ontrack = (e) => onTrack(p, e);
     sendSignal(p, { hello: 1 });
     return p;
+  }
+
+  /// Звіт про з'єднання в лог сервера (VoiceDiag): піднялось — яким шляхом (напряму, через ретранслятор); ні — що
+  /// встигло: кандидати з обох боків за типами, стани пар, переговорів і ICE. IP-адрес не кладемо.
+  async function report(p, kind) {
+    if (!conn || conn.state !== 'Connected') return;
+    try {
+      const st = await p.pc.getStats();
+      const loc = {}, rem = {}, pairs = {};
+      let pair = null;
+      st.forEach((r) => {
+        if (r.type === 'local-candidate') loc[r.candidateType + '/' + r.protocol] = (loc[r.candidateType + '/' + r.protocol] || 0) + 1;
+        if (r.type === 'remote-candidate') rem[r.candidateType + '/' + r.protocol] = (rem[r.candidateType + '/' + r.protocol] || 0) + 1;
+        if (r.type === 'candidate-pair') {
+          pairs[r.state] = (pairs[r.state] || 0) + 1;
+          if (r.selected) pair = r;   // Firefox
+        }
+        if (r.type === 'transport' && r.selectedCandidatePairId) pair = st.get(r.selectedCandidatePairId) || pair;
+      });
+      let via = null;
+      if (pair) {
+        const l = st.get(pair.localCandidateId), r = st.get(pair.remoteCandidateId);
+        via = (l ? l.candidateType : '?') + '→' + (r ? r.candidateType : '?') + ' ' + (l ? l.protocol : '')
+          + (pair.currentRoundTripTime ? ' ' + Math.round(pair.currentRoundTripTime * 1000) + ' мс' : '');
+        p.relay = !!((l && l.candidateType === 'relay') || (r && r.candidateType === 'relay'));
+        paintPeers();
+      }
+      conn.invoke('VoiceDiag', JSON.stringify({
+        peer: p.id, kind, via, state: p.pc.connectionState, ice: p.pc.iceConnectionState, gather: p.pc.iceGatheringState,
+        sig: p.pc.signalingState, negotiated: p.negotiated, paired: !!p.theirSid, polite: p.polite, loc, rem, pairs,
+        turn: ice.some((x) => [].concat(x.urls).some((u) => String(u).startsWith('turn'))),
+        secs: Math.round((Date.now() - p.since) / 1000), ua: navigator.userAgent.replace(/^.*?\) /, '').slice(0, 80),
+      })).catch(() => {});
+    } catch (e) { console.warn('[voice] report', e); }
   }
 
   /// Познайомились: переговори, що чекали на знайомство, — почати (перше знайомство — лише нечемний).
@@ -379,8 +426,19 @@
     if (viewing === p.id && !again) closeViewer(false);
   }
 
+  let outbox = [];                // листи, написані, поки зв'язку з сервером не було: підуть після повернення
+  function flushOutbox() {
+    const list = outbox;
+    outbox = [];
+    for (const [p, msg] of list) if (peers.get(p.id) === p) sendSignal(p, msg);
+  }
+
   function sendSignal(p, msg) {
-    if (!conn || conn.state !== 'Connected') return;
+    if (!conn || conn.state !== 'Connected') {
+      // Кандидати й описи з'єднання, що загубились би, поки сервер перезапускався, — придержати (з межею).
+      if (outbox.length < 300) outbox.push([p, msg]);
+      return;
+    }
     msg.s = p.mySid;
     msg.r = p.theirSid || 0;
     if (msg.hello) p.helloAt = Date.now();
@@ -667,7 +725,11 @@
       if (moved || room !== HOME) applyLink(p, { peer: p.id, send: false, recv: false, watch: false });
       if (!p.goneAt) p.goneAt = Date.now();
     }
-    for (const l of links.values()) applyLink(ensurePeer(l.peer), l);
+    for (const l of links.values()) {
+      const p = ensurePeer(l.peer);
+      applyLink(p, l);
+      if (p.restartPending) { p.restartPending = false; p.restartAt = 0; restartIce(p); }
+    }
     paint();
   }
 
@@ -704,7 +766,7 @@
     for (const p of [...peers.values()]) {
       if (p.goneAt && now - p.goneAt > GRACE_MS) { closePeer(p); changed = true; continue; }
       const down = p.state !== 'connected' && p.downSince ? now - p.downSince : 0;
-      if (down > SLOW_MS && !p.slow) { p.slow = true; changed = true; }
+      if (down > SLOW_MS && !p.slow) { p.slow = true; changed = true; if (!p.reportedSlow) { p.reportedSlow = true; report(p, 'slow'); } }
       else if (p.state === 'connected' && p.slow) { p.slow = false; changed = true; }
       if (p.goneAt) continue;
       // Ще не домовились — hello могло загубитись (не було зв'язку з сервером): нагадуємо.
@@ -717,6 +779,15 @@
       }
       // Домовились, а зв'язку нема: кандидати загубились чи мережа змінилась — перезапускаємо ICE (нечемний, щоб не вдвох).
       if (p.negotiated && down > (p.polite ? 2 * STUCK_MS : STUCK_MS)) restartIce(p);
+      // Пропозиція висить без відповіді 8 с — лист загубився (сервер перезапускався, людини ще не було в кімнаті):
+      // відкочуємо; нечемний пропонує наново, чемний чекає на його пропозицію.
+      if (p.sigSince && now - p.sigSince > 8000 && p.pc.signalingState === 'have-local-offer') {
+        p.sigSince = now;
+        p.pc.setLocalDescription({ type: 'rollback' }).then(() => {
+          if (p.polite || peers.get(p.id) !== p) return;
+          if (p.negotiated) { p.restartAt = 0; restartIce(p); } else makeOffer(p);
+        }).catch((e) => console.warn('[voice] rollback', e));
+      }
       // Зв'язок хитається вже 5 с — не чекаємо, поки браузер сам визнає «failed» (це ще пів хвилини).
       if (p.discAt && now - p.discAt > 5000 && !p.polite) restartIce(p);
       // Так і не піднялось — робимо з'єднання наново, знайоме з тим самим з'єднанням того боку (той побачить новий
@@ -1053,9 +1124,11 @@
       if (!p || p.state === 'new' || p.state === 'connecting') { text = p && p.slow ? '⚠ нема зв\'язку' : 'з\'єднуюсь…'; cls = p && p.slow ? 'bad' : 'wait'; }
       else if (p.state === 'disconnected') { text = 'зв\'язок хитається'; cls = 'wait'; }
       else if (p.state === 'failed' || p.state === 'closed') { text = '⚠ нема зв\'язку'; cls = 'bad'; }
+      else if (p.relay) { text = 'через ретранслятор'; cls = ''; }
       s.textContent = text;
       s.className = 'vc-state ' + cls;
-      s.title = cls === 'bad' ? 'Напряму не пробились. Буває з мобільним інтернетом — тоді потрібен ретранслятор. Скажи розробнику 💡' : '';
+      s.title = cls === 'bad' ? 'Не з\'єдналось ні напряму, ні через ретранслятор. Звіт уже в лозі сервера — скажи розробнику 💡'
+        : p.relay ? 'Напряму не пробились (сірий NAT провайдера) — голос іде через ретранслятор на сервері Глечиків' : '';
     }
   }
 
@@ -1215,6 +1288,7 @@
       if (!want || !dest) return;
       const table = room && room !== HOME ? room.slice(2) : null;
       enter(table).then(() => {
+        flushOutbox();
         // Листи, що летіли, поки зв'язку з сервером не було, пропали — хто не з'єднаний, пробує ще раз.
         for (const p of peers.values()) if (p.state !== 'connected' && !p.polite && p.negotiated) restartIce(p);
       }).catch((e) => console.warn('[voice] rejoin', e));

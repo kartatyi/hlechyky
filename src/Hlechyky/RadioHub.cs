@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Text.Json;
 using Hlechyky.Games;
 using Microsoft.AspNetCore.SignalR;
@@ -276,7 +277,10 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     {
         if (!Allow(input: false)) return VoiceJoinReply.Fail(Games.Say.TooFast);
         var http = Context.GetHttpContext();
-        var o = voice.Join(Context.ConnectionId, Nick(), http is not null && Auth.IsUser(http), peer, table, muted, deaf, share);
+        // Свій, з домашньої мережі (крізь «петлю» роутера Caddy бачить адресу роутера), — ретранслятор йому в мережі.
+        var ip = http?.Connection.RemoteIpAddress;
+        var lan = ip is not null && (IPAddress.IsLoopback(ip) || Turn.StunMessage.IsPrivate(ip.MapToIPv4()));
+        var o = voice.Join(Context.ConnectionId, Nick(), http is not null && Auth.IsUser(http), peer, table, muted, deaf, share, lan);
         await voice.DispatchAsync(o.Sends);
         // Повний список (з позивними) — одразу: на реконекті з тим самим позивним список не міняється, тож склеєна
         // розсилка не прийшла б, а з'єднанню дали лише публічний.
@@ -320,6 +324,13 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         var o = voice.Watch(Context.ConnectionId, peer ?? "", on);
         await voice.DispatchAsync(o.Sends);
         return o.Reply;
+    }
+
+    /// <summary>Звіт браузера про з'єднання з кимось — лише в лог (VoiceChat.Diag).</summary>
+    public void VoiceDiag(string json)
+    {
+        if (!Allow(input: false)) return;
+        voice.Diag(Context.ConnectionId, Nick(), json);
     }
 
     /// <summary>

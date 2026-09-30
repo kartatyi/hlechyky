@@ -69,7 +69,8 @@ public sealed record VoiceOutcome<T>(T Reply, IReadOnlyList<VoiceSend> Sends);
 /// Методи повертають, що розіслати (<see cref="VoiceSend"/>), — так їх перевіряють тести без SignalR; хаб відправляє
 /// через <see cref="DispatchAsync"/>.
 /// </summary>
-public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> options, IHubContext<RadioHub>? hub = null, ILogger<VoiceChat>? log = null)
+public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> options, IHubContext<RadioHub>? hub = null, ILogger<VoiceChat>? log = null,
+    Turn.TurnServer? turn = null)
 {
     public const string Home = "home";
     public const string HomeTitle = "Посиденьки";
@@ -141,7 +142,7 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
     /// дивишся). Той самий нік з іншої вкладки — інша вкладка вилітає (двоє однакових у голосі — це луна). Той самий
     /// позивний із новим з'єднанням — це реконект або сервер після деплою: місце й стан лишаються.
     /// </summary>
-    public VoiceOutcome<VoiceJoinReply> Join(string conn, string nick, bool account, string? peer, string? table, bool muted, bool deaf, bool share = false)
+    public VoiceOutcome<VoiceJoinReply> Join(string conn, string nick, bool account, string? peer, string? table, bool muted, bool deaf, bool share = false, bool lan = false)
     {
         var o = options.CurrentValue;
         if (!o.Enabled) return new(VoiceJoinReply.Fail(Off), []);
@@ -170,7 +171,7 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
             _byConn[conn] = new Member { Peer = peer, Nick = nick, Conn = conn, Room = room, Muted = muted, Deaf = deaf, Share = share };
             sends.AddRange(Recompute());
             EnsureSweep();
-            return new(new VoiceJoinReply(true, Room: _byConn[conn].Room, Ice: Ice(peer)), sends);
+            return new(new VoiceJoinReply(true, Room: _byConn[conn].Room, Ice: Ice(peer, lan)), sends);
         }
     }
 
@@ -385,12 +386,16 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
 
     static bool SameNick(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>STUN і, якщо налаштовано, TURN з тимчасовим логіном (coturn use-auth-secret: ім'я «строк:позивний»).</summary>
-    IReadOnlyList<IceServer> Ice(string peer)
+    /// <summary>
+    /// STUN, вбудований ретранслятор (Turn/TurnServer.cs; свої з домашньої мережі — на його адресу в мережі) і, якщо
+    /// налаштовано, зовнішній TURN — усі з тимчасовим логіном (coturn use-auth-secret: ім'я «строк:позивний»).
+    /// </summary>
+    IReadOnlyList<IceServer> Ice(string peer, bool lan = false)
     {
         var o = options.CurrentValue;
         var list = o.IceServers.Where(s => s.Urls.Count > 0).Select(s => new IceServer(s.Urls, s.Username, s.Credential)).ToList();
         if (list.Count == 0) list.AddRange(DefaultIce);
+        if (turn?.IceFor(peer, lan, o.TurnTtlHours) is { } own) list.Add(own);
         if (o.TurnSecret.Length > 0 && o.TurnUrls.Count > 0)
         {
             var user = $"{DateTimeOffset.UtcNow.AddHours(Math.Max(1, o.TurnTtlHours)).ToUnixTimeSeconds()}:{peer}";
@@ -398,6 +403,30 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
             list.Add(new IceServer(o.TurnUrls, user, pass));
         }
         return list;
+    }
+
+    // ---------- діагностика ----------
+
+    /// <summary>
+    /// Звіт браузера про з'єднання з кимось (піднялось — яким шляхом; ні — що встигло: кандидати, стани). Лише в лог
+    /// сервера: так видно, чому пара не склеїлась у когось удома. IP-адрес браузер у звіт не кладе.
+    /// </summary>
+    public void Diag(string conn, string nick, string? json)
+    {
+        if (string.IsNullOrEmpty(json) || json.Length > 4000) return;
+        string? peerNick = null;
+        lock (_lock)
+        {
+            if (!_byConn.ContainsKey(conn)) return;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("peer", out var p) && p.GetString() is { } peer)
+                    peerNick = _byConn.Values.FirstOrDefault(m => m.Peer == peer)?.Nick;
+            }
+            catch (JsonException) { return; }
+        }
+        log?.LogInformation("голос: {Nick} → {Peer}: {Report}", nick, peerNick ?? "?", json);
     }
 
     // ---------- відправка ----------
