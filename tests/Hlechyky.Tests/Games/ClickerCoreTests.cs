@@ -80,7 +80,7 @@ public class ClickerCoreTests
     // ---------- A.1 Око майстра платить ----------
 
     [Fact]
-    public void A_calm_shelf_passed_is_paid_for_two_hours_of_work_and_ten_thousand_clicks()
+    public void A_calm_shelf_passed_is_paid_for_a_day_of_work_and_ten_thousand_clicks()
     {
         var h = Wheel();
         Levels(h, ("apprentice", 10));                 // 5 глеків за секунду
@@ -88,14 +88,14 @@ public class ClickerCoreTests
         Human(h);
         Assert.False(Free(h));
         Assert.True(Guard(h).GetProperty("pays").GetBoolean());
-        Assert.Equal(5 * 7200 + 1 * 10_000, Guard(h).GetProperty("gain").GetDouble());
+        Assert.Equal(5 * 86_400 + 1 * 10_000, Guard(h).GetProperty("gain").GetDouble());
 
         var before = Pots(h);
         var r = PotterHands.Pass(h);
 
         Assert.True(r.Ok);
         Assert.Contains("відсипав", r.Message);
-        Assert.Equal(before + 46_000, Pots(h));
+        Assert.Equal(before + 442_000, Pots(h));
         Assert.True(Free(h));
     }
 
@@ -159,12 +159,12 @@ public class ClickerCoreTests
         PotterHands.Miss(h);
         Assert.Equal(1, Guard(h).GetProperty("misses").GetInt32());
         Assert.True(Guard(h).GetProperty("pays").GetBoolean());
-        Assert.Equal(23_000, Guard(h).GetProperty("gain").GetDouble());
+        Assert.Equal(221_000, Guard(h).GetProperty("gain").GetDouble());
 
         var before = Pots(h);
         var r = PotterHands.Pass(h);
         Assert.Contains("половину", r.Message);
-        Assert.Equal(before + 23_000, Pots(h));
+        Assert.Equal(before + 221_000, Pots(h));
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class ClickerCoreTests
 
         Patch(h, _ => { });                            // Save → Load без правок
         Assert.True(Guard(h).GetProperty("pays").GetBoolean());
-        Assert.Equal(46_000, Guard(h).GetProperty("gain").GetDouble());
+        Assert.Equal(442_000, Guard(h).GetProperty("gain").GetDouble());
     }
 
     [Fact]
@@ -682,26 +682,27 @@ public class ClickerCoreTests
     // ---------- A.7 розписні глеки ----------
 
     [Fact]
-    public void The_three_golden_jugs_are_worth_the_same_order_of_magnitude_late_in_the_game()
+    public void The_fair_and_inspire_give_minutes_of_work_and_the_merchant_hours_of_passive_late_in_the_game()
     {
-        // Контракт §A.7: на пасиві ~1e12 і кишені 1e13 усі три дають 4–8 хвилин роботи (з кліками 6/с і
-        // «Маховиком»; «Замашна рука» — верстат §A.4, вона піднімає натхнення разом із самим кліком).
+        // Контракт §A.7: на пасиві ~1e12 ярмарок і натхнення дають 4–10 хвилин роботи (з кліками 6/с і
+        // «Маховиком»; «Замашна рука» — верстат §A.4, вона піднімає натхнення разом із самим кліком). Купець із
+        // 30.09 — чотири години пасиву: у пізній грі кліки з бафами важать у десятки разів більше за пасив, і
+        // хвилини пасиву в купця були крихтами поруч із ярмарком і натхненням.
         var h = Wheel();
         Levels(h, ("sich", 77), ("flywheel", 8));      // 77 × 1,3e10 ≈ 1e12 глеків за секунду
         Patch(h, s => { s["pots"] = 1e13; s["total"] = 1e13; });
         var passive = PerSecond(h);
         Assert.InRange(passive, 9e11, 1.1e12);
 
-        var flat = passive * Clicker.MerchantSeconds;
-        var merchant = flat + Math.Min(1e13 * Clicker.MerchantShare, flat * Clicker.MerchantCapShare);
         // Ярмарок: 66 секунд усе ×7 — чистий приріст пасиву (кліки зверху).
         var fair = Clicker.FairFor.TotalSeconds * passive * (Clicker.FairMult - 1);
         // Натхнення: 20 секунд по 6 кліків із розгоном ×5, і кожен клік несе ще три відсотки пасиву — теж ×25.
         var perClick = PerClick(h) + passive * Clicker.InspireShare;
         var inspire = Clicker.InspireFor.TotalSeconds * 6 * perClick * Clicker.InspireMult * 5;
 
-        foreach (var value in new[] { merchant, fair, inspire })
+        foreach (var value in new[] { fair, inspire })
             Assert.InRange(value / passive, 240, 600);   // від чотирьох до десяти хвилин роботи
+        Assert.Equal(4 * 3600, Clicker.MerchantSeconds);
     }
 
     [Fact]
