@@ -165,7 +165,12 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
             ("$k", Auth.NickKey(nick)), ("$f", from), ("$t", to));
         var all = orders + chat + games;
         if (all < 3) return;
-        list.Add(LiveFact.Of("night_owl", 0.5 + 0.03 * all, ("nick", say), ("n", orders), ("m", chat), ("g", games), ("all", all)));
+        // Нулі не віддаємо: «0 замовлень о третій ночі» — не жарт, тож шаблон із {n} тоді просто не підійде
+        var values = new List<(string, object)> { ("nick", say), ("all", all) };
+        if (orders > 0) values.Add(("n", orders));
+        if (chat > 0) values.Add(("m", chat));
+        if (games > 0) values.Add(("g", games));
+        list.Add(LiveFact.Of("night_owl", 0.5 + 0.03 * all, [.. values]));
     }
 
     void Radio(SqliteConnection c, string nick, string key, string say, List<LiveFact> list)

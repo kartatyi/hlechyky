@@ -38,7 +38,6 @@ public sealed class LiveLines
     public const string Glek = "ostap";
     public const string Polina = "polina";
 
-    public string Sign { get; init; } = "Глечики. Слухай, як гуде.";
     public Dictionary<string, string> Spoken { get; init; } = new(StringComparer.Ordinal);
     public Dictionary<string, List<string>> Intro { get; init; } = new(StringComparer.Ordinal);
     public List<string> Link { get; init; } = [];
@@ -56,7 +55,7 @@ public sealed class LiveLines
         // Ключі spoken — ключі ніків (нижній регістр), щоб «Smaug» і «smaug» читались однаково.
         return new LiveLines
         {
-            Sign = raw.Sign, Intro = raw.Intro, Link = raw.Link, Outro = raw.Outro, Facts = raw.Facts, Events = raw.Events,
+            Intro = raw.Intro, Link = raw.Link, Outro = raw.Outro, Facts = raw.Facts, Events = raw.Events,
             News = raw.News, Styles = raw.Styles,
             Spoken = raw.Spoken.ToDictionary(kv => Auth.NickKey(kv.Key), kv => kv.Value, StringComparer.Ordinal),
         };
