@@ -217,33 +217,6 @@
     const v = ctx && ctx.view;
     return v && v.bot != null && v.bot === seat ? '🤖 бот' : null;
   }
-  /// Кнопка «🤖 + бот» під полем: господар, сам за класичним столом, до старту (і між партіями).
-  function botBtn(root, st) {
-    const ctx = st.ctx, v = ctx.view || {}, room = ctx.room || {};
-    const me = ctx.me && (ctx.me.nick || ctx.me);
-    const host = !!(room.host && me && String(room.host).toLowerCase() === String(me).toLowerCase());
-    const seated = (room.seats || []).filter((x) => x && x.nick).length;
-    const show = host && v.mode === 'duo' && !ctx.playing && (seated === 1 || v.botWanted);
-    let el = root.querySelector(':scope > .pgbot');
-    if (!show) { if (el) el.remove(); return; }
-    if (!el) {
-      el = document.createElement('div');
-      el.className = 'pgbot';
-      el.innerHTML = '<button type="button" class="btn"></button><span class="muted"></span>';
-      el.querySelector('button').addEventListener('click', () => {
-        const s = root._pong;
-        if (s) s.ctx.act('bot', { on: !(s.ctx.view && s.ctx.view.botWanted) });
-      });
-      root.appendChild(el);
-    }
-    const on = !!v.botWanted;
-    const b = el.querySelector('button'), m = el.querySelector('span');
-    const bt = on ? '🤖 Прогнати бота' : '🤖 + бот';
-    if (b.textContent !== bt) b.textContent = bt;
-    const mt = on ? 'Бот сидить навпроти — тисни «Почати». Без нагород' : 'Нема з ким? Бот стане навпроти — з реакцією людини';
-    if (m.textContent !== mt) m.textContent = mt;
-  }
-
   // ---- малювання ----
   function seatColor(css, seat) {
     const v = SEAT_VARS[seat] || SEAT_VARS[0];
@@ -747,12 +720,11 @@
     seatClass: ['x', 'o', 'c', 'pb'],
     pad: { dirs: true, hint: '{dpad} ракетка' },
     news: {
-      v: '2026-09-29',
-      title: 'Понг: смеш, бот і бонуси',
+      v: '2026-09-30',
+      title: 'Понг: бот трьох рівнів',
       items: [
-        '💥 Смеш: удар краєм ракетки на ходу — м’яч летить на третину швидше, зі спалахом і «бахом»',
-        '🤖 Сам за столом? Тисни «🤖 + бот» — він стане навпроти (без нагород)',
-        '⭐ Арена на 3–4 з опцією «Бонуси»: ↔ довга ракетка, ⚾ два м’ячі, 🐢 повільний м’яч — бере той, хто вдарив останнім',
+        '🎚 Опція столу «🤖 Бот»: легкий (повільно дивиться й не рахує відскоків од стін), звичайний чи сильний — майже не маже',
+        '🏆 Обіграв бота — у підсумку видно, якого: «перемога над сильним ботом»',
       ],
     },
 
@@ -789,7 +761,6 @@
       st.cv.el.classList.toggle('play', !!ctx.mine);
       soundBtn(root);
       legend(root, st);
-      botBtn(root, st);
       pad(root, st);
       st.cv.resize();
       if (!ctx.playing) { st.interp.reset(); st.trail.length = 0; st.sent = null; }

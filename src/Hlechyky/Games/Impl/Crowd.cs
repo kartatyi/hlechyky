@@ -7,6 +7,8 @@ public sealed class CrowdSeat
 {
     /// <summary>Сидів на старті партії.</summary>
     public bool Plays;
+    /// <summary>Гравець-бот (🤖): місце порожнє в каркасі, селянином керує сервер (<c>Crowd.Bot.cs</c>).</summary>
+    public bool Bot;
     /// <summary>Устав посеред партії: його селянин — уже бот, а очки лишаються в таблиці.</summary>
     public bool Out;
     public string Nick = "";
@@ -63,7 +65,7 @@ public sealed class CrowdSeat
 /// знає лише своє місце з виду. Скупись за списком із чотирьох лотків або вистеж суперників рогаткою.
 /// Правила поля — у <see cref="CrowdCore"/>, тут фази, очки, дії, вид і кадр (spec: docs/games/specs/crowd.md).
 /// </summary>
-public sealed class Crowd : Game
+public sealed partial class Crowd : Game
 {
     public const string PhaseLobby = "lobby", PhaseStart = "start", PhaseGo = "go", PhaseReveal = "reveal", PhaseOver = "over";
     public const int Seats = 8;
@@ -108,14 +110,15 @@ public sealed class Crowd : Game
     };
 
     public override GameInfo Info { get; } = new(
-        "crowd", "Юрма", "юрму", GameGroup.Live, 2, Seats, TickMs: TickMs,
+        "crowd", "Юрма", "юрму", GameGroup.Live, 1, Seats, TickMs: TickMs,
         Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("crowd", "Юрма", [("auto", "Як на ярмарку"), ("small", "Рідка (20)"), ("big", "Тиснява (48)")], "auto"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Ярмарок, повно люду — і десь серед них твої друзі. Скупись за списком або вистеж їх із рогатки. Ніхто не знає, хто з селян живий");
+        Hint: "Ярмарок, повно люду — і десь серед них твої друзі. Скупись за списком або вистеж їх із рогатки. Ніхто не знає, хто з селян живий. Самому — з 🤖 ботами");
 
     static readonly string[] SeatNames = ["жовтий", "зелений", "рудий", "сірий", "синій", "рожевий", "фіолетовий", "червоний"];
 
@@ -166,6 +169,7 @@ public sealed class Crowd : Game
     {
         _rounds = options.TryGetValue("rounds", out var r) && int.TryParse(r, out var n) && n is 1 or 3 or 5 ? n : 3;
         _crowd = options.TryGetValue("crowd", out var c) && c is "small" or "big" ? c : "auto";
+        _solo.Configure(options);
     }
 
     /// <summary>Скільки ботів за складом і опцією.</summary>
@@ -187,13 +191,15 @@ public sealed class Crowd : Game
         _pending.Clear();
         _ev.Clear();
         _evFrame = [];
+        _bots = _solo.Active(Ctx, Seats) ? BotSeats() : [];
         var players = 0;
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            s.Plays = Ctx.Seated(i);
+            s.Bot = Array.IndexOf(_bots, i) >= 0;
+            s.Plays = Ctx.Seated(i) || s.Bot;
             s.Out = false;
-            s.Nick = Ctx.NickOf(i) ?? "";
+            s.Nick = s.Bot ? LiveBots.Name : Ctx.NickOf(i) ?? "";
             s.Total = s.ShownTotal = 0;
             if (s.Plays) players++;
         }
@@ -236,6 +242,7 @@ public sealed class Crowd : Game
         }
         Array.Clear(_nearBot);
         Array.Clear(_nearPair);
+        BotsNewRound();
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
         _dirty = true;
@@ -270,8 +277,10 @@ public sealed class Crowd : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle && (!_started || _phase == PhaseOver)) return _solo.Switch(Ctx, seat, payload, Seats);
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= Seats || !_s[seat].Active) return ActResult.Fail("Тут так не ходять");
+        if (_s[seat].Bot) return ActResult.Fail("Тут грає 🤖 бот — зачекай кінця партії");
         return action switch
         {
             "move" => Move(seat, payload),
@@ -355,6 +364,13 @@ public sealed class Crowd : Game
 
     ActResult Shoot(int seat, JsonElement payload)
     {
+        var id = Field(payload, "id", out var ok);
+        return ShootAt(seat, id, ok);
+    }
+
+    /// <summary>Постріл — одна дорога і для людини, і для 🤖 бота (ті самі камінці, перезарядка й дальність).</summary>
+    ActResult ShootAt(int seat, int? id, bool ok = true)
+    {
         var s = _s[seat];
         if (PhaseRefusal(s) is { } no) return no;
         var me = Core.V[s.Me];
@@ -362,7 +378,6 @@ public sealed class Crowd : Game
         if (s.Stones <= 0) return ActResult.Fail("Камінці скінчились");
         if (s.ShotCool > 0) return ActResult.Fail("Рогатка ще натягується");
 
-        var id = Field(payload, "id", out var ok);
         if (!ok) return ActResult.Fail("Такого селянина нема");
         int target;
         if (id is { } want)
@@ -385,6 +400,7 @@ public sealed class Crowd : Game
         s.ShotCool = ShotCoolTicks;
         s.Shots++;
         var hit = Core.V[target];
+        BotsSawShot(me.Id);
         if (hit.Owner >= 0)
         {
             var victim = _s[hit.Owner];
@@ -417,6 +433,7 @@ public sealed class Crowd : Game
                 var st = CrowdMap.Stalls[bl.BluffStall];
                 if (CrowdCore.Dist2(hit, st.Fx, st.Fy) <= (long)BluffNear * BluffNear) bl.Fooled = seat;
             }
+            _eye.Clear(target);     // упав — отже, просто селянин: це бачать усі, і боти теж
             hit.Fallen = CrowdCore.FallTicks;
             hit.Moving = false;
             CrowdCore.Forget(hit);
@@ -428,13 +445,18 @@ public sealed class Crowd : Game
 
     ActResult Buy(int seat, JsonElement payload)
     {
+        var want = Field(payload, "stall", out var ok);
+        return BuyAt(seat, want, ok);
+    }
+
+    ActResult BuyAt(int seat, int? want, bool ok = true)
+    {
         var s = _s[seat];
         if (PhaseRefusal(s) is { } no) return no;
         var me = Core.V[s.Me];
         if (me.Haggle > 0) return ActResult.Fail("Ти вже торгуєшся");
         if (s.BuyCool > 0) return ActResult.Fail("Продавець ще рахує решту");
 
-        var want = Field(payload, "stall", out var ok);
         if (!ok) return ActResult.Fail("Такого лотка нема");
         if (want is { } bad && (bad < 0 || bad >= CrowdMap.Stalls.Length)) return ActResult.Fail("Такого лотка нема");
         // Торгуються лише з прилавка — двох клітинок стежки перед корпусом. Там само стоять і боти, тож торг
@@ -465,7 +487,9 @@ public sealed class Crowd : Game
                 _clock++;
                 HeldKeys();
                 Core.ThinkAll();
+                BotsThink();
                 Core.StepAll();
+                BotsWatch();
                 Trail();
                 if (--_left <= 0)
                 {
@@ -482,7 +506,9 @@ public sealed class Crowd : Game
                 HeldKeys();
                 Timers();
                 Core.ThinkAll();
+                BotsThink();
                 Core.StepAll();
+                BotsWatch();
                 Trail();
                 _left--;
                 EndCheck();
@@ -600,6 +626,7 @@ public sealed class Crowd : Game
         if (stall < 0) return;
         _ev.Add([2, stall]);
         _dirty = true;
+        BotsSawFlash(stall);
         if (v.Owner < 0) return;
         var s = _s[v.Owner];
         s.BuyCool = BuyCoolTicks;
@@ -650,13 +677,15 @@ public sealed class Crowd : Game
 
     void EndRound(int[] winners, string why)
     {
+        // з 🤖 ботами — без ачівок: партія тренувальна
+        var awards = _bots.Length == 0;
         foreach (var w in winners)
         {
             _s[w].Total += PtRound;
-            if (why == "list" && _s[w].Shots == 0) Ctx.Award(w, 0, "ach:crowd-quiet");
+            if (awards && why == "list" && _s[w].Shots == 0) Ctx.Award(w, 0, "ach:crowd-quiet");
         }
         for (var i = 0; i < Seats; i++)
-            if (_s[i].Active && _s[i].Eye) Ctx.Award(i, 0, "ach:crowd-eye");
+            if (awards && _s[i].Active && _s[i].Eye) Ctx.Award(i, 0, "ach:crowd-eye");
         ScoreGuesses();
         _reveal = RevealOf(winners, why, s => s.Active);
         foreach (var v in Core.V)
@@ -790,9 +819,14 @@ public sealed class Crowd : Game
         var winners = top.Length == active.Count ? [] : top;
         _winners = winners;
         _dirty = true;
-        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
-        var line = string.Join(" : ", order.Select(i => $"{_s[i].Nick} {_s[i].Total}"));
+        var line = string.Join(" : ", order.Select(i => $"{BotNick(i)} {_s[i].Total}"));
+        if (_bots.Length > 0)
+        {
+            FinishWithBots(winners, line);
+            return;
+        }
+        foreach (var i in active) Ctx.Score(i, _s[i].Total);
         Ctx.Finish(winners, winners.Length > 0 ? $"{Info.Title}: {line}" : $"{Info.Title}: {line} — нічия");
     }
 
@@ -929,6 +963,10 @@ public sealed class Crowd : Game
                 ? new { winners = w, totals = _s.Select(x => x.Total).ToArray(), why = _endWhy }
                 : null,
             turn = (int?)null,
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
+            bot = BotView(),
         };
     }
 

@@ -329,7 +329,7 @@
       }
       const who = res.winners || [];
       const one = who.length === 1 ? who[0] : -1;
-      const nick = one >= 0 ? (ctx.nickOf(one) || ctx.seatName(one)) : '';
+      const nick = one >= 0 ? (ctx.nameOf(one) || ctx.seatName(one)) : '';
       const m = one >= 0 && f.p ? f.p[one] : null;
       const u = c.w / (21 * PX);   // на великій мапі літери більші — інакше на телефоні вони дрібніють
       g.fillStyle = pal.dark;
@@ -342,7 +342,7 @@
       g.textBaseline = 'middle';
       g.font = '700 ' + Math.round(24 * u) + 'px system-ui, sans-serif';
       g.fillStyle = one >= 0 ? (pal.seats[one] || pal.text) : pal.text;
-      g.fillText(one >= 0 ? '🏆 ' + nick : who.length ? '🏆 ' + who.map((i) => ctx.nickOf(i) || ctx.seatName(i)).join(', ') : 'Нічия', c.w / 2, c.h / 2 - 9 * u, c.w - 60);
+      g.fillText(one >= 0 ? '🏆 ' + nick : who.length ? '🏆 ' + who.map((i) => ctx.nameOf(i) || ctx.seatName(i)).join(', ') : 'Нічия', c.w / 2, c.h / 2 - 9 * u, c.w - 60);
       g.font = Math.round(14 * u) + 'px system-ui, sans-serif';
       g.fillStyle = pal.text;
       g.fillText(one >= 0 ? 'бере партію — ' + frags((m && m.frags) || 0) : who.length ? 'поділили першість' : 'фрагів порівну', c.w / 2, c.h / 2 + 17 * u);
@@ -519,7 +519,7 @@
     const men = (f && f.p) || [];
     let html = '';
     for (let i = 0; i < 6; i++) {
-      const nick = ctx.nickOf(i);
+      const nick = ctx.nameOf(i);
       if (!nick) continue;
       const m = men[i] || {};
       const perks = String(m.perks || '').split('').map((k) => PERK[k] || '').join('');
@@ -657,7 +657,7 @@
     st.booms = st.booms.filter((b) => now - b.at < BOOM_MS);
   }
 
-  const who = (ctx, i) => i >= SEATS_N || i < 0 ? '🤖' : '<b class="tk-n s' + i + '">' + ctx.esc(ctx.nickOf(i) || ctx.seatName(i)) + '</b>';
+  const who = (ctx, i) => i >= SEATS_N || i < 0 ? '🤖' : '<b class="tk-n s' + i + '">' + ctx.esc(ctx.nameOf(i) || ctx.seatName(i)) + '</b>';
   const IN_ROW = { 3: 'три', 4: 'чотири', 5: 'п\'ять', 6: 'шість', 7: 'сім', 8: 'вісім', 9: 'дев\'ять', 10: 'десять' };
 
   function eventHtml(ctx, e) {
@@ -766,13 +766,12 @@
     seatClass: ['x', 'o', 'c', 'd', 'tb', 'tp'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} їхати · {a} бахнути, тримай — стріляє сам' },
     news: {
-      v: '2026-09-29',
-      title: 'Танчики: команди, хвилі 🤖, кущі й автовогонь',
+      v: '2026-09-30',
+      title: 'Танчики: соло з ботами',
       items: [
-        '💥 Тримай пробіл чи «💥» — танк стріляє сам, щойно перезарядився; натиск трохи зарано теж не пропаде',
-        '🏺 Опція «Грають»: команди з глеком-базою («Бережи базу») або разом проти хвиль ворожих 🤖',
-        '🌳 Мапа з кущами (ховають танк) і ❄ льодом (ковзко); новий бонус 🪃 — снаряд відскакує від сталі за ріг',
-        '🔥 Серії й 😈 помста в стрічці під полем, а наприкінці — підсумок: влучність, серії, хто кого діставав',
+        '🤖 Сам за столом — тисни «🤖 + бот»: три танки-боти, кожен сам за себе, а в командах — ти з ботом проти двох, глек на глек',
+        '🎚️ Рівень ботів — опція столу: легкий блукає й маже, сильний стріляє на впередження й збиває твої кулі своїми',
+        '🤖 Проти хвиль тепер можна й самому — без бота; партії з ботами — без черепків і таблиці фрагів',
       ],
     },
 

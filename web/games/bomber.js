@@ -391,7 +391,7 @@
       } else who = roundWinner(st, f);
       let title = 'Нічия', color = pal.text;
       if (who && who.team !== undefined) { title = '🏆 ' + TEAMS[who.team]; color = who.team === 0 ? pal.ok : pal.danger; }
-      else if (who && st.ctx) { title = '🏆 ' + (st.ctx.nickOf(who.seat) || st.ctx.seatName(who.seat)); color = pal.seats[who.seat] || pal.text; }
+      else if (who && st.ctx) { title = '🏆 ' + (st.ctx.nameOf(who.seat) || st.ctx.seatName(who.seat)); color = pal.seats[who.seat] || pal.text; }
       g.fillStyle = pal.bomb;
       g.globalAlpha = 0.85;
       g.beginPath();
@@ -620,7 +620,7 @@
   // ---------------------------------------------------------------------------------------------
 
   function chipOf(ctx, i, m, wins, teams) {
-    const nick = ctx.nickOf(i);
+    const nick = ctx.nameOf(i);
     const ghost = !m.alive && m.g;
     const ups = ghost ? '👻' : '💣' + (m.bombs || 1) + ' 🔥' + (m.range || 2) + (m.boots ? ' 👟' : '') + (m.k ? ' 🧤' : '') + (m.cu ? ' 💀' : '');
     const team = teams && teams[i] >= 0 ? ' bm-t' + teams[i] : '';
@@ -647,7 +647,7 @@
         + score[1] + '</b> ' + TEAMS[1] + '</span></span>';
     }
     for (let i = 0; i < SEATN; i++) {
-      if (!ctx.nickOf(i)) continue;
+      if (!ctx.nameOf(i)) continue;
       html += chipOf(ctx, i, men[i] || {}, wins, teams);
     }
     if (f && f.phase === 'go') {
@@ -676,7 +676,7 @@
   // ---------------------------------------------------------------------------------------------
 
   function who(ctx, i) {
-    return '<b class="bm-n s' + i + '">' + ctx.esc(ctx.nickOf(i) || ctx.seatName(i)) + '</b>';
+    return '<b class="bm-n s' + i + '">' + ctx.esc(ctx.nameOf(i) || ctx.seatName(i)) + '</b>';
   }
 
   function eventHtml(ctx, e) {
@@ -905,14 +905,12 @@
     seatClass: ['x', 'o', 'c', 'd', 'bb', 'bp'],
     pad: { dirs: true, a: 'Space', anyBtn: true, hint: '{dpad} бігати · {a} бахнути бомбу (будь-яка кнопка)' },
     news: {
-      v: '2026-09-29',
-      title: 'Бомбер: мапи, привиди, команди й хаос',
+      v: '2026-09-30',
+      title: 'Бомбер: соло з ботами',
       items: [
-        '🗺️ Нові опції столу: мапи «Відкрита» й «Лабіринт», просторе поле 19×15, стискання з 90-ї секунди',
-        '👻 Підірвали — літай привидом крізь стіни й раз на раунд кинь повільну помсту; 🧤 копняк і 💀 прокляття в «хаосі»',
-        '🥒🍅 Команди 2×2 і 3×3: Огірки проти Помідорів, свої бомби своїх не ранять (або дружній вогонь — опцією)',
-        '📰 Під полем — хто кого підірвав, а наприкінці — звання: найдовше вижив, самопідривник партії…',
-        '⚡ Свій бомбер рушає одразу, без затримки зв\'язку',
+        '🤖 Сам за столом — тисни «🤖 + бот»: сядуть три боти, кожен сам за себе (з опцією «команди» — ти з ботом проти двох)',
+        '🎚️ Рівень ботів — опція столу: легкий часом сам лізе у вогонь, сильний бачить ланцюги бомб і заганяє в кут',
+        '🏳️ Партія з ботами — без черепків і рейтингу; підірвали тебе — раунд за ботами, що встояли',
       ],
     },
 
@@ -1035,7 +1033,7 @@
         const st = ctx._bomber;
         const w = st ? roundWinner(st, f) : null;
         if (w && w.team !== undefined) return 'Раунд беруть ' + TEAMS[w.team];
-        return w ? 'Раунд бере ' + (ctx.nickOf(w.seat) || ctx.seatName(w.seat)) : 'Раунд нічий';
+        return w ? 'Раунд бере ' + (ctx.nameOf(w.seat) || ctx.seatName(w.seat)) : 'Раунд нічий';
       }
       if (f.phase === 'over') return '';
       if (!ctx.mine) return 'Дивишся збоку';

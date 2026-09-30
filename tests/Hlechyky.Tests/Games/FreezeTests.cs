@@ -1355,12 +1355,12 @@ public class FreezeTests(ITestOutputHelper output)
         Assert.Equal("freeze", info.Id);
         Assert.Equal("Замри!", info.Title);
         Assert.Equal(GameGroup.Live, info.Group);
-        Assert.Equal((2, 8), (info.MinPlayers, info.MaxPlayers));
+        Assert.Equal((1, 8), (info.MinPlayers, info.MaxPlayers));   // самому — з 🤖 ботами (без них CanStart не пустить)
         Assert.Equal(40, info.TickMs);
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.True(info.Hidden);
         Assert.Equal(ScoreOrder.HigherIsBetter, info.Score);
-        Assert.Equal(["rounds", "crowd", "mode"], info.Options!.Select(o => o.Key));
+        Assert.Equal(["rounds", "crowd", "mode", "botlvl"], info.Options!.Select(o => o.Key));
         Assert.True(File.Exists(Path.Combine(FindRoot(), "web", "games", "freeze.js")));
         Assert.True(File.Exists(Path.Combine(FindRoot(), "web", "games", "freeze.css")));
         Assert.Equal("рожевий", new Freeze().SeatName(5));

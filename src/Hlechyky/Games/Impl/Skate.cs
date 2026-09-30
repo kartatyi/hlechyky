@@ -83,14 +83,15 @@ public sealed class Skate : Game
     };
 
     public override GameInfo Info { get; } = new(
-        "skate", "Ковзанка", "ковзанку", GameGroup.Live, 2, Seats, TickMs: TickMs,
+        "skate", "Ковзанка", "ковзанку", GameGroup.Live, 1, Seats, TickMs: TickMs,
         Start: StartMode.ByHost, Hidden: true, Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("crowd", "На льоду", [("auto", "Як на свято"), ("small", "Рідко (20)"), ("big", "Тиснява (48)")], "auto"),
+            LiveBots.LevelOption,
         ],
-        Hint: "Замерзлий ставок, пів села на ковзанах — і десь серед них твої друзі. Збери свої ласощі або зіпхни підозрілого в ополонку. Ніхто не знає, хто з юрми живий");
+        Hint: "Замерзлий ставок, пів села на ковзанах — і десь серед них твої друзі. Збери свої ласощі або зіпхни підозрілого в ополонку. Ніхто не знає, хто з юрми живий. Самому — з 🤖 ботом, що ховається серед ковзанярів");
 
     static readonly string[] SeatNames = ["жовтий", "зелений", "рудий", "сірий", "синій", "рожевий", "фіолетовий", "червоний"];
 
@@ -115,6 +116,13 @@ public sealed class Skate : Game
     int[][] _evFrame = [];
     SkateReveal? _reveal;
     int[]? _winners;
+    /// <summary>
+    /// «🤖 + бот»: людина сама за столом — на вільне місце сідає гравець-бот (<see cref="SkatePilot"/>). Один: на двох
+    /// ставок і так тісний від таранів юрми, а другий бот лише швидше збирав би кошик раніше за людину.
+    /// </summary>
+    readonly SoloBot _solo = new();
+    int _bot = -1;
+    SkatePilot? _pilot;
 
     sealed record SkateReveal(int[] Winners, string Why, (int Seat, int Id)[] Ids, SkateRow[] Rows, (int Seat, int[] Pts)[] Trails);
     sealed record SkateRow(int Seat, int Got, int Kills, bool Win, int Pts);
@@ -127,6 +135,23 @@ public sealed class Skate : Game
     public string Phase => _phase;
     public int Left => _left;
     public int RoundNo => _round;
+    /// <summary>Місце гравця-бота в цій партії (-1 — партія людська) і його мозок.</summary>
+    public int Bot => _bot;
+    public SkatePilot? PilotForTests => _pilot;
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, Seats);
+
+    public override string? SeatBot(int seat) => seat == _bot && seat >= 0 && !Ctx.Seated(seat) ? LiveBots.Name : null;
+
+    /// <summary>Куди сяде бот: перше вільне місце.</summary>
+    int BotSeat()
+    {
+        for (var i = 0; i < Seats; i++)
+            if (!Ctx.Seated(i)) return i;
+        return -1;
+    }
 
     public override string SeatName(int seat) => seat >= 0 && seat < Seats ? SeatNames[seat] : base.SeatName(seat);
 
@@ -134,6 +159,7 @@ public sealed class Skate : Game
     {
         _rounds = options.TryGetValue("rounds", out var r) && int.TryParse(r, out var n) && n is 1 or 3 or 5 ? n : 3;
         _crowd = options.TryGetValue("crowd", out var c) && c is "small" or "big" ? c : "auto";
+        _solo.Configure(options);
     }
 
     /// <summary>Скільки ботів за складом і опцією.</summary>
@@ -155,12 +181,14 @@ public sealed class Skate : Game
         _ev.Clear();
         _evFrame = [];
         var players = 0;
+        _bot = _solo.Active(Ctx, Seats) ? BotSeat() : -1;
+        _pilot = _bot >= 0 ? new SkatePilot(Core, Ctx.Rng, _solo.Level) : null;
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            s.Plays = Ctx.Seated(i);
+            s.Plays = Ctx.Seated(i) || i == _bot;
             s.Out = false;
-            s.Nick = Ctx.NickOf(i) ?? "";
+            s.Nick = i == _bot ? LiveBots.Name : Ctx.NickOf(i) ?? "";
             s.Total = s.ShownTotal = 0;
             if (s.Plays) players++;
         }
@@ -196,6 +224,7 @@ public sealed class Skate : Game
         }
         for (var i = 0; i < Seats; i++)
             if (!_s[i].Active) _s[i].Me = -1;
+        if (_bot >= 0) _pilot!.Reset(_s[_bot].Me, Core.N, _s[_bot]);
         _dirty = true;
     }
 
@@ -220,6 +249,8 @@ public sealed class Skate : Game
     /// <summary>Єдина дія гри — <c>move</c>: що тримаєш (−1 нічого, 0…7 напрямок, 8 гальмо). Решта — фізика.</summary>
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return !_started || _phase == PhaseOver ? _solo.Switch(Ctx, seat, payload, Seats) : ActResult.Fail("Партія вже йде");
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat < 0 || seat >= Seats || !_s[seat].Active) return ActResult.Fail("Тут так не катаються");
         if (action != "move") return ActResult.Fail("Тут так не катаються");
@@ -303,6 +334,8 @@ public sealed class Skate : Game
         var core = Core;
         core.TimersAll();
         core.ThinkAll();
+        // гравець-бот думає після юрми тим самим вводом, що й людина (Want)
+        if (_bot >= 0 && _pilot is not null && _s[_bot] is { Active: true, Alive: true, Me: >= 0 } b) _pilot.Think(core.V[b.Me]);
         core.StepAll();
         core.CollideAll();
         core.WaterAll();
@@ -316,7 +349,11 @@ public sealed class Skate : Game
     void Drain()
     {
         var core = Core;
-        foreach (var e in core.Ev) Absorb(e);
+        foreach (var e in core.Ev)
+        {
+            _pilot?.See(e);
+            Absorb(e);
+        }
         _ev.AddRange(core.Ev);
         core.Ev.Clear();
     }
@@ -382,7 +419,7 @@ public sealed class Skate : Game
         for (var i = 0; i < Seats; i++)
         {
             var s = _s[i];
-            if (!s.Active || !s.Alive || s.Me < 0) continue;
+            if (!s.Active || !s.Alive || s.Me < 0 || i == _bot) continue;
             var v = Core.V[s.Me];
             if (v.Want >= 0 && _clock - s.MoveAt > MoveHoldTicks) v.Want = -1;
         }
@@ -451,13 +488,15 @@ public sealed class Skate : Game
 
     void EndRound(int[] winners, string why)
     {
+        // партія з ботом — без ачівок (як і без черепків та рекордів)
+        var awards = _bot < 0;
         foreach (var w in winners)
         {
             _s[w].Total += PtRound;
-            if (why == "list" && _s[w].Me >= 0 && Core.V[_s[w].Me].Falls == 0) Ctx.Award(w, 0, "ach:skate-clean");
+            if (awards && why == "list" && _s[w].Me >= 0 && Core.V[_s[w].Me].Falls == 0) Ctx.Award(w, 0, "ach:skate-clean");
         }
         for (var i = 0; i < Seats; i++)
-            if (_s[i].Active && _s[i].Kills > 0) Ctx.Award(i, 0, "ach:skate-ram");
+            if (awards && _s[i].Active && _s[i].Kills > 0) Ctx.Award(i, 0, "ach:skate-ram");
         _reveal = RevealOf(winners, why, s => s.Active);
         Freeze();
         _phase = PhaseReveal;
@@ -505,12 +544,31 @@ public sealed class Skate : Game
         var best = active.Count == 0 ? 0 : active.Max(i => _s[i].Total);
         var top = active.Where(i => _s[i].Total == best).ToArray();
         var winners = top.Length == active.Count ? [] : top;
+        if (_bot >= 0) { FinishWithBot(active, top); return; }
         _winners = winners;
         _dirty = true;
         foreach (var i in active) Ctx.Score(i, _s[i].Total);
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
         var line = string.Join(" : ", order.Select(i => $"{_s[i].Nick} {_s[i].Total}"));
         Ctx.Finish(winners, winners.Length > 0 ? $"{Info.Title}: {line}" : $"{Info.Title}: {line} — нічия");
+    }
+
+    /// <summary>
+    /// Кінець партії з ботом: переможець — лише людина (бот у переможці каркаса не йде; рахунку в профіль нема).
+    /// </summary>
+    void FinishWithBot(List<int> active, int[] top)
+    {
+        var human = active.FirstOrDefault(i => i != _bot, -1);
+        var line = string.Join(" : ", active.OrderByDescending(i => _s[i].Total).Select(i => $"{_s[i].Nick} {_s[i].Total}"));
+        int hp = human >= 0 ? _s[human].Total : 0, bp = _s[_bot].Total;
+        var draw = top.Length == active.Count;
+        var won = human >= 0 && !draw && Array.IndexOf(top, human) >= 0;
+        _winners = won ? [human] : draw ? [] : [_bot];
+        _dirty = true;
+        Ctx.Finish(won ? [human] : [], $"{Info.Title}: {line}{(draw ? " — нічия" : "")}",
+            verdict: won ? $"🏆 {_s[human].Nick} — перемога над {LiveBots.Of(_solo.Level)} ботом {hp}:{bp}"
+                : draw ? $"🤝 Нічия з ботом {hp}:{bp}"
+                : $"🤖 Бот переміг {bp}:{hp}");
     }
 
     /// <summary>
@@ -638,6 +696,11 @@ public sealed class Skate : Game
                 ? new { winners = w, totals = _s.Select(x => x.Total).ToArray(), why = _endWhy }
                 : null,
             turn = (int?)null,
+            // «🤖 + бот» (кнопку малює core.js): у лобі — куди сяде, у партії й після — де сидів
+            bot = live && _bot >= 0 ? _bot : _solo.Wanted && BotSeat() is var bs && bs >= 0 ? bs : (int?)null,
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
         };
     }
 

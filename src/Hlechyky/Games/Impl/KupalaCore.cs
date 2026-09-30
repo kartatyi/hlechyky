@@ -229,7 +229,7 @@ public sealed class KupalaCore(Random rng)
     public void Think(KupalaVillager v)
     {
         if (v.Dead || v.Fallen > 0 || v.Busy > 0 || v.Stun > 0) return;
-        if (Night)
+        if (Night && v.Owner < 0)          // гравець-бот (🤖) б'є й шпурляє сам — тими самими діями, що й людина
         {
             if (_rng.Next(BotSlapOdds) == 0)
             {
@@ -345,7 +345,7 @@ public sealed class KupalaCore(Random rng)
         if (k >= 0 && SpotAt(v) == k)
         {
             v.Dir = 1;
-            if (_rng.Next(1000) < BotLaunchMilli && Night)
+            if (v.Owner < 0 && _rng.Next(1000) < BotLaunchMilli && Night)
             {
                 v.Busy = BusyTicks - 1;     // гравець: Act між тиками, таймер тикає вже в першому тику стояння
                 v.BusyWhat = k;
@@ -396,6 +396,28 @@ public sealed class KupalaCore(Random rng)
             if (KupalaMap.BoxFits(x, y)) return (x, y);
         }
         return (cx + _rng.Next(-TightMax, TightMax + 1), cy + _rng.Next(-TightMax, TightMax + 1));
+    }
+
+    /// <summary>Гравець-бот (🤖) обрав ціль сам (частіше — кладку зі свого списку): точка — та сама <see cref="Spot"/>, що в юрби.</summary>
+    public void Aim(KupalaVillager v, int cell, int spot)
+    {
+        v.Target = cell;
+        v.TargetSpot = spot;
+        (v.Tx, v.Ty) = Spot(cell);
+        v.Stand = 0;
+        v.Wander = 0;
+        v.WanderNext = false;
+    }
+
+    /// <summary>Гравець-бот іде просто до точки (за підозрілим): точка селянина завжди прохідна для коробки.</summary>
+    public static void AimAt(KupalaVillager v, int x, int y)
+    {
+        v.Target = KupalaMap.CellOf(x, y);
+        v.TargetSpot = -1;
+        (v.Tx, v.Ty) = (x, y);
+        v.Stand = 0;
+        v.Wander = 0;
+        v.WanderNext = false;
     }
 
     public static void Forget(KupalaVillager v)

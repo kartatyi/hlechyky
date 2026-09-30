@@ -17,9 +17,9 @@ public sealed class Hockey : Game
     static readonly string[] TeamNames = ["сині", "руді"];
 
     public override GameInfo Info { get; } = new(
-        "hockey", "Аерохокей", "аерохокей", GameGroup.Live, 2, HockeyCore.Seats, TickMs: HockeyCore.TickMs,
-        Start: StartMode.ByHost, Options: [GoalsOption],
-        Hint: "Стіл, шайба, біти. Води біту мишкою чи пальцем, не пропусти. На двох або двоє на двоє (утрьох — з 🤖 ботом), до семи");
+        "hockey", "Аерохокей", "аерохокей", GameGroup.Live, 1, HockeyCore.Seats, TickMs: HockeyCore.TickMs,
+        Start: StartMode.ByHost, Options: [GoalsOption, LiveBots.LevelOption],
+        Hint: "Стіл, шайба, біти. Води біту мишкою чи пальцем, не пропусти. На двох або двоє на двоє (утрьох — з 🤖 ботом), до семи. Самому — з 🤖 ботом");
 
     HockeyCore? _core;
     bool _started;
@@ -34,9 +34,16 @@ public sealed class Hockey : Game
     readonly Series _series = new();
     /// <summary>Останній гол партії — для підпису під «ГОЛ!» (автогол, з-під борту): команда, номер розіграшу, прапорці.</summary>
     (int Team, int N, bool Own, bool Rail)? _lastGoal;
-    /// <summary>Місце бота-напарника (утрьох — п. 180) або −1. Бот не сидить за столом: ні нагород, ні рахунку.</summary>
+    /// <summary>
+    /// Місце бота або −1: напарник утрьох (п. 180) чи суперник, коли людина сама покликала «🤖 + бот». Бот не сидить
+    /// за столом: ні нагород, ні рахунку.
+    /// </summary>
     int _bot = -1;
     public int Bot => _bot;
+    /// <summary>«🤖 + бот» для самотньої людини і рівень бота (він і напарникові утрьох).</summary>
+    readonly SoloBot _solo = new();
+    /// <summary>Ця партія — один на один з ботом: ні ачівок, ні серії.</summary>
+    bool _vsBot;
 
     public HockeyCore Core
     {
@@ -57,10 +64,19 @@ public sealed class Hockey : Game
 
     bool[] Seated() => [.. Enumerable.Range(0, HockeyCore.Seats).Select(Ctx.Seated)];
 
-    /// <summary>Утрьох бот займає вільне місце — і за парністю місць стає в пару до самотнього.</summary>
-    static int BotSeat(bool[] seated) => seated.Count(x => x) == 3 ? Array.IndexOf(seated, false) : -1;
+    /// <summary>
+    /// Утрьох бот займає вільне місце — і за парністю місць стає в пару до самотнього. Сам за столом з «🤖 + бот» —
+    /// бот сідає навпроти, на сусіднє місце іншої парності (0↔1, 2↔3): людина лишається своїм кольором.
+    /// </summary>
+    int BotSeat(bool[] seated)
+    {
+        var n = seated.Count(x => x);
+        if (n == 3) return Array.IndexOf(seated, false);
+        if (n == 1 && _solo.Wanted) return Array.IndexOf(seated, true) ^ 1;
+        return -1;
+    }
 
-    static bool[] WithBot(bool[] seated)
+    bool[] WithBot(bool[] seated)
     {
         var b = BotSeat(seated);
         if (b >= 0) seated[b] = true;
@@ -83,7 +99,15 @@ public sealed class Hockey : Game
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
         _target = options.TryGetValue("goals", out var v) && int.TryParse(v, out var n) && n is 5 or 7 or 10 ? n : 7;
+        _solo.Configure(options);
     }
+
+    public override bool ActsInLobby => true;
+
+    public override string? CanStart() => _solo.CanStart(Ctx, HockeyCore.Seats);
+
+    /// <summary>Каркас питає, хто сидить на порожньому місці під час і після партії: бот (суперник чи напарник).</summary>
+    public override string? SeatBot(int seat) => seat == _bot && _bot >= 0 ? LiveBots.Name : null;
 
     public override void Start()
     {
@@ -98,6 +122,8 @@ public sealed class Hockey : Game
         _series.Begin(Ctx, HockeyCore.Seats);
         var seated = Seated();
         _bot = BotSeat(seated);
+        _vsBot = _bot >= 0 && seated.Count(x => x) == 1;
+        Core.BotLevel = _solo.Level;
         Core.Reset(WithBot(seated));
     }
 
@@ -105,6 +131,8 @@ public sealed class Hockey : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        // у лобі й між партіями — лише «🤖 + бот» (господар, коли за столом сам)
+        if (action == LiveBots.Toggle && (!_started || _over)) return _solo.Switch(Ctx, seat, payload, HockeyCore.Seats);
         if (!_started) return ActResult.Fail("Партія ще не почалась");
         if (seat is < 0 or >= HockeyCore.Seats || !Core.Plays[seat]) return ActResult.Fail("Ти тут не граєш");
         if (_over) return ActResult.Fail("Партію вже зіграно");
@@ -198,7 +226,8 @@ public sealed class Hockey : Game
         {
             var lose = 1 - team;
             log = $"{Info.Title}: {Names(team)} {c.S[team]}:{c.S[lose]} {Names(lose)}";
-            foreach (var s in winners)
+            // один на один з ботом — без ачівок (нагороди партії з ботом не дають)
+            foreach (var s in _vsBot ? [] : winners)
             {
                 if (c.S[team] >= _target && c.S[lose] == 0) Ctx.Award(s, 0, "ach:hockey-dry");
                 if (_deficit[team] >= 3) Ctx.Award(s, 0, "ach:hockey-comeback");
@@ -208,10 +237,14 @@ public sealed class Hockey : Game
         {
             log = $"{Info.Title}: {Names(0)} {c.S[0]}:{c.S[1]} {Names(1)} — нічия";
         }
-        _series.Record(Ctx, winners);
+        // серія за столом — між людьми; перемога бота в ній була б «нічиєю»
+        if (!_vsBot) _series.Record(Ctx, winners);
         // Команда самого бота виграла — winners порожні, але це не нічия.
-        Ctx.Finish(winners, log, playing.ToDictionary(s => s, s => (long)c.Goals[s]),
-            verdict: team >= 0 && winners.Length == 0 ? $"🤖 Бот переміг {c.S[team]}:{c.S[1 - team]}" : null);
+        string? verdict = null;
+        if (team >= 0 && winners.Length == 0) verdict = $"🤖 Бот переміг {c.S[team]}:{c.S[1 - team]}";
+        else if (_vsBot && team >= 0)
+            verdict = $"🏆 {Names(team)} — перемога над {LiveBots.Of(_solo.Level)} ботом {c.S[team]}:{c.S[1 - team]}";
+        Ctx.Finish(winners, log, playing.ToDictionary(s => s, s => (long)c.Goals[s]), verdict: verdict);
         return TickResult.Both;
     }
 
@@ -236,7 +269,7 @@ public sealed class Hockey : Game
         _over = true;
         _winner = mine.Length > 0 ? team : theirs.Length > 0 ? 1 - team : null;
         var winners = mine.Length > 0 ? mine : theirs;
-        _series.Record(Ctx, winners);
+        if (!_vsBot) _series.Record(Ctx, winners);
         Ctx.Finish(winners, $"{Info.Title}: {nick} встав з-за столу, партію не дограли",
             winners.ToDictionary(s => s, s => (long)c.Goals[s]));
     }
@@ -277,6 +310,10 @@ public sealed class Hockey : Game
             golden = !lobby && _golden,
             winner = lobby ? null : _winner,
             bot = lobby ? (BotSeat(Seated()) is var b && b >= 0 ? b : (int?)null) : _bot >= 0 ? _bot : null,
+            // кнопку «🤖 + бот» малює core.js (спільна для живих ігор, LiveBots.cs)
+            botOffer = _solo.Offer(Ctx, HockeyCore.Seats),
+            botWanted = _solo.Wanted,
+            botLvl = _solo.LevelKey,
             lastGoal = lobby || _lastGoal is not { } lg ? null : new { team = lg.Team, n = lg.N, own = lg.Own, rail = lg.Rail },
             series = _series.View(Ctx, HockeyCore.Seats),
             table = new

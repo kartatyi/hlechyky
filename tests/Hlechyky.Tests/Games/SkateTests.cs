@@ -14,7 +14,7 @@ namespace Hlechyky.Tests.Games;
 /// справжню кімнату (<see cref="RoomHarness"/>). Клас у серійній колекції через перф-тести.
 /// </summary>
 [Collection(SerialPerf.Name)]
-public class SkateTests(ITestOutputHelper output)
+public partial class SkateTests(ITestOutputHelper output)
 {
     const int Fp = SkateCore.Fp;
 
@@ -1612,13 +1612,13 @@ public class SkateTests(ITestOutputHelper output)
         var info = new Skate().Info;
         Assert.Equal(("skate", "Ковзанка", "ковзанку"), (info.Id, info.Title, info.Accusative));
         Assert.Equal(GameGroup.Live, info.Group);
-        Assert.Equal((2, 8), (info.MinPlayers, info.MaxPlayers));
+        Assert.Equal((1, 8), (info.MinPlayers, info.MaxPlayers));   // сам — лише з «🤖 + бот» (SkateBotTests)
         Assert.Equal(40, info.TickMs);
         Assert.Equal(StartMode.ByHost, info.Start);
         Assert.True(info.Hidden);
         Assert.False(info.Rated);
         Assert.Equal(ScoreOrder.HigherIsBetter, info.Score);
-        Assert.Equal(["rounds", "crowd"], info.Options!.Select(o => o.Key));
+        Assert.Equal(["rounds", "crowd", "botlvl"], info.Options!.Select(o => o.Key));
         var root = FindRoot();
         Assert.True(File.Exists(Path.Combine(root, "web", "games", "skate.js")));
         Assert.True(File.Exists(Path.Combine(root, "web", "games", "skate.css")));

@@ -446,6 +446,26 @@ public sealed class DanceCore(Random rng)
         return (cx + _rng.Next(-TightMax, TightMax + 1), cy + _rng.Next(-TightMax, TightMax + 1));
     }
 
+    /// <summary>Гравець-бот (🤖) обрав ціль сам (частіше — коло): точка в клітинці — та сама <see cref="Spot"/>, що в юрби.</summary>
+    public void Aim(DanceVillager v, int cell)
+    {
+        v.Target = cell;
+        (v.Tx, v.Ty) = Spot(cell);
+        v.Stand = 0;
+        v.Wander = 0;
+        v.WanderNext = false;
+    }
+
+    /// <summary>Гравець-бот іде просто до точки (за підозрілим): точка танцюриста завжди прохідна для коробки.</summary>
+    public static void AimAt(DanceVillager v, int x, int y)
+    {
+        v.Target = DanceMap.CellOf(x, y);
+        (v.Tx, v.Ty) = (x, y);
+        v.Stand = 0;
+        v.Wander = 0;
+        v.WanderNext = false;
+    }
+
     /// <summary>Бот устав після образи чи став ботом після виходу гравця: думає з чистого аркуша.</summary>
     public static void Forget(DanceVillager v)
     {

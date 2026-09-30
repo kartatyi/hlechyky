@@ -742,10 +742,10 @@ public sealed class Pong : Game
 
     public override GameInfo Info { get; } = new(
         "pong", "Понг", "понг", GameGroup.Live, 1, PongArena.Seats, TickMs: PongCore.TickMs,
-        Start: StartMode.ByHost, Options: [Length, BonusOpt],
+        Start: StartMode.ByHost, Options: [Length, BonusOpt, LiveBots.LevelOption],
         Hint: "На двох — класика до семи, на трьох-чотирьох — арена: кожен стереже свою стіну. Самому — з 🤖 ботом. Стрілки або тягни пальцем");
 
-    public const string AloneText = "Сам на сам не пограєш: тисни «🤖 + бот» — або зачекай друга";
+    public const string AloneText = LiveBots.AloneText;
 
     PongCore? _core;
     PongArena? _arena;
@@ -757,8 +757,8 @@ public sealed class Pong : Game
     string _len = "normal";
     int? _winner;
     bool _over;
-    /// <summary>Господар покликав бота (лобі, коли за столом сам).</summary>
-    bool _botWanted;
+    /// <summary>Господар покликав бота (лобі, коли за столом сам) і рівень бота — спільне «🤖 + бот» (LiveBots.cs).</summary>
+    readonly SoloBot _solo = new();
     /// <summary>Місце бота в цій партії або −1. Бот не сидить: ні нагород, ні рейтингу, у Журналі — «🤖 бот».</summary>
     int _bot = -1;
     public int Bot => _bot;
@@ -789,11 +789,11 @@ public sealed class Pong : Game
     int SeatedCount => Enumerable.Range(0, PongArena.Seats).Count(Ctx.Seated);
 
     /// <summary>Бот стане на перше вільне місце, якщо за столом сам і його покликали.</summary>
-    int BotSeat() => _botWanted && SeatedCount == 1 ? Enumerable.Range(0, PongArena.Seats).First(s => !Ctx.Seated(s)) : -1;
+    int BotSeat() => _solo.Wanted && SeatedCount == 1 ? Enumerable.Range(0, PongArena.Seats).First(s => !Ctx.Seated(s)) : -1;
 
     public override bool ActsInLobby => true;
 
-    public override string? CanStart() => SeatedCount == 1 && !_botWanted ? AloneText : null;
+    public override string? CanStart() => _solo.CanStart(Ctx, PongArena.Seats);
 
     /// <summary>
     /// Арена чи класика. До старту — за тим, скільки зараз сидить (стіл, що чекає, показує саме те поле,
@@ -855,7 +855,11 @@ public sealed class Pong : Game
         var bonus = options.TryGetValue("bonus", out var b) ? b : BonusOpt.Default;
         if (!BonusOpt.Values.Any(v => v.Value == bonus)) throw new GameError("Таких бонусів нема");
         _bonuses = bonus == "on";
+        _solo.Configure(options);
     }
+
+    /// <summary>Каркас питає, хто на порожньому місці під час і після партії: бот.</summary>
+    public override string? SeatBot(int seat) => seat == _bot && _bot >= 0 ? LiveBots.Name : null;
 
     public override void Start()
     {
@@ -913,12 +917,8 @@ public sealed class Pong : Game
         if (Lobby || _over)
         {
             // у лобі — лише бот: покликати чи прогнати (господар, коли за столом сам)
-            if (action != "bot") return ActResult.Fail("Партія ще не почалась");
-            if (seat != Ctx.HostSeat) return ActResult.Fail("Бота кличе господар столу");
-            if (SeatedCount != 1 && !_botWanted) return ActResult.Fail("Бот грає лише з тим, хто сам за столом");
-            _botWanted = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("on", out var on)
-                ? on.ValueKind == JsonValueKind.True : !_botWanted;
-            return ActResult.Accept(_botWanted ? "🤖 Бот сів навпроти" : "Бот пішов");
+            if (action != LiveBots.Toggle) return ActResult.Fail("Партія ще не почалась");
+            return _solo.Switch(Ctx, seat, payload, PongArena.Seats);
         }
         switch (action)
         {
@@ -985,7 +985,7 @@ public sealed class Pong : Game
         Ctx.Finish(won == _bot ? [] : [won],
             $"{Info.Title}: {Nick(won)} {SeatName(won)} {Core.S[scorer.Value]}:{Core.S[1 - scorer.Value]} {Nick(lost)} {SeatName(lost)}",
             verdict: _bot < 0 ? null : won == _bot ? $"🤖 Бот переміг {Core.S[scorer.Value]}:{Core.S[1 - scorer.Value]}"
-                : $"🏆 {Nick(won)} — перемога над ботом {Core.S[scorer.Value]}:{Core.S[1 - scorer.Value]}");
+                : $"🏆 {Nick(won)} — перемога над {LiveBots.Of(_solo.Level)} ботом {Core.S[scorer.Value]}:{Core.S[1 - scorer.Value]}");
         return TickResult.Both;
     }
 
@@ -1010,10 +1010,22 @@ public sealed class Pong : Game
 
     string? Nick(int seat) => seat == _bot && !Ctx.Seated(seat) ? "🤖 бот" : Ctx.NickOf(seat);
 
+    // Рівні бота (легкий, звичайний, сильний); звичайний — рівно той бот, що був до рівнів.
+    /// <summary>Раз на скільки тиків бот «дивиться» на м'яч: 200 / 120 / 80 мс реакції.</summary>
+    static readonly int[] BotLook = [5, 3, 2];
+    /// <summary>Похибка на підліт: основа ± і приріст зі швидкістю м'яча (швидкість / дільник).</summary>
+    static readonly double[] BotErrBase = [6, 3, 2], BotErrDiv = [11, 18, 22];
     /// <summary>
-    /// Бот (п. 134): раз на три тики (120 мс — реакція) дивиться, куди м'яч прилетить до його площини (зі стінами), і
-    /// веде ракетку туди з похибкою, що росте зі швидкістю м'яча (на кожен підліт своя). М'яч летить від нього — вертається
-    /// до центру. Їде тією самою швидкістю, що й людина, тож на швидкому м'ячі й смешах промахується.
+    /// Сильний майже не маже — тож зрідка «проґавлює» м'яч, як людина (раз на сотню підльотів): бот, що не пропускає
+    /// ніколи, — поганий бот.
+    /// </summary>
+    const double HardSlip = 0.01, HardSlipErr = 14;
+
+    /// <summary>
+    /// Бот (п. 134): раз на кілька тиків (реакція рівня) дивиться, куди м'яч прилетить до його площини, і веде ракетку
+    /// туди з похибкою, що росте зі швидкістю м'яча (на кожен підліт своя). Легкий не рахує відскоків од стін — бачить
+    /// лише пряму й виправляється, коли м'яч уже відскочив. М'яч летить від нього — вертається до центру. Їде тією самою
+    /// швидкістю, що й людина, тож на швидкому м'ячі й смешах промахується навіть сильний.
     /// </summary>
     void BotThink()
     {
@@ -1021,7 +1033,8 @@ public sealed class Pong : Game
         var i = Index(_bot);
         if (i is not { } me) return;
         var toward = me == 0 ? c.Vx < 0 : c.Vx > 0;
-        if (c.T % 3 == 0)
+        var lvl = LiveBots.Index(_solo.Level);
+        if (c.T % BotLook[lvl] == 0)
         {
             if (!toward || c.StartIn > 0 || c.ServeIn > 0) { _botAim = PongCore.H / 2; _botSeen = -1; }
             else
@@ -1030,12 +1043,16 @@ public sealed class Pong : Game
                 var t = (plane - c.Bx) / c.Vx;
                 var y = c.By + c.Vy * t;
                 const double lo = PongCore.BallR, span = PongCore.H - 2 * PongCore.BallR;
-                var m = ((y - lo) % (2 * span) + 2 * span) % (2 * span);
-                y = lo + (m <= span ? m : 2 * span - m);
+                if (lvl > 0)
+                {
+                    var m = ((y - lo) % (2 * span) + 2 * span) % (2 * span);
+                    y = lo + (m <= span ? m : 2 * span - m);
+                }
                 if (_botSeen != c.Rally)
                 {
                     _botSeen = c.Rally;
-                    _botErr = (Ctx.Rng.NextDouble() * 2 - 1) * (3 + c.Speed / 18);
+                    _botErr = (Ctx.Rng.NextDouble() * 2 - 1) * (BotErrBase[lvl] + c.Speed / BotErrDiv[lvl]);
+                    if (lvl == 2 && Ctx.Rng.NextDouble() < HardSlip) _botErr = Math.Sign(_botErr + 1e-9) * HardSlipErr;
                 }
                 _botAim = y + _botErr;
             }
@@ -1074,7 +1091,10 @@ public sealed class Pong : Game
             winner = lobby ? null : _winner,
             target = Target,
             bot = lobby ? (BotSeat() is var b && b >= 0 ? b : (int?)null) : _bot >= 0 ? _bot : null,
-            botWanted = _botWanted,
+            botWanted = _solo.Wanted,
+            // кнопку «🤖 + бот» малює core.js (спільна для живих ігор, LiveBots.cs)
+            botOffer = _solo.Offer(Ctx, PongArena.Seats),
+            botLvl = _solo.LevelKey,
             turn = (int?)null,   // ходів тут нема, але каркас питає це поле в кожної гри
             frame = Shot(),      // щоб картка намалювала поле ще до першого кадру
         };

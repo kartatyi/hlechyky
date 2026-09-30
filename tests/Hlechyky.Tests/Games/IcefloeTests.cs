@@ -1426,12 +1426,13 @@ public class IcefloeTests(ITestOutputHelper output)
     {
         var h = Table(8);
         var info = h.Room.Info;
-        Assert.Equal(("icefloe", GameGroup.Live, 2, 8, 40, StartMode.ByHost, false), (info.Id, info.Group, info.MinPlayers, info.MaxPlayers, info.TickMs, info.Start, info.Rated));
+        Assert.Equal(("icefloe", GameGroup.Live, 1, 8, 40, StartMode.ByHost, false), (info.Id, info.Group, info.MinPlayers, info.MaxPlayers, info.TickMs, info.Start, info.Rated));
         Assert.Equal(["синій", "рудий", "зелений", "жовтий", "бузковий", "м’ятний", "рожевий", "сірий"],
             Enumerable.Range(0, 8).Select(h.Room.Game.SeatName));
         var one = new RoomHarness("icefloe");
         one.Join("Оля");
-        Assert.False(one.Start().Ok);                              // сам на сам — не починаємо
+        Assert.False(one.Start().Ok);                              // сам на сам — не починаємо: лише з 🤖 ботами
+        Assert.Equal(LiveBots.AloneText, one.Reply.Message);
     }
 
     // ---------- після рецензій ----------

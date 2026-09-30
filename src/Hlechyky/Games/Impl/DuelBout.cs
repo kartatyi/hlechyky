@@ -61,6 +61,9 @@ public sealed class DuelBout(IRoomContext ctx)
 
     public int? LastWinner => _hasLast ? _lastWinner : null;
 
+    /// <summary>У «Цілься…» щойно крикнули обманку — боту Дуелі, щоб і в нього «смикалась рука», як у людини.</summary>
+    public bool BaitShown => Phase == DuelPhase.Aim && _baitShown;
+
     /// <summary>Нова серія з чистого рахунку. <paramref name="extraReadyMs"/> — довше «Готуйсь…» (у турнірі: «наступна пара»).</summary>
     public void Reset(DateTimeOffset now, int extraReadyMs = 0)
     {

@@ -133,7 +133,8 @@ public sealed class FreezeCore(Random rng)
     /// <summary>Штурхає сусіда в стількох випадках із 10 000 тиків (якщо є кого): рідко, але штурхан — не вирок «гравець».</summary>
     public const int BotPushTenK = 4;
     /// <summary>Шанс перепочити, найдовший перепочинок і відрізок ходи — за вдачею (ледачий … нетерплячий).</summary>
-    static readonly int[] RestChance = [45, 30, 18, 8], RestMax = [90, 60, 40, 25], RunMin = [10, 15, 20, 40], RunMax = [40, 70, 100, 160];
+    /// <summary>Хода за темпом (ледачий … нетерплячий); публічні — ними ж ходить і 🤖 бот-гравець (<c>Freeze.Bot.cs</c>).</summary>
+    public static readonly int[] RestChance = [45, 30, 18, 8], RestMax = [90, 60, 40, 25], RunMin = [10, 15, 20, 40], RunMax = [40, 70, 100, 160];
 
     public static readonly int[] DX = [1, 0, -1, 0];
     public static readonly int[] DY = [0, 1, 0, -1];
