@@ -1343,3 +1343,40 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 .list .lv-adm-img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; display: block; background: var(--panel3); }
 .lv-adm-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .lv-adm-row button { border: 1px solid var(--line); }
+
+/* ---------- 🔥 Жива реклама: картка прожарки в Лавці (#lavka/roast) і блок у «📣 Реклама» (web/liveads.js) ---------- */
+.la-card { display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 12px; background: var(--bg2); max-width: 720px; }
+.la-top { display: flex; align-items: center; gap: 12px; }
+.la-top .lv-name { font-size: 1.1em; }
+.la-fire { font-size: 2.4em; line-height: 1; flex: none; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.la-form { display: flex; flex-direction: column; gap: 10px; }
+.la-field { display: flex; flex-direction: column; gap: 4px; max-width: 360px; }
+.la-field select, .la-admin select {
+  font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; outline: none; min-width: 0; width: 100%;
+}
+.la-field select:focus { border-color: var(--accent2); }
+.la-check { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; line-height: 1.35; }
+.la-check input { margin: 3px 0 0; flex: none; accent-color: var(--accent); width: 16px; height: 16px; }
+.la-buy { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.la-buy button { padding: 9px 16px; }
+.la-mine { display: flex; flex-direction: column; gap: 6px; }
+.la-orders { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.la-orders li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; border-radius: 10px; background: var(--panel); font-size: .92em; }
+.la-o-who { min-width: 0; overflow-wrap: anywhere; }
+.la-o-at { margin-left: auto; }
+.la-opt { padding-top: 12px; border-top: 1px solid var(--line); }
+.la-admin-box:empty { display: none; }
+.la-share input[type=range] { flex: 1 1 140px; max-width: 260px; min-width: 0; accent-color: var(--accent); }
+.la-admin input[type=text] { flex: 0 1 200px; min-width: 120px; }
+.la-on { font-size: .92em; }
+.list.la-recent { margin-bottom: 14px; }
+.list.la-recent li.la-rec { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px; border-bottom: 1px solid var(--line); border-radius: 0; }
+.la-rec-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.la-rec-head b { overflow-wrap: anywhere; }
+.la-text { font-size: .9em; line-height: 1.4; color: var(--text); cursor: pointer; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.la-text.open { -webkit-line-clamp: unset; display: block; }
+.la-rec audio { width: 100%; max-width: 360px; height: 34px; }
+@media (max-width: 600px) {
+  .la-card { padding: 12px; }
+  .la-o-at { margin-left: 0; }
+}

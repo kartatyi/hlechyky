@@ -3169,7 +3169,7 @@
           <button class="ghost danger" data-del="${a.id}" data-title="${esc(a.title)}" title="Видалити">✕</button>
         </div>
       </li>`;
-    box.innerHTML = head + `<ul class="list ads-list">${r.items.slice().reverse().map(row).join('') || '<li class="empty">Бібліотека порожня. Залий перший файл вище.</li>'}</ul>`;
+    box.innerHTML = '<div id="adsLive" class="la-admin-box"></div>' + head + `<ul class="list ads-list">${r.items.slice().reverse().map(row).join('') || '<li class="empty">Бібліотека порожня. Залий перший файл вище.</li>'}</ul>`;
 
     const again = () => loadLib();
     $('adsSaveEvery').onclick = (e) => busy(e.currentTarget, '…', () => api('POST', '/api/ads/air/every',
@@ -3207,6 +3207,7 @@
       api('PATCH', `/api/ads/library/${t.dataset.id}`, { title: name.trim() }).then(ok).then(again).catch(fail);
     });
     wireVoiceButtons(box);
+    if (window.HLiveAds) await HLiveAds.admin($('adsLive'));   // блок «Жива реклама» (web/liveads.js)
   }
 
   // ---------- імпорт плейлиста з посилання ----------
@@ -3632,6 +3633,8 @@
   const lavkaChanged = () => { paintNick(); nowSig = ''; queueSig = ''; if (state) render(); };
   HLavka.init({ $, esc, api, toast, busy, me, go, askNick, onMine: lavkaChanged, onLooks: () => { if (state) renderOnline(); } });
   HLavka.loadLooks();
+  // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
+  if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри,
   // onTurn — за якими столами мій хід (заголовок вкладки й «Ігри»), online — хто на сайті (кого покликати за стіл).
   HGames.init({

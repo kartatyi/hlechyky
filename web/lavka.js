@@ -26,7 +26,9 @@
   const preview = {};                  // слот → id речі, яку приміряємо (лише на екрані, нічого не купує)
 
   const TABS = [['icon', '🏺 Значки'], ['frame', '⭕ Рамки'], ['color', '🎨 Колір ніка'], ['title', '🏷 Титули'],
-    ['bg', '🖼 Тло'], ['perk', '✨ Вміння'], ['photo', '📷 Своя фотка'], ['mine', '👜 Моя шафа']];
+    ['bg', '🖼 Тло'], ['perk', '✨ Вміння'], ['photo', '📷 Своя фотка'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
+  /// Полиці, яких у подарунку нема: шафа — своя, а прожарку не дарують (її замовляють самі, web/liveads.js).
+  const NO_GIFT = ['mine', 'roast'];
   const TIER = { 1: 'звичайний', 2: 'рідкісний', 3: 'особливий' };
   const PERK_TEXT = {
     dedication: 'Перед твоїм треком Дядько Глек скаже в ефір: «Цю пісню Оля присвячує Петрові — на удачу». Раз на 3 години.',
@@ -258,7 +260,7 @@
     // Подарунок починаємо зі значків — найдешевшого й найзрозумілішого, а не з полиці, де був сам.
     if (giftTo && !same(giftTo, wasGift)) tab = 'icon';
     if (!giftTo && TABS.some(([k]) => k === parts[0])) tab = parts[0];
-    if (giftTo && tab === 'mine') tab = 'icon';
+    if (giftTo && NO_GIFT.includes(tab)) tab = 'icon';
     // Полиці перемикаємо одразу з того, що вже знаємо, а свіже (баланс, шафа) домальовуємо, щойно прийде.
     if (data) paint(); else root.innerHTML = '<div class="gwait"><span class="spin"></span> відчиняю лавку…</div>';
     try { await load(); } catch (e) { if (!data) root.innerHTML = '<section class="panel"><div class="gempty">Лавка зачинена: ' + esc(e.message) + '</div></section>'; return; }
@@ -301,14 +303,18 @@
         + '<button class="primary" data-acc>Закріпити нік</button></div>' : '')
       + (!giftTo ? previewHtml() : '')
       + '</section>';
-    const tabs = '<nav class="lv-tabs" aria-label="Полиці лавки">' + TABS.filter(([k]) => !(giftTo && k === 'mine')).map(([k, l]) =>
+    const tabs = '<nav class="lv-tabs" aria-label="Полиці лавки">' + TABS.filter(([k]) => !(giftTo && NO_GIFT.includes(k))).map(([k, l]) =>
       '<button type="button" data-tab="' + k + '"' + (k === tab ? ' class="on"' : '') + '>' + l + '</button>').join('') + '</nav>';
     const body = tab === 'photo' ? photoPanel()
+      : tab === 'roast' ? '<div class="la-host" data-la-host></div>'
       : shelf.length
       ? '<div class="lv-grid">' + shelf.map(cardHtml).join('') + '</div>' + soon
       : '<div class="gempty glek">' + (tab === 'mine' ? 'Шафа ще порожня. Обери щось на полицях — і воно лишиться з тобою назавжди.' : 'Тут поки порожньо.') + '</div>';
     root.innerHTML = head + '<section class="panel lv-shelf">' + tabs + body + '</section>';
     wire(root);
+    // 🔥 Прожарка в ефірі — свій модуль (web/liveads.js): малює себе сам і сам себе перечитує.
+    const la = root.querySelector('[data-la-host]');
+    if (la && window.HLiveAds) window.HLiveAds.mount(la);
   }
 
   function wire(root) {
@@ -713,6 +719,10 @@
     dative,
     genitive,
     phrases: () => (data && data.phrases) || [],
+    /// «Точно?» віконцем Лавки — ним питає й прожарка (web/liveads.js).
+    ask,
+    /// Після витрати поза вітриною (прожарка): свіжий баланс у «У глечику» й шапці.
+    async refresh() { try { await load(); } catch { return; } if (shown) paint(); },
     avaOf,
     /// Адмінська вкладка «📷 Фото» в Бібліотеці: app.js дає контейнер, решту малює Лавка.
     adminPhotos,
