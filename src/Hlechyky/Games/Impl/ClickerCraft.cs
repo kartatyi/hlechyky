@@ -432,10 +432,7 @@ public sealed partial class Clicker
     {
         if (_guard.Locked(now) || _guard.Pending) return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
         if (_guard.Due && !BonusOn(now))
-        {
-            _guard.Check();
-            return ActResult.Accept("👁 Майстер хоче глянути на твої руки — торкнись глечиків");
-        }
+            return ActResult.Accept("👁 Майстер хоче глянути на твої руки — торкнись глечиків" + EyeCheck(now));
         return null;
     }
 

@@ -523,20 +523,76 @@ public class ClickerGuardTests
         Assert.Equal(0, Guard(h).GetProperty("misses").GetInt32());
     }
 
+    static DateTimeOffset FairUntil(RoomHarness h) => View(h).GetProperty("fair").GetProperty("until").GetDateTimeOffset();
+    static DateTimeOffset InspireUntil(RoomHarness h) => View(h).GetProperty("inspire").GetProperty("until").GetDateTimeOffset();
+
     [Fact]
-    public void The_master_waits_for_the_fair_to_end_before_asking()
+    public void The_fair_does_not_hold_the_master_but_gets_ten_seconds_back_once_per_shelf()
     {
         var h = Wheel();
         LeftBeforeCheck(h, 1);
-        Patch(h, s => s["fairUntil"] = (h.Clock.UtcNow + TimeSpan.FromSeconds(30)).ToString("O"));
+        var until = h.Clock.UtcNow + TimeSpan.FromSeconds(30);
+        Patch(h, s => s["fairUntil"] = until.ToString("O"));
 
-        Human(h);
-        Assert.True(Free(h));
-        Assert.Equal(12 * 7, Pots(h));
-
-        h.Clock.Advance(31);
         Human(h);
         Assert.False(Free(h));
+        Assert.Equal(12 * 7, Pots(h));                   // пачка, що довела до перевірки, ще під ярмарком
+        Assert.Equal(until + Clicker.EyeBonusExtra, FairUntil(h));
+
+        // Промах — нова полиця, але не нові секунди: мазати заради ярмарку нема сенсу.
+        PotterHands.Miss(h);
+        Assert.Equal(until + Clicker.EyeBonusExtra, FairUntil(h));
+    }
+
+    [Fact]
+    public void A_shelf_for_the_handwriting_gives_inspiration_its_ten_seconds_too()
+    {
+        var h = Wheel();
+        var until = h.Clock.UtcNow + TimeSpan.FromSeconds(60);
+        Patch(h, s => s["inspireUntil"] = until.ToString("O"));
+
+        CatchRobot(h);
+        Assert.Equal("rhythm", Guard(h).GetProperty("why").GetString());
+        Assert.Equal(until + Clicker.EyeBonusExtra, InspireUntil(h));
+    }
+
+    [Fact]
+    public void A_caught_fair_does_not_hide_a_due_master_and_runs_ten_seconds_longer()
+    {
+        var h = Wheel();
+        LeftBeforeCheck(h, 1);
+        Patch(h, s => s["golden"] = new JsonObject
+        {
+            ["at"] = h.Clock.UtcNow.ToString("O"), ["until"] = (h.Clock.UtcNow + Clicker.GoldenShown).ToString("O"),
+            ["kind"] = (int)Clicker.GoldenKind.Fair, ["x"] = 10, ["y"] = 10,
+        });
+
+        var r = h.Act(0, "catch");
+        Assert.EndsWith("· 👁 майстер хоче глянути на твої руки (🎪 +10 с)", r.Message);
+        Assert.False(Free(h));
+        Assert.Equal(h.Clock.UtcNow + Clicker.FairFor + Clicker.EyeBonusExtra, FairUntil(h));
+    }
+
+    [Fact]
+    public void While_a_jug_falls_the_master_does_not_ask_even_for_the_handwriting()
+    {
+        var h = Wheel();
+        Human(h, 10);
+        h.Clock.Advance(1);
+        var now = h.Clock.UtcNow;
+        Patch(h, s => s["fall"] = new JsonObject
+        {
+            ["at"] = now.ToString("O"), ["until"] = (now + Clicker.FallShown).ToString("O"), ["x"] = 40,
+        });
+
+        CatchRobot(h);
+        Assert.True(Free(h));
+        Assert.Equal(10 + 24, Pots(h));                  // пачка з почерком робота однаково не рахується
+        Assert.True(h.Act(0, "grab").Ok);                // і глек ловиться, а не спить під полицею
+
+        // Глек спіймано — перша ж пачка з тим самим почерком ставить полицю.
+        Robot(h);
+        Assert.Equal("rhythm", Guard(h).GetProperty("why").GetString());
     }
 
     [Fact]
