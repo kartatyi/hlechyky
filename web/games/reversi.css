@@ -1,0 +1,174 @@
+/*
+  Реверсі. Дошка — сітка каркаса (.board) з класом rv: сукно, лінії-проміжки, чотири точки-зірочки.
+  Кольори — змінними: свої оголошуємо тут (з фолбеками на сайтові), решту беремо зі style.css.
+*/
+:root {
+  --rvfelt: #2f6a48;        /* сукно */
+  --rvline: #1b4430;        /* лінії між полями */
+  --rvblack: #2a1f19;       /* темна фішка — пічна глина */
+  --rvwhite: #f3e6cf;       /* світла фішка — необпалена глина */
+  --rvhint: rgba(0, 0, 0, .28);
+}
+
+.board.rv {
+  position: relative;
+  gap: 1px;
+  width: min(440px, 100%);
+  padding: 0;
+  background: var(--rvline);
+  border: 3px solid var(--rvline);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
+}
+/* Чотири точки-зірочки на перетинах b2/c3, f3/g2… — як на справжній дошці Отелло. */
+.board.rv::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background:
+    radial-gradient(circle at 25% 25%, var(--rvline) 0 3px, transparent 3.5px),
+    radial-gradient(circle at 75% 25%, var(--rvline) 0 3px, transparent 3.5px),
+    radial-gradient(circle at 25% 75%, var(--rvline) 0 3px, transparent 3.5px),
+    radial-gradient(circle at 75% 75%, var(--rvline) 0 3px, transparent 3.5px);
+}
+/* Клітинка — полотно: фішка лежить у ній абсолютно (відсотки від grid-доріжки давали б нуль). */
+.board.rv .cell {
+  position: relative;
+  display: block;
+  border: none;
+  border-radius: 0;
+  font-size: 0;
+  background: var(--rvfelt);
+  perspective: 300px;
+}
+.board.rv .cell:disabled { cursor: default; }
+.board.rv .cell.cur { box-shadow: inset 0 0 0 3px var(--accent); z-index: 2; }
+
+/* Фішка: дрібна — у шапці, велика — на дошці. */
+.rvd {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  vertical-align: middle;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+}
+.rvd.b { background: var(--rvblack); }
+.rvd.w { background: var(--rvwhite); }
+.board.rv .rvd {
+  position: absolute;
+  inset: 10%;
+  width: auto;
+  height: auto;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, .45), inset 0 -2px 3px rgba(0, 0, 0, .25);
+}
+/* Останній хід — цятка акценту в центрі фішки. */
+.board.rv .cell.last .rvd::after {
+  content: '';
+  position: absolute;
+  inset: 40%;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Крапка підказки: куди можна поставити. */
+.rvdot { position: absolute; inset: 38%; border-radius: 50%; background: var(--rvhint); }
+.rvdot.w { background: rgba(255, 255, 255, .32); }
+
+/* Поява й переворот. Затримка --d — за відстанню від нового ходу. */
+.board.rv .rvd.pop { animation: rvpop .22s ease-out both; }
+@keyframes rvpop { from { transform: scale(.2); opacity: .3; } 70% { transform: scale(1.08); } to { transform: none; opacity: 1; } }
+.board.rv .rvd.flip.b { animation: rvflip-b .35s ease-in-out var(--d, 0ms) both; }
+.board.rv .rvd.flip.w { animation: rvflip-w .35s ease-in-out var(--d, 0ms) both; }
+@keyframes rvflip-b {
+  0% { transform: rotateY(0); background: var(--rvwhite); }
+  49.9% { background: var(--rvwhite); }
+  50% { transform: rotateY(90deg); background: var(--rvblack); }
+  100% { transform: rotateY(180deg); background: var(--rvblack); }
+}
+@keyframes rvflip-w {
+  0% { transform: rotateY(0); background: var(--rvblack); }
+  49.9% { background: var(--rvblack); }
+  50% { transform: rotateY(90deg); background: var(--rvwhite); }
+  100% { transform: rotateY(180deg); background: var(--rvwhite); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board.rv .rvd.pop, .board.rv .rvd.flip.b, .board.rv .rvd.flip.w { animation: none; }
+}
+
+/* Прев'ю ходу: примара фішки на полі й стиснуті фішки, що перевернуться. Миша — лише під hover:hover (у JS теж). */
+.board.rv .cell.gh-b::before, .board.rv .cell.gh-w::before {
+  content: '';
+  position: absolute;
+  inset: 10%;
+  border-radius: 50%;
+  opacity: .5;
+}
+.board.rv .cell.gh-b::before { background: var(--rvblack); }
+.board.rv .cell.gh-w::before { background: var(--rvwhite); }
+.board.rv .cell.gh-b .rvdot, .board.rv .cell.gh-w .rvdot { display: none; }
+.board.rv .cell.will .rvd { transform: scale(.8); outline: 2px dashed var(--accent); outline-offset: 2px; transition: transform .12s; }
+@media (hover: hover) {
+  .board.rv .cell.ok:hover { background: var(--rvfelt); filter: brightness(1.12); }
+}
+
+/* Шапка: ⚫ Оля 12 : 9 Петро ⚪, чия черга — підсвічено. */
+.rvbar { display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 100%; font-variant-numeric: tabular-nums; }
+.rvside { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; min-width: 0; color: var(--muted); }
+.rvside b { font-size: 1.25em; color: var(--text); }
+.rvside .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 11em; }
+.rvside .nm i { font-style: normal; opacity: .7; font-size: .9em; }
+.rvside.on { background: var(--panel3, var(--bg2)); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent2, var(--accent)); }
+.rvsep { color: var(--muted); font-weight: 700; }
+
+/* Годинник — як у шашках. */
+.rv-clock {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: min(92vw, 440px); padding: 4px 10px; border-radius: 8px; background: var(--bg2);
+  font-variant-numeric: tabular-nums; color: var(--muted); font-size: .92em;
+}
+.rv-clock .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-clock .who i { font-style: normal; opacity: .7; font-size: .9em; }
+.rv-clock b { font-size: 1.25em; color: var(--text); font-weight: 700; }
+.rv-clock.run { background: var(--panel3, var(--bg2)); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent2, var(--accent)); }
+.rv-clock.run b { color: var(--accent); }
+.rv-clock.low b { color: var(--danger); animation: rv-low 1s steps(2, jump-none) infinite; }
+.rv-clock.out b { color: var(--danger); }
+@keyframes rv-low { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .rv-clock.low b { animation: none; } }
+
+/* Під дошкою: банер кінця, кнопки, налаштування Глека, серія. */
+.rvacts { display: flex; flex-direction: column; gap: 6px; align-items: center; width: min(440px, 100%); }
+.rvacts:empty { display: none; }
+.rvrow { display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.rvrow button { padding: 5px 10px; font-size: .88em; }
+.rvhint:not(.on) { opacity: .6; }
+.rvend {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; justify-content: center;
+  padding: 8px 14px; border-radius: 10px; background: var(--bg2); box-shadow: inset 0 0 0 1px var(--line);
+  text-align: center;
+}
+.rvend.win { box-shadow: inset 0 0 0 2px var(--ok); }
+.rvscore { font-variant-numeric: tabular-nums; font-weight: 700; }
+.rv-set { width: 100%; text-align: center; }
+.rv-set summary { cursor: pointer; color: var(--muted); font-size: .9em; padding: 4px; }
+.rv-glek { display: flex; flex-direction: column; gap: 6px; align-items: center; margin: 4px 0; }
+.rv-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.rv-chips button { padding: 4px 9px; font-size: .86em; }
+.rv-chips button.on { background: var(--panel3, var(--bg2)); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
+.rv-serie { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .92em; }
+.rv-serie b { color: var(--text); }
+
+/* Телефон: дошка на всю ширину екрана, поза відступами картки (клітинка ≈ 44 px на 360). */
+@media (max-width: 480px) {
+  .board.rv { width: calc(100vw - 6px); max-width: none; margin-inline: calc(50% - 50vw + 3px); border-width: 2px; }
+  .rv-clock { width: min(92vw, 440px); }
+  .rvside .nm { max-width: 7em; }
+}
+@media (pointer: coarse) {
+  .rvrow button, .rv-chips button { min-height: 44px; padding: 10px 12px; }
+  .rv-set summary { min-height: 40px; display: flex; align-items: center; justify-content: center; }
+}
