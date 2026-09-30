@@ -302,25 +302,91 @@
 
   const lerp = (a, b, t) => a + (b - a) * t;
 
-  /// Інтерполятор для ігор на 25 Гц: тримає два останні кадри й каже, де ми між ними
-  /// на «зараз мінус один інтервал» — так рух не смикається на кожному повідомленні.
-  function Interp() {
-    let prev = null, last = null, prevAt = 0, lastAt = 0;
+  /// Годинник сервера для реалтайм-ігор: де «зараз» у тиках сервера, з запасом на джитер мережі.
+  /// Тик t сервер рахує о base + t·tickMs нашого годинника; base — найменше (прихід − t·tickMs) з повільним
+  /// дрейфом угору. Кадр, що прийшов пізно (черга, Wi-Fi, два в одному повідомленні), годинник не штовхає —
+  /// тож нерівний прихід не стає нерівним рухом. Запас (delay, у тиках) — 1 тик + 95-й перцентиль спізнень
+  /// за ~3 с: на тихій мережі 1,25 тика, як і було, на гикавій — до 3,5; росте швидко, спадає повільно й плавно.
+  function Clock(tickMs) {
+    const T = tickMs || 40, LATE = [], N = 75, MIN = 1.25, MAX = 3.5;
+    // base повзе вгору неперервно (rate мс на мс), а не стрибком на приході кадру — інакше після затику картинка сіпалась назад
+    let base = null, baseAt = 0, rate = 0.01, lastT = 0, delay = MIN, delayAt = 0, want = MIN, run = 0, runAt = 0;
+    function sync(o) { base = o; rate = 0.01; LATE.length = 0; want = MIN; run = 0; }
+    const cur = (now) => base + (now - baseAt) * rate;
     return {
-      push(f) {
-        const t = performance.now();
-        prev = last; prevAt = lastAt;
-        last = f; lastAt = t;
-        if (!prev) { prev = f; prevAt = t; }
+      /// Кадр тика t прийшов о now.
+      in(t, now) {
+        const o = now - t * T;
+        const b = base == null ? 0 : cur(now);
+        if (base == null || t < lastT - 2 || o < b - 300) sync(o);
+        else {
+          // Спізнюються на чверть секунди й більше підряд, та ще й рівним кроком (не пачкою після затику) —
+          // сервер стояв з тим самим t (пауза) чи мережа стала інша: годинник ставимо наново, а не доганяємо хвилину.
+          if (o - b > 250) { if (!run++) runAt = now; } else run = 0;
+          if (run >= 8 && now - runAt >= 250) sync(o);
+          else {
+            base = Math.min(b, o);
+            LATE.push(o - base);
+            if (LATE.length > N) LATE.shift();
+            // навіть найшвидші кадри за ~1 с спізнюються — мережа стала повільнішою: годинник доганяє швидше
+            let lo = Infinity;
+            for (let i = Math.max(0, LATE.length - 25); i < LATE.length; i++) lo = Math.min(lo, LATE[i]);
+            rate = LATE.length >= 25 && lo > 20 ? 0.08 : 0.01;
+            if (LATE.length >= 10) {
+              const s = LATE.slice().sort((x, y) => x - y);
+              const p95 = s[Math.min(s.length - 1, Math.floor(s.length * 0.95))];
+              want = Math.max(MIN, Math.min(MAX, 1 + (p95 + 4) / T));
+            }
+          }
+        }
+        baseAt = now;
+        lastT = t;
       },
-      reset() { prev = last = null; prevAt = lastAt = 0; },
+      reset() { base = null; rate = 0.01; LATE.length = 0; want = MIN; run = 0; delay = MIN; delayAt = 0; },
+      get ready() { return base != null; },
+      /// Запас зараз, у тиках (для заміру й підказок).
+      get delay() { return delay; },
+      /// Момент, який малюємо, у тиках сервера (дробовий). До першого кадру — +∞.
+      at(now) {
+        if (base == null) return 1e9;
+        const dt = delayAt ? Math.min(100, Math.max(0, now - delayAt)) : 0;
+        delayAt = now;
+        // +2 тика/с і −0,3 тика/с: картинка на мить сповільнюється на ~8 % чи прискорюється на ~1 %, а не стрибає
+        delay = want > delay ? Math.min(want, delay + dt * 0.002) : Math.max(want, delay - dt * 0.0003);
+        return (now - cur(now)) / T - delay;
+      },
+    };
+  }
+
+  /// Інтерполятор для реалтайм-ігор: тримає стрічку кадрів і каже, між якими двома ми зараз — за годинником
+  /// сервера (див. Clock), а не за часом приходу, тож нерівна мережа не смикає рух. tickMs — тик гри (40 за
+  /// замовчуванням); t кадру — номер тика (без t рахуємо кадри підряд).
+  function Interp(tickMs) {
+    const clk = Clock(tickMs), fr = [];
+    return {
+      clock: clk,
+      push(f) {
+        const last = fr[fr.length - 1];
+        const k = f && Number.isFinite(f.t) ? f.t : (last ? last.k + 1 : 0);
+        if (last && k < last.k - 2) { fr.length = 0; clk.reset(); }
+        else if (last && k <= last.k) { if (k === last.k) last.f = f; return; }   // запізнілий — його момент уже пройдено
+        clk.in(k, performance.now());
+        fr.push({ k, f });
+        if (fr.length > 40) fr.shift();
+      },
+      reset() { fr.length = 0; clk.reset(); },
       /// { a: старіший кадр, b: новіший, t: 0..1 }
       at() {
-        if (!last) return null;
-        const span = Math.max(1, lastAt - prevAt);
-        const target = performance.now() - span;      // навмисно відстаємо на один інтервал
-        const t = Math.max(0, Math.min(1, (target - prevAt) / span));
-        return { a: prev, b: last, t };
+        const n = fr.length;
+        if (!n) return null;
+        if (n === 1) return { a: fr[0].f, b: fr[0].f, t: 1 };
+        const rt = clk.at(performance.now());
+        if (rt >= fr[n - 1].k) return { a: fr[n - 2].f, b: fr[n - 1].f, t: 1 };
+        if (rt <= fr[0].k) return { a: fr[0].f, b: fr[1].f, t: 0 };
+        let j = n - 2;
+        while (j > 0 && fr[j].k > rt) j--;
+        const a = fr[j], b = fr[j + 1];
+        return { a: a.f, b: b.f, t: (rt - a.k) / (b.k - a.k) };
       },
     };
   }
@@ -429,7 +495,7 @@
   /// питав саме `ev.isTrusted` (Око майстра Гончарного кола), має стояти оце.
   const human = (ev) => !!ev && (ev.isTrusted || ev.hpad === true);
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml };
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, Clock, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml };
 
   // =============================================================================================
   // Хаб
