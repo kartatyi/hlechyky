@@ -154,7 +154,7 @@
         } else if (hints && legal.has(i)) html = '<i class="rvdot ' + (v.toMove || 'b') + '"></i>';
         return { html, cls: cls.join(' '), disabled: !(ctx.myTurn && ch === '.') };
       },
-      onCell: (i) => { st.kbd = false; st.cur = i; move(root, ctx, i); },
+      onCell: (i) => { st.kbd = false; st.cur = i; if (legal.has(i)) move(root, ctx, i); },
     });
     hookHover(root, el);
     preview(root);
@@ -418,7 +418,7 @@
       if (d != null) {
         if (!st.kbd) {
           st.kbd = true;
-          const lg = (ctx.view || {}).legal || [];
+          const lg = ctx.myTurn ? (ctx.view || {}).legal || [] : [];
           if (lg.length && lg.indexOf(st.cur) < 0) st.cur = lg[0];
         } else {
           const r = st.cur >> 3, c = st.cur & 7;
@@ -432,6 +432,8 @@
         return true;
       }
       if (k === 'Enter' || k === ' ' || e.code === 'Space') {
+        const t = e.target;
+        if (t && t.closest && t.closest('button, summary, a, input, textarea, [role=button]') && !t.closest('.board.rv')) return false;
         if (!st.kbd) { st.kbd = true; paint(root, ctx); return true; }
         if (!ctx.myTurn) return true;
         if (((ctx.view || {}).legal || []).indexOf(st.cur) < 0) { ctx.toast('Сюди не можна — нічого не перевернеться'); return true; }

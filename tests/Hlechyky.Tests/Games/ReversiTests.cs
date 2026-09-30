@@ -344,6 +344,19 @@ public class ReversiTests
     }
 
     [Fact]
+    public void Series_follows_the_nick_after_the_rematch()
+    {
+        var h = Table();
+        Assert.True(Move(h, 0, "d3").Ok);
+        Assert.True(h.Act(1, "resign").Ok);   // Петро (білі) здався — Оля виграла
+        Assert.True(h.Rematch("Оля").Ok);     // тепер Петро — місце 0, Оля — 1
+        var s = h.View(0).GetProperty("series");
+        Assert.Equal(1, s.GetProperty("games").GetInt32());
+        Assert.Equal([0, 1], Ints(s.GetProperty("wins")));
+        Assert.Equal(0, s.GetProperty("draws").GetInt32());
+    }
+
+    [Fact]
     public void A_whole_random_game_keeps_the_invariants()
     {
         var rng = new Random(7);

@@ -8,6 +8,7 @@
   --rvblack: #2a1f19;       /* темна фішка — пічна глина */
   --rvwhite: #f3e6cf;       /* світла фішка — необпалена глина */
   --rvhint: rgba(0, 0, 0, .28);
+  --rvhint-w: rgba(255, 255, 255, .32);
 }
 
 .board.rv {
@@ -76,7 +77,7 @@
 
 /* Крапка підказки: куди можна поставити. */
 .rvdot { position: absolute; inset: 38%; border-radius: 50%; background: var(--rvhint); }
-.rvdot.w { background: rgba(255, 255, 255, .32); }
+.rvdot.w { background: var(--rvhint-w); }
 
 /* Поява й переворот. Затримка --d — за відстанню від нового ходу. */
 .board.rv .rvd.pop { animation: rvpop .22s ease-out both; }

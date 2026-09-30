@@ -73,6 +73,32 @@ public class ReversiGlekTests
     }
 
     [Fact]
+    public void Settings_while_glek_thinks_cancel_his_move()
+    {
+        var h = Open();
+        Assert.True(h.Act(0, "move", new { cell = Cell("d3") }).Ok);
+        h.Tick(3);                                   // Глек ще думає (пауза ≥ 600 мс)
+        Assert.True(h.Act(0, "set", new { level = "hard", color = "black" }).Ok);
+        h.Tick(15);
+        var v = h.View(0);
+        Assert.Equal(0, v.GetProperty("moves").GetInt32());   // нова партія, хід людини — Глек мовчить
+        Assert.Equal(0, v.GetProperty("turn").GetInt32());
+    }
+
+    [Fact]
+    public void Resign_hands_the_game_to_glek()
+    {
+        var h = Open();
+        Assert.True(h.Act(0, "move", new { cell = Cell("d3") }).Ok);
+        Assert.True(h.Act(0, "resign").Ok);
+        var r = h.View(0).GetProperty("result");
+        Assert.Equal("resign", r.GetProperty("reason").GetString());
+        Assert.Equal(1, r.GetProperty("winner").GetInt32());
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.False(h.Act(0, "move", new { cell = Cell("c4") }).Ok);
+    }
+
+    [Fact]
     public void Choosing_white_restarts_and_glek_opens()
     {
         var h = Open();
@@ -324,6 +350,30 @@ public class ReversiGlekPerfTests
             c.PassIfStuck();
         }
         return c;
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void A_thousand_ticks_of_games_take_under_two_seconds()
+    {
+        var h = new RoomHarness("reversi-glek", seed: 5);
+        Assert.True(h.Solo("Оля").Ok);
+        Assert.True(h.Act(0, "set", new { level = "easy" }).Ok);
+        var sw = Stopwatch.StartNew();
+        var played = 0;
+        for (var t = 0; t < 1000; t++)
+        {
+            var v = h.View(0);
+            if (h.Room.Status == RoomStatus.Finished) { Assert.True(h.Rematch("Оля").Ok); played++; continue; }
+            if (v.GetProperty("turn").ValueKind == JsonValueKind.Number && v.GetProperty("turn").GetInt32() == 0)
+            {
+                var legal = v.GetProperty("legal");
+                if (legal.GetArrayLength() > 0) Assert.True(h.Act(0, "move", new { cell = legal[0].GetInt32() }).Ok);
+            }
+            h.Tick();
+        }
+        Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
+        Assert.True(played >= 1, "за 1000 тиків жодної дограної партії");
     }
 
     [Theory]
