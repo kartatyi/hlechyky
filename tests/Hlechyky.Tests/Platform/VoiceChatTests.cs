@@ -282,6 +282,37 @@ public sealed class VoiceChatTests
     }
 
     [Fact]
+    public void Share_survives_rejoin_after_restart()
+    {
+        var v = NewVoice(new RoomHarness("t-party"));
+        // Сервер щойно перезапустився: той, хто показував екран, заходить знову й каже, що показує далі.
+        var o = v.Join("c1", "Оля", true, PeerA, null, false, false, share: true);
+        Assert.True(RosterOf(o.Sends)!.Rooms.Single().Members.Single().Share);
+        v.Join("c2", "Петро", true, PeerB, null, false, false);
+        Assert.Null(v.Watch("c2", PeerA, true).Reply);
+        Assert.True(LinkTo(v.MeOf("c1")!, PeerB).Watch);
+    }
+
+    [Fact]
+    public void Screen_does_not_bypass_game_rules()
+    {
+        var h = new RoomHarness("t-voice");
+        h.Join("Оля"); h.Join("Петро");
+        var v = NewVoice(h);
+        v.Join("c1", "Оля", true, PeerA, h.RoomId, false, false);
+        v.Join("c2", "Петро", true, PeerB, h.RoomId, false, false);
+        v.Share("c2", true);
+        Assert.Null(v.Watch("c1", PeerB, true).Reply);
+        Assert.True(LinkTo(v.MeOf("c2")!, PeerA).Watch);   // у лобі — дивись на здоров'я
+        h.Start();
+        v.Refresh();
+        // Петро (місце 1) посеред партії лише слухає: його не чують — і екран (зі звуком вкладки) теж не летить.
+        var link = LinkTo(v.MeOf("c2")!, PeerA);
+        Assert.False(link.Send);
+        Assert.False(link.Watch);
+    }
+
+    [Fact]
     public void Turn_gets_time_limited_credentials()
     {
         var o = new VoiceChatOptions { TurnSecret = "s3cret", TurnUrls = ["turn:example.test:3478"], TurnTtlHours = 2 };

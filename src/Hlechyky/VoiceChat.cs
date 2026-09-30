@@ -141,7 +141,7 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
     /// дивишся). Той самий нік з іншої вкладки — інша вкладка вилітає (двоє однакових у голосі — це луна). Той самий
     /// позивний із новим з'єднанням — це реконект або сервер після деплою: місце й стан лишаються.
     /// </summary>
-    public VoiceOutcome<VoiceJoinReply> Join(string conn, string nick, bool account, string? peer, string? table, bool muted, bool deaf)
+    public VoiceOutcome<VoiceJoinReply> Join(string conn, string nick, bool account, string? peer, string? table, bool muted, bool deaf, bool share = false)
     {
         var o = options.CurrentValue;
         if (!o.Enabled) return new(VoiceJoinReply.Fail(Off), []);
@@ -166,7 +166,8 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
                 room = TablePrefix + table;
             }
             if (Count(room) >= o.MaxPerRoom) return new(VoiceJoinReply.Fail(Full(room)), Finish(sends));
-            _byConn[conn] = new Member { Peer = peer, Nick = nick, Conn = conn, Room = room, Muted = muted, Deaf = deaf };
+            // share — вкладка й далі показує екран (зайшла знову після деплою): глядачі попросять картинку знову.
+            _byConn[conn] = new Member { Peer = peer, Nick = nick, Conn = conn, Room = room, Muted = muted, Deaf = deaf, Share = share };
             sends.AddRange(Recompute());
             EnsureSweep();
             return new(new VoiceJoinReply(true, Room: _byConn[conn].Room, Ice: Ice(peer)), sends);
@@ -332,7 +333,8 @@ public sealed class VoiceChat(Rooms rooms, IOptionsMonitor<VoiceChatOptions> opt
                 var (send, recv) = me.Room == Home || !rules.TryGetValue(me, out var mine) || !rules.TryGetValue(them, out var theirs)
                     ? (true, true)
                     : (theirs.Hears(mine), mine.Hears(theirs));
-                links.Add(new VoiceLink(them.Peer, send, recv, me.Share && them.Watching.Contains(me.Peer)));
+                // Екран — лише тому, хто за правилами гри мене чує: звук екрана (вкладки) проніс би й нічний шепіт мафії.
+                links.Add(new VoiceLink(them.Peer, send, recv, send && me.Share && them.Watching.Contains(me.Peer)));
             }
             links.Sort((a, b) => string.CompareOrdinal(a.Peer, b.Peer));
             var dto = new VoiceMeDto(me.Peer, me.Room, links);

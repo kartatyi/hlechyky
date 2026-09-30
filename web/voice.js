@@ -18,6 +18,8 @@
     вони працюють так само, як на видноті. Той самий доріжковий трек (sendTrack) іде всім; кому слухати не можна
     (правила гри за столом), тому трек знімаємо (replaceTrack(null)), а чужий голос, який мені не можна, глушимо.
   - Коли хтось говорить, радіо притихає (o.duck).
+  - Шумодав RNNoise (static/voice-denoise.js, 1,9 МБ wasm — вантажиться лише тим, у кого він увімкнений) стоїть між
+    мікрофоном і воротами; поки він працює, браузерний шумодав вимкнено, щоб не різали голос удвох.
 
   app.js дає: $, esc, toast, me, askNick, duck(f), onRoster(), nickStyle(n) — і кличе attach(conn), reconnected().
 */
@@ -40,7 +42,7 @@
   const TALK_DB = -55;           // чужий голос тихіший за це — мовчить (у нього свої ворота, тиша там справжня)
 
   // ---------- налаштування ----------
-  const DEF = { mode: 'vad', threshold: -50, ptt: { code: '', label: '', pad: -1 }, duck: true, duckTo: 0.3, mic: '', vol: {}, muted: false };
+  const DEF = { mode: 'vad', threshold: -50, ptt: { code: '', label: '', pad: -1 }, duck: true, duckTo: 0.3, mic: '', vol: {}, muted: false, denoise: true };
   let set = load();
   function load() {
     try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem('vc') || '{}')); } catch { return Object.assign({}, DEF); }
@@ -77,6 +79,8 @@
 
   // звук
   let ac = null, gate = null, dest = null, sendTrack = null, micStream = null, micSrc = null, sink = null;
+  let denoise = null;            // вузол RNNoise, коли завантажився
+  let denoiseFailed = false;     // не завантажився (старий браузер, не 48 кГц) — живемо з браузерним шумодавом
   let box = null;                // схований контейнер для <audio> людей
 
   // ---------- вхід / вихід ----------
@@ -104,8 +108,8 @@
     const p = (async () => {
       // Реконект: ice уже знаємо, тож листи людей не чекають на відповідь — і панель не блимає «Заходжу…».
       if (!ice.length) ready = false;
-      let r = await conn.invoke('VoiceJoin', peerId, table, muted || listenOnly, deaf);
-      if (!r.ok && table) r = await conn.invoke('VoiceJoin', peerId, null, muted || listenOnly, deaf);
+      let r = await conn.invoke('VoiceJoin', peerId, table, muted || listenOnly, deaf, !!screen);
+      if (!r.ok && table) r = await conn.invoke('VoiceJoin', peerId, null, muted || listenOnly, deaf, !!screen);
       if (!want) return;
       if (!r.ok) {
         o.toast(r.error || 'Не пустили в Посиденьки', 'err');
@@ -114,6 +118,7 @@
       }
       ice = (r.ice || []).map((s) => ({ urls: s.urls, username: s.username || undefined, credential: s.credential || undefined }));
       ready = true;
+      watchAck = false;   // після перезапуску сервер не пам'ятає, хто чий екран дивився — попросимо знову (onRoster)
       const q = queued;
       queued = [];
       for (const [ev, x] of q) (ev === 'me' ? onMe : onSignal)(x);
@@ -148,7 +153,9 @@
   // ---------- мікрофон ----------
   async function startAudio() {
     if (ac) return;
-    ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    // 48 кГц — рідна частота RNNoise і Opus; мікрофон на 44,1 браузер перетягне сам.
+    const AC = window.AudioContext || window.webkitAudioContext;
+    try { ac = new AC({ latencyHint: 'interactive', sampleRate: 48000 }); } catch { ac = new AC({ latencyHint: 'interactive' }); }
     await ac.audioWorklet.addModule('/static/voice-worklet.js');
     gate = new AudioWorkletNode(ac, 'hl-gate', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
     gate.port.onmessage = (e) => onMyLevel(e.data);
@@ -161,6 +168,7 @@
     sink.gain.value = 0;
     sink.connect(ac.destination);
     tellGate();
+    if (set.denoise) await loadDenoise();
     await openMic();
     if (ac.state === 'suspended') await ac.resume().catch(() => {});
     // Айфон приспить звук (дзвінок, заблокований екран, Bluetooth) — і мікрофон, і лічильники мовчатимуть. Будимо; не
@@ -175,14 +183,31 @@
     };
   }
 
+  /// Шумодав RNNoise: модуль (1,9 МБ) — лише коли він потрібен, і лише раз на AudioContext.
+  async function loadDenoise() {
+    if (denoise || denoiseFailed || !ac) return;
+    if (ac.sampleRate !== 48000) { denoiseFailed = true; return; }
+    try {
+      await ac.audioWorklet.addModule('/static/voice-denoise.js');
+      denoise = new AudioWorkletNode(ac, 'hl-denoise', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      denoise.connect(gate);
+    } catch (e) {
+      console.warn('[voice] denoise', e);
+      denoiseFailed = true;
+      o.toast('Шумодав не завантажився — лишається браузерний');
+    }
+  }
+
+  const denoising = () => !!(denoise && set.denoise);
+
   async function openMic() {
     closeMic();
     try {
       micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: set.mic ? { ideal: set.mic } : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+        audio: { deviceId: set.mic ? { ideal: set.mic } : undefined, echoCancellation: true, noiseSuppression: !denoising(), autoGainControl: true, channelCount: 1 },
       });
       micSrc = ac.createMediaStreamSource(micStream);
-      micSrc.connect(gate);
+      micSrc.connect(denoising() ? denoise : gate);
       listenOnly = false;
       // Мікрофон вийняли — лишаємось слухати.
       micStream.getAudioTracks()[0].addEventListener('ended', () => { listenOnly = true; tellGate(); tellServer(); paint(); o.toast('Мікрофон зник — поки лише слухаєш'); });
@@ -203,7 +228,8 @@
   function stopAudio() {
     closeMic();
     if (ac) ac.close().catch(() => {});
-    ac = gate = dest = sendTrack = sink = null;
+    ac = gate = dest = sendTrack = sink = denoise = null;
+    denoiseFailed = false;
   }
 
   function tellGate() {
@@ -258,42 +284,55 @@
   function releaseAll() { press.key = press.pad = press.hold = false; setPressed('key', false); }
 
   // ---------- з'єднання з людьми ----------
-  let sidSeq = 0;
-  const newSid = () => Date.now() * 1000 + (sidSeq++ % 1000);
+  // Знайомство (номери сесій). Кожне з'єднання має свій sid (росте й не повторюється); кожен лист несе s — sid
+  // відправника і r — sid того з'єднання адресата, яке відправник знає (0 — ще не знає). Пару зводить лише hello:
+  //   - hello від старішого з'єднання, ніж знайоме, — у кошик;
+  //   - hello від новішого: моє ще свіже (ні з ким не домовлялось) — просто знайомлюсь; моє вже говорило зі старим —
+  //     роблю нове, одразу знайоме з ним (його hello несе r = їхнє), тож той бік, свіжий, у відповідь не перестворює;
+  //   - той бік не знає мого поточного (r не моє) — відповідаю своїм hello.
+  // Решта листів (опис, кандидати) — лише від знайомого (s = їхнє) до мого поточного (r = моє), інше — у кошик.
+  // Переговори починаються лише між знайомими, тож лист, що забарився, не зведе нове з'єднання зі старим. Поки не
+  // домовились, hello повторюється раз на 5 с — раптом загубилось, поки не було зв'язку з сервером.
+  let lastSid = 0;
+  const newSid = () => (lastSid = Math.max(lastSid + 1, Date.now() * 1000));   // годинник відскочив — однаково росте
 
   function ensurePeer(id) {
     const p = peers.get(id);
     if (p) { p.goneAt = 0; return p; }
-    return makePeer(id);
+    return makePeer(id, 0);
   }
 
-  /// Зробити з'єднання наново (у того боку нове, чи наше давно не піднімається): те, що вже знали, — лишаємо.
-  function recreatePeer(p) {
-    const link = p.link, goneAt = p.goneAt;
+  /// Зробити з'єднання наново, одразу знайоме з theirSid. Що вже знали про людину — лишаємо.
+  function recreatePeer(p, theirSid) {
+    const link = p.link, goneAt = p.goneAt, down = p.downSince, slow = p.slow;
     closePeer(p, true);
-    const q = makePeer(p.id);
+    const q = makePeer(p.id, theirSid);
     q.goneAt = goneAt;
-    q.slow = p.slow;
-    q.born = p.born;   // «нема зв'язку» рахуємо від першої спроби, а не від кожного нового з'єднання
+    q.slow = slow;
+    q.downSince = down || Date.now();   // «нема зв'язку» рахуємо від першої спроби, а не від кожного нового з'єднання
     applyLink(q, link);
     return q;
   }
 
-  function makePeer(id) {
+  function makePeer(id, theirSid) {
     const pc = new RTCPeerConnection({ iceServers: ice });
     const p = {
       id, pc, polite: peerId > id, makingOffer: false, ignoreOffer: false, chain: Promise.resolve(),
       link: { send: false, recv: false, watch: false }, sender: null, audio: null, stream: null, src: null, meter: null,
       level: -120, talk: false, state: 'new', since: Date.now(), goneAt: 0, restartAt: 0, iceOut: [], iceTimer: 0,
-      negotiated: false, nudged: false, mySid: newSid(), theirSid: 0, discAt: 0, born: Date.now(),
+      negotiated: false, nudged: false, needOffer: false, mySid: newSid(), theirSid: theirSid || 0, helloAt: 0,
+      discAt: 0, downSince: Date.now(),
     };
     peers.set(id, p);
     p.sender = pc.addTrack(sendTrack, dest.stream);
     p.sender.replaceTrack(null).catch(() => {});
     // Перше знайомство починає лише нечемний бік. Коли обидва кидали пропозиції разом, чемний відкочував свою, і
     // Chrome після такого відкату переставав збирати кандидатів: з'єднання вічно висіло «new» (заміри 30.09).
-    // Чемний чекає на пропозицію; не дочекався за NUDGE_MS — починає сам (сторож нижче). Далі — як завжди.
-    pc.onnegotiationneeded = () => { if (!p.polite || p.negotiated) makeOffer(p); };
+    // Чемний чекає на пропозицію; не дочекався за NUDGE_MS — починає сам (сторож нижче). І лише між знайомими.
+    pc.onnegotiationneeded = () => {
+      if (!p.theirSid) { p.needOffer = true; return; }
+      if (!p.polite || p.negotiated) makeOffer(p);
+    };
     pc.onsignalingstatechange = () => {
       if (pc.signalingState !== 'stable' || !pc.remoteDescription || p.negotiated) return;
       p.negotiated = true;
@@ -303,15 +342,24 @@
     pc.onconnectionstatechange = () => {
       p.state = pc.connectionState;
       p.discAt = p.state === 'disconnected' ? Date.now() : 0;
+      if (p.state === 'connected') p.downSince = 0;
+      else if (!p.downSince) p.downSince = Date.now();
       if (p.state === 'failed') restartIce(p);
       paintPeers();
     };
     pc.ontrack = (e) => onTrack(p, e);
-    sendSignal(p, { hello: 1 });   // «це моє нове з'єднання»: хто тримає старе, зробить нове й собі
+    sendSignal(p, { hello: 1 });
     return p;
   }
 
+  /// Познайомились: переговори, що чекали на знайомство, — почати (перше знайомство — лише нечемний).
+  function pair(p, theirSid) {
+    p.theirSid = theirSid;
+    if (p.needOffer && (!p.polite || p.negotiated)) { p.needOffer = false; makeOffer(p); }
+  }
+
   async function makeOffer(p) {
+    if (!p.theirSid) { p.needOffer = true; return; }
     try {
       p.makingOffer = true;
       await p.pc.setLocalDescription();
@@ -335,6 +383,7 @@
     if (!conn || conn.state !== 'Connected') return;
     msg.s = p.mySid;
     msg.r = p.theirSid || 0;
+    if (msg.hello) p.helloAt = Date.now();
     const data = JSON.stringify(msg);
     if (data.length > MAX_SIGNAL) { console.warn('[voice] завеликий лист, не шлю', data.length); return; }
     conn.invoke('VoiceSignal', p.id, data).catch(() => {});
@@ -349,7 +398,7 @@
       p.iceTimer = 0;
       const list = p.iceOut;
       p.iceOut = [];
-      if (list.length) sendSignal(p, { c: list });
+      if (list.length && peers.get(p.id) === p) sendSignal(p, { c: list });
     }, 150);
   }
 
@@ -366,15 +415,32 @@
     let msg;
     try { msg = JSON.parse(x.data); } catch { return; }
     const s = +msg.s || 0, r = +msg.r || 0;
-    let p = peers.get(x.from) || makePeer(x.from);
-    if (!links.has(x.from)) p.goneAt = p.goneAt || Date.now();   // прийшов раніше за voiceMe — нехай доведе, що він тут
-    if (r && r !== p.mySid) return;                               // до мого старого з'єднання
-    if (!p.theirSid) p.theirSid = s;
-    else if (s < p.theirSid) return;                              // від їхнього старого з'єднання
-    else if (s > p.theirSid) { p = recreatePeer(p); p.theirSid = s; }   // у них нове — і в мене буде нове
-    if (msg.hello) return;
-    const target = p;
-    target.chain = target.chain.then(() => handleSignal(target, msg)).catch((e) => console.warn('[voice] signal', e));
+    if (!s) return;
+    let p = peers.get(x.from);
+    if (!p) {
+      // Незнайомий. На hello — нове з'єднання, одразу знайоме; на решту (листи до мого давно закритого з'єднання) — теж
+      // нове, але незнайоме: його hello скаже тому боку перезнайомитись.
+      p = makePeer(x.from, msg.hello ? s : 0);
+      if (!links.has(x.from)) p.goneAt = Date.now();   // прийшов раніше за voiceMe — нехай доведе, що він тут
+      return;
+    }
+    if (!links.has(x.from)) p.goneAt = p.goneAt || Date.now();
+    if (msg.hello) {
+      if (s < p.theirSid) return;                                      // від їхнього старого з'єднання
+      if (s > p.theirSid) {
+        const fresh = !p.negotiated && !p.pc.remoteDescription && !p.pc.localDescription;
+        if (fresh) pair(p, s);
+        else { recreatePeer(p, s); return; }                           // нове hello вже несе r = s
+      }
+      if (r !== p.mySid) sendSignal(p, { hello: 1 });                   // той бік не знає мого поточного
+      return;
+    }
+    if (s !== p.theirSid || r !== p.mySid) {
+      // Чужий для цього з'єднання лист. Якщо той бік не знає мого поточного — нагадати (не частіше за раз на секунду).
+      if (s >= p.theirSid && r !== p.mySid && Date.now() - p.helloAt > 1000) sendSignal(p, { hello: 1 });
+      return;
+    }
+    p.chain = p.chain.then(() => handleSignal(p, msg)).catch((e) => console.warn('[voice] signal', e));
   }
 
   async function handleSignal(p, msg) {
@@ -475,6 +541,7 @@
   let screen = null;             // мій екран (getDisplayMedia), поки показую
   let viewing = null;            // чий екран я дивлюсь (позивний)
   let viewer = null;             // вікно глядача
+  let watchAck = false;          // сервер знає, що я дивлюсь viewing
   const canShare = () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
 
   async function startShare() {
@@ -542,6 +609,7 @@
     viewing = peer;
     const err = await conn.invoke('VoiceWatch', peer, true).catch(() => 'Не вийшло');
     if (err) { viewing = null; o.toast(err); paint(); return; }
+    watchAck = true;
     const p = peers.get(peer);
     if (p && p.screen && p.screen.getVideoTracks().some((t) => t.readyState === 'live')) showViewer(p);
     else showViewer(p || { id: peer }, true);
@@ -607,6 +675,16 @@
     known = true;
     roster = r && r.rooms ? r : { rooms: [] };
     for (const x of roster.rooms) for (const m of x.members || []) if (m.peer) nickMem.set(m.peer, m.nick);
+    if (viewing && want && ready) {
+      const m = memberOf(viewing);
+      // Показ закінчився — вікно геть (інакше висів би замерзлий кадр).
+      if (m && !m.share) { closeViewer(false); o.toast('Показ екрана закінчився'); }
+      // Сервер перезапускався й забув, хто дивиться, — просимо знову, щойно той, хто показує, повернувся.
+      else if (m && m.share && !watchAck && conn && conn.state === 'Connected') {
+        watchAck = true;
+        conn.invoke('VoiceWatch', viewing, true).then((err) => { if (err) watchAck = false; }).catch(() => { watchAck = false; });
+      }
+    }
     for (const p of peers.values()) applyPlayback(p);   // гучність — за ніком, а нік міг щойно з'явитись
     paint();
     if (o && o.onRoster) o.onRoster();
@@ -618,25 +696,32 @@
   }
 
   // Раз на секунду: ті, хто зник і не повернувся, — геть; хто довго не з'єднується — показати; сторож переговорів.
+  // Час без зв'язку (downSince) рахується від першої спроби чи від миті, коли зв'язок пропав, а не від народження
+  // з'єднання: інакше будь-яка гикавка Wi-Fi на давньому з'єднанні одразу рвала б його замість м'якого ICE-рестарту.
   setInterval(() => {
     const now = Date.now();
     let changed = false;
     for (const p of [...peers.values()]) {
       if (p.goneAt && now - p.goneAt > GRACE_MS) { closePeer(p); changed = true; continue; }
-      if (p.state !== 'connected' && now - p.born > SLOW_MS && !p.slow) { p.slow = true; changed = true; }
+      const down = p.state !== 'connected' && p.downSince ? now - p.downSince : 0;
+      if (down > SLOW_MS && !p.slow) { p.slow = true; changed = true; }
       else if (p.state === 'connected' && p.slow) { p.slow = false; changed = true; }
       if (p.goneAt) continue;
+      // Ще не домовились — hello могло загубитись (не було зв'язку з сервером): нагадуємо.
+      if (!p.negotiated && now - p.helloAt > 5000) sendSignal(p, { hello: 1 });
       // Чемний так і не дочекався пропозиції (лист загубився, нечемний перезапускався) — починає сам.
-      if (p.polite && !p.negotiated && !p.nudged && now - p.since > NUDGE_MS && p.pc.signalingState === 'stable') {
+      if (p.polite && !p.negotiated && p.theirSid && !p.nudged && now - p.since > NUDGE_MS && p.pc.signalingState === 'stable') {
         p.nudged = true;
+        p.needOffer = false;
         makeOffer(p);
       }
       // Домовились, а зв'язку нема: кандидати загубились чи мережа змінилась — перезапускаємо ICE (нечемний, щоб не вдвох).
-      if (p.negotiated && p.state !== 'connected' && now - p.since > STUCK_MS && (!p.polite || now - p.since > 2 * STUCK_MS)) restartIce(p);
+      if (p.negotiated && down > (p.polite ? 2 * STUCK_MS : STUCK_MS)) restartIce(p);
       // Зв'язок хитається вже 5 с — не чекаємо, поки браузер сам визнає «failed» (це ще пів хвилини).
       if (p.discAt && now - p.discAt > 5000 && !p.polite) restartIce(p);
-      // Так і не піднялось — робимо з'єднання наново (той бік побачить новий номер сесії і зробить своє).
-      if (p.state !== 'connected' && now - p.since > (p.polite ? 2 * DEAD_MS : DEAD_MS)) recreatePeer(p);
+      // Так і не піднялось — робимо з'єднання наново, знайоме з тим самим з'єднанням того боку (той побачить новий
+      // номер і, якщо своє вже говорило, зробить своє). Не посеред переговорів і не частіше, ніж раз на DEAD_MS.
+      if (down > (p.polite ? 2 * DEAD_MS : DEAD_MS) && now - p.since > DEAD_MS && p.pc.signalingState === 'stable') recreatePeer(p, p.theirSid);
     }
     if (changed) paintPeers();
   }, 1000);
@@ -800,7 +885,7 @@
     decorateAll();
     if (!panel || !open) return;
     if (busyPanel()) { paintLater = true; paintPeers(); paintTalk(); return; }
-    const sig = JSON.stringify([want, ready, room, listenOnly, muted, deaf, set.mode, set.ptt, set.duck, binding, o.me.account, table, !!screen, viewing, acStuck,
+    const sig = JSON.stringify([want, ready, room, listenOnly, muted, deaf, set.mode, set.ptt, set.duck, set.denoise, denoiseFailed, binding, o.me.account, table, !!screen, viewing, acStuck,
       roster, [...links.values()], mics.map((m) => m.deviceId), set.mic]);
     if (sig !== listSig) {
       listSig = sig;
@@ -934,6 +1019,8 @@
         + '<p class="muted small">Клавіша працює, лише коли вкладка Глечиків перед очима. У грі на весь екран — краще «Від голосу». '
         + 'На Steam Deck можна призначити задній гріп на клавішу в Steam Input.</p>' : '')
       + '<label class="vc-row">Мікрофон <select data-set="mic">' + micOpts.join('') + '</select></label>'
+      + '<label class="vc-row vc-check"><input type="checkbox" data-set="denoise"' + (set.denoise ? ' checked' : '') + '> 🧹 Шумодав: клавіатура, вентилятор і шум вулиці не летять людям'
+      + (set.denoise && denoiseFailed ? ' <span class="muted small">(не завантажився — працює браузерний)</span>' : '') + '</label>'
       + '<label class="vc-row vc-check"><input type="checkbox" data-set="duck"' + (set.duck ? ' checked' : '') + '> Притишувати радіо, коли хтось говорить</label>'
       + '</details>';
   }
@@ -1021,6 +1108,11 @@
     if (k === 'threshold') { set.threshold = +t.value; save(); tellGate(); paintMeter(); return; }
     if (k === 'mode') { set.mode = t.value; releaseAll(); }
     else if (k === 'duck') { set.duck = t.checked; updateDuck(); }
+    else if (k === 'denoise') {
+      set.denoise = t.checked;
+      // Інший ланцюжок і інші налаштування мікрофона (браузерний шумодав — лише без RNNoise): відкриваємо наново.
+      if (ac) (set.denoise ? loadDenoise() : Promise.resolve()).then(openMic).then(() => { tellServer(); paint(); });
+    }
     else if (k === 'mic') { set.mic = t.value; if (ac) openMic().then(() => { tellServer(); paint(); }); }
     save();
     tellGate();
@@ -1134,6 +1226,7 @@
     /// Для консолі й перевірок: що зараз із голосом і з кожним з'єднанням.
     stats: () => ({
       peer: peerId, want, ready, room, muted, deaf, listenOnly, talk: myTalk, level: myLevel, mode: set.mode,
+      denoise: denoising(), denoiseFailed, rate: ac ? ac.sampleRate : 0,
       peers: [...peers.values()].map((p) => ({ id: p.id, nick: nickOf(p.id), state: p.state, talk: p.talk, level: p.level,
         send: p.link.send, recv: p.link.recv, gone: !!p.goneAt, polite: p.polite, sig: p.pc.signalingState, ice: p.pc.iceConnectionState,
         local: p.pc.localDescription && p.pc.localDescription.type, remote: p.pc.remoteDescription && p.pc.remoteDescription.type,

@@ -272,12 +272,15 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     /// Зайти в голос: <paramref name="table"/> null — у Посиденьки, інакше — у голос столу. <paramref name="peer"/> —
     /// позивний, який вкладка вигадала собі сама (той самий після реконекту — з'єднання з людьми не рвуться).
     /// </summary>
-    public async Task<VoiceJoinReply> VoiceJoin(string peer, string? table, bool muted, bool deaf)
+    public async Task<VoiceJoinReply> VoiceJoin(string peer, string? table, bool muted, bool deaf, bool share)
     {
         if (!Allow(input: false)) return VoiceJoinReply.Fail(Games.Say.TooFast);
         var http = Context.GetHttpContext();
-        var o = voice.Join(Context.ConnectionId, Nick(), http is not null && Auth.IsUser(http), peer, table, muted, deaf);
+        var o = voice.Join(Context.ConnectionId, Nick(), http is not null && Auth.IsUser(http), peer, table, muted, deaf, share);
         await voice.DispatchAsync(o.Sends);
+        // Повний список (з позивними) — одразу: на реконекті з тим самим позивним список не міняється, тож склеєна
+        // розсилка не прийшла б, а з'єднанню дали лише публічний.
+        if (o.Reply.Ok) await Clients.Caller.SendAsync("voice", voice.Roster);
         return o.Reply;
     }
 
