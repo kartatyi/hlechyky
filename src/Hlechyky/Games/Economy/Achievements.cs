@@ -15,6 +15,7 @@ public static class AchievementCatalog
         new("ten-wins",     "Десятка",         "Десять перемог", "🔟", 25),
         new("chess-5",      "Шахіст",          "П'ять перемог у шахах", "♟", 30),
         new("checkers-5",   "Шашист",          "П'ять перемог у шашках", "⛀", 30),
+        new("reversi-5",    "Реверсист",       "П'ять перемог у реверсі", "⚫", 30),
         new("all-boards",   "Настільний",      "Перемога в кожній настільній грі", "🎲", 50),
         new("streak-3",     "Серія",           "Три перемоги поспіль", "🔥", 15),
         new("scrabble-30",  "Ерудит",          "Бахнути слово на 30 очок і більше", "🔤", 20),
@@ -161,6 +162,8 @@ public static class AchievementCatalog
         // хвиля 2: geo
         new("geo-bull",     "В яблучко",       "Шпилька за кілометр і ближче від правди в «Де це?»", "🎯", 20),
         new("geo-20k",      "Знавець України", "20 000 очок за партію «Де це?» з п'яти й більше раундів", "🗺", 30),
+        // реверсі — гра просить сама через Ctx.Award(seat, 0, "ach:reversi-wipe")
+        new("reversi-wipe", "Витер дошку",     "Перемога в реверсі, коли в суперника не лишилось жодної фішки", "⚪", 20),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
@@ -180,6 +183,7 @@ public sealed class Achievements
     [
         ("chess-5", "chess", 5),
         ("checkers-5", "checkers", 5),
+        ("reversi-5", "reversi", 5),
         ("duel-10", "duel", 10),
     ];
 
