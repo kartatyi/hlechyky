@@ -276,9 +276,11 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
                 JOIN game_results b ON b.room_id = a.room_id AND b.round = a.round AND b.nick_key = $o
                 WHERE a.nick_key = $k AND a.created_at >= $w
                 """, r => (Game: r.GetString(0), Me: r.GetString(1), Him: r.GetString(2)), ("$k", key), ("$o", Auth.NickKey(other)), ("$w", Week));
-            if (rows.Count <= best.Games) continue;
-            var game = rows.GroupBy(r => r.Game).OrderByDescending(g => g.Count()).First().Key;
-            best = (other, rows.Count, rows.Count(r => r.Me == "win"), rows.Count(r => r.Me == "loss"), game);
+            // Рахунок — лише очні: у Танчиках на чотирьох «обоє програли» буває, і це не перемога суперника
+            var duel = rows.Where(r => (r.Me, r.Him) is ("win", "loss") or ("loss", "win")).ToList();
+            if (duel.Count <= best.Games) continue;
+            var game = duel.GroupBy(r => r.Game).OrderByDescending(g => g.Count()).First().Key;
+            best = (other, duel.Count, duel.Count(r => r.Me == "win"), duel.Count(r => r.Me == "loss"), game);
         }
         if (best.Games < 3) return;
         var lopsided = Math.Abs(best.Wins - best.Losses) >= 3;

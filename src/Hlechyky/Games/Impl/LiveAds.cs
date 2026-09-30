@@ -39,6 +39,12 @@ public sealed class LiveAdsOptions
     public int NewsFrom { get; set; } = 20;
     public int NewsTo { get; set; } = 23;
 
+    /// <summary>
+    /// Скільки літер тексту вміщає прожарка на 35 с: edge-tts на −4 % читає ~13 літер за секунду, ще ~10 с — музика,
+    /// підпис, паузи й «ба-дум-тсс». Не вміщається кінцівка — ролик закриває підпис.
+    /// </summary>
+    public int MaxChars { get; set; } = 320;
+
     public int TickSeconds { get; set; } = 20;
     public int RenderTimeoutSeconds { get; set; } = 120;
     /// <summary>Скільки останніх файлів лишати для адміна і скільки хвилин тримати відіграні.</summary>
@@ -429,14 +435,18 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
         var script = new List<LiveLine> { intro };
         for (var i = 0; i < picked.Count; i++)
         {
-            if (i > 0 && Rng.NextDouble() < 0.5 && lines.Pick(lines.Link, picked[i].Fact.Values, LiveLines.Glek, O.Rate, Rng) is { } link)
+            // Зв'язка — лише в довгій (три факти) і не завжди: у двофактовій вона тягне ролик за 35 с
+            if (i > 0 && picked.Count >= 3 && Rng.NextDouble() < 0.35 && lines.Pick(lines.Link, picked[i].Fact.Values, LiveLines.Glek, O.Rate, Rng) is { } link)
                 script.Add(link);
             script.Add(picked[i].Line);
         }
-        if (lines.Pick(lines.Outro, new Dictionary<string, string> { ["nick"] = lines.Say(target) }, LiveLines.Glek, O.Rate, Rng) is { } outro)
+        // Кінцівка — коли вміщається: ролик 15–35 с, а підпис і так закриває його (для замовленої межа ширша — там три факти)
+        var budget = introKind == "roast" ? O.MaxChars : O.MaxChars * 4 / 3;
+        if (lines.Pick(lines.Outro, new Dictionary<string, string> { ["nick"] = lines.Say(target) }, LiveLines.Glek, O.Rate, Rng) is { } outro
+            && script.Sum(l => l.Text.Length) + outro.Text.Length <= budget)
             script.Add(outro);
         return new LiveScript(introKind == "roast" ? "roast" : "order", lines.Style(introKind == "roast" ? "roast" : "order", Rng),
-            script, picked.Select(p => p.Fact.Kind).ToList());
+            CapRims(script), picked.Select(p => p.Fact.Kind).ToList());
     }
 
     /// <summary>Господар натиснув «Прожарити зараз»: спекти одразу (без кулдаунів, але з відмовою) і віддати в ефір.</summary>
@@ -482,7 +492,9 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
     public LiveScript? NewsScript()
     {
         var lines = Lines;
-        var items = facts.News(store.OptedOutKeys());
+        // Не більше двох новин і двох спортивних: дайджест на 30–50 с, а не на хвилину
+        var all = facts.News(store.OptedOutKeys());
+        var items = Some(all.Where(i => !i.Sport), 2).Concat(Some(all.Where(i => i.Sport), 2)).ToList();
         var none = new Dictionary<string, string>();
         var intro = lines.Pick(lines.News.GetValueOrDefault("intro"), none, LiveLines.Polina, O.Rate, Rng);
         if (intro is null) return null;
@@ -498,7 +510,27 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
         }
         if (script.Count < 3 && lines.Pick(lines.News.GetValueOrDefault("quiet"), none, LiveLines.Glek, O.Rate, Rng) is { } q) script.Add(q);
         if (lines.Pick(lines.News.GetValueOrDefault("outro"), none, LiveLines.Polina, O.Rate, Rng) is { } o) script.Add(o);
-        return new LiveScript("news", lines.Style("news", Rng, "sport"), script, items.Select(i => i.Fact.Kind).ToList());
+        return new LiveScript("news", lines.Style("news", Rng, "sport"), CapRims(script), items.Select(i => i.Fact.Kind).ToList());
+    }
+
+    /// <summary>Випадкові <paramref name="n"/> з рядків, у тому самому порядку (головне — першим).</summary>
+    List<T> Some<T>(IEnumerable<T> items, int n)
+    {
+        var list = items.ToList();
+        var keep = Enumerable.Range(0, list.Count).OrderBy(_ => Rng.Next()).Take(n).ToHashSet();
+        return list.Where((_, i) => keep.Contains(i)).ToList();
+    }
+
+    /// <summary>
+    /// «Ба-дум-тсс» — не частіше двох на ролик, і лише останні: удар після кожної репліки з'їдає секунди й
+    /// перестає смішити. Лишаються найближчі до кінця — там кінцівка й найсоковитіший факт.
+    /// </summary>
+    public static List<LiveLine> CapRims(List<LiveLine> lines, int max = 2)
+    {
+        var left = max;
+        for (var i = lines.Count - 1; i >= 0; i--)
+            if (lines[i].Rim && left-- <= 0) lines[i] = lines[i] with { Rim = false };
+        return lines;
     }
 
     // ---------- реакції на події ----------

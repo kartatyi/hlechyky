@@ -203,6 +203,14 @@ public class LiveAdsTests
         Assert.Equal("Старший Брат", lines.Say("Старший Брат 👁"));
     }
 
+    [Fact]
+    public void At_most_two_rimshots_and_only_the_last_ones()
+    {
+        var lines = Enumerable.Range(0, 5).Select(i => new LiveLine(LiveLines.Glek, "р" + i, "-4%", Rim: i != 3)).ToList();
+        var capped = LiveAds.CapRims(lines);
+        Assert.Equal([false, false, true, false, true], capped.Select(l => l.Rim));
+    }
+
     // =============================================================================================
     // Банк фраз
     // =============================================================================================
@@ -1027,7 +1035,7 @@ public class LiveAdsTests
             Assert.Equal(3, tts.Calls);                                    // дві репліки й підпис
             await renderer.RenderAsync(script, outPath, default);
             Assert.Equal(5, tts.Calls);                                    // підпис — із кешу
-            Assert.Empty(Directory.GetDirectories(Path.Combine(cache, "liveads"), "tmp-*"));
+            Assert.Empty(Directory.GetFiles(Path.Combine(cache, "liveads", "parts")));   // репліки прибрано
         }
         finally { try { Directory.Delete(cache, true); } catch (IOException) { } }
     }

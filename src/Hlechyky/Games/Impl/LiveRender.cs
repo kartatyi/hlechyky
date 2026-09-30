@@ -39,8 +39,12 @@ public sealed class FfmpegLiveRenderer(ITtsEngine tts, IOptionsMonitor<LiveAdsOp
         var rim = Path.Combine(Paths.Resolve(O.BedsDir), "rimshot.mp3");
         var hasRim = File.Exists(rim);
 
-        var tmp = Path.Combine(CacheDir, "liveads", "tmp-" + Guid.NewGuid().ToString("N")[..10]);
-        Directory.CreateDirectory(tmp);
+        // Репліки — у сталому каталозі, а не в тимчасовому на ролик: живий процес edge-tts стартує в каталозі першої
+        // репліки, і Windows не дає видалити каталог, у якому сидить процес. Прибираються самі файли.
+        var dir = Path.Combine(CacheDir, "liveads", "parts");
+        Directory.CreateDirectory(dir);
+        var tag = Guid.NewGuid().ToString("N")[..10];
+        var mine = new List<string>();
         try
         {
             // Репліки — по черзі: живий edge-tts один, а черга з десяти одночасних лише наздоганяє сама себе
@@ -48,8 +52,9 @@ public sealed class FfmpegLiveRenderer(ITtsEngine tts, IOptionsMonitor<LiveAdsOp
             var i = 0;
             foreach (var line in script.Lines)
             {
-                var path = await Speak(line, tmp, i++, ct);
+                var path = await Speak(line, Path.Combine(dir, $"{tag}-{i++:00}.mp3"), ct);
                 if (path is null) return null;
+                mine.Add(path);
                 var sec = await tts.DurationAsync(path, ct);
                 parts.Add((path, sec, line.Rim && hasRim ? RimGap : Gap));
                 if (line.Rim && hasRim) parts.Add((rim, 1.2, Gap));
@@ -74,7 +79,8 @@ public sealed class FfmpegLiveRenderer(ITtsEngine tts, IOptionsMonitor<LiveAdsOp
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return null; }
         finally
         {
-            try { Directory.Delete(tmp, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            foreach (var f in mine)
+                try { File.Delete(f); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
     }
 
@@ -99,9 +105,8 @@ public sealed class FfmpegLiveRenderer(ITtsEngine tts, IOptionsMonitor<LiveAdsOp
 
     static string F(double x) => x.ToString("0.###", CultureInfo.InvariantCulture);
 
-    async Task<string?> Speak(LiveLine line, string dir, int i, CancellationToken ct)
+    async Task<string?> Speak(LiveLine line, string path, CancellationToken ct)
     {
-        var path = Path.Combine(dir, $"l{i:00}.mp3");
         var ok = await tts.SynthesizeAsync(TtsService.Voice(line.Voice), line.Text, line.Rate, ttsOptions.CurrentValue.PauseMs, path, ct);
         if (ok && File.Exists(path)) return path;
         log.LogInformation("жива реклама без голосу: edge-tts не озвучив «{Text}»", line.Text.Length > 40 ? line.Text[..40] + "…" : line.Text);
