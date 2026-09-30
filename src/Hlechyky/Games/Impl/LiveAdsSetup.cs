@@ -22,7 +22,13 @@ public static class LiveAdsSetup
         services.AddOptions<TtsOptions>();
         services.TryAddSingleton<ITtsEngine, EdgeTtsEngine>();
         services.TryAddSingleton<ILiveRenderer, FfmpegLiveRenderer>();
-        services.AddSingleton<LiveAdsStore>();
+        // Факти й події читають таблиці Лавки, а Лавка створює їх лише тоді, коли її вперше попросять: на свіжій базі
+        // жива реклама стартує раніше. Тож спершу — Лавка (коли вона є в збірці), потім свої таблиці.
+        services.AddSingleton(sp =>
+        {
+            _ = sp.GetService<LavkaStore>();
+            return new LiveAdsStore(sp.GetRequiredService<Db>());
+        });
         services.AddSingleton<LiveFacts>();
         services.AddSingleton<LiveAds>();
         services.AddSingleton<ILiveAdSource>(sp => sp.GetRequiredService<LiveAds>());
