@@ -236,6 +236,23 @@ public class ClickerHouseTests
     }
 
     [Fact]
+    public void Being_away_does_not_spend_the_apron()
+    {
+        var h = Wheel();
+        Give(h, 1_000_000);
+        Assert.True(Act(h, "tool", new { key = "apron" }).Ok);
+        Patch(h, s => s["fallStreak"] = 5);
+        h.Clock.AdvanceMs(3 * 3600 * 1000);                    // три години без гончаря — глек на розкладі пролетів
+        Assert.Equal(5, Streak(h));
+
+        // Фартух цілий: перший промах уже біля кола він іще вибачає.
+        FallNow(h);
+        h.Clock.AdvanceMs((int)(Clicker.FallShown + Clicker.CatchGrace).TotalMilliseconds + 500);
+        Assert.False(Act(h, "grab").Ok);
+        Assert.Equal(5, Streak(h));
+    }
+
+    [Fact]
     public void The_whistle_hurries_the_golden_jug()
     {
         var h = Wheel();

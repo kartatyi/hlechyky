@@ -257,6 +257,34 @@ public class ClickerLiveTests
     }
 
     [Fact]
+    public void Hours_away_do_not_break_the_streak()
+    {
+        // Записка владіка 30.09: вийшов із серією 200+, а глек на розкладі пролетів без нього.
+        var h = Wheel();
+        Patch(h, s => s["fallStreak"] = 200);
+        var jug = FallAt(h);
+        h.Clock.AdvanceMs(3 * 3600 * 1000);
+        Assert.True(h.Clock.UtcNow > jug + Clicker.FallShown + Clicker.CatchGrace);
+
+        Assert.Equal(200, Streak(h));
+        // Наступний — від «зараз», а не від старого розкладу.
+        Assert.InRange((FallAt(h) - h.Clock.UtcNow).TotalSeconds, Clicker.FallMinSeconds, Clicker.FallMaxSeconds);
+    }
+
+    [Fact]
+    public void A_jug_missed_at_the_wheel_breaks_the_streak_even_if_the_potter_then_walks_away()
+    {
+        var h = Wheel();
+        Patch(h, s => s["fallStreak"] = 4);
+        FallNow(h);
+        h.Clock.AdvanceMs(1000);
+        Assert.True(Spin(h, 5).Ok);                      // клацав коло, поки глек летів, — бачив його
+        h.Clock.AdvanceMs(3 * 60 * 1000);                // і пішов, не спіймавши
+
+        Assert.Equal(0, Streak(h));
+    }
+
+    [Fact]
     public void A_catch_puts_the_next_jug_on_the_shelf()
     {
         var h = Wheel();

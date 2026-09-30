@@ -1083,6 +1083,9 @@ public sealed partial class Clicker : Game
             // «Руки-крюки» (звання): розбився, поки гончар клацав коло — останній клік припав на політ глека.
             if (!asked && _heatAt >= _fall.At && _heatAt <= _fall.Until + CatchGrace) _brokenBusy++;
             if (asked) _fallSlept = true;
+            // Гончаря не було: затих ще до того, як глек злетів, і мовчав довше за EventGap. Глек летів без нього —
+            // це не промах, а порожня хата: серію не рвемо й фартуха не чіпаємо (як кіт і зірка, §A.6).
+            else if (!watching && _fall.At > from) { }
             // Шкіряний фартух вибачає один розбитий у серії; другий поспіль — серія таки обірвалась.
             else if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
             else _fallStreak = 0;
