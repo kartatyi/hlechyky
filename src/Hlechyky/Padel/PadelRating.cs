@@ -141,6 +141,11 @@ public sealed class PadelRating(IPadelHistory history, IPadelPlayers players, Pa
         {
             h.Add(r.Id);
             h.Add(r.Winner);
+            // Правка рахунку турнірного матчу лишає той самий Id і, буває, переможця — а Ело залежить від різниці очок
+            h.Add(r.Mode);
+            foreach (var x in r.Points ?? []) h.Add(x);
+            foreach (var s in r.Sets) { h.Add(s.Length); foreach (var g in s) h.Add(g); }
+            h.Add(r.Sets.Length);
             foreach (var t in r.Teams) foreach (var p in t) h.Add(players.Canon(p));
         }
         foreach (var t in history.Tournaments()) { h.Add(t.Id); foreach (var u in t.Ranked) foreach (var p in u) h.Add(players.Canon(p)); }

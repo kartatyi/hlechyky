@@ -166,7 +166,8 @@ public sealed class PadelGather(PadelGatherStore store, PadelMoneyStore money, I
     object Goer(PadelGoer p)
     {
         var who = players.Player(p.Pid);
-        return new { pid = p.Pid, name = who.Name, guest = who.Guest, racket = p.Racket, at = p.At.UtcDateTime };
+        // addedBy — хто вписав (pid акаунта): клієнт за ним показує «виписати» тому, хто вписав друга
+        return new { pid = p.Pid, name = who.Name, guest = who.Guest, racket = p.Racket, at = p.At.UtcDateTime, addedBy = p.AddedBy };
     }
 
     public object List()
@@ -255,6 +256,7 @@ public sealed class PadelGather(PadelGatherStore store, PadelMoneyStore money, I
             if (Load(id) is not { } x) return PadelMoneyHttp.Fail("Нема такого збору", 404);
             var (g, all) = x;
             if (!g.Open) return PadelMoneyHttp.Fail("Збір скасовано");
+            if (Past(me, g)) return PadelMoneyHttp.Fail(PastText);
             var canon = players.Canon(who);
             var there = all.FirstOrDefault(p => p.Pid == who || players.Canon(p.Pid) == canon);
             if (there is not null)
@@ -277,6 +279,7 @@ public sealed class PadelGather(PadelGatherStore store, PadelMoneyStore money, I
             var (g, all) = x;
             if (Find(all, pid ?? me.Pid!) is not { } there) return PadelMoneyHttp.Fail("Його й так нема в списку");
             if (!MayTouch(me, g, there)) return PadelMoneyHttp.Fail("Виписати іншого може той, хто зібрав чи вписав, або адмін", 403);
+            if (Past(me, g)) return PadelMoneyHttp.Fail(PastText);
             store.Leave(g.Id, there.Pid);
             Promoted(me, g, g.Slots, all, store.Goers(g.Id));
             return Changed(g);
@@ -304,6 +307,14 @@ public sealed class PadelGather(PadelGatherStore store, PadelMoneyStore money, I
     }
 
     bool Owner(PadelMoneyActor me, PadelGathering g) => me.Admin || g.ByPid == me.Pid;
+
+    const string PastText = "Збір уже минув";
+
+    /// <summary>
+    /// Минулий збір — лише творцеві чи адміну (виправити, хто справді прийшов): інакше «Завсідник» фармився б
+    /// записом у старі збори.
+    /// </summary>
+    bool Past(PadelMoneyActor me, PadelGathering g) => g.Until <= clock.UtcNow && !Owner(me, g);
 
     bool MayTouch(PadelMoneyActor me, PadelGathering g, PadelGoer p) =>
         Owner(me, g) || players.Canon(p.Pid) == me.Pid || p.AddedBy == me.Pid;

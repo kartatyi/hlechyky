@@ -377,9 +377,10 @@ public static class PadelTourGen
     /// усі з усіма, fair — найменше раундів, за якого всі відпочивають порівну; rec — найбільше кратне fair ≤ fit
     /// (американо — ще й ≤ full), а як нема — fit і «середнє».
     /// </summary>
-    public static PadelPlan Plan(string format, int n, int courts, string total, int? minutes, double? booking)
+    public static PadelPlan Plan(string format, int n, int courts, string total, int? minutes, double? booking, int? women = null)
     {
         courts = Math.Max(1, courts);
+        if (format == "mixed" && women is { } wn) return PlanMixed(n, Math.Clamp(wn, 0, n), courts, total, minutes, booking);
         var pair = PairFormat(format);
         var perMatch = pair ? Math.Min(courts, n / 2) : SlotsFor(n, courts) / 4;
         var slots = pair ? perMatch * 2 : perMatch * 4;
@@ -405,6 +406,34 @@ public static class PadelTourGen
         return rec > 0
             ? new(slots, sit, perRound, fit, full, fair, rec, false, null)
             : new(slots, sit, perRound, fit, full, fair, Math.Max(1, limit), true, "Порівну відпочити не вийде — таблиця рахуватиме середнє за матч");
+    }
+
+    static int PerRound(string total, int? minutes) =>
+        total == "time" ? (minutes ?? 15) + 2 : (int)Math.Round(int.Parse(total, CultureInfo.InvariantCulture) * 0.5 + 2, MidpointRounding.AwayFromZero);
+
+    /// <summary>
+    /// Мікст за справжнім складом: на корті двоє жінок і двоє чоловіків, тож кортів — скільки дозволяє менша половина;
+    /// відпочивають окремо серед жінок і серед чоловіків. Порівну всім — лише коли частка відпочинку в обох однакова.
+    /// </summary>
+    static PadelPlan PlanMixed(int n, int w, int courts, string total, int? minutes, double? booking)
+    {
+        var m = n - w;
+        var k = Math.Min(Math.Min(w, m), courts * 2);
+        k -= k % 2;                                   // k пар «жінка+чоловік» на раунд, k/2 кортів
+        var slots = k * 2;
+        var sit = n - slots;
+        var perRound = PerRound(total, minutes);
+        var fit = Math.Max(1, (int)Math.Floor((booking ?? 2) * 60 / perRound));
+        var full = k > 0 ? (int)Math.Ceiling((double)w * m / k) : 0;   // кожна жінка — з кожним чоловіком
+        int FairOf(int g) => g == 0 || g - k <= 0 ? 1 : g / Gcd(g, g - k);
+        var equal = k > 0 && (long)(w - k) * m == (long)(m - k) * w;
+        var fair = equal ? FairOf(w) / Gcd(FairOf(w), FairOf(m)) * FairOf(m) : 1;
+        var rec = equal ? fit / fair * fair : 0;
+        if (rec > 0) return new(slots, sit, perRound, fit, full, fair, rec, false, null);
+        var note = k == 0 ? "Для міксту треба щонайменше дві жінки й двоє чоловіків"
+            : equal ? "Порівну відпочити не вийде — таблиця рахуватиме середнє за матч"
+            : "Жінок і чоловіків не порівну — відпочиватимуть по-різному, таблиця рахуватиме середнє за матч";
+        return new(slots, sit, perRound, fit, full, fair, fit, true, note);
     }
 
     // ------------------------------------------------------------------ нагороди

@@ -232,6 +232,7 @@ public sealed class PadelMoney(PadelMoneyStore store, PadelGather gather, IPadel
             date = e.Date,
             payer = e.Payer,
             by = players.Name(e.ByPid),
+            byPid = e.ByPid,
             at = e.At.UtcDateTime,
             people = e.Data.People,
             court = e.Data.Court,
@@ -337,8 +338,9 @@ public sealed class PadelMoney(PadelMoneyStore store, PadelGather gather, IPadel
         if (!me.Admin && me.Pid != cf && me.Pid != ct) return PadelMoneyHttp.Fail("Платіж записує той, хто скинув, або той, хто отримав", 403);
         var id = store.AddPayment(new PadelPayment(0, from, to, amount, clock.UtcNow, me.Pid!, note));
         var who = players.Name(me.Pid!);
-        if (me.Pid == cf) { if (Pid.IsUser(ct)) wire.Toast(Pid.NickKey(ct)!, $"💸 {who}: «скинуто тобі {amount} грн»"); }
-        else if (me.Pid == ct) { if (Pid.IsUser(cf)) wire.Toast(Pid.NickKey(cf)!, $"💸 {who}: «отримано від тебе {amount} грн»"); }
+        // Без роду (не знаємо, хто скинув чи скинула): «Від Олі: скинуто тобі…» / «Влад: від тебе отримано…»
+        if (me.Pid == cf) { if (Pid.IsUser(ct)) wire.Toast(Pid.NickKey(ct)!, $"💸 Від {NickCases.Genitive(who)}: скинуто тобі {amount} грн"); }
+        else if (me.Pid == ct) { if (Pid.IsUser(cf)) wire.Toast(Pid.NickKey(cf)!, $"💸 {who}: від тебе отримано {amount} грн"); }
         else
             foreach (var p in new[] { cf, ct }.Where(Pid.IsUser))
                 wire.Toast(Pid.NickKey(p)!, $"💸 {who} записує: {players.Name(from)} → {players.Name(to)}, {amount} грн");
@@ -362,7 +364,14 @@ public sealed class PadelMoney(PadelMoneyStore store, PadelGather gather, IPadel
     /// Увесь граф боргів: для кожної пари людей — одне число (частки, які один винен іншому як платнику, мінус
     /// платежі, в обидва боки). Канонічні pid: прив'язаний гість рахується своєму акаунту. Лише ненульові, більші згори.
     /// </summary>
-    public List<(string From, string To, int Amount)> Ledger()
+    public List<(string From, string To, int Amount)> Ledger() => Ledger(null);
+
+    /// <summary>
+    /// Граф боргів без записів, які зробив <paramref name="author"/> (витрати з ByPid і платежі, записані ним):
+    /// «чесний» борг — той, що на нього записали інші. За ним і лише за ним боржник бачить банки кредитора, інакше
+    /// номер картки витягнув би будь-хто: записав собі борг перед жертвою, глянув банки, стер запис.
+    /// </summary>
+    List<(string From, string To, int Amount)> Ledger(string? author)
     {
         var net = new Dictionary<(string, string), long>();
         void Owe(string from, string to, long amount)
@@ -374,25 +383,32 @@ public sealed class PadelMoney(PadelMoneyStore store, PadelGather gather, IPadel
         }
         foreach (var e in store.Expenses())
         {
+            if (author is not null && e.ByPid == author) continue;
             var payer = players.Canon(e.Payer);
             foreach (var (pid, share) in Split(e.Data, e.Payer).Shares) Owe(players.Canon(pid), payer, share);
         }
-        foreach (var p in store.Payments()) Owe(players.Canon(p.From), players.Canon(p.To), -p.Amount);
+        foreach (var p in store.Payments())
+            if (author is null || p.ByPid != author) Owe(players.Canon(p.From), players.Canon(p.To), -p.Amount);
         return [.. net.Where(kv => kv.Value != 0)
             .Select(kv => kv.Value > 0 ? (kv.Key.Item1, kv.Key.Item2, (int)kv.Value) : (kv.Key.Item2, kv.Key.Item1, (int)-kv.Value))
             .OrderByDescending(x => x.Item3).ThenBy(x => x.Item1, StringComparer.Ordinal)];
     }
 
-    /// <summary>GET /api/padel/money — особистий баланс. Банки кредитора — лише в owe (я йому винен).</summary>
+    /// <summary>
+    /// GET /api/padel/money — особистий баланс. Банки кредитора — лише в owe (я йому винен) і лише коли борг є за
+    /// чужими записами (див. <see cref="Ledger(string?)"/>); сума в owe — повна.
+    /// </summary>
     public IResult View(PadelMoneyActor me)
     {
         if (!me.User) return PadelMoneyHttp.Fail("Гроші бачать лише акаунти", 403);
         var mine = me.Pid!;
         var ledger = Ledger();
+        var honest = Ledger(mine).Where(l => l.From == mine).Select(l => l.To).ToHashSet(StringComparer.Ordinal);
         var owe = ledger.Where(l => l.From == mine).Select(l =>
         {
             var p = players.Player(l.To);
-            return new { pid = l.To, name = p.Name, guest = p.Guest, amount = l.Amount, banks = Pid.IsUser(l.To) ? BanksView(store.Banks(l.To)) : [] };
+            var banks = Pid.IsUser(l.To) && honest.Contains(l.To) ? BanksView(store.Banks(l.To)) : [];
+            return new { pid = l.To, name = p.Name, guest = p.Guest, amount = l.Amount, banks };
         }).ToList();
         var owed = ledger.Where(l => l.To == mine).Select(l =>
         {
@@ -413,6 +429,12 @@ public sealed class PadelMoney(PadelMoneyStore store, PadelGather gather, IPadel
             defaults = new { courtPerHour = options.Value.CourtPerHour, racketPrice = options.Value.RacketPrice },
         });
     }
+
+    /// <summary>Чи є в грошах бодай один запис про цього гравця (як він є, без Canon) — прив'язка гостя з грошима лише адміном.</summary>
+    public bool Touches(string pid) =>
+        store.Payments().Any(p => p.From == pid || p.To == pid) ||
+        store.Expenses().Any(e => e.Payer == pid || e.Data.People.Contains(pid) || e.Data.Rackets.Contains(pid) ||
+            e.Data.Other.Any(o => o.Pids?.Contains(pid) == true));
 
     // ---------------------------------------------------------------- банки
 

@@ -59,10 +59,13 @@ public interface IPadelTourLink
     string? Organizer(string tourId);
     void Scored(PadelMatchRec m, string by);
     void Dropped(PadelMatchRec m);
+    /// <summary>«↶» після кінця: матч знову живий — корт турніру знову зайнятий ним (записаний рахунок лишається).</summary>
+    void Reopened(PadelMatchRec m);
 }
 
 public sealed record PadelMatchRequest(string[][]? Teams, PadelRules? Rules, string? First, string? Gathering, DateTimeOffset? CourtUntil);
-public sealed record PadelActRequest(string? A, int? T, string? Slot, DateTimeOffset? Until);
+/// <summary>Seq — seq виду, який бачив клієнт: «очко» по застарілому виду (подвійний тиць, два телефони) не ляже двічі.</summary>
+public sealed record PadelActRequest(string? A, int? T, string? Slot, DateTimeOffset? Until, int? Seq = null);
 
 /// <summary>
 /// Табло: живі матчі (контракт §2.3). Усе в пам'яті під одним замком, кожна дія одразу пишеться в базу (рядок —
@@ -152,9 +155,12 @@ public sealed class PadelMatches
         var rules = PadelRules.From(b.Rules);
         if (rules.Problem() is { } bad) return PadelReply.No(bad);
         if (b.First is not null && Array.IndexOf(PadelScore.Slots, b.First) < 0) return PadelReply.No("Невідомий подавач");
-        var until = b.CourtUntil;
-        if (until is null && b.Gathering is { } g) until = _agenda.Find(g)?.Until;
-        var (_, view) = Open(who, [.. teams.Select(t => t.ToArray())], rules, b.First, b.Gathering, until, null);
+        var gathering = string.IsNullOrWhiteSpace(b.Gathering) ? null : b.Gathering.Trim();
+        var agenda = gathering is null ? null : _agenda.Find(gathering);
+        if (gathering is not null && agenda is null) return PadelReply.No("Нема такого збору");
+        if (b.CourtUntil is { } cu && UntilProblem(cu) is { } badUntil) return PadelReply.No(badUntil);
+        var until = b.CourtUntil ?? agenda?.Until;
+        var (_, view) = Open(who, [.. teams.Select(t => t.ToArray())], rules, b.First, gathering, until, null);
         return new(new { ok = true, match = view });
     }
 
@@ -216,12 +222,16 @@ public sealed class PadelMatches
     {
         object view;
         PadelMatchRec m;
-        bool finished;
+        bool finished, reopened;
         lock (_lock)
         {
             if (ParseId(id) is not { } n || !_all.TryGetValue(n, out m!)) return PadelReply.No("Нема такого матчу", 404);
             if (who.Pid is null && !who.Admin) return PadelReply.No("Керувати можуть лише акаунти — увійди на головній", 403);
             if (!CanControl(m, who)) return PadelReply.No("Керують гравці цього матчу", 403);
+            // Дія по застарілому виду: не кладемо, а віддаємо свіжий — клієнт тихо його покаже
+            if (b.Seq is { } seen && seen != m.Seq && b.A is "point" or "undo" or "serve")
+                return new(new { ok = false, message = Stale, match = View(m) }, Stale, 409);
+            var wasDone = m.Status == "done";
             var s = m.R.State;
             string[] events;
             string text;
@@ -273,6 +283,8 @@ public sealed class PadelMatches
                     say = null;
                     break;
                 case "until":
+                    if (m.Status != "live") return PadelReply.No("Матч уже скінчено");
+                    if (b.Until is { } bu && UntilProblem(bu) is { } why2) return PadelReply.No(why2);
                     m.CourtUntil = b.Until;
                     var left = b.Until - _clock.UtcNow;
                     m.Clock10 = left is { } l1 && l1 <= TimeSpan.FromMinutes(_options.CurrentValue.LastGameMinutes);
@@ -285,11 +297,24 @@ public sealed class PadelMatches
                     return PadelReply.No("Невідома дія");
             }
             finished = Settle(m, who.Name);
+            reopened = wasDone && m.Status == "live";
             Touch(m, events, text, say, who.Name);
             view = View(m);
         }
         After(m, view, finished);
+        if (reopened && m.Tour is not null) Link?.Reopened(m);
         return new(new { ok = true, match = view });
+    }
+
+    public const string Stale = "Рахунок уже змінився";
+
+    /// <summary>Годинник оренди: не в минулому (5 хв запасу на «щойно скінчилась») і не далі ніж за 12 годин.</summary>
+    string? UntilProblem(DateTimeOffset until)
+    {
+        var now = _clock.UtcNow;
+        if (until < now - TimeSpan.FromMinutes(5)) return "Оренда вже скінчилась — глянь час";
+        if (until > now + TimeSpan.FromHours(12)) return "Оренда — не далі ніж на 12 годин наперед";
+        return null;
     }
 
     /// <summary>Статус за станом: скінчився — done (true, якщо щойно), «скасувати» після кінця — знову live.</summary>
@@ -322,12 +347,43 @@ public sealed class PadelMatches
         _wire.Match(view);
         _ping.Ping();
         if (m.Last?.Say is { } say) _voice.Want([say], urgent: true);
+        WaitClip(m);
         WantNext(m);
         if (m.Status == "abandoned" && m.Tour is not null) Link?.Dropped(m);
         if (!finished) return;
         if (m.Tour is not null) Link?.Scored(m, m.EndedBy ?? m.By);
         else Chat(m);
         _wire.Rating();
+    }
+
+    /// <summary>Як часто дивитись, чи з'явився кліп останньої фрази (тести ставлять менше).</summary>
+    public TimeSpan ClipPoll { get; set; } = TimeSpan.FromMilliseconds(400);
+    const int ClipTries = 20;   // ≈8 с — далі фраза вже не до речі
+
+    /// <summary>
+    /// Кліп останньої фрази ще не готовий (edge-tts інколи думає довше за тиць): чекаємо до ≈8 с і розсилаємо той самий
+    /// seq уже з кліпом — табло його програє. Нове очко за цей час — чекання саме зникає.
+    /// </summary>
+    void WaitClip(PadelMatchRec m)
+    {
+        if (!_voice.On || m.Last is not { Say: { } say } last || _voice.Clip(say) is not null) return;
+        var seq = last.Seq;
+        _ = Task.Run(async () =>
+        {
+            for (var i = 0; i < ClipTries; i++)
+            {
+                await Task.Delay(ClipPoll);
+                object view;
+                lock (_lock)
+                {
+                    if (m.Seq != seq || m.Last?.Say != say) return;
+                    if (_voice.Clip(say) is null) continue;
+                    view = View(m);
+                }
+                _wire.Match(view);
+                return;
+            }
+        });
     }
 
     /// <summary>Фрази обох можливих наступних очок — щоб Глек не запізнювався.</summary>
@@ -379,7 +435,7 @@ public sealed class PadelMatches
         var text = s.Winner >= 0
             ? $"🍳 Падельня: {Team(m, s.Winner)} перемогли {TeamAcc(m, 1 - s.Winner)} — {score}"
             : $"🍳 Падельня: {Team(m, 0)} та {Team(m, 1)} зіграли внічию — {score}";
-        var line = _db.AddChat(_site.CurrentValue.Name, text, "padel");
+        var line = _db.AddChat(_site.CurrentValue.DjName is { Length: > 0 } dj ? dj : "Дядько Глек", text, "padel");   // рядок від Глека, як інші його рядки в балачках
         _wire.Chat(new
         {
             id = line.Id, nick = line.Nick, text = line.Text, at = line.At, kind = line.Kind, roomId = line.RoomId,

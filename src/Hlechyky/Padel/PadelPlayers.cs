@@ -8,7 +8,8 @@ namespace Hlechyky.Padel;
 public sealed record PadelReply(object? Body, string? Error = null, int Status = 200)
 {
     public static PadelReply No(string message, int status = 400) => new(null, message, status);
-    public IResult Http() => Error is null ? Results.Json(Body) : PadelSetup.Fail(Error, Status);
+    /// <summary>Відмова з тілом (409 «рахунок уже змінився» несе свіжий вид) — тіло як є, з кодом відмови.</summary>
+    public IResult Http() => Error is null ? Results.Json(Body) : Body is not null ? Results.Json(Body, statusCode: Status) : PadelSetup.Fail(Error, Status);
 }
 
 /// <summary>
@@ -132,6 +133,22 @@ public sealed class PadelPlayers : IPadelPlayers
             _guests[id] = new(id, name, null);
             return new(new { ok = true, player = new PadelPlayer(Pid.Guest(id), name, true) });
         }
+    }
+
+    /// <summary>Акаунт, який вписав гостя (pid), або null — вписав адмін без акаунта чи гостя нема.</summary>
+    public string? CreatedBy(string guestPid)
+    {
+        if (FindGuest(guestPid) is not { } g) return null;
+        var nick = _db.With(c =>
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT created_by FROM padel_guests WHERE id = $id";
+            cmd.Parameters.AddWithValue("$id", g.Id);
+            return cmd.ExecuteScalar() as string;
+        });
+        if (string.IsNullOrWhiteSpace(nick)) return null;
+        var pid = Pid.User(nick);
+        return Exists(pid) ? pid : null;
     }
 
     /// <summary>Прив'язати гостя до акаунта (null — відв'язати). Права перевіряє виклик.</summary>

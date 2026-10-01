@@ -160,11 +160,11 @@ public sealed class PadelMoneyTests : IDisposable
         Assert.Equal(403, R(_r.Money.Pay(SiteGuest, new("u:а", "u:б", 100, null))).Status);
 
         Assert.Equal(200, R(_r.Money.Pay(U("оля"), new("u:оля", "u:влад", 300, null))).Status);
-        Assert.Equal(("влад", "💸 оля: «скинуто тобі 300 грн»"), _r.Out.Toasts[^1]);
+        Assert.Equal(("влад", $"💸 Від {NickCases.Genitive("оля")}: скинуто тобі 300 грн"), _r.Out.Toasts[^1]);
         Assert.Equal(200, R(_r.Money.Pay(U("влад"), new("g:1", "u:влад", 200, null))).Status);  // за гостя — контрагент
         Assert.Single(_r.Out.Toasts);                                                            // гостю тост не летить
         var (_, b) = R(_r.Money.Pay(U("влад"), new("u:оля", "u:влад", 50, null)));
-        Assert.Equal(("оля", "💸 влад: «отримано від тебе 50 грн»"), _r.Out.Toasts[^1]);
+        Assert.Equal(("оля", "💸 влад: від тебе отримано 50 грн"), _r.Out.Toasts[^1]);
         var pid = b.GetProperty("id").GetString()!;
         Assert.Equal(403, R(_r.Money.Unpay(U("оля"), pid)).Status);
         Assert.Equal(200, R(_r.Money.Unpay(U("влад"), pid)).Status);

@@ -74,6 +74,8 @@ public sealed class PadelTours : IPadelTourLink
     readonly PadelPing _ping;
     readonly IOptionsMonitor<SiteOptions> _site;
     readonly object _lock = new();
+    /// <summary>Корти, на яких зараз відкривають живий матч (тур#корт): другий тиць чекає першого, а не відкриває свій.</summary>
+    readonly HashSet<string> _opening = new(StringComparer.Ordinal);
     readonly Dictionary<long, PadelTourRec> _all = [];
     readonly ConcurrentDictionary<string, string> _org = new(StringComparer.Ordinal);
     long _next = 1;
@@ -129,12 +131,12 @@ public sealed class PadelTours : IPadelTourLink
 
     // ------------------------------------------------------------------ план і таблиця
 
-    public static PadelReply PlanFor(string? format, int n, int courts, string? total, int? minutes, double? booking)
+    public static PadelReply PlanFor(string? format, int n, int courts, string? total, int? minutes, double? booking, int? women = null)
     {
         if (format is null || Array.IndexOf(PadelTourGen.Formats, format) < 0) return PadelReply.No("Невідомий формат");
         total ??= "24";
         if (Array.IndexOf(Totals, total) < 0) return PadelReply.No("Матч — до 16, 21, 24, 32 очок або на час");
-        var p = PadelTourGen.Plan(format, Math.Max(0, n), Math.Clamp(courts, 1, 8), total, minutes, booking);
+        var p = PadelTourGen.Plan(format, Math.Max(0, n), Math.Clamp(courts, 1, 8), total, minutes, booking, women);
         return new(PlanView(p));
     }
 
@@ -143,7 +145,7 @@ public sealed class PadelTours : IPadelTourLink
         slots = p.Slots, sit = p.Sit, perRound = p.PerRound, fit = p.Fit, full = p.Full, fair = p.Fair, rec = p.Rec, avg = p.Avg, note = p.Note,
     };
 
-    PadelPlan Plan(PadelTourRec t) => PadelTourGen.Plan(t.Format, t.Units.Count, t.Courts, t.Total, t.Minutes, t.Booking);
+    PadelPlan Plan(PadelTourRec t) => PadelTourGen.Plan(t.Format, t.Units.Count, t.Courts, t.Total, t.Minutes, t.Booking, t.Women?.Count);
 
     /// <summary>sum — усі відпочивають порівну; avg — ні (тоді чесно рахуємо середнє за матч); у групах — перемоги.</summary>
     static string RankBy(PadelTourRec t)
@@ -174,6 +176,7 @@ public sealed class PadelTours : IPadelTourLink
         if (Array.IndexOf(Totals, total) < 0) return PadelReply.No("Матч — до 16, 21, 24, 32 очок або на час");
         if (total == "time" && b.Minutes is not (>= 10 and <= 20)) return PadelReply.No("На час — від 10 до 20 хвилин");
         bool Ok(string p) => Pid.Valid(p) && _players.Exists(p);
+        if (!string.IsNullOrWhiteSpace(b.Gathering) && _agenda.Find(b.Gathering.Trim()) is null) return PadelReply.No("Нема такого збору");
         List<string> players;
         List<string[]>? pairs = null;
         List<string>? women = null;
@@ -351,8 +354,17 @@ public sealed class PadelTours : IPadelTourLink
         string[][] teams;
         int? total;
         PadelTourRef tref;
+        string busy;
         lock (_lock)
         {
+            // Подвійний тиць «на табло» чи двоє з одного корту разом: перший відкриває, решта чекає й бере його матч
+            busy = $"{id}#{b.Court}";
+            var waitUntil = DateTime.UtcNow.AddSeconds(5);
+            while (_opening.Contains(busy))
+            {
+                var left = waitUntil - DateTime.UtcNow;
+                if (left <= TimeSpan.Zero || !Monitor.Wait(_lock, left)) return PadelReply.No("Корт саме відкривають — спробуй ще раз");
+            }
             if (Find(id) is not { } t) return PadelReply.No("Нема такого турніру", 404);
             if (t.Status != "live") return PadelReply.No("Турнір уже завершено");
             if (b.Round < 1 || b.Round > t.Rounds.Count || !t.Rounds[b.Round - 1].Ready) return PadelReply.No("Нема такого раунду", 404);
@@ -365,11 +377,21 @@ public sealed class PadelTours : IPadelTourLink
             teams = [m.A, m.B];
             total = t.TotalPoints;
             tref = new(t.Key, b.Round, b.Court);
+            _opening.Add(busy);
         }
-        var (key, view) = _matches.OpenForTour(who, teams, total, tref);
+        string key;
+        object view;
+        try { (key, view) = _matches.OpenForTour(who, teams, total, tref); }
+        catch
+        {
+            lock (_lock) { _opening.Remove(busy); Monitor.PulseAll(_lock); }
+            throw;
+        }
         object tview;
         lock (_lock)
         {
+            _opening.Remove(busy);
+            Monitor.PulseAll(_lock);
             if (Find(id) is not { } t) return new(new { ok = true, match = view });
             var m = t.Rounds[tref.Round - 1].Matches.First(x => x.Court == tref.Court);
             m.Live = key;
@@ -402,6 +424,21 @@ public sealed class PadelTours : IPadelTourLink
             view = View(t);
         }
         Changed(view, rating: true);
+    }
+
+    public void Reopened(PadelMatchRec lm)
+    {
+        object? view = null;
+        lock (_lock)
+        {
+            if (lm.Tour is not { } tr || Find(tr.Id) is not { } t || t.Status != "live" || tr.Round > t.Rounds.Count) return;
+            if (t.Rounds[tr.Round - 1].Matches.FirstOrDefault(x => x.Court == tr.Court) is not { } m || m.Live is not null) return;
+            // Рахунок лишаємо: «↶» могли тицьнути випадково — тоді наступне очко знову завершить матч і перепише його
+            m.Live = lm.Key;
+            Save(t);
+            view = View(t);
+        }
+        Changed(view);
     }
 
     public void Dropped(PadelMatchRec lm)
@@ -476,7 +513,7 @@ public sealed class PadelTours : IPadelTourLink
                 return $"{med[i]} {UnitName(u)}{value}";
             }));
         }
-        var line = _db.AddChat(_site.CurrentValue.Name, chat, "padel");
+        var line = _db.AddChat(_site.CurrentValue.DjName is { Length: > 0 } dj ? dj : "Дядько Глек", chat, "padel");
         _wire.Chat(new
         {
             id = line.Id, nick = line.Nick, text = line.Text, at = line.At, kind = line.Kind, roomId = line.RoomId,

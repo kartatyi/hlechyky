@@ -26,7 +26,9 @@ public sealed class PadelPlayTests : IDisposable
         public void Money() { }
         public void Rating() => Interlocked.Increment(ref Ratings);
         public void Lobby(object summary) { lock (_l) Lobbies.Add(Views.Json(summary)); }
-        public void Toast(string nick, string text) { }
+        public List<(string Nick, string Text)> Toasts { get; } = [];
+        public void Toast(string nick, string text) { lock (_l) Toasts.Add((nick, text)); }
+        public List<JsonElement> MatchesNow() { lock (_l) return [.. Matches]; }
         public void Chat(object line) { lock (_l) Chats.Add(Views.Json(line)); }
     }
 
@@ -37,9 +39,12 @@ public sealed class PadelPlayTests : IDisposable
         public List<string> Wanted { get; } = [];
         public string? Clip(string text)
         {
-            if (Ready.Contains(text)) return $"/api/padel/voice/{PadelScore.VoiceId(text)}.mp3";
-            Wanted.Add(text);
-            return null;
+            lock (Ready)
+            {
+                if (Ready.Contains(text)) return $"/api/padel/voice/{PadelScore.VoiceId(text)}.mp3";
+                Wanted.Add(text);
+                return null;
+            }
         }
         public void Want(IEnumerable<string> texts, bool urgent = false) => Wanted.AddRange(texts);
         public string? File(string id) => null;

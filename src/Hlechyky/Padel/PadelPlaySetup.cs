@@ -46,8 +46,8 @@ public static class PadelPlaySetup
         api.MapGet("/matches/{id}/stats", (string id, PadelMatches m) => m.Stats(id) is { } v ? Results.Json(v) : PadelSetup.Fail("Нема такого матчу", 404));
         api.MapGet("/voice/{file}", Voice);
 
-        api.MapGet("/tournaments/plan", (string? format, int? n, int? courts, string? total, int? minutes, double? booking) =>
-            PadelTours.PlanFor(format, n ?? 0, courts ?? 1, total, minutes, booking).Http());
+        api.MapGet("/tournaments/plan", (string? format, int? n, int? courts, string? total, int? minutes, double? booking, int? women) =>
+            PadelTours.PlanFor(format, n ?? 0, courts ?? 1, total, minutes, booking, women).Http());
         api.MapPost("/tournaments", (HttpContext c, PadelTourRequest b, PadelTours t) => t.Create(PadelWho.Of(c), b).Http());
         api.MapGet("/tournaments", (PadelTours t) => Results.Json(t.List()));
         api.MapGet("/tournaments/{id}", (string id, PadelTours t) => t.View(id) is { } v ? Results.Json(v) : PadelSetup.Fail("Нема такого турніру", 404));
@@ -110,19 +110,35 @@ public static class PadelPlaySetup
         return players.AddGuest(b.Name, Auth.Nick(c)).Http();
     }
 
-    public static IResult Link(HttpContext c, PadelLinkRequest b, PadelPlayers players, IPadelWire wire)
+    public static IResult Link(HttpContext c, PadelLinkRequest b, PadelPlayers players, IPadelWire wire, PadelMoney money, ILoggerFactory logs) =>
+        LinkGuest(PadelWho.Of(c), b, players, money.Touches, wire, logs.CreateLogger("Padel")).Http();
+
+    /// <summary>
+    /// Прив'язати гостя: собі — будь-який акаунт, до когось іншого — адмін. Гість із грошима в розрахунках переносить
+    /// і борги, тож його прив'язує лише адмін; решту — не тихо: тому, хто гостя вписав, — тост, у лог — рядок.
+    /// </summary>
+    public static PadelReply LinkGuest(PadelWho who, PadelLinkRequest b, PadelPlayers players, Func<string, bool> hasMoney,
+        IPadelWire wire, ILogger log)
     {
-        var me = Pid.Of(c);
-        var admin = Auth.IsAdmin(c);
-        if (me is null && !admin) return PadelSetup.Fail("Прив'язувати можуть лише акаунти — увійди на головній", 403);
+        var me = who.Pid;
+        var admin = who.Admin;
+        if (me is null && !admin) return PadelReply.No("Прив'язувати можуть лише акаунти — увійди на головній", 403);
         var target = string.IsNullOrWhiteSpace(b.Nick) ? me : Pid.User(b.Nick);
-        if (target is null) return PadelSetup.Fail("Кого прив'язати — нік?");
-        if (!admin && target != me) return PadelSetup.Fail("Прив'язати гостя можна лише до себе", 403);
-        if (b.Guest is { } g && Pid.IsGuest(g) && players.Player(g).LinkedTo is { } was && was != target && !admin)
-            return PadelSetup.Fail($"Цього гостя вже прив'язано до {players.Name(was)}");
-        var r = players.Link(b.Guest, target);
-        if (r.Error is null) wire.Rating();
-        return r.Http();
+        if (target is null) return PadelReply.No("Кого прив'язати — нік?");
+        if (!admin && target != me) return PadelReply.No("Прив'язати гостя можна лише до себе", 403);
+        var guest = b.Guest?.Trim();
+        var was = guest is not null && Pid.IsGuest(guest) ? players.Player(guest).LinkedTo : null;
+        if (was is not null && was != target && !admin) return PadelReply.No($"Цього гостя вже прив'язано до {players.Name(was)}");
+        if (!admin && was is null && guest is not null && Pid.IsGuest(guest) && hasMoney(guest))
+            return PadelReply.No("У цього гостя є гроші в розрахунках — прив'язати може адмін");
+        var r = players.Link(guest, target);
+        if (r.Error is not null || was == target) return r;
+        wire.Rating();
+        var name = players.Name(guest!);
+        log.LogInformation("Падельня: гостя {Guest} ({Name}) прив'язано до {Target}, прив'язав {Who}", guest, name, target, who.Name);
+        if (players.CreatedBy(guest!) is { } author && author != me && author != target)
+            wire.Toast(Pid.NickKey(author)!, $"🔗 {who.Name}: гостя «{name}» прив'язано до акаунта {players.Name(target)}");
+        return r;
     }
 
     public static IResult Unlink(HttpContext c, PadelLinkRequest b, PadelPlayers players, IPadelWire wire)
