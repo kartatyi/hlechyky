@@ -261,7 +261,7 @@
     const side = (u, c, win) => '<div class="side ' + c + (win ? ' win' : '') + '">' + u.map((pid) => '<span class="pp">' + P.av(nm(pid)) + '<span>' + esc(nm(pid)) + '</span></span>').join('') + '</div>';
     const inp = (ci, s, v) => '<input type="number" inputmode="numeric" min="0"' + (tot ? ' max="' + tot + '"' : '') + ' data-ci="' + ci + '" data-s="' + s + '" value="' + (v == null ? '' : v) + '" placeholder="–" aria-label="очки">';
     box.innerHTML = r.matches.map((m, ci) => {
-      const ok = scored(m), ed = canEdit(t, m), st = m.stage && STAGE[m.stage] ? STAGE[m.stage] : m.group ? 'Група ' + m.group : '';
+      const sg = m.stage || r.stage, ok = scored(m), ed = canEdit(t, m), st = sg && STAGE[sg] ? STAGE[sg] : m.group ? 'Група ' + m.group : '';
       const board = m.live ? '<button type="button" class="btn xs" data-board="' + esc(m.live) + '">📺 на табло</button>'
         : ed && !ok ? '<button type="button" class="btn xs ghost" data-live="' + ci + '" title="Рахувати цей матч на табло — рахунок сам ляже сюди">▶ вести на табло</button>' : '';
       return '<div class="court' + (ok ? ' done' : '') + '"><div class="court-h"><b>Корт ' + m.court + '</b>' + (st ? '<span>' + esc(st) + '</span>' : '') + board + '</div>'

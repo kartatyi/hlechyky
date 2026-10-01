@@ -1326,7 +1326,7 @@
     const isLog = m.kind === 'system';
     // Монетка живе в тій самій розкладці, що й кубик (.msg.dice — рядок у флексі); /choose і /8ball
     // це звичайні рядки з іконкою в самому тексті, тож їм окрема гілка ні до чого.
-    el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj'
+    el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' || m.kind === 'padel' ? 'dj'
       : m.kind === 'dice' || m.kind === 'coin' ? 'dice'
         : m.kind === 'tables' ? 'tables' : m.kind === 'invite' ? 'invite' : m.kind === 'note' ? 'note'
           : DEEDS[m.kind] ? 'deed ' + m.kind : mine ? 'mine' : '');
@@ -1358,8 +1358,9 @@
       el.innerHTML = `${nickHtml(m.nick, 'n', true)}<span class="dies"></span><span class="rng muted small"></span><span class="time">${tm(m.at)}</span>`;
       el.querySelector('.dies').appendChild(rollEl(m, live));
       paintRollRange(el);
-    } else if (m.kind === 'dj') {
-      el.innerHTML = `<img src="/static/glek.svg" alt=""><div><span class="n">${esc(m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span></div>`;
+    } else if (m.kind === 'dj' || m.kind === 'padel') {
+      // Падельня пише від імені сайту («Глечики») — це рядок Глека про матч, а не людини з таким ніком
+      el.innerHTML = `<img src="/static/glek.svg" alt=""><div><span class="n">${esc(m.kind === 'padel' ? dj() : m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span></div>`;
     } else if (isLog) {
       el.innerHTML = `<span class="time">${tm(m.at)}</span>${linkify(m.text)}`;
     } else {
@@ -3518,6 +3519,7 @@
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
     conn.on('fireworks', (x) => fireworks(x && x.nick));
     conn.on('look', (x) => HLavka.onLook(x));
+    conn.on('padelLive', (x) => window.HGames && HGames.padel && HGames.padel(x));   // картка «🍳 Падельня» в лобі
     conn.on('fbUnread', fbOnUnread);   // «💡»: розробник відповів на мою записку
     conn.on('fbDev', fbOnDev);         // «💡» розробнику: нова записка чи відповідь людини
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
