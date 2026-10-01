@@ -1,1 +1,130 @@
-/* Турніри — стилі вкладки (tour.js). */
+/* Турніри — стилі вкладки (tour.js). Розклад, корти, таблиця й п'єдестал — з макета D:/or-wt/_padel/padel.html. */
+
+/* ---------- список ---------- */
+.tr-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; margin-bottom: 12px; }
+.tr-head h2 { margin: 0; font-size: 22px; font-weight: 800; }
+.tr-sec { margin-top: 18px; }
+.tr-sec > h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 8px; }
+.tr-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.tr-card { display: flex; gap: 12px; align-items: center; text-align: left; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 12px 14px; color: var(--text); }
+.tr-card:hover { border-color: var(--panel3); background: #1f3a2d; }
+.tr-card.live { border-color: rgba(244,197,66,.5); }
+.tr-card .e { font-size: 26px; }
+.tr-card b { display: block; }
+.tr-card div { min-width: 0; }
+.tr-card .muted { font-size: 13px; }
+
+/* ---------- створення ---------- */
+.tset { display: flex; flex-direction: column; gap: 18px; }
+.fmt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.fmt { position: relative; text-align: left; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; color: var(--text); }
+.fmt:hover { border-color: var(--panel3); }
+.fmt.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: #22402f; }
+.fmt .e { font-size: 22px; }
+.fmt b { display: block; font-size: 16px; margin-top: 2px; }
+.fmt small { display: block; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+.cnt { display: inline-block; background: var(--accent); color: var(--ink); border-radius: 999px; padding: 0 7px; margin-left: 4px; letter-spacing: 0; }
+.row3 { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+.stepper { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stepper b { font-size: 20px; min-width: 2ch; text-align: center; }
+.tsum { background: var(--bg2); border-radius: 12px; padding: 10px 14px; line-height: 1.6; }
+.tgo { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.tr-pairs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tr-pair { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; background: var(--bg2); font-size: 13.5px; font-weight: 600; }
+.tr-pair .n { color: var(--muted); font-size: 12px; }
+.tr-women .chip { opacity: .6; }
+.tr-women .chip.on { opacity: 1; border-color: #e88bb4; }
+
+/* ---------- турнір ---------- */
+.t-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.t-head .tt { font-size: 18px; font-weight: 800; }
+.t-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.t-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 920px) { .t-grid { grid-template-columns: 1fr; } }
+.rtabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.rtab { flex: none; border: 1px solid var(--line); background: var(--bg2); border-radius: 10px; padding: 6px 12px; font-weight: 700; color: var(--muted); }
+.rtab small { font-weight: 700; }
+.rtab.done { color: var(--ok); }
+.rtab.on { background: var(--accent); border-color: transparent; color: var(--ink); }
+.court { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px 12px; margin-top: 10px; }
+.court.done { border-color: #3d6a50; }
+.court.empty { padding: 22px; text-align: center; line-height: 1.7; }
+.court-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
+.court-h b { color: var(--text); font-size: 14px; }
+.cm { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: center; }
+.side { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.side.b { align-items: flex-end; }
+.side .pp { font-weight: 600; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.side.b .pp { flex-direction: row-reverse; }
+.side.win .pp { color: var(--accent); }
+.side.win::after { content: 'перемога'; font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+.sc { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 20px; }
+.sc input { width: 58px; height: 46px; text-align: center; font-size: 22px; font-weight: 800; background: var(--bg2); border: 1px solid var(--line);
+  border-radius: 11px; -moz-appearance: textfield; appearance: textfield; color: var(--text); }
+.sc input::-webkit-inner-spin-button, .sc input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.sc input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sc .ro { min-width: 40px; text-align: center; font-size: 24px; }
+.court .by { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; }
+.sitrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; padding: 8px 12px; border-radius: 12px; background: var(--bg2); font-size: 14px; }
+.hint { font-size: 13px; margin-top: 8px; }
+.ract { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.lbwrap { position: sticky; top: 112px; }
+@media (max-width: 920px) { .lbwrap { position: static; } }
+.lb-h { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; margin-bottom: 6px; }
+.lb-h span { font-size: 12.5px; }
+table.lb { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+table.lb th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 6px 4px; text-align: center; border-bottom: 1px solid var(--line); }
+table.lb th.s { color: var(--accent); }
+table.lb td { padding: 7px 4px; text-align: center; border-bottom: 1px solid rgba(47,77,61,.55); }
+table.lb .l { text-align: left; }
+table.lb .l .pp { max-width: 100%; }
+table.lb td.big { font-weight: 800; font-size: 17px; }
+table.lb tr.top td { background: rgba(244,197,66,.05); }
+.mv .up { color: var(--ok); font-size: 12px; font-weight: 700; } .mv .dn { color: var(--danger); font-size: 12px; font-weight: 700; }
+.lb-f { font-size: 12.5px; margin-top: 8px; }
+.lb-avg { font-size: 12.5px; margin: 0 0 8px; padding: 6px 10px; border-radius: 10px; background: rgba(255,184,107,.1); color: #ffb86b; }
+.lb-g + .lb-g { margin-top: 14px; }
+.lb-g > b { display: block; margin-bottom: 4px; }
+.lbwrap:fullscreen, .lbwrap.fake-fs { background: var(--bg); padding: 4vh 6vw; overflow: auto; font-size: 2.4vh; border-radius: 0; }
+.lbwrap.fake-fs { position: fixed; inset: 0; z-index: 90; }
+.lbwrap:fullscreen table.lb, .lbwrap.fake-fs table.lb { font-size: 3vh; }
+.lbwrap:fullscreen table.lb td, .lbwrap.fake-fs table.lb td { padding: 1.3vh .6vw; }
+.lbwrap:fullscreen table.lb td.big, .lbwrap.fake-fs table.lb td.big { font-size: 4vh; }
+.lbwrap:fullscreen .av, .lbwrap.fake-fs .av { width: 4.2vh; height: 4.2vh; font-size: 2.1vh; }
+.lbwrap .lb-x { display: none; }
+.lbwrap:fullscreen .lb-x, .lbwrap.fake-fs .lb-x { display: inline-flex; }
+
+/* сітка плей-оф */
+.po { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+.po-col > b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+.po-m { background: var(--bg2); border-radius: 10px; padding: 6px 10px; margin-bottom: 6px; font-size: 13.5px; }
+.po-m div { display: flex; justify-content: space-between; gap: 8px; }
+.po-m div span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.po-m .w { color: var(--accent); font-weight: 700; }
+
+/* підсумки */
+.final { margin-top: 16px; }
+.final-h { display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; font-size: 18px; }
+.podium { display: grid; grid-template-columns: repeat(3, minmax(0, 150px)); justify-content: center; align-items: end; gap: 10px; margin: 18px 0; }
+.pod { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
+.pod b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pod span { color: var(--muted); font-weight: 700; }
+.pod .av { width: 44px; height: 44px; font-size: 20px; }
+.pod-col { width: 100%; border-radius: 12px 12px 0 0; display: grid; place-items: center; font-weight: 900; font-size: 26px; color: var(--ink); }
+.p1 .pod-col { height: 110px; background: linear-gradient(#f9d86a, #d9a92f); }
+.p2 .pod-col { height: 80px; background: linear-gradient(#e2e8ea, #aab4b8); }
+.p3 .pod-col { height: 60px; background: linear-gradient(#e0a070, #b06a3a); }
+.awards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin-bottom: 4px; }
+.aw { display: flex; gap: 10px; align-items: flex-start; background: var(--bg2); border-radius: 12px; padding: 10px 12px; }
+.aw .e { font-size: 24px; }
+
+@media (max-width: 640px) {
+  .sc input { width: 50px; height: 48px; }
+  .cm { gap: 6px; }
+  .side .pp { font-size: 14px; }
+  .fmt-grid { grid-template-columns: 1fr 1fr; }
+  .fmt { padding: 10px 11px; }
+  .fmt small { font-size: 12px; }
+  .podium { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
