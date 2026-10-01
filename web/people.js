@@ -95,6 +95,16 @@
     return h + ' год' + (rest && h < 100 ? ' ' + rest + ' хв' : '');
   }
 
+  /// З якого дня пишеться час («2026-09-26» → «26 вересня»; рік — лише коли вже не цей).
+  function sinceWord(day) {
+    if (!day) return '';
+    const d = new Date(day + 'T12:00:00');
+    if (isNaN(d)) return '';
+    const opts = { day: 'numeric', month: 'long' };
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+    return d.toLocaleDateString('uk-UA', opts);
+  }
+
   // [поле відповіді, підпис, клас кольору]
   const TIME_PARTS = [['play', 'у грі', 'gt-play'], ['watch', 'глядачем', 'gt-watch'],
     ['lobby', 'лобі ігор', 'gt-lobby'], ['page', 'радіо й балачки', 'gt-page']];
@@ -285,7 +295,7 @@
     const achs = (p.achievements || []).length;
     const fav = t && (t.games || []).filter((g) => g.play > 0)[0];
     box.innerHTML = '<span class="chip" title="Черепків зараз">🏺 ' + (w.balance != null ? lbNum(w.balance) : '—') + '</span>'
-      + (t ? '<span class="chip" title="Скільки часу тусить на сайті — за весь час">⏱ ' + dur(timeTotal(t)) + '</span>' : '')
+      + (t ? '<span class="chip" title="' + esc('Скільки часу тусить на сайті — ' + (p.timeSince ? 'з ' + sinceWord(p.timeSince) : 'за весь час')) + '">⏱ ' + dur(timeTotal(t)) + '</span>' : '')
       + '<span class="chip" title="Ачівки">🏅 ' + achs + '</span>'
       + (fav ? '<span class="chip" title="У що найбільше грає">' + iconOf(fav.game) + esc(fav.title || titleOf(fav.game)) + '</span>' : '');
     placeCard(el, anchor);
@@ -461,17 +471,18 @@
     const games = (r && r.games) || [];
     const max = Math.max(1, ...people.map(timeTotal));
     const gmax = Math.max(1, ...games.map((x) => (x.play || 0) + (x.watch || 0)));
-    const since = r && r.since ? new Date(r.since + 'T12:00:00').toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' }) : '';
+    const since = sinceWord(r && r.since);
     const sum = (k) => people.reduce((s, x) => s + (x[k] || 0), 0);
     const all = people.reduce((s, x) => s + timeTotal(x), 0);
-    const note = '<div class="muted small">' + (since ? 'Рахуємо з ' + esc(since) + '. ' : '')
-      + 'Лише поки вкладка на екрані й людина щось робить; радіо — поки грає плеєр.</div>';
+    const sinceLine = since ? '<div class="gt-since">🗓 Час пишемо з <b>' + esc(since) + '</b> — що було раніше, не записано.</div>' : '';
+    const note = '<div class="muted small">Лише поки вкладка на екрані й людина щось робить; радіо — поки грає плеєр.</div>';
     if (!people.length) {
-      body.innerHTML = '<section class="panel stbox"><div class="gempty glek">' + PERIOD_WORD[period][0].toUpperCase() + PERIOD_WORD[period].slice(1)
+      body.innerHTML = '<section class="panel stbox">' + sinceLine + '<div class="gempty glek">' + PERIOD_WORD[period][0].toUpperCase() + PERIOD_WORD[period].slice(1)
         + ' ще нічого не натікало. Хвилини пишуться, поки вкладка на екрані й ти щось робиш.</div>' + note + '</section>';
       return;
     }
     body.innerHTML = '<section class="panel stbox gtime">'
+      + sinceLine
       + '<div class="gt-sum4">'
       + '<div><b>' + dur(all) + '</b><span>уся тусня разом на сайті</span></div>'
       + '<div><b>' + dur(sum('play')) + '</b><span>в іграх</span></div>'
@@ -614,7 +625,7 @@
     return '<section class="panel wcard"><h3>⏱ Час <button type="button" class="ghost wc-more" data-go="#stats/time">усі →</button></h3>'
       + '<div class="wc-pair">'
       + (week ? '<div><b>' + dur(timeTotal(week)) + '</b><span>за тиждень</span></div>' : '')
-      + (t ? '<div><b>' + dur(timeTotal(t)) + '</b><span>за весь час</span></div>' : '')
+      + (t ? '<div><b>' + dur(timeTotal(t)) + '</b><span>' + (p.timeSince ? 'з ' + esc(sinceWord(p.timeSince)) : 'за весь час') + '</span></div>' : '')
       + (t && t.listen > 0 ? '<div><b>' + dur(t.listen) + '</b><span>📻 радіо грало</span></div>' : '')
       + '</div>'
       + (top.length ? '<div class="gt-games">' + top.map((g) => timeGameRow(g, max)).join('') + '</div>' : '')

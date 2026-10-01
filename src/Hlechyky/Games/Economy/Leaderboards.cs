@@ -141,6 +141,7 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
             }),
             daily = DailyStreaks(nick),
             time = TimeOf(store.TimeTotals(null, key)).FirstOrDefault(),
+            timeSince = store.TimeSince(),
         };
     }
 
