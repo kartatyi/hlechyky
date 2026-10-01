@@ -179,3 +179,36 @@
 @media (max-width: 640px) {
   .board:fullscreen .pts, .board.fake-fs .pts { font-size: min(17vh, 30vw); }
 }
+
+/* рядок керування: на широкому — словами, на телефоні — значками */
+.bd-bar .ic { display: none; }
+.b-clock.far { font-size: 12px; font-weight: 600; opacity: .7; }
+.b-bar .btn.ico { white-space: nowrap; }
+
+/* телефон стоячи: табло (верх + обидві половини + кнопки) — рівно в екран між шапкою й нижніми вкладками;
+   --bd-top ставить board.js (де табло починається), хвиля й Глек — нижче, прокруткою */
+@media (max-width: 640px) and (orientation: portrait) {
+  .bd-bar { flex-wrap: nowrap; gap: 6px; margin-bottom: 8px; }
+  .bd-bar .tx { display: none; }
+  .bd-bar .ic { display: inline; }
+  .bd-bar .btn.sm { padding: 6px 10px; }
+  .bd-bar .seg button { padding: 5px 8px; }
+  .board { height: calc(100dvh - var(--bd-top, 130px) - var(--tabs-h) - env(safe-area-inset-bottom) - 8px); min-height: 420px; }
+  .halves { min-height: 0; grid-template-rows: minmax(0, 1fr) 6px minmax(0, 1fr); }
+  .half { padding: 8px 10px; gap: 2px; justify-content: space-around; }
+  .pts { font-size: min(14vh, 30vw); }
+  .tn { gap: 1px; }
+  .pn { font-size: 15px; padding: 1px 9px; }
+  .gms { min-height: 22px; gap: 6px; }
+  .gms b { font-size: 22px; }
+  .half.won::after { top: 6px; right: 8px; font-size: 22px; }
+  .b-top { min-height: 0; padding: 6px 10px; gap: 6px; }
+  .b-tab { font-size: 13px; }
+  .b-right { gap: 8px; }
+  .b-clock .tx { display: none; }
+  .b-bar { padding: 6px 8px; flex-wrap: nowrap; gap: 6px; }
+  .b-bar .btn { flex: 1 1 auto; min-height: 42px; font-size: 14px; padding: 6px 8px; }
+  .b-bar .btn.ico { flex: 0 0 46px; }
+  .b-bar .btn.ico .tx { display: none; }
+  .board:fullscreen .b-bar .btn.ico .tx, .board.fake-fs .b-bar .btn.ico .tx { display: none; }
+}

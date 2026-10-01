@@ -31,11 +31,11 @@
         + '<div style="margin-top:10px"><button class="btn pri" data-go-board>🎾 На табло</button></div></div>';
     }
     if (rows.rows.length) {
-      h += '<div class="card rt-card"><table class="tbl rt-tbl"><thead><tr><th>#</th><th class="l">Гравець</th><th>Рейтинг</th><th title="Зміна за 7 днів">7 дн</th>'
+      h += '<div class="card rt-card"><table class="tbl rt-tbl"><thead><tr><th>#</th><th class="l">Гравець</th><th>Рейтинг</th><th class="rt-d" title="Зміна за 7 днів">7 дн</th>'
         + '<th>Ігор</th><th class="rt-w">Перемог</th></tr></thead><tbody>'
         + rows.rows.map((r, i) => '<tr data-pid="' + esc(r.pid) + '"' + (r.pid === P.me.pid ? ' class="me"' : '') + '><td class="muted">' + (i + 1) + '</td>'
           + '<td class="l"><div class="rt-who">' + P.who(r) + (r.title ? '<span class="rt-title">' + esc(r.title) + '</span>' : '') + '</div></td>'
-          + '<td><b>' + r.rating + '</b></td><td>' + delta(r.delta7) + '</td><td>' + r.played + '</td><td class="rt-w">' + r.wins + '</td></tr>').join('')
+          + '<td><b>' + r.rating + '</b></td><td class="rt-d">' + delta(r.delta7) + '</td><td>' + r.played + '</td><td class="rt-w">' + r.wins + '</td></tr>').join('')
         + '</tbody></table></div>';
     }
     if (rows.provisional.length) {

@@ -99,9 +99,10 @@
     return h + '</article>';
   }
 
-  /// Людина в списку. Чужих (гостя — будь-хто, бо вписав, мабуть, ти; інших — творець) можна торкнути: ракетка, виписати.
+  /// Людина в списку. Чужих можна торкнути (ракетка, виписати) так само, як дозволить сервер: творець збору (і після
+  /// кінця — виправити, хто прийшов) або той, хто цю людину вписав (addedBy), поки збір не минув.
   function goer(g, p) {
-    const touch = can() && g.status === 'open' && !ended(g) && (mine(g) || p.guest) && p.pid !== P.me.pid;
+    const touch = can() && g.status === 'open' && p.pid !== P.me.pid && (mine(g) || (!ended(g) && !!P.me.pid && p.addedBy === P.me.pid));
     return '<span class="gt-p' + (touch ? ' tap' : '') + '"' + (touch ? ' data-goer="' + esc(p.pid) + '" role="button" tabindex="0"' : '') + '>'
       + P.av(p.name) + '<span>' + esc(p.name) + '</span>' + (p.guest ? '<span class="g">гість</span>' : '')
       + (p.racket ? '<span class="gt-r" title="бере ракетку в клубі">🎾</span>' : '') + '</span>';

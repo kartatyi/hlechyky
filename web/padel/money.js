@@ -68,7 +68,7 @@
   const isGuestPid = (pid) => String(pid).startsWith('g:');
   const whoP = (pid) => P.who({ pid, name: nm(pid), guest: isGuestPid(pid) });
   const day = (iso) => new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short' }).format(new Date(iso));
-  const mayEdit = (e) => P.me.admin || (data && e.payer === data.me) || e.by === P.me.nick;
+  const mayEdit = (e) => P.me.admin || (data && (e.payer === data.me || e.byPid === data.me));
 
   // ---------------------------------------------------------------- вигляд
 
@@ -136,7 +136,7 @@
           + (mine != null && e.payer !== data.me ? ' · твоя частка ' + P.money(mine) : '') + '</span></span><b class="num">' + P.money(e.total) + '</b></button>';
       }
       const p = it.p;
-      const del = P.me.admin || p.by === P.me.nick;
+      const del = P.me.admin || (!!data && p.byPid === data.me);
       return '<div class="mn-it"><span class="mn-ic">💸</span><span class="mn-tx"><b>' + esc(nm(p.from)) + ' → ' + esc(nm(p.to)) + '</b>'
         + '<span class="muted small">' + esc(day(p.at)) + ' · записав ' + esc(p.by) + (p.note ? ' · ' + esc(p.note) : '') + '</span></span>'
         + '<b class="num pos">' + P.money(p.amount) + '</b>' + (del ? '<button type="button" class="btn xs ghost" data-unpay="' + esc(p.id) + '" title="Прибрати платіж">✕</button>' : '') + '</div>';

@@ -147,7 +147,7 @@
     if (!p) return '<span class="muted">Рахую…</span>';
     const used = pair ? p.slots / 2 : p.slots / 4;
     let s = '<b>' + n + ' ' + unit(n) + '</b> · ' + used + ' ' + plural(used, 'корт', 'корти', 'кортів')
-      + (used < F.courts ? ' <span class="warn">(на ' + F.courts + ' не вистачає людей)</span>' : '') + ' → '
+      + (used < F.courts ? ' <span class="warn">(на ' + F.courts + ' не вистачає ' + (F.fmt === 'mixed' ? 'пар ♀+♂' : 'людей') + ')</span>' : '') + ' → '
       + (p.sit ? 'щораунду ' + p.sit + ' ' + (pair ? plural(p.sit, 'пара', 'пари', 'пар') : '') + ' ' + plural(p.sit, 'відпочиває', 'відпочивають', 'відпочивають') + ' (по черзі, без очок)' : 'грають усі, ніхто не сидить') + '.<br>';
     const R = F.fmt === 'groups' ? p.rec : F.rounds;
     s += 'Раунд ≈ ' + p.perRound + ' хв. <b>' + R + ' ' + plural(R, 'раунд', 'раунди', 'раундів') + ' ≈ ' + dur(R * p.perRound) + '</b> — у ' + fmtH(F.booking) + ' оренди влазить ' + p.fit + '.';
@@ -155,11 +155,6 @@
     else if (F.fmt === 'team') s += ' Коло, щоб кожна пара зіграла з кожною, — ' + p.full + '.';
     else if (F.fmt === 'groups') s += ' Це група (' + p.full + ') і плей-оф.';
     if (F.fmt !== 'groups' && R * p.perRound > F.booking * 60) s += '<br><span class="warn">У оренду не влазить — або менше раундів, або коротші матчі.</span>';
-    if (F.fmt === 'mixed') {
-      // порада /plan не знає, хто ♀: на корт треба дві дівчини й двоє хлопців — тож кортів може зайняти менше
-      const w = F.women.length, m = F.players.length - w, c = Math.min(F.courts, Math.floor(w / 2), Math.floor(m / 2));
-      if (c < used) s += '<br><span class="warn">На корт — дві дівчини й двоє хлопців: з ' + w + ' ♀ і ' + m + ' ♂ грає ' + c + ' ' + plural(c, 'корт', 'корти', 'кортів') + ', решта відпочиває по черзі.</span>';
-    }
     if (p.avg) s += '<br><span class="warn">' + esc(p.note) + '.</span>';
     else if (F.fmt !== 'groups' && p.sit && R % p.fair) s += '<br><span class="warn">За ' + R + ' ' + plural(R, 'раунд', 'раунди', 'раундів') + ' відпочинуть не порівну — таблиця рахуватиме середнє за матч (порівну — кратно ' + p.fair + ').</span>';
     return s;
@@ -171,6 +166,8 @@
     const my = ++planSeq;
     const qs = new URLSearchParams({ format: F.fmt, n, courts: F.courts, total: F.total, booking: F.booking });
     if (F.total === 'time') qs.set('minutes', F.minutes);
+    // Мікст: сервер рахує справжні корти (дві ♀ і двоє ♂ на корт) і відпочинки окремо серед ♀ і ♂
+    if (F.fmt === 'mixed') qs.set('women', F.women.length);
     let p; try { p = await P.api('tournaments/plan?' + qs.toString()); } catch { return; }
     if (my !== planSeq || mode !== 'new') return;
     const same = JSON.stringify(p) === JSON.stringify(F.plan);

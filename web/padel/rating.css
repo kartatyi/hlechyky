@@ -30,3 +30,9 @@
   .rt-tbl { font-size: 13.5px; }
   .rt-tbl .pp span { max-width: 120px; }
 }
+/* вузький телефон: «7 дн» ховаємо, звання переноситься під ім'я — рейтинг видно завжди, без прокрутки вбік */
+@media (max-width: 420px) {
+  .rt-d { display: none; }
+  .rt-title { white-space: normal; padding-left: 0; }
+  .rt-tbl td, .rt-tbl th { padding-left: 3px; padding-right: 3px; }
+}

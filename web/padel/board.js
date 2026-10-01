@@ -5,7 +5,7 @@
 (function () {
   const P = window.Padel, esc = P.esc;
   const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
-  const THEMES = [['glek', 'Глечики'], ['court', 'Корт'], ['led', 'LED']];
+  const THEMES = [['glek', 'Глечики', '🏺'], ['court', 'Корт', '🎾'], ['led', 'LED', '💡']];
   const SIDE = { right: 'подає справа', left: 'подає зліва', choice: 'бік обирають приймаючі' };
   // Жарти Глека з макета — на події кроку (гейм із брейком, сет, матч, вирішальне, тайбрейк, серія), не на кожне очко
   const GL = {
@@ -22,7 +22,7 @@
 
   let host = null;
   let mode = 'list';          // list | board
-  let curId = null, cur = null, seq = 0;
+  let curId = null, cur = null, seq = 0, clipSeq = 0;
   let lists = { live: [], recent: [] };
   let tickT = 0, msgT = 0, statsFor = '';
   let gpRun = false;
@@ -167,9 +167,10 @@
 
   function shell() {
     const th = P.pref('theme') || 'glek';
-    host.innerHTML = '<div class="bd-bar"><a class="btn sm ghost" href="#board">← Матчі</a><span class="grow bd-title" id="bdTitle"></span>'
-      + '<span class="bd-watch" id="bdWatch" hidden>👀 дивишся</span>'
-      + '<div class="seg" id="bdTheme">' + THEMES.map(([v, l]) => '<button type="button" data-theme="' + v + '" class="' + (v === th ? 'on' : '') + '">' + l + '</button>').join('') + '</div>'
+    // На телефоні рядок керування — іконками (.tx ховається, .ic з'являється), щоб табло влізло в екран
+    host.innerHTML = '<div class="bd-bar"><a class="btn sm ghost" href="#board" title="До матчів">←<span class="tx"> Матчі</span></a><span class="grow bd-title" id="bdTitle"></span>'
+      + '<span class="bd-watch" id="bdWatch" hidden title="Ти дивишся — керують гравці">👀<span class="tx"> дивишся</span></span>'
+      + '<div class="seg" id="bdTheme">' + THEMES.map(([v, l, ic]) => '<button type="button" data-theme="' + v + '" title="' + l + '" class="' + (v === th ? 'on' : '') + '"><span class="ic">' + ic + '</span><span class="tx">' + l + '</span></button>').join('') + '</div>'
       + '<button type="button" class="btn sm" data-act="voice" id="bdVoice"></button>'
       + '<button type="button" class="btn sm" data-act="fs" title="На весь екран — для планшета біля корту">⛶</button></div>'
       + '<div class="board theme-' + esc(th) + '" id="bdBoard">'
@@ -188,7 +189,7 @@
   function paintVoice() {
     const b = $('#bdVoice'); if (!b) return;
     const on = !!P.pref('voice');
-    b.textContent = on ? '🔊 Глек каже' : '🔇 Глек мовчить';
+    b.innerHTML = on ? '🔊<span class="tx"> Глек каже</span>' : '🔇<span class="tx"> Глек мовчить</span>';
     b.title = on ? 'Рахунок уголос на цьому пристрої — тиць, щоб вимкнути' : 'Озвучувати рахунок на цьому пристрої (голосом Остапа)';
   }
 
@@ -240,15 +241,25 @@
           : '<span class="lbl">гейми</span><b>' + s.games[t] + '</b><span class="dots">' + '●'.repeat(s.won[t] || 0) + '</span>';
       board.querySelector('.half.' + (t ? 'b' : 'a')).classList.toggle('won', s.over && s.winner === t);
     }
-    const btn = (a, l, cls) => '<button type="button" class="btn sm' + (cls ? ' ' + cls : '') + '" data-act="' + a + '">' + l + '</button>';
+    const btn = (a, l, cls, title) => '<button type="button" class="btn sm' + (cls ? ' ' + cls : '') + '" data-act="' + a + '"' + (title ? ' title="' + title + '"' : '') + '>' + l + '</button>';
     let bar = '';
-    if (ctl && m.status === 'live') bar = btn('undo', '↶ Скасувати') + btn('finish', '🏁 Завершити') + btn('until', '⏳ Оренда') + btn('abandon', '✕ Скасувати матч', 'bad');
+    // ⏳ і ✕ на телефоні — лише значком (.tx ховається): чотири кнопки в один рядок
+    if (ctl && m.status === 'live') bar = btn('undo', '↶ Скасувати') + btn('finish', '🏁 Завершити') + btn('until', '⏳<span class="tx"> Оренда</span>', 'ico', 'Оренда корту')
+      + btn('abandon', '✕<span class="tx"> Скасувати матч</span>', 'bad ico', 'Скасувати матч');
     else if (ctl && m.status === 'done') bar = btn('undo', '↶ Повернути матч') + (m.tour ? '' : btn('again', '↺ Ще раз'));
     $('#bBar').innerHTML = bar + '<button type="button" class="btn sm b-fs-only" data-act="fs">⛶ Вийти</button>';
     paintMom();
     clock();
+    fit();
     after();
   }
+
+  /// Телефон стоячи: табло — рівно в екран між шапкою й нижніми вкладками (CSS бере --bd-top — де табло починається)
+  function fit() {
+    const b = $('#bdBoard'); if (!b) return;
+    b.style.setProperty('--bd-top', Math.round(b.getBoundingClientRect().top + window.scrollY) + 'px');
+  }
+  window.addEventListener('resize', () => { if (mode === 'board') fit(); });
 
   function paintMom() {
     const log = cur.log || [], L = log.slice(-110);
@@ -272,9 +283,16 @@
     }
     if (cur.courtUntil && cur.status === 'live') {
       const left = new Date(cur.courtUntil).getTime() - Date.now();
-      c.textContent = left > 0 ? '⏳ до кінця оренди ' + P.span(left) : '⏰ оренда скінчилась';
+      // Оренда ще не сьогодні (матч поза збором) — «до кінця оренди 26 год» лише лякає: дрібно, коли саме
+      if (left > 3 * 3600e3) { c.textContent = 'оренда до ' + dayTime(cur.courtUntil); c.className = 'b-clock far'; return; }
+      c.innerHTML = left > 0 ? '⏳<span class="tx"> до кінця оренди</span> ' + P.span(left) : '⏰ оренда скінчилась';
       c.className = 'b-clock' + (left <= 0 ? ' over' : left <= 10 * 60000 ? ' soon' : '');
     } else { c.textContent = ''; c.className = 'b-clock'; }
+  }
+  /// «сб 19:30» (київський час)
+  function dayTime(iso) {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', weekday: 'short' }).format(d) + ' ' + hhmm(iso);
   }
 
   function boardMsg(text, ms) {
@@ -294,12 +312,18 @@
           : canCtl(m) ? 'Рахую разом з вами. Тиць по половині — очко їй.' : 'Дивишся наживо — рахунок оновлюється сам.');
   }
 
-  /// Нова дія (last.seq більший за бачений): повідомлення на табло, жарт Глека, голос
+  /// Нова дія (last.seq більший за бачений): повідомлення на табло, жарт Глека, голос. Той самий seq ще раз — це
+  /// сервер дослав кліп, що запізнився: тоді лише голос, і лише якщо кліпа для цього seq ще не було.
   function onLast(m, initial) {
     const l = m.last;
     if (!l) return;
-    if (initial || l.seq <= seq) { seq = Math.max(seq, l.seq); return; }
+    if (initial || l.seq < seq) { seq = Math.max(seq, l.seq); clipSeq = Math.max(clipSeq, seq); return; }
+    if (l.seq === seq) {
+      if (l.say && l.say.clip && clipSeq < l.seq) { clipSeq = l.seq; speak(l); }
+      return;
+    }
     seq = l.seq;
+    if (l.say && l.say.clip) clipSeq = l.seq;
     const ev = l.events || [];
     if (ev.length && l.text) {
       const long = ev.includes('match') || ev.includes('clock10') || ev.includes('clock0') || ev.includes('abandon');
@@ -349,10 +373,35 @@
     onLast(m, false);
   }
 
+  /// Дія на табло. Шлемо seq виду, який бачимо: друге «очко» з того самого виду (подвійний тиць, два телефони) сервер
+  /// не кладе, а вертає 409 зі свіжим видом — тихо показуємо його (тому свій fetch, а не P.api з тостом). Ту саму дію
+  /// ще й блокуємо на час запиту + 350 мс.
+  const SEQ_ACTS = ['point', 'undo', 'serve'], busy = {};
   async function act(a, extra) {
     if (!cur || !canCtl(cur)) return null;
-    try { const r = await P.api('matches/' + encodeURIComponent(cur.id) + '/act', Object.assign({ a }, extra || {})); apply(r.match); return r.match; }
-    catch (e) { if (inFs()) boardMsg(e.message, 2600); return null; }
+    const key = a + ':' + (extra && extra.t != null ? extra.t : '');
+    if (busy[key]) return null;
+    busy[key] = true;
+    const body = Object.assign({ a }, extra || {});
+    if (SEQ_ACTS.includes(a) && cur.last) body.seq = cur.last.seq;
+    try {
+      let res, data = null;
+      try {
+        res = await fetch('/api/padel/matches/' + encodeURIComponent(cur.id) + '/act', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body),
+        });
+      } catch { P.toast('Нема зв\'язку з сервером', 'bad'); return null; }
+      try { data = await res.json(); } catch { /* порожня відповідь */ }
+      if (res.status === 409 && data && data.match) { apply(data.match); return null; }
+      if (!res.ok || !data || data.ok === false) {
+        const msg = (data && data.message) || (res.status === 403 ? 'Це може лише той, хто має право' : 'Щось пішло не так');
+        P.toast(msg, 'bad');
+        if (inFs()) boardMsg(msg, 2600);
+        return null;
+      }
+      apply(data.match);
+      return data.match;
+    } finally { setTimeout(() => { delete busy[key]; }, 350); }
   }
   function point(t) {
     if (!cur || !canCtl(cur)) return;
@@ -425,7 +474,7 @@
 
   async function openMatch(id) {
     mode = 'board';
-    if (curId !== id) { curId = id; cur = null; seq = 0; statsFor = ''; }
+    if (curId !== id) { curId = id; cur = null; seq = 0; clipSeq = 0; statsFor = ''; }
     shell();
     let m;
     try { m = await P.api('matches/' + encodeURIComponent(id)); }

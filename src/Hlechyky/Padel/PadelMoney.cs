@@ -424,7 +424,7 @@ public sealed class PadelMoney(PadelMoneyStore store, PadelGather gather, IPadel
             expenses = store.Expenses().OrderByDescending(e => e.Id).Take(30).Select(ExpenseView).ToList(),
             payments = store.Payments().OrderByDescending(p => p.Id).Take(50).Select(p => new
             {
-                id = p.Key, from = p.From, to = p.To, amount = p.Amount, at = p.At.UtcDateTime, by = players.Name(p.ByPid), note = p.Note,
+                id = p.Key, from = p.From, to = p.To, amount = p.Amount, at = p.At.UtcDateTime, by = players.Name(p.ByPid), byPid = p.ByPid, note = p.Note,
             }).ToList(),
             defaults = new { courtPerHour = options.Value.CourtPerHour, racketPrice = options.Value.RacketPrice },
         });
