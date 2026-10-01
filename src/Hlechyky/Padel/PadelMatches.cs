@@ -151,7 +151,8 @@ public sealed class PadelMatches
             return PadelReply.No("Потрібні дві команди по двоє");
         var flat = teams.SelectMany(t => t).ToArray();
         if (flat.Any(p => !Pid.Valid(p) || !_players.Exists(p))) return PadelReply.No("Нема такого гравця");
-        if (flat.Distinct(StringComparer.Ordinal).Count() != 4) return PadelReply.No("Потрібні четверо різних гравців");
+        // За Canon: прив'язаний гість — це той самий акаунт (інакше рейтинг мовчки викине матч «сам проти себе»)
+        if (flat.Select(_players.Canon).Distinct(StringComparer.Ordinal).Count() != 4) return PadelReply.No("Потрібні четверо різних гравців");
         var rules = PadelRules.From(b.Rules);
         if (rules.Problem() is { } bad) return PadelReply.No(bad);
         if (b.First is not null && Array.IndexOf(PadelScore.Slots, b.First) < 0) return PadelReply.No("Невідомий подавач");

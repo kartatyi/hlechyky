@@ -193,7 +193,7 @@ public sealed class PadelTours : IPadelTourLink
             if (players.Count < 4) return PadelReply.No("Потрібно щонайменше 4 гравці");
         }
         if (players.Any(p => !Ok(p))) return PadelReply.No("Нема такого гравця");
-        if (players.Distinct(StringComparer.Ordinal).Count() != players.Count) return PadelReply.No("Хтось записаний двічі");
+        if (players.Select(_players.Canon).Distinct(StringComparer.Ordinal).Count() != players.Count) return PadelReply.No("Хтось записаний двічі");
         if (format == "mixed")
         {
             women = [.. (b.Women ?? []).Distinct().Where(players.Contains)];

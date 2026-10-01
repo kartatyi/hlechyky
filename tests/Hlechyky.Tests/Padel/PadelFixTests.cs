@@ -117,6 +117,15 @@ public sealed class PadelFixTests : IDisposable
     }
 
     [Fact]
+    public void Linked_guest_cannot_play_against_its_own_account()
+    {
+        var g = Body(_p.Players.AddGuest("Вася", "Влад")).GetProperty("player").GetProperty("pid").GetString()!;
+        Body(Link(Who("Smaug"), g));
+        Assert.Equal("Потрібні четверо різних гравців",
+            _p.Matches.Create(Who("Влад"), new PadelMatchRequest([[Up("Влад"), Up("Smaug")], [g, Up("Андрій")]], null, null, null, null)).Error);
+    }
+
+    [Fact]
     public void Money_touches_any_record_of_the_guest()
     {
         Assert.False(_m.Money.Touches("g:1"));
