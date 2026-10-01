@@ -1,0 +1,154 @@
+/* Падельня — оболонка: кольори сайту, шапка, вкладки, спільні дрібниці (кнопки, перемикачі, чипи, листи, тост).
+   Своє кожна вкладка тримає у своєму файлі (board.css, tour.css…), тут — лише те, що спільне. */
+@font-face {
+  font-family: 'Onest'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('/static/fonts/onest-cyrillic-wght-normal.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Onest'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('/static/fonts/onest-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+:root {
+  --bg: #0f1f18; --bg2: #16291f; --panel: #1c3328; --panel2: #234032; --panel3: #2b4c3c; --line: #2f4d3d;
+  --text: #ecf1ea; --muted: #9db3a5; --accent: #f4c542; --accent2: #d9a92f; --ink: #2a1e03;
+  --danger: #e57373; --ok: #7bd389; --clay: #c5763a;
+  /* команди на табло й усюди, де «ліва/права» пара */
+  --ta: #f4c542; --tb: #6cc3e8;
+  --r: 14px;
+  --font: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --tabs-h: 0px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); -webkit-font-smoothing: antialiased;
+  overflow-x: hidden; min-height: 100vh; padding-bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom)); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--accent); }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.warn { color: #ffb86b; }
+.pos { color: var(--ok); } .neg { color: var(--danger); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- шапка й вкладки ---------- */
+.pd-top { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+  padding-top: calc(8px + env(safe-area-inset-top)); background: rgba(15,31,24,.92); backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.pd-back { text-decoration: none; color: var(--muted); font-size: 20px; padding: 2px 6px; border-radius: 8px; }
+.pd-back:hover { color: var(--text); background: var(--panel2); }
+.pd-brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text); font-size: 18px; }
+.pd-logo { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--panel2);
+  box-shadow: inset 0 0 0 1px var(--line); font-size: 19px; }
+.pd-grow { flex: 1; }
+.pd-net { font-size: 12.5px; font-weight: 700; color: #ffb86b; }
+.pd-me { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: var(--text); font-weight: 600;
+  font-size: 14px; padding: 3px 10px 3px 3px; border-radius: 999px; background: var(--panel2); }
+.pd-me.guest { padding: 5px 12px; color: var(--accent); }
+.pd-tabs { position: sticky; top: 51px; z-index: 29; display: flex; gap: 4px; overflow-x: auto; padding: 8px 16px;
+  background: rgba(15,31,24,.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line); scrollbar-width: none; }
+.pd-tabs::-webkit-scrollbar { display: none; }
+.pd-tabs a { flex: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none;
+  color: var(--muted); padding: 6px 12px; border-radius: 999px; font-weight: 600; font-size: 14px; }
+.pd-tabs a:hover { color: var(--text); }
+.pd-tabs a.on { background: var(--panel2); color: var(--text); }
+.pd-tabs .pd-badge { min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--ink);
+  font-size: 11px; font-weight: 800; text-align: center; }
+/* Телефон: вкладки — знизу, під великим пальцем */
+@media (max-width: 640px) {
+  :root { --tabs-h: 60px; }
+  .pd-tabs { position: fixed; top: auto; bottom: 0; left: 0; right: 0; height: calc(var(--tabs-h) + env(safe-area-inset-bottom));
+    padding: 4px 4px env(safe-area-inset-bottom); justify-content: space-around; gap: 0; border-top: 1px solid var(--line);
+    border-bottom: 0; }
+  .pd-tabs a { flex: 1; flex-direction: column; gap: 0; font-size: 11px; padding: 4px 2px; border-radius: 10px; min-width: 0; }
+  .pd-tabs a .pd-ico { font-size: 20px; line-height: 1.2; }
+  .pd-brand b { display: none; }
+}
+.pd-main { max-width: 1180px; margin: 0 auto; padding: 16px 16px 40px; }
+.pd-view > h2 { font-size: 22px; margin: 4px 0 12px; font-weight: 800; letter-spacing: -.01em; }
+
+/* ---------- спільні дрібниці ---------- */
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
+.card + .card { margin-top: 12px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.btn { border: 1px solid var(--line); background: var(--panel2); padding: 8px 14px; border-radius: 11px; font-weight: 650;
+  font-size: 14px; transition: background .12s; color: var(--text); text-decoration: none; display: inline-flex;
+  align-items: center; justify-content: center; gap: 6px; }
+.btn:hover { background: var(--panel3); }
+.btn.pri { background: var(--accent); color: var(--ink); border-color: transparent; }
+.btn.pri:hover { background: var(--accent2); }
+.btn.ghost { background: transparent; }
+.btn.bad { color: var(--danger); }
+.btn.sm { padding: 6px 11px; font-size: 13px; }
+.btn.xs { padding: 3px 9px; font-size: 12px; border-radius: 8px; }
+.btn.big { padding: 12px 22px; font-size: 16px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 3px; background: var(--bg2); padding: 3px; border-radius: 12px;
+  border: 1px solid var(--line); }
+.seg button { border: 0; background: transparent; padding: 6px 11px; border-radius: 9px; font-weight: 600; font-size: 13.5px;
+  color: var(--muted); }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--accent); color: var(--ink); }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field > label, .lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; }
+.inp { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; min-width: 0; }
+.inp:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px 3px 3px; border-radius: 999px;
+  background: var(--bg2); border: 1px solid var(--line); font-weight: 600; font-size: 14px; }
+.chip.on { background: var(--panel3); border-color: var(--accent); }
+.chip.off { opacity: .55; }
+.chip .g { font-size: 11px; color: var(--muted); font-weight: 500; }
+.av { --h: 200; display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%;
+  background: hsl(var(--h) 42% 30%); box-shadow: inset 0 0 0 1px hsl(var(--h) 50% 52% / .6); font-weight: 700;
+  font-size: 12px; color: #fff; }
+.av.big { width: 44px; height: 44px; font-size: 20px; }
+.pp { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; min-width: 0; }
+.pp b, .pp span { overflow: hidden; text-overflow: ellipsis; }
+.tdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.tdot.a { background: var(--ta); } .tdot.b { background: var(--tb); }
+.empty { padding: 26px 16px; text-align: center; color: var(--muted); line-height: 1.6; }
+.empty .e { display: block; font-size: 34px; margin-bottom: 4px; }
+table.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+table.tbl th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700;
+  padding: 6px 4px; text-align: center; border-bottom: 1px solid var(--line); }
+table.tbl td { padding: 7px 4px; text-align: center; border-bottom: 1px solid rgba(47,77,61,.55); }
+table.tbl .l { text-align: left; }
+.glek-say { display: flex; gap: 10px; align-items: flex-start; }
+.glek-say .glek-av { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 22px;
+  background: var(--panel2); box-shadow: inset 0 0 0 1px var(--clay); }
+
+/* ---------- лист (модальне вікно) ---------- */
+.pd-sheet-bg { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: flex; align-items: center;
+  justify-content: center; padding: 16px; animation: pdfade .15s; }
+.pd-sheet { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px 18px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+.pd-sheet-h { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.pd-sheet-h b { flex: 1; font-size: 18px; }
+.pd-sheet-x { border: 0; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; padding: 2px 6px; }
+@media (max-width: 640px) {
+  .pd-sheet-bg { align-items: flex-end; padding: 0; }
+  .pd-sheet { width: 100%; border-radius: 18px 18px 0 0; max-height: 92vh; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+}
+@keyframes pdfade { from { opacity: 0; } }
+
+/* ---------- вибір гравців ---------- */
+.pd-pick .chips { max-height: 240px; overflow: auto; padding: 2px; }
+.pd-pick-find { display: flex; gap: 6px; margin-bottom: 8px; }
+.pd-pick-find .inp { flex: 1; }
+.pd-pick .chip .n { font-size: 11px; font-weight: 800; color: var(--ink); background: var(--accent); border-radius: 999px;
+  padding: 0 6px; margin-left: 2px; }
+
+/* ---------- тост ---------- */
+.pd-toast { position: fixed; left: 50%; bottom: calc(24px + var(--tabs-h) + env(safe-area-inset-bottom)); z-index: 70;
+  transform: translate(-50%, 20px); opacity: 0; pointer-events: none; background: var(--panel3); border: 1px solid var(--line);
+  padding: 10px 16px; border-radius: 12px; font-weight: 600; transition: .25s; max-width: calc(100vw - 32px); text-align: center; }
+.pd-toast.show { opacity: 1; transform: translate(-50%, 0); }
+.pd-toast.bad { border-color: var(--danger); }
