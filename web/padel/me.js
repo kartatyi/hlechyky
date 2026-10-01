@@ -21,7 +21,11 @@
     ['wall', '🧱', 'Залізна стіна', 'Нагорода «Залізна стіна» в турнірі'],
     ['marathon', '🏃', 'Марафонець', '50 результатів'],
   ];
-  const day = (iso) => new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short', year: '2-digit' }).format(new Date(iso));
+  /// «4 жовт.»; рік — лише коли не цей.
+  const day = (iso) => {
+    const d = new Date(iso), y = d.getFullYear() !== new Date().getFullYear();
+    return new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short', ...(y ? { year: 'numeric' } : {}) }).format(d);
+  };
   const link = (p) => '<a class="pf-link" href="#rating/' + encodeURIComponent(p.pid) + '">' + P.who(p) + '</a>';
 
   // ---------------------------------------------------------------- профіль (спільний з «Рейтингом»)
@@ -51,8 +55,10 @@
         : 'Ще жодного результату. Глек тримає місце в таблиці.') + '</div>';
     } else {
       const tile = (v, l, cls) => '<div class="pf-tile"><b class="num' + (cls ? ' ' + cls : '') + '">' + v + '</b><span>' + l + '</span></div>';
-      h += '<div class="pf-tiles">' + tile(d.played, 'ігор') + tile(d.wins, 'перемог', 'pos') + tile(d.losses, 'поразок', 'neg')
-        + (d.draws ? tile(d.draws, 'нічиїх') : '') + tile(d.winPct + '%', 'перемог')
+      const pn = (n, a, b, c) => P.plural(n, a, b, c);
+      h += '<div class="pf-tiles">' + tile(d.played, pn(d.played, 'гра', 'гри', 'ігор')) + tile(d.wins, pn(d.wins, 'перемога', 'перемоги', 'перемог'), 'pos')
+        + tile(d.losses, pn(d.losses, 'поразка', 'поразки', 'поразок'), 'neg')
+        + (d.draws ? tile(d.draws, pn(d.draws, 'нічия', 'нічиї', 'нічиїх')) : '') + tile(d.winPct + '%', 'перемог')
         + tile(d.pointsFor + ':' + d.pointsAgainst, 'очки') + '</div>';
       const b = d.best || {};
       const best = [];
