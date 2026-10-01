@@ -38,8 +38,9 @@
 
   // ---------------------------------------------------------------- дані
 
-  /// Сирий fetch, а не P.api: гостю сайту /money — 403, і тост «нема прав» на кожному відкритті сторінки був би спамом.
+  /// Сирий fetch, а не P.api: відмова тут — не привід для тосту. Гостя сайту й не питаємо (403 сипався б у консоль).
   async function fetchMoney() {
+    if (!P.me.account) return { guest: true };
     try {
       const r = await fetch('/api/padel/money', { credentials: 'same-origin' });
       if (r.status === 403 || r.status === 401) return { guest: true };
@@ -50,6 +51,8 @@
   async function refresh() {
     const d = await fetchMoney();
     if (d) data = d;
+    // Імена гостей і тих, хто не в owe/owed (граф, історія), — з кешу гравців; без нього вийшли б ніки з pid
+    if (data && !data.guest) await P.players.load();
     P.badge('money', data && !data.guest ? (data.owe.length + data.owed.length) || '' : '');
     render();
     return data;
@@ -58,7 +61,7 @@
 
   const names = () => {
     const m = {};
-    if (data && !data.guest) for (const x of [...data.owe, ...data.owed]) m[x.pid] = x.name;
+    if (data && !data.guest) { for (const x of [...data.owe, ...data.owed]) m[x.pid] = x.name; m[data.me] = P.me.nick; }
     return m;
   };
   const nm = (pid) => names()[pid] || P.name(pid);
@@ -367,6 +370,10 @@
 
   P.on('money', soon);
   P.on('reconnected', soon);
-  // Позначка на вкладці — одразу, навіть якщо в «Гроші» не заходили
-  refresh();
+  // Позначка на вкладці — одразу, навіть якщо в «Гроші» не заходили; але після /api/me (оболонка знає, хто я, коли вже
+  // вибрала вкладку), щоб гість сайту не смикав /money даремно
+  (async () => {
+    for (let i = 0; i < 300 && !P.current; i++) await new Promise((r) => setTimeout(r, 50));
+    if (P.me.account && !data) refresh();
+  })();
 })();
