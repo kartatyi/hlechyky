@@ -641,8 +641,11 @@ public sealed class Pozyvni : Game
         _viewDirty = true;
     }
 
-    /// <summary>Розклад бачать лише капітани — і всі, коли партія скінчилась.</summary>
-    bool KnowsKey(int? seat) => _phase == Done || (seat is { } s && s >= 0 && s < Seats && IsBoss(s));
+    /// <summary>
+    /// Розклад бачать лише капітани — і всі, коли партія скінчилась. У фазі складу — ніхто: інакше можна
+    /// натиснути «Я капітан», глянути розклад і перейти назад у поле вже з ним у голові.
+    /// </summary>
+    bool KnowsKey(int? seat) => _phase == Done || (_phase != Setup && seat is { } s && s >= 0 && s < Seats && IsBoss(s));
 
     /// <summary>
     /// Голос столу (Посиденьки): капітан мовчить, поки ходить його команда (думає над підказкою чи команда шукає

@@ -583,6 +583,30 @@ public class PozyvniTests
     }
 
     [Fact]
+    public void While_the_line_up_can_still_change_even_a_captain_does_not_see_the_key()
+    {
+        var h = Setup();
+
+        // «Я капітан» — глянути розклад — назад у поле: так не вийде, бо розкладу ще нема ні в кого.
+        Assert.True(h.Act(2, "boss").Ok);
+        foreach (var seat in new int?[] { 0, 1, 2, 3, null })
+            Assert.Equal(JsonValueKind.Null, h.View(seat).GetProperty("key").ValueKind);
+
+        Assert.True(h.Act(0, "go").Ok);
+        Assert.Equal(Pozyvni.Cards, h.View(Boss(h, "red")).GetProperty("key").GetArrayLength());
+    }
+
+    [Fact]
+    public void In_coop_the_captain_also_waits_for_the_start_to_see_the_key()
+    {
+        var h = Setup(nicks: 3);
+
+        Assert.Equal(JsonValueKind.Null, h.View(Boss(h, "red")).GetProperty("key").ValueKind);
+        h.Tick(SetupTicks);
+        Assert.Equal(Pozyvni.Cards, h.View(Boss(h, "red")).GetProperty("key").GetArrayLength());
+    }
+
+    [Fact]
     public void When_the_game_is_over_everybody_sees_the_key()
     {
         var h = Table();
