@@ -55,6 +55,18 @@ public interface IPadelPlayers
 }
 
 /// <summary>
+/// Запасні гравці, поки половина гри свого не зареєструвала (і для тестів): акаунт — нік із pid, гість — «гість N»,
+/// прив'язок нема.
+/// </summary>
+public sealed class BasicPadelPlayers : IPadelPlayers
+{
+    public string Name(string pid) => Pid.IsUser(pid) ? pid[2..] : Pid.IsGuest(pid) ? "гість " + pid[2..] : "?";
+    public string Canon(string pid) => pid;
+    public bool Exists(string pid) => Pid.Valid(pid);
+    public PadelPlayer Player(string pid) => new(pid, Name(pid), Pid.IsGuest(pid));
+}
+
+/// <summary>
 /// Що сталося в матчі, чого не видно з самого рахунку (рахує половина гри, переграючи журнал очок рушієм):
 /// скільки вирішальних очок (золоте / star point) і тайбрейків (разом із супертайбрейком) виграла кожна команда,
 /// чи був «бублик» (сет 6:0, у швидкому 4:0) і камбек (виграний сет після 1:5, у швидкому 0:3).

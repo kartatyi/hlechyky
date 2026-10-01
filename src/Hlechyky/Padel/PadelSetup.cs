@@ -20,6 +20,7 @@ public static class PadelSetup
         services.TryAddSingleton<IPadelAgenda, NoPadelAgenda>();
         services.TryAddSingleton<IPadelHistory, NoPadelHistory>();
         services.TryAddSingleton<IPadelLobby, NoPadelLobby>();
+        services.TryAddSingleton<IPadelPlayers, BasicPadelPlayers>();
         return services;
     }
 
