@@ -1,1 +1,59 @@
 /* Збори — стилі вкладки (gather.js). */
+.gt-top { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.gt-top h2 { font-size: 22px; margin: 4px 0 12px; font-weight: 800; }
+.gt-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+.gt-list > .gt-guest, .gt-list > .empty, .gt-list > .gt-past { grid-column: 1 / -1; }
+.gt-list .card + .card { margin-top: 0; }
+.gt { display: flex; flex-direction: column; gap: 10px; transition: box-shadow .3s; }
+.gt.hl { box-shadow: 0 0 0 2px var(--accent); }
+.gt.off { opacity: .6; }
+.gt.done:not(.off) { background: var(--bg2); }
+.gt-h { display: flex; gap: 10px; align-items: flex-start; }
+.gt-t { flex: 1; min-width: 0; }
+.gt-when { font-size: 17px; }
+.gt-tag { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 999px;
+  background: var(--panel3); color: var(--muted); vertical-align: 2px; }
+.gt-tag.live { background: var(--ok); color: #0c2414; }
+.gt-cnt { flex: none; text-align: center; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px;
+  font-size: 12px; color: var(--muted); white-space: nowrap; }
+.gt-cnt b { display: block; font-size: 20px; line-height: 1.1; color: var(--accent); }
+.gt-cnt.full b { color: var(--ok); }
+.gt-note { font-size: 14px; background: var(--bg2); border-left: 3px solid var(--clay); border-radius: 0 8px 8px 0; padding: 5px 10px; }
+.gt-who, .gt-wait { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.gt-p { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 2px; border-radius: 999px; background: var(--bg2);
+  border: 1px solid var(--line); font-size: 14px; font-weight: 600; max-width: 100%; }
+.gt-p > span:not(.av) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-p .g { font-size: 11px; color: var(--muted); font-weight: 500; }
+.gt-p.tap { cursor: pointer; }
+.gt-p.tap:hover { border-color: var(--panel3); background: var(--panel2); }
+.gt-r { font-size: 13px; }
+.gt-slot { border: 1px dashed var(--panel3); border-radius: 999px; padding: 2px 10px; color: var(--muted); font-size: 13px; }
+.gt-wait { padding-top: 2px; }
+.gt-wait .gt-p { opacity: .8; }
+.gt-meta { margin-top: -4px; }
+.gt-act, .gt-go { gap: 6px; }
+.gt-go { padding-top: 8px; border-top: 1px solid rgba(47,77,61,.55); }
+.gt .btn.on { border-color: var(--accent); background: var(--panel3); }
+.gt .btn.paid { color: var(--ok); }
+.gt-past { grid-column: 1 / -1; }
+.gt-past > summary { cursor: pointer; font-weight: 700; color: var(--muted); padding: 8px 2px; list-style: none; }
+.gt-past > summary::-webkit-details-marker { display: none; }
+.gt-past > summary::before { content: '▸ '; }
+.gt-past[open] > summary::before { content: '▾ '; }
+.gt-past > .card { margin-top: 10px; }
+.gt-past[open] { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+.gt-past[open] > summary { grid-column: 1 / -1; }
+.gt-past[open] > .card { margin-top: 0; }
+/* форма збору */
+.gt-form .gt-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.gt-form .seg { align-self: flex-start; }
+.gt-form .gt-slots .inp { width: 100%; }
+.gt-places:empty { display: none; }
+.gt-places .chip { padding: 3px 11px; font-size: 13px; }
+.gt-form-b { margin-top: 4px; }
+@media (max-width: 640px) {
+  .gt-list, .gt-past[open] { grid-template-columns: 1fr; }
+  .gt-form .gt-2 { grid-template-columns: 1fr; }
+  .gt-form .gt-2:first-child { grid-template-columns: 1fr 1fr; }
+  .gt-top h2 { font-size: 20px; }
+}
