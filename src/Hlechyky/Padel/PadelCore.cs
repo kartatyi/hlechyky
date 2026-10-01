@@ -104,6 +104,20 @@ public sealed class NoPadelAgenda : IPadelAgenda
     public IReadOnlyList<string> Going(string id) => [];
 }
 
+/// <summary>
+/// Що показує лобі сайту (GET /api/padel/lobby і подія <c>padelLive</c>): живі матчі, турніри, найближчий збір.
+/// Складає половина гри; половина грошей, змінивши збір, шле <c>wire.Lobby(lobby.Summary())</c>.
+/// </summary>
+public interface IPadelLobby
+{
+    object Summary();
+}
+
+public sealed class NoPadelLobby : IPadelLobby
+{
+    public object Summary() => new { live = Array.Empty<object>(), tours = Array.Empty<object>(), next = (object?)null };
+}
+
 /// <summary>Порожня історія — поки половина гри не підключена (і для тестів грошей).</summary>
 public sealed class NoPadelHistory : IPadelHistory
 {

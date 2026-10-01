@@ -19,6 +19,7 @@ public static class PadelSetup
         // Половина, що свого не дала, лишає порожнє — інша однаково працює
         services.TryAddSingleton<IPadelAgenda, NoPadelAgenda>();
         services.TryAddSingleton<IPadelHistory, NoPadelHistory>();
+        services.TryAddSingleton<IPadelLobby, NoPadelLobby>();
         return services;
     }
 
