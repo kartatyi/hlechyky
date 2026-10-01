@@ -228,12 +228,16 @@
         return '<span class="pn' + (on ? ' srv' : '') + '" data-slot="' + k + '"' + (ctl ? ' title="Тиць — цей подає"' : '') + '>'
           + (on ? '<i class="ball"></i>' : '') + '<span>' + esc(slotName(m, k)) + '</span></span>';
       }).join('') + (srv && srv.slot[0] === (t ? 'B' : 'A') ? '<span class="side-txt">' + (SIDE[srv.side] || '') + '</span>' : '');
+      // Після кінця матчу очки гейму порожні («0:0») — великими цифрами показуємо сам підсумок: гейми сету або сети
+      const fin = s.over && !pts && s.sets.length > 0, multi = s.sets.length > 1;
+      const big = fin ? String(multi ? s.won[t] : s.sets[s.sets.length - 1].g[t]) : m.label[t];
       const el = $('#pts' + t), old = el.textContent;
-      el.textContent = m.label[t];
-      if (flash && old !== m.label[t]) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+      el.textContent = big;
+      if (flash && old !== big) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
       $('#gm' + t).innerHTML = pts
         ? '<span class="lbl">' + (r.total ? 'очок із ' + r.total : 'очок') + '</span>'
-        : '<span class="lbl">гейми</span><b>' + s.games[t] + '</b><span class="dots">' + '●'.repeat(s.won[t] || 0) + '</span>';
+        : fin ? '<span class="lbl">' + (multi ? 'сетів' : 'геймів') + '</span>'
+          : '<span class="lbl">гейми</span><b>' + s.games[t] + '</b><span class="dots">' + '●'.repeat(s.won[t] || 0) + '</span>';
       board.querySelector('.half.' + (t ? 'b' : 'a')).classList.toggle('won', s.over && s.winner === t);
     }
     const btn = (a, l, cls) => '<button type="button" class="btn sm' + (cls ? ' ' + cls : '') + '" data-act="' + a + '">' + l + '</button>';

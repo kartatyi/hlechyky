@@ -155,6 +155,11 @@
     else if (F.fmt === 'team') s += ' Коло, щоб кожна пара зіграла з кожною, — ' + p.full + '.';
     else if (F.fmt === 'groups') s += ' Це група (' + p.full + ') і плей-оф.';
     if (F.fmt !== 'groups' && R * p.perRound > F.booking * 60) s += '<br><span class="warn">У оренду не влазить — або менше раундів, або коротші матчі.</span>';
+    if (F.fmt === 'mixed') {
+      // порада /plan не знає, хто ♀: на корт треба дві дівчини й двоє хлопців — тож кортів може зайняти менше
+      const w = F.women.length, m = F.players.length - w, c = Math.min(F.courts, Math.floor(w / 2), Math.floor(m / 2));
+      if (c < used) s += '<br><span class="warn">На корт — дві дівчини й двоє хлопців: з ' + w + ' ♀ і ' + m + ' ♂ грає ' + c + ' ' + plural(c, 'корт', 'корти', 'кортів') + ', решта відпочиває по черзі.</span>';
+    }
     if (p.avg) s += '<br><span class="warn">' + esc(p.note) + '.</span>';
     else if (F.fmt !== 'groups' && p.sit && R % p.fair) s += '<br><span class="warn">За ' + R + ' ' + plural(R, 'раунд', 'раунди', 'раундів') + ' відпочинуть не порівну — таблиця рахуватиме середнє за матч (порівну — кратно ' + p.fair + ').</span>';
     return s;
