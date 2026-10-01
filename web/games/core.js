@@ -1611,6 +1611,36 @@
       + ((s.players || []).length ? ' · ' + (s.players || []).length + ' у грі' : '') + '</span></div>'
       + '<button class="primary" data-go="#games/x:tournament">Відкрити</button></div>';
   }
+  // «🍳 Падельня» поруч із турніром: живі матчі з рахунком, живий турнір, найближчий збір. Дані — /api/padel/lobby
+  // (раз на рендер лобі, не частіше ніж раз на 20 с) і подія головного хаба padelLive (app.js → HGames.padel).
+  let padelLobby = null, padelAt = 0;
+  function loadPadel() {
+    if (Date.now() - padelAt < 20000) return;
+    padelAt = Date.now();
+    api('GET', '/api/padel/lobby').then((x) => HGames.padel(x)).catch(() => { /* сервер без Падельні — лишається тиха картка */ });
+  }
+  function padelWhen(local) {
+    const d = new Date(local);
+    if (Number.isNaN(d.getTime())) return '';
+    const key = (x) => x.getFullYear() + '-' + x.getMonth() + '-' + x.getDate();
+    const now = new Date(), tmr = new Date(Date.now() + 864e5);
+    const day = key(d) === key(now) ? 'сьогодні' : key(d) === key(tmr) ? 'завтра' : d.toLocaleDateString('uk-UA', { weekday: 'short' });
+    return day.charAt(0).toUpperCase() + day.slice(1) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  function padelCard() {
+    const x = padelLobby || {};
+    const live = x.live || [], tours = x.tours || [], next = x.next;
+    if (!live.length && !tours.length && !next) {
+      return '<button type="button" class="gdc gdc-link" data-href="/padel/" title="Табло з рахунком, турніри американо, збори на гру й хто кому за корт">'
+        + '<span class="gemo">🍳</span><b>Падельня</b><span class="muted small">табло й турніри для падела →</span></button>';
+    }
+    const lines = live.slice(0, 2).map((m) => '🎾 ' + (m.teams || []).map((t) => t.join(' і ')).join(' — ') + ' · ' + (m.score || ''))
+      .concat(tours.slice(0, 1).map((t) => '🏆 ' + t.title + ' · раунд ' + t.round + ' з ' + t.of))
+      .concat(next ? ['📅 ' + padelWhen(next.local) + ' · ' + next.going + '/' + next.slots + (next.place ? ' · ' + next.place : '')] : []);
+    return '<div class="gdc tour"><span class="gemo">🍳</span><div><b>Падельня</b>'
+      + lines.map((l) => '<span class="muted small" title="' + esc(l) + '">' + esc(l) + '</span>').join('')
+      + '</div><button class="primary" data-href="/padel/">Відкрити</button></div>';
+  }
   function todayHtml() {
     const list = (daily && daily.puzzles) || [];
     const cards = list.map((p) => {
@@ -1626,7 +1656,7 @@
         + '<button class="' + (solved ? 'ghost' : 'primary') + '" data-solo="' + esc(p.game) + '"'
         + (solved ? '' : ' title="Розгадай — і хапай щоденний глек"') + '>' + (solved ? 'Глянути' : 'Грати') + '</button></div>';
     }).join('');
-    const tour = tourCard();
+    const tour = tourCard() + padelCard();
     if (!cards && !tour) return '';
     return '<section class="gpanel gtoday"><h3>☀ Сьогодні' + (daily && daily.no ? ' <span class="muted small">· щоденний глек №' + daily.no + '</span>' : '') + '</h3>'
       + '<div class="gtoday-row">' + cards + tour + '</div></section>';
@@ -1635,6 +1665,7 @@
   function renderLobby(box) {
     loadDaily(false);
     loadPopular();
+    loadPadel();
     const mineFirst = rooms.slice().sort((a, b) => (seatOfMe(b) != null ? 1 : 0) - (seatOfMe(a) != null ? 1 : 0));
     const want = find.trim().toLowerCase();
     const all = entries();
@@ -1724,6 +1755,7 @@
       if (await joinRoom(b.dataset.sit, e.currentTarget)) go('#games/room/' + encodeURIComponent(b.dataset.sit));
     });
     box.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => go(b.dataset.go));
+    box.querySelectorAll('[data-href]').forEach((b) => b.onclick = () => { location.href = b.dataset.href; });   // окремі сторінки (Падельня)
     box.querySelectorAll('[data-nick]').forEach((b) => b.onclick = () => askNick());
   }
 
@@ -2399,6 +2431,15 @@
   let lobbyT = 0;
   const HGames = {
     ui,
+
+    /// Подія головного хаба padelLive (і відповідь /api/padel/lobby): картка «🍳 Падельня» в «Сьогодні».
+    /// Лобі перемальовуємо, лише коли картка справді змінилась — матч шле це щоочка.
+    padel(x) {
+      const was = padelCard();
+      padelLobby = x || null;
+      padelAt = Date.now();
+      if (shown && view.kind === 'lobby' && padelCard() !== was) renderView();
+    },
 
     register(mod) {
       if (!mod || !mod.id) { console.warn('[games] register без id'); return; }
