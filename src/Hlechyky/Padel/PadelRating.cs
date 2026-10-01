@@ -363,7 +363,7 @@ public sealed class PadelRating(IPadelHistory history, IPadelPlayers players, Pa
             {
                 partner = partners.Where(x => x.played >= 3).OrderByDescending(x => x.pct).ThenByDescending(x => x.played).FirstOrDefault(),
                 rival = rivals.FirstOrDefault(),
-                nemesis = rivals.Where(x => x.losses >= 3).OrderByDescending(x => x.losses).ThenByDescending(x => x.played).FirstOrDefault(),
+                nemesis = rivals.Where(x => x.losses >= 3).OrderByDescending(x => x.losses).ThenBy(x => x.played).FirstOrDefault(),
             },
             badges = badges.Of(me).Select(x => PadelRatingBadges.Get(x.Key) is { } k
                 ? new { key = k.Key, emoji = k.Emoji, title = k.Title, text = k.Text, at = x.At.UtcDateTime } : null).Where(x => x is not null).ToList(),
