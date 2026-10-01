@@ -143,7 +143,7 @@ public sealed class PadelMatches
 
     public PadelReply Create(PadelWho who, PadelMatchRequest b)
     {
-        if (who.Pid is null) return PadelReply.No("Грати можуть лише акаунти — увійди на головній", 403);
+        if (who.Pid is null && !who.Admin) return PadelReply.No("Грати можуть лише акаунти — увійди на головній", 403);
         if (b.Teams is not { Length: 2 } teams || teams.Any(t => t is not { Length: 2 }))
             return PadelReply.No("Потрібні дві команди по двоє");
         var flat = teams.SelectMany(t => t).ToArray();

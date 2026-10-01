@@ -12,7 +12,10 @@ namespace Hlechyky.Padel;
 public interface IPadelVoice
 {
     bool On { get; }
-    /// <summary>URL готового кліпу або null (тоді фразу поставлено в чергу першою).</summary>
+    /// <summary>
+    /// URL готового кліпу або null. У чергу не ставить: вид збирають і для старих матчів (списки), а в чергу фразу кладе
+    /// сама дія (<see cref="Want"/> з urgent).
+    /// </summary>
     string? Clip(string text);
     /// <summary>Озвучити наперед (фрази можливих наступних очок, імена команд, службові).</summary>
     void Want(IEnumerable<string> texts, bool urgent = false);
@@ -48,9 +51,7 @@ public sealed class TtsPadelVoice(TtsService tts, IOptionsMonitor<PadelOptions> 
     {
         if (!On || string.IsNullOrWhiteSpace(text)) return null;
         var id = Remember(text);
-        if (tts.TryGet(VoiceName, text) is not null) return $"/api/padel/voice/{id}.mp3";
-        tts.Enqueue(VoiceName, [text], urgent: true);
-        return null;
+        return tts.TryGet(VoiceName, text) is not null ? $"/api/padel/voice/{id}.mp3" : null;
     }
 
     public void Want(IEnumerable<string> texts, bool urgent = false)

@@ -165,7 +165,7 @@ public sealed class PadelTours : IPadelTourLink
 
     public PadelReply Create(PadelWho who, PadelTourRequest b)
     {
-        if (who.Pid is null) return PadelReply.No("Турнір заводять лише акаунти — увійди на головній", 403);
+        if (who.Pid is null && !who.Admin) return PadelReply.No("Турнір заводять лише акаунти — увійди на головній", 403);
         var format = b.Format ?? "americano";
         if (Array.IndexOf(PadelTourGen.Formats, format) < 0) return PadelReply.No("Невідомий формат");
         if (b.Courts is < 1 or > 8) return PadelReply.No("Кортів — від 1 до 8");
@@ -210,7 +210,7 @@ public sealed class PadelTours : IPadelTourLink
             var id = _next++;
             t = new PadelTourRec
             {
-                Id = id, Title = title, Format = format, Organizer = who.Name, OrgPid = who.Pid, Courts = b.Courts, Total = total,
+                Id = id, Title = title, Format = format, Organizer = who.Name, OrgPid = who.Pid ?? "", Courts = b.Courts, Total = total,
                 Minutes = total == "time" ? b.Minutes : null, Booking = b.Booking, Gathering = b.Gathering, CreatedAt = _clock.UtcNow,
                 Seed = unchecked((int)(id * 2654435761L % int.MaxValue)), Players = players, Pairs = pairs, Women = women,
             };

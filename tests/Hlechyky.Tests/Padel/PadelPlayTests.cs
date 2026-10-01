@@ -200,6 +200,7 @@ public sealed class PadelPlayTests : IDisposable
         Assert.Equal("Нема такого гравця",
             _r.Matches.Create(Rig.Who("Влад"), new([[Rig.U("Влад"), "g:99"], [Rig.U("Smaug"), Rig.U("Андрій")]], null, null, null, null)).Error);
         Assert.Equal(403, _r.Matches.Create(new PadelWho(null, "гість", false), new(Teams, null, null, null, null)).Status);
+        Assert.Null(_r.Matches.Create(new PadelWho(null, "гість", true), new(Teams, null, null, null, null)).Error);
         Assert.NotNull(_r.Matches.Create(Rig.Who("Влад"), new(Teams, new PadelRules(Deuce: "silver"), null, null, null)).Error);
         var m = Body(_r.Matches.Create(Rig.Who("Влад"), new(Teams, null, "B0", null, null))).GetProperty("match");
         Assert.Equal("B0", m.GetProperty("server").GetProperty("slot").GetString());
