@@ -1359,7 +1359,7 @@
       el.querySelector('.dies').appendChild(rollEl(m, live));
       paintRollRange(el);
     } else if (m.kind === 'dj' || m.kind === 'padel') {
-      // Падельня пише від імені сайту («Глечики») — це рядок Глека про матч, а не людини з таким ніком
+      // Падельня — рядок Глека про матч: ім'я Глека, як у dj-рядків, а не людини з таким ніком
       el.innerHTML = `<img src="/static/glek.svg" alt=""><div><span class="n">${esc(m.kind === 'padel' ? dj() : m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span></div>`;
     } else if (isLog) {
       el.innerHTML = `<span class="time">${tm(m.at)}</span>${linkify(m.text)}`;
