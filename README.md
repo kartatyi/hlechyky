@@ -236,23 +236,25 @@ powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # авто�
 
 Нагляд працює лише після входу в акаунт (завдання Interactive). Щоб сайт сам піднімався після нічного перезавантаження від Windows Update, потрібен автоматичний вхід у Windows.
 
-### Автодеплой
+### Деплой
+
+**З 02.10.2026 — лише по команді:** `deploy.cmd` (подвійний клік) або `powershell -File deploy.ps1`. Пуш у `main` сайт не чіпає: автодеплой вимкнено рядком `Deploy:Enabled: false` в `appsettings.Local.json`, бо він перезапускав сервер посеред партій, а 02.10 ще й викотив незапушений коміт через «зелену збірку» двотижневої давнини, яку раз віддав GitHub API. Нижче — як воно працює, коли його ввімкнути назад.
 
 Коміт у `main` → GitHub Actions збирає (`.github/workflows/build.yml`) → збірка зелена → GitHub шле подію `workflow_run` на `https://hlechyky.pp.ua/api/github/deploy`. Сервер перевіряє підпис (HMAC-SHA256; `Deploy:WebhookSecret` в `appsettings.Local.json` мусить збігатися з секретом вебхука на GitHub) і запускає `deploy.ps1` окремим процесом — той переживає перезапуск сервера, який сам же й робить.
 
 `deploy.ps1` робить те, що раніше робилося руками, тільки обережніше:
 
 1. `git fetch`; нема нічого нового — виходить.
-2. У робочій копії є незакомічені зміни — виходить і нічого не чіпає, щоб не зіпсувати недороблене. Треба таки викотити — `deploy.ps1 -Force`.
+2. У робочій копії є незакомічені зміни або в `main` є коміти, яких нема на GitHub, — виходить і нічого не чіпає: на прод іде лише те, що вже лежить в origin. Треба таки викотити як є — `deploy.ps1 -Force`.
 3. `git merge --ff-only origin/main`.
 4. Пробна збірка `dotnet build` (старий сервер ще працює, `build\` зайнятий ним і не чіпається). Впала — `git reset --hard` назад, сайт навіть не смикнувся.
 5. `start.ps1 restart` і перевірка `/api/me`. Не піднявся — відкат на попередній коміт і перезапуск уже на ньому.
 
-Один деплой за раз (`data\deploy.lock`), усе пишеться в `logs\deploy.log`. Руками: `powershell -File deploy.ps1`. Якщо локальна копія попереду origin (закомітили тут, а запушити ще не встигли) і `build\` уже з неї, деплой нічого не робить.
+Один деплой за раз (`data\deploy.lock`), усе пишеться в `logs\deploy.log`. Руками: `powershell -File deploy.ps1`. Подія про збірку, коміт якої вже входить у `build\` (стара зелена збірка), нічого не чіпає.
 
 **Підстраховка вебхука.** GitHub чекає відповіді 10 с і подію, що не вклалась, більше не шле, а до домашнього сайту він часом їде 6–9 с. Тому сервер раз на `Deploy:PollMinutes` (3 хв) сам питає GitHub API (`Deploy:Repo`, без токена) про найсвіжішу зелену збірку `main`. Якщо `build\` зібрано не з неї, він запускає `deploy.ps1 -Via poll`, так само як вебхук (у `logs\deploy.log` видно, хто запустив). Кожен коміт пробується один раз (`data\deploy.tried`): деплой, що впав і відкотився, не перезапускає сайт по колу. Повторити можна новим комітом, Redeliver на GitHub або `deploy.ps1` руками. Опитувач працює лише там, де є `WebhookSecret` і `data\built.sha` від `start.ps1`; вимкнути його — `Deploy:PollMinutes: 0`.
 
-Вимкнути — `Deploy:Enabled: false` в `appsettings.json`; при порожньому `WebhookSecret` ендпоінт узагалі відповідає 404. Що прилітало від GitHub і з якою відповіддю видно в Settings → Webhooks → Recent Deliveries, там же кнопка Redeliver, якщо сервер саме лежав.
+Вимкнути — `Deploy:Enabled: false` в `appsettings.Local.json` (підхоплюється наживо, без перезапуску); при порожньому `WebhookSecret` ендпоінт узагалі відповідає 404. Що прилітало від GitHub і з якою відповіддю видно в Settings → Webhooks → Recent Deliveries, там же кнопка Redeliver, якщо сервер саме лежав.
 ### Домен і https (Caddy)
 
 `hlechyky.pp.ua` куплений на nic.ua, DNS там же (name servers NIC.UA, записи `@` і `www` типу A на 134.249.147.16). У name servers на nic.ua своя дата закінчення, окремо від домену: не дай їй проскочити.
@@ -269,7 +271,7 @@ Caddy (`tools\caddy\caddy.exe`, конфіг `Caddyfile`) слухає 80/443, �
 ```
 appsettings.json          налаштування (назва, ім'я DJ, ліміти, шляхи)
 appsettings.Local.json    секрети: Auth:AdminKey, LastFm:ApiKey, Liquidsoap:ApiKey, DjBot:ApiKey, Deploy:WebhookSecret (не в гіті; шаблон appsettings.Local.example.json)
-deploy.ps1                автодеплой: pull main, пробна збірка, restart, відкат при невдачі (лог logs/deploy.log)
+deploy.ps1 / deploy.cmd   деплой по команді: pull main, пробна збірка, restart, відкат при невдачі (лог logs/deploy.log)
 setup.ps1                 перший запуск після git clone: качає yt-dlp/ffmpeg і словник, створює обидва файли з секретами
 CONTRIBUTING.md           як підняти свою копію і віддати зміни через Pull Request
 Caddyfile                 https-фронт: домен, куди що проксувати
@@ -285,7 +287,7 @@ data/                     hlechyky.db (акаунти, історія, лайк�
 data/words/               українські словники для словесних ігор — разом із data/questions, data/pictionary і data/telephone єдине, що з data/ лежить у гіті
 data/pictionary/          words.txt — прості слова для Піктіонарі й Позивних, по темах
 data/telephone/           phrases.txt — фрази-підказки для першого кроку Зіпсованого телефону
-.github/workflows/        GitHub Actions: dotnet build на кожен push у main і кожен PR (зелений build на main → автодеплой)
+.github/workflows/        GitHub Actions: dotnet build на кожен push у main і кожен PR (зелений build на main → деплой, лише коли Deploy:Enabled)
 ```
 
 ### `data/words/` — словники
