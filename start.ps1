@@ -486,6 +486,7 @@ try {
         'stop'    {
             New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
             Set-Content $StopFlag (Get-Date -Format 's')
+            Invoke-Freeze   # якщо start буде скоро (до 3 хв), столи повернуться, а партії, що вміють зберегтись, — грають далі
             Stop-Caddy; Stop-Server; Stop-Liquidsoap
             Write-Host 'Автонагляд на паузі, доки не буде start'
         }

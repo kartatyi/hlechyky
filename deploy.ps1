@@ -125,14 +125,19 @@ function Get-ListenPort {
 }
 
 # Сервер піднявся? /api/me — найдешевша відповідь, яку він уміє.
-function Test-Server([int]$TimeoutSeconds = 90) {
+function Test-Server([int]$TimeoutSeconds = 60) {
     $url = "http://127.0.0.1:$(Get-ListenPort)/api/me"
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $pidFile = Join-Path $Root 'data\server.pid'
+    $started = Get-Date
+    $deadline = $started.AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         try {
             Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 $url | Out-Null
             return $true
         } catch { Start-Sleep -Milliseconds 500 }
+        # Сервер упав на старті (виняток у Program.cs, битий конфіг) — чекати хвилину нема чого: відкат одразу.
+        $alive = (Test-Path $pidFile) -and (Get-Process -Id ([int](Get-Content $pidFile -Raw).Trim()) -ErrorAction SilentlyContinue)
+        if (-not $alive -and ((Get-Date) - $started).TotalSeconds -gt 3) { return $false }
     }
     return $false
 }
@@ -190,7 +195,7 @@ function Get-Busy {
 
 function Format-Busy($busy) {
     ($busy | ForEach-Object {
-        $mins = if ($_.since) { [int]((Get-Date).ToUniversalTime() - ([DateTimeOffset]$_.since).UtcDateTime).TotalMinutes } else { 0 }
+        $mins = if ($_.since) { [int][math]::Floor(((Get-Date).ToUniversalTime() - ([DateTimeOffset]$_.since).UtcDateTime).TotalMinutes) } else { 0 }
         "$($_.title) — $(@($_.players) -join ', ') ($mins хв)"
     }) -join '; '
 }
@@ -309,7 +314,7 @@ try {
     Invoke-Restart | Out-Null
 
     if (Test-Server) { Write-Log "ГОТОВО: сайт на $(Short $target)" }
-    else { Invoke-Rollback $before 'сервер не відповів після перезапуску' $true }
+    else { Invoke-Rollback $before 'сервер не відповів після перезапуску' $true; exit 1 }
 } catch {
     Write-Log "ПОМИЛКА: $($_.Exception.Message)"
     if ($before -and (Get-Git @('rev-parse', 'HEAD')) -ne $before) { Invoke-Rollback $before 'щось пішло не так' $restartAttempted }

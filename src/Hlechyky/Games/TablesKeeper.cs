@@ -126,9 +126,9 @@ public sealed class TablesKeeper(Rooms rooms, Tournament? tournament, IClock clo
         log.LogInformation(
             "Столи: відновлено {Tables} (партій далі {Continued}, перервано {Interrupted}) і соло-кімнат {Solo}; не вдалось {Skipped}; знімок {Kind} {Age:0.0} с тому",
             report.Tables, report.Continued, report.Interrupted, report.Solo, report.Skipped, tables.Clean ? "чистий" : "про всяк випадок", age.TotalSeconds);
-        // Одразу свій знімок: у старому лежить чистий, і якби цей процес упав за мить, партії відновились би вдруге — без ходів, зроблених уже тут.
-        try { Snapshot(); }
-        catch (Exception ex) { log.LogWarning(ex, "Столи: знімок після старту не записався"); }
+        // Файл не переписуємо: свій знімок цей процес запише за Every. Упаде раніше (новий код не стартує, деплой
+        // відкочується) — попередня збірка знову візьме чистий знімок старого сервера, і партії знову грають далі.
+        // Ціна — ходи перших секунд, якщо новий сервер упаде вже після них.
         return report;
     }
 

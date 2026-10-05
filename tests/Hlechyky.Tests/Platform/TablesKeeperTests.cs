@@ -150,6 +150,24 @@ public sealed class TablesKeeperTests : IDisposable
     }
 
     [Fact]
+    public void New_server_that_dies_right_after_restoring_leaves_the_clean_snapshot_for_the_rollback()
+    {
+        var a = Boot();
+        var id = Table(a, "t-count", "Оля", "Петро");
+        Assert.True(a.Rooms.Act(id, "Оля", "add", P(new { v = 7 })).Reply.Ok);
+        a.Keeper.Freeze();
+
+        _clock.Advance(2);
+        Boot().Keeper.RestoreAtStart();   // новий код підняв столи — і впав, не дійшовши до свого знімка
+        _clock.Advance(10);
+        var back = Boot();                // відкат: попередня збірка стартує з того самого файла
+
+        Assert.Equal(1, back.Keeper.RestoreAtStart()!.Continued);
+        Assert.Equal(RoomStatus.Playing, Room(back, id).Status);
+        Assert.Equal(7, Views.Json(back.Rooms.ViewsFor(id)!.SeatViews[0]).GetProperty("sum").GetInt32());
+    }
+
+    [Fact]
     public void Game_without_save_is_interrupted_and_stakes_come_back()
     {
         _stakes.Set("Оля", 20).Set("Петро", 20);
