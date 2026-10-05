@@ -894,12 +894,13 @@
   }
 
   // ---- ввід ----
+  /// Аналоговий стік пада — першим: HPad з того самого стіка шле ще й стрілки, а ті знають лише 4 напрямки.
   function currentWant(st) {
+    if (st.padA != null) return st.padA;
     const k = keySector();
     if (k >= 0) return k;
     if (st.stickA != null) return st.stickA;
     if (st.ptrA != null) return st.ptrA;
-    if (st.padA != null) return st.padA;
     return -1;
   }
   function canSend(st) {
@@ -988,6 +989,7 @@
     const want = ctx.mine && HGames.ui.coarse() && ctx.view && ctx.view.phase !== 'lobby';
     if (!want) {
       if (el) { el.remove(); st.ctl = null; st.stickA = null; send(st); }
+      st.wrap.classList.remove('hasctl');
       return;
     }
     if (!el) {
@@ -1024,6 +1026,7 @@
       stick.addEventListener('pointercancel', up);
       el.querySelector('.grbtn').addEventListener('pointerdown', (e) => { e.preventDefault(); shove(st); });
       st.stage.after(el);
+      st.wrap.classList.add('hasctl');
     }
     const me = mySeat(st);
     const q = st.last && st.last.p && me >= 0 ? st.last.p[me] : null;
@@ -1045,7 +1048,7 @@
       const left = f.ph === 1 ? f.left : f.ph === 0 ? (v.len || 0) * 25 : 0;
       const low = f.ph === 1 && f.left * TICK_MS <= 10000;
       top += '<span class="grchip grtime' + (low ? ' low' : '') + '">⏱ <b>' + clock(left) + '</b></span>';
-      if (me >= 0 && f.p && f.p[me]) {
+      if (me >= 0 && f.p && f.p[me] && f.ph <= 1) {
         const q = f.p[me];
         const n = f.l && f.l[me] != null ? f.l[me] : 0;
         top += '<span class="grchip grmine' + (q[5] & 16 ? ' rob' : '') + '" style="--c:var(' + SEAT_VARS[me][0] + ')">🏠 <b>' + n + '</b>'
@@ -1217,7 +1220,7 @@
       st.lastFrameAt = performance.now();
       st.interp.push(f);
       hud(st);
-      if (st.ctl) controls(root, st);
+      if (st.ctl || (ctx.mine && HGames.ui.coarse())) controls(root, st);
       spin(st);
     },
 

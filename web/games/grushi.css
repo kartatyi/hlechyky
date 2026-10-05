@@ -71,7 +71,8 @@
 /* ---- палець: стік ліворуч, «👊» праворуч ---- */
 .grctl { display: none; }
 @media (pointer: coarse) {
-  .gcanvas.grboard { max-width: min(100%, max(260px, calc(var(--gfit-h, 100dvh) - 300px))); }
+  /* під садом стік і кнопка — сад менший, щоб усе стало на екран */
+  .grwrap.hasctl .gcanvas.grboard { max-width: min(100%, max(260px, calc(var(--gfit-h, 100dvh) - 300px))); }
   .grctl {
     display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 420px;
     padding: 2px 10px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
