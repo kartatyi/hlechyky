@@ -344,6 +344,9 @@
 .gt-per { display: flex; gap: 4px; }
 .gt-per button { padding: 5px 11px; font-size: .92em; background: transparent; border-color: var(--line); color: var(--muted); }
 .gt-per button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.gt-since { font-size: .88em; color: var(--muted); }
+.gt-since b { color: var(--text); }
+.stbox:not(.gtime) > .gt-since { margin-bottom: 8px; }
 .gt-sum4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .gt-sum4 > div {
   background: var(--panel2); border-radius: 12px; padding: 10px 12px;
