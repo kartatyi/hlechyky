@@ -63,8 +63,42 @@ public sealed class VechirkaLines
         ["tie"] = ["Нічия на вершині — обидва молодці!"],
         ["pause"] = ["Пауза. Глек ставить самовар."],
         ["unpause"] = ["Граємо далі!"],
-        ["ev.water"] = ["Водяник просить: три шеляги — або гуля."],
+        ["ev.vodyanyk"] = ["Водяник просить: три шеляги — або гуля."],
+        ["comeback"] = ["Хто на половині вечора пас задніх, той тепер у трійці. Отак!"],
+        ["noGames"] = ["Забав сьогодні нема — граємо далі без них."],
     };
+
+    /// <summary>
+    /// Підстановки, дозволені пулу (таблиця етапу C, <c>lines-allowed.md</c>). Рядок файла з чужою підстановкою
+    /// відкидаємо на завантаженні: інакше в балачку полетіло б «{item}» сирцем. Пулу нема в таблиці — лише без підстановок.
+    /// </summary>
+    public static readonly Dictionary<string, string[]> Allowed = new()
+    {
+        ["intro"] = ["n"], ["order"] = ["nick"], ["turnFirst"] = ["nick"], ["double"] = ["nick"],
+        ["buy"] = ["nick", "n"], ["buyMove"] = [], ["broke"] = ["nick", "n"], ["noBuy"] = ["nick"],
+        ["pan"] = ["nick", "nick2"], ["fork"] = ["nick", "nick2", "n"], ["rope"] = ["nick", "nick2"],
+        ["pumpkin"] = ["nick", "nick2"], ["feather"] = ["nick"], ["gate"] = ["nick"], ["gateHit"] = ["nick", "nick2", "n"],
+        ["charm"] = ["nick", "nick2", "item"], ["bump"] = ["nick"], ["trap"] = ["nick", "n"], ["bank"] = ["nick", "n"],
+        ["ferry"] = ["nick"], ["chest"] = ["nick", "item"], ["chestEmpty"] = ["nick"],
+        ["ev.fair"] = ["nick"], ["ev.swap"] = ["nick"], ["ev.rain"] = ["nick"], ["ev.gift"] = ["nick", "item"],
+        ["ev.wind"] = ["nick", "n"], ["ev.dog"] = ["nick"], ["ev.wedding"] = ["nick"], ["ev.wheel"] = ["nick"],
+        ["ev.poor"] = ["nick"], ["ev.move"] = ["nick"], ["ev.sale"] = ["nick"], ["ev.tax"] = ["nick", "nick2", "n"],
+        ["ev.vodyanyk"] = ["nick"], ["shopBuy"] = ["nick", "item"], ["duel"] = ["nick", "nick2", "n"],
+        ["duelWin"] = ["nick", "nick2", "n"], ["pick"] = ["nick"], ["mgStart"] = ["game"], ["mgWin"] = ["nick", "game"],
+        ["mgBroken"] = ["game"], ["away"] = ["nick"], ["back"] = ["nick"], ["afk"] = ["nick"], ["late"] = ["nick"],
+        ["lateGift"] = ["nick"], ["bankSplit"] = ["n"], ["lastGame"] = ["nick"], ["lead"] = ["nick", "n"],
+        ["comeback"] = ["nick"], ["duelSplit"] = ["nick"], ["betWin"] = ["n"], ["swapIn"] = ["nick", "nick2"],
+        ["empty"] = [], ["final"] = [], ["win"] = ["nick", "n"], ["winBot"] = ["nick"], ["tie"] = ["nick"],
+        ["pause"] = [], ["unpause"] = [], ["noMinis"] = [], ["noGames"] = [],
+    };
+
+    static readonly System.Text.RegularExpressions.Regex Slot = new(@"\{(\w+)\}");
+
+    /// <summary>Підстановки рядка: <c>{nick}</c> → <c>nick</c>.</summary>
+    public static IEnumerable<string> Slots(string line) => Slot.Matches(line).Select(m => m.Groups[1].Value);
+
+    static string[] AllowedOf(string pool) =>
+        pool.StartsWith("bonus.") ? ["nick", "title"] : Allowed.GetValueOrDefault(pool) ?? [];
 
     readonly Dictionary<string, string[]> _pools;
     readonly Dictionary<string, int> _last = [];
@@ -89,11 +123,29 @@ public sealed class VechirkaLines
             {
                 if (p.Value.ValueKind != JsonValueKind.Array) continue;
                 var lines = p.Value.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
-                    .Select(x => x.GetString()!).Where(x => x.Length > 0).ToArray();
+                    .Select(x => x.GetString()!).Where(x => x.Length > 0)
+                    .Where(x => Slots(x).All(AllowedOf(p.Name).Contains)).ToArray();
                 if (lines.Length > 0) res[p.Name] = lines;
             }
         }
         catch (Exception) { /* кривий файл — вбудований мінімум */ }
+        return res;
+    }
+
+    /// <summary>
+    /// Що прогріти озвучці на старті (§13): рядки ✱-пулів без підстановок, по два з пулу по колу — спершу ті, що
+    /// звучать найчастіше чи найважливіше (<c>buy late bonus.* win</c>), — не більше <paramref name="max"/>.
+    /// </summary>
+    public IReadOnlyList<string> Warm(int max)
+    {
+        static int Rank(string k) => k == "buy" ? 0 : k == "late" ? 1 : k.StartsWith("bonus.") ? 2 : k == "win" ? 3 : 4;
+        var pools = Starred.OrderBy(Rank).ThenBy(k => k, StringComparer.Ordinal)
+            .Select(k => Pool(k).Where(l => !l.Contains('{')).ToList()).Where(l => l.Count > 0).ToList();
+        var res = new List<string>();
+        for (var from = 0; res.Count < max && pools.Any(l => l.Count > from); from += 2)
+            foreach (var l in pools)
+                foreach (var line in l.Skip(from).Take(2))
+                    if (res.Count < max && !res.Contains(line)) res.Add(line);
         return res;
     }
 
@@ -102,11 +154,16 @@ public sealed class VechirkaLines
     /// <summary>Рядок пулу з підстановками; пулу нема — null (ev.* без своїх реплік мовчать).</summary>
     public string? Render(string pool, IReadOnlyDictionary<string, string>? args)
     {
-        if (!_pools.TryGetValue(pool, out var lines) || lines.Length == 0) return null;
-        var k = _rng.Next(lines.Length);
-        if (lines.Length > 1 && _last.TryGetValue(pool, out var was) && was == k) k = (k + 1) % lines.Length;
+        if (!_pools.TryGetValue(pool, out var all) || all.Length == 0) return null;
+        // лише рядки, чиї підстановки цей виклик дає (бонус без переможця — без {nick})
+        var ok = Enumerable.Range(0, all.Length)
+            .Where(i => Slots(all[i]).All(x => args is not null && args.TryGetValue(x, out var v) && v.Length > 0)).ToList();
+        if (ok.Count == 0) return null;
+        var j = _rng.Next(ok.Count);
+        if (ok.Count > 1 && _last.TryGetValue(pool, out var was) && ok[j] == was) j = (j + 1) % ok.Count;
+        var k = ok[j];
         _last[pool] = k;
-        var s = lines[k];
+        var s = all[k];
         if (args is not null) foreach (var (key, v) in args) s = s.Replace("{" + key + "}", v);
         return s;
     }

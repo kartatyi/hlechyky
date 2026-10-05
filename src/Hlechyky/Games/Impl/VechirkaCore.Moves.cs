@@ -309,7 +309,7 @@ public sealed partial class VechirkaCore
         string key;
         if (node.Id == "p1" || node.Name == "Водяник")
         {
-            Say("ev.water", ("nick", p.Name));
+            Say("ev.vodyanyk", ("nick", p.Name));
             Ask(i, "event", [new("pay", "Віддати 3 шеляги"), new("bump", "🤕 Гуля")], 0, "endTurn", node.Id);
             S.Pr!.NewItem = "water";
             return true;

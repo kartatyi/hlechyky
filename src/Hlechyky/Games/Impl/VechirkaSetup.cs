@@ -46,7 +46,7 @@ public static class VechirkaSetup
     }
 
     /// <summary>Корона — переможцям-людям вечірки, де людей було ≥ 3, до наступної такої вечірки.</summary>
-    sealed class CrownKeeper(GameEvents events, IGameStore store) : IHostedService
+    public sealed class CrownKeeper(GameEvents events, IGameStore store) : IHostedService
     {
         public Task StartAsync(CancellationToken ct) { events.RoomFinished += On; return Task.CompletedTask; }
         public Task StopAsync(CancellationToken ct) { events.RoomFinished -= On; return Task.CompletedTask; }

@@ -112,7 +112,7 @@ public static class VechirkaView
                     ranking = f.Ranking.Select(r => new { i = r[0], place = r[1] }),
                 }
                 : null,
-            say = g.LastSay is { } sy ? new { id = sy.Id, text = sy.Text } : null,
+            say = g.LastSay is { } sy ? new { id = sy.Id, text = sy.Text, url = sy.Url } : null,
             log = mg ? null : s.Log,
             you,
         };

@@ -27,6 +27,10 @@ public sealed class Vechirka : Game
     public const int Seats = 8;
     public static readonly TimeSpan Hold = TimeSpan.FromMinutes(15);
     const int SayGapMs = 20_000;
+    /// <summary>Прогрів озвучки на старті (§13): лише рядки ✱-пулів без підстановок, не більше стількох.</summary>
+    public const int WarmMax = 40;
+    /// <summary>Рядок із ніком озвучується на льоту: не встиг за стільки — лишається текстом без звуку.</summary>
+    public const int OnFlyMs = 1_500;
 
     readonly List<string> _lobbyBots = [];
     VechirkaCore? _core;
@@ -38,8 +42,13 @@ public sealed class Vechirka : Game
     readonly Dictionary<int, DateTimeOffset> _emoAt = [];
     int _emoSeq;
     VechirkaLines _lines = VechirkaLines.Book;
-    (int Id, string Text)? _say;
+    (int Id, string Text, string? Url)? _say;
     int _sayId;
+    /// <summary>✱-репліка ще озвучується: до <see cref="OnFlyMs"/> від <see cref="_sayAt"/> підхоплюємо готовий кліп.</summary>
+    bool _sayPending;
+    DateTimeOffset _sayAt;
+    ISvoyaVoice _voice = NoVoice.Instance;
+    string _voiceName = "ostap";
     DateTimeOffset _lastSay = DateTimeOffset.MinValue;
     bool _hostPause, _emptySaid;
     string _sig = "";
@@ -95,6 +104,10 @@ public sealed class Vechirka : Game
         _seat = [.. seats];
         _mgWatch.Clear(); _emo.Clear(); _emoAt.Clear(); _say = null; _hostPause = false; _emptySaid = false;
         _lines = VechirkaLines.Book;
+        _sayPending = false;
+        _voice = Ctx.Services.GetService<ISvoyaVoice>() ?? NoVoice.Instance;
+        _voiceName = o.GetValueOrDefault("voice") is "polina" or "none" ? o["voice"] : "ostap";
+        if (VoiceOn) Prepare(_lines.Warm(WarmMax), false);
         var seed = unchecked((ulong)Ctx.Rng.NextInt64());
         var runner = RunnerFactory(this, seed ^ 0x5EEDUL);
         _core = new VechirkaCore(VechirkaMap.Load(st.Map), st, runner, PoolFactory()) { Brain = BrainFactory() };
@@ -224,7 +237,7 @@ public sealed class Vechirka : Game
         if (c.S.Phase != "mg") _mgWatch.Clear();
         Flush();
         var sig = Signature(c);
-        var changed = sig != _sig;
+        var changed = sig != _sig | PollVoice(now);
         _sig = sig;
         if (changed) return TickResult.Both;
         return sub;
@@ -259,8 +272,42 @@ public sealed class Vechirka : Game
         if (!star && now - _lastSay < TimeSpan.FromMilliseconds(SayGapMs)) return;
         if (_lines.Render(pool, args) is not { } text) return;
         _lastSay = now;
-        _say = (++_sayId, text);
+        string? url = null;
+        _sayPending = false;
+        if (star && VoiceOn)
+        {
+            url = Clip(text);
+            // ще не готова (рядок із ніком чи прогрів не встиг) — у чергу першою, текст показуємо одразу
+            if (url is null) { Prepare([text], true); _sayPending = true; _sayAt = now; }
+        }
+        _say = (++_sayId, text, url);
         Ctx.Say(text);
+    }
+
+    /// <summary>Озвучуємо лише ✱-пули й лише коли голос є і не вимкнений опцією «Без голосу».</summary>
+    public bool VoiceOn => _voiceName != "none" && _voice.Enabled;
+
+    void Prepare(IEnumerable<string> texts, bool urgent)
+    {
+        try { _voice.Prepare(_voiceName, texts, urgent); }
+        catch (Exception) { /* голос — прикраса: збій озвучки не валить вечірку */ }
+    }
+
+    string? Clip(string text)
+    {
+        try { return _voice.Ready(_voiceName, text)?.Url; }
+        catch (Exception) { return null; }
+    }
+
+    /// <summary>Підхопити кліп ✱-репліки, що озвучувалась на льоту; true — вид змінився.</summary>
+    bool PollVoice(DateTimeOffset now)
+    {
+        if (!_sayPending || _say is not { } sy) return false;
+        if (now - _sayAt > TimeSpan.FromMilliseconds(OnFlyMs)) { _sayPending = false; return false; }
+        if (Clip(sy.Text) is not { } url) return false;
+        _sayPending = false;
+        _say = sy with { Url = url };
+        return true;
     }
 
     void Finish(VechirkaCore c)
@@ -327,16 +374,17 @@ public sealed class Vechirka : Game
         _core is { S.Phase: "mg" } c && c.S.M is { Running: true } ? new { mg = c.Mg.Frame() } : null;
 
     public IReadOnlyList<(int Seq, int I, string K)> Emo => _emo;
-    public (int Id, string Text)? LastSay => _say;
+    public (int Id, string Text, string? Url)? LastSay => _say;
     DateTimeOffset _lastSubSay = DateTimeOffset.MinValue;
 
     /// <summary>Репліка міні-гри: не частіше раз на 20 с (за вечір їх десятки, балачка не гумова).</summary>
-    public void SubSay(string text)
+    public bool SubSay(string text)
     {
         var now = Ctx.Clock.UtcNow;
-        if (now - _lastSubSay < TimeSpan.FromMilliseconds(SayGapMs)) return;
+        if (now - _lastSubSay < TimeSpan.FromMilliseconds(SayGapMs)) return false;
         _lastSubSay = now;
         Ctx.Say(text);
+        return true;
     }
 
     public bool Watching(int i) => _mgWatch.Contains(i);

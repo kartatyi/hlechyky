@@ -296,7 +296,7 @@ public sealed partial class VechirkaCore
         if (far.Count == 0) far = [.. Map.Stands];
         S.Stand = far[R.Next(far.Count)];
         S.Round = 0;
-        Say("intro");
+        Say("intro", ("n", N.ToString()));
         Phase("intro", VechirkaRules.IntroMs);
         S.Then = "order";
         Save0();

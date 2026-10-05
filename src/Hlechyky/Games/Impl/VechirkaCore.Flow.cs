@@ -44,7 +44,7 @@ public sealed partial class VechirkaCore
                     Fx("glek", i, 1);
                     Anim("buy", i, key: S.Stand, ms: VechirkaRules.BuyMs);
                     Line($"🏺 {p.Name} купив золотий глек!");
-                    Say("buy", ("nick", p.Name));
+                    Say("buy", ("nick", p.Name), ("n", p.Gleks.ToString()));
                     var was = S.Leader;
                     S.Leader = LeaderIdx();
                     if (S.Leader is { } ld && ld != was && S.P[ld].Gleks > 0) Say("lead", ("nick", S.P[ld].Name));
@@ -159,13 +159,14 @@ public sealed partial class VechirkaCore
     {
         var cands = Pool.Where(e => e.Weight > 0 && e.Min <= N && e.Max >= N).ToList();
         var byCat = cands.Where(e => S.Minis.Contains(e.Cat)).ToList();
-        if (byCat.Count == 0 && cands.Count > 0 && !S.NoFun) { S.NoFun = true; Say("pick"); }
+        if (byCat.Count == 0 && cands.Count > 0 && !S.NoFun) { S.NoFun = true; Say("noMinis"); }
         if (byCat.Count > 0) cands = byCat;
         var fresh = cands.Where(e => !S.MgLast.TryGetValue(e.Id, out var r) || S.Round - r > 2).ToList();
         if (fresh.Count > 0) cands = fresh;
         if (cands.Count == 0)
         {
             Line("🍂 Глек сьогодні без забав: +5 усім");
+            Say("noGames");
             for (var k = 0; k < N; k++) Gain(k, VechirkaRules.NoGames);
             S.Phase = "walk";
             BusyFor(VechirkaRules.LandMs, "round");
@@ -259,7 +260,7 @@ public sealed partial class VechirkaCore
             var t = VechirkaRules.Payouts(n);
             var avg = (t.Sum() + n - 1) / n;
             pay = [.. Enumerable.Repeat(avg, n)];
-            Say("mgBroken");
+            Say("mgBroken", ("game", m.Title));
         }
         else pay = VechirkaRules.Pay(places);
         if (m.X2) pay = [.. pay.Select(x => x * VechirkaRules.LastMgMult)];
@@ -287,7 +288,7 @@ public sealed partial class VechirkaCore
         else if (!crash)
         {
             var win = Enumerable.Range(0, n).Where(k => places[k] == 1).Select(k => S.P[m.Seats[k]].Name).ToList();
-            if (win.Count > 0) Say("mgWin", ("nick", win[0]), ("game", m.Title));
+            if (win.Count > 0) Say("mgWin", ("nick", Nicks(win)), ("game", m.Title));
         }
         m.Results = [.. Enumerable.Range(0, n).Select(k => new VechirkaMgLine(m.Seats[k], places[k], pay[k])).OrderBy(x => x.Place)];
         m.How = res.How.ToString();
@@ -318,7 +319,7 @@ public sealed partial class VechirkaCore
         {
             var each = S.Bank / low.Count;
             if (each > 0) { foreach (var k in low) Gain(k, each); S.Bank -= each * low.Count; }
-            Say("bankSplit");
+            Say("bankSplit", ("n", S.Bank.ToString()));
             Line($"🐷 Скарбничку розбито: по {each}");
         }
         var choosers = Lasts(N >= 6 ? 2 : 1);
@@ -378,6 +379,10 @@ public sealed partial class VechirkaCore
         Phase("final", VechirkaRules.BonusMs / 2);
     }
 
+    /// <summary>Кілька ніків в одному <c>{nick}</c> (рівні місця): «Вася, Петро і Оля».</summary>
+    static string Nicks(IReadOnlyList<string> names) =>
+        names.Count <= 1 ? names.FirstOrDefault() ?? "" : string.Join(", ", names.Take(names.Count - 1)) + " і " + names[^1];
+
     void FinalStep()
     {
         var f = S.F!;
@@ -387,7 +392,7 @@ public sealed partial class VechirkaCore
             var b = f.Bonuses[f.Step];
             foreach (var k in b.Winners) { S.P[k].Gleks++; Fx("glek", k, 1); }
             Anim("bonus", null, key: b.Key, ms: VechirkaRules.BonusMs);
-            Say("bonus." + b.Key, ("title", b.Title), ("nick", b.Winners.Length > 0 ? S.P[b.Winners[0]].Name : ""));
+            Say("bonus." + b.Key, ("title", b.Title), ("nick", Nicks(b.Winners.Select(k => S.P[k].Name).ToList())));
             if (b.Winners.Length > 0) Line($"🏺 Бонусний глек «{b.Title}»: " + string.Join(", ", b.Winners.Select(k => S.P[k].Name)));
             Phase("final", VechirkaRules.BonusMs);
             return;
@@ -396,9 +401,12 @@ public sealed partial class VechirkaCore
         {
             f.Ranking = [.. Enumerable.Range(0, N).OrderBy(PlaceOf).ThenBy(k => k).Select(k => new[] { k, PlaceOf(k) })];
             var top = Enumerable.Range(0, N).Where(k => PlaceOf(k) == 1).ToList();
-            if (top.Count > 1) Say("tie");
+            // «Камбек» — останній на половині вечора тепер у трійці (звичайна репліка; переможця ✱ скаже однаково)
+            if (Enumerable.Range(0, N).FirstOrDefault(k => S.P[k].S.LastAtHalf && PlaceOf(k) <= 3, -1) is var cb and >= 0)
+                Say("comeback", ("nick", S.P[cb].Name));
+            if (top.Count > 1) Say("tie", ("nick", Nicks(top.Select(k => S.P[k].Name).ToList())));
             else if (S.P[top[0]].Bot) Say("winBot", ("nick", S.P[top[0]].Name));
-            else Say("win", ("nick", S.P[top[0]].Name));
+            else Say("win", ("nick", S.P[top[0]].Name), ("n", S.P[top[0]].Gleks.ToString()));
             Anim("summary", null, ms: VechirkaRules.SummaryMs);
             Phase("final", VechirkaRules.SummaryMs);
             return;
