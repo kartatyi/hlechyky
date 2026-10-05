@@ -201,7 +201,7 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
   header .vswitch .lbl { display: none; }
   header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
   .mini-tt small { display: none; }
-  header #listeners { max-width: 92px; }
+  header #listeners { max-width: 150px; }
 }
 
 /* ---- нічний відбій: плашку бачать лише ті, кого він стосується ---- */
@@ -323,9 +323,20 @@ h2 .count { font-weight: 400; color: var(--muted); font-size: .88em; }
 /* ---- add / search ---- */
 .add { position: relative; }
 .add .row { display: flex; gap: 8px; }
-/* Підказка про Enter і «/» — лише коли курсор у полі і є клавіатура з мишею: на телефоні вона ні до чого. */
-.add .hintline { color: var(--muted); font-size: .8em; margin-top: 8px; display: none; }
+/* Усе, що з'являється під полем, поки обираєш музику (результати, підказка, «закидаю…»), висить поверх сторінки від
+   низу рядка з полем: у потоці воно смикало чергу й поради Глека на кожен фокус і закинутий трек, а клік по
+   результату губився — фокус ішов з поля, підказка зникала, і список з'їжджав з-під курсора (записка #26). */
+.qbox { position: relative; }
+/* Підказка про Enter і «/» — лише коли курсор у полі і є клавіатура з мишею: на телефоні вона ні до чого.
+   Є результати чи рядки «закидаю…» — вона своє сказала, місце під полем їхнє. */
+.add .hintline {
+  position: absolute; left: 0; right: 0; top: 100%; margin-top: 6px; z-index: 2; display: none;
+  padding: 8px 12px; color: var(--muted); font-size: .8em; line-height: 1.4;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 14px 40px rgba(0,0,0,.45);
+}
 @media (hover: hover) and (pointer: fine) { .add:focus-within .hintline { display: block; } }
+.qbox:has(.results:not(:empty)) .hintline, .qbox:has(.adding:not([hidden])) .hintline,
+.add:has(.rec:not([hidden])) .hintline, .add:has(.album:not([hidden])) .hintline { display: none !important; }
 .results { position: absolute; left: 0; right: 0; top: 100%; margin-top: 6px; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; z-index: 4; max-height: 380px; overflow: auto; box-shadow: 0 14px 40px rgba(0,0,0,.45); }
 .results:empty { display: none; }
 .result { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; cursor: pointer; }
@@ -337,7 +348,13 @@ h2 .count { font-weight: 400; color: var(--muted); font-size: .88em; }
 .results .hint { padding: 10px 12px; color: var(--muted); font-size: .9em; display: flex; gap: 8px; align-items: center; }
 
 /* ---- закидання по черзі: що розбирається, що чекає, чим скінчилось ---- */
-.adding { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+/* «Закидаю…» висить під полем, як результати (див. .qbox), і нижче нічого не зсуває ні коли з'являється, ні коли
+   за 4 с зникає. Поруч відкритий трекліст альбому чи голосове — рядки стають у потік: інакше вкрили б їхню шапку. */
+.adding {
+  display: flex; flex-direction: column; gap: 4px; position: absolute; left: 0; right: 0; top: 100%; margin-top: 6px; z-index: 3;
+  max-height: min(40vh, 260px); overflow: auto; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+}
+.add:has(.rec:not([hidden])) .adding, .add:has(.album:not([hidden])) .adding { position: static; margin-top: 8px; box-shadow: none; max-height: none; }
 .add-job { display: flex; align-items: center; gap: 8px; padding: 6px 10px; min-width: 0; font-size: .9em; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; animation: fadein .2s ease-out; }
 .add-job .aj-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .add-job .aj-note { flex: none; color: var(--muted); font-size: .85em; }
@@ -697,8 +714,27 @@ button.vplay { padding: 3px 8px; }
 .online .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 .online .chip.listening { background: #3a2d0a; }
 .online .chip.listening::before { display: none; }
-#listeners { cursor: pointer; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
+#listeners { cursor: pointer; max-width: 40vw; overflow: hidden; display: inline-flex; align-items: center; gap: 5px; }
 #listeners.on { color: var(--accent); }
+/* 🎧 у шапці: стос кружечків замість імен (записка #21, app.js listenersHtml). Кільце кольору чипа між кружечками —
+   щоб стос читався, а не зливався в пляму; на кружечок під мишею — жовте кільце і він зверху. */
+#listeners:has(.ls-stack) { padding-right: 3px; }
+#listeners .ls-n { flex: none; }
+#listeners .ls-stack { display: flex; align-items: center; padding: 2px; }
+#listeners .ls-who {
+  flex: none; position: relative; display: grid; padding: 0; border: 0; border-radius: 50%; background: none;
+  box-shadow: 0 0 0 2px var(--panel2); transition: none;
+}
+#listeners .ls-who + .ls-who, #listeners .ls-more { margin-left: -6px; }
+#listeners .ls-who:hover, #listeners .ls-who:focus-visible { z-index: 1; outline: none; box-shadow: 0 0 0 2px var(--accent); }
+#listeners .ls-who:active { transform: none; }
+.ava.ls { width: 22px; height: 22px; font-size: 1em; }
+.ava.ls.ico { font-size: 1.05em; }
+.ava.ls .ava-ic { font-size: 8px; box-shadow: 0 0 0 1px var(--bg); }
+#listeners .ls-more {
+  flex: none; position: relative; display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px;
+  border-radius: 11px; background: var(--panel3); color: var(--text); font-weight: 700; box-shadow: 0 0 0 2px var(--panel2);
+}
 
 /* ---- балачка столу ---- */
 /* Одна й та сама розмова живе в двох місцях: вкладкою «🎲 Стіл» у панелі балачок (.rail) або шторкою знизу

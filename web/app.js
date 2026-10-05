@@ -931,12 +931,29 @@
     return parts.join('; ') || 'У навушниках — ні душі';
   }
 
+  // 🎧 у шапці: число і стос кружечків замість імен (записка #21) — фото чи значок із Лавки, а без вигляду порожній
+  // кружечок у кольорі ніка. Імена — у підказці й тості, клік по кружечку — картка людини (data-who, web/people.js).
+  // Понад шість — «+N»; на вужчій шапці кружечків менше (там і гучність ховається за 🔊), щоб не тіснити назву треку.
+  const lsMid = window.matchMedia('(max-width: 1440px)'), lsNarrow = window.matchMedia('(max-width: 1000px)');
+  let listenersSig = '';
+  function listenersHtml(shown, nicks) {
+    const max = lsNarrow.matches ? 3 : lsMid.matches ? 4 : 6;
+    const vis = nicks.length > max ? nicks.slice(0, max - 1) : nicks;
+    const more = nicks.length - vis.length;
+    const faces = vis.map((n) => `<button type="button" class="ls-who" data-who="${esc(n)}" title="${esc(n)} слухає ефір" aria-label="${esc(n)}">${HPeople.ava(n, 'ava ls blank')}</button>`).join('');
+    return `<span class="ls-n">🎧 ${shown}</span>`
+      + (nicks.length ? `<span class="ls-stack">${faces}${more ? `<span class="ls-more">+${more}</span>` : ''}</span>` : '');
+  }
+  for (const m of [lsMid, lsNarrow]) m.addEventListener?.('change', () => { if (state) renderOnline(); });
+
   function renderOnline() {
     const nicks = state.listeningNicks || [];
     const listens = (n) => nicks.some((x) => sameNick(x, n));
     const shown = Math.max(state.listeners || 0, nicks.length);
     const chip = $('listeners');
-    chip.textContent = '🎧 ' + shown + (nicks.length ? ' · ' + nicks.join(', ') : '');
+    // Стан приходить часто, а кружечки з фото — та сама розмітка: не перебудовуємо, коли нічого не змінилось.
+    const html = listenersHtml(shown, nicks);
+    if (html !== listenersSig) { listenersSig = html; chip.innerHTML = html; }
     chip.title = listenersText();
     chip.classList.toggle('on', shown > 0);
     state.online.forEach(learnNick);
@@ -949,7 +966,8 @@
       : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="тусить на сайті, але плеєр вирублений">${talks(n)}${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">ні душі</span>';
     HPeople.refreshWhere();          // на відкритому профілі «на сайті / слухає» — живе
   }
-  $('listeners').onclick = () => { if (state) toast(listenersText()); };
+  // Клік по кружечку — картка людини (її відкриває people.js), по решті чипа — хто саме слухає.
+  $('listeners').onclick = (e) => { if (state && !e.target.closest('[data-who]')) toast(listenersText()); };
 
   function render() {
     if (!state) return;
