@@ -480,7 +480,7 @@
   function draw(st, waiting) {
     const c = st.cv;
     if (!c) return;
-    const now = performance.now();
+    const now = HGames.ui.frameTime ? HGames.ui.frameTime() : performance.now();   // мітка кадру rAF (див. core.js)
     const shot = men(st, now);
     const g = c.ctx;
     const pal = palOf(st);

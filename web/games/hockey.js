@@ -136,7 +136,7 @@
         hx: new Float64Array(8), hy: new Float64Array(8), ht: new Float64Array(8), hN: 0, stick: false,
         land: true, turn: 0, k: 3.8, ox: 0, oy: 0, cw: LW, ch: LH, table: null, tableKey: '', pal: null, palAt: 0,
         // своя біта
-        mine: { x: 0, y: 0 }, mineOk: false, acc: 0, at: 0, stepX: 0, stepY: 0, offX0: 0, offY0: 0, aim: false, tx: 0, ty: 0, mdx: 0, mdy: 0, rtt: 60,
+        mine: { x: 0, y: 0 }, mineOk: false, acc: 0, at: 0, stepX: 0, stepY: 0, offX0: 0, offY0: 0, offVX: 0, offVY: 0, aim: false, tx: 0, ty: 0, mdx: 0, mdy: 0, rtt: 60,
         // шайба
         vis: { x: MID, y: WD / 2 }, lastAt: 0, trail: new Float64Array(TRAIL * 2), trailHead: 0, trailN: 0, lastN: -1,
         // ввід
@@ -340,34 +340,58 @@
     const now = performance.now(), sent = st.clock.when ? st.clock.when(f.t, now) : null;
     const late = sent == null ? 0 : Math.min(2 * TICK_MS, Math.max(0, now - sent));
     const lead = Math.max(0, Math.min(100, (st.rtt - 20) / 2));
-    const n = Math.round((lead + late) / SUB_MS);
-    for (let i = 0; i < n; i++) stepPad(srv, team, st.aim, st.tx, st.ty, st.mdx, st.mdy);
-    if (!st.mineOk) { st.mine.x = srv.x; st.mine.y = srv.y; st.mineOk = true; st.offX0 = st.offY0 = 0; st.stepX = st.stepY = 0; return; }
+    // Модель крутиться лише в rAF (за міткою кадру) і стоїть на мить «st.at − acc», а кадр приходить між кадрами екрана.
+    // Ціль ставимо саме на цю мить, інакше похибка скакала б на 0–17 мс руху (до 7 одиниць) від кадру до кадру.
+    // Ціле число підкроків — тим самим кроком, що й сервер; залишок (і від'ємний) — швидкістю останнього підкроку.
+    const ms = lead + late - (now - st.at) - st.acc;
+    const n = Math.max(0, Math.floor(ms / SUB_MS));
+    let sx = st.stepX, sy = st.stepY;
+    for (let i = 0; i < n; i++) {
+      const x0 = srv.x, y0 = srv.y;
+      stepPad(srv, team, st.aim, st.tx, st.ty, st.mdx, st.mdy);
+      sx = srv.x - x0;
+      sy = srv.y - y0;
+    }
+    const rest = (ms - n * SUB_MS) / SUB_MS;
+    srv.x += sx * rest;
+    srv.y += sy * rest;
+    if (!st.mineOk) { st.mine.x = srv.x; st.mine.y = srv.y; st.mineOk = true; st.offX0 = st.offY0 = st.offVX = st.offVY = 0; st.stepX = st.stepY = 0; return; }
     const wasX = st.mine.x, wasY = st.mine.y;
     // Мертва зона 2,5: передбачення веде біту до тієї ж цілі тим самим кроком, тож дрібна різниця — лише мережа.
-    // Раніше кожен кадр тягнув біту на 30 % назад до сервера (і на ударі — стрибком): біта тремтіла пилкою 25 разів/с.
+    // Більша — справжня (найчастіше на старті: сервер застосовує натиснуту клавішу до всього тика, тобто й до тих
+    // 0–40 мс, що були до натиску). Модель стає на ціль одразу, а намальована біта плавно доганяє (settle). Раніше
+    // модель тягло на 35 % щокадру — три-чотири ривки на кожен старт.
     const ex = srv.x - st.mine.x, ey = srv.y - st.mine.y, e = Math.hypot(ex, ey);
     if (e > 2.5) {
-      const k = 0.35 * (e - 2.5) / e;
-      st.mine.x += ex * k;
-      st.mine.y += ey * k;
+      st.mine.x = srv.x;
+      st.mine.y = srv.y;
+      st.offX0 += wasX - st.mine.x;
+      st.offY0 += wasY - st.mine.y;
+      st.mine.x = clamp(st.mine.x, minX(team), maxX(team));
+      st.mine.y = clamp(st.mine.y, PAD_R, WD - PAD_R);
     }
-    const dx = st.mine.x - srv.x, dy = st.mine.y - srv.y, d = Math.hypot(dx, dy);
-    if (d > 12) { st.mine.x = srv.x + (dx / d) * 12; st.mine.y = srv.y + (dy / d) * 12; }
-    // модель біти поправили, а намальована не стрибає: різниця тане зсувом за ~100 мс (predict)
-    st.offX0 += wasX - st.mine.x;
-    st.offY0 += wasY - st.mine.y;
+  }
+  /// Зсув поправки гасне критично демпфованою пружиною (~150 мс): поправка зсуває його стрибком, але швидкість зсуву
+  /// не стрибає — намальована біта плавно розганяється й гальмує. Зсув, що просто танув би експоненто, змінював би
+  /// швидкість ривком у мить поправки (до +40 % ходу на кадр).
+  const SPRING = 1 / 40;
+  function settle(st, dt) {
+    const e = Math.exp(-SPRING * dt);
+    const cx = st.offVX + SPRING * st.offX0, cy = st.offVY + SPRING * st.offY0;
+    st.offX0 = (st.offX0 + cx * dt) * e;
+    st.offY0 = (st.offY0 + cy * dt) * e;
+    st.offVX = (st.offVX - SPRING * cx * dt) * e;
+    st.offVY = (st.offVY - SPRING * cy * dt) * e;
+    if (Math.abs(st.offX0) + Math.abs(st.offY0) < 1e-3 && Math.abs(st.offVX) + Math.abs(st.offVY) < 1e-5) st.offX0 = st.offY0 = st.offVX = st.offVY = 0;
   }
   /// Де малювати свою біту: модель плюс частка ще не зробленого підкроку (4 мс — на кадр екрана то 4, то 5 підкроків,
-  /// і без цього кожен шостий кадр біта робила на чверть більший крок) плюс зсув поправки, що тане.
+  /// і без цього кожен шостий кадр біта робила на чверть більший крок) плюс зсув поправки, що тане (predict).
   const mineX = (st) => st.mine.x + st.stepX * (st.acc / SUB_MS) + st.offX0;
   const mineY = (st) => st.mine.y + st.stepY * (st.acc / SUB_MS) + st.offY0;
   function predict(st, now) {
     const dt = Math.min(100, now - st.at);
     st.at = now;
-    const k = Math.exp(-dt / 60);
-    st.offX0 *= k;
-    st.offY0 *= k;
+    settle(st, dt);
     if (!st.mineOk || now - st.lastAt > 400) { st.stepX = st.stepY = 0; return; }
     st.acc += dt;
     const team = myTeam(st);
@@ -1165,11 +1189,13 @@
   function spin(root, st) {
     st.awakeUntil = performance.now() + AWAKE_MS;
     if (st.raf) return;
-    const loop = () => {
+    const loop = (ts) => {
       if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
       if (!(st.ctx && st.ctx.playing) && performance.now() > st.awakeUntil) { st.raf = 0; return; }
       st.raf = requestAnimationFrame(loop);
-      const now = performance.now();
+      // мітка кадру, а не «коли дійшла черга колбеку»: колбек буває й на 2–7 мс пізніше (кадр сервера перед ним),
+      // і рух, порахований на ту мить, смикався б саме на стільки
+      const now = HGames.ui.frameTime ? HGames.ui.frameTime(ts) : performance.now();
       stickAim(st, now);
       flush(st, now);
       predict(st, now);

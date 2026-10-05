@@ -594,13 +594,14 @@
       const s2 = tg.vx * tg.vx + tg.vy * tg.vy;
       if (s2 > VMAX * VMAX) { const c = VMAX / Math.sqrt(s2); tg.vx *= c; tg.vy *= c; }
     }
-    // Модель живе на «зараз − meAcc» (ще не прокручений залишок підкроку) плюс пів дороги мережею наперед. Кадр t
+    // Модель живе на «meAt − meAcc» (ще не прокручений залишок підкроку) плюс пів дороги мережею наперед. Кадр t
     // ставимо на мить, коли він мав прийти за годинником сервера (Clock.when), а не на справжній прихід: раніше кожен
     // нерівний кадр давав іншу ціль, і тіло тягло туди-сюди 25 разів на секунду.
     const lead = Math.max(0, Math.min(120, (st.rtt - 20) / 2));
     const c = st.interp.clock, sent = c.when && Number.isFinite(f.t) ? c.when(f.t, now) : null;
     const late = sent == null ? 0 : Math.min(2 * TICK_MS, Math.max(0, now - sent));
-    const ms = lead + late - (st.meOk ? st.meAcc : 0);
+    // модель крутиться лише в rAF (за міткою кадру) і стоїть на мить «meAt − meAcc», а кадр приходить між кадрами екрана
+    const ms = lead + late - (st.meOk ? st.meAcc + Math.max(0, now - st.meAt) : 0);
     const steps = Math.max(0, Math.floor(ms / SUB_MS));
     const want = myWant(st, q);
     for (let i = 0; i < steps; i++) glide(tg, want, myMu(q), myThrust(q));
@@ -1852,7 +1853,7 @@
       if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
       if (!(st.ctx && st.ctx.playing) && performance.now() > st.awakeUntil) { st.raf = 0; return; }
       st.raf = requestAnimationFrame(loop);
-      const now = performance.now();
+      const now = HGames.ui.frameTime ? HGames.ui.frameTime() : performance.now();   // мітка кадру rAF (див. core.js)
       readPad(st);
       if (st.mouseDown) aimMouse(st);
       // відкладена зміна наміру; той самий напрямок, поки тримають, — підтверджуємо раз на KEEP_MS

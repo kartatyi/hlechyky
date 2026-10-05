@@ -512,7 +512,7 @@
       // Плавні голови: між кадрами ведемо голову далі так, як її поведе сервер (ahead). Від миті, коли кадр мав прийти за годинником
       // сервера, а не від справжнього приходу: раніше кадр, що спізнився на 10 мс, зупиняв голову (стеля — один
       // крок), а наступний, що прийшов раніше, кидав її вперед. Спізнився — ведемо до півтора кроку.
-      const now = performance.now();
+      const now = HGames.ui.frameTime ? HGames.ui.frameTime() : performance.now();   // мітка кадру rAF (див. core.js)
       const live = phase === 'play' && now - (st.frameAt || 0) < 120;
       const c = st.clk && st.clk.clock, sent = c && c.when ? c.when(st.t, now) : null;
       const from = sent == null ? st.frameAt : Math.min(st.frameAt, Math.max(st.frameAt - 2 * TICK_MS, sent));

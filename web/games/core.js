@@ -306,6 +306,27 @@
 
   const lerp = (a, b, t) => a + (b - a) * t;
 
+  /// Мить кадру для руху. У колбеку rAF — мітка кадру від браузера, а не performance.now(): колбек нерідко
+  /// починається на 2–7 мс пізніше (перед ним обробився кадр сервера чи щось інше), і рух, порахований на «коли дійшла
+  /// черга», смикався б саме на стільки. Поза rAF (обробник кадру, клавіша) — звичайний performance.now().
+  /// frameTime(ts) — коли мітку кадру гра вже має сама.
+  let rafTs = 0, inRaf = 0;
+  if (window.requestAnimationFrame && !window.requestAnimationFrame.__hframe) {
+    const raf = window.requestAnimationFrame.bind(window);
+    const wrapped = (cb) => raf((ts) => {
+      rafTs = ts;
+      inRaf++;
+      try { return cb(ts); } finally { inRaf--; }
+    });
+    wrapped.__hframe = true;
+    window.requestAnimationFrame = wrapped;
+  }
+  function frameTime(ts) {
+    const now = performance.now();
+    const t = Number.isFinite(ts) ? ts : inRaf ? rafTs : now;
+    return t > 0 && t <= now ? t : now;
+  }
+
   /// Годинник сервера для реалтайм-ігор: де «зараз» у тиках сервера, з запасом на джитер мережі.
   /// Тик t сервер рахує о base + t·tickMs нашого годинника; base — найменше (прихід − t·tickMs) з повільним
   /// дрейфом угору. Кадр, що прийшов пізно (черга, Wi-Fi, два в одному повідомленні), годинник не штовхає —
@@ -418,12 +439,12 @@
         if (fr.length > 40) fr.shift();
       },
       reset() { fr.length = 0; clk.reset(); },
-      /// { a: старіший кадр, b: новіший, t: 0..1 }
-      at() {
+      /// { a: старіший кадр, b: новіший, t: 0..1 } на мить now (без неї — мить кадру, див. frameTime).
+      at(now) {
         const n = fr.length;
         if (!n) return null;
         if (n === 1) return { a: fr[0].f, b: fr[0].f, t: 1 };
-        const rt = clk.at(performance.now());
+        const rt = clk.at(Number.isFinite(now) ? now : frameTime());
         if (rt >= fr[n - 1].k) return { a: fr[n - 2].f, b: fr[n - 1].f, t: 1 };
         if (rt <= fr[0].k) return { a: fr[0].f, b: fr[1].f, t: 0 };
         let j = n - 2;
@@ -649,7 +670,7 @@
     });
   }
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, Clock, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, frameTime, Clock, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
 
   // =============================================================================================
   // Хаб
