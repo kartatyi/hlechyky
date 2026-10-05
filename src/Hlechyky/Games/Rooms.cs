@@ -470,6 +470,8 @@ public sealed partial class Rooms
             if (_rooms.Any(r => r != room && !r.Info.Solo && r.Has(nick))) return RoomOutcome.Fail(Say.Seated);
         }
 
+        if (LateSeat(room, nick) is { } late) return late;
+
         var outbox = new Outbox();
         RoomReply reply;
         lock (room.Sync)
@@ -508,6 +510,34 @@ public sealed partial class Rooms
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
         return new RoomOutcome(outbox, reply);
+    }
+
+    /// <summary>
+    /// Сісти посеред партії, коли гра дозволила (<see cref="Game.LateJoin"/>): вечірка кличе назад того, хто відпав.
+    /// null — це не той випадок, далі звичайний Join (він і скаже «місць нема»).
+    /// </summary>
+    RoomOutcome? LateSeat(Room room, string nick)
+    {
+        var outbox = new Outbox();
+        lock (room.Sync)
+        {
+            if (room.Status != RoomStatus.Playing || room.Info.Solo || room.Has(nick)) return null;
+            var seat = room.FreeSeat;
+            if (seat < 0 || !room.Game.LateJoin(nick)) return null;
+            room.Seats[seat] = nick;
+            room.LastActivity = _clock.UtcNow;
+            var ctx = (RoomContext)room.Game.Ctx;
+            using (ctx.Collect(outbox))
+            {
+                // Людина вже сидить: якщо гра спіткнулась, краще стіл без її «повернення», ніж вигнати її знову.
+                try { room.Game.OnJoin(seat); }
+                catch (Exception ex) { _log.LogWarning(ex, "OnJoin впав у кімнаті {Room}", room.Id); }
+            }
+        }
+        outbox.Add(new LobbyChanged());
+        outbox.Add(new RoomViews(room.Id));
+        outbox.RunAfter(_log);
+        return new RoomOutcome(outbox, new RoomReply(true, "Ти знову за столом", room.Id));
     }
 
     /// <summary>Встати. Посеред партії це техпоразка — гра вирішує сама через OnLeave.</summary>
@@ -565,6 +595,8 @@ public sealed partial class Rooms
     void Sweep(Room room, Outbox outbox)
     {
         if (room.Occupied > 0) return;
+        // Гра, що чекає повернення (HoldEmpty), лишається: її прибере Housekeeping, коли мине час.
+        if (room.Status == RoomStatus.Playing && room.Game.HoldEmpty > TimeSpan.Zero) return;
         Drop(room);
         if (!room.Info.Private) outbox.Add(new LobbyChanged());
     }
@@ -1273,7 +1305,8 @@ public sealed partial class Rooms
             lock (room.Sync)
             {
                 drop = !_frozen && (
-                    room.Occupied == 0
+                    (room.Occupied == 0
+                        && !(room.Status == RoomStatus.Playing && now - room.LastActivity < room.Game.HoldEmpty))
                     // самотній стіл у лобі — засиджений, навіть якщо гра дозволяє почати самому («Скільки?»)
                     || (room.Status == RoomStatus.Lobby && room.Occupied < Math.Max(2, room.Info.MinPlayers) && now - room.LastActivity > LobbyLife)
                     || (room.Status == RoomStatus.Finished && room.FinishedAt is { } at && now - at > FinishedLife)

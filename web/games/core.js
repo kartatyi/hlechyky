@@ -1342,6 +1342,18 @@
   /// Адреса всередині розділу: '' — лобі, 'room/<id>' — стіл, решта — підрозділ.
   function route(tail) {
     const t = String(tail || '');
+    // #games/new/<id> — відкрити «+ Стіл» для гри за id, навіть якої нема в каталозі лобі (стенди: mgprobe)
+    if (t.startsWith('new/')) {
+      const id = decodeURIComponent(t.slice(4));
+      go('#games');
+      Promise.resolve(ensureCatalog()).then(() => {
+        const g = gameOf(id);
+        if (!g) { toast('Гри «' + id + '» нема', 'err'); return; }
+        if (!me.nick) { askNick(); return; }
+        openCreate(g, null);
+      });
+      return;
+    }
     const next = t.startsWith('room/') ? { kind: 'room', id: decodeURIComponent(t.slice(5)) }
       : t.startsWith('x:') ? { kind: 'panel', id: t }
         : { kind: 'lobby', id: '' };
@@ -1611,6 +1623,7 @@
     const out = [];
     const seen = new Set();
     for (const g of catalog.games) {
+      if (g.unlisted) continue;   // стенди розробника (mgprobe) — лише посиланням #games/new/<id>
       const f = familyOf[g.id];
       if (f) {
         if (seen.has(f.id)) continue;
@@ -2402,6 +2415,113 @@
   }
 
   // =============================================================================================
+  // Вбудована гра (вечірка): модуль іншої гри всередині свого
+  // =============================================================================================
+
+  /// HGames.embed(host, gameId, opts) — змонтувати модуль гри gameId у власний root усередині host (контракт —
+  /// docs/games/specs/party-minigame.md). opts: { view, frame, seat (місце в підгрі або null), names[], nicks[],
+  /// seatNames[], status ('playing'|'finished'), result ({winners}), options, act(a, p), input(a, p) }. act/input
+  /// модуль-господар шле у свою дію (напр. ctx.act('mg', {a, p})). Вертає handle:
+  /// { ready (проміс: модуль змонтовано), update(o), frame(f), onKey(e), status(), pad, root, unmount() }.
+  /// Клавіші й пад каркас вкладеному модулю НЕ роздає: господар кличе handle.onKey зі свого onKey, а свій `pad`
+  /// бере з handle.pad (той уже прив'язаний до ctx підгри).
+  function embed(host, gameId, opts) {
+    const box = document.createElement('div');
+    box.className = 'gembed';
+    box.dataset.game = gameId;
+    host.appendChild(box);
+    let o = Object.assign({}, opts || {});
+    let mod = null;
+    let dead = false;
+    const ctx = { frame: null };
+    const n = () => Math.max((o.names || []).length, (o.nicks || []).length);
+    function build() {
+      const names = o.names || [], nicks = o.nicks || [], sn = o.seatNames || [];
+      const seats = [];
+      for (let i = 0; i < n(); i++) seats.push(nicks[i] ? { i, nick: nicks[i] } : { i, nick: null, bot: names[i] || '🤖 бот' });
+      const status = o.status || 'playing';
+      ctx.room = {
+        id: (o.roomId || 'embed') + ':' + gameId, game: gameId, status, seats, seatNames: sn, host: o.host || '',
+        minPlayers: n(), maxPlayers: n(), options: o.options || {}, round: 1, stake: 0, watchers: 0,
+        result: status === 'finished' ? Object.assign({ winners: [], draw: false }, o.result || {}) : null,
+      };
+      ctx.seat = o.seat == null ? null : o.seat;
+      ctx.view = o.view || null;
+      if (o.frame !== undefined) ctx.frame = o.frame;
+      ctx.me = me;
+      ctx.playing = status === 'playing';
+      ctx.mine = ctx.seat != null;
+      ctx.myTurn = ctx.mine && ctx.playing && !!ctx.view && ctx.view.turn === ctx.seat;
+      ctx.embedded = true;
+      ctx.esc = esc;
+      ctx.toast = toast;
+      ctx.ui = ui;
+      ctx.css = cssVar;
+      ctx.seatName = (i) => sn[i] || (i === 0 ? 'перший' : i === 1 ? 'другий' : 'гравець ' + (i + 1));
+      ctx.nickOf = (i) => nicks[i] || null;
+      ctx.nameOf = (i) => nicks[i] || names[i] || null;
+      ctx.act = (a, p) => (o.act ? o.act(a, p === undefined ? null : p) : Promise.resolve({ ok: false }));
+      ctx.input = (a, p) => { if (o.input) o.input(a, p === undefined ? null : p); };
+      ctx.resync = () => { if (o.resync) o.resync(); };
+      return ctx;
+    }
+    const h = {
+      root: box,
+      gameId,
+      get mod() { return mod; },
+      get ctx() { return ctx; },
+      /// Пад підгри, прив'язаний до її ctx: господар віддає його як свій `pad` (getter), pad.js кличе when/on.
+      get pad() {
+        const p = mod && mod.pad;
+        if (!p) return null;
+        return Object.assign({}, p, {
+          when: () => (p.when ? p.when(ctx) : ctx.mine && ctx.playing),
+          on: p.on ? (btn) => p.on(btn, ctx) : undefined,
+        });
+      },
+      update(next) {
+        if (next) o = Object.assign(o, next);
+        if (dead || !mod) return;
+        build();
+        try { if (mod.update) mod.update(box, ctx); } catch (e) { console.warn('[games] embed update ' + gameId, e); }
+      },
+      frame(f) {
+        ctx.frame = f;
+        o.frame = f;
+        if (dead || !mod || !mod.frame || !f) return;
+        try { mod.frame(box, ctx, f); } catch (e) { console.warn('[games] embed frame ' + gameId, e); }
+      },
+      onKey(e) {
+        if (dead || !mod || !mod.onKey) return false;
+        try { return !!mod.onKey(e, ctx); } catch (err) { console.warn('[games] embed onKey', err); return false; }
+      },
+      status() {
+        if (dead || !mod || !mod.status) return '';
+        try { return mod.status(ctx) || ''; } catch { return ''; }
+      },
+      unmount() {
+        if (dead) return;
+        dead = true;
+        try { if (mod && mod.unmount) mod.unmount(box); } catch (e) { console.warn('[games] embed unmount', e); }
+        box.remove();
+      },
+    };
+    h.ready = Promise.resolve(byId[gameId] ? null : ensureCatalog()).then(() => loadGame(gameId)).then((ok) => {
+      if (dead) return false;
+      mod = modules[gameId] || null;
+      if (!ok || !mod) { box.innerHTML = '<div class="gempty">Модуль гри «' + esc(gameId) + '» не завантажився</div>'; return false; }
+      build();
+      try {
+        mod.mount(box, ctx);
+        if (mod.update) mod.update(box, ctx);
+        if (ctx.frame && mod.frame) mod.frame(box, ctx, ctx.frame);
+      } catch (e) { console.warn('[games] embed mount ' + gameId, e); return false; }
+      return true;
+    });
+    return h;
+  }
+
+  // =============================================================================================
   // Клавіатура
   // =============================================================================================
 
@@ -2602,6 +2722,8 @@
 
     /// Новий знімок турніру (tournament.js): смужка відліку на столі щойно дограної гри.
     tournamentChanged() { for (const id in cards) refreshCard(id); },
+    /// Модуль гри всередині іншого модуля (вечірка, mgprobe) — див. function embed вище.
+    embed,
 
     init(o) {
       o = o || {};

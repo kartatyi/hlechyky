@@ -46,15 +46,19 @@ public static class GamesSetup
         Impl.RallySetup.AddRally(services);   // «Сільське ралі»: рекорди кіл трас
         Impl.DuelSetup.AddDuel(services);                   // Дуель: спільні рекорди реакції («найшвидша рука»)
         Impl.DiceSetup.AddDice(services);                  // «Під глеком»: сезон звань і ставки вболівальників
+        Impl.VechirkaSetup.AddVechirka(services);           // Глечикова вечірка: корона «Голова вечірки»
         Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
         Impl.DotepySetup.AddDotepy(services);               // «Додепи»: голос Глека, голос публіки
         Impl.GeoSetup.AddGeo(services);   // «Де це?»: фото з Вікісховища в cache/geo
         Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
         Impl.SkilkySetup.AddSkilky(services);   // «Скільки?»: фото «Якого року?» в cache/skilky, таблиця дня
         services.AddSingleton<IDailyPoints>(sp => sp.GetRequiredService<Impl.SkilkyDailyBoard>());   // очки дня в «☀ Сьогодні»
+        Impl.GeeseSetup.AddGeese(services);                 // «Порахуй гусей»: таблиця «Гусей дня» і її очки в «☀ Сьогодні»
         Impl.PictionarySetup.AddPictionary(services);       // Піктіонарі: публічний альбом і рекорди пар
         Impl.WordleSetup.AddWordle(services);               // Глек-слово: слова на 4 і 6 літер для гри наввипередки
         Impl.DinoDailySetup.AddDinoDaily(services);          // Забіг дня: привиди друзів і кубок тижня
+        Impl.TyrSetup.AddTyr(services);   // «Тир дня»: таблиця дня за очками й очки в «☀ Сьогодні»
+        Impl.SkleiSetup.AddSklei(services);                 // «Склей глек»: свої картинки за черепки, малюнки й фото в колоді
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         return services;
     }
@@ -70,6 +74,7 @@ public static class GamesSetup
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
         Impl.DiceSetup.MapDice(app);                       // /api/games/dice/bet, /api/games/dice/season
+        Impl.VechirkaSetup.MapVechirka(app);               // /api/games/vechirka/data, /crown
         Impl.VohnykSetup.MapVohnyk(app);                   // /api/games/vohnyk/best — таблиця рівня
         Impl.DotepySetup.MapDotepy(app);                    // /api/games/dotepy/jury — голос публіки «Додепів»
         Impl.GeoSetup.MapGeo(app);   // /api/games/geo/<токен>.jpg
@@ -77,6 +82,7 @@ public static class GamesSetup
         Impl.PictionarySetup.MapPictionary(app);            // /api/games/pictionary/… — альбом, 📌, реакції глядачів, пари
         Impl.WordleSetup.MapWordle(app);                    // /api/games/wordle/stats — серія й розподіл спроб
         Impl.DinoDailySetup.MapDinoDaily(app);              // /api/games/dino-daily/cup — кубок тижня
+        Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
         return app;
     }
 }

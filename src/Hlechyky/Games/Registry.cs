@@ -23,7 +23,9 @@ public sealed record CatalogGame(
     bool HasCss,
     bool Daily,
     /// <summary>Ім'я файла модуля без розширення: завантажувач бере <c>/games/{Module}.js</c>. Кілька ігор можуть ділити один.</summary>
-    string Module);
+    string Module,
+    /// <summary>Гри нема в каталозі лобі (<see cref="IUnlistedGame"/>, стенди): стіл відкривають посиланням <c>#games/new/&lt;id&gt;</c>.</summary>
+    bool Unlisted = false);
 
 /// <summary>
 /// Відповідь каталогу: ігри, дозволені ставки й відбитки файлів модулів (<c>"games/bomber.js" → "3f9a0c…"</c>, Front.cs) —
@@ -80,7 +82,8 @@ public sealed class Registry
         i.Hint,
         File.Exists(Paths.Resolve($"web/games/{i.Module}.css")),
         typeof(IDailyGame).IsAssignableFrom(type),
-        i.Module);
+        i.Module,
+        typeof(IUnlistedGame).IsAssignableFrom(type));
 
     /// <summary>«WhenFull» → «whenFull», «Board» → «board»: на дроті camelCase, як і решта JSON.</summary>
     static string Camel(string s) => char.ToLowerInvariant(s[0]) + s[1..];

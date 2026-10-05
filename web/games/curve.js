@@ -497,6 +497,18 @@
       g.strokeRect(0.5, 0.5, W - 1, H - 1);
       g.setLineDash([]);
     }
+    if (f && f.in > 0) {
+      // Вечірка: стіни сходяться — усе за ними тінню, сама стіна глиняною рамкою.
+      const d = f.in;
+      g.fillStyle = cssv(ctx, '--gshade', 'rgba(15, 31, 24, .62)');
+      g.fillRect(0, 0, W, d);
+      g.fillRect(0, H - d, W, d);
+      g.fillRect(0, d, d, H - 2 * d);
+      g.fillRect(W - d, d, d, H - 2 * d);
+      g.strokeStyle = cssv(ctx, '--clay', '#c8794a');
+      g.lineWidth = 1.5;
+      g.strokeRect(d, d, W - 2 * d, H - 2 * d);
+    }
 
     const phase = f && f.phase;
     const heads = (f && f.heads) || [];
@@ -708,7 +720,7 @@
   /// нижнім меню. Раз на партію (room.startedAt), коли вона пішла, прокручуємо так, щоб поле з кнопками
   /// стало між шапкою сайту й меню (і над «💬 Стіл»). Усе й так видно — не чіпаємо.
   function fitPhone(root, st, ctx, hudSel, padSel) {
-    if (!ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
+    if (ctx.embedded || !ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     if (st.fitFor === key) return;
     const hudEl = root.querySelector(':scope > ' + hudSel), padEl = root.querySelector(':scope > ' + padSel);

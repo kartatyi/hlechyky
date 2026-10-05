@@ -27,8 +27,17 @@ static class SnakeModesTurns
 /// обом ще до того, як другий сяде, тож рейтингова партія чесна: однакові правила для обох, а серія «до 3/5»
 /// — це одна партія каркаса з одним результатом (одна ставка, одна зміна Ело).
 /// </summary>
-public sealed class TronGame : ArenaGame
+public sealed class TronGame : ArenaGame, IPartyMinigame
 {
+    /// <summary>Вечірка (docs/games/specs/party-minigame.md): 1×1, серія до двох раундів, не довше 55 с.</summary>
+    protected override bool PartyCapable => true;
+    public string Howto => "Не врізайся ні в стіну, ні в слід — свій чи чужий. Хто перший виграв два раунди, той і взяв. "
+        + "Стрілки чи WASD; на телефоні — свайп або кнопки";
+    public int PartyCapMs => 60_000;
+    public int PartyMin => 2;
+    public int PartyMax => 2;
+    public IReadOnlyDictionary<int, long> PartyScores() => PartyScoresOf();
+
     /// <summary>Швидше за змійку: слід росте щотика, і на 120 мс поле закінчувалось би надто мляво.</summary>
     public const int TickMs = 100;
     /// <summary>Три секунди «готуйсь».</summary>

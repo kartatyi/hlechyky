@@ -602,7 +602,8 @@
   }
 
   const seatOf = (st, i) => (st.view && st.view.seats || []).find((s) => s.seat === i) || null;
-  const nickOfSeat = (st, i) => { const s = seatOf(st, i); return (s && s.nick) || (st.ctx && (st.ctx.nameOf || st.ctx.nickOf)(i)) || SEAT_NAMES[i] || '?'; };
+  // у вечірці (embed) ботів звуть по-людськи («🤖 Галя») — ім'я місця від вечірки важливіше за серверне «бот»
+  const nickOfSeat = (st, i) => { const s = seatOf(st, i); return (st.ctx && st.ctx.embedded && st.ctx.nameOf(i)) || (s && s.nick) || (st.ctx && (st.ctx.nameOf || st.ctx.nickOf)(i)) || SEAT_NAMES[i] || '?'; };
   const nameOf = (st, id) => (st.names && st.names[id]) || 'селянин';
   const alive = (st) => !!(st.me && st.me.alive);
   const phaseOf = (st) => (st.vphase === 'over' ? 'over' : st.fph || st.vphase);
@@ -1477,7 +1478,7 @@
     let row = '';
     for (const s of seats) {
       row += '<span class="potato-seat potato-s' + s.seat + (s.alive ? '' : ' dead') + (s.out ? ' out' : '') + (s.seat === ctx.seat ? ' me' : '') + '">'
-        + '<i></i>' + ctx.esc(s.nick) + ' <b>' + (s.total | 0) + '</b>' + (s.held != null ? ' <small>🔥' + secs(s.held) + '</small>' : '') + '</span>';
+        + '<i></i>' + ctx.esc(nickOfSeat(st, s.seat)) + ' <b>' + (s.total | 0) + '</b>' + (s.held != null ? ' <small>🔥' + secs(s.held) + '</small>' : '') + '</span>';
     }
     const se = st.seatsEl;
     if (se && se.dataset.sig !== row) {
@@ -1809,7 +1810,7 @@
   /// гри став під шапку сайту: тоді мапа й кнопки вміщаються разом. Якщо й так усе видно — не чіпаємо.
   function fitPhone(st) {
     const ctx = st.ctx, padEl = st.padEl;
-    if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !st.hudEl || !padEl || !HGames.ui.coarse()) return;
+    if (!ctx || ctx.embedded || !ctx.mine || !ctx.playing || !ctx.room || !st.hudEl || !padEl || !HGames.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     if (st.fitFor === key) return;
     // лежачи хрестовина й кнопки стоять обабіч мапи, тож у кадр треба всю сітку (мапа, рядок гравців, кнопки)

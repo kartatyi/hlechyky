@@ -37,8 +37,21 @@ public sealed class FreezeSeat
 /// вертає на старт. Перший, хто торкнувся глека, бере раунд. Правила лугу — у <see cref="FreezeCore"/>, тут фази, очки,
 /// дії, вид і кадр (spec: docs/games/specs/freeze.md).
 /// </summary>
-public sealed partial class Freeze : Game
+public sealed partial class Freeze : Game, IPartyMinigame
 {
+    /// <summary>Раунд у вечірці — 65 с: разом із відліком 3 с — під стелю 75 с.</summary>
+    public const int PartyRoundTicks = 1625;
+    /// <summary>Режим вечірки (docs/games/specs/party-minigame.md): один раунд «кожен за себе», боти на місцях <c>bots</c>.</summary>
+    PartyMode? _party;
+    int _roundTicks = RoundTicks;
+    public bool Party => _party is not null;
+
+    public string Howto => "Крадься до глека, поки Баба не дивиться, і завмирай, коли обертається: хто дійшов — той перший, решта — хто ближче. "
+        + "Стрілки/WASD — іти (відпусти — завмер), пробіл — штовхнути; на телефоні — стік і кнопка";
+    public int PartyCapMs => 75_000;   // 3 с відліку + раунд до 65 с + запас
+    public int PartyMin => 2;
+    public int PartyMax => Seats;
+
     public const string PhaseLobby = "lobby", PhaseStart = "start", PhaseGo = "go", PhaseReveal = "reveal", PhaseOver = "over";
     public const int Seats = 8;
     public const int TickMs = 40;
@@ -131,6 +144,8 @@ public sealed partial class Freeze : Game
         _crowd = options.TryGetValue("crowd", out var c) && c is "small" or "big" ? c : "auto";
         _relay = options.TryGetValue("mode", out var m) && m == "relay";
         _solo.Configure(options);
+        _party = PartyMode.Read(options);
+        if (_party is not null) { _rounds = 1; _relay = false; _roundTicks = PartyRoundTicks; }
     }
 
     bool _relay;
@@ -176,7 +191,8 @@ public sealed partial class Freeze : Game
         _reveal = null;
         _pending.Clear();
         _evFrame = [];
-        _bots = _solo.Active(Ctx, Seats) ? BotSeats() : [];
+        _bots = _party is { } pm ? [.. pm.Bots.Where(b => b < Seats && !Ctx.Seated(b))]
+            : _solo.Active(Ctx, Seats) ? BotSeats() : [];
         var players = 0;
         for (var i = 0; i < Seats; i++)
         {
@@ -335,7 +351,7 @@ public sealed partial class Freeze : Game
                 if (--_left <= 0)
                 {
                     _phase = PhaseGo;
-                    _left = RoundTicks;
+                    _left = _roundTicks;
                     Core.Open();
                     _dirty = true;
                 }
@@ -449,7 +465,7 @@ public sealed partial class Freeze : Game
             // з 🤖 ботами — без ачівок: партія тренувальна
             foreach (var w in jug)
             {
-                if (_bots.Length > 0) break;
+                if (_bots.Length > 0 || _party is not null) break;
                 if (bold) Ctx.Award(w, 0, "ach:freeze-bold");
                 if (_s[w].Caught == 0) Ctx.Award(w, 0, "ach:freeze-clean");
             }
@@ -531,6 +547,7 @@ public sealed partial class Freeze : Game
         for (var i = 0; i < Seats; i++) _s[i].Total += pts[i];
         _reveal = RevealOf(winners, why, s => s.Active, pts);
         StandStill();
+        if (_party is not null) { PartyOver(); return; }
         _phase = PhaseReveal;
         _left = RevealTicks;
         _dirty = true;
@@ -561,6 +578,36 @@ public sealed partial class Freeze : Game
             trails.Add((i, TrailOf(s)));
         }
         return new FreezeReveal(winners, why, [.. ids], [.. rows], [.. trails]);
+    }
+
+    /// <summary>
+    /// Scores вечірки: дійшов до глека (не впійманий) — <c>FinishX + 100</c> (дійшли в один тик — рівні), решта — x свого
+    /// селянина: хто ближче до глека, той вище. Місця, що не грали, — −1.
+    /// </summary>
+    public IReadOnlyDictionary<int, long> PartyScores()
+    {
+        var r = new Dictionary<int, long>(Ctx.Players);
+        for (var i = 0; i < Ctx.Players; i++)
+        {
+            if (i >= Seats || !_s[i].Active || _s[i].Me < 0 || _s[i].Me >= Core.N) { r[i] = -1; continue; }
+            var v = Core.V[_s[i].Me];
+            r[i] = v.X >= FreezeCore.FinishX && v.Caught == 0 ? FreezeCore.FinishX + 100 : v.X;
+        }
+        return r;
+    }
+
+    /// <summary>Кінець вечірки: розкриття лишається на полі, без серії, очок у профіль і ачівок — лише scores місць.</summary>
+    void PartyOver()
+    {
+        var scores = PartyScores();
+        var best = scores.Count == 0 ? 0 : scores.Values.Max();
+        var winners = scores.Where(kv => kv.Value == best && kv.Value >= 0).Select(kv => kv.Key).Order().ToArray();
+        _winners = winners;
+        _phase = PhaseOver;
+        _left = 0;
+        _dirty = true;
+        var line = string.Join(" : ", scores.Where(kv => kv.Value >= 0).OrderByDescending(kv => kv.Value).Select(kv => BotNick(kv.Key)));
+        Ctx.Finish(winners, $"«{Info.Title}»: {line}", scores);
     }
 
     void FinishMatch()
@@ -617,7 +664,7 @@ public sealed partial class Freeze : Game
     /// </summary>
     public override void OnLeave(int seat)
     {
-        if (!_started || seat < 0 || seat >= Seats || _phase == PhaseOver) return;
+        if (!_started || seat < 0 || seat >= Seats || _phase == PhaseOver || _party is not null) return;
         var s = _s[seat];
         if (!s.Active) return;
         s.Out = true;

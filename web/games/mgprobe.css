@@ -1,0 +1,17 @@
+/* Проба міні-гри (mgprobe): картка «як грати», місце під вбудовану гру, таблиця місць. */
+/* На всю ширину картки: .gbody центрує дітей, і без цього гра з container-type (Скільки?) стискалась до нуля. */
+.mgp { display: flex; flex-direction: column; gap: 10px; min-width: 0; width: 100%; }
+.mgp-card { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 12px;
+  background: var(--card, rgba(127, 127, 127, .08)); border: 1px solid var(--line, rgba(127, 127, 127, .25)); }
+.mgp-card p { margin: 4px 0 0; }
+.mgp-arc { flex: none; width: 44px; height: 44px; }
+.mgp-game { min-width: 0; }
+.mgp-game .gembed { min-width: 0; }
+.mgp-res h4 { margin: 4px 0 8px; }
+.mgp-tbl { border-collapse: collapse; width: 100%; max-width: 420px; }
+.mgp-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line, rgba(127, 127, 127, .2)); }
+.mgp-tbl td:first-child { width: 2em; font-weight: 700; color: var(--accent); }
+.mgp-tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mgp-tbl tr.me td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.mgp-again { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.mgp-again select, .mgp-again button { min-height: 44px; }

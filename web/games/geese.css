@@ -1,0 +1,124 @@
+/*
+  «Порахуй гусей»: двір малює канвас (geese.js), тут — питання над ним, гравці, табло відповіді й підсумок.
+  Під палець: кнопки ≥ 48 px, на телефоні все в один стовпчик без горизонтального скролу.
+*/
+
+/* чипи місць у шапці картки (seatClass gs0…gs7) — ті самі кольори, що крапки в рядку гравців */
+.gseat.gs0 { color: #5aa9ff; }
+.gseat.gs1 { color: #d9825b; }
+.gseat.gs2 { color: #7bd389; }
+.gseat.gs3 { color: #f4c542; }
+.gseat.gs4 { color: #b48cf2; }
+.gseat.gs5 { color: #6fd6c2; }
+.gseat.gs6 { color: #f08cb8; }
+.gseat.gs7 { color: #b7c2bd; }
+
+.gsw { display: flex; flex-direction: column; gap: 8px; max-width: 760px; margin: 0 auto; width: 100%; min-width: 0; }
+.gsw > div:empty { display: none; }
+.gsboard { max-width: 760px; border-radius: 14px; background: #7fb95a; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); touch-action: manipulation; }
+
+.gsno { text-align: center; }
+.gsrules { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; line-height: 1.45; }
+
+/* питання — головне на екрані, тож великим */
+.gsq {
+  display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center;
+  font-family: var(--display, inherit); font-size: clamp(18px, 4.6vw, 24px); font-weight: 700; line-height: 1.25;
+  padding: 8px 12px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line);
+}
+.gsqi { font-size: 1.35em; flex: none; }
+.gsq.gsnote { color: var(--accent); font-size: clamp(16px, 4vw, 20px); }
+
+/* гравці: чипи з очками, ✓ хто відповів, на повторі — їхні відповіді */
+.gsppl { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.gsp {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  background: var(--panel2); border: 1px solid var(--line); max-width: 100%; min-width: 0; font-size: 14px;
+}
+.gsp.me { border-color: var(--accent); }
+.gsp .gsn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 9em; }
+.gsdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.gsok { color: var(--ok); font-weight: 800; }
+.gsdots { color: var(--muted); }
+.gsa { padding: 0 6px; border-radius: 8px; background: var(--panel3); font-weight: 700; }
+.gspts { font-weight: 800; color: var(--muted); }
+.gspts.p1 { color: var(--accent); }
+.gspts.p3, .gspts.p4 { color: var(--ok); }
+
+/* табло відповіді */
+.gsans { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.gsnum { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.gsnum button { width: 64px; height: 64px; font-size: 32px; font-weight: 800; border-radius: 16px; padding: 0; }
+.gsval {
+  min-width: 2.2em; text-align: center; font-size: 52px; font-weight: 800; line-height: 64px; font-variant-numeric: tabular-nums;
+  background: var(--bg2); border: 2px solid var(--accent); border-radius: 16px; padding: 0 12px; color: var(--accent);
+}
+.gsval.empty { color: var(--muted); border-color: var(--line); }
+.gskeys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 360px; width: 100%; margin: 0 auto; }
+.gskeys button { height: 52px; font-size: 24px; font-weight: 700; border-radius: 12px; padding: 0; }
+.gskeys button.primary, .gsgo { font-size: 22px; }
+.gsgo { min-height: 52px; max-width: 360px; width: 100%; margin: 0 auto; }
+.gstimer { text-align: center; }
+.gsopts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-width: 520px; width: 100%; margin: 0 auto; }
+.gsopts.n3 { grid-template-columns: repeat(3, 1fr); }
+.gsopt {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 84px; padding: 8px 6px;
+  border-radius: 14px; font-size: 16px; font-weight: 700; position: relative;
+}
+.gsopt .gse { font-size: 38px; line-height: 1.1; }
+.gsopt kbd { position: absolute; top: 4px; left: 8px; font-size: 11px; color: var(--muted); font-family: inherit; }
+.gsopt.on { border-color: var(--accent); background: var(--panel3); box-shadow: 0 0 0 2px var(--accent) inset; }
+.gsdone1 { text-align: center; font-size: 20px; padding: 10px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line); }
+.gsdone1 b { color: var(--accent); font-size: 1.2em; }
+
+/* показ */
+.gsrevh { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; align-items: baseline; text-align: center; font-size: 20px; }
+.gsrevh b { color: var(--accent); font-size: 1.25em; }
+.gsmsg { font-weight: 700; }
+
+/* підсумок */
+.gstitle { text-align: center; font-family: var(--display, inherit); font-size: clamp(18px, 4.6vw, 24px); font-weight: 800; }
+.gstable { display: flex; flex-direction: column; gap: 4px; max-width: 420px; width: 100%; margin: 0 auto; }
+.gsrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--panel2); min-width: 0; }
+.gsrow .gsn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gsrow.me { box-shadow: 0 0 0 2px var(--accent) inset; }
+.gsrow.win b { color: var(--accent); }
+.gsmarks { letter-spacing: 1px; }
+.gsrecap { max-width: 520px; width: 100%; margin: 0 auto; }
+.gsrecap summary { cursor: pointer; text-align: center; color: var(--muted); padding: 4px; }
+.gsrecap ol { margin: 6px 0 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; }
+.gsrecap li > span { display: block; }
+.gsrecap li b { color: var(--muted); }
+.gsrecap li b.p1 { color: var(--accent); }
+.gsrecap li b.p3, .gsrecap li b.p4 { color: var(--ok); }
+.gsdaily { display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; }
+.gsdaily .gstable { align-self: stretch; }
+
+@media (max-width: 420px) {
+  .gsnum button { width: 56px; height: 56px; }
+  .gsval { font-size: 44px; line-height: 56px; }
+  .gskeys button { height: 48px; }
+  .gsopt { min-height: 76px; }
+  .gsopt .gse { font-size: 32px; }
+  .gsp { font-size: 13px; padding: 3px 8px; }
+}
+
+/* поки відповідаєш, двору не видно — лише питання, табло й смужка часу */
+.gsanswering .gsyard { display: none; }
+/* На вузькому телефоні з 8 гравцями (вечірка) чипи в три ряди зсували ✓ під нижню навігацію: поки відповідаєш —
+   чипи в один ряд із прокруткою, клавіші трохи нижчі (44 px — ще під палець). */
+@media (max-width: 420px) {
+  .gsanswering .gsppl { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; padding-bottom: 2px; }
+  .gsanswering .gsppl::-webkit-scrollbar { display: none; }
+  .gsanswering .gsp { flex: none; }
+  .gsanswering .gsno { display: none; }
+  .gsanswering .gsw { gap: 6px; }
+  .gsanswering .gsnum button { width: 52px; height: 52px; }
+  .gsanswering .gsval { font-size: 40px; line-height: 52px; }
+  .gsanswering .gskeys button { height: 44px; }
+  .gsanswering .gsq { padding: 6px 10px; }
+}
+.gstimer { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.gstbar { display: block; width: 100%; max-width: 360px; height: 6px; border-radius: 3px; background: var(--panel3); overflow: hidden; }
+.gstbar b { display: block; height: 100%; width: 100%; background: var(--accent); transition: width .1s linear; }
+.gstbar b.low { background: var(--danger); }

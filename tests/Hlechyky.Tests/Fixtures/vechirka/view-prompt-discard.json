@@ -1,0 +1,244 @@
+{
+  "phase": "prompt",
+  "round": 7,
+  "rounds": 10,
+  "target": 30,
+  "late": false,
+  "lastGame": false,
+  "paused": null,
+  "map": "selo",
+  "mapV": 1,
+  "until": "2026-09-10T12:13:34.6400000+00:00",
+  "total": 10000,
+  "players": [
+    {
+      "i": 0,
+      "nick": "Оля",
+      "bot": false,
+      "name": "Оля",
+      "away": false,
+      "auto": true,
+      "pos": "m4",
+      "gleks": 1,
+      "coins": 2,
+      "items": [
+        "pick"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 1,
+      "place": 3,
+      "color": 0
+    },
+    {
+      "i": 2,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Галя",
+      "away": false,
+      "auto": false,
+      "pos": "y5",
+      "gleks": 2,
+      "coins": 17,
+      "items": [
+        "pumpkin",
+        "pick",
+        "pan"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 4,
+      "place": 1,
+      "color": 2
+    },
+    {
+      "i": 3,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Грицько",
+      "away": false,
+      "auto": false,
+      "pos": "m14",
+      "gleks": 1,
+      "coins": 27,
+      "items": [
+        "pick"
+      ],
+      "bump": true,
+      "charm": false,
+      "mgWins": 4,
+      "place": 2,
+      "color": 3
+    },
+    {
+      "i": 1,
+      "nick": "Петро",
+      "bot": false,
+      "name": "Петро",
+      "away": false,
+      "auto": true,
+      "pos": "m8",
+      "gleks": 0,
+      "coins": 24,
+      "items": [
+        "pick",
+        "key"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 4,
+      "color": 1
+    }
+  ],
+  "cur": 2,
+  "stand": "l2",
+  "price": 20,
+  "bank": 13,
+  "duelDone": false,
+  "gates": [],
+  "shops": {
+    "m8": [
+      "pick",
+      "gate",
+      "rope"
+    ],
+    "m26": [
+      "pan",
+      "rope",
+      "key"
+    ],
+    "y3": [
+      "charm",
+      "pan",
+      "rope"
+    ]
+  },
+  "prompt": {
+    "who": 2,
+    "kind": "discard",
+    "node": null,
+    "options": [
+      {
+        "k": "pumpkin",
+        "label": "\uD83C\uDF83 Гарбуз",
+        "price": null,
+        "ok": true
+      },
+      {
+        "k": "pick",
+        "label": "\uD83C\uDFAF Вибирайко",
+        "price": null,
+        "ok": true
+      },
+      {
+        "k": "pan",
+        "label": "\uD83C\uDF73 Пательня",
+        "price": null,
+        "ok": true
+      },
+      {
+        "k": "gate",
+        "label": "\uD83D\uDEA7 Шлагбаум (новий)",
+        "price": null,
+        "ok": true
+      }
+    ]
+  },
+  "aim": null,
+  "anim": {
+    "seq": 163,
+    "kind": "land",
+    "who": 2,
+    "path": null,
+    "dice": null,
+    "key": "chest",
+    "to": null,
+    "at": "2026-09-10T12:13:24.6400000+00:00",
+    "ms": 0
+  },
+  "fx": [
+    {
+      "seq": 157,
+      "kind": "bump",
+      "who": 3,
+      "d": 0,
+      "k": null
+    },
+    {
+      "seq": 157,
+      "kind": "coins",
+      "who": 3,
+      "d": -3,
+      "k": null
+    },
+    {
+      "seq": 157,
+      "kind": "coins",
+      "who": 2,
+      "d": 3,
+      "k": null
+    },
+    {
+      "seq": 160,
+      "kind": "coins",
+      "who": 2,
+      "d": -5,
+      "k": null
+    },
+    {
+      "seq": 160,
+      "kind": "item",
+      "who": 2,
+      "d": 0,
+      "k": "pan"
+    },
+    {
+      "seq": 161,
+      "kind": "coins",
+      "who": 2,
+      "d": -20,
+      "k": null
+    },
+    {
+      "seq": 161,
+      "kind": "glek",
+      "who": 2,
+      "d": 1,
+      "k": null
+    }
+  ],
+  "emo": [],
+  "pick": null,
+  "mg": null,
+  "lateInfo": null,
+  "final": null,
+  "say": {
+    "id": 21,
+    "text": "Глек продано! Лавка зачиняється — переїжджаю.",
+    "url": null
+  },
+  "log": [
+    "\uD83C\uDFFA Оля купив золотий глек!",
+    "\uD83D\uDC37 Оля зірвав скарбничку: +9",
+    "\uD83C\uDFFA \uD83E\uDD16 Грицько купив золотий глек!",
+    "❔ \uD83E\uDD16 Грицько: Бровко",
+    "\uD83C\uDFAF Бомбер: \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро, Оля",
+    "\uD83C\uDFAF Аерохокей: \uD83E\uDD16 Галя, Оля",
+    "\uD83C\uDFFA \uD83E\uDD16 Галя купив золотий глек!",
+    "\uD83C\uDFAF Ярмарковий тир: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Оля, Петро",
+    "\uD83D\uDC37 \uD83E\uDD16 Галя зірвав скарбничку: +5",
+    "\uD83C\uDFAF Тонкий лід: \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Оля, Петро",
+    "\uD83C\uDF73 \uD83E\uDD16 Галя → \uD83E\uDD16 Грицько",
+    "\uD83C\uDFFA \uD83E\uDD16 Галя купив золотий глек!"
+  ],
+  "you": {
+    "i": 0,
+    "can": [
+      "here",
+      "emo"
+    ],
+    "toStand": 5,
+    "tip": false
+  }
+}
