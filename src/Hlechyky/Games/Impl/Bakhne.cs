@@ -20,7 +20,8 @@ public sealed class Bakhne : Game, IPartyMinigame
     /// <summary>Підступи раунду (<c>trick</c>): нема, «Глек напився» (усе навпаки), червоні стрілки, швидкий показ.</summary>
     public const int TrickNone = 0, TrickDrunk = 1, TrickRed = 2, TrickFast = 3;
     /// <summary>Події кадру (<c>ev</c>: [id, kind, a, b]).</summary>
-    public const int EvArrow = 1, EvGo = 2, EvBang = 3, EvHit = 4, EvOut = 5, EvRound = 6, EvOver = 7, EvStep = 8, EvFence = 9;
+    /// Колишні 8/9 (step/fence) прибрано: напрямок чужого кроку до баху — підказка.
+    public const int EvArrow = 1, EvGo = 2, EvBang = 3, EvHit = 4, EvOut = 5, EvRound = 6, EvOver = 7;
 
     public const int Hearts = 2, PartyHearts = 1;
     public const int FirstLen = 3, PartyFirstLen = 4, MaxLen = 10;
@@ -205,8 +206,16 @@ public sealed class Bakhne : Game, IPartyMinigame
         }
         if (_trick == TrickRed)
         {
+            // Різні такти (часткове тасування Фішера–Єйтса): з поверненням червоних буває менше за len/3.
+            Span<int> idx = stackalloc int[_len];
+            for (var i = 0; i < _len; i++) idx[i] = i;
             var reds = Math.Max(1, _len / 3);
-            for (var k = 0; k < reds; k++) _red[Ctx.Rng.Next(_len)] = true;
+            for (var k = 0; k < reds; k++)
+            {
+                var j = k + Ctx.Rng.Next(_len - k);
+                (idx[k], idx[j]) = (idx[j], idx[k]);
+                _red[idx[k]] = true;
+            }
         }
         for (var i = 0; i < _len; i++)
             _shown[i] = _trick == TrickDrunk || _red[i] ? (_need[i] + 2) % 4 : _need[i];
@@ -265,10 +274,11 @@ public sealed class Bakhne : Game, IPartyMinigame
         if (SlotFor(seat, d) is not { } k) return ActResult.Fail(_ph == PhShow ? "Зачекай, Глек ще показує" : "Зараз не ступають");
         var y = _y[seat];
         if (y.Slots[k] >= 0) return ActResult.Fail("Один крок на такт");
-        y.Slots[k] = d;
         // Паркан: крок за двір не вийде — такт з'їдено, стоїш, де стояв (і бахне, якщо треба було йти).
-        var (x0, y0) = PosBefore(seat, k);
-        Event(In(x0 + Dx[d], y0 + Dy[d]) ? EvStep : EvFence, seat, d);
+        y.Slots[k] = d;
+        // Кадр бачать усі, тож ні куди ступив, ні подій step/fence у ньому нема — лише прапорець «уже ступив»
+        // (інакше можна не пам'ятати, а копіювати найшвидшого бота чи друга). Свій крок клієнт малює сам.
+        _dirty = true;
         return ActResult.Done;
     }
 
@@ -421,6 +431,14 @@ public sealed class Bakhne : Game, IPartyMinigame
     void CheckLast(List<int> died)
     {
         var alive = Enumerable.Range(0, Seats).Where(s => _y[s].Plays && _y[s].Alive).ToArray();
+        // Соло з ботами: людей живих не лишилось — не змушуємо дивитись, як боти доїдають одне одного до 12-го раунду.
+        // Перемога — живим ботам із найбільшими серцями.
+        if (_party is null && _botGame && alive.Length > 1 && !alive.Any(Ctx.Seated))
+        {
+            var best = alive.Max(s => _y[s].Hearts);
+            Over([.. alive.Where(s => _y[s].Hearts == best)]);
+            return;
+        }
         if (alive.Length > 1) return;
         if (_party is not null) { PartyOver(); return; }
         Over(alive.Length == 1 ? alive : [.. died]);
@@ -486,7 +504,7 @@ public sealed class Bakhne : Game, IPartyMinigame
             return;
         }
         var verdict = people.Length > 0 ? $"🏆 {Ctx.NickOf(people[0])} — перемога над {LiveBots.Of(_level)}и ботами"
-            : winners.Length > 0 ? $"🤖 Пам'ять міцніша в {Name(winners[0])}" : null;
+            : winners.Length > 0 ? $"🤖 Пам'ять міцніша в {string.Join(" і ", winners.Select(Name))}" : null;
         Ctx.Finish(people, Journal(winners, playing), scores, verdict);
     }
 
@@ -634,13 +652,15 @@ public sealed class Bakhne : Game, IPartyMinigame
     {
         var p = new int[]?[Seats];
         var beat = Beat;
+        var lobbyBots = lobby ? BotSeats() : [];
         for (var i = 0; i < Seats; i++)
         {
             var y = _y[i];
-            var plays = lobby ? Ctx.Seated(i) || Array.IndexOf(BotSeats(), i) >= 0 : y.Plays;
+            var plays = lobby ? Ctx.Seated(i) || Array.IndexOf(lobbyBots, i) >= 0 : y.Plays;
             if (!plays) continue;
             if (lobby) { p[i] = [Center, Center, Hearts, 1]; continue; }
-            var (x, yy) = Live(i);
+            // Лише зарахована позиція (після останнього баху): ще не бахнуті кроки — таємниця до баху.
+            int x = y.X, yy = y.Y;
             var fl = (y.Alive ? 1 : 0) | (y.HitNow ? 2 : 0)
                 | (beat >= 0 && y.Slots[beat] >= 0 || _ph == PhGo && y.Slots[0] >= 0 ? 4 : 0);
             p[i] = [x, yy, y.Hearts, fl];

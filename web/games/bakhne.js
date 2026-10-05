@@ -13,7 +13,9 @@
   Поле — DOM, а не канвас: дев'ять плиток на двір, вісім дворів — цього мало, щоб платити за власне малювання,
   зате анімації (горщики, дим, тіні) — CSS, і рядок не перемальовується без потреби. Годинник такту — свій:
   тик сервера з кадру + час, що минув відтоді (кадри щонайменше раз на 200 мс), тож тіні горщиків ростуть плавно.
-  Свій крок малюємо одразу (передбачення від p[seat]); кадр із нашою подією step/fence чи бах його замінює правдою.
+  Кадр спільний для всіх, тож p несе лише зараховану (після останнього баху) позицію, а не куди хто вже ступив:
+  інакше пам'ятати не треба — копіюй найшвидшого. Свої ще не бахнуті кроки клієнт пам'ятає сам (st.steps,
+  ключ раунд·100+такт) і малює фішку від зарахованої позиції; чужий крок видно лише стрибком (прапорець 4).
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -63,7 +65,7 @@
     if (!st) {
       st = root._bakhne = {
         root, el: null, yards: new Map(), yardKey: '', f: null, off: null, tickMs: 50, grace: 3,
-        evId: -1, evSeen: false, pred: null, stepBeat: -99, raf: 0, timers: new Set(), banner: '', bannerKey: '',
+        evId: -1, evSeen: false, steps: new Map(), stepBeat: -99, raf: 0, timers: new Set(), banner: '', bannerKey: '',
         fitS: null, layoutW: 0, flashN: 0, slotsKey: '', hudKey: '', swipe: null,
       };
     }
@@ -263,7 +265,12 @@
       y.el.classList.toggle('out', !alive && f.ph !== 6);
       y.el.classList.toggle('won', f.ph === 5 && (v.winners || []).includes(i));
       let x = q[0], yy = q[1];
-      if (i === me && st.pred) { x = st.pred.x; yy = st.pred.y; }
+      if (i === me) { const m = myPos(st, f, q); x = m.x; yy = m.y; }
+      else if ((q[3] & 4) && (f.ph === 2 || f.ph === 3)) {
+        // чужий крок: лише стрибок на місці — куди, побачиш після баху
+        const hk = f.round * 100 + (f.ph === 2 ? 0 : f.beat);
+        if (hk !== y.hopK) { y.hopK = hk; restart(y.tok, 'hop'); }
+      }
       const pk = x + ',' + yy;
       if (pk !== y.posK) {
         y.posK = pk;
@@ -273,7 +280,7 @@
     });
     if (me != null) {
       const q = f.p[me];
-      const stepped = st.pred || (q && (q[3] & 4));
+      const stepped = (q && (q[3] & 4)) || st.steps.has(f.round * 100 + (f.ph === 2 ? 0 : f.beat));
       st.field.classList.toggle('stepped', !!stepped && (f.ph === 2 || f.ph === 3));
     }
     controls(st);
@@ -420,24 +427,18 @@
       else if (kind === 4) hit(st, a, a === me);
       else if (kind === 5) { if (a === me && f.ph !== 5) later(st, 500, () => { if (st.f.ph !== 5) flash(st, '💥 Тебе накрило — дивись, як інші', 2200, 'bad'); }); }
       else if (kind === 6) {
-        st.pred = null;
+        st.steps.clear();
         st.stepBeat = -99;
         st.yards.forEach((y) => y.tiles.forEach((t) => t.classList.remove('scorch', 'boom', 'safe')));
         if (a > 1 && !b) flash(st, 'Раунд ' + a, 1100, '');
       } else if (kind === 2) { if (me != null) flash(st, 'Пішли!', 800, 'go'); }
-      else if (kind === 8 || kind === 9) {
-        if (a === me) st.pred = null;
-        const y = st.yards.get(a);
-        if (y && kind === 9) { y.el.style.setProperty('--fx', DX[b] * 6 + 'px'); y.el.style.setProperty('--fy', DY[b] * 6 + 'px'); restart(y.tok, 'bump'); }
-        else if (y && a !== me) restart(y.tok, 'hop');
-      } else if (kind === 7) st.pred = null;
+      else if (kind === 7) st.steps.clear();
     }
     if (booms.length) bang(st, booms[booms.length - 1]);
   }
 
   /// Бах: горщики на всі плитки всіх дворів, крім правильної; правильна спалахує зеленим.
   function bang(st, safe) {
-    st.pred = null;
     const all = [];
     st.yards.forEach((y) => { if (!y.el.classList.contains('out')) y.tiles.forEach((t, k) => { t.classList.remove('boom', 'safe'); all.push([t, k]); }); });
     void st.field.offsetWidth;
@@ -455,6 +456,20 @@
     if (mine) restart(st.stage, 'ouch');
   }
 
+  /// Де я стою: зарахована позиція з кадру плюс свої ще не бахнуті кроки (за паркан крок не веде — як на сервері).
+  function myPos(st, f, q) {
+    let x = q[0], y = q[1];
+    if (f.ph === 2 || f.ph === 3) {
+      for (let b = f.done || 0; b < f.len; b++) {
+        const d = st.steps.get(f.round * 100 + b);
+        if (d == null) continue;
+        const nx = x + DX[d], ny = y + DY[d];
+        if (nx >= 0 && nx <= 2 && ny >= 0 && ny <= 2) { x = nx; y = ny; }
+      }
+    }
+    return { x, y };
+  }
+
   // ---------- ввід ----------
   function canStep(st) {
     const f = st.f, me = mySeat(st);
@@ -469,28 +484,32 @@
     const f = st.f, me = mySeat(st);
     const t = tNow(st);
     const g = st.grace;
-    let beat;
+    let beat, inGrace = false;
     if (f.ph === 2) {
       // на «Пішли!» сервер бере натиск лише в останні grace тиків відліку; раніше — «Зачекай»
       if (t < f.at + f.bt - g - 1) { restart(st.bubble, 'nope'); return; }
       beat = 0;
     } else {
       beat = Math.floor((t - f.at) / f.bt);
-      const inGrace = t - (f.at + beat * f.bt) < g;
+      inGrace = t - (f.at + beat * f.bt) < g;
       if (beat >= f.len) return;
       if (st.stepBeat === f.round * 100 + beat && !inGrace) { restart(st.bubble, 'nope'); return; }
     }
+    // Перші grace тиків такту, минулий ще не бахнув і без кроку — сервер, найпевніше, віддасть натиск минулому такту.
+    const late = inGrace && beat > 0 && (f.done || 0) <= beat - 1 && !st.steps.has(f.round * 100 + beat - 1);
+    const key = f.round * 100 + (late ? beat - 1 : beat);   // з раундом: подія «новий раунд» могла й не дійти
+    if (st.steps.has(key)) { restart(st.bubble, 'nope'); return; }
     st.ctx.input('step', { d });
-    st.stepBeat = f.round * 100 + beat;   // з раундом: подія «новий раунд» могла й не дійти
+    st.stepBeat = f.round * 100 + beat;
     const q = f.p[me];
-    const x0 = st.pred ? st.pred.x : q[0], y0 = st.pred ? st.pred.y : q[1];
+    const { x: x0, y: y0 } = myPos(st, f, q);
+    st.steps.set(key, d);
     const x = x0 + DX[d], y = y0 + DY[d];
     const yd = st.yards.get(me);
     if (x < 0 || x > 2 || y < 0 || y > 2) {
       if (yd) { yd.el.style.setProperty('--fx', DX[d] * 6 + 'px'); yd.el.style.setProperty('--fy', DY[d] * 6 + 'px'); restart(yd.tok, 'bump'); }
       return;
     }
-    st.pred = { x, y, at: performance.now() };
     if (yd) { yd.posK = ''; restart(yd.tok, 'hop'); }
     render(st);
   }
@@ -517,7 +536,7 @@
       const me = mySeat(st);
       if (!t || me == null || !st.f) return;
       const k = +t.dataset.k, q = st.f.p[me];
-      const x0 = st.pred ? st.pred.x : q[0], y0 = st.pred ? st.pred.y : q[1];
+      const { x: x0, y: y0 } = myPos(st, st.f, q);
       const dx = (k % 3) - x0, dy = Math.floor(k / 3) - y0;
       if (Math.abs(dx) + Math.abs(dy) !== 1) return;
       step(st, dx === 1 ? 0 : dx === -1 ? 2 : dy === 1 ? 1 : 3);
@@ -545,7 +564,6 @@
       const f = st.f;
       if (!f || !st.ctx.playing || f.ph === 5 || f.ph === 6) { st.field.style.setProperty('--pr', 0); st.beatBar.style.transform = 'scaleX(0)'; return; }
       st.raf = requestAnimationFrame(loop);
-      if (st.pred && performance.now() - st.pred.at > 700) { st.pred = null; render(st); }
       const t = tNow(st);
       let pr = 0, bar = 0;
       if (f.ph === 3 && f.bt) {
@@ -632,7 +650,7 @@
         takeClock(st, vf);
         events(st, vf);
       }
-      if (!ctx.playing) { st.pred = null; st.stepBeat = -99; }
+      if (!ctx.playing) { st.steps.clear(); st.stepBeat = -99; }
       render(st);
       layout(st);
       spin(st);

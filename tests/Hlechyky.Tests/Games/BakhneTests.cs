@@ -334,12 +334,67 @@ public class BakhneTests
         Assert.Equal(3, f.GetProperty("len").GetInt32());
         Assert.Equal(Bakhne.PhSteps, f.GetProperty("ph").GetInt32());
         Assert.True(f.GetProperty("bt").GetInt32() >= 12);
-        // свій крок видно одразу, у прапорцях — «такт уже з кроком»
+        // у кадрі — лише «такт уже з кроком», а куди — таємниця до баху (свій крок клієнт малює сам)
         var d = G(h).Need[0];
         h.Input(0, "step", new { d });
         var p0 = h.View(null).GetProperty("frame").GetProperty("p")[0];
         Assert.Equal(4, p0[3].GetInt32() & 4);
-        Assert.Equal(1 + (d == 0 ? 1 : d == 2 ? -1 : 0), p0[0].GetInt32());
+        Assert.Equal(1, p0[0].GetInt32());
+        Assert.Equal(1, p0[1].GetInt32());
+    }
+
+    [Fact]
+    public void Frame_does_not_leak_where_others_stepped_until_bang()
+    {
+        var h = Started(2);
+        Until(h, g => g.Phase == Bakhne.PhSteps);
+        var g = G(h);
+        var d = g.Need[0];
+        // другий ступає не туди — щоб не можна було й «від протилежного»; перший дивиться на кадр
+        var wrong = (d + 1) % 4;
+        h.Input(1, "step", new { d = wrong });
+        for (var i = 0; i < 200 && g.Resolved == 0; i++)
+        {
+            var f = h.View(0).GetProperty("frame");
+            var p1 = f.GetProperty("p")[1];
+            Assert.Equal(Bakhne.Center, p1[0].GetInt32());
+            Assert.Equal(Bakhne.Center, p1[1].GetInt32());
+            if (g.Beat == 0) Assert.Equal(4, p1[3].GetInt32() & 4);   // «уже ступив» — лише в його такті
+            Assert.DoesNotContain(f.GetProperty("ev").EnumerateArray(), e => e[1].GetInt32() is 8 or 9);
+            h.Tick();
+        }
+        Assert.Equal(1, g.Resolved);
+        // після баху — зарахована позиція (влучило — переносить на правильну плитку)
+        var after = h.View(0).GetProperty("frame");
+        Assert.Equal(after.GetProperty("safe")[0].GetInt32(), after.GetProperty("p")[1][0].GetInt32());
+        Assert.Equal(after.GetProperty("safe")[1].GetInt32(), after.GetProperty("p")[1][1].GetInt32());
+    }
+
+    [Fact]
+    public void Red_round_marks_distinct_beats_len_over_three()
+    {
+        var seen = 0;
+        for (var seed = 1; seed <= 30 && seen < 3; seed++)
+        {
+            var h = Started(2, seed);
+            var sc = new Script((_, _) => true);
+            var last = -1;
+            for (var i = 0; i < 20000 && G(h).Phase != Bakhne.PhOver; i++)
+            {
+                var g = G(h);
+                if (g.Phase == Bakhne.PhEnd && g.Trick == Bakhne.TrickRed && last != g.RoundNo)
+                {
+                    last = g.RoundNo;
+                    seen++;
+                    var a = h.View(null).GetProperty("frame").GetProperty("a");
+                    var reds = a.EnumerateArray().Count(e => e[1].GetInt32() == 1);
+                    Assert.Equal(Math.Max(1, g.Len / 3), reds);
+                }
+                sc.Step(g, (s, d) => h.Input(s, "step", new { d }), [0, 1]);
+                h.Tick();
+            }
+        }
+        Assert.True(seen >= 3, "червоних раундів не трапилось");
     }
 
     [Fact]
@@ -445,6 +500,30 @@ public class BakhneTests
     }
 
     [Fact]
+    public void Solo_human_knocked_out_ends_at_once_bots_with_most_hearts_win()
+    {
+        for (var seed = 1; seed <= 6; seed++)
+        {
+            var h = Solo("easy", seed);
+            Until(h, g => !g.AliveOf(0), 4000);
+            var g = G(h);
+            // людину накрило — партія кінчається тим самим тактом, а не за кілька раундів ботячої дуелі
+            Assert.Equal(Bakhne.PhOver, g.Phase);
+            var alive = g.Bots.Where(g.AliveOf).ToArray();
+            Assert.NotEmpty(g.Winners);
+            if (alive.Length > 0)
+            {
+                var best = alive.Max(g.HeartsOf);
+                Assert.Equal(alive.Where(s => g.HeartsOf(s) == best).Order(), g.Winners.Order());
+            }
+            var fin = Assert.Single(h.Finished);
+            Assert.Empty(fin.Result.Winners);
+            Assert.Contains("Пам'ять міцніша", fin.Result.Verdict ?? "");
+            Assert.Empty(h.Awards);
+        }
+    }
+
+    [Fact]
     public void Friend_joining_turns_bot_off()
     {
         var h = Table(1);
@@ -543,6 +622,31 @@ public class BakhneTests
         Assert.Equal(r.Scores.Values.Max(), r.Scores[0]);
         Assert.Contains(0, r.Winners);
         Assert.Equal(1, r.Places[0]);
+        Assert.Equal(0, h.Ctx.Muted);
+    }
+
+    [Fact]
+    public void Party_human_who_left_mid_game_is_played_out_with_score()
+    {
+        var h = new PartyHarness("bakhne", humans: 2, bots: 2, level: LiveBots.Level.Normal, seed: 4);
+        h.Start();
+        var g = (Bakhne)h.Game;
+        var sc = new Script((_, _) => true);
+        var left = false;
+        var r = h.RunToEnd(x =>
+        {
+            sc.Step(g, (s, d) => x.Act(s, "step", new { d }), left ? [0] : [0, 1]);
+            if (!left && g.RoundNo == 2 && g.Phase == Bakhne.PhSteps)
+            {
+                left = true;
+                x.Parent.Away.Add(1);   // вийшов посеред міні-гри: OnLeave не кличуть, лише Seated → false
+            }
+        })!;
+        Assert.True(left);
+        Assert.Equal(MinigameEnd.Finished, r.How);
+        Assert.Equal(4, r.Scores.Count);
+        Assert.True(r.Scores[1] >= 2, "дограв без нього — score за раунд, де накрило");
+        Assert.True(r.Scores[0] > r.Scores[1]);
         Assert.Equal(0, h.Ctx.Muted);
     }
 
