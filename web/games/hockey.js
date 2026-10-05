@@ -136,7 +136,7 @@
         hx: new Float64Array(8), hy: new Float64Array(8), ht: new Float64Array(8), hN: 0, stick: false,
         land: true, turn: 0, k: 3.8, ox: 0, oy: 0, cw: LW, ch: LH, table: null, tableKey: '', pal: null, palAt: 0,
         // своя біта
-        mine: { x: 0, y: 0 }, mineOk: false, acc: 0, at: 0, aim: false, tx: 0, ty: 0, mdx: 0, mdy: 0, rtt: 60,
+        mine: { x: 0, y: 0 }, mineOk: false, acc: 0, at: 0, stepX: 0, stepY: 0, offX0: 0, offY0: 0, aim: false, tx: 0, ty: 0, mdx: 0, mdy: 0, rtt: 60,
         // шайба
         vis: { x: MID, y: WD / 2 }, lastAt: 0, trail: new Float64Array(TRAIL * 2), trailHead: 0, trailN: 0, lastN: -1,
         // ввід
@@ -334,11 +334,16 @@
     const s = mySeat(st), team = myTeam(st);
     if (s < 0 || !f.p || f.p[2 * s] == null || f.ph === 3 || f.ph === 4) { st.mineOk = false; return; }
     const srv = { x: f.p[2 * s], y: f.p[2 * s + 1] };
-    // де сервер буде «зараз»: той самий крок із поточним наміром на пів дороги мережею
+    // де сервер буде «зараз»: той самий крок із поточним наміром на пів дороги мережею — плюс на скільки цей кадр
+    // спізнився за годинником сервера (Clock.when). Без цього кадр, що прийшов на 20 мс пізніше, давав ціль позаду,
+    // і на швидкому русі біту щоразу підтягувало назад.
+    const now = performance.now(), sent = st.clock.when ? st.clock.when(f.t, now) : null;
+    const late = sent == null ? 0 : Math.min(2 * TICK_MS, Math.max(0, now - sent));
     const lead = Math.max(0, Math.min(100, (st.rtt - 20) / 2));
-    const n = Math.round(lead / SUB_MS);
+    const n = Math.round((lead + late) / SUB_MS);
     for (let i = 0; i < n; i++) stepPad(srv, team, st.aim, st.tx, st.ty, st.mdx, st.mdy);
-    if (!st.mineOk) { st.mine.x = srv.x; st.mine.y = srv.y; st.mineOk = true; return; }
+    if (!st.mineOk) { st.mine.x = srv.x; st.mine.y = srv.y; st.mineOk = true; st.offX0 = st.offY0 = 0; st.stepX = st.stepY = 0; return; }
+    const wasX = st.mine.x, wasY = st.mine.y;
     // Мертва зона 2,5: передбачення веде біту до тієї ж цілі тим самим кроком, тож дрібна різниця — лише мережа.
     // Раніше кожен кадр тягнув біту на 30 % назад до сервера (і на ударі — стрибком): біта тремтіла пилкою 25 разів/с.
     const ex = srv.x - st.mine.x, ey = srv.y - st.mine.y, e = Math.hypot(ex, ey);
@@ -349,15 +354,28 @@
     }
     const dx = st.mine.x - srv.x, dy = st.mine.y - srv.y, d = Math.hypot(dx, dy);
     if (d > 12) { st.mine.x = srv.x + (dx / d) * 12; st.mine.y = srv.y + (dy / d) * 12; }
+    // модель біти поправили, а намальована не стрибає: різниця тане зсувом за ~100 мс (predict)
+    st.offX0 += wasX - st.mine.x;
+    st.offY0 += wasY - st.mine.y;
   }
+  /// Де малювати свою біту: модель плюс частка ще не зробленого підкроку (4 мс — на кадр екрана то 4, то 5 підкроків,
+  /// і без цього кожен шостий кадр біта робила на чверть більший крок) плюс зсув поправки, що тане.
+  const mineX = (st) => st.mine.x + st.stepX * (st.acc / SUB_MS) + st.offX0;
+  const mineY = (st) => st.mine.y + st.stepY * (st.acc / SUB_MS) + st.offY0;
   function predict(st, now) {
     const dt = Math.min(100, now - st.at);
     st.at = now;
-    if (!st.mineOk || now - st.lastAt > 400) return;
+    const k = Math.exp(-dt / 60);
+    st.offX0 *= k;
+    st.offY0 *= k;
+    if (!st.mineOk || now - st.lastAt > 400) { st.stepX = st.stepY = 0; return; }
     st.acc += dt;
     const team = myTeam(st);
     while (st.acc >= SUB_MS) {
+      const x0 = st.mine.x, y0 = st.mine.y;
       stepPad(st.mine, team, st.aim, st.tx, st.ty, st.mdx, st.mdy);
+      st.stepX = st.mine.x - x0;
+      st.stepY = st.mine.y - y0;
       st.acc -= SUB_MS;
     }
     apart(st, team);
@@ -826,7 +844,7 @@
       if (i < 0 || (k < 4 && i === me) || !f.p || f.p[2 * i] == null) continue;
       const team = teamOf(st, i);
       const own = i === me && st.mineOk && ph !== 4 && rp == null;
-      const x = own ? st.mine.x : st.px[i], y = own ? st.mine.y : st.py[i];
+      const x = own ? mineX(st) : st.px[i], y = own ? mineY(st) : st.py[i];
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       paddle(st, g, pal, i, team == null ? i % 2 : team, x, y, now, i === me);
     }
