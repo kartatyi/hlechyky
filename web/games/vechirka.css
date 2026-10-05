@@ -84,18 +84,18 @@
 .vgate.new { animation: vch-drop .6s cubic-bezier(.3,1.6,.5,1); transform-box: fill-box; }
 
 /* ---------- фішки ---------- */
-.tok { cursor: pointer; }
-.tk-sh { fill: rgba(0,0,0,.28); }
-.tk-bg { stroke-width: 4; }
-.tk-t { font: 800 19px system-ui, sans-serif; fill: #fff; text-anchor: middle; pointer-events: none; }
-.tk-st { font-size: 16px; pointer-events: none; }
-.tk-n { font: 900 22px system-ui, sans-serif; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 5px; pointer-events: none; }
-.tk-pulse { fill: none; stroke-width: 4; opacity: 0; }
-.tok.cur .tk-pulse { animation: vch-pulse 1.3s ease-out infinite; transform-box: fill-box; transform-origin: center; }
-.tok.away .tk-b { opacity: .72; }
-.tok.tgt .tk-bg { stroke: #ff4d3d; stroke-width: 6; }
-.tok.tgt .tk-pulse { stroke: #ff4d3d !important; animation: vch-pulse .9s ease-out infinite; transform-box: fill-box; transform-origin: center; }
-.tok.hov .tk-bg { stroke: #fff; stroke-width: 7; }
+.vtok { cursor: pointer; }
+.vtk-sh { fill: rgba(0,0,0,.28); }
+.vtk-bg { stroke-width: 4; }
+.vtk-t { font: 800 19px system-ui, sans-serif; fill: #fff; text-anchor: middle; pointer-events: none; }
+.vtk-st { font-size: 16px; pointer-events: none; }
+.vtk-n { font: 900 22px system-ui, sans-serif; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 5px; pointer-events: none; }
+.vtk-pulse { fill: none; stroke-width: 4; opacity: 0; }
+.vtok.cur .vtk-pulse { animation: vch-pulse 1.3s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.vtok.away .vtk-b { opacity: .72; }
+.vtok.tgt .vtk-bg { stroke: #ff4d3d; stroke-width: 6; }
+.vtok.tgt .vtk-pulse { stroke: #ff4d3d !important; animation: vch-pulse .9s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.vtok.hov .vtk-bg { stroke: #fff; stroke-width: 7; }
 
 /* ---------- спливашки, літучі, іскри ---------- */
 .vf-float text { font: 900 26px system-ui, sans-serif; text-anchor: middle; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.7); stroke-width: 6px; animation: vch-float 1.6s ease-out forwards; }

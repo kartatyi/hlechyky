@@ -308,18 +308,18 @@
     if (!t) {
       const pos = nodeXY(st, p.pos);
       t = { i: p.i, node: p.pos, x: pos.x, y: pos.y, q: [], hop: null, ox: 0, oy: 0 };
-      t.g = svgEl('g', { class: 'tok', 'data-i': p.i }, st.g.toks);
+      t.g = svgEl('g', { class: 'vtok', 'data-i': p.i }, st.g.toks);
       st.toks.set(p.i, t);
     }
     t.key = key;
     const h = hue(p);
-    t.g.innerHTML = '<ellipse class="tk-sh" rx="17" ry="6" cy="24"/><g class="tk-b"><circle class="tk-pulse" r="27" style="stroke:hsl(' + h + ' 85% 55%)"/>'
-      + '<circle class="tk-bg" r="22" style="fill:hsl(' + h + ' 55% 42%);stroke:hsl(' + h + ' 85% 62%)"/>'
+    t.g.innerHTML = '<ellipse class="vtk-sh" rx="17" ry="6" cy="24"/><g class="vtk-b"><circle class="vtk-pulse" r="27" style="stroke:hsl(' + h + ' 85% 55%)"/>'
+      + '<circle class="vtk-bg" r="22" style="fill:hsl(' + h + ' 55% 42%);stroke:hsl(' + h + ' 85% 62%)"/>'
       + (ava.img ? '<image href="' + st.ctx.esc(ava.img) + '" x="-20" y="-20" width="40" height="40" clip-path="url(#vc' + st.uid + ')" preserveAspectRatio="xMidYMid slice"/>'
-        : '<text class="tk-t" dy=".36em">' + st.ctx.esc(ava.txt) + '</text>')
-      + '</g><text class="tk-st" x="17" y="-15"></text><text class="tk-n" y="-36"></text>';
-    t.st = t.g.querySelector('.tk-st');
-    t.n = t.g.querySelector('.tk-n');
+        : '<text class="vtk-t" dy=".36em">' + st.ctx.esc(ava.txt) + '</text>')
+      + '</g><text class="vtk-st" x="17" y="-15"></text><text class="vtk-n" y="-36"></text>';
+    t.st = t.g.querySelector('.vtk-st');
+    t.n = t.g.querySelector('.vtk-n');
     return t;
   }
 
@@ -933,7 +933,7 @@
   function boardTap(st, e) {
     if (!st.v || st.mgOn) return;
     const v = st.v;
-    const tokEl = e.target.closest && e.target.closest('.tok');
+    const tokEl = e.target.closest && e.target.closest('.vtok');
     const tileEl = e.target.closest && e.target.closest('.vt, .vhl');
     const aim = v.phase === 'aim' && v.aim && mineI(v) === v.aim.who ? v.aim : null;
     if (aim) {
