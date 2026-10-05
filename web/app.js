@@ -3501,10 +3501,12 @@
       const hadCrown = JSON.stringify((HTournament.state || {}).crown || []);
       HTournament.update(t);
       if (hadCrown !== JSON.stringify((t && t.crown) || [])) { if (state) renderOnline(); repaintCrowns(); }
-      // Нова гра турніру, а я в ньому — одразу за стіл (якщо вже в «Іграх»), інакше — тост із підказкою.
+      // Нова гра турніру, і турнір посадив мене за неї — одразу за стіл (якщо вже в «Іграх»: на столі минулої гри,
+      // у панелі турніру, у лобі), інакше — тост із підказкою. Саме «посадив», а не «я в списку»: хто вийшов із
+      // турніру чи сидить за іншим столом, того сервер не садить, і висмикувати його нема куди.
       const room = t && t.stage === 'playing' && t.room ? t.room.id : null;
-      const mineT = t && (t.players || []).some((p) => sameNick(p, me.nick));
-      if (room && room !== tourRoom && mineT) {
+      const seated = !!room && (t.room.seats || []).some((p) => sameNick(p, me.nick));
+      if (room && room !== tourRoom && seated) {
         if (tourRoom !== null || route === 'games') {
           if (route === 'games') go('#games/room/' + encodeURIComponent(room));
           else toast('🏆 Турнір: наступна гра почалась — гайда в «Ігри»!', 'ok');

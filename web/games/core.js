@@ -2128,8 +2128,12 @@
     // тож статус тут не питаємо — інакше стіл висів би в лобі до прибиральника, і сісти нікому.
     const canSit = !solo && rv.seat == null && freeSeat(r) >= 0 && r.status !== 'playing';
     if (canSit) out.push('<button class="primary" data-do="JoinRoom">Сісти</button>');
+    // 🏆 Стіл щойно дограної гри турніру: відлік до наступного столу (tournament.js) замість «Ану ще раз» — нова
+    // партія тут посадила б усіх знову, і турнір не зміг би поставити наступну гру.
+    const tour = window.HTournament && HTournament.roomBar ? HTournament.roomBar(r.id, panelCtx()) : null;
+    if (tour) out.push(tour.html);
     // «Ану ще раз» пропонуємо лише коли є з ким: інакше кнопка є, а сервер відповідає «Замало гравців»
-    if (!solo && rv.seat != null && r.status === 'finished' && takenSeats(r) >= r.minPlayers)
+    if (!solo && !(tour && tour.hold) && rv.seat != null && r.status === 'finished' && takenSeats(r) >= r.minPlayers)
       out.push('<button class="primary" data-do="Rematch">Ану ще раз</button>');
     // щоденна головоломка одна на день — «Ану ще раз» там не пропонуємо
     if (solo && r.status === 'finished' && !(gameOf(r.game) || {}).daily) out.push('<button class="primary" data-do="Rematch">Ану ще раз</button>');
@@ -2177,7 +2181,7 @@
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
       rv.room.options, rv.room.result, rv.room.evening, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
-      botOffered(rv), !!(rv.view && rv.view.botWanted)]);
+      botOffered(rv), !!(rv.view && rv.view.botWanted), window.HTournament && HTournament.barSig ? HTournament.barSig(id) : '']);
     const roomChanged = sig !== card.sig;
     if (roomChanged) {
       card.sig = sig;
@@ -2466,6 +2470,9 @@
 
     has: (id) => !!modules[id],
 
+    /// Новий знімок турніру (tournament.js): смужка відліку на столі щойно дограної гри.
+    tournamentChanged() { for (const id in cards) refreshCard(id); },
+
     init(o) {
       o = o || {};
       if (o.esc) esc = o.esc;
@@ -2513,7 +2520,14 @@
         // кімнати з лобі, яких уже нема, забираємо разом із видом; приватні соло тут не рахуються
         for (const id in views) if (!views[id].loose && !rooms.some((r) => r.id === id)) { dropCard(id); delete views[id]; }
         // стіл, на сторінці якого ми стоїмо, закрився — вертаємось у лобі, а не дивимось у порожнечу
-        if (shown && view.kind === 'room' && view.id && !views[view.id] && !pinned.has(view.id)) { go('#games'); return; }
+        // Але якщо адресу вже змінили (турнір щойно пересадив за новий стіл, а hashchange ще не дійшов) — не
+        // перебиваємо: інакше подія 'rooms' без старого столу, що прийшла слідом за 'tournament', кидала всіх у лобі.
+        if (shown && view.kind === 'room' && view.id && !views[view.id] && !pinned.has(view.id)) {
+          let to = null;
+          try { to = location.hash.startsWith('#games/room/') ? decodeURIComponent(location.hash.slice(12)) : null; } catch { /* крива адреса — у лобі, як і раніше */ }
+          if (!to || to === view.id) go('#games');
+          return;
+        }
         renderShell();
         renderView();
         refreshAll();
