@@ -365,7 +365,7 @@ public sealed class Brid : Game, IPartyMinigame
             party = _party is not null,
             cols,
             rows,
-            need = Need(),
+            need = lobby ? Math.Min(RoundPoints.Length, Enumerable.Range(0, Seats).Count(s => Ctx.Seated(s)) + BotSeats().Length) : Need(),
             roundTicks = BridCore.RoundTicks,
             tickMs = BridCore.TickMs,
             jumpTicks = BridCore.JumpTicks,
