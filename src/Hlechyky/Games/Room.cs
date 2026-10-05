@@ -69,6 +69,9 @@ public sealed class RestoredViews(IReadOnlyDictionary<int, System.Text.Json.Json
     public object? View(int? seat) => seat is { } s && seats.TryGetValue(s, out var v) ? v : watcher;
 }
 
+/// <summary>Хід-налаштування в лобі: з якого місця, що й з чим (payload — сирий JSON або null).</summary>
+public sealed record LobbyAct(int Seat, string Action, string? Payload);
+
 /// <summary>Те, що летить подією <c>room</c>: шапка кімнати, моє місце (null — глядач) і вид цього місця.</summary>
 public sealed record RoomView(RoomSummary Room, int? Seat, object? View);
 
@@ -150,6 +153,13 @@ public sealed class Room
     /// люди бачать той самий підсумок, що й до перезапуску. Лише під <see cref="Sync"/>.
     /// </summary>
     public RestoredViews? Restored { get; set; }
+
+    /// <summary>
+    /// Ходи-налаштування столу в лобі («🤖 + бот», пакет «Своєї гри»): вони живуть у самій грі, а гра в новому процесі
+    /// новенька — після перезапуску каркас програє їх наново (<see cref="Rooms.Restore"/>). Скидається на старті партії.
+    /// Лише під <see cref="Sync"/>.
+    /// </summary>
+    public List<LobbyAct> LobbyActs { get; } = [];
 
     /// <summary>Записати дограну партію у вечір (кличе RoomContext.Finish під замком). Соло сюди не йде.</summary>
     public void TallyEvening(int[] winners, IReadOnlyDictionary<int, long>? scores)

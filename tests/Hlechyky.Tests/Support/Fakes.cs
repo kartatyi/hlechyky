@@ -41,6 +41,11 @@ public sealed class FakeStakes : IStakes
         _balances[nick] = Balance(nick) + amount;
         Calls.Add($"grant:{nick}:{amount}:{refKey}");
     }
+
+    /// <summary>Раунд розраховано, якщо за ним уже є виплата чи повернення — як у справжньому леджері.</summary>
+    public bool Settled(string roomId, int round) => _refs.Any(r =>
+        r.StartsWith($"stake-win:{roomId}:{round}:", StringComparison.Ordinal)
+        || r.StartsWith($"stake-refund:{roomId}:{round}:", StringComparison.Ordinal));
 }
 
 /// <summary>Сховище станів Persistent-ігор у пам'яті.</summary>

@@ -286,7 +286,9 @@ public sealed partial class Rooms
         var now = _clock.UtcNow;
         lock (room.Sync)
         {
-            if (info.Start == StartMode.Immediate || room.Full)
+            // Заморозили, поки стіл додавався: партію не починаємо (ставки списались би вже після знімка й загубились).
+            if (_frozen) failed = Say.Restarting;
+            else if (info.Start == StartMode.Immediate || room.Full)
             {
                 failed = StartRound(room, outbox);
                 if (failed is null) reply = new RoomReply(true, "", room.Id);
@@ -642,6 +644,7 @@ public sealed partial class Rooms
 
         var now = _clock.UtcNow;
         room.Restored = null;   // нова партія — і вид знову від гри, а не той, що пережив перезапуск
+        room.LobbyActs.Clear();
         room.Status = RoomStatus.Playing;
         room.StartedAt = now;
         room.FinishedAt = null;
@@ -738,6 +741,7 @@ public sealed partial class Rooms
             if (result.Ok)
             {
                 room.LastActivity = _clock.UtcNow;
+                if (before == RoomStatus.Lobby && room.Status == RoomStatus.Lobby) RememberLobbyAct(room, seat, action ?? "", payload);
                 Persist(room, outbox);
                 // реалтайм шле види з тика — але в лобі тика нема, тож налаштування столу розсилаємо одразу
                 if (counts || before == RoomStatus.Lobby) outbox.Add(new RoomViews(room.Id));
@@ -776,6 +780,16 @@ public sealed partial class Rooms
         }
         outbox.RunAfter(_log);
         return outbox;
+    }
+
+    /// <summary>Скільки останніх налаштувань столу пам'ятаємо для перезапуску: перемикачі клацають туди-сюди.</summary>
+    const int LobbyActsKept = 64;
+
+    static void RememberLobbyAct(Room room, int seat, string action, JsonElement payload)
+    {
+        room.LobbyActs.Add(new LobbyAct(seat, action,
+            payload.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? null : payload.GetRawText()));
+        if (room.LobbyActs.Count > LobbyActsKept) room.LobbyActs.RemoveAt(0);
     }
 
     static bool TooBig(JsonElement payload) =>
@@ -1160,7 +1174,8 @@ public sealed partial class Rooms
             if (room.Info.Solo) continue;
             lock (room.Sync)
             {
-                if (room.SeatOf(nick) is not { } seat) continue;
+                // Під замком ще раз: заморозка могла статись після перевірки на вході, а знімок цього столу — уже бути.
+                if (_frozen || room.SeatOf(nick) is not { } seat) continue;
                 Vacate(room, seat, outbox);
             }
             Sweep(room, outbox);
@@ -1255,12 +1270,12 @@ public sealed partial class Rooms
             bool drop;
             lock (room.Sync)
             {
-                drop =
+                drop = !_frozen && (
                     room.Occupied == 0
                     // самотній стіл у лобі — засиджений, навіть якщо гра дозволяє почати самому («Скільки?»)
                     || (room.Status == RoomStatus.Lobby && room.Occupied < Math.Max(2, room.Info.MinPlayers) && now - room.LastActivity > LobbyLife)
                     || (room.Status == RoomStatus.Finished && room.FinishedAt is { } at && now - at > FinishedLife)
-                    || (room.Info.Solo && room.Watchers.IsEmpty && now - room.LastActivity > SoloLife);
+                    || (room.Info.Solo && room.Watchers.IsEmpty && now - room.LastActivity > SoloLife));
             }
             if (!drop) continue;
             Drop(room);

@@ -64,6 +64,31 @@ public class TournamentTests
         public int Points(string nick) => Snap.GetProperty("standings").EnumerateArray().Single(x => x.GetProperty("nick").GetString() == nick).GetProperty("points").GetInt32();
     }
 
+    // ---------------------------------------------------------------- перезапуск сервера
+
+    [Fact]
+    public void Tournament_comes_back_after_a_restart_and_a_cut_game_counts_as_skipped()
+    {
+        var s = new Setup("Оля", "Петро");
+        Assert.Null(s.T.Create("Оля", ["ttt", "c4"]));
+        Assert.Null(s.T.Join("Петро"));
+        Assert.Null(s.T.Next("Оля"));
+        var room = s.RoomId;
+        var tables = s.H.Rooms.Freeze() with { Tournament = s.T.Freeze() };   // хрестики посеред партії, Save не вміють
+
+        var rooms = new Rooms(s.H.Registry, s.H.Clock, new GameEvents(), new FakeStakes(), s.H.Store, RoomHarness.Empty());
+        rooms.Restore(tables);
+        var again = new Tournament(rooms, s.H.Registry, new GameEvents(), new Collect(), s.H.Store, s.Presence, new NullHub(), s.H.Clock, NullLogger<Tournament>.Instance);
+        again.Restore(tables.Tournament!.Value);
+
+        var snap = Views.Json(again.Snapshot());
+        Assert.Equal(Tournament.Between, snap.GetProperty("stage").GetString());   // не «гра ще йде» — можна грати наступну
+        var played = Assert.Single(snap.GetProperty("results").EnumerateArray());
+        Assert.True(played.GetProperty("skipped").GetBoolean());
+        Assert.Equal(RoomStatus.Finished, rooms.Find(room)!.Status);
+        Assert.Contains("Оля", snap.GetProperty("players").EnumerateArray().Select(p => p.GetString()));
+    }
+
     // ---------------------------------------------------------------- місця
 
     [Fact]

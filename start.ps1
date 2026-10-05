@@ -34,6 +34,9 @@ $BuiltSha = Join-Path $Root 'data\built.sha'
 $NextSha = Join-Path $Root 'data\next.sha'
 $PrevSha = Join-Path $Root 'data\prev.sha'
 $ControlKey = Join-Path $Root 'data\control.key'
+$Tables = Join-Path $Root 'data\tables.json'
+# Копія чистого знімка, знятого перед перезапуском: якщо новий сервер не підніметься, back поверне столи з неї.
+$TablesClean = Join-Path $Root 'data\tables.clean.json'
 $CaddyApplied = Join-Path $Root 'data\caddyfile.sha'
 $Log = Join-Path $Root 'logs\server.log'
 $ErrLog = Join-Path $Root 'logs\server.err.log'
@@ -130,13 +133,23 @@ function Switch-Build {
     return $false
 }
 
-# back: попередня збірка назад. Сервер має бути зупинений.
+# back: попередня збірка назад. Сервер має бути зупинений. Невдалу збірку не стираємо, а відкладаємо в build.bad: файли
+# щойно вбитого процесу Windows відпускає не миттєво, і Remove-Item посеред теки лишив би ні ту, ні ту.
 function Restore-PrevBuild {
     if (-not (Test-Path (Join-Path $BuildPrev 'Hlechyky.dll'))) { throw 'Нема build.prev — відкочуватись нема на що' }
-    if (Test-Path $Build) { Remove-Item $Build -Recurse -Force }
-    Move-Item $BuildPrev $Build
-    if (Test-Path $PrevSha) { Move-Item $PrevSha $BuiltSha -Force }
-    Write-Host 'Повернув попередню збірку (build.prev → build\)'
+    $bad = Join-Path $Root 'build.bad'
+    for ($i = 0; $i -lt 20; $i++) {
+        try {
+            if (Test-Path $bad) { Remove-Item $bad -Recurse -Force -ErrorAction Stop }
+            if (Test-Path $Build) { Move-Item $Build $bad -ErrorAction Stop }
+            Move-Item $BuildPrev $Build -ErrorAction Stop
+            if (Test-Path $PrevSha) { Move-Item $PrevSha $BuiltSha -Force }
+            Write-Host 'Повернув попередню збірку (build.prev → build\, невдала — у build.bad)'
+            return
+        }
+        catch { Start-Sleep -Milliseconds 150 }
+    }
+    throw 'build.prev не став на місце build\ (файли зайняті)'
 }
 
 function Get-ListenPort {
@@ -153,15 +166,26 @@ function Get-ListenPort {
 
 # Столи — у знімок перед тим, як сервер уб'ють (Games\TablesKeeper.cs): ходи завмирають, новий сервер підніме столи з
 # тими самими id. Старий сервер без цього вміння (чи без ключа) — перезапуск, як раніше: столи зникнуть.
-function Invoke-Freeze {
-    if (-not (Get-Server)) { return }
-    if (-not (Test-Path $ControlKey)) { Write-Host 'Столи: нема data\control.key (сервер ще без знімків) — перезапуск без них'; return }
+function Invoke-Freeze([int]$TimeoutSec = 10) {
+    if (-not (Get-Server)) { return $false }
+    if (-not (Test-Path $ControlKey)) { Write-Host 'Столи: нема data\control.key (сервер ще без знімків) — перезапуск без них'; return $false }
     try {
         $key = (Get-Content $ControlKey -Raw).Trim()
-        $r = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$(Get-ListenPort)/api/internal/freeze" -Headers @{ 'X-Control-Key' = $key } -TimeoutSec 10
+        $r = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$(Get-ListenPort)/api/internal/freeze" -Headers @{ 'X-Control-Key' = $key } -TimeoutSec $TimeoutSec
         Write-Host "Столи заморожено: у знімку $($r.tables), партій грає далі $($r.resumes), переривається $($r.interrupts)"
+        try { Copy-Item $Tables $TablesClean -Force } catch { }
+        return $true
     }
-    catch { Write-Host "Столи: заморозити не вийшло ($($_.Exception.Message)) — новий сервер візьме знімок, що пишеться кожні 10 с" }
+    catch { Write-Host "Столи: заморозити не вийшло ($($_.Exception.Message)) — новий сервер візьме знімок, що пишеться кожні 10 с"; return $false }
+}
+
+# back: новий сервер не відповідає й не заморозиться — столи беремо з чистого знімка старого (знятого щойно перед
+# перезапуском), а не з того, що новий устиг написати сам: у його знімку партії вже перервані. Старий — не чіпаємо.
+function Use-CleanTables {
+    if (-not (Test-Path $TablesClean)) { return }
+    if (((Get-Date) - (Get-Item $TablesClean).LastWriteTime).TotalMinutes -gt 3) { return }
+    Copy-Item $TablesClean $Tables -Force
+    Write-Host 'Столи: беру знімок, знятий перед перезапуском'
 }
 
 # Caddyfile змінився відтоді, як Caddy його читав, — reload. Caddy переходить на новий конфіг без розриву: потік радіо й
@@ -486,19 +510,23 @@ try {
         'stop'    {
             New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
             Set-Content $StopFlag (Get-Date -Format 's')
-            Invoke-Freeze   # якщо start буде скоро (до 3 хв), столи повернуться, а партії, що вміють зберегтись, — грають далі
+            Invoke-Freeze | Out-Null   # якщо start буде скоро (до 3 хв), столи повернуться, а партії, що вміють зберегтись, — грають далі
             Stop-Caddy; Stop-Server; Stop-Liquidsoap
             Write-Host 'Автонагляд на паузі, доки не буде start'
         }
         'restart' {
             Remove-Item $StopFlag -ErrorAction SilentlyContinue
             Invoke-BuildNext                     # поки старий сервер працює
-            Invoke-Freeze
+            Invoke-Freeze | Out-Null
             Stop-Server
             if (-not (Switch-Build)) { Invoke-Build }
             Start-Liquidsoap; Start-Server; Start-Caddy; Update-Caddy
         }
-        'back'    { Remove-Item $StopFlag -ErrorAction SilentlyContinue; Stop-Server; Restore-PrevBuild; Start-Liquidsoap; Start-Server; Start-Caddy }
+        'back'    {
+            Remove-Item $StopFlag -ErrorAction SilentlyContinue
+            if (-not (Invoke-Freeze 3)) { Use-CleanTables }
+            Stop-Server; Restore-PrevBuild; Start-Liquidsoap; Start-Server; Start-Caddy
+        }
         'radio'   { Stop-Liquidsoap; Start-Sleep 1; Start-Liquidsoap }
         'status'  {
             $p = Get-Server

@@ -164,7 +164,15 @@ function Invoke-Rollback([string]$To, [string]$Why, [bool]$ServerTouched) {
 
 # Збірка коміту $Sha в build.next, поки сервер працює. Код — з окремої копії ($BuildSrc), прод-копія не чіпається.
 # Уже зібрано (data\next.sha) — нічого не робимо: деплой, що не дочекався паузи, вдруге не збирає.
-function Invoke-Prepare([string]$Sha) {
+# -FromRoot — з робочої копії як є (deploy.ps1 -Force при незакомічених змінах: інакше вони поїхали б у web\, а не в сервер).
+function Invoke-Prepare([string]$Sha, [switch]$FromRoot) {
+    if ($FromRoot) {
+        Write-Log "Збираю робочу копію як є у build.next (-Force)…"
+        if (Test-Path $NextDir) { Remove-Item $NextDir -Recurse -Force }
+        Invoke-Step dotnet @('publish', (Join-Path $Root 'src\Hlechyky\Hlechyky.csproj'), '-c', 'Release', '-o', $NextDir, '--nologo', '-v', 'q', '-nodeReuse:false') | Out-Null
+        Set-Content $NextFile $Sha -Encoding ASCII
+        return
+    }
     if ((Test-Path (Join-Path $NextDir 'Hlechyky.dll')) -and (Test-Path $NextFile) -and (Get-Content $NextFile -Raw).Trim() -eq $Sha) {
         Write-Log "Збірка $(Short $Sha) уже готова (build.next)"
         return
@@ -189,7 +197,7 @@ function Get-Busy {
     try {
         $key = (Get-Content $ControlKey -Raw).Trim()
         $r = Invoke-RestMethod -Uri "http://127.0.0.1:$(Get-ListenPort)/api/internal/busy" -Headers @{ 'X-Control-Key' = $key } -TimeoutSec 5
-        return @($r.busy)
+        return ,@($r.busy)   # кома: інакше порожній список PowerShell розгорне в $null — «сервер не сказав»
     } catch { return $null }
 }
 
@@ -293,18 +301,28 @@ try {
         Write-Log "Код уже тут ($(Short $target)), але в build\ лежить $(if ($built) { Short $built } else { 'невідомо що' }) — перезбираю"
     }
 
-    # Збірка поруч, поки старий сервер працює. Впала — прод ніхто не чіпав: ні код, ні сервер.
-    try { Invoke-Prepare $target }
-    catch { Write-Log "ЗБІРКА ВПАЛА — нічого не чіпаю, сайт і далі на $(Short $built): $($_.Exception.Message)"; exit 2 }
+    # -Force із незакоміченими змінами: вони в робочій копії, тож і код тягнемо, і збираємо саме там. web\ тоді новий
+    # уже зараз, тож і паузи не чекаємо — інакше клієнт хвилинами випереджав би сервер.
+    $asIs = $Force -and $dirty
+    if ($asIs) {
+        if ($needPull) { Invoke-Step git @('-C', $Root, 'merge', '--ff-only', $target) | Out-Null; Write-Log "Підтягнув $(Short $target) (-Force, з незакоміченими)" }
+        try { Invoke-Prepare $target -FromRoot }
+        catch { Invoke-Rollback $before "збірка впала: $($_.Exception.Message)" $false; exit 2 }
+    } else {
+        # Збірка поруч, поки старий сервер працює. Впала — прод ніхто не чіпав: ні код, ні сервер.
+        try { Invoke-Prepare $target }
+        catch { Write-Log "ЗБІРКА ВПАЛА — нічого не чіпаю, сайт і далі на $(Short $built): $($_.Exception.Message)"; exit 2 }
 
-    # Пауза: перезапуск посеред партії її перервав би. Ігри, що вміють зберегтись, сервер сюди й не записує.
-    if (-not $Now -and -not (Wait-Pause $WaitMinutes)) {
-        Write-Log "Нічого не чіпав: збірка $(Short $target) лежить готова. Ще почекати — deploy.ps1; перервати партії — deploy.ps1 -Now"
-        exit 3
+        # Пауза: перезапуск посеред партії її перервав би. Ігри, що вміють зберегтись, сервер сюди й не записує.
+        if (-not $Now -and -not (Wait-Pause $WaitMinutes)) {
+            Write-Log "Нічого не чіпав: збірка $(Short $target) лежить готова. Ще почекати — deploy.ps1; перервати партії — deploy.ps1 -Now"
+            Remove-Item $TriedFile -Force -ErrorAction SilentlyContinue   # «не зараз», а не провал: опитувач (якщо його ввімкнуть) спробує знову
+            exit 3
+        }
     }
 
     # Тепер — швидко: код (і з ним web\) і сервер міняються в одну мить.
-    if ($needPull) {
+    if ($needPull -and -not $asIs) {
         if (-not $Force -and (Get-Git @('status', '--porcelain'))) { Write-Log 'СТОП: поки чекав, у робочій копії з''явились незакомічені зміни — нічого не чіпаю'; exit 1 }
         Invoke-Step git @('-C', $Root, 'merge', '--ff-only', $target) | Out-Null
         Write-Log "Підтягнув $(Short $target)"

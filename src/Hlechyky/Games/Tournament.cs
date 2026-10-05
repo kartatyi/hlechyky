@@ -420,6 +420,14 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
             t.Results.AddRange(f.Results);
             t.Champions = f.Champions;
             _t = t;
+            // Гру турніру перервав перезапуск (подія «дограно» не прилетить) — рахуємо пропущеною, інакше «Наступна гра»
+            // відповідала б «Гра ще йде», аж поки стіл не приберуть.
+            if (t.Stage == Playing && t.Room is { } id && rooms.Find(id) is { } room)
+            {
+                string? verdict;
+                lock (room.Sync) verdict = room.Status == RoomStatus.Finished ? room.Result?.Verdict : null;
+                if (verdict == Rooms.InterruptedVerdict) Skipped(t);
+            }
         }
     }
 

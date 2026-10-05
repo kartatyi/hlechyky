@@ -391,6 +391,11 @@ public sealed class Chess : Game
         new Dictionary<string, int>(_seen, StringComparer.Ordinal),
         _last?.From ?? -1, _last?.To ?? -1, _drawOffer, _result?.Winner, _result?.Reason, _clock.Save()), Json);
 
+    /// <summary>Save тримає всю партію разом із годинником — після перезапуску сервера грає далі.</summary>
+    public override bool Resumable => true;
+
+    public override void Resumed(TimeSpan pause) => _clock.Shift(pause);
+
     public override void Load(string json)
     {
         if (JsonSerializer.Deserialize<Saved>(json, Json) is not { } s) return;

@@ -181,18 +181,24 @@ public sealed class Reversi : Game
 
     // ---------- збереження: гра не Persistent, це для тестів (позиція тим самим шляхом, що в шашках) ----------
 
-    public sealed record Position(string Board, int Side, int Moves = 0);
+    public sealed record Position(string Board, int Side, int Moves = 0, BoardClock.Snapshot? Clock = null, int? Last = null, int? Pass = null);
 
-    public override string? Save() => JsonSerializer.Serialize(new Position(_core.BoardString(), _core.Side, _moves));
+    public override string? Save() => JsonSerializer.Serialize(new Position(_core.BoardString(), _core.Side, _moves, _clock.Save(), _last, _pass));
+
+    /// <summary>Save тримає позицію разом із годинником — після перезапуску сервера партія грає далі.</summary>
+    public override bool Resumable => true;
+
+    public override void Resumed(TimeSpan pause) => _clock.Shift(pause);
 
     public override void Load(string json)
     {
         var s = JsonSerializer.Deserialize<Position>(json) ?? throw new GameError("Кривий знімок реверсі");
         _core = ReversiCore.FromString(s.Board, s.Side) ?? throw new GameError("Кривий знімок реверсі");
         _moves = s.Moves;
-        _last = null;
+        _last = s.Last;
         _flipped = 0;
-        _pass = null;
+        _pass = s.Pass;
+        if (s.Clock is not null) _clock.Load(s.Clock);   // позиції з тестів годинника не мають — тоді той, що дав Start
         _over = false;
         _winner = null;
         _reason = null;

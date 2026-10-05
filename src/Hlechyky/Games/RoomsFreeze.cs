@@ -17,8 +17,8 @@ public sealed record FrozenTables(int Version, DateTimeOffset At, bool Clean, IR
 }
 
 /// <summary>
-/// Один стіл у знімку. <c>State</c> — <see cref="Game.Save"/> партії, що йде (лише в чистому знімку й лише в ігор, що
-/// вміють). <c>Views</c>/<c>WatcherView</c> — повні види (<see cref="Game.Snapshot"/>) дограного чи перерваного столу
+/// Один стіл у знімку. <c>State</c> — <see cref="Game.Save"/> партії, що йде (лише в чистому знімку й лише в ігор із
+/// <see cref="Game.Resumable"/>). <c>LobbyActs</c> — налаштування столу в лобі, які програються новій грі наново. <c>Views</c>/<c>WatcherView</c> — повні види (<see cref="Game.Snapshot"/>) дограного чи перерваного столу
 /// тим самим JSON, що летить браузерам: нова гра в новому процесі тієї дошки не знає, а людям треба бачити підсумок.
 /// </summary>
 public sealed record FrozenRoom(
@@ -44,7 +44,8 @@ public sealed record FrozenRoom(
     int EveningGames,
     string? State = null,
     IReadOnlyDictionary<int, JsonElement>? Views = null,
-    JsonElement? WatcherView = null);
+    JsonElement? WatcherView = null,
+    IReadOnlyList<LobbyAct>? LobbyActs = null);
 
 public sealed record FrozenResult(int[] Winners, bool Draw, string Text, IReadOnlyDictionary<int, long>? Scores, string? Verdict)
 {
@@ -121,7 +122,7 @@ public sealed partial class Rooms
         if (room.Info.Solo && (!room.Info.Persistent || room.Key is null)) return null;
 
         string? state = null;
-        if (clean && room.Status == RoomStatus.Playing && !room.Info.Solo)
+        if (clean && room.Status == RoomStatus.Playing && !room.Info.Solo && room.Game.Resumable)
         {
             try { state = room.Game.Save(); }
             catch (Exception ex) { _log.LogWarning(ex, "Save впав у кімнаті {Room} — партія буде перервана", room.Id); }
@@ -147,7 +148,8 @@ public sealed partial class Rooms
             {
                 Nick = e.Nick, Wins = e.Wins, Games = e.Games, Points = e.Points, HasPoints = e.HasPoints, Order = e.Order,
             })],
-            room.EveningGames, state, views, watcher);
+            room.EveningGames, state, views, watcher,
+            room.Status == RoomStatus.Lobby && room.LobbyActs.Count > 0 ? [.. room.LobbyActs] : null);
     }
 
     /// <summary>Повний вид місця (той, що отримує новенький), а коли стіл сам відновлений — збережений. Під замком кімнати.</summary>
@@ -190,6 +192,7 @@ public sealed partial class Rooms
     public RestoreReport Restore(FrozenTables tables)
     {
         var now = _clock.UtcNow;
+        var pause = now > tables.At ? now - tables.At : TimeSpan.Zero;
         int count = 0, continued = 0, interrupted = 0, solo = 0, skipped = 0;
         var refunds = new List<(string Nick, int Amount, string Ref)>();
         var seated = new List<string>();
@@ -199,7 +202,7 @@ public sealed partial class Rooms
         {
             try
             {
-                if (_registry.Info(f.Game) is not { } info) { skipped++; continue; }
+                if (_registry.Info(f.Game) is not { } info) { Refund(f, refunds); skipped++; continue; }
                 if (Find(f.Id) is not null) { skipped++; continue; }
                 if (info.Solo)
                 {
@@ -213,6 +216,7 @@ public sealed partial class Rooms
                 {
                     case RoomStatus.Lobby:
                         room.Status = RoomStatus.Lobby;
+                        Replay(room, f.LobbyActs);
                         break;
                     case RoomStatus.Finished:
                         room.Status = RoomStatus.Finished;
@@ -220,7 +224,7 @@ public sealed partial class Rooms
                         room.Restored = ViewsOf(f);
                         break;
                     default:
-                        if (tables.Clean && f.State is { Length: > 0 } state && Resume(room, state, now)) continued++;
+                        if (tables.Clean && f.State is { Length: > 0 } state && Resume(room, state, now, pause)) continued++;
                         else
                         {
                             Interrupt(room, f, now, refunds);
@@ -246,11 +250,14 @@ public sealed partial class Rooms
             catch (Exception ex)
             {
                 _log.LogWarning(ex, "стіл {Room} ({Game}) не відновився", f.Id, f.Game);
+                Refund(f, refunds);
                 skipped++;
             }
         }
 
-        // Номери реплік наскрізні на весь сервер: браузер відкидає рядок, номер якого вже бачив.
+        // Номери реплік наскрізні на весь сервер: браузер відкидає рядок, номер якого вже бачив. Знімок не з заморозки
+        // міг не застати останніх реплік, які браузери вже бачили, — тоді з запасом, щоб нові не збіглися з ними номером.
+        if (!tables.Clean && talk > 0) talk += 1000;
         if (talk > Interlocked.Read(ref _talkSeq)) Interlocked.Exchange(ref _talkSeq, talk);
         // Нікого з тих, хто сидів, ще нема на зв'язку: відлік grace — як від виходу, тільки довший.
         lock (_lock)
@@ -297,9 +304,13 @@ public sealed partial class Rooms
         return room;
     }
 
-    /// <summary>Партія грає далі: нова гра стартує й одразу бере стан зі знімка (як OpenSolo для Persistent-ігор).</summary>
-    bool Resume(Room room, string state, DateTimeOffset now)
+    /// <summary>
+    /// Партія грає далі: нова гра стартує й одразу бере стан зі знімка (як OpenSolo для Persistent-ігор), а годинники
+    /// зсуваються на час, поки сервер стояв (<see cref="Game.Resumed"/>).
+    /// </summary>
+    bool Resume(Room room, string state, DateTimeOffset now, TimeSpan pause)
     {
+        if (!room.Game.Resumable) return false;   // знімок від версії, де гра ще вміла, — а ця вже ні
         var ctx = (RoomContext)room.Game.Ctx;
         try
         {
@@ -308,6 +319,7 @@ public sealed partial class Rooms
             {
                 room.Game.Start();
                 room.Game.Load(state);
+                room.Game.Resumed(pause);
             }
         }
         catch (Exception ex)
@@ -327,6 +339,9 @@ public sealed partial class Rooms
     {
         room.Status = RoomStatus.Finished;
         room.FinishedAt = now;
+        // Знімок не з заморозки міг застати партію, яку встигли дограти й розрахувати вже після нього: ставки тоді
+        // вже в переможця чи повернуті, і повертати їх удруге не можна.
+        if (room.Charged.Count > 0 && _stakes.Settled(room.Id, room.Round)) room.Charged.Clear();
         var back = room.Stake > 0 && room.Charged.Count > 0;
         room.Result = new RoomResult([], true,
             $"{room.Info.Title}: партію перервав перезапуск сайту{(back ? " — ставки повернуто" : "")}", null, InterruptedVerdict);
@@ -334,6 +349,33 @@ public sealed partial class Rooms
             refunds.Add((nick, room.Stake, $"stake-refund:{room.Id}:{room.Round}:{NickKey(nick)}"));
         room.Charged.Clear();
         room.Restored = ViewsOf(f);
+    }
+
+    /// <summary>Стіл не відновився (гру прибрали, налаштування вже не ті), а ставки за партію, що йшла, списано, — назад.</summary>
+    void Refund(FrozenRoom f, List<(string, int, string)> refunds)
+    {
+        if (f.Status != RoomStatus.Playing || f.Stake <= 0 || f.Charged.Count == 0) return;
+        try { if (_stakes.Settled(f.Id, f.Round)) return; }
+        catch (Exception ex) { _log.LogWarning(ex, "не вдалось перевірити розрахунок столу {Room}", f.Id); }
+        foreach (var nick in f.Charged)
+            refunds.Add((nick, f.Stake, $"stake-refund:{f.Id}:{f.Round}:{NickKey(nick)}"));
+    }
+
+    /// <summary>Налаштування столу в лобі — новій грі тими самими ходами. Не прийнялось (місце вже порожнє) — пропускаємо.</summary>
+    void Replay(Room room, IReadOnlyList<LobbyAct>? acts)
+    {
+        if (acts is null || acts.Count == 0) return;
+        var ctx = (RoomContext)room.Game.Ctx;
+        using (ctx.Collect(new Outbox()))
+            foreach (var a in acts)
+            {
+                try
+                {
+                    var payload = a.Payload is null ? default : JsonDocument.Parse(a.Payload).RootElement.Clone();
+                    if (room.Game.Act(a.Seat, a.Action, payload).Ok) room.LobbyActs.Add(a);
+                }
+                catch (Exception ex) { _log.LogDebug(ex, "налаштування {Action} столу {Room} не програлось", a.Action, room.Id); }
+            }
     }
 
     static RestoredViews? ViewsOf(FrozenRoom f) =>
@@ -362,8 +404,8 @@ public sealed partial class Rooms
     }
 
     /// <summary>
-    /// Партії, які перезапуск зараз перервав би: мультиплеєрні, що йдуть, і соло-забіги, що в когось на екрані. Ті, що
-    /// вміють зберегтись (<see cref="Game.Save"/>), не рахуються — вони переживуть перезапуск і так.
+    /// Партії, які перезапуск зараз перервав би: мультиплеєрні, що йдуть, і соло-забіги, що в когось на екрані. Ігри з
+    /// <see cref="Game.Resumable"/> не рахуються — вони переживуть перезапуск і так.
     /// </summary>
     public List<BusyTable> Busy()
     {
@@ -377,13 +419,7 @@ public sealed partial class Rooms
                 {
                     if (room.Info.Persistent || room.OnScreen.IsEmpty) continue;
                 }
-                else
-                {
-                    string? saved = null;
-                    try { saved = room.Game.Save(); }
-                    catch { /* не вміє — значить, зайнятий */ }
-                    if (saved is not null) continue;
-                }
+                else if (room.Game.Resumable) continue;
                 list.Add(new BusyTable(room.Id, room.Info.Id, room.Info.Title, [.. room.Seats.OfType<string>()], room.StartedAt, room.Info.Solo));
             }
         }

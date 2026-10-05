@@ -328,6 +328,8 @@ public sealed class TestCounter : Game
 
     public override object View(int? seat) => new { turn = (int?)null, sum = _sum, last = _last, mine = seat };
 
+    public override bool Resumable => true;
+
     public override string? Save() => JsonSerializer.Serialize(new { sum = _sum, last = _last });
 
     public override void Load(string json)
@@ -336,4 +338,20 @@ public sealed class TestCounter : Game
         _sum = e.GetProperty("sum").GetInt32();
         _last = e.GetProperty("last").GetInt32();
     }
+}
+
+/// <summary>
+/// Save є, але «для тестів» — Resumable не вмикає (як доміно: боти й таймер у Save не потрапляють). Перезапуск таку
+/// партію не продовжує, а деплой її чекає.
+/// </summary>
+public sealed class TestSaveOnly : Game
+{
+    public override GameInfo Info { get; } = new(
+        "t-saveonly", "Тестове лише-збереження", "тестове лише-збереження", GameGroup.Board, 2, 2);
+
+    public override void Start() { }
+
+    public override object View(int? seat) => new { turn = 0 };
+
+    public override string? Save() => "{}";
 }

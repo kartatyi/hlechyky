@@ -19,6 +19,24 @@ public class EconomyTests
     }
 
     [Fact]
+    public void Round_is_settled_once_paid_or_refunded_and_only_that_round()
+    {
+        using var rig = new EconomyRig();
+        IStakes stakes = rig.Economy;
+        Assert.False(stakes.Settled("ab12cd34", 1));
+        rig.Economy.TrySpend("Оля", 0, "stake", "stake:ab12cd34:1:оля");   // списання ставки — ще не розрахунок
+        Assert.False(stakes.Settled("ab12cd34", 1));
+
+        stakes.Grant("Оля", 10, "stake-win", "stake-win:ab12cd34:1:оля");
+        stakes.Grant("Петро", 5, "stake-refund", "stake-refund:ab12cd34:2:петро");
+
+        Assert.True(stakes.Settled("ab12cd34", 1));
+        Assert.True(stakes.Settled("ab12cd34", 2));
+        Assert.False(stakes.Settled("ab12cd34", 3));
+        Assert.False(stakes.Settled("ab12cd3", 1));   // префікс іншого столу не рахується
+    }
+
+    [Fact]
     public void Grant_without_ref_stacks()
     {
         using var rig = new EconomyRig();

@@ -272,6 +272,9 @@ public sealed class Zirka : Game
 
     public override string? Save() => JsonSerializer.Serialize(new State(new string(_b), _n, _turn, _moves, _last, _winner, _reason, [.. _gone], [.. _players]));
 
+    /// <summary>Save тримає всю партію (таймерів і ботів тут нема) — після перезапуску сервера грає далі.</summary>
+    public override bool Resumable => true;
+
     public override void Load(string json)
     {
         if (JsonSerializer.Deserialize<State>(json) is not { } s || s.Board.Length != Cells.Length) return;

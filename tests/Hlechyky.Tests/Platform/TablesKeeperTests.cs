@@ -168,6 +168,85 @@ public sealed class TablesKeeperTests : IDisposable
     }
 
     [Fact]
+    public void Game_with_a_save_but_not_resumable_is_busy_and_gets_interrupted()
+    {
+        var a = Boot();
+        var id = Table(a, "t-saveonly", "Оля", "Петро");
+        Assert.Equal(id, Assert.Single(a.Rooms.Busy()).Id);   // деплой мусить чекати — партію не продовжити
+
+        var b = Restart(a);
+
+        Assert.Equal(RoomStatus.Finished, Room(b, id).Status);
+        Assert.Equal(Rooms.InterruptedVerdict, Room(b, id).Result!.Verdict);
+    }
+
+    [Fact]
+    public void Resumed_chess_clock_does_not_charge_the_restart_to_the_player_on_move()
+    {
+        var a = Boot();
+        var id = a.Rooms.Create("Оля", "chess", new Dictionary<string, string> { ["clock"] = "3" }).Reply.RoomId!;
+        Assert.True(a.Rooms.Join(id, "Петро").Reply.Ok);
+        var white = Room(a, id).Seats[0]!;
+        Assert.True(a.Rooms.Act(id, white, "move", P(new { from = "e2", to = "e4" })).Reply.Ok);
+        _clock.Advance(10);                                       // чорні думають 10 с…
+        var before = Views.Json(a.Rooms.ViewsFor(id)!.WatcherView).GetProperty("clock").GetProperty("ms")[1].GetInt64();
+
+        var b = Restart(a, downSeconds: 30);                      // …а потім сервер 30 с перезапускається
+
+        var after = Views.Json(b.Rooms.ViewsFor(id)!.WatcherView).GetProperty("clock").GetProperty("ms")[1].GetInt64();
+        Assert.Equal(RoomStatus.Playing, Room(b, id).Status);
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
+    public void Table_settings_made_in_the_lobby_come_back()
+    {
+        var a = Boot();
+        var id = a.Rooms.Create("Оля", "t-lobby", null).Reply.RoomId!;
+        Assert.True(a.Rooms.Act(id, "Оля", "pack", P(new { id = "весняний" })).Reply.Ok);
+
+        var b = Restart(a);
+
+        Assert.Equal("весняний", Views.Json(b.Rooms.ViewsFor(id)!.WatcherView).GetProperty("pack").GetString());
+        Assert.True(b.Rooms.StartByHost(id, "Оля").Reply.Ok);   // без пакета «Почати» відмовило б
+        Assert.Empty(Room(b, id).LobbyActs);
+    }
+
+    [Fact]
+    public void Restore_from_a_routine_snapshot_does_not_refund_a_round_already_paid()
+    {
+        _stakes.Set("Оля", 20).Set("Петро", 20);
+        var a = Boot();
+        var id = a.Rooms.Create("Оля", "t-duel", new Dictionary<string, string> { ["stake"] = "5" }).Reply.RoomId!;
+        Assert.True(a.Rooms.Join(id, "Петро").Reply.Ok);
+        a.Keeper.Snapshot();                                      // знімок застав партію, що йде…
+        Assert.True(a.Rooms.Act(id, "Оля", "win", P(null)).Reply.Ok);   // …а її дограли й заплатили вже після нього
+        Assert.Equal(25, _stakes.Balance("Оля"));
+        _clock.Advance(3);
+
+        var b = Boot();
+        Assert.Equal(1, b.Keeper.RestoreAtStart()!.Interrupted);
+
+        Assert.Equal(25, _stakes.Balance("Оля"));
+        Assert.Equal(15, _stakes.Balance("Петро"));
+    }
+
+    [Fact]
+    public void Stakes_come_back_when_a_playing_table_cannot_be_restored()
+    {
+        var a = Boot();
+        var frozen = new FrozenRoom("bad00001", "t-badconfig", new Dictionary<string, string>(), ["Оля", "Петро"], "Оля",
+            RoomStatus.Playing, 5, 1, null, _clock.UtcNow, _clock.UtcNow, null, null, 3, ["Оля", "Петро"], null, null, [], [], 0);
+
+        var report = a.Rooms.Restore(new FrozenTables(FrozenTables.CurrentVersion, _clock.UtcNow, true, [frozen]));
+
+        Assert.Equal(1, report.Skipped);
+        Assert.Null(a.Rooms.Find("bad00001"));
+        Assert.Contains("grant:Оля:5:stake-refund:bad00001:1:оля", _stakes.Calls);
+        Assert.Contains("grant:Петро:5:stake-refund:bad00001:1:петро", _stakes.Calls);
+    }
+
+    [Fact]
     public void Game_without_save_is_interrupted_and_stakes_come_back()
     {
         _stakes.Set("Оля", 20).Set("Петро", 20);
