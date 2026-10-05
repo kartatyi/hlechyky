@@ -1,0 +1,112 @@
+/*
+  Крадії груш: сад малює канвас, тут — рядок над ним, табличка комор під ним, стік і «👊» під палець. Кольори місць —
+  на :root з префіксом --gr-, бо модуль читає їх через HGames.ui.css(), а та дивиться саме туди.
+*/
+:root {
+  --gr-pear: #cfd85a;
+  --gr-gold: #f4c542;
+  --gr-s0: #5aa9ff;
+  --gr-s1: #e07b4f;
+  --gr-s2: #6fcf7a;
+  --gr-s3: #f4c542;
+  --gr-s4: #b48cf2;
+  --gr-s5: #5fd6c2;
+  --gr-s6: #f08cb8;
+  --gr-s7: #b7c2bd;
+}
+
+/* чипи місць у шапці картки: каркас знає лише x/o/c/d */
+.gseat.gr0 { color: var(--gr-s0); }
+.gseat.gr1 { color: var(--gr-s1); }
+.gseat.gr2 { color: var(--gr-s2); }
+.gseat.gr3 { color: var(--gr-s3); }
+.gseat.gr4 { color: var(--gr-s4); }
+.gseat.gr5 { color: var(--gr-s5); }
+.gseat.gr6 { color: var(--gr-s6); }
+.gseat.gr7 { color: var(--gr-s7); }
+
+.grwrap { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.grstage { width: 100%; display: flex; justify-content: center; }
+
+/* Сад квадратний; стеля — скільки лишається між шапкою й низом екрана (каркас тримає --gfit-h). */
+.gcanvas.grboard {
+  display: block; width: 100%; aspect-ratio: 1; margin: 0 auto; border-radius: 14px;
+  max-width: min(100%, 720px, max(300px, calc(var(--gfit-h, 100dvh) - 190px)));
+  background: #4f8a36; box-shadow: 0 2px 14px rgba(0, 0, 0, .25);
+}
+.gcanvas.grboard.play { touch-action: none; cursor: crosshair; }
+
+.grhud { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; font-size: .92em; min-height: 28px; }
+.grchip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  background: var(--panel3, rgba(127, 127, 127, .16)); font-variant-numeric: tabular-nums;
+}
+.grchip b { font-weight: 800; }
+.grtime.low { color: var(--bad, #ff6b5a); }
+.grmine { box-shadow: inset 0 0 0 2px var(--c); }
+.grmine em { font-style: normal; font-weight: 800; color: #fff; }
+.grmine.rob { background: #b3261e; color: #fff; animation: grrob .45s steps(2, jump-none) infinite; }
+@keyframes grrob { to { background: #e5483c; } }
+.grcarry i {
+  display: inline-block; width: 10px; height: 12px; border-radius: 50% 50% 46% 46% / 40% 40% 60% 60%;
+  background: rgba(127, 127, 127, .32);
+}
+.grcarry i.on { background: var(--gr-pear); }
+.grcarry i.gold { background: var(--gr-gold); box-shadow: 0 0 5px var(--gr-gold); }
+.grcarry.full { box-shadow: inset 0 0 0 2px var(--gr-pear); }
+.grpush { color: var(--muted); }
+.grpush.ok { color: var(--ok); font-weight: 700; }
+
+.grscore { display: flex; flex-wrap: wrap; gap: 4px 6px; justify-content: center; font-size: .86em; }
+.grscore[hidden], .grhud[hidden] { display: none; }
+.grsc {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px;
+  background: var(--panel3, rgba(127, 127, 127, .16)); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.grsc i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+.grsc b { font-weight: 800; }
+.grsc.me { box-shadow: inset 0 0 0 2px var(--c); font-weight: 700; }
+.grsc.gone { opacity: .5; }
+
+/* ---- палець: стік ліворуч, «👊» праворуч ---- */
+.grctl { display: none; }
+@media (pointer: coarse) {
+  /* під садом стік і кнопка — сад менший, щоб усе стало на екран */
+  .grwrap.hasctl .gcanvas.grboard { max-width: min(100%, max(260px, calc(var(--gfit-h, 100dvh) - 300px))); }
+  /* табличка комор під стіком ховалась за нижніми вкладками й кнопкою балачок — на телефоні вона одним рядком
+     (гортається вбік) одразу під рядком над садом */
+  .grwrap.hasctl .grscore {
+    order: -1; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; max-width: 100%;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .grwrap.hasctl .grscore::-webkit-scrollbar { display: none; }
+  .grwrap.hasctl .grsc:first-child { margin-left: auto; }   /* по центру, поки влазить, і з початку, коли ні */
+  .grwrap.hasctl .grsc:last-child { margin-right: auto; }
+  .grwrap.hasctl .grhud { order: -2; }
+  .grctl {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 420px;
+    padding: 2px 10px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .grstick {
+    position: relative; width: 118px; height: 118px; border-radius: 50%; flex: none; touch-action: none;
+    background: radial-gradient(circle, var(--panel3, #2a2f2a) 0 30%, var(--bg2, #1c201c) 72%); border: 2px solid var(--line, #444);
+  }
+  .grknob {
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: var(--gr-s0); opacity: .9; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); pointer-events: none;
+  }
+  .grbtn {
+    position: relative; width: 84px; height: 84px; border-radius: 50%; justify-content: center; font-size: 2em; padding: 0;
+    border: 2px solid var(--line, #444); touch-action: none; -webkit-user-select: none; user-select: none;
+    background: conic-gradient(var(--panel3, #2a2f2a) calc(var(--cd, 0) * 360deg), color-mix(in srgb, var(--accent) 45%, var(--panel3, #2a2f2a)) 0);
+    opacity: .75;
+  }
+  .grbtn.ready { opacity: 1; background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
+  .grbtn:active { transform: scale(.94); }
+}
+@media (max-width: 380px) {
+  .grhud { gap: 4px; font-size: .8em; }
+  .grchip { padding: 2px 7px; gap: 4px; }
+  .grstick { width: 106px; height: 106px; }
+  .grbtn { width: 74px; height: 74px; }
+}

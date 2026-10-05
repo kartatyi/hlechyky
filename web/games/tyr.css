@@ -1,0 +1,110 @@
+/* Ярмарковий тир (tyr, tyr-daily). Полотно — сцена зі своїми кольорами (тент, дошки, вода); навколо — змінні сайту. */
+.tyr { --ty0: #f4c542; --ty1: #7bd389; --ty2: #ef7a6f; --ty3: #64b5f6; --ty4: #c58af0; --ty5: #ff9f43; --ty6: #4dd0e1; --ty7: #f48fb1; }
+.gseat.ty0, .ty0 { --tyc: var(--ty0, #f4c542); }
+.gseat.ty1, .ty1 { --tyc: var(--ty1, #7bd389); }
+.gseat.ty2, .ty2 { --tyc: var(--ty2, #ef7a6f); }
+.gseat.ty3, .ty3 { --tyc: var(--ty3, #64b5f6); }
+.gseat.ty4, .ty4 { --tyc: var(--ty4, #c58af0); }
+.gseat.ty5, .ty5 { --tyc: var(--ty5, #ff9f43); }
+.gseat.ty6, .ty6 { --tyc: var(--ty6, #4dd0e1); }
+.gseat.ty7, .ty7 { --tyc: var(--ty7, #f48fb1); }
+.gseat.ty0, .gseat.ty1, .gseat.ty2, .gseat.ty3, .gseat.ty4, .gseat.ty5, .gseat.ty6, .gseat.ty7 { color: var(--tyc); }
+
+.tyr .tyrfield {
+  max-width: min(820px, 100%);
+  background: #3a1d12;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Гравцеві палець по полю — постріл, а не прокрутка; мишачий курсор ховаємо — приціл малюємо самі. */
+.tyr .tyrfield.play { touch-action: none; }
+@media (hover: hover) and (pointer: fine) { .tyr .tyrfield.play { cursor: none; } }
+
+.tyrhud {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap;
+  max-width: 820px; margin: 0 auto 6px; font-size: .95em;
+}
+.tyrhud > span { min-height: 1.4em; }
+.tyrstand { color: var(--muted); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tyrscore { font-family: var(--display); font-weight: 800; font-size: 1.35em; color: var(--accent); white-space: nowrap; }
+.tyrtime { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 3.2em; text-align: right; white-space: nowrap; }
+.tyrtime.hot { color: var(--danger); animation: tyrpulse .5s ease-in-out infinite alternate; }
+@keyframes tyrpulse { to { transform: scale(1.12); } }
+
+.tyrctl {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  max-width: 820px; margin: 8px auto 0;
+}
+.tyrctl[hidden] { display: none; }
+.tyrdrum { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-height: 44px; }
+.tyrdrum i {
+  width: 12px; height: 26px; border-radius: 6px 6px 3px 3px; background: var(--panel3, #2b4c3c);
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, .25); transition: background .12s, transform .12s;
+}
+.tyrdrum i.on { background: linear-gradient(#ffe082, #c99a1a 60%, #8a6a12); }
+.tyrdrum.empty i { animation: tyrshake .3s; }
+.tyrrl { margin-left: 6px; color: var(--muted); font-size: .9em; }
+.tyrdrum.empty .tyrrl { color: var(--danger); font-weight: 700; }
+@keyframes tyrshake { 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+.tyrrel { min-height: 44px; min-width: 44px; padding: 0 16px; font-weight: 700; touch-action: manipulation; }
+
+.tyrboard {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+  max-width: 820px; margin: 8px auto 0;
+}
+.tyrboard[hidden] { display: none; }
+.tyrchip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; min-height: 32px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--bg2); color: var(--text);
+  font: inherit; font-size: .9em; cursor: pointer; max-width: 100%;
+}
+.tyrchip i, .tyrtab i { width: 9px; height: 9px; border-radius: 50%; background: var(--tyc, var(--muted)); flex: none; display: inline-block; }
+.tyrtab i { margin-right: 6px; }
+.tyrchip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 9em; }
+.tyrchip b { font-variant-numeric: tabular-nums; }
+.tyrchip.me { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.tyrchip.watch { border-color: var(--ok); }
+.tyrchip.up b { color: var(--ok); }
+.tyrchip.down b { color: var(--danger); }
+.tyrchip.up, .tyrchip.down { animation: tyrpop .35s ease-out; }
+@keyframes tyrpop { 40% { transform: scale(1.08); } }
+
+.tyrleg {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px;
+  max-width: 820px; margin: 8px auto 0; font-size: .88em; color: var(--muted);
+}
+.tyrleg[hidden] { display: none; }
+.tyrlegi { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.tyrlegi canvas { width: 30px; height: 30px; }
+.tyrlegi b { color: var(--ok); }
+.tyrlegi.bad b { color: var(--danger); }
+
+.tyrsum { max-width: 820px; margin: 10px auto 0; }
+.tyrsum[hidden] { display: none; }
+.tyrtab { width: 100%; border-collapse: collapse; font-size: .92em; }
+.tyrtab th { color: var(--muted); font-weight: 600; text-align: left; padding: 3px 6px; font-size: .9em; }
+.tyrtab td { padding: 5px 6px; border-top: 1px solid var(--line); }
+.tyrtab tr.me td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.tyrtab td:nth-child(2) { max-width: 10em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tyrday { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg2); display: grid; gap: 6px; }
+.tyrday ol { margin: 0; padding-left: 1.6em; }
+.tyrday li { display: flex; gap: 6px; }
+.tyrday li span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tyrday li.me { color: var(--accent); }
+.tyrshare { justify-self: start; min-height: 44px; }
+
+@media (max-width: 480px) {
+  .tyrhud { font-size: .88em; }
+  .tyrscore { font-size: 1.2em; }
+  .tyrtab { font-size: .82em; }
+  .tyrtab th:nth-child(4), .tyrtab td:nth-child(4) { display: none; }
+  .tyrleg { gap: 2px 8px; font-size: .82em; }
+}
+@media (max-width: 380px) {
+  .tyrtab th:last-child, .tyrtab td:last-child { display: none; }
+  .tyrrel { padding: 0 12px; }
+}
