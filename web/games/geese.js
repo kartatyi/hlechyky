@@ -71,9 +71,12 @@
     const want = performance.now() - el;
     if (st.key !== key) { st.key = key; st.base = want; return; }
     const d = want - st.base;
+    // Мережа лише додає запізнення, тож найточніший кадр — той, що прийшов найшвидше (найменший base). Йому
+    // віримо швидко, а пізнім кадрам — ледь-ледь: так годинник тримається найменшої затримки, а не середньої,
+    // і все ж поволі відпускає, якщо годинники справді розійшлись.
     if (Math.abs(d) > 250) st.base = want;
-    else if (d < 0) st.base += d * 0.3;   // локальний годинник забіг уперед — легенько назад
-    else st.base += d * 0.5;              // кадр прийшов пізніше — сервер «молодший», підтягуємо
+    else if (d < 0) st.base += d * 0.6;
+    else st.base += d * 0.05;
   }
 
   const phaseT = (st) => performance.now() - st.base;
@@ -252,7 +255,19 @@
       g.fillRect(0, 0, c.width, c.height); g.restore();
     };
     if (k === 'cat') tint(tr === 'rudyi' ? '#ff7a12' : '#8a8f99', tr === 'rudyi' ? 0.62 : 0.55);   // звичайний кіт сірий, щоб рудого не сплутати
-    if (tr === 'chorna') tint('#1d1a1a', 0.8);
+    if (tr === 'chorna') {
+      tint('#1d1a1a', 0.72);
+      // Чорна курка на траві — темна пляма: світлий обвід повертає їй силует курки (гребінь просвічує крізь тон).
+      const src = document.createElement('canvas');
+      src.width = c.width;
+      src.height = c.height;
+      src.getContext('2d').drawImage(c, 0, 0);
+      g.clearRect(0, 0, c.width, c.height);
+      const o = Math.max(1, px * 0.035);
+      for (let a = 0; a < 8; a++) g.drawImage(src, Math.cos(a * Math.PI / 4) * o, Math.sin(a * Math.PI / 4) * o);
+      tint('#f3ead2', 1);
+      g.drawImage(src, 0, 0);
+    }
     const u = px;   // одиниця — розмір тварини
     const hx = cx - u * 0.22, hy = cy - u * 0.28;   // приблизно голова (ліва верхня чверть)
     if (tr === 'hustka') {
@@ -681,7 +696,11 @@
     const v = view(st);
     const left = Math.max(0, (v.dur || 0) - phaseT(st));
     const s = Math.ceil(left / 1000);
-    const txt = 'Лишилось ' + s + ' с · ' + (st.ctx.ui.coarse() ? 'тисни цифри й ✓' : 'цифри, ↑↓ ±1, ←→ ±5, Enter');
+    const coarse = st.ctx.ui.coarse();
+    const how = v.q && v.q.opts
+      ? (coarse ? 'тисни варіант і «Відповісти»' : 'цифри 1–' + v.q.opts.length + ' чи ←→, Enter')
+      : (coarse ? 'тисни цифри й ✓' : 'цифри, ↑↓ ±1, ←→ ±5, Enter');
+    const txt = 'Лишилось ' + s + ' с · ' + how;
     const el = box.querySelector('span');
     if (el.textContent !== txt) el.textContent = txt;
     const bar = box.querySelector('b');

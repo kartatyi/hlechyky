@@ -105,6 +105,19 @@
 
 /* поки відповідаєш, двору не видно — лише питання, табло й смужка часу */
 .gsanswering .gsyard { display: none; }
+/* На вузькому телефоні з 8 гравцями (вечірка) чипи в три ряди зсували ✓ під нижню навігацію: поки відповідаєш —
+   чипи в один ряд із прокруткою, клавіші трохи нижчі (44 px — ще під палець). */
+@media (max-width: 420px) {
+  .gsanswering .gsppl { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; padding-bottom: 2px; }
+  .gsanswering .gsppl::-webkit-scrollbar { display: none; }
+  .gsanswering .gsp { flex: none; }
+  .gsanswering .gsno { display: none; }
+  .gsanswering .gsw { gap: 6px; }
+  .gsanswering .gsnum button { width: 52px; height: 52px; }
+  .gsanswering .gsval { font-size: 40px; line-height: 52px; }
+  .gsanswering .gskeys button { height: 44px; }
+  .gsanswering .gsq { padding: 6px 10px; }
+}
 .gstimer { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .gstbar { display: block; width: 100%; max-width: 360px; height: 6px; border-radius: 3px; background: var(--panel3); overflow: hidden; }
 .gstbar b { display: block; height: 100%; width: 100%; background: var(--accent); transition: width .1s linear; }
