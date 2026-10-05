@@ -1,0 +1,120 @@
+/*
+  Тонкий лід: ставок малює канвас, тут — рядок гравців над ним, стік і кнопка стрибка під палець. Свої кольори —
+  на :root з префіксом --ti-, бо модуль читає їх через HGames.ui.css(), а та дивиться саме туди.
+*/
+:root {
+  --ti-ice: #e4f5ff;       /* верхній ярус */
+  --ti-ice-edge: #9ccbe7;  /* торець верхньої плитки */
+  --ti-ice-hi: #ffffff;    /* відблиск, тріщини */
+  --ti-low: #86b9d8;       /* нижній ярус — глибше й синіше */
+  --ti-low-edge: #4f86ab;
+  --ti-dark: #3b6d90;      /* плитка, що от-от провалиться */
+  --ti-water: #0d2a3e;
+  --ti-water2: #1d5677;
+  --ti-snow: #eef5f8;      /* берег */
+  --ti-snow2: #c6d8e2;
+  --ti-crack: #ffffff;
+  /* вісім місць: колір для ока, номер у рядку — для тих, кому кольори зливаються */
+  --ti-s0: #5aa9ff;
+  --ti-s1: #e0875c;
+  --ti-s2: #7bd389;
+  --ti-s3: #f4c542;
+  --ti-s4: #b48cf2;
+  --ti-s5: #5fd3c0;
+  --ti-s6: #f08cb8;
+  --ti-s7: #c0c8c4;
+}
+
+/* чипи місць у шапці картки: каркас знає лише x/o/c/d */
+.gseat.ti0 { color: var(--ti-s0); }
+.gseat.ti1 { color: var(--ti-s1); }
+.gseat.ti2 { color: var(--ti-s2); }
+.gseat.ti3 { color: var(--ti-s3); }
+.gseat.ti4 { color: var(--ti-s4); }
+.gseat.ti5 { color: var(--ti-s5); }
+.gseat.ti6 { color: var(--ti-s6); }
+.gseat.ti7 { color: var(--ti-s7); }
+
+/* Ставок квадратний; на ноутбуці ширину під висоту вікна ставить fit() у thinice.js, тут — запасна стеля. */
+.tiboard {
+  aspect-ratio: 1; width: 100%; max-width: min(600px, calc(100vh - 300px)); min-width: min(300px, 100%);
+  background: var(--ti-water); border-radius: 14px;
+}
+.tiboard.play { touch-action: none; }
+
+/* ---- рядок над ставком ---- */
+.tihud { display: flex; gap: 4px 5px; flex-wrap: wrap; justify-content: center; font-size: .82em; max-width: 100%; }
+.tichip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  transition: opacity .3s;
+}
+.tichip i {
+  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
+  display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
+}
+.tichip .tinick { overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 11em; }
+.tichip .tipts { font-variant-numeric: tabular-nums; color: var(--text); }
+.tichip .tist { color: var(--text); }
+.tichip.out { opacity: .5; }
+.tichip.me { box-shadow: 0 0 0 1px currentColor inset; }
+.tichip.ti0 { color: var(--ti-s0); }
+.tichip.ti1 { color: var(--ti-s1); }
+.tichip.ti2 { color: var(--ti-s2); }
+.tichip.ti3 { color: var(--ti-s3); }
+.tichip.ti4 { color: var(--ti-s4); }
+.tichip.ti5 { color: var(--ti-s5); }
+.tichip.ti6 { color: var(--ti-s6); }
+.tichip.ti7 { color: var(--ti-s7); }
+.tichip.ticlock, .tichip.tiround { color: var(--muted); font-variant-numeric: tabular-nums; }
+.tichip.ticlock.hot { color: var(--danger, #e5534b); animation: tipulse 1s ease-in-out infinite; }
+@keyframes tipulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .tichip.ticlock.hot { animation: none; } }
+.tichip.tisnd { border: 0; cursor: pointer; color: var(--muted); font: inherit; padding: 3px 8px; }
+.tichip.tisnd:hover { color: var(--text); }
+
+/* ---- палець: стік ліворуч, стрибок праворуч ---- */
+.ticl { display: none; }
+@media (pointer: coarse) {
+  .ticl {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 420px;
+    padding: 2px 8px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .tistick {
+    position: relative; width: 120px; height: 120px; border-radius: 50%; flex: none; touch-action: none;
+    background: radial-gradient(circle, var(--panel3) 0 30%, var(--bg2) 72%); border: 2px solid var(--line);
+  }
+  .tiknob {
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: var(--ti-ice-edge); opacity: .9; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); pointer-events: none;
+  }
+  /* стрибок: коло заповнюється за перезарядкою (--cd з модуля), готовий — світиться */
+  .tijump {
+    --cd: 1;
+    position: relative; width: 84px; height: 84px; border-radius: 50%; flex: none; touch-action: none;
+    display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+    padding: 0; font: inherit; color: var(--text); border: 2px solid var(--line);
+    background: conic-gradient(var(--ti-ice-edge) calc(var(--cd) * 360deg), var(--panel3) 0);
+  }
+  .tijump::before {
+    content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--bg2); z-index: 0;
+  }
+  .tijump > * { position: relative; z-index: 1; pointer-events: none; }
+  .tijump span { font-size: 1.9em; line-height: 1; font-weight: 800; }
+  .tijump small { font-size: .62em; color: var(--muted); }
+  .tijump.ready { border-color: var(--ti-ice-edge); box-shadow: 0 0 14px rgba(156, 203, 231, .55); }
+  .tijump.ready::before { background: var(--panel3); }
+  .tijump.off { opacity: .45; }
+  .tijump:active::before { background: var(--accent); }
+  .tiboard { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .tichip.tisnd { min-width: 44px; min-height: 44px; justify-content: center; touch-action: manipulation; }
+}
+@media (max-width: 480px) {
+  .tihud { gap: 4px; font-size: .74em; }
+  .tichip { padding: 2px 7px; gap: 4px; }
+  .tiboard { max-width: 100%; }
+}
+@media (max-width: 380px) {
+  .tistick { width: 108px; height: 108px; }
+  .tijump { width: 76px; height: 76px; }
+}
