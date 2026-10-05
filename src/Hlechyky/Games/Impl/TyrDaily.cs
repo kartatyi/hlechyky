@@ -24,6 +24,8 @@ public sealed class TyrDaily : TyrBase, IDailyGame
     string _day = "";
     /// <summary>Результат уже пішов у таблицю дня — «Ще раз» і відновлення не платять удруге.</summary>
     bool _reported;
+    /// <summary>Сервер перезапустився посеред спроби: рахунок відновлено, на першому тику він іде в таблицю дня.</summary>
+    bool _resume;
     TyrDailyBoard? _board;
 
     public string Day => _day;
@@ -52,6 +54,15 @@ public sealed class TyrDaily : TyrBase, IDailyGame
     }
 
     protected override void End() => Report();
+
+    /// <summary>Недограну до перезапуску спробу зараховуємо на першому тику — уже з розсилкою, а не мовчки в Load.</summary>
+    public override TickResult Tick()
+    {
+        if (!_resume) return base.Tick();
+        _resume = false;
+        Report();
+        return TickResult.Both;
+    }
 
     /// <summary>Спроба одна: хто пішов посеред стенду, той і здав — рахунок, який був, іде в таблицю дня.</summary>
     public override void OnLeave(int seat)
@@ -98,16 +109,22 @@ public sealed class TyrDaily : TyrBase, IDailyGame
 
     sealed record Saved(string Day, bool Reported, long Score, long[] Stands, int Shots, int Hits, int Misses, int Kegs, int Pots, int Golds);
 
-    /// <summary>Зберігаємо лише день і підсумок: недограна спроба після перезапуску сервера починається заново.</summary>
+    /// <summary>
+    /// Зберігаємо день і підсумок. Недограна спроба після перезапуску сервера (деплої в нас часті) не починається
+    /// заново — інакше друга спроба з уже баченими мішенями: зараховуємо те, що встигли набрати.
+    /// </summary>
     public override string? Save() => _day.Length == 0 ? null : JsonSerializer.Serialize(new Saved(_day, _reported, Shooter(0).Score,
         [.. Shooter(0).StandScore], Shooter(0).Shots, Shooter(0).Hits, Shooter(0).Misses, Shooter(0).Kegs, Shooter(0).Pots, Shooter(0).Golds));
 
     public override void Load(string json)
     {
         var s = JsonSerializer.Deserialize<Saved>(json);
-        if (s is null || !s.Reported) return;
+        if (s is null) return;
+        // Недограна спроба — лише сьогоднішня (Start уже поставив день); учорашня просто пропадає, сьогодні — нова.
+        if (!s.Reported && (s.Day != _day || _day.Length == 0)) return;
         _day = s.Day;
-        _reported = true;
+        _reported = s.Reported;
+        _resume = !s.Reported;
         _started = _over = true;
         _winners = [0];
         _si = _stands.Length - 1;

@@ -12,8 +12,11 @@ namespace Hlechyky.Games.Impl;
 public abstract class TyrBase : Game
 {
     public const int Seats = 8;
-    /// <summary>Скільки після кінця стенду ще ловимо постріли, що летіли до кінця (мс).</summary>
-    public const int GraceMs = 400;
+    /// <summary>
+    /// Скільки після кінця стенду ще ловимо постріли, що летіли до кінця (мс): стільки ж, скільки постріл може
+    /// запізнитись (<see cref="MaxLag"/>), — інакше останній постріл гравця з довгим пінгом падав на «інший стенд».
+    /// </summary>
+    public const int GraceMs = MaxLag;
     /// <summary>Межі часу пострілу відносно годинника сервера: запізнення (пінг, джитер) і забігання наперед, мс.</summary>
     public const int MaxLag = 800, Ahead = 150;
     /// <summary>Мішені в кадрі: ті, що вискочать у найближчі 2 с, і ті, що зникли не раніше ніж 0,5 с тому.</summary>
@@ -96,16 +99,19 @@ public abstract class TyrBase : Game
         if (now < 0) return ActResult.Fail("Готуйсь — ще не стріляємо");
         if (t < 0 || t >= TyrCore.StandMs || t > now + Ahead || t < now - MaxLag) return ActResult.Fail("Постріл запізнився");
         var me = _sh[seat];
+        var q = Long(payload, "q");
         if (action == "reload")
         {
             if (!TyrCore.Reload(me, t)) return ActResult.Fail("Барабан повний або ще не час");
+            if (q is { } rq) me.LastQ = rq;
             _dirty = true;
             return ActResult.Done;
         }
         if (Num(payload, "x") is not { } x || Num(payload, "y") is not { } y || x < -50 || x > TyrCore.W + 50 || y < -50 || y > TyrCore.H + 50)
             return ActResult.Fail("Куди це ти цілиш?");
-        if (TyrCore.Shoot(me, Targets, _si, t, x, y) is not { } shot)
+        if (TyrCore.Shoot(me, Targets, _si, t, x, y, now) is not { } shot)
             return ActResult.Fail(me.Smoked(t) ? "Дим — нічого не видно" : me.Reloading(t) ? "Перезаряджаєш" : "Зачасто");
+        if (q is { } sq) me.LastQ = sq;
         _dirty = true;
         if (shot.Target >= 0) OnHit(seat, Targets[shot.Target]);
         return ActResult.Done;
@@ -119,6 +125,11 @@ public abstract class TyrBase : Game
     static int? Int(JsonElement p, string key) =>
         p.ValueKind == JsonValueKind.Object && p.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number
             && v.TryGetDouble(out var d) && double.IsFinite(d) && Math.Abs(d) < 1e7 ? (int)Math.Floor(d) : null;
+
+    /// <summary>Номер дії від клієнта (<c>q</c>): ціле, без дробів і нескінченностей; нема — null.</summary>
+    static long? Long(JsonElement p, string key) =>
+        p.ValueKind == JsonValueKind.Object && p.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number
+            && v.TryGetInt64(out var n) && n is >= 0 and < 1L << 50 ? n : null;
 
     static double? Num(JsonElement p, string key) =>
         p.ValueKind == JsonValueKind.Object && p.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number
@@ -236,7 +247,8 @@ public abstract class TyrBase : Game
 
     /// <summary>
     /// Кадр (spec §4): фаза, стенд, мить стенду <c>now</c> (мс; на «Готуйсь» — від’ємна), копія кожного місця
-    /// <c>p[i] = [рахунок, рахунок стенду, набої, кінець перезарядки, кінець диму, n]</c>, збиті ним мішені <c>h[i]</c>
+    /// <c>p[i] = [рахунок, рахунок стенду, набої, кінець перезарядки, кінець диму, n, q, мс останньої дії]</c>
+    /// (q — номер останньої прийнятої дії від клієнта; дії ще не було — мс останньої дії −1), збиті ним мішені <c>h[i]</c>
     /// і вікно розкладу <c>tg</c> = [id, вид, t0, тривалість, x, y, vx, r]. Таємного нема: розклад однаковий для всіх.
     /// </summary>
     protected object Shot()
@@ -252,7 +264,7 @@ public abstract class TyrBase : Game
             {
                 var sh = _sh[i];
                 if (!sh.Plays) continue;
-                p[i] = [sh.Score, sh.StandScore[_si], sh.Ammo, sh.ReloadAt, Math.Max(-1, sh.SmokeUntil), sh.N];
+                p[i] = [sh.Score, sh.StandScore[_si], sh.Ammo, sh.ReloadAt, Math.Max(-1, sh.SmokeUntil), sh.N, sh.LastQ, Math.Max(-1, sh.LastT)];
                 h[i] = [.. sh.HitIds];
             }
             if (!_over)
@@ -283,7 +295,7 @@ public sealed class Tyr : TyrBase, IPartyMinigame
     public override GameInfo Info { get; } = new(
         "tyr", "Ярмарковий тир", "ярмарковий тир", GameGroup.Live, 1, Seats, TickMs: 50,
         Start: StartMode.ByHost, Options: [LiveBots.LevelOption],
-        Hint: "Вискакують глеки, пливуть качки, на мить блисне золотий — клацай! Мішені в усіх однакові, тож вирішує око, а не пінг. Діжку з порохом і бабин горщик не чіпай. Самому — з 🤖 ботом");
+        Hint: "Вискакують глеки, пливуть качки — клацай! Мішені в усіх однакові, тож вирішує око, а не пінг; діжку й бабин горщик не чіпай");
 
     /// <summary>Скільки ботів, коли людина сама: один — дуель на влучність, рахунок суперника видно знизу.</summary>
     public const int SoloBots = 1;
@@ -301,9 +313,8 @@ public sealed class Tyr : TyrBase, IPartyMinigame
     public bool BotGame => _botGame;
     public IReadOnlyList<int> Bots => _bots;
 
-    public string Howto => "Клацай по глеках і качках, поки не сховались: золотий — +3. Діжку з порохом і бабин горщик не чіпай! "
-        + "Мишка чи дотик — постріл, правий клік або ⟳ — перезарядка (6 набоїв); пад — стік і A, X — перезарядка";
-    /// <summary>3 с «Готуйсь» + стенд 45 с + 0,4 с на запізнілі постріли — з запасом до 60 с.</summary>
+    public string Howto => "Клацай по глеках і качках, золотий +3; діжку й бабин горщик не чіпай. ⟳ / правий клік / X — перезарядка";
+    /// <summary>3 с «Готуйсь» + стенд 45 с + 0,8 с на запізнілі постріли — з запасом до 60 с.</summary>
     public int PartyCapMs => 60_000;
     public int PartyMin => 2;
     public int PartyMax => Seats;

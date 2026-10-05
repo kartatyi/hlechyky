@@ -149,6 +149,26 @@ public class TyrTests
         Assert.False(TyrCore.Reload(me, last + 1500));                                       // уже заряджає
     }
 
+    [Fact]
+    public void Shot_at_a_target_that_hid_long_ago_does_not_count()
+    {
+        // Глек жив 100..1300. Постріл з t = 1200 (ще живий), що дійшов на 1450 — у межах RetroMs, влучив.
+        var jug = new TyrTarget(0, TyrCore.Jug, 100, 1200, 300, 150, 0, 36);
+        var me = new TyrShooter { Plays = true };
+        me.NewStand(1);
+        Assert.Equal(new TyrShot(0, 1, false), TyrCore.Shoot(me, One(jug), 0, 1200, 300, 150, now: 1300 + TyrCore.RetroMs - 50));
+        // Той самий постріл, що «дійшов» через 0,7 с після того, як глек сховався, — промах (змінений клієнт «у минуле»).
+        var late = new TyrShooter { Plays = true };
+        late.NewStand(1);
+        Assert.Equal(new TyrShot(-1, 0, false), TyrCore.Shoot(late, One(jug), 0, 1200, 300, 150, now: 1300 + 700));
+        Assert.Equal(0, late.Score);
+        // Жива мішень приймає і постріл, що запізнився на всі 0,8 с: важить лише те, чи вона вже сховалась.
+        var duck = new TyrTarget(0, TyrCore.Duck, 0, 4000, -40, 420, 250, 36);
+        var slow = new TyrShooter { Plays = true };
+        slow.NewStand(1);
+        Assert.Equal(new TyrShot(0, 2, false), TyrCore.Shoot(slow, One(duck), 1, 2200, 510, 420, now: 3000));
+    }
+
     // ---------- стіл ----------
 
     [Fact]
@@ -176,6 +196,46 @@ public class TyrTests
         Assert.True(h.Act(0, "shot", new { s = 0, t = now, x = 990, y = 590 }).Ok);          // промах — теж постріл
         Assert.Equal(TyrCore.Drum - 1, g.Shooter(0).Ammo);
         Assert.Equal(1, g.Shooter(0).Misses);
+    }
+
+    [Fact]
+    public void Machine_gun_burst_counts_one_shot_and_q_comes_back_in_frame()
+    {
+        var h = Table(2);
+        Assert.True(h.Start().Ok);
+        var g = Game(h);
+        ToGo(h);
+        var now = g.NowMs;
+        Assert.True(h.Act(0, "shot", new { s = 0, t = now, x = 990, y = 590, q = 7 }).Ok);
+        // Пачка з кроком 10 мс: друга й далі — «зачасто», стан не міняється, і q лишається від прийнятої.
+        for (var i = 1; i < 6; i++)
+            Assert.False(h.Act(0, "shot", new { s = 0, t = now + i * 10, x = 990, y = 590, q = 7 + i }).Ok);
+        Assert.Equal(1, g.Shooter(0).Shots);
+        Assert.Equal(TyrCore.Drum - 1, g.Shooter(0).Ammo);
+        var p = JsonSerializer.SerializeToElement(g.Frame()).GetProperty("p")[0];
+        Assert.Equal(7, p[6].GetInt64());
+        Assert.Equal(now, p[7].GetInt32());
+        // Після проміжку MinGap — знову можна.
+        Assert.True(h.Act(0, "shot", new { s = 0, t = now + TyrCore.MinGap, x = 990, y = 590, q = 20 }).Ok);
+        Assert.Equal(20, g.Shooter(0).LastQ);
+        // Дробовий чи від'ємний q — не номер: постріл приймається, але q не рухається.
+        Assert.True(h.Act(0, "shot", new { s = 0, t = Tick5(h, g), x = 990, y = 590, q = -3 }).Ok);
+        Assert.Equal(20, g.Shooter(0).LastQ);
+        Assert.Equal(-1, JsonSerializer.SerializeToElement(g.Frame()).GetProperty("p")[1][7].GetInt32());   // другий ще не стріляв
+        static int Tick5(RoomHarness r, Tyr t) { r.Tick(5); return t.NowMs; }
+    }
+
+    [Fact]
+    public void Late_shot_of_the_last_moment_still_counts_after_stand_end()
+    {
+        var h = Table(2);
+        Assert.True(h.Start().Ok);
+        var g = Game(h);
+        ToGo(h);
+        // Тикаємо до кінця стенду + 0,6 с: гравець з довгим пінгом стріляв на 44 990 мс.
+        while (g.StandIndex == 0 && g.NowMs < TyrCore.StandMs + 600) h.Tick();
+        Assert.Equal(0, g.StandIndex);
+        Assert.True(h.Act(0, "shot", new { s = 0, t = TyrCore.StandMs - 10, x = 990, y = 590 }).Ok);
     }
 
     [Fact]
@@ -217,7 +277,7 @@ public class TyrTests
         var now = f.GetProperty("now").GetInt32();
         Assert.InRange(now, 5000, 5200);
         Assert.Equal(TyrBase.Seats, f.GetProperty("p").GetArrayLength());
-        Assert.Equal(6, f.GetProperty("p")[0].GetArrayLength());
+        Assert.Equal(8, f.GetProperty("p")[0].GetArrayLength());
         Assert.Equal(JsonValueKind.Null, f.GetProperty("p")[5].ValueKind);
         Assert.All(f.GetProperty("tg").EnumerateArray(), t =>
         {
@@ -482,6 +542,47 @@ public class TyrTests
         Assert.Equal(g.Shooter(0).Score, back.Shooter(0).Score);
         Assert.Equal(g.Shooter(0).Hits, back.Shooter(0).Hits);
         Assert.Equal(json, back.Save());
+    }
+
+    [Fact]
+    public void Daily_unfinished_attempt_after_restart_is_counted_not_replayed()
+    {
+        var a = new RoomHarness("tyr-daily", seed: 1);
+        a.Solo("оля");
+        var g = (TyrDaily)a.Room.Game;
+        // Пів першого стенду — і сервер перезапустився.
+        for (var i = 0; i < 400; i++)
+        {
+            if (Perfect(g, 0) is { } m) a.Input(0, m.Action, m.Payload);
+            a.Tick();
+        }
+        Assert.Empty(a.Finished);
+        Assert.True(g.Shooter(0).Score > 0);
+        string json;
+        lock (a.Room.Sync) json = g.Save()!;
+
+        var b = new RoomHarness("tyr-daily", seed: 1);
+        b.Solo("оля");
+        var back = (TyrDaily)b.Room.Game;
+        lock (b.Room.Sync) back.Load(json);
+        Assert.True(back.Over);
+        Assert.False(h_Act(b));
+        b.Tick();
+        Assert.Single(b.Finished);
+        Assert.True(back.Reported);
+        Assert.Equal(g.Shooter(0).Score, back.Shooter(0).Score);
+        Assert.Equal(g.Shooter(0).Hits, back.Shooter(0).Hits);
+
+        // Учорашня недограна спроба — не наша: сьогодні грається з нуля.
+        var old = json.Replace(g.Day, "2000-01-01");
+        var c = new RoomHarness("tyr-daily", seed: 1);
+        c.Solo("оля");
+        var fresh = (TyrDaily)c.Room.Game;
+        lock (c.Room.Sync) fresh.Load(old);
+        Assert.False(fresh.Over);
+        Assert.Equal(0, fresh.Shooter(0).Score);
+
+        static bool h_Act(RoomHarness r) => r.Act(0, "shot", new { s = 0, t = 0, x = 500, y = 300 }).Ok;
     }
 
     [Fact]

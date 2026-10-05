@@ -31,12 +31,12 @@
   const KIND_NAME = ['глек', 'качка', 'золотий глек', 'діжка з порохом', 'бабин горщик'];
   const STAND_TIP = [
     'Глеки вискакують з-за полиці — лови, поки не сховались',
-    'Качки пливуть — цілься трохи наперед',
+    'Качки пливуть — лови, поки не запливли за край',
     'Усе разом, і на мить блискає золотий глек!',
   ];
   /// Запас, якщо вид ще без правил (spec §2) — справжні завжди беремо з view.rules.
   const DEF = {
-    w: 1000, h: 600, standMs: 45000, readyMs: 3000, graceMs: 400, drum: 6, reloadMs: 1000, smokeMs: 1500, minGap: 90,
+    w: 1000, h: 600, standMs: 45000, readyMs: 3000, graceMs: 800, drum: 6, reloadMs: 1000, smokeMs: 1500, minGap: 90,
     slack: 6, maxLag: 800, ahead: 150, points: [1, 2, 3, -3, -2], radius: [36, 36, 30, 38, 38], shelfY: [150, 290],
     laneY: [420, 520], slotX: [125, 232, 339, 446, 553, 660, 767, 874],
   };
@@ -45,10 +45,21 @@
   const LOST_MS = 1100;
   const AIM_SPEED = 820;           // одиниць поля за секунду — приціл стрілками й стіком
 
+  /// Живі столи цього модуля. Клавіші й пад приходять з ctx: у вкладеному (вечірка) він сталий, а картка столу
+  /// будує ctx наново на кожну подію й не завжди кличе update — тоді шукаємо свій стіл за id кімнати, а не «останній».
   const live = new Set();
-  const stOf = (ctx) => [...live].find((s) => s.ctx === ctx) || null;
-  /// Хто зараз керує падом: останній живий стіл, що оновлювався (вечірка може тримати лише один).
-  let lastSt = null;
+  function stOf(ctx) {
+    if (!ctx) return null;
+    for (const s of live) if (s.ctx === ctx) return s;
+    const id = ctx.room && ctx.room.id;
+    if (!id || ctx.embedded) return null;
+    for (const s of live) {
+      if (s.ctx && !s.ctx.embedded && s.ctx.room && s.ctx.room.id === id && s.root.isConnected) { s.ctx = ctx; return s; }
+    }
+    return null;
+  }
+  /// Палець на телефоні — ~44 px: дотик ближче за стільки до мішені ловить її.
+  const FINGER_PX = 22;
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const ease = (u) => 1 - Math.pow(1 - clamp(u, 0, 1), 3);
@@ -120,7 +131,7 @@
       st = root._tyr = {
         root, ctx, R: DEF, last: null, stand: -1, ph: 3, k: 0,
         offs: [], offset: null, frameAt: 0, frameNow: 0,
-        tg: new Map(), srv: null, base: 0, sent: [], pred: freshCopy(DEF), score0: 0,
+        tg: new Map(), srv: null, base: 0, sent: [], q: 0, pred: freshCopy(DEF), score0: 0,
         fx: [], holes: [], seen: new Set(), follow: null,
         aim: { x: 500, y: 300, on: false, mode: '' }, held: { l: 0, r: 0, u: 0, d: 0 }, padAt: 0, analogAt: 0,
         nudge: null, banner: null, flash: {}, prevScores: [], hudAt: 0, lastDraw: 0, raf: 0, bg: null, bgKey: '',
@@ -221,22 +232,25 @@
     scoresChanged(st, f);
   }
 
-  /// Правда з кадру + наші дії, яких сервер ще не врахував.
+  /// Правда з кадру + наші дії, яких сервер ще не врахував. Звіряємо за номером дії q (а не за лічильником n):
+  /// відхилена посеред черги дія інакше зсувала б лік, і наступний постріл рахувався б двічі.
   function reconcile(st) {
     const me = meOf(st), f = st.last;
     if (me == null || !f || !f.p || !f.p[me]) { st.pred = freshCopy(st.R); return; }
-    const p = f.p[me], n = p[5];
-    // Після F5 сервер знає дії, яких ми не слали з цієї вкладки: місця під них займаємо порожніми.
-    while (st.sent.length < n) st.sent.unshift({ t: -Infinity, ghost: true });
+    const p = f.p[me], n = p[5], q = p[6] || 0;
+    // Після F5 нумерацію продовжуємо з серверної — інакше нові дії здавались би вже врахованими.
+    if (q > st.q) st.q = q;
     const now = performance.now();
-    while (st.sent.length > n && now - st.sent[n].at > LOST_MS) st.sent.splice(n, 1);
+    // Дії йдуть по черзі: на все з номером ≤ q сервер уже відповів (прийняв чи відхилив). Новіші без відповіді
+    // понад LOST_MS — відхилені (запізнились, інший стенд).
+    st.sent = st.sent.filter((a) => a.q > q && now - a.at <= LOST_MS);
     const s = {
       score: p[0], sscore: p[1], ammo: p[2], reloadAt: p[3], smoke: p[4], n,
-      lastT: n > 0 ? st.sent[n - 1].t : -Infinity, hits: new Set((f.h && f.h[me]) || []),
+      lastT: p[7] != null && p[7] >= 0 ? p[7] : -Infinity, hits: new Set((f.h && f.h[me]) || []),
     };
     st.srv = s;
     const pr = cloneCopy(s);
-    for (let i = n; i < st.sent.length; i++) {
+    for (let i = 0; i < st.sent.length; i++) {
       const a = st.sent[i];
       if (a.kind === 'reload') simReload(pr, a.t, st.R); else simShot(pr, st.tg, a.t, a.x, a.y, st.R);
     }
@@ -261,6 +275,27 @@
     return { x: (ev.clientX - r.left) / r.width * st.R.w, y: (ev.clientY - r.top) / r.height * st.R.h };
   }
 
+  /// Дотик пальцем: на телефоні поле ~360 px завширшки, і золотий глек там ~25 px — менше за палець. Тож дотик, що
+  /// ліг ближче за FINGER_PX до мішені, б'є в її центр (сервер рахує влучання за радіусом — центр завжди всередині).
+  /// Найближча в радіусах, як і на сервері; збиті нами не ловлять. Мишці не треба — вона точна.
+  function snap(st, p) {
+    if (st.ph !== 1 || !st.cv) return p;
+    const T = clock(st), R = st.R;
+    const unit = st.cv.el.getBoundingClientRect().width / R.w;
+    if (!(unit > 0)) return p;
+    const finger = FINGER_PX / unit;
+    let best = null, bestK = Infinity;
+    for (const tg of st.tg.values()) {
+      if (!alive(tg, T) || st.pred.hits.has(tg.id)) continue;
+      const cx = xAt(tg, T), dx = cx - p.x, dy = tg.y0 - p.y, reach = Math.max(tg.r + R.slack, finger);
+      const d2 = dx * dx + dy * dy;
+      if (d2 > reach * reach) continue;
+      const k = d2 / (reach * reach);
+      if (k < bestK) { bestK = k; best = { x: cx, y: tg.y0 }; }
+    }
+    return best || p;
+  }
+
   function canShoot(st) {
     const c = st.ctx;
     return !!(c && c.mine && c.playing && st.ph === 1 && st.last && st.last.ph === 1);
@@ -281,9 +316,10 @@
       else if (reloading(st.pred, T)) say(st, 'Перезаряджаєш…');
       return;
     }
-    st.sent.push({ kind: 'shot', t: T, x, y, at: performance.now() });
+    const q = ++st.q;
+    st.sent.push({ kind: 'shot', t: T, x, y, q, at: performance.now() });
     st.pred = s;
-    st.ctx.input('shot', { s: st.stand, t: T, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 });
+    st.ctx.input('shot', { s: st.stand, t: T, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, q });
     recoil(st);
     if (res.reload) { say(st, 'Клац! Порожньо — перезаряджаю'); return; }
     if (res.miss) { hole(st, x, y); return; }
@@ -299,9 +335,10 @@
       if (st.pred.ammo >= st.R.drum && !reloading(st.pred, T)) say(st, 'Барабан і так повний');
       return;
     }
-    st.sent.push({ kind: 'reload', t: T, at: performance.now() });
+    const q = ++st.q;
+    st.sent.push({ kind: 'reload', t: T, q, at: performance.now() });
     st.pred = s;
-    st.ctx.input('reload', { s: st.stand, t: T });
+    st.ctx.input('reload', { s: st.stand, t: T, q });
   }
 
   /// У лобі можна пристрілятись по іграшкових мішенях — нічого на сервер не летить.
@@ -851,7 +888,8 @@
       if (e.button === 2) { e.preventDefault(); reload(st); return; }
       if (e.button !== 0) return;
       if (st.ctx.mine && st.ctx.playing) e.preventDefault();
-      fire(st, p.x, p.y);
+      const q = e.pointerType === 'mouse' ? p : snap(st, p);
+      fire(st, q.x, q.y);
     });
     el.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
@@ -1034,13 +1072,13 @@
     if ((st.ph === 3 || st.ph === 2) && now - st.lastDraw < 32) return;
     st.lastDraw = now;
     // Сервер мовчить, а наш постріл так і не підтвердився — переграємо передбачення без нього (відхилено).
-    if (st.sent.length > (st.srv ? st.srv.n : 0) && now - st.sent[st.sent.length - 1].at > LOST_MS) reconcile(st);
+    if (st.sent.length && now - st.sent[0].at > LOST_MS) reconcile(st);
     draw(st);
     paintHud(st, false);
   }
 
   function padOn(btn, ctx) {
-    const st = stOf(ctx) || lastSt;
+    const st = stOf(ctx);
     if (!st || !ctx.mine || !ctx.playing) return false;
     st.padAt = performance.now();
     if (btn === 'a') {
@@ -1060,7 +1098,6 @@
 
     mount(root, ctx) {
       const st = state(root, ctx);
-      lastSt = st;
       shell(root, st);
       if (ctx.view && ctx.view.frame) onFrame(st, ctx.view.frame);
       st.raf = requestAnimationFrame(() => loop(st));
@@ -1068,7 +1105,6 @@
 
     update(root, ctx) {
       const st = state(root, ctx);
-      lastSt = st;
       shell(root, st);
       const vf = ctx.view && ctx.view.frame;
       // Вид шлеться разом із кадром на зміні фази чи стенду; свіжіші кадри посеред стенду — окремо, тож старіший вид
@@ -1090,7 +1126,7 @@
     },
 
     onKey(e, ctx) {
-      const st = stOf(ctx) || lastSt;
+      const st = stOf(ctx);
       if (!st || !ctx.mine || !ctx.playing) return false;
       const k = dirKey(e);
       if (k) {
@@ -1120,7 +1156,10 @@
       if (f.ph === 2) return '';
       if (f.ph === 0) return 'Готуйсь: ' + ((v.standNames || [])[f.st] || 'стенд');
       if (!ctx.mine) return 'Дивишся збоку — клацни на рахунок, щоб стежити за стрільцем';
-      return ctx.ui && ctx.ui.coarse && ctx.ui.coarse() ? 'Тапай по мішенях · ⟳ — перезарядка' : 'Клацай по мішенях · правий клік чи R — перезарядка';
+      if (!(ctx.ui && ctx.ui.coarse && ctx.ui.coarse())) return 'Клацай по мішенях · правий клік чи R — перезарядка';
+      // Телефон стоячи: поле ледь 360 px завширшки — боком мішені вдвічі більші.
+      const st = stOf(ctx), w = st && st.root.isConnected ? st.root.getBoundingClientRect().width : 0;
+      return w > 0 && w < 520 ? 'Тапай по мішенях · ⟳ — перезарядка · боком мішені більші' : 'Тапай по мішенях · ⟳ — перезарядка';
     },
 
     unmount(root) {
@@ -1132,7 +1171,6 @@
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.blur) window.removeEventListener('blur', st.blur);
       live.delete(st);
-      if (lastSt === st) lastSt = null;
       root._tyr = null;
       root.classList.remove('tyr');
     },

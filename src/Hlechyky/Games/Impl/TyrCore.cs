@@ -27,8 +27,13 @@ public sealed class TyrShooter
     public int SmokeUntil = int.MinValue;
     /// <summary>Мс останнього прийнятого пострілу — t тільки росте.</summary>
     public int LastT = int.MinValue;
-    /// <summary>Скільки дій прийнято за стенд (постріли й перезарядки) — клієнт звіряє з ним своє передбачення.</summary>
+    /// <summary>Скільки дій прийнято за стенд (постріли й перезарядки).</summary>
     public int N;
+    /// <summary>
+    /// Номер (<c>q</c>) останньої прийнятої дії від клієнта — за ним клієнт звіряє передбачення: відхилена дія посеред
+    /// черги інакше зсувала б лічильник, і наступний постріл рахувався б двічі. Між стендами не скидається.
+    /// </summary>
+    public long LastQ;
     public int Shots, Hits, Misses, Kegs, Pots, Golds;
     public readonly int[] StandShots = new int[TyrCore.Stands], StandMisses = new int[TyrCore.Stands], StandBad = new int[TyrCore.Stands];
     public readonly int[] StandGolds = new int[TyrCore.Stands];
@@ -88,6 +93,12 @@ public static class TyrCore
     public const int MinGap = 90;
     /// <summary>Зазор до радіуса мішені: палець на телефоні товстий, а мішень рухається.</summary>
     public const int Slack = 6;
+    /// <summary>
+    /// Мішень, що сховалась, не влучається пострілом, який прийшов пізніше за це після її зникнення (мс): інакше
+    /// змінений клієнт міг би «в минуле» добивати те, що вже зникло (до <c>MaxLag</c> = 0,8 с). Чесному гравцеві
+    /// вистачає: це запізнення в один бік, а не пінг туди й назад.
+    /// </summary>
+    public const int RetroMs = 300;
 
     /// <summary>Що буває: глек +1, качка +2, золотий глек +3, діжка з порохом −3 (і дим), бабин горщик −2.</summary>
     public const int Jug = 0, Duck = 1, Gold = 2, Keg = 3, Pot = 4;
@@ -177,7 +188,8 @@ public static class TyrCore
     /// стріляти зараз не можна (дим, перезарядка, зачасто) — стан тоді не змінено. Порожній барабан — постріл стає
     /// перезарядкою (так і на телефоні зручніше: тиснеш далі — сам перезаряджає).
     /// </summary>
-    public static TyrShot? Shoot(TyrShooter me, IReadOnlyList<TyrTarget> targets, int stand, int t, double x, double y)
+    /// <param name="now">Мс стенду за годинником сервера, коли постріл прийшов (null — та сама мить, що й t).</param>
+    public static TyrShot? Shoot(TyrShooter me, IReadOnlyList<TyrTarget> targets, int stand, int t, double x, double y, int? now = null)
     {
         if (t < me.LastT + MinGap) return null;
         me.Settle(t);
@@ -192,7 +204,7 @@ public static class TyrCore
         me.Ammo--;
         me.Shots++;
         me.StandShots[stand]++;
-        var hit = Find(me, targets, t, x, y);
+        var hit = Find(me, targets, t, x, y, now);
         if (hit is null)
         {
             me.Misses++;
@@ -236,8 +248,11 @@ public static class TyrCore
         return true;
     }
 
-    /// <summary>Мішень під пострілом: жива в мить t, ще не збита цим стрільцем, найближча до центру (у радіусах).</summary>
-    public static TyrTarget? Find(TyrShooter me, IReadOnlyList<TyrTarget> targets, int t, double x, double y)
+    /// <summary>
+    /// Мішень під пострілом: жива в мить t, ще не збита цим стрільцем, найближча до центру (у радіусах) і не схована
+    /// довше ніж <see cref="RetroMs"/> до <paramref name="now"/> — коли постріл дійшов до сервера.
+    /// </summary>
+    public static TyrTarget? Find(TyrShooter me, IReadOnlyList<TyrTarget> targets, int t, double x, double y, int? now = null)
     {
         TyrTarget? best = null;
         var bestK = double.MaxValue;
@@ -246,7 +261,7 @@ public static class TyrCore
         {
             var tg = targets[i];
             if (tg.T0 > t) break;
-            if (!tg.AliveAt(t) || me.HasHit(tg.Id)) continue;
+            if (!tg.AliveAt(t) || me.HasHit(tg.Id) || now - tg.End > RetroMs) continue;
             double dx = tg.XAt(t) - x, dy = tg.Y - y, rr = tg.R + Slack;
             var d2 = dx * dx + dy * dy;
             if (d2 > rr * rr) continue;
