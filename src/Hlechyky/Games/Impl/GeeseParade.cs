@@ -43,6 +43,9 @@ public static class GeeseParade
     public const int MinAnimals = 8, MaxAnimals = 30;
     /// <summary>Найбільше число, яке можна відповісти.</summary>
     public const int MaxAnswer = 60;
+    /// <summary>Найдовша дорога тварини через двір — частка параду: решта йде на те, щоб тварини виходили весь парад.</summary>
+    public const double MaxTravel = 0.33;
+    const double SlowestPace = 0.85;   // найповільніший вид (качка)
 
     public static readonly GeeseKind[] Kinds =
     [
@@ -149,12 +152,17 @@ public static class GeeseParade
         }
 
         // Час виходу: рівні проміжки з тремтінням, щоб двір не пустував і тварини не виходили купою.
+        // Повільний парад підганяємо: дорога через двір — не довше MaxTravel параду, інакше на виходи лишається
+        // лише перша половина, і далі рахуєш застиглий натовп, а не парад. Множник спільний для всіх — різниця
+        // темпу між видами лишається.
+        var vMin = (1 + 2 * Margin) * 1000 / (MaxTravel * paradeMs);
+        var speed = Speed(level) * Math.Max(1, vMin / (Speed(level) * SlowestPace * 0.9));
         var animals = new List<GeeseAnimal>(n);
-        var gap = (int)(70 / Speed(level));     // мс між тваринами зграї: ~0,07 ширини двору
+        var gap = (int)(70 / speed);     // мс між тваринами зграї: ~0,07 ширини двору
         for (var u = 0; u < units.Count; u++)
         {
             var (k, size) = units[u];
-            var v = Math.Round(Speed(level) * Kind(k).Pace * (0.9 + 0.2 * rng.NextDouble()), 4);
+            var v = Math.Round(speed * Kind(k).Pace * (0.9 + 0.2 * rng.NextDouble()), 4);
             var travel = (1 + 2 * Margin) / v * 1000;
             var span = (size - 1) * gap;
             var latest = Math.Max(0, paradeMs - 300 - travel - span);

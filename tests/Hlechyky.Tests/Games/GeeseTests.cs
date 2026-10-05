@@ -55,6 +55,32 @@ public class GeeseTests
 
     // ---------- парад ----------
 
+    /// <summary>
+    /// Парад — це потік, а не натовп: тварини виходять і в другій половині параду, а одночасно на подвір'ї — не всі.
+    /// Перевіряємо й довжини вечірки (8–9 с) — там дорога через двір з'їдала половину параду.
+    /// </summary>
+    [Fact]
+    public void Parade_flows_through_the_whole_parade_not_a_frozen_crowd()
+    {
+        double worstLast = 1, worstCrowd = 0;
+        for (var seed = 0; seed < 200; seed++)
+        for (var level = 0; level <= 2; level++)
+        foreach (int? ms in new int?[] { null, 8000, 9000 })
+        {
+            var rng = new Random(seed * 7 + level);
+            var r = GeeseParade.Make(rng, level, true, GeeseParade.PickTraits(rng), null, ms);
+            var last = r.Animals.Max(a => a.T0) / (double)r.Ms;
+            worstLast = Math.Min(worstLast, last);
+            for (var t = 0; t < r.Ms; t += 100)
+            {
+                var on = r.Animals.Count(a => t >= a.T0 && (t - a.T0) / 1000.0 * a.V <= 1 + 2 * GeeseParade.Margin);
+                worstCrowd = Math.Max(worstCrowd, on / (double)r.Animals.Length);
+            }
+        }
+        Assert.True(worstLast >= 0.45, $"остання тварина виходить на {worstLast:P0} параду");
+        Assert.True(worstCrowd <= 0.65, $"одночасно на подвір'ї до {worstCrowd:P0} тварин");
+    }
+
     [Fact]
     public void Parade_is_sane_for_many_seeds_and_levels()
     {
@@ -473,6 +499,43 @@ public class GeeseTests
         Assert.Equal(GeeseBase.PhDone, Ph(ha));
         Assert.Single(board.Top(Days.Today(ha.Clock)), r => r.Nick == "Оля");
         Assert.Equal(15, ((IDailyPoints)board).Points(Days.Today(ha.Clock), "оля"));
+    }
+
+    /// <summary>
+    /// Раунд «на пам'ять»: побачив питання, вийшов — після відновлення той самий парад удруге не показують,
+    /// раунд іде одразу з відповіді (і складу параду у виді на відповіді нема).
+    /// </summary>
+    [Fact]
+    public void Daily_leaving_mid_answer_does_not_replay_the_parade()
+    {
+        var h = new RoomHarness("geese-daily", services: RoomHarness.WithService(new GeeseDailyBoard(null)));
+        h.Solo("Оля");
+        var g = (GeeseDaily)h.Room.Game;
+        for (var i = 0; i < 3; i++)
+        {
+            Until(h, GeeseBase.PhAnswer);
+            var r = g.Rounds[g.RoundIndex];
+            h.Act(0, "answer", Pay(r, r.Answer));
+            Until(h, GeeseBase.PhReveal);
+        }
+        Until(h, GeeseBase.PhAnswer);
+        Assert.Equal(3, g.RoundIndex);
+        Assert.False(g.Rounds[3].Pre);
+        Assert.Equal(0, h.View(0).GetProperty("parade").GetProperty("animals").GetArrayLength());
+        var saved = g.Save()!;
+        var h2 = new RoomHarness("geese-daily", services: RoomHarness.WithService(new GeeseDailyBoard(null)));
+        h2.Solo("Оля");
+        var g2 = (GeeseDaily)h2.Room.Game;
+        g2.Load(saved);
+        Assert.Equal(3, g2.RoundIndex);
+        Assert.Equal(GeeseBase.PhAnswer, g2.Phase);
+        Assert.Equal(0, h2.View(0).GetProperty("parade").GetProperty("animals").GetArrayLength());
+        // Після відповіді — звичайний показ із повним парадом.
+        var r4 = g2.Rounds[3];
+        h2.Act(0, "answer", Pay(r4, r4.Answer));
+        Until(h2, GeeseBase.PhReveal);
+        Assert.Equal(r4.Animals.Length, h2.View(0).GetProperty("parade").GetProperty("animals").GetArrayLength());
+        Assert.Equal(4 * GeeseBase.Exact, g2.ScoreOf(0));
     }
 
     [Fact]

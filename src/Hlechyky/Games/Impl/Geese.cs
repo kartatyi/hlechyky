@@ -129,8 +129,15 @@ public abstract class GeeseBase : Game
         }
     }
 
-    /// <summary>Продовжити з «готуйсь» поточного раунду (відновлення «Гусей дня»).</summary>
-    private protected void Resume() => Open(PhReady, ReadyMs(Cur.Pre));
+    /// <summary>
+    /// Продовжити поточний раунд (відновлення «Гусей дня»): з «готуйсь» або, якщо парад раунду вже показували, —
+    /// одразу з відповіді (парад удруге не дивляться).
+    /// </summary>
+    private protected void Resume(bool answer = false)
+    {
+        if (answer) Open(PhAnswer, AnswerMs);
+        else Open(PhReady, ReadyMs(Cur.Pre));
+    }
 
     private protected GeeseRound Cur => _rounds[Math.Clamp(_r, 0, _rounds.Count - 1)];
 
@@ -380,8 +387,10 @@ public abstract class GeeseBase : Game
         m = GeeseParade.Margin,
         lanes = r.Lanes,
         rx = RevealSpeed,
-        animals = r.Animals.Select(a => new { k = a.K, tr = a.Tr, l = a.L, d = a.D, t0 = a.T0, v = a.V, y = a.Y, f = a.F }).ToArray(),
-        covers = r.Covers.Select(c => new { kind = c.Kind, l = c.L, x0 = c.X0, x1 = c.X1 }).ToArray(),
+        // Поки відповідають, двір схований — і складу параду у виді нема: інакше відповідь рахується одним рядком
+        // у консолі. Повертається на показі.
+        animals = _ph == PhAnswer ? [] : r.Animals.Select(a => new { k = a.K, tr = a.Tr, l = a.L, d = a.D, t0 = a.T0, v = a.V, y = a.Y, f = a.F }).ToArray(),
+        covers = _ph == PhAnswer ? [] : r.Covers.Select(c => new { kind = c.Kind, l = c.L, x0 = c.X0, x1 = c.X1 }).ToArray(),
     };
 
     object Reveal(int i)
@@ -477,7 +486,8 @@ public static class GeeseBot
         hi = Math.Min(hi, answerMs - 300);
         lo = Math.Min(lo, hi);
         var at = lo + rng.Next(hi - lo + 1);
-        var hard = round.Level >= 4 ? 0.1 : 0;   // густий парад збиває й ботів
+        // Густий парад збиває й ботів; на пам'ять (питання «після») — теж важче, як і людині.
+        var hard = (round.Level >= 4 ? 0.1 : 0) + (round.Pre ? 0 : 0.1);
         if (round.Q.Choice)
         {
             var p = i switch { 0 => 0.45, 1 => 0.7, _ => 0.88 } - hard;

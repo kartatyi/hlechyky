@@ -89,15 +89,18 @@ public sealed class GeeseDaily : GeeseBase, IDailyGame
         };
     }
 
-    sealed record Saved(string Day, int Round, long Score, bool Done, List<int>? Pts);
+    /// <summary><see cref="Ph"/> — фаза на мить збереження: чи парад раунду <see cref="Round"/> уже показували.</summary>
+    sealed record Saved(string Day, int Round, long Score, bool Done, List<int>? Pts, string? Ph = null);
     static readonly JsonSerializerOptions Wire = new(JsonSerializerDefaults.Web);
 
     public override string? Save() => _day.Length == 0 ? null
-        : JsonSerializer.Serialize(new Saved(_day, _r, _scores[0], _reported, [.. _hist.Select(h => h.Pts[0])]), Wire);
+        : JsonSerializer.Serialize(new Saved(_day, _r, _scores[0], _reported, [.. _hist.Select(h => h.Pts[0])], _ph), Wire);
 
     /// <summary>
-    /// Повернувся посеред дня: зіграний день — лише підсумок; недограний — з початку того раунду, де зупинився
+    /// Повернувся посеред дня: зіграний день — лише підсумок; недограний — з того раунду, де зупинився
     /// (зіграні раунди лишаються зіграними: парад той самий, тож переграти вже бачений — нечесно й нецікаво).
+    /// Пішов посеред параду чи відповіді — раунд продовжується з відповіді: інакше в раундах «на пам'ять» можна
+    /// побачити питання, вийти й подивитись той самий парад уже цілеспрямовано.
     /// </summary>
     public override void Load(string json)
     {
@@ -124,7 +127,7 @@ public sealed class GeeseDaily : GeeseBase, IDailyGame
             return;
         }
         _r = Math.Clamp(_hist.Count, 0, _rounds.Count - 1);
-        Resume();
+        Resume(answer: _hist.Count == saved.Round && saved.Ph is PhParade or PhAnswer);
     }
 }
 
