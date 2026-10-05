@@ -58,8 +58,8 @@
 .brclock { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
 .brclock.hot { color: var(--bad, #ff6b5a); }
 .brsnd { min-width: 34px; min-height: 30px; padding: 0 6px; font-size: 1em; line-height: 1; }
-/* на дотику — повна зона пальця 44 px */
-@media (pointer: coarse) { .brsnd { min-width: 44px; min-height: 44px; } }
+/* на дотику — зона пальця 44 px, але невидимою облямівкою: рядок гравців не росте й не краде висоту в річки */
+@media (pointer: coarse) { .brsnd { position: relative; } .brsnd::after { content: ''; position: absolute; inset: -7px -5px; } }
 
 /* легенда під полем: що означають сухий камінь, слід і хвилі */
 .brlegend { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 14px; margin: 6px 4px 0; color: var(--muted); font-size: .8em; }

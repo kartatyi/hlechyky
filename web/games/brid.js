@@ -935,8 +935,9 @@
     } else above = rt > F.top && rt < F.h * 0.6 ? rt : F.top + (F.imm ? 10 : 100);
     const maxH = Math.max(300, F.h - above - F.dock - hudH - 44);
     const room = wide ? rw - 240 : rw;
-    // Вузький екран: камінь не нижчий за ~42 px (палець) — хай краще сторінка трохи прокрутиться, ніж мазати.
-    const minW = rw < 480 ? Math.ceil(42 * cv.w / SH) : 240;
+    // Вузький екран: камінь не нижчий за ~40 px (палець; ширший він і так ~48) — хай краще сторінка трохи
+    // прокрутиться, ніж мазати. 40, а не 44: на 360×780 з шістьма гравцями берег тоді ще не ховається під док.
+    const minW = rw < 480 ? Math.ceil(40 * cv.w / SH) : 240;
     const w = Math.max(Math.min(rw, minW), Math.floor(Math.min(room, maxH * (cv.w / cv.h), 620)));
     cv.el.style.width = w + 'px';
     cv.el.style.maxWidth = '100%';
