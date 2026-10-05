@@ -1631,7 +1631,7 @@
     const x = padelLobby || {};
     const live = x.live || [], tours = x.tours || [], next = x.next;
     if (!live.length && !tours.length && !next) {
-      return '<button type="button" class="gdc gdc-link" data-href="/padel/" title="Табло з рахунком, турніри американо, збори на гру й хто кому за корт">'
+      return '<button type="button" class="gdc gdc-link" data-go="#padel" title="Табло з рахунком, турніри американо, збори на гру й хто кому за корт">'
         + '<span class="gemo">🍳</span><b>Падельня</b><span class="muted small">табло й турніри для падела →</span></button>';
     }
     const lines = live.slice(0, 2).map((m) => '🎾 ' + (m.teams || []).map((t) => t.join(' і ')).join(' — ') + ' · ' + (m.score || ''))
@@ -1639,7 +1639,7 @@
       .concat(next ? ['📅 ' + padelWhen(next.local) + ' · ' + next.going + '/' + next.slots + (next.place ? ' · ' + next.place : '')] : []);
     return '<div class="gdc tour"><span class="gemo">🍳</span><div><b>Падельня</b>'
       + lines.map((l) => '<span class="muted small" title="' + esc(l) + '">' + esc(l) + '</span>').join('')
-      + '</div><button class="primary" data-href="/padel/">Відкрити</button></div>';
+      + '</div><button class="primary" data-go="#padel">Відкрити</button></div>';
   }
   function todayHtml() {
     const list = (daily && daily.puzzles) || [];
@@ -1755,7 +1755,6 @@
       if (await joinRoom(b.dataset.sit, e.currentTarget)) go('#games/room/' + encodeURIComponent(b.dataset.sit));
     });
     box.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => go(b.dataset.go));
-    box.querySelectorAll('[data-href]').forEach((b) => b.onclick = () => { location.href = b.dataset.href; });   // окремі сторінки (Падельня)
     box.querySelectorAll('[data-nick]').forEach((b) => b.onclick = () => askNick());
   }
 

@@ -14,6 +14,10 @@
   let conn = null;
   let front = null;           // відбиток файлів /padel/ на старті — після деплою сторінка перезавантажиться сама
   let playersCache = null, playersAt = 0;
+  // Головна відкриває Падельню в рамці поверх себе (#padel), щоб не глушити радіо: тоді адресу шлемо їй, а посилання
+  // на головну («←», «увійди на головній») не вантажимо в рамку — просимо головну закрити її.
+  const framed = (() => { try { return window.parent !== window && parent.location.origin === location.origin; } catch { return false; } })();
+  const toHost = (msg) => { if (framed) parent.postMessage(msg, location.origin); };
 
   const P = window.Padel = {
     me: { nick: '', account: false, admin: false, pid: null },
@@ -218,6 +222,7 @@
     renderTabs();
     try { if (tab.show) tab.show(host, arg); } catch (e) { console.error(e); }
     document.title = tab.title + ' · Падельня';
+    toHost({ padel: 'at', hash: location.hash.replace(/^#/, '') });
   }
 
   function renderMe() {
@@ -264,6 +269,16 @@
     } catch { /* без сервера — лише перегляд */ }
     renderMe();
     renderTabs();
+    if (framed) {
+      document.addEventListener('click', (e) => {
+        const a = e.target.closest && e.target.closest('a[href]');
+        if (!a || a.target || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+        const u = new URL(a.href, location.href);
+        if (u.origin !== location.origin || u.pathname.startsWith('/padel/')) return;
+        e.preventDefault();
+        toHost({ padel: 'leave', hash: u.hash });
+      });
+    }
     window.addEventListener('hashchange', route);
     route();
     P.players.load();
