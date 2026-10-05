@@ -192,12 +192,14 @@ public sealed class Grushi : Game, IPartyMinigame
         }
     }
 
+    Func<int, bool>? _seated;   // Ctx.Seated одним делегатом, а не новим щотику
+
     void BotsThink(GrushiCore c)
     {
         foreach (var s in _bots)
         {
             if (Ctx.Seated(s) || _brain[s] is not { } bot || !c.Bodies[s].Plays || !bot.Due(c.T)) continue;
-            var m = bot.Think(c, s, Ctx.Rng);
+            var m = bot.Think(c, s, Ctx.Rng, _seated ??= Ctx.Seated);
             if (m.Sector is { } a) Act(s, "move", SectorEl[a + 1]);
             if (m.Push) Act(s, "push", default);
         }
@@ -228,7 +230,8 @@ public sealed class Grushi : Game, IPartyMinigame
         {
             var ps = PartyScores();
             var top = ps.Values.DefaultIfEmpty(0).Max();
-            _winners = [.. ps.Where(kv => kv.Value == top && kv.Value > 0).Select(kv => kv.Key).Order()];
+            // Контракт вечірки: winners — найкращі за scores, навіть коли всі по нулях (усі стояли — усі поділили перше).
+            _winners = [.. ps.Where(kv => kv.Value == top).Select(kv => kv.Key).Order()];
             Ctx.Finish(_winners, Journal(_winners, [.. ps.Keys.Where(s => s < Seats && c.Bodies[s].HasLarder)]), ps);
             return TickResult.Both;
         }

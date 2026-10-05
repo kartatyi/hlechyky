@@ -29,7 +29,9 @@ public sealed class GrushiCore(Random rng)
     public const int GoldValue = 3;
     /// <summary>Перезарядка штовхана 3 с; приголомшений 0,5 с не ходить і не підбирає; ще 1 с його не штовхнеш знов.</summary>
     public const int PushCd = 3 * TicksPerSec, StunTicks = 12, ImmuneTicks = 25;
-    /// <summary>Відкидає на 8 тиків по 9 од — разом ~72 од від того, хто штовхнув.</summary>
+    /// <summary>Відкидає на 8 тиків по 9 од — разом ~72 од від того, хто штовхнув. Комора під самою огорожею, тож
+    /// злодія, якого господар штовхає ізсередини саду, огорожа однаково лишає в зоні — боронить комору не відліт,
+    /// а те, що недоторканний не краде (див. Larders).</summary>
     public const int KnockTicks = 8;
     public const double KnockStep = 9;
     /// <summary>Стоїш у зоні чужої комори 1 с — береш грушу, далі ще по одній щосекунди.</summary>
@@ -284,8 +286,11 @@ public sealed class GrushiCore(Random rng)
         }
         Separate();
         foreach (var p in Ground) if (p.Lock > 0) p.Lock--;
-        for (var s = 0; s < Seats; s++)
+        // Спірну грушу (чи останню грушу комори) на тому самому тику бере перший в обході — тож обхід щотику
+        // зсуваємо, щоб менший номер місця не вигравав такі суперечки систематично.
+        for (var i = 0; i < Seats; i++)
         {
+            var s = (i + T) % Seats;
             var b = Bodies[s];
             if (!b.Plays || b.Stun > 0) continue;
             Pick(s, b);
@@ -363,7 +368,9 @@ public sealed class GrushiCore(Random rng)
             if (!ob.HasLarder) continue;
             if (Dist2(b.X, b.Y, ob.LarderX, ob.LarderY) <= zone) { from = o; break; }
         }
-        if (from < 0 || b.Carry >= CarryMax || Bodies[from].Larder <= 0)
+        // Штовхнутий не краде, поки недоторканний (ще 1 с після приголомшення): інакше штовхан, що перезаряджається 3 с,
+        // не боронив би комору — злодій за ці 3 с устигав узяти дві груші.
+        if (from < 0 || b.Carry >= CarryMax || Bodies[from].Larder <= 0 || b.Immune > 0)
         {
             b.StealProg = 0;
             b.StealFrom = from >= 0 && b.Carry < CarryMax ? from : -1;

@@ -297,6 +297,25 @@ public class GrushiTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Pushed_thief_cannot_steal_while_immune()
+    {
+        var c = World();
+        var owner = c.Bodies[0];
+        var thief = c.Bodies[1];
+        owner.Larder = 5;
+        Place(thief, owner.LarderX, owner.LarderY);
+        Place(owner, owner.LarderX, owner.LarderY + 50);
+        for (var i = 0; i < GrushiCore.StealTicks / 2; i++) c.Step();
+        Assert.Null(c.Push(0));
+        // Огорожа лишає його в зоні (чи він одразу вертається) — однак, поки недоторканний, не краде.
+        Place(thief, owner.LarderX, owner.LarderY);
+        while (thief.Immune > 1) { c.Step(); Assert.Equal(0, thief.Carry); Assert.Equal(0, thief.StealProg); }
+        for (var i = 0; i < GrushiCore.StealTicks; i++) c.Step();   // недоторканність скінчилась — за 1 с бере грушу
+        Assert.Equal(1, thief.Carry);
+        Assert.Equal(4, owner.Larder);
+    }
+
+    [Fact]
     public void Push_with_nobody_near_is_a_whiff_and_immune_body_is_skipped()
     {
         var c = World(2);
@@ -545,7 +564,7 @@ public class GrushiTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Hard_bot_clearly_beats_easy_and_normal_beats_easy()
+    public void Hard_bot_clearly_beats_easy_and_normal_clearly_beats_easy()
     {
         int hard = 0, easy = 0, normal = 0, easy2 = 0;
         for (var seed = 1; seed <= 6; seed++)
@@ -557,7 +576,8 @@ public class GrushiTests(ITestOutputHelper output)
         }
         output.WriteLine($"сильний {hard} проти легких {easy}; звичайний {normal} проти легких {easy2}");
         Assert.True(hard > easy * 1.3, $"сильний {hard}, легкі в середньому {easy}");
-        Assert.True(normal > easy2, $"звичайний {normal}, легкі в середньому {easy2}");
+        Assert.True(normal > easy2 * 1.3, $"звичайний {normal}, легкі в середньому {easy2}");
+        Assert.True(hard * easy2 > normal * easy * 1.1, "сильний мусить відривати від легких помітно більше, ніж звичайний");
     }
 
     [Fact]
@@ -658,6 +678,17 @@ public class GrushiTests(ITestOutputHelper output)
         Assert.Equal(4, r.Scores.Count);
         Assert.True(r.Scores[2] + r.Scores[3] > r.Scores[0] + r.Scores[1]);   // боти грали, люди стояли
         Assert.Equal(0, h.Ctx.Muted);
+    }
+
+    [Fact]
+    public void Party_all_idle_finishes_with_equal_scores_and_everyone_winning()
+    {
+        var h = new PartyHarness("grushi", humans: 3, bots: 0, seed: 4);
+        h.Start();
+        var r = h.RunToEnd()!;
+        Assert.Equal(MinigameEnd.Finished, r.How);
+        Assert.Equal([0L, 0L, 0L], [.. r.Scores.OrderBy(kv => kv.Key).Select(kv => kv.Value)]);
+        Assert.Equal([0, 1, 2], r.Winners);
     }
 
     [Fact]

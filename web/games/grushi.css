@@ -73,6 +73,16 @@
 @media (pointer: coarse) {
   /* під садом стік і кнопка — сад менший, щоб усе стало на екран */
   .grwrap.hasctl .gcanvas.grboard { max-width: min(100%, max(260px, calc(var(--gfit-h, 100dvh) - 300px))); }
+  /* табличка комор під стіком ховалась за нижніми вкладками й кнопкою балачок — на телефоні вона одним рядком
+     (гортається вбік) одразу під рядком над садом */
+  .grwrap.hasctl .grscore {
+    order: -1; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; max-width: 100%;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .grwrap.hasctl .grscore::-webkit-scrollbar { display: none; }
+  .grwrap.hasctl .grsc:first-child { margin-left: auto; }   /* по центру, поки влазить, і з початку, коли ні */
+  .grwrap.hasctl .grsc:last-child { margin-right: auto; }
+  .grwrap.hasctl .grhud { order: -2; }
   .grctl {
     display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 420px;
     padding: 2px 10px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;

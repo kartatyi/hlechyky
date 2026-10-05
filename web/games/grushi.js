@@ -74,7 +74,7 @@
         // соки
         parts: [], pops: [], flyers: [], pearAnim: new Map(), pearsPrev: new Map(), bounce: new Float64Array(8).fill(-1e9),
         hit: new Float64Array(8).fill(-1e9), rings: [], shake: 0, shakeAmp: 0, lastFall: null, goAt: 0,
-        hudSig: '', status: '', was: false, fitted: false,
+        hudSig: null, rowsSig: null, status: '', was: false, fitted: false,
       };
       live.add(st);
     }
@@ -1045,7 +1045,7 @@
     const lobby = v.phase === 'lobby' || !f;
     let top = '';
     if (!lobby) {
-      const left = f.ph === 1 ? f.left : f.ph === 0 ? (v.len || 0) * 25 : 0;
+      const left = f.ph === 1 ? f.left : f.ph === 0 ? Math.round(((v.len || 0) * 1000) / TICK_MS) : 0;
       const low = f.ph === 1 && f.left * TICK_MS <= 10000;
       top += '<span class="grchip grtime' + (low ? ' low' : '') + '">⏱ <b>' + clock(left) + '</b></span>';
       if (me >= 0 && f.p && f.p[me] && f.ph <= 1) {
@@ -1057,7 +1057,8 @@
         for (let i = 0; i < CARRY_MAX; i++) pears += '<i class="' + (i < q[4] ? 'gold' : i < q[3] ? 'on' : '') + '"></i>';
         top += '<span class="grchip grcarry' + (q[3] >= CARRY_MAX ? ' full' : '') + '" title="ноша">🧺 ' + pears + '</span>';
         const cd = q[6];
-        top += '<span class="grchip grpush' + (cd === 0 ? ' ok' : '') + '">👊 ' + (cd === 0 ? 'готовий' : ((cd * TICK_MS) / 1000).toFixed(1).replace('.', ',') + ' с') + '</span>';
+        // Перезарядку — цілими секундами: з десятими рядок над садом перемальовувався ~10 разів на секунду.
+        top += '<span class="grchip grpush' + (cd === 0 ? ' ok' : '') + '">👊 ' + (cd === 0 ? 'готовий' : Math.ceil((cd * TICK_MS) / 1000) + ' с') + '</span>';
       }
     }
     let rows = '';
@@ -1074,13 +1075,17 @@
           + (best > 0 && lar[s] === best ? '👑 ' : '') + ctx.esc(nm) + ' <b>' + lar[s] + '</b></span>';
       }
     }
-    const sig = top + '|' + rows;
-    if (sig === st.hudSig) return;
-    st.hudSig = sig;
-    st.hudEl.innerHTML = top;
-    st.hudEl.hidden = !top;
-    st.scoreEl.innerHTML = rows;
-    st.scoreEl.hidden = !rows;
+    // Рядок над садом і табличка комор міняються незалежно — кожне перемальовуємо лише, коли змінилось саме воно.
+    if (top !== st.hudSig) {
+      st.hudSig = top;
+      st.hudEl.innerHTML = top;
+      st.hudEl.hidden = !top;
+    }
+    if (rows !== st.rowsSig) {
+      st.rowsSig = rows;
+      st.scoreEl.innerHTML = rows;
+      st.scoreEl.hidden = !rows;
+    }
   }
 
   /// Телефон, своя картка: на старті партії підкручуємо сторінку, щоб сад і стік стали між шапкою й низом.

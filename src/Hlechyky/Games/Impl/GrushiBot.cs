@@ -12,10 +12,13 @@ public sealed class GrushiBot(LiveBots.Level level, int phase)
     /// <summary>Як часто думає (тиків), з якою ноші несе додому, як часто «промахується» сектором (%).</summary>
     static readonly int[] Every = [8, 4, 3];
     static readonly int[] HomeAt = [2, 4, 4];
-    static readonly int[] Wobble = [35, 12, 5];
+    static readonly int[] Wobble = [45, 12, 5];
 
     readonly int _lvl = LiveBots.Index(level);
     int _sector = -1;
+    Func<int, bool>? _person;
+
+    bool Person(int s) => _person is null || _person(s);
 
     public LiveBots.Level Level => level;
 
@@ -23,8 +26,11 @@ public sealed class GrushiBot(LiveBots.Level level, int phase)
 
     public readonly record struct Move(int? Sector, bool Push);
 
-    public Move Think(GrushiCore c, int seat, Random rng)
+    /// <param name="person">Чи місце — людина (null — невідомо, усі як люди). Сильний полює насамперед на людей-носіїв:
+    /// двоє сильних ботів, що штовхають одне одного, лише марнують час, а людині цікавіше, коли полюють на неї.</param>
+    public Move Think(GrushiCore c, int seat, Random rng, Func<int, bool>? person = null)
     {
+        _person = person;
         var me = c.Bodies[seat];
         if (me.Stun > 0) return new(null, false);
         var push = WantPush(c, seat, me, rng);
@@ -84,14 +90,9 @@ public sealed class GrushiBot(LiveBots.Level level, int phase)
                 || Far(me.X, me.Y, p.X, p.Y) + Far(p.X, p.Y, me.LarderX, me.LarderY) > homeD + 120) return home;
             return (p.X, p.Y, 4);
         }
-        // Сильний полює на носія, що поруч, коли штовхан готовий.
-        if (_lvl == 2 && me.Cd == 0)
-            for (var s = 0; s < GrushiCore.Seats; s++)
-            {
-                var o = c.Bodies[s];
-                if (s == seat || !o.Plays || o.Immune > 0 || o.Carry < 3) continue;
-                if (Far(me.X, me.Y, o.X, o.Y) < 220) return (o.X, o.Y, 20);
-            }
+        // Сильний полює на носія, що поруч, коли штовхан готовий: людину — завжди, бота — лише коли людей-носіїв поруч
+        // нема і бот не біжить сам на нас (два мисливці, що зійшлись, просто обміняються штовханами).
+        if (_lvl == 2 && me.Cd == 0 && Prey(c, seat, me) is { } prey) return (prey.X, prey.Y, 20);
         if (pear is { } q) return (q.X, q.Y, 4);
         if (me.Carry > 0 && (_lvl == 0 || homeD < 300)) return home;
         // Землю вибрали. Сильний чатує під деревом, що трусить, якщо воно ближче за найближчу чужу комору.
@@ -109,6 +110,19 @@ public sealed class GrushiBot(LiveBots.Level level, int phase)
         // Нічого — під найближче дерево (легкий — під те, що трусить, якщо трусить).
         var tree = c.ShakeTree >= 0 ? c.ShakeTree : Nearest(me);
         return (GrushiCore.Trees[tree].X, GrushiCore.Trees[tree].Y, 70);
+    }
+
+    GrushiCore.Body? Prey(GrushiCore c, int seat, GrushiCore.Body me)
+    {
+        GrushiCore.Body? bot = null;
+        for (var s = 0; s < GrushiCore.Seats; s++)
+        {
+            var o = c.Bodies[s];
+            if (s == seat || !o.Plays || o.Immune > 0 || o.Carry < 3 || Far(me.X, me.Y, o.X, o.Y) >= 220) continue;
+            if (Person(s)) return o;
+            if (o.Cd > 0 || o.Carry >= GrushiCore.CarryMax) bot ??= o;
+        }
+        return bot;
     }
 
     /// <summary>Чию комору красти: звичайний — найближчу непорожню, сильний — найвигіднішу (груші / відстань).</summary>
@@ -141,13 +155,13 @@ public sealed class GrushiBot(LiveBots.Level level, int phase)
             else
             {
                 k = (p.Gold ? GrushiCore.GoldValue : 1) / (d + 80);
-                // Сильний не біжить по грушу, до якої чужий удвічі ближче.
-                if (_lvl == 2)
+                // Сильний (і трохи слабше звичайний) не біжить по грушу, до якої чужий удвічі ближче.
+                if (_lvl >= 1)
                     for (var s = 0; s < GrushiCore.Seats; s++)
                     {
                         var o = c.Bodies[s];
                         if (s == seat || !o.Plays || o.Carry >= GrushiCore.CarryMax) continue;
-                        if (Far(o.X, o.Y, p.X, p.Y) * 2 < d) { k *= 0.3; break; }
+                        if (Far(o.X, o.Y, p.X, p.Y) * 2 < d) { k *= _lvl == 2 ? 0.3 : 0.6; break; }
                     }
             }
             if (k > bestK) { bestK = k; best = p; }
