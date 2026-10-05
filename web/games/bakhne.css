@@ -89,7 +89,7 @@
 .bk-slots { display: flex; justify-content: center; gap: 4px; min-height: 34px; flex-wrap: nowrap; }
 .bk-slot {
   flex: 0 1 34px; min-width: 0; height: 34px; border-radius: 8px; display: grid; place-items: center; position: relative;
-  background: rgba(255, 255, 255, .05); border: 1px solid var(--line); color: var(--muted);
+  background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .16); color: var(--muted);
 }
 .bk-slot .bk-arr { width: 70%; height: 70%; fill: var(--text); }
 .bk-slot.seen i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); opacity: .8; }
@@ -253,7 +253,7 @@
 .bk-demotok::before {
   content: ''; width: 62%; height: 62%; border-radius: 50%; background: var(--c); border: 3px solid #fff;
 }
-.bk.lobby .bk-field { opacity: .9; }
+.bk.lobby .bk-field { display: none; }   /* у лобі — правила з живим прикладом, хто сів — видно в шапці */
 .bk.lobby .bk-sh { display: none; }
 
 /* ---- хрестовина під палець: більші кнопки, ніж типові ---- */

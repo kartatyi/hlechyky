@@ -77,13 +77,20 @@
     st.timers.add(id);
   };
 
-  /// Тик сервера «зараз»: тик останнього кадру + час відтоді. Зсув згладжуємо до найранішого приходу кадру —
-  /// запізнілий кадр не тягне годинник назад.
+  /// Тик сервера «зараз»: тик останнього кадру + час відтоді. Зсув — найбільший за останні ~0,8 с (найшвидше
+  /// доставлений кадр): запізнілий кадр не тягне годинник назад, а якщо сервер під навантаженням пропускає тики,
+  /// за 0,8 с забуваємо старий зсув і не біжимо попереду нього (інакше тіні горщиків брешуть).
   function takeClock(st, f) {
-    const now = performance.now() / st.tickMs;
-    const off = f.t - now;
-    if (st.off == null || Math.abs(off - st.off) > 8) st.off = off;
-    else st.off = off > st.off ? off : st.off + (off - st.off) * 0.15;
+    const ms = performance.now();
+    const off = f.t - ms / st.tickMs;
+    if (st.off != null) st.drift = Math.max(st.drift || 0, ms / st.tickMs + st.off - f.t);
+    const w = st.offs || (st.offs = []);
+    if (st.off != null && Math.abs(off - st.off) > 8) w.length = 0;
+    w.push([ms, off]);
+    while (w.length > 1 && ms - w[0][0] > 800) w.shift();
+    let best = -Infinity;
+    for (const x of w) if (x[1] > best) best = x[1];
+    st.off = best;
   }
   const tNow = (st) => (st.off == null ? (st.f ? st.f.t : 0) : performance.now() / st.tickMs + st.off);
 
@@ -165,7 +172,7 @@
     let fit = null;
     try { fit = HGames.ui.fit ? HGames.ui.fit() : null; } catch { fit = null; }
     const avail = fit ? fit.h - fit.top - fit.dock : (window.innerHeight || 700);
-    const key = w + '|' + avail + '|' + st.yardKey + '|' + HGames.ui.coarse();
+    const key = w + '|' + avail + '|' + st.yardKey + '|' + HGames.ui.coarse() + '|' + !!st.padHost.firstChild + '|' + st.howto.hidden;
     if (!force && key === st.layoutK) return;
     st.layoutK = key;
     const me = mySeat(st);
@@ -190,11 +197,28 @@
       const cols = n <= 1 ? 1 : n <= 2 ? 2 : wide ? (n <= 4 ? n : 4) : (n <= 4 ? 2 : 3);
       mini = clamp(Math.floor((w - (cols - 1) * 10) / cols) - 4, 70, wide ? 200 : 150);
     }
-    st.yards.forEach((y, i) => {
+    const put = () => st.yards.forEach((y, i) => {
       const s = i === me ? big : mini;
       y.el.style.setProperty('--s', s + 'px');
       y.el.classList.toggle('tiny', s < 64);
     });
+    put();
+    // Свій двір — щоб уся гра (з хрестовиною) влазила в екран: міряємо, скільки займає все, крім нього,
+    // і скільки над нами (шапка картки, рядок місць). Те, що не двір, від його розміру не залежить — один прохід.
+    const yb = me != null && st.yards.get(me);
+    if (yb && st.el.offsetParent && fit) {
+      // над нами — шапка картки й рядок місць (сторінку не крутимо: у картки своя липка шапка)
+      const above = clamp(st.root.getBoundingClientRect().top + (window.scrollY || 0) - fit.top, 0, 260);
+      let room = avail - above - (st.el.offsetHeight - yb.ground.offsetHeight) - 10;
+      // тісно — мініатюри дрібнішають, свій двір важливіший
+      if (!wide && room < 230 && mini > 52) {
+        mini = Math.max(44, Math.min(mini, 52));
+        put();
+        room = avail - above - (st.el.offsetHeight - yb.ground.offsetHeight) - 10;
+      }
+      big = clamp(Math.min(room, wide ? 360 : w - 12, 360), 150, 360);
+      put();
+    }
   }
 
   // ---------- кадр → DOM ----------
@@ -368,7 +392,12 @@
     st.bannerEl.hidden = false;
     restart(st.bannerEl, 'in');
     const my = ++st.flashN;
-    if (ms) later(st, ms, () => { if (st.flashN === my) st.bannerEl.hidden = true; });
+    if (ms) later(st, ms, () => {
+      if (st.flashN !== my) return;
+      st.bannerEl.hidden = true;
+      // підсумок партії мусить лишитись: короткий банер міг його перекрити
+      if (st.f && st.f.ph === 5) { st.bannerKey = ''; banners(st, st.ctx.view || {}, st.f); }
+    });
   }
 
   // ---------- події кадру ----------
@@ -389,7 +418,7 @@
       const [, kind, a, b] = e;
       if (kind === 3) booms.push(b);
       else if (kind === 4) hit(st, a, a === me);
-      else if (kind === 5) { if (a === me) later(st, 500, () => flash(st, '💥 Тебе накрило — дивись, як інші', 2200, 'bad')); }
+      else if (kind === 5) { if (a === me && f.ph !== 5) later(st, 500, () => { if (st.f.ph !== 5) flash(st, '💥 Тебе накрило — дивись, як інші', 2200, 'bad'); }); }
       else if (kind === 6) {
         st.pred = null;
         st.stepBeat = -99;
@@ -449,10 +478,10 @@
       beat = Math.floor((t - f.at) / f.bt);
       const inGrace = t - (f.at + beat * f.bt) < g;
       if (beat >= f.len) return;
-      if (st.stepBeat === beat && !inGrace) { restart(st.bubble, 'nope'); return; }
+      if (st.stepBeat === f.round * 100 + beat && !inGrace) { restart(st.bubble, 'nope'); return; }
     }
     st.ctx.input('step', { d });
-    st.stepBeat = beat;
+    st.stepBeat = f.round * 100 + beat;   // з раундом: подія «новий раунд» могла й не дійти
     const q = f.p[me];
     const x0 = st.pred ? st.pred.x : q[0], y0 = st.pred ? st.pred.y : q[1];
     const x = x0 + DX[d], y = y0 + DY[d];
@@ -498,7 +527,10 @@
   }
 
   function controls(st) {
-    const on = canStep(st) || (st.ctx.mine && st.ctx.playing && st.f && st.f.ph <= 1 && mySeat(st) != null);
+    // Хрестовина стоїть усю партію, поки ти живий (лише тьмяніє між тактами): якби вона зникала на показі
+    // й паузі, двір стрибав би вгору-вниз щораунду.
+    const me = mySeat(st), q = me != null && st.f.p[me];
+    const on = !!(st.ctx.playing && q && (q[3] & 1) && st.f.ph !== 5);
     const pad = on ? HGames.ui.dpad(st.padHost, (d) => step(st, d)) : null;
     if (!on) { const el = st.padHost.querySelector(':scope > .dpad'); if (el) el.remove(); }
     if (pad) pad.classList.toggle('dim', !canStep(st));
@@ -615,6 +647,11 @@
       takeClock(st, f);
       events(st, f);
       render(st);
+      // хрестовина з'явилась чи зникла посеред партії — двір перераховуємо
+      const pad = !!st.padHost.firstChild;
+      if (pad !== st.padHad) { st.padHad = pad; layout(st); }
+      else if (f.ph !== st.phHad) layout(st);   // лобі → гра: правила зникли, двір можна більшим
+      st.phHad = f.ph;
       spin(st);
     },
 
