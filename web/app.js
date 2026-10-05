@@ -2193,7 +2193,14 @@
   const FB_ICON = { idea: '💡', change: '✏', bug: '🐞' };
   const FB_MAX_MSG = 1000;       // як Feedback.MaxMsg
   let fbKind = 'idea';
-  let fbMineUnread = 0;          // у скількох своїх записках нова відповідь (людині; адміну 💡 рахує інше)
+  /// Розмір вікна до записки — ще й щільність пікселів і весь екран: «на маку все стало менше» (записка #27) з одного
+  /// «1512×862» не розбереш. devicePixelRatio у Chrome множиться на масштаб сторінки (мак 2 → 1.8 при 90%), а екран
+  /// каже, ноут це (1512×982) чи зовнішній монітор. Сервер ріже до 40 знаків — вкладаємось.
+  const fbScreen = () => {
+    const d = Math.round((window.devicePixelRatio || 1) * 100) / 100;
+    return `${window.innerWidth}×${window.innerHeight} · ${d}x · екран ${screen.width}×${screen.height}`;
+  };
+  let fbMineUnread = 0;         // у скількох своїх записках нова відповідь (людині; адміну 💡 рахує інше)
   // Повідомлення розробника, нові на момент показу: сервер уже вважає їх прочитаними, а підсвітка тримається, поки
   // вікно відкрите — інакше перше ж перемальовування (сама відписала) гасило б її посеред читання.
   const fbMineFresh = new Set();
@@ -2348,7 +2355,7 @@
     busy($('fbSend'), 'надсилаю…', async () => {
       try {
         const r = await api('POST', '/api/feedback', {
-          kind: fbKind, text, place: location.hash || '#efir', screen: `${window.innerWidth}×${window.innerHeight}`,
+          kind: fbKind, text, place: location.hash || '#efir', screen: fbScreen(),
           ua: navigator.userAgent.slice(0, 300),
         });
         ok(r);
