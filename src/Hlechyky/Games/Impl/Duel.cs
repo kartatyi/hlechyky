@@ -25,8 +25,23 @@ public enum DuelPhase
 /// «ВОГОНЬ!», ні скільки лишилось цілитись — інакше виграв би не той, у кого швидша рука, а той, хто
 /// підглянув у кадр. Тому в кадрі нема ні <c>fireAt</c>, ні відліку у фазі «Цілься…».
 /// </summary>
-public sealed class Duel : Game
+public sealed class Duel : Game, IPartyMinigame
 {
+    /// <summary>Вечірка: до двох влучань (а не трьох) — партія вкладається в 45 с.</summary>
+    public const int PartyWins = 2;
+    /// <summary>Режим вечірки (docs/games/specs/party-minigame.md): лише 1×1, боти на місцях <c>bots</c> — хоч обидва.</summary>
+    PartyMode? _party;
+    public bool Party => _party is not null;
+    /// <summary>Вечірка: свій мозок кожному місцю — за столом можуть сидіти двоє ботів (обидва відпали від вечірки).</summary>
+    readonly DuelBot[] _pbrain = [new(), new()];
+    readonly bool[] _pbot = new bool[2];
+
+    public string Howto => "Чекай слова ВОГОНЬ! і тисни першим — поспішиш, куля в небо. До двох влучань. "
+        + "Пробіл, клік чи дотик — постріл";
+    public int PartyCapMs => 45_000;   // два-три раунди по ≤ 10 с + запас; AFK кінчається на трьох «заснули»
+    public int PartyMin => 2;
+    public int PartyMax => 2;
+
     /// <summary>«Готуйсь…»: стала пауза, щоб обидва встигли зібратись.</summary>
     public const int ReadyMs = 1500;
     /// <summary>Межі «Цілься…». Менше — не встигнеш зібратись, більше — рука сама тисне з нудьги.</summary>
@@ -84,6 +99,7 @@ public sealed class Duel : Game
     {
         Kit.Configure(options);
         _solo.Configure(options);
+        _party = PartyMode.Read(options);
     }
 
     public override bool ActsInLobby => true;
@@ -93,7 +109,9 @@ public sealed class Duel : Game
     /// <summary>Куди сяде бот: на вільне з двох місць, якщо його кликали й людина одна.</summary>
     int BotSeat() => _solo.Active(Ctx, 2) ? (Ctx.Seated(0) ? 1 : 0) : -1;
 
-    public override string? SeatBot(int seat) => seat == _bot && !Ctx.Seated(seat) ? LiveBots.Name : null;
+    public override string? SeatBot(int seat) => _party is not null
+        ? (seat is 0 or 1 && _pbot[seat] && !Ctx.Seated(seat) ? LiveBots.Name : null)
+        : seat == _bot && !Ctx.Seated(seat) ? LiveBots.Name : null;
 
     /// <summary>Нік для журналу й підсумку: бота каркас не знає, тож підставляємо його ім'я самі.</summary>
     string Nick(int seat) => SeatBot(seat) ?? Ctx.NickOf(seat) ?? SeatName(seat);
@@ -110,7 +128,44 @@ public sealed class Duel : Game
         // Scored (Ctx.Score + DuelRecords), тож просто не підключаємо його. Середня реакція за партію лишається.
         if (_botGame) Bout.Scored = null;
         _brain.Reset(_solo.Level);
+        if (_party is { } pm)
+        {
+            // Вечірка: ні рекордів, ні таблиці реакцій (каркас і так глушить Score) — і до двох влучань.
+            _bot = -1;
+            Bout.Scored = null;
+            Bout.WinsNeeded = PartyWins;
+            for (var s = 0; s < 2; s++)
+            {
+                _pbot[s] = pm.IsBot(s) && !Ctx.Seated(s);
+                _pbrain[s].Reset(pm.Level);
+            }
+        }
         Bout.Reset(Ctx.Clock.UtcNow);
+    }
+
+    /// <summary>
+    /// Scores вечірки: влучання × 10 000 + тай-брейк найшвидшою реакцією (10 000 − мс, лише коли влучав), тож при
+    /// рівних влучаннях вище той, у кого швидша рука; не стріляв зовсім — 0.
+    /// </summary>
+    public IReadOnlyDictionary<int, long> PartyScores()
+    {
+        var r = new Dictionary<int, long>(Ctx.Players);
+        for (var s = 0; s < Ctx.Players; s++)
+        {
+            if (s > 1 || _bout is null) { r[s] = 0; continue; }
+            var w = _bout.Wins[s];
+            r[s] = w * 10_000L + (w > 0 && Kit.BestOf(s) is { } ms ? Math.Max(0, 9_999 - ms) : 0);
+        }
+        return r;
+    }
+
+    void PartyOver()
+    {
+        Bout.Finish();
+        var scores = PartyScores();
+        var best = scores.Values.Max();
+        int[] won = [.. scores.Where(kv => kv.Value == best).Select(kv => kv.Key).Order()];
+        Ctx.Finish(won, $"{Info.Title}: {Nick(0)} {Bout.Wins[0]}:{Bout.Wins[1]} {Nick(1)}", scores);
     }
 
     bool Playing => _started && Bout.Phase != DuelPhase.Done;
@@ -126,7 +181,7 @@ public sealed class Duel : Game
         if (!Playing) return ActResult.Fail(_started ? "Дуель зіграно, тисни «Ану ще раз»" : "Чекаємо на гравців");
         if (action == "pong") { Kit.Pong(seat, payload); return ActResult.Done; }
         if (action != "shoot") return ActResult.Fail("Тут так не ходять");
-        if (seat == _bot) return ActResult.Fail("Ти тут не граєш");
+        if (seat == _bot || seat is 0 or 1 && _pbot[seat] && _party is not null) return ActResult.Fail("Ти тут не граєш");
         if (seat is < 0 or > 1) return ActResult.Fail("Ти тут не граєш");
         return Bout.Shoot(seat, Ctx.Clock.UtcNow, "Дуель зіграно, тисни «Ану ще раз»");
     }
@@ -140,8 +195,14 @@ public sealed class Duel : Game
         // Бот тисне до тика поєдинку: його постріл, що «визрів» між тиками, має потрапити в той самий раунд,
         // а мілісекунди він отримує свої, а не округлені до тика (див. DuelBot.Due).
         if (_bot >= 0 && _brain.Due(now) is { } at) b.Shoot(_bot, at, "");
+        if (_party is not null)
+            for (var s = 0; s < 2; s++)
+                if (_pbot[s] && _pbrain[s].Due(now) is { } pat) b.Shoot(s, pat, "");
         var tick = b.Tick(now);
         if (_bot >= 0) _brain.See(b, now, Ctx.Rng);
+        if (_party is not null)
+            for (var s = 0; s < 2; s++)
+                if (_pbot[s]) _pbrain[s].See(b, now, Ctx.Rng);
         switch (tick)
         {
             case BoutTick.Frame:
@@ -159,6 +220,13 @@ public sealed class Duel : Game
     TickResult Next(DateTimeOffset now)
     {
         var b = Bout;
+        if (_party is not null)
+        {
+            // Вечірка: до двох влучань; три раунди поспіль ніхто не стріляв (обидва AFK) — теж кінець, за scores.
+            if (b.Wins[0] >= PartyWins || b.Wins[1] >= PartyWins || b.Idle >= IdleRounds) { PartyOver(); return TickResult.Both; }
+            b.Next(now);
+            return TickResult.Both;
+        }
         if (b.Wins[0] >= WinsNeeded || b.Wins[1] >= WinsNeeded)
         {
             var won = b.Wins[0] > b.Wins[1] ? 0 : 1;

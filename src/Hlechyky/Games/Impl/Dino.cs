@@ -7,8 +7,15 @@ namespace Hlechyky.Games.Impl;
 /// наздогнала — вибув. Останній на ногах бере раунд, партія з трьох (опція). Рух — у <see cref="RunnerSim"/>,
 /// раунди й очки — у <see cref="RunnerParty"/>, тут — сніжки, яйця й ачівки (docs/games/specs/dino.md).
 /// </summary>
-public sealed class Dino : RunnerParty
+public sealed class Dino : RunnerParty, IPartyMinigame
 {
+    public string Howto => "Тікай від лавини: перестрибуй брили та ями, пригинайся під бурульки й птахів — хто пробіг більше метрів, той вище. "
+        + "↑/пробіл — стрибок (тримай — вище), ↓ — пригнутись; на телефоні — дотик";
+    public int PartyCapMs => 75_000;   // 3 с відліку + забіг до 65 с + запас
+    public int PartyMin => 2;
+    public int PartyMax => RunnerSim.Seats;
+    protected override DinoBot? NewBot(int seat, LiveBots.Level level) => new(seat, level);
+
     public const int FarMetres = 2000;
     static readonly string[] SeatNames = ["зелений", "жовтий", "рудий", "сірий", "синій", "рожевий", "фіалковий", "червоний"];
 
@@ -38,7 +45,7 @@ public sealed class Dino : RunnerParty
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
         base.Configure(options);
-        _spirit = options.TryGetValue("spirit", out var v) && v == "on";
+        _spirit = PartyM is null && options.TryGetValue("spirit", out var v) && v == "on";
     }
 
     /// <summary>Влучання сніжкою чекає, поки вийде вікно перемотування: запізнілий стрибок ще може його скасувати.</summary>
@@ -83,7 +90,7 @@ public sealed class Dino : RunnerParty
 
     void Far(int seat, int run)
     {
-        if (Awarded[seat] || Metres(Sim!, run) < FarMetres) return;
+        if (PartyM is not null || Awarded[seat] || Metres(Sim!, run) < FarMetres) return;
         Awarded[seat] = true;
         Ctx.Award(seat, 0, "ach:dino-far");
     }
@@ -119,7 +126,7 @@ public sealed class Dino : RunnerParty
             if (_spiritIds.Contains(id)) { _dropHits[by]++; continue; }   // брила духа — не сніжка: ні «Снайпера», ні ачівки
             _snipes[by]++;
             _snipesParty[by]++;
-            Ctx.Award(by, 0, "ach:dino-snow");
+            if (PartyM is null) Ctx.Award(by, 0, "ach:dino-snow");
         }
     }
 

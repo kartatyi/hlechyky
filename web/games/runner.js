@@ -1619,7 +1619,7 @@
   /// Телефон боком (чи інший низький екран): шапка й нижні панелі сайту з'їдають висоту, і сцена опиняється
   /// під ними. На старті раунду/спроби підкручуємо сторінку так, щоб сцена була на видноті.
   function showStage(st) {
-    if (!ui.coarse() || window.innerHeight > 520 || !st.el.stage) return;
+    if ((st.ctx && st.ctx.embedded) || !ui.coarse() || window.innerHeight > 520 || !st.el.stage) return;
     const r = st.el.stage.getBoundingClientRect();
     // смуга між липкою шапкою й тим, що прибито внизу (меню, міні-плеєр, шторка «💬 Стіл»); у g-imm їх нема.
     // block:'center' не зважав на них: верх сцени ховався під шапкою, низ — під меню.
@@ -3180,7 +3180,7 @@
   /// не чіпаємо.
   function fitPhone(st) {
     const ctx = st.ctx, hudEl = st.el && st.el.hud, padEl = st.el && st.el.touch;
-    if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !hudEl || !padEl || !ui.coarse()) return;
+    if (!ctx || ctx.embedded || !ctx.mine || !ctx.playing || !ctx.room || !hudEl || !padEl || !ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     if (st.fitFor === key) return;
     const a = hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();

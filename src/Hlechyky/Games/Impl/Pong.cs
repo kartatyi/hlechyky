@@ -731,8 +731,24 @@ public sealed class PongArena(Random rng)
 /// Правила й стан живуть тільки тут: браузер шле наміри («тримаю вгору», «палець отут»), а назад
 /// отримує кадр із дробовими координатами, який домальовує інтерполятором.
 /// </summary>
-public sealed class Pong : Game
+public sealed class Pong : Game, IPartyMinigame
 {
+    /// <summary>Вечірка: класика 1×1 до трьох голів або до 50 с гри (1250 тиків після відліку).</summary>
+    public const int PartyTarget = 3, PartyPlayTicks = 1250;
+    /// <summary>Режим вечірки (docs/games/specs/party-minigame.md): лише класика на двох, боти на місцях <c>bots</c> — хоч обидва.</summary>
+    PartyMode? _party;
+    public bool Party => _party is not null;
+    /// <summary>Вечірка: які з двох ракеток веде бот (обидві — коли обоє відпали від вечірки).</summary>
+    readonly bool[] _pbot = new bool[2];
+    /// <summary>Вечірка: тики гри після відліку — стеля 50 с.</summary>
+    int _ptk;
+
+    public string Howto => "Відбивай м'яч своєю ракеткою — до трьох голів або 50 с, у кого більше, той і взяв. "
+        + "↑ ↓ чи W/S — ракетка; на телефоні тягни пальцем";
+    public int PartyCapMs => 60_000;   // 3 с відліку + до 50 с гри + запас
+    public int PartyMin => 2;
+    public int PartyMax => 2;
+
     static readonly GameOption Length = new("len", "Партія",
         [("short", "Коротка"), ("normal", "Звичайна"), ("long", "Довга")], "normal");
     /// <summary>Бонуси на арені (п. 133): типово вимкнені — арена як була.</summary>
@@ -765,11 +781,12 @@ public sealed class Pong : Game
     /// <summary>Для тестів: арена поточної партії (null — класика або ще не стартували).</summary>
     public PongArena? ArenaForTests => _arena;
     /// <summary>Бот: ціль ракетки (оновлюється раз на три тики — реакція) і його похибка на цей підліт м'яча.</summary>
-    double _botAim = PongCore.H / 2, _botErr;
-    int _botSeen = -1;
+    /// <summary>По ракетці (0 ліва, 1 права) — у вечірці ботів може бути двоє.</summary>
+    readonly double[] _botAim = [PongCore.H / 2, PongCore.H / 2], _botErr = new double[2];
+    readonly int[] _botSeen = [-1, -1];
 
     /// <summary>До скількох грають на двох.</summary>
-    public int Target => _len switch { "short" => 5, "long" => 11, _ => PongCore.Target };
+    public int Target => _party is not null ? PartyTarget : _len switch { "short" => 5, "long" => 11, _ => PongCore.Target };
     /// <summary>Скільки життів на арені.</summary>
     public int Lives => _len switch { "short" => 3, "long" => 7, _ => PongArena.DefaultLives };
 
@@ -856,10 +873,13 @@ public sealed class Pong : Game
         if (!BonusOpt.Values.Any(v => v.Value == bonus)) throw new GameError("Таких бонусів нема");
         _bonuses = bonus == "on";
         _solo.Configure(options);
+        _party = PartyMode.Read(options);
     }
 
     /// <summary>Каркас питає, хто на порожньому місці під час і після партії: бот.</summary>
-    public override string? SeatBot(int seat) => seat == _bot && _bot >= 0 ? LiveBots.Name : null;
+    public override string? SeatBot(int seat) =>
+        _party is not null ? (seat is 0 or 1 && _pbot[seat] && !Ctx.Seated(seat) ? LiveBots.Name : null)
+        : seat == _bot && _bot >= 0 ? LiveBots.Name : null;
 
     public override void Start()
     {
@@ -868,10 +888,19 @@ public sealed class Pong : Game
         _started = true;
         var seated = Seated();
         _startNicks = [.. Enumerable.Range(0, PongArena.Seats).Where(Ctx.Seated).Select(x => Ctx.NickOf(x) ?? "")];
-        _isArena = seated.Count(x => x) > 2;
-        _bot = _isArena ? -1 : BotSeat();
-        _botAim = PongCore.H / 2;
-        _botSeen = -1;
+        _isArena = _party is null && seated.Count(x => x) > 2;
+        _bot = _isArena || _party is not null ? -1 : BotSeat();
+        _botAim[0] = _botAim[1] = PongCore.H / 2;
+        _botSeen[0] = _botSeen[1] = -1;
+        _ptk = 0;
+        if (_party is { } pm)
+        {
+            // Вечірка: завжди класика на місцях 0 і 1; бот — там, де людини нема.
+            for (var s = 0; s < 2; s++) _pbot[s] = pm.IsBot(s) && !Ctx.Seated(s);
+            _duo = [0, 1];
+            Core.Reset();
+            return;
+        }
         if (_isArena)
         {
             _arena = new PongArena(Ctx.Rng) { Bonuses = _bonuses };
@@ -891,6 +920,7 @@ public sealed class Pong : Game
     /// </summary>
     public override void OnLeave(int seat)
     {
+        if (_party is not null) return;   // вечірка: ракетка просто стоїть, партія догравається
         if (!_isArena)
         {
             var other = seat == _duo[0] ? _duo[1] : _duo[0];
@@ -970,10 +1000,18 @@ public sealed class Pong : Game
         if (_bot >= 0)
         {
             if (Ctx.Seated(_bot)) _bot = -1;               // сіла людина — грає вона
-            else BotThink();
+            else BotThink(_bot, _solo.Level);
         }
+        if (_party is { } pm)
+            for (var s = 0; s < 2; s++)
+                if (_pbot[s]) BotThink(s, pm.Level);
         var wasReady = Core.StartIn > 0;
         var scorer = Core.Step();
+        if (_party is not null)
+        {
+            if (!wasReady) _ptk++;
+            if ((scorer is { } sc && Core.S[sc] >= Target) || _ptk >= PartyPlayTicks) { PartyOver(); return TickResult.Both; }
+        }
         if (scorer is null) return wasReady && Core.StartIn == 0 ? TickResult.Both : TickResult.FrameOnly;
         if (Core.S[scorer.Value] < Target) return TickResult.Both;
 
@@ -1008,7 +1046,25 @@ public sealed class Pong : Game
         return TickResult.Both;
     }
 
-    string? Nick(int seat) => seat == _bot && !Ctx.Seated(seat) ? "🤖 бот" : Ctx.NickOf(seat);
+    string? Nick(int seat) => (seat == _bot || seat is 0 or 1 && _party is not null && _pbot[seat]) && !Ctx.Seated(seat) ? "🤖 бот" : Ctx.NickOf(seat);
+
+    /// <summary>Scores вечірки: голи кожного місця (місця 0 і 1 — ліва й права ракетки); більше голів — вище, рівно — поділили.</summary>
+    public IReadOnlyDictionary<int, long> PartyScores()
+    {
+        var r = new Dictionary<int, long>(Ctx.Players);
+        for (var s = 0; s < Ctx.Players; s++) r[s] = s < 2 && _core is not null ? _core.S[s] : 0;
+        return r;
+    }
+
+    void PartyOver()
+    {
+        _over = true;
+        var sc = PartyScores();
+        var best = sc.Values.Max();
+        int[] won = [.. sc.Where(kv => kv.Value == best).Select(kv => kv.Key).Order()];
+        _winner = won.Length == 1 ? won[0] : null;
+        Ctx.Finish(won, $"{Info.Title}: {Nick(0)} {Core.S[0]}:{Core.S[1]} {Nick(1)}", sc);
+    }
 
     // Рівні бота (легкий, звичайний, сильний); звичайний — рівно той бот, що був до рівнів.
     /// <summary>Раз на скільки тиків бот «дивиться» на м'яч: 200 / 120 / 80 мс реакції.</summary>
@@ -1027,16 +1083,16 @@ public sealed class Pong : Game
     /// лише пряму й виправляється, коли м'яч уже відскочив. М'яч летить від нього — вертається до центру. Їде тією самою
     /// швидкістю, що й людина, тож на швидкому м'ячі й смешах промахується навіть сильний.
     /// </summary>
-    void BotThink()
+    void BotThink(int seat, LiveBots.Level level)
     {
         var c = Core;
-        var i = Index(_bot);
+        var i = Index(seat);
         if (i is not { } me) return;
         var toward = me == 0 ? c.Vx < 0 : c.Vx > 0;
-        var lvl = LiveBots.Index(_solo.Level);
+        var lvl = LiveBots.Index(level);
         if (c.T % BotLook[lvl] == 0)
         {
-            if (!toward || c.StartIn > 0 || c.ServeIn > 0) { _botAim = PongCore.H / 2; _botSeen = -1; }
+            if (!toward || c.StartIn > 0 || c.ServeIn > 0) { _botAim[me] = PongCore.H / 2; _botSeen[me] = -1; }
             else
             {
                 var plane = PongCore.Plane(me);
@@ -1048,16 +1104,16 @@ public sealed class Pong : Game
                     var m = ((y - lo) % (2 * span) + 2 * span) % (2 * span);
                     y = lo + (m <= span ? m : 2 * span - m);
                 }
-                if (_botSeen != c.Rally)
+                if (_botSeen[me] != c.Rally)
                 {
-                    _botSeen = c.Rally;
-                    _botErr = (Ctx.Rng.NextDouble() * 2 - 1) * (BotErrBase[lvl] + c.Speed / BotErrDiv[lvl]);
-                    if (lvl == 2 && Ctx.Rng.NextDouble() < HardSlip) _botErr = Math.Sign(_botErr + 1e-9) * HardSlipErr;
+                    _botSeen[me] = c.Rally;
+                    _botErr[me] = (Ctx.Rng.NextDouble() * 2 - 1) * (BotErrBase[lvl] + c.Speed / BotErrDiv[lvl]);
+                    if (lvl == 2 && Ctx.Rng.NextDouble() < HardSlip) _botErr[me] = Math.Sign(_botErr[me] + 1e-9) * HardSlipErr;
                 }
-                _botAim = y + _botErr;
+                _botAim[me] = y + _botErr[me];
             }
         }
-        c.Aim(me, _botAim);
+        c.Aim(me, _botAim[me]);
     }
 
     public override object? Frame() => IsArena ? ArenaShot() : Shot();

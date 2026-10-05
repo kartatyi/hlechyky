@@ -1,5 +1,6 @@
 /* Проба міні-гри (mgprobe): картка «як грати», місце під вбудовану гру, таблиця місць. */
-.mgp { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* На всю ширину картки: .gbody центрує дітей, і без цього гра з container-type (Скільки?) стискалась до нуля. */
+.mgp { display: flex; flex-direction: column; gap: 10px; min-width: 0; width: 100%; }
 .mgp-card { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 12px;
   background: var(--card, rgba(127, 127, 127, .08)); border: 1px solid var(--line, rgba(127, 127, 127, .25)); }
 .mgp-card p { margin: 4px 0 0; }
