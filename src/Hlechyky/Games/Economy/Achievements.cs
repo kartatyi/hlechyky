@@ -185,6 +185,10 @@ public static class AchievementCatalog
         new("bakhne-elephant", "Слон пам'ятає", "«Куди бахне»: пройшов раунд на 10 кроків без жодного горщика", "🐘", 20),
         new("bakhne-sober",    "Тверезий",      "«Куди бахне»: раунд «Глек напився» без жодної втрати", "🥒", 15),
         new("bakhne-clean",    "Незайманий",    "Виграв «Куди бахне», не втративши жодного серця", "🛡", 25),
+        // вечірка: geese — «Пастух» і «Орлине око» гра просить сама через Ctx.Award(seat, 0, "ach:<key>"), «Гуси дня» — серія (OnDaily)
+        new("geese-shepherd", "Пастух",        "Усі сім раундів «Порахуй гусей» — точно, за столом із людьми", "🐑", 25),
+        new("geese-eagle",    "Орлине око",    "Точне число в останньому, найшвидшому параді «Порахуй гусей»", "🦅", 15),
+        new("geese-days5",    "Гуси дня",      "П'ять днів поспіль рахував «Гусей дня»", "🪿", 20),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
@@ -324,6 +328,7 @@ public sealed class Achievements
             if (streak >= 7) Unlock(nick, "wordle-7");
         }
         if (row.Game == "tyr-daily" && streak >= 5) Unlock(nick, "tyr-daily5");
+        if (row.Game == "geese-daily" && streak >= 5) Unlock(nick, "geese-days5");
         if (row.Game.StartsWith("mines", StringComparison.Ordinal) && row.Ms is > 0 and < 60_000)
             Unlock(nick, "mines-fast");
     }
