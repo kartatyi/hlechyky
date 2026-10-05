@@ -378,4 +378,6 @@
   .vch *, .vch *::before, .vch *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 .vch.mid .vch-main { grid-template-columns: minmax(0, 1fr) 236px; }
+/* Міні-гра на ноутбуці теж на всю картку: це правило стоїть після .mid і перебиває його бічну колонку. */
+.vch.mid.mgon .vch-main { grid-template-columns: minmax(0, 1fr); }
 .vch.mid .vp { padding: 5px 6px; gap: 0 6px; }

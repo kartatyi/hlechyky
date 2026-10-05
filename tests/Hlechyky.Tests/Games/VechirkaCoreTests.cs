@@ -825,6 +825,25 @@ public sealed class VechirkaCoreTests
     }
 
     [Fact]
+    public void Item_wait_cancel_loop_cannot_stretch_the_turn()
+    {
+        var t = Turn();
+        var i = t.Cur;
+        var start = t.Now;
+        for (var k = 0; k < 20 && t.C.S.Phase == "turn" && t.C.S.Cur == i; k++)
+        {
+            t.P(i).Items.Remove("pick"); t.P(i).Items.Insert(0, "pick");
+            t.Act(i, "item", new { k = "pick" });
+            t.Run(VechirkaRules.AimMs - 100);   // тягнемо приціл майже до кінця
+            if (t.C.S.Phase != "aim") break;
+            t.Act(i, "aim");   // скасувати
+        }
+        Assert.True(t.C.S.Phase != "turn" || t.C.S.Cur != i, "хід досі триває після циклу «предмет → скасувати»");
+        Assert.True((t.Now - start).TotalMilliseconds <= VechirkaRules.TurnMs + 2 * VechirkaRules.AimMs,
+            "цикл скасувань розтягнув хід");
+    }
+
+    [Fact]
     public void Duel_of_two_bots_waits_for_a_human_bettor_or_the_bet_window()
     {
         foreach (var bet in new[] { true, false })

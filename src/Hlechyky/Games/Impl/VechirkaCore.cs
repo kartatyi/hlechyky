@@ -367,9 +367,16 @@ public sealed partial class VechirkaCore
         ScheduleMachine();
     }
 
-    /// <summary>Залишок ходу після скасованого прицілювання (≥ 1 с): цикл «предмет → скасувати» не тягне хід (R1 M2).</summary>
-    int TurnLeftMs() =>
-        S.T.TurnUntil is { } u ? (int)Math.Clamp((u - Now).TotalMilliseconds, 1000, VechirkaRules.TurnMs) : VechirkaRules.TurnMs;
+    /// <summary>Назад у хід після скасованого (чи простояного) прицілювання — лише на залишок таймера (R1 M2).
+    /// Залишок вичерпано — кидаємо кубик одразу: інакше цикл «предмет → чекати приціл → скасувати» тягнув би хід
+    /// без кінця, щоразу з мінімальною секундою (V minor 2).</summary>
+    void BackToTurn()
+    {
+        S.Am = null;
+        var left = S.T.TurnUntil is { } u ? (u - Now).TotalMilliseconds : VechirkaRules.TurnMs;
+        if (left <= 0) { Phase("turn", 0); DoRoll(null); return; }
+        Phase("turn", (int)Math.Clamp(left, 1000, VechirkaRules.TurnMs));
+    }
 
     void BusyFor(int ms, string then)
     {
@@ -393,8 +400,7 @@ public sealed partial class VechirkaCore
                 break;
             case "aim":
                 Miss(S.Cur);
-                S.Am = null;
-                Phase("turn", TurnLeftMs());
+                BackToTurn();
                 break;
             case "prompt":
                 if (S.Pr is { } pr) { Miss(pr.Who); Answer(pr, pr.Default); }
@@ -646,7 +652,7 @@ public sealed partial class VechirkaCore
         switch (S.Phase)
         {
             case "turn": DoRoll(null); break;
-            case "aim": S.Am = null; Phase("turn", TurnLeftMs()); break;
+            case "aim": BackToTurn(); break;
             case "prompt": if (S.Pr is { } pr) Answer(pr, pr.Default); break;
             case "pick": if (S.Pk is { } pk) Choose(pk, R.Next(pk.Options.Count)); break;
             case "late":

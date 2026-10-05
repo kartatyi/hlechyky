@@ -473,7 +473,7 @@ public sealed partial class VechirkaCore
             case "aim":
                 RequireTurn(i, "aim");
                 var t = Int(payload, "target"); var node = Str(payload, "node"); var n = Int(payload, "n");
-                if (t is null && node is null && n is null) { S.Am = null; Phase("turn", TurnLeftMs()); break; }
+                if (t is null && node is null && n is null) { BackToTurn(); break; }
                 DoAim(i, t, node, n);
                 break;
             case "pick":
