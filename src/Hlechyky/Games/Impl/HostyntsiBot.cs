@@ -15,7 +15,7 @@ public sealed class HostyntsiBot(LiveBots.Level level)
     public LiveBots.Level Level => level;
 
     /// <summary>Реакція, тики по 50 мс: [від, до] включно.</summary>
-    static readonly (int Lo, int Hi)[] React = [(4, 8), (2, 4), (1, 2)];
+    static readonly (int Lo, int Hi)[] React = [(5, 10), (2, 5), (1, 2)];
     /// <summary>Похибка: шанс схопити поганий гостинець (жар, гарбуз) чи прогавити добрий.</summary>
     static readonly double[] Slip = [0.12, 0.05, 0.015];
 

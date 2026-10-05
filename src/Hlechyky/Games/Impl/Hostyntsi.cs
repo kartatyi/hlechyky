@@ -31,6 +31,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
     /// не дістає вікна наступного гравця: 250 + 383 &lt; 750.
     /// </summary>
     public const int JitterMs = 150;
+    public const int JitterTicks = JitterMs / TickMs;
     public const int BasketMax = 8;
     /// <summary>Опік — 2 с без хапання; промах — 0,4 с «руки порожні» (щоб не тиснути навмання); після хапу — 0,15 с.</summary>
     public const int BurnTicks = 40, MissLock = 8, GrabLock = 3;
@@ -73,6 +74,8 @@ public sealed class Hostyntsi : Game, IPartyMinigame
     {
         public bool Plays, Left;
         public int Station = -1;
+        /// <summary>Станція до останньої зміни: натиск, що летів мережею під час зсуву, судимо й за нею.</summary>
+        public int Prev = -1;
         public readonly List<(int Kind, int Val)> Basket = [];
         /// <summary>Штраф раунду за жар (жар місця в кошику не займає — його впускаєш, а пече).</summary>
         public int Pen;
@@ -113,6 +116,8 @@ public sealed class Hostyntsi : Game, IPartyMinigame
     int _rounds = Rounds;
     int _t, _rt, _nextSpawn, _nextId;
     int _startPlayers;
+    /// <summary>Тик раунду (<c>_rt</c>), коли була остання зміна посеред раунду.</summary>
+    int _shiftRt = -100;
     string[] _startNicks = [];
     int[] _winners = [];
     bool _nik;
@@ -214,22 +219,46 @@ public sealed class Hostyntsi : Game, IPartyMinigame
     }
 
     /// <summary>
-    /// Зсув станцій раунду: хто був нижче — тепер вище. Крок — третина жолоба (троє за три раунди рівно по разу
-    /// вгорі), але не менше одного.
+    /// Скільки змін у раунді. Хто вище — бачить першим і забирає краще (заміри: угорі ×3–5 очок проти низу), тож
+    /// місця обертаються щораунду, а коли людей більше, ніж раундів, — ще й посеред раунду: <c>⌈n / раундів⌉</c>
+    /// змін, на кожній усі зсуваються на крок угору, а верхній іде вниз. За партію кожен постоїть на кожній
+    /// станції (на вісьмох у вечірці — по 5 с; на трьох у звичайній — рівно по раунду).
     /// </summary>
-    public int StationOf(int k, int round)
+    public int Shifts => Math.Max(1, (_order.Length + _rounds - 1) / _rounds);
+
+    public int ShiftTicks => RoundTicks / Shifts;
+
+    /// <summary>Станція k-го в стартовому порядку на зміні <paramref name="shift"/> (наскрізній за партію): хто був нижче — тепер вище.</summary>
+    public int StationOf(int k, int shift)
     {
         var n = _order.Length;
         if (n == 0) return -1;
-        var shift = Math.Max(1, (int)Math.Round(n / 3.0));
-        return ((k - (round - 1) * shift) % n + n) % n;
+        return ((k - shift) % n + n) % n;
+    }
+
+    /// <summary>Наскрізний номер зміни: раунди до цього плюс зміна в раунді.</summary>
+    int ShiftNo => (_round - 1) * Shifts + Math.Min(Shifts - 1, _rt / ShiftTicks);
+
+    void Place()
+    {
+        var j = ShiftNo;
+        for (var k = 0; k < _order.Length; k++)
+        {
+            var p = _p[_order[k]];
+            p.Prev = p.Station;
+            p.Station = StationOf(k, j);
+        }
+        _shiftRt = _rt;
+        foreach (var b in _brain) b?.Reset();
     }
 
     void BeginRound()
     {
         _gifts.Clear();
         _ev.Clear();
-        for (var k = 0; k < _order.Length; k++) _p[_order[k]].Station = StationOf(k, _round);
+        _rt = 0;
+        Place();
+        _shiftRt = -100;
         foreach (var p in _p)
         {
             p.Basket.Clear();
@@ -239,7 +268,6 @@ public sealed class Hostyntsi : Game, IPartyMinigame
         }
         _ph = PhReady;
         _left = ReadyTicks;
-        _rt = 0;
         _nextSpawn = 0;
         _saidThisRound = false;
         foreach (var b in _brain) b?.Reset();
@@ -256,7 +284,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
     public double Speed => 900 + 150 * (_round - 1) + 500.0 * Math.Min(1, (double)_rt / RoundTicks);
 
     /// <summary>Середня пауза між гостинцями, мс: на більше людей — густіше, під кінець раунду — густіше.</summary>
-    public double IntervalMs => 1300 / (1 + 0.12 * (Math.Max(1, _order.Length) - 1)) * (1 - 0.3 * Math.Min(1, (double)_rt / RoundTicks));
+    public double IntervalMs => 950 / (1 + 0.12 * (Math.Max(1, _order.Length) - 1)) * (1 - 0.3 * Math.Min(1, (double)_rt / RoundTicks));
 
     /// <summary>Нижня межа вікна натиску з запасом на джитер для гостинця зі швидкістю <paramref name="v"/>, од/с.</summary>
     public static double Late(double v) => HalfWin + v * JitterMs / 1000.0;
@@ -305,7 +333,8 @@ public sealed class Hostyntsi : Game, IPartyMinigame
         Gift? g = null;
         foreach (var x in _gifts)
         {
-            if (!InReach(p.Station, x.D, v * x.Mul)) continue;
+            if (!InReach(p.Station, x.D, v * x.Mul)
+                && !(_rt - _shiftRt <= JitterTicks && p.Prev >= 0 && InReach(p.Prev, x.D, v * x.Mul))) continue;
             // Браузер назвав гостинець — беремо лише його: інакше натиск на розписний, що вже проплив, схопив би жар за ним.
             if (want is { } w) { if (x.Id == w) { g = x; break; } continue; }
             if (g is null || x.D > g.D) g = x;   // без id — той, що ось-ось піде
@@ -393,6 +422,11 @@ public sealed class Hostyntsi : Game, IPartyMinigame
         }
         Prune();
         if (_rt >= RoundTicks) return EndRound();
+        if (Shifts > 1 && _rt % ShiftTicks == 0 && _rt / ShiftTicks < Shifts)
+        {
+            Place();
+            return TickResult.Both;
+        }
         return TickResult.FrameOnly;
     }
 
@@ -561,6 +595,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
             jitterMs = JitterMs,
             tickMs = TickMs,
             roundTicks = RoundTicks,
+            shifts = lobby ? 1 : Shifts,
             values = (int[])Value.Clone(),
             cat = new[] { CatMin, CatMax },
             goldMul = GoldMul,
@@ -623,6 +658,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
             ph,
             r = lobby ? 0 : _round,
             left = ph == PhGo ? Math.Max(0, RoundTicks - _rt) : ph is PhReady or PhEnd ? _left : 0,
+            sl = ph == PhGo && Shifts > 1 && _rt / ShiftTicks < Shifts - 1 ? ShiftTicks - _rt % ShiftTicks : 0,
             v = (int)Math.Round(lobby ? 900 : Speed),
             len = Length(n),
             st,
