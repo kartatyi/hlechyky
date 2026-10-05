@@ -51,8 +51,9 @@
   }
   /// Лівий край снопа n (виїхав о s0, ширина w, висота h) на мить ms гри.
   const sheafLeft = (n, s0, w, h, ms, wind) => leftOf(center(Math.round(ms - s0), speed(h), fromLeft(n), sways(h), s0, wind), w);
-  // для docs/games/dev/skyrta-parity.js
-  window.SkyrtaCore = { speed, tol, fromLeft, sways, windOverlap, center, sway, left: leftOf, land };
+  // для docs/games/dev/skyrta-parity.js — лише коли його запущено (він ставить вектори до завантаження модуля);
+  // звичайній сторінці глобал ні до чого
+  if (window.__skyrtaParity) window.SkyrtaCore = { speed, tol, fromLeft, sways, windOverlap, center, sway, left: leftOf, land };
 
   // ---------- оформлення ----------
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -347,6 +348,12 @@
     const phone = W < 640;
     const emb = !!st.ctx.embedded;
     let H = phone ? clamp(fh - (emb ? 190 : 150), 360, 760) : clamp(fh - (emb ? 260 : 210), 340, 640);
+    // У вечірці сторінку не прокручуємо (toView там мовчить), тож полотно мусить стати цілим від свого справжнього
+    // верху до доку: над ним — шапка вечірки й картка правил, яких сталий відступ не знає; під ним — підказка.
+    const fitH = emb && fit ? Math.floor(fit.h - fit.dock - Math.max(fit.top, st.wrap.getBoundingClientRect().top)
+      - (st.hint ? st.hint.offsetHeight : 0) - 8) : 0;
+    if (fitH) H = Math.min(H, Math.max(phone ? 240 : 280, fitH));
+    st.wrapTop = Math.round(st.wrap.getBoundingClientRect().top);
     const f = st.f;
     const seats = [];
     for (let s = 0; s < 8; s++) if (st.stk[s] || (f && f.p && f.p[s])) seats.push(s);
@@ -368,9 +375,10 @@
         others.forEach((s, i) => P.push({ seat: s, x: bw + gap + (i % cols) * (cw + gap), y: Math.floor(i / cols) * (ch + gap), w: cw, h: ch }));
       } else {
         const cols = Math.min(k, 4), rows = Math.ceil(k / 4);
-        const mh = rows > 1 ? 96 : 124;
+        // у вечірці (5+ суперників) мініатюри нижчі: своє поле — головний екран і мусить влізти до доку
+        const mh = rows > 1 ? (emb ? 72 : 96) : (emb ? 108 : 124);
         const strip = rows * mh + (rows - 1) * 6;
-        H = Math.max(H, strip + 320);
+        H = Math.max(H, strip + gap + (emb ? 240 : 312));
         const cw = (W - (cols - 1) * 6) / cols;
         others.forEach((s, i) => P.push({ seat: s, x: (i % cols) * (cw + 6), y: Math.floor(i / cols) * (mh + 6), w: cw, h: mh }));
         P.push({ seat: me, x: 0, y: strip + gap, w: W, h: H - strip - gap, big: true });
@@ -401,7 +409,9 @@
   function toView(st, delay) {
     if (st.ctx.embedded || !st.ctx.mine || st.W >= 640) return;
     // ще раз — коли відлік змінився грою: каркас міг перемалювати картку й скинути прокрутку
-    setTimeout(() => {
+    clearTimeout(st.viewT);
+    st.viewT = setTimeout(() => {
+      st.viewT = 0;
       if (!st.el.isConnected) return;
       const fit = st.fit || (HGames.ui.fit ? HGames.ui.fit() : null);
       if (!fit) return;
@@ -426,7 +436,13 @@
     for (let s = 0; s < 8; s++) if (st.stk[s] || (f && f.p && f.p[s])) key += s + ',';
     if (key.slice(0, -1) + '|' + mySeat(st) !== st.layKey) layout(st);
     draw(st, now, busy ? dt : dt * 2);
-    if (now - st.hudAt > 200) { st.hudAt = now; hud(st); }
+    if (now - st.hudAt > 200) {
+      st.hudAt = now;
+      hud(st);
+      // у вечірці над полем то з'являється, то зникає картка правил — верх зсувається без зміни розміру,
+      // і ResizeObserver цього не бачить
+      if (st.ctx.embedded && Math.abs(Math.round(st.wrap.getBoundingClientRect().top) - (st.wrapTop || 0)) > 3) layout(st);
+    }
   }
 
   function draw(st, now, dt) {
@@ -819,6 +835,7 @@
       if (!st) return;
       cancelAnimationFrame(st.raf);
       st.raf = 0;
+      clearTimeout(st.viewT);
       if (st.ro) st.ro.disconnect();
       if (HGames.ui.onFit) HGames.ui.onFit(root, null);
       live.delete(st);

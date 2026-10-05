@@ -331,13 +331,19 @@ public sealed class Skyrta : Game, IPartyMinigame
     int[] Playing() => [.. Enumerable.Range(0, Seats).Where(s => _st[s].Plays && !_st[s].Gone)];
 
     /// <summary>
-    /// Scores вечірки: висота·1000 + ширина верху (ширина ≤ 400 — лише тай-брейк). Хто доклав до мети першим, і
-    /// так найвищий. Місця поза столом — 0.
+    /// Scores вечірки: висота·10⁹, далі — для тих, хто доклав до мети, раніша мить (як <see cref="Done"/>: та сама
+    /// мить — поділене місце, ширина вже не важить), для решти — ширина верху (≤ 400, тай-брейк). Інакше двоє, що
+    /// доклали в одному тіку, ділили б перемогу за шириною, а не за миттю. Місця поза столом — 0.
     /// </summary>
     public IReadOnlyDictionary<int, long> PartyScores()
     {
         var r = new Dictionary<int, long>(Ctx.Players);
-        for (var s = 0; s < Ctx.Players; s++) r[s] = s < Seats && _st[s].Plays ? Rank(s) : 0;
+        for (var s = 0; s < Ctx.Players; s++)
+        {
+            if (s >= Seats || !_st[s].Plays) { r[s] = 0; continue; }
+            var o = _st[s];
+            r[s] = o.H * 1_000_000_000L + (o.DoneAt >= 0 ? Math.Max(1, _limit - o.DoneAt + 1) * 1000L : o.W);
+        }
         return r;
     }
 

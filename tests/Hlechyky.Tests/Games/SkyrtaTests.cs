@@ -185,6 +185,49 @@ public class SkyrtaTests(ITestOutputHelper output)
         Assert.Equal(json, File.ReadAllText(path).Trim());
     }
 
+    /// <summary>
+    /// Паритет JS живе в браузері (<c>skyrta-parity.py</c>), і dotnet test його не проганяє. Тож тут — сторож: сталі
+    /// рушія в <c>skyrta.js</c> мусять дорівнювати C#, а сам блок рушія закріплено хешем. Змінив його — прожени
+    /// паритет у браузері й онови хеш (спека §4).
+    /// </summary>
+    [Fact]
+    public void Js_engine_constants_match_and_core_block_is_pinned()
+    {
+        var js = File.ReadAllText(Path.Combine(FindRoot(), "web", "games", "skyrta.js")).Replace("\r\n", "\n");
+        int K(string name)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(js, @"\b" + name + @" = (\d+)[,;]");
+            Assert.True(m.Success, name);
+            return int.Parse(m.Groups[1].Value);
+        }
+        Assert.Equal(SkyrtaCore.FieldW, K("FIELD"));
+        Assert.Equal(SkyrtaCore.Lo, K("LO"));
+        Assert.Equal(SkyrtaCore.Hi, K("HI"));
+        Assert.Equal(SkyrtaCore.BaseW, K("BASE_W"));
+        Assert.Equal(SkyrtaCore.V0, K("V0"));
+        Assert.Equal(SkyrtaCore.Vk, K("VK"));
+        Assert.Equal(SkyrtaCore.Vmax, K("VMAX"));
+        Assert.Equal(SkyrtaCore.Gap, K("GAP"));
+        Assert.Equal(SkyrtaCore.MissGap, K("MISS_GAP"));
+        Assert.Equal(SkyrtaCore.SwayFrom, K("SWAY_FROM"));
+        Assert.Equal(SkyrtaCore.SwayA, K("SWAY_A"));
+        Assert.Equal(SkyrtaCore.SwayP, K("SWAY_P"));
+        Assert.Equal(SkyrtaCore.Grow, K("GROW"));
+        Assert.Equal(SkyrtaCore.GrowBig, K("GROW_BIG"));
+        Assert.Equal(SkyrtaCore.BigFrom, K("BIG_FROM"));
+        Assert.Equal(SkyrtaCore.KindCut, K("CUT"));
+        Assert.Equal(SkyrtaCore.KindPerfect, K("PERFECT"));
+        Assert.Equal(SkyrtaCore.KindMiss, K("MISS"));
+        var a = js.IndexOf("  const FIELD = ", StringComparison.Ordinal);
+        var b = js.IndexOf("  const sheafLeft = ", StringComparison.Ordinal);
+        Assert.True(a > 0 && b > a);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(js[a..b])))[..16];
+        Assert.True(hash == PinnedCore, $"Рушій у skyrta.js змінився (хеш {hash}): прожени docs/games/dev/skyrta-parity.py і онови PinnedCore");
+    }
+
+    /// <summary>Хеш блоку рушія в skyrta.js, з яким паритет у браузері востаннє пройшов.</summary>
+    const string PinnedCore = "3000A29DCE6752DB";
+
     static string FindRoot()
     {
         var dir = AppContext.BaseDirectory;
@@ -508,7 +551,7 @@ public class SkyrtaTests(ITestOutputHelper output)
         Assert.Equal(MinigameEnd.Finished, r!.How);
         Assert.Equal([0], r.Winners);
         Assert.Equal(1, r.Places[0]);
-        Assert.Equal(Skyrta.PartyGoal * 1000L + g.Stacks[0].W, r.Scores[0]);
+        Assert.Equal(Skyrta.PartyGoal * 1_000_000_000L + (g.Limit - g.Stacks[0].DoneAt + 1) * 1000L, r.Scores[0]);
         Assert.True(r.Scores[1] < r.Scores[0]);    // людина 1 стояла
         Assert.Equal(0, h.Ctx.Muted);
         Assert.True(h.Clock.UtcNow - h.StartedAt <= TimeSpan.FromMilliseconds(h.Host.CapMs));
