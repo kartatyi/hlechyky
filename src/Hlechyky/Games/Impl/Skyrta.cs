@@ -266,7 +266,7 @@ public sealed class Skyrta : Game, IPartyMinigame
         if (!_saidWind && _party is null)
         {
             _saidWind = true;
-            Ctx.Say($"💨 {Name(seat)} напустив вітру на {Name(to)}. Тримайте снопи!");
+            Ctx.Say($"💨 {Name(seat)} пускає вітер на сусіда — {Name(to)}, тримай снопи!");
         }
     }
 
@@ -413,9 +413,9 @@ public sealed class Skyrta : Game, IPartyMinigame
 
     static readonly string[] EndLines =
     [
-        "{0} доклав скирту першим — хоч зараз на виставку в район",
+        "{0} — перша скирта на селі, хоч зараз на виставку в район",
         "Оце скирта! {0}, тобі б у колгосп бригадиром",
-        "{0} — господар. Решта — несіть вила, будемо переробляти",
+        "{0} — господар скирти. Решта — несіть вила, будемо переробляти",
     ];
 
     string Pick(string[] lines) => lines[Ctx.Rng.Next(lines.Length)];
