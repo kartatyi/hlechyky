@@ -80,7 +80,7 @@ public sealed partial class Freeze
     void BotsThink()
     {
         if (_bots.Length == 0) return;
-        var lvl = LiveBots.Index(_solo.Level);
+        var lvl = LiveBots.Index(_party?.Level ?? _solo.Level);
         var rng = Ctx.Rng;
         var baba = Core.Baba;
         for (var b = 0; b < _bots.Length; b++)

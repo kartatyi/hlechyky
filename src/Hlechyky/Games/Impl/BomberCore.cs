@@ -127,6 +127,9 @@ public sealed class BomberCore
     public const int RoundTicks = 2000;
     /// <summary>Стискання (опцією) починається з 90-ї секунди.</summary>
     public const int ShrinkFrom = 1500;
+    /// <summary>Скільки тиків раунд до нічиєї й з якого тика стискання — у вечірці коротші (75 с, з 40-ї секунди).</summary>
+    public int Limit { get; init; } = RoundTicks;
+    public int ShrinkAt { get; init; } = ShrinkFrom;
     /// <summary>Прокляття — десять секунд.</summary>
     public const int CurseTicks = 167;
     /// <summary>Скільки тиків той, хто передав прокляття, не може отримати його знову (≈2 с).</summary>
@@ -260,7 +263,7 @@ public sealed class BomberCore
     }
 
     /// <summary>Раунд скінчився: лишився щонайбільше один живий (одна команда) або вийшов час.</summary>
-    public bool RoundOver => AliveSides <= 1 || Ticks >= RoundTicks;
+    public bool RoundOver => AliveSides <= 1 || Ticks >= Limit;
 
     /// <summary>Єдиний живий; -1, коли живих нема або їх ще кілька (тоді раунд нічий).</summary>
     public int LastStanding
@@ -340,7 +343,7 @@ public sealed class BomberCore
         for (var i = 0; i < Tiles.Length; i++) if (Tiles[i] == BomberTile.Wall) walls.Add(i);
         BaseWalls = [.. walls];
         ShrinkOrder = Spiral();
-        ShrinkEvery = Math.Max(1, (RoundTicks - 50 - ShrinkFrom) / Math.Max(1, ShrinkOrder.Length));
+        ShrinkEvery = Math.Max(1, (Limit - 50 - ShrinkAt) / Math.Max(1, ShrinkOrder.Length));
         // Напрямок, який людина тримає пальцем чи клавішею, переживає новий раунд: інакше той, хто не
         // відпускав стрілку на «Готуйсь», стояв би стовпом, поки не перетисне клавішу.
         for (var i = 0; i < Seats; i++)
@@ -491,7 +494,7 @@ public sealed class BomberCore
     /// <summary>Стискання: з 90-ї секунди спіраллю від краю — клітинка за клітинкою стає стіною.</summary>
     void Squeeze()
     {
-        if (Ticks < ShrinkFrom || (Ticks - ShrinkFrom) % ShrinkEvery != 0 || Shrunk >= ShrinkOrder.Length) return;
+        if (Ticks < ShrinkAt || (Ticks - ShrinkAt) % ShrinkEvery != 0 || Shrunk >= ShrinkOrder.Length) return;
         var cell = ShrinkOrder[Shrunk++];
         Tiles[cell] = BomberTile.Wall;
         Flame[cell] = 0;

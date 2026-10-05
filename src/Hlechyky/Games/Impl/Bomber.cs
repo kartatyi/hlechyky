@@ -8,8 +8,22 @@ namespace Hlechyky.Games.Impl;
 /// кадр, опції столу (мапа, поле, стискання, хаос, привиди, команди), стрічка подій і підсумок партії.
 /// Кадр летить кожні 60 мс, тож усе в ньому — короткі числа: клієнт домальовує плавність сам.
 /// </summary>
-public sealed class Bomber : Game
+public sealed class Bomber : Game, IPartyMinigame
 {
+    /// <summary>Вечірка: раунд до нічиєї — 75 с, стіни сходяться з 40-ї секунди.</summary>
+    public const int PartyLimit = 1250, PartyShrinkAt = 667;
+    /// <summary>Режим вечірки (docs/games/specs/party-minigame.md): один раунд на полі 15, стискання, боти на місцях <c>bots</c>.</summary>
+    PartyMode? _party;
+    /// <summary>Тик раунду, коли місце підірвали (−1 — живе): з нього — scores вечірки.</summary>
+    readonly int[] _diedAt = new int[BomberCore.Seats];
+    public bool Party => _party is not null;
+
+    public string Howto => "Підривай інших бомбами й не лізь під свій вогонь: хто протримався довше, той вище; з 40-ї секунди стіни сходяться. "
+        + "Стрілки/WASD — іти, пробіл — бомба; на телефоні — стік і кнопка";
+    public int PartyCapMs => 90_000;   // 2 с відліку + раунд до 75 с + запас
+    public int PartyMin => 2;
+    public int PartyMax => BomberCore.Seats;
+
     /// <summary>«Готуйсь» на свіжому полі — десь дві секунди.</summary>
     public const int StartTicks = 33;
     /// <summary>Пауза на догорілому полі, щоб побачити, хто взяв раунд — десь секунда.</summary>
@@ -121,7 +135,8 @@ public sealed class Bomber : Game
     string Nick(int s) => Ctx.NickOf(s) ?? (_isBot[s] ? LiveBots.Name : SeatName(s));
 
     /// <summary>Куди сядуть боти, якщо їх покликали (і людина сама): перші вільні місця.</summary>
-    int[] BotSeats() => !_solo.Active(Ctx, BomberCore.Seats) ? []
+    int[] BotSeats() => _party is { } pm ? [.. pm.Bots.Where(s => s < BomberCore.Seats && !Ctx.Seated(s))]
+        : !_solo.Active(Ctx, BomberCore.Seats) ? []
         : [.. Enumerable.Range(0, BomberCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)];
 
     public override bool ActsInLobby => true;
@@ -140,6 +155,8 @@ public sealed class Bomber : Game
         return new BomberCore(Ctx.Rng, w, h, _map)
         {
             Chaos = _chaos, Ghosts = _ghosts, Shrink = _shrink, FriendlyFire = _ff, Teams = _teams,
+            Limit = _party is null ? BomberCore.RoundTicks : PartyLimit,
+            ShrinkAt = _party is null ? BomberCore.ShrinkFrom : PartyShrinkAt,
         };
     }
 
@@ -158,6 +175,15 @@ public sealed class Bomber : Game
         _teamsOn = options.GetValueOrDefault("teams") == "1";
         _ff = options.GetValueOrDefault("ff") == "1";
         _solo.Configure(options);
+        _party = PartyMode.Read(options);
+        // Вечірка: класичне поле 15, стискання, бонуси звичайні, кожен сам — гра має бути впізнаваною за хвилину.
+        if (_party is not null)
+        {
+            _map = BomberMap.Classic;
+            _size = "15";
+            _shrink = true;
+            _chaos = _ghosts = _teamsOn = _ff = false;
+        }
         _core = null;
     }
 
@@ -185,8 +211,10 @@ public sealed class Bomber : Game
         Array.Clear(_isBot);
         var bots = BotSeats();
         foreach (var b in bots) _isBot[b] = true;
-        _botGame = bots.Length > 0;
-        _brains = [.. bots.Select(b => new BomberBot(b, _solo.Level))];
+        // У вечірці боти — повноправні учасники (за них місця): раунд іграється до останнього, без «бот переміг».
+        _botGame = bots.Length > 0 && _party is null;
+        _brains = [.. bots.Select(b => new BomberBot(b, _party?.Level ?? _solo.Level))];
+        Array.Fill(_diedAt, -1);
         SetupTeams();
         _core = NewCore(SeatedCount());
         Core.Reset(Plays());
@@ -307,6 +335,7 @@ public sealed class Bomber : Game
             _boxes[s] += Core.Broke[s];
         }
 
+        if (_party is not null) return PartyOver();
         if (_teams is not null) return TeamRound();
         if (botsTake)
         {
@@ -354,6 +383,7 @@ public sealed class Bomber : Game
         foreach (var ev in Core.Events)
         {
             _lived[ev.Victim] += Core.Ticks - 1;   // загинув на цьому тику — прожив на один менше за того, хто встояв
+            if (_diedAt[ev.Victim] < 0) _diedAt[ev.Victim] = Core.Ticks;
             switch (ev.How)
             {
                 case BomberHow.Kill: _kills[ev.Killer]++; break;
@@ -365,6 +395,37 @@ public sealed class Bomber : Game
         }
         Core.Events.Clear();
         if (_feed.Count > 8) _feed.RemoveRange(0, _feed.Count - 8);
+    }
+
+    /// <summary>
+    /// Scores вечірки — порядок вибування: підірваному — скільки місць підірвали раніше (в один тик — рівні), живим —
+    /// скільки всього підірвали (рівні між собою). Місця, що не грали, — −1.
+    /// </summary>
+    public IReadOnlyDictionary<int, long> PartyScores()
+    {
+        var r = new Dictionary<int, long>(Ctx.Players);
+        var dead = Enumerable.Range(0, BomberCore.Seats).Count(s => _diedAt[s] >= 0);
+        for (var s = 0; s < Ctx.Players; s++)
+        {
+            if (s >= BomberCore.Seats || !_started || !Core.Players[s].Plays && _diedAt[s] < 0) { r[s] = -1; continue; }
+            var at = _diedAt[s];
+            r[s] = at < 0 ? dead : Enumerable.Range(0, BomberCore.Seats).Count(j => _diedAt[j] >= 0 && _diedAt[j] < at);
+        }
+        return r;
+    }
+
+    /// <summary>Кінець вечірки: один раунд, без серії, звань і нагород — лише scores кожного місця.</summary>
+    TickResult PartyOver()
+    {
+        _phase = PhaseOver;
+        var scores = PartyScores();
+        var best = scores.Count == 0 ? 0 : scores.Values.Max();
+        var winners = scores.Where(kv => kv.Value == best && kv.Value >= 0).Select(kv => kv.Key).Order().ToArray();
+        foreach (var w in winners) _wins[w]++;
+        _sum = Summary();
+        var line = string.Join(" : ", scores.Where(kv => kv.Value >= 0).OrderByDescending(kv => kv.Value).Select(kv => Nick(kv.Key)));
+        Ctx.Finish(winners, $"{Info.Title}: {line}", scores);
+        return TickResult.Both;
     }
 
     /// <summary>Хто попереду за раундами; порожньо — якщо попереду всі одразу (тоді це нічия).</summary>
@@ -452,6 +513,7 @@ public sealed class Bomber : Game
     /// </summary>
     public override void OnLeave(int seat)
     {
+        if (_party is not null) return;   // вечірка: місце просто стоїть, раунд догравається
         if (_started && seat >= 0 && seat < BomberCore.Seats)
         {
             var p = Core.Players[seat];
@@ -504,10 +566,10 @@ public sealed class Bomber : Game
         v["turn"] = null!;                          // бомбер не покроковий: «чия черга» тут не буває
         v["need"] = WinsToTake;
         v["round"] = _round;
-        v["limit"] = BomberCore.RoundTicks;         // скільки тиків триває раунд до нічиєї — для годинника над полем
+        v["limit"] = Core.Limit;         // скільки тиків триває раунд до нічиєї — для годинника над полем
         v["walls"] = Core.BaseWalls;                // рамка, стовпи й лабіринт не міняються — клієнт малює їх раз
         v["map"] = _map.ToString().ToLowerInvariant();
-        if (_shrink) v["shrinkAt"] = BomberCore.ShrinkFrom;
+        if (_shrink) v["shrinkAt"] = Core.ShrinkAt;
         if (_ghosts) v["ghosts"] = true;
         if (_chaos) v["chaos"] = true;
         if (_teams is not null)
