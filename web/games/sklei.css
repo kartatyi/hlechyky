@@ -1,0 +1,98 @@
+/*
+  Склей глек: рамку, рушник і черепки малює канвас (sklei.js), тут — рядок над ним, перегони, накладки фаз і колода.
+  Свої кольори — на :root з префіксом --skl-: модуль читає їх через HGames.ui.css().
+*/
+:root {
+  --skl-frame: #5a3a22;     /* дерев'яна рамка */
+  --skl-board: #1e2f26;     /* порожня рамка під черепками */
+  --skl-linen: #e8dcc2;     /* рушник, на якому лежать черепки */
+  --skl-stitch: #b8322a;    /* вишивка по краю рушника */
+  --skl-s0: #5aa9ff;
+  --skl-s1: #d9825b;
+  --skl-s2: #7bd389;
+  --skl-s3: #f4c542;
+  --skl-s4: #b48cf2;
+  --skl-s5: #6fd6c2;
+  --skl-s6: #f08cb8;
+  --skl-s7: #b7c2bd;
+}
+
+/* ширина не від вмісту: каркас (і вечірка) центрує картку за її вмістом, а канвас міряє ширину від нас — без цього
+   поле стискалось само від себе. vw тут лише стеля, справжню межу дає max-width батька. */
+.skl { display: flex; flex-direction: column; gap: 8px; width: min(calc(100vw - 32px), 900px); max-width: 100%; min-width: 0; }
+.skl-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 15px; }
+.skl-pic { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+.skl-clock { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+
+/* перегони: хто скільки склав */
+.skl-race { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 10px; }
+.skl-race:empty { display: none; }
+.skl-run { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 6px; column-gap: 6px; font-size: 13px; line-height: 1.25; }
+.skl-run b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c); }
+.skl-run em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--muted); }
+.skl-run .skl-bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.skl-run .skl-bar s { display: block; height: 100%; background: var(--c); border-radius: 3px; transition: width .25s ease-out; text-decoration: none; }
+.skl-run.me b::after { content: ' · ти'; color: var(--muted); font-weight: 400; }
+.skl-run.done em { color: var(--ok); font-weight: 600; }
+.skl-run.done .skl-bar s { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.skl-run.gone { opacity: .45; }
+.skl-tot { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(255, 255, 255, .08); color: var(--text); font-size: 11px; font-weight: 600; }
+
+/* поле */
+.skl-stage { position: relative; width: 100%; min-width: 0; }
+.skl-cv { display: block; margin: 0 auto; border-radius: 10px; touch-action: auto; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.skl-cv.play { touch-action: none; cursor: grab; }
+.skl-cv.play:active { cursor: grabbing; }
+
+.skl-ov { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); max-width: calc(100% - 16px); z-index: 2;
+  background: rgba(15, 25, 20, .86); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35); animation: skl-in .25s ease-out; }
+.skl-ov[hidden] { display: none; }
+.skl-ov.ready { top: 30%; padding: 14px 22px; pointer-events: none; }
+.skl-ov.note { top: 10px; padding: 6px 12px; font-size: 14px; pointer-events: none; }
+.skl-ov.card { top: 10px; min-width: min(300px, calc(100% - 16px)); }
+.skl-ov h4 { margin: 0 0 6px; font-size: 15px; }
+.skl-big { font-size: 26px; font-weight: 700; color: var(--accent); letter-spacing: .3px; }
+@keyframes skl-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+.skl-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.skl-tbl td, .skl-tbl th { padding: 3px 6px; text-align: left; white-space: nowrap; }
+.skl-tbl th { font-weight: 500; color: var(--muted); font-size: 12px; }
+.skl-tbl td:nth-child(2) { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.skl-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.skl-tbl tr.me td { color: var(--accent); }
+
+.skl-tip { min-height: 1.3em; text-align: center; }
+
+/* лобі: правила й колода */
+.skl-more { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.skl-more[hidden] { display: none; }
+.skl-rules { color: var(--muted); line-height: 1.45; }
+.skl-rules b { color: var(--text); }
+.skl-deck summary { cursor: pointer; padding: 6px 0; min-height: 32px; }
+.skl-buy { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 10px; }
+.skl-buy .primary { min-height: 44px; }
+.skl-sub { margin: 8px 0 4px; font-weight: 600; }
+.skl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.skl-th { position: relative; margin: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.skl-th img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--panel2); }
+.skl-th.hid img { opacity: .4; filter: grayscale(.7); }
+.skl-th figcaption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skl-th button { min-height: 32px; padding: 2px 6px; font-size: 12px; }
+.skl-th .skl-del { position: absolute; top: 4px; right: 4px; min-height: 30px; background: rgba(0, 0, 0, .6); }
+
+/* обрізка своєї картинки (вікно поверх сайту, як «Своя фотка» в Лавці) */
+.skl-crop .card { width: min(380px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 10px; }
+.skl-crop h3 { margin: 0; }
+.skl-crop-stage { position: relative; width: 100%; aspect-ratio: 1; border-radius: 10px; overflow: hidden; touch-action: none; cursor: grab; outline-offset: 2px; }
+.skl-crop-stage canvas { width: 100%; height: 100%; display: block; }
+.skl-crop-zoom { display: flex; align-items: center; gap: 8px; }
+.skl-crop-zoom input { flex: 1; }
+.skl-crop .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.skl-crop .row button { min-height: 44px; }
+
+@media (max-width: 520px) {
+  .skl-race { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .skl-top { font-size: 14px; }
+  .skl-big { font-size: 22px; }
+}
