@@ -35,7 +35,10 @@
   const hash = (x, y, k) => { const s = Math.sin(x * 127.1 + y * 311.7 + k * 74.7) * 43758.5453; return s - Math.floor(s); };
   const nameAt = (ctx, s) => {
     const n = ctx.nameOf ? ctx.nameOf(s) : ctx.nickOf && ctx.nickOf(s);
-    return n || (ctx.seatName ? ctx.seatName(s) : 'гравець ' + (s + 1));
+    const v = ctx.view;
+    const m = n || (ctx.seatName ? ctx.seatName(s) : 'гравець ' + (s + 1));
+    // у лобі бот ще не сів — каркас дає назву місця («рудий»); кажемо, що там бот
+    return v && v.bot && v.bot.includes(s) && !/🤖/.test(m) ? '🤖 бот ' + m : m;
   };
   const short = (n, k) => (n.length > k ? n.slice(0, k - 1) + '…' : n);
   /// «🤖 бот рудий» → «🤖 рудий»: у тісному чипі й над головою інакше всі боти однакові «🤖 бот…».
@@ -1003,6 +1006,7 @@
     if (!ctx.playing) {
       if (ctx.room && ctx.room.status === 'lobby') {
         const host = ctx.room.host && ctx.me && String(ctx.room.host).toLowerCase() === String(ctx.me.nick).toLowerCase();
+        if (v.botWanted) return '🤖 Боти вже на березі — тисни «Почати». Без нагород';
         return host ? 'Тисни «Почати», коли всі сіли (1–8; самому — «🤖 + бот»)' : 'Брід на 1–8 гравців. Стартує господар';
       }
       return '';
