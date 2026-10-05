@@ -42,7 +42,8 @@ public abstract class TyrBase : Game
     /// <summary>Мс поточного стенду за годинником сервера (на «Готуйсь» — від’ємні).</summary>
     public int NowMs => (int)Math.Floor((Ctx.Clock.UtcNow - _standAt).TotalMilliseconds);
 
-    protected int Limit => Math.Min(Seats, Ctx.Players);
+    /// <summary>Скільки місць має стіл: у вечірці — скільки посадила вечірка, за звичайним столом — усі вісім.</summary>
+    protected virtual int Limit => Seats;
 
     /// <summary>Генератор розкладу: стіл — з <c>Ctx.Rng</c>, «Тир дня» — із сіду дня.</summary>
     protected virtual Random ScheduleRng() => Ctx.Rng;
@@ -323,6 +324,8 @@ public sealed class Tyr : TyrBase, IPartyMinigame
         _party is not null ? ActResult.Fail("У вечірці ботів садить вечірка")
         : _started && !_over ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, Seats);
 
+    protected override int Limit => _party is not null ? Math.Min(Seats, Ctx.Players) : Seats;
+
     bool IsBot(int seat) => Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat);
 
     int[] BotSeats() => _solo.Active(Ctx, Seats) ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
@@ -356,7 +359,7 @@ public sealed class Tyr : TyrBase, IPartyMinigame
         {
             if (Ctx.Seated(s) || _brain[s] is not { } bot) continue;
             var me = Shooter(s);
-            switch (bot.Think(now, me, Targets, Ctx.Rng, out var x, out var y))
+            switch (bot.Think(StandIndex, now, me, Targets, Ctx.Rng, out var x, out var y))
             {
                 case TyrBot.Move.Shot:
                     Act(s, "shot", JsonSerializer.SerializeToElement(new { s = StandIndex, t = now, x, y }));

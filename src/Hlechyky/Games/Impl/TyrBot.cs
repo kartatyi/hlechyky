@@ -10,22 +10,24 @@ public sealed class TyrBot(LiveBots.Level level)
 {
     readonly int _lvl = LiveBots.Index(level);
     /// <summary>Реакція, мс: скільки мішень має бути на виду, поки бот по ній стрельне.</summary>
-    static readonly int[] React = [720, 460, 290];
+    static readonly int[] React = [800, 520, 340];
     /// <summary>Пауза між пострілами, мс (плюс випадковий хвіст до половини).</summary>
-    static readonly int[] Gap = [640, 400, 270];
+    static readonly int[] Gap = [700, 440, 320];
     /// <summary>Похибка прицілу (сигма по кожній осі), одиниць поля.</summary>
-    static readonly double[] Sigma = [30, 21, 15];
+    static readonly double[] Sigma = [30, 21, 17];
     /// <summary>Імовірність, що бот вибере «погану» мішень, коли вона на виду, %.</summary>
-    static readonly int[] Mistake = [22, 8, 3];
+    static readonly int[] Mistake = [22, 9, 4];
 
-    int _next;
+    int _next, _stand = -1;
 
     public enum Move { None, Shot, Reload }
 
-    /// <summary>Що зробити в мить <paramref name="t"/> (мс стенду). Постріл — у (<paramref name="x"/>, <paramref name="y"/>).</summary>
-    public Move Think(int t, TyrShooter me, IReadOnlyList<TyrTarget> targets, Random rng, out double x, out double y)
+    /// <summary>Що зробити в мить <paramref name="t"/> (мс стенду <paramref name="stand"/>). Постріл — у (<paramref name="x"/>, <paramref name="y"/>).</summary>
+    public Move Think(int stand, int t, TyrShooter me, IReadOnlyList<TyrTarget> targets, Random rng, out double x, out double y)
     {
         x = y = 0;
+        // Новий стенд — мить знову з нуля: пауза з кінця минулого не тягнеться.
+        if (stand != _stand) { _stand = stand; _next = 0; }
         if (t < _next || me.Reloading(t) || me.Smoked(t) || t < me.LastT + TyrCore.MinGap) return Move.None;
         me.Settle(t);
         if (me.Ammo <= 0) { _next = t + 150; return Move.Reload; }
