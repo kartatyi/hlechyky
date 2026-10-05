@@ -226,7 +226,7 @@ public sealed class MinigameHost
         var bots = Enumerable.Range(0, seats.Count).Where(i => seats[i].Bot);
         _ctx = new SubRoomContext(parent, seats, PartyMode.Options(bots, level, extra));
         _game.Ctx = _ctx;
-        _step = Math.Max(1, game.Info.TickMs);
+        _step = game.Info.TickMs;   // 0 — покрокова: Tick() їй не кличемо, лише стеля
     }
 
     /// <summary>Хост для гри з пулу за id; null — нема такої міні-гри.</summary>
@@ -253,7 +253,7 @@ public sealed class MinigameHost
         if (_started) return;
         _started = true;
         var now = _ctx.Clock.UtcNow;
-        _due = now.AddMilliseconds(_step);
+        _due = now.AddMilliseconds(Math.Max(1, _step));
         _deadline = now.AddMilliseconds(CapMs);
         if (!Guard(() => { _game.Configure(_ctx.Options); _game.Start(); })) return;
         Collect();
@@ -278,7 +278,7 @@ public sealed class MinigameHost
         if (!_started || Over) return TickResult.None;
         var now = _ctx.Clock.UtcNow;
         bool frame = false, view = false;
-        for (var n = 0; n < MaxCatchUp && now >= _due && !Over; n++)
+        for (var n = 0; n < MaxCatchUp && _step > 0 && now >= _due && !Over; n++)
         {
             _due = _due.AddMilliseconds(_step);
             var r = TickResult.None;
@@ -287,7 +287,7 @@ public sealed class MinigameHost
             view |= r.View;
             Collect();
         }
-        if (now >= _due) _due = now.AddMilliseconds(_step);   // відстали більше ніж на MaxCatchUp — не надолужуємо
+        if (_step > 0 && now >= _due) _due = now.AddMilliseconds(_step);   // відстали більше ніж на MaxCatchUp — не надолужуємо
         if (!Over && now >= _deadline) Cap();
         return Over ? TickResult.Both : new TickResult(frame, view);
     }

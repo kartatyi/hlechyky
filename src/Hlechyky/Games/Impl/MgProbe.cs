@@ -23,9 +23,12 @@ public sealed class MgProbe : Game, IUnlistedGame
     static readonly GameOption BotsOpt = new("bots", "Ботів",
         [.. Enumerable.Range(0, MaxSeats).Select(n => (n.ToString(), n == 0 ? "без ботів" : $"{n} 🤖"))], "2");
 
+    /// <summary>Той самий ключ і значення, що <see cref="LiveBots.LevelOption"/>, але підпис — про ботів стенда.</summary>
+    static readonly GameOption LevelOpt = new(LiveBots.LevelOption.Key, "🤖 Рівень ботів", LiveBots.LevelOption.Values, LiveBots.LevelOption.Default);
+
     public override GameInfo Info { get; } = new(
         "mgprobe", "Проба міні-гри", "пробу міні-гри", GameGroup.Party, 1, MaxSeats, TickMs: TickMillis,
-        Start: StartMode.ByHost, Options: [GameOpt, BotsOpt, LiveBots.LevelOption],
+        Start: StartMode.ByHost, Options: [GameOpt, BotsOpt, LevelOpt],
         Hint: "Стенд розробника: одна міні-гра вечірки з ботами — перевірити, як вона живе всередині вечірки");
 
     string _gameId = "icefloe";
@@ -141,7 +144,7 @@ public sealed class MgProbe : Game, IUnlistedGame
             phase = _phase,
             round = _round,
             game = _gameId,
-            title = h?.Title ?? _gameId,
+            title = h?.Title ?? PartyPool.Games.FirstOrDefault(g => g.Id == _gameId)?.Title ?? _gameId,
             howto = h?.Howto ?? "",
             until = _phase == "howto" ? _howtoUntil : (DateTimeOffset?)null,
             howtoMs = HowtoMs,

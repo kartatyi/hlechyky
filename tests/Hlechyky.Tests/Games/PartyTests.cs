@@ -147,6 +147,17 @@ public class PartyTests
     }
 
     [Fact]
+    public void Turn_based_subgame_is_not_ticked_but_still_capped()
+    {
+        var g = new Fake(0, capMs: 1500);
+        var h = new PartyHarness(g, humans: 2, bots: 0);
+        h.Start();
+        var r = h.RunToEnd();
+        Assert.Equal(0, g.Ticks);
+        Assert.Equal(MinigameEnd.Cap, r!.How);
+    }
+
+    [Fact]
     public void Cap_never_exceeds_two_minutes()
     {
         var h = new PartyHarness(new Fake(40, capMs: 10 * 60_000), humans: 2, bots: 0);
