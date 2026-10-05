@@ -20,6 +20,8 @@ public sealed class VechirkaMgTests
     public void Eight_at_the_table_play_a_whole_evening_of_icefloe()
     {
         var h = VechirkaTests.Table(1, 7, seed: 21);
+        // Пул звужено до Крижини: після злиття хвилі в пулі й інші ігри (дуелі — Понг тощо), а тут перевіряємо саме її
+        G(h).PoolFactory = () => [.. VechirkaPool.Available.Where(e => e.Id == "icefloe")];
         Assert.True(h.Start().Ok);
         var g = G(h); var c = g.Core!;
         var runner = Assert.IsType<VechirkaHostMg>(c.Mg);
