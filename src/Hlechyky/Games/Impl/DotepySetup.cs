@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// Голос публіки «Дотепів» (specs/dotepy.md §3.2). Глядач не сидить за столом, а <c>Rooms.Act</c> пускає лише
+/// Голос публіки «Додепів» (specs/dotepy.md §3.2). Глядач не сидить за столом, а <c>Rooms.Act</c> пускає лише
 /// тих, хто сидить, тому глядачі голосують через HTTP. Один голос на нік на картку (повторний замінює), лише
 /// тим, хто цей стіл справді відкрив, і не частіше за двічі на секунду з ніка.
 /// </summary>
@@ -68,14 +68,14 @@ public sealed record DotepyJuryBody(string? Room, int Card, int Pick);
 /// <summary>Тіло «😂» глядача: <c>{ room, card, i }</c>.</summary>
 public sealed record DotepyLaughBody(string? Room, int Card, int I);
 
-/// <summary>«📌 В альбом»: <c>{ room, i }</c> — номер дотепу в трійці найкращих партії.</summary>
+/// <summary>«📌 В альбом»: <c>{ room, i }</c> — номер додепу в трійці найкращих партії.</summary>
 public sealed record DotepyPinBody(string? Room, int I);
 
 /// <summary>❤ чи прибирання в альбомі: <c>{ id }</c>.</summary>
 public sealed record DotepyAlbumIdBody(long Id);
 
 /// <summary>
-/// Підключення «Дотепів» одним рядком у <see cref="GamesSetup"/>: голос Глека поверх <see cref="TtsService"/>
+/// Підключення «Додепів» одним рядком у <see cref="GamesSetup"/>: голос Глека поверх <see cref="TtsService"/>
 /// (його реєструє «Своя гра»), голос публіки і прогрів сталих реплік на старті сервера.
 /// </summary>
 public static class DotepySetup
@@ -117,7 +117,7 @@ public static class DotepySetup
             var r = body is null ? ActResult.Fail("Тут так не сміються") : jury.Laugh(Auth.Nick(c), body.Room, body.Card, body.I);
             return Results.Json(new { ok = r.Ok, message = r.Message });
         });
-        // «📌 В альбом» на підсумку партії: гра під замком лише видає дотеп, база — вже поза замком кімнати.
+        // «📌 В альбом» на підсумку партії: гра під замком лише видає додеп, база — вже поза замком кімнати.
         app.MapPost("/api/games/dotepy/pin", async (HttpContext c, Rooms rooms, DotepyAlbum album, CancellationToken ct) =>
         {
             var body = await Body<DotepyPinBody>(c, ct);
@@ -129,10 +129,10 @@ public static class DotepySetup
             lock (room.Sync) got = game.Pin(nick, body.I);
             if (got.Item is not { } a) return Reply(ActResult.Fail(got.Error ?? "Не вийшло"));
             var id = album.Add(a.Prompt, a.Text, a.Author, a.By, a.Points, a.At);
-            return Results.Json(new { ok = true, message = "📌 Дотеп в альбомі", id });
+            return Results.Json(new { ok = true, message = "📌 Додеп в альбомі", id });
         });
 
-        // «📖 Альбом дотепів»: гортати може будь-хто (і гість), новіші першими.
+        // «📖 Альбом додепів»: гортати може будь-хто (і гість), новіші першими.
         app.MapGet("/api/games/dotepy/album", (HttpContext c, long? before, int? n, DotepyAlbum album) =>
         {
             var key = Auth.NickKey(Auth.Nick(c));
@@ -156,17 +156,17 @@ public static class DotepySetup
             var key = Auth.NickKey(Auth.Nick(c));
             if (body is null) return Reply(ActResult.Fail("Тут так не лайкають"));
             if (key == Auth.Guest) return Reply(ActResult.Fail("Спершу скажи, як тебе кликати"));
-            if (album.Like(body.Id, key) is not { } r) return Reply(ActResult.Fail("Такого дотепу вже нема"));
+            if (album.Like(body.Id, key) is not { } r) return Reply(ActResult.Fail("Такого додепу вже нема"));
             return Results.Json(new { ok = true, likes = r.Likes, liked = r.Liked });
         });
 
-        // Адмін прибирає дотеп з альбому.
+        // Адмін прибирає додеп з альбому.
         app.MapPost("/api/games/dotepy/album/delete", async (HttpContext c, DotepyAlbum album, CancellationToken ct) =>
         {
             if (!Auth.IsAdmin(c)) return Results.StatusCode(403);
             var body = await Body<DotepyAlbumIdBody>(c, ct);
             if (body is null) return Reply(ActResult.Fail("Нема що прибирати"));
-            return Reply(album.Delete(body.Id) ? ActResult.Accept("Прибрано з альбому") : ActResult.Fail("Такого дотепу вже нема"));
+            return Reply(album.Delete(body.Id) ? ActResult.Accept("Прибрано з альбому") : ActResult.Fail("Такого додепу вже нема"));
         });
         return app;
     }
@@ -192,8 +192,8 @@ public static class DotepySetup
         public Task StartAsync(CancellationToken ct)
         {
             var count = DotepyBank.All.Count;
-            if (DotepyBank.Problem is { } problem) log.LogWarning("Дотепи: банк завдань — {Problem}", problem);
-            log.LogInformation("Дотепи: у банку {Count} завдань", count);
+            if (DotepyBank.Problem is { } problem) log.LogWarning("Додепи: банк завдань — {Problem}", problem);
+            log.LogInformation("Додепи: у банку {Count} завдань", count);
             try
             {
                 if (voice.Enabled)
@@ -202,7 +202,7 @@ public static class DotepySetup
                     voice.Prepare("polina", DotepyLines.Pure());
                 }
             }
-            catch (Exception ex) { log.LogWarning(ex, "Дотепи: прогрів голосу не вдався"); }
+            catch (Exception ex) { log.LogWarning(ex, "Додепи: прогрів голосу не вдався"); }
             return Task.CompletedTask;
         }
 

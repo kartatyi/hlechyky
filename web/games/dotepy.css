@@ -1,4 +1,4 @@
-/* «Дотепи» (specs/dotepy.md §8). Усі класи й змінні — з префіксом dt-/--dt-: гра живе поруч із двома десятками інших. */
+/* «Додепи» (specs/dotepy.md §8). Усі класи й змінні — з префіксом dt-/--dt-: гра живе поруч із двома десятками інших. */
 
 :root {
   /* кольори восьми місць — добре розрізнювані; поруч завжди номер місця й нік, колір не єдина ознака.
@@ -193,7 +193,7 @@
   color: #fff; font-weight: 800; font-size: .85em; transform: rotate(3deg); animation: dt-pop .45s ease-out 1.1s both;
   pointer-events: none;
 }
-/* Конфеті — з боків і знизу картки, під текстом (z-index), і летить назовні: переможний дотеп лишається читабельним. */
+/* Конфеті — з боків і знизу картки, під текстом (z-index), і летить назовні: переможний додеп лишається читабельним. */
 .dt-confetti { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 0; }
 .dt-ans.sweep > .dt-n, .dt-ans.sweep > .dt-txt, .dt-ans.sweep > .dt-badge, .dt-ans.sweep > .dt-res { position: relative; z-index: 1; }
 .dt-ans.sweep > .dt-sweep { z-index: 2; }
@@ -313,7 +313,7 @@
   .dt-confetti, .dt-fly { display: none; }
 }
 
-/* Прохід №3 (29.09): смайл-ребуси, «📌 В альбом» / «📋 У балачку», «📖 Альбом дотепів» */
+/* Прохід №3 (29.09): смайл-ребуси, «📌 В альбом» / «📋 У балачку», «📖 Альбом додепів» */
 .dt-pic { display: block; font-size: 2.3em; letter-spacing: .12em; line-height: 1.25; margin-top: .12em; }
 .dt-prompt.big .dt-pic { font-size: 2.6em; }
 .dt-bestq .dt-pic { font-size: 1.8em; }

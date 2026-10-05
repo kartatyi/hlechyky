@@ -197,7 +197,7 @@ public sealed class Bluff : Game
     /// <summary>Хто обрав тему кожного питання (−1 — Глек).</summary>
     readonly List<int> _chosenBy = [];
 
-    // ---- голос Глека (як у Дотепах: гра ніколи не чекає на озвучку) ----
+    // ---- голос Глека (як у Додепах: гра ніколи не чекає на озвучку) ----
     sealed record Speech(int Id, string Text, string Url, double Seconds);
     IDotepyVoice _voice = DotepyNoVoice.Instance;
     Speech? _say;

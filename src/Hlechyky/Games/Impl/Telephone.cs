@@ -139,7 +139,7 @@ public sealed partial class Telephone : Game
         _steps = Duo ? _stepsOption ?? DuoSteps : Math.Min(_order.Length, _stepsOption ?? _order.Length);
         if (Duo)
             foreach (var chain in _chains)
-                chain.Add(new Entry { Seat = Jug, Kind = "text", Text = _phrases.Random(Ctx.Rng) });
+                chain.Add(new Entry { Seat = Jug, Kind = "text", Text = _phrases.Deal(Ctx.RoomId, Ctx.Rng, 1)[0] });
         StartVoice();
         _left.Clear();
         _result = null;
@@ -172,7 +172,7 @@ public sealed partial class Telephone : Game
                 var chain = ((i - _step) % n + n) % n;
                 var last = _chains[chain].LastOrDefault();
                 var kind = last is null ? Phrase : last.Kind == "text" ? Draw : Describe;
-                _tasks[seat] = new Job { Chain = chain, Kind = kind, Ideas = kind == Phrase ? _phrases.Pick(Ctx.Rng, IdeaCount) : [] };
+                _tasks[seat] = new Job { Chain = chain, Kind = kind, Ideas = kind == Phrase ? _phrases.Deal(Ctx.RoomId, Ctx.Rng, IdeaCount) : [] };
             }
         }
         if (_tasks.Count == 0) { BeginReveal(); return; }
@@ -196,7 +196,9 @@ public sealed partial class Telephone : Game
             {
                 Draw => new Entry { Seat = seat, Kind = "drawing", Ops = task.Sketch.Ops() },
                 Describe => new Entry { Seat = seat, Kind = "text", Text = task.Text.Length > 0 ? task.Text : Shrug },
-                _ => new Entry { Seat = seat, Kind = "text", Text = task.Text.Length > 0 ? task.Text : _phrases.Random(Ctx.Rng) },
+                // Не написав — бере першу з власних підказок 🎲: вона вже знята з колоди столу, нової не тягнемо.
+                _ => new Entry { Seat = seat, Kind = "text", Text = task.Text.Length > 0 ? task.Text
+                    : task.Ideas.Length > 0 ? task.Ideas[0] : _phrases.Deal(Ctx.RoomId, Ctx.Rng, 1)[0] },
             };
             _chains[task.Chain].Add(entry);
             if (entry.Text is { } said) VoiceAhead(said);
@@ -520,31 +522,74 @@ public sealed partial class Telephone : Game
 /// <summary>
 /// Фрази-підказки з <c>data/telephone/phrases.txt</c>: для 🎲 і для тих, хто не написав фрази вчасно.
 /// Нема файла — одна вшита фраза, щоб гра не стояла.
+///
+/// Роздаємо з колоди столу (записка #24, 05.10: «рандом дає те саме»): кожен стіл тягне фрази з власної
+/// перетасованої колоди, тож ні сусіди в одній партії, ні наступні «Ще раз» за тим самим столом не бачать
+/// повторів, доки колоду не вичерпано; тоді її тасують заново. Колоди живуть лише в пам'яті процесу —
+/// після перезапуску починаються з нуля, і це не біда.
 /// </summary>
 public sealed class TelephonePhrases(IReadOnlyList<string> phrases)
 {
     public const string FileName = "data/telephone/phrases.txt";
     const string Fallback = "кіт їде на велосипеді";
+    /// <summary>Скільки столів пам'ятаємо: найдавніше зайнятий забуваємо першим.</summary>
+    public const int TablesRemembered = 64;
 
     static readonly Lazy<TelephonePhrases> Cached = new(() => Load(Paths.Resolve(FileName)));
     public static TelephonePhrases Default => Cached.Value;
 
     public IReadOnlyList<string> All { get; } = phrases.Count > 0 ? phrases : [Fallback];
 
-    public string Random(Random rng) => All[rng.Next(All.Count)];
-
-    /// <summary>До <paramref name="count"/> різних фраз у випадковому порядку.</summary>
-    public string[] Pick(Random rng, int count)
+    sealed class Deck
     {
-        var pool = All.ToList();
-        var picked = new List<string>(count);
-        for (var i = 0; i < pool.Count && picked.Count < count; i++)
+        /// <summary>Індекси в <see cref="All"/>; тягнемо з кінця.</summary>
+        public List<int> Left { get; } = [];
+        public long Used { get; set; }
+    }
+
+    readonly object _lock = new();
+    readonly Dictionary<string, Deck> _decks = new(StringComparer.Ordinal);
+    long _clock;
+
+    /// <summary>
+    /// До <paramref name="count"/> різних фраз з колоди столу <paramref name="table"/>. Колода скінчилась посеред
+    /// роздачі — нову тасуємо так, щоб щойно роздане в цій же роздачі лягло на дно: різними фрази лишаються.
+    /// </summary>
+    public string[] Deal(string table, Random rng, int count)
+    {
+        count = Math.Min(count, All.Count);
+        var picked = new List<int>(count);
+        lock (_lock)
         {
-            var j = rng.Next(i, pool.Count);
-            (pool[i], pool[j]) = (pool[j], pool[i]);
-            picked.Add(pool[i]);
+            if (!_decks.TryGetValue(table, out var deck))
+            {
+                if (_decks.Count >= TablesRemembered) _decks.Remove(_decks.MinBy(d => d.Value.Used).Key);
+                _decks[table] = deck = new Deck();
+            }
+            deck.Used = ++_clock;
+            while (picked.Count < count)
+            {
+                if (deck.Left.Count == 0) Refill(deck, rng, picked);
+                var last = deck.Left.Count - 1;
+                var i = deck.Left[last];
+                deck.Left.RemoveAt(last);
+                if (!picked.Contains(i)) picked.Add(i);
+            }
         }
-        return [.. picked];
+        return [.. picked.Select(i => All[i])];
+    }
+
+    void Refill(Deck deck, Random rng, List<int> justDealt)
+    {
+        // Тягнемо з кінця, тож щойно роздане — на початок списку (дно колоди).
+        deck.Left.AddRange(justDealt);
+        var bottom = deck.Left.Count;
+        deck.Left.AddRange(Enumerable.Range(0, All.Count).Where(i => !justDealt.Contains(i)));
+        for (var i = deck.Left.Count - 1; i > bottom; i--)
+        {
+            var j = rng.Next(bottom, i + 1);
+            (deck.Left[i], deck.Left[j]) = (deck.Left[j], deck.Left[i]);
+        }
     }
 
     public static TelephonePhrases Load(string path)
