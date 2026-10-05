@@ -95,6 +95,8 @@ public sealed class VechirkaTurn
     public int[] Dice { get; set; } = [];
     public bool Rolled { get; set; }
     public bool UsedItem { get; set; }
+    /// <summary>Коли кінчається хід (зберігаємо при вході в aim): скасування цілі не дає нових 20 с (R1 M2).</summary>
+    public DateTimeOffset? TurnUntil { get; set; }
     public bool Horse { get; set; }
     public bool Bought { get; set; }
     public bool ShopSkip { get; set; }
@@ -136,6 +138,8 @@ public sealed class VechirkaMgState
     public bool Honor { get; set; }
     public Dictionary<int, int> Bets { get; set; } = [];
     public List<int> Ready { get; set; } = [];
+    /// <summary>Дуель: картка не зникає раніше, поки глядачі-люди не поставили (R1 M3 / R2 M1).</summary>
+    public DateTimeOffset? BetUntil { get; set; }
     public int[] Seats { get; set; } = [];
     public bool Running { get; set; }
     public List<VechirkaMgLine>? Results { get; set; }
@@ -326,6 +330,8 @@ public sealed partial class VechirkaCore
                 Run(then);
                 continue;
             }
+            // картка: усі готові (хтось відпав чи вікно ставок дуелі минуло) — не чекаємо повний таймер
+            if (CardReady()) { BeginMg(); continue; }
             if (S.ThinkAt is { } t && now >= t)
             {
                 S.ThinkAt = null;
@@ -361,6 +367,10 @@ public sealed partial class VechirkaCore
         ScheduleMachine();
     }
 
+    /// <summary>Залишок ходу після скасованого прицілювання (≥ 1 с): цикл «предмет → скасувати» не тягне хід (R1 M2).</summary>
+    int TurnLeftMs() =>
+        S.T.TurnUntil is { } u ? (int)Math.Clamp((u - Now).TotalMilliseconds, 1000, VechirkaRules.TurnMs) : VechirkaRules.TurnMs;
+
     void BusyFor(int ms, string then)
     {
         S.Busy = Now.AddMilliseconds(ms);
@@ -384,7 +394,7 @@ public sealed partial class VechirkaCore
             case "aim":
                 Miss(S.Cur);
                 S.Am = null;
-                Phase("turn", VechirkaRules.TurnMs);
+                Phase("turn", TurnLeftMs());
                 break;
             case "prompt":
                 if (S.Pr is { } pr) { Miss(pr.Who); Answer(pr, pr.Default); }
@@ -598,7 +608,10 @@ public sealed partial class VechirkaCore
         {
             if (!S.P[i].Machine) continue;
             _machine = true;
-            try { Brain?.Think(this, i); } catch (GameError) { }
+            try { Brain?.Think(this, i); }
+            catch (GameError) { }
+            // збій мізків бота не має вбити 45-хвилинний вечір: лог і типове рішення нижче (R1 M4)
+            catch (Exception e) { OnError?.Invoke(e); }
             finally { _machine = false; }
             if (S.Phase != phase || S.Seq != seq) return;
             // мізки не зробили нічого — типове рішення
@@ -608,12 +621,32 @@ public sealed partial class VechirkaCore
         if (S.ThinkAt is null) ScheduleMachine();
     }
 
+    /// <summary>Куди писати несподівані винятки (вечірка дає лог кімнати).</summary>
+    public Action<Exception>? OnError { get; set; }
+
+    /// <summary>
+    /// Виняток посеред Advance: типове рішення поточної фази, щоб вечір ішов далі, а не кінчався «зламалась»
+    /// (як хост міні-ігор робить Crash замість падіння). Сам теж може впасти — тоді наступний тик спробує ще.
+    /// </summary>
+    public void Rescue(DateTimeOffset now)
+    {
+        Now = now;
+        S.ThinkAt = null;
+        if (S.Phase == "mg" && S.M is { } m) { m.Running = false; Results(MinigameResult.Even(m.Seats.Length, "зламалась")); return; }
+        if (S.Busy is not null) { S.Busy = null; var th = S.Then; S.Then = null; Run(th); return; }
+        S.Until = null;
+        S.Paused = null;
+        Expire();
+        // хід застряг посеред руху — закінчуємо його й передаємо далі
+        if (S.Phase == "walk" && S.Then is null && S.Busy is null && S.Until is null) Run("endTurn");
+    }
+
     void DefaultFor(int i)
     {
         switch (S.Phase)
         {
             case "turn": DoRoll(null); break;
-            case "aim": S.Am = null; Phase("turn", VechirkaRules.TurnMs); break;
+            case "aim": S.Am = null; Phase("turn", TurnLeftMs()); break;
             case "prompt": if (S.Pr is { } pr) Answer(pr, pr.Default); break;
             case "pick": if (S.Pk is { } pk) Choose(pk, R.Next(pk.Options.Count)); break;
             case "late":

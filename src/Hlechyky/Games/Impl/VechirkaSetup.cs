@@ -34,12 +34,22 @@ public static class VechirkaSetup
         return app;
     }
 
+    /// <summary>Розібраний texts.json — кеш за часом зміни файла: не читаємо й не розбираємо на кожен запит (R1 m6).</summary>
+    sealed record TextsCache(DateTime At, string Json);
+    static TextsCache _texts = new(DateTime.MinValue, "{}");   // посилання — атомарна заміна між потоками
+
     static string Texts()
     {
         try
         {
             var path = Path.Combine(Paths.Root, "data", "vechirka", "texts.json");
-            if (File.Exists(path)) return JsonNode.Parse(File.ReadAllText(path))!.ToJsonString();
+            if (!File.Exists(path)) return "{}";
+            var at = File.GetLastWriteTimeUtc(path);
+            var cached = _texts;
+            if (cached.At == at) return cached.Json;
+            var json = JsonNode.Parse(File.ReadAllText(path))!.ToJsonString();
+            _texts = new(at, json);
+            return json;
         }
         catch (Exception) { /* кривий файл — клієнт обійдеться вбудованими назвами */ }
         return "{}";

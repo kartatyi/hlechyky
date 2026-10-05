@@ -459,6 +459,7 @@ public sealed partial class VechirkaCore
         if (VechirkaRules.Item[item].Aim != "")
         {
             S.Am = AimFor(i, item);
+            S.T.TurnUntil = S.Until;
             Phase("aim", VechirkaRules.AimMs);
             return;
         }

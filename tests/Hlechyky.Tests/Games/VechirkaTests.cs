@@ -171,7 +171,11 @@ public sealed class VechirkaTests
     public void Writes_view_fixtures_of_every_phase()
     {
         var h = Table(2, 2, seed: 11);
-        var dir = Path.Combine(Paths.Root, "tests", "Hlechyky.Tests", "Fixtures", "vechirka");
+        // Відстежувані фікстури переписуємо лише на прохання (VECHIRKA_FIXTURES=1): інакше кожен dotnet test
+        // бруднив робочу копію, а брудна копія блокує деплой (R1 M5). Без змінної — пишемо в темп і лише перевіряємо фази.
+        var dir = Environment.GetEnvironmentVariable("VECHIRKA_FIXTURES") == "1"
+            ? Path.Combine(Paths.Root, "tests", "Hlechyky.Tests", "Fixtures", "vechirka")
+            : Path.Combine(Path.GetTempPath(), "hlechyky-vechirka-fixtures");
         Directory.CreateDirectory(dir);
         var opts = new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
         void Write(string name, JsonElement v) => File.WriteAllText(Path.Combine(dir, $"view-{name}.json"), JsonSerializer.Serialize(v, opts));
@@ -196,7 +200,77 @@ public sealed class VechirkaTests
         Write("done", h.View(0));
         foreach (var ph in new[] { "intro", "order", "turn", "walk", "pick", "results", "late", "final" }) Assert.Contains(ph, seen);
     }
+
+    // ---------- виправлення за рецензіями R1/R2 ----------
+
+    [Fact]
+    public void Bot_on_first_place_is_not_a_draw_the_best_human_wins_and_the_verdict_names_the_bot()
+    {
+        var h = Table(2, 2, seed: 5);
+        Assert.True(h.Start().Ok);
+        var c = Game(h).Core!;
+        var limit = c.S.Rounds * 4 * 30 + c.S.Rounds * 20 + c.S.Rounds * 120;
+        Assert.True(Until(h, () => c.S.Phase is "final" or "done", limit), $"застрягли: {c.S.Phase} {c.S.Round}/{c.S.Rounds}");
+        var bot = c.S.P.FindIndex(p => p.Bot);
+        c.S.P[bot].Gleks = 99;
+        Assert.True(Until(h, () => h.Room.Status == RoomStatus.Finished, 120));
+        var res = h.Room.Result!;
+        Assert.False(res.Draw);
+        var best = Enumerable.Range(0, c.N).Where(i => !c[i].Bot).MinBy(c.PlaceOf);
+        Assert.Contains(Game(h).SeatOfP(best)!.Value, res.Winners);
+        Assert.Contains(c[bot].Name, res.Verdict);
+    }
+
+    [Fact]
+    public void Host_who_paused_and_left_does_not_keep_the_table_paused()
+    {
+        var h = Table(2, 1);
+        h.Start();
+        var c = Game(h).Core!;
+        Until(h, () => c.S.Phase == "turn", 30);
+        Assert.True(h.Act(0, "pause", new { on = true }).Ok);
+        h.Tick();
+        Assert.Equal("host", c.S.Paused);
+        h.Leave("Оля");
+        h.Tick(5);
+        Assert.Null(c.S.Paused);
+    }
+
+    sealed class BrokenBrain : IVechirkaBrain
+    {
+        public void Think(VechirkaCore core, int i) => throw new NullReferenceException("мізки");
+    }
+
+    sealed class BrokenMg : IMgRunner
+    {
+        public bool Begin(string id, int[] pSeats, bool[] bot, LiveBots.Level level) => true;
+        public string Title => "Зламана";
+        public string Howto => "";
+        public int CapMs => 60_000;
+        public ActResult Act(int p, string action, JsonElement payload) => throw new InvalidOperationException("act");
+        public TickResult Tick() => throw new InvalidOperationException("tick");
+        public object? View(int? p) => null;
+        public object? Frame() => null;
+        public string[] Names() => [];
+        public string[] SeatNames() => [];
+        public MinigameResult? Result => null;
+    }
+
+    [Fact]
+    public void Exceptions_in_bot_brains_and_the_minigame_do_not_end_the_evening()
+    {
+        var h = Table(1, 3, seed: 9);
+        Game(h).BrainFactory = () => new BrokenBrain();
+        Game(h).RunnerFactory = (_, _) => new BrokenMg();
+        Assert.True(h.Start().Ok);
+        var c = Game(h).Core!;
+        var limit = c.S.Rounds * 4 * 30 + c.S.Rounds * 20 + c.S.Rounds * 60;
+        Assert.True(Until(h, () => h.Room.Status == RoomStatus.Finished, limit), $"застрягли: {c.S.Phase} {c.S.Round}/{c.S.Rounds}");
+        Assert.StartsWith("🎉 Глечикова вечірка", h.Room.Result!.Text);
+        Assert.True(c.S.Round >= c.S.Rounds);
+    }
 }
+
 
 [Collection(SerialPerf.Name)]
 public sealed class VechirkaPerfTests
@@ -208,6 +282,24 @@ public sealed class VechirkaPerfTests
         var h = VechirkaTests.Table(1, 7);
         h.Start();
         h.Tick(200);
+        var sw = Stopwatch.StartNew();
+        h.Tick(1000);
+        Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
+    }
+
+    /// <summary>§19: тисяча тиків саме у фазі mg — вечірка + хост + Крижина на вісьмох (R1 m9).</summary>
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Thousand_ticks_of_an_eight_seat_icefloe_minigame_are_fast()
+    {
+        var h = VechirkaTests.Table(1, 7, seed: 21);
+        var g = (Vechirka)h.Room.Game;
+        g.PoolFactory = () => [.. VechirkaPool.Available.Where(e => e.Id == "icefloe")];
+        h.Start();
+        var c = g.Core!;
+        for (var k = 0; k < 50 * 900 && c.S.Phase != "mg"; k++) h.Tick();
+        Assert.Equal("mg", c.S.Phase);
+        h.Tick(50);
         var sw = Stopwatch.StartNew();
         h.Tick(1000);
         Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");

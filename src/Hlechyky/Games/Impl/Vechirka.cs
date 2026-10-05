@@ -51,6 +51,10 @@ public sealed class Vechirka : Game
     string _voiceName = "ostap";
     DateTimeOffset _lastSay = DateTimeOffset.MinValue;
     bool _hostPause, _emptySaid;
+    /// <summary>Хто поставив паузу господаря: відпав він — пауза знімається (§18).</summary>
+    int? _pauseBy;
+    ILogger? _log;
+    DateTimeOffset _errAt;
     string _sig = "";
 
     /// <summary>Мізки ботів — замінні для тестів.</summary>
@@ -106,11 +110,14 @@ public sealed class Vechirka : Game
         _lines = VechirkaLines.Book;
         _sayPending = false;
         _voice = Ctx.Services.GetService<ISvoyaVoice>() ?? NoVoice.Instance;
+        _log = Ctx.Services.GetService<ILogger<Vechirka>>();
+        _pauseBy = null;
         _voiceName = o.GetValueOrDefault("voice") is "polina" or "none" ? o["voice"] : "ostap";
         if (VoiceOn) Prepare(_lines.Warm(WarmMax), false);
         var seed = unchecked((ulong)Ctx.Rng.NextInt64());
+        _lines.Seeded(unchecked((int)(seed >> 7)));
         var runner = RunnerFactory(this, seed ^ 0x5EEDUL);
-        _core = new VechirkaCore(VechirkaMap.Load(st.Map), st, runner, PoolFactory()) { Brain = BrainFactory() };
+        _core = new VechirkaCore(VechirkaMap.Load(st.Map), st, runner, PoolFactory()) { Brain = BrainFactory(), OnError = Oops };
         _core.Start(seed, Ctx.Clock.UtcNow);
         Flush();
     }
@@ -154,6 +161,12 @@ public sealed class Vechirka : Game
         p.Away = true;
         if (c.S.Phase == "mg") _mgWatch.Add(i);
         Say("away", ("nick", p.Name));
+        // господар поставив паузу й пішов — не тримаємо стіл до 10 хв (R1 m1)
+        if (_pauseBy == seat && _hostPause)
+        {
+            _hostPause = false; _pauseBy = null;
+            if (c.S.Paused == "host") { c.SetPause(null); Say("unpause"); }
+        }
         c.Replan(Ctx.Clock.UtcNow);
         _sig = "";
     }
@@ -186,6 +199,7 @@ public sealed class Vechirka : Game
                 if (c.S.Phase is "mg" or "done") return ActResult.Fail("Зараз не можна");
                 var on = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("on", out var v) && v.ValueKind == JsonValueKind.True;
                 _hostPause = on;
+                _pauseBy = on ? seat : null;
                 if (c.S.Paused != "empty") { c.SetPause(on ? "host" : null); Say(on ? "pause" : "unpause"); }
                 _sig = "";
                 return ActResult.Done;
@@ -207,6 +221,7 @@ public sealed class Vechirka : Game
         }
         try { c.Act(i, action, payload, now); }
         catch (GameError e) { Flush(); return ActResult.Fail(e.Message); }
+        catch (Exception e) { Oops(e); Flush(); return ActResult.Fail("Глек спіткнувся — спробуй ще"); }
         Flush();
         return ActResult.Done;
     }
@@ -231,9 +246,15 @@ public sealed class Vechirka : Game
         }
         if (c.S.Paused == "host") _hostPause = true;
         else if (c.S.Paused is null) _hostPause = false;
-        c.LastMgTick = TickResult.None;
-        c.Advance(now);
+        try { c.Advance(now); }
+        catch (Exception e)
+        {
+            // будь-який збій ядра — не кінець вечора: лог і типове рішення фази (R1 M4)
+            Oops(e);
+            try { c.Rescue(now); } catch (Exception e2) { Oops(e2); }
+        }
         var sub = c.LastMgTick;
+        c.LastMgTick = TickResult.None;
         if (c.S.Phase != "mg") _mgWatch.Clear();
         Flush();
         var sig = Signature(c);
@@ -241,6 +262,15 @@ public sealed class Vechirka : Game
         _sig = sig;
         if (changed) return TickResult.Both;
         return sub;
+    }
+
+    /// <summary>Неочікуваний виняток — у лог, не частіше раз на 30 с (щоб збій на кожному тику не залив лог).</summary>
+    void Oops(Exception e)
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (now - _errAt < TimeSpan.FromSeconds(30)) return;
+        _errAt = now;
+        _log?.LogError(e, "Глечикова вечірка: збій у фазі {Phase}", _core?.S.Phase);
     }
 
     static string Signature(VechirkaCore c)
@@ -313,16 +343,26 @@ public sealed class Vechirka : Game
     void Finish(VechirkaCore c)
     {
         var scores = new Dictionary<int, long>();
-        var winners = new List<int>();
+        var present = new List<int>();
         for (var i = 0; i < c.N; i++)
         {
             if (_seat[i] is not { } seat || !Ctx.Seated(seat)) continue;
             scores[seat] = c.Rank(i);
-            if (c.PlaceOf(i) == 1) winners.Add(seat);
+            present.Add(i);
         }
+        // Переможці кімнати — найкращі з присутніх людей. Порожній winners каркас вважає нічиєю (напис «Нічия»
+        // і виплата за нічию), тож коли перше місце в бота, перемога все одно дістається найкращій людині,
+        // а хто справді голова вечірки — пишемо у вердикті (R2 M2).
+        var best = present.Count == 0 ? 0 : present.Min(c.PlaceOf);
+        var winners = present.Where(i => c.PlaceOf(i) == best).Select(i => _seat[i]!.Value).ToArray();
+        string? verdict = null;
+        var tops = Enumerable.Range(0, c.N).Where(i => c.PlaceOf(i) == 1).ToList();
+        if (present.Count > 0 && tops.Any(i => c[i].Bot))
+            verdict = $"🏆 Голова вечірки — {string.Join(", ", tops.Select(i => c[i].Name))}"
+                + (tops.All(i => c[i].Bot) ? $" · з людей найкраще — {string.Join(", ", present.Where(i => c.PlaceOf(i) == best).Select(i => c[i].Name))}" : "");
         var log = "🎉 Глечикова вечірка: " + string.Join(", ",
             Enumerable.Range(0, c.N).OrderBy(c.PlaceOf).Select(i => $"{c[i].Name} — {c[i].Gleks} 🏺"));
-        Ctx.Finish([.. winners], log, scores);
+        Ctx.Finish(winners, log, scores, verdict);
         Rewards(c);
     }
 

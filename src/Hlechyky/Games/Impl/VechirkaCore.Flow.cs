@@ -124,7 +124,9 @@ public sealed partial class VechirkaCore
             return false;
         }
         var others = S.Order.Where(k => k != i).ToList();
-        var rich = others.OrderByDescending(k => S.P[k].Coins).First();
+        // типове рішення машини (бот / відпалий) — найбагатша присутня людина, щоб не вийшло бот×бот (R2 M3)
+        var live = p.Machine ? others.Where(k => !S.P[k].Bot && !S.P[k].Away).ToList() : [];
+        var rich = (live.Count > 0 ? live : others).OrderByDescending(k => S.P[k].Coins).First();
         var opts = others.Select(k => new VechirkaOpt(k.ToString(), S.P[k].Name)).ToList();
         Ask(i, "duelWho", opts, others.IndexOf(rich), "", p.Pos);
         return true;
@@ -161,8 +163,15 @@ public sealed partial class VechirkaCore
         var byCat = cands.Where(e => S.Minis.Contains(e.Cat)).ToList();
         if (byCat.Count == 0 && cands.Count > 0 && !S.NoFun) { S.NoFun = true; Say("noMinis"); }
         if (byCat.Count > 0) cands = byCat;
-        var fresh = cands.Where(e => !S.MgLast.TryGetValue(e.Id, out var r) || S.Round - r > 2).ToList();
-        if (fresh.Count > 0) cands = fresh;
+        // Повтори дратують (R2 M5: Тонкий лід тричі за 10 кіл): поки є щонайменше три незіграні — пропонуємо лише їх,
+        // далі — не грані останні 4 кола, і лише в крайньому разі — «не грали 2 кола» (§8.2)
+        bool Ago(VechirkaPoolEntry e, int k) => !S.MgLast.TryGetValue(e.Id, out var r) || S.Round - r > k;
+        var unplayed = cands.Where(e => !S.MgLast.ContainsKey(e.Id)).ToList();
+        var old = cands.Where(e => Ago(e, 4)).ToList();
+        var fresh = cands.Where(e => Ago(e, 2)).ToList();
+        if (unplayed.Count >= 3) cands = unplayed;
+        else if (old.Count >= 3) cands = old;
+        else if (fresh.Count > 0) cands = fresh;
         if (cands.Count == 0)
         {
             Line("🍂 Глек сьогодні без забав: +5 усім");
@@ -212,12 +221,32 @@ public sealed partial class VechirkaCore
     {
         var m = S.M!;
         Say("mgStart", ("game", m.Title));
-        Phase("card", m.Repeat ? VechirkaRules.CardRepeatMs : VechirkaRules.CardMs);
-        if (CardHumans().All(m.Ready.Contains)) BeginMg();
+        var ms = m.Repeat ? VechirkaRules.CardRepeatMs : VechirkaRules.CardMs;
+        // дуель і є кому ставити — картка живе щонайменше BetMs, інакше бот×бот чи двоє швидких зрізають ставки
+        if (m.Duel is not null && Bettors().Any())
+        {
+            ms = Math.Max(ms, VechirkaRules.BetMs + 2000);
+            m.BetUntil = Now.AddMilliseconds(VechirkaRules.BetMs);
+        }
+        Phase("card", ms);
+        if (CardReady()) BeginMg();
     }
 
     /// <summary>Присутні люди-учасники (на картці «Готовий»).</summary>
     IEnumerable<int> CardHumans() => S.M!.Seats.Where(k => !S.P[k].Bot && !S.P[k].Away);
+
+    /// <summary>Присутні люди, що дивляться дуель і можуть поставити.</summary>
+    IEnumerable<int> Bettors() =>
+        S.M is { Duel: not null } m ? Enumerable.Range(0, N).Where(k => !m.Seats.Contains(k) && !S.P[k].Bot && !S.P[k].Away) : [];
+
+    /// <summary>Картку можна закривати: учасники готові, а в дуелі — усі глядачі поставили або вікно ставок минуло.</summary>
+    bool CardReady()
+    {
+        if (S.Phase != "card" || S.M is not { } m || S.Busy is not null || S.Paused is not null) return false;
+        if (!CardHumans().All(m.Ready.Contains)) return false;
+        if (m.BetUntil is not { } bu) return true;
+        return Now >= bu || Bettors().All(m.Bets.ContainsKey);
+    }
 
     void BeginMg()
     {
@@ -239,7 +268,9 @@ public sealed partial class VechirkaCore
     bool MgStep()
     {
         if (S.M is not { Running: true }) { Results(MinigameResult.Even(S.M?.Seats.Length ?? N, "")); return true; }
-        LastMgTick = Mg.Tick();
+        // накопичуємо: крок, зроблений усередині дії (Input), не має з'їсти кадр — його поверне наступний тик (R1 M1)
+        var t = Mg.Tick();
+        LastMgTick = new(LastMgTick.Frame | t.Frame, LastMgTick.View | t.View);
         if (Mg.Result is not { } res) return false;
         S.M.Running = false;
         Results(res);
@@ -414,7 +445,7 @@ public sealed partial class VechirkaCore
         S.Done = true;
         S.Phase = "done";
         S.Until = null;
-        Line("🎉 Глечикова вечірка: " + string.Join(", ", S.F.Ranking.Select(r => $"{S.P[r[0]].Name} — {S.P[r[0]].Gleks} 🏺")));
+        Line("🎉 Глечикова вечірка: " + string.Join(", ", S.F!.Ranking.Select(r => $"{S.P[r[0]].Name} — {S.P[r[0]].Gleks} 🏺")));
         Out.Add(new VechirkaOut("finish", ""));
     }
 
@@ -442,12 +473,13 @@ public sealed partial class VechirkaCore
             case "aim":
                 RequireTurn(i, "aim");
                 var t = Int(payload, "target"); var node = Str(payload, "node"); var n = Int(payload, "n");
-                if (t is null && node is null && n is null) { S.Am = null; Phase("turn", VechirkaRules.TurnMs); break; }
+                if (t is null && node is null && n is null) { S.Am = null; Phase("turn", TurnLeftMs()); break; }
                 DoAim(i, t, node, n);
                 break;
             case "pick":
             {
                 var o = Int(payload, "o") ?? throw new GameError("Що обираєш?");
+                if (S.Paused is not null) throw new GameError("Пауза");
                 if (S.Phase == "prompt" && S.Pr is { } pr && pr.Who == i) { Answer(pr, o); break; }
                 if (S.Phase == "pick" && S.Pk is { Chosen: null } pk && pk.Chooser == i) { Choose(pk, o); break; }
                 if (S.Phase == "late" && S.L is { } l && l.Choosers.Contains(i) && S.Busy is null)
@@ -462,8 +494,9 @@ public sealed partial class VechirkaCore
             case "ready":
             {
                 if (S.Phase != "card" || S.M is not { } m || !m.Seats.Contains(i)) throw new GameError("Зараз нема на що готуватись");
+                if (S.Paused is not null) throw new GameError("Пауза");
                 if (!m.Ready.Contains(i)) m.Ready.Add(i);
-                if (CardHumans().All(m.Ready.Contains)) BeginMg();
+                if (CardReady()) BeginMg();
                 break;
             }
             case "bet":
@@ -472,7 +505,9 @@ public sealed partial class VechirkaCore
                 if (i == a || i == b || p.Bot) throw new GameError("На себе не ставлять");
                 var w = Int(payload, "i") ?? -1;
                 if (w != a && w != b) throw new GameError("Став на одного з дуелянтів");
+                if (S.Paused is not null) throw new GameError("Пауза");
                 m.Bets[i] = w;
+                if (CardReady()) BeginMg();
                 break;
             }
             case "mg":

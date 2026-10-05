@@ -173,14 +173,21 @@ public sealed class VechirkaBot : IVechirkaBrain
                 o = Enumerable.Range(0, opts.Count).OrderBy(k => Worth.GetValueOrDefault(opts[k].K)).First();
                 break;
             case "duelWho":
-                if (easy) { o = c.Rand(opts.Count); break; }
+            {
+                // За столом є люди — бот кличе людину: дуель бот×бот — хвилина порожнього чекання для всіх (R2 M3)
+                var all = Enumerable.Range(0, opts.Count).ToList();
+                var live = all.Where(k => c[int.Parse(opts[k].K)] is { Bot: false, Away: false }).ToList();
+                var pool = live.Count > 0 ? live : all;
+                if (easy) { o = pool[c.Rand(pool.Count)]; break; }
+                o = pool.OrderByDescending(k => c[int.Parse(opts[k].K)].Coins).First();
                 if (lvl == LiveBots.Level.Hard)
                 {
                     var topWins = Enumerable.Range(0, c.N).Max(k => c[k].MgWins);
-                    var cand = Enumerable.Range(0, opts.Count).Where(k => c[int.Parse(opts[k].K)].MgWins < topWins || topWins == 0).ToList();
+                    var cand = pool.Where(k => c[int.Parse(opts[k].K)].MgWins < topWins || topWins == 0).ToList();
                     if (cand.Count > 0) o = cand.OrderByDescending(k => c[int.Parse(opts[k].K)].Coins).First();
                 }
                 break;
+            }
             case "duelStake":
             {
                 var want = easy ? 5 : lvl == LiveBots.Level.Hard && p.Coins >= 30 ? 20 : 10;

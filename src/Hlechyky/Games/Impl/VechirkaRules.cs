@@ -35,6 +35,8 @@ public static class VechirkaRules
     // ---------- таймери (мс, §1.1, §2.3, §15.3) ----------
     public const int IntroMs = 6000, OrderMs = 3000, LateMs = 12000, TurnMs = 20000, AimMs = 12000;
     public const int PickMs = 8000, RouletteMs = 1500, CardMs = 10000, CardRepeatMs = 5000, ResultsMs = 6000;
+    /// <summary>Вікно ставок на дуель для глядачів-людей (§8.5): картка не закривається раніше, поки хтось не поставив.</summary>
+    public const int BetMs = 6000;
     public const int BonusMs = 6000, SummaryMs = 8000;
     public const int DiceMs = 1400, StepMs = 260, WalkTailMs = 300, LandMs = 1200, EventMs = 2500, EndTurnMs = 600;
     public const int BuyMs = 2000, ItemMs = 1200, WheelMs = 2000;

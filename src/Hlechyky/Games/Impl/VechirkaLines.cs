@@ -102,7 +102,10 @@ public sealed class VechirkaLines
 
     readonly Dictionary<string, string[]> _pools;
     readonly Dictionary<string, int> _last = [];
-    readonly Random _rng = new();
+    Random _rng = new();
+
+    /// <summary>Вибір репліки — з ГВЧ, засіяного з Ctx.Rng вечірки: детермінізм за сідом (R1 m4).</summary>
+    public VechirkaLines Seeded(int seed) { _rng = new Random(seed); return this; }
 
     public VechirkaLines(Dictionary<string, string[]>? pools = null) => _pools = pools ?? Builtin;
 

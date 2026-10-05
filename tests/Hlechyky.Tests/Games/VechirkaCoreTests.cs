@@ -801,4 +801,162 @@ public sealed class VechirkaCoreTests
         Assert.Contains("pick", t.P(i).Items);
         _ = before;
     }
+
+    // ---------- виправлення за рецензіями R1/R2 ----------
+
+    [Fact]
+    public void Cancelling_aim_does_not_refill_the_turn_timer()
+    {
+        var t = Turn();
+        var i = t.Cur;
+        t.Run(15_000);
+        Assert.Equal("turn", t.C.S.Phase);
+        for (var k = 0; k < 3; k++)
+        {
+            t.P(i).Items.Remove("pick"); t.P(i).Items.Insert(0, "pick");
+            t.Act(i, "item", new { k = "pick" });
+            Assert.Equal("aim", t.C.S.Phase);
+            t.Act(i, "aim");   // скасувати
+            Assert.Equal("turn", t.C.S.Phase);
+            Assert.True((t.C.S.Until!.Value - t.Now).TotalMilliseconds <= 5_000, "скасування дало новий повний хід");
+        }
+        t.Run(5_100);
+        Assert.True(t.C.S.Phase != "turn" || t.C.S.Cur != i, "хід не скінчився за залишком таймера");
+    }
+
+    [Fact]
+    public void Duel_of_two_bots_waits_for_a_human_bettor_or_the_bet_window()
+    {
+        foreach (var bet in new[] { true, false })
+        {
+            var t = Turn();
+            var i = t.Cur; var o = Other(t); var third = Other(t, 2);
+            t.P(i).Coins = 30; t.P(o).Coins = 30;
+            t.Jump("m10", 1);
+            t.Answer(o.ToString());
+            t.Answer("10");
+            Assert.Equal("card", t.C.S.Phase);
+            t.P(i).Bot = true; t.P(o).Bot = true;   // дуелянти — машини: «Готовий» нікому тиснути
+            t.Run(1_000);
+            Assert.Equal("card", t.C.S.Phase);       // глядач ще не поставив — картка тримається
+            if (bet)
+            {
+                t.Act(third, "bet", new { i });
+                t.Run(100);
+                Assert.NotEqual("card", t.C.S.Phase);
+            }
+            else
+            {
+                t.Run(VechirkaRules.BetMs);
+                Assert.NotEqual("card", t.C.S.Phase);
+            }
+        }
+    }
+
+    [Fact]
+    public void A_bot_starting_a_duel_calls_a_human_by_default()
+    {
+        var t = Turn();
+        var i = t.Cur; var o = Other(t); var third = Other(t, 2);
+        t.P(o).Bot = true; t.P(o).Coins = 90; t.P(third).Coins = 5;
+        t.P(i).Bot = true;
+        t.Jump("m10", 1);
+        var pr = t.C.S.Pr!;
+        Assert.Equal("duelWho", pr.Kind);
+        Assert.Equal(third.ToString(), pr.Options[pr.Default].K);
+        new VechirkaBot().Think(t.C, i);   // і мізки бота кличуть людину, хоч бот-сусід багатший
+        Assert.Equal("duelStake", t.C.S.Pr!.Kind);
+        Assert.Equal(third.ToString(), t.C.S.Pr.NewItem);
+    }
+
+    [Fact]
+    public void Host_pause_blocks_ready_bet_and_pick()
+    {
+        var t = Turn();
+        var i = t.Cur; var o = Other(t); var third = Other(t, 2);
+        t.P(i).Coins = 30; t.P(o).Coins = 30;
+        t.Jump("m10", 1);
+        t.Answer(o.ToString());
+        t.Answer("10");
+        Assert.Equal("card", t.C.S.Phase);
+        t.C.SetPause("host");
+        Assert.Throws<GameError>(() => t.Act(i, "ready"));
+        Assert.Throws<GameError>(() => t.Act(third, "bet", new { i }));
+        t.C.SetPause(null);
+        t.Act(i, "ready");
+    }
+
+    [Fact]
+    public void Card_starts_as_soon_as_the_last_unready_human_leaves()
+    {
+        var t = Turn();
+        t.C.S.TurnIdx = 2;
+        t.Act(t.Cur, "roll");
+        t.Settle();
+        while (t.C.S.Phase == "prompt") t.Answer(t.C.S.Pr!.Options[t.C.S.Pr.Default].K);
+        t.Settle();
+        Assert.Equal("pick", t.C.S.Phase);
+        t.Act(t.C.S.Pk!.Chooser!.Value, "pick", new { o = 0 });
+        t.Settle();
+        Assert.Equal("card", t.C.S.Phase);
+        var seats = t.C.S.M!.Seats;
+        t.Act(seats[0], "ready"); t.Act(seats[1], "ready");
+        Assert.Equal("card", t.C.S.Phase);
+        t.P(seats[2]).Away = true;   // відпав, не натиснувши «Готовий»
+        t.Run(100);
+        Assert.NotEqual("card", t.C.S.Phase);
+    }
+
+    sealed class ThrowingBrain : IVechirkaBrain
+    {
+        public int Calls;
+        public void Think(VechirkaCore core, int i) { Calls++; throw new InvalidOperationException("мізки зламались"); }
+    }
+
+    [Fact]
+    public void Broken_bot_brain_falls_back_to_defaults_and_the_evening_goes_on()
+    {
+        var t = New(3, bots: true);
+        var brain = new ThrowingBrain();
+        var errors = 0;
+        t.C.Brain = brain; t.C.OnError = _ => errors++;
+        var r0 = t.C.S.Round;
+        t.Run(300_000, 100);
+        Assert.True(brain.Calls > 0);
+        Assert.True(errors > 0);
+        Assert.True(t.C.S.Round > r0 + 1 || t.C.S.Done, $"застрягли: {t.C.S.Phase} {t.C.S.Round}");
+    }
+
+    sealed class PulseMg : IMgRunner
+    {
+        int _n;
+        public bool Begin(string id, int[] pSeats, bool[] bot, LiveBots.Level level) => true;
+        public string Title => "x";
+        public string Howto => "";
+        public int CapMs => 60_000;
+        public ActResult Act(int p, string action, JsonElement payload) => ActResult.Done;
+        /// <summary>Кадр — лише на непарних кроках (як підгра з кроком, довшим за тик кімнати).</summary>
+        public TickResult Tick() => ++_n % 2 == 1 ? TickResult.FrameOnly : TickResult.None;
+        public object? View(int? p) => null;
+        public object? Frame() => null;
+        public string[] Names() => [];
+        public string[] SeatNames() => [];
+        public MinigameResult? Result => null;
+    }
+
+    [Fact]
+    public void Minigame_frame_made_inside_an_action_is_not_lost()
+    {
+        var map = VechirkaMap.Load("selo");
+        var st = new VechirkaState { Len = 45 };
+        for (var k = 0; k < 3; k++) st.P.Add(new VechirkaPlayer { Nick = $"Г{k}", Name = $"Г{k}" });
+        var c = new VechirkaCore(map, st, new PulseMg(), TestPool);
+        c.Start(7, T0);
+        c.S.Phase = "mg"; c.S.Busy = null; c.S.Until = null;
+        c.S.M = new VechirkaMgState { Id = "tyr", Title = "Тир", Seats = [0, 1, 2], Running = true };
+        c.LastMgTick = TickResult.None;
+        c.Act(0, "mg", JsonSerializer.SerializeToElement(new { a = "fire" }), T0.AddSeconds(1));   // крок 1 — кадр
+        c.Advance(T0.AddSeconds(1.02));                                                             // крок 2 — без кадру
+        Assert.True(c.LastMgTick.Frame, "кадр кроку, зробленого в дії, затерто наступним кроком");
+    }
 }
