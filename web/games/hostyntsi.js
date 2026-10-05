@@ -317,10 +317,16 @@
     const f = frameOf(st);
     const n = Math.max(2, f && f.len ? Math.round(f.len / SP) - 1 : seatsIn(f).length || 2);
     const fit = HGames.ui.fit ? HGames.ui.fit() : { h: window.innerHeight, top: 0, dock: 0 };
-    const chrome = coarse() ? 215 : 260;
-    const avail = Math.max(300, fit.h - fit.top - fit.dock - chrome);
+    // Скільки влазить без скролу: від справжнього верху полотна (над ним чипи місць і статус, що буває у 2 рядки)
+    // до доку каркаса, мінус кошик із кнопкою «Хапай» під полем — вона мусить бути видна над доком, а не під ним.
+    // У лобі кошика ще нема — резервуємо стільки ж, щоб полотно не стрибало на старті.
+    const top = Math.max(fit.top, cv.getBoundingClientRect().top + (window.scrollY || 0));
+    const mh = st.me && !st.me.hidden ? st.me.offsetHeight : 0;
+    const below = (mh || (coarse() ? 104 : 112)) + 14;
+    const floor = coarse() ? 220 : 300;
+    const avail = Math.max(floor, fit.h - fit.dock - top - below);
     const pref = (coarse() ? 110 : 150) + (coarse() ? 66 : 76) * (n + 1);
-    const H = Math.round(Math.max(300, Math.min(avail, pref, 760)));
+    const H = Math.round(Math.max(floor, Math.min(avail, pref, 760)));
     const dpr = Math.min(2.5, window.devicePixelRatio || 1);
     if (W === st.W && H === st.H && dpr === st.dpr) return false;
     st.W = W;
@@ -505,6 +511,7 @@
           st.pend.delete(id);
           if (kind === 5) floater(st, s, (val > 0 ? '+' + val : sign(val)) + (val >= 5 ? ' 🐈!' : ' 🐈'), val > 0 ? '#9df29d' : '#ff8a7a', 1.25);
         } else {
+          if (mine) st.guessMiss = false;   // натиск навмання сервер таки зарахував — підказку «повз» не ковтаємо далі
           const g = st.shown.get(id);
           launch(st, s, kind, g ? g.d : null);
           floater(st, s, type === 3 ? '−3 🔥' : (kind === 5 ? (val > 0 ? '+' + val : sign(val)) + ' 🐈' : sign(val)), val > 0 ? '#9df29d' : '#ff8a7a', mine ? 1.2 : 0.9);
@@ -622,7 +629,8 @@
     st.guardUntil = now + 160;
     if (!g) {
       // натиск навмання: сервер дасть промах і 0,4 с без рук — показуємо це одразу
-      ctx.input('grab', {});
+      // id 0 — свідомий промах: без id сервер узяв би найнижчий у вікні, а кадр відстає — і «повз» обернувся б жаром
+      ctx.input('grab', { id: 0 });
       st.guessMiss = true;
       floater(st, ctx.seat, 'повз', '#ffffff', 0.8);
       st.guardUntil = now + 400;
@@ -1064,7 +1072,7 @@
     const me = myState(st), f = frameOf(st);
     if (!me || !f) return;
     let cls = '', sub = coarse() ? '' : 'пробіл';
-    if (f.ph === 0) { cls = 'wait'; sub = 'зараз покотиться'; } else if (f.ph !== 1) { cls = 'wait'; sub = 'раунд скінчився'; } else if (me.burn > 0) { cls = 'burn'; sub = '🔥 пече — ще ' + (me.burn / 1000).toFixed(1) + ' с'; } else if (me.count >= BASKET) { cls = 'full'; sub = 'кошик повний — чекай раунду'; } else if (st.inWin) {
+    if (f.ph === 0) { cls = 'wait'; sub = 'зараз покотиться'; } else if (f.ph !== 1) { cls = 'wait'; sub = 'раунд скінчився'; } else if (me.burn > 0) { cls = 'burn'; sub = '🔥 пече — ще ' + (me.burn / 1000).toFixed(1) + ' с'; } else if (me.count >= BASKET) { cls = 'full'; sub = 'кошик повний — дивись, що хапають інші'; } else if (st.inWin) {
       const k = st.inWin.kind;
       cls = good(k) ? 'go' : k === 5 ? 'cat' : 'bad';
       sub = kname(k, nik(st)) + ' ' + (k === 5 ? '−3…+5' : sign(VAL[k]));

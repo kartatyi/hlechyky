@@ -127,6 +127,29 @@ public class HostyntsiTests
     }
 
     [Fact]
+    public void Without_id_ember_and_pumpkin_are_skipped_and_id_zero_is_a_miss()
+    {
+        var h = Table(2);
+        ToGo(h);
+        var jug = Before(h, 0, Hostyntsi.Jug, -100);
+        var ember = Before(h, 0, Hostyntsi.Ember, 100);
+        var pump = Before(h, 0, Hostyntsi.Pumpkin, 50);
+        Assert.True(h.Act(0, "grab").Ok);
+        Assert.DoesNotContain(jug, Game(h).Gifts);     // найнижчий — жар, але навмання його не беремо
+        Assert.Contains(ember, Game(h).Gifts);
+        Assert.Contains(pump, Game(h).Gifts);
+        Assert.False(Game(h).P(0).Burned);
+
+        var h2 = Table(2);
+        ToGo(h2);
+        var e2 = Before(h2, 0, Hostyntsi.Ember, 0);
+        Assert.True(h2.Act(0, "grab", new { id = 0 }).Ok);  // клієнт не бачив цілі — свідомий промах
+        Assert.Contains(e2, Game(h2).Gifts);
+        Assert.False(Game(h2).P(0).Burned);
+        Assert.Equal("Руки зайняті", h2.Act(0, "grab", new { id = e2.Id }).Message);
+    }
+
+    [Fact]
     public void Someone_elses_gift_is_out_of_reach_and_a_miss_locks_the_hands()
     {
         var h = Table(2);
@@ -610,6 +633,24 @@ public class HostyntsiTests
             }
         }
         Assert.True(hard > easy * 1.3, $"сильні {hard}, легкі {easy}");
+    }
+
+    [Fact]
+    public void Hard_bot_beats_easy_bot_head_to_head()
+    {
+        // Очно: сильний і легкий на одному жолобі (місця обертаються), 12 сідів — сильний угорі щонайменше 8 разів.
+        var wins = 0;
+        for (var seed = 1; seed <= 12; seed++)
+        {
+            var h = new PartyHarness("hostyntsi", humans: 0, bots: 2, level: LiveBots.Level.Hard, seed: seed);
+            h.Start();
+            var g = (Hostyntsi)h.Game;
+            var easy = g.Bots[seed % 2];
+            g.SetBotLevel(easy, LiveBots.Level.Easy);
+            var r = h.RunToEnd()!;
+            if (r.Scores[g.Bots[1 - seed % 2]] > r.Scores[easy]) wins++;
+        }
+        Assert.True(wins >= 8, $"сильний угорі {wins} з 12");
     }
 
     // ---------- режим вечірки ----------

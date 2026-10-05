@@ -138,6 +138,8 @@ public sealed class Hostyntsi : Game, IPartyMinigame
     public bool Nik => _nik;
     public IReadOnlyList<Gift> Gifts => _gifts;
     public Player P(int seat) => _p[seat];
+    /// <summary>Для тестів: очна партія ботів різних рівнів на одному жолобі (у грі рівень один на стіл).</summary>
+    public void SetBotLevel(int seat, LiveBots.Level level) { if (IsBot(seat)) _brain[seat] = new HostyntsiBot(level); }
     public int Stations => _order.Length;
 
     public string Howto => "Тисни «Хапай», коли гостинець пливе навпроти тебе: розписний +3, золотий +5, жар −3. "
@@ -337,7 +339,10 @@ public sealed class Hostyntsi : Game, IPartyMinigame
                 && !(_rt - _shiftRt <= JitterTicks && p.Prev >= 0 && InReach(p.Prev, x.D, v * x.Mul))) continue;
             // Браузер назвав гостинець — беремо лише його: інакше натиск на розписний, що вже проплив, схопив би жар за ним.
             if (want is { } w) { if (x.Id == w) { g = x; break; } continue; }
-            if (g is null || x.D > g.D) g = x;   // без id — той, що ось-ось піде
+            // Без id — той, що ось-ось піде, але не жар і не гарбуз: натиск «навмання» не мусить карати за те,
+            // чого гравець на екрані ще не бачив у вікні (кадри відстають від сервера).
+            if (x.Kind is Ember or Pumpkin) continue;
+            if (g is null || x.D > g.D) g = x;
         }
         if (g is null)
         {
@@ -366,7 +371,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
             if (!_saidCat && (_party is null ? !_saidThisRound : true))
             {
                 _saidCat = _saidThisRound = true;
-                Ctx.Say($"{Name(seat)} розв'язав мішок — а там кіт із п'ятіркою в зубах. Ризик — шляхетна справа");
+                Ctx.Say($"У {Name(seat)} з мішка — кіт із п’ятіркою в зубах. Ризик — шляхетна справа");
             }
         }
         else if (g.Kind == Gold && p.Golds == 3 && _party is null && !_saidThisRound)
