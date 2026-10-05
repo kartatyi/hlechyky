@@ -8,7 +8,7 @@ namespace Hlechyky.Games.Impl;
 /// Світ живе в <see cref="IcefloeCore"/>; тут — фази (готуйсь → гра → кінець раунду → …), опція, вид, кадр,
 /// рахунок партії, вихід посеред гри й ачівки. Spec: <c>docs/games/specs/icefloe.md</c>.
 /// </summary>
-public sealed class Icefloe : Game
+public sealed class Icefloe : Game, IPartyMinigame
 {
     /// <summary>«Готуйсь» перед першим раундом — 3 с, перед наступними — 2 с. Кінець раунду — 3 с.</summary>
     public const int ReadyFirst = 75, ReadyNext = 50, EndTicks = 75;
@@ -83,6 +83,15 @@ public sealed class Icefloe : Game
     int[] _winners = [];
     string[] _startNicks = [];
     readonly Series _series = new();
+    /// <summary>Режим вечірки (docs/games/specs/party-minigame.md): один раунд, боти на місцях <c>bots</c>, без нагород.</summary>
+    PartyMode? _party;
+    public bool Party => _party is not null;
+
+    public string Howto => "Виштовхни всіх із крижини й не шубовсни сам: хто довше протримався — той вище. "
+        + "Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка; на телефоні — стік і кнопки";
+    public int PartyCapMs => 90_000;   // 3 с відліку + раунд до 75 с + 3 с підсумку
+    public int PartyMin => 2;
+    public int PartyMax => IcefloeCore.Seats;
 
     public IcefloeCore Core
     {
@@ -146,6 +155,8 @@ public sealed class Icefloe : Game
         _need = NeedFor(2);
         _teamsOpt = options.TryGetValue("teams", out var t) && t == "on";
         _solo.Configure(options);
+        _party = PartyMode.Read(options);
+        if (_party is not null) { _needOpt = 1; _teamsOpt = false; }
     }
 
     public override string? CanStart()
@@ -171,11 +182,12 @@ public sealed class Icefloe : Game
     public override void Start()
     {
         _started = true;
-        _bots = BotSeats();
+        _bots = _party is { } pm ? [.. pm.Bots.Where(s => s < IcefloeCore.Seats && !Ctx.Seated(s))] : BotSeats();
         _botGame = _bots.Length > 0;
         Array.Clear(_brain);
         // Думають у різні тики, щоб не смикались хором.
-        for (var i = 0; i < _bots.Length; i++) _brain[_bots[i]] = new IcefloeBot(_solo.Level, i * 2);
+        var level = _party?.Level ?? _solo.Level;
+        for (var i = 0; i < _bots.Length; i++) _brain[_bots[i]] = new IcefloeBot(level, i * 2);
         var seated = WithBots(_bots);
         _startNicks = [.. Enumerable.Range(0, IcefloeCore.Seats).Where(Ctx.Seated).Select(s => Ctx.NickOf(s) ?? "")];
         // Людей на старті: від цього ачівки (з ботами людина одна — ачівок нема); крига й «до скількох» — за всіма тілами.
@@ -353,6 +365,8 @@ public sealed class Icefloe : Game
     TickResult AfterRound()
     {
         var c = Core;
+        // Вечірка — рівно один раунд: місця за тим, хто скільки протримався.
+        if (_party is not null) return PartyOver();
         if (_roundWinner >= 0 && c.Bodies[_roundWinner].Plays && c.Bodies[_roundWinner].Wins >= _need)
             return Over(_roundTeam >= 0 ? [.. Playing().Where(s => c.Bodies[s].Team == _roundTeam)] : [_roundWinner]);
         if (_round >= RoundsMax)
@@ -415,6 +429,34 @@ public sealed class Icefloe : Game
         return TickResult.Both;
     }
 
+    /// <summary>
+    /// Scores вечірки: хто впав першим — 0, другим — 1…; хто ще на кризі — стільки, скільки людей уже впало (рівні
+    /// між собою). Більше = довше протримався. Місця, що не грали, — −1.
+    /// </summary>
+    public IReadOnlyDictionary<int, long> PartyScores()
+    {
+        var c = Core;
+        var r = new Dictionary<int, long>(Ctx.Players);
+        for (var s = 0; s < Ctx.Players; s++)
+        {
+            if (s >= IcefloeCore.Seats || !c.Bodies[s].Plays) { r[s] = -1; continue; }
+            var k = c.Out.IndexOf(s);
+            r[s] = k >= 0 ? k : c.Out.Count;
+        }
+        return r;
+    }
+
+    /// <summary>Кінець партії вечірки: без серії, ачівок і нагород — лише scores кожного місця.</summary>
+    TickResult PartyOver()
+    {
+        _ph = PhOver;
+        var scores = PartyScores();
+        var best = scores.Count == 0 ? 0 : scores.Values.Max();
+        _winners = [.. scores.Where(kv => kv.Value == best && kv.Value >= 0).Select(kv => kv.Key).Order()];
+        Ctx.Finish(_winners, Journal(_winners, Playing()), scores);
+        return TickResult.Both;
+    }
+
     /// <summary>«Крижина: Оля 2 : Петро 1 : Ігор 0» — переможці першими, далі за раундами, випхнутими, місцем.</summary>
     string Journal(int[] winners, int[] playing)
     {
@@ -431,7 +473,7 @@ public sealed class Icefloe : Game
     /// </summary>
     public override void OnLeave(int seat)
     {
-        if (!_started || _ph == PhOver) return;
+        if (!_started || _ph == PhOver || _party is not null) return;
         var c = Core;
         var nick = Ctx.NickOf(seat);
         c.Drop(seat);
