@@ -57,7 +57,18 @@ public sealed class NowPlaying
 /// <c>Topic</c> — лише в рядків Журналу: 'radio' чи 'games'; за ним Журнал фільтрується.
 /// </remarks>
 public sealed record ChatMessage(long Id, string Nick, string Text, DateTimeOffset At, string Kind, string? RoomId = null,
-    long? ReplyTo = null, string? ReplyNick = null, string? ReplyText = null, string[]? Likes = null, string? Topic = null);
+    long? ReplyTo = null, string? ReplyNick = null, string? ReplyText = null, string[]? Likes = null, string? Topic = null,
+    ChatFile? File = null);
+
+/// <summary>
+/// Файл у репліці Балачок (ChatFiles.cs). <paramref name="Hash"/> — ім'я на диску (SHA-256 вмісту, 32 знаки),
+/// <paramref name="Type"/> — image / video / audio / file: що браузер малює прямо в рядку, а що лише дає скачати.
+/// <paramref name="W"/>×<paramref name="H"/> — розміри картинки з заголовка, щоб рядок не стрибав, поки вона вантажиться.
+/// </summary>
+public sealed record ChatFile(string Hash, string Name, long Size, string Type, int? W = null, int? H = null)
+{
+    public string Url => ChatFiles.UrlPrefix + Hash + "/" + Uri.EscapeDataString(Name);
+}
 
 public sealed record SearchResult(string Id, string Title, string Artist, string? Album, int DurationSec, string? ThumbUrl);
 

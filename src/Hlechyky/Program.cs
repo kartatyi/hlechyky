@@ -53,6 +53,9 @@ builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<Curfew>();      // нічний відбій для окремих гравців (Curfew.cs)
 builder.Services.AddSingleton<ChatFlood>();   // один лічильник флуду на Балачки, столи й агентів
+// файли в Балачках: data/chatfiles, не більше ChatFiles:MaxGb разом (ChatFiles.cs)
+builder.Services.AddSingleton(_ => new ChatFilesDir(Paths.Resolve("data/chatfiles"), (long)(cfg.GetValue("ChatFiles:MaxGb", 10.0) * 1024 * 1024 * 1024)));
+builder.Services.AddSingleton<ChatFiles>();
 builder.Services.AddSingleton<VoiceChat>();   // Посиденьки: хто де говорить, листи між браузерами (VoiceChat.cs)
 builder.Services.AddSingleton<Hlechyky.Turn.TurnServer>();   // ретранслятор TURN: друзі за «сірим» NAT говорять через цей ПК
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Hlechyky.Turn.TurnServer>());
@@ -112,6 +115,7 @@ app.MapHlechykyMcp();
 app.MapHlechykyFeedback();
 app.MapHlechykyLavka();
 app.MapHlechykyPadel();
+ChatFiles.Map(app);   // файли в Балачках: POST /api/chat/file, GET /api/chat/file/<хеш>/<ім'я>
 app.MapFront();    // відбиток web/: відкрита сторінка сама бачить, що після деплою змінилось (Front.cs)
 app.MapHub<RadioHub>("/hub");
 app.Run();

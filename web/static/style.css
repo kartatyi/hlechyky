@@ -630,6 +630,31 @@ button.vplay { padding: 3px 8px; }
 .replybar[hidden] { display: none; }
 .replybar .rb-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .replybar .rb-text b { color: var(--text); }
+/* файли в Балачках: картинка й відео — прямо в рядку, звук — програвачем, решта — карткою на скачування */
+.msg .mfile { display: block; margin: 4px 0 2px; max-width: 100%; }
+.msg .mfile.img { width: fit-content; line-height: 0; border-radius: 10px; overflow: hidden; cursor: zoom-in; background: var(--bg2); }
+/* з розмірами від сервера ширину рахує fileHtml (місце тримається ще до завантаження), без них — просто в межах 360×320 */
+.msg .mfile.img img { display: block; max-width: 100%; height: auto; }
+.msg .mfile.img img:not([width]) { max-width: min(100%, 360px); max-height: 320px; }
+.msg .mfile.vid { max-height: 320px; max-width: min(100%, 420px); border-radius: 10px; background: #000; }
+.msg .mfile.aud { width: min(100%, 320px); height: 36px; }
+.msg .mfile.doc, .msg .mfile-dl { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; text-decoration: none; color: var(--text); }
+.msg .mfile.doc { padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); }
+.msg .mfile.doc:hover { border-color: var(--accent2); }
+.msg .mfile.doc .ico { font-size: 1.4em; line-height: 1; }
+.msg .mfile .fn, .msg .mfile-dl .fn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.msg .mfile .fs, .msg .mfile-dl .fs { color: var(--muted); font-size: .82em; white-space: nowrap; }
+.msg .mfile-dl { font-size: .8em; color: var(--muted); }
+.msg .mfile.gone { color: var(--muted); font-size: .88em; font-style: italic; cursor: default; background: none; line-height: 1.35; }
+.fileup { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 4px 4px 4px 10px; background: var(--bg2); border-radius: 6px; font-size: .88em; color: var(--muted); }
+.fileup[hidden] { display: none; }
+.fileup .fu-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileup progress { width: 90px; flex: none; accent-color: var(--accent); }
+.chat.drop { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.lightbox { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; background: rgba(0, 0, 0, .86); cursor: zoom-out; }
+.lightbox[hidden] { display: none; }
+.lightbox img { max-width: 100%; max-height: calc(100% - 40px); object-fit: contain; border-radius: 6px; }
+.lightbox a { color: #ddd; font-size: .9em; }
 
 /* ---- столи в балачках ---- */
 /* Кнопка до столу в рядку Журналу і в картці /столи: іконка гри з назвою плюс дія. */

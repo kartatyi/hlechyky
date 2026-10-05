@@ -1387,13 +1387,38 @@
       if (big && big <= 3) el.classList.add('big');
       // корона — всередині ніка: repaintCrowns() переставляє її саме там
       el.innerHTML = `<span class="n who-n${HPeople.nickCls(m.nick)}" data-who="${esc(m.nick)}" data-nb="1" style="--h:${HPeople.hue(m.nick)}">${HPeople.badge(m.nick)}${esc(m.nick)}${crownOf(m.nick)}</span>`
+        + (m.file ? fileHtml(m.file) : '')
         + `<span class="t">${highlightMentions(linkify(m.text))}</span><span class="time">${tm(m.at)}</span>`;
+      if (m.file) el.dataset.fname = m.file.name;
     }
     // Для днів, групування й гортання вгору: коли, хто і який це рядок у базі.
     el.dataset.day = dayKey(m.at);
     el.dataset.ts = String(new Date(m.at).getTime());
     el.dataset.nick = m.nick || '';
     el.dataset.grp = m.kind === 'chat' && !m.replyTo ? '1' : '';
+  }
+
+  // ---------- файли в Балачках (ChatFiles.cs) ----------
+  const FILE_MAX = 32 * 1024 * 1024;
+  const FILE_ICONS = [[/\.(zip|rar|7z|tar|gz)$/i, '🗜'], [/\.pdf$/i, '📕'], [/\.(docx?|odt|rtf|txt|md)$/i, '📝'],
+    [/\.(xlsx?|ods|csv)$/i, '📊'], [/\.(pptx?|odp)$/i, '📽'], [/\.(exe|msi|apk)$/i, '⚙'], [/\.(mp3|ogg|wav|flac|m4a)$/i, '🎵'],
+    [/\.(mp4|webm|mov|mkv|avi)$/i, '🎬'], [/\.(jpe?g|png|gif|webp|heic|avif|svg)$/i, '🖼']];
+  const fileSize = (b) => b < 1024 ? b + ' Б' : b < 1048576 ? Math.round(b / 1024) + ' КБ'
+    : (b / 1048576).toFixed(b < 10 * 1048576 ? 1 : 0).replace('.', ',') + ' МБ';
+  const fileIcon = (name) => (FILE_ICONS.find(([re]) => re.test(name)) || [0, '📄'])[1];
+  /// Картинка — прямо в рядку (розміри з сервера тримають місце, поки вантажиться), відео й звук — програвачем,
+  /// решта — карткою «📄 ім'я · розмір» на скачування.
+  function fileHtml(f) {
+    const url = esc(f.url), name = esc(f.name);
+    const dl = `<a class="mfile-dl" href="${url}" download="${name}" title="Скачати"><span>⬇</span><span class="fn">${name}</span><span class="fs">${fileSize(f.size)}</span></a>`;
+    if (f.type === 'image') {
+      // не ширше 360 і не вище 320 px, пропорції — з width/height (рядок не стрибає, поки картинка вантажиться)
+      const wh = f.w && f.h ? ` width="${+f.w}" height="${+f.h}" style="width:${Math.max(40, Math.round(Math.min(360, f.w, f.w * 320 / f.h)))}px"` : '';
+      return `<a class="mfile img" href="${url}" target="_blank" rel="noopener" title="${name}"><img src="${url}" alt="${name}" loading="lazy" decoding="async"${wh}></a>`;
+    }
+    if (f.type === 'video') return `<video class="mfile vid" src="${url}" controls preload="metadata" playsinline></video>${dl}`;
+    if (f.type === 'audio') return `<audio class="mfile aud" src="${url}" controls preload="none"></audio>${dl}`;
+    return `<a class="mfile doc" href="${url}" download="${name}" title="Скачати"><span class="ico">${fileIcon(f.name)}</span><span class="fn">${name}</span><span class="fs">${fileSize(f.size)}</span></a>`;
   }
 
   /// Готовий рядок Балачок чи Журналу — ще не вставлений у скриньку.
@@ -1891,6 +1916,7 @@
       clone.querySelectorAll('.rq, .n, .time, .mlikes, .macts').forEach((x) => x.remove());
       text = clone.textContent.trim();
     }
+    if (!text && el.dataset.fname) text = '📎 ' + el.dataset.fname;
     replyTo = { id, nick: el.dataset.nick || '', text };
     $('replyBar').hidden = false;
     $('replyBar').querySelector('.rb-text').innerHTML = `↩ Відповідь <b>${esc(replyTo.nick)}</b>: ${esc(text.slice(0, 80))}`;
@@ -2010,6 +2036,116 @@
       .then((err) => { if (err) { toast(err, 'err'); return; } $('chatInput').value = ''; hideCmdHint(); clearReply(); })
       .catch((err) => toast('Халепа: не відправилось — ' + err.message, 'err'));
   };
+  // Кинути файл: 📎, Ctrl+V з буфера чи перетягнути на балачки. По одному, з прогресом; перший бере підпис із поля й відповідь.
+  const upQueue = [];
+  let upXhr = null;
+  function throwFiles(list) {
+    const files = [...(list || [])];
+    if (!files.length) return;
+    if (!conn || !me.nick) { askNick(true); return; }
+    if (!me.account) { toast('Файли кидають лише ті, хто з акаунтом — зареєструй нік', 'err'); askNick(true); return; }
+    for (const f of files) {
+      if (f.size > FILE_MAX) toast(`«${f.name}» завеликий — до 32 МБ`, 'err');
+      else if (!f.size) toast(`«${f.name}» порожній`, 'err');
+      else upQueue.push(f);
+    }
+    if (chatTab !== 'chat') setChatTab('chat');
+    if (!upXhr) nextUpload();
+  }
+  function nextUpload() {
+    const f = upQueue.shift();
+    if (!f) { upXhr = null; $('fileUp').hidden = true; return; }
+    const caption = $('chatInput').value.trim();
+    const reply = replyTo ? replyTo.id : 0;
+    const bar = $('fileUp');
+    const paint = (part) => {
+      bar.querySelector('.fu-n').textContent = `📎 ${f.name || 'файл'} · ${fileSize(f.size)}` + (upQueue.length ? ` (ще ${upQueue.length})` : '');
+      bar.querySelector('progress').value = Math.round(part * 100);
+    };
+    bar.hidden = false;
+    paint(0);
+    const x = upXhr = new XMLHttpRequest();
+    x.open('POST', '/api/chat/file');
+    x.setRequestHeader('Content-Type', 'application/octet-stream');
+    x.setRequestHeader('X-Nick', encodeURIComponent(me.nick));
+    x.setRequestHeader('X-File-Name', encodeURIComponent(f.name || ''));
+    if (caption) x.setRequestHeader('X-Caption', encodeURIComponent(caption));
+    if (reply) x.setRequestHeader('X-Reply-To', String(reply));
+    x.upload.onprogress = (e) => { if (e.lengthComputable) paint(e.loaded / e.total); };
+    x.onload = () => {
+      let d = null;
+      try { d = JSON.parse(x.responseText); } catch { /* без тіла */ }
+      if (x.status >= 200 && x.status < 300) {
+        // підпис і відповідь пішли з цим файлом — поле чисте (якщо, поки вантажилось, не написали нового)
+        if (caption && $('chatInput').value.trim() === caption) $('chatInput').value = '';
+        if (reply && replyTo && replyTo.id === reply) clearReply();
+      } else toast((d && d.message) || `«${f.name}» не пішов (HTTP ${x.status})`, 'err');
+      nextUpload();
+    };
+    x.onerror = () => { toast(`«${f.name}» не пішов — зв'язок обірвався`, 'err'); nextUpload(); };
+    x.onabort = () => { upQueue.length = 0; nextUpload(); };
+    x.send(f);
+  }
+  $('fileBtn').onclick = () => {
+    if (!me.account) { throwFiles([{ size: 1 }]); return; }   // гість — та сама підказка «зареєструй нік»
+    $('fileInput').click();
+  };
+  $('fileInput').onchange = () => { throwFiles($('fileInput').files); $('fileInput').value = ''; };
+  $('fileUpX').onclick = () => { if (upXhr) upXhr.abort(); };
+  $('chatInput').addEventListener('paste', (e) => {
+    const files = e.clipboardData && e.clipboardData.files;
+    if (!files || !files.length) return;
+    e.preventDefault();
+    throwFiles(files);
+  });
+  {
+    const zone = $('colChat');
+    const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    let depth = 0;
+    zone.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; zone.classList.add('drop'); });
+    zone.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+    zone.addEventListener('dragleave', () => { if (depth && --depth === 0) zone.classList.remove('drop'); });
+    zone.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      zone.classList.remove('drop');
+      throwFiles(e.dataTransfer.files);
+    });
+  }
+  // Картинка на весь екран — по кліку; ще клік чи Esc — назад. Стерту (понад 10 ГБ) показуємо написом, а не розбитою іконкою.
+  const lightbox = document.createElement('div');
+  lightbox.className = 'lightbox';
+  lightbox.hidden = true;
+  lightbox.innerHTML = '<img alt=""><a target="_blank" rel="noopener">Відкрити окремо</a>';
+  document.body.appendChild(lightbox);
+  lightbox.onclick = (e) => { if (!e.target.closest('a')) lightbox.hidden = true; };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lightbox.hidden) { lightbox.hidden = true; e.stopPropagation(); } }, true);
+  $('messages').addEventListener('click', (e) => {
+    const a = e.target.closest('.mfile.img');
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    lightbox.querySelector('img').src = a.href;
+    lightbox.querySelector('a').href = a.href;
+    lightbox.hidden = false;
+  });
+  $('messages').addEventListener('error', (e) => {
+    const media = e.target.closest && e.target.closest('.mfile');
+    if (!media || media.classList.contains('gone')) return;
+    const gone = document.createElement('span');
+    gone.className = 'mfile gone';
+    gone.textContent = '🗑 файл уже прибрано';
+    const dl = media.nextElementSibling;
+    if (dl && dl.classList.contains('mfile-dl')) dl.remove();
+    media.replaceWith(gone);
+  }, true);
+  // Картинка без розмірів (AVIF, JPEG із кадром далеко) розсуває рядок, коли довантажиться: хто був унизу — лишається внизу.
+  $('messages').addEventListener('load', (e) => {
+    if (e.target.tagName !== 'IMG' || e.target.getAttribute('width')) return;
+    const box = $('messages');
+    if (box.scrollHeight - box.scrollTop - box.clientHeight < e.target.offsetHeight + 120) box.scrollTop = box.scrollHeight;
+  }, true);
+
   function setChatTab(tab) {
     // «Стіл» є лише тоді, коли балачка столу живе в панелі; інакше вона — шторка, і вкладки нема.
     if (tab === 'table' && table.mode !== 'rail') tab = 'chat';
