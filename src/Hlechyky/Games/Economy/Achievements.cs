@@ -164,6 +164,10 @@ public static class AchievementCatalog
         new("geo-20k",      "Знавець України", "20 000 очок за партію «Де це?» з п'яти й більше раундів", "🗺", 30),
         // реверсі — гра просить сама через Ctx.Award(seat, 0, "ach:reversi-wipe")
         new("reversi-wipe", "Витер дошку",     "Перемога в реверсі, коли в суперника не лишилось жодної фішки", "⚪", 20),
+        // вечірка: geese — «Пастух» і «Орлине око» гра просить сама через Ctx.Award(seat, 0, "ach:<key>"), «Гуси дня» — серія (OnDaily)
+        new("geese-shepherd", "Пастух",        "Усі сім раундів «Порахуй гусей» — точно, за столом із людьми", "🐑", 25),
+        new("geese-eagle",    "Орлине око",    "Точне число в останньому, найшвидшому параді «Порахуй гусей»", "🦅", 15),
+        new("geese-days5",    "Гуси дня",      "П'ять днів поспіль рахував «Гусей дня»", "🪿", 20),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
@@ -302,6 +306,7 @@ public sealed class Achievements
             if (row.Attempts is > 0 and <= 2) Unlock(nick, "wordle-2");
             if (streak >= 7) Unlock(nick, "wordle-7");
         }
+        if (row.Game == "geese-daily" && streak >= 5) Unlock(nick, "geese-days5");
         if (row.Game.StartsWith("mines", StringComparison.Ordinal) && row.Ms is > 0 and < 60_000)
             Unlock(nick, "mines-fast");
     }

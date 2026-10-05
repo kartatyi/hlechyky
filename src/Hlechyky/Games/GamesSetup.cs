@@ -49,6 +49,7 @@ public static class GamesSetup
         Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
         Impl.SkilkySetup.AddSkilky(services);   // «Скільки?»: фото «Якого року?» в cache/skilky, таблиця дня
         services.AddSingleton<IDailyPoints>(sp => sp.GetRequiredService<Impl.SkilkyDailyBoard>());   // очки дня в «☀ Сьогодні»
+        Impl.GeeseSetup.AddGeese(services);                 // «Порахуй гусей»: таблиця «Гусей дня» і її очки в «☀ Сьогодні»
         Impl.PictionarySetup.AddPictionary(services);       // Піктіонарі: публічний альбом і рекорди пар
         Impl.WordleSetup.AddWordle(services);               // Глек-слово: слова на 4 і 6 літер для гри наввипередки
         Impl.DinoDailySetup.AddDinoDaily(services);          // Забіг дня: привиди друзів і кубок тижня
