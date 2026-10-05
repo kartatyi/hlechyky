@@ -348,7 +348,8 @@ public class TelephoneTests
         var phrases = TelephonePhrases.Load(Path.Combine(dir!.FullName, TelephonePhrases.FileName));
         // Записка #24 (05.10): було 187 — розширили щонайменше втричі.
         Assert.True(phrases.All.Count >= 700, $"фраз лише {phrases.All.Count}");
-        Assert.All(phrases.All, p => Assert.InRange(p.Length, 5, Telephone.MaxText));
+        // Межа поля — MaxText, але на телефоні в полі фрази видно знаків сорок: довша ховає кінець за краєм.
+        Assert.All(phrases.All, p => Assert.InRange(p.Length, 5, Math.Min(45, Telephone.MaxText)));
         // Без дублів навіть з іншим регістром, апострофом чи розділовими знаками.
         static string Norm(string p) => string.Join(' ', System.Text.RegularExpressions.Regex
             .Replace(p.ToLowerInvariant().Replace("ʼ", "'").Replace("’", "'"), @"[^\w\s]", " ")
