@@ -555,9 +555,18 @@
     const W = st.root.clientWidth;
     if (!W) return;
     const phone = W < 760;
+    const was = st.el.vch.classList.contains('phone');
     st.el.vch.classList.toggle('phone', phone);
     st.el.vch.classList.toggle('mid', !phone && W < 1100);
-    if (phone) { st.el.vch.style.removeProperty('--vch-h'); return; }
+    // перейшли телефон ↔ ПК (або перший замір після mount, коли ширина ще була 0) — типовий зум і стеження
+    if (was !== phone || !st.laidOut) { st.laidOut = true; st.camT.z = defZoom(st); st.follow = true; if (st.data) kick(st); }
+    if (phone) {
+      // дошка + шторка мають влізти в екран під шапкою сайту: кнопка «Кинути» — без прокрутки
+      const top = st.root.getBoundingClientRect().top + window.scrollY;
+      const h = Math.round(clamp(window.innerHeight - top - 250, 230, 480));
+      if (st.lastH !== h) { st.lastH = h; st.el.vch.style.setProperty('--vch-h', h + 'px'); }
+      return;
+    }
     const bw = st.el.bw.clientWidth || W - 250;
     const h = Math.round(clamp(bw * 0.625 + 110, 400, Math.min(window.innerHeight * 0.78, 900)));
     if (st.lastH !== h) { st.lastH = h; st.el.vch.style.setProperty('--vch-h', h + 'px'); }
@@ -626,7 +635,7 @@
         if (!p) break;
         const me = mineI(v) === a.who;
         banner(st, me ? '🎲 Твій хід!' : 'Хід: ' + avaHtml(p, esc, 'sm') + ' <b>' + esc(p.name) + '</b>', 1300, me ? 'mine' : '');
-        if (me && navigator.vibrate && document.visibilityState === 'visible') { try { navigator.vibrate(80); } catch (e) { /* нема */ } }
+        if (me && navigator.vibrate && document.visibilityState === 'visible' && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) { try { navigator.vibrate(80); } catch (e) { /* нема */ } }
         break;
       }
       case 'dice': showDice(st, a.dice); break;
@@ -1130,7 +1139,7 @@
         const names = L.choosers.map((i) => esc(nameOf(st, i))).join(' і ');
         const bs = t.bankSplit || {};
         return { key: 'late' + J(L) + mine, timer: true, html: '<div class="vo-card vo-late"><div class="vo-big">🌙</div><h3>' + esc((t.late || {}).title || 'Пізній вечір') + '</h3>'
-          + '<p>' + esc((t.late || {}).text || '') + '</p>' + (bs.title ? '<p class="muted small">🐷 ' + esc(bs.title) + ' — ' + esc(bs.text || '') + '</p>' : '')
+          + '<p>' + esc((t.late || {}).text || '') + '</p>' + (bs.title ? '<p class="muted small">' + esc(bs.title) + ' — ' + esc(bs.text || '') + '</p>' : '')
           + '<h4>🎁 Подарунок від Глека — ' + (mine ? 'обирай!' : names) + '</h4>'
           + '<div class="vd-row vd-wrap">' + L.options.map((o, k) => optBtn(esc, 'pick', { o: k }, esc(o.label), { off: !mine, cls: 'vo-gift' })).join('') + '</div>'
           + '<div class="vo-chosen">' + Object.keys(L.chosen || {}).map((i) => esc(nameOf(st, +i)) + ' → ' + esc((L.options.find((o) => o.k === L.chosen[i]) || { label: L.chosen[i] }).label)).join(' · ') + '</div>'
@@ -1347,6 +1356,9 @@
     drawHl(st, aim && aim.nodes ? aim.nodes : v.phase === 'turn' && v.stand && mineI(v) === v.cur ? [] : [], 'aim');
     for (const t of st.toks.values()) t.g.classList.toggle('tgt', !!(aim && aim.targets && aim.targets.includes(t.i)));
     if (v.cur != null && ['turn', 'aim', 'walk', 'prompt'].includes(v.phase)) st.followI = v.cur;
+    // корона «Голова вечірки» в людях (app.js, К5) — сервер ставить її на кінці вечірки
+    if (v.phase === 'done' && !st.crownAsked) { st.crownAsked = true; later(st, () => { if (window.HPartyCrown) window.HPartyCrown.refresh(); }, 2500); }
+    if (v.phase !== 'done') st.crownAsked = false;
     showFocusBtn(st);
     st.first = false;
     kick(st);
@@ -1395,7 +1407,7 @@
     }
     return false;
   }
-  const BOARD_PAD = { dirs: 'x', a: 'Enter', x: 'i', hint: '{dpad} вибір · {a} кинути / так · {x} предмет · {b} скасувати', when: (ctx) => ctx.mine && ctx.playing };
+  const BOARD_PAD = { dirs: 'x', a: 'Enter', x: 'i', hint: '{dpad} вибір · {a} кинути / так', when: (ctx) => ctx.mine && ctx.playing };
 
   HGames.register({
     id: 'vechirka',
