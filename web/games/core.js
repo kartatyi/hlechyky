@@ -312,6 +312,27 @@
 
   const lerp = (a, b, t) => a + (b - a) * t;
 
+  /// Мить кадру для руху. У колбеку rAF — мітка кадру від браузера, а не performance.now(): колбек нерідко
+  /// починається на 2–7 мс пізніше (перед ним обробився кадр сервера чи щось інше), і рух, порахований на «коли дійшла
+  /// черга», смикався б саме на стільки. Поза rAF (обробник кадру, клавіша) — звичайний performance.now().
+  /// frameTime(ts) — коли мітку кадру гра вже має сама.
+  let rafTs = 0, inRaf = 0;
+  if (window.requestAnimationFrame && !window.requestAnimationFrame.__hframe) {
+    const raf = window.requestAnimationFrame.bind(window);
+    const wrapped = (cb) => raf((ts) => {
+      rafTs = ts;
+      inRaf++;
+      try { return cb(ts); } finally { inRaf--; }
+    });
+    wrapped.__hframe = true;
+    window.requestAnimationFrame = wrapped;
+  }
+  function frameTime(ts) {
+    const now = performance.now();
+    const t = Number.isFinite(ts) ? ts : inRaf ? rafTs : now;
+    return t > 0 && t <= now ? t : now;
+  }
+
   /// Годинник сервера для реалтайм-ігор: де «зараз» у тиках сервера, з запасом на джитер мережі.
   /// Тик t сервер рахує о base + t·tickMs нашого годинника; base — найменше (прихід − t·tickMs) з повільним
   /// дрейфом угору. Кадр, що прийшов пізно (черга, Wi-Fi, два в одному повідомленні), годинник не штовхає —
@@ -321,11 +342,26 @@
     const T = tickMs || 40, LATE = [], N = 75, MIN = 1.25, MAX = 3.5;
     // base повзе вгору неперервно (rate мс на мс), а не стрибком на приході кадру — інакше після затику картинка сіпалась назад
     let base = null, baseAt = 0, rate = 0.01, lastT = 0, delay = MIN, delayAt = 0, want = MIN, run = 0, runAt = 0;
+    // Пауза сервера (див. hold): held — тик, на якому стоїть, holds — скільки разів він повторився, hb — коли тик held
+    // приходить «зараз» найкоротшим шляхом; floor — нижче цього моменту картинку після паузи не відкочуємо.
+    let held = null, holds = 0, hb = 0, floor = -Infinity;
     function sync(o) { base = o; rate = 0.01; LATE.length = 0; want = MIN; run = 0; }
     const cur = (now) => base + (now - baseAt) * rate;
     return {
       /// Кадр тика t прийшов о now.
       in(t, now) {
+        // Сервер рушив після паузи: годинник — від останнього повтору, а не від тика до паузи. Інакше перший кадр
+        // здавався б спізнілим на всю паузу, і пів секунди (поки годинник не переставився) рух ішов би сходинками.
+        if (held != null && holds >= 2 && t > held && base != null && hb - held * T > cur(now)) {
+          base = hb - held * T;
+          baseAt = now;
+          rate = 0.01;
+          run = 0;
+          floor = held;
+        }
+        held = null;
+        holds = 0;
+        hb = now;
         const o = now - t * T;
         const b = base == null ? 0 : cur(now);
         if (base == null || t < lastT - 2 || o < b - 300) sync(o);
@@ -352,8 +388,23 @@
         baseAt = now;
         lastT = t;
       },
-      reset() { base = null; rate = 0.01; LATE.length = 0; want = MIN; run = 0; delay = MIN; delayAt = 0; },
+      /// Кадр того самого тика t прийшов знову, вже наступним тиком: сервер стоїть (відлік перед раундом, пауза між
+      /// раундами). Сам годинник не чіпаємо — картинка спокійно стоїть на останньому кадрі; лише рахуємо, коли тик t
+      /// приходить «зараз» (найраніший серед повторів, прокручений на їхні тики вперед), — це знадобиться, щойно сервер рушить.
+      hold(t, now) {
+        if (base == null) return;
+        if (held !== t) { held = t; holds = 0; }
+        hb = Math.min(hb + Math.max(1, Math.round((now - hb) / T)) * T, now);
+        holds++;
+      },
+      reset() { base = null; rate = 0.01; LATE.length = 0; want = MIN; run = 0; delay = MIN; delayAt = 0; held = null; holds = 0; floor = -Infinity; },
       get ready() { return base != null; },
+      /// Коли кадр тика t приходить найкоротшим шляхом (без черги й гикавок мережі) — на нашому годиннику. Від цієї
+      /// миті, а не від справжнього приходу, й ведуть передбачення: кадр, що спізнився, його не штовхає.
+      when(t, now) {
+        if (base == null) return null;
+        return held != null && t >= held ? hb + (t - held) * T : cur(now) + t * T;   // сервер стоїть — тик held саме «зараз»
+      },
       /// Запас зараз, у тиках (для заміру й підказок).
       get delay() { return delay; },
       /// Момент, який малюємо, у тиках сервера (дробовий). До першого кадру — +∞.
@@ -363,7 +414,10 @@
         delayAt = now;
         // +2 тика/с і −0,3 тика/с: картинка на мить сповільнюється на ~8 % чи прискорюється на ~1 %, а не стрибає
         delay = want > delay ? Math.min(want, delay + dt * 0.002) : Math.max(want, delay - dt * 0.0003);
-        return (now - cur(now)) / T - delay;
+        const rt = (now - cur(now)) / T - delay;
+        if (rt < floor) return floor;
+        floor = -Infinity;
+        return rt;
       },
     };
   }
@@ -372,25 +426,31 @@
   /// сервера (див. Clock), а не за часом приходу, тож нерівна мережа не смикає рух. tickMs — тик гри (40 за
   /// замовчуванням); t кадру — номер тика (без t рахуємо кадри підряд).
   function Interp(tickMs) {
-    const clk = Clock(tickMs), fr = [];
+    const clk = Clock(tickMs), fr = [], T = tickMs || 40;
     return {
       clock: clk,
       push(f) {
-        const last = fr[fr.length - 1];
+        const last = fr[fr.length - 1], now = performance.now();
         const k = f && Number.isFinite(f.t) ? f.t : (last ? last.k + 1 : 0);
         if (last && k < last.k - 2) { fr.length = 0; clk.reset(); }
-        else if (last && k <= last.k) { if (k === last.k) last.f = f; return; }   // запізнілий — його момент уже пройдено
-        clk.in(k, performance.now());
-        fr.push({ k, f });
+        else if (last && k <= last.k) {
+          if (k !== last.k) return;   // запізнілий — його момент уже пройдено
+          last.f = f;
+          // той самий t через тик — сервер стоїть (див. Clock.hold); вид, що прийшов посеред тика, — ні
+          if (now - last.at >= T * 0.75) { clk.hold(k, now); last.at = now; }
+          return;
+        }
+        clk.in(k, now);
+        fr.push({ k, f, at: now });
         if (fr.length > 40) fr.shift();
       },
       reset() { fr.length = 0; clk.reset(); },
-      /// { a: старіший кадр, b: новіший, t: 0..1 }
-      at() {
+      /// { a: старіший кадр, b: новіший, t: 0..1 } на мить now (без неї — мить кадру, див. frameTime).
+      at(now) {
         const n = fr.length;
         if (!n) return null;
         if (n === 1) return { a: fr[0].f, b: fr[0].f, t: 1 };
-        const rt = clk.at(performance.now());
+        const rt = clk.at(Number.isFinite(now) ? now : frameTime());
         if (rt >= fr[n - 1].k) return { a: fr[n - 2].f, b: fr[n - 1].f, t: 1 };
         if (rt <= fr[0].k) return { a: fr[0].f, b: fr[1].f, t: 0 };
         let j = n - 2;
@@ -616,7 +676,7 @@
     });
   }
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, Clock, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, frameTime, Clock, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
 
   // =============================================================================================
   // Хаб

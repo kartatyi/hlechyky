@@ -480,7 +480,7 @@
   function draw(st, waiting) {
     const c = st.cv;
     if (!c) return;
-    const now = performance.now();
+    const now = HGames.ui.frameTime ? HGames.ui.frameTime() : performance.now();   // мітка кадру rAF (див. core.js)
     const shot = men(st, now);
     const g = c.ctx;
     const pal = palOf(st);
@@ -553,12 +553,13 @@
     s.mv = -1;
   }
 
-  /// Де мій бомбер «зараз»: останній кадр, прокручений уперед на час від нього плюс затримку зв'язку, з тим
-  /// напрямком, який я тримаю саме зараз. null — не передбачаємо (не граю, привид, не фаза гри, кадр застарів).
+  /// Де мій бомбер «зараз»: кадр, прокручений уперед на час від нього плюс затримку зв'язку, з тим напрямком,
+  /// який я тримаю саме зараз. from — коли цей кадр мав прийти (див. sentAt). null — не передбачаємо (не граю,
+  /// привид, не фаза гри).
   function project(st, f, from, now) {
     const me = mySeat(st);
     const m = me >= 0 && f && f.phase === 'go' && f.p ? f.p[me] : null;
-    if (!m || !m.alive || now - from > 400) return null;
+    if (!m || !m.alive) return null;
     if (!st.block || st.blockFor !== f) { st.block = blockOf(st, f); st.blockFor = f; }
     const s = stateOf(m);
     const speed = m.cu === 'slow' ? 2 : m.boots ? 4 : 3;
@@ -567,10 +568,12 @@
     const ticks = Math.max(0, (now - from + st.lat) / TICK_MS);
     const whole = Math.min(8, Math.floor(ticks));
     for (let i = 0; i < whole; i++) walkTick(st, s, want, speed, st.block);
-    // дробова частина тика — лише для картинки
+    // дробова частина тика — лише для картинки. Крок завжди закінчується рівно в клітинці (SUB ділиться на 2, 3
+    // і 4), тож доходимо до неї плавно; раніше стеля SUB − 1 на кожній межі клітинки на кадр зупиняла бомбер
+    // і наступного кадру кидала на подвійний крок — свій бомбер смикався чотири рази на секунду.
     let part = 0, dir = s.mv;
     const frac = ticks - Math.floor(ticks);
-    if (s.mv >= 0) part = Math.min(SUB - 1, s.step + speed * frac);
+    if (s.mv >= 0) part = Math.min(SUB, s.step + speed * frac);
     else if (want >= 0) {
       const probe = { cx: s.cx, cy: s.cy, mv: -1, step: 0 };
       walkTick(st, probe, want, speed, st.block);
@@ -580,9 +583,25 @@
     return { x: s.cx * SUB + dx * part, y: s.cy * SUB + dy * part };
   }
 
+  /// Коли кадр f мав прийти, якби мережа не гикалась: за годинником сервера (HGames.ui.Clock), а не за справжнім
+  /// приходом. Від приходу кадр, що спізнився на 30 мс, відкидав свій бомбер назад, а наступний, що прийшов
+  /// вчасно, штовхав уперед — на нерівному Wi-Fi рух ішов ривками. Старий core.js без when — як було. Годинник, що
+  /// ще не наздогнав різко повільнішу мережу, далі ніж на два тики від приходу не заводить.
+  function sentAt(st, f, seen, now) {
+    const c = st.interp && st.interp.clock;
+    const at = c && c.when && f && Number.isFinite(f.t) ? c.when(f.t, now) : null;
+    return at == null ? seen : Math.min(seen, Math.max(seen - 2 * TICK_MS, at));
+  }
+
+  /// Передбачене з останнього кадру, якщо він не застарів (сервер замовк — не вигадуємо, куди біжимо).
+  function projectLast(st, now) {
+    if (!st.last || now - st.seenAt > 400) return null;
+    return project(st, st.last, sentAt(st, st.last, st.seenAt, now), now);
+  }
+
   /// Передбачене місце з м'якою поправкою: коли кадр каже інше, різниця тане за ~100 мс, а не стрибає.
   function predicted(st, now) {
-    const pos = project(st, st.last, st.seenAt, now);
+    const pos = projectLast(st, now);
     if (!pos) { st.corr = null; return null; }
     const dt = Math.min(100, now - (st.corrAt || now));
     st.corrAt = now;
@@ -596,23 +615,29 @@
     return pos;
   }
 
-  /// Новий кадр: де мій бомбер був за старим кадром і де він за новим — різницю запам'ятовуємо як поправку.
-  function correct(st, f, now) {
-    const old = st.last && project(st, st.last, st.seenAt, now);
-    // відлуння наміру: скільки йшов мій move до сервера й назад (з очікуванням тика) — на стільки й ведемо
+  /// Картинка стрибнула з old на neu (новий кадр, натиснув чи відпустив клавішу) — різницю дописуємо в поправку,
+  /// і вона тане за ~100 мс. Більше півтори клітинки — це вже не похибка, а справжній стрибок (стіна, раунд).
+  function absorb(st, old, neu, now) {
+    if (!old || !neu) { st.corr = null; return; }
+    const cx = (st.corr ? st.corr.x : 0) + old.x - neu.x, cy = (st.corr ? st.corr.y : 0) + old.y - neu.y;
+    st.corr = Math.abs(cx) + Math.abs(cy) > SUB * 1.5 ? null : { x: cx, y: cy };
+    st.corrAt = now;
+  }
+
+  /// Новий кадр: old — де мій бомбер був за старим кадром (пораховано ДО того, як годинник узяв новий кадр, щоб
+  /// і його поправка пішла в згладжування), далі — де він за новим.
+  function correct(st, f, old, now) {
+    // відлуння наміру: скільки йшов мій move до сервера й назад (з очікуванням тика) — на стільки й ведемо.
+    // Рахуємо до миті, коли кадр мав прийти, а не коли прийшов: інакше спізнілий кадр роздував би затримку.
     const me = mySeat(st);
     const m = me >= 0 && f.p ? f.p[me] : null;
+    const at = sentAt(st, f, now, now);
     if (st.echo && m && m.mv === st.echo.d) {
-      const sample = Math.min(300, now - st.echo.at);
+      const sample = Math.min(300, Math.max(0, at - st.echo.at));
       st.lat = st.lat * 0.7 + sample * 0.3;
       st.echo = null;
     } else if (st.echo && now - st.echo.at > 1000) st.echo = null;
-    const neu = project(st, f, now, now);
-    if (!old || !neu) { st.corr = null; return; }
-    const cx = (st.corr ? st.corr.x : 0) + old.x - neu.x, cy = (st.corr ? st.corr.y : 0) + old.y - neu.y;
-    // більше півтори клітинки — це вже не похибка, а справжній стрибок (стіна, раунд): не згладжуємо
-    st.corr = Math.abs(cx) + Math.abs(cy) > SUB * 1.5 ? null : { x: cx, y: cy };
-    st.corrAt = now;
+    absorb(st, old, project(st, f, at, now), now);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -906,7 +931,11 @@
   function steer(st, ctx) {
     const d = st.touch >= 0 ? st.touch : (st.keys.length ? st.keys[st.keys.length - 1] : -1);
     if (st.held === d) return;
+    // Передбачення з новим напрямком одразу стоїть на кілька кроків попереду (затримка зв'язку) — без поправки
+    // бомбер на старті чи повороті телепортувався б на третину клітинки. Різниця тане, як і від кадру.
+    const now = performance.now(), was = projectLast(st, now);
     st.held = d;
+    if (was) absorb(st, was, projectLast(st, now), now);
     if (ctx && ctx.mine && ctx.playing) {
       ctx.input('move', { dir: d });
       // відлуння для затримки: сервер покаже цей напрямок у mv, щойно бомбер рушить (прокляття — навпаки)
@@ -1049,10 +1078,11 @@
       if (!st.cv || !f) return;
       const now = performance.now();
       noteBooms(st, f);
-      correct(st, f, now);
+      const old = projectLast(st, now);
+      st.interp.push(f);
+      correct(st, f, old, now);
       st.last = f;
       st.seenAt = now;
-      st.interp.push(f);
       takeEvents(st, ctx, f);
       // вид із началом партії міг прийти, поки картку ще не показано (висоти 0) — тоді «в кадр» доганяємо тут;
       // коли вже вписали, fitPhone виходить на першій же перевірці

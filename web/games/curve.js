@@ -28,6 +28,7 @@
   const FAT = 7;                // ⬛ товстий слід: радіус 3,5
   const OVER = 3;               // канвас сліду тримаємо втричі дрібнішим за одиницю поля — щоб не милити
   const SEATS = 8;
+  const TICK_MS = 40;           // CurveCore.TickMs
   // Вісім кольорів, як у класичній Achtung: п'ятий–восьмий — свої змінні з curve.css.
   const COLORS = [['--accent', '#f4c542'], ['--ok', '#7bd389'], ['--clay', '#c5763a'], ['--text', '#ecf1ea'],
     ['--cblue', '#6fb3e8'], ['--cpink', '#e88ac0'], ['--cviolet', '#a98bef'], ['--cred', '#ef5b5b']];
@@ -201,6 +202,37 @@
     c.stroke();
   }
 
+  /// Як голова йде далі: за тик сервер спершу повертає її на TurnStep (7,2°), потім рухає на швидкість уздовж
+  /// нового кута (CurveCore.Step). Крок і поворот беремо з двох кадрів і притягуємо до відомих: у кадрі x/y
+  /// округлені до 0,1, кут — до градуса, і «сирий» крок давав між кадрами зигзаг на ±15°.
+  const SPEEDS = [1.6, 1.6 * 1.75, 1.6 * 0.55, 1.6 * 1.75 * 0.55];   // CurveCore.Speed, FastK, SlowK
+  function stride(h, p) {
+    let sp = Math.hypot(h.x - p.x, h.y - p.y);
+    for (const v of SPEEDS) if (Math.abs(sp - v) < 0.15) { sp = v; break; }
+    let w = p.a == null ? 0 : ((((h.a || 0) - p.a) % 360) + 540) % 360 - 180;
+    for (const v of [-7.2, 0, 7.2]) if (Math.abs(w - v) < 1.5) { w = v; break; }
+    return { sp, w };
+  }
+  /// Де голова через k тиків від кадру (k до 1,5): кожен тик — поворот, потім крок, як на сервері. mid — кінець
+  /// першого тика (злам сліду), коли k > 1.
+  function ahead(h, v, k, out) {
+    const a1 = ((h.a || 0) + v.w) * Math.PI / 180;
+    const k1 = Math.min(1, k);
+    out.x = h.x + Math.cos(a1) * v.sp * k1;
+    out.y = h.y + Math.sin(a1) * v.sp * k1;
+    out.a = a1;
+    out.mid = null;
+    if (k > 1) {
+      out.mid = { x: out.x, y: out.y };
+      const a2 = a1 + v.w * Math.PI / 180;
+      out.x += Math.cos(a2) * v.sp * (k - 1);
+      out.y += Math.sin(a2) * v.sp * (k - 1);
+      out.a = a2;
+    }
+    return out;
+  }
+  const AHEAD = { x: 0, y: 0, a: 0, mid: null };
+
   /// Кадр: один відрізок на кожну живу голову. Дірка — просто не малюємо цей шматок.
   function grow(st, ctx, f) {
     const heads = f.heads || [];
@@ -210,8 +242,8 @@
       const p = st.prev[i];
       const jump = p && jumped(st, p, h);
       if (p && h.alive && !h.gap && !jump) seg(st.trc, color(ctx, i), p, h, h.fx & FX_FAT);
-      st.vel[i] = p && h.alive && !jump ? { x: h.x - p.x, y: h.y - p.y } : null;
-      st.prev[i] = h.alive ? { x: h.x, y: h.y } : null;
+      st.vel[i] = p && h.alive && !jump ? stride(h, p) : null;
+      st.prev[i] = h.alive ? { x: h.x, y: h.y, a: h.a } : null;
     }
   }
 
@@ -477,21 +509,29 @@
         g.fillStyle = cssv(ctx, '--gshade', 'rgba(15, 31, 24, .62)');
         g.fillRect(0, 0, W, H);
       }
-      // Плавні голови: між кадрами ведемо голову далі тим самим кроком (не довше за один кадр).
-      const live = phase === 'play' && performance.now() - (st.frameAt || 0) < 120;
-      const k = live ? Math.min(1, (performance.now() - st.frameAt) / 40) : 0;
+      // Плавні голови: між кадрами ведемо голову далі так, як її поведе сервер (ahead). Від миті, коли кадр мав прийти за годинником
+      // сервера, а не від справжнього приходу: раніше кадр, що спізнився на 10 мс, зупиняв голову (стеля — один
+      // крок), а наступний, що прийшов раніше, кидав її вперед. Спізнився — ведемо до півтора кроку.
+      const now = HGames.ui.frameTime ? HGames.ui.frameTime() : performance.now();   // мітка кадру rAF (див. core.js)
+      const live = phase === 'play' && now - (st.frameAt || 0) < 120;
+      const c = st.clk && st.clk.clock, sent = c && c.when ? c.when(st.t, now) : null;
+      const from = sent == null ? st.frameAt : Math.min(st.frameAt, Math.max(st.frameAt - 2 * TICK_MS, sent));
+      const k = live ? Math.min(1.5, Math.max(0, (now - from) / TICK_MS)) : 0;
       const teams = teamsOf(ctx);
       for (let i = 0; i < heads.length && i < SEATS; i++) {
         const h = heads[i];
         if (!h || !h.alive) continue;
         const vel = st.vel[i];
-        let x = h.x, y = h.y;
+        let x = h.x, y = h.y, a = (h.a || 0) * Math.PI / 180;
         if (k > 0 && vel) {
-          x += vel.x * k;
-          y += vel.y * k;
-          if (!h.gap) seg(g, color(ctx, i), h, { x, y }, h.fx & FX_FAT);
+          const o = ahead(h, vel, k, AHEAD);
+          if (!h.gap) {
+            if (o.mid) { seg(g, color(ctx, i), h, o.mid, h.fx & FX_FAT); seg(g, color(ctx, i), o.mid, o, h.fx & FX_FAT); }
+            else seg(g, color(ctx, i), h, o, h.fx & FX_FAT);
+          }
+          x = o.x; y = o.y; a = o.a;
         }
-        drawHead(st, ctx, g, i, x, y, (h.a || 0) * Math.PI / 180, me, h.fx || 0);
+        drawHead(st, ctx, g, i, x, y, a, me, h.fx || 0);
         if (phase === 'ready' && (f.startIn || 0) > 0) {
           let name = i === me ? 'ти' : nick(ctx, i);
           if (name.length > 12) name = name.slice(0, 11) + '…';
@@ -818,6 +858,8 @@
       }
       st.t = f.t;
       st.frameAt = performance.now();
+      // годинник сервера: голову між кадрами ведемо від миті, коли кадр мав прийти, а не коли прийшов (див. paint)
+      (st.clk || (st.clk = HGames.ui.Interp(TICK_MS))).push(f);
       record(st, f);
       if (st.phase === 'play' && (f.phase === 'between' || f.phase === 'done')) startReplay(st);
       st.phase = f.phase;

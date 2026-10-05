@@ -187,7 +187,7 @@
         C: 1300, half: 991, sc: SIZE / 1982, cam0: 309, z: 1, zOk: false, ext: 0,
         bankOff: new Float64Array(16), ballOwner: new Map(),
         // своє тіло
-        me: { x: 0, y: 0, vx: 0, vy: 0 }, meOk: false, meAcc: 0, meAt: 0, lastFrameAt: 0, pendingDash: 0,
+        me: { x: 0, y: 0, vx: 0, vy: 0 }, meOk: false, meAcc: 0, meAt: 0, lastFrameAt: 0, pendingDash: 0, meOffX: 0, meOffY: 0,
         rtt: 60, echo: null,
         // ввід
         sent: null, sentAt: 0, want: -1, stickA: null, mouseA: null, mouseDown: false, mouseX: 0, mouseY: 0, padA: null,
@@ -569,11 +569,16 @@
     const fast = q && (q[5] & 130), jug = q && (q[5] & 4);
     return fast ? (jug ? JUG_FAST_THRUST : FAST_THRUST) : (jug ? JUG_THRUST : THRUST);
   }
+  /// Де малювати своє тіло: модель між підкроками ведемо її швидкістю (підкрок 20 мс, а кадр екрана 16,7 — без цього
+  /// кожен шостий кадр тіло стояло), плюс зсув поправки, що тане.
+  const myX = (st) => st.me.x + st.me.vx * st.meAcc / 1000 + st.meOffX;
+  const myY = (st) => st.me.y + st.me.vy * st.meAcc / 1000 + st.meOffY;
+
   /// Замерзлий (іній) не тягне: сервер веде його з наміром −1, і передбачення теж.
   function myWant(st, q) { return q && (q[5] & 512) ? -1 : currentWant(st); }
   function myDash(q) { return q && (q[5] & 256) ? FIST_DASH : DASH; }
 
-  /// Новий кадр: де сервер бачить моє тіло «зараз» (кадр плюс пів дороги мережею) і м'яка поправка.
+  /// Новий кадр: де сервер бачить моє тіло в ту саму мить, що й моя модель, і м'яка поправка.
   function correct(st, f) {
     const s = mySeat(st);
     const q = s >= 0 && f.p ? f.p[s] : null;
@@ -589,22 +594,32 @@
       const s2 = tg.vx * tg.vx + tg.vy * tg.vy;
       if (s2 > VMAX * VMAX) { const c = VMAX / Math.sqrt(s2); tg.vx *= c; tg.vy *= c; }
     }
+    // Модель живе на «meAt − meAcc» (ще не прокручений залишок підкроку) плюс пів дороги мережею наперед. Кадр t
+    // ставимо на мить, коли він мав прийти за годинником сервера (Clock.when), а не на справжній прихід: раніше кожен
+    // нерівний кадр давав іншу ціль, і тіло тягло туди-сюди 25 разів на секунду.
     const lead = Math.max(0, Math.min(120, (st.rtt - 20) / 2));
-    const steps = Math.round(lead / SUB_MS);
+    const c = st.interp.clock, sent = c.when && Number.isFinite(f.t) ? c.when(f.t, now) : null;
+    const late = sent == null ? 0 : Math.min(2 * TICK_MS, Math.max(0, now - sent));
+    // модель крутиться лише в rAF (за міткою кадру) і стоїть на мить «meAt − meAcc», а кадр приходить між кадрами екрана
+    const ms = lead + late - (st.meOk ? st.meAcc + Math.max(0, now - st.meAt) : 0);
+    const steps = Math.max(0, Math.floor(ms / SUB_MS));
     const want = myWant(st, q);
     for (let i = 0; i < steps; i++) glide(tg, want, myMu(q), myThrust(q));
-    if (!st.meOk) {
+    const rest = (ms - steps * SUB_MS) / 1000;   // дробовий залишок (і від'ємний) — лише рухом, без тяги
+    tg.x += tg.vx * rest;
+    tg.y += tg.vy * rest;
+    const dx = tg.x - st.me.x, dy = tg.y - st.me.y;
+    if (!st.meOk || dx * dx + dy * dy > 90 * 90) {
+      if (!st.meOk) st.meAcc = 0;
       Object.assign(st.me, tg);
       st.meOk = true;
+      st.meOffX = st.meOffY = 0;
     } else {
-      const dx = tg.x - st.me.x, dy = tg.y - st.me.y;
-      if (dx * dx + dy * dy > 90 * 90) Object.assign(st.me, tg);
-      else {
-        st.me.x += dx * 0.25;
-        st.me.y += dy * 0.25;
-        st.me.vx = tg.vx;
-        st.me.vy = tg.vy;
-      }
+      // Модель стає точно на ціль, а намальоване не стрибає: різниця переходить у зсув, що тане за ~100 мс
+      // (predict). Раніше саму модель тягло на 25 % щокадру — тіло смикалось пилкою.
+      st.meOffX -= dx;
+      st.meOffY -= dy;
+      Object.assign(st.me, tg);
     }
     st.meQ = q;
     // відлуння наміру: скільки йшов мій move до сервера й назад — з цього «пів дороги»
@@ -620,6 +635,9 @@
     if (!st.meOk) { st.meAt = now; return; }
     const dt = Math.min(100, now - st.meAt);
     st.meAt = now;
+    const k = Math.exp(-dt / 60);
+    st.meOffX *= k;
+    st.meOffY *= k;
     if (now - st.lastFrameAt > 400) return;     // зв'язок пропав — не фантазуємо далі
     st.meAcc += dt;
     const q = st.meQ, want = myWant(st, q);
@@ -1502,7 +1520,7 @@
       }
       if (me >= 0 && f.p[me] && (f.p[me][5] & 1)) {
         const q = f.p[me];
-        let x = st.meOk && ph === 1 ? st.me.x : st.bx[me], y = st.meOk && ph === 1 ? st.me.y : st.by[me];
+        let x = st.meOk && ph === 1 ? myX(st) : st.bx[me], y = st.meOk && ph === 1 ? myY(st) : st.by[me];
         // Своє тіло передбачене, а чужі — на ~100 мс у минулому: на ривку мій кругляш на пару кадрів заходив
         // глибоко в сусіда. Зіткнення все одно судить сервер — тут лише не малюємо тіла одне в одному.
         const rr = 2 * st.bodyR;
@@ -1835,7 +1853,7 @@
       if (!st.cv || !st.cv.el.isConnected) { st.raf = 0; return; }
       if (!(st.ctx && st.ctx.playing) && performance.now() > st.awakeUntil) { st.raf = 0; return; }
       st.raf = requestAnimationFrame(loop);
-      const now = performance.now();
+      const now = HGames.ui.frameTime ? HGames.ui.frameTime() : performance.now();   // мітка кадру rAF (див. core.js)
       readPad(st);
       if (st.mouseDown) aimMouse(st);
       // відкладена зміна наміру; той самий напрямок, поки тримають, — підтверджуємо раз на KEEP_MS
