@@ -298,7 +298,7 @@
     root.innerHTML = '<div class="skl">'
       + '<div class="skl-top"><span class="skl-pic"></span><span class="skl-clock"></span></div>'
       + '<div class="skl-race"></div>'
-      + '<div class="skl-stage"><canvas class="skl-cv"></canvas><div class="skl-ov" hidden></div></div>'
+      + '<div class="skl-stage"><canvas class="skl-cv" role="img" aria-label="Рамка для картинки й рушник із черепками"></canvas><div class="skl-ov" hidden></div></div>'
       + '<div class="skl-tip muted small"></div>'
       + '<div class="skl-more" hidden></div></div>';
     st.el = root.firstChild;

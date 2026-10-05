@@ -29,8 +29,8 @@
 .skl-race:empty { display: none; }
 .skl-run { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 6px; column-gap: 6px; font-size: 13px; line-height: 1.25; }
 .skl-run b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c); }
-.skl-run em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--muted); }
-.skl-run .skl-bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.skl-run em { grid-column: 2; grid-row: 1; font-style: normal; font-variant-numeric: tabular-nums; color: var(--muted); }
+.skl-run .skl-bar { grid-column: 1 / -1; grid-row: 2; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
 .skl-run .skl-bar s { display: block; height: 100%; background: var(--c); border-radius: 3px; transition: width .25s ease-out; text-decoration: none; }
 .skl-run.me b::after { content: ' · ти'; color: var(--muted); font-weight: 400; }
 .skl-run.done em { color: var(--ok); font-weight: 600; }
