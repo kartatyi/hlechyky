@@ -164,6 +164,10 @@ public static class AchievementCatalog
         new("geo-20k",      "Знавець України", "20 000 очок за партію «Де це?» з п'яти й більше раундів", "🗺", 30),
         // реверсі — гра просить сама через Ctx.Award(seat, 0, "ach:reversi-wipe")
         new("reversi-wipe", "Витер дошку",     "Перемога в реверсі, коли в суперника не лишилось жодної фішки", "⚪", 20),
+        // склей глек: реставратор — гра (Ctx.Award), решта — колода SkleiDeck з фону (Achievements.Unlock)
+        new("sklei-restorer", "Реставратор",    "Склав усі картинки партії «Склей глек» на «важко» без жодного зайвого повороту", "🏺", 20),
+        new("sklei-friends",  "Чужими руками",  "Склав десять малюнків і картинок друзів у «Склей глек»", "🖼", 15),
+        new("sklei-author",   "Автор",          "Твою картинку в «Склей глек» склали двадцять п'ять разів", "🎨", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

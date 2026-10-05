@@ -52,6 +52,7 @@ public static class GamesSetup
         Impl.PictionarySetup.AddPictionary(services);       // Піктіонарі: публічний альбом і рекорди пар
         Impl.WordleSetup.AddWordle(services);               // Глек-слово: слова на 4 і 6 літер для гри наввипередки
         Impl.DinoDailySetup.AddDinoDaily(services);          // Забіг дня: привиди друзів і кубок тижня
+        Impl.SkleiSetup.AddSklei(services);                 // «Склей глек»: свої картинки за черепки, малюнки й фото в колоді
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         return services;
     }
@@ -73,6 +74,7 @@ public static class GamesSetup
         Impl.PictionarySetup.MapPictionary(app);            // /api/games/pictionary/… — альбом, 📌, реакції глядачів, пари
         Impl.WordleSetup.MapWordle(app);                    // /api/games/wordle/stats — серія й розподіл спроб
         Impl.DinoDailySetup.MapDinoDaily(app);              // /api/games/dino-daily/cup — кубок тижня
+        Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
         return app;
     }
 }
