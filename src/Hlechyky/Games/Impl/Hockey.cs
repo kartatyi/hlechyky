@@ -8,8 +8,22 @@ namespace Hlechyky.Games.Impl;
 /// хвилини «золотого гола». Стіл і фізика — <see cref="HockeyCore"/>; тут — фази, рахунок, годинник, вид, кадр,
 /// вихід посеред партії й ачівки. Spec: <c>docs/games/specs/hockey.md</c>.
 /// </summary>
-public sealed class Hockey : Game
+public sealed class Hockey : Game, IPartyMinigame
 {
+    /// <summary>Вечірка: 1×1 до трьох голів або 50 с гри (1250 тиків по 40 мс), без золотого гола — рівно, то й рівно.</summary>
+    public const int PartyTarget = 3, PartyTicks = 1250;
+    /// <summary>Режим вечірки (docs/games/specs/party-minigame.md): лише 1×1 на місцях 0 і 1, боти на місцях <c>bots</c>.</summary>
+    PartyMode? _party;
+    public bool Party => _party is not null;
+    /// <summary>Вечірка: які з двох біт ведуть боти (обидві — коли обоє відпали від вечірки).</summary>
+    readonly bool[] _pbot = new bool[HockeyCore.Seats];
+
+    public string Howto => "Забий шайбу в чужі ворота й не пропусти у свої — до трьох голів або 50 с. "
+        + "Мишка чи палець — біта; стрілки чи WASD теж";
+    public int PartyCapMs => 60_000;   // 3 с відліку + до 50 с гри + запас
+    public int PartyMin => 2;
+    public int PartyMax => 2;
+
     public const int MatchTicks = 6000, GoldenTicks = 3000;
     public const int PhReady = 0, PhGo = 1, PhOver = 3, PhLobby = 4;
 
@@ -100,6 +114,8 @@ public sealed class Hockey : Game
     {
         _target = options.TryGetValue("goals", out var v) && int.TryParse(v, out var n) && n is 5 or 7 or 10 ? n : 7;
         _solo.Configure(options);
+        _party = PartyMode.Read(options);
+        if (_party is not null) _target = PartyTarget;
     }
 
     public override bool ActsInLobby => true;
@@ -107,7 +123,9 @@ public sealed class Hockey : Game
     public override string? CanStart() => _solo.CanStart(Ctx, HockeyCore.Seats);
 
     /// <summary>Каркас питає, хто сидить на порожньому місці під час і після партії: бот (суперник чи напарник).</summary>
-    public override string? SeatBot(int seat) => seat == _bot && _bot >= 0 ? LiveBots.Name : null;
+    public override string? SeatBot(int seat) =>
+        _party is not null ? (seat is >= 0 and < HockeyCore.Seats && _pbot[seat] && !Ctx.Seated(seat) ? LiveBots.Name : null)
+        : seat == _bot && _bot >= 0 ? LiveBots.Name : null;
 
     public override void Start()
     {
@@ -121,6 +139,18 @@ public sealed class Hockey : Game
         _startNicks = [.. Enumerable.Range(0, HockeyCore.Seats).Where(Ctx.Seated).Select(s => Ctx.NickOf(s) ?? "")];
         _series.Begin(Ctx, HockeyCore.Seats);
         var seated = Seated();
+        if (_party is { } pm)
+        {
+            // Вечірка: завжди 1×1 на місцях 0 і 1 (сині — 0, руді — 1); бот — де людини нема. Ні серії, ні ачівок.
+            _bot = -1;
+            _vsBot = false;
+            _left = PartyTicks;
+            Array.Clear(_pbot);
+            for (var s = 0; s < 2; s++) _pbot[s] = pm.IsBot(s) && !Ctx.Seated(s);
+            Core.BotLevel = pm.Level;
+            Core.Reset([true, true, false, false]);
+            return;
+        }
         _bot = BotSeat(seated);
         _vsBot = _bot >= 0 && seated.Count(x => x) == 1;
         Core.BotLevel = _solo.Level;
@@ -179,6 +209,9 @@ public sealed class Hockey : Game
             if (Ctx.Seated(_bot)) _bot = -1;
             else c.BotThink(_bot);
         }
+        if (_party is not null)
+            for (var s = 0; s < 2; s++)
+                if (_pbot[s]) c.BotThink(s);
         var wasReady = c.StartIn > 0;
         var scored = c.Step();
         if (wasReady && c.StartIn > 0) return c.Still && c.T % 5 != 0 ? TickResult.None : TickResult.FrameOnly;
@@ -189,11 +222,12 @@ public sealed class Hockey : Game
             _lastGoal = (scored, c.N, c.GoalOwn, c.GoalRail);
             var other = 1 - scored;
             _deficit[other] = Math.Max(_deficit[other], c.S[scored] - c.S[other]);
-            if (_golden || c.S[scored] >= _target) return Over(scored);
+            if (_golden || c.S[scored] >= _target) return _party is not null ? PartyOver() : Over(scored);
             return TickResult.Both;
         }
         if (_left <= 0)
         {
+            if (_party is not null) return PartyOver();
             if (c.S[0] != c.S[1]) return Over(c.S[0] > c.S[1] ? 0 : 1);
             if (!_golden)
             {
@@ -252,8 +286,32 @@ public sealed class Hockey : Game
     /// Хтось устав. На двох — перемога тому, хто лишився. На чотирьох біта зникає, команда грає одною; пішла вся
     /// команда — перемога іншій.
     /// </summary>
+    /// <summary>Scores вечірки: голи команди кожного місця (місце 0 — сині, 1 — руді); рівно — поділене місце.</summary>
+    public IReadOnlyDictionary<int, long> PartyScores()
+    {
+        var r = new Dictionary<int, long>(Ctx.Players);
+        for (var s = 0; s < Ctx.Players; s++)
+            r[s] = s < HockeyCore.Seats && _core is { } c && c.Plays[s] ? c.S[c.Team[s]] : 0;
+        return r;
+    }
+
+    TickResult PartyOver()
+    {
+        var c = Core;
+        _over = true;
+        var sc = PartyScores();
+        var best = sc.Values.Max();
+        int[] won = [.. sc.Where(kv => kv.Value == best).Select(kv => kv.Key).Order()];
+        _winner = c.S[0] != c.S[1] ? (c.S[0] > c.S[1] ? 0 : 1) : null;
+        Ctx.Finish(won, $"{Info.Title}: {PartyName(0)} {c.S[0]}:{c.S[1]} {PartyName(1)}", sc);
+        return TickResult.Both;
+    }
+
+    string PartyName(int seat) => SeatBot(seat) is not null ? "🤖 бот" : Ctx.NickOf(seat) ?? SeatName(seat);
+
     public override void OnLeave(int seat)
     {
+        if (_party is not null) return;   // вечірка: біта стоїть, партія догравається
         if (!_started || _over) return;
         var c = Core;
         var nick = Ctx.NickOf(seat);

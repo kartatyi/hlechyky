@@ -460,6 +460,18 @@ public abstract class ArenaGame : Game
     /// Коли кликали й людина сама, на вільне місце сідає один бот рівня з опції столу.
     /// </summary>
     protected virtual SoloBot? Solo => null;
+
+    /// <summary>Чи вміє гра режим вечірки (docs/games/specs/party-minigame.md). Поки що — лише Мотоцикли 1×1.</summary>
+    protected virtual bool PartyCapable => false;
+    /// <summary>Вечірка: серія до скількох раундів.</summary>
+    protected virtual int PartyTarget => 2;
+    /// <summary>Вечірка: за скільки мілісекунд від старту партію закриваємо самі (стеля хоста — трохи далі).</summary>
+    protected virtual int PartyPlayMs => 55_000;
+    /// <summary>Режим вечірки: null — звичайна гра.</summary>
+    PartyMode? _party;
+    protected bool InParty => _party is not null;
+    /// <summary>Вечірка: тики від старту — партія не довша за <see cref="PartyPlayMs"/>.</summary>
+    int _ptk;
     /// <summary>У цій партії сидить бот, покликаний «🤖 + бот» (а не опцією гурту).</summary>
     bool _soloBot;
 
@@ -515,6 +527,16 @@ public abstract class ArenaGame : Game
         _map = ArenaMaps.Parse(options.GetValueOrDefault("map"));
         _botsWanted = int.TryParse(options.GetValueOrDefault("bots"), out var b) ? Math.Clamp(b, 0, Seats - 1) : 0;
         _teamsOn = options.GetValueOrDefault("teams") == "1";
+        _party = PartyCapable ? PartyMode.Read(options) : null;
+        if (_party is not null)
+        {
+            // Вечірка: коротка серія на звичайному полі — ні мап, ні турбо, ні звуження, ні команд, ні ботів з опції.
+            _target = PartyTarget;
+            _field = "auto";
+            _map = ArenaMaps.Empty;
+            _turbo = _squeeze = _teamsOn = false;
+            _botsWanted = 0;
+        }
     }
 
     /// <summary>Чи може ця гра садити ботів (опція є лише в мотоциклах гуртом).</summary>
@@ -588,7 +610,14 @@ public abstract class ArenaGame : Game
         var seated = Seated();
         Array.Clear(_bots);
         _soloBot = false;
-        if (Solo is { } solo && solo.Active(Ctx, N))
+        _ptk = 0;
+        if (_party is { } pm)
+        {
+            // Вечірка садить ботів сама: на місцях bots, де людини нема (обидва — коли обоє відпали від вечірки).
+            foreach (var s in pm.Bots)
+                if (s < N && !Ctx.Seated(s)) _bots[s] = LiveBots.Name;
+        }
+        else if (Solo is { } solo && solo.Active(Ctx, N))
         {
             for (var s = 0; s < N; s++)
                 if (!Ctx.Seated(s)) { _bots[s] = LiveBots.Name; _soloBot = true; break; }
@@ -668,6 +697,7 @@ public abstract class ArenaGame : Game
     /// </summary>
     public override void OnLeave(int seat)
     {
+        if (_party is not null) return;   // вечірка: мотоцикл їде без керма, партія догравається
         if (!_started || _over || seat < 0 || seat >= N) return;
         var core = Core;
         var rest = Riders().Where(s => s != seat).ToArray();
@@ -714,6 +744,11 @@ public abstract class ArenaGame : Game
     public override TickResult Tick()
     {
         if (!_started || _over) return TickResult.None;
+        if (_party is not null && ++_ptk * Info.TickMs >= PartyPlayMs)
+        {
+            PartyOver();
+            return TickResult.Both;
+        }
         if (_winner is not null)
         {
             // табло між раундами серії: 2 с — і далі сам, без «Ще раз»
@@ -729,7 +764,7 @@ public abstract class ArenaGame : Game
             return TickResult.FrameOnly;
         }
 
-        if (HasBots) _brain.Think(core, _bots, Ctx.Rng, _soloBot ? Solo?.Level : null);
+        if (HasBots) _brain.Think(core, _bots, Ctx.Rng, _party?.Level ?? (_soloBot ? Solo?.Level : null));
         var alive = core.AliveCount;
         var died = core.Step();
         _moves++;
@@ -862,8 +897,29 @@ public abstract class ArenaGame : Game
         return $"{Info.Title}: серія до {_target} — {who}. {Series()}";
     }
 
+    /// <summary>Scores вечірки: виграні раунди серії кожного місця; більше — вище, рівно — поділене місце.</summary>
+    protected IReadOnlyDictionary<int, long> PartyScoresOf()
+    {
+        var r = new Dictionary<int, long>(Ctx.Players);
+        for (var s = 0; s < Ctx.Players; s++) r[s] = s < _sw.Length ? _sw[s] : 0;
+        return r;
+    }
+
+    void PartyOver()
+    {
+        _over = true;
+        var sc = PartyScoresOf();
+        var best = sc.Values.Max();
+        int[] won = [.. sc.Where(kv => kv.Value == best).Select(kv => kv.Key).Order()];
+        _winners = won;
+        _winner = won.Length == sc.Count ? "draw" : "win";
+        var score = string.Join(" · ", Enumerable.Range(0, Math.Min(N, Ctx.Players)).Select(s => $"{Name(s)} {sc[s]}"));
+        Ctx.Finish(won, $"{Info.Title}: {score}", sc);
+    }
+
     void Close(int[] winners, string log)
     {
+        if (_party is not null) { PartyOver(); return; }
         _over = true;
         if (_cutLog.Count > 0) log += " " + CutsLine();
         if (_soloBot && Solo is { } solo)
