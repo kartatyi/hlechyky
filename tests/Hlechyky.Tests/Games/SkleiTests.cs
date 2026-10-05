@@ -44,8 +44,12 @@ public class SkleiTests(ITestOutputHelper output)
 
     static int Turns(Sklei g, int seat, int k) => g.CurrentLevel.Rotate ? g.Cut(N(g, seat)).Needed(k) : 0;
 
-    static ActResult Put(RoomHarness h, int seat, int k, int? t = null) =>
-        h.Act(seat, "put", new { k, c = k, r = 0, t = t ?? Turns(G(h), seat, k) });
+    /// <summary>Покласти черепок «рукою»: перед кожним — пауза <see cref="Sklei.PutGapMs"/>, як у живого гравця.</summary>
+    static ActResult Put(RoomHarness h, int seat, int k, int? t = null)
+    {
+        h.Clock.AdvanceMs(Sklei.PutGapMs);
+        return h.Act(seat, "put", new { k, c = k, r = 0, t = t ?? Turns(G(h), seat, k) });
+    }
 
     static void Solve(RoomHarness h, int seat)
     {
@@ -150,7 +154,7 @@ public class SkleiTests(ITestOutputHelper output)
         var g = G(h);
         Assert.Equal(Sklei.PhReady, g.Phase);
         Assert.Equal(1, g.PictureNo);
-        Assert.False(Put(h, 0, 0).Ok);
+        Assert.False(h.Act(0, "put", new { k = 0, c = 0, r = 0, t = Turns(g, 0, 0) }).Ok);
         Assert.Equal(0, g.Placed(0));
         h.Tick(29);
         Assert.Equal(Sklei.PhReady, g.Phase);
@@ -267,8 +271,68 @@ public class SkleiTests(ITestOutputHelper output)
         Assert.False(v1.GetProperty("hint").GetBoolean());          // важко на телефоні — без контуру
         Assert.Equal(5, h.View(0).GetProperty("cut").GetProperty("n").GetInt32());
         ToGo(h);
-        Assert.True(h.Act(0, "dev", new { phone = true }).Ok);      // посеред картинки — лише з наступної
+        Assert.True(h.Act(0, "dev", new { phone = true }).Ok);      // посеред партії — мовчки «так», але нічого не міняє
         Assert.Equal(25, g.PiecesOf(0));
+        Solve(h, 0);
+        Solve(h, 1);
+        h.Tick(70);
+        ToGo(h);
+        Assert.Equal(2, g.PictureNo);
+        Assert.Equal(25, g.PiecesOf(0));                           // і з наступної картинки теж: ПК лишився ПК
+    }
+
+    [Fact]
+    public void Puts_faster_than_glue_are_refused()
+    {
+        var h = Started(2);
+        ToGo(h);
+        var g = G(h);
+        // скрипт із консолі: усі 16 правильних put за один тик — приросте лише перший
+        var ok = Enumerable.Range(0, 16).Count(k => h.Act(0, "put", new { k, c = k, r = 0, t = Turns(g, 0, k) }).Ok);
+        Assert.Equal(1, ok);
+        Assert.Equal(1, g.Placed(0));
+        var res = h.Act(0, "put", new { k = 1, c = 1, r = 0, t = Turns(g, 0, 1) });
+        Assert.False(res.Ok);
+        Assert.Contains("Повільніше", res.Message);
+        h.Clock.AdvanceMs(Sklei.PutGapMs - 1);
+        Assert.False(h.Act(0, "put", new { k = 1, c = 1, r = 0, t = Turns(g, 0, 1) }).Ok);
+        h.Clock.AdvanceMs(1);
+        Assert.True(h.Act(0, "put", new { k = 1, c = 1, r = 0, t = Turns(g, 0, 1) }).Ok);
+        // хибний put темпу не «з'їдає»: інший гравець і відмова — не рахуються
+        Assert.True(h.Act(1, "put", new { k = 0, c = 0, r = 0, t = Turns(g, 1, 0) }).Ok);
+        Assert.Equal(2, g.Placed(0));
+        Assert.Equal(1, g.Placed(1));
+    }
+
+    [Fact]
+    public void Phone_on_hard_is_ranked_per_piece_against_pc()
+    {
+        var h = Table(2, new { level = "hard" });
+        Assert.True(h.Act(1, "dev", new { phone = true }).Ok);
+        Assert.True(h.Start().Ok);
+        ToGo(h);
+        var g = G(h);
+        // телефон: 16 по 1,2 с — склав за 19,2 с; ПК потім 25 по 0,3 с — склав за 26,7 с, тобто пізніше,
+        // але на черепок швидше (1,07 с проти 1,2 с) — він і перший
+        for (var k = 0; k < 16; k++) { h.Clock.AdvanceMs(1200); Assert.True(h.Act(1, "put", new { k, c = k, r = 0, t = Turns(g, 1, k) }).Ok); }
+        for (var k = 0; k < 25; k++) { h.Clock.AdvanceMs(Sklei.PutGapMs); Assert.True(h.Act(0, "put", new { k, c = k, r = 0, t = Turns(g, 0, k) }).Ok); }
+        h.Tick(70);
+        Assert.Equal(10, g.Total(0));
+        Assert.Equal(7, g.Total(1));
+    }
+
+    [Fact]
+    public void Phone_on_hard_no_restorer()
+    {
+        var h = Table(2, new { level = "hard" });
+        Assert.True(h.Act(0, "dev", new { phone = true }).Ok);
+        Assert.True(h.Start().Ok);
+        var g = G(h);
+        for (var p = 0; p < 3; p++) { ToGo(h); Solve(h, 0); Solve(h, 1); h.Tick(70); }
+        Assert.Single(h.Finished);
+        Assert.Equal(16, g.PiecesOf(0));
+        Assert.DoesNotContain(h.Awards, a => a.Nick == Nicks[0] && a.Reason == "ach:sklei-restorer");
+        Assert.Contains(h.Awards, a => a.Nick == Nicks[1] && a.Reason == "ach:sklei-restorer");
     }
 
     [Fact]
@@ -621,6 +685,9 @@ public class SkleiTests(ITestOutputHelper output)
             Assert.NotNull(deck.Resolve(ok.Pic.File));
             Assert.Null(deck.Resolve("../secret.png"));
             Assert.False(deck.Upload("Оля", true, Png(512, 512)).Ok);            // та сама — ні
+            w.Balance["Петро"] = 1000;
+            Assert.False(deck.Upload("Петро", true, Png(512, 512)).Ok);          // і в іншого автора — не платить за наявну
+            Assert.Equal(1000, w.Balance["Петро"]);
             Assert.Equal(600, w.Balance["Оля"]);
             Assert.True(deck.Upload("Оля", true, Png(510, 512, 1)).Ok);
             Assert.False(deck.Upload("Оля", true, Png(500, 500, 2)).Ok);         // бракує черепків

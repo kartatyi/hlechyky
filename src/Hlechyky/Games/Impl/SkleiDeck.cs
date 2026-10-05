@@ -172,7 +172,8 @@ public sealed partial class SkleiDeck : BackgroundService
         lock (_gate)
         {
             var mine = _own.Where(o => Auth.NickKey(o.Author) == key).ToList();
-            if (mine.Any(o => o.File == file)) return new(false, "Ця картинка вже є в колоді");
+            // Той самий файл у будь-кого (навіть схований) — у колоді вже є: не беремо 400 🏺 за наявну картинку.
+            if (_own.Any(o => o.File == file)) return new(false, "Ця картинка вже є в колоді");
             if (mine.Count >= MaxPerAuthor) return new(false, $"У тебе вже {MaxPerAuthor} картинок — сховай чи попроси зняти старі");
             var path = Path.Combine(_dir, file);
             var fresh = !File.Exists(path);
@@ -388,7 +389,7 @@ public sealed partial class SkleiDeck : BackgroundService
             Publish();
         }
         _db?.Exec("UPDATE sklei_pics SET solved = solved + 1 WHERE id = $id", ("$id", id));
-        Grant?.Invoke(author, 1, $"Склей глек — {e.Solver} склав твою картинку", $"sklei-author:{e.Ref}:{solverKey}");
+        Grant?.Invoke(author, 1, $"Склей глек — твою картинку склеєно ({e.Solver})", $"sklei-author:{e.Ref}:{solverKey}");
         if (solved >= AuthorForAch) Unlock?.Invoke(author, "sklei-author");
     }
 

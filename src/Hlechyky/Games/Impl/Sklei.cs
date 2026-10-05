@@ -20,6 +20,12 @@ public sealed class Sklei : Game, IPartyMinigame
     public const int AfterFirstMs = 60_000;
     public const int PicturesPerMatch = 3;
     public const int PartyReadyMs = 2000, PartyPlayMs = 60_000;
+    /// <summary>
+    /// Не частіше одного прийнятого черепка за стільки мс від одного гравця. Клієнт знає розв'язок (місце й поворот
+    /// кожного черепка — інакше не намалює), тож без цього скрипт із консолі склеїть 16 за секунду. Рукою швидше
+    /// ~0,4 с на черепок не вийде, а клієнт сам розносить свої put щонайменше на <see cref="PutGapMs"/> + запас.
+    /// </summary>
+    public const int PutGapMs = 300;
     /// <summary>Очки за місце в картинці; хто не склав — половина за своїм місцем (серед тих, хто теж не склав).</summary>
     public static readonly int[] Points = [10, 7, 5, 4, 3, 2, 1, 0];
     /// <summary>Скільки бот думає над черепком (мс) за рівнем: легкий, звичайний, сильний.</summary>
@@ -62,7 +68,7 @@ public sealed class Sklei : Game, IPartyMinigame
     public bool Party => _party is not null;
 
     public string Howto => "Перетягни кожен черепок на його місце й поверни рівно — приросте сам. "
-        + "Тап по черепку — поворот (на ПК ще колесо чи правий клік); склав першим — ти вгорі";
+        + "Тап по черепку — поворот (на ПК ще колесо чи правий клік); хто перший — той угорі";
     public int PartyCapMs => 75_000;
     public int PartyMin => 2;
     public int PartyMax => Seats;
@@ -97,6 +103,7 @@ public sealed class Sklei : Game, IPartyMinigame
     readonly int[] _picPlace = new int[Seats];
     readonly List<object> _history = [];
     readonly DateTimeOffset[] _botNext = new DateTimeOffset[Seats];
+    readonly DateTimeOffset[] _lastPut = new DateTimeOffset[Seats];
 
     DateTimeOffset _until, _goAt;
     bool _anyDone;
@@ -164,6 +171,7 @@ public sealed class Sklei : Game, IPartyMinigame
             _total[s] = 0;
             _badAny[s] = false;
             _solvedPics[s] = 0;
+            _lastPut[s] = DateTimeOffset.MinValue;
         }
         _pics = _party is null ? PicturesPerMatch : 1;
         _picNo = 0;
@@ -268,11 +276,13 @@ public sealed class Sklei : Game, IPartyMinigame
                 if (_party is not null) return ActResult.Fail("У вечірці ботів садить вечірка");
                 return _started && _ph != PhOver ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, Seats);
             case "dev":
-                // Телефон чи ПК: на телефоні черепків не більше 16. Діє з наступної картинки — поточну не перекроюємо.
+                // Телефон чи ПК: на телефоні черепків не більше 16. Лише до старту — посеред партії це був би спосіб
+                // з консолі ПК клеїти 16 замість 25; клієнт шле dev і після перепідключення, тож тоді мовчки «так».
                 if (seat is < 0 or >= Seats) return ActResult.Fail("Ти тут не граєш");
                 if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("phone", out var ph)
                     || ph.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                     return ActResult.Fail("Тут так не ходять");
+                if (_started && _ph != PhOver) return ActResult.Done;
                 if (_phone[seat] != ph.GetBoolean()) { _phone[seat] = ph.GetBoolean(); _dirty = true; }
                 return ActResult.Done;
             case "put":
@@ -287,11 +297,15 @@ public sealed class Sklei : Game, IPartyMinigame
         if (!_started || _ph == PhOver) return ActResult.Fail("Партія ще не йде");
         if (seat is < 0 or >= Seats || !_plays[seat]) return ActResult.Fail("Ти тут не граєш");
         if (_ph != PhGo) return ActResult.Fail("Зачекай — ще не почали");
-        if (_doneMs[seat] >= 0) return ActResult.Fail("Ти вже склав цю картинку");
+        if (_doneMs[seat] >= 0) return ActResult.Fail("Цю картинку вже склеєно");
         if (p.ValueKind != JsonValueKind.Object || !Int(p, "k", out var k) || !Int(p, "c", out var c)
             || !Int(p, "r", out var r) || !Int(p, "t", out var t))
             return ActResult.Fail("Тут так не ходять");
-        return Place(seat, k, c, r, t);
+        var now = Ctx.Clock.UtcNow;
+        if ((now - _lastPut[seat]).TotalMilliseconds < PutGapMs) return ActResult.Fail("Повільніше — клей не встигає");
+        var res = Place(seat, k, c, r, t);
+        if (res.Ok) _lastPut[seat] = now;
+        return res;
     }
 
     static bool Int(JsonElement p, string name, out int v)
@@ -415,7 +429,12 @@ public sealed class Sklei : Game, IPartyMinigame
         var fin = new bool[Seats];
         foreach (var s in order) fin[s] = _doneMs[s] >= 0;
         finished = fin;
-        long Rank(int s) => fin[s] ? _doneMs[s] : 10_000_000L - _count[s];
+        // Телефон на «важко» клеїть 16, а ПК — 25 у тій самій гонці: тоді рівняємо за часом на черепок і часткою
+        // прирослого. Коли черепків у всіх порівну — це той самий порядок, що й за часом / кількістю.
+        var mixed = order.Select(s => _n[s]).Distinct().Count() > 1;
+        double Rank(int s) => fin[s]
+            ? (mixed ? (double)_doneMs[s] / (_n[s] * _n[s]) : _doneMs[s])
+            : 1e12 - (mixed ? 1e6 * _count[s] / (_n[s] * _n[s]) : _count[s]);
         var places = new int[Seats];
         foreach (var s in order) places[s] = 1 + order.Count(o => Rank(o) < Rank(s));
         return places;
@@ -483,7 +502,8 @@ public sealed class Sklei : Game, IPartyMinigame
         _winners = [.. people.Where(s => _total[s] == best && best > 0)];
         if (_startHumans >= 2 && _level.N >= 5)
             foreach (var s in people)
-                if (_solvedPics[s] == _pics && !_badAny[s]) Ctx.Award(s, 0, "ach:sklei-restorer");
+                // _n[s], а не рівень: телефон на «важко» клеїть 16 (телефон/ПК після старту не міняється)
+                if (_n[s] >= 5 && _solvedPics[s] == _pics && !_badAny[s]) Ctx.Award(s, 0, "ach:sklei-restorer");
         if (_winners.Length > 0) Ctx.Say(SkleiLines.End(Ctx.Rng, string.Join(", ", _winners.Select(Name))));
         Ctx.Finish(_winners, Journal(_winners, playing), scores);
         return TickResult.Both;
@@ -515,7 +535,7 @@ public sealed class Sklei : Game, IPartyMinigame
         var best = scores.Count == 0 ? 0 : scores.Values.Max();
         _winners = [.. scores.Where(kv => kv.Value == best).Select(kv => kv.Key).Order()];
         var line = string.Join(" : ", scores.OrderByDescending(kv => kv.Value).Select(kv =>
-            $"{Name(kv.Key)} {(kv.Value > 100 ? $"склав за {1000 - kv.Value} с" : $"{kv.Value} черепків")}"));
+            $"{Name(kv.Key)} {(kv.Value > 100 ? $"склеєно за {1000 - kv.Value} с" : $"{kv.Value} черепків")}"));
         Ctx.Finish(_winners, $"{Info.Title}: {line}", scores);
         return TickResult.Both;
     }
@@ -622,15 +642,15 @@ public static class SkleiLines
 
     static readonly string[] FirstLines =
     [
-        "{0} склеїв за {1} — клей ще й не висох!",
-        "{0} уже склав, за {1}. Решта — не поспішайте, я почекаю.",
+        "{0}: склеєно за {1} — клей ще й не висох!",
+        "{0} — готово, за {1}. Решта — не поспішайте, я почекаю.",
         "Оце руки! {0} — {1}, і жодної щілини.",
     ];
 
     static readonly string[] EndLines =
     [
         "{0} — головний реставратор столу. Музей кличе.",
-        "Склеїли! {0} — найкращі руки. Наливайте в нього, не протече.",
+        "Склеїли! {0} — найкращі руки. Наливайте в цей глек — не протече.",
         "{0} виграє. Решті — по шматку клею на згадку.",
     ];
 

@@ -34,11 +34,9 @@
 
   const live = new Set();
   const stOf = (ctx) => [...live].find((s) => s.ctx === ctx) || null;
-  const held = {};           // стрілки, які зараз тримають (клавіатура чи стік пада)
-  document.addEventListener('keyup', (e) => {
-    if (held[e.code]) { held[e.code] = false; }
-  });
-  window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
+  /// Сервер приймає черепок одного гравця не частіше раз на 300 мс (Sklei.PutGapMs — проти скрипта з консолі).
+  /// Рукою так швидко й не вийде, але два магніти поспіль бувають: тоді шлемо другий трохи пізніше, з запасом на мережу.
+  const PUT_GAP = 420;
 
   const coarse = () => !!(HGames.ui.coarse && HGames.ui.coarse());
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -286,7 +284,15 @@
         root, ctx, pieces: [], z: [], n: 4, cut: null, cutKey: '', s: 1, dpr: 1, picSeq: 0, picKey: '', picUrl: '',
         src: null, picCv: null, layer: null, layerOk: false, anims: [], raf: 0, drag: null, cur: null, padOn: false,
         ph: '', skew: 0, deadline: 0, frameP: null, devSent: null, lay: null, deck: null, deckAt: 0, fx: [],
+        held: {},           // стрілки, які зараз тримають (клавіатура чи стік пада)
+        putAt: 0, putTimers: new Set(),
       };
+      // відпустили клавішу чи пішли з вікна — стрілка більше не «тримається»; знімаємо в unmount
+      st.offKeys = () => { document.removeEventListener('keyup', st.onKeyUp); window.removeEventListener('blur', st.onBlur); };
+      st.onKeyUp = (e) => { if (st.held[e.code]) st.held[e.code] = false; };
+      st.onBlur = () => { for (const k in st.held) st.held[k] = false; };
+      document.addEventListener('keyup', st.onKeyUp);
+      window.addEventListener('blur', st.onBlur);
     }
     st.ctx = ctx;
     live.add(st);
@@ -667,6 +673,7 @@
       if (Math.abs(want - p.ang) > 0.001) { p.ang += (want - p.ang) * Math.min(1, dt * 16); if (Math.abs(want - p.ang) < 0.01) p.ang = want; more = true; }
     }
     // курсор пада: стік — рука; що довше тримаєш, то швидше
+    const held = st.held;
     const dx = (held.ArrowRight ? 1 : 0) - (held.ArrowLeft ? 1 : 0), dy = (held.ArrowDown ? 1 : 0) - (held.ArrowUp ? 1 : 0);
     if ((dx || dy) && st.cur && st.lay) {
       st.holdT = (st.holdT || 0) + dt;
@@ -789,19 +796,40 @@
       },
     });
     kick(st);
-    const r = st.ctx.act('put', { k: p.k, c: p.k, r: 0, t: p.taps });
-    Promise.resolve(r).then((res) => {
-      p.pending = false;
-      if (res && res.ok === false && !serverHas(st, p.k)) {
-        // сервер не прийняв (картинка якраз скінчилась чи розійшлись лічильники) — черепок назад, де лежав
-        st.anims = st.anims.filter((a) => a.p !== p);
-        p.placed = false;
-        p.x = was.x; p.y = was.y; p.zone = was.zone;
-        st.layerOk = false;
-        hudCount(st);
-        kick(st);
-      }
-    }, () => { p.pending = false; });
+    sendPut(st, p, was, 0);
+  }
+
+  /// put на сервер не частіше PUT_GAP: черепок уже приріс на екрані, а лист іде трохи згодом. Сервер усе ж сказав
+  /// «повільніше» (мережа стиснула два листи) — ще раз, один, через паузу; інша відмова — черепок назад.
+  function sendPut(st, p, was, tries) {
+    const now = performance.now();
+    const wait = Math.max(0, st.putAt + PUT_GAP - now);
+    st.putAt = now + wait;
+    const go = () => {
+      if (!live.has(st)) return;
+      const r = st.ctx.act('put', { k: p.k, c: p.k, r: 0, t: p.taps });
+      Promise.resolve(r).then((res) => onPut(st, p, was, tries, res), () => { p.pending = false; });
+    };
+    if (!wait) { go(); return; }
+    const id = setTimeout(() => { st.putTimers.delete(id); go(); }, wait);
+    st.putTimers.add(id);
+  }
+
+  function onPut(st, p, was, tries, res) {
+    if (res && res.ok === false && !tries && /Повільніше/.test(res.message || '') && live.has(st)) {
+      sendPut(st, p, was, 1);
+      return;
+    }
+    p.pending = false;
+    if (res && res.ok === false && !serverHas(st, p.k)) {
+      // сервер не прийняв (картинка якраз скінчилась чи розійшлись лічильники) — черепок назад, де лежав
+      st.anims = st.anims.filter((a) => a.p !== p);
+      p.placed = false;
+      p.x = was.x; p.y = was.y; p.zone = was.zone;
+      st.layerOk = false;
+      hudCount(st);
+      kick(st);
+    }
   }
 
   const serverHas = (st, k) => { const me = (st.ctx.view || {}).me; return !!(me && me.placed && me.placed.indexOf(k) >= 0); };
@@ -969,7 +997,7 @@
         + (v.hint ? 'зараз розіб’ється' : 'зараз розіб’ється — і підказки в рамці не буде') + '</div>';
     } else if (v.ph === 'go' && v.me && v.me.done != null) {
       cls = 'note';
-      html = '✅ Склав за <b>' + fmt(v.me.done) + '</b>' + (v.party ? '' : ' — чекаємо інших');
+      html = '✅ Готово за <b>' + fmt(v.me.done) + '</b>' + (v.party ? '' : ' — чекаємо інших');
     } else if (v.ph === 'go' && !v.me) {
       cls = 'note';
       html = '👀 Дивишся, хто швидше склеїть';
@@ -1400,7 +1428,7 @@
     if (v.ph === 'ready') return '🏺 Запам’ятовуй картинку — зараз розіб’ється';
     if (v.ph === 'go') {
       if (!v.me) return '👀 Дивишся, хто швидше склеїть';
-      if (v.me.done != null) return '✅ Склав за ' + fmt(v.me.done) + (v.party ? '' : ' — чекаємо інших');
+      if (v.me.done != null) return '✅ Готово за ' + fmt(v.me.done) + (v.party ? '' : ' — чекаємо інших');
       const st = stOf(ctx);
       const n = st ? st.pieces.filter((p) => p.placed).length : (v.me.placed || []).length;
       const of = st && st.pieces.length ? st.pieces.length : (v.n || 4) ** 2;
@@ -1442,7 +1470,7 @@
       if (!st || !canPlay(st)) return false;
       const arrows = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
       if (arrows.includes(e.code)) {
-        held[e.code] = true;
+        st.held[e.code] = true;
         padStart(st);
         st.tip.textContent = tipText(st);
         kick(st);
@@ -1468,6 +1496,9 @@
       st.raf = 0;
       clearInterval(st.timer);
       st.timer = 0;
+      for (const id of st.putTimers) clearTimeout(id);
+      st.putTimers.clear();
+      if (st.offKeys) st.offKeys();
       if (st.ro) st.ro.disconnect();
       if (HGames.ui.onFit) HGames.ui.onFit(root, null);
       if (st.cropClose) st.cropClose();
