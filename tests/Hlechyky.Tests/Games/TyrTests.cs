@@ -382,6 +382,29 @@ public class TyrTests
     }
 
     [Fact]
+    public void Tyr_is_in_party_pool_daily_is_not()
+    {
+        Assert.True(PartyPool.Has("tyr"));
+        Assert.False(PartyPool.Has("tyr-daily"));
+        var g = (IPartyMinigame)PartyPool.Create("tyr")!;
+        Assert.InRange(g.PartyCapMs, TyrCore.ReadyMs + TyrCore.StandMs + TyrBase.GraceMs + 1000, 120_000);
+        Assert.Equal((2, 8), (g.PartyMin, g.PartyMax));
+    }
+
+    [Fact]
+    public void Human_leaving_bot_game_ends_it()
+    {
+        var h = Table(1);
+        h.Act(0, LiveBots.Toggle, new { on = true });
+        h.Start();
+        ToGo(h);
+        h.Tick(40);
+        h.Leave("стрілець0");
+        Assert.Single(h.Finished);
+        Assert.Empty(h.Awards);
+    }
+
+    [Fact]
     public void Normal_table_is_not_party()
     {
         var h = Table(2);
