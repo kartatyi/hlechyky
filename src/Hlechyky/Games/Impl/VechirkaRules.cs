@@ -67,6 +67,14 @@ public static class VechirkaRules
 
     public static readonly Dictionary<string, VechirkaItem> Item = Items.ToDictionary(i => i.Key);
 
+    /// <summary>Назва предмета в знахідному («тримай Підкову»): {item} у репліках Глека стоїть після дієслова (R2).</summary>
+    public static string Acc(string name) => name switch
+    {
+        "Пательня" => "Пательню",
+        "Підкова" => "Підкову",
+        _ => name,
+    };
+
     /// <summary>Що продають крамниці (§6.3): усе, крім гарбуза й пера.</summary>
     public static readonly string[] Buyable = [.. Items.Where(i => i.Price > 0).Select(i => i.Key)];
 

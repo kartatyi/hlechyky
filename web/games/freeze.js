@@ -525,7 +525,8 @@
   }
 
   const seatOf = (st, i) => (st.view && st.view.seats || []).find((s) => s.seat === i) || null;
-  const nickOfSeat = (st, i) => { const s = seatOf(st, i); return (s && s.nick) || (st.ctx && (st.ctx.nameOf || st.ctx.nickOf)(i)) || SEAT_NAMES[i] || '?'; };
+  // у вечірці (embed) ботів звуть по-людськи («🤖 Галя») — ім'я місця від вечірки важливіше за серверне «бот»
+  const nickOfSeat = (st, i) => { const s = seatOf(st, i); return (st.ctx && st.ctx.embedded && st.ctx.nameOf(i)) || (s && s.nick) || (st.ctx && (st.ctx.nameOf || st.ctx.nickOf)(i)) || SEAT_NAMES[i] || '?'; };
   const nameOf = (st, id) => (st.names && st.names[id]) || 'селянин';
   const phaseOf = (st) => (st.vphase === 'over' ? 'over' : st.fph || st.vphase);
   const mineNow = (st) => !!(st.ctx && st.ctx.mine) && st.meId >= 0;
@@ -1374,7 +1375,7 @@
     let row = '';
     for (const s of v.seats || []) {
       row += '<span class="freeze-seat freeze-s' + s.seat + (s.out ? ' out' : '') + (s.seat === ctx.seat ? ' me' : '') + '">'
-        + '<i></i>' + (v.relay ? teamEmoji(st, teamOfSeat(st, s.seat)) + ' ' : '') + ctx.esc(s.nick) + ' <b>' + (s.total | 0) + '</b></span>';
+        + '<i></i>' + (v.relay ? teamEmoji(st, teamOfSeat(st, s.seat)) + ' ' : '') + ctx.esc(nickOfSeat(st, s.seat)) + ' <b>' + (s.total | 0) + '</b></span>';
     }
     const se = st.seatsEl;
     if (se && se.dataset.sig !== row) {

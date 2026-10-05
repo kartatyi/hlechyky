@@ -66,7 +66,7 @@ public sealed partial class VechirkaCore
                     p.S.Shop += it.Price;
                     p.Items.Add(opt.K);
                     Fx("item", i, k: opt.K);
-                    if (R.Next(3) == 0) Say("shopBuy", ("nick", p.Name), ("item", it.Name));
+                    if (R.Next(3) == 0) Say("shopBuy", ("nick", p.Name), ("item", VechirkaRules.Acc(it.Name)));
                 }
                 break;
             case "discard":

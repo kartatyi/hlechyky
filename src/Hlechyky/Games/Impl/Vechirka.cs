@@ -404,7 +404,7 @@ public sealed class Vechirka : Game
             return new
             {
                 phase = "lobby",
-                lobby = new { bots = _lobbyBots.Select(b => new { name = b }), rounds = VechirkaRules.Rounds(len, Math.Max(2, n)) },
+                lobby = new { bots = _lobbyBots.Select(b => new { name = b }), rounds = VechirkaRules.Rounds(len, Math.Max(2, n)), len },
             };
         }
         return VechirkaView.Build(this, c, seat is { } s ? POf(s) : null, Ctx.Clock.UtcNow);

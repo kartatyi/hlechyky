@@ -232,7 +232,7 @@ public sealed partial class VechirkaCore
                     break;
                 }
                 var item = DrawItem(i);
-                Say("chest", ("nick", p.Name), ("item", VechirkaRules.Item[item].Name));
+                Say("chest", ("nick", p.Name), ("item", VechirkaRules.Acc(VechirkaRules.Item[item].Name)));
                 if (GiveItem(i, item, "endTurn")) return;
                 break;
             }

@@ -302,6 +302,13 @@
 .vch.mgon .vch-bw { background: var(--panel2, #222); height: auto; min-height: var(--vch-h); overflow: visible; touch-action: auto; -webkit-user-select: auto; user-select: auto; }
 .vch.mgon .vch-board, .vch.mgon .vch-focus, .vch.mgon .vch-arrow, .vch.mgon .vch-say { display: none; }
 .vch.mgon .vch-mg { position: relative; inset: auto; min-height: var(--vch-h); }
+/* міні-гра — на всю ширину картки (бічна панель гравців ховається, у грі свої табло) і по центру висоти:
+   на Full HD «Замри!» займала 830×250 угорі, нижче — порожньо (R2) */
+.vch.mgon .vch-main { grid-template-columns: minmax(0, 1fr); }
+.vch.mgon .vch-side { display: none; }
+.vch.mgon .vmg-b { justify-content: center; }
+/* телефон, міні-гра: «Встати» й рядок налаштувань столу каркаса забирають висоту й ризик встати посеред гри (R2) */
+.gtable:has(.vch.phone.mgon) > .gbtns, .gtable:has(.vch.phone.mgon) .gseats .gmode { display: none; }
 
 /* ---------- конфеті ---------- */
 .vch-conf { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 10; }

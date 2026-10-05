@@ -817,14 +817,22 @@
     if (st.plH !== h) { st.el.pl.innerHTML = h; st.plH = h; }
   }
 
+  /// «1 крок · 3 кроки · 32 кроки · 17 кроків» — у texts.json підпис з «{n} кроків» (R2: «3 кроків»).
+  function steps(n) {
+    const a = Math.abs(n) % 100, b = a % 10;
+    return n + ' ' + (a > 10 && a < 20 ? 'кроків' : b === 1 ? 'крок' : b >= 2 && b <= 4 ? 'кроки' : 'кроків');
+  }
   function goalText(st, v) {
     const y = v.you;
     if (!y || y.i == null) return '';
+    // на фіналі й після вечора мети вже нема — рядок «Лавка Глека» лише плутає (R2)
+    if (v.phase === 'final' || v.phase === 'done') return '';
     const p = playerOf(v, y.i);
     if (!p) return '';
     const hints = T(st).hints || {};
     if (y.toStand == null) return '🏺 Лавка Глека зараз далеко · у тебе ' + p.coins + '/' + v.price + ' 🪙';
-    return fill(hints.goal || '🏺 Лавка Глека: {n} кроків · у тебе {coins}/{price} 🪙', { n: y.toStand, coins: p.coins, price: v.price });
+    return fill(hints.goal || '🏺 Лавка Глека: {n} кроків · у тебе {coins}/{price} 🪙', { n: y.toStand, coins: p.coins, price: v.price })
+      .replace(/(\d+) кроків/, (_, d) => steps(+d));
   }
 
   function renderSide(st, v) {
@@ -1251,7 +1259,7 @@
     if (st.embKey !== key) {
       dropEmb(st);
       st.embKey = key;
-      st.el.mg.innerHTML = '<div class="vmg-h"><span class="vo-mgi">' + HGames.iconOf(m.id) + '</span><b>' + st.ctx.esc(m.title) + '</b>'
+      st.el.mg.innerHTML = '<div class="vmg-h"><span class="vo-mgi">' + HGames.iconOf(m.id) + '</span><b>' + st.ctx.esc(m.duel ? '«' + m.title + '»' : m.title) + '</b>'
         + (m.duel ? '<span class="muted small">⚔ ' + st.ctx.esc(nameOf(st, m.duel[0]) + ' проти ' + nameOf(st, m.duel[1])) + '</span>' : '')
         + (m.x2 ? '<span class="vt-x2">×2</span>' : '') + (m.sub == null ? '<span class="muted small">👀 дивишся</span>' : '') + '</div><div class="vmg-b"></div>';
       try {
@@ -1274,7 +1282,7 @@
     const pl = seats.map((n, k) => ({ i: k, nick: n, name: n, color: k })).concat(bots.map((b, k) => ({ i: 100 + k, bot: true, name: b.name, color: seats.length + k })));
     const h = '<div class="vo-card vo-lobby"><div class="vo-mgh"><span class="vo-big vo-glek">🏺</span><div><h2>Глечикова вечірка</h2>'
       + '<p class="muted">Настільна вечірка на 2–8: ходиш селом, збираєш шеляги й купуєш у Дядька Глека золоті глеки. Між колами — міні-ігри.</p></div></div>'
-      + '<div class="vl-row"><span>🕰 Вечір: <b>≈ ' + ((v.lobby && v.lobby.rounds) || '?') + ' кіл</b></span><span>👥 За столом: <b>' + total + '</b>/8</span></div>'
+      + '<div class="vl-row"><span>🕰 Вечір: <b>' + (v.lobby && v.lobby.len ? '≈ ' + v.lobby.len + ' хв · ' : '') + ((v.lobby && v.lobby.rounds) || '?') + ' кіл</b></span><span>👥 За столом: <b>' + total + '</b>/8</span></div>'
       + '<div class="vo-avs">' + pl.map((p) => '<span>' + avaHtml(p, esc) + '<small>' + esc(p.name) + '</small></span>').join('') + '</div>'
       + (host ? '<div class="vd-row">' + optBtn(esc, 'bot', { on: true }, '🤖 + бот', { off: total >= 8 }) + optBtn(esc, 'bot', { on: false }, '− бот', { off: !bots.length }) + '</div>'
         + '<p class="muted small">' + (total < 2 ? 'Треба хоча б двоє — поклич друзів або додай ботів.' : 'Усі на місці? Тисни «Почати».') + '</p>'
