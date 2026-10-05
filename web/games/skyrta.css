@@ -1,0 +1,65 @@
+/*
+  Скирта: поле малює полотно (небо, скирти, снопи), тут — рядок над ним (висота, час, серія), підсумок партії
+  і підказка. Свої кольори — на :root з префіксом --sk-.
+*/
+:root {
+  --sk-hay: #e8b84a;     /* сніп */
+  --sk-hay2: #f6d77c;    /* сніп у світлі */
+  --sk-s0: #e0503a;
+  --sk-s1: #3a7fe0;
+  --sk-s2: #2f9e55;
+  --sk-s3: #9b5de5;
+  --sk-s4: #e5871a;
+  --sk-s5: #16a8a3;
+  --sk-s6: #d6459a;
+  --sk-s7: #6b7a8f;
+}
+
+/* чипи місць у шапці картки: колір шпагату на снопах */
+.gseat.sk0 { color: var(--sk-s0); }
+.gseat.sk1 { color: var(--sk-s1); }
+.gseat.sk2 { color: var(--sk-s2); }
+.gseat.sk3 { color: var(--sk-s3); }
+.gseat.sk4 { color: var(--sk-s4); }
+.gseat.sk5 { color: var(--sk-s5); }
+.gseat.sk6 { color: var(--sk-s6); }
+.gseat.sk7 { color: var(--sk-s7); }
+
+.sk { display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; min-width: 0; width: 100%;
+  box-sizing: border-box; }
+
+.sk-hud { display: flex; align-items: center; gap: 12px; font-weight: 600; min-height: 30px; font-variant-numeric: tabular-nums; }
+.sk-h { white-space: nowrap; }
+.sk-h b { font-size: 1.45em; color: var(--sk-hay); line-height: 1; }
+.sk-time { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sk-bar { flex: 1; height: 7px; border-radius: 4px; overflow: hidden; background: rgba(127, 127, 127, .22); }
+.sk-bar i { display: block; height: 100%; width: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, var(--ok, #5cb85c), var(--sk-hay)); transition: width .2s linear; }
+.sk-bar.low i { background: var(--clay, #c8643c); }
+.sk-t { white-space: nowrap; }
+.sk-s { white-space: nowrap; min-width: 3.2em; text-align: right; color: var(--sk-hay); }
+
+.sk-wrap { position: relative; width: 100%; }
+.sk-cv { display: block; width: 100%; border-radius: 14px; cursor: pointer; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; }
+
+.sk-over { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); width: min(92%, 420px);
+  padding: 12px 14px; border-radius: 14px; background: rgba(28, 20, 10, .86); color: #fff; pointer-events: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35); animation: sk-pop .35s ease-out; }
+.sk-over[hidden] { display: none; }
+.sk-ot { font-weight: 800; font-size: 1.08em; margin-bottom: 8px; text-align: center; }
+.sk-or { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 8px; font-size: .95em; }
+.sk-or.win { background: rgba(241, 197, 65, .22); }
+.sk-or i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.sk-op { width: 1.3em; text-align: right; opacity: .7; }
+.sk-on { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sk-ov { font-weight: 800; white-space: nowrap; }
+.sk-ox { opacity: .75; font-size: .85em; white-space: nowrap; }
+@keyframes sk-pop { from { transform: translateX(-50%) scale(.85); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+
+.sk-hint { font-size: .85em; color: var(--muted); text-align: center; min-height: 1.2em; }
+
+@media (max-width: 420px) {
+  .sk-hud { gap: 8px; font-size: .95em; }
+  .sk-ox { display: none; }
+}
