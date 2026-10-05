@@ -8,7 +8,7 @@
   "paused": null,
   "map": "selo",
   "mapV": 1,
-  "until": "2026-09-10T12:01:59.9400000+00:00",
+  "until": "2026-09-10T12:03:04.1400000+00:00",
   "total": 6000,
   "players": [
     {
@@ -20,7 +20,7 @@
       "auto": true,
       "pos": "m11",
       "gleks": 0,
-      "coins": 11,
+      "coins": 6,
       "items": [
         "fork"
       ],
@@ -39,12 +39,12 @@
       "auto": false,
       "pos": "m6",
       "gleks": 0,
-      "coins": 21,
+      "coins": 17,
       "items": [],
       "bump": false,
       "charm": false,
-      "mgWins": 1,
-      "place": 1,
+      "mgWins": 0,
+      "place": 2,
       "color": 2
     },
     {
@@ -56,12 +56,12 @@
       "auto": false,
       "pos": "l3",
       "gleks": 0,
-      "coins": 20,
+      "coins": 28,
       "items": [],
       "bump": false,
       "charm": false,
-      "mgWins": 0,
-      "place": 2,
+      "mgWins": 1,
+      "place": 1,
       "color": 3
     },
     {
@@ -73,7 +73,7 @@
       "auto": true,
       "pos": "m8",
       "gleks": 0,
-      "coins": 2,
+      "coins": 3,
       "items": [
         "fork"
       ],
@@ -117,7 +117,7 @@
     "dice": null,
     "key": null,
     "to": null,
-    "at": "2026-09-10T12:01:53.9400000+00:00",
+    "at": "2026-09-10T12:02:58.1400000+00:00",
     "ms": 6000
   },
   "fx": [
@@ -139,28 +139,28 @@
       "seq": 24,
       "kind": "mg",
       "who": 0,
-      "d": 6,
+      "d": 1,
       "k": null
     },
     {
       "seq": 24,
       "kind": "mg",
       "who": 1,
-      "d": 2,
+      "d": 3,
       "k": null
     },
     {
       "seq": 24,
       "kind": "mg",
       "who": 2,
-      "d": 10,
+      "d": 6,
       "k": null
     },
     {
       "seq": 24,
       "kind": "mg",
       "who": 3,
-      "d": 2,
+      "d": 10,
       "k": null
     }
   ],
@@ -175,7 +175,7 @@
   },
   "mg": {
     "id": "icefloe",
-    "title": "icefloe",
+    "title": "Крижина",
     "howto": "Виштовхни всіх із крижини й не шубовсни сам: хто довше протримався — той вище. Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка; на телефоні — стік і кнопки",
     "repeat": false,
     "x2": false,
@@ -208,24 +208,24 @@
     "view": null,
     "results": [
       {
-        "i": 2,
+        "i": 3,
         "place": 1,
         "coins": 10
       },
       {
-        "i": 0,
+        "i": 2,
         "place": 2,
         "coins": 6
       },
       {
         "i": 1,
         "place": 3,
-        "coins": 2
+        "coins": 3
       },
       {
-        "i": 3,
-        "place": 3,
-        "coins": 2
+        "i": 0,
+        "place": 4,
+        "coins": 1
       }
     ],
     "how": "Finished"
@@ -233,15 +233,15 @@
   "lateInfo": null,
   "final": null,
   "say": {
-    "id": 3,
-    "text": "Петро задрімав — походжу за нього."
+    "id": 4,
+    "text": "\uD83E\uDD16 Грицько найкращий у «Крижина»!"
   },
   "log": [
     "\uD83C\uDFB2 Порядок: Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро",
     "\uD83D\uDCA4 Оля задрімав — ходить Глек",
     "❔ \uD83E\uDD16 Грицько: Весілля",
     "\uD83D\uDCA4 Петро задрімав — ходить Глек",
-    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, Оля, Петро, \uD83E\uDD16 Грицько"
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Петро, Оля"
   ],
   "you": {
     "i": 0,

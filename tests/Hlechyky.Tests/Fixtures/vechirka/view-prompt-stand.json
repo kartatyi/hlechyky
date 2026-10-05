@@ -1,6 +1,6 @@
 {
   "phase": "prompt",
-  "round": 5,
+  "round": 6,
   "rounds": 10,
   "target": 30,
   "late": false,
@@ -8,7 +8,7 @@
   "paused": null,
   "map": "selo",
   "mapV": 1,
-  "until": "2026-09-10T12:04:42.4600000+00:00",
+  "until": "2026-09-10T12:09:25.5000000+00:00",
   "total": 10000,
   "players": [
     {
@@ -18,16 +18,14 @@
       "name": "Оля",
       "away": false,
       "auto": true,
-      "pos": "m25",
+      "pos": "m5",
       "gleks": 0,
-      "coins": 41,
-      "items": [
-        "pick"
-      ],
+      "coins": 24,
+      "items": [],
       "bump": false,
       "charm": false,
-      "mgWins": 1,
-      "place": 1,
+      "mgWins": 0,
+      "place": 3,
       "color": 0
     },
     {
@@ -39,12 +37,12 @@
       "auto": false,
       "pos": "l2",
       "gleks": 0,
-      "coins": 25,
+      "coins": 51,
       "items": [],
       "bump": false,
       "charm": false,
       "mgWins": 2,
-      "place": 4,
+      "place": 2,
       "color": 2
     },
     {
@@ -54,14 +52,16 @@
       "name": "\uD83E\uDD16 Грицько",
       "away": false,
       "auto": false,
-      "pos": "m29",
+      "pos": "l0",
       "gleks": 0,
-      "coins": 29,
-      "items": [],
+      "coins": 54,
+      "items": [
+        "rope"
+      ],
       "bump": false,
       "charm": false,
-      "mgWins": 0,
-      "place": 2,
+      "mgWins": 3,
+      "place": 1,
       "color": 3
     },
     {
@@ -71,38 +71,38 @@
       "name": "Петро",
       "away": false,
       "auto": true,
-      "pos": "m27",
+      "pos": "m4",
       "gleks": 0,
-      "coins": 27,
+      "coins": 18,
       "items": [],
       "bump": false,
       "charm": false,
-      "mgWins": 1,
-      "place": 3,
+      "mgWins": 0,
+      "place": 4,
       "color": 1
     }
   ],
   "cur": 2,
   "stand": "l2",
-  "price": 20,
-  "bank": 17,
+  "price": 15,
+  "bank": 15,
   "duelDone": false,
   "gates": [],
   "shops": {
     "m8": [
-      "pan",
-      "rope",
-      "gate"
+      "horse",
+      "key",
+      "fork"
     ],
     "m26": [
-      "charm",
-      "rope",
-      "key"
+      "pick",
+      "gate",
+      "charm"
     ],
     "y3": [
-      "key",
-      "pan",
-      "charm"
+      "rope",
+      "fork",
+      "pick"
     ]
   },
   "prompt": {
@@ -112,7 +112,7 @@
     "options": [
       {
         "k": "buy",
-        "label": "\uD83C\uDFFA Купити за 20",
+        "label": "\uD83C\uDFFA Купити за 15",
         "price": null,
         "ok": true
       },
@@ -126,7 +126,7 @@
   },
   "aim": null,
   "anim": {
-    "seq": 102,
+    "seq": 125,
     "kind": "walk",
     "who": 2,
     "path": [
@@ -137,40 +137,32 @@
     "dice": null,
     "key": null,
     "to": null,
-    "at": "2026-09-10T12:04:31.3800000+00:00",
+    "at": "2026-09-10T12:09:14.4200000+00:00",
     "ms": 1080
   },
-  "fx": [
-    {
-      "seq": 97,
-      "kind": "coins",
-      "who": 0,
-      "d": 5,
-      "k": null
-    }
-  ],
+  "fx": [],
   "emo": [],
   "pick": null,
   "mg": null,
   "lateInfo": null,
   "final": null,
   "say": {
-    "id": 10,
-    "text": "Гарбуз! \uD83E\uDD16 Галя і Оля помінялись місцями."
+    "id": 12,
+    "text": "\uD83E\uDD16 Грицько найкращий у «Крижина»!"
   },
   "log": [
-    "\uD83C\uDFB2 Порядок: Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро",
     "\uD83D\uDCA4 Оля задрімав — ходить Глек",
     "❔ \uD83E\uDD16 Грицько: Весілля",
     "\uD83D\uDCA4 Петро задрімав — ходить Глек",
-    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, Оля, Петро, \uD83E\uDD16 Грицько",
-    "\uD83D\uDD31 Оля → \uD83E\uDD16 Галя",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Петро, Оля",
+    "\uD83D\uDD31 Оля → \uD83E\uDD16 Грицько",
     "❔ \uD83E\uDD16 Галя: Бровко",
     "\uD83D\uDD31 Петро → \uD83E\uDD16 Грицько",
-    "\uD83C\uDFAF icefloe: Оля, Петро, \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя",
-    "\uD83C\uDFAF icefloe: Петро, Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько",
-    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, Оля, \uD83E\uDD16 Грицько, Петро",
-    "\uD83C\uDF83 \uD83E\uDD16 Галя → Оля"
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро, Оля",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Петро, Оля",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро, Оля",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Оля, Петро",
+    "❔ Оля: Розпродаж"
   ],
   "you": {
     "i": 0,
@@ -178,7 +170,7 @@
       "here",
       "emo"
     ],
-    "toStand": 16,
+    "toStand": 4,
     "tip": false
   }
 }

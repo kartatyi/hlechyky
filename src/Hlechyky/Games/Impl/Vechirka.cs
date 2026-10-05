@@ -47,7 +47,7 @@ public sealed class Vechirka : Game
     /// <summary>Мізки ботів — замінні для тестів.</summary>
     public Func<IVechirkaBrain> BrainFactory { get; set; } = () => new VechirkaBot();
     /// <summary>Міні-ігри — замінні для тестів (S1.4 — справжній хост).</summary>
-    public Func<Vechirka, ulong, IMgRunner> RunnerFactory { get; set; } = (_, seed) => new VechirkaStubMg(seed);
+    public Func<Vechirka, ulong, IMgRunner> RunnerFactory { get; set; } = (g, _) => new VechirkaHostMg(g);
     public Func<IReadOnlyList<VechirkaPoolEntry>> PoolFactory { get; set; } = () => VechirkaPool.Available;
 
     public VechirkaCore? Core => _core;
@@ -276,6 +276,33 @@ public sealed class Vechirka : Game
         var log = "🎉 Глечикова вечірка: " + string.Join(", ",
             Enumerable.Range(0, c.N).OrderBy(c.PlaceOf).Select(i => $"{c[i].Name} — {c[i].Gleks} 🏺"));
         Ctx.Finish([.. winners], log, scores);
+        Rewards(c);
+    }
+
+    /// <summary>
+    /// Черепки за місце серед людей і ачівки (§10) — лише коли людей за столом ≥ 2. У причині — номер партії
+    /// кімнати: «Ще раз» за тим самим столом платить заново (ref нагороди містить причину).
+    /// </summary>
+    void Rewards(VechirkaCore c)
+    {
+        var humans = Enumerable.Range(0, c.N).Where(i => !c[i].Bot && _seat[i] is { } s && Ctx.Seated(s)).ToList();
+        if (humans.Count < 2) return;
+        int[] bonus = humans.Count >= 3 ? [20, 10, 5] : [20];
+        foreach (var i in humans)
+        {
+            var seat = _seat[i]!.Value;
+            var place = 1 + humans.Count(j => c.Rank(j) > c.Rank(i));
+            if (place <= bonus.Length) Ctx.Award(seat, bonus[place - 1], $"vechirka:place:{Ctx.Round}");
+            var p = c[i];
+            var won = c.PlaceOf(i) == 1;
+            if (won && humans.Count >= 3) Ctx.Award(seat, 0, "ach:vechirka-win");
+            if (won && p.S.LastAtHalf) Ctx.Award(seat, 0, "ach:vechirka-comeback");
+            if (p.S.Bought >= 5) Ctx.Award(seat, 0, "ach:vechirka-gleks5");
+            if (p.S.Pans >= 3) Ctx.Award(seat, 0, "ach:vechirka-pan3");
+            if (p.MgWins >= 5) Ctx.Award(seat, 0, "ach:vechirka-king");
+            if (p.S.Banks >= 3) Ctx.Award(seat, 0, "ach:vechirka-bank");
+            if (p.S.Ferries >= 3) Ctx.Award(seat, 0, "ach:vechirka-ferry");
+        }
     }
 
     // ---------- вид (§14.1) ----------
@@ -301,6 +328,17 @@ public sealed class Vechirka : Game
 
     public IReadOnlyList<(int Seq, int I, string K)> Emo => _emo;
     public (int Id, string Text)? LastSay => _say;
+    DateTimeOffset _lastSubSay = DateTimeOffset.MinValue;
+
+    /// <summary>Репліка міні-гри: не частіше раз на 20 с (за вечір їх десятки, балачка не гумова).</summary>
+    public void SubSay(string text)
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (now - _lastSubSay < TimeSpan.FromMilliseconds(SayGapMs)) return;
+        _lastSubSay = now;
+        Ctx.Say(text);
+    }
+
     public bool Watching(int i) => _mgWatch.Contains(i);
     public string? NickAt(int i) => _seat[i] is { } s && Ctx.Seated(s) ? Ctx.NickOf(s) : null;
 

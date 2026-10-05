@@ -8,7 +8,7 @@
   "paused": null,
   "map": "selo",
   "mapV": 1,
-  "until": "2026-09-10T12:07:00.5600000+00:00",
+  "until": "2026-09-10T12:12:32.5200000+00:00",
   "total": 12000,
   "players": [
     {
@@ -18,17 +18,16 @@
       "name": "Оля",
       "away": false,
       "auto": true,
-      "pos": "m23",
-      "gleks": 1,
-      "coins": 19,
+      "pos": "m11",
+      "gleks": 0,
+      "coins": 38,
       "items": [
-        "pick",
-        "gate"
+        "horse"
       ],
       "bump": false,
       "charm": false,
-      "mgWins": 2,
-      "place": 2,
+      "mgWins": 0,
+      "place": 3,
       "color": 0
     },
     {
@@ -38,13 +37,15 @@
       "name": "\uD83E\uDD16 Галя",
       "away": false,
       "auto": false,
-      "pos": "m22",
+      "pos": "m14",
       "gleks": 1,
-      "coins": 25,
-      "items": [],
+      "coins": 51,
+      "items": [
+        "charm"
+      ],
       "bump": false,
-      "charm": false,
-      "mgWins": 3,
+      "charm": true,
+      "mgWins": 2,
       "place": 1,
       "color": 2
     },
@@ -55,16 +56,16 @@
       "name": "\uD83E\uDD16 Грицько",
       "away": false,
       "auto": false,
-      "pos": "m10",
+      "pos": "m21",
       "gleks": 0,
-      "coins": 79,
+      "coins": 77,
       "items": [
-        "pick"
+        "rope"
       ],
       "bump": false,
       "charm": false,
-      "mgWins": 1,
-      "place": 3,
+      "mgWins": 5,
+      "place": 2,
       "color": 3
     },
     {
@@ -74,21 +75,21 @@
       "name": "Петро",
       "away": false,
       "auto": true,
-      "pos": "m23",
+      "pos": "m11",
       "gleks": 0,
-      "coins": 50,
+      "coins": 36,
       "items": [
-        "pick"
+        "horse"
       ],
       "bump": false,
       "charm": false,
-      "mgWins": 1,
+      "mgWins": 0,
       "place": 4,
       "color": 1
     }
   ],
   "cur": null,
-  "stand": "m14",
+  "stand": "m29",
   "price": 20,
   "bank": 1,
   "duelDone": false,
@@ -97,87 +98,80 @@
     "m8": [
       "charm",
       "pan",
-      "rope"
+      "key"
     ],
     "m26": [
+      "charm",
       "pan",
-      "gate",
-      "pick"
+      "horse"
     ],
     "y3": [
+      "horse",
       "key",
-      "fork",
-      "gate"
+      "pick"
     ]
   },
   "prompt": null,
   "aim": null,
   "anim": {
-    "seq": 166,
+    "seq": 163,
     "kind": "late",
     "who": null,
     "path": null,
     "dice": null,
     "key": null,
     "to": null,
-    "at": "2026-09-10T12:06:48.5600000+00:00",
+    "at": "2026-09-10T12:12:20.5200000+00:00",
     "ms": 0
   },
   "fx": [
     {
-      "seq": 162,
+      "seq": 159,
       "kind": "coins",
-      "who": 2,
-      "d": -2,
+      "who": 1,
+      "d": 5,
       "k": null
     },
     {
-      "seq": 162,
-      "kind": "coins",
-      "who": 3,
-      "d": -2,
-      "k": null
-    },
-    {
-      "seq": 164,
+      "seq": 161,
       "kind": "mg",
       "who": 0,
       "d": 3,
       "k": null
     },
     {
-      "seq": 164,
+      "seq": 161,
       "kind": "mg",
       "who": 1,
       "d": 1,
       "k": null
     },
     {
-      "seq": 164,
+      "seq": 161,
       "kind": "mg",
       "who": 2,
-      "d": 10,
-      "k": null
-    },
-    {
-      "seq": 164,
-      "kind": "mg",
-      "who": 3,
       "d": 6,
       "k": null
     },
     {
-      "seq": 165,
-      "kind": "coins",
-      "who": 1,
-      "d": 23,
+      "seq": 161,
+      "kind": "mg",
+      "who": 3,
+      "d": 10,
       "k": null
     },
     {
-      "seq": 165,
+      "seq": 162,
       "kind": "coins",
-      "who": 3,
-      "d": 23,
+      "who": 1,
+      "d": 8,
+      "k": null
+    },
+    {
+      "seq": 162,
+      "kind": "coins",
+      "who": 0,
+      "d": 8,
       "k": null
     }
   ],
@@ -206,21 +200,21 @@
   },
   "final": null,
   "say": {
-    "id": 17,
+    "id": 18,
     "text": "Пізній вечір! Монети й пастки — удвічі, скарбничку розбито."
   },
   "log": [
-    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, Оля, \uD83E\uDD16 Грицько, Петро",
-    "\uD83C\uDF83 \uD83E\uDD16 Галя → Оля",
+    "\uD83D\uDD31 Петро → \uD83E\uDD16 Грицько",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро, Оля",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Петро, Оля",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро, Оля",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Оля, Петро",
+    "❔ Оля: Розпродаж",
     "\uD83C\uDFFA \uD83E\uDD16 Галя купив золотий глек!",
-    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Грицько, Петро, Оля, \uD83E\uDD16 Галя",
-    "❔ Оля: Ярмарок у селі",
-    "\uD83C\uDFAF icefloe: Оля, \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Петро",
-    "\uD83C\uDFFA Оля купив золотий глек!",
-    "❔ Оля: Баба передала гостинця",
-    "❔ Петро: Злива",
-    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Оля, Петро",
-    "\uD83D\uDC37 Скарбничку розбито: по 23",
+    "❔ \uD83E\uDD16 Грицько: Глек жаліє",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Оля, Петро",
+    "\uD83C\uDFAF Крижина: \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Оля, Петро",
+    "\uD83D\uDC37 Скарбничку розбито: по 8",
     "\uD83C\uDF19 Пізній вечір"
   ],
   "you": {
@@ -229,7 +223,7 @@
       "here",
       "emo"
     ],
-    "toStand": 10,
+    "toStand": 18,
     "tip": false
   }
 }

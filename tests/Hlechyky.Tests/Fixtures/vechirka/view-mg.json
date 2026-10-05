@@ -1,0 +1,307 @@
+{
+  "phase": "mg",
+  "round": 1,
+  "rounds": 10,
+  "target": 30,
+  "late": false,
+  "lastGame": false,
+  "paused": null,
+  "map": "selo",
+  "mapV": 1,
+  "until": null,
+  "total": null,
+  "players": [
+    {
+      "i": 0,
+      "nick": "Оля",
+      "bot": false,
+      "name": "Оля",
+      "away": false,
+      "auto": true,
+      "pos": "m11",
+      "gleks": 0,
+      "coins": 5,
+      "items": [
+        "fork"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 3,
+      "color": 0
+    },
+    {
+      "i": 2,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Галя",
+      "away": false,
+      "auto": false,
+      "pos": "m6",
+      "gleks": 0,
+      "coins": 11,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 2,
+      "color": 2
+    },
+    {
+      "i": 3,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Грицько",
+      "away": false,
+      "auto": false,
+      "pos": "l3",
+      "gleks": 0,
+      "coins": 18,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 3
+    },
+    {
+      "i": 1,
+      "nick": "Петро",
+      "bot": false,
+      "name": "Петро",
+      "away": false,
+      "auto": true,
+      "pos": "m8",
+      "gleks": 0,
+      "coins": 0,
+      "items": [
+        "fork"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 4,
+      "color": 1
+    }
+  ],
+  "cur": null,
+  "stand": "l2",
+  "price": 20,
+  "bank": 0,
+  "duelDone": false,
+  "gates": null,
+  "shops": null,
+  "prompt": null,
+  "aim": null,
+  "anim": {
+    "seq": 24,
+    "kind": "roulette",
+    "who": 1,
+    "path": null,
+    "dice": null,
+    "key": "icefloe",
+    "to": null,
+    "at": "2026-09-10T12:01:42.4400000+00:00",
+    "ms": 1500
+  },
+  "fx": null,
+  "emo": [],
+  "pick": {
+    "chooser": 1,
+    "options": [
+      "icefloe"
+    ],
+    "chosen": "icefloe",
+    "duel": false
+  },
+  "mg": {
+    "id": "icefloe",
+    "title": "Крижина",
+    "howto": "Виштовхни всіх із крижини й не шубовсни сам: хто довше протримався — той вище. Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка; на телефоні — стік і кнопки",
+    "repeat": false,
+    "x2": false,
+    "duel": null,
+    "stake": 0,
+    "honor": false,
+    "bets": {},
+    "ready": [],
+    "seats": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "names": [
+      "Оля",
+      "Петро",
+      "\uD83E\uDD16 Галя",
+      "\uD83E\uDD16 Грицько"
+    ],
+    "nicks": [
+      "Оля",
+      "Петро",
+      null,
+      null
+    ],
+    "seatNames": [
+      "синій",
+      "рудий",
+      "зелений",
+      "жовтий"
+    ],
+    "sub": 0,
+    "status": "playing",
+    "view": {
+      "phase": "ready",
+      "round": 1,
+      "need": 1,
+      "roundsMax": 12,
+      "teams": null,
+      "roundTeam": -1,
+      "wins": [
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null
+      ],
+      "pushouts": [
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null
+      ],
+      "ice": {
+        "r0": 950,
+        "v": [
+          876,
+          899,
+          1025,
+          904,
+          965,
+          1003,
+          1003,
+          936,
+          986,
+          976,
+          965,
+          920,
+          909,
+          978,
+          958,
+          968,
+          1024,
+          890,
+          902,
+          884,
+          1019,
+          1010,
+          961,
+          975
+        ],
+        "iv": 1
+      },
+      "pond": 2600,
+      "shore": 1066,
+      "bank": 1103,
+      "bodyR": 60,
+      "lastRound": null,
+      "out": [],
+      "winner": null,
+      "winners": [],
+      "series": null,
+      "turn": null,
+      "botOffer": false,
+      "botWanted": false,
+      "botLvl": "normal",
+      "bot": [
+        2,
+        3
+      ],
+      "frame": {
+        "t": 0,
+        "ph": 0,
+        "left": 75,
+        "melt": 0,
+        "iv": 1,
+        "crack": null,
+        "chips": null,
+        "p": [
+          [
+            1300,
+            730,
+            0,
+            0,
+            4,
+            1,
+            0,
+            0
+          ],
+          [
+            1870,
+            1300,
+            0,
+            0,
+            8,
+            1,
+            0,
+            0
+          ],
+          [
+            1300,
+            1870,
+            0,
+            0,
+            12,
+            1,
+            0,
+            0
+          ],
+          [
+            730,
+            1300,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          null,
+          null,
+          null,
+          null
+        ],
+        "s": [],
+        "k": [],
+        "ev": []
+      }
+    },
+    "results": null,
+    "how": null
+  },
+  "lateInfo": null,
+  "final": null,
+  "say": {
+    "id": 3,
+    "text": "Петро задрімав — походжу за нього."
+  },
+  "log": null,
+  "you": {
+    "i": 0,
+    "can": [
+      "mg",
+      "here",
+      "emo"
+    ],
+    "toStand": 30,
+    "tip": false
+  }
+}

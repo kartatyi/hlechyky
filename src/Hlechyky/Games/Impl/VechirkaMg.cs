@@ -64,3 +64,63 @@ public sealed class VechirkaStubMg(ulong seed) : IMgRunner
     public string[] SeatNames() => [.. _seats.Select(s => s.ToString())];
     public MinigameResult? Result { get; private set; }
 }
+
+/// <summary>
+/// Батьківський контекст підгри (§8.3): «місця батька» — індекси P, а не крісла кімнати. Так повернення на інше
+/// крісло й двоє, що повернулись навхрест, не плутають підгру; Log підгри не йде в Журнал сайту (вечірка пише свій
+/// рядок підсумку); репліки підгри — через обмежувач вечірки.
+/// </summary>
+public sealed class VechirkaMgCtx(Vechirka game, int seed) : IRoomContext
+{
+    readonly Random _rng = new(seed);
+    IRoomContext Room => game.Ctx;
+    /// <summary>Скільки рядків Журналу підгра хотіла написати (тести: жоден не протік).</summary>
+    public int Swallowed { get; private set; }
+    public int Muted { get; private set; }
+
+    public string RoomId => Room.RoomId;
+    public int Players => game.Core?.N ?? 0;
+    public int Round => Room.Round;
+    public Random Rng => _rng;
+    public IClock Clock => Room.Clock;
+    public IReadOnlyDictionary<string, string> Options => Room.Options;
+    public IServiceProvider Services => Room.Services;
+    public string? NickOf(int seat) => game.Watching(seat) ? null : game.NickAt(seat);
+    public bool Seated(int seat) => NickOf(seat) is not null;
+    public int? HostSeat => Room.HostSeat is { } h ? game.POf(h) : null;
+    public void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null, string? verdict = null) => Muted++;
+    public void Log(string text) => Swallowed++;
+    public void Say(string text) => game.SubSay(text);
+    public void Score(int seat, double value, int? attempts = null) => Muted++;
+    public void Award(int seat, int shards, string reason) => Muted++;
+}
+
+/// <summary>Справжня міні-гра на <see cref="MinigameHost"/> каркаса (S1.4).</summary>
+public sealed class VechirkaHostMg(Vechirka game) : IMgRunner
+{
+    MinigameHost? _host;
+    public VechirkaMgCtx? Ctx { get; private set; }
+    public MinigameHost? Host => _host;
+
+    public bool Begin(string id, int[] pSeats, bool[] bot, LiveBots.Level level)
+    {
+        var seed = game.Core?.Rand(int.MaxValue) ?? 1;
+        Ctx = new VechirkaMgCtx(game, seed);
+        var seats = pSeats.Select((p, k) => bot[k] ? PartySeat.BotAt(p) : PartySeat.Human(p)).ToArray();
+        _host = MinigameHost.Create(id, Ctx, seats, level);
+        if (_host is null) return false;
+        _host.Start();
+        return true;
+    }
+
+    public string Title => _host?.Title ?? "";
+    public string Howto => _host?.Howto ?? "";
+    public int CapMs => _host?.CapMs ?? 0;
+    public ActResult Act(int p, string action, JsonElement payload) => _host?.Act(p, action, payload) ?? ActResult.Fail("Міні-гри нема");
+    public TickResult Tick() => _host?.Tick() ?? TickResult.None;
+    public object? View(int? p) => _host?.View(p);
+    public object? Frame() => _host?.Frame();
+    public string[] Names() => _host?.Names() ?? [];
+    public string[] SeatNames() => _host?.SeatNames() ?? [];
+    public MinigameResult? Result => _host?.Result;
+}
