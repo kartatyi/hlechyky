@@ -1,4 +1,6 @@
-/* 🎙 Посиденьки — голосовий чат (web/voice.js). Кнопка в шапці й панель під нею (на телефоні — шторка знизу). */
+/* 🎙 Посиденьки — голосовий чат (web/voice.js).
+   Кнопка в шапці; поки ти в голосі — смуга в самій шапці (вона липка, тож смугу видно на будь-якій сторінці); у грі на
+   весь екран — кружечок, що тягається; трансляція — сцена під смугою або віконце поверх сторінки; панель — подробиці. */
 
 header .vcbtn { position: relative; padding: 6px 9px; font-size: 1.05em; }
 header .vcbtn .badge { position: absolute; top: -4px; right: -4px; }
@@ -7,8 +9,127 @@ header .vcbtn.on { background: color-mix(in srgb, var(--ok) 28%, var(--panel2));
 header .vcbtn.on.muted { background: color-mix(in srgb, var(--danger) 22%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
 header .vcbtn.talk { box-shadow: 0 0 0 2px var(--ok); }
 
+/* Липкі речі під шапкою стоять на її справжній висоті (voice.js пише --hdr-h): смуга й сцена роблять шапку вищою. */
+.chat { top: calc(var(--hdr-h, 56px) + 16px); height: calc(100vh - var(--hdr-h, 56px) - 44px); }
+@media (min-width: 901px) { .libmenu { top: calc(var(--hdr-h, 56px) + 16px); } }
+@media (max-width: 900px) { .chat { top: auto; height: calc(100dvh - var(--hdr-h, 60px) - var(--tabs-h) - var(--mini-h) - 24px); } }
+
+/* ---------- кружечок людини: аватарка з Лавки + кільце, що дихає голосом ---------- */
+.vc-face { --lv: 0; position: relative; display: inline-grid; place-items: center; flex: none; border-radius: 50%; }
+.vc-face .ava { width: 100%; height: 100%; }
+.vc-face::after {
+  content: ''; position: absolute; inset: -3px; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--ok), 0 0 calc(4px + var(--lv) * 12px) calc(var(--lv) * 3px) color-mix(in srgb, var(--ok) 70%, transparent);
+  opacity: 0; transform: scale(calc(.92 + var(--lv) * .12)); transition: opacity .12s, transform .08s linear;
+}
+.vc-face.talk::after { opacity: 1; }
+/* мікрофон вимкнено / нікого не чує — маленька позначка в куточку */
+.vc-face.mute::before, .vc-face.deaf::before {
+  position: absolute; right: -4px; bottom: -3px; z-index: 1; display: grid; place-items: center;
+  width: 15px; height: 15px; border-radius: 50%; font-size: 9px; line-height: 1;
+  background: var(--danger); box-shadow: 0 0 0 2px var(--bg);
+}
+.vc-face.mute::before { content: '🔇'; }
+.vc-face.deaf::before { content: '🙉'; }
+
+/* ---------- смуга в шапці ---------- */
+header:has(> #vcStrip:not([hidden])), header:has(> .vcscreen.stage:not([hidden])) { flex-wrap: wrap; row-gap: 0; }
+.vcstrip { order: 100; flex: 1 0 100%; margin: 8px -16px -8px; padding: 6px 16px; border-top: 1px solid var(--line); min-width: 0; }
+.vcstrip[hidden] { display: none; }
+.vcstrip.in { background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 13%, transparent), transparent 70%); }
+.vcstrip.hint { padding-top: 5px; padding-bottom: 5px; background: color-mix(in srgb, var(--panel) 60%, transparent); }
+.vcstrip.joining { color: var(--muted); }
+.vcs-row { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 1568px; margin: 0 auto; }
+.vcs-row > * { flex: none; }
+.vcs-label { font-size: .92em; white-space: nowrap; }
+.vcstrip.hint .vcs-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.vcstrip.hint .vcs-label b { color: var(--text); font-weight: 600; }
+.vcs-n { color: var(--muted); }
+.vcs-room { display: flex; align-items: center; gap: 10px; padding: 3px 10px 3px 4px; border-radius: 999px; background: transparent; border-color: transparent; }
+.vcs-room:hover { background: var(--panel2); }
+.vcs-room .vcs-label { font-weight: 600; color: color-mix(in srgb, var(--ok) 75%, var(--text)); }
+.vcs-faces { display: flex; align-items: center; gap: 6px; }
+.vcs-faces .vc-face { width: 30px; height: 30px; }
+.vcs-faces.sm .vc-face { width: 22px; height: 22px; }
+.vcs-faces.sm { gap: 0; }
+.vcs-faces.sm .vc-face + .vc-face { margin-left: -6px; }
+.vcs-faces.sm .ava { box-shadow: 0 0 0 2px var(--bg); }
+.vcs-more { font-size: .82em; color: var(--muted); padding-left: 2px; }
+.vcs-talk { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88em; color: var(--ok); }
+.vcs-rule, .vcs-warn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85em; color: var(--muted); }
+.vcs-warn { color: var(--accent); }
+.vcs-sp { flex: 1 1 0; min-width: 0; }
+.vcs-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: .88em;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--text);
+}
+.vcs-pill b { color: var(--accent); font-weight: 600; }
+.vcs-pill.on { background: color-mix(in srgb, var(--accent) 30%, var(--panel2)); border-color: var(--accent2); }
+.vcs-pill.mine { padding-right: 3px; }
+.vcs-pill.mine button { padding: 2px 9px; border-radius: 999px; font-size: .95em; color: var(--accent); }
+.vcs-ctl { display: flex; align-items: center; gap: 6px; }
+.vcs-b { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50%; font-size: 1.05em; }
+.vcs-b.off { background: color-mix(in srgb, var(--danger) 26%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+.vcs-b.on { background: color-mix(in srgb, var(--accent) 26%, var(--panel2)); border-color: var(--accent2); }
+.vcs-leave { width: auto; padding: 0 14px; border-radius: 999px; font-size: .92em; font-weight: 600; color: #ffd9d9;
+  background: color-mix(in srgb, var(--danger) 42%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 70%, var(--line)); }
+.vcs-leave:hover { background: color-mix(in srgb, var(--danger) 58%, var(--panel2)); }
+.vcs-join { padding: 5px 14px; }
+.vcs-x { padding: 4px 8px; }
+/* гра на весь екран — смуги нема, є кружечок */
+body.gfull .vcstrip, body.g-imm .vcstrip { display: none; }
+
+/* ---------- кружечок у грі на весь екран ---------- */
+.vcbubble {
+  position: fixed; z-index: 58; width: 56px; height: 56px; padding: 0; border-radius: 50%; display: none; place-items: center;
+  background: color-mix(in srgb, var(--ok) 30%, var(--panel2)); border: 2px solid color-mix(in srgb, var(--ok) 70%, var(--line));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .45); touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
+}
+body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display: grid; }
+.vcbubble:active { transform: none; cursor: grabbing; }
+.vcbubble .vcb-ico { font-size: 1.45em; line-height: 1; }
+.vcbubble .vcb-n { position: absolute; right: -4px; top: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  display: grid; place-items: center; font-size: .72em; font-weight: 700; background: var(--panel3); border: 1px solid var(--line); }
+.vcbubble.muted { background: color-mix(in srgb, var(--danger) 28%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 65%, var(--line)); }
+.vcbubble.talk { box-shadow: 0 0 0 3px var(--ok), 0 0 16px color-mix(in srgb, var(--ok) 65%, transparent), 0 8px 22px rgba(0, 0, 0, .45); }
+
+/* ---------- трансляція ---------- */
+.vcscreen[hidden] { display: none; }
+.vcscreen { --vcs-h: min(56vh, 620px); position: relative; display: flex; flex-direction: column; background: #050b08; min-width: 0; }
+.vcs-bar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: .9em; }
+.vcs-who { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.vcs-bar button { padding: 4px 8px; }
+.vcs-vol { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.vcs-vol input { width: 80px; accent-color: var(--accent); }
+.vcs-body { position: relative; flex: 1 1 auto; min-height: 0; display: grid; place-items: center; }
+.vcs-video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.vcs-wait { position: absolute; margin: 0; color: var(--muted); font-size: .92em; }
+.vcs-grip, .vcs-corner { display: none; }
+/* сцена — у шапці, під смугою, на всю ширину */
+.vcscreen.stage { order: 101; flex: 1 0 100%; margin: 0 -16px -8px; border-top: 1px solid var(--line); }
+.vcscreen.stage .vcs-body { height: var(--vcs-h); }
+.vcscreen.stage .vcs-grip { display: block; height: 10px; cursor: ns-resize; touch-action: none; background: var(--panel); border-top: 1px solid var(--line); position: relative; }
+.vcscreen.stage .vcs-grip::after { content: ''; position: absolute; left: 50%; top: 3px; width: 44px; height: 4px; margin-left: -22px; border-radius: 2px; background: var(--line); }
+.vcscreen.stage .vcs-grip:hover::after { background: var(--muted); }
+/* віконце — поверх сторінки, тягається за смужку, розмір — за лівий верхній куток */
+.vcscreen.mini {
+  position: fixed; z-index: 57; border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .55);
+}
+.vcscreen.mini .vcs-bar { cursor: grab; touch-action: none; }
+.vcscreen.mini.dragging .vcs-bar { cursor: grabbing; }
+.vcscreen.mini .vcs-body { aspect-ratio: 16 / 9; }
+.vcscreen.mini .vcs-vol input { width: 56px; }
+.vcscreen.mini .vcs-corner { display: block; position: absolute; left: 0; top: 0; width: 14px; height: 14px; cursor: nwse-resize; touch-action: none; z-index: 1; }
+.vcscreen.dragging { user-select: none; }
+.vcscreen.dragging video { pointer-events: none; }
+.vcscreen:fullscreen { border: 0; border-radius: 0; }
+.vcscreen:fullscreen .vcs-body { height: auto; aspect-ratio: auto; flex: 1 1 auto; }
+.vcscreen:fullscreen .vcs-grip, .vcscreen:fullscreen .vcs-corner { display: none; }
+
+/* ---------- панель ---------- */
 .vcpanel {
-  position: fixed; z-index: 60; top: 58px; right: 16px; width: min(380px, calc(100vw - 32px));
+  position: fixed; z-index: 60; top: 58px; right: 16px; width: min(400px, calc(100vw - 32px));
   max-height: calc(100vh - 80px); overflow: auto; overscroll-behavior: contain;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   box-shadow: 0 16px 40px rgba(0, 0, 0, .45); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px;
@@ -18,39 +139,50 @@ header .vcbtn.talk { box-shadow: 0 0 0 2px var(--ok); }
 .vc-head { display: flex; align-items: center; gap: 8px; }
 .vc-head b { flex: 1; font-family: var(--display); font-size: 1.1em; }
 .vc-x { padding: 4px 8px; }
-.vc-join { width: 100%; padding: 11px 14px; font-size: 1.02em; }
+.vc-join { width: 100%; justify-content: center; padding: 11px 14px; font-size: 1.02em; }
+.vc-who { display: flex; align-items: center; gap: 10px; }
 .vc-who b { font-weight: 600; }
+.vc-who .vcs-faces .vc-face { width: 26px; height: 26px; }
 
-.vc-list { display: flex; flex-direction: column; gap: 4px; }
+.vc-list { display: flex; flex-direction: column; gap: 2px; }
 .vc-alone { padding: 2px 4px; }
 .vc-m {
-  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: "ava nick marks" "ava state vol";
-  align-items: center; column-gap: 8px; padding: 5px 6px; border-radius: 10px;
+  display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; grid-template-areas: "ava nick marks" "ava state vol";
+  align-items: center; column-gap: 10px; row-gap: 1px; padding: 6px 8px; border-radius: 12px;
 }
 .vc-m:hover { background: var(--panel2); }
-.vc-ava {
-  grid-area: ava; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: .9em;
-  background: hsl(var(--h, 200) 45% 32%); color: hsl(var(--h, 200) 80% 88%); box-shadow: 0 0 0 2px transparent; transition: box-shadow .12s;
-}
-.vc-m.talk .vc-ava { box-shadow: 0 0 0 2px var(--ok), 0 0 10px color-mix(in srgb, var(--ok) 60%, transparent); }
+.vc-m.talk { background: color-mix(in srgb, var(--ok) 9%, transparent); }
+.vc-m .vc-face { grid-area: ava; width: 38px; height: 38px; }
+.vc-m .vc-face .ava { font-size: 1em; }
 .vc-nick { grid-area: nick; background: none; border: 0; padding: 0; text-align: left; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .vc-nick:hover { background: none; text-decoration: underline; }
 .vc-marks { grid-area: marks; display: flex; gap: 6px; align-items: center; font-size: .85em; }
+.vc-marks .vc-watch { padding: 3px 9px; font-size: .95em; }
+.vc-marks .vc-watch.on { border-color: var(--accent2); color: var(--accent); }
 .vc-rule { color: var(--muted); font-size: .9em; white-space: nowrap; }
-.vc-state { grid-area: state; font-size: .78em; color: var(--muted); min-height: 1em; }
+.vc-state { grid-area: state; font-size: .78em; color: var(--muted); min-height: 1em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vc-state.ok { color: color-mix(in srgb, var(--ok) 70%, var(--muted)); }
 .vc-state.bad { color: var(--danger); cursor: help; }
-.vc-vol { grid-area: vol; width: 96px; accent-color: var(--accent); }
+.vc-vol { grid-area: vol; display: flex; align-items: center; gap: 4px; font-size: .8em; color: var(--muted); }
+.vc-vol input { width: 92px; accent-color: var(--accent); }
 .vc-m.me { grid-template-areas: "ava nick marks" "ava state state"; }
 
 .vc-ctl { display: flex; flex-wrap: wrap; gap: 6px; }
 .vc-b { padding: 7px 10px; font-size: .92em; }
 .vc-b.off { background: color-mix(in srgb, var(--danger) 20%, var(--panel2)); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.vc-b.on { background: color-mix(in srgb, var(--accent) 20%, var(--panel2)); border-color: var(--accent2); }
 .vc-leave { margin-left: auto; }
 .vc-moves { display: flex; flex-wrap: wrap; gap: 6px; }
 .vc-hold {
-  width: 100%; padding: 16px 12px; font-weight: 600; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  width: 100%; justify-content: center; padding: 16px 12px; font-weight: 600; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 .vc-hold.on { background: color-mix(in srgb, var(--ok) 35%, var(--panel2)); border-color: var(--ok); }
+
+/* перевірка мікрофона */
+.vc-test { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--line); margin: 4px 0 8px; }
+.vc-test .vc-row { margin: 0; }
+.vc-testb { align-self: flex-start; }
+.vc-testb.on { background: color-mix(in srgb, var(--ok) 28%, var(--panel2)); border-color: var(--ok); }
 
 .vc-set { border-top: 1px solid var(--line); padding-top: 8px; }
 .vc-set summary { cursor: pointer; color: var(--muted); font-size: .92em; }
@@ -59,7 +191,7 @@ header .vcbtn.talk { box-shadow: 0 0 0 2px var(--ok); }
 .vc-row select { max-width: 60%; font: inherit; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 5px 6px; }
 .vc-row input[type=range] { flex: 1; max-width: 60%; accent-color: var(--accent); }
 .vc-check { justify-content: flex-start; }
-.vc-meter { position: relative; height: 8px; border-radius: 4px; background: var(--bg2); overflow: hidden; margin: 2px 0 8px; }
+.vc-meter { position: relative; height: 10px; border-radius: 5px; background: var(--panel); overflow: hidden; }
 .vc-meter .vc-lvl { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--muted); transition: width .06s linear; }
 .vc-meter .vc-lvl.open { background: var(--ok); }
 .vc-meter .vc-thr { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--accent); }
@@ -73,7 +205,27 @@ header .vcbtn.talk { box-shadow: 0 0 0 2px var(--ok); }
     top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 78vh; border-radius: var(--radius) var(--radius) 0 0;
     padding-bottom: calc(14px + env(safe-area-inset-bottom));
   }
-  .vc-vol { width: 84px; }
+  .vc-vol input { width: 78px; }
+  /* смуга на телефоні: кімната — лише кружечки, керування — мікрофон, ⚙ і вийти */
+  .vcstrip { margin: 8px -12px -8px; padding: 5px 12px; }
+  .vcs-row { gap: 8px; }
+  .vcs-room .vcs-label, .vcs-talk, .vcs-rule, .vcs-share, .vcs-b[data-act=deaf] { display: none; }
+  .vcs-room { padding: 2px; }
+  .vcs-faces .vc-face { width: 28px; height: 28px; }
+  .vcs-row > .vcs-pill { flex: 0 1 auto; min-width: 0; }
+  .vcs-pill { overflow: hidden; white-space: nowrap; padding: 4px 9px; }
+  .vcs-pill .vcs-pw { display: none; }
+  .vcs-pill .vcs-pn { min-width: 0; max-width: 22vw; overflow: hidden; text-overflow: ellipsis; }
+  .vcs-pill.on b, .vcs-pill:not(.on):not(.mine) b { display: none; }
+  .vcs-faces .vc-face:nth-child(n + 5) { display: none; }
+  .vcs-leave span { display: none; }
+  .vcs-leave { width: 36px; padding: 0; border-radius: 50%; }
+  .vcstrip.hint .vcs-label { font-size: .85em; }
+  .vcscreen.stage { margin: 0 -12px -8px; }
+  .vcscreen.stage .vcs-body { height: auto; aspect-ratio: 16 / 9; max-height: 45vh; }
+  .vcscreen.stage .vcs-grip { display: none; }
+  .vcscreen .vcs-vol { display: none; }
+  .vcbubble { width: 50px; height: 50px; }
 }
 
 /* Картка столу: 🎙 на тих, хто в голосі столу, кільце — хто говорить, і кнопка голосу (web/voice.js, decorate). */
