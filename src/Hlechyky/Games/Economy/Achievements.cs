@@ -164,6 +164,10 @@ public static class AchievementCatalog
         new("geo-20k",      "Знавець України", "20 000 очок за партію «Де це?» з п'яти й більше раундів", "🗺", 30),
         // реверсі — гра просить сама через Ctx.Award(seat, 0, "ach:reversi-wipe")
         new("reversi-wipe", "Витер дошку",     "Перемога в реверсі, коли в суперника не лишилось жодної фішки", "⚪", 20),
+        // вечірка: hostyntsi — гра просить сама через Ctx.Award(seat, 0, "ach:hostyntsi-…")
+        new("hostyntsi-noburn", "Без опіків",      "Партія «Гостинців» без жодного жару — і десять хапів чи більше", "🧤", 15),
+        new("hostyntsi-cat5",   "Ризикан",         "Кіт у мішку дав +5 у «Гостинцях»", "🐈", 15),
+        new("hostyntsi-gold3",  "Золотий кошик",   "Три золоті глеки в одному кошику «Гостинців»", "🏺", 20),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
