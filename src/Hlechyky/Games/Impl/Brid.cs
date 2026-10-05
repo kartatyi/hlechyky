@@ -31,7 +31,7 @@ public sealed class Brid : Game, IPartyMinigame
     public override GameInfo Info { get; } = new(
         "brid", "Брід", "брід", GameGroup.Live, 1, Seats, TickMs: BridCore.TickMs,
         Start: StartMode.ByHost, Options: [LiveBots.LevelOption],
-        Hint: "Перейди річку по каменях, що ховаються під водою: ступив не туди — шубовсть і назад на берег. Мокрі сліди сохнуть за 5 с — підглядай за сміливими. Самому — з 🤖 ботами");
+        Hint: "Перейди річку по каменях, що ховаються під водою: ступив не туди — шубовсть і назад на берег. Мокрі сліди сохнуть за 5 с — підглядай за сміливими.");
 
     readonly SoloBot _solo = new();
     int[] _bots = [];
@@ -278,10 +278,14 @@ public sealed class Brid : Game, IPartyMinigame
             Ctx.Finish(winners, Journal(winners, playing), scores);
             return TickResult.Both;
         }
+        // Перемога — лише коли людина сама вгорі; нарівні з ботом — нічия, а не «🏆» (як у CrowdEye).
         var people = winners.Where(Ctx.Seated).ToArray();
-        var verdict = people.Length > 0 ? $"🏆 {Ctx.NickOf(people[0])} — перемога над {LiveBots.Of(_solo.Level)}и ботами"
+        var lvl = LiveBots.Of(_solo.Level);
+        int[] real = winners.Length == 1 && people.Length == 1 ? people : [];
+        var verdict = real.Length == 1 ? $"🏆 {Ctx.NickOf(real[0])} — перемога над {lvl}и ботами"
+            : people.Length > 0 ? $"🤝 {Ctx.NickOf(people[0])} нарівні з {lvl}и ботами"
             : winners.Length > 0 ? $"🤖 Брід узяв {Name(winners[0])}" : null;
-        Ctx.Finish(people, Journal(winners, playing), scores, verdict);
+        Ctx.Finish(real, Journal(winners, playing), scores, verdict);
         return TickResult.Both;
     }
 

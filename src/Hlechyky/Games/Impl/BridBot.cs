@@ -18,7 +18,7 @@ public sealed class BridBot(LiveBots.Level level, int phase)
     object? _ford;
     int[] _seen = [];
     int _next;
-    int _waitNode = -1, _waitUntil;
+    int _waitNode = -1, _waitUntil, _falls;
     // Пошук ушир без алокацій: вузли — берег (ряд −1) і камені, (Rows + 1)·Cols ≤ 14·7.
     int[] _dist = [], _first = [], _queue = [];
 
@@ -60,6 +60,8 @@ public sealed class BridBot(LiveBots.Level level, int phase)
     {
         Ensure(c);
         var me = c.Runners[seat];
+        // Шубовснув — після берега знову можна почекати лідера на тому самому камені.
+        if (me.Falls != _falls) { _falls = me.Falls; _waitNode = -1; }
         if (!me.Standing) return -1;
         if (_next == 0) _next = c.T + level switch { LiveBots.Level.Easy => rng.Next(10, 21), LiveBots.Level.Normal => rng.Next(4, 11), _ => rng.Next(2, 7) };
         if (c.T < _next) return -1;

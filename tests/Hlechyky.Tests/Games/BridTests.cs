@@ -532,6 +532,21 @@ public class BridTests
     }
 
     [Fact]
+    public void Party_only_idle_humans_end_by_round_time_not_by_the_cap()
+    {
+        // Ніхто не ступив — раунд сам кінчається за 60 с (+ відлік і пауза), а не висить до стелі вечірки.
+        var h = new PartyHarness("brid", humans: 2, bots: 0, seed: 9);
+        h.Start();
+        var r = h.RunToEnd();
+        Assert.NotNull(r);
+        Assert.Equal(MinigameEnd.Finished, r!.How);
+        Assert.Equal(2, r.Scores.Count);
+        Assert.True(h.Clock.UtcNow - h.StartedAt <= TimeSpan.FromSeconds(66));
+        Assert.True(h.Clock.UtcNow - h.StartedAt < TimeSpan.FromMilliseconds(h.Host.CapMs));
+        Assert.Empty(h.Parent.Says);
+    }
+
+    [Fact]
     public void Party_human_who_knows_the_ford_is_on_top_and_idle_human_does_not_stall()
     {
         var h = new PartyHarness("brid", humans: 2, bots: 3, level: LiveBots.Level.Hard, seed: 3);

@@ -927,10 +927,17 @@
     const hudH = wide ? 0 : (hud ? hud.offsetHeight + 6 : 34);
     // Над полем — шапка сайту й картки (міряємо, де root у документі), під ним — рядок статусу картки (~44 px).
     const rt = root.getBoundingClientRect().top + window.scrollY;
-    const above = rt > F.top && rt < F.h * 0.6 ? rt : F.top + (F.imm ? 10 : 100);
+    let above;
+    if (st.ctx && st.ctx.embedded) {
+      // У вечірці над нами чужа шапка (дошка, картка правил) — не вгадуємо «100 px сайту», а беремо, де справді
+      // стоїть наш root; лише не віддаємо шапці більше половини екрана, щоб поле не стало крихітним.
+      above = Math.min(Math.max(rt, F.top), F.top + F.h * 0.5);
+    } else above = rt > F.top && rt < F.h * 0.6 ? rt : F.top + (F.imm ? 10 : 100);
     const maxH = Math.max(300, F.h - above - F.dock - hudH - 44);
     const room = wide ? rw - 240 : rw;
-    const w = Math.max(Math.min(rw, 240), Math.floor(Math.min(room, maxH * (cv.w / cv.h), 620)));
+    // Вузький екран: камінь не нижчий за ~42 px (палець) — хай краще сторінка трохи прокрутиться, ніж мазати.
+    const minW = rw < 480 ? Math.ceil(42 * cv.w / SH) : 240;
+    const w = Math.max(Math.min(rw, minW), Math.floor(Math.min(room, maxH * (cv.w / cv.h), 620)));
     cv.el.style.width = w + 'px';
     cv.el.style.maxWidth = '100%';
     st.dirty = true;
@@ -974,7 +981,7 @@
     let clock = '';
     if (f && !lobby && ctx.playing) {
       const secs = Math.ceil(((f.left || 0) * tickMs(st)) / 1000);
-      if (f.ph === 1) clock = '⏱ 0:' + String(secs).padStart(2, '0');
+      if (f.ph === 1) clock = '⏱ ' + Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
       else if (f.ph === 0) clock = '⏳ ' + secs;
       if (!v.party && v.rounds > 1) clock += ' · раунд ' + (v.round || 1) + '/' + v.rounds;
     }
