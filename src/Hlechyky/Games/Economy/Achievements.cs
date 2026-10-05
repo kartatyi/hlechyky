@@ -164,6 +164,10 @@ public static class AchievementCatalog
         new("geo-20k",      "Знавець України", "20 000 очок за партію «Де це?» з п'яти й більше раундів", "🗺", 30),
         // реверсі — гра просить сама через Ctx.Award(seat, 0, "ach:reversi-wipe")
         new("reversi-wipe", "Витер дошку",     "Перемога в реверсі, коли в суперника не лишилось жодної фішки", "⚪", 20),
+        // хвиля «Вечірка»: bakhne — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("bakhne-elephant", "Слон пам'ятає", "«Куди бахне»: пройшов раунд на 10 кроків без жодного горщика", "🐘", 20),
+        new("bakhne-sober",    "Тверезий",      "«Куди бахне»: раунд «Глек напився» без жодної втрати", "🥒", 15),
+        new("bakhne-clean",    "Незайманий",    "Виграв «Куди бахне», не втративши жодного серця", "🛡", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
