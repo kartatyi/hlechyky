@@ -1669,7 +1669,7 @@
   /// гри став під шапку сайту: тоді мапа й кнопки вміщаються разом. Якщо й так усе видно — не чіпаємо.
   function fitPhone(st) {
     const ctx = st.ctx, padEl = st.padEl;
-    if (!ctx || !ctx.mine || !ctx.playing || !ctx.room || !st.hudEl || !padEl || !HGames.ui.coarse()) return;
+    if (!ctx || ctx.embedded || !ctx.mine || !ctx.playing || !ctx.room || !st.hudEl || !padEl || !HGames.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     if (st.fitFor === key) return;
     const a = st.hudEl.getBoundingClientRect(), b = padEl.getBoundingClientRect();

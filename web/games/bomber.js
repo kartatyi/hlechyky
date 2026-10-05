@@ -835,7 +835,7 @@
   /// партія пішла, прокручуємо сторінку так, щоб рядок гравців став під шапку сайту: тоді поле й кнопки
   /// вміщаються разом. Якщо й так усе видно — не чіпаємо.
   function fitPhone(root, st, ctx, hudSel, padSel) {
-    if (!ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
+    if (ctx.embedded || !ctx.mine || !ctx.playing || !ctx.room || !HGames.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     // Перші ~2 с після першого заміру ще доганяємо: розкладка доростає (рядок гравців, стрічка), і один замір
     // на старті прокручував на 4 px замість 28 — ↓ лишалась під меню. Далі — не чіпаємо, хай людина гортає сама.
