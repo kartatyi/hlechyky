@@ -167,8 +167,8 @@ public sealed partial class Clicker : Game
     public const double InspireMult = 25;
     public static readonly TimeSpan InspireFor = TimeSpan.FromSeconds(20);
     /// <summary>
-    /// Скільки додає ярмаркові й натхненню полиця майстра, що стала посеред них (30.09): бонус її не чекає, а
-    /// секунди, з'їдені полицею, вертаються. Лише раз на полицю — за промах і нову полицю нічого.
+    /// Скільки додає ярмаркові й натхненню полиця майстра, що стала посеред них (30.09). Лише раз на полицю — за
+    /// промах і нову полицю нічого. З 05.10 бафи під полицею ще й стоять (<c>EyeHold</c>), тож це — подарунок зверху.
     /// </summary>
     public static readonly TimeSpan EyeBonusExtra = TimeSpan.FromSeconds(10);
     /// <summary>
@@ -589,6 +589,12 @@ public sealed partial class Clicker : Game
     GoldenRow _golden = new(default, default, GoldenKind.Merchant, 0, 0);
     DateTimeOffset _fairUntil;
     DateTimeOffset _inspireUntil;
+    /// <summary>
+    /// Залишок ярмарку й натхнення, поки висить полиця Ока майстра (05.10, записка #18): бафи на цей час стоять, а не
+    /// тануть. Нуль — нічого не тримаємо. Див. <see cref="EyeHold"/> і <see cref="EyeRelease"/>.
+    /// </summary>
+    TimeSpan _fairHeld;
+    TimeSpan _inspireHeld;
     int _caught;
     /// <summary>Усі клейма: за глеки плюс <see cref="_stampsExtra"/>. Бонус, секрети й стеля черепків рахуються від них.
     /// <c>long</c> з десятого оновлення: <c>int</c> переповнювався б уже на 4,6·10²⁷ глеків за весь час.</summary>
@@ -923,6 +929,8 @@ public sealed partial class Clicker : Game
         _tokensAt = _lastSync;
         _fairUntil = default;
         _inspireUntil = default;
+        _fairHeld = TimeSpan.Zero;
+        _inspireHeld = TimeSpan.Zero;
         _caught = 0;
         _stamps = 0;
         _stampsExtra = 0;
@@ -1071,6 +1079,10 @@ public sealed partial class Clicker : Game
             if (wind > paid) wind = paid;
             Earn(PassiveBase * (paid.TotalSeconds + (FairMultNow - 1) * fair.TotalSeconds + (WindMult - 1) * wind.TotalSeconds));
         }
+        // Бафи чекають лише під полицею майстра. Полиці нема (зіпсований ключ у базі) — ідуть далі від «зараз», як
+        // ярмарок і мусить: з дії, після синхронізації (див. вище).
+        if ((_fairHeld > TimeSpan.Zero || _inspireHeld > TimeSpan.Zero) && (!_guard.Pending || _guard.Locked(now)))
+            EyeRelease(now);
         // Утік — наступний. Від «зараз», а не від кінця старого: хто повернувся за добу, не мусить
         // перебирати пропущені глеки, щоб дійти до сьогоднішнього.
         var asked = _guard.Pending || _guard.Locked(now);
@@ -1245,7 +1257,8 @@ public sealed partial class Clicker : Game
     /// Що на сцені зараз коштує гравцеві секунд: розписний глек, глек у польоті, бафи села й три випадковості
     /// дев'ятого оновлення. Поки триває хоч одне — Око майстра не перебиває (§A.2): полиця з'їдала б саме ті
     /// секунди, заради яких гравець і сидить біля кола. Ярмарок і натхнення з 30.09 полицю не тримають — вона їх
-    /// подовжує (<see cref="EyeBonusExtra"/>): ярмарок на хвилину з гаком ховав майстра надто часто.
+    /// подовжує (<see cref="EyeBonusExtra"/>): ярмарок на хвилину з гаком ховав майстра надто часто. З 05.10 вони під
+    /// полицею ще й стоять, а не тануть (<see cref="EyeHold"/>).
     /// </summary>
     bool BonusOn(DateTimeOffset now) =>
         FairBuffOn(now)
@@ -1256,30 +1269,52 @@ public sealed partial class Clicker : Game
     /// <summary>Глек з полиці летить (разом із запасом на пінг): тут майстер не питає навіть через підозру (30.09).</summary>
     bool FallFlying(DateTimeOffset now) => now >= _fall.At - EarlyGrace && now <= _fall.Until + CatchGrace;
 
-    /// <summary>Звичайна перевірка майстра — і ярмаркові з натхненням, що саме тривають, секунди назад.</summary>
+    /// <summary>Звичайна перевірка майстра — ярмарок і натхнення, що саме тривають, стають чекати відповіді.</summary>
     string EyeCheck(DateTimeOffset now)
     {
         _guard.Check();
-        return EyeExtend(now);
+        return EyeHold(now);
     }
 
-    /// <summary>Полиця через підозрілий почерк — так само з секундами назад ярмаркові й натхненню.</summary>
+    /// <summary>Полиця через підозрілий почерк — так само бафи чекають.</summary>
     void EyeSuspect(string why, DateTimeOffset now)
     {
         _guard.Suspect(why);
-        EyeExtend(now);
+        EyeHold(now);
     }
 
     /// <summary>
-    /// Полиця щойно стала: ярмарок і натхнення, що тривають, стоять довше на <see cref="EyeBonusExtra"/>. Порожньо —
-    /// нічого не тривало, інакше хвостик для тосту.
+    /// Полиця щойно стала: ярмарок і натхнення, що тривають, стоять, доки гончар не відповість (05.10, записка #18).
+    /// До того вони танули під полицею: натхнення — двадцять секунд, полиця з кнопкою й пошуком глечиків — стільки ж,
+    /// і після «кивнув» бафа вже не було. Тепер залишок лежить окремо (<see cref="_fairHeld"/>), а «до коли» стає
+    /// «зараз» — тож пасив під полицею йде без ×7 (інакше полицю вигідно було б не розв'язувати зовсім), а після
+    /// відповіді баф іде далі з того самого залишку. Плюс <see cref="EyeBonusExtra"/> — правило 30.09, раз на полицю.
+    /// Порожньо — нічого не тривало, інакше хвостик для тосту.
     /// </summary>
-    string EyeExtend(DateTimeOffset now)
+    string EyeHold(DateTimeOffset now)
     {
         var what = new List<string>(2);
-        if (_fairUntil > now) { _fairUntil += EyeBonusExtra; what.Add("🎪"); }
-        if (_inspireUntil > now) { _inspireUntil += EyeBonusExtra; what.Add("✨"); }
-        return what.Count == 0 ? "" : $" ({string.Join(" і ", what)} +{EyeBonusExtra.TotalSeconds:0} с)";
+        if (_fairUntil > now) { _fairHeld += _fairUntil - now + EyeBonusExtra; _fairUntil = now; what.Add("🎪"); }
+        if (_inspireUntil > now) { _inspireHeld += _inspireUntil - now + EyeBonusExtra; _inspireUntil = now; what.Add("✨"); }
+        return what.Count == 0 ? ""
+            : $" ({string.Join(" і ", what)} {(what.Count > 1 ? "чекають" : "чекає")}, +{EyeBonusExtra.TotalSeconds:0} с)";
+    }
+
+    /// <summary>
+    /// Полицю пройдено — бафи йдуть далі з того самого залишку. Так само й на паузі за три промахи: пауза — кара,
+    /// під нею бафи тануть, як і танули, але з того, що лишалось, а не з нуля.
+    /// </summary>
+    /// <summary>Секунди, що чекають, зі збереження. Стеля — година: довше жоден баф не триває, решта — правлена база.</summary>
+    static TimeSpan HeldOf(double seconds) =>
+        double.IsFinite(seconds) && seconds > 0 ? TimeSpan.FromSeconds(Math.Min(seconds, 3600)) : TimeSpan.Zero;
+
+    void EyeRelease(DateTimeOffset now)
+    {
+        // Новий баф під полицею не ловиться (catch чекає відповіді), але якщо раптом є — довший із двох, як у catch.
+        if (_fairHeld > TimeSpan.Zero && now + _fairHeld > _fairUntil) _fairUntil = now + _fairHeld;
+        if (_inspireHeld > TimeSpan.Zero && now + _inspireHeld > _inspireUntil) _inspireUntil = now + _inspireHeld;
+        _fairHeld = TimeSpan.Zero;
+        _inspireHeld = TimeSpan.Zero;
     }
 
     /// <summary>Скільки з проміжку [from, to] припало на вікно події.</summary>
@@ -1363,7 +1398,10 @@ public sealed partial class Clicker : Game
         // Платня — за зараховані кліки від минулої полиці (Share), а не за спійманих котів і глеків: інакше ловець
         // із чорною глиною доїв би майстра, не торкаючись кола (рецензія v9).
         var gain = calm ? ToPots(EyeGain * _guard.Share * (missed ? ClickerGuard.MissedShare : 1)) : 0;
-        if (_guard.Answer(taps, now, Ctx.Rng) != ClickerGuard.Verdict.Passed) return ActResult.Done;
+        var verdict = _guard.Answer(taps, now, Ctx.Rng);
+        // Промах — нова полиця, бафи чекають далі; пройшов чи коло стало на паузу — бафи йдуть з того самого залишку.
+        if (verdict != ClickerGuard.Verdict.Wrong) EyeRelease(now);
+        if (verdict != ClickerGuard.Verdict.Passed) return ActResult.Done;
 
         // Проспаний під полицею глек чи розписний вертаємо: гравець не мусить платити за чесність (§A.2).
         if (_goldenSlept) { _goldenSlept = false; ScheduleGolden(now); }
@@ -2109,9 +2147,11 @@ public sealed partial class Clicker : Game
             golden = new { at = _golden.At, until = _golden.Until, x = _golden.X, y = _golden.Y },
             caught = _caught,
             // span — скільки триває весь баф (секунди, з «Довгим ярмарком» удвічі): смужка під плашкою тане від цієї частки.
-            fair = new { until = _fairUntil, mult = FairMultNow, span = BuffLonger(FairFor).TotalSeconds },
+            // held — секунди, що чекають, поки висить полиця Ока майстра (05.10): плашка стоїть, а не зникає.
+            fair = new { until = _fairUntil, mult = FairMultNow, span = BuffLonger(FairFor).TotalSeconds, held = _fairHeld.TotalSeconds },
             // share — ті самі три відсотки пасиву, що натхнення кладе в кожен клік: клієнт мусить рахувати так само.
-            inspire = new { until = _inspireUntil, mult = InspireMult, share = InspireShare, span = BuffLonger(InspireFor).TotalSeconds },
+            inspire = new { until = _inspireUntil, mult = InspireMult, share = InspireShare, span = BuffLonger(InspireFor).TotalSeconds,
+                held = _inspireHeld.TotalSeconds },
             allMult = all,
             stamps = _stamps,
             stampsFree = FreeStamps,
@@ -2266,7 +2306,9 @@ public sealed partial class Clicker : Game
         // Яку грошову церемонію гончар бачив (v10 §6). Старе збереження — жодної.
         int CoinSeen = 0,
         // Одинадцяте оновлення: Толока й рівні родових реліквій. Старе збереження — «ще не було».
-        TolokaRow? Toloka = null, Dictionary<string, int>? Relics = null);
+        TolokaRow? Toloka = null, Dictionary<string, int>? Relics = null,
+        // Секунди ярмарку й натхнення, що чекають відповіді майстрові (05.10). Старе збереження — нічого не чекає.
+        double FairHeld = 0, double InspireHeld = 0);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2279,7 +2321,8 @@ public sealed partial class Clicker : Game
             SaveCraft(), SaveKiln(), SaveAlbum(), SaveFair(), SaveGuild(), _achQueue.Count > 0 ? [.. _achQueue] : null, _stampsUsed,
             _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news,
             _stampsExtra, _scienceAt, SaveTitles(), SaveGuests(), _coinSeen,
-            SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal)),
+            SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
+            _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds),
         Wire);
 
     public override void Load(string json)
@@ -2338,6 +2381,9 @@ public sealed partial class Clicker : Game
             ScheduleGolden(Ctx.Clock.UtcNow);    // збереження з часів до розписних глеків
         // Пауза кола й недороблена перевірка переживають F5 — інакше перезавантаження знімало б і те, і те.
         _guard.Load(s.Guard, Ctx.Rng);
+        // Бафи, що чекають відповіді майстрові (05.10). Полиці раптом нема — відпустить перший же Sync.
+        _fairHeld = HeldOf(s.FairHeld);
+        _inspireHeld = HeldOf(s.InspireHeld);
 
         // Розгін переживає F5 теж (він однаково спаде за кілька секунд), а глек з полиці — або той, що вже
         // на розкладі, або, для збережень із часів до полиці, новий.
