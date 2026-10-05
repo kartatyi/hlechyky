@@ -57,6 +57,18 @@ public sealed class EveningRow
     public int Order { get; init; }
 }
 
+/// <summary>
+/// Види дограного столу, збережені перед перезапуском сервера: місце → вид (уже JSON, тим самим форматом, що летить
+/// браузерам), плюс вид глядача. Місця без свого виду (сів новенький) бачать вид глядача.
+/// </summary>
+public sealed class RestoredViews(IReadOnlyDictionary<int, System.Text.Json.JsonElement> seats, System.Text.Json.JsonElement? watcher)
+{
+    public IReadOnlyDictionary<int, System.Text.Json.JsonElement> Seats => seats;
+    public System.Text.Json.JsonElement? Watcher => watcher;
+
+    public object? View(int? seat) => seat is { } s && seats.TryGetValue(s, out var v) ? v : watcher;
+}
+
 /// <summary>Те, що летить подією <c>room</c>: шапка кімнати, моє місце (null — глядач) і вид цього місця.</summary>
 public sealed record RoomView(RoomSummary Room, int? Seat, object? View);
 
@@ -68,8 +80,8 @@ public sealed record SoloPlayer(string Game, string Nick);
 
 /// <summary>
 /// Одна партія: гра, місця, статус, глядачі. Усе, що міняє стан кімнати, робиться під <see cref="Sync"/>;
-/// розсилка збирається в Outbox і йде вже поза замком. Кімната живе в пам'яті: партія — це п'ять хвилин
-/// на перекур, а не те, що варто переживати рестарт (див. ARCHITECTURE §4.4, §4.7).
+/// розсилка збирається в Outbox і йде вже поза замком. Кімната живе в пам'яті, а перезапуск сервера переживає
+/// знімком (<see cref="Rooms.Freeze"/> → <see cref="Rooms.Restore"/>, ARCHITECTURE §4.7).
 /// </summary>
 public sealed class Room
 {
@@ -131,6 +143,13 @@ public sealed class Room
 
     /// <summary>Коли нік востаннє кидав реакцію-емодзі (квота Rooms.ReactGapMs). Лише під <see cref="Sync"/>.</summary>
     public Dictionary<string, DateTimeOffset> ReactAt { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Види столу, яким він був до перезапуску сервера (<see cref="Rooms.Restore"/>): партію дограно чи перервано, а гра
+    /// в цьому процесі новенька й тієї дошки не знає. Поки стіл не почав нову партію, браузерам летять саме вони —
+    /// люди бачать той самий підсумок, що й до перезапуску. Лише під <see cref="Sync"/>.
+    /// </summary>
+    public RestoredViews? Restored { get; set; }
 
     /// <summary>Записати дограну партію у вечір (кличе RoomContext.Finish під замком). Соло сюди не йде.</summary>
     public void TallyEvening(int[] winners, IReadOnlyDictionary<int, long>? scores)

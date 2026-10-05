@@ -625,11 +625,34 @@
     toast(text, 'err');
   }
 
+  const linked = () => !!conn && conn.state === 'Connected';
+  const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+
+  /// Зв'язок рветься на ~2 с, поки сервер перезапускається (деплой): хід за цей час не лаємо, а чекаємо зв'язку.
+  async function connected(ms) {
+    const until = Date.now() + ms;
+    while (!linked()) {
+      if (Date.now() > until) return false;
+      await wait(100);
+    }
+    return true;
+  }
+
+  /// Сервер саме заморозив столи перед перезапуском (Rooms.Freeze): хід не прийнято. Чекаємо, поки старий процес
+  /// зникне (зв'язок урветься), а новий підніметься з тими самими столами, — і повторюємо хід уже йому.
+  const RESTARTING = '⏳ Сайт оновлюється';
+  async function afterRestart() {
+    const until = Date.now() + 3000;
+    while (linked() && Date.now() < until) await wait(100);
+    return connected(15000);
+  }
+
   /// Виклик хаба, що повертає RoomReply: помилку показуємо тостом, успіх — лише якщо є що сказати.
   async function call(method, ...args) {
-    if (!conn || conn.state !== 'Connected') { toast('Халепа: зв\'язку з сервером нема', 'err'); return { ok: false, message: '' }; }
+    if (!(await connected(6000))) { toast('Халепа: зв\'язку з сервером нема', 'err'); return { ok: false, message: '' }; }
     try {
-      const r = await conn.invoke(method, ...args);
+      let r = await conn.invoke(method, ...args);
+      if (r && !r.ok && String(r.message || '').startsWith(RESTARTING) && (await afterRestart())) r = await conn.invoke(method, ...args);
       if (!r) return { ok: true, message: '' };
       if (!r.ok) errToast(r.message || 'От халепа — не вийшло');
       else if (r.message) toast(r.message, 'ok');

@@ -28,7 +28,12 @@ hlechyky.pp.ua {
 	# Все інше: сайт, API, SignalR (websocket проксується сам)
 	handle {
 		encode zstd gzip
-		reverse_proxy 127.0.0.1:8080
+		reverse_proxy 127.0.0.1:8080 {
+			# Сервер перезапускається (start.ps1 restart, ~2 с): запит чекає, поки він знову підніметься, а не падає 502 —
+			# сторінка просто довше вантажиться, а реконект хаба проходить із першої ж спроби.
+			lb_try_duration 15s
+			lb_try_interval 100ms
+		}
 	}
 }
 

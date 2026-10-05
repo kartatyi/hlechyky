@@ -8,8 +8,10 @@
   сервер знову запускатиме цей скрипт сам, окремим процесом (тому він переживає власний перезапуск сервера).
 
   Порядок: fetch → нема чого робити? вихід → незакомічені зміни чи коміти, яких нема на GitHub? вихід
-         (нічого не чіпаємо) → pull --ff-only → пробна збірка (сервер ще працює) → start.ps1 restart → перевірка /api/me.
-  Будь-яка невдача після pull → git reset --hard на попередній коміт і назад на старий код.
+         (нічого не чіпаємо) → збірка в build.next з окремої копії коду (сервер працює, web\ на проді не чіпається)
+         → чекаємо паузи: поки за столами йде партія, яку перезапуск перервав би (до -WaitMinutes, далі — питати
+         людину) → pull --ff-only → start.ps1 restart (столи в знімок, підміна теки, ~2 с) → перевірка /api/me.
+  Збірка впала — нічого не чіпали. Невдача після pull → git reset --hard і попередня збірка назад (start.ps1 back).
 
   Перезапуск потрібен і тоді, коли код уже тут (власник закомітив локально й запушив):
   data\built.sha каже, з якого коміту зібрано те, що лежить у build\ — її пише start.ps1.
@@ -22,7 +24,11 @@ param(
     # Хто запустив: hand — руками, webhook — подія від GitHub, poll — сервер сам побачив зелену збірку, вебхук про яку не дійшов.
     [string]$Via = 'hand',
     # Деплоїти як є: із незакоміченими змінами в робочій копії чи комітами, яких ще нема на GitHub.
-    [switch]$Force
+    [switch]$Force,
+    # Не чекати паузи: партії, що йдуть, перерве (ставки повернуться; ігри, що вміють зберегтись, грають далі).
+    [switch]$Now,
+    # Скільки чекати паузи, поки за столами грають. Не дочекались — нічого не чіпаємо й кажемо, хто грає (код виходу 3).
+    [int]$WaitMinutes = 10
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +39,12 @@ $LockFile = Join-Path $Root 'data\deploy.lock'
 $BuiltFile = Join-Path $Root 'data\built.sha'
 $TriedFile = Join-Path $Root 'data\deploy.tried'
 $WaitFile = Join-Path $Root 'data\deploy.waiting'
+$NextDir = Join-Path $Root 'build.next'
+$NextFile = Join-Path $Root 'data\next.sha'
+$ControlKey = Join-Path $Root 'data\control.key'
+# Окрема копія коду (git worktree) поруч із прод-копією: з неї збирається build.next. Збирати з D:\or не можна —
+# туди треба спершу підтягнути код, а web\ прод віддає прямо звідти: клієнт на хвилини випередив би сервер.
+$BuildSrc = Join-Path (Split-Path $Root -Parent) ((Split-Path $Root -Leaf) + '-deploy')
 $Branch = 'main'
 
 New-Item -ItemType Directory -Force (Join-Path $Root 'logs'), (Join-Path $Root 'data') | Out-Null
@@ -120,26 +132,87 @@ function Test-Server([int]$TimeoutSeconds = 90) {
         try {
             Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 $url | Out-Null
             return $true
-        } catch { Start-Sleep 3 }
+        } catch { Start-Sleep -Milliseconds 500 }
     }
     return $false
 }
 
 # -Command замість -File лише заради [Console]::OutputEncoding: інакше кирилиця зі start.ps1 лягає в лог як «??????».
-function Invoke-Restart { Invoke-Step powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', "& { [Console]::OutputEncoding = [Text.UTF8Encoding]::new(); & '$Start' restart }") }
+function Invoke-Launcher([string]$Cmd) { Invoke-Step powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', "& { [Console]::OutputEncoding = [Text.UTF8Encoding]::new(); & '$Start' $Cmd }") }
+function Invoke-Restart { Invoke-Launcher 'restart' }
 
 function Invoke-Rollback([string]$To, [string]$Why, [bool]$ServerTouched) {
     Write-Log "ВІДКАТ на $(Short $To) — $Why"
     try {
         Invoke-Step git @('-C', $Root, 'reset', '--hard', $To) | Out-Null
         if ($ServerTouched) {
-            Invoke-Restart | Out-Null
+            # Попередня збірка ще лежить у build.prev — назад за секунду; її нема — збираємо стару наново.
+            try { Invoke-Launcher 'back' | Out-Null } catch { Write-Log "    build.prev не підійшов ($($_.Exception.Message)) — збираю старий код"; Invoke-Restart | Out-Null }
             if (Test-Server) { Write-Log 'Відкотилися, сайт живий' } else { Write-Log 'ЛИХО: після відкату сервер не піднявся, дивись logs\server.log' }
         } else {
             Write-Log 'Сервер не чіпали, він і далі крутить старий код'
         }
     } catch {
         Write-Log "ЛИХО: відкат не вдався — $($_.Exception.Message)"
+    }
+}
+
+# Збірка коміту $Sha в build.next, поки сервер працює. Код — з окремої копії ($BuildSrc), прод-копія не чіпається.
+# Уже зібрано (data\next.sha) — нічого не робимо: деплой, що не дочекався паузи, вдруге не збирає.
+function Invoke-Prepare([string]$Sha) {
+    if ((Test-Path (Join-Path $NextDir 'Hlechyky.dll')) -and (Test-Path $NextFile) -and (Get-Content $NextFile -Raw).Trim() -eq $Sha) {
+        Write-Log "Збірка $(Short $Sha) уже готова (build.next)"
+        return
+    }
+    if (-not (Test-Path (Join-Path $BuildSrc '.git'))) {
+        Invoke-Step git @('-C', $Root, 'worktree', 'prune') -AllowFail | Out-Null
+        Invoke-Step git @('-C', $Root, 'worktree', 'add', '--detach', '--force', $BuildSrc, $Sha) | Out-Null
+    } else {
+        Invoke-Step git @('-C', $BuildSrc, 'checkout', '--detach', '--force', $Sha) | Out-Null
+        Invoke-Step git @('-C', $BuildSrc, 'clean', '-fdq') | Out-Null   # bin\ і obj\ у .gitignore — лишаються, збірка інкрементна
+    }
+    Write-Log "Збираю $(Short $Sha) у build.next (сервер працює)…"
+    if (Test-Path $NextDir) { Remove-Item $NextDir -Recurse -Force }
+    Remove-Item $NextFile -Force -ErrorAction SilentlyContinue
+    Invoke-Step dotnet @('publish', (Join-Path $BuildSrc 'src\Hlechyky\Hlechyky.csproj'), '-c', 'Release', '-o', $NextDir, '--nologo', '-v', 'q', '-nodeReuse:false') | Out-Null
+    Set-Content $NextFile $Sha -Encoding ASCII
+}
+
+# Хто зараз грає так, що перезапуск це перервав би (GET /api/internal/busy). $null — сервер не сказав (лежить чи ще старий).
+function Get-Busy {
+    if (-not (Test-Path $ControlKey)) { return $null }
+    try {
+        $key = (Get-Content $ControlKey -Raw).Trim()
+        $r = Invoke-RestMethod -Uri "http://127.0.0.1:$(Get-ListenPort)/api/internal/busy" -Headers @{ 'X-Control-Key' = $key } -TimeoutSec 5
+        return @($r.busy)
+    } catch { return $null }
+}
+
+function Format-Busy($busy) {
+    ($busy | ForEach-Object {
+        $mins = if ($_.since) { [int]((Get-Date).ToUniversalTime() - ([DateTimeOffset]$_.since).UtcDateTime).TotalMinutes } else { 0 }
+        "$($_.title) — $(@($_.players) -join ', ') ($mins хв)"
+    }) -join '; '
+}
+
+# Чекаємо, поки не лишиться партій, які перезапуск перервав би. $true — можна; $false — не дочекались за $Minutes.
+function Wait-Pause([int]$Minutes) {
+    $deadline = (Get-Date).AddMinutes($Minutes)
+    $said = ''
+    while ($true) {
+        $busy = Get-Busy
+        if ($null -eq $busy) { Write-Log 'Сервер не каже, хто грає (старий чи лежить) — не чекаю'; return $true }
+        if ($busy.Count -eq 0) {
+            if ($said) { Write-Log 'Пауза — усі столи між партіями' }
+            return $true
+        }
+        $now = Format-Busy $busy
+        if ($now -ne $said) { Write-Log "Чекаю паузи, бо грають: $now"; $said = $now }
+        if ((Get-Date) -ge $deadline) {
+            Write-Log "НЕ ДОЧЕКАВСЯ ПАУЗИ за $Minutes хв — грають: $now"
+            return $false
+        }
+        Start-Sleep -Seconds 3
     }
 }
 
@@ -211,18 +284,27 @@ try {
         $incoming = Get-Git @('log', '--oneline', '--no-decorate', "$before..$target")
         Write-Log "Новий код у origin/$Branch$(if ($Sha) { " ($Via про $(Short $Sha))" }):"
         foreach ($line in $incoming -split "`n") { if ($line.Trim()) { Write-Log "    $($line.TrimEnd())" } }
-        Invoke-Step git @('-C', $Root, 'merge', '--ff-only', "origin/$Branch") | Out-Null
-        Write-Log "Підтягнув $(Short $target)"
     } else {
         Write-Log "Код уже тут ($(Short $target)), але в build\ лежить $(if ($built) { Short $built } else { 'невідомо що' }) — перезбираю"
     }
 
-    # Пробна збірка, поки старий сервер працює: build\ зайнятий ним, тому збираємо в bin\ (як це робить CI).
-    Write-Log 'Пробна збірка…'
-    try { Invoke-Step dotnet @('build', (Join-Path $Root 'src\Hlechyky\Hlechyky.csproj'), '-c', 'Release', '--nologo', '-v', 'q', '-nodeReuse:false') | Out-Null }
-    catch { Invoke-Rollback $before "збірка впала: $($_.Exception.Message)" $false; return }
+    # Збірка поруч, поки старий сервер працює. Впала — прод ніхто не чіпав: ні код, ні сервер.
+    try { Invoke-Prepare $target }
+    catch { Write-Log "ЗБІРКА ВПАЛА — нічого не чіпаю, сайт і далі на $(Short $built): $($_.Exception.Message)"; exit 2 }
 
-    Write-Log 'Перезапускаю сервер…'
+    # Пауза: перезапуск посеред партії її перервав би. Ігри, що вміють зберегтись, сервер сюди й не записує.
+    if (-not $Now -and -not (Wait-Pause $WaitMinutes)) {
+        Write-Log "Нічого не чіпав: збірка $(Short $target) лежить готова. Ще почекати — deploy.ps1; перервати партії — deploy.ps1 -Now"
+        exit 3
+    }
+
+    # Тепер — швидко: код (і з ним web\) і сервер міняються в одну мить.
+    if ($needPull) {
+        if (-not $Force -and (Get-Git @('status', '--porcelain'))) { Write-Log 'СТОП: поки чекав, у робочій копії з''явились незакомічені зміни — нічого не чіпаю'; exit 1 }
+        Invoke-Step git @('-C', $Root, 'merge', '--ff-only', $target) | Out-Null
+        Write-Log "Підтягнув $(Short $target)"
+    }
+    Write-Log "Перезапускаю сервер$(if ($Now) { ' (-Now: партії, що йдуть, перерве)' })…"
     $restartAttempted = $true
     Invoke-Restart | Out-Null
 
@@ -231,6 +313,7 @@ try {
 } catch {
     Write-Log "ПОМИЛКА: $($_.Exception.Message)"
     if ($before -and (Get-Git @('rev-parse', 'HEAD')) -ne $before) { Invoke-Rollback $before 'щось пішло не так' $restartAttempted }
+    exit 1
 } finally {
     if ($lock) { $lock.Dispose(); Remove-Item $LockFile -ErrorAction SilentlyContinue }
 }

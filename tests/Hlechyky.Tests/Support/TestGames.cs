@@ -293,3 +293,47 @@ public sealed class TestVoice : Game
 
     public override object View(int? seat) => new { turn = 0 };
 }
+
+/// <summary>
+/// Гра на двох, що вміє зберегти партію (Save/Load) і має тик-годинник: для перезапуску сервера — партія з чистого знімка
+/// грає далі (TablesKeeperTests). Ходи — «add», вид — сума й хто ходив останнім.
+/// </summary>
+public sealed class TestCounter : Game
+{
+    int _sum;
+    int _last = -1;
+
+    public override GameInfo Info { get; } = new(
+        "t-count", "Тестовий лічильник", "тестовий лічильник", GameGroup.Board, 2, 2);
+
+    public override void Start()
+    {
+        _sum = 0;
+        _last = -1;
+        Ctx.Say("Почали лічити");   // ведучий на старті — після відновлення в балачці його бути не має
+    }
+
+    public override ActResult Act(int seat, string action, JsonElement payload)
+    {
+        if (action == "end")
+        {
+            Ctx.Finish([seat], $"лічильник: {_sum}");
+            return ActResult.Done;
+        }
+        if (action != "add") return ActResult.Fail("Тут так не ходять");
+        _sum += payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("v", out var v) ? v.GetInt32() : 1;
+        _last = seat;
+        return ActResult.Done;
+    }
+
+    public override object View(int? seat) => new { turn = (int?)null, sum = _sum, last = _last, mine = seat };
+
+    public override string? Save() => JsonSerializer.Serialize(new { sum = _sum, last = _last });
+
+    public override void Load(string json)
+    {
+        var e = JsonDocument.Parse(json).RootElement;
+        _sum = e.GetProperty("sum").GetInt32();
+        _last = e.GetProperty("last").GetInt32();
+    }
+}

@@ -118,6 +118,8 @@ static class Say
     public const string TooBig = "Забагато даних";
     public static string TooFew(int n) => $"Замало гравців, треба щонайменше {n} — гукни когось";
     public const string Broken = "ой-йой, партія зламалась — вибачте";
+    /// <summary>Сервер «заморозив» столи перед перезапуском (<see cref="Rooms.Freeze"/>): за мить буде той самий стіл.</summary>
+    public const string Restarting = "⏳ Сайт оновлюється — за пару секунд продовжимо";
 }
 
 /// <summary>
@@ -126,7 +128,7 @@ static class Say
 /// не згадується жодного разу: кожен метод повертає <see cref="Outbox"/>, а розсилає вже Broadcaster
 /// (ARCHITECTURE §4.4, §5).
 /// </summary>
-public sealed class Rooms
+public sealed partial class Rooms
 {
     /// <summary>Більше живих мультиплеєрних кімнат за раз усе одно не роздивитись.</summary>
     public const int MaxRooms = 12;
@@ -260,6 +262,7 @@ public sealed class Rooms
         // а дванадцятеро одночасних творців проб'ють MaxRooms.
         lock (_lock)
         {
+            if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (_rooms.Any(r => !r.Info.Solo && r.Has(nick))) return RoomOutcome.Fail(Say.Seated);
             if (_rooms.Count(r => !r.Info.Solo) >= MaxRooms) return RoomOutcome.Fail(Say.TooMany);
             _rooms.Add(room);
@@ -363,6 +366,7 @@ public sealed class Rooms
         Room? raced;
         lock (_lock)
         {
+            if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             raced = _rooms.FirstOrDefault(r => r.Info.Solo && r.Key == wanted && r.Has(nick));
             if (raced is null) _rooms.Add(room);
         }
@@ -468,6 +472,7 @@ public sealed class Rooms
         RoomReply reply;
         lock (room.Sync)
         {
+            if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (room.Has(nick)) return RoomOutcome.Fail(Say.Already);
             // Хтось дограв і пішов, а стіл лишився: новий гравець відкриває кімнату наново, як було зі столами.
             // Спершу — ВСІ перевірки: невдалий вхід не має псувати чужу дограну партію (результат зникав би
@@ -478,13 +483,14 @@ public sealed class Rooms
             if (seat < 0) return RoomOutcome.Fail(Say.NoSeats);
             if (room.Stake > 0 && _stakes.Balance(nick) < room.Stake) return RoomOutcome.Fail(Say.NoShards);
 
-            var was = (room.Status, room.Result, room.FinishedAt, room.Round);
+            var was = (room.Status, room.Result, room.FinishedAt, room.Round, room.Restored);
             if (reopen)
             {
                 room.Status = RoomStatus.Lobby;
                 room.Result = null;
                 room.FinishedAt = null;
                 room.Round++;   // щоб ключі ставок наступної партії не збіглися з минулою
+                room.Restored = null;   // підсумок до перезапуску вже нічий: стіл знову в лобі, вид — від гри
             }
             room.Seats[seat] = nick;
             room.LastActivity = _clock.UtcNow;
@@ -492,7 +498,7 @@ public sealed class Rooms
             if (room.Info.Start == StartMode.WhenFull && room.Full && StartRound(room, outbox) is { } no)
             {
                 room.Seats[seat] = null;
-                (room.Status, room.Result, room.FinishedAt, room.Round) = was;
+                (room.Status, room.Result, room.FinishedAt, room.Round, room.Restored) = was;
                 return new RoomOutcome(outbox, RoomReply.Fail(no));
             }
         }
@@ -509,6 +515,7 @@ public sealed class Rooms
         var outbox = new Outbox();
         lock (room.Sync)
         {
+            if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (room.SeatOf(nick) is not { } seat) return RoomOutcome.Fail(Say.NotPlaying);
             Vacate(room, seat, outbox);
         }
@@ -574,6 +581,7 @@ public sealed class Rooms
         var outbox = new Outbox();
         lock (room.Sync)
         {
+            if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (!string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase)) return RoomOutcome.Fail(Say.HostOnly);
             if (room.Status != RoomStatus.Lobby) return RoomOutcome.Fail(room.Status == RoomStatus.Playing ? Say.Waiting : Say.Played);
             if (room.Occupied < room.Info.MinPlayers) return RoomOutcome.Fail(Say.TooFew(room.Info.MinPlayers));
@@ -593,6 +601,7 @@ public sealed class Rooms
         var outbox = new Outbox();
         lock (room.Sync)
         {
+            if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (!room.Has(nick)) return RoomOutcome.Fail(Say.NotPlaying);
             if (room.Status != RoomStatus.Finished) return RoomOutcome.Fail(Say.NotFinished);
             if (room.Occupied < room.Info.MinPlayers) return RoomOutcome.Fail(Say.TooFew(room.Info.MinPlayers));
@@ -632,6 +641,7 @@ public sealed class Rooms
         }
 
         var now = _clock.UtcNow;
+        room.Restored = null;   // нова партія — і вид знову від гри, а не той, що пережив перезапуск
         room.Status = RoomStatus.Playing;
         room.StartedAt = now;
         room.FinishedAt = null;
@@ -702,6 +712,7 @@ public sealed class Rooms
         ActResult result;
         lock (room.Sync)
         {
+            if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (room.SeatOf(nick) is not { } seat) return RoomOutcome.Fail(Say.NotPlaying);
             // Налаштування столу до старту (Game.ActsInLobby) — теж хід; решта ігор у лобі чекає на гравців.
             if (room.Status == RoomStatus.Lobby && !room.Game.ActsInLobby) return RoomOutcome.Fail(Say.Waiting);
@@ -753,7 +764,7 @@ public sealed class Rooms
         if (Find(id) is not { } room || !room.Info.RealTime) return outbox;
         lock (room.Sync)
         {
-            if (room.Status != RoomStatus.Playing || room.SeatOf(nick) is not { } seat) return outbox;
+            if (_frozen || room.Status != RoomStatus.Playing || room.SeatOf(nick) is not { } seat) return outbox;
             var ctx = (RoomContext)room.Game.Ctx;
             using (ctx.Collect(outbox))
             {
@@ -828,6 +839,7 @@ public sealed class Rooms
         if (Find(id) is not { } room || !room.Talks) return (outbox, Say.NoRoom);
         lock (room.Sync)
         {
+            if (_frozen) return (outbox, Say.Restarting);
             if (Silenced(room, connId, nick) is { } why) return (outbox, why);
             outbox.Add(new TableSaid(room.Id, AppendTalk(room, nick, text, kind)));
         }
@@ -1063,6 +1075,7 @@ public sealed class Rooms
             if (!string.IsNullOrEmpty(nick))
                 for (var i = 0; i < room.Seats.Length; i++)
                     if (string.Equals(room.Seats[i], nick, StringComparison.OrdinalIgnoreCase)) { seat = i; break; }
+            if (room.Restored is { } restored) return new RoomView(room.Summary(), seat, restored.View(seat));
             object? view;
             try { view = room.Game.Snapshot(seat); }
             catch (Exception ex)
@@ -1084,6 +1097,7 @@ public sealed class Rooms
 
     object? SafeView(Room room, int? seat)
     {
+        if (room.Restored is { } restored) return restored.View(seat);
         try { return room.Game.View(seat); }
         catch (Exception ex)
         {
@@ -1112,6 +1126,7 @@ public sealed class Rooms
     public Outbox DropIfGone(DateTimeOffset now)
     {
         var outbox = new Outbox();
+        if (_frozen) return outbox;   // з'єднання зараз урвуться всі разом — це перезапуск, а не люди пішли
         List<string> gone;
         lock (_lock)
         {
@@ -1137,7 +1152,7 @@ public sealed class Rooms
     public Outbox DropNick(string nick)
     {
         var outbox = new Outbox();
-        if (!Named(nick)) return outbox;
+        if (!Named(nick) || _frozen) return outbox;
         foreach (var room in Live())
         {
             // Соло-кімната переживає зникнення вкладки: її прибирає Housekeeping за SoloLife, а стан
@@ -1159,6 +1174,7 @@ public sealed class Rooms
     /// <summary>Кімнати, яким час тикати.</summary>
     public List<Room> TickDue(DateTimeOffset now)
     {
+        if (_frozen) return [];   // перед перезапуском реалтайм стоїть: знімок має бути останнім кадром
         List<Room>? due = null;
         foreach (var room in Live())
         {
@@ -1177,7 +1193,7 @@ public sealed class Rooms
         var outbox = new Outbox();
         lock (room.Sync)
         {
-            if (room.Status != RoomStatus.Playing) return outbox;
+            if (_frozen || room.Status != RoomStatus.Playing) return outbox;
             var now = _clock.UtcNow;
             // Наступний тик — від призначеного часу цього, а не від «зараз». Інакше кожен тик запізнювався на частку
             // кроку циклу (таймер Windows — 15,6 мс), і замість 25 кадрів Танчиків на секунду було 16–24: гра йшла
@@ -1230,6 +1246,7 @@ public sealed class Rooms
     public Outbox Housekeeping(DateTimeOffset now)
     {
         var outbox = new Outbox();
+        if (_frozen) return outbox;
         var removed = 0;
         var lobbyChanged = false;
         var soloChanged = false;

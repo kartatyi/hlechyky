@@ -55,6 +55,9 @@ tools/
 bin/
 obj/
 build/
+# збірка на підміну й попередня (start.ps1 restart / back)
+build.next/
+build.prev/
 # IDE and generated
 .vs/
 .idea/

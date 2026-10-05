@@ -3568,6 +3568,16 @@
         if (tagged) toast(`@ ${l.nick} гукає тебе за столом: ${l.text}`.slice(0, 140));
       }
     });
+    // Перезапуск сервера (деплой) рве зв'язок секунди на дві, і столи після нього ті самі (TablesKeeper) — такого люди
+    // помічати не мають. Тож «зв'язок зник» кажемо, лише коли його нема довше LOST_QUIET_MS, а «знову на зв'язку» —
+    // лише тим, кому перед тим сказали, що зник.
+    const LOST_QUIET_MS = 4000;
+    let lostTimer = 0;
+    let lostSaid = false;
+    const lost = (text) => {
+      clearTimeout(lostTimer);
+      lostTimer = setTimeout(() => { lostSaid = true; toast(text, 'wait'); }, LOST_QUIET_MS);
+    };
     // Знову на зв'язку — після реконекту чи після того, як з'єднання довелось стартувати наново.
     const resync = () => {
       conn.invoke('SetNick', me.nick).catch(() => {});
@@ -3577,13 +3587,15 @@
       if (window.HVoice) HVoice.reconnected();   // той самий позивний: з'єднання з людьми живуть і через деплой
       checkFront(true);              // зв'язок рветься здебільшого через деплой — глянути, що змінилось на сайті
       fbResync();                    // поки зв'язку не було, у записках могли відповісти
-      toast('Є! Знову на зв\'язку', 'ok');
+      clearTimeout(lostTimer);
+      if (lostSaid) toast('Є! Знову на зв\'язку', 'ok');
+      lostSaid = false;
     };
     conn.onreconnected(resync);
-    conn.onreconnecting(() => toast('Ой-йой, зв\'язок зник — підключаюсь…', 'wait'));
+    conn.onreconnecting(() => lost('Ой-йой, зв\'язок зник — підключаюсь…'));
     // Автоповтор здається лише в рідкісних випадках (сервер закрив з'єднання назовсім) — тоді стартуємо його самі.
     const restart = () => conn.start().then(resync).catch(() => setTimeout(restart, 5000));
-    conn.onclose(() => { toast('Ой-йой, зв\'язок урвався — підключаюсь наново…', 'wait'); setTimeout(restart, 2000); });
+    conn.onclose(() => { lost('Ой-йой, зв\'язок урвався — підключаюсь наново…'); setTimeout(restart, 1000); });
     conn.start().then(() => {
       if (listening) conn.invoke('SetListening', true).catch(() => {});
       // Перші 'rooms' прилітають ще до того, як start() віддасть 'Connected', тож підписки на

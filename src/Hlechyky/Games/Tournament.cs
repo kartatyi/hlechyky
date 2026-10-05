@@ -388,6 +388,41 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         _ = hub.Clients.All.SendAsync("tournament", snap);
     }
 
+    // =========================================================================================
+    // Перезапуск сервера
+    // =========================================================================================
+
+    sealed record Frozen(string Id, string Host, List<string> Games, List<string> Players, string Stage, int Index, string? Room,
+        Dictionary<string, int> Points, List<TournamentGameResult> Results, string[] Champions, DateTimeOffset CreatedAt);
+
+    static readonly JsonSerializerOptions FrozenJson = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Турнір, що йде, — у знімок столів (<see cref="TablesKeeper"/>); null — турніру нема або він уже скінчився.</summary>
+    public JsonElement? Freeze()
+    {
+        lock (_lock)
+        {
+            if (_t is not { Stage: not Done } t) return null;
+            return JsonSerializer.SerializeToElement(new Frozen(t.Id, t.Host, [.. t.Games], [.. t.Players], t.Stage, t.Index, t.Room,
+                new Dictionary<string, int>(t.Points, StringComparer.OrdinalIgnoreCase), [.. t.Results], t.Champions, t.CreatedAt), FrozenJson);
+        }
+    }
+
+    /// <summary>Повернути турнір зі знімка — на старті, після того як столи вже відновлено (його стіл має той самий id).</summary>
+    public void Restore(JsonElement json)
+    {
+        if (json.Deserialize<Frozen>(FrozenJson) is not { } f) return;
+        lock (_lock)
+        {
+            var t = new State { Id = f.Id, Host = f.Host, Games = f.Games, Stage = f.Stage, Index = f.Index, Room = f.Room, CreatedAt = f.CreatedAt };
+            t.Players.AddRange(f.Players);
+            foreach (var (nick, points) in f.Points) t.Points[nick] = points;
+            t.Results.AddRange(f.Results);
+            t.Champions = f.Champions;
+            _t = t;
+        }
+    }
+
     /// <summary>Хтось зайшов або вийшов — список «хто зараз тут» у турнірі міг змінитись.</summary>
     public void PresenceChanged()
     {

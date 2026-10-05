@@ -32,6 +32,9 @@ public static class GamesSetup
         services.AddSingleton<GameNews>();                 // «що нового»: яку версію оновлення гри нік уже бачив
         services.AddSingleton<Tournament>();
         services.AddHostedService(sp => sp.GetRequiredService<Tournament>());
+        // Столи переживають перезапуск: знімок на диску, заморозка перед перезапуском, /api/internal/* для start.ps1 і deploy.ps1
+        services.AddSingleton<TablesKeeper>();
+        services.AddHostedService(sp => sp.GetRequiredService<TablesKeeper>());
         Impl.ClickerGuildSetup.AddClickerGuild(services);   // цех Гончарного кола: віз, дарунки, хата друга
         // «Вгадай мелодію»: один на всі столи — щоб пісню з добірки не качали двічі два столи водночас
         services.AddSingleton(sp => new Impl.MelodyLibrary(
@@ -62,6 +65,7 @@ public static class GamesSetup
         app.MapGet("/api/games/catalog", (Registry registry, FrontPrint front, GameAdded added) =>
             new Catalog(registry.Catalog, Rooms.Stakes, front.Games(), added.Map(registry.Catalog)));
         GameNews.Map(app);                                  // /api/games/news — «бачив що нового»
+        TablesKeeper.Map(app);                              // /api/internal/freeze, thaw, busy — лише з цієї машини з ключем
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
