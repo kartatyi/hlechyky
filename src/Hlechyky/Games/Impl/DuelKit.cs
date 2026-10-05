@@ -59,6 +59,9 @@ public sealed class DuelKit(Game game, int seats)
         bout.Counted = (side, ms) => Count(bout.Seats[side], ms);
     }
 
+    /// <summary>Найшвидша зарахована реакція місця за партію (мс з поправкою); null — ще не стріляв.</summary>
+    public long? BestOf(int seat) => seat >= 0 && seat < seats ? _best[seat] : null;
+
     /// <summary>Постріл зараховано в партію: найшвидша й середня реакція місця.</summary>
     public void Count(int seat, long ms)
     {

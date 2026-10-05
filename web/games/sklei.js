@@ -1030,6 +1030,8 @@
   }
 
   function nameOf(st, seat) {
+    // У вечірці ім'я місця дає хост (бот там «🤖 Галя», а не загальне «🤖 бот» з виду).
+    if (st.ctx.embedded && st.ctx.nameOf) { const n = st.ctx.nameOf(seat); if (n) return n; }
     const p = ((st.ctx.view || {}).players || []).find((x) => x.seat === seat);
     return p ? (p.bot && !/🤖/.test(p.name) ? '🤖 ' : '') + p.name : st.ctx.nameOf ? st.ctx.nameOf(seat) : '';
   }

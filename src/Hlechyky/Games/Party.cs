@@ -80,6 +80,7 @@ public static class PartyPool
         {
             if (t.IsAbstract || !t.IsClass || !typeof(Game).IsAssignableFrom(t) || !typeof(IPartyMinigame).IsAssignableFrom(t)) continue;
             if (t.GetConstructor(BindingFlags.Public | BindingFlags.Instance, Type.EmptyTypes) is null) continue;
+            if (typeof(IDailyGame).IsAssignableFrom(t)) continue;   // щоденна гра — не міні-гра, хоч і нащадок такої (SkilkyDaily : Skilky)
             found.Add((t, ((Game)Activator.CreateInstance(t)!).Info));
         }
         return [.. found.OrderBy(g => g.Item2.Id, StringComparer.Ordinal)];

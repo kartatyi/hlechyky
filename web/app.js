@@ -1182,7 +1182,13 @@
   /// Тегнули саме через @ — це вже не просто згадка в розмові, а поклик: на нього й звук.
   const taggedMe = (text) => !!me.nick && String(text || '').toLowerCase().includes('@' + me.nick.toLowerCase());
   /// 👑 біля ніка чинного чемпіона турніру.
-  const crownOf = (nick) => (window.HTournament && HTournament.crowned(nick) ? '<span class="crown" title="Чемпіон турніру">👑</span>' : '');
+  /// 🏆 — «Голова вечірки» (Глечикова вечірка, specs/vechirka.md К5): ніки з /api/games/vechirka/crown; модуль вечірки кличе refresh після фіналу.
+  let partyCrown = new Set();
+  const loadPartyCrown = () => fetch('/api/games/vechirka/crown').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j && j.nicks) partyCrown = new Set(j.nicks.map((n) => String(n).toLowerCase())); }).catch(() => {});
+  window.HPartyCrown = { refresh: loadPartyCrown };
+  loadPartyCrown();
+  const crownOf = (nick) => (window.HTournament && HTournament.crowned(nick) ? '<span class="crown" title="Чемпіон турніру">👑</span>' : '')
+    + (partyCrown.has(String(nick).toLowerCase()) ? '<span class="crown" title="Голова вечірки">🏆</span>' : '');
 
   /// Ніки, які сайт знає: хто зараз онлайн і хто писав у балачках. З них — підказка після @ і підсвітка.
   const knownNicks = new Map();          // нижній регістр → як пишеться

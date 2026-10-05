@@ -395,9 +395,9 @@ public sealed class BomberBot
         }
 
         // Стискання: клітинки, які скоро стануть стіною, — небезпечні назавжди.
-        if (core.Shrink && core.Ticks + 90 >= BomberCore.ShrinkFrom)
+        if (core.Shrink && core.Ticks + 90 >= core.ShrinkAt)
         {
-            var t0 = core.Ticks < BomberCore.ShrinkFrom ? BomberCore.ShrinkFrom - core.Ticks : 1;
+            var t0 = core.Ticks < core.ShrinkAt ? core.ShrinkAt - core.Ticks : 1;
             for (var k = 0; k < 40 && core.Shrunk + k < core.ShrinkOrder.Length; k++)
             {
                 var c = core.ShrinkOrder[core.Shrunk + k];

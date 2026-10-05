@@ -156,6 +156,7 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
     {
         Array.Clear(_grid);
         RoundTicks = 0;
+        Inset = 0;
         Items.Clear();
         Cleared = 0;
         Deaths.Clear();
@@ -408,7 +409,10 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
     int NextGap() => rng.Next(GapMinTicks, GapMaxTicks + 1);
 
     /// <summary>Голова торкнулась стіни.</summary>
-    public bool Wall(double x, double y) => x < R || y < R || x > W - R || y > H - R;
+    public bool Wall(double x, double y) => x < R + Inset || y < R + Inset || x > W - R - Inset || y > H - R - Inset;
+
+    /// <summary>На скільки од стіни зсунулись усередину (вечірка: поле стискається з 35-ї секунди). Звичайна гра — 0.</summary>
+    public double Inset;
 
     /// <summary>
     /// Чи є слід під передньою півкулею голови. Позаду завжди свій хвіст, тому дивимось лише туди,
@@ -599,8 +603,20 @@ public sealed class CurveCore(Random rng, bool gaps = true, int w = CurveCore.Sm
 /// раундів у тій самій кімнаті: хто вибув, тому вже нема куди поспішати, а живі беруть по очку за
 /// кожного вибулого. Дограли до <c>10 × (гравців − 1)</c> — партія скінчилась.
 /// </summary>
-public sealed class CurveGame : Game
+public sealed class CurveGame : Game, IPartyMinigame
 {
+    /// <summary>Вечірка: раунд до 55 с (1375 тиків), поле стискається з 35-ї секунди й до кінця лишає смужку посередині.</summary>
+    public const int PartyRoundTicks = 1375, PartyShrinkFrom = 875;
+    /// <summary>Режим вечірки (docs/games/specs/party-minigame.md): один раунд до останнього, боти на місцях <c>bots</c>.</summary>
+    PartyMode? _party;
+    public bool Party => _party is not null;
+
+    public string Howto => "Керуй кривулею й не врізайся ні в чий слід, ні в стіну: хто їде довше, той вище; з 35-ї секунди поле стискається. "
+        + "← → чи A/D — повертати; на телефоні — ліва й права половини поля";
+    public int PartyCapMs => 60_000;   // 2 с відліку + раунд до 55 с + запас
+    public int PartyMin => 2;
+    public int PartyMax => CurveCore.Seats;
+
     public override GameInfo Info { get; } = new(
         "curve", "Кривуля", "кривулю", GameGroup.Live, 1, CurveCore.Seats,
         TickMs: CurveCore.TickMs, Start: StartMode.ByHost,
@@ -683,6 +699,9 @@ public sealed class CurveGame : Game
         _bonus = options.GetValueOrDefault("bonus") == "1";
         _teamsOn = options.GetValueOrDefault("teams") == "1";
         _solo.Configure(options);
+        _party = PartyMode.Read(options);
+        // Вечірка: стіни, без бонусів, кожен сам — одна коротка сутичка.
+        if (_party is not null) _wrap = _bonus = _teamsOn = false;
         _core = null;
     }
 
@@ -691,7 +710,8 @@ public sealed class CurveGame : Game
     public override string? CanStart() => _solo.CanStart(Ctx, CurveCore.Seats);
 
     /// <summary>Куди сядуть боти: перші вільні місця, якщо їх кликали й людина одна.</summary>
-    int[] BotSeats() => _solo.Active(Ctx, CurveCore.Seats)
+    int[] BotSeats() => _party is { } pm ? [.. pm.Bots.Where(s => s < CurveCore.Seats && !Ctx.Seated(s))]
+        : _solo.Active(Ctx, CurveCore.Seats)
         ? [.. Enumerable.Range(0, CurveCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
 
     /// <summary>Троє ботів з однаковим ім'ям плутались би в рахунку — додаємо колір місця.</summary>
@@ -720,7 +740,7 @@ public sealed class CurveGame : Game
         _bots = BotSeats();
         Array.Clear(_brain);
         // Думають у різні тики, щоб не смикались хором.
-        for (var i = 0; i < _bots.Length; i++) _brain[_bots[i]] = new CurveBot(_solo.Level, i);
+        for (var i = 0; i < _bots.Length; i++) _brain[_bots[i]] = new CurveBot(_party?.Level ?? _solo.Level, i);
         _seats = [.. Enumerable.Range(0, CurveCore.Seats).Select(s => Ctx.Seated(s) || _bots.Contains(s))];
         var n = _seats.Count(x => x);
         // Поле — під склад: до чотирьох звичне, більшому столу — ширше (CurveCore.SizeFor).
@@ -804,6 +824,7 @@ public sealed class CurveGame : Game
                 return TickResult.Both;
 
             default:
+                if (_party is not null) return PartyTick();
                 var timeout = Core.RoundTicks >= CurveCore.MaxRoundTicks;
                 // Боти кермують до кроку поля — їхній ввід лягає в цей тик, як людський між тиками.
                 if (!timeout) BotsThink();
@@ -820,6 +841,48 @@ public sealed class CurveGame : Game
                 EndRound();
                 return TickResult.Both;
         }
+    }
+
+    /// <summary>
+    /// Крок вечірки: з 35-ї секунди стіни сходяться (рівно, до смужки 30 од посередині до 55-ї), раунд — до
+    /// останнього на полі або до 55-ї секунди. Очки — як у звичайній грі: живим +1 за кожного, хто вибув, тож це й
+    /// є порядок вибування (вибули в один тик — рівні).
+    /// </summary>
+    TickResult PartyTick()
+    {
+        var t = Core.RoundTicks;
+        if (t >= PartyShrinkFrom)
+        {
+            var max = Math.Min(Core.W, Core.H) / 2.0 - 15;
+            Core.Inset = max * Math.Min(1.0, (t - PartyShrinkFrom) / (double)(PartyRoundTicks - PartyShrinkFrom));
+        }
+        BotsThink();
+        var dead = Core.Step();
+        Note();
+        if (dead.Count > 0)
+            for (var s = 0; s < CurveCore.Seats; s++)
+                if (_seats[s] && Core.Heads[s].Alive) _scores[s] += dead.Count;
+        if (Core.AliveCount > 1 && Core.RoundTicks < PartyRoundTicks)
+            return dead.Count > 0 ? TickResult.Both : TickResult.FrameOnly;
+        PartyOver();
+        return TickResult.Both;
+    }
+
+    /// <summary>Scores вечірки — очки раунду кожного місця (див. <see cref="PartyTick"/>); не грало — −1.</summary>
+    public IReadOnlyDictionary<int, long> PartyScores()
+    {
+        var r = new Dictionary<int, long>(Ctx.Players);
+        for (var s = 0; s < Ctx.Players; s++) r[s] = s < CurveCore.Seats && _seats[s] ? _scores[s] : -1;
+        return r;
+    }
+
+    void PartyOver()
+    {
+        var scores = PartyScores();
+        var best = scores.Count == 0 ? 0 : scores.Values.Max();
+        _winners = [.. scores.Where(kv => kv.Value == best && kv.Value >= 0).Select(kv => kv.Key).Order()];
+        _phase = "done";
+        Ctx.Finish(_winners, $"{Info.Title}: {Table()}", scores);
     }
 
     /// <summary>Хто кого і хто що взяв — у кадр, а слід-пастки — у лічильник 🕸.</summary>
@@ -928,6 +991,7 @@ public sealed class CurveGame : Game
     /// </summary>
     public override void OnLeave(int seat)
     {
+        if (_party is not null) return;   // вечірка: кривуля просто їде далі (без керма) — раунд догравається
         _seats[seat] = false;
         // Present не чіпаємо: слід того, хто пішов, лишається в растрі до кінця раунду і далі вбиває,
         // тож нехай його й видно. Місце прибере наступний Reset(_seats).
@@ -976,6 +1040,7 @@ public sealed class CurveGame : Game
             ["phase"] = _phase,
             ["startIn"] = StartIn,
         };
+        if (Core.Inset > 0) f["in"] = R1(Core.Inset);
         if (_bonus)
         {
             f["b"] = BonusWire();

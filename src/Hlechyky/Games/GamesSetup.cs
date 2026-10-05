@@ -43,6 +43,7 @@ public static class GamesSetup
         Impl.RallySetup.AddRally(services);   // «Сільське ралі»: рекорди кіл трас
         Impl.DuelSetup.AddDuel(services);                   // Дуель: спільні рекорди реакції («найшвидша рука»)
         Impl.DiceSetup.AddDice(services);                  // «Під глеком»: сезон звань і ставки вболівальників
+        Impl.VechirkaSetup.AddVechirka(services);           // Глечикова вечірка: корона «Голова вечірки»
         Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
         Impl.DotepySetup.AddDotepy(services);               // «Дотепи»: голос Глека, голос публіки
         Impl.GeoSetup.AddGeo(services);   // «Де це?»: фото з Вікісховища в cache/geo
@@ -69,6 +70,7 @@ public static class GamesSetup
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
         Impl.DiceSetup.MapDice(app);                       // /api/games/dice/bet, /api/games/dice/season
+        Impl.VechirkaSetup.MapVechirka(app);               // /api/games/vechirka/data, /crown
         Impl.VohnykSetup.MapVohnyk(app);                   // /api/games/vohnyk/best — таблиця рівня
         Impl.DotepySetup.MapDotepy(app);                    // /api/games/dotepy/jury — голос публіки «Дотепів»
         Impl.GeoSetup.MapGeo(app);   // /api/games/geo/<токен>.jpg

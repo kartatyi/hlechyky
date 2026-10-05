@@ -239,6 +239,22 @@ public abstract class Game
         Ctx.Finish(others, $"{Info.Title}: {Ctx.NickOf(seat)} встає з-за столу, партію не дограли");
     }
 
+    /// <summary>
+    /// Чи можна ніку <paramref name="nick"/> сісти посеред партії (вільне крісло каркас перевіряє сам). Типово ні.
+    /// Довгі ігри з телефонів (Глечикова вечірка) кажуть так тим, хто відпав, — інакше 45-хвилинний вечір губить
+    /// людину на першому ж дзвінку. Кличеться під замком кімнати.
+    /// </summary>
+    public virtual bool LateJoin(string nick) => false;
+
+    /// <summary>Хтось сів посеред партії (після <see cref="LateJoin"/>), можливо на інше крісло, ніж було.</summary>
+    public virtual void OnJoin(int seat) { }
+
+    /// <summary>
+    /// Скільки триматися кімнаті посеред партії, коли за столом не лишилось людей. Типово нуль — порожня кімната
+    /// зникає одразу; вечірка чекає 15 хв, поки хтось повернеться (сама стоїть на паузі).
+    /// </summary>
+    public virtual TimeSpan HoldEmpty => TimeSpan.Zero;
+
     /// <summary>Persistent: стан у JSON. null — нема чого зберігати.</summary>
     public virtual string? Save() => null;
 

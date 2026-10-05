@@ -167,12 +167,15 @@
     return (f && f.answered) || v.answered || [];
   }
 
+  /// Ім'я місця: нік або (у вечірці) «🤖 бот» — ctx.nameOf знає й ботів; без нього — як було, лише нік.
+  function nameAt(ctx, i) { return (ctx.nameOf && ctx.nameOf(i)) || ctx.nickOf(i); }
+
   /// Місця, на яких хтось сидить. Порожні (стіл на дванадцятьох, грає четверо) не малюємо взагалі.
   function seats(ctx) {
     const room = ctx.room || {};
     const list = [];
     const n = (room.seats && room.seats.length) || 0;
-    for (let i = 0; i < n; i++) if (ctx.nickOf(i)) list.push(i);
+    for (let i = 0; i < n; i++) if (nameAt(ctx, i)) list.push(i);
     return list;
   }
 
@@ -184,7 +187,7 @@
     // У лобі склад столу вже видно в шапці картки — другий раз його малювати нема чого.
     const show = ctx.playing && (v.phase === 'ask' || v.phase === 'between' || v.phase === 'bet') && !v.teams;
     const html = show ? seats(ctx).map((i) => '<span class="skchip' + (done[i] ? ' on' : '') + '">'
-      + (done[i] ? '✓ ' : '') + ctx.esc(ctx.nickOf(i)) + '</span>').join('') : '';
+      + (done[i] ? '✓ ' : '') + ctx.esc(nameAt(ctx, i)) + '</span>').join('') : '';
     setHtml(box, html);
   }
 
@@ -205,7 +208,7 @@
         // Після кінця партії поруч із рахунком — скільки черепків він приніс (сервер платить так само).
         const shards = v.result ? Math.floor((sc[i] || 0) / POINTS_PER_SHARD) : 0;
         return '<div class="sksrow' + (win.includes(i) ? ' win' : '') + '">'
-          + '<span>' + ctx.esc(ctx.nickOf(i)) + '</span>'
+          + '<span>' + ctx.esc(nameAt(ctx, i)) + '</span>'
           + (shards > 0 ? '<i class="skshard" title="черепки за очки">🏺+' + shards + '</i>' : '')
           + '<b>' + (sc[i] || 0) + '</b></div>';
       }).join('');
@@ -271,7 +274,7 @@
     if (!list.length) return '';
     return '<details class="skrecap" open><summary>Як це було · ' + list.length + ' ' + plural(list.length, 'питання', 'питання', 'питань') + '</summary><ol>'
       + list.map((r) => {
-        const who = (r.best || []).map((i) => ctx.esc(ctx.nickOf(i) || ctx.seatName(i))).join(', ');
+        const who = (r.best || []).map((i) => ctx.esc(nameAt(ctx, i) || ctx.seatName(i))).join(', ');
         const guess = r.value == null ? '<span class="muted">ніхто не відповів</span>'
           : '🎯 ' + who + ' — ' + yearOr(r.years, r.value) + (r.points ? ' <b>+' + r.points + '</b>' : '');
         return '<li><span class="skrq">' + ctx.esc(r.question) + '</span>'
@@ -300,11 +303,11 @@
     const bonus = (n) => (shardsOf(n) > 0 ? ' <span class="skshard">🏺+' + shardsOf(n) + '</span>' : '');
     if (list.length === 1) {
       const i = list[0], n = sc[i] || 0;
-      return '<div class="skpodt">🎯 ' + (i === ctx.seat ? 'Твій результат' : ctx.esc(ctx.nickOf(i))) + ': <b>' + pts(n) + '</b>' + bonus(n) + '</div>';
+      return '<div class="skpodt">🎯 ' + (i === ctx.seat ? 'Твій результат' : ctx.esc(nameAt(ctx, i))) + ': <b>' + pts(n) + '</b>' + bonus(n) + '</div>';
     }
     const win = v.result.winners || [];
     if (!win.length) return '<div class="skpodt">🤷 Ніхто нічого не вгадав — нічия</div>';
-    let html = '<div class="skpodt">🏆 ' + win.map((i) => '<b>' + ctx.esc(ctx.nickOf(i) || ctx.seatName(i)) + '</b>').join(' і ')
+    let html = '<div class="skpodt">🏆 ' + win.map((i) => '<b>' + ctx.esc(nameAt(ctx, i) || ctx.seatName(i)) + '</b>').join(' і ')
       + ' — ' + pts(sc[win[0]] || 0) + '</div>';
     if (ctx.mine && list.includes(ctx.seat)) {
       const my = sc[ctx.seat] || 0;
@@ -338,7 +341,7 @@
   /// Хто це в рядку: у командах — назва команди, інакше нік.
   function whoOf(ctx, v, x) {
     if (x.team != null && x.team >= 0 && v.teams && v.teams[x.team]) return v.teams[x.team].name;
-    return ctx.nickOf(x.seat) || ctx.seatName(x.seat);
+    return nameAt(ctx, x.seat) || ctx.seatName(x.seat);
   }
 
   /// Числова пряма (№42): усі числа крапками, правда — прапорцем. Роки — лінійно, решта — логарифмом, коли

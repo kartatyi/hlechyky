@@ -1,0 +1,14 @@
+{
+  "phase": "lobby",
+  "lobby": {
+    "bots": [
+      {
+        "name": "\uD83E\uDD16 Галя"
+      },
+      {
+        "name": "\uD83E\uDD16 Грицько"
+      }
+    ],
+    "rounds": 10
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "phase": "prompt",
+  "round": 1,
+  "rounds": 10,
+  "target": 30,
+  "late": false,
+  "lastGame": false,
+  "paused": null,
+  "map": "selo",
+  "mapV": 1,
+  "until": "2026-09-10T12:00:51.0800000+00:00",
+  "total": 8000,
+  "players": [
+    {
+      "i": 0,
+      "nick": "Оля",
+      "bot": false,
+      "name": "Оля",
+      "away": false,
+      "auto": true,
+      "pos": "m8",
+      "gleks": 0,
+      "coins": 10,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 0
+    },
+    {
+      "i": 2,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Галя",
+      "away": false,
+      "auto": false,
+      "pos": "m0",
+      "gleks": 0,
+      "coins": 10,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 2
+    },
+    {
+      "i": 3,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Грицько",
+      "away": false,
+      "auto": false,
+      "pos": "m0",
+      "gleks": 0,
+      "coins": 10,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 3
+    },
+    {
+      "i": 1,
+      "nick": "Петро",
+      "bot": false,
+      "name": "Петро",
+      "away": false,
+      "auto": false,
+      "pos": "m0",
+      "gleks": 0,
+      "coins": 10,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 1
+    }
+  ],
+  "cur": 0,
+  "stand": "l2",
+  "price": 20,
+  "bank": 0,
+  "duelDone": false,
+  "gates": [],
+  "shops": {
+    "m8": [
+      "fork",
+      "rope",
+      "key"
+    ],
+    "m26": [
+      "charm",
+      "key",
+      "gate"
+    ],
+    "y3": [
+      "rope",
+      "gate",
+      "key"
+    ]
+  },
+  "prompt": {
+    "who": 0,
+    "kind": "shop",
+    "node": "m8",
+    "options": [
+      {
+        "k": "fork",
+        "label": "\uD83D\uDD31 Вила",
+        "price": 8,
+        "ok": true
+      },
+      {
+        "k": "rope",
+        "label": "\uD83E\uDEA2 Аркан",
+        "price": 6,
+        "ok": true
+      },
+      {
+        "k": "key",
+        "label": "\uD83D\uDDDD Ключ",
+        "price": 3,
+        "ok": true
+      },
+      {
+        "k": "none",
+        "label": "Нічого",
+        "price": null,
+        "ok": true
+      },
+      {
+        "k": "skip",
+        "label": "Нічого й не питати до кінця ходу",
+        "price": null,
+        "ok": true
+      }
+    ]
+  },
+  "aim": null,
+  "anim": {
+    "seq": 5,
+    "kind": "walk",
+    "who": 0,
+    "path": [
+      "m7",
+      "m8"
+    ],
+    "dice": null,
+    "key": null,
+    "to": null,
+    "at": "2026-09-10T12:00:42.2600000+00:00",
+    "ms": 820
+  },
+  "fx": [],
+  "emo": [],
+  "pick": null,
+  "mg": null,
+  "lateInfo": null,
+  "final": null,
+  "say": {
+    "id": 2,
+    "text": "Хр-р... Оля, прокидайся! Поки що кубики кидаю я.",
+    "url": null
+  },
+  "log": [
+    "\uD83C\uDFB2 Порядок: Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро",
+    "\uD83D\uDCA4 Оля задрімав — ходить Глек"
+  ],
+  "you": {
+    "i": 0,
+    "can": [
+      "pick",
+      "here",
+      "emo"
+    ],
+    "toStand": 33,
+    "tip": false
+  }
+}

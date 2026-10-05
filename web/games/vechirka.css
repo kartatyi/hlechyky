@@ -1,0 +1,383 @@
+/* Глечикова вечірка (vechirka) — дошка, HUD, картки, свято. Кольори сайту — змінними; дошка — своя гама села
+   (трава, дорога, ставок), бо це «малюнок», а не інтерфейс. specs/vechirka.md §15. */
+.vch { position: relative; width: 100%; display: flex; flex-direction: column; gap: 8px; text-align: left;
+  --vch-h: min(74vh, 860px); --vch-grass: #6aa04a; --vch-gold: #ffc23d; }
+.vch * { box-sizing: border-box; }
+
+/* ---------- шапка ---------- */
+.vch-top { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; min-height: 34px; font-size: .92em; }
+.vt-r b { font-size: 1.1em; }
+.vt-sp { flex: 1 1 auto; }
+.vt-late { font-size: 1.15em; }
+.vt-x2 { background: var(--vch-gold); color: #3a2600; font-weight: 800; border-radius: 999px; padding: 1px 8px; font-size: .85em; }
+.vt-now { background: var(--panel2, rgba(127,127,127,.12)); border-radius: 999px; padding: 2px 10px; }
+.vt-chip { background: var(--panel2, rgba(127,127,127,.12)); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.vt-chip.sale { background: var(--vch-gold); color: #3a2600; font-weight: 700; }
+.vt-b { min-width: 36px; min-height: 34px; padding: 2px 8px; border-radius: 10px; }
+.vch:not(.phone) .vt-logb { display: none; }
+
+/* ---------- розкладка ---------- */
+.vch-main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 10px; align-items: start; }
+.vch-stage { position: relative; min-width: 0; }
+.vch-bw { position: relative; height: var(--vch-h); min-height: 420px; border-radius: 14px; overflow: hidden; background: var(--vch-grass);
+  touch-action: none; -webkit-user-select: none; user-select: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.vch-board { width: 100%; height: 100%; display: block; cursor: grab; transition: filter .3s; }
+.vch-board:active { cursor: grabbing; }
+.vch.dim .vch-board { filter: brightness(.62) saturate(.8) blur(1px); }
+.vch-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #fff; font-weight: 600; }
+.vch-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-height: var(--vch-h); overflow-y: auto; scrollbar-width: thin; }
+
+/* ---------- дошка: трава, дорога, декор ---------- */
+.vb-grass { fill: var(--vch-grass); }
+.vb-road-o { stroke: #8a6a3e; stroke-width: 36; stroke-linecap: round; }
+.vb-road { stroke: #e9d39b; stroke-width: 26; stroke-linecap: round; }
+.vb-road-o.br { stroke-width: 28; }
+.vb-road.br { stroke-width: 19; stroke: #e2c98a; }
+.vb-ferry { stroke: #e9f4ff; stroke-width: 8; stroke-dasharray: 4 14; stroke-linecap: round; opacity: .9; }
+.vb-arrow { fill: none; stroke: #a5864f; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.vb-zones text { font: 800 46px system-ui, sans-serif; fill: rgba(255,255,255,.22); text-anchor: middle; letter-spacing: 6px; text-transform: uppercase; pointer-events: none; }
+.d-pond { fill: #4a90c8; } .d-pond2 { fill: #5aa3d9; }
+.d-wave { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 3; stroke-linecap: round; animation: vch-wave 4s ease-in-out infinite alternate; }
+.d-river { fill: none; stroke: #4a90c8; stroke-width: 34; stroke-linecap: round; stroke-linejoin: round; }
+.d-church rect { fill: #f3efe4; stroke: #b8ad92; stroke-width: 2; } .d-church .d-dk { fill: #6b4b2a; stroke: none; }
+.d-church .d-roof { fill: #4f6f9c; } .d-dome { fill: #e5b53a; } .d-cross { stroke: #e5b53a; stroke-width: 3; fill: none; }
+.d-well ellipse { fill: #3d6f8f; } .d-well rect { fill: #8a6a3e; } .d-pole { stroke: #6b4b2a; stroke-width: 4; fill: none; }
+.d-mill .d-wall { fill: #efe4c7; stroke: #a89470; stroke-width: 2; } .d-mill .d-roof { fill: #8a5a32; }
+.d-blades { transform-box: view-box; transform-origin: 0 -30px; animation: vch-spin 14s linear infinite; }
+.d-blades path { fill: #d9c79f; stroke: #8a6a3e; stroke-width: 2; } .d-blades circle { fill: #6b4b2a; }
+.d-mill .d-blades { transform-box: fill-box; transform-origin: center; }
+.d-tree { fill: #2f6b32; stroke: #24552a; stroke-width: 2; } .d-trunk { fill: #6b4b2a; }
+.d-tent0 { fill: #e05d4f; } .d-tent1 { fill: #f2c14e; } .d-tent2 { fill: #4f8fe0; }
+.d-tstripe { stroke: rgba(255,255,255,.7); stroke-width: 3; fill: none; } .d-flag { fill: #fff; stroke: #6b4b2a; stroke-width: 1.5; }
+.d-house rect { fill: #f7f0dc; stroke: #b8ad92; stroke-width: 2; } .d-house .d-win { fill: #8fc3e8; } .d-house .d-dk { fill: #6b4b2a; }
+.d-straw { fill: #d8a944; stroke: #a37a2a; stroke-width: 2; }
+.d-fence { fill: none; stroke: #8a6a3e; stroke-width: 4; stroke-dasharray: 2 0; } .d-post { fill: #6b4b2a; }
+.d-emoji { font-size: 46px; text-anchor: middle; opacity: .8; }
+
+/* ---------- клітинки ---------- */
+.vt { cursor: pointer; }
+.vt-bg { fill: #fffaf0; stroke: rgba(0,0,0,.28); stroke-width: 2; }
+.vt-in { fill: #888; }
+.vt-ic { font: 800 21px system-ui, sans-serif; fill: #fff; text-anchor: middle; pointer-events: none; }
+.vt-nm { font: 700 15px system-ui, sans-serif; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: rgba(0,0,0,.55); stroke-width: 4px; display: none; pointer-events: none; }
+.vch-board.near .vt-nm { display: block; }
+.vt-coin .vt-in { fill: #2f6fd6; } .vt-coin.rich .vt-in { fill: #1593a8; }
+.vt-trap .vt-in { fill: #cc3f37; } .vt-chest .vt-in { fill: #a0682c; } .vt-event .vt-in { fill: #2f9a57; }
+.vt-shop .vt-in { fill: #8a52c9; } .vt-duel .vt-in { fill: #3c3c4a; } .vt-bank .vt-in { fill: #e07aa5; }
+.vt-church .vt-in { fill: #c9a227; } .vt-start .vt-in { fill: #3aa0c8; }
+.vt-start .vt-bg, .vt-shop .vt-bg, .vt-bank .vt-bg { stroke: var(--vch-gold); stroke-width: 4; }
+.vt.flash .vt-bg { animation: vch-flash 1.2s ease-out; }
+.vt.hov .vt-bg, .vt:hover .vt-bg { stroke: #fff; stroke-width: 5; }
+.vhl { fill: none; stroke: #ffe14d; stroke-width: 6; stroke-dasharray: 12 9; animation: vch-dash 1s linear infinite; pointer-events: all; cursor: pointer; }
+
+/* ---------- лавка Глека й шлагбауми ---------- */
+.vs { pointer-events: none; }
+.vs-glow { animation: vch-glow 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.vs-rays path { fill: #ffe27a; opacity: .9; }
+.vs-rays { animation: vch-spin 9s linear infinite; transform-box: view-box; }
+.vs .vs-rays { transform-box: fill-box; transform-origin: center; }
+.vs-jar { font-size: 42px; text-anchor: middle; }
+.vs-tag rect { fill: var(--vch-gold); stroke: #8a5a00; stroke-width: 2; }
+.vs-tag text { font: 800 15px system-ui, sans-serif; text-anchor: middle; fill: #3a2600; }
+.vs.sale .vs-tag rect { fill: #ff6b5a; }
+.vgate rect { fill: #fff; stroke-width: 3; } .vgate text { font-size: 16px; text-anchor: middle; }
+.vgate.new { animation: vch-drop .6s cubic-bezier(.3,1.6,.5,1); transform-box: fill-box; }
+
+/* ---------- фішки ---------- */
+.vtok { cursor: pointer; }
+.vtk-sh { fill: rgba(0,0,0,.28); }
+.vtk-bg { stroke-width: 4; }
+.vtk-t { font: 800 19px system-ui, sans-serif; fill: #fff; text-anchor: middle; pointer-events: none; }
+.vtk-st { font-size: 16px; pointer-events: none; }
+.vtk-n { font: 900 22px system-ui, sans-serif; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 5px; pointer-events: none; }
+.vtk-pulse { fill: none; stroke-width: 4; opacity: 0; }
+.vtok.cur .vtk-pulse { animation: vch-pulse 1.3s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.vtok.away .vtk-b { opacity: .72; }
+.vtok.tgt .vtk-bg { stroke: #ff4d3d; stroke-width: 6; }
+.vtok.tgt .vtk-pulse { stroke: #ff4d3d !important; animation: vch-pulse .9s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.vtok.hov .vtk-bg { stroke: #fff; stroke-width: 7; }
+
+/* ---------- спливашки, літучі, іскри ---------- */
+.vf-float text { font: 900 26px system-ui, sans-serif; text-anchor: middle; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.7); stroke-width: 6px; animation: vch-float 1.6s ease-out forwards; }
+.vf-float.good text { fill: #8dff8a; } .vf-float.bad text { fill: #ff8a7a; } .vf-float.gold text { fill: var(--vch-gold); }
+.vf-float.big text { font-size: 34px; } .vf-float.slow text { animation-duration: 2.6s; } .vf-float.emo text { font-size: 38px; stroke-width: 0; }
+.vf-fly text { font-size: 30px; text-anchor: middle; } .vf-fly.big text { font-size: 44px; }
+.vf-spark { animation: vch-spark 1.1s ease-out forwards; }
+
+/* ---------- кубики, банер, бульбашка Глека ---------- */
+.vch-dice { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); display: flex; gap: 14px; align-items: center; z-index: 6; pointer-events: none; transition: opacity .3s; }
+.vch-dice.out { opacity: 0; }
+.vdie { width: 64px; height: 64px; background: #fffdf6; border-radius: 14px; box-shadow: 0 6px 0 #c9bfa8, 0 10px 24px rgba(0,0,0,.4); display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 9px; gap: 3px; }
+.vdie i { border-radius: 50%; } .vdie i.on { background: #2b2b33; }
+.vdie.roll { animation: vch-tumble .32s linear infinite; }
+.vdie.done { animation: vch-land .4s cubic-bezier(.3,1.7,.5,1); }
+.vdsum { font: 900 26px system-ui, sans-serif; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.7); white-space: nowrap; }
+.vch-ban { position: absolute; left: 50%; top: 14px; transform: translate(-50%, -20px); opacity: 0; z-index: 7; pointer-events: none; transition: opacity .25s, transform .25s;
+  background: var(--panel, #222); color: var(--text, #fff); border-radius: 999px; padding: 8px 18px; font-size: 1.05em; box-shadow: 0 6px 18px rgba(0,0,0,.35); white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
+.vch-ban.on { opacity: 1; transform: translate(-50%, 0); }
+.vch-ban.mine { background: var(--accent, #e8a33d); color: #1d1300; font-weight: 800; font-size: 1.25em; }
+.vch-ban.gold { background: var(--vch-gold); color: #3a2600; font-weight: 700; }
+.vch-ban.event { top: 50%; transform: translate(-50%, -50%) rotateY(90deg); border-radius: 18px; white-space: normal; width: min(340px, 86%); padding: 18px; text-align: center; transition: opacity .25s, transform .45s; }
+.vch-ban.event.on { transform: translate(-50%, -50%) rotateY(0); }
+.vch-ban.late { background: #1d2550; color: #fff; }
+.vev-ic { font-size: 48px; line-height: 1.1; } .vev b { display: block; font-size: 1.2em; margin: 4px 0; } .vev p { margin: 0; opacity: .85; }
+.vch-ban.wheel .vev-ic { animation: vch-spin .5s linear 4; display: inline-block; }
+.vch-say { position: absolute; left: 12px; top: 12px; max-width: min(420px, 70%); z-index: 6; display: flex; gap: 8px; align-items: flex-start;
+  background: #fffaf0; color: #3b2a12; border-radius: 16px 16px 16px 4px; padding: 8px 12px; box-shadow: 0 6px 16px rgba(0,0,0,.3); opacity: 0; transform: translateY(-8px); transition: opacity .25s, transform .25s; pointer-events: none; font-size: .95em; }
+.vch-say.on { opacity: 1; transform: none; }
+.vg-ic { font-size: 1.4em; line-height: 1; }
+.vch-focus { position: absolute; right: 10px; top: 10px; z-index: 6; min-width: 44px; min-height: 44px; border-radius: 50%; font-size: 1.2em; }
+.vch-arrow { position: absolute; left: 0; top: 0; width: 44px; height: 44px; z-index: 5; pointer-events: none; display: flex; align-items: center; justify-content: center; }
+.vch-arrow i { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; font-style: normal; color: var(--vch-gold); font-size: 22px; text-shadow: 0 1px 3px #000; }
+.vch-arrow b { font-size: 22px; background: rgba(0,0,0,.45); border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; animation: vch-glowb 1.6s ease-in-out infinite; }
+
+/* ---------- нижня шторка ---------- */
+.vch-dock { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 8; width: max-content; max-width: calc(100% - 24px);
+  background: var(--panel, #1d1d22); border-radius: 16px; padding: 10px 14px; box-shadow: 0 8px 26px rgba(0,0,0,.4); display: flex; gap: 10px; align-items: center; }
+.vch-dock[hidden] { display: none; }
+.vch-dock.mine { box-shadow: 0 0 0 2px var(--accent, #e8a33d), 0 8px 26px rgba(0,0,0,.45); }
+.vd-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.vd-tm { flex: none; }
+.vd-ttl { font-weight: 700; font-size: 1.02em; }
+.vd-hint { font-size: .88em; color: var(--muted); }
+.vd-msg { display: flex; align-items: center; gap: 8px; }
+.vd-warn { font-weight: 600; color: #ff8a7a; font-size: .9em; }
+.vd-row { display: flex; gap: 8px; align-items: stretch; }
+.vd-wrap { flex-wrap: wrap; }
+.vd-row.watch { opacity: .75; }
+.vopt { min-height: 44px; display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 6px 12px; border-radius: 12px; line-height: 1.2; text-align: left; }
+.vopt small { font-size: .78em; color: var(--muted); font-weight: 400; max-width: 190px; }
+.vopt.kbd { outline: 3px solid var(--accent, #e8a33d); outline-offset: 2px; }
+.vopt.on { background: var(--ok, #3fa45b); color: #fff; }
+.vd-roll { min-height: 56px; min-width: 150px; font-size: 1.2em; font-weight: 800; align-items: center; animation: vch-nudge 2.2s ease-in-out infinite; }
+.vd-item { flex-direction: row; align-items: center; gap: 6px; }
+.vi-ic { font-size: 1.5em; } .vi-n { display: flex; flex-direction: column; font-size: .85em; } .vi-n small { opacity: .6; }
+.vd-num { min-width: 44px; align-items: center; font-weight: 800; }
+.vd-pr { font-weight: 800; }
+.vd-tip { background: var(--vch-gold); color: #3a2600; border-radius: 10px; padding: 6px 10px; font-size: .9em; font-weight: 600; animation: vch-nudge 2.2s ease-in-out infinite; }
+.vd-foot { display: flex; align-items: center; gap: 8px; justify-content: space-between; font-size: .88em; }
+.vd-goal { color: var(--muted); }
+.vd-emos { position: relative; }
+.vd-emob { min-width: 44px; min-height: 40px; border-radius: 50%; }
+.vd-emol { display: none; position: absolute; right: 0; bottom: 48px; background: var(--panel, #222); border-radius: 14px; padding: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.4); gap: 4px; }
+.vd-emos.open .vd-emol { display: flex; }
+.vd-emol button { min-width: 44px; min-height: 44px; font-size: 1.3em; }
+
+/* ---------- права колонка: гравці, мета, реакції, Глек, журнал ---------- */
+.vch-pl { display: flex; flex-direction: column; gap: 4px; }
+.vp { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "a n g c" "a it it pl"; gap: 0 8px; align-items: center;
+  padding: 6px 8px; border-radius: 12px; background: var(--panel2, rgba(127,127,127,.1)); cursor: pointer; position: relative; border-left: 4px solid hsl(var(--ph) 75% 55%); transition: background .2s; }
+.vp > .vch-ava { grid-area: a; }
+.vp-n { grid-area: n; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.vp-g { grid-area: g; white-space: nowrap; } .vp-c { grid-area: c; white-space: nowrap; }
+.vp-g b, .vp-c b { margin-left: 2px; }
+.vp-it { grid-area: it; font-size: .95em; min-height: 1.2em; } .vp-it i { font-style: normal; margin-right: 2px; }
+.vp-pl { grid-area: pl; font-size: .8em; color: var(--muted); text-align: right; } .vp-pl::after { content: '-е'; }
+.vp-pl:empty::after { content: ''; }
+.vp.cur { background: color-mix(in srgb, hsl(var(--ph) 70% 50%) 22%, var(--panel2, transparent)); }
+.vp-cur { font-style: normal; color: hsl(var(--ph) 85% 60%); margin-right: 3px; }
+.vp.me .vp-n { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: hsl(var(--ph) 80% 55%); }
+.vp.off { opacity: .75; }
+.vp.up { animation: vch-up .8s; } .vp.down { animation: vch-down .8s; }
+.vemo-fly { position: absolute; right: 8px; top: -6px; font-size: 1.6em; animation: vch-float2 1.5s ease-out forwards; pointer-events: none; }
+.vch-goal { font-size: .9em; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--vch-gold) 18%, transparent); }
+.vch-emo { display: flex; gap: 4px; justify-content: space-between; }
+.vch-emo button { flex: 1; min-height: 40px; font-size: 1.25em; padding: 0; border-radius: 10px; }
+.vch-emo button.sent { opacity: .45; }
+.vch-glek { display: flex; gap: 8px; align-items: flex-start; font-size: .9em; padding: 8px 10px; border-radius: 12px; background: #fffaf0; color: #3b2a12; }
+.vch-glek:empty { display: none; }
+.vch-log { font-size: .84em; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+.vch-log .vl-h { font-weight: 700; color: var(--text); }
+
+/* ---------- аватарки ---------- */
+.vch-ava { --s: 32px; position: relative; flex: none; width: var(--s); height: var(--s); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  border: 3px solid hsl(var(--ph) 80% 55%); background: hsl(var(--ph) 50% 38%); overflow: visible; vertical-align: middle; font-size: calc(var(--s) * .45); }
+.vch-ava > .ava { width: 100%; height: 100%; margin: 0; border-radius: 50%; font-size: inherit; min-width: 0; }
+.vch-ava > .ava img, .vch-ava img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.vch-avb { color: #fff; font-weight: 800; line-height: 1; }
+.vch-avx { position: absolute; right: -6px; bottom: -6px; font-style: normal; font-size: 12px; line-height: 1; }
+.vch-ava.sm { --s: 24px; border-width: 2px; } .vch-ava.lg { --s: 54px; } .vch-ava.xl { --s: 86px; border-width: 4px; }
+
+/* ---------- оверлеї посеред дошки ---------- */
+.vch-ov { position: absolute; inset: 0; z-index: 9; display: flex; align-items: center; justify-content: center; padding: 14px; pointer-events: none; }
+.vch-ov[hidden] { display: none; }
+.vo-card { pointer-events: auto; background: var(--panel, #1d1d22); color: var(--text, #fff); border-radius: 18px; padding: 18px 20px; width: min(560px, 100%);
+  max-height: 100%; overflow-y: auto; box-shadow: 0 14px 40px rgba(0,0,0,.5); animation: vch-pop .35s cubic-bezier(.3,1.5,.5,1); text-align: center; }
+.vo-card h2, .vo-card h3, .vo-card h4 { margin: 4px 0 8px; }
+.vo-card p { margin: 6px 0; }
+.vo-big { font-size: 54px; line-height: 1.1; }
+.vo-glek { display: inline-block; animation: vch-bob 2.4s ease-in-out infinite; filter: drop-shadow(0 0 12px var(--vch-gold)); }
+.vo-avs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 10px 0; }
+.vo-avs > span { display: flex; flex-direction: column; align-items: center; gap: 3px; max-width: 76px; }
+.vo-avs small { font-size: .78em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 76px; }
+.vo-order ol, .vo-res ol { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.vo-order li, .vo-res li { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-radius: 12px; background: var(--panel2, rgba(127,127,127,.12)); opacity: 0; animation: vch-in .4s ease-out forwards; animation-delay: var(--d, 0s); }
+.vo-roll, .vo-coins { margin-left: auto; font-weight: 800; }
+.vo-coins { color: var(--vch-gold); }
+.vo-res li.win { background: color-mix(in srgb, var(--vch-gold) 28%, var(--panel2, transparent)); }
+.vo-res li.me b { text-decoration: underline; }
+.vo-pl { font-size: 1.4em; min-width: 30px; }
+.vo-mgs { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 10px 0; }
+.vo-mg { width: 150px; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; padding: 12px;
+  background: var(--panel2, rgba(127,127,127,.12)); border: 2px solid transparent; transition: transform .15s, border-color .15s, background .15s; }
+.vo-mg.vopt { cursor: pointer; align-items: center; }
+.vo-mg.vopt:hover { transform: translateY(-4px); border-color: var(--accent, #e8a33d); }
+.vo-mg.flash { background: var(--accent, #e8a33d); color: #1d1300; transform: scale(1.05); }
+.vo-mg.chosen { border-color: var(--vch-gold); background: color-mix(in srgb, var(--vch-gold) 30%, var(--panel2, transparent)); transform: scale(1.06); }
+.vo-mgi { display: inline-flex; } .vo-mgi .gico, .vo-mgi svg { width: 44px; height: 44px; } .vo-mgi .gemo { font-size: 40px; }
+.vmg-h .vo-mgi .gico, .vmg-h .vo-mgi svg { width: 22px; height: 22px; } .vmg-h .vo-mgi .gemo { font-size: 20px; }
+.vo-mgh { display: flex; align-items: center; justify-content: center; gap: 12px; text-align: left; }
+.vo-x2 { display: inline-block; background: var(--vch-gold); color: #3a2600; font-weight: 800; border-radius: 999px; padding: 3px 14px; margin-bottom: 6px; animation: vch-nudge 1.6s ease-in-out infinite; }
+.vo-how { font-size: 1.02em; line-height: 1.45; background: var(--panel2, rgba(127,127,127,.12)); border-radius: 12px; padding: 10px 12px; text-align: left; }
+.vo-you { font-size: 1.05em; }
+.vo-seats { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 8px 0; }
+.vo-seat { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--panel2, rgba(127,127,127,.12)); font-size: .85em; }
+.vo-seat.ok { background: color-mix(in srgb, var(--ok, #3fa45b) 30%, transparent); }
+.vo-seat i { font-style: normal; color: var(--ok, #3fa45b); font-weight: 800; }
+.vo-act { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; }
+.vo-ready { min-height: 52px; min-width: 170px; font-size: 1.15em; font-weight: 800; align-items: center; }
+.vo-duel { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 8px 0; }
+.vo-ds { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.vo-ds .vopt { align-items: center; }
+.vo-vs { font-size: 34px; display: flex; flex-direction: column; align-items: center; } .vo-vs small { font-size: 13px; font-weight: 700; color: var(--vch-gold); }
+.vo-late { background: linear-gradient(160deg, #1d2550, #34204d); color: #fff; }
+.vo-late .vd-row { justify-content: center; }
+.vo-gift { align-items: center; font-weight: 700; }
+.vo-chosen { font-size: .9em; opacity: .85; margin-top: 6px; }
+.vo-pause .vo-big { animation: vch-bob 2.4s ease-in-out infinite; }
+.vo-tm { display: flex; justify-content: center; }
+.vo-final { width: min(620px, 100%); }
+.vo-drum { animation: vch-shake .25s linear infinite; font-weight: 700; }
+.vo-bons { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.vo-bon { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; border-radius: 14px; background: var(--panel2, rgba(127,127,127,.12)); animation: vch-in .5s ease-out; }
+.vo-bon b { display: block; } .vo-bon small { color: var(--muted); }
+.vo-bi { font-size: 30px; }
+.vo-bw { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; font-weight: 700; }
+.vo-bon.fresh { animation: vch-in .5s ease-out, vch-glowc 1.2s ease-in-out 3; }
+.vo-bon.fresh .vo-bw { animation: vch-reveal 1.6s steps(1) forwards; }
+.vo-win { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin: 8px 0 12px; position: relative; }
+.vo-win > div { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 1.2em; animation: vch-pop .6s cubic-bezier(.3,1.6,.5,1); }
+.vo-crown { flex-basis: 100%; font-size: 1.3em; font-weight: 800; color: var(--vch-gold); }
+.vo-tbl { width: 100%; border-collapse: collapse; font-size: .95em; }
+.vo-tbl th, .vo-tbl td { padding: 5px 6px; border-bottom: 1px solid var(--line, rgba(127,127,127,.2)); text-align: center; }
+.vo-tbl td:nth-child(2) { text-align: left; white-space: nowrap; }
+.vo-tbl tr.win td { font-weight: 800; } .vo-tbl tr.me td:nth-child(2) { text-decoration: underline; }
+.vo-lobby { width: min(680px, 100%); }
+.vl-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 6px 0; }
+.vo-lobby .vd-row { justify-content: center; margin: 8px 0; }
+.vo-lobby .vopt { align-items: center; font-weight: 700; }
+
+/* ---------- як грати ---------- */
+.vh-g { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin: 10px 0; text-align: left; }
+.vh-s { display: flex; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--panel2, rgba(127,127,127,.12)); }
+.vh-s p { margin: 2px 0 0; font-size: .88em; color: var(--muted); }
+.vh-ic { font-size: 26px; line-height: 1; }
+.vh-t { display: flex; gap: 8px; align-items: flex-start; margin: 5px 0; font-size: .9em; text-align: left; }
+.vh-ii { font-size: 20px; width: 30px; text-align: center; flex: none; }
+.vtp-ic { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 13px; background: #888; border: 2px solid #fffaf0; }
+.vtp-ic.vt-coin { background: #2f6fd6; } .vtp-ic.vt-trap { background: #cc3f37; } .vtp-ic.vt-chest { background: #a0682c; } .vtp-ic.vt-event { background: #2f9a57; }
+.vtp-ic.vt-shop { background: #8a52c9; } .vtp-ic.vt-duel { background: #3c3c4a; } .vtp-ic.vt-bank { background: #e07aa5; } .vtp-ic.vt-church { background: #c9a227; }
+.vtp-ic.vt-start { background: #3aa0c8; } .vtp-ic.vt-stand { background: var(--vch-gold); } .vtp-ic.vt-gate { background: #fff; }
+
+/* ---------- спливна картка ---------- */
+.vch-pop { position: absolute; inset: 0; z-index: 20; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 12px; }
+.vch-pop[hidden] { display: none; }
+.vpop-c { position: relative; background: var(--panel, #1d1d22); color: var(--text, #fff); border-radius: 16px; padding: 16px 18px; width: min(560px, 100%); max-height: min(86vh, 100%); overflow-y: auto; box-shadow: 0 14px 40px rgba(0,0,0,.5); animation: vch-pop .3s cubic-bezier(.3,1.5,.5,1); }
+.vch-pop.pp .vpop-c, .vch-pop.tp .vpop-c { width: min(380px, 100%); }
+.vpop-x { position: absolute; right: 8px; top: 8px; min-width: 40px; min-height: 40px; border-radius: 50%; }
+.vpp-h, .vtp-h { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; padding-right: 40px; }
+.vpp-s { display: flex; gap: 12px; flex-wrap: wrap; margin: 6px 0; }
+.vpp-it { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.vpp-it > div { display: flex; flex-direction: column; padding: 6px 10px; border-radius: 10px; background: var(--panel2, rgba(127,127,127,.12)); }
+.vch-pop.log .vl-h { font-weight: 700; margin-bottom: 4px; }
+.vch-pop.log .vpop-c > div { font-size: .9em; margin: 2px 0; }
+
+/* ---------- міні-гра всередині ---------- */
+.vch-mg { position: absolute; inset: 0; z-index: 4; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--panel2, #222); }
+.vch-mg[hidden] { display: none; }
+.vmg-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vmg-st { margin-left: auto; }
+.vmg-b { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; }
+.vmg-b > .gembed { width: 100%; }
+.vch.mgon .vch-bw { background: var(--panel2, #222); height: auto; min-height: var(--vch-h); overflow: visible; touch-action: auto; -webkit-user-select: auto; user-select: auto; }
+.vch.mgon .vch-board, .vch.mgon .vch-focus, .vch.mgon .vch-arrow, .vch.mgon .vch-say { display: none; }
+.vch.mgon .vch-mg { position: relative; inset: auto; min-height: var(--vch-h); }
+/* міні-гра — на всю ширину картки (бічна панель гравців ховається, у грі свої табло) і по центру висоти:
+   на Full HD «Замри!» займала 830×250 угорі, нижче — порожньо (R2) */
+.vch.mgon .vch-main { grid-template-columns: minmax(0, 1fr); }
+.vch.mgon .vch-side { display: none; }
+.vch.mgon .vmg-b { justify-content: center; }
+/* телефон, міні-гра: «Встати» й рядок налаштувань столу каркаса забирають висоту й ризик встати посеред гри (R2) */
+.gtable:has(.vch.phone.mgon) > .gbtns, .gtable:has(.vch.phone.mgon) .gseats .gmode { display: none; }
+
+/* ---------- конфеті ---------- */
+.vch-conf { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 10; }
+.vch-conf i { position: absolute; top: -16px; width: 9px; height: 15px; background: hsl(var(--hh) 85% 60%); border-radius: 2px; animation: vch-fall 3s linear forwards; }
+
+/* ---------- телефон ---------- */
+.vch.phone { --vch-h: clamp(230px, 44dvh, 480px); gap: 6px; }
+.vch.phone .vch-top { font-size: .84em; gap: 4px; flex-wrap: nowrap; overflow: hidden; min-height: 38px; }
+.vch.phone .vt-chip { padding: 2px 6px; }
+.vch.phone .vt-b { min-width: 36px; min-height: 38px; padding: 2px 4px; flex: none; }
+.vch.phone .vt-now { display: none; }
+.vch.phone .vch-main { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.vch.phone .vch-side { order: -1; max-height: none; overflow: visible; }
+.vch.phone .vch-pl { flex-direction: row; overflow-x: auto; gap: 4px; scrollbar-width: none; padding-bottom: 2px; }
+.vch.phone .vp { grid-template-columns: auto; grid-template-areas: "a" "g"; justify-items: center; gap: 1px; padding: 4px 4px 3px; min-width: 46px; flex: 0 0 auto; border-left: 0; border-bottom: 3px solid hsl(var(--ph) 75% 55%); }
+.vch.phone .vp-n, .vch.phone .vp-c, .vch.phone .vp-it, .vch.phone .vp-pl { display: none; }
+.vch.phone .vp-g { font-size: .82em; }
+.vch.phone .vch-ava { --s: 30px; }
+.vch.phone .vch-goal, .vch.phone .vch-emo, .vch.phone .vch-glek, .vch.phone .vch-log { display: none; }
+.vch.phone .vch-bw { min-height: 230px; border-radius: 12px; }
+.vch.phone .vch-dock { position: relative; left: auto; bottom: auto; transform: none; width: auto; max-width: none; margin-top: 6px; min-height: 96px; flex-direction: column; align-items: stretch; padding: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.vch.phone .vch-dock.mine { box-shadow: 0 0 0 2px var(--accent, #e8a33d); }
+.vch.phone .vd-tm { position: absolute; right: 10px; top: 8px; }
+.vch.phone .vd-row { flex-wrap: wrap; }
+.vch.phone .vd-roll { flex: 1 1 100%; min-height: 56px; }
+.vch.phone .vd-item { flex: 1 1 calc(33% - 8px); min-width: 0; }
+.vch.phone .vopt small { max-width: none; }
+.vch.phone .vd-ttl { padding-right: 46px; }
+.vch.phone .vch-say { max-width: calc(100% - 70px); font-size: .88em; }
+.vch.phone .vch-dice { top: 34%; } .vch.phone .vdie { width: 52px; height: 52px; padding: 7px; }
+.vch.phone .vo-card { padding: 14px 12px; border-radius: 14px; }
+.vch.phone .vo-mg { width: calc(50% - 10px); min-height: 100px; }
+.vch.phone .vo-big { font-size: 42px; }
+.vch.phone.mgon .vch-side, .vch.phone.mgon .vch-dock { display: none; }
+.vch.phone.mgon .vch-bw, .vch.phone.mgon .vch-mg { min-height: 60dvh; }
+.vch.phone.mgon .vch-mg { padding: 4px; }
+.vch.phone.lobby .vch-bw { height: auto; min-height: 300px; }
+.vch.lobby .vch-ov { position: relative; inset: auto; min-height: var(--vch-h); }
+.vch.lobby .vch-bw { overflow: hidden; }
+.vch.lobby .vch-board { position: absolute; inset: 0; }
+
+/* ---------- анімації ---------- */
+@keyframes vch-spin { to { transform: rotate(360deg); } }
+@keyframes vch-wave { from { transform: translateX(-6px); } to { transform: translateX(6px); } }
+@keyframes vch-flash { 0% { stroke: #fff; stroke-width: 14; } 100% { stroke-width: 2; } }
+@keyframes vch-dash { to { stroke-dashoffset: -42; } }
+@keyframes vch-glow { 0%, 100% { transform: scale(.88); opacity: .8; } 50% { transform: scale(1.08); opacity: 1; } }
+@keyframes vch-glowb { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,194,61,.7); } 50% { box-shadow: 0 0 0 8px rgba(255,194,61,0); } }
+@keyframes vch-glowc { 50% { box-shadow: 0 0 0 4px var(--vch-gold); } }
+@keyframes vch-pulse { 0% { opacity: .9; transform: scale(.85); } 100% { opacity: 0; transform: scale(1.55); } }
+@keyframes vch-float { 0% { transform: translateY(6px) scale(.6); opacity: 0; } 15% { transform: translateY(0) scale(1.1); opacity: 1; } 100% { transform: translateY(-60px) scale(1); opacity: 0; } }
+@keyframes vch-float2 { 0% { transform: translateY(0) scale(.5); opacity: 0; } 20% { transform: translateY(-6px) scale(1.2); opacity: 1; } 100% { transform: translateY(-40px); opacity: 0; } }
+@keyframes vch-spark { from { transform: translate(0, 0); opacity: 1; } to { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
+@keyframes vch-drop { from { transform: translateY(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes vch-tumble { 0% { transform: rotate(0) translateY(0); } 25% { transform: rotate(90deg) translateY(-14px); } 50% { transform: rotate(180deg) translateY(0); } 75% { transform: rotate(270deg) translateY(-10px); } 100% { transform: rotate(360deg); } }
+@keyframes vch-land { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@keyframes vch-nudge { 0%, 100% { transform: none; } 50% { transform: translateY(-2px); } }
+@keyframes vch-pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes vch-in { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes vch-bob { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-6px) rotate(4deg); } }
+@keyframes vch-up { 30% { background: color-mix(in srgb, #3fa45b 45%, transparent); } }
+@keyframes vch-down { 30% { background: color-mix(in srgb, #cc3f37 45%, transparent); } }
+@keyframes vch-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+@keyframes vch-reveal { 0% { visibility: hidden; } 100% { visibility: visible; } }
+@keyframes vch-fall { 0% { transform: translateY(0) rotate(0); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) {
+  .vch *, .vch *::before, .vch *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+.vch.mid .vch-main { grid-template-columns: minmax(0, 1fr) 236px; }
+/* Міні-гра на ноутбуці теж на всю картку: це правило стоїть після .mid і перебиває його бічну колонку. */
+.vch.mid.mgon .vch-main { grid-template-columns: minmax(0, 1fr); }
+.vch.mid .vp { padding: 5px 6px; gap: 0 6px; }

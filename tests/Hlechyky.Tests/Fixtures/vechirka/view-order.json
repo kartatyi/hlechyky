@@ -1,0 +1,130 @@
+{
+  "phase": "order",
+  "round": 0,
+  "rounds": 10,
+  "target": 30,
+  "late": false,
+  "lastGame": false,
+  "paused": null,
+  "map": "selo",
+  "mapV": 1,
+  "until": "2026-09-10T12:00:09.0000000+00:00",
+  "total": 3000,
+  "players": [
+    {
+      "i": 0,
+      "nick": "Оля",
+      "bot": false,
+      "name": "Оля",
+      "away": false,
+      "auto": false,
+      "pos": "m0",
+      "gleks": 0,
+      "coins": 10,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 0
+    },
+    {
+      "i": 2,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Галя",
+      "away": false,
+      "auto": false,
+      "pos": "m0",
+      "gleks": 0,
+      "coins": 10,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 2
+    },
+    {
+      "i": 3,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Грицько",
+      "away": false,
+      "auto": false,
+      "pos": "m0",
+      "gleks": 0,
+      "coins": 10,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 3
+    },
+    {
+      "i": 1,
+      "nick": "Петро",
+      "bot": false,
+      "name": "Петро",
+      "away": false,
+      "auto": false,
+      "pos": "m0",
+      "gleks": 0,
+      "coins": 10,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 1,
+      "color": 1
+    }
+  ],
+  "cur": null,
+  "stand": "l2",
+  "price": 20,
+  "bank": 0,
+  "duelDone": false,
+  "gates": [],
+  "shops": {},
+  "prompt": null,
+  "aim": null,
+  "anim": {
+    "seq": 1,
+    "kind": "order",
+    "who": null,
+    "path": null,
+    "dice": [
+      8,
+      2,
+      6,
+      5
+    ],
+    "key": null,
+    "to": null,
+    "at": "2026-09-10T12:00:06.0000000+00:00",
+    "ms": 0
+  },
+  "fx": [],
+  "emo": [],
+  "pick": null,
+  "mg": null,
+  "lateInfo": null,
+  "final": null,
+  "say": {
+    "id": 1,
+    "text": "Сідайте, не соромтесь. Сьогодні в мене глеки золоті, а забави — веселі.",
+    "url": null
+  },
+  "log": [
+    "\uD83C\uDFB2 Порядок: Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро"
+  ],
+  "you": {
+    "i": 0,
+    "can": [
+      "emo"
+    ],
+    "toStand": 9,
+    "tip": false
+  }
+}
