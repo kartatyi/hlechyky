@@ -52,6 +52,7 @@ public static class GamesSetup
         Impl.PictionarySetup.AddPictionary(services);       // Піктіонарі: публічний альбом і рекорди пар
         Impl.WordleSetup.AddWordle(services);               // Глек-слово: слова на 4 і 6 літер для гри наввипередки
         Impl.DinoDailySetup.AddDinoDaily(services);          // Забіг дня: привиди друзів і кубок тижня
+        Impl.TyrSetup.AddTyr(services);   // «Тир дня»: таблиця дня за очками й очки в «☀ Сьогодні»
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         return services;
     }

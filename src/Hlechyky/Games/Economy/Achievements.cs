@@ -164,6 +164,11 @@ public static class AchievementCatalog
         new("geo-20k",      "Знавець України", "20 000 очок за партію «Де це?» з п'яти й більше раундів", "🗺", 30),
         // реверсі — гра просить сама через Ctx.Award(seat, 0, "ach:reversi-wipe")
         new("reversi-wipe", "Витер дошку",     "Перемога в реверсі, коли в суперника не лишилось жодної фішки", "⚪", 20),
+        // вечірка: tyr — гра просить сама через Ctx.Award(seat, 0, "ach:<key>"), tyr-daily5 — з OnDaily
+        new("tyr-sniper",   "Снайпер",         "Стенд Ярмаркового тиру без жодного промаху (від 10 пострілів)", "🎯", 20),
+        new("tyr-dry",      "Порох сухий",     "Партія Ярмаркового тиру без жодної діжки з порохом (і від 40 очок)", "🛢", 15),
+        new("tyr-gold",     "Золоте око",      "Усі золоті глеки стенду «Усе разом» у Ярмарковому тирі", "🏆", 20),
+        new("tyr-daily5",   "Тир дня",         "П'ять днів «Тиру дня» поспіль", "📅", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
@@ -302,6 +307,7 @@ public sealed class Achievements
             if (row.Attempts is > 0 and <= 2) Unlock(nick, "wordle-2");
             if (streak >= 7) Unlock(nick, "wordle-7");
         }
+        if (row.Game == "tyr-daily" && streak >= 5) Unlock(nick, "tyr-daily5");
         if (row.Game.StartsWith("mines", StringComparison.Ordinal) && row.Ms is > 0 and < 60_000)
             Unlock(nick, "mines-fast");
     }
