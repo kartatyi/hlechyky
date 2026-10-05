@@ -209,6 +209,31 @@ public sealed class VechirkaGlekTests
         Assert.True(Until(h, () => c.S.Phase == "turn", 30));
     }
 
+    [Fact]
+    public void Duel_runs_through_the_minigame_host_with_two_seats_and_pays_the_winner()
+    {
+        var h = VechirkaTests.Table(1, 3, seed: 2);
+        var g = G(h);
+        g.PoolFactory = () => [new VechirkaPoolEntry(SlowGame.Id, "Повільна", "", "tap", 1, 1, 2, 8, SlowGame.CapMs)];
+        g.RunnerFactory = (game, _) => new SlowRunner(game);
+        h.Start();
+        var c = g.Core!;
+        VechirkaMgState? duel = null;
+        Assert.True(Until(h, () =>
+        {
+            if (c.S.M is { Duel: not null, Results: not null } m) duel = m;
+            return duel is not null || h.Room.Status == RoomStatus.Finished;
+        }, c.S.Rounds * 4 * 30 + c.S.Rounds * 140), "вечір без дуелі");
+        Assert.NotNull(duel);
+        Assert.Equal(2, duel!.Seats.Length);
+        Assert.Equal("Cap", duel.How);
+        // PartyScores дає більше першому місцю підгри — він і виграв дуель
+        var win = duel.Results!.Single(r => r.Place == 1);
+        Assert.Equal(duel.Seats[0], win.I);
+        Assert.True(win.Coins > 0);
+        Assert.True(Until(h, () => c.S.Phase is "turn" or "walk" or "prompt" or "pick", 30));
+    }
+
     /// <summary>Міні-гра, що сама не кінчається ніколи: лише стеля каркаса її зупиняє.</summary>
     sealed class SlowGame : Game, IPartyMinigame
     {
