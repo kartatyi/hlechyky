@@ -383,6 +383,10 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
 
     public Task<RoomReply> Rematch(string roomId) => Play(GameOf(roomId), () => rooms.Rematch(roomId ?? "", Nick()));
 
+    /// <summary>«⚙ Налаштування» господаря між партіями (<see cref="Games.Rooms.Reconfigure"/>). Опції — сирим JSON, як у CreateRoom.</summary>
+    public Task<RoomReply> ConfigureRoom(string roomId, Dictionary<string, JsonElement>? options) =>
+        Act(() => rooms.Reconfigure(roomId ?? "", Nick(), RoomOptions.From(options)));
+
     /// <summary>
     /// «📣 Покликати» одну людину за стіл, за яким сидиш: тост і рядок-заклик у Балачках отримає лише вона. Відповідь
     /// («📣 Заклик полетів: Оля» чи чому ні) — тост тому, хто кликав. Перевірки й паузи — у <see cref="Calls"/>.

@@ -161,6 +161,12 @@
   const seatCount = (room) => (room.seats ? room.seats.length : room.maxPlayers || 0);
   const takenSeats = (room) => { let n = 0; for (let i = 0; i < seatCount(room); i++) if (nickAt(room, i)) n++; return n; };
   const freeSeat = (room) => { for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i)) return i; return -1; };
+  /// Стіл у лобі стартує з руки господаря: гра «byHost»; гра «одразу», яку «⚙ Налаштування» вернули в лобі; і повний
+  /// стіл гри «коли всі сіли» — так буває лише після «⚙ Налаштувань» (Rooms.Reconfigure), підсісти вже нікому.
+  const hostStarts = (room) => {
+    const s = (gameOf(room.game) || {}).start;
+    return s === 'byHost' || s === 'immediate' || freeSeat(room) < 0;
+  };
   function seatOfMe(room) {
     for (let i = 0; i < seatCount(room); i++) if (sameNick(nickAt(room, i), me.nick)) return i;
     return null;
@@ -1807,10 +1813,12 @@
   /// Пари [значення, підпис] опції — з каталогу вони приходять масивами, але терпимо й {value, label}.
   const optPairs = (o) => (o.values || []).map((v) => Array.isArray(v) ? v : [v.value, v.label || v.value]);
 
-  /// Опція в попапі: звичайна — випадайка, multi — чипи, де можна ввімкнути кілька.
-  function optHtml(o) {
+  /// Опція в попапі: звичайна — випадайка, multi — чипи, де можна ввімкнути кілька. cur — що стоїть зараз
+  /// (попап «⚙ Налаштування» вже поставленого столу); без нього — типове.
+  function optHtml(o, cur) {
+    const now = cur != null ? String(cur) : String(o.default || '');
     if (o.multi) {
-      const on = String(o.default || '').split(',');
+      const on = now.split(',');
       return '<div class="gopt"><span class="muted small">' + esc(o.label) + '</span>'
         + '<div class="gpicks" data-key="' + esc(o.key) + '" data-any="' + esc(o.default || '') + '">'
         + optPairs(o).map(([val, lab]) => '<button type="button" class="gpick' + (on.includes(val) ? ' on' : '')
@@ -1819,8 +1827,17 @@
     }
     return '<label class="gopt"><span class="muted small">' + esc(o.label) + '</span>'
       + '<select data-key="' + esc(o.key) + '">'
-      + optPairs(o).map(([val, lab]) => '<option value="' + esc(val) + '"' + (val === o.default ? ' selected' : '') + '>' + esc(lab) + '</option>').join('')
+      + optPairs(o).map(([val, lab]) => '<option value="' + esc(val) + '"' + (val === now ? ' selected' : '') + '>' + esc(lab) + '</option>').join('')
       + '</select></label>';
+  }
+
+  /// Що обрано в попапі: випадайки — значенням, multi — значеннями через кому (як чекає Rooms.Effective).
+  function optValues(box) {
+    const out = {};
+    box.querySelectorAll('select[data-key]').forEach((s) => out[s.dataset.key] = s.value);
+    box.querySelectorAll('.gpicks').forEach((p) => out[p.dataset.key] =
+      [...p.querySelectorAll('.gpick.on')].map((x) => x.dataset.val).join(','));
+    return out;
   }
 
   /// Клік по чипу multi-опції. Типове значення — «усе»: воно гасить решту, а будь-який інший чип гасить
@@ -1881,14 +1898,39 @@
     });
     wrap.querySelector('[data-go]').onclick = (e) => busy(e.currentTarget, 'ставлю…', async () => {
       const box = wrap.querySelector('.gvar');
-      const payload = {};
-      box.querySelectorAll('select[data-key]').forEach((s) => payload[s.dataset.key] = s.value);
-      box.querySelectorAll('.gpicks').forEach((p) => payload[p.dataset.key] =
-        [...p.querySelectorAll('.gpick.on')].map((x) => x.dataset.val).join(','));
+      const payload = optValues(box);
       const st = box.querySelector('.gstake.on');
       if (st) payload.stake = +st.dataset.stake;
       const r = await openRoom('CreateRoom', g.id, payload);
       if (r.ok) { close(); if (r.roomId) go('#games/room/' + encodeURIComponent(r.roomId)); }
+    });
+  }
+
+  /// «⚙ Налаштування» поставленого столу (господар, між партіями): ті самі опції, що в попапі створення, з тим, що
+  /// стоїть зараз. За дограним столом сервер (Rooms.Reconfigure) вертає стіл у лобі з новою партією — кажемо це наперед.
+  function openSettings(id) {
+    const rv = views[id];
+    const g = rv && gameOf(rv.room.game);
+    if (!g || !(g.options || []).length) return;
+    const room = rv.room;
+    const wrap = document.createElement('div');
+    wrap.className = 'modal gmodal';
+    wrap.innerHTML = '<div class="card">'
+      + '<h3>⚙ ' + iconOf(g.id) + esc(g.title) + '</h3>'
+      + (room.status !== 'lobby' || room.startedAt
+        ? '<div class="muted small">Стіл знову стане в лобі — далі «Почати», коли всі готові. Рахунок вечора лишається.</div>'
+        : '')
+      + '<div class="gvar">' + g.options.map((o) => optHtml(o, room.options ? room.options[o.key] : null)).join('') + '</div>'
+      + '<div class="grow"><button class="primary" data-go>Зберегти</button><button class="ghost" data-close>Скасувати</button></div>'
+      + '</div>';
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector('[data-close]').onclick = close;
+    wrap.querySelectorAll('.gpicks').forEach((p) => p.querySelectorAll('.gpick').forEach((b) => b.onclick = () => togglePick(p, b)));
+    wrap.querySelector('[data-go]').onclick = (e) => busy(e.currentTarget, 'мить…', async () => {
+      const r = await call('ConfigureRoom', id, optValues(wrap.querySelector('.gvar')));
+      if (r.ok) close();
     });
   }
   // =============================================================================================
@@ -2119,14 +2161,13 @@
       if (solo) return '';
       // Стіл, що стартує з руки господаря: коли людей уже досить, «Чекаємо, хто підсяде» вводило в оману —
       // господар сидів і чекав, хоча міг тиснути «Почати».
-      const g = gameOf(r.game) || {};
       // Сам за столом гри з ботом: без «🤖 + бот» партія не почнеться (LiveBots.AloneText) — кажемо це одразу.
       if (rv.view && rv.view.botOffer && takenSeats(r) === 1) {
         if (!sameNick(r.host, me.nick)) return 'Чекаємо, поки ' + (r.host || 'господар') + ' почне';
         return rv.view.botWanted ? 'Бот сидить навпроти — тисни «Почати». Без нагород'
           : 'Сам за столом: поклич «🤖 + бот» або зачекай друга';
       }
-      if (g.start === 'byHost' && takenSeats(r) >= r.minPlayers) {
+      if (hostStarts(r) && takenSeats(r) >= r.minPlayers) {
         return sameNick(r.host, me.nick) ? 'Можна рушати: тисни «Почати»'
           + (freeSeat(r) >= 0 ? ' або зачекай ще когось' : '') : 'Чекаємо, поки ' + (r.host || 'господар') + ' почне';
       }
@@ -2158,9 +2199,14 @@
     if (solo && r.status === 'finished' && !(gameOf(r.game) || {}).daily) out.push('<button class="primary" data-do="Rematch">Ану ще раз</button>');
     // Бот уже сидить навпроти: «Почати» і в грі, що стартує сама, коли стіл повний (змійка, дуель), — StartByHost
     // каркаса режиму старту не питає, а без кнопки сам із ботом так і сидів би.
+    // Повний стіл у лобі буває лише тоді, коли його вернули туди «⚙ Налаштуваннями» (Rooms.Reconfigure): гра, що
+    // стартує сама, коли всі сіли, уже не стартує — підсісти нікому, тож починає господар.
     if (rv.seat != null && r.status === 'lobby' && sameNick(r.host, me.nick) && takenSeats(r) >= r.minPlayers
-      && ((gameOf(r.game) || {}).start === 'byHost' || (botOffered(rv) && rv.view.botWanted)))
+      && (hostStarts(r) || (botOffered(rv) && rv.view.botWanted)))
       out.push('<button class="primary" data-do="StartRoom">Почати</button>');
+    // «⚙ Налаштування» — опції столу між партіями, без «встати й поставити новий». Лише господареві.
+    if (!solo && rv.seat != null && r.status !== 'playing' && sameNick(r.host, me.nick) && ((gameOf(r.game) || {}).options || []).length)
+      out.push('<button class="ghost" data-set="1">⚙ Налаштування</button>');
     // «🤖 + бот» живих ігор (LiveBots.cs): господар сам за столом кличе суперника; гра каже botOffer у виді.
     if (botOffered(rv))
       out.push('<button class="ghost" data-bot="1">' + (rv.view.botWanted ? '🤖 Прогнати бота' : '🤖 + бот') + '</button>');
@@ -2221,6 +2267,7 @@
           }
         });
       });
+      card.btns.querySelectorAll('[data-set]').forEach((b) => b.onclick = () => openSettings(id));
       card.btns.querySelectorAll('[data-bot]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, '…', () => {
         const v = views[id] && views[id].view;
         return call('Act', id, 'bot', { on: !(v && v.botWanted) });

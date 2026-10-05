@@ -91,14 +91,18 @@ public sealed class Room
     /// <summary>8 hex — рівно стільки, щоб не збігтись, і достатньо мало, щоб влізти в URL і в лог.</summary>
     public required string Id { get; init; }
     public required GameInfo Info { get; init; }
-    public required Game Game { get; init; }
+    /// <summary>Гра столу. Нову ставить лише <see cref="Rooms.Reconfigure"/>, коли дограний стіл вертається в лобі.</summary>
+    public required Game Game { get; set; }
     /// <summary>Нік на кожному місці; null — місце вільне. Довжина завжди <see cref="GameInfo.MaxPlayers"/>.</summary>
     public required string?[] Seats { get; init; }
     /// <summary>Хто створив кімнату (або найстарше зайняте місце, якщо той пішов).</summary>
     public string Host { get; set; } = "";
     public RoomStatus Status { get; set; } = RoomStatus.Lobby;
-    /// <summary>Опції, з якими кімнату створили (уже перевірені й доповнені типовими значеннями). Ставки тут нема.</summary>
-    public required IReadOnlyDictionary<string, string> Options { get; init; }
+    /// <summary>
+    /// Опції столу (уже перевірені й доповнені типовими значеннями). Ставлять їх при створенні, а між партіями господар
+    /// може змінити (<see cref="Rooms.Reconfigure"/>). Ставки тут нема.
+    /// </summary>
+    public required IReadOnlyDictionary<string, string> Options { get; set; }
     /// <summary>Черепків з кожного гравця; 0 — граємо просто так.</summary>
     public int Stake { get; set; }
     /// <summary>1 для першої партії, +1 на кожен «Ще раз».</summary>
@@ -116,7 +120,7 @@ public sealed class Room
     public ConcurrentDictionary<string, byte> OnScreen { get; } = new();
     /// <summary>Замок кімнати: хід, тик, вхід, вихід — усе під ним. Await під ним не буває.</summary>
     public object Sync { get; } = new();
-    public required int Seed { get; init; }
+    public required int Seed { get; set; }
     /// <summary>Ключ особистої кімнати для Persistent/Private ігор («daily:wordle:2026-09-09:оля»); null для звичайних.</summary>
     public string? Key { get; init; }
     /// <summary>Коли цій кімнаті наступного разу тикати; має значення лише для <see cref="GameInfo.RealTime"/>.</summary>

@@ -119,7 +119,8 @@ public sealed partial class Telephone : Game
     {
         _phrases = Ctx.Services.GetService<TelephonePhrases>() ?? TelephonePhrases.Default;
         if (options.TryGetValue("tempo", out var t) && Tempos.TryGetValue(t, out var tempo)) _tempo = tempo;
-        if (options.TryGetValue("steps", out var s) && int.TryParse(s, out var n) && n is 4 or 6 or 8) _stepsOption = n;
+        // «усі» — null; без else друга зміна опцій (Rooms.Reconfigure) лишала б старі 4/6/8.
+        _stepsOption = options.TryGetValue("steps", out var s) && int.TryParse(s, out var n) && n is 4 or 6 or 8 ? n : null;
         _auto = options.GetValueOrDefault("show") != "manual";
         _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
     }

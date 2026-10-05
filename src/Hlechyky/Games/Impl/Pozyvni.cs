@@ -127,13 +127,14 @@ public sealed class Pozyvni : Game
     {
         _words = Ctx.Services.GetService<PictionaryWords>() ?? PictionaryWords.Default;
         if (options.TryGetValue("topic", out var t)) _topics = PictionaryWords.ParseTopics(t);
-        if (options.TryGetValue("black", out var b) && b == "2") _blacks = 2;
+        // Кожне поле — з опцій, без «лише коли»: господар може змінити опції ще раз (Rooms.Reconfigure).
+        _blacks = options.GetValueOrDefault("black") == "2" ? 2 : 1;
         if (options.TryGetValue("zero", out var z)) _zero = z != "off";
         _cards = options.GetValueOrDefault("size") == "4" ? SmallCards : Cards;
         _clockOption = options.GetValueOrDefault("clock") ?? "auto";
         _clockMs = int.TryParse(_clockOption, out var cn) && ClockChoices.Contains(cn) ? cn * 1000
             : _clockOption is "auto" or "" && _cards == SmallCards ? SmallClockSec * 1000 : 0;
-        if (options.TryGetValue("mode", out var m) && m is ModeTeams or ModeCoop) _mode = m;
+        _mode = options.GetValueOrDefault("mode") is ModeTeams or ModeCoop ? options["mode"] : ModeAuto;
         if (_words.Count < Cards) throw new GameError("Замало слів для столу, позивні відпочивають");
     }
 

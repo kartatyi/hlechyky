@@ -719,13 +719,15 @@ public sealed partial class Rooms
             if (room.SeatOf(nick) is not { } seat) return RoomOutcome.Fail(Say.NotPlaying);
             // Налаштування столу до старту (Game.ActsInLobby) — теж хід; решта ігор у лобі чекає на гравців.
             if (room.Status == RoomStatus.Lobby && !room.Game.ActsInLobby) return RoomOutcome.Fail(Say.Waiting);
-            if (room.Status == RoomStatus.Finished) return RoomOutcome.Fail(Say.Played);
+            // За дограним столом — лише те, що гра сама назвала налаштуванням на наступну партію («🤖 + бот»).
+            if (room.Status == RoomStatus.Finished && !room.Game.ActsBetween(action ?? "")) return RoomOutcome.Fail(Say.Played);
 
             var ctx = (RoomContext)room.Game.Ctx;
             var before = room.Status;
             // Реалтайм ходів не має: RoomFinishedEvent.Moves для нього — 0 (так каже Contracts.cs), а види
-            // після кожного повороту слати нема сенсу — кадри й так летять із тика.
-            var counts = !room.Info.RealTime;
+            // після кожного повороту слати нема сенсу — кадри й так летять із тика. Налаштування в лобі й між
+            // партіями ходами партії теж не є.
+            var counts = !room.Info.RealTime && before == RoomStatus.Playing;
             if (counts) room.Moves++;   // хід рахуємо на вході, щоб Finish усередині Act бачив уже правильне число
             using (ctx.Collect(outbox))
             {
@@ -743,8 +745,8 @@ public sealed partial class Rooms
                 room.LastActivity = _clock.UtcNow;
                 if (before == RoomStatus.Lobby && room.Status == RoomStatus.Lobby) RememberLobbyAct(room, seat, action ?? "", payload);
                 Persist(room, outbox);
-                // реалтайм шле види з тика — але в лобі тика нема, тож налаштування столу розсилаємо одразу
-                if (counts || before == RoomStatus.Lobby) outbox.Add(new RoomViews(room.Id));
+                // реалтайм шле види з тика — але в лобі й за дограним столом тика нема, тож налаштування розсилаємо одразу
+                if (counts || before != RoomStatus.Playing) outbox.Add(new RoomViews(room.Id));
                 if (room.Status != before) outbox.Add(new LobbyChanged());
             }
             else if (counts && room.Status == before)
