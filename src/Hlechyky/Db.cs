@@ -114,6 +114,8 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE chat ADD COLUMN reply_to INTEGER"); } catch (SqliteException) { /* exists */ }
         // про що рядок Журналу: 'radio' чи 'games' — за цим Журнал фільтрується («📻 Радіо · 🎮 Ігри»)
         try { Exec(c, "ALTER TABLE chat ADD COLUMN topic TEXT"); } catch (SqliteException) { /* exists */ }
+        // файл у репліці (JSON ChatFile): картинка, відео, звук чи будь-що на скачування (ChatFiles.cs)
+        try { Exec(c, "ALTER TABLE chat ADD COLUMN file TEXT"); } catch (SqliteException) { /* exists */ }
         Exec(c, "CREATE TABLE IF NOT EXISTS migrations(key TEXT PRIMARY KEY, done_at TEXT NOT NULL)");
         Once(c, "chat-hide-glek-2026-09", HideGlekSql);
         Once(c, "chat-topic-2026-09", TopicSql);
@@ -917,7 +919,8 @@ public sealed class Db
     /// лежить у базі разом із рядком — інакше після F5 кнопка зникала б із історії ще за життя столу.
     /// </summary>
     /// <remarks><paramref name="topic"/> — лише для рядків Журналу: 'radio' чи 'games' (фільтр Журналу).</remarks>
-    public ChatMessage AddChat(string nick, string text, string kind, string? roomId = null, long? replyTo = null, string? topic = null)
+    public ChatMessage AddChat(string nick, string text, string kind, string? roomId = null, long? replyTo = null, string? topic = null,
+        ChatFile? file = null)
     {
         var now = Now();
         using var c = Open();
@@ -925,16 +928,28 @@ public sealed class Db
         (string Nick, string Text)? parent = null;
         if (replyTo is { } pid)
         {
-            using var pc = Cmd(c, $"SELECT nick, text FROM chat WHERE id=$id AND {Talk}", ("$id", pid));
+            using var pc = Cmd(c, $"SELECT nick, text, file FROM chat WHERE id=$id AND {Talk}", ("$id", pid));
             using var pr = pc.ExecuteReader();
-            if (pr.Read()) parent = (pr.GetString(0), pr.GetString(1));
+            if (pr.Read()) parent = (pr.GetString(0), QuoteText(pr.GetString(1), pr.IsDBNull(2) ? null : pr.GetString(2)));
             else replyTo = null;
         }
-        using var cmd = Cmd(c, "INSERT INTO chat(nick, text, kind, room_id, reply_to, created_at, topic) VALUES($n, $t, $k, $r, $p, $now, $topic); SELECT last_insert_rowid();",
-            ("$n", nick), ("$t", text), ("$k", kind), ("$r", roomId), ("$p", replyTo), ("$now", now), ("$topic", topic));
+        using var cmd = Cmd(c, "INSERT INTO chat(nick, text, kind, room_id, reply_to, created_at, topic, file) VALUES($n, $t, $k, $r, $p, $now, $topic, $f); SELECT last_insert_rowid();",
+            ("$n", nick), ("$t", text), ("$k", kind), ("$r", roomId), ("$p", replyTo), ("$now", now), ("$topic", topic),
+            ("$f", file is null ? null : JsonSerializer.Serialize(file)));
         var id = (long)cmd.ExecuteScalar()!;
-        return new ChatMessage(id, nick, text, Ts(now), kind, roomId, replyTo, parent?.Nick, Quote(parent?.Text), [], topic);
+        return new ChatMessage(id, nick, text, Ts(now), kind, roomId, replyTo, parent?.Nick, Quote(parent?.Text), [], topic, file);
     }
+
+    static ChatFile? FileOf(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try { return JsonSerializer.Deserialize<ChatFile>(json); }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>Що цитувати над відповіддю на файл без підпису: «📎 фото.jpg» замість порожнечі.</summary>
+    static string QuoteText(string text, string? fileJson) =>
+        text.Length == 0 && FileOf(fileJson) is { } f ? "📎 " + f.Name : text;
 
     /// <summary>Види рядків, які лежать у базі, але в Балачках не показуються (див. <see cref="HideGlekSql"/>).</summary>
     public static readonly IReadOnlyList<string> HiddenKinds = ["dj-auto", "dj-game"];
@@ -958,11 +973,11 @@ public sealed class Db
     {
         using var c = Open();
         using var cmd = Cmd(c, $"""
-            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic FROM (
-                SELECT id, nick, text, kind, created_at, room_id, reply_to, topic FROM (
+            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic, m.file, p.file FROM (
+                SELECT id, nick, text, kind, created_at, room_id, reply_to, topic, file FROM (
                     SELECT * FROM chat WHERE {Talk} ORDER BY id DESC LIMIT $nc)
                 UNION ALL
-                SELECT id, nick, text, kind, created_at, room_id, reply_to, topic FROM (
+                SELECT id, nick, text, kind, created_at, room_id, reply_to, topic, file FROM (
                     SELECT * FROM chat WHERE kind = 'system' ORDER BY id DESC LIMIT $nl)
             ) m
             LEFT JOIN chat p ON p.id = m.reply_to
@@ -979,7 +994,7 @@ public sealed class Db
     {
         using var c = Open();
         using var cmd = Cmd(c, $"""
-            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic FROM (
+            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic, m.file, p.file FROM (
                 SELECT * FROM chat WHERE id < $before AND {(log ? "kind = 'system'" : Talk)} ORDER BY id DESC LIMIT $n
             ) m
             LEFT JOIN chat p ON p.id = m.reply_to
@@ -990,18 +1005,18 @@ public sealed class Db
 
     static List<ChatMessage> ReadChat(SqliteConnection c, SqliteCommand cmd)
     {
-        var rows = new List<(long Id, string Nick, string Text, string Kind, string At, string? Room, long? ReplyTo, string? PNick, string? PText, string? Topic)>();
+        var rows = new List<(long Id, string Nick, string Text, string Kind, string At, string? Room, long? ReplyTo, string? PNick, string? PText, string? Topic, ChatFile? File)>();
         using (var r = cmd.ExecuteReader())
         {
             while (r.Read())
                 rows.Add((r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4),
                     r.IsDBNull(5) ? null : r.GetString(5), r.IsDBNull(6) ? null : r.GetInt64(6),
-                    r.IsDBNull(7) ? null : r.GetString(7), r.IsDBNull(8) ? null : r.GetString(8),
-                    r.IsDBNull(9) ? null : r.GetString(9)));
+                    r.IsDBNull(7) ? null : r.GetString(7), r.IsDBNull(8) ? null : QuoteText(r.GetString(8), r.IsDBNull(11) ? null : r.GetString(11)),
+                    r.IsDBNull(9) ? null : r.GetString(9), FileOf(r.IsDBNull(10) ? null : r.GetString(10))));
         }
         var likes = LikesFor(c, rows.Where(x => x.Kind != "system").Select(x => x.Id).ToList());
         return [.. rows.Select(x => new ChatMessage(x.Id, x.Nick, x.Text, Ts(x.At), x.Kind, x.Room, x.ReplyTo, x.PNick, Quote(x.PText),
-            likes.TryGetValue(x.Id, out var l) ? [.. l] : [], x.Topic))];
+            likes.TryGetValue(x.Id, out var l) ? [.. l] : [], x.Topic, x.File))];
     }
 
     /// <summary>Хто лайкнув кожне з повідомлень — у порядку лайків.</summary>

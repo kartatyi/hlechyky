@@ -19,7 +19,8 @@ public sealed class VillageChat(Db db, IHubContext<RadioHub> hub, DjBrain brain,
     {
         try
         {
-            return [.. db.RecentChat(limit, Math.Min(limit, 60)).Select(m => new AgentChatLine(m.Id, m.Nick, m.Text, m.Kind, m.At))];
+            return [.. db.RecentChat(limit, Math.Min(limit, 60)).Select(m => new AgentChatLine(m.Id, m.Nick,
+                m.File is { } f ? ("📎 " + f.Name + " " + m.Text).TrimEnd() : m.Text, m.Kind, m.At))];
         }
         catch (Exception ex)
         {

@@ -206,9 +206,12 @@
     <div id="emojiPick" class="emojipick" hidden></div>
     <div id="mentionPick" class="mentionpick" hidden></div>
     <div id="replyBar" class="replybar" hidden><span class="rb-text"></span><button id="replyCancel" class="ghost icon" type="button" title="Не відповідати (Esc)">✕</button></div>
+    <div id="fileUp" class="fileup" hidden><span class="fu-n"></span><progress max="100" value="0"></progress><button id="fileUpX" class="ghost icon" type="button" title="Скасувати">✕</button></div>
     <form id="chatForm">
       <button id="cmdBtn" class="ghost icon" type="button" title="Команди балачок: жбурнути кубик, монетку й інше">/</button>
       <button id="emojiBtn" class="ghost icon" type="button" title="Смайли">🙂</button>
+      <button id="fileBtn" class="ghost icon" type="button" title="Кинути картинку чи файл (до 32 МБ). Можна й вставити Ctrl+V чи перетягнути сюди">📎</button>
+      <input id="fileInput" type="file" multiple hidden>
       <input id="chatInput" type="text" placeholder="Отут тяпати…" maxlength="500" autocomplete="off">
       <button class="primary" type="submit" title="Тяпнути (Enter)">→</button>
     </form>
