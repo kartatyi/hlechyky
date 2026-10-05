@@ -642,7 +642,8 @@
     drawFx(st, g, now);
     // дим від діжки
     const sm = who != null ? (me != null ? st.pred.smoke : (st.last && st.last.p && st.last.p[who] ? st.last.p[who][4] : -1)) : -1;
-    if (!lobby && T < sm) {
+    // smokeUntil = −1 — диму нема; на «Готуйсь» мить стенду від'ємна, тож без T ≥ 0 «дим» висів би весь відлік.
+    if (!lobby && st.ph === 1 && T >= 0 && T < sm) {
       // Дим справді застилає: мішені ледь видно, стріляти однаково не дадуть.
       const left = sm - T, a = Math.min(1, left / 350);
       g.fillStyle = 'rgba(105,105,100,' + (0.9 * a) + ')';
@@ -942,7 +943,7 @@
     const html = rows.map((r, k) => {
       const fl = st.flash[r.i] && now - st.flash[r.i].at < 600 ? (st.flash[r.i].up ? ' up' : ' down') : '';
       return '<button type="button" class="tyrchip ty' + r.i + (r.i === mine ? ' me' : '') + (mine == null && r.i === who ? ' watch' : '') + fl
-        + '" data-seat="' + r.i + '"' + (mine == null ? '' : ' tabindex="-1"') + '><i></i><span class="n">' + (k === 0 && r.s > 0 ? '👑 ' : '')
+        + '" data-seat="' + r.i + '"' + (mine == null ? '' : ' tabindex="-1"') + '><i></i><span class="n">' + (k === 0 && r.s > 0 && (rows.length < 2 || rows[1].s < r.s) ? '👑 ' : '')
         + esc(nameOf(ctx, r.i)) + '</span><b>' + r.s + '</b></button>';
     }).join('');
     if (force || st.board._h !== html) { st.board._h = html; st.board.innerHTML = html; }
@@ -1009,7 +1010,8 @@
       for (const gp of pads) {
         if (!gp || !gp.axes || gp.axes.length < 2) continue;
         const ax = gp.axes[0], ay = gp.axes[1], m = Math.hypot(ax, ay);
-        if (m > 0.2) { mx = ax * Math.min(1, (m - 0.2) / 0.7) / m * 1.25; my = ay * Math.min(1, (m - 0.2) / 0.7) / m * 1.25; st.analogAt = now; }
+        // Крива: легкий нахил — тонке доведення, до упору — швидкий переліт через поле.
+        if (m > 0.2) { const sp = Math.pow(Math.min(1, (m - 0.2) / 0.7), 1.6) * 1.3 / m; mx = ax * sp; my = ay * sp; st.analogAt = now; }
         break;
       }
     }
@@ -1023,10 +1025,11 @@
   function loop(st) {
     st.raf = 0;
     if (!st.cv || !st.cv.el.isConnected || st.root._tyr !== st) return;
+    // Картка під display:none (пішли на «Ефір», інший стіл) чи вкладка схована — дрімаємо таймером, а не rAF.
+    if (!st.cv.el.offsetParent || document.hidden) { st.tm = setTimeout(() => { st.tm = 0; loop(st); }, 300); st.raf = -1; return; }
     st.raf = requestAnimationFrame(() => loop(st));
     const now = performance.now();
     step(st, now);
-    if (!st.cv.el.offsetParent || document.hidden) return;
     // у лобі й на підсумку — 30 кадрів на секунду вистачить
     if ((st.ph === 3 || st.ph === 2) && now - st.lastDraw < 32) return;
     st.lastDraw = now;
@@ -1123,7 +1126,8 @@
     unmount(root) {
       const st = root._tyr;
       if (!st) return;
-      cancelAnimationFrame(st.raf);
+      if (st.raf > 0) cancelAnimationFrame(st.raf);
+      clearTimeout(st.tm);
       st.raf = 0;
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.blur) window.removeEventListener('blur', st.blur);
