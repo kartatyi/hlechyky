@@ -2268,7 +2268,8 @@
       && (hostStarts(r) || (botOffered(rv) && rv.view.botWanted)))
       out.push('<button class="primary" data-do="StartRoom">Почати</button>');
     // «⚙ Налаштування» — опції столу між партіями, без «встати й поставити новий». Лише господареві.
-    if (!solo && rv.seat != null && r.status !== 'playing' && sameNick(r.host, me.nick) && ((gameOf(r.game) || {}).options || []).length)
+    // На столі турніру між іграми — ні: наступну гру ставить турнір (tour.hold), як і з «Ану ще раз».
+    if (!solo && !(tour && tour.hold) && rv.seat != null && r.status !== 'playing' && sameNick(r.host, me.nick) && ((gameOf(r.game) || {}).options || []).length)
       out.push('<button class="ghost" data-set="1">⚙ Налаштування</button>');
     // «🤖 + бот» живих ігор (LiveBots.cs): господар сам за столом кличе суперника; гра каже botOffer у виді.
     if (botOffered(rv))

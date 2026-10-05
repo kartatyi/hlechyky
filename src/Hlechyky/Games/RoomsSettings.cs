@@ -114,6 +114,7 @@ public sealed partial class Rooms
         room.FinishedAt = null;
         room.Moves = 0;
         room.Charged.Clear();
+        room.Restored = null;   // нова партія — і вид знову від гри, а не той, що пережив перезапуск
         return null;
     }
 
