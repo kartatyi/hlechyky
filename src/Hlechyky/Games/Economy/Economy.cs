@@ -153,6 +153,10 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
 
     void IStakes.Grant(string nick, int amount, string reason, string refKey) => Grant(nick, amount, reason, refKey);
 
+    /// <summary>Раунд столу розраховано: є виплата переможцю чи повернення ставок (ключі — як у RoomContext.Payout).</summary>
+    public bool Settled(string roomId, int round) =>
+        store.HasRefPrefix($"stake-win:{roomId}:{round}:") || store.HasRefPrefix($"stake-refund:{roomId}:{round}:");
+
     // ---------- людські тексти ----------
 
     /// <summary>«+5 черепків: перемога в шахах», «−10 черепків: ставка».</summary>

@@ -487,6 +487,11 @@ public sealed class Checkers : Game
     public override string? Save() =>
         JsonSerializer.Serialize(new Snapshot(new string(_b), _turn, _last, _offer, _over, _winner, _reason, _quiet, new(_seen), _clock.Save(), _lastTaken, _anti));
 
+    /// <summary>Save тримає всю партію разом із годинником — після перезапуску сервера грає далі.</summary>
+    public override bool Resumable => true;
+
+    public override void Resumed(TimeSpan pause) => _clock.Shift(pause);
+
     public override void Load(string json)
     {
         if (JsonSerializer.Deserialize<Snapshot>(json) is not { } s || s.Board.Length != 64) return;

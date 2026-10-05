@@ -396,6 +396,9 @@ public sealed class Scrabble : Game
             _result?.Winner, _result?.Scores ?? [], _result?.Reason));
     }
 
+    /// <summary>Save тримає дошку, мішок, полички й рахунок (таймерів тут нема) — після перезапуску сервера грає далі.</summary>
+    public override bool Resumable => true;
+
     public override void Load(string json)
     {
         var s = JsonSerializer.Deserialize<Saved>(json);

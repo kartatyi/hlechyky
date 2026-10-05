@@ -1,11 +1,15 @@
 ﻿<#
 .SYNOPSIS
-  Глечики — launcher. build | start | stop | restart | radio | status | logs | autostart | watchdog
+  Глечики — launcher. build | start | stop | restart | back | radio | status | logs | autostart | watchdog
 
   start     — liquidsoap + сервер + Caddy у фоні (логи в logs\server.log, logs\liquidsoap.log, logs\caddy.log); знімає автонагляд з паузи
   build     — зібрати Release у build\ (start робить це сам, якщо build\ порожній)
   stop      — зупинити Caddy, сервер і liquidsoap; автонагляд стає на паузу, доки не буде start
-  restart   — перезібрати і перезапустити сервер; Caddy і liquidsoap не чіпає (слухачі не відвалюються)
+  restart   — перезапустити сервер на свіжій збірці так, щоб люди майже не помітили: збірка — поруч у build.next, поки
+              старий сервер працює (deploy.ps1 кладе її туди заздалегідь); столи — у знімок (/api/internal/freeze), і
+              новий сервер підніме їх із тими самими id; сам простій — лише підміна теки й старт (~2 с), а Caddy цей
+              час притримує запити. Caddy і liquidsoap не чіпає (слухачі не відвалюються); змінився Caddyfile — reload
+  back      — відкат: попередня збірка (build.prev) назад у build\ і перезапуск (deploy.ps1, коли новий сервер не піднявся)
   radio     — перезапустити liquidsoap (після правок liquidsoap\radio.liq); ефір замовкне на кілька секунд
   status    — що працює
   logs      — хвіст логу сервера
@@ -16,12 +20,24 @@
   liquidsoap живе в tools\liquidsoap (звичайна Windows-збірка, качає setup.ps1) і сам віддає потік на 127.0.0.1:8001/radio.mp3 —
   ні Docker, ні Icecast більше не потрібні. Без tools\caddy\caddy.exe крок Caddy пропускається. Дивись CONTRIBUTING.md.
 #>
-param([ValidateSet('build', 'start', 'stop', 'restart', 'radio', 'status', 'logs', 'autostart', 'watchdog')][string]$Cmd = 'status')
+param([ValidateSet('build', 'start', 'stop', 'restart', 'back', 'radio', 'status', 'logs', 'autostart', 'watchdog')][string]$Cmd = 'status')
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
 $Build = Join-Path $Root 'build'
 $Dll = Join-Path $Build 'Hlechyky.dll'
+# Збірка «на підміну»: publish іде сюди, поки старий сервер працює з build\ (він тримає там файли), а перезапуск лише
+# міняє теки місцями. build.prev — попередня збірка для відкату (back).
+$BuildNext = Join-Path $Root 'build.next'
+$BuildPrev = Join-Path $Root 'build.prev'
+$BuiltSha = Join-Path $Root 'data\built.sha'
+$NextSha = Join-Path $Root 'data\next.sha'
+$PrevSha = Join-Path $Root 'data\prev.sha'
+$ControlKey = Join-Path $Root 'data\control.key'
+$Tables = Join-Path $Root 'data\tables.json'
+# Копія чистого знімка, знятого перед перезапуском: якщо новий сервер не підніметься, back поверне столи з неї.
+$TablesClean = Join-Path $Root 'data\tables.clean.json'
+$CaddyApplied = Join-Path $Root 'data\caddyfile.sha'
 $Log = Join-Path $Root 'logs\server.log'
 $ErrLog = Join-Path $Root 'logs\server.err.log'
 $PidFile = Join-Path $Root 'data\server.pid'
@@ -74,7 +90,116 @@ function Invoke-Build {
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish впав' }
     # Позначка для deploy.ps1: з якого коміту зібрано те, що зараз лежить у build\
     New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
-    try { Set-Content (Join-Path $Root 'data\built.sha') (git -C $Root rev-parse HEAD) -Encoding ASCII } catch { }
+    try { Set-Content $BuiltSha (git -C $Root rev-parse HEAD) -Encoding ASCII } catch { }
+}
+
+# Збірка поруч, поки сервер працює: у build.next із робочої копії. deploy.ps1 збирає туди сам (з окремої копії коду,
+# щоб web\ на проді не змінився раніше за сервер) — тоді data\next.sha уже дорівнює HEAD, і тут нічого не робиться.
+function Invoke-BuildNext {
+    $head = (git -C $Root rev-parse HEAD).Trim()
+    if ((Test-Path (Join-Path $BuildNext 'Hlechyky.dll')) -and (Test-Path $NextSha) -and (Get-Content $NextSha -Raw).Trim() -eq $head) {
+        Write-Host "Збірка $($head.Substring(0, 7)) уже лежить готова (build.next)"
+        return
+    }
+    Write-Host 'Збираю Release поруч (build.next), сервер поки працює…'
+    if (Test-Path $BuildNext) { Remove-Item $BuildNext -Recurse -Force }
+    dotnet publish (Join-Path $Root 'src\Hlechyky\Hlechyky.csproj') -c Release -o $BuildNext --nologo -v q
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish впав' }
+    New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
+    Set-Content $NextSha $head -Encoding ASCII
+}
+
+# build.next → build\, а те, що було, — у build.prev (для back). Сервер у цю мить зупинений. Файли щойно вбитого процесу
+# Windows відпускає не миттєво, тож кілька спроб; не вийшло — $false, і restart збере просто в build\, як раніше.
+function Switch-Build {
+    if (-not (Test-Path (Join-Path $BuildNext 'Hlechyky.dll'))) { return $false }
+    for ($i = 0; $i -lt 20; $i++) {
+        try {
+            if (Test-Path $BuildPrev) { Remove-Item $BuildPrev -Recurse -Force -ErrorAction Stop }
+            if (Test-Path $Build) { Move-Item $Build $BuildPrev -ErrorAction Stop }
+            Move-Item $BuildNext $Build -ErrorAction Stop
+            if (Test-Path $BuiltSha) { Copy-Item $BuiltSha $PrevSha -Force }
+            Move-Item $NextSha $BuiltSha -Force
+            Write-Host "Збірку підмінено: build\ = $((Get-Content $BuiltSha -Raw).Trim().Substring(0, 7))"
+            return $true
+        }
+        catch {
+            # build\ уже переїхав у build.prev, а build.next не встиг стати на його місце — повертаємо як було
+            if (-not (Test-Path $Build) -and (Test-Path $BuildPrev) -and (Test-Path $BuildNext)) { try { Move-Item $BuildPrev $Build } catch { } }
+            Start-Sleep -Milliseconds 150
+        }
+    }
+    Write-Host 'Увага: build.next не став на місце build\ — збираю просто в build\'
+    return $false
+}
+
+# back: попередня збірка назад. Сервер має бути зупинений. Невдалу збірку не стираємо, а відкладаємо в build.bad: файли
+# щойно вбитого процесу Windows відпускає не миттєво, і Remove-Item посеред теки лишив би ні ту, ні ту.
+function Restore-PrevBuild {
+    if (-not (Test-Path (Join-Path $BuildPrev 'Hlechyky.dll'))) { throw 'Нема build.prev — відкочуватись нема на що' }
+    $bad = Join-Path $Root 'build.bad'
+    for ($i = 0; $i -lt 20; $i++) {
+        try {
+            if (Test-Path $bad) { Remove-Item $bad -Recurse -Force -ErrorAction Stop }
+            if (Test-Path $Build) { Move-Item $Build $bad -ErrorAction Stop }
+            Move-Item $BuildPrev $Build -ErrorAction Stop
+            if (Test-Path $PrevSha) { Move-Item $PrevSha $BuiltSha -Force }
+            Write-Host 'Повернув попередню збірку (build.prev → build\, невдала — у build.bad)'
+            return
+        }
+        catch { Start-Sleep -Milliseconds 150 }
+    }
+    throw 'build.prev не став на місце build\ (файли зайняті)'
+}
+
+function Get-ListenPort {
+    foreach ($name in 'appsettings.Local.json', 'appsettings.json') {
+        $file = Join-Path $Root $name
+        if (-not (Test-Path $file)) { continue }
+        try {
+            $port = (Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json).Site.ListenPort
+            if ($port) { return [int]$port }
+        } catch { }
+    }
+    return 8080
+}
+
+# Столи — у знімок перед тим, як сервер уб'ють (Games\TablesKeeper.cs): ходи завмирають, новий сервер підніме столи з
+# тими самими id. Старий сервер без цього вміння (чи без ключа) — перезапуск, як раніше: столи зникнуть.
+function Invoke-Freeze([int]$TimeoutSec = 10) {
+    if (-not (Get-Server)) { return $false }
+    if (-not (Test-Path $ControlKey)) { Write-Host 'Столи: нема data\control.key (сервер ще без знімків) — перезапуск без них'; return $false }
+    try {
+        $key = (Get-Content $ControlKey -Raw).Trim()
+        $r = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$(Get-ListenPort)/api/internal/freeze" -Headers @{ 'X-Control-Key' = $key } -TimeoutSec $TimeoutSec
+        Write-Host "Столи заморожено: у знімку $($r.tables), партій грає далі $($r.resumes), переривається $($r.interrupts)"
+        try { Copy-Item $Tables $TablesClean -Force } catch { }
+        return $true
+    }
+    catch { Write-Host "Столи: заморозити не вийшло ($($_.Exception.Message)) — новий сервер візьме знімок, що пишеться кожні 10 с"; return $false }
+}
+
+# back: новий сервер не відповідає й не заморозиться — столи беремо з чистого знімка старого (знятого щойно перед
+# перезапуском), а не з того, що новий устиг написати сам: у його знімку партії вже перервані. Старий — не чіпаємо.
+function Use-CleanTables {
+    if (-not (Test-Path $TablesClean)) { return }
+    if (((Get-Date) - (Get-Item $TablesClean).LastWriteTime).TotalMinutes -gt 3) { return }
+    Copy-Item $TablesClean $Tables -Force
+    Write-Host 'Столи: беру знімок, знятий перед перезапуском'
+}
+
+# Caddyfile змінився відтоді, як Caddy його читав, — reload. Caddy переходить на новий конфіг без розриву: потік радіо й
+# незакриті відповіді доживають на старому, нові запити йдуть уже за новим.
+function Update-Caddy {
+    if (-not (Get-Caddy)) { return }
+    $sha = (Get-FileHash $Caddyfile -Algorithm SHA256).Hash
+    if ((Test-Path $CaddyApplied) -and (Get-Content $CaddyApplied -Raw).Trim() -eq $sha) { return }
+    $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $out = & $Caddy reload --config $Caddyfile --adapter caddyfile 2>&1 | ForEach-Object { "$_" }
+    $ErrorActionPreference = $prevEap
+    if ($LASTEXITCODE -ne 0) { $out | Write-Host; Write-Host 'Увага: Caddy не перечитав Caddyfile — працює зі старим'; return }
+    Set-Content $CaddyApplied $sha -Encoding ASCII
+    Write-Host 'Caddy перечитав Caddyfile'
 }
 
 # liquidsoap\.env: ключ для зворотних викликів сервера (RT_API_KEY == Liquidsoap:ApiKey), адреса сервера, порти.
@@ -180,7 +305,13 @@ function Start-Server {
 
 function Stop-Server {
     $p = Get-Server
-    if ($p) { Stop-Process -Id $p.Id -Force; Remove-Item $PidFile -ErrorAction SilentlyContinue; Write-Host 'Сервер зупинено' }
+    if ($p) {
+        Stop-Process -Id $p.Id -Force
+        # Чекаємо, поки процес справді зникне: доти він тримає build\ і порт, і підміна теки чи новий старт спіткнулись би
+        try { $p.WaitForExit(10000) | Out-Null } catch { }
+        Remove-Item $PidFile -ErrorAction SilentlyContinue
+        Write-Host 'Сервер зупинено'
+    }
     else { Write-Host 'Сервер не працював' }
 }
 
@@ -363,7 +494,7 @@ function Invoke-Watchdog {
 # ---------- команди ----------
 
 $locked = $false
-if ($Cmd -in 'start', 'stop', 'restart', 'radio', 'watchdog') {
+if ($Cmd -in 'start', 'stop', 'restart', 'back', 'radio', 'watchdog') {
     $wait = if ($Cmd -eq 'watchdog') { 0 } else { 600 }
     $locked = Enter-Launcher $wait
     if (-not $locked) {
@@ -379,10 +510,23 @@ try {
         'stop'    {
             New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
             Set-Content $StopFlag (Get-Date -Format 's')
+            Invoke-Freeze | Out-Null   # якщо start буде скоро (до 3 хв), столи повернуться, а партії, що вміють зберегтись, — грають далі
             Stop-Caddy; Stop-Server; Stop-Liquidsoap
             Write-Host 'Автонагляд на паузі, доки не буде start'
         }
-        'restart' { Remove-Item $StopFlag -ErrorAction SilentlyContinue; Stop-Server; Invoke-Build; Start-Liquidsoap; Start-Server; Start-Caddy }
+        'restart' {
+            Remove-Item $StopFlag -ErrorAction SilentlyContinue
+            Invoke-BuildNext                     # поки старий сервер працює
+            Invoke-Freeze | Out-Null
+            Stop-Server
+            if (-not (Switch-Build)) { Invoke-Build }
+            Start-Liquidsoap; Start-Server; Start-Caddy; Update-Caddy
+        }
+        'back'    {
+            Remove-Item $StopFlag -ErrorAction SilentlyContinue
+            if (-not (Invoke-Freeze 3)) { Use-CleanTables }
+            Stop-Server; Restore-PrevBuild; Start-Liquidsoap; Start-Server; Start-Caddy
+        }
         'radio'   { Stop-Liquidsoap; Start-Sleep 1; Start-Liquidsoap }
         'status'  {
             $p = Get-Server

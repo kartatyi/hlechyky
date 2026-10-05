@@ -245,6 +245,21 @@ public abstract class Game
     public virtual void Load(string json) { }
 
     /// <summary>
+    /// Партія, що йде, продовжується після перезапуску сервера (ARCHITECTURE §4.7): каркас бере <see cref="Save"/> перед
+    /// перезапуском, а в новому процесі робить <see cref="Start"/> + <see cref="Load"/> + <see cref="Resumed"/>. Вмикати
+    /// лише грі, чий Save тримає УВЕСЬ стан партії: ботів, таймери, годинники. Save «для тестів» без годинника чи ботів
+    /// повернув би партію, що зависне або дасть комусь зайвий час. Без цього стіл однаково переживає перезапуск, а
+    /// партію, що йде, деплой чекає (Rooms.Busy) і лише за -Now перериває.
+    /// </summary>
+    public virtual bool Resumable => false;
+
+    /// <summary>
+    /// Партію щойно продовжено після перезапуску (після <see cref="Load"/>); <paramref name="pause"/> — скільки сервер не
+    /// працював. Абсолютні дедлайни (годинник партії, таймер ходу) зсувати на цю паузу: інакше її платить той, чий хід.
+    /// </summary>
+    public virtual void Resumed(TimeSpan pause) { }
+
+    /// <summary>
     /// Ключ особистої (соло) кімнати для OpenSolo, коли клієнт не передав свій: клікер — один на ніка назавжди,
     /// щоденні ігри перекривають і додають день за Києвом (<see cref="Days.Today"/>).
     /// </summary>
@@ -346,6 +361,13 @@ public interface IStakes
     int Balance(string nick);
     bool TrySpend(string nick, int amount, string reason, string refKey);
     void Grant(string nick, int amount, string reason, string refKey);
+
+    /// <summary>
+    /// Чи цей раунд столу вже розраховано (виплата переможцю чи повернення ставок). Каркас питає це, коли повертає столи
+    /// після перезапуску: партію, що в знімку ще йшла, могли встигнути дограти й розрахувати вже після нього — тоді
+    /// повертати ставки вдруге не можна. Типово — «ні» (без економіки нема чого розраховувати).
+    /// </summary>
+    bool Settled(string roomId, int round) => false;
 }
 
 /// <summary>Збережений стан Persistent-ігор (щоденне, клікер).</summary>

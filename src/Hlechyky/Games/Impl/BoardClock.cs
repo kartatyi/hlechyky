@@ -79,4 +79,10 @@ public sealed class BoardClock
         if (s is null) return;
         (_baseMs, _incMs, _left[0], _left[1], _running, _since) = (s.Base, s.Inc, s.Left0, s.Left1, s.Running, s.Since);
     }
+
+    /// <summary>Сервер стояв (перезапуск): цей час не з'їдає годинник того, чий хід.</summary>
+    public void Shift(TimeSpan pause)
+    {
+        if (_running is not null && pause > TimeSpan.Zero) _since += pause;
+    }
 }

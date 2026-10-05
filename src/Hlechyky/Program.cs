@@ -81,6 +81,8 @@ var app = builder.Build();
 // За Caddy (той самий хост): X-Forwarded-Proto робить Request.IsHttps правдивим, X-Forwarded-For віддає IP слухача
 app.UseForwardedHeaders(new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto });
 app.Logger.LogInformation("Глечики: root={Root}, port={Port}", root, port);
+// Столи, що були до перезапуску, — назад ще до першого з'єднання: браузер після реконекту дивиться на той самий стіл.
+app.Services.GetRequiredService<TablesKeeper>().RestoreAtStart();
 // Голос столу стежить за розсилкою: мафія заснула, хтось устав — хто кого чує, треба перерахувати.
 app.Services.GetRequiredService<Broadcaster>().Flushed += app.Services.GetRequiredService<VoiceChat>().OnFlushed;
 

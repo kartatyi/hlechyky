@@ -108,6 +108,11 @@ public sealed class EconomyStore(Db db)
     public int Balance(string nickKey) =>
         (int)db.With(c => Scalar(c, "SELECT balance FROM wallets WHERE nick_key=$n", ("$n", nickKey)));
 
+    /// <summary>Чи є в леджері запис, чий ключ ідемпотентності починається з <paramref name="prefix"/> (діапазон по індексу ref).</summary>
+    public bool HasRefPrefix(string prefix) =>
+        db.With(c => Scalar(c, "SELECT EXISTS(SELECT 1 FROM ledger WHERE ref >= $p AND ref < $q)",
+            ("$p", prefix), ("$q", prefix + char.MaxValue))) == 1;
+
     public WalletRow? Wallet(string nickKey) => db.With(c =>
     {
         using var cmd = Cmd(c, "SELECT nick_key, nick, balance, earned, spent FROM wallets WHERE nick_key=$n", ("$n", nickKey));
