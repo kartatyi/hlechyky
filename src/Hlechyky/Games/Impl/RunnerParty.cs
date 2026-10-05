@@ -55,6 +55,21 @@ public abstract class RunnerParty : Game
     int _evSeen;
     object? _result;
     RunnerPacer _pacer;
+    /// <summary>
+    /// Режим вечірки (docs/games/specs/party-minigame.md): один забіг, боти на місцях <c>bots</c> (їх дає нащадок через
+    /// <see cref="NewBot"/>), стеля бігу <see cref="PartyRoundCap"/>, scores — метри. Без нагород і серії.
+    /// </summary>
+    protected PartyMode? PartyM;
+    public bool Party => PartyM is not null;
+    /// <summary>Забіг у вечірці — 65 с (з відліком 3 с — 68 с під стелю 75 с).</summary>
+    public const int PartyRoundCap = 3250;
+    readonly bool[] _partyBot = new bool[Seats];
+    readonly DinoBot?[] _bots = new DinoBot?[Seats];
+    readonly long[] _partyMetres = new long[Seats];
+    bool In(int seat) => Ctx.Seated(seat) || _partyBot[seat];
+    /// <summary>Мозок бота вечірки для місця; null — гра ботів не має (тоді місце просто стоїть).</summary>
+    protected virtual DinoBot? NewBot(int seat, LiveBots.Level level) => null;
+    public override string? SeatBot(int seat) => seat >= 0 && seat < Seats && _partyBot[seat] && !Ctx.Seated(seat) ? LiveBots.Name : null;
 
     public override string SeatName(int seat) => seat >= 0 && seat < Names.Length ? Names[seat] : base.SeatName(seat);
 
@@ -62,6 +77,8 @@ public abstract class RunnerParty : Game
     {
         _optRounds = options.TryGetValue("rounds", out var r) && r is "1" or "3" or "5" ? int.Parse(r) : 3;
         Extra = !(options.TryGetValue(ExtraKey, out var e) && e == "off");
+        PartyM = PartyMode.Read(options);
+        if (PartyM is not null) { _optRounds = 1; Extra = true; }
     }
 
     protected abstract string ExtraKey { get; }
@@ -69,8 +86,18 @@ public abstract class RunnerParty : Game
     public override void Start()
     {
         N0 = 0;
-        for (var i = 0; i < Seats; i++) if (Ctx.Seated(i)) N0++;
-        _rounds = N0 <= 1 ? 1 : _optRounds;
+        Array.Clear(_partyBot);
+        Array.Clear(_bots);
+        Array.Clear(_partyMetres);
+        if (PartyM is { } pm)
+            foreach (var b in pm.Bots)
+                if (b >= 0 && b < Seats && !Ctx.Seated(b))
+                {
+                    _partyBot[b] = true;
+                    _bots[b] = NewBot(b, pm.Level);
+                }
+        for (var i = 0; i < Seats; i++) if (In(i)) N0++;
+        _rounds = N0 <= 1 || PartyM is not null ? 1 : _optRounds;
         Array.Clear(_points);
         Array.Clear(_eggsParty);
         Array.Clear(Awarded);
@@ -89,7 +116,7 @@ public abstract class RunnerParty : Game
         _round++;
         _seed = Ctx.Rng.Next(1, int.MaxValue);
         var plays = new bool[Seats];
-        for (var i = 0; i < Seats; i++) plays[i] = Ctx.Seated(i);
+        for (var i = 0; i < Seats; i++) plays[i] = In(i);
         Sim = new RunnerSim(Mode, _seed, plays, ReadySteps, PmCap, snowOn: Mode == RunnerMode.Dino && Extra && N0 > 1, featherOn: Extra);
         Array.Clear(_announced);
         Array.Clear(_ping);
@@ -152,6 +179,8 @@ public abstract class RunnerParty : Game
                 var steps = _pacer.Due(Ctx.Clock.UtcNow);
                 for (var i = 0; i < steps; i++)
                 {
+                    // боти вечірки тиснуть перед кроком — тим самим вводом, що й людина між тиками
+                    foreach (var bot in _bots) bot?.Think(Sim, Ctx.Rng);
                     Sim.Step();
                     if (Phase == Ready && Sim.S >= ReadySteps)
                     {
@@ -194,6 +223,7 @@ public abstract class RunnerParty : Game
             if (!p.Plays || !p.Out || _announced[i]) continue;
             _announced[i] = true;
             changed = true;
+            _partyMetres[i] = MetresOf(sim, p, run);
             OnOut(i, p, run);
         }
         for (; _evSeen < sim.EventCount; _evSeen++) OnEvent(sim.Event(_evSeen));
@@ -225,7 +255,42 @@ public abstract class RunnerParty : Game
         var (n, alive) = Count();
         if (alive == 0) return true;
         if (n >= 2 && alive <= 1) return true;
-        return Sim!.S - ReadySteps >= RoundCap;
+        return Sim!.S - ReadySteps >= (PartyM is null ? RoundCap : PartyRoundCap);
+    }
+
+    /// <summary>Скільки метрів пробіг сам гравець (лінія темпу мінус відставання).</summary>
+    static long MetresOf(RunnerSim sim, RunnerPlayer p, int run) =>
+        Math.Max(0, sim.PaceX(Math.Max(0, run + 1)) - p.Lag) / RunnerDino.SubPerMetre;
+
+    /// <summary>Scores вечірки — метри кожного місця: вибулий — скільки пробіг до лавини, живий — скільки вже. Не грав — −1.</summary>
+    public IReadOnlyDictionary<int, long> PartyScores()
+    {
+        var r = new Dictionary<int, long>(Ctx.Players);
+        var sim = Sim;
+        for (var i = 0; i < Ctx.Players; i++)
+        {
+            if (sim is null || i >= Seats || !sim.P[i].Plays) { r[i] = -1; continue; }
+            var p = sim.P[i];
+            r[i] = p.Out ? _partyMetres[i] : MetresOf(sim, p, Math.Max(0, sim.S - 1 - ReadySteps));
+        }
+        return r;
+    }
+
+    void PartyOver()
+    {
+        Phase = Done;
+        var scores = PartyScores();
+        var best = scores.Count == 0 ? 0 : scores.Values.Max();
+        var winners = scores.Where(kv => kv.Value == best && kv.Value >= 0).Select(kv => kv.Key).Order().ToArray();
+        _result = new
+        {
+            winners,
+            draw = false,
+            table = scores.Where(kv => kv.Value >= 0).OrderByDescending(kv => kv.Value)
+                .Select(kv => new { seat = kv.Key, points = kv.Value, eggs = 0 }).ToArray(),
+        };
+        Ctx.Finish(winners, $"{Info.Title}: " + string.Join(" · ", scores.Where(kv => kv.Value >= 0)
+            .OrderByDescending(kv => kv.Value).Select(kv => $"{Ctx.NickOf(kv.Key) ?? LiveBots.Name} {kv.Value} м")), scores);
     }
 
     /// <summary>Місця тим, хто вистояв (на стелі — за відставанням), очки раунду, таблиця.</summary>
@@ -248,6 +313,11 @@ public abstract class RunnerParty : Game
             }
             p.Place = better + 1;
             OnSurvive(i, p, run);
+        }
+        if (PartyM is not null)
+        {
+            PartyOver();
+            return;
         }
         var row = new int[Seats];
         for (var i = 0; i < Seats; i++)
@@ -305,6 +375,7 @@ public abstract class RunnerParty : Game
 
     public override void OnLeave(int seat)
     {
+        if (PartyM is not null) return;   // вечірка: місце просто стоїть, забіг догравається
         var nick = Ctx.NickOf(seat);
         if (Sim is not null && seat >= 0 && seat < Seats) Sim.P[seat].Plays = false;
         var left = new List<int>();

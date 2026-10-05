@@ -19,6 +19,7 @@ public class PartyAdaptTests
         { "bomber", 2 }, { "bomber", 6 },
         { "curve", 2 }, { "curve", 8 },
         { "freeze", 2 }, { "freeze", 8 },
+        { "dino", 2 }, { "dino", 8 },
     };
 
     [Theory]
@@ -46,6 +47,7 @@ public class PartyAdaptTests
     [InlineData("bomber", 4)]
     [InlineData("curve", 5)]
     [InlineData("freeze", 3)]
+    [InlineData("dino", 4)]
     public void Party_is_deterministic_by_seed(string id, int bots)
     {
         string Run()
@@ -63,6 +65,7 @@ public class PartyAdaptTests
     [InlineData("bomber")]
     [InlineData("curve")]
     [InlineData("freeze")]
+    [InlineData("dino")]
     public void Midway_scores_cover_all_seats_and_howto_and_caps_are_set(string id)
     {
         var h = new PartyHarness(id, humans: 1, bots: 2, seed: 3);
@@ -80,6 +83,7 @@ public class PartyAdaptTests
     [InlineData("bomber")]
     [InlineData("curve")]
     [InlineData("freeze")]
+    [InlineData("dino")]
     public void Idle_human_is_not_on_top_against_hard_bots(string id)
     {
         var h = new PartyHarness(id, humans: 1, bots: 3, level: LiveBots.Level.Hard, seed: 5);
@@ -103,6 +107,25 @@ public class PartyAdaptTests
         });
         Assert.NotNull(r);
         Assert.Contains(0, r!.Winners);
+    }
+
+    [Fact]
+    public void Dino_hard_bots_run_further_than_easy_ones()
+    {
+        long Avg(LiveBots.Level lvl)
+        {
+            long sum = 0;
+            for (var seed = 1; seed <= 4; seed++)
+            {
+                var h = new PartyHarness("dino", humans: 0, bots: 4, level: lvl, seed: seed);
+                h.Start();
+                sum += h.RunToEnd()!.Scores.Values.Sum();
+            }
+            return sum;
+        }
+        var easy = Avg(LiveBots.Level.Easy);
+        var hard = Avg(LiveBots.Level.Hard);
+        Assert.True(hard > easy, $"сильні {hard} м, легкі {easy} м");
     }
 
     [Fact]
@@ -147,6 +170,7 @@ public class PartyAdaptTests
     [InlineData("bomber")]
     [InlineData("curve")]
     [InlineData("freeze")]
+    [InlineData("dino")]
     public void Ordinary_table_ignores_party_keys(string id)
     {
         var room = new RoomHarness(id, options: new { party = "1", bots = "1,2" });
@@ -161,6 +185,7 @@ public class PartyAdaptTests
     [InlineData("bomber")]
     [InlineData("curve")]
     [InlineData("freeze")]
+    [InlineData("dino")]
     public void Host_1000_parent_ticks_with_bots_under_2s(string id)
     {
         var h = new PartyHarness(id, humans: 0, bots: id == "bomber" ? 6 : 8, seed: 5);
