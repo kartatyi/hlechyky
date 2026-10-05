@@ -507,6 +507,21 @@ public class GeeseTests
         Assert.NotNull(fresh.Info);
     }
 
+    [Fact]
+    public void Five_days_of_geese_in_a_row_unlock_the_achievement()
+    {
+        using var rig = new EconomyRig();
+        var day = DateOnly.ParseExact(rig.Daily.Today(), "yyyy-MM-dd");
+        for (var i = 4; i >= 1; i--)
+            rig.Daily.Record("geese-daily", "Оля", solved: true, attempts: 1, ms: 0, day: day.AddDays(-i).ToString("yyyy-MM-dd"));
+        rig.Achievements.OnDaily("Оля", rig.Daily.MyResult("Оля", "geese-daily") ?? new DailyRow(day.AddDays(-1).ToString("yyyy-MM-dd"), "geese-daily", "оля", "Оля", true, 1, 0),
+            rig.Daily.Streak("Оля", "geese-daily"));
+        Assert.False(rig.Achievements.Has("Оля", "geese-days5"));
+        rig.Daily.Record("geese-daily", "Оля", solved: true, attempts: 1, ms: 0, day: day.ToString("yyyy-MM-dd"));
+        rig.Achievements.OnDaily("Оля", rig.Daily.MyResult("Оля", "geese-daily")!, rig.Daily.Streak("Оля", "geese-daily"));
+        Assert.True(rig.Achievements.Has("Оля", "geese-days5"));
+    }
+
     // ---------- швидкість ----------
 
     [Fact]
