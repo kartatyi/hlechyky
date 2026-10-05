@@ -100,16 +100,32 @@
   }
 
   /// Сніп: соломʼяний валок із двома шпагатами кольору місця. seed — щоб соломинки не мерехтіли від кадру до кадру.
+  // Градієнт снопа — один на висоту ряду (у панелі всі снопи однакові заввишки), а не новий на кожен сніп кожного
+  // кадру: у вечірці 8 панелей × ~20 видимих снопів. Він у координатах від 0, тож малюємо зі зсувом по y.
+  const sheafGr = new WeakMap();
+  function sheafGrad(g, h) {
+    let m = sheafGr.get(g);
+    if (!m) sheafGr.set(g, (m = new Map()));
+    const k = Math.round(h * 4);
+    let gr = m.get(k);
+    if (!gr) {
+      if (m.size > 64) m.clear();
+      gr = g.createLinearGradient(0, 0, 0, k / 4);
+      gr.addColorStop(0, '#fbe08e');
+      gr.addColorStop(0.45, '#e9b94f');
+      gr.addColorStop(1, '#b7832b');
+      m.set(k, gr);
+    }
+    return gr;
+  }
   function drawSheaf(g, x, y, w, h, seed, col) {
     if (w < 0.5) return;
     const r = Math.min(h * 0.42, w / 2, 8);
-    const gr = g.createLinearGradient(0, y, 0, y + h);
-    gr.addColorStop(0, '#fbe08e');
-    gr.addColorStop(0.45, '#e9b94f');
-    gr.addColorStop(1, '#b7832b');
-    g.fillStyle = gr;
-    rr(g, x, y, w, h, r);
+    g.fillStyle = sheafGrad(g, h);
+    g.translate(0, y);
+    rr(g, x, 0, w, h, r);
     g.fill();
+    g.translate(0, -y);
     if (h >= 9 && w >= 14) {
       g.strokeStyle = 'rgba(128,84,20,.38)';
       g.lineWidth = 1;
@@ -374,13 +390,16 @@
         const cw = (W - bw - gap - (cols - 1) * gap) / cols, ch = (H - (rows - 1) * gap) / rows;
         others.forEach((s, i) => P.push({ seat: s, x: bw + gap + (i % cols) * (cw + gap), y: Math.floor(i / cols) * (ch + gap), w: cw, h: ch }));
       } else {
-        const cols = Math.min(k, 4), rows = Math.ceil(k / 4);
-        // у вечірці (5+ суперників) мініатюри нижчі: своє поле — головний екран і мусить влізти до доку
-        const mh = rows > 1 ? (emb ? 72 : 96) : (emb ? 108 : 124);
-        const strip = rows * mh + (rows - 1) * 6;
+        // У вечірці прокрутки нема, і своє поле — головний екран: суперники стають в один ряд вузькими
+        // мініатюрами (на 7 — по ~40 px: крапка кольору й висота, без імені), щоб поле влізло до доку.
+        const row1 = emb && k > 4;
+        const cols = row1 ? k : Math.min(k, 4), rows = Math.ceil(k / cols);
+        const mh = row1 ? 84 : rows > 1 ? 96 : (emb ? 108 : 124);
+        const sg = row1 ? 4 : 6;
+        const strip = rows * mh + (rows - 1) * sg;
         H = Math.max(H, strip + gap + (emb ? 240 : 312));
-        const cw = (W - (cols - 1) * 6) / cols;
-        others.forEach((s, i) => P.push({ seat: s, x: (i % cols) * (cw + 6), y: Math.floor(i / cols) * (mh + 6), w: cw, h: mh }));
+        const cw = (W - (cols - 1) * sg) / cols;
+        others.forEach((s, i) => P.push({ seat: s, x: (i % cols) * (cw + sg), y: Math.floor(i / cols) * (mh + sg), w: cw, h: mh }));
         P.push({ seat: me, x: 0, y: strip + gap, w: W, h: H - strip - gap, big: true });
       }
     } else if (seats.length) {
@@ -679,7 +698,7 @@
     g.font = '600 ' + fs + 'px system-ui, -apple-system, "Segoe UI", sans-serif';
     // на мініатюрі «🤖 бот овес» → «🤖овес»: інакше від імені лишається «бот…»
     const nm = isMe ? 'ти' : P.w < 130 ? nameOf(st, s).replace(/^🤖\s*бот\s+/, '🤖') : nameOf(st, s);
-    g.fillText(fitText(g, nm, P.w - hw - 34), P.x + 19, P.y + 9 + fs / 2);
+    if (P.w - hw - 34 > 14) g.fillText(fitText(g, nm, P.w - hw - 34), P.x + 19, P.y + 9 + fs / 2);   // вузька мініатюра — без імені
     if (streak >= 2 && ph === 1 && !done && P.w >= 130) txt(g, '🔥×' + streak, P.x + 8, P.y + fs + 26, P.big ? 15 : 10, '#ffd36b', 'left');
     g.restore();
     // рамка: своя — акцентом, докладена — золотом
