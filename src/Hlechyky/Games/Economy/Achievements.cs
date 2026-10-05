@@ -164,6 +164,10 @@ public static class AchievementCatalog
         new("geo-20k",      "Знавець України", "20 000 очок за партію «Де це?» з п'яти й більше раундів", "🗺", 30),
         // реверсі — гра просить сама через Ctx.Award(seat, 0, "ach:reversi-wipe")
         new("reversi-wipe", "Витер дошку",     "Перемога в реверсі, коли в суперника не лишилось жодної фішки", "⚪", 20),
+        // вечірка й міні-ігри: skyrta — гра просить сама через Ctx.Award(seat, 0, "ach:<key>")
+        new("skyrta-line",  "Рівно, як під шнурок", "Десять ідеальних снопів поспіль у Скирті", "📏", 20),
+        new("skyrta-neat",  "Скиртоправ",           "Доклав скирту на 25 снопів, жодного разу не обрізавши більше ніж половину", "🌾", 25),
+        new("skyrta-storm", "Буревій",              "Тричі пустив вітер на сусіда за одну партію Скирти", "💨", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
