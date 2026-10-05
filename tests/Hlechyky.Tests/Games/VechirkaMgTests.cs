@@ -17,6 +17,19 @@ public sealed class VechirkaMgTests
     }
 
     [Fact]
+    public void Pool_sees_merged_minigames_of_the_wave_and_adapted_old_games()
+    {
+        // Зведення (SYNC): міні-ігри хвилі, що вже в гілці, і старі ігри з режимом вечірки мусять потрапити в пул
+        var ids = VechirkaPool.Available.Select(e => e.Id).ToHashSet();
+        foreach (var id in new[] { "icefloe", "tyr", "sklei", "thinice", "grushi", "pong", "skilky" })
+            if (PartyPool.Has(id)) Assert.Contains(id, ids);
+        Assert.Contains("tyr", ids);
+        Assert.Contains("pong", ids);
+        Assert.All(VechirkaPool.Available, e => Assert.False(string.IsNullOrWhiteSpace(e.Howto)));
+        Assert.Contains(VechirkaPool.Available, e => e.Weight > 0 && e.Max >= 8);
+    }
+
+    [Fact]
     public void Eight_at_the_table_play_a_whole_evening_of_icefloe()
     {
         var h = VechirkaTests.Table(1, 7, seed: 21);
