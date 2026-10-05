@@ -63,7 +63,8 @@ public sealed class VechirkaTests
         var h = Table(1, 3);
         Assert.True(h.Start().Ok);
         var c = Game(h).Core!;
-        var limit = c.S.Rounds * 4 * 30 + c.S.Rounds * 20;
+        // стеля — чесна: на коло 4 ходи по 30 с + міні-гра до її стелі 120 с, плюс підсумок; у зведенні в пулі довші ігри (Брід, Гостинці)
+        var limit = c.S.Rounds * (4 * 30 + 120) + 60;
         Assert.True(Until(h, () => h.Room.Status == RoomStatus.Finished, limit), $"застрягли: {c.S.Phase} {c.S.Round}/{c.S.Rounds}");
         var fin = Assert.Single(h.Finished);
         Assert.Single(h.Room.Result!.Scores!);   // scores — лише за кріслами людей
