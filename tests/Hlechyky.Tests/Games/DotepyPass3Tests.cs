@@ -121,7 +121,7 @@ public sealed class DotepyPass3Tests
         Assert.True(best.GetArrayLength() >= 2);
 
         Assert.Equal("Закидають ті, хто грав", Game(h).Pin("Чужий", 0).Error);
-        Assert.Equal("Нема такого дотепу", Game(h).Pin("Оля", 9).Error);
+        Assert.Equal("Нема такого додепу", Game(h).Pin("Оля", 9).Error);
         var (item, error) = Game(h).Pin("Оля", 0);
         Assert.Null(error);
         Assert.Equal(best[0].GetProperty("text").GetString(), item!.Text);
@@ -140,7 +140,7 @@ public sealed class DotepyPass3Tests
     {
         var album = new DotepyAlbum(null);
         var at = DateTimeOffset.UtcNow;
-        var ids = Enumerable.Range(1, 5).Select(i => album.Add($"Завдання {i}", $"дотеп {i}", "Оля", "Петро", 100 * i, at)).ToArray();
+        var ids = Enumerable.Range(1, 5).Select(i => album.Add($"Завдання {i}", $"додеп {i}", "Оля", "Петро", 100 * i, at)).ToArray();
         var (page, more) = album.Page(0, 3, null);
         Assert.True(more);
         Assert.Equal(ids.Reverse().Take(3), page.Select(x => x.Item.Id));

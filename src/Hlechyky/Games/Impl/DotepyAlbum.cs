@@ -3,12 +3,12 @@ using Microsoft.Data.Sqlite;
 
 namespace Hlechyky.Games.Impl;
 
-/// <summary>Дотеп в альбомі: завдання, відповідь, хто написав, хто закинув, скільки очок узяв за столом, ❤ читачів.</summary>
+/// <summary>Додеп в альбомі: завдання, відповідь, хто написав, хто закинув, скільки очок узяв за столом, ❤ читачів.</summary>
 public sealed record DotepyAlbumItem(long Id, string Prompt, string Text, string Author, string By, int Points, DateTimeOffset At, int Likes);
 
 /// <summary>
-/// «📖 Альбом дотепів»: найкращі дотепи, які гравці закинули після партії (📌). Гортати може будь-хто, ❤ ставить той,
-/// хто назвався, прибирає — адмін. Рядки короткі (завдання ≤ 120 + нік, дотеп ≤ 80), тож альбом компактний; понад
+/// «📖 Альбом додепів»: найкращі додепи, які гравці закинули після партії (📌). Гортати може будь-хто, ❤ ставить той,
+/// хто назвався, прибирає — адмін. Рядки короткі (завдання ≤ 120 + нік, додеп ≤ 80), тож альбом компактний; понад
 /// <see cref="MaxItems"/> — найстаріші випадають. Без бази (тести) живе в пам'яті. Кличеться лише з HTTP, поза замком кімнати.
 /// </summary>
 public sealed class DotepyAlbum
@@ -44,7 +44,7 @@ public sealed class DotepyAlbum
         }
         catch (Exception ex)
         {
-            log?.LogWarning(ex, "dotepy: не відкрив альбом дотепів у базі");
+            log?.LogWarning(ex, "dotepy: не відкрив альбом додепів у базі");
         }
     }
 
@@ -118,7 +118,7 @@ public sealed class DotepyAlbum
         }
     }
 
-    /// <summary>❤ читача: ставить або знімає. null — такого дотепу нема.</summary>
+    /// <summary>❤ читача: ставить або знімає. null — такого додепу нема.</summary>
     public (int Likes, bool Liked)? Like(long id, string nickKey)
     {
         lock (_gate)
@@ -166,7 +166,7 @@ public sealed class DotepyAlbum
         }
     }
 
-    /// <summary>Адмін прибирає дотеп. false — такого нема.</summary>
+    /// <summary>Адмін прибирає додеп. false — такого нема.</summary>
     public bool Delete(long id)
     {
         lock (_gate)

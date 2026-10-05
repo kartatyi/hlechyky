@@ -1,4 +1,4 @@
-"""Боти «Дотепів» для живої перевірки: кожен — окреме SignalR-з'єднання (JSON поверх WebSocket).
+"""Боти «Додепів» для живої перевірки: кожен — окреме SignalR-з'єднання (JSON поверх WebSocket).
 
     C:/Users/Ya/AppData/Local/Python/pythoncore-3.14-64/python.exe docs/games/dev/dotepy-bots.py --port 8231 --room <id>         --nicks Петро,Ганна [--write 2-6] [--vote 1-4] [--leave Ганна@vote] [--laugh 0.5] [--jinx] [--secs 600]
 
