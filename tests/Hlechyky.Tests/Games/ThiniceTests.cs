@@ -220,7 +220,7 @@ public class ThiniceTests(ITestOutputHelper output)
         Put(c, 1, 8, 8).Want = 4;
         c.Ice[0][Cell(c, 3, 5)] = ThiniceCore.Gone;
         a.Want = 0;
-        a.X = 3 * Sub - 20;   // біля краю дірки
+        a.X = 3 * Sub - 40;   // ближче до краю дірки: 260 + 16 кроку + 216 польоту = 492
         c.Step();
         Assert.Null(c.Jump(0));
         Assert.Equal(1, a.Jumps);
@@ -250,6 +250,43 @@ public class ThiniceTests(ITestOutputHelper output)
         c.Step();
         Assert.Equal(x, a.X);
         Assert.Equal(ThiniceCore.CrackTicks, c.Ice[0][Cell(c, 4, 4)]);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(6)]
+    [InlineData(10)]
+    [InlineData(14)]
+    public void Diagonal_jump_from_tile_centre_clears_a_diagonal_hole(int dir)
+    {
+        // Під 45° з центру до сусідньої по діагоналі через дірку — ≥150 по кожній осі: стрибок мусить долетіти.
+        var c = Bare();
+        var a = Put(c, 0, 4, 4);
+        Put(c, 1, 0, 9);
+        int sx = ThiniceCore.Dx[dir] > 0 ? 1 : -1, sy = ThiniceCore.Dy[dir] > 0 ? 1 : -1;
+        c.Ice[0][Cell(c, 4 + sx, 4 + sy)] = ThiniceCore.Gone;
+        c.Ice[0][Cell(c, 4 + sx, 4)] = ThiniceCore.Gone;
+        c.Ice[0][Cell(c, 4, 4 + sy)] = ThiniceCore.Gone;
+        a.Want = dir;
+        Assert.Null(c.Jump(0));
+        for (var i = 0; i < ThiniceCore.AirOf(dir); i++) c.Step();
+        Assert.Equal(0, a.Tier);
+        Assert.Equal(Cell(c, 4 + 2 * sx, 4 + 2 * sy), c.CellOf(a));
+    }
+
+    [Fact]
+    public void Axis_jump_from_the_back_edge_still_clears_the_hole()
+    {
+        var c = Bare();
+        var a = Put(c, 0, 2, 5);
+        Put(c, 1, 9, 9);
+        c.Ice[0][Cell(c, 3, 5)] = ThiniceCore.Gone;
+        a.X = 2 * Sub + 1;   // самий задній край клітинки
+        a.Want = 0;
+        Assert.Null(c.Jump(0));
+        for (var i = 0; i < ThiniceCore.AirTicks; i++) c.Step();
+        Assert.Equal(0, a.Tier);
+        Assert.Equal(4, a.X / Sub);
     }
 
     [Fact]
@@ -551,6 +588,23 @@ public class ThiniceTests(ITestOutputHelper output)
         Assert.StartsWith(LiveBots.Name, h.Room.Game.SeatBot(g.Bots[0]));
     }
 
+    [Fact]
+    public void Human_out_and_only_bots_left_brings_the_thaw_within_ten_seconds()
+    {
+        var h = WithBots("hard");
+        var g = Game(h);
+        ToGo(h);
+        var c = Core(h);
+        var me = Enumerable.Range(0, ThiniceCore.Seats).First(s => c.Bodies[s].Plays && !g.Bots.Contains(s));
+        h.Tick(25);
+        Assert.Equal(Thinice.ThawTicks, c.ThawAt);           // поки людина на льоду — як завжди
+        Sink(c, me);
+        h.Tick(2);
+        Assert.False(c.Bodies[me].In);
+        Assert.True(c.ThawAt <= c.Rt + Thinice.BotsOnlyThawTicks, $"{c.ThawAt} при rt {c.Rt}");
+        Assert.Equal(c.ThawAt, Frame(h).GetProperty("ta").GetInt32());
+    }
+
     /// <summary>Голий раунд ботів заданих рівнів: місце кожного (більше — краще) і скільки тиків тривав.</summary>
     static (int[] Ranks, int Ticks) BotRound(LiveBots.Level[] levels, int seed, int thawAt = 1500)
     {
@@ -615,7 +669,7 @@ public class ThiniceTests(ITestOutputHelper output)
             normal += r[1] + r[3];
         }
         output.WriteLine($"середнє місце: сильний {hard / 80:F2}, звичайний {normal / 80:F2}");
-        Assert.True(hard > normal, $"сильний {hard}, звичайний {normal}");
+        Assert.True(hard > normal * 1.15, $"сильний {hard}, звичайний {normal}");
     }
 
     [Fact]
@@ -691,7 +745,8 @@ public class ThiniceTests(ITestOutputHelper output)
     public void Party_human_who_plays_well_beats_easy_bots()
     {
         var top = 0;
-        const int Runs = 6;
+        double me = 0, them = 0;
+        const int Runs = 12;
         for (var seed = 1; seed <= Runs; seed++)
         {
             var h = new PartyHarness("thinice", humans: 1, bots: 3, level: LiveBots.Level.Easy, seed: seed);
@@ -711,9 +766,13 @@ public class ThiniceTests(ITestOutputHelper output)
             })!;
             Assert.Equal(4, r.Scores.Count);
             if (r.Scores[0] == r.Scores.Values.Max()) top++;
+            me += r.Scores[0];
+            them += (r.Scores.Values.Sum() - r.Scores[0]) / 3.0;
         }
-        output.WriteLine($"людина-скрипт угорі {top} з {Runs}");
-        Assert.True(top >= Runs / 2 + 1, $"{top} з {Runs}");
+        output.WriteLine($"людина-скрипт угорі {top} з {Runs}, очки {me / Runs:F2} проти {them / Runs:F2}");
+        // Один раунд на чотирьох — лотерея більша, ніж у трьох: навмання вгорі була б чверть партій.
+        Assert.True(top >= Runs / 3 + 1, $"{top} з {Runs}");
+        Assert.True(me > them * 1.3, $"{me} проти {them}");
     }
 
     [Fact]

@@ -107,7 +107,7 @@
   .tijump.off { opacity: .45; }
   .tijump:active::before { background: var(--accent); }
   .tiboard { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-  .tichip.tisnd { min-width: 40px; min-height: 36px; justify-content: center; touch-action: manipulation; }
+  .tichip.tisnd { min-width: 44px; min-height: 44px; justify-content: center; touch-action: manipulation; }
 }
 @media (max-width: 480px) {
   .tihud { gap: 4px; font-size: .74em; }

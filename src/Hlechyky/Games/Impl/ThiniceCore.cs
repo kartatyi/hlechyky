@@ -45,8 +45,13 @@ public sealed class ThiniceCore
     public const int Sub = 100, Speed = 16;
     /// <summary>Тріщина живе секунду: від кроку до дірки.</summary>
     public const int CrackTicks = 25;
-    /// <summary>Стрибок: 12 тиків у повітрі (1,92 клітинки — рівно через одну дірку), перезарядка 3 с.</summary>
-    public const int AirTicks = 12, JumpCd = 75;
+    /// <summary>
+    /// Стрибок: швидший за крок (18/тик), 12 тиків уздовж осі — 2,16 клітинки: з будь-якої точки клітинки
+    /// перелітає одну дірку (навіть із заднього краю). Під кутом летить довше (<see cref="AirOf"/>): під 45° з
+    /// центру клітинки треба ≥150 по кожній осі, щоб перелетіти діагональну дірку, — 14 тиків дають 182.
+    /// Перезарядка 3 с.
+    /// </summary>
+    public const int AirTicks = 12, JumpSpeed = 18, JumpCd = 75;
     /// <summary>Падіння з верхнього ярусу на нижній — 0,4 с без керування.</summary>
     public const int FallTicks = 10;
     /// <summary>Центр тіла не ближче за це до берега: ставок обгороджений, за край не вийдеш.</summary>
@@ -58,7 +63,12 @@ public sealed class ThiniceCore
 
     /// <summary>Зсуви кроку за сектором (16 секторів по 22,5°), цілі — щоб світ не плив від округлень.</summary>
     public static readonly int[] Dx = [.. Enumerable.Range(0, 16).Select(a => (int)Math.Round(Math.Cos(a * Math.PI / 8) * Speed))];
-    public static readonly int[] Dy = [.. Enumerable.Range(0, 16).Select(a => (int)Math.Round(Math.Sin(a * Math.PI / 8) * Speed))];
+    public static readonly int[] Dy = [.. Enumerable.Range(0, 16).Select(a => (int)Math.Round(Math.Sin(a * Math.PI / 8) * Speed))];    /// <summary>Зсуви в польоті (<see cref="JumpSpeed"/>).</summary>
+    public static readonly int[] JDx = [.. Enumerable.Range(0, 16).Select(a => (int)Math.Round(Math.Cos(a * Math.PI / 8) * JumpSpeed))];
+    public static readonly int[] JDy = [.. Enumerable.Range(0, 16).Select(a => (int)Math.Round(Math.Sin(a * Math.PI / 8) * JumpSpeed))];
+
+    /// <summary>Тиків у повітрі за напрямом стрибка: по осі 12, під 22,5° 13, під 45° 14, на місці 12.</summary>
+    public static int AirOf(int dir) => dir < 0 ? AirTicks : (dir % 4) switch { 0 => AirTicks, 2 => AirTicks + 2, _ => AirTicks + 1 };
 
     readonly Random _rng;
     public int N { get; private set; } = 10;
@@ -170,8 +180,8 @@ public sealed class ThiniceCore
         if (b.Fall > 0) return "Ти падаєш";
         if (b.Air > 0) return "Ти вже в повітрі";
         if (b.Cd > 0) return "Стрибок ще не готовий";
-        b.Air = AirTicks;
         b.JumpDir = b.Want;
+        b.Air = AirOf(b.JumpDir);
         b.Cd = JumpCd;
         b.Jumps++;
         Event(EvJump, seat);
@@ -220,8 +230,9 @@ public sealed class ThiniceCore
             var dir = b.Air > 0 ? b.JumpDir : b.Want;
             if (dir is >= 0 and < 16)
             {
-                b.X = Math.Clamp(b.X + Dx[dir], Margin, N * Sub - Margin);
-                b.Y = Math.Clamp(b.Y + Dy[dir], Margin, N * Sub - Margin);
+                var air = b.Air > 0;
+                b.X = Math.Clamp(b.X + (air ? JDx[dir] : Dx[dir]), Margin, N * Sub - Margin);
+                b.Y = Math.Clamp(b.Y + (air ? JDy[dir] : Dy[dir]), Margin, N * Sub - Margin);
                 b.Face = dir;
             }
             if (b.Air > 0 && --b.Air > 0) continue;

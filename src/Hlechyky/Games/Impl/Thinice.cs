@@ -17,6 +17,11 @@ public sealed class Thinice : Game, IPartyMinigame
     public const int PhReady = 0, PhGo = 1, PhEnd = 2, PhOver = 3, PhLobby = 4;
     /// <summary>Відлига й стеля раунду (тиків від початку гри): звичайна партія — 60 с і 120 с, вечірка — 50 с і 80 с.</summary>
     public const int ThawTicks = 1500, CapTicks = 3000, PartyThawTicks = 1250, PartyCapTicks = 2000;
+    /// <summary>
+    /// Людей на льоду не лишилось, а боти ще бігають, — відлига через 10 с: вибулий не дивиться хвилину, як боти
+    /// мітуть ставок (стеля 120 с), а чекає трохи й іде далі.
+    /// </summary>
+    public const int BotsOnlyThawTicks = 250;
     /// <summary>Намір без підтвердження живе 1,2 с (браузер досилає раз на 0,4 с), далі гравець зупиняється.</summary>
     public const int KeepTicks = 30;
     /// <summary>Самому — троє ботів: на чотирьох ставок 12×12, є кого відрізати.</summary>
@@ -35,6 +40,8 @@ public sealed class Thinice : Game, IPartyMinigame
     [
         "Відлига! Лід тріщить сам — тепер уже ніхто не відсидиться.",
         "Сонечко пригріло — ставок здається. Ховатись нема де!",
+        "Березень на дворі, а вони на кризі танцюють. Ну-ну.",
+        "Чуєте, як лускає? То не горіхи — то ваш ставок.",
     ];
 
     public override GameInfo Info { get; } = new(
@@ -213,10 +220,12 @@ public sealed class Thinice : Game, IPartyMinigame
                 BotsThink(c);
                 c.Step();
                 Expire();
+                if (!c.Thawing && OnlyBotsLeft(c)) c.ThawAt = Math.Min(c.ThawAt, c.Rt + BotsOnlyThawTicks);
                 if (c.Thawing && !_thawSaid)
                 {
                     _thawSaid = true;
-                    if (_party is not null || Ctx.Rng.Next(2) == 0) Ctx.Say(ThawLines[Ctx.Rng.Next(ThawLines.Length)]);
+                    // У вечірці лід може випасти кілька разів за вечір — Глек не повторюється щоразу.
+                    if (Ctx.Rng.Next(_party is null ? 2 : 3) == 0) Ctx.Say(ThawLines[Ctx.Rng.Next(ThawLines.Length)]);
                 }
                 if (c.AliveCount <= 1) return EndRound(false);
                 if (c.Rt >= (_party is null ? CapTicks : PartyCapTicks)) return EndRound(true);
@@ -227,6 +236,20 @@ public sealed class Thinice : Game, IPartyMinigame
                 if (--_left > 0) return c.T % 5 == 0 ? TickResult.FrameOnly : TickResult.None;
                 return AfterRound();
         }
+    }
+
+    /// <summary>Хтось із людей грав цей раунд, усі вже у воді, а бот ще на льоду.</summary>
+    bool OnlyBotsLeft(ThiniceCore c)
+    {
+        bool human = false, bot = false;
+        for (var s = 0; s < ThiniceCore.Seats; s++)
+        {
+            var b = c.Bodies[s];
+            if (!b.Plays) continue;
+            if (Ctx.Seated(s)) { if (b.In) return false; human = true; }
+            else if (b.In && IsBot(s)) bot = true;
+        }
+        return human && bot;
     }
 
     void Expire()
@@ -484,6 +507,7 @@ public sealed class Thinice : Game, IPartyMinigame
             left = ph == PhGo ? Math.Max(0, cap - c.Rt) : ph is PhReady or PhEnd ? _left : 0,
             rt = lobby ? 0 : c.Rt,
             thaw = !lobby && c.Thawing,
+            ta = c.ThawAt == int.MaxValue ? 0 : c.ThawAt,
             ice = new[] { c.Row(0), c.Row(1) },
             p,
             ev = lobby ? [] : c.Events(),

@@ -14,13 +14,18 @@ public sealed class ThiniceBot(LiveBots.Level level, int phase)
     const int TicksPerCell = 7;
     /// <summary>Кермо відпускає точку шляху, коли до її центру ближче за це.</summary>
     const int Reach = 30;
-    /// <summary>До краю дірки, з якого відштовхуємось: 24 + 192 польоту = приземлення на 68 у дальню клітинку.</summary>
-    const int TakeOff = 24;
+    /// <summary>
+    /// До краю дірки, з якого відштовхуємось: кермо бачить край кроками по 16, тож перший тик із краєм ≤ 40 — це
+    /// 25..40 від краю, і 216 польоту кладуть тіло на 76..91 у дальню клітинку, не в наступну за нею.
+    /// </summary>
+    const int TakeOff = 40;
 
     readonly int _plan = level switch { LiveBots.Level.Easy => 8, LiveBots.Level.Normal => 4, _ => 2 };
     readonly int _steer = level == LiveBots.Level.Easy ? 2 : 1;
     /// <summary>Скільки тиків тріщини лишити собі на вихід з центру плитки (до краю — 3 тики); 0 — не стоїть.</summary>
-    readonly int _linger = level switch { LiveBots.Level.Easy => 0, LiveBots.Level.Normal => 15, _ => 7 };
+    // Сильний сходить з тріснутої плитки на 10 тиків до дірки: заміри 150×2 раундів — 7 надто ризиковано (сильний
+    // ледь кращий за звичайного), 10 дає найбільший відрив, 12+ уже марнує лід, як звичайний.
+    readonly int _linger = level switch { LiveBots.Level.Easy => 0, LiveBots.Level.Normal => 15, _ => 10 };
     readonly List<(int Cell, bool Jump)> _path = [];
     int _tier = -1;
     int _sector = -1;

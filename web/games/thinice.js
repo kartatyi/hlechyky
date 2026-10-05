@@ -17,12 +17,18 @@
 */
 (() => {
   // ---- числа ядра (ThiniceCore) ----
-  const TICK_MS = 40, SUB = 100, SPEED = 16, MARGIN = 22, CRACK = 25, AIR = 12, FALL = 10, JUMP_CD = 75;
-  const DX = [], DY = [];
+  const TICK_MS = 40, SUB = 100, SPEED = 16, JSPEED = 18, MARGIN = 22, CRACK = 25, AIR = 12, FALL = 10, JUMP_CD = 75;
+  const DX = [], DY = [], JDX = [], JDY = [];
   for (let a = 0; a < 16; a++) {
     DX.push(Math.round(Math.cos((a * Math.PI) / 8) * SPEED));
     DY.push(Math.round(Math.sin((a * Math.PI) / 8) * SPEED));
+    JDX.push(Math.round(Math.cos((a * Math.PI) / 8) * JSPEED));
+    JDY.push(Math.round(Math.sin((a * Math.PI) / 8) * JSPEED));
   }
+  /// Тиків у повітрі за напрямом (ThiniceCore.AirOf): по осі 12, під 22,5° 13, під 45° 14, на місці 12.
+  const airOf = (dir) => (dir < 0 ? AIR : AIR + [0, 1, 2, 1][dir % 4]);
+  /// Напрям польоту тіла з кадру: у повітрі й «рухається» — туди, куди дивиться; інакше стрибок на місці.
+  const airDir = (q) => ((q[3] & 2) ? q[7] : -1);
   /// Вектор → сектор 0..15 (−1 — нуль).
   const sectorOf = (dx, dy) => (dx === 0 && dy === 0 ? -1 : ((Math.round(Math.atan2(dy, dx) / (Math.PI / 8)) % 16) + 16) % 16);
 
@@ -483,12 +489,13 @@
       const since = Math.min(160, now - st.lastFrameAt);
       let ahead = (since + Math.min(260, st.rtt)) / TICK_MS;
       let dir;
-      if (q[4] > 0) { dir = (q[3] & 2) ? q[7] : -1; ahead = Math.min(ahead, q[4]); }
+      const air = q[4] > 0;
+      if (air) { dir = airDir(q); ahead = Math.min(ahead, q[4]); }
       else dir = canSend(st) ? currentWant(st) : -1;
       if (dir >= 0) {
         const hi = st.n * SUB - MARGIN;
-        tx = clamp(tx + DX[dir] * ahead, MARGIN, hi);
-        ty = clamp(ty + DY[dir] * ahead, MARGIN, hi);
+        tx = clamp(tx + (air ? JDX : DX)[dir] * ahead, MARGIN, hi);
+        ty = clamp(ty + (air ? JDY : DY)[dir] * ahead, MARGIN, hi);
       }
     }
     if (!st.meOk || Math.hypot(tx - st.me.x, ty - st.me.y) > 160) {
@@ -523,7 +530,7 @@
       out[4] = q[4] > 0 ? Math.max(0, q[4] - since) : 0;
       out[5] = q[5] > 0 ? Math.max(0, q[5] - since) : 0;
       // стрибок видно одразу, не чекаючи відлуння сервера
-      if (!out[4] && st.jumpAt && now - st.jumpAt < 260 && f1(st)) out[4] = Math.max(0.01, AIR - (now - st.jumpAt) / TICK_MS);
+      if (!out[4] && st.jumpAt && now - st.jumpAt < 260 && f1(st)) out[4] = Math.max(0.01, airOf(st.jumpDir == null ? -1 : st.jumpDir) - (now - st.jumpAt) / TICK_MS);
       if (st.meOk) { out[0] = st.me.x; out[1] = st.me.y; }
     }
     return out;
@@ -595,7 +602,7 @@
     let sc = low ? 0.86 : 1;
     if (q[5] > 0) sc = 0.86 + 0.14 * (q[5] / FALL) + 0.04 * Math.sin(now / 40);   // падає на нижній — меншає
     const r = cs * 0.3 * sc;
-    const h = q[4] > 0 ? Math.sin((Math.PI * q[4]) / AIR) * cs * 0.55 : 0;
+    const h = q[4] > 0 ? Math.sin((Math.PI * Math.min(1, q[4] / airOf(airDir(q))))) * cs * 0.55 : 0;
     const col = pal.seats[s];
     if (ghost) {
       // під верхнім льодом: силует крізь лід
@@ -681,7 +688,7 @@
       // бот — «🤖 рудий», а не «🤖 бот р…»: над тілом місця на вісім знаків
       const nm = mine ? 'ти' : String(st.nicks[s] || '').replace(/^🤖\s*бот\s*/u, '🤖').slice(0, 8);
       if (!nm) continue;
-      const h = q[4] > 0 ? Math.sin((Math.PI * q[4]) / AIR) * cs * 0.55 : 0;
+      const h = q[4] > 0 ? Math.sin((Math.PI * Math.min(1, q[4] / airOf(airDir(q))))) * cs * 0.55 : 0;
       g.globalAlpha = q[2] === 1 && st.focus < 0.5 ? 0.6 : 1;
       text(g, nm, toPx(st, q[0]), toPx(st, q[1]) - h - cs * 0.5, (mine ? 13 : 11) * st.textK, mine ? '#fff' : pal.seats[s], 800);
     }
@@ -895,7 +902,7 @@
     st.ctx.input('jump');
     const q = st.last.p[st.ctx.seat];
     const since = (performance.now() - st.lastFrameAt) / TICK_MS;
-    if (q && q[4] === 0 && q[5] === 0 && q[6] - since <= 0.5) { st.jumpAt = performance.now(); Snd.jump(); }
+    if (q && q[4] === 0 && q[5] === 0 && q[6] - since <= 0.5) { st.jumpAt = performance.now(); st.jumpDir = currentWant(st); Snd.jump(); }
   }
   function readPad(st) {
     if (!window.HPad || !(HPad.pads > 0) || !navigator.getGamepads) { if (st.padA != null) { st.padA = null; push(st); } return; }
@@ -957,10 +964,10 @@
     }
     let tail = '';
     if (f && ctx.playing && f.ph === 1) {
-      const thawAt = v.thawAt || 1500;
-      if (f.thaw) tail += '<span class="tichip ticlock hot">🌡 відлига · ' + clock(f.left || 0) + '</span>';
-      else if (thawAt - (f.rt || 0) <= 250) tail += '<span class="tichip ticlock hot">🌡 відлига за ' + secs(thawAt - (f.rt || 0)) + '</span>';
-      else tail += '<span class="tichip ticlock">⏱ ' + clock(f.rt || 0) + '</span>';
+      // Годинник завжди лічить донизу: до відлиги, потім — до кінця раунду (стеля).
+      const thawAt = f.ta || v.thawAt || 1500, toThaw = thawAt - (f.rt || 0);
+      if (f.thaw) tail += '<span class="tichip ticlock hot">🌡 кінець за ' + clock(f.left || 0) + '</span>';
+      else tail += '<span class="tichip ticlock' + (toThaw <= 250 ? ' hot' : '') + '">🌡 відлига за ' + clock(Math.max(0, toThaw)) + '</span>';
     }
     if (v.round && v.phase !== 'lobby' && !v.party) tail += '<span class="tichip tiround">раунд ' + v.round + '/' + (v.rounds || 3) + '</span>';
     if (!ctx.embedded) tail += '<button type="button" class="tichip tisnd" data-snd data-pad-skip title="' + (Snd.on ? 'Вимкнути звук' : 'Увімкнути звук') + '">' + (Snd.on ? '🔊' : '🔇') + '</button>';
