@@ -183,6 +183,7 @@
     const now = performance.now();
     if (!prev || prev.ph !== f.ph) {
       st.offs = [];
+      if ((f.ph === 0 || f.ph === 1) && prev) toView(st, f.ph === 0 ? 350 : 60);
       if (!prev || f.ph === 0 || f.ph === 4) newRound(st);
       if (!prev) st.evSeen = Math.max(st.evSeen, ...(f.ev || []).map((e) => e[1]), 0);   // F5: старих подій не програємо
     }
@@ -280,7 +281,7 @@
     } else {
       fx.glow.push({ row, l: nl, w: nw, t0 });
       const k = streak || 1;
-      fx.texts.push({ s: k >= 2 ? 'рівно! ×' + k : 'рівно!', row, t0, c: k >= BIG_FROM ? '#ffe36b' : '#fff6c9' });
+      fx.texts.push({ s: k >= 2 ? 'рівно! ×' + k : 'рівно!', short: 'рівно!', row, t0, c: k >= BIG_FROM ? '#ffe36b' : '#fff6c9' });
       for (let i = 0; i < 12; i++) {
         const sd = i & 1 ? 1 : -1;
         fx.parts.push({ spark: true, x: sd < 0 ? nl : nl + nw, w: 0, y: row + 0.5, vx: sd * (80 + Math.random() * 220), vy: 2 + Math.random() * 6, t0 });
@@ -299,7 +300,8 @@
   }
 
   function buzz(ms) {
-    try { if (coarse() && navigator.vibrate) navigator.vibrate(ms); } catch { /* без вібро */ }
+    const ua = navigator.userActivation;
+    try { if (coarse() && navigator.vibrate && (!ua || ua.hasBeenActive)) navigator.vibrate(ms); } catch { /* без вібро */ }
   }
 
   // ---------- тап ----------
@@ -393,6 +395,20 @@
       st.cv.style.height = H + 'px';
     }
     st.layKey = seats.join() + '|' + me;
+  }
+
+  /// Телефон, партія почалась: докрутити сторінку, щоб поле стало цілим між шапкою й нижніми вкладками.
+  function toView(st, delay) {
+    if (st.ctx.embedded || !st.ctx.mine || st.W >= 640) return;
+    // ще раз — коли відлік змінився грою: каркас міг перемалювати картку й скинути прокрутку
+    setTimeout(() => {
+      if (!st.el.isConnected) return;
+      const fit = st.fit || (HGames.ui.fit ? HGames.ui.fit() : null);
+      if (!fit) return;
+      const r = st.el.getBoundingClientRect();
+      const over = r.bottom - (fit.h - fit.dock) + 6;
+      if (over > 2) window.scrollBy({ top: Math.min(over, r.top - fit.top - 4), behavior: 'smooth' });
+    }, delay);
   }
 
   // ---------- малювання ----------
@@ -514,7 +530,8 @@
       g.lineWidth = 1.5;
       g.beginPath(); g.moveTo(P.x, gyl); g.lineTo(P.x + P.w, gyl); g.stroke();
       g.setLineDash([]);
-      if (P.w > 90) txt(g, '🏁 ' + goal, P.x + 6, gyl - 9, Math.max(10, R * 0.45), '#fff', 'left');
+      // під самою шапкою панелі підпис мети лягає під пунктир, щоб не налазити на ім'я
+      if (P.w > 90) txt(g, '🏁 ' + goal, P.x + 6, gyl < P.y + 44 ? gyl + 10 : gyl - 9, Math.max(10, R * 0.45), '#fff', 'left');
     }
     // скирта
     const col = COLS[s % 8];
@@ -616,8 +633,9 @@
       if (a >= 1) { fx.texts.splice(i, 1); continue; }
       const y = o.row == null ? P.y + P.h * 0.4 - a * 20 : yb(o.row) - R * 1.5 - a * R * 1.4;
       g.globalAlpha = a < 0.75 ? 1 : (1 - a) * 4;
-      const size = (o.big ? (P.big ? 26 : 13) : (P.big ? 22 : 12)) * (a < 0.1 ? 0.7 + a * 3 : 1);
-      txt(g, o.s, P.x + P.w / 2, y, size, o.c);
+      const small = P.w < 130;
+      const size = (o.big ? (P.big ? 26 : small ? 11 : 13) : (P.big ? 22 : small ? 10 : 12)) * (a < 0.1 ? 0.7 + a * 3 : 1);
+      txt(g, small && o.short ? o.short : o.s, P.x + P.w / 2, y, size, o.c);
       g.globalAlpha = 1;
     }
     // переможцю — 🏆 над скиртою
@@ -643,9 +661,10 @@
     g.fillText(hs, P.x + P.w - 10, P.y + 9 + fs / 2);
     g.textAlign = 'left';
     g.font = '600 ' + fs + 'px system-ui, -apple-system, "Segoe UI", sans-serif';
-    const nm = isMe ? 'ти' : nameOf(st, s);
+    // на мініатюрі «🤖 бот овес» → «🤖овес»: інакше від імені лишається «бот…»
+    const nm = isMe ? 'ти' : P.w < 130 ? nameOf(st, s).replace(/^🤖\s*бот\s+/, '🤖') : nameOf(st, s);
     g.fillText(fitText(g, nm, P.w - hw - 34), P.x + 19, P.y + 9 + fs / 2);
-    if (streak >= 2 && ph === 1 && !done) txt(g, '🔥×' + streak, P.x + 8, P.y + fs + 26, P.big ? 15 : 10, '#ffd36b', 'left');
+    if (streak >= 2 && ph === 1 && !done && P.w >= 130) txt(g, '🔥×' + streak, P.x + 8, P.y + fs + 26, P.big ? 15 : 10, '#ffd36b', 'left');
     g.restore();
     // рамка: своя — акцентом, докладена — золотом
     g.lineWidth = isMe ? 2.5 : 1;

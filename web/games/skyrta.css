@@ -25,7 +25,8 @@
 .gseat.sk6 { color: var(--sk-s6); }
 .gseat.sk7 { color: var(--sk-s7); }
 
-.sk { display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; min-width: 0; }
+.sk { display: flex; flex-direction: column; gap: 6px; user-select: none; -webkit-user-select: none; min-width: 0; width: 100%;
+  box-sizing: border-box; }
 
 .sk-hud { display: flex; align-items: center; gap: 12px; font-weight: 600; min-height: 30px; font-variant-numeric: tabular-nums; }
 .sk-h { white-space: nowrap; }
