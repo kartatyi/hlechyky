@@ -187,6 +187,13 @@ public abstract class Game
     public virtual bool ActsInLobby => false;
 
     /// <summary>
+    /// Чи приймає гра цю дію за дограним столом, до «Ану ще раз», — налаштування на наступну партію. Типово — лише
+    /// «🤖 + бот» (<see cref="Impl.LiveBots.Toggle"/>) у тих, хто приймає ходи в лобі: core.js показує кнопку й між
+    /// партіями, а ігри з ботом уміють її прийняти й після кінця партії. Решті дій каркас відповідає «Партію зіграно».
+    /// </summary>
+    public virtual bool ActsBetween(string action) => ActsInLobby && action == Impl.LiveBots.Toggle;
+
+    /// <summary>
     /// Чи можна вже починати (господар тисне «Почати» або хтось «Ще раз»): null — так, інакше текст відмови.
     /// Кличеться під замком кімнати, після перевірки MinPlayers.
     /// </summary>

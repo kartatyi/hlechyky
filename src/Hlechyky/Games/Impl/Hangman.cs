@@ -103,7 +103,8 @@ public sealed class Hangman : Game
     {
         _words = Ctx.Services.GetService<Words>();
         if (_words is null || _words.Stats.Hangman == 0) throw new GameError("Нема словника, віселиця відпочиває");
-        if (options.TryGetValue("mode", out var m) && m == Turns) _mode = Turns;
+        // Кожне поле — з опцій, без «лише коли»: господар може змінити опції ще раз (Rooms.Reconfigure).
+        _mode = options.GetValueOrDefault("mode") == Turns ? Turns : Race;
         if (options.TryGetValue("level", out var l))
         {
             _easy = l == "easy";
