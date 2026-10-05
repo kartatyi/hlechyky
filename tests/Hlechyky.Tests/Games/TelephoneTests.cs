@@ -346,8 +346,81 @@ public class TelephoneTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "liquidsoap", "radio.liq"))) dir = dir.Parent;
         var phrases = TelephonePhrases.Load(Path.Combine(dir!.FullName, TelephonePhrases.FileName));
-        Assert.True(phrases.All.Count >= 150, $"фраз лише {phrases.All.Count}");
-        Assert.All(phrases.All, p => Assert.InRange(p.Length, 5, Telephone.MaxText));
+        // Записка #24 (05.10): було 187 — розширили щонайменше втричі.
+        Assert.True(phrases.All.Count >= 700, $"фраз лише {phrases.All.Count}");
+        // Межа поля — MaxText, але на телефоні в полі фрази видно знаків сорок: довша ховає кінець за краєм.
+        Assert.All(phrases.All, p => Assert.InRange(p.Length, 5, Math.Min(45, Telephone.MaxText)));
+        // Без дублів навіть з іншим регістром, апострофом чи розділовими знаками.
+        static string Norm(string p) => string.Join(' ', System.Text.RegularExpressions.Regex
+            .Replace(p.ToLowerInvariant().Replace("ʼ", "'").Replace("’", "'"), @"[^\w\s]", " ")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var twins = phrases.All.GroupBy(Norm).Where(g => g.Count() > 1).Select(g => string.Join(" = ", g)).ToList();
+        Assert.True(twins.Count == 0, "дублі: " + string.Join("; ", twins));
+    }
+
+    // ---------------------------------------------------------------- 🎲: колода столу
+
+    static TelephonePhrases Numbered(int n) => new([.. Enumerable.Range(1, n).Select(i => $"фраза номер {i}")]);
+
+    [Fact]
+    public void Deal_does_not_repeat_at_a_table_until_the_deck_is_used_up()
+    {
+        var bank = Numbered(20);
+        var rng = new Random(7);
+        var first = bank.Deal("стіл", rng, 8).Concat(bank.Deal("стіл", rng, 8)).ToList();
+        Assert.Equal(16, first.Distinct().Count());
+        // Лишилось 4 — роздача з 8 добирає з нової колоди, але всередині себе різна.
+        var third = bank.Deal("стіл", rng, 8);
+        Assert.Equal(8, third.Distinct().Count());
+        // Перші 20 роздач — уся колода рівно раз.
+        Assert.Equal(bank.All.OrderBy(p => p), first.Concat(third.Take(4)).OrderBy(p => p));
+        // Щойно роздане з кінця старої колоди не вертається першим у новій.
+        Assert.Empty(third.Take(4).Intersect(third.Skip(4)));
+    }
+
+    [Fact]
+    public void Every_table_has_its_own_deck()
+    {
+        var bank = Numbered(10);
+        var rng = new Random(3);
+        Assert.Equal(10, bank.Deal("перший", rng, 10).Distinct().Count());
+        Assert.Equal(10, bank.Deal("другий", rng, 10).Distinct().Count());
+        Assert.Single(new TelephonePhrases(["кіт на даху"]).Deal("стіл", rng, 8));
+    }
+
+    [Fact]
+    public void Ideas_do_not_repeat_between_players_or_rematches_at_one_table()
+    {
+        var h = new RoomHarness("telephone", seed: 5, services: RoomHarness.WithService(Numbered(60)));
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна" }) h.Join(nick);
+        h.Start();
+        List<string> Ideas() => [.. Enumerable.Range(0, 3).SelectMany(s => Task(h, s).GetProperty("ideas").EnumerateArray()
+            .Select(e => e.GetString()!))];
+        var game1 = Ideas();
+        Assert.Equal(3 * Telephone.IdeaCount, game1.Distinct().Count());
+        for (var i = 0; i < 3; i++) EveryoneSubmits(h, 3);
+        for (var i = 0; i < 9 && h.Room.Status == RoomStatus.Playing; i++) Next(h);
+        h.Rematch();
+        var game2 = Ideas();
+        Assert.Equal(3 * Telephone.IdeaCount, game2.Distinct().Count());
+        Assert.Empty(game1.Intersect(game2));
+    }
+
+    [Fact]
+    public void Who_did_not_write_gets_the_first_of_their_own_ideas()
+    {
+        var h = new RoomHarness("telephone", seed: 5, services: RoomHarness.WithService(Numbered(60)));
+        foreach (var nick in new[] { "Оля", "Петро", "Ганна" }) h.Join(nick);
+        h.Start();
+        var idea = Task(h, 0).GetProperty("ideas")[0].GetString();
+        Write(h, 1, "своя фраза");
+        Write(h, 2, "ще одна");
+        h.Clock.AdvanceMs(200_000);
+        h.Tick();
+        // Ланцюжок Олі тепер малює сусід — і малює саме її першу підказку.
+        var drawer = Enumerable.Range(0, 3).Single(s => Task(h, s).GetProperty("prompt") is { ValueKind: JsonValueKind.Object } p
+            && p.GetProperty("text").GetString() == idea);
+        Assert.NotEqual(0, drawer);
     }
 
     // ---------------------------------------------------------------- удвох: фразу загадує Глек

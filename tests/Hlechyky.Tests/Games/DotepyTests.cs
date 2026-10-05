@@ -10,7 +10,7 @@ using Xunit.Abstractions;
 namespace Hlechyky.Tests.Games;
 
 /// <summary>
-/// «Дотепи» (specs/dotepy.md §9): роздача, написання, голосування, очки, кінці партії, приховане, голос Глека,
+/// «Додепи» (specs/dotepy.md §9): роздача, написання, голосування, очки, кінці партії, приховане, голос Глека,
 /// голос публіки, детермінізм. Швидкодія — окремим класом у <see cref="SerialPerf"/>.
 /// </summary>
 public class DotepyTests
@@ -116,7 +116,7 @@ public class DotepyTests
             {
                 if (t.GetProperty("done").GetBoolean()) continue;      // здане не перезаписуємо
                 var i = t.GetProperty("i").GetInt32();
-                Assert.True(h.Act(s, "answer", new { i, text = text?.Invoke(s, i) ?? $"дотеп {s}.{i}" }).Ok, h.Reply.Message);
+                Assert.True(h.Act(s, "answer", new { i, text = text?.Invoke(s, i) ?? $"додеп {s}.{i}" }).Ok, h.Reply.Message);
             }
         }
     }
@@ -296,7 +296,7 @@ public class DotepyTests
     public void Catalog_lists_dotepy_as_party_byHost_hidden_3_to_8_with_css_and_three_options()
     {
         var game = Assert.Single(new Registry().Catalog, g => g.Id == "dotepy");
-        Assert.Equal("Дотепи", game.Title);
+        Assert.Equal("Додепи", game.Title);
         Assert.Equal("party", game.Group);
         Assert.Equal("byHost", game.Start);
         Assert.True(game.Hidden);
@@ -463,7 +463,7 @@ public class DotepyTests
         var h = Table(3, bank: []);
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.True(h.Room.Result!.Draw);
-        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text == "Дотепи: банк завдань не знайшовся, партії не буде");
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text == "Додепи: банк завдань не знайшовся, партії не буде");
         Assert.Equal("done", Phase(h));
     }
 
@@ -494,13 +494,13 @@ public class DotepyTests
         var before = V(h, 0).GetRawText();
         var r = h.Act(0, "answer", new { i = 0, text = "  \t\n " });
         Assert.False(r.Ok);
-        Assert.Equal("Порожній дотеп — то ще не дотеп", r.Message);
+        Assert.Equal("Порожній додеп — то ще не додеп", r.Message);
         r = h.Act(0, "answer", new { i = 0, text = new string('ї', Dotepy.MaxAnswer + 1) });
         Assert.False(r.Ok);
         Assert.Equal("Задовго: до 80 знаків", r.Message);
         Assert.True(h.Act(0, "answer", new { i = 0, text = new string('ї', Dotepy.MaxAnswer) }).Ok);
         r = h.Act(0, "answer", new { i = 0 });
-        Assert.Equal("Порожній дотеп — то ще не дотеп", r.Message);
+        Assert.Equal("Порожній додеп — то ще не додеп", r.Message);
         Assert.NotEqual(before, V(h, 0).GetRawText());
         before = V(h, 0).GetRawText();
         h.Act(0, "answer", new { i = 0, text = "" });
@@ -600,7 +600,7 @@ public class DotepyTests
         Assert.True(h.Act(0, "edit", new { i = 1 }).Ok);
         var task = V(h, 0).GetProperty("me").GetProperty("tasks")[1];
         Assert.False(task.GetProperty("done").GetBoolean());
-        Assert.Equal("дотеп 0.1", task.GetProperty("text").GetString());
+        Assert.Equal("додеп 0.1", task.GetProperty("text").GetString());
         Assert.False(V(h).GetProperty("players")[0].GetProperty("ready").GetBoolean());
         h.Tick();
         Assert.Equal("write", Phase(h));       // один не здав — чекаємо
@@ -649,7 +649,7 @@ public class DotepyTests
         {
             Assert.False(V(h, a).GetProperty("me").GetProperty("voter").GetBoolean());
             Assert.Single(Mine(h, a));
-            Assert.Equal("Це твій дотеп — за нього голосують інші", h.Act(a, "vote", new { card = 0, picks = new[] { 0 } }).Message);
+            Assert.Equal("Це твій додеп — за нього голосують інші", h.Act(a, "vote", new { card = 0, picks = new[] { 0 } }).Message);
         }
         Assert.True(V(h, voters[0]).GetProperty("me").GetProperty("voter").GetBoolean());
         Assert.True(h.Act(voters[0], "vote", new { card = 0, picks = new[] { 0 } }).Ok);
@@ -784,7 +784,7 @@ public class DotepyTests
         Assert.Equal(DotepyLines.Sweep("Оля"), Say(h));
         h.Leave("гість Ганна");
         h.Leave("гість Іван");
-        Assert.Equal("Дотепи: гравці розійшлись — попереду гість Оля", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Додепи: гравці розійшлись — попереду гість Оля", h.Outbox.OfType<Journal>().Last().Text);
     }
 
     [Fact]
@@ -801,7 +801,7 @@ public class DotepyTests
         Assert.Equal("Обери хоч один", h.Act(0, "vote", new { card = 0, picks = new object[] { "1" } }).Message);
         Assert.Equal("Обери хоч один", h.Act(0, "vote", new { card = 0 }).Message);
         Assert.Equal("Забагато голосів", h.Act(0, "vote", new { card = 0, picks = new[] { 0, 1, 2, 3 } }).Message);
-        Assert.Equal("Один дотеп — один голос", h.Act(0, "vote", new { card = 0, picks = new[] { other, other } }).Message);
+        Assert.Equal("Один додеп — один голос", h.Act(0, "vote", new { card = 0, picks = new[] { other, other } }).Message);
         Assert.Equal("Такої відповіді нема", h.Act(0, "vote", new { card = 0, picks = new[] { 9 } }).Message);
         Assert.Equal("Такої відповіді нема", h.Act(0, "vote", new { card = 0, picks = new[] { -1 } }).Message);
         Assert.Equal("За себе не голосують", h.Act(0, "vote", new { card = 0, picks = new[] { other, own } }).Message);
@@ -1113,7 +1113,7 @@ public class DotepyTests
         Assert.All(h.Scores, e => Assert.Equal(scores[Array.IndexOf(Names, e.Nick)], (long)e.Score));
         var line = h.Outbox.OfType<Journal>().Last().Text;
         var order = Enumerable.Range(0, 4).OrderByDescending(s => scores[s]).ThenBy(s => s).Select(s => $"{Names[s]} {scores[s]}");
-        Assert.StartsWith("Дотепи: " + string.Join(", ", order), line);
+        Assert.StartsWith("Додепи: " + string.Join(", ", order), line);
         Assert.Equal(Enumerable.Range(0, 4).Sum(s => scores[s]), Ints(result.GetProperty("scores")).Sum());
         Assert.Equal(winners.Length == 1 ? DotepyLines.GameWin(Names[winners[0]]) : DotepyLines.GameTie, Say(h));
     }
@@ -1261,7 +1261,7 @@ public class DotepyTests
         Assert.Equal(kept, Score(h, 4));
         Assert.DoesNotContain(4, h.Room.Result!.Winners);
         Assert.DoesNotContain(h.Scores, e => e.Nick == gone);
-        Assert.DoesNotContain(gone, h.Outbox.OfType<Journal>().Last().Text.Split(" · ")[0]);   // у рахунку — ні; «дотеп партії» може бути й його
+        Assert.DoesNotContain(gone, h.Outbox.OfType<Journal>().Last().Text.Split(" · ")[0]);   // у рахунку — ні; «додеп партії» може бути й його
     }
 
     [Fact]
@@ -1296,7 +1296,7 @@ public class DotepyTests
         h.Leave(h.NickOf(2));
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         Assert.Equal([0], h.Room.Result!.Winners);
-        Assert.Equal("Дотепи: гравці розійшлись — попереду Оля", h.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Додепи: гравці розійшлись — попереду Оля", h.Outbox.OfType<Journal>().Last().Text);
         Assert.Equal("done", Phase(h));
         Assert.Equal(DotepyLines.GameWin("Оля"), Say(h));       // не «Раунд перший…», що висів до виходу
         // рахунки тих, хто лишився, — у таблицю, як і в дограній партії; того, хто пішов, — ні
@@ -1311,7 +1311,7 @@ public class DotepyTests
         zero.Leave(zero.NickOf(1));
         Assert.Equal(RoomStatus.Finished, zero.Room.Status);
         Assert.True(zero.Room.Result!.Draw);
-        Assert.Equal("Дотепи: гравці розійшлись, партію не дограли", zero.Outbox.OfType<Journal>().Last().Text);
+        Assert.Equal("Додепи: гравці розійшлись, партію не дограли", zero.Outbox.OfType<Journal>().Last().Text);
         Assert.Equal(DotepyLines.Gone, Say(zero));
     }
 
@@ -1466,7 +1466,7 @@ public class DotepyTests
         var i = Tasks(h, 0)[0].I;
         h.Input(0, "draft", Views.Payload(new { i, text = "чернетка" }));
         Assert.Equal("чернетка", V(h, 0).GetProperty("me").GetProperty("tasks")[0].GetProperty("text").GetString());
-        Assert.True(h.Act(0, "answer", new { i, text = "дотеп" }).Ok);
+        Assert.True(h.Act(0, "answer", new { i, text = "додеп" }).Ok);
         Assert.True(h.Act(0, "edit", new { i }).Ok);
         WriteAll(h);
         h.Tick();
@@ -1552,13 +1552,13 @@ public class DotepyTests
         var h = Table(5, voice: voice);
         voice.Prepared.Clear();
         var authors = Enumerable.Range(0, 5).Where(s => Tasks(h, s).Any(t => t.I == 0)).ToArray();
-        Assert.True(h.Act(authors[0], "answer", new { i = 0, text = "Перший дотеп" }).Ok);
-        Assert.DoesNotContain(voice.Prepared, p => p.Text.Contains("Перший дотеп"));
-        Assert.True(h.Act(authors[1], "answer", new { i = 0, text = "Другий дотеп" }).Ok);
+        Assert.True(h.Act(authors[0], "answer", new { i = 0, text = "Перший додеп" }).Ok);
+        Assert.DoesNotContain(voice.Prepared, p => p.Text.Contains("Перший додеп"));
+        Assert.True(h.Act(authors[1], "answer", new { i = 0, text = "Другий додеп" }).Ok);
         var early = Assert.Single(voice.Prepared, p => p.Urgent);
         Assert.Equal("write", Phase(h));
-        Assert.Contains("Перший дотеп", early.Text);
-        Assert.Contains("Другий дотеп", early.Text);
+        Assert.Contains("Перший додеп", early.Text);
+        Assert.Contains("Другий додеп", early.Text);
         WriteAll(h);
         h.Tick();
         Assert.Equal(0, CardI(h));
@@ -1751,7 +1751,7 @@ public class DotepyTests
         // «\ud800» — валідний JSON, але не валідний UTF-16: раніше GetString кидав, і стіл закривався «партія зламалась»
         var r = h.Act(0, "answer", Raw("""{"i":0,"text":"ха\ud800ха"}"""));
         Assert.False(r.Ok);
-        Assert.Equal("Порожній дотеп — то ще не дотеп", r.Message);
+        Assert.Equal("Порожній додеп — то ще не додеп", r.Message);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         h.Input(0, "draft", Raw("""{"i":1,"text":"\udc00"}"""));
         h.Tick();
@@ -1975,7 +1975,7 @@ public class DotepyTests
     [Fact]
     public void A_lone_spectator_or_a_players_guest_tab_cannot_win_the_jury_prize()
     {
-        // Рецензія: «Оля» відкриває приватне вікно як «гість Хтось» і голосує публікою за свій дотеп
+        // Рецензія: «Оля» відкриває приватне вікно як «гість Хтось» і голосує публікою за свій додеп
         var h = Table(3);
         WriteAll(h);
         h.Tick();
@@ -2043,7 +2043,7 @@ public class DotepyTests
         PlayMatch(h, s => Ballot(h, s));
         var line = h.Outbox.OfType<Journal>().Last().Text;
         var best = V(h).GetProperty("result").GetProperty("best")[0];
-        Assert.EndsWith($" · дотеп партії: «{best.GetProperty("text").GetString()}» ({Names[best.GetProperty("seat").GetInt32()]})", line);
+        Assert.EndsWith($" · додеп партії: «{best.GetProperty("text").GetString()}» ({Names[best.GetProperty("seat").GetInt32()]})", line);
     }
 
     [Fact]
@@ -2122,7 +2122,7 @@ public class DotepyTests
     }
 }
 
-/// <summary>Бойовий голос «Дотепів» поверх справжнього <see cref="TtsService"/> (рушій — фейковий).</summary>
+/// <summary>Бойовий голос «Додепів» поверх справжнього <see cref="TtsService"/> (рушій — фейковий).</summary>
 public sealed class DotepyVoiceTests : IDisposable
 {
     readonly string _dir = Path.Combine(Path.GetTempPath(), "dotepy-tts-" + Guid.NewGuid().ToString("N"));
@@ -2172,7 +2172,7 @@ public sealed class DotepyVoiceTests : IDisposable
     }
 }
 
-/// <summary>Швидкодія «Дотепів»: окремо й без сусідів, бо міряє стінним годинником (<see cref="SerialPerf"/>).</summary>
+/// <summary>Швидкодія «Додепів»: окремо й без сусідів, бо міряє стінним годинником (<see cref="SerialPerf"/>).</summary>
 [Collection(SerialPerf.Name)]
 public class DotepyPerfTests(ITestOutputHelper output)
 {
@@ -2193,7 +2193,7 @@ public class DotepyPerfTests(ITestOutputHelper output)
         while (h.Room.Status == RoomStatus.Playing && ticks < 3000)
         {
             var phase = DotepyTests.Phase(h);
-            if (phase == "write") DotepyTests.WriteAll(h, (s, i) => $"Дотеп місця {s} на завдання {i}: про глек і кота");
+            if (phase == "write") DotepyTests.WriteAll(h, (s, i) => $"Додеп місця {s} на завдання {i}: про глек і кота");
             else if (phase == "vote" && DotepyTests.Pending(h))
                 DotepyTests.VoteAll(h, s => DotepyTests.Ballot(h, s));
             var before = h.Outbox.Count;
@@ -2234,5 +2234,39 @@ public class DotepyPerfTests(ITestOutputHelper output)
             $"{bytes / Math.Max(1, viewTicks * 9)} Б на вид (найбільший {maxWire} Б на дроті, {maxUtf8} Б у UTF-8); 3000 тиків разом — {total:0.0} мс");
         Assert.True(total < 1000, $"3000 тиків — {total:0.0} мс");
         Assert.True(matchMs / matchTicks < 0.25, $"середній тик {matchMs / matchTicks:0.0000} мс");
+    }
+}
+
+/// <summary>
+/// Записка #25 (05.10, Smaug): «Дотепи» тепер «Додепи», а «дотеп» у всіх формах — «додеп». Id, класи, ключі ачівок і
+/// таблиці лишились латиницею — їх не чіпали, щоб не зламати дані проду.
+/// </summary>
+public class DotepyNameTests
+{
+    [Fact]
+    public void The_game_is_called_Dodepy_and_keeps_its_id()
+    {
+        var info = new Dotepy().Info;
+        Assert.Equal("dotepy", info.Id);
+        Assert.Equal("Додепи", info.Title);
+        Assert.Contains(Hlechyky.Games.Economy.AchievementCatalog.All, a => a.Key == "dotepy-king" && a.Title == "Король додепів");
+    }
+
+    [Fact]
+    public void No_old_word_is_left_where_people_see_or_hear_it()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "liquidsoap", "radio.liq"))) dir = dir.Parent;
+        var root = dir!.FullName;
+        var files = Directory.GetFiles(Path.Combine(root, "src", "Hlechyky"), "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+            .Append(Path.Combine(root, "web", "games", "dotepy.js"))
+            .Append(Path.Combine(root, "web", "games", "dotepy.css"));
+        // Лише «Що нового» про саму зміну назви згадує стару — навмисно.
+        var left = files.SelectMany(f => File.ReadLines(f).Select(l => (f, l)))
+            .Where(x => x.l.Contains("дотеп", StringComparison.OrdinalIgnoreCase) && !x.l.Contains("«Дотепи»"))
+            .Select(x => $"{Path.GetFileName(x.f)}: {x.l.Trim()}").ToList();
+        Assert.True(left.Count == 0, string.Join("; ", left));
     }
 }

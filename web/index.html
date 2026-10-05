@@ -100,15 +100,19 @@
       <section class="panel">
         <h2>Закинути пісню</h2>
         <div class="add">
-          <div class="row">
-            <input id="q" type="search" placeholder="Що врубаємо? Назва, виконавець або посилання (YouTube, YT Music, Spotify)" autocomplete="off">
-            <button id="addBtn" class="primary">Закинути</button>
-            <button id="micBtn" class="icon" title="Записати голосове в ефір">🎙</button>
+          <!-- Результати, підказка й «закидаю…» висять під полем поверх сторінки, а не в потоці: інакше черга й поради
+               Глека смикались на кожен фокус, клік і закинутий трек, а список результатів з'їжджав прямо з-під курсора. -->
+          <div class="qbox">
+            <div class="row">
+              <input id="q" type="search" placeholder="Що врубаємо? Назва, виконавець або посилання (YouTube, YT Music, Spotify)" autocomplete="off">
+              <button id="addBtn" class="primary">Закинути</button>
+              <button id="micBtn" class="icon" title="Записати голосове в ефір">🎙</button>
+            </div>
+            <div id="results" class="results"></div>
+            <!-- Підказка — лише поки курсор у полі й лише з клавіатурою: на телефоні ні Enter, ні «/» немає. -->
+            <div class="hintline">Enter закидає перший результат. Посилання можна кидати одне за одним — стануть у чергу по порядку; альбом чи плейлист спершу покаже трекліст. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — голосове в ефір.</div>
+            <div id="adding" class="adding" hidden></div>
           </div>
-          <div id="results" class="results"></div>
-          <!-- Підказка — лише поки курсор у полі й лише з клавіатурою: на телефоні ні Enter, ні «/» немає. -->
-          <div class="hintline">Enter закидає перший результат. Посилання можна кидати одне за одним — стануть у чергу по порядку; альбом чи плейлист спершу покаже трекліст. Клавіша <b>/</b> ставить курсор сюди. <b>🎙</b> — голосове в ефір.</div>
-          <div id="adding" class="adding" hidden></div>
           <div id="rec" class="rec" hidden></div>
           <div id="album" class="album" hidden></div>
         </div>

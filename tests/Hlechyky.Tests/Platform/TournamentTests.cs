@@ -54,13 +54,33 @@ public class TournamentTests
         public Setup(params string[] online)
         {
             foreach (var nick in online) Presence.Set("c-" + nick, nick);
-            T = new Tournament(H.Rooms, H.Registry, H.Events, Out, H.Store, Presence, new NullHub(), H.Clock, NullLogger<Tournament>.Instance);
+            T = new Tournament(H.Rooms, H.Registry, H.Events, Out, H.Store, Presence, new NullHub(), H.Clock, NullLogger<Tournament>.Instance) { OwnTimer = false };
             T.StartAsync(default).Wait();
         }
 
         public JsonElement Snap => Views.Json(T.Snapshot());
         public string Stage => Snap.GetProperty("stage").GetString()!;
         public string RoomId => Snap.GetProperty("room").GetProperty("id").GetString()!;
+        public string[] Games => [.. Snap.GetProperty("games").EnumerateArray().Select(x => x.GetProperty("id").GetString()!)];
+        public int? NextIn => Snap.GetProperty("nextIn") is { ValueKind: JsonValueKind.Number } n ? n.GetInt32() : null;
+
+        /// <summary>Учасники зібрались, і перша гра почалась.</summary>
+        public Setup Started(string[] games, params string[] joiners)
+        {
+            Assert.Null(T.Create(joiners[0], games));
+            foreach (var p in joiners.Skip(1)) Assert.Null(T.Join(p));
+            Assert.Null(T.Next(joiners[0]));
+            return this;
+        }
+
+        /// <summary>Дограти поточну гру: хтось встає — техпоразка, стіл дограний.</summary>
+        public string FinishGame(string loser)
+        {
+            var id = RoomId;
+            H.Rooms.Leave(id, loser);
+            return id;
+        }
+
         public int Points(string nick) => Snap.GetProperty("standings").EnumerateArray().Single(x => x.GetProperty("nick").GetString() == nick).GetProperty("points").GetInt32();
     }
 
@@ -275,6 +295,210 @@ public class TournamentTests
         Assert.True(snap.GetProperty("results")[2].GetProperty("skipped").GetBoolean());
         Assert.Equal(["Оля"], snap.GetProperty("champions").EnumerateArray().Select(x => x.GetString()));
         Assert.NotNull(s.T.Skip("Оля"));             // після кінця — нема чого
+    }
+
+    // ---------------------------------------------------------------- правка ігор (записка #20)
+
+    [Fact]
+    public void The_host_can_change_the_games_while_gathering()
+    {
+        var s = new Setup("Оля", "Петро");
+        s.T.Create("Оля", ["ttt", "c4"]);
+        s.T.Join("Петро");
+
+        Assert.NotNull(s.T.Edit("Петро", ["c4", "ttt"]));          // не господар
+        Assert.Equal(["ttt", "c4"], s.Games);
+
+        Assert.Null(s.T.Edit("Оля", ["c4", "ttt", "c4"]));        // переставити й додати
+        Assert.Equal(["c4", "ttt", "c4"], s.Games);
+        Assert.Contains(s.Out.Sent.OfType<Journal>(), j => j.Text.Contains("змінює ігри"));
+
+        // ті самі межі, що й при створенні
+        Assert.NotNull(s.T.Edit("Оля", ["ttt"]));
+        Assert.NotNull(s.T.Edit("Оля", ["ttt", "c4", "ttt", "c4", "ttt", "c4", "ttt"]));
+        Assert.NotNull(s.T.Edit("Оля", ["ttt", "wordle"]));
+        Assert.NotNull(s.T.Edit("Оля", ["ttt", "nope"]));
+        Assert.Equal(["c4", "ttt", "c4"], s.Games);
+        Assert.Equal("gathering", s.Stage);
+
+        // те саме ще раз — нічого не міняється і в Журнал не пишеться
+        var lines = s.Out.Sent.Count;
+        Assert.Null(s.T.Edit("Оля", ["c4", "ttt", "c4"]));
+        Assert.Equal(lines, s.Out.Sent.Count);
+    }
+
+    [Fact]
+    public void After_the_start_only_unplayed_games_change_and_never_mid_game()
+    {
+        var s = new Setup("Оля", "Петро").Started(["ttt", "c4", "ttt"], "Оля", "Петро");
+
+        Assert.NotNull(s.T.Edit("Оля", ["ttt", "ttt", "c4"]));    // гра йде
+        s.FinishGame("Петро");
+        Assert.Equal("between", s.Stage);
+
+        Assert.NotNull(s.T.Edit("Оля", ["c4", "c4", "ttt"]));     // зіграну не переписати
+        Assert.NotNull(s.T.Edit("Оля", ["ttt"]));                 // хоч одна незіграна мусить лишитись
+        Assert.NotNull(s.T.Edit("Петро", ["ttt", "ttt"]));        // не господар
+        Assert.Null(s.T.Edit("Оля", ["ttt", "ttt", "c4", "ttt"]));
+        Assert.Equal(["ttt", "ttt", "c4", "ttt"], s.Games);
+        Assert.Equal(1, s.Snap.GetProperty("index").GetInt32());
+        Assert.Equal(2, s.Points("Оля"));                         // очки за зігране на місці
+
+        Assert.Null(s.T.Edit("Оля", ["ttt", "c4"]));              // прибрати — теж можна
+        Assert.Null(s.T.Next("Оля"));
+        Assert.Equal("c4", s.H.Rooms.Find(s.RoomId)!.Info.Id);
+    }
+
+    // ---------------------------------------------------------------- сам за наступний стіл (записка #23)
+
+    [Fact]
+    public void After_a_game_the_next_table_sets_itself_when_the_countdown_ends()
+    {
+        var s = new Setup("Оля", "Петро").Started(["ttt", "c4", "ttt"], "Оля", "Петро");
+        var first = s.FinishGame("Петро");
+
+        var snap = s.Snap;
+        Assert.Equal("between", snap.GetProperty("stage").GetString());
+        Assert.Equal(first, snap.GetProperty("prev").GetString());
+        Assert.Equal((int)Tournament.AutoDelay.TotalMilliseconds, s.NextIn);
+
+        s.H.Clock.Advance(Tournament.AutoDelay - TimeSpan.FromSeconds(1));
+        s.T.Tick();
+        Assert.Equal("between", s.Stage);                          // ще рано
+        Assert.Equal(1000, s.NextIn);
+
+        s.H.Clock.Advance(1);
+        s.T.Tick();
+        Assert.Equal("playing", s.Stage);
+        var room = s.H.Rooms.Find(s.RoomId)!;
+        Assert.Equal("c4", room.Info.Id);
+        Assert.Equal(RoomStatus.Playing, room.Status);
+        Assert.Equal(["Оля", "Петро"], room.Seats.OfType<string>().Order());
+        Assert.Equal(["Оля", "Петро"], s.Snap.GetProperty("room").GetProperty("seats").EnumerateArray().Select(x => x.GetString()!).Order());
+        Assert.Null(s.NextIn);
+        Assert.Contains(s.Out.Sent.OfType<Journal>(), j => j.Text.Contains("гра 2 з 3") && j.RoomId == room.Id);
+        // зі старого столу всіх звільнено — вставати руками не треба
+        Assert.DoesNotContain(s.H.Rooms.Snapshot(), r => r.Id == first && r.Seats.Any(x => x.Nick is not null));
+    }
+
+    [Fact]
+    public void Now_skips_the_countdown()
+    {
+        var s = new Setup("Оля", "Петро").Started(["ttt", "c4"], "Оля", "Петро");
+        s.FinishGame("Петро");
+        Assert.NotNull(s.NextIn);
+        Assert.NotNull(s.T.Next("Петро"));                         // «Зараз» — теж за господарем
+        Assert.Null(s.T.Next("Оля"));
+        Assert.Equal("playing", s.Stage);
+        Assert.Null(s.NextIn);
+
+        s.H.Clock.Advance(Tournament.AutoDelay * 2);
+        s.T.Tick();                                                // відлік не спрацює вдруге поверх живої гри
+        Assert.Equal("playing", s.Stage);
+        Assert.Equal(1, s.Snap.GetProperty("index").GetInt32());
+    }
+
+    [Fact]
+    public void Pause_stops_the_countdown_until_the_host_says_next()
+    {
+        var s = new Setup("Оля", "Петро").Started(["ttt", "c4"], "Оля", "Петро");
+        Assert.NotNull(s.T.Pause("Оля"));                          // гра йде — відліку нема
+        s.FinishGame("Петро");
+
+        Assert.NotNull(s.T.Pause("Петро"));                        // не господар
+        Assert.Null(s.T.Pause("Оля"));
+        Assert.Null(s.NextIn);
+        Assert.True(s.Snap.GetProperty("held").GetBoolean());
+        Assert.NotNull(s.T.Pause("Оля"));                          // уже на паузі
+
+        s.H.Clock.Advance(Tournament.AutoDelay * 3);
+        s.T.Tick();
+        Assert.Equal("between", s.Stage);
+
+        Assert.Null(s.T.Next("Оля"));                              // «Далі» вручну — як було
+        Assert.Equal("playing", s.Stage);
+        Assert.False(s.Snap.GetProperty("held").GetBoolean());
+    }
+
+    [Fact]
+    public void The_last_game_has_no_countdown_and_crowns_at_once()
+    {
+        var s = new Setup("Оля", "Петро").Started(["ttt", "c4"], "Оля", "Петро");
+        s.FinishGame("Петро");
+        s.H.Clock.Advance(Tournament.AutoDelay);
+        s.T.Tick();
+        Assert.Equal("playing", s.Stage);
+
+        var last = s.FinishGame("Оля");
+        var snap = s.Snap;
+        Assert.Equal("done", snap.GetProperty("stage").GetString());
+        Assert.Equal(JsonValueKind.Null, snap.GetProperty("nextIn").ValueKind);
+        Assert.Equal(last, snap.GetProperty("prev").GetString());
+        Assert.Contains(s.Out.Sent.OfType<Journal>(), j => j.Text.Contains("👑"));
+
+        var rooms = s.H.Rooms.Snapshot().Count;
+        s.H.Clock.Advance(Tournament.AutoDelay * 2);
+        s.T.Tick();
+        Assert.Equal(rooms, s.H.Rooms.Snapshot().Count);           // нових столів після кінця нема
+    }
+
+    [Fact]
+    public void Someone_at_another_table_is_not_pulled_and_everyone_sees_why()
+    {
+        var s = new Setup("Оля", "Петро").Started(["ttt", "c4"], "Оля", "Петро");
+        s.FinishGame("Петро");
+        var other = s.H.Rooms.Create("Петро", "c4", null).Reply.RoomId!;   // Петро сів грати щось своє
+
+        s.H.Clock.Advance(Tournament.AutoDelay);
+        s.T.Tick();
+        var snap = s.Snap;
+        Assert.Equal("between", snap.GetProperty("stage").GetString());
+        Assert.Contains("Петро", snap.GetProperty("note").GetString());
+        Assert.Equal(JsonValueKind.Null, snap.GetProperty("nextIn").ValueKind);
+        Assert.Equal("Петро", s.H.Rooms.Find(other)!.Seats[0]);     // його стіл не чіпали
+
+        s.H.Rooms.Leave(other, "Петро");
+        Assert.Null(s.T.Next("Оля"));                               // встав — господар тисне «Далі»
+        Assert.Equal(JsonValueKind.Null, s.Snap.GetProperty("note").ValueKind);
+    }
+
+    [Fact]
+    public void Who_left_the_tournament_is_not_seated_by_the_countdown()
+    {
+        var s = new Setup("Оля", "Петро", "Ганна").Started(["c4", "ttt", "c4"], "Оля", "Петро");
+        s.T.Join("Ганна");
+        s.FinishGame("Петро");
+        Assert.Null(s.T.Leave("Ганна"));                           // передумала
+
+        s.H.Clock.Advance(Tournament.AutoDelay);
+        s.T.Tick();
+        Assert.Equal("playing", s.Stage);
+        var seats = s.H.Rooms.Find(s.RoomId)!.Seats.OfType<string>().ToArray();
+        Assert.DoesNotContain("Ганна", seats);
+        Assert.Equal(2, seats.Length);
+    }
+
+    [Fact]
+    public void A_skipped_game_also_counts_down_but_skipping_while_gathering_does_not()
+    {
+        var s = new Setup("Оля", "Петро");
+        s.T.Create("Оля", ["ttt", "c4", "ttt", "c4"]);
+        s.T.Join("Петро");
+        Assert.Null(s.T.Skip("Оля"));                              // ще на зборі: люди, може, ще сходяться
+        Assert.Equal("between", s.Stage);
+        Assert.Null(s.NextIn);
+        s.H.Clock.Advance(Tournament.AutoDelay * 2);
+        s.T.Tick();
+        Assert.Equal("between", s.Stage);
+
+        Assert.Null(s.T.Next("Оля"));                              // c4
+        Assert.Null(s.T.Skip("Оля"));                              // гра завила — пропуск, а далі відлік
+        Assert.Equal("between", s.Stage);
+        Assert.NotNull(s.NextIn);
+        s.H.Clock.Advance(Tournament.AutoDelay);
+        s.T.Tick();
+        Assert.Equal("playing", s.Stage);                          // ttt, гра 3
+        Assert.Equal(2, s.Snap.GetProperty("index").GetInt32());
     }
 
     [Fact]

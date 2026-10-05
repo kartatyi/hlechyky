@@ -6,13 +6,13 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// «Дотепи» — Quiplash по-нашому (specs/dotepy.md). Кожен отримує дурні завдання («Найгірша назва для
+/// «Додепи» — Quiplash по-нашому (specs/dotepy.md). Кожен отримує дурні завдання («Найгірша назва для
 /// сільського радіо»), пише найсмішнішу відповідь, потім відповіді виходять на екран анонімно, стіл голосує, і
 /// лише тоді розкривається, хто що написав. Дядько Глек зачитує завдання й відповіді голосом (edge-tts).
 /// <para>
 /// Склад вирішує режим раунду: п'ятеро й більше — дуелі (кожне завдання двом, решта судить «ліве чи праве»),
 /// троє-четверо — «на всіх» (обидва завдання пише кожен, голосують за чуже). Останній раунд партії — завжди
-/// «Останній дотеп»: одне завдання на всіх, кожен роздає 🥇🥈🥉.
+/// «Останній додеп»: одне завдання на всіх, кожен роздає 🥇🥈🥉.
 /// </para>
 /// <para>
 /// Партія живе від тика (250 мс), як «Скільки?»: фази міняє лише <see cref="Tick"/>, а <see cref="Act"/> тільки
@@ -30,7 +30,7 @@ public sealed class Dotepy : Game
     public const int MinSeats = 3, MaxSeats = 8;
     /// <summary>Від скількох присутніх раунди 1–2 — дуелі.</summary>
     public const int DuelFrom = 5;
-    /// <summary>Символів у дотепі після чистки. Довше — не влізе на картку й у голос.</summary>
+    /// <summary>Символів у додепі після чистки. Довше — не влізе на картку й у голос.</summary>
     public const int MaxAnswer = 80;
     /// <summary>Завдань на гравця в раундах 1–2.</summary>
     public const int TasksPerRound = 2;
@@ -91,7 +91,7 @@ public sealed class Dotepy : Game
     public const int OwnMin = 8, OwnMax = 100;
     /// <summary>Скільки останніх завдань сервер пам'ятає, щоб не повторювати їх між столами.</summary>
     public const int SeenRing = 300;
-    /// <summary>Скільки дотепів партії один гравець може закинути в «📖 Альбом дотепів» (📌 на підсумку).</summary>
+    /// <summary>Скільки додепів партії один гравець може закинути в «📖 Альбом додепів» (📌 на підсумку).</summary>
     public const int PinsPerNick = 2;
 
     /// <summary>Місце для ніка в завданні «про нас»: «Що {нік} насправді робить о третій ночі» (нік — у називному).</summary>
@@ -122,14 +122,14 @@ public sealed class Dotepy : Game
     static readonly TickResult ViewOnly = new(false, true);
 
     public override GameInfo Info { get; } = new(
-        "dotepy", "Дотепи", "«Дотепи»", GameGroup.Party, MinSeats, MaxSeats,
+        "dotepy", "Додепи", "«Додепи»", GameGroup.Party, MinSeats, MaxSeats,
         TickMs: TickMs, Start: StartMode.ByHost, Hidden: true, Private: false, Persistent: false, Rated: false,
         Score: ScoreOrder.HigherIsBetter,
         Options:
         [
             new GameOption("rounds", "Партія",
-                [("full", "2 раунди + Останній дотеп"), ("short", "1 раунд + Останній дотеп"), ("blitz", "Лише Останній дотеп")], "full"),
-            new GameOption("write", "Час на дотеп", [("60", "60 с"), ("90", "90 с"), ("120", "120 с")], "90"),
+                [("full", "2 раунди + Останній додеп"), ("short", "1 раунд + Останній додеп"), ("blitz", "Лише Останній додеп")], "full"),
+            new GameOption("write", "Час на додеп", [("60", "60 с"), ("90", "90 с"), ("120", "120 с")], "90"),
             new GameOption("voice", "Голос Глека", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
             new GameOption("themes", "Теми", [(ThemeAll, "Усі"), .. Themes.Select(t => (t.Key, t.Label))], ThemeAll, Multi: true),
         ],
@@ -204,7 +204,7 @@ public sealed class Dotepy : Game
         public int Laughs;
     }
 
-    /// <summary>Найдотепніше: для «Дотепу раунду» й трійки партії.</summary>
+    /// <summary>Найдодепніше: для «Додепу раунду» й трійки партії.</summary>
     sealed record Best(string Prompt, string Text, int Seat, int Points, int Round);
 
     /// <summary>Репліка Глека. <see cref="Id"/> росте на кожну нову — браузер грає кожну рівно раз.</summary>
@@ -225,7 +225,7 @@ public sealed class Dotepy : Game
     HashSet<string>? _themeTags;
     /// <summary>У пулі є і завдання «про нас» / ребуси, і звичайні — тоді раунд гарантовано бере одне таке.</summary>
     bool _spiceNas, _spiceRebus;
-    /// <summary>Дотепи трійки партії, які вже в альбомі (індекси), і скільки закинув кожен (ключ ніка).</summary>
+    /// <summary>Додепи трійки партії, які вже в альбомі (індекси), і скільки закинув кожен (ключ ніка).</summary>
     readonly HashSet<int> _pinned = [];
     readonly Dictionary<string, int> _pinsBy = new(StringComparer.Ordinal);
     /// <summary>Завдання, що вже грали за цим столом. Живе в екземплярі гри — тож переживає «Ще раз».</summary>
@@ -1043,7 +1043,7 @@ public sealed class Dotepy : Game
         return second is not null && second.Points == best.Points ? DotepyLines.Tie : DotepyLines.FinalWin(Spoken(best.Seat));
     }
 
-    /// <summary>Підсумок раунду між раундами: смужки рахунку й «Дотеп раунду».</summary>
+    /// <summary>Підсумок раунду між раундами: смужки рахунку й «Додеп раунду».</summary>
     void Table(DateTimeOffset now)
     {
         _phase = PhaseTable;
@@ -1055,7 +1055,7 @@ public sealed class Dotepy : Game
 
     /// <summary>
     /// Кінець партії: переможці — найбільший рахунок серед присутніх (кілька — усі), усі по нулях — нічия.
-    /// Кожному присутньому — рахунок у таблицю; королю дотепів за столом від п'ятьох — ачівка.
+    /// Кожному присутньому — рахунок у таблицю; королю додепів за столом від п'ятьох — ачівка.
     /// </summary>
     void Done()
     {
@@ -1088,8 +1088,8 @@ public sealed class Dotepy : Game
     }
 
     /// <summary>
-    /// «Дотепи: Оля 3400, Петро 2100, Ганна 900 — розгромів: 2 · дотеп партії: «Радіо Куряча сліпота» (Оля)» — від
-    /// більшого, бо ніки не відмінюємо. Дотеп партії в Журналі живе довше за саму партію.
+    /// «Додепи: Оля 3400, Петро 2100, Ганна 900 — розгромів: 2 · додеп партії: «Радіо Куряча сліпота» (Оля)» — від
+    /// більшого, бо ніки не відмінюємо. Додеп партії в Журналі живе довше за саму партію.
     /// </summary>
     string Summary(List<int> seats)
     {
@@ -1098,7 +1098,7 @@ public sealed class Dotepy : Game
             .Select(s => $"{NickOf(s)} {_score[s].ToString(CultureInfo.InvariantCulture)}"));
         var tail = _sweeps > 0 ? $" — розгромів: {_sweeps}" : "";
         if (_winners is { Length: 0 }) tail += " — нічия";
-        if (TopBests() is [var top, ..]) tail += $" · дотеп партії: «{top.Text}» ({NickOf(top.Seat)})";
+        if (TopBests() is [var top, ..]) tail += $" · додеп партії: «{top.Text}» ({NickOf(top.Seat)})";
         return $"{Info.Title}: {line}{tail}";
     }
 
@@ -1125,7 +1125,7 @@ public sealed class Dotepy : Game
         _left[seat] = true;
         if (PresentCount() >= MinSeats) return;
 
-        // Рахунки тим, хто лишився, — у таблицю, як і в дограній партії. «Короля дотепів» — ні: це за дограну партію,
+        // Рахунки тим, хто лишився, — у таблицю, як і в дограній партії. «Короля додепів» — ні: це за дограну партію,
         // а не за те, що решта розійшлась.
         _early = true;
         var present = End();
@@ -1225,7 +1225,7 @@ public sealed class Dotepy : Game
         if (_phase != PhaseWrite) return ActResult.Fail("Зараз не пишуть");
         if (Mine(seat, Int(payload, "i")) is not { } e) return ActResult.Fail("Це не твоє завдання");
         var text = Clean(Str(payload, "text"));
-        if (text.Length == 0) return ActResult.Fail("Порожній дотеп — то ще не дотеп");
+        if (text.Length == 0) return ActResult.Fail("Порожній додеп — то ще не додеп");
         if (text.Length > MaxAnswer) return ActResult.Fail($"Задовго: до {MaxAnswer} знаків");
         e.Text = text;
         e.Draft = text;
@@ -1267,7 +1267,7 @@ public sealed class Dotepy : Game
     {
         if (_phase != PhaseVote) return ActResult.Fail("Зараз не голосують");
         if (Int(payload, "card") != _at) return ActResult.Fail("Ця картка вже пішла");
-        if (!_voter[seat] || !Present(seat)) return ActResult.Fail("Це твій дотеп — за нього голосують інші");
+        if (!_voter[seat] || !Present(seat)) return ActResult.Fail("Це твій додеп — за нього голосують інші");
         if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("picks", out var raw)
             || raw.ValueKind != JsonValueKind.Array || raw.GetArrayLength() == 0) return ActResult.Fail("Обери хоч один");
         if (raw.GetArrayLength() > _perVoter) return ActResult.Fail("Забагато голосів");
@@ -1280,7 +1280,7 @@ public sealed class Dotepy : Game
         }
         for (var i = 0; i < picks.Length; i++)
             for (var j = 0; j < i; j++)
-                if (picks[i] == picks[j]) return ActResult.Fail("Один дотеп — один голос");
+                if (picks[i] == picks[j]) return ActResult.Fail("Один додеп — один голос");
         var answers = _cards[_at].Answers;
         foreach (var p in picks) if (p < 0 || p >= answers.Length) return ActResult.Fail("Такої відповіді нема");
         foreach (var p in picks) if (answers[p].Seat == seat) return ActResult.Fail("За себе не голосують");
@@ -1317,7 +1317,7 @@ public sealed class Dotepy : Game
     }
 
     /// <summary>
-    /// Чистка дотепу: без керівних і невидимих службових символів, пробіли по одному, без пробілів по краях.
+    /// Чистка додепу: без керівних і невидимих службових символів, пробіли по одному, без пробілів по краях.
     /// Довжину не ріже — «задовго» вирішує той, хто кличе (здати — відмова, чернетка — обрізати).
     /// </summary>
     public static string Clean(string? raw)
@@ -1564,8 +1564,8 @@ public sealed class Dotepy : Game
     };
 
     /// <summary>
-    /// «📌 В альбом» (HTTP, під замком кімнати): дотеп <paramref name="i"/> з трійки найкращих партії. Закидають ті, хто
-    /// грав цю партію, щонайбільше <see cref="PinsPerNick"/> кожен; один дотеп — раз. База — у викликача, поза замком.
+    /// «📌 В альбом» (HTTP, під замком кімнати): додеп <paramref name="i"/> з трійки найкращих партії. Закидають ті, хто
+    /// грав цю партію, щонайбільше <see cref="PinsPerNick"/> кожен; один додеп — раз. База — у викликача, поза замком.
     /// </summary>
     public (DotepyAlbumItem? Item, string? Error) Pin(string nick, int i)
     {
@@ -1575,7 +1575,7 @@ public sealed class Dotepy : Game
         for (var s = 0; s < MaxSeats && !played; s++) played = _inGame[s] && Auth.NickKey(_nicks[s]) == key;
         if (!played) return (null, "Закидають ті, хто грав");
         var top = TopBests();
-        if (i < 0 || i >= top.Count) return (null, "Нема такого дотепу");
+        if (i < 0 || i >= top.Count) return (null, "Нема такого додепу");
         if (_pinned.Contains(i)) return (null, "Цей уже в альбомі 📌");
         if (_pinsBy.TryGetValue(key, out var n) && n >= PinsPerNick) return (null, $"Ти вже закинув {PinsPerNick} — хай інші теж оберуть");
         _pinned.Add(i);
@@ -1586,7 +1586,7 @@ public sealed class Dotepy : Game
 
     /// <summary>
     /// Трійка партії: найбільші очки, але з різних завдань (фінал дає найбільше, і всі три були б з нього); коли
-    /// різних завдань менше — добираємо з того, що є. Найкращий дотеп партії завжди перший.
+    /// різних завдань менше — добираємо з того, що є. Найкращий додеп партії завжди перший.
     /// </summary>
     List<Best> TopBests()
     {

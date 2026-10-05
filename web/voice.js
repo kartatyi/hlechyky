@@ -42,7 +42,10 @@
   const TALK_DB = -55;           // чужий голос тихіший за це — мовчить (у нього свої ворота, тиша там справжня)
 
   // ---------- налаштування ----------
-  const DEF = { mode: 'vad', threshold: -50, ptt: { code: '', label: '', pad: -1 }, duck: true, duckTo: 0.3, mic: '', vol: {}, muted: false, denoise: true };
+  // view — як дивлюсь чужий екран: 'stage' (сцена під смугою) чи 'mini' (віконце, що тягається); stageH — висота сцени;
+  // mini — де віконце (відступи від правого й нижнього краю) і яке завширшки; bubble — де кружечок у грі на весь екран.
+  const DEF = { mode: 'vad', threshold: -50, ptt: { code: '', label: '', pad: -1 }, duck: true, duckTo: 0.3, mic: '', vol: {}, muted: false, denoise: true,
+    shareVol: 1, view: 'stage', stageH: 0, mini: { r: 16, b: 16, w: 360 }, bubble: { r: 16, b: 96 } };
   let set = load();
   function load() {
     try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem('vc') || '{}')); } catch { return Object.assign({}, DEF); }
@@ -116,7 +119,18 @@
         leaveLocal();
         return;
       }
-      ice = (r.ice || []).map((s) => ({ urls: s.urls, username: s.username || undefined, credential: s.credential || undefined }));
+      const fresh = (r.ice || []).map((s) => ({ urls: s.urls, username: s.username || undefined, credential: s.credential || undefined }));
+      // Після деплою логін ретранслятора новий, а старих кімнаток на ньому вже нема: відкритим з'єднанням — новий
+      // список, щоб їхній ICE-рестарт (сторож) зайшов із ним.
+      if (JSON.stringify(fresh) !== JSON.stringify(ice)) {
+        ice = fresh;
+        for (const x of peers.values()) {
+          try { x.pc.setConfiguration({ iceServers: ice }); } catch (e) { console.warn('[voice] ice', e); }
+          // Ішли через ретранслятор — його кімнатки згинули разом із сервером: не чекаємо, поки ICE це помітить. Але
+          // лише коли людина знову в кімнаті (onMe): інакше сервер викине лист, і обидва чекатимуть на загублене.
+          if (x.relay && !x.polite && x.negotiated) x.restartPending = true;
+        }
+      }
       ready = true;
       watchAck = false;   // після перезапуску сервер не пам'ятає, хто чий екран дивився — попросимо знову (onRoster)
       const q = queued;
@@ -140,6 +154,7 @@
     want = false;
     ready = false;
     queued = [];
+    outbox = [];
     room = null;
     links = new Map();
     for (const p of [...peers.values()]) closePeer(p);
@@ -234,7 +249,10 @@
 
   function tellGate() {
     if (!gate) return;
-    gate.port.postMessage({ mode: set.mode, threshold: set.threshold, muted: muted || listenOnly, pressed });
+    // Перевірка мікрофона відчиняє ворота навіть вимкненому мікрофону (людям тоді нічого не летить — hushOut), а
+    // «поки тримаю кнопку» на перевірці — «від голосу»: інакше записалась би тиша.
+    const mode = test && set.mode === 'ptt' ? 'vad' : set.mode;
+    gate.port.postMessage({ mode, threshold: set.threshold, muted: (muted || listenOnly) && !test, pressed });
   }
 
   function tellServer() {
@@ -246,6 +264,70 @@
     myLevel = m.level;
     if (m.open !== myTalk) { myTalk = m.open; paintTalk(); }
     paintMeter();
+  }
+
+  // ---------- перевірка мікрофона: «Послухати себе» ----------
+  // Пишемо 5 с рівно того, що летить людям (після шумодаву й воріт), і програємо. Поза голосом звук запускаємо лише на
+  // перевірку. Вимкнений мікрофон у голосі: ворота на перевірку відчинені, але людям летить тиша (hushOut).
+  const TEST_SEC = 5;
+  let test = null;               // { phase: 'rec' | 'play', left, temp }
+  let hushOut = false;
+  async function micTest() {
+    if (test) return;
+    const temp = !ac;
+    test = { phase: 'rec', left: TEST_SEC, temp };
+    paint();
+    try { if (!ac) await startAudio(); } catch (e) { test = null; o.toast('Мікрофон не відкрився — ' + (e.message || e), 'err'); stopAudio(); paint(); return; }
+    paint();   // тепер є рівень мікрофона — панель покаже смужку
+    if (listenOnly || !window.MediaRecorder) {
+      if (!listenOnly) o.toast('Цей браузер не вміє записувати — перевірка не вийде', 'err');
+      test = null;
+      if (temp && !want) stopAudio();
+      paint();
+      return;
+    }
+    hushOut = want && (muted || listenOnly);
+    if (hushOut) for (const p of peers.values()) applyLink(p, p.link);
+    tellGate();
+    const tap = ac.createMediaStreamDestination();
+    gate.connect(tap);
+    const chunks = [];
+    const rec = new MediaRecorder(tap.stream);
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const done = new Promise((r) => { rec.onstop = r; });
+    rec.start();
+    for (let i = TEST_SEC; i > 0; i--) {
+      test.left = i;
+      paintTestBtn();
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    rec.stop();
+    await done;
+    try { gate.disconnect(tap); } catch { /* уже */ }
+    hushOut = false;
+    for (const p of peers.values()) applyLink(p, p.link);
+    test.phase = 'play';
+    tellGate();
+    paintTestBtn();
+    const url = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }));
+    const a = new Audio(url);
+    if (o.duck) o.duck(0.15);   // радіо притихає, щоб себе розчути
+    await new Promise((r) => { a.onended = r; a.onerror = r; a.play().catch(r); setTimeout(r, (TEST_SEC + 2) * 1000); });
+    URL.revokeObjectURL(url);
+    if (o.duck) o.duck(duckCur);
+    const t = test;
+    test = null;
+    if (t.temp && !want) stopAudio();
+    tellGate();
+    paint();
+  }
+  function testLabel() {
+    if (!test) return '🎧 Послухати себе';
+    if (test.phase === 'play') return '▶ Ось так тебе чують…';
+    return '● Говори щось · ' + test.left;
+  }
+  function paintTestBtn() {
+    for (const b of document.querySelectorAll('[data-act=test]')) { b.textContent = testLabel(); b.classList.toggle('on', !!test); }
   }
 
   function setMuted(on) {
@@ -334,6 +416,7 @@
       if (!p.polite || p.negotiated) makeOffer(p);
     };
     pc.onsignalingstatechange = () => {
+      p.sigSince = pc.signalingState === 'stable' ? 0 : Date.now();
       if (pc.signalingState !== 'stable' || !pc.remoteDescription || p.negotiated) return;
       p.negotiated = true;
       if (p.link.watch && screen) shareTo(p);
@@ -342,14 +425,48 @@
     pc.onconnectionstatechange = () => {
       p.state = pc.connectionState;
       p.discAt = p.state === 'disconnected' ? Date.now() : 0;
-      if (p.state === 'connected') p.downSince = 0;
+      if (p.state === 'connected') { p.downSince = 0; if (!p.reportedOk) { p.reportedOk = true; report(p, 'ok'); } }
       else if (!p.downSince) p.downSince = Date.now();
-      if (p.state === 'failed') restartIce(p);
+      if (p.state === 'failed') { if (!p.polite) restartIce(p); if (!p.reportedFail) { p.reportedFail = true; report(p, 'failed'); } }
       paintPeers();
     };
     pc.ontrack = (e) => onTrack(p, e);
     sendSignal(p, { hello: 1 });
     return p;
+  }
+
+  /// Звіт про з'єднання в лог сервера (VoiceDiag): піднялось — яким шляхом (напряму, через ретранслятор); ні — що
+  /// встигло: кандидати з обох боків за типами, стани пар, переговорів і ICE. IP-адрес не кладемо.
+  async function report(p, kind) {
+    if (!conn || conn.state !== 'Connected') return;
+    try {
+      const st = await p.pc.getStats();
+      const loc = {}, rem = {}, pairs = {};
+      let pair = null;
+      st.forEach((r) => {
+        if (r.type === 'local-candidate') loc[r.candidateType + '/' + r.protocol] = (loc[r.candidateType + '/' + r.protocol] || 0) + 1;
+        if (r.type === 'remote-candidate') rem[r.candidateType + '/' + r.protocol] = (rem[r.candidateType + '/' + r.protocol] || 0) + 1;
+        if (r.type === 'candidate-pair') {
+          pairs[r.state] = (pairs[r.state] || 0) + 1;
+          if (r.selected) pair = r;   // Firefox
+        }
+        if (r.type === 'transport' && r.selectedCandidatePairId) pair = st.get(r.selectedCandidatePairId) || pair;
+      });
+      let via = null;
+      if (pair) {
+        const l = st.get(pair.localCandidateId), r = st.get(pair.remoteCandidateId);
+        via = (l ? l.candidateType : '?') + '→' + (r ? r.candidateType : '?') + ' ' + (l ? l.protocol : '')
+          + (pair.currentRoundTripTime ? ' ' + Math.round(pair.currentRoundTripTime * 1000) + ' мс' : '');
+        p.relay = !!((l && l.candidateType === 'relay') || (r && r.candidateType === 'relay'));
+        paintPeers();
+      }
+      conn.invoke('VoiceDiag', JSON.stringify({
+        peer: p.id, kind, via, state: p.pc.connectionState, ice: p.pc.iceConnectionState, gather: p.pc.iceGatheringState,
+        sig: p.pc.signalingState, negotiated: p.negotiated, paired: !!p.theirSid, polite: p.polite, loc, rem, pairs,
+        turn: ice.some((x) => [].concat(x.urls).some((u) => String(u).startsWith('turn'))),
+        secs: Math.round((Date.now() - p.since) / 1000), ua: navigator.userAgent.replace(/^.*?\) /, '').slice(0, 80),
+      })).catch(() => {});
+    } catch (e) { console.warn('[voice] report', e); }
   }
 
   /// Познайомились: переговори, що чекали на знайомство, — почати (перше знайомство — лише нечемний).
@@ -379,8 +496,19 @@
     if (viewing === p.id && !again) closeViewer(false);
   }
 
+  let outbox = [];                // листи, написані, поки зв'язку з сервером не було: підуть після повернення
+  function flushOutbox() {
+    const list = outbox;
+    outbox = [];
+    for (const [p, msg] of list) if (peers.get(p.id) === p) sendSignal(p, msg);
+  }
+
   function sendSignal(p, msg) {
-    if (!conn || conn.state !== 'Connected') return;
+    if (!conn || conn.state !== 'Connected') {
+      // Кандидати й описи з'єднання, що загубились би, поки сервер перезапускався, — придержати (з межею).
+      if (outbox.length < 300) outbox.push([p, msg]);
+      return;
+    }
     msg.s = p.mySid;
     msg.r = p.theirSid || 0;
     if (msg.hello) p.helloAt = Date.now();
@@ -527,7 +655,7 @@
 
   function applyLink(p, link) {
     p.link = link;
-    p.sender.replaceTrack(link.send ? sendTrack : null).catch(() => {});
+    p.sender.replaceTrack(link.send && !hushOut ? sendTrack : null).catch(() => {});
     if (link.watch && screen) shareTo(p); else unshareTo(p);
     applyPlayback(p);
     if (!link.recv && p.talk) { p.talk = false; paintTalk(); updateDuck(); }
@@ -616,37 +744,166 @@
     paint();
   }
 
+  // Вікно глядача живе в одному з двох місць:
+  //  - «сцена» (stage) — у шапці під смугою Посиденьок: шапка липка, тож трансляцію видно, хоч куди гортаєш; висоту
+  //    тягнеш за нижній край (set.stageH);
+  //  - «віконце» (mini) — поверх сторінки, тягається за свою смужку й міняє розмір за куток (set.mini).
+  // У грі на весь екран (body.gfull / g-imm) — завжди віконце: сцена там з'їла б стіл. Ще є «на весь екран» (самого
+  // вікна, з кнопками) і «картинка в картинці» браузера — тоді трансляцію видно навіть з іншої вкладки.
+  const canPip = () => !!(document.pictureInPictureEnabled && HTMLVideoElement.prototype.requestPictureInPicture);
+  const gameFull = () => document.body.classList.contains('gfull') || document.body.classList.contains('g-imm');
+  const viewMode = () => (gameFull() ? 'mini' : set.view === 'mini' ? 'mini' : 'stage');
+
   function showViewer(p, waiting) {
     if (!viewer) {
       viewer = document.createElement('div');
       viewer.className = 'vcscreen';
-      viewer.innerHTML = '<div class="vcs-bar"><b class="vcs-who"></b><button type="button" class="icon ghost" data-vcs="full" title="На весь екран">⛶</button>'
-        + '<button type="button" class="icon ghost" data-vcs="close" title="Не дивитись">✕</button></div>'
-        + '<video class="vcs-video" autoplay playsinline></video><p class="vcs-wait muted small">Чекаю на картинку…</p>';
-      document.body.appendChild(viewer);
-      viewer.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-vcs]');
-        if (!b) return;
-        if (b.dataset.vcs === 'close') { closeViewer(true); return; }
-        const v = viewer.querySelector('video');
-        if (v.requestFullscreen) v.requestFullscreen().catch(() => {});
-        else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+      viewer.setAttribute('role', 'region');
+      viewer.innerHTML = '<div class="vcs-bar" data-drag>'
+        + '<span class="vcs-who"></span>'
+        + (volWorks ? '<label class="vcs-vol" title="Гучність трансляції">🔊<input type="range" min="0" max="100" step="1" data-vcs="vol" aria-label="Гучність трансляції"></label>' : '')
+        + '<button type="button" class="icon ghost" data-vcs="mode"></button>'
+        + (canPip() ? '<button type="button" class="icon ghost" data-vcs="pip" title="Картинка в картинці — видно й з іншої вкладки" aria-label="Картинка в картинці">⧉</button>' : '')
+        + '<button type="button" class="icon ghost" data-vcs="full" title="На весь екран" aria-label="На весь екран">⛶</button>'
+        + '<button type="button" class="icon ghost" data-vcs="close" title="Не дивитись" aria-label="Не дивитись">✕</button></div>'
+        + '<div class="vcs-body"><video class="vcs-video" autoplay playsinline></video><p class="vcs-wait">Чекаю на картинку…</p></div>'
+        + '<div class="vcs-grip" data-grip title="Тягни — більша чи менша сцена" aria-hidden="true"></div>'
+        + '<div class="vcs-corner" data-corner title="Тягни — більше чи менше віконце" aria-hidden="true"></div>';
+      viewer.addEventListener('click', onViewerClick);
+      viewer.addEventListener('input', (e) => {
+        if (e.target.dataset.vcs !== 'vol') return;
+        set.shareVol = +e.target.value / 100;
+        save();
+        viewer.querySelector('video').volume = set.shareVol;
       });
-      viewer.querySelector('video').addEventListener('playing', () => { viewer.querySelector('.vcs-wait').hidden = true; });
+      viewer.addEventListener('pointerdown', onViewerDrag);
+      viewer.addEventListener('dblclick', (e) => { if (e.target.closest('video')) fullViewer(); });
+      const v = viewer.querySelector('video');
+      v.addEventListener('playing', () => { viewer.querySelector('.vcs-wait').hidden = true; });
+      v.addEventListener('resize', placeViewer);   // інший розмір екрана в того, хто показує, — інші пропорції
     }
-    viewer.querySelector('.vcs-who').textContent = '🖥 ' + (nickOf(p.id) || 'екран');
+    viewer.querySelector('.vcs-who').textContent = '🖥 ' + (p.id === peerId ? 'твій екран' : 'Екран: ' + (nickOf(p.id) || '…'));
     const v = viewer.querySelector('video');
     if (!waiting && p.screen && v.srcObject !== p.screen) { v.srcObject = p.screen; v.play().catch(() => needGesture()); }
     v.muted = deaf;
+    v.volume = Math.min(1, Math.max(0, set.shareVol));
+    const vol = viewer.querySelector('[data-vcs=vol]');
+    if (vol) vol.value = String(Math.round(set.shareVol * 100));
     if (waiting) viewer.querySelector('.vcs-wait').hidden = false;
     viewer.hidden = false;
+    placeViewer();
+  }
+
+  /// Поставити вікно глядача туди, де йому зараз місце: сцена — у шапку, віконце — поверх сторінки.
+  function placeViewer() {
+    if (!viewer || viewer.hidden) return;
+    const mode = viewMode();
+    const head = document.querySelector('header');
+    const home = mode === 'stage' && head ? head : document.body;
+    if (viewer.parentNode !== home) home.appendChild(viewer);
+    viewer.classList.toggle('stage', mode === 'stage');
+    viewer.classList.toggle('mini', mode === 'mini');
+    const m = viewer.querySelector('[data-vcs=mode]');
+    if (m) {
+      m.hidden = gameFull();
+      m.textContent = mode === 'stage' ? '▭' : '⬒';
+      m.title = mode === 'stage' ? 'У віконце — дивитись і гратись' : 'На сцену — під смугою, на всю ширину';
+      m.setAttribute('aria-label', m.title);
+    }
+    if (mode === 'stage') {
+      viewer.style.cssText = '';
+      if (set.stageH) viewer.style.setProperty('--vcs-h', set.stageH + 'px');
+    } else {
+      const mi = fitMini(set.mini);
+      viewer.style.cssText = 'right:' + mi.r + 'px;bottom:' + mi.b + 'px;width:' + mi.w + 'px';
+    }
+    stripSized();
+    placeBubble();
+  }
+
+  /// Віконце не має вилізти за екран: вікно браузера стало меншим — притискаємо до краю.
+  function fitMini(mi) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const w = Math.round(Math.max(200, Math.min(mi.w || 360, W - 16)));
+    const h = Math.round(w * 9 / 16) + 36;
+    return { w, r: Math.round(Math.max(0, Math.min(mi.r, W - w))), b: Math.round(Math.max(0, Math.min(mi.b, H - h))) };
+  }
+
+  function onViewerClick(e) {
+    const b = e.target.closest('[data-vcs]');
+    if (!b || b.dataset.vcs === 'vol') return;
+    const act = b.dataset.vcs;
+    if (act === 'close') closeViewer(true);
+    else if (act === 'mode') { set.view = viewMode() === 'stage' ? 'mini' : 'stage'; save(); placeViewer(); }
+    else if (act === 'full') fullViewer();
+    else if (act === 'pip') {
+      const v = viewer.querySelector('video');
+      if (document.pictureInPictureElement === v) document.exitPictureInPicture().catch(() => {});
+      else v.requestPictureInPicture().catch((err) => o.toast('Картинка в картинці не вийшла — ' + (err.message || err)));
+    }
+  }
+
+  function fullViewer() {
+    if (document.fullscreenElement === viewer) { document.exitFullscreen().catch(() => {}); return; }
+    const v = viewer.querySelector('video');
+    if (viewer.requestFullscreen) viewer.requestFullscreen().catch(() => {});
+    else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();   // айфон: повний екран лише в самого відео
+  }
+
+  /// Тягнемо: сцену — за нижній край (висота), віконце — за смужку (місце) чи за куток (розмір).
+  function onViewerDrag(e) {
+    if (e.button !== 0 || document.fullscreenElement === viewer) return;
+    const grip = e.target.closest('[data-grip]'), corner = e.target.closest('[data-corner]');
+    const bar = !grip && !corner && e.target.closest('[data-drag]') && !e.target.closest('button, input, label');
+    const mode = viewMode();
+    if (!(grip && mode === 'stage') && !((bar || corner) && mode === 'mini')) return;
+    e.preventDefault();
+    const el = e.target;
+    try { el.setPointerCapture(e.pointerId); } catch { /* старий браузер */ }
+    const x0 = e.clientX, y0 = e.clientY;
+    const start = { ...fitMini(set.mini) }, h0 = viewer.querySelector('.vcs-body').getBoundingClientRect().height;
+    viewer.classList.add('dragging');
+    const move = (ev) => {
+      const dx = ev.clientX - x0, dy = ev.clientY - y0;
+      if (grip) {
+        const h = Math.round(Math.max(120, Math.min(window.innerHeight * 0.8, h0 + dy)));
+        set.stageH = h;
+        viewer.style.setProperty('--vcs-h', h + 'px');
+        stripSized();
+      } else if (corner) {
+        // Куток — лівий верхній: тягнеш угору-вліво — більше (праве й нижнє місце стоїть).
+        set.mini = fitMini({ r: start.r, b: start.b, w: start.w - dx });
+      } else {
+        set.mini = fitMini({ r: start.r - dx, b: start.b - dy, w: start.w });
+      }
+      if (!grip) viewer.style.cssText = 'right:' + set.mini.r + 'px;bottom:' + set.mini.b + 'px;width:' + set.mini.w + 'px';
+      if (!grip) placeBubble();
+    };
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      viewer.classList.remove('dragging');
+      save();
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
   }
 
   function closeViewer(tell) {
     if (tell && viewing && ready && conn && conn.state === 'Connected') conn.invoke('VoiceWatch', viewing, false).catch(() => {});
     const was = viewing;
     viewing = null;
-    if (viewer) { const v = viewer.querySelector('video'); v.srcObject = null; viewer.hidden = true; }
+    if (viewer) {
+      const v = viewer.querySelector('video');
+      if (document.pictureInPictureElement === v) document.exitPictureInPicture().catch(() => {});
+      if (document.fullscreenElement === viewer) document.exitFullscreen().catch(() => {});
+      v.srcObject = null;
+      viewer.hidden = true;
+      stripSized();
+      placeBubble();
+    }
     if (was) paint();
   }
 
@@ -667,7 +924,11 @@
       if (moved || room !== HOME) applyLink(p, { peer: p.id, send: false, recv: false, watch: false });
       if (!p.goneAt) p.goneAt = Date.now();
     }
-    for (const l of links.values()) applyLink(ensurePeer(l.peer), l);
+    for (const l of links.values()) {
+      const p = ensurePeer(l.peer);
+      applyLink(p, l);
+      if (p.restartPending) { p.restartPending = false; p.restartAt = 0; restartIce(p); }
+    }
     paint();
   }
 
@@ -704,7 +965,7 @@
     for (const p of [...peers.values()]) {
       if (p.goneAt && now - p.goneAt > GRACE_MS) { closePeer(p); changed = true; continue; }
       const down = p.state !== 'connected' && p.downSince ? now - p.downSince : 0;
-      if (down > SLOW_MS && !p.slow) { p.slow = true; changed = true; }
+      if (down > SLOW_MS && !p.slow) { p.slow = true; changed = true; if (!p.reportedSlow) { p.reportedSlow = true; report(p, 'slow'); } }
       else if (p.state === 'connected' && p.slow) { p.slow = false; changed = true; }
       if (p.goneAt) continue;
       // Ще не домовились — hello могло загубитись (не було зв'язку з сервером): нагадуємо.
@@ -717,6 +978,15 @@
       }
       // Домовились, а зв'язку нема: кандидати загубились чи мережа змінилась — перезапускаємо ICE (нечемний, щоб не вдвох).
       if (p.negotiated && down > (p.polite ? 2 * STUCK_MS : STUCK_MS)) restartIce(p);
+      // Пропозиція висить без відповіді 8 с — лист загубився (сервер перезапускався, людини ще не було в кімнаті):
+      // відкочуємо; нечемний пропонує наново, чемний чекає на його пропозицію.
+      if (p.sigSince && now - p.sigSince > 8000 && p.pc.signalingState === 'have-local-offer') {
+        p.sigSince = now;
+        p.pc.setLocalDescription({ type: 'rollback' }).then(() => {
+          if (p.polite || peers.get(p.id) !== p) return;
+          if (p.negotiated) { p.restartAt = 0; restartIce(p); } else makeOffer(p);
+        }).catch((e) => console.warn('[voice] rollback', e));
+      }
       // Зв'язок хитається вже 5 с — не чекаємо, поки браузер сам визнає «failed» (це ще пів хвилини).
       if (p.discAt && now - p.discAt > 5000 && !p.polite) restartIce(p);
       // Так і не піднялось — робимо з'єднання наново, знайоме з тим самим з'єднанням того боку (той побачить новий
@@ -817,8 +1087,22 @@
   function total() { return roster.rooms.reduce((n, r) => n + (r.members || []).length, 0); }
   function roomLabel(r) { return r.id === HOME ? '🪑 Посиденьки' : '🎲 ' + r.title; }
 
-  // ---------- шапка й панель ----------
-  let btn = null, panel = null, open = false, listSig = '';
+  // ---------- шапка, смуга, кружечок і панель ----------
+  // Кнопка 🎙 у шапці — вхід і панель. Поки я в голосі, в самій шапці (вона липка) — смуга: хто тут (кільце — хто
+  // говорить), хто показує екран, мікрофон, навушники, екран, панель, вийти. Мене нема, а в Посиденьках сидять, —
+  // тонка смужка «Підсісти» (✕ ховає її, поки склад не зміниться). У грі на весь екран смуги нема — там кружечок, що
+  // тягається. Панель — подробиці: хто як з'єднаний, гучність кожного, переходи між столами, налаштування.
+  let btn = null, panel = null, strip = null, bubble = null, open = false, listSig = '', stripSig = '';
+  const HINT_KEY = 'vcHintOff';
+
+  /// Аватарка людини так, як її бачать усі (фото, значок, рамка з Лавки), у кружечку, що світиться, коли вона говорить.
+  function face(nick, peer, cls) {
+    const P = window.HPeople;
+    const a = P && P.ava ? P.ava(nick, 'ava vc-av')
+      : '<span class="ava vc-av" aria-hidden="true">' + esc((String(nick || '?').trim().charAt(0) || '?').toUpperCase()) + '</span>';
+    return '<span class="vc-face' + (cls ? ' ' + cls : '') + '" data-face="' + esc(peer || '') + '">' + a + '</span>';
+  }
+  const names = (list) => (list.length <= 3 ? list.join(', ') : list.slice(0, 2).join(', ') + ' і ще ' + (list.length - 2));
 
   function mountUi() {
     btn = document.getElementById('vcBtn');
@@ -835,6 +1119,26 @@
     panel.addEventListener('input', onPanelInput);
     panel.addEventListener('change', onPanelInput);
     panel.addEventListener('focusout', () => setTimeout(flushPaint, 0));
+
+    const head = document.querySelector('header');
+    strip = document.createElement('div');
+    strip.id = 'vcStrip';
+    strip.className = 'vcstrip';
+    strip.hidden = true;
+    strip.setAttribute('role', 'region');
+    strip.setAttribute('aria-label', 'Посиденьки');
+    if (head) head.appendChild(strip);
+    strip.addEventListener('click', onPanelClick);
+
+    bubble = document.createElement('button');
+    bubble.type = 'button';
+    bubble.id = 'vcBubble';
+    bubble.className = 'vcbubble';
+    bubble.hidden = true;
+    document.body.appendChild(bubble);
+    bubble.addEventListener('pointerdown', onBubbleDrag);
+    placeBubble();
+
     // «Тримай і говори» пальцем: вказівник захоплюємо, щоб відпускання прийшло сюди, навіть коли палець з'їхав.
     let holding = false;
     panel.addEventListener('pointerdown', (e) => {
@@ -854,10 +1158,25 @@
     // Шлях події, а не closest: кнопка, на яку клацнули, могла вже зникнути з перемальованої панелі.
     document.addEventListener('click', (e) => {
       const path = e.composedPath();
-      if (open && !path.includes(panel) && !path.includes(btn)) setOpen(false);
+      if (open && !path.includes(panel) && !path.includes(btn) && !path.includes(strip) && !path.includes(bubble)) setOpen(false);
     });
     document.addEventListener('keydown', (e) => { if (open && e.key === 'Escape' && !binding) setOpen(false); });
+    // Гра на весь екран (core.js ставить body.gfull / g-imm): смуга ховається, вмикається кружечок, сцена стає віконцем.
+    new MutationObserver(() => { placeViewer(); placePanel(); }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    // Висота шапки (смуга, сцена) — у --hdr-h: на ній стоять липкі балачки й меню бібліотеки (voice.css).
+    if (head && window.ResizeObserver) new ResizeObserver(stripSized).observe(head);
+    addEventListener('resize', () => { placeBubble(); if (viewer && viewMode() === 'mini') placeViewer(); });
     paint();
+  }
+
+  let hdrH = 0;
+  function stripSized() {
+    const head = document.querySelector('header');
+    const h = head ? Math.round(head.getBoundingClientRect().height) : 0;
+    if (h === hdrH) return;
+    hdrH = h;
+    document.documentElement.style.setProperty('--hdr-h', h + 'px');
+    if (open) placePanel();
   }
 
   function setOpen(on) {
@@ -868,6 +1187,18 @@
     listSig = '';
     if (on && want && ready) loadMics();
     paint();
+    placePanel();
+  }
+
+  /// Панель на комп'ютері — під смугою (поверх сцени, якщо дивлюсь екран), без смуги — під шапкою; шапки нема — згори.
+  function placePanel() {
+    if (!panel || !open) return;
+    if (window.innerWidth <= 900) { panel.style.top = ''; return; }
+    const head = document.querySelector('header');
+    const anchor = strip && !strip.hidden && strip.offsetHeight ? strip : head && head.offsetHeight ? head : null;
+    const top = anchor ? Math.round(anchor.getBoundingClientRect().bottom) + 6 : 8;
+    panel.style.top = top + 'px';
+    panel.style.maxHeight = 'calc(100vh - ' + (top + 16) + 'px)';
   }
 
   let isHolding = () => false;
@@ -882,18 +1213,20 @@
   function paint() {
     syncPadPoll();
     paintBtn();
+    paintStrip();
+    paintBubble();
     decorateAll();
     if (!panel || !open) return;
     if (busyPanel()) { paintLater = true; paintPeers(); paintTalk(); return; }
     const sig = JSON.stringify([want, ready, room, listenOnly, muted, deaf, set.mode, set.ptt, set.duck, set.denoise, denoiseFailed, binding, o.me.account, table, !!screen, viewing, acStuck,
-      roster, [...links.values()], mics.map((m) => m.deviceId), set.mic]);
+      roster, [...links.values()], mics.map((m) => m.deviceId), set.mic, test && test.phase, !!ac]);
     if (sig !== listSig) {
       listSig = sig;
       const keep = panel.querySelector('.vc-set');
       const wasOpen = keep ? keep.open : false;
       panel.innerHTML = panelHtml();
       const s = panel.querySelector('.vc-set');
-      if (s && wasOpen) s.open = true;
+      if (s && (wasOpen || test)) s.open = true;
     }
     paintPeers();
     paintTalk();
@@ -916,6 +1249,149 @@
       : who ? 'Посиденьки — зараз там: ' + who : 'Посиденьки — голосовий чат. Зайди першим';
   }
 
+  // ---------- смуга ----------
+  function stripState() {
+    if (!o || !o.me.account || !strip) return 'none';
+    if (want) return ready ? 'in' : 'joining';
+    const home = homeRoom();
+    if (!home || !home.members.length) return 'none';
+    let off = '';
+    try { off = sessionStorage.getItem(HINT_KEY) || ''; } catch { /* приватне вікно */ }
+    return off === hintSig(home) ? 'none' : 'hint';
+  }
+  const hintSig = (home) => home.members.map((m) => key(m.nick)).sort().join(',');
+
+  /// Хто в моїй кімнаті голосу: я першим (навіть коли сервер мене ще не показав), далі решта.
+  function myMembers() {
+    const r = myRoom();
+    const mine = r ? r.members : [];
+    const meM = mine.find((m) => m.peer === peerId) || { peer: peerId, nick: o.me.nick, muted: muted || listenOnly, deaf, share: !!screen };
+    return [meM].concat(mine.filter((m) => m.peer !== peerId));
+  }
+
+  function paintStrip() {
+    if (!strip) return;
+    const st = stripState();
+    const sig = st === 'none' ? 'none' : JSON.stringify([st, room, muted, deaf, listenOnly, !!screen, viewing, acStuck, roster, [...links.values()].map((l) => l.watch), test && test.phase]);
+    if (sig === stripSig) return;
+    stripSig = sig;
+    strip.hidden = st === 'none';
+    strip.className = 'vcstrip ' + st;
+    document.body.classList.toggle('vc-in', st === 'in');
+    strip.innerHTML = st === 'in' ? stripInHtml() : st === 'hint' ? stripHintHtml() : st === 'joining'
+      ? '<div class="vcs-row"><span class="spin"></span><span class="vcs-label">Заходжу в Посиденьки…</span></div>' : '';
+    paintTalk();
+    stripSized();
+    if (open) placePanel();
+  }
+
+  function stripHintHtml() {
+    const home = homeRoom();
+    const ms = home.members;
+    return '<div class="vcs-row">'
+      + '<span class="vcs-faces sm">' + ms.slice(0, 5).map((m) => face(m.nick, m.peer)).join('') + '</span>'
+      + '<span class="vcs-label"><b>' + esc(names(ms.map((m) => m.nick))) + '</b> ' + (ms.length > 1 ? 'посиденькують' : 'посиденькує') + ' в голосі</span>'
+      + '<button type="button" class="primary vcs-join" data-act="join">🎙 Підсісти</button>'
+      + '<button type="button" class="icon ghost vcs-x" data-act="hint-off" title="Сховати, поки склад не зміниться" aria-label="Сховати">✕</button></div>';
+  }
+
+  function stripInHtml() {
+    const r = myRoom();
+    const all = myMembers();
+    const MAX = 9;
+    const faces = all.slice(0, MAX).map((m) => face(m.nick, m.peer, m.deaf ? 'deaf' : m.muted ? 'mute' : '')).join('')
+      + (all.length > MAX ? '<span class="vcs-more">+' + (all.length - MAX) + '</span>' : '');
+    const label = r && r.id !== HOME ? '🎲 ' + r.title : '🪑 Посиденьки';
+    const shares = [];
+    for (const m of all) {
+      if (!m.share) continue;
+      if (m.peer === peerId) {
+        const n = [...links.values()].filter((l) => l.watch).length;
+        shares.push('<span class="vcs-pill mine">🖥<span class="vcs-pw"> Ти показуєш</span>' + (n ? ' · ' + n + ' 👀' : '')
+          + '<button type="button" class="ghost" data-act="share">Зупинити</button></span>');
+      } else {
+        const on = viewing === m.peer;
+        shares.push('<button type="button" class="vcs-pill' + (on ? ' on' : '') + '" data-act="watch" data-peer="' + esc(m.peer) + '" title="'
+          + (on ? 'Сховати трансляцію' : 'Дивитись екран: ' + esc(m.nick)) + '">🖥 <span class="vcs-pn">' + esc(m.nick) + '</span>'
+          + (on ? '<span class="vcs-pw"> · дивишся</span>' : '<span class="vcs-pw"> показує ·</span> <b>Дивитись</b>') + '</button>');
+      }
+    }
+    const rule = ruleText();
+    const off = muted || listenOnly;
+    return '<div class="vcs-row">'
+      + '<button type="button" class="vcs-room" data-act="panel" title="' + esc(names(all.map((m) => m.nick))) + ' — подробиці й налаштування">'
+      + '<span class="vcs-label">' + esc(label) + ' <span class="vcs-n">· ' + all.length + '</span></span>'
+      + '<span class="vcs-faces">' + faces + '</span></button>'
+      + '<span class="vcs-talk" aria-live="polite"></span>'
+      + (acStuck ? '<span class="vcs-warn">⚠ Тицни будь-де — браузер приспав звук</span>' : rule ? '<span class="vcs-rule">' + rule + '</span>' : '')
+      + shares.join('')
+      + '<span class="vcs-sp"></span>'
+      + '<span class="vcs-ctl">'
+      + '<button type="button" class="vcs-b' + (off ? ' off' : '') + '" data-act="mute"' + (listenOnly ? ' disabled' : '')
+      + ' title="' + (listenOnly ? 'Мікрофона нема — лише слухаєш' : off ? 'Увімкнути мікрофон' : 'Вимкнути мікрофон') + '" aria-label="Мікрофон">' + (off ? '🔇' : '🎙') + '</button>'
+      + '<button type="button" class="vcs-b' + (deaf ? ' off' : '') + '" data-act="deaf" title="' + (deaf ? 'Знову чути всіх' : 'Нікого не чути (і тебе теж)') + '" aria-label="Навушники">' + (deaf ? '🙉' : '🎧') + '</button>'
+      + (canShare() ? '<button type="button" class="vcs-b vcs-share' + (screen ? ' on' : '') + '" data-act="share" title="' + (screen ? 'Зупинити показ' : 'Показати свій екран') + '" aria-label="Показ екрана">🖥</button>' : '')
+      + '<button type="button" class="vcs-b" data-act="panel" title="Подробиці й налаштування" aria-label="Подробиці й налаштування" aria-expanded="' + open + '">⚙</button>'
+      + '<button type="button" class="vcs-b vcs-leave" data-act="leave" title="Вийти з Посиденьок" aria-label="Вийти">✕ <span>Вийти</span></button>'
+      + '</span></div>';
+  }
+
+  // ---------- кружечок (гра на весь екран) ----------
+  function paintBubble() {
+    if (!bubble) return;
+    const on = want && ready;
+    bubble.hidden = !on;
+    if (!on) return;
+    const n = myMembers().length;
+    const off = muted || listenOnly;
+    bubble.classList.toggle('muted', off);
+    bubble.title = 'Посиденьки · ' + n + (off ? ' · мікрофон вимкнено' : '') + ' — натисни, щоб керувати; тягни, щоб пересунути';
+    bubble.setAttribute('aria-label', bubble.title);
+    bubble.innerHTML = '<span class="vcb-ico">' + (off ? '🔇' : '🎙') + '</span><span class="vcb-n">' + n + '</span>';
+  }
+
+  function placeBubble() {
+    if (!bubble) return;
+    const s = 56;
+    const r = Math.max(4, Math.min(set.bubble.r, window.innerWidth - s - 4));
+    let b = Math.max(4, Math.min(set.bubble.b, window.innerHeight - s - 4));
+    // Віконце трансляції там само — кружечок стає над ним (місце в налаштуваннях не міняємо).
+    if (viewer && !viewer.hidden && viewer.classList.contains('mini')) {
+      const v = viewer.getBoundingClientRect();
+      const W = window.innerWidth, H = window.innerHeight;
+      const overlapX = W - r - s < v.right && W - r > v.left, overlapY = H - b - s < v.bottom && H - b > v.top;
+      if (overlapX && overlapY) b = Math.min(window.innerHeight - s - 4, Math.round(H - v.top + 10));
+    }
+    bubble.style.right = r + 'px';
+    bubble.style.bottom = b + 'px';
+  }
+
+  /// Кружечок: короткий дотик — панель, тягнеш (далі за 5 px) — пересуваєш і запам'ятовуємо місце.
+  function onBubbleDrag(e) {
+    if (e.button !== 0) return;
+    const x0 = e.clientX, y0 = e.clientY, r0 = set.bubble.r, b0 = set.bubble.b;
+    let moved = false;
+    try { bubble.setPointerCapture(e.pointerId); } catch { /* старий браузер */ }
+    const move = (ev) => {
+      const dx = ev.clientX - x0, dy = ev.clientY - y0;
+      if (!moved && Math.hypot(dx, dy) < 5) return;
+      moved = true;
+      set.bubble = { r: r0 - dx, b: b0 - dy };
+      placeBubble();
+    };
+    const up = () => {
+      bubble.removeEventListener('pointermove', move);
+      bubble.removeEventListener('pointerup', up);
+      bubble.removeEventListener('pointercancel', up);
+      if (moved) { set.bubble = { r: parseInt(bubble.style.right, 10), b: parseInt(bubble.style.bottom, 10) }; save(); }
+      else setOpen(!open);
+    };
+    bubble.addEventListener('pointermove', move);
+    bubble.addEventListener('pointerup', up);
+    bubble.addEventListener('pointercancel', up);
+  }
+
+  // ---------- панель ----------
   function memberRow(m, meRow) {
     const p = meRow ? null : peers.get(m.peer);
     const l = meRow ? null : links.get(m.peer);
@@ -927,14 +1403,14 @@
     else if (m.muted) marks.push('<span title="мікрофон вимкнено">🔇</span>');
     if (l && !l.recv) marks.push('<span class="vc-rule" title="За правилами гри ти зараз його не чуєш">🌙 не чути</span>');
     if (l && !l.send) marks.push('<span class="vc-rule" title="За правилами гри він зараз тебе не чує">🤫 тебе не чує</span>');
-    const vol = meRow || !volWorks ? '' : '<input class="vc-vol" type="range" min="0" max="100" step="1" data-vol="' + esc(m.nick) + '" value="'
-      + Math.round(volOf(m.nick) * 100) + '" title="Гучність: ' + esc(m.nick) + '" aria-label="Гучність ' + esc(m.nick) + '">';
-    const hue = window.HPeople && HPeople.hue ? HPeople.hue(m.nick) : 200;
-    return '<div class="vc-m' + (meRow ? ' me' : '') + '" data-peer="' + esc(m.peer) + '" style="--h:' + hue + '">'
-      + '<span class="vc-ava" aria-hidden="true">' + esc((m.nick || '?').trim().charAt(0).toUpperCase()) + '</span>'
+    const vol = meRow || !volWorks ? '' : '<label class="vc-vol" title="Гучність: ' + esc(m.nick) + '">🔉<input type="range" min="0" max="100" step="1" data-vol="'
+      + esc(m.nick) + '" value="' + Math.round(volOf(m.nick) * 100) + '" aria-label="Гучність ' + esc(m.nick) + '"></label>';
+    return '<div class="vc-m' + (meRow ? ' me' : '') + (p && p.relay ? ' relay' : '') + '" data-peer="' + esc(m.peer) + '">'
+      + face(m.nick, m.peer, m.deaf ? 'deaf' : m.muted ? 'mute' : '')
       + '<button type="button" class="vc-nick" data-who="' + esc(m.nick) + '">' + esc(m.nick) + (meRow ? ' <span class="muted">(ти)</span>' : '') + '</button>'
       + '<span class="vc-marks">' + marks.join('') + '</span>'
-      + '<span class="vc-state"></span>' + vol + '</div>';
+      + '<span class="vc-state">' + (meRow ? (listenOnly ? 'лише слухаєш' : muted ? 'мікрофон вимкнено' : set.mode === 'ptt' ? 'говориш, поки тримаєш кнопку' : set.mode === 'open' ? 'мікрофон завжди відкритий' : 'говориш від голосу') : '') + '</span>'
+      + vol + '</div>';
   }
 
   function panelHtml() {
@@ -943,8 +1419,10 @@
       + '<button type="button" class="icon ghost vc-x" data-act="close" title="Сховати" aria-label="Сховати">✕</button></div>');
     if (!want || !ready) {
       const home = homeRoom();
-      if (home && home.members.length) h.push('<p class="vc-who">Зараз тут: ' + home.members.map((m) => '<b>' + esc(m.nick) + '</b>').join(', ') + '</p>');
-      else if (known) h.push('<p class="vc-who muted">Поки порожньо — зайди першим, решта підтягнеться.</p>');
+      if (home && home.members.length) {
+        h.push('<div class="vc-who"><span class="vcs-faces">' + home.members.slice(0, 8).map((m) => face(m.nick, m.peer)).join('') + '</span>'
+          + '<span>Зараз тут: ' + home.members.map((m) => '<b>' + esc(m.nick) + '</b>').join(', ') + '</span></div>');
+      } else if (known) h.push('<p class="vc-who muted">Поки порожньо — зайди першим, решта підтягнеться.</p>');
       else h.push('<p class="vc-who muted">Голосовий чат просто на сайті — без Діскорда.</p>');
       if (!o.me.account) {
         h.push('<p class="muted small">Посиденьки — лише для акаунтів: так ніхто чужий не влізе в розмову.</p>'
@@ -952,19 +1430,18 @@
       } else {
         h.push('<button type="button" class="primary vc-join" data-act="join"' + (want ? ' disabled' : '') + '>'
           + (want ? '<span class="spin"></span> Заходжу…' : '🎙 Зайти в Посиденьки') + '</button>'
-          + '<p class="muted small">Браузер спитає дозволу на мікрофон. Краще в навушниках — тоді радіо не лізе в мікрофон.</p>');
+          + '<p class="muted small">Браузер спитає дозволу на мікрофон. Краще в навушниках — тоді радіо не лізе в мікрофон.</p>'
+          + testHtml(false));
       }
       h.push(othersHtml());
       return h.join('');
     }
-    const r = myRoom();
-    const mine = r ? r.members : [];
-    const meM = mine.find((m) => m.peer === peerId) || { peer: peerId, nick: o.me.nick, muted, deaf };
+    const all = myMembers();
     if (acStuck) h.push('<p class="vc-rulebar">⚠ Браузер приспав звук — тицни будь-де на сторінці, щоб тебе знову було чути</p>');
     const rule = ruleText();
     if (rule) h.push('<p class="vc-rulebar">' + rule + '</p>');
-    h.push('<div class="vc-list">' + memberRow(meM, true) + mine.filter((m) => m.peer !== peerId).map((m) => memberRow(m, false)).join('')
-      + (mine.length <= 1 ? '<p class="muted small vc-alone">Поки ти тут сам — поклич когось у Балачках.</p>' : '') + '</div>');
+    h.push('<div class="vc-list">' + memberRow(all[0], true) + all.slice(1).map((m) => memberRow(m, false)).join('')
+      + (all.length <= 1 ? '<p class="muted small vc-alone">Поки ти тут сам — поклич когось у Балачках.</p>' : '') + '</div>');
     // керування
     h.push('<div class="vc-ctl">'
       + '<button type="button" class="vc-b' + (muted || listenOnly ? ' off' : '') + '" data-act="mute"' + (listenOnly ? ' disabled title="Мікрофона нема — лише слухаєш"' : '') + '>'
@@ -1006,41 +1483,83 @@
       + ': ' + r.members.map((m) => esc(m.nick)).join(', ') + '</div>').join('') + '</div>';
   }
 
+  /// Перевірка мікрофона: живий рівень із рискою порогу, «Послухати себе» і підказка, що з цим робити.
+  function testHtml(inVoice) {
+    if (!window.MediaRecorder) return '';
+    const live = !!ac;
+    const vad = set.mode === 'vad';
+    return '<div class="vc-test">'
+      + (live ? '<div class="vc-meter" title="Рівень мікрофона' + (vad ? '; риска — поріг: голос має заходити за неї' : '') + '"><i class="vc-lvl"></i>' + (vad ? '<b class="vc-thr"></b>' : '') + '</div>' : '')
+      + (live && vad ? '<label class="vc-row">Поріг <input type="range" min="-75" max="-20" step="1" data-set="threshold" value="' + set.threshold + '" aria-label="Поріг голосу"></label>' : '')
+      + '<button type="button" class="vc-b vc-testb' + (test ? ' on' : '') + '" data-act="test"' + (test ? ' aria-busy="true"' : '') + '>' + testLabel() + '</button>'
+      + '<p class="muted small">' + (inVoice
+        ? (vad ? 'Говори як завжди: смужка має заходити за риску — тоді тебе чути. Не заходить — посунь поріг лівіше, ловить клавіатуру — правіше. ' : '')
+          + 'Запис — рівно те, що чують люди' + (muted || listenOnly ? '; поки мікрофон вимкнено, вони перевірки не почують.' : ' (і вони тебе зараз чують).')
+        : 'Запише 5 секунд і програє тобі — так тебе чутимуть у Посиденьках. Людям нічого не летить.') + '</p>'
+      + '</div>';
+  }
+
   function settingsHtml() {
     const opt = (v, t) => '<option value="' + v + '"' + (set.mode === v ? ' selected' : '') + '>' + t + '</option>';
     const micOpts = ['<option value="">Типовий мікрофон</option>'].concat(mics.map((m, i) => '<option value="' + esc(m.deviceId) + '"'
       + (set.mic === m.deviceId ? ' selected' : '') + '>' + esc(m.label || 'Мікрофон ' + (i + 1)) + '</option>'));
     return '<details class="vc-set"><summary>⚙ Мікрофон і звук</summary>'
+      + '<label class="vc-row">Мікрофон <select data-set="mic">' + micOpts.join('') + '</select></label>'
       + '<label class="vc-row">Коли говорити <select data-set="mode">' + opt('vad', 'Від голосу') + opt('ptt', 'Поки тримаю кнопку') + opt('open', 'Завжди відкрито') + '</select></label>'
-      + (set.mode === 'vad' ? '<label class="vc-row">Поріг <input type="range" min="-75" max="-20" step="1" data-set="threshold" value="' + set.threshold + '"></label>'
-        + '<div class="vc-meter" title="Рівень мікрофона; риска — поріг: голос має заходити за неї"><i class="vc-lvl"></i><b class="vc-thr"></b></div>' : '')
       + (set.mode === 'ptt' ? '<div class="vc-row">Кнопка <button type="button" class="vc-b" data-act="bind">'
         + (binding ? 'Натисни клавішу чи кнопку пада… (Esc — скасувати)' : set.ptt.label ? '«' + esc(set.ptt.label) + '» — змінити' : 'Обрати клавішу чи кнопку пада') + '</button></div>'
         + '<p class="muted small">Клавіша працює, лише коли вкладка Глечиків перед очима. У грі на весь екран — краще «Від голосу». '
         + 'На Steam Deck можна призначити задній гріп на клавішу в Steam Input.</p>' : '')
-      + '<label class="vc-row">Мікрофон <select data-set="mic">' + micOpts.join('') + '</select></label>'
+      + testHtml(true)
       + '<label class="vc-row vc-check"><input type="checkbox" data-set="denoise"' + (set.denoise ? ' checked' : '') + '> 🧹 Шумодав: клавіатура, вентилятор і шум вулиці не летять людям'
       + (set.denoise && denoiseFailed ? ' <span class="muted small">(не завантажився — працює браузерний)</span>' : '') + '</label>'
       + '<label class="vc-row vc-check"><input type="checkbox" data-set="duck"' + (set.duck ? ' checked' : '') + '> Притишувати радіо, коли хтось говорить</label>'
       + '</details>';
   }
 
-  /// Живе: хто говорить (кільця), стан з'єднань — без перемальовування панелі.
+  /// Живе: хто говорить (кільця, що дихають гучністю), стан з'єднань — без перемальовування панелі й смуги.
   function paintTalk() {
-    if (btn) btn.classList.toggle('talk', (want && ready && myTalk) || [...peers.values()].some((p) => p.talk));
+    const anyTalk = (want && ready && myTalk) || [...peers.values()].some((p) => p.talk);
+    if (btn) btn.classList.toggle('talk', anyTalk);
+    if (bubble) bubble.classList.toggle('talk', anyTalk);
     // Кільце на чіпі за столом — лише тим, кого я справді чую (і собі, коли мене чути).
     const talking = new Set();
     if (want && ready && myTalk) talking.add(key(o.me.nick));
     for (const p of peers.values()) if (p.talk) talking.add(key(nickOf(p.id)));
     for (const chip of document.querySelectorAll('.gtable .gseat[data-nick]')) chip.classList.toggle('vc-talk', talking.has(key(chip.dataset.nick)));
-    if (!panel || !open) return;
-    for (const el of panel.querySelectorAll('.vc-m')) {
-      const peer = el.dataset.peer;
-      const t = peer === peerId ? myTalk : !!(peers.get(peer) && peers.get(peer).talk);
-      el.classList.toggle('talk', t);
+    const isTalk = (peer) => (peer === peerId ? want && ready && myTalk : !!(peers.get(peer) && peers.get(peer).talk));
+    for (const el of document.querySelectorAll('.vcstrip .vc-face, .vcpanel .vc-face')) el.classList.toggle('talk', isTalk(el.dataset.face));
+    if (strip && !strip.hidden) {
+      const t = strip.querySelector('.vcs-talk');
+      if (t) {
+        const who = [...peers.values()].filter((p) => p.talk).map((p) => nickOf(p.id)).filter(Boolean);
+        t.textContent = who.length ? names(who) + (who.length > 1 ? ' говорять' : ' говорить') : '';
+      }
     }
-    const hold = panel.querySelector('.vc-hold');
-    if (hold) hold.classList.toggle('on', pressed);
+    if (panel && open) {
+      for (const el of panel.querySelectorAll('.vc-m')) el.classList.toggle('talk', isTalk(el.dataset.peer));
+      const hold = panel.querySelector('.vc-hold');
+      if (hold) hold.classList.toggle('on', pressed);
+    }
+    if (anyTalk) breathe();
+  }
+
+  /// Кільце «дихає» гучністю того, хто говорить: --lv 0…1 на кружечку, раз на кадр, поки хтось говорить.
+  let breathRaf = 0;
+  function breathe() {
+    if (breathRaf) return;
+    const step = () => {
+      breathRaf = 0;
+      let any = false;
+      for (const el of document.querySelectorAll('.vc-face.talk')) {
+        const peer = el.dataset.face;
+        const db = peer === peerId ? myLevel : peers.get(peer) ? peers.get(peer).level : -120;
+        el.style.setProperty('--lv', Math.max(0, Math.min(1, (db + 60) / 40)).toFixed(2));
+        any = true;
+      }
+      if (any) breathRaf = requestAnimationFrame(step);
+    };
+    breathRaf = requestAnimationFrame(step);
   }
 
   function paintPeers() {
@@ -1053,20 +1572,23 @@
       if (!p || p.state === 'new' || p.state === 'connecting') { text = p && p.slow ? '⚠ нема зв\'язку' : 'з\'єднуюсь…'; cls = p && p.slow ? 'bad' : 'wait'; }
       else if (p.state === 'disconnected') { text = 'зв\'язок хитається'; cls = 'wait'; }
       else if (p.state === 'failed' || p.state === 'closed') { text = '⚠ нема зв\'язку'; cls = 'bad'; }
+      else if (p.relay) { text = '↪ через ретранслятор'; cls = ''; }
+      else { text = 'на зв\'язку'; cls = 'ok'; }
       s.textContent = text;
       s.className = 'vc-state ' + cls;
-      s.title = cls === 'bad' ? 'Напряму не пробились. Буває з мобільним інтернетом — тоді потрібен ретранслятор. Скажи розробнику 💡' : '';
+      s.title = cls === 'bad' ? 'Не з\'єдналось ні напряму, ні через ретранслятор. Звіт уже в лозі сервера — скажи розробнику 💡'
+        : p && p.relay ? 'Напряму не пробились (сірий NAT провайдера) — голос іде через ретранслятор на сервері Глечиків' : '';
     }
   }
 
   function paintMeter() {
     if (!panel || !open) return;
-    const lvl = panel.querySelector('.vc-lvl');
-    if (!lvl) return;
     const pct = (db) => Math.max(0, Math.min(100, ((db + 80) / 70) * 100));
-    lvl.style.width = pct(myLevel) + '%';
-    lvl.classList.toggle('open', myTalk);
-    panel.querySelector('.vc-thr').style.left = pct(set.threshold) + '%';
+    for (const lvl of panel.querySelectorAll('.vc-lvl')) {
+      lvl.style.width = pct(myLevel) + '%';
+      lvl.classList.toggle('open', myTalk);
+    }
+    for (const thr of panel.querySelectorAll('.vc-thr')) thr.style.left = pct(set.threshold) + '%';
   }
 
   let mics = [];
@@ -1083,6 +1605,13 @@
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'close') setOpen(false);
+    else if (act === 'panel') setOpen(!open);
+    else if (act === 'test') micTest();
+    else if (act === 'hint-off') {
+      const home = homeRoom();
+      try { if (home) sessionStorage.setItem(HINT_KEY, hintSig(home)); } catch { /* приватне вікно */ }
+      paint();
+    }
     else if (act === 'join') join().then(() => { if (open) loadMics(); });
     else if (act === 'register') { setOpen(false); o.askNick(true, 'register'); }
     else if (act === 'leave') leave();
@@ -1215,6 +1744,7 @@
       if (!want || !dest) return;
       const table = room && room !== HOME ? room.slice(2) : null;
       enter(table).then(() => {
+        flushOutbox();
         // Листи, що летіли, поки зв'язку з сервером не було, пропали — хто не з'єднаний, пробує ще раз.
         for (const p of peers.values()) if (p.state !== 'connected' && !p.polite && p.negotiated) restartIce(p);
       }).catch((e) => console.warn('[voice] rejoin', e));

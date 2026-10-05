@@ -31,6 +31,7 @@ builder.Services.Configure<DeployOptions>(cfg.GetSection("Deploy"));
 builder.Services.Configure<MelodyOptions>(cfg.GetSection("Melody"));
 builder.Services.Configure<CurfewOptions>(cfg.GetSection("Curfew"));
 builder.Services.Configure<VoiceChatOptions>(cfg.GetSection("VoiceChat"));   // Посиденьки: голос (VoiceChat.cs)
+builder.Services.Configure<Hlechyky.Turn.TurnOptions>(cfg.GetSection("Turn"));   // вбудований ретранслятор голосу (Turn/TurnServer.cs)
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Paths.Resolve("data/keys")));
@@ -53,6 +54,8 @@ builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<Curfew>();      // нічний відбій для окремих гравців (Curfew.cs)
 builder.Services.AddSingleton<ChatFlood>();   // один лічильник флуду на Балачки, столи й агентів
 builder.Services.AddSingleton<VoiceChat>();   // Посиденьки: хто де говорить, листи між браузерами (VoiceChat.cs)
+builder.Services.AddSingleton<Hlechyky.Turn.TurnServer>();   // ретранслятор TURN: друзі за «сірим» NAT говорять через цей ПК
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Hlechyky.Turn.TurnServer>());
 builder.Services.AddSingleton<RadioEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioEngine>());
 builder.Services.AddSingleton<IOnAir>(sp => sp.GetRequiredService<RadioEngine>());

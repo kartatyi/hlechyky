@@ -247,3 +247,74 @@
   .pz { gap: 6px; }
   .pz-grid:not(.pz-g4) .pz-card { min-height: 45px; }
 }
+
+/* ---- Чат капітанів (записка #22) ----
+   Лише капітанам: польовим блок схований і порожній (реплік у їхньому виді нема). На широкій картці — колонка праворуч
+   від сітки, заввишки рівно як стіл (contain: size — власний вміст рядок не розпирає, плитки й поле підказки
+   лишаються на місці). На вузькій — шторка під полем: згорнута в один рядок, з кружечком непрочитаного. */
+.pz { container: pz / inline-size; }
+.pz-field { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.pz-cap {
+  display: flex; flex-direction: column; min-width: 0; border-radius: 12px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel2), var(--panel)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.pz-cap[hidden] { display: none; }
+.pz-chead {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 11px;
+  background: none; border: 0; box-shadow: none; border-radius: 12px; color: var(--text); text-align: left;
+}
+.pz-chead b { font-family: var(--display, inherit); font-size: .95em; white-space: nowrap; }
+.pz-cnote { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pz-cdot {
+  flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
+  background: var(--accent); color: var(--accent-ink); font-size: .74em; font-weight: 700; line-height: 1;
+}
+.pz-cdot[hidden] { display: none; }
+/* 🎖 у шапці картки — лише на вузькій картці (телефон) і лише капітанам: шторка чату там нижче керування. */
+.pz-cjump { flex: none; position: relative; display: none; padding: 4px 9px; font-size: 1.05em; line-height: 1.2; }
+.pz-cjump .pz-cdot { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; font-size: .62em; padding: 0 5px; }
+.pz-cap { scroll-margin-bottom: calc(var(--tabs-h, 0px) + 12px); }
+.pz-cchev { flex: none; font-style: normal; color: var(--muted); transition: transform .15s; }
+.pz-cap.open .pz-cchev { transform: rotate(180deg); }
+.pz-cbody { display: none; flex-direction: column; gap: 6px; padding: 0 8px 8px; min-height: 0; }
+.pz-cap.open .pz-cbody { display: flex; }
+.pz-clist {
+  display: flex; flex-direction: column; gap: 3px; overflow-y: auto; overscroll-behavior: contain;
+  max-height: min(30vh, 180px); font-size: .86em; line-height: 1.3; overflow-wrap: anywhere;
+}
+.pz-cl { padding: 3px 7px; border-radius: 8px; background: var(--bg2); }
+.pz-cl b { font-weight: 700; }
+.pz-cl.red b { color: var(--pz-red); }
+.pz-cl.blue b { color: var(--pz-blue); }
+.pz-cl.mine { background: var(--panel3); }
+.pz-cempty { padding: 2px 4px; line-height: 1.3; }
+.pz-csay { display: flex; gap: 5px; }
+.pz-csay[hidden] { display: none; }
+.pz-cin { flex: 1 1 0; min-width: 0; }
+.pz-csend { flex: none; padding: 4px 11px; }
+@media (pointer: coarse) {
+  .pz-chead { min-height: 44px; }
+  .pz-csend { min-width: 44px; min-height: 40px; }
+  .pz-cjump { min-width: 44px; min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { .pz-cchev { transition: none; } }
+
+/* Широка картка: чат колонкою праворуч від сітки, завжди розгорнутий; згортати там нічого. */
+@container pz (min-width: 820px) {
+  .pz-field:has(> .pz-cap:not([hidden])) {
+    display: grid; grid-template-columns: minmax(0, 1fr) clamp(220px, 26%, 300px); gap: 10px; align-items: stretch;
+  }
+  .pz-field > .pz-cap { contain: size; }
+  .pz-field > .pz-cap .pz-chead { cursor: default; pointer-events: none; }
+  .pz-field > .pz-cap .pz-cchev, .pz-field > .pz-cap .pz-cdot { display: none; }
+  .pz-field > .pz-cap .pz-cbody { display: flex; flex: 1 1 auto; }
+  .pz-field > .pz-cap .pz-clist { flex: 1 1 auto; min-height: 0; max-height: none; }
+}
+/* Вузька картка (телефон): шторка — під керуванням, а не між сіткою й полем підказки: капітанові число й «Сказати»
+   лишаються одразу під столом, а чат — нижче, перед «Як ішло». */
+@container pz (max-width: 819.98px) {
+  .pz-field { display: contents; }
+  .pz-has-cap .pz-cjump:not([hidden]) { display: inline-block; }
+  .pz-field > .pz-cap { order: 1; }
+  .pz > .pz-howto, .pz > .pz-logbox { order: 2; }
+}
