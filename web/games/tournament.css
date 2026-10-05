@@ -21,3 +21,14 @@
 .trresults { display: flex; flex-direction: column; gap: 4px; }
 .trres { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .trchamp { font-size: 1.6em; font-weight: 800; color: var(--accent); }
+
+/* Перерва між іграми: відлік до наступного столу — у панелі й смужкою просто на столі щойно дограної гри. */
+.trbreak { font-size: 1.05em; }
+.trsec { font-variant-numeric: tabular-nums; color: var(--accent); }
+.trnote { color: var(--warn, var(--accent)); }
+.trbar { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px;
+  padding: 8px 12px; border-radius: 10px; background: var(--bg2); box-shadow: 0 0 0 1px var(--accent2, var(--accent)) inset;
+  min-width: 0; max-width: 100%; box-sizing: border-box; }
+.trbarline { min-width: 0; overflow-wrap: anywhere; text-align: center; }
+.trbarscore, .trbarbtns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.trbarscore .chip.on { color: var(--accent); }

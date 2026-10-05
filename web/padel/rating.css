@@ -1,0 +1,38 @@
+/* Рейтинг — стилі вкладки (rating.js). */
+.rt-card { padding: 6px 10px; overflow-x: auto; }
+.rt-tbl tbody tr { cursor: pointer; }
+.rt-tbl tbody tr:hover td { background: var(--panel2); }
+.rt-tbl tr.me td { background: rgba(244,197,66,.08); }
+.rt-tbl td b { font-size: 16px; }
+.rt-who { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+.rt-title { font-size: 11.5px; font-weight: 700; color: var(--accent); padding-left: 30px; white-space: nowrap; }
+.rt-h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 20px 0 8px; font-weight: 800; }
+.rt-h3 .small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.rt-prov { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; }
+.rt-pv { display: inline-flex; align-items: center; gap: 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 2px 12px 2px 2px; color: var(--text); font-weight: 600; font-size: 14px; }
+.rt-pv:hover { border-color: var(--panel3); }
+.rt-chem { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.rt-chem .card + .card { margin-top: 0; }
+.rt-pair { display: flex; flex-direction: column; gap: 4px; }
+.rt-pair.top { border-color: var(--accent); }
+.rt-pair-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rt-pair-h > b:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-avs { display: inline-flex; flex: none; }
+.rt-avs .av + .av { margin-left: -7px; }
+.rt-pct { font-size: 20px; }
+.rt-bar { height: 6px; border-radius: 3px; background: var(--panel3); overflow: hidden; margin-top: 4px; }
+.rt-bar i { display: block; height: 100%; background: var(--ok); }
+.rt-back { margin-bottom: 10px; }
+@media (max-width: 640px) {
+  .rt-w { display: none; }
+  .rt-card { padding: 4px 6px; }
+  .rt-tbl { font-size: 13.5px; }
+  .rt-tbl .pp span { max-width: 120px; }
+}
+/* вузький телефон: «7 дн» ховаємо, звання переноситься під ім'я — рейтинг видно завжди, без прокрутки вбік */
+@media (max-width: 420px) {
+  .rt-d { display: none; }
+  .rt-title { white-space: normal; padding-left: 0; }
+  .rt-tbl td, .rt-tbl th { padding-left: 3px; padding-right: 3px; }
+}

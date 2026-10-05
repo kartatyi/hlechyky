@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1f18">
+<title>Падельня · Глечики</title>
+<meta name="description" content="Падельня Глечиків: табло для падела, турніри американо й мексикано, збори на гру, хто кому скільки за корт.">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/padel/padel.css">
+<link rel="stylesheet" href="/padel/board.css">
+<link rel="stylesheet" href="/padel/tour.css">
+<link rel="stylesheet" href="/padel/gather.css">
+<link rel="stylesheet" href="/padel/money.css">
+<link rel="stylesheet" href="/padel/rating.css">
+<link rel="stylesheet" href="/padel/me.css">
+</head>
+<body>
+<header class="pd-top">
+  <a class="pd-back" href="/" title="На головну Глечиків">←</a>
+  <a class="pd-brand" href="#board"><span class="pd-logo">🍳</span><b>Падельня</b></a>
+  <span class="pd-grow"></span>
+  <span class="pd-net" id="pdNet" hidden title="Нема зв'язку з сервером — перепідключаюсь">⚠ зв'язок</span>
+  <a class="pd-me" id="pdMe" href="#me"></a>
+</header>
+<nav class="pd-tabs" id="pdTabs"></nav>
+<main class="pd-main" id="pdMain"></main>
+<div class="pd-toast" id="pdToast"></div>
+<script src="/static/signalr.min.js"></script>
+<script src="/padel/padel.js"></script>
+<!-- Вкладки: кожен файл реєструє свою через Padel.tab({...}); порядок у меню — за order -->
+<script src="/padel/board.js"></script>
+<script src="/padel/tour.js"></script>
+<script src="/padel/gather.js"></script>
+<script src="/padel/money.js"></script>
+<script src="/padel/rating.js"></script>
+<script src="/padel/me.js"></script>
+<script>Padel.start();</script>
+</body>
+</html>

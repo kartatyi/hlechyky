@@ -2,6 +2,7 @@
 using Hlechyky.Games;
 using Hlechyky.Games.Economy;
 using Hlechyky.Mcp;
+using Hlechyky.Padel;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -74,6 +75,7 @@ builder.Services.AddHlechykyWords();
 builder.Services.AddHlechykyMcp();   // аі-агенти за столом: POST /mcp
 builder.Services.AddHlechykyFeedback();   // «💡 Розробнику»: пропозиції й баги (Feedback.cs)
 builder.Services.AddHlechykyLavka();      // «Лавка Дядька Глека»: вигляд профілю, подарунки, присвята й феєрверк (Lavka.cs)
+builder.Services.AddHlechykyPadel(cfg);  // «Падельня»: табло, турніри, збори, гроші за корт, рейтинг (Padel/)
 
 var port = cfg.GetValue<int?>("Site:ListenPort") ?? 8080;
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(port));
@@ -107,6 +109,7 @@ app.MapHlechykyEconomy();
 app.MapHlechykyMcp();
 app.MapHlechykyFeedback();
 app.MapHlechykyLavka();
+app.MapHlechykyPadel();
 app.MapFront();    // відбиток web/: відкрита сторінка сама бачить, що після деплою змінилось (Front.cs)
 app.MapHub<RadioHub>("/hub");
 app.Run();

@@ -583,6 +583,30 @@ public class PozyvniTests
     }
 
     [Fact]
+    public void While_the_line_up_can_still_change_even_a_captain_does_not_see_the_key()
+    {
+        var h = Setup();
+
+        // «Я капітан» — глянути розклад — назад у поле: так не вийде, бо розкладу ще нема ні в кого.
+        Assert.True(h.Act(2, "boss").Ok);
+        foreach (var seat in new int?[] { 0, 1, 2, 3, null })
+            Assert.Equal(JsonValueKind.Null, h.View(seat).GetProperty("key").ValueKind);
+
+        Assert.True(h.Act(0, "go").Ok);
+        Assert.Equal(Pozyvni.Cards, h.View(Boss(h, "red")).GetProperty("key").GetArrayLength());
+    }
+
+    [Fact]
+    public void In_coop_the_captain_also_waits_for_the_start_to_see_the_key()
+    {
+        var h = Setup(nicks: 3);
+
+        Assert.Equal(JsonValueKind.Null, h.View(Boss(h, "red")).GetProperty("key").ValueKind);
+        h.Tick(SetupTicks);
+        Assert.Equal(Pozyvni.Cards, h.View(Boss(h, "red")).GetProperty("key").GetArrayLength());
+    }
+
+    [Fact]
     public void When_the_game_is_over_everybody_sees_the_key()
     {
         var h = Table();
@@ -951,6 +975,196 @@ public class PozyvniTests
         Assert.Equal("coop", h.View(null).GetProperty("mode").GetString());
         Assert.Equal("red", Side(h));
         Assert.NotEqual(captain, h.NickOf(Boss(h, "red")));
+    }
+
+    // ---------------------------------------------------------------- чат капітанів (записка #22)
+
+    static ActResult Whisper(RoomHarness h, int seat, string text) => h.Act(seat, "cchat", new { text });
+
+    /// <summary>Чат капітанів очима місця: тексти реплік; null — чату в його виді нема взагалі.</summary>
+    static string[]? CaptainChat(RoomHarness h, int? seat)
+    {
+        var c = h.View(seat).GetProperty("cchat");
+        return c.ValueKind == JsonValueKind.Null ? null : [.. c.EnumerateArray().Select(e => e.GetProperty("text").GetString()!)];
+    }
+
+    [Fact]
+    public void Captains_chat_reaches_both_captains_and_nobody_else()
+    {
+        var h = Table(nicks: 6);
+        int red = Boss(h, "red"), blue = Boss(h, "blue");
+        Assert.True(Whisper(h, red, "ну що, синенькі, тремтите?").Ok);
+        Assert.True(Whisper(h, blue, "у мене тут чорне під боком, не радій").Ok);
+
+        foreach (var boss in new[] { red, blue })
+            Assert.Equal(["ну що, синенькі, тремтите?", "у мене тут чорне під боком, не радій"], CaptainChat(h, boss)!);
+        // Кожне інше місце і глядач: ні поля з репліками, ні самих слів ніде у виді.
+        foreach (int? seat in new int?[] { 0, 1, 2, 3, 4, 5, null }.Where(s => s != red && s != blue))
+        {
+            Assert.Null(CaptainChat(h, seat));
+            var raw = h.View(seat).GetRawText();
+            Assert.DoesNotContain("тремтите", raw);
+            Assert.DoesNotContain("чорне під боком", raw);
+        }
+    }
+
+    [Fact]
+    public void A_captains_line_carries_who_said_it_and_from_which_side()
+    {
+        var h = Table();
+        var red = Boss(h, "red");
+        Assert.True(Whisper(h, red, "привіт").Ok);
+
+        var line = h.View(red).GetProperty("cchat")[0];
+        Assert.Equal(red, line.GetProperty("seat").GetInt32());
+        Assert.Equal("red", line.GetProperty("side").GetString());
+        Assert.Equal(h.NickOf(red), line.GetProperty("nick").GetString());
+        Assert.Equal(1, line.GetProperty("n").GetInt64());
+    }
+
+    [Fact]
+    public void Only_a_captain_writes_to_the_captains_chat()
+    {
+        var h = Table();
+        var field = Field(h, "red");
+        var before = h.View(Boss(h, "red")).GetRawText();
+
+        var r = Whisper(h, field, "а що там у вас?");
+
+        Assert.False(r.Ok);
+        Assert.Contains("чат капітанів", r.Message);
+        Assert.Equal(before, h.View(Boss(h, "red")).GetRawText());
+        Assert.Empty(CaptainChat(h, Boss(h, "blue"))!);
+    }
+
+    [Fact]
+    public void Captains_chat_is_closed_while_the_teams_are_being_picked()
+    {
+        var h = Setup();
+        var boss = Boss(h, "red");
+
+        Assert.False(Whisper(h, boss, "я вже капітан").Ok);
+        // «Я капітан» у фазі складу натиснути може будь-хто — тож і чату там нема ні в кого.
+        for (var seat = 0; seat < 4; seat++) Assert.Null(CaptainChat(h, seat));
+
+        Assert.True(h.Act(0, "go").Ok);
+        Assert.True(Whisper(h, Boss(h, "red"), "тепер можна").Ok);
+    }
+
+    [Fact]
+    public void Together_against_the_table_there_is_no_captains_chat()
+    {
+        var h = Table(nicks: 3);
+        var boss = Boss(h, "red");
+
+        var r = Whisper(h, boss, "агов");
+
+        Assert.False(r.Ok);
+        for (var seat = 0; seat < 3; seat++) Assert.Null(CaptainChat(h, seat));
+    }
+
+    [Fact]
+    public void Captains_chat_takes_two_hundred_characters_and_not_one_more()
+    {
+        var h = Table();
+        var boss = Boss(h, "red");
+
+        Assert.True(Whisper(h, boss, new string('а', Pozyvni.CaptainChatMax)).Ok);
+        var r = Whisper(h, boss, new string('б', Pozyvni.CaptainChatMax + 1));
+        Assert.False(r.Ok);
+        Assert.Contains("Задовго", r.Message);
+        Assert.False(Whisper(h, boss, "").Ok);
+        Assert.False(Whisper(h, boss, "  \n\t ").Ok);
+        Assert.False(h.Act(boss, "cchat", new { }).Ok);
+
+        Assert.Single(CaptainChat(h, boss)!);
+    }
+
+    [Fact]
+    public void A_captains_line_is_one_line()
+    {
+        var h = Table();
+        var boss = Boss(h, "red");
+
+        Assert.True(Whisper(h, boss, "  перший\n\nрядок\t і   далі \u0007 ").Ok);
+
+        Assert.Equal(["перший рядок і далі"], CaptainChat(h, boss)!);
+    }
+
+    [Fact]
+    public void Captains_chat_refuses_a_flood_and_lets_go_after_a_pause()
+    {
+        var h = Table();
+        int red = Boss(h, "red"), blue = Boss(h, "blue");
+        for (var i = 0; i < Pozyvni.CaptainChatBurst; i++) Assert.True(Whisper(h, red, $"раз {i}").Ok);
+
+        var r = Whisper(h, red, "і ще");
+        Assert.False(r.Ok);
+        Assert.Contains("Не так часто", r.Message);
+        // Ліміт — свій у кожного: суперник відповісти може.
+        Assert.True(Whisper(h, blue, "та заспокойся").Ok);
+
+        h.Clock.AdvanceMs(Pozyvni.CaptainChatWindowMs);
+        Assert.True(Whisper(h, red, "і ще").Ok);
+        Assert.Equal(Pozyvni.CaptainChatBurst + 2, CaptainChat(h, red)!.Length);
+    }
+
+    [Fact]
+    public void Captains_chat_keeps_only_the_last_fifty_lines()
+    {
+        var h = Table();
+        int red = Boss(h, "red"), blue = Boss(h, "blue");
+        for (var i = 1; i <= Pozyvni.CaptainChatKeep + 10; i++)
+        {
+            Assert.True(Whisper(h, i % 2 == 0 ? red : blue, $"репліка {i}").Ok);
+            h.Clock.AdvanceMs(Pozyvni.CaptainChatWindowMs / Pozyvni.CaptainChatBurst);
+        }
+
+        var chat = CaptainChat(h, red)!;
+        Assert.Equal(Pozyvni.CaptainChatKeep, chat.Length);
+        Assert.Equal("репліка 11", chat[0]);
+        Assert.Equal($"репліка {Pozyvni.CaptainChatKeep + 10}", chat[^1]);
+        Assert.Equal(Pozyvni.CaptainChatKeep + 10, h.View(red).GetProperty("cchat")[Pozyvni.CaptainChatKeep - 1].GetProperty("n").GetInt64());
+    }
+
+    [Fact]
+    public void A_new_captain_sees_what_was_said_before_and_the_old_one_does_not_write_any_more()
+    {
+        var h = Table(nicks: 6);
+        var side = Side(h);
+        var boss = Boss(h, side);
+        Assert.True(Whisper(h, boss, "я тут ненадовго").Ok);
+
+        h.Leave(h.NickOf(boss));
+
+        var heir = Boss(h, side);
+        Assert.NotEqual(boss, heir);
+        Assert.Equal(["я тут ненадовго"], CaptainChat(h, heir)!);
+        Assert.True(Whisper(h, heir, "тепер я").Ok);
+    }
+
+    [Fact]
+    public void Captains_chat_stays_between_captains_after_the_end_and_is_gone_in_the_next_game()
+    {
+        var big = Words(Enumerable.Range(1, 60).Select(i => $"глечик{i:00}"));
+        var h = Table(words: big);
+        int red = Boss(h, "red"), blue = Boss(h, "blue");
+        Assert.True(Whisper(h, red, "зараз вони тицьнуть у чорне").Ok);
+        Assert.True(Clue(h, count: 1).Ok);
+        Assert.True(Pick(h, "black").Ok);
+        Assert.Equal("done", Phase(h));
+
+        // Розклад після кінця відкритий усім, а розмова капітанів — ні.
+        Assert.Equal(["зараз вони тицьнуть у чорне"], CaptainChat(h, red)!);
+        Assert.Null(CaptainChat(h, Field(h, "red")));
+        Assert.Null(CaptainChat(h, Field(h, "blue")));
+        Assert.Null(CaptainChat(h, null));
+        Assert.DoesNotContain("тицьнуть", h.View(null).GetRawText());
+
+        Assert.True(h.Rematch().Ok);
+        Assert.True(h.Act(0, "go").Ok);
+        Assert.Empty(CaptainChat(h, Boss(h, "red"))!);
+        Assert.Empty(CaptainChat(h, Boss(h, "blue"))!);
     }
 }
 

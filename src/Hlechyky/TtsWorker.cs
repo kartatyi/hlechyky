@@ -18,7 +18,7 @@ public sealed class EdgeWorker : IDisposable
     public const string FileName = "edge-worker.py";
 
     public const string Script = """
-        # Живий edge-tts для «Своєї гри» й «Дотепів»: один процес, імпорт — один раз. Запит — рядок JSON у stdin
+        # Живий edge-tts для «Своєї гри» й «Додепів»: один процес, імпорт — один раз. Запит — рядок JSON у stdin
         # {"voice", "rate", "text", "out"}, відповідь — рядок JSON {"ok": true} або {"ok": false, "err": "..."}.
         # stdin закрився (сервер зупинився чи впав) — виходимо. Файл пише сервер (src/Hlechyky/TtsWorker.cs) — правити там.
         import asyncio, json, sys

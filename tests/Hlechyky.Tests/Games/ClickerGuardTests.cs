@@ -525,39 +525,125 @@ public class ClickerGuardTests
 
     static DateTimeOffset FairUntil(RoomHarness h) => View(h).GetProperty("fair").GetProperty("until").GetDateTimeOffset();
     static DateTimeOffset InspireUntil(RoomHarness h) => View(h).GetProperty("inspire").GetProperty("until").GetDateTimeOffset();
+    static TimeSpan FairHeld(RoomHarness h) => TimeSpan.FromSeconds(View(h).GetProperty("fair").GetProperty("held").GetDouble());
+    static TimeSpan InspireHeld(RoomHarness h) => TimeSpan.FromSeconds(View(h).GetProperty("inspire").GetProperty("held").GetDouble());
+    static readonly TimeSpan Extra = Clicker.EyeBonusExtra;
+    static TimeSpan Sec(int s) => TimeSpan.FromSeconds(s);
 
     [Fact]
-    public void The_fair_does_not_hold_the_master_but_gets_ten_seconds_back_once_per_shelf()
+    public void The_fair_does_not_hold_the_master_but_waits_under_the_shelf_with_ten_seconds_once_per_shelf()
     {
         var h = Wheel();
         LeftBeforeCheck(h, 1);
-        var until = h.Clock.UtcNow + TimeSpan.FromSeconds(30);
-        Patch(h, s => s["fairUntil"] = until.ToString("O"));
+        Patch(h, s => s["fairUntil"] = (h.Clock.UtcNow + Sec(30)).ToString("O"));
 
         Human(h);
         Assert.False(Free(h));
         Assert.Equal(12 * 7, Pots(h));                   // пачка, що довела до перевірки, ще під ярмарком
-        Assert.Equal(until + Clicker.EyeBonusExtra, FairUntil(h));
+        // Під полицею ярмарок стоїть: увесь залишок і десять секунд зверху чекають відповіді.
+        Assert.Equal(Sec(30) + Extra, FairHeld(h));
+        Assert.True(FairUntil(h) <= h.Clock.UtcNow);
 
         // Промах — нова полиця, але не нові секунди: мазати заради ярмарку нема сенсу.
         PotterHands.Miss(h);
-        Assert.Equal(until + Clicker.EyeBonusExtra, FairUntil(h));
+        Assert.Equal(Sec(30) + Extra, FairHeld(h));
     }
 
+    /// <summary>
+    /// Записка #18 (Smaug, 30.09): «коли падає капча на розв'язання, скидаються бусти розписних глеків». Натхнення —
+    /// двадцять секунд, полиця з кнопкою й пошуком глечиків — стільки ж, і після «кивнув» бафа вже не було.
+    /// </summary>
     [Fact]
-    public void A_shelf_for_the_handwriting_gives_inspiration_its_ten_seconds_too()
+    public void A_fair_and_inspiration_wait_while_the_shelf_hangs_and_run_on_from_the_same_seconds()
     {
         var h = Wheel();
-        var until = h.Clock.UtcNow + TimeSpan.FromSeconds(60);
-        Patch(h, s => s["inspireUntil"] = until.ToString("O"));
+        LeftBeforeCheck(h, 1);
+        var start = h.Clock.UtcNow;
+        Patch(h, s =>
+        {
+            s["fairUntil"] = (start + Sec(40)).ToString("O");
+            s["inspireUntil"] = (start + Sec(15)).ToString("O");
+        });
+        h.Clock.Advance(5);                              // ярмаркові лишилось 35 с, натхненню — 10
+        Human(h);
+        Assert.False(Free(h));
 
-        CatchRobot(h);
-        Assert.Equal("rhythm", Guard(h).GetProperty("why").GetString());
-        Assert.Equal(until + Clicker.EyeBonusExtra, InspireUntil(h));
+        // Гончар шукає глечики дві хвилини (і раз промахується) — довше за обидва бафи разом.
+        h.Clock.Advance(60);
+        PotterHands.Miss(h);
+        h.Clock.Advance(60);
+        Assert.Equal(Sec(35) + Extra, FairHeld(h));
+        Assert.Equal(Sec(10) + Extra, InspireHeld(h));
+
+        Assert.True(PotterHands.Pass(h).Ok);
+        var now = h.Clock.UtcNow;
+        Assert.Equal(now + Sec(35) + Extra, FairUntil(h));
+        Assert.Equal(now + Sec(10) + Extra, InspireUntil(h));
+        Assert.Equal(TimeSpan.Zero, FairHeld(h));
+        Assert.Equal(TimeSpan.Zero, InspireHeld(h));
+
+        // І бафи справді діють: дванадцять кліків — ×25 натхнення і ×7 ярмарку.
+        var before = Pots(h);
+        Human(h);
+        Assert.Equal(12 * 25 * 7, Pots(h) - before);
     }
 
     [Fact]
-    public void A_caught_fair_does_not_hide_a_due_master_and_runs_ten_seconds_longer()
+    public void Under_the_shelf_the_passive_goes_without_the_fair_so_leaving_it_unanswered_keeps_nothing()
+    {
+        var h = Wheel();
+        Patch(h, s => s["upgrades"]!["apprentice"] = 10);   // 5 глеків за секунду
+        LeftBeforeCheck(h, 1);
+        Patch(h, s => s["fairUntil"] = (h.Clock.UtcNow + Sec(30)).ToString("O"));
+        Human(h);
+        Assert.False(Free(h));
+
+        var before = Pots(h);
+        h.Clock.Advance(20);
+        Assert.Equal(5 * 20, Pots(h) - before);          // ярмарок чекає, а не множить: без ×7
+
+        PotterHands.Pass(h);
+        before = Pots(h);
+        h.Clock.Advance(10);
+        Assert.Equal(5 * 7 * 10, Pots(h) - before);      // відповів — і ×7 знову йде
+    }
+
+    [Fact]
+    public void Three_misses_stop_the_wheel_and_the_waiting_fair_runs_on_under_the_pause_from_what_was_left()
+    {
+        var h = Wheel();
+        LeftBeforeCheck(h, 1);
+        Patch(h, s => s["fairUntil"] = (h.Clock.UtcNow + Sec(50)).ToString("O"));
+        Human(h);
+        h.Clock.Advance(30);
+        for (var i = 0; i < MaxMisses; i++) PotterHands.Miss(h);
+        Assert.Equal(h.Clock.UtcNow + LockFor, Guard(h).GetProperty("lockUntil").GetDateTimeOffset());
+
+        // Пауза — кара, під нею ярмарок тане, як і танув, але з того, що лишалось, а не з нуля.
+        Assert.Equal(h.Clock.UtcNow + Sec(50) + Extra, FairUntil(h));
+        Assert.Equal(TimeSpan.Zero, FairHeld(h));
+        h.Clock.Advance((int)LockFor.TotalSeconds);
+        Assert.True(FairUntil(h) < h.Clock.UtcNow);
+    }
+
+    [Fact]
+    public void A_shelf_for_the_handwriting_holds_inspiration_too()
+    {
+        var h = Wheel();
+        var start = h.Clock.UtcNow;
+        Patch(h, s => s["inspireUntil"] = (start + Sec(60)).ToString("O"));
+
+        CatchRobot(h);                                   // суд — на третій пачці, тобто через дві секунди
+        Assert.Equal("rhythm", Guard(h).GetProperty("why").GetString());
+        Assert.Equal(Sec(58) + Extra, InspireHeld(h));
+
+        h.Clock.Advance(30);
+        Assert.True(PotterHands.Pass(h).Ok);
+        Assert.Equal(h.Clock.UtcNow + Sec(58) + Extra, InspireUntil(h));
+    }
+
+    [Fact]
+    public void A_caught_fair_does_not_hide_a_due_master_and_waits_for_the_answer_ten_seconds_longer()
     {
         var h = Wheel();
         LeftBeforeCheck(h, 1);
@@ -568,9 +654,40 @@ public class ClickerGuardTests
         });
 
         var r = h.Act(0, "catch");
-        Assert.EndsWith("· 👁 майстер хоче глянути на твої руки (🎪 +10 с)", r.Message);
+        Assert.EndsWith("· 👁 майстер хоче глянути на твої руки (🎪 чекає, +10 с)", r.Message);
         Assert.False(Free(h));
-        Assert.Equal(h.Clock.UtcNow + Clicker.FairFor + Clicker.EyeBonusExtra, FairUntil(h));
+        Assert.Equal(Clicker.FairFor + Extra, FairHeld(h));
+
+        h.Clock.Advance(25);
+        Assert.True(PotterHands.Pass(h).Ok);
+        Assert.Equal(h.Clock.UtcNow + Clicker.FairFor + Extra, FairUntil(h));
+    }
+
+    [Fact]
+    public void Waiting_seconds_survive_F5_and_an_old_save_reads_as_nothing_waiting()
+    {
+        var h = Wheel();
+        LeftBeforeCheck(h, 1);
+        Patch(h, s => s["fairUntil"] = (h.Clock.UtcNow + Sec(30)).ToString("O"));
+        Human(h);
+        Patch(h, _ => { });                              // F5: збереження й назад
+        Assert.False(Free(h));
+        Assert.Equal(Sec(30) + Extra, FairHeld(h));
+
+        // Полиці раптом нема (зіпсований ключ у базі) — ярмарок не висить вічно, а йде далі від «зараз».
+        h.Clock.Advance(7);
+        Patch(h, s => s["guard"]!["shelf"] = "зіпсовано");
+        Assert.True(Free(h));
+        Assert.Equal(h.Clock.UtcNow + Sec(30) + Extra, FairUntil(h));
+        Assert.Equal(TimeSpan.Zero, FairHeld(h));
+
+        // Збереження з часів до 05.10 цих полів не має: нічого не чекає, ярмарок такий, як лежав.
+        var old = Wheel("Мирко");
+        var until = old.Clock.UtcNow + Sec(30);
+        Patch(old, s => { s.Remove("fairHeld"); s.Remove("inspireHeld"); s["fairUntil"] = until.ToString("O"); });
+        Assert.Equal(TimeSpan.Zero, FairHeld(old));
+        Assert.Equal(TimeSpan.Zero, InspireHeld(old));
+        Assert.Equal(until, FairUntil(old));
     }
 
     [Fact]

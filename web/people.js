@@ -62,11 +62,14 @@
   /// Кружечок аватарки з вигляду l: фото (рамка — поверх, значок — маленьким кружечком у куточку), значок або перша
   /// літера ніка («гість Вася» — це «В», а не «Г»). who — нік для data-ava: за ним Лавка перемальовує аватарку на льоту
   /// (без нього — вітрина: «як виглядав би», перемальовувати нема чого).
+  /// Клас blank — без літери: порожній кружечок у кольорі ніка (стос слухачів у шапці, там імена — у підказці).
+  /// Лавка перемальовує з тими самими класами, тож порожнім він лишається й після перевдягання.
   function avaHtml(nick, l, cls, id, who) {
     const n = String(nick || '').replace(/^гість\s+/i, '').trim();
     const ph = l && l.photo;
+    const blank = /(^|\s)blank(\s|$)/.test(cls || '');
     const ch = ph ? photoImg(ph) + (l.icon ? '<i class="ava-ic">' + emo(l.icon) + '</i>' : '')
-      : l && l.icon ? emo(l.icon) : esc(n ? [...n][0].toUpperCase() : '?');
+      : l && l.icon ? emo(l.icon) : blank ? '' : esc(n ? [...n][0].toUpperCase() : '?');
     const h = l && typeof l.color === 'number' ? l.color : hueRaw(nick);
     return '<span' + (id ? ' id="' + id + '"' : '') + ' class="' + (cls || 'ava') + (ph ? ' ph' : l && l.icon ? ' ico' : '')
       + (l && l.frame ? ' fr fr-' + esc(l.frame) : '') + (l && l.color === 'rainbow' ? ' rainbow' : '') + '"'

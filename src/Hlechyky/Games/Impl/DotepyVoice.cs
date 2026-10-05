@@ -7,7 +7,7 @@ namespace Hlechyky.Games.Impl;
 public sealed record DotepyClip(string Url, double Seconds);
 
 /// <summary>
-/// Голос ведучого «Дотепів» (specs/dotepy.md §6). Гра лише питає <see cref="Ready"/> і ставить у чергу
+/// Голос ведучого «Додепів» (specs/dotepy.md §6). Гра лише питає <see cref="Ready"/> і ставить у чергу
 /// <see cref="Prepare"/> — обидва не чекають нічого, крім словника в пам'яті: озвучка йде фоном, поза замком кімнати.
 /// </summary>
 public interface IDotepyVoice
@@ -201,21 +201,21 @@ public sealed class DotepyNoVoice : IDotepyVoice
 /// </summary>
 public static class DotepyLines
 {
-    public const string Round1 = "Раунд перший. Пишіть дотепи!";
+    public const string Round1 = "Раунд перший. Пишіть додепи!";
     public const string Round2 = "Раунд другий. Кожен голос — подвійний!";
-    public const string FinalThree = "Останній дотеп! Одне завдання — на всіх, у кожного три голоси.";
-    public const string FinalTwo = "Останній дотеп! Одне завдання — на всіх, у кожного два голоси.";
+    public const string FinalThree = "Останній додеп! Одне завдання — на всіх, у кожного три голоси.";
+    public const string FinalTwo = "Останній додеп! Одне завдання — на всіх, у кожного два голоси.";
     public const string Tie = "Порівну. Публіка розділилась.";
     public const string Silence = "Ніхто не проголосував. Буває.";
     public const string StockWin = "Публіка обрала мовчання. Очок за це не дають.";
-    public const string GameTie = "Нагорі нічия. Дотепні всі!";
-    /// <summary>Дограли, а очок ні в кого (усі мовчали) — «Дотепні всі!» тут звучало б як знущання.</summary>
+    public const string GameTie = "Нагорі нічия. Додепні всі!";
+    /// <summary>Дограли, а очок ні в кого (усі мовчали) — «Додепні всі!» тут звучало б як знущання.</summary>
     public const string GameNone = "Нуль очок на всіх. Глек чекає реваншу!";
     public const string Gone = "Замало гравців — партію не дограли. Приходьте ще!";
 
     public static string Win(string nick) => $"Картку забирає {nick}.";
     public static string Sweep(string nick) => $"Розгром! Усі голоси — {nick}!";
-    public static string FinalWin(string nick) => $"Останній дотеп забирає {nick}!";
+    public static string FinalWin(string nick) => $"Останній додеп забирає {nick}!";
     public static string GameWin(string nick) => $"Перемагає {nick}!";
 
     /// <summary>Вступ раунду: перший, другий чи фінал (на трьох у фіналі — два голоси, не три).</summary>

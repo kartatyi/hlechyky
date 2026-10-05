@@ -119,6 +119,27 @@ public sealed class Pozyvni : Game
     object? _result;
     bool _viewDirty;
 
+    // ---------- чат капітанів (записка #22) ----------
+    /// <summary>Скільки останніх реплік чату капітанів тримаємо: партія коротка, а вид капітана летить на кожну подію.</summary>
+    public const int CaptainChatKeep = 50;
+    /// <summary>Найдовша репліка: підколоти суперника — так, переписати сюди підказку на півекрана — ні.</summary>
+    public const int CaptainChatMax = 200;
+    /// <summary>Антиспам: не більше стількох реплік від одного капітана за <see cref="CaptainChatWindowMs"/>.</summary>
+    public const int CaptainChatBurst = 5;
+    public const int CaptainChatWindowMs = 10_000;
+    /// <summary>
+    /// Чат капітанів: обидва знають розклад, тож їм є що обговорити й чим підколоти одне одного. Живе в стані гри, а
+    /// не в балачці столу — та йде всім за столом і глядачам, а сюди не має зазирнути ніхто, крім двох капітанів.
+    /// Очищується на старті кожної партії.
+    /// </summary>
+    readonly List<CaptainLine> _cchat = [];
+    /// <summary>Наскрізний номер репліки: клієнт за ним рахує непрочитане й не плутає старе з новим.</summary>
+    long _cchatSeq;
+    /// <summary>Місце → коли писало останні репліки (для антиспаму).</summary>
+    readonly Dictionary<int, List<DateTimeOffset>> _cchatAt = [];
+
+    sealed record CaptainLine(long N, int Seat, string Side, string Nick, string Text);
+
     // =========================================================================================
     // Налаштування і старт
     // =========================================================================================
@@ -152,6 +173,9 @@ public sealed class Pozyvni : Game
         _taken = 0;
         _fingers.Clear();
         _log.Clear();
+        // Нова партія — нова розмова: розклад інший, і підколки про минулий нікому вже не потрібні.
+        _cchat.Clear();
+        _cchatAt.Clear();
         if (_board.Length != _cards) { _board = new string[_cards]; _key = new string[_cards]; _open = new bool[_cards]; }
         Array.Clear(_open);
 
@@ -252,8 +276,50 @@ public sealed class Pozyvni : Game
             "clue" => GiveClue(seat, payload),
             "pick" => Pick(seat, payload),
             "pass" => Pass(seat),
+            "cchat" => CaptainSay(seat, payload),
             _ => ActResult.Fail("Тут так не ходять"),
         };
+    }
+
+    /// <summary>
+    /// Репліка в чат капітанів. Писати може лише той, хто капітан зараз, і лише коли капітани вже відомі (після
+    /// фази складу: там «Я капітан» може натиснути будь-хто). У «Разом проти столу» капітан один — говорити нема з ким.
+    /// </summary>
+    ActResult CaptainSay(int seat, JsonElement payload)
+    {
+        if (_coop) return ActResult.Fail("Тут капітан один — шепотітись нема з ким");
+        if (_phase == Setup) return ActResult.Fail("Капітани ще не відомі — чат відкриється, щойно почнеться партія");
+        if (!IsBoss(seat)) return ActResult.Fail("Це чат капітанів");
+
+        var text = CleanChat(Str(payload, "text"));
+        if (text.Length == 0) return ActResult.Fail("Порожнє нікому не цікаво");
+        if (text.Length > CaptainChatMax) return ActResult.Fail($"Задовго — до {CaptainChatMax} знаків");
+
+        var now = Now;
+        if (!_cchatAt.TryGetValue(seat, out var times)) _cchatAt[seat] = times = [];
+        times.RemoveAll(t => now - t >= TimeSpan.FromMilliseconds(CaptainChatWindowMs));
+        if (times.Count >= CaptainChatBurst) return ActResult.Fail("Не так часто — дай суперникові відповісти");
+        times.Add(now);
+
+        _cchat.Add(new CaptainLine(++_cchatSeq, seat, _side[seat]!, Ctx.NickOf(seat) ?? $"гравець {seat + 1}", text));
+        if (_cchat.Count > CaptainChatKeep) _cchat.RemoveRange(0, _cchat.Count - CaptainChatKeep);
+        _viewDirty = true;
+        return ActResult.Done;
+    }
+
+    /// <summary>Один рядок: переноси й керівні символи — пробілами, кілька пробілів поспіль — одним.</summary>
+    static string CleanChat(string raw)
+    {
+        var sb = new System.Text.StringBuilder(Math.Min(raw.Length, CaptainChatMax + 1));
+        var space = false;
+        foreach (var c in raw)
+        {
+            if (char.IsWhiteSpace(c) || char.IsControl(c)) { space = sb.Length > 0; continue; }
+            if (space) { sb.Append(' '); space = false; }
+            sb.Append(c);
+            if (sb.Length > CaptainChatMax) break;   // далі однаково відмова «задовго», рахувати решту нема чого
+        }
+        return sb.ToString();
     }
 
     ActResult JoinTeam(int seat, JsonElement payload)
@@ -641,8 +707,21 @@ public sealed class Pozyvni : Game
         _viewDirty = true;
     }
 
-    /// <summary>Розклад бачать лише капітани — і всі, коли партія скінчилась.</summary>
-    bool KnowsKey(int? seat) => _phase == Done || (seat is { } s && s >= 0 && s < Seats && IsBoss(s));
+    /// <summary>
+    /// Розклад бачать лише капітани — і всі, коли партія скінчилась. У фазі складу — ніхто: інакше можна
+    /// натиснути «Я капітан», глянути розклад і перейти назад у поле вже з ним у голові.
+    /// </summary>
+    bool KnowsKey(int? seat) => _phase == Done || (_phase != Setup && seat is { } s && s >= 0 && s < Seats && IsBoss(s));
+
+    /// <summary>
+    /// Чат капітанів бачать лише ті, хто капітан зараз, — і ніколи польові й глядачі, навіть після кінця партії, коли
+    /// розклад відкривається всім: розмова лишається між двома. Новий капітан (старий устав із-за столу) бачить усю
+    /// розмову партії. У фазі складу й у кооперативі чату нема зовсім.
+    /// </summary>
+    object[]? CaptainChatFor(int? seat) =>
+        !_coop && _phase != Setup && seat is { } s && s >= 0 && s < Seats && IsBoss(s)
+            ? [.. _cchat.Select(l => new { n = l.N, seat = l.Seat, side = l.Side, nick = l.Nick, text = l.Text })]
+            : null;
 
     /// <summary>
     /// Голос столу (Посиденьки): капітан мовчить, поки ходить його команда (думає над підказкою чи команда шукає
@@ -663,7 +742,9 @@ public sealed class Pozyvni : Game
             .Select(i => new { w = _board[i] ?? "", open = _open[i] ? _key[i] : null })
             .ToArray(),
         key = KnowsKey(seat) ? (string[])_key.Clone() : null,
-        clue = _clue is { } c ? new { word = c.Word, count = c.Count, left = c.Left } : null,
+        // чат капітанів: лише капітанам, null — усім іншим (польовим, глядачам), як і key
+        cchat = CaptainChatFor(seat),
+        clue =_clue is { } c ? new { word = c.Word, count = c.Count, left = c.Left } : null,
         // Хто на що показує: картка → місця. Публічно, як підняті руки за столом.
         fingers = _fingers.GroupBy(f => f.Value).ToDictionary(g => g.Key.ToString(), g => g.Select(f => f.Key).Order().ToArray()),
         teams = new

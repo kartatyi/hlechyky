@@ -1,5 +1,5 @@
 /*
-  «Дотепи» — Quiplash по-нашому (specs/dotepy.md). Клієнт нічого не вирішує: фази, час, голоси й очки живуть на
+  «Додепи» — Quiplash по-нашому (specs/dotepy.md). Клієнт нічого не вирішує: фази, час, голоси й очки живуть на
   сервері (Impl/Dotepy.cs), модуль лише малює те, що прийшло, і шле наміри.
 
   Вид (подія 'room', свій для кожного місця — гра Hidden; кадрів нема):
@@ -81,9 +81,9 @@
   function paintTop(root, ctx, v) {
     const lobby = lobbyOf(ctx, v);
     const pill = root.querySelector('.dt-pill');
-    const text = lobby ? '😂 Дотепи'
+    const text = lobby ? '😂 Додепи'
       : v.phase === 'done' ? 'Партію зіграно'
-      : v.final ? '🏁 Останній дотеп'
+      : v.final ? '🏁 Останній додеп'
       : 'Раунд ' + v.round + ' із ' + v.rounds + (v.mode === 'duel' ? ' · дуелі' : ' · на всіх');
     if (pill.textContent !== text) pill.textContent = text;
 
@@ -219,14 +219,14 @@
     const rounds = o.rounds || 'full';
     const secs = +(o.write || 90);
     const votes = rounds === 'blitz'
-      ? 'Роздаєш 🥇🥈🥉 чужим дотепам: 300, 200 і 100 очок.'
+      ? 'Роздаєш 🥇🥈🥉 чужим додепам: 300, 200 і 100 очок.'
       : rounds === 'short'
-        ? 'Голос — 100 очок. Троє й більше за одного — «Розгром!» А далі — «Останній дотеп» з медалями 🥇🥈🥉.'
+        ? 'Голос — 100 очок. Троє й більше за одного — «Розгром!» А далі — «Останній додеп» з медалями 🥇🥈🥉.'
         : 'Голос — 100 очок, у другому раунді — 200. Троє й більше за одного — «Розгром!»';
     return '<div class="dt-how">'
       + '<div class="dt-howrow"><b>✍</b><span><i>Пиши.</i> ' + (rounds === 'blitz' ? 'Одне дурне завдання на всіх' : 'Кожному — дурні завдання')
-      + ', ' + secs + ' с на дотеп. Найсмішніша відповідь одним рядком.</span></div>'
-      + '<div class="dt-howrow"><b>🗳</b><span><i>Голосуй.</i> Відповіді виходять анонімно — обирай найдотепнішу чужу.</span></div>'
+      + ', ' + secs + ' с на додеп. Найсмішніша відповідь одним рядком.</span></div>'
+      + '<div class="dt-howrow"><b>🗳</b><span><i>Голосуй.</i> Відповіді виходять анонімно — обирай найдодепнішу чужу.</span></div>'
       + '<div class="dt-howrow"><b>🎭</b><span><i>Дивись, хто це написав.</i> ' + votes + '</span></div>'
       + '<div class="dt-howrow"><b>🎯</b><span><i>Теми:</i> ' + themesText(o) + '</span></div>'
       + '<div class="dt-howsmall muted small">Троє й більше. ' + (o.voice === 'none' ? 'Цього разу Глек мовчить — усе текстом' : 'Дядько Глек зачитує все вголос')
@@ -236,7 +236,7 @@
         + ' enterkeyhint="send" placeholder="Своє завдання для друзів — необов\'язково" aria-label="Своє завдання">'
         + '<button class="ghost dt-ownbtn" type="submit">Додати</button></form>' : '')
       + '<div class="dt-ownst muted small"></div>'
-      + '<button type="button" class="ghost dt-albumbtn">📖 Альбом дотепів</button>'
+      + '<button type="button" class="ghost dt-albumbtn">📖 Альбом додепів</button>'
       + '</div>';
   }
 
@@ -280,7 +280,7 @@
     for (let i = 0; i < 8; i++) if (ctx.nickOf(i)) seated++;
     const rounds = (r.options && r.options.rounds) || 'full';
     return seated >= 6 && rounds === 'full'
-      ? '⏱ На ' + seated + ' повна партія — хвилин 12–15. Швидше — стіл «1 раунд + Останній дотеп».'
+      ? '⏱ На ' + seated + ' повна партія — хвилин 12–15. Швидше — стіл «1 раунд + Останній додеп».'
       : '';
   }
 
@@ -295,7 +295,7 @@
       html += tasks.map((t, n) => '<div class="dt-task" data-i="' + t.i + '" style="--n:' + n + '">'
         + '<div class="dt-prompt" data-pad-focus>' + promptHtml(ctx, t.prompt) + '</div>' + byHtml(ctx, v, t.by)
         + '<form class="dt-form"><input class="dt-in" type="text" maxlength="' + MAX + '" autocomplete="off" spellcheck="true" data-pad-first'
-        + ' enterkeyhint="send" placeholder="твій дотеп…" aria-label="Відповідь на завдання ' + (n + 1) + '">'
+        + ' enterkeyhint="send" placeholder="твій додеп…" aria-label="Відповідь на завдання ' + (n + 1) + '">'
         + '<button class="primary dt-send" type="submit">Здати</button></form>'
         + '<div class="dt-meta"><span class="dt-cnt">0/' + MAX + '</span></div>'
         + '<div class="dt-given"><span class="dt-giventxt"></span><span class="dt-ok">✓ Здано</span>'
@@ -303,7 +303,7 @@
         + '</div>').join('');
       if (!tasks.length) html += '<div class="gempty">Цього раунду тобі завдань нема — дивись і чекай голосування</div>';
     } else {
-      html += '<div class="dt-watch" data-pad-focus>Пишуть дотепи… 🤫 Скоро відповіді вийдуть на голосування — голосуй як публіка 👀</div>';
+      html += '<div class="dt-watch" data-pad-focus>Пишуть додепи… 🤫 Скоро відповіді вийдуть на голосування — голосуй як публіка 👀</div>';
     }
     html += '<details class="dt-peek"' + (v.me ? '' : ' open') + '><summary>На що пишуть</summary><ol class="dt-plist"></ol></details>';
     stage.innerHTML = html;
@@ -359,7 +359,7 @@
     const c = root._ctx;
     if (!c) return;
     const text = input.value.trim();
-    if (!text) { c.toast('Порожній дотеп — то ще не дотеп', 'err'); input.focus(); return; }
+    if (!text) { c.toast('Порожній додеп — то ще не додеп', 'err'); input.focus(); return; }
     const s = st(root);
     clearTimeout(s.draftTimers[i]);
     s.draftTimers[i] = 0;
@@ -469,13 +469,13 @@
 
     if (!ctx.mine) { juryVote(root, ctx, v, i); return; }
     const me = v.me || {};
-    if ((me.mine || []).includes(i)) { ctx.toast('Це твій дотеп — за нього голосують інші', 'err'); return; }
-    if (!me.voter) { ctx.toast('Твій дотеп у грі — голосують інші', 'err'); return; }
+    if ((me.mine || []).includes(i)) { ctx.toast('Це твій додеп — за нього голосують інші', 'err'); return; }
+    if (!me.voter) { ctx.toast('Твій додеп у грі — голосують інші', 'err'); return; }
 
     let picks = myPicks(root, v).slice();
     if (!c.ranked) picks = [i];
     else if (picks.includes(i)) {
-      if (picks.length === 1) { ctx.toast('Хоч один голос лишається — тапни інший дотеп, і медаль перейде', 'wait'); return; }
+      if (picks.length === 1) { ctx.toast('Хоч один голос лишається — тапни інший додеп, і медаль перейде', 'wait'); return; }
       picks = picks.filter((x) => x !== i);
     } else if (picks.length < c.perVoter) picks.push(i);
     else picks[picks.length - 1] = i;     // усі медалі роздано — остання переходить сюди
@@ -570,9 +570,9 @@
     const others = c.answers.some((a, i) => a.seat != null && !mine.includes(i));
     const hintText = reveal ? (v.final && c.shown < c.answers.length ? 'Розкриваємо з кінця…' : others && ctx.playing ? 'Смішно? Тапни — 😂' : '')
       : !ctx.mine ? 'Тапни — голос публіки 👀'
-      : !me.voter ? 'Твій дотеп у грі — тримай кулаки'
+      : !me.voter ? 'Твій додеп у грі — тримай кулаки'
       : c.ranked ? 'Тапай по черзі: 🥇 → 🥈' + (c.perVoter > 2 ? ' → 🥉' : '') + keys
-      : 'Обери найдотепніше' + keys;
+      : 'Обери найдодепніше' + keys;
     if (hint.textContent !== hintText) hint.textContent = hintText;
 
     const buttons = stage.querySelectorAll('.dt-ans');
@@ -677,7 +677,7 @@
     rib.textContent = '💥 Розгром!';
     b.appendChild(rib);
     if (!reduced()) {
-      // Конфеті злітає з боків і знизу картки й летить геть від тексту — переможний дотеп саме читають.
+      // Конфеті злітає з боків і знизу картки й летить геть від тексту — переможний додеп саме читають.
       const box = document.createElement('span');
       box.className = 'dt-confetti';
       let html = '';
@@ -721,11 +721,11 @@
       + (n == null ? '' : bestActs(ctx, v, n, s)) + '</div>';
   }
 
-  /// Під дотепом партії: «📌 В альбом» (хто грав, до двох на гравця) і «📋 У балачку» — від імені самого гравця, його дотиком.
+  /// Під додепом партії: «📌 В альбом» (хто грав, до двох на гравця) і «📋 У балачку» — від імені самого гравця, його дотиком.
   function bestActs(ctx, v, n, s) {
     const pinned = ((v.result && v.result.pinned) || []).includes(n) || s.pinned.has(n);
     const pin = pinned ? '<span class="dt-pinned muted small">📌 в альбомі</span>'
-      : ctx.mine ? '<button type="button" class="ghost small dt-pin" data-pin="' + n + '" title="У «📖 Альбом дотепів» — його гортає будь-хто">📌 В альбом</button>' : '';
+      : ctx.mine ? '<button type="button" class="ghost small dt-pin" data-pin="' + n + '" title="У «📖 Альбом додепів» — його гортає будь-хто">📌 В альбом</button>' : '';
     const nick = ctx.me && ctx.me.nick;
     const chat = !nick ? '' : s.shared.has(n) ? '<span class="dt-pinned muted small">✓ у Балачках</span>'
       : '<button type="button" class="ghost small dt-share" data-share="' + n + '" title="Написати в Балачки від твого імені">📋 У балачку</button>';
@@ -745,7 +745,7 @@
     return ctx.esc(t.slice(0, at).trim()) + '<span class="dt-pic" role="img" aria-label="смайл-ребус">' + ctx.esc(t.slice(at).replace(/\s+/g, '')) + '</span>';
   }
 
-  // ---------- теми, «📌», «📋», «📖 Альбом дотепів» ----------
+  // ---------- теми, «📌», «📋», «📖 Альбом додепів» ----------
 
   const THEMES = {
     pobut: '🏠 побут і родина', selo: '🐓 село', robota: '💼 робота', glek: '🏺 Глечики',
@@ -789,7 +789,7 @@
       const n = +b.dataset.share;
       const x = best[n];
       if (!x) return;
-      const text = ('😂 Дотепи: «' + x.prompt + '» — «' + x.text + '» (' + disp(nickOf(ctx, v, x.seat)) + ')').slice(0, 280);
+      const text = ('😂 Додепи: «' + x.prompt + '» — «' + x.text + '» (' + disp(nickOf(ctx, v, x.seat)) + ')').slice(0, 280);
       b.disabled = true;
       HGames.call('SendChat', text).then((r) => {
         if (r && r.ok && !r.message && typeof r !== 'string') {
@@ -810,7 +810,7 @@
         b.textContent = (d.liked ? '❤ ' : '🤍 ') + d.likes;
       });
     } else if (b.dataset.del != null) {
-      if (!confirm('Прибрати цей дотеп з альбому?')) return;
+      if (!confirm('Прибрати цей додеп з альбому?')) return;
       post(ctx, '/api/games/dotepy/album/delete', { id: +b.dataset.del }).then((d) => {
         if (d && d.message) ctx.toast(d.message, d.ok ? 'ok' : 'err');
         if (d && d.ok) { const it = b.closest('.dt-alitem'); if (it) it.remove(); }
@@ -824,8 +824,8 @@
     const box = document.createElement('div');
     box.className = 'dt-album';
     box.setAttribute('role', 'dialog');
-    box.setAttribute('aria-label', 'Альбом дотепів');
-    box.innerHTML = '<div class="dt-alpanel"><div class="dt-alhead"><b>📖 Альбом дотепів</b><span class="dt-alcount muted small"></span>'
+    box.setAttribute('aria-label', 'Альбом додепів');
+    box.innerHTML = '<div class="dt-alpanel"><div class="dt-alhead"><b>📖 Альбом додепів</b><span class="dt-alcount muted small"></span>'
       + '<button type="button" class="ghost small dt-alclose" aria-label="Закрити" data-pad-first>✕</button></div>'
       + '<div class="dt-allist"></div><div class="dt-alfoot"><button type="button" class="ghost dt-almore" hidden>Гортати далі</button></div></div>';
     root.querySelector('.dt').appendChild(box);
@@ -859,11 +859,11 @@
       if (s.album !== a) return;
       a.busy = false;
       const items = (d && d.items) || [];
-      if (!more) list.innerHTML = items.length ? '' : '<div class="dt-alempty muted">Альбом ще порожній. Після партії тисни «📌 В альбом» під найкращим дотепом — і він житиме тут.</div>';
+      if (!more) list.innerHTML = items.length ? '' : '<div class="dt-alempty muted">Альбом ще порожній. Після партії тисни «📌 В альбом» під найкращим додепом — і він житиме тут.</div>';
       list.insertAdjacentHTML('beforeend', items.map((x) => albumItem(ctx, x, d.admin)).join(''));
       if (items.length) a.before = items[items.length - 1].id;
       a.box.querySelector('.dt-almore').hidden = !d.more;
-      a.box.querySelector('.dt-alcount').textContent = d.total ? 'дотепів: ' + d.total : '';
+      a.box.querySelector('.dt-alcount').textContent = d.total ? 'додепів: ' + d.total : '';
     }).catch(() => {
       a.busy = false;
       if (!more) list.innerHTML = '<div class="muted">Альбом не відкрився — спробуй ще раз.</div>';
@@ -895,7 +895,7 @@
           + '<span class="dt-bt"><i></i></span><b>' + num(r.score) + '</b>'
           + '<em>' + (r.delta ? '+' + num(r.delta) : '') + '</em></div>';
       }).join('') + '</div>'
-      + bestHtml(ctx, v, t.best, '⭐ Дотеп раунду');
+      + bestHtml(ctx, v, t.best, '⭐ Додеп раунду');
     requestAnimationFrame(() => stage.querySelectorAll('.dt-bar').forEach((b) => b.classList.add('go')));
   }
 
@@ -916,12 +916,12 @@
     stage.innerHTML = (r.early ? '<div class="dt-early" data-pad-focus>🚪 Партію перервано: за столом лишилось менше трьох</div>' : '')
       + (scored ? '<div class="dt-podium big"' + (r.early ? '' : ' data-pad-focus') + '>' + podium + '</div>' + (rest ? '<div class="dt-rest">' + rest + '</div>' : '')
       : r.early ? '' : '<div class="dt-watch" data-pad-focus>Цього разу ніхто не набрав жодного очка 🤷</div>')
-      + ((r.best || []).length ? '<div class="dt-besttitle">😂 Найдотепніше партії</div><div class="dt-bestlist">'
+      + ((r.best || []).length ? '<div class="dt-besttitle">😂 Найдодепніше партії</div><div class="dt-bestlist">'
         + r.best.map((b, n) => bestHtml(ctx, v, b, '', n, st(root))).join('') + '</div>' : '')
       + (v.say && v.say.text ? '<div class="dt-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>' : '')
       + '<div class="dt-again muted small">' + ((v.players || []).filter((p) => !p.left).length >= 3
         ? 'Ще партію? Тисни «Ану ще раз» — завдання будуть нові' : 'На «Ану ще раз» треба щонайменше троє — клич друзів') + '</div>'
-      + '<div class="dt-doneal"><button type="button" class="ghost dt-albumbtn">📖 Альбом дотепів</button></div>';
+      + '<div class="dt-doneal"><button type="button" class="ghost dt-albumbtn">📖 Альбом додепів</button></div>';
   }
 
   // =============================================================================================
@@ -1089,17 +1089,16 @@
     seatNames: (i) => String(i + 1),
     seatClass: ['dt0', 'dt1', 'dt2', 'dt3', 'dt4', 'dt5', 'dt6', 'dt7'],
     news: {
-      v: '2026-09-29',
-      title: 'Дотепи: про нас, ребуси й альбом',
+      // Записка #25 (05.10): нова назва — щоб ті, хто вже грав, побачили «оновлено» і не шукали «Дотепи» в лобі.
+      v: '2026-10-05',
+      title: '«Дотепи» тепер «Додепи»',
       items: [
-        '👥 Завдання про вас: «Що Петро насправді робить о третій ночі» — з ніком когось за столом, щораунду',
-        '🧩 Смайл-ребуси: «Підпиши: 🐐🚜🌧» — велика картинка замість довгого завдання',
-        '🎯 Опція столу «Теми»: побут, село, робота, Глечики, пікантне легке — або все разом',
-        '📌 Найкращий дотеп партії — в «📖 Альбом дотепів», його гортає будь-хто просто з лобі',
-        '📋 «У балачку» — поділись дотепом у Балачках від свого імені',
+        '😂 Гра змінила назву: тепер це «Додепи», а найсмішніша відповідь — додеп',
+        '🏁 Фінал — «Останній додеп», у підсумку — «Додеп партії», у лобі — «📖 Альбом додепів»',
+        '📌 Усе, що ви вже закинули в альбом, і ачівки — на місці',
       ],
     },
-    pad: { hint: '{dpad} по дотепах · {a} обрати', when: (ctx) => ctx.mine && ctx.playing },
+    pad: { hint: '{dpad} по додепах · {a} обрати', when: (ctx) => ctx.mine && ctx.playing },
 
     mount(root, ctx) {
       root._ctx = ctx;
@@ -1188,27 +1187,27 @@
       const me = v.me || {};
       switch (v.phase) {
         case 'write': {
-          if (!ctx.mine) return 'Пишуть дотепи…';
+          if (!ctx.mine) return 'Пишуть додепи…';
           const tasks = me.tasks || [];
           const done = tasks.filter((t) => t.done).length;
           if (!tasks.length) return 'Чекаємо на решту';
-          if (done < tasks.length) return 'Пиши дотепи · здано ' + done + ' з ' + tasks.length;
+          if (done < tasks.length) return 'Пиши додепи · здано ' + done + ' з ' + tasks.length;
           const players = (v.players || []).filter((p) => !p.left);
           return 'Здано! Чекаємо решту (' + players.filter((p) => p.ready).length + ' з ' + players.length + ')';
         }
         case 'vote':
           if (v.waiting) return 'Глек прокашлюється…';
           if (!ctx.mine) return 'Голосуй як публіка 👀';
-          if (!me.voter) return 'Твій дотеп у грі — тримай кулаки';
+          if (!me.voter) return 'Твій додеп у грі — тримай кулаки';
           if (v.card && v.card.ranked) {
             const n = (me.picks || []).length;
-            if (!n) return 'Роздай ' + MEDALS.slice(0, v.card.perVoter).join('') + ' найдотепнішим';
+            if (!n) return 'Роздай ' + MEDALS.slice(0, v.card.perVoter).join('') + ' найдодепнішим';
             if (n < v.card.perVoter) return 'Ще ' + MEDALS.slice(n, v.card.perVoter).join('') + ' — кому?';
           }
-          return (me.picks || []).length ? 'Голос є — чекаємо решту' : 'Голосуй за найдотепніше';
+          return (me.picks || []).length ? 'Голос є — чекаємо решту' : 'Голосуй за найдодепніше';
         case 'reveal': return v.card && v.card.jinx ? 'Думки сходяться!' : 'Розкриття…';
         // заголовок сцени вже каже «Раунд N позаду» — статус каже, що далі
-        case 'table': return v.round + 1 >= v.rounds ? 'Далі — Останній дотеп 🏁' : 'Далі — раунд ' + (v.round + 1);
+        case 'table': return v.round + 1 >= v.rounds ? 'Далі — Останній додеп 🏁' : 'Далі — раунд ' + (v.round + 1);
       }
       return '';
     },

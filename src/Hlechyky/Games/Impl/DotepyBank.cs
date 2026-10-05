@@ -3,8 +3,8 @@ using System.Text.Json;
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// Одне завдання «Дотепів»: дурне питання, на яке відповідають одним рядком і без «правильної» відповіді.
-/// <see cref="Final"/> — годиться для «Останнього дотепу», де його пишуть усі разом.
+/// Одне завдання «Додепів»: дурне питання, на яке відповідають одним рядком і без «правильної» відповіді.
+/// <see cref="Final"/> — годиться для «Останнього додепу», де його пишуть усі разом.
 /// </summary>
 public sealed record DotepyPrompt(string Id, string Text, IReadOnlyList<string> Tags, bool Final);
 

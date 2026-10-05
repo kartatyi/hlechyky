@@ -22,7 +22,7 @@
   Вид (Impl/Clicker.cs): { pots, total, perClick, clickBase, perSecond, baseSecond,
     upgrades: { key: { level, price, name, desc, max, kind, gain, growth, marks, open } }, marks: [...],
     canSellToday, soldToday, cap, rate, lastSync, now, offlineHours, golden: { at, until, x, y }, caught,
-    fair: { until, mult }, inspire: { until, mult, share }, allMult, stamps, stampsFree, stampsReady, stampsExtra,
+    fair: { until, mult, span, held }, inspire: { until, mult, share, span, held }, allMult, stamps, stampsFree, stampsReady, stampsExtra,
     nextStampAt, stampBonus, stampSoft, stampMult, stampIron, science: { top, who, share, cap, readyAt },
     stampCap, firings, secrets: [...], styles: [...], wear,
     heat, heatFull, heatTau, momentum, momentumMax, fall: { at, until, x, streak, gain, bonus }, grabbed,
@@ -752,8 +752,12 @@
   /// Що з бафів діє саме зараз: множник, до коли й скільки триває весь (для смужки). Лише читає стан.
   function buffsNow(st, sn, mom) {
     const out = [];
-    if (sn < st.fairUntil) out.push({ key: 'fair', mult: '×' + dec(st.fairMult), until: st.fairUntil, span: st.fairSpan || 66000 });
-    if (sn < st.inspireUntil) out.push({ key: 'inspire', mult: '×' + st.inspireMult, until: st.inspireUntil, span: st.inspireSpan || 20000 });
+    // Під полицею Ока майстра ярмарок і натхнення стоять (05.10): плашка лишається з тим самим залишком, а не зникає —
+    // інакше виглядало б, що полиця бафи скинула.
+    if (st.fairHeld > 0) out.push({ key: 'fair', mult: '×' + dec(st.fairMult), held: st.fairHeld, span: st.fairSpan || 66000 });
+    else if (sn < st.fairUntil) out.push({ key: 'fair', mult: '×' + dec(st.fairMult), until: st.fairUntil, span: st.fairSpan || 66000 });
+    if (st.inspireHeld > 0) out.push({ key: 'inspire', mult: '×' + st.inspireMult, held: st.inspireHeld, span: st.inspireSpan || 20000 });
+    else if (sn < st.inspireUntil) out.push({ key: 'inspire', mult: '×' + st.inspireMult, until: st.inspireUntil, span: st.inspireSpan || 20000 });
     if (windOn(st, sn)) out.push({ key: 'wind', mult: '×' + dec(st.windMult), until: st.windUntil, span: Math.max(1000, st.windUntil - st.windAt) });
     if (st.momentumMax > 1 && mom > 1.05) out.push({ key: 'heat', mult: '×' + dec(mom), level: (mom - 1) / (st.momentumMax - 1) });
     // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
@@ -811,11 +815,25 @@
       const x = now.find((y) => y.key === k.key);
       if (b.el.hidden) b.el.hidden = false;
       if (b.mul.textContent !== x.mult) { b.mul.textContent = x.mult; b.el.title = k.what(st); }
-      const name = k.name(st);
-      if (b.name.textContent !== name) b.name.textContent = name;
+      const name = x.held ? '⏸ чекає' : k.name(st);
+      if (b.name.textContent !== name) {
+        b.name.textContent = name;
+        b.el.title = k.what(st) + (x.held ? ' — стоїть, поки не відповіси майстрові' : '');
+      }
+      if (b.el.classList.contains('held') !== !!x.held) b.el.classList.toggle('held', !!x.held);
       const order = String(x.until ? timed.indexOf(k.key) : 10 + BUFF_KINDS.indexOf(k));
       if (b.order !== order) { b.order = order; b.el.style.order = order; }
-      if (x.until) {
+      if (x.held) {
+        // Стоїть: число й смужка не рухаються, а після відповіді смужка стартує наново від того самого залишку.
+        const secs = Math.max(0, Math.ceil(x.held / 1000));
+        if (b.secs !== secs) { b.secs = secs; b.sec.textContent = String(secs); b.sec.classList.toggle('w3', secs >= 100); }
+        if (b.until !== -1) {
+          b.until = -1;
+          if (b.anim) { b.anim.cancel(); b.anim = null; }
+          b.bar.style.transform = 'scaleX(' + Math.max(0, Math.min(1, x.held / x.span)).toFixed(3) + ')';
+        }
+        if (b.el.classList.contains('end')) b.el.classList.remove('end');
+      } else if (x.until) {
         const left = x.until - sn;
         const secs = Math.max(0, Math.ceil(left / 1000));
         if (b.secs !== secs) {
@@ -949,10 +967,10 @@
       text = (DOUBT[g.why] || 'Майстер дивиться, чи коло крутить рука, а не автоклікер. ')
         + 'Як пройти: натисни «Показати полицю», а тоді торкнись на картинці кожного глечика — їх там ' + g.count
         + '. Глечик — той, що з вузькою шийкою; горщики, миски й черепки не чіпай. Торкнувся не туди — «Скинути торкання».'
-        + ' Три полиці поспіль не ті — коло стане на 10 хвилин. Поки не відповіси, кліки не рахуються.' + eyePay(st, g);
+        + ' Три полиці поспіль не ті — коло стане на 10 хвилин. Поки не відповіси, кліки не рахуються.' + eyePay(st, g) + eyeHeld(st);
     } else {
       text = 'Торкнись кожного глечика — їх тут ' + g.count + '. Глечик — той, що з вузькою шийкою. Торкнувся не туди — «Скинути торкання».'
-        + eyePay(st, g);
+        + eyePay(st, g) + eyeHeld(st);
     }
     if (e.text.textContent !== text) e.text.textContent = text;
     const tries = locked ? '' : g.misses ? 'не ті — ось інша полиця · спроба ' + (g.misses + 1) + ' з ' + g.maxMisses : '';
@@ -983,6 +1001,15 @@
     if (!g.pays || !(g.gain > 0)) return ' Цього разу без платні: майстер ще пильнує.';
     return ' 🪙 За чесну руку майстер відсипле ' + potsShort(g.gain) + ' — дві години роботи й десять тисяч кліків'
       + (g.misses ? ' (половину: рука вже раз промахнулась).' : '.');
+  }
+
+  /// Ярмарок і натхнення під полицею стоять (05.10) — кажемо про це, щоб полицю не квапились проклацати.
+  function eyeHeld(st) {
+    const fair = st.fairHeld > 0, ins = st.inspireHeld > 0;
+    if (!fair && !ins) return '';
+    if (fair && ins) return ' ⏸ Ярмарок і натхнення чекають: їхні секунди підуть далі, щойно відповіси.';
+    return ' ⏸ ' + (fair ? 'Ярмарок' : 'Натхнення') + ' чекає: ' + Math.ceil((fair ? st.fairHeld : st.inspireHeld) / 1000)
+      + ' с підуть далі, щойно відповіси.';
   }
 
   /// Кнопка «Показати полицю»: лише справжній натиск і лише озброєної кнопки. Відтак торкання картинки рахуються.
@@ -3046,6 +3073,9 @@
         // Скільки триває весь баф (з «Довгим ярмарком» — удвічі): від цього смужка під плашкою знає, з якої частки танути.
         st.fairSpan = ((v.fair && v.fair.span) || 0) * 1000;
         st.inspireSpan = ((v.inspire && v.inspire.span) || 0) * 1000;
+        // Скільки ярмарку й натхнення чекає, поки висить полиця Ока майстра (05.10): під полицею вони стоять.
+        st.fairHeld = ((v.fair && v.fair.held) || 0) * 1000;
+        st.inspireHeld = ((v.inspire && v.inspire.held) || 0) * 1000;
         st.rateOf = v.rate || 100;
         st.canSell = v.canSellToday || 0;
         st.ups = v.upgrades || {};

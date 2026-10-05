@@ -365,6 +365,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
     public Task<string?> TournamentNext() => Lead(() => tournament.Next(Nick()));
     public Task<string?> TournamentSkip() => Lead(() => tournament.Skip(Nick()));
     public Task<string?> TournamentCancel() => Lead(() => tournament.Cancel(Nick()));
+    public Task<string?> TournamentEdit(string[] games) => Lead(() => tournament.Edit(Nick(), games));
+    public Task<string?> TournamentPause() => Lead(() => tournament.Pause(Nick()));
 
     Task<string?> Lead(Func<string?> action) =>
         Task.FromResult(Allow(input: false) ? action() : Games.Say.TooFast);

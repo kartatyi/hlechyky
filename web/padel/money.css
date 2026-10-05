@@ -1,0 +1,62 @@
+/* Гроші — стилі вкладки (money.js). Рядок банку (.mn-bank) бере й «Я». */
+.mn-top { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.mn-top h2 { font-size: 22px; margin: 4px 0 12px; font-weight: 800; }
+.mn-body h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 18px 0 8px; font-weight: 800; }
+.mn-sum { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: center; }
+.mn-tot { display: flex; flex-direction: column; }
+.mn-tot b { font-size: 26px; line-height: 1.15; font-weight: 800; }
+.mn-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; align-items: start; }
+.mn-owe { display: flex; flex-direction: column; gap: 10px; }
+.mn-h { display: flex; align-items: center; gap: 10px; justify-content: space-between; min-width: 0; }
+.mn-amt { font-size: 20px; font-weight: 800; white-space: nowrap; }
+.mn-banks { display: flex; flex-direction: column; gap: 6px; }
+.mn-bank { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; background: var(--bg2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 7px 10px; }
+.mn-bk { font-size: 11.5px; font-weight: 800; padding: 1px 8px; border-radius: 6px; background: var(--panel3); color: var(--text); white-space: nowrap; }
+.mn-bk.mn-mono { background: #111; color: #fff; box-shadow: inset 0 0 0 1px #444; }
+.mn-bk.mn-privat { background: #5c9b1e; color: #fff; }
+.mn-bk.mn-pumb { background: #c8102e; color: #fff; }
+.mn-bk.mn-abank { background: #2f9e44; color: #fff; }
+.mn-bk.mn-sense { background: #e6007e; color: #fff; }
+.mn-bk.mn-izi { background: #2b6ef3; color: #fff; }
+.mn-btitle { font-weight: 600; font-size: 14px; }
+.mn-card { font-size: 16px; font-weight: 700; letter-spacing: .04em; flex: 1 1 auto; white-space: nowrap; }
+.mn-graph { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; }
+.mn-edge { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(47,77,61,.55); min-width: 0; }
+.mn-edge:last-child { border-bottom: 0; }
+.mn-edge .pp { min-width: 0; flex: 0 1 auto; }
+.mn-edge > b { margin-left: auto; white-space: nowrap; }
+.mn-edge.me > b { color: var(--accent); }
+.mn-arr { color: var(--muted); }
+.mn-hist { padding: 4px 8px; }
+.mn-it { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 6px; background: none; border: 0; border-bottom: 1px solid rgba(47,77,61,.55);
+  text-align: left; color: var(--text); border-radius: 0; }
+.mn-it:last-child { border-bottom: 0; }
+button.mn-it:hover { background: var(--panel2); }
+.mn-ic { font-size: 18px; flex: none; }
+.mn-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mn-tx b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-it > b { white-space: nowrap; }
+/* форма витрати */
+.mn-form .mn-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mn-gl { background: var(--bg2); border-radius: 10px; padding: 7px 11px; font-size: 14px; }
+.mn-big { font-size: 22px; font-weight: 800; max-width: 200px; }
+.mn-other { display: flex; flex-direction: column; gap: 8px; }
+.mn-other:empty { display: none; }
+.mn-oth { display: flex; flex-direction: column; gap: 6px; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.mn-oth-r { display: flex; gap: 6px; align-items: center; }
+.mn-oth-r .inp[data-f=title] { flex: 1; }
+.mn-oth-r .inp[data-f=amount] { width: 96px; }
+.mn-oth .chips .chip { font-size: 13px; }
+.mn-prev { background: var(--bg2); }
+.mn-prev-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.mn-sh { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid rgba(47,77,61,.4); }
+.mn-sh:last-of-type { border-bottom: 0; }
+.mn-sh > b { margin-left: auto; }
+.mn-payer { font-size: 11.5px; font-weight: 700; color: var(--accent); }
+@media (max-width: 640px) {
+  .mn-cols { grid-template-columns: 1fr; }
+  .mn-top h2 { font-size: 20px; }
+  .mn-tot b { font-size: 22px; }
+  .mn-card { font-size: 15px; }
+}

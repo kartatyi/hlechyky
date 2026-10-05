@@ -931,12 +931,29 @@
     return parts.join('; ') || 'У навушниках — ні душі';
   }
 
+  // 🎧 у шапці: число і стос кружечків замість імен (записка #21) — фото чи значок із Лавки, а без вигляду порожній
+  // кружечок у кольорі ніка. Імена — у підказці й тості, клік по кружечку — картка людини (data-who, web/people.js).
+  // Понад шість — «+N»; на вужчій шапці кружечків менше (там і гучність ховається за 🔊), щоб не тіснити назву треку.
+  const lsMid = window.matchMedia('(max-width: 1440px)'), lsNarrow = window.matchMedia('(max-width: 1000px)');
+  let listenersSig = '';
+  function listenersHtml(shown, nicks) {
+    const max = lsNarrow.matches ? 3 : lsMid.matches ? 4 : 6;
+    const vis = nicks.length > max ? nicks.slice(0, max - 1) : nicks;
+    const more = nicks.length - vis.length;
+    const faces = vis.map((n) => `<button type="button" class="ls-who" data-who="${esc(n)}" title="${esc(n)} слухає ефір" aria-label="${esc(n)}">${HPeople.ava(n, 'ava ls blank')}</button>`).join('');
+    return `<span class="ls-n">🎧 ${shown}</span>`
+      + (nicks.length ? `<span class="ls-stack">${faces}${more ? `<span class="ls-more">+${more}</span>` : ''}</span>` : '');
+  }
+  for (const m of [lsMid, lsNarrow]) m.addEventListener?.('change', () => { if (state) renderOnline(); });
+
   function renderOnline() {
     const nicks = state.listeningNicks || [];
     const listens = (n) => nicks.some((x) => sameNick(x, n));
     const shown = Math.max(state.listeners || 0, nicks.length);
     const chip = $('listeners');
-    chip.textContent = '🎧 ' + shown + (nicks.length ? ' · ' + nicks.join(', ') : '');
+    // Стан приходить часто, а кружечки з фото — та сама розмітка: не перебудовуємо, коли нічого не змінилось.
+    const html = listenersHtml(shown, nicks);
+    if (html !== listenersSig) { listenersSig = html; chip.innerHTML = html; }
     chip.title = listenersText();
     chip.classList.toggle('on', shown > 0);
     state.online.forEach(learnNick);
@@ -949,7 +966,8 @@
       : `<button type="button" class="chip who-n${HPeople.nickCls(n)}" data-who="${esc(n)}" style="--h:${HPeople.hue(n)}" title="тусить на сайті, але плеєр вирублений">${talks(n)}${HPeople.badge(n)}${esc(n)}${crownOf(n)}</button>`).join('') || '<span class="muted small">ні душі</span>';
     HPeople.refreshWhere();          // на відкритому профілі «на сайті / слухає» — живе
   }
-  $('listeners').onclick = () => { if (state) toast(listenersText()); };
+  // Клік по кружечку — картка людини (її відкриває people.js), по решті чипа — хто саме слухає.
+  $('listeners').onclick = (e) => { if (state && !e.target.closest('[data-who]')) toast(listenersText()); };
 
   function render() {
     if (!state) return;
@@ -1326,7 +1344,7 @@
     const isLog = m.kind === 'system';
     // Монетка живе в тій самій розкладці, що й кубик (.msg.dice — рядок у флексі); /choose і /8ball
     // це звичайні рядки з іконкою в самому тексті, тож їм окрема гілка ні до чого.
-    el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' ? 'dj'
+    el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' || m.kind === 'padel' ? 'dj'
       : m.kind === 'dice' || m.kind === 'coin' ? 'dice'
         : m.kind === 'tables' ? 'tables' : m.kind === 'invite' ? 'invite' : m.kind === 'note' ? 'note'
           : DEEDS[m.kind] ? 'deed ' + m.kind : mine ? 'mine' : '');
@@ -1358,8 +1376,9 @@
       el.innerHTML = `${nickHtml(m.nick, 'n', true)}<span class="dies"></span><span class="rng muted small"></span><span class="time">${tm(m.at)}</span>`;
       el.querySelector('.dies').appendChild(rollEl(m, live));
       paintRollRange(el);
-    } else if (m.kind === 'dj') {
-      el.innerHTML = `<img src="/static/glek.svg" alt=""><div><span class="n">${esc(m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span></div>`;
+    } else if (m.kind === 'dj' || m.kind === 'padel') {
+      // Падельня — рядок Глека про матч: ім'я Глека, як у dj-рядків, а не людини з таким ніком
+      el.innerHTML = `<img src="/static/glek.svg" alt=""><div><span class="n">${esc(m.kind === 'padel' ? dj() : m.nick)}</span>${linkify(m.text)}<span class="time">${tm(m.at)}</span></div>`;
     } else if (isLog) {
       el.innerHTML = `<span class="time">${tm(m.at)}</span>${linkify(m.text)}`;
     } else {
@@ -2192,7 +2211,14 @@
   const FB_ICON = { idea: '💡', change: '✏', bug: '🐞' };
   const FB_MAX_MSG = 1000;       // як Feedback.MaxMsg
   let fbKind = 'idea';
-  let fbMineUnread = 0;          // у скількох своїх записках нова відповідь (людині; адміну 💡 рахує інше)
+  /// Розмір вікна до записки — ще й щільність пікселів і весь екран: «на маку все стало менше» (записка #27) з одного
+  /// «1512×862» не розбереш. devicePixelRatio у Chrome множиться на масштаб сторінки (мак 2 → 1.8 при 90%), а екран
+  /// каже, ноут це (1512×982) чи зовнішній монітор. Сервер ріже до 40 знаків — вкладаємось.
+  const fbScreen = () => {
+    const d = Math.round((window.devicePixelRatio || 1) * 100) / 100;
+    return `${window.innerWidth}×${window.innerHeight} · ${d}x · екран ${screen.width}×${screen.height}`;
+  };
+  let fbMineUnread = 0;         // у скількох своїх записках нова відповідь (людині; адміну 💡 рахує інше)
   // Повідомлення розробника, нові на момент показу: сервер уже вважає їх прочитаними, а підсвітка тримається, поки
   // вікно відкрите — інакше перше ж перемальовування (сама відписала) гасило б її посеред читання.
   const fbMineFresh = new Set();
@@ -2347,7 +2373,7 @@
     busy($('fbSend'), 'надсилаю…', async () => {
       try {
         const r = await api('POST', '/api/feedback', {
-          kind: fbKind, text, place: location.hash || '#efir', screen: `${window.innerWidth}×${window.innerHeight}`,
+          kind: fbKind, text, place: location.hash || '#efir', screen: fbScreen(),
           ua: navigator.userAgent.slice(0, 300),
         });
         ok(r);
@@ -3500,10 +3526,12 @@
       const hadCrown = JSON.stringify((HTournament.state || {}).crown || []);
       HTournament.update(t);
       if (hadCrown !== JSON.stringify((t && t.crown) || [])) { if (state) renderOnline(); repaintCrowns(); }
-      // Нова гра турніру, а я в ньому — одразу за стіл (якщо вже в «Іграх»), інакше — тост із підказкою.
+      // Нова гра турніру, і турнір посадив мене за неї — одразу за стіл (якщо вже в «Іграх»: на столі минулої гри,
+      // у панелі турніру, у лобі), інакше — тост із підказкою. Саме «посадив», а не «я в списку»: хто вийшов із
+      // турніру чи сидить за іншим столом, того сервер не садить, і висмикувати його нема куди.
       const room = t && t.stage === 'playing' && t.room ? t.room.id : null;
-      const mineT = t && (t.players || []).some((p) => sameNick(p, me.nick));
-      if (room && room !== tourRoom && mineT) {
+      const seated = !!room && (t.room.seats || []).some((p) => sameNick(p, me.nick));
+      if (room && room !== tourRoom && seated) {
         if (tourRoom !== null || route === 'games') {
           if (route === 'games') go('#games/room/' + encodeURIComponent(room));
           else toast('🏆 Турнір: наступна гра почалась — гайда в «Ігри»!', 'ok');
@@ -3518,6 +3546,7 @@
     conn.on('reaction', (r) => flyEmoji(r.emoji, r.nick));
     conn.on('fireworks', (x) => fireworks(x && x.nick));
     conn.on('look', (x) => HLavka.onLook(x));
+    conn.on('padelLive', (x) => window.HGames && HGames.padel && HGames.padel(x));   // картка «🍳 Падельня» в лобі
     conn.on('fbUnread', fbOnUnread);   // «💡»: розробник відповів на мою записку
     conn.on('fbDev', fbOnDev);         // «💡» розробнику: нова записка чи відповідь людини
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
