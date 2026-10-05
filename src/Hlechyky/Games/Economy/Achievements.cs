@@ -189,6 +189,10 @@ public static class AchievementCatalog
         new("geese-shepherd", "Пастух",        "Усі сім раундів «Порахуй гусей» — точно, за столом із людьми", "🐑", 25),
         new("geese-eagle",    "Орлине око",    "Точне число в останньому, найшвидшому параді «Порахуй гусей»", "🦅", 15),
         new("geese-days5",    "Гуси дня",      "П'ять днів поспіль рахував «Гусей дня»", "🪿", 20),
+        // вечірка: hostyntsi — гра просить сама через Ctx.Award(seat, 0, "ach:hostyntsi-…")
+        new("hostyntsi-noburn", "Без опіків",      "Партія «Гостинців» без жодного жару — і десять хапів чи більше", "🧤", 15),
+        new("hostyntsi-cat5",   "Ризикан",         "Кіт у мішку дав +5 у «Гостинцях»", "🐈", 15),
+        new("hostyntsi-gold3",  "Золотий кошик",   "Три золоті глеки в одному кошику «Гостинців»", "🏺", 20),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
