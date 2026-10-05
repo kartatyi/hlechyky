@@ -168,6 +168,11 @@ public static class AchievementCatalog
         new("grushi-robin",  "Робін Гуд",  "Вкрав десять груш з чужих комор за одну партію «Крадіїв груш»", "🏹", 15),
         new("grushi-guard",  "Сторож",     "Зібрав 10+ груш, і з комори не вкрали жодної", "🛡", 20),
         new("grushi-porter", "Вантажник",  "П'ять разів доніс до комори повну ношу — п'ять груш за раз", "🧺", 15),
+        // вечірка: tyr — гра просить сама через Ctx.Award(seat, 0, "ach:<key>"), tyr-daily5 — з OnDaily
+        new("tyr-sniper",   "Снайпер",         "Стенд Ярмаркового тиру без жодного промаху (від 10 пострілів)", "🎯", 20),
+        new("tyr-dry",      "Порох сухий",     "Партія Ярмаркового тиру без жодної діжки з порохом (і від 40 очок)", "🛢", 15),
+        new("tyr-gold",     "Золоте око",      "Усі золоті глеки стенду «Усе разом» у Ярмарковому тирі", "🏆", 20),
+        new("tyr-daily5",   "Тир дня",         "П'ять днів «Тиру дня» поспіль", "📅", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
@@ -306,6 +311,7 @@ public sealed class Achievements
             if (row.Attempts is > 0 and <= 2) Unlock(nick, "wordle-2");
             if (streak >= 7) Unlock(nick, "wordle-7");
         }
+        if (row.Game == "tyr-daily" && streak >= 5) Unlock(nick, "tyr-daily5");
         if (row.Game.StartsWith("mines", StringComparison.Ordinal) && row.Ms is > 0 and < 60_000)
             Unlock(nick, "mines-fast");
     }
