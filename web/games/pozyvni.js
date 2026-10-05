@@ -5,7 +5,8 @@
   Вид із сервера (Impl/Pozyvni.cs):
     { phase: 'setup'|'clue'|'guess'|'done', mode: 'teams'|'coop', clues, turn, side, board: [{w, open}], key: []|null,
       clue: {word, count, left}|null, teams: { red:{seats,boss}, blue:{seats,boss} },
-      me: {side, boss}|null, left: {red, blue}, endsAt, phaseMs, zero, log: [], result }
+      me: {side, boss}|null, left: {red, blue}, endsAt, phaseMs, zero, log: [], result,
+      cchat: [{n, seat, side, nick, text}]|null }   // чат капітанів: масив лише капітанам (записка #22), решті null
 
   Кадрів у грі нема (TickMs потрібен лише годиннику й фазі складу), тож усе малюється з виду.
 */
@@ -45,10 +46,13 @@
     el.innerHTML = '<div class="pz-top">'
       + '<div class="pz-arc"></div>'
       + '<div class="pz-head"><b class="pz-turn"></b><span class="pz-hint muted small"></span></div>'
+      // Телефон: шторка чату капітанів — аж під керуванням, тож кружечок непрочитаного дублюємо тут, у шапці картки.
+      + '<button type="button" class="ghost pz-cjump" hidden aria-label="Чат капітанів">🎖<span class="pz-cdot" hidden></span></button>'
       + '</div>'
       + '<div class="pz-teams"></div>'
       + '<div class="pz-clue"></div>'
-      + '<div class="pz-grid"></div>'
+      // Стіл і чат капітанів поруч: на широкій картці чат — колонкою праворуч від сітки, на вузькій — шторкою під полем.
+      + '<div class="pz-field"><div class="pz-grid"></div>' + capBox() + '</div>'
       + '<div class="pz-panel">'
       + '<form class="pz-give" hidden>'
       + '<input class="pz-word" type="text" maxlength="24" placeholder="слово і число, як «море 2»…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">'
@@ -82,6 +86,31 @@
       e.stopPropagation();
       say(el);
     });
+    // Чат капітанів: Enter — так само руками, як у полі підказки; шапка шторки відкриває й згортає її на вузькому екрані.
+    el.querySelector('.pz-csay').addEventListener('submit', (e) => { e.preventDefault(); capSay(el); });
+    el.querySelector('.pz-cin').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      e.stopPropagation();
+      capSay(el);
+    });
+    el.querySelector('.pz-chead').addEventListener('click', () => {
+      el._capOpen = !el._capOpen;
+      if (!el._ctx) return;
+      paintCap(el, el._ctx.view || {}, el._ctx, false);
+      const list = el.querySelector('.pz-clist');
+      if (el._capOpen) list.scrollTop = list.scrollHeight;
+    });
+    // 🎖 у шапці (телефон): розгорнути шторку й прокрутити до неї.
+    el.querySelector('.pz-cjump').addEventListener('click', () => {
+      if (!el._ctx) return;
+      el._capOpen = true;
+      paintCap(el, el._ctx.view || {}, el._ctx, false);
+      const list = el.querySelector('.pz-clist');
+      list.scrollTop = list.scrollHeight;
+      const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.querySelector('.pz-cap').scrollIntoView({ block: 'end', behavior: still ? 'auto' : 'smooth' });
+    });
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-act]');
       if (!b || !el._ctx) return;
@@ -92,8 +121,76 @@
       else if (act === 'pass') el._ctx.act('pass');
     });
     el._count = 1;
+    el._capSeen = 0;
     el._ctx = ctx;
     return el;
+  }
+
+  /// Каркас чату капітанів — один раз, щоб недописане в полі не губилось на кожному виді. Відгадувачам блок порожній
+  /// і схований: реплік у їхньому виді нема (поле cchat сервер дає лише капітанам), тож і в DOM їх нема.
+  function capBox() {
+    return '<section class="pz-cap" hidden aria-label="Чат капітанів">'
+      + '<button type="button" class="pz-chead" aria-expanded="false">'
+      + '<b>🎖 Капітани</b><span class="pz-cnote muted small">бачите лише ви двоє</span>'
+      + '<span class="pz-cdot" hidden></span><i class="pz-cchev" aria-hidden="true">▾</i></button>'
+      + '<div class="pz-cbody">'
+      + '<div class="pz-clist" role="log" aria-live="polite"></div>'
+      + '<form class="pz-csay">'
+      + '<input class="pz-cin" type="text" maxlength="200" placeholder="капітанові суперника…" autocomplete="off" enterkeyhint="send" aria-label="Репліка капітанові суперника">'
+      + '<button class="ghost pz-csend" type="submit" aria-label="Надіслати">➤</button>'
+      + '</form></div></section>';
+  }
+
+  function capSay(el) {
+    const input = el.querySelector('.pz-cin');
+    const text = input.value.trim();
+    if (!text || !el._ctx) return;
+    el._capMine = true;   // свою репліку прокручуємо в кадр, навіть якщо читав щось вище
+    el._ctx.act('cchat', { text }).then((r) => {
+      if (r && r.ok) input.value = '';
+    });
+  }
+
+  /// Чат капітанів. Малюємо лише те, що прийшло у виді: нема cchat — нема й блоку. Непрочитане — репліки суперника,
+  /// які прийшли, поки шторка згорнута (на широкій картці чат завжди розгорнутий і все в ньому прочитане).
+  function paintCap(el, v, ctx, lobby) {
+    const cap = el.querySelector('.pz-cap');
+    const list = el.querySelector('.pz-clist');
+    const lines = !lobby && Array.isArray(v.cchat) ? v.cchat : null;
+    cap.hidden = !lines;
+    el.querySelector('.pz-cjump').hidden = !lines;
+    el.classList.toggle('pz-has-cap', !!lines);
+    if (!lines) {
+      if (list.dataset.sig) { list.dataset.sig = ''; list.innerHTML = ''; }
+      return;
+    }
+    cap.classList.toggle('open', !!el._capOpen);
+    cap.querySelector('.pz-chead').setAttribute('aria-expanded', el._capOpen ? 'true' : 'false');
+    // Партію зіграно — писати вже нікуди (стіл закрив ходи), а прочитати розмову можна.
+    cap.querySelector('.pz-csay').hidden = v.phase === 'done';
+
+    const last = lines.length ? lines[lines.length - 1].n : 0;
+    const html = lines.length
+      ? lines.map((l) => '<div class="pz-cl ' + (l.side === 'blue' ? 'blue' : 'red') + (l.seat === ctx.seat ? ' mine' : '') + '">'
+        + '<b>' + ctx.esc(l.nick || ('гравець ' + (l.seat + 1))) + '</b> ' + ctx.esc(l.text) + '</div>').join('')
+      : '<div class="muted small pz-cempty">Тут лише ви двоє — капітани. Обидва знаєте розклад, тож можна й підколоти: команди цього не бачать.</div>';
+    const sig = last + ':' + lines.length;
+    if (list.dataset.sig !== sig) {
+      const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
+      list.dataset.sig = sig;
+      list.innerHTML = html;
+      if (atEnd || el._capMine) list.scrollTop = list.scrollHeight;
+      el._capMine = false;
+    }
+
+    // Розгорнуте (а на широкій картці воно завжди розгорнуте) — прочитане.
+    const open = !!el.querySelector('.pz-cbody').getClientRects().length;
+    if (open) el._capSeen = Math.max(el._capSeen || 0, last);
+    const unread = lines.filter((l) => l.n > (el._capSeen || 0) && l.seat !== ctx.seat).length;
+    el.querySelectorAll('.pz-cdot').forEach((dot) => {
+      dot.hidden = !unread;
+      dot.textContent = unread > 9 ? '9+' : unread ? String(unread) : '';
+    });
   }
 
   /// Сказати підказку: «море 2» одним рядком теж годиться — так її й вимовляють уголос.
@@ -190,6 +287,7 @@
     if (grid.dataset.sig !== sig) { grid.dataset.sig = sig; grid.innerHTML = cards; }
     // Швидкі «Позивні 4×4»: чотири стовпчики й більші плитки (прохід №3, п. 168)
     grid.classList.toggle('pz-g4', v.size === 4 || (v.board || []).length === 16);
+    paintCap(el, v, ctx, lobby);
 
     // ---- керування ----
     const give = el.querySelector('.pz-give');
@@ -351,12 +449,12 @@
     added: '2026-09-17',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     icon: ICON,
     news: {
-      v: '2026-09-29',
-      title: 'Позивні: швидкий стіл 4×4',
+      v: '2026-10-05',
+      title: 'Позивні: чат капітанів',
       items: [
-        '⚡ Нова опція «Стіл: 4×4» — 16 слів (6 ваших, 5 чужих, 4 нічиї, 1 чорне) і годинник на хвилину: партія хвилин на п\'ять',
-        '📱 На столі 4×4 плитки більші — на телефоні слова читаються без примружування',
-        '📖 У лобі тепер пояснення «як Codenames» з прикладом на трьох картках — новенькому одразу ясно, що робити',
+        '🎖 У капітанів свій чат: обидва знають розклад, тож є що обговорити й чим підколоти суперника',
+        '🙈 Ті, хто вгадує, і глядачі його не бачать узагалі — навіть після партії',
+        '📱 На телефоні чат згортається під поле, а нові репліки видно кружечком на 🎖 угорі картки',
       ],
     },
     seatNames: (i, room) => (room && room.seatNames && room.seatNames[i]) || (i % 2 === 0 ? 'червоні' : 'сині'),
