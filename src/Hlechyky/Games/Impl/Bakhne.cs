@@ -243,7 +243,12 @@ public sealed class Bakhne : Game, IPartyMinigame
         _phaseAt = _t;
     }
 
-    void Event(int kind, int a = 0, int b = 0) => _ev.Add([++_evId, kind, a, b, _t]);
+    /// <summary>Подія летить у найближчому ж кадрі: стрілка й бах мусять прийти в такт, а не з чергового «раз на 200 мс».</summary>
+    void Event(int kind, int a = 0, int b = 0)
+    {
+        _ev.Add([++_evId, kind, a, b, _t]);
+        _dirty = true;
+    }
 
     // ---------- ввід ----------
 
@@ -264,7 +269,6 @@ public sealed class Bakhne : Game, IPartyMinigame
         // Паркан: крок за двір не вийде — такт з'їдено, стоїш, де стояв (і бахне, якщо треба було йти).
         var (x0, y0) = PosBefore(seat, k);
         Event(In(x0 + Dx[d], y0 + Dy[d]) ? EvStep : EvFence, seat, d);
-        _dirty = true;
         return ActResult.Done;
     }
 
@@ -604,6 +608,8 @@ public sealed class Bakhne : Game, IPartyMinigame
             round = lobby ? 0 : _round,
             roundsMax = _party is null ? RoundsMax : PartyRounds,
             heartsMax = StartHearts,
+            tickMs = TickMs,
+            grace = Grace,
             party = _party is not null,
             hearts,
             @out = outRound,
