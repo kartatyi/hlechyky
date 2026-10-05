@@ -2070,6 +2070,13 @@
   let lastHash = null;
   function applyRoute() {
     let { head, tail } = parseHash();
+    // Падельня — шар поверх сайту, а не розділ: під нею лишається той, з якого прийшли (разом із прокруткою).
+    // Відкрили одразу #padel (F5, закладка) — під нею лобі ігор.
+    padelView(head === 'padel', tail);
+    if (head === 'padel') {
+      if (lastHash !== null) return;
+      head = 'games'; tail = '';
+    }
     const moved = MOVED[head + '/' + tail] || (head === 'games' && tail === 'profile' ? '#who/' + encodeURIComponent(me.nick || '') : null);
     if (moved) {
       history.replaceState(null, '', moved);
@@ -2115,6 +2122,50 @@
   }
   window.addEventListener('hashchange', applyRoute);
   document.querySelectorAll('#mainNav button, .mtabs button').forEach((b) => b.onclick = () => go(hashFor(b.dataset.route)));
+
+  // ---------- Падельня поверх сайту ----------
+  // /padel/ — окрема сторінка, і перехід на неї вивантажував головну разом із плеєром: радіо замовкало. Тепер #padel
+  // відкриває її в рамці поверх усього, а головна (ефір, балачки, хаб) живе під нею. Адреса Падельні (#board,
+  // #tour/t3…) їде в нашу як #padel/tour/t3 — F5 повертає туди ж; «←» і посилання на головну закривають рамку.
+  let padelFrame = null, padelBack = '#games';
+  function padelView(on, tail) {
+    document.body.classList.toggle('padel-open', on);
+    if (!on) {
+      if (padelFrame) { padelFrame.remove(); padelFrame = null; }
+      return;
+    }
+    const hash = tail ? '#' + tail : '';
+    if (padelFrame) {
+      // Адресу змінили руками поверх відкритої рамки — ведемо Падельню туди ж
+      try { const w = padelFrame.contentWindow; if (hash && w.location.hash !== hash) w.location.hash = hash; } catch { /* ще вантажиться */ }
+      return;
+    }
+    padelBack = lastHash && !lastHash.startsWith('#padel') ? lastHash : '#games';
+    const f = padelFrame = document.createElement('iframe');
+    f.className = 'padel-frame';
+    f.title = 'Падельня';
+    f.allow = 'fullscreen; screen-wake-lock; autoplay';
+    f.src = '/padel/' + hash;
+    f.addEventListener('load', () => {
+      let path = '';
+      try { path = f.contentWindow.location.pathname; } catch { /* */ }
+      // Рамка таки пішла з Падельні (посилання, яке padel.js не перехопив) — не тримаємо в ній другу головну
+      if (path && !path.startsWith('/padel/')) { if (padelFrame === f) go(padelBack); return; }
+      try { f.contentWindow.focus(); } catch { /* */ }
+    });
+    document.body.appendChild(f);
+  }
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!padelFrame || e.source !== padelFrame.contentWindow || e.origin !== location.origin || !d || typeof d.padel !== 'string') return;
+    if (d.padel === 'at') {
+      // Вкладки Падельні — без нового кроку в історії: їхні кроки вже лежать у рамці, «Назад» пройде їх, потім закриє
+      const h = '#padel' + (d.hash ? '/' + d.hash : '');
+      if (location.hash !== h) history.replaceState(null, '', h);
+    } else if (d.padel === 'leave') {
+      go(d.hash && d.hash !== '#' && !d.hash.startsWith('#padel') ? d.hash : padelBack);
+    }
+  });
   document.addEventListener('visibilitychange', () => { if (chatVisible()) setUnread(0); });
 
   // ---------- балачки: згорнути / розгорнути ----------
